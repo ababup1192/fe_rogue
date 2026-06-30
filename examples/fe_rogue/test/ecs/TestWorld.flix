@@ -551,7 +551,7 @@ mod TestWorld {
     def testStepWorldPreservesPositions(): Unit \ Assert =
         let seeded = World.applyCmd(World.Cmd.Move(World.EntityRef.Enemy(5), {x = 3, y = 3}),
                      World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 5, y = 5}), World.empty()));
-        let stepped = World.stepWorld(seeded);
+        let stepped = World.stepWorld(seeded, 0.0);
         let tup = ref -> worldPosOf(ref, stepped) |> Option.map(p -> (p#x, p#y));
         Assert.assertEq(
             expected = (Some((5, 5)), Some((3, 3))),

@@ -51,10 +51,14 @@ mod RenderWorld {
                 _pos <- World.posOf(ref, world);
                 node <- Scene.getEngineNode(spritePath, scene)
             ) yield {
-                // B/m2: 位置は World.renderPos（tween を World が回す）。未 seed は scene marker に fallback
-                //（静止ユニット＝セル位置）。move 中は renderPos が補間値を持つ＝World 由来で動く。
-                let worldPos = World.renderPosOf(ref, world)
-                                   |> Option.getWithDefault(Scene.globalPositionAt(spritePath, scene));
+                // B/m2: **移動アニメ中だけ** World.renderPos（tween を World が回す）を使う。それ以外（静止・攻撃 lunge
+                // 等の marker アニメ中）は scene marker を読む＝lunge/knockback 等を正しく捕捉。renderPos は移動しか
+                // 持たないため、攻撃モーションは marker から。move/lunge を全部 World 化するのは将来（全アニメ World 化）。
+                let worldPos =
+                    if (World.isAnimating(ref, world))
+                        World.renderPosOf(ref, world) |> Option.getWithDefault(Scene.globalPositionAt(spritePath, scene))
+                    else
+                        Scene.globalPositionAt(spritePath, scene);
                 let screenPos = Camera2D.applyToWorldPos(transform, worldPos);
                 // effectiveModulateAt は node 自身の modulate を含む（fog×待機暗転）＝単一適用。d#color へ再掛けしない。
                 let color = Scene.effectiveModulateAt(spritePath, scene);

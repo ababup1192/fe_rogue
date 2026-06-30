@@ -64,8 +64,9 @@ pub enum World {
                  // B/m2: 連続的な描画位置（pixel・tween 込み）。render System(renderUnits)が読む。command-derive。
                  //   静止時は最後の値（セル pixel）を保持。move で moveAnim が補間更新（stepWorld）。
                  renderPos = Map[EntityId, Vec2.Vec2],
-                 // B/m2: 進行中の移動アニメ。stepWorld が毎 tick elapsed++ し renderPos を lerp。完了で除去。
-                 moveAnim = Map[EntityId, {srcPos = Vec2.Vec2, dstPos = Vec2.Vec2, elapsed = Int32, duration = Int32}],
+                 // B/m2: 進行中の移動アニメ。stepWorld が毎フレ elapsed += dt(秒) し renderPos を lerp。完了で除去。
+                 //   **実時間ベース**（engine tween と同じ dt で進む＝lockstep 同期・fps 非依存）。
+                 moveAnim = Map[EntityId, {srcPos = Vec2.Vec2, dstPos = Vec2.Vec2, elapsed = Float64, duration = Float64}],
                  // S4: 盤面除外（集合・階段退場）中の味方 id。Board.pieces は hidden 味方を除くので fromWorld に必要。
                  playerHidden = Set[EntityId],
                  // F7-spike: 敵の検知フラグ（dormant→chase）。flag→World の最初のプローブ。
@@ -357,21 +358,21 @@ mod World {
     /// **二重 tick**（remaining が 60/sec で減り status が数フレームで消える・combatViewOf が buff/debuff を落とす）に
     /// なるため本段は identity にする。（`tickStatusEffects` def は単体テスト用に残置。実 System はここへ足すが
     /// statusEffects は触らない＝ターン境界の Seed が唯一の権威 tick。）
-    pub def stepWorld(world: World): World =
-        stepMoveAnim(world)
+    pub def stepWorld(world: World, dt: Float64): World =
+        stepMoveAnim(dt, world)
 
-    /// B/m2: 進行中の各 moveAnim を 1 tick 進め、renderPos を lerp 更新。完了（elapsed>=duration）で
-    /// renderPos=to にスナップして anim を除去。これが「tween を World で回す」System。
-    def stepMoveAnim(world: World): World =
+    /// B/m2: 進行中の各 moveAnim を dt 秒進め、renderPos を lerp 更新。完了（elapsed>=duration）で
+    /// renderPos=to にスナップして anim を除去。**実時間 dt で進む**ので engine tween と lockstep（fps 非依存同期）。
+    def stepMoveAnim(dt: Float64, world: World): World =
         let World.World(w) = world;
         Map.foldLeftWithKey((acc, uid, anim) -> {
             let World.World(wa) = acc;
-            let e1 = anim#elapsed + 1;
+            let e1 = anim#elapsed + dt;
             if (e1 >= anim#duration)
                 World.World({renderPos = Map.insert(uid, anim#dstPos, wa#renderPos),
                              moveAnim = Map.remove(uid, wa#moveAnim) | wa})
             else {
-                let t = Int32.toFloat64(e1) / Int32.toFloat64(anim#duration);
+                let t = e1 / anim#duration;
                 World.World({renderPos = Map.insert(uid, Vec2.lerp(anim#srcPos, anim#dstPos, t), wa#renderPos),
                              moveAnim = Map.insert(uid, {elapsed = e1 | anim}, wa#moveAnim) | wa})
             }
@@ -472,7 +473,7 @@ mod World {
         case SetWaited(EntityRef, Bool)        // F7-slice5: 味方行動済み write（Enemy は no-op）
         case SetUsedStairs(EntityRef, Bool)    // S5: 味方階段退場 write（Enemy は no-op）
         case SetRenderPos(EntityRef, Vec2.Vec2)  // B/m2: 描画位置を直接 set（spawn seed/瞬間移動）
-        case StartMove(EntityRef, Vec2.Vec2, Vec2.Vec2, Int32)  // B/m2: from→to を duration tick で補間開始
+        case StartMove(EntityRef, Vec2.Vec2, Vec2.Vec2, Float64)  // B/m2: from→to を duration 秒で補間開始
         case SetAttackTarget(EntityRef, Int32) // F8-slice1: 攻撃対象 id をセット（攻撃開始）
         case ClearAttackTarget(EntityRef)      // F8-slice1: 攻撃対象をクリア（攻撃終了）
         case SetProgress(EntityRef, Int32, Int32) // World 拡張: 味方の (level, exp) write（撃破/レベルアップ/復元で）
@@ -739,10 +740,10 @@ mod World {
                 World.World({renderPos = Map.insert(toUid(ref), p, w#renderPos),
                              moveAnim = Map.remove(toUid(ref), w#moveAnim) | w})
             case Cmd.StartMove(ref, fromP, toP, dur) =>
-                // B/m2: src→dst を dur tick で補間開始。renderPos は src から始める。
+                // B/m2: src→dst を dur 秒で補間開始。renderPos は src から始める。
                 let World.World(w) = world;
                 let uid = toUid(ref);
-                World.World({moveAnim = Map.insert(uid, {srcPos = fromP, dstPos = toP, elapsed = 0, duration = Int32.max(1, dur)}, w#moveAnim),
+                World.World({moveAnim = Map.insert(uid, {srcPos = fromP, dstPos = toP, elapsed = 0.0, duration = Float64.max(0.001, dur)}, w#moveAnim),
                              renderPos = Map.insert(uid, fromP, w#renderPos) | w})
             case Cmd.SetAttackTarget(ref, t) =>
                 // A': 単一 store＋toUid（match ref arm 消失）。
@@ -887,7 +888,7 @@ mod World {
             case Cmd.SetWaited(ref, b)        => ("Waited", toUid(ref), bool01(b), 0)
             case Cmd.SetUsedStairs(ref, b)    => ("UsedStairs", toUid(ref), bool01(b), 0)
             case Cmd.SetRenderPos(ref, _)     => ("RenderPos", toUid(ref), 0, 0)
-            case Cmd.StartMove(ref, _, _, dur) => ("StartMove", toUid(ref), dur, 0)
+            case Cmd.StartMove(ref, _, _, _) => ("StartMove", toUid(ref), 0, 0)
             case Cmd.SetPrevPos(ref, p)       => ("PrevPos", toUid(ref), p#x, p#y)
             case Cmd.ClearImmobilized(ref)    => ("ClrImmob", toUid(ref), 0, 0)
             // magnitude を 4th slot に載せて oracle に可視化する（kind だけだと量違いを golden が見逃す）。

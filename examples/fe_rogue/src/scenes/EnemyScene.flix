@@ -566,9 +566,8 @@ mod EnemyScene {
         let startWorld  = Scene.globalPositionAt(enemyPath(id), scene);
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         Tween.tweenPosition(enemyPath(id), startWorld, targetWorld, slideDuration());
-        // B/m2: 敵移動も World tween 駆動（味方 moveTo と対称・engine tween と共存同期）。
-        let durTicks = Int32.max(1, Float64.tryToInt32(Float64.floor(Duration.toSeconds(slideDuration()) * 60.0)) |> Option.getWithDefault(10));
-        World.Command.emit(World.Cmd.StartMove(World.EntityRef.Enemy(id), startWorld, targetWorld, durTicks));
+        // B/m2: 敵移動も World tween 駆動（味方と対称・duration=秒・実時間 dt で engine tween と lockstep 同期）。
+        World.Command.emit(World.Cmd.StartMove(World.EntityRef.Enemy(id), startWorld, targetWorld, Duration.toSeconds(slideDuration())));
         // flipForFacing 付き (= 左向き絵) の敵だけ左右反転する。match でなく Option パイプで畳む。
         let flipped = get(id, scene)
             |> Option.filter(d -> d#resource#sprite#flipForFacing)

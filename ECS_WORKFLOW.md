@@ -25,7 +25,7 @@
   - [x] `RenderWorld.renderUnits`（World→Drawable）＋ Game.flix で `renderArgs` に合成 overlay
   - [x] `hideUnitSprites` で scene 側 unit sprite を render から除外＝ユニットは World 描画のみ（重複②の一角を剥離）
   - [x] fog/hidden/待機暗転を `effectiveVisibleAt`/`effectiveModulateAt`/`effectiveZIndexAt` で faithful 再現
-- [x] **m2-step1: World に tween System の基盤**（`renderPos`/`moveAnim` store・`Cmd.SetRenderPos`/`StartMove`・`stepWorld` が毎 tick `Vec2.lerp`・`renderPosOf`/`isAnimating`）
+- [x] **m2-step1: World に tween System の基盤**（`renderPos`/`moveAnim` store・`Cmd.SetRenderPos`/`StartMove`・`stepWorld(world, dt)` が **実時間 dt（秒）で `Vec2.lerp`**＝engine tween と lockstep 同期〔fps 非依存〕・`renderPosOf`/`isAnimating`）。※ tick ベースだと fps≠60 で engine tween と desync（武器/HP 遅延・逆ジャンプ）→ 実時間化で解消。
 - [x] **m2-step2a: 味方移動を World tween 駆動**（`moveTo` が `StartMove` emit・`renderUnits` が `renderPosOf` 読み・engine tween と共存同期・実機確認済）
 
 ---
@@ -34,11 +34,14 @@
 
 ### 主レーン（依存順・最後が B 完成宣言）
 
-- [ ] **m2 完成（ユニット周りを完全 World 化）**
-  - [x] 敵移動の `StartMove` emit（味方と対称・build green・両 faction が World tween 駆動）
-  - [ ] `syncTreeFromWorld` が marker 位置を `renderPos` 駆動（武器アイコン/HPバーも World 位置に追従）
-  - [ ] `isMoving` → `World.isAnimating`（input gate を World へ・cursor tween は別系統で残す）
-  - [ ] engine tween（`Tween.tweenPosition`）を unit から撤去＝単一源化（※ Tween.Scheduler effect の cascade 注意）
+- [x] **m2 機能完了（ユニット sprite が World tween 駆動・両 faction・実機 OK）**
+  - [x] 味方/敵移動の `StartMove` emit（World が tween を回す＝本筋の核心）
+  - [x] `renderUnits` が `renderPosOf` で位置を読む（fallback=scene marker）
+  - [x] **renderUnits は「移動アニメ中だけ renderPos、それ以外は marker」**（`isAnimating` gate）＝攻撃 lunge/knockback 等の marker アニメを正しく捕捉。
+  - **★重要発見（2026-06-30）**: `renderPos` は **移動しか持たない**。攻撃 lunge は別アニメ（AnimationPlayer が marker を動かす）。→ marker を renderPos で全上書きする `syncMarkersToRenderPos` は **lunge を消す**ので撤回（enemy も renderPos 速度に固定され遅く見えた）。**真の単一源化＝全アニメ（move/lunge/knockback）を World 化**してからでないと「全部 renderPos」にできない。当面は move=renderPos / 他=marker のハイブリッド。
+  - 〜以下は scene-tree 撤去フェーズで（engine tween は isMoving timer として存続）〜
+  - [ ] lunge/knockback 等を World アニメ化（→ renderPos が全位置を持つ）
+  - [ ] `isMoving` → `World.isAnimating`・engine tween 撤去＝完全単一源（⚠ Tween.Scheduler effect cascade・scene-tree 撤去と同時が自然）
 - [ ] **HUD を World 描画**（TopBar・ユニット情報パネル等・text 主体＝`textTinted` 活用）
 - [ ] **メニュー全面移植** ★最大の山（4〜6週相当）
   - [ ] 共通ウィジェットを手書き（ItemList の cursor/focus/disabled/auto-size、input bubbling）

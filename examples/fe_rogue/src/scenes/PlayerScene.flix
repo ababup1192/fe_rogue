@@ -410,10 +410,9 @@ mod PlayerScene {
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
-        // B/m2: 描画位置 tween を World でも回す（renderUnits が renderPos を読む）。engine tween と共存
-        // （武器/HPバーは marker tween 追従・duration を揃えて同期）。slide(秒)→tick は 60fps 換算。
-        let durTicks = Int32.max(1, Float64.tryToInt32(Float64.floor(Duration.toSeconds(slide) * 60.0)) |> Option.getWithDefault(10));
-        World.Command.emit(World.Cmd.StartMove(World.EntityRef.Player(id), startWorld, targetWorld, durTicks));
+        // B/m2: 描画位置 tween を World でも回す（renderUnits が renderPos を読む）。engine tween と共存。
+        // duration は秒（slide と同値）＝実時間 dt で進むので engine tween と lockstep 同期（fps 非依存）。
+        World.Command.emit(World.Cmd.StartMove(World.EntityRef.Player(id), startWorld, targetWorld, Duration.toSeconds(slide)));
         // 進行方向を facing に反映し、AnimatedSprite2D なら walk_<dir> 再生 (副作用)。
         // sprite ノード書き換えは moveToById 側でやる (moveTo は state を返すだけ)。
         let nextFacing = directionOfStep(data#gridPos, target)

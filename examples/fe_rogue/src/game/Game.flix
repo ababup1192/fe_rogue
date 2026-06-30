@@ -1068,7 +1068,8 @@ mod Game {
             // `World -> World` の System で回す将来形の seam。S3 以後 stepWorld は identity（statusEffects は
             // command-authoritative ＝ターン境界の Seed で tick 反映・frame-paced tick は二重 tick になるため撤去）。
             // 以後の World→World System はここに足していく。
-            let world2 = World.stepWorld(world1);
+            // B/m2: moveAnim を実時間 dt（既存の dt: Duration を秒換算）で進める＝engine tween と lockstep 同期。
+            let world2 = World.stepWorld(world1, Duration.toSeconds(dt));
             // F2b（turn phase 書込を Cmd 化）: phase は `TurnPhase.State` handler が `put` のたび `Cmd.SetPhase` で
             // worldRef へ dual-write 済み＝**World.turnPhase は command 由来**（全 41 put サイトを handler 1 箇所で被覆）。
             // よって frame-end の mirror は不要。並走 assert は command 由来 phase と State の乖離（write 漏れ）を検出する
@@ -1103,6 +1104,7 @@ mod Game {
             // これで通常ゲーム（メニュー/マップ/ユニット）は見えたまま World box が重なる＝位置一致を実証。
             if (RenderWorld.useRenderFromWorld()) {
                 // m1c: scene 側ユニット sprite を隠して描画 → ユニットは World 由来のみで描く。
+                // ※ marker(武器/HPバー)は engine 駆動のまま（移動 tween + 攻撃 lunge 等を全部保持）。
                 let (sprites, tileMaps, polygons) = GameEngine.renderArgs(RenderWorld.hideUnitSprites(synced));
                 GameEngine.Game.renderCommands(List.append(sprites, RenderWorld.renderUnits(world2, synced)), tileMaps, polygons)
             } else
