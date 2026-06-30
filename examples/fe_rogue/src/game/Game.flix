@@ -1102,7 +1102,8 @@ mod Game {
             // 1 回の renderCommands で描く（renderCommands は毎回 clear ゆえ 2 回呼びは不可＝合成する）。
             // これで通常ゲーム（メニュー/マップ/ユニット）は見えたまま World box が重なる＝位置一致を実証。
             if (RenderWorld.useRenderFromWorld()) {
-                let (sprites, tileMaps, polygons) = GameEngine.renderArgs(synced);
+                // m1c: scene 側ユニット sprite を隠して描画 → ユニットは World 由来のみで描く。
+                let (sprites, tileMaps, polygons) = GameEngine.renderArgs(RenderWorld.hideUnitSprites(synced));
                 GameEngine.Game.renderCommands(List.append(sprites, RenderWorld.renderUnits(world2, synced)), tileMaps, polygons)
             } else
                 GameEngine.render(synced);

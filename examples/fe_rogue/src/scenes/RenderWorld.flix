@@ -11,21 +11,24 @@ mod RenderWorld {
     /// m1 toggle: true で render-from-World（box）・false で従来 scene-tree 描画。実機で切替検証。
     pub def useRenderFromWorld(): Bool = true
 
-    def tile(): Float64 = MapSnapshot.tileSize()
-    def zUnit(): Int32 = 9999  // 最前面（既存スプライト/ハイライトの上）
-    // World レンダのシルエットを cyan で着色＝scene sprite の上に重なって「World 由来で描けている」のが一目で分かる。
-    def tintColor(): Color = {r = 0.4f32, g = 1.0f32, b = 1.0f32}
+    /// m1c: renderArgs に渡す前に scene 側のユニット sprite を不可視化＝ユニットは World からのみ描かれる
+    /// （重複②の一角を scene-tree から剥がす）。不変 scene のコピーを返す（実 scene 状態は不変）。
+    pub def hideUnitSprites(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let hideOne = (sc, path) -> Scene.mapEngineNode(path, n -> CanvasItem.setVisible(false, n), sc);
+        let afterP = List.foldLeft((sc, d) -> hideOne(sc, PlayerScene.spritePath(d#id)), scene, PlayerScene.getAll(scene));
+        List.foldLeft((sc, d) -> hideOne(sc, EnemyScene.spritePath(d#id)), afterP, EnemyScene.getAll(scene))
 
-    /// World + scene → ユニットの実 sprite の Drawable list。
-    /// m1b sprite: 位置=World.posOf（権威・gridToWorld→camera）／見た目=ノードの現フレーム（texture/region/offset/flip
-    /// 全部正しい）を `Renderable.toDrawables` で再利用。検証用に cyan tint で着色して overlay。
+    /// World + scene → ユニットの実 sprite の Drawable list（scene 側 sprite は hideUnitSprites で隠す）。
+    /// m1c: 描画は World render System（この関数）が担い、ユニット sprite を scene auto-render から剥がす。
+    /// 存在 gate = World.posOf（World が論理位置を持つユニットのみ描く）。
+    /// ⚠ 視覚位置は当面 scene の tween 値（武器/HPバー＝同じ marker 上の兄弟と同期して滑らかに動かすため）。
+    ///   真の render-from-World（位置も World 由来＋tween を World component 化）は m2。
     pub def renderUnits(world: World, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
         let transform = viewTransform(scene);
-        let mapGlobal = Scene.globalPositionAt(MapScene.worldPath(), scene);
         let players = PlayerScene.getAll(scene)
-            |> List.flatMap(d -> unitDraw(World.EntityRef.Player(d#id), PlayerScene.spritePath(d#id), world, mapGlobal, transform, scene));
+            |> List.flatMap(d -> unitDraw(World.EntityRef.Player(d#id), PlayerScene.spritePath(d#id), world, transform, scene));
         let enemies = EnemyScene.getAll(scene)
-            |> List.flatMap(d -> unitDraw(World.EntityRef.Enemy(d#id), EnemyScene.spritePath(d#id), world, mapGlobal, transform, scene));
+            |> List.flatMap(d -> unitDraw(World.EntityRef.Enemy(d#id), EnemyScene.spritePath(d#id), world, transform, scene));
         List.append(players, enemies)
 
     /// アクティブ camera の ViewTransform（render() と同じ算出）。camera 無しは identity。
@@ -37,23 +40,24 @@ mod RenderWorld {
             case None => Camera2D.identityTransform()
         }
 
-    /// 1 ユニット → Drawable list。World 位置 → world px(セル中央) → camera → ノードの drawable を screen に置く。
-    /// `pathToDrawables` と同じ手順（Renderable.toDrawables + applyZoomScale）だが、位置だけ World 由来に差し替え。
+    /// 1 ユニット → Drawable list。`pathToDrawables` と同手順（globalPositionAt→camera→Renderable.toDrawables→
+    /// applyZoomScale）。視覚位置・modulate・z は scene 由来（兄弟ノードと同期）、存在のみ World.posOf で gate。
+    /// posOf×getEngineNode は forM で 1 段に畳む。
     def unitDraw(ref: World.EntityRef, spritePath: NodePath, world: World,
-                 mapGlobal: Vec2, transform: Camera2D.ViewTransform,
-                 scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        match World.posOf(ref, world) {
-            case None    => Nil
-            case Some(g) =>
-                let worldPx = {x = mapGlobal#x + Int32.toFloat64(g#x) * tile() + tile() / 2.0,
-                               y = mapGlobal#y + Int32.toFloat64(g#y) * tile() + tile() / 2.0};
-                let screenPos = Camera2D.applyToWorldPos(transform, worldPx);
-                match Scene.getEngineNode(spritePath, scene) {
-                    case None       => Nil
-                    case Some(node) =>
-                        GameEngine.Renderable.toDrawables(node, screenPos)
-                            |> List.map(d -> { scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y},
-                                               color = tintColor(), zIndex = zUnit() | d })
-                }
-        }
+                 transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        if (not Scene.effectiveVisibleAt(spritePath, scene)) Nil
+        else
+            (forM (
+                _pos <- World.posOf(ref, world);
+                node <- Scene.getEngineNode(spritePath, scene)
+            ) yield {
+                let screenPos = Camera2D.applyToWorldPos(transform, Scene.globalPositionAt(spritePath, scene));
+                // effectiveModulateAt は node 自身の modulate を含む（fog×待機暗転）＝単一適用。d#color へ再掛けしない。
+                let color = Scene.effectiveModulateAt(spritePath, scene);
+                let z = Scene.effectiveZIndexAt(spritePath, scene);
+                GameEngine.Renderable.toDrawables(node, screenPos)
+                    |> List.map(d -> {
+                        scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y},
+                        color = color, zIndex = z | d })
+            }) |> Option.getWithDefault(Nil)
 }
