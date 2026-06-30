@@ -248,7 +248,11 @@ mod TestActionMenuScene {
     ///   - TurnPhase.State: Ref-backed で put を観測可能 (戻り値タプルの 2 番目)
     def runOnActionConfirm(rc: Region[r], args: ActionConfirmArgs):
             (Scene[NodeTag], TurnPhase.Phase) \ r =
-        TestUnitFixtures.withWorldCommand(rc, () ->
+        // S6: waited は World 権威化し scene 直書きが無い。実フレームの frame-end syncTreeFromWorld を
+        // 模して、emit された Cmd（SetWaited 等）を scene 由来 seed の World へ適用 → scene へ一方向 derive
+        // してから assert に返す（waited が World→scene へ反映される点を含めて挙動を固定する）。
+        let wref = Ref.fresh(rc, World.syncFromScene(args#scene, World.empty()));
+        let (after, phase) = run {
         // P1a: 確定経路（gatherStairs→StairsExit.begin）が BoardQuery を読むので mock board を供給。
         TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(args#scene), () ->
         TestUnitFixtures.withPhaseRef(rc, args#initialPhase, () ->
@@ -263,7 +267,11 @@ mod TestActionMenuScene {
                                       TestUnitFixtures.withMockGatherResume(() ->
                                         TestUnitFixtures.withSelectedPlayer(args#selectedId, () ->
                                           ActionMenuScene.onActionConfirmed(args#entry,
-                                                                            args#scene))))))))))))))
+                                                                            args#scene)))))))))))))
+        } with handler World.Command {
+            def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
+        };
+        (World.syncTreeFromWorld(Ref.get(wref), after), phase)
 
     // ════════════════════════════════════════════════════════
     // 既存「行動終了」アクション回帰テスト

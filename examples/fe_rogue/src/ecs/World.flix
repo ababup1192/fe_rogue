@@ -1719,10 +1719,14 @@ mod World {
                 case EntityRef.Player(pid) => PlayerScene.mapPlayer(pid, d -> {hp = hp | d}, sc)
                 case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, d -> {hp = hp | d}, sc)
             }, withPos, w#hp);
+        // S6（waited も World 権威・scene 派生化）: setWaited/setActive/useStairs は scene 直書きを撤去し
+        // Cmd.SetWaited のみ emit する。ここで playerWaited store から scene へ一方向 derive する（player のみ）。
+        let withWaited = Map.foldLeftWithKey((sc, pid, wd) ->
+            PlayerScene.mapPlayer(pid, d -> {waited = wd | d}, sc), withHp, w#playerWaited);
         // isDying は enemyDying(Set) の membership で全敵に derive（true/false 両方・敵のみ）。
         let withDying = List.foldLeft((sc, d) ->
             EnemyScene.mapEnemy(d#id, e -> {isDying = Set.memberOf(enemyUid(d#id), w#enemyDying) | e}, sc),
-            withHp, EnemyScene.getAll(scene));
+            withWaited, EnemyScene.getAll(scene));
         // alerted も World(enemyAlerted) 由来に derive（敵のみ）。
         let withAlerted = Map.foldLeftWithKey((sc, uid, b) ->
             match uidToRef(uid) {

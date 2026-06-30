@@ -30,7 +30,8 @@ mod TurnFlow {
         if (PlayerScene.anyPendingLevelUp(scene))
             PhaseTransitions.enterLevelUpView(scene)
         else
-        let withWaited = match SelectedPlayer.State.get()#id {
+        let waitedId = SelectedPlayer.State.get()#id;  // このフレームで waited 化する駒（stale 対象）
+        let withWaited = match waitedId {
             case Some(id) => PlayerScene.setWaited(id, scene)
             case None     => scene   // 防御的: 選択なしで Attack に入ることは UI フロー上起こらないが、
                                    // waited 化する駒が存在しないだけなので scene をそのまま返しても安全
@@ -39,7 +40,9 @@ mod TurnFlow {
         // 次の active 味方の gridPos をローカル `withWaited` から直接拾って渡す。
         // `enterPlayerCursor` 側の PartyQuery フォールバックは sceneRef (frame 冒頭の snapshot)
         // を読むので、たった今 setWaited した駒をまだ active として返してしまう。
-        match PlayerScene.firstActive(withWaited) {
+        // S6: setWaited が scene 直書きを撤去し World 権威化したため、scene 上では `waitedId` の駒が
+        // まだ active に見える（frame-end の syncTreeFromWorld 前）。その 1 体を明示除外して拾う。
+        match PlayerScene.firstActiveExcluding(waitedId, withWaited) {
             case Some(next) =>
                 PhaseTransitions.enterPlayerCursorAt(next#gridPos, withWaited)
             case None       =>

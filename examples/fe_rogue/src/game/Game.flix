@@ -1060,10 +1060,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[FOLLOWUP DIFF] ${ms}")
             };
-            match World.waitedMismatches(Ref.get(worldRef), next) {
-                case Nil => ()
-                case ms  => println("[WAITED DIFF] ${ms}")
-            };
+            // S6: waited は World 権威化（scene 直書き撤去・syncTreeFromWorld で derive）したため、
+            // pre-sync の dual-write 等値を前提にした [WAITED DIFF] 検出器は撤去（gridPos/hp と同様）。
+            // 後段 post-sync の [PLAYERDATA/UNITVIEW DIFF] が waited を含む twin parity を担保する。
+            // write 漏れ（Cmd.SetWaited 抜け）は「駒が灰色にならない/行動済みにならない」可視バグとして現れる。
             match World.attackTargetMismatches(Ref.get(worldRef), next) {  // F8-slice1
                 case Nil => ()
                 case ms  => println("[ATTACKTARGET DIFF] ${ms}")

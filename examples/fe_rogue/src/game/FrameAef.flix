@@ -12,11 +12,15 @@ mod FrameAef {
 
     /// `ready` / `physicsProcess` 用の Aef 集合 (`FrameAef.T`)。Player.physicsProcess / Cursor.physicsProcess
     /// などが要求する集合 (BoardQuery で盤面参照、Tween でアニメ進行、TurnPhase で gating 等)。
+    /// `World.WorldQuery`: S6 で waited の sim reader（PlayerMovementScene の集合/追従判定）が
+    /// frame 内の権威 World を読むため許可（move 前ゆえ World==scene・挙動不変）。gameLoop 全体が
+    /// WorldQuery handler 内なので physicsProcess でも取得できる。
     pub type alias T = {GameEngine.Game, BoardQuery,
                          EnemyData.RosterQuery,
                          Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
-                         TurnPhase.State, SelectedPlayer.State, World.Command}
+                         TurnPhase.State, SelectedPlayer.State, World.Command,
+                         World.WorldQuery}
 
     /// `process` 用の広い Aef 集合 (`FrameAef.ProcessT`)。Player/Enemy の `process` が drainSignals 経由で
     /// attack:hit / death_blink / attack_lunge を捌き、EnemyTurnDriverScene が phase 判定で

@@ -798,6 +798,17 @@ mod PlayerScene {
             |> List.sortBy(d -> d#id)
             |> List.head
 
+    /// `firstActive` の「`excludeId` を行動済み扱いにする」変種。S6 で waited が World 権威化し
+    /// scene 直書きを撤去したため、`commitWaitedAndAdvance` のように **このフレームで waited 化した直後**に
+    /// 次の active を拾う局面では scene の waited がまだ stale（frame-end の syncTreeFromWorld 前）。
+    /// ただし stale なのは「たった今 waited にした 1 体（= excludeId）」だけ（他は前フレームで sync 済み）なので、
+    /// その id を明示除外すれば World を読まずとも結果は同一になる（純粋・effect cascade 不要）。
+    pub def firstActiveExcluding(excludeId: Option[Int32], scene: Scene[NodeTag]): Option[Data] =
+        getAll(scene)
+            |> List.filter(d -> not d#waited and Some(d#id) != excludeId)
+            |> List.sortBy(d -> d#id)
+            |> List.head
+
     /// 主人公(lordId=0)が集合（行軍）を率いられる状態か。集合は `beginGather` が主人公を
     /// 選択駒に固定するので、主人公が戦闘不能(hp<=0) / 階段退場(hidden) / かなしばり(immobilized)
     /// のいずれかなら率いられない。集合のターン跨ぎ自動継続の前提チェックに使う。
@@ -874,9 +885,10 @@ mod PlayerScene {
     /// AnimatedSprite2D 持ち unit はここで idle アニメに戻す (= 待機モーション表示)。
     /// PlayerAttack 確定 / スキップ時に呼ばれる。
     pub def setWaited(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // S6: waited は World 権威（Cmd.SetWaited が唯一の source）。scene への直書きは撤去し、
+        // frame-end の syncTreeFromWorld が scene へ一方向 derive する（dual-write 解消）。
         World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), true));  // F7-slice5
         scene
-            |> mapPlayer(id, d -> {waited = true | d})
             |> setSpriteModulate(id, waitedColor())
             |> UnitHPBarScene.setModulate(playerPath(id), waitedColor())
             |> WeaponIconScene.setModulate(playerPath(id), waitedColor())
@@ -885,9 +897,9 @@ mod PlayerScene {
     /// プレイヤー 1 体を「行動可能(アクティブ)」に戻す。`waited` を下ろし、sprite/HP ゲージを
     /// 通常色へ、idle アニメへ戻す（`setWaited` の逆）。集合キャンセルの巻き戻しで使う。
     pub def setActive(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // S6: waited は World 権威。scene 直書きは撤去（syncTreeFromWorld で derive）。
         World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), false));  // F7-slice5
         scene
-            |> mapPlayer(id, d -> {waited = false | d})
             |> setSpriteModulate(id, activeColor())
             |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
             |> WeaponIconScene.setModulate(playerPath(id), activeColor())
@@ -1110,7 +1122,9 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), true));  // F7-slice5: 階段退場で waited を World へ
         scene
             |> setHidden(id, true)
-            |> mapPlayer(id, d -> {usedStairs = true, waited = true | d})
+            // S6: waited は World 権威（上の Cmd.SetWaited が source・syncTreeFromWorld で derive）。
+            // usedStairs は別途 scene 権威のまま残す。
+            |> mapPlayer(id, d -> {usedStairs = true | d})
 
     /// 生存している味方が「全員」階段を使ったか（= このフロアの終了条件）。
     /// 生存者が 1 人も居ない場合は false（それは全滅 = ゲームオーバー側の扱い）。

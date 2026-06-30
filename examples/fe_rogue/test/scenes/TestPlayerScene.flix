@@ -540,12 +540,21 @@ mod TestPlayerScene {
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}));
-        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.useStairs(0, scene));
-        match PlayerScene.get(0, after) {
-            case Some(d) =>
-                Assert.assertEq(expected = (true, true, true),
-                                (d#usedStairs, d#hidden, d#waited))
-            case None    => bug!("player 0 not found")
+        // S6: waited は World 権威化し scene 直書きが無い。実フレームの frame-end syncTreeFromWorld を
+        // 模して emit された Cmd.SetWaited を World へ適用 → scene へ derive してから検証する
+        // （usedStairs/hidden は scene 権威のまま立ち、waited は World 由来で derive される）。
+        region rc {
+            let wref = Ref.fresh(rc, World.syncFromScene(scene, World.empty()));
+            let after = run { PlayerScene.useStairs(0, scene) } with handler World.Command {
+                def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
+            };
+            let synced = World.syncTreeFromWorld(Ref.get(wref), after);
+            match PlayerScene.get(0, synced) {
+                case Some(d) =>
+                    Assert.assertEq(expected = (true, true, true),
+                                    (d#usedStairs, d#hidden, d#waited))
+                case None    => bug!("player 0 not found")
+            }
         }
 
     /// フロア終了は「生存味方が全員」階段を使ったときだけ true。

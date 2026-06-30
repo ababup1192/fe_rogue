@@ -87,7 +87,10 @@ mod TestPlayerMovementScene {
                 TestUnitFixtures.withSelectionRef(rc,
                     ({id = Some(0), drafts = (Nil: List[MoveDraft.DraftAction]), gatherActive = false}: SelectedPlayer.Selection),
                     () ->
-                    PlayerMovementScene.physicsStep(Duration.zero(), pnode, PlayerScene.playerPath(0), scene)))))));
+                    // S6: physicsStep が waited を World 権威で読むため WorldQuery を discharge。
+                    // PlayerMoving は waited を参照しないので World.empty()（scene fallback）で十分。
+                    TestUnitFixtures.withWorldQuery(World.empty(), () ->
+                    PlayerMovementScene.physicsStep(Duration.zero(), pnode, PlayerScene.playerPath(0), scene))))))));
             moves |> List.map(c -> (c#x, c#y))
         }
 
