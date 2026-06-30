@@ -926,10 +926,9 @@ mod PlayerScene {
             World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Player(id), false));  // F7-slice4: reset を World へ
             World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), false));  // F7-slice5: ターン開始で waited 解除
             let sc1 = sc
-                // 味方ターン開始ごとに時限ステータス（自己バフ等）を 1 ターン分減算し、
-                // 追撃リングの二重発動フラグを戻す。
-                |> mapPlayer(id, d -> {waited = false, statuses = StatusSystem.tick(d#statuses),
-                                       followUpUsed = false | d})
+                // 味方ターン開始ごとに時限ステータス（自己バフ等）を 1 ターン分減算する。
+                // 追撃リングの二重発動フラグ(followUpUsed)は World 権威＝上の Cmd emit のみ（scene 直書き撤去・syncTree derive）。
+                |> mapPlayer(id, d -> {waited = false, statuses = StatusSystem.tick(d#statuses) | d})
                 |> setSpriteModulate(id, activeColor())
                 |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
                 |> WeaponIconScene.setModulate(playerPath(id), activeColor())

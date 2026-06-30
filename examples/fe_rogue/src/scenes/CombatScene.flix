@@ -231,9 +231,9 @@ mod CombatScene {
             // 追撃するなら decide（反撃/確定）より前に同じ敵へもう一度攻撃する（追撃→反撃の直列）。
             match playerFollowUpEnemy(playerId, scene, rollPercent(), World.WorldQuery.get()) {
                 case Some(enemyId) =>
+                    // S6: followUpUsed は World 権威。scene 直書きは撤去（reader は World 優先・syncTree が derive）。
                     World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Player(playerId), true));  // F7-slice4
-                    let marked = PlayerScene.mapPlayer(playerId, d -> {followUpUsed = true | d}, scene);
-                    startPlayerFollowUp(playerId, enemyId, marked)
+                    startPlayerFollowUp(playerId, enemyId, scene)
                 case None =>
                     resolvePlayerMainAttack(playerId, scene)
             }
@@ -350,9 +350,9 @@ mod CombatScene {
             // 追撃するなら反撃判定より前に同じ味方へもう一度攻撃する。
             match enemyFollowUpPlayer(enemyId, scene, rollPercent(), World.WorldQuery.get()) {
                 case Some(playerId) =>
+                    // S6: followUpUsed は World 権威。scene 直書きは撤去（reader は World 優先・syncTree が derive）。
                     World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Enemy(enemyId), true));  // F7-slice4
-                    let marked = EnemyScene.mapEnemy(enemyId, d -> {followUpUsed = true | d}, scene);
-                    startEnemyFollowUp(enemyId, playerId, marked)
+                    startEnemyFollowUp(enemyId, playerId, scene)
                 case None =>
                     resolveEnemyMainAttack(enemyId, scene)
             }

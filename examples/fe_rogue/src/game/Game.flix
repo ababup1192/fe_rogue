@@ -1053,10 +1053,7 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[PREVPOS DIFF] ${ms}")
             };
-            match World.followUpUsedMismatches(Ref.get(worldRef), next) {
-                case Nil => ()
-                case ms  => println("[FOLLOWUP DIFF] ${ms}")
-            };
+            // S6: followUpUsed を World 権威化（scene 直書き撤去・syncTree derive）したため [FOLLOWUP DIFF] は撤去。
             // S6: waited は World 権威化（scene 直書き撤去・syncTreeFromWorld で derive）したため、
             // pre-sync の dual-write 等値を前提にした [WAITED DIFF] 検出器は撤去（gridPos/hp と同様）。
             // 後段 post-sync の [PLAYERDATA/UNITVIEW DIFF] が waited を含む twin parity を担保する。

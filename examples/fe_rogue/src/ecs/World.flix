@@ -1739,9 +1739,15 @@ mod World {
                 case EntityRef.Enemy(eid) => EnemyScene.mapEnemy(eid, e -> {bottleUsed = b | e}, sc)
                 case EntityRef.Player(_)  => sc
             }, withAlerted, w#enemyBottleUsed);
+        // S6: followUpUsed も World(followUpUsed・両 faction 統合マップ)由来に derive。uid を uidToRef で分配。
+        let withFollowUp = Map.foldLeftWithKey((sc, uid, f) ->
+            match uidToRef(uid) {
+                case EntityRef.Player(pid) => PlayerScene.mapPlayer(pid, d -> {followUpUsed = f | d}, sc)
+                case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, e -> {followUpUsed = f | e}, sc)
+            }, withBottle, w#followUpUsed);
         // progress（level/exp）は player のみ。store key は player id。
         let withLevel = Map.foldLeftWithKey((sc, pid, lvl) ->
-            PlayerScene.mapPlayer(pid, d -> {level = lvl | d}, sc), withBottle, w#playerLevel);
+            PlayerScene.mapPlayer(pid, d -> {level = lvl | d}, sc), withFollowUp, w#playerLevel);
         Map.foldLeftWithKey((sc, pid, xp) ->
             PlayerScene.mapPlayer(pid, d -> {exp = xp | d}, sc), withLevel, w#playerExp)
 }

@@ -443,10 +443,9 @@ mod EnemyScene {
         let reset = List.foldLeft((sc, id) -> {
             World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Enemy(id), false));  // F7-slice4: reset を World へ
             let sc1 = sc
-                // 敵ターン開始ごとに時限デバフ（目潰し/鈍足）を 1 ターン分減算し、
-                // 追撃リングの二重発動フラグを戻す。
-                |> mapEnemy(id, d -> {acted = false, statuses = StatusSystem.tick(d#statuses),
-                                      followUpUsed = false | d})
+                // 敵ターン開始ごとに時限デバフ（目潰し/鈍足）を 1 ターン分減算する。
+                // 追撃リングの二重発動フラグ(followUpUsed)は World 権威＝上の Cmd emit のみ（scene 直書き撤去・syncTree derive）。
+                |> mapEnemy(id, d -> {acted = false, statuses = StatusSystem.tick(d#statuses) | d})
                 |> setSpriteModulate(id, activeColor())
                 |> UnitHPBarScene.setModulate(enemyPath(id), activeColor())
                 |> WeaponIconScene.setModulate(enemyPath(id), activeColor());
