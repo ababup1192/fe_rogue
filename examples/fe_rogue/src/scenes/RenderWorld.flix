@@ -12,23 +12,21 @@ mod RenderWorld {
     pub def useRenderFromWorld(): Bool = true
 
     def tile(): Float64 = MapSnapshot.tileSize()
-    // ゲーム既存の移動/攻撃範囲ハイライト(青/赤)と区別するため、目立つ色＋小さめ点にする（検証用）。
-    def playerColor(): Color = {r = 1.0f32, g = 0.0f32, b = 1.0f32}  // マゼンタ＝味方
-    def enemyColor(): Color  = {r = 1.0f32, g = 1.0f32, b = 0.0f32}  // 黄＝敵
-    def markerFrac(): Float64 = 0.45  // タイルに対する点のサイズ比（中央に小さく）
-    def zUnit(): Int32 = 9999  // 最前面に（既存ハイライトより上）
+    def zUnit(): Int32 = 9999  // 最前面（既存スプライト/ハイライトの上）
+    // World レンダのシルエットを cyan で着色＝scene sprite の上に重なって「World 由来で描けている」のが一目で分かる。
+    def tintColor(): Color = {r = 0.4f32, g = 1.0f32, b = 1.0f32}
 
-    /// World + scene（entity 列挙用）→ ユニット box の Drawable list。
-    /// m1b: 位置は World.posOf（権威）を gridToWorld（mapGlobal + grid*26+13 中央）→ camera 変換で screen 化。
-    /// ＝scene-tree ユニットと同じ座標系に重なる（位置パイプライン実証）。
+    /// World + scene → ユニットの実 sprite の Drawable list。
+    /// m1b sprite: 位置=World.posOf（権威・gridToWorld→camera）／見た目=ノードの現フレーム（texture/region/offset/flip
+    /// 全部正しい）を `Renderable.toDrawables` で再利用。検証用に cyan tint で着色して overlay。
     pub def renderUnits(world: World, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
         let transform = viewTransform(scene);
         let mapGlobal = Scene.globalPositionAt(MapScene.worldPath(), scene);
         let players = PlayerScene.getAll(scene)
-            |> List.filterMap(d -> unitItem(World.EntityRef.Player(d#id), world, mapGlobal, transform, playerColor()));
+            |> List.flatMap(d -> unitDraw(World.EntityRef.Player(d#id), PlayerScene.spritePath(d#id), world, mapGlobal, transform, scene));
         let enemies = EnemyScene.getAll(scene)
-            |> List.filterMap(d -> unitItem(World.EntityRef.Enemy(d#id), world, mapGlobal, transform, enemyColor()));
-        Render.draw(List.append(players, enemies))
+            |> List.flatMap(d -> unitDraw(World.EntityRef.Enemy(d#id), EnemyScene.spritePath(d#id), world, mapGlobal, transform, scene));
+        List.append(players, enemies)
 
     /// アクティブ camera の ViewTransform（render() と同じ算出）。camera 無しは identity。
     def viewTransform(scene: Scene[NodeTag]): Camera2D.ViewTransform \ GameEngine.Game =
@@ -39,14 +37,23 @@ mod RenderWorld {
             case None => Camera2D.identityTransform()
         }
 
-    /// 1 ユニット → (screen 左上, box)。World 位置 → world px(中央) → camera 適用 → 左上に補正。
-    def unitItem(ref: World.EntityRef, world: World, mapGlobal: Vec2,
-                 transform: Camera2D.ViewTransform, color: Color): Option[(Vec2, RenderItem)] =
-        World.posOf(ref, world) |> Option.map(g ->
-            let worldPx = {x = mapGlobal#x + Int32.toFloat64(g#x) * tile() + tile() / 2.0,
-                           y = mapGlobal#y + Int32.toFloat64(g#y) * tile() + tile() / 2.0};
-            let screen = Camera2D.applyToWorldPos(transform, worldPx);
-            let screenSize = Camera2D.applyToWorldSize(transform, {x = tile() * markerFrac(), y = tile() * markerFrac()});
-            let topLeft = {x = screen#x - screenSize#x / 2.0, y = screen#y - screenSize#y / 2.0};
-            (topLeft, Render.solidBox(screenSize, color, zUnit())))
+    /// 1 ユニット → Drawable list。World 位置 → world px(セル中央) → camera → ノードの drawable を screen に置く。
+    /// `pathToDrawables` と同じ手順（Renderable.toDrawables + applyZoomScale）だが、位置だけ World 由来に差し替え。
+    def unitDraw(ref: World.EntityRef, spritePath: NodePath, world: World,
+                 mapGlobal: Vec2, transform: Camera2D.ViewTransform,
+                 scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        match World.posOf(ref, world) {
+            case None    => Nil
+            case Some(g) =>
+                let worldPx = {x = mapGlobal#x + Int32.toFloat64(g#x) * tile() + tile() / 2.0,
+                               y = mapGlobal#y + Int32.toFloat64(g#y) * tile() + tile() / 2.0};
+                let screenPos = Camera2D.applyToWorldPos(transform, worldPx);
+                match Scene.getEngineNode(spritePath, scene) {
+                    case None       => Nil
+                    case Some(node) =>
+                        GameEngine.Renderable.toDrawables(node, screenPos)
+                            |> List.map(d -> { scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y},
+                                               color = tintColor(), zIndex = zUnit() | d })
+                }
+        }
 }
