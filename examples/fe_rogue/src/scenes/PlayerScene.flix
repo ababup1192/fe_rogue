@@ -411,8 +411,8 @@ mod PlayerScene {
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
         // B/m2: 描画位置 tween を World でも回す（renderUnits が renderPos を読む）。engine tween と共存。
-        // duration は秒（slide と同値）＝実時間 dt で進むので engine tween と lockstep 同期（fps 非依存）。
-        World.Command.emit(World.Cmd.StartMove(World.EntityRef.Player(id), startWorld, targetWorld, Duration.toSeconds(slide)));
+        // faction-blind な moveUnit に統一（敵も同じ口）。duration は秒（slide 同値）＝engine tween と lockstep 同期。
+        World.moveUnit(World.EntityRef.Player(id), {start = startWorld, target = targetWorld}, Duration.toSeconds(slide));
         // 進行方向を facing に反映し、AnimatedSprite2D なら walk_<dir> 再生 (副作用)。
         // sprite ノード書き換えは moveToById 側でやる (moveTo は state を返すだけ)。
         let nextFacing = directionOfStep(data#gridPos, target)

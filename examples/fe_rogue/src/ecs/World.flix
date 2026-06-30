@@ -29,6 +29,13 @@ pub enum SimPhase with Eq, ToString {
 /// ＝resolveCombat の level-up を World 完結に（resource threading 不要）。
 pub type alias Growth = {base = LevelSystem.Stats, rates = UnitCatalog.GrowthRates, name = String}
 
+/// B/m2: tween のチャンネル＝「何を」動かすかの**意味**（lib EcsTween は値の補間だけ知り、意味はここが持つ。
+/// Bevy Lens の no-reflection 版）。複合キー `(EntityId, Channel)` で 1 entity が複数チャンネル同時可。
+/// 増分（Alpha/Scale…）はこの enum と applyTweenOut の match を 1 arm 足すだけ（局所）。
+pub enum Channel with Eq, Order {
+    case Position   // renderPos（連続描画位置＝移動）
+}
+
 pub enum World {
     case World({ tick = Int32,
                  // F2a: turn FSM の World mirror（dual・read-model）。権威は当面 TurnPhase.State。
@@ -64,9 +71,10 @@ pub enum World {
                  // B/m2: 連続的な描画位置（pixel・tween 込み）。render System(renderUnits)が読む。command-derive。
                  //   静止時は最後の値（セル pixel）を保持。move で moveAnim が補間更新（stepWorld）。
                  renderPos = Map[EntityId, Vec2.Vec2],
-                 // B/m2: 進行中の移動アニメ。stepWorld が毎フレ elapsed += dt(秒) し renderPos を lerp。完了で除去。
-                 //   **実時間ベース**（engine tween と同じ dt で進む＝lockstep 同期・fps 非依存）。
-                 moveAnim = Map[EntityId, {srcPos = Vec2.Vec2, dstPos = Vec2.Vec2, elapsed = Float64, duration = Float64}],
+                 // B/m2: 進行中の tween（複合キー (EntityId, Channel)）。stepWorld が毎フレ実時間 dt(秒) 進め、
+                 //   出力を対象 component（Position→renderPos）へ書く。完了で除去。**実時間ベース**（engine tween と
+                 //   同じ dt で進む＝lockstep 同期・fps 非依存）。1 entity が複数チャンネルを同時に持てる。
+                 tweens = EcsTween.Tweens[EntityId, Channel],
                  // S4: 盤面除外（集合・階段退場）中の味方 id。Board.pieces は hidden 味方を除くので fromWorld に必要。
                  playerHidden = Set[EntityId],
                  // F7-spike: 敵の検知フラグ（dormant→chase）。flag→World の最初のプローブ。
@@ -141,7 +149,7 @@ mod World {
                      staves = Map.empty(), consumables = Map.empty(), rings = Map.empty(),
                      ringEquipped = Map.empty(),
                      pos = Map.empty(),
-                     renderPos = Map.empty(), moveAnim = Map.empty(),
+                     renderPos = Map.empty(), tweens = Map.empty(),
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(), enemyActed = Map.empty(),
                      enemyDying = Set.empty(),
                      enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
@@ -210,7 +218,7 @@ mod World {
             ringEquipped = Query.indexBy(d -> d#id, d -> d#ringEquipped, players),
             pos = Map.union(Query.indexBy(d -> d#id, d -> d#gridPos, players),
                             Query.indexBy(d -> enemyUid(d#id), d -> d#gridPos, enemies)),
-            renderPos = Map.empty(), moveAnim = Map.empty(),  // B/m2: World-native（spawn の SetRenderPos で seed）
+            renderPos = Map.empty(), tweens = Map.empty(),  // B/m2: World-native（spawn の SetRenderPos で seed）
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
             enemyDying     = Query.tagOf(d -> enemyUid(d#id), List.filter(d -> d#isDying, enemies)),
             enemyAlerted   = Query.indexBy(d -> enemyUid(d#id), d -> d#alerted, enemies),
@@ -294,9 +302,11 @@ mod World {
             ringEquipped = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#ringEquipped),
             // 位置は command 由来を保持＋scene に居ない id を prune（gridPos からの再構築はしない）。
             pos = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#pos),
-            // B/m2: renderPos/moveAnim は command-derive＝preserve＋prune（再 mirror しない）。
+            // B/m2: renderPos/tweens は command-derive＝preserve＋prune（再 mirror しない）。死 entity の tween は
+            // ここで剪定（engine scene Tween の「target Node 消滅で auto-stop」相当）。tween キーは (uid, channel)
+            // 複合ゆえ fst で uid を取り validUids 判定（死は全部 command 経由＝既存 prune 基準に乗る）。
             renderPos = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#renderPos),
-            moveAnim  = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#moveAnim),
+            tweens    = Map.filterWithKey((key, _) -> Set.memberOf(fst(key), validUids), w#tweens),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
             // 軸1 仕上げ: isDying も command 由来を保持＋prune（death 完了でノード除去→自動 prune）。
             // A': enemy-only store も unified-id key＝prune は validUids で統一。
@@ -359,24 +369,25 @@ mod World {
     /// なるため本段は identity にする。（`tickStatusEffects` def は単体テスト用に残置。実 System はここへ足すが
     /// statusEffects は触らない＝ターン境界の Seed が唯一の権威 tick。）
     pub def stepWorld(world: World, dt: Float64): World =
-        stepMoveAnim(dt, world)
-
-    /// B/m2: 進行中の各 moveAnim を dt 秒進め、renderPos を lerp 更新。完了（elapsed>=duration）で
-    /// renderPos=to にスナップして anim を除去。**実時間 dt で進む**ので engine tween と lockstep（fps 非依存同期）。
-    def stepMoveAnim(dt: Float64, world: World): World =
         let World.World(w) = world;
-        Map.foldLeftWithKey((acc, uid, anim) -> {
-            let World.World(wa) = acc;
-            let e1 = anim#elapsed + dt;
-            if (e1 >= anim#duration)
-                World.World({renderPos = Map.insert(uid, anim#dstPos, wa#renderPos),
-                             moveAnim = Map.remove(uid, wa#moveAnim) | wa})
-            else {
-                let t = e1 / anim#duration;
-                World.World({renderPos = Map.insert(uid, Vec2.lerp(anim#srcPos, anim#dstPos, t), wa#renderPos),
-                             moveAnim = Map.insert(uid, {elapsed = e1 | anim}, wa#moveAnim) | wa})
-            }
-        }, world, w#moveAnim)
+        let (nextTweens, outs, _done) = EcsTween.step(dt, w#tweens);
+        // tweens を更新後、各補間出力をチャンネル別に対象 component へ書く。
+        // （_done は Phase 2 で marker 駆動〔active∪done〕に使う。Phase 1 では未使用。）
+        List.foldLeft((acc, pair) -> {
+            let ((uid, ch), out) = pair;
+            applyTweenOut(uid, ch, out, acc)
+        }, World.World({tweens = nextTweens | w}), outs)
+
+    /// B/m2: tween の補間出力をチャンネル別に対象 component へ書く（Position→renderPos）。
+    /// 不能組（Position に Scalar 等）は smart constructor 経路ゆえ設計上ありえない＝loud に bug!。
+    /// チャンネル増分（Alpha/Scale…）はここに 1 arm 足すだけ。
+    def applyTweenOut(uid: EntityId, ch: Channel, out: EcsTween.Out, world: World): World =
+        let World.World(w) = world;
+        match (ch, out) {
+            case (Channel.Position, EcsTween.Out.VecOut(v)) =>
+                World.World({renderPos = Map.insert(uid, v, w#renderPos) | w})
+            case _ => bug!("EcsTween: impossible (channel, out) combo")
+        }
 
     // ════════════════════════════════════════════════════════════════════
     // statusEffects（時限ステータス効果＝バフ/デバフ）を World 権威にする ECS 層
@@ -473,7 +484,7 @@ mod World {
         case SetWaited(EntityRef, Bool)        // F7-slice5: 味方行動済み write（Enemy は no-op）
         case SetUsedStairs(EntityRef, Bool)    // S5: 味方階段退場 write（Enemy は no-op）
         case SetRenderPos(EntityRef, Vec2.Vec2)  // B/m2: 描画位置を直接 set（spawn seed/瞬間移動）
-        case StartMove(EntityRef, Vec2.Vec2, Vec2.Vec2, Float64)  // B/m2: from→to を duration 秒で補間開始
+        case StartTween(EntityRef, Channel, EcsTween.Track, Float64, EcsTween.Easing, Bool)  // B/m2: (entity,channel) tween を dur 秒で開始
         case SetAttackTarget(EntityRef, Int32) // F8-slice1: 攻撃対象 id をセット（攻撃開始）
         case ClearAttackTarget(EntityRef)      // F8-slice1: 攻撃対象をクリア（攻撃終了）
         case SetProgress(EntityRef, Int32, Int32) // World 拡張: 味方の (level, exp) write（撃破/レベルアップ/復元で）
@@ -735,16 +746,21 @@ mod World {
                     case EntityRef.Enemy(_)   => world   // 敵に usedStairs は無い＝no-op
                 }
             case Cmd.SetRenderPos(ref, p) =>
-                // B/m2: 描画位置を直接 set（進行中アニメは破棄）。spawn seed / 瞬間移動用。
-                let World.World(w) = world;
-                World.World({renderPos = Map.insert(toUid(ref), p, w#renderPos),
-                             moveAnim = Map.remove(toUid(ref), w#moveAnim) | w})
-            case Cmd.StartMove(ref, fromP, toP, dur) =>
-                // B/m2: src→dst を dur 秒で補間開始。renderPos は src から始める。
+                // B/m2: 描画位置を直接 set（進行中の Position tween は破棄）。spawn seed / 瞬間移動用。
                 let World.World(w) = world;
                 let uid = toUid(ref);
-                World.World({moveAnim = Map.insert(uid, {srcPos = fromP, dstPos = toP, elapsed = 0.0, duration = Float64.max(0.001, dur)}, w#moveAnim),
-                             renderPos = Map.insert(uid, fromP, w#renderPos) | w})
+                World.World({renderPos = Map.insert(uid, p, w#renderPos),
+                             tweens = Map.remove((uid, Channel.Position), w#tweens) | w})
+            case Cmd.StartTween(ref, ch, track, dur, easing, yoyo) =>
+                // B/m2: (entity, channel) tween を開始。Position は renderPos を即 src にスナップ（補間初期値）。
+                let World.World(w) = world;
+                let uid = toUid(ref);
+                let nextTweens = EcsTween.start((uid, ch), track, dur, easing, yoyo, w#tweens);
+                let nextRenderPos = match (ch, track) {
+                    case (Channel.Position, EcsTween.Track.Vec(vl)) => Map.insert(uid, vl#start, w#renderPos)
+                    case _                                          => w#renderPos
+                };
+                World.World({tweens = nextTweens, renderPos = nextRenderPos | w})
             case Cmd.SetAttackTarget(ref, t) =>
                 // A': 単一 store＋toUid（match ref arm 消失）。
                 let World.World(w) = world;
@@ -888,7 +904,7 @@ mod World {
             case Cmd.SetWaited(ref, b)        => ("Waited", toUid(ref), bool01(b), 0)
             case Cmd.SetUsedStairs(ref, b)    => ("UsedStairs", toUid(ref), bool01(b), 0)
             case Cmd.SetRenderPos(ref, _)     => ("RenderPos", toUid(ref), 0, 0)
-            case Cmd.StartMove(ref, _, _, _) => ("StartMove", toUid(ref), 0, 0)
+            case Cmd.StartTween(ref, _, _, _, _, _) => ("StartTween", toUid(ref), 0, 0)
             case Cmd.SetPrevPos(ref, p)       => ("PrevPos", toUid(ref), p#x, p#y)
             case Cmd.ClearImmobilized(ref)    => ("ClrImmob", toUid(ref), 0, 0)
             // magnitude を 4th slot に載せて oracle に可視化する（kind だけだと量違いを golden が見逃す）。
@@ -951,9 +967,17 @@ mod World {
     pub def renderPosOf(ref: EntityRef, world: World): Option[{x = Float64, y = Float64}] =
         let World.World(w) = world; Map.get(toUid(ref), w#renderPos)
 
-    /// B/m2: 当該 entity が移動アニメ中か（isMoving の World 版・input gate 用）。
+    /// B/m2: 当該 entity が移動（Position）tween 中か（isMoving の World 版・input gate 用）。
     pub def isAnimating(ref: EntityRef, world: World): Bool =
-        let World.World(w) = world; Map.memberOf(toUid(ref), w#moveAnim)
+        let World.World(w) = world; EcsTween.isActive((toUid(ref), Channel.Position), w#tweens)
+
+    /// B/m2: faction-blind な「移動」の唯一の発行口（smart constructor）。Position チャンネルへ span(start→target)
+    /// の Vec tween を sec 秒・Linear で開始する Cmd を emit。味方 `PlayerScene.moveTo` と敵
+    /// `EnemyScene.replayEnemyMoveView` が**共にこれを呼ぶ**（個別実装を畳む）。同型 Vec2 の誤順を防ぐため
+    /// span は `VecLerp`（Track.Vec の payload）で名前渡し。不整合な (Channel, Track) を構築させない seam。
+    /// Phase 2 で engine `Tween.tweenPosition` を退役しこれ 1 本に統一。
+    pub def moveUnit(ref: EntityRef, span: EcsTween.VecLerp, sec: Float64): Unit \ Command =
+        Command.emit(Cmd.StartTween(ref, Channel.Position, EcsTween.Track.Vec(span), sec, EcsTween.Easing.Linear, false))
 
     /// F7-slice4: followUpUsed を World から読む（両 faction）。A': 単一 store＋toUid。
     pub def followUpUsedOf(ref: EntityRef, world: World): Option[Bool] =
