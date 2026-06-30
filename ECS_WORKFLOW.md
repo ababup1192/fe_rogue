@@ -35,7 +35,7 @@
 ### 主レーン（依存順・最後が B 完成宣言）
 
 - [ ] **m2 完成（ユニット周りを完全 World 化）**
-  - [ ] 敵移動の `StartMove` emit（味方 moveTo と対称・EnemyScene 側）
+  - [x] 敵移動の `StartMove` emit（味方と対称・build green・両 faction が World tween 駆動）
   - [ ] `syncTreeFromWorld` が marker 位置を `renderPos` 駆動（武器アイコン/HPバーも World 位置に追従）
   - [ ] `isMoving` → `World.isAnimating`（input gate を World へ・cursor tween は別系統で残す）
   - [ ] engine tween（`Tween.tweenPosition`）を unit から撤去＝単一源化（※ Tween.Scheduler effect の cascade 注意）
