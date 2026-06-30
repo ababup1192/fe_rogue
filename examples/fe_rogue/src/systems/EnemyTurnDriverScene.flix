@@ -238,13 +238,13 @@ mod EnemyTurnDriverScene {
 
     /// かなしばり中の敵: 移動も攻撃も詠唱もせず行動済みにする。
     def bindSkip(step: EnemyTurn.Step, data: EnemyScene.Data, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         GameLogger.enemyLog("${data#resource#description}は かなしばりで動けない");
         EnemyScene.setActed(step#id, scene)
 
     /// 詠唱が成立した敵: 軽く溜めて行動済みにする（詠唱がその敵の行動）。
     def castDone(step: EnemyTurn.Step, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ Pacing.State =
+            Scene[NodeTag] \ {Pacing.State, World.Command} =
         Pacing.State.hold(450 |> Duration.millis);
         EnemyScene.setActed(step#id, scene)
 

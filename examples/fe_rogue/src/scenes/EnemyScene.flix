@@ -419,7 +419,8 @@ mod EnemyScene {
 
     /// 敵 id を「行動済み」にして本体スプライトと HP ゲージを暗転する。
     /// 敵ターン中、その敵の行動が終わった時点で呼ぶ。
-    pub def setActed(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def setActed(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetActed(World.EntityRef.Enemy(id), true));  // S5: acted を World へ dual-write
         scene
             |> mapEnemy(id, d -> {acted = true | d})
             |> setSpriteModulate(id, actedColor())
@@ -442,6 +443,7 @@ mod EnemyScene {
         World.Command.emit(World.Cmd.TickEnemies);
         let reset = List.foldLeft((sc, id) -> {
             World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Enemy(id), false));  // F7-slice4: reset を World へ
+            World.Command.emit(World.Cmd.SetActed(World.EntityRef.Enemy(id), false));  // S5: acted reset を World へ dual-write
             let sc1 = sc
                 // 敵ターン開始ごとに時限デバフ（目潰し/鈍足）を 1 ターン分減算する。
                 // 追撃リングの二重発動フラグ(followUpUsed)は World 権威＝上の Cmd emit のみ（scene 直書き撤去・syncTree derive）。

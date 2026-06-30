@@ -1063,6 +1063,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[USEDSTAIRS DIFF] ${ms}")
             };
+            match World.actedMismatches(Ref.get(worldRef), next) {  // S5: 敵行動済み dual-write 等値
+                case Nil => ()
+                case ms  => println("[ACTED DIFF] ${ms}")
+            };
             match World.weaponsMismatches(Ref.get(worldRef), next) {  // D3: command 由来 World weapons vs scene #weapons
                 case Nil => ()
                 case ms  => println("[WEAPONS DIFF] ${ms}")

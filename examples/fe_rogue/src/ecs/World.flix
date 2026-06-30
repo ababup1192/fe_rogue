@@ -65,6 +65,8 @@ pub enum World {
                  playerHidden = Set[EntityId],
                  // F7-spike: 敵の検知フラグ（dormant→chase）。flag→World の最初のプローブ。
                  enemyAlerted = Map[EntityId, Bool],
+                 // S5: 敵の行動済みフラグ（ターン flow・view 灰色の権威）。enemy-only。faction-blind tick の前提。
+                 enemyActed = Map[EntityId, Bool],
                  // 軸1 仕上げ: 死亡演出中の敵 id（death_blink 中＝全 LOGIC から除外される sim フラグ）。
                  // present=isDying。death 完了でノード除去→refreshMirror が prune（absence=非 dying）。
                  enemyDying = Set[EntityId],
@@ -133,7 +135,7 @@ mod World {
                      staves = Map.empty(), consumables = Map.empty(), rings = Map.empty(),
                      ringEquipped = Map.empty(),
                      pos = Map.empty(),
-                     playerHidden = Set.empty(), enemyAlerted = Map.empty(),
+                     playerHidden = Set.empty(), enemyAlerted = Map.empty(), enemyActed = Map.empty(),
                      enemyDying = Set.empty(),
                      enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
                      followUpUsed = Map.empty(),
@@ -204,6 +206,7 @@ mod World {
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
             enemyDying     = Query.tagOf(d -> enemyUid(d#id), List.filter(d -> d#isDying, enemies)),
             enemyAlerted   = Query.indexBy(d -> enemyUid(d#id), d -> d#alerted, enemies),
+            enemyActed     = Query.indexBy(d -> enemyUid(d#id), d -> d#acted, enemies),
             enemyBottleUsed = Query.indexBy(d -> enemyUid(d#id), d -> d#bottleUsed, enemies),
             enemyPrevPos   = List.foldLeft((m, d) -> match d#prevPos {
                                  case Some(p) => Map.insert(enemyUid(d#id), p, m)
@@ -288,6 +291,7 @@ mod World {
             // A': enemy-only store も unified-id key＝prune は validUids で統一。
             enemyDying     = Set.filter(uid -> Set.memberOf(uid, validUids), w#enemyDying),
             enemyAlerted   = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#enemyAlerted),
+            enemyActed     = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#enemyActed),
             enemyBottleUsed = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#enemyBottleUsed),
             enemyPrevPos   = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#enemyPrevPos),
             followUpUsed = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#followUpUsed),
@@ -433,6 +437,7 @@ mod World {
         case SetRings(EntityRef, List[Ring.RingResource])                  // D4: rings write（player-only）
         case SetRingEquipped(EntityRef, Bool)                              // D4: ringEquipped write（player-only・Bool）
         case SetAlerted(EntityRef, Bool)    // F7-spike: 敵検知フラグ write（Player は no-op）
+        case SetActed(EntityRef, Bool)      // S5: 敵行動済みフラグ write（Player は no-op）
         case SetDying(EntityRef)            // 軸1 仕上げ: 敵を死亡演出中に（Player は no-op・clear は removal+prune）
         case SetBottleUsed(EntityRef, Bool) // F7-slice2: 敵瓶使用フラグ write（Player は no-op）
         case SetPrevPos(EntityRef, {x = Int32, y = Int32})  // F7-slice3: 敵直前位置 write（Player は no-op）
@@ -659,6 +664,12 @@ mod World {
                     case EntityRef.Player(_)  => world   // F7-spike: 味方に alerted は無い＝no-op
                     case EntityRef.Enemy(id)  => World.World({enemyAlerted = Map.insert(enemyUid(id), a, w#enemyAlerted) | w})
                 }
+            case Cmd.SetActed(ref, b) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(_)  => world   // S5: 味方 acted は無い＝no-op
+                    case EntityRef.Enemy(id)  => World.World({enemyActed = Map.insert(enemyUid(id), b, w#enemyActed) | w})
+                }
             case Cmd.SetDying(ref) =>
                 let World.World(w) = world;
                 match ref {
@@ -830,6 +841,7 @@ mod World {
             case Cmd.ClearAttackTarget(ref)   => ("ClrTgt", toUid(ref), 0, 0)
             case Cmd.SetFollowUpUsed(ref, b)  => ("FollowUp", toUid(ref), bool01(b), 0)
             case Cmd.SetAlerted(ref, b)       => ("Alerted", toUid(ref), bool01(b), 0)
+            case Cmd.SetActed(ref, b)         => ("Acted", toUid(ref), bool01(b), 0)
             case Cmd.SetDying(ref)            => ("Dying", toUid(ref), 0, 0)
             case Cmd.SetBottleUsed(ref, b)    => ("Bottle", toUid(ref), bool01(b), 0)
             case Cmd.SetWaited(ref, b)        => ("Waited", toUid(ref), bool01(b), 0)
@@ -853,6 +865,14 @@ mod World {
         match ref {
             case EntityRef.Player(_)  => None
             case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyAlerted)
+        }
+
+    /// S5: 敵の acted を World から読む。Player は常に None。
+    pub def actedOf(ref: EntityRef, world: World): Option[Bool] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(_)  => None
+            case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyActed)
         }
 
     /// 軸1 仕上げ: 敵が死亡演出中か（reader flip の供給元）。Player は常に false。
@@ -1442,6 +1462,13 @@ mod World {
         EnemyScene.getAll(scene) |> List.filterMap(d -> {
             let wa = alertedOf(EntityRef.Enemy(d#id), world);
             if (wa != Some(d#alerted)) Some((EntityRef.Enemy(d#id), wa, d#alerted)) else None
+        })
+
+    /// S5 検証器: 敵 acted の World/scene 不一致（`alertedMismatches` 同型）。
+    pub def actedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
+        EnemyScene.getAll(scene) |> List.filterMap(d -> {
+            let wac = actedOf(EntityRef.Enemy(d#id), world);
+            if (wac != Some(d#acted)) Some((EntityRef.Enemy(d#id), wac, d#acted)) else None
         })
 
     /// F7-slice2 検証器: 敵 bottleUsed の World/scene 不一致（`alertedMismatches` 同型）。
