@@ -51,7 +51,11 @@ mod RenderWorld {
                 _pos <- World.posOf(ref, world);
                 node <- Scene.getEngineNode(spritePath, scene)
             ) yield {
-                let screenPos = Camera2D.applyToWorldPos(transform, Scene.globalPositionAt(spritePath, scene));
+                // B/m2: 位置は World.renderPos（tween を World が回す）。未 seed は scene marker に fallback
+                //（静止ユニット＝セル位置）。move 中は renderPos が補間値を持つ＝World 由来で動く。
+                let worldPos = World.renderPosOf(ref, world)
+                                   |> Option.getWithDefault(Scene.globalPositionAt(spritePath, scene));
+                let screenPos = Camera2D.applyToWorldPos(transform, worldPos);
                 // effectiveModulateAt は node 自身の modulate を含む（fog×待機暗転）＝単一適用。d#color へ再掛けしない。
                 let color = Scene.effectiveModulateAt(spritePath, scene);
                 let z = Scene.effectiveZIndexAt(spritePath, scene);
