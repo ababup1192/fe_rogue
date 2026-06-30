@@ -1436,13 +1436,6 @@ mod World {
         });
         List.append(ps, es)
 
-    /// S5 検証器: 味方 usedStairs の World/scene 不一致（`alertedMismatches` 同型）。
-    pub def usedStairsMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
-        PlayerScene.getAll(scene) |> List.filterMap(d -> {
-            let wu = usedStairsOf(EntityRef.Player(d#id), world);
-            if (wu != Some(d#usedStairs)) Some((EntityRef.Player(d#id), wu, d#usedStairs)) else None
-        })
-
     /// 軸1 仕上げ 検証器: 敵の World isDying（command 由来）と scene isDying の不一致を返す。
     pub def dyingMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Bool, Bool)] =
         EnemyScene.getAll(scene) |> List.filterMap(d -> {
@@ -1455,13 +1448,6 @@ mod World {
         EnemyScene.getAll(scene) |> List.filterMap(d -> {
             let wa = alertedOf(EntityRef.Enemy(d#id), world);
             if (wa != Some(d#alerted)) Some((EntityRef.Enemy(d#id), wa, d#alerted)) else None
-        })
-
-    /// S5 検証器: 敵 acted の World/scene 不一致（`alertedMismatches` 同型）。
-    pub def actedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
-        EnemyScene.getAll(scene) |> List.filterMap(d -> {
-            let wac = actedOf(EntityRef.Enemy(d#id), world);
-            if (wac != Some(d#acted)) Some((EntityRef.Enemy(d#id), wac, d#acted)) else None
         })
 
     /// F6b 検証器: scene の各ユニットについて **World hp（command 由来）と scene hp の不一致**を返す。

@@ -248,6 +248,27 @@ ECS 化し、最終的に **UI 層（scene-tree）と ECS 層（World）が調�
 > **主な是正**: ① statuses(旧D12) を reader-flip の**前(S3)**へ（cascade map で「S4 は statuses store が要る」と判明）。② 枝番(6.5/a-c/a-e)を単一ステージへ畳む。
 >
 > ### 現在地（2026-06-30）
+> ## ★★ A完成 宣言確定（2026-06-30・1064緑・包括 run 検証 sign-off 済）★★
+> 包括 run 検証クリア（敵ターン全 step・TopBar・階段/フロア遷移・追撃・徘徊・アイテム/装備/レベルアップ＝全 DIFF 無音・正常動作）→ 最終 sweep 完了:
+> - usedStairs/acted/topbar の runtime DIFF guard 撤去・死んだ `usedStairsMismatches`/`actedMismatches` def 撤去。
+> - **残置 runtime guard = ATTACKTARGET のみ**（attackTargetId は combat 解決の同期キャリア＝Phase C/B まで恒久 dual-write ゆえ invariant guard を残す）。
+> - 他 store verifier def + unit test は温存（invariant の継続検証）。
+> **⇒ World = sim 状態の唯一の真実源 / scene-tree = render 層（World→scene 一方向 derive）/ dual-write 足場撤去 ＝ A 達成。**
+> 次フロンティアは **B（render-from-World・node tree 撤廃）= 別途判断・engine 相談前提**。S6 menu Query一本化・S8 World-save も B 領域。
+>
+> ## 🏁 A完成 達成記録（詳細）
+> **A の定義**: World = sim 状態の唯一の真実源／scene-tree = render 層（World→scene 一方向 derive）／dual-write 足場の撤去。
+> **達成済**:
+> - **store 層（S2/S3）**: hp・pos・weapons・staves・consumables・rings・ringEquipped・baseStats・weaponView・ringBonus・moveTiles・statusEffects を World store 化（command-derive ＋ spawn seed ＋ refreshMirror preserve/prune）。
+> - **turn-state（S5 micro-store）**: waited・usedStairs・acted を World store 化＝turn flow が World 権威。
+> - **reader-flip**: gridPos・hp・isDying・alerted・waited・bottleUsed・followUpUsed・prevPos を「scene 権威→World 権威・scene 派生(syncTreeFromWorld)」へ。view reader が scene-derived を読むのは A で正当。
+> - **EnemyAI 入力 World 駆動（S4.3a）**: `EncounterBuilder.fromBoardQuery` が World twin(`unitViewFromWorld`)から units を組む。
+> - **twin 層（S4）**: `unitViewFromWorld`/`dataFromWorld`/`dataFromWorldEnemy`＝scene を World から再構築する材料が全部揃う。
+> - **足場撤去（S7 進行）**: dead verifier 4 撤去・安定 store runtime DIFF 10 撤去（13→3+topbar）。
+> **意図的に scene 残置（A 設計・B で解体）**: attackTargetId（combat 解決の同期キャリア）／inventory 権威（Plan B 許容）／resource/classId/facing 等の残余 state／node-per-entity・syncTree（render 機構）。
+> **A-closeout 残（この順序厳守）**: ① 残 3 guard(usedStairs/acted/topbar)を残したまま**包括 run 検証**で全 DIFF 無音確認 → ② 最終 sweep（3 guard 撤去＋test-only になった verifier def 整理）→ ③ **A完成宣言確定**。⚠ guard は run 検証の道具ゆえ撤去は検証の後（usedStairs spawn-gap の教訓）。
+> **B 領域（A 完成後・別途判断・engine 相談前提）**: S6 menu Query一本化／S8 World-save／S9 B評価／S10 render-from-World（node tree 撤廃）。
+>
 > **▶▶ 方向決定: menu Query一本化(S6) は scene Data record 解体(B 寄り)用＝A完成(World=sim 権威・scene=render 層)には非必須と判明。S7 bridge teardown へ直行（ユーザー選択）。** A完成の定義を「dual-write 足場(DIFF 検証器・EncounterBuilder・EntityScene・refreshMirror read 枝)を撤去し World=sim 権威を確定」とする。menu が scene-derived view を読むのは A では正当。
 > **S7 着手② 安定 store runtime DIFF 撤去✅（2026-06-30・1064緑）**: gameLoop の per-frame DIFF guard を 13→3(+topbar) にスリム化。撤去= WEAPONS/BASESTATS/STATUSEFFECTS/WEAPONVIEW/RINGBONUS/MOVETILES/STAVES/CONSUMABLES/RINGS/RINGEQUIPPED（§G S2.3〜S4.4b run 検証バッチで無音確認済＋spawn seed 完備＋unit test で invariant 継続検証ゆえ runtime guard 不要）。**温存**= ATTACKTARGET(恒久 dual-write guard)・USEDSTAIRS/ACTED(新規・run 検証完了まで残す)・TOPBAR。verifier def + unit test は全温存（撤去は最終 sweep で）。
 > **S7 着手① dead verifier 撤去✅（2026-06-30・1063緑）**: flip 済で参照ゼロになった `waitedMismatches`/`bottleUsedMismatches`/`followUpUsedMismatches`/`prevPosMismatches` を撤去（コメント例示参照のみ・test 参照ゼロ確認済）。残コメント 2 箇所の参照名も live な `alertedMismatches` に更新。**S7 残**: active DIFF 13 ブロック撤去（usedStairs/acted は run 検証完了後）・EncounterBuilder(2 call site)・EntityScene(4 利用)・refreshMirror read 枝。**⚠ 順序**: 直近 usedStairs の spawn-seed バグを検証器が捕捉した教訓ゆえ、active 検証器撤去は run 検証バッチ完了を待つ。

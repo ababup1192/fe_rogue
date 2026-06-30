@@ -1059,24 +1059,10 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[ATTACKTARGET DIFF] ${ms}")
             };
-            match World.usedStairsMismatches(Ref.get(worldRef), next) {  // S5: 味方階段退場 dual-write 等値
-                case Nil => ()
-                case ms  => println("[USEDSTAIRS DIFF] ${ms}")
-            };
-            match World.actedMismatches(Ref.get(worldRef), next) {  // S5: 敵行動済み dual-write 等値
-                case Nil => ()
-                case ms  => println("[ACTED DIFF] ${ms}")
-            };
-            // S7 teardown: 安定 store の runtime DIFF 検出器を撤去（WEAPONS/BASESTATS/STATUSEFFECTS/WEAPONVIEW/
-            // RINGBONUS/MOVETILES/STAVES/CONSUMABLES/RINGS/RINGEQUIPPED）。§G の S2.3〜S4.4b run 検証バッチで
-            // 全て無音確認済＋addOnePlayer/addOneEnemy の seed battery 完備（spawn-gap 無し）＋unit test
-            // (testXxxMismatchesEmptyWhenSynced/DetectsDrift) で invariant 継続検証。verifier def は温存。
-            // 残置の runtime guard: ATTACKTARGET(恒久 dual-write)・USEDSTAIRS/ACTED(新規・run 検証完了まで)・TOPBAR。
-            if (World.enemyTurnBusyOf(Ref.get(worldRef)) != TopBarScene.isBusy(next)  // F8-slice2
-                or World.phaseObservedEnemyOf(Ref.get(worldRef)) != TopBarScene.hasObservedEnemy(next))
-                println("[TOPBAR DIFF] busy w=${World.enemyTurnBusyOf(Ref.get(worldRef))} s=${TopBarScene.isBusy(next)}"
-                    + " obs w=${World.phaseObservedEnemyOf(Ref.get(worldRef))} s=${TopBarScene.hasObservedEnemy(next)}")
-            else ();
+            // 🏁 A完成 sweep（2026-06-30）: dual-write 足場の runtime DIFF 検出器は ATTACKTARGET（attackTargetId は
+            // combat 解決の同期キャリア＝Phase C/B まで恒久 dual-write ゆえ invariant guard を残す）のみ残し全撤去。
+            // usedStairs/acted/topbar は包括 run 検証で無音確認後に撤去（他 store は §G S2.3〜S4.4b batch 済）。
+            // invariant は unit test(testXxxMismatchesEmptyWhenSynced/DetectsDrift)＋spawn-seed test で継続検証。
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
             // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく
             // `World -> World` の System で回す将来形の seam。S3 以後 stepWorld は identity（statusEffects は
