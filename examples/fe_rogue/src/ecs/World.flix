@@ -61,6 +61,11 @@ pub enum World {
                  // 権威は scene のまま。S4 で Board を fromWorld 化する時の World 側位置ソース候補（mirror）。
                  // A': pos は単一 store（unified-id）。両 faction の split を撤廃。
                  pos = Map[EntityId, {x = Int32, y = Int32}],
+                 // B/m2: 連続的な描画位置（pixel・tween 込み）。render System(renderUnits)が読む。command-derive。
+                 //   静止時は最後の値（セル pixel）を保持。move で moveAnim が補間更新（stepWorld）。
+                 renderPos = Map[EntityId, Vec2.Vec2],
+                 // B/m2: 進行中の移動アニメ。stepWorld が毎 tick elapsed++ し renderPos を lerp。完了で除去。
+                 moveAnim = Map[EntityId, {srcPos = Vec2.Vec2, dstPos = Vec2.Vec2, elapsed = Int32, duration = Int32}],
                  // S4: 盤面除外（集合・階段退場）中の味方 id。Board.pieces は hidden 味方を除くので fromWorld に必要。
                  playerHidden = Set[EntityId],
                  // F7-spike: 敵の検知フラグ（dormant→chase）。flag→World の最初のプローブ。
@@ -135,6 +140,7 @@ mod World {
                      staves = Map.empty(), consumables = Map.empty(), rings = Map.empty(),
                      ringEquipped = Map.empty(),
                      pos = Map.empty(),
+                     renderPos = Map.empty(), moveAnim = Map.empty(),
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(), enemyActed = Map.empty(),
                      enemyDying = Set.empty(),
                      enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
@@ -203,6 +209,7 @@ mod World {
             ringEquipped = Query.indexBy(d -> d#id, d -> d#ringEquipped, players),
             pos = Map.union(Query.indexBy(d -> d#id, d -> d#gridPos, players),
                             Query.indexBy(d -> enemyUid(d#id), d -> d#gridPos, enemies)),
+            renderPos = Map.empty(), moveAnim = Map.empty(),  // B/m2: World-native（spawn の SetRenderPos で seed）
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
             enemyDying     = Query.tagOf(d -> enemyUid(d#id), List.filter(d -> d#isDying, enemies)),
             enemyAlerted   = Query.indexBy(d -> enemyUid(d#id), d -> d#alerted, enemies),
@@ -286,6 +293,9 @@ mod World {
             ringEquipped = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#ringEquipped),
             // 位置は command 由来を保持＋scene に居ない id を prune（gridPos からの再構築はしない）。
             pos = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#pos),
+            // B/m2: renderPos/moveAnim は command-derive＝preserve＋prune（再 mirror しない）。
+            renderPos = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#renderPos),
+            moveAnim  = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#moveAnim),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
             // 軸1 仕上げ: isDying も command 由来を保持＋prune（death 完了でノード除去→自動 prune）。
             // A': enemy-only store も unified-id key＝prune は validUids で統一。
@@ -348,7 +358,24 @@ mod World {
     /// なるため本段は identity にする。（`tickStatusEffects` def は単体テスト用に残置。実 System はここへ足すが
     /// statusEffects は触らない＝ターン境界の Seed が唯一の権威 tick。）
     pub def stepWorld(world: World): World =
-        world
+        stepMoveAnim(world)
+
+    /// B/m2: 進行中の各 moveAnim を 1 tick 進め、renderPos を lerp 更新。完了（elapsed>=duration）で
+    /// renderPos=to にスナップして anim を除去。これが「tween を World で回す」System。
+    def stepMoveAnim(world: World): World =
+        let World.World(w) = world;
+        Map.foldLeftWithKey((acc, uid, anim) -> {
+            let World.World(wa) = acc;
+            let e1 = anim#elapsed + 1;
+            if (e1 >= anim#duration)
+                World.World({renderPos = Map.insert(uid, anim#dstPos, wa#renderPos),
+                             moveAnim = Map.remove(uid, wa#moveAnim) | wa})
+            else {
+                let t = Int32.toFloat64(e1) / Int32.toFloat64(anim#duration);
+                World.World({renderPos = Map.insert(uid, Vec2.lerp(anim#srcPos, anim#dstPos, t), wa#renderPos),
+                             moveAnim = Map.insert(uid, {elapsed = e1 | anim}, wa#moveAnim) | wa})
+            }
+        }, world, w#moveAnim)
 
     // ════════════════════════════════════════════════════════════════════
     // statusEffects（時限ステータス効果＝バフ/デバフ）を World 権威にする ECS 層
@@ -444,6 +471,8 @@ mod World {
         case SetFollowUpUsed(EntityRef, Bool)  // F7-slice4: followUp 使用済み write（両 faction）
         case SetWaited(EntityRef, Bool)        // F7-slice5: 味方行動済み write（Enemy は no-op）
         case SetUsedStairs(EntityRef, Bool)    // S5: 味方階段退場 write（Enemy は no-op）
+        case SetRenderPos(EntityRef, Vec2.Vec2)  // B/m2: 描画位置を直接 set（spawn seed/瞬間移動）
+        case StartMove(EntityRef, Vec2.Vec2, Vec2.Vec2, Int32)  // B/m2: from→to を duration tick で補間開始
         case SetAttackTarget(EntityRef, Int32) // F8-slice1: 攻撃対象 id をセット（攻撃開始）
         case ClearAttackTarget(EntityRef)      // F8-slice1: 攻撃対象をクリア（攻撃終了）
         case SetProgress(EntityRef, Int32, Int32) // World 拡張: 味方の (level, exp) write（撃破/レベルアップ/復元で）
@@ -704,6 +733,17 @@ mod World {
                     case EntityRef.Player(id) => World.World({playerUsedStairs = Map.insert(id, b, w#playerUsedStairs) | w})
                     case EntityRef.Enemy(_)   => world   // 敵に usedStairs は無い＝no-op
                 }
+            case Cmd.SetRenderPos(ref, p) =>
+                // B/m2: 描画位置を直接 set（進行中アニメは破棄）。spawn seed / 瞬間移動用。
+                let World.World(w) = world;
+                World.World({renderPos = Map.insert(toUid(ref), p, w#renderPos),
+                             moveAnim = Map.remove(toUid(ref), w#moveAnim) | w})
+            case Cmd.StartMove(ref, fromP, toP, dur) =>
+                // B/m2: src→dst を dur tick で補間開始。renderPos は src から始める。
+                let World.World(w) = world;
+                let uid = toUid(ref);
+                World.World({moveAnim = Map.insert(uid, {srcPos = fromP, dstPos = toP, elapsed = 0, duration = Int32.max(1, dur)}, w#moveAnim),
+                             renderPos = Map.insert(uid, fromP, w#renderPos) | w})
             case Cmd.SetAttackTarget(ref, t) =>
                 // A': 単一 store＋toUid（match ref arm 消失）。
                 let World.World(w) = world;
@@ -846,6 +886,8 @@ mod World {
             case Cmd.SetBottleUsed(ref, b)    => ("Bottle", toUid(ref), bool01(b), 0)
             case Cmd.SetWaited(ref, b)        => ("Waited", toUid(ref), bool01(b), 0)
             case Cmd.SetUsedStairs(ref, b)    => ("UsedStairs", toUid(ref), bool01(b), 0)
+            case Cmd.SetRenderPos(ref, _)     => ("RenderPos", toUid(ref), 0, 0)
+            case Cmd.StartMove(ref, _, _, dur) => ("StartMove", toUid(ref), dur, 0)
             case Cmd.SetPrevPos(ref, p)       => ("PrevPos", toUid(ref), p#x, p#y)
             case Cmd.ClearImmobilized(ref)    => ("ClrImmob", toUid(ref), 0, 0)
             // magnitude を 4th slot に載せて oracle に可視化する（kind だけだと量違いを golden が見逃す）。
@@ -903,6 +945,14 @@ mod World {
     /// `prevPosOf`（敵直前位置）とは別物＝現在セル。ノックバック着地計算が攻撃側/防御側セルを引くのに要る。
     pub def posOf(ref: EntityRef, world: World): Option[{x = Int32, y = Int32}] =
         let World.World(w) = world; Map.get(toUid(ref), w#pos)
+
+    /// B/m2: 連続的な描画位置（pixel・tween 込み）。render System が読む。未 seed は None。
+    pub def renderPosOf(ref: EntityRef, world: World): Option[{x = Float64, y = Float64}] =
+        let World.World(w) = world; Map.get(toUid(ref), w#renderPos)
+
+    /// B/m2: 当該 entity が移動アニメ中か（isMoving の World 版・input gate 用）。
+    pub def isAnimating(ref: EntityRef, world: World): Bool =
+        let World.World(w) = world; Map.memberOf(toUid(ref), w#moveAnim)
 
     /// F7-slice4: followUpUsed を World から読む（両 faction）。A': 単一 store＋toUid。
     pub def followUpUsedOf(ref: EntityRef, world: World): Option[Bool] =
