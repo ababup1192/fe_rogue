@@ -835,4 +835,34 @@ pub mod Scene {
     pub def toDrawables(transform: Camera2D.ViewTransform,
                          scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
         subtreeDrawables(transform, Nil, scene)
+
+    /// `rootPath` 配下のサブツリーの Polygon2D/Arc2D を PolygonRenderCmd に集める（render-from-World 用）。
+    /// renderArgs の polygon 収集を rootPath 前置フィルタで絞って再利用＝**renderArgs polygon 経路と parity**。
+    /// `subtreeDrawables`（Y-sort/stableZSort）と違い `preorderPaths`＋ソートなし＝polygon は renderer が最終 pass で
+    /// effzIndex ソートする前提ゆえ末尾 append は order-safe。`rootPath = Nil` で全ツリー（＝`renderArgs` の polygon）。
+    pub def subtreePolygons(transform: Camera2D.ViewTransform, rootPath: NodePath,
+                             scene: Scene[s]): List[GameEngine.PolygonRenderCmd] =
+        preorderPaths(scene)
+            |> List.filter(p -> List.isPrefixOf(rootPath, p))
+            |> List.flatMap(p -> polygonCmdsAt(transform, p, scene))
+
+    /// 1 パスの Polygon2D/Arc2D を PolygonRenderCmd 群にする（renderArgs から抽出）。祖先/自ノードの不可視で空。
+    /// CanvasLayer 配下は zoom 非適用。color/z は sprite 経路と同等の実効値（`effectiveModulate`/`effectiveZIndex`）に上書き。
+    def polygonCmdsAt(transform: Camera2D.ViewTransform, p: NodePath,
+                       scene: Scene[s]): List[GameEngine.PolygonRenderCmd] =
+        let placement = () ->
+            ( screenPositionAt(p, transform, scene)
+            , if (isUnderCanvasLayer(p, scene)) ({x = 1.0, y = 1.0}: Vec2.Vec2) else transform#scale );
+        let withEffective = cmd ->
+            ({ color = effectiveModulateAt(p, scene), zIndex = effectiveZIndexAt(p, scene)
+             | cmd }: GameEngine.PolygonRenderCmd);
+        match getEngineNode(p, scene) {
+            case Some(EngineNode.Polygon2DWithState(poly, _)) =>
+                if (not (CanvasItem.isVisible(poly) and effectiveVisibleAt(p, scene))) Nil
+                else { let (sp, sc) = placement(); withEffective(Polygon2D.toRenderCmd(sp, sc, poly)) :: Nil }
+            case Some(EngineNode.Arc2DWithState(arc, _)) =>
+                if (not (CanvasItem.isVisible(arc) and effectiveVisibleAt(p, scene))) Nil
+                else { let (sp, sc) = placement(); Arc2D.toRenderCmds(sp, sc, arc) |> List.map(withEffective) }
+            case _ => Nil
+        }
 }

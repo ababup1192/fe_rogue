@@ -1114,17 +1114,22 @@ mod Game {
                 // ※ marker(武器/HPバー)は engine 駆動のまま（移動 tween + 攻撃 lunge 等を全部保持）。
                 // B/fog・range・配置物・HUD/menu: scene 側の fog 暗幕・range タイル・アイテム/宝箱/階段・全 HUD/メニューを隠し、World render System で描く。
                 let prepped = RenderWorld.hideUnitSprites(synced) |> FogScene.hideHaze
-                    |> RenderWorld.hideRangeTiles |> RenderWorld.hideMapEntities |> RenderWorld.hideHudMenus;
+                    |> RenderWorld.hideRangeTiles |> RenderWorld.hideMapEntities |> RenderWorld.hideHudMenus
+                    |> RenderWorld.hideMinimap;
                 // B/tiles: tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
                 // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。
-                let (sprites, _sceneTileMaps, polygons) = GameEngine.renderArgs(prepped);
+                let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(prepped);
                 let worldDrawables = RenderWorld.renderUnits(world2, synced)
                     |> List.append(RenderWorld.renderFog(synced))
                     |> List.append(RenderWorld.renderRangeOverlays(synced))
                     |> List.append(RenderWorld.renderMapEntities(synced))
-                    |> List.append(RenderWorld.renderHudMenus(synced));
+                    |> List.append(RenderWorld.renderHudMenus(synced))
+                    |> List.append(RenderWorld.renderMinimap(synced));  // B/minimap: room/floor の ColorRect
+                // B/minimap: polygon チャンネルも minimap マーカー（Polygon2D 円）を World 由来に合流。
+                // scenePolygons は hideMinimap で minimap 除外済み（武器グリフ等の既存 polygon はそのまま）。
                 GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
-                    RenderWorld.renderTileMaps(world2, synced), polygons)
+                    RenderWorld.renderTileMaps(world2, synced),
+                    List.append(scenePolygons, RenderWorld.renderMinimapPolygons(synced)))
             } else
                 GameEngine.render(synced);
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)

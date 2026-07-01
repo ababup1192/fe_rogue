@@ -71,7 +71,7 @@
   - [x] **汎用化＋lib 昇華: `Render.applyCameraScale`**（units/fog/range の camera 適用〔applyToWorldPos＋scale×zoom〕の重複 spine を `engine_ecs/Render` へ昇華。dodge 等も再利用可）＝flow「実装×2→法則→汎用→lib」の 1 サイクル完了
   - [x] **マップ配置物（アイテム/宝箱/階段）を World**（`mapEntityRoots` リスト＝`ItemScene`/`ChestScene`/`StairsScene` の各 subtree を `subtreeDrawables` で描き `hideNode` で隠す。parent-child System の忠実合成ゆえ自可視 native・任意深さ・fog 暗所非表示も native）
   - [x] **map タイルを World 描画**（レビュー 3 ラウンド 77→80→84→gen-counter で被覆確定・**engine 改修ゼロ**）。instanced 維持（`initTileBuffer`/`TileMapRenderCmd`/`renderCommands` 再利用）。World が軽量ハンドル `TileLayerHandle` を **rebuild-generation（`Cmd.BumpTileGen` を build choke 2 点で +1）変化時に bake**して権威化、`RenderWorld.renderTileMaps` が camera 適用して instanced 描画。gen カウンタは vaoId 検出の leak 非依存 semantic 版＝突入/階段降り/全滅 restart/復元を全経路被覆。scene TileMapLayer ノードは衝突/グリッド用に存続。1066 tests green
-  - [ ] minimap を World（★accumulated 状態移送＋CanvasLayer 要）
+  - [x] **minimap を World**（レビュー 91/100・engine `Scene.subtreePolygons`＝`subtreeDrawables` の polygon 版を追加し renderArgs を `subtreePolygons(Nil)` 委譲〔構成的 parity〕）。room/floor の ColorRect は `subtreeDrawables`、Polygon2D マーカー円は `subtreePolygons` で描く。訪問状態は scene ノードのまま（live subtree を描く＝ECS 権威化は過剰ゆえ停止点）。Title 等では root 不在＝空（world 残留なし）。1066 tests green
   - [x] **全 7 range overlays を World**（Move/MoveAttack/EnemyRange/EnemyAttack/PlayerAttack/Trade/DangerZone）。`RenderWorld.renderRangeOverlays` に**1 経路集約**（各 mod は cells/color/alpha だけ・描画は `tileDrawables` の law に一本化）＋`hideRangeTiles`。全て表示専用ゆえ格納セル＝描画セル（MoveRange のみ stoppable を `Data#drawCells` に追加格納）。**helper 投資の回収実証**＝5 つ追加で新規ロジックほぼゼロ。1064 tests green
 
 ### 依存関係メモ

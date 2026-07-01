@@ -210,4 +210,18 @@ mod RenderWorld {
         Render.toDrawables(Render.solidBox(sizePx, FogScene.fogColor(), FogScene.fogZIndex()), screenPos)
             |> Render.applyCameraScale(transform)
             |> List.map(d -> {alpha = FogScene.fogAlpha() | d})
+
+    /// B: minimap の ColorRect（room/floor プール）を World render System で描く（CanvasLayer サブツリー）。
+    /// Polygon2D マーカーは subtreeDrawables では描けないため `renderMinimapPolygons` が別チャンネルで担う。
+    pub def renderMinimap(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        Scene.subtreeDrawables(viewTransform(scene), MinimapScene.rootPath(), scene)
+
+    /// B: minimap の Polygon2D マーカー（円）を polygon チャンネルで描く。`Scene.subtreePolygons`
+    /// （renderArgs polygon 経路と parity）を minimap サブツリーに適用。
+    pub def renderMinimapPolygons(scene: Scene[NodeTag]): List[GameEngine.PolygonRenderCmd] \ GameEngine.Game =
+        Scene.subtreePolygons(viewTransform(scene), MinimapScene.rootPath(), scene)
+
+    /// B: minimap の scene 側 root（CanvasLayer）を隠す（renderArgs の sprites/polygons 両方から祖先可視で除外）。
+    pub def hideMinimap(scene: Scene[NodeTag]): Scene[NodeTag] =
+        hideNode(MinimapScene.rootPath(), scene)
 }

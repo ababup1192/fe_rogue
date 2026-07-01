@@ -17,9 +17,9 @@
 /// ノード構造:
 ///   Minimap (CanvasLayer, scene.json)                ← 画面 layer。M で内容を出し入れ
 ///     └─ MinimapContent (Marker2D, NoTag)            ← プール親（描画コンテナ）
-///          ├─ Bg (ColorRect)                          ← 背景の暗幕（全画面）
 ///          ├─ Room_0 .. Room_{N-1} (ColorRect)        ← 訪問済み部屋/通路の矩形プール
-///          └─ Marker_0 .. Marker_{M-1} (ColorRect)    ← プレイヤー/階段/アイテムの点プール
+///          ├─ Floor_0 .. Floor_{K-1} (ColorRect)      ← 歩ける床の黒くり抜きプール
+///          └─ Marker_0 .. Marker_{M-1} (Polygon2D の円) ← プレイヤー/階段/アイテム/敵の点プール
 ///   World/MinimapDriver (Marker2D, MinimapDriver)     ← process redef で毎フレーム蓄積＋描画
 
 mod MinimapScene {
@@ -36,6 +36,8 @@ mod MinimapScene {
     pub type alias Fit = { scale = Float64, ox = Float64, oy = Float64 }
 
     def rootName(): String = "Minimap"
+    /// B: render-from-World が minimap サブツリー（ColorRect の room/floor ＋ Polygon2D のマーカー）を描く/隠す root。
+    pub def rootPath(): NodePath = rootName() :: Nil
     def contentName(): String = "MinimapContent"
     def contentPath(): NodePath = rootName() :: contentName() :: Nil
     def driverName(): String = "MinimapDriver"
