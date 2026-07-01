@@ -129,18 +129,25 @@ mod RenderWorld {
     /// `TileMapRenderCmd` は pub type alias ゆえ直組み（engine 追加なし）。個別 Drawable にせず instanced 維持
     /// （数百〜千セルでも 1 レイヤー 1 draw call）。renderArgs 由来 tileMaps の代わりにこれを renderCommands へ渡す。
     pub def renderTileMaps(world: World, scene: Scene[NodeTag]): List[GameEngine.TileMapRenderCmd] \ GameEngine.Game =
-        let transform = viewTransform(scene);
-        World.tileLayersOf(world)
-            |> List.map(h -> ({
-                textureName = h#textureName,
-                tileSize    = h#tileSize,
-                position    = Camera2D.applyToWorldPos(transform, h#worldPos),
-                tileScale   = transform#scale,
-                color       = h#color,
-                zIndex      = h#zIndex,
-                tileVaoId   = h#tileVaoId,
-                tileCount   = h#tileCount
-            }: GameEngine.TileMapRenderCmd))
+        // ダンジョン以外（Title/CharacterSelect・中断後）は Map ノードが無い＝タイルなし。`renderFog` と同じ存在
+        // ガードで早期 Nil。tileLayers は rebuild-gen 変化時にしか bake されず world 越しに残留するため、この画面
+        // ガードが無いと Title 等に前フロアのタイルが残留描画される（gen-gate だけでは防げない）。
+        match Scene.getEngineNode(MapScene.mapPath(), scene) {
+            case None    => Nil
+            case Some(_) =>
+                let transform = viewTransform(scene);
+                World.tileLayersOf(world)
+                    |> List.map(h -> ({
+                        textureName = h#textureName,
+                        tileSize    = h#tileSize,
+                        position    = Camera2D.applyToWorldPos(transform, h#worldPos),
+                        tileScale   = transform#scale,
+                        color       = h#color,
+                        zIndex      = h#zIndex,
+                        tileVaoId   = h#tileVaoId,
+                        tileCount   = h#tileCount
+                    }: GameEngine.TileMapRenderCmd))
+        }
 
     /// B: fog の暗幕（haze）を World render System で描く。scene の Fog ColorRect プールを使わず、
     /// FogScene の純粋な補集合計算（holesForDraft/mapRegion/bandDecompose）を再利用して暗幕矩形を
