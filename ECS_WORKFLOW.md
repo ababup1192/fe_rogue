@@ -69,8 +69,7 @@
   - [x] **fog を World**（`RenderWorld.renderFog`＝FogScene 純粋関数を再利用し暗幕を solidBox Drawable 化・`hideHaze` で scene プール隠し・Map ノード存在ガード。実機 OK）
   - [x] **MoveAttackRange（脅威範囲）を World**（`RenderWorld.renderMoveAttackRange`＝表示専用ゆえ格納セルを `RangeOverlay.tileDrawables` で hatch Panel の Drawable 化・`hideTiles`。実機 OK）
   - [x] **汎用化＋lib 昇華: `Render.applyCameraScale`**（units/fog/range の camera 適用〔applyToWorldPos＋scale×zoom〕の重複 spine を `engine_ecs/Render` へ昇華。dodge 等も再利用可）＝flow「実装×2→法則→汎用→lib」の 1 サイクル完了
-  - [x] **アイテム（地面の pickup）を World**（`renderItems`＝`renderSpriteChildren` で World/Items 配下の可視 sprite 子〔body＋点滅 outline〕を一括描画。**`spriteNodeDrawables` spine を units と共有・unitDraw も書換**＝sprite ノード描画の法則抽出）
-  - [ ] stairs / chest を World（`renderSpriteChildren` 再利用で数行）
+  - [x] **マップ配置物（アイテム/宝箱/階段）を World**（`mapEntityRoots` リスト＝`ItemScene`/`ChestScene`/`StairsScene` の各 subtree を `subtreeDrawables` で描き `hideNode` で隠す。parent-child System の忠実合成ゆえ自可視 native・任意深さ・fog 暗所非表示も native）
   - [ ] map タイルを World 描画（tilemap from `Board`/World。★per-cell atlas データが World 未保持＝engine 相談要）
   - [ ] minimap を World（★accumulated 状態移送＋CanvasLayer 要）
   - [x] **全 7 range overlays を World**（Move/MoveAttack/EnemyRange/EnemyAttack/PlayerAttack/Trade/DangerZone）。`RenderWorld.renderRangeOverlays` に**1 経路集約**（各 mod は cells/color/alpha だけ・描画は `tileDrawables` の law に一本化）＋`hideRangeTiles`。全て表示専用ゆえ格納セル＝描画セル（MoveRange のみ stoppable を `Data#drawCells` に追加格納）。**helper 投資の回収実証**＝5 つ追加で新規ロジックほぼゼロ。1064 tests green

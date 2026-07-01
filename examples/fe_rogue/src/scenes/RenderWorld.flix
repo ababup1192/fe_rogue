@@ -82,27 +82,19 @@ mod RenderWorld {
                 spriteNodeDrawables(spritePath, worldPos, transform, scene)
         }
 
-    /// B: 親配下の全 sprite 子を隠す（World 描画へ切替時の二重描画防止）。親が無ければ scene 不変。
-    pub def hideSpriteChildren(parentPath: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
-        match Scene.getEngineNode(parentPath, scene) {
-            case None    => scene
-            case Some(_) =>
-                Scene.getChildrenAt(parentPath, scene)
-                    |> List.foldLeft((acc, name) ->
-                        Scene.mapEngineNode(List.append(parentPath, name :: Nil),
-                            n -> CanvasItem.setVisible(false, n), acc), scene)
-        }
+    /// B: マップ配置物（アイテム / 宝箱 / 階段）の in-world サブツリー root。各 subtree をエンジンの忠実合成
+    /// `Scene.subtreeDrawables`（visible[祖先 AND 自]/modulate/z/camera/任意深さ）で描き、`hideNode` で scene から
+    /// 隠す。fog の暗所非表示は `pathToDrawables` の自可視判定が native に効く（手貼り patch 不要）。不在時 no-op。
+    def mapEntityRoots(): List[NodePath] =
+        ItemScene.parentPath() :: ChestScene.parentPath() :: StairsScene.stairsPath() :: Nil
 
-    /// B: マップ上のアイテム（body＋点滅 outline）を World render System で描く。エンジンの忠実合成
-    /// `Scene.subtreeDrawables`（visible[祖先 AND 自]/modulate/z/camera/任意深さ）を Items サブツリーに適用
-    /// ＝renderArgs と同一・**自ノード可視も native 判定**（旧 renderSpriteChildren+spriteNodeDrawables の
-    /// 自可視 patch は不要に）。孫を持つ subtree でも脱落しない（latent capability）。
-    pub def renderItems(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        Scene.subtreeDrawables(viewTransform(scene), ItemScene.parentPath(), scene)
+    /// B: マップ配置物（アイテム/宝箱/階段）を World render System で描く。
+    pub def renderMapEntities(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        mapEntityRoots() |> List.flatMap(root -> renderSubtree(root, scene))
 
-    /// B: scene 側アイテム sprite を隠す（renderItems が描くため）。
-    pub def hideItems(scene: Scene[NodeTag]): Scene[NodeTag] =
-        hideSpriteChildren(ItemScene.parentPath(), scene)
+    /// B: マップ配置物の scene 側ノードを隠す（renderArgs から外し二重描画防止）。
+    pub def hideMapEntities(scene: Scene[NodeTag]): Scene[NodeTag] =
+        mapEntityRoots() |> List.foldLeft((acc, root) -> hideNode(root, acc), scene)
 
     /// B: `root` 配下のサブツリー（HUD/メニュー等の階層 UI）を World render System で描く。エンジンの
     /// 忠実合成 `Scene.subtreeDrawables`（祖先合成・任意深さ・CanvasLayer は camera 非適用）に委譲＝renderArgs 同一。
