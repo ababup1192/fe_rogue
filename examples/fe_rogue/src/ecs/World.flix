@@ -36,6 +36,11 @@ pub enum Channel with Eq, Order {
     case Position   // renderPos（連続描画位置＝移動）
 }
 
+/// B/m3: 1 フレームで移動（Position tween）した entity の marker 駆動情報（EntityRef＋補間 pixel）。
+/// `stepWorld` が active∪done を返し、`RenderWorld.syncMarkers` が実 scene の marker を pos へ置く。
+/// 同型 Vec2 の誤順を防ぐ名前渡し＋faction を EntityRef に閉じ込め（uid は plumbing 内で decode）。
+pub type alias MarkerMove = { ref = World.EntityRef, pos = Vec2.Vec2 }
+
 /// B/tiles: GPU タイルレイヤーの軽量描画ハンドル（静的・per-cell TileData 非保持）。scene の TileMapLayer ノード
 /// から rebuild 時に bake し、毎フレーム camera 適用して engine `TileMapRenderCmd` に組む。フィールドは engine の
 /// `TileMapRenderCmd`/`TileMapLayer` に一致（`tileVaoId`/`tileCount`）。`worldPos` は globalPositionAt（camera parity）。
@@ -387,15 +392,25 @@ mod World {
     /// **二重 tick**（remaining が 60/sec で減り status が数フレームで消える・combatViewOf が buff/debuff を落とす）に
     /// なるため本段は identity にする。（`tickStatusEffects` def は単体テスト用に残置。実 System はここへ足すが
     /// statusEffects は触らない＝ターン境界の Seed が唯一の権威 tick。）
-    pub def stepWorld(world: World, dt: Float64): World =
+    pub def stepWorld(world: World, dt: Float64): (World, List[MarkerMove]) =
         let World.World(w) = world;
         let (nextTweens, outs, _done) = EcsTween.step(dt, w#tweens);
         // tweens を更新後、各補間出力をチャンネル別に対象 component へ書く。
-        // （_done は Phase 2 で marker 駆動〔active∪done〕に使う。Phase 1 では未使用。）
-        List.foldLeft((acc, pair) -> {
+        let stepped = List.foldLeft((acc, pair) -> {
             let ((uid, ch), out) = pair;
             applyTweenOut(uid, ch, out, acc)
-        }, World.World({tweens = nextTweens | w}), outs)
+        }, World.World({tweens = nextTweens | w}), outs);
+        // marker 駆動用に Position チャンネルの補間結果を EntityRef＋pixel で外へ出す。
+        // outs は active に加え**完了フレームの target（t=1.0 スナップ）も含む**（EcsTween.step）＝
+        // 完了の取りこぼしなく marker を target に確定できる（isAnimating 単独では落とす）。
+        let moved = outs |> List.filterMap(pair -> {
+            let ((uid, ch), out) = pair;
+            match (ch, out) {
+                case (Channel.Position, EcsTween.Out.VecOut(v)) => Some({ref = uidToRef(uid), pos = v})
+                case _ => None
+            }
+        });
+        (stepped, moved)
 
     /// B/m2: tween の補間出力をチャンネル別に対象 component へ書く（Position→renderPos）。
     /// 不能組（Position に Scalar 等）は smart constructor 経路ゆえ設計上ありえない＝loud に bug!。

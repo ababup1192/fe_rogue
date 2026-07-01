@@ -561,6 +561,16 @@ mod TestUnitFixtures {
             (out, Ref.get(rec))
         }
 
+    /// emit された全 Cmd を空 World に `applyCmd` で積み、`(thunk の結果, 最終 World)` を返す。
+    /// move の描画 tween（`Cmd.StartTween`→renderPos）を実 World で回して marker 位置を検証する
+    /// 統合テスト向け（`stepWorld` で完了まで進め `RenderWorld.syncMarkers` で marker へ載せる）。
+    pub def withWorldApplied(rc: Region[r], thunk: Unit -> a \ ef): (a, World) \ ((ef - World.Command) + r) =
+        let worldRef = Ref.fresh(rc, World.empty());
+        let out = run { thunk() } with handler World.Command {
+            def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(worldRef)), worldRef); k() }
+        };
+        (out, Ref.get(worldRef))
+
     /// `World.PhaseQuery`（turn phase 読み）を固定 sim-phase で discharge する。
     /// F2c の reader flip 後、onLungeDone 等が World 由来で phase を読むテスト向け。
     pub def withWorldPhase(phase: SimPhase, thunk: Unit -> a \ ef):

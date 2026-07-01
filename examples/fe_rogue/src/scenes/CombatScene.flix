@@ -124,7 +124,7 @@ mod CombatScene {
     /// - Enemy: `applyEnemyAttackHit` の killed リストを `PlayerScene.removeDeadAndCheckGameOver`
     ///   に流し、全滅時は `CustomEffects.GameOverRequest` でフルリビルドさせる。
     pub def onAttackHit(side: Faction, id: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                               GameEngine.Game, GameLogger.GameLogger,
                               CustomEffects.GameOverRequest,
                               SelectedPlayer.State, World.RngDraw,
@@ -142,7 +142,7 @@ mod CombatScene {
     /// 回避なら SE を鳴らさず "miss" 表示のみ。HP <= 0 なら death_blink を開始する。
     /// ゲーム本体の味方攻撃適用（`useEcsCombat()` で ECS/legacy を選ぶ＝既定 ECS）。
     pub def applyAttackHit(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                               GameEngine.Game,
                               GameLogger.GameLogger, World.RngDraw,
                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
@@ -150,14 +150,14 @@ mod CombatScene {
 
     /// **legacy 直叩き**（トグル非依存）。golden-trace 等が legacy 経路を oracle として pin するため。
     pub def applyAttackHitLegacy(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                               GameEngine.Game,
                               GameLogger.GameLogger, World.RngDraw,
                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         applyAttackHitWith(false, playerId, scene)
 
     def applyAttackHitWith(useEcs: Bool, playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                               GameEngine.Game,
                               GameLogger.GameLogger, World.RngDraw,
                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
@@ -173,20 +173,20 @@ mod CombatScene {
     pub def applyEnemyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
-             Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
+             World.Command, World.WorldQuery, BoardQuery} =
         applyEnemyAttackHitWith(useEcsCombat(), enemyId, scene)
 
     /// **legacy 直叩き**（トグル非依存・テスト oracle 用）。
     pub def applyEnemyAttackHitLegacy(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
-             Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
+             World.Command, World.WorldQuery, BoardQuery} =
         applyEnemyAttackHitWith(false, enemyId, scene)
 
     def applyEnemyAttackHitWith(useEcs: Bool, enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
-             Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
+             World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
             d              <- EnemyScene.get(enemyId, scene);
             targetPlayerId <- d#attackTargetId
@@ -518,7 +518,7 @@ mod CombatScene {
     /// ネストを避けるため Option を `forM` で短絡的に畳む。
     def applyDamageToEnemy(useEcs: Bool, playerId: Int32, player: PlayerScene.Data, enemyId: Int32,
                             scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
                                CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
@@ -577,7 +577,7 @@ mod CombatScene {
     def ecsResolvePlayerAttack(playerId: Int32, player: PlayerScene.Data,
                                 weapon: UnitCatalog.WeaponResource, enemyId: Int32,
                                 enemy: EnemyScene.Data, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, World.RngDraw, World.Command, World.WorldQuery} =
         let world = World.WorldQuery.get();
         let (_, events) = CombatSystem.resolveAttack(world,
@@ -593,7 +593,7 @@ mod CombatScene {
     def resolveAttack(playerId: Int32, player: PlayerScene.Data,
                        weapon: UnitCatalog.WeaponResource, enemy: EnemyScene.Data,
                        enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                                GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
                                CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         // S-A0/B1: 攻撃の combat view を World 由来へ flip（weapon=equipped ゆえ combatViewOf と一致・
@@ -684,7 +684,7 @@ mod CombatScene {
     /// 上限マス数は `effectValue`（0=無制限）。`Staff.deltaToDirection` で 4 方位に丸める。
     def applyAttackKnockback(weapon: UnitCatalog.WeaponResource, pos: KnockbackPos,
                               enemyId: Int32, killed: Bool,
-                              scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, BoardQuery} =
         match WeaponCatalog.knockbackTiles(weapon#effect, weapon#effectValue) {
             case None        => scene
             case Some(tiles) => if (killed) scene else pushEnemyBack(tiles, pos, enemyId, scene)
@@ -692,7 +692,7 @@ mod CombatScene {
 
     /// ノックバック本体: 方向算出 → `knockbackPathCapped` の最終着地へ `snapTo`。
     def pushEnemyBack(tiles: Int32, pos: KnockbackPos, enemyId: Int32,
-                       scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
+                       scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, BoardQuery} =
         let dir = Staff.toVec2i(Staff.deltaToDirection(
                     pos#defender#x - pos#attacker#x, pos#defender#y - pos#attacker#y));
         // P1b: 敵ノックバック（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
@@ -792,7 +792,7 @@ mod CombatScene {
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
-             Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
+             World.Command, World.WorldQuery, BoardQuery} =
         // 前提（武器あり・対象あり）の解決だけを担う。実体は legacy resolveEnemyAttack または（useEcs 時）ECS 経路。
         let resolved = forM (
             weapon <- enemy#weapon;
@@ -809,7 +809,7 @@ mod CombatScene {
     /// 返す（呼び出し側の `removeDeadAndCheckGameOver` ＝ game-over 経路へ。execution model は不変）。
     def ecsResolveEnemyAttack(enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,
                                player: PlayerScene.Data, scene: Scene[NodeTag]):
-            (Scene[NodeTag], List[Int32]) \ {AnimationPlayer.Scheduler, Tween.Scheduler, GameEngine.Audio,
+            (Scene[NodeTag], List[Int32]) \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                                GameEngine.Game, World.RngDraw, World.Command, World.WorldQuery} =
         let world = World.WorldQuery.get();
         let (_, events) = CombatSystem.resolveEnemyAttack(world,
@@ -831,7 +831,7 @@ mod CombatScene {
                             targetId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
             {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
-             Tween.Scheduler, World.Command, World.WorldQuery, BoardQuery} =
+             World.Command, World.WorldQuery, BoardQuery} =
         // S-A0/B1: ダメージ計算の combat view を World 由来へ flip（WorldQuery=read-after-write 正・parity 同値）。
         let world = World.WorldQuery.get();
         let strike = CombatRules.resolveStrike(
@@ -1055,7 +1055,7 @@ mod CombatScene {
     /// 敵の如意棒 / 突風の書: ノックバック武器なら、生存している味方を攻撃方向へ押し流す。
     def applyEnemyKnockback(weapon: UnitCatalog.WeaponResource, pos: KnockbackPos,
                              targetId: Int32, killed: Bool,
-                             scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
+                             scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, BoardQuery} =
         match WeaponCatalog.knockbackTiles(weapon#effect, weapon#effectValue) {
             case None        => scene
             case Some(tiles) => if (killed) scene else pushPlayerBack(tiles, pos, targetId, scene)
@@ -1063,7 +1063,7 @@ mod CombatScene {
 
     /// 味方ノックバック本体: 方向算出 → `knockbackPathCapped` の最終着地へ `snapTo`。
     def pushPlayerBack(tiles: Int32, pos: KnockbackPos, targetId: Int32,
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, BoardQuery} =
         let dir = Staff.toVec2i(Staff.deltaToDirection(
                     pos#defender#x - pos#attacker#x, pos#defender#y - pos#attacker#y));
         // P1b: 味方ノックバック（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。

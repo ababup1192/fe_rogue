@@ -269,20 +269,26 @@ mod TestMapIntegration {
     def playerWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
         Scene.globalPositionAt(PlayerScene.playerPath(0), scene)
 
-    /// scene 内 Player(0) の (marker, data) を moveTo に渡し、戻り値で scene を更新する。
+    /// scene 内 Player(0) を moveTo で 1 マス動かし、**実ゲームの描画パイプライン相当**で marker を
+    /// 着地セルへ載せた scene を返す。moveTo が emit する `Cmd.Move`＋`Cmd.StartTween`（描画 tween）を
+    /// 空 World に積み、`stepWorld` で tween を完了まで進め、`RenderWorld.syncMarkers` で marker を
+    /// renderPos（＝着地セル中心）へ合わせる（engine tween 退役後の move→stepWorld→syncMarkers を再現）。
     def applyMove(map: MapSnapshot, target: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ Tween.Scheduler =
-        match Scene.getEngineNode(PlayerScene.playerPath(0), scene) {
-            case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
-                // P0a: moveTo の World.Command を discharge（位置 World は検証外）。
-                let (newMarker, newData) =
-                    TestUnitFixtures.dischargeWorldCommand(() ->
-                        PlayerScene.moveTo(0, map, target, marker, data,
-                                           Duration.frames(count = 16, fps = 120), scene));
-                Scene.setEngineNode(PlayerScene.playerPath(0),
-                    EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
-                    scene)
-            case _ => bug!("applyMove: expected Player at playerPath(0)")
+            Scene[NodeTag] =
+        region rc {
+            match Scene.getEngineNode(PlayerScene.playerPath(0), scene) {
+                case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
+                    let ((newMarker, newData), world) =
+                        TestUnitFixtures.withWorldApplied(rc, () ->
+                            PlayerScene.moveTo(0, map, target, marker, data,
+                                               Duration.frames(count = 16, fps = 120), scene));
+                    let withGrid = Scene.setEngineNode(PlayerScene.playerPath(0),
+                        EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)), scene);
+                    // slide ≈ 16/120 秒ゆえ 1 秒進めれば tween は必ず完了し renderPos=着地セル中心。
+                    let (_world2, moved) = World.stepWorld(world, 1.0);
+                    RenderWorld.syncMarkers(moved, withGrid)
+                case _ => bug!("applyMove: expected Player at playerPath(0)")
+            }
         }
 
     /// 4 方向それぞれの単発 moveTo を end-to-end で検証する。
@@ -296,26 +302,16 @@ mod TestMapIntegration {
     ///   ※ down は壁なので moveTo を呼ばない。Board.tryMove で None。
     @Test
     def testMoveToEndsAtCorrectWorldPos(): Unit \ Assert =
-        region rc {
-            let snapshot = realMapSnapshot();
-            let result = run {
-                // right
-                let scene1 = applyMove(snapshot, {x = 6, y = 5}, emptyPlayerScene());
-                let posR = playerWorldPos(Tween.tickAll(1.0 |> Duration.seconds, scene1));
-                // up
-                let scene2 = applyMove(snapshot, {x = 5, y = 4}, emptyPlayerScene());
-                let posU = playerWorldPos(Tween.tickAll(1.0 |> Duration.seconds, scene2));
-                // left
-                let scene3 = applyMove(snapshot, {x = 4, y = 5}, emptyPlayerScene());
-                let posL = playerWorldPos(Tween.tickAll(1.0 |> Duration.seconds, scene3));
-                (posR#x, posR#y, posU#x, posU#y, posL#x, posL#y)
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(
-                expected = (104.0, 88.0,    // right
-                             88.0, 72.0,    // up
-                             72.0, 88.0),   // left
-                result)
-        }
+        let snapshot = realMapSnapshot();
+        // applyMove が World tween を完了まで進め marker を着地セルへ載せる（tickAll 不要）。
+        let posR = playerWorldPos(applyMove(snapshot, {x = 6, y = 5}, emptyPlayerScene())); // right
+        let posU = playerWorldPos(applyMove(snapshot, {x = 5, y = 4}, emptyPlayerScene())); // up
+        let posL = playerWorldPos(applyMove(snapshot, {x = 4, y = 5}, emptyPlayerScene())); // left
+        Assert.assertEq(
+            expected = (104.0, 88.0,    // right
+                         88.0, 72.0,    // up
+                         72.0, 88.0),   // left
+            (posR#x, posR#y, posU#x, posU#y, posL#x, posL#y))
 
     // ========================================================================
     // (5) ユーザ報告の症状再現テスト
@@ -338,7 +334,7 @@ mod TestMapIntegration {
     /// 移動マス数を返す。実機での「キーを押し続けた連続移動」相当。
     def simulateHoldDirection(start: {x = Int32, y = Int32}, dir: {x = Int32, y = Int32},
                                 snapshot: MapSnapshot, scene0: Scene[NodeTag]):
-            (Int32, {x = Int32, y = Int32}, Vec2.Vec2) \ Tween.Scheduler =
+            (Int32, {x = Int32, y = Int32}, Vec2.Vec2) =
         // 高々マップ寸法分しか動かない。13×13 なので 20 回も回せば十分
         def loop(steps: Int32, scene: Scene[NodeTag]): (Int32, Scene[NodeTag]) =
             if (steps >= 20) (steps, scene)
@@ -351,9 +347,8 @@ mod TestMapIntegration {
                 match Board.tryMove(board, player, dir) {
                     case None         => (steps, scene)   // 壁で停止
                     case Some(target) =>
-                        let scene1 = applyMove(snapshot, target, scene);
-                        let scene2 = Tween.tickAll(1.0 |> Duration.seconds, scene1);
-                        loop(steps + 1, scene2)
+                        // applyMove が World tween 完了まで進め marker を着地セルへ載せる（tickAll 不要）。
+                        loop(steps + 1, applyMove(snapshot, target, scene))
                 }
             };
         let (count, finalScene) = loop(0, scene0 |> placeAt(start, snapshot));
@@ -380,17 +375,12 @@ mod TestMapIntegration {
     /// (2,5) は壁。 期待: 2 マス進んで (3,5) で停止、 world (56, 88)。
     @Test
     def testHoldLeftFromInitialMovesTwoCells(): Unit \ Assert =
-        region rc {
-            let snapshot = realMapSnapshot();
-            let result = run {
-                simulateHoldDirection({x = 5, y = 5}, Vec2i.left(),
-                                        snapshot, emptyPlayerScene())
-            } with Tween.withScheduler(rc);
-            let (count, grid, world) = result;
-            Assert.assertEq(
-                expected = (2, 3, 5, 56.0, 88.0),
-                (count, grid#x, grid#y, world#x, world#y))
-        }
+        let snapshot = realMapSnapshot();
+        let (count, grid, world) =
+            simulateHoldDirection({x = 5, y = 5}, Vec2i.left(), snapshot, emptyPlayerScene());
+        Assert.assertEq(
+            expected = (2, 3, 5, 56.0, 88.0),
+            (count, grid#x, grid#y, world#x, world#y))
 
     /// 症状 b) 再現: 初期 (5,5) から右を押し続けたら何マス進むか?
     /// ASCII y=5 行 より、 右方向の床は (6,5),(7,5),(8,5) の 3 マス、 (9,5) は壁。
@@ -399,47 +389,37 @@ mod TestMapIntegration {
     /// 食い違うはず（例えば count = 2 で gridPos=(7,5) など）。
     @Test
     def testHoldRightFromInitialMovesThreeCells(): Unit \ Assert =
-        region rc {
-            let snapshot = realMapSnapshot();
-            let result = run {
-                simulateHoldDirection({x = 5, y = 5}, Vec2i.right(),
-                                        snapshot, emptyPlayerScene())
-            } with Tween.withScheduler(rc);
-            let (count, grid, world) = result;
-            Assert.assertEq(
-                expected = (3, 8, 5, 136.0, 88.0),
-                (count, grid#x, grid#y, world#x, world#y))
-        }
+        let snapshot = realMapSnapshot();
+        let (count, grid, world) =
+            simulateHoldDirection({x = 5, y = 5}, Vec2i.right(), snapshot, emptyPlayerScene());
+        Assert.assertEq(
+            expected = (3, 8, 5, 136.0, 88.0),
+            (count, grid#x, grid#y, world#x, world#y))
 
     /// 症状 c) 再現: 一番左 (1,5) から上 1 回押下で gridPos と world はどうなる?
     /// 期待: (1,5)→(1,4)、 world (24, 72)。 x 座標は変わらず y のみ -16。
     /// もし「斜め右上」 がコードロジック側のバグなら gridPos.x が +1 されているはず。
     @Test
     def testUpFromLeftEdgeMovesStraightUp(): Unit \ Assert =
-        region rc {
-            let snapshot = realMapSnapshot();
-            let result = run {
-                let scene0 = emptyPlayerScene() |> placeAt({x = 1, y = 5}, snapshot);
-                let source: {x = Int32, y = Int32} = {x = 1, y = 5};
-                let board: Board = {
-                    map    = snapshot,
-                    pieces = (Piece.Player(0), source) :: Nil
-                };
-                let dir = Vec2i.up();
-                let target = match Board.tryMove(board, source, dir) {
-                    case Some(t) => t
-                    case None    => bug!("(1,5) up should be open")
-                };
-                let scene1 = applyMove(snapshot, target, scene0);
-                let scene2 = Tween.tickAll(1.0 |> Duration.seconds, scene1);
-                let grid = PlayerScene.getGridPos(0, scene2);
-                let world = playerWorldPos(scene2);
-                (target#x, target#y, grid#x, grid#y, world#x, world#y)
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(
-                expected = (1, 4,     // tryMove の target も x 不変
-                            1, 4,     // 移動後 gridPos も x 不変
-                           24.0, 72.0),  // world も x = 24 のまま、y のみ -16
-                result)
-        }
+        let snapshot = realMapSnapshot();
+        let scene0 = emptyPlayerScene() |> placeAt({x = 1, y = 5}, snapshot);
+        let source: {x = Int32, y = Int32} = {x = 1, y = 5};
+        let board: Board = {
+            map    = snapshot,
+            pieces = (Piece.Player(0), source) :: Nil
+        };
+        let dir = Vec2i.up();
+        let target = match Board.tryMove(board, source, dir) {
+            case Some(t) => t
+            case None    => bug!("(1,5) up should be open")
+        };
+        // applyMove が World tween 完了まで進め marker を着地セルへ載せる（tickAll 不要）。
+        let scene2 = applyMove(snapshot, target, scene0);
+        let grid = PlayerScene.getGridPos(0, scene2);
+        let world = playerWorldPos(scene2);
+        Assert.assertEq(
+            expected = (1, 4,     // tryMove の target も x 不変
+                        1, 4,     // 移動後 gridPos も x 不変
+                       24.0, 72.0),  // world も x = 24 のまま、y のみ -16
+            (target#x, target#y, grid#x, grid#y, world#x, world#y))
 }

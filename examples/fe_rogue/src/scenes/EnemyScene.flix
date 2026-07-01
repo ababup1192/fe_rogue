@@ -529,7 +529,7 @@ mod EnemyScene {
     /// EnemyScene 自身は衝突判定を持たない。
     pub def moveTo(id: Int32, target: {x = Int32, y = Int32},
                     map: MapSnapshot,
-                    scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         // F4a: プレイヤー移動（PlayerScene）と同じ `SimEvent.Moved` seam に統一。
         //   moveTo = SYSTEM(stepEnemyMove: Cmd.Move emit + Moved 返却) → VIEW(replayMovedEvent 再生)。
         //   歩行可否は呼び出し側（EnemyAI.decideAction）が済ませている前提＝System は判定せず書くだけ。
@@ -550,7 +550,7 @@ mod EnemyScene {
     /// （`PlayerScene.replayMovedEvent` が担当）＝faction ごとに自分の event を再生。
     /// faction 分岐は 1 段の match に留め、敵の見た目再生は `replayEnemyMoveView` に委譲（ネスト回避）。
     pub def replayMovedEvent(event: World.SimEvent, map: MapSnapshot,
-                              scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match event {
             case World.SimEvent.Moved(World.EntityRef.Enemy(id), target)  => replayEnemyMoveView(id, target, map, scene)
             case World.SimEvent.Moved(World.EntityRef.Player(_), _)        => scene
@@ -562,11 +562,11 @@ mod EnemyScene {
     /// 敵 1 体の move 見た目再生（Tween 滑走 + 左右反転 + prevPos 記録）。
     def replayEnemyMoveView(id: Int32, target: {x = Int32, y = Int32},
                              map: MapSnapshot, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+            Scene[NodeTag] \ World.Command =
         let startWorld  = Scene.globalPositionAt(enemyPath(id), scene);
         let targetWorld = MapSnapshot.gridToWorld(target, map);
-        Tween.tweenPosition(enemyPath(id), startWorld, targetWorld, slideDuration());
-        // B/m2: 敵移動も同じ faction-blind moveUnit で（味方と同一の口・duration=秒・engine tween と lockstep 同期）。
+        // B/m3: 描画位置 tween は World（renderPos）権威＝engine `Tween.tweenPosition` は退役。
+        // marker は `RenderWorld.syncMarkers` が renderPos に合わせる（味方と同一の口）。
         World.moveUnit(World.EntityRef.Enemy(id), {start = startWorld, target = targetWorld}, Duration.toSeconds(slideDuration()));
         // flipForFacing 付き (= 左向き絵) の敵だけ左右反転する。match でなく Option パイプで畳む。
         let flipped = get(id, scene)
@@ -600,9 +600,11 @@ mod EnemyScene {
     /// 進行中の Tween があればキャンセルし、ノードの world 位置と Data#gridPos を
     /// 同時に target に揃える。`PlayerScene.snapTo` と同じ流儀。
     pub def snapTo(id: Int32, target: {x = Int32, y = Int32},
-                    scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let world = MapSnapshot.cellCenter(target);
-        Tween.Scheduler.cancel(enemyPath(id));
+        // B/m3: engine tween cancel の置換。SetRenderPos が進行中の World 描画 tween を破棄しつつ renderPos を
+        // target にスナップ（tweens から Position を remove）＝いれかえ後に marker が滑り残らない。
+        World.Command.emit(World.Cmd.SetRenderPos(World.EntityRef.Enemy(id), world));
         World.Command.emit(World.Cmd.Move(World.EntityRef.Enemy(id), target));
         // S5b: gridPos は frame-end の syncTreeFromWorld で derive。瞬間移動の Marker2D world 座標だけ即合わせる。
         scene

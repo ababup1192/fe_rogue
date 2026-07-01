@@ -18,7 +18,7 @@ mod PlayerMovementScene {
     pub def physicsStep(_delta: Duration.Duration, node: EngineNode[NodeTag],
                          path: NodePath, scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
-                        \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
+                        \ {GameEngine.Game, BoardQuery, GameLogger.GameLogger,
                            SelectedPlayer.State, World.Command, World.WorldQuery} =
         stepFor(selectAllowedPred(TurnPhase.Phase.PlayerMoving, scene),
                 PlayerScene.selectedSlideDuration(), node, path, scene)
@@ -31,7 +31,7 @@ mod PlayerMovementScene {
     pub def gatherStep(_delta: Duration.Duration, node: EngineNode[NodeTag],
                         path: NodePath, scene: Scene[NodeTag]):
                        (EngineNode[NodeTag], Scene[NodeTag])
-                       \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
+                       \ {GameEngine.Game, BoardQuery, GameLogger.GameLogger,
                           SelectedPlayer.State, World.Command, World.WorldQuery} =
         let lord = PlayerScene.lordId();
         let prev = PlayerScene.getGridPos(lord, scene);
@@ -55,7 +55,7 @@ mod PlayerMovementScene {
     ///   - 主人公に押し出された味方（着地マスに居た）はその場の入れ替えなので歩数を消費しない。
     def followAllies(lordNewPos: {x = Int32, y = Int32}, goal: {x = Int32, y = Int32},
                       scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {BoardQuery, Tween.Scheduler, SelectedPlayer.State, World.Command,
+            Scene[NodeTag] \ {BoardQuery, SelectedPlayer.State, World.Command,
                               World.WorldQuery} =
         let board     = BoardQuery.board();
         let world     = World.WorldQuery.get();
@@ -131,7 +131,7 @@ mod PlayerMovementScene {
                  slide: Duration.Duration, node: EngineNode[NodeTag],
                  path: NodePath, scene: Scene[NodeTag]):
                 (EngineNode[NodeTag], Scene[NodeTag])
-                \ {GameEngine.Game, BoardQuery, Tween.Scheduler, GameLogger.GameLogger,
+                \ {GameEngine.Game, BoardQuery, World.WorldQuery, GameLogger.GameLogger,
                    SelectedPlayer.State, World.Command} =
         match node {
             case EngineNode.Marker2DWithState(_, NodeTag.Player(data)) =>

@@ -86,15 +86,15 @@ mod EnemyTurnDriverScene {
             case _                                 => scene
         }
 
-    /// 選択中の味方が Tween（1マス滑走）中か。移動の着地を待ってから検出判定するためのガード。
-    def selectedSliding(): Bool \ {Tween.Scheduler, SelectedPlayer.State} =
+    /// 選択中の味方が移動（1マス滑走）中か。移動の着地を待ってから検出判定するためのガード。
+    def selectedSliding(): Bool \ {World.WorldQuery, SelectedPlayer.State} =
         match SelectedPlayer.State.get()#id {
             case Some(id) => PlayerScene.isMoving(id)
             case None     => false
         }
 
-    /// いずれかの味方が Tween 中か（集合移動の着地待ちガード）。
-    def anyPlayerSliding(scene: Scene[NodeTag]): Bool \ Tween.Scheduler =
+    /// いずれかの味方が移動中か（集合移動の着地待ちガード）。
+    def anyPlayerSliding(scene: Scene[NodeTag]): Bool \ World.WorldQuery =
         PlayerScene.getAll(scene) |> List.exists(d -> PlayerScene.isMoving(d#id))
 
     /// 「この移動ドラフトで誰かが origin から動いた」かつ「未起動の生存敵が、いま暗い新規部屋に
@@ -192,7 +192,7 @@ mod EnemyTurnDriverScene {
                 if (not World.phaseObservedEnemyOf(World.WorldQuery.get())) scene  // F8-slice2: 順序非依存に
                 else endTurn(scene)
             case Some(step) =>
-                if (Tween.Scheduler.isActive(EnemyScene.enemyPath(step#id))) scene
+                if (World.isAnimating(World.EntityRef.Enemy(step#id), World.WorldQuery.get())) scene
                 else
                     // 先頭 step を消費して 1 マス進める
                     let _ = EnemyTurn.Queue.popFront();
@@ -207,7 +207,7 @@ mod EnemyTurnDriverScene {
     /// `CombatScene.process` 側で行われる。
     /// Skip/Wait は無動作 (remaining も捨てる)。
     def applyStep(step: EnemyTurn.Step, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+            \ {AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
                 SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
@@ -224,7 +224,7 @@ mod EnemyTurnDriverScene {
     /// ネストした match を避けるため、各分岐は単一 match の小関数に切り出す。
     def applyStepForEnemy(step: EnemyTurn.Step, data: EnemyScene.Data,
                            scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+            \ {AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
                 SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
@@ -251,7 +251,7 @@ mod EnemyTurnDriverScene {
     /// 詠唱しなかった敵: 未使用の瓶を投げられれば投げ、でなければ通常 AI。
     def tryThrowOrNormal(step: EnemyTurn.Step, data: EnemyScene.Data,
                           scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+            \ {AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
                 SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
@@ -274,7 +274,7 @@ mod EnemyTurnDriverScene {
     /// 通常 AI の 1 step 適用（既存ロジック）。Move / Attack / Wait / Skip / Wander。
     def applyNormalStep(step: EnemyTurn.Step, data: EnemyScene.Data,
                          scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+            \ {AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, CustomEffects.RingTransformRequest, World.Command, BoardQuery,
                 World.WorldQuery} =
                 // 盤面 + 盤上ユニットを 1 箇所で結合 (位置×ステータスの join は Encounter に集約)。

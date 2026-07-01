@@ -1076,7 +1076,7 @@ mod Game {
             // command-authoritative ＝ターン境界の Seed で tick 反映・frame-paced tick は二重 tick になるため撤去）。
             // 以後の World→World System はここに足していく。
             // B/m2: moveAnim を実時間 dt（既存の dt: Duration を秒換算）で進める＝engine tween と lockstep 同期。
-            let world2 = World.stepWorld(world1b, Duration.toSeconds(dt));
+            let (world2, moved) = World.stepWorld(world1b, Duration.toSeconds(dt));
             // F2b（turn phase 書込を Cmd 化）: phase は `TurnPhase.State` handler が `put` のたび `Cmd.SetPhase` で
             // worldRef へ dual-write 済み＝**World.turnPhase は command 由来**（全 41 put サイトを handler 1 箇所で被覆）。
             // よって frame-end の mirror は不要。並走 assert は command 由来 phase と State の乖離（write 漏れ）を検出する
@@ -1088,7 +1088,11 @@ mod Game {
             // （move 関数は gridPos を直書きしなくなった＝`Cmd.Move` が唯一の位置 source）。これで
             // scene は World の純粋な派生ビューになり、dual-write は解消。write 漏れは「ユニットが動かない」
             // 可視バグとして現れるので、旧 `[P3 WRITE-MISS]` 検出器（独立 dual-write 前提）は撤去した。
-            let synced = World.syncTreeFromWorld(world2, next);
+            let synced0 = World.syncTreeFromWorld(world2, next);
+            // B/m3: 移動した entity の marker を renderPos に合わせる（engine tween 退役の受け皿・marker 単一権威）。
+            // syncTreeFromWorld は marker の global 位置を書かない（gridPos 等 Data のみ derive）ので、ここで上書きしても
+            // 齟齬なし。書いた synced は末尾 gameLoop へ渡り次フレームへ永続。以降 synced は marker 反映済みを指す。
+            let synced = RenderWorld.syncMarkers(moved, synced0);
             // S4 twin parity 検査は **syncTreeFromWorld の後**に置く（scene が World から派生し終えた点）。
             // pre-sync だと gridPos が 1 フレーム遅延（World pos=当フレーム / scene gridPos=前フレームの派生）、
             // hidden/equippedRing が re-mirror stale で false-positive を出していた。post-sync では gridPos=World 派生・
@@ -1117,18 +1121,21 @@ mod Game {
                 //    renderSubtrees（drawables）+ renderSubtreePolygons（polygon）で World 経路描画。
                 let prepped = RenderWorld.hideUnitSprites(synced) |> FogScene.hideHaze
                     |> RenderWorld.hideRangeTiles |> RenderWorld.hideSubtrees;
+                // B/perf: camera ViewTransform は findActiveCamera が全 scene 走査ゆえ**フレーム 1 回**だけ計算し、
+                // 全 render 関数へ渡す（旧: 各関数・各 subtree root が個別に呼び ~30 回/frame 走査していた）。
+                let transform = RenderWorld.viewTransform(synced);
                 // B/tiles: tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
                 // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。
                 let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(prepped);
-                let worldDrawables = RenderWorld.renderUnits(world2, synced)
-                    |> List.append(RenderWorld.renderFog(synced))
-                    |> List.append(RenderWorld.renderRangeOverlays(synced))
-                    |> List.append(RenderWorld.renderSubtrees(synced));
+                let worldDrawables = RenderWorld.renderUnits(world2, transform, synced)
+                    |> List.append(RenderWorld.renderFog(transform, synced))
+                    |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
+                    |> List.append(RenderWorld.renderSubtrees(transform, synced));
                 // B: polygon チャンネルも World 由来 subtree（minimap 円/BattlePanel ドット/TurnEndHold リング）を合流。
                 // scenePolygons は hideSubtrees で除外済み（marker 上の武器グリフ polygon 等はそのまま renderArgs 由来）。
                 GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
-                    RenderWorld.renderTileMaps(world2, synced),
-                    List.append(scenePolygons, RenderWorld.renderSubtreePolygons(synced)))
+                    RenderWorld.renderTileMaps(world2, transform, synced),
+                    List.append(scenePolygons, RenderWorld.renderSubtreePolygons(transform, synced)))
             } else
                 GameEngine.render(synced);
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)

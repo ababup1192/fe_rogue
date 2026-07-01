@@ -387,7 +387,7 @@ mod TurnInputBridge {
             Scene[NodeTag] \ {BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command} =
+                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery} =
         let context = buildContext(input, BoardQuery.board(), scene);
         apply(TurnRules.decide(context), scene)
 
@@ -401,15 +401,15 @@ mod TurnInputBridge {
     ///   - `SelectedPlayer.State.get()` (選択中味方 id)
     ///   - `CursorScene.getGridPos(scene)` (カーソル位置)
     ///   - `PlayerScene.getAll` / `EnemyScene.getAll` (waited / dying の id 集合)
-    ///   - `Tween.Scheduler.isActive(...)` (選択中味方が Tween 中か)
+    ///   - `World.isAnimating(...)` (選択中味方が移動中か)
     /// と複数の窓口を引く必要がある。これを 1 関数に集約する。
     pub def buildContext(input: TurnRules.Input, board: Board, scene: Scene[NodeTag]):
-            TurnRules.Context \ {Tween.Scheduler,
+            TurnRules.Context \ {World.WorldQuery,
                                   TurnPhase.State, SelectedPlayer.State,
                                   PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let selected = SelectedPlayer.State.get()#id;
         let busy = match selected {
-            case Some(id) => Tween.Scheduler.isActive(PlayerScene.playerPath(id))
+            case Some(id) => World.isAnimating(World.EntityRef.Player(id), World.WorldQuery.get())
             case None     => false
         };
         let waitedIds = PlayerData.PartyQuery.getAll()

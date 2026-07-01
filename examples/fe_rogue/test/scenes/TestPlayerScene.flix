@@ -79,7 +79,7 @@ mod TestPlayerScene {
 
     /// scene 内 Player(id) の (marker, data) を moveTo に渡し、戻り値で scene を更新する。
     def applyMove(id: Int32, map: MapSnapshot, target: {x = Int32, y = Int32},
-                   scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                   scene: Scene[NodeTag]): Scene[NodeTag] =
         match Scene.getEngineNode(PlayerScene.playerPath(id), scene) {
             case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
                 // P0a: moveTo は World.Command を emit するので test では discharge（位置 World は検証外）。
@@ -100,48 +100,23 @@ mod TestPlayerScene {
         TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.addOnePlayer(sp, scene))
 
     // ========================================================================
-    // moveTo — gridPos を即更新、tween は engine に委譲
+    // moveTo — gridPos を即更新（描画位置 tween は World の renderPos が権威＝engine tween 退役）
     // ========================================================================
 
-    /// moveTo 直後: gridPos は target に更新される。world 座標は tween がまだ進んでいないので
-    /// 元の位置のまま（noop tween で確認）
+    /// moveTo 直後: gridPos は target に更新される。marker の world 座標は engine tween を退役したため
+    /// この場では動かない（描画位置は World の renderPos が担い、marker は `RenderWorld.syncMarkers` が
+    /// stepWorld 後に別途合わせる）。滑走→スナップの World 側性質は `TestWorld` と lib `TestEcsTween` が担保。
     @Test
     def testMoveToUpdatesGridPosImmediately(): Unit \ Assert =
         let target: {x = Int32, y = Int32} = {x = 6, y = 5};
         let initialPos = testGridToWorld(initialGrid());
-        let after = TestUnitFixtures.withNoopTween(() ->
-            applyMove(0, testSnapshot(), target, emptyPlayerScene()));
+        let after = applyMove(0, testSnapshot(), target, emptyPlayerScene());
         let pos = playerWorldPos(0, after);
         let gridX = PlayerScene.getGridPos(0, after)#x;
         let gridY = PlayerScene.getGridPos(0, after)#y;
         Assert.assertEq(
             expected = (6, 5, initialPos#x, initialPos#y),
             (gridX, gridY, pos#x, pos#y))
-
-    /// moveTo 後の流れを実 Tween で end-to-end 検証する。
-    ///   moveTo 直後:        world は initial のまま、isMoving(0) = true
-    ///   tickAll(1.0) 後:    world は target に snap、isMoving(0) = false
-    @Test
-    def testMoveToSchedulesTweenAndSnaps(): Unit \ Assert =
-        region rc {
-            let target: {x = Int32, y = Int32} = {x = 6, y = 5};
-            let initialWorld = testGridToWorld(initialGrid());
-            let targetWorld = testGridToWorld(target);
-            let result = run {
-                let scene1 = applyMove(0, testSnapshot(), target, emptyPlayerScene());
-                let posBefore = playerWorldPos(0, scene1);
-                let activeBefore = PlayerScene.isMoving(0);
-                let scene2 = Tween.tickAll(1.0 |> Duration.seconds, scene1);
-                let posAfter = playerWorldPos(0, scene2);
-                let activeAfter = PlayerScene.isMoving(0);
-                (posBefore#x, posBefore#y, activeBefore,
-                 posAfter#x, posAfter#y, activeAfter)
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(
-                expected = (initialWorld#x, initialWorld#y, true,
-                             targetWorld#x, targetWorld#y, false),
-                result)
-        }
 
     // ========================================================================
     // adjacentAllies — 上下左右 1 マスの他味方だけを返す

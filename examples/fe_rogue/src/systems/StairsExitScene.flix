@@ -141,7 +141,7 @@ mod StairsExitScene {
     /// （node 引数不要＝`Scene.getState` で読み、戻りは scene のみ）。phase==StairsExit のとき 1 step 進める。
     pub def step(scene: Scene[NodeTag]):
                     Scene[NodeTag]
-                    \ {GameEngine.Game, Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
+                    \ {GameEngine.Game, Pacing.State, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                        GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery,
                        World.WorldQuery} =
@@ -156,7 +156,7 @@ mod StairsExitScene {
 
     /// 先頭 1 体を 1 マス進める / 退場させる / その場に残す。敵ターンと同じ 4 段 gating。
     def stepOnce(data: Data, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game, Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
+            \ {GameEngine.Game, Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery,
                World.WorldQuery} =
@@ -177,7 +177,7 @@ mod StairsExitScene {
     /// 先頭の (id, 残り移動) について次手を決めて適用する。
     def advanceFront(data: Data, stairs: {x = Int32, y = Int32},
                       scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, Pacing.State, GameLogger.GameLogger,
+            \ {Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery} =
         match data#queue {

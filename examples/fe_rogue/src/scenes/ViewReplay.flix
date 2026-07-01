@@ -59,12 +59,12 @@ mod ViewReplay {
     /// **effectful 実行**: SimEvent ログを `plan` → 各 ViewAction を既存 Scene API へ反映する（runtime は run 検証）。
     /// cutover 時に live combat の演出発火をこの 1 本へ差し替える（branch 温存中は未配線）。
     pub def replay(events: List[World.SimEvent], scene: Scene[NodeTag]): Scene[NodeTag] \
-            {GameEngine.Game, GameEngine.Audio, Tween.Scheduler, AnimationPlayer.Scheduler,
+            {GameEngine.Game, GameEngine.Audio, AnimationPlayer.Scheduler,
              World.Command, World.WorldQuery} =
         List.foldLeft((sc, a) -> execute(a, sc), scene, plan(events))
 
     def execute(action: ViewAction, scene: Scene[NodeTag]): Scene[NodeTag] \
-            {GameEngine.Game, GameEngine.Audio, Tween.Scheduler, AnimationPlayer.Scheduler,
+            {GameEngine.Game, GameEngine.Audio, AnimationPlayer.Scheduler,
              World.Command, World.WorldQuery} =
         match action {
             case ViewAction.Play(n)        => AudioStreamPlayer.play(n); scene
@@ -95,7 +95,7 @@ mod ViewReplay {
 
     /// ノックバック着地（faction で snapTo を振り分け）。
     def snapRefTo(ref: EntityRef, cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, World.Command} = match ref {
+            Scene[NodeTag] \ World.Command = match ref {
         case EntityRef.Enemy(i)  => EnemyScene.snapTo(i, cell, scene)
         case EntityRef.Player(i) => PlayerScene.snapTo(i, cell, scene)
     }

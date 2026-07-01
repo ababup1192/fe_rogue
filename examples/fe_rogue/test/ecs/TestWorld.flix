@@ -551,11 +551,36 @@ mod TestWorld {
     def testStepWorldPreservesPositions(): Unit \ Assert =
         let seeded = World.applyCmd(World.Cmd.Move(World.EntityRef.Enemy(5), {x = 3, y = 3}),
                      World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 5, y = 5}), World.empty()));
-        let stepped = World.stepWorld(seeded, 0.0);
+        let (stepped, _moved) = World.stepWorld(seeded, 0.0);
         let tup = ref -> worldPosOf(ref, stepped) |> Option.map(p -> (p#x, p#y));
         Assert.assertEq(
             expected = (Some((5, 5)), Some((3, 3))),
             (tup(World.EntityRef.Player(0)), tup(World.EntityRef.Enemy(5))))
+
+    /// B/m3: `stepWorld` は移動（Position tween）の補間結果を `moved`（EntityRef＋pixel）で返す。
+    /// **完了フレームでも moved に含まれる**（active∪done）ので、marker を target に取りこぼしなく置ける
+    /// ＝敵の武器アイコン 1 フレームラグ修正の要。中点で中間 pixel（x=50）、完了で target（x=100）＋移動終了を確認する。
+    @Test
+    def testStepWorldReportsMovedThroughCompletion(): Unit \ Assert =
+        // Player(0) を (0,0)→(100,0) へ 1 秒で滑らせる Position tween を開始する。
+        let seeded = World.applyCmd(
+            World.Cmd.StartTween(World.EntityRef.Player(0), Channel.Position,
+                EcsTween.Track.Vec({start = {x = 0.0, y = 0.0}, target = {x = 100.0, y = 0.0}}),
+                1.0, EcsTween.Easing.Linear, false),
+            World.empty());
+        // 0.5 秒進める（中点 x=50・移動中）→ さらに 0.5 秒で完了（x=100・移動終了）。
+        let (mid, movedMid) = World.stepWorld(seeded, 0.5);
+        let (fin, movedFin) = World.stepWorld(mid, 0.5);
+        let xOf      = w -> World.renderPosOf(World.EntityRef.Player(0), w) |> Option.map(p -> p#x);
+        let movedUid = ms -> match ms {
+            case m :: Nil => World.toUid(m#ref)
+            case _        => bug!("expected exactly one moved entity")
+        };
+        Assert.assertEq(
+            expected = (Some(50.0),  true,  0,
+                        Some(100.0), false, 0),
+            (xOf(mid), World.isAnimating(World.EntityRef.Player(0), mid), movedUid(movedMid),
+             xOf(fin), World.isAnimating(World.EntityRef.Player(0), fin), movedUid(movedFin)))
 
     // ── B/tiles: 背景タイルの World 権威化（bake ハンドル preserve と gen bump）──
 
@@ -565,7 +590,7 @@ mod TestWorld {
         let handle = ({textureName = "atlas", tileSize = 26.0, worldPos = {x = 0.0, y = 0.0},
                        color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}, zIndex = -1,
                        tileVaoId = 7, tileCount = 42}: TileLayerHandle);
-        let stepped = World.stepWorld(World.setTileLayers(handle :: Nil, World.empty()), 0.0);
+        let (stepped, _moved) = World.stepWorld(World.setTileLayers(handle :: Nil, World.empty()), 0.0);
         match World.tileLayersOf(stepped) {
             case h :: Nil => Assert.assertEq(expected = (7, 42), (h#tileVaoId, h#tileCount))
             case _        => bug!("expected exactly 1 tile layer preserved")

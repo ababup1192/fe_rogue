@@ -371,9 +371,10 @@ mod TestStaffGolden {
     /// （Damaged+Moved）。
     ///
     /// 注: seam は `Move` を 2 度積む — 明示 emit ループ（`eventToCmds`）と `ViewReplay.replay` の
-    /// `Snap`→`snapRefTo`（scene 権威 snap が World へ dual-write）の二経路から。`Cmd.Move` は絶対座標で
-    /// 冪等ゆえ最終 World は不変（combat seam では Moved event を出さず未顕在だった）。よって契約は **集合** 一致で
-    /// 表し（重複 Move を許容）、最終 World 等価を本丸の保証とする。raw list 長=3 も pin して二経路 emit の形を固定する。
+    /// `Snap`→`snapRefTo`（scene 権威 snap が World へ dual-write）の二経路から。さらに `snapTo` は engine tween
+    /// 退役後、描画位置スナップの `Cmd.SetRenderPos`（view 権威）も積む。`Cmd.Move` は絶対座標で冪等・RenderPos は
+    /// 描画専用ゆえ最終 World（hp/pos）は不変。よって logical 契約は RenderPos を除いた **集合** 一致で表し
+    /// （重複 Move を許容）、最終 World 等価を本丸の保証とする。raw list 長=4 も pin して emit の形を固定する。
     @Test
     def testStaffEcsSeamEmitsEventToCmds(): Unit \ Assert =
         let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
@@ -386,11 +387,15 @@ mod TestStaffGolden {
         let (simW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Blowback, dir, hit);
         // cross-check: 出荷 seam が積んだ cmdKey 集合 == sim events の eventToCmds 集合（emit 配線の固定）。
         let simKeys = evs |> List.flatMap(World.eventToCmds) |> List.map(World.cmdKey);
-        Assert.assertEq(expected = List.toSet(simKeys), List.toSet(ecsKeys));
-        // golden pin: 集合 = {Damaged(enemy,4)→SetHp, Moved(enemy,{12,2})→Move}（literal で固定）。
-        Assert.assertEq(expected = Set#{("SetHp", 1000001, 4, 0), ("Move", 1000001, 12, 2)}, List.toSet(ecsKeys));
-        // 二経路 emit の形: SetHp×1 + Move×2（replay snapRefTo の冪等 dual-write）= raw 3 件。
-        Assert.assertEq(expected = 3, List.length(ecsKeys));
+        // seam は sim の logical cmds に加え、view 権威の render snap（`snapTo` の `SetRenderPos`＝engine tween
+        // 退役後の描画位置スナップ）も積む。sim event 代数（eventToCmds）は logical のみゆえ、RenderPos を
+        // 除いた集合で eventToCmds 一致を見る。
+        let ecsLogicalKeys = ecsKeys |> List.filter(k -> { let (name, _, _, _) = k; name != "RenderPos" });
+        Assert.assertEq(expected = List.toSet(simKeys), List.toSet(ecsLogicalKeys));
+        // golden pin: seam の集合 = {Damaged(enemy,4)→SetHp, Moved(enemy,{12,2})→Move, snapTo→RenderPos}（literal で固定）。
+        Assert.assertEq(expected = Set#{("SetHp", 1000001, 4, 0), ("Move", 1000001, 12, 2), ("RenderPos", 1000001, 0, 0)}, List.toSet(ecsKeys));
+        // 三経路 emit の形: SetHp×1 + Move×2（replay snapRefTo の冪等 dual-write）+ RenderPos×1（snapTo）= raw 4 件。
+        Assert.assertEq(expected = 4, List.length(ecsKeys));
         // 最終 World 等価: seam の applyCmd 経路 == driveStaffResolve の applyEventToWorld 経路（敵 hp/pos）。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), posT(EntityRef.Enemy(1), w));
         Assert.assertEq(expected = proj(simW), proj(ecsW));

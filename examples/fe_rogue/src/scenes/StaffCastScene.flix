@@ -117,7 +117,7 @@ mod StaffCastScene {
                           dir: {x = Int32, y = Int32},
                           hit: RayHit,
                           scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, World.Command, BoardQuery,
                               GameEngine.Game, GameEngine.Audio, World.WorldQuery} =
         match dslStaffRule(staff) {
@@ -163,7 +163,7 @@ mod StaffCastScene {
                              staff: Staff.StaffResource,
                              dir: {x = Int32, y = Int32}, hit: RayHit,
                              scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, World.Command, BoardQuery,
                               GameEngine.Game, GameEngine.Audio, World.WorldQuery} =
         let world = World.WorldQuery.get();
@@ -225,7 +225,7 @@ mod StaffCastScene {
     pub def applyStaffEffectDsl(playerId: Int32, staff: Staff.StaffResource,
                              rule: EffectRule.EffectRule, hit: RayHit,
                              dir: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
         match staffHitTarget(hit) {
             case Some((id, ally)) =>
                 let ctx = {selfId = playerId, attackerId = playerId, actorIsPlayer = true,
@@ -247,7 +247,7 @@ mod StaffCastScene {
     /// effect 行は legacy 委譲先（Tween / AnimationPlayer / GameLogger）に合わせ広く取る。
     def staffEffectHandlers(srcId: Int32, dir: {x = Int32, y = Int32}):
             EffectRunner.PlanHandlers[Scene[NodeTag],
-                {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery}] = {
+                {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery}] = {
         heal       = (sc, id, ally, n)        -> checked_ecast(healUnit(id, ally, n, sc)),
         fullHeal   = (sc, id, ally)           -> checked_ecast(fullHealUnit(id, ally, sc)),
         maxHpUp    = (sc, id, ally, n)        -> checked_ecast(maxHpUpUnit(id, ally, n, sc)),
@@ -277,7 +277,7 @@ mod StaffCastScene {
     /// knockback/swapPos/warpToStairs を legacy 関数へ委譲（挙動・ログ一致）。未知 op / 対象不在は防御 no-op。
     def customStaffEffect(srcId: Int32, dir: {x = Int32, y = Int32},
                            op: String, id: Int32, ally: Bool, sc: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
         let srcLabel = PlayerScene.displayName(srcId, sc);
         match op {
             case "knockback" =>
@@ -310,7 +310,7 @@ mod StaffCastScene {
                           dir: {x = Int32, y = Int32},
                           hit: RayHit,
                           scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, World.Command, BoardQuery} =
         match (staff#effect, hit) {
             case (Staff.StaffEffect.Heal, RayHit.HitPlayer(targetId, _)) =>
@@ -391,7 +391,7 @@ mod StaffCastScene {
                                 hitCell: {x = Int32, y = Int32},
                                 dir: {x = Int32, y = Int32},
                                 scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery} =
         match PlayerScene.get(targetId, scene) {
             case None         => scene
             case Some(target) =>
@@ -411,7 +411,7 @@ mod StaffCastScene {
                                hitCell: {x = Int32, y = Int32},
                                dir: {x = Int32, y = Int32},
                                scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                                 GameLogger.GameLogger, World.Command, BoardQuery} =
         match EnemyScene.get(enemyId, scene) {
             case None        => scene
@@ -437,8 +437,8 @@ mod StaffCastScene {
     /// 経路が空（押される先がない）なら何もしない。
     def applyBlowbackMove(geom: {hit = {x = Int32, y = Int32}, dir = {x = Int32, y = Int32}},
                            scene: Scene[NodeTag],
-                           moveFn: {x = Int32, y = Int32} -> Scene[NodeTag] \ {Tween.Scheduler, World.Command}):
-            Scene[NodeTag] \ {Tween.Scheduler, World.Command, BoardQuery} =
+                           moveFn: {x = Int32, y = Int32} -> Scene[NodeTag] \ World.Command):
+            Scene[NodeTag] \ {World.Command, BoardQuery} =
         // P1a: player cast の blowback 経路。board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board: Board = BoardQuery.board();
         let path = Board.knockbackPath(geom#hit, geom#dir, board);
@@ -454,7 +454,7 @@ mod StaffCastScene {
 
     def applySwapWithPlayer(src: UnitCell, other: UnitCell,
                               scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         GameLogger.playerLog("${PlayerScene.displayName(src#id, scene)} と ${PlayerScene.displayName(other#id, scene)} がいれかわった");
         scene
             |> PlayerScene.snapTo(src#id, other#cell)
@@ -464,7 +464,7 @@ mod StaffCastScene {
     /// 将来: sequence engine が揃えば交差するアニメーションに置換できる（現在は瞬間移動）。
     def applySwapWithEnemy(src: UnitCell, enemy: UnitCell,
                              scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         GameLogger.playerLog("${PlayerScene.displayName(src#id, scene)} と ${EnemyScene.displayName(enemy#id, scene)} がいれかわった");
         scene
             |> PlayerScene.snapTo(src#id, enemy#cell)
@@ -493,19 +493,19 @@ mod StaffCastScene {
 
     /// 一時しのぎ × 味方: 完全停止にしたうえで階段（埋まっていれば隣接の空き）へワープさせる。
     def applyStopgapToPlayer(srcLabel: String, targetId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery} =
         let bound = applyBindToPlayer(srcLabel, targetId, defaultBindTurns(), scene);
         warpPlayer(targetId, bound)
 
     /// 一時しのぎ × 敵: 同上（敵対象）。
     def applyStopgapToEnemy(srcLabel: String, enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery} =
         let bound = applyBindToEnemy(srcLabel, enemyId, defaultBindTurns(), scene);
         warpEnemy(enemyId, bound)
 
     /// 味方をワープ先（階段 or 隣接空き）へ瞬間移動させる。行き先が無ければ停止のみ。
     def warpPlayer(targetId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery} =
         // P1b: warp（player/enemy cast 共有）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board = BoardQuery.board();
         match StaffRules.warpCellFor(StairsScene.getPos(scene), board) {
@@ -519,7 +519,7 @@ mod StaffCastScene {
 
     /// 敵をワープ先（階段 or 隣接空き）へ瞬間移動させる。行き先が無ければ停止のみ。
     def warpEnemy(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery} =
         // P1a: player cast が敵に当てた warp 経路。board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board = BoardQuery.board();
         match StaffRules.warpCellFor(StairsScene.getPos(scene), board) {
@@ -838,7 +838,7 @@ mod StaffCastScene {
     def applyThrowHit(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
                        dir: {x = Int32, y = Int32}, hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 Math.Random, CustomEffects.GameOverRequest, SelectedPlayer.State,
                 GameEngine.Audio, GameEngine.Game, World.Command, World.WorldQuery, BoardQuery} =
         match hit {
@@ -853,7 +853,7 @@ mod StaffCastScene {
     def rolledThrow(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
                      dir: {x = Int32, y = Int32}, hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 Math.Random, CustomEffects.GameOverRequest, SelectedPlayer.State,
                 GameEngine.Audio, GameEngine.Game, World.Command, World.WorldQuery, BoardQuery} =
         let roll = throwRoll();
@@ -878,7 +878,7 @@ mod StaffCastScene {
     def dispatchThrowEffect(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
                              dir: {x = Int32, y = Int32}, hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, GameEngine.Game,
                 World.Command, World.WorldQuery, BoardQuery} =
         match kind {
@@ -1129,7 +1129,7 @@ mod StaffCastScene {
     /// その味方へ詠唱した scene を Some で返す。撃てなければ None（呼び出し側で投擲 / 通常 AI へ）。
     pub def enemyTryStaff(enemyId: Int32, origin: {x = Int32, y = Int32},
                            description: String, scene: Scene[NodeTag]):
-            Option[Scene[NodeTag]] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery, World.WorldQuery} =
+            Option[Scene[NodeTag]] \ {GameLogger.GameLogger, World.Command, BoardQuery, World.WorldQuery} =
         // P1b: 敵詠唱（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board: Board = BoardQuery.board();
         forM (
@@ -1165,7 +1165,7 @@ mod StaffCastScene {
     def enemyCastStaff(enemyId: Int32, effect: Staff.StaffEffect, targetId: Int32,
                         dir: {x = Int32, y = Int32}, hit: RayHit,
                         scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery, World.WorldQuery} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery, World.WorldQuery} =
         if (useEcsEnemyStaff() and ecsHandlesStaff(effect))
             ecsResolveEnemyStaff(enemyId, effect, dir, hit, scene)
         else
@@ -1175,7 +1175,7 @@ mod StaffCastScene {
     /// golden oracle（`TestEnemyStaffGolden`）が直叩きして ECS 経路と #statuses を突き合わせるため pub。
     pub def enemyCastStaffLegacy(enemyId: Int32, effect: Staff.StaffEffect, targetId: Int32,
                         scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery} =
         let srcLabel = EnemyScene.displayName(enemyId, scene);
         match effect {
             case Staff.StaffEffect.Bind    => applyBindToPlayer(srcLabel, targetId, defaultBindTurns(), scene)
@@ -1192,7 +1192,7 @@ mod StaffCastScene {
     pub def ecsResolveEnemyStaff(enemyId: Int32, effect: Staff.StaffEffect,
                              dir: {x = Int32, y = Int32}, hit: RayHit,
                              scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery, World.WorldQuery} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery, World.WorldQuery} =
         let world = World.WorldQuery.get();
         let (_, events) = StaffSystem.resolveStaffCast(world,
             World.EntityRef.Enemy(enemyId), effect, dir, hit);

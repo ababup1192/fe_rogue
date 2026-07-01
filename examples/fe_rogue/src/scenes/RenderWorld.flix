@@ -23,8 +23,7 @@ mod RenderWorld {
     /// 存在 gate = World.posOf（World が論理位置を持つユニットのみ描く）。
     /// ⚠ 視覚位置は当面 scene の tween 値（武器/HPバー＝同じ marker 上の兄弟と同期して滑らかに動かすため）。
     ///   真の render-from-World（位置も World 由来＋tween を World component 化）は m2。
-    pub def renderUnits(world: World, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        let transform = viewTransform(scene);
+    pub def renderUnits(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
         let players = PlayerScene.getAll(scene)
             |> List.flatMap(d -> unitDraw(World.EntityRef.Player(d#id), PlayerScene.spritePath(d#id), world, transform, scene));
         let enemies = EnemyScene.getAll(scene)
@@ -32,7 +31,9 @@ mod RenderWorld {
         List.append(players, enemies)
 
     /// アクティブ camera の ViewTransform（render() と同じ算出）。camera 無しは identity。
-    def viewTransform(scene: Scene[NodeTag]): Camera2D.ViewTransform \ GameEngine.Game =
+    /// B/perf: `findActiveCamera` が全 scene 走査ゆえ、Game.flix が**フレーム 1 回**計算して全 render 関数へ渡す
+    /// （旧: 各 render 関数・各 subtree root が個別に呼び ~30 回/frame 走査していた）。
+    pub def viewTransform(scene: Scene[NodeTag]): Camera2D.ViewTransform \ GameEngine.Game =
         match Scene.findActiveCamera(scene) {
             case Some((cam, gp)) =>
                 let vp = GameEngine.Game.getViewportRect();
@@ -72,20 +73,19 @@ mod RenderWorld {
         match World.posOf(ref, world) {
             case None    => Nil
             case Some(_) =>
-                // 移動アニメ中だけ renderPos（tween を World が回す）・それ以外は marker（攻撃 lunge/knockback を捕捉。
-                // renderPos は移動しか持たないため）。全アニメ World 化は将来。
-                let worldPos =
-                    if (World.isAnimating(ref, world))
-                        World.renderPosOf(ref, world) |> Option.getWithDefault(Scene.globalPositionAt(spritePath, scene))
-                    else
-                        Scene.globalPositionAt(spritePath, scene);
+                // B/m3: marker が視覚位置の単一権威（移動=`syncMarkers` の renderPos / lunge=AnimationPlayer /
+                // 静止=setGlobalPositionAt）。sprite は marker の子・ローカル0 ゆえ globalPositionAt(spritePath)=
+                // marker global で全ケースを内包する（engine tween 退役で isAnimating 分岐は不要になった）。
+                let worldPos = Scene.globalPositionAt(spritePath, scene);
                 spriteNodeDrawables(spritePath, worldPos, transform, scene)
         }
 
-    /// B: `root` 配下のサブツリー（階層 UI / 配置物）を World render System で描く。エンジンの忠実合成
-    /// `Scene.subtreeDrawables`（祖先合成・任意深さ・CanvasLayer は camera 非適用）に委譲＝renderArgs 同一。
-    pub def renderSubtree(root: NodePath, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        Scene.subtreeDrawables(viewTransform(scene), root, scene)
+    /// B/m3: 移動（Position tween）した entity の実 scene marker を renderPos に合わせる（marker 単一権威）。
+    /// `stepWorld` が返す active∪done の `MarkerMove` を畳み、marker を pos へ置く。marker の子（sprite/武器/HPバー）は
+    /// これで一斉に同じ値へ追従＝適用点が揃い、敵の武器アイコン 1 フレームラグが解消（engine tween 退役の受け皿）。
+    /// faction 分岐は `EntityScene.path` に閉じ、world→local 変換は engine（`setGlobalPositionAt`）へ委譲（snapTo と同じ）。
+    pub def syncMarkers(moved: List[MarkerMove], scene: Scene[NodeTag]): Scene[NodeTag] =
+        List.foldLeft((sc, m) -> Scene.setGlobalPositionAt(EntityScene.path(m#ref), m#pos, sc), scene, moved)
 
     /// B: パスのノードを隠す（World 描画へ切替時の二重描画防止）。CanvasLayer/親ノードを隠せば祖先可視で
     /// サブツリー全体が renderArgs から外れる（drawContext の祖先 visible 合成）。不在パスは no-op（動的 menu 用）。
@@ -122,12 +122,13 @@ mod RenderWorld {
         MinimapScene.rootPath() :: BattlePanelScene.rootPath() :: TurnEndHoldScene.rootPath() :: Nil
 
     /// B: 全 subtree（配置物/HUD/メニュー/minimap/ポップアップ等）を World render System で描く。
-    pub def renderSubtrees(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        subtreeRoots() |> List.flatMap(root -> renderSubtree(root, scene))
+    /// B/perf: `renderOrderPaths` を全 root で 1 回共有する batch API に委譲（旧: root ごと再走査＝O(roots×N)）。
+    pub def renderSubtrees(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        Scene.subtreeDrawablesForRoots(transform, subtreeRoots(), scene)
 
-    /// B: polygon を持つ subtree の Polygon2D/Arc2D を polygon チャンネルで描く（`Scene.subtreePolygons`）。
-    pub def renderSubtreePolygons(scene: Scene[NodeTag]): List[GameEngine.PolygonRenderCmd] \ GameEngine.Game =
-        polygonSubtreeRoots() |> List.flatMap(root -> Scene.subtreePolygons(viewTransform(scene), root, scene))
+    /// B: polygon を持つ subtree の Polygon2D/Arc2D を polygon チャンネルで描く（`preorderPaths` を 1 回共有）。
+    pub def renderSubtreePolygons(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.PolygonRenderCmd] =
+        Scene.subtreePolygonsForRoots(transform, polygonSubtreeRoots(), scene)
 
     /// B: 全 subtree の scene 側 root を隠す（renderArgs から外し二重描画防止）。
     pub def hideSubtrees(scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -137,14 +138,13 @@ mod RenderWorld {
     /// renderArgs のタイル経路（`globalPositionAt`→`applyToWorldPos` + `transform#scale`）と同一 spine。
     /// `TileMapRenderCmd` は pub type alias ゆえ直組み（engine 追加なし）。個別 Drawable にせず instanced 維持
     /// （数百〜千セルでも 1 レイヤー 1 draw call）。renderArgs 由来 tileMaps の代わりにこれを renderCommands へ渡す。
-    pub def renderTileMaps(world: World, scene: Scene[NodeTag]): List[GameEngine.TileMapRenderCmd] \ GameEngine.Game =
+    pub def renderTileMaps(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.TileMapRenderCmd] =
         // ダンジョン以外（Title/CharacterSelect・中断後）は Map ノードが無い＝タイルなし。`renderFog` と同じ存在
         // ガードで早期 Nil。tileLayers は rebuild-gen 変化時にしか bake されず world 越しに残留するため、この画面
         // ガードが無いと Title 等に前フロアのタイルが残留描画される（gen-gate だけでは防げない）。
         match Scene.getEngineNode(MapScene.mapPath(), scene) {
             case None    => Nil
             case Some(_) =>
-                let transform = viewTransform(scene);
                 World.tileLayersOf(world)
                     |> List.map(h -> ({
                         textureName = h#textureName,
@@ -163,13 +163,12 @@ mod RenderWorld {
     /// solidBox の Drawable にする。敵/アイテムの点灯（可視性）制御は従来どおり FogScene が担い、ここは
     /// 暗幕の描画のみ。二重描画は Game.flix が `FogScene.hideHaze` で scene プールを隠して防ぐ（hideUnitSprites 対称）。
     /// 入力（origin 基準の部屋点灯・通路 torch）は `FogScene.process` と同一＝挙動不変。
-    pub def renderFog(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ {GameEngine.Game, SelectedPlayer.State} =
+    pub def renderFog(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ SelectedPlayer.State =
         // ダンジョン以外（タイトル/パーティ選択/メニュー等）は Map ノードが無い＝暗幕なし。
         // `MapScene.getPlacements` は Map 不在で bug! するので、`World.mapSnapshotOpt` と同じ存在ガードで早期 Nil。
         match Scene.getEngineNode(MapScene.mapPath(), scene) {
             case None    => Nil
             case Some(_) =>
-                let transform  = viewTransform(scene);
                 let drafts     = SelectedPlayer.State.get()#drafts;
                 let units      = PlayerScene.getAll(scene)
                     |> List.map(d -> {gridPos = d#gridPos, hidden = d#hidden,
@@ -185,9 +184,8 @@ mod RenderWorld {
     /// System で描く。各 mod は「描画セル・色・α」だけ持ち、描画は `RangeOverlay.tileDrawables` の 1 経路に集約
     /// ＝law の汎用化。非表示のオーバーレイはセルが空ゆえ Drawable も空（毎フレーム全種を引いても無害）。
     /// 表示専用ゆえ格納セルがそのまま描画セル（EnemyRange は reachable・MoveRange は drawCells・他は cells）。
-    pub def renderRangeOverlays(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        let t = viewTransform(scene);
-        let tiles = (cells, color, alpha) -> RangeOverlay.tileDrawables(cells, color, alpha, t);
+    pub def renderRangeOverlays(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] =
+        let tiles = (cells, color, alpha) -> RangeOverlay.tileDrawables(cells, color, alpha, transform);
         List.flatten(
             tiles(MoveRangeScene.drawCells(scene),     MoveRangeScene.color(),         MoveRangeScene.alpha()) ::
             tiles(MoveAttackRangeScene.cells(scene),   MoveAttackRangeScene.color(),   MoveAttackRangeScene.alpha()) ::

@@ -821,13 +821,29 @@ pub mod Scene {
     /// 絞った部分列に適用する＝`renderArgs` と同一合成・任意深さ（孫以下も訪問）。`rootPath = Nil` で全ツリー。
     /// 他 drawable との最終 z 前後は Frame の global 安定ソートに委譲する（順序契約）。
     /// seam: 祖先 rotation は drawable 自転角へ加算のみ（公転なし）・祖先 scale は非伝播＝`renderArgs` と同一挙動。
-    /// コスト: 呼びごとに `renderOrderPaths`（全 scene 走査）＝O(roots × nodes)/frame。浅い UI では許容。
+    /// コスト: 単体呼びは `renderOrderPaths`（全 scene 走査）を伴う。**複数 root を描くなら `subtreeDrawablesForRoots`**
+    /// で renderOrderPaths を 1 回に共有できる（O(roots × nodes) → O(nodes)）。
     pub def subtreeDrawables(transform: Camera2D.ViewTransform, rootPath: NodePath,
                               scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
-        renderOrderPaths(scene)
+        subtreeDrawablesFrom(transform, renderOrderPaths(scene), rootPath, scene)
+
+    /// 事前計算済み `ordered`（`renderOrderPaths` の出力）から `rootPath` 配下の Drawable を作る内部共通本体。
+    /// `ordered` は rootPath 非依存ゆえ、複数 root で 1 回分を共有しても各 root の出力は単体呼びと完全一致。
+    def subtreeDrawablesFrom(transform: Camera2D.ViewTransform, ordered: List[NodePath],
+                              rootPath: NodePath, scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
+        ordered
             |> List.filter(p -> List.isPrefixOf(rootPath, p))
             |> List.flatMap(path -> pathToDrawables(transform, path, scene))
             |> stableZSort
+
+    /// 複数 root 分の Drawable を **`renderOrderPaths` を 1 回だけ**計算して返す（render-from-World が root ごとに
+    /// 全 scene を歩き直す O(roots × nodes)/frame を O(nodes) に畳む）。root ごとの出力は `subtreeDrawables` 単体
+    /// 呼びと完全一致（renderOrderPaths が rootPath 非依存の純関数ゆえ）。engine が sharing を所有し、呼び側は
+    /// 誤った順序リストを渡せない。
+    pub def subtreeDrawablesForRoots(transform: Camera2D.ViewTransform, roots: List[NodePath],
+                                      scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
+        let ordered = renderOrderPaths(scene);
+        roots |> List.flatMap(r -> subtreeDrawablesFrom(transform, ordered, r, scene))
 
     /// 可視ノード全体を Drawable のリストに変換する。`subtreeDrawables` の「全ツリー」ケース（rootPath = Nil）
     /// に委譲＝サブツリー版と同一機構を通る（構成的 parity）。祖先の visible/modulate/zIndex は drawContext
@@ -842,9 +858,22 @@ pub mod Scene {
     /// effzIndex ソートする前提ゆえ末尾 append は order-safe。`rootPath = Nil` で全ツリー（＝`renderArgs` の polygon）。
     pub def subtreePolygons(transform: Camera2D.ViewTransform, rootPath: NodePath,
                              scene: Scene[s]): List[GameEngine.PolygonRenderCmd] =
-        preorderPaths(scene)
+        subtreePolygonsFrom(transform, preorderPaths(scene), rootPath, scene)
+
+    /// 事前計算済み `preordered`（`preorderPaths` の出力）から `rootPath` 配下の polygon cmd を作る内部共通本体。
+    /// preorderPaths は rootPath 非依存ゆえ複数 root で 1 回分を共有可（各 root 出力は単体呼びと一致）。
+    def subtreePolygonsFrom(transform: Camera2D.ViewTransform, preordered: List[NodePath],
+                             rootPath: NodePath, scene: Scene[s]): List[GameEngine.PolygonRenderCmd] =
+        preordered
             |> List.filter(p -> List.isPrefixOf(rootPath, p))
             |> List.flatMap(p -> polygonCmdsAt(transform, p, scene))
+
+    /// 複数 root 分の polygon cmd を **`preorderPaths` を 1 回だけ**計算して返す（`subtreeDrawablesForRoots` の
+    /// polygon 版）。root ごとの出力は `subtreePolygons` 単体呼びと完全一致。
+    pub def subtreePolygonsForRoots(transform: Camera2D.ViewTransform, roots: List[NodePath],
+                                     scene: Scene[s]): List[GameEngine.PolygonRenderCmd] =
+        let preordered = preorderPaths(scene);
+        roots |> List.flatMap(r -> subtreePolygonsFrom(transform, preordered, r, scene))
 
     /// 1 パスの Polygon2D/Arc2D を PolygonRenderCmd 群にする（renderArgs から抽出）。祖先/自ノードの不可視で空。
     /// CanvasLayer 配下は zoom 非適用。color/z は sprite 経路と同等の実効値（`effectiveModulate`/`effectiveZIndex`）に上書き。

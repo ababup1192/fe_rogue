@@ -406,12 +406,11 @@ mod PlayerScene {
     pub def moveTo(id: Int32, map: MapSnapshot, target: {x = Int32, y = Int32},
                     marker: Marker2D, data: Data, slide: Duration.Duration,
                     scene: Scene[NodeTag]): (Marker2D, Data)
-                    \ {Tween.Scheduler, World.Command} =
+                    \ World.Command =
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
-        Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
-        // B/m2: 描画位置 tween を World でも回す（renderUnits が renderPos を読む）。engine tween と共存。
-        // faction-blind な moveUnit に統一（敵も同じ口）。duration は秒（slide 同値）＝engine tween と lockstep 同期。
+        // B/m3: 描画位置 tween は World（renderPos）権威＝engine `Tween.tweenPosition` は退役。
+        // faction-blind な moveUnit に統一（敵も同じ口）。duration は秒（slide 同値）。
         World.moveUnit(World.EntityRef.Player(id), {start = startWorld, target = targetWorld}, Duration.toSeconds(slide));
         // 進行方向を facing に反映し、AnimatedSprite2D なら walk_<dir> 再生 (副作用)。
         // sprite ノード書き換えは moveToById 側でやる (moveTo は state を返すだけ)。
@@ -420,9 +419,11 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
         (marker, {gridPos = target, facing = nextFacing | data})
 
-    /// 指定 id のプレイヤーが現在 tween 中（次の入力を受け付けない状態）か。
-    pub def isMoving(id: Int32): Bool \ Tween.Scheduler =
-        Tween.Scheduler.isActive(playerPath(id))
+    /// 指定 id のプレイヤーが現在移動（Position tween）中＝次の入力を受け付けない状態か。
+    /// B/m3: engine tween 退役に伴い権威を World（renderPos tween）へ移行。`isActive`（scene marker の
+    /// engine tween）→ `World.isAnimating`（World の Position tween）。1 フレーム 1 歩のリズムは不変。
+    pub def isMoving(id: Int32): Bool \ World.WorldQuery =
+        World.isAnimating(World.EntityRef.Player(id), World.WorldQuery.get())
 
     /// 指定 id のプレイヤーを `target` グリッドへ Tween で移動させ、scene の Data も
     /// 同時に更新する。`moveTo` は (Marker2D, Data) を返す形だが、こちらは
@@ -430,7 +431,7 @@ mod PlayerScene {
     /// `EnemyScene.moveTo` と同じインターフェース。**歩行可否は呼び出し側が確認済み前提**。
     pub def moveToById(id: Int32, target: {x = Int32, y = Int32},
                         map: MapSnapshot, slide: Duration.Duration,
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         // F3a: 1 歩移動を sim 書き込みと view 再生に分離。
         // ── SYSTEM(sim): 位置の唯一権威。`Cmd.Move` が World に書く（gridPos は frame-end の
         //    `World.syncTreeFromWorld` で World 由来に derive＝scene へ直書きしない）。
@@ -444,7 +445,7 @@ mod PlayerScene {
     /// 敵の move 再生は F4（敵ターン System 化）で別途扱うため現状は no-op。
     pub def replayMovedEvent(event: World.SimEvent, map: MapSnapshot,
                               slide: Duration.Duration, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ Tween.Scheduler =
+            Scene[NodeTag] \ World.Command =
         match event {
             case World.SimEvent.Moved(World.EntityRef.Player(id), target) =>
                 replayMoveView(id, target, map, slide, scene)
@@ -469,10 +470,12 @@ mod PlayerScene {
     /// sim 書き込みを含まない（`World.Command` を要求しない）＝イベント再生の純 view エントリ。
     pub def replayMoveView(id: Int32, target: {x = Int32, y = Int32},
                         map: MapSnapshot, slide: Duration.Duration,
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         let targetWorld = MapSnapshot.gridToWorld(target, map);
-        Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
+        // B/m3: 描画位置 tween は World（renderPos）が唯一の権威＝engine `Tween.tweenPosition` は退役。
+        // marker は `RenderWorld.syncMarkers` が renderPos に合わせる（敵 `replayEnemyMoveView` と対称）。
+        World.moveUnit(World.EntityRef.Player(id), {start = startWorld, target = targetWorld}, Duration.toSeconds(slide));
         // 直前のグリッド座標から target への 1 マス差で方向を決める。
         // 0 ベクトル (= 同じセル) の場合は既存の facing を保つ。
         let prev      = getGridPos(id, scene);
@@ -494,9 +497,11 @@ mod PlayerScene {
     /// 進行中の Tween があればキャンセルし、Marker2D の world 位置と Data#gridPos を
     /// 同時に target に揃える。PlayerMoving 中のキャンセルで「選択時の位置」に戻すのに使う。
     pub def snapTo(id: Int32, target: {x = Int32, y = Int32},
-                    scene: Scene[NodeTag]): Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let world = MapSnapshot.cellCenter(target);
-        Tween.Scheduler.cancel(playerPath(id));
+        // B/m3: engine tween cancel の置換。SetRenderPos が進行中の World 描画 tween を破棄しつつ renderPos を
+        // target にスナップ（`World.flix` handler で tweens から Position を remove）＝中断後に marker が滑り残らない。
+        World.Command.emit(World.Cmd.SetRenderPos(World.EntityRef.Player(id), world));
         World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
         // S5b: gridPos は frame-end の syncTreeFromWorld で World 由来に derive。ここは Tween 実体（描画位置）の
         // 即時スナップだけ行う（snapTo は瞬間移動ゆえ Marker2D の world 座標も即合わせる）。
@@ -567,7 +572,7 @@ mod PlayerScene {
     ///   - `PickedUp` : 床へ戻し（`ItemScene.respawn`）+ 在庫末尾の仮取得分を取り消す
     def revertDraftAction(action: MoveDraft.DraftAction,
                             scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, World.Command} =
+            Scene[NodeTag] \ World.Command =
         match action {
             case MoveDraft.DraftAction.MovedFrom(id, cell)              =>
                 snapTo(id, cell, scene) |> playAnim(id, idleAnimName())
