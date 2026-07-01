@@ -63,6 +63,8 @@ mod GameLifecycle {
             |> FogScene.applyFog
             // ミニマップ (最終 placements / 階段を読むため末尾)。訪問記憶はフロア再構築で自動リセット。
             |> MinimapScene.add
+            // B/tiles: マップノード再構築の世代を +1（gameLoop の tile bake トリガ＝新フロアのタイルを World へ焼く）。
+            |> (s -> { World.Command.emit(World.Cmd.BumpTileGen); s })
 
     /// 駒（味方 / 敵 / アイテム / 宝箱 / 階段）に依存しない HUD・常駐ドライバ・メニュー群をまとめて追加する。
     /// `buildPlayingScene`（通常生成）と `rebuildFloorFromSnapshot`（スナップショット復元）が共有し、
@@ -195,6 +197,8 @@ mod GameLifecycle {
             |> FogScene.applyFog
             |> MinimapScene.add;
         SceneLoader.applyAudioAttach(scene);
+        // B/tiles: マップノード再構築の世代を +1（gameLoop の tile bake トリガ＝復元/restartFloor のタイルを World へ焼く）。
+        World.Command.emit(World.Cmd.BumpTileGen);
         scene
 
     /// 保存済み階段位置があればそのセルに階段を確定配置する（無ければ何もしない）。

@@ -1064,12 +1064,19 @@ mod Game {
             // usedStairs/acted/topbar は包括 run 検証で無音確認後に撤去（他 store は §G S2.3〜S4.4b batch 済）。
             // invariant は unit test(testXxxMismatchesEmptyWhenSynced/DetectsDrift)＋spawn-seed test で継続検証。
             let world1 = World.refreshMirror(next, Ref.get(worldRef));
+            // B/tiles: マップ再構築（tileGen 変化＝`BumpTileGen` が今フレーム走った）時のみ、新フロアのタイルハンドルを
+            // scene から World へ bake する。`world`（gameLoop 引数）は前フレームの gen・`world1` は worldRef 由来の
+            // 今フレーム gen ゆえ、両者の差＝「今フレーム再構築された」。以後は preserve（毎フレーム走査なし）。
+            // 階段降り（advanceFloor）/全滅 restart/中断復元/ダンジョン突入を漏れなく捕捉。
+            let world1b = if (World.tileGenOf(world1) != World.tileGenOf(world))
+                              World.setTileLayers(MapScene.tileLayerHandles(next), world1)
+                          else world1;
             // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく
             // `World -> World` の System で回す将来形の seam。S3 以後 stepWorld は identity（statusEffects は
             // command-authoritative ＝ターン境界の Seed で tick 反映・frame-paced tick は二重 tick になるため撤去）。
             // 以後の World→World System はここに足していく。
             // B/m2: moveAnim を実時間 dt（既存の dt: Duration を秒換算）で進める＝engine tween と lockstep 同期。
-            let world2 = World.stepWorld(world1, Duration.toSeconds(dt));
+            let world2 = World.stepWorld(world1b, Duration.toSeconds(dt));
             // F2b（turn phase 書込を Cmd 化）: phase は `TurnPhase.State` handler が `put` のたび `Cmd.SetPhase` で
             // worldRef へ dual-write 済み＝**World.turnPhase は command 由来**（全 41 put サイトを handler 1 箇所で被覆）。
             // よって frame-end の mirror は不要。並走 assert は command 由来 phase と State の乖離（write 漏れ）を検出する
@@ -1108,13 +1115,16 @@ mod Game {
                 // B/fog・range・配置物・HUD/menu: scene 側の fog 暗幕・range タイル・アイテム/宝箱/階段・全 HUD/メニューを隠し、World render System で描く。
                 let prepped = RenderWorld.hideUnitSprites(synced) |> FogScene.hideHaze
                     |> RenderWorld.hideRangeTiles |> RenderWorld.hideMapEntities |> RenderWorld.hideHudMenus;
-                let (sprites, tileMaps, polygons) = GameEngine.renderArgs(prepped);
+                // B/tiles: tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
+                // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。
+                let (sprites, _sceneTileMaps, polygons) = GameEngine.renderArgs(prepped);
                 let worldDrawables = RenderWorld.renderUnits(world2, synced)
                     |> List.append(RenderWorld.renderFog(synced))
                     |> List.append(RenderWorld.renderRangeOverlays(synced))
                     |> List.append(RenderWorld.renderMapEntities(synced))
                     |> List.append(RenderWorld.renderHudMenus(synced));
-                GameEngine.Game.renderCommands(List.append(sprites, worldDrawables), tileMaps, polygons)
+                GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
+                    RenderWorld.renderTileMaps(world2, synced), polygons)
             } else
                 GameEngine.render(synced);
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)

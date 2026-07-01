@@ -124,6 +124,24 @@ mod RenderWorld {
     pub def hideHudMenus(scene: Scene[NodeTag]): Scene[NodeTag] =
         hudMenuRoots() |> List.foldLeft((acc, root) -> hideNode(root, acc), scene)
 
+    /// B/tiles: World の tileLayers（bake 済ハンドル）を camera 適用して engine の instanced tile 描画コマンドにする。
+    /// renderArgs のタイル経路（`globalPositionAt`→`applyToWorldPos` + `transform#scale`）と同一 spine。
+    /// `TileMapRenderCmd` は pub type alias ゆえ直組み（engine 追加なし）。個別 Drawable にせず instanced 維持
+    /// （数百〜千セルでも 1 レイヤー 1 draw call）。renderArgs 由来 tileMaps の代わりにこれを renderCommands へ渡す。
+    pub def renderTileMaps(world: World, scene: Scene[NodeTag]): List[GameEngine.TileMapRenderCmd] \ GameEngine.Game =
+        let transform = viewTransform(scene);
+        World.tileLayersOf(world)
+            |> List.map(h -> ({
+                textureName = h#textureName,
+                tileSize    = h#tileSize,
+                position    = Camera2D.applyToWorldPos(transform, h#worldPos),
+                tileScale   = transform#scale,
+                color       = h#color,
+                zIndex      = h#zIndex,
+                tileVaoId   = h#tileVaoId,
+                tileCount   = h#tileCount
+            }: GameEngine.TileMapRenderCmd))
+
     /// B: fog の暗幕（haze）を World render System で描く。scene の Fog ColorRect プールを使わず、
     /// FogScene の純粋な補集合計算（holesForDraft/mapRegion/bandDecompose）を再利用して暗幕矩形を
     /// solidBox の Drawable にする。敵/アイテムの点灯（可視性）制御は従来どおり FogScene が担い、ここは

@@ -36,6 +36,14 @@ pub enum Channel with Eq, Order {
     case Position   // renderPos（連続描画位置＝移動）
 }
 
+/// B/tiles: GPU タイルレイヤーの軽量描画ハンドル（静的・per-cell TileData 非保持）。scene の TileMapLayer ノード
+/// から rebuild 時に bake し、毎フレーム camera 適用して engine `TileMapRenderCmd` に組む。フィールドは engine の
+/// `TileMapRenderCmd`/`TileMapLayer` に一致（`tileVaoId`/`tileCount`）。`worldPos` は globalPositionAt（camera parity）。
+pub type alias TileLayerHandle = {
+    textureName = String, tileSize = Float64, worldPos = Vec2.Vec2,
+    color = Color, zIndex = Int32, tileVaoId = Int32, tileCount = Int32
+}
+
 pub enum World {
     case World({ tick = Int32,
                  // F2a: turn FSM の World mirror（dual・read-model）。権威は当面 TurnPhase.State。
@@ -124,6 +132,12 @@ pub enum World {
                  // ノックバックの着地計算が要する `boardOf` の地形ソース。empty()=None（シーン未確定）。
                  // syncFromScene/refreshMirror で `BoardSnapshot.mapSnapshotOf(scene)` を再 mirror（toBoard と同源）。
                  mapSnapshot = Option[MapSnapshot],
+                 // B/tiles: 背景 map タイルの描画ハンドル（floor+walls 層・静的）。rebuild イベント（tileGen 変化）で
+                 // bake し、render System が camera 適用して instanced 描画。scene TileMapLayer ノードは衝突用に存続。
+                 tileLayers = List[TileLayerHandle],
+                 // B/tiles: マップ再構築の世代カウンタ。build choke（buildPlayingScene/rebuildFloorFromSnapshot）が
+                 // `Cmd.BumpTileGen` で +1。gameLoop は world1 と incoming world の gen を比べ、変化時のみ tileLayers を bake。
+                 tileGen = Int32,
                  // P2（resolveCombat sim・敵のみ）: 敵特殊能力 effectRule の生 Json read-model（unified-id）。
                  // 内側 Option=ルールなし。enemy `#resource#effectRule`（Option[Json]）由来＝weaponView と同じ
                  // Option-store パターン（accessor が flatten）＝毎フレーム再 mirror。敵パスの sim 発火判定が読む。
@@ -163,6 +177,7 @@ mod World {
                      equippedRing = Map.empty(),
                      growth = Map.empty(),
                      mapSnapshot = None,
+                     tileLayers = Nil, tileGen = 0,
                      effectRule = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false,
                      rng = Prng.seed(0i64)})
@@ -251,6 +266,8 @@ mod World {
                         d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),
             // P1c: mapSnapshot は scene 静的地形（toBoard が借りるのと同源）を毎フレーム再 mirror。
             mapSnapshot = mapSnapshotOpt(scene),
+            // B/tiles: tileLayers/tileGen は command-derive（BumpTileGen/setTileLayers）＝preserve（frame-1 は空/0 を carry）。
+            tileLayers = w#tileLayers, tileGen = w#tileGen,
             // P2: effectRule は敵 resource 由来の read-model（敵のみ・内側 Option=ルールなし）＝毎フレーム再 mirror。
             effectRule = Query.indexBy(d -> enemyUid(d#id), d -> d#resource#effectRule, enemies),
             attackTarget = Map.union(attackTargetMap(id -> id, players),
@@ -342,6 +359,8 @@ mod World {
                         d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),
             // P1c: mapSnapshot も scene 静的地形を毎フレーム再 mirror（toBoard と同源）。
             mapSnapshot = mapSnapshotOpt(scene),
+            // B/tiles: tileLayers/tileGen は command-derive＝preserve（rebuild イベント〔tileGen 変化〕時のみ gameLoop が bake）。
+            tileLayers = w#tileLayers, tileGen = w#tileGen,
             // P2: effectRule も敵 resource 由来 read-model（敵のみ）＝毎フレーム再 mirror。
             effectRule = Query.indexBy(d -> enemyUid(d#id), d -> d#resource#effectRule, enemies),
             attackTarget = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#attackTarget),
@@ -490,6 +509,7 @@ mod World {
         case SetProgress(EntityRef, Int32, Int32) // World 拡張: 味方の (level, exp) write（撃破/レベルアップ/復元で）
         case SetEnemyTurnBusy(Bool)            // F8-slice2: 敵ターン intro hold 中 bool write（TopBar dual-write）
         case SetPhaseObservedEnemy(Bool)       // F8-slice2: バーが敵ターン観測済み bool write（TopBar dual-write）
+        case BumpTileGen                       // B/tiles: マップ再構築の世代 +1（build choke が emit・gameLoop の tile bake トリガ）
     }
 
     /// System が出力する sim-event（F-clock の最小骨組み・F3b 導入 → slice `simevent-algebra` で拡張）。
@@ -780,6 +800,10 @@ mod World {
                 let World.World(w) = world; World.World({enemyTurnBusy = b | w})
             case Cmd.SetPhaseObservedEnemy(b) =>
                 let World.World(w) = world; World.World({phaseObservedEnemy = b | w})
+            case Cmd.BumpTileGen =>
+                // B/tiles: マップ再構築の世代 +1。build choke（buildPlayingScene/rebuildFloorFromSnapshot）が emit し、
+                // gameLoop が world1 と incoming world の gen 差でタイル bake を判定する。
+                let World.World(w) = world; World.World({tileGen = w#tileGen + 1 | w})
         }
 
     // ── slice `simevent-algebra`: SimEvent reducer / adapter / cmdKey ────────────────
@@ -916,6 +940,7 @@ mod World {
             case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)
             case Cmd.SetPhaseObservedEnemy(b) => ("PhObs", bool01(b), 0, 0)
+            case Cmd.BumpTileGen              => ("BumpTileGen", 0, 0, 0)
         }
 
     /// F7-spike: 敵の alerted を World から読む（reader flip の供給元・hpOf 同型）。Player は常に None。
@@ -978,6 +1003,18 @@ mod World {
     /// Phase 2 で engine `Tween.tweenPosition` を退役しこれ 1 本に統一。
     pub def moveUnit(ref: EntityRef, span: EcsTween.VecLerp, sec: Float64): Unit \ Command =
         Command.emit(Cmd.StartTween(ref, Channel.Position, EcsTween.Track.Vec(span), sec, EcsTween.Easing.Linear, false))
+
+    /// B/tiles: マップ再構築の世代（gameLoop の tile bake トリガ比較用）。
+    pub def tileGenOf(world: World): Int32 =
+        let World.World(w) = world; w#tileGen
+
+    /// B/tiles: 背景 map タイルの描画ハンドル（render System が読む）。
+    pub def tileLayersOf(world: World): List[TileLayerHandle] =
+        let World.World(w) = world; w#tileLayers
+
+    /// B/tiles: bake したタイルハンドルを World にセット（rebuild〔tileGen 変化〕時に gameLoop が呼ぶ）。
+    pub def setTileLayers(handles: List[TileLayerHandle], world: World): World =
+        let World.World(w) = world; World.World({tileLayers = handles | w})
 
     /// F7-slice4: followUpUsed を World から読む（両 faction）。A': 単一 store＋toUid。
     pub def followUpUsedOf(ref: EntityRef, world: World): Option[Bool] =

@@ -53,6 +53,29 @@ mod MapScene {
     def name(): String = "DungeonLevel0"
     def floorName(): String = "DungeonLevel0Floor"
     pub def mapPath(): NodePath = name() :: Nil
+    /// B/tiles: floor 層（z=-1）の path。render-from-World の tile bake がこの層と walls 層（`mapPath`）を読む。
+    pub def floorPath(): NodePath = floorName() :: Nil
+
+    /// B/tiles: floor 層 + walls 層の TileMapLayer ノードから軽量描画ハンドルを bake（World 権威化）。
+    /// タイルノードが無い画面（Title/CharacterSelect）は空。camera parity のため `worldPos` は `globalPositionAt`、
+    /// color/zIndex はノード生値（`toRenderCmd` と同一＝祖先合成しない tile 経路）。
+    pub def tileLayerHandles(scene: Scene[NodeTag]): List[TileLayerHandle] =
+        (tileHandleAt(floorPath(), scene) :: tileHandleAt(mapPath(), scene) :: Nil)
+            |> List.filterMap(x -> x)
+
+    def tileHandleAt(layerPath: NodePath, scene: Scene[NodeTag]): Option[TileLayerHandle] =
+        match Scene.getEngineNode(layerPath, scene) {
+            case Some(EngineNode.TileMapLayerWithState(tm, _)) =>
+                let TileMapLayer.TileMapLayer(r) = tm;
+                Some({ textureName = r#tileSet#atlasSource#textureName,
+                       tileSize    = r#tileSet#atlasSource#tileSize,
+                       worldPos    = Scene.globalPositionAt(layerPath, scene),
+                       color       = r#modulate,
+                       zIndex      = r#zIndex,
+                       tileVaoId   = r#tileVaoId,
+                       tileCount   = r#tileCount })
+            case _ => None
+        }
 
     /// 全キャラ（Player / Enemy）の共通親となる Marker2D の名前。
     /// `ySortEnabled = true` を有効にしてここに直接の子を Y 順で並べることで

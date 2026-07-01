@@ -557,6 +557,27 @@ mod TestWorld {
             expected = (Some((5, 5)), Some((3, 3))),
             (tup(World.EntityRef.Player(0)), tup(World.EntityRef.Enemy(5))))
 
+    // ── B/tiles: 背景タイルの World 権威化（bake ハンドル preserve と gen bump）──
+
+    /// setTileLayers した描画ハンドルが stepWorld（identity）を経ても残る（rebuild イベント間 World 権威で保持）。
+    @Test
+    def testTileLayersPreservedThroughStep(): Unit \ Assert =
+        let handle = ({textureName = "atlas", tileSize = 26.0, worldPos = {x = 0.0, y = 0.0},
+                       color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}, zIndex = -1,
+                       tileVaoId = 7, tileCount = 42}: TileLayerHandle);
+        let stepped = World.stepWorld(World.setTileLayers(handle :: Nil, World.empty()), 0.0);
+        match World.tileLayersOf(stepped) {
+            case h :: Nil => Assert.assertEq(expected = (7, 42), (h#tileVaoId, h#tileCount))
+            case _        => bug!("expected exactly 1 tile layer preserved")
+        }
+
+    /// `Cmd.BumpTileGen` がマップ再構築の世代を 1 ずつ増やす（gameLoop の tile bake トリガの根拠）。
+    @Test
+    def testBumpTileGenIncrements(): Unit \ Assert =
+        let w1 = World.applyCmd(World.Cmd.BumpTileGen, World.empty());
+        let w2 = World.applyCmd(World.Cmd.BumpTileGen, w1);
+        Assert.assertEq(expected = (1, 2), (World.tileGenOf(w1), World.tileGenOf(w2)))
+
     /// F3 基盤: `syncTreeFromWorld` が World の位置を scene の `gridPos` に **derive** する。
     /// F3 の sim/view 分離（位置の権威は World・scene はその派生／`replayMoveView` は見た目のみ）の前提。
     /// `Cmd.Move` で World 位置を動かし、syncTreeFromWorld 後に scene Player gridPos が World 由来に

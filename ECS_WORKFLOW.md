@@ -70,7 +70,7 @@
   - [x] **MoveAttackRange（脅威範囲）を World**（`RenderWorld.renderMoveAttackRange`＝表示専用ゆえ格納セルを `RangeOverlay.tileDrawables` で hatch Panel の Drawable 化・`hideTiles`。実機 OK）
   - [x] **汎用化＋lib 昇華: `Render.applyCameraScale`**（units/fog/range の camera 適用〔applyToWorldPos＋scale×zoom〕の重複 spine を `engine_ecs/Render` へ昇華。dodge 等も再利用可）＝flow「実装×2→法則→汎用→lib」の 1 サイクル完了
   - [x] **マップ配置物（アイテム/宝箱/階段）を World**（`mapEntityRoots` リスト＝`ItemScene`/`ChestScene`/`StairsScene` の各 subtree を `subtreeDrawables` で描き `hideNode` で隠す。parent-child System の忠実合成ゆえ自可視 native・任意深さ・fog 暗所非表示も native）
-  - [ ] map タイルを World 描画（tilemap from `Board`/World。★per-cell atlas データが World 未保持＝engine 相談要）
+  - [x] **map タイルを World 描画**（レビュー 3 ラウンド 77→80→84→gen-counter で被覆確定・**engine 改修ゼロ**）。instanced 維持（`initTileBuffer`/`TileMapRenderCmd`/`renderCommands` 再利用）。World が軽量ハンドル `TileLayerHandle` を **rebuild-generation（`Cmd.BumpTileGen` を build choke 2 点で +1）変化時に bake**して権威化、`RenderWorld.renderTileMaps` が camera 適用して instanced 描画。gen カウンタは vaoId 検出の leak 非依存 semantic 版＝突入/階段降り/全滅 restart/復元を全経路被覆。scene TileMapLayer ノードは衝突/グリッド用に存続。1066 tests green
   - [ ] minimap を World（★accumulated 状態移送＋CanvasLayer 要）
   - [x] **全 7 range overlays を World**（Move/MoveAttack/EnemyRange/EnemyAttack/PlayerAttack/Trade/DangerZone）。`RenderWorld.renderRangeOverlays` に**1 経路集約**（各 mod は cells/color/alpha だけ・描画は `tileDrawables` の law に一本化）＋`hideRangeTiles`。全て表示専用ゆえ格納セル＝描画セル（MoveRange のみ stoppable を `Data#drawCells` に追加格納）。**helper 投資の回収実証**＝5 つ追加で新規ロジックほぼゼロ。1064 tests green
 
