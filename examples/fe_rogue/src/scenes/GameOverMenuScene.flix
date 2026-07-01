@@ -21,6 +21,8 @@ mod GameOverMenuScene {
     def panelName(): String = "panel"
     def menuName(): String = "menu"
 
+    /// B: render-from-World が HUD/メニューサブツリーを描く/隠す root。
+    pub def rootPath(): NodePath = rootName() :: Nil
     pub def panelPath(): NodePath = rootName() :: panelName() :: Nil
     pub def menuPath(): NodePath = rootName() :: panelName() :: menuName() :: Nil
 

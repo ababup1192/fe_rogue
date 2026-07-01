@@ -88,6 +88,8 @@ mod LevelUpPanelScene {
     def bodyPlus2Name(): String   = "bodyPlus2"
     def footerName(): String     = "footer"
 
+    /// B: render-from-World が HUD/メニューサブツリーを描く/隠す root。
+    pub def rootPath(): NodePath   = rootName() :: Nil
     def panelPath(): NodePath      = rootName() :: panelName()      :: Nil
     def headerPath(): NodePath     = rootName() :: headerName()     :: Nil
     def bodyLabelsPath(): NodePath = rootName() :: bodyLabelsName() :: Nil

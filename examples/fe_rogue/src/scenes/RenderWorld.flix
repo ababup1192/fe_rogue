@@ -110,9 +110,27 @@ mod RenderWorld {
         Scene.subtreeDrawables(viewTransform(scene), root, scene)
 
     /// B: パスのノードを隠す（World 描画へ切替時の二重描画防止）。CanvasLayer/親ノードを隠せば祖先可視で
-    /// サブツリー全体が renderArgs から外れる（drawContext の祖先 visible 合成）。
+    /// サブツリー全体が renderArgs から外れる（drawContext の祖先 visible 合成）。不在パスは no-op（動的 menu 用）。
     pub def hideNode(path: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(path, n -> CanvasItem.setVisible(false, n), scene)
+        match Scene.getEngineNode(path, scene) {
+            case None    => scene
+            case Some(_) => Scene.mapEngineNode(path, n -> CanvasItem.setVisible(false, n), scene)
+        }
+
+    /// B: World 描画する HUD/メニューの root 一覧（CanvasLayer サブツリー）。在れば `subtreeDrawables` で描き、
+    /// 不在（未オープンの動的 menu 等）は `renderSubtree`/`hideNode` とも no-op。
+    def hudMenuRoots(): List[NodePath] =
+        TopBarScene.rootPath() :: UnitCardScene.rootPath() :: UnitInfoPopupScene.rootPath() ::
+        ActionMenuScene.rootPath() :: ItemMenuScene.rootPath() :: WeaponSelectScene.rootPath() ::
+        TradeMenuScene.rootPath() :: GameOverMenuScene.rootPath() :: LevelUpPanelScene.rootPath() :: Nil
+
+    /// B: 全 HUD/メニューサブツリーを World render System で描く（各 root に `renderSubtree`）。
+    pub def renderHudMenus(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        hudMenuRoots() |> List.flatMap(root -> renderSubtree(root, scene))
+
+    /// B: 全 HUD/メニューの scene 側 root を隠す（renderArgs から外し二重描画防止）。
+    pub def hideHudMenus(scene: Scene[NodeTag]): Scene[NodeTag] =
+        hudMenuRoots() |> List.foldLeft((acc, root) -> hideNode(root, acc), scene)
 
     /// B: fog の暗幕（haze）を World render System で描く。scene の Fog ColorRect プールを使わず、
     /// FogScene の純粋な補集合計算（holesForDraft/mapRegion/bandDecompose）を再利用して暗幕矩形を

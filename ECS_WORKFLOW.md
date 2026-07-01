@@ -49,10 +49,11 @@
   - 〜以下は scene-tree 撤去フェーズで（engine tween は isMoving timer として存続）〜
   - [ ] lunge/knockback 等を World アニメ化（→ renderPos が全位置を持つ）
   - [ ] `isMoving` → `World.isAnimating`・engine tween 撤去＝完全単一源（⚠ Tween.Scheduler effect cascade・scene-tree 撤去と同時が自然）
-- [ ] **HUD を World 描画**（TopBar・ユニット情報パネル等・text 主体＝`textTinted` 活用）
-- [ ] **メニュー全面移植** ★最大の山（4〜6週相当）
-  - [ ] 共通ウィジェットを手書き（ItemList の cursor/focus/disabled/auto-size、input bubbling）
-  - [ ] 各 menu を World 描画へ（ActionMenu / WeaponSelect / ItemMenu / TradeMenu / GameOver / LevelUp / 他）
+- [x] **parent-child transform System（engine `Scene.subtreeDrawables`）**＝HUD/メニュー移送の前提（レビュー 91/100）
+  - [x] engine: `Scene.subtreeDrawables(transform, rootPath, scene)`＝既存忠実合成 `pathToDrawables` をサブツリーに絞り再利用（任意深さ・CanvasLayer・祖先 visible/modulate/z/rotation）。`toDrawables = subtreeDrawables(Nil)` 委譲（構成的 parity）。★フル Transform2D 伝播は作らない（誰も未使用＝YAGNI・renderArgs 自体が祖先 scale 非対応。seam で defer）
+  - [x] items を subtreeDrawables 化（自ノード可視を native 判定＝手貼り patch 撤去）
+- [x] **HUD を World 描画**（TopBar/UnitCard/UnitInfoPopup を `renderSubtree`/`hideNode` で・CanvasLayer は camera 非適用を native 処理）
+- [x] **メニューを World 描画**（ActionMenu/ItemMenu/WeaponSelect/TradeMenu/GameOver/LevelUp を `hudMenuRoots` リストで `renderHudMenus`/`hideHudMenus` に集約。ItemList の行/カーソルは Renderable 経由で合成＝共通ウィジェット手書き不要だった）。★各 root は不在時 no-op（動的 menu 安全）。全 check+1064 tests green
 - [ ] **camera を World 化** ★要相談（engine camera System 新規・追従/smoothing/limit）
 - [ ] **scene-tree 完全撤去**＝**B 完成宣言**（EntityScene / `syncTreeFromWorld` / render-from-scene 経路 / 重複② の物理撤去）
 - [ ] **統合・全体 run 検証**
