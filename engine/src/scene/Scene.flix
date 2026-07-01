@@ -806,23 +806,33 @@ pub mod Scene {
                 }
         }
 
-    /// 可視ノードを Drawable のリストに変換する。
-    ///
-    /// パイプライン:
-    ///   1. `renderOrderPaths` でツリーを Y-sort 込みの描画順に並べる（Godot 準拠）
-    ///   2. 各パスを `pathToDrawables` で Drawable 群に変換し、走査 index を貼り付ける
-    ///   3. `(zIndex, drawIndex)` で sortBy する。`List.sortBy` は安定でないため、
-    ///      二次キーとして走査 index を tiebreak に使うことで Y-sort 順を z バケット内で保持する
-    ///
-    /// 祖先の visible/modulate/zIndex は drawContext 経由で自動伝播する。
-    /// transform: カメラ ViewTransform。CanvasLayer 配下のノードには適用しない
+    /// Drawable 群を `(zIndex, 走査 index)` で安定 z ソートする。`List.sortBy` は安定でないため、
+    /// 走査 index を二次キー（tiebreak）にして同 z バケット内の Y-sort/描画順を保持する。
+    /// `toDrawables` と `subtreeDrawables` が共有する末尾処理。
+    def stableZSort(ds: List[GameEngine.Drawable]): List[GameEngine.Drawable] =
+        ds
+            |> List.zipWithIndex             // (drawIndex, drawable)
+            |> List.sortBy(idxD -> let (idx, d) = idxD; (d#zIndex, idx))
+            |> List.map(idxD -> let (_, d) = idxD; d)
+
+    /// `rootPath` 配下のサブツリーを、祖先合成込み・自己完結の z 順 Drawable にする（render-from-World 用）。
+    /// 既存の per-node 完全合成 `pathToDrawables`（visible[祖先 AND 自]/modulate[祖先×自]/z/rotation/CanvasLayer
+    /// + globalPositionAt + camera/zoom）を、描画順(Y-sort)の全走査 `renderOrderPaths` を rootPath 前置フィルタで
+    /// 絞った部分列に適用する＝`renderArgs` と同一合成・任意深さ（孫以下も訪問）。`rootPath = Nil` で全ツリー。
+    /// 他 drawable との最終 z 前後は Frame の global 安定ソートに委譲する（順序契約）。
+    /// seam: 祖先 rotation は drawable 自転角へ加算のみ（公転なし）・祖先 scale は非伝播＝`renderArgs` と同一挙動。
+    /// コスト: 呼びごとに `renderOrderPaths`（全 scene 走査）＝O(roots × nodes)/frame。浅い UI では許容。
+    pub def subtreeDrawables(transform: Camera2D.ViewTransform, rootPath: NodePath,
+                              scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
+        renderOrderPaths(scene)
+            |> List.filter(p -> List.isPrefixOf(rootPath, p))
+            |> List.flatMap(path -> pathToDrawables(transform, path, scene))
+            |> stableZSort
+
+    /// 可視ノード全体を Drawable のリストに変換する。`subtreeDrawables` の「全ツリー」ケース（rootPath = Nil）
+    /// に委譲＝サブツリー版と同一機構を通る（構成的 parity）。祖先の visible/modulate/zIndex は drawContext
+    /// 経由で自動伝播する。transform: カメラ ViewTransform。CanvasLayer 配下のノードには適用しない。
     pub def toDrawables(transform: Camera2D.ViewTransform,
                          scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
-        renderOrderPaths(scene)
-            |> List.flatMap(path -> pathToDrawables(transform, path, scene))
-            |> List.zipWithIndex             // (drawIndex, drawable)
-            |> List.sortBy(idxD ->
-                let (idx, d) = idxD;
-                (d#zIndex, idx))
-            |> List.map(idxD -> let (_, d) = idxD; d)
+        subtreeDrawables(transform, Nil, scene)
 }

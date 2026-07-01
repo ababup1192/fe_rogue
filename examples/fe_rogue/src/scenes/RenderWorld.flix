@@ -82,21 +82,6 @@ mod RenderWorld {
                 spriteNodeDrawables(spritePath, worldPos, transform, scene)
         }
 
-    /// B: 親ノード配下の全 sprite 子（body / outline 等）を、可視なら World render System で描く汎用。
-    /// マップ上の静的スプライト群（アイテム / 宝箱 等）が共有。位置は各ノードに焼き込み済ゆえ globalPositionAt を
-    /// worldPos に使う。fog は visible=false で暗所を落とす（従来どおり）。親が無い画面（非ダンジョン）は空。
-    pub def renderSpriteChildren(parentPath: NodePath, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        match Scene.getEngineNode(parentPath, scene) {
-            case None    => Nil
-            case Some(_) =>
-                let transform = viewTransform(scene);
-                Scene.getChildrenAt(parentPath, scene)
-                    |> List.flatMap(name -> {
-                        let path = List.append(parentPath, name :: Nil);
-                        spriteNodeDrawables(path, Scene.globalPositionAt(path, scene), transform, scene)
-                    })
-        }
-
     /// B: 親配下の全 sprite 子を隠す（World 描画へ切替時の二重描画防止）。親が無ければ scene 不変。
     pub def hideSpriteChildren(parentPath: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
         match Scene.getEngineNode(parentPath, scene) {
@@ -108,9 +93,12 @@ mod RenderWorld {
                             n -> CanvasItem.setVisible(false, n), acc), scene)
         }
 
-    /// B: マップ上のアイテム（body＋点滅 outline の sprite 兄弟）を World render System で描く。
+    /// B: マップ上のアイテム（body＋点滅 outline）を World render System で描く。エンジンの忠実合成
+    /// `Scene.subtreeDrawables`（visible[祖先 AND 自]/modulate/z/camera/任意深さ）を Items サブツリーに適用
+    /// ＝renderArgs と同一・**自ノード可視も native 判定**（旧 renderSpriteChildren+spriteNodeDrawables の
+    /// 自可視 patch は不要に）。孫を持つ subtree でも脱落しない（latent capability）。
     pub def renderItems(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        renderSpriteChildren(ItemScene.parentPath(), scene)
+        Scene.subtreeDrawables(viewTransform(scene), ItemScene.parentPath(), scene)
 
     /// B: scene 側アイテム sprite を隠す（renderItems が描くため）。
     pub def hideItems(scene: Scene[NodeTag]): Scene[NodeTag] =
