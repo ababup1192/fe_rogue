@@ -104,6 +104,16 @@ mod RenderWorld {
     pub def hideItems(scene: Scene[NodeTag]): Scene[NodeTag] =
         hideSpriteChildren(ItemScene.parentPath(), scene)
 
+    /// B: `root` 配下のサブツリー（HUD/メニュー等の階層 UI）を World render System で描く。エンジンの
+    /// 忠実合成 `Scene.subtreeDrawables`（祖先合成・任意深さ・CanvasLayer は camera 非適用）に委譲＝renderArgs 同一。
+    pub def renderSubtree(root: NodePath, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        Scene.subtreeDrawables(viewTransform(scene), root, scene)
+
+    /// B: パスのノードを隠す（World 描画へ切替時の二重描画防止）。CanvasLayer/親ノードを隠せば祖先可視で
+    /// サブツリー全体が renderArgs から外れる（drawContext の祖先 visible 合成）。
+    pub def hideNode(path: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(path, n -> CanvasItem.setVisible(false, n), scene)
+
     /// B: fog の暗幕（haze）を World render System で描く。scene の Fog ColorRect プールを使わず、
     /// FogScene の純粋な補集合計算（holesForDraft/mapRegion/bandDecompose）を再利用して暗幕矩形を
     /// solidBox の Drawable にする。敵/アイテムの点灯（可視性）制御は従来どおり FogScene が担い、ここは

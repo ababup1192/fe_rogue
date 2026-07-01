@@ -47,7 +47,8 @@ mod TopBarScene {
     def gatherLabelName(): String = "gatherLabel"
     def gatherIconName(): String = "gatherIcon"
 
-    def rootPath(): NodePath = rootName() :: Nil
+    /// B: render-from-World が HUD サブツリーを描く/隠す際の root（`RenderWorld.renderSubtree`/`hideNode` 用）。
+    pub def rootPath(): NodePath = rootName() :: Nil
     def bandPath(): NodePath = rootName() :: bandName() :: Nil
     def bandSweepPath(): NodePath = rootName() :: bandSweepName() :: Nil
     def underlinePath(): NodePath = rootName() :: underlineName() :: Nil
