@@ -8,9 +8,6 @@ mod RenderWorld {
     use Render.RenderItem
     use Vec2.Vec2
 
-    /// m1 toggle: true で render-from-World（box）・false で従来 scene-tree 描画。実機で切替検証。
-    pub def useRenderFromWorld(): Bool = true
-
     /// m1c: renderArgs に渡す前に scene 側のユニット sprite を不可視化＝ユニットは World からのみ描かれる
     /// （重複②の一角を scene-tree から剥がす）。不変 scene のコピーを返す（実 scene 状態は不変）。
     pub def hideUnitSprites(scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -105,7 +102,7 @@ mod RenderWorld {
     /// B: World 描画する **CanvasLayer（camera 免除・画面固定）** サブツリー root。HUD/メニュー/minimap/各種ポップアップ。
     /// 不在（未オープンの動的 menu 等）は `subtreeDrawables`/`hideNode` とも no-op。
     def hudSubtreeRoots(): List[NodePath] =
-        TopBarScene.rootPath() :: UnitCardScene.rootPath() :: UnitInfoPopupScene.rootPath() ::
+        TopBarScene.rootPath() :: UnitCardScene.rootPath() ::
         ActionMenuScene.rootPath() :: ItemMenuScene.rootPath() :: WeaponSelectScene.rootPath() ::
         TradeMenuScene.rootPath() :: GameOverMenuScene.rootPath() :: LevelUpPanelScene.rootPath() ::
         MinimapScene.rootPath() ::

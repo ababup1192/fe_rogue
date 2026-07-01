@@ -90,12 +90,6 @@ mod ActionMenuScene {
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
 
-    /// 「行動メニューが現在 visible か」のヘルパー。gameLoop の Escape→quit 判定で使う。
-    pub def isVisible(scene: Scene[NodeTag]): Bool =
-        Panel.getAt(panelPath(), scene)
-            |> Option.map(CanvasItem.isVisible)
-            |> Option.getWithDefault(false)
-
     /// フェーズ遷移時の visibility 適用。
     ///   - Panel : ActionSelect / WeaponSelect フェーズで visible
     ///   - Menu  : ActionSelect / WeaponSelect で visible。focus は ActionSelect のときだけ
@@ -426,7 +420,7 @@ mod ActionMenuScene {
     /// インベントリのいずれかの武器の射程内に生きている敵が居るか。
     /// 装備中(先頭)だけでなく全武器を見る: 射程を変えれば(= 別の武器に持ち替えれば)
     /// 攻撃できる場合も「攻撃」を出すため。武器なし / 全員 isDying / どの武器も射程外なら false。
-    /// 持ち替え後の実際の装備は `PlayerScene.enterAttackPhase` が行う。
+    /// 持ち替え後の実際の装備は WeaponSelect の確定時に行う。
     def canAttackFrom(player: PlayerScene.Data): Bool \ EnemyData.RosterQuery =
         let enemies = EnemyData.RosterQuery.getAll();
         List.exists(w -> weaponReachesAnyEnemy(player#gridPos, w, enemies), player#weapons)
@@ -474,7 +468,7 @@ mod ActionMenuScene {
 
     /// ItemList 項目が確定された (Enter) 瞬間に呼ばれる。metadata から
     /// 「attack」/「wait」/「pickup」/「gather」を分岐して、それぞれの帰結を直接適用する。
-    ///   - attack: 攻撃ターゲット選択フェーズへ (`PlayerScene.enterAttackPhase` に委譲)
+    ///   - attack: 武器選択ウィンドウへ (`enterWeaponSelect` に委譲)
     ///   - wait:   その場で waited 確定
     ///   - pickup: 床アイテムを拾って waited 確定 (拾うで 1 ターン使う)
     ///   - gather: 集合。GatherMove へ移って主人公が隊列を率いて動き始める (`applyGather`)

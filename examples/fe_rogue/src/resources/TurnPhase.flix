@@ -53,7 +53,7 @@ mod TurnPhase {
         /// ActionMenu「攻撃」確定で入り、ActionMenu の右隣に武器選択ウィンドウ (WeaponSelectScene)
         /// が出る。ActionMenu は表示したまま「攻撃」行をハイライト維持し、focus は武器側に移る。
         /// 上下キーで武器を選び Enter/Z で確定すると、その武器を装備 (weapons 先頭へ) してから
-        /// 既存の攻撃フロア (`PlayerScene.enterAttackPhase`) に入る。X/Escape で ActionSelect に戻る。
+        /// 攻撃フロアに入る。X/Escape で ActionSelect に戻る。
         case WeaponSelect
         /// 味方ターン・アイテム選択フェーズ。
         /// ActionMenu の「アイテム」確定で入り、画面に ItemMenu が出る。

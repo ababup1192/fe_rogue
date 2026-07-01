@@ -112,13 +112,6 @@ mod ItemMenuScene {
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
 
-    /// 「アイテムメニューが現在 visible か」のヘルパー。
-    /// gameLoop の Escape→quit 判定で「メニュー表示中は Escape を quit に流さない」用途。
-    pub def isVisible(scene: Scene[NodeTag]): Bool =
-        Panel.getAt(panelPath(), scene)
-            |> Option.map(CanvasItem.isVisible)
-            |> Option.getWithDefault(false)
-
     // ────────────────────────────────────────────────────────
     // (D) ロジック
     // ────────────────────────────────────────────────────────

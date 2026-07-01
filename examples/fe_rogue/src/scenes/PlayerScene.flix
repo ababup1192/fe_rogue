@@ -607,37 +607,6 @@ mod PlayerScene {
                 setActive(id, scene)
         }
 
-    /// ActionMenu「こうげき」確定で呼ばれる: 攻撃ターゲット選択フェーズへ。
-    /// overlay / cursor 整理は `PhaseTransitions.enterPlayerAttack` が担当
-    /// (全武器の射程の和集合で赤マスを敷き、最初のターゲットへカーソルをスナップ)。
-    /// その後、カーソルが乗った敵に届く先頭の武器を装備(先頭へ移動)しておく。これにより
-    /// 装備中(先頭)武器が届かない敵でも、届く武器を「装備した扱い」で攻撃ウィンドウを開ける。
-    pub def enterAttackPhase(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command} =
-        let withPhase = PhaseTransitions.enterPlayerAttack(scene);
-        equipReachingWeaponForCursor(withPhase)
-
-    /// カーソルが乗っている敵に届く先頭の武器を装備する (届く武器が無ければ no-op)。
-    /// 進入直後の「装備した扱い」初期化用。`enterAttackPhase` からのみ呼ぶ。
-    /// 意図的な EnemyScene 直接 read: `RosterQuery` handler はフレーム冒頭の snapshot
-    /// (sceneRef) を読むため、mid-frame で更新済みの `scene` を見るにはモジュール直読みが必要。
-    def equipReachingWeaponForCursor(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, World.Command} =
-        match SelectedPlayer.State.get()#id {
-            case None     => scene
-            case Some(id) =>
-                let equipped = forM (
-                    player <- get(id, scene);
-                    eid    <- EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene);
-                    enemy  <- EnemyScene.get(eid, scene);
-                    idx    <- firstWeaponIdxReaching(player,
-                                  Weapon.manhattan(player#gridPos, enemy#gridPos))
-                ) yield equipWeapon(id, idx, scene);
-                Option.getWithDefault(scene, equipped)
-        }
-
     /// インベントリの先頭から、距離 `distance` に射程が届く最初の武器の index を返す。
     /// 届く武器が無ければ None。攻撃中の武器選択・進入時装備で共用する純粋関数。
     pub def firstWeaponIdxReaching(data: Data, distance: Int32): Option[Int32] =
@@ -1091,14 +1060,6 @@ mod PlayerScene {
                 ({id = d#id, classId = d#classId, gridPos = d#gridPos, resource = d#resource,
                    weapons = d#weapons, staves = d#staves,
                    consumables = d#consumables, rings = d#rings}: Spawn))
-
-    /// 既存のプレイヤーを全て scene から取り除き、`spawns` から再構築する。
-    /// HP / waited / gridPos を初期値で生成する。
-    pub def respawnFromInitial(spawns: List[Spawn],
-                                scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        let cleared = List.foldLeft((sc, d) ->
-            Scene.removeAt(playerPath(d#id), sc), scene, getAll(scene));
-        List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), cleared, spawns)
 
     // ────────────────────────────────────────────────────────
     // (F') フロア進行 — 階段退場 / フロア持ち越し

@@ -14,7 +14,7 @@
 ///   - PlayerScene / EnemyScene は MapScene の placements に従ってスポーン
 ///   - MoveRangeScene は SelectedPlayer 状態を読むが起動時は未選択なので no-op
 ///   - Camera は最後に追加して全プレイヤー出揃った後に追従開始
-///   - UI 系 (WeaponMenu / ActionMenu / BattlePanel / UnitInfoPopup) は最後 (描画前面)
+///   - UI 系 (WeaponMenu / ActionMenu / BattlePanel / UnitCard) は最後 (描画前面)
 ///
 /// `catalog` は `Game.start` でロード済みのユニット定義。PlayerScene と EnemyScene に
 /// プール定義 (`party` / `enemyTier1`) を辿らせる。

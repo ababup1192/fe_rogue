@@ -13,9 +13,6 @@
 /// IDE preview では呼ばないため preview が勝手に鳴ることはない。
 mod BgmScene {
 
-    def name(): String = "BGM"
-    pub def bgmPath(): NodePath = name() :: Nil
-
     /// scene.json への相対パス（cwd = プロジェクトルート想定）
     def scenePath(): String = AssetPath.resolve("src/scenes/BgmScene.scene.json")
 

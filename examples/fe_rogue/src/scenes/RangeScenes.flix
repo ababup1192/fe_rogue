@@ -534,15 +534,6 @@ mod PlayerAttackRangeScene {
             |> List.map(o ->
                 ({x = origin#x + o#x, y = origin#y + o#y}: {x = Int32, y = Int32}))
 
-    /// 指定セルが現在の射程内 (赤マス上) にあるか。
-    /// 範囲が表示されていない (= フェーズが PlayerAttack ではない) 場合は false。
-    pub def isInRange(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Bool =
-        match Scene.getState(attackRangePath(), scene) {
-            case Some(NodeTag.PlayerAttackRange(data)) =>
-                List.exists(c -> c#x == cell#x and c#y == cell#y, data#cells)
-            case _ => false
-        }
-
     /// 現在の射程内セル一覧 (テスト・デバッグ用)。未登録なら空リスト。
     pub def cells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
         match Scene.getState(attackRangePath(), scene) {

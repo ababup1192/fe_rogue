@@ -99,15 +99,6 @@ mod StairsExitScene {
             |> List.map(d -> (d#id, d#gridPos,
                               PlayerScene.effectiveMoveTilesOf(d) - d#moveStepsTaken))
 
-    /// メニューに「階段」を出してよいか（階段があり、実際に降りられる＝届く生存味方が 1 人以上）。
-    /// 副作用なし（メニュー構築から呼べる）。
-    pub def canExit(scene: Scene[NodeTag]): Bool =
-        match StairsScene.getPos(scene) {
-            case None         => false
-            case Some(stairs) =>
-                not List.isEmpty(eligibleExiters(BoardSnapshot.fromScene(scene), stairs, livingUnits(scene)))
-        }
-
     /// 「階段」確定。降りられる味方が 1 人以上居れば、全味方を退場キューに積み StairsExit フェーズへ。
     /// 届かない味方も含めてキューに入れる（近づけるところまで近づいて止まる）。
     pub def begin(scene: Scene[NodeTag]):
@@ -119,7 +110,7 @@ mod StairsExitScene {
                 // P1a: frame-head の board 読みを World 由来へ（move 前ゆえ World==scene・挙動不変）。
                 let board = BoardQuery.board();
                 let units = livingUnits(scene);
-                // 誰も階段に届かないなら何もしない（メニューは canExit のときだけ出すので通常来ない）。
+                // 誰も階段に届かないなら何もしない（メニューは主人公が階段の上に居るときだけ出すので通常来ない）。
                 if (List.isEmpty(eligibleExiters(board, stairs, units))) scene
                 else {
                     AudioStreamPlayer.play("change_floor");

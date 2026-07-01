@@ -249,10 +249,6 @@ mod MapScene {
             case _ => bug!("MapScene: TileMapLayer not found at ${mapPath()}")
         }
 
-    /// MapScene.add が記録した anchor の正規化後 offset を取り出す。
-    pub def getAnchorOffset(scene: Scene[NodeTag]): {x = Int32, y = Int32} =
-        getMapData(scene)#anchorOffset
-
     /// anchor 内の床セルとして保証されたスポーン地点（ワールド座標）を取り出す。
     /// PlayerScene.add がプレイヤーをここに配置する。
     pub def getSpawnGrid(scene: Scene[NodeTag]): {x = Int32, y = Int32} =

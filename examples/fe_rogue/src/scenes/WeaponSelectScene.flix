@@ -12,7 +12,7 @@
 ///
 /// 操作:
 ///   - ↑↓ で武器を選び Enter/Z で確定 → 選んだ武器を装備 (weapons 先頭へ移動) してから
-///     既存の攻撃フロア (`PlayerScene.enterAttackPhase`) に入る（赤マス→敵選択→予報→攻撃）。
+///     攻撃フロアに入る（赤マス→敵選択→予報→攻撃）。
 ///   - X/Escape でウィンドウを閉じて ActionSelect（コマンドメニュー）に戻る。
 ///
 /// ノード構造（visible のとき）:
@@ -77,12 +77,6 @@ mod WeaponSelectScene {
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
-
-    /// 「武器選択ウィンドウが現在 visible か」のヘルパー。
-    pub def isVisible(scene: Scene[NodeTag]): Bool =
-        Panel.getAt(panelPath(), scene)
-            |> Option.map(CanvasItem.isVisible)
-            |> Option.getWithDefault(false)
 
     // ────────────────────────────────────────────────────────
     // (C) 表示・ロジック

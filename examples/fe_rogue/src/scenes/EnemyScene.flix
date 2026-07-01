@@ -795,11 +795,4 @@ mod EnemyScene {
          combat = combatView(data), isDying = data#isDying, hidden = false,
          aiType = data#resource#aiType}
 
-    /// 指定 id の敵が現在装備している武器を返す。未装備（壊れた後）なら None。
-    /// EnemyAI 等が「攻撃できるか」を判定するために使う。
-    pub def getWeapon(id: Int32, scene: Scene[NodeTag]): Option[UnitCatalog.WeaponResource] =
-        match get(id, scene) {
-            case Some(d) => d#weapon
-            case None    => None
-        }
 }

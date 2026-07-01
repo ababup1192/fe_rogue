@@ -81,8 +81,6 @@ pub enum NodeTag {
     case Explosion(ExplosionScene.ExpData)
     /// UnitHPBarScene の Marker2D 親（戦闘表示 timer + currentHp/maxHp を持つ）
     case HPBar(UnitHPBarScene.HPBarData)
-    /// UnitInfoPopupScene の CanvasLayer 親（表示中ユニット識別子を持つ）
-    case UnitInfoPanel(UnitInfoPopupScene.PanelState)
     /// UnitCardScene の CanvasLayer 親（左サイドの選択ユニット簡易カード）。
     case UnitCard
     /// EnemyCardScene の CanvasLayer 親（右サイドの攻撃対象敵カード。UnitCard と左右対称）。
@@ -180,7 +178,7 @@ def dispatchEntities(delta: Duration.Duration, node: EngineNode[NodeTag],
         case _ => (node, scene)
     }
 
-/// 毎フレーム tick が必要な表示系ノード (Popup / HPBar / Item / UnitInfoPanel / Camera / Log)
+/// 毎フレーム tick が必要な表示系ノード (Popup / HPBar / Item / Camera / Log)
 def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
                        path: NodePath, scene: Scene[NodeTag]):
                       (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
@@ -193,8 +191,6 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(UnitHPBarScene.process(delta, node, path, scene))
         case NodeTag.GroundItem(_) =>
             checked_ecast(ItemScene.process(delta, node, path, scene))
-        case NodeTag.UnitInfoPanel(_) =>
-            checked_ecast(UnitInfoPopupScene.process(delta, node, path, scene))
         case NodeTag.TopBar(_) =>
             checked_ecast(TopBarScene.process(delta, node, path, scene))
         case NodeTag.ItemPickupPopup(_) =>
@@ -282,9 +278,7 @@ instance InputEvent.InputHandler[NodeTag] {
     // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）でメニュー操作する。
     // ItemMenu と ItemActionMenu は同じ ItemMenuScene が扱い、`confirmCurrentSelection`
     // 内部で現在のフェーズに応じて分岐する。
-    // PlayerCursor / PlayerAttack 中で UnitInfoPopup が表示中なら、**X は popup の
-    // Status ↔ Items 切替**に取られる（通常のキャンセルは popup 非表示時のみ）。
-    // それ以外のフェーズではこれまで通り TurnRules 経由で振る舞いを決める。
+    // それ以外のフェーズはこれまで通り TurnRules 経由で振る舞いを決める。
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                        Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery,
                                           Tween.Scheduler,
@@ -365,17 +359,13 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
             // onKeyPressed は物理キー押下ごとに 1 度だけ発火するので、ここで鳴らせば 1 押下 = 1 音。
             // 実際の処理分岐 (dispatchMenuKey 等) は別途行うが、音はこの単一地点に集約する。
             playInputSfx(phase, input, key);
-            // ユニット情報ポップアップの X トグルは PlayerCursor の下見中のみ。
-            // PlayerAttack 中はポップアップを出さず、X は戦闘予測のキャンセルに使う。
-            let popupShown = UnitInfoPopupScene.isShown(scene)
-                              and phase == TurnPhase.Phase.PlayerCursor;
             // メニュー系フェーズ (ActionMenu / ItemMenu / TradeMenu) の Z/X は別関数で処理。
             // Some が返ってくれば dispatcher が処理済みなのでその scene をそのまま返す。
             // 入力があればメニュー dispatcher に渡す。処理済み(Some)ならその scene、
             // 未処理(None)・入力なしは非メニュー処理へ。2 段の match を flatMap + 1 match に畳む。
             match input |> Option.flatMap(inp -> checked_ecast(dispatchMenuKey(phase, inp, scene))) {
                 case Some(after) => after
-                case None        => dispatchNonMenuKey(phase, input, key, popupShown, scene)
+                case None        => dispatchNonMenuKey(phase, input, key, scene)
             }
         }
 
@@ -635,7 +625,7 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
 /// `onKeyPressed` から `dispatchMenuKey` で処理されなかったときに呼ばれる。
 /// 方向キーなど input = None もここに来る (StaffAim 中の direction、ほかは no-op)。
 def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
-                        key: GameEngine.Key, popupShown: Bool, scene: Scene[NodeTag]):
+                        key: GameEngine.Key, scene: Scene[NodeTag]):
         Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery, Tween.Scheduler,
                             AnimationPlayer.Scheduler,
                             GameLogger.GameLogger,
@@ -645,9 +635,6 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                             EnemyData.RosterQuery,
                             Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
         match (phase, input) {
-        // popup 表示中の X は popup view 切替に上書き（通常のキャンセルは走らない）
-        case (_,                              Some(TurnRules.Input.Cancel)) if popupShown
-                                              => UnitInfoPopupScene.toggleView(scene)
         case (TurnPhase.Phase.StaffAim,       Some(TurnRules.Input.Cancel))
                                               => checked_ecast(staffAimCancel(scene))
         case (TurnPhase.Phase.StaffAim,       Some(TurnRules.Input.Confirm))
@@ -1110,34 +1097,30 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[ENEMYDATA DIFF] ${ms}")
             };
-            // B1-m1a: render-from-World overlay。on で scene-tree drawable に World 由来 box を重ねて
+            // B: render-from-World。scene-tree drawable に World 由来 drawable を合成して
             // 1 回の renderCommands で描く（renderCommands は毎回 clear ゆえ 2 回呼びは不可＝合成する）。
-            // これで通常ゲーム（メニュー/マップ/ユニット）は見えたまま World box が重なる＝位置一致を実証。
-            if (RenderWorld.useRenderFromWorld()) {
-                // m1c: scene 側ユニット sprite を隠して描画 → ユニットは World 由来のみで描く。
-                // ※ marker(武器/HPバー)は engine 駆動のまま（移動 tween + 攻撃 lunge 等を全部保持）。
-                // B/fog・range・配置物・HUD/menu: scene 側の fog 暗幕・range タイル・アイテム/宝箱/階段・全 HUD/メニューを隠し、World render System で描く。
-                // B: 全 subtree（配置物/HUD/メニュー/minimap/ポップアップ/カーソル等）を hideSubtrees で scene から外し、
-                //    renderSubtrees（drawables）+ renderSubtreePolygons（polygon）で World 経路描画。
-                let prepped = RenderWorld.hideUnitSprites(synced) |> FogScene.hideHaze
-                    |> RenderWorld.hideRangeTiles |> RenderWorld.hideSubtrees;
-                // B/perf: camera ViewTransform は findActiveCamera が全 scene 走査ゆえ**フレーム 1 回**だけ計算し、
-                // 全 render 関数へ渡す（旧: 各関数・各 subtree root が個別に呼び ~30 回/frame 走査していた）。
-                let transform = RenderWorld.viewTransform(synced);
-                // B/tiles: tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
-                // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。
-                let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(prepped);
-                let worldDrawables = RenderWorld.renderUnits(world2, transform, synced)
-                    |> List.append(RenderWorld.renderFog(transform, synced))
-                    |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
-                    |> List.append(RenderWorld.renderSubtrees(transform, synced));
-                // B: polygon チャンネルも World 由来 subtree（minimap 円/BattlePanel ドット/TurnEndHold リング）を合流。
-                // scenePolygons は hideSubtrees で除外済み（marker 上の武器グリフ polygon 等はそのまま renderArgs 由来）。
-                GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
-                    RenderWorld.renderTileMaps(world2, transform, synced),
-                    List.append(scenePolygons, RenderWorld.renderSubtreePolygons(transform, synced)))
-            } else
-                GameEngine.render(synced);
+            // m1c: scene 側ユニット sprite を隠して描画 → ユニットは World 由来のみで描く。
+            // ※ marker(武器/HPバー)は engine 駆動のまま（移動 tween + 攻撃 lunge 等を全部保持）。
+            // B/fog・range・配置物・HUD/menu: scene 側の fog 暗幕・range タイル・アイテム/宝箱/階段・全 HUD/メニューを隠し、World render System で描く。
+            // B: 全 subtree（配置物/HUD/メニュー/minimap/ポップアップ/カーソル等）を hideSubtrees で scene から外し、
+            //    renderSubtrees（drawables）+ renderSubtreePolygons（polygon）で World 経路描画。
+            let prepped = RenderWorld.hideUnitSprites(synced) |> FogScene.hideHaze
+                |> RenderWorld.hideRangeTiles |> RenderWorld.hideSubtrees;
+            // B/perf: camera ViewTransform は findActiveCamera が全 scene 走査ゆえ**フレーム 1 回**だけ計算し、
+            // 全 render 関数へ渡す（旧: 各関数・各 subtree root が個別に呼び ~30 回/frame 走査していた）。
+            let transform = RenderWorld.viewTransform(synced);
+            // B/tiles: tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
+            // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。
+            let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(prepped);
+            let worldDrawables = RenderWorld.renderUnits(world2, transform, synced)
+                |> List.append(RenderWorld.renderFog(transform, synced))
+                |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
+                |> List.append(RenderWorld.renderSubtrees(transform, synced));
+            // B: polygon チャンネルも World 由来 subtree（minimap 円/BattlePanel ドット/TurnEndHold リング）を合流。
+            // scenePolygons は hideSubtrees で除外済み（marker 上の武器グリフ polygon 等はそのまま renderArgs 由来）。
+            GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
+                RenderWorld.renderTileMaps(world2, transform, synced),
+                List.append(scenePolygons, RenderWorld.renderSubtreePolygons(transform, synced)));
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)
         }
 }

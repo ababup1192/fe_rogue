@@ -725,7 +725,7 @@ mod TestActionMenuScene {
             itemsMetadata(after))
 
     /// 階段が別マス(5,5)にあっても主人公(1,1)が乗っていなければ「階段」は出さない
-    /// （canExit の到達判定ではなく足元判定であることを固定する）。
+    /// （到達判定ではなく足元判定であることを固定する）。
     @Test
     def testGatherMenuHidesStairsWhenLordOffStairs(): Unit \ Assert =
         let after = runRefreshItemsGather(

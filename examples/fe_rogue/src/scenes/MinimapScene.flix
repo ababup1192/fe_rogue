@@ -609,14 +609,6 @@ mod MinimapScene {
             |> List.filter(p -> Set.memberOf(p#idx, display))
             |> List.map(FogScene.moduleRect)
 
-    /// モジュールの「床のみ」矩形（壁リング edgePad を含めない）。
-    /// 通路・部屋の床は doorway で接するので、これでもおおむね繋がって見える。
-    pub def floorRect(p: DungeonComposer.ModulePlacement): GridRect =
-        ({ x0 = p#offset#x + p#floorBoundsMin#x,
-           y0 = p#offset#y + p#floorBoundsMin#y,
-           x1 = p#offset#x + p#floorBoundsMaxEx#x,
-           y1 = p#offset#y + p#floorBoundsMaxEx#y }: GridRect)
-
     /// 矩形群の union を「互いに重ならない矩形群」に分割する（横バンド分割）。
     /// `FogScene.bandDecompose` が補集合を返すのに対し、こちらは union（被覆部）を返す。
     /// 半透明描画でも重なりによる濃淡ムラが出ないよう、部屋・通路を一体化するのに使う。

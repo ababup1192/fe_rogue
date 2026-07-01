@@ -28,10 +28,8 @@
 /// （詳細は TurnFlow.flix ヘッダ参照）。
 mod EnemyTurnDriverScene {
 
-    /// 常駐タグ専用ノードの NodePath。Marker2D を World 配下に置く。
+    /// 常駐タグ専用ノードの名前。Marker2D を World 配下に置く。
     def driverName(): String = "EnemyTurnDriver"
-    pub def driverPath(): NodePath =
-        MapScene.worldName() :: driverName() :: Nil
 
     /// scene tree に常駐ノードを追加する。`GameLifecycle.buildPlayingScene` で 1 回だけ呼ぶ。
     /// engine の `Scene.processAll` が preorder で各ノードを巡回するとき、この driver の

@@ -176,12 +176,6 @@ mod TradeMenuScene {
     def setPanelData(data: PanelData, scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPanelData(_ -> data, scene)
 
-    /// 「物交換ウィンドウが現在 visible か」のヘルパー。呼び手が visible 判定を行うために使う。
-    pub def isVisible(scene: Scene[NodeTag]): Bool =
-        Panel.getAt(panelPath(), scene)
-            |> Option.map(CanvasItem.isVisible)
-            |> Option.getWithDefault(false)
-
     pub def paneCount(data: PanelData): Int32 = List.length(data#members)
 
     /// ペイン index に対応する player id。範囲外なら None。

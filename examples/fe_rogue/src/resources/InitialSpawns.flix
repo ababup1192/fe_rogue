@@ -4,7 +4,7 @@
 /// で敵とプレイヤーをまとめて復活させたい。`EnemyScene.add` は `Math.Random` でランダムに
 /// 敵を配置するため、再呼び出しでは同じ配置が再現できない。そこで `Game.start` で
 /// 初回 build 直後の spawn 一覧をこの effect の Ref に保存しておき、
-/// `handlePlayerDeath` から `respawnFromInitial` を呼んで再現する。
+/// ゲームオーバー時のフロア再構築でこの snapshot から同じ配置を復元する。
 ///
 /// 敵スポーンと味方スポーンは「常に同じタイミングでセットし、同じタイミングで読み出される」
 /// ため、1 つの record (`Snapshot`) にまとめて単一の effect で扱う。
