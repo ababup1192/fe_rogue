@@ -321,10 +321,10 @@ mod EnemyRangeScene {
 
     /// 白系 modulate。敵の「移動範囲」を表す。攻撃到達範囲(EnemyAttackRange=赤)と
     /// 色で区別するため移動範囲は白にしている。
-    def color(): Color = UITheme.white()
+    pub def color(): Color = UITheme.white()
 
     /// 情報表示なので少し透かして駒や床を見やすくする。
-    def alpha(): Float32 = 0.7f32
+    pub def alpha(): Float32 = 0.7f32
 
     /// 既存の EnemyRange ノードがあれば取り除き、`enemyId` の敵に対応する範囲で
     /// 構築し直す。敵が居なければ何もしない (`clear` 相当の保険)。
@@ -364,6 +364,10 @@ mod EnemyRangeScene {
             case Some(NodeTag.EnemyRange(data)) => data#reachable
             case _                              => Nil
         }
+
+    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す（二重描画防止）。描画セル＝reachable。
+    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
+        RangeOverlay.hideTiles(name(), List.length(reachable(scene)), scene)
 }
 
 /// EnemyAttackRangeScene — カーソルが敵に乗っているとき、その敵の「攻撃到達範囲（脅威範囲）」を
@@ -390,10 +394,10 @@ mod EnemyAttackRangeScene {
     pub def rangePath(): NodePath = name() :: Nil
 
     /// 赤系 modulate。EnemyRange(移動範囲=白) と区別する「攻撃到達」の色。
-    def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
+    pub def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
 
     /// 移動範囲(白, alpha=0.7) と区別するため少し透かす。
-    def alpha(): Float32 = 0.5f32
+    pub def alpha(): Float32 = 0.5f32
 
     /// 既存ノードを取り除き、`enemyId` の敵の脅威範囲で構築し直す。
     /// `EnemyRangeScene` が直前に build した敵移動到達セルを読み、武器射程で広げて差集合を作る。
@@ -434,6 +438,10 @@ mod EnemyAttackRangeScene {
             case Some(NodeTag.EnemyAttackRange(data)) => data#cells
             case _                                    => Nil
         }
+
+    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す（二重描画防止）。
+    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
+        RangeOverlay.hideTiles(name(), List.length(cells(scene)), scene)
 }
 
 /// PlayerAttackRangeScene — 攻撃フェーズ中に味方の射程を赤色で可視化する
@@ -459,10 +467,10 @@ mod PlayerAttackRangeScene {
     pub def attackRangePath(): NodePath = name() :: Nil
 
     /// 赤系 modulate。EnemyRangeScene / MoveAttackRangeScene と同色。
-    def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
+    pub def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
 
     /// EnemyRangeScene と同じく少し透かして駒や床を見やすくする。
-    def alpha(): Float32 = 0.7f32
+    pub def alpha(): Float32 = 0.7f32
 
     /// 既存の PlayerAttackRange ノードがあれば取り除き、**選択中プレイヤー** の現在位置
     /// origin に対して **インベントリ全武器の射程の和集合** で赤マスを敷き直す。
@@ -556,6 +564,10 @@ mod PlayerAttackRangeScene {
                     c#x == d#gridPos#x and c#y == d#gridPos#y,
                     inRangeCells))
             |> List.sortBy(d -> (d#gridPos#y, d#gridPos#x))
+
+    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す（二重描画防止）。
+    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
+        RangeOverlay.hideTiles(name(), List.length(cells(scene)), scene)
 }
 
 /// TradeRangeScene — 物交換の相手候補 (隣接味方マス) を緑色で可視化する
@@ -583,11 +595,11 @@ mod TradeRangeScene {
     pub def rangePath(): NodePath = name() :: Nil
 
     /// 緑系 modulate。MoveRange (青) / PlayerAttackRange (赤) と区別する。
-    def color(): Color = {r = 0.3f32, g = 1.0f32, b = 0.3f32}
+    pub def color(): Color = {r = 0.3f32, g = 1.0f32, b = 0.3f32}
 
     /// 他の情報表示 Range (EnemyRange / PlayerAttackRange) と透過度を揃えることで
     /// 各種ハイライトの視覚的重みを統一し、特定レイヤーだけが浮きあがるのを防ぐ。
-    def alpha(): Float32 = 0.7f32
+    pub def alpha(): Float32 = 0.7f32
 
     /// 既存の TradeRange ノードがあれば取り除き、`SelectedPlayer.State` から
     /// 選択中味方の隣接味方マスを計算して緑マスを描き直す。
@@ -633,6 +645,10 @@ mod TradeRangeScene {
             case Some(NodeTag.TradeRange(data)) => data#cells
             case _                              => Nil
         }
+
+    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す（二重描画防止）。
+    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
+        RangeOverlay.hideTiles(name(), List.length(cells(scene)), scene)
 }
 
 /// DangerZoneScene — Shift トグルで「全(可視)敵に攻撃される可能性があるマス」を紫で可視化する。
@@ -655,10 +671,10 @@ mod DangerZoneScene {
     pub def rangePath(): NodePath = name() :: Nil
 
     /// 紫系 modulate。移動(青/白)・攻撃(赤)・交換(緑)と区別する危険範囲色。
-    def color(): Color = {r = 0.6f32, g = 0.3f32, b = 0.9f32}
+    pub def color(): Color = {r = 0.6f32, g = 0.3f32, b = 0.9f32}
 
     /// 下のマップ・駒が見える程度に透かす。
-    def alpha(): Float32 = 0.5f32
+    pub def alpha(): Float32 = 0.5f32
 
     /// 現在表示中か（= DangerZone ノードが在るか）。Shift トグルの状態に使う。
     pub def isShown(scene: Scene[NodeTag]): Bool =
@@ -710,4 +726,8 @@ mod DangerZoneScene {
             case Some(NodeTag.DangerZone(data)) => data#cells
             case _                              => Nil
         }
+
+    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す（二重描画防止）。
+    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
+        RangeOverlay.hideTiles(name(), List.length(cells(scene)), scene)
 }

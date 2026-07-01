@@ -70,8 +70,7 @@
   - [x] **汎用化＋lib 昇華: `Render.applyCameraScale`**（units/fog/range の camera 適用〔applyToWorldPos＋scale×zoom〕の重複 spine を `engine_ecs/Render` へ昇華。dodge 等も再利用可）＝flow「実装×2→法則→汎用→lib」の 1 サイクル完了
   - [ ] map タイルを World 描画（tilemap from `Board`/World。★per-cell atlas データが World 未保持＝engine 相談要）
   - [ ] minimap を World（★accumulated 状態移送＋CanvasLayer 要）
-  - [x] **MoveRange（移動範囲・青）を World**（`renderMoveRange`＝renderMoveAttackRange と同型 3 行。描画セル stoppable を `Data#drawCells` に格納して再計算回避。**helper 投資の回収実証**＝新規ロジックなし）
-  - [ ] 残 range overlays（DangerZone/TradeRange/EnemyRange）を同様に（各 ~数行・`tileDrawables` 再利用）
+  - [x] **全 7 range overlays を World**（Move/MoveAttack/EnemyRange/EnemyAttack/PlayerAttack/Trade/DangerZone）。`RenderWorld.renderRangeOverlays` に**1 経路集約**（各 mod は cells/color/alpha だけ・描画は `tileDrawables` の law に一本化）＋`hideRangeTiles`。全て表示専用ゆえ格納セル＝描画セル（MoveRange のみ stoppable を `Data#drawCells` に追加格納）。**helper 投資の回収実証**＝5 つ追加で新規ロジックほぼゼロ。1064 tests green
 
 ### 依存関係メモ
 - **engine Systems（parent-child）→ HUD/メニュー**（階層描画の前提）。並列レーンだが、UI 移植より**先行**させると楽。

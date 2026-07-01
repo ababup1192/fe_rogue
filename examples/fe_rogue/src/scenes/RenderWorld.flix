@@ -91,21 +91,30 @@ mod RenderWorld {
                 List.flatMap(r -> fogRectDrawables(r, transform), hazeRects)
         }
 
-    /// B: MoveAttackRange（脅威範囲・赤ハッチ）を World render System で描く。表示専用（格納セル＝描画セル・
-    /// logic 非依存）ゆえ node のセルをそのまま `RangeOverlay.tileDrawables` に渡すだけ＝再計算なし。scene 側の
-    /// Tile Panel は Game.flix が `MoveAttackRangeScene.hideTiles` で隠す（hideUnitSprites/hideHaze 対称）。
-    pub def renderMoveAttackRange(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        let transform = viewTransform(scene);
-        RangeOverlay.tileDrawables(MoveAttackRangeScene.cells(scene),
-            MoveAttackRangeScene.color(), MoveAttackRangeScene.alpha(), transform)
+    /// B: 全 grid 範囲オーバーレイ（移動 / 攻撃 / 敵移動 / 敵攻撃 / 味方攻撃 / 交換 / 危険範囲）を World render
+    /// System で描く。各 mod は「描画セル・色・α」だけ持ち、描画は `RangeOverlay.tileDrawables` の 1 経路に集約
+    /// ＝law の汎用化。非表示のオーバーレイはセルが空ゆえ Drawable も空（毎フレーム全種を引いても無害）。
+    /// 表示専用ゆえ格納セルがそのまま描画セル（EnemyRange は reachable・MoveRange は drawCells・他は cells）。
+    pub def renderRangeOverlays(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        let t = viewTransform(scene);
+        let tiles = (cells, color, alpha) -> RangeOverlay.tileDrawables(cells, color, alpha, t);
+        List.flatten(
+            tiles(MoveRangeScene.drawCells(scene),     MoveRangeScene.color(),         MoveRangeScene.alpha()) ::
+            tiles(MoveAttackRangeScene.cells(scene),   MoveAttackRangeScene.color(),   MoveAttackRangeScene.alpha()) ::
+            tiles(EnemyRangeScene.reachable(scene),    EnemyRangeScene.color(),        EnemyRangeScene.alpha()) ::
+            tiles(EnemyAttackRangeScene.cells(scene),  EnemyAttackRangeScene.color(),  EnemyAttackRangeScene.alpha()) ::
+            tiles(PlayerAttackRangeScene.cells(scene), PlayerAttackRangeScene.color(), PlayerAttackRangeScene.alpha()) ::
+            tiles(TradeRangeScene.cells(scene),        TradeRangeScene.color(),        TradeRangeScene.alpha()) ::
+            tiles(DangerZoneScene.cells(scene),        DangerZoneScene.color(),        DangerZoneScene.alpha()) ::
+            Nil)
 
-    /// B: MoveRange（移動範囲・青ハッチ）を World render System で描く。描画セル(stoppable)は node に格納済み
-    /// ＝再計算なし（renderMoveAttackRange と同型＝tileDrawables 再利用で数行）。scene の Tile Panel は
-    /// Game.flix が hideTiles で隠す。
-    pub def renderMoveRange(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        let transform = viewTransform(scene);
-        RangeOverlay.tileDrawables(MoveRangeScene.drawCells(scene),
-            MoveRangeScene.color(), MoveRangeScene.alpha(), transform)
+    /// B: 全 range オーバーレイの scene 側 Tile Panel を隠す（World 描画へ切替時の二重描画防止）。
+    pub def hideRangeTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> MoveRangeScene.hideTiles         |> MoveAttackRangeScene.hideTiles
+            |> EnemyRangeScene.hideTiles        |> EnemyAttackRangeScene.hideTiles
+            |> PlayerAttackRangeScene.hideTiles |> TradeRangeScene.hideTiles
+            |> DangerZoneScene.hideTiles
 
     /// 1 つの暗幕グリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は `FogScene.setPoolRect` と
     /// 同一（grid × tileSize）。solidBox は alpha=1.0 ゆえ fog 用 alpha に上書きし、scale（=ピクセルサイズ）を
