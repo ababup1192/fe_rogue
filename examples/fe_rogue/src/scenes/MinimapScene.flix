@@ -179,7 +179,8 @@ mod MinimapScene {
                      node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State} =
+                    \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
+                       PlayerData.PartyQuery, EnemyData.RosterQuery} =  // P2-2a: 味方/敵読みを World 経由へ
         match node {
             case EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(data)) =>
                 let phase = TurnPhase.State.get();
@@ -195,7 +196,7 @@ mod MinimapScene {
                 // 部屋の記憶（visited）と敵赤丸（litRooms）は fog と同じく origin 基準にする。
                 // 移動ドラフト中に新しく踏み込んだ部屋は確定（drafts クリア）まで地図に出さない。
                 let drafts = SelectedPlayer.State.get()#drafts;
-                let units  = PlayerScene.getAll(scene)
+                let units  = PlayerData.PartyQuery.getAll()
                     |> List.map(d -> {id = d#id, gridPos = d#gridPos, hidden = d#hidden,
                                       origin = MoveDraft.originOf(d#id, drafts)
                                                |> Option.getWithDefault(d#gridPos)});
@@ -232,7 +233,8 @@ mod MinimapScene {
     /// 描画対象は「訪問済み module」＋「訪問済みに隣接する未訪問の通路（出口ヒント）」を
     /// union 分割して一体化（重なり部分を二重描画しない）。
     def renderMinimap(show: Bool, data: DriverData, litRooms: Set[Int32],
-                       scene: Scene[NodeTag]): Scene[NodeTag] =
+                       scene: Scene[NodeTag]): Scene[NodeTag]
+                       \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
         if (not show)
             hideAll(scene)
         else {
@@ -301,9 +303,10 @@ mod MinimapScene {
     def collectMarkers(data: DriverData,
                         placements: List[DungeonComposer.ModulePlacement],
                         roomCount: Int32, litRooms: Set[Int32], scene: Scene[NodeTag]):
-                       List[{cell = {x = Int32, y = Int32}, color = Color}] =
+                       List[{cell = {x = Int32, y = Int32}, color = Color}]
+                       \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let players =
-            PlayerScene.getAll(scene)
+            PlayerData.PartyQuery.getAll()
                 |> List.filter(d -> not d#hidden)
                 |> List.map(d -> {cell = d#gridPos,
                                   color = if (d#id == 0) leaderColor() else playerColor()});
@@ -319,7 +322,7 @@ mod MinimapScene {
                 |> List.filter(cell -> inVisitedRoom(cell, placements, roomCount, data#visited))
                 |> List.map(cell -> {cell = cell, color = itemColor()});
         // いま点灯している部屋(litRooms)に居る敵を赤丸で（アイテムより手前＝後ろに連結して上に描く）。
-        let enemiesM = enemiesSharingPlayerRoom(litRooms, placements, scene);
+        let enemiesM = enemiesSharingPlayerRoom(litRooms, placements);
         List.append(players, List.append(stairsM, List.append(itemsM, enemiesM)))
 
     /// 「いま点灯している部屋に居る敵」マーカー（赤丸）。点灯部屋集合 `litRooms`（origin 基準で
@@ -327,10 +330,10 @@ mod MinimapScene {
     /// 点灯している部屋＝霧で照らされ既に見えているので別途の可視判定は省く。移動中に踏み込んだ
     /// だけの暗い新規部屋は litRooms に含まれないため、その敵は地図にも出ない（fog と一貫）。
     def enemiesSharingPlayerRoom(litRooms: Set[Int32],
-                                  placements: List[DungeonComposer.ModulePlacement],
-                                  scene: Scene[NodeTag]):
-                                 List[{cell = {x = Int32, y = Int32}, color = Color}] =
-        EnemyScene.getAll(scene)
+                                  placements: List[DungeonComposer.ModulePlacement]):
+                                 List[{cell = {x = Int32, y = Int32}, color = Color}]
+                                 \ EnemyData.RosterQuery =
+        EnemyData.RosterQuery.getAll()
             |> List.filter(e -> e#hp > 0 and not e#isDying)
             |> List.filter(e -> match MapSnapshot.moduleOfCellIn(e#gridPos, placements) {
                                     case Some(idx) => Set.memberOf(idx, litRooms)
