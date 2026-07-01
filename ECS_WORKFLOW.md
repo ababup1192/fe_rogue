@@ -6,11 +6,12 @@
 
 ---
 
-## 現状・次の一手（2026-06-30）
+## 現状・次の一手（2026-07-01）
 
 - **環境**: worktree `~/Desktop/fe_rogue-b-gate`（branch `b-gate-spike`）。`bin` を main から symlink・`make sync` で engine 改修込みパッケージを注入済 → fe_rogue build green。**B 作業はここで**（main の A は不変・安全）。
-- **直近の到達点**: ユニット sprite を World render System へ移行（m1）＋ tween/描画位置を World で回す核心（m2-step2a 味方）まで実機確認済。
-- **次の一手**: m2 を完成させ「ユニット周りを完全 World 化」する（敵移動の StartMove → syncTree が marker を renderPos 駆動 → isMoving→isAnimating → engine tween 撤去）。
+- **直近の到達点**: ユニット sprite を World render System へ移行（m1）＋ tween/描画位置を World で回す（m2 両 faction）。さらに **動きの統一抽象 `EcsTween`（汎用 ECS tween）を導入し、味方/敵の移動を単一 `World.moveUnit` に統一**（個別実装を撤廃・純粋層テスト 8 本 green・全 1072 green・92点リファクタ済）。設計道標は `~/.claude/plans/ecs-workflow-md-stateful-stroustrup.md`。
+- **次の一手**: 動き統一スパイクは **Phase 4 lib 昇華まで完成**（`EcsTween` を `engine_ecs` lib へ移設・fe_rogue は use のみ・dodge 等も利用可）。残る前進路は延期（engine tween 退役＝scene-tree 撤去と同時）ゆえ、**B 主レーンの次項目**（HUD→World / 背景 map・fog・minimap→World / メニュー…）へ。着手時は各々 explore→plan から。
+  - **延期**: engine tween 退役＋marker 単一権威（条件付き syncMarkers・unitDraw marker 単一読み・isMoving→isAnimating）は `Tween.Scheduler` cascade＋cancel 経路 World 化を伴うため **scene-tree 撤去と同時**（敵武器/HP の 1 フレームラグ根治もここで・ユーザー判断 2026-07-01）。
 - **参考資料**: `~/.claude/plans/phase-b-eval-node-tree-removal.md`（B 評価リサーチ・engine gap・工数内訳 ≈ 9〜13週）。
 
 ---
@@ -27,6 +28,12 @@
   - [x] fog/hidden/待機暗転を `effectiveVisibleAt`/`effectiveModulateAt`/`effectiveZIndexAt` で faithful 再現
 - [x] **m2-step1: World に tween System の基盤**（`renderPos`/`moveAnim` store・`Cmd.SetRenderPos`/`StartMove`・`stepWorld(world, dt)` が **実時間 dt（秒）で `Vec2.lerp`**＝engine tween と lockstep 同期〔fps 非依存〕・`renderPosOf`/`isAnimating`）。※ tick ベースだと fps≠60 で engine tween と desync（武器/HP 遅延・逆ジャンプ）→ 実時間化で解消。
 - [x] **m2-step2a: 味方移動を World tween 駆動**（`moveTo` が `StartMove` emit・`renderUnits` が `renderPosOf` 読み・engine tween と共存同期・実機確認済）
+- [x] **m2-motion: 動きの統一抽象 `EcsTween`**（汎用 ECS tween・設計レビュー 91/100→実装 92/100）
+  - [x] 新規 `ecs/EcsTween.flix`: 複合キー `Tweens[k,c]`＝`Map[(entity,channel), Entry]`・`Track`(Vec/Scalar)/`Out`/`Easing`/yoyo・純粋・実時間 dt・`step` は `(tweens', outs, done)`（完了は t=1.0 clamp の exact スナップ）。lib は「値の補間」だけ知り意味（Position/Alpha）はゲームの `Channel` が持つ（Bevy Lens の no-reflection 版）
+  - [x] World: `Channel` enum・`moveAnim`→`tweens` store・`Cmd.StartTween`・`applyTweenOut`（不能組 `bug!`）・refreshMirror 剪定・**`moveUnit`（faction-blind smart constructor）**
+  - [x] **味方 `moveTo` と敵 `replayEnemyMoveView` が同一 `World.moveUnit(ref, span, sec)` 1本に統一**（個別実装撤廃）
+  - [x] 純粋層テスト `TestEcsTween` 8 本 green（補間/easing/完了スナップ/active gate/多チャンネル実証/yoyo 往復）＝Phase 3「多チャンネル実証」を投機 production コードなしで達成
+  - [x] **Phase 4 lib 昇華**（ユーザー承認 2026-07-01）: `EcsTween.flix`＋`TestEcsTween.flix` を `engine_ecs`（lib）へ移設。`make sync-engine-ecs` で fpkg 配布。fe_rogue は World.flix 無改修で lib 経由解決（check green・1064 tests green）。engine_ecs 23 tests green・dodge も非破壊 green。**当初ゴール「汎用機構をエンジン側で提供し各ゲームが使う」を達成**（scene `Tween` と衝突回避で名前は `EcsTween` 維持）
 
 ---
 
