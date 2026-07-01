@@ -253,9 +253,10 @@ mod EnemyTurnDriverScene {
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
                 SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
-        // F7-slice2: bottleUsed を World 由来で読む（reader flip・WorldQuery 経由）。未登録は scene fallback。
+        // P2 field-complete: bottleUsed は World 権威（reader flip 完了）。未登録の敵は「未投擲」＝false 既定。
+        //（旧: scene fallback `data#bottleUsed`。syncTree 撤去で scene 側は spawn 値のまま＝未登録時も false ゆえ等価。）
         let curBottleUsed = World.bottleUsedOf(World.EntityRef.Enemy(step#id), World.WorldQuery.get())
-                                |> Option.getWithDefault(data#bottleUsed);
+                                |> Option.getWithDefault(false);
         if (curBottleUsed)
             applyNormalStep(step, data, scene)
         else match StaffCastScene.enemyTryThrow(step#id, data#gridPos,

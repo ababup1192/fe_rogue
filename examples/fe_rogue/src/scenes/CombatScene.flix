@@ -264,7 +264,7 @@ mod CombatScene {
                 let fctx = {atkSpd = atkSpd, defSpd = defSpd, roll = roll,
                             // F7-slice4: followUpUsed を World 由来で読む（world は caller の WorldQuery snapshot）。
                             followUpUsed = World.followUpUsedOf(World.EntityRef.Player(playerId), world)
-                                              |> Option.getWithDefault(p#followUpUsed),
+                                              |> Option.getWithDefault(false),  // P2: World 権威・未登録=未使用
                             brave = braveT,
                             pursuit = Ring.hasPursuit(PlayerData.equippedRing(p))};
                 if (EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Brave), fctx)
@@ -377,7 +377,7 @@ mod CombatScene {
                 let fctx = {atkSpd = atkSpd, defSpd = defSpd, roll = roll,
                             // F7-slice4: followUpUsed を World 由来で読む。
                             followUpUsed = World.followUpUsedOf(World.EntityRef.Enemy(enemyId), world)
-                                              |> Option.getWithDefault(e#followUpUsed),
+                                              |> Option.getWithDefault(false),  // P2: World 権威・未登録=未使用
                             brave = braveT,
                             pursuit = Ring.hasPursuit(e#ring)};
                 if (EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Brave), fctx)

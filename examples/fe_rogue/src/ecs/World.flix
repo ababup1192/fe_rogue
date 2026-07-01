@@ -1065,6 +1065,20 @@ mod World {
         let World.World(w) = world;
         Map.exists((uid, _) -> uidIsEnemy(uid), w#attackTarget)
 
+    /// P2-S2: coord 上の「瀕死でない」敵 id を World から引く（`EnemyScene.findIdAt` の World 版）。
+    /// pos（uid キー・位置権威＝World）を昇順 uid で走査し最初の一致を返す。dying は `enemyDying` set で
+    /// 除外（scene の `not isDying` と等価）。★順序不変条件: scene 版は `getAll`（Scene preorder＝id 昇順ではない）
+    /// + findMap、本関数は uid 昇順走査＝両者の走査順は違うが、**1 セル 1 敵の不変条件**（敵は排他マス占有）
+    /// ゆえ coord 一致は高々 1 体＝tiebreak が発生せず結果は同一。複数敵同居が生じる改変時のみ差が出る。
+    pub def enemyIdAt(coord: {x = Int32, y = Int32}, world: World): Option[Int32] =
+        let World.World(w) = world;
+        Map.toList(w#pos) |> List.findMap(pair -> {
+            let (uid, p) = pair;
+            if (uidIsEnemy(uid) and p#x == coord#x and p#y == coord#y and not Set.memberOf(uid, w#enemyDying))
+                Some(uid - enemyUidBase())   // uidIsEnemy 済ゆえ uid-base = 元の敵 id（uidToRef の enemy 分岐と同値）
+            else None
+        })
+
     /// S-A0: base 戦闘値 + maxHp を World から読む（unified-id・両 faction）。未登録は None。
     /// B1 で combatView がここを読み、status/ring 補正を加えて CombatView を組む（reader flip）。
     pub def baseStatsOf(ref: EntityRef, world: World): Option[Combat.BaseStats] =
@@ -1198,7 +1212,9 @@ mod World {
               Bool),
              (Option[PlayerData.ItemKind], Int32, Staff.Direction, Bool, Bool,
               Int32, Int32, Option[(String, Int32, Int32, Int32)],
-              List[(StatusSystem.StatusEffect, Int32, Int32)], Bool)) =
+              List[(StatusSystem.StatusEffect, Int32, Int32)])) =
+        // 注: followUpUsed は含めない。P2 で scene copy 退役（syncTree 派生撤去・World 権威）ゆえ DIFF 対象外
+        //     （World 権威は dataFromWorld None-gate＋専用テストが保証）。
         ((d#id, d#classId, posKey(d#gridPos), d#moveTiles, d#hp, d#waited,
           d#attackTargetId, resourceStatKey(d#resource),
           headKey(d#weapons, weaponKey),
@@ -1208,7 +1224,7 @@ mod World {
           d#ringEquipped),
          (d#selectedItem, d#moveStepsTaken, d#facing, d#hidden, d#usedStairs,
           d#level, d#exp, pendingLevelUpKey(d#pendingLevelUp),
-          statusListKey(d#statuses), d#followUpUsed))
+          statusListKey(d#statuses)))
 
     /// ★EnemyData.Data の全 17 field キー（enemyDataMismatches）。playerDataKey と同流儀の 2段ネスト
     /// ((9),(8))（tuple arity/Eq 上限回避・§1.3）。sub-key（posKey/weaponKey/equippedRingKey/statusListKey）を
@@ -1216,14 +1232,15 @@ mod World {
     /// resource(R 残置)は両辺 scene 由来＝恒等一致ゆえ resourceId(String) を代表値とする。
     pub def enemyDataKey(d: EnemyData.Data):
             ((Int32, String, (Int32, Int32), Bool, Int32, Int32, Int32, Bool, Option[Int32]),
-             (String, Option[(String, Int32)], Bool, Option[(Int32, Int32)],
+             (String, Option[(String, Int32)], Bool,
               List[(StatusSystem.StatusEffect, Int32, Int32)],
-              Option[(String, Ring.RingEffect, Int32)], Bool, Bool)) =
+              Option[(String, Ring.RingEffect, Int32)])) =
+        // 注: bottleUsed / followUpUsed / prevPos は含めない。P2 で scene copy 退役（syncTree 派生撤去・World 権威）
+        //     ゆえ scene 値は stale＝再構築(World)と必然的に食い違う。scene 読み手が World 経由ゆえ DIFF 対象外が正。
         ((d#id, d#resourceId, posKey(d#gridPos), d#alerted, d#homeModuleIdx,
           d#moveTiles, d#hp, d#isDying, d#attackTargetId),
          (d#resourceId, Option.map(weaponKey, d#weapon), d#acted,
-          Option.map(posKey, d#prevPos), statusListKey(d#statuses),
-          Option.map(equippedRingKey, d#ring), d#followUpUsed, d#bottleUsed))
+          statusListKey(d#statuses), Option.map(equippedRingKey, d#ring)))
 
     /// 地形 snapshot キー (tileSize, wallCells)（mapSnapshotMatchesScene）。
     /// 元 lambda: m -> (m#tileSize, m#wallCells)
@@ -1867,28 +1884,16 @@ mod World {
                 case EntityRef.Enemy(eid) => EnemyScene.mapEnemy(eid, e -> {alerted = b | e}, sc)
                 case EntityRef.Player(_)  => sc
             }, withDying, w#enemyAlerted);
-        // S6: bottleUsed も World(enemyBottleUsed) 由来に derive（敵のみ・alerted と同型）。
-        let withBottle = Map.foldLeftWithKey((sc, uid, b) ->
-            match uidToRef(uid) {
-                case EntityRef.Enemy(eid) => EnemyScene.mapEnemy(eid, e -> {bottleUsed = b | e}, sc)
-                case EntityRef.Player(_)  => sc
-            }, withAlerted, w#enemyBottleUsed);
-        // S6: followUpUsed も World(followUpUsed・両 faction 統合マップ)由来に derive。uid を uidToRef で分配。
-        let withFollowUp = Map.foldLeftWithKey((sc, uid, f) ->
-            match uidToRef(uid) {
-                case EntityRef.Player(pid) => PlayerScene.mapPlayer(pid, d -> {followUpUsed = f | d}, sc)
-                case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, e -> {followUpUsed = f | e}, sc)
-            }, withBottle, w#followUpUsed);
-        // S6: prevPos も World(enemyPrevPos)由来に derive（敵のみ・sparse Option）。scene 読み手はゼロ(dead-read)だが
-        // refreshMirror が scene #prevPos から re-mirror するため derive 必須（撤去後 None → World clobber 防止）。
-        let withPrevPos = List.foldLeft((sc, d) ->
-            EnemyScene.mapEnemy(d#id, e -> {prevPos = prevPosOf(EntityRef.Enemy(d#id), world) | e}, sc),
-            withFollowUp, EnemyScene.getAll(scene));
+        // P2 field-complete: bottleUsed / followUpUsed / prevPos の syncTree 派生を撤去。いずれも scene 読み手が
+        // World 経由（followUpUsed=dataFromWorld/CombatScene の World 直読み・prevPos=driver 直読み・
+        // bottleUsed=driver 直読み）、専用 DIFF は撤去済、refreshMirror は preserve+prune で scene を re-mirror
+        // しない（＝派生撤去で scene が stale になっても World は clobber されない）。scene copy 退役ゆえ
+        // player/enemyDataKey からも外す（旧 prevPos コメントの「refreshMirror が re-mirror」は誤り＝1.339 は prune）。
         // 注: attackTargetId は syncTree で derive しない。combat 解決の同期キャリア（startAttack→attack:hit を
         // scene 経由で同期 thread）ゆえ dual-write 据置が正当。driver の anyAttacking は World 化済(F8-slice1)。
         // progress（level/exp）は player のみ。store key は player id。
         let withLevel = Map.foldLeftWithKey((sc, pid, lvl) ->
-            PlayerScene.mapPlayer(pid, d -> {level = lvl | d}, sc), withPrevPos, w#playerLevel);
+            PlayerScene.mapPlayer(pid, d -> {level = lvl | d}, sc), withAlerted, w#playerLevel);
         Map.foldLeftWithKey((sc, pid, xp) ->
             PlayerScene.mapPlayer(pid, d -> {exp = xp | d}, sc), withLevel, w#playerExp)
 }

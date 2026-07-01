@@ -912,10 +912,27 @@ mod Game {
                   }
               }
               with handler EnemyData.RosterQuery {
-                  def get(id, k)           = k(EnemyScene.get(id, Ref.get(sceneRef)))
-                  def getAll(k)            = k(EnemyScene.getAll(Ref.get(sceneRef)))
-                  def findIdAt(coord, k)   = k(EnemyScene.findIdAt(coord, Ref.get(sceneRef)))
-                  def anyAttacking(k)      = k(EnemyScene.anyAttacking(Ref.get(sceneRef)))
+                  // P2-S2 read-flip: PartyQuery(S1) と同流儀で core 権威を World へ。get/getAll は
+                  // `dataFromWorldEnemy`＝World 由来（residual=resourceId/homeModuleIdx/resource/acted は scene）・
+                  // None gate は scene fallback。findIdAt/anyAttacking は World の pos/attackTarget を直読み
+                  // （EnemyScene 版と等価・pos/dying/attackTarget は dual-write で [ATTACKTARGET DIFF] 等が保証）。
+                  // 意味論は S1 と同じ: core=worldRef mid-frame〔BoardQuery と同権威〕/ residual=frame-top scene。
+                  def get(id, k)           = {
+                      let scene = Ref.get(sceneRef); let world = Ref.get(worldRef);
+                      k(EnemyScene.get(id, scene) |> Option.map(d ->
+                          World.dataFromWorldEnemy(id, world, scene) |> Option.getWithDefault(d)))
+                  }
+                  def getAll(k)            = {
+                      let scene = Ref.get(sceneRef); let world = Ref.get(worldRef);
+                      k(EnemyScene.getAll(scene) |> List.map(d ->
+                          World.dataFromWorldEnemy(d#id, world, scene) |> Option.getWithDefault(d)))
+                  }
+                  // ★注: findIdAt/anyAttacking は現状 RosterQuery 経由の performer が無い（実 consumer は
+                  //   `EnemyScene.findIdAt` を scene 直読み〔UnitCard/WeaponSelect/EnemyCard/BattlePanel/ItemMenu〕、
+                  //   driver は `World.anyEnemyAttacking` を WorldQuery 直読み〔F8-slice1〕）。ここは handler の
+                  //   coherence 用に先行 flip＝将来 consumer flip の受け皿。scene 直読みの撤去は P8（scene-tree 撤去）。
+                  def findIdAt(coord, k)   = k(World.enemyIdAt(coord, Ref.get(worldRef)))
+                  def anyAttacking(k)      = k(World.anyEnemyAttacking(Ref.get(worldRef)))
               }
               with handler GamePhaseState {
                   // 画面（CharacterSelect / Playing）の現在値を region の Ref で保持する。

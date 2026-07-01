@@ -512,6 +512,64 @@ mod TestWorld {
             expected = Some((3, "test_player")),
             recon |> Option.map(d -> (d#hp, d#classId)))
 
+    /// P2-S2 read-flip 契約（敵版）: `dataFromWorldEnemy` も core を World 権威で読む。World hp を 3 に下げ
+    /// scene は 10 のまま、#hp==3（core=World）／#resourceId=="test_enemy"（residual=scene）を pin。
+    @Test
+    def testDataFromWorldEnemyReadsWorldAuthorityForCore(): Unit \ Assert =
+        let scene   = sampleScene();
+        let seeded  = World.syncFromScene(scene, World.empty());      // enemy5 hp = 10
+        let damaged = World.applyCmd(World.Cmd.SetHp(World.EntityRef.Enemy(5), 3), seeded);  // world 3 / scene 10
+        let recon   = World.dataFromWorldEnemy(5, damaged, scene);
+        Assert.assertEq(
+            expected = Some((3, "test_enemy")),
+            recon |> Option.map(d -> (d#hp, d#resourceId)))
+
+    /// P2 field-complete（bottleUsed）: syncTree 派生撤去後、bottleUsed の権威は World 単独。scene は spawn の
+    /// false のまま World を true にして、`dataFromWorldEnemy` が World の true を返す（scene の false に負けない）
+    /// ことを pin＝退役した enemyDataKey/[ENEMYDATA DIFF] の bottleUsed 検証の代替保証。
+    @Test
+    def testDataFromWorldEnemyBottleUsedIsWorldAuthority(): Unit \ Assert =
+        let scene  = sampleScene();                                  // enemy5 bottleUsed = false
+        let seeded = World.syncFromScene(scene, World.empty());
+        let thrown = World.applyCmd(World.Cmd.SetBottleUsed(World.EntityRef.Enemy(5), true), seeded);  // world true / scene false
+        Assert.assertEq(
+            expected = Some(true),
+            World.dataFromWorldEnemy(5, thrown, scene) |> Option.map(d -> d#bottleUsed))
+
+    /// P2 field-complete（followUpUsed）: syncTree 撤去後 followUpUsed は World 単独権威。scene は false のまま
+    /// World を true にして `dataFromWorld` が true を返すことを pin＝退役した playerDataKey followUpUsed 検証の代替。
+    @Test
+    def testDataFromWorldFollowUpUsedIsWorldAuthority(): Unit \ Assert =
+        let scene  = sampleScene();                                  // player0 followUpUsed = false
+        let seeded = World.syncFromScene(scene, World.empty());
+        let used   = World.applyCmd(World.Cmd.SetFollowUpUsed(World.EntityRef.Player(0), true), seeded);  // world true / scene false
+        Assert.assertEq(
+            expected = Some(true),
+            World.dataFromWorld(0, used, scene) |> Option.map(d -> d#followUpUsed))
+
+    /// P2 field-complete（prevPos）: syncTree 撤去後 prevPos は World 単独権威。scene は None のまま World を Some に
+    /// して `dataFromWorldEnemy` が World 値を返すことを pin＝退役した enemyDataKey prevPos 検証の代替。
+    @Test
+    def testDataFromWorldEnemyPrevPosIsWorldAuthority(): Unit \ Assert =
+        let scene  = sampleScene();                                  // enemy5 prevPos = None
+        let seeded = World.syncFromScene(scene, World.empty());
+        let moved  = World.applyCmd(World.Cmd.SetPrevPos(World.EntityRef.Enemy(5), {x = 7, y = 8}), seeded);  // world Some / scene None
+        Assert.assertEq(
+            expected = Some(Some((7, 8))),
+            World.dataFromWorldEnemy(5, moved, scene) |> Option.map(d -> Option.map(p -> (p#x, p#y), d#prevPos)))
+
+    /// P2-S2: `enemyIdAt`（RosterQuery.findIdAt の World 版）は pos から coord 上の非瀕死敵 id を引く。
+    /// {3,3}=敵5・{4,4}=敵7・空きマス=None、敵5 を dying にすると {3,3}=None（isDying 除外＝scene findIdAt と等価）。
+    @Test
+    def testEnemyIdAtReadsWorldPosExcludingDying(): Unit \ Assert =
+        let w0 = World.applyCmd(World.Cmd.Move(World.EntityRef.Enemy(5), {x = 3, y = 3}), World.empty());
+        let w1 = World.applyCmd(World.Cmd.Move(World.EntityRef.Enemy(7), {x = 4, y = 4}), w0);
+        let w2 = World.applyCmd(World.Cmd.SetDying(World.EntityRef.Enemy(5)), w1);
+        Assert.assertEq(
+            expected = (Some(5), Some(7), (None: Option[Int32]), (None: Option[Int32])),
+            (World.enemyIdAt({x = 3, y = 3}, w1), World.enemyIdAt({x = 4, y = 4}, w1),
+             World.enemyIdAt({x = 9, y = 9}, w1), World.enemyIdAt({x = 3, y = 3}, w2)))
+
     // ── §A payoff デモ: 位置の決定論（World は Cmd.Move ログの純粋関数）──
     // P0a→S5 で World が位置の権威・scene はその派生になった。位置の唯一の source は `Cmd.Move` のログ。
     // ゆえに「同じログ → 同じ位置」が成り立ち、save/replay の素地（World さえ持てば位置を再構築できる）になる。
@@ -1434,8 +1492,10 @@ mod TestWorld {
              k({rings = d4Ring() :: Nil | d})              != k(d),
              k({ringEquipped = true | d})                  != k(d)))
 
-    /// ★MANDATORY (§5.3・§1.3): playerDataKey 第2 group（10 field）を漏れなく見る pin。
+    /// ★MANDATORY (§5.3・§1.3): playerDataKey 第2 group（9 field）を漏れなく見る pin。
     /// pendingLevelUpKey・statusListKey の内包まで検出する。
+    /// followUpUsed は P2 で key から退役（scene copy 退役・World 単独権威）ゆえ対象外
+    ///（World 権威は dataFromWorld None-gate が保証）。
     @Test
     def testPlayerDataKeyCoversGroup2Fields(): Unit \ Assert =
         let d = playerData(0);
@@ -1443,7 +1503,7 @@ mod TestWorld {
         let plu = ({unitName = "x", fromLevel = 1, toLevel = 2, changes = Nil}: LevelSystem.Result);
         let st  = ({effect = StatusSystem.StatusEffect.AtkUp, magnitude = 1, remaining = 1}: StatusSystem.Status);
         Assert.assertEq(
-            expected = (true, true, true, true, true, true, true, true, true, true),
+            expected = (true, true, true, true, true, true, true, true, true),
             (k({selectedItem = Some(PlayerData.ItemKind.Weapon(0)) | d}) != k(d),
              k({moveStepsTaken = 99 | d})                  != k(d),
              k({facing = Staff.Direction.Up | d})          != k(d),
@@ -1452,8 +1512,7 @@ mod TestWorld {
              k({level = 99 | d})                           != k(d),
              k({exp = 99 | d})                             != k(d),
              k({pendingLevelUp = Some(plu) | d})           != k(d),
-             k({statuses = st :: Nil | d})                 != k(d),
-             k({followUpUsed = true | d})                  != k(d)))
+             k({statuses = st :: Nil | d})                 != k(d)))
 
     // ── S4.4b: dataFromWorldEnemy（World 由来 EnemyData twin）/ enemyDataMismatches（全 17 field parity）──
 
@@ -1504,21 +1563,20 @@ mod TestWorld {
              k({isDying = true | d})              != k(d),
              k({attackTargetId = Some(7) | d})    != k(d)))
 
-    /// ★MANDATORY (§5.3・§1.3): enemyDataKey 第2 group（8 field）を漏れなく見る pin。weaponKey/
-    /// equippedRingKey/statusListKey/posKey の sub-key 落ちまで検出する。resource(R 残置)は resourceId
+    /// ★MANDATORY (§5.3・§1.3): enemyDataKey 第2 group（5 field）を漏れなく見る pin。weaponKey/
+    /// equippedRingKey/statusListKey の sub-key 落ちまで検出する。resource(R 残置)は resourceId
     /// 代表ゆえ group1 の resourceId pin が兼ねる（両辺 scene 由来＝drift 不能）。
+    /// bottleUsed / followUpUsed / prevPos は P2 で key から退役（scene copy 退役・World 単独権威）ゆえ対象外
+    ///（World 権威は testDataFromWorldEnemyBottleUsed... / dataFromWorldEnemy None-gate が保証）。
     @Test
     def testEnemyDataKeyCoversGroup2Fields(): Unit \ Assert =
         let d = enemyData(5);
         let k = World.enemyDataKey;
         let st = ({effect = StatusSystem.StatusEffect.AtkUp, magnitude = 1, remaining = 1}: StatusSystem.Status);
         Assert.assertEq(
-            expected = (true, true, true, true, true, true, true),
+            expected = (true, true, true, true),
             (k({weapon = None | d})                       != k(d),
              k({acted = true | d})                        != k(d),
-             k({prevPos = Some({x = 1, y = 1}) | d})      != k(d),
              k({statuses = st :: Nil | d})                != k(d),
-             k({ring = Some(d4Ring()) | d})               != k(d),
-             k({followUpUsed = true | d})                 != k(d),
-             k({bottleUsed = true | d})                   != k(d)))
+             k({ring = Some(d4Ring()) | d})               != k(d)))
 }
