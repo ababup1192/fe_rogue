@@ -53,6 +53,14 @@ mod Render {
     pub def draw(items: List[(Vec2.Vec2, RenderItem)]): List[GameEngine.Drawable] =
         List.flatMap(pair -> let (pos, item) = pair; toDrawables(item, pos), items)
 
+    /// World 由来 Drawable 群に camera のズーム倍率を適用する（位置は `Camera2D.applyToWorldPos` で
+    /// screenPos を出した後の共通後処理）。render-from-World の各オーバーレイ（ユニット / 背景 / 範囲表示 /
+    /// フォグ等）が共有する camera 適用 spine。Drawable の scale は sprite の拡大率・box の px サイズを表し、
+    /// どちらも zoom で乗算するのが正しい camera 適用。
+    pub def applyCameraScale(transform: Camera2D.ViewTransform,
+                             ds: List[GameEngine.Drawable]): List[GameEngine.Drawable] =
+        List.map(d -> {scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y} | d}, ds)
+
     /// 1 アイテム → 複数 Drawable（ボタン等は呼び側で複数アイテムにする）。
     pub def toDrawables(item: RenderItem, pos: Vec2.Vec2): List[GameEngine.Drawable] =
         match item {

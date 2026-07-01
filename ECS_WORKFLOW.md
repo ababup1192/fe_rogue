@@ -64,10 +64,13 @@
   - [ ] y-sort（renderOrder）
   - [ ] modulate 色継承（祖先乗算）
   - [ ] CanvasLayer（カメラ非適用 UI レイヤ）
-- [ ] **∥ 背景描画**（互いに独立・ユニット移植と独立）
-  - [ ] map タイルを World 描画（tilemap from `Board`/World）
-  - [ ] fog を World
-  - [ ] minimap を World
+- [ ] **∥ 背景描画・オーバーレイ**（互いに独立・ユニット移植と独立）
+  - [x] **fog を World**（`RenderWorld.renderFog`＝FogScene 純粋関数を再利用し暗幕を solidBox Drawable 化・`hideHaze` で scene プール隠し・Map ノード存在ガード。実機 OK）
+  - [x] **MoveAttackRange（脅威範囲）を World**（`RenderWorld.renderMoveAttackRange`＝表示専用ゆえ格納セルを `RangeOverlay.tileDrawables` で hatch Panel の Drawable 化・`hideTiles`。実機 OK）
+  - [x] **汎用化＋lib 昇華: `Render.applyCameraScale`**（units/fog/range の camera 適用〔applyToWorldPos＋scale×zoom〕の重複 spine を `engine_ecs/Render` へ昇華。dodge 等も再利用可）＝flow「実装×2→法則→汎用→lib」の 1 サイクル完了
+  - [ ] map タイルを World 描画（tilemap from `Board`/World。★per-cell atlas データが World 未保持＝engine 相談要）
+  - [ ] minimap を World（★accumulated 状態移送＋CanvasLayer 要）
+  - [ ] 他 range overlays（MoveRange 等）を同様に（`tileDrawables` 再利用。MoveRange は draw セル再計算が要る）
 
 ### 依存関係メモ
 - **engine Systems（parent-child）→ HUD/メニュー**（階層描画の前提）。並列レーンだが、UI 移植より**先行**させると楽。

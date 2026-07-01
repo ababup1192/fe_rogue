@@ -49,39 +49,57 @@ mod RangeOverlay {
             EngineNode.Marker2DWithState(parent, tag),
             scene)
 
-    /// `cells` を順に列挙してハッチ Panel を `Tile_<idx>` として子追加する。
-    /// セル中心 (`MapSnapshot.cellCenter`) を基準に inset ぶん詰めた角丸 Panel を置く。
-    /// `alpha` は範囲の強調度で、塗り/縞/枠の不透明度をまとめて増減させる。
+    /// 1 セル分のハッチ Panel（サイズ＋塗り/縞/枠、位置なし）。塗りは淡く床を見せ、色は斜線と枠で表現する
+    /// （CSS の重み付けを踏襲）。scene ノード描画（`renderTiles`）と World 描画（`tileDrawables`）が同一の
+    /// 見た目を共有するために切り出す。
+    pub def tilePanel(color: Color, alpha: Float32): Panel =
+        let side = MapSnapshot.tileSize() - inset() * 2.0;
+        Panel.make(({x = side, y = side}: Vec2.Vec2), color)
+            |> Panel.setBackgroundAlpha(alpha * 0.08f32)
+            |> Panel.setBorderColor(lighten(color, 0.2f32))
+            |> Panel.setBorderAlpha(alpha)
+            |> Panel.setBorderWidth(0.5)
+            |> Panel.setCornerRadius(2.0)
+            |> Panel.setStripe(lighten(color, 0.5f32), alpha * 0.65f32, stripeWidth(), stripePeriod())
+            |> CanvasItem.setZIndex(tileZIndex())
+
+    /// セル中心を基準に Panel を置く左上座標（世界座標）。`renderTiles` と `tileDrawables` で共用。
+    def tileTopLeft(cell: {x = Int32, y = Int32}): Vec2.Vec2 =
+        let half = (MapSnapshot.tileSize() - inset() * 2.0) / 2.0;
+        let center = MapSnapshot.cellCenter(cell);
+        {x = center#x - half, y = center#y - half}
+
+    /// `cells` を順に列挙してハッチ Panel を `Tile_<idx>` として子追加する（scene ノード描画）。
     pub def renderTiles(parentName: String,
                          cells: List[{x = Int32, y = Int32}],
                          color: Color, alpha: Float32,
                          scene: Scene[NodeTag]): Scene[NodeTag] =
-        let indexed = List.zipWithIndex(cells);
-        let side = MapSnapshot.tileSize() - inset() * 2.0;
-        let size: Vec2.Vec2 = {x = side, y = side};
-        let half = side / 2.0;
-        // 塗りは淡く、縞は中明色を濃いめ、枠は明色をくっきり（CSS の重み付けを踏襲）。
-        let stripeColor = lighten(color, 0.5f32);
-        let borderColor = lighten(color, 0.2f32);
+        let base = tilePanel(color, alpha);
         List.foldLeft(acc -> entry -> {
             let (idx, cell) = entry;
-            let center = MapSnapshot.cellCenter(cell);
-            let topLeft: Vec2.Vec2 = {x = center#x - half, y = center#y - half};
-            // 縞以外（塗り）はほぼ透過させて床を見せ、色は斜線と枠で表現する。
-            let panel = Panel.make(size, color)
-                            |> Node2D.setPosition(topLeft)
-                            |> Panel.setBackgroundAlpha(alpha * 0.08f32)
-                            |> Panel.setBorderColor(borderColor)
-                            |> Panel.setBorderAlpha(alpha)
-                            |> Panel.setBorderWidth(0.5)
-                            |> Panel.setCornerRadius(2.0)
-                            |> Panel.setStripe(stripeColor, alpha * 0.65f32, stripeWidth(), stripePeriod())
-                            |> CanvasItem.setZIndex(tileZIndex());
-            Scene.addChild(parentName,
-                "Tile_${idx}",
-                EngineNode.PanelWithState(panel, NodeTag.NoTag),
-                acc)
-        }, scene, indexed)
+            let panel = base |> Node2D.setPosition(tileTopLeft(cell));
+            Scene.addChild(parentName, "Tile_${idx}",
+                EngineNode.PanelWithState(panel, NodeTag.NoTag), acc)
+        }, scene, List.zipWithIndex(cells))
+
+    /// B: `cells` を camera 適用済みのハッチ box Drawable にする（World render System 用）。`Panel.toDrawables`
+    /// で `renderTiles` と同一 styling を再利用し、位置は `tileTopLeft` を camera 変換、scale（=Panel サイズ）を
+    /// zoom 倍する（`RenderWorld.unitDraw` のスケール処理と対称）。
+    pub def tileDrawables(cells: List[{x = Int32, y = Int32}], color: Color, alpha: Float32,
+                          transform: Camera2D.ViewTransform): List[GameEngine.Drawable] =
+        let panel = tilePanel(color, alpha);
+        List.flatMap(cell -> {
+            let screenTopLeft = Camera2D.applyToWorldPos(transform, tileTopLeft(cell));
+            Panel.toDrawables(panel, screenTopLeft)
+                |> Render.applyCameraScale(transform)
+        }, cells)
+
+    /// B: scene 側の `Tile_i`（count 個）を隠す。World 描画へ切替える際の二重描画防止＝`hideUnitSprites`/`hideHaze` 対称。
+    pub def hideTiles(parentName: String, count: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+        List.foldLeft((acc, i) ->
+            Scene.mapEngineNode(parentName :: "Tile_${i}" :: Nil,
+                n -> CanvasItem.setVisible(false, n), acc),
+            scene, List.range(0, count))
 }
 
 /// MoveRangeScene — プレイヤーの「今ターン移動可能なマス」を青で可視化する
@@ -212,12 +230,12 @@ mod MoveAttackRangeScene {
     def name(): String = "MoveAttackRange"
     pub def rangePath(): NodePath = name() :: Nil
 
-    /// PlayerAttackRangeScene / EnemyRangeScene と同じ赤系 modulate。
-    def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
+    /// PlayerAttackRangeScene / EnemyRangeScene と同じ赤系 modulate。B: renderMoveAttackRange も同値を使うため pub。
+    pub def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
 
     /// 青マス (MoveRange = 1.0) より透かすことで、移動範囲より外側の脅威範囲を
     /// 視覚的に奥の層として見せ、「動けるマス」と「そこから攻撃が届くマス」を階層化する。
-    def alpha(): Float32 = 0.5f32
+    pub def alpha(): Float32 = 0.5f32
 
     /// 既存ノードを取り除いて再構築する。`MoveRangeScene` の青マスが既に build 済みの
     /// 前提で、その reachable を読み取って差集合を作る。
@@ -250,12 +268,16 @@ mod MoveAttackRangeScene {
     pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.removeAt(rangePath(), scene)
 
-    /// テスト・デバッグ用: 現在の脅威セル一覧。未登録なら空リスト。
+    /// テスト・デバッグ用: 現在の脅威セル一覧。未登録なら空リスト。B: renderMoveAttackRange の描画セルもこれ。
     pub def cells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
         match Scene.getState(rangePath(), scene) {
             case Some(NodeTag.MoveAttackRange(data)) => data#cells
             case _ => Nil
         }
+
+    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す（二重描画防止）。cells 数だけ隠せば十分。
+    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
+        RangeOverlay.hideTiles(name(), List.length(cells(scene)), scene)
 }
 
 /// EnemyRangeScene — カーソルが敵に乗っているとき、その敵の移動範囲を赤色で可視化する

@@ -64,9 +64,8 @@ mod RenderWorld {
                 let color = Scene.effectiveModulateAt(spritePath, scene);
                 let z = Scene.effectiveZIndexAt(spritePath, scene);
                 GameEngine.Renderable.toDrawables(node, screenPos)
-                    |> List.map(d -> {
-                        scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y},
-                        color = color, zIndex = z | d })
+                    |> Render.applyCameraScale(transform)
+                    |> List.map(d -> {color = color, zIndex = z | d})
             }) |> Option.getWithDefault(Nil)
 
     /// B: fog の暗幕（haze）を World render System で描く。scene の Fog ColorRect プールを使わず、
@@ -92,6 +91,14 @@ mod RenderWorld {
                 List.flatMap(r -> fogRectDrawables(r, transform), hazeRects)
         }
 
+    /// B: MoveAttackRange（脅威範囲・赤ハッチ）を World render System で描く。表示専用（格納セル＝描画セル・
+    /// logic 非依存）ゆえ node のセルをそのまま `RangeOverlay.tileDrawables` に渡すだけ＝再計算なし。scene 側の
+    /// Tile Panel は Game.flix が `MoveAttackRangeScene.hideTiles` で隠す（hideUnitSprites/hideHaze 対称）。
+    pub def renderMoveAttackRange(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        let transform = viewTransform(scene);
+        RangeOverlay.tileDrawables(MoveAttackRangeScene.cells(scene),
+            MoveAttackRangeScene.color(), MoveAttackRangeScene.alpha(), transform)
+
     /// 1 つの暗幕グリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は `FogScene.setPoolRect` と
     /// 同一（grid × tileSize）。solidBox は alpha=1.0 ゆえ fog 用 alpha に上書きし、scale（=ピクセルサイズ）を
     /// zoom 倍する（unitDraw のスケール処理と対称）。
@@ -103,6 +110,6 @@ mod RenderWorld {
         let sizePx:   Vec2.Vec2 = {x = sizeV#x * s, y = sizeV#y * s};
         let screenPos = Camera2D.applyToWorldPos(transform, worldPos);
         Render.toDrawables(Render.solidBox(sizePx, FogScene.fogColor(), FogScene.fogZIndex()), screenPos)
-            |> List.map(d -> {scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y},
-                              alpha = FogScene.fogAlpha() | d})
+            |> Render.applyCameraScale(transform)
+            |> List.map(d -> {alpha = FogScene.fogAlpha() | d})
 }
