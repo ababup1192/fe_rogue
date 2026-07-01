@@ -43,30 +43,78 @@ mod RenderWorld {
     /// 1 ユニット → Drawable list。`pathToDrawables` と同手順（globalPositionAt→camera→Renderable.toDrawables→
     /// applyZoomScale）。視覚位置・modulate・z は scene 由来（兄弟ノードと同期）、存在のみ World.posOf で gate。
     /// posOf×getEngineNode は forM で 1 段に畳む。
+    /// 共有 spine（units / items / stairs / chests）: scene の 1 sprite ノードを worldPos に置き、camera 適用＋
+    /// effectiveModulate/effectiveZIndex を掛けて Drawable 化する（不可視なら Nil）。worldPos は呼び側が決める
+    /// （ユニットは移動中 renderPos・静止/他は marker やセル位置）。effectiveModulateAt は node 自身の modulate
+    /// を含む（fog×暗転）＝単一適用ゆえ d#color へ再掛けしない。
+    def spriteNodeDrawables(spritePath: NodePath, worldPos: Vec2.Vec2,
+                            transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        match Scene.getEngineNode(spritePath, scene) {
+            case None       => Nil
+            // 可視判定は renderArgs と同じく「祖先 AND 自ノード」。effectiveVisibleAt は**祖先のみ**検査するため
+            // （drawContextWalk が最終要素=自ノードをスキップ）、fog が葉ノード自身の visible を false にする
+            // アイテム等は `CanvasItem.isVisible(node)` を併せて見ないと暗所で描かれてしまう。
+            case Some(node) =>
+                if (not (Scene.effectiveVisibleAt(spritePath, scene) and CanvasItem.isVisible(node))) Nil
+                else {
+                    let screenPos = Camera2D.applyToWorldPos(transform, worldPos);
+                    let color = Scene.effectiveModulateAt(spritePath, scene);
+                    let z = Scene.effectiveZIndexAt(spritePath, scene);
+                    GameEngine.Renderable.toDrawables(node, screenPos)
+                        |> Render.applyCameraScale(transform)
+                        |> List.map(d -> {color = color, zIndex = z | d})
+                }
+        }
+
     def unitDraw(ref: World.EntityRef, spritePath: NodePath, world: World,
                  transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        if (not Scene.effectiveVisibleAt(spritePath, scene)) Nil
-        else
-            (forM (
-                _pos <- World.posOf(ref, world);
-                node <- Scene.getEngineNode(spritePath, scene)
-            ) yield {
-                // B/m2: **移動アニメ中だけ** World.renderPos（tween を World が回す）を使う。それ以外（静止・攻撃 lunge
-                // 等の marker アニメ中）は scene marker を読む＝lunge/knockback 等を正しく捕捉。renderPos は移動しか
-                // 持たないため、攻撃モーションは marker から。move/lunge を全部 World 化するのは将来（全アニメ World 化）。
+        // 存在 gate = World.posOf（World が論理位置を持つユニットのみ描く）。
+        match World.posOf(ref, world) {
+            case None    => Nil
+            case Some(_) =>
+                // 移動アニメ中だけ renderPos（tween を World が回す）・それ以外は marker（攻撃 lunge/knockback を捕捉。
+                // renderPos は移動しか持たないため）。全アニメ World 化は将来。
                 let worldPos =
                     if (World.isAnimating(ref, world))
                         World.renderPosOf(ref, world) |> Option.getWithDefault(Scene.globalPositionAt(spritePath, scene))
                     else
                         Scene.globalPositionAt(spritePath, scene);
-                let screenPos = Camera2D.applyToWorldPos(transform, worldPos);
-                // effectiveModulateAt は node 自身の modulate を含む（fog×待機暗転）＝単一適用。d#color へ再掛けしない。
-                let color = Scene.effectiveModulateAt(spritePath, scene);
-                let z = Scene.effectiveZIndexAt(spritePath, scene);
-                GameEngine.Renderable.toDrawables(node, screenPos)
-                    |> Render.applyCameraScale(transform)
-                    |> List.map(d -> {color = color, zIndex = z | d})
-            }) |> Option.getWithDefault(Nil)
+                spriteNodeDrawables(spritePath, worldPos, transform, scene)
+        }
+
+    /// B: 親ノード配下の全 sprite 子（body / outline 等）を、可視なら World render System で描く汎用。
+    /// マップ上の静的スプライト群（アイテム / 宝箱 等）が共有。位置は各ノードに焼き込み済ゆえ globalPositionAt を
+    /// worldPos に使う。fog は visible=false で暗所を落とす（従来どおり）。親が無い画面（非ダンジョン）は空。
+    pub def renderSpriteChildren(parentPath: NodePath, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        match Scene.getEngineNode(parentPath, scene) {
+            case None    => Nil
+            case Some(_) =>
+                let transform = viewTransform(scene);
+                Scene.getChildrenAt(parentPath, scene)
+                    |> List.flatMap(name -> {
+                        let path = List.append(parentPath, name :: Nil);
+                        spriteNodeDrawables(path, Scene.globalPositionAt(path, scene), transform, scene)
+                    })
+        }
+
+    /// B: 親配下の全 sprite 子を隠す（World 描画へ切替時の二重描画防止）。親が無ければ scene 不変。
+    pub def hideSpriteChildren(parentPath: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
+        match Scene.getEngineNode(parentPath, scene) {
+            case None    => scene
+            case Some(_) =>
+                Scene.getChildrenAt(parentPath, scene)
+                    |> List.foldLeft((acc, name) ->
+                        Scene.mapEngineNode(List.append(parentPath, name :: Nil),
+                            n -> CanvasItem.setVisible(false, n), acc), scene)
+        }
+
+    /// B: マップ上のアイテム（body＋点滅 outline の sprite 兄弟）を World render System で描く。
+    pub def renderItems(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        renderSpriteChildren(ItemScene.parentPath(), scene)
+
+    /// B: scene 側アイテム sprite を隠す（renderItems が描くため）。
+    pub def hideItems(scene: Scene[NodeTag]): Scene[NodeTag] =
+        hideSpriteChildren(ItemScene.parentPath(), scene)
 
     /// B: fog の暗幕（haze）を World render System で描く。scene の Fog ColorRect プールを使わず、
     /// FogScene の純粋な補集合計算（holesForDraft/mapRegion/bandDecompose）を再利用して暗幕矩形を
