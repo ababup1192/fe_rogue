@@ -68,4 +68,41 @@ mod RenderWorld {
                         scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y},
                         color = color, zIndex = z | d })
             }) |> Option.getWithDefault(Nil)
+
+    /// B: fog の暗幕（haze）を World render System で描く。scene の Fog ColorRect プールを使わず、
+    /// FogScene の純粋な補集合計算（holesForDraft/mapRegion/bandDecompose）を再利用して暗幕矩形を
+    /// solidBox の Drawable にする。敵/アイテムの点灯（可視性）制御は従来どおり FogScene が担い、ここは
+    /// 暗幕の描画のみ。二重描画は Game.flix が `FogScene.hideHaze` で scene プールを隠して防ぐ（hideUnitSprites 対称）。
+    /// 入力（origin 基準の部屋点灯・通路 torch）は `FogScene.process` と同一＝挙動不変。
+    pub def renderFog(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ {GameEngine.Game, SelectedPlayer.State} =
+        // ダンジョン以外（タイトル/パーティ選択/メニュー等）は Map ノードが無い＝暗幕なし。
+        // `MapScene.getPlacements` は Map 不在で bug! するので、`World.mapSnapshotOpt` と同じ存在ガードで早期 Nil。
+        match Scene.getEngineNode(MapScene.mapPath(), scene) {
+            case None    => Nil
+            case Some(_) =>
+                let transform  = viewTransform(scene);
+                let drafts     = SelectedPlayer.State.get()#drafts;
+                let units      = PlayerScene.getAll(scene)
+                    |> List.map(d -> {gridPos = d#gridPos, hidden = d#hidden,
+                                      origin = MoveDraft.originOf(d#id, drafts) |> Option.getWithDefault(d#gridPos)});
+                let placements = MapScene.getPlacements(scene);
+                let roomCount  = MapScene.getRoomCount(scene);
+                let holes      = FogScene.holesForDraft(units, placements, roomCount, true);
+                let hazeRects  = FogScene.bandDecompose(FogScene.mapRegion(placements), holes);
+                List.flatMap(r -> fogRectDrawables(r, transform), hazeRects)
+        }
+
+    /// 1 つの暗幕グリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は `FogScene.setPoolRect` と
+    /// 同一（grid × tileSize）。solidBox は alpha=1.0 ゆえ fog 用 alpha に上書きし、scale（=ピクセルサイズ）を
+    /// zoom 倍する（unitDraw のスケール処理と対称）。
+    def fogRectDrawables(r: GridRect, transform: Camera2D.ViewTransform): List[GameEngine.Drawable] =
+        let s = MapSnapshot.tileSize();
+        let posV  = Vec2i.toVec2(({x = r#x0, y = r#y0}: {x = Int32, y = Int32}));
+        let sizeV = Vec2i.toVec2(({x = r#x1 - r#x0, y = r#y1 - r#y0}: {x = Int32, y = Int32}));
+        let worldPos: Vec2.Vec2 = {x = posV#x * s, y = posV#y * s};
+        let sizePx:   Vec2.Vec2 = {x = sizeV#x * s, y = sizeV#y * s};
+        let screenPos = Camera2D.applyToWorldPos(transform, worldPos);
+        Render.toDrawables(Render.solidBox(sizePx, FogScene.fogColor(), FogScene.fogZIndex()), screenPos)
+            |> List.map(d -> {scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y},
+                              alpha = FogScene.fogAlpha() | d})
 }

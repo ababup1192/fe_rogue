@@ -1105,8 +1105,11 @@ mod Game {
             if (RenderWorld.useRenderFromWorld()) {
                 // m1c: scene 側ユニット sprite を隠して描画 → ユニットは World 由来のみで描く。
                 // ※ marker(武器/HPバー)は engine 駆動のまま（移動 tween + 攻撃 lunge 等を全部保持）。
-                let (sprites, tileMaps, polygons) = GameEngine.renderArgs(RenderWorld.hideUnitSprites(synced));
-                GameEngine.Game.renderCommands(List.append(sprites, RenderWorld.renderUnits(world2, synced)), tileMaps, polygons)
+                // B/fog: scene 側 fog 暗幕プールも隠し、暗幕は renderFog（World render System）で描く。
+                let prepped = RenderWorld.hideUnitSprites(synced) |> FogScene.hideHaze;
+                let (sprites, tileMaps, polygons) = GameEngine.renderArgs(prepped);
+                let worldDrawables = List.append(RenderWorld.renderUnits(world2, synced), RenderWorld.renderFog(synced));
+                GameEngine.Game.renderCommands(List.append(sprites, worldDrawables), tileMaps, polygons)
             } else
                 GameEngine.render(synced);
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)

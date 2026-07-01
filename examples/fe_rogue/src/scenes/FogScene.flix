@@ -27,13 +27,13 @@ mod FogScene {
     def driverName(): String = "FogDriver"
 
     /// モヤの色（暗い青灰）と不透明度。地形がうっすら見える程度に薄暗くする。
-    /// 視認性とパフォーマンスのトレードオフ調整点。
-    def fogColor(): Color = {r = 0.04f32, g = 0.05f32, b = 0.10f32}
-    def fogAlpha(): Float32 = 0.66f32
+    /// 視認性とパフォーマンスのトレードオフ調整点。B: render-from-World の `renderFog` も同値を使うため pub。
+    pub def fogColor(): Color = {r = 0.04f32, g = 0.05f32, b = 0.10f32}
+    pub def fogAlpha(): Float32 = 0.66f32
 
     /// モヤ矩形の zIndex。Floor=-1 / Walls=0 の上、Item(4,5)/Unit(10) の下。
     /// 可視性制御は z 順ではなく visible=false で行うため z 競合しない。
-    def fogZIndex(): Int32 = 2
+    pub def fogZIndex(): Int32 = 2
 
     /// 明るい部屋矩形を floorBounds から外側へ広げるタイル数（壁リングまで明るくする）。tunable。
     def edgePad(): Int32 = 1
@@ -222,6 +222,12 @@ mod FogScene {
     def hidePoolRect(i: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(rectChildPath(i),
             n -> EngineNode.mapColorRect(c -> CanvasItem.setVisible(false, c), n), scene)
+
+    /// B: render-from-World の haze 描画へ切替える際、scene 側の haze プールを全隠しにする
+    /// （`RenderWorld.renderFog` が同じ補集合矩形を Drawable で描くため二重描画を防ぐ）。
+    /// `RenderWorld.hideUnitSprites` と対称＝描画直前の scene コピーに適用する（実 scene 状態は不変）。
+    pub def hideHaze(scene: Scene[NodeTag]): Scene[NodeTag] =
+        List.foldLeft((acc, i) -> hidePoolRect(i, acc), scene, List.range(0, poolSize()))
 
     /// module の floorBounds(±edgePad で壁リングまで拡張) を world grid 矩形にする。
     pub def moduleRect(p: DungeonComposer.ModulePlacement): GridRect =
