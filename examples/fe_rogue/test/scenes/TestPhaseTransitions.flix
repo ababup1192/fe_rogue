@@ -33,7 +33,7 @@ mod TestPhaseTransitions {
             holdDir            = None,
             holdSteps          = 0
         };
-        let moveData: MoveRangeScene.Data            = {reachable = dummyCells()};
+        let moveData: MoveRangeScene.Data            = {reachable = dummyCells(), drawCells = dummyCells()};
         let moveAttackData: MoveAttackRangeScene.Data = {cells = dummyCells()};
         let playerAttackData: PlayerAttackRangeScene.Data = {cells = dummyCells()};
         let enemyData: EnemyRangeScene.Data          = {enemyId = 0, reachable = dummyCells()};

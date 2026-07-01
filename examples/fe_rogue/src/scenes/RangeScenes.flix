@@ -116,21 +116,23 @@ mod RangeOverlay {
 mod MoveRangeScene {
 
     /// 親 Marker2D に紐づくデータ。
-    /// `reachable` は BFS で到達可能と判定されたセル一覧 (origin を含む)。
+    /// `reachable` は BFS で到達可能と判定されたセル一覧 (origin を含む)＝`isInRange` 用。
+    /// `drawCells` は実際に青く描くセル (stoppable＝味方マスを除いた停止可能マス)＝World 描画が読む。
     pub type alias Data = {
-        reachable = List[{x = Int32, y = Int32}]
+        reachable = List[{x = Int32, y = Int32}],
+        drawCells = List[{x = Int32, y = Int32}]
     }
 
     def name(): String = "MoveRange"
     pub def moveRangePath(): NodePath = name() :: Nil
 
     /// 移動範囲を識別する青系 modulate。Floor 装飾レイヤーの上で
-    /// 移動可能マスとして識別しやすいように青寄りに着色する。
-    def color(): Color = {r = 0.3f32, g = 0.5f32, b = 1.0f32}
+    /// 移動可能マスとして識別しやすいように青寄りに着色する。B: renderMoveRange も同値を使うため pub。
+    pub def color(): Color = {r = 0.3f32, g = 0.5f32, b = 1.0f32}
 
     /// 移動可能マスをはっきり認識させるため完全不透明にする。
     /// 半透明にすると青が薄れて床と区別しにくくなる。
-    def alpha(): Float32 = 1.0f32
+    pub def alpha(): Float32 = 1.0f32
 
     /// MapScene + PlayerScene が登録済みのシーンに MoveRange ノードと各セルの Sprite2D
     /// 子を追加する。**選択中プレイヤー** の位置を origin に `Board.reachableForUnit`
@@ -171,7 +173,7 @@ mod MoveRangeScene {
         let cells     = Board.reachableForUnit(board, origin, steps);
         let drawCells = Board.stoppableForUnit(board, origin, steps);
         scene
-            |> RangeOverlay.attachParent(name(), NodeTag.MoveRange({reachable = cells}))
+            |> RangeOverlay.attachParent(name(), NodeTag.MoveRange({reachable = cells, drawCells = drawCells}))
             |> RangeOverlay.renderTiles(name(), drawCells, color(), alpha())
 
     /// 既存の MoveRange ノードを丸ごと取り除いて `add` で組み直す。
@@ -201,6 +203,17 @@ mod MoveRangeScene {
             case Some(NodeTag.MoveRange(data)) => data#reachable
             case _ => Nil
         }
+
+    /// B: World 描画が読む「青く描くセル」(stoppable)。未登録なら空リスト。
+    pub def drawCells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
+        match Scene.getState(moveRangePath(), scene) {
+            case Some(NodeTag.MoveRange(data)) => data#drawCells
+            case _ => Nil
+        }
+
+    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す (二重描画防止)。
+    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
+        RangeOverlay.hideTiles(name(), List.length(drawCells(scene)), scene)
 }
 
 /// MoveAttackRangeScene — 「移動先のいずれかから攻撃が届くセル」を赤マスで可視化する

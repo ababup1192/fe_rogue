@@ -99,6 +99,14 @@ mod RenderWorld {
         RangeOverlay.tileDrawables(MoveAttackRangeScene.cells(scene),
             MoveAttackRangeScene.color(), MoveAttackRangeScene.alpha(), transform)
 
+    /// B: MoveRange（移動範囲・青ハッチ）を World render System で描く。描画セル(stoppable)は node に格納済み
+    /// ＝再計算なし（renderMoveAttackRange と同型＝tileDrawables 再利用で数行）。scene の Tile Panel は
+    /// Game.flix が hideTiles で隠す。
+    pub def renderMoveRange(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        let transform = viewTransform(scene);
+        RangeOverlay.tileDrawables(MoveRangeScene.drawCells(scene),
+            MoveRangeScene.color(), MoveRangeScene.alpha(), transform)
+
     /// 1 つの暗幕グリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は `FogScene.setPoolRect` と
     /// 同一（grid × tileSize）。solidBox は alpha=1.0 ゆえ fog 用 alpha に上書きし、scale（=ピクセルサイズ）を
     /// zoom 倍する（unitDraw のスケール処理と対称）。

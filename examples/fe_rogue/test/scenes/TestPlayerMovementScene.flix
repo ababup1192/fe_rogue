@@ -69,7 +69,7 @@ mod TestPlayerMovementScene {
         let scene = Scene.empty()
             |> Scene.addNode(MapScene.worldName(), EngineNode.Marker2DWithState(world, NodeTag.NoTag))
             |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0), pnode)
-            |> RangeOverlay.attachParent("MoveRange", NodeTag.MoveRange({reachable = reachable}));
+            |> RangeOverlay.attachParent("MoveRange", NodeTag.MoveRange({reachable = reachable, drawCells = reachable}));
         (pnode, scene)
 
     /// physicsStep を 1 フレーム駆動し、emit された Cmd.Move の着地マス列を返す。
