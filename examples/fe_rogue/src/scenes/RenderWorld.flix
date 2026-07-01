@@ -82,22 +82,8 @@ mod RenderWorld {
                 spriteNodeDrawables(spritePath, worldPos, transform, scene)
         }
 
-    /// B: マップ配置物（アイテム / 宝箱 / 階段）の in-world サブツリー root。各 subtree をエンジンの忠実合成
-    /// `Scene.subtreeDrawables`（visible[祖先 AND 自]/modulate/z/camera/任意深さ）で描き、`hideNode` で scene から
-    /// 隠す。fog の暗所非表示は `pathToDrawables` の自可視判定が native に効く（手貼り patch 不要）。不在時 no-op。
-    def mapEntityRoots(): List[NodePath] =
-        ItemScene.parentPath() :: ChestScene.parentPath() :: StairsScene.stairsPath() :: Nil
-
-    /// B: マップ配置物（アイテム/宝箱/階段）を World render System で描く。
-    pub def renderMapEntities(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        mapEntityRoots() |> List.flatMap(root -> renderSubtree(root, scene))
-
-    /// B: マップ配置物の scene 側ノードを隠す（renderArgs から外し二重描画防止）。
-    pub def hideMapEntities(scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapEntityRoots() |> List.foldLeft((acc, root) -> hideNode(root, acc), scene)
-
-    /// B: `root` 配下のサブツリー（HUD/メニュー等の階層 UI）を World render System で描く。エンジンの
-    /// 忠実合成 `Scene.subtreeDrawables`（祖先合成・任意深さ・CanvasLayer は camera 非適用）に委譲＝renderArgs 同一。
+    /// B: `root` 配下のサブツリー（階層 UI / 配置物）を World render System で描く。エンジンの忠実合成
+    /// `Scene.subtreeDrawables`（祖先合成・任意深さ・CanvasLayer は camera 非適用）に委譲＝renderArgs 同一。
     pub def renderSubtree(root: NodePath, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
         Scene.subtreeDrawables(viewTransform(scene), root, scene)
 
@@ -109,20 +95,43 @@ mod RenderWorld {
             case Some(_) => Scene.mapEngineNode(path, n -> CanvasItem.setVisible(false, n), scene)
         }
 
-    /// B: World 描画する HUD/メニューの root 一覧（CanvasLayer サブツリー）。在れば `subtreeDrawables` で描き、
-    /// 不在（未オープンの動的 menu 等）は `renderSubtree`/`hideNode` とも no-op。
-    def hudMenuRoots(): List[NodePath] =
+    /// B: World 描画する **in-world（camera 適用）** サブツリー root。配置物（アイテム/宝箱/階段）＋ダメージ数字/
+    /// 爆発/カーソル/矢印カーソル。top-level の Cursor/ArrowCursor は World 直下でないため明示列挙。
+    def worldSubtreeRoots(): List[NodePath] =
+        ItemScene.parentPath() :: ChestScene.parentPath() :: StairsScene.stairsPath() ::
+        DamagePopupScene.rootPath() :: ExplosionScene.rootPath() ::
+        CursorScene.cursorPath() :: ArrowCursorScene.arrowPath() :: Nil
+
+    /// B: World 描画する **CanvasLayer（camera 免除・画面固定）** サブツリー root。HUD/メニュー/minimap/各種ポップアップ。
+    /// 不在（未オープンの動的 menu 等）は `subtreeDrawables`/`hideNode` とも no-op。
+    def hudSubtreeRoots(): List[NodePath] =
         TopBarScene.rootPath() :: UnitCardScene.rootPath() :: UnitInfoPopupScene.rootPath() ::
         ActionMenuScene.rootPath() :: ItemMenuScene.rootPath() :: WeaponSelectScene.rootPath() ::
-        TradeMenuScene.rootPath() :: GameOverMenuScene.rootPath() :: LevelUpPanelScene.rootPath() :: Nil
+        TradeMenuScene.rootPath() :: GameOverMenuScene.rootPath() :: LevelUpPanelScene.rootPath() ::
+        MinimapScene.rootPath() ::
+        LogScene.logPath() :: EnemyCardScene.rootPath() :: BattlePanelScene.rootPath() ::
+        SuspendConfirmScene.rootPath() :: ItemPickupPopupScene.rootPath() :: TurnEndHoldScene.rootPath() :: Nil
 
-    /// B: 全 HUD/メニューサブツリーを World render System で描く（各 root に `renderSubtree`）。
-    pub def renderHudMenus(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        hudMenuRoots() |> List.flatMap(root -> renderSubtree(root, scene))
+    /// B: World 描画する全サブツリー root（world〔camera 適用〕 ++ hud〔CanvasLayer〕）。camera 適用/免除の seam を
+    /// 2 サブリストで保持。順序は z-sort/effzIndex で描画に無関係。
+    def subtreeRoots(): List[NodePath] = List.append(worldSubtreeRoots(), hudSubtreeRoots())
 
-    /// B: 全 HUD/メニューの scene 側 root を隠す（renderArgs から外し二重描画防止）。
-    pub def hideHudMenus(scene: Scene[NodeTag]): Scene[NodeTag] =
-        hudMenuRoots() |> List.foldLeft((acc, root) -> hideNode(root, acc), scene)
+    /// B: polygon（Polygon2D/Arc2D）を持つ subtree root のみ（minimap マーカー円 / BattlePanel ドット / TurnEndHold リング）。
+    /// polygon の無い root を毎フレーム走査しないよう明示。
+    def polygonSubtreeRoots(): List[NodePath] =
+        MinimapScene.rootPath() :: BattlePanelScene.rootPath() :: TurnEndHoldScene.rootPath() :: Nil
+
+    /// B: 全 subtree（配置物/HUD/メニュー/minimap/ポップアップ等）を World render System で描く。
+    pub def renderSubtrees(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+        subtreeRoots() |> List.flatMap(root -> renderSubtree(root, scene))
+
+    /// B: polygon を持つ subtree の Polygon2D/Arc2D を polygon チャンネルで描く（`Scene.subtreePolygons`）。
+    pub def renderSubtreePolygons(scene: Scene[NodeTag]): List[GameEngine.PolygonRenderCmd] \ GameEngine.Game =
+        polygonSubtreeRoots() |> List.flatMap(root -> Scene.subtreePolygons(viewTransform(scene), root, scene))
+
+    /// B: 全 subtree の scene 側 root を隠す（renderArgs から外し二重描画防止）。
+    pub def hideSubtrees(scene: Scene[NodeTag]): Scene[NodeTag] =
+        subtreeRoots() |> List.foldLeft((acc, root) -> hideNode(root, acc), scene)
 
     /// B/tiles: World の tileLayers（bake 済ハンドル）を camera 適用して engine の instanced tile 描画コマンドにする。
     /// renderArgs のタイル経路（`globalPositionAt`→`applyToWorldPos` + `transform#scale`）と同一 spine。
@@ -211,17 +220,4 @@ mod RenderWorld {
             |> Render.applyCameraScale(transform)
             |> List.map(d -> {alpha = FogScene.fogAlpha() | d})
 
-    /// B: minimap の ColorRect（room/floor プール）を World render System で描く（CanvasLayer サブツリー）。
-    /// Polygon2D マーカーは subtreeDrawables では描けないため `renderMinimapPolygons` が別チャンネルで担う。
-    pub def renderMinimap(scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        Scene.subtreeDrawables(viewTransform(scene), MinimapScene.rootPath(), scene)
-
-    /// B: minimap の Polygon2D マーカー（円）を polygon チャンネルで描く。`Scene.subtreePolygons`
-    /// （renderArgs polygon 経路と parity）を minimap サブツリーに適用。
-    pub def renderMinimapPolygons(scene: Scene[NodeTag]): List[GameEngine.PolygonRenderCmd] \ GameEngine.Game =
-        Scene.subtreePolygons(viewTransform(scene), MinimapScene.rootPath(), scene)
-
-    /// B: minimap の scene 側 root（CanvasLayer）を隠す（renderArgs の sprites/polygons 両方から祖先可視で除外）。
-    pub def hideMinimap(scene: Scene[NodeTag]): Scene[NodeTag] =
-        hideNode(MinimapScene.rootPath(), scene)
 }

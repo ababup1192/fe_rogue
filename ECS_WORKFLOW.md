@@ -54,7 +54,8 @@
   - [x] items を subtreeDrawables 化（自ノード可視を native 判定＝手貼り patch 撤去）
 - [x] **HUD を World 描画**（TopBar/UnitCard/UnitInfoPopup を `renderSubtree`/`hideNode` で・CanvasLayer は camera 非適用を native 処理）
 - [x] **メニューを World 描画**（ActionMenu/ItemMenu/WeaponSelect/TradeMenu/GameOver/LevelUp を `hudMenuRoots` リストで `renderHudMenus`/`hideHudMenus` に集約。ItemList の行/カーソルは Renderable 経由で合成＝共通ウィジェット手書き不要だった）。★各 root は不在時 no-op（動的 menu 安全）。全 check+1064 tests green
-- [ ] **camera を World 化** ★要相談（engine camera System 新規・追従/smoothing/limit）
+- [x] **残り scene スプライトを World 描画**（レビュー 87→90+・engine 改修なし）。DamagePopup/Explosion/Cursor/ArrowCursor（in-world）＋Log/EnemyCard/BattlePanel/SuspendConfirm/ItemPickupPopup/TurnEndHold（CanvasLayer）を `subtreeDrawables`（+ BattlePanel/TurnEndHold は `subtreePolygons`）で移送。全 subtree 描画を `worldSubtreeRoots`(camera 適用)＋`hudSubtreeRoots`(CanvasLayer)＝`subtreeRoots` に統合し `renderSubtrees`/`renderSubtreePolygons`(polygon 3 root のみ)/`hideSubtrees` に集約（既存 mapEntities/hudMenus/minimap 吸収）。1066 tests green
+- [ ] **camera を World 化** ★（追従 target=cursor が World 未在・transform を renderArgs と共有＝dual-write or renderArgs 完全退役が前提。renderArgs 完全退役は marker 武器グリフ/HP＝延期 engine tween 退役 task と結合）
 - [ ] **scene-tree 完全撤去**＝**B 完成宣言**（EntityScene / `syncTreeFromWorld` / render-from-scene 経路 / 重複② の物理撤去）
 - [ ] **統合・全体 run 検証**
 

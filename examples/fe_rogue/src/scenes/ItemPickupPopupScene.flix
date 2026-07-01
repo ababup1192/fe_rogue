@@ -66,7 +66,8 @@ mod ItemPickupPopupScene {
     def windowName(): String = "window"
     def textName(): String = "text"
 
-    def rootPath(): NodePath = rootName() :: Nil
+    /// B: render-from-World が subtree を描く/隠す root（CanvasLayer）。
+    pub def rootPath(): NodePath = rootName() :: Nil
     def windowPath(): NodePath = rootName() :: windowName() :: Nil
     def textPath(): NodePath = rootName() :: textName() :: Nil
 

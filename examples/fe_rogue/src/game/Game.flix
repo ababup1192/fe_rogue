@@ -1113,23 +1113,22 @@ mod Game {
                 // m1c: scene 側ユニット sprite を隠して描画 → ユニットは World 由来のみで描く。
                 // ※ marker(武器/HPバー)は engine 駆動のまま（移動 tween + 攻撃 lunge 等を全部保持）。
                 // B/fog・range・配置物・HUD/menu: scene 側の fog 暗幕・range タイル・アイテム/宝箱/階段・全 HUD/メニューを隠し、World render System で描く。
+                // B: 全 subtree（配置物/HUD/メニュー/minimap/ポップアップ/カーソル等）を hideSubtrees で scene から外し、
+                //    renderSubtrees（drawables）+ renderSubtreePolygons（polygon）で World 経路描画。
                 let prepped = RenderWorld.hideUnitSprites(synced) |> FogScene.hideHaze
-                    |> RenderWorld.hideRangeTiles |> RenderWorld.hideMapEntities |> RenderWorld.hideHudMenus
-                    |> RenderWorld.hideMinimap;
+                    |> RenderWorld.hideRangeTiles |> RenderWorld.hideSubtrees;
                 // B/tiles: tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
                 // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。
                 let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(prepped);
                 let worldDrawables = RenderWorld.renderUnits(world2, synced)
                     |> List.append(RenderWorld.renderFog(synced))
                     |> List.append(RenderWorld.renderRangeOverlays(synced))
-                    |> List.append(RenderWorld.renderMapEntities(synced))
-                    |> List.append(RenderWorld.renderHudMenus(synced))
-                    |> List.append(RenderWorld.renderMinimap(synced));  // B/minimap: room/floor の ColorRect
-                // B/minimap: polygon チャンネルも minimap マーカー（Polygon2D 円）を World 由来に合流。
-                // scenePolygons は hideMinimap で minimap 除外済み（武器グリフ等の既存 polygon はそのまま）。
+                    |> List.append(RenderWorld.renderSubtrees(synced));
+                // B: polygon チャンネルも World 由来 subtree（minimap 円/BattlePanel ドット/TurnEndHold リング）を合流。
+                // scenePolygons は hideSubtrees で除外済み（marker 上の武器グリフ polygon 等はそのまま renderArgs 由来）。
                 GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
                     RenderWorld.renderTileMaps(world2, synced),
-                    List.append(scenePolygons, RenderWorld.renderMinimapPolygons(synced)))
+                    List.append(scenePolygons, RenderWorld.renderSubtreePolygons(synced)))
             } else
                 GameEngine.render(synced);
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)

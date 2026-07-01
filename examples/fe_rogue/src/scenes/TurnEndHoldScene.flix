@@ -64,7 +64,8 @@ mod TurnEndHoldScene {
     def ringBgName(): String = "ringBg"
     def ringFgName(): String = "ringFg"
 
-    def rootPath(): NodePath = rootName() :: Nil
+    /// B: render-from-World が subtree（Label2D ＋ Arc2D リング）を描く/隠す root（CanvasLayer）。
+    pub def rootPath(): NodePath = rootName() :: Nil
     def textPath(): NodePath = rootName() :: textName() :: Nil
     def ringBgPath(): NodePath = rootName() :: ringBgName() :: Nil
     def ringFgPath(): NodePath = rootName() :: ringFgName() :: Nil
