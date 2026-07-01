@@ -112,6 +112,13 @@ mod TestGoldenTrace {
             (w, List.length(evs))
         }
 
+    /// ViewFx(Thief(cell)) の cell を Eq 可能な (x,y) 列へ射影（driveResolveEvs は既存・view-script 節で定義）。
+    def thiefCellsT(events: List[World.SimEvent]): List[(Int32, Int32)] =
+        events |> List.filterMap(ev -> match ev {
+            case World.SimEvent.ViewFx(World.ViewFxKind.Thief(c)) => Some((c#x, c#y))
+            case _                                                => None
+        })
+
     /// posOf を Eq 可能な (x,y) タプルへ射影（record は Eq 非自動）。
     def posT(ref: EntityRef, w: World): Option[(Int32, Int32)] =
         World.posOf(ref, w) |> Option.map(p -> (p#x, p#y))
@@ -744,13 +751,14 @@ mod TestGoldenTrace {
         // 独立 pin: lifesteal で hp10 → post-lifesteal hp に +1 = hp11（二相 fold が必須な証拠：pre-lifesteal hp6 なら 7 になる）。
         Assert.assertEq(expected = Some(11), World.hpOf(EntityRef.Player(0), sysW))
 
-    // ── P1d: 盗人の剣は view-only（World 不変）─────────────────────────────────
+    // ── P1-b: 盗人の剣は ViewFx(Thief) を emit（World 不変・drop は wrapper が引く）─────────────
 
-    /// REAL に発火する thief weapon（rogue ゲート点火）でも World は draw 消費以外変わらないことを確認。
-    /// プレイヤー description="ローグ"、thief weapon{ThiefDrop,effectValue=100}、敵 hp20 survives。
-    /// runAttack（harness が withNoopThiefDrop でラップ）の legacyW と resolveAttack sysW を全射影で一致比較。
+    /// REAL に発火する thief weapon（rogue ゲート点火）で ViewFx(Thief(敵元セル)) が emit され、かつ World は
+    /// draw 消費以外変わらないことを確認（ViewFx は World-identity）。プレイヤー description="ローグ"、
+    /// thief weapon{ThiefDrop,effectValue=100}（roll<100 で必ず発火）、敵 hp20 survives（非撃破が発火条件）。
+    /// isRogueOf は growth#name（=resource#description）由来ゆえ description="ローグ" で点火する。
     @Test
-    def testResolveCombatThiefViewOnly(): Unit \ Assert =
+    def testResolveCombatThiefEmitsViewFx(): Unit \ Assert =
         let bp = player(0, 5, Some(1), 200);
         let tp = {resource = {description = "ローグ" | bp#resource},
                   weapons = fxWeapon(WeaponCatalog.WeaponEffect.ThiefDrop, 100) :: Nil | bp};
@@ -758,10 +766,66 @@ mod TestGoldenTrace {
         let (_, _, legacyW) = runAttack(sc);
         let (sysW, evC) = driveResolve(sc);
         assertNonVacuous(sc, evC);
+        // P1-b: ViewFx(Thief(敵元セル{3,2})) がちょうど 1 つ emit される（drop 実体は wrapper の applyThiefDrop が引く）。
+        Assert.assertEq(expected = (3, 2) :: Nil, thiefCellsT(driveResolveEvs(sc)));
         // 等価: thief 発火しても World 不変＝(enemy hp, player hp, alerted, progress) が全て legacy と一致（draw 消費のみ）。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), World.hpOf(EntityRef.Player(0), w),
                          World.alertedOf(EntityRef.Enemy(1), w), World.progressOf(EntityRef.Player(0), w));
         Assert.assertEq(expected = proj(legacyW), proj(sysW))
+
+    /// 非ローグ（description≠"ローグ"）は同じ thief weapon でも ViewFx(Thief) を emit しない（isRogueOf ゲート）。
+    /// これが無いと isRogueOf を握り潰しても testResolveCombatThiefEmitsViewFx が緑のままになりうる（点火条件の負テスト）。
+    @Test
+    def testResolveCombatNonRogueNoThief(): Unit \ Assert =
+        let bp = player(0, 5, Some(1), 200);
+        let tp = {resource = {description = "せんし" | bp#resource},
+                  weapons = fxWeapon(WeaponCatalog.WeaponEffect.ThiefDrop, 100) :: Nil | bp};
+        let sc = sceneOf(tp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        Assert.assertEq(expected = (Nil: List[(Int32, Int32)]), thiefCellsT(driveResolveEvs(sc)))
+
+    /// P1-b 出荷 seam: `applyAttackHit`（useEcsCombat=true）を記録 ThiefDrop + 記録ロガーで駆動し、
+    /// wrapper の `applyThiefDrop` が実際に drop を敵元セル{3,2}へ 1 回引き、legacy と同じ『…が アイテムを落とした』
+    /// ログを 1 行出すことを pin する（runAttack は legacy 直叩きゆえ ecs 版 applyThiefDrop 配線は未踏だった）。
+    /// applyThiefDrop を外す/events フィルタを壊す退行をここで捕捉する。
+    def runEcsAttackRecThief(sc: Scene[NodeTag]): (List[(Int32, Int32)], List[String]) =
+        region rc {
+            let dropRef = Ref.fresh(rc, (Nil: List[(Int32, Int32)]));
+            let logRef  = Ref.fresh(rc, (Nil: List[String]));
+            let _ =
+                TestUnitFixtures.withTracedWorld(rc, seed(), sc, () ->
+                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(sc), () ->
+                TestUnitFixtures.withMockGame(() ->
+                TestUnitFixtures.withMockAudio(() ->
+                TestUnitFixtures.withNoopAnim(() ->
+                TestUnitFixtures.withNoopTween(() ->
+                    run {
+                        run {
+                            CombatScene.applyAttackHit(0, sc)
+                        } with handler CustomEffects.ThiefDropRequest {
+                            def drop(cell, scene, k) = { Ref.put((cell#x, cell#y) :: Ref.get(dropRef), dropRef); k(scene) }
+                        }
+                    } with handler GameLogger.GameLogger {
+                        def playerLog(s, k)   = { Ref.put(s :: Ref.get(logRef), logRef); k() }
+                        def enemyLog(s, k)    = { Ref.put(s :: Ref.get(logRef), logRef); k() }
+                        def gameOverLog(_, k) = k()
+                        def endTurn(k)        = k()
+                        def drainEntries(k)   = k(Nil)
+                    }))))));
+            (List.reverse(Ref.get(dropRef)), List.reverse(Ref.get(logRef)))
+        }
+
+    @Test
+    def testEcsAttackThiefDropSeam(): Unit \ Assert =
+        let bp = player(0, 5, Some(1), 200);
+        let tp = {resource = {description = "ローグ" | bp#resource},
+                  weapons = fxWeapon(WeaponCatalog.WeaponEffect.ThiefDrop, 100) :: Nil | bp};
+        let sc = sceneOf(tp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (drops, logs) = runEcsAttackRecThief(sc);
+        // drop が敵元セル{3,2}へちょうど 1 回。
+        Assert.assertEq(expected = (3, 2) :: Nil, drops);
+        // 『…が アイテムを落とした』ログがちょうど 1 行含まれる（敵名は fixture 依存ゆえ suffix で pin）。
+        let dropLogs = List.filter(s -> String.endsWith(suffix = "が アイテムを落とした", s), logs);
+        Assert.assertEq(expected = 1, List.length(dropLogs))
 
     // ── P1c: ノックバック（敵 survives → 敵 pos を Moved 経由）─────────────────────
 
@@ -845,6 +909,26 @@ mod TestGoldenTrace {
         Assert.assertEq(expected = statusT(EntityRef.Player(0), legacyW), statusT(EntityRef.Player(0), sysW));
         // 独立 pin: status は非空＝Immobilized が確かに付与された。
         Assert.assertEq(expected = false, List.isEmpty(statusT(EntityRef.Player(0), sysW)))
+
+    /// P1-c: 敵ノックバック（如意棒等・味方生存時）。敵{2,2}が Knockback 武器で味方{3,2}を殴り、味方を攻撃方向
+    /// (+x) へ 2 マス押して {5,2}（player-attack 版 testResolveCombatEqualsLegacyKnockback と対称の幾何）。
+    /// legacy applyEnemyAttackHit（applyEnemyKnockback→pushPlayerBack→snapTo）の最終 (player pos, hp) と
+    /// resolveEnemyAttack sysW を一致比較し {5,2} を pin。faction-blind な knockbackEvents 再利用の証跡。
+    /// （既存敵テストは KNOCKBACK-FREE な testWeapon を使う＝testTestWeaponKnockbackFree の不変条件は保つ。）
+    @Test
+    def testResolveEnemyKnockback(): Unit \ Assert =
+        let kp = {gridPos = {x = 3, y = 2} | player(0, 10, None, 80)};       // 味方を敵の +x 隣へ
+        let ke = {weapon = Some(fxWeapon(WeaponCatalog.WeaponEffect.Knockback, 2))
+                  | enemy(1, 20, {x = 2, y = 2}, false, Some(0), ruleJson(""), 200)};
+        let sc = sceneOf(kp, ke :: Nil);
+        let (_, _, legacyW) = runEnemyAttack(sc, 1);
+        let (sysW, evs) = driveEnemyResolve(sc);
+        assertNonVacuous(sc, List.length(evs));
+        // 等価: 味方生存→ +x に 2 マス押された後の (player pos, player hp) が legacy と一致。
+        let proj = w -> (posT(EntityRef.Player(0), w), World.hpOf(EntityRef.Player(0), w));
+        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        // 独立 pin: 味方{3,2}→{5,2}（壁なし floor・cap=2）。
+        Assert.assertEq(expected = Some((5, 2)), posT(EntityRef.Player(0), sysW))
 
     /// (c) RAW no-clamp + killing-blow ClearImmobilized: 味方 hp2・かなしばり中、敵 weaponHit=200/crit=0 empty rule →
     /// newHp = 2 - dmg(4) = -2（OVERKILL・hard-0 clamp と区別可能）。撃破は deferred（ViewFx(Died)）で World hp は RAW -2、

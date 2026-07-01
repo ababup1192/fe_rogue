@@ -507,10 +507,11 @@ mod CombatScene {
         forecastFromViews(PlayerScene.combatViewWith(player, weapon), EnemyScene.combatView(enemy),
                           player#level, enemy#resource#level)
 
-    /// ViewReplay cutover の **A/B トグル**（run 検証用・branch 温存）。`false`=legacy 演出（既定・出荷）／
-    /// `true`=ECS 経路（`CombatSystem.resolveAttack` で sim を解き events→Cmds で World 反映・`ViewReplay.replay`
-    /// で演出）。**flip して再ビルドすると味方→敵攻撃の演出が ViewReplay 経由になる**（敵攻撃は当面 legacy のまま）。
-    /// `true` 時の既知ギャップ（後続スライス）: level-up モーダル未発火（modal-gate 未配線）・thief/status view 未配線。
+    /// ViewReplay cutover の **A/B トグル**（run 検証用・branch 温存）。`true`=ECS 経路（既定・出荷／
+    /// `CombatSystem.resolveAttack`/`resolveEnemyAttack` で sim を解き events→Cmds で World 反映・`ViewReplay.replay`
+    /// で演出）、`false`=legacy 演出（oracle 温存）。味方・敵攻撃とも ECS 経路。
+    /// P1 で cutover ギャップを解消済み: level-up モーダル（`applyEcsSceneEffects` の pendingLevelUp で発火）・
+    /// thief drop（`applyThiefDrop`・P1-b）・敵ノックバック（P1-c）。残る view 演出は Alerted tint / Released 表示のみ。
     def useEcsCombat(): Bool = true
 
     /// 敵 id にダメージを与える。装備武器（`weapons.head`）と敵が揃っていなければ no-op。
@@ -569,23 +570,41 @@ mod CombatScene {
             case _ => sc
         }, scene, events)
 
+    /// P1-b: sim が発火した `ViewFx(Thief(cell))` を見て legacy `maybeThiefDrop`（CombatScene:708-719）相当の
+    /// scene 副作用（フロア落下＋『…が アイテムを落とした』ログ）を引く。発火判定（ローグ職・敵生存・確率）は
+    /// sim（`thiefDropEvents`）が済ませ、ここは drop 実体だけ担う。enemyId は wrapper が持つ＝ログの敵名に使う。
+    /// ViewReplay（純 view）でなく wrapper で処理するのは、ドロップが scene 状態変更（consumeEquippedWeapon と同レーン）だから。
+    def applyThiefDrop(events: List[World.SimEvent], enemyId: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {CustomEffects.ThiefDropRequest, GameLogger.GameLogger} =
+        let thiefCells = events |> List.filterMap(ev -> match ev {
+            case World.SimEvent.ViewFx(World.ViewFxKind.Thief(cell)) => Some(cell)
+            case _                                                   => None
+        });
+        List.foldLeft((sc, cell) -> {
+            GameLogger.playerLog("${EnemyScene.displayName(enemyId, sc)}が アイテムを落とした");
+            CustomEffects.ThiefDropRequest.drop(cell, sc)
+        }, scene, thiefCells)
+
     /// ECS cutover 経路（味方攻撃）: `CombatSystem.resolveAttack` で 1 撃の sim を解いて [SimEvent] を得、
     /// `eventToCmds` で World へ反映（live mirror と同じ Cmd 経路＝golden で final-World 等価を証明済み）し、
     /// `ViewReplay.replay` で演出を再生する。`applyEcsSceneEffects` で scene 権威（statuses/pendingLevelUp）も反映。
-    /// 最後に `consumeEquippedWeapon` で武器耐久を消費（legacy は命中/回避とも毎攻撃で消費＝sim 非依存の scene 副作用）。
+    /// `applyThiefDrop` で盗人の剣のフロア落下（legacy 順＝knockback 後・武器耐久前）、最後に `consumeEquippedWeapon` で
+    /// 武器耐久を消費（legacy は命中/回避とも毎攻撃で消費＝sim 非依存の scene 副作用）。
     /// 演出進行（lunge/counter/follow-up）は従来どおり signal が引く（C5）。
     def ecsResolvePlayerAttack(playerId: Int32, player: PlayerScene.Data,
                                 weapon: UnitCatalog.WeaponResource, enemyId: Int32,
                                 enemy: EnemyScene.Data, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, GameLogger.GameLogger, World.RngDraw, World.Command, World.WorldQuery} =
+                               GameEngine.Game, GameLogger.GameLogger, World.RngDraw, World.Command,
+                               World.WorldQuery, CustomEffects.ThiefDropRequest} =
         let world = World.WorldQuery.get();
         let (_, events) = CombatSystem.resolveAttack(world,
             {ref = World.EntityRef.Player(playerId), level = player#level},
             {ref = World.EntityRef.Enemy(enemyId), level = enemy#resource#level});
         List.forEach(c -> World.Command.emit(c), events |> List.flatMap(World.eventToCmds));
         let withFx = applyEcsSceneEffects(events, ViewReplay.replay(events, scene));
-        consumeEquippedWeapon(playerId, weapon, withFx)
+        let afterThief = applyThiefDrop(events, enemyId, withFx);
+        consumeEquippedWeapon(playerId, weapon, afterThief)
 
     /// 装備武器と敵が揃ったときの攻撃解決の流れ:
     ///   命中率を算出 → 乱数ロール → 命中なら `applyHit` / 回避なら `applyMiss`

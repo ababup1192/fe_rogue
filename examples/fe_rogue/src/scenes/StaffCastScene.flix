@@ -122,9 +122,8 @@ mod StaffCastScene {
                               GameEngine.Game, GameEngine.Audio, World.WorldQuery} =
         match dslStaffRule(staff) {
             case Some(rule) => applyStaffEffectDsl(playerId, staff, rule, hit, dir, scene)
-            // effectRule 無しの legacy 4 enum 杖。cutover toggle（既定 false・branch 温存）が ON かつ
-            // ECS が World 純粋に解ける effect（Heal/Blowback/Swap/Bind）のときだけ sim 経路へ。
-            // Stopgap（warp 階段依存・World read-model 未載）は `ecsHandlesStaff`=false で legacy へ落とす。
+            // effectRule 無しの legacy 5 enum 杖。cutover toggle（既定 true・branch 温存）が ON かつ
+            // ECS が World 純粋に解ける effect（P1-a で Stopgap も含む全 5）のときだけ sim 経路へ。
             case None       =>
                 if (useEcsStaff() and ecsHandlesStaff(staff#effect))
                     ecsResolveStaffCast(playerId, player, staff, dir, hit, scene)
@@ -132,26 +131,26 @@ mod StaffCastScene {
                     applyStaffEffectLegacy(playerId, player, staff, dir, hit, scene)
         }
 
-    /// ViewReplay/sim cutover の **A/B トグル**（run 検証用・branch 温存）。`false`=legacy 杖（既定・出荷）／
-    /// `true`=ECS 経路（`StaffSystem.resolveStaffCast` で sim を解き events→Cmds で World 反映・`ViewReplay.replay`
-    /// で演出）。combat の `useEcsCombat` と同流儀。ECS 既定化（true）＋ effectful 実機 run 検証はユーザーが後で実施。
+    /// ViewReplay/sim cutover の **A/B トグル**（run 検証用・branch 温存）。`true`=ECS 経路（既定・出荷／
+    /// `StaffSystem.resolveStaffCast` で sim を解き events→Cmds で World 反映・`ViewReplay.replay` で演出）、
+    /// `false`=legacy 杖（oracle 温存）。combat の `useEcsCombat` と同流儀。P1-a で全 5 effect が ECS 経路。
     def useEcsStaff(): Bool = true
 
-    /// 敵杖 cutover の A/B トグル（敵クレリックの Bind 詠唱のみ ECS 化・既定 true で cutover 済）。
+    /// 敵杖 cutover の A/B トグル（敵クレリックの Bind/Stopgap 詠唱を ECS 化・既定 true で cutover 済）。
     /// player の `useEcsStaff` とは独立。`true` で `ecsResolveEnemyStaff`（`StaffSystem.resolveStaffCast`
-    /// に caster=Enemy を渡す）経路、`false` で `enemyCastStaffLegacy`（oracle 温存）。Stopgap は
-    /// `ecsHandlesStaff`=false で常に legacy。hit-log（『かなしばりにした』）は ECS 経路でも `bindPlayerLog`
-    /// で保全＝味方杖 cutover と違い parity 維持（`TestEnemyStaffGolden` の log 等価が pin）。
+    /// に caster=Enemy を渡す）経路、`false` で `enemyCastStaffLegacy`（oracle 温存）。P1-a で Stopgap も ECS 化。
+    /// hit-log（『かなしばりにした』/warp ログ）は ECS 経路でも `bindPlayerLog`/`warpPlayerLog` で保全＝味方杖
+    /// cutover と違い parity 維持（`TestEnemyStaffGolden` の log 等価が pin）。
     def useEcsEnemyStaff(): Bool = true
 
     /// この effect が ECS sim（`resolveStaffCast`）で World 純粋に解けるか（純 leaf）。
-    /// Heal/Blowback/Swap/Bind=true。Stopgap=false（warp が階段位置依存で World read-model 未載＝legacy へ落とす）。
+    /// 全 5 effect が true（P1-a で Stopgap も `stairsPosOf` read-model 追加により ECS 化＝warp を `Moved` で解く）。
     def ecsHandlesStaff(effect: Staff.StaffEffect): Bool = match effect {
         case Staff.StaffEffect.Heal     => true
         case Staff.StaffEffect.Blowback => true
         case Staff.StaffEffect.Swap     => true
         case Staff.StaffEffect.Bind     => true
-        case Staff.StaffEffect.Stopgap  => false
+        case Staff.StaffEffect.Stopgap  => true
     }
 
     /// ECS cutover 経路（杖）: `StaffSystem.resolveStaffCast` で 1 発の sim を解いて [SimEvent] を得、
@@ -1208,16 +1207,35 @@ mod StaffCastScene {
             enemyCastStaffLegacy(enemyId, effect, hitTargetId(hit), scene)
         else {
             List.forEach(c -> World.Command.emit(c), events |> List.flatMap(World.eventToCmds));
-            // hit-log parity: 敵 Bind hit は legacy `applyBindToPlayer` と同じ『かなしばりにした』を出す
-            //（`applyEcsStaffSceneEffects` は #statuses のみ反映・log 非配線ゆえここで補う）。
-            // 不変条件: enemyStaffFor ∩ ecsHandlesStaff = {Bind} ゆえ `case _` は現状到達しない。敵杖カタログに
-            // 新 ECS 効果を足すときは、この log 分岐と `enemyCastStaffLegacy` を同時拡張しないと hit-log が黙って落ちる。
+            // hit-log parity: 敵 hit は legacy `applyBindToPlayer`/`applyStopgapToPlayer` と同じログを出す
+            //（`applyEcsStaffSceneEffects` は #statuses のみ反映・log 非配線ゆえここで補う）。warp の位置は
+            // `Moved`→eventToCmds→World→syncTreeFromWorld で derive されるため replay 不要（Bind と同流儀）。
+            // 不変条件: enemyStaffFor ∩ ecsHandlesStaff = {Bind, Stopgap}。敵杖カタログに新 ECS 効果を足すときは、
+            // この log 分岐と `enemyCastStaffLegacy` を同時拡張しないと hit-log が黙って落ちる。
+            let srcLabel = EnemyScene.displayName(enemyId, scene);
             match effect {
-                case Staff.StaffEffect.Bind => bindPlayerLog(EnemyScene.displayName(enemyId, scene), hitTargetId(hit), scene)
-                case _                      => ()
+                case Staff.StaffEffect.Bind    => bindPlayerLog(srcLabel, hitTargetId(hit), scene)
+                case Staff.StaffEffect.Stopgap =>
+                    // Stopgap = bind + warp。legacy applyStopgapToPlayer の 2 ログ（かなしばり →
+                    // 階段の方へ／ワープ先なし）を events から復元し順序も一致させる。
+                    bindPlayerLog(srcLabel, hitTargetId(hit), scene);
+                    warpPlayerLog(events, hitTargetId(hit), scene)
+                case _                         => ()
             };
             applyEcsStaffSceneEffects(events, scene)
         }
+
+    /// Stopgap（敵詠唱）の warp ログ parity。sim が対象への `Moved` を出したら legacy warpPlayer 成功枝の
+    /// 『… は 階段の方へ とばされた』、出さなければ失敗枝の『ワープ先がなかった』を復元する（位置反映は World 経由）。
+    def warpPlayerLog(events: List[World.SimEvent], targetId: Int32, scene: Scene[NodeTag]): Unit \ GameLogger.GameLogger =
+        let warped = List.exists(e -> match e {
+            case World.SimEvent.Moved(World.EntityRef.Player(id), _) => id == targetId
+            case _                                                   => false
+        }, events);
+        if (warped)
+            GameLogger.playerLog("${PlayerScene.displayName(targetId, scene)} は 階段の方へ とばされた")
+        else
+            GameLogger.playerLog("ワープ先がなかった")
 
     /// hit が味方/敵ならその id、壁/盤外なら -1（空振り fallback の targetId 用・存在しない id は legacy が no-op）。
     def hitTargetId(hit: RayHit): Int32 = match hit {

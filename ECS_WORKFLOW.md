@@ -220,10 +220,12 @@
 
 ## §G 進捗（living — 更新はここだけで良い）
 
-**現在フェーズ: P1（Cutover 完遂）— 未着手**
+**現在フェーズ: P1（Cutover 完遂）— 完了。次は P2（在庫の World 権威化）∥ P3（配置物 Entity 化）**
 
-- テスト baseline: 970+ green（着手前に実測して数字をここに記録すること）
+- テスト baseline: 1063 green（P1 着手前）→ **1070 green**（P1 完了時・+7）
 - 完了済み前史: Track A/A'（faction 統合・unified-id）、F0-F8（sim state 権威化・driver step 化）、pos 統合、Phase C 前提 4 スライス、combat/staff cutover（トグル 3 つ true）、render-from-World 常時化
-- **次の一手**: P1 の 6 TODO のうち「ViewReplay level-up モーダル発火」から。golden-trace の雛形は `test/ecs/TestGoldenTrace.flix`
+- **P1 実像の訂正**: 当初 6 TODO のうち level-up モーダルと武器耐久は既に配線済み（doc 陳腐化のみ）だった。実装が要ったのは Stopgap 杖・thief drop・敵ノックバックの 3 点。
+- **次の一手**: P2/P3 は独立で並行可。P2 は PlayerScene.flix(W=119) の在庫 store flip、P3 は Chest/Stairs/GroundItem の Entity 化。§D-P2/P3 参照。
 - 履歴:
   - 2026-07-02: 本 doc 作成（Scene vs ECS 全棚卸し → P1-P6 ワークフロー策定）
+  - 2026-07-02: P1 完了。P1-a Stopgap ECS化（World.stairsPos read-model + StaffSystem.stopgapEvents + 敵詠唱 log parity）、P1-b thief drop ECS化（World.isRogueOf〔growth#name 由来〕+ ViewFx(Thief) emit + wrapper applyThiefDrop）、P1-c 敵ノックバック（resolveEnemyAttack で faction-blind knockbackEvents 再利用）、P1-d 陳腐化コメント修正。golden +7（Stopgap 味方/敵・thief emit/非ローグ/seam・敵 knockback）。実機 run はユーザー確認へ defer。

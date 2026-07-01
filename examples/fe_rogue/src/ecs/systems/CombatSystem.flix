@@ -35,8 +35,10 @@
 //     副作用は cutover wrapper（`applyEcsSceneEffects`）が反映: statuses（Afflicted/Released）・level-up（pendingLevelUp
 //     panel ＋ resource stat 成長 via `grownStats`）・武器耐久（`consumeEquippedWeapon`）。World 権威 field（hp/dying/
 //     progress/alerted/pos）は eventToCmds→World→`syncTreeFromWorld` derive（Phase B）。
-//   ☐ 残: thief view-fx（`ViewFx(Thief)`＝isRogue/職が World read-model に無く未載・P2c）・敵 heal effectRule
-//     （HealAt/FullHealAt→`Healed`・P2b）・cutover の ECS 既定化（legacy 挙動 pin の unit テスト書き換え＋分岐撤去）。
+//   ✓ P1-b: thief view-fx（`ViewFx(Thief)`＝`isRogueOf` read-model で点火）・drop 実体は wrapper `applyThiefDrop`。
+//   ✓ P1-c: 敵ノックバック（faction-blind `knockbackEvents` を `resolveEnemyAttack` で再利用）。
+//   ☐ 残: 敵 heal effectRule（HealAt/FullHealAt→`Healed`・P2b）・lifesteal+heal stacking・cutover の ECS 既定化
+//     （legacy 挙動 pin の unit テスト書き換え＋分岐撤去）。
 mod CombatSystem {
 
     /// 9 stat 成長ロール（legacy CombatScene.rollGrowth と同義）。draw 順の厳密一致は spike では要求しない
@@ -192,10 +194,10 @@ mod CombatSystem {
                         missFxEvents(world, defender#ref)
                     else {
                         let fin = combatOutcome(world, attacker, defView, strike, critRoll);
-                        // thief roll: 効果（盗人の剣）は World 不変だが legacy は命中時に必ず 1 draw 消費する
-                        // （CombatScene.flix:548 の引数評価）。draw 順を揃えるため引くだけ。
-                        // ※thief の view-fx（ViewFx(Thief)）は isRogue（職）が World read-model に無いため未載＝P2c で defer。
-                        let _thiefRoll = World.RngDraw.nextPercent();
+                        // thief roll: legacy は命中時に必ず 1 draw 消費する（CombatScene.flix:643 の rollPercent()）。
+                        // draw 順を揃えるため hit(1)→crit(2) の後・draw 3 として引く。
+                        // P1-b: isRogueOf read-model 追加で ViewFx(Thief) を emit 可能に（drop 実体は wrapper が引く）。
+                        let thiefRoll = World.RngDraw.nextPercent();
                         // view-fx（命中 SE ＋ 魔法爆発）を先頭に置く（legacy applyHit:643-647 の SE→explosion→popup 順）。
                         let fx = hitFxEvents(world, defender#ref, atk, fin#dmg, fin#isCrit, true);
                         // core（敵への被弾）: 撃破=Damaged(hard 0)::Dying / 非撃破=Damaged::Alerted::Released。
@@ -214,11 +216,15 @@ mod CombatSystem {
                                     :: World.SimEvent.Released(defender#ref) :: Nil;
                         // knockback（如意棒/突風の書・敵生存時のみ・CombatScene:590-609）。draw なし。
                         let knock = knockbackEvents(world, attacker, defender, fin#killed);
-                        // 二相 fold: fx+core+lifesteal+knockback を先に畳み、その worldMid から exp/level-up を解く
-                        // （fx は World identity ゆえ fold には無影響・順序のためログ先頭に積むだけ）。
+                        // P1-b: thief drop（盗人の剣・敵生存時のみ・legacy CombatScene:643）。ViewFx(Thief(敵セル))＝
+                        // World 不変（eventToCmds→Nil）ゆえ worldMid 無影響。drop 実体は wrapper が引く。knock の後（legacy 順）。
+                        let thiefFx = thiefDropEvents(world, attacker, defender, fin#killed, thiefRoll);
+                        // 二相 fold: fx+core+lifesteal+knockback+thief を先に畳み、その worldMid から exp/level-up を解く
+                        // （fx/thief は World identity ゆえ fold には無影響・順序のためログ先頭に積むだけ）。
                         let coreAll  = List.append(fx,
                                           List.append(coreEvents,
-                                          List.append(lifestealEvents(world, attacker, atk, fin), knock)));
+                                          List.append(lifestealEvents(world, attacker, atk, fin),
+                                          List.append(knock, thiefFx))));
                         let worldMid = applyAll(coreAll, world);
                         let exps     = expEvents(worldMid, attacker, defender, fin#killed);
                         List.append(coreAll, exps)
@@ -249,6 +255,23 @@ mod CombatSystem {
             case _ => Nil
         }
 
+    /// P1-b: 盗人の剣の view-fx（`ViewFx(Thief(敵セル))`）を発火条件のとき 1 つ返す。legacy `maybeThiefDrop`
+    /// （CombatScene:708-719）の発火条件を厳密に映す＝装備武器の盗みドロップ率>0 かつ 攻撃側がローグ職 かつ
+    /// 敵生存 かつ `roll < 率`。セルは敵の **元位置**（legacy は knockback 前の `enemy#gridPos` を渡す）＝初期 world の posOf。
+    /// drop 実体（フロア落下＋ログ）は scene 権威ゆえ cutover wrapper（`applyEcsSceneEffects`）が ViewFx(Thief) を
+    /// 見て `ThiefDropRequest` を引く。ViewFx は World 不変（eventToCmds→Nil）ゆえ event 列のどこに置いても sim 無影響。
+    def thiefDropEvents(world: World, attacker: Combatant, defender: Combatant,
+                         killed: Bool, roll: Int32): List[World.SimEvent] =
+        let pct = World.combatViewOf(attacker#ref, world)
+            |> Option.flatMap(cv -> cv#weapon)
+            |> Option.map(wv -> WeaponCatalog.thiefDropChance(wv#effect, wv#effectValue))
+            |> Option.getWithDefault(0);
+        if (pct > 0 and World.isRogueOf(attacker#ref, world) and not killed and roll < pct)
+            World.posOf(defender#ref, world)
+                |> Option.map(cell -> World.SimEvent.ViewFx(World.ViewFxKind.Thief(cell)))
+                |> Option.toList
+        else Nil
+
     /// P2: 敵→プレイヤーの 1 撃を **sim 解決**し (World', [SimEvent]) を返す（legacy resolveEnemyAttack:706-778 の鏡像）。
     /// プレイヤーパス（resolveAttack）と異なる点:
     ///   - draw 構造: hit(1) → [命中時のみ] crit(2) → [rule 発火時のみ] effect(3)。**thief draw なし**。
@@ -257,7 +280,7 @@ mod CombatSystem {
     ///   - `Released` は撃破/非撃破とも **UNCONDITIONAL**（legacy:759）。`Alerted` なし・**level-up なし**（expEvents なし）。
     ///   - 命中後に敵 effectRule（毒/鈍足/かなしばり）を発火し status を `Afflicted(player, status)` で出荷
     ///     （`World.emitStatusAdds` の StatusAt/ImmobilizeAt マッピングを `planItemToAfflicted` で逐語踏襲）。
-    ///   - **KNOCKBACK-FREE**（敵ノックバックは DoD 除外・別スライス）。heal effectRule は P2b。
+    ///   - 敵ノックバック（P1-c）: 味方生存時のみ faction-blind な `knockbackEvents` を再利用（lifesteal 後）。heal effectRule は P2b。
     pub def resolveEnemyAttack(world: World, attacker: Combatant, defender: Combatant):
             (World, List[World.SimEvent]) \ World.RngDraw =
         match (World.combatViewOf(attacker#ref, world), World.combatViewOf(defender#ref, world)) {
@@ -283,7 +306,12 @@ mod CombatSystem {
                             World.SimEvent.Damaged(defender#ref, {newHp = outcome#newHp, dmg = outcome#dmg})
                                 :: List.append(deathFx, World.SimEvent.Released(defender#ref) :: Nil);
                         // 敵 lifesteal（ring=撃破時のみ:761 / weapon=毎ヒット:763）は P1b プレイヤーパスと同形＝共通ヘルパー。
-                        let coreEvents = List.append(coreBase, lifestealEvents(world, attacker, atk, outcome));
+                        let steal = lifestealEvents(world, attacker, atk, outcome);
+                        // P1-c: 敵ノックバック（如意棒等・味方生存時のみ）。faction-blind な knockbackEvents を再利用
+                        // （legacy applyEnemyKnockback/pushPlayerBack CombatScene:1056-1075 と同一計算＝味方を攻撃方向へ）。
+                        // 位置は lifesteal の後・effectRule tail の前（legacy CombatScene:888 の順）。
+                        let knock = knockbackEvents(world, attacker, defender, outcome#killed);
+                        let coreEvents = List.append(List.append(coreBase, steal), knock);
                         // effectRule tail（legacy applyEnemyEffectRule:785-822）: status を Afflicted で出荷。
                         let effectTail = enemyEffectRuleEvents(world, attacker, defender, atk, defView, outcome);
                         List.append(fx, List.append(coreEvents, effectTail))

@@ -12,7 +12,8 @@
 //   - Blowback … 1 ダメージ → 敵撃破=Damaged(0)+Dying+ViewFx(Died) / 生存=Damaged+Moved(着地) / 味方撃破=Damaged のみ。
 //   - Swap     … caster と対象の位置を交換＝`Moved`×2（順序保存）。
 //   - Bind     … 対象を 5 ターン完全停止＝`Afflicted(immobilizeFor(5))`。
-// Stopgap（warp 階段依存・World read-model 未載）・effectRule(DSL)杖・throw・敵詠唱は cutover seam で legacy へ落とす。
+//   - Stopgap  … 完全停止 + 階段マスへワープ＝`Afflicted` :: `Moved`（P1-a で `stairsPosOf` read-model 追加により ECS 化）。
+// effectRule(DSL)杖・throw は cutover seam で legacy へ落とす（敵詠唱の Bind/Stopgap は ecsResolveEnemyStaff 経由で ECS）。
 mod StaffSystem {
 
     use World.EntityRef
@@ -48,8 +49,8 @@ mod StaffSystem {
             case _ => Nil
         }
 
-    /// effect 別 dispatch（1 段 match・組み立ては各小ヘルパーへ委譲）。Stopgap は cutover gate で
-    /// 到達しないが網羅性のため空に落とす。
+    /// effect 別 dispatch（1 段 match・組み立ては各小ヘルパーへ委譲）。全 5 effect を World read-model だけで解く
+    /// （Stopgap は P1-a の `stairsPosOf` 追加で ECS 化）。
     def effectEvents(world: World, caster: EntityRef, effect: Staff.StaffEffect,
                       dir: {x = Int32, y = Int32}, target: EntityRef,
                       cell: {x = Int32, y = Int32}, isAlly: Bool): List[SimEvent] =
@@ -58,7 +59,7 @@ mod StaffSystem {
             case Staff.StaffEffect.Blowback => blowbackEvents(world, target, cell, dir, isAlly)
             case Staff.StaffEffect.Swap     => swapEvents(world, caster, target, cell)
             case Staff.StaffEffect.Bind     => bindEvents(target)
-            case Staff.StaffEffect.Stopgap  => Nil
+            case Staff.StaffEffect.Stopgap  => stopgapEvents(world, target)
         }
 
     /// Heal: 対象の hp を「caster の魔力 + 10」回復（maxHp クランプ）。`Healed`（→Cmd.SetHp）。
@@ -116,5 +117,18 @@ mod StaffSystem {
     /// statuses は scene 権威ゆえ、呼び出し側が `applyEcsStaffSceneEffects` で scene #statuses へも add する。
     def bindEvents(target: EntityRef): List[SimEvent] =
         SimEvent.Afflicted(target, StatusSystem.immobilizeFor(bindTurns())) :: Nil
+
+    /// Stopgap: 完全停止 + 階段マスへワープ（legacy `applyStopgapToPlayer` = bind → warp を映す）。
+    ///   - bind: `Afflicted(immobilizeFor(5))`（Bind と同じ・順序も bind が先）。
+    ///   - warp: `warpCellFor(stairsPosOf, boardOf)` が Some なら `Moved(target, warpCell)`。階段が埋まっていれば
+    ///           隣接空きマス、どちらも無ければ warp なし（bind だけ・legacy「ワープ先がなかった」相当）。
+    /// warp 先計算に要る階段位置は World read-model `stairsPosOf`（P1-a で追加）、地形は `boardOf`。両方揃わなければ warp 略。
+    def stopgapEvents(world: World, target: EntityRef): List[SimEvent] =
+        let bind = SimEvent.Afflicted(target, StatusSystem.immobilizeFor(bindTurns()));
+        let warp = World.boardOf(world)
+            |> Option.flatMap(board -> StaffRules.warpCellFor(World.stairsPosOf(world), board))
+            |> Option.map(cell -> SimEvent.Moved(target, cell))
+            |> Option.toList;
+        bind :: warp
 
 }

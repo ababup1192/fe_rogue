@@ -137,6 +137,9 @@ pub enum World {
                  // ノックバックの着地計算が要する `boardOf` の地形ソース。empty()=None（シーン未確定）。
                  // syncFromScene/refreshMirror で `BoardSnapshot.mapSnapshotOf(scene)` を再 mirror（toBoard と同源）。
                  mapSnapshot = Option[MapSnapshot],
+                 // P1-a（Stopgap 杖 ECS）: 階段セル座標の read-model（None=未配置）。`StairsScene.getPos(scene)`
+                 // 由来＝mapSnapshot と同じ scene-derive 毎フレーム再 mirror。Stopgap の warp 先計算（`warpCellFor`）が読む。
+                 stairsPos = Option[{x = Int32, y = Int32}],
                  // B/tiles: 背景 map タイルの描画ハンドル（floor+walls 層・静的）。rebuild イベント（tileGen 変化）で
                  // bake し、render System が camera 適用して instanced 描画。scene TileMapLayer ノードは衝突用に存続。
                  tileLayers = List[TileLayerHandle],
@@ -182,6 +185,7 @@ mod World {
                      equippedRing = Map.empty(),
                      growth = Map.empty(),
                      mapSnapshot = None,
+                     stairsPos = None,
                      tileLayers = Nil, tileGen = 0,
                      effectRule = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false,
@@ -271,6 +275,8 @@ mod World {
                         d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),
             // P1c: mapSnapshot は scene 静的地形（toBoard が借りるのと同源）を毎フレーム再 mirror。
             mapSnapshot = mapSnapshotOpt(scene),
+            // P1-a: stairsPos は scene の Stairs ノード（未配置なら None）を毎フレーム再 mirror（mapSnapshot と同源）。
+            stairsPos = StairsScene.getPos(scene),
             // B/tiles: tileLayers/tileGen は command-derive（BumpTileGen/setTileLayers）＝preserve（frame-1 は空/0 を carry）。
             tileLayers = w#tileLayers, tileGen = w#tileGen,
             // P2: effectRule は敵 resource 由来の read-model（敵のみ・内側 Option=ルールなし）＝毎フレーム再 mirror。
@@ -364,6 +370,8 @@ mod World {
                         d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),
             // P1c: mapSnapshot も scene 静的地形を毎フレーム再 mirror（toBoard と同源）。
             mapSnapshot = mapSnapshotOpt(scene),
+            // P1-a: stairsPos も scene の Stairs ノードを毎フレーム再 mirror（mapSnapshot と同源）。
+            stairsPos = StairsScene.getPos(scene),
             // B/tiles: tileLayers/tileGen は command-derive＝preserve（rebuild イベント〔tileGen 変化〕時のみ gameLoop が bake）。
             tileLayers = w#tileLayers, tileGen = w#tileGen,
             // P2: effectRule も敵 resource 由来 read-model（敵のみ）＝毎フレーム再 mirror。
@@ -1319,6 +1327,12 @@ mod World {
             case EntityRef.Enemy(_)   => None
         }
 
+    /// P1-b（thief drop ECS）: 対象がローグ職か（盗人の剣の発動条件）。`growthOf#name`（=`resource#description`）を
+    /// 読むだけで新 store は足さない。legacy `maybeThiefDrop` の `player#resource#description == "ローグ"` と同判定。
+    /// Enemy は growth を持たない（growthOf=None）ため常に false＝ローグは player-only という前提を型で担保。
+    pub def isRogueOf(ref: EntityRef, world: World): Bool =
+        growthOf(ref, world) |> Option.map(g -> g#name == "ローグ") |> Option.getWithDefault(false)
+
     /// S-A0b: 装備武器の戦闘投影を World から読む（unified-id・両 faction）。
     /// 外側 Option（entity 未登録）と内側 Option（武器なし）を flatten し、武器なし＝None で返す
     /// （combatView#weapon の型と一致）。B1 で combatView がここを読む。
@@ -1780,6 +1794,11 @@ mod World {
     pub def boardOf(world: World): Option[Board] =
         let World.World(w) = world;
         Option.map(m -> ({map = m, pieces = boardPieces(world)}: Board), w#mapSnapshot)
+
+    /// P1-a: 階段セル座標を World から読む（未配置なら None）。Stopgap 杖の warp 先計算（`warpCellFor`）が読む。
+    /// scene の `StairsScene.getPos` を mirror した read-model（`boardOf` と同じく scene 非依存 sim を可能にする seam）。
+    pub def stairsPosOf(world: World): Option[{x = Int32, y = Int32}] =
+        let World.World(w) = world; w#stairsPos
 
     /// P1c 安全網: store した mapSnapshot（地形）が scene 由来と食い違うか（boardKey は駒のみ見るため別建て）。
     /// MapSnapshot は Eq 非自動ゆえ (tileSize, wallCells) へ射影して比較（壁レイアウトの drift 検出）。

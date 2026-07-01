@@ -7,9 +7,11 @@
 //
 // 本スライスで再生する: 命中 SE / テキストポップアップ(miss) / ダメージ数字ポップアップ / 着弾爆発 / HPバー /
 //   ノックバック着地 / 敵死亡演出。
-// 未配線（後続スライス・cutover で signal seam と結線）: thief drop（ViewFx(Thief)＝isRogue 未載・P2c）、
-//   Alerted の sprite tint、Released の unbind 表示、Afflicted の status 表示、LeveledUp の modal-gate（演出停止）。
-//   これらは `plan` で空に落とす（World 状態は reducer が既に反映済み）。
+// 未配線（後続スライス・cutover で signal seam と結線）: Alerted の sprite tint、Released の unbind 表示、
+//   Afflicted の status 表示。これらは `plan` で空に落とす（World 状態は reducer が既に反映済み）。
+// ここで空に落とすが別経路で配線済のもの: LeveledUp（modal-gate は `CombatScene.applyEcsSceneEffects` が
+//   pendingLevelUp を立て signal 駆動で発火）、ViewFx(Thief)（drop 実体は `CombatScene.applyThiefDrop` が引く＝
+//   フロア落下は view でなく scene 状態ゆえ純 view の本モジュールでなく cutover wrapper で処理・P1-b）。
 mod ViewReplay {
 
     use World.EntityRef
@@ -43,7 +45,7 @@ mod ViewReplay {
         case World.SimEvent.Released(_)      => Nil    // unbind 表示は未配線
         case World.SimEvent.Alerted(_, _)    => Nil    // sprite tint は frame sync 由来・未配線
         case World.SimEvent.ExpGained(_)     => Nil    // 即時 view なし
-        case World.SimEvent.LeveledUp(_)     => Nil    // modal-gate は cutover で結線
+        case World.SimEvent.LeveledUp(_)     => Nil    // modal-gate は applyEcsSceneEffects が pendingLevelUp で発火（配線済）
         case World.SimEvent.Afflicted(_, _)  => Nil    // status 表示は未配線
     }
 
@@ -52,7 +54,7 @@ mod ViewReplay {
         case World.ViewFxKind.Popup(p)        => ViewAction.Text(p#x, p#y, p#text) :: Nil
         case World.ViewFxKind.Explosion(c)    => ViewAction.Explode(c#x, c#y) :: Nil
         case World.ViewFxKind.Knockback(r, c) => ViewAction.Snap(r, c#x, c#y) :: Nil
-        case World.ViewFxKind.Thief(_)        => Nil   // P2c 未配線（isRogue 未載で emit もされない）
+        case World.ViewFxKind.Thief(_)        => Nil   // drop は scene 状態＝CombatScene.applyThiefDrop が引く（P1-b・純 view でない）
         case World.ViewFxKind.Died(r)         => ViewAction.Death(r) :: Nil
     }
 

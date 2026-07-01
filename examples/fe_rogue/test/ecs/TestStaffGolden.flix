@@ -121,6 +121,17 @@ mod TestStaffGolden {
                 EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Enemy(e)), sc),
             withPlayers, enemies)
 
+    /// P1-a: 配置済み階段ノードを top-level（`StairsScene.stairsPath()`=["Stairs"]）に足した scene。
+    /// `StairsScene.add` は scene.json ロード（Fs/Game effect）を要するため、テストは placed 状態の
+    /// `NodeTag.Stairs` を直接注入する（`placeAt` が作る `{gridPos, placed=true}` と同じ payload）。
+    /// これで `StairsScene.getPos` が Some を返し、sim 側 `stairsPosOf`（syncFromScene mirror）も同値になる。
+    def sceneWithStairs(players: List[PlayerScene.Data], enemies: List[EnemyScene.Data],
+                         stairs: {x = Int32, y = Int32}): Scene[NodeTag] =
+        let stairsData: StairsScene.Data = {gridPos = stairs, placed = true};
+        Scene.addNode("Stairs",
+            EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Stairs(stairsData)),
+            sceneOf(players, enemies))
+
     // ── harness ───────────────────────────────────────────────────────────────
 
     /// legacy 杖（`applyStaffEffectLegacy`・playerId=0 固定の caster）を traced harness + 副作用モックで駆動し、
@@ -272,6 +283,52 @@ mod TestStaffGolden {
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, sceneStatusT(1, ecsScene));
         // sysW は ① で World へ Cmd.Add 済（read-model 側の sanity）＝immobilize が World にも載る。
         Assert.assertEq(expected = false, List.isEmpty(World.statusEffectsOf(EntityRef.Player(1), sysW)))
+
+    // ── (Stopgap) bind + warp 等価（P1-a）────────────────────────────────────────
+
+    /// 一時しのぎ × 味方(id=1): 完全停止 + 階段{8,8}へワープ。legacy `applyStopgapToPlayer`
+    /// （bind→warpPlayer.snapTo dual-write）と sim `stopgapEvents`（Afflicted :: Moved）を突き合わせる:
+    ///   ① evCount==2 + cmdKeys==("Add",1,5,0)::("Move",1,8,8)（bind→warp の順序・新コード経路の実踏）、
+    ///   ② warp 後 pos が legacy と一致し {8,8} を pin（stairsPosOf read-model が warpCellFor に届いている証跡）、
+    ///   ③ scene #statuses が legacy と等価で (Immobilized,0,5) を pin（bind 部の parity）。
+    @Test
+    def testStaffStopgapWarpsToStairsEqualsLegacy(): Unit \ Assert =
+        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
+        let target = playerAt(1, {x = 5, y = 2}, 10, 10, 0);
+        let sc = sceneWithStairs(caster :: target :: Nil, Nil, {x = 8, y = 8});
+        let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
+        let dir = {x = 1, y = 0};
+        let staff = staffOf(Staff.StaffEffect.Stopgap);
+        let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Stopgap, dir, hit);
+        // ① bind(Afflicted→Add) → warp(Moved→Move) の順序と cmdKey リテラル。
+        Assert.assertEq(expected = 2, List.length(evs));
+        let cmdKeys = evs |> List.flatMap(World.eventToCmds) |> List.map(World.cmdKey);
+        Assert.assertEq(expected = ("Add", 1, 5, 0) :: ("Move", 1, 8, 8) :: Nil, cmdKeys);
+        // ② pos: legacy warpPlayer.snapTo と一致 + {8,8} を pin。
+        let (legacyScene, legacyW) = runStaffLegacy({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
+        Assert.assertEq(expected = posT(EntityRef.Player(1), legacyW), posT(EntityRef.Player(1), sysW));
+        Assert.assertEq(expected = Some((8, 8)), posT(EntityRef.Player(1), sysW));
+        // ③ scene #statuses 等価 + (Immobilized,0,5) pin。
+        let ecsScene = TestUnitFixtures.dischargeWorldCommand(() -> StaffCastScene.applyEcsStaffSceneEffects(evs, sc));
+        Assert.assertEq(expected = sceneStatusT(1, legacyScene), sceneStatusT(1, ecsScene));
+        Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, sceneStatusT(1, ecsScene))
+
+    /// 一時しのぎ × 味方(id=1)・階段なし: warpCellFor(None)=None ゆえ warp せず bind のみ。legacy warpPlayer も
+    /// getPos=None で『ワープ先がなかった』＝停止だけ。sim は Moved を出さず evCount==1・pos 不変を pin。
+    @Test
+    def testStaffStopgapNoStairsBindOnly(): Unit \ Assert =
+        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
+        let target = playerAt(1, {x = 5, y = 2}, 10, 10, 0);
+        let sc = sceneOf(caster :: target :: Nil, Nil);  // 階段ノードなし＝stairsPosOf=None
+        let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
+        let dir = {x = 1, y = 0};
+        let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Stopgap, dir, hit);
+        // Afflicted のみ（Moved なし）。
+        Assert.assertEq(expected = 1, List.length(evs));
+        let cmdKeys = evs |> List.flatMap(World.eventToCmds) |> List.map(World.cmdKey);
+        Assert.assertEq(expected = ("Add", 1, 5, 0) :: Nil, cmdKeys);
+        // pos 不変（bind は動かさない）＝{5,2} のまま。
+        Assert.assertEq(expected = Some((5, 2)), posT(EntityRef.Player(1), sysW))
 
     // ── (whiff) 空振り＝意図的 vacuity ─────────────────────────────────────────
 
