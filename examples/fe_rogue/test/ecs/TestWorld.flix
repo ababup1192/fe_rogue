@@ -496,6 +496,22 @@ mod TestWorld {
             expected = (Some(3), Some(10), Set#{0, 1}),
             (Map.get(0, w#hp), Map.get(1, w#hp), w#playerIds))
 
+    /// P2-S1 read-flip 契約: `dataFromWorld` は core field を **World 権威**で読む（scene と食い違っても World が勝つ）。
+    /// これは PartyQuery flip 後の mid-frame 経路＝worldRef が emit で先行し scene より新しい状況を代表する。
+    /// frame 末の [PLAYERDATA DIFF]（World==scene に収束後に走る）が構造上踏めない divergence を pin する:
+    /// World hp を 3 に下げ scene は 10 のまま、再構築 Data の #hp==3（core=World 由来）／
+    /// #classId=="test_player"（residual=scene 由来）を固定＝core/residual の供給源が取り違わらない。
+    @Test
+    def testDataFromWorldReadsWorldAuthorityForCore(): Unit \ Assert =
+        let scene   = sampleScene();
+        let seeded  = World.syncFromScene(scene, World.empty());      // world hp[0] = 10（scene と一致）
+        let damaged = World.applyCmd(World.Cmd.SetHp(World.EntityRef.Player(0), 3), seeded);  // world 3 / scene 10
+        let recon   = World.dataFromWorld(0, damaged, scene);
+        // core(hp)=World の 3（scene の 10 に負けない）／residual(classId)=scene の "test_player"。
+        Assert.assertEq(
+            expected = Some((3, "test_player")),
+            recon |> Option.map(d -> (d#hp, d#classId)))
+
     // ── §A payoff デモ: 位置の決定論（World は Cmd.Move ログの純粋関数）──
     // P0a→S5 で World が位置の権威・scene はその派生になった。位置の唯一の source は `Cmd.Move` のログ。
     // ゆえに「同じログ → 同じ位置」が成り立ち、save/replay の素地（World さえ持てば位置を再構築できる）になる。

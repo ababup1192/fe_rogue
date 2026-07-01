@@ -134,3 +134,6 @@
 ## 決定ログ（B）
 - 2026-06-30 **B GO**（A で本質目標達成・重複②撲滅のため full B 着手・2〜3ヶ月マイルストーン駆動・ユーザー判断）。
 - 2026-06-30 **m2 路線=tween を World component 化**（mirror や他要素移植でなく本筋・ユーザー選択）。
+- 2026-07-01 **残り ECS 化マスター計画（P1〜P9）着手**（Lane1 sim / Lane2 render の 2 レーン・各ステップ R1 設計+R2 破壊レビューで 90 点ゲート・engine 変更は事前承認・詳細は `~/.claude/plans/ecs-foamy-gadget.md`）。
+- 2026-07-01 **P1: 敵 Bind 杖を ECS 化（`useEcsEnemyStaff=true`）**。hit-log 落ちを防ぐため『かなしばりにした』を `bindPlayerLog` で保全（味方杖 cutover は log 契約外だが本件は parity 維持＝ユーザー判断）。`TestEnemyStaffGolden` に (E) log 等価＋legacy↔ECS World 状態等価を追加。R2 破壊レビュー **97/100 PASS**・flix check clean・1056→1057 green。**残: 実機 run（敵 Bind 詠唱の目視）／Stopgap 敵杖は P2 の mapSnapshot World 権威化後**。
+- 2026-07-01 **P2-S1: `PlayerData.PartyQuery` の read を World 権威へ flip**（`Game.flix` handler を `World.dataFromWorld` へ・core=World／residual=scene・None gate は scene fallback）。意味論変化（flip 前=frame-top scene 一貫スナップショット→後=core は worldRef mid-frame〔BoardQuery と同権威〕＋residual は frame-top）を handler に明記。`TestWorld` に World≠scene divergence 契約テスト追加（frame 末 [PLAYERDATA DIFF] が踏めない mid-frame 経路を pin）。R2 破壊レビュー **88→（足す改善）→97/100 PASS**・1057→1058 green。**残: 実機 run／P2-S2 RosterQuery flip／S3 residual 昇格／S4 turnPhase reader-flip／S5 stale prose 整理**。

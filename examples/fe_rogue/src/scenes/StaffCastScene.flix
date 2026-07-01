@@ -137,10 +137,12 @@ mod StaffCastScene {
     /// で演出）。combat の `useEcsCombat` と同流儀。ECS 既定化（true）＋ effectful 実機 run 検証はユーザーが後で実施。
     def useEcsStaff(): Bool = true
 
-    /// 敵杖 cutover の A/B トグル（敵クレリックの Bind 詠唱のみ ECS 化・既定 false で legacy 温存）。
+    /// 敵杖 cutover の A/B トグル（敵クレリックの Bind 詠唱のみ ECS 化・既定 true で cutover 済）。
     /// player の `useEcsStaff` とは独立。`true` で `ecsResolveEnemyStaff`（`StaffSystem.resolveStaffCast`
-    /// に caster=Enemy を渡す）経路、`false` で `enemyCastStaffLegacy`。Stopgap は `ecsHandlesStaff`=false で常に legacy。
-    def useEcsEnemyStaff(): Bool = false
+    /// に caster=Enemy を渡す）経路、`false` で `enemyCastStaffLegacy`（oracle 温存）。Stopgap は
+    /// `ecsHandlesStaff`=false で常に legacy。hit-log（『かなしばりにした』）は ECS 経路でも `bindPlayerLog`
+    /// で保全＝味方杖 cutover と違い parity 維持（`TestEnemyStaffGolden` の log 等価が pin）。
+    def useEcsEnemyStaff(): Bool = true
 
     /// この effect が ECS sim（`resolveStaffCast`）で World 純粋に解けるか（純 leaf）。
     /// Heal/Blowback/Swap/Bind=true。Stopgap=false（warp が階段位置依存で World read-model 未載＝legacy へ落とす）。
@@ -477,10 +479,15 @@ mod StaffCastScene {
     /// 完全停止の既定ターン数（legacy / stopgap 経路が使う。DSL からは effectRule の turn 数が入る）。
     def defaultBindTurns(): Int32 = 5
 
+    /// 敵→味方 Bind の hit ログ。legacy `applyBindToPlayer` と ECS 経路 `ecsResolveEnemyStaff` で
+    /// 文字列を一元化し hit-log parity を保全する（`applyEcsStaffSceneEffects` は状態のみ・log 非配線）。
+    def bindPlayerLog(srcLabel: String, targetId: Int32, scene: Scene[NodeTag]): Unit \ GameLogger.GameLogger =
+        GameLogger.playerLog("${srcLabel} は ${PlayerScene.displayName(targetId, scene)} を かなしばりにした")
+
     /// かなしばり × 味方: 対象を `turns` ターン完全停止にする。`srcLabel` は撃った側の表示名（敵詠唱でも使う）。
     def applyBindToPlayer(srcLabel: String, targetId: Int32, turns: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
-        GameLogger.playerLog("${srcLabel} は ${PlayerScene.displayName(targetId, scene)} を かなしばりにした");
+        bindPlayerLog(srcLabel, targetId, scene);
         let sc1 = PlayerScene.mapPlayer(targetId, d -> {statuses = StaffRules.bindStatuses(turns, d#statuses) | d}, scene);
         PlayerScene.emitStatusesFromScene(targetId, sc1); sc1  // S3: bind 後 statuses を World へ Seed
 
@@ -1186,9 +1193,10 @@ mod StaffCastScene {
     /// 敵 Bind 詠唱の ECS cutover 経路: `StaffSystem.resolveStaffCast` に caster=Enemy を渡して sim を
     /// 解き、events→Cmds で World 反映 + `applyEcsStaffSceneEffects` で scene 権威（味方 #statuses）反映。
     /// Bind は view fx 0・Moved 無＝World/scene 不変ゆえ `ViewReplay.replay` は呼ばない（provably equivalent）。
-    /// events が空（壁=空振り。castableHitPlayer ゲートで通常到達しない防御）なら legacy へ fallback し
-    /// 『かなしばりにした』ログを温存する。`applyEcsStaffSceneEffects` の Afflicted(Player) arm を共用する
-    /// （敵 Bind の target は味方）。seam/cross-compare golden（`TestEnemyStaffGolden`）が直駆動するため pub。
+    /// hit 時は `bindPlayerLog` で legacy と同一の『かなしばりにした』ログを出す（`applyEcsStaffSceneEffects`
+    /// は #statuses のみ反映ゆえ log を補い parity 保全）。events が空（壁=空振り。castableHitPlayer ゲートで
+    /// 通常到達しない防御）なら legacy へ fallback し同ログを温存する。`applyEcsStaffSceneEffects` の
+    /// Afflicted(Player) arm を共用する（敵 Bind の target は味方）。golden（`TestEnemyStaffGolden`）が直駆動するため pub。
     pub def ecsResolveEnemyStaff(enemyId: Int32, effect: Staff.StaffEffect,
                              dir: {x = Int32, y = Int32}, hit: RayHit,
                              scene: Scene[NodeTag]):
@@ -1200,6 +1208,14 @@ mod StaffCastScene {
             enemyCastStaffLegacy(enemyId, effect, hitTargetId(hit), scene)
         else {
             List.forEach(c -> World.Command.emit(c), events |> List.flatMap(World.eventToCmds));
+            // hit-log parity: 敵 Bind hit は legacy `applyBindToPlayer` と同じ『かなしばりにした』を出す
+            //（`applyEcsStaffSceneEffects` は #statuses のみ反映・log 非配線ゆえここで補う）。
+            // 不変条件: enemyStaffFor ∩ ecsHandlesStaff = {Bind} ゆえ `case _` は現状到達しない。敵杖カタログに
+            // 新 ECS 効果を足すときは、この log 分岐と `enemyCastStaffLegacy` を同時拡張しないと hit-log が黙って落ちる。
+            match effect {
+                case Staff.StaffEffect.Bind => bindPlayerLog(EnemyScene.displayName(enemyId, scene), hitTargetId(hit), scene)
+                case _                      => ()
+            };
             applyEcsStaffSceneEffects(events, scene)
         }
 

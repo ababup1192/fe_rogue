@@ -890,8 +890,26 @@ mod Game {
                   def nextPercent(k) = k(Prng.unitToPercent(Math.Random.randomFloat64()))
               }
               with handler PlayerData.PartyQuery {
-                  def get(id, k)           = k(PlayerScene.get(id, Ref.get(sceneRef)))
-                  def getAll(k)            = k(PlayerScene.getAll(Ref.get(sceneRef)))
+                  // P2-S1 read-flip: core field 権威を World へ。pos/hp/waited/在庫/progress/statuses 等は
+                  // `dataFromWorld`＝World 由来で読む。residual（resource/classId/selectedItem/facing/
+                  // pendingLevelUp/moveStepsTaken/usedStairs）は dataFromWorld が scene から読む。
+                  // ★意味論変化: flip 前は全 field が frame-top scene（sceneRef は frame 頭のみ更新）の一貫
+                  //   スナップショットだった。flip 後は core=worldRef（emit で mid-frame 先行・即時 `Cmd` 適用）＝
+                  //   BoardQuery と同じ mid-frame 権威、residual=frame-top scene。両者は「core 系（座標/hp/在庫）
+                  //   と residual 系（resource/UI/render facing）を跨いで同一瞬間として相関させない」限り整合。
+                  //   静的 residual（resource/classId）は不変、動的 residual（facing/selectedItem 等）は cosmetic。
+                  // core store が未 seed で None gate に落ちた時のみ scene Data へ fallback＝退行ゼロ（[PLAYERDATA DIFF]
+                  //   が World==scene を frame 末に保証＝fallback は実質不発。syncTreeFromWorld 撤去〔P8〕で fallback も外す）。
+                  def get(id, k)           = {
+                      let scene = Ref.get(sceneRef); let world = Ref.get(worldRef);
+                      k(PlayerScene.get(id, scene) |> Option.map(d ->
+                          World.dataFromWorld(id, world, scene) |> Option.getWithDefault(d)))
+                  }
+                  def getAll(k)            = {
+                      let scene = Ref.get(sceneRef); let world = Ref.get(worldRef);
+                      k(PlayerScene.getAll(scene) |> List.map(d ->
+                          World.dataFromWorld(d#id, world, scene) |> Option.getWithDefault(d)))
+                  }
               }
               with handler EnemyData.RosterQuery {
                   def get(id, k)           = k(EnemyScene.get(id, Ref.get(sceneRef)))
