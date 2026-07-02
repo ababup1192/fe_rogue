@@ -141,14 +141,10 @@ mod TestStaffCastScene {
 
     /// HP 5 / 最大 10 の味方に「魔力 0 + 10 = 10」回復をかけると、5 + 10 = 15 ではなく
     /// 上限 10 で頭打ちになる（回復は最大 HP を超えない）。
+    /// P6-5b: legacy applyHealToPlayer は撤去＝クランプ則の単一源泉 `Combat.heal`（純粋）を直接 pin。
     @Test
     def testHealStaffClampsAtMaxHp(): Unit \ Assert =
-        let scene = playerScene(5, 0);
-        let caster = playerData(scene);
-        let after = TestUnitFixtures.dischargeWorldCommand(() ->
-            TestUnitFixtures.withMockGameLogger(() ->
-            StaffCastScene.applyHealToPlayer(0, caster, 0, scene)));
-        Assert.assertEq(expected = 10, PlayerScene.getHp(0, after))
+        Assert.assertEq(expected = 10, (Combat.heal(5, 10, 10))#newHp)
 
     // ════════════════════════════════════════════════════════
     // 消費アイテム — 使用者自身を healAmount 回復

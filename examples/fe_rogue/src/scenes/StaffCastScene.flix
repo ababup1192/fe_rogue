@@ -127,36 +127,10 @@ mod StaffCastScene {
                               GameEngine.Audio, World.WorldQuery} =
         match dslStaffRule(staff) {
             case Some(rule) => applyStaffEffectDsl(playerId, staff, rule, hit, dir, scene)
-            // effectRule 無しの legacy 5 enum 杖。cutover toggle（既定 true・branch 温存）が ON かつ
-            // ECS が World 純粋に解ける effect（P1-a で Stopgap も含む全 5）のときだけ sim 経路へ。
-            case None       =>
-                if (useEcsStaff() and ecsHandlesStaff(staff#effect))
-                    ecsResolveStaffCast(playerId, player, staff, dir, hit, scene)
-                else
-                    applyStaffEffectLegacy(playerId, player, staff, dir, hit, scene)
+            // effectRule 無しの enum 杖は ECS sim 経路（P6-5b: トグル useEcsStaff は撤去＝一本化。
+            // 壁空振り〔events=Nil〕だけは ecsResolveStaffCast 内で applyStaffEffectLegacy へ fallback）。
+            case None       => ecsResolveStaffCast(playerId, player, staff, dir, hit, scene)
         }
-
-    /// ViewReplay/sim cutover の **A/B トグル**（run 検証用・branch 温存）。`true`=ECS 経路（既定・出荷／
-    /// `StaffSystem.resolveStaffCast` で sim を解き events→Cmds で World 反映・`ViewReplay.replay` で演出）、
-    /// `false`=legacy 杖（oracle 温存）。combat の `useEcsCombat` と同流儀。P1-a で全 5 effect が ECS 経路。
-    def useEcsStaff(): Bool = true
-
-    /// 敵杖 cutover の A/B トグル（敵クレリックの Bind/Stopgap 詠唱を ECS 化・既定 true で cutover 済）。
-    /// player の `useEcsStaff` とは独立。`true` で `ecsResolveEnemyStaff`（`StaffSystem.resolveStaffCast`
-    /// に caster=Enemy を渡す）経路、`false` で `enemyCastStaffLegacy`（oracle 温存）。P1-a で Stopgap も ECS 化。
-    /// hit-log（『かなしばりにした』/warp ログ）は ECS 経路でも `bindPlayerLog`/`warpPlayerLog` で保全＝味方杖
-    /// cutover と違い parity 維持（`TestEnemyStaffGolden` の log 等価が pin）。
-    def useEcsEnemyStaff(): Bool = true
-
-    /// この effect が ECS sim（`resolveStaffCast`）で World 純粋に解けるか（純 leaf）。
-    /// 全 5 effect が true（P1-a で Stopgap も `stairsPosOf` read-model 追加により ECS 化＝warp を `Moved` で解く）。
-    def ecsHandlesStaff(effect: Staff.StaffEffect): Bool = match effect {
-        case Staff.StaffEffect.Heal     => true
-        case Staff.StaffEffect.Blowback => true
-        case Staff.StaffEffect.Swap     => true
-        case Staff.StaffEffect.Bind     => true
-        case Staff.StaffEffect.Stopgap  => true
-    }
 
     /// ECS cutover 経路（杖）: `StaffSystem.resolveStaffCast` で 1 発の sim を解いて [SimEvent] を得、
     /// `eventToCmds` で World へ反映し、`ViewReplay.replay` で演出を再生する。`applyEcsStaffSceneEffects` で
@@ -165,20 +139,26 @@ mod StaffCastScene {
     /// 演出進行（耐久消費/選択クリア/turn 進行）は従来どおり `fireStaff` 後段が担う。
     /// 出荷される cutover seam そのものを traced harness で踏むため pub（`TestStaffGolden`:
     /// whiff→legacy fallback の log 等価／hit 時 emit ループが eventToCmds と一致 を固定）。
-    pub def ecsResolveStaffCast(playerId: Int32, player: PlayerScene.Data,
+    pub def ecsResolveStaffCast(playerId: Int32, _player: PlayerScene.Data,
                              staff: Staff.StaffResource,
                              dir: {x = Int32, y = Int32}, hit: RayHit,
                              scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger, World.Command, BoardQuery,
+                              GameLogger.GameLogger, World.Command,
                               GameEngine.Audio, World.WorldQuery} =
         let world = World.WorldQuery.get();
         let (_, events) = StaffSystem.resolveStaffCast(world,
             World.EntityRef.Player(playerId), staff#effect, dir, hit);
-        if (List.isEmpty(events))
-            // 空振り（壁/盤外）: legacy の feedback ログを温存。emit/replay はしない。
-            applyStaffEffectLegacy(playerId, player, staff, dir, hit, scene)
-        else {
+        if (List.isEmpty(events)) {
+            // 空振り（壁/盤外）: feedback ログのみ（P6-5b: 旧 legacy dispatcher の whiff arm を内包。
+            // Swap だけ文言が違う=『消えた』、他 4 effect は『届かなかった』）。emit/replay はしない。
+            let msg = match staff#effect {
+                case Staff.StaffEffect.Swap => "${PlayerScene.displayName(playerId, scene)} の ${staff#name} は消えた"
+                case _                      => "${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった"
+            };
+            GameLogger.playerLog(msg);
+            scene
+        } else {
             List.forEach(c -> World.Command.emit(c), events |> List.flatMap(World.eventToCmds));
             applyEcsStaffSceneEffects(events, ViewReplay.replay(events, scene))
         }
@@ -307,87 +287,6 @@ mod StaffCastScene {
             case _ =>
                 GameLogger.playerLog("${srcLabel} の杖は 何も起きなかった");
                 sc
-        }
-
-    /// legacy: `staff#effect × hit` の組み合わせで効果を適用する（effectRule 無しの杖）。
-    /// ヒット種は RayHit.HitPlayer / RayHit.HitEnemy / それ以外（壁・盤外 = 空振り）の 3 種で、
-    /// 3 効果 × 3 ヒット種 = 9 通り。空振り（壁/盤外）は `_` arm でまとめてログを出す。
-    pub def applyStaffEffectLegacy(playerId: Int32, player: PlayerScene.Data,
-                          staff: Staff.StaffResource,
-                          dir: {x = Int32, y = Int32},
-                          hit: RayHit,
-                          scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger, World.Command, BoardQuery} =
-        match (staff#effect, hit) {
-            case (Staff.StaffEffect.Heal, RayHit.HitPlayer(targetId, _)) =>
-                applyHealToPlayer(playerId, player, targetId, scene)
-            case (Staff.StaffEffect.Heal, RayHit.HitEnemy(targetId, _)) =>
-                applyHealToEnemy(playerId, player, targetId, scene)
-            case (Staff.StaffEffect.Blowback, RayHit.HitPlayer(targetId, hitCell)) =>
-                applyBlowbackToPlayer(playerId, targetId, hitCell, dir, scene)
-            case (Staff.StaffEffect.Blowback, RayHit.HitEnemy(targetId, hitCell)) =>
-                applyBlowbackToEnemy(playerId, targetId, hitCell, dir, scene)
-            case (Staff.StaffEffect.Swap, RayHit.HitPlayer(otherId, otherCell)) =>
-                applySwapWithPlayer({id = playerId, cell = player#gridPos}, {id = otherId, cell = otherCell}, scene)
-            case (Staff.StaffEffect.Swap, RayHit.HitEnemy(enemyId, enemyCell)) =>
-                applySwapWithEnemy({id = playerId, cell = player#gridPos}, {id = enemyId, cell = enemyCell}, scene)
-            case (Staff.StaffEffect.Bind, RayHit.HitPlayer(targetId, _)) =>
-                applyBindToPlayer(PlayerScene.displayName(playerId, scene), targetId, defaultBindTurns(), scene)
-            case (Staff.StaffEffect.Bind, RayHit.HitEnemy(targetId, _)) =>
-                applyBindToEnemy(PlayerScene.displayName(playerId, scene), targetId, defaultBindTurns(), scene)
-            case (Staff.StaffEffect.Stopgap, RayHit.HitPlayer(targetId, _)) =>
-                applyStopgapToPlayer(PlayerScene.displayName(playerId, scene), targetId, scene)
-            case (Staff.StaffEffect.Stopgap, RayHit.HitEnemy(targetId, _)) =>
-                applyStopgapToEnemy(PlayerScene.displayName(playerId, scene), targetId, scene)
-            // 空振り系: 効果なし、ログだけ（実際の杖名を表示する）
-            case (Staff.StaffEffect.Heal, _) =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
-                scene
-            case (Staff.StaffEffect.Blowback, _) =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
-                scene
-            case (Staff.StaffEffect.Swap, _) =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は消えた");
-                scene
-            case (Staff.StaffEffect.Bind, _) =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
-                scene
-            case (Staff.StaffEffect.Stopgap, _) =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
-                scene
-        }
-
-    /// Heal × 味方: 対象味方の HP を「魔力 + 10」回復、HPBar 更新、ログ。
-    /// `applyStaffEffect` から呼ばれる内部処理だが、回復量の上限クランプを単体検証できる
-    /// ように pub にしている（`TestStaffCastScene` 参照）。
-    pub def applyHealToPlayer(srcId: Int32, player: PlayerScene.Data, targetId: Int32,
-                           scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
-        let amount = player#resource#magicAttack + 10;
-        match PlayerScene.get(targetId, scene) {
-            case None         => scene
-            case Some(target) =>
-                let result = Combat.heal(target#hp, target#resource#hp, amount);
-                let healed = result#newHp - target#hp;
-                GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} ▶ ${PlayerScene.displayName(targetId, scene)} を ${healed}回復");
-                scene
-                    |> PlayerScene.setHp(targetId, result#newHp)
-        }
-
-    /// Heal × 敵: 敵の HP を「魔力 + 10」回復（敵にも効く仕様）。
-    def applyHealToEnemy(srcId: Int32, player: PlayerScene.Data, enemyId: Int32,
-                          scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
-        let amount = player#resource#magicAttack + 10;
-        match EnemyScene.get(enemyId, scene) {
-            case None        => scene
-            case Some(enemy) =>
-                let result = Combat.heal(enemy#hp, enemy#resource#hp, amount);
-                let healed = result#newHp - enemy#hp;
-                GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} ▶ ${EnemyScene.displayName(enemyId, scene)} を ${healed}回復");
-                scene
-                    |> EnemyScene.setHp(enemyId, result#newHp)
         }
 
     /// ふきとばし × 味方: 1 ダメ → 死亡なら止まる、生存なら最終位置までスナップで移動。
@@ -1169,29 +1068,13 @@ mod StaffCastScene {
             |> Option.map(d -> StatusSystem.isImmobilized(d#statuses))
             |> Option.getWithDefault(false)
 
-    /// 解決済みの「敵 → 味方 への詠唱」を適用する dispatcher。敵 Bind 詠唱の cutover toggle
-    /// （`useEcsEnemyStaff`・既定 false）が ON かつ ECS が解ける effect（Bind）なら ECS 経路へ、
-    /// それ以外（Stopgap / toggle off）は legacy へ。dir/hit は ECS sim（`resolveStaffCast`）へ thread する。
-    def enemyCastStaff(enemyId: Int32, effect: Staff.StaffEffect, targetId: Int32,
+    /// 解決済みの「敵 → 味方 への詠唱」を適用する dispatcher（P6-5b: トグル useEcsEnemyStaff は撤去＝
+    /// ECS 一本。壁空振りだけは ecsResolveEnemyStaff 内で enemyCastStaffLegacy へ fallback）。
+    def enemyCastStaff(enemyId: Int32, effect: Staff.StaffEffect, _targetId: Int32,
                         dir: {x = Int32, y = Int32}, hit: RayHit,
                         scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery, World.WorldQuery} =
-        if (useEcsEnemyStaff() and ecsHandlesStaff(effect))
-            ecsResolveEnemyStaff(enemyId, effect, dir, hit, scene)
-        else
-            enemyCastStaffLegacy(enemyId, effect, targetId, scene)
-
-    /// 敵詠唱の legacy 本体（Bind=mapPlayer 直書き / Stopgap=warp）。src は敵の表示名。
-    /// golden oracle（`TestEnemyStaffGolden`）が直叩きして ECS 経路と #statuses を突き合わせるため pub。
-    pub def enemyCastStaffLegacy(enemyId: Int32, effect: Staff.StaffEffect, targetId: Int32,
-                        scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery} =
-        let srcLabel = EnemyScene.displayName(enemyId, scene);
-        match effect {
-            case Staff.StaffEffect.Bind    => applyBindToPlayer(srcLabel, targetId, defaultBindTurns(), scene)
-            case Staff.StaffEffect.Stopgap => applyStopgapToPlayer(srcLabel, targetId, scene)
-            case _                         => scene
-        }
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
+        ecsResolveEnemyStaff(enemyId, effect, dir, hit, scene)
 
     /// 敵 Bind 詠唱の ECS cutover 経路: `StaffSystem.resolveStaffCast` に caster=Enemy を渡して sim を
     /// 解き、events→Cmds で World 反映 + `applyEcsStaffSceneEffects` で scene 権威（味方 #statuses）反映。
@@ -1203,12 +1086,14 @@ mod StaffCastScene {
     pub def ecsResolveEnemyStaff(enemyId: Int32, effect: Staff.StaffEffect,
                              dir: {x = Int32, y = Int32}, hit: RayHit,
                              scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery, World.WorldQuery} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         let world = World.WorldQuery.get();
         let (_, events) = StaffSystem.resolveStaffCast(world,
             World.EntityRef.Enemy(enemyId), effect, dir, hit);
         if (List.isEmpty(events))
-            enemyCastStaffLegacy(enemyId, effect, hitTargetId(hit), scene)
+            // 空振り（壁=盤外）: castableHitPlayer ゲートで通常到達しない防御 no-op
+            //（P6-5b: 旧 legacy fallback は撤去。旧実装もこの分岐では実質 no-op だった）。
+            scene
         else {
             List.forEach(c -> World.Command.emit(c), events |> List.flatMap(World.eventToCmds));
             // hit-log parity: 敵 hit は legacy `applyBindToPlayer`/`applyStopgapToPlayer` と同じログを出す

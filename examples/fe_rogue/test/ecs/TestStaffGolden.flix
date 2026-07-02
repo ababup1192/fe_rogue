@@ -135,8 +135,8 @@ mod TestStaffGolden {
     // ── harness ───────────────────────────────────────────────────────────────
 
     /// legacy 杖（`applyStaffEffectLegacy`・playerId=0 固定の caster）を traced harness + 副作用モックで駆動し、
-    /// (後 scene, 最終 World) を返す。dual-write Cmd を ref-backed world へ畳む（runAttack:163 と同型・杖は Audio/Game 不要）。
-    /// 多引数ゆえレコード名前渡し（誤順防止）。
+    /// (後 scene, 最終 World) を返す。P6-5b: legacy oracle 撤去に伴い **live seam（ecsResolveStaffCast）**
+    /// を駆動する（以降の cross-compare は「wrapper↔system 整合」の pin になる）。多引数ゆえレコード名前渡し。
     def runStaffLegacy(in: {scene = Scene[NodeTag], player = PlayerScene.Data,
                             staff = Staff.StaffResource, dir = {x = Int32, y = Int32}, hit = RayHit}):
             (Scene[NodeTag], World) =
@@ -144,10 +144,11 @@ mod TestStaffGolden {
             let (s, _, w) =
                 TestUnitFixtures.withTracedWorld(rc, seed(), in#scene, () ->
                 TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(in#scene), () ->
+                TestUnitFixtures.withMockAudio(() ->
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
-                    StaffCastScene.applyStaffEffectLegacy(0, in#player, in#staff, in#dir, in#hit, in#scene))))));
+                    StaffCastScene.ecsResolveStaffCast(0, in#player, in#staff, in#dir, in#hit, in#scene)))))));
             (s, w)
         }
 
@@ -389,10 +390,11 @@ mod TestStaffGolden {
             let ((s, logs), keys, w) =
                 TestUnitFixtures.withTracedWorld(rc, seed(), in#scene, () ->
                 TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(in#scene), () ->
+                TestUnitFixtures.withMockAudio(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                     withRecLogger(rc, () ->
-                        StaffCastScene.applyStaffEffectLegacy(0, in#player, in#staff, in#dir, in#hit, in#scene))))));
+                        StaffCastScene.ecsResolveStaffCast(0, in#player, in#staff, in#dir, in#hit, in#scene)))))));
             (s, keys, w, logs)
         }
 

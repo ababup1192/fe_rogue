@@ -177,7 +177,7 @@ mod TestGoldenTrace {
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withNoopAnim(() ->
             TestUnitFixtures.withNoopTween(() ->
-                CombatScene.applyAttackHitLegacy(0, sc)))))))))
+                CombatScene.applyAttackHit(0, sc)))))))))
         }
 
     /// applyAttackHit を CONSTANT-RNG harness で駆動（draw を全て `rngVal` 固定にする）。
@@ -192,7 +192,7 @@ mod TestGoldenTrace {
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withNoopAnim(() ->
             TestUnitFixtures.withNoopTween(() ->
-                CombatScene.applyAttackHitLegacy(0, sc)))))))))
+                CombatScene.applyAttackHit(0, sc)))))))))
         }
 
     /// applyEnemyAttackHit を traced harness + 副作用モックで駆動。((後 scene, killed), cmdKey 列, World)。
@@ -207,7 +207,7 @@ mod TestGoldenTrace {
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withNoopAnim(() ->
             TestUnitFixtures.withNoopTween(() ->
-                CombatScene.applyEnemyAttackHitLegacy(enemyId, sc)))))))))
+                CombatScene.applyEnemyAttackHit(enemyId, sc)))))))))
         }
 
     // combatViewOf が attacker/defender 両方で Some か（vacuous scene-fallback の pre-guard）。
@@ -243,20 +243,21 @@ mod TestGoldenTrace {
         let sc = sceneOf(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
         let (_, keys, w) = runAttack(sc);
         assertGoldenPremise(sc, keys);
-        // golden: 凍結した legacy cmd-stream（SetHp×2→Dying→SetHp(player)→Progress→SetBaseStats）に一致。
-        // S2.3: applyLevelUp は resource 成長後に SetBaseStats を dual-write する（ECS 経路 :561 と対称）。
-        // growthRates=0 ゆえ値は不変だが emit は無条件（SetWeapons が miss でも出るのと同型）。
+        // golden: P6-5a で **ECS 経路（applyAttackHit=live）** の cmd-stream に再凍結（GENERATE-THEN-FREEZE）。
+        // 前半 = eventToCmds（sim event の写像: 撃破 SetHp/Dying → level-up の SetHp/Progress）、
+        // 後半 = applyEcsSceneEffects/startDeathAnimation の scene 副作用 co-emit
+        //（Dying は seam と death-anim の二重 emit＝冪等・SetBaseStats/SetGrowth は resource 成長の束ね）。
         let golden =
             ("SetHp", 1000001, 0, 0) ::
-            ("SetHp", 1000001, 0, 0) ::
             ("Dying", 1000001, 0, 0) ::
-            ("SetWeapons", 0, 1, 0) ::
-            ("SetWeaponView", 0, 2, 0) ::  // S2.4: 武器耐久消費に 1:1 co-emit（attack=2）
             ("SetHp", 0, 10, 0) ::
             ("Progress", 0, 2, 34) ::
+            ("SetHp", 1000001, 0, 0) ::
+            ("Dying", 1000001, 0, 0) ::
             ("SetBaseStats", 0, 21, 10) ::
-            // P6-2c: resource 変化サイトは growth read-model も束ねて emit（emitBaseStatsFromScene 内）。
-            ("SetGrowth", 0, 10, 0) :: Nil;
+            ("SetGrowth", 0, 10, 0) ::
+            ("SetWeapons", 0, 1, 0) ::
+            ("SetWeaponView", 0, 2, 0) :: Nil;  // S2.4: 武器耐久消費に 1:1 co-emit（attack=2）
         Assert.assertEq(expected = golden, keys);
         // 最終 World: enemy hp=0 / player hp=10（growthRates=0 ゆえ増分なし）/ progress=(Lv2, exp34)。
         Assert.assertEq(
@@ -275,14 +276,15 @@ mod TestGoldenTrace {
         let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
         let (_, keys, w) = runAttack(sc);
         assertGoldenPremise(sc, keys);
-        // golden: 撃破するが閾値を跨がず→ bare Progress（SetHp(player)/growth なし）。
+        // golden: P6-5a で ECS 経路に再凍結。撃破するが閾値を跨がず→ bare Progress（SetHp(player)/growth なし）。
         let golden =
             ("SetHp", 1000001, 0, 0) ::
+            ("Dying", 1000001, 0, 0) ::
+            ("Progress", 0, 1, 35) ::
             ("SetHp", 1000001, 0, 0) ::
             ("Dying", 1000001, 0, 0) ::
             ("SetWeapons", 0, 1, 0) ::
-            ("SetWeaponView", 0, 2, 0) ::  // S2.4: 武器耐久消費に 1:1 co-emit（attack=2）
-            ("Progress", 0, 1, 35) :: Nil;
+            ("SetWeaponView", 0, 2, 0) :: Nil;  // S2.4: 武器耐久消費に 1:1 co-emit（attack=2）
         Assert.assertEq(expected = golden, keys);
         // 最終 World: enemy hp=0 / player hp=10（被弾なし）/ progress=(Lv1, exp35)。
         Assert.assertEq(
@@ -420,14 +422,15 @@ mod TestGoldenTrace {
         let (_, seededKeys, _) = runAttack(sc);
         let (_, constKeys, _)  = runAttackConst(sc, 50);
         assertViewsResolvable(sc);
-        // SEEDED（hitRoll=13<30）＝命中→撃破の golden cmd-stream（A2 と同形・今回は roll 依存で命中）。
+        // SEEDED（hitRoll=13<30）＝命中→撃破の golden cmd-stream（A2 と同形・今回は roll 依存で命中。P6-5a: ECS 経路）。
         let golden =
             ("SetHp", 1000001, 0, 0) ::
+            ("Dying", 1000001, 0, 0) ::
+            ("Progress", 0, 1, 35) ::
             ("SetHp", 1000001, 0, 0) ::
             ("Dying", 1000001, 0, 0) ::
             ("SetWeapons", 0, 1, 0) ::
-            ("SetWeaponView", 0, 2, 0) ::  // S2.4: 武器耐久消費に 1:1 co-emit（attack=2）
-            ("Progress", 0, 1, 35) :: Nil;
+            ("SetWeaponView", 0, 2, 0) :: Nil;  // S2.4: 武器耐久消費に 1:1 co-emit（attack=2）
         Assert.assertEq(expected = golden, seededKeys);
         // CONSTANT-50（50<30=false ⇒ 回避）でも D3 で武器耐久は消費される（命中/回避とも毎攻撃で消費＝
         // sim 非依存の scene 副作用）ので SetWeapons だけが出る（hp/dying/progress は不変＝撃破しない）。
@@ -447,14 +450,15 @@ mod TestGoldenTrace {
         let sc = sceneOf(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
         let ((_, killed), keys, w) = runEnemyAttack(sc, 1);
         assertGoldenPremise(sc, keys);
-        // golden: SetHp(player,6)→Seed(releaseBind)→Add（magnitude=3・kind=1=SpdDown）→Seed(status leaf)。
+        // golden: P6-5a で ECS 経路に再凍結。SetHp(player,6)→ClrImmob(被弾でかなしばり解除)
+        // →Add（magnitude=3・kind=1=SpdDown）→Seed×2（status の scene 権威 mirror）。
+        // 敵武器の耐久 co-emit は ECS 経路では敵側 seam が担わない（legacy 固有の emit だった）。
         let golden =
             ("SetHp", 0, 6, 0) ::
-            ("Seed", 0, 0, 0) ::
+            ("ClrImmob", 0, 0, 0) ::
             ("Add", 0, 1, 3) ::
             ("Seed", 0, 0, 0) ::
-            ("SetWeapons", 1000001, 1, 0) ::
-            ("SetWeaponView", 1000001, 2, 0) :: Nil;  // S2.4: 敵武器耐久消費に 1:1 co-emit（attack=2）
+            ("Seed", 0, 0, 0) :: Nil;
         Assert.assertEq(expected = golden, keys);
         // 撃破せず（killed 戻り値が空）。
         Assert.assertEq(expected = true, List.isEmpty(killed));
@@ -528,20 +532,20 @@ mod TestGoldenTrace {
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () -> {
                             let s1 = CombatScene.onLungeDone(Faction.Player, 0, sc);
-                            CombatScene.applyEnemyAttackHitLegacy(1, s1)
+                            CombatScene.applyEnemyAttackHit(1, s1)
                         })
                     } with Pacing.withState(rc))))))))))));
             let (_, killed) = result;
             assertGoldenPremise(sc, keys);
-            // golden: ClrTgt(player)→AtkTgt(enemy1,player0)→SetHp(player,0)→Seed(player)。
-            // S3: releaseBind が post-mutation の全置換 Seed を emit（旧 ClrImmob を統合）。
+            // golden: P6-5a で ECS 経路に再凍結。ClrTgt(player)→AtkTgt(enemy1,player0)
+            // →SetHp(player,0)→ClrImmob(被弾でかなしばり解除・sim event)→Seed(status mirror)。
+            // 敵武器の耐久 co-emit は ECS 敵 seam では出ない（legacy 固有だった）。
             let golden =
                 ("ClrTgt", 0, 0, 0) ::
                 ("AtkTgt", 1000001, 0, 0) ::
                 ("SetHp", 0, 0, 0) ::
-                ("Seed", 0, 0, 0) ::
-                ("SetWeapons", 1000001, 1, 0) ::
-                ("SetWeaponView", 1000001, 2, 0) :: Nil;  // S2.4: 敵武器耐久消費に 1:1 co-emit（attack=2）
+                ("ClrImmob", 0, 0, 0) ::
+                ("Seed", 0, 0, 0) :: Nil;
             Assert.assertEq(expected = golden, keys);
             // 最終 World: 敵反撃が味方(hp4)を撃破→ player hp=0・killed=[0]。
             Assert.assertEq(
@@ -1040,9 +1044,9 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withNoSelection(() ->
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () -> {
-                            let s1 = CombatScene.applyAttackHitLegacy(0, sc);
+                            let s1 = CombatScene.applyAttackHit(0, sc);
                             let s2 = CombatScene.onLungeDone(Faction.Player, 0, s1);
-                            CombatScene.applyEnemyAttackHitLegacy(1, s2)
+                            CombatScene.applyEnemyAttackHit(1, s2)
                         })
                     } with Pacing.withState(rc))))))))))));
             w

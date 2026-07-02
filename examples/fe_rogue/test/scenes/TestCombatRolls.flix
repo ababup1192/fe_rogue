@@ -104,9 +104,10 @@ mod TestCombatRolls {
         region rc {
             let scene = battleScene(playerData(200, 99, 3),
                                     enemyData(1, 80, 3, None, None));
-            let (_, rolls) =
-                TestUnitFixtures.withWorldQuery(World.syncFromScene(scene, World.empty()), () ->
-                TestUnitFixtures.dischargeWorldCommand(() ->
+            // P6-5a: ONE-Ref traced world（Command+Query 同一 World）。RngDraw は内側の
+            // withRecordedRolls が先に intercept する（traced の seeded RngDraw は到達しない）。
+            let (out3, _keys, _w) =
+                TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
                 TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
                 TestUnitFixtures.withNoopThiefDrop(() ->
                 TestUnitFixtures.withMockGame(() ->
@@ -115,7 +116,8 @@ mod TestCombatRolls {
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withRecordedRolls(rc, 0i64, () ->
-                    CombatScene.applyAttackHitLegacy(0, scene)))))))))));
+                    CombatScene.applyAttackHit(0, scene))))))))));
+            let (_, rolls) = out3;
             Assert.assertEq(
                 expected = (12, prngSeq(0i64, 12)),
                 (List.length(rolls), rolls))
@@ -132,9 +134,9 @@ mod TestCombatRolls {
         region rc {
             let scene = battleScene(playerData(80, 0, 3),
                                     enemyData(50, 200, 3, Some(0), onHitEffectRule()));
-            let (_, rolls) =
-                TestUnitFixtures.withWorldQuery(World.syncFromScene(scene, World.empty()), () ->
-                TestUnitFixtures.dischargeWorldCommand(() ->
+            // P6-5a: ONE-Ref traced world（上と同型）。
+            let (out3, _keys, _w) =
+                TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
                 TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
                 TestUnitFixtures.withMockGame(() ->
                 TestUnitFixtures.withMockAudio(() ->
@@ -142,7 +144,8 @@ mod TestCombatRolls {
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withRecordedRolls(rc, 0i64, () ->
-                    CombatScene.applyEnemyAttackHitLegacy(1, scene))))))))));
+                    CombatScene.applyEnemyAttackHit(1, scene)))))))));
+            let (_, rolls) = out3;
             Assert.assertEq(
                 expected = (3, prngSeq(0i64, 3)),
                 (List.length(rolls), rolls))

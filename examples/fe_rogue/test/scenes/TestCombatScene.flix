@@ -83,21 +83,23 @@ mod TestCombatScene {
             |> Scene.addChildAt(MapScene.worldPath(), EnemyScene.enemyName(1),
                 EngineNode.Marker2DWithState(eMarker, NodeTag.Enemy(enemy())))
 
-    /// applyAttackHit を 5 つの副作用モックで包んで実行する。
-    def runAttack(scene: Scene[NodeTag]): Scene[NodeTag] =
-        // WorldQuery には scene を mirror した World を渡す＝combatViewOf を実際に通し、World 由来の
-        // ダメージ/EXP が scene 同値（期待値）になることを live で検証する（B1 player flip）。
-        TestUnitFixtures.withWorldQuery(World.syncFromScene(scene, World.empty()), () ->
-        TestUnitFixtures.dischargeWorldCommand(() ->
-        TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
-        TestUnitFixtures.withNoopThiefDrop(() ->
-        TestUnitFixtures.withMockRandom(() ->
-        TestUnitFixtures.withMockGame(() ->
-        TestUnitFixtures.withMockAudio(() ->
-        TestUnitFixtures.withMockGameLogger(() ->
-        TestUnitFixtures.withNoopAnim(() ->
-        TestUnitFixtures.withNoopTween(() ->
-            CombatScene.applyAttackHitLegacy(0, scene)))))))))))
+    /// applyAttackHit を副作用モックで包んで実行する。
+    /// P6-5a: ONE-Ref の withTracedWorld（Command+WorldQuery+RngDraw を同一 World に結線＝
+    /// read-after-write）で駆動し、hp/exp の検証は **World store**（ECS 権威）で行う。
+    def runAttack(scene: Scene[NodeTag]): (Scene[NodeTag], World) =
+        region rc {
+            let (out, _keys, w) = TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
+                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
+                TestUnitFixtures.withNoopThiefDrop(() ->
+                TestUnitFixtures.withMockRandom(() ->
+                TestUnitFixtures.withMockGame(() ->
+                TestUnitFixtures.withMockAudio(() ->
+                TestUnitFixtures.withMockGameLogger(() ->
+                TestUnitFixtures.withNoopAnim(() ->
+                TestUnitFixtures.withNoopTween(() ->
+                    CombatScene.applyAttackHit(0, scene))))))))));
+            (out, w)
+        }
 
     // ════════════════════════════════════════════════════════
     // attackLungeAnimation — 中点で attack:hit を 1 つ発火（純粋）
@@ -146,41 +148,6 @@ mod TestCombatScene {
             (PlayerScene.anyAttacking(attacking),
              PlayerScene.anyAttacking(idle)))
 
-    /// レベルアップで増えた現在 HP が World にも dual-write されること（過去に漏れて [F6 HP DIFF] を
-    /// 永続発生させた不変条件のリグレッション固定）。growthRates#hp=100＋roll=50 で HP は決定的に +1。
-    /// World を pre-levelup の 10 で seed しておき、applyLevelUp 後に World hp == scene hp(==11) を要求する
-    /// （emit 漏れだと World は 10 のまま＝不一致でテスト失敗）。
-    @Test
-    def testLevelUpDualWritesHpToWorld(): Unit \ Assert =
-        region rc {
-            let growRes = {growthRates = {hp = 100 | UnitCatalog.zeroGrowthRates()}
-                            | TestUnitFixtures.testResource(4, 10)};
-            let p       = {resource = growRes | player(80)};   // hp=10, level=1, exp=0
-            let worldMk = Marker2D.make(Vec2.zero());
-            let pMarker = Marker2D.make(Vec2.zero());
-            let scene = Scene.empty()
-                |> Scene.addNode(MapScene.worldName(),
-                    EngineNode.Marker2DWithState(worldMk, NodeTag.NoTag))
-                |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                    EngineNode.Marker2DWithState(pMarker, NodeTag.Player(p)));
-            let wref = Ref.fresh(rc,
-                World.applyCmd(World.Cmd.SetHp(World.EntityRef.Player(0), 10), World.empty()));
-            let result = TestUnitFixtures.withMockRandom(() ->
-                TestUnitFixtures.withMockGameLogger(() ->
-                    run { CombatScene.applyLevelUp(0, p, 0, scene) }
-                    with handler World.Command {
-                        def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
-                    }));
-            let sceneHp = PlayerScene.get(0, result) |> Option.map(d -> d#hp);
-            let worldHp = World.hpOf(World.EntityRef.Player(0), Ref.get(wref));
-            // World 拡張: level+1・exp も dual-write されること（scene=(2,0)・World=(2,0)）。
-            let sceneProg = PlayerScene.get(0, result) |> Option.map(d -> (d#level, d#exp));
-            let worldProg = World.progressOf(World.EntityRef.Player(0), Ref.get(wref));
-            Assert.assertEq(
-                expected = (Some(11), Some(11), Some((2, 0)), Some((2, 0))),
-                (sceneHp, worldHp, sceneProg, worldProg))
-        }
-
     // ════════════════════════════════════════════════════════
     // applyAttackHit — 命中で HP 減 + 経験値、回避で不変
     // ════════════════════════════════════════════════════════
@@ -188,39 +155,40 @@ mod TestCombatScene {
     /// 命中（武器命中 80 → 命中率 77 > 50）: 敵 HP は 10 − 4 = 6 になり、攻撃側に経験値が入る。
     @Test
     def testAttackHitDamagesEnemyAndGrantsExp(): Unit \ Assert =
-        let after = runAttack(battleScene(80));
+        let (_after, w) = runAttack(battleScene(80));
         Assert.assertEq(
             expected = (Some(6), Some(true)),
-            (EnemyScene.get(1, after)  |> Option.map(e -> e#hp),
-             PlayerScene.get(0, after) |> Option.map(p -> p#exp > 0)))
+            (World.hpOf(World.EntityRef.Enemy(1), w),
+             World.progressOf(World.EntityRef.Player(0), w) |> Option.map(p -> snd(p) > 0)))
 
     /// 回避（武器命中 40 → 命中率 37 ≤ 50）: 敵 HP は 10 のまま、経験値も入らない。
     @Test
     def testAttackMissLeavesEnemyAndExpUnchanged(): Unit \ Assert =
-        let after = runAttack(battleScene(40));
+        let (_after, w) = runAttack(battleScene(40));
         Assert.assertEq(
             expected = (Some(10), Some(0)),
-            (EnemyScene.get(1, after)  |> Option.map(e -> e#hp),
-             PlayerScene.get(0, after) |> Option.map(p -> p#exp)))
+            (World.hpOf(World.EntityRef.Enemy(1), w),
+             World.progressOf(World.EntityRef.Player(0), w) |> Option.map(snd)))
 
     // ════════════════════════════════════════════════════════
     // applyEnemyAttackHit — 敵→味方の鏡像数値（resolveStrike 経由の回帰固定）
     // ════════════════════════════════════════════════════════
 
     /// applyEnemyAttackHit を副作用モックで包んで実行する（アニメは介在しない）。
-    def runEnemyAttack(scene: Scene[NodeTag]): (Scene[NodeTag], List[Int32]) =
-        // WorldQuery には scene を mirror した World を渡す＝combatViewOf を実際に通し、
-        // World 由来のダメージが scene 同値（期待値）になることを live で検証する（B1 flip）。
-        TestUnitFixtures.withWorldQuery(World.syncFromScene(scene, World.empty()), () ->
-        TestUnitFixtures.dischargeWorldCommand(() ->
-        TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
-        TestUnitFixtures.withMockRandom(() ->
-        TestUnitFixtures.withMockGame(() ->
-        TestUnitFixtures.withMockAudio(() ->
-        TestUnitFixtures.withMockGameLogger(() ->
-        TestUnitFixtures.withNoopTween(() ->
-        TestUnitFixtures.withNoopAnim(() ->
-            CombatScene.applyEnemyAttackHitLegacy(1, scene))))))))))
+    /// P6-5a: runAttack と同じ ONE-Ref traced world 駆動＝検証は World store で。
+    def runEnemyAttack(scene: Scene[NodeTag]): ((Scene[NodeTag], List[Int32]), World) =
+        region rc {
+            let (out, _keys, w) = TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
+                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
+                TestUnitFixtures.withMockRandom(() ->
+                TestUnitFixtures.withMockGame(() ->
+                TestUnitFixtures.withMockAudio(() ->
+                TestUnitFixtures.withMockGameLogger(() ->
+                TestUnitFixtures.withNoopTween(() ->
+                TestUnitFixtures.withNoopAnim(() ->
+                    CombatScene.applyEnemyAttackHit(1, scene)))))))));
+            (out, w)
+        }
 
     /// 敵→味方の鏡像数値: 敵(素3+武器2) vs 味方防御 1 → 4 ダメージ、
     /// 命中率 = 80 + 技2×2 + 幸運2÷2 − (速さ3×2 + 幸運2) = 77 > 50 で命中。
@@ -231,10 +199,10 @@ mod TestCombatScene {
     def testEnemyAttackHitDamagesPlayer(): Unit \ Assert =
         let scene = battleScene(80)
             |> EnemyScene.mapEnemy(1, d -> {attackTargetId = Some(0) | d});
-        let (after, killed) = runEnemyAttack(scene);
+        let ((_after, killed), w) = runEnemyAttack(scene);
         Assert.assertEq(
             expected = (Some(6), true),
-            (PlayerScene.get(0, after) |> Option.map(p -> p#hp),
+            (World.hpOf(World.EntityRef.Player(0), w),
              List.isEmpty(killed)))
 
     // ════════════════════════════════════════════════════════
@@ -247,11 +215,13 @@ mod TestCombatScene {
     def testKillStartsEnemyDeathBlinkAndKeepsNode(): Unit \ Assert =
         let scene = battleScene(80)
             |> EnemyScene.mapEnemy(1, d -> {hp = 4 | d});
-        let after = runAttack(scene);
+        let (after, w) = runAttack(scene);
         // None なら「ノードが残っていない」、Some(false) なら「死亡演出が始まっていない」。
+        // isDying は scene（writer 併記）と World の両方で確認。
         Assert.assertEq(
-            expected = Some(true),
-            EnemyScene.get(1, after) |> Option.map(e -> e#isDying))
+            expected = (Some(true), true),
+            (EnemyScene.get(1, after) |> Option.map(e -> e#isDying),
+             World.isDyingOf(World.EntityRef.Enemy(1), w)))
 
     // ════════════════════════════════════════════════════════
     // onLungeDone phase マトリクス — Player × PlayerAttackHold × Kill

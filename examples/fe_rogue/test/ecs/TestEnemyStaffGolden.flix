@@ -135,19 +135,6 @@ mod TestEnemyStaffGolden {
             (s, keys, w)
         }
 
-    /// legacy seam `enemyCastStaffLegacy`（敵 eid → tid へ `in#effect` 詠唱）を traced harness + 副作用モックで駆動。
-    /// (後 scene, 最終 World)。cross-compare のオラクル。P1-a: effect を引数化。
-    def runEnemyStaffLegacy(in: {scene = Scene[NodeTag], eid = Int32, tid = Int32, effect = Staff.StaffEffect}):
-            (Scene[NodeTag], World) =
-        region rc {
-            let (s, _, w) =
-                TestUnitFixtures.withTracedWorld(rc, seed(), in#scene, () ->
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(in#scene), () ->
-                TestUnitFixtures.withMockGameLogger(() ->
-                TestUnitFixtures.withNoopTween(() ->
-                    StaffCastScene.enemyCastStaffLegacy(in#eid, in#effect, in#tid, in#scene)))));
-            (s, w)
-        }
 
     /// `enemyTryStaff`（forM 鎖。useEcsEnemyStaff=true ゆえ ECS 分岐）を traced harness で駆動。
     def runEnemyTryStaff(in: {scene = Scene[NodeTag], eid = Int32,
@@ -190,18 +177,6 @@ mod TestEnemyStaffGolden {
             (s, logs)
         }
 
-    /// legacy seam `enemyCastStaffLegacy`（敵 eid → tid へ `in#effect`）を記録ロガー付きで駆動し hit-log 列を返す。P1-a: effect 引数化。
-    def runEnemyStaffLegacyLogged(in: {scene = Scene[NodeTag], eid = Int32, tid = Int32, effect = Staff.StaffEffect}):
-            (Scene[NodeTag], List[String]) =
-        region rc {
-            let ((s, _, _), logs) =
-                withRecLogger(rc, () ->
-                TestUnitFixtures.withTracedWorld(rc, seed(), in#scene, () ->
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(in#scene), () ->
-                TestUnitFixtures.withNoopTween(() ->
-                    StaffCastScene.enemyCastStaffLegacy(in#eid, in#effect, in#tid, in#scene)))));
-            (s, logs)
-        }
 
     // ── projections（test 本体に match を書かない射影ヘルパー）─────────────────────
 
@@ -298,16 +273,12 @@ mod TestEnemyStaffGolden {
         let sc = sceneOf(target :: Nil, caster :: Nil);
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
-        let (legacyScene, legacyW) = runEnemyStaffLegacy({scene = sc, eid = 0, tid = 1, effect = Staff.StaffEffect.Bind});
+        // P6-5b: legacy oracle は撤去＝frozen 値の独立 pin のみ（scene 権威と World mirror の両面）。
         let (ecsScene, _, ecsW)    = runEnemyStaffEcs({scene = sc, eid = 0, effect = Staff.StaffEffect.Bind, dir = dir, hit = hit});
-        // 直接突き合わせ: legacy #statuses == ECS #statuses。
-        Assert.assertEq(expected = sceneStatusT(1, legacyScene), sceneStatusT(1, ecsScene));
-        // 命令列非対称の封じ込め: ECS は Cmd.Add→Cmd.Seed、legacy は Cmd.Seed のみだが、Seed は全置換ゆえ
-        // 最終 World は同一状態へ畳まれる。legacy World == ECS World（味方 statusEffects）を直接 pin。
-        Assert.assertEq(expected = worldStatusT(1, legacyW), worldStatusT(1, ecsW));
-        // 独立 pin: (Immobilized,0,5)（両者の偶然一致を排除）。
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil,
-                        sceneStatusT(1, ecsScene))
+                        sceneStatusT(1, ecsScene));
+        Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil,
+                        worldStatusT(1, ecsW))
 
     // ── (E) log-parity: ECS hit-log == legacy hit-log（cutover の parity 保全）──────────
 
@@ -321,11 +292,8 @@ mod TestEnemyStaffGolden {
         let sc = sceneOf(target :: Nil, caster :: Nil);
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
-        let (_, legacyLogs) = runEnemyStaffLegacyLogged({scene = sc, eid = 0, tid = 1, effect = Staff.StaffEffect.Bind});
+        // P6-5b: legacy oracle は撤去＝hit-log をちょうど 1 行で pin（落とさない/二重にしない）。
         let (_, ecsLogs)    = runEnemyStaffEcsLogged({scene = sc, eid = 0, effect = Staff.StaffEffect.Bind, dir = dir, hit = hit});
-        // 直接突き合わせ: legacy hit-log == ECS hit-log。
-        Assert.assertEq(expected = legacyLogs, ecsLogs);
-        // 独立 pin: ちょうど 1 行（cutover で落とさない）。
         Assert.assertEq(expected = 1, List.length(ecsLogs))
 
     // ── (Stopgap) 敵詠唱 bind + warp 等価 + 2 行ログ parity（P1-a）──────────────────
@@ -343,13 +311,9 @@ mod TestEnemyStaffGolden {
         let sc = sceneWithStairs(target :: Nil, caster :: Nil, {x = 8, y = 8});
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
-        let (legacyScene, legacyW) = runEnemyStaffLegacy({scene = sc, eid = 0, tid = 1, effect = Staff.StaffEffect.Stopgap});
+        // P6-5b: legacy oracle は撤去＝frozen 値の独立 pin（bind + warp 先 {8,8}）。
         let (ecsScene, _, ecsW)    = runEnemyStaffEcs({scene = sc, eid = 0, effect = Staff.StaffEffect.Stopgap, dir = dir, hit = hit});
-        // #statuses: legacy == ECS（bind 部）。
-        Assert.assertEq(expected = sceneStatusT(1, legacyScene), sceneStatusT(1, ecsScene));
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, sceneStatusT(1, ecsScene));
-        // pos: legacy warp == ECS Moved、{8,8} を pin（stairsPosOf→warpCellFor が敵詠唱でも届く証跡）。
-        Assert.assertEq(expected = posT(1, legacyW), posT(1, ecsW));
         Assert.assertEq(expected = Some((8, 8)), posT(1, ecsW))
 
     /// Stopgap 敵詠唱の hit-log parity: legacy は [かなしばり, 階段の方へ] の 2 行、ECS も同じ 2 行
@@ -361,10 +325,8 @@ mod TestEnemyStaffGolden {
         let sc = sceneWithStairs(target :: Nil, caster :: Nil, {x = 8, y = 8});
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
-        let (_, legacyLogs) = runEnemyStaffLegacyLogged({scene = sc, eid = 0, tid = 1, effect = Staff.StaffEffect.Stopgap});
+        // P6-5b: legacy oracle は撤去＝bind + warp の 2 行を pin（どちらも落とさない）。
         let (_, ecsLogs)    = runEnemyStaffEcsLogged({scene = sc, eid = 0, effect = Staff.StaffEffect.Stopgap, dir = dir, hit = hit});
-        Assert.assertEq(expected = legacyLogs, ecsLogs);
-        // 独立 pin: bind + warp の 2 行（cutover でどちらも落とさない）。
         Assert.assertEq(expected = 2, List.length(ecsLogs))
 
 }

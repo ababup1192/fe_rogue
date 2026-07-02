@@ -128,7 +128,7 @@ mod CombatScene {
                               GameLogger.GameLogger,
                               CustomEffects.GameOverRequest,
                               SelectedPlayer.State, World.RngDraw,
-                              CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
+                              CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery} =
         match side {
             case Faction.Player => applyAttackHit(id, scene)
             case Faction.Enemy  =>
@@ -138,56 +138,30 @@ mod CombatScene {
 
     /// 味方の `attack:hit` のダメージ適用。
     /// 当該 player の `attackTargetId` を読み、対応する敵への攻撃を解決する。
-    /// 命中ロールは `applyDamageToEnemy` 側で行い、命中なら SE + ダメージ + ログ、
+    /// 命中ロールは ECS（CombatSystem.resolveCombat）側で行い、命中なら SE + ダメージ + ログ、
     /// 回避なら SE を鳴らさず "miss" 表示のみ。HP <= 0 なら death_blink を開始する。
-    /// ゲーム本体の味方攻撃適用（`useEcsCombat()` で ECS/legacy を選ぶ＝既定 ECS）。
+    /// P6-5b: legacy 経路とトグル（useEcsCombat）は撤去＝ECS 一本。
     pub def applyAttackHit(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                               GameLogger.GameLogger, World.RngDraw,
-                              CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
-        applyAttackHitWith(useEcsCombat(), playerId, scene)
-
-    /// **legacy 直叩き**（トグル非依存）。golden-trace 等が legacy 経路を oracle として pin するため。
-    pub def applyAttackHitLegacy(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                              GameLogger.GameLogger, World.RngDraw,
-                              CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
-        applyAttackHitWith(false, playerId, scene)
-
-    def applyAttackHitWith(useEcs: Bool, playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                              GameLogger.GameLogger, World.RngDraw,
-                              CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
+                              CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery} =
         let resolved = forM (
             d       <- PlayerScene.get(playerId, scene);
             enemyId <- d#attackTargetId
-        ) yield applyDamageToEnemy(useEcs, playerId, d, enemyId, scene);
+        ) yield applyDamageToEnemy(playerId, d, enemyId, scene);
         Option.getWithDefault(scene, resolved)
 
-    /// 敵の `attack:hit` のダメージ適用（`useEcsCombat()` で ECS/legacy を選ぶ＝既定 ECS）。
+    /// 敵の `attack:hit` のダメージ適用（P6-5b: ECS 一本）。
     /// 戻り値は (新 scene, HP=0 になったプレイヤー id のリスト)。
     /// killedIds が空でないとき呼び出し側は死亡処理（removeDeadAndCheckGameOver）を発火する。
     pub def applyEnemyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {AnimationPlayer.Scheduler, GameEngine.Audio, GameLogger.GameLogger, World.RngDraw,
-             World.Command, World.WorldQuery, BoardQuery} =
-        applyEnemyAttackHitWith(useEcsCombat(), enemyId, scene)
-
-    /// **legacy 直叩き**（トグル非依存・テスト oracle 用）。
-    pub def applyEnemyAttackHitLegacy(enemyId: Int32, scene: Scene[NodeTag]):
-            (Scene[NodeTag], List[Int32]) \
-            {AnimationPlayer.Scheduler, GameEngine.Audio, GameLogger.GameLogger, World.RngDraw,
-             World.Command, World.WorldQuery, BoardQuery} =
-        applyEnemyAttackHitWith(false, enemyId, scene)
-
-    def applyEnemyAttackHitWith(useEcs: Bool, enemyId: Int32, scene: Scene[NodeTag]):
-            (Scene[NodeTag], List[Int32]) \
-            {AnimationPlayer.Scheduler, GameEngine.Audio, GameLogger.GameLogger, World.RngDraw,
-             World.Command, World.WorldQuery, BoardQuery} =
+            {AnimationPlayer.Scheduler, GameEngine.Audio, World.RngDraw,
+             World.Command, World.WorldQuery} =
         let resolved = forM (
             d              <- EnemyScene.get(enemyId, scene);
             targetPlayerId <- d#attackTargetId
-        ) yield applyDamageToPlayer(useEcs, enemyId, d, targetPlayerId, scene);
+        ) yield applyDamageToPlayer(enemyId, d, targetPlayerId, scene);
         Option.getWithDefault((scene, Nil), resolved)
 
     /// AnimationPlayer の `attack_lunge` finished イベント受信時の処理（攻守共通の入口）。
@@ -446,7 +420,7 @@ mod CombatScene {
                         CustomEffects.GameOverRequest,
                         CustomEffects.ThiefDropRequest,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, BoardQuery, World.PhaseQuery, World.WorldQuery} =
+                        SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
         match (PlayerScene.idFromPath(path), EnemyScene.idFromPath(path)) {
             case (Some(playerId), _) => drainAndDispatch(Faction.Player, playerId, node, path, scene)
             case (_, Some(enemyId))  => drainAndDispatch(Faction.Enemy, enemyId, node, path, scene)
@@ -467,7 +441,7 @@ mod CombatScene {
                              CustomEffects.GameOverRequest,
                              CustomEffects.ThiefDropRequest,
                              EnemyTurn.Queue, TurnPhase.State,
-                             SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, BoardQuery, World.PhaseQuery, World.WorldQuery} =
+                             SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
         let ownerPath = EntityScene.path(World.refOfSide(side, id));  // faction dispatch は EntityScene/World に集約
         let bundle = AnimationPlayer.Scheduler.drainSignals(ownerPath);
         let afterMethods = List.foldLeft(
@@ -526,24 +500,18 @@ mod CombatScene {
     /// で演出）、`false`=legacy 演出（oracle 温存）。味方・敵攻撃とも ECS 経路。
     /// P1 で cutover ギャップを解消済み: level-up モーダル（`applyEcsSceneEffects` の pendingLevelUp で発火）・
     /// thief drop（`applyThiefDrop`・P1-b）・敵ノックバック（P1-c）。残る view 演出は Alerted tint / Released 表示のみ。
-    def useEcsCombat(): Bool = true
-
     /// 敵 id にダメージを与える。装備武器（`weapons.head`）と敵が揃っていなければ no-op。
-    /// 実体は legacy `resolveAttack` または（トグル時）ECS 経路。前提（武器あり・敵あり）の解決だけを担い、
-    /// ネストを避けるため Option を `forM` で短絡的に畳む。
-    def applyDamageToEnemy(useEcs: Bool, playerId: Int32, player: PlayerScene.Data, enemyId: Int32,
+    /// P6-5b: 実体は ECS 経路のみ（legacy resolveAttack とトグル useEcsCombat は撤去）。
+    /// 前提（武器あり・敵あり）の解決だけを担い、ネストを避けるため Option を `forM` で短絡的に畳む。
+    def applyDamageToEnemy(playerId: Int32, player: PlayerScene.Data, enemyId: Int32,
                             scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                                GameLogger.GameLogger, World.RngDraw,
-                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
+                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery} =
         let resolved = forM (
             weapon <- PlayerData.equippedWeapon(player#weapons);
             enemy  <- EnemyScene.get(enemyId, scene)
-        ) yield
-            if (useEcs)
-                ecsResolvePlayerAttack(playerId, player, weapon, enemyId, enemy, scene)
-            else
-                resolveAttack(playerId, player, weapon, enemy, enemyId, scene);
+        ) yield ecsResolvePlayerAttack(playerId, player, weapon, enemyId, enemy, scene);
         Option.getWithDefault(scene, resolved)
 
     /// ECS 経路の **scene-authoritative 反映**: World に Cmd を流すだけでは反映しきれない scene 権威の状態を
@@ -620,177 +588,8 @@ mod CombatScene {
         let afterThief = applyThiefDrop(events, enemyId, withFx);
         consumeEquippedWeapon(playerId, weapon, afterThief)
 
-    /// 装備武器と敵が揃ったときの攻撃解決の流れ:
-    ///   命中率を算出 → 乱数ロール → 命中なら `applyHit` / 回避なら `applyMiss`
-    ///   → 武器の耐久を 1 減らす → 命中していれば経験値を加算。
-    def resolveAttack(playerId: Int32, player: PlayerScene.Data,
-                       weapon: UnitCatalog.WeaponResource, enemy: EnemyScene.Data,
-                       enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                               GameLogger.GameLogger, World.RngDraw,
-                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
-        // S-A0/B1: 攻撃の combat view を World 由来へ flip（weapon=equipped ゆえ combatViewOf と一致・
-        // WorldQuery=read-after-write 正・None は scene fallback）。レベルは scene（progress と dual-write 同値）。
-        let world      = World.WorldQuery.get();
-        let atkView    = World.combatViewOf(World.EntityRef.Player(playerId), world)
-                             |> Option.getWithDefault(PlayerScene.combatViewWith(player, weapon));
-        let defView    = World.combatViewOf(World.EntityRef.Enemy(enemyId), world)
-                             |> Option.getWithDefault(EnemyScene.combatView(enemy));
-        let plan       = forecastFromViews(atkView, defView, player#level, enemy#resource#level);
-        let popupPos   = MapSnapshot.cellCenter(enemy#gridPos);
-        let popupColor = DamagePopupScene.damageToEnemyColor();
-        // 命中ロールと必殺ロールは別の乱数で独立に引く。
-        let hitRoll    = rollPercent();
-        let critRoll   = rollPercent();
-        // 死神のネックレス: 対象が瀕死（残 HP が割合以下）なら必殺にする。
-        let finisherPct = Ring.finisherThreshold(PlayerData.equippedRing(player));
-        let finisherFired = Ring.finisherTriggers(enemy#hp, enemy#resource#hp, finisherPct);
-        let (afterDamage, expGain) =
-            if (Combat.isHit(plan#hitRate, hitRoll)) {
-                let isCrit = Combat.isCrit(plan#crit, critRoll) or finisherFired;
-                // Finisher は確殺（防御で 0 ダメでも倒す）。通常必殺は 3 倍。撃破判定をやり直し plan を差し替える。
-                let finalPlan =
-                    if (finisherFired) {
-                        let finPlan = Combat.applyFinisher(plan#dmg, enemy#hp);
-                        {dmg = finPlan#dmg, newHp = finPlan#newHp, killed = finPlan#killed | plan}
-                    } else if (isCrit) {
-                        let critPlan = Combat.applyCrit(plan#dmg, enemy#hp);
-                        {dmg = critPlan#dmg, newHp = critPlan#newHp, killed = critPlan#killed | plan}
-                    } else plan;
-                // 「ベースでは倒せないが必殺で倒せた」ときだけ経験値を作り直す
-                // （二重加算しないよう、それ以外は plan#exp をそのまま使う）。
-                let expGained =
-                    if (isCrit and finalPlan#killed and not plan#killed)
-                        Combat.battleExp(enemy#resource#level, player#level, true)
-                    else plan#exp;
-                let afterHit = applyHit(playerId, enemyId, finalPlan, isCrit, weapon#weaponType, popupPos, popupColor, scene);
-                // みかえりのリング: 撃破したら攻撃側（味方）の HP を回復する。
-                let afterSteal =
-                    if (finalPlan#killed) applyPlayerLifesteal(playerId, player, afterHit)
-                    else afterHit;
-                // 血吸いの剣: 与ダメージの一定%を毎ヒット回復（撃破非依存）。
-                let afterWSteal = applyPlayerWeaponLifesteal(playerId, player, weapon, finalPlan#dmg, afterSteal);
-                // 如意棒 / 突風の書: 生存している敵をノックバック。
-                let afterKnock = applyAttackKnockback(weapon, {attacker = player#gridPos, defender = enemy#gridPos}, enemyId, finalPlan#killed, afterWSteal);
-                // 盗人の剣: ローグ装備時、命中・生存時に確率でフロア表からアイテムを落とす。
-                let afterThief = maybeThiefDrop(playerId, player, weapon, enemyId, enemy#gridPos, finalPlan#killed, rollPercent(), afterKnock);
-                (afterThief, expGained)
-            } else
-                (applyMiss(playerId, enemyId, popupPos, popupColor, scene), 0);
-        let afterWeapon = consumeEquippedWeapon(playerId, weapon, afterDamage);
-        // 自分の攻撃でも敵ターンの反撃でも同様（反撃 EXP で即レベルアップした場合は
-        // 敵ターン終了後にまとめてパネル表示する）。
-        if (expGain <= 0) afterWeapon
-        else applyExpGain(playerId, expGain, afterWeapon)
-
-    /// みかえりのリングを装備した味方が撃破したとき、その味方の HP を回復する（最大 HP でクランプ）。
-    /// リング未装備 / Lifesteal 以外なら回復量 0 で no-op。
-    def applyPlayerLifesteal(playerId: Int32, player: PlayerScene.Data,
-                              scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        let amt = Ring.lifestealAmount(PlayerData.equippedRing(player));
-        if (amt <= 0) scene
-        else
-            let newHp = Combat.heal(player#hp, player#resource#hp, amt)#newHp;
-            scene
-                |> PlayerScene.setHp(playerId, newHp)
-
-    /// 血吸いの剣: 与えたダメージの `effectValue`% を攻撃側へ回復（毎ヒット・撃破非依存）。
-    /// 攻撃側の HP は自分の攻撃では変わらないので `player#hp` をそのまま基準にしてよい。
-    def applyPlayerWeaponLifesteal(playerId: Int32, player: PlayerScene.Data,
-                                    weapon: UnitCatalog.WeaponResource, dmgDealt: Int32,
-                                    scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
-        let pct = WeaponCatalog.lifestealPercent(weapon#effect, weapon#effectValue);
-        if (pct <= 0 or dmgDealt <= 0) scene
-        else
-            let amt = (dmgDealt * pct) / 100;
-            let newHp = Combat.heal(player#hp, player#resource#hp, amt)#newHp;
-            GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は 血を吸って HP+${newHp - player#hp}");
-            scene
-                |> PlayerScene.setHp(playerId, newHp)
-
     /// ノックバックの攻撃側・被攻撃側セル（同型 {x,y} が 2 つで誤順しやすいので名前渡し）。
     type alias KnockbackPos = {attacker = {x = Int32, y = Int32}, defender = {x = Int32, y = Int32}}
-
-    /// 如意棒 / 突風の書: ノックバック武器なら、生存している敵を攻撃方向へ押し流す。
-    /// 上限マス数は `effectValue`（0=無制限）。`Staff.deltaToDirection` で 4 方位に丸める。
-    def applyAttackKnockback(weapon: UnitCatalog.WeaponResource, pos: KnockbackPos,
-                              enemyId: Int32, killed: Bool,
-                              scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, BoardQuery} =
-        match WeaponCatalog.knockbackTiles(weapon#effect, weapon#effectValue) {
-            case None        => scene
-            case Some(tiles) => if (killed) scene else pushEnemyBack(tiles, pos, enemyId, scene)
-        }
-
-    /// ノックバック本体: 方向算出 → `knockbackPathCapped` の最終着地へ `snapTo`。
-    def pushEnemyBack(tiles: Int32, pos: KnockbackPos, enemyId: Int32,
-                       scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, BoardQuery} =
-        let dir = Staff.toVec2i(Staff.deltaToDirection(
-                    pos#defender#x - pos#attacker#x, pos#defender#y - pos#attacker#y));
-        // P1b: 敵ノックバック（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
-        let board: Board = BoardQuery.board();
-        let cap = if (tiles <= 0) None else Some(tiles);
-        match List.last(Board.knockbackPathCapped(pos#defender, dir, board, cap)) {
-            case None       => scene
-            case Some(last) => EnemyScene.snapTo(enemyId, last, scene)
-        }
-
-    /// 盗人の剣: 装備者がローグ かつ 命中・敵生存 かつ `roll < effectValue`% のとき、
-    /// `ThiefDropRequest` を emit してフロアのドロップ表からアイテムを敵の足元に落とす。
-    def maybeThiefDrop(_playerId: Int32, player: PlayerScene.Data,
-                        weapon: UnitCatalog.WeaponResource, enemyId: Int32,
-                        enemyCell: {x = Int32, y = Int32}, killed: Bool, roll: Int32,
-                        scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {CustomEffects.ThiefDropRequest, GameLogger.GameLogger} =
-        let pct = WeaponCatalog.thiefDropChance(weapon#effect, weapon#effectValue);
-        let isRogue = player#resource#description == "ローグ";
-        if (pct <= 0 or not isRogue or killed or roll >= pct) scene
-        else {
-            GameLogger.playerLog("${EnemyScene.displayName(enemyId, scene)}が アイテムを落とした");
-            CustomEffects.ThiefDropRequest.drop(enemyCell, scene)
-        }
-
-    /// 回避: miss SE を鳴らし "miss" を浮かす。HP も死亡演出も変えない。
-    def applyMiss(playerId: Int32, enemyId: Int32, popupPos: Vec2.Vec2, color: Color,
-                   scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Audio, GameLogger.GameLogger, World.Command} =
-        GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}に攻撃を外した");
-        AudioStreamPlayer.play("miss");
-        DamagePopupScene.emitText(popupPos, "miss", color, scene)
-
-    // 命中 SE 名 hitSoundName は純 leaf として CombatRules.flix へ移動（A1）。
-
-    /// 命中: 与ダメージ/武器タイプに応じた SE を鳴らしダメージを適用。撃破なら死亡演出、
-    /// 生存なら敵 HP を更新。どちらでも与ダメージの数値ポップアップを浮かす。
-    def applyHit(playerId: Int32, enemyId: Int32, plan: AttackForecast, isCrit: Bool,
-                  weaponType: WeaponCatalog.WeaponType,
-                  popupPos: Vec2.Vec2, color: Color, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                               GameLogger.GameLogger, World.Command} =
-        AudioStreamPlayer.play(CombatRules.hitSoundName(plan#dmg, isCrit, weaponType));
-        // 魔法攻撃（マージ等）の着弾時は敵中心に爆発エフェクトを出す。
-        let withFx = match weaponType {
-            case WeaponCatalog.WeaponType.Magic => ExplosionScene.emitNormal(popupPos, scene)
-            case _                              => scene
-        };
-        let withPopup = DamagePopupScene.emit(popupPos, plan#dmg, color, withFx);
-        // 必殺のときはログ先頭に「必殺！」を付ける。
-        let critTag = if (isCrit) "必殺！ " else "";
-        // F6a: 敵 hp を World にも dual-write（両分岐とも newHp）。scene 直書きは下の mapEnemy / 死亡演出で継続。
-        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(enemyId), plan#newHp));
-        if (plan#killed) {
-            GameLogger.playerLog("${critTag}${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}を倒した");
-            withPopup
-                |> EnemyScene.startDeathAnimation(enemyId)
-        } else {
-            GameLogger.playerLog("${critTag}${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}に ${plan#dmg}ダメージ与えた");
-            // 攻撃を受けた敵は起動する（GuardUntilInRange を射程外から射ても動き出す）。
-            // alerted は一方向フラグなので、ここで立てれば次の敵ターン以降ずっと追跡に入る。
-            // 殴られたので、かなしばり中なら完全停止を解除する。
-            World.Command.emit(World.Cmd.SetAlerted(World.EntityRef.Enemy(enemyId), true));  // F7-spike: 被弾で起動を World へ
-            withPopup
-                |> EnemyScene.mapEnemy(enemyId, enemyData -> {hp = plan#newHp, alerted = true | enemyData})
-                |> EnemyScene.releaseBind(enemyId)
-        }
 
     /// FE ルールに従い、攻撃を振った時点で装備武器（先頭）の耐久を 1 減らす（回避されても同様）。
     /// 耐久が 0 になったら先頭を取り除き破損ログを出す。
@@ -817,20 +616,16 @@ mod CombatScene {
     /// ログはスペック準拠で「敵{N} → P{M} に Xダメージ」、撃破時「敵{N} → P{M} を撃破」。
     /// HP=0 なら killedIds に追加して返す（呼び出し側が死亡処理を発火する）。
     /// 武器なし（None）でここに到達した場合は防御的に何もしない。
-    def applyDamageToPlayer(useEcs: Bool, enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,
+    def applyDamageToPlayer(enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {AnimationPlayer.Scheduler, GameEngine.Audio, GameLogger.GameLogger, World.RngDraw,
-             World.Command, World.WorldQuery, BoardQuery} =
-        // 前提（武器あり・対象あり）の解決だけを担う。実体は legacy resolveEnemyAttack または（useEcs 時）ECS 経路。
+            {AnimationPlayer.Scheduler, GameEngine.Audio, World.RngDraw,
+             World.Command, World.WorldQuery} =
+        // 前提（武器あり・対象あり）の解決だけを担う。P6-5b: 実体は ECS 経路のみ。
         let resolved = forM (
-            weapon <- enemy#weapon;
-            player <- PlayerScene.get(targetId, scene)
-        ) yield
-            if (useEcs)
-                ecsResolveEnemyAttack(enemyId, enemy, targetId, player, scene)
-            else
-                resolveEnemyAttack(enemyId, enemy, weapon, player, targetId, scene);
+            _weapon <- enemy#weapon;
+            player  <- PlayerScene.get(targetId, scene)
+        ) yield ecsResolveEnemyAttack(enemyId, enemy, targetId, player, scene);
         Option.getWithDefault((scene, Nil), resolved)
 
     /// ECS cutover 経路（敵攻撃）: `CombatSystem.resolveEnemyAttack` で 1 撃を解き events→Cmds で World 反映・
@@ -852,312 +647,4 @@ mod CombatScene {
         }, events);
         (next, killed)
 
-    /// 武器と対象が揃ったときの敵攻撃解決の流れ:
-    ///   resolveStrike で命中率・ダメージを算出 → 乱数ロール → 命中/回避を適用
-    ///   → 武器の耐久を 1 減らす。
-    def resolveEnemyAttack(enemyId: Int32, enemy: EnemyScene.Data,
-                            weapon: UnitCatalog.WeaponResource, player: PlayerScene.Data,
-                            targetId: Int32, scene: Scene[NodeTag]):
-            (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameLogger.GameLogger, World.RngDraw,
-             World.Command, World.WorldQuery, BoardQuery} =
-        // S-A0/B1: ダメージ計算の combat view を World 由来へ flip（WorldQuery=read-after-write 正・parity 同値）。
-        let world = World.WorldQuery.get();
-        let strike = CombatRules.resolveStrike(
-            World.combatViewOf(World.EntityRef.Enemy(enemyId), world) |> Option.getWithDefault(EnemyScene.combatView(enemy)),
-            World.combatViewOf(World.EntityRef.Player(targetId), world) |> Option.getWithDefault(PlayerScene.combatView(player)));
-        let roll = rollPercent();
-        let popupPos = MapSnapshot.cellCenter(player#gridPos);
-        let popupColor = DamagePopupScene.damageToPlayerColor();
-        let (damaged, killed) =
-            if (not Combat.isHit(strike#hit, roll)) {
-                // 回避: miss SE を鳴らして "miss" を浮かす。HP は変えない。
-                GameLogger.enemyLog("${enemy#resource#description}は ${player#resource#description}に攻撃を外した");
-                AudioStreamPlayer.play("miss");
-                (DamagePopupScene.emitText(popupPos, "miss", popupColor, scene), Nil)
-            } else {
-                // 命中: 必殺ロールを引く。死神のネックレスを敵が持ち味方が瀕死なら必殺。
-                let critRoll = rollPercent();
-                let finisherFired = Ring.finisherTriggers(player#hp, player#resource#hp,
-                                                          Ring.finisherThreshold(enemy#ring));
-                let crit = Combat.isCrit(strike#crit, critRoll) or finisherFired;
-                // ベース(非必殺)の dmg/newHp/killed を 1 レコードにまとめ、Finisher は確殺・
-                // 通常必殺は applyCrit の値で更新する（resolveAttack と同じ record-update 形）。
-                let baseOutcome = {dmg = strike#dmg, newHp = strike#newHp, killed = strike#killed};
-                let outcome =
-                    if (finisherFired) {
-                        let finEff = Combat.applyFinisher(strike#dmg, player#hp);
-                        {dmg = finEff#dmg, newHp = finEff#newHp, killed = finEff#killed | baseOutcome}
-                    } else if (crit) {
-                        let critEff = Combat.applyCrit(strike#dmg, player#hp);
-                        {dmg = critEff#dmg, newHp = critEff#newHp, killed = critEff#killed | baseOutcome}
-                    } else baseOutcome;
-                // 与ダメージ/必殺/武器タイプに応じた SE を鳴らしダメージ適用 + 数値ポップアップ。
-                AudioStreamPlayer.play(CombatRules.hitSoundName(outcome#dmg, crit, weapon#weaponType));
-                let critTag = if (crit) "必殺！ " else "";
-                if (outcome#killed) {
-                    GameLogger.enemyLog("${critTag}${enemy#resource#description}は ${player#resource#description}を倒した")
-                } else {
-                    GameLogger.enemyLog("${critTag}${enemy#resource#description}は ${player#resource#description}に ${outcome#dmg}ダメージ与えた")
-                };
-                let withPopup = DamagePopupScene.emit(popupPos, outcome#dmg, popupColor, scene);
-                // F6a: 被弾した味方 hp を World にも dual-write（scene 直書きは下の mapPlayer で継続）。
-                World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(targetId), outcome#newHp));
-                // 殴られたので、かなしばり中なら完全停止を解除する。
-                let dmgScene = withPopup
-                    |> PlayerScene.mapPlayer(targetId,
-                        playerData -> {hp = outcome#newHp | playerData})
-                    |> PlayerScene.releaseBind(targetId);
-                // みかえりのリング: 敵が味方を倒したら、その敵の HP を回復する。
-                let afterRingSteal = if (outcome#killed) applyEnemyLifesteal(enemyId, enemy, dmgScene) else dmgScene;
-                // 血吸いの剣（敵装備時）: 与ダメージの一定%を回復（撃破非依存）。
-                let afterWSteal = applyEnemyWeaponLifesteal(enemyId, enemy, weapon, outcome#dmg, afterRingSteal);
-                // 如意棒 / 突風の書（敵装備時）: 生存している味方をノックバック。
-                let afterKnock = applyEnemyKnockback(weapon, {attacker = enemy#gridPos, defender = player#gridPos}, targetId, outcome#killed, afterWSteal);
-                // 敵固有の特殊能力（effectRule = データ駆動）: 命中後に毒/鈍足/吸血などを発火。
-                let afterEffect = applyEnemyEffectRule(enemy, enemyId, targetId, player,
-                                                       outcome#dmg, outcome#newHp, outcome#killed, afterKnock);
-                if (outcome#killed) (afterEffect, targetId :: Nil) else (afterEffect, Nil)
-            };
-        // FE ルールでは攻撃を振った時点で耐久を消費する（回避されても同様）
-        let consumed = Weapon.consume(weapon);
-        if (Option.isEmpty(consumed))
-            GameLogger.enemyLog("${enemy#resource#description}の ${weapon#name}がこわれた")
-        else ();
-        // D3: 敵の耐久消費後 weapon を World へ dual-write（単数→0/1 List 射影）。
-        World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Enemy(enemyId), Option.toList(consumed)));
-        // S2.4: 敵の装備武器投影も SetWeapons と 1:1 で dual-write（敵 proficient は常に true）＝[WEAPONVIEW DIFF] を塞ぐ。
-        World.Command.emit(World.Cmd.SetWeaponView(World.EntityRef.Enemy(enemyId), Combat.weaponView(consumed, true)));
-        let withWeaponUpdate = EnemyScene.mapEnemy(enemyId,
-            d -> {weapon = consumed | d}, damaged);
-        (withWeaponUpdate, killed)
-
-    /// 敵固有の特殊能力（effectRule = enemies.json のデータ駆動ルール）を命中後に発火する。
-    /// effectRule 無し / 不正 JSON / トリガー不一致 / 確率不発のときは scene をそのまま返す（fail-safe）。
-    /// 対象解決は敵 actor 視点（actorIsPlayer=false）。`to:enemy` は ray 上の味方駒（is-player）へ、
-    /// `to:self` は敵自身（EnemyScene 側）へ正しく流れる。毒/鈍足/命中低下（status）と吸血（heal）に対応。
-    /// 固定追加ダメージ等の撃破を伴う op は未対応（PlanHandlers が killedIds を運べないため将来課題）。
-    def applyEnemyEffectRule(enemy: EnemyScene.Data, enemyId: Int32, targetId: Int32,
-                              player: PlayerScene.Data, dmgDealt: Int32, targetNewHp: Int32,
-                              killed: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ {World.RngDraw, World.Command} =
-        // None カスケード（effectRule 無し / 不正 JSON / トリガー不一致）を 1 段に畳む。
-        // ここまでは RNG を引かない＝ rule が確定し trigger が当たった敵だけが下で roll する
-        // （無い敵は短絡＝既存乱数列を保つ。roll を forM 内に入れると短絡順序が崩れるため厳禁）。
-        let fired =
-            (forM (
-                j    <- enemy#resource#effectRule;
-                rule <- EffectBridge.fromComposer(j)
-            ) yield rule)
-                |> Option.filter(rule -> triggerFiresOnHit(rule#trigger, killed));
-        match fired {
-            case None       => scene  // fail-safe no-op（effectRule 無し / 不正ルール / トリガー不一致）
-            case Some(rule) =>
-                // ここで初めて追加ロールを引く（effectRule を持ち trigger が当たった敵だけ）。
-                let roll = rollPercent();
-                let predCtx = {selfHpPct       = hpPct(enemy#hp, enemy#resource#hp),
-                               targetHpPct     = hpPct(targetNewHp, player#resource#hp),
-                               targetAlive     = targetNewHp > 0,
-                               equippedIsRogue = false,
-                               adjacent        = true};
-                if (not EffectPlan.shouldFire(rule, predCtx, roll)) scene  // 確率不発も no-op
-                else {
-                    // ray 上の対象は被弾した味方駒 1 体（is-player ⇒ ally=true）。
-                    let rayUnits = ({id = targetId, ally = true, immobilized = false,
-                                     alive = targetNewHp > 0}: EffectRule.RayUnit) :: Nil;
-                    let ctx = {selfId = enemyId, attackerId = enemyId, actorIsPlayer = false,
-                               rayUnits = rayUnits,
-                               amount = {max = player#resource#hp, dealt = dmgDealt,
-                                         incoming = 0, magic = 0}};
-                    let plan = EffectPlan.planActions(rule, ctx);
-                    World.emitStatusAdds(plan);  // emit-flip(E2, dual-write): 境界で World へ status を発行
-                    // F6a: hp も境界で World へ dual-write（handler は pure）。`!>` は tap（副作用後に左辺を返す）。
-                    EffectRunner.runPlan(enemyEffectHandlers(), plan, scene)
-                        !> (s -> World.emitHpSets(plan, s))
-                }
-        }
-
-    /// 戦闘ヒットパスで発火するトリガーか。命中後ブランチなので OnHit/OnAttack は常に true、
-    /// OnKill は撃破時のみ。それ以外（OnUse/OnCast/OnTurnStart 等）は戦闘では発火しない。
-    def triggerFiresOnHit(t: EffectRule.Trigger, killed: Bool): Bool = match t {
-        case EffectRule.Trigger.OnHit    => true
-        case EffectRule.Trigger.OnAttack => true
-        case EffectRule.Trigger.OnKill   => killed
-        case _                           => false
-    }
-
-    /// HP 割合（0..100）。最大 HP が 0 以下なら 0（ゼロ除算回避）。
-    def hpPct(hp: Int32, maxHp: Int32): Int32 =
-        if (maxHp <= 0) 0 else (hp * 100) / maxHp
-
-    /// 敵 actor の effectRule 用 PlanHandlers。`ally`=is-player の規約は杖と同一
-    /// （ally=true ⇒ PlayerScene、ally=false ⇒ EnemyScene）。吸血(heal)・状態異常(status)・
-    /// 全回復(fullHeal) に対応。撃破を伴う damage / 盤面副作用 custom 等は戦闘トリガーでは未対応 no-op。
-    def enemyEffectHandlers(): EffectRunner.PlanHandlers[Scene[NodeTag], {World.Command}] = {
-        heal       = (sc, id, ally, n)        -> checked_ecast(effectHeal(id, ally, n, sc)),
-        fullHeal   = (sc, id, ally)           -> checked_ecast(effectFullHeal(id, ally, sc)),
-        status     = (sc, id, ally, se, m, t) -> effectStatus(id, ally, se, m, t, sc),  // S3: World.Command（Seed）
-        maxHpUp    = (sc, _, _, _)            -> checked_ecast(sc),
-        damage     = (sc, _, _, _)            -> checked_ecast(sc),
-        immobilize = (sc, _, _, _)            -> checked_ecast(sc),
-        revive     = (sc, _, _)               -> checked_ecast(sc),
-        custom     = (sc, _, _, _)            -> checked_ecast(sc),
-        sfx        = (sc, _)                  -> checked_ecast(sc),
-        noOp       = (sc, _)                  -> checked_ecast(sc)
-    }
-
-    /// HP 回復を ally で出し分け（最大 HP でクランプ）。吸血（OpLifesteal → HealAt）の着地点。
-    // F6a 保留: PlanHandlers は全 handler の effect 統一を要求し、pure handler を World.Command へ widen 不可。
-    // ゆえに effect-runner 経由の heal はまだ scene-only（refreshMirror re-mirror で invariant）。後続スライスで対応。
-    def effectHeal(id: Int32, ally: Bool, n: Int32, sc: Scene[NodeTag]): Scene[NodeTag] =
-        if (ally)
-            match PlayerScene.get(id, sc) {
-                case Some(p) =>
-                    let r = Combat.heal(p#hp, p#resource#hp, n);
-                    sc |> PlayerScene.mapPlayer(id, d -> {hp = r#newHp | d})
-                case None => sc
-            }
-        else
-            match EnemyScene.get(id, sc) {
-                case Some(e) =>
-                    let r = Combat.heal(e#hp, e#resource#hp, n);
-                    sc |> EnemyScene.mapEnemy(id, d -> {hp = r#newHp | d})
-                case None => sc
-            }
-
-    /// 全回復を ally で出し分け。
-    def effectFullHeal(id: Int32, ally: Bool, sc: Scene[NodeTag]): Scene[NodeTag] =
-        if (ally)
-            match PlayerScene.get(id, sc) {
-                case Some(p) =>
-                    sc |> PlayerScene.mapPlayer(id, d -> {hp = p#resource#hp | d})
-                case None => sc
-            }
-        else
-            match EnemyScene.get(id, sc) {
-                case Some(e) =>
-                    sc |> EnemyScene.mapEnemy(id, d -> {hp = e#resource#hp | d})
-                case None => sc
-            }
-
-    /// 時限ステータス付与を ally で出し分け（毒/鈍足/命中低下など）。
-    def effectStatus(id: Int32, ally: Bool, kind: StatusSystem.StatusEffect,
-                     mag: Int32, turns: Int32, sc: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        let status = {effect = kind, magnitude = mag, remaining = turns};
-        if (ally)
-            let sc1 = PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc);
-            PlayerScene.emitStatusesFromScene(id, sc1); sc1  // S3: 付与後 statuses を World へ Seed
-        else
-            let sc1 = EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc);
-            EnemyScene.emitStatusesFromScene(id, sc1); sc1
-
-    /// みかえりのリングを装備した敵が撃破したとき、その敵の HP を回復する（最大 HP でクランプ）。
-    /// リング未装備 / Lifesteal 以外なら回復量 0 で no-op。
-    def applyEnemyLifesteal(enemyId: Int32, enemy: EnemyScene.Data,
-                             scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        let amt = Ring.lifestealAmount(enemy#ring);
-        if (amt <= 0) scene
-        else
-            let newHp = Combat.heal(enemy#hp, enemy#resource#hp, amt)#newHp;
-            scene
-                |> EnemyScene.setHp(enemyId, newHp)
-
-    /// 血吸いの剣を敵が装備していたとき: 与ダメージの `effectValue`% を敵へ回復（毎ヒット）。
-    def applyEnemyWeaponLifesteal(enemyId: Int32, enemy: EnemyScene.Data,
-                                   weapon: UnitCatalog.WeaponResource, dmgDealt: Int32,
-                                   scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
-        let pct = WeaponCatalog.lifestealPercent(weapon#effect, weapon#effectValue);
-        if (pct <= 0 or dmgDealt <= 0) scene
-        else
-            let amt = (dmgDealt * pct) / 100;
-            let newHp = Combat.heal(enemy#hp, enemy#resource#hp, amt)#newHp;
-            GameLogger.enemyLog("${enemy#resource#description}は 血を吸って HP+${newHp - enemy#hp}");
-            scene
-                |> EnemyScene.setHp(enemyId, newHp)
-
-    /// 敵の如意棒 / 突風の書: ノックバック武器なら、生存している味方を攻撃方向へ押し流す。
-    def applyEnemyKnockback(weapon: UnitCatalog.WeaponResource, pos: KnockbackPos,
-                             targetId: Int32, killed: Bool,
-                             scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, BoardQuery} =
-        match WeaponCatalog.knockbackTiles(weapon#effect, weapon#effectValue) {
-            case None        => scene
-            case Some(tiles) => if (killed) scene else pushPlayerBack(tiles, pos, targetId, scene)
-        }
-
-    /// 味方ノックバック本体: 方向算出 → `knockbackPathCapped` の最終着地へ `snapTo`。
-    def pushPlayerBack(tiles: Int32, pos: KnockbackPos, targetId: Int32,
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, BoardQuery} =
-        let dir = Staff.toVec2i(Staff.deltaToDirection(
-                    pos#defender#x - pos#attacker#x, pos#defender#y - pos#attacker#y));
-        // P1b: 味方ノックバック（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
-        let board: Board = BoardQuery.board();
-        let cap = if (tiles <= 0) None else Some(tiles);
-        match List.last(Board.knockbackPathCapped(pos#defender, dir, board, cap)) {
-            case None       => scene
-            case Some(last) => PlayerScene.snapTo(targetId, last, scene)
-        }
-
-    /// 9 ステータスぶんの成長判定用乱数 (各 0..99) をまとめて振る。
-    /// 値の意味づけ・成長判定は LevelSystem 側のピュア関数が行う。
-    def rollGrowth(): LevelSystem.Rolls \ World.RngDraw =
-        {hp           = rollPercent(),
-         attack       = rollPercent(),
-         defense      = rollPercent(),
-         magicAttack  = rollPercent(),
-         magicDefense = rollPercent(),
-         speed        = rollPercent(),
-         skill        = rollPercent(),
-         luck         = rollPercent(),
-         constitution = rollPercent()}
-
-    /// 味方 id に EXP を加算し、100 到達ならレベルアップを解決する。
-    ///   - レベルアップしない → `exp` だけ更新。
-    ///   - レベルアップする   → 成長ロールを振って各ステータスを成長させ、最大 HP が
-    ///     増えた分だけ現在 HP も増やし、`pendingLevelUp` に結果を積む（パネル表示の合図）。
-    /// `pendingLevelUp` が立つと commitWaitedAndAdvance がターンを進めずパネルへ割り込む。
-    def applyExpGain(playerId: Int32, expGain: Int32,
-                      scene: Scene[NodeTag]): Scene[NodeTag] \ {World.RngDraw, GameLogger.GameLogger, World.Command} =
-        let gained = forM (
-            d <- PlayerScene.get(playerId, scene)
-        ) yield {
-            GameLogger.playerLog("${d#resource#description}は ${expGain} の経験値を得た");
-            let outcome = LevelSystem.gainExp(d#exp, expGain);
-            if (not outcome#levelUp) {
-                // World 拡張: exp 増（レベル据置）も World へ dual-write。
-                World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(playerId), d#level, outcome#exp));
-                PlayerScene.mapPlayer(playerId, dd -> {exp = outcome#exp | dd}, scene)
-            } else
-                applyLevelUp(playerId, d, outcome#exp, scene)
-        };
-        Option.getWithDefault(scene, gained)
-
-    /// レベルアップの解決: 成長ロールを振って各ステータスを成長させ、最大 HP が増えた分だけ
-    /// 現在 HP も増やし、`pendingLevelUp` に結果を積む（パネル表示の合図）。
-    /// `pub`: HP 増分の World dual-write（過去に漏れて [F6 HP DIFF] を出した不変条件）を
-    /// `TestCombatScene` が単体検証できるように公開している。
-    pub def applyLevelUp(playerId: Int32, d: PlayerScene.Data, newExp: Int32,
-                      scene: Scene[NodeTag]): Scene[NodeTag] \ {World.RngDraw, GameLogger.GameLogger, World.Command} =
-        let rolls  = rollGrowth();
-        let before = LevelSystem.statsOf(d#resource);
-        let after  = LevelSystem.applyGrowth(before, d#resource#growthRates, rolls);
-        let hpGain = after#hp - before#hp;
-        let result = LevelSystem.buildResult(d#resource#description, d#level,
-                                             before, after);
-        let newHp  = d#hp + hpGain;
-        GameLogger.playerLog("${d#resource#description}が Lv${d#level} ▶ Lv${d#level + 1}");
-        // F6a: レベルアップで増えた現在 HP も World へ dual-write（これが漏れていて [F6 HP DIFF] の原因だった）。
-        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(playerId), newHp));
-        // World 拡張: level+1・exp も World へ dual-write。
-        World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(playerId), d#level + 1, newExp));
-        let grown = PlayerScene.mapPlayer(playerId, dd ->
-            {exp            = newExp,
-             level          = dd#level + 1,
-             resource       = LevelSystem.withStats(after, dd#resource),
-             hp             = newHp,
-             pendingLevelUp = Some(result) | dd}, scene);
-        // S2.3: legacy 経路でも level-up で resource（baseStats の source）が成長する。ECS 経路
-        // （applyEcsSceneEffects の emitBaseStatsFromScene）と対称に command-derive store へ dual-write する。
-        // 漏らすと useEcsCombat()=false に戻したとき level-up で [BASESTATS DIFF]（hp/progress は :1115/:1117 で
-        // emit 済みだが baseStats だけ欠けていた＝F6 と同型の latent drift）。read-after-mutate で成長後 resource を読む。
-        PlayerScene.emitBaseStatsFromScene(playerId, grown);
-        grown
 }
