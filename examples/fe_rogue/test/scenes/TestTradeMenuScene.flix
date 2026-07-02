@@ -120,7 +120,10 @@ mod TestTradeMenuScene {
 
     /// X を押す (キャンセル / pick 解除)。
     pub def pressXAt(s: TradeScenario): TradeScenario \ TurnPhase.State =
-        {scene = TradeMenuScene.cancelCurrent(s#scene) | s}
+        // P6-1h: 遷移が view 状態 Cmd を emit するようになったため捨て handler で吸収。
+        let closed = run { TradeMenuScene.cancelCurrent(s#scene) }
+            with handler World.Command { def emit(_c, k) = k() };
+        {scene = closed | s}
 
     /// ← (左矢印) = focus を 1 つ左へ。
     pub def moveFocusLeft(s: TradeScenario): TradeScenario =

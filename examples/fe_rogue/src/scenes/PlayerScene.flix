@@ -137,7 +137,7 @@ mod PlayerScene {
         Encumbrance.wouldExceedImmobile(loadOf(data), Encumbrance.groundItemWeight(item))
 
     /// プレイヤー Sprite の zIndex（Player は前面に立つ）。EnemyScene と同じ 10。
-    def spriteZIndex(): Int32 = 10
+    pub def spriteZIndex(): Int32 = 10  // P6-1h: renderUnits が使うため pub
 
     /// 手動移動（PlayerMoving）・集合の主人公移動と味方追従（GatherMove）の 1 マス時間（≈ 0.167 秒）。
     /// 落ち着いて移動先を狙えるよう少しゆっくり（20 フレーム = 約 0.167 秒）にする。
@@ -369,30 +369,17 @@ mod PlayerScene {
         // data 構築後に emit（equippedWeaponView/equippedRingBonus は full Data を要する）。ringEquipped=false ゆえ ringBonus=zeroBonuses。
         World.Command.emit(World.Cmd.SetWeaponView(World.refOf(true, sp#id), equippedWeaponView(data)));
         World.Command.emit(World.Cmd.SetRingBonus(World.refOf(true, sp#id), equippedRingBonus(data)));
-        // unit に spriteFrames があれば AnimatedSprite2D で配置、無ければ Sprite2D
-        // (静止単一フレーム) で配置する。AnimatedSprite2D は engine の per-node
-        // process が advanceFrame を毎フレーム呼ぶので、こちらでチクチク回す必要は無い。
-        let spriteNode = match res#spriteFrames {
-            case Some(sf) =>
-                let anim = AnimatedSprite2D.make(sf,
-                    {animation = idleAnimName()}, Vec2.zero(), res#sprite#scale)
-                    |> AnimatedSprite2D.setOffset(res#sprite#offset)
-                    |> AnimatedSprite2D.setAutoplay(idleAnimName())
-                    |> CanvasItem.setZIndex(spriteZIndex());
-                EngineNode.AnimSprite2DWithState(anim, NodeTag.NoTag)
-            case None =>
-                let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset,
-                                            res#sprite#scale)
-                                |> Sprite2D.setHframes(res#sprite#hframes)
-                                |> Sprite2D.setVframes(res#sprite#vframes)
-                                |> Sprite2D.setFrame(res#sprite#frame)
-                                |> CanvasItem.setZIndex(spriteZIndex());
-                EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag)
+        // P6-1h: 子 Sprite ノードは廃止。AnimatedSprite2D 個体は初期アニメ（idle）を unitAnim store へ
+        // seed し（コマ送りは stepWorld の elapsed 加算＋描画時の frame 導出）、静止 Sprite2D 個体は
+        // resource の定数 frame を描画時に読むだけ＝store 不要。描画は RenderWorld.renderUnits が
+        // resource + unitAnim/unitFlipH/unitModulate store から Sprite2D 値を直組みする。
+        match res#spriteFrames {
+            case Some(_) => World.Command.emit(World.Cmd.SetAnim(World.EntityRef.Player(sp#id), idleAnimName()))
+            case None    => ()
         };
         scene
             |> Scene.addChildAt(MapScene.worldPath(), playerName(sp#id),
                                  EngineNode.Marker2DWithState(marker, NodeTag.Player(data)))
-            |> Scene.addChildAt(playerPath(sp#id), "Sprite", spriteNode)
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック — 移動
@@ -943,7 +930,7 @@ mod PlayerScene {
     /// 全プレイヤーの sprite / HP ゲージを通常色(active)に戻す。`waited` フラグは変えない。
     /// 敵フェーズ中に「味方の行動済み灰色」を消してアクティブに見せるために使う
     /// （待機しているという扱い自体は残し、見た目だけ通常色に戻す。階段で退場済みの味方は対象外）。
-    pub def showAllActive(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def showAllActive(scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let ids = getAll(scene) |> List.filter(d -> not d#usedStairs) |> List.map(d -> d#id);
         List.foldLeft((sc, id) ->
             sc
@@ -977,39 +964,29 @@ mod PlayerScene {
             case other => other
         }, scene)
 
-    /// 指定 id の子 Sprite の modulate を変える内部ヘルパー。
-    /// Sprite2D / AnimatedSprite2D どちらの実装でも動くように両方の inner mapper を試す。
+    /// P6-1h: 暗転色を World store（unitModulate）へ emit（sprite ノード撤去に伴い Cmd 化。
+    /// 本体描画/HP バー/武器アイコンが同じ store を読む）。scene はパイプ素通し。
     def setSpriteModulate(id: Int32, color: Color,
-                           scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(spritePath(id),
-            n -> n
-                |> EngineNode.mapSprite2D(s -> CanvasItem.setModulate(color, s))
-                |> EngineNode.mapAnimSprite2D(s -> CanvasItem.setModulate(color, s)),
-            scene)
+                           scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetModulate(World.EntityRef.Player(id), color));
+        scene
 
-    /// 子 Sprite が AnimatedSprite2D なら `play(animName)` を適用する内部ヘルパー。
-    /// Sprite2D だった場合 (= spriteFrames を持たない unit) は no-op。
-    /// unknown id や Sprite ノードが無いケースも no-op で安全。
-    def playAnim(id: Int32, animName: String, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(spritePath(id), node -> match node {
-            case EngineNode.AnimSprite2DWithState(sp, tag) =>
-                EngineNode.AnimSprite2DWithState(AnimatedSprite2D.play(animName, sp), tag)
-            case other => other
-        }, scene)
+    /// P6-1h: 再生アニメを World store（unitAnim）へ emit（play 意味論は applyCmd が再現）。
+    /// spriteFrames を持たない unit でも emit 自体は無害（描画側が resource を見て無視）。
+    def playAnim(id: Int32, animName: String, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetAnim(World.EntityRef.Player(id), animName));
+        scene
 
-    /// 子 Sprite (Sprite2D / AnimatedSprite2D いずれの実装でも) に flipH を設定する。
-    def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(spritePath(id),
-            n -> n
-                |> EngineNode.mapSprite2D(s -> Sprite2D.setFlipH(h, s))
-                |> EngineNode.mapAnimSprite2D(s -> AnimatedSprite2D.setFlipH(h, s)),
-            scene)
+    /// P6-1h: 左右反転を World store（unitFlipH）へ emit。
+    def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetFlipH(World.EntityRef.Player(id), h));
+        scene
 
     /// 進行方向に応じて「左向きの絵」を水平反転する。Right で flipH=true (右向き)、
     /// Left で flipH=false (左向き=素材そのまま)。Up/Down/None は現状維持。
     /// `sprite#flipForFacing` を持たない駒では呼び出し側 (`flipsForFacing`) が抑止する。
     def applyFacingFlip(id: Int32, dirOpt: Option[Staff.Direction],
-                         scene: Scene[NodeTag]): Scene[NodeTag] =
+                         scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match dirOpt {
             case Some(Staff.Direction.Right) => setSpriteFlipH(id, true, scene)
             case Some(Staff.Direction.Left)  => setSpriteFlipH(id, false, scene)

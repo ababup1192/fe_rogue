@@ -58,16 +58,16 @@ mod WeaponIconScene {
                     ({center = center, weaponType = wv#weaponType, modColor = modColor}) :: Nil
                 case _ => Nil
             };
-        // 暗転は本体 sprite の modulate を流用（UnitHPBarScene.renderBars と同じ理由＝完全パリティ）。
+        // P6-1h: 暗転は World.unitModulate store（本体/バー/アイコン共通の単一真実源）。
         let players = PlayerScene.getAll(scene)
             |> List.filter(d -> not d#hidden)
             |> List.flatMap(d -> ofUnit(World.EntityRef.Player(d#id), PlayerScene.playerPath(d#id),
-                UnitHPBarScene.spriteModulate(PlayerScene.spritePath(d#id), scene)));
+                World.modulateOf(World.EntityRef.Player(d#id), world)));
         // フォグで隠れた敵は描かない（applyFog が marker を隠す＝isVisible が真実源）。
         let enemies = EnemyScene.getAll(scene)
             |> List.filter(d -> EnemyScene.isVisible(d#id, scene))
             |> List.flatMap(d -> ofUnit(World.EntityRef.Enemy(d#id), EnemyScene.enemyPath(d#id),
-                UnitHPBarScene.spriteModulate(EnemyScene.spritePath(d#id), scene)));
+                World.modulateOf(World.EntityRef.Enemy(d#id), world)));
         List.append(players, enemies)
 
     /// 囲い（枠＋プレート背景）の Drawable 列（drawables チャンネル）。

@@ -1136,12 +1136,12 @@ mod Game {
 }
 
 /// フレーム描画（render-from-World の合流点）。gameLoop のサイズ削減のため関数分離（P6-1g）。
-/// B/fog・range・配置物・fx・HUD/menu: scene 側を hideUnitSprites/hideSubtrees で renderArgs から外し、
+/// B/fog・range・配置物・fx・HUD/menu: scene 側を hideSubtrees で renderArgs から外し、
 /// World render System（各 render*）で描く。camera ViewTransform はフレーム 1 回だけ計算して共有。
 def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[NodeTag]):
         Unit \ {GameEngine.Game, SelectedPlayer.State, UnitHPBarScene.ForecastState} =
-    let prepped = RenderWorld.hideUnitSprites(synced)
-        |> RenderWorld.hideSubtrees;
+    // P6-1h: hideUnitSprites は撤去（ユニット sprite ノード自体を積まなくなった）。
+    let prepped = RenderWorld.hideSubtrees(synced);
     let transform = RenderWorld.viewTransform(synced);
     // B/tiles: tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
     // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。

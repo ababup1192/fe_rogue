@@ -66,7 +66,7 @@ mod PhaseTransitions {
     pub def enterPlayerCursor(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery} =
+                              PlayerData.PartyQuery, World.Command} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         clearAllPlayerRanges(scene)
             |> EnemyScene.showAllActive        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
@@ -80,7 +80,7 @@ mod PhaseTransitions {
     pub def enterPlayerCursorAt(target: {x = Int32, y = Int32},
                                   scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State} =
+                              TurnPhase.State, World.Command} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         clearAllPlayerRanges(scene)
             |> EnemyScene.showAllActive        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
@@ -146,7 +146,7 @@ mod PhaseTransitions {
     /// EnemyRange と cursor visible は触らない。
     /// 敵キューのビルドや log は `EnemyTurnDriverScene.beginTurn` 側で行うのでここでは扱わない。
     pub def enterEnemyTurn(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
+            Scene[NodeTag] \ {TurnPhase.State, World.Command} =
         TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
         clearAllPlayerRanges(scene)
             // Shift の危険範囲(紫)は敵が動くと古くなるので敵ターン開始で消す（トグルは OFF に戻る）

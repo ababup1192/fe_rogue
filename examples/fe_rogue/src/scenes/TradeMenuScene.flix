@@ -791,7 +791,7 @@ Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
     /// X 押下の優先順位: pick=Some なら pick 解除（focus 据置）→ 印があれば印を解除 →
     /// どちらも無ければ origin に応じてウィンドウを閉じる。複数選択を 1 段で全部消さず、
     /// 「まず選択を取り消す」段階を踏めるようにしている。
-    pub def cancelCurrent(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+    pub def cancelCurrent(scene: Scene[NodeTag]): Scene[NodeTag] \ {TurnPhase.State, World.Command} =
         let data = getPanelData(scene);
         if (not Option.isEmpty(data#pick))
             checked_ecast(mapPanelData(d -> {pick = None | d}, scene))

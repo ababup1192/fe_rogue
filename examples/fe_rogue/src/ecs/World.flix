@@ -45,6 +45,12 @@ pub type alias PopupFx = { remaining = Float64, total = Float64, pos = Vec2.Vec2
 /// `RenderWorld.renderExplosions` が導出する。
 pub type alias ExplosionFx = { remaining = Float64, total = Float64, pos = Vec2.Vec2, scale = Float64 }
 
+/// P6-1h: ユニットの再生中アニメ（AnimatedSprite2D の脱ノード化）。frame/frameProgress は保存せず、
+/// `elapsed`（再生開始からの実時間秒・stepWorld が加算）から描画時に純関数で導出する
+/// （ループ/コマ毎 duration 倍率込み＝engine advanceFrame と同値）。`Cmd.SetAnim` は
+/// AnimatedSprite2D.play の意味論（同名=継続/別名=リセット）を再現する。
+pub type alias UnitAnim = { name = String, elapsed = Float64 }
+
 /// B/m3: 1 フレームで移動（Position tween）した entity の marker 駆動情報（EntityRef＋補間 pixel）。
 /// `stepWorld` が active∪done を返し、`RenderWorld.syncMarkers` が実 scene の marker を pos へ置く。
 /// 同型 Vec2 の誤順を防ぐ名前渡し＋faction を EntityRef に閉じ込め（uid は plumbing 内で decode）。
@@ -97,6 +103,15 @@ pub enum World {
                  //   出力を対象 component（Position→renderPos）へ書く。完了で除去。**実時間ベース**（engine tween と
                  //   同じ dt で進む＝lockstep 同期・fps 非依存）。1 entity が複数チャンネルを同時に持てる。
                  tweens = EcsTween.Tweens[EntityId, Channel],
+                 // P6-1h（ユニット sprite 脱ノード）: 描画 view 状態の store（全て command/step 由来・
+                 // preserve＋validUids prune）。unitAnim=再生アニメ（player の AnimatedSprite2D 個体のみ・
+                 // elapsed は stepWorld が加算）、unitFlipH=左右反転（移動 view 再生が書く）、
+                 // unitModulate=待機/行動済み暗転（本体/HP バー/武器アイコンの 3 読者の単一真実源）、
+                 // dyingElapsed=死亡点滅の経過秒（SetDying で 0 seed・alpha は描画時に曲線導出）。
+                 unitAnim = Map[EntityId, UnitAnim],
+                 unitFlipH = Map[EntityId, Bool],
+                 unitModulate = Map[EntityId, Color],
+                 dyingElapsed = Map[EntityId, Float64],
                  // S4: 盤面除外（集合・階段退場）中の味方 id。Board.pieces は hidden 味方を除くので fromWorld に必要。
                  playerHidden = Set[EntityId],
                  // F7-spike: 敵の検知フラグ（dormant→chase）。flag→World の最初のプローブ。
@@ -199,6 +214,8 @@ mod World {
                      ringEquipped = Map.empty(),
                      pos = Map.empty(),
                      renderPos = Map.empty(), tweens = Map.empty(),
+                     unitAnim = Map.empty(), unitFlipH = Map.empty(),
+                     unitModulate = Map.empty(), dyingElapsed = Map.empty(),
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(), enemyActed = Map.empty(),
                      enemyDying = Set.empty(),
                      enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
@@ -274,6 +291,9 @@ mod World {
             pos = Map.union(Query.indexBy(d -> d#id, d -> d#gridPos, players),
                             Query.indexBy(d -> enemyUid(d#id), d -> d#gridPos, enemies)),
             renderPos = Map.empty(), tweens = Map.empty(),  // B/m2: World-native（spawn の SetRenderPos で seed）
+            // P6-1h: 描画 view store は command/step 由来＝preserve（spawn emit が seed）。
+            unitAnim = w#unitAnim, unitFlipH = w#unitFlipH,
+            unitModulate = w#unitModulate, dyingElapsed = w#dyingElapsed,
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
             enemyDying     = Query.tagOf(d -> enemyUid(d#id), List.filter(d -> d#isDying, enemies)),
             enemyAlerted   = Query.indexBy(d -> enemyUid(d#id), d -> d#alerted, enemies),
@@ -376,6 +396,11 @@ mod World {
             // 複合ゆえ fst で uid を取り validUids 判定（死は全部 command 経由＝既存 prune 基準に乗る）。
             renderPos = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#renderPos),
             tweens    = Map.filterWithKey((key, _) -> Set.memberOf(fst(key), validUids), w#tweens),
+            // P6-1h: 描画 view store も preserve＋prune（renderPos と同型）。
+            unitAnim = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#unitAnim),
+            unitFlipH = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#unitFlipH),
+            unitModulate = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#unitModulate),
+            dyingElapsed = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#dyingElapsed),
             playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
             // 軸1 仕上げ: isDying も command 由来を保持＋prune（death 完了でノード除去→自動 prune）。
             // A': enemy-only store も unified-id key＝prune は validUids で統一。
@@ -476,7 +501,11 @@ mod World {
                         // 旧 ItemScene.step の per-node 更新を置換）。
                         groundItems = Map.map(d ->
                             {elapsed = ItemScene.advance(Duration.add(d#elapsed, Duration.seconds(dt))) | d},
-                            w#groundItems) | w}), outs);
+                            w#groundItems),
+                        // P6-1h: ユニットアニメの再生経過と死亡点滅経過も World が tick
+                        // （frame/alpha は描画時に elapsed から純関数で導出）。
+                        unitAnim = Map.map(a -> {elapsed = a#elapsed + dt | a}, w#unitAnim),
+                        dyingElapsed = Map.map(e -> e + dt, w#dyingElapsed) | w}), outs);
         // marker 駆動用に Position チャンネルの補間結果を EntityRef＋pixel で外へ出す。
         // outs は active に加え**完了フレームの target（t=1.0 スナップ）も含む**（EcsTween.step）＝
         // 完了の取りこぼしなく marker を target に確定できる（isAnimating 単独では落とす）。
@@ -618,6 +647,9 @@ mod World {
         case SpawnItem(ItemScene.Data)     // P3-c: 床アイテムを配置（build/復元/respawn/drop）。cell key で groundItems へ挿入
         case RemoveItem({x = Int32, y = Int32})   // P3-c: 床アイテムを拾得して除去（cell key で groundItems から削除）
         case ClearItems                    // P6-1e: フロア再構築時に前フロアの床アイテムを全消去（ClearChests と同型）
+        case SetAnim(EntityRef, String)        // P6-1h: 再生アニメ切替（play 意味論=同名継続/別名リセット）
+        case SetFlipH(EntityRef, Bool)         // P6-1h: 左右反転（移動 view 再生が書く）
+        case SetModulate(EntityRef, Color)     // P6-1h: 待機/行動済み暗転色（本体/バー/アイコン共通）
         case SpawnPopupFx({total = Float64, pos = Vec2.Vec2, text = String, color = Color})  // P5-b/P6-1f: ダメージ数字 fx を spawn（remaining=total で開始・見た目も store 持ち）
         case SpawnExplosionFx({total = Float64, pos = Vec2.Vec2, scale = Float64})            // P5-b/P6-1f: 爆発 fx を spawn
     }
@@ -845,7 +877,9 @@ mod World {
                 let World.World(w) = world;
                 match ref {
                     case EntityRef.Player(_)  => world   // 味方は hp<=0 で即除去＝isDying 無し
-                    case EntityRef.Enemy(id)  => World.World({enemyDying = Set.insert(enemyUid(id), w#enemyDying) | w})
+                    // P6-1h: 死亡点滅の経過秒も 0 で seed（stepWorld が加算・alpha は描画時に曲線導出）。
+                    case EntityRef.Enemy(id)  => World.World({enemyDying = Set.insert(enemyUid(id), w#enemyDying),
+                                                              dyingElapsed = Map.insert(enemyUid(id), 0.0, w#dyingElapsed) | w})
                 }
             case Cmd.SetBottleUsed(ref, b) =>
                 let World.World(w) = world;
@@ -942,6 +976,21 @@ mod World {
                 // P3-c: 床アイテムを拾得して除去（takeAt が emit）。存在の消失は Map 不在で表現。
                 let World.World(w) = world;
                 World.World({groundItems = Map.remove(cellKey(cell), w#groundItems) | w})
+            case Cmd.SetAnim(ref, name) =>
+                // P6-1h: AnimatedSprite2D.play 意味論＝同名なら elapsed 継続、別名なら 0 リセット。
+                let World.World(w) = world;
+                let uid = toUid(ref);
+                let next = match Map.get(uid, w#unitAnim) {
+                    case Some(e) => if (e#name == name) e else {name = name, elapsed = 0.0}
+                    case None    => {name = name, elapsed = 0.0}
+                };
+                World.World({unitAnim = Map.insert(uid, next, w#unitAnim) | w})
+            case Cmd.SetFlipH(ref, b) =>
+                let World.World(w) = world;
+                World.World({unitFlipH = Map.insert(toUid(ref), b, w#unitFlipH) | w})
+            case Cmd.SetModulate(ref, c) =>
+                let World.World(w) = world;
+                World.World({unitModulate = Map.insert(toUid(ref), c, w#unitModulate) | w})
             case Cmd.SpawnPopupFx(d) =>
                 // P5-b: nextSeq で採番して挿入し +1。期限切れ drop は stepWorld（Cmd 不要）。
                 let World.World(w) = world;
@@ -1104,6 +1153,10 @@ mod World {
             case Cmd.ClearItems               => ("ClearItems", 0, 0, 0)
             case Cmd.SpawnItem(data)          => ("SpawnItem", data#gridPos#x, data#gridPos#y, 0)
             case Cmd.RemoveItem(cell)         => ("RemoveItem", cell#x, cell#y, 0)
+            case Cmd.SetAnim(ref, name)       => ("SetAnim(${name})", toUid(ref), 0, 0)
+            case Cmd.SetFlipH(ref, b)         => ("SetFlipH", toUid(ref), if (b) 1 else 0, 0)
+            case Cmd.SetModulate(ref, col)    => ("SetModulate", toUid(ref),
+                                                   Float64.truncateToInt32(Float32.toFloat64(col#r) * 255.0), 0)
             case Cmd.SpawnPopupFx(d)          => ("SpawnPopupFx", Float64.truncateToInt32(d#pos#x), Float64.truncateToInt32(d#pos#y), 0)
             case Cmd.SpawnExplosionFx(d)      => ("SpawnExplosionFx", Float64.truncateToInt32(d#pos#x), Float64.truncateToInt32(d#pos#y), 0)
         }
@@ -1992,6 +2045,24 @@ mod World {
     /// P5-b: 次に spawn する爆発 fx の連番（popupFxNextSeqOf と同型）。
     pub def explosionFxNextSeqOf(world: World): Int32 =
         let World.World(w) = world; w#explosionFxNextSeq
+
+    /// P6-1h: 再生中アニメ（AnimatedSprite2D 個体のみ登録）。未登録は None。
+    pub def unitAnimOf(ref: EntityRef, world: World): Option[UnitAnim] =
+        let World.World(w) = world; Map.get(toUid(ref), w#unitAnim)
+
+    /// P6-1h: 左右反転。未登録は false（反転なし）。
+    pub def flipHOf(ref: EntityRef, world: World): Bool =
+        let World.World(w) = world; Map.get(toUid(ref), w#unitFlipH) |> Option.getWithDefault(false)
+
+    /// P6-1h: 待機/行動済み暗転色（本体/HP バー/武器アイコン共通の単一真実源）。未登録は白。
+    pub def modulateOf(ref: EntityRef, world: World): Color =
+        let World.World(w) = world;
+        Map.get(toUid(ref), w#unitModulate)
+            |> Option.getWithDefault({r = 1.0f32, g = 1.0f32, b = 1.0f32})
+
+    /// P6-1h: 死亡点滅の経過秒（SetDying からの実時間）。非 dying は None。
+    pub def dyingElapsedOf(ref: EntityRef, world: World): Option[Float64] =
+        let World.World(w) = world; Map.get(toUid(ref), w#dyingElapsed)
 
     /// P1c 安全網: store した mapSnapshot（地形）が scene 由来と食い違うか（boardKey は駒のみ見るため別建て）。
     /// MapSnapshot は Eq 非自動ゆえ (tileSize, wallCells) へ射影して比較（壁レイアウトの drift 検出）。

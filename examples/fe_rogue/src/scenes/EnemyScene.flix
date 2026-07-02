@@ -29,7 +29,7 @@ mod EnemyScene {
     // ────────────────────────────────────────────────────────
 
     /// プレイヤーと同じ高さで前面に立つ。MoveRange (1) より上。
-    def spriteZIndex(): Int32 = 10
+    pub def spriteZIndex(): Int32 = 10  // P6-1h: renderUnits が使うため pub
 
     // per-room cap は引数の floor#monstersPerRoom で制御される（resource 駆動）。
 
@@ -46,8 +46,26 @@ mod EnemyScene {
     /// 通常時 / 点滅の山の alpha 値。
     def fullAlpha(): Float32 = 1.0f32
 
-    /// `death_blink` アニメーション。1 → 0.3 → 1 → 0.3 → 1 → 0.3 → 1 を均等な 6 区間で
-    /// 並べて 3 サイクルの点滅を表現する。target は子 Sprite ノードの alpha。
+    /// P6-1h: 死亡点滅の alpha を経過秒から導出する純関数（旧 Alpha track と同値＝均等 6 区間の
+    /// 1→0.3→1→0.3→1→0.3→1 を線形補間）。`World.dyingElapsedOf` を入力に renderUnits が呼ぶ。
+    /// 全長超過は 1.0（完了フレーム〜ノード除去までの端数）。
+    pub def deathBlinkAlpha(elapsed: Float64): Float32 =
+        let total = Duration.toSeconds(deathBlinkLength());
+        if (elapsed >= total) fullAlpha()
+        else {
+            let segLen = total / 6.0;
+            let seg = Float64.truncateToInt32(Float64.floor(elapsed / segLen));
+            let t = (elapsed - Int32.toFloat64(seg) * segLen) / segLen;   // 0..1（区間内）
+            let a = if (Int32.modulo(seg, 2) == 0) fullAlpha() else dimAlpha();  // 区間始点
+            let b = if (Int32.modulo(seg, 2) == 0) dimAlpha() else fullAlpha();  // 区間終点
+            let af = Float32.toFloat64(a);
+            let bf = Float32.toFloat64(b);
+            Float64.truncateToFloat32(af + (bf - af) * t)
+        }
+
+    /// `death_blink` アニメーション。**P6-1h 以降はタイミング/完了シグナル専用**（Alpha track の
+    /// target=子 Sprite は撤去済みで書き先が無い＝tickAll の mapEngineNode は不在 no-op。実際の
+    /// alpha は `deathBlinkAlpha` を renderUnits が描画時に導出する）。
     /// アニメ完了時の `finished` イベント (owner=enemyPath, name="death_blink") を
     /// GameManager がディスパッチして down_enemy + Scene.removeAt を実行する。
     def deathBlinkAnimation(targetSprite: NodePath): AnimationPlayer.Animation =
@@ -259,17 +277,10 @@ mod EnemyScene {
         // data 構築後に emit（equippedWeaponView/equippedRingBonus は full Data を要する）。
         World.Command.emit(World.Cmd.SetWeaponView(World.refOf(false, sp#id), equippedWeaponView(data)));
         World.Command.emit(World.Cmd.SetRingBonus(World.refOf(false, sp#id), equippedRingBonus(data)));
-        let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset,
-                                    res#sprite#scale)
-                        |> Sprite2D.setHframes(res#sprite#hframes)
-                        |> Sprite2D.setVframes(res#sprite#vframes)
-                        |> Sprite2D.setFrame(res#sprite#frame)
-                        |> CanvasItem.setZIndex(spriteZIndex());
+        // P6-1h: 子 Sprite ノードは廃止（敵は静止 Sprite2D＝resource の定数 frame を描画時に読むだけ）。
         scene
             |> Scene.addChildAt(MapScene.worldPath(), enemyName(sp#id),
                                  EngineNode.Marker2DWithState(marker, NodeTag.Enemy(data)))
-            |> Scene.addChildAt(enemyPath(sp#id), "Sprite",
-                                 EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
 
     // ────────────────────────────────────────────────────────
     // (C2) 試練(シレン)型・部屋湧き（Wanderer タイプの敵をフロア進行中にじわっとスポーン）
@@ -410,12 +421,10 @@ mod EnemyScene {
     def activeColor(): Color = UITheme.white()
 
     /// 敵 id の子 Sprite に modulate を設定する（Sprite2D / AnimatedSprite2D 両対応）。
-    def setSpriteModulate(id: Int32, color: Color, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(spritePath(id),
-            n -> n
-                |> EngineNode.mapSprite2D(s -> CanvasItem.setModulate(color, s))
-                |> EngineNode.mapAnimSprite2D(s -> CanvasItem.setModulate(color, s)),
-            scene)
+    /// P6-1h: 暗転色を World store（unitModulate）へ emit（sprite ノード撤去に伴い Cmd 化）。
+    def setSpriteModulate(id: Int32, color: Color, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetModulate(World.EntityRef.Enemy(id), color));
+        scene
 
     /// 敵 id を「行動済み」にして本体スプライトと HP ゲージを暗転する。
     /// 敵ターン中、その敵の行動が終わった時点で呼ぶ。
@@ -483,7 +492,7 @@ mod EnemyScene {
     /// 全敵の sprite / HP ゲージを通常色(active)に戻す。`acted` フラグは変えない。
     /// 味方フェーズ中に「敵の行動済み灰色」を消してアクティブに見せるために使う
     /// （行動済みという扱い自体は残し、見た目だけ通常色に戻す）。
-    pub def showAllActive(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def showAllActive(scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let ids = getAll(scene) |> List.map(d -> d#id);
         List.foldLeft((sc, id) ->
             sc
@@ -573,15 +582,15 @@ mod EnemyScene {
         };
         flipped
 
-    /// 子 Sprite2D に flipH を設定する内部ヘルパー (敵スプライトは常に Sprite2D)。
-    def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(spritePath(id),
-            n -> EngineNode.mapSprite2D(s -> Sprite2D.setFlipH(h, s), n), scene)
+    /// P6-1h: 左右反転を World store（unitFlipH）へ emit（sprite ノード撤去に伴い Cmd 化）。
+    def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetFlipH(World.EntityRef.Enemy(id), h));
+        scene
 
     /// 横移動の符号で「左向き絵」を反転する。右移動 (dx>0) で flipH=true (右向き)、
     /// 左移動で flipH=false。縦移動 (dx==0) は現状維持。
     def applyFacingFlip(id: Int32, prevX: Int32, targetX: Int32,
-                         scene: Scene[NodeTag]): Scene[NodeTag] =
+                         scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let dx = targetX - prevX;
         if (dx > 0) setSpriteFlipH(id, true, scene)
         else if (dx < 0) setSpriteFlipH(id, false, scene)

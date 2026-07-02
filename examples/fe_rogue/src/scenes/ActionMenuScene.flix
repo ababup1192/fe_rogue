@@ -715,7 +715,7 @@ mod ActionMenuScene {
     pub def onActionCancelled(scene: Scene[NodeTag]):
                               Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                                 TurnPhase.State, SelectedPlayer.State,
-                                                PlayerData.PartyQuery} =
+                                                PlayerData.PartyQuery, World.Command} =
         let sel = SelectedPlayer.State.get();
         if (sel#gatherActive)
             PhaseTransitions.enterGatherMove(scene)

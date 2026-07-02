@@ -8,24 +8,40 @@ mod RenderWorld {
     use Render.RenderItem
     use Vec2.Vec2
 
-    /// m1c: renderArgs に渡す前に scene 側のユニット sprite を不可視化＝ユニットは World からのみ描かれる
-    /// （重複②の一角を scene-tree から剥がす）。不変 scene のコピーを返す（実 scene 状態は不変）。
-    pub def hideUnitSprites(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let hideOne = (sc, path) -> Scene.mapEngineNode(path, n -> CanvasItem.setVisible(false, n), sc);
-        let afterP = List.foldLeft((sc, d) -> hideOne(sc, PlayerScene.spritePath(d#id)), scene, PlayerScene.getAll(scene));
-        List.foldLeft((sc, d) -> hideOne(sc, EnemyScene.spritePath(d#id)), afterP, EnemyScene.getAll(scene))
-
-    /// World + scene → ユニットの実 sprite の Drawable list（scene 側 sprite は hideUnitSprites で隠す）。
-    /// m1c: 描画は World render System（この関数）が担い、ユニット sprite を scene auto-render から剥がす。
-    /// 存在 gate = World.posOf（World が論理位置を持つユニットのみ描く）。
-    /// ⚠ 視覚位置は当面 scene の tween 値（武器/HPバー＝同じ marker 上の兄弟と同期して滑らかに動かすため）。
-    ///   真の render-from-World（位置も World 由来＋tween を World component 化）は m2。
+    /// P6-1h: ユニット本体を **sprite ノード無し**で直描きする。見た目=resource（catalog）、
+    /// アニメ frame=unitAnim store（elapsed→frame を純関数導出）、flipH/暗転=unitFlipH/unitModulate
+    /// store、死亡点滅 alpha=dyingElapsed→`EnemyScene.deathBlinkAlpha`。位置は marker global
+    /// （移動 tween/lunge の位置権威は marker のまま）。存在 gate=World.posOf、
+    /// フォグ可視=敵 marker の isVisible（applyFog の真実源）、味方 hidden=Data#hidden。
     pub def renderUnits(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
         let players = PlayerScene.getAll(scene)
-            |> List.flatMap(d -> unitDraw(World.EntityRef.Player(d#id), PlayerScene.spritePath(d#id), world, transform, scene));
+            |> List.filter(d -> not d#hidden)
+            |> List.flatMap(d -> unitDraw(World.EntityRef.Player(d#id), PlayerScene.playerPath(d#id),
+                                           d#resource#sprite, d#resource#spriteFrames, world, transform, scene));
         let enemies = EnemyScene.getAll(scene)
-            |> List.flatMap(d -> unitDraw(World.EntityRef.Enemy(d#id), EnemyScene.spritePath(d#id), world, transform, scene));
+            |> List.filter(d -> EnemyScene.isVisible(d#id, scene))
+            |> List.flatMap(d -> unitDraw(World.EntityRef.Enemy(d#id), EnemyScene.enemyPath(d#id),
+                                           d#resource#sprite, None, world, transform, scene));
         List.append(players, enemies)
+
+    /// アニメ定義と再生経過秒から現在コマを導出する（engine `AnimatedSprite2D.advanceFrame` と同値の
+    /// 純関数版）。コマ毎 duration 倍率・loop/非 loop（末尾で停止）対応。
+    def frameFromElapsed(anim: SpriteFrames.Animation, elapsed: Float64): Int32 =
+        let base = 1.0 / anim#speed;
+        let durs = anim#frames |> List.map(f -> base * f#duration);
+        let cycle = List.foldLeft((acc, x) -> acc + x, 0.0, durs);
+        let n = List.length(durs);
+        if (n == 0 or cycle <= 0.0) 0
+        else {
+            let t0 = if (anim#loop) elapsed - cycle * Float64.floor(elapsed / cycle) else elapsed;
+            let (idx, _) = List.foldLeft((st, d) -> {
+                let (i, remaining) = st;
+                if (remaining < 0.0) (i, remaining)                 // 確定済み
+                else if (remaining < d) (i, -1.0)                    // このコマ内
+                else (i + 1, remaining - d)
+            }, (0, t0), durs);
+            Int32.min(idx, n - 1)
+        }
 
     /// アクティブ camera の ViewTransform（render() と同じ算出）。camera 無しは identity。
     /// B/perf: `findActiveCamera` が全 scene 走査ゆえ、Game.flix が**フレーム 1 回**計算して全 render 関数へ渡す
@@ -38,43 +54,51 @@ mod RenderWorld {
             case None => Camera2D.identityTransform()
         }
 
-    /// 1 ユニット → Drawable list。`pathToDrawables` と同手順（globalPositionAt→camera→Renderable.toDrawables→
-    /// applyZoomScale）。視覚位置・modulate・z は scene 由来（兄弟ノードと同期）、存在のみ World.posOf で gate。
-    /// posOf×getEngineNode は forM で 1 段に畳む。
-    /// 共有 spine（units / items / stairs / chests）: scene の 1 sprite ノードを worldPos に置き、camera 適用＋
-    /// effectiveModulate/effectiveZIndex を掛けて Drawable 化する（不可視なら Nil）。worldPos は呼び側が決める
-    /// （ユニットは移動中 renderPos・静止/他は marker やセル位置）。effectiveModulateAt は node 自身の modulate
-    /// を含む（fog×暗転）＝単一適用ゆえ d#color へ再掛けしない。
-    def spriteNodeDrawables(spritePath: NodePath, worldPos: Vec2.Vec2,
-                            transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        match Scene.getEngineNode(spritePath, scene) {
-            case None       => Nil
-            // 可視判定は renderArgs と同じく「祖先 AND 自ノード」。effectiveVisibleAt は**祖先のみ**検査するため
-            // （drawContextWalk が最終要素=自ノードをスキップ）、fog が葉ノード自身の visible を false にする
-            // アイテム等は `CanvasItem.isVisible(node)` を併せて見ないと暗所で描かれてしまう。
-            case Some(node) =>
-                if (not (Scene.effectiveVisibleAt(spritePath, scene) and CanvasItem.isVisible(node))) Nil
-                else {
-                    let screenPos = Camera2D.applyToWorldPos(transform, worldPos);
-                    let color = Scene.effectiveModulateAt(spritePath, scene);
-                    let z = Scene.effectiveZIndexAt(spritePath, scene);
-                    GameEngine.Renderable.toDrawables(node, screenPos)
-                        |> Render.applyCameraScale(transform)
-                        |> List.map(d -> {color = color, zIndex = z | d})
-                }
-        }
-
-    def unitDraw(ref: World.EntityRef, spritePath: NodePath, world: World,
-                 transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
+    /// 1 ユニット → Drawable list（P6-1h: resource + store から Sprite2D 値を直組み）。
+    def unitDraw(ref: World.EntityRef, unitPath: NodePath,
+                 spriteRes: Sprite.SpriteResource, spriteFrames: Option[SpriteFrames],
+                 world: World, transform: Camera2D.ViewTransform,
+                 scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
         // 存在 gate = World.posOf（World が論理位置を持つユニットのみ描く）。
         match World.posOf(ref, world) {
             case None    => Nil
             case Some(_) =>
                 // B/m3: marker が視覚位置の単一権威（移動=`syncMarkers` の renderPos / lunge=AnimationPlayer /
-                // 静止=setGlobalPositionAt）。sprite は marker の子・ローカル0 ゆえ globalPositionAt(spritePath)=
-                // marker global で全ケースを内包する（engine tween 退役で isAnimating 分岐は不要になった）。
-                let worldPos = Scene.globalPositionAt(spritePath, scene);
-                spriteNodeDrawables(spritePath, worldPos, transform, scene)
+                // 静止=setGlobalPositionAt）。
+                let worldPos = Scene.globalPositionAt(unitPath, scene);
+                let flipH = World.flipHOf(ref, world);
+                let modColor = World.modulateOf(ref, world);
+                let alpha = World.dyingElapsedOf(ref, world)
+                    |> Option.map(EnemyScene.deathBlinkAlpha)
+                    |> Option.getWithDefault(1.0f32);
+                // アニメ個体は unitAnim store の (name, elapsed) から現在コマの texture/region を導出、
+                // 静止個体は resource の hframes/vframes/定数 frame をそのまま使う。
+                let base = match (spriteFrames, World.unitAnimOf(ref, world)) {
+                    case (Some(sf), Some(a)) =>
+                        match SpriteFrames.getAnimation(a#name, sf) {
+                            case Some(animDef) =>
+                                let fr = frameFromElapsed(animDef, a#elapsed);
+                                let tex = SpriteFrames.frameTexture(a#name, fr, sf)
+                                    |> Option.getWithDefault(spriteRes#texture);
+                                Sprite2D.make(tex, spriteRes#offset, spriteRes#scale)
+                                    |> Sprite2D.setRegionRect(SpriteFrames.frameRegion(a#name, fr, sf))
+                            case None =>
+                                Sprite2D.make(spriteRes#texture, spriteRes#offset, spriteRes#scale)
+                                    |> Sprite2D.setHframes(spriteRes#hframes)
+                                    |> Sprite2D.setVframes(spriteRes#vframes)
+                                    |> Sprite2D.setFrame(spriteRes#frame)
+                        }
+                    case _ =>
+                        Sprite2D.make(spriteRes#texture, spriteRes#offset, spriteRes#scale)
+                            |> Sprite2D.setHframes(spriteRes#hframes)
+                            |> Sprite2D.setVframes(spriteRes#vframes)
+                            |> Sprite2D.setFrame(spriteRes#frame)
+                };
+                let node = base
+                    |> Sprite2D.setFlipH(flipH)
+                    |> CanvasItem.setModulate(modColor)
+                    |> Sprite2D.setAlpha(alpha);
+                standaloneSprite(node, worldPos, PlayerScene.spriteZIndex(), transform)
         }
 
     /// B/m3: 移動（Position tween）した entity の実 scene marker を renderPos に合わせる（marker 単一権威）。

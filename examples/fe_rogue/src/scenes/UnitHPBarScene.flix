@@ -110,13 +110,12 @@ mod UnitHPBarScene {
             |> List.filter(d -> not d#hidden)
             |> List.flatMap(d -> {
                 let ref = World.EntityRef.Player(d#id);
-                // 暗転は本体 sprite の modulate をそのまま流用する（旧実装は setSpriteModulate と
-                // 同じ箇所で bar/icon にも setModulate していた＝sprite が真実源。waited store 導出だと
-                // 敵ターン中の showAllActive〔待機者も通常色に戻す〕を再現できない）。
+                // P6-1h: 暗転は World.unitModulate store（本体/バー/アイコン共通の単一真実源。
+                // setSpriteModulate 系が Cmd.SetModulate を emit し showAllActive も同経路）。
                 let post = fc |> Option.flatMap(f ->
                     if (f#attackerId == d#id) Some((f#playerHpPost, f#dark)) else None);
                 barDrawables(ref, PlayerScene.playerPath(d#id), Team.Player,
-                    spriteModulate(PlayerScene.spritePath(d#id), scene), post, world, transform, scene)
+                    World.modulateOf(ref, world), post, world, transform, scene)
             });
         let enemies = EnemyScene.getAll(scene)
             // フォグで隠れた敵は描かない（applyFog が marker を隠す＝isVisible が真実源。
@@ -127,17 +126,10 @@ mod UnitHPBarScene {
                 let post = fc |> Option.flatMap(f ->
                     if (f#defenderId == d#id) Some((f#enemyHpPost, f#dark)) else None);
                 barDrawables(ref, EnemyScene.enemyPath(d#id), Team.Enemy,
-                    spriteModulate(EnemyScene.spritePath(d#id), scene), post, world, transform, scene)
+                    World.modulateOf(ref, world), post, world, transform, scene)
             });
         List.append(players, enemies)
 
-    /// 本体 sprite ノードの modulate（待機/行動済み暗転の真実源）。不在は白。
-    pub def spriteModulate(spritePath: NodePath, scene: Scene[NodeTag]): Color =
-        match Scene.getEngineNode(spritePath, scene) {
-            case Some(EngineNode.Sprite2DWithState(sp, _))          => CanvasItem.getModulate(sp)
-            case Some(EngineNode.AnimSprite2DWithState(sp, _))      => CanvasItem.getModulate(sp)
-            case _                                                   => UITheme.white()
-        }
 
     /// 1 ユニットぶんの HP バー Drawable 列（Bg トラック + Fill + 予報オーバーレイ）。
     def barDrawables(ref: World.EntityRef, unitPath: NodePath, team: Team, modColor: Color,

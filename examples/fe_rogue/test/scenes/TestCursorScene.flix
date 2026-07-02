@@ -227,7 +227,9 @@ mod TestCursorScene {
             let result = TestUnitFixtures.withMockPartyQuery(staleSnapshot, () -> run {
                 let scene = cursorAddPure(freshScene);
                 // 呼び出し側が新 scene から計算した「次のアクティブ味方の gridPos」
-                let snapped = PhaseTransitions.enterPlayerCursorAt(p1Pos, scene);
+                // P6-1h: showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
+                let snapped = run { PhaseTransitions.enterPlayerCursorAt(p1Pos, scene) }
+                    with handler World.Command { def emit(_c, k) = k() };
                 cursorState(snapped)
             } with Tween.withScheduler(rc)
               with AnimationPlayer.withScheduler(rc)

@@ -734,13 +734,19 @@ mod TestUnitFixtures {
                                        thunk: Unit -> a \ ef):
             (a, TurnPhase.Phase) \
                 (ef - Tween.Scheduler - AnimationPlayer.Scheduler - PlayerData.PartyQuery
-                    - TurnPhase.State - SelectedPlayer.State) =
+                    - TurnPhase.State - SelectedPlayer.State - World.Command) =
         region rc {
             withNoopTween(() ->
                 withNoopAnim(() ->
                     withMockPartyQuery(Scene.empty(), () ->
                         withPhaseRef(rc, TurnPhase.Phase.ActionSelect, () ->
-                            withSelectionRef(rc, initialSel, thunk)))))
+                            withSelectionRef(rc, initialSel, () ->
+                                // P6-1h: 遷移が view 状態 Cmd（SetModulate/SetAnim 等）を emit する
+                                // ようになったため捨て handler で吸収（このヘルパーの観測対象は
+                                // phase とカーソル可視のみ）。
+                                run { thunk() } with handler World.Command {
+                                    def emit(_c, k) = k()
+                                })))))
         }
 
     /// scene 内の Cursor(Marker2D) の visible を読む。フェーズ遷移／キャンセル後に
