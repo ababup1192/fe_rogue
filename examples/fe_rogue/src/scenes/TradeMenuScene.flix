@@ -144,7 +144,7 @@ mod TradeMenuScene {
         match opt {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
-            case Some("TradePanel")    => Ok(NodeTag.TradePanel(defaultPanelData()))
+            case Some("TradePanel")    => Ok(NodeTag.TradePanel)
             case Some("TradeMenu0")    => Ok(NodeTag.TradeMenu(0))
             case Some("TradeMenu1")    => Ok(NodeTag.TradeMenu(1))
             case Some("TradeMenu2")    => Ok(NodeTag.TradeMenu(2))
@@ -157,23 +157,20 @@ mod TradeMenuScene {
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
 
-    /// 現在の Panel 状態を取り出す。ノード未登録なら `defaultPanelData`。
-    pub def getPanelData(scene: Scene[NodeTag]): PanelData =
-        match Scene.getState(panelPath(), scene) {
-            case Some(NodeTag.TradePanel(data)) => data
-            case _                               => defaultPanelData()
-        }
+    // ── セッション状態（実体は `TradeMenuState.State` resource）──
+    // 各ペインの行カーソルは engine `ItemList` ノードが持つ view。
 
-    /// Panel 状態を `f` で更新する。ノードが未登録の場合は scene をそのまま返す (副作用なし)。
+    /// 現在の Panel 状態を取り出す。resource の初期値は `defaultPanelData`。
+    pub def getPanelData(): PanelData \ TradeMenuState.State =
+        TradeMenuState.State.get()
+
+    /// Panel 状態を `f` で更新する。
     pub def mapPanelData(f: PanelData -> PanelData, scene: Scene[NodeTag]):
-            Scene[NodeTag] =
-        match Scene.getState(panelPath(), scene) {
-            case Some(NodeTag.TradePanel(data)) =>
-                Scene.setState(panelPath(), NodeTag.TradePanel(f(data)), scene)
-            case _                               => scene
-        }
+            Scene[NodeTag] \ TradeMenuState.State =
+        TradeMenuState.State.put(f(TradeMenuState.State.get()));
+        scene
 
-    def setPanelData(data: PanelData, scene: Scene[NodeTag]): Scene[NodeTag] =
+    def setPanelData(data: PanelData, scene: Scene[NodeTag]): Scene[NodeTag] \ TradeMenuState.State =
         mapPanelData(_ -> data, scene)
 
     pub def paneCount(data: PanelData): Int32 = List.length(data#members)
@@ -311,9 +308,9 @@ mod TradeMenuScene {
     /// `TradeInventory` のとき paneCount 個のペイン (+兵種ラベル) を visible にし、
     /// `paneLayout` で位置・サイズを設定する。focus ペインだけ focused = true。
     pub def applyVisibility(phase: TurnPhase.Phase, lordNeeds2Cols: Bool,
-                             scene: Scene[NodeTag]): Scene[NodeTag] =
+                             scene: Scene[NodeTag]): Scene[NodeTag] \ TradeMenuState.State =
         let open = phase == TurnPhase.Phase.TradeInventory;
-        let data = getPanelData(scene);
+        let data = getPanelData();
         let count = paneCount(data);
         let focus = data#focus;
         let width = panelWidthFor(data#members, lordNeeds2Cols);
@@ -370,9 +367,9 @@ mod TradeMenuScene {
                           path: NodePath,
                           scene: Scene[NodeTag]):
                          (EngineNode[NodeTag], Scene[NodeTag])
-                         \ {TurnPhase.State, PlayerData.PartyQuery} =
+                         \ {TurnPhase.State, TradeMenuState.State, PlayerData.PartyQuery} =
         let phase = TurnPhase.State.get();
-        let needs2 = lordNeeds2Columns(getPanelData(scene), scene);
+        let needs2 = lordNeeds2Columns(getPanelData(), scene);
         let withVisibility = applyVisibility(phase, needs2, scene);
         // 閉じている間は全ペインのカーソルを先頭(0)に戻し、次に開いたとき必ず最初から。
         let withItems = if (phase != TurnPhase.Phase.TradeInventory)
@@ -401,8 +398,8 @@ mod TradeMenuScene {
     /// 各ペインに対応 player のインベントリ (満杯でなければ末尾に空スロット) を反映する。
     /// 各行は アイコン色紙＋名前＋サブライン（性能）で武器/アイテムメニューと見た目を揃える。
     /// 列見出しは「名前 数/上限」。pick / まとめ渡し中のアイテムは強調色 (黄) で描く。
-    def refreshPanes(scene: Scene[NodeTag]): Scene[NodeTag] \ PlayerData.PartyQuery =
-        let data = getPanelData(scene);
+    def refreshPanes(scene: Scene[NodeTag]): Scene[NodeTag] \ {PlayerData.PartyQuery, TradeMenuState.State} =
+        let data = getPanelData();
         let count = paneCount(data);
         List.foldLeft((acc, i) ->
             match playerIdAt(i, data) {
@@ -675,8 +672,8 @@ mod TradeMenuScene {
 
     /// TradeInventory 中に Shift が押されたとき、focus ペインのカーソル位置にある自分の
     /// アイテムの印を付け外しする。空スロットには印を付けない（種別が引けず None になる）。
-    pub def toggleTradeMarkAtCursor(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let data = getPanelData(scene);
+    pub def toggleTradeMarkAtCursor(scene: Scene[NodeTag]): Scene[NodeTag] \ TradeMenuState.State =
+        let data = getPanelData();
         let i = data#focus;
         let kindOpt = ItemList.getAt(menuPath(i), scene)
             |> Option.flatMap(ItemList.getSelected)
@@ -705,7 +702,7 @@ mod TradeMenuScene {
     /// まとめて渡す。index の大きい順に 1 個ずつ既存の片方向 transfer に流すので、ログと
     /// 巻き戻しドラフトは 1 個ずつ渡したのと同じになる。渡し終えたら focus を受け取り側に残し印を消す。
     def confirmBulkTransfer(receiverPane: Int32, data: PanelData, scene: Scene[NodeTag]):
-Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
+Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command, TradeMenuState.State} =
         let giverIdOpt    = data#markPane |> Option.flatMap(giverPane -> playerIdAt(giverPane, data));
         let receiverIdOpt = playerIdAt(receiverPane, data);
         let ordered       = PlayerData.marksDescendingPerList(data#marks);
@@ -756,8 +753,8 @@ Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
     /// `confirmCurrentSelection` から focus ペインの selected entry を渡して使うほか、
     /// テストが ItemList の中身に依存せず確定操作を直接駆動するのにも使う。
     pub def confirmAt(paneIndex: Int32, entry: ItemEntry, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
-        let data = getPanelData(scene);
+            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command, TradeMenuState.State} =
+        let data = getPanelData();
         // 印が付いていて、その付け元と違うペインで Z を押したら「まとめ渡し」。
         // それ以外（印なし / 同じペインで Z）は従来どおり 1 個ずつの pick / swap / 並び替え。
         if (isBulkConfirm(paneIndex, data))
@@ -779,8 +776,8 @@ Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
 
     /// Z 押下: focus ペインの selected entry を取り、`confirmAt` に流す。
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
-        let data = getPanelData(scene);
+            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command, TradeMenuState.State} =
+        let data = getPanelData();
         let i = data#focus;
         match ItemList.getAt(menuPath(i), scene) |> Option.flatMap(ItemList.getSelected) {
             case None        => scene
@@ -790,8 +787,8 @@ Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
     /// X 押下の優先順位: pick=Some なら pick 解除（focus 据置）→ 印があれば印を解除 →
     /// どちらも無ければ origin に応じてウィンドウを閉じる。複数選択を 1 段で全部消さず、
     /// 「まず選択を取り消す」段階を踏めるようにしている。
-    pub def cancelCurrent(scene: Scene[NodeTag]): Scene[NodeTag] \ {TurnPhase.State, World.Command} =
-        let data = getPanelData(scene);
+    pub def cancelCurrent(scene: Scene[NodeTag]): Scene[NodeTag] \ {TurnPhase.State, World.Command, TradeMenuState.State} =
+        let data = getPanelData();
         if (not Option.isEmpty(data#pick))
             checked_ecast(mapPanelData(d -> {pick = None | d}, scene))
         else if (not Set.isEmpty(data#marks))
@@ -799,7 +796,7 @@ Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
         else closeTrade(data#origin, scene)
 
     /// pick も印も無いときの X: origin に応じて交換ウィンドウを閉じる。
-    def closeTrade(origin: Origin, scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+    def closeTrade(origin: Origin, scene: Scene[NodeTag]): Scene[NodeTag] \ {TurnPhase.State, TradeMenuState.State} =
         match origin {
             case Origin.FromTurn   =>
                 PhaseTransitions.enterActionSelectFromTrade(scene)
@@ -809,6 +806,6 @@ Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
         }
 
     /// ←/→ 押下: focus ペインを delta(±1) 動かす。
-    pub def setPaneFocusDelta(delta: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def setPaneFocusDelta(delta: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ TradeMenuState.State =
         mapPanelData(d -> moveFocus(delta, d), scene)
 }

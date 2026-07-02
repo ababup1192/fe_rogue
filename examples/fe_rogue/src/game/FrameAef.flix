@@ -43,6 +43,7 @@ mod FrameAef {
                                 CustomEffects.ThiefDropRequest,
                                 Pacing.State,
                                 BattlePanelScene.State, LevelUpPanelScene.State,
+                                ItemMenuState.State, TradeMenuState.State,
                                 UnitHPBarRender.ForecastState,
                                 World.Command, World.PhaseQuery, World.WorldQuery,
                                 World.RngDraw}

@@ -46,14 +46,12 @@ pub enum NodeTag {
     case Log
     /// ItemMenuScene の Panel ルート（外枠）
     case ItemPanel
-    /// ItemMenuScene の ItemList（武器+杖の一覧 + サブメニュー兼用）。
-    /// Int32 は現在表示中のページ番号（0 起点）。ロード職は 16 個 = 2 ページ持てるため、
-    /// ←/→ でページを切り替えるとここが更新され、refreshItems がそのページぶんを並べ直す。
-    /// Set[ItemKind] は Shift で複数選択したアイテムの印。ページをまたいでも保持し、
-    /// 「捨てる」で一括破棄する。表示行ではなく種別+絶対 index で持つのでページ送りに強い。
-    case ItemMenu(Int32, Set[PlayerData.ItemKind])
-    /// TradeMenuScene の Panel ルート（members / focus / pick / origin を抱えるセッション状態）
-    case TradePanel(TradeMenuScene.PanelData)
+    /// ItemMenuScene の ItemList（武器+杖の一覧 + サブメニュー兼用）の識別用純タグ。
+    /// カテゴリ index と複数選択マークは `ItemMenuState.State` resource へ移設・ペイロードレス。
+    case ItemMenu
+    /// TradeMenuScene の Panel ルートの識別用純タグ。セッション状態
+    /// （members / focus / pick / origin / marks）は `TradeMenuState.State` resource へ移設・ペイロードレス。
+    case TradePanel
     /// TradeMenuScene の各ペイン ItemList。内部の Int32 はペイン index (0 起点、最大 3)。
     case TradeMenu(Int32)
     /// ActionMenuScene の Panel ルート（外枠）
@@ -189,7 +187,7 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
                    path: NodePath, scene: Scene[NodeTag]):
                   (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
     match EngineNode.getState(node) {
-        case NodeTag.ItemMenu(_, _) =>
+        case NodeTag.ItemMenu =>
             checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
         case NodeTag.ActionMenu =>
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
@@ -233,7 +231,7 @@ instance InputEvent.InputHandler[NodeTag] {
                  // アイテム投擲の命中ロール（Math.Random）と誤射による味方脱落のゲームオーバー判定。
                  Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
                  // レベルアップ演出パネルの確定（LevelUpPanelScene.confirm）が State resource を触る。
-                 LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State}
+                 LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State, ItemMenuState.State, TradeMenuState.State}
     // ActionMenu / ItemMenu / ItemActionMenu / AttackForecast フェーズでは
     // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）でメニュー操作する。
     // ItemMenu と ItemActionMenu は同じ ItemMenuScene が扱い、`confirmCurrentSelection`
@@ -253,7 +251,7 @@ instance InputEvent.InputHandler[NodeTag] {
                                           CustomEffects.SuspendRequest,
                                           GamePhaseState, PartySelection.State, CharacterSelectState.State,
                                           Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
-                                          LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State} =
+                                          LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State, ItemMenuState.State, TradeMenuState.State} =
         // 画面がタイトル / 選択中なら各画面へ委譲。本編（Playing）のときだけ戦闘用ルーティングを走らせる。
         match GamePhaseState.get() {
             case GamePhase.Title           => TitleMenuScene.onKeyPressed(key, scene)
@@ -271,7 +269,7 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                            EnemyData.RosterQuery, CustomEffects.FloorAdvanceRequest,
                            CustomEffects.SuspendRequest,
                            Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
-                           LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State} =
+                           LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State, ItemMenuState.State, TradeMenuState.State} =
         // 物理キーを「決定 / キャンセル / それ以外 (None)」の意味論的入力に正規化する。
         // phase と独立した直交概念として扱いたいので、bool 2 個ではなく Option[Input] に畳む。
         let input: Option[TurnRules.Input] =
@@ -340,7 +338,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                  TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
                  CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery,
-                 ItemPickupPopupScene.State}
+                 ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State}
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                            state: NodeTag,
                            scene: Scene[NodeTag]):
@@ -352,9 +350,9 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
                                              CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery,
-                                             ItemPickupPopupScene.State} =
+                                             ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State} =
         match state {
-            case NodeTag.ItemMenu(_, _) =>
+            case NodeTag.ItemMenu =>
                 // ItemSelect / ItemActionSelect いずれも同じ ItemList なので、
                 // フェーズに応じて ItemMenuScene 内部で分岐させる。
                 let phase = TurnPhase.State.get();
@@ -382,9 +380,9 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
                                              CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery,
-                                             ItemPickupPopupScene.State} =
+                                             ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State} =
         match state {
-            case NodeTag.ItemMenu(_, _) =>
+            case NodeTag.ItemMenu =>
                 let phase = TurnPhase.State.get();
                 match phase {
                     case TurnPhase.Phase.ItemSelect       =>
@@ -550,7 +548,7 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
                                     PlayerData.PartyQuery, EnemyData.RosterQuery,
                                     CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
                                     CustomEffects.GameOverRequest, CustomEffects.SuspendRequest, World.Command, World.WorldQuery, BoardQuery,
-                                    LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State} =
+                                    LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State, ItemMenuState.State, TradeMenuState.State} =
         match (phase, input) {
         // 全滅メニュー: Z/Enter で選択確定（restart を emit）、X は無反応（必ず選ばせる）。
         case (TurnPhase.Phase.GameOver, TurnRules.Input.Confirm)
@@ -600,6 +598,7 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                             GameLogger.GameLogger,
                             EnemyTurn.Queue, TurnPhase.State,
                             SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
+                            ItemMenuState.State, TradeMenuState.State,
                             PlayerData.PartyQuery,
                             EnemyData.RosterQuery,
                             Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
@@ -642,7 +641,7 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
 /// TradeInventory 中の方向キーを左右ペイン切替に変換する。
 /// Left / A → focus を 1 つ左へ、Right / D → 1 つ右へ (0..paneCount-1 にクランプ)。
 /// Up / Down は handleMenus が ItemList カーソル移動に使うので、ここでは素通し。
-def tradeInventoryDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[NodeTag] =
+def tradeInventoryDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[NodeTag] \ TradeMenuState.State =
     match key {
         case GameEngine.Key.Left  => TradeMenuScene.setPaneFocusDelta(-1, scene)
         case GameEngine.Key.A     => TradeMenuScene.setPaneFocusDelta(-1, scene)
@@ -655,7 +654,7 @@ def tradeInventoryDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[N
 /// Left / A → 前カテゴリ、Right / D → 次カテゴリ（武器/消費/杖/指輪。空はスキップ）。
 /// Up / Down は handleMenus が ItemList のスクロール（カーソル移動）に使うので素通し。
 def itemSelectDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
-        Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+        Scene[NodeTag] \ {SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery} =
     match key {
         case GameEngine.Key.Left  => ItemMenuScene.categoryPrev(scene)
         case GameEngine.Key.A     => ItemMenuScene.categoryPrev(scene)
@@ -905,6 +904,8 @@ mod Game {
               with FloorProgress.withState(rc, FloorCatalog.firstFloorId(floors))  // 現在フロア id
               with PartySelection.withState(rc)   // 出撃メンバー（開始時に1回抽選、フロア間で維持）
               with CharacterSelectState.withState(rc) // 出撃メンバー選択画面の選択状態（注目/選択/サブモード/カルーセル）を resource 化
+              with ItemMenuState.withState(rc)    // アイテム窓の選択状態（カテゴリ index / 一括選択マーク）を resource 化
+              with TradeMenuState.withState(rc)   // 物交換窓のセッション状態（members/focus/pick/origin/marks）を resource 化
         }
 
     /// GamePhase に応じて画面（Scene）を組み立てる。**配線役** に徹し、各画面の構築は
@@ -955,7 +956,7 @@ mod Game {
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State, CharacterSelectState.State,
                          Pacing.State, LogScene.State, BattlePanelScene.State, TurnEndHoldScene.State,
-                         LevelUpPanelScene.State, ItemPickupPopupScene.State,
+                         LevelUpPanelScene.State, ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State,
                          TopBarScene.State, TitleMenuScene.State, UnitHPBarRender.ForecastState,
                          Math.Random, FloorSnapshot.State,
                          World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,

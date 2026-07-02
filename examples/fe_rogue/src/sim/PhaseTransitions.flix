@@ -225,7 +225,7 @@ mod PhaseTransitions {
     /// フェーズを戻す (ActionMenu は visibility で自動再表示される)。
     /// X キャンセル + 交換完了後の両方で呼ぶ。
     pub def enterActionSelectFromTrade(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
+            Scene[NodeTag] \ {TurnPhase.State, TradeMenuState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene
             |> TradeRangeScene.clear
@@ -237,7 +237,7 @@ mod PhaseTransitions {
     /// カーソルは TradeInventory 中は使われないので隠す (ActionSelect から
     /// 戻ったときに再表示される)。
     pub def enterTradeInventory(partnerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, TradeMenuState.State} =
         TurnPhase.State.put(TurnPhase.Phase.TradeInventory);
         let selfId = SelectedPlayer.State.get()#id |> Option.getWithDefault(0);
         scene
@@ -257,7 +257,7 @@ mod PhaseTransitions {
     /// `members` の構築は ActionMenuScene 側で行うが、隣接 0 人で 1 人になる端ケースを
     /// その場で排除しきれないため、ここで 2 人未満ガードを入れる (防御)。
     pub def enterGatherTrade(members: List[Int32], scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
+            Scene[NodeTag] \ {TurnPhase.State, TradeMenuState.State} =
         if (List.length(members) < 2) scene
         else {
             TurnPhase.State.put(TurnPhase.Phase.TradeInventory);

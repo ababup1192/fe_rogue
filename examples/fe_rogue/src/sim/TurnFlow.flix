@@ -78,4 +78,20 @@ mod TurnFlow {
         GatherResume.State.put(resume);
         SelectedPlayer.State.put(SelectedPlayer.cleared());
         EnemyTurnDriver.beginTurn(afterWait)
+
+    /// レベルアップ表示を閉じ切ったあとの復帰先を文脈で分ける。
+    /// modal 割り込みの入口（`commitWaitedAndAdvance` の `anyPendingLevelUp` 分岐）に対応する
+    /// 出口をここに置き、往復契約を turn 層 1 箇所に閉じる（`LevelUpPanelScene.confirm` は
+    /// 「保留を消す / 演出をリセットする」という view 側の modal ループだけを持つ）。
+    ///   - 自分の攻撃中（`SelectedPlayer` あり）→ `commitWaitedAndAdvance` でターンを確定・続行。
+    ///   - 敵ターン中の反撃由来（`SelectedPlayer` なし）→ 敵ターンに戻って続行（キューはそのまま）。
+    pub def resumeAfterLevelUpView(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              GameLogger.GameLogger, EnemyTurn.Queue,
+                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                              World.Command, World.WorldQuery} =
+        match SelectedPlayer.State.get()#id {
+            case Some(_) => commitWaitedAndAdvance(scene)
+            case None    => PhaseTransitions.enterEnemyTurn(scene)
+        }
 }

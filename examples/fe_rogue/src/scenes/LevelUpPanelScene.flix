@@ -306,7 +306,8 @@ mod LevelUpPanelScene {
             // revealed を total に飛ばすと process が次フレームで全行・全 `+1` を描く。
             writeState({revealed = total, started = true, timer = st#timer}, scene)
         else match firstPendingId(scene) {
-            case None     => resume(scene)
+            // 全行出し切り後の閉じ＝ターン復帰は turn 層（`TurnFlow.resumeAfterLevelUpView`）が担う。
+            case None     => TurnFlow.resumeAfterLevelUpView(scene)
             case Some(id) =>
                 // 今表示中（先頭）の味方の保留を 1 件だけ消す。
                 let cleared = PlayerScene.mapPlayer(id, dd -> {pendingLevelUp = None | dd}, scene);
@@ -314,19 +315,7 @@ mod LevelUpPanelScene {
                     // まだ他に居る → 演出 state を初期化し、次の味方を最初（bonus）から表示。
                     PhaseTransitions.enterLevelUpView(writeState(initialState(), cleared))
                 else
-                    resume(cleared)
-        }
-
-    /// パネルを閉じ切ったあとの復帰先を文脈で分ける:
-    ///   - 自分の攻撃中（SelectedPlayer あり）→ `commitWaitedAndAdvance` でターンを確定・続行。
-    ///   - 敵ターン中の反撃由来（SelectedPlayer なし）→ 敵ターンに戻って続行（キューはそのまま）。
-    def resume(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery} =
-        match SelectedPlayer.State.get()#id {
-            case Some(_) => TurnFlow.commitWaitedAndAdvance(scene)
-            case None    => PhaseTransitions.enterEnemyTurn(scene)
+                    TurnFlow.resumeAfterLevelUpView(cleared)
         }
 
     /// レベルアップ表示待ちの味方のうち先頭（= いま表示している味方）の id。

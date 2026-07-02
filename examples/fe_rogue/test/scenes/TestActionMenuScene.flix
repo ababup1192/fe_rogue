@@ -268,8 +268,10 @@ mod TestActionMenuScene {
                                       TestUnitFixtures.withMockGatherResume(() ->
                                         TestUnitFixtures.withSelectedPlayer(args#selectedId, () ->
                                          TestUnitFixtures.withCursor(() ->
+                                          TestUnitFixtures.withItemMenu(() ->
+                                          TestUnitFixtures.withTradeMenu(rc, () ->
                                           ActionMenuScene.onActionConfirmed(args#entry,
-                                                                            args#scene)))))))))))))))
+                                                                            args#scene)))))))))))))))))
         } with handler World.WorldQuery {
             def get(k) = k(Ref.get(wref))
         }
@@ -391,11 +393,13 @@ mod TestActionMenuScene {
                                         TestUnitFixtures.withMockGatherResume(() ->
                                           TestUnitFixtures.withSelectionRef(rc,
                                             {id = Some(0), drafts = Nil, gatherActive = false}, () ->
-                                            TestUnitFixtures.withCursor(() -> {
+                                            TestUnitFixtures.withCursor(() ->
+                                            TestUnitFixtures.withItemMenu(() ->
+                                            TestUnitFixtures.withTradeMenu(rc, () -> {
                                                 let afterPick =
                                                     ActionMenuScene.onActionConfirmed(pickupEntry, scene);
                                                 PlayerScene.cancelSelection(afterPick)
-                                            })))))))))))))));
+                                            })))))))))))))))));
             let groundItemBack =
                 Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             // 期待: (床に戻った, 武器が 1 本に戻った)

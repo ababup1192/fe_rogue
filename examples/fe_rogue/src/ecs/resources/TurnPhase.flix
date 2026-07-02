@@ -387,7 +387,7 @@ mod TurnInputBridge {
             Scene[NodeTag] \ {BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery} =
+                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery, TradeMenuState.State} =
         let context = buildContext(input, BoardQuery.board());
         apply(TurnRules.decide(context), scene)
 
@@ -435,7 +435,7 @@ mod TurnInputBridge {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
-                              PlayerData.PartyQuery, World.Command, World.WorldQuery} =
+                              PlayerData.PartyQuery, World.Command, World.WorldQuery, TradeMenuState.State} =
         match transition {
             case TurnRules.Transition.Stay                              => scene
             case TurnRules.Transition.CursorSelectPlayer(playerId)      =>

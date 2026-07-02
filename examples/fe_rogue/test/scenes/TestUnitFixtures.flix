@@ -504,6 +504,24 @@ mod TestUnitFixtures {
     pub def withCursor(thunk: Unit -> a \ ef): a \ (ef - CursorState.State) =
         withCursorAt({x = 0, y = 0}, thunk)
 
+    /// `ItemMenuState.State` を初期値（武器カテゴリ・印なし）で供給する。`refreshItems` /
+    /// `onItemConfirmed` 等が現在カテゴリ・マークを読むメニューテスト向け。put は捨てる
+    /// （テストは既定カテゴリのみ検証・状態は持ち越さない）。
+    pub def withItemMenu(thunk: Unit -> a \ ef): a \ (ef - ItemMenuState.State) =
+        run { thunk() } with handler ItemMenuState.State {
+            def get(k)    = k(ItemMenuState.initial())
+            def put(_, k) = k()
+        }
+
+    /// `TradeMenuState.State` を Ref-backed で供給する。put を観測したいので状態を保持する
+    /// （交換の pick→swap→marks が同じセッション内で持ち越される）。`rc` はテストの region。
+    pub def withTradeMenu(rc: Region[r], thunk: Unit -> a \ ef): a \ (ef - TradeMenuState.State) + r =
+        let ref = Ref.fresh(rc, TradeMenuScene.defaultPanelData());
+        run { thunk() } with handler TradeMenuState.State {
+            def get(k)    = k(Ref.get(ref))
+            def put(d, k) = { Ref.put(d, ref); k() }
+        }
+
     /// `CustomEffects.FloorAdvanceRequest` の no-op スタブ。`advance` は渡された scene をそのまま返す。
     /// 「かいだん」分岐を踏まないアクション確定系テスト用（踏むテストは別途実 handler を使う）。
     pub def withNoopFloorAdvance(thunk: Unit -> a \ ef):

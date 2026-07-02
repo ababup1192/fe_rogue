@@ -133,6 +133,7 @@ mod TestItemMenuScene {
             TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemSelect, () ->
                 TestUnitFixtures.withMockPartyQuery(scene, () ->
                 TestUnitFixtures.withCursor(() ->
+                TestUnitFixtures.withItemMenu(() ->
                 match Scene.getEngineNode(menuPath, scene) {
                     case Some(node) =>
                         let (_, scnAfter) = run {
@@ -141,7 +142,7 @@ mod TestItemMenuScene {
                         } with handler World.WorldQuery { def get(k) = k(World.empty()) };
                         scnAfter
                     case None       => bug!("menu node not found at ${menuPath}")
-                }))));
+                })))));
         Assert.assertEq(expected = Some(1),
             itemListAt(menuPath, updated) |> Option.map(list -> List.length(ItemList.getItems(list))))
 
@@ -159,6 +160,7 @@ mod TestItemMenuScene {
             TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemActionSelect, () ->
                 TestUnitFixtures.withMockPartyQuery(withSelection, () ->
                 TestUnitFixtures.withCursor(() ->
+                TestUnitFixtures.withItemMenu(() ->
                 match Scene.getEngineNode(menuPath, withSelection) {
                     case Some(node) =>
                         let (_, scnAfter) = run {
@@ -167,7 +169,7 @@ mod TestItemMenuScene {
                         } with handler World.WorldQuery { def get(k) = k(World.empty()) };
                         scnAfter
                     case None       => withSelection
-                }))));
+                })))));
         let texts = match Scene.getEngineNode(menuPath, updated) {
             case Some(EngineNode.ItemListWithState(list, _)) =>
                 List.map(entry -> entry#text, ItemList.getItems(list))
@@ -185,6 +187,7 @@ mod TestItemMenuScene {
             TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemActionSelect, () ->
                 TestUnitFixtures.withMockPartyQuery(withSelection, () ->
                 TestUnitFixtures.withCursor(() ->
+                TestUnitFixtures.withItemMenu(() ->
                 match Scene.getEngineNode(menuPath, withSelection) {
                     case Some(node) =>
                         let (_, scnAfter) = run {
@@ -193,7 +196,7 @@ mod TestItemMenuScene {
                         } with handler World.WorldQuery { def get(k) = k(World.empty()) };
                         scnAfter
                     case None       => withSelection
-                }))));
+                })))));
         let texts = match Scene.getEngineNode(menuPath, updated) {
             case Some(EngineNode.ItemListWithState(list, _)) =>
                 List.map(entry -> entry#text, ItemList.getItems(list))
@@ -221,7 +224,8 @@ mod TestItemMenuScene {
         let entry = ({text = "a", disabled = false, metadata = Some("w:0")}: ItemEntry);
         let after = TestUnitFixtures.withSelectedPlayer(0, () ->
             TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemSelect, () ->
-                ItemMenuScene.onItemConfirmed(entry, scene)));
+                TestUnitFixtures.withItemMenu(() ->
+                ItemMenuScene.onItemConfirmed(entry, scene))));
         Assert.assertEq(expected = Some(0),
             itemListAt(menuPath, after) |> Option.map(ItemList.getSelectedIndex))
 

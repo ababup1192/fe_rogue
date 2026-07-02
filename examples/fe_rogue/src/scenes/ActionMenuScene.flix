@@ -489,7 +489,7 @@ mod ActionMenuScene {
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 CursorState.State, GatherResume.State, PlayerData.PartyQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery,
-                ItemPickupPopupScene.State} =
+                ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State} =
         match entry#metadata {
             case None    => scene
             case Some(m) =>
@@ -541,7 +541,7 @@ mod ActionMenuScene {
 
     /// 「アイテム」確定で ItemMenuScene を開く。選択中味方の id が必要。
     def openItemMenu(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery} =
         match SelectedPlayer.State.get()#id {
             case None           => scene
             case Some(playerId) => ItemMenuScene.openFor(playerId, scene)
@@ -550,7 +550,7 @@ mod ActionMenuScene {
     /// 「交換」確定 (集合の隣接メニュー): 主人公＋隣接味方の N 人持ち物交換画面を開く。
     /// TradeInventory フェーズ (origin = FromGather) に入り、TradeMenuScene が最大 4 ペイン表示する。
     def openGatherTrade(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, PlayerData.PartyQuery, TradeMenuState.State} =
         PhaseTransitions.enterGatherTrade(gatherTradeMembers(), scene)
 
     /// 「集合」確定: 集合（行軍）モードを開始する (GatherMove フェーズへ)。
@@ -739,7 +739,7 @@ mod ActionMenuScene {
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 CursorState.State, GatherResume.State, PlayerData.PartyQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery,
-                ItemPickupPopupScene.State} =
+                ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             // disabled 項目（例: 敵が射程外の「攻撃」）は確定しても何もしない。
             case Some(entry) => if (entry#disabled) scene else onActionConfirmed(entry, scene)

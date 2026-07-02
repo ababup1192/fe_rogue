@@ -91,13 +91,14 @@ mod ItemMenuScene {
     /// 装備中（武器/指輪の先頭）に出すバッジ文字。
     def equippedBadge(): String = "装備"
 
-    /// scene.json 内の "tag" 文字列 → NodeTag への変換。ItemMenu の Int32 は現在カテゴリ index。
+    /// scene.json 内の "tag" 文字列 → NodeTag への変換。ItemMenu は payload-less
+    /// （カテゴリ index / マークは `ItemMenuState.State` resource が持つ）。
     def tagParser(opt: Option[String]): Result[Util.Json.JsonError, NodeTag] =
         match opt {
             case None                  => Ok(NodeTag.NoTag)
             case Some("NoTag")         => Ok(NodeTag.NoTag)
             case Some("ItemPanel")     => Ok(NodeTag.ItemPanel)
-            case Some("ItemMenu")      => Ok(NodeTag.ItemMenu(0, Set#{}))
+            case Some("ItemMenu")      => Ok(NodeTag.ItemMenu)
             case Some(unknown)         =>
                 Err(JsonCompat.jsonError(Root, Set#{"ItemMenuScene tag (got: ${unknown})"}))
         }
@@ -205,7 +206,7 @@ mod ItemMenuScene {
                          _path: NodePath,
                          scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
-                        \ {SelectedPlayer.State, CursorState.State, TurnPhase.State, PlayerData.PartyQuery, World.WorldQuery} =
+                        \ {SelectedPlayer.State, CursorState.State, TurnPhase.State, ItemMenuState.State, PlayerData.PartyQuery, World.WorldQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
         let withItems = match phase {
@@ -226,30 +227,27 @@ mod ItemMenuScene {
         }
 
     // ── 状態（現在カテゴリ index + 複数選択マーク）──
+    // 実体は `ItemMenuState.State` resource。ItemList ノードは行カーソルだけを持つ view。
 
-    /// ItemMenu ノードに積んである現在カテゴリ index。未設定なら 0（武器）。
-    def getCategoryIdx(scene: Scene[NodeTag]): Int32 =
-        match Scene.getState(menuPath(), scene) {
-            case Some(NodeTag.ItemMenu(c, _)) => c
-            case _                            => 0
-        }
+    /// 現在カテゴリ index。resource の初期値は 0（武器）。
+    def getCategoryIdx(): Int32 \ ItemMenuState.State =
+        ItemMenuState.State.get()#category
 
     /// 現在カテゴリを書き戻し、選択カーソルを先頭(0)に戻す。印は保持する。
-    def setCategoryIdx(c: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene
-            |> Scene.setState(menuPath(), NodeTag.ItemMenu(c, getMarks(scene)))
-            |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
+    def setCategoryIdx(c: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemMenuState.State =
+        let st = ItemMenuState.State.get();
+        ItemMenuState.State.put({category = c | st});
+        scene |> ItemList.mapAt(menuPath(), ItemList.setSelectedIndex(0))
 
-    /// ItemMenu ノードに積んである複数選択の印。未設定なら空集合。
-    def getMarks(scene: Scene[NodeTag]): Set[PlayerData.ItemKind] =
-        match Scene.getState(menuPath(), scene) {
-            case Some(NodeTag.ItemMenu(_, marks)) => marks
-            case _                                => Set#{}
-        }
+    /// 複数選択の印。resource の初期値は空集合。
+    def getMarks(): Set[PlayerData.ItemKind] \ ItemMenuState.State =
+        ItemMenuState.State.get()#marks
 
     /// 印だけ差し替える（カテゴリは保持する）。
-    def setMarks(marks: Set[PlayerData.ItemKind], scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene |> Scene.setState(menuPath(), NodeTag.ItemMenu(getCategoryIdx(scene), marks))
+    def setMarks(marks: Set[PlayerData.ItemKind], scene: Scene[NodeTag]): Scene[NodeTag] \ ItemMenuState.State =
+        let st = ItemMenuState.State.get();
+        ItemMenuState.State.put({marks = marks | st});
+        scene
 
     /// 複数選択した行の強調色（黄系）。交換メニューの pick 色と見た目を揃える。
     def markColor(): Color = {r = 1.0f32, g = 0.85f32, b = 0.2f32}
@@ -287,17 +285,17 @@ mod ItemMenuScene {
 
     /// ←（前カテゴリ）/ →（次カテゴリ）。ItemSelect 中の Left/A・Right/D から呼ばれる。
     /// 在庫のあるカテゴリだけを巡回する（空はスキップ）。
-    pub def categoryPrev(scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+    pub def categoryPrev(scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery} =
         cycleCategory(-1, scene)
-    pub def categoryNext(scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+    pub def categoryNext(scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery} =
         cycleCategory(1, scene)
     def cycleCategory(dir: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery} =
         match SelectedPlayer.State.get()#id {
             case None           => scene
             case Some(playerId) =>
                 let cats = nonEmptyCategories(playerId);
-                let next = nextCategoryIn(cats, getCategoryIdx(scene), dir);
+                let next = nextCategoryIn(cats, getCategoryIdx(), dir);
                 setCategoryIdx(next, scene)
         }
 
@@ -397,7 +395,7 @@ mod ItemMenuScene {
     /// 選択中プレイヤーの「現在カテゴリ」を ItemList に並べる（ItemSelect 中）。
     /// 現在カテゴリが空ならアイテムのある先頭カテゴリへスナップする。窓は ActionMenu の右隣へ。
     def refreshItemList(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery} =
         match SelectedPlayer.State.get()#id {
             case None => scene
             // 在庫読みは PartyQuery（World オーバーレイ）経由。
@@ -405,13 +403,14 @@ mod ItemMenuScene {
                 case None         => scene
                 case Some(player) =>
                     let cats = nonEmptyCategories(playerId);
-                    let cur0 = getCategoryIdx(scene);
+                    let cur0 = getCategoryIdx();
                     let cur  = if (List.memberOf(cur0, cats)) cur0
                                else List.head(cats) |> Option.getWithDefault(catWeapon());
-                    let marks = getMarks(scene);
+                    let marks = getMarks();
                     let (items, sublines, badges, icons) = categoryRows(cur, player);
+                    // クランプ後の実カテゴリを resource に書き戻す（印はそのまま）。
+                    ItemMenuState.State.put({category = cur, marks = marks});
                     scene
-                        |> Scene.setState(menuPath(), NodeTag.ItemMenu(cur, marks))
                         |> ItemList.mapAt(menuPath(), list ->
                             list
                                 |> ItemList.setItems(items)
@@ -547,8 +546,8 @@ mod ItemMenuScene {
         }
 
     def refreshActionList(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
-        let bulkMode = not Set.isEmpty(getMarks(scene));
+            Scene[NodeTag] \ {SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery} =
+        let bulkMode = not Set.isEmpty(getMarks());
         // 在庫読み（rings/ringEquipped/selectedItem）は PartyQuery（World オーバーレイ）経由。
         let result = forM (
             playerId <- SelectedPlayer.State.get()#id;
@@ -655,7 +654,7 @@ mod ItemMenuScene {
     /// ActionMenu「アイテム」確定で呼ばれる。`ItemSelect` フェーズに遷移する。
     /// PhaseTransitions が overlay 片付け + カーソル非表示も合わせて行う。
     pub def openFor(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, ItemMenuState.State, PlayerData.PartyQuery} =
         // 常に「アイテムのある先頭カテゴリ」・印なし・カーソル先頭から開く。
         let entered = setMarks(Set#{}, PhaseTransitions.enterItemSelect(scene));
         let firstCat = nonEmptyCategories(playerId)
@@ -666,13 +665,13 @@ mod ItemMenuScene {
     /// ItemSelect 中に Shift が押されたとき、カーソル位置のアイテムの印を付け外しする。
     /// カーソル行の metadata（"w:idx" 等）から種別+index を取り、マーク集合をトグルして書き戻す。
     /// アイテム以外（空など）に乗っているときは何もしない。
-    pub def toggleMarkAtCursor(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def toggleMarkAtCursor(scene: Scene[NodeTag]): Scene[NodeTag] \ ItemMenuState.State =
         let kindOpt = ItemList.getAt(menuPath(), scene)
             |> Option.flatMap(ItemList.getSelected)
             |> Option.flatMap(entry -> entry#metadata)
             |> Option.flatMap(parseItemKind);
         kindOpt
-            |> Option.map(kind -> setMarks(PlayerData.toggleMark(kind, getMarks(scene)), scene))
+            |> Option.map(kind -> setMarks(PlayerData.toggleMark(kind, getMarks()), scene))
             |> Option.getWithDefault(scene)
 
     /// ItemSelect で項目を Enter 確定したとき。選択中アイテム種別を Data に書いて
@@ -694,7 +693,7 @@ mod ItemMenuScene {
 
     /// ItemSelect で X / Escape 押下: ActionMenu に戻る（= ActionSelect フェーズ）。
     pub def onItemCancelled(scene: Scene[NodeTag]):
-                            Scene[NodeTag] \ TurnPhase.State =
+                            Scene[NodeTag] \ {TurnPhase.State, ItemMenuState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         // 閉じる時に先頭カテゴリへ戻し、複数選択の印も消す（次に開いたとき先頭・印なし）。
         setCategoryIdx(catWeapon(), setMarks(Set#{}, scene))
@@ -707,7 +706,7 @@ mod ItemMenuScene {
                               Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
-                GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
+                ItemMenuState.State, GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         // selectedItem 読みは PartyQuery（World オーバーレイ）経由。
         let result = forM (
             m        <- entry#metadata;
@@ -724,14 +723,14 @@ mod ItemMenuScene {
                        Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
-                GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
+                ItemMenuState.State, GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         if (meta == equipMeta())
             applyEquip(playerId, kind, scene)
         else if (meta == unequipMeta())
             applyUnequip(playerId, scene)
         else if (meta == dropMeta()) {
             // 印が付いていれば印の付いた分をまとめて、無ければカーソルの 1 個だけ捨てる。
-            let marks = getMarks(scene);
+            let marks = getMarks();
             if (Set.isEmpty(marks)) applyDrop(playerId, kind, scene)
             else applyBulkDrop(playerId, marks, scene)
         }
@@ -835,7 +834,7 @@ mod ItemMenuScene {
     def applyBulkDrop(playerId: Int32, marks: Set[PlayerData.ItemKind],
                        scene: Scene[NodeTag]):
                       Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                                        SelectedPlayer.State, World.Command, PlayerData.PartyQuery} =
+                                        SelectedPlayer.State, ItemMenuState.State, World.Command, PlayerData.PartyQuery} =
         let dropped = List.foldLeft((acc, kind) -> applyDrop(playerId, kind, acc),
             scene, PlayerData.marksDescendingPerList(marks));
         setMarks(Set#{}, dropped)
@@ -930,7 +929,7 @@ mod ItemMenuScene {
                                     Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
-                GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
+                ItemMenuState.State, GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         let phase = TurnPhase.State.get();
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             case None        => scene
