@@ -95,8 +95,7 @@ mod RenderWorld {
     /// B: World 描画する **in-world（camera 適用）** サブツリー root。配置物（アイテム/宝箱/階段）＋ダメージ数字/
     /// 爆発/カーソル/矢印カーソル。top-level の Cursor/ArrowCursor は World 直下でないため明示列挙。
     def worldSubtreeRoots(): List[NodePath] =
-        // P6-1c: Stairs はノード廃止＝`renderStairs` が World.stairsPos から直描き（root 不要）。
-        ItemScene.parentPath() :: ChestScene.parentPath() ::
+        // P6-1c/d/e: Stairs/Chest/GroundItem はノード廃止＝renderStairs/renderChests/renderItems が直描き。
         DamagePopupScene.rootPath() :: ExplosionScene.rootPath() ::
         CursorScene.cursorPath() :: ArrowCursorScene.arrowPath() :: Nil
 
@@ -204,30 +203,101 @@ mod RenderWorld {
                 List.flatMap(r -> fogRectDrawables(r, transform), hazeRects)
         }
 
-    /// P6-1c: 階段を World store + 見た目定数から直描きする（scene ノードなしの第一号）。
-    ///   存在 = `World.stairsPosOf`（None=未配置）、見た目 = `StairsScene.texture/spriteScale/spriteZIndex`
-    ///   （旧 scene.json 値）、fog の lit ゲート = `FogScene.holesForDraft`（旧 `StairsScene.applyFog` の
-    ///   可視制御を描画時判定に置換・origin 基準は fog 本体と同一）。Map 不在（タイトル等）は早期 Nil。
-    pub def renderStairs(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
-            List[GameEngine.Drawable] \ {GameEngine.Game, SelectedPlayer.State} =
-        match (Scene.getEngineNode(MapScene.mapPath(), scene), World.stairsPosOf(world)) {
-            case (Some(_), Some(cell)) =>
+    /// P6-1c/d: fog の「明るい穴」を frame に 1 回計算し、配置物の直描き（renderStairs/renderChests…）
+    /// で共有する lit ゲート入力。Map 不在（タイトル/選択画面）は None＝配置物を描かない。
+    pub def fogHolesOpt(scene: Scene[NodeTag]): Option[List[GridRect]] \ SelectedPlayer.State =
+        match Scene.getEngineNode(MapScene.mapPath(), scene) {
+            case None    => None
+            case Some(_) =>
                 let drafts = SelectedPlayer.State.get()#drafts;
                 let units  = PlayerScene.getAll(scene)
                     |> List.map(d -> {gridPos = d#gridPos, hidden = d#hidden,
                                       origin = MoveDraft.originOf(d#id, drafts) |> Option.getWithDefault(d#gridPos)});
-                let holes = FogScene.holesForDraft(units, MapScene.getPlacements(scene),
-                                                    MapScene.getRoomCount(scene), true);
+                Some(FogScene.holesForDraft(units, MapScene.getPlacements(scene),
+                                             MapScene.getRoomCount(scene), true))
+        }
+
+    /// tree に積まない Sprite2D 値 1 枚を screen 座標へ Drawable 化する共通 spine
+    /// （P6 直描きの共有ヘルパー。zIndex は呼び側の定数で上書き）。
+    def standaloneSprite(sprite: Sprite2D, worldPos: Vec2.Vec2, z: Int32,
+                          transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
+        let screenPos = Camera2D.applyToWorldPos(transform, worldPos);
+        GameEngine.Renderable.toDrawables(EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag), screenPos)
+            |> Render.applyCameraScale(transform)
+            |> List.map(d -> {zIndex = z | d})
+
+    /// P6-1c: 階段を World store + 見た目定数から直描きする（scene ノードなしの第一号）。
+    ///   存在 = `World.stairsPosOf`（None=未配置）、見た目 = `StairsScene.texture/spriteScale/spriteZIndex`
+    ///   （旧 scene.json 値）、fog の lit ゲート = `fogHolesOpt`（旧 `StairsScene.applyFog` の
+    ///   可視制御を描画時判定に置換・origin 基準は fog 本体と同一）。holes=None（Map 不在）は Nil。
+    pub def renderStairs(world: World, holesOpt: Option[List[GridRect]],
+                          transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
+        match (holesOpt, World.stairsPosOf(world)) {
+            case (Some(holes), Some(cell)) =>
                 if (not FogScene.insideAny(cell, holes)) Nil
-                else {
-                    let sprite = Sprite2D.make(StairsScene.texture(), Vec2.zero(), StairsScene.spriteScale());
-                    let screenPos = Camera2D.applyToWorldPos(transform, MapSnapshot.cellCenter(cell));
-                    GameEngine.Renderable.toDrawables(
-                        EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag), screenPos)
-                        |> Render.applyCameraScale(transform)
-                        |> List.map(d -> {zIndex = StairsScene.spriteZIndex() | d})
-                }
+                else standaloneSprite(
+                    Sprite2D.make(StairsScene.texture(), Vec2.zero(), StairsScene.spriteScale()),
+                    MapSnapshot.cellCenter(cell), StairsScene.spriteZIndex(), transform)
             case _ => Nil
+        }
+
+    /// P6-1d: 宝箱を World.chests store + ChestCatalog の sprite から直描きする。
+    /// 位置 = cellCenter + sprite#offset・scale は spawn 時の旧実装どおり 1.0 固定（sprite#scale 非適用）。
+    pub def renderChests(chestCatalog: ChestCatalog.ChestCatalog, world: World,
+                          holesOpt: Option[List[GridRect]],
+                          transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
+        match holesOpt {
+            case None => Nil
+            case Some(holes) =>
+                World.chestsOf(world)
+                    |> Map.valuesOf
+                    |> List.flatMap(d ->
+                        if (not FogScene.insideAny(d#gridPos, holes)) Nil
+                        else {
+                            let sprite = ChestCatalog.lookup(d#chestKey, chestCatalog)#sprite;
+                            let center = MapSnapshot.cellCenter(d#gridPos);
+                            let pos: Vec2.Vec2 = {x = center#x + sprite#offset#x, y = center#y + sprite#offset#y};
+                            let node = Sprite2D.make(sprite#texture, Vec2.zero(), Vec2.one())
+                                |> Sprite2D.setHframes(sprite#hframes)
+                                |> Sprite2D.setVframes(sprite#vframes)
+                                |> Sprite2D.setFrame(sprite#frame);
+                            standaloneSprite(node, pos, ChestScene.chestZIndex(), transform)
+                        })
+        }
+
+    /// P6-1e: 床アイテムを World.groundItems store + `ItemScene.spriteOf` から直描きする。
+    /// 本体（z=5）＋4 方向 1px シフトの縁取り（z=4・薄青・点滅 alpha=pulseAlpha(elapsed)）。
+    /// elapsed は stepWorld が tick 済み。lit ゲートは fogHolesOpt（stairs/chests と同型）。
+    pub def renderItems(world: World, holesOpt: Option[List[GridRect]],
+                         transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
+        match holesOpt {
+            case None => Nil
+            case Some(holes) =>
+                World.groundItemsOf(world)
+                    |> Map.valuesOf
+                    |> List.flatMap(d ->
+                        if (not FogScene.insideAny(d#gridPos, holes)) Nil
+                        else {
+                            let sprite0 = ItemScene.spriteOf(d#item);
+                            let center = MapSnapshot.cellCenter(d#gridPos);
+                            let pos: Vec2.Vec2 = {x = center#x + sprite0#offset#x, y = center#y + sprite0#offset#y};
+                            let makeFramed = () ->
+                                Sprite2D.make(sprite0#texture, Vec2.zero(), Vec2.one())
+                                    |> Sprite2D.setHframes(sprite0#hframes)
+                                    |> Sprite2D.setVframes(sprite0#vframes)
+                                    |> Sprite2D.setFrame(sprite0#frame);
+                            let alpha = ItemScene.pulseAlpha(d#elapsed);
+                            let outlines = List.flatMap(entry -> {
+                                let (_, delta) = entry;
+                                let opos: Vec2.Vec2 = {x = pos#x + delta#x, y = pos#y + delta#y};
+                                let node = makeFramed()
+                                    |> Sprite2D.setAlpha(alpha)
+                                    |> CanvasItem.setModulate(ItemScene.outlineColor());
+                                standaloneSprite(node, opos, ItemScene.outlineZIndex(), transform)
+                            }, ItemScene.outlineDeltas());
+                            List.append(outlines,
+                                standaloneSprite(makeFramed(), pos, ItemScene.spriteZIndex(), transform))
+                        })
         }
 
     /// B: 全 grid 範囲オーバーレイ（移動 / 攻撃 / 敵移動 / 敵攻撃 / 味方攻撃 / 交換 / 危険範囲）を World render

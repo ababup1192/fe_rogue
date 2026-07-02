@@ -89,6 +89,9 @@ pub enum NodeTag {
     /// EnemyCardScene の CanvasLayer 親（右サイドの攻撃対象敵カード。UnitCard と左右対称）。
     case EnemyCard
     /// TopBarScene の CanvasLayer 親（上部フェイズバー。陣営・敵ターンの「間」を持つ）
+    /// P6-1e: production ではノードを積まない（描画は renderItems 直描き）。手組みノードで
+    /// World を seed するテスト seam（syncFromScene の itemsFromScene が読む）として残置。
+    case GroundItem(ItemScene.Data)
     /// P4-f: 上部バーの識別用純タグ（状態は `TopBarScene.State` resource へ移設）。
     case TopBar
     /// ItemPickupPopupScene の CanvasLayer 親（アイテム取得ポップアップのフェード演出状態を持つ）
@@ -98,7 +101,6 @@ pub enum NodeTag {
     /// P4-c: ターンスキップ長押しゲージの識別用純タグ（状態は `TurnEndHoldScene.State` resource へ移設）。
     case HoldGauge
     /// ItemScene の床に落ちている武器（拾える）
-    case GroundItem(ItemScene.Data)
     /// ChestScene の床に置かれた宝箱（ローグだけが開けられる。中身は配置時に確定済み）
     case Chest(ChestScene.Data)
     /// `EnemyTurnDriverScene` の常駐タグ専用ノード (Marker2D)。process redef で phase を
@@ -1035,7 +1037,6 @@ mod Game {
                 // driver step より前（旧「process 中に確定」の再現）。TurnEndHold はログ帯を上書きするため
                 // LogScene.step より後（旧 root 追加順の再現）。他は独立。HPBar は process が no-op だったので
                 // step 無しで撤去のみ。
-                |> ItemScene.step(dt)
                 |> TopBarScene.step(dt)
                 |> ItemPickupPopupScene.frameStep(dt)
                 |> CharacterSelectScene.step(dt)
@@ -1151,9 +1152,13 @@ mod Game {
             // B/tiles: tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
             // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。
             let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(prepped);
+            // P6-1c/d: fog の明るい穴を frame に 1 回計算し、配置物直描きの lit ゲートで共有。
+            let holesOpt = RenderWorld.fogHolesOpt(synced);
             let worldDrawables = RenderWorld.renderUnits(world2, transform, synced)
-                // P6-1c: 階段は World.stairsPos + 見た目定数から直描き（scene ノード無しの第一号）。
-                |> List.append(RenderWorld.renderStairs(world2, transform, synced))
+                // P6-1c/d: 階段/宝箱は World store + catalog/定数から直描き（scene ノード無し）。
+                |> List.append(RenderWorld.renderStairs(world2, holesOpt, transform))
+                |> List.append(RenderWorld.renderChests(catalogs#chests, world2, holesOpt, transform))
+                |> List.append(RenderWorld.renderItems(world2, holesOpt, transform))
                 |> List.append(RenderWorld.renderFog(transform, synced))
                 |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
                 |> List.append(RenderWorld.renderSubtrees(transform, synced));

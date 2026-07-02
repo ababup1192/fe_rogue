@@ -43,9 +43,12 @@ mod GameLifecycle {
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, PartySelection.State, World.Command, World.WorldQuery,
                 TopBarScene.State} =
+        // P6-1d/e: 前フロアの配置物 store（宝箱/床アイテム）を掃除（scene 再構築での自動 prune は廃止＝明示 Cmd）。
+        World.Command.emit(World.Cmd.ClearChests);
+        World.Command.emit(World.Cmd.ClearItems);
         Scene.empty()
             |> MapScene.add(floor)
-            |> FogScene.add             // 各 module の薄暗いモヤ矩形 + 常駐 FogDriver
+            |> FogScene.add             // 常駐 FogDriver（暗幕は renderFog 直描き）
             // ↑ FogDriver は EnemyTurnDriver より先に追加する（preorder で同フレーム先に process される）。
             //   EnemyTurnDriverScene.endTurn の集合自動継続判定 anyVisibleEnemy が「同フレーム最新の
             //   フォグ可視（applyFog 適用後）」を読めるのはこの add 順前提。順序を入れ替えると 1 フレーム
@@ -184,6 +187,10 @@ mod GameLifecycle {
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, SelectedPlayer.State, World.Command,
                 TopBarScene.State} =
         let floor = FloorCatalog.get(snap#floorId, catalogs#floors);
+        // P6-1d/e: 前フロア/前 run の配置物 store を掃除してから addFromSnaps で再 spawn する
+        // （scene 再構築での自動 prune は廃止＝明示 Cmd。addFromSnaps より前が必須）。
+        World.Command.emit(World.Cmd.ClearChests);
+        World.Command.emit(World.Cmd.ClearItems);
         let scene = Scene.empty()
             |> MapScene.addFromPlan(snap#mapPlan)
             |> FogScene.add

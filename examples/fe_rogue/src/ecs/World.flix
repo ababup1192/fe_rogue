@@ -308,10 +308,11 @@ mod World {
             // P3-a: stairsPos は frame-1 seed だけ scene の Stairs ノードから読む（hp と同型）。以後は
             // refreshMirror が placeAt の `Cmd.SetStairs` を preserve＝World 権威。
             stairsPos = StairsScene.getPos(scene),
-            // P3-b: chests は frame-1 seed だけ scene の Chest ノード群から読む（stairsPos と同型）。以後は
-            // refreshMirror が SpawnChest/RemoveChest 由来を preserve＋scene 在セルで prune＝World 権威。
-            chests = chestsFromScene(scene),
-            // P3-c: groundItems も frame-1 seed だけ scene の GroundItem ノード群から読む（chests と同型）。
+            // P6-1d: chests は scene ノード撤去に伴い純 command 由来（SpawnChest/RemoveChest/ClearChests）＝
+            // sync パスでも preserve（seed は build choke の Spawn emit が担う）。
+            chests = w#chests,
+            // P6-1e: production はノードを積まないため常に空＝実質 preserve と同義。手組み
+            // GroundItem ノードで World を seed するテスト seam（stairs の getPos seed と同型）として残置。
             groundItems = itemsFromScene(scene),
             // P5-b: fx は command/step 由来＝preserve（scene mirror 元なし・transient）。
             popupFx = w#popupFx, popupFxNextSeq = w#popupFxNextSeq,
@@ -422,12 +423,11 @@ mod World {
             // World 権威。frame-1 seed は syncFromScene（scene 読み）、以後は placeAt の Cmd を preserve（Playing 突入/
             // floor 遷移とも placeAt が World.Command 文脈で emit してから refreshMirror が走るため正しく更新される）。
             stairsPos = w#stairsPos,
-            // P3-b: chests は command 由来（SpawnChest/RemoveChest）を preserve＋scene 在セルで prune。
-            // 開封は同フレームで scene ノード削除＋RemoveChest の dual-write、floor 遷移は新 scene の在セル集合で
-            // 旧フロア分が落ちる（unit の pos prune と同型・scene が権威集合の供給元）。
-            chests = Map.filterWithKey((k, _) -> Set.memberOf(k, sceneChestKeys(scene)), w#chests),
-            // P3-c: groundItems も command 由来（SpawnItem/RemoveItem）を preserve＋scene 在セルで prune（chests と同型）。
-            groundItems = Map.filterWithKey((k, _) -> Set.memberOf(k, sceneItemKeys(scene)), w#groundItems),
+            // P3-b→P6-1d: chests は command 由来（SpawnChest/RemoveChest/ClearChests）を **preserve のみ**。
+            // scene ノード撤去に伴い在セル prune は廃止＝floor 遷移の掃除は build choke の ClearChests が担う。
+            chests = w#chests,
+            // P3-c→P6-1e: groundItems も純 command 由来を preserve のみ（掃除は build choke の ClearItems）。
+            groundItems = w#groundItems,
             // P5-b: fx は command/step 由来＝preserve（期限切れ drop は stepWorld が担う・prune 不要）。
             popupFx = w#popupFx, popupFxNextSeq = w#popupFxNextSeq,
             explosionFx = w#explosionFx, explosionFxNextSeq = w#explosionFxNextSeq,
@@ -470,7 +470,12 @@ mod World {
             applyTweenOut(uid, ch, out, acc)
         }, World.World({tweens = nextTweens,
                         popupFx = tickFxMap(dt, w#popupFx),
-                        explosionFx = tickFxMap(dt, w#explosionFx) | w}), outs);
+                        explosionFx = tickFxMap(dt, w#explosionFx),
+                        // P6-1e: 床アイテムの点滅位相（elapsed）も World が tick（fx と同じ lane・
+                        // 旧 ItemScene.step の per-node 更新を置換）。
+                        groundItems = Map.map(d ->
+                            {elapsed = ItemScene.advance(Duration.add(d#elapsed, Duration.seconds(dt))) | d},
+                            w#groundItems) | w}), outs);
         // marker 駆動用に Position チャンネルの補間結果を EntityRef＋pixel で外へ出す。
         // outs は active に加え**完了フレームの target（t=1.0 スナップ）も含む**（EcsTween.step）＝
         // 完了の取りこぼしなく marker を target に確定できる（isAnimating 単独では落とす）。
@@ -607,9 +612,11 @@ mod World {
         case BumpTileGen                       // B/tiles: マップ再構築の世代 +1（build choke が emit・gameLoop の tile bake トリガ）
         case SetStairs(Option[{x = Int32, y = Int32}])  // P3-a: 階段セル write（配置=Some/未配置=None・floor 単位で 1 回）。stairsPos を World 権威化
         case SpawnChest(ChestScene.Data)   // P3-b: 宝箱を配置（build/復元）。cell key で chests へ挿入（存在=Map 在）
+        case ClearChests                   // P6-1d: フロア再構築時に前フロアの宝箱を全消去（build choke が emit。旧: scene 再構築による prune）
         case RemoveChest({x = Int32, y = Int32})  // P3-b: 宝箱を開封して除去（cell key で chests から削除）
         case SpawnItem(ItemScene.Data)     // P3-c: 床アイテムを配置（build/復元/respawn/drop）。cell key で groundItems へ挿入
         case RemoveItem({x = Int32, y = Int32})   // P3-c: 床アイテムを拾得して除去（cell key で groundItems から削除）
+        case ClearItems                    // P6-1e: フロア再構築時に前フロアの床アイテムを全消去（ClearChests と同型）
         case SpawnPopupFx({total = Float64, startY = Float64})  // P5-b: ダメージ数字 fx を nextSeq で採番して spawn（remaining=total で開始）
         case SpawnExplosionFx({total = Float64})                // P5-b: 爆発 fx を nextSeq で採番して spawn
     }
@@ -917,6 +924,15 @@ mod World {
                 // P3-b: 宝箱を開封して除去（takeAt が emit）。存在の消失は Map 不在で表現。
                 let World.World(w) = world;
                 World.World({chests = Map.remove(chestCellKey(cell), w#chests) | w})
+            case Cmd.ClearChests =>
+                // P6-1d: フロア再構築の頭で全消去（scene ノード撤去に伴い refreshMirror の prune が消えたため、
+                // 旧フロア分の掃除は build choke の明示 Cmd が担う）。
+                let World.World(w) = world;
+                World.World({chests = Map.empty() | w})
+            case Cmd.ClearItems =>
+                // P6-1e: ClearChests と同型（床アイテムの掃除）。
+                let World.World(w) = world;
+                World.World({groundItems = Map.empty() | w})
             case Cmd.SpawnItem(data) =>
                 // P3-c: 床アイテムを cell key で挿入（addOneItem が emit）。存在は Map 在で表現。
                 let World.World(w) = world;
@@ -1081,6 +1097,8 @@ mod World {
                 ("SetStairs", x, y, 0)
             case Cmd.SpawnChest(data)         => ("SpawnChest", data#gridPos#x, data#gridPos#y, 0)
             case Cmd.RemoveChest(cell)        => ("RemoveChest", cell#x, cell#y, 0)
+            case Cmd.ClearChests              => ("ClearChests", 0, 0, 0)
+            case Cmd.ClearItems               => ("ClearItems", 0, 0, 0)
             case Cmd.SpawnItem(data)          => ("SpawnItem", data#gridPos#x, data#gridPos#y, 0)
             case Cmd.RemoveItem(cell)         => ("RemoveItem", cell#x, cell#y, 0)
             case Cmd.SpawnPopupFx(d)          => ("SpawnPopupFx", Float64.truncateToInt32(d#startY), 0, 0)
@@ -1928,16 +1946,6 @@ mod World {
     /// P3-b: 宝箱 store のセル key（`cellKey` の別名・既存 API 名として保持）。
     pub def chestCellKey(cell: {x = Int32, y = Int32}): Int32 = cellKey(cell)
 
-    /// P3-b: scene の Chest ノード群を cell key → Data の Map に射影（frame-1 seed 用）。
-    def chestsFromScene(scene: Scene[NodeTag]): Map[Int32, ChestScene.Data] =
-        ChestScene.getAll(scene)
-            |> List.foldLeft((m, d) -> Map.insert(cellKey(d#gridPos), d, m), Map.empty())
-
-    /// P3-b: scene に現存する宝箱の cell key 集合（refreshMirror の prune 基準＝unit の validUids 相当）。
-    def sceneChestKeys(scene: Scene[NodeTag]): Set[Int32] =
-        ChestScene.getAll(scene)
-            |> List.foldLeft((s, d) -> Set.insert(cellKey(d#gridPos), s), Set.empty())
-
     /// P3-b: 宝箱 store を World から読む（cell key → Data）。
     pub def chestsOf(world: World): Map[Int32, ChestScene.Data] =
         let World.World(w) = world; w#chests
@@ -1946,15 +1954,16 @@ mod World {
     pub def chestAtOf(cell: {x = Int32, y = Int32}, world: World): Option[ChestScene.Data] =
         let World.World(w) = world; Map.get(cellKey(cell), w#chests)
 
-    /// P3-c: scene の GroundItem ノード群を cell key → Data の Map に射影（frame-1 seed 用）。
+    /// P6-1e: 手組み GroundItem ノード（テスト fixture）を cell key → Data の Map に射影する seed seam。
+    /// production はノードを積まないので常に空。
     def itemsFromScene(scene: Scene[NodeTag]): Map[Int32, ItemScene.Data] =
-        ItemScene.getAll(scene)
+        Scene.getChildrenAt(MapScene.worldName() :: "Items" :: Nil, scene)
+            |> List.filterMap(name ->
+                match Scene.getState(MapScene.worldName() :: "Items" :: name :: Nil, scene) {
+                    case Some(NodeTag.GroundItem(d)) => Some(d)
+                    case _                            => None
+                })
             |> List.foldLeft((m, d) -> Map.insert(cellKey(d#gridPos), d, m), Map.empty())
-
-    /// P3-c: scene に現存する床アイテムの cell key 集合（refreshMirror の prune 基準）。
-    def sceneItemKeys(scene: Scene[NodeTag]): Set[Int32] =
-        ItemScene.getAll(scene)
-            |> List.foldLeft((s, d) -> Set.insert(cellKey(d#gridPos), s), Set.empty())
 
     /// P3-c: 床アイテム store を World から読む（cell key → Data）。
     pub def groundItemsOf(world: World): Map[Int32, ItemScene.Data] =

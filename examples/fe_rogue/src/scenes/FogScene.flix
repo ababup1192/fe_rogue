@@ -95,10 +95,9 @@ mod FogScene {
         // 束縛した後に更に let を続けるとパーサが lambda 本体を貪欲に取り込んで壊れるため）。
         let isLit      = (cell: {x = Int32, y = Int32}) -> insideAny(cell, holes);
         // P6-1c: StairsScene.applyFog は撤去（階段は renderStairs が描画時に lit 判定）。
+        // P6-1e: ItemScene.applyFog は撤去（床アイテムは renderItems が描画時に lit 判定）。
         scene
             |> EnemyScene.applyFog(isLit)
-            |> ItemScene.applyFog(isLit)
-            |> ChestScene.applyFog(isLit)
 
     /// 非 hidden プレイヤーごとの「明るい穴」矩形リスト（純粋・テスト対象）。
     /// 部屋なら部屋全体、通路は torchCorridors のとき周囲1マスだけ。

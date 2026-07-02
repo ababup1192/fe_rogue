@@ -196,10 +196,11 @@ mod PlayerMovementScene {
     pub def autoPickupOrLog(data: PlayerScene.Data, target: {x = Int32, y = Int32},
                              scene: Scene[NodeTag]):
             Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger, World.Command,
-                              ItemPickupPopupScene.State} =
-        match ItemScene.findAt(target, scene) {
+                              ItemPickupPopupScene.State, World.WorldQuery} =
+        // P6-1e: 床アイテムは World store から読む（scene ノード撤去済み）。
+        match World.groundItemAtOf(target, World.WorldQuery.get()) |> Option.map(d -> d#item) {
             case None            => scene
-            case Some((_, kind)) =>
+            case Some(kind) =>
                 if (PlayerScene.wouldOverloadByPicking(data, kind)) {
                     GameLogger.playerLog(
                         "${data#resource#description}は ${ItemScene.kindDisplayName(kind)}の上に乗った");

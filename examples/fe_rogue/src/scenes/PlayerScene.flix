@@ -1712,8 +1712,10 @@ mod PlayerScene {
     /// 床撤去 → 在庫末尾へ追加 → ログ、の順で行う。床にアイテムが無ければ素通し（防御的）。
     pub def pickupFloorItem(playerId: Int32, gridPos: {x = Int32, y = Int32},
                              scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger, World.Command} =
-        match ItemScene.dataAt(gridPos, scene) {
+            Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger, World.Command,
+                              World.WorldQuery} =
+        // P6-1e: 床アイテムは World store から読む（scene ノード撤去済み・read-after-write で fresh）。
+        match World.groundItemAtOf(gridPos, World.WorldQuery.get()) {
             case None    => scene
             case Some(d) =>
                 SelectedPlayer.pushDraft(

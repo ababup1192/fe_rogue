@@ -312,7 +312,7 @@ mod MinimapScene {
     /// 階段 + 訪問済み部屋内のアイテム。
     def collectMarkers(data: DriverData,
                         placements: List[DungeonComposer.ModulePlacement],
-                        roomCount: Int32, litRooms: Set[Int32], scene: Scene[NodeTag]):
+                        roomCount: Int32, litRooms: Set[Int32], _scene: Scene[NodeTag]):
                        List[{cell = {x = Int32, y = Int32}, color = Color}]
                        \ {PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         let players =
@@ -329,7 +329,8 @@ mod MinimapScene {
                 }
             else Nil;
         let itemsM =
-            ItemScene.getAllPositions(scene)
+            // P6-1e: 床アイテム位置は World store から読む（scene ノード撤去済み）。
+            (World.groundItemsOf(World.WorldQuery.get()) |> Map.valuesOf |> List.map(d -> d#gridPos))
                 |> List.filter(cell -> inVisitedRoom(cell, placements, roomCount, data#visited))
                 |> List.map(cell -> {cell = cell, color = itemColor()});
         // いま点灯している部屋(litRooms)に居る敵を赤丸で（アイテムより手前＝後ろに連結して上に描く）。

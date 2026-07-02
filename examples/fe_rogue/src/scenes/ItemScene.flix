@@ -5,11 +5,9 @@
 /// プレイヤーが同じセルに乗ると（重量が許せば自動で）、または ActionMenu で「ひろう」を選ぶと
 /// `PlayerScene.pickupFloorItem` で取り出してインベントリに加える。
 ///
-/// ノード構造:
-///   World/Items (Marker2D, 永続的な親)
-///     ├─ Item_0 (Sprite2D, NodeTag.GroundItem({gridPos, itemKey, item}))
-///     ├─ Item_1 (...)
-///     └─ ...
+/// P6-1e: scene ノードは撤去済み。存在/中身/点滅位相の権威は World.groundItems
+/// （`Cmd.SpawnItem/RemoveItem/ClearItems`・elapsed は stepWorld が tick）、描画は
+/// `RenderWorld.renderItems` が spriteOf(kind) から本体＋縁取り 4 枚を直描きする。
 ///
 /// 設計メモ:
 ///   - 1 セルに 1 アイテムまで（同セル重複は事前フィルタで弾く）
@@ -51,24 +49,15 @@ mod ItemScene {
 
     // ─── 定数 ─────────────────────────────────────────────────
 
-    def parentName(): String = "Items"
-    pub def parentPath(): NodePath = MapScene.worldName() :: parentName() :: Nil
+    /// Sprite の zIndex（床より上、Sprite (=10) より下に置く）。P6-1e: renderItems が使うため pub。
+    pub def spriteZIndex(): Int32 = 5
 
-    /// `Item_<n>` 形式のノード名
-    def itemName(idx: Int32): String = "Item_${idx}"
-
-    /// `Item_<n>_outline_<dir>` 形式の縁取り兄弟ノード名
-    def outlineName(idx: Int32, suffix: String): String = "Item_${idx}_outline_${suffix}"
-
-    /// Sprite の zIndex（床より上、Sprite (=10) より下に置く）
-    def spriteZIndex(): Int32 = 5
-
-    /// 縁取り Sprite の zIndex（アイテム本体のすぐ下）
-    def outlineZIndex(): Int32 = 4
+    /// 縁取り Sprite の zIndex（アイテム本体のすぐ下）。
+    pub def outlineZIndex(): Int32 = 4
 
     /// 縁取りの色。マルチプライで暗い武器ピクセルが黒に潰れるのを補うため、
     /// b は 1.0 超に振って GPU クランプで明るい青を引き出す
-    def outlineColor(): Color = {r = 0.3f32, g = 0.7f32, b = 4.0f32}
+    pub def outlineColor(): Color = {r = 0.3f32, g = 0.7f32, b = 4.0f32}
 
     /// 通常時のアウトライン不透明度（薄っすら）
     def baseAlpha(): Float32 = 0.35f32
@@ -82,14 +71,12 @@ mod ItemScene {
     /// サイクル先頭で「光っている」時間。この間に三角波で base→peak→base と変化する
     def pulseDuration(): Duration.Duration = Duration.seconds(0.3)
 
-    /// 4 方向 (suffix, 描画オフセット) ペア
-    def outlineDeltas(): List[(String, Vec2.Vec2)] =
+    /// 4 方向 (suffix, 描画オフセット) ペア。P6-1e: renderItems が使うため pub。
+    pub def outlineDeltas(): List[(String, Vec2.Vec2)] =
         ("n", ({x =  0.0, y = -1.0}: Vec2.Vec2)) ::
         ("s", ({x =  0.0, y =  1.0}: Vec2.Vec2)) ::
         ("e", ({x =  1.0, y =  0.0}: Vec2.Vec2)) ::
         ("w", ({x = -1.0, y =  0.0}: Vec2.Vec2)) :: Nil
-
-    def outlineSuffixes(): List[String] = "n" :: "s" :: "e" :: "w" :: Nil
 
     // per-room cap は引数で受け取る floor の `itemsPerRoom` を使う (resource 駆動)。
 
@@ -131,12 +118,11 @@ mod ItemScene {
                              items, catalog, staffCatalog, consumableCatalog, ringCatalog, state),
                 initial, rooms);
             let drops = List.reverse(accDrops);
-            // 親 Marker2D + 各 Item Sprite2D を追加
-            let withParent = ensureParent(scene);
+            // P6-1e: ノードは積まない＝Cmd spawn のみ（点滅の初期位相 stagger は id で付与）。
             List.foldLeft((acc, drop) -> {
                 let (id, cell, key, kind) = drop;
                 addOneItem(id, cell, key, kind, acc)
-            }, withParent, drops)
+            }, scene, drops)
         }
 
     /// id を weapons catalog → staves catalog → consumables catalog の順で引いて、
@@ -160,57 +146,19 @@ mod ItemScene {
                 bug!("ItemScene.lookupItem: id '${id}' not in weapons / staves / consumables / rings catalog")
         }
 
-    /// 親 Marker2D を Items として World 配下に生やす（既にあれば何もしない）。
-    def ensureParent(scene: Scene[NodeTag]): Scene[NodeTag] =
-        match Scene.getEngineNode(parentPath(), scene) {
-            case Some(_) => scene
-            case None    =>
-                let parent = Marker2D.make(Vec2.zero());
-                Scene.addChildAt(MapScene.worldPath(), parentName(),
-                    EngineNode.Marker2DWithState(parent, NodeTag.NoTag), scene)
-        }
-
-    /// アイテム 1 個ぶんの Sprite2D を World/Items 配下に追加する。
-    /// 視認性のため 4 方向 1px シフトの縁取り Sprite を先に重ね、本体を上に置く。
-    /// P3-c: あわせて `Cmd.SpawnItem` を emit して World store を権威に更新する（scene ノードは描画/点滅 view）。
+    /// アイテム 1 個ぶんを配置する＝`Cmd.SpawnItem` を emit して World store を更新する。
+    /// P6-1e: scene ノード書きは撤去（描画は `RenderWorld.renderItems` が World から直描き）。
+    /// `idx` は点滅の初期位相 stagger（同時点滅回避）にだけ使う。
     def addOneItem(idx: Int32, cell: {x = Int32, y = Int32},
                     itemKey: String, item: ItemData.GroundItemKind,
                     scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        let sprite0 = spriteOf(item);
-        // セル中心 + sprite#offset で sheet padding を補正した位置に置く
-        let center = MapSnapshot.cellCenter(cell);
-        let pos: Vec2.Vec2 = {
-            x = center#x + sprite0#offset#x,
-            y = center#y + sprite0#offset#y
-        };
-        // フレーム指定済みのスプライト構築ヘルパ。エンジンは Sprite2D#offset を描画時に無視するため、
-        // 縁取りのずらしは position 自体に乗せる（Node2D の position フィールドが globalPos に伝播する）。
-        let makeFramed = (p: Vec2.Vec2) ->
-            Sprite2D.make(sprite0#texture, p, Vec2.one())
-                |> Sprite2D.setHframes(sprite0#hframes)
-                |> Sprite2D.setVframes(sprite0#vframes)
-                |> Sprite2D.setFrame(sprite0#frame);
-        // 4 方向の縁取りを先に追加（NodeTag.NoTag、本体より低い zIndex、薄い青）
-        let withOutlines = List.foldLeft((acc, entry) -> {
-            let (suffix, delta) = entry;
-            let outlinePos: Vec2.Vec2 = {x = pos#x + delta#x, y = pos#y + delta#y};
-            let outline = makeFramed(outlinePos)
-                |> Sprite2D.setAlpha(baseAlpha())
-                |> CanvasItem.setModulate(outlineColor())
-                |> CanvasItem.setZIndex(outlineZIndex());
-            Scene.addChildAt(parentPath(), outlineName(idx, suffix),
-                EngineNode.Sprite2DWithState(outline, NodeTag.NoTag), acc)
-        }, scene, outlineDeltas());
-        let sprite = makeFramed(pos) |> CanvasItem.setZIndex(spriteZIndex());
-        // idx でスタガーして同時点滅を避ける
         let initElapsed = Duration.seconds(0.4 * Int32.toFloat64(idx));
         let data: Data = {
             gridPos = cell, itemKey = itemKey, item = item,
             elapsed = initElapsed
         };
         World.Command.emit(World.Cmd.SpawnItem(data));
-        Scene.addChildAt(parentPath(), itemName(idx),
-            EngineNode.Sprite2DWithState(sprite, NodeTag.GroundItem(data)), withOutlines)
+        scene
 
     /// 部屋 1 つから count 個のドロップセルを選び state に積む。
     /// 各セルにつき floor の `items` (percent 配列) から重み付き抽選した id を
@@ -279,63 +227,20 @@ mod ItemScene {
         List.exists(t -> t#x == c#x and t#y == c#y, taken)
 
     // ─── クエリ ───────────────────────────────────────────────
+    // P6-1e: 旧 findAt/dataAt/getAll（scene ノード走査）は撤去。読みは World.groundItemAtOf /
+    // groundItemsOf が唯一の経路。
 
-    /// 指定セルに落ちているアイテムの (path, item) を返す。無ければ None。
-    pub def findAt(coord: {x = Int32, y = Int32},
-                    scene: Scene[NodeTag]): Option[(NodePath, ItemData.GroundItemKind)] =
-        let childNames = Scene.getChildrenAt(parentPath(), scene);
-        List.findMap(name -> {
-            let path = List.append(parentPath(), name :: Nil);
-            match Scene.getState(path, scene) {
-                case Some(NodeTag.GroundItem(d)) =>
-                    if (d#gridPos#x == coord#x and d#gridPos#y == coord#y)
-                        Some((path, d#item))
-                    else None
-                case _ => None
-            }
-        }, childNames)
-
-    /// 指定セルのアイテムを scene から取り除いてアイテム実体を返す。
-    /// 本体ノードと一緒に 4 つの縁取り兄弟ノードも消す。
-    /// P3-c: 除去できたときだけ `Cmd.RemoveItem` を emit して World store からも落とす（存在の消失を component 化）。
+    /// 指定セルのアイテムを除去してアイテム実体を返す＝`Cmd.RemoveItem` を emit。
+    /// P6-1e: World store に居るときだけ emit（旧: scene ノード有無で判定）。scene は素通し。
     pub def takeAt(coord: {x = Int32, y = Int32},
                     scene: Scene[NodeTag]):
-            (Scene[NodeTag], Option[ItemData.GroundItemKind]) \ World.Command =
-        match findAt(coord, scene) {
-            case None              => (scene, None)
-            case Some((path, kind)) =>
+            (Scene[NodeTag], Option[ItemData.GroundItemKind]) \ {World.Command, World.WorldQuery} =
+        match World.groundItemAtOf(coord, World.WorldQuery.get()) {
+            case None    => (scene, None)
+            case Some(d) =>
                 World.Command.emit(World.Cmd.RemoveItem(coord));
-                let cleaned = scene
-                    |> removeOutlinesFor(path)
-                    |> Scene.removeAt(path);
-                (cleaned, Some(kind))
+                (scene, Some(d#item))
         }
-
-    /// 指定セルに落ちているアイテムの Data を返す。無ければ None。
-    /// `itemKey` を含む全データが必要な場面（ひろうキャンセル等）向け。
-    /// `takeAt` が kind のみ返すのに対し、こちらは再配置に必要な全フィールドを保持する。
-    pub def dataAt(coord: {x = Int32, y = Int32},
-                    scene: Scene[NodeTag]): Option[Data] =
-        let childNames = Scene.getChildrenAt(parentPath(), scene);
-        List.findMap(name -> {
-            let path = List.append(parentPath(), name :: Nil);
-            match Scene.getState(path, scene) {
-                case Some(NodeTag.GroundItem(d)) =>
-                    if (d#gridPos#x == coord#x and d#gridPos#y == coord#y)
-                        Some(d)
-                    else None
-                case _ => None
-            }
-        }, childNames)
-
-    /// 床に落ちている全アイテムの Data を返す（スナップショット保存用）。
-    pub def getAll(scene: Scene[NodeTag]): List[Data] =
-        Scene.getChildrenAt(parentPath(), scene)
-            |> List.filterMap(name ->
-                match Scene.getState(List.append(parentPath(), name :: Nil), scene) {
-                    case Some(NodeTag.GroundItem(d)) => Some(d)
-                    case _                            => None
-                })
 
     /// 現在の床アイテムを `ItemSnap` 列（セル座標 ＋ 種別 id）に射影する（スナップショット保存用）。
     /// 床アイテムは `itemKey`（id）を持つので逆引き不要。
@@ -360,95 +265,25 @@ mod ItemScene {
             respawn(snap#gridPos, snap#itemKey, kind, acc)
         }, scene, snaps)
 
-    /// `takeAt` の逆操作として、アイテムを `cell` に再配置する。
-    /// 新しい idx を採番して本体 + 縁取りを作り直す。
+    /// `takeAt` の逆操作として、アイテムを `cell` に再配置する＝`Cmd.SpawnItem` を emit。
+    /// P6-1e: 点滅位相は 0 から（旧 idx 由来 stagger は spawn 経路のみ）。
     pub def respawn(cell: {x = Int32, y = Int32}, itemKey: String,
                      kind: ItemData.GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        let withParent = ensureParent(scene);
-        addOneItem(nextItemIdx(withParent), cell, itemKey, kind, withParent)
+        addOneItem(0, cell, itemKey, kind, scene)
 
-    /// 既存 `Item_<n>` の最大 idx + 1（無ければ 0）。`Item_<n>_outline_<dir>` は
-    /// `dropLeft(5)` → `Int32.fromString` が None になるので自然に除外される。
-    def nextItemIdx(scene: Scene[NodeTag]): Int32 =
-        Scene.getChildrenAt(parentPath(), scene)
-            |> List.filterMap(name -> Int32.fromString(String.dropLeft(5, name)))
-            |> List.maximum
-            |> Option.map(m -> m + 1)
-            |> Option.getWithDefault(0)
-
-    /// `Item_<n>` のパスから 4 つの兄弟 `Item_<n>_outline_<dir>` を削除する。
-    def removeOutlinesFor(itemPath: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
-        List.foldLeft((acc, suffix) ->
-            Scene.removeAt(outlinePathOf(itemPath, suffix), acc),
-            scene, outlineSuffixes())
-
-    /// `World/Items/Item_<n>` のパス → `World/Items/Item_<n>_outline_<suffix>` のパス
-    def outlinePathOf(itemPath: NodePath, suffix: String): NodePath =
-        match List.reverse(itemPath) {
-            case Nil          => itemPath
-            case last :: rest => List.reverse(("${last}_outline_${suffix}") :: rest)
-        }
-
-    /// 床に落ちている全アイテムのグリッド座標。`MinimapScene` が訪問済み部屋内の
-    /// アイテムをマーカー表示するために使う（読み取り専用）。
-    pub def getAllPositions(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
-        let childNames = Scene.getChildrenAt(parentPath(), scene);
-        List.foldLeft((acc, name) -> {
-            let itemPath = List.append(parentPath(), name :: Nil);
-            match Scene.getState(itemPath, scene) {
-                case Some(NodeTag.GroundItem(d)) => d#gridPos :: acc
-                case _                            => acc
-            }
-        }, Nil, childNames)
-
-    /// フォグ適用: 各 GroundItem を「現在地が lit なら表示、さもなくば非表示」にする。
-    /// 本体 Sprite と 4 方向の縁取り Sprite をまとめて visible トグルする（点滅 alpha とは直交）。
-    /// `FogScene` から毎フレーム呼ばれる。
-    pub def applyFog(isLit: {x = Int32, y = Int32} -> Bool,
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
-        let childNames = Scene.getChildrenAt(parentPath(), scene);
-        List.foldLeft((acc, name) -> {
-            let itemPath = List.append(parentPath(), name :: Nil);
-            match Scene.getState(itemPath, acc) {
-                case Some(NodeTag.GroundItem(d)) =>
-                    let vis = isLit(d#gridPos);
-                    let withBody = Sprite2D.mapAt(itemPath, CanvasItem.setVisible(vis), acc);
-                    List.foldLeft((a2, suffix) ->
-                        Sprite2D.mapAt(outlinePathOf(itemPath, suffix), CanvasItem.setVisible(vis), a2),
-                        withBody, outlineSuffixes())
-                case _ => acc
-            }
-        }, scene, childNames)
-
-    // ─── tick（点滅アニメーション） ───────────────────────────
-
-    /// P5-c(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
-    /// 全 GroundItem の `elapsed` を進めて 4 兄弟の縁取り Sprite に alpha (`pulseAlpha`) を
-    /// 反映する（子列挙は `applyFog` と同型。親不在なら getChildrenAt が Nil で no-op）。
-    pub def step(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let childNames = Scene.getChildrenAt(parentPath(), scene);
-        List.foldLeft((acc, name) -> {
-            let itemPath = List.append(parentPath(), name :: Nil);
-            match Scene.getState(itemPath, acc) {
-                case Some(NodeTag.GroundItem(d)) =>
-                    let newElapsed = advance(Duration.add(d#elapsed, dt));
-                    let alpha = pulseAlpha(newElapsed);
-                    acc
-                        |> writeElapsed(itemPath, newElapsed)
-                        |> applyAlphaToOutlines(itemPath, alpha)
-                case _ => acc
-            }
-        }, scene, childNames)
+    // P6-1e: 旧 applyFog（可視トグル）と step（点滅 tick）は撤去。lit ゲートと縁取り alpha は
+    // `RenderWorld.renderItems` が描画時に判定し、elapsed は `World.stepWorld` が tick する。
 
     /// `elapsed` をサイクル長で巻き戻す。`Duration` に mod 演算がなく float 誤差も避けたいため、
-    /// dt が cycle 未満であることを前提に 1 回の減算で対応する。
-    def advance(e: Duration.Duration): Duration.Duration =
+    /// dt が cycle 未満であることを前提に 1 回の減算で対応する。P6-1e: stepWorld から呼ぶため pub。
+    pub def advance(e: Duration.Duration): Duration.Duration =
         if (Duration.toSeconds(e) >= Duration.toSeconds(cycleDuration()))
             Duration.sub(e, cycleDuration())
         else e
 
     /// サイクル先頭 `pulseDuration` の間は base→peak→base の三角波、それ以外は base 固定。
-    def pulseAlpha(elapsed: Duration.Duration): Float32 =
+    /// P6-1e: renderItems が縁取り alpha に使うため pub。
+    pub def pulseAlpha(elapsed: Duration.Duration): Float32 =
         let e = Duration.toSeconds(elapsed);
         let p = Duration.toSeconds(pulseDuration());
         if (e < p) {
@@ -459,20 +294,4 @@ mod ItemScene {
             Float64.truncateToFloat32(b + (pk - b) * tri)
         } else baseAlpha()
 
-    /// アイテム本体ノードの `elapsed` のみ更新する（縁取りには触らない）。
-    def writeElapsed(itemPath: NodePath, newElapsed: Duration.Duration,
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(itemPath, n -> match n {
-            case EngineNode.Sprite2DWithState(sp, NodeTag.GroundItem(d)) =>
-                EngineNode.Sprite2DWithState(sp, NodeTag.GroundItem({elapsed = newElapsed | d}))
-            case other => other
-        }, scene)
-
-    /// 4 つの縁取り Sprite2D に同じ alpha を書き込む。
-    def applyAlphaToOutlines(itemPath: NodePath, alpha: Float32,
-                              scene: Scene[NodeTag]): Scene[NodeTag] =
-        List.foldLeft((acc, suffix) -> {
-            let path = outlinePathOf(itemPath, suffix);
-            Sprite2D.mapAt(path, Sprite2D.setAlpha(alpha), acc)
-        }, scene, outlineSuffixes())
 }

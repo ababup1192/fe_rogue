@@ -59,7 +59,7 @@ mod TestItemScene {
         Scene.empty()
             |> Scene.addNode(MapScene.worldName(), marker())
             |> Scene.addChildAt(MapScene.worldPath(), "Items", marker())
-            |> Scene.addChildAt(ItemScene.parentPath(), "Item_0", body)
+            |> Scene.addChildAt(MapScene.worldName() :: "Items" :: Nil, "Item_0", body)
 
     /// P3-c: World store 権威の証跡。scene から seed した World は床アイテムを groundItemAtOf で返し、
     /// takeAt の emit した `Cmd.RemoveItem` を applyCmd すると Map から消える。
@@ -69,10 +69,13 @@ mod TestItemScene {
             let scene = sceneWithItem();
             let wref = Ref.fresh(rc, World.syncFromScene(scene, World.empty()));
             let before = World.groundItemAtOf({x = 4, y = 5}, Ref.get(wref)) |> Option.map(d -> d#itemKey);
-            run { discard ItemScene.takeAt({x = 4, y = 5}, scene) }
-                with handler World.Command {
-                    def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
-                };
+            // P6-1e: takeAt は World store を読んで RemoveItem を emit する（WorldQuery+Command を同 Ref で wire）。
+            run {
+                run { discard ItemScene.takeAt({x = 4, y = 5}, scene) }
+                    with handler World.WorldQuery { def get(k) = k(Ref.get(wref)) }
+            } with handler World.Command {
+                def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
+            };
             let after = World.groundItemAtOf({x = 4, y = 5}, Ref.get(wref)) |> Option.map(d -> d#itemKey);
             Assert.assertEq(expected = (Some("test_weapon"), None), (before, after))
         }

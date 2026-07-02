@@ -35,7 +35,7 @@ mod StairsScene {
     /// 階段が「通路にある」状態にならない。
     /// 候補が 1 つも無い極端なマップでは何もしない（階段は非表示のまま）。
     /// プレイヤー・敵・アイテム配置が済んだ後（= buildPlayingScene の末尾）に呼ぶ。
-    pub def placeRandom(scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
+    pub def placeRandom(scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command, World.WorldQuery} =
         let placements = MapScene.getPlacements(scene);
         let roomCount  = MapScene.getRoomCount(scene);
         let occupied   = List.append(
@@ -47,7 +47,7 @@ mod StairsScene {
             |> List.flatMap(p -> p#interiorCells)
             |> List.filter(cell ->
                 not isOccupied(cell, occupied)
-                and Option.isEmpty(ItemScene.findAt(cell, scene)));
+                and Option.isEmpty(World.groundItemAtOf(cell, World.WorldQuery.get())));
         match RandomUtil.pick(candidates) {
             case Some(cell) => placeAt(cell, scene)
             case None       => scene
