@@ -95,7 +95,8 @@ mod RenderWorld {
     /// B: World 描画する **in-world（camera 適用）** サブツリー root。配置物（アイテム/宝箱/階段）＋ダメージ数字/
     /// 爆発/カーソル/矢印カーソル。top-level の Cursor/ArrowCursor は World 直下でないため明示列挙。
     def worldSubtreeRoots(): List[NodePath] =
-        ItemScene.parentPath() :: ChestScene.parentPath() :: StairsScene.stairsPath() ::
+        // P6-1c: Stairs はノード廃止＝`renderStairs` が World.stairsPos から直描き（root 不要）。
+        ItemScene.parentPath() :: ChestScene.parentPath() ::
         DamagePopupScene.rootPath() :: ExplosionScene.rootPath() ::
         CursorScene.cursorPath() :: ArrowCursorScene.arrowPath() :: Nil
 
@@ -184,7 +185,7 @@ mod RenderWorld {
     /// B: fog の暗幕（haze）を World render System で描く。scene の Fog ColorRect プールを使わず、
     /// FogScene の純粋な補集合計算（holesForDraft/mapRegion/bandDecompose）を再利用して暗幕矩形を
     /// solidBox の Drawable にする。敵/アイテムの点灯（可視性）制御は従来どおり FogScene が担い、ここは
-    /// 暗幕の描画のみ。二重描画は Game.flix が `FogScene.hideHaze` で scene プールを隠して防ぐ（hideUnitSprites 対称）。
+    /// 暗幕の描画のみ。P6-1b: scene 側の haze プールは撤去済み＝この直描きが唯一の暗幕経路。
     /// 入力（origin 基準の部屋点灯・通路 torch）は `FogScene.process` と同一＝挙動不変。
     pub def renderFog(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ SelectedPlayer.State =
         // ダンジョン以外（タイトル/パーティ選択/メニュー等）は Map ノードが無い＝暗幕なし。
@@ -203,6 +204,32 @@ mod RenderWorld {
                 List.flatMap(r -> fogRectDrawables(r, transform), hazeRects)
         }
 
+    /// P6-1c: 階段を World store + 見た目定数から直描きする（scene ノードなしの第一号）。
+    ///   存在 = `World.stairsPosOf`（None=未配置）、見た目 = `StairsScene.texture/spriteScale/spriteZIndex`
+    ///   （旧 scene.json 値）、fog の lit ゲート = `FogScene.holesForDraft`（旧 `StairsScene.applyFog` の
+    ///   可視制御を描画時判定に置換・origin 基準は fog 本体と同一）。Map 不在（タイトル等）は早期 Nil。
+    pub def renderStairs(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
+            List[GameEngine.Drawable] \ {GameEngine.Game, SelectedPlayer.State} =
+        match (Scene.getEngineNode(MapScene.mapPath(), scene), World.stairsPosOf(world)) {
+            case (Some(_), Some(cell)) =>
+                let drafts = SelectedPlayer.State.get()#drafts;
+                let units  = PlayerScene.getAll(scene)
+                    |> List.map(d -> {gridPos = d#gridPos, hidden = d#hidden,
+                                      origin = MoveDraft.originOf(d#id, drafts) |> Option.getWithDefault(d#gridPos)});
+                let holes = FogScene.holesForDraft(units, MapScene.getPlacements(scene),
+                                                    MapScene.getRoomCount(scene), true);
+                if (not FogScene.insideAny(cell, holes)) Nil
+                else {
+                    let sprite = Sprite2D.make(StairsScene.texture(), Vec2.zero(), StairsScene.spriteScale());
+                    let screenPos = Camera2D.applyToWorldPos(transform, MapSnapshot.cellCenter(cell));
+                    GameEngine.Renderable.toDrawables(
+                        EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag), screenPos)
+                        |> Render.applyCameraScale(transform)
+                        |> List.map(d -> {zIndex = StairsScene.spriteZIndex() | d})
+                }
+            case _ => Nil
+        }
+
     /// B: 全 grid 範囲オーバーレイ（移動 / 攻撃 / 敵移動 / 敵攻撃 / 味方攻撃 / 交換 / 危険範囲）を World render
     /// System で描く。各 mod は「描画セル・色・α」だけ持ち、描画は `RangeOverlay.tileDrawables` の 1 経路に集約
     /// ＝law の汎用化。非表示のオーバーレイはセルが空ゆえ Drawable も空（毎フレーム全種を引いても無害）。
@@ -219,13 +246,8 @@ mod RenderWorld {
             tiles(DangerZoneScene.cells(scene),        DangerZoneScene.color(),        DangerZoneScene.alpha()) ::
             Nil)
 
-    /// B: 全 range オーバーレイの scene 側 Tile Panel を隠す（World 描画へ切替時の二重描画防止）。
-    pub def hideRangeTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene
-            |> MoveRangeScene.hideTiles         |> MoveAttackRangeScene.hideTiles
-            |> EnemyRangeScene.hideTiles        |> EnemyAttackRangeScene.hideTiles
-            |> PlayerAttackRangeScene.hideTiles |> TradeRangeScene.hideTiles
-            |> DangerZoneScene.hideTiles
+    // P6-1a: `hideRangeTiles` は撤去。range の Tile Panel ノードはもう積まれない
+    // （renderRangeOverlays が cells から直描き＝hide-then-render の一角を解消）。
 
     /// 1 つの暗幕グリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は `FogScene.setPoolRect` と
     /// 同一（grid × tileSize）。solidBox は alpha=1.0 ゆえ fog 用 alpha に上書きし、scale（=ピクセルサイズ）を

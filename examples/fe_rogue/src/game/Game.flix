@@ -1142,8 +1142,9 @@ mod Game {
             // B/fog・range・配置物・HUD/menu: scene 側の fog 暗幕・range タイル・アイテム/宝箱/階段・全 HUD/メニューを隠し、World render System で描く。
             // B: 全 subtree（配置物/HUD/メニュー/minimap/ポップアップ/カーソル等）を hideSubtrees で scene から外し、
             //    renderSubtrees（drawables）+ renderSubtreePolygons（polygon）で World 経路描画。
-            let prepped = RenderWorld.hideUnitSprites(synced) |> FogScene.hideHaze
-                |> RenderWorld.hideRangeTiles |> RenderWorld.hideSubtrees;
+            // P6-1a/b: hideRangeTiles・hideHaze は撤去（range タイル/fog 暗幕はノード自体を積まなくなった）。
+            let prepped = RenderWorld.hideUnitSprites(synced)
+                |> RenderWorld.hideSubtrees;
             // B/perf: camera ViewTransform は findActiveCamera が全 scene 走査ゆえ**フレーム 1 回**だけ計算し、
             // 全 render 関数へ渡す（旧: 各関数・各 subtree root が個別に呼び ~30 回/frame 走査していた）。
             let transform = RenderWorld.viewTransform(synced);
@@ -1151,6 +1152,8 @@ mod Game {
             // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。
             let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(prepped);
             let worldDrawables = RenderWorld.renderUnits(world2, transform, synced)
+                // P6-1c: 階段は World.stairsPos + 見た目定数から直描き（scene ノード無しの第一号）。
+                |> List.append(RenderWorld.renderStairs(world2, transform, synced))
                 |> List.append(RenderWorld.renderFog(transform, synced))
                 |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
                 |> List.append(RenderWorld.renderSubtrees(transform, synced));

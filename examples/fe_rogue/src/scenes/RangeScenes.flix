@@ -69,18 +69,8 @@ mod RangeOverlay {
         let center = MapSnapshot.cellCenter(cell);
         {x = center#x - half, y = center#y - half}
 
-    /// `cells` を順に列挙してハッチ Panel を `Tile_<idx>` として子追加する（scene ノード描画）。
-    pub def renderTiles(parentName: String,
-                         cells: List[{x = Int32, y = Int32}],
-                         color: Color, alpha: Float32,
-                         scene: Scene[NodeTag]): Scene[NodeTag] =
-        let base = tilePanel(color, alpha);
-        List.foldLeft(acc -> entry -> {
-            let (idx, cell) = entry;
-            let panel = base |> Node2D.setPosition(tileTopLeft(cell));
-            Scene.addChild(parentName, "Tile_${idx}",
-                EngineNode.PanelWithState(panel, NodeTag.NoTag), acc)
-        }, scene, List.zipWithIndex(cells))
+    // P6-1a: 旧 `renderTiles`（Tile_<idx> Panel の scene ノード描画）は撤去。描画は
+    // `tileDrawables`（World render System）が唯一の経路＝ノードを積まない。
 
     /// B: `cells` を camera 適用済みのハッチ box Drawable にする（World render System 用）。`Panel.toDrawables`
     /// で `renderTiles` と同一 styling を再利用し、位置は `tileTopLeft` を camera 変換、scale（=Panel サイズ）を
@@ -94,12 +84,6 @@ mod RangeOverlay {
                 |> Render.applyCameraScale(transform)
         }, cells)
 
-    /// B: scene 側の `Tile_i`（count 個）を隠す。World 描画へ切替える際の二重描画防止＝`hideUnitSprites`/`hideHaze` 対称。
-    pub def hideTiles(parentName: String, count: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        List.foldLeft((acc, i) ->
-            Scene.mapEngineNode(parentName :: "Tile_${i}" :: Nil,
-                n -> CanvasItem.setVisible(false, n), acc),
-            scene, List.range(0, count))
 }
 
 /// MoveRangeScene — プレイヤーの「今ターン移動可能なマス」を青で可視化する
@@ -174,7 +158,6 @@ mod MoveRangeScene {
         let drawCells = Board.stoppableForUnit(board, origin, steps);
         scene
             |> RangeOverlay.attachParent(name(), NodeTag.MoveRange({reachable = cells, drawCells = drawCells}))
-            |> RangeOverlay.renderTiles(name(), drawCells, color(), alpha())
 
     /// 既存の MoveRange ノードを丸ごと取り除いて `add` で組み直す。
     pub def refresh(scene: Scene[NodeTag]): Scene[NodeTag]
@@ -210,11 +193,8 @@ mod MoveRangeScene {
             case Some(NodeTag.MoveRange(data)) => data#drawCells
             case _ => Nil
         }
-
-    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す (二重描画防止)。
-    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
-        RangeOverlay.hideTiles(name(), List.length(drawCells(scene)), scene)
 }
+
 
 /// MoveAttackRangeScene — 「移動先のいずれかから攻撃が届くセル」を赤マスで可視化する
 ///
@@ -272,7 +252,6 @@ mod MoveAttackRangeScene {
                                 else
                                     cleared
                                         |> RangeOverlay.attachParent(name(), NodeTag.MoveAttackRange({cells = cells}))
-                                        |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
                         }
                 }
         }
@@ -287,11 +266,8 @@ mod MoveAttackRangeScene {
             case Some(NodeTag.MoveAttackRange(data)) => data#cells
             case _ => Nil
         }
-
-    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す（二重描画防止）。cells 数だけ隠せば十分。
-    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
-        RangeOverlay.hideTiles(name(), List.length(cells(scene)), scene)
 }
+
 
 /// EnemyRangeScene — カーソルが敵に乗っているとき、その敵の移動範囲を赤色で可視化する
 ///
@@ -344,7 +320,6 @@ mod EnemyRangeScene {
                 cleared
                     |> RangeOverlay.attachParent(name(),
                         NodeTag.EnemyRange({enemyId = enemyId, reachable = cells}))
-                    |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
         }
 
     /// 表示中の EnemyRange ノードがあれば取り除く。なければ何もしない。
@@ -364,11 +339,8 @@ mod EnemyRangeScene {
             case Some(NodeTag.EnemyRange(data)) => data#reachable
             case _                              => Nil
         }
-
-    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す（二重描画防止）。描画セル＝reachable。
-    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
-        RangeOverlay.hideTiles(name(), List.length(reachable(scene)), scene)
 }
+
 
 /// EnemyAttackRangeScene — カーソルが敵に乗っているとき、その敵の「攻撃到達範囲（脅威範囲）」を
 /// 赤色で可視化する。`MoveAttackRangeScene`(プレイヤーの脅威範囲) の敵版ミラー。
@@ -426,7 +398,6 @@ mod EnemyAttackRangeScene {
         else scene
             |> RangeOverlay.attachParent(name(),
                 NodeTag.EnemyAttackRange({enemyId = enemyId, cells = cells}))
-            |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
 
     /// 表示中の EnemyAttackRange ノードがあれば取り除く。なければ何もしない。
     pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -438,11 +409,8 @@ mod EnemyAttackRangeScene {
             case Some(NodeTag.EnemyAttackRange(data)) => data#cells
             case _                                    => Nil
         }
-
-    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す（二重描画防止）。
-    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
-        RangeOverlay.hideTiles(name(), List.length(cells(scene)), scene)
 }
+
 
 /// PlayerAttackRangeScene — 攻撃フェーズ中に味方の射程を赤色で可視化する
 ///
@@ -494,7 +462,6 @@ mod PlayerAttackRangeScene {
                         cleared
                             |> RangeOverlay.attachParent(name(),
                                 NodeTag.PlayerAttackRange({cells = cells}))
-                            |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
                 }
         }
 
@@ -555,11 +522,8 @@ mod PlayerAttackRangeScene {
                     c#x == d#gridPos#x and c#y == d#gridPos#y,
                     inRangeCells))
             |> List.sortBy(d -> (d#gridPos#y, d#gridPos#x))
-
-    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す（二重描画防止）。
-    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
-        RangeOverlay.hideTiles(name(), List.length(cells(scene)), scene)
 }
+
 
 /// TradeRangeScene — 物交換の相手候補 (隣接味方マス) を緑色で可視化する
 ///
@@ -623,7 +587,6 @@ mod TradeRangeScene {
         scene
             |> RangeOverlay.attachParent(name(),
                 NodeTag.TradeRange({cells = allyCells}))
-            |> RangeOverlay.renderTiles(name(), allyCells, color(), alpha())
 
     /// 表示中の TradeRange ノードがあれば取り除く。なければ何もしない。
     pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -636,11 +599,8 @@ mod TradeRangeScene {
             case Some(NodeTag.TradeRange(data)) => data#cells
             case _                              => Nil
         }
-
-    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す（二重描画防止）。
-    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
-        RangeOverlay.hideTiles(name(), List.length(cells(scene)), scene)
 }
+
 
 /// DangerZoneScene — Shift トグルで「全(可視)敵に攻撃される可能性があるマス」を紫で可視化する。
 ///
@@ -705,7 +665,6 @@ mod DangerZoneScene {
         else
             cleared
                 |> RangeOverlay.attachParent(name(), NodeTag.DangerZone({cells = cells}))
-                |> RangeOverlay.renderTiles(name(), cells, color(), alpha())
 
     /// 表示中の DangerZone ノードがあれば取り除く。なければ何もしない。
     pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -717,8 +676,5 @@ mod DangerZoneScene {
             case Some(NodeTag.DangerZone(data)) => data#cells
             case _                              => Nil
         }
-
-    /// B: World 描画へ切替える際、scene 側の Tile Panel を隠す（二重描画防止）。
-    pub def hideTiles(scene: Scene[NodeTag]): Scene[NodeTag] =
-        RangeOverlay.hideTiles(name(), List.length(cells(scene)), scene)
 }
+

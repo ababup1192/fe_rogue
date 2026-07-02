@@ -55,7 +55,7 @@ mod ChestScene {
                  consumableCatalog: Consumable.ConsumableCatalog,
                  ringCatalog: Ring.RingCatalog,
                  floor: FloorCatalog.FloorResource,
-                 scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
+                 scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command, World.WorldQuery} =
         // 宝箱は希少: フロアごとに chestSpawnChance の確率でのみ出現させる
         // （外れたフロアは 0 個）。`and` の短絡で chests 空なら乱数は引かない。
         let willSpawn = not List.isEmpty(floor#chests)
@@ -89,12 +89,14 @@ mod ChestScene {
             |> List.filter(c -> not isOccupied(c, occupied))
 
     /// 駒(味方/敵) + 床アイテム + 階段 のセルを 1 本のリストに集める（配置時の回避集合）。
-    def occupiedCells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
+    /// P6-1c: 階段位置は World.stairsPos から読む（scene ノード撤去済み。build 中の
+    /// placeRandom→SetStairs emit は read-after-write で見える）。
+    def occupiedCells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ World.WorldQuery =
         let units = List.append(
             PlayerScene.getAll(scene) |> List.map(d -> d#gridPos),
             EnemyScene.getAll(scene)  |> List.map(d -> d#gridPos));
         let items = ItemScene.getAllPositions(scene);
-        let stairs = Option.toList(StairsScene.getPos(scene));
+        let stairs = Option.toList(World.stairsPosOf(World.WorldQuery.get()));
         List.append(units, List.append(items, stairs))
 
     def isOccupied(cell: {x = Int32, y = Int32},

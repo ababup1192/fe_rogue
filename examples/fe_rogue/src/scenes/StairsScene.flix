@@ -3,14 +3,10 @@
 /// 各フロアに 1 つだけ、床のランダムなセルに配置される。味方がそのセルに乗ると
 /// 行動メニューに「かいだん」が出て、選ぶとその味方はマップから退場し次フロアへ進む。
 ///
-/// ノード構造（Cursor と並列のトップレベル）:
-///   Stairs (Marker2D, NodeTag.Stairs(Data))
-///     └─ Sprite (Sprite2D, stairs.png)
-///
-/// 設計:
-///   - 親 Marker2D に配置セルと placed フラグを持たせる
-///   - 配置するまでは親 Marker2D を invisible にする（add 直後）
-///   - `placeRandom` で床セルを 1 つ選び、`isAt` で「そのセルに階段があるか」を答える
+/// P6-1c: scene ノードは撤去済み。位置の権威は World.stairsPos（`Cmd.SetStairs`）、描画は
+/// `RenderWorld.renderStairs` が見た目定数（texture/scale/zIndex＝旧 scene.json 値）から直描きする。
+/// `Data`/`isAt`/`getPos` は legacy 杖 twin（StaffCastScene の warp）と golden fixture が
+/// 手組みノードで使うテスト seam として残置（P6 手順 5 の legacy 撤去と同時に消す）。
 mod StairsScene {
 
     /// `gridPos`: 階段を置いたグリッド座標（placed = false のときは未使用）
@@ -23,20 +19,13 @@ mod StairsScene {
     def name(): String = "Stairs"
     pub def stairsPath(): NodePath = name() :: Nil
 
-    /// AssetPath.resolve は cwd を基点に解決するため、プロジェクトルートから実行が前提。
-    def scenePath(): String = AssetPath.resolve("src/scenes/StairsScene.scene.json")
-
-    /// MapScene 登録済みの scene に階段ノードを追加する（初期は未配置 = 非表示）。
-    /// レイアウト（Marker2D + 子 Sprite2D, テクスチャ, scale, zIndex, 初期不可視）は
-    /// `StairsScene.scene.json` に閉じ込めてあり、ロード後にゲーム状態 (`Data`) を
-    /// `Scene.setState` で後付け注入する分業。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead} =
-        let initialData: Data = {gridPos = {x = 0, y = 0}, placed = false};
-        SceneLoader.loadScene(scenePath(),
-                               SceneLoader.constTagParser(NodeTag.NoTag),
-                               scene)
-            |> Scene.setState(stairsPath(), NodeTag.Stairs(initialData))
+    // ── P6-1c: 見た目定数（旧 `StairsScene.scene.json` の Sprite2D 宣言から移設） ──
+    /// project.json の "textures" に登録された階段テクスチャ名。
+    pub def texture(): String = "stairs"
+    /// タイル 16px に合わせた表示スケール。
+    pub def spriteScale(): Vec2.Vec2 = {x = 0.65, y = 0.52}
+    /// Floor(-1)/Walls(0) の上・Item(4,5)/Unit(10) の下。
+    pub def spriteZIndex(): Int32 = 1
 
     /// 床セルからランダムに 1 つ選んで階段を配置する。
     /// 候補は「部屋の内部床セル かつ 駒（味方・敵）に占有されていない かつ 床アイテムが無い」セル。
@@ -68,19 +57,12 @@ mod StairsScene {
                     occupied: List[{x = Int32, y = Int32}]): Bool =
         List.exists(o -> o#x == cell#x and o#y == cell#y, occupied)
 
-    /// `target` セルに階段を配置する。scene ノード（位置更新 + 可視化 + Data）を書き、
-    /// あわせて `Cmd.SetStairs(Some(cell))` を emit して World を権威に更新する（P3-a）。
-    /// `placeRandom` の内部実装。テストからも床セルを固定して配置確認に使う。
-    /// scene ノードは描画/フォグの view として残す（`renderSubtrees`/`applyFog` が読む）。gameplay の階段位置読みは
-    /// `World.stairsPosOf` に flip 済み。
+    /// `target` セルに階段を配置する＝`Cmd.SetStairs(Some(cell))` を emit して World を更新する。
+    /// P6-1c: scene ノード書きは撤去（描画は `RenderWorld.renderStairs` が World から直描き）。
+    /// scene はパイプ互換のためそのまま返す。
     pub def placeAt(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        let world = MapSnapshot.cellCenter(target);
         World.Command.emit(World.Cmd.SetStairs(Some(target)));
         scene
-            |> Scene.setGlobalPositionAt(stairsPath(), world)
-            |> mapStairs((marker, _) ->
-                (CanvasItem.setVisible(true, marker),
-                 ({gridPos = target, placed = true}: Data)))
 
     /// 指定セルに（配置済みの）階段があるか。ActionMenuScene が「かいだん」コマンドの
     /// 出現条件として使う。
@@ -101,23 +83,6 @@ mod StairsScene {
             case _ => None
         }
 
-    /// `Scene.mapEngineNode` のパターンマッチにより、Stairs 以外のノードは `other => other` で
-    /// 素通しされるため、他ノードへの副作用なく安全に呼べる。
-    def mapStairs(f: (Marker2D, Data) -> (Marker2D, Data),
-                   scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(stairsPath(), engineNode -> match engineNode {
-            case EngineNode.Marker2DWithState(marker, NodeTag.Stairs(data)) =>
-                let (newMarker, newData) = f(marker, data);
-                EngineNode.Marker2DWithState(newMarker, NodeTag.Stairs(newData))
-            case other => other
-        }, scene)
-
-    /// フォグ適用: 配置済み(placed) かつ 現在地が lit のときだけ階段を表示する。
-    /// 位置・placed・gridPos は素通し（`placeAt` と責務分離）。`FogScene` から毎フレーム呼ばれる。
-    pub def applyFog(isLit: {x = Int32, y = Int32} -> Bool,
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapStairs((marker, data) ->
-            (CanvasItem.setVisible(data#placed and isLit(data#gridPos), marker), data),
-            scene)
-
+    // P6-1c: 旧 `mapStairs`/`applyFog`（scene ノードの可視制御）は撤去。fog の lit ゲートは
+    // `RenderWorld.renderStairs` が直描き時に判定する。
 }

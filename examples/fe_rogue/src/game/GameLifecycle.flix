@@ -41,7 +41,8 @@ mod GameLifecycle {
     pub def buildPlayingScene(catalogs: Catalogs,
                                 floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
-                SelectedPlayer.State, PartySelection.State, World.Command, TopBarScene.State} =
+                SelectedPlayer.State, PartySelection.State, World.Command, World.WorldQuery,
+                TopBarScene.State} =
         Scene.empty()
             |> MapScene.add(floor)
             |> FogScene.add             // 各 module の薄暗いモヤ矩形 + 常駐 FogDriver
@@ -77,7 +78,6 @@ mod GameLifecycle {
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
             |> ArrowCursorScene.add     // 杖発射方向の矢印カーソル (初期は非表示)
-            |> StairsScene.add          // 次フロアへの階段 (初期は非表示。配置は呼び出し側で確定)
             |> CameraScene.add
             |> EnemyTurnDriverScene.add // 敵ターン進行の常駐タグノード (process で phase 判定)
             |> StairsExitScene.add      // 集合「階段で離脱」の順次退場ドライバ (process で phase 判定)

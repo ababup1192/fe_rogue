@@ -180,7 +180,8 @@ mod MinimapScene {
     pub def step(scene: Scene[NodeTag]):
                     Scene[NodeTag]
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
-                       PlayerData.PartyQuery, EnemyData.RosterQuery} =  // P2-2a: 味方/敵読みを World 経由へ
+                       PlayerData.PartyQuery, EnemyData.RosterQuery,
+                       World.WorldQuery} =  // P2-2a: 味方/敵読みを World 経由へ。P6-1c: 階段位置も World
         match Scene.getState(driverPath(), scene) {
             case Some(NodeTag.MinimapDriver(data)) =>
                 let phase = TurnPhase.State.get();
@@ -224,10 +225,11 @@ mod MinimapScene {
         }, scene)
 
     /// 階段が「発見済み」か。階段セルの属する module が訪問済みなら発見扱い。
+    /// P6-1c: 階段位置は World.stairsPos から読む（scene ノード撤去済み）。
     def stairsDiscovered(visited: Set[Int32],
                           placements: List[DungeonComposer.ModulePlacement],
-                          scene: Scene[NodeTag]): Bool =
-        match StairsScene.getPos(scene) {
+                          _scene: Scene[NodeTag]): Bool \ World.WorldQuery =
+        match World.stairsPosOf(World.WorldQuery.get()) {
             case None       => false
             case Some(cell) =>
                 match MapSnapshot.moduleOfCellIn(cell, placements) {
@@ -242,7 +244,7 @@ mod MinimapScene {
     /// union 分割して一体化（重なり部分を二重描画しない）。
     def renderMinimap(show: Bool, data: DriverData, litRooms: Set[Int32],
                        scene: Scene[NodeTag]): Scene[NodeTag]
-                       \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
+                       \ {PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         if (not show)
             hideAll(scene)
         else {
@@ -312,15 +314,16 @@ mod MinimapScene {
                         placements: List[DungeonComposer.ModulePlacement],
                         roomCount: Int32, litRooms: Set[Int32], scene: Scene[NodeTag]):
                        List[{cell = {x = Int32, y = Int32}, color = Color}]
-                       \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
+                       \ {PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         let players =
             PlayerData.PartyQuery.getAll()
                 |> List.filter(d -> not d#hidden)
                 |> List.map(d -> {cell = d#gridPos,
                                   color = if (d#id == 0) leaderColor() else playerColor()});
+        // P6-1c: 階段位置は World.stairsPos から読む（scene ノード撤去済み）。
         let stairsM =
             if (data#stairsSeen)
-                match StairsScene.getPos(scene) {
+                match World.stairsPosOf(World.WorldQuery.get()) {
                     case Some(cell) => {cell = cell, color = stairsColor()} :: Nil
                     case None       => Nil
                 }

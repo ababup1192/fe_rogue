@@ -37,13 +37,14 @@ mod TestStairsScene {
     // 配置後: 置いたセルだけ isAt = true
     // ========================================================================
 
-    /// (3,4) に置くと、(3,4) だけ isAt = true、隣の (3,5) は false、getPos = (3,4)。
+    /// P6-1c: placeAt は Cmd emit のみ（scene ノード書きは撤去）。isAt/getPos は legacy 杖 twin と
+    /// golden fixture が使う手組みノード用 seam ＝ placed=true の手組みノードに対する挙動を pin する。
     @Test
     def testPlaceAtMarksOnlyThatCell(): Unit \ Assert =
-        // placeAt は P3-a で `Cmd.SetStairs` を emit する。scene ノードの配置ロジックだけを検証するので
-        // World.Command は no-op で捨てる（World 権威化の等価性は golden 側で pin）。
-        let placed = run { StairsScene.placeAt({x = 3, y = 4}, emptyStairsScene()) }
-                     with handler World.Command { def emit(_, k) = k() };
+        let placed = Scene.empty()
+            |> Scene.addNode("Stairs",
+                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()),
+                    NodeTag.Stairs(({gridPos = {x = 3, y = 4}, placed = true}: StairsScene.Data))));
         Assert.assertEq(
             expected = (true, false, Some((3, 4))),
             (StairsScene.isAt({x = 3, y = 4}, placed),
