@@ -65,12 +65,19 @@ mod FogScene {
             EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.FogDriver),
             withPool)
 
-    /// Game.flix の `Node[NodeTag] instance` の `process` redef から `NodeTag.FogDriver`
-    /// ノードに対して dispatch される per-frame entry。
-    pub def process(_delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ SelectedPlayer.State =
+    /// P5-a(F8): per-node dispatch から外し、gameLoop がパイプライン段で 1 回呼ぶ
+    /// frame-paced System。旧 `process` は node/path/delta を一切使わない pass-through
+    /// だったので `Scene → Scene` に昇格（FogDriver ノードは常駐 marker として残置）。
+    /// 明示 step は毎フレーム（タイトル/選択画面含む）走るため、旧 per-node dispatch と同じ
+    /// 「FogDriver ノードが居るときだけ」を gate で再現する（Map 不在 scene で
+    /// `MapScene.getPlacements` が bug! するのを防ぐ）。
+    pub def step(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
+        if (Option.isEmpty(Scene.getEngineNode(MapScene.worldName() :: driverName() :: Nil, scene)))
+            scene
+        else stepPlaying(scene)
+
+    /// FogDriver 常駐が確認できた Playing scene 用の本体（旧 process の中身）。
+    def stepPlaying(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
         let drafts = SelectedPlayer.State.get()#drafts;
         // 移動ドラフト中も「部屋点灯」はターン開始位置(origin)基準に固定する。コミットで
         // drafts が消えれば origin==live に戻り点灯する（＝待機/接敵まで新規部屋を暗いまま）。
@@ -80,7 +87,7 @@ mod FogScene {
                  id = d#id, gridPos = d#gridPos, hidden = d#hidden,
                  origin = MoveDraft.originOf(d#id, drafts) |> Option.getWithDefault(d#gridPos)
                });
-        (node, applyFogWith(units, scene))
+        applyFogWith(units, scene)
 
     /// 画面全体モヤ＋明るい穴の切り抜き、および敵/アイテム/階段の可視性を一括更新する。
     /// init（drafts 無し・GameLifecycle のスポーン部屋点灯）から呼ぶ入口。

@@ -36,6 +36,14 @@ pub enum Channel with Eq, Order {
     case Position   // renderPos（連続描画位置＝移動）
 }
 
+/// P5-b: ダメージ数字ポップアップ fx の寿命 store エントリ（秒・実時間）。
+/// `remaining` は stepWorld が毎フレーム dt 減算し 0 以下で drop。`startY` は生成時ワールド Y
+/// （経過比率から現在 Y を逆算＝上方向 float）。テキスト/色/X は view（Label2D ノード）が持つ。
+pub type alias PopupFx = { remaining = Float64, total = Float64, startY = Float64 }
+
+/// P5-b: 爆発 fx の寿命 store エントリ（秒・実時間）。経過比率からコマ番号を view が導出する。
+pub type alias ExplosionFx = { remaining = Float64, total = Float64 }
+
 /// B/m3: 1 フレームで移動（Position tween）した entity の marker 駆動情報（EntityRef＋補間 pixel）。
 /// `stepWorld` が active∪done を返し、`RenderWorld.syncMarkers` が実 scene の marker を pos へ置く。
 /// 同型 Vec2 の誤順を防ぐ名前渡し＋faction を EntityRef に閉じ込め（uid は plumbing 内で decode）。
@@ -150,6 +158,14 @@ pub enum World {
                  // `elapsed`（点滅位相）は view 専用ゆえ store の値は spawn 時のスナップショット（World reader は読まない）。
                  // 3-builder は chests と同型（seed=itemsFromScene／preserve＋scene 在セルで prune）。
                  groundItems = Map[Int32, ItemScene.Data],
+                 // P5-b（演出の World 権威化）: fx の寿命 store。spawn は `Cmd.SpawnPopupFx/SpawnExplosionFx`
+                 // （applyCmd が nextSeq で採番し +1）、寿命 tick と期限切れ drop は stepWorld（EcsTween と同じ
+                 // 「stepWorld が World を直接進める」前例）。scene の子 Label2D/Sprite2D は描画 view で、
+                 // gameLoop が `DamagePopupScene.syncView`/`ExplosionScene.syncView` で store から派生する。
+                 // 3-builder は command/step 由来ゆえ preserve（scene mirror 元なし・~0.7s 寿命の transient なので
+                 // floor 遷移で残っても自然 expire＝prune 不要）。
+                 popupFx = Map[Int32, PopupFx], popupFxNextSeq = Int32,
+                 explosionFx = Map[Int32, ExplosionFx], explosionFxNextSeq = Int32,
                  // B/tiles: 背景 map タイルの描画ハンドル（floor+walls 層・静的）。rebuild イベント（tileGen 変化）で
                  // bake し、render System が camera 適用して instanced 描画。scene TileMapLayer ノードは衝突用に存続。
                  tileLayers = List[TileLayerHandle],
@@ -198,6 +214,8 @@ mod World {
                      stairsPos = None,
                      chests = Map.empty(),
                      groundItems = Map.empty(),
+                     popupFx = Map.empty(), popupFxNextSeq = 0,
+                     explosionFx = Map.empty(), explosionFxNextSeq = 0,
                      tileLayers = Nil, tileGen = 0,
                      effectRule = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false,
@@ -295,6 +313,9 @@ mod World {
             chests = chestsFromScene(scene),
             // P3-c: groundItems も frame-1 seed だけ scene の GroundItem ノード群から読む（chests と同型）。
             groundItems = itemsFromScene(scene),
+            // P5-b: fx は command/step 由来＝preserve（scene mirror 元なし・transient）。
+            popupFx = w#popupFx, popupFxNextSeq = w#popupFxNextSeq,
+            explosionFx = w#explosionFx, explosionFxNextSeq = w#explosionFxNextSeq,
             // B/tiles: tileLayers/tileGen は command-derive（BumpTileGen/setTileLayers）＝preserve（frame-1 は空/0 を carry）。
             tileLayers = w#tileLayers, tileGen = w#tileGen,
             // P2: effectRule は敵 resource 由来の read-model（敵のみ・内側 Option=ルールなし）＝毎フレーム再 mirror。
@@ -398,6 +419,9 @@ mod World {
             chests = Map.filterWithKey((k, _) -> Set.memberOf(k, sceneChestKeys(scene)), w#chests),
             // P3-c: groundItems も command 由来（SpawnItem/RemoveItem）を preserve＋scene 在セルで prune（chests と同型）。
             groundItems = Map.filterWithKey((k, _) -> Set.memberOf(k, sceneItemKeys(scene)), w#groundItems),
+            // P5-b: fx は command/step 由来＝preserve（期限切れ drop は stepWorld が担う・prune 不要）。
+            popupFx = w#popupFx, popupFxNextSeq = w#popupFxNextSeq,
+            explosionFx = w#explosionFx, explosionFxNextSeq = w#explosionFxNextSeq,
             // B/tiles: tileLayers/tileGen は command-derive＝preserve（rebuild イベント〔tileGen 変化〕時のみ gameLoop が bake）。
             tileLayers = w#tileLayers, tileGen = w#tileGen,
             // P2: effectRule も敵 resource 由来 read-model（敵のみ）＝毎フレーム再 mirror。
@@ -430,10 +454,14 @@ mod World {
         let World.World(w) = world;
         let (nextTweens, outs, _done) = EcsTween.step(dt, w#tweens);
         // tweens を更新後、各補間出力をチャンネル別に対象 component へ書く。
+        // P5-b: fx（ダメージ数字/爆発）の寿命もここで tick（remaining -= dt・0 以下で drop）。
+        // tween と同じ「stepWorld が World を直接進める」lane＝per-frame Cmd を出さない。
         let stepped = List.foldLeft((acc, pair) -> {
             let ((uid, ch), out) = pair;
             applyTweenOut(uid, ch, out, acc)
-        }, World.World({tweens = nextTweens | w}), outs);
+        }, World.World({tweens = nextTweens,
+                        popupFx = tickFxMap(dt, w#popupFx),
+                        explosionFx = tickFxMap(dt, w#explosionFx) | w}), outs);
         // marker 駆動用に Position チャンネルの補間結果を EntityRef＋pixel で外へ出す。
         // outs は active に加え**完了フレームの target（t=1.0 スナップ）も含む**（EcsTween.step）＝
         // 完了の取りこぼしなく marker を target に確定できる（isAnimating 単独では落とす）。
@@ -445,6 +473,15 @@ mod World {
             }
         });
         (stepped, moved)
+
+    /// P5-b: fx 寿命 map を dt（秒）ぶん進め、期限切れ（remaining <= 0）を落とす。
+    /// PopupFx/ExplosionFx 共用（row-poly・remaining だけ触る）。
+    def tickFxMap(dt: Float64, fx: Map[Int32, {remaining = Float64 | r}]):
+            Map[Int32, {remaining = Float64 | r}] =
+        Map.foldLeftWithKey((acc, seq, d) -> {
+            let r = d#remaining - dt;
+            if (r <= 0.0) acc else Map.insert(seq, {remaining = r | d}, acc)
+        }, Map.empty(), fx)
 
     /// B/m2: tween の補間出力をチャンネル別に対象 component へ書く（Position→renderPos）。
     /// 不能組（Position に Scalar 等）は smart constructor 経路ゆえ設計上ありえない＝loud に bug!。
@@ -564,6 +601,8 @@ mod World {
         case RemoveChest({x = Int32, y = Int32})  // P3-b: 宝箱を開封して除去（cell key で chests から削除）
         case SpawnItem(ItemScene.Data)     // P3-c: 床アイテムを配置（build/復元/respawn/drop）。cell key で groundItems へ挿入
         case RemoveItem({x = Int32, y = Int32})   // P3-c: 床アイテムを拾得して除去（cell key で groundItems から削除）
+        case SpawnPopupFx({total = Float64, startY = Float64})  // P5-b: ダメージ数字 fx を nextSeq で採番して spawn（remaining=total で開始）
+        case SpawnExplosionFx({total = Float64})                // P5-b: 爆発 fx を nextSeq で採番して spawn
     }
 
     /// System が出力する sim-event（F-clock の最小骨組み・F3b 導入 → slice `simevent-algebra` で拡張）。
@@ -877,6 +916,20 @@ mod World {
                 // P3-c: 床アイテムを拾得して除去（takeAt が emit）。存在の消失は Map 不在で表現。
                 let World.World(w) = world;
                 World.World({groundItems = Map.remove(cellKey(cell), w#groundItems) | w})
+            case Cmd.SpawnPopupFx(d) =>
+                // P5-b: nextSeq で採番して挿入し +1。期限切れ drop は stepWorld（Cmd 不要）。
+                let World.World(w) = world;
+                let seq = w#popupFxNextSeq;
+                World.World({popupFx = Map.insert(seq,
+                                 {remaining = d#total, total = d#total, startY = d#startY}, w#popupFx),
+                             popupFxNextSeq = seq + 1 | w})
+            case Cmd.SpawnExplosionFx(d) =>
+                // P5-b: popupFx と同型（採番して挿入し +1）。
+                let World.World(w) = world;
+                let seq = w#explosionFxNextSeq;
+                World.World({explosionFx = Map.insert(seq,
+                                 {remaining = d#total, total = d#total}, w#explosionFx),
+                             explosionFxNextSeq = seq + 1 | w})
         }
 
     // ── slice `simevent-algebra`: SimEvent reducer / adapter / cmdKey ────────────────
@@ -1021,6 +1074,8 @@ mod World {
             case Cmd.RemoveChest(cell)        => ("RemoveChest", cell#x, cell#y, 0)
             case Cmd.SpawnItem(data)          => ("SpawnItem", data#gridPos#x, data#gridPos#y, 0)
             case Cmd.RemoveItem(cell)         => ("RemoveItem", cell#x, cell#y, 0)
+            case Cmd.SpawnPopupFx(d)          => ("SpawnPopupFx", Float64.truncateToInt32(d#startY), 0, 0)
+            case Cmd.SpawnExplosionFx(_)      => ("SpawnExplosionFx", 0, 0, 0)
         }
 
     /// F7-spike: 敵の alerted を World から読む（reader flip の供給元・hpOf 同型）。Player は常に None。
@@ -1899,6 +1954,23 @@ mod World {
     /// P3-c: 指定セルの床アイテムを World から読む（`ItemScene.dataAt` の World 版）。
     pub def groundItemAtOf(cell: {x = Int32, y = Int32}, world: World): Option[ItemScene.Data] =
         let World.World(w) = world; Map.get(cellKey(cell), w#groundItems)
+
+    /// P5-b: ダメージ数字 fx store（seq → 寿命）。syncView が読み scene 子 Label2D を派生する。
+    pub def popupFxOf(world: World): Map[Int32, PopupFx] =
+        let World.World(w) = world; w#popupFx
+
+    /// P5-b: 次に spawn する popup fx の連番。emit が子ノード名 `Popup_<seq>` の採番に読む
+    /// （Cmd.SpawnPopupFx の applyCmd がこの値で挿入して +1 する＝read-after-write で一致）。
+    pub def popupFxNextSeqOf(world: World): Int32 =
+        let World.World(w) = world; w#popupFxNextSeq
+
+    /// P5-b: 爆発 fx store（seq → 寿命）。
+    pub def explosionFxOf(world: World): Map[Int32, ExplosionFx] =
+        let World.World(w) = world; w#explosionFx
+
+    /// P5-b: 次に spawn する爆発 fx の連番（popupFxNextSeqOf と同型）。
+    pub def explosionFxNextSeqOf(world: World): Int32 =
+        let World.World(w) = world; w#explosionFxNextSeq
 
     /// P1c 安全網: store した mapSnapshot（地形）が scene 由来と食い違うか（boardKey は駒のみ見るため別建て）。
     /// MapSnapshot は Eq 非自動ゆえ (tileSize, wallCells) へ射影して比較（壁レイアウトの drift 検出）。

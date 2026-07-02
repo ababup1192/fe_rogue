@@ -199,10 +199,6 @@ mod UnitHPBarScene {
         Scene.mapEngineNode(previewPath, n ->
             EngineNode.mapColorRect(c -> CanvasItem.setVisible(false, c), n), scene)
 
-    /// 常時表示のため per-frame 更新は不要。Scene インタフェースの要件を満たすための no-op。
-    pub def process(_dt: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) =
-        (node, scene)
+    // P5-c: 旧 no-op `process`（per-node dispatch の要件充足だけの空実装）は dispatchTickables
+    // 撤去に伴い削除。常時表示ゆえ per-frame 更新は元々不要（値の変化は update 等の明示 API が push）。
 }

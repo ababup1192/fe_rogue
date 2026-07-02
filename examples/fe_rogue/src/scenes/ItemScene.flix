@@ -417,28 +417,23 @@ mod ItemScene {
 
     // ─── tick（点滅アニメーション） ───────────────────────────
 
-    /// Game.flix の `Node[NodeTag] instance` の `process` redef から、各 GroundItem に
-    /// 対して per-node dispatch される。`elapsed` を進めて 4 兄弟の縁取り Sprite に alpha
-    /// (`pulseAlpha`) を反映する。
-    /// `writeElapsed` が scene を書き換えるため、同 path から再取得しないと返す node が stale になる。
-    /// そのため scene で両方の更新を終えてから最新ノードを取り直して返す。
-    pub def process(dt: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) =
-        let next = match Scene.getState(path, scene) {
-            case Some(NodeTag.GroundItem(d)) =>
-                let newElapsed = advance(Duration.add(d#elapsed, dt));
-                let alpha = pulseAlpha(newElapsed);
-                scene
-                    |> writeElapsed(path, newElapsed)
-                    |> applyAlphaToOutlines(path, alpha)
-            case _ => scene
-        };
-        match Scene.getEngineNode(path, next) {
-            case Some(latest) => (latest, next)
-            case None         => (node, next)
-        }
+    /// P5-c(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
+    /// 全 GroundItem の `elapsed` を進めて 4 兄弟の縁取り Sprite に alpha (`pulseAlpha`) を
+    /// 反映する（子列挙は `applyFog` と同型。親不在なら getChildrenAt が Nil で no-op）。
+    pub def step(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let childNames = Scene.getChildrenAt(parentPath(), scene);
+        List.foldLeft((acc, name) -> {
+            let itemPath = List.append(parentPath(), name :: Nil);
+            match Scene.getState(itemPath, acc) {
+                case Some(NodeTag.GroundItem(d)) =>
+                    let newElapsed = advance(Duration.add(d#elapsed, dt));
+                    let alpha = pulseAlpha(newElapsed);
+                    acc
+                        |> writeElapsed(itemPath, newElapsed)
+                        |> applyAlphaToOutlines(itemPath, alpha)
+                case _ => acc
+            }
+        }, scene, childNames)
 
     /// `elapsed` をサイクル長で巻き戻す。`Duration` に mod 演算がなく float 誤差も避けたいため、
     /// dt が cycle 未満であることを前提に 1 回の減算で対応する。

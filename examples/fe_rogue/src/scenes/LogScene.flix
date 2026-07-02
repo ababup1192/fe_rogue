@@ -107,13 +107,12 @@ mod LogScene {
 
     // ─── 毎フレーム更新 ───────────────────────────────────────
 
-    /// Game.flix の `process` redef から `NodeTag.Log` ノードに dispatch される(log は 1 個のみ)。
+    /// P5-c(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
     /// drain → キューに積む → 新着があればタイマーを 0 に戻す → 5 秒判定 → 5 行へ反映 → 表示/非表示。
-    /// scene 経由で自分(logPath/linePath)を書き換えるため、最後に最新ノードを取り直して返す。
-    pub def process(delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
+    /// Log ノード不在（タイトル/選択画面）でも安全: drain はログ未発行で空、renderLines/setOffsetX の
+    /// mapAt は対象不在で no-op（旧 per-node dispatch の「ノードが居るときだけ」と同値）。
+    pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
+                    Scene[NodeTag]
                     \ {GameLogger.GameLogger, LogScene.State} =
         let drained = GameLogger.drainEntries();
         // P4-a: 状態は resource から読む（旧: NodeTag.Log ペイロード）。ノードは描画 view（Label/CanvasLayer）。
@@ -123,13 +122,9 @@ mod LogScene {
         let idleReset = if (List.isEmpty(drained)) data#idleSince else Duration.zero();
         let (finalQueue, finalIdle) = tickIdle(newQueue, idleReset, delta);
         LogScene.State.put({queue = finalQueue, idleSince = finalIdle});
-        let updated = scene
+        scene
             |> renderLines(finalQueue)
-            |> setOffsetX(if (List.isEmpty(finalQueue)) hiddenOffsetX() else homeOffsetX());
-        match Scene.getEngineNode(path, updated) {
-            case Some(latest) => (latest, updated)
-            case None         => (node, updated)
-        }
+            |> setOffsetX(if (List.isEmpty(finalQueue)) hiddenOffsetX() else homeOffsetX())
 
     /// `GameLogger.Entry`(古→新)を表示用 `LogEntry` へ写す。
     def toLogEntries(entries: List[GameLogger.Entry]): List[LogEntry] =

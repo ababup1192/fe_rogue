@@ -169,11 +169,11 @@
 **目的**: 演出ノード（DamagePopup/Explosion/ItemPickupPopup/HoldGauge/lunge marker）を EcsTween + RenderItem に置換し、per-node `process` dispatch と engine `Tween.tickAll` 依存を空にする。
 
 **達成条件**:
-- [ ] 演出の寿命・位置が `World.tweens`（EcsTween）または専用 store で駆動される
-- [ ] `dispatchTickables` / `dispatchDrivers` の対象が 0 になり、gameLoop の明示 step 呼びに一本化
-- [ ] Fog / Minimap / ArrowCursor が F8 パターン（frame-paced step）に移行
-- [ ] MoveDraft の scene 副作用が Cmd/System 経由になる
-- [ ] 武器/HP バー marker が RenderWorld 直描き（`Game.flix:1147` の「marker は engine 駆動のまま」解消）
+- [x] 演出の寿命・位置が `World.tweens`（EcsTween）または専用 store で駆動される（P5-b: popupFx/explosionFx store・tick=stepWorld・view 派生=syncView。DamagePopup/Explosion 対象）
+- [x] `dispatchTickables` / `dispatchDrivers` の対象が 0 になり、gameLoop の明示 step 呼びに一本化（P5-a/c）
+- [x] Fog / Minimap / ArrowCursor が F8 パターン（frame-paced step）に移行（P5-a）
+- [ ] MoveDraft の scene 副作用が Cmd/System 経由になる（P5-d・残）
+- [ ] 武器/HP バー marker が RenderWorld 直描き（`Game.flix` の「marker は engine 駆動のまま」解消）（P5-e・残）
 
 **対象**: `scenes/DamagePopupScene.flix`(145), `ExplosionScene.flix`(115), `ItemPickupPopupScene.flix`(312), `TurnEndHoldScene.flix`(246), `UnitHPBarScene.flix`(208), `FogScene`, `MinimapScene`, `ArrowCursorScene`, `systems/PlayerMovementScene.flix`, `game/Game.flix`(dispatch 表), `engine_ecs/src/EcsTween.flix`
 
@@ -235,19 +235,22 @@
 
 ## §G 進捗（living — 更新はここだけで良い）
 
-**現在フェーズ: P4（UI 状態の Resource 化）進行中 — (a) payload→resource は a〜e の 5 本完了（Log/BattlePanel/TurnEndHold/LevelUpPanel/ItemPickupPopup）。残 (a) は TopBar/Title（△・形が違う）と演出系（P5 と重なる）、(b) engine ItemList/Cursor は未着手（要事前相談）。P3 完了・P2 は保留（P6 直前）・P5 は P4 と並行可**
+**現在フェーズ: P5（演出・残 driver の System 化）進行中 — P5-a（view driver 3 種の F8 step 化）・P5-b（DamagePopup/Explosion の World fx store 化）・P5-c（表示系 tickable 8 種の step 化）完了＝dispatchTickables/dispatchDrivers 対象 0。残 P5-d（MoveDraft revert の Cmd/System 化）・P5-e（武器/HPバー marker の RenderWorld 直描き）。P4 は (a) 5 本完了で一旦クローズ（残 = TopBar/Title の△と (b) engine ItemList/Cursor〔要事前相談〕）。P3 完了・P2 は保留（P6 直前）**
 
 > **P3 完了メモ（2026-07-02・全 Level 1）**: 配置物 3 種の存在/位置/中身を World store に権威化し、gameplay reader（メニュー gate・階段 driver 等）を World へ flip。scene ノードは描画/フォグ/点滅アニメ view として残置（renderSubtrees 経路不変・dual-write で despawn 時にノードも消える）。RenderWorld 調査で「ユニットも scene sprite ノードを保持＝World は存在 gate のみ」「node-less 描画（Render.drawAtlas+regionRect）は Stairs が catalog 非対応で詰む」と判明したため、addChild 撤去＋catalog 直描画は P6（ユニットの脱ノードと同時）へ委譲するのが妥当。
 
 > **P2 保留メモ（2026-07-02）**: 在庫の Cmd/emit/accessor/dual-write は全て既存で稼働・`[PLAYERDATA DIFF]` で World==scene 検証済み。残りの「scene 権威を落として World 単独化」は read-before-mutate＋描画（UnitCard 等）＋**セーブ capture（`captureSnaps` が scene Data 直読み）**の付け替えを伴う重い縦スライスで、セーブ移行が不可分。機能上は今困っていない（P6 撤去まで dual-write 温存で動く）ため、独立でクリーンな P3 を先行。P2 再開時は rings/ringEquipped（player-only 最小）から縦スライスで。
 
-- テスト baseline: 1063（P1 着手前）→ 1070（P1）→ 1071（P3-a）→ 1072（P3-b）→ 1073（P3-c＝P3 完了）→ **1073 green**（P4-a〜e・挙動不変リファクタゆえテスト数不変）
+- テスト baseline: 1063（P1 着手前）→ 1070（P1）→ 1071（P3-a）→ 1072（P3-b）→ 1073（P3-c＝P3 完了）→ 1073（P4-a〜e・挙動不変）→ **1076 green**（P5-b の fx store テスト +3）
 - 完了済み前史: Track A/A'（faction 統合・unified-id）、F0-F8（sim state 権威化・driver step 化）、pos 統合、Phase C 前提 4 スライス、combat/staff cutover（トグル 3 つ true）、render-from-World 常時化
 - **P1 実像の訂正**: 当初 6 TODO のうち level-up モーダルと武器耐久は既に配線済み（doc 陳腐化のみ）だった。実装が要ったのは Stopgap 杖・thief drop・敵ノックバックの 3 点。
-- **次の一手**: P4 (a) の素直なレーン（Log/BattlePanel/TurnEndHold/LevelUpPanel/ItemPickupPopup）は完了。候補は ①**P5 着手**（DamagePopup/Explosion 等の演出 System 化。P4 残の演出系 payload はこちらで一緒に処理するのが自然）、②P4 残 (a) の TopBar（World dual-write の整理を伴う）/Title（入力駆動・payload は選択 index）、③P4 (b) engine ItemList/Cursor の resource 化（**engine 変更を伴うため事前相談必須**）。推奨は ①。P2 は保留継続（P6 直前）。
+- **次の一手**: P5-a/b/c 完了（run 確認待ち）。残 P5 は ①**P5-d MoveDraft revert の Cmd/System 化**（`PlayerScene.revertDraftAction` の 6 case 中 Equipped のみ D3 で dual-write 済み。残り＝MovedFrom(snapTo)/PickedUp(respawn+removeLastInventoryItem)/Dropped/Traded/GatherWaited の scene 直操作）、②**P5-e 武器グリフ（WeaponIconScene の Polygon2D/Arc2D）と HP バー（UnitHPBarScene の ColorRect）の RenderWorld 直描き化**（現状 renderArgs=scene auto-render 経由。lunge は AnimationPlayer 駆動のまま）。①→② の順を推奨（②は render 経路で重い）。その後 P2 → P6。
   - **P3 で確立したパターン（配置物 = World 権威・scene ノードは view）※P6 の脱ノードや他 store 化で再利用**: ① World に store field ＋ `Cmd.SpawnXxx/RemoveXxx`（scalar なら `SetXxx`）＋ applyCmd ＋ cmdKey を足す。② 配置/除去関数が `Cmd` を emit（scene ノードも従来通り set/remove＝描画/フォグ/frame-1 seed の view として残す＝dual-write）。③ refreshMirror は **command 由来を preserve**（変数個は scene 在キーで prune＝unit の validUids 相当）／syncFromScene は frame-1 seed として scene を読む＝hp/pos と同型。emit が Playing 突入・floor 遷移とも `World.Command` 文脈で refreshMirror より先に走るので seed は正しい。④ gameplay reader（driver/メニュー gate/overload 判定）を `World.xxxOf` へ flip。⑤ 描画/フォグ/セーブ capture/build-time 占有判定・deep な execution 経路は scene 読みのまま可（dual-write で World と等価。真の脱ノードは P6）。⑥ record は Eq/Order 未定義＝比較は `Option.exists(c -> c#x==.. and c#y==..)`、Map key は cell を `cellKey=x*1000+y` で Int32 符号化。⑦ reader へ WorldQuery を足すと呼び出し連鎖に伝播（ActionMenu では buildItems/refreshItems/onActionConfirmed と MenuHandler の `type Aef`・Game.flix dispatch まで）。全 reader flip で menu 関数の `scene` 引数が未使用化することがある＝`_scene`。テストは `withMenuReadMocks*` に `withWorldQuery(syncFromScene(scene,empty()))` を仕込み済みで一括で通る。scene ノードを直接組む純粋テストで emit 関数を呼ぶ場合は `run { … } with handler World.Command { def emit(_,k)=k() }` で捨てるか、Ref[World] 版で applyCmd して store 権威を pin。
 - 履歴:
   - 2026-07-02: 本 doc 作成（Scene vs ECS 全棚卸し → P1-P6 ワークフロー策定）
+  - 2026-07-02: P5-c 表示系 tickable 8 種を明示 step 化＝**dispatchTickables 対象 0**。GroundItem（全 item fold）/TopBar/ItemPickupPopup（frameStep）/CharacterSelect/Log/TurnEndHold（frameStep）/Camera を step 化、HPBar は no-op process ごと削除。**順序制約を pipeline で再現**: TopBar は EnemyTurnDriver.step より前（World 2 bool の dual-write 元）、TurnEndHold は LogScene.step より後（ログ帯上書き・旧 root 追加順の再現）。**明示 step は毎フレーム走る**ため「ノードが居るときだけ」を gate で再現（TurnEndHold/Camera=getEngineNode gate、TopBar/CharacterSelect=getState gate、Log/ItemPickupPopup/GroundItem=mapAt no-op で自然安全）。Camera は「返り node を engine が書き戻す」旧契約が消えるので mapEngineNode(cameraPath) で自書き。全 1076 green。
+  - 2026-07-02: P5-b DamagePopup/Explosion の寿命を World fx store 化＝演出の World 権威第一号。`popupFx/explosionFx = Map[seq, {remaining,total(,startY)}]`＋`popupFxNextSeq/explosionFxNextSeq`、spawn=`Cmd.SpawnPopupFx/SpawnExplosionFx`（applyCmd が採番+1・emit は WorldQuery で次 seq 先読み=read-after-write 一致）、**寿命 tick と期限切れ drop は stepWorld**（EcsTween と同じ「stepWorld が World を直接進める」lane・per-frame Cmd なし）、view 派生は gameLoop（syncMarkers 後）の `syncView(world2)`（Y 補間/コマ送り＋store 不在子の removeAt）。NodeTag 4 variant（DamagePopupsRoot/DamagePopup/ExplosionsRoot/Explosion）ペイロードレス化。3-builder は preserve（transient ゆえ prune 不要・floor 遷移残骸は自然 expire）。emit 効果伝播は CombatScene applyMiss/applyHit・StaffCastScene throw 系のみ。test +3（採番/tick&drop/preserve）＝全 1076 green。
+  - 2026-07-02: P5-a Fog/Minimap/ArrowCursor を F8 明示 step 化＝**dispatchDrivers 対象 0**。3 Scene の process(node,path,delta) → `step(scene)`（Minimap は StairsExit 同型に getState/writeData で payload 維持）。gameLoop は EnemyTurnDriver/StairsExit の後に 3 step を追加。**罠と対処**: 明示 step はタイトル/選択画面でも走るため、Fog は Map 不在で `getPlacements` が bug! する＝FogDriver ノード presence gate（stepPlaying 分離）を追加。全 1073 green。
   - 2026-07-02: P4-e ItemPickupPopupScene の PopupData を resource 化（(a) レーン一旦完了）。`State`（get/put PopupData）＋`withState`、`NodeTag.ItemPickupPopup(PopupData)`→ペイロードレス、show/showMessage/showFull/reserveGetItemSound/setState/process を State 経由に（scene はパイプ素通し）。**3 経路に伝播**: ①process（ProcessT）②メニュー確定（applyPickup/applyOpenChest→onActionConfirmed→MenuHandler `type Aef`＋InputHandler 連鎖）③physicsProcess（autoPickupOrLog→stepFor→physicsStep/gatherStep→**FrameAef.T**）。テストは `withNoopPickupPopup` fixture（TestUnitFixtures）を新設し 5 箇所に discharge、reserveGetItemSound テストは withState+State.get 観測へ書換。全 1073 green（挙動不変）。実機 run（拾う→中央ポップ＋取得音／自動取得→音のみ／満杯→「持ち物がいっぱいです」）はユーザー確認へ。
   - 2026-07-02: P4-d LevelUpPanelScene の PanelState を resource 化。`State`（get/put PanelState）＋`withState`、`NodeTag.LevelUpPanel(PanelState)`→ペイロードレス、currentState/writeState を State.get/put に。confirm が入力確定経路のため `dispatchMenuKey`→`onPlayingKeyPressed`→`onKeyPressed`→InputHandler `type Aef` まで効果行追記（**入力連鎖の初例**）。ProcessT/gameLoop 行/Game.start 配線。全 1073 green（挙動不変）。
   - 2026-07-02: P4-c TurnEndHoldScene の GaugeData を resource 化。`State`（get/put GaugeData）＋`withState`、`NodeTag.HoldGauge(GaugeData)`→ペイロードレス、process は `State.get/put`（setState ヘルパー撤去）。ProcessT/gameLoop 行/Game.start 配線。純粋ロジック（step/initialData）不変で全 1073 green（挙動不変）。

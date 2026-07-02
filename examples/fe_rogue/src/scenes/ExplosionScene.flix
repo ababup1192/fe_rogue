@@ -6,18 +6,13 @@
 /// 寿命にわたって frame 0 → frameCount-1 まで送ることでコマ送りアニメする。
 ///
 /// ノード構造:
-///   Explosions (Marker2D, NodeTag.ExplosionsRoot({nextSeq}))   永続
-///     └─ Explosion_<seq> (Sprite2D, NodeTag.Explosion({remaining, total}))  寿命つき
+///   Explosions (Marker2D, NodeTag.ExplosionsRoot)   永続
+///     └─ Explosion_<seq> (Sprite2D, NodeTag.Explosion)  寿命は World.explosionFx が持つ
+///
+/// P5-b: 寿命・採番の権威は World の `explosionFx` store（`Cmd.SpawnExplosionFx` で spawn・
+/// `stepWorld` が tick して期限切れを drop）。子 Sprite2D は位置/scale を持つ描画 view で、
+/// gameLoop が毎フレーム `syncView` で store から frame コマ送りと除去を派生する。
 mod ExplosionScene {
-
-    /// 親 Marker2D に紐づくデータ。子 Explosion_<seq> の連番採番にだけ使う。
-    pub type alias RootData = { nextSeq = Int32 }
-
-    /// 各 Explosion_<seq> Sprite2D に紐づくデータ。寿命の残り / 初期値（コマ送り比率算出用）。
-    pub type alias ExpData = {
-        remaining = Duration.Duration,
-        total     = Duration.Duration
-    }
 
     def rootName(): String = "Explosions"
 
@@ -44,72 +39,63 @@ mod ExplosionScene {
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
         let parent = Marker2D.make(Vec2.zero());
         Scene.addChildAt(MapScene.worldPath(), rootName(),
-            EngineNode.Marker2DWithState(parent,
-                NodeTag.ExplosionsRoot({nextSeq = 0})),
+            EngineNode.Marker2DWithState(parent, NodeTag.ExplosionsRoot),  // P5-b: 採番は World へ
             scene)
 
     /// 指定セル中心に通常サイズの爆発を 1 つ発生させる。親未登録（add 前）なら no-op。
-    pub def emitAtCell(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def emitAtCell(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         emit(MapSnapshot.cellCenter(cell), scaleFactor(), scene)
 
     /// 指定セル中心に大きい爆発を 1 つ発生させる（爆発瓶用。3×3 範囲を覆う見た目）。
-    pub def emitBigAtCell(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def emitBigAtCell(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         emit(MapSnapshot.cellCenter(cell), bigScaleFactor(), scene)
 
     /// 指定ワールド座標に通常サイズの爆発を 1 つ発生させる（魔法攻撃の着弾用）。
-    pub def emitNormal(worldPos: Vec2.Vec2, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def emitNormal(worldPos: Vec2.Vec2, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         emit(worldPos, scaleFactor(), scene)
 
     /// 指定ワールド座標に `scale` 倍の爆発を 1 つ発生させる。親未登録なら no-op。
-    pub def emit(worldPos: Vec2.Vec2, scale: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// P5-b: 寿命は `Cmd.SpawnExplosionFx` で World の explosionFx store へ（採番は applyCmd＝
+    /// WorldQuery で次 seq を先読みして子ノード名を合わせる。DamagePopupScene.emitText と同型）。
+    pub def emit(worldPos: Vec2.Vec2, scale: Float64, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         match Scene.getEngineNode(rootPath(), scene) {
-            case Some(EngineNode.Marker2DWithState(parent, NodeTag.ExplosionsRoot(root))) =>
-                let seq = root#nextSeq;
+            case Some(EngineNode.Marker2DWithState(_, NodeTag.ExplosionsRoot)) =>
+                let seq = World.explosionFxNextSeqOf(World.WorldQuery.get());
+                World.Command.emit(World.Cmd.SpawnExplosionFx(
+                    {total = Duration.toSeconds(lifetime())}));
                 let sprite = Sprite2D.make(texture(), worldPos,
                                 ({x = scale, y = scale}: Vec2.Vec2))
                                 |> Sprite2D.setHframes(hframes())
                                 |> Sprite2D.setVframes(vframes())
                                 |> Sprite2D.setFrame(0)
                                 |> CanvasItem.setZIndex(zIndex());
-                let data: ExpData = {remaining = lifetime(), total = lifetime()};
                 scene
-                    |> Scene.setEngineNode(rootPath(),
-                        EngineNode.Marker2DWithState(parent,
-                            NodeTag.ExplosionsRoot({nextSeq = seq + 1})))
                     |> Scene.addChildAt(rootPath(), "Explosion_${seq}",
-                        EngineNode.Sprite2DWithState(sprite, NodeTag.Explosion(data)))
+                        EngineNode.Sprite2DWithState(sprite, NodeTag.Explosion))
             case _ => scene
         }
 
-    /// `Game` の process redef から `ExplosionsRoot` ノードに dispatch される。
-    /// 各子の remaining を dt 分減らし、経過比率から 1 行目のコマ（frame）を進め、
-    /// 寿命満了の子は `Scene.removeAt` で取り除く。親未登録なら no-op。
-    pub def process(dt: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) =
-        let childNames = Scene.getChildrenAt(rootPath(), scene);
-        let next = List.foldLeft(acc -> childName -> {
-            let childPath = MapScene.worldName() :: rootName() :: childName :: Nil;
-            match Scene.getEngineNode(childPath, acc) {
-                case Some(EngineNode.Sprite2DWithState(sprite, NodeTag.Explosion(data))) =>
-                    let newRemaining = Duration.subClampedToZero(data#remaining, dt);
-                    if (Duration.isExpired(newRemaining))
-                        Scene.removeAt(childPath, acc)
-                    else {
-                        let elapsed = Duration.sub(data#total, newRemaining);
-                        let ratio = Duration.ratio(elapsed, data#total);
-                        let raw = Float64.truncateToInt32(
-                                    Float64.floor(ratio * Int32.toFloat64(frameCount())));
-                        let frame = Int32.max(0, Int32.min(frameCount() - 1, raw));
-                        let newSprite = sprite |> Sprite2D.setFrame(frame);
-                        let newData: ExpData = {remaining = newRemaining | data};
-                        Scene.setEngineNode(childPath,
-                            EngineNode.Sprite2DWithState(newSprite,
-                                NodeTag.Explosion(newData)),
-                            acc)
-                    }
-                case _ => acc
-            }
-        }, scene, childNames);
-        (node, next)
+    /// P5-b: gameLoop（stepWorld の後）から呼ばれる view 派生。World の explosionFx store を読み、
+    ///   1) 生存 seq の子 Sprite2D を経過比率で 1 行目のコマ（frame 0..13）に送る
+    ///   2) store に無い（期限切れで drop 済み）子を `Scene.removeAt` で除去
+    /// する。寿命の tick はここでは行わない（stepWorld が権威）。親未登録なら no-op。
+    pub def syncView(world: World, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let fx = World.explosionFxOf(world);
+        let updated = Map.foldLeftWithKey((acc, seq, d) -> {
+            let childPath = List.append(rootPath(), "Explosion_${seq}" :: Nil);
+            let ratio = (d#total - d#remaining) / d#total;
+            let raw = Float64.truncateToInt32(
+                        Float64.floor(ratio * Int32.toFloat64(frameCount())));
+            let frame = Int32.max(0, Int32.min(frameCount() - 1, raw));
+            Sprite2D.mapAt(childPath, Sprite2D.setFrame(frame), acc)
+        }, scene, fx);
+        let liveNames = Map.foldLeftWithKey((s, seq, _) -> Set.insert("Explosion_${seq}", s), Set.empty(), fx);
+        Scene.getChildrenAt(rootPath(), updated)
+            |> List.foldLeft((acc, name) ->
+                if (Set.memberOf(name, liveNames)) acc
+                else Scene.removeAt(List.append(rootPath(), name :: Nil), acc), updated)
 }

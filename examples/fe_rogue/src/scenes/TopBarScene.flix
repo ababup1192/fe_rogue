@@ -138,13 +138,16 @@ mod TopBarScene {
 
     def baseOf(shown: Option[Bool]): Bool = Option.getWithDefault(false, shown)
 
-    /// Game.flix の process redef から NodeTag.TopBar に dispatch される（1 フレーム 1 回）。
-    pub def process(delta: Duration.Duration, node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
+    /// P5-c(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
+    /// EnemyTurnDriver が World 経由で読む 2 bool（enemyTurnBusy/phaseObservedEnemy）を
+    /// dual-write するため、パイプラインでは **EnemyTurnDriverScene.step より前**に置く
+    /// （旧 per-node と同じ「driver は当フレームの TopBar 確定値を読む」を維持）。
+    /// TopBar ノード不在（タイトル/選択画面）は getState gate で no-op。
+    pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
+                    Scene[NodeTag]
                     \ {GameEngine.Game, TurnPhase.State, GameEngine.Audio, World.Command} =
-        match node {
-            case EngineNode.CanvasLayerWithState(_, NodeTag.TopBar(data)) =>
+        match Scene.getState(rootPath(), scene) {
+            case Some(NodeTag.TopBar(data)) =>
                 let phase  = TurnPhase.State.get();
                 let actual = perceivedIsEnemy(phase, data#shown);
                 let w = GameEngine.Game.getViewportRect()#size#x;
@@ -190,11 +193,8 @@ mod TopBarScene {
                 // driver はこれを World 経由で読む＝per-node 順序非依存（pipeline 移設の前提）。
                 World.Command.emit(World.Cmd.SetEnemyTurnBusy(isBusy(next2)));
                 World.Command.emit(World.Cmd.SetPhaseObservedEnemy(hasObservedEnemy(next2)));
-                match Scene.getEngineNode(path, next2) {
-                    case Some(latest) => (latest, next2)
-                    case None         => (node, next2)
-                }
-            case _ => (node, scene)
+                next2
+            case _ => scene
         }
 
     /// 中央「集合中」ラベルを viewport 実幅の中央へ置き、集合中のみ可視にする。

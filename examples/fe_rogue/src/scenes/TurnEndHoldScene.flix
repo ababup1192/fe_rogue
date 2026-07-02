@@ -208,40 +208,39 @@ mod TurnEndHoldScene {
     // (E) ロジック（毎フレーム・副作用あり）
     // ────────────────────────────────────────────────────────
 
-    /// Game.flix の `process` redef から `NodeTag.HoldGauge` ノードに dispatch される（1 個のみ）。
+    /// P5-c(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System
+    /// （純粋な `step` と名前が衝突するため frameStep）。
     /// Shift 押下を読み、`step` で進め、表示へ反映し、満タン到達フレームでターンエンドを発火する。
-    /// 末尾で scene から self の最新ノードを取り直して返す（更新が打ち消されないように）。
-    pub def process(delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
+    /// 明示 step は毎フレーム（タイトル/選択画面含む）走るため、ゲージノード不在は gate で no-op
+    /// （旧 per-node の「ノードが居るときだけ」を再現＝Playing 以外で Shift 長押しが誤発火しない）。
+    pub def frameStep(delta: Duration.Duration, scene: Scene[NodeTag]):
+                    Scene[NodeTag]
                     \ {GameEngine.Game, GameEngine.Audio, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                        GatherResume.State, World.Command, TurnEndHoldScene.State} =
-        // P4-c: 状態は resource から読む（旧: NodeTag.HoldGauge ペイロード）。ノードは描画 view（Label/Arc）。
-        let data = TurnEndHoldScene.State.get();
-        let phase = TurnPhase.State.get();
-        // 対象は素のカーソル中と集合移動中のみ。
-        let active = phase == TurnPhase.Phase.PlayerCursor
-                        or phase == TurnPhase.Phase.GatherMove;
-        let held = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
-        let result = step(data, active, held, delta);
-        TurnEndHoldScene.State.put(result#data);
-        let shown = applyAppearance(result#ratio, result#visible, scene);
-        let next =
+        if (Option.isEmpty(Scene.getEngineNode(rootPath(), scene))) scene
+        else {
+            // P4-c: 状態は resource から読む（旧: NodeTag.HoldGauge ペイロード）。ノードは描画 view（Label/Arc）。
+            let data = TurnEndHoldScene.State.get();
+            let phase = TurnPhase.State.get();
+            // 対象は素のカーソル中と集合移動中のみ。
+            let active = phase == TurnPhase.Phase.PlayerCursor
+                            or phase == TurnPhase.Phase.GatherMove;
+            let held = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
+            let result = step(data, active, held, delta);
+            TurnEndHoldScene.State.put(result#data);
+            let shown = applyAppearance(result#ratio, result#visible, scene);
             if (result#fire) {
                 AudioStreamPlayer.play(fireSound());
                 ActionMenuScene.turnEndShortcut(shown)
-            } else shown;
-        match Scene.getEngineNode(path, next) {
-            case Some(latest) => (latest, next)
-            case None         => (node, next)
+            } else shown
         }
 
     /// 充填率と可視状態をテキスト・リングへ反映する。表示中はログ帯を背景として再利用し
     /// （`LogScene.holdForOverlay` で帯を出してログ本文を消す）、その上にリング+テキストを重ねる。
     /// 前景弧は 12 時起点に充填率ぶんだけ時計回りで伸ばす（endAngle = startAngle + 2π·ratio）。
-    /// 本シーンの process は LogScene.process より後に走る（root の追加順）ため上書きが効く。
+    /// 本シーンの frameStep は LogScene.step より後に走らせる（gameLoop のパイプライン順で保証。
+    /// 旧 per-node 時代は root の追加順が同じ順序を与えていた）ため上書きが効く。
     def applyAppearance(ratio: Float64, visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
         let fillEnd = ringStartAngle() + Arc2D.tau() * ratio;
         let overlaid =

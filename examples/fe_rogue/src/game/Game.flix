@@ -74,14 +74,14 @@ pub enum NodeTag {
     /// 内部 state は演出の進行（bonus 再生済みか / 右側を出し終えた上昇ステータス数 / 次までの残り時間）。
     /// P4-d: レベルアップ演出パネルの識別用純タグ（状態は `LevelUpPanelScene.State` resource へ移設）。
     case LevelUpPanel
-    /// DamagePopupScene の Marker2D 親（World 直下に永続）
-    case DamagePopupsRoot(DamagePopupScene.RootData)
-    /// DamagePopupScene の Label2D 子（寿命を持つ）
-    case DamagePopup(DamagePopupScene.PopupData)
-    /// ExplosionScene の Marker2D 親（World 直下に永続）
-    case ExplosionsRoot(ExplosionScene.RootData)
-    /// ExplosionScene の Sprite2D 子（爆発エフェクト・寿命を持つ）
-    case Explosion(ExplosionScene.ExpData)
+    /// DamagePopupScene の Marker2D 親（World 直下に永続）。P5-b: 採番は World.popupFxNextSeq へ
+    case DamagePopupsRoot
+    /// DamagePopupScene の Label2D 子（描画 view）。P5-b: 寿命は World.popupFx へ
+    case DamagePopup
+    /// ExplosionScene の Marker2D 親（World 直下に永続）。P5-b: 採番は World.explosionFxNextSeq へ
+    case ExplosionsRoot
+    /// ExplosionScene の Sprite2D 子（描画 view）。P5-b: 寿命は World.explosionFx へ
+    case Explosion
     /// UnitHPBarScene の Marker2D 親（戦闘表示 timer + currentHp/maxHp を持つ）
     case HPBar(UnitHPBarScene.HPBarData)
     /// UnitCardScene の CanvasLayer 親（左サイドの選択ユニット簡易カード）。
@@ -164,10 +164,10 @@ instance Node[NodeTag] {
         // 巡回で各ノードが該当 1 関数に振り分けられる。
         // 分割理由: Flix の型推論で 1 つの match arm 数が増えすぎると複雑度上限を
         // 超えるため、各群を独立した signature で推論させる。
+        // P5-a: dispatchDrivers（Fog/Minimap/ArrowCursor）は F8 で gameLoop の明示 step へ移設し撤去。
+        // P5-c: dispatchTickables（TopBar/Log/Camera/GroundItem 等の表示系）も明示 step へ移設し撤去。
         let (n1, s1) = dispatchEntities(delta, node, path, scene);
-        let (n2, s2) = dispatchTickables(delta, n1, path, s1);
-        let (n3, s3) = dispatchDrivers(delta, n2, path, s2);
-        dispatchMenus(delta, n3, path, s3)
+        dispatchMenus(delta, n1, path, s1)
 }
 
 /// Player / Enemy ノード (AnimationPlayer signal drain を持つエンティティ系)。
@@ -180,51 +180,6 @@ def dispatchEntities(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(CombatScene.process(delta, node, path, scene))
         case NodeTag.Enemy(_) =>
             checked_ecast(CombatScene.process(delta, node, path, scene))
-        case _ => (node, scene)
-    }
-
-/// 毎フレーム tick が必要な表示系ノード (Popup / HPBar / Item / Camera / Log)
-def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
-                       path: NodePath, scene: Scene[NodeTag]):
-                      (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
-    match EngineNode.getState(node) {
-        case NodeTag.DamagePopupsRoot(_) =>
-            checked_ecast(DamagePopupScene.process(delta, node, path, scene))
-        case NodeTag.ExplosionsRoot(_) =>
-            checked_ecast(ExplosionScene.process(delta, node, path, scene))
-        case NodeTag.HPBar(_) =>
-            checked_ecast(UnitHPBarScene.process(delta, node, path, scene))
-        case NodeTag.GroundItem(_) =>
-            checked_ecast(ItemScene.process(delta, node, path, scene))
-        case NodeTag.TopBar(_) =>
-            checked_ecast(TopBarScene.process(delta, node, path, scene))
-        case NodeTag.ItemPickupPopup =>
-            checked_ecast(ItemPickupPopupScene.process(delta, node, path, scene))
-        case NodeTag.HoldGauge =>
-            checked_ecast(TurnEndHoldScene.process(delta, node, path, scene))
-        case NodeTag.CharacterSelect(_) =>
-            checked_ecast(CharacterSelectScene.process(delta, node, path, scene))
-        case NodeTag.Log =>
-            checked_ecast(LogScene.process(delta, node, path, scene))
-        case NodeTag.Camera =>
-            checked_ecast(CameraScene.process(delta, node, path, scene))
-        case _ => (node, scene)
-    }
-
-/// フェーズ駆動の driver ノード (EnemyTurnDriver / ArrowCursor / Fog / Minimap)
-def dispatchDrivers(delta: Duration.Duration, node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
-    match EngineNode.getState(node) {
-        // F8: EnemyTurnDriver / StairsExitDriver（=ターン進行 LOGIC driver）は per-node callback から
-        // 外し、gameLoop が明示的に呼ぶ frame-paced System（`step`）へ移設。前後順序依存は slice1/2 で
-        // World 経由＝順序非依存。Fog/Minimap/ArrowCursor は view 描画ゆえ per-node 残置（gate 許容）。
-        case NodeTag.ArrowCursor(_) =>
-            checked_ecast(ArrowCursorScene.process(delta, node, path, scene))
-        case NodeTag.FogDriver =>
-            checked_ecast(FogScene.process(delta, node, path, scene))
-        case NodeTag.MinimapDriver(_) =>
-            checked_ecast(MinimapScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }
 
@@ -1069,11 +1024,29 @@ mod Game {
                 |> Tween.tickAll(dt)
                 |> AnimationPlayer.tickAll(dt)
                 |> GameEngine.process(delta = dt, paused = false)
+                // P5-c: 表示系 tickable も per-node callback から外し明示 step 化（dispatchTickables 撤去）。
+                // 順序制約: TopBar は EnemyTurnDriver が World 経由で読む 2 bool の dual-write 元なので
+                // driver step より前（旧「process 中に確定」の再現）。TurnEndHold はログ帯を上書きするため
+                // LogScene.step より後（旧 root 追加順の再現）。他は独立。HPBar は process が no-op だったので
+                // step 無しで撤去のみ。
+                |> ItemScene.step(dt)
+                |> TopBarScene.step(dt)
+                |> ItemPickupPopupScene.frameStep(dt)
+                |> CharacterSelectScene.step(dt)
+                |> LogScene.step(dt)
+                |> TurnEndHoldScene.frameStep(dt)
+                |> CameraScene.step(dt)
                 // F8: ターン進行 LOGIC driver を OOP node callback から外し、明示的な frame-paced System
                 // としてパイプライン段で 1 回呼ぶ（per-node 巡回でなく gameLoop が駆動）。process の後＝combat
                 // drain と TopBar 更新が確定した post-process scene を読む（前後依存は World 経由で順序非依存）。
                 |> EnemyTurnDriverScene.step
-                |> StairsExitScene.step;
+                |> StairsExitScene.step
+                // P5-a: view driver（Fog/Minimap/ArrowCursor）も per-node callback から外し明示 step 化
+                // （dispatchDrivers 撤去＝対象 0）。process の後・render の前に post-process 状態を読んで
+                // 同一フレームで描画されるため挙動不変。相互依存なし＝順序自由。
+                |> FogScene.step
+                |> MinimapScene.step
+                |> ArrowCursorScene.step;
             // 画面（GamePhase）が変わったフレームだけ、新しい画面を組み立て直す。
             // 例: 選択画面でリーダー確定 → Playing に切り替わり、ここでダンジョンが組まれる。
             let currentPhase = GamePhaseState.get();
@@ -1133,7 +1106,11 @@ mod Game {
             // B/m3: 移動した entity の marker を renderPos に合わせる（engine tween 退役の受け皿・marker 単一権威）。
             // syncTreeFromWorld は marker の global 位置を書かない（gridPos 等 Data のみ derive）ので、ここで上書きしても
             // 齟齬なし。書いた synced は末尾 gameLoop へ渡り次フレームへ永続。以降 synced は marker 反映済みを指す。
-            let synced = RenderWorld.syncMarkers(moved, synced0);
+            let synced = RenderWorld.syncMarkers(moved, synced0)
+                // P5-b: fx（ダメージ数字/爆発）の子ノードを World store から派生。寿命 tick は
+                // stepWorld（world2 に反映済み）＝ここは Y 補間/コマ送りの反映と期限切れ除去のみ。
+                |> DamagePopupScene.syncView(world2)
+                |> ExplosionScene.syncView(world2);
             // S4 twin parity 検査は **syncTreeFromWorld の後**に置く（scene が World から派生し終えた点）。
             // pre-sync だと gridPos が 1 フレーム遅延（World pos=当フレーム / scene gridPos=前フレームの派生）、
             // hidden/equippedRing が re-mirror stale で false-positive を出していた。post-sync では gridPos=World 派生・

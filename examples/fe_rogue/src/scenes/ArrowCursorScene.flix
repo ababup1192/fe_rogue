@@ -66,15 +66,10 @@ mod ArrowCursorScene {
     /// フェーズが `StaffAim` のときだけ visible にし、それ以外では hidden にする。
     /// 実質的な描画更新（位置・回転）は `StaffAim` 開始時の `showFor` と方向キー毎の `aim` が担い、
     /// ここでは visibility 切替のみ行う（`showFor` / `aim` で設定済みの値を毎フレーム上書きしない）。
-    pub def process(_delta: Duration.Duration, node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ TurnPhase.State =
-        let phase = TurnPhase.State.get();
-        let withVisibility = applyVisibility(phase, scene);
-        match Scene.getEngineNode(arrowPath(), withVisibility) {
-            case Some(latest) => (latest, withVisibility)
-            case None         => (node, withVisibility)
-        }
+    /// P5-a(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
+    /// 旧 `process` は node を返す以外に使っていなかったので `Scene → Scene` に昇格。
+    pub def step(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+        applyVisibility(TurnPhase.State.get(), scene)
 
     /// `StaffAim` 中だけ親 Marker2D + 子 Sprite を visible にする。
     pub def applyVisibility(phase: TurnPhase.Phase,

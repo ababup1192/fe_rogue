@@ -740,7 +740,8 @@ mod CombatScene {
     /// 回避: miss SE を鳴らし "miss" を浮かす。HP も死亡演出も変えない。
     def applyMiss(playerId: Int32, enemyId: Int32, popupPos: Vec2.Vec2, color: Color,
                    scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger} =
+            Scene[NodeTag] \ {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger,
+                              World.Command, World.WorldQuery} =
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}に攻撃を外した");
         AudioStreamPlayer.play("miss");
         DamagePopupScene.emitText(popupPos, "miss", color, scene)
@@ -753,7 +754,7 @@ mod CombatScene {
                   weaponType: WeaponCatalog.WeaponType,
                   popupPos: Vec2.Vec2, color: Color, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, GameLogger.GameLogger, World.Command} =
+                               GameEngine.Game, GameLogger.GameLogger, World.Command, World.WorldQuery} =
         AudioStreamPlayer.play(CombatRules.hitSoundName(plan#dmg, isCrit, weaponType));
         // 魔法攻撃（マージ等）の着弾時は敵中心に爆発エフェクトを出す。
         let withFx = match weaponType {

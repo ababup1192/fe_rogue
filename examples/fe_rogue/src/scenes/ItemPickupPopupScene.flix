@@ -262,25 +262,21 @@ mod ItemPickupPopupScene {
     // (F) ロジック（毎フレーム・副作用あり）
     // ────────────────────────────────────────────────────────
 
-    /// Game.flix の `process` redef から `NodeTag.ItemPickupPopup` ノードに dispatch される
-    /// (ポップアップは1個のみ)。`step` で状態を進め、予約があれば取得音を1回鳴らし、
+    /// `step` で状態を進め、予約があれば取得音を1回鳴らし、
     /// 表示の濃さ ratio を窓 alpha・文字色・可視へ反映する。
-    /// 末尾で scene から self の最新ノードを取り直して返す（更新が打ち消されないように）。
-    pub def process(delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ {GameEngine.Audio, ItemPickupPopupScene.State} =
+    /// P5-c(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System
+    /// （純粋な `step` と名前が衝突するため frameStep）。ノード不在（タイトル/選択画面）でも安全:
+    /// 状態は Idle のまま進まず（soundPending も Playing 経路でしか立たない）、applyAppearance の
+    /// mapAt は対象不在で no-op。
+    pub def frameStep(delta: Duration.Duration, scene: Scene[NodeTag]):
+                    Scene[NodeTag] \ {GameEngine.Audio, ItemPickupPopupScene.State} =
         // P4-e: 状態は resource から読む（旧: NodeTag.ItemPickupPopup ペイロード）。ノードは描画 view（Panel/Label）。
         let data = ItemPickupPopupScene.State.get();
         let result = step(data, delta);
         if (result#playSound) AudioStreamPlayer.play(getItemSound()) else ();
-        let next = scene
+        scene
             |> applyAppearance(result#ratio)
-            |> setState(result#data);
-        match Scene.getEngineNode(path, next) {
-            case Some(latest) => (latest, next)
-            case None         => (node, next)
-        }
+            |> setState(result#data)
 
     /// Label2D の glyph は CanvasItem の alpha に従わず常に不透明（モジュール doc L15-17 参照）。
     /// そのため窓と文字で別戦略を取る:

@@ -172,17 +172,17 @@ mod MinimapScene {
             |> CanvasItem.setZIndex(markerZIndex())
             |> CanvasItem.setVisible(false)
 
-    /// Game.flix の `process` redef から `NodeTag.MinimapDriver` に対して dispatch される
-    /// per-frame entry。訪問 module を蓄積し、M トグルを反映し、ミニマップを再描画する。
+    /// P5-a(F8): per-node dispatch から外し gameLoop がパイプライン段で 1 回呼ぶ frame-paced
+    /// System。訪問 module を蓄積し、M トグルを反映し、ミニマップを再描画する。
     /// レベルアップ画面（`LevelUpView`）の間は M トグル状態を保ったまま強制的に隠す。
-    pub def process(_delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
+    /// driver の DriverData は StairsExit と同型に `driverPath()` ノードの state で持ち、
+    /// `Scene.getState` で読み `writeData` で書き戻す（node 引数不要）。
+    pub def step(scene: Scene[NodeTag]):
+                    Scene[NodeTag]
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
                        PlayerData.PartyQuery, EnemyData.RosterQuery} =  // P2-2a: 味方/敵読みを World 経由へ
-        match node {
-            case EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(data)) =>
+        match Scene.getState(driverPath(), scene) {
+            case Some(NodeTag.MinimapDriver(data)) =>
                 let phase = TurnPhase.State.get();
                 let mDown = GameEngine.Game.isKeyPressed(GameEngine.Key.M);
                 // 敵ターン中は M を受け付けない（エネミーフェーズ中はミニマップを開けないようにする）。
@@ -210,10 +210,18 @@ mod MinimapScene {
                 let hidden = phase == TurnPhase.Phase.LevelUpView
                               or phase == TurnPhase.Phase.EnemyTurn;
                 let show = visible2 and not hidden;
-                (EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(nextData)),
-                 renderMinimap(show, nextData, litRooms, scene))
-            case _ => (node, scene)
+                renderMinimap(show, nextData, litRooms, writeData(nextData, scene))
+            case _ => scene
         }
+
+    /// DriverData を driver ノードの state へ書き戻す（step の node 引数廃止に伴う明示書き込み。
+    /// 旧 process では engine の戻り node 書き戻し契約が担っていた）。
+    def writeData(data: DriverData, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(driverPath(), node -> match node {
+            case EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(_)) =>
+                EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(data))
+            case other => other
+        }, scene)
 
     /// 階段が「発見済み」か。階段セルの属する module が訪問済みなら発見扱い。
     def stairsDiscovered(visited: Set[Int32],

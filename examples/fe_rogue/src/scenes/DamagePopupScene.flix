@@ -6,14 +6,14 @@
 /// のが目的。
 ///
 /// ノード構造:
-///   DamagePopups (Marker2D, NodeTag.DamagePopupsRoot({nextSeq}))   永続
-///     ├─ Popup_0 (Label2D, NodeTag.DamagePopup({remaining, total, startY}))
+///   DamagePopups (Marker2D, NodeTag.DamagePopupsRoot)   永続
+///     ├─ Popup_0 (Label2D, NodeTag.DamagePopup)
 ///     ├─ Popup_1 (Label2D, ...)
-///     └─ ...                                                       寿命付き
+///     └─ ...                                            寿命は World.popupFx が持つ
 ///
-/// 親 Marker2D は World 配下の (0,0) に 1 つだけ生やし、ゲームを通して再利用する。
-/// 子 Label2D はヒット毎に動的に追加し、`tick` 毎フレーム呼び出しで寿命が尽きたら
-/// `Scene.removeAt` で消す。子名は連番 `Popup_<seq>`（親 state の nextSeq）で衝突を避ける。
+/// P5-b: 寿命・採番の権威は World の `popupFx` store（`Cmd.SpawnPopupFx` で spawn・
+/// `stepWorld` が tick して期限切れを drop）。子 Label2D はテキスト/色/X を持つ描画 view で、
+/// gameLoop が毎フレーム `syncView` で store から Y 補間と除去を派生する。
 ///
 /// engine の Tween.tickAll に乗せない理由:
 ///   - Tween.tweenAlpha は Sprite2D 専用（engine/src/scene/Tween.flix）
@@ -21,19 +21,6 @@
 ///   フェード表現は省き、上方向に float させてから瞬時に消すスタイルにする。
 ///   寿命を 700ms 程度にすれば違和感は最小。
 mod DamagePopupScene {
-
-    /// 親 Marker2D に紐づくデータ。子 Popup_<seq> の連番採番にだけ使う。
-    pub type alias RootData = { nextSeq = Int32 }
-
-    /// 各 Popup_<seq> Label2D に紐づくデータ。
-    /// `remaining`: 残り寿命。tick で dt を引いていき、0 以下になったら削除。
-    /// `total`:     初期寿命。経過比率の計算用（startY → 上方向への補間に使う）。
-    /// `startY`:    生成時のワールド Y。経過比率から現在 Y を逆算する。
-    pub type alias PopupData = {
-        remaining = Duration.Duration,
-        total     = Duration.Duration,
-        startY    = Float64
-    }
 
     def rootName(): String = "DamagePopups"
 
@@ -69,25 +56,31 @@ mod DamagePopupScene {
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
         let parent = Marker2D.make(Vec2.zero());
         Scene.addChildAt(MapScene.worldPath(), rootName(),
-            EngineNode.Marker2DWithState(parent,
-                NodeTag.DamagePopupsRoot({nextSeq = 0})),
+            EngineNode.Marker2DWithState(parent, NodeTag.DamagePopupsRoot),  // P5-b: 採番は World へ
             scene)
 
     /// 指定ワールド座標にダメージ数字をスポーンする。色は呼び出し側で
     /// `damageToEnemyColor()` / `damageToPlayerColor()` を選ぶ。
     /// 親が未登録（add 前）なら no-op。
     pub def emit(worldPos: Vec2.Vec2, damage: Int32, color: Color,
-                   scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
+                   scene: Scene[NodeTag]):
+                  Scene[NodeTag] \ {GameEngine.Game, World.Command, World.WorldQuery} =
         emitText(worldPos, "${damage}", color, scene)
 
     /// `emit` の文字列版。ダメージ数値の代わりに任意のテキスト（例: "miss"）を
     /// 同じ float-up 演出で浮かす。命中失敗時に呼び出し側が "miss" を出すのに使う。
     /// 親が未登録（add 前）なら no-op。
+    /// P5-b: 寿命は `Cmd.SpawnPopupFx` で World の popupFx store へ（採番は applyCmd＝
+    /// ここでは WorldQuery で次 seq を先読みして子ノード名を合わせる。emit→apply が即時
+    /// 〔read-after-write〕なので連続 emit でも一致する）。子 Label2D は描画 view。
     pub def emitText(worldPos: Vec2.Vec2, text: String, color: Color,
-                   scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
+                   scene: Scene[NodeTag]):
+                  Scene[NodeTag] \ {GameEngine.Game, World.Command, World.WorldQuery} =
         match Scene.getEngineNode(rootPath(), scene) {
-            case Some(EngineNode.Marker2DWithState(parent, NodeTag.DamagePopupsRoot(root))) =>
-                let seq = root#nextSeq;
+            case Some(EngineNode.Marker2DWithState(_, NodeTag.DamagePopupsRoot)) =>
+                let seq = World.popupFxNextSeqOf(World.WorldQuery.get());
+                World.Command.emit(World.Cmd.SpawnPopupFx(
+                    {total = Duration.toSeconds(lifetime()), startY = worldPos#y}));
                 let atlas = GameEngine.Game.getFontAtlas(fontName());
                 let label = Label2D.make(text, atlas, fontSize())
                                 |> Node2D.setPosition(worldPos)
@@ -95,51 +88,32 @@ mod DamagePopupScene {
                                 |> Label2D.setVerticalAlignment(VerticalAlignment.Bottom)
                                 |> CanvasItem.setModulate(color)
                                 |> CanvasItem.setZIndex(popupZIndex());
-                let popupData: PopupData = {
-                    remaining = lifetime(),
-                    total     = lifetime(),
-                    startY    = worldPos#y
-                };
                 scene
-                    |> Scene.setEngineNode(rootPath(),
-                        EngineNode.Marker2DWithState(parent,
-                            NodeTag.DamagePopupsRoot({nextSeq = seq + 1})))
                     |> Scene.addChildAt(rootPath(), "Popup_${seq}",
-                        EngineNode.Label2DWithState(label, NodeTag.DamagePopup(popupData)))
+                        EngineNode.Label2DWithState(label, NodeTag.DamagePopup))
             case _ => scene
         }
 
-    /// Game.flix の `Node[NodeTag] instance` の `process` redef から、`DamagePopupsRoot` ノードに
-    /// 対して dispatch される (root は 1 個のみなので 1 フレーム 1 回)。
-    /// 各 Popup_<seq> 子の remaining を dt 分減らし、上方向に補間移動し、寿命満了の子は
-    /// `Scene.removeAt` で取り除く。親未登録なら no-op (子なしで foldLeft が空回り)。
-    pub def process(dt: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) =
-        let childNames = Scene.getChildrenAt(rootPath(), scene);
-        let next = List.foldLeft(acc -> childName -> {
-            let childPath = MapScene.worldName() :: rootName() :: childName :: Nil;
-            match Scene.getEngineNode(childPath, acc) {
-                case Some(EngineNode.Label2DWithState(label, NodeTag.DamagePopup(data))) =>
-                    let newRemaining = Duration.subClampedToZero(data#remaining, dt);
-                    if (Duration.isExpired(newRemaining))
-                        Scene.removeAt(childPath, acc)
-                    else {
-                        let elapsed = Duration.sub(data#total, newRemaining);
-                        let ratio = Duration.ratio(elapsed, data#total);
-                        let newY = data#startY - floatDistancePx() * ratio;
-                        let currentPos = Node2D.getPosition(label);
-                        let newPos: Vec2.Vec2 = {x = currentPos#x, y = newY};
-                        let newLabel = label |> Node2D.setPosition(newPos);
-                        let newData: PopupData = {remaining = newRemaining | data};
-                        Scene.setEngineNode(childPath,
-                            EngineNode.Label2DWithState(newLabel,
-                                NodeTag.DamagePopup(newData)),
-                            acc)
-                    }
-                case _ => acc
-            }
-        }, scene, childNames);
-        (node, next)
+    /// P5-b: gameLoop（stepWorld の後）から呼ばれる view 派生。World の popupFx store を読み、
+    ///   1) 生存 seq の子 Label2D を経過比率で上方向に補間移動（Y のみ・X/テキスト/色はノード保持）
+    ///   2) store に無い（期限切れで drop 済み）子を `Scene.removeAt` で除去
+    /// する。寿命の tick はここでは行わない（stepWorld が権威）。親未登録なら no-op。
+    pub def syncView(world: World, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let fx = World.popupFxOf(world);
+        // 1) 生存 fx の Y を補間（子が無い場合〔フロア再構築直後等〕は mapAt が no-op）。
+        let updated = Map.foldLeftWithKey((acc, seq, d) -> {
+            let childPath = List.append(rootPath(), "Popup_${seq}" :: Nil);
+            let ratio = (d#total - d#remaining) / d#total;
+            let newY = d#startY - floatDistancePx() * ratio;
+            Label2D.mapAt(childPath, label -> {
+                let currentPos = Node2D.getPosition(label);
+                label |> Node2D.setPosition({x = currentPos#x, y = newY})
+            }, acc)
+        }, scene, fx);
+        // 2) store に無い子を除去（期限切れ）。
+        let liveNames = Map.foldLeftWithKey((s, seq, _) -> Set.insert("Popup_${seq}", s), Set.empty(), fx);
+        Scene.getChildrenAt(rootPath(), updated)
+            |> List.foldLeft((acc, name) ->
+                if (Set.memberOf(name, liveNames)) acc
+                else Scene.removeAt(List.append(rootPath(), name :: Nil), acc), updated)
 }

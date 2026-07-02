@@ -408,22 +408,16 @@ mod CharacterSelectScene {
         startValue + (endValue - startValue) * ratio
 
     /// カード列の横位置を目標へ寄せ、状態から見た目を作り直し、状態を書き戻す。
-    /// 末尾で `getEngineNode` により最新ノードを取り直す（writeVisuals が内部でノードを差し替えるため）。
-    pub def process(delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) =
-        match node {
-            case EngineNode.CanvasLayerWithState(_, NodeTag.CharacterSelect(data)) =>
+    /// P5-c(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
+    /// 選択画面以外（CharacterSelect ノード不在）は getState gate で no-op。
+    pub def step(delta: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag] =
+        match Scene.getState(rootPath(), scene) {
+            case Some(NodeTag.CharacterSelect(data)) =>
                 let stepped = stepCarousel(data, delta);
-                let next = scene
+                scene
                     |> writeVisuals(stepped)
-                    |> setState(stepped);
-                match Scene.getEngineNode(path, next) {
-                    case Some(latest) => (latest, next)
-                    case None         => (node, next)
-                }
-            case _ => (node, scene)
+                    |> setState(stepped)
+            case _ => scene
         }
 
     /// 1 押下ごとの操作（Game.flix の InputHandler から CharacterSelect phase 中に委譲）。
