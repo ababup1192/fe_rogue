@@ -706,7 +706,7 @@ mod ItemMenuScene {
     pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                               Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                 GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         // selectedItem 読みは PartyQuery（World オーバーレイ）経由。
         let result = forM (
@@ -723,7 +723,7 @@ mod ItemMenuScene {
                         scene: Scene[NodeTag]):
                        Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                 GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         if (meta == equipMeta())
             applyEquip(playerId, kind, scene)
@@ -744,7 +744,7 @@ mod ItemMenuScene {
     /// 「投げる」: 方向選択フェーズ `ThrowAim` に進む。selectedItem は保持され、
     /// 方向確定時に `Game.throwAimConfirm` → `StaffCast.applyThrow` が読む。
     def applyThrowAction(playerId: Int32, scene: Scene[NodeTag]):
-                  Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger} =
+                  Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State, GameLogger.GameLogger} =
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は 投げる方向を選び Z で投げる (X で中止)");
         PhaseTransitions.enterThrowAim(scene)
 
@@ -848,7 +848,7 @@ mod ItemMenuScene {
                    scene: Scene[NodeTag]):
                   Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State, CursorState.State, GameLogger.GameLogger,
+                TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GameLogger.GameLogger,
                 GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         match kind {
             case PlayerData.ItemKind.Staff(idx) =>
@@ -870,7 +870,7 @@ mod ItemMenuScene {
     def applyConsumableByDelivery(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
                   Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State, CursorState.State, GameLogger.GameLogger,
+                TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GameLogger.GameLogger,
                 GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         match consumableDeliveryAt(playerId, idx, scene) {
             case Consumable.Delivery.SelfUse =>
@@ -929,7 +929,7 @@ mod ItemMenuScene {
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):
                                     Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
-                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                 GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         let phase = TurnPhase.State.get();
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {

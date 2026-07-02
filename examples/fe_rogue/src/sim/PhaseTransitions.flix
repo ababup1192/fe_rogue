@@ -176,7 +176,8 @@ mod PhaseTransitions {
     /// 隣接マス (デフォルト方向 Up) に矢印カーソルを表示する。方向キーで矢印を
     /// 回し、Z で発射する。
     pub def enterStaffAim(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State,
+                              World.WorldQuery} =
         TurnPhase.State.put(TurnPhase.Phase.StaffAim);
         let withCursorHidden = CursorScene.setVisible(false, scene);
         match SelectedPlayer.State.get()#id {
@@ -199,7 +200,7 @@ mod PhaseTransitions {
     /// 選択中プレイヤーの隣接マス（デフォルト Up）に出すだけ。回復方向の初期照準は行わない
     /// （投擲は対象を読み合うので一律 Up から始める）。
     pub def enterThrowAim(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ThrowAim);
         let withCursorHidden = CursorScene.setVisible(false, scene);
         match SelectedPlayer.State.get()#id {

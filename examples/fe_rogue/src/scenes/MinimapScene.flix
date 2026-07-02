@@ -118,7 +118,7 @@ mod MinimapScene {
         World.visitedModulesOf(World.WorldQuery.get())
 
     /// CanvasLayer（scene.json）+ 描画コンテナ + 背景 + 矩形/マーカープール（初期非表示）+
-    /// 常駐 MinimapDriver を scene tree に追加する。`GameLifecycle.buildPlayingScene` の末尾
+    /// 常駐 MinimapDriver を scene tree に追加する。`SceneSetup.buildPlayingScene` の末尾
     /// （placements / 階段が確定した後）で 1 回だけ呼ぶ。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());

@@ -10,7 +10,7 @@
 ///   - その他              → no-op
 ///
 /// 公開 API:
-///   - `add(scene)`       — `GameLifecycle.buildPlayingScene` で scene tree に常駐ノードを追加
+///   - `add(scene)`       — `SceneSetup.buildPlayingScene` で scene tree に常駐ノードを追加
 ///   - `process(...)`     — `Node[NodeTag]` instance から per-frame で呼ばれる。phase 判定。
 ///   - `beginTurn(scene)` — 敵ターン開始 (敵キュー構築 + フェーズ遷移 + 周辺片付け)
 ///     `TurnFlow.commitWaitedAndAdvance` から「全員 waited」のときに呼ばれる
@@ -31,7 +31,7 @@ mod EnemyTurnDriver {
     /// 常駐タグ専用ノードの名前。Marker2D を World 配下に置く。
     def driverName(): String = "EnemyTurnDriver"
 
-    /// scene tree に常駐ノードを追加する。`GameLifecycle.buildPlayingScene` で 1 回だけ呼ぶ。
+    /// scene tree に常駐ノードを追加する。`SceneSetup.buildPlayingScene` で 1 回だけ呼ぶ。
     /// engine の `Scene.processAll` が preorder で各ノードを巡回するとき、この driver の
     /// `process` redef が phase 判定 + stepOnce / tickPlayerAttackHold を起動する。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =

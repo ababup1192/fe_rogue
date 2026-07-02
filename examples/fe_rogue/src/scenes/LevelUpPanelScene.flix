@@ -136,7 +136,7 @@ mod LevelUpPanelScene {
                 Err(JsonCompat.jsonError(Root, Set#{"LevelUpPanelScene tag (got: ${unknown})"}))
         }
 
-    /// scene にパネルを追加する。`GameLifecycle.buildPlayingScene` の構築パイプで 1 回呼ぶ。
+    /// scene にパネルを追加する。`SceneSetup.buildPlayingScene` の構築パイプで 1 回呼ぶ。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)

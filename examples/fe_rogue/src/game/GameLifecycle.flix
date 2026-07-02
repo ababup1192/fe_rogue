@@ -1,28 +1,23 @@
-/// GameLifecycle — ゲーム起動 / リスタート時のシーン全体構築 + 状態リセット
+/// GameLifecycle — ゲームの流れ（フロア遷移 / 全滅復帰 / 中断再開 / 特殊効果）を担う層。
+/// `Game.start` の各 `CustomEffects.*Request` handler 本体がここに集約され、状態（ターン系 /
+/// フロア進行 / パーティ / スナップショット）を巻き戻し・整えたうえで、実際の scene 構築は
+/// `SceneSetup`（UI 組み立て）へ委譲する。
 ///
-/// 2 つの呼び出し経路で同じ手順を踏む:
-///   1. `Game.start` 初回起動: catalog → `buildAndRecord` → BGM / ログ → gameLoop
-///   2. `CustomEffects.GameOverRequest` handler: `resetForGameOver` → 新 scene を継続
+/// 外向き API:
+///   - `resetForGameOver` — 1F へ戻して新ラン開始（GameOverRequest.restartBeginning）
+///   - `restartFromFloorSnapshot` — 同フロアの進入時から再構築（restartFloor）
+///   - `reviveWithGoddess` — 現フロアの敵一掃 + 全員その場復活（reviveInPlace）
+///   - `advanceFloor` — 次フロアへ引き継ぎ（FloorAdvanceRequest）
+///   - `suspendAndQuit` / `resumeFromSuspend` — 中断セーブ書き出し / 再開
+///   - `maybeSpawnWanderer` / `dropFloorItem` / `applyRingTransform` — 敵の特殊行動
 ///
-/// この 2 経路が共有するロジックを集約することで、snapshot 記録漏れや state 巻き戻し漏れを
-/// 防ぐ。外向き API として `buildCurrentFloor` / `resetForGameOver` / `advanceFloor` を使い、
-/// `buildPlayingScene` を直接呼ぶと snapshot が記録されない点に注意。
-///
-/// 各 Scene の `add` は **順序が意味を持つ**:
-///   - MapScene が先 (他 Scene が `worldPath()` / `getMapLayer()` を参照する)
-///   - DamagePopupFx は World 配下の親ノードを必要とするため Map の直後
-///   - PlayerScene / EnemyScene は MapScene の placements に従ってスポーン
-///   - MoveRangeScene は SelectedPlayer 状態を読むが起動時は未選択なので no-op
-///   - Camera は最後に追加して全プレイヤー出揃った後に追従開始
-///   - UI 系 (WeaponMenu / ActionMenu / BattlePanel / UnitCard) は最後 (描画前面)
-///
-/// `catalog` は `Game.start` でロード済みのユニット定義。PlayerScene と EnemyScene に
-/// プール定義 (`party` / `enemyTier1`) を辿らせる。
+/// ターン系の巻き戻し（`resetTurnQueues` / `resetTurnState`）は敵キュー・TurnPhase・選択中味方・
+/// 集合自動継続フラグをまとめて初期化し、フロア遷移・全滅・クリアで共通に使う。
 mod GameLifecycle {
 
-    /// 5 つのカタログを 1 つに束ねた引き回し用 record。`Game.start` で 1 度ロードして
-    /// 構築 / リビルド経路 (buildAndRecord / resetForGameOver / advanceFloor) を貫通する。
-    /// 味方 (`players`) と敵 (`enemies`) はここで別カタログとして分かれて入る。
+    /// 8 つのカタログを 1 つに束ねた引き回し用 record。`Game.start` で 1 度ロードして
+    /// 構築 / リビルド経路（`SceneSetup.buildAndRecord` / `resetForGameOver` / `advanceFloor`）を
+    /// 貫通する。味方 (`players`) と敵 (`enemies`) はここで別カタログとして分かれて入る。
     pub type alias Catalogs = {
         weapons     = WeaponCatalog.WeaponCatalog,
         players     = UnitCatalog.UnitCatalog,
@@ -33,96 +28,6 @@ mod GameLifecycle {
         chests      = ChestCatalog.ChestCatalog,
         rings       = Ring.RingCatalog
     }
-
-    /// プレイ用シーンを 1 回で組み立てる。`MapScene.add` が `IO` を要求するため
-    /// 戻り値の Aef にも `IO` を含める。
-    /// **直接呼ぶのは `buildAndRecord` だけ** にする (起動 / リビルド時の snapshot 記録漏れ
-    /// を防ぐため、外向き API は `buildAndRecord` を使う)。
-    pub def buildPlayingScene(catalogs: Catalogs,
-                                floor: FloorCatalog.FloorResource): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
-                SelectedPlayer.State, CursorState.State, PartySelection.State, World.Command, World.WorldQuery,
-                TopBarScene.State} =
-        // 前フロアの配置物 store（宝箱/床アイテム）を掃除（scene 再構築での自動 prune は廃止＝明示 Cmd）。
-        World.Command.emit(World.Cmd.ClearChests);
-        World.Command.emit(World.Cmd.ClearItems);
-        // 前フロアの探索記憶（ミニマップ）を一掃（配置物 store と同じく明示 Cmd で掃除）。
-        World.Command.emit(World.Cmd.ClearVisited);
-        // 前フロアのユニット store も一掃（spawn がこの後 seed し直す）。
-        World.Command.emit(World.Cmd.ClearUnits);
-        Scene.empty()
-            |> MapScene.add(floor)
-            |> FogScene.add             // 常駐 FogDriver（暗幕は renderFog 直描き）
-            // ↑ FogDriver は EnemyTurnDriver より先に追加する（preorder で同フレーム先に process される）。
-            //   EnemyTurnDriver.endTurn の集合自動継続判定 anyVisibleEnemy が「同フレーム最新の
-            //   フォグ可視（applyFog 適用後）」を読めるのはこの add 順前提。順序を入れ替えると 1 フレーム
-            //   古い可視値で判定してしまうので注意。
-            |> PlayerScene.add(catalogs#players, catalogs#staves, catalogs#consumables)
-            |> EnemyScene.add(catalogs#enemies, catalogs#weapons, catalogs#rings, floor)
-            |> GroundItems.add(catalogs#players, catalogs#staves, catalogs#consumables, catalogs#rings, floor)   // 部屋の床に武器/杖/消耗品/指輪をランダムドロップ
-            |> addHudAndDrivers(floor#label, floor#name)  // 駒非依存の HUD / 常駐ドライバ / メニュー群（rebuild と共有）
-            // 全ノード配置後に階段を床のランダムセルへ置く (駒・アイテムを避けるため最後)
-            |> Stairs.placeRandom
-            // 階段確定後に宝箱を配置 (駒・アイテム・階段を避けるため階段の後)
-            |> Chests.add(catalogs#chests, catalogs#players, catalogs#staves, catalogs#consumables, catalogs#rings, floor)
-            // players/stairs 確定後に初回フォグ適用 (スポーン部屋を点灯。以降は FogScene.process が毎フレーム更新)
-            |> FogScene.applyFog
-            // ミニマップ (最終 placements / 階段を読むため末尾)。訪問記憶は World 権威で ClearVisited が掃除。
-            |> MinimapScene.add
-            // マップノード再構築の世代を +1（gameLoop の tile bake トリガ＝新フロアのタイルを World へ焼く）。
-            |> (s -> { World.Command.emit(World.Cmd.BumpTileGen); s })
-            // 地形 read-model（toBoard の壁/サイズ源）も build choke で World へ入れる。
-            |> (s -> { World.Command.emit(World.Cmd.SetMapSnapshot(Some(BoardSnapshot.mapSnapshotOf(s)))); s })
-
-    /// 駒（味方 / 敵 / アイテム / 宝箱 / 階段）に依存しない HUD・常駐ドライバ・メニュー群をまとめて追加する。
-    /// `buildPlayingScene`（通常生成）と `rebuildFloorFromSnapshot`（スナップショット復元）が共有し、
-    /// **ノード追加順序とメンバーを 1 か所に固定**する（追加漏れ・順序ズレ・二重追加を防ぐ）。
-    /// MapScene / Fog / DamagePopup / Explosion の後、駒配置の後に呼ぶ前提。
-    /// `label` はフロア番号表示（"1F" 等）、`name` はフロア名（"始まりの洞窟" 等。空可）。
-    def addHudAndDrivers(label: String, name: String, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead, SelectedPlayer.State, CursorState.State, World.WorldQuery, TopBarScene.State} =
-        scene
-            |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
-            |> CursorScene.add
-            |> ArrowCursorScene.add     // 杖発射方向の矢印カーソル (初期は非表示)
-            |> CameraScene.add
-            |> EnemyTurnDriver.add // 敵ターン進行の常駐タグノード (process で phase 判定)
-            |> StairsExitDriver.add      // 集合「階段で離脱」の順次退場ドライバ (process で phase 判定)
-            |> ItemMenuScene.add        // アイテム選択ウィンドウ (初期は非表示)
-            |> UnitCardScene.add        // 左サイドの選択ユニット簡易カード (初期は非表示)
-            |> EnemyCardScene.add       // 右サイドの攻撃対象敵カード (UnitCard と左右対称・初期は非表示)
-            |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
-            |> WeaponSelectScene.add    // 武器選択ウィンドウ (ActionMenu「攻撃」確定で右隣に出る。初期は非表示)
-            |> GameOverMenuScene.add    // 全滅時のモーダル選択 (初期は非表示)
-            |> SuspendConfirmScene.add  // 中断確認のモーダル (初期は非表示)
-            |> TradeMenuScene.add       // 物交換ウィンドウ (2 ペイン、初期は非表示)
-            |> BattlePanelScene.add     // 戦闘予報ミニウィンドウ (World 配下・初期は非表示)
-            |> LevelUpPanelScene.add    // レベルアップのステータス変化パネル (初期は非表示)
-            // ユニット情報は UnitCardScene（左サイドの常設カード）が担う。
-            // カーソル下のユニット情報も UnitCardScene が PlayerCursor 中に表示する。
-            |> TopBarScene.add(label, name)  // 上部フェイズバー（フロア番号+名前 / フェイズ / 下線）
-            |> LogScene.add             // 右下の3行一時ログ (5秒で消える)
-            |> ItemPickupPopupScene.add // アイテム取得ポップアップ (初期は非表示)
-            |> TurnEndHoldScene.add     // Shift 長押しでターンエンドする中央ゲージ (初期は非表示)
-            |> BgmScene.add             // BGM (AudioStreamPlayer, autoplay=true)
-
-    /// プレイ用シーンを組み立て + 初期 spawn 一覧 (敵 / 味方) を `InitialSpawns` に保存する。
-    /// 起動時と GameOver リビルド時の両方が必ず通る経路。これで「scene 構築」と
-    /// 「ゲームオーバー復帰用のスポーン記録」が必ず同じタイミングで揃う。
-    pub def buildAndRecord(catalogs: Catalogs,
-                            floor: FloorCatalog.FloorResource): Scene[NodeTag]
-            \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
-                SelectedPlayer.State, CursorState.State, InitialSpawns.State, PartySelection.State, World.Command,
-                World.WorldQuery, TopBarScene.State} =
-        let scene = buildPlayingScene(catalogs, floor);
-        InitialSpawns.State.put({
-            enemies = EnemyScene.snapshotSpawns(scene),
-            players = PlayerScene.snapshotSpawns(scene)
-        });
-        // AudioStreamPlayer ノード (BGM 等) の volume / loop / autoplay を OpenAL に反映する。
-        // scene を組み立てただけでは Audio ノードが有効にならないため、構築後に必ず呼ぶ。
-        SceneLoader.applyAudioAttach(scene);
-        scene
 
     /// ターン進行系の effect だけを初期化する（ログは出さない）。
     /// 敵キューを空に / フェーズを PlayerCursor に / 選択中味方を解除 / 集合自動継続フラグを落とす。
@@ -140,7 +45,7 @@ mod GameLifecycle {
     /// ゲームオーバー時のターン進行系 state を初期化する。
     /// ゲームオーバーログを出してから `resetTurnQueues` を呼ぶ。
     /// scene 書き換えは含まないので **副作用は effect のみ**。スポーンや scene の再構築は
-    /// `resetForGameOver` が `buildAndRecord` 経由で行う。
+    /// `resetForGameOver` が `SceneSetup.buildCurrentFloor` 経由で行う。
     /// この関数を切り出すことで、テストが scene 構築 (LDTK / LWJGL 要求) を経由せずに
     /// 「リセットセマンティクス」だけを観測できるようになる。
     pub def resetTurnState(): Unit \ {GameLogger.GameLogger, EnemyTurn.Queue,
@@ -149,96 +54,19 @@ mod GameLifecycle {
         GameLogger.gameOverLog("ゲームオーバー");
         resetTurnQueues()
 
-    /// `FloorProgress` が指す現在フロアを解決して build + spawn snapshot 保存する。
-    /// 起動時 / 全滅リスタート / クリア後ループの共通エントリ。
-    pub def buildCurrentFloor(catalogs: Catalogs): Scene[NodeTag]
-            \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
-                SelectedPlayer.State, CursorState.State, InitialSpawns.State, FloorProgress.State,
-                PartySelection.State, FloorSnapshot.State, World.Command, World.WorldQuery,
-                TopBarScene.State} =
-        let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
-        recordFloorEntry(catalogs, buildAndRecord(catalogs, floor))
-
-    // ────────────────────────────────────────────────────────
-    // フロアスナップショット（全滅時の「そのフロアの最初から」復元 / 中断土台）
-    // ────────────────────────────────────────────────────────
-
-    /// 現在のフロア状態を `FloorSnapshot.T`（カタログ id ＋ 動的値の純粋データ）に射影する。
-    /// マップは Plan、駒/アイテム/宝箱/階段は各 Scene の captureSnaps で id 化して集約する。
-    pub def captureFloorSnapshot(catalogs: Catalogs, scene: Scene[NodeTag]): FloorSnapshot.T
-            \ {FloorProgress.State, World.WorldQuery} =
-        ({floorId = FloorProgress.State.get(),
-          mapPlan  = MapScene.getPlan(scene),
-          players  = PlayerScene.captureSnaps(scene, catalogs#weapons, catalogs#staves,
-                                               catalogs#consumables, catalogs#rings),
-          enemies  = EnemyScene.captureSnaps(scene, catalogs#weapons, catalogs#rings),
-          items    = GroundItems.captureSnaps(scene),
-          chests   = Chests.captureSnaps(scene),
-          // 階段セルは World.stairsPos（World 権威）から読む。
-          stairs   = World.stairsPosOf(World.WorldQuery.get())}: FloorSnapshot.T)
-
-    /// 進入時スナップショットを `FloorSnapshot.State` に保存して scene をそのまま返す。
-    /// 各フロア進入点（`buildCurrentFloor` / `advanceFloor`）の末尾で呼ぶ。
-    pub def recordFloorEntry(catalogs: Catalogs, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {FloorProgress.State, FloorSnapshot.State, World.WorldQuery} =
-        FloorSnapshot.State.put(captureFloorSnapshot(catalogs, scene));
-        scene
-
-    /// 保存済みスナップショットから **乱数を使わず** フロアを再構築する。`buildPlayingScene` と同じ
-    /// スキャフォールド順序で、マップ/駒/アイテム/宝箱/階段だけを from-snapshot の決定論配置に差し替える。
-    /// audio は `applyAudioAttach` で再アタッチ（BGM 再生）。
-    pub def rebuildFloorFromSnapshot(catalogs: Catalogs, snap: FloorSnapshot.T): Scene[NodeTag]
-            \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, SelectedPlayer.State, CursorState.State, World.Command,
-                World.WorldQuery, TopBarScene.State} =
-        let floor = FloorCatalog.get(snap#floorId, catalogs#floors);
-        // 前フロア/前 run の配置物 store を掃除してから addFromSnaps で再 spawn する
-        // （scene 再構築での自動 prune は廃止＝明示 Cmd。addFromSnaps より前が必須）。
-        World.Command.emit(World.Cmd.ClearChests);
-        World.Command.emit(World.Cmd.ClearItems);
-        World.Command.emit(World.Cmd.ClearVisited);  // 前フロアの探索記憶（ミニマップ）も一掃
-        World.Command.emit(World.Cmd.ClearUnits);  // 前 run のユニット store も一掃
-        let scene = Scene.empty()
-            |> MapScene.addFromPlan(snap#mapPlan)
-            |> FogScene.add
-            |> PlayerScene.addFromSnaps(snap#players, catalogs#players, catalogs#staves,
-                                         catalogs#consumables, catalogs#rings)
-            |> EnemyScene.addFromSnaps(snap#enemies, catalogs#enemies, catalogs#weapons, catalogs#rings)
-            |> GroundItems.addFromSnaps(snap#items, catalogs#players, catalogs#staves,
-                                       catalogs#consumables, catalogs#rings)
-            |> addHudAndDrivers(floor#label, floor#name)  // buildPlayingScene と同じ HUD/driver 群を共有
-            |> placeStairsFromSnap(snap#stairs)
-            |> Chests.addFromSnaps(snap#chests, catalogs#chests, catalogs#players,
-                                        catalogs#staves, catalogs#consumables, catalogs#rings)
-            |> FogScene.applyFog
-            |> MinimapScene.add;
-        SceneLoader.applyAudioAttach(scene);
-        // マップノード再構築の世代を +1（gameLoop の tile bake トリガ＝復元/restartFloor のタイルを World へ焼く）。
-        World.Command.emit(World.Cmd.BumpTileGen);
-        // 地形 read-model も build choke で World へ。
-        World.Command.emit(World.Cmd.SetMapSnapshot(Some(BoardSnapshot.mapSnapshotOf(scene))));
-        scene
-
-    /// 保存済み階段位置があればそのセルに階段を確定配置する（無ければ何もしない）。
-    def placeStairsFromSnap(stairs: Option[{x = Int32, y = Int32}],
-                             scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        match stairs {
-            case Some(cell) => Stairs.placeAt(cell, scene)   // placeAt が Cmd.SetStairs を emit（World 権威）
-            case None       => scene
-        }
-
     /// 「そのフロアの最初から」復元。ターン進行系を初期化し、保存済みスナップショットから
     /// フロアを決定論再構築する。`FloorProgress` / `PartySelection` は変えない（同フロア・同パーティ維持）。
     /// スナップショット未保存（理論上 CharacterSelect 中のみ）なら防御的に `resetForGameOver` へ。
     pub def restartFromFloorSnapshot(catalogs: Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                CursorState.State, GatherResume.State,
+                CursorState.State, ArrowCursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State,
                 World.Command, World.WorldQuery, TopBarScene.State} =
         match FloorSnapshot.State.get() {
             case Some(snap) =>
                 resetTurnQueues();
-                rebuildFloorFromSnapshot(catalogs, snap)
+                SceneSetup.rebuildFloorFromSnapshot(catalogs, snap)
             case None =>
                 resetForGameOver(catalogs)
         }
@@ -263,7 +91,7 @@ mod GameLifecycle {
     pub def suspendAndQuit(catalogs: Catalogs, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Fs.FileWrite, FloorProgress.State, GameLogger.GameLogger, GamePhaseState,
                 World.WorldQuery} =
-        let snap = captureFloorSnapshot(catalogs, scene);
+        let snap = SceneSetup.captureFloorSnapshot(catalogs, scene);
         match SaveManager.write(SuspendSave.slot(), SuspendSave.make(false, snap)) {
             case Ok(_)   =>
                 // 保存できたときだけタイトルへ戻す。
@@ -278,7 +106,7 @@ mod GameLifecycle {
     /// 中断セーブからの再開準備: slot を読み、未使用なら フロア / パーティ / ターン系を整え、
     /// セーブを「使用済み」で上書き（save-scum 防止）し、snapshot を `FloorSnapshot.State` へ渡してから
     /// Playing へ遷移する。実際の scene 構築は `applyPhaseChange(Playing, from=Title)` が
-    /// `FloorSnapshot.State` の snapshot から `rebuildFloorFromSnapshot`（乱数なし）で行う。
+    /// `FloorSnapshot.State` の snapshot から `SceneSetup.rebuildFloorFromSnapshot`（乱数なし）で行う。
     /// 使用済み / 不在なら何もしない（タイトル側で disable 済みなので通常来ない）。
     /// `CustomEffects.ResumeRequest.resume` の本体。
     pub def resumeFromSuspend(catalogs: Catalogs, scene: Scene[NodeTag]): Scene[NodeTag]
@@ -314,7 +142,7 @@ mod GameLifecycle {
                                scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                CursorState.State, GatherResume.State,
+                CursorState.State, ArrowCursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State,
                 World.Command, World.WorldQuery, TopBarScene.State} =
         match FloorSnapshot.State.get() {
@@ -398,7 +226,7 @@ mod GameLifecycle {
     pub def resetForGameOver(catalogs: Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
+                TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State,
                 FloorSnapshot.State, World.Command, World.WorldQuery, TopBarScene.State} =
         resetTurnState();
@@ -406,7 +234,7 @@ mod GameLifecycle {
         // リスタートは新しい run 扱い: 前回の party 構成を引き継がず再抽選する。
         // PartySelection をクリアすると次の buildCurrentFloor 時に抽選が走る。
         PartySelection.State.clear();
-        buildCurrentFloor(catalogs)
+        SceneSetup.buildCurrentFloor(catalogs)
 
     /// `CustomEffects.FloorAdvanceRequest` handler の本体。
     /// 生存味方の HP / 武器 / 持ち物を引き継ぎつつ、次フロアを組み立てる。
@@ -415,7 +243,7 @@ mod GameLifecycle {
                           scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
+                TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State,
                 FloorSnapshot.State, World.Command, World.WorldQuery, TopBarScene.State} =
         // 引き継ぐステータスを「現フロア退場前」に確保しておく。
@@ -426,10 +254,10 @@ mod GameLifecycle {
                 let nextFloor = FloorCatalog.get(nextId, catalogs#floors);
                 GameLogger.playerLog("${nextFloor#label} に進む");
                 resetTurnQueues();
-                let built = buildAndRecord(catalogs, nextFloor);
+                let built = SceneSetup.buildAndRecord(catalogs, nextFloor);
                 // 構築直後の party に前フロアの HP / 武器 / 持ち物を反映（待機状態はリセット済み）。
                 // 反映後の「進入時状態」をスナップショットに記録（全滅時の「そのフロアの最初から」用）。
-                recordFloorEntry(catalogs, PlayerScene.reconcileWithCarry(carry, built))
+                SceneSetup.recordFloorEntry(catalogs, PlayerScene.reconcileWithCarry(carry, built))
             case None =>
                 // 最終フロアクリア → クリアログ → 1F へループ（フレッシュな party で再開）
                 GameLogger.playerLog("ゲームクリア！ 1F からもう一度");
@@ -437,6 +265,6 @@ mod GameLifecycle {
                 FloorProgress.State.put(FloorCatalog.firstFloorId(catalogs#floors));
                 // 周回も新しい run 扱い（リスタートと同じ理由: party 構成を再抽選）
                 PartySelection.State.clear();
-                buildCurrentFloor(catalogs)
+                SceneSetup.buildCurrentFloor(catalogs)
         }
 }

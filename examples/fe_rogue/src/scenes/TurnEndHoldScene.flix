@@ -135,7 +135,7 @@ mod TurnEndHoldScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    /// 画面 HUD の最前面にゲージ一式を追加する。`GameLifecycle.buildPlayingScene` で 1 回だけ呼ぶ。
+    /// 画面 HUD の最前面にゲージ一式を追加する。`SceneSetup.buildPlayingScene` で 1 回だけ呼ぶ。
     /// 初期は非表示。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let atlas = GameEngine.Game.getFontAtlas(fontName());

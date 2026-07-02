@@ -140,7 +140,7 @@ mod ItemPickupPopupScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    /// 画面 HUD の最前面にポップアップ一式を追加する。`GameLifecycle.buildPlayingScene` の
+    /// 画面 HUD の最前面にポップアップ一式を追加する。`SceneSetup.buildPlayingScene` の
     /// UI 群で1回だけ呼ぶ。初期は非表示（alpha 0・visible false）。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let atlas = GameEngine.Game.getFontAtlas(fontName());

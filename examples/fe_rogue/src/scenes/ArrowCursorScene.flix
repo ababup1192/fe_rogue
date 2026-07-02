@@ -5,22 +5,16 @@
 /// を押すと向きが切り替わり、Z で発射、X / Esc でキャンセル。
 ///
 /// ノード構造（CursorScene と並列のトップレベル）:
-///   ArrowCursor (Marker2D, NodeTag.ArrowCursor(Data))
+///   ArrowCursor (Marker2D, NodeTag.ArrowCursor)
 ///     └─ Sprite (Sprite2D, arrow.png)
 ///
 /// 親 Marker2D の `position` で隣接マスを指し、子 Sprite の `rotation` で矢の向きを表す
-/// （arrow.png は上向きに描かれている前提）。
+/// （arrow.png は上向きに描かれている前提）。論理状態（anchor/direction/gridPos）は
+/// `ArrowCursorState.State` resource が権威で、ノードは識別用のペイロードレスタグだけ持つ。
 mod ArrowCursorScene {
 
-    /// 矢印カーソルの状態。
-    /// `anchor` はプレイヤーのグリッドセル座標（隣接セル算出の起点）。
-    /// `direction` は現在の発射方向。
-    /// `gridPos` は anchor から direction だけ進めた隣接セル（= 矢印の論理位置）。
-    pub type alias Data = {
-        anchor    = {x = Int32, y = Int32},
-        direction = Staff.Direction,
-        gridPos   = {x = Int32, y = Int32}
-    }
+    /// 矢印カーソルの論理状態。resource 側の型に委譲する。
+    pub type alias Data = ArrowCursorState.Data
 
     def name(): String = "ArrowCursor"
     pub def arrowPath():  NodePath = name() :: Nil
@@ -52,16 +46,12 @@ mod ArrowCursorScene {
     /// scene に矢印カーソルを追加する。初期は非表示 (visible は scene.json 側で false)。
     /// add 直後は anchor/gridPos が未設定のため、StaffAim 開始前に必ず `showFor` を呼ぶこと。
     pub def add(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
-        let data: Data = {
-            anchor    = {x = 0, y = 0},
-            direction = Staff.Direction.Up,
-            gridPos   = {x = 0, y = 0}
-        };
+            Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead, ArrowCursorState.State} =
+        ArrowCursorState.State.put(ArrowCursorState.initial());
         SceneLoader.loadScene(scenePath(),
                               SceneLoader.constTagParser(NodeTag.NoTag),
                               scene)
-            |> Scene.setState(arrowPath(), NodeTag.ArrowCursor(data))
+            |> Scene.setState(arrowPath(), NodeTag.ArrowCursor)
 
     /// フェーズが `StaffAim` のときだけ visible にし、それ以外では hidden にする。
     /// 実質的な描画更新（位置・回転）は `StaffAim` 開始時の `showFor` と方向キー毎の `aim` が担い、
@@ -81,41 +71,30 @@ mod ArrowCursorScene {
     /// `StaffAim` に入った瞬間に呼ぶ。`anchor` をプレイヤー位置に、`direction` を Up に
     /// セットし、矢印を player の上隣接マスに表示する。
     pub def showFor(playerCell: {x = Int32, y = Int32},
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ ArrowCursorState.State =
         setPositionAndRotation(playerCell, Staff.Direction.Up, scene)
 
     /// StaffAim 中に方向キーを受けるたびに呼ぶ。`showFor` で固定された `anchor` は変えず、
     /// `direction` と矢印の表示位置だけを更新する。
     pub def aim(direction: Staff.Direction,
-                  scene: Scene[NodeTag]): Scene[NodeTag] =
-        let anchor = getData(scene)#anchor;
+                  scene: Scene[NodeTag]): Scene[NodeTag] \ ArrowCursorState.State =
+        let anchor = ArrowCursorState.State.get()#anchor;
         setPositionAndRotation(anchor, direction, scene)
 
     /// 現在指している direction を取り出す。発射確定時（Z キー押下後）に呼び出し元が方向を取得するために公開している。
-    pub def getDirection(scene: Scene[NodeTag]): Staff.Direction =
-        getData(scene)#direction
-
-    /// 矢印の Data を取り出す。ノードが未ロードの場合にクラッシュしないよう、
-    /// Up 方向・原点を返すフォールバックを持つ。
-    def getData(scene: Scene[NodeTag]): Data =
-        match Scene.getState(arrowPath(), scene) {
-            case Some(NodeTag.ArrowCursor(data)) => data
-            case _ =>
-                ({anchor = {x = 0, y = 0}, direction = Staff.Direction.Up,
-                  gridPos = {x = 0, y = 0}}: Data)
-        }
+    pub def getDirection(): Staff.Direction \ ArrowCursorState.State =
+        ArrowCursorState.State.get()#direction
 
     /// 親 Marker2D の位置と子 Sprite の回転を direction に合わせて更新し、
-    /// `Data` も新しい anchor / direction / gridPos で書き換える。
+    /// resource の Data も新しい anchor / direction / gridPos で書き換える。
     def setPositionAndRotation(anchor: {x = Int32, y = Int32},
                                  direction: Staff.Direction,
-                                 scene: Scene[NodeTag]): Scene[NodeTag] =
+                                 scene: Scene[NodeTag]): Scene[NodeTag] \ ArrowCursorState.State =
         let cell = cellOf(anchor, direction);
         let world = MapSnapshot.cellCenter(cell);
         let rotation = rotationOf(direction);
-        let nextData: Data = {anchor = anchor, direction = direction, gridPos = cell};
+        ArrowCursorState.State.put({anchor = anchor, direction = direction, gridPos = cell});
         scene
-            |> Marker2D.mapAtWithState(arrowPath(), (marker, _st) ->
-                (Node2D.setPosition(world, marker), NodeTag.ArrowCursor(nextData)))
+            |> Marker2D.mapAt(arrowPath(), Node2D.setPosition(world))
             |> Sprite2D.mapAt(spritePath(), Node2D.setRotation(rotation))
 }

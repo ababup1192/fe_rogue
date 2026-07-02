@@ -39,7 +39,7 @@ mod FogScene {
     def marginTiles(): Int32 = 60
 
     /// 常駐 FogDriver を scene tree に追加する。
-    /// `GameLifecycle.buildPlayingScene` で MapScene.add の直後に 1 回だけ呼ぶ。
+    /// `SceneSetup.buildPlayingScene` で MapScene.add の直後に 1 回だけ呼ぶ。
     /// 暗幕は `RenderWorld.renderFog` が World/placements から純粋計算で直描き＝scene にノードを積まない。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.addChild(MapScene.worldName(), driverName(),

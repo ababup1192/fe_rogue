@@ -36,8 +36,9 @@ pub enum NodeTag {
     case DangerZone(DangerZoneScene.Data)
     /// 選択カーソルの識別用純タグ（論理状態は `CursorState.State` resource へ移設・ペイロードレス）。
     case Cursor
-    /// ArrowCursorScene の Marker2D（杖発射方向を視覚化する矢印カーソル）
-    case ArrowCursor(ArrowCursorScene.Data)
+    /// ArrowCursorScene の Marker2D（杖発射方向を視覚化する矢印カーソル）。
+    /// 論理状態は ArrowCursorState.State resource が権威で、タグはペイロードレス。
+    case ArrowCursor
     /// Stairs の Marker2D（フロアの階段。床のランダムセルに 1 つ配置される）
     case Stairs(Stairs.Data)
     /// ログ HUD の識別用純タグ（状態は `LogScene.State` resource へ移設・ペイロードレス）。
@@ -223,7 +224,7 @@ instance InputEvent.InputHandler[NodeTag] {
     type Aef = {GameEngine.Game, GameEngine.Audio, BoardQuery, Tween.Scheduler,
                  AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
-                 TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
+                 TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
                  CustomEffects.FloorAdvanceRequest, CustomEffects.ResumeRequest,
                  CustomEffects.SuspendRequest,
@@ -243,7 +244,7 @@ instance InputEvent.InputHandler[NodeTag] {
                                           AnimationPlayer.Scheduler,
                                           GameLogger.GameLogger,
                                           EnemyTurn.Queue, TurnPhase.State,
-                                          SelectedPlayer.State, CursorState.State, GatherResume.State,
+                                          SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
                                           PlayerData.PartyQuery,
                                           EnemyData.RosterQuery,
                                           CustomEffects.FloorAdvanceRequest,
@@ -265,7 +266,7 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
         Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery,
                            Tween.Scheduler, AnimationPlayer.Scheduler,
                            GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-                           SelectedPlayer.State, CursorState.State, GatherResume.State, PlayerData.PartyQuery,
+                           SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State, PlayerData.PartyQuery,
                            EnemyData.RosterQuery, CustomEffects.FloorAdvanceRequest,
                            CustomEffects.SuspendRequest,
                            Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
@@ -335,7 +336,7 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
 instance MenuEvent.MenuHandler[NodeTag] {
     type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler, GameEngine.Audio,
                  GameLogger.GameLogger, EnemyTurn.Queue,
-                 TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
+                 TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
                  CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery,
                  ItemPickupPopupScene.State}
@@ -345,7 +346,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                           Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                              GameEngine.Audio,
                                              GameLogger.GameLogger, EnemyTurn.Queue,
-                                             TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                                             TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                                              GatherResume.State,
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
@@ -375,7 +376,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                           Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                              GameEngine.Audio,
                                              GameLogger.GameLogger, EnemyTurn.Queue,
-                                             TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                                             TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                                              GatherResume.State,
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
@@ -418,7 +419,7 @@ def keyToStaffDirection(key: GameEngine.Key): Option[Staff.Direction] = match ke
 /// StaffAim フェーズで方向キーが押されたら `ArrowCursorScene.aim` で矢印の向きだけ更新する。
 /// 発射は別キー (Z) で確定する。方向以外のキーは無視。
 def staffAimDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
-        Scene[NodeTag] =
+        Scene[NodeTag] \ ArrowCursorState.State =
     match keyToStaffDirection(key) {
         case None      => scene
         case Some(dir) => ArrowCursorScene.aim(dir, scene)
@@ -429,8 +430,9 @@ def staffAimConfirm(scene: Scene[NodeTag]):
         Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                            BoardQuery, GameLogger.GameLogger,
                            EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                           ArrowCursorState.State,
                            GameEngine.Audio, World.Command, World.WorldQuery} =
-        let dir = ArrowCursorScene.getDirection(scene);
+        let dir = ArrowCursorScene.getDirection();
     // 選択中プレイヤー → その Data → selectedItem を forM で 1 本に畳み、
     // 杖(Staff)を選んでいるときだけ発射する（3 段の match ネストを解消）。
     let selected = forM (
@@ -453,9 +455,10 @@ def throwAimConfirm(scene: Scene[NodeTag]):
         Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                            BoardQuery, GameLogger.GameLogger,
                            EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                           ArrowCursorState.State,
                            GameEngine.Audio, Math.Random,
                            CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
-        let dir = ArrowCursorScene.getDirection(scene);
+        let dir = ArrowCursorScene.getDirection();
     let selected = forM (
         playerId <- SelectedPlayer.State.get()#id;
         player   <- PlayerScene.get(playerId, scene);
@@ -542,7 +545,7 @@ def isMenuCursorMove(phase: TurnPhase.Phase, key: GameEngine.Key): Bool =
 def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene[NodeTag]):
         Option[Scene[NodeTag]] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                     GameLogger.GameLogger, EnemyTurn.Queue,
-                                    TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
+                                    TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
                                     PlayerData.PartyQuery, EnemyData.RosterQuery,
                                     CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
                                     CustomEffects.GameOverRequest, CustomEffects.SuspendRequest, World.Command, World.WorldQuery, BoardQuery,
@@ -595,7 +598,7 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                             AnimationPlayer.Scheduler,
                             GameLogger.GameLogger,
                             EnemyTurn.Queue, TurnPhase.State,
-                            SelectedPlayer.State, CursorState.State,
+                            SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                             PlayerData.PartyQuery,
                             EnemyData.RosterQuery,
                             Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
@@ -673,18 +676,11 @@ mod Game {
     /// 引き伸ばし表示される（Godot の Stretch Mode = canvas_items 相当）。
     /// **project.json の "designWidth"/"designHeight" と必ず一致させること**（HUD の中央寄せ
     /// 計算がこの値を使うため、ずれると TopBar 等の帯が画面幅とずれる）。
-    /// 縦横比は windowWi/windowHi と一致させる（240:128 = 1170:624）。ずらすと引き伸ばし歪みになる。
     pub def designWi(): Int32 = 240
     pub def designHi(): Int32 = 128
 
-    /// 初期ウィンドウサイズ（OS ピクセル単位）。design とは独立して指定でき、
-    /// design 側がウィンドウいっぱいに引き伸ばし描画される。
-    /// design と同じ縦横比（240:128）にしてピクセル等倍・歪みなしで表示する。
-    pub def windowWi(): Int32 = 1170
-    pub def windowHi(): Int32 = 624
-
     /// ゲーム起動エントリ。Region と各 effect handler を立ち上げ、初回シーンを
-    /// `GameLifecycle.buildPlayingScene` で組み立てて `gameLoop` に入る。
+    /// `SceneSetup.buildPlayingScene` で組み立てて `gameLoop` に入る。
     /// **配線役** に徹するため、ここにゲームロジックは書かない。
     pub def start(): Unit \ {GameEngine.Game, GameEngine.Audio,
                               Fs.FileRead, Fs.FileWrite, IO, Math.Random} =
@@ -926,6 +922,7 @@ mod Game {
               }
               with SelectedPlayer.withState(rc)   // 操作中プレイヤー id の保持
               with CursorState.withState(rc)      // 選択カーソルの論理状態（指しセル/加速/ホバー）を resource 化
+              with ArrowCursorState.withState(rc) // 杖/投擲の照準矢印の論理状態（anchor/direction/gridPos）を resource 化
               with GatherResume.withState(rc)     // 集合モードのターン跨ぎ自動継続フラグ
               with InitialSpawns.withState(rc)    // ゲームオーバー時に同じ敵 / 味方配置を復元
               with FloorSnapshot.withState(rc)    // 進入時フロアスナップショット（全滅時の「フロア最初から」用）
@@ -933,48 +930,29 @@ mod Game {
               with PartySelection.withState(rc)   // 出撃メンバー（開始時に1回抽選、フロア間で維持）
         }
 
-    /// GamePhase に応じて画面（Scene）を組み立てる。**配線役** に徹し、ここに画面固有の
-    /// ロジックは書かない（各 Scene の構築関数を呼ぶだけ）。
-    ///   CharacterSelect — 出撃メンバー選択画面を組む。
-    ///   Playing         — 現在フロアのダンジョンを組む（出撃メンバーは選択画面で確定済み）。
+    /// GamePhase に応じて画面（Scene）を組み立てる。**配線役** に徹し、各画面の構築は
+    /// `SceneSetup` の対応関数へ委譲するだけ（画面固有のロジックはここに書かない）。
+    ///   Title           — タイトル画面（はじめから / 中断から再開）。
+    ///   CharacterSelect — 出撃メンバー選択画面。
+    ///   Playing         — 現在フロアのダンジョン（`prevPhase` で新規ラン / 中断再開を出し分け）。
     /// gameLoop が前フレームとの差分を見て、画面が変わったフレームだけ呼ぶ。
     def applyPhaseChange(phase: GamePhase, prevPhase: GamePhase, catalogs: GameLifecycle.Catalogs,
                           _scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Math.Random,
-                SelectedPlayer.State, CursorState.State, InitialSpawns.State, FloorProgress.State,
+                SelectedPlayer.State, CursorState.State, ArrowCursorState.State, InitialSpawns.State, FloorProgress.State,
                 PartySelection.State, GameLogger.GameLogger, FloorSnapshot.State, World.Command,
                 World.WorldQuery, TitleMenuScene.State, TopBarScene.State} =
         match phase {
-            case GamePhase.Title =>
-                // ダンジョン外へ出る＝ユニット store と地形 read-model を掃除
-                // （scene 再構築での自動 prune は廃止＝明示 Cmd。ClearChests/Items と同じ流儀）。
-                World.Command.emit(World.Cmd.ClearUnits);
-                World.Command.emit(World.Cmd.SetMapSnapshot(None));
-                TitleMenuScene.add(Scene.empty())
-            case GamePhase.CharacterSelect =>
-                World.Command.emit(World.Cmd.ClearUnits);
-                World.Command.emit(World.Cmd.SetMapSnapshot(None));
-                CharacterSelectScene.add(UnitCatalog.pool("players", catalogs#players),
-                                          Scene.empty())
-            case GamePhase.Playing =>
-                // タイトル由来 ＋ スナップショット有り ＝ 中断再開。`FloorSnapshot.State` の snapshot から
-                // **乱数なし** で決定論再構築する（`buildCurrentFloor` は乱数を消費して別マップになるため通さない）。
-                // それ以外（CharacterSelect 由来 ＝ 新規ラン、または防御的に snapshot 無し）は通常生成。
-                match (prevPhase, FloorSnapshot.State.get()) {
-                    case (GamePhase.Title, Some(snap)) =>
-                        GameLogger.playerLog("中断データから再開");
-                        GameLifecycle.rebuildFloorFromSnapshot(catalogs, snap)
-                    case _ =>
-                        GameLogger.playerLog("T1 味方のターン");
-                        GameLifecycle.buildCurrentFloor(catalogs)
-                }
+            case GamePhase.Title           => SceneSetup.buildTitle()
+            case GamePhase.CharacterSelect => SceneSetup.buildCharacterSelect(catalogs)
+            case GamePhase.Playing         => SceneSetup.buildPlaying(catalogs, prevPhase)
         }
 
     /// メインループ。phase で分岐せず、**固定パイプライン** を毎フレーム回す:
     ///   handleInput → handleMenus → physicsProcess → Tween → Animation → process → epilogue
     /// 19-case `TurnPhase.Phase` を World の 3-case `SimPhase` に写す（境界の写像）。
     /// メニュー遷移・演出待ち系は全て「味方ターン」配下＝`PlayerTurn`（細分は UiState.modalMode / anim-queue）。
-    def simPhaseOf(phase: TurnPhase.Phase): SimPhase = match phase {
+    pub def simPhaseOf(phase: TurnPhase.Phase): SimPhase = match phase {
         case TurnPhase.Phase.EnemyTurn => SimPhase.EnemyTurn
         case TurnPhase.Phase.GameOver  => SimPhase.GameOver
         case _                          => SimPhase.PlayerTurn
@@ -998,7 +976,7 @@ mod Game {
                          Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
                          EnemyTurn.Queue, TurnPhase.State,
-                         SelectedPlayer.State, CursorState.State, GatherResume.State,
+                         SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
                          CustomEffects.GameOverRequest,
                          CustomEffects.FloorAdvanceRequest,
                          CustomEffects.WandererSpawnRequest,
@@ -1064,60 +1042,11 @@ mod Game {
                            applyPhaseChange(currentPhase, previousPhase, catalogs, updated)
                                |> Scene.setPrevKeyState(Scene.getPrevKeyState(updated))
                        else updated;
-            // 位置・hp・isDying・alerted・progress・bottleUsed・prevPos・followUpUsed・waited は World 権威。
-            // refreshMirror は frame カウンタを進めるだけ。
-            // 後段 post-sync の [PLAYERDATA/ENEMYDATA DIFF] が waited を含む twin parity を担保する。
-            // write 漏れ（Cmd.SetWaited 抜け）は「駒が灰色にならない/行動済みにならない」可視バグとして現れる。
-            match World.attackTargetMismatches(Ref.get(worldRef), next) {
-                case Nil => ()
-                case ms  => println("[ATTACKTARGET DIFF] ${ms}")
-            };
-            // ATTACKTARGET DIFF（attackTargetId）は combat 解決の同期キャリアで恒久 dual-write ゆえ
-            // invariant guard として残す（他フィールドの runtime DIFF 検出器は撤去済み）。
-            // invariant は unit test（testXxxMismatchesEmptyWhenSynced/DetectsDrift）＋spawn-seed test で継続検証する。
-            let world1 = World.refreshMirror(Ref.get(worldRef));
-            // マップ再構築（tileGen 変化＝`BumpTileGen` が今フレーム走った）時のみ、新フロアのタイルハンドルを
-            // scene から World へ bake する。`world`（gameLoop 引数）は前フレームの gen・`world1` は worldRef 由来の
-            // 今フレーム gen ゆえ、両者の差＝「今フレーム再構築された」。以後は preserve（毎フレーム走査なし）。
-            // 階段降り（advanceFloor）/全滅 restart/中断復元/ダンジョン突入を漏れなく捕捉。
-            let world1b = if (World.tileGenOf(world1) != World.tileGenOf(world))
-                              World.setTileLayers(MapScene.tileLayerHandles(next), world1)
-                          else world1;
-            // **System パイプライン段**。ロジックを `World -> World` の System で回す seam。
-            // stepWorld は現在 identity（statusEffects は command-authoritative＝ターン境界の Seed で tick 反映・
-            // frame-paced tick は二重 tick になるため）。以後の World→World System はここに足す。
-            // moveAnim を実時間 dt（既存の dt: Duration を秒換算）で進める＝engine tween と lockstep 同期。
-            let (world2, moved) = World.stepWorld(world1b, Duration.toSeconds(dt));
-            // phase は `TurnPhase.State` handler が `put` のたび `Cmd.SetPhase` で
-            // worldRef へ dual-write 済み＝**World.turnPhase は command 由来**（全 41 put サイトを handler 1 箇所で被覆）。
-            // よって frame-end の mirror は不要。並走 assert は command 由来 phase と State の乖離（write 漏れ）を検出する
-            // ＝dual-write ゆえ無音だが、将来 dual-write を割る時のガード。phase 権威は当面 TurnPhase.State（read は未 flip）。
-            if (World.turnPhaseOf(world2) != simPhaseOf(TurnPhase.State.get()))
-                println("[F2 PHASE DIFF] world=${World.turnPhaseOf(world2)} state=${simPhaseOf(TurnPhase.State.get())}")
-            else ();
-            // `syncTreeFromWorld` は本番から撤去（最後の derive だった gridPos の読み手を
-            // World.posOf / overlay / getXxxWithWorldPos へ全 flip 済み＝scene Data の gridPos twin は退役。
-            // 関数自体は golden/テストの scene 側投影 seam として残置）。
-            let synced0 = next;
-            // 移動した entity の marker を renderPos に合わせる（engine tween 退役の受け皿・marker 単一権威）。
-            // 書いた synced は末尾 gameLoop へ渡り次フレームへ永続。以降 synced は marker 反映済みを指す。
-            // fx は renderPopups/renderExplosions が直描き（ノード無し）。
-            let synced = RenderWorld.syncMarkers(moved, synced0);
-            // twin parity 検査は scene が World 由来値で出揃った後に置く（gridPos=World 派生・read-model も
-            // refreshMirror 済みで揃う）。dual-write 系(weapons/staves/statuses 等)は scene が process 値のまま
-            // ゆえ「World store == scene」の coverage を維持する。
-            // [UNITVIEW DIFF] は退役。unitView の hp/combat は World 単独権威になり（scene twin 退役）、
-            // 消費者（counter 分岐/AI self/武器選択ターゲット/hover）は unitViewFromWorld / RosterQuery overlay へ
-            // flip 済み＝scene view との比較は「stale で正」の恒常ノイズになる。残る twin field（pos/weapons/
-            // statuses 等）は後続の [PLAYERDATA/ENEMYDATA DIFF] が引き続き突合する。
-            match World.playerDataMismatches(world2, synced) {
-                case Nil => ()
-                case ms  => println("[PLAYERDATA DIFF] ${ms}")
-            };
-            match World.enemyDataMismatches(world2, synced) {
-                case Nil => ()
-                case ms  => println("[ENEMYDATA DIFF] ${ms}")
-            };
+            // 毎フレームの World System パイプライン（attackTarget/player/enemy parity 検査 →
+            // refreshMirror → tile bake（再構築時のみ）→ stepWorld → phase parity 検査 → marker 同期）は
+            // `WorldDriver.stepFrame` に集約。current は mid-frame 権威（worldRef 値）、prev は前フレーム
+            // World（`world` 引数・tileGen 差分判定用）。返す synced は marker 反映済みで次フレームへ永続。
+            let (world2, synced) = WorldDriver.stepFrame(Ref.get(worldRef), world, dt, next);
             // render-from-World。scene-tree drawable に World 由来 drawable を合成して
             // 1 回の renderCommands で描く（renderCommands は毎回 clear ゆえ 2 回呼びは不可＝合成する）。
             // scene 側ユニット sprite を隠して描画 → ユニットは World 由来のみで描く。

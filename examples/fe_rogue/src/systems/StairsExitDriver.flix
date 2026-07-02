@@ -34,7 +34,7 @@ mod StairsExitDriver {
 
     def initialData(): Data = {queue = Nil, idleRounds = 0}
 
-    /// World 配下に常駐ドライバノードを追加する。`GameLifecycle.buildPlayingScene` で 1 回。
+    /// World 配下に常駐ドライバノードを追加する。`SceneSetup.buildPlayingScene` で 1 回。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
         let marker = Marker2D.make(Vec2.zero());
         Scene.addChild(MapScene.worldName(), driverName(),

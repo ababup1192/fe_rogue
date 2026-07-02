@@ -4,7 +4,7 @@
 /// 「しおり」状のカード列から出撃メンバーを 3 人選び、そのあとリーダー（集合したときに
 /// 仲間が合流する先＝ロード）を 1 人選ぶ。選び終えると `PartySelection.State` に
 /// リーダーを先頭にした並びで保存し、GamePhase を Playing に切り替える。
-/// ダンジョン構築（`GameLifecycle.buildCurrentFloor`）は Playing 突入時に走り、
+/// ダンジョン構築（`SceneSetup.buildCurrentFloor`）は Playing 突入時に走り、
 /// `PlayerScene.add` が保存済みの並びをそのまま使う（先頭がロードになる）。
 ///
 /// 操作（キーボード）:
