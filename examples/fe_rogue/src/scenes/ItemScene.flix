@@ -339,8 +339,13 @@ mod ItemScene {
 
     /// 現在の床アイテムを `ItemSnap` 列（セル座標 ＋ 種別 id）に射影する（スナップショット保存用）。
     /// 床アイテムは `itemKey`（id）を持つので逆引き不要。
-    pub def captureSnaps(scene: Scene[NodeTag]): List[FloorSnapshot.ItemSnap] =
-        getAll(scene) |> List.map(d -> ({gridPos = d#gridPos, itemKey = d#itemKey}: FloorSnapshot.ItemSnap))
+    /// P2-r2（セーブ capture の World 化）: 射影元を scene ノード群から **World の groundItems store**
+    /// に変更（P3-c で権威化済み・dual-write 中は等値）。並び順は scene 子順 → cellKey 昇順に変わるが
+    /// 決定論・セーブ形式とも不変（復元は位置キーで意味論同一）。
+    pub def captureSnaps(_scene: Scene[NodeTag]): List[FloorSnapshot.ItemSnap] \ World.WorldQuery =
+        World.groundItemsOf(World.WorldQuery.get())
+            |> Map.valuesOf
+            |> List.map(d -> ({gridPos = d#gridPos, itemKey = d#itemKey}: FloorSnapshot.ItemSnap))
 
     /// スナップショットの床アイテムリストから決定論的に再配置する（乱数なし）。
     /// `itemKey` で種別を catalog から引き直し `respawn` で置く。

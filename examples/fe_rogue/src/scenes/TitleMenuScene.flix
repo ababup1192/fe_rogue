@@ -27,13 +27,32 @@ mod TitleMenuScene {
         resumable = Bool
     }
 
+    /// P4-g: タイトル画面の状態を持つ resource（旧: `NodeTag.Title(Data)` ペイロード）。
+    /// 画面へ入るたび `add` が `State.put` で初期化し直す（resumable の再判定込み）ので、
+    /// withState の seed 値は仮初期値で良い。
+    pub eff State {
+        def get(): Data
+        def put(data: Data): Unit
+    }
+
+    pub def withState(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            let ref: Ref[Data, r] = Ref.fresh(rc, {cursor = 0, resumable = false});
+            run {
+                thunk()
+            } with handler State {
+                def get(k)       = k(Ref.get(ref))
+                def put(data, k) = { Ref.put(data, ref); k() }
+            }
+        }
+
     def rootName(): String = "Title"
     def bgName(): String = "bg"
     def titleName(): String = "title"
     def newGameName(): String = "newGame"
     def resumeName(): String = "resume"
 
-    def rootPath(): NodePath = rootName() :: Nil
     def newGamePath(): NodePath = rootName() :: newGameName() :: Nil
     def resumePath(): NodePath = rootName() :: resumeName() :: Nil
 
@@ -63,14 +82,16 @@ mod TitleMenuScene {
 
     /// 中断データを 1 回読んで `resumable` を確定し、タイトル画面のツリーを scene に追加する。
     /// 初期化は 1 回のみ（`applyPhaseChange(Title)` から呼ばれる）。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead, TitleMenuScene.State} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         let saved: Option[SuspendSave.Save] = SaveManager.read(SuspendSave.slot());
         let data = ({cursor = 0, resumable = Option.nonEmpty(SuspendSave.resumable(saved))}: Data);
+        // P4-g: 画面（再）突入のたび状態を初期化（resource 化で withState の seed は 1 回きりのため）。
+        TitleMenuScene.State.put(data);
         let layer = CanvasLayer.make(drawLayer());
         let built = scene
             |> Scene.addNode(rootName(),
-                EngineNode.CanvasLayerWithState(layer, NodeTag.Title(data)))
+                EngineNode.CanvasLayerWithState(layer, NodeTag.Title))
             |> addBackground
             |> addTitle(atlas)
             |> addOptions(atlas);
@@ -119,32 +140,27 @@ mod TitleMenuScene {
             |> Label2D.mapAt(newGamePath(), CanvasItem.setModulate(newGameColor))
             |> Label2D.mapAt(resumePath(), CanvasItem.setModulate(resumeColor))
 
-    // ── state アクセサ（CharacterSelectScene と同形）──
-    def getData(scene: Scene[NodeTag]): Data =
-        match Scene.getState(rootPath(), scene) {
-            case Some(NodeTag.Title(data)) => data
-            case _                         => bug!("Title root not found")
-        }
+    // ── state アクセサ（P4-g: resource へ移設） ──
+    def getData(): Data \ TitleMenuScene.State =
+        TitleMenuScene.State.get()
 
-    def setState(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(rootPath(), node -> match node {
-            case EngineNode.CanvasLayerWithState(layer, NodeTag.Title(_)) =>
-                EngineNode.CanvasLayerWithState(layer, NodeTag.Title(data))
-            case other => other
-        }, scene)
+    def setState(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] \ TitleMenuScene.State =
+        TitleMenuScene.State.put(data);
+        scene
 
     /// 2 択（はじめから=0 / 中断から再開=1）のカーソルを反転する。
     def toggleCursor(data: Data): Data =
         {cursor = if (data#cursor == 0) 1 else 0 | data}
 
     /// 状態を書き換え、見た目も即座に更新する（静的画面なので process を使わない）。
-    def refresh(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] =
+    def refresh(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] \ TitleMenuScene.State =
         writeVisuals(data, setState(data, scene))
 
     /// 1 押下ごとの操作（Game.flix の InputHandler から GamePhase.Title 中に委譲）。
     pub def onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Audio, GamePhaseState, CustomEffects.ResumeRequest} =
-        let data = getData(scene);
+            Scene[NodeTag] \ {GameEngine.Audio, GamePhaseState, CustomEffects.ResumeRequest,
+                              TitleMenuScene.State} =
+        let data = getData();
         if (isUp(key) or isDown(key))
             // 中断データが無い / 使用済みなら「はじめから」固定（カーソルを動かさない）。
             if (data#resumable) {

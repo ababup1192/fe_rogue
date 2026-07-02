@@ -216,8 +216,12 @@ mod ChestScene {
 
     /// 現在の宝箱を `ChestSnap` 列（セル座標 ＋ 箱種別 id ＋ 中身 id）に射影する（スナップショット保存用）。
     /// `chestKey` / `contentId` は Data が保持するので逆引き不要。
-    pub def captureSnaps(scene: Scene[NodeTag]): List[FloorSnapshot.ChestSnap] =
-        getAll(scene) |> List.map(d ->
+    /// P2-r2（セーブ capture の World 化）: 射影元を scene ノード群から **World の chests store**
+    /// に変更（P3-b で権威化済み・dual-write 中は等値）。並び順は cellKey 昇順（ItemScene と同じ注記）。
+    pub def captureSnaps(_scene: Scene[NodeTag]): List[FloorSnapshot.ChestSnap] \ World.WorldQuery =
+        World.chestsOf(World.WorldQuery.get())
+            |> Map.valuesOf
+            |> List.map(d ->
             ({gridPos = d#gridPos, chestKey = d#chestKey, contentId = d#contentId}: FloorSnapshot.ChestSnap))
 
     /// スナップショットの宝箱リストから決定論的に再配置する（乱数なし）。`chestKey` で sprite を、

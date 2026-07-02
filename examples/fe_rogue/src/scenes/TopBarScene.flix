@@ -34,6 +34,26 @@ mod TopBarScene {
         hold       = Duration.Duration
     }
 
+    /// P4-f: 上部バーの状態を持つ resource（旧: `NodeTag.TopBar(Data)` ペイロード）。
+    /// フロア（再）構築のたび `add` が `State.put` で初期化し直す。
+    pub eff State {
+        def get(): Data
+        def put(data: Data): Unit
+    }
+
+    pub def withState(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            let ref: Ref[Data, r] = Ref.fresh(rc,
+                {shown = None, animTarget = None, anim = Duration.zero(), hold = Duration.zero()});
+            run {
+                thunk()
+            } with handler State {
+                def get(k)       = k(Ref.get(ref))
+                def put(data, k) = { Ref.put(data, ref); k() }
+            }
+        }
+
     def rootName(): String = "TopBar"
     def bandName(): String = "band"
     def bandSweepName(): String = "bandSweep"
@@ -98,31 +118,32 @@ mod TopBarScene {
 
     /// scene.json を読み、フロア番号 (`floorLabel`) と名前 (`floorName`) を左に設定する。
     pub def add(floorLabel: String, floorName: String, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+            Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead, TopBarScene.State} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas,
                                        SceneLoader.constTagParser(NodeTag.NoTag), scene)
             |> Label2D.mapAt(floorNumPath(), Label2D.setText(floorLabel))
             |> Label2D.mapAt(floorNamePath(), Label2D.setText(floorName))
-            // gatherLabel は scene.json で visible:false。集合(GatherMove)中のみ process で表示する。
-            |> Scene.setState(rootPath(),
-                NodeTag.TopBar(({shown = None, animTarget = None,
-                                 anim = Duration.zero(), hold = Duration.zero()}: Data)))
+            // gatherLabel は scene.json で visible:false。集合(GatherMove)中のみ step で表示する。
+            // P4-f: 状態は resource へ（フロア再構築のたび初期化＝旧ペイロード seed と同義）。
+            // root タグは render-from-World の識別用純タグとして残す。
+            |> Scene.setState(rootPath(), NodeTag.TopBar)
+            |> resetState
 
-    /// 敵ターンの「間」中か（hold>0）。`EnemyTurnDriverScene` が敵の行動開始待ちに参照する。
-    pub def isBusy(scene: Scene[NodeTag]): Bool =
-        match Scene.getState(rootPath(), scene) {
-            case Some(NodeTag.TopBar(data)) => Duration.toSeconds(data#hold) > 0.0
-            case _                          => false
-        }
+    /// P4-f: 状態を初期値へ戻す（add から呼ぶ・scene はパイプ素通し）。
+    def resetState(scene: Scene[NodeTag]): Scene[NodeTag] \ TopBarScene.State =
+        TopBarScene.State.put(
+            {shown = None, animTarget = None, anim = Duration.zero(), hold = Duration.zero()});
+        scene
+
+    /// 敵ターンの「間」中か（hold>0）。EnemyTurnDriver は World bool（dual-write）経由で読む。
+    /// P4-f: scene 読み → Data 直の純関数に（step が最終 Data から World へ emit する用）。
+    pub def isBusyOf(data: Data): Bool =
+        Duration.toSeconds(data#hold) > 0.0
 
     /// バーが「敵ターン」を認識済みか（確定 or ワイプ目標が enemy）。0 体敵ターンの取りこぼし防止用。
-    pub def hasObservedEnemy(scene: Scene[NodeTag]): Bool =
-        match Scene.getState(rootPath(), scene) {
-            case Some(NodeTag.TopBar(data)) =>
-                data#shown == Some(true) or data#animTarget == Some(true)
-            case _ => false
-        }
+    pub def hasObservedEnemyOf(data: Data): Bool =
+        data#shown == Some(true) or data#animTarget == Some(true)
 
     /// 現フェイズが敵軍か（純粋・テスト用）。EnemyTurn のみ敵。それ以外は自軍。
     pub def isEnemyPhase(phase: TurnPhase.Phase): Bool =
@@ -142,12 +163,15 @@ mod TopBarScene {
     /// EnemyTurnDriver が World 経由で読む 2 bool（enemyTurnBusy/phaseObservedEnemy）を
     /// dual-write するため、パイプラインでは **EnemyTurnDriverScene.step より前**に置く
     /// （旧 per-node と同じ「driver は当フレームの TopBar 確定値を読む」を維持）。
-    /// TopBar ノード不在（タイトル/選択画面）は getState gate で no-op。
+    /// TopBar ノード不在（タイトル/選択画面）は presence gate で no-op。
+    /// P4-f: 状態は resource（`TopBarScene.State`）から読み書きする。
     pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
                     Scene[NodeTag]
-                    \ {GameEngine.Game, TurnPhase.State, GameEngine.Audio, World.Command} =
-        match Scene.getState(rootPath(), scene) {
-            case Some(NodeTag.TopBar(data)) =>
+                    \ {GameEngine.Game, TurnPhase.State, GameEngine.Audio, World.Command,
+                       TopBarScene.State} =
+        if (Option.isEmpty(Scene.getEngineNode(rootPath(), scene))) scene
+        else {
+                let data = TopBarScene.State.get();
                 let phase  = TurnPhase.State.get();
                 let actual = perceivedIsEnemy(phase, data#shown);
                 let w = GameEngine.Game.getViewportRect()#size#x;
@@ -191,10 +215,12 @@ mod TopBarScene {
                 let next2 = next |> applyGatherLabel(phase == TurnPhase.Phase.GatherMove, w);
                 // F8-slice2: 敵ターン driver が読む 2 bool を World に dual-write（next2 の確定状態から）。
                 // driver はこれを World 経由で読む＝per-node 順序非依存（pipeline 移設の前提）。
-                World.Command.emit(World.Cmd.SetEnemyTurnBusy(isBusy(next2)));
-                World.Command.emit(World.Cmd.SetPhaseObservedEnemy(hasObservedEnemy(next2)));
+                // P4-f: 確定状態は resource が持つ（各分岐の setState が put 済み）＝read-after-write で
+                // 最新 Data を読み、そこから World の 2 bool を dual-write する（旧: scene 再読み）。
+                let dFinal = TopBarScene.State.get();
+                World.Command.emit(World.Cmd.SetEnemyTurnBusy(isBusyOf(dFinal)));
+                World.Command.emit(World.Cmd.SetPhaseObservedEnemy(hasObservedEnemyOf(dFinal)));
                 next2
-            case _ => scene
         }
 
     /// 中央「集合中」ラベルを viewport 実幅の中央へ置き、集合中のみ可視にする。
@@ -280,10 +306,8 @@ mod TopBarScene {
         Duration.seconds(Float64.max(0.0, Duration.toSeconds(t) - Duration.toSeconds(delta)))
 
     /// CanvasLayer に紐づく状態を書き戻す。
-    def setState(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(rootPath(), node -> match node {
-            case EngineNode.CanvasLayerWithState(layer, NodeTag.TopBar(_)) =>
-                EngineNode.CanvasLayerWithState(layer, NodeTag.TopBar(data))
-            case other => other
-        }, scene)
+    /// P4-f: 状態を resource へ書く。scene はパイプ互換のためそのまま返す（挙動不変）。
+    def setState(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] \ TopBarScene.State =
+        TopBarScene.State.put(data);
+        scene
 }

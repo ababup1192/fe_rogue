@@ -662,9 +662,13 @@ mod EnemyScene {
     /// 抽出する。`Game.start` で初回 buildPlayingScene 直後に呼んで保存し、ゲームオーバー時に
     /// `respawnFromInitial` で同じ位置・同じ敵種別・同じ武器で再配置する。
     /// スナップショットは攻撃前に取られる前提で `weapon` は常に Some。
-    pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] =
+    /// P2-r2: 射影元 Data を `World.dataFromWorldEnemy` オーバーレイで World store 由来にする
+    /// （player 側 captureSnaps と同型・dual-write 中は等値＝挙動不変）。
+    pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] \ World.WorldQuery =
+        let world = World.WorldQuery.get();
         getAll(scene)
-            |> List.map(d ->
+            |> List.map(d0 ->
+                let d = World.dataFromWorldEnemy(d0#id, world, scene) |> Option.getWithDefault(d0);
                 let weapon = match d#weapon {
                     case Some(w) => w
                     case None    => bug!("EnemyScene.snapshotSpawns: weapon is None for 敵${d#id} (snapshot taken after weapon broke?)")
@@ -732,10 +736,13 @@ mod EnemyScene {
 
     /// 現在の全敵を `EnemySnap` 列に射影する（スナップショット保存用）。`resourceId` は Data が保持。
     /// 武器は name 逆引きで id 化し耐久を併せて保持。指輪は id 化（多くは None）。
+    /// P2-r2: 射影元 Data を `World.dataFromWorldEnemy` オーバーレイで World store 由来にする。
     pub def captureSnaps(scene: Scene[NodeTag],
                           weaponCatalog: WeaponCatalog.WeaponCatalog,
-                          ringCatalog: Ring.RingCatalog): List[FloorSnapshot.EnemySnap] =
-        getAll(scene) |> List.map(d ->
+                          ringCatalog: Ring.RingCatalog): List[FloorSnapshot.EnemySnap] \ World.WorldQuery =
+        let world = World.WorldQuery.get();
+        getAll(scene) |> List.map(d0 ->
+            let d = World.dataFromWorldEnemy(d0#id, world, scene) |> Option.getWithDefault(d0);
             ({id = d#id, resourceId = d#resourceId, gridPos = d#gridPos, hp = d#hp,
                moduleIdx = d#homeModuleIdx,
                weapon = d#weapon |> Option.map(w ->
