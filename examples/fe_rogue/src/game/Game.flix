@@ -22,8 +22,9 @@ pub enum NodeTag {
     case Player(PlayerScene.Data)
     case Enemy(EnemyScene.Data)
     case Map(MapScene.Data)
-    /// CharacterSelectScene のルート CanvasLayer（出撃メンバー選択画面の状態を持つ）
-    case CharacterSelect(CharacterSelectScene.Data)
+    /// CharacterSelectScene のルート CanvasLayer。選択状態は CharacterSelectState.State
+    /// resource が権威で、タグはペイロードレス。
+    case CharacterSelect
     case MoveRange(MoveRangeScene.Data)
     case EnemyRange(EnemyRangeScene.Data)
     /// EnemyAttackRangeScene の赤マス overlay（敵の攻撃到達=脅威範囲。移動範囲の外側）
@@ -228,7 +229,7 @@ instance InputEvent.InputHandler[NodeTag] {
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
                  CustomEffects.FloorAdvanceRequest, CustomEffects.ResumeRequest,
                  CustomEffects.SuspendRequest,
-                 GamePhaseState, PartySelection.State,
+                 GamePhaseState, PartySelection.State, CharacterSelectState.State,
                  // アイテム投擲の命中ロール（Math.Random）と誤射による味方脱落のゲームオーバー判定。
                  Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
                  // レベルアップ演出パネルの確定（LevelUpPanelScene.confirm）が State resource を触る。
@@ -250,7 +251,7 @@ instance InputEvent.InputHandler[NodeTag] {
                                           CustomEffects.FloorAdvanceRequest,
                                           CustomEffects.ResumeRequest,
                                           CustomEffects.SuspendRequest,
-                                          GamePhaseState, PartySelection.State,
+                                          GamePhaseState, PartySelection.State, CharacterSelectState.State,
                                           Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
                                           LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State} =
         // 画面がタイトル / 選択中なら各画面へ委譲。本編（Playing）のときだけ戦闘用ルーティングを走らせる。
@@ -821,35 +822,10 @@ mod Game {
                   def drop(cell, scene, k) =
                       k(GameLifecycle.dropFloorItem(catalogs, cell, scene))
               }
-              with handler BoardQuery {
-                  // 盤面読み取りを World 由来に（位置権威＝World）。pieces は worldRef（`Cmd.Move` のみ由来・
-                  // mid-frame 最新）、map（地形）は sceneRef から。位置 mirror は撤去済みゆえ pieces は
-                  // command 由来。write 漏れの恒久ガードは gameLoop 末尾の `[ATTACKTARGET DIFF]`（フレーム末・通常無音）。
-                  def board(k) = k(World.toBoard(Ref.get(worldRef), Ref.get(sceneRef)))
-              }
-              with handler World.Command {
-                  // statuses 書き込み（Bevy Commands）。深い scene コードの emit を worldRef へ即時適用。
-                  def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(worldRef)), worldRef); k() }
-              }
-              with handler World.StatusQuery {
-                  // statusEffects 読み込み（Bevy Query）。EntityRef で引く faction 非依存の read seam。
-                  def statusEffects(ref, k) = k(World.statusEffectsOf(ref, Ref.get(worldRef)))
-              }
-              with handler World.PhaseQuery {
-                  // turn phase（sim-phase 3-case）を worldRef から読む read seam。
-                  def phase(k) = k(World.turnPhaseOf(Ref.get(worldRef)))
-              }
-              with handler World.WorldQuery {
-                  // 現 World スナップショット（worldRef）を返す汎用 read seam。フラグ reader 共通窓口。
-                  def get(k) = k(Ref.get(worldRef))
-              }
-              with handler World.RngDraw {
-                  // live combat ロールの chokepoint。0..99 reduction は
-                  // `Prng.unitToPercent` 一本に集約（live も Prng/oracle も同一本体＝数値 bit-identical を
-                  // 型で保証。式が複製されると live と golden が無言で乖離する）。source だけ live=Math.Random。
-                  // worldRef の seeded PRNG は進めない（PRNG は test/trace 専用）。
-                  def nextPercent(k) = k(Prng.unitToPercent(Math.Random.randomFloat64()))
-              }
+              // World ランタイムの読み書き seam（BoardQuery / World.Command / StatusQuery /
+              // PhaseQuery / WorldQuery / RngDraw）は WorldDriver.withWorld に集約。CustomEffects
+              // handler（scene 深部の emit 元）より外側・PartyQuery/RosterQuery より内側に置く。
+              with WorldDriver.withWorld(sceneRef, worldRef)
               with handler PlayerData.PartyQuery {
                   // read-flip: core field 権威は World。pos/hp/waited/在庫/progress/statuses 等は
                   // `dataFromWorld`＝World 由来で読む。residual（resource/classId/selectedItem/facing/
@@ -916,7 +892,7 @@ mod Game {
                   def get(k) = k(Ref.get(turnPhaseRef))
                   def put(target, k) = {
                       Ref.put(target, turnPhaseRef);
-                      Ref.put(World.applyCmd(World.Cmd.SetPhase(simPhaseOf(target)), Ref.get(worldRef)), worldRef);
+                      Ref.put(World.applyCmd(World.Cmd.SetPhase(WorldDriver.simPhaseOf(target)), Ref.get(worldRef)), worldRef);
                       k()
                   }
               }
@@ -928,6 +904,7 @@ mod Game {
               with FloorSnapshot.withState(rc)    // 進入時フロアスナップショット（全滅時の「フロア最初から」用）
               with FloorProgress.withState(rc, FloorCatalog.firstFloorId(floors))  // 現在フロア id
               with PartySelection.withState(rc)   // 出撃メンバー（開始時に1回抽選、フロア間で維持）
+              with CharacterSelectState.withState(rc) // 出撃メンバー選択画面の選択状態（注目/選択/サブモード/カルーセル）を resource 化
         }
 
     /// GamePhase に応じて画面（Scene）を組み立てる。**配線役** に徹し、各画面の構築は
@@ -940,7 +917,7 @@ mod Game {
                           _scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Math.Random,
                 SelectedPlayer.State, CursorState.State, ArrowCursorState.State, InitialSpawns.State, FloorProgress.State,
-                PartySelection.State, GameLogger.GameLogger, FloorSnapshot.State, World.Command,
+                PartySelection.State, CharacterSelectState.State, GameLogger.GameLogger, FloorSnapshot.State, World.Command,
                 World.WorldQuery, TitleMenuScene.State, TopBarScene.State} =
         match phase {
             case GamePhase.Title           => SceneSetup.buildTitle()
@@ -950,14 +927,6 @@ mod Game {
 
     /// メインループ。phase で分岐せず、**固定パイプライン** を毎フレーム回す:
     ///   handleInput → handleMenus → physicsProcess → Tween → Animation → process → epilogue
-    /// 19-case `TurnPhase.Phase` を World の 3-case `SimPhase` に写す（境界の写像）。
-    /// メニュー遷移・演出待ち系は全て「味方ターン」配下＝`PlayerTurn`（細分は UiState.modalMode / anim-queue）。
-    pub def simPhaseOf(phase: TurnPhase.Phase): SimPhase = match phase {
-        case TurnPhase.Phase.EnemyTurn => SimPhase.EnemyTurn
-        case TurnPhase.Phase.GameOver  => SimPhase.GameOver
-        case _                          => SimPhase.PlayerTurn
-    }
-
     /// 各 process / input redef 内で「自分が今動くべきか」を phase で判断する (Godot 流)。
     /// 例: `EnemyTurnDriver.process` は phase=EnemyTurn / PlayerAttackHold で動作、
     ///     `PlayerMovementDriver.gatherStep` は phase=GatherMove で主人公(id 0)を動かす。
@@ -984,7 +953,7 @@ mod Game {
                          CustomEffects.ThiefDropRequest,
                          CustomEffects.SuspendRequest, CustomEffects.ResumeRequest,
                          FloorProgress.State, InitialSpawns.State,
-                         GamePhaseState, PartySelection.State,
+                         GamePhaseState, PartySelection.State, CharacterSelectState.State,
                          Pacing.State, LogScene.State, BattlePanelScene.State, TurnEndHoldScene.State,
                          LevelUpPanelScene.State, ItemPickupPopupScene.State,
                          TopBarScene.State, TitleMenuScene.State, UnitHPBarRender.ForecastState,

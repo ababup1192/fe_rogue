@@ -8,7 +8,7 @@
 /// sim としての「誰のターンか」を表す 3-case の phase。
 /// 現 19-case `TurnPhase.Phase`（メニュー遷移・演出待ち混在）は **sim-phase(これ) ＋ UiState.modalMode** に分解する。
 /// World が TurnPhase.Phase を直接持つと循環依存（TurnPhase→World.Command）になるので、World 側はこの中立な
-/// 3-case を持ち、19→3 の写像は境界（Game.flix `simPhaseOf`）で行う。
+/// 3-case を持ち、19→3 の写像は境界（`WorldDriver.simPhaseOf`）で行う。
 pub enum SimPhase with Eq, ToString {
     case PlayerTurn   // 味方ターン（カーソル/移動/メニュー/演出待ち = UiState.modalMode と anim-queue で細分）
     case EnemyTurn    // 敵ターン

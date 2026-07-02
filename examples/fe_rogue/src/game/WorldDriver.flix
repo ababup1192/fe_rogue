@@ -6,7 +6,53 @@
 ///      `World.Cmd` の直書きは本ファイルに閉じる。
 ///   2. 毎フレームの World System パイプライン（`stepFrame`）— gameLoop から `World -> World`
 ///      の System 実行を切り出し、gameLoop を固定パイプラインの純配線に保つ。
+///   3. World ランタイム handler の注入（`withWorld`）と TurnPhase↔World の境界写像（`simPhaseOf`）。
 mod WorldDriver {
+
+    /// TurnPhase↔World の境界写像。19-case `TurnPhase.Phase` を World の 3-case `SimPhase` に写す。
+    /// メニュー遷移・演出待ち系は全て「味方ターン」配下＝`PlayerTurn`（細分は UiState.modalMode /
+    /// anim-queue）。`Game.start` の TurnPhase.State dual-write と `stepFrame` の phase parity 検査が使う。
+    pub def simPhaseOf(phase: TurnPhase.Phase): SimPhase = match phase {
+        case TurnPhase.Phase.EnemyTurn => SimPhase.EnemyTurn
+        case TurnPhase.Phase.GameOver  => SimPhase.GameOver
+        case _                          => SimPhase.PlayerTurn
+    }
+
+    /// World ランタイムの読み書き seam をまとめて注入する handler コンビネータ
+    /// （`Tween.withScheduler` / `EnemyTurn.withQueue` と同流儀）。thunk のスコープ内で
+    /// `BoardQuery` / `World.Command` / `World.StatusQuery` / `World.PhaseQuery` / `World.WorldQuery` /
+    /// `World.RngDraw` が解決される。`worldRef`（各 store の単一権威）と `sceneRef`（地形読み用）は
+    /// `Game.start` が region で確保し、gameLoop が毎フレーム頭で最新化する共有窓口ゆえ、コンビネータ内
+    /// では作らず引数で受け取る。CustomEffects handler（scene 深部の emit 元）より **外側** に置くこと。
+    pub def withWorld(sceneRef: Ref[Scene[NodeTag], r], worldRef: Ref[World, r]):
+            (Unit -> a \ ef) -> a \
+            (ef - BoardQuery - World.Command - World.StatusQuery - World.PhaseQuery
+                - World.WorldQuery - World.RngDraw) + r + Math.Random =
+        thunk -> run {
+            thunk()
+        } with handler BoardQuery {
+            // 盤面読み取りを World 由来に（位置権威＝World）。pieces は worldRef（`Cmd.Move` のみ由来・
+            // mid-frame 最新）、map（地形）は sceneRef から。write 漏れの恒久ガードは stepFrame の
+            // `[ATTACKTARGET DIFF]`（フレーム末・通常無音）。
+            def board(k) = k(World.toBoard(Ref.get(worldRef), Ref.get(sceneRef)))
+        } with handler World.Command {
+            // store 書き込み（Bevy Commands）。深い scene コードの emit を worldRef へ即時適用。
+            def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(worldRef)), worldRef); k() }
+        } with handler World.StatusQuery {
+            // statusEffects 読み込み（Bevy Query）。EntityRef で引く faction 非依存の read seam。
+            def statusEffects(ref, k) = k(World.statusEffectsOf(ref, Ref.get(worldRef)))
+        } with handler World.PhaseQuery {
+            // turn phase（sim-phase 3-case）を worldRef から読む read seam。
+            def phase(k) = k(World.turnPhaseOf(Ref.get(worldRef)))
+        } with handler World.WorldQuery {
+            // 現 World スナップショット（worldRef）を返す汎用 read seam。フラグ reader 共通窓口。
+            def get(k) = k(Ref.get(worldRef))
+        } with handler World.RngDraw {
+            // live combat ロールの chokepoint。0..99 reduction は `Prng.unitToPercent` 一本に集約
+            // （live も Prng/oracle も同一本体＝数値 bit-identical を型で保証）。source だけ live=Math.Random。
+            // worldRef の seeded PRNG は進めない（PRNG は test/trace 専用）。
+            def nextPercent(k) = k(Prng.unitToPercent(Math.Random.randomFloat64()))
+        }
 
     /// フロア配置物（宝箱 / 床アイテム）・探索記憶（ミニマップ）・ユニット store を掃除する。
     /// フロア再構築（通常生成 / スナップショット復元）の前段で呼ぶ。scene 再構築での自動 prune は
@@ -66,8 +112,8 @@ mod WorldDriver {
         // ＝World.turnPhase は command 由来（全 put サイトを handler 1 箇所で被覆）。並走 assert は
         // command 由来 phase と State の乖離（write 漏れ）を検出する＝dual-write ゆえ無音だが、将来
         // dual-write を割る時のガード。
-        if (World.turnPhaseOf(world2) != Game.simPhaseOf(TurnPhase.State.get()))
-            println("[F2 PHASE DIFF] world=${World.turnPhaseOf(world2)} state=${Game.simPhaseOf(TurnPhase.State.get())}")
+        if (World.turnPhaseOf(world2) != simPhaseOf(TurnPhase.State.get()))
+            println("[F2 PHASE DIFF] world=${World.turnPhaseOf(world2)} state=${simPhaseOf(TurnPhase.State.get())}")
         else ();
         // 移動した entity の marker を renderPos に合わせる（marker 単一権威）。返す synced は次フレームへ
         // 永続。fx は renderPopups/renderExplosions が直描き（ノード無し）。

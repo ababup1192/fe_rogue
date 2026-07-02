@@ -188,7 +188,7 @@ mod SceneSetup {
 
     /// 出撃メンバー選択画面を組む。タイトルと同じくダンジョン外なので World を掃除する。
     pub def buildCharacterSelect(catalogs: GameLifecycle.Catalogs): Scene[NodeTag]
-            \ {GameEngine.Game, World.Command} =
+            \ {GameEngine.Game, World.Command, CharacterSelectState.State} =
         WorldDriver.exitDungeon();
         CharacterSelectScene.add(UnitCatalog.pool("players", catalogs#players), Scene.empty())
 

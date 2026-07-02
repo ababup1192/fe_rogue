@@ -20,12 +20,13 @@
 ///       X    : メンバー選びに戻る
 ///
 /// 画面の状態（注目位置・選択リスト・サブモード・カルーセルの横位置）は
-/// ルート CanvasLayer の `NodeTag.CharacterSelect(Data)` に持たせる。毎フレームの
-/// 見た目更新は `process`、1 押下ごとの操作は `onKeyPressed` が担う（どちらも Game.flix の
-/// instance から委譲される）。純粋な選択ロジックは effect を持たない関数に切り出してテストする。
+/// `CharacterSelectState.State` resource が権威。ルート CanvasLayer は識別用の
+/// ペイロードレスタグ `NodeTag.CharacterSelect` だけを持つ。毎フレームの見た目更新は
+/// `step`、1 押下ごとの操作は `onKeyPressed` が担う（どちらも Game.flix の instance から
+/// 委譲される）。純粋な選択ロジックは effect を持たない関数に切り出してテストする。
 ///
 /// ノード構造（drawLayer=6。ゲーム HUD より前面の独立画面）:
-///   CharacterSelect (CanvasLayer, NodeTag.CharacterSelect(Data))
+///   CharacterSelect (CanvasLayer, NodeTag.CharacterSelect)
 ///     ├─ bg        (Panel designWi×designHi, NoTag)   ← 背景（画面全体を覆う）
 ///     ├─ counter   (Label2D, NoTag)                  ← 「残り N 人」/ リーダー選びの案内
 ///     ├─ frame0..7 (Panel, NoTag)                    ← 各カードの枠（注目=白枠 / 選択中=金枠）
@@ -188,13 +189,14 @@ mod CharacterSelectScene {
     /// 初期化は 1 回のみ（`applyPhaseChange(CharacterSelect)` から呼ばれる）。
     /// 文字を出すためにフォントを引く（GameEngine.Game）。最後に初期状態の見た目を一度流し込む。
     pub def add(playersWithIds: List[(String, UnitCatalog.PlayerResource)], scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameEngine.Game =
+            Scene[NodeTag] \ {GameEngine.Game, CharacterSelectState.State} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         let data = initialState(playersWithIds);
+        CharacterSelectState.State.put(data);
         let layer = CanvasLayer.make(drawLayer());
         let built = scene
             |> Scene.addNode(rootName(),
-                EngineNode.CanvasLayerWithState(layer, NodeTag.CharacterSelect(data)))
+                EngineNode.CanvasLayerWithState(layer, NodeTag.CharacterSelect))
             |> addBackground
             |> addCards(data#players)
             |> addDescPanel(atlas)
@@ -305,6 +307,13 @@ mod CharacterSelectScene {
          mode = SubMode.PickingMembers, focus = 0, onButton = false,
          selected = Nil, leaderFocus = 0, carouselX = targetCarouselX(0)}
 
+    /// 候補ゼロの空状態。`CharacterSelectState.withState` の初期シード用
+    /// （選択画面が組まれる前の既定値。`add` が本物の候補一覧で put し直す）。
+    pub def emptyState(): Data =
+        {players = Nil, classIds = Nil,
+         mode = SubMode.PickingMembers, focus = 0, onButton = false,
+         selected = Nil, leaderFocus = 0, carouselX = 0.0}
+
     /// 注目中のカードを選ぶ / 選択を外す。
     /// すでに 3 人選んでいて、注目カードが未選択なら何もしない（上限）。
     pub def toggleSelect(data: Data): Data =
@@ -410,10 +419,11 @@ mod CharacterSelectScene {
     /// カード列の横位置を目標へ寄せ、状態から見た目を作り直し、状態を書き戻す。
     /// per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
     /// 選択画面以外（CharacterSelect ノード不在）は getState gate で no-op。
-    pub def step(delta: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ CharacterSelectState.State =
         match Scene.getState(rootPath(), scene) {
-            case Some(NodeTag.CharacterSelect(data)) =>
-                let stepped = stepCarousel(data, delta);
+            case Some(NodeTag.CharacterSelect) =>
+                let stepped = stepCarousel(CharacterSelectState.State.get(), delta);
                 scene
                     |> writeVisuals(stepped)
                     |> setState(stepped)
@@ -422,8 +432,9 @@ mod CharacterSelectScene {
 
     /// 1 押下ごとの操作（Game.flix の InputHandler から CharacterSelect phase 中に委譲）。
     pub def onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Audio, GamePhaseState, PartySelection.State} =
-        let data = getData(scene);
+            Scene[NodeTag] \ {GameEngine.Audio, GamePhaseState, PartySelection.State,
+                              CharacterSelectState.State} =
+        let data = getData();
         match data#mode {
             case SubMode.PickingMembers => handleMembersKey(key, data, scene)
             case SubMode.PickingLeader  => handleLeaderKey(key, data, scene)
@@ -431,7 +442,7 @@ mod CharacterSelectScene {
 
     /// メンバー選び中のキー処理。
     def handleMembersKey(key: GameEngine.Key, data: Data, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameEngine.Audio =
+            Scene[NodeTag] \ {GameEngine.Audio, CharacterSelectState.State} =
         if (isLeft(key))      { AudioStreamPlayer.play("cursor"); mapData(moveFocus(-1), scene) }
         else if (isRight(key)) { AudioStreamPlayer.play("cursor"); mapData(moveFocus(1), scene) }
         else if (isDown(key))  { AudioStreamPlayer.play("cursor"); mapData(moveToButton(true), scene) }
@@ -448,7 +459,8 @@ mod CharacterSelectScene {
 
     /// リーダー選び中のキー処理。確定で出撃パーティを保存して Playing へ進む。
     def handleLeaderKey(key: GameEngine.Key, _data: Data, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Audio, GamePhaseState, PartySelection.State} =
+            Scene[NodeTag] \ {GameEngine.Audio, GamePhaseState, PartySelection.State,
+                              CharacterSelectState.State} =
         if (isLeft(key))      { AudioStreamPlayer.play("cursor"); mapData(moveLeaderFocus(-1), scene) }
         else if (isRight(key)) { AudioStreamPlayer.play("cursor"); mapData(moveLeaderFocus(1), scene) }
         else if (isConfirm(key)) { AudioStreamPlayer.play("confirm"); commitLeader(scene) }
@@ -458,8 +470,8 @@ mod CharacterSelectScene {
     /// 出撃パーティを「リーダー先頭」で `PartySelection` に保存し、GamePhase を Playing へ。
     /// 次フレームの差分検出で `applyPhaseChange(Playing)` が走り、その並びでダンジョンが組まれる。
     def commitLeader(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GamePhaseState, PartySelection.State} =
-        let data = getData(scene);
+            Scene[NodeTag] \ {GamePhaseState, PartySelection.State, CharacterSelectState.State} =
+        let data = getData();
         PartySelection.State.put(orderedParty(data));
         GamePhaseState.put(GamePhase.Playing);
         scene
@@ -629,22 +641,18 @@ mod CharacterSelectScene {
                 Scene.addChildAt(profGlyphPath(i), cname, node, acc),
             withParent, WeaponGlyph.weaponGlyphScaled(wt, glyphScale()))
 
-    /// ルートに紐づく選択状態を取り出す。
-    def getData(scene: Scene[NodeTag]): Data =
-        match Scene.getState(rootPath(), scene) {
-            case Some(NodeTag.CharacterSelect(data)) => data
-            case _                                   => bug!("CharacterSelect root not found")
-        }
+    /// 選択状態を resource から取り出す。
+    def getData(): Data \ CharacterSelectState.State =
+        CharacterSelectState.State.get()
 
     /// getData + setState を必ず組み合わせて使う規約を強制する唯一の窓口。
-    def mapData(f: Data -> Data, scene: Scene[NodeTag]): Scene[NodeTag] =
-        setState(f(getData(scene)), scene)
+    def mapData(f: Data -> Data, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ CharacterSelectState.State =
+        setState(f(getData()), scene)
 
-    /// 選択状態をルート CanvasLayer に書き戻す。
-    def setState(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(rootPath(), node -> match node {
-            case EngineNode.CanvasLayerWithState(layer, NodeTag.CharacterSelect(_)) =>
-                EngineNode.CanvasLayerWithState(layer, NodeTag.CharacterSelect(data))
-            case other => other
-        }, scene)
+    /// 選択状態を resource に書き戻す。scene は素通し（view 更新は次フレームの `step` が担う）。
+    def setState(data: Data, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ CharacterSelectState.State =
+        CharacterSelectState.State.put(data);
+        scene
 }
