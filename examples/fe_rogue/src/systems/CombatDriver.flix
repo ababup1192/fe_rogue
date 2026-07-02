@@ -42,19 +42,19 @@ mod CombatDriver {
     /// 実際の攻撃モーションを開始する。
     pub def setAttackTargetId(playerId: Int32, targetEnemyId: Int32,
                                 scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        World.Command.emit(World.Cmd.SetAttackTarget(World.EntityRef.Player(playerId), targetEnemyId));  // F8-slice1
+        World.Command.emit(World.Cmd.SetAttackTarget(World.EntityRef.Player(playerId), targetEnemyId));
         PlayerScene.mapPlayer(playerId, d -> {attackTargetId = Some(targetEnemyId) | d}, scene)
 
     /// `attackTargetId` をクリアする（武器選択のキャンセル時や `attack_lunge` finished 時）。
     pub def clearAttackTargetId(playerId: Int32,
                                   scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        World.Command.emit(World.Cmd.ClearAttackTarget(World.EntityRef.Player(playerId)));  // F8-slice1
+        World.Command.emit(World.Cmd.ClearAttackTarget(World.EntityRef.Player(playerId)));
         PlayerScene.mapPlayer(playerId, d -> {attackTargetId = None | d}, scene)
 
     /// 敵側の attackTargetId をクリアする（clearAttackTargetId と対称）。
     def clearEnemyAttackTarget(enemyId: Int32,
                                 scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        World.Command.emit(World.Cmd.ClearAttackTarget(World.EntityRef.Enemy(enemyId)));  // F8-slice1
+        World.Command.emit(World.Cmd.ClearAttackTarget(World.EntityRef.Enemy(enemyId)));
         EnemyScene.mapEnemy(enemyId, d -> {attackTargetId = None | d}, scene)
 
     /// 体当たりの片道（origin → target）所要時間。Forward + Returning の合計が
@@ -105,7 +105,6 @@ mod CombatDriver {
     /// 武器を持たないユニットは攻撃に到達してはいけない設計で、防御的に no-op する
     /// （味方: PlayerAttackRangeScene/TurnRules、敵: EnemyAI が禁止する）。
     /// 攻撃開始（faction-blind）。武器なし（`weaponRange = None`）は filter で弾いて no-op。
-    /// 旧 startPlayerAttack/startEnemyAttack（path/Data/scene-write だけ違う near-duplicate）を統合。
     /// faction dispatch は **`EntityScene`（scene 集約点）／`World.refOfSide`** に閉じ込め、ここは faction-blind。
     pub def startAttack(side: Faction, attackerId: Int32, defenderId: Int32,
                          targetGrid: {x = Int32, y = Int32},
@@ -117,7 +116,7 @@ mod CombatDriver {
             uv <- EntityScene.unitView(attacker, scene) |> Option.filter(u -> Option.nonEmpty(u#weaponRange))
         ) yield {
             AnimationPlayer.play(path, attackLungeAnimation(path, uv#pos, targetGrid));
-            World.Command.emit(World.Cmd.SetAttackTarget(attacker, defenderId));  // F8-slice1
+            World.Command.emit(World.Cmd.SetAttackTarget(attacker, defenderId));
             EntityScene.setAttackTargetId(attacker, defenderId, scene)
         };
         Option.getWithDefault(scene, started)
@@ -153,7 +152,7 @@ mod CombatDriver {
         ) yield applyDamageToEnemy(playerId, d, enemyId, scene);
         Option.getWithDefault(scene, resolved)
 
-    /// 敵の `attack:hit` のダメージ適用（P6-5b: ECS 一本）。
+    /// 敵の `attack:hit` のダメージ適用（ECS 一本）。
     /// 戻り値は (新 scene, HP=0 になったプレイヤー id のリスト)。
     /// killedIds が空でないとき呼び出し側は死亡処理（removeDeadAndCheckGameOver）を発火する。
     pub def applyEnemyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
@@ -190,7 +189,7 @@ mod CombatDriver {
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
-        // F2c: 「敵ターンか」の sim-phase 判定を World 由来へ flip（19-case 詳細は不要ゆえ 3-case で足りる）。
+        // 「敵ターンか」の sim-phase 判定は World 由来（19-case 詳細は不要ゆえ 3-case で足りる）。
         if (World.PhaseQuery.phase() == SimPhase.EnemyTurn) {
             // 敵ターン中の味方反撃が完了した。反撃でレベルアップしていれば、その場で
             // （反撃ごとに）ステータス変化パネルへ割り込む。閉じると敵ターンに戻って続行する。
@@ -204,8 +203,8 @@ mod CombatDriver {
             // 追撃するなら decide（反撃/確定）より前に同じ敵へもう一度攻撃する（追撃→反撃の直列）。
             match playerFollowUpEnemy(playerId, scene, rollPercent(), World.WorldQuery.get()) {
                 case Some(enemyId) =>
-                    // S6: followUpUsed は World 権威。scene 直書きは撤去（reader は World 優先・syncTree が derive）。
-                    World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Player(playerId), true));  // F7-slice4
+                    // followUpUsed は World 権威。scene 直書きはしない（reader は World 優先）。
+                    World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Player(playerId), true));
                     startPlayerFollowUp(playerId, enemyId, scene)
                 case None =>
                     resolvePlayerMainAttack(playerId, scene)
@@ -224,8 +223,8 @@ mod CombatDriver {
             case (Some(p), Some(e)) =>
                 let braveT = PlayerData.equippedWeapon(p#weapons)
                     |> Option.flatMap(w -> WeaponCatalog.braveThreshold(w#effect, w#effectValue));
-                // S-A0/B1: 速度判定を World の combatViewOf 由来へ flip（followUpUsed と同じ dual-read。
-                // world は WorldQuery snapshot=read-after-write 正。parity 証明済みゆえ同値・None は scene fallback）。
+                // 速度判定は World の combatViewOf 由来（followUpUsed と同じ read。
+                // world は WorldQuery snapshot=read-after-write 正・None は scene fallback）。
                 let atkSpd = World.combatViewOf(World.EntityRef.Player(playerId), world)
                                  |> Option.map(cv -> cv#speed)
                                  |> Option.getWithDefault(PlayerScene.combatView(p)#speed);
@@ -235,9 +234,9 @@ mod CombatDriver {
                 // 追撃判定を DSL の flow 層（EffectFlow.followUpDecision）へ寄せる。brave/pursuit の
                 // どちらかが成立すれば追撃（ロジックは shouldFollowUp/braveFollowUp と同一・テスト済）。
                 let fctx = {atkSpd = atkSpd, defSpd = defSpd, roll = roll,
-                            // F7-slice4: followUpUsed を World 由来で読む（world は caller の WorldQuery snapshot）。
+                            // followUpUsed を World 由来で読む（world は caller の WorldQuery snapshot）。
                             followUpUsed = World.followUpUsedOf(World.EntityRef.Player(playerId), world)
-                                              |> Option.getWithDefault(false),  // P2: World 権威・未登録=未使用
+                                              |> Option.getWithDefault(false),  // World 権威・未登録=未使用
                             brave = braveT,
                             pursuit = Ring.hasPursuit(PlayerData.equippedRing(p))};
                 if (EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Brave), fctx)
@@ -265,8 +264,8 @@ mod CombatDriver {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, Pacing.State, World.Command, World.WorldQuery} =
-        // Track A: faction-blind な decideView（UnitView ベース）へ移行。旧 decide(味方→敵) と等価。
-        // P6-2b: view は World 由来（unitViewFromWorld）。ECS 戦闘は hp を World にしか書かないため、
+        // faction-blind な decideView（UnitView ベース）で分岐する（味方→敵）。
+        // view は World 由来（unitViewFromWorld）。ECS 戦闘は hp を World にしか書かないため、
         // 直前の攻撃結果（Kill/Counter 分岐の hp）を scene view で読むと stale になる。
         let w0 = World.WorldQuery.get();
         let outcome = PlayerScene.get(playerId, scene)
@@ -332,8 +331,8 @@ mod CombatDriver {
             // 追撃するなら反撃判定より前に同じ味方へもう一度攻撃する。
             match enemyFollowUpPlayer(enemyId, scene, rollPercent(), World.WorldQuery.get()) {
                 case Some(playerId) =>
-                    // S6: followUpUsed は World 権威。scene 直書きは撤去（reader は World 優先・syncTree が derive）。
-                    World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Enemy(enemyId), true));  // F7-slice4
+                    // followUpUsed は World 権威。scene 直書きはしない（reader は World 優先）。
+                    World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Enemy(enemyId), true));
                     startEnemyFollowUp(enemyId, playerId, scene)
                 case None =>
                     resolveEnemyMainAttack(enemyId, scene)
@@ -349,7 +348,7 @@ mod CombatDriver {
             case (Some(e), Some(p)) =>
                 let braveT = e#weapon
                     |> Option.flatMap(w -> WeaponCatalog.braveThreshold(w#effect, w#effectValue));
-                // S-A0/B1: 速度判定を World の combatViewOf 由来へ flip（followUpUsed と同じ dual-read・fallback 安全）。
+                // 速度判定は World の combatViewOf 由来（followUpUsed と同じ read・fallback 安全）。
                 let atkSpd = World.combatViewOf(World.EntityRef.Enemy(enemyId), world)
                                  |> Option.map(cv -> cv#speed)
                                  |> Option.getWithDefault(EnemyScene.combatView(e)#speed);
@@ -357,9 +356,9 @@ mod CombatDriver {
                                  |> Option.map(cv -> cv#speed)
                                  |> Option.getWithDefault(PlayerScene.combatView(p)#speed);
                 let fctx = {atkSpd = atkSpd, defSpd = defSpd, roll = roll,
-                            // F7-slice4: followUpUsed を World 由来で読む。
+                            // followUpUsed を World 由来で読む。
                             followUpUsed = World.followUpUsedOf(World.EntityRef.Enemy(enemyId), world)
-                                              |> Option.getWithDefault(false),  // P2: World 権威・未登録=未使用
+                                              |> Option.getWithDefault(false),  // World 権威・未登録=未使用
                             brave = braveT,
                             pursuit = Ring.hasPursuit(e#ring)};
                 if (EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Brave), fctx)
@@ -383,8 +382,8 @@ mod CombatDriver {
     /// 敵主攻撃完了の従来分岐（追撃なし）。味方反撃の対象を決め、反撃なら startAttack。
     def resolveEnemyMainAttack(enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, World.WorldQuery} =
-        // Track A: faction-blind な decideView へ移行。旧 decidePlayerCounter(敵→味方) と等価。
-        // P6-2b: view は World 由来（resolvePlayerMainAttack と同じ理由＝直前ダメージの hp が scene では stale）。
+        // faction-blind な decideView で分岐する（敵→味方）。
+        // view は World 由来（resolvePlayerMainAttack と同じ理由＝直前ダメージの hp が scene では stale）。
         let w0 = World.WorldQuery.get();
         let decision = forM (
             e <- EnemyScene.getWithWorldPos(enemyId, scene)
@@ -518,12 +517,12 @@ mod CombatDriver {
     ///     Afflicted=`StatusSystem.add` / Released=`clearImmobilized`。Cmd だけだと次フレームに上書きされ消える。
     ///   - `pendingLevelUp`（scene-only・level-up モーダルの trigger）: LeveledUp で `Some(result)` を立てる。
     ///     これで `onLungeDone` の `anyPendingLevelUp` → `enterLevelUpView`（signal 駆動・既存）が発火する＝modal-gate。
-    /// level/exp/hp 自体は eventToCmds（Cmd.Progress/SetHp→World）→ syncTreeFromWorld で scene へ derive される。純粋 scene 変換。
+    /// level/exp/hp 自体は eventToCmds（Cmd.Progress/SetHp→World）で World 権威に反映される。純粋 scene 変換。
     def applyEcsSceneEffects(events: List[World.SimEvent], scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         List.foldLeft((sc, ev) -> match ev {
             case World.SimEvent.Afflicted(World.EntityRef.Player(id), s) =>
                 let sc1 = PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc);
-                PlayerScene.emitStatusesFromScene(id, sc1); sc1  // S3: 付与後 statuses を World へ Seed
+                PlayerScene.emitStatusesFromScene(id, sc1); sc1  // 付与後 statuses を World へ Seed
             case World.SimEvent.Afflicted(World.EntityRef.Enemy(id), s) =>
                 let sc1 = EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc);
                 EnemyScene.emitStatusesFromScene(id, sc1); sc1
@@ -541,8 +540,8 @@ mod CombatDriver {
                         let updated = PlayerScene.mapPlayer(id, d ->
                             {pendingLevelUp = Some(p#result),
                              resource = LevelSystem.withStats(p#grownStats, d#resource) | d}, sc);
-                        // S2.3: level-up で resource が成長＝baseStats の source が変わる。command-derive store へ dual-write
-                        // （F6 で hp を emit し忘れた震源ゆえ最優先で漏らさない・read-after-mutate で適用後 resource を読む）。
+                        // level-up で resource が成長＝baseStats の source が変わる。command-derive store へ dual-write
+                        // （read-after-mutate で適用後 resource を読む）。
                         PlayerScene.emitBaseStatsFromScene(id, updated);
                         updated
                     case World.EntityRef.Enemy(_)   => sc
@@ -550,7 +549,7 @@ mod CombatDriver {
             case _ => sc
         }, scene, events)
 
-    /// P1-b: sim が発火した `ViewFx(Thief(cell))` を見て、盗み drop の
+    /// sim が発火した `ViewFx(Thief(cell))` を見て、盗み drop の
     /// scene 副作用（フロア落下＋『…が アイテムを落とした』ログ）を引く。発火判定（ローグ職・敵生存・確率）は
     /// sim（`thiefDropEvents`）が済ませ、ここは drop 実体だけ担う。enemyId は wrapper が持つ＝ログの敵名に使う。
     /// ViewReplay（純 view）でなく wrapper で処理するのは、ドロップが scene 状態変更（consumeEquippedWeapon と同レーン）だから。
@@ -565,12 +564,12 @@ mod CombatDriver {
             CustomEffects.ThiefDropRequest.drop(cell, sc)
         }, scene, thiefCells)
 
-    /// ECS cutover 経路（味方攻撃）: `CombatSystem.resolveAttack` で 1 撃の sim を解いて [SimEvent] を得、
+    /// ECS 経路（味方攻撃）: `CombatSystem.resolveAttack` で 1 撃の sim を解いて [SimEvent] を得、
     /// `eventToCmds` で World へ反映（live mirror と同じ Cmd 経路＝golden で final-World 等価を証明済み）し、
     /// `ViewReplay.replay` で演出を再生する。`applyEcsSceneEffects` で scene 権威（statuses/pendingLevelUp）も反映。
     /// `applyThiefDrop` で盗人の剣のフロア落下（legacy 順＝knockback 後・武器耐久前）、最後に `consumeEquippedWeapon` で
     /// 武器耐久を消費（legacy は命中/回避とも毎攻撃で消費＝sim 非依存の scene 副作用）。
-    /// 演出進行（lunge/counter/follow-up）は従来どおり signal が引く（C5）。
+    /// 演出進行（lunge/counter/follow-up）は signal が引く。
     def ecsResolvePlayerAttack(playerId: Int32, player: PlayerScene.Data,
                                 weapon: UnitCatalog.WeaponResource, enemyId: Int32,
                                 enemy: EnemyScene.Data, scene: Scene[NodeTag]):
@@ -598,10 +597,10 @@ mod CombatDriver {
             GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}の ${weapon#name}がこわれた")
         else ();
         let newWeapons = CombatRules.replaceOrDropHead(consumed, PlayerScene.getWeapons(playerId, scene));
-        // D3: 耐久消費後の weapons を World へ dual-write（[WEAPONS DIFF] を塞ぐ）。
+        // 耐久消費後の weapons を World へ dual-write（[WEAPONS DIFF] を塞ぐ）。
         World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Player(playerId), newWeapons));
         let updated = PlayerScene.mapPlayer(playerId, d -> {weapons = newWeapons | d}, scene);
-        // S2.4: 耐久消費で装備武器（先頭）が変わり得る＝SetWeapons と 1:1 で weaponView も dual-write（[WEAPONVIEW DIFF] を塞ぐ）。
+        // 耐久消費で装備武器（先頭）が変わり得る＝SetWeapons と 1:1 で weaponView も dual-write（[WEAPONVIEW DIFF] を塞ぐ）。
         PlayerScene.emitWeaponViewFromScene(playerId, updated);
         updated
 
@@ -619,14 +618,14 @@ mod CombatDriver {
             (Scene[NodeTag], List[Int32]) \
             {AnimationPlayer.Scheduler, GameEngine.Audio, World.RngDraw,
              World.Command, World.WorldQuery} =
-        // 前提（武器あり・対象あり）の解決だけを担う。P6-5b: 実体は ECS 経路のみ。
+        // 前提（武器あり・対象あり）の解決だけを担う。実体は ECS 経路のみ。
         let resolved = forM (
             _weapon <- enemy#weapon;
             player  <- PlayerScene.get(targetId, scene)
         ) yield ecsResolveEnemyAttack(enemyId, enemy, targetId, player, scene);
         Option.getWithDefault((scene, Nil), resolved)
 
-    /// ECS cutover 経路（敵攻撃）: `CombatSystem.resolveEnemyAttack` で 1 撃を解き events→Cmds で World 反映・
+    /// ECS 経路（敵攻撃）: `CombatSystem.resolveEnemyAttack` で 1 撃を解き events→Cmds で World 反映・
     /// `ViewReplay.replay` で演出。味方死亡は **deferred**（`ViewFx(Died(Player))`）ゆえ killedIds をそこから導出して
     /// 返す（呼び出し側の `removeDeadAndCheckGameOver` ＝ game-over 経路へ。execution model は不変）。
     def ecsResolveEnemyAttack(enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,

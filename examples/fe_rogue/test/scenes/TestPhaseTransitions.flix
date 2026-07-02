@@ -81,7 +81,7 @@ mod TestPhaseTransitions {
                 TestUnitFixtures.withNoopAnim(() ->
                     TestUnitFixtures.withMockPartyQuery(Scene.empty(), () ->
                         run {
-                            // P6-1h: showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
+                            // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
                             let after = run { PhaseTransitions.enterPlayerCursor(initial) }
                                 with handler World.Command { def emit(_c, k) = k() };
                             observe(after)
@@ -187,7 +187,7 @@ mod TestPhaseTransitions {
         region rc {
             let initial = sceneWithAllRangesAndCursor();
             let result = run {
-                // P6-1h: showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
+                // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
                 let after = run { PhaseTransitions.enterEnemyTurn(initial) }
                     with handler World.Command { def emit(_c, k) = k() };
                 observe(after)

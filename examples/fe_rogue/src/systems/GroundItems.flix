@@ -5,7 +5,7 @@
 /// プレイヤーが同じセルに乗ると（重量が許せば自動で）、または ActionMenu で「ひろう」を選ぶと
 /// `PlayerScene.pickupFloorItem` で取り出してインベントリに加える。
 ///
-/// scene ノードは撤去済み。存在/中身/点滅位相の権威は World.groundItems
+/// scene ノードは持たない。存在/中身/点滅位相の権威は World.groundItems
 /// （`Cmd.SpawnItem/RemoveItem/ClearItems`・elapsed は stepWorld が tick）、描画は
 /// `RenderWorld.renderItems` が spriteOf(kind) から本体＋縁取り 4 枚を直描きする。
 ///
@@ -147,7 +147,7 @@ mod GroundItems {
         }
 
     /// アイテム 1 個ぶんを配置する＝`Cmd.SpawnItem` を emit して World store を更新する。
-    /// 描画は `RenderWorld.renderItems` が World から直描きするため scene ノードは積まない。
+    /// scene ノードは書かない（描画は `RenderWorld.renderItems` が World から直描き）。
     /// `idx` は点滅の初期位相 stagger（同時点滅回避）にだけ使う。
     def addOneItem(idx: Int32, cell: {x = Int32, y = Int32},
                     itemKey: String, item: ItemData.GroundItemKind,
@@ -243,8 +243,8 @@ mod GroundItems {
 
     /// 現在の床アイテムを `ItemSnap` 列（セル座標 ＋ 種別 id）に射影する（スナップショット保存用）。
     /// 床アイテムは `itemKey`（id）を持つので逆引き不要。
-    /// 射影元は World の groundItems store。並び順は cellKey 昇順で、決定論・セーブ形式とも不変
-    /// （復元は位置キーで意味論同一）。
+    /// 射影元は **World の groundItems store**（存在の権威）。並び順は cellKey 昇順で決定論的、
+    /// セーブ形式とも整合（復元は位置キーで意味論同一）。
     pub def captureSnaps(_scene: Scene[NodeTag]): List[FloorSnapshot.ItemSnap] \ World.WorldQuery =
         World.groundItemsOf(World.WorldQuery.get())
             |> Map.valuesOf
@@ -264,23 +264,23 @@ mod GroundItems {
         }, scene, snaps)
 
     /// `takeAt` の逆操作として、アイテムを `cell` に再配置する＝`Cmd.SpawnItem` を emit。
-    /// P6-1e: 点滅位相は 0 から（旧 idx 由来 stagger は spawn 経路のみ）。
+    /// 点滅位相は 0 から（idx 由来 stagger は spawn 経路のみ）。
     pub def respawn(cell: {x = Int32, y = Int32}, itemKey: String,
                      kind: ItemData.GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         addOneItem(0, cell, itemKey, kind, scene)
 
-    // P6-1e: 旧 applyFog（可視トグル）と step（点滅 tick）は撤去。lit ゲートと縁取り alpha は
-    // `RenderWorld.renderItems` が描画時に判定し、elapsed は `World.stepWorld` が tick する。
+    // lit ゲートと縁取り alpha は `RenderWorld.renderItems` が描画時に判定し、
+    // elapsed は `World.stepWorld` が tick する。
 
     /// `elapsed` をサイクル長で巻き戻す。`Duration` に mod 演算がなく float 誤差も避けたいため、
-    /// dt が cycle 未満であることを前提に 1 回の減算で対応する。P6-1e: stepWorld から呼ぶため pub。
+    /// dt が cycle 未満であることを前提に 1 回の減算で対応する。stepWorld から呼ぶため pub。
     pub def advance(e: Duration.Duration): Duration.Duration =
         if (Duration.toSeconds(e) >= Duration.toSeconds(cycleDuration()))
             Duration.sub(e, cycleDuration())
         else e
 
     /// サイクル先頭 `pulseDuration` の間は base→peak→base の三角波、それ以外は base 固定。
-    /// P6-1e: renderItems が縁取り alpha に使うため pub。
+    /// renderItems が縁取り alpha に使うため pub。
     pub def pulseAlpha(elapsed: Duration.Duration): Float32 =
         let e = Duration.toSeconds(elapsed);
         let p = Duration.toSeconds(pulseDuration());

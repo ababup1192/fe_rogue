@@ -6,7 +6,7 @@
 /// EnemyScene は同じノード型を id 別に量産するイメージ）。
 ///
 /// ノード構造（敵 1 体あたり）:
-///   Enemy_<id> (Marker2D, NodeTag.Enemy(Data))
+///   Enemy_<id> (Marker2D, NodeTag.Enemy)
 ///     └─ Sprite (Sprite2D, frame=4 の `character_sheet` 上段一番右)
 ///
 /// スポーン規則（anchor 除外）:
@@ -29,7 +29,7 @@ mod EnemyScene {
     // ────────────────────────────────────────────────────────
 
     /// プレイヤーと同じ高さで前面に立つ。MoveRange (1) より上。
-    pub def spriteZIndex(): Int32 = 10  // P6-1h: renderUnits が使うため pub
+    pub def spriteZIndex(): Int32 = 10  // renderUnits が使うため pub
 
     // per-room cap は引数の floor#monstersPerRoom で制御される（resource 駆動）。
 
@@ -63,7 +63,7 @@ mod EnemyScene {
             Float64.truncateToFloat32(af + (bf - af) * t)
         }
 
-    /// `death_blink` アニメーション。**P6-1h 以降はタイミング/完了シグナル専用**（Alpha track の
+    /// `death_blink` アニメーション。**タイミング/完了シグナル専用**（Alpha track の
     /// target=子 Sprite は撤去済みで書き先が無い＝tickAll の mapEngineNode は不在 no-op。実際の
     /// alpha は `deathBlinkAlpha` を renderUnits が描画時に導出する）。
     /// アニメ完了時の `finished` イベント (owner=enemyPath, name="death_blink") を
@@ -230,24 +230,23 @@ mod EnemyScene {
     /// 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
     /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
     def addOneEnemy(sp: Spawn, ringCatalog: Ring.RingCatalog, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        // P0b: spawn/restore の funnel。新規敵の初期位置を World へ seed（Cmd.Move=位置 insert）。
-        // dual-write 維持＝挙動不変（mirror が P2 まで生きる）。
+        // spawn/restore の funnel。新規敵の初期位置を World へ seed（Cmd.Move=位置 insert）。
         World.Command.emit(World.Cmd.Move(World.refOf(false, sp#id), sp#gridPos));
-        // F6a: 初期 hp も World へ seed（spawn フレームの [F6 HP DIFF] を塞ぐ＝F6b preserve の前提）。
+        // 初期 hp も World へ seed する。
         World.Command.emit(World.Cmd.SetHp(World.refOf(false, sp#id), sp#resource#hp));
-        // F7-spike: 初期 alerted=false も seed（spawn の [ALERTED DIFF] transient を塞ぐ）。
+        // 初期 alerted=false も seed する。
         World.Command.emit(World.Cmd.SetAlerted(World.refOf(false, sp#id), false));
-        // S5: 初期 acted=false も seed（command-derive ゆえ mid-floor spawn の [ACTED DIFF] absence-mismatch を塞ぐ）。
+        // 初期 acted=false も seed する。
         World.Command.emit(World.Cmd.SetActed(World.refOf(false, sp#id), false));
-        // F7-slice2: 初期 bottleUsed=false も seed。
+        // 初期 bottleUsed=false も seed する。
         World.Command.emit(World.Cmd.SetBottleUsed(World.refOf(false, sp#id), false));
-        // F7-slice4: 初期 followUpUsed=false も seed。
+        // 初期 followUpUsed=false も seed する。
         World.Command.emit(World.Cmd.SetFollowUpUsed(World.refOf(false, sp#id), false));
-        // D3: 初期 weapon も World へ seed（単数→0/1 List 射影・[WEAPONS DIFF] を塞ぐ）。
+        // 初期 weapon も World へ seed（単数→0/1 List 射影）。
         World.Command.emit(World.Cmd.SetWeapons(World.refOf(false, sp#id), sp#weapon :: Nil));
-        // S2.3: 初期 baseStats も World へ seed（敵 resource は spawn で確定し以後不変＝[BASESTATS DIFF] を塞ぐ・preserve の前提）。
+        // 初期 baseStats も World へ seed（敵 resource は spawn で確定し以後不変）。
         World.Command.emit(World.Cmd.SetBaseStats(World.refOf(false, sp#id), Combat.baseStatsFrom(sp#resource)));
-        // S2.5: 初期 moveTiles も seed（resource 由来で以後不変＝[MOVETILES DIFF] を塞ぐ＝preserve の前提）。
+        // 初期 moveTiles も seed（resource 由来で以後不変）。
         World.Command.emit(World.Cmd.SetMoveTiles(World.refOf(false, sp#id), sp#resource#moveTiles));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
@@ -277,11 +276,11 @@ mod EnemyScene {
         World.Command.emit(World.Cmd.Spawn(World.EntityRef.Enemy(sp#id)));
         World.Command.emit(World.Cmd.SetEffectRule(sp#id, res#effectRule));
         World.Command.emit(World.Cmd.SetEnemyRing(sp#id, ring));
-        // S2.4: 初期 weaponView/ringBonus も World へ seed（weapons/ring と 1:1・敵は spawn 後不変＝各 DIFF を塞ぐ・preserve の前提）。
+        // 初期 weaponView/ringBonus も World へ seed（weapons/ring と 1:1・敵は spawn 後不変）。
         // data 構築後に emit（equippedWeaponView/equippedRingBonus は full Data を要する）。
         World.Command.emit(World.Cmd.SetWeaponView(World.refOf(false, sp#id), equippedWeaponView(data)));
         World.Command.emit(World.Cmd.SetRingBonus(World.refOf(false, sp#id), equippedRingBonus(data)));
-        // P6-1h: 子 Sprite ノードは廃止（敵は静止 Sprite2D＝resource の定数 frame を描画時に読むだけ）。
+        // 子 Sprite ノードは無し（敵は静止 Sprite2D＝resource の定数 frame を描画時に読むだけ）。
         scene
             |> Scene.addChildAt(MapScene.worldPath(), enemyName(sp#id),
                                  EngineNode.Marker2DWithState(marker, NodeTag.Enemy(data)))
@@ -308,7 +307,7 @@ mod EnemyScene {
                                       floor: FloorCatalog.FloorResource,
                                       tick: Int32,
                                       scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command, World.WorldQuery} =
-        // P6-2b/2c: 位置は World 上書き Data（空きセル判定に使うため）。
+        // 位置は World 上書き Data（空きセル判定に使うため）。
         let current = getAllWithWorldPos(scene);
         let wandererCount =
             current |> List.count(d -> d#resource#aiType == EnemyAI.AiType.Wanderer);
@@ -326,7 +325,7 @@ mod EnemyScene {
         let layer      = MapScene.getMapLayer(scene);
         let placements = MapScene.getPlacements(scene);
         let roomCount  = MapScene.getRoomCount(scene);
-        // P6-2b/2c: 空きセル・可視判定は World 位置（scene gridPos twin は退役）。
+        // 空きセル・可視判定は World 位置（scene gridPos twin は退役）。
         let holes      = FogScene.holesFor(PlayerScene.getAllWithWorldPos(scene), placements, roomCount, false);
         let playerCells = PlayerScene.getAllWithWorldPos(scene) |> List.map(d -> d#gridPos);
         let enemyCells  = current |> List.map(d -> d#gridPos);
@@ -389,7 +388,7 @@ mod EnemyScene {
             case _                          => None
         }
 
-    /// S3: statusEffects 書込 funnel（`PlayerScene.emitStatusesFromScene` の Enemy 版）。mutation
+    /// statusEffects 書込 funnel（`PlayerScene.emitStatusesFromScene` の Enemy 版）。mutation
     /// （add/clearImmobilized/bind/tick）適用後の `scene` から該当敵の `#statuses` を読み戻して `Cmd.Seed`
     /// （全置換 replace 意味論）で World へ dual-write する。変更後の全リストを Seed で置換＝網羅が単純。
     /// statuses を書く全サイトの末尾で呼ぶ（特に敵ターン開始 tick）。pub（StaffCast/CombatDriver 起点から）。
@@ -413,7 +412,7 @@ mod EnemyScene {
             case other => other
         }, scene)
 
-    /// F6a: hp 書込 funnel。scene の hp を更新しつつ World にも `Cmd.SetHp` で dual-write する。
+    /// hp 書込 funnel。scene の hp を更新しつつ World にも `Cmd.SetHp` で dual-write する。
     /// 純 hp 書込（回復/吸血など）の置換先。複合書込（hp＋他 field）は呼び出し側で単独 emit する。
     pub def setHp(id: Int32, newHp: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(id), newHp));
@@ -427,7 +426,7 @@ mod EnemyScene {
     def activeColor(): Color = UITheme.white()
 
     /// 敵 id の子 Sprite に modulate を設定する（Sprite2D / AnimatedSprite2D 両対応）。
-    /// P6-1h: 暗転色を World store（unitModulate）へ emit（sprite ノード撤去に伴い Cmd 化）。
+    /// 暗転色を World store（unitModulate）へ emit する（sprite ノードは無いので Cmd 経由）。
     def setSpriteModulate(id: Int32, color: Color, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         World.Command.emit(World.Cmd.SetModulate(World.EntityRef.Enemy(id), color));
         scene
@@ -435,7 +434,7 @@ mod EnemyScene {
     /// 敵 id を「行動済み」にして本体スプライトと HP ゲージを暗転する。
     /// 敵ターン中、その敵の行動が終わった時点で呼ぶ。
     pub def setActed(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        World.Command.emit(World.Cmd.SetActed(World.EntityRef.Enemy(id), true));  // S5: acted を World へ dual-write
+        World.Command.emit(World.Cmd.SetActed(World.EntityRef.Enemy(id), true));  // acted を World へ dual-write
         scene
             |> mapEnemy(id, d -> {acted = true | d})
             |> setSpriteModulate(id, actedColor())
@@ -443,7 +442,7 @@ mod EnemyScene {
     /// 完全停止（かなしばり）を解除する。被攻撃 or 被投擲の瞬間に呼ぶ。
     /// 停止していなければ no-op（他の時限ステータスは残す）。
     pub def releaseBind(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        // S3: mutation 後に読んで Seed で全置換（read-after-mutate の正しい流儀）。
+        // mutation 後に読んで Seed で全置換（read-after-mutate の正しい流儀）。
         let cleared = mapEnemy(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, scene);
         emitStatusesFromScene(id, cleared);
         cleared
@@ -452,17 +451,17 @@ mod EnemyScene {
     /// 敵ターン開始時に呼ぶ（プレイヤーの clearAllWaited と対称）。
     pub def clearActedAll(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let ids = getAll(scene) |> List.map(d -> d#id);
-        // emit-flip(E1, dual-write): 敵ターン開始 tick を World へ発行（scene の inline tick も当面維持）。
+        // 敵ターン開始 tick を World へ発行（scene の inline tick と dual-write）。
         World.Command.emit(World.Cmd.TickEnemies);
         let reset = List.foldLeft((sc, id) -> {
-            World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Enemy(id), false));  // F7-slice4: reset を World へ
-            World.Command.emit(World.Cmd.SetActed(World.EntityRef.Enemy(id), false));  // S5: acted reset を World へ dual-write
+            World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Enemy(id), false));  // reset を World へ
+            World.Command.emit(World.Cmd.SetActed(World.EntityRef.Enemy(id), false));  // acted reset を World へ dual-write
             let sc1 = sc
                 // 敵ターン開始ごとに時限デバフ（目潰し/鈍足）を 1 ターン分減算する。
-                // 追撃リングの二重発動フラグ(followUpUsed)は World 権威＝上の Cmd emit のみ（scene 直書き撤去・syncTree derive）。
+                // 追撃リングの二重発動フラグ(followUpUsed)は World 権威＝上の Cmd emit のみ（scene 直書きはしない）。
                 |> mapEnemy(id, d -> {acted = false, statuses = StatusSystem.tick(d#statuses) | d})
                 |> setSpriteModulate(id, activeColor());
-            // S3: 敵ターン開始 tick 後の statuses を per-entity で World へ Seed（tick 網羅の核心）。
+            // 敵ターン開始 tick 後の statuses を per-entity で World へ Seed（tick 網羅の核心）。
             emitStatusesFromScene(id, sc1);
             sc1 },
             scene, ids);
@@ -510,7 +509,7 @@ mod EnemyScene {
     /// visible を落としても AI は継続するため、フォグで隠れた敵も行動する点に注意。
     pub def applyFog(isLit: {x = Int32, y = Int32} -> Bool,
                       scene: Scene[NodeTag]): Scene[NodeTag] \ World.WorldQuery =
-        // P6-2b: 点灯判定は World 位置（scene gridPos twin は退役）。
+        // 点灯判定は World 位置（scene gridPos twin は退役）。
         List.foldLeft((acc, d) -> setEnemyVisible(d#id, isLit(d#gridPos), acc),
                       scene, getAllWithWorldPos(scene))
 
@@ -534,7 +533,7 @@ mod EnemyScene {
     /// 移動は `EnemyTurn.Queue` に step を積み、1 フレームに 1 step ずつ呼ぶことで実現する。
     /// **歩行可否（壁・他駒）の判定は呼び出し側（EnemyAI）が済ませている前提**で、
     /// EnemyScene 自身は衝突判定を持たない。
-    /// P6-2b: scene Data の gridPos だけ World.posOf で上書きして返す（PlayerScene と同型）。
+    /// scene Data の gridPos だけ World.posOf で上書きして返す（PlayerScene と同型）。
     pub def getWithWorldPos(id: Int32, scene: Scene[NodeTag]): Option[Data] \ World.WorldQuery =
         let w = World.WorldQuery.get();
         get(id, scene) |> Option.map(d ->
@@ -549,7 +548,7 @@ mod EnemyScene {
     pub def moveTo(id: Int32, target: {x = Int32, y = Int32},
                     map: MapSnapshot,
                     scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, World.WorldQuery} =
-        // F4a: プレイヤー移動（PlayerScene）と同じ `SimEvent.Moved` seam に統一。
+        // プレイヤー移動（PlayerScene）と同じ `SimEvent.Moved` seam に統一。
         //   moveTo = SYSTEM(stepEnemyMove: Cmd.Move emit + Moved 返却) → VIEW(replayMovedEvent 再生)。
         //   歩行可否は呼び出し側（EnemyAI.decideAction）が済ませている前提＝System は判定せず書くだけ。
         // INVARIANT: replayMovedEvent は move-seam 専用＝Moved 以外は bug! で落ちる（no-op ではない）。
@@ -559,7 +558,7 @@ mod EnemyScene {
 
     /// SYSTEM(sim): 敵 1 体を target へ動かす位置 write。`Cmd.Move` を emit し `Moved` を返す。
     /// 合法性は EnemyAI が決定済み（プレイヤーの `stepPlayerMove` と違い board 再判定はしない）。
-    /// gridPos は frame-end の `syncTreeFromWorld` で World 由来に derive＝ここでは scene を触らない。
+    /// gridPos は World 権威（Cmd.Move が書く）＝ここでは scene を触らない。
     pub def stepEnemyMove(id: Int32, target: {x = Int32, y = Int32}):
             World.SimEvent \ World.Command =
         World.Command.emit(World.Cmd.Move(World.EntityRef.Enemy(id), target));
@@ -584,7 +583,7 @@ mod EnemyScene {
             Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         let startWorld  = Scene.globalPositionAt(enemyPath(id), scene);
         let targetWorld = MapSnapshot.gridToWorld(target, map);
-        // B/m3: 描画位置 tween は World（renderPos）権威＝engine `Tween.tweenPosition` は退役。
+        // 描画位置 tween は World（renderPos）権威＝engine `Tween.tweenPosition` は退役。
         // marker は `RenderWorld.syncMarkers` が renderPos に合わせる（味方と同一の口）。
         World.moveUnit(World.EntityRef.Enemy(id), {start = startWorld, target = targetWorld}, Duration.toSeconds(slideDuration()));
         // 移動前位置は World.prevPosOf（applyCmd の Move が直前位置を自動記録）から読む。
@@ -597,7 +596,7 @@ mod EnemyScene {
             |> Option.map(px -> applyFacingFlip(id, px, target#x, scene))
             |> Option.getWithDefault(scene)
 
-    /// P6-1h: 左右反転を World store（unitFlipH）へ emit（sprite ノード撤去に伴い Cmd 化）。
+    /// 左右反転を World store（unitFlipH）へ emit する（sprite ノードは無いので Cmd 経由）。
     def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         World.Command.emit(World.Cmd.SetFlipH(World.EntityRef.Enemy(id), h));
         scene
@@ -617,18 +616,18 @@ mod EnemyScene {
     pub def snapTo(id: Int32, target: {x = Int32, y = Int32},
                     scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let world = MapSnapshot.cellCenter(target);
-        // B/m3: engine tween cancel の置換。SetRenderPos が進行中の World 描画 tween を破棄しつつ renderPos を
+        // SetRenderPos が進行中の World 描画 tween を破棄しつつ renderPos を
         // target にスナップ（tweens から Position を remove）＝いれかえ後に marker が滑り残らない。
         World.Command.emit(World.Cmd.SetRenderPos(World.EntityRef.Enemy(id), world));
         World.Command.emit(World.Cmd.Move(World.EntityRef.Enemy(id), target));
-        // S5b: gridPos は frame-end の syncTreeFromWorld で derive。瞬間移動の Marker2D world 座標だけ即合わせる。
+        // gridPos は World 権威。瞬間移動の Marker2D world 座標だけ即合わせる。
         scene
             |> Scene.setGlobalPositionAt(enemyPath(id), world)
 
     /// 指定セルに居る（生きている）敵の id を返す。死亡演出中の敵は対象外。
     /// PlayerAttack フェーズで「カーソルが赤マス上の敵に乗っているか」の判定に使う。
     pub def findIdAt(coord: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Option[Int32] \ World.WorldQuery =
-        // P6-2b: 位置は World 上書き Data（scene gridPos twin は退役）。isDying は writer 併記で fresh。
+        // 位置は World 上書き Data（scene gridPos twin は退役）。isDying は writer 併記で fresh。
         getAllWithWorldPos(scene)
             |> List.findMap(d ->
                 if (not d#isDying
@@ -647,8 +646,8 @@ mod EnemyScene {
                                  scene: Scene[NodeTag]): Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, World.Command} =
         AnimationPlayer.play(enemyPath(id), deathBlinkAnimation(spritePath(id)));
-        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(id), 0));  // F6a: 死亡で hp=0 を World へ
-        World.Command.emit(World.Cmd.SetDying(World.EntityRef.Enemy(id)));  // 軸1 仕上げ: isDying を World へ
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(id), 0));  // 死亡で hp=0 を World へ
+        World.Command.emit(World.Cmd.SetDying(World.EntityRef.Enemy(id)));  // isDying を World へ
         mapEnemy(id, d -> {hp = 0, isDying = true | d}, scene)
 
     /// `death_blink` 完了時に GameManager が呼ぶ後始末。
@@ -680,8 +679,8 @@ mod EnemyScene {
     /// 抽出する。`Game.start` で初回 buildPlayingScene 直後に呼んで保存し、ゲームオーバー時に
     /// `respawnFromInitial` で同じ位置・同じ敵種別・同じ武器で再配置する。
     /// スナップショットは攻撃前に取られる前提で `weapon` は常に Some。
-    /// P2-r2: 射影元 Data を `World.dataFromWorldEnemy` オーバーレイで World store 由来にする
-    /// （player 側 captureSnaps と同型・dual-write 中は等値＝挙動不変）。
+    /// 射影元 Data を `World.dataFromWorldEnemy` オーバーレイで World store 由来にする
+    /// （player 側 captureSnaps と同型）。
     pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] \ World.WorldQuery =
         let world = World.WorldQuery.get();
         getAll(scene)
@@ -697,7 +696,7 @@ mod EnemyScene {
     /// 各敵は `addOneEnemy` を使って HP・alerted・dying を初期値で生成する。
     pub def respawnFromInitial(spawns: List[Spawn], ringCatalog: Ring.RingCatalog,
                                 scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        // P6-2c: ノード除去と対で World からも除去（build choke 外から呼ばれても store が腐らない）。
+        // ノード除去と対で World からも除去（build choke 外から呼ばれても store が腐らない）。
         List.forEach(d -> World.Command.emit(World.Cmd.Despawn(World.EntityRef.Enemy(d#id))), getAll(scene));
         let cleared = List.foldLeft((sc, d) -> Scene.removeAt(enemyPath(d#id), sc),
                                      scene, getAll(scene));
@@ -706,7 +705,7 @@ mod EnemyScene {
     /// 現在の全敵を scene から取り除く（女神の加護でフロアの敵を一掃する）。子スプライト / HP バーも
     /// マーカー subtree ごと消える。
     pub def removeAll(scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        // P6-2c: ノード除去と対で World からも除去。
+        // ノード除去と対で World からも除去。
         List.forEach(d -> World.Command.emit(World.Cmd.Despawn(World.EntityRef.Enemy(d#id))), getAll(scene));
         List.foldLeft((sc, d) -> Scene.removeAt(enemyPath(d#id), sc), scene, getAll(scene))
 
@@ -726,17 +725,17 @@ mod EnemyScene {
         List.foldLeft((acc, snap) -> restoreEnemyState(snap, ringCatalog, acc), placed, snaps)
 
     /// 敵 1 体の現在状態（HP / 時限ステータス / 検知フラグ / 指輪）を snap から上書きする。
-    /// HP バーは World.hp から直描き（P6-1g）＝ここでの押し込み更新は不要。
+    /// HP バーは World.hp から直描き＝ここでの押し込み更新は不要。
     def restoreEnemyState(snap: FloorSnapshot.EnemySnap, ringCatalog: Ring.RingCatalog,
                            scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let ring = snap#ring |> Option.map(id -> Ring.lookup(id, ringCatalog));
-        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(snap#id), snap#hp));  // F6a: 復元 hp を World へ
-        World.Command.emit(World.Cmd.SetAlerted(World.EntityRef.Enemy(snap#id), snap#alerted));  // F7-spike: 復元 alerted を World へ
-        World.Command.emit(World.Cmd.SetEnemyRing(snap#id, ring));  // P6-2c: 復元 ring を World へ
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(snap#id), snap#hp));  // 復元 hp を World へ
+        World.Command.emit(World.Cmd.SetAlerted(World.EntityRef.Enemy(snap#id), snap#alerted));  // 復元 alerted を World へ
+        World.Command.emit(World.Cmd.SetEnemyRing(snap#id, ring));  // 復元 ring を World へ
         let restored = mapEnemy(snap#id, d -> {hp = snap#hp, statuses = snap#statuses,
                                  alerted = snap#alerted, ring = ring | d}, scene);
-        // S3: 復元 statuses も World へ Seed（中断再開は in-loop phase change で fresh syncFromScene が無く
-        // refreshMirror も preserve ゆえ、Seed しないと scene の復元 statuses が World に届かない＝[STATUSEFFECTS DIFF]）。
+        // 復元 statuses も World へ Seed（中断再開は in-loop phase change で fresh syncFromScene が無く
+        // refreshMirror も preserve ゆえ、Seed しないと scene の復元 statuses が World に届かない）。
         emitStatusesFromScene(snap#id, restored);
         restored
 
@@ -758,7 +757,7 @@ mod EnemyScene {
 
     /// 現在の全敵を `EnemySnap` 列に射影する（スナップショット保存用）。`resourceId` は Data が保持。
     /// 武器は name 逆引きで id 化し耐久を併せて保持。指輪は id 化（多くは None）。
-    /// P2-r2: 射影元 Data を `World.dataFromWorldEnemy` オーバーレイで World store 由来にする。
+    /// 射影元 Data を `World.dataFromWorldEnemy` オーバーレイで World store 由来にする。
     pub def captureSnaps(scene: Scene[NodeTag],
                           weaponCatalog: WeaponCatalog.WeaponCatalog,
                           ringCatalog: Ring.RingCatalog): List[FloorSnapshot.EnemySnap] \ World.WorldQuery =
@@ -806,12 +805,12 @@ mod EnemyScene {
             hp     = data#hp,
             weapon = equippedWeaponView(data)})
 
-    /// S-A0: この敵の装備武器の戦闘投影。`combatView` と World read-model 構築が共有する。
+    /// この敵の装備武器の戦闘投影。`combatView` と World read-model 構築が共有する。
     /// 敵は得意/苦手の概念がないので proficient は常に true。武器なしは None。
     pub def equippedWeaponView(data: Data): Option[Combat.WeaponView] =
         Combat.weaponView(data#weapon, true)
 
-    /// S-A0c: この敵の装備指輪ボーナス。`combatView` と World read-model 構築が共有する。
+    /// この敵の装備指輪ボーナス。`combatView` と World read-model 構築が共有する。
     pub def equippedRingBonus(data: Data): Ring.Bonuses =
         Ring.bonuses(data#ring)
 

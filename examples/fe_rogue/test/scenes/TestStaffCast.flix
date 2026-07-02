@@ -116,18 +116,18 @@ mod TestStaffCast {
     def fireStaffDsl(staff: Staff.StaffResource, rule: EffectRule.EffectRule,
                       hit: RayHit, dir: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
         region rc {
-            // S5b: move(snapTo 等)は scene gridPos を直書きしなくなったので、gameLoop と同様に
+            // move(snapTo 等)は scene gridPos を直書きしないので、gameLoop と同様に
             // worldRef を scene から seed → Cmd.Move を蓄積 → 最後に `syncTreeFromWorld` で gridPos を derive する。
             let wref = Ref.fresh(rc, World.syncFromScene(scene, World.empty()));
             let after = run {
-                // P1a: custom op(knockback等)が BoardQuery を読むので mock board を供給（flip 前の fromScene と同値）。
+                // custom op(knockback等)が BoardQuery を読むので mock board を供給（fromScene と同値）。
                 TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                     TestUnitFixtures.withMockGameLogger(() ->
                         StaffCast.applyStaffEffectDsl(0, staff, rule, hit, dir, scene)))))
             } with handler World.WorldQuery {
-                // P6-2b: DSL 経路が World 位置を読む（read-after-write で同じ wref）。
+                // DSL 経路が World 位置を読む（read-after-write で同じ wref）。
                 def get(k) = k(Ref.get(wref))
             } with handler World.Command {
                 def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
@@ -141,7 +141,7 @@ mod TestStaffCast {
 
     /// HP 5 / 最大 10 の味方に「魔力 0 + 10 = 10」回復をかけると、5 + 10 = 15 ではなく
     /// 上限 10 で頭打ちになる（回復は最大 HP を超えない）。
-    /// P6-5b: legacy applyHealToPlayer は撤去＝クランプ則の単一源泉 `Combat.heal`（純粋）を直接 pin。
+    /// クランプ則の単一源泉 `Combat.heal`（純粋）を直接 pin する。
     @Test
     def testHealStaffClampsAtMaxHp(): Unit \ Assert =
         Assert.assertEq(expected = 10, (Combat.heal(5, 10, 10))#newHp)
@@ -154,7 +154,7 @@ mod TestStaffCast {
     /// （4 + 3 = 7、上限 10 には届かないのでそのまま）。
     @Test
     def testConsumableHealRestoresHp(): Unit \ Assert =
-        // P6-5d: 入力 hp は World 読み・結果検証も World（scene twin 退役）。
+        // 入力 hp は World 読み・結果検証も World（scene twin 退役）。
         region rc {
             let scene = playerScene(4, 0);
             let user = playerData(scene);
@@ -255,7 +255,7 @@ mod TestStaffCast {
     //   ここでは味方(ally=true)に当てる枝を確認。enemy 枝は同一ヘルパの else で対称。
     // ════════════════════════════════════════════════════════
 
-    /// きずぐすりを味方#0 に投げて当てると HP 4→7（旧 applyConsumableEffectToPlayer と同一）。
+    /// きずぐすりを味方#0 に投げて当てると HP 4→7（applyConsumableEffectToPlayer と同一）。
     @Test
     def testThrowHealAtAllyViaDsl(): Unit \ Assert =
         let scene = playerScene(4, 0);

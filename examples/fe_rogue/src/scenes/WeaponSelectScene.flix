@@ -163,7 +163,7 @@ mod WeaponSelectScene {
     def isReachableEnemyCell(cell: {x = Int32, y = Int32}, pos: {x = Int32, y = Int32},
                              weapon: UnitCatalog.WeaponResource, scene: Scene[NodeTag]):
             Bool \ {EnemyData.RosterQuery, World.WorldQuery} =
-        // P6-2b: 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む（scene 直読みは stale）。
+        // 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む（scene 直読みは stale）。
         EnemyScene.findIdAt(cell, scene)
             |> Option.flatMap(id -> EnemyData.RosterQuery.get(id))
             |> Option.map(e -> {

@@ -108,7 +108,7 @@ mod StaffCast {
     /// HP < maxHp を「負傷」と定義しており、最大 HP ちょうどの味方は照準候補に含めない。
     def injuredAlliesExcept(playerId: Int32, scene: Scene[NodeTag]):
             List[PlayerScene.Data] \ World.WorldQuery =
-        // P6-2b: 位置（照準方向計算に使う）は World 上書き Data で。hp は overlay 化済みの読み手が
+        // 位置（照準方向計算に使う）は World 上書き Data で。hp は overlay 化済みの読み手が
         // 大半だがここは負傷判定のみ（scene hp は ECS 被弾後 stale）→ World.hpOf で判定。
         let w = World.WorldQuery.get();
         PlayerScene.getAllWithWorldPos(scene)
@@ -168,14 +168,14 @@ mod StaffCast {
     /// statuses は scene 権威（refreshMirror が scene #statuses から re-mirror・tick も scene 側）ゆえ
     /// Cmd.Add だけだと次フレームの syncFromScene で上書きされ消える。よって `Afflicted`→`StatusSystem.add`、
     /// `Released`→`clearImmobilized` を scene #statuses へ反映する。hp(Healed/Damaged)・pos(Moved)・dying(Dying) は
-    /// eventToCmds→World→syncTreeFromWorld で derive されるため scene 権威反映は不要。
+    /// eventToCmds→World で World 権威に反映されるため scene 権威反映は不要。
     /// 今周は Bind のみ Afflicted を発火（Released は将来 throw/敵詠唱用に同型コピーだけ用意）。純粋 scene 変換。
     /// Bind の scene-statuses 等価オラクル（`TestStaffGolden`）が legacy #statuses と突き合わせるため pub。
     pub def applyEcsStaffSceneEffects(events: List[World.SimEvent], scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         List.foldLeft((sc, ev) -> match ev {
             case World.SimEvent.Afflicted(World.EntityRef.Player(id), s) =>
                 let sc1 = PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc);
-                PlayerScene.emitStatusesFromScene(id, sc1); sc1  // S3: 付与後 statuses を World へ Seed
+                PlayerScene.emitStatusesFromScene(id, sc1); sc1  // 付与後 statuses を World へ Seed
             case World.SimEvent.Afflicted(World.EntityRef.Enemy(id), s) =>
                 let sc1 = EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(s, d#statuses) | d}, sc);
                 EnemyScene.emitStatusesFromScene(id, sc1); sc1
@@ -219,9 +219,9 @@ mod StaffCast {
                            rayUnits = ({id = id, ally = ally, immobilized = false, alive = true}: EffectRule.RayUnit) :: Nil,
                            amount = {max = 0, dealt = 0, incoming = 0, magic = 0}};
                 let plan = EffectPlan.planActions(rule, ctx);
-                World.emitStatusAdds(plan);  // emit-flip(E2): 境界で World へ status を発行
+                World.emitStatusAdds(plan);  // 境界で World へ status を発行
                 EffectRunner.runPlan(staffEffectHandlers(playerId, dir), plan, scene)
-                    !> (s -> World.emitHpSets(plan, s))  // F6a: hp も境界で World へ dual-write（tap）
+                    !> (s -> World.emitHpSets(plan, s))  // hp も境界で World へ dual-write（tap）
             case None =>
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった");
                 scene
@@ -257,7 +257,7 @@ mod StaffCast {
 
     /// 対象の現在グリッド座標を ally で出し分けて取る（custom op の位置導出用。攻撃直後は hitCell と一致）。
     def gridOf(id: Int32, ally: Bool, _sc: Scene[NodeTag]): Option[{x = Int32, y = Int32}] \ World.WorldQuery =
-        // P6-2b: 現在位置は World.posOf（scene gridPos twin は退役）。
+        // 現在位置は World.posOf（gridPos は World 権威）。
         let ref = if (ally) World.EntityRef.Player(id) else World.EntityRef.Enemy(id);
         World.posOf(ref, World.WorldQuery.get())
 
@@ -300,7 +300,7 @@ mod StaffCast {
         match PlayerScene.get(targetId, scene) {
             case None         => scene
             case Some(target) =>
-                // P6-5d: 現在 hp は World 読み（ECS 戦闘は scene hp を書かない＝scene は stale）。
+                // 現在 hp は World 読み（ECS 戦闘は scene hp を書かない＝scene は stale）。
                 let curHp = World.hpOf(World.EntityRef.Player(targetId), World.WorldQuery.get())
                                 |> Option.getWithDefault(target#hp);
                 let dmgResult = Combat.damage(hp = curHp, amount = 1);
@@ -323,7 +323,7 @@ mod StaffCast {
         match EnemyScene.get(enemyId, scene) {
             case None        => scene
             case Some(enemy) =>
-                // P6-5d: 現在 hp は World 読み（scene は stale）。
+                // 現在 hp は World 読み（scene は stale）。
                 let curHp = World.hpOf(World.EntityRef.Enemy(enemyId), World.WorldQuery.get())
                                 |> Option.getWithDefault(enemy#hp);
                 let dmgResult = Combat.damage(hp = curHp, amount = 1);
@@ -347,7 +347,7 @@ mod StaffCast {
                            scene: Scene[NodeTag],
                            moveFn: {x = Int32, y = Int32} -> Scene[NodeTag] \ World.Command):
             Scene[NodeTag] \ {World.Command, BoardQuery} =
-        // P1a: player cast の blowback 経路。board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
+        // player cast の blowback 経路。board 読みは World 由来（dual-write で World==scene）。
         let board: Board = BoardQuery.board();
         let path = Board.knockbackPath(geom#hit, geom#dir, board);
         match List.last(path) {
@@ -395,7 +395,7 @@ mod StaffCast {
             Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         bindPlayerLog(srcLabel, targetId, scene);
         let sc1 = PlayerScene.mapPlayer(targetId, d -> {statuses = StaffRules.bindStatuses(turns, d#statuses) | d}, scene);
-        PlayerScene.emitStatusesFromScene(targetId, sc1); sc1  // S3: bind 後 statuses を World へ Seed
+        PlayerScene.emitStatusesFromScene(targetId, sc1); sc1  // bind 後 statuses を World へ Seed
 
     /// かなしばり × 敵: 対象を `turns` ターン完全停止にする。
     def applyBindToEnemy(srcLabel: String, enemyId: Int32, turns: Int32, scene: Scene[NodeTag]):
@@ -419,7 +419,7 @@ mod StaffCast {
     /// 味方をワープ先（階段 or 隣接空き）へ瞬間移動させる。行き先が無ければ停止のみ。
     def warpPlayer(targetId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery} =
-        // P1b: warp（player/enemy cast 共有）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
+        // warp（player/enemy cast 共有）の board 読みは World 由来（dual-write で World==scene）。
         let board = BoardQuery.board();
         match StaffRules.warpCellFor(Stairs.getPos(scene), board) {
             case Some(cell) =>
@@ -433,7 +433,7 @@ mod StaffCast {
     /// 敵をワープ先（階段 or 隣接空き）へ瞬間移動させる。行き先が無ければ停止のみ。
     def warpEnemy(enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery} =
-        // P1a: player cast が敵に当てた warp 経路。board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
+        // player cast が敵に当てた warp 経路。board 読みは World 由来（dual-write で World==scene）。
         let board = BoardQuery.board();
         match StaffRules.warpCellFor(Stairs.getPos(scene), board) {
             case Some(cell) =>
@@ -455,7 +455,7 @@ mod StaffCast {
         if (Option.isEmpty(consumed))
             GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} がこわれた")
         else ();
-        // D4: 耐久消費後の staves を World へ dual-write（[STAVES DIFF] を塞ぐ・CombatDriver.consumeEquippedWeapon と同型）。
+        // 耐久消費後の staves を World へ dual-write（[STAVES DIFF] を塞ぐ・CombatDriver.consumeEquippedWeapon と同型）。
         World.Command.emit(World.Cmd.SetStaves(World.EntityRef.Player(playerId), newStaves));
         PlayerScene.mapPlayer(playerId, d -> {staves = newStaves | d}, scene)
 
@@ -513,9 +513,9 @@ mod StaffCast {
                            rayUnits = ({id = playerId, ally = true, immobilized = false, alive = true}: EffectRule.RayUnit) :: Nil,
                            amount = {max = player#resource#hp, dealt = 0, incoming = 0, magic = 0}};
                 let plan = EffectPlan.planActions(rule, ctx);
-                World.emitStatusAdds(plan);  // emit-flip(E2): 境界で World へ status を発行
+                World.emitStatusAdds(plan);  // 境界で World へ status を発行
                 EffectRunner.runPlan(throwEffectHandlers(), plan, scene)
-                    !> (s -> World.emitHpSets(plan, s))  // F6a: hp も境界で World へ dual-write（tap）
+                    !> (s -> World.emitHpSets(plan, s))  // hp も境界で World へ dual-write（tap）
             // effectRule が無い（または onUse でない）→ 従来どおり legacy effect で動く。
             case None =>
                 if (isSelfUseEffect(item#effect)) {
@@ -524,9 +524,9 @@ mod StaffCast {
                                rayUnits = (Nil: List[EffectRule.RayUnit]),
                                amount = {max = player#resource#hp, dealt = 0, incoming = 0, magic = 0}};
                     let plan = EffectPlan.planActions(rule, ctx);
-                    World.emitStatusAdds(plan);  // emit-flip(E2): 境界で World へ status を発行
+                    World.emitStatusAdds(plan);  // 境界で World へ status を発行
                     EffectRunner.runPlan(selfEffectHandlers(item), plan, scene)
-                        !> (s -> World.emitHpSets(plan, s))  // F6a: hp も境界で World へ dual-write（tap）
+                        !> (s -> World.emitHpSets(plan, s))  // hp も境界で World へ dual-write（tap）
                 } else {
                     GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} は ここでは使えなかった");
                     scene
@@ -561,7 +561,7 @@ mod StaffCast {
         heal       = (sc, id, _, _)        -> checked_ecast(withPlayer(id, sc, p -> applyConsumableHeal(id, p, item, sc))),
         fullHeal   = (sc, id, _)           -> checked_ecast(withPlayer(id, sc, p -> applyFullHeal(id, p, item, sc))),
         maxHpUp    = (sc, id, _, _)        -> checked_ecast(withPlayer(id, sc, p -> applyMaxHpUp(id, p, item, sc))),
-        status     = (sc, id, _, se, _, _) -> checked_ecast(applySelfStatus(id, item, se, sc)),  // S3: Seed
+        status     = (sc, id, _, se, _, _) -> checked_ecast(applySelfStatus(id, item, se, sc)),  // Seed
         // self-use では発火しない handler。全 handler が同一 effect(GameLogger) を持つ必要があるため
         // 純粋な恒等を checked_ecast で GameLogger へ上げる（実際の作用は無し）。
         damage     = (sc, _, _, _)         -> checked_ecast(sc),
@@ -587,13 +587,13 @@ mod StaffCast {
                              item: Consumable.ConsumableResource,
                              scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
-        // P6-5d: 現在 hp は World 読み（scene は stale）。
+        // 現在 hp は World 読み（scene は stale）。
         let curHp = World.hpOf(World.EntityRef.Player(playerId), World.WorldQuery.get())
                         |> Option.getWithDefault(player#hp);
         let result = Combat.heal(curHp, player#resource#hp, item#magnitude);
         let healed = result#newHp - curHp;
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} で ${healed}回復");
-        // P6-5d: 書き込みは setHp funnel（SetHp emit 併記＝World 即時反映・境界 emit に依存しない）。
+        // 書き込みは setHp funnel（SetHp emit 併記＝World 即時反映・境界 emit に依存しない）。
         scene
             |> PlayerScene.setHp(playerId, result#newHp)
 
@@ -602,7 +602,7 @@ mod StaffCast {
                            item: Consumable.ConsumableResource,
                            scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
-        // P6-5d: 現在 hp は World 読み・書き込みは setHp funnel（SetHp emit 併記）。
+        // 現在 hp は World 読み・書き込みは setHp funnel（SetHp emit 併記）。
         let maxHp  = player#resource#hp;
         let curHp  = World.hpOf(World.EntityRef.Player(playerId), World.WorldQuery.get())
                          |> Option.getWithDefault(player#hp);
@@ -616,7 +616,7 @@ mod StaffCast {
                           item: Consumable.ConsumableResource,
                           scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
-        // P6-5d: 現在 hp は World 読み・hp 書き込みは setHp funnel（SetHp emit 併記）。
+        // 現在 hp は World 読み・hp 書き込みは setHp funnel（SetHp emit 併記）。
         // resource（maxHp）は scene 権威のまま＝mapPlayer で更新し、境界の SetBaseStats dual-write が World へ運ぶ。
         let inc    = item#magnitude;
         let newMax = player#resource#hp + inc;
@@ -636,7 +636,7 @@ mod StaffCast {
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} を使った (${item#duration}ターン)");
         let sc1 = PlayerScene.mapPlayer(playerId,
             d -> {statuses = StatusSystem.add(status, d#statuses) | d}, scene);
-        PlayerScene.emitStatusesFromScene(playerId, sc1); sc1  // S3: 自己バフ後 statuses を World へ Seed
+        PlayerScene.emitStatusesFromScene(playerId, sc1); sc1  // 自己バフ後 statuses を World へ Seed
 
     /// 消費アイテムの耐久（使用回数）を 1 減らし、0 なら consumables から除去 + 使い切りログ。
     /// `consumeStaff` と構造は同じだが、型が `Consumable.ConsumableResource` のため共通化できない。
@@ -649,7 +649,7 @@ mod StaffCast {
         if (Option.isEmpty(consumed))
             GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${item#name} を使い切った")
         else ();
-        // D4: 耐久消費後の consumables を World へ dual-write（[CONSUMABLES DIFF] を塞ぐ）。
+        // 耐久消費後の consumables を World へ dual-write（[CONSUMABLES DIFF] を塞ぐ）。
         World.Command.emit(World.Cmd.SetConsumables(World.EntityRef.Player(playerId), newConsumables));
         PlayerScene.mapPlayer(playerId, d -> {consumables = newConsumables | d}, scene)
 
@@ -846,7 +846,7 @@ mod StaffCast {
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, World.WorldQuery} =
         Option.getWithDefault(scene,
             forM (enemy <- EnemyScene.get(enemyId, scene)) yield {
-                // P6-5d: 現在 hp は World 読み（scene は stale）。
+                // 現在 hp は World 読み（scene は stale）。
                 let curHp = World.hpOf(World.EntityRef.Enemy(enemyId), World.WorldQuery.get())
                                 |> Option.getWithDefault(enemy#hp);
                 let dmgResult = Combat.damage(hp = curHp, amount = dmg);
@@ -870,7 +870,7 @@ mod StaffCast {
                                SelectedPlayer.State, World.Command, World.WorldQuery} =
         Option.getWithDefault(scene,
             forM (target <- PlayerScene.get(targetId, scene)) yield {
-                // P6-5d: 現在 hp は World 読み（scene は stale）。
+                // 現在 hp は World 読み（scene は stale）。
                 let curHp = World.hpOf(World.EntityRef.Player(targetId), World.WorldQuery.get())
                                 |> Option.getWithDefault(target#hp);
                 let dmgResult = Combat.damage(hp = curHp, amount = dmg);
@@ -1020,7 +1020,7 @@ mod StaffCast {
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio,
                 World.Command, World.WorldQuery, BoardQuery} =
-        // P1b: 敵投擲（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
+        // 敵投擲（mid-frame）の board 読みは World 由来（dual-write で World==scene）。
         let board: Board = BoardQuery.board();
         match enemyThrowDirection(origin, board) {
             case None      => None
@@ -1060,7 +1060,7 @@ mod StaffCast {
     pub def enemyTryStaff(enemyId: Int32, origin: {x = Int32, y = Int32},
                            description: String, scene: Scene[NodeTag]):
             Option[Scene[NodeTag]] \ {GameLogger.GameLogger, World.Command, BoardQuery, World.WorldQuery} =
-        // P1b: 敵詠唱（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
+        // 敵詠唱（mid-frame）の board 読みは World 由来（dual-write で World==scene）。
         let board: Board = BoardQuery.board();
         forM (
             effect <- enemyStaffFor(description);
@@ -1216,9 +1216,9 @@ mod StaffCast {
         let ctx = {selfId = id, attackerId = id, actorIsPlayer = true, rayUnits = target :: Nil,
                    amount = {max = 0, dealt = 0, incoming = 0, magic = 0}};
         let plan = EffectPlan.planActions(EffectBridge.consumableThrowRule(item), ctx);
-        World.emitStatusAdds(plan);  // emit-flip(E2): 境界で World へ status を発行
+        World.emitStatusAdds(plan);  // 境界で World へ status を発行
         EffectRunner.runPlan(throwEffectHandlers(), plan, scene)
-            !> (s -> World.emitHpSets(plan, s))  // F6a: hp も境界で World へ dual-write（tap）
+            !> (s -> World.emitHpSets(plan, s))  // hp も境界で World へ dual-write（tap）
 
     /// 投擲効果の統一ハンドラ。ally で player/enemy を出し分け、HP/status を適用する（ログなし）。
     /// damage/immobilize 等は投擲薬の経路には現れないので恒等。
@@ -1226,7 +1226,7 @@ mod StaffCast {
         heal       = (sc, id, ally, n)         -> checked_ecast(healUnit(id, ally, n, sc)),
         fullHeal   = (sc, id, ally)            -> checked_ecast(fullHealUnit(id, ally, sc)),
         maxHpUp    = (sc, id, ally, n)         -> checked_ecast(maxHpUpUnit(id, ally, n, sc)),
-        status     = (sc, id, ally, se, m, t)  -> checked_ecast(statusUnit(id, ally, se, m, t, sc)),  // S3: Seed
+        status     = (sc, id, ally, se, m, t)  -> checked_ecast(statusUnit(id, ally, se, m, t, sc)),  // Seed
         damage     = (sc, _, _, _)             -> checked_ecast(sc),
         immobilize = (sc, _, _, _)             -> checked_ecast(sc),
         revive     = (sc, _, _)                -> checked_ecast(sc),
@@ -1237,7 +1237,7 @@ mod StaffCast {
 
     /// HP 回復を ally で出し分け（旧 Heal arm と同一）。
     def healUnit(id: Int32, ally: Bool, n: Int32, sc: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, World.WorldQuery} =
-        // P6-5d: 入力 hp は World 読み・書き込みは setHp funnel（SetHp emit 併記）。plan 内の連鎖は
+        // 入力 hp は World 読み・書き込みは setHp funnel（SetHp emit 併記）。plan 内の連鎖は
         // read-after-write（worldRef 即時適用）で成立する。境界の emitHpSets は同値の再 emit＝冪等。
         let w = World.WorldQuery.get();
         if (ally)
@@ -1259,7 +1259,7 @@ mod StaffCast {
 
     /// 全回復を ally で出し分け（旧 FullHeal / AutoRevive arm と同一）。
     def fullHealUnit(id: Int32, ally: Bool, sc: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        // P6-5d: 書き込みは setHp funnel（SetHp emit 併記）。全回復は入力 hp 不要。
+        // 書き込みは setHp funnel（SetHp emit 併記）。全回復は入力 hp 不要。
         if (ally)
             match PlayerScene.get(id, sc) {
                 case Some(p) => sc |> PlayerScene.setHp(id, p#resource#hp)
@@ -1272,7 +1272,7 @@ mod StaffCast {
             }
 
     /// 最大HP上昇を ally で出し分け（旧 MaxHpUp arm と同一）。
-    /// S2.3: resource#hp=maxHp 変更で baseStats#maxHp が動くが、World 側は hp と同 funnel
+    /// resource#hp=maxHp 変更で baseStats#maxHp が動くが、World 側は hp と同 funnel
     /// （runPlan 後の World.emitHpSets/MaxHpUpAt 境界で SetBaseStats を両 faction dual-write）＝pure handler は World 不可触。
     def maxHpUpUnit(id: Int32, ally: Bool, inc: Int32, sc: Scene[NodeTag]): Scene[NodeTag] =
         if (ally)
@@ -1298,7 +1298,7 @@ mod StaffCast {
         let status = {effect = kind, magnitude = mag, remaining = turns};
         if (ally)
             let sc1 = PlayerScene.mapPlayer(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc);
-            PlayerScene.emitStatusesFromScene(id, sc1); sc1  // S3: 付与後 statuses を World へ Seed
+            PlayerScene.emitStatusesFromScene(id, sc1); sc1  // 付与後 statuses を World へ Seed
         else
             let sc1 = EnemyScene.mapEnemy(id, d -> {statuses = StatusSystem.add(status, d#statuses) | d}, sc);
             EnemyScene.emitStatusesFromScene(id, sc1); sc1

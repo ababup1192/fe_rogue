@@ -408,7 +408,7 @@ mod CharacterSelectScene {
         startValue + (endValue - startValue) * ratio
 
     /// カード列の横位置を目標へ寄せ、状態から見た目を作り直し、状態を書き戻す。
-    /// P5-c(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
+    /// per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
     /// 選択画面以外（CharacterSelect ノード不在）は getState gate で no-op。
     pub def step(delta: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag] =
         match Scene.getState(rootPath(), scene) {

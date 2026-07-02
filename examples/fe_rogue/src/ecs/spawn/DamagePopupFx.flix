@@ -5,7 +5,7 @@
 /// 「P1 → 敵2 に 5ダメージ」と冗長になるが、戦場上で直感的にダメージ量を見せる
 /// のが目的。
 ///
-/// P6-1f: scene ノードは全廃。寿命・テキスト・色・位置すべて World の `popupFx` store が持ち
+/// scene ノードは持たない。寿命・テキスト・色・位置すべて World の `popupFx` store が持ち
 /// （`Cmd.SpawnPopupFx` で spawn・`stepWorld` が tick して期限切れ drop）、描画は
 /// `RenderWorld.renderPopups` が Label2D **値**を組んで直描きする（tree に積まない）。
 ///
@@ -18,7 +18,7 @@ mod DamagePopupFx {
 
     /// fontManifest で登録した name。フォントアトラスはゲーム全体で共有されるため、
     /// LogScene / BattlePanelScene など他の UI シーンと同じ "ui" を指定しないと
-    /// 実行時に別アトラスを要求してクラッシュする。P6-1f: renderPopups が使うため pub。
+    /// 実行時に別アトラスを要求してクラッシュする。renderPopups が使うため pub。
     pub def fontName(): String = "ui"
 
     /// 1 つのポップアップの寿命（出現 → 消滅まで）
@@ -48,7 +48,7 @@ mod DamagePopupFx {
 
     /// `emit` の文字列版。ダメージ数値の代わりに任意のテキスト（例: "miss"）を
     /// 同じ float-up 演出で浮かす。命中失敗時に呼び出し側が "miss" を出すのに使う。
-    /// P6-1f: `Cmd.SpawnPopupFx` の emit のみ（ノード無し・scene はパイプ素通し）。
+    /// `Cmd.SpawnPopupFx` の emit のみ（ノード無し・scene はパイプ素通し）。
     pub def emitText(worldPos: Vec2.Vec2, text: String, color: Color,
                    scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         World.Command.emit(World.Cmd.SpawnPopupFx(

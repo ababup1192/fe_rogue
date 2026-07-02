@@ -12,8 +12,8 @@ mod FrameAef {
 
     /// `ready` / `physicsProcess` 用の Aef 集合 (`FrameAef.T`)。Player.physicsProcess / Cursor.physicsProcess
     /// などが要求する集合 (BoardQuery で盤面参照、Tween でアニメ進行、TurnPhase で gating 等)。
-    /// `World.WorldQuery`: S6 で waited の sim reader（PlayerMovementDriver の集合/追従判定）が
-    /// frame 内の権威 World を読むため許可（move 前ゆえ World==scene・挙動不変）。gameLoop 全体が
+    /// `World.WorldQuery`: waited の sim reader（PlayerMovementDriver の集合/追従判定）が
+    /// frame 内の権威 World を読むため許可。gameLoop 全体が
     /// WorldQuery handler 内なので physicsProcess でも取得できる。
     pub type alias T = {GameEngine.Game, BoardQuery,
                          EnemyData.RosterQuery,
@@ -21,7 +21,7 @@ mod FrameAef {
                          GameLogger.GameLogger,
                          TurnPhase.State, SelectedPlayer.State, World.Command,
                          World.WorldQuery,
-                         // P4-e: 手動移動の着地自動取得（stepFor→autoPickupOrLog）が中央ポップアップの
+                         // 手動移動の着地自動取得（stepFor→autoPickupOrLog）が中央ポップアップの
                          // 取得音予約/表示を State resource に書くため。
                          ItemPickupPopupScene.State}
 
@@ -29,8 +29,8 @@ mod FrameAef {
     /// attack:hit / death_blink / attack_lunge を捌き、EnemyTurnDriver が phase 判定で
     /// `stepOnce` や `commitWaitedAndAdvance` を起動するため、Audio / EnemyTurn / GameOverRequest /
     /// Pacing が追加される。`Math.Random` は attack:hit 時の命中ロール（Combat.isHit 用の乱数）に使う。
-    /// `BoardQuery`: P1a 以降、StairsExit の per-frame 進行（`stepOnce`/`advanceFront`）が frame-head の
-    /// 盤面を World 由来で読むため許可（move 前ゆえ World==scene・挙動不変）。
+    /// `BoardQuery`: StairsExit の per-frame 進行（`stepOnce`/`advanceFront`）が frame-head の
+    /// 盤面を World 由来で読むため許可。
     pub type alias ProcessT = {GameEngine.Game, GameEngine.Audio, BoardQuery,
                                 PlayerData.PartyQuery, EnemyData.RosterQuery,
                                 Tween.Scheduler, AnimationPlayer.Scheduler,
@@ -43,14 +43,14 @@ mod FrameAef {
                                 CustomEffects.RingTransformRequest,
                                 CustomEffects.ThiefDropRequest,
                                 Pacing.State, Math.Random,
-                                // P4-a/b/c/d: HUD の状態 resource（LogScene=ログ queue、BattlePanel=点滅タイマー、
+                                // HUD の状態 resource（LogScene=ログ queue、BattlePanel=点滅タイマー、
                                 // TurnEndHold=長押しゲージ、LevelUpPanel=レベルアップ演出）。
                                 LogScene.State, BattlePanelScene.State, TurnEndHoldScene.State,
                                 LevelUpPanelScene.State, ItemPickupPopupScene.State,
-                                // P6-1g: BattlePanel が攻撃予報を ForecastState resource へ put する。
+                                // BattlePanel が攻撃予報を ForecastState resource へ put する。
                                 UnitHPBarRender.ForecastState,
                                 World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
-                                // slice `rng-world`: combat 命中ロールは World.RngDraw chokepoint 経由
+                                // combat 命中ロールは World.RngDraw chokepoint 経由
                                 // （CombatDriver.process が要求）。Game.flix:177/179 の checked_ecast widening が
                                 // この追加なしでは失敗する。Math.Random は他経路用に残置。
                                 World.RngDraw}

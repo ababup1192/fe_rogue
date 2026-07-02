@@ -323,7 +323,7 @@ mod TestCombat {
 
     // ════════════════════════════════════════════════════════
     // estimate: faction 非依存の予報（攻撃側 view → 防御側 view）
-    //   旧 EnemyScene.estimateDamage / BattlePanel のインライン予報が通る 1 経路。
+    //   EnemyScene / BattlePanel の予報が通る単一経路。
     //   forecast に CombatView の物理/魔法・武器相性解決を被せただけなので、
     //   物理中立・武器なし・魔法ステ参照・相性有利の 4 経路だけ確認する。
     // ════════════════════════════════════════════════════════

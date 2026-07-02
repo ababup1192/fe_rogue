@@ -39,7 +39,7 @@ pub enum NodeTag {
     case ArrowCursor(ArrowCursorScene.Data)
     /// Stairs の Marker2D（フロアの階段。床のランダムセルに 1 つ配置される）
     case Stairs(Stairs.Data)
-    /// P4-a: ログ HUD の識別用純タグ（状態は `LogScene.State` resource へ移設・ペイロードレス）。
+    /// ログ HUD の識別用純タグ（状態は `LogScene.State` resource へ移設・ペイロードレス）。
     case Log
     /// ItemMenuScene の Panel ルート（外枠）
     case ItemPanel
@@ -68,11 +68,11 @@ pub enum NodeTag {
     /// BattlePanelScene の CanvasLayer ルート（画面空間の戦闘予報ミニウィンドウ）。
     /// 内部 Duration は未使用（将来の演出用に枠だけ残す）。panel とその子（丸/ラベル/三角）は
     /// `NodeTag.NoTag` でぶら下げ、process がパス経由で更新・対象近傍へ移動する。
-    /// P4-b: 戦闘予報パネルの識別用純タグ（点滅タイマーは `BattlePanelScene.State` resource へ移設）。
+    /// 戦闘予報パネルの識別用純タグ（点滅タイマーは `BattlePanelScene.State` resource へ移設）。
     case BattlePanel
     /// LevelUpPanelScene の Panel ルート（レベルアップ時のステータス変化パネルの外枠）。
     /// 内部 state は演出の進行（bonus 再生済みか / 右側を出し終えた上昇ステータス数 / 次までの残り時間）。
-    /// P4-d: レベルアップ演出パネルの識別用純タグ（状態は `LevelUpPanelScene.State` resource へ移設）。
+    /// レベルアップ演出パネルの識別用純タグ（状態は `LevelUpPanelScene.State` resource へ移設）。
     case LevelUpPanel
     /// UnitHPBarRender の Marker2D 親（戦闘表示 timer + currentHp/maxHp を持つ）
     /// UnitCardScene の CanvasLayer 親（左サイドの選択ユニット簡易カード）。
@@ -80,16 +80,16 @@ pub enum NodeTag {
     /// EnemyCardScene の CanvasLayer 親（右サイドの攻撃対象敵カード。UnitCard と左右対称）。
     case EnemyCard
     /// TopBarScene の CanvasLayer 親（上部フェイズバー。陣営・敵ターンの「間」を持つ）
-    /// P6-1e: production ではノードを積まない（描画は renderItems 直描き）。手組みノードで
+    /// production ではノードを積まない（描画は renderItems 直描き）。手組みノードで
     /// World を seed するテスト seam（syncFromScene の itemsFromScene が読む）として残置。
     case GroundItem(GroundItems.Data)
-    /// P4-f: 上部バーの識別用純タグ（状態は `TopBarScene.State` resource へ移設）。
+    /// 上部バーの識別用純タグ（状態は `TopBarScene.State` resource へ移設）。
     case TopBar
     /// ItemPickupPopupScene の CanvasLayer 親（アイテム取得ポップアップのフェード演出状態を持つ）
-    /// P4-e: 中央アイテム取得ポップアップの識別用純タグ（状態は `ItemPickupPopupScene.State` resource へ移設）。
+    /// 中央アイテム取得ポップアップの識別用純タグ（状態は `ItemPickupPopupScene.State` resource へ移設）。
     case ItemPickupPopup
     /// TurnEndHoldScene の CanvasLayer 親（Shift 長押しゲージの経過時間と発火済みフラグを持つ）
-    /// P4-c: ターンスキップ長押しゲージの識別用純タグ（状態は `TurnEndHoldScene.State` resource へ移設）。
+    /// ターンスキップ長押しゲージの識別用純タグ（状態は `TurnEndHoldScene.State` resource へ移設）。
     case HoldGauge
     /// GroundItems の床に落ちている武器（拾える）
     /// Chests の床に置かれた宝箱（ローグだけが開けられる。中身は配置時に確定済み）
@@ -107,7 +107,7 @@ pub enum NodeTag {
     /// module を蓄積 (Set[Int32]) し、M キーで全画面ミニマップを出し入れ・再描画する。
     case MinimapDriver(MinimapScene.DriverData)
     /// 起動時のタイトル画面のルート（カーソル位置・再開可否を保持）。
-    /// P4-g: タイトル画面の識別用純タグ（状態は `TitleMenuScene.State` resource へ移設）。
+    /// タイトル画面の識別用純タグ（状態は `TitleMenuScene.State` resource へ移設）。
     case Title
     /// 中断確認ダイアログ（「本当に中断しますか？ はい / いいえ」）の Panel / ItemList。
     case SuspendConfirmPanel
@@ -229,7 +229,7 @@ instance InputEvent.InputHandler[NodeTag] {
                  GamePhaseState, PartySelection.State,
                  // アイテム投擲の命中ロール（Math.Random）と誤射による味方脱落のゲームオーバー判定。
                  Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
-                 // P4-d: レベルアップ演出パネルの確定（LevelUpPanelScene.confirm）が State resource を触る。
+                 // レベルアップ演出パネルの確定（LevelUpPanelScene.confirm）が State resource を触る。
                  LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State}
     // ActionMenu / ItemMenu / ItemActionMenu / AttackForecast フェーズでは
     // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）でメニュー操作する。
@@ -690,10 +690,10 @@ mod Game {
         region rc {
             // BoardQuery handler が現在のシーンを読むための窓口（毎フレーム gameLoop が更新）
             let sceneRef = Ref.fresh(rc, Scene.empty());
-            // S4: BoardQuery handler が読む World の窓口（sceneRef と対称・毎フレーム頭で gameLoop が更新）。
-            // frame-head の world は scene の faithful mirror なので toBoard は fromScene と同値（挙動不変）。
+            // BoardQuery handler が読む World の窓口（sceneRef と対称・毎フレーム頭で gameLoop が更新）。World は
+            // 各 store の単一権威。
             let worldRef = Ref.fresh(rc, World.empty());
-            // F2b: turn phase の Ref。TurnPhase.State handler を inline 化し、`put` でこの Ref と worldRef.turnPhase を
+            // turn phase の Ref。TurnPhase.State handler を inline 化し、`put` でこの Ref と worldRef.turnPhase を
             // **同時更新（dual-write）**する＝全 put サイト（41 箇所）が自動で World へ command 反映される（per-site 改修ゼロ）。
             let turnPhaseRef = Ref.fresh(rc, TurnPhase.Phase.PlayerCursor);
             // ゲーム全体の進行状態（画面）。起動直後はタイトル画面（はじめから / 中断から再開）から始める。
@@ -766,7 +766,7 @@ mod Game {
                 // 階段でフロア移動する音
                 AudioStreamPlayer.setVolume("change_floor", 0.5f32);
                 // "T1 味方のターン" のログは Playing 突入時（applyPhaseChange）に出す。
-                // P6-2c: 初回 world は空で開始（タイトル画面はユニット/地形が無く、以降の全 store は
+                // 初回 world は空で開始（タイトル画面はユニット/地形が無く、以降の全 store は
                 // spawn/build choke の Cmd が seed する）。syncFromScene はテスト seed 専用に退役。
                 gameLoop(catalogs, sceneRef, worldRef, GamePhase.Title, scene, World.empty())
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
@@ -826,8 +826,8 @@ mod Game {
               }
               with handler BoardQuery {
                   // 盤面読み取りを World 由来に（位置権威＝World）。pieces は worldRef（`Cmd.Move` のみ由来・
-                  // mid-frame 最新）、map（地形）は sceneRef から。P3 で位置 mirror を撤去済みゆえ pieces は
-                  // command 由来。write 漏れの恒久ガードは gameLoop 末尾の `[P3 WRITE-MISS]`（フレーム末・通常無音）。
+                  // mid-frame 最新）、map（地形）は sceneRef から。位置 mirror は撤去済みゆえ pieces は
+                  // command 由来。write 漏れの恒久ガードは gameLoop 末尾の `[ATTACKTARGET DIFF]`（フレーム末・通常無音）。
                   def board(k) = k(World.toBoard(Ref.get(worldRef), Ref.get(sceneRef)))
               }
               with handler World.Command {
@@ -839,31 +839,30 @@ mod Game {
                   def statusEffects(ref, k) = k(World.statusEffectsOf(ref, Ref.get(worldRef)))
               }
               with handler World.PhaseQuery {
-                  // F2c: turn phase（sim-phase 3-case）を worldRef から読む read seam。
+                  // turn phase（sim-phase 3-case）を worldRef から読む read seam。
                   def phase(k) = k(World.turnPhaseOf(Ref.get(worldRef)))
               }
               with handler World.WorldQuery {
-                  // F7: 現 World スナップショット（worldRef）を返す汎用 read seam。フラグ reader 共通窓口。
+                  // 現 World スナップショット（worldRef）を返す汎用 read seam。フラグ reader 共通窓口。
                   def get(k) = k(Ref.get(worldRef))
               }
               with handler World.RngDraw {
-                  // slice `rng-world`: live combat ロールの chokepoint。0..99 reduction は
+                  // live combat ロールの chokepoint。0..99 reduction は
                   // `Prng.unitToPercent` 一本に集約（live も Prng/oracle も同一本体＝数値 bit-identical を
                   // 型で保証。式が複製されると live と golden が無言で乖離する）。source だけ live=Math.Random。
                   // worldRef の seeded PRNG は進めない（PRNG は test/trace 専用）。
                   def nextPercent(k) = k(Prng.unitToPercent(Math.Random.randomFloat64()))
               }
               with handler PlayerData.PartyQuery {
-                  // P2-S1 read-flip: core field 権威を World へ。pos/hp/waited/在庫/progress/statuses 等は
+                  // read-flip: core field 権威は World。pos/hp/waited/在庫/progress/statuses 等は
                   // `dataFromWorld`＝World 由来で読む。residual（resource/classId/selectedItem/facing/
                   // pendingLevelUp/moveStepsTaken/usedStairs）は dataFromWorld が scene から読む。
-                  // ★意味論変化: flip 前は全 field が frame-top scene（sceneRef は frame 頭のみ更新）の一貫
-                  //   スナップショットだった。flip 後は core=worldRef（emit で mid-frame 先行・即時 `Cmd` 適用）＝
-                  //   BoardQuery と同じ mid-frame 権威、residual=frame-top scene。両者は「core 系（座標/hp/在庫）
-                  //   と residual 系（resource/UI/render facing）を跨いで同一瞬間として相関させない」限り整合。
-                  //   静的 residual（resource/classId）は不変、動的 residual（facing/selectedItem 等）は cosmetic。
+                  // ★意味論: core=worldRef（emit で mid-frame 先行・即時 `Cmd` 適用）＝BoardQuery と同じ
+                  //   mid-frame 権威、residual=frame-top scene（sceneRef は frame 頭のみ更新）。両者は「core 系
+                  //   （座標/hp/在庫）と residual 系（resource/UI/render facing）を跨いで同一瞬間として相関させない」
+                  //   限り整合。静的 residual（resource/classId）は不変、動的 residual（facing/selectedItem 等）は cosmetic。
                   // core store が未 seed で None gate に落ちた時のみ scene Data へ fallback＝退行ゼロ（[PLAYERDATA DIFF]
-                  //   が World==scene を frame 末に保証＝fallback は実質不発。syncTreeFromWorld 撤去〔P8〕で fallback も外す）。
+                  //   が World==scene を frame 末に保証＝fallback は実質不発）。
                   def get(id, k)           = {
                       let scene = Ref.get(sceneRef); let world = Ref.get(worldRef);
                       k(PlayerScene.get(id, scene) |> Option.map(d ->
@@ -876,11 +875,11 @@ mod Game {
                   }
               }
               with handler EnemyData.RosterQuery {
-                  // P2-S2 read-flip: PartyQuery(S1) と同流儀で core 権威を World へ。get/getAll は
+                  // read-flip: PartyQuery と同流儀で core 権威は World。get/getAll は
                   // `dataFromWorldEnemy`＝World 由来（residual=resourceId/homeModuleIdx/resource/acted は scene）・
                   // None gate は scene fallback。findIdAt/anyAttacking は World の pos/attackTarget を直読み
                   // （EnemyScene 版と等価・pos/dying/attackTarget は dual-write で [ATTACKTARGET DIFF] 等が保証）。
-                  // 意味論は S1 と同じ: core=worldRef mid-frame〔BoardQuery と同権威〕/ residual=frame-top scene。
+                  // 意味論は PartyQuery と同じ: core=worldRef mid-frame〔BoardQuery と同権威〕/ residual=frame-top scene。
                   def get(id, k)           = {
                       let scene = Ref.get(sceneRef); let world = Ref.get(worldRef);
                       k(EnemyScene.get(id, scene) |> Option.map(d ->
@@ -906,17 +905,17 @@ mod Game {
               with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
               with AnimationPlayer.withScheduler(rc)  // 名前付きアニメ + イベントドレイン
               with Pacing.withState(rc)           // 演出の溜め (hold)
-              with LogScene.withState(rc)         // P4-a: ログ HUD の状態（queue/idleSince）を resource 化
-              with BattlePanelScene.withState(rc) // P4-b: 戦闘予報パネルの点滅タイマーを resource 化
-              with TurnEndHoldScene.withState(rc) // P4-c: ターンスキップ長押しゲージの状態を resource 化
-              with LevelUpPanelScene.withState(rc) // P4-d: レベルアップ演出パネルの状態を resource 化
-              with TopBarScene.withState(rc) // P4-f: 上部バーの状態を resource 化
-              with TitleMenuScene.withState(rc) // P4-g: タイトル画面の状態を resource 化
-              with UnitHPBarRender.withForecast(rc) // P6-1g: 攻撃予報（減る分点滅）の view 状態
-              with ItemPickupPopupScene.withState(rc) // P4-e: 中央アイテム取得ポップアップの状態を resource 化
+              with LogScene.withState(rc)         // ログ HUD の状態（queue/idleSince）を resource 化
+              with BattlePanelScene.withState(rc) // 戦闘予報パネルの点滅タイマーを resource 化
+              with TurnEndHoldScene.withState(rc) // ターンスキップ長押しゲージの状態を resource 化
+              with LevelUpPanelScene.withState(rc) // レベルアップ演出パネルの状態を resource 化
+              with TopBarScene.withState(rc) // 上部バーの状態を resource 化
+              with TitleMenuScene.withState(rc) // タイトル画面の状態を resource 化
+              with UnitHPBarRender.withForecast(rc) // 攻撃予報（減る分点滅）の view 状態
+              with ItemPickupPopupScene.withState(rc) // 中央アイテム取得ポップアップの状態を resource 化
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
               with EnemyTurn.withQueue(rc)        // 敵ターンキュー（1 step / 1 frame 駆動）
-              with handler TurnPhase.State {       // F2b: inline 化し put を World へ dual-write（全 put が World.turnPhase 反映）
+              with handler TurnPhase.State {       // inline 化し put を World へ dual-write（全 put が World.turnPhase 反映）
                   def get(k) = k(Ref.get(turnPhaseRef))
                   def put(target, k) = {
                       Ref.put(target, turnPhaseRef);
@@ -945,7 +944,7 @@ mod Game {
                 World.WorldQuery, TitleMenuScene.State, TopBarScene.State} =
         match phase {
             case GamePhase.Title =>
-                // P6-2c: ダンジョン外へ出る＝ユニット store と地形 read-model を掃除
+                // ダンジョン外へ出る＝ユニット store と地形 read-model を掃除
                 // （scene 再構築での自動 prune は廃止＝明示 Cmd。ClearChests/Items と同じ流儀）。
                 World.Command.emit(World.Cmd.ClearUnits);
                 World.Command.emit(World.Cmd.SetMapSnapshot(None));
@@ -971,7 +970,7 @@ mod Game {
 
     /// メインループ。phase で分岐せず、**固定パイプライン** を毎フレーム回す:
     ///   handleInput → handleMenus → physicsProcess → Tween → Animation → process → epilogue
-    /// F2a: 19-case `TurnPhase.Phase` を World の 3-case `SimPhase` に写す（境界の写像）。
+    /// 19-case `TurnPhase.Phase` を World の 3-case `SimPhase` に写す（境界の写像）。
     /// メニュー遷移・演出待ち系は全て「味方ターン」配下＝`PlayerTurn`（細分は UiState.modalMode / anim-queue）。
     def simPhaseOf(phase: TurnPhase.Phase): SimPhase = match phase {
         case TurnPhase.Phase.EnemyTurn => SimPhase.EnemyTurn
@@ -986,10 +985,10 @@ mod Game {
     /// catalog をクロージャに閉じ込めて実行するため、ここで catalog を引き回す必要はない。
     def gameLoop(catalogs: GameLifecycle.Catalogs,
                   sceneRef: Ref[Scene[NodeTag], r],
-                  worldRef: Ref[World, r],   // S4: BoardQuery handler が読む World の窓口（毎フレーム頭で更新）。
+                  worldRef: Ref[World, r],   // BoardQuery handler が読む World の窓口（毎フレーム頭で更新）。
                   previousPhase: GamePhase,
                   scene: Scene[NodeTag],
-                  world: World):           // S0: ハイブリッド ECS 足場。scene→World 並走 sync。描画に無影響。
+                  world: World):           // 権威 World（各 store の単一権威）。gameLoop を貫通して次フレームへ持ち越す。
                  Unit \ {GameEngine.Game, GameEngine.Audio,
                          Fs.FileRead, IO,
                          BoardQuery,
@@ -1016,7 +1015,7 @@ mod Game {
         if (GameEngine.Game.shouldClose()) ()
         else {
             // BoardQuery handler が読む窓口を毎フレーム最新の scene / world に更新する。
-            // world は前フレーム末の syncFromScene(next) ＝ この scene の faithful mirror（整合ペア）。
+            // world は前フレーム末の権威 World（world2）＝各 store の単一権威。
             Ref.put(scene, sceneRef);
             Ref.put(world, worldRef);
             let dt = GameEngine.Game.getDeltaTime();
@@ -1046,7 +1045,7 @@ mod Game {
                 // process の後＝combat drain と TopBar 更新が確定した post-process scene を読む（前後依存は World 経由で順序非依存）。
                 |> EnemyTurnDriver.step
                 |> StairsExitDriver.step
-                // P5-a: view driver（Fog/Minimap/ArrowCursor）も per-node callback から外し明示 step 化
+                // view driver（Fog/Minimap/ArrowCursor）も per-node callback から外し明示 step 化
                 // （dispatchDrivers 撤去＝対象 0）。process の後・render の前に post-process 状態を読んで
                 // 同一フレームで描画されるため挙動不変。相互依存なし＝順序自由。
                 |> FogScene.step
@@ -1063,14 +1062,11 @@ mod Game {
                            applyPhaseChange(currentPhase, previousPhase, catalogs, updated)
                                |> Scene.setPrevKeyState(Scene.getPrevKeyState(updated))
                        else updated;
-            // 位置・hp・isDying・alerted・progress・bottleUsed は World 権威。refreshMirror は frame カウンタを進めるだけ。
-            // S6: prevPos を World 権威化（scene 直書き撤去・syncTree derive）したため [PREVPOS DIFF] は撤去。
-            // S6: followUpUsed を World 権威化（scene 直書き撤去・syncTree derive）したため [FOLLOWUP DIFF] は撤去。
-            // S6: waited は World 権威化（scene 直書き撤去・syncTreeFromWorld で derive）したため、
-            // pre-sync の dual-write 等値を前提にした [WAITED DIFF] 検出器は撤去（gridPos/hp と同様）。
-            // 後段 post-sync の [PLAYERDATA/UNITVIEW DIFF] が waited を含む twin parity を担保する。
+            // 位置・hp・isDying・alerted・progress・bottleUsed・prevPos・followUpUsed・waited は World 権威。
+            // refreshMirror は frame カウンタを進めるだけ。
+            // 後段 post-sync の [PLAYERDATA/ENEMYDATA DIFF] が waited を含む twin parity を担保する。
             // write 漏れ（Cmd.SetWaited 抜け）は「駒が灰色にならない/行動済みにならない」可視バグとして現れる。
-            match World.attackTargetMismatches(Ref.get(worldRef), next) {  // F8-slice1
+            match World.attackTargetMismatches(Ref.get(worldRef), next) {
                 case Nil => ()
                 case ms  => println("[ATTACKTARGET DIFF] ${ms}")
             };
@@ -1078,7 +1074,7 @@ mod Game {
             // invariant guard として残す（他フィールドの runtime DIFF 検出器は撤去済み）。
             // invariant は unit test（testXxxMismatchesEmptyWhenSynced/DetectsDrift）＋spawn-seed test で継続検証する。
             let world1 = World.refreshMirror(Ref.get(worldRef));
-            // B/tiles: マップ再構築（tileGen 変化＝`BumpTileGen` が今フレーム走った）時のみ、新フロアのタイルハンドルを
+            // マップ再構築（tileGen 変化＝`BumpTileGen` が今フレーム走った）時のみ、新フロアのタイルハンドルを
             // scene から World へ bake する。`world`（gameLoop 引数）は前フレームの gen・`world1` は worldRef 由来の
             // 今フレーム gen ゆえ、両者の差＝「今フレーム再構築された」。以後は preserve（毎フレーム走査なし）。
             // 階段降り（advanceFloor）/全滅 restart/中断復元/ダンジョン突入を漏れなく捕捉。
@@ -1088,66 +1084,62 @@ mod Game {
             // **System パイプライン段**。ロジックを `World -> World` の System で回す seam。
             // stepWorld は現在 identity（statusEffects は command-authoritative＝ターン境界の Seed で tick 反映・
             // frame-paced tick は二重 tick になるため）。以後の World→World System はここに足す。
-            // B/m2: moveAnim を実時間 dt（既存の dt: Duration を秒換算）で進める＝engine tween と lockstep 同期。
+            // moveAnim を実時間 dt（既存の dt: Duration を秒換算）で進める＝engine tween と lockstep 同期。
             let (world2, moved) = World.stepWorld(world1b, Duration.toSeconds(dt));
-            // F2b（turn phase 書込を Cmd 化）: phase は `TurnPhase.State` handler が `put` のたび `Cmd.SetPhase` で
+            // phase は `TurnPhase.State` handler が `put` のたび `Cmd.SetPhase` で
             // worldRef へ dual-write 済み＝**World.turnPhase は command 由来**（全 41 put サイトを handler 1 箇所で被覆）。
             // よって frame-end の mirror は不要。並走 assert は command 由来 phase と State の乖離（write 漏れ）を検出する
             // ＝dual-write ゆえ無音だが、将来 dual-write を割る時のガード。phase 権威は当面 TurnPhase.State（read は未 flip）。
             if (World.turnPhaseOf(world2) != simPhaseOf(TurnPhase.State.get()))
                 println("[F2 PHASE DIFF] world=${World.turnPhaseOf(world2)} state=${simPhaseOf(TurnPhase.State.get())}")
             else ();
-            // P6-2b: `syncTreeFromWorld` は本番から撤去（最後の derive だった gridPos の読み手を
+            // `syncTreeFromWorld` は本番から撤去（最後の derive だった gridPos の読み手を
             // World.posOf / overlay / getXxxWithWorldPos へ全 flip 済み＝scene Data の gridPos twin は退役。
             // 関数自体は golden/テストの scene 側投影 seam として残置）。
             let synced0 = next;
-            // B/m3: 移動した entity の marker を renderPos に合わせる（engine tween 退役の受け皿・marker 単一権威）。
-            // syncTreeFromWorld は marker の global 位置を書かない（gridPos 等 Data のみ derive）ので、ここで上書きしても
-            // 齟齬なし。書いた synced は末尾 gameLoop へ渡り次フレームへ永続。以降 synced は marker 反映済みを指す。
-            // P6-1f: fx の syncView は撤去（ノード全廃＝renderPopups/renderExplosions が直描き）。
+            // 移動した entity の marker を renderPos に合わせる（engine tween 退役の受け皿・marker 単一権威）。
+            // 書いた synced は末尾 gameLoop へ渡り次フレームへ永続。以降 synced は marker 反映済みを指す。
+            // fx は renderPopups/renderExplosions が直描き（ノード無し）。
             let synced = RenderWorld.syncMarkers(moved, synced0);
-            // S4 twin parity 検査は **syncTreeFromWorld の後**に置く（scene が World から派生し終えた点）。
-            // pre-sync だと gridPos が 1 フレーム遅延（World pos=当フレーム / scene gridPos=前フレームの派生）、
-            // hidden/equippedRing が re-mirror stale で false-positive を出していた。post-sync では gridPos=World 派生・
-            // read-model も refreshMirror 済みで揃う。dual-write 系(weapons/staves/statuses 等・syncTree 非派生)は
-            // scene が process 値のままゆえ「World store == scene」の coverage を維持する。
-            // P6-2b: [UNITVIEW DIFF] は退役。unitView の hp/combat は World 単独権威になり（scene twin 退役）、
+            // twin parity 検査は scene が World 由来値で出揃った後に置く（gridPos=World 派生・read-model も
+            // refreshMirror 済みで揃う）。dual-write 系(weapons/staves/statuses 等)は scene が process 値のまま
+            // ゆえ「World store == scene」の coverage を維持する。
+            // [UNITVIEW DIFF] は退役。unitView の hp/combat は World 単独権威になり（scene twin 退役）、
             // 消費者（counter 分岐/AI self/武器選択ターゲット/hover）は unitViewFromWorld / RosterQuery overlay へ
             // flip 済み＝scene view との比較は「stale で正」の恒常ノイズになる。残る twin field（pos/weapons/
             // statuses 等）は後続の [PLAYERDATA/ENEMYDATA DIFF] が引き続き突合する。
-            match World.playerDataMismatches(world2, synced) {  // S4.4
+            match World.playerDataMismatches(world2, synced) {
                 case Nil => ()
                 case ms  => println("[PLAYERDATA DIFF] ${ms}")
             };
-            match World.enemyDataMismatches(world2, synced) {  // S4.4b
+            match World.enemyDataMismatches(world2, synced) {
                 case Nil => ()
                 case ms  => println("[ENEMYDATA DIFF] ${ms}")
             };
-            // B: render-from-World。scene-tree drawable に World 由来 drawable を合成して
+            // render-from-World。scene-tree drawable に World 由来 drawable を合成して
             // 1 回の renderCommands で描く（renderCommands は毎回 clear ゆえ 2 回呼びは不可＝合成する）。
-            // m1c: scene 側ユニット sprite を隠して描画 → ユニットは World 由来のみで描く。
-            // P6-1g: 描画セクションは `renderFrame` へ抽出（gameLoop が JVM の 64KB メソッド上限を
+            // scene 側ユニット sprite を隠して描画 → ユニットは World 由来のみで描く。
+            // 描画セクションは `renderFrame` へ抽出（gameLoop が JVM の 64KB メソッド上限を
             // 超えたため。挙動は同一）。
             renderFrame(catalogs, world2, synced);
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)
         }
 }
 
-/// フレーム描画（render-from-World の合流点）。gameLoop のサイズ削減のため関数分離（P6-1g）。
-/// B/fog・range・配置物・fx・HUD/menu: scene 側を hideSubtrees で renderArgs から外し、
+/// フレーム描画（render-from-World の合流点）。gameLoop のサイズ削減のため関数分離。
+/// fog・range・配置物・fx・HUD/menu: scene 側を hideSubtrees で renderArgs から外し、
 /// World render System（各 render*）で描く。camera ViewTransform はフレーム 1 回だけ計算して共有。
 def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[NodeTag]):
         Unit \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarRender.ForecastState} =
-    // P6-1h: hideUnitSprites は撤去（ユニット sprite ノード自体を積まなくなった）。
     let prepped = RenderWorld.hideSubtrees(synced);
     let transform = RenderWorld.viewTransform(synced);
-    // B/tiles: tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
+    // tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
     // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。
     let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(prepped);
-    // P6-1c/d: fog の明るい穴を frame に 1 回計算し、配置物直描きの lit ゲートで共有。
+    // fog の明るい穴を frame に 1 回計算し、配置物直描きの lit ゲートで共有。
     let holesOpt = RenderWorld.fogHolesOpt(synced);
     let worldDrawables = RenderWorld.renderUnits(world2, transform, synced)
-        // P6-1c〜g: 配置物/fx/HP バー/武器アイコンは World store + catalog/定数から直描き（scene ノード無し）。
+        // 配置物/fx/HP バー/武器アイコンは World store + catalog/定数から直描き（scene ノード無し）。
         |> List.append(RenderWorld.renderStairs(world2, holesOpt, transform))
         |> List.append(RenderWorld.renderChests(catalogs#chests, world2, holesOpt, transform))
         |> List.append(RenderWorld.renderItems(world2, holesOpt, transform))
@@ -1158,8 +1150,8 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[N
         |> List.append(RenderWorld.renderFog(transform, synced))
         |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
         |> List.append(RenderWorld.renderSubtrees(transform, synced));
-    // B: polygon チャンネルも World 由来 subtree（minimap 円/BattlePanel ドット/TurnEndHold リング
-    //   ＋P6-1g: per-unit 武器グリフ）を合流。scenePolygons は hideSubtrees で除外済み。
+    // polygon チャンネルも World 由来 subtree（minimap 円/BattlePanel ドット/TurnEndHold リング
+    //   ＋ per-unit 武器グリフ）を合流。scenePolygons は hideSubtrees で除外済み。
     GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
         RenderWorld.renderTileMaps(world2, transform, synced),
         List.append(scenePolygons,

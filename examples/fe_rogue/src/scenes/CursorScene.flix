@@ -199,12 +199,12 @@ mod CursorScene {
             List[EnemyScene.Data] \ {SelectedPlayer.State, EnemyData.RosterQuery, World.WorldQuery} =
         let opt = forM (
             pid    <- SelectedPlayer.State.get()#id;
-            // P6-2b fix: 射程判定の自位置は World 上書き Data。
+            // 射程判定の自位置は World 上書き Data。
             player <- PlayerScene.getWithWorldPos(pid, scene);
             widx   <- WeaponSelectScene.hoveredWeaponIndex(scene);
             weapon <- List.nth(widx, player#weapons)
         ) yield
-            // P6-2b: 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む（scene 直読みは stale）。
+            // 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む（scene 直読みは stale）。
             EnemyData.RosterQuery.getAll()
                 |> List.filter(e -> {
                     let ev = EnemyScene.unitView(e);
@@ -224,7 +224,7 @@ mod CursorScene {
     ///   2. Tween 中 → 補間中。入力捨てる
     ///   3. それ以外 → 方向キーを読み、加速度を計算して 1 マス進める
     /// 移動後のセルに駒（味方/敵）が居れば `snag` を再生 + holdSteps をリセット
-    /// （次は再加速）。敵に乗ったら EnemyRangeScene を再構築 + ログを出す（既存）。
+    /// （次は再加速）。敵に乗ったら EnemyRangeScene を再構築 + ログを出す。
     def stepFreeMovement(_delta: Duration.Duration,
                           node: EngineNode[NodeTag],
                           _path: NodePath,

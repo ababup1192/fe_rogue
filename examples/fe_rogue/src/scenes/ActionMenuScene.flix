@@ -294,18 +294,18 @@ mod ActionMenuScene {
                     ({text = "アイテム", disabled = false, metadata = Some(itemMeta())}: ItemEntry) :: Nil
                 else Nil;
             let pickupItem =
-                if (Option.nonEmpty(World.groundItemAtOf(player#gridPos, World.WorldQuery.get())))   // P3-c: World 権威
+                if (Option.nonEmpty(World.groundItemAtOf(player#gridPos, World.WorldQuery.get())))   // World 権威
                     ({text = "拾う", disabled = false, metadata = Some(pickupMeta())}: ItemEntry) :: Nil
                 else Nil;
             let stairsItem =
                 if (World.stairsPosOf(World.WorldQuery.get())
-                        |> Option.exists(c -> c#x == player#gridPos#x and c#y == player#gridPos#y))   // P3-a: World 権威
+                        |> Option.exists(c -> c#x == player#gridPos#x and c#y == player#gridPos#y))   // World 権威
                     ({text = "階段", disabled = false, metadata = Some(stairsMeta())}: ItemEntry) :: Nil
                 else Nil;
             // 宝箱に乗っていれば「あける」を出す。開錠可否(ローグか)は確定時に判定し、
             // 非ローグは「開けることができない」と表示する（=選択は可能・無効化しない）。
             let openItem =
-                if (Option.nonEmpty(World.chestAtOf(player#gridPos, World.WorldQuery.get())))   // P3-b: World 権威
+                if (Option.nonEmpty(World.chestAtOf(player#gridPos, World.WorldQuery.get())))   // World 権威
                     ({text = "あける", disabled = false, metadata = Some(openMeta())}: ItemEntry) :: Nil
                 else Nil;
             let waitItem =
@@ -345,14 +345,14 @@ mod ActionMenuScene {
                 let adj = PlayerScene.adjacentAllies(lord) |> List.filter(d -> d#hp > 0);
                 // 拾う: 主人公の足元に床アイテムがあれば（applyPickup が主人公＝id 0 の足元を解決）。
                 let pickup =
-                    if (Option.nonEmpty(World.groundItemAtOf(lord#gridPos, World.WorldQuery.get())))   // P3-c: World 権威
+                    if (Option.nonEmpty(World.groundItemAtOf(lord#gridPos, World.WorldQuery.get())))   // World 権威
                         ({text = "拾う", disabled = false,
                           metadata = Some(pickupMeta())}: ItemEntry) :: Nil
                     else Nil;
                 // 階段: 主人公が階段マスに立っているときだけ。
                 let stairsExit =
                     if (World.stairsPosOf(World.WorldQuery.get())
-                            |> Option.exists(c -> c#x == lord#gridPos#x and c#y == lord#gridPos#y))   // P3-a: World 権威
+                            |> Option.exists(c -> c#x == lord#gridPos#x and c#y == lord#gridPos#y))   // World 権威
                         ({text = "階段", disabled = false,
                           metadata = Some(gatherStairsMeta())}: ItemEntry) :: Nil
                     else Nil;
@@ -493,7 +493,7 @@ mod ActionMenuScene {
         match entry#metadata {
             case None    => scene
             case Some(m) =>
-                // F1: intent 化済みのアクション（現状 "wait"）は decide→apply の seam を通す。
+                // intent 化済みのアクション（現状 "wait"）は decide→apply の seam を通す。
                 // 未変換アクションは None で下の既存 if-else にフォールバック（strangler-fig）。
                 match actionIntentOf(m) {
                     case Some(intent) => applyActionIntent(intent, scene)
@@ -614,7 +614,7 @@ mod ActionMenuScene {
     /// `GroundItems.dataAt` で床アイテムを読む。どちらか欠ければ「過多ではない」扱い（防御的）。
     def wouldPickupOverload(info: {playerId = Int32, gridPos = {x = Int32, y = Int32}},
                              _scene: Scene[NodeTag]): Bool \ {PlayerData.PartyQuery, World.WorldQuery} =
-        // P3-c: 床アイテムは World store から読む（`groundItemAtOf`）。
+        // 床アイテムは World store から読む（`groundItemAtOf`）。
         match (PlayerData.PartyQuery.get(info#playerId),
                World.groundItemAtOf(info#gridPos, World.WorldQuery.get())) {
             case (Some(player), Some(floor)) =>
@@ -654,7 +654,7 @@ mod ActionMenuScene {
         forM (
             info   <- pickupTarget(scene);
             player <- PlayerData.PartyQuery.get(info#playerId);
-            chest  <- World.chestAtOf(info#gridPos, World.WorldQuery.get())   // P3-b: World 権威
+            chest  <- World.chestAtOf(info#gridPos, World.WorldQuery.get())   // World 権威
         ) yield (info, player, chest)
 
     /// 拾う主体(playerId)と拾う位置(gridPos)を決める。選択中の味方が足元のアイテムを拾う。

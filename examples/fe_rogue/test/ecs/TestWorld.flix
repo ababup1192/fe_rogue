@@ -1,4 +1,4 @@
-// World（S0 足場）のテスト — scene→World 一方向 sync が id 集合と tick を正しく写すか。
+// World のテスト — scene→World 一方向 sync が id 集合と tick を正しく写すか。
 // 最小 scene は TestCombatDriver.battleScene と同じ「World ノード＋直接 addChildAt」パターン。
 
 mod TestWorld {
@@ -87,7 +87,7 @@ mod TestWorld {
             expected = (0, 0, 1),
             (Set.size(w#playerIds), Set.size(w#enemyIds), w#tick))
 
-    // ── S1a: statuses store ──
+    // ── statuses store ──
 
     /// player 0 に immobilize(残3) を持たせた scene を World に mirror する。
     def sceneWithStatus(): Scene[NodeTag] =
@@ -114,7 +114,7 @@ mod TestWorld {
         let World.World(w) = World.tickStatusEffects(synced);
         Assert.assertEq(expected = 2, firstRemaining(w#statusEffects, 0))
 
-    // ── S1b: World→scene write-back（逆向き矢印）と parallel-run 同値実証 ──
+    // ── World→scene write-back（逆向き矢印）と parallel-run 同値実証 ──
 
     /// scene の player 0 の Data#statuses を読む（write-back の検証用）。
     def sceneFirstRemaining(scene: Scene[NodeTag], id: Int32): Int32 =
@@ -134,7 +134,7 @@ mod TestWorld {
 
     /// parallel-run 同値実証: 「World 経路（tickStatusEffects→write-back で scene を更新）」と
     /// 「現行 scene 経路（StatusSystem.tick を直接 Data#statuses に畳む）」が同じ残ターンを与える。
-    /// これが一致する限り、turn 開始 tick を World へ flip しても挙動は不変（S1b 後段の前提）。
+    /// これが一致する限り、turn 開始 tick を World へ flip しても挙動は不変。
     @Test
     def testTickParallelRunMatchesScenePath(): Unit \ Assert =
         let scene = sceneWithStatus();
@@ -148,7 +148,7 @@ mod TestWorld {
                 |> (s -> sceneFirstRemaining(s, 0));
         Assert.assertEq(expected = scenePath, worldPath)
 
-    // ── S2: hp の read-model mirror ──
+    // ── hp の read-model mirror ──
 
     /// syncFromScene が hp を World store へ mirror する（player 0,1／enemy 5 とも scene の hp と一致）。
     /// 権威は scene のまま＝この mirror は query/セーブ用の read-model。
@@ -184,7 +184,7 @@ mod TestWorld {
         Assert.assertEq(expected = scenePlayerHp,
             Map.filterWithKey((uid, _) -> uid < World.enemyUidBase(), w#hp))
 
-    // ── S3: gridPos の read-model mirror ──
+    // ── gridPos の read-model mirror ──
 
     /// syncFromScene が gridPos を World store へ mirror する（fixture: player {2,2}／enemy {3,2}）。
     /// record の == は使えないので x/y スカラに展開して比較。
@@ -208,7 +208,7 @@ mod TestWorld {
                     |> Option.getWithDefault(false));
         Assert.assertEq(expected = true, allMatch)
 
-    // ── S4: BoardSnapshot.piecesFromWorld（位置 read-model から Board.pieces を組む）──
+    // ── BoardSnapshot.piecesFromWorld（位置 read-model から Board.pieces を組む）──
 
     /// World 配下に player 0（可視・{2,2}）／player 3（hidden）／enemy 5（{3,2}）を挿した scene。
     def sceneWithHidden(): Scene[NodeTag] =
@@ -246,10 +246,10 @@ mod TestWorld {
             expected = (Map#{0 => (2, 2)}, Map#{5 => (3, 2)}),
             (playerPosMapOf(pieces), enemyPosMapOf(pieces)))
 
-    // ── board-lock: boardMatchesScene（Phase C 盤面契約の pin）──
+    // ── board-lock: boardMatchesScene（盤面契約の pin）──
 
     // `toBoard`/`BoardSnapshot.fromScene` は `mapSnapshotOf` 経由で TileMapLayer を要求するため、
-    // board-lock テストの scene には Map ノードが要る（boardPieces だけの上の S4 テストと違う点）。
+    // board-lock テストの scene には Map ノードが要る（boardPieces だけの上のテストと違う点）。
     // 壁なし 13×13 床マップ（駒位置 {2,2}/{3,2}/{9,9} を全て内包）。boardKey は pieces のみ使うので
     // map は両 source で同一＝差分に効かない。TestMoveRangeScene の floorMap パターンを踏襲。
     def floorMapLayer(): TileMapLayer =
@@ -285,7 +285,7 @@ mod TestWorld {
             expected = true,
             World.boardKey(World.toBoard(world, scene)) == World.boardKey(BoardSnapshot.fromScene(scene)))
 
-    // ── S1: World.Cmd applier（statuses 権威化の System/command。StatusSystem 再利用）──
+    // ── World.Cmd applier（statuses 権威化の System/command。StatusSystem 再利用）──
 
     def spdUp(mag: Int32, rem: Int32): StatusSystem.Status =
         {effect = StatusSystem.StatusEffect.SpdUp, magnitude = mag, remaining = rem}
@@ -381,18 +381,18 @@ mod TestWorld {
         };
         Assert.assertEq(expected = 1, len)
 
-    // ── P0a: Cmd.Move の mid-frame currency（位置権威化・gather 是正の前提）──
+    // ── Cmd.Move の mid-frame currency（位置権威化・gather 是正の前提）──
 
-    /// P0a tripwire: 主人公が **mid-frame に prev→now と動いた**直後、`Cmd.Move` を適用すると
+    /// tripwire: 主人公が **mid-frame に prev→now と動いた**直後、`Cmd.Move` を適用すると
     /// BoardQuery が返す盤面（= `World.toBoard` → `boardPieces`）は **now を反映**し、stale な prev を返さない。
     ///
-    /// これは検証器 `[P0a BOARD DIFF]`（Game.flix）が gather で「主人公位置を prev→now に是正する」根拠そのもの。
+    /// これは gather が「主人公位置を prev→now に是正する」根拠そのもの。
     /// `Cmd.Move` を `applyCmd`／`playerPos` ストアに配線し損ねる（または `boardPieces` が別ストアを読む）と、
     /// `before==after==prev` になりこのテストが赤くなる＝手動 run 前に回帰を機械検出できる。
     ///
     /// 補足: gather の追従計算 `Board.followStepsToward` 自体は board の主人公セル位置に**非依存**
     /// （味方は全プレイヤーセルを通過可・goal は強制 open・lordNewPos は予約）。よって tripwire は
-    /// followStepsToward でなく、P0a が実際に変える「World 盤面の currency」を対象に置く。
+    /// followStepsToward でなく、実際に変わる「World 盤面の currency」を対象に置く。
     @Test
     def testMoveReflectsNewPosInBoardMidFrame(): Unit \ Assert =
         let now = ({x = 5, y = 5}: {x = Int32, y = Int32});
@@ -404,9 +404,9 @@ mod TestWorld {
         // before は frame-head の prev {2,2}、after は now {5,5}（prev のままなら配線漏れ）。
         Assert.assertEq(expected = (Some((2, 2)), Some((5, 5))), (posOf0(w0), posOf0(w1)))
 
-    // ── P0b: spawn/restore funnel が新規ユニットの位置を World へ seed ──
+    // ── spawn/restore funnel が新規ユニットの位置を World へ seed ──
 
-    /// P0b tripwire: `addOnePlayer`（spawn/restore の funnel）が新規ユニットの初期位置を
+    /// tripwire: `addOnePlayer`（spawn/restore の funnel）が新規ユニットの初期位置を
     /// World へ seed する（`Cmd.Move` を emit）。emit を applyCmd で worldRef に積み、
     /// `boardPieces` に id 7 @ (3,4) が現れることを確認する。funnel の emit 行を消す回帰で赤になる。
     @Test
@@ -425,9 +425,9 @@ mod TestWorld {
         };
         Assert.assertEq(expected = Some((3, 4)), Map.get(7, playerPosMapOf(World.boardPieces(world))))
 
-    // ── P3: refreshMirror（位置 mirror 撤去・World が位置権威）──
+    // ── refreshMirror（位置 mirror 撤去・World が位置権威）──
 
-    /// P3 の要: `refreshMirror` は **scene gridPos を読まず** command 由来の位置を保持する。
+    /// 要: `refreshMirror` は **scene gridPos を読まず** command 由来の位置を保持する。
     /// command で player 0 を {5,5} に置き、gridPos が {2,2} の scene を渡しても pos は {5,5} のまま。
     /// もし refreshMirror が gridPos を再構築（＝mirror 復活）すると {2,2} になり赤くなる回帰ガード。
     @Test
@@ -438,8 +438,8 @@ mod TestWorld {
         let World.World(w) = refreshed;
         Assert.assertEq(expected = Some((5, 5)), Map.get(0, w#pos) |> Option.map(p -> (p#x, p#y)))
 
-    /// P6-2c: ghost piece 防止は refreshMirror の prune ではなく **Cmd.Despawn**（ノード除去サイトが emit）。
-    /// enemy 99 を Despawn すると pos から消え、player 0 は残ることを pin（旧 prune テストの置換）。
+    /// ghost piece 防止は refreshMirror の prune ではなく **Cmd.Despawn**（ノード除去サイトが emit）。
+    /// enemy 99 を Despawn すると pos から消え、player 0 は残ることを pin。
     @Test
     def testDespawnRemovesEntityFromStores(): Unit \ Assert =
         let s1 = World.applyCmd(World.Cmd.Move(World.EntityRef.Enemy(99), {x = 9, y = 9}),
@@ -450,7 +450,7 @@ mod TestWorld {
             (Map.get(0, w#pos) |> Option.map(p -> (p#x, p#y)),
              Map.get(99 + World.enemyUidBase(), w#pos) |> Option.map(p -> (p#x, p#y))))
 
-    /// F6b: hp は **command 由来で保持**（scene から re-mirror しない＝hp 権威は World）。`Cmd.SetHp` で
+    /// hp は **command 由来で保持**（scene から re-mirror しない＝hp 権威は World）。`Cmd.SetHp` で
     /// player 0 を 3 に下げ、refreshMirror 後も scene の 10 でなく command の 3 が残ることを pin。
     /// status/ids は引き続き scene 由来。位置と同じく prune（scene に居ない id は落ちる）。
     @Test
@@ -463,7 +463,7 @@ mod TestWorld {
             expected = (Some(3), Some(10), Set#{0, 1}),
             (Map.get(0, w#hp), Map.get(1, w#hp), w#playerIds))
 
-    /// P2-S1 read-flip 契約: `dataFromWorld` は core field を **World 権威**で読む（scene と食い違っても World が勝つ）。
+    /// read-flip 契約: `dataFromWorld` は core field を **World 権威**で読む（scene と食い違っても World が勝つ）。
     /// これは PartyQuery flip 後の mid-frame 経路＝worldRef が emit で先行し scene より新しい状況を代表する。
     /// frame 末の [PLAYERDATA DIFF]（World==scene に収束後に走る）が構造上踏めない divergence を pin する:
     /// World hp を 3 に下げ scene は 10 のまま、再構築 Data の #hp==3（core=World 由来）／
@@ -479,7 +479,7 @@ mod TestWorld {
             expected = Some((3, "test_player")),
             recon |> Option.map(d -> (d#hp, d#classId)))
 
-    /// P2-S2 read-flip 契約（敵版）: `dataFromWorldEnemy` も core を World 権威で読む。World hp を 3 に下げ
+    /// read-flip 契約（敵版）: `dataFromWorldEnemy` も core を World 権威で読む。World hp を 3 に下げ
     /// scene は 10 のまま、#hp==3（core=World）／#resourceId=="test_enemy"（residual=scene）を pin。
     @Test
     def testDataFromWorldEnemyReadsWorldAuthorityForCore(): Unit \ Assert =
@@ -491,7 +491,7 @@ mod TestWorld {
             expected = Some((3, "test_enemy")),
             recon |> Option.map(d -> (d#hp, d#resourceId)))
 
-    /// P2 field-complete（bottleUsed）: syncTree 派生撤去後、bottleUsed の権威は World 単独。scene は spawn の
+    /// field-complete（bottleUsed）: bottleUsed の権威は World 単独。scene は spawn の
     /// false のまま World を true にして、`dataFromWorldEnemy` が World の true を返す（scene の false に負けない）
     /// ことを pin＝退役した enemyDataKey/[ENEMYDATA DIFF] の bottleUsed 検証の代替保証。
     @Test
@@ -503,7 +503,7 @@ mod TestWorld {
             expected = Some(true),
             World.dataFromWorldEnemy(5, thrown, scene) |> Option.map(d -> d#bottleUsed))
 
-    /// P2 field-complete（followUpUsed）: syncTree 撤去後 followUpUsed は World 単独権威。scene は false のまま
+    /// field-complete（followUpUsed）: followUpUsed は World 単独権威。scene は false のまま
     /// World を true にして `dataFromWorld` が true を返すことを pin＝退役した playerDataKey followUpUsed 検証の代替。
     @Test
     def testDataFromWorldFollowUpUsedIsWorldAuthority(): Unit \ Assert =
@@ -514,7 +514,7 @@ mod TestWorld {
             expected = Some(true),
             World.dataFromWorld(0, used, scene) |> Option.map(d -> d#followUpUsed))
 
-    /// P2 field-complete（prevPos）: syncTree 撤去後 prevPos は World 単独権威。scene は None のまま World を Some に
+    /// field-complete（prevPos）: prevPos は World 単独権威。scene は None のまま World を Some に
     /// して `dataFromWorldEnemy` が World 値を返すことを pin＝退役した enemyDataKey prevPos 検証の代替。
     @Test
     def testDataFromWorldEnemyPrevPosIsWorldAuthority(): Unit \ Assert =
@@ -525,7 +525,7 @@ mod TestWorld {
             expected = Some(Some((7, 8))),
             World.dataFromWorldEnemy(5, moved, scene) |> Option.map(d -> Option.map(p -> (p#x, p#y), d#prevPos)))
 
-    /// P2-S2: `enemyIdAt`（RosterQuery.findIdAt の World 版）は pos から coord 上の非瀕死敵 id を引く。
+    /// `enemyIdAt`（RosterQuery.findIdAt の World 版）は pos から coord 上の非瀕死敵 id を引く。
     /// {3,3}=敵5・{4,4}=敵7・空きマス=None、敵5 を dying にすると {3,3}=None（isDying 除外＝scene findIdAt と等価）。
     @Test
     def testEnemyIdAtReadsWorldPosExcludingDying(): Unit \ Assert =
@@ -537,8 +537,8 @@ mod TestWorld {
             (World.enemyIdAt({x = 3, y = 3}, w1), World.enemyIdAt({x = 4, y = 4}, w1),
              World.enemyIdAt({x = 9, y = 9}, w1), World.enemyIdAt({x = 3, y = 3}, w2)))
 
-    // ── §A payoff デモ: 位置の決定論（World は Cmd.Move ログの純粋関数）──
-    // P0a→S5 で World が位置の権威・scene はその派生になった。位置の唯一の source は `Cmd.Move` のログ。
+    // ── payoff デモ: 位置の決定論（World は Cmd.Move ログの純粋関数）──
+    // World が位置の権威・scene はその派生。位置の唯一の source は `Cmd.Move` のログ。
     // ゆえに「同じログ → 同じ位置」が成り立ち、save/replay の素地（World さえ持てば位置を再構築できる）になる。
 
     /// 共通のサンプル command ログ（移動の履歴）。
@@ -583,11 +583,11 @@ mod TestWorld {
         let toTuples = m -> Map.foldRightWithKey((id, c, acc) -> (id, c#x, c#y) :: acc, Nil, m);
         Assert.assertEq(expected = toTuples(w#pos), toTuples(loaded))
 
-    // ── F0: System パイプライン段 stepWorld（OOP→ECS 移行の足場）──
+    // ── System パイプライン段 stepWorld ──
 
-    /// F0 不変条件: `stepWorld`（現状 inert な `tickStatusEffects` のみ）は **位置を変えない**。
-    /// gameLoop は `syncTreeFromWorld(stepWorld(world1))` で scene gridPos を derive するので、
-    /// stepWorld が pos を保つ限り render は不変＝F0 は挙動不変。System を足して pos を壊す回帰で赤になる。
+    /// 不変条件: `stepWorld`（現状 inert な `tickStatusEffects` のみ）は **位置を変えない**。
+    /// World が位置権威で scene gridPos はその派生ゆえ、stepWorld が pos を保つ限り render は不変
+    /// ＝挙動不変。System を足して pos を壊す回帰で赤になる。
     @Test
     def testStepWorldPreservesPositions(): Unit \ Assert =
         let seeded = World.applyCmd(World.Cmd.Move(World.EntityRef.Enemy(5), {x = 3, y = 3}),
@@ -598,7 +598,7 @@ mod TestWorld {
             expected = (Some((5, 5)), Some((3, 3))),
             (tup(World.EntityRef.Player(0)), tup(World.EntityRef.Enemy(5))))
 
-    /// B/m3: `stepWorld` は移動（Position tween）の補間結果を `moved`（EntityRef＋pixel）で返す。
+    /// `stepWorld` は移動（Position tween）の補間結果を `moved`（EntityRef＋pixel）で返す。
     /// **完了フレームでも moved に含まれる**（active∪done）ので、marker を target に取りこぼしなく置ける
     /// ＝敵の武器アイコン 1 フレームラグ修正の要。中点で中間 pixel（x=50）、完了で target（x=100）＋移動終了を確認する。
     @Test
@@ -623,7 +623,7 @@ mod TestWorld {
             (xOf(mid), World.isAnimating(World.EntityRef.Player(0), mid), movedUid(movedMid),
              xOf(fin), World.isAnimating(World.EntityRef.Player(0), fin), movedUid(movedFin)))
 
-    // ── B/tiles: 背景タイルの World 権威化（bake ハンドル preserve と gen bump）──
+    // ── 背景タイルの World 権威化（bake ハンドル preserve と gen bump）──
 
     /// setTileLayers した描画ハンドルが stepWorld（identity）を経ても残る（rebuild イベント間 World 権威で保持）。
     @Test
@@ -644,11 +644,10 @@ mod TestWorld {
         let w2 = World.applyCmd(World.Cmd.BumpTileGen, w1);
         Assert.assertEq(expected = (1, 2), (World.tileGenOf(w1), World.tileGenOf(w2)))
 
-    /// F3 基盤: `syncTreeFromWorld` が World の位置を scene の `gridPos` に **derive** する。
-    /// F3 の sim/view 分離（位置の権威は World・scene はその派生／`replayMoveView` は見た目のみ）の前提。
+    /// テスト seam `syncTreeFromWorld` が World の位置を scene の `gridPos` に **derive** する。
+    /// sim/view 分離（位置の権威は World・scene はその派生／`replayMoveView` は見た目のみ）の前提。
     /// `Cmd.Move` で World 位置を動かし、syncTreeFromWorld 後に scene Player gridPos が World 由来に
-    /// なる（元 scene は不変）ことを pin。既存テストは World 側（`worldPosOf`）のみで、この
-    /// World→scene 書き戻しは未カバーだった＝F3 の土台を直接固定する。
+    /// なる（元 scene は不変）＝この World→scene 書き戻しを直接固定する。
     @Test
     def testSyncTreeFromWorldDerivesScenePos(): Unit \ Assert =
         let scene  = sampleScene();                       // player 0 @ (2,2)
@@ -660,9 +659,9 @@ mod TestWorld {
             expected = ((2, 2), (7, 1)),
             ((before#x, before#y), (after#x, after#y)))
 
-    // ── F2a: turn FSM の World mirror（SimPhase）──
+    // ── turn FSM の World mirror（SimPhase）──
 
-    /// F2a: 既定は PlayerTurn・`mirrorTurnPhase`/`turnPhaseOf` が round-trip する。
+    /// 既定は PlayerTurn・`mirrorTurnPhase`/`turnPhaseOf` が round-trip する。
     @Test
     def testTurnPhaseMirrorRoundTrips(): Unit \ Assert =
         let after = World.mirrorTurnPhase(SimPhase.EnemyTurn, World.empty());
@@ -670,7 +669,7 @@ mod TestWorld {
             expected = (SimPhase.PlayerTurn, SimPhase.EnemyTurn),
             (World.turnPhaseOf(World.empty()), World.turnPhaseOf(after)))
 
-    /// F2a 不変条件: `refreshMirror`（毎フレーム）は turnPhase を**保持**する（書き手は gameLoop の mirror だけ）。
+    /// 不変条件: `refreshMirror`（毎フレーム）は turnPhase を**保持**する（書き手は gameLoop の mirror だけ）。
     /// status/pos と違い turnPhase は scene 由来でないので、refreshMirror が勝手に上書きしないことを pin。
     @Test
     def testRefreshMirrorPreservesTurnPhase(): Unit \ Assert =
@@ -678,19 +677,19 @@ mod TestWorld {
         let refreshed = World.refreshMirror(seeded);
         Assert.assertEq(expected = SimPhase.EnemyTurn, World.turnPhaseOf(refreshed))
 
-    /// F2b: `Cmd.SetPhase` が World.turnPhase を command で更新する（TurnPhase.State handler が put 時に emit）。
+    /// `Cmd.SetPhase` が World.turnPhase を command で更新する（TurnPhase.State handler が put 時に emit）。
     @Test
     def testSetPhaseCommandUpdatesTurnPhase(): Unit \ Assert =
         let after = World.applyCmd(World.Cmd.SetPhase(SimPhase.EnemyTurn), World.empty());
         Assert.assertEq(expected = SimPhase.EnemyTurn, World.turnPhaseOf(after))
 
-    /// F7-spike: `Cmd.SetAlerted` が World の enemyAlerted を更新し `alertedOf` で読める（flag→World の土台）。
+    /// `Cmd.SetAlerted` が World の enemyAlerted を更新し `alertedOf` で読める（flag は World 権威）。
     @Test
     def testSetAlertedCommandUpdatesWorld(): Unit \ Assert =
         let w = World.applyCmd(World.Cmd.SetAlerted(World.EntityRef.Enemy(5), true), World.empty());
         Assert.assertEq(expected = Some(true), World.alertedOf(World.EntityRef.Enemy(5), w))
 
-    /// F7-slice5: `Cmd.SetWaited` が World を更新し `waitedOf` で読める＋preserve（command が scene 上書きされない）。
+    /// `Cmd.SetWaited` が World を更新し `waitedOf` で読める＋preserve（command が scene 上書きされない）。
     @Test
     def testSetWaitedCommandAndPreserve(): Unit \ Assert =
         let seeded = World.syncFromScene(sampleScene(), World.empty());   // player 0 waited=false
@@ -700,7 +699,7 @@ mod TestWorld {
             expected = (Some(true), Some(true)),
             (World.waitedOf(World.EntityRef.Player(0), acted), Map.get(0, w#playerWaited)))
 
-    /// F8-slice1: `Cmd.SetAttackTarget`/`ClearAttackTarget` が World を更新し `attackTargetOf` で読める＋preserve。
+    /// `Cmd.SetAttackTarget`/`ClearAttackTarget` が World を更新し `attackTargetOf` で読める＋preserve。
     /// `anyPlayerAttacking`/`anyEnemyAttacking`（driver の順序非依存判定の本体）も同時に検証。
     @Test
     def testSetAttackTargetCommandAndPreserve(): Unit \ Assert =
@@ -716,7 +715,7 @@ mod TestWorld {
              World.anyPlayerAttacking(set),
              World.anyEnemyAttacking(set)))
 
-    /// F8-slice1: `ClearAttackTarget` で対象が消え、`anyXAttacking` が false に戻る。
+    /// `ClearAttackTarget` で対象が消え、`anyXAttacking` が false に戻る。
     @Test
     def testClearAttackTargetRemovesAndPredicateFalse(): Unit \ Assert =
         let cleared = World.empty()
@@ -742,7 +741,7 @@ mod TestWorld {
              World.progressOf(World.EntityRef.Enemy(5), leveled),
              World.progressOf(World.EntityRef.Player(0), kept)))
 
-    /// 軸1 仕上げ: `Cmd.SetDying` が敵を World の dying set に入れ `isDyingOf` で読める＋preserve。
+    /// `Cmd.SetDying` が敵を World の dying set に入れ `isDyingOf` で読める＋preserve。
     /// Player は no-op（常に false）。
     @Test
     def testSetDyingCommandAndPreserve(): Unit \ Assert =
@@ -757,7 +756,7 @@ mod TestWorld {
              World.isDyingOf(World.EntityRef.Player(0), dying),
              World.isDyingOf(World.EntityRef.Enemy(5), kept)))
 
-    /// F8-slice2: `Cmd.SetEnemyTurnBusy`/`SetPhaseObservedEnemy` が scalar bool を更新し読める＋
+    /// `Cmd.SetEnemyTurnBusy`/`SetPhaseObservedEnemy` が scalar bool を更新し読める＋
     /// refreshMirror で保持（scene mirror 元なし＝command 由来を持ち越す）。
     @Test
     def testSetTopBarBoolsCommandAndPreserve(): Unit \ Assert =
@@ -770,7 +769,7 @@ mod TestWorld {
             (World.enemyTurnBusyOf(set), World.phaseObservedEnemyOf(set),
              World.enemyTurnBusyOf(kept), World.phaseObservedEnemyOf(kept)))
 
-    /// F7-slice4: `Cmd.SetFollowUpUsed` が両 faction を更新し `followUpUsedOf` で読める＋preserve。
+    /// `Cmd.SetFollowUpUsed` が両 faction を更新し `followUpUsedOf` で読める＋preserve。
     @Test
     def testSetFollowUpUsedCommandAndPreserve(): Unit \ Assert =
         let seeded = World.syncFromScene(sampleScene(), World.empty());
@@ -782,7 +781,7 @@ mod TestWorld {
             expected = (Some(true), Some(true)),
             (Map.get(0, w#followUpUsed), Map.get(5 + World.enemyUidBase(), w#followUpUsed)))
 
-    /// F7-slice3: `Cmd.SetPrevPos` が World を更新し `prevPosOf` で読める＋preserve（command が scene 上書きされない）。
+    /// `Cmd.SetPrevPos` が World を更新し `prevPosOf` で読める＋preserve（command が scene 上書きされない）。
     @Test
     def testSetPrevPosCommandAndPreserve(): Unit \ Assert =
         let seeded = World.syncFromScene(sampleScene(), World.empty());
@@ -793,7 +792,7 @@ mod TestWorld {
             expected = (Some((7, 1)), Some((7, 1))),
             (toT(World.prevPosOf(World.EntityRef.Enemy(5), moved)), toT(Map.get(5 + World.enemyUidBase(), w#enemyPrevPos))))
 
-    /// F7-slice2: `Cmd.SetBottleUsed` が World を更新し `bottleUsedOf` で読める＋preserve。
+    /// `Cmd.SetBottleUsed` が World を更新し `bottleUsedOf` で読める＋preserve。
     @Test
     def testSetBottleUsedCommandAndPreserve(): Unit \ Assert =
         let seeded = World.syncFromScene(sampleScene(), World.empty());   // enemy 5 bottleUsed=false
@@ -803,7 +802,7 @@ mod TestWorld {
             expected = (Some(true), Some(true)),
             (World.bottleUsedOf(World.EntityRef.Enemy(5), used), Map.get(5 + World.enemyUidBase(), w#enemyBottleUsed)))
 
-    /// F7-spike: alerted は command 由来で **保持**（scene から re-mirror しない）。`Cmd.SetAlerted(5,true)` 後、
+    /// alerted は command 由来で **保持**（scene から re-mirror しない）。`Cmd.SetAlerted(5,true)` 後、
     /// refreshMirror しても scene fixture（enemy 5 alerted=false）でなく command の true が残る＝flag も World 権威化可。
     @Test
     def testRefreshMirrorPreservesCommandAlerted(): Unit \ Assert =
@@ -812,8 +811,7 @@ mod TestWorld {
         let World.World(w) = World.refreshMirror(alerted);
         Assert.assertEq(expected = Some(true), Map.get(5 + World.enemyUidBase(), w#enemyAlerted))
 
-    /// F6a: `Cmd.SetHp` が World の hp store を faction 別に更新し、`hpOf` で読める（hp→World 権威化の土台）。
-    /// 後段（F6b）で reader を World へ flip・refreshMirror を preserve 化する前提のコマンドシーム。
+    /// `Cmd.SetHp` が World の hp store を faction 別に更新し、`hpOf` で読める（hp は World 権威）。
     @Test
     def testSetHpCommandUpdatesWorldHp(): Unit \ Assert =
         let w = World.applyCmd(World.Cmd.SetHp(World.EntityRef.Player(0), 7),
@@ -822,7 +820,7 @@ mod TestWorld {
             expected = (Some(7), Some(3)),
             (World.hpOf(World.EntityRef.Player(0), w), World.hpOf(World.EntityRef.Enemy(5), w)))
 
-    // ── S-A0: baseStats（stats + maxHp）の read-model mirror ──
+    // ── baseStats（stats + maxHp）の read-model mirror ──
 
     /// syncFromScene が baseStats（resource 由来の base 戦闘値 + maxHp）を World へ mirror する。
     /// status/ring 補正前の生値で、scene の resource から `baseStatsFrom` で導いた値と一致する
@@ -841,7 +839,7 @@ mod TestWorld {
             (Option.map(toTup, World.baseStatsOf(World.EntityRef.Player(0), w)),
              Option.map(toTup, World.baseStatsOf(World.EntityRef.Enemy(5), w))))
 
-    /// S2.3: refreshMirror は baseStats を **command 由来で保持**（preserve）＝再 mirror しない。
+    /// refreshMirror は baseStats を **command 由来で保持**（preserve）＝再 mirror しない。
     /// syncFromScene が seed した baseStats が refreshMirror 後も残り、maxHp = resource#hp が player 0 で読める。
     @Test
     def testRefreshMirrorPreservesBaseStats(): Unit \ Assert =
@@ -852,7 +850,7 @@ mod TestWorld {
             expected = expectedMaxHp,
             Option.map(bs -> bs#maxHp, World.baseStatsOf(World.EntityRef.Player(0), w)))
 
-    /// S2.3: refreshMirror は command-derived baseStats を上書きしない（preserve）。SetBaseStats で
+    /// refreshMirror は command-derived baseStats を上書きしない（preserve）。SetBaseStats で
     /// player 0 の maxHp を scene resource と無関係な値（999）へ書いても refreshMirror 後も残る
     /// （再 mirror なら scene の resource#hp で上書きされるはず＝preserve であることの証明）。
     @Test
@@ -867,7 +865,7 @@ mod TestWorld {
             expected = Some(999),
             Option.map(bs -> bs#maxHp, World.baseStatsOf(World.EntityRef.Player(0), refreshed)))
 
-    // ── S-A0b: weaponView（装備武器の戦闘投影）の read-model mirror ──
+    // ── weaponView（装備武器の戦闘投影）の read-model mirror ──
 
     /// syncFromScene が weaponView を World へ mirror する。scene 由来の equippedWeaponView と一致する
     /// （player 0 / enemy 5）。record/enum は Eq 非自動ゆえスカラ tuple に射影して比較する。
@@ -886,7 +884,7 @@ mod TestWorld {
             (proj(World.weaponViewOf(World.EntityRef.Player(0), w)),
              proj(World.weaponViewOf(World.EntityRef.Enemy(5), w))))
 
-    // ── D3: weapons store（command-derive・preserve+prune）──
+    // ── weapons store（command-derive・preserve+prune）──
 
     /// applyCmd(SetWeapons) が weapons store を更新する。weaponsOf で読み戻し、record Eq 非自動ゆえ
     /// (長さ, 先頭耐久) に射影して比較する（具体値 pin・test 本体に match を書かない）。
@@ -926,7 +924,7 @@ mod TestWorld {
         let world2   = World.applyCmd(World.Cmd.SetWeapons(World.EntityRef.Player(0), newWs), world);
         Assert.assertEq(expected = true, List.isEmpty(World.weaponsMismatches(world2, scene2)))
 
-    // ── S2.3: baseStats store（command-derive・両 faction・preserve+prune）──
+    // ── baseStats store（command-derive・両 faction・preserve+prune）──
 
     /// applyCmd(SetBaseStats) が baseStats store を更新する（両 faction）。baseStatsOf で読み戻し、
     /// record Eq 非自動ゆえ 8-tuple に射影して比較する。
@@ -960,9 +958,9 @@ mod TestWorld {
         let drifted = World.applyCmd(World.Cmd.SetBaseStats(World.EntityRef.Player(0), drift), world);
         Assert.assertEq(expected = false, List.isEmpty(World.baseStatsMismatches(drifted, scene)))
 
-    // ── S2.4: weaponView / ringBonus store（command-derive・両 faction・preserve+prune）──
+    // ── weaponView / ringBonus store（command-derive・両 faction・preserve+prune）──
 
-    /// S2.4: refreshMirror は command-derived weaponView を上書きしない（preserve）。sampleScene の
+    /// refreshMirror は command-derived weaponView を上書きしない（preserve）。sampleScene の
     /// player 0 は武器装備＝synced weaponView は Some。SetWeaponView で None を書いても refreshMirror 後も
     /// None のまま（再 mirror なら装備武器で Some に戻るはず＝preserve の証明）。
     @Test
@@ -975,7 +973,7 @@ mod TestWorld {
             expected = None,
             Option.map(wv -> wv#attack, World.weaponViewOf(World.EntityRef.Player(0), refreshed)))
 
-    /// S2.4: refreshMirror は command-derived ringBonus を上書きしない（preserve）。SetRingBonus で
+    /// refreshMirror は command-derived ringBonus を上書きしない（preserve）。SetRingBonus で
     /// player 0 へ scene 無関係な attack 補正(77)を書いても refreshMirror 後も残る（再 mirror なら
     /// 装備指輪由来＝未装備で 0 に戻るはず＝preserve の証明）。
     @Test
@@ -1022,7 +1020,7 @@ mod TestWorld {
         let drifted = World.applyCmd(World.Cmd.SetRingBonus(World.EntityRef.Player(0), drift), world);
         Assert.assertEq(expected = false, List.isEmpty(World.ringBonusMismatches(drifted, scene)))
 
-    // ── S2.5: moveTiles store（command-derive・両 faction・spawn 後不変・preserve+prune）──
+    // ── moveTiles store（command-derive・両 faction・spawn 後不変・preserve+prune）──
 
     /// applyCmd(SetMoveTiles) が moveTiles store を更新する（Int32 ゆえ直接比較）。
     @Test
@@ -1030,7 +1028,7 @@ mod TestWorld {
         let w = World.applyCmd(World.Cmd.SetMoveTiles(World.EntityRef.Player(0), 7), World.empty());
         Assert.assertEq(expected = Some(7), World.moveTilesOf(World.EntityRef.Player(0), w))
 
-    /// S2.5: refreshMirror は command-derived moveTiles を上書きしない（preserve）。SetMoveTiles で
+    /// refreshMirror は command-derived moveTiles を上書きしない（preserve）。SetMoveTiles で
     /// player 0 へ scene base と無関係な値(99)を書いても refreshMirror 後も残る（再 mirror なら
     /// scene の d#moveTiles に戻るはず＝preserve の証明）。
     @Test
@@ -1057,7 +1055,7 @@ mod TestWorld {
         let drifted = World.applyCmd(World.Cmd.SetMoveTiles(World.EntityRef.Player(0), 99), world);
         Assert.assertEq(expected = false, List.isEmpty(World.moveTilesMismatches(drifted, scene)))
 
-    // ── D4: staves/consumables/rings/ringEquipped store（command-derive・player-only・preserve+prune）──
+    // ── staves/consumables/rings/ringEquipped store（command-derive・player-only・preserve+prune）──
 
     def d4Staff(): Staff.StaffResource = {
         name       = "テスト杖", effect = Staff.StaffEffect.Heal, durability = 3, weight = 0.75,
@@ -1157,7 +1155,7 @@ mod TestWorld {
         let drifted = World.applyCmd(World.Cmd.SetRingEquipped(World.EntityRef.Player(0), true), world);
         Assert.assertEq(expected = false, List.isEmpty(World.ringEquippedMismatches(drifted, scene)))
 
-    /// P2-r1: refreshMirror の equippedRing（player 側）は **World の rings/ringEquipped store から
+    /// refreshMirror の equippedRing（player 側）は **World の rings/ringEquipped store から
     /// 導出**する（scene Data 読みを撤去済み）。scene の装備状態と食い違っても World store 側に従う
     /// ことを pin する: store に ring+装備 true を積み、scene（未装備）で refreshMirror →
     /// equippedRingOf が store 由来の Some(ring) を返す。
@@ -1183,7 +1181,7 @@ mod TestWorld {
             expected = Some(1),
             World.stavesOf(World.EntityRef.Player(0), refreshed) |> Option.map(List.length))
 
-    // ── S-A0c: ringBonus（装備指輪ボーナス）の read-model mirror ──
+    // ── ringBonus（装備指輪ボーナス）の read-model mirror ──
 
     /// syncFromScene が ringBonus を World へ mirror する。scene 由来の equippedRingBonus と一致する
     /// （player 0 / enemy 5）。record は Eq 非自動ゆえ 5-tuple に射影して比較する。
@@ -1199,11 +1197,11 @@ mod TestWorld {
             (Option.map(proj, World.ringBonusOf(World.EntityRef.Player(0), w)),
              Option.map(proj, World.ringBonusOf(World.EntityRef.Enemy(5), w))))
 
-    // ── B1: combatViewOf が scene combatView を World だけから完全再構築する（parity） ──
+    // ── combatViewOf が scene combatView を World だけから完全再構築する（parity） ──
 
     /// `World.combatViewOf(ref)` が `PlayerScene.combatView` / `EnemyScene.combatView` と同一の
-    /// CombatView を返すことを固定 fixture で証明する（S-A0 の end-to-end 検証）。record/enum は Eq
-    /// 非自動ゆえ全数値 + 武器投影を tuple に射影して比較する。これが緑なら reader を World へ flip できる。
+    /// CombatView を返すことを固定 fixture で証明する（read-model mirror の end-to-end 検証）。record/enum は Eq
+    /// 非自動ゆえ全数値 + 武器投影を tuple に射影して比較する。
     @Test
     def testCombatViewOfReconstructsSceneView(): Unit \ Assert =
         let scene = sampleScene();
@@ -1219,7 +1217,7 @@ mod TestWorld {
             (Option.map(cvProj, World.combatViewOf(World.EntityRef.Player(0), w)),
              Option.map(cvProj, World.combatViewOf(World.EntityRef.Enemy(5), w))))
 
-    /// B1 安全網: synced な World では combatViewMismatches が空（read-model ＝ scene と一致）。
+    /// 安全網: synced な World では combatViewMismatches が空（read-model ＝ scene と一致）。
     /// 実機 [COMBATVIEW DIFF] が無音であることの単体版。
     @Test
     def testCombatViewMismatchesEmptyWhenSynced(): Unit \ Assert =
@@ -1227,7 +1225,7 @@ mod TestWorld {
         let w = World.refreshMirror(World.syncFromScene(scene, World.empty()));
         Assert.assertEq(expected = true, List.isEmpty(World.combatViewMismatches(w, scene)))
 
-    /// B1 強化 parity: **状態異常 active** な player でも combatViewOf == combatView（status mods 経路）。
+    /// 強化 parity: **状態異常 active** な player でも combatViewOf == combatView（status mods 経路）。
     /// 既定 fixture は statuses=Nil・ring 未装備で `m`/`rb` がゼロのため、SpdDown を 1 件付けて
     /// `StatusSystem.combatMods` の spdDelta が両 combatView 実装で同一に載ることを確認する。
     @Test
@@ -1251,7 +1249,7 @@ mod TestWorld {
             expected = Some(cvProj(PlayerScene.combatView(pdata))),
             Option.map(cvProj, World.combatViewOf(World.EntityRef.Player(0), w)))
 
-    // ── S-A0d: growth（level-up 用 base Stats + 成長率 + 名前）の read-model（player-only） ──
+    // ── growth（level-up 用 base Stats + 成長率 + 名前）の read-model（player-only） ──
 
     /// growth は player の resource から base#hp/rates#hp/name を mirror し、enemy は None（player-only）。
     /// これで resolveCombat の level-up を resource threading 無しで World 完結に解ける（spike の gap close）。
@@ -1266,7 +1264,7 @@ mod TestWorld {
             (World.growthOf(World.EntityRef.Player(0), w) |> Option.map(g -> (g#base#hp, g#rates#hp, g#name)),
              Option.isEmpty(World.growthOf(World.EntityRef.Enemy(5), w))))
 
-    // ── S4.1: World 由来 unitView twin（scene unitView と bit 一致・additive parity）──
+    // ── World 由来 unitView twin（scene unitView と bit 一致・additive parity）──
 
     /// syncFromScene 直後は World 由来 `unitViewFromWorld` == scene `unitView` ＝ unitViewMismatches 空（parity の基準）。
     /// sampleScene は player 0,1（base move 4・weapons=[testWeapon]）／enemy 5（base move 3・weapon=Some）。
@@ -1303,10 +1301,10 @@ mod TestWorld {
             expected = (sceneP, sceneE, false, false),
             (worldP, worldE, Option.isEmpty(worldP), Option.isEmpty(worldE)))
 
-    // ── S4.4: dataFromWorld（World 由来 PlayerData twin）/ playerDataMismatches（全 23 field parity）──
+    // ── dataFromWorld（World 由来 PlayerData twin）/ playerDataMismatches（全 23 field parity）──
 
     /// syncFromScene 直後は World 由来 dataFromWorld == scene PlayerScene.get Data ＝ playerDataMismatches 空
-    /// （全 23 field の parity 基準。W14 accessor + R残置5 + S→W未昇格2 の stitch が scene と bit 一致）。
+    /// （全 23 field の parity 基準＝World 由来 twin が scene と bit 一致）。
     @Test
     def testPlayerDataMismatchesEmptyWhenSynced(): Unit \ Assert =
         let scene = sampleScene();
@@ -1314,12 +1312,12 @@ mod TestWorld {
         Assert.assertEq(expected = true, List.isEmpty(World.playerDataMismatches(world, scene)))
 
     /// 非 vacuous ガード: World 側だけ player0 の位置を drift させると playerDataMismatches が検出する
-    /// （[PLAYERDATA DIFF] が鳴るべき状況を pin。P6-2a: hp は key から退役したため drift 源を pos に変更）。
+    /// （[PLAYERDATA DIFF] が鳴るべき状況を pin。hp は key から退役したため drift 源を pos に変更）。
     @Test
     def testPlayerDataMismatchesDetectsDrift(): Unit \ Assert =
         let scene   = sampleScene();
         let world   = World.syncFromScene(scene, World.empty());
-        // P6-2b: pos も key から退役したため drift 源を moveTiles に変更。
+        // pos も key から退役したため drift 源を moveTiles に変更。
         let drifted = World.applyCmd(World.Cmd.SetMoveTiles(World.EntityRef.Player(0), 99), world);
         Assert.assertEq(expected = false, List.isEmpty(World.playerDataMismatches(drifted, scene)))
 
@@ -1336,7 +1334,7 @@ mod TestWorld {
             (twin, Option.isEmpty(twin)))
 
     // ── 正準キー集約 refactor: near-duplicate 分離維持 & composite field-coverage pin ──
-    // 軸B（call-site key selection・誤 sibling 配線）の唯一の防壁。コンパイラも mismatch テストも
+    // call-site の key selection（誤 sibling 配線）の唯一の防壁。コンパイラも mismatch テストも
     // 捕えられない「強→弱」（field 落ち・誤 key）を、各キーが正しい field を見ていることで pin する。
 
     /// 戦闘 8 field を埋めた代表 WeaponView。record 部分上書きで 1 field だけ違える基点。
@@ -1453,8 +1451,8 @@ mod TestWorld {
              World.unitViewKey({aiType = EnemyAI.AiType.Wanderer | uv})    != World.unitViewKey(uv)))
 
     /// ★MANDATORY (§5.3・§1.3): playerDataKey 第1 group（11 field）を漏れなく見る pin。在庫4種の
-    /// headKey・posKey・resourceStatKey の sub-key 落ち（S4.4 再発）まで検出する。
-    /// hp/waited は P6-2a で key から退役（scene twin 退役＝ECS 経路は World のみ書く）＝
+    /// headKey・posKey・resourceStatKey の sub-key 落ちまで検出する。
+    /// hp/waited は key から退役（scene twin 退役＝ECS 経路は World のみ書く）＝
     /// **含まれないこと**を == で pin（誤って復活させない防壁）。
     @Test
     def testPlayerDataKeyCoversGroup1Fields(): Unit \ Assert =
@@ -1464,7 +1462,7 @@ mod TestWorld {
             expected = (true, true, true, true, true, true, true, true, true, true, true, true, true),
             (k({id = 99 | d})                              != k(d),
              k({classId = "other" | d})                    != k(d),
-             // P6-2b: gridPos は key から退役（含まれないことを == で pin）。
+             // gridPos は key から退役（含まれないことを == で pin）。
              k({gridPos = {x = 99, y = 99} | d})           == k(d),
              k({moveTiles = 99 | d})                       != k(d),
              k({hp = 99 | d})                              == k(d),
@@ -1479,7 +1477,7 @@ mod TestWorld {
 
     /// ★MANDATORY (§5.3・§1.3): playerDataKey 第2 group（7 field）を漏れなく見る pin。
     /// pendingLevelUpKey・statusListKey の内包まで検出する。
-    /// followUpUsed は P2、level/exp は P6-2a で key から退役（scene copy 退役・World 単独権威）＝
+    /// followUpUsed・level/exp は key から退役（scene copy 退役・World 単独権威）＝
     /// level/exp は **含まれないこと**を == で pin。
     @Test
     def testPlayerDataKeyCoversGroup2Fields(): Unit \ Assert =
@@ -1499,7 +1497,7 @@ mod TestWorld {
              k({pendingLevelUp = Some(plu) | d})           != k(d),
              k({statuses = st :: Nil | d})                 != k(d)))
 
-    // ── S4.4b: dataFromWorldEnemy（World 由来 EnemyData twin）/ enemyDataMismatches（全 17 field parity）──
+    // ── dataFromWorldEnemy（World 由来 EnemyData twin）/ enemyDataMismatches（全 17 field parity）──
 
     /// syncFromScene 直後は World 由来 dataFromWorldEnemy == scene EnemyScene.get Data ＝ enemyDataMismatches 空
     /// （全 17 field の parity 基準。W12 accessor + R残置3 + S→W未昇格1 の stitch が scene と bit 一致）。
@@ -1510,12 +1508,12 @@ mod TestWorld {
         Assert.assertEq(expected = true, List.isEmpty(World.enemyDataMismatches(world, scene)))
 
     /// 非 vacuous ガード: World 側だけ enemy5 の位置を drift させると enemyDataMismatches が検出する
-    /// （[ENEMYDATA DIFF] が鳴るべき状況を pin。P6-2a: hp は key から退役したため drift 源を pos に変更）。
+    /// （[ENEMYDATA DIFF] が鳴るべき状況を pin。hp は key から退役したため drift 源を pos に変更）。
     @Test
     def testEnemyDataMismatchesDetectsDrift(): Unit \ Assert =
         let scene   = sampleScene();
         let world   = World.syncFromScene(scene, World.empty());
-        // P6-2b: pos も key から退役したため drift 源を moveTiles に変更。
+        // pos も key から退役したため drift 源を moveTiles に変更。
         let drifted = World.applyCmd(World.Cmd.SetMoveTiles(World.EntityRef.Enemy(5), 99), world);
         Assert.assertEq(expected = false, List.isEmpty(World.enemyDataMismatches(drifted, scene)))
 
@@ -1541,12 +1539,12 @@ mod TestWorld {
             expected = (true, true, true, true, true, true, true, true, true),
             (k({id = 99 | d})                     != k(d),
              k({resourceId = "other" | d})        != k(d),
-             // P6-2b: gridPos は key から退役（含まれないことを == で pin）。
+             // gridPos は key から退役（含まれないことを == で pin）。
              k({gridPos = {x = 99, y = 99} | d})  == k(d),
              k({alerted = true | d})              != k(d),
              k({homeModuleIdx = 99 | d})          != k(d),
              k({moveTiles = 99 | d})              != k(d),
-             // P6-2a: hp は key から退役（含まれないことを == で pin）。
+             // hp は key から退役（含まれないことを == で pin）。
              k({hp = 99 | d})                     == k(d),
              k({isDying = true | d})              != k(d),
              k({attackTargetId = Some(7) | d})    != k(d)))
@@ -1554,7 +1552,7 @@ mod TestWorld {
     /// ★MANDATORY (§5.3・§1.3): enemyDataKey 第2 group（5 field）を漏れなく見る pin。weaponKey/
     /// equippedRingKey/statusListKey の sub-key 落ちまで検出する。resource(R 残置)は resourceId
     /// 代表ゆえ group1 の resourceId pin が兼ねる（両辺 scene 由来＝drift 不能）。
-    /// bottleUsed / followUpUsed / prevPos は P2 で key から退役（scene copy 退役・World 単独権威）ゆえ対象外
+    /// bottleUsed / followUpUsed / prevPos は key から退役（scene copy 退役・World 単独権威）ゆえ対象外
     ///（World 権威は testDataFromWorldEnemyBottleUsed... / dataFromWorldEnemy None-gate が保証）。
     @Test
     def testEnemyDataKeyCoversGroup2Fields(): Unit \ Assert =
@@ -1569,12 +1567,12 @@ mod TestWorld {
              k({ring = Some(d4Ring()) | d})               != k(d)))
 
     // ════════════════════════════════════════════════════════
-    // P5-b: fx（ダメージ数字/爆発）の World store 権威
+    // fx（ダメージ数字/爆発）の World store 権威
     //   spawn=Cmd（applyCmd が nextSeq 採番）・寿命 tick と期限切れ drop=stepWorld
     // ════════════════════════════════════════════════════════
 
     /// SpawnPopupFx 2 連発で seq 0,1 に挿入され nextSeq が 2 になる。text/pos は spawn 値を保持
-    /// （P6-1f: 見た目も store 持ち）。
+    /// （見た目も store 持ち）。
     @Test
     def testSpawnPopupFxAllocatesSequentialSeqs(): Unit \ Assert =
         let white = ({r = 1.0f32, g = 1.0f32, b = 1.0f32}: Color);

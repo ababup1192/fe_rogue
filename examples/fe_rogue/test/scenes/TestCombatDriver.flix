@@ -84,7 +84,7 @@ mod TestCombatDriver {
                 EngineNode.Marker2DWithState(eMarker, NodeTag.Enemy(enemy())))
 
     /// applyAttackHit を副作用モックで包んで実行する。
-    /// P6-5a: ONE-Ref の withTracedWorld（Command+WorldQuery+RngDraw を同一 World に結線＝
+    /// ONE-Ref の withTracedWorld（Command+WorldQuery+RngDraw を同一 World に結線＝
     /// read-after-write）で駆動し、hp/exp の検証は **World store**（ECS 権威）で行う。
     def runAttack(scene: Scene[NodeTag]): (Scene[NodeTag], World) =
         region rc {
@@ -175,7 +175,7 @@ mod TestCombatDriver {
     // ════════════════════════════════════════════════════════
 
     /// applyEnemyAttackHit を副作用モックで包んで実行する（アニメは介在しない）。
-    /// P6-5a: runAttack と同じ ONE-Ref traced world 駆動＝検証は World store で。
+    /// runAttack と同じ ONE-Ref traced world 駆動＝検証は World store で。
     def runEnemyAttack(scene: Scene[NodeTag]): ((Scene[NodeTag], List[Int32]), World) =
         region rc {
             let (out, _keys, w) = TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
@@ -254,7 +254,7 @@ mod TestCombatDriver {
                 expected = (TurnPhase.Phase.PlayerAttackHold, true), result)
         }
 
-    /// F2c pin: 「敵ターンか」の判定が **World 由来**（TurnPhase.State でない）ことを固定する。
+    /// 「敵ターンか」の判定が **World 由来**（TurnPhase.State でない）ことを固定する。
     /// TurnPhase.State をわざと非敵ターン（PlayerAttackHold）にしつつ World phase を EnemyTurn にすると、
     /// onLungeDone は敵ターン分岐（attackTargetId クリアのみ・Pacing.hold なし）を取る。
     /// もし読みが TurnPhase.State 由来に退行すれば kill-hold 分岐へ落ち isHolding=true となり赤になる。

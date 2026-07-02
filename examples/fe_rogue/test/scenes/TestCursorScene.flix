@@ -227,7 +227,7 @@ mod TestCursorScene {
             let result = TestUnitFixtures.withMockPartyQuery(staleSnapshot, () -> run {
                 let scene = cursorAddPure(freshScene);
                 // 呼び出し側が新 scene から計算した「次のアクティブ味方の gridPos」
-                // P6-1h: showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
+                // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
                 let snapped = run { PhaseTransitions.enterPlayerCursorAt(p1Pos, scene) }
                     with handler World.Command { def emit(_c, k) = k() };
                 cursorState(snapped)
@@ -269,8 +269,8 @@ mod TestCursorScene {
         {map = map, pieces = Nil}
 
     /// 指定フェーズで `physicsProcess` を 1 フレーム回し、Cursor の Data を取り出す。
-    /// R3 で physicsProcess が phase 分岐するようになったため、テスト側でも phase を
-    /// 立ててから呼ぶ。`PlayerAttack` 用テストも同じ runner を使う (旧 runPhysicsAttack 廃止)。
+    /// physicsProcess は phase 分岐するので、テスト側でも phase を立ててから呼ぶ。
+    /// `PlayerAttack` 用テストも同じ runner を使う。
     def runPhysics(phase: TurnPhase.Phase, scene: Scene[NodeTag]): CursorScene.Data
             \ {GameEngine.Game, BoardQuery,
                 Tween.Scheduler, AnimationPlayer.Scheduler,
@@ -282,7 +282,7 @@ mod TestCursorScene {
             case Some(node) =>
                 // physicsProcess は WeaponSelect 分岐用に SelectedPlayer.State を要求するので、
                 // ここで discharge する（PlayerCursor / PlayerAttack 分岐では未使用なので値は任意）。
-                // P6-2b: physicsProcess が World 位置を読む（空 World → scene fallback で従来どおり）。
+                // physicsProcess が World 位置を読む（空 World → scene fallback で従来どおり）。
                 let (newNode, newScene) =
                     TestUnitFixtures.withSelectedPlayer(0, () ->
                         run { CursorScene.physicsProcess(Duration.seconds(0.016), node, path, scene) }

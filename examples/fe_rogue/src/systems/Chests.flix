@@ -1,6 +1,6 @@
 /// Chests — フロアに置かれる宝箱（ローグだけが開けられる）
 ///
-/// P6-1d: scene ノードは撤去済み。存在/中身の権威は World.chests（`Cmd.SpawnChest/RemoveChest/
+/// scene ノードは持たない。存在/中身の権威は World.chests（`Cmd.SpawnChest/RemoveChest/
 /// ClearChests`）、描画は `RenderWorld.renderChests` が chestKey→ChestCatalog の sprite から直描きする。
 ///
 /// 設計の要:
@@ -26,7 +26,7 @@ mod Chests {
     }
 
     /// 宝箱スプライトの zIndex（床より上、ユニット(=10)より下、床アイテム(=5)のすぐ上）。
-    /// P6-1d: `RenderWorld.renderChests` が直描き時に使うため pub。
+    /// `RenderWorld.renderChests` が直描き時に使うため pub。
     pub def chestZIndex(): Int32 = 6
 
     /// フロアごとに宝箱が出現する確率（宝箱は希少な報酬なので低め＝約 1/3 = 3 フロアに 1 回）。
@@ -78,8 +78,8 @@ mod Chests {
             |> List.filter(c -> not isOccupied(c, occupied))
 
     /// 駒(味方/敵) + 床アイテム + 階段 のセルを 1 本のリストに集める（配置時の回避集合）。
-    /// P6-1c: 階段位置は World.stairsPos から読む（scene ノード撤去済み。build 中の
-    /// placeRandom→SetStairs emit は read-after-write で見える）。
+    /// 階段位置は World.stairsPos から読む（build 中の placeRandom→SetStairs emit は
+    /// read-after-write で見える）。
     def occupiedCells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ World.WorldQuery =
         let units = List.append(
             PlayerScene.getAll(scene) |> List.map(d -> d#gridPos),
@@ -128,7 +128,7 @@ mod Chests {
         List.filter(c -> not (c#x == cell#x and c#y == cell#y), cells)
 
     /// 宝箱 1 個ぶんを配置する＝`Cmd.SpawnChest` を emit して World store を更新する。
-    /// P6-1d: scene ノード書きは撤去（描画は `RenderWorld.renderChests` が World から直描き）。
+    /// scene ノードは書かない（描画は `RenderWorld.renderChests` が World から直描き）。
     def addOneChest(cell: {x = Int32, y = Int32},
                      chestKey: String, contentId: String,
                      content: GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
@@ -137,7 +137,7 @@ mod Chests {
         scene
 
     /// 指定セルの宝箱を除去する＝`Cmd.RemoveChest` を emit（開錠後に呼ぶ）。
-    /// P6-1d: World store に居るときだけ emit（旧: scene ノード有無で判定）。scene は素通し。
+    /// World store に居るときだけ emit。scene は素通し。
     pub def takeAt(coord: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         match World.chestAtOf(coord, World.WorldQuery.get()) {
             case Some(_) =>
@@ -148,8 +148,7 @@ mod Chests {
 
     /// 現在の宝箱を `ChestSnap` 列（セル座標 ＋ 箱種別 id ＋ 中身 id）に射影する（スナップショット保存用）。
     /// `chestKey` / `contentId` は Data が保持するので逆引き不要。
-    /// P2-r2（セーブ capture の World 化）: 射影元を scene ノード群から **World の chests store**
-    /// に変更（P3-b で権威化済み・dual-write 中は等値）。並び順は cellKey 昇順（GroundItems と同じ注記）。
+    /// 射影元は **World の chests store**（存在の権威）。並び順は cellKey 昇順（GroundItems と同じ注記）。
     pub def captureSnaps(_scene: Scene[NodeTag]): List[FloorSnapshot.ChestSnap] \ World.WorldQuery =
         World.chestsOf(World.WorldQuery.get())
             |> Map.valuesOf
@@ -170,6 +169,5 @@ mod Chests {
             addOneChest(snap#gridPos, snap#chestKey, snap#contentId, content, acc)
         }, scene, snaps)
 
-    // P6-1d: 旧 `applyFog`（scene ノードの可視制御）は撤去。fog の lit ゲートは
-    // `RenderWorld.renderChests` が直描き時に判定する。
+    // fog の lit ゲートは `RenderWorld.renderChests` が直描き時に判定する。
 }

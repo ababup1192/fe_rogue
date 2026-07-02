@@ -104,11 +104,11 @@ mod StairsExitDriver {
     pub def begin(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, GameEngine.Audio,
                               TurnPhase.State, SelectedPlayer.State, BoardQuery, World.WorldQuery} =
-        // P3-a: 階段位置は World 権威（stairsPosOf）を読む（scene 直読み撤去）。
+        // 階段位置は World 権威（stairsPosOf）を読む。
         match World.stairsPosOf(World.WorldQuery.get()) {
             case None         => scene
             case Some(stairs) =>
-                // P1a: frame-head の board 読みを World 由来へ（move 前ゆえ World==scene・挙動不変）。
+                // frame-head の board 読みは World 由来（move 前ゆえ World==scene）。
                 let board = BoardQuery.board();
                 let units = livingUnits(scene);
                 // 誰も階段に届かないなら何もしない（メニューは主人公が階段の上に居るときだけ出すので通常来ない）。
@@ -127,7 +127,7 @@ mod StairsExitDriver {
     // 毎フレーム進行
     // ────────────────────────────────────────────────────────
 
-    /// F8: 階段退場 System（`Scene → Scene`）。EnemyTurnDriver と同様、OOP node callback でなく
+    /// 階段退場 System（`Scene → Scene`）。EnemyTurnDriver と同様、OOP node callback でなく
     /// gameLoop パイプラインが明示的に呼ぶ frame-paced System。driver の `Data`（queue/idleRounds）は
     /// `driverPath()` のノード state から取り出し、`stepOnce` が `setState` で同ノードへ書き戻す
     /// （node 引数不要＝`Scene.getState` で読み、戻りは scene のみ）。phase==StairsExit のとき 1 step 進める。
@@ -154,13 +154,13 @@ mod StairsExitDriver {
                World.WorldQuery} =
         if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
-        else if (World.anyEnemyAttacking(World.WorldQuery.get())) scene      // F8-slice1
-        else if (World.anyPlayerAttacking(World.WorldQuery.get())) scene     // F8-slice1
+        else if (World.anyEnemyAttacking(World.WorldQuery.get())) scene
+        else if (World.anyPlayerAttacking(World.WorldQuery.get())) scene
         else match data#queue {
             case Nil         => finalize(scene)
             case (u, _) :: _ =>
                 if (PlayerScene.isMoving(u)) scene
-                else match World.stairsPosOf(World.WorldQuery.get()) {   // P3-a: World 権威
+                else match World.stairsPosOf(World.WorldQuery.get()) {   // World 権威
                     case None         => finalize(scene)   // 階段消失(通常来ない)→後始末
                     case Some(stairs) => advanceFront(data, stairs, scene)
                 }
@@ -176,9 +176,9 @@ mod StairsExitDriver {
         match data#queue {
             case Nil              => finalize(scene)
             case (u, rem) :: rest =>
-                // P1a: frame-head の board 読みを World 由来へ（この frame の move 前ゆえ World==scene・挙動不変）。
+                // frame-head の board 読みは World 由来（この frame の move 前ゆえ World==scene）。
                 let board    = BoardQuery.board();
-                // P6-2b fix: 現在位置は World.posOf（scene twin は stale）。
+                // 現在位置は World.posOf（scene twin は持たない）。
                 let frontPos = World.posOf(World.EntityRef.Player(u), World.WorldQuery.get())
                                    |> Option.getWithDefault(PlayerScene.getGridPos(u, scene));
                 let field    = stairsField(board, stairs);
@@ -219,7 +219,7 @@ mod StairsExitDriver {
         else
             ActionMenuScene.turnEndShortcut(cleared)
 
-    /// driver ノードの状態を書き換える（HoldGauge/PhaseBanner と同手法）。
+    /// driver ノードの状態を書き換える（HoldGauge と同手法）。
     def setState(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(driverPath(), node -> match node {
             case EngineNode.Marker2DWithState(m, NodeTag.StairsExitDriver(_)) =>

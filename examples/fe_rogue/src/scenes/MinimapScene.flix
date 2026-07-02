@@ -36,7 +36,7 @@ mod MinimapScene {
     pub type alias Fit = { scale = Float64, ox = Float64, oy = Float64 }
 
     def rootName(): String = "Minimap"
-    /// B: render-from-World が minimap サブツリー（ColorRect の room/floor ＋ Polygon2D のマーカー）を描く/隠す root。
+    /// render-from-World が minimap サブツリー（ColorRect の room/floor ＋ Polygon2D のマーカー）を描く/隠す root。
     pub def rootPath(): NodePath = rootName() :: Nil
     def contentName(): String = "MinimapContent"
     def contentPath(): NodePath = rootName() :: contentName() :: Nil
@@ -94,7 +94,7 @@ mod MinimapScene {
     def markerZIndex(): Int32 = 3
 
     // 色（半透明で操作の邪魔にならないよう alpha を抑える）
-    /// 壁/構造の色（歩ける床を囲む外枠ブロック）。旧「部屋色」を流用。
+    /// 壁/構造の色（歩ける床を囲む外枠ブロック）。
     def moduleColor(): Color = {r = 0.62f32, g = 0.68f32, b = 0.85f32}
     def moduleAlpha(): Float32 = 0.50f32
     /// 歩ける床は黒（何もなし）でくり抜いて表現する。壁の上に重ねるので不透明寄りに。
@@ -224,7 +224,7 @@ mod MinimapScene {
         }, scene)
 
     /// 階段が「発見済み」か。階段セルの属する module が訪問済みなら発見扱い。
-    /// 階段位置は World.stairsPos から読む（scene ノード撤去済み）。
+    /// 階段位置は World.stairsPos から読む。
     def stairsDiscovered(visited: Set[Int32],
                           placements: List[DungeonComposer.ModulePlacement],
                           _scene: Scene[NodeTag]): Bool \ World.WorldQuery =
@@ -319,7 +319,7 @@ mod MinimapScene {
                 |> List.filter(d -> not d#hidden)
                 |> List.map(d -> {cell = d#gridPos,
                                   color = if (d#id == 0) leaderColor() else playerColor()});
-        // 階段位置は World.stairsPos から読む（scene ノード撤去済み）。
+        // 階段位置は World.stairsPos から読む。
         let stairsM =
             if (data#stairsSeen)
                 match World.stairsPosOf(World.WorldQuery.get()) {
@@ -328,7 +328,7 @@ mod MinimapScene {
                 }
             else Nil;
         let itemsM =
-            // 床アイテム位置は World store から読む（scene ノード撤去済み）。
+            // 床アイテム位置は World store から読む。
             (World.groundItemsOf(World.WorldQuery.get()) |> Map.valuesOf |> List.map(d -> d#gridPos))
                 |> List.filter(cell -> inVisitedRoom(cell, placements, roomCount, data#visited))
                 |> List.map(cell -> {cell = cell, color = itemColor()});

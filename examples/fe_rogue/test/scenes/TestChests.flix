@@ -1,4 +1,4 @@
-// Chests のテスト（P6-1d: World store 権威）
+// Chests のテスト（World store 権威）
 //
 // 宝箱の存在/中身は World.chests store（SpawnChest/RemoveChest/ClearChests）が唯一の権威で、
 // scene ノードは存在しない（描画は RenderWorld.renderChests の直描き）。

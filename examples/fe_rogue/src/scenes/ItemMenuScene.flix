@@ -264,7 +264,7 @@ mod ItemMenuScene {
         else List.length(player#rings)
 
     /// アイテムが 1 つ以上あるカテゴリだけを表示順で返す。
-    /// P2-r1: 在庫読みは PartyQuery（World.dataFromWorld オーバーレイ）経由＝メニューの読みを World へ。
+    /// 在庫読みは PartyQuery（World.dataFromWorld オーバーレイ）経由＝メニューの読みは World から取る。
     def nonEmptyCategories(playerId: Int32): List[Int32] \ PlayerData.PartyQuery =
         match PlayerData.PartyQuery.get(playerId) {
             case None         => Nil
@@ -384,7 +384,7 @@ mod ItemMenuScene {
     def weaponsOf(id: Int32): List[UnitCatalog.WeaponResource] \ PlayerData.PartyQuery =
         PlayerData.PartyQuery.get(id) |> Option.map(d -> d#weapons) |> Option.getWithDefault(Nil)
 
-    /// P2-r1: 杖/消費/指輪も PartyQuery（World オーバーレイ）経由の薄ラッパで読む（weaponsOf と同型）。
+    /// 杖/消費/指輪も PartyQuery（World オーバーレイ）経由の薄ラッパで読む（weaponsOf と同型）。
     def stavesOf(id: Int32): List[Staff.StaffResource] \ PlayerData.PartyQuery =
         PlayerData.PartyQuery.get(id) |> Option.map(d -> d#staves) |> Option.getWithDefault(Nil)
 
@@ -400,7 +400,7 @@ mod ItemMenuScene {
             Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
         match SelectedPlayer.State.get()#id {
             case None => scene
-            // P2-r1: 在庫読みは PartyQuery（World オーバーレイ）経由。
+            // 在庫読みは PartyQuery（World オーバーレイ）経由。
             case Some(playerId) => match PlayerData.PartyQuery.get(playerId) {
                 case None         => scene
                 case Some(player) =>
@@ -549,7 +549,7 @@ mod ItemMenuScene {
     def refreshActionList(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
         let bulkMode = not Set.isEmpty(getMarks(scene));
-        // P2-r1: 在庫読み（rings/ringEquipped/selectedItem）は PartyQuery（World オーバーレイ）経由。
+        // 在庫読み（rings/ringEquipped/selectedItem）は PartyQuery（World オーバーレイ）経由。
         let result = forM (
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerData.PartyQuery.get(playerId)
@@ -708,7 +708,7 @@ mod ItemMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
                 GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
-        // P2-r1: selectedItem 読みは PartyQuery（World オーバーレイ）経由。
+        // selectedItem 読みは PartyQuery（World オーバーレイ）経由。
         let result = forM (
             m        <- entry#metadata;
             playerId <- SelectedPlayer.State.get()#id;
@@ -884,7 +884,7 @@ mod ItemMenuScene {
         }
 
     /// 指定プレイヤーの consumables[idx] を取り出す（範囲外 / 未登録なら None）。
-    /// P2-r1: PartyQuery（World オーバーレイ）経由。
+    /// PartyQuery（World オーバーレイ）経由。
     def consumableAt(playerId: Int32, idx: Int32):
             Option[Consumable.ConsumableResource] \ PlayerData.PartyQuery =
         List.nth(idx, consumablesOf(playerId))

@@ -6,8 +6,8 @@
 ///   - `ActionSelect` のときだけ Panel = visible / ItemList = visible + focused
 ///
 /// items の構築 (`buildItems` / `canAttackFrom` / `canWaitOn`) は private 関数なので
-/// ここでは直接観測せず、R4 (Menu 基盤共通化) 後に refreshItems 経由で見る方が
-/// 構築コストに対するリターンが良い。ここでは visibility 契約だけ pin する。
+/// ここでは直接観測せず、refreshItems 経由で見る方が構築コストに対するリターンが良い。
+/// ここでは visibility 契約だけ pin する。
 mod TestActionMenuScene {
 
     // ════════════════════════════════════════════════════════
@@ -115,7 +115,7 @@ mod TestActionMenuScene {
                 EngineNode.Marker2DWithState(marker1, NodeTag.Player(data1)));
         actionMenuAddPure(withWorld)
 
-    /// 指定 id のプレイヤーの waited フラグを **World store** から取り出す（P6-2a: scene twin 退役）。
+    /// 指定 id のプレイヤーの waited フラグを **World store** から取り出す（scene twin は退役済みで World が権威）。
     def waitedOf(id: Int32, world: World): Bool =
         World.waitedOf(World.EntityRef.Player(id), world) |> Option.getWithDefault(false)
 
@@ -127,7 +127,7 @@ mod TestActionMenuScene {
         }
 
     /// テスト用 floor item を 1 個だけ scene に貼り付ける（World seed 用の手組みノード seam）。
-    /// P6-1e: production はノードを積まない。この手組み `NodeTag.GroundItem(Data)` は
+    /// production はノードを積まない。この手組み `NodeTag.GroundItem(Data)` は
     /// `World.syncFromScene`（itemsFromScene seam）が World store へ seed するためだけに置く。
     def attachGroundItemAt(cell: {x = Int32, y = Int32},
                             kind: ItemData.GroundItemKind,
@@ -244,17 +244,17 @@ mod TestActionMenuScene {
     ///   - TurnPhase.State: Ref-backed で put を観測可能 (戻り値タプルの 2 番目)
     def runOnActionConfirm(rc: Region[r], args: ActionConfirmArgs):
             (Scene[NodeTag], TurnPhase.Phase, World) \ r =
-        // S6: waited は World 権威化し scene 直書きが無い。実フレームの frame-end syncTreeFromWorld を
-        // 模して、emit された Cmd（SetWaited 等）を scene 由来 seed の World へ適用 → scene へ一方向 derive
-        // してから assert に返す（waited が World→scene へ反映される点を含めて挙動を固定する）。
+        // waited は World 権威で scene 直書きが無い。emit された Cmd（SetWaited 等）を scene 由来 seed の
+        // World へ適用 → scene へ一方向 derive してから assert に返す（waited が World→scene へ反映される点を
+        // 含めて挙動を固定する）。
         let wref = Ref.fresh(rc, World.syncFromScene(args#scene, World.empty()));
         let (after, phase) = run {
-        // P3-a: 確定経路（stairs 判定・gatherStairs→StairsExit.begin）が World.stairsPosOf を読むので
+        // 確定経路（stairs 判定・gatherStairs→StairsExit.begin）が World.stairsPosOf を読むので
         // 同じ wref を返す WorldQuery を Command の内側に置く（read-after-write・withTracedWorld と同型）。
         run {
-        // P4-e: 拾う確定が中央ポップアップの State resource を書くので withState で剥がす。
+        // 拾う確定が中央ポップアップの State resource を書くので withState で剥がす。
         ItemPickupPopupScene.withState(rc, () ->
-        // P1a: 確定経路（gatherStairs→StairsExit.begin）が BoardQuery を読むので mock board を供給。
+        // 確定経路（gatherStairs→StairsExit.begin）が BoardQuery を読むので mock board を供給。
         TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(args#scene), () ->
         TestUnitFixtures.withPhaseRef(rc, args#initialPhase, () ->
             TestUnitFixtures.withNoopTween(() ->
@@ -275,14 +275,13 @@ mod TestActionMenuScene {
         } with handler World.Command {
             def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
         };
-        // P6-1e: 床アイテム等の配置物 store を assert できるよう最終 World も返す。
+        // 床アイテム等の配置物 store を assert できるよう最終 World も返す。
         (World.syncTreeFromWorld(Ref.get(wref), after), phase, Ref.get(wref))
 
     // ════════════════════════════════════════════════════════
     // 既存「行動終了」アクション回帰テスト
     //
-    // applyPickup の挙動を Step 1-C で変更するに先立ち、変更しない他アクションが
-    // 「これまで通り」動くことを pin する。Step 1-C のリファクタが万一
+    // applyPickup 以外のアクションが「これまで通り」動くことを pin する。リファクタが万一
     // commitWaitedAndAdvance に副作用を与えた場合、ここのいずれかが赤になって気づける。
     // ════════════════════════════════════════════════════════
 
@@ -351,7 +350,7 @@ mod TestActionMenuScene {
                 scene          = scene,
                 entry          = pickupEntry
             });
-            // P6-1e: 床アイテムは World store で assert（scene ノード撤去済み）。
+            // 床アイテムは World store で assert（scene ノード撤去済み）。
             let groundItemStillThere =
                 Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             // 期待: (ActionSelect 維持, waited 立たず, 床から消えた, 武器2本)
@@ -374,7 +373,7 @@ mod TestActionMenuScene {
             let scene = loadActionMenuSceneWithFloorWeapon();
             let pickupEntry: ItemEntry =
                 { text = "ひろう", disabled = false, metadata = Some("pickup") };
-            // P6-1e: Command+Query を ONE Ref[World]（withTracedWorld）で wire する
+            // Command+Query を ONE Ref[World]（withTracedWorld）で wire する
             // （pickup が World store を読み、revert の respawn が SpawnItem を書く read-after-write 経路）。
             let (after, _keys, wFin) = TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
                 TestUnitFixtures.withNoopPickupPopup(() ->
@@ -425,7 +424,7 @@ mod TestActionMenuScene {
         region rc {
             let scene = loadActionMenuSceneWithFloorWeapon();
             let data  = playerDataOf(0, scene);
-            // P6-1e: 床アイテムは World store 権威＝Command+Query を ONE Ref で wire（withTracedWorld）。
+            // 床アイテムは World store 権威＝Command+Query を ONE Ref で wire（withTracedWorld）。
             let (after, _keys, wFin) = TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
                 TestUnitFixtures.withNoopPickupPopup(() ->
                     TestUnitFixtures.withMockGameLogger(() ->
@@ -508,7 +507,7 @@ mod TestActionMenuScene {
 
     /// 与えた drafts を SelectedPlayer に載せて `cancelSelection` を実行するランナー。
     /// cancelSelection の 5 effect (Tween/Anim/TurnPhase/SelectedPlayer/PartyQuery) をスタブ。
-    /// P6-1e: revert の respawn（SpawnItem）を World store で assert できるよう最終 World も返す。
+    /// revert の respawn（SpawnItem）を World store で assert できるよう最終 World も返す。
     def runCancelWithDrafts(rc: Region[r], scene: Scene[NodeTag],
                               drafts: List[MoveDraft.DraftAction]):
             (Scene[NodeTag], World) \ r =

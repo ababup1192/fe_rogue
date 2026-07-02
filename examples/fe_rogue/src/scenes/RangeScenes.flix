@@ -50,7 +50,7 @@ mod RangeOverlay {
             scene)
 
     /// 1 セル分のハッチ Panel（サイズ＋塗り/縞/枠、位置なし）。塗りは淡く床を見せ、色は斜線と枠で表現する
-    /// （CSS の重み付けを踏襲）。World 描画（`tileDrawables`）が使う見た目定義として切り出す。
+    /// （CSS の重み付けを踏襲）。World 描画（`tileDrawables`）が 1 セルの見た目を組むために使う。
     pub def tilePanel(color: Color, alpha: Float32): Panel =
         let side = MapSnapshot.tileSize() - inset() * 2.0;
         Panel.make(({x = side, y = side}: Vec2.Vec2), color)
@@ -68,10 +68,10 @@ mod RangeOverlay {
         let center = MapSnapshot.cellCenter(cell);
         {x = center#x - half, y = center#y - half}
 
-    // 描画は `tileDrawables`（World render System）が唯一の経路＝ノードを積まない。
+    // 描画は `tileDrawables`（World render System）が唯一の経路＝ハッチ Panel の scene ノードは積まない。
 
-    /// B: `cells` を camera 適用済みのハッチ box Drawable にする（World render System 用）。`tilePanel` の
-    /// styling を `Panel.toDrawables` で描き、位置は `tileTopLeft` を camera 変換、scale（=Panel サイズ）を
+    /// `cells` を camera 適用済みのハッチ box Drawable にする（World render System 用）。`Panel.toDrawables`
+    /// で `tilePanel` と同一 styling を Drawable 化し、位置は `tileTopLeft` を camera 変換、scale（=Panel サイズ）を
     /// zoom 倍する（`RenderWorld.unitDraw` のスケール処理と対称）。
     pub def tileDrawables(cells: List[{x = Int32, y = Int32}], color: Color, alpha: Float32,
                           transform: Camera2D.ViewTransform): List[GameEngine.Drawable] =
@@ -109,7 +109,7 @@ mod MoveRangeScene {
     pub def moveRangePath(): NodePath = name() :: Nil
 
     /// 移動範囲を識別する青系 modulate。Floor 装飾レイヤーの上で
-    /// 移動可能マスとして識別しやすいように青寄りに着色する。B: renderMoveRange も同値を使うため pub。
+    /// 移動可能マスとして識別しやすいように青寄りに着色する。World 描画も同値を使うため pub。
     pub def color(): Color = {r = 0.3f32, g = 0.5f32, b = 1.0f32}
 
     /// 移動可能マスをはっきり認識させるため完全不透明にする。
@@ -148,7 +148,7 @@ mod MoveRangeScene {
     /// 動くため、ここで仕様が一致していれば自動で挙動が揃う。
     /// 原点は **現在位置でなくターン開始位置**（`chooseMoveOrigin` 経由）に固定する。
     def buildFor(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, World.WorldQuery} =
-        // P6-2b fix: 盤面 pieces・現在位置とも World 由来（scene gridPos twin は退役＝stale）。
+        // 盤面 pieces・現在位置とも World 由来（scene gridPos twin は退役＝stale）。
         let w0        = World.WorldQuery.get();
         let board     = World.toBoard(w0, scene);
         let drafts    = SelectedPlayer.State.get()#drafts;
@@ -189,7 +189,7 @@ mod MoveRangeScene {
             case _ => Nil
         }
 
-    /// B: World 描画が読む「青く描くセル」(stoppable)。未登録なら空リスト。
+    /// World 描画が読む「青く描くセル」(stoppable)。未登録なら空リスト。
     pub def drawCells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
         match Scene.getState(moveRangePath(), scene) {
             case Some(NodeTag.MoveRange(data)) => data#drawCells
@@ -225,7 +225,7 @@ mod MoveAttackRangeScene {
     def name(): String = "MoveAttackRange"
     pub def rangePath(): NodePath = name() :: Nil
 
-    /// PlayerAttackRangeScene / EnemyRangeScene と同じ赤系 modulate。B: renderMoveAttackRange も同値を使うため pub。
+    /// PlayerAttackRangeScene / EnemyRangeScene と同じ赤系 modulate。World 描画も同値を使うため pub。
     pub def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
 
     /// 青マス (MoveRange = 1.0) より透かすことで、移動範囲より外側の脅威範囲を
@@ -262,7 +262,7 @@ mod MoveAttackRangeScene {
     pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.removeAt(rangePath(), scene)
 
-    /// テスト・デバッグ用: 現在の脅威セル一覧。未登録なら空リスト。B: renderMoveAttackRange の描画セルもこれ。
+    /// テスト・デバッグ用: 現在の脅威セル一覧。未登録なら空リスト。World 描画セルもこれ。
     pub def cells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
         match Scene.getState(rangePath(), scene) {
             case Some(NodeTag.MoveAttackRange(data)) => data#cells
@@ -659,7 +659,7 @@ mod DangerZoneScene {
                     List.append(reachable, Board.computeThreatCells(reachable, lo, hi))
             }
         };
-        // P6-2b: 位置は World 上書き Data（scene gridPos twin は退役）。
+        // 位置は World 上書き Data（scene gridPos twin は退役）。
         let cells = EnemyScene.getAllWithWorldPos(cleared)
             |> List.filter(e -> EnemyScene.isVisible(e#id, cleared))
             |> List.foldLeft((acc, e) -> List.append(acc, dangerOf(e)), Nil)

@@ -1,6 +1,6 @@
 /// PlayerMovementDriver.stepPlayerMove（移動 System）の sim 判定を純粋に検証する。
 ///
-/// F3b: 移動は input(view)→System(sim)→SimEvent→replay(view) の seam に分離された。
+/// 移動は input(view)→System(sim)→SimEvent→replay(view) の seam に分離されている。
 /// この System 部分を単体で固定する:
 ///   - 合法な 1 歩 → `Some(Moved(target))` を返し World に `Cmd.Move` を emit する。
 ///   - 敵駒で占有された先 → `None`・emit なし（位置は書かない）。
@@ -87,10 +87,10 @@ mod TestPlayerMovementDriver {
                 TestUnitFixtures.withSelectionRef(rc,
                     ({id = Some(0), drafts = (Nil: List[MoveDraft.DraftAction]), gatherActive = false}: SelectedPlayer.Selection),
                     () ->
-                    // S6: physicsStep が waited を World 権威で読むため WorldQuery を discharge。
+                    // physicsStep が waited を World 権威で読むため WorldQuery を discharge。
                     // PlayerMoving は waited を参照しないので World.empty()（scene fallback）で十分。
                     TestUnitFixtures.withWorldQuery(World.empty(), () ->
-                    // P4-e: 着地の自動取得が中央ポップアップの State resource を書くため no-op で剥がす。
+                    // 着地の自動取得が中央ポップアップの State resource を書くため no-op で剥がす。
                     TestUnitFixtures.withNoopPickupPopup(() ->
                     PlayerMovementDriver.physicsStep(Duration.zero(), pnode, PlayerScene.playerPath(0), scene)))))))));
             moves |> List.map(c -> (c#x, c#y))

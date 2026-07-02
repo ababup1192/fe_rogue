@@ -1,4 +1,4 @@
-// Prng — 純粋・決定論的な splitmix64 PRNG（Phase C 事前準備 slice `rng-world`）
+// Prng — 純粋・決定論的な splitmix64 PRNG
 //
 // 役割: golden-trace / roll-sequence 等価テストが「同じ seed → 同じ draw 列」を再現できる
 // 値→値の PRNG。エフェクトを一切持たない（`World.rng` フィールドに dormant に載る）。

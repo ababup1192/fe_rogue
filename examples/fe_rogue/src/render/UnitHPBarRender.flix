@@ -1,6 +1,6 @@
 /// UnitHPBarRender — キャラ足元に常時表示する連続フィル HP ゲージ
 ///
-/// P6-1g: scene ノードは全廃。HP/最大 HP は World store（hp/baseStats）、待機/行動済みの暗転は
+/// scene ノードは持たない。HP/最大 HP は World store（hp/baseStats）、待機/行動済みの暗転は
 /// World store（waited/enemyActed）から導出し、`renderBars` が ColorRect **値**を組んで毎フレーム
 /// 直描きする（update/setModulate 等の押し込み API は不要になった＝SetHp 等の Cmd が唯一の書込）。
 /// 攻撃予報の「減る分」点滅だけは BattlePanel が毎フレーム計算する view 状態なので、
@@ -13,7 +13,7 @@ mod UnitHPBarRender {
         case Enemy
     }
 
-    /// P6-1g: 攻撃予報（BattlePanel が毎フレーム計算）を renderBars へ渡す view 状態。
+    /// 攻撃予報（BattlePanel が毎フレーム計算）を renderBars へ渡す view 状態。
     /// attacker=味方/defender=敵の「予測後 HP」と点滅位相（dark）。None=予報なし。
     pub type alias Forecast = {
         attackerId = Int32, playerHpPost = Int32,
@@ -95,7 +95,7 @@ mod UnitHPBarRender {
     /// チームのフィル色（テスト用に公開）。
     pub def teamFillColor(team: Team): Color = fillColorFor(team)
 
-    // ─── 公開 API（P6-1g: 直描き） ────────────────────────────
+    // ─── 公開 API（直描き） ────────────────────────────
 
     /// 全ユニットの足元 HP バーを World store から直描きする。
     ///   - HP = World.hpOf / 最大 HP = World.baseStatsOf#hp（SetHp/SetBaseStats が唯一の書込）
@@ -110,7 +110,7 @@ mod UnitHPBarRender {
             |> List.filter(d -> not d#hidden)
             |> List.flatMap(d -> {
                 let ref = World.EntityRef.Player(d#id);
-                // P6-1h: 暗転は World.unitModulate store（本体/バー/アイコン共通の単一真実源。
+                // 暗転は World.unitModulate store（本体/バー/アイコン共通の単一真実源。
                 // setSpriteModulate 系が Cmd.SetModulate を emit し showAllActive も同経路）。
                 let post = fc |> Option.flatMap(f ->
                     if (f#attackerId == d#id) Some((f#playerHpPost, f#dark)) else None);

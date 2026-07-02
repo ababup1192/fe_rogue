@@ -53,7 +53,7 @@ mod TestTradeMenuScene {
               staves  = List.map(sId -> Staff.lookup(sId, staffCatalog), spec#staves),
               consumables = Nil, rings = Nil}:
                 PlayerScene.Spawn);
-        // addOnePlayer は P0b で World.Command を emit する。位置 World は検証外なので discharge で剥がす。
+        // addOnePlayer は World.Command を emit する。位置 World は検証外なので discharge で剥がす。
         let withParty = TestUnitFixtures.dischargeWorldCommand(() -> List.foldLeft((acc, spec) ->
             PlayerScene.addOnePlayer(mkSpawn(spec), acc),
             MapScene.addWorldNode(Scene.empty()), specs));
@@ -120,7 +120,7 @@ mod TestTradeMenuScene {
 
     /// X を押す (キャンセル / pick 解除)。
     pub def pressXAt(s: TradeScenario): TradeScenario \ TurnPhase.State =
-        // P6-1h: 遷移が view 状態 Cmd を emit するようになったため捨て handler で吸収。
+        // 遷移が view 状態 Cmd を emit するため捨て handler で吸収。
         let closed = run { TradeMenuScene.cancelCurrent(s#scene) }
             with handler World.Command { def emit(_c, k) = k() };
         {scene = closed | s}

@@ -40,10 +40,10 @@ mod TurnFlow {
         // 次の active 味方の gridPos をローカル `withWaited` から直接拾って渡す。
         // `enterPlayerCursor` 側の PartyQuery フォールバックは sceneRef (frame 冒頭の snapshot)
         // を読むので、たった今 setWaited した駒をまだ active として返してしまう。
-        // S6: setWaited が scene 直書きを撤去し World 権威化したため、scene 上では `waitedId` の駒が
-        // まだ active に見える（frame-end の syncTreeFromWorld 前）。その 1 体を明示除外して拾う。
+        // setWaited は World 権威で書く（scene 直書きは無い）ため、scene 上では `waitedId` の駒が
+        // まだ active に見える。その 1 体を明示除外して拾う。
         match PlayerScene.firstActiveExcluding(waitedId, withWaited) {
-            // P6-2b: スナップ先セルは World.posOf（scene gridPos twin は退役）。
+            // スナップ先セルは World.posOf（位置は World 権威）。
             case Some(next) =>
                 PhaseTransitions.enterPlayerCursorAt(
                     World.posOf(World.EntityRef.Player(next#id), World.WorldQuery.get())
@@ -68,7 +68,7 @@ mod TurnFlow {
                               TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                               World.Command, World.WorldQuery} =
         let resume = allowResume and SelectedPlayer.State.get()#gatherActive;
-        // P6-2a: waited は World 直読み（scene twin は syncTree 派生退役で stale）。
+        // waited は World 直読み（scene twin は持たない）。
         let w0 = World.WorldQuery.get();
         let ids = PlayerScene.getAll(scene)
                     |> List.filter(d -> not (World.waitedOf(World.EntityRef.Player(d#id), w0)

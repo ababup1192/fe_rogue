@@ -16,9 +16,6 @@ mod TestCounterAttackRules {
     // 共通フィクスチャ
     // ════════════════════════════════════════════════════════
 
-    /// 任意座標の Player.Data。テストに不要なフィールドは固定値で埋める。
-    // 旧 playerAt fixture は decide テスト撤去で未使用となり削除（decideView は UnitView fixture を使う）。
-
     /// 任意 id / 位置 / 武器 / 瀕死状態の Enemy.Data。`killedTargetEnemyId` テストで使用。
     def enemyAt(id: Int32, x: Int32, y: Int32,
                  weapon: Option[UnitCatalog.WeaponResource],
@@ -43,9 +40,6 @@ mod TestCounterAttackRules {
     }
 
 
-    // 旧 decide(味方→敵) の 4 ケース分類テストは、Track A の faction-blind 統合で
-    // `testDecideViewUnifiesFactionBranches`（下部）に集約・置換した（旧関数は削除済）。
-
     // ════════════════════════════════════════════════════════
     // killedTargetEnemyId: 瀕死なら id、それ以外なら None
     // ════════════════════════════════════════════════════════
@@ -65,13 +59,13 @@ mod TestCounterAttackRules {
         Assert.assertEq(expected = None, result)
 
     // ════════════════════════════════════════════════════════
-    // Track A: decideView（faction-blind 統合版）= 旧 decide / decidePlayerCounter の全分類を 1 関数で
+    // decideView（faction-blind 統合版）= 所属を見ずに全分類を 1 関数で
     // ════════════════════════════════════════════════════════
 
     /// `decideView` が所属を見ずに 5 分類を返す。隣接(距離1)・剣 range{1,1} を基準に、
     /// target None→Commit / 瀕死→Kill / hp<=0(味方視点の死亡統一)→Kill / 武器なし→Commit /
-    /// 射程内→Counter / 射程外(距離3)→Commit。旧 decide(味方→敵) と decidePlayerCounter(敵→味方) の
-    /// 両分類表を 1 つの faction-blind 述語で被覆することを固定する。
+    /// 射程内→Counter / 射程外(距離3)→Commit。味方→敵・敵→味方の両分類表を
+    /// 1 つの faction-blind 述語で被覆することを固定する。
     @Test
     def testDecideViewUnifiesFactionBranches(): Unit \ Assert =
         let sword     = Some({min = 1, max = 1});

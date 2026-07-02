@@ -40,7 +40,7 @@ mod RenderWorld {
         }
 
     /// アクティブ camera の ViewTransform（render() と同じ算出）。camera 無しは identity。
-    /// B/perf: `findActiveCamera` が全 scene 走査ゆえ、Game.flix が**フレーム 1 回**計算して全 render 関数へ渡す
+    /// perf: `findActiveCamera` が全 scene 走査ゆえ、Game.flix が**フレーム 1 回**計算して全 render 関数へ渡す
     /// （各 render 関数・各 subtree root が個別に呼ぶと ~30 回/frame 走査になるため）。
     pub def viewTransform(scene: Scene[NodeTag]): Camera2D.ViewTransform \ GameEngine.Game =
         match Scene.findActiveCamera(scene) {
@@ -59,7 +59,7 @@ mod RenderWorld {
         match World.posOf(ref, world) {
             case None    => Nil
             case Some(_) =>
-                // B/m3: marker が視覚位置の単一権威（移動=`syncMarkers` の renderPos / lunge=AnimationPlayer /
+                // marker が視覚位置の単一権威（移動=`syncMarkers` の renderPos / lunge=AnimationPlayer /
                 // 静止=setGlobalPositionAt）。
                 let worldPos = Scene.globalPositionAt(unitPath, scene);
                 let flipH = World.flipHOf(ref, world);
@@ -97,14 +97,14 @@ mod RenderWorld {
                 standaloneSprite(node, worldPos, PlayerScene.spriteZIndex(), transform)
         }
 
-    /// B/m3: 移動（Position tween）した entity の実 scene marker を renderPos に合わせる（marker 単一権威）。
+    /// 移動（Position tween）した entity の実 scene marker を renderPos に合わせる（marker 単一権威）。
     /// `stepWorld` が返す active∪done の `MarkerMove` を畳み、marker を pos へ置く。marker の子（sprite/武器/HPバー）は
     /// これで一斉に同じ値へ追従＝適用点が揃い、敵の武器アイコン 1 フレームラグが解消（engine tween 退役の受け皿）。
     /// faction 分岐は `EntityScene.path` に閉じ、world→local 変換は engine（`setGlobalPositionAt`）へ委譲（snapTo と同じ）。
     pub def syncMarkers(moved: List[MarkerMove], scene: Scene[NodeTag]): Scene[NodeTag] =
         List.foldLeft((sc, m) -> Scene.setGlobalPositionAt(EntityScene.path(m#ref), m#pos, sc), scene, moved)
 
-    /// B: パスのノードを隠す（World 描画へ切替時の二重描画防止）。CanvasLayer/親ノードを隠せば祖先可視で
+    /// パスのノードを隠す（World 描画へ切替時の二重描画防止）。CanvasLayer/親ノードを隠せば祖先可視で
     /// サブツリー全体が renderArgs から外れる（drawContext の祖先 visible 合成）。不在パスは no-op（動的 menu 用）。
     pub def hideNode(path: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
         match Scene.getEngineNode(path, scene) {
@@ -112,13 +112,13 @@ mod RenderWorld {
             case Some(_) => Scene.mapEngineNode(path, n -> CanvasItem.setVisible(false, n), scene)
         }
 
-    /// B: World 描画する **in-world（camera 適用）** サブツリー root。配置物（アイテム/宝箱/階段）＋ダメージ数字/
+    /// World 描画する **in-world（camera 適用）** サブツリー root。配置物（アイテム/宝箱/階段）＋ダメージ数字/
     /// 爆発/カーソル/矢印カーソル。top-level の Cursor/ArrowCursor は World 直下でないため明示列挙。
     def worldSubtreeRoots(): List[NodePath] =
         // 配置物 3 種と fx（ダメージ数字/爆発）は render* が直描き＝ノードを積まない。
         CursorScene.cursorPath() :: ArrowCursorScene.arrowPath() :: Nil
 
-    /// B: World 描画する **CanvasLayer（camera 免除・画面固定）** サブツリー root。HUD/メニュー/minimap/各種ポップアップ。
+    /// World 描画する **CanvasLayer（camera 免除・画面固定）** サブツリー root。HUD/メニュー/minimap/各種ポップアップ。
     /// 不在（未オープンの動的 menu 等）は `subtreeDrawables`/`hideNode` とも no-op。
     def hudSubtreeRoots(): List[NodePath] =
         TopBarScene.rootPath() :: UnitCardScene.rootPath() ::
@@ -128,32 +128,32 @@ mod RenderWorld {
         LogScene.logPath() :: EnemyCardScene.rootPath() :: BattlePanelScene.rootPath() ::
         SuspendConfirmScene.rootPath() :: ItemPickupPopupScene.rootPath() :: TurnEndHoldScene.rootPath() :: Nil
 
-    /// B: World 描画する全サブツリー root（world〔camera 適用〕 ++ hud〔CanvasLayer〕）。camera 適用/免除の seam を
+    /// World 描画する全サブツリー root（world〔camera 適用〕 ++ hud〔CanvasLayer〕）。camera 適用/免除の seam を
     /// 2 サブリストで保持。順序は z-sort/effzIndex で描画に無関係。
     def subtreeRoots(): List[NodePath] = List.append(worldSubtreeRoots(), hudSubtreeRoots())
 
     // 武器アイコン/HP バーはノード自体を積まず UnitHPBarRender.renderBars / WeaponIconRender.renderIcons
     // が World store から直描きする。
 
-    /// B: polygon（Polygon2D/Arc2D）を持つ subtree root のみ（minimap マーカー円 / BattlePanel ドット / TurnEndHold リング）。
+    /// polygon（Polygon2D/Arc2D）を持つ subtree root のみ（minimap マーカー円 / BattlePanel ドット / TurnEndHold リング）。
     /// polygon の無い root を毎フレーム走査しないよう明示。
     def polygonSubtreeRoots(): List[NodePath] =
         MinimapScene.rootPath() :: BattlePanelScene.rootPath() :: TurnEndHoldScene.rootPath() :: Nil
 
-    /// B: 全 subtree（HUD/メニュー/minimap/ポップアップ等）を World render System で描く。
-    /// B/perf: `renderOrderPaths` を全 root で 1 回共有する batch API に委譲（root ごと再走査すると O(roots×N) になるため）。
+    /// 全 subtree（HUD/メニュー/minimap/ポップアップ等）を World render System で描く。
+    /// perf: `renderOrderPaths` を全 root で 1 回共有する batch API に委譲（root ごと再走査すると O(roots×N) になるため）。
     pub def renderSubtrees(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
         Scene.subtreeDrawablesForRoots(transform, subtreeRoots(), scene)
 
-    /// B: polygon を持つ subtree の Polygon2D/Arc2D を polygon チャンネルで描く（`preorderPaths` を 1 回共有）。
+    /// polygon を持つ subtree の Polygon2D/Arc2D を polygon チャンネルで描く（`preorderPaths` を 1 回共有）。
     pub def renderSubtreePolygons(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.PolygonRenderCmd] =
         Scene.subtreePolygonsForRoots(transform, polygonSubtreeRoots(), scene)
 
-    /// B: 全 subtree の scene 側 root を隠す（renderArgs から外し二重描画防止）。
+    /// 全 subtree の scene 側 root を隠す（renderArgs から外し二重描画防止）。
     pub def hideSubtrees(scene: Scene[NodeTag]): Scene[NodeTag] =
         subtreeRoots() |> List.foldLeft((acc, root) -> hideNode(root, acc), scene)
 
-    /// B/tiles: World の tileLayers（bake 済ハンドル）を camera 適用して engine の instanced tile 描画コマンドにする。
+    /// tiles: World の tileLayers（bake 済ハンドル）を camera 適用して engine の instanced tile 描画コマンドにする。
     /// renderArgs のタイル経路（`globalPositionAt`→`applyToWorldPos` + `transform#scale`）と同一 spine。
     /// `TileMapRenderCmd` は pub type alias ゆえ直組み（engine 追加なし）。個別 Drawable にせず instanced 維持
     /// （数百〜千セルでも 1 レイヤー 1 draw call）。renderArgs 由来 tileMaps の代わりにこれを renderCommands へ渡す。
@@ -177,10 +177,10 @@ mod RenderWorld {
                     }: GameEngine.TileMapRenderCmd))
         }
 
-    /// B: fog の暗幕（haze）を World render System で描く。scene の Fog ColorRect プールを使わず、
+    /// fog の暗幕（haze）を World render System で描く。scene の Fog ColorRect プールを使わず、
     /// FogScene の純粋な補集合計算（holesForDraft/mapRegion/bandDecompose）を再利用して暗幕矩形を
     /// solidBox の Drawable にする。敵/アイテムの点灯（可視性）制御は従来どおり FogScene が担い、ここは
-    /// 暗幕の描画のみ。P6-1b: scene 側の haze プールは撤去済み＝この直描きが唯一の暗幕経路。
+    /// 暗幕の描画のみ。scene 側の haze プールは持たず、この直描きが唯一の暗幕経路。
     /// 入力（origin 基準の部屋点灯・通路 torch）は `FogScene.process` と同一＝挙動不変。
     pub def renderFog(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ {SelectedPlayer.State, World.WorldQuery} =
         // ダンジョン以外（タイトル/パーティ選択/メニュー等）は Map ノードが無い＝暗幕なし。
@@ -345,7 +345,7 @@ mod RenderWorld {
                     })
         }
 
-    /// B: 全 grid 範囲オーバーレイ（移動 / 攻撃 / 敵移動 / 敵攻撃 / 味方攻撃 / 交換 / 危険範囲）を World render
+    /// 全 grid 範囲オーバーレイ（移動 / 攻撃 / 敵移動 / 敵攻撃 / 味方攻撃 / 交換 / 危険範囲）を World render
     /// System で描く。各 mod は「描画セル・色・α」だけ持ち、描画は `RangeOverlay.tileDrawables` の 1 経路に集約
     /// ＝law の汎用化。非表示のオーバーレイはセルが空ゆえ Drawable も空（毎フレーム全種を引いても無害）。
     /// 表示専用ゆえ格納セルがそのまま描画セル（EnemyRange は reachable・MoveRange は drawCells・他は cells）。
@@ -361,7 +361,7 @@ mod RenderWorld {
             tiles(DangerZoneScene.cells(scene),        DangerZoneScene.color(),        DangerZoneScene.alpha()) ::
             Nil)
 
-    // range の Tile Panel ノードは積まず、renderRangeOverlays が cells から直描きする。
+    // range の Tile Panel ノードは積まない（renderRangeOverlays が cells から直描きする）。
 
     /// 1 つの暗幕グリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は grid × tileSize。
     /// solidBox は alpha=1.0 ゆえ fog 用 alpha に上書きし、scale（=ピクセルサイズ）を

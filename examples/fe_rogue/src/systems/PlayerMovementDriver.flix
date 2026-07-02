@@ -36,13 +36,13 @@ mod PlayerMovementDriver {
                           SelectedPlayer.State, World.Command, World.WorldQuery,
                           ItemPickupPopupScene.State} =
         let lord = PlayerScene.lordId();
-        // P6-2b fix: 移動前位置は World.posOf（stepFor が emit する **前**の読み＝pre-move。scene twin は stale）。
+        // 移動前位置は World.posOf（stepFor が emit する **前**の読み＝pre-move。scene twin は持たない）。
         let prev = World.posOf(World.EntityRef.Player(lord), World.WorldQuery.get())
                        |> Option.getWithDefault(PlayerScene.getGridPos(lord, scene));
         let (movedNode, movedScene) =
             stepFor(selectAllowedPred(TurnPhase.Phase.GatherMove, scene),
                     PlayerScene.selectedSlideDuration(), node, path, scene);
-        // S5b: move 関数は scene gridPos を直書きしなくなった（frame-end の syncTreeFromWorld で derive）。
+        // move 関数は scene gridPos を書かない（位置は World 権威）。
         // よって移動後の主人公位置は scene でなく **World 由来の board**（`Cmd.Move` 反映済み）から読む。
         let now = Board.playerPositions(BoardQuery.board())
             |> List.find(p -> { let (pid, _) = p; pid == lord })
@@ -67,7 +67,7 @@ mod PlayerMovementDriver {
         let waited    = waitedAllyCells(scene);
         let allyCells = Board.allPlayerCells(board)
             |> List.filter(c -> not Board.containsCell(c, waited));
-        // S6: 「このフレーム追従で動けるか」(= 非 waited & 残移動あり) は当フレームの waited を
+        // 「このフレーム追従で動けるか」(= 非 waited & 残移動あり) は当フレームの waited を
         // 正しく見る必要がある sim 判定＝World 権威で読む。
         // 階段離脱済み(hidden)の駒は盤面から退場済み。占有・追従対象から除く
         // （board は hidden を除外済み・ここだけ含めるとゴースト駒が階段マスを塞ぐ）。
@@ -116,14 +116,13 @@ mod PlayerMovementDriver {
             case _                            => _ -> true
         }
 
-    /// S6: 味方の waited を **World 権威**で読む sim seam（scene 直書き撤去後）。
-    /// scene 直書きをやめ frame-end の syncTreeFromWorld で derive するため、当フレームの
+    /// 味方の waited を **World 権威**で読む sim seam。当フレームの
     /// waited は World（Cmd.SetWaited 反映済み）から読む。未登録は scene 値へ fallback。
     def waitedW(id: Int32, fallback: Bool, world: World): Bool =
         World.waitedOf(World.EntityRef.Player(id), world) |> Option.getWithDefault(fallback)
 
     /// 待機中(行動済み)かつ生存している味方のグリッドマス一覧。集合の「すれ違えない障害物」。
-    /// S6: waited は World 権威で読む（this-frame の集合移動判定＝sim）。
+    /// waited は World 権威で読む（this-frame の集合移動判定＝sim）。
     def waitedAllyCells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ World.WorldQuery =
         let world = World.WorldQuery.get();
         // 階段離脱済み(hidden)の駒は盤面から退場済みなので障害物に数えない
@@ -149,13 +148,13 @@ mod PlayerMovementDriver {
                 else if (PlayerScene.isMoving(data#id)) (node, scene)
                 else
                     let board = BoardQuery.board();
-                    // F3b: 入力(view)→System(sim)→event→replay(view) の seam。
+                    // 入力(view)→System(sim)→event→replay(view) の seam。
                     //   VIEW: 押下方向を MoveIntent(dir) に写す（readHeldDirection）。
                     //   SYSTEM: stepPlayerMove が合法判定（壁/範囲/敵占有）→World に Cmd.Move→Moved を返す。
                     //   VIEW: replayMovedEvent が Moved を Tween/anim 再生し、着地マスを自動取得。
-                    // 同 dispatch 内で emit→replay ゆえ timing 不変（pipeline 段移設は F3c）。
-                    // P6-2b fix: 移動の起点は World.posOf（Cmd.Move の emit **前**＝pre-move）。
-                    // ノード Data の gridPos は twin 退役（syncTree 撤去）後は更新されず stale で、
+                    // 同 dispatch 内で emit→replay ゆえ timing は 1 フレームに収まる。
+                    // 移動の起点は World.posOf（Cmd.Move の emit **前**＝pre-move）。
+                    // ノード Data の gridPos は twin を持たず（位置は World 権威）更新されないため、
                     // これを起点に使うと「古い位置＋方向」へ Move が飛び斜め移動に見えるバグになる。
                     let origin = World.posOf(World.EntityRef.Player(data#id), World.WorldQuery.get())
                                      |> Option.getWithDefault(data#gridPos);
@@ -168,7 +167,7 @@ mod PlayerMovementDriver {
                         case Some(event) =>
                             // INVARIANT: movedTarget / replayMovedEvent は move-seam 専用＝Moved 以外を渡すと
                             // bug! で落ちる（no-op ではない）。ここは stepPlayerMove が常に Moved を返すので安全。
-                            // Phase C で combat SimEvent を配線したら、その event は必ず Moved に pre-filter してから渡すこと。
+                            // combat SimEvent をここへ配線するなら、その event は必ず Moved に pre-filter してから渡すこと。
                             let target   = PlayerScene.movedTarget(event);
                             let replayed = PlayerScene.replayMovedEvent(event, board#map, slide, scene);
                             returnNode(node, path, autoPickupOrLog(data, target, replayed))
@@ -179,7 +178,7 @@ mod PlayerMovementDriver {
     /// SYSTEM(sim): 選択中プレイヤーの 1 歩を判定し、合法なら World に位置を書いて `Moved` を返す。
     /// 合法性は board（壁/MoveRange/敵占有）の純粋判定（`Board.tryMoveWithRange`）。`allowed` は
     /// フェーズ固有の範囲制限（physicsStep は MoveRange、gatherStep は集合範囲）。
-    /// gridPos は frame-end の `World.syncTreeFromWorld` で World 由来に derive＝ここでは scene を触らない。
+    /// gridPos は World 権威＝ここでは scene を触らない。
     /// 返り値 `Moved` を VIEW（`PlayerScene.replayMovedEvent`）が Tween/anim 再生する。
     pub def stepPlayerMove(id: Int32, fromPos: {x = Int32, y = Int32},
                             dir: {x = Int32, y = Int32}, board: Board,
@@ -204,7 +203,7 @@ mod PlayerMovementDriver {
                              scene: Scene[NodeTag]):
             Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger, World.Command,
                               ItemPickupPopupScene.State, World.WorldQuery} =
-        // P6-1e: 床アイテムは World store から読む（scene ノード撤去済み）。
+        // 床アイテムは World store から読む。
         match World.groundItemAtOf(target, World.WorldQuery.get()) |> Option.map(d -> d#item) {
             case None            => scene
             case Some(kind) =>

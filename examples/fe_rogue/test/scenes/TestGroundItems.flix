@@ -61,7 +61,7 @@ mod TestGroundItems {
             |> Scene.addChildAt(MapScene.worldPath(), "Items", marker())
             |> Scene.addChildAt(MapScene.worldName() :: "Items" :: Nil, "Item_0", body)
 
-    /// P3-c: World store 権威の証跡。scene から seed した World は床アイテムを groundItemAtOf で返し、
+    /// World store 権威の証跡。scene から seed した World は床アイテムを groundItemAtOf で返し、
     /// takeAt の emit した `Cmd.RemoveItem` を applyCmd すると Map から消える。
     @Test
     def testTakeAtDrivesWorldItemStore(): Unit \ Assert =
@@ -69,7 +69,7 @@ mod TestGroundItems {
             let scene = sceneWithItem();
             let wref = Ref.fresh(rc, World.syncFromScene(scene, World.empty()));
             let before = World.groundItemAtOf({x = 4, y = 5}, Ref.get(wref)) |> Option.map(d -> d#itemKey);
-            // P6-1e: takeAt は World store を読んで RemoveItem を emit する（WorldQuery+Command を同 Ref で wire）。
+            // takeAt は World store を読んで RemoveItem を emit する（WorldQuery+Command を同 Ref で wire）。
             run {
                 run { discard GroundItems.takeAt({x = 4, y = 5}, scene) }
                     with handler World.WorldQuery { def get(k) = k(Ref.get(wref)) }

@@ -22,8 +22,7 @@ mod CounterAttackRules {
         case Commit
     }
 
-    /// **Track A（faction 分岐除去）: 旧 `decide`(味方→敵) と `decidePlayerCounter`(敵→味方) の
-    /// faction-split mirror pair を faction-blind な UnitView ベースの 1 関数に統合した置換。**
+    /// **faction-blind な UnitView ベースで攻撃完了後の分類を 1 関数で判定する。**
     /// `UnitView` は既に所属非依存（pos/hp/isDying/weaponRange を id 結合済み）ゆえ、攻撃側/防御側の
     /// faction を `match` せずに判定できる。Kill 条件は敵の `isDying` と味方の `hp<=0` を一律に畳む
     /// （死亡モデルの非対称を view 判定側で吸収）。反撃可否は既存の faction-blind 述語 `UnitView.canAttack`。

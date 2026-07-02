@@ -737,10 +737,9 @@ Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
     /// 拾得ゲート（`PlayerScene.wouldOverloadByPicking`）と同じ基準で、まとめ渡しが受け手を
     /// 移動不可まで積み込むのを防ぐ（アイテム単位で判定し、超える 1 個目の手前で止める）。
     /// giver / receiver / 対象スロットのいずれかが解決できなければ渡さない扱い。
-    /// P2-r1 注: ここは PartyQuery へ flip **しない**。まとめ渡しの fold 内で 1 個渡すごとに
+    /// ここは PartyQuery へ flip **しない**。まとめ渡しの fold 内で 1 個渡すごとに
     /// 最新の積載を見る read-during-mutation であり、threaded な acc scene（fresh）を読むのが正
     /// （snapshot 供給の mock/overlay に寄せると 2 個目以降の重量ゲートが陳腐化する）。
-    /// World 読みへの付け替えは write 撤去（P6 束ね）と同時に行う。
     def receiverCanAccept(giverId: Int32, receiverId: Int32,
                            kind: PlayerData.ItemKind, scene: Scene[NodeTag]): Bool =
         match (PlayerScene.get(giverId, scene), PlayerScene.get(receiverId, scene)) {

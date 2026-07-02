@@ -15,7 +15,7 @@ mod EntityScene {
     }
 
     /// EntityRef の UnitView（faction 非依存ビュー）。
-    /// P6-2b fix: pos は **World.posOf で上書き**する（scene Data の gridPos twin は退役＝凍結値。
+    /// pos は **World.posOf で上書き**する（scene Data の gridPos twin は退役＝凍結値。
     /// これを attack lunge の origin に使うとマーカーが古いセルへ飛び・戻るバグになる）。
     pub def unitView(ref: World.EntityRef, scene: Scene[NodeTag]): Option[UnitView] \ World.WorldQuery =
         let w = World.WorldQuery.get();

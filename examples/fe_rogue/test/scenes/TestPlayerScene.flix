@@ -82,7 +82,7 @@ mod TestPlayerScene {
                    scene: Scene[NodeTag]): Scene[NodeTag] =
         match Scene.getEngineNode(PlayerScene.playerPath(id), scene) {
             case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
-                // P0a: moveTo は World.Command を emit するので test では discharge（位置 World は検証外）。
+                // moveTo は World.Command を emit するので test では discharge（位置 World は検証外）。
                 let (newMarker, newData) =
                     TestUnitFixtures.dischargeWorldCommand(() ->
                         PlayerScene.moveTo(id, map, target, marker, data,
@@ -93,7 +93,7 @@ mod TestPlayerScene {
             case _ => bug!("applyMove: expected Player at playerPath(${id})")
         }
 
-    /// addOnePlayer は P0b で位置を World へ seed する `World.Command` を emit する。本テスト群は
+    /// addOnePlayer は位置を World へ seed する `World.Command` を emit する。本テスト群は
     /// 位置 World を検証しないので、scene 構築の各 spawn を discharge で包む薄いラッパ。
     /// pipe で chain できるよう scene を最後の引数に取る（`|> addOnePlayerT(sp)`）。
     def addOnePlayerT(sp: PlayerScene.Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -215,7 +215,7 @@ mod TestPlayerScene {
                 |> addOnePlayerT(mkSpawn(0, lordPos))
                 |> addOnePlayerT(mkSpawn(1, {x = 5, y = 4}));
             TestUnitFixtures.withSelectionRef(rc, sel, () ->
-                // P6-2b: 現在位置は World 読み（空 World → scene fallback で従来どおり）。
+                // 現在位置は World 読み（空 World → scene fallback で従来どおり）。
                 run { PlayerScene.gatherNotMovedYet(scene) }
                     with handler World.WorldQuery { def get(k) = k(World.empty()) })
         }
@@ -535,7 +535,7 @@ mod TestPlayerScene {
         let scene = Scene.empty()
             |> MapScene.addWorldNode
             |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}));
-        // P6-2a: waited は scene twin 退役（syncTree 派生も撤去）。usedStairs/hidden は scene 権威、
+        // waited は scene twin 退役（syncTree 派生も撤去）。usedStairs/hidden は scene 権威、
         // waited は World store を直接検証する。
         region rc {
             let wref = Ref.fresh(rc, World.syncFromScene(scene, World.empty()));

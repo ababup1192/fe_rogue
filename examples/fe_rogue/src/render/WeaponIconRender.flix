@@ -1,6 +1,6 @@
 /// WeaponIconRender — キャラ左上に常時表示する「装備武器の系統シンボル」アイコン
 ///
-/// P6-1g: scene ノードは全廃。装備武器の系統は World store（weaponView）から導出し、
+/// scene ノードは持たない。装備武器の系統は World store（weaponView）から導出し、
 /// `renderPlates`（囲い ColorRect×2 = drawables チャンネル）と `renderGlyphs`
 /// （WeaponGlyph の Polygon2D/Arc2D 値 = polygon チャンネル）が毎フレーム直描きする。
 /// 待機/行動済みの暗転は waited/enemyActed store からの乗算合成で再現する。
@@ -43,7 +43,7 @@ mod WeaponIconRender {
     /// グリフ本体（Polygon2D / Arc2D）は不透明のまま残し、囲みだけ薄くする。
     def boxAlpha(): Float32 = 0.6f32
 
-    // ─── 公開 API（P6-1g: 直描き） ────────────────────────────
+    // ─── 公開 API（直描き） ────────────────────────────
 
     /// 対象ユニット列（味方＋敵）を「アイコン中心 world 座標・武器系統・暗転」の描画入力に畳む。
     /// 素手（weaponView 内側 None）は描かない。退場（hidden）ユニットも描かない。
@@ -58,7 +58,7 @@ mod WeaponIconRender {
                     ({center = center, weaponType = wv#weaponType, modColor = modColor}) :: Nil
                 case _ => Nil
             };
-        // P6-1h: 暗転は World.unitModulate store（本体/バー/アイコン共通の単一真実源）。
+        // 暗転は World.unitModulate store（本体/バー/アイコン共通の単一真実源）。
         let players = PlayerScene.getAll(scene)
             |> List.filter(d -> not d#hidden)
             |> List.flatMap(d -> ofUnit(World.EntityRef.Player(d#id), PlayerScene.playerPath(d#id),

@@ -3,7 +3,7 @@
 /// 床のアイテムを拾った瞬間に、画面中央のウィンドウへ「○○を手に入れた」を出し、
 /// フェードイン → 少し表示 → フェードアウトで消す。あわせて取得音を鳴らす。
 ///
-/// 自走モデル（PhaseBannerScene と同型）:
+/// 自走モデル:
 ///   - 起動時に CanvasLayer のウィンドウを1つ常駐させる（`add`、初期は非表示）。
 ///   - 拾った瞬間に `show(itemName, scene)`（純粋・effect なし）で文言をセットし、フェードを
 ///     先頭から開始し、「取得音を鳴らす予約」を立てる。
@@ -16,7 +16,7 @@
 ///   そこで窓（Panel）は背景/枠の alpha で本当にフェードし、文字は modulate を
 ///   「窓の背景色 → 白」に補間し、薄い区間では非表示にして“フェードしているように”見せる。
 ///
-/// ノード構造（drawLayer=6。PhaseBanner=5 より前面）:
+/// ノード構造（drawLayer=6。他 HUD より前面）:
 ///   ItemPickupPopup (CanvasLayer, NodeTag.ItemPickupPopup)
 ///     ├─ window (Panel, 画面中央の約40%サイズ, NoTag)   ← 背景/枠の alpha でフェード
 ///     └─ text   (Label2D, 中央寄せ, NoTag)               ← modulate 補間 + 可視ゲートで擬似フェード
@@ -66,7 +66,7 @@ mod ItemPickupPopupScene {
     def windowName(): String = "window"
     def textName(): String = "text"
 
-    /// B: render-from-World が subtree を描く/隠す root（CanvasLayer）。
+    /// render-from-World が subtree を描く/隠す root（CanvasLayer）。
     pub def rootPath(): NodePath = rootName() :: Nil
     def windowPath(): NodePath = rootName() :: windowName() :: Nil
     def textPath(): NodePath = rootName() :: textName() :: Nil
@@ -77,7 +77,7 @@ mod ItemPickupPopupScene {
     /// 取得音（project.json の "sounds" に登録した name と一致させる）。
     def getItemSound(): String = "get_item"
 
-    /// 描画レイヤー。ターン切替バナー(5)より前面に出す。
+    /// 描画レイヤー。他の HUD より前面に出す。
     def drawLayer(): Int32 = 6
 
     /// 文字の描画順（窓より前）。

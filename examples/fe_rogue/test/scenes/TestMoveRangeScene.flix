@@ -48,7 +48,7 @@ mod TestMoveRangeScene {
             resource = TestUnitFixtures.testResource(4, 10),
             weapons = Nil, staves = Nil, consumables = Nil, rings = Nil
         }: PlayerScene.Spawn);
-        // addOnePlayer は P0b で World.Command を emit する。位置 World は検証外なので discharge で剥がす。
+        // addOnePlayer は World.Command を emit する。位置 World は検証外なので discharge で剥がす。
         TestUnitFixtures.dischargeWorldCommand(() -> Scene.empty()
             |> MapScene.addWorldNode
             |> Scene.addNode("DungeonLevel0",
@@ -72,7 +72,7 @@ mod TestMoveRangeScene {
                         drafts = MoveDraft.DraftAction.MovedFrom(0, cell(5, 5)) :: Nil,
                         gatherActive = false}: SelectedPlayer.Selection);
             let after = TestUnitFixtures.withSelectionRef(rc, sel, () ->
-                // P6-2b: 盤面/位置は World 読み（空 World → scene fallback で従来どおり）。
+                // 盤面/位置は World 読み（空 World → scene fallback で従来どおり）。
                 run { MoveRangeScene.refresh(scene) }
                     with handler World.WorldQuery { def get(k) = k(World.empty()) });
             Assert.assertEq(

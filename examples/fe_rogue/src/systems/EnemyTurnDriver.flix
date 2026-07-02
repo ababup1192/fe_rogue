@@ -39,12 +39,11 @@ mod EnemyTurnDriver {
         Scene.addChild(MapScene.worldName(), driverName(),
             EngineNode.Marker2DWithState(marker, NodeTag.EnemyTurnDriver), scene)
 
-    /// F8: 敵ターン System（`Scene → Scene`）。**Node lifecycle callback ではなく**
+    /// 敵ターン System（`Scene → Scene`）。**Node lifecycle callback ではなく**
     /// gameLoop のフレームパイプラインが明示的に 1 回呼ぶ frame-paced System。
-    /// 旧 `process(delta,node,path,scene)` は node/path/delta を一切使わない pass-through だった
-    /// （driver は payload-less stateless）ため、node 不要の純 `Scene→Scene` に昇格。
+    /// driver は payload-less/stateless なので node/path/delta を要さず純 `Scene→Scene`。
     /// phase 別に動作を分岐 (EnemyTurn → stepOnce / PlayerAttackHold → hold 終了判定 / 他 → no-op)。
-    /// 前後順序依存（combat の anyAttacking・TopBar の busy/observed）は F8-slice1/2 で World 経由＝順序非依存。
+    /// 前後順序依存（combat の anyAttacking・TopBar の busy/observed）は World 経由＝順序非依存。
     pub def step(scene: Scene[NodeTag]):
                     Scene[NodeTag]
                     \ {GameEngine.Game,
@@ -66,7 +65,7 @@ mod EnemyTurnDriver {
                 // gating する: 演出ホールド中 / 味方 attack_lunge 中 / 敵反撃 attack_lunge 中。
                 // どれも抜けた瞬間に commitWaitedAndAdvance で味方を waited にして次フェーズへ。
                 if (Pacing.State.isHolding()
-                    or World.anyPlayerAttacking(World.WorldQuery.get())     // F8-slice1: 順序非依存に
+                    or World.anyPlayerAttacking(World.WorldQuery.get())
                     or World.anyEnemyAttacking(World.WorldQuery.get())) scene
                 else TurnFlow.commitWaitedAndAdvance(scene)
             // 移動中に「暗い新規部屋の未起動敵に接敵(隣接)」したら強制たいき。個別はその味方だけ、
@@ -103,8 +102,7 @@ mod EnemyTurnDriver {
     /// では再発火しない。検出自体は純粋で effect は `SelectedPlayer.State`（drafts 読み）だけ。
     def bumpedDarkRoomEnemy(scene: Scene[NodeTag]): Bool \ {SelectedPlayer.State, BoardQuery, World.WorldQuery} =
         let drafts  = SelectedPlayer.State.get()#drafts;
-        // P6-2b: 位置は World 上書き Data（scene gridPos twin は退役）。
-        let players = PlayerScene.getAllWithWorldPos(scene);
+        let players = PlayerScene.getAllWithWorldPos(scene);  // 位置は World 上書き Data（gridPos は World 権威）
         if (not MoveDraft.anyMovedFromOrigin(players, drafts)) false
         else {
             let placements = MapScene.getPlacements(scene);
@@ -116,7 +114,7 @@ mod EnemyTurnDriver {
                                   origin = MoveDraft.originOf(d#id, drafts)
                                            |> Option.getWithDefault(d#gridPos)});
             let litRooms = MinimapScene.litRoomsDrafted(units, placements, roomCount);
-            // P2: 接敵判定の board を World 由来へ（units stats は scene read-model・挙動不変）。
+            // 接敵判定の board は World 由来（units stats は scene read-model）。
             let enc = EncounterBuilder.fromBoardQuery(scene);
             EnemyScene.getAllWithWorldPos(scene)
                 |> List.filter(e -> not e#isDying and not e#alerted)
@@ -148,8 +146,8 @@ mod EnemyTurnDriver {
         let actives = EnemyScene.getAllWithWorldPos(scene)
             |> List.filter(e -> not e#isDying and Option.isEmpty(e#attackTargetId));
         // 行動順は純粋関数 `orderedSteps` で決める（下記）。board を組めるときだけ Some で渡す。
-        // P6-2b: board は World 由来（World.toBoard）。scene gridPos twin 退役に伴い
-        // BoardSnapshot.fromScene（scene pieces）は live から撤去（fromScene は board-lock guard/テスト用に残置）。
+        // board は World 由来（World.toBoard）。live は常に World.toBoard を使い、
+        // BoardSnapshot.fromScene（scene pieces）は board-lock guard/テスト用の seam。
         let boardOpt =
             if (List.isEmpty(MapScene.tryGetPlacements(scene))) None
             else Some(World.toBoard(World.WorldQuery.get(), scene));
@@ -178,18 +176,18 @@ mod EnemyTurnDriver {
                 CustomEffects.GameOverRequest,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
         // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
-        if (World.enemyTurnBusyOf(World.WorldQuery.get())) scene             // F8-slice2: 順序非依存に
+        if (World.enemyTurnBusyOf(World.WorldQuery.get())) scene
         else if (Pacing.State.isHolding()) scene
         else if (not CameraScene.isSettled(scene)) scene
-        else if (World.anyEnemyAttacking(World.WorldQuery.get())) scene      // F8-slice1
-        else if (World.anyPlayerAttacking(World.WorldQuery.get())) scene     // F8-slice1
+        else if (World.anyEnemyAttacking(World.WorldQuery.get())) scene
+        else if (World.anyPlayerAttacking(World.WorldQuery.get())) scene
         else match EnemyTurn.Queue.peekFront() {
             case None       =>
                 // キュー空 + 攻撃モーション無し → 敵ターン終了。
                 // ただし敵 0 体だと敵ターンが同フレームに始まったばかりで、上部バーがまだ「敵ターン」を
                 // 観測（赤へ切替＋hold 開始）していないことがある。観測するまで 1 フレーム待ってから
                 // 閉じる（待たないとフェイズ表示が一度も赤にならずターンが閉じる）。
-                if (not World.phaseObservedEnemyOf(World.WorldQuery.get())) scene  // F8-slice2: 順序非依存に
+                if (not World.phaseObservedEnemyOf(World.WorldQuery.get())) scene
                 else endTurn(scene)
             case Some(step) =>
                 if (World.isAnimating(World.EntityRef.Enemy(step#id), World.WorldQuery.get())) scene
@@ -258,8 +256,7 @@ mod EnemyTurnDriver {
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
                 SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery,
                 PlayerData.PartyQuery} =
-        // P2 field-complete: bottleUsed は World 権威（reader flip 完了）。未登録の敵は「未投擲」＝false 既定。
-        //（旧: scene fallback `data#bottleUsed`。syncTree 撤去で scene 側は spawn 値のまま＝未登録時も false ゆえ等価。）
+        // bottleUsed は World 権威。未登録の敵は「未投擲」＝false 既定。
         let curBottleUsed = World.bottleUsedOf(World.EntityRef.Enemy(step#id), World.WorldQuery.get())
                                 |> Option.getWithDefault(false);
         if (curBottleUsed)
@@ -269,7 +266,7 @@ mod EnemyTurnDriver {
             case Some(afterThrow) =>
                 // 投げた → このターンは投擲で終了。瓶を使用済みにして行動済み暗転。
                 Pacing.State.hold(450 |> Duration.millis);
-                // S6: bottleUsed は World 権威。Cmd emit のみ・scene 直書きは撤去（syncTree が World 由来で derive）。
+                // bottleUsed は World 権威。Cmd emit のみ・scene 直書きはしない。
                 World.Command.emit(World.Cmd.SetBottleUsed(World.EntityRef.Enemy(step#id), true));
                 EnemyScene.setActed(step#id, afterThrow)
             case None => applyNormalStep(step, data, scene)
@@ -282,18 +279,18 @@ mod EnemyTurnDriver {
                 Pacing.State, Math.Random, CustomEffects.RingTransformRequest, World.Command, BoardQuery,
                 World.WorldQuery, PlayerData.PartyQuery} =
                 // 盤面 + 盤上ユニットを 1 箇所で結合 (位置×ステータスの join は Encounter に集約)。
-                // P2: EnemyAI 入力の board を World 由来へ（units stats は scene read-model・dual-write で位置一致・挙動不変）。
+                // EnemyAI 入力の board は World 由来（units stats は scene read-model・位置一致）。
                 let enc = EncounterBuilder.fromBoardQuery(scene);
                 let board = enc#board;
-                // F7: alerted を **World 由来**で読む（reader flip・汎用 WorldQuery 経由）。未登録は scene fallback。
+                // alerted を **World 由来**で読む（汎用 WorldQuery 経由）。未登録は scene fallback。
                 let w0 = World.WorldQuery.get();
-                // P6-2b: AI の self view も World 由来（scene の d#hp は ECS 被弾後 stale）。未登録は scene fallback。
+                // AI の self view も World 由来（scene の d#hp は ECS 被弾後 stale）。未登録は scene fallback。
                 let self = World.unitViewFromWorld(World.EntityRef.Enemy(step#id), w0, scene)
                     |> Option.getWithDefault(EnemyScene.unitView(data));
                 let curAlerted = World.alertedOf(World.EntityRef.Enemy(step#id), w0)
                                     |> Option.getWithDefault(data#alerted);
                 let (action, updated) = EnemyAI.decideAction(enc, self, curAlerted);
-                // F7-spike: alerted を World にも dual-write（scene 直書きと併発）。
+                // alerted を World にも dual-write（scene 直書きと併発）。
                 World.Command.emit(World.Cmd.SetAlerted(World.EntityRef.Enemy(step#id), updated#alerted));
                 let withAlert = EnemyScene.mapEnemy(step#id,
                     d -> {alerted = updated#alerted | d}, scene);
@@ -338,7 +335,7 @@ mod EnemyTurnDriver {
                         // 未起動の徘徊型: 同モジュール内の歩ける 1 マスへ乱数で動く（1 ターン 1 マス）。
                         // 行先選択にだけ乱数が要るため decideAction でなくここで選ぶ（decideAction は pure）。
                         // 候補なし（袋小路・包囲）なら静止。徘徊しても remaining は使わず即行動済み。
-                        // F7-slice3: prevPos を World 由来で読む（reader flip・w0 は applyNormalStep 冒頭の WorldQuery snapshot）。
+                        // prevPos を World 由来で読む（w0 は applyNormalStep 冒頭の WorldQuery snapshot）。
                         match RandomUtil.pick(EnemyAI.wanderCandidates(board, data#gridPos, World.prevPosOf(World.EntityRef.Enemy(step#id), w0))) {
                             case None         => EnemyScene.setActed(id, withAlert)
                             case Some(target) =>
@@ -434,7 +431,7 @@ mod EnemyTurnDriver {
             case Some(EffectFlow.FlowEffect.RequestReplace(actions)) =>
                 let plan = List.flatMap(a -> EffectPlan.planAction(a, replacePlanCtx(enemyId, targetId, p)), actions);
                 EffectRunner.runPlan(enemyTurnEffectHandlers(data), plan, scene)
-                    !> (s -> World.emitHpSets(plan, s))  // F6a: hp も境界で World へ dual-write（tap）
+                    !> (s -> World.emitHpSets(plan, s))  // hp も境界で World へ dual-write（tap）
             case _ => normalEnemyAttack(enemyId, targetId, p, scene)
         }
 
@@ -515,7 +512,7 @@ mod EnemyTurnDriver {
             // リーダーが階段で退場(usedStairs=hidden)済みだと毎ターン階段にカーソルが飛ぶので、
             // フロアに残るアクティブな駒(`firstActive`)へ明示スナップする。
             match PlayerScene.firstActive(lit) {
-                // P6-2b: スナップ先セルは World.posOf（scene gridPos twin は退役）。
+                // スナップ先セルは World.posOf（位置は World 権威）。
                 case Some(next) => PhaseTransitions.enterPlayerCursorAt(
                     World.posOf(World.EntityRef.Player(next#id), World.WorldQuery.get())
                         |> Option.getWithDefault(next#gridPos), lit)

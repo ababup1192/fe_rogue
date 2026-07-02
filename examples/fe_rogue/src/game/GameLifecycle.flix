@@ -43,10 +43,10 @@ mod GameLifecycle {
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, PartySelection.State, World.Command, World.WorldQuery,
                 TopBarScene.State} =
-        // P6-1d/e: 前フロアの配置物 store（宝箱/床アイテム）を掃除（scene 再構築での自動 prune は廃止＝明示 Cmd）。
+        // 前フロアの配置物 store（宝箱/床アイテム）を掃除（scene 再構築での自動 prune は廃止＝明示 Cmd）。
         World.Command.emit(World.Cmd.ClearChests);
         World.Command.emit(World.Cmd.ClearItems);
-        // P6-2c: 前フロアのユニット store も一掃（spawn がこの後 seed し直す）。
+        // 前フロアのユニット store も一掃（spawn がこの後 seed し直す）。
         World.Command.emit(World.Cmd.ClearUnits);
         Scene.empty()
             |> MapScene.add(floor)
@@ -67,7 +67,7 @@ mod GameLifecycle {
             |> FogScene.applyFog
             // ミニマップ (最終 placements / 階段を読むため末尾)。訪問記憶はフロア再構築で自動リセット。
             |> MinimapScene.add
-            // B/tiles: マップノード再構築の世代を +1（gameLoop の tile bake トリガ＝新フロアのタイルを World へ焼く）。
+            // マップノード再構築の世代を +1（gameLoop の tile bake トリガ＝新フロアのタイルを World へ焼く）。
             |> (s -> { World.Command.emit(World.Cmd.BumpTileGen); s })
             // 地形 read-model（toBoard の壁/サイズ源）も build choke で World へ入れる。
             |> (s -> { World.Command.emit(World.Cmd.SetMapSnapshot(Some(BoardSnapshot.mapSnapshotOf(s)))); s })
@@ -172,7 +172,7 @@ mod GameLifecycle {
           enemies  = EnemyScene.captureSnaps(scene, catalogs#weapons, catalogs#rings),
           items    = GroundItems.captureSnaps(scene),
           chests   = Chests.captureSnaps(scene),
-          // P2-r2: 階段セルは World.stairsPos（P3-a 権威化済み）から読む。
+          // 階段セルは World.stairsPos（World 権威）から読む。
           stairs   = World.stairsPosOf(World.WorldQuery.get())}: FloorSnapshot.T)
 
     /// 進入時スナップショットを `FloorSnapshot.State` に保存して scene をそのまま返す。
@@ -189,11 +189,11 @@ mod GameLifecycle {
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, SelectedPlayer.State, World.Command,
                 World.WorldQuery, TopBarScene.State} =
         let floor = FloorCatalog.get(snap#floorId, catalogs#floors);
-        // P6-1d/e: 前フロア/前 run の配置物 store を掃除してから addFromSnaps で再 spawn する
+        // 前フロア/前 run の配置物 store を掃除してから addFromSnaps で再 spawn する
         // （scene 再構築での自動 prune は廃止＝明示 Cmd。addFromSnaps より前が必須）。
         World.Command.emit(World.Cmd.ClearChests);
         World.Command.emit(World.Cmd.ClearItems);
-        World.Command.emit(World.Cmd.ClearUnits);  // P6-2c: 前 run のユニット store も一掃
+        World.Command.emit(World.Cmd.ClearUnits);  // 前 run のユニット store も一掃
         let scene = Scene.empty()
             |> MapScene.addFromPlan(snap#mapPlan)
             |> FogScene.add
@@ -209,9 +209,9 @@ mod GameLifecycle {
             |> FogScene.applyFog
             |> MinimapScene.add;
         SceneLoader.applyAudioAttach(scene);
-        // B/tiles: マップノード再構築の世代を +1（gameLoop の tile bake トリガ＝復元/restartFloor のタイルを World へ焼く）。
+        // マップノード再構築の世代を +1（gameLoop の tile bake トリガ＝復元/restartFloor のタイルを World へ焼く）。
         World.Command.emit(World.Cmd.BumpTileGen);
-        // P6-2c: 地形 read-model も build choke で World へ。
+        // 地形 read-model も build choke で World へ。
         World.Command.emit(World.Cmd.SetMapSnapshot(Some(BoardSnapshot.mapSnapshotOf(scene))));
         scene
 
@@ -219,7 +219,7 @@ mod GameLifecycle {
     def placeStairsFromSnap(stairs: Option[{x = Int32, y = Int32}],
                              scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match stairs {
-            case Some(cell) => Stairs.placeAt(cell, scene)   // P3-a: placeAt が Cmd.SetStairs を emit（World 権威）
+            case Some(cell) => Stairs.placeAt(cell, scene)   // placeAt が Cmd.SetStairs を emit（World 権威）
             case None       => scene
         }
 

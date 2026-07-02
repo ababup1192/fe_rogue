@@ -1,4 +1,4 @@
-// Roll-sequence 等価テスト（slice `rng-world`）。
+// Roll-sequence 等価テスト。
 //
 // CHOKEPOINT 不変条件: combat の全ロールが単一の `World.RngDraw.nextPercent` を **固定の順序・回数** で
 // 通ることを固定する。seeded PRNG（withRecordedRolls）で applyAttackHit / applyEnemyAttackHit /
@@ -104,7 +104,7 @@ mod TestCombatRolls {
         region rc {
             let scene = battleScene(playerData(200, 99, 3),
                                     enemyData(1, 80, 3, None, None));
-            // P6-5a: ONE-Ref traced world（Command+Query 同一 World）。RngDraw は内側の
+            // ONE-Ref traced world（Command+Query 同一 World）。RngDraw は内側の
             // withRecordedRolls が先に intercept する（traced の seeded RngDraw は到達しない）。
             let (out3, _keys, _w) =
                 TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
@@ -134,7 +134,7 @@ mod TestCombatRolls {
         region rc {
             let scene = battleScene(playerData(80, 0, 3),
                                     enemyData(50, 200, 3, Some(0), onHitEffectRule()));
-            // P6-5a: ONE-Ref traced world（上と同型）。
+            // ONE-Ref traced world（上と同型）。
             let (out3, _keys, _w) =
                 TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
                 TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->

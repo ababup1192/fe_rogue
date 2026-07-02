@@ -91,9 +91,9 @@ mod TestMapScene {
             centerToTuple(RoomLayout.moduleCenter(9, p0 :: Nil)))
 
     // ════════════════════════════════════════════════════════
-    // MapSnapshot の純関数層（旧クロージャフィールドの置換）
+    // MapSnapshot の純関数層
     //   地形は wallCells / placements の純粋データから計算する。
-    //   旧 testGridToWorld / testTileSize ヘルパー廃止で失われた座標系の pin を補う。
+    //   座標系（mapToLocal / gridToWorld 等）の pin をここで担う。
     // ════════════════════════════════════════════════════════
 
     /// 壁/床判定: wallCells のセルは壁、範囲内の他セルは床、範囲外（size の外）は床でない。

@@ -71,8 +71,8 @@ mod TestItemPickupPopupScene {
     /// アイテム取得時に呼ぶ `reserveGetItemSound` は、ポップアップ(stage)を動かさず
     /// `soundPending` だけ true にする。これにより次フレームの step が get_item を 1 回鳴らし
     /// （`testSoundPlaysOnFirstFrame` 参照）、窓は出ない(stage=Idle 維持)。
-    /// P4-e: 状態は resource（`ItemPickupPopupScene.State`）が持つ。withState で包み、reserveGetItemSound の
-    /// 後に State を読んで soundPending=true・stage=Idle 維持を確認する（旧: NodeTag ペイロード読取）。
+    /// 状態は resource（`ItemPickupPopupScene.State`）が持つ。withState で包み、reserveGetItemSound の
+    /// 後に State を読んで soundPending=true・stage=Idle 維持を確認する。
     @Test
     def testReserveGetItemSoundReservesWithoutPopup(): Unit \ Assert =
         region rc {

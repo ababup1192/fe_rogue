@@ -1,17 +1,17 @@
-// ViewReplay — resolveCombat の SimEvent ログを「見た目」へ再生する view 層（Phase C・ViewReplay slice 2・branch 温存）。
+// ViewReplay — resolveCombat の SimEvent ログを「見た目」へ再生する view 層。
 //
-// 設計（split 計画 C5/C6）: sim（`CombatSystem.resolveAttack`/`resolveEnemyAttack`）は (World, [SimEvent]) を返し、
+// 設計: sim（`CombatSystem.resolveAttack`/`resolveEnemyAttack`）は (World, [SimEvent]) を返し、
 // World 変更は reducer（`applyEventToWorld`）が済ませる。本モジュールは **その [SimEvent] を view 演出へ dispatch** する。
 //   - dispatch ロジックは **純粋な `plan`（SimEvent → ViewAction 列）** に集約しテストで固める＝ViewReplay の仕様。
 //   - effectful な `replay`/`execute` は ViewAction → 既存 Scene API への薄い 1:1 実行（compile 検証・runtime は run 検証）。
 //
-// 本スライスで再生する: 命中 SE / テキストポップアップ(miss) / ダメージ数字ポップアップ / 着弾爆発 / HPバー /
+// 再生するもの: 命中 SE / テキストポップアップ(miss) / ダメージ数字ポップアップ / 着弾爆発 / HPバー /
 //   ノックバック着地 / 敵死亡演出。
-// 未配線（後続スライス・cutover で signal seam と結線）: Alerted の sprite tint、Released の unbind 表示、
-//   Afflicted の status 表示。これらは `plan` で空に落とす（World 状態は reducer が既に反映済み）。
+// 未配線: Alerted の sprite tint、Released の unbind 表示、Afflicted の status 表示。
+//   これらは `plan` で空に落とす（World 状態は reducer が既に反映済み）。
 // ここで空に落とすが別経路で配線済のもの: LeveledUp（modal-gate は `CombatDriver.applyEcsSceneEffects` が
 //   pendingLevelUp を立て signal 駆動で発火）、ViewFx(Thief)（drop 実体は `CombatDriver.applyThiefDrop` が引く＝
-//   フロア落下は view でなく scene 状態ゆえ純 view の本モジュールでなく cutover wrapper で処理・P1-b）。
+//   フロア落下は view でなく scene 状態ゆえ純 view の本モジュールでなく wrapper で処理）。
 mod ViewReplay {
 
     use World.EntityRef
@@ -54,12 +54,12 @@ mod ViewReplay {
         case World.ViewFxKind.Popup(p)        => ViewAction.Text(p#x, p#y, p#text) :: Nil
         case World.ViewFxKind.Explosion(c)    => ViewAction.Explode(c#x, c#y) :: Nil
         case World.ViewFxKind.Knockback(r, c) => ViewAction.Snap(r, c#x, c#y) :: Nil
-        case World.ViewFxKind.Thief(_)        => Nil   // drop は scene 状態＝CombatDriver.applyThiefDrop が引く（P1-b・純 view でない）
+        case World.ViewFxKind.Thief(_)        => Nil   // drop は scene 状態＝CombatDriver.applyThiefDrop が引く（純 view でない）
         case World.ViewFxKind.Died(r)         => ViewAction.Death(r) :: Nil
     }
 
-    /// **effectful 実行**: SimEvent ログを `plan` → 各 ViewAction を既存 Scene API へ反映する（runtime は run 検証）。
-    /// cutover 時に live combat の演出発火をこの 1 本へ差し替える（branch 温存中は未配線）。
+    /// **effectful 実行**: SimEvent ログを `plan` → 各 ViewAction を既存 Scene API へ反映する。
+    /// live combat（`CombatDriver`/`StaffCast` の ECS 経路）の演出発火はこの 1 本を通す。
     pub def replay(events: List[World.SimEvent], scene: Scene[NodeTag]): Scene[NodeTag] \
             {GameEngine.Audio, AnimationPlayer.Scheduler,
              World.Command, World.WorldQuery} =
@@ -78,7 +78,7 @@ mod ViewReplay {
                 let cell = World.posOf(r, World.WorldQuery.get()) |> Option.getWithDefault({x = 0, y = 0});
                 DamagePopupFx.emit(MapSnapshot.cellCenter(cell), dmg, popupColor(r), scene)
             case ViewAction.Explode(x, y)  => ExplosionFx.emitAtCell({x = x, y = y}, scene)
-            // P6-1g: HP バーは World.hp store から直描き＝リプレイでも押し込み不要（SetHp が既に反映済み）。
+            // HP バーは World.hp store から直描き＝リプレイでも押し込み不要（SetHp が既に反映済み）。
             case ViewAction.HpBar(_r, _hp) => scene
             case ViewAction.Snap(r, x, y)  => snapRefTo(r, {x = x, y = y}, scene)
             case ViewAction.Death(r)       => deathAnim(r, scene)
@@ -97,8 +97,8 @@ mod ViewReplay {
         case EntityRef.Player(i) => PlayerScene.snapTo(i, cell, scene)
     }
 
-    /// 死亡演出。enemy は death_blink。player 死亡は game-over 経路（view 層が ViewFx(Died(player)) を filter して
-    /// `GameOverRequest` を引く）が担うので本スライスでは no-op（cutover で結線）。
+    /// 死亡演出。enemy は death_blink。player 死亡は game-over 経路（`CombatDriver` が ViewFx(Died(player)) を
+    /// filter して `GameOverRequest` を引く）が担うので純 view 層では no-op。
     def deathAnim(ref: EntityRef, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, World.Command} = match ref {
         case EntityRef.Enemy(i)  => EnemyScene.startDeathAnimation(i, scene)

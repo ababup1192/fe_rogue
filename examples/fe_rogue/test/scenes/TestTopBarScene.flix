@@ -2,7 +2,7 @@
 ///   - isEnemyPhase: EnemyTurn のみ敵軍、他は自軍
 ///   - isBusyOf: hold>0 の間だけ true（敵ターン開始の「間」）
 ///   - hasObservedEnemyOf: shown==Some(true) かワイプ目標が enemy のとき true（0 体敵ターンの取りこぼし防止）
-/// P4-f: 状態は resource 化されたため、判定は scene 経由でなく Data 直の純関数を観測する。
+/// 状態は resource が持つため、判定は scene 経由でなく Data 直の純関数を観測する。
 mod TestTopBarScene {
 
     /// 状態レコードの簡易ビルダ。

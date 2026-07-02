@@ -1,8 +1,8 @@
-// CombatSystem — Phase C「resolveCombat」本体（★最初の真の `World→World`(系) System・branch 温存・cutover 前）
+// CombatSystem —「resolveCombat」本体（combat を `World→World`(系) System として解く）
 //
 // combat の sim を `(World, [SimEvent])` として解く。view/anim/scene は触らず、演出は SimEvent log から
-// 後段（ViewReplay）が replay する設計。live combat（signal 駆動の CombatDriver）は**消さず並行**で、
-// golden-trace 等価が全 path で取れたら cutover する。土台:
+// 後段（ViewReplay）が replay する設計。以下の parity コメントの "legacy" は golden-trace の基準＝
+// signal 駆動の CombatDriver を指し、その final-World と byte 等価であることを parity テストで担保する。土台:
 //   - combatViewOf(ref, world)        … combat stats を World から（reader flip 済み）
 //   - CombatRules.resolveStrike       … 命中/ダメージ/撃破（純 rule）
 //   - World.RngDraw.nextPercent()     … 命中ロール（live=Math.Random / trace=seeded・draw 順は位置で決まる）
@@ -11,12 +11,12 @@
 //   - SimEvent（Damaged/Dying/Alerted/Released/Lifesteal/Moved/Afflicted/ExpGained/LeveledUp/ViewFx）
 //                                     … 戻り値の event 代数。**既存の CLOSED 集合を再利用**し、sim パスは新変種を足さない。
 //
-// 実装状況（正直なスコープ）:
+// 実装状況:
 //   ✓ player 攻撃の **撃破 path**（damage→hp 0 clamp / **crit damage(applyCrit)＋crit-kill exp 再計算** / exp / level-up）を
 //     World 完結で解き、final-World は legacy と等価。**hit→crit→thief→growth の draw 順を legacy に一致**させたので、
 //     crit 武器・growthRates>0 でも等価（crit=0/growthRates=0 の制約は外れた）。
 //   ✓ **非撃破 path**（hp 更新 + SetAlerted(true) + releaseBind + **hit-exp 付与**）も legacy 等価。
-//     ※ `SimEvent.Alerted` 変種は**この非撃破 path のために先行コミットで World.flix へ追加済み**であり、
+//     ※ `SimEvent.Alerted` 変種は**この非撃破 path のために World.flix にある**が、
 //        以降の resolveCombat sim スライスは新 SimEvent 変種を一切足さない（後述の World.flix 追加は read-model のみ）。
 //     ※ legacy は**命中したら撃破でなくても EXP を付与**する（battleExp(.., killed)）＝expEvents を両分岐で呼ぶ。
 //     検証: TestGoldenTrace A2/A/overkill/roll-sensitive-levelup/**non-kill(alerted+progress)**/**crit(applyCrit)** が legacy に一致。
@@ -31,17 +31,15 @@
 //     miss テキストポップアップを `ViewFx(Sound/Explosion/Popup)` としてログに載せた＝ログが「完全な view-script」。
 //     これらは World identity（reducer no-op・eventToCmds=Nil）ゆえ golden/final-World 等価は不変。ダメージ数字
 //     ポップアップ・HPバー・death 演出は既存 `Damaged`/`Dying`/`ViewFx(Died)` から ViewReplay が引ける。
-//   ✓ **ViewReplay dispatcher ＋ cutover 配線済み**（戦闘は常時 ECS 経路・トグルも legacy branch も無し）。scene 権威の
-//     副作用は cutover wrapper（`applyEcsSceneEffects`）が反映: statuses（Afflicted/Released）・level-up（pendingLevelUp
+//   ✓ **ViewReplay dispatcher ＋ 配線済み**。scene 権威の
+//     副作用は wrapper（`applyEcsSceneEffects`）が反映: statuses（Afflicted/Released）・level-up（pendingLevelUp
 //     panel ＋ resource stat 成長 via `grownStats`）・武器耐久（`consumeEquippedWeapon`）。World 権威 field（hp/dying/
-//     progress/alerted/pos）は eventToCmds→World の Cmd 経由。
-//   ✓ P1-b: thief view-fx（`ViewFx(Thief)`＝`isRogueOf` read-model で点火）・drop 実体は wrapper `applyThiefDrop`。
-//   ✓ P1-c: 敵ノックバック（faction-blind `knockbackEvents` を `resolveEnemyAttack` で再利用）。
-//   cutover は ECS 既定化まで完了済み（legacy 分岐・トグルは撤去）。敵 heal effectRule / lifesteal+heal stacking も ECS 経路で解決する。
+//     progress/alerted/pos）は eventToCmds→World。
+//   ✓ thief view-fx（`ViewFx(Thief)`＝`isRogueOf` read-model で点火）・drop 実体は wrapper `applyThiefDrop`。
+//   ✓ 敵ノックバック（faction-blind `knockbackEvents` を `resolveEnemyAttack` で再利用）。
 mod CombatSystem {
 
-    /// 9 stat 成長ロール（legacy CombatDriver.rollGrowth と同義）。draw 順の厳密一致は spike では要求しない
-    /// （それは golden-trace=本丸の仕事）。ここでは「level-up が成長ロールを要する」構造だけを示す。
+    /// 9 stat 成長ロール（legacy CombatDriver.rollGrowth と同義）。draw 順は expEvents 経路で legacy に一致させる。
     def rollGrowth(): LevelSystem.Rolls \ World.RngDraw =
         {hp = World.RngDraw.nextPercent(), attack = World.RngDraw.nextPercent(),
          defense = World.RngDraw.nextPercent(), magicAttack = World.RngDraw.nextPercent(),
@@ -141,7 +139,7 @@ mod CombatSystem {
 
     /// 命中時の attacker 側 exp/level イベントを解く。legacy は**撃破でなくても命中なら EXP を付与**する
     /// （`battleExp(.., killed)`＝撃破なら kill exp・非撃破なら hit exp≥1）。exp 据置なら ExpGained、跨ぎなら LeveledUp。
-    /// ★gap CLOSED: level-up 成長は `World.growthOf`（S-A0d）から読む＝resource threading 不要・World 完結。
+    /// level-up 成長は `World.growthOf` から読む＝resource threading 不要・World 完結。
     def expEvents(world: World, attacker: Combatant, defender: Combatant, killed: Bool): List[World.SimEvent] \ World.RngDraw =
         let expGain = Combat.battleExp(defender#level, attacker#level, killed);
         let curExp  = match World.progressOf(attacker#ref, world) {
@@ -169,9 +167,9 @@ mod CombatSystem {
 
     /// `attacker`（{ref, level}）→ `defender` の 1 撃を **sim 解決**し (World', [SimEvent]) を返す。
     /// World から combatView を読み、RngDraw で命中ロールを引き、SimEvent を産んで applyEventToWorld で畳む。
-    /// scene も view も触らない＝これが Phase C の resolveCombat の最小形。
+    /// scene も view も触らない＝これが resolveCombat の最小形。
     ///
-    /// P1a/P1b/P1c で ring/weapon 効果を追加（legacy CombatDriver:504-624 の draw 順・mutation 順を厳守）:
+    /// ring/weapon 効果（legacy CombatDriver:504-624 の draw 順・mutation 順を厳守）:
     ///   - **finisher**（死神のネックレス・draw なし）が crit に先行し kill を flip しうる（CombatDriver:519-531）。
     ///   - **ring-lifesteal**（みかえりのリング・撃破時のみ）と **weapon-lifesteal**（血吸いの剣・毎ヒット）が
     ///     攻撃側 hp を回復＝`Lifesteal`（CombatDriver:560-583）。攻撃側 hp 基準は resolve 開始時（自攻撃で不変）。
@@ -195,7 +193,7 @@ mod CombatSystem {
                         let fin = combatOutcome(world, attacker, defView, strike, critRoll);
                         // thief roll: legacy は命中時に必ず 1 draw 消費する（CombatDriver.flix:643 の rollPercent()）。
                         // draw 順を揃えるため hit(1)→crit(2) の後・draw 3 として引く。
-                        // P1-b: isRogueOf read-model 追加で ViewFx(Thief) を emit 可能に（drop 実体は wrapper が引く）。
+                        // isRogueOf read-model で ViewFx(Thief) を emit（drop 実体は wrapper が引く）。
                         let thiefRoll = World.RngDraw.nextPercent();
                         // view-fx（命中 SE ＋ 魔法爆発）を先頭に置く（legacy applyHit:643-647 の SE→explosion→popup 順）。
                         let fx = hitFxEvents(world, defender#ref, atk, fin#dmg, fin#isCrit, true);
@@ -215,7 +213,7 @@ mod CombatSystem {
                                     :: World.SimEvent.Released(defender#ref) :: Nil;
                         // knockback（如意棒/突風の書・敵生存時のみ・CombatDriver:590-609）。draw なし。
                         let knock = knockbackEvents(world, attacker, defender, fin#killed);
-                        // P1-b: thief drop（盗人の剣・敵生存時のみ・legacy CombatDriver:643）。ViewFx(Thief(敵セル))＝
+                        // thief drop（盗人の剣・敵生存時のみ・legacy CombatDriver:643）。ViewFx(Thief(敵セル))＝
                         // World 不変（eventToCmds→Nil）ゆえ worldMid 無影響。drop 実体は wrapper が引く。knock の後（legacy 順）。
                         let thiefFx = thiefDropEvents(world, attacker, defender, fin#killed, thiefRoll);
                         // 二相 fold: fx+core+lifesteal+knockback+thief を先に畳み、その worldMid から exp/level-up を解く
@@ -232,7 +230,7 @@ mod CombatSystem {
             case (_, _) => (world, Nil)
         }
 
-    /// P1c: 攻撃側の装備武器がノックバック武器で、かつ防御側が **生存** のとき、防御側を攻撃方向へ押し流す
+    /// 攻撃側の装備武器がノックバック武器で、かつ防御側が **生存** のとき、防御側を攻撃方向へ押し流す
     /// `Moved` を 1 つ返す（legacy applyAttackKnockback/pushEnemyBack・CombatDriver:590-609）。draw なし。
     /// 方向は攻撃側→防御側の delta を 4 方位に丸め、`Board.knockbackPathCapped` の最終着地へ。
     /// 武器なし / ノックバック武器でない / pos・board 未登録（empty()-world など）/ 撃破時は空＝no knockback。
@@ -254,10 +252,10 @@ mod CombatSystem {
             case _ => Nil
         }
 
-    /// P1-b: 盗人の剣の view-fx（`ViewFx(Thief(敵セル))`）を発火条件のとき 1 つ返す。legacy `maybeThiefDrop`
+    /// 盗人の剣の view-fx（`ViewFx(Thief(敵セル))`）を発火条件のとき 1 つ返す。legacy `maybeThiefDrop`
     /// （CombatDriver:708-719）の発火条件を厳密に映す＝装備武器の盗みドロップ率>0 かつ 攻撃側がローグ職 かつ
     /// 敵生存 かつ `roll < 率`。セルは敵の **元位置**（legacy は knockback 前の `enemy#gridPos` を渡す）＝初期 world の posOf。
-    /// drop 実体（フロア落下＋ログ）は scene 権威ゆえ cutover wrapper（`applyEcsSceneEffects`）が ViewFx(Thief) を
+    /// drop 実体（フロア落下＋ログ）は scene 権威ゆえ wrapper（`applyEcsSceneEffects`）が ViewFx(Thief) を
     /// 見て `ThiefDropRequest` を引く。ViewFx は World 不変（eventToCmds→Nil）ゆえ event 列のどこに置いても sim 無影響。
     def thiefDropEvents(world: World, attacker: Combatant, defender: Combatant,
                          killed: Bool, roll: Int32): List[World.SimEvent] =
@@ -271,7 +269,7 @@ mod CombatSystem {
                 |> Option.toList
         else Nil
 
-    /// P2: 敵→プレイヤーの 1 撃を **sim 解決**し (World', [SimEvent]) を返す（legacy resolveEnemyAttack:706-778 の鏡像）。
+    /// 敵→プレイヤーの 1 撃を **sim 解決**し (World', [SimEvent]) を返す（legacy resolveEnemyAttack:706-778 の鏡像）。
     /// プレイヤーパス（resolveAttack）と異なる点:
     ///   - draw 構造: hit(1) → [命中時のみ] crit(2) → [rule 発火時のみ] effect(3)。**thief draw なし**。
     ///   - 被弾 hp は **RAW**（hard-0 clamp なし＝legacy:753 は raw を set）。プレイヤー死亡は **deferred** ＝
@@ -279,7 +277,7 @@ mod CombatSystem {
     ///   - `Released` は撃破/非撃破とも **UNCONDITIONAL**（legacy:759）。`Alerted` なし・**level-up なし**（expEvents なし）。
     ///   - 命中後に敵 effectRule（毒/鈍足/かなしばり）を発火し status を `Afflicted(player, status)` で出荷
     ///     （`World.emitStatusAdds` の StatusAt/ImmobilizeAt マッピングを `planItemToAfflicted` で逐語踏襲）。
-    ///   - 敵ノックバック（P1-c）: 味方生存時のみ faction-blind な `knockbackEvents` を再利用（lifesteal 後）。heal effectRule は P2b。
+    ///   - 敵ノックバック: 味方生存時のみ faction-blind な `knockbackEvents` を再利用（lifesteal 後）。
     pub def resolveEnemyAttack(world: World, attacker: Combatant, defender: Combatant):
             (World, List[World.SimEvent]) \ World.RngDraw =
         match (World.combatViewOf(attacker#ref, world), World.combatViewOf(defender#ref, world)) {
@@ -306,7 +304,7 @@ mod CombatSystem {
                                 :: List.append(deathFx, World.SimEvent.Released(defender#ref) :: Nil);
                         // 敵 lifesteal（ring=撃破時のみ:761 / weapon=毎ヒット:763）は P1b プレイヤーパスと同形＝共通ヘルパー。
                         let steal = lifestealEvents(world, attacker, atk, outcome);
-                        // P1-c: 敵ノックバック（如意棒等・味方生存時のみ）。faction-blind な knockbackEvents を再利用
+                        // 敵ノックバック（如意棒等・味方生存時のみ）。faction-blind な knockbackEvents を再利用
                         // （legacy applyEnemyKnockback/pushPlayerBack CombatDriver:1056-1075 と同一計算＝味方を攻撃方向へ）。
                         // 位置は lifesteal の後・effectRule tail の前（legacy CombatDriver:888 の順）。
                         let knock = knockbackEvents(world, attacker, defender, outcome#killed);
@@ -319,10 +317,10 @@ mod CombatSystem {
             case (_, _) => (world, Nil)
         }
 
-    /// P2: 命中後の敵 effectRule（毒/鈍足/かなしばり）を解いて `Afflicted` event 列を返す
+    /// 命中後の敵 effectRule（毒/鈍足/かなしばり）を解いて `Afflicted` event 列を返す
     /// （legacy applyEnemyEffectRule:785-822）。rule なし/不正 Json/trigger 不一致/確率不発は空。
     /// effect roll は rule が確定し trigger が当たったときだけ **CONDITIONAL** に 1 draw（legacy:801 の短絡順序を保つ）。
-    /// StatusAt/ImmobilizeAt のみ `planItemToAfflicted` で Afflicted へ写像（HealAt/FullHealAt=P2b、
+    /// StatusAt/ImmobilizeAt のみ `planItemToAfflicted` で Afflicted へ写像（HealAt/FullHealAt は未対応、
     /// DamageAt/MaxHpUpAt/ReviveAt は legacy ハンドラ no-op ＝ World 不変ゆえ event なし）。
     def enemyEffectRuleEvents(world: World, attacker: Combatant, defender: Combatant,
                                atk: Combat.CombatView, defView: Combat.CombatView, outcome: Outcome):
@@ -356,9 +354,9 @@ mod CombatSystem {
                 }
         }
 
-    /// P2: EffectPlan の status 項目を `Afflicted` event へ写像（`World.emitStatusAdds`:971-978 の
+    /// EffectPlan の status 項目を `Afflicted` event へ写像（`World.emitStatusAdds`:971-978 の
     /// StatusAt/ImmobilizeAt マッピングを逐語踏襲）。hp 系（heal/damage/maxHpUp/revive）と装飾は
-    /// World 不変ゆえ event なし（None）。HealAt/FullHealAt の Healed 化は P2b で別途。
+    /// World 不変ゆえ event なし（None）。
     def planItemToAfflicted(item: EffectPlan.PlanItem): Option[World.SimEvent] = match item {
         case EffectPlan.PlanItem.StatusAt(id, ally, se, m, t) =>
             Some(World.SimEvent.Afflicted(World.refOf(ally, id),

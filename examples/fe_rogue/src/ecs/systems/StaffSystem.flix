@@ -7,7 +7,7 @@
 //   - World.applyEventToWorld … SimEvent を World へ畳む reducer（CombatSystem.applyAll と同型）。
 //   - SimEvent（Healed/Damaged/Dying/Moved/Afflicted/ViewFx）… **既存の CLOSED 集合を再利用**し新変種は足さない。
 //
-// 今周のスコープ（effectRule 無しの 4 enum 杖のうち World 純粋に解ける分）:
+// スコープ（effectRule 無しの enum 杖のうち World 純粋に解ける分）:
 //   - Heal     … 対象（味方/敵）の hp を「魔力 + 10」回復（クランプ）＝`Healed`。
 //   - Blowback … 1 ダメージ → 敵撃破=Damaged(0)+Dying+ViewFx(Died) / 生存=Damaged+Moved(着地) / 味方撃破=Damaged のみ。
 //   - Swap     … caster と対象の位置を交換＝`Moved`×2（順序保存）。

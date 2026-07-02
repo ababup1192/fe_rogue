@@ -3,9 +3,10 @@
 /// 各フロアに 1 つだけ、床のランダムなセルに配置される。味方がそのセルに乗ると
 /// 行動メニューに「かいだん」が出て、選ぶとその味方はマップから退場し次フロアへ進む。
 ///
-/// P6-1c: scene ノードは撤去済み。位置の権威は World.stairsPos（`Cmd.SetStairs`）、描画は
-/// `RenderWorld.renderStairs` が見た目定数（texture/scale/zIndex＝旧 scene.json 値）から直描きする。
-/// `Data`/`getPos` は StaffCast の warp（杖）と golden fixture が手組みノードで使うテスト seam。
+/// scene ノードは持たない。位置の権威は World.stairsPos（`Cmd.SetStairs`）、描画は
+/// `RenderWorld.renderStairs` が見た目定数（texture/scale/zIndex）から直描きする。
+/// `Data`/`getPos` は StaffCast の warp と golden fixture が
+/// 手組みノードで使うテスト seam。
 mod Stairs {
 
     /// `gridPos`: 階段を置いたグリッド座標（placed = false のときは未使用）
@@ -18,7 +19,7 @@ mod Stairs {
     def name(): String = "Stairs"
     pub def stairsPath(): NodePath = name() :: Nil
 
-    // ── P6-1c: 見た目定数（旧 `Stairs.scene.json` の Sprite2D 宣言から移設） ──
+    // ── 見た目定数（Sprite2D の texture/scale/zIndex） ──
     /// project.json の "textures" に登録された階段テクスチャ名。
     pub def texture(): String = "stairs"
     /// タイル 16px に合わせた表示スケール。
@@ -57,7 +58,7 @@ mod Stairs {
         List.exists(o -> o#x == cell#x and o#y == cell#y, occupied)
 
     /// `target` セルに階段を配置する＝`Cmd.SetStairs(Some(cell))` を emit して World を更新する。
-    /// P6-1c: scene ノード書きは撤去（描画は `RenderWorld.renderStairs` が World から直描き）。
+    /// scene ノードは書かない（描画は `RenderWorld.renderStairs` が World から直描き）。
     /// scene はパイプ互換のためそのまま返す。
     pub def placeAt(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         World.Command.emit(World.Cmd.SetStairs(Some(target)));
@@ -71,6 +72,5 @@ mod Stairs {
             case _ => None
         }
 
-    // P6-1c: 旧 `mapStairs`/`applyFog`（scene ノードの可視制御）は撤去。fog の lit ゲートは
-    // `RenderWorld.renderStairs` が直描き時に判定する。
+    // fog の lit ゲートは `RenderWorld.renderStairs` が直描き時に判定する。
 }
