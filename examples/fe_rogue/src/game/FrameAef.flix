@@ -25,33 +25,25 @@ mod FrameAef {
                          // 取得音予約/表示を State resource に書くため。
                          ItemPickupPopupScene.State}
 
-    /// `process` 用の広い Aef 集合 (`FrameAef.ProcessT`)。Player/Enemy の `process` が drainSignals 経由で
-    /// attack:hit / death_blink / attack_lunge を捌き、EnemyTurnDriver が phase 判定で
-    /// `stepOnce` や `commitWaitedAndAdvance` を起動するため、Audio / EnemyTurn / GameOverRequest /
-    /// Pacing が追加される。`Math.Random` は attack:hit 時の命中ロール（Combat.isHit 用の乱数）に使う。
-    /// `BoardQuery`: StairsExit の per-frame 進行（`stepOnce`/`advanceFront`）が frame-head の
-    /// 盤面を World 由来で読むため許可。
-    pub type alias ProcessT = {GameEngine.Game, GameEngine.Audio, BoardQuery,
+    /// `process` redef の分岐先が消費する Aef 集合 (`FrameAef.ProcessT`)。
+    /// 分岐先は `CombatDriver.process`（Player/Enemy の drainSignals で attack:hit /
+    /// death_blink / attack_lunge を解決）と、メニュー/カード/パネルの `refreshItems`/`process`
+    /// （ItemMenu/ActionMenu/WeaponSelect/GameOverMenu/SuspendConfirm/Trade/
+    /// UnitCard/EnemyCard/BattlePanel/LevelUpPanel）。
+    ///   - `EnemyTurn.Queue` / `Pacing.State` / `GameOverRequest` / `ThiefDropRequest` /
+    ///     `World.RngDraw` は `CombatDriver.process` が要求（命中ロールは RngDraw chokepoint 経由）。
+    ///   - `BattlePanelScene.State` / `UnitHPBarRender.ForecastState` は BattlePanel.process が
+    ///     攻撃予報を put、`LevelUpPanelScene.State` は LevelUpPanel.process が演出に使う。
+    pub type alias ProcessT = {GameEngine.Game, GameEngine.Audio,
                                 PlayerData.PartyQuery, EnemyData.RosterQuery,
                                 Tween.Scheduler, AnimationPlayer.Scheduler,
                                 GameLogger.GameLogger,
                                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                                GatherResume.State,
                                 CustomEffects.GameOverRequest,
-                                CustomEffects.FloorAdvanceRequest,
-                                CustomEffects.WandererSpawnRequest,
-                                CustomEffects.RingTransformRequest,
                                 CustomEffects.ThiefDropRequest,
-                                Pacing.State, Math.Random,
-                                // HUD の状態 resource（LogScene=ログ queue、BattlePanel=点滅タイマー、
-                                // TurnEndHold=長押しゲージ、LevelUpPanel=レベルアップ演出）。
-                                LogScene.State, BattlePanelScene.State, TurnEndHoldScene.State,
-                                LevelUpPanelScene.State, ItemPickupPopupScene.State,
-                                // BattlePanel が攻撃予報を ForecastState resource へ put する。
+                                Pacing.State,
+                                BattlePanelScene.State, LevelUpPanelScene.State,
                                 UnitHPBarRender.ForecastState,
-                                World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
-                                // combat 命中ロールは World.RngDraw chokepoint 経由
-                                // （CombatDriver.process が要求）。Game.flix:177/179 の checked_ecast widening が
-                                // この追加なしでは失敗する。Math.Random は他経路用に残置。
+                                World.Command, World.PhaseQuery, World.WorldQuery,
                                 World.RngDraw}
 }
