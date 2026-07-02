@@ -2,11 +2,11 @@
 ///
 /// 宝箱 1 種ごとに「表示スプライト」と「開けたとき何が出るか」の重み付きプール(`contents`)を定義する。
 /// `contents` は `FloorCatalog.SpawnEntry` ({id, percent}) のリストで、id は既存の
-/// weapons / staves / consumables カタログを指す（解決は `ItemScene.lookupItem` がフォールスルーで行う）。
+/// weapons / staves / consumables カタログを指す（解決は `GroundItems.lookupItem` がフォールスルーで行う）。
 /// レア武器を高 percent、きずぐすり等のハズレを低 percent にするといった調整を JSON だけで行える。
 ///
 /// 中身の抽選は `FloorCatalog.pickWeighted(contents)` を再利用する。実際にどの中身が出るかは
-/// 宝箱を「配置する時点」(`ChestScene.add`) で確定させ、開錠時には Math.Random を要さない設計にしている。
+/// 宝箱を「配置する時点」(`Chests.add`) で確定させ、開錠時には Math.Random を要さない設計にしている。
 ///
 /// JSON 形状 (`resources/chests.json`):
 ///   {

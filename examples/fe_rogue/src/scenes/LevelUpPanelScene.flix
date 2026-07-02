@@ -14,7 +14,7 @@
 /// ノード構造（visible のとき）。本文は列ごとに Label2D を分け、数値列を右揃えにして
 /// フォントのスペース幅・全角幅に依存せず桁と `+1` がそろうようにしている:
 ///   LevelUpPanel (CanvasLayer, layer=5)
-///     ├─ panel      (Panel, NodeTag.LevelUpPanel(PanelState))
+///     ├─ panel      (Panel, NodeTag.LevelUpPanel)
 ///     ├─ header     (Label2D, NoTag) — 「{兵種名} Lv 前 -> 後」
 ///     ├─ bodyLabels (Label2D, 左揃え) — ステータス名 9 行
 ///     ├─ bodyBefore (Label2D, 右揃え) — 現在値 9 行
@@ -30,7 +30,7 @@ mod LevelUpPanelScene {
     // (A) 演出ステート
     // ────────────────────────────────────────────────────────
 
-    /// パネル表示中の演出の進行状態。Panel ノードのタグに載せてフレーム間で持ち越す。
+    /// パネル表示中の演出の進行状態。`State` resource でフレーム間に持ち越す。
     ///   - `started`  : bonus.ogg を鳴らして演出を開始済みか（LevelUpView 突入の最初のフレームで true）。
     ///   - `revealed` : 右側「-> 新値 +1」を出し終えた「上昇ステータス」の数。
     ///   - `timer`    : 次のアクション（最初の reveal / 次の reveal）までの残り待ち時間。フレームごとに delta だけ減算し 0 になったら次の演出へ進む。
@@ -44,7 +44,7 @@ mod LevelUpPanelScene {
     def initialState(): PanelState =
         {started = false, revealed = 0, timer = Duration.zero()}
 
-    /// P4-d: レベルアップ演出のステート（started/revealed/timer）を持つ resource（旧: `NodeTag.LevelUpPanel(PanelState)`）。
+    /// レベルアップ演出のステート（started/revealed/timer）を持つ resource。
     /// LogScene.State と同型。process/confirm が `currentState()`/`writeState(...)` 経由で読み書きする。
     /// `Game.start` で `with LevelUpPanelScene.withState(rc)` を注入し、`FrameAef.ProcessT` に足す。
     pub eff State {
@@ -108,7 +108,7 @@ mod LevelUpPanelScene {
     def bodyPlus2Name(): String   = "bodyPlus2"
     def footerName(): String     = "footer"
 
-    /// B: render-from-World が HUD/メニューサブツリーを描く/隠す root。
+    /// render-from-World が HUD/メニューサブツリーを描く/隠す root。
     pub def rootPath(): NodePath   = rootName() :: Nil
     def panelPath(): NodePath      = rootName() :: panelName()      :: Nil
     def headerPath(): NodePath     = rootName() :: headerName()     :: Nil
@@ -131,7 +131,7 @@ mod LevelUpPanelScene {
         match opt {
             case None                   => Ok(NodeTag.NoTag)
             case Some("NoTag")          => Ok(NodeTag.NoTag)
-            case Some("LevelUpPanel")   => Ok(NodeTag.LevelUpPanel)   // P4-d: 状態は State resource へ
+            case Some("LevelUpPanel")   => Ok(NodeTag.LevelUpPanel)   // 状態は State resource へ
             case Some(unknown)          =>
                 Err(JsonCompat.jsonError(Root, Set#{"LevelUpPanelScene tag (got: ${unknown})"}))
         }
@@ -146,9 +146,7 @@ mod LevelUpPanelScene {
     // ────────────────────────────────────────────────────────
 
     /// LevelUpPanel ノード（Panel）に対して毎フレーム dispatch される。
-    /// Scene は immutable に扱う設計のため演出ステートを Scene 外に持てない。
-    /// Panel ノードのタグ（`NodeTag.LevelUpPanel(PanelState)`）を状態置き場にすることで、
-    /// フレーム間の演出進行をイミュータブルな Scene 更新として表現している。
+    /// 演出ステートは `State` resource が持つ。
     /// LevelUpView 中は演出を 1 フレームぶん進め、可視性と本文を再評価する。
     pub def process(delta: Duration.Duration,
                      node: EngineNode[NodeTag],
@@ -268,11 +266,11 @@ mod LevelUpPanelScene {
                 |> Label2D.setHorizontalAlignment(align)
                 |> CanvasItem.setModulate(color), scene)
 
-    /// P4-d: 現在の演出ステートを resource から読む（旧: Panel ノードのタグ）。
+    /// 現在の演出ステートを resource から読む。
     def currentState(): PanelState \ LevelUpPanelScene.State =
         LevelUpPanelScene.State.get()
 
-    /// P4-d: 演出ステートを resource へ書く。scene はパイプ互換のためそのまま返す（挙動不変）。
+    /// 演出ステートを resource へ書く。scene はパイプ互換のためそのまま返す（挙動不変）。
     def writeState(st: PanelState, scene: Scene[NodeTag]): Scene[NodeTag] \ LevelUpPanelScene.State =
         LevelUpPanelScene.State.put(st);
         scene

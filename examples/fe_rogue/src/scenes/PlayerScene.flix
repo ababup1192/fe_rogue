@@ -90,7 +90,7 @@ mod PlayerScene {
         Encumbrance.loadOf(data#resource#constitution, data#resource#attack, data)
 
     /// 積載ペナルティ込みの実効移動力。素の `moveTiles` に積載率ペナルティ（80%/100%/110%）を掛けた値。
-    /// getMoveTiles / unitView / PlayerMovementScene / StairsExitScene はすべてこの 1 関数を通すこと
+    /// getMoveTiles / unitView / PlayerMovementDriver / StairsExitDriver はすべてこの 1 関数を通すこと
     /// （範囲計算と歩数判定の不整合を防ぐため）。
     pub def effectiveMoveTilesOf(data: Data): Int32 =
         Encumbrance.effectiveMoveTiles(data#moveTiles, loadOf(data))
@@ -141,7 +141,7 @@ mod PlayerScene {
 
     /// 手動移動（PlayerMoving）・集合の主人公移動と味方追従（GatherMove）の 1 マス時間（≈ 0.167 秒）。
     /// 落ち着いて移動先を狙えるよう少しゆっくり（20 フレーム = 約 0.167 秒）にする。
-    /// pub: 打ち手層（PlayerMovementScene）が手動移動 / 追従 step で moveToById に渡す。
+    /// pub: 打ち手層（PlayerMovementDriver）が手動移動 / 追従 step で moveToById に渡す。
     pub def selectedSlideDuration(): Duration.Duration =
         Duration.frames(count = 20, fps = 120)
 
@@ -365,7 +365,7 @@ mod PlayerScene {
             ringEquipped      = false,
             followUpUsed      = false
         };
-        // P6-2c: id 集合/team への登録（旧 refreshMirror derive の代替・spawn funnel の一部）。
+        // id 集合/team への登録（spawn funnel の一部）。
         World.Command.emit(World.Cmd.Spawn(World.EntityRef.Player(sp#id)));
         // P6-2c: 成長 read-model も spawn で seed（resource 変化サイトは emitBaseStatsFromScene が束ねて emit）。
         World.Command.emit(World.Cmd.SetGrowth(sp#id,
@@ -570,7 +570,7 @@ mod PlayerScene {
     /// （新しい可逆操作を足すときはこの match に 1 分岐追加するだけ）。
     ///   - `MovedFrom`: origin に snapTo で戻し、walk 表示を idle に戻す
     ///     （移動中の walk_<dir> のままだと「キャンセル後に動いてないのに横向き」になる）
-    ///   - `PickedUp` : 床へ戻し（`ItemScene.respawn`）+ 在庫末尾の仮取得分を取り消す
+    ///   - `PickedUp` : 床へ戻し（`GroundItems.respawn`）+ 在庫末尾の仮取得分を取り消す
     def revertDraftAction(action: MoveDraft.DraftAction,
                             scene: Scene[NodeTag]):
             Scene[NodeTag] \ World.Command =
@@ -579,7 +579,7 @@ mod PlayerScene {
                 snapTo(id, cell, scene) |> playAnim(id, idleAnimName())
             case MoveDraft.DraftAction.PickedUp(pid, cell, itemKey, kind) =>
                 scene
-                    |> ItemScene.respawn(cell, itemKey, kind)
+                    |> GroundItems.respawn(cell, itemKey, kind)
                     |> removeLastInventoryItem(pid, kind)
             case MoveDraft.DraftAction.Equipped(pid, idx)               =>
                 // 装備 = moveToHead(idx) の逆。先頭を idx 位置へ戻す。
@@ -668,7 +668,7 @@ mod PlayerScene {
 
     /// S2.4: weaponView 書込 funnel（`emitBaseStatsFromScene` 同型）。mutation 適用後の `scene` から該当 player の
     /// 装備武器投影を読み戻して `Cmd.SetWeaponView` を World へ dual-write する。`emitWeaponsFromScene` が内部で呼ぶほか、
-    /// emitWeaponsFromScene を経由しない weapons 書込サイト（carry/CombatScene 耐久消費）からも直接呼ぶ。pub。
+    /// emitWeaponsFromScene を経由しない weapons 書込サイト（carry/CombatDriver 耐久消費）からも直接呼ぶ。pub。
     pub def emitWeaponViewFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
         match get(playerId, scene) {
             case Some(d) => World.Command.emit(World.Cmd.SetWeaponView(World.EntityRef.Player(playerId), equippedWeaponView(d)))
@@ -685,12 +685,12 @@ mod PlayerScene {
 
     /// S2.3: baseStats 書込 funnel。`scene`（resource mutation 適用後）から該当 player の resource を読み戻して
     /// `Cmd.SetBaseStats` を World へ dual-write する（`emitWeaponsFromScene` と同じ read-after-mutate 流儀）。
-    /// level-up（CombatScene）/carry 復元/snapshot 復元/復活など resource を書き換えた直後に呼ぶ。pub（CombatScene から）。
+    /// level-up（CombatDriver）/carry 復元/snapshot 復元/復活など resource を書き換えた直後に呼ぶ。pub（CombatDriver から）。
     pub def emitBaseStatsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
         match get(playerId, scene) {
             case Some(d) =>
                 World.Command.emit(World.Cmd.SetBaseStats(World.EntityRef.Player(playerId), Combat.baseStatsFrom(d#resource)));
-                // P6-2c: resource が変わる全サイトで growth read-model も束ねて更新（旧 refreshMirror derive の代替）。
+                // resource が変わる全サイトで growth read-model も束ねて更新する。
                 World.Command.emit(World.Cmd.SetGrowth(playerId,
                     {base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}))
             case None    => ()
@@ -699,7 +699,7 @@ mod PlayerScene {
     /// S3: statusEffects 書込 funnel（`emitBaseStatsFromScene` 同型）。mutation（add/clearImmobilized/bind/tick）
     /// 適用後の `scene` から該当 player の `#statuses` を読み戻して `Cmd.Seed`（全置換 replace 意味論）で World へ
     /// dual-write する。各操作を個別 Cmd に写さず変更後の全リストを Seed で置換＝網羅が単純化し漏れにくい。
-    /// statuses を書く全サイトの末尾で呼ぶ（特にターン開始 tick）。pub（StaffCastScene/CombatScene/EnemyScene 起点から）。
+    /// statuses を書く全サイトの末尾で呼ぶ（特にターン開始 tick）。pub（StaffCast/CombatDriver/EnemyScene 起点から）。
     pub def emitStatusesFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
         match get(playerId, scene) {
             case Some(d) => World.Command.emit(World.Cmd.Seed(World.EntityRef.Player(playerId), d#statuses))
@@ -708,7 +708,7 @@ mod PlayerScene {
 
     /// D4: staves/consumables/rings/ringEquipped 書込 funnel（`emitWeaponsFromScene` 同型）。
     /// mutation 適用後の `scene` から該当 player の各インベントリを読み戻して Cmd を World へ dual-write する。
-    /// `pub`（StaffCastScene の杖/瓶消費からも呼ぶ）。
+    /// `pub`（StaffCast の杖/瓶消費からも呼ぶ）。
     pub def emitStavesFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
         World.Command.emit(World.Cmd.SetStaves(World.EntityRef.Player(playerId), getStaves(playerId, scene)))
     pub def emitConsumablesFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
@@ -814,7 +814,7 @@ mod PlayerScene {
         }
 
     /// 敵攻撃で HP=0 になったプレイヤーを scene から取り除く。`killed` は
-    /// `CombatScene.applyEnemyAttackHit` が返した死亡 id のリスト (通常 1 要素)。
+    /// `CombatDriver.applyEnemyAttackHit` が返した死亡 id のリスト (通常 1 要素)。
     /// 選択中プレイヤーが含まれていれば (反撃で死亡したケース) 選択も解除する。
     /// 次のいずれかでゲームオーバー (`CustomEffects.GameOverRequest.request`) を emit し、
     /// handler 側でマップ・配置を 1F からフルリビルドする:
@@ -842,7 +842,7 @@ mod PlayerScene {
             let stillDead = revive#stillDead;
             if (List.isEmpty(stillDead)) revivedScene
             else {
-                // P6-2c: ノード除去と対で World の全 store からも除去（旧 refreshMirror prune の代替）。
+                // ノード除去と対で World の全 store からも除去する。
                 List.forEach(id -> World.Command.emit(World.Cmd.Despawn(World.EntityRef.Player(id))), stillDead);
                 let removed = List.foldLeft(
                     (sc, id) -> Scene.removeAt(playerPath(id), sc),
@@ -990,7 +990,7 @@ mod PlayerScene {
     /// 親 Marker2D を不可視にすると子 Sprite / HPBar も連動して消える(Godot の
     /// 親子可視性 AND。CursorScene.setVisible と同手法)。
     pub def setHidden(id: Int32, flag: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        // P6-2c: playerHidden store へ dual-write（旧 refreshMirror の scene derive の代替）。
+        // playerHidden store へ dual-write する。
         World.Command.emit(World.Cmd.SetHidden(World.EntityRef.Player(id), flag));
         Scene.mapEngineNode(playerPath(id), engineNode -> match engineNode {
             case EngineNode.Marker2DWithState(marker, NodeTag.Player(d)) =>
@@ -1735,7 +1735,7 @@ mod PlayerScene {
             case Some(d) =>
                 SelectedPlayer.pushDraft(
                     MoveDraft.DraftAction.PickedUp(playerId, d#gridPos, d#itemKey, d#item));
-                let (afterTake, taken) = ItemScene.takeAt(d#gridPos, scene);
+                let (afterTake, taken) = GroundItems.takeAt(d#gridPos, scene);
                 taken
                     |> Option.map(kind -> addPickedItem(playerId, kind, afterTake))
                     |> Option.getWithDefault(afterTake)

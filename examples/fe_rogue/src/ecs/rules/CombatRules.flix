@@ -1,6 +1,6 @@
 /// CombatRules — 戦闘解決の純粋 leaf rules（Scene / effect 非依存）
 ///
-/// `CombatScene` の orchestration から切り出した、乱数も Scene も持たない純関数群。
+/// `CombatDriver` の orchestration から切り出した、乱数も Scene も持たない純関数群。
 /// 1 撃解決（`resolveStrike`）・追撃判定（`shouldFollowUp` / `braveFollowUp`）・
 /// 命中 SE 名（`hitSoundName`）・武器リスト先頭差し替え（`replaceOrDropHead`）。
 /// 数値だけでテストでき、味方→敵 / 敵→味方の両方向が同じ式を通ることで

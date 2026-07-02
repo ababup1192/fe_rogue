@@ -1,8 +1,8 @@
-/// PlayerMovementScene — 手動プレイヤー移動の「打ち手(Mover)」
+/// PlayerMovementDriver — 手動プレイヤー移動の「打ち手(Mover)」
 ///
 /// 将棋でいう打ち手。盤面(Board)を読み、入力で次の手(1 マス移動)を決め、駒(PlayerScene)へ
 /// `moveToById`（座標＋見た目の適用）で反映する。**駒は Board を読まない**という分離を保つための層で、
-/// 敵の `EnemyAI`/`EnemyTurnDriverScene` と対称。
+/// 敵の `EnemyAI`/`EnemyTurnDriver` と対称。
 /// 駒(PlayerScene)が Board を直接読むと、盤面の内部表現が変わるたびに駒側の修正が波及し、
 /// テストや再利用も困難になる。打ち手を挟むことで Board 変更の影響範囲をこの層に限定する。
 ///
@@ -10,7 +10,7 @@
 /// Player arm から呼ばれる（PlayerMoving=選択中プレイヤー / GatherMove=主人公 id 0 + 味方追従）。
 /// 常駐ノードは持たず、既存の Player ノードに対して関数として作用する（CursorScene.physicsProcess と同様）。
 /// これにより移動のフレームタイミングは従来（駒内 physicsProcess）と完全に一致する。
-mod PlayerMovementScene {
+mod PlayerMovementDriver {
 
     /// PlayerMoving: 選択中プレイヤーを **移動力(MoveRange)範囲内・低速** で 1 歩動かす。
     /// 着地マスの床アイテムは重量が許す限り自動取得する（`stepFor` の着地フックが担う）ため
@@ -210,7 +210,7 @@ mod PlayerMovementScene {
             case Some(kind) =>
                 if (PlayerScene.wouldOverloadByPicking(data, kind)) {
                     GameLogger.playerLog(
-                        "${data#resource#description}は ${ItemScene.kindDisplayName(kind)}の上に乗った");
+                        "${data#resource#description}は ${GroundItems.kindDisplayName(kind)}の上に乗った");
                     scene
                 } else
                     // 取得音(get_item)を予約（process が次フレームに鳴らす。physicsProcess に

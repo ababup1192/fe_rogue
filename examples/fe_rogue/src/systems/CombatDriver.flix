@@ -1,4 +1,4 @@
-/// CombatScene — 攻守両対応の戦闘解決（攻撃モーション・命中判定・ダメージ・反撃・経験値）
+/// CombatDriver — 攻守両対応の戦闘解決（攻撃モーション・命中判定・ダメージ・反撃・経験値）
 ///
 /// `PlayerScene` / `EnemyScene` から戦闘解決ロジックを切り出した補助モジュール。
 /// 両 Scene は状態所有（構築・移動・死亡演出・Data・Query effect）に専念し、
@@ -6,9 +6,12 @@
 /// 攻撃側の陣営は `Faction`（UnitView.flix）で渡し、内部の match で
 /// `PlayerScene.*` / `EnemyScene.*` に振り分ける。
 ///
-/// 配置基準: ノードは所有しないが、シグナル配信（process）を持ち Game.flix の
-/// dispatch 表から呼ばれるため `src/scenes/` に置く（process を持たない
-/// オーケストレータは `src/game/`）。
+/// 配置基準: ノードを所有しないため `src/scenes/` ではなく `src/systems/` に置く。
+/// `src/systems/` は「scene 結合の driver / orchestrator」（step()・シグナル配信で
+/// Scene と World を橋渡しする層）、純 `World→World` System（scene 非依存）は
+/// `src/ecs/systems/`（CombatSystem / StaffSystem）に置く分界。
+/// 純 sim の戦闘解決は `CombatSystem.resolveCombat` へ抽出済みで、ここは
+/// signal 駆動の攻撃演出とターン進行の orchestration を担う。
 ///
 /// 攻撃の流れ（攻守共通）:
 ///   1. `startAttack(side, ...)` で `attack_lunge` アニメを登録し `attackTargetId` を立てる
@@ -31,7 +34,7 @@
 /// 注意（意図的な責務越境）: `onLungeDone` は「攻撃完了 → 次ターン進行判断」の orchestrator
 /// で、`TurnFlow.commitWaitedAndAdvance`（汎用ターン進行）/ `PhaseTransitions` を跨ぐ。
 /// 攻撃の完了がそのままターン遷移のトリガになるための設計。
-mod CombatScene {
+mod CombatDriver {
 
     /// 攻撃ターゲットの敵 id を Data#attackTargetId に記録する。
     /// 武器選択ウィンドウを開く前に GameManager から呼ばれ、ウィンドウ確定後の
@@ -140,7 +143,6 @@ mod CombatScene {
     /// 当該 player の `attackTargetId` を読み、対応する敵への攻撃を解決する。
     /// 命中ロールは ECS（CombatSystem.resolveCombat）側で行い、命中なら SE + ダメージ + ログ、
     /// 回避なら SE を鳴らさず "miss" 表示のみ。HP <= 0 なら death_blink を開始する。
-    /// P6-5b: legacy 経路とトグル（useEcsCombat）は撤去＝ECS 一本。
     pub def applyAttackHit(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                               GameLogger.GameLogger, World.RngDraw,
@@ -495,13 +497,9 @@ mod CombatScene {
         forecastFromViews(PlayerScene.combatViewWith(player, weapon), EnemyScene.combatView(enemy),
                           player#level, enemy#resource#level)
 
-    /// ViewReplay cutover の **A/B トグル**（run 検証用・branch 温存）。`true`=ECS 経路（既定・出荷／
-    /// `CombatSystem.resolveAttack`/`resolveEnemyAttack` で sim を解き events→Cmds で World 反映・`ViewReplay.replay`
-    /// で演出）、`false`=legacy 演出（oracle 温存）。味方・敵攻撃とも ECS 経路。
-    /// P1 で cutover ギャップを解消済み: level-up モーダル（`applyEcsSceneEffects` の pendingLevelUp で発火）・
-    /// thief drop（`applyThiefDrop`・P1-b）・敵ノックバック（P1-c）。残る view 演出は Alerted tint / Released 表示のみ。
-    /// 敵 id にダメージを与える。装備武器（`weapons.head`）と敵が揃っていなければ no-op。
-    /// P6-5b: 実体は ECS 経路のみ（legacy resolveAttack とトグル useEcsCombat は撤去）。
+    /// 敵 id にダメージを与える（装備武器 `weapons.head` と敵が揃っていなければ no-op）。
+    /// `CombatSystem.resolveAttack` で sim を解き、events→Cmds で World へ反映し、`ViewReplay.replay` で演出を再生する。
+    /// level-up モーダルは `applyEcsSceneEffects` の pendingLevelUp で発火、thief drop は `applyThiefDrop`。
     /// 前提（武器あり・敵あり）の解決だけを担い、ネストを避けるため Option を `forM` で短絡的に畳む。
     def applyDamageToEnemy(playerId: Int32, player: PlayerScene.Data, enemyId: Int32,
                             scene: Scene[NodeTag]):
@@ -552,7 +550,7 @@ mod CombatScene {
             case _ => sc
         }, scene, events)
 
-    /// P1-b: sim が発火した `ViewFx(Thief(cell))` を見て legacy `maybeThiefDrop`（CombatScene:708-719）相当の
+    /// P1-b: sim が発火した `ViewFx(Thief(cell))` を見て legacy `maybeThiefDrop`（CombatDriver:708-719）相当の
     /// scene 副作用（フロア落下＋『…が アイテムを落とした』ログ）を引く。発火判定（ローグ職・敵生存・確率）は
     /// sim（`thiefDropEvents`）が済ませ、ここは drop 実体だけ担う。enemyId は wrapper が持つ＝ログの敵名に使う。
     /// ViewReplay（純 view）でなく wrapper で処理するのは、ドロップが scene 状態変更（consumeEquippedWeapon と同レーン）だから。

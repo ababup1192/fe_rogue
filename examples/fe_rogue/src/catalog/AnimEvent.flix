@@ -7,7 +7,7 @@
 ///   - **書き手側の typo 防止**: 各 Scene の Animation 定義は
 ///     `name = AnimEvent.tagToString(AnimEvent.Tag.X)` 経由で書く
 ///     → 存在しない Tag は型エラーになる
-///   - **dispatch 側の網羅性**: `CombatScene.process` (per-node dispatch) が
+///   - **dispatch 側の網羅性**: `CombatDriver.process` (per-node dispatch) が
 ///     `match AnimEvent.parseTag(event#name) { case Some(Tag.X) => ... }` と書けば
 ///     新しい Tag を追加し忘れた瞬間に Flix の match 網羅性チェックが警告を出す
 ///

@@ -1,4 +1,4 @@
-/// DamagePopupScene — 攻撃ヒット時にユニット頭上で数字を浮かす HUD
+/// DamagePopupFx — 攻撃ヒット時にユニット頭上で数字を浮かす HUD
 ///
 /// 攻撃 / 反撃が当たった瞬間に被弾側のグリッド位置から `5` のようなダメージ量を
 /// Label2D で出し、上方向に少し移動しながら寿命満了で消える。LogScene の文字列
@@ -14,7 +14,7 @@
 ///   - Label2D の modulate は {r,g,b} のみで alpha 成分を持たない（Color は engine_core）
 ///   フェード表現は省き、上方向に float させてから瞬時に消すスタイルにする。
 ///   寿命を 700ms 程度にすれば違和感は最小。
-mod DamagePopupScene {
+mod DamagePopupFx {
 
     /// fontManifest で登録した name。フォントアトラスはゲーム全体で共有されるため、
     /// LogScene / BattlePanelScene など他の UI シーンと同じ "ui" を指定しないと

@@ -32,7 +32,7 @@ mod EnemyAI {
     /// `Move` の {x, y} は 1 マス分の移動先（隣接セル）。
     /// `Attack` は (enemyId, targetPlayerId)。
     /// `Wander` は未起動の徘徊型が「あてもなく 1 歩動きたい」という意図。実際の行先は
-    /// 乱数を要するため driver (EnemyTurnDriverScene.applyStep) が選ぶ — decideAction を pure に保つ。
+    /// 乱数を要するため driver (EnemyTurnDriver.applyStep) が選ぶ — decideAction を pure に保つ。
     pub enum EnemyAction {
         case Move(Int32, {x = Int32, y = Int32})
         case Attack(Int32, Int32)
@@ -138,7 +138,7 @@ mod EnemyAI {
 
     /// `self`（敵）が「暗い room module に居て、かつプレイヤーが隣接している」か。
     /// 移動中に「暗い新規部屋で敵に接敵したら強制たいき（部屋点灯）」を判定するために
-    /// `EnemyTurnDriverScene` から呼ぶ。暗い = 敵の部屋 idx が `litRooms`（いま点灯している
+    /// `EnemyTurnDriver` から呼ぶ。暗い = 敵の部屋 idx が `litRooms`（いま点灯している
     /// room の集合 = origin 基準の点灯部屋 ∪ 訪問済み部屋）に含まれない。これにより訪問済みの
     /// 明るい部屋や origin と同室の部屋では発火しない（fog の点灯規則と一貫）。
     /// 通路(idx>=roomCount)は対象外＝常時 torch なので発火しない。隣接は敵 pos 起点の

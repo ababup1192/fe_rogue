@@ -1,16 +1,11 @@
-// World — ハイブリッド ECS 化の足場（S0）＋ statuses store（S1a）
+// World — シミュレーション状態を集約する不変 World。
 //
-// シミュレーション状態を寄せていく不変 World。S0 で id 集合＋tick を scene→World mirror した上に、
-// S1a で最初の本物の component store「statuses（時限効果）」を足す。player/enemy は id 空間が別なので
-// store も faction 別に持つ（衝突回避＝S0 の playerIds/enemyIds と同じ方針）。
-//
-// S1a は **非破壊**: statuses も scene から mirror するだけで、既存の読み書き（combatView/tick）は
-// scene の Data#statuses のまま。World は描画にもロジックにも影響しない（gameLoop の末尾再帰に thread）。
-// S1b で読み書きを 1 箇所ずつ World 由来に切替（parallel-run で一致検証してから）。
-// tickStatusEffects は S1b で使う System（StatusSystem.tick を再利用）。S1a では定義＋テストのみ。
-// 道標: ルート ECS_WORKFLOW.md（§D S1）。
+// id 集合＋tick に加え、component store 群を持つ（時限効果 statuses ほか）。
+// player/enemy は scene 上の id 空間が別なので、unified-id へ写して単一 store に統合する。
+// World は gameLoop の末尾再帰に thread される。
+// 道標: ルート ECS_WORKFLOW.md。
 
-/// F2（turn FSM を World へ）: sim としての「誰のターンか」を表す 3-case の phase。
+/// sim としての「誰のターンか」を表す 3-case の phase。
 /// 現 19-case `TurnPhase.Phase`（メニュー遷移・演出待ち混在）は **sim-phase(これ) ＋ UiState.modalMode** に分解する。
 /// World が TurnPhase.Phase を直接持つと循環依存（TurnPhase→World.Command）になるので、World 側はこの中立な
 /// 3-case を持ち、19→3 の写像は境界（Game.flix `simPhaseOf`）で行う。
@@ -20,43 +15,42 @@ pub enum SimPhase with Eq, ToString {
     case GameOver     // 全滅モーダル
 }
 
-// S-A0: combatView の base 戦闘値型 `BaseStats` と組立 `assembleView` は `Combat`（ecs/rules）に集約。
+// combatView の base 戦闘値型 `BaseStats` と組立 `assembleView` は `Combat`（ecs/rules）に集約。
 // World はそれを read-model として格納し（`baseStats`）、`combatViewOf` で `Combat.assembleView` を呼ぶ。
 
-/// S-A0d: level-up 成長を World だけで解くための read-model（player-only・resource 由来）。
+/// level-up 成長を World だけで解くための read-model（player-only・resource 由来）。
 /// `base` = 現 resource の基準 9 ステータス（`LevelSystem.statsOf`）、`rates` = 成長率、`name` = 表示名
-/// （LeveledUp の view パネル Result 用）。spike が「level-up は resource を要する」gap を露出したのを埋める
-/// ＝resolveCombat の level-up を World 完結に（resource threading 不要）。
+/// （LeveledUp の view パネル Result 用）。resolveCombat の level-up を World 完結にする（resource threading 不要）。
 pub type alias Growth = {base = LevelSystem.Stats, rates = UnitCatalog.GrowthRates, name = String}
 
-/// B/m2: tween のチャンネル＝「何を」動かすかの**意味**（lib EcsTween は値の補間だけ知り、意味はここが持つ。
+/// tween のチャンネル＝「何を」動かすかの**意味**（lib EcsTween は値の補間だけ知り、意味はここが持つ。
 /// Bevy Lens の no-reflection 版）。複合キー `(EntityId, Channel)` で 1 entity が複数チャンネル同時可。
 /// 増分（Alpha/Scale…）はこの enum と applyTweenOut の match を 1 arm 足すだけ（局所）。
 pub enum Channel with Eq, Order {
     case Position   // renderPos（連続描画位置＝移動）
 }
 
-/// P5-b→P6-1f: ダメージ数字ポップアップ fx の store エントリ（秒・実時間）。
-/// `remaining` は stepWorld が毎フレーム dt 減算し 0 以下で drop。P6-1f で text/色/位置も store が
+/// ダメージ数字ポップアップ fx の store エントリ（秒・実時間）。
+/// `remaining` は stepWorld が毎フレーム dt 減算し 0 以下で drop。text/色/位置も store が
 /// 持ち（view ノード全廃）、描画は `RenderWorld.renderPopups` が経過比率から上方向 float を導出する。
 pub type alias PopupFx = { remaining = Float64, total = Float64, pos = Vec2.Vec2, text = String, color = Color }
 
-/// P5-b→P6-1f: 爆発 fx の store エントリ。位置/scale も store が持ち、経過比率からコマ番号を
+/// 爆発 fx の store エントリ。位置/scale も store が持ち、経過比率からコマ番号を
 /// `RenderWorld.renderExplosions` が導出する。
 pub type alias ExplosionFx = { remaining = Float64, total = Float64, pos = Vec2.Vec2, scale = Float64 }
 
-/// P6-1h: ユニットの再生中アニメ（AnimatedSprite2D の脱ノード化）。frame/frameProgress は保存せず、
+/// ユニットの再生中アニメ（AnimatedSprite2D の脱ノード化）。frame/frameProgress は保存せず、
 /// `elapsed`（再生開始からの実時間秒・stepWorld が加算）から描画時に純関数で導出する
 /// （ループ/コマ毎 duration 倍率込み＝engine advanceFrame と同値）。`Cmd.SetAnim` は
 /// AnimatedSprite2D.play の意味論（同名=継続/別名=リセット）を再現する。
 pub type alias UnitAnim = { name = String, elapsed = Float64 }
 
-/// B/m3: 1 フレームで移動（Position tween）した entity の marker 駆動情報（EntityRef＋補間 pixel）。
+/// 1 フレームで移動（Position tween）した entity の marker 駆動情報（EntityRef＋補間 pixel）。
 /// `stepWorld` が active∪done を返し、`RenderWorld.syncMarkers` が実 scene の marker を pos へ置く。
 /// 同型 Vec2 の誤順を防ぐ名前渡し＋faction を EntityRef に閉じ込め（uid は plumbing 内で decode）。
 pub type alias MarkerMove = { ref = World.EntityRef, pos = Vec2.Vec2 }
 
-/// B/tiles: GPU タイルレイヤーの軽量描画ハンドル（静的・per-cell TileData 非保持）。scene の TileMapLayer ノード
+/// GPU タイルレイヤーの軽量描画ハンドル（静的・per-cell TileData 非保持）。scene の TileMapLayer ノード
 /// から rebuild 時に bake し、毎フレーム camera 適用して engine `TileMapRenderCmd` に組む。フィールドは engine の
 /// `TileMapRenderCmd`/`TileMapLayer` に一致（`tileVaoId`/`tileCount`）。`worldPos` は globalPositionAt（camera parity）。
 pub type alias TileLayerHandle = {
@@ -66,23 +60,23 @@ pub type alias TileLayerHandle = {
 
 pub enum World {
     case World({ tick = Int32,
-                 // F2a: turn FSM の World mirror（dual・read-model）。権威は当面 TurnPhase.State。
+                 // turn FSM の World mirror（dual・read-model）。権威は当面 TurnPhase.State。
                  turnPhase = SimPhase,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
-                 // A'（faction タグ component）: unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
+                 // unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
                  // でなく **この enum タグ `teamOf` で読む**（Bevy の Team component 相当）。
                  team = Map[EntityId, Faction],
-                 // A': statusEffects も単一 store（unified-id）。read-model（refreshMirror で scene 再 mirror）。
+                 // statusEffects も単一 store（unified-id）。
                  statusEffects = Map[EntityId, StatusSystem.StatusEffects],
-                 // S2: hp の read-model mirror（権威は scene のまま。query/セーブ/決定論テスト用）。
-                 // A'（store 統合）: hp は単一 store（player uid=id / enemy uid=id+base）。faction 別 split を撤廃。
+                 // hp の read-model（query/セーブ/決定論テスト用）。
+                 // hp は単一 store（player uid=id / enemy uid=id+base）。
                  hp = Map[EntityId, Int32],
-                 // D3: weapons の command-derive store（hp 同型・preserve+prune）。player は weapons(List)
+                 // weapons の command-derive store（hp 同型・preserve+prune）。player は weapons(List)
                  // をそのまま、enemy は単数 weapon(Option) を 0/1 要素 List に射影。reader flip はしない
                  // （combatView/unitView は scene #weapons を読む）＝挙動不変。全 weapon 書込が `Cmd.SetWeapons`
                  // を dual-write し `[WEAPONS DIFF]` で完備性を検証可能にする。
                  weapons = Map[EntityId, List[UnitCatalog.WeaponResource]],
-                 // D4: staves/consumables/rings の command-derive store（weapons 同型・player-only・preserve+prune）。
+                 // staves/consumables/rings の command-derive store（weapons 同型・player-only・preserve+prune）。
                  // 敵は杖/薬/指輪インベントリを持たない（EnemyData に該当 field なし）ので store も player id keyed。
                  // reader flip はしない（各メニューは scene #staves/#consumables/#rings を読む）＝挙動不変。
                  // 全 staves/consumables/rings 書込が `Cmd.SetStaves/SetConsumables/SetRings` を dual-write し
@@ -90,11 +84,10 @@ pub enum World {
                  staves = Map[EntityId, List[Staff.StaffResource]],
                  consumables = Map[EntityId, List[Consumable.ConsumableResource]],
                  rings = Map[EntityId, List[Ring.RingResource]],
-                 // D4: ringEquipped の command-derive Bool store（waited 同型・player-only）。装備指輪の効果発動フラグ。
+                 // ringEquipped の command-derive Bool store（waited 同型・player-only）。装備指輪の効果発動フラグ。
                  ringEquipped = Map[EntityId, Bool],
-                 // S3: gridPos の read-model mirror。型は Vec2i の structural record（engine_core.Vec2i の演算 API 対象）。
-                 // 権威は scene のまま。S4 で Board を fromWorld 化する時の World 側位置ソース候補（mirror）。
-                 // A': pos は単一 store（unified-id）。両 faction の split を撤廃。
+                 // 位置 store。型は Vec2i の structural record（engine_core.Vec2i の演算 API 対象）。
+                 // pos は単一 store（unified-id・`Cmd.Move` 権威）。
                  pos = Map[EntityId, {x = Int32, y = Int32}],
                  // B/m2: 連続的な描画位置（pixel・tween 込み）。render System(renderUnits)が読む。command-derive。
                  //   静止時は最後の値（セル pixel）を保持。move で moveAnim が補間更新（stepWorld）。
@@ -161,23 +154,23 @@ pub enum World {
                  // ノックバックの着地計算が要する `boardOf` の地形ソース。empty()=None（シーン未確定）。
                  // syncFromScene/refreshMirror で `BoardSnapshot.mapSnapshotOf(scene)` を再 mirror（toBoard と同源）。
                  mapSnapshot = Option[MapSnapshot],
-                 // P1-a（Stopgap 杖 ECS）: 階段セル座標の read-model（None=未配置）。`StairsScene.getPos(scene)`
+                 // P1-a（Stopgap 杖 ECS）: 階段セル座標の read-model（None=未配置）。`Stairs.getPos(scene)`
                  // 由来＝mapSnapshot と同じ scene-derive 毎フレーム再 mirror。Stopgap の warp 先計算（`warpCellFor`）が読む。
                  stairsPos = Option[{x = Int32, y = Int32}],
                  // P3-b（配置物 Entity 化）: 宝箱の read/write-model。セル key（`chestCellKey`）→ 宝箱 Data。
                  // spawn（`Cmd.SpawnChest`）/開封（`Cmd.RemoveChest`）が動かす＝存在は component（Map 在/不在）で表現。
-                 // syncFromScene で frame-1 seed（ChestScene.getAll）、refreshMirror は command 由来を preserve＋
+                 // syncFromScene で frame-1 seed（Chests.getAll）、refreshMirror は command 由来を preserve＋
                  // scene 在セルで prune（unit の pos と同型・floor 遷移で旧フロア分が自動 prune される）。
-                 chests = Map[Int32, ChestScene.Data],
+                 chests = Map[Int32, Chests.Data],
                  // P3-c（配置物 Entity 化）: 床アイテムの read/write-model。セル key（`cellKey`）→ GroundItem Data。
                  // spawn（`Cmd.SpawnItem`）/拾得（`Cmd.RemoveItem`）が動かす＝存在は component（Map 在/不在）で表現。
                  // `elapsed`（点滅位相）は view 専用ゆえ store の値は spawn 時のスナップショット（World reader は読まない）。
                  // 3-builder は chests と同型（seed=itemsFromScene／preserve＋scene 在セルで prune）。
-                 groundItems = Map[Int32, ItemScene.Data],
+                 groundItems = Map[Int32, GroundItems.Data],
                  // P5-b（演出の World 権威化）: fx の寿命 store。spawn は `Cmd.SpawnPopupFx/SpawnExplosionFx`
                  // （applyCmd が nextSeq で採番し +1）、寿命 tick と期限切れ drop は stepWorld（EcsTween と同じ
                  // 「stepWorld が World を直接進める」前例）。scene の子 Label2D/Sprite2D は描画 view で、
-                 // gameLoop が `DamagePopupScene.syncView`/`ExplosionScene.syncView` で store から派生する。
+                 // gameLoop が `DamagePopupFx.syncView`/`ExplosionFx.syncView` で store から派生する。
                  // 3-builder は command/step 由来ゆえ preserve（scene mirror 元なし・~0.7s 寿命の transient なので
                  // floor 遷移で残っても自然 expire＝prune 不要）。
                  popupFx = Map[Int32, PopupFx], popupFxNextSeq = Int32,
@@ -328,7 +321,7 @@ mod World {
             mapSnapshot = mapSnapshotOpt(scene),
             // P3-a: stairsPos は frame-1 seed だけ scene の Stairs ノードから読む（hp と同型）。以後は
             // refreshMirror が placeAt の `Cmd.SetStairs` を preserve＝World 権威。
-            stairsPos = StairsScene.getPos(scene),
+            stairsPos = Stairs.getPos(scene),
             // P6-1d: chests は scene ノード撤去に伴い純 command 由来（SpawnChest/RemoveChest/ClearChests）＝
             // sync パスでも preserve（seed は build choke の Spawn emit が担う）。
             chests = w#chests,
@@ -397,9 +390,9 @@ mod World {
                         popupFx = tickFxMap(dt, w#popupFx),
                         explosionFx = tickFxMap(dt, w#explosionFx),
                         // P6-1e: 床アイテムの点滅位相（elapsed）も World が tick（fx と同じ lane・
-                        // 旧 ItemScene.step の per-node 更新を置換）。
+                        // 旧 GroundItems.step の per-node 更新を置換）。
                         groundItems = Map.map(d ->
-                            {elapsed = ItemScene.advance(Duration.add(d#elapsed, Duration.seconds(dt))) | d},
+                            {elapsed = GroundItems.advance(Duration.add(d#elapsed, Duration.seconds(dt))) | d},
                             w#groundItems),
                         // P6-1h: ユニットアニメの再生経過と死亡点滅経過も World が tick
                         // （frame/alpha は描画時に elapsed から純関数で導出）。
@@ -540,10 +533,10 @@ mod World {
         case SetPhaseObservedEnemy(Bool)       // F8-slice2: バーが敵ターン観測済み bool write（TopBar dual-write）
         case BumpTileGen                       // B/tiles: マップ再構築の世代 +1（build choke が emit・gameLoop の tile bake トリガ）
         case SetStairs(Option[{x = Int32, y = Int32}])  // P3-a: 階段セル write（配置=Some/未配置=None・floor 単位で 1 回）。stairsPos を World 権威化
-        case SpawnChest(ChestScene.Data)   // P3-b: 宝箱を配置（build/復元）。cell key で chests へ挿入（存在=Map 在）
+        case SpawnChest(Chests.Data)   // P3-b: 宝箱を配置（build/復元）。cell key で chests へ挿入（存在=Map 在）
         case ClearChests                   // P6-1d: フロア再構築時に前フロアの宝箱を全消去（build choke が emit。旧: scene 再構築による prune）
         case RemoveChest({x = Int32, y = Int32})  // P3-b: 宝箱を開封して除去（cell key で chests から削除）
-        case SpawnItem(ItemScene.Data)     // P3-c: 床アイテムを配置（build/復元/respawn/drop）。cell key で groundItems へ挿入
+        case SpawnItem(GroundItems.Data)     // P3-c: 床アイテムを配置（build/復元/respawn/drop）。cell key で groundItems へ挿入
         case RemoveItem({x = Int32, y = Int32})   // P3-c: 床アイテムを拾得して除去（cell key で groundItems から削除）
         case ClearItems                    // P6-1e: フロア再構築時に前フロアの床アイテムを全消去（ClearChests と同型）
         case Spawn(EntityRef)                  // P6-2c: id 集合/team へ登録（spawn funnel 冒頭で emit）
@@ -662,7 +655,7 @@ mod World {
     /// slice `rng-world`: 全 combat roll の単一 chokepoint。0..99 の一様乱数を 1 つ引く。
     /// live ハンドラ（Game.start）は `Math.Random` に delegate し旧 rollPercent と BODY-IDENTITY、
     /// test/trace ハーネスは `World.drawPercent`（worldRef 上の seeded Prng）で discharge する。
-    /// CombatScene の `rollPercent` がこの op だけを呼ぶ＝draw 順序は呼び出し位置がそのまま決める。
+    /// CombatDriver の `rollPercent` がこの op だけを呼ぶ＝draw 順序は呼び出し位置がそのまま決める。
     pub eff RngDraw {
         def nextPercent(): Int32
     }
@@ -1983,7 +1976,7 @@ mod World {
         Option.map(m -> ({map = m, pieces = boardPieces(world)}: Board), w#mapSnapshot)
 
     /// P1-a: 階段セル座標を World から読む（未配置なら None）。Stopgap 杖の warp 先計算（`warpCellFor`）が読む。
-    /// scene の `StairsScene.getPos` を mirror した read-model（`boardOf` と同じく scene 非依存 sim を可能にする seam）。
+    /// scene の `Stairs.getPos` を mirror した read-model（`boardOf` と同じく scene 非依存 sim を可能にする seam）。
     pub def stairsPosOf(world: World): Option[{x = Int32, y = Int32}] =
         let World.World(w) = world; w#stairsPos
 
@@ -1995,16 +1988,16 @@ mod World {
     pub def chestCellKey(cell: {x = Int32, y = Int32}): Int32 = cellKey(cell)
 
     /// P3-b: 宝箱 store を World から読む（cell key → Data）。
-    pub def chestsOf(world: World): Map[Int32, ChestScene.Data] =
+    pub def chestsOf(world: World): Map[Int32, Chests.Data] =
         let World.World(w) = world; w#chests
 
-    /// P3-b: 指定セルの宝箱を World から読む（`ChestScene.findAt` の World 版）。
-    pub def chestAtOf(cell: {x = Int32, y = Int32}, world: World): Option[ChestScene.Data] =
+    /// P3-b: 指定セルの宝箱を World から読む（`Chests.findAt` の World 版）。
+    pub def chestAtOf(cell: {x = Int32, y = Int32}, world: World): Option[Chests.Data] =
         let World.World(w) = world; Map.get(cellKey(cell), w#chests)
 
     /// P6-1e: 手組み GroundItem ノード（テスト fixture）を cell key → Data の Map に射影する seed seam。
     /// production はノードを積まないので常に空。
-    def itemsFromScene(scene: Scene[NodeTag]): Map[Int32, ItemScene.Data] =
+    def itemsFromScene(scene: Scene[NodeTag]): Map[Int32, GroundItems.Data] =
         Scene.getChildrenAt(MapScene.worldName() :: "Items" :: Nil, scene)
             |> List.filterMap(name ->
                 match Scene.getState(MapScene.worldName() :: "Items" :: name :: Nil, scene) {
@@ -2014,11 +2007,11 @@ mod World {
             |> List.foldLeft((m, d) -> Map.insert(cellKey(d#gridPos), d, m), Map.empty())
 
     /// P3-c: 床アイテム store を World から読む（cell key → Data）。
-    pub def groundItemsOf(world: World): Map[Int32, ItemScene.Data] =
+    pub def groundItemsOf(world: World): Map[Int32, GroundItems.Data] =
         let World.World(w) = world; w#groundItems
 
-    /// P3-c: 指定セルの床アイテムを World から読む（`ItemScene.dataAt` の World 版）。
-    pub def groundItemAtOf(cell: {x = Int32, y = Int32}, world: World): Option[ItemScene.Data] =
+    /// P3-c: 指定セルの床アイテムを World から読む（`GroundItems.dataAt` の World 版）。
+    pub def groundItemAtOf(cell: {x = Int32, y = Int32}, world: World): Option[GroundItems.Data] =
         let World.World(w) = world; Map.get(cellKey(cell), w#groundItems)
 
     /// P5-b: ダメージ数字 fx store（seq → 寿命）。syncView が読み scene 子 Label2D を派生する。

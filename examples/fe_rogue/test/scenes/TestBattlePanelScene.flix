@@ -84,7 +84,7 @@ mod TestBattlePanelScene {
     /// 連打ループが成立していた。修正後は入力受付の無い `PlayerAttackHold` に
     /// 遷移するため、`attack_lunge` 完了まで Z が無効化される。
     ///
-    /// Scene は空のままにしてあるので `CombatScene.startAttack` は内部 `get(id, scene)`
+    /// Scene は空のままにしてあるので `CombatDriver.startAttack` は内部 `get(id, scene)`
     /// で None → no-op になるが、phase の書き換えは startAttack 呼び出しより前で
     /// 行われるためアサート対象は変わらない。
     @Test

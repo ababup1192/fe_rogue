@@ -58,11 +58,10 @@ mod CameraScene {
     ///   2. Camera2D.position に target をセット（engine の追従計算の入力）
     ///   3. Camera2D.process(delta, viewport, ...) で smoothPosition を進める
     /// 「画面内なら維持」「滑らかに追従」は engine の drag margin / smoothing が代替する。
-    /// P5-c(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
-    /// 旧 process は「返した node を engine が書き戻す」契約で camera を更新していたが、
-    /// 明示 step に engine の書き戻しは無いので `Scene.mapEngineNode(cameraPath())` で自分で書く。
+    /// gameLoop が 1 回呼ぶ frame-paced System。明示 step には engine の書き戻しが無いので
+    /// `Scene.mapEngineNode(cameraPath())` で自分で書く。
     /// camera ノード不在（タイトル/選択画面）は gate で no-op（computeTarget が Cursor 等の
-    /// 不在ノードを引いて落ちるのを防ぐ＝旧 per-node の「ノードが居るときだけ」を再現）。
+    /// 不在ノードを引いて落ちるのを防ぐ＝ノードが居るときだけ動く）。
     pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
                     Scene[NodeTag]
                     \ {GameEngine.Game, EnemyTurn.Queue,

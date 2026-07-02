@@ -1,9 +1,9 @@
 /// StaffRules — 杖 / 投擲アイテムの純粋 leaf rules（Scene / effect 非依存）
 ///
-/// `StaffCastScene` の適用 orchestration から切り出した、Scene も乱数も持たない純関数群。
+/// `StaffCast` の適用 orchestration から切り出した、Scene も乱数も持たない純関数群。
 /// ワープ先セル選定（`warpCellFor`）・完全停止 Status 付与（`bindStatuses`）・
 /// 投擲デバフ Status 生成（`directionalStatus`）。数値・盤面・カタログだけでテストできる。
-/// 効果の実適用（HP 変更・ノード移動・ログ）は StaffCastScene 側（effectful）に残す。
+/// 効果の実適用（HP 変更・ノード移動・ログ）は StaffCast 側（effectful）に残す。
 mod StaffRules {
 
     /// 中心セルに隣接する 4 マスのうち、歩けて空いているマスを 1 つ返す（無ければ None）。

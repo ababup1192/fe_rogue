@@ -8,7 +8,7 @@
 ///   - 空振り（壁・射程外）でも耐久 -1
 ///
 /// このモジュールは Scene[NodeTag] / effect に依存せず、テストが純粋値で完結する。
-/// 効果適用の Scene 操作は呼び出し側 (`StaffCastScene.applyStaffCast`) が担う。
+/// 効果適用の Scene 操作は呼び出し側 (`StaffCast.applyStaffCast`) が担う。
 ///
 /// JSON 形状 (`resources/staves.json`):
 ///   {

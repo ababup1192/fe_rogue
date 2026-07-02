@@ -4,30 +4,29 @@
 /// 右下に出す。上(Line0)=最新・下(Line4)=最古のキューで、6 件目が来たら最古が落ちる。
 /// 新しいログが来た瞬間に表示し、最後のログから約 5 秒で消える。
 ///
-/// 表示内容の発生(戦闘ログ・アイテム踏みログ)は CombatScene / PlayerMovementScene が
+/// 表示内容の発生(戦闘ログ・アイテム踏みログ)は CombatDriver / PlayerMovementDriver が
 /// `GameLogger.playerLog`/`enemyLog` で行い、ここは「drain して 5 行に並べる」表示だけを担う。
 ///
 /// ノード構造（design 240x128 の右下に座標で配置）:
-///   Log (CanvasLayer, NodeTag.Log({queue, idleSince}))   ← offset(x) を動かして帯ごと出し入れ
+///   Log (CanvasLayer, NodeTag.Log)   ← offset(x) を動かして帯ごと出し入れ
 ///     ├─ Bg    (ColorRect, 半透明の黒帯)
 ///     └─ Line0..4 (Label2D, 右寄せ。Line0=最新)
 ///
-/// CanvasLayer は可視切替で隠せない(PhaseBannerScene 参照)ため、空のときは offset を画面外へ動かす。
+/// CanvasLayer は可視切替で隠せないため、空のときは offset を画面外へ動かす。
 mod LogScene {
 
     /// 1 行分の表示エントリ。`GameLogger.Entry` と同形だが、表示側の型として独立させる。
     /// color は engine の Color(`{r,g,b}` Float32)を構造的レコードで展開(cross-package alias 回避)。
     pub type alias LogEntry = { text = String, color = {r = Float32, g = Float32, b = Float32} }
 
-    /// ログ HUD の状態（P4: NodeTag ペイロードから resource へ移設）。
+    /// ログ HUD の状態。
     /// `queue` は先頭=最新・末尾=最古で最大 `maxQueue()` 件。`idleSince` は最後に新着があってからの経過時間。
     pub type alias Data = {
         queue     = List[LogEntry],
         idleSince = Duration.Duration
     }
 
-    /// P4-a: ログ HUD の状態を持つ resource（Pacing.State / SelectedPlayer.State と同じ Ref-backed handler）。
-    /// 旧: `NodeTag.Log(Data)` に埋め込んでいた queue/idleSince を effect へ移し、`NodeTag.Log` をペイロードレス化。
+    /// ログ HUD の状態を持つ resource（Pacing.State / SelectedPlayer.State と同じ Ref-backed handler）。
     /// `Game.start` で `with LogScene.withState(rc)` を 1 行注入し、`FrameAef.ProcessT` に `LogScene.State` を足す。
     pub eff State {
         /// 現在の状態（queue + idleSince）を読む。
@@ -94,7 +93,7 @@ mod LogScene {
     /// レイアウトは scene.json、ここでは初期 Data 注入・5 行の右寄せ・初期非表示(画面外)を行う。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
-        // P4-a: 状態は `LogScene.State`（resource）が持つ。ノードは識別用の純タグ `NodeTag.Log`。
+        // 状態は `LogScene.State`（resource）が持つ。ノードは識別用の純タグ `NodeTag.Log`。
         let loaded = SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas,
                          SceneLoader.constTagParser(NodeTag.NoTag), scene)
             |> Scene.setState(logPath(), NodeTag.Log)
@@ -107,15 +106,15 @@ mod LogScene {
 
     // ─── 毎フレーム更新 ───────────────────────────────────────
 
-    /// P5-c(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
+    /// gameLoop が 1 回呼ぶ frame-paced System。
     /// drain → キューに積む → 新着があればタイマーを 0 に戻す → 5 秒判定 → 5 行へ反映 → 表示/非表示。
     /// Log ノード不在（タイトル/選択画面）でも安全: drain はログ未発行で空、renderLines/setOffsetX の
-    /// mapAt は対象不在で no-op（旧 per-node dispatch の「ノードが居るときだけ」と同値）。
+    /// mapAt は対象不在で no-op（対象ノードが居るフレームだけ処理する）。
     pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
                     Scene[NodeTag]
                     \ {GameLogger.GameLogger, LogScene.State} =
         let drained = GameLogger.drainEntries();
-        // P4-a: 状態は resource から読む（旧: NodeTag.Log ペイロード）。ノードは描画 view（Label/CanvasLayer）。
+        // 状態は resource から読む。ノードは描画 view（Label/CanvasLayer）。
         let data = LogScene.State.get();
         let newQueue = enqueue(toLogEntries(drained), data#queue);
         // 新着があったフレームはタイマーを 0 に戻す(その後 tickIdle で進めるので当フレームでは消えない)。
@@ -141,7 +140,7 @@ mod LogScene {
                 label -> label |> Label2D.setText(txt) |> CanvasItem.setModulate(color), s)
         }, scene, List.range(0, maxQueue()))
 
-    /// CanvasLayer の offset(x) を書き換えて帯ごと出し入れする(PhaseBannerScene と同じ手法)。
+    /// CanvasLayer の offset(x) を書き換えて帯ごと出し入れする。
     def setOffsetX(offsetX: Float64, scene: Scene[NodeTag]): Scene[NodeTag] =
         CanvasLayer.mapAt(logPath(), CanvasLayer.setOffset({x = offsetX, y = 0.0}), scene)
 

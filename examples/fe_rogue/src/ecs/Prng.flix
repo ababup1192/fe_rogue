@@ -5,7 +5,7 @@
 //
 // IMPORTANT（live との関係）: live combat の数値はこの Prng を一切通らない。live な
 // `World.RngDraw` ハンドラは `Math.Random.randomFloat64()` に delegate し、その reduction
-// 式は CombatScene の旧 `rollPercent` 本体と character-for-character 同一（BODY-IDENTITY）。
+// 式は CombatDriver の旧 `rollPercent` 本体と character-for-character 同一（BODY-IDENTITY）。
 // この Prng は test / trace ハーネスだけが行使する。
 //
 // REDUCTION（rollPercent とドメイン一致）: 64bit 出力の上位 53bit を [0,1) の Float64 unit に

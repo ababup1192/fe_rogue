@@ -3,11 +3,11 @@
 /// 2 つの文脈で同じカードを出す:
 ///   - PlayerCursor（下見）中: カーソルが乗っているユニット（味方/敵）を表示
 ///   - それ以外で味方を選択中: SelectedPlayer.id の味方を表示
-/// どちらでもなければ非表示。旧 UnitInfoPopupScene を置き換える常設カード。
+/// どちらでもなければ非表示の常設カード。
 ///
 /// 内容: アイコン / 名前 / Lv（味方のみ・金色）/ HP（バー＋数値）/ 装備（武器・指輪 横並び）。
 /// スタイルは ActionMenu と同じ角丸パネル。配色は HTML プロトタイプ準拠。
-/// children は process で毎フレーム再構築する（UnitInfoPopupScene と同作法）。
+/// children は process で毎フレーム再構築する。
 ///
 /// ノード構造（layer=2）:
 ///   UnitCard (CanvasLayer, NodeTag.UnitCard)
@@ -105,7 +105,7 @@ mod UnitCardScene {
         }
 
     /// 選択中の味方（id）を表示。未選択なら隠す。
-    /// P2-r1: 表示 Data（hp/在庫/装備指輪/level/exp）は PartyQuery（World オーバーレイ）経由で読む。
+    /// 表示 Data（hp/在庫/装備指輪/level/exp）は PartyQuery（World オーバーレイ）経由で読む。
     def renderSelected(idOpt: Option[Int32], scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Game, PlayerData.PartyQuery} =
         match idOpt {
@@ -117,7 +117,7 @@ mod UnitCardScene {
         }
 
     /// カーソル上のユニット（敵優先 / フォグ隠れは除外）を表示。空マスなら隠す。
-    /// P2-r1: ident（位置/hidden/フォグ）は scene 読みのまま、味方の表示 Data だけ PartyQuery 経由。
+    /// ident（位置/hidden/フォグ）は scene 読み、味方の表示 Data だけ PartyQuery 経由。
     def renderHovered(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, PlayerData.PartyQuery, World.WorldQuery} =
         match hoveredIdent(scene) {
             case Some((kind, id)) =>
@@ -135,7 +135,7 @@ mod UnitCardScene {
         }
 
     /// カーソル位置のユニット種別と id（敵優先）。空マスなら None。
-    /// フォグで隠れた敵・退場済み(hidden)味方は出さない（UnitInfoPopupScene と同じ規約）。
+    /// フォグで隠れた敵・退場済み(hidden)味方は出さない。
     def hoveredIdent(scene: Scene[NodeTag]): Option[(String, Int32)] \ World.WorldQuery =
         let coord = CursorScene.getGridPos(scene);
         let visibleEnemy = EnemyScene.findIdAt(coord, scene)

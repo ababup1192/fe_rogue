@@ -776,7 +776,7 @@ mod TestEnemyAI {
         let actives = enemyAt(2, {x = 1, y = 1}, false, 0, 3)
                    :: enemyAt(0, {x = 2, y = 2}, false, 0, 4)
                    :: enemyAt(1, {x = 3, y = 3}, false, 0, 5) :: Nil;
-        let steps = EnemyTurnDriverScene.orderedSteps(None, actives);
+        let steps = EnemyTurnDriver.orderedSteps(None, actives);
         // id 昇順＋各 remaining は moveTiles（id0=4, id1=5, id2=3）。
         Assert.assertEq(
             expected = (0, 4) :: (1, 5) :: (2, 3) :: Nil,
@@ -793,6 +793,6 @@ mod TestEnemyAI {
             pieces = (Piece.Player(0), {x = 1, y = 2})
                   :: (Piece.Enemy(0), {x = 8, y = 2})
                   :: (Piece.Enemy(1), {x = 3, y = 2}) :: Nil};
-        let steps = EnemyTurnDriverScene.orderedSteps(Some(board), far :: near :: Nil);
+        let steps = EnemyTurnDriver.orderedSteps(Some(board), far :: near :: Nil);
         Assert.assertEq(expected = 1 :: 0 :: Nil, steps |> List.map(s -> s#id))
 }

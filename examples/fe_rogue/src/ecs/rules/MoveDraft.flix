@@ -51,7 +51,7 @@ mod MoveDraft {
 
     /// この移動ドラフトで「いずれかのユニットが開始位置(origin)から動いたか」。
     /// `MovedFrom` を持たないユニット（このターン未選択）は寄与しない。ターン頭（0歩）の
-    /// 「敵に見つかったら強制たいき」誤発火を防ぐガードとして `EnemyTurnDriverScene` が使う。
+    /// 「敵に見つかったら強制たいき」誤発火を防ぐガードとして `EnemyTurnDriver` が使う。
     pub def anyMovedFromOrigin(units: List[{id = Int32, gridPos = {x = Int32, y = Int32} | r}],
                                 drafts: List[DraftAction]): Bool =
         List.exists(d -> match originOf(d#id, drafts) {

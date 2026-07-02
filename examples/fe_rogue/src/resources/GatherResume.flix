@@ -8,7 +8,7 @@
 /// 立てる: `commitAllWaitedAndAdvance(allowResume=true)` かつ `gatherActive=true` のとき true。
 ///         （集合中の「全員待機」/「shift スキップ」/「ターンエンド」が該当。集合中に敵へ接敵した
 ///          強制全員待機は `allowResume=false` で立てない＝集合再突入→即強制待機ループを断つ。）
-/// 消す:   味方ターン開始（`EnemyTurnDriverScene.endTurn`）で必ず `put(false)` して消費・再評価。
+/// 消す:   味方ターン開始（`EnemyTurnDriver.endTurn`）で必ず `put(false)` して消費・再評価。
 ///
 /// 設計指針: `Pacing` / `SelectedPlayer` / `TurnPhase` と同じ Ref ベースの effect handler。
 /// `Game.start` で `with GatherResume.withState(rc)` を 1 行注入し、`FrameAef.ProcessT` に

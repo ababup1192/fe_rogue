@@ -345,7 +345,7 @@ mod TestUnitFixtures {
     /// AnimationPlayer.Scheduler のスタブで **`drainSignals` を owner 別に応答**させる。
     /// `ownerPath` 宛の drain にだけ `bundle` を返し、他 owner 宛には空 bundle を返す
     /// （実物 Scheduler の「自分宛 signal だけ pull できる」挙動の再現）。
-    /// CombatScene.process の「他ユニットのシグナルを食わない」検証に使う。
+    /// CombatDriver.process の「他ユニットのシグナルを食わない」検証に使う。
     pub def withSignalsFor(ownerPath: NodePath, bundle: AnimationPlayer.EventBundle,
                             thunk: Unit -> a \ ef): a \ (ef - AnimationPlayer.Scheduler) =
         run { thunk() } with handler AnimationPlayer.Scheduler {
@@ -418,7 +418,7 @@ mod TestUnitFixtures {
     /// 成長判定（`rollGrowth` の各ロール）も全て 50 固定になる。
     /// slice `rng-world`: combat ロールが `World.RngDraw` chokepoint 経由になったため、Math.Random と
     /// 一緒に `World.RngDraw=k(50)` も discharge する（50 = floor(0.5*100)＝旧 Math.Random=0.5 スタブと
-    /// byte-identical）。これで既存 8 箇所の TestCombatScene 呼び出しは per-call 編集なしで green を保つ。
+    /// byte-identical）。これで既存 8 箇所の TestCombatDriver 呼び出しは per-call 編集なしで green を保つ。
     pub def withMockRandom(thunk: Unit -> a \ ef): a \ ((ef - Math.Random) - World.RngDraw) =
         run {
             run { thunk() } with handler World.RngDraw {
@@ -499,7 +499,7 @@ mod TestUnitFixtures {
             def advance(scene, k) = k(scene)
         }
 
-    /// slice `rng-world` で TestCombatScene から移設。ThiefDropRequest の no-op スタブ
+    /// slice `rng-world` で TestCombatDriver から移設。ThiefDropRequest の no-op スタブ
     /// （盗人ドロップが飛んだら scene をそのまま返す）。trace ハーネスも reuse する。
     pub def withNoopThiefDrop(thunk: Unit -> a \ ef):
             a \ (ef - CustomEffects.ThiefDropRequest) =

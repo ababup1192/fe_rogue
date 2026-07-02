@@ -20,7 +20,7 @@
 ///          ├─ Room_0 .. Room_{N-1} (ColorRect)        ← 訪問済み部屋/通路の矩形プール
 ///          ├─ Floor_0 .. Floor_{K-1} (ColorRect)      ← 歩ける床の黒くり抜きプール
 ///          └─ Marker_0 .. Marker_{M-1} (Polygon2D の円) ← プレイヤー/階段/アイテム/敵の点プール
-///   World/MinimapDriver (Marker2D, MinimapDriver)     ← process redef で毎フレーム蓄積＋描画
+///   World/MinimapDriver (Marker2D, MinimapDriver)     ← step で毎フレーム蓄積＋描画
 
 mod MinimapScene {
 
@@ -172,7 +172,7 @@ mod MinimapScene {
             |> CanvasItem.setZIndex(markerZIndex())
             |> CanvasItem.setVisible(false)
 
-    /// P5-a(F8): per-node dispatch から外し gameLoop がパイプライン段で 1 回呼ぶ frame-paced
+    /// gameLoop がパイプライン段で 1 回呼ぶ frame-paced
     /// System。訪問 module を蓄積し、M トグルを反映し、ミニマップを再描画する。
     /// レベルアップ画面（`LevelUpView`）の間は M トグル状態を保ったまま強制的に隠す。
     /// driver の DriverData は StairsExit と同型に `driverPath()` ノードの state で持ち、
@@ -181,7 +181,7 @@ mod MinimapScene {
                     Scene[NodeTag]
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
                        PlayerData.PartyQuery, EnemyData.RosterQuery,
-                       World.WorldQuery} =  // P2-2a: 味方/敵読みを World 経由へ。P6-1c: 階段位置も World
+                       World.WorldQuery} =  // 味方/敵/階段位置の読みは World 経由
         match Scene.getState(driverPath(), scene) {
             case Some(NodeTag.MinimapDriver(data)) =>
                 let phase = TurnPhase.State.get();
@@ -215,8 +215,7 @@ mod MinimapScene {
             case _ => scene
         }
 
-    /// DriverData を driver ノードの state へ書き戻す（step の node 引数廃止に伴う明示書き込み。
-    /// 旧 process では engine の戻り node 書き戻し契約が担っていた）。
+    /// DriverData を driver ノードの state へ書き戻す（step の明示書き込み）。
     def writeData(data: DriverData, scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(driverPath(), node -> match node {
             case EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(_)) =>
@@ -225,7 +224,7 @@ mod MinimapScene {
         }, scene)
 
     /// 階段が「発見済み」か。階段セルの属する module が訪問済みなら発見扱い。
-    /// P6-1c: 階段位置は World.stairsPos から読む（scene ノード撤去済み）。
+    /// 階段位置は World.stairsPos から読む（scene ノード撤去済み）。
     def stairsDiscovered(visited: Set[Int32],
                           placements: List[DungeonComposer.ModulePlacement],
                           _scene: Scene[NodeTag]): Bool \ World.WorldQuery =
@@ -320,7 +319,7 @@ mod MinimapScene {
                 |> List.filter(d -> not d#hidden)
                 |> List.map(d -> {cell = d#gridPos,
                                   color = if (d#id == 0) leaderColor() else playerColor()});
-        // P6-1c: 階段位置は World.stairsPos から読む（scene ノード撤去済み）。
+        // 階段位置は World.stairsPos から読む（scene ノード撤去済み）。
         let stairsM =
             if (data#stairsSeen)
                 match World.stairsPosOf(World.WorldQuery.get()) {
@@ -329,7 +328,7 @@ mod MinimapScene {
                 }
             else Nil;
         let itemsM =
-            // P6-1e: 床アイテム位置は World store から読む（scene ノード撤去済み）。
+            // 床アイテム位置は World store から読む（scene ノード撤去済み）。
             (World.groundItemsOf(World.WorldQuery.get()) |> Map.valuesOf |> List.map(d -> d#gridPos))
                 |> List.filter(cell -> inVisitedRoom(cell, placements, roomCount, data#visited))
                 |> List.map(cell -> {cell = cell, color = itemColor()});

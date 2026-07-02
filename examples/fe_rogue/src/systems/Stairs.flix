@@ -1,13 +1,13 @@
-/// StairsScene — フロアの「次の階へ降りる階段」マーカー
+/// Stairs — フロアの「次の階へ降りる階段」マーカー
 ///
 /// 各フロアに 1 つだけ、床のランダムなセルに配置される。味方がそのセルに乗ると
 /// 行動メニューに「かいだん」が出て、選ぶとその味方はマップから退場し次フロアへ進む。
 ///
 /// P6-1c: scene ノードは撤去済み。位置の権威は World.stairsPos（`Cmd.SetStairs`）、描画は
 /// `RenderWorld.renderStairs` が見た目定数（texture/scale/zIndex＝旧 scene.json 値）から直描きする。
-/// `Data`/`isAt`/`getPos` は legacy 杖 twin（StaffCastScene の warp）と golden fixture が
+/// `Data`/`isAt`/`getPos` は legacy 杖 twin（StaffCast の warp）と golden fixture が
 /// 手組みノードで使うテスト seam として残置（P6 手順 5 の legacy 撤去と同時に消す）。
-mod StairsScene {
+mod Stairs {
 
     /// `gridPos`: 階段を置いたグリッド座標（placed = false のときは未使用）
     /// `placed`: 階段が配置済みか。false の間は描画されず、`isAt` も常に false を返す
@@ -19,7 +19,7 @@ mod StairsScene {
     def name(): String = "Stairs"
     pub def stairsPath(): NodePath = name() :: Nil
 
-    // ── P6-1c: 見た目定数（旧 `StairsScene.scene.json` の Sprite2D 宣言から移設） ──
+    // ── P6-1c: 見た目定数（旧 `Stairs.scene.json` の Sprite2D 宣言から移設） ──
     /// project.json の "textures" に登録された階段テクスチャ名。
     pub def texture(): String = "stairs"
     /// タイル 16px に合わせた表示スケール。

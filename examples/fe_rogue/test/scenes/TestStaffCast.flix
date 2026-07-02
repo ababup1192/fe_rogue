@@ -1,4 +1,4 @@
-// StaffCastScene の効果適用ロジックの検証。
+// StaffCast の効果適用ロジックの検証。
 //
 // 杖・消費アイテムの「実際に HP を動かす」段を確認する。フル発動（applyStaffCast /
 // applyConsumableUse）は effect が多く（Tween / AnimationPlayer / TurnPhase / SelectedPlayer /
@@ -11,7 +11,7 @@
 // 方向選択の純粋ロジック（deltaToDirection / pickHealDirection）は Staff モジュールに
 // 移したので TestStaff 側で検証している。
 
-mod TestStaffCastScene {
+mod TestStaffCast {
 
     // ════════════════════════════════════════════════════════
     // テスト用シーン構築
@@ -19,7 +19,7 @@ mod TestStaffCastScene {
 
     /// 1 体だけの味方シーンを作る。`hp` は現在 HP、最大 HP は 10 固定（resource#hp）。
     /// `magicAttack` は回復量（魔力 + 10）を決める。HPBar ノードは持たないが、
-    /// `UnitHPBarScene.update` は対象が無ければ何もしないので回復結果には影響しない。
+    /// `UnitHPBarRender.update` は対象が無ければ何もしないので回復結果には影響しない。
     def playerScene(hp: Int32, magicAttack: Int32): Scene[NodeTag] =
         let pos = {x = 80.0, y = 80.0};
         let marker = Marker2D.make(pos);
@@ -125,7 +125,7 @@ mod TestStaffCastScene {
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                     TestUnitFixtures.withMockGameLogger(() ->
-                        StaffCastScene.applyStaffEffectDsl(0, staff, rule, hit, dir, scene)))))
+                        StaffCast.applyStaffEffectDsl(0, staff, rule, hit, dir, scene)))))
             } with handler World.WorldQuery {
                 // P6-2b: DSL 経路が World 位置を読む（read-after-write で同じ wref）。
                 def get(k) = k(Ref.get(wref))
@@ -160,7 +160,7 @@ mod TestStaffCastScene {
             let user = playerData(scene);
             let (_, _, w) = TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
                 TestUnitFixtures.withMockGameLogger(() ->
-                    StaffCastScene.applyConsumableHeal(0, user, healItem(3), scene)));
+                    StaffCast.applyConsumableHeal(0, user, healItem(3), scene)));
             Assert.assertEq(expected = Some(7), World.hpOf(World.EntityRef.Player(0), w))
         }
 
@@ -219,7 +219,7 @@ mod TestStaffCastScene {
         let user = playerData(scene);
         let after = TestUnitFixtures.dischargeWorldCommand(() ->
             TestUnitFixtures.withMockGameLogger(() ->
-                StaffCastScene.applyConsumableSelfEffect(0, user, healItem(3), scene)));
+                StaffCast.applyConsumableSelfEffect(0, user, healItem(3), scene)));
         Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
 
     /// ちから薬(AtkUp,4,3T): DSL 経路で AtkUp+4 が付与される（→ applySelfStatus）。
@@ -230,7 +230,7 @@ mod TestStaffCastScene {
         let item = Consumable.bottle(Consumable.ConsumableEffect.AtkUp, 4, 3, "ちから薬");
         let after = TestUnitFixtures.dischargeWorldCommand(() ->
             TestUnitFixtures.withMockGameLogger(() ->
-                StaffCastScene.applyConsumableSelfEffect(0, user, item, scene)));
+                StaffCast.applyConsumableSelfEffect(0, user, item, scene)));
         let atk = PlayerScene.get(0, after)
                     |> Option.map(p -> StatusSystem.sumOf(StatusSystem.StatusEffect.AtkUp, p#statuses))
                     |> Option.getWithDefault(-1);
@@ -244,7 +244,7 @@ mod TestStaffCastScene {
         let item = Consumable.bottle(Consumable.ConsumableEffect.MaxHpUp, 3, 0, "命の草");
         let after = TestUnitFixtures.dischargeWorldCommand(() ->
             TestUnitFixtures.withMockGameLogger(() ->
-                StaffCastScene.applyConsumableSelfEffect(0, user, item, scene)));
+                StaffCast.applyConsumableSelfEffect(0, user, item, scene)));
         let hpMax = PlayerScene.get(0, after)
                     |> Option.map(p -> (p#hp, p#resource#hp))
                     |> Option.getWithDefault((-1, -1));
@@ -260,7 +260,7 @@ mod TestStaffCastScene {
     def testThrowHealAtAllyViaDsl(): Unit \ Assert =
         let scene = playerScene(4, 0);
         let after = TestUnitFixtures.dischargeWorldCommand(() ->
-            StaffCastScene.applyConsumableEffectDsl(healItem(3), 0, true, scene));
+            StaffCast.applyConsumableEffectDsl(healItem(3), 0, true, scene));
         Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
 
     /// effectRule（IDE合成）が legacy effect を上書きしてゲームを駆動する。
@@ -274,7 +274,7 @@ mod TestStaffCastScene {
         let user = playerData(scene);
         let after = TestUnitFixtures.dischargeWorldCommand(() ->
             TestUnitFixtures.withMockGameLogger(() ->
-                StaffCastScene.applyConsumableSelfEffect(0, user, item, scene)));
+                StaffCast.applyConsumableSelfEffect(0, user, item, scene)));
         Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
 
     /// ちから薬を味方#0 に投げて当てると AtkUp+4 が付与される（投擲で味方を強化できる）。
@@ -283,7 +283,7 @@ mod TestStaffCastScene {
         let item = Consumable.bottle(Consumable.ConsumableEffect.AtkUp, 4, 3, "ちから薬");
         let scene = playerScene(10, 0);
         let after = TestUnitFixtures.dischargeWorldCommand(() ->
-            StaffCastScene.applyConsumableEffectDsl(item, 0, true, scene));
+            StaffCast.applyConsumableEffectDsl(item, 0, true, scene));
         let atk = PlayerScene.get(0, after)
                     |> Option.map(p -> StatusSystem.sumOf(StatusSystem.StatusEffect.AtkUp, p#statuses))
                     |> Option.getWithDefault(-1);
@@ -397,7 +397,7 @@ mod TestStaffCastScene {
     def testEnemyStaffForByClass(): Unit \ Assert =
         Assert.assertEq(
             expected = (Some(Staff.StaffEffect.Bind), Some(Staff.StaffEffect.Stopgap), None),
-            (StaffCastScene.enemyStaffFor("クレリック_T2"),
-             StaffCastScene.enemyStaffFor("クレリック_T3"),
-             StaffCastScene.enemyStaffFor("ファイター_T1")))
+            (StaffCast.enemyStaffFor("クレリック_T2"),
+             StaffCast.enemyStaffFor("クレリック_T3"),
+             StaffCast.enemyStaffFor("ファイター_T1")))
 }

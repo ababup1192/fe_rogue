@@ -1,4 +1,4 @@
-/// ItemScene — ダンジョン床に落ちている拾える武器（ground item）
+/// GroundItems — ダンジョン床に落ちている拾える武器（ground item）
 ///
 /// `buildPlayingScene` の流れで `add` を呼ぶと、各部屋の床セルからランダムに `dropsPerRoom`
 /// 個まで選んで、`weapons` カタログからランダム抽選した武器をそのセルに落とす。
@@ -13,7 +13,7 @@
 ///   - 1 セルに 1 アイテムまで（同セル重複は事前フィルタで弾く）
 ///   - 敵/味方のスポーンセルは避ける
 ///   - アイテムノードを Sprite2D で表示。武器の `sprite` を使う
-mod ItemScene {
+mod GroundItems {
 
     use JsonCompat.PathTag.Root
 
@@ -127,7 +127,7 @@ mod ItemScene {
 
     /// id を weapons catalog → staves catalog → consumables catalog の順で引いて、
     /// 見つかった方を ADT で返す。どれにも無ければ起動時 typo として panic。
-    /// 宝箱の中身解決(`ChestScene.add`)でも同じ id→GroundItemKind 規則を共有するため pub。
+    /// 宝箱の中身解決(`Chests.add`)でも同じ id→GroundItemKind 規則を共有するため pub。
     pub def lookupItem(id: String,
                     catalog: UnitCatalog.UnitCatalog,
                     staffCatalog: Staff.StaffCatalog,
@@ -143,7 +143,7 @@ mod ItemScene {
         match List.filterMap(o -> o, candidates) {
             case kind :: _ => kind
             case Nil       =>
-                bug!("ItemScene.lookupItem: id '${id}' not in weapons / staves / consumables / rings catalog")
+                bug!("GroundItems.lookupItem: id '${id}' not in weapons / staves / consumables / rings catalog")
         }
 
     /// アイテム 1 個ぶんを配置する＝`Cmd.SpawnItem` を emit して World store を更新する。

@@ -66,8 +66,7 @@ mod ArrowCursorScene {
     /// フェーズが `StaffAim` のときだけ visible にし、それ以外では hidden にする。
     /// 実質的な描画更新（位置・回転）は `StaffAim` 開始時の `showFor` と方向キー毎の `aim` が担い、
     /// ここでは visibility 切替のみ行う（`showFor` / `aim` で設定済みの値を毎フレーム上書きしない）。
-    /// P5-a(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
-    /// 旧 `process` は node を返す以外に使っていなかったので `Scene → Scene` に昇格。
+    /// gameLoop が 1 回呼ぶ frame-paced System。
     pub def step(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
         applyVisibility(TurnPhase.State.get(), scene)
 

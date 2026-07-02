@@ -1,15 +1,15 @@
-/// ChestScene — フロアに置かれる宝箱（ローグだけが開けられる）
+/// Chests — フロアに置かれる宝箱（ローグだけが開けられる）
 ///
 /// P6-1d: scene ノードは撤去済み。存在/中身の権威は World.chests（`Cmd.SpawnChest/RemoveChest/
 /// ClearChests`）、描画は `RenderWorld.renderChests` が chestKey→ChestCatalog の sprite から直描きする。
 ///
 /// 設計の要:
 ///   - **中身は配置時(`add`)に確定**して `Data#content` に格納する。`add` は `Math.Random` と
-///     catalogs を持つのでここで `pickWeighted` + `ItemScene.lookupItem` を済ませる。これにより
+///     catalogs を持つのでここで `pickWeighted` + `GroundItems.lookupItem` を済ませる。これにより
 ///     開錠側(`ActionMenuScene.applyOpenChest`)は Math.Random も catalogs も要さず決定論的に振る舞える。
 ///   - 配置は駒(味方/敵)・床アイテム・階段・既配置の宝箱と重ならないセルにのみ行う。
 ///   - 開錠でノードごと削除する(`takeAt`)。開封済み状態は持たず、同セルを再度踏んでも宝箱は出ない。
-mod ChestScene {
+mod Chests {
 
     use ItemData.GroundItemKind
 
@@ -38,7 +38,7 @@ mod ChestScene {
     /// フロアに宝箱を配置する。配置数は `floor#chestsPerFloor` の min..max からランダム、
     /// 種別は `floor#chests` の重み付きプール、中身は各宝箱種別の `contents` プールから抽選する。
     /// 占有回避: 味方/敵/床アイテム/階段/既に置いた宝箱のセルを避ける。
-    /// 階段配置(`StairsScene.placeRandom`)の後に呼ぶ前提（階段セルを `StairsScene.getPos` で読むため）。
+    /// 階段配置(`Stairs.placeRandom`)の後に呼ぶ前提（階段セルを `Stairs.getPos` で読むため）。
     pub def add(chestCatalog: ChestCatalog.ChestCatalog,
                  catalog: UnitCatalog.UnitCatalog,
                  staffCatalog: Staff.StaffCatalog,
@@ -111,7 +111,7 @@ mod ChestScene {
                 chestKey  <- FloorCatalog.pickWeighted(floor#chests);
                 contentId <- FloorCatalog.pickWeighted(ChestCatalog.lookup(chestKey, chestCatalog)#contents)
             ) yield {
-                let content = ItemScene.lookupItem(contentId, catalog, staffCatalog, consumableCatalog, ringCatalog);
+                let content = GroundItems.lookupItem(contentId, catalog, staffCatalog, consumableCatalog, ringCatalog);
                 (cell, chestKey, contentId, content)
             };
             match chosen {
@@ -149,7 +149,7 @@ mod ChestScene {
     /// 現在の宝箱を `ChestSnap` 列（セル座標 ＋ 箱種別 id ＋ 中身 id）に射影する（スナップショット保存用）。
     /// `chestKey` / `contentId` は Data が保持するので逆引き不要。
     /// P2-r2（セーブ capture の World 化）: 射影元を scene ノード群から **World の chests store**
-    /// に変更（P3-b で権威化済み・dual-write 中は等値）。並び順は cellKey 昇順（ItemScene と同じ注記）。
+    /// に変更（P3-b で権威化済み・dual-write 中は等値）。並び順は cellKey 昇順（GroundItems と同じ注記）。
     pub def captureSnaps(_scene: Scene[NodeTag]): List[FloorSnapshot.ChestSnap] \ World.WorldQuery =
         World.chestsOf(World.WorldQuery.get())
             |> Map.valuesOf
@@ -166,7 +166,7 @@ mod ChestScene {
                           ringCatalog: Ring.RingCatalog,
                           scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         List.foldLeft((acc, snap) -> {
-            let content = ItemScene.lookupItem(snap#contentId, catalog, staffCatalog, consumableCatalog, ringCatalog);
+            let content = GroundItems.lookupItem(snap#contentId, catalog, staffCatalog, consumableCatalog, ringCatalog);
             addOneChest(snap#gridPos, snap#chestKey, snap#contentId, content, acc)
         }, scene, snaps)
 

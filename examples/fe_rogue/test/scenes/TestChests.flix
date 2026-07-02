@@ -1,16 +1,16 @@
-// ChestScene のテスト（P6-1d: World store 権威）
+// Chests のテスト（P6-1d: World store 権威）
 //
 // 宝箱の存在/中身は World.chests store（SpawnChest/RemoveChest/ClearChests）が唯一の権威で、
 // scene ノードは存在しない（描画は RenderWorld.renderChests の直描き）。
 // ランダム配置 (add) は実マップ (LDTK) を要求するためここでは扱わず、Cmd 単位で
 // 「spawn → 問い合わせ → 開錠除去 → 全消去」の store 遷移を pin する。
 
-mod TestChestScene {
+mod TestChests {
 
     /// (2,3) に chestKey="wooden" の宝箱 1 個を spawn した World。中身は適当な武器。
     def worldWithChest(): World =
         let content = ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon());
-        let data: ChestScene.Data = {gridPos = {x = 2, y = 3}, chestKey = "wooden",
+        let data: Chests.Data = {gridPos = {x = 2, y = 3}, chestKey = "wooden",
                                      contentId = "test_content", content = content};
         World.applyCmd(World.Cmd.SpawnChest(data), World.empty())
 
@@ -30,7 +30,7 @@ mod TestChestScene {
         region rc {
             let wref = Ref.fresh(rc, worldWithChest());
             let runTake = cell -> {
-                run { discard ChestScene.takeAt(cell, Scene.empty()) }
+                run { discard Chests.takeAt(cell, Scene.empty()) }
                     with handler World.Command {
                         def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
                     }

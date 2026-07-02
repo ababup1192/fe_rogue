@@ -14,7 +14,7 @@
 /// ノード構造:
 ///   Fog (Marker2D, NoTag)                          ← root 直下。モヤ矩形プールの親
 ///     ├─ Fog_0 .. Fog_{poolSize-1} (ColorRect)     ← 毎フレーム再配置（補集合の矩形）
-///   World/FogDriver (Marker2D, NodeTag.FogDriver)   ← process redef で毎フレーム applyFog
+///   World/FogDriver (Marker2D, NodeTag.FogDriver)   ← step で毎フレーム applyFog
 
 /// グリッド座標の矩形（半開区間 [x0,x1) × [y0,y1)）。
 pub type alias GridRect = {x0 = Int32, y0 = Int32, x1 = Int32, y1 = Int32}
@@ -40,31 +40,29 @@ mod FogScene {
 
     /// 常駐 FogDriver を scene tree に追加する。
     /// `GameLifecycle.buildPlayingScene` で MapScene.add の直後に 1 回だけ呼ぶ。
-    /// P6-1b: 旧モヤ矩形プール（ColorRect×24）は撤去。暗幕は `RenderWorld.renderFog` が
-    /// World/placements から純粋計算で直描き＝scene にノードを積まない。
+    /// 暗幕は `RenderWorld.renderFog` が World/placements から純粋計算で直描き＝scene にノードを積まない。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.addChild(MapScene.worldName(), driverName(),
             EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.FogDriver),
             scene)
 
-    /// P5-a(F8): per-node dispatch から外し、gameLoop がパイプライン段で 1 回呼ぶ
-    /// frame-paced System。旧 `process` は node/path/delta を一切使わない pass-through
-    /// だったので `Scene → Scene` に昇格（FogDriver ノードは常駐 marker として残置）。
-    /// 明示 step は毎フレーム（タイトル/選択画面含む）走るため、旧 per-node dispatch と同じ
-    /// 「FogDriver ノードが居るときだけ」を gate で再現する（Map 不在 scene で
+    /// gameLoop がパイプライン段で 1 回呼ぶ frame-paced System
+    /// （FogDriver ノードは常駐 marker として残置）。
+    /// 明示 step は毎フレーム（タイトル/選択画面含む）走るため、
+    /// 「FogDriver ノードが居るときだけ」を gate で動かす（Map 不在 scene で
     /// `MapScene.getPlacements` が bug! するのを防ぐ）。
     pub def step(scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, World.WorldQuery} =
         if (Option.isEmpty(Scene.getEngineNode(MapScene.worldName() :: driverName() :: Nil, scene)))
             scene
         else stepPlaying(scene)
 
-    /// FogDriver 常駐が確認できた Playing scene 用の本体（旧 process の中身）。
+    /// FogDriver 常駐が確認できた Playing scene 用の本体。
     def stepPlaying(scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, World.WorldQuery} =
         let drafts = SelectedPlayer.State.get()#drafts;
         // 移動ドラフト中も「部屋点灯」はターン開始位置(origin)基準に固定する。コミットで
         // drafts が消えれば origin==live に戻り点灯する（＝待機/接敵まで新規部屋を暗いまま）。
         // キャラのいない部屋は訪問済みでも暗いまま（非永続）。通路は常に周囲1マス(松明)だけ。
-        // P6-2b: live 位置は World 上書き Data（scene gridPos twin は退役）。origin は draft 由来。
+        // live 位置は World 上書き Data（scene gridPos twin は退役）。origin は draft 由来。
         let units  = PlayerScene.getAllWithWorldPos(scene)
             |> List.map(d -> {
                  id = d#id, gridPos = d#gridPos, hidden = d#hidden,
@@ -89,14 +87,13 @@ mod FogScene {
         let placements = MapScene.getPlacements(scene);
         let roomCount  = MapScene.getRoomCount(scene);
         // 通路は常に torch（torchCorridors=true）。部屋は origin 基準で点灯（非永続）。
-        // P6-1b: 暗幕（hazeRects）の scene プール更新は撤去（renderFog が直描き）。
+        // 暗幕（hazeRects）は renderFog が直描きする。
         // ここに残るのは点灯 visibility 制御（敵/アイテム/階段/宝箱の lit 判定）のみ。
         let holes      = holesForDraft(units, placements, roomCount, true);
         // isLit クロージャは「let 束縛の最後」に置く（Flix 0.71.0 以降、lambda を let で
         // 束縛した後に更に let を続けるとパーサが lambda 本体を貪欲に取り込んで壊れるため）。
         let isLit      = (cell: {x = Int32, y = Int32}) -> insideAny(cell, holes);
-        // P6-1c: StairsScene.applyFog は撤去（階段は renderStairs が描画時に lit 判定）。
-        // P6-1e: ItemScene.applyFog は撤去（床アイテムは renderItems が描画時に lit 判定）。
+        // 階段/床アイテムの lit 判定は renderStairs/renderItems が描画時に行う。
         scene
             |> EnemyScene.applyFog(isLit)
 
@@ -179,7 +176,6 @@ mod FogScene {
                             |> List.map(moduleRect);
         List.append(litExpanded, visitedRects)
 
-    // P6-1b: 旧 haze プール操作（applyHazePool/setPoolRect/hidePoolRect/hideHaze）は撤去。
     // 暗幕は `RenderWorld.renderFog` が bandDecompose の矩形を solidBox で直描きする唯一の経路。
 
     /// module の floorBounds(±edgePad で壁リングまで拡張) を world grid 矩形にする。

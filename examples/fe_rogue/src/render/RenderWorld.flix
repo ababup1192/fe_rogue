@@ -1,14 +1,10 @@
-// RenderWorld — B1: fe_rogue の render-from-World extract（dodge RenderWorld 相当）。
+// RenderWorld — fe_rogue の render-from-World（dodge RenderWorld 相当）。
 // World → render component の draw list → Drawable（共有 lib Render に委譲）。scene-tree を介さない。
-//
-// m1a（このファイルの現状）: 配線実証。ユニットを World 位置に solidBox で描く（camera 無し・固定視点）。
-//   目的＝「World 位置 → Render.draw → GameEngine.renderCommands」が fe_rogue ループで動くことの証明。
-// m1b（次）: box → 実 sprite（resource 由来 texture・region atlas は Render.drawAtlas で）。
 mod RenderWorld {
     use Render.RenderItem
     use Vec2.Vec2
 
-    /// P6-1h: ユニット本体を **sprite ノード無し**で直描きする。見た目=resource（catalog）、
+    /// ユニット本体を **sprite ノード無し**で直描きする。見た目=resource（catalog）、
     /// アニメ frame=unitAnim store（elapsed→frame を純関数導出）、flipH/暗転=unitFlipH/unitModulate
     /// store、死亡点滅 alpha=dyingElapsed→`EnemyScene.deathBlinkAlpha`。位置は marker global
     /// （移動 tween/lunge の位置権威は marker のまま）。存在 gate=World.posOf、
@@ -45,7 +41,7 @@ mod RenderWorld {
 
     /// アクティブ camera の ViewTransform（render() と同じ算出）。camera 無しは identity。
     /// B/perf: `findActiveCamera` が全 scene 走査ゆえ、Game.flix が**フレーム 1 回**計算して全 render 関数へ渡す
-    /// （旧: 各 render 関数・各 subtree root が個別に呼び ~30 回/frame 走査していた）。
+    /// （各 render 関数・各 subtree root が個別に呼ぶと ~30 回/frame 走査になるため）。
     pub def viewTransform(scene: Scene[NodeTag]): Camera2D.ViewTransform \ GameEngine.Game =
         match Scene.findActiveCamera(scene) {
             case Some((cam, gp)) =>
@@ -54,7 +50,7 @@ mod RenderWorld {
             case None => Camera2D.identityTransform()
         }
 
-    /// 1 ユニット → Drawable list（P6-1h: resource + store から Sprite2D 値を直組み）。
+    /// 1 ユニット → Drawable list（resource + store から Sprite2D 値を直組み）。
     def unitDraw(ref: World.EntityRef, unitPath: NodePath,
                  spriteRes: Sprite.SpriteResource, spriteFrames: Option[SpriteFrames],
                  world: World, transform: Camera2D.ViewTransform,
@@ -119,7 +115,7 @@ mod RenderWorld {
     /// B: World 描画する **in-world（camera 適用）** サブツリー root。配置物（アイテム/宝箱/階段）＋ダメージ数字/
     /// 爆発/カーソル/矢印カーソル。top-level の Cursor/ArrowCursor は World 直下でないため明示列挙。
     def worldSubtreeRoots(): List[NodePath] =
-        // P6-1c〜f: 配置物 3 種と fx（ダメージ数字/爆発）はノード廃止＝render* 直描き。
+        // 配置物 3 種と fx（ダメージ数字/爆発）は render* が直描き＝ノードを積まない。
         CursorScene.cursorPath() :: ArrowCursorScene.arrowPath() :: Nil
 
     /// B: World 描画する **CanvasLayer（camera 免除・画面固定）** サブツリー root。HUD/メニュー/minimap/各種ポップアップ。
@@ -136,8 +132,7 @@ mod RenderWorld {
     /// 2 サブリストで保持。順序は z-sort/effzIndex で描画に無関係。
     def subtreeRoots(): List[NodePath] = List.append(worldSubtreeRoots(), hudSubtreeRoots())
 
-    // P6-1g: P5-e の per-unit marker 装飾 root（unitMarkerRoots/unitGlyphRoots）は撤去。
-    // 武器アイコン/HP バーはノード自体を積まず UnitHPBarScene.renderBars / WeaponIconScene.renderIcons
+    // 武器アイコン/HP バーはノード自体を積まず UnitHPBarRender.renderBars / WeaponIconRender.renderIcons
     // が World store から直描きする。
 
     /// B: polygon（Polygon2D/Arc2D）を持つ subtree root のみ（minimap マーカー円 / BattlePanel ドット / TurnEndHold リング）。
@@ -146,7 +141,7 @@ mod RenderWorld {
         MinimapScene.rootPath() :: BattlePanelScene.rootPath() :: TurnEndHoldScene.rootPath() :: Nil
 
     /// B: 全 subtree（HUD/メニュー/minimap/ポップアップ等）を World render System で描く。
-    /// B/perf: `renderOrderPaths` を全 root で 1 回共有する batch API に委譲（旧: root ごと再走査＝O(roots×N)）。
+    /// B/perf: `renderOrderPaths` を全 root で 1 回共有する batch API に委譲（root ごと再走査すると O(roots×N) になるため）。
     pub def renderSubtrees(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
         Scene.subtreeDrawablesForRoots(transform, subtreeRoots(), scene)
 
@@ -194,7 +189,7 @@ mod RenderWorld {
             case None    => Nil
             case Some(_) =>
                 let drafts     = SelectedPlayer.State.get()#drafts;
-                // P6-2b: live 位置は World 上書き Data（scene gridPos twin は退役）。
+                // live 位置は World 上書き Data（scene gridPos twin は退役）。
                 let units      = PlayerScene.getAllWithWorldPos(scene)
                     |> List.map(d -> {gridPos = d#gridPos, hidden = d#hidden,
                                       origin = MoveDraft.originOf(d#id, drafts) |> Option.getWithDefault(d#gridPos)});
@@ -205,14 +200,14 @@ mod RenderWorld {
                 List.flatMap(r -> fogRectDrawables(r, transform), hazeRects)
         }
 
-    /// P6-1c/d: fog の「明るい穴」を frame に 1 回計算し、配置物の直描き（renderStairs/renderChests…）
+    /// fog の「明るい穴」を frame に 1 回計算し、配置物の直描き（renderStairs/renderChests…）
     /// で共有する lit ゲート入力。Map 不在（タイトル/選択画面）は None＝配置物を描かない。
     pub def fogHolesOpt(scene: Scene[NodeTag]): Option[List[GridRect]] \ {SelectedPlayer.State, World.WorldQuery} =
         match Scene.getEngineNode(MapScene.mapPath(), scene) {
             case None    => None
             case Some(_) =>
                 let drafts = SelectedPlayer.State.get()#drafts;
-                // P6-2b: live 位置は World 上書き Data（scene gridPos twin は退役）。
+                // live 位置は World 上書き Data（scene gridPos twin は退役）。
                 let units  = PlayerScene.getAllWithWorldPos(scene)
                     |> List.map(d -> {gridPos = d#gridPos, hidden = d#hidden,
                                       origin = MoveDraft.originOf(d#id, drafts) |> Option.getWithDefault(d#gridPos)});
@@ -229,23 +224,22 @@ mod RenderWorld {
             |> Render.applyCameraScale(transform)
             |> List.map(d -> {zIndex = z | d})
 
-    /// P6-1c: 階段を World store + 見た目定数から直描きする（scene ノードなしの第一号）。
-    ///   存在 = `World.stairsPosOf`（None=未配置）、見た目 = `StairsScene.texture/spriteScale/spriteZIndex`
-    ///   （旧 scene.json 値）、fog の lit ゲート = `fogHolesOpt`（旧 `StairsScene.applyFog` の
-    ///   可視制御を描画時判定に置換・origin 基準は fog 本体と同一）。holes=None（Map 不在）は Nil。
+    /// 階段を World store + 見た目定数から直描きする。
+    ///   存在 = `World.stairsPosOf`（None=未配置）、見た目 = `Stairs.texture/spriteScale/spriteZIndex`、
+    ///   fog の lit ゲート = `fogHolesOpt`（可視制御を描画時に判定・origin 基準は fog 本体と同一）。holes=None（Map 不在）は Nil。
     pub def renderStairs(world: World, holesOpt: Option[List[GridRect]],
                           transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
         match (holesOpt, World.stairsPosOf(world)) {
             case (Some(holes), Some(cell)) =>
                 if (not FogScene.insideAny(cell, holes)) Nil
                 else standaloneSprite(
-                    Sprite2D.make(StairsScene.texture(), Vec2.zero(), StairsScene.spriteScale()),
-                    MapSnapshot.cellCenter(cell), StairsScene.spriteZIndex(), transform)
+                    Sprite2D.make(Stairs.texture(), Vec2.zero(), Stairs.spriteScale()),
+                    MapSnapshot.cellCenter(cell), Stairs.spriteZIndex(), transform)
             case _ => Nil
         }
 
-    /// P6-1d: 宝箱を World.chests store + ChestCatalog の sprite から直描きする。
-    /// 位置 = cellCenter + sprite#offset・scale は spawn 時の旧実装どおり 1.0 固定（sprite#scale 非適用）。
+    /// 宝箱を World.chests store + ChestCatalog の sprite から直描きする。
+    /// 位置 = cellCenter + sprite#offset・scale は 1.0 固定（sprite#scale 非適用）。
     pub def renderChests(chestCatalog: ChestCatalog.ChestCatalog, world: World,
                           holesOpt: Option[List[GridRect]],
                           transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
@@ -264,11 +258,11 @@ mod RenderWorld {
                                 |> Sprite2D.setHframes(sprite#hframes)
                                 |> Sprite2D.setVframes(sprite#vframes)
                                 |> Sprite2D.setFrame(sprite#frame);
-                            standaloneSprite(node, pos, ChestScene.chestZIndex(), transform)
+                            standaloneSprite(node, pos, Chests.chestZIndex(), transform)
                         })
         }
 
-    /// P6-1e: 床アイテムを World.groundItems store + `ItemScene.spriteOf` から直描きする。
+    /// 床アイテムを World.groundItems store + `GroundItems.spriteOf` から直描きする。
     /// 本体（z=5）＋4 方向 1px シフトの縁取り（z=4・薄青・点滅 alpha=pulseAlpha(elapsed)）。
     /// elapsed は stepWorld が tick 済み。lit ゲートは fogHolesOpt（stairs/chests と同型）。
     pub def renderItems(world: World, holesOpt: Option[List[GridRect]],
@@ -281,7 +275,7 @@ mod RenderWorld {
                     |> List.flatMap(d ->
                         if (not FogScene.insideAny(d#gridPos, holes)) Nil
                         else {
-                            let sprite0 = ItemScene.spriteOf(d#item);
+                            let sprite0 = GroundItems.spriteOf(d#item);
                             let center = MapSnapshot.cellCenter(d#gridPos);
                             let pos: Vec2.Vec2 = {x = center#x + sprite0#offset#x, y = center#y + sprite0#offset#y};
                             let makeFramed = () ->
@@ -289,35 +283,35 @@ mod RenderWorld {
                                     |> Sprite2D.setHframes(sprite0#hframes)
                                     |> Sprite2D.setVframes(sprite0#vframes)
                                     |> Sprite2D.setFrame(sprite0#frame);
-                            let alpha = ItemScene.pulseAlpha(d#elapsed);
+                            let alpha = GroundItems.pulseAlpha(d#elapsed);
                             let outlines = List.flatMap(entry -> {
                                 let (_, delta) = entry;
                                 let opos: Vec2.Vec2 = {x = pos#x + delta#x, y = pos#y + delta#y};
                                 let node = makeFramed()
                                     |> Sprite2D.setAlpha(alpha)
-                                    |> CanvasItem.setModulate(ItemScene.outlineColor());
-                                standaloneSprite(node, opos, ItemScene.outlineZIndex(), transform)
-                            }, ItemScene.outlineDeltas());
+                                    |> CanvasItem.setModulate(GroundItems.outlineColor());
+                                standaloneSprite(node, opos, GroundItems.outlineZIndex(), transform)
+                            }, GroundItems.outlineDeltas());
                             List.append(outlines,
-                                standaloneSprite(makeFramed(), pos, ItemScene.spriteZIndex(), transform))
+                                standaloneSprite(makeFramed(), pos, GroundItems.spriteZIndex(), transform))
                         })
         }
 
-    /// P6-1f: ダメージ数字 fx を World.popupFx store から直描きする（Label2D 値を組む＝tree に積まない）。
-    /// 上方向 float は経過比率から導出。fog ゲートは掛けない（戦闘発生セル＝点灯前提・旧ノード版と同じ）。
+    /// ダメージ数字 fx を World.popupFx store から直描きする（Label2D 値を組む＝tree に積まない）。
+    /// 上方向 float は経過比率から導出。fog ゲートは掛けない（戦闘発生セル＝点灯前提）。
     /// Map 不在（タイトル等）は早期 Nil（フロア跨ぎ残骸の誤描画防止）。
     pub def renderPopups(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
             List[GameEngine.Drawable] \ GameEngine.Game =
         match Scene.getEngineNode(MapScene.mapPath(), scene) {
             case None    => Nil
             case Some(_) =>
-                let atlas = GameEngine.Game.getFontAtlas(DamagePopupScene.fontName());
+                let atlas = GameEngine.Game.getFontAtlas(DamagePopupFx.fontName());
                 World.popupFxOf(world)
                     |> Map.valuesOf
                     |> List.flatMap(d -> {
                         let ratio = (d#total - d#remaining) / d#total;
-                        let pos: Vec2.Vec2 = {x = d#pos#x, y = d#pos#y - DamagePopupScene.floatDistancePx() * ratio};
-                        let label = Label2D.make(d#text, atlas, DamagePopupScene.fontSize())
+                        let pos: Vec2.Vec2 = {x = d#pos#x, y = d#pos#y - DamagePopupFx.floatDistancePx() * ratio};
+                        let label = Label2D.make(d#text, atlas, DamagePopupFx.fontSize())
                             |> Label2D.setHorizontalAlignment(HorizontalAlignment.Center)
                             |> Label2D.setVerticalAlignment(VerticalAlignment.Bottom)
                             |> CanvasItem.setModulate(d#color);
@@ -325,11 +319,11 @@ mod RenderWorld {
                         GameEngine.Renderable.toDrawables(
                             EngineNode.Label2DWithState(label, NodeTag.NoTag), screenPos)
                             |> Render.applyCameraScale(transform)
-                            |> List.map(dr -> {zIndex = DamagePopupScene.popupZIndex() | dr})
+                            |> List.map(dr -> {zIndex = DamagePopupFx.popupZIndex() | dr})
                     })
         }
 
-    /// P6-1f: 爆発 fx を World.explosionFx store から直描きする（コマ番号は経過比率から導出）。
+    /// 爆発 fx を World.explosionFx store から直描きする（コマ番号は経過比率から導出）。
     pub def renderExplosions(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
             List[GameEngine.Drawable] \ GameEngine.Game =
         match Scene.getEngineNode(MapScene.mapPath(), scene) {
@@ -340,14 +334,14 @@ mod RenderWorld {
                     |> List.flatMap(d -> {
                         let ratio = (d#total - d#remaining) / d#total;
                         let raw = Float64.truncateToInt32(
-                                    Float64.floor(ratio * Int32.toFloat64(ExplosionScene.frameCount())));
-                        let frame = Int32.max(0, Int32.min(ExplosionScene.frameCount() - 1, raw));
-                        let sprite = Sprite2D.make(ExplosionScene.texture(), Vec2.zero(),
+                                    Float64.floor(ratio * Int32.toFloat64(ExplosionFx.frameCount())));
+                        let frame = Int32.max(0, Int32.min(ExplosionFx.frameCount() - 1, raw));
+                        let sprite = Sprite2D.make(ExplosionFx.texture(), Vec2.zero(),
                                         ({x = d#scale, y = d#scale}: Vec2.Vec2))
-                            |> Sprite2D.setHframes(ExplosionScene.hframes())
-                            |> Sprite2D.setVframes(ExplosionScene.vframes())
+                            |> Sprite2D.setHframes(ExplosionFx.hframes())
+                            |> Sprite2D.setVframes(ExplosionFx.vframes())
                             |> Sprite2D.setFrame(frame);
-                        standaloneSprite(sprite, d#pos, ExplosionScene.zIndex(), transform)
+                        standaloneSprite(sprite, d#pos, ExplosionFx.zIndex(), transform)
                     })
         }
 

@@ -1,4 +1,4 @@
-// CombatScene の攻撃解決ロジックの検証（移設前はテスト0件だった領域）。
+// CombatDriver の攻撃解決ロジックの検証（移設前はテスト0件だった領域）。
 //
 // 検証する観点:
 //   - attackLungeAnimation: 中点で attack:hit メソッドを 1 つ発火する（純粋・モック不要）
@@ -13,7 +13,7 @@
 // testResource(技2/幸運2) vs testEnemyResource(速さ3/幸運2)・中立相性なので
 //   命中率 = 武器命中 − 3。roll=50 なので「命中率 > 50（= 武器命中 > 53）で命中」。
 
-mod TestCombatScene {
+mod TestCombatDriver {
 
     // ════════════════════════════════════════════════════════
     // フィクスチャ
@@ -69,8 +69,8 @@ mod TestCombatScene {
     }
 
     /// World 配下に Player(0) と Enemy(1) を直接挿した最小シーン。
-    /// HPBar / DamagePopupsRoot は持たないが、`UnitHPBarScene.update` /
-    /// `DamagePopupScene.emit` は対象が無ければ何もしないので結果に影響しない。
+    /// HPBar / DamagePopupsRoot は持たないが、`UnitHPBarRender.update` /
+    /// `DamagePopupFx.emit` は対象が無ければ何もしないので結果に影響しない。
     def battleScene(weaponHit: Int32): Scene[NodeTag] =
         let world = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
         let pMarker = Marker2D.make(Vec2.zero());
@@ -97,7 +97,7 @@ mod TestCombatScene {
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
-                    CombatScene.applyAttackHit(0, scene))))))))));
+                    CombatDriver.applyAttackHit(0, scene))))))))));
             (out, w)
         }
 
@@ -109,7 +109,7 @@ mod TestCombatScene {
     /// （このメソッドを engine が拾って onAttackHit → ダメージ適用が走る）
     @Test
     def testLungeFiresOneHitMethod(): Unit \ Assert =
-        let anim = CombatScene.attackLungeAnimation(
+        let anim = CombatDriver.attackLungeAnimation(
                        PlayerScene.playerPath(0), {x = 2, y = 2}, {x = 3, y = 2});
         let firstName = List.head(anim#methods)
             |> Option.map(m -> m#name)
@@ -129,7 +129,7 @@ mod TestCombatScene {
     @Test
     def testAttackForecastComputesHitDamageExp(): Unit \ Assert =
         let weapon = ({hit = 80 | TestUnitFixtures.testWeapon()}: UnitCatalog.WeaponResource);
-        let plan = CombatScene.attackForecast(player(80), weapon, enemy());
+        let plan = CombatDriver.attackForecast(player(80), weapon, enemy());
         Assert.assertEq(
             expected = (77, 4, 6, false, true),
             (plan#hitRate, plan#dmg, plan#newHp, plan#killed, plan#exp > 0))
@@ -142,7 +142,7 @@ mod TestCombatScene {
     @Test
     def testAnyAttackingReflectsAttackTarget(): Unit \ Assert =
         let attacking = battleScene(80);
-        let idle      = TestUnitFixtures.dischargeWorldCommand(() -> CombatScene.clearAttackTargetId(0, attacking));
+        let idle      = TestUnitFixtures.dischargeWorldCommand(() -> CombatDriver.clearAttackTargetId(0, attacking));
         Assert.assertEq(
             expected = (true, false),
             (PlayerScene.anyAttacking(attacking),
@@ -186,7 +186,7 @@ mod TestCombatScene {
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
-                    CombatScene.applyEnemyAttackHit(1, scene)))))))));
+                    CombatDriver.applyEnemyAttackHit(1, scene)))))))));
             (out, w)
         }
 
@@ -244,7 +244,7 @@ mod TestCombatScene {
                 TestUnitFixtures.withMockRandom(() ->
                     run {
                         TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
-                        let _ = CombatScene.onLungeDone(Faction.Player, 0, scene);
+                        let _ = CombatDriver.onLungeDone(Faction.Player, 0, scene);
                         (TurnPhase.State.get(), Pacing.State.isHolding())
                     } with Tween.withScheduler(rc)
                       with TurnPhase.withState(rc)
@@ -273,7 +273,7 @@ mod TestCombatScene {
                 TestUnitFixtures.withMockRandom(() ->
                     run {
                         TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
-                        let _ = CombatScene.onLungeDone(Faction.Player, 0, scene);
+                        let _ = CombatDriver.onLungeDone(Faction.Player, 0, scene);
                         (TurnPhase.State.get(), Pacing.State.isHolding())
                     } with Tween.withScheduler(rc)
                       with TurnPhase.withState(rc)
@@ -299,7 +299,7 @@ mod TestCombatScene {
             def reviveInPlace(scene, k) = k(scene)
         }
 
-    /// `path` のノードに対して CombatScene.process を全副作用モックで 1 回回す。
+    /// `path` のノードに対して CombatDriver.process を全副作用モックで 1 回回す。
     /// AnimationPlayer は `ownerPath` 宛にだけ attack_lunge finished を返す
     /// （他 owner 宛の drain は空 = 実物 Scheduler と同じ per-owner pull）。
     /// TurnPhase は EnemyTurn（反撃完了 = attackTargetId クリアの最小観測経路）に固定。
@@ -329,7 +329,7 @@ mod TestCombatScene {
             withNoopGameOver(() ->
                 run {
                     TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
-                    CombatScene.process(Duration.seconds(0.016), node, path, scene)
+                    CombatDriver.process(Duration.seconds(0.016), node, path, scene)
                 } with Tween.withScheduler(rc)
                   with TurnPhase.withState(rc)
                   with SelectedPlayer.withState(rc)

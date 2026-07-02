@@ -1,7 +1,8 @@
-/// StaffCastScene — 杖の発動と消費アイテムの使用（効果の適用層）
+/// StaffCast — 杖の発動と消費アイテムの使用（効果の適用層）
 ///
 /// `PlayerScene` から「杖を撃つ / 消費アイテムを使う」という、盤面・敵・アニメ・ターン進行に
-/// またがる適用ロジックを切り出したシーン補助モジュール。`PlayerScene` 本体は味方の状態所有と
+/// またがる適用ロジックを切り出した scene 結合の適用層（`src/systems/` の配置分界は
+/// CombatDriver.flix 冒頭を参照）。`PlayerScene` 本体は味方の状態所有と
 /// 移動・選択・戦闘に専念し、ここは「選択中の杖/アイテムを実際に効かせる」段だけを担う。
 ///
 /// 杖の発動の流れ（`applyStaffCast`）:
@@ -15,7 +16,7 @@
 /// `PlayerScene` と `EnemyScene` は `Data` / `get` / `mapXxx` / `snapTo` を**両方が**持つため、
 /// このモジュールでは味方側を必ず `PlayerScene.`、敵側を `EnemyScene.` で完全修飾する。
 /// 方向選択の純粋計算（`deltaToDirection` / `pickHealDirection`）は `Staff` モジュールに置く。
-mod StaffCastScene {
+mod StaffCast {
 
     // ────────────────────────────────────────────────────────
     // 杖の発動 — direction → 直線レイキャスト → 効果適用 → ターン進行
@@ -127,18 +128,18 @@ mod StaffCastScene {
                               GameEngine.Audio, World.WorldQuery} =
         match dslStaffRule(staff) {
             case Some(rule) => applyStaffEffectDsl(playerId, staff, rule, hit, dir, scene)
-            // effectRule 無しの enum 杖は ECS sim 経路（P6-5b: トグル useEcsStaff は撤去＝一本化。
-            // 壁空振り〔events=Nil〕だけは ecsResolveStaffCast 内で applyStaffEffectLegacy へ fallback）。
+            // effectRule 無しの enum 杖は sim 経路（壁空振り〔events=Nil〕のときだけ
+            // ecsResolveStaffCast 内でフィードバックログを出す）。
             case None       => ecsResolveStaffCast(playerId, player, staff, dir, hit, scene)
         }
 
-    /// ECS cutover 経路（杖）: `StaffSystem.resolveStaffCast` で 1 発の sim を解いて [SimEvent] を得、
+    /// 杖の解決経路: `StaffSystem.resolveStaffCast` で 1 発の sim を解いて [SimEvent] を得、
     /// `eventToCmds` で World へ反映し、`ViewReplay.replay` で演出を再生する。`applyEcsStaffSceneEffects` で
-    /// scene 権威（statuses）も反映する。events が `Nil`（壁=空振り）なら legacy へ fallback して
-    /// 『届かなかった/消えた』ログを温存する（emit/replay は走らせない・whiff 退行防止）。
-    /// 演出進行（耐久消費/選択クリア/turn 進行）は従来どおり `fireStaff` 後段が担う。
-    /// 出荷される cutover seam そのものを traced harness で踏むため pub（`TestStaffGolden`:
-    /// whiff→legacy fallback の log 等価／hit 時 emit ループが eventToCmds と一致 を固定）。
+    /// scene 権威（statuses）も反映する。events が `Nil`（壁=空振り）なら emit/replay はせず
+    /// 『届かなかった/消えた』フィードバックログだけ出す（whiff 退行防止）。
+    /// 演出進行（耐久消費/選択クリア/turn 進行）は `fireStaff` 後段が担う。
+    /// この seam そのものを traced harness で踏むため pub（`TestStaffGolden`:
+    /// whiff の log／hit 時 emit ループが eventToCmds と一致 を固定）。
     pub def ecsResolveStaffCast(playerId: Int32, _player: PlayerScene.Data,
                              staff: Staff.StaffResource,
                              dir: {x = Int32, y = Int32}, hit: RayHit,
@@ -150,8 +151,8 @@ mod StaffCastScene {
         let (_, events) = StaffSystem.resolveStaffCast(world,
             World.EntityRef.Player(playerId), staff#effect, dir, hit);
         if (List.isEmpty(events)) {
-            // 空振り（壁/盤外）: feedback ログのみ（P6-5b: 旧 legacy dispatcher の whiff arm を内包。
-            // Swap だけ文言が違う=『消えた』、他 4 effect は『届かなかった』）。emit/replay はしない。
+            // 空振り（壁/盤外）: フィードバックログのみで emit/replay はしない
+            //（Swap だけ文言が違う=『消えた』、他 4 effect は『届かなかった』）。
             let msg = match staff#effect {
                 case Staff.StaffEffect.Swap => "${PlayerScene.displayName(playerId, scene)} の ${staff#name} は消えた"
                 case _                      => "${PlayerScene.displayName(playerId, scene)} の ${staff#name} は届かなかった"
@@ -163,7 +164,7 @@ mod StaffCastScene {
             applyEcsStaffSceneEffects(events, ViewReplay.replay(events, scene))
         }
 
-    /// ECS 経路の **scene-authoritative 反映**（`CombatScene.applyEcsSceneEffects` を縮約）。
+    /// ECS 経路の **scene-authoritative 反映**（`CombatDriver.applyEcsSceneEffects` を縮約）。
     /// statuses は scene 権威（refreshMirror が scene #statuses から re-mirror・tick も scene 側）ゆえ
     /// Cmd.Add だけだと次フレームの syncFromScene で上書きされ消える。よって `Afflicted`→`StatusSystem.add`、
     /// `Released`→`clearImmobilized` を scene #statuses へ反映する。hp(Healed/Damaged)・pos(Moved)・dying(Dying) は
@@ -207,7 +208,7 @@ mod StaffCastScene {
     /// DSL 経路: 当たったユニットへ effectRule を runPlan で効かせる。
     /// 空振り（壁/盤外）は legacy と同じ「届かなかった」ログを出して scene を返す。
     /// `dir` は cast 方向（knockback の押し出し方向に使う。CustomAt が dir を運ばないためここで渡す）。
-    /// `TestStaffCastScene` から effectRule 駆動を検証するため pub。
+    /// `TestStaffCast` から effectRule 駆動を検証するため pub。
     pub def applyStaffEffectDsl(playerId: Int32, staff: Staff.StaffResource,
                              rule: EffectRule.EffectRule, hit: RayHit,
                              dir: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
@@ -420,7 +421,7 @@ mod StaffCastScene {
             Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery} =
         // P1b: warp（player/enemy cast 共有）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board = BoardQuery.board();
-        match StaffRules.warpCellFor(StairsScene.getPos(scene), board) {
+        match StaffRules.warpCellFor(Stairs.getPos(scene), board) {
             case Some(cell) =>
                 GameLogger.playerLog("${PlayerScene.displayName(targetId, scene)} は 階段の方へ とばされた");
                 PlayerScene.snapTo(targetId, cell, scene)
@@ -434,7 +435,7 @@ mod StaffCastScene {
             Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery} =
         // P1a: player cast が敵に当てた warp 経路。board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board = BoardQuery.board();
-        match StaffRules.warpCellFor(StairsScene.getPos(scene), board) {
+        match StaffRules.warpCellFor(Stairs.getPos(scene), board) {
             case Some(cell) =>
                 GameLogger.playerLog("${EnemyScene.displayName(enemyId, scene)} は 階段の方へ とばされた");
                 EnemyScene.snapTo(enemyId, cell, scene)
@@ -454,7 +455,7 @@ mod StaffCastScene {
         if (Option.isEmpty(consumed))
             GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} の ${staff#name} がこわれた")
         else ();
-        // D4: 耐久消費後の staves を World へ dual-write（[STAVES DIFF] を塞ぐ・CombatScene.consumeEquippedWeapon と同型）。
+        // D4: 耐久消費後の staves を World へ dual-write（[STAVES DIFF] を塞ぐ・CombatDriver.consumeEquippedWeapon と同型）。
         World.Command.emit(World.Cmd.SetStaves(World.EntityRef.Player(playerId), newStaves));
         PlayerScene.mapPlayer(playerId, d -> {staves = newStaves | d}, scene)
 
@@ -581,7 +582,7 @@ mod StaffCastScene {
 
     /// 消費アイテムで使用者自身の HP を `magnitude` 回復、HPBar 更新、ログ。
     /// `applyConsumableSelfEffect` から呼ばれる内部処理だが、回復量を単体検証できるように
-    /// pub にしている（`TestStaffCastScene` 参照）。
+    /// pub にしている（`TestStaffCast` 参照）。
     pub def applyConsumableHeal(playerId: Int32, player: PlayerScene.Data,
                              item: Consumable.ConsumableResource,
                              scene: Scene[NodeTag]):
@@ -785,7 +786,7 @@ mod StaffCastScene {
         } else
             dispatchThrowEffect(playerId, kind, player, dir, hit, scene)
 
-    /// 命中ロール用の 0..99 一様乱数（`CombatScene.rollPercent` と同形）。
+    /// 命中ロール用の 0..99 一様乱数（`CombatDriver.rollPercent` と同形）。
     def throwRoll(): Int32 \ Math.Random =
         Float64.truncateToInt32(Float64.floor(Math.Random.randomFloat64() * 100.0))
 
@@ -923,10 +924,10 @@ mod StaffCastScene {
         match hit {
             case RayHit.HitEnemy(enemyId, cell)   =>
                 throwDamageToEnemy(srcLabel, enemyId, dmg, item#name,
-                    ExplosionScene.emitAtCell(cell, scene))
+                    ExplosionFx.emitAtCell(cell, scene))
             case RayHit.HitPlayer(targetId, cell) =>
                 throwDamageToPlayer(srcLabel, targetId, dmg, item#name,
-                    ExplosionScene.emitAtCell(cell, scene))
+                    ExplosionFx.emitAtCell(cell, scene))
             case _                                => scene
         }
 
@@ -945,7 +946,7 @@ mod StaffCastScene {
             case Some(cell) =>
                 GameLogger.playerLog("${srcLabel} の ${item#name} が爆発した (${dmg}ダメージ)");
                 // 爆発瓶は中心に大きい爆発を 1 つ出す（3×3 範囲を覆う見た目）。
-                let withFx = ExplosionScene.emitBigAtCell(cell, scene);
+                let withFx = ExplosionFx.emitBigAtCell(cell, scene);
                 let afterEnemies = blastDamageEnemies(srcLabel, dmg, item#name, cell, withFx);
                 blastDamagePlayers(srcLabel, dmg, item#name, cell, afterEnemies)
         }
@@ -1000,7 +1001,7 @@ mod StaffCastScene {
 
     /// 敵が瓶を投げられるか試す。`description` の瓶を持ち、縦横 4 方向のいずれかの直線上に
     /// 味方が居れば、その方向へ投げてダメージを与えた scene を Some で返す。投げられなければ None。
-    /// 呼び出し側（EnemyTurnDriverScene）が None/Some で通常 AI と投擲を分岐する。
+    /// 呼び出し側（EnemyTurnDriver）が None/Some で通常 AI と投擲を分岐する。
     pub def enemyTryThrow(enemyId: Int32, origin: {x = Int32, y = Int32},
                            description: String, scene: Scene[NodeTag]):
             Option[Scene[NodeTag]]
@@ -1088,21 +1089,20 @@ mod StaffCastScene {
             |> Option.map(d -> StatusSystem.isImmobilized(d#statuses))
             |> Option.getWithDefault(false)
 
-    /// 解決済みの「敵 → 味方 への詠唱」を適用する dispatcher（P6-5b: トグル useEcsEnemyStaff は撤去＝
-    /// ECS 一本。壁空振りだけは ecsResolveEnemyStaff 内で enemyCastStaffLegacy へ fallback）。
+    /// 解決済みの「敵 → 味方 への詠唱」を適用する dispatcher（壁空振りは ecsResolveEnemyStaff 内で no-op）。
     def enemyCastStaff(enemyId: Int32, effect: Staff.StaffEffect, _targetId: Int32,
                         dir: {x = Int32, y = Int32}, hit: RayHit,
                         scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         ecsResolveEnemyStaff(enemyId, effect, dir, hit, scene)
 
-    /// 敵 Bind 詠唱の ECS cutover 経路: `StaffSystem.resolveStaffCast` に caster=Enemy を渡して sim を
+    /// 敵 Bind/Stopgap 詠唱の解決経路: `StaffSystem.resolveStaffCast` に caster=Enemy を渡して sim を
     /// 解き、events→Cmds で World 反映 + `applyEcsStaffSceneEffects` で scene 権威（味方 #statuses）反映。
-    /// Bind は view fx 0・Moved 無＝World/scene 不変ゆえ `ViewReplay.replay` は呼ばない（provably equivalent）。
-    /// hit 時は `bindPlayerLog` で legacy と同一の『かなしばりにした』ログを出す（`applyEcsStaffSceneEffects`
-    /// は #statuses のみ反映ゆえ log を補い parity 保全）。events が空（壁=空振り。castableHitPlayer ゲートで
-    /// 通常到達しない防御）なら legacy へ fallback し同ログを温存する。`applyEcsStaffSceneEffects` の
-    /// Afflicted(Player) arm を共用する（敵 Bind の target は味方）。golden（`TestEnemyStaffGolden`）が直駆動するため pub。
+    /// Bind は view fx 0・Moved 無＝World/scene 不変ゆえ `ViewReplay.replay` は呼ばない。
+    /// hit 時は `bindPlayerLog` で『かなしばりにした』ログを出す（`applyEcsStaffSceneEffects`
+    /// は #statuses のみ反映ゆえ log を補う）。events が空（壁=空振り。castableHitPlayer ゲートで
+    /// 通常到達しない防御）なら no-op。`applyEcsStaffSceneEffects` の
+    /// Afflicted(Player) arm を共用する（敵 Bind の target は味方）。`TestEnemyStaffGolden` が直駆動するため pub。
     pub def ecsResolveEnemyStaff(enemyId: Int32, effect: Staff.StaffEffect,
                              dir: {x = Int32, y = Int32}, hit: RayHit,
                              scene: Scene[NodeTag]):
@@ -1111,16 +1111,14 @@ mod StaffCastScene {
         let (_, events) = StaffSystem.resolveStaffCast(world,
             World.EntityRef.Enemy(enemyId), effect, dir, hit);
         if (List.isEmpty(events))
-            // 空振り（壁=盤外）: castableHitPlayer ゲートで通常到達しない防御 no-op
-            //（P6-5b: 旧 legacy fallback は撤去。旧実装もこの分岐では実質 no-op だった）。
+            // 空振り（壁=盤外）: castableHitPlayer ゲートで通常到達しない防御 no-op。
             scene
         else {
             List.forEach(c -> World.Command.emit(c), events |> List.flatMap(World.eventToCmds));
-            // hit-log parity: 敵 hit は legacy `applyBindToPlayer`/`applyStopgapToPlayer` と同じログを出す
-            //（`applyEcsStaffSceneEffects` は #statuses のみ反映・log 非配線ゆえここで補う）。warp の位置は
-            // `Moved`→eventToCmds→World→syncTreeFromWorld で derive されるため replay 不要（Bind と同流儀）。
+            // hit-log: 敵 hit は `bindPlayerLog`/warp ログを出す（`applyEcsStaffSceneEffects` は #statuses のみ
+            // 反映・log 非配線ゆえここで補う）。warp の位置は `Moved`→eventToCmds→World 反映で描画されるため replay 不要。
             // 不変条件: enemyStaffFor ∩ ecsHandlesStaff = {Bind, Stopgap}。敵杖カタログに新 ECS 効果を足すときは、
-            // この log 分岐と `enemyCastStaffLegacy` を同時拡張しないと hit-log が黙って落ちる。
+            // この log 分岐も同時拡張しないと hit-log が黙って落ちる。
             let srcLabel = EnemyScene.displayName(enemyId, scene);
             match effect {
                 case Staff.StaffEffect.Bind    => bindPlayerLog(srcLabel, hitTargetId(hit), scene)

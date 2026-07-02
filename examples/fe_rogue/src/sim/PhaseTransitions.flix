@@ -34,7 +34,7 @@
 /// ## 呼び出し元の典型
 ///   - `TurnInputBridge.apply` (TurnRules.decide の結果) → enter* を呼ぶ
 ///   - データ Scene の遷移関数 (`TurnFlow.commitWaitedAndAdvance` 等) → enter* を呼ぶ
-///   - 駆動 Scene (`EnemyTurnDriverScene.beginTurn`) → enter* を呼ぶ
+///   - 駆動 Scene (`EnemyTurnDriver.beginTurn`) → enter* を呼ぶ
 ///
 /// データ Scene 側 (PlayerScene 等) は「自分のデータ更新」のみ責任を持ち、overlay/cursor は
 /// この module に全部任せる。これで PlayerScene → 各 overlay Scene の直接依存が消える。
@@ -144,7 +144,7 @@ mod PhaseTransitions {
     /// EnemyTurn フェーズに入る (全味方 waited または 敵ターン遷移時)。
     /// 動作 (表 6 行目): 味方系 3 range 全消し (敵ターン中は赤/青マス不要)。
     /// EnemyRange と cursor visible は触らない。
-    /// 敵キューのビルドや log は `EnemyTurnDriverScene.beginTurn` 側で行うのでここでは扱わない。
+    /// 敵キューのビルドや log は `EnemyTurnDriver.beginTurn` 側で行うのでここでは扱わない。
     pub def enterEnemyTurn(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {TurnPhase.State, World.Command} =
         TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
@@ -189,7 +189,7 @@ mod PhaseTransitions {
                             ArrowCursorScene.showFor(player#gridPos, withCursorHidden);
                         // 回復の杖なら HP が減っている味方の方向に初期照準を向ける。
                         // 負傷味方が居ない / 回復杖でないならデフォルト(Up)のまま。
-                        StaffCastScene.staffAimInitialDirection(playerId, withArrow)
+                        StaffCast.staffAimInitialDirection(playerId, withArrow)
                             |> Option.map(dir -> ArrowCursorScene.aim(dir, withArrow))
                             |> Option.getWithDefault(withArrow)
                 }

@@ -1,16 +1,16 @@
-/// ItemScene の純粋ロジックテスト。
+/// GroundItems の純粋ロジックテスト。
 ///
 /// `floorCellsInBounds`: 「offset + 半開 bbox」内で床述語を満たすセルを列挙する純粋関数
 /// （床ドロップ/敵スポーンの候補セル）。床判定を引数で注入するので scene/engine 非依存で検証できる。
 /// `isTaken`: 同セル二重ドロップ防止の述語。
 /// 守るバグ: アイテムが部屋 bbox 外（通路・壁）に湧いて取得不能 / 同セルに二重ドロップ。
-mod TestItemScene {
+mod TestGroundItems {
 
     /// bbox 内の床セルを列挙し、maxEx は排他（半開区間）。
     /// offset(0,0)・min(0,0)・maxEx(2,2)・全床 → (0,0)(1,0)(0,1)(1,1) の 4 セル。(2,0) は範囲外。
     @Test
     def testFloorCellsRespectsBoundsHalfOpen(): Unit \ Assert =
-        let cells = ItemScene.floorCellsInBounds(_ -> true,
+        let cells = GroundItems.floorCellsInBounds(_ -> true,
                         {x = 0, y = 0}, {x = 0, y = 0}, {x = 2, y = 2})
                     |> List.map(c -> (c#x, c#y));
         Assert.assertEq(
@@ -23,7 +23,7 @@ mod TestItemScene {
     /// x=0 列だけ床 → (0,0)(0,1) のみ。(1,0) は非床で除外。
     @Test
     def testFloorCellsFiltersNonFloor(): Unit \ Assert =
-        let cells = ItemScene.floorCellsInBounds(c -> c#x == 0,
+        let cells = GroundItems.floorCellsInBounds(c -> c#x == 0,
                         {x = 0, y = 0}, {x = 0, y = 0}, {x = 2, y = 2})
                     |> List.map(c -> (c#x, c#y));
         Assert.assertEq(
@@ -34,7 +34,7 @@ mod TestItemScene {
     /// offset(10,20)・min(0,0)・maxEx(1,1) → (10,20) のみ。
     @Test
     def testFloorCellsAppliesOffset(): Unit \ Assert =
-        let cells = ItemScene.floorCellsInBounds(_ -> true,
+        let cells = GroundItems.floorCellsInBounds(_ -> true,
                         {x = 10, y = 20}, {x = 0, y = 0}, {x = 1, y = 1})
                     |> List.map(c -> (c#x, c#y));
         Assert.assertEq(expected = (10, 20) :: Nil, cells)
@@ -45,8 +45,8 @@ mod TestItemScene {
         let taken = {x = 0, y = 0} :: {x = 1, y = 1} :: Nil;
         Assert.assertEq(
             expected = (true, false),
-            (ItemScene.isTaken({x = 1, y = 1}, taken),
-             ItemScene.isTaken({x = 2, y = 2}, taken)))
+            (GroundItems.isTaken({x = 1, y = 1}, taken),
+             GroundItems.isTaken({x = 2, y = 2}, taken)))
 
     /// (4,5) に武器アイテム 1 個を置いた最小シーン（World/Items/Item_0 を直接構築）。
     def sceneWithItem(): Scene[NodeTag] =
@@ -54,7 +54,7 @@ mod TestItemScene {
         let body = EngineNode.Sprite2DWithState(
             Sprite2D.make("item_icons", Vec2.zero(), Vec2.one()),
             NodeTag.GroundItem(({gridPos = {x = 4, y = 5}, itemKey = "test_weapon",
-                                  item = item, elapsed = Duration.seconds(0.0)}: ItemScene.Data)));
+                                  item = item, elapsed = Duration.seconds(0.0)}: GroundItems.Data)));
         let marker = () -> EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.NoTag);
         Scene.empty()
             |> Scene.addNode(MapScene.worldName(), marker())
@@ -71,7 +71,7 @@ mod TestItemScene {
             let before = World.groundItemAtOf({x = 4, y = 5}, Ref.get(wref)) |> Option.map(d -> d#itemKey);
             // P6-1e: takeAt は World store を読んで RemoveItem を emit する（WorldQuery+Command を同 Ref で wire）。
             run {
-                run { discard ItemScene.takeAt({x = 4, y = 5}, scene) }
+                run { discard GroundItems.takeAt({x = 4, y = 5}, scene) }
                     with handler World.WorldQuery { def get(k) = k(Ref.get(wref)) }
             } with handler World.Command {
                 def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }

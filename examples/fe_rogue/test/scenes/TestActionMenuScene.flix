@@ -140,9 +140,9 @@ mod TestActionMenuScene {
                 Scene.addChildAt(MapScene.worldPath(), "Items",
                     EngineNode.Marker2DWithState(parentMarker, NodeTag.NoTag), scene)
         };
-        let baseSprite = ItemScene.spriteOf(kind);
+        let baseSprite = GroundItems.spriteOf(kind);
         let sprite = Sprite2D.make(baseSprite#texture, Vec2.zero(), Vec2.one());
-        let data: ItemScene.Data = {
+        let data: GroundItems.Data = {
             gridPos = cell,
             itemKey = "test-ground-item",
             item    = kind,
@@ -313,7 +313,7 @@ mod TestActionMenuScene {
     ///   - フェーズは敵ターン (`EnemyTurn`) へ進む
     /// しゅうごう (`gatherMeta`) と並ぶ「空マスメニュー」用アクションで、
     /// 集合メニュー以外からは到達しないが、内部的には選択中プレイヤーが
-    /// None でも全員 waited にする経路で `EnemyTurnDriverScene.beginTurn` を呼ぶ。
+    /// None でも全員 waited にする経路で `EnemyTurnDriver.beginTurn` を呼ぶ。
     @Test
     def testTurnEndMarksAllAndAdvancesToEnemyTurn(): Unit \ Assert =
         region rc {
@@ -404,7 +404,7 @@ mod TestActionMenuScene {
         }
 
     // ════════════════════════════════════════════════════════
-    // 移動着地の自動取得（PlayerMovementScene.autoPickupOrLog）
+    // 移動着地の自動取得（PlayerMovementDriver.autoPickupOrLog）
     //   「乗るだけ」でなく重量が許す限り基本拾う。過多になるなら拾わず床に残す。
     //   ここの床アイテム/武器数フィクスチャ（loadActionMenuSceneWithFloorWeapon 他）を再利用。
     // ════════════════════════════════════════════════════════
@@ -430,7 +430,7 @@ mod TestActionMenuScene {
                 TestUnitFixtures.withNoopPickupPopup(() ->
                     TestUnitFixtures.withMockGameLogger(() ->
                         TestUnitFixtures.withSelectedPlayer(0, () ->
-                            PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, scene)))));
+                            PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}, scene)))));
             let floorEmpty = Option.isEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             Assert.assertEq(
                 expected = (true, 2),
@@ -454,7 +454,7 @@ mod TestActionMenuScene {
                 TestUnitFixtures.withNoopPickupPopup(() ->
                     TestUnitFixtures.withMockGameLogger(() ->
                         TestUnitFixtures.withSelectedPlayer(0, () ->
-                            PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, heavy)))));
+                            PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}, heavy)))));
             let floorStillThere = Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             Assert.assertEq(
                 expected = (true, 4),
@@ -481,7 +481,7 @@ mod TestActionMenuScene {
                                         TestUnitFixtures.withSelectionRef(rc,
                                             {id = Some(0), drafts = Nil, gatherActive = false}, () -> {
                                                 let picked =
-                                                    PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, scene);
+                                                    PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}, scene);
                                                 PlayerScene.cancelSelection(picked)
                                             }))))))));
             let groundItemBack = Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
@@ -720,7 +720,7 @@ mod TestActionMenuScene {
         scene
             |> Scene.addNode("Stairs",
                 EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()),
-                    NodeTag.Stairs(({gridPos = cell, placed = true}: StairsScene.Data))))
+                    NodeTag.Stairs(({gridPos = cell, placed = true}: Stairs.Data))))
 
     /// 主人公(1,1)の足元に床アイテムがあると、集合メニューの先頭に「拾う」が出る
     /// （非隣接味方(5,5)なので交換は無し）。

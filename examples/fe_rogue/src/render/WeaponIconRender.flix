@@ -1,4 +1,4 @@
-/// WeaponIconScene — キャラ左上に常時表示する「装備武器の系統シンボル」アイコン
+/// WeaponIconRender — キャラ左上に常時表示する「装備武器の系統シンボル」アイコン
 ///
 /// P6-1g: scene ノードは全廃。装備武器の系統は World store（weaponView）から導出し、
 /// `renderPlates`（囲い ColorRect×2 = drawables チャンネル）と `renderGlyphs`
@@ -16,7 +16,7 @@
 ///   - 武器なし（素手）ユニットでは子ノードを生やさない（非表示）。
 ///   - 待機/行動済みのときは `setModulate` で親 Marker2D の modulate を落とす。engine は祖先
 ///     modulate を乗算伝播するため枠・背景・アイコンごと暗転する（HPBar の暗転と同位相で呼ぶ）。
-mod WeaponIconScene {
+mod WeaponIconRender {
 
     // ─── 子ノード名・表示パラメータ ───────────────────────────
     /// 親ユニット直下の固定の子ノード名（= 囲みの親 Marker2D）。`setModulate` のパス解決にも使う。
@@ -119,7 +119,7 @@ mod WeaponIconScene {
             case _ => Nil
         }
 
-    /// ColorRect 値 1 枚を world 左上座標へ Drawable 化する（UnitHPBarScene と同型）。
+    /// ColorRect 値 1 枚を world 左上座標へ Drawable 化する（UnitHPBarRender と同型）。
     def rectDrawables(rect: ColorRect, worldTopLeft: Vec2.Vec2, z: Int32,
                        transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
         let screenPos = Camera2D.applyToWorldPos(transform, worldTopLeft);

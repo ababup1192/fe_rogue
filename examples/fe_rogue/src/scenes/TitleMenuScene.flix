@@ -1,8 +1,8 @@
 /// TitleMenuScene — 起動時のタイトル画面（GamePhase.Title）
 ///
 /// 「はじめから」/「中断から再開」の 2 択。中断データ（`SuspendSave`・未使用）が無ければ
-/// 「中断から再開」は選べない（淡色で表示）。CharacterSelectScene と同型で、状態はルート
-/// CanvasLayer の `NodeTag.Title(Data)` に持ち、1 押下ごとの操作は `onKeyPressed` が担う
+/// 「中断から再開」は選べない（淡色で表示）。CharacterSelectScene と同型で、状態は
+/// `State` resource に持ち、1 押下ごとの操作は `onKeyPressed` が担う
 /// （Game.flix の InputHandler から GamePhase.Title 中に委譲される）。静的画面なので毎フレームの
 /// process は持たず、カーソル移動のたび `onKeyPressed` が `writeVisuals` で描き直す。
 ///
@@ -12,7 +12,7 @@
 ///     実 scene 構築は `Game.applyPhaseChange(Playing, from = Title)` が担う）
 ///
 /// ノード構造（drawLayer = 6。独立画面）:
-///   Title (CanvasLayer, NodeTag.Title(Data))
+///   Title (CanvasLayer, NodeTag.Title)
 ///     ├─ bg      (Panel designWi×designHi, NoTag)   ← 背景（画面全体を覆う）
 ///     ├─ title   (Label2D, NoTag)         ← タイトル文字
 ///     ├─ newGame (Label2D, NoTag)         ← 「はじめから」
@@ -27,7 +27,7 @@ mod TitleMenuScene {
         resumable = Bool
     }
 
-    /// P4-g: タイトル画面の状態を持つ resource（旧: `NodeTag.Title(Data)` ペイロード）。
+    /// タイトル画面の状態を持つ resource。
     /// 画面へ入るたび `add` が `State.put` で初期化し直す（resumable の再判定込み）ので、
     /// withState の seed 値は仮初期値で良い。
     pub eff State {
@@ -86,7 +86,7 @@ mod TitleMenuScene {
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         let saved: Option[SuspendSave.Save] = SaveManager.read(SuspendSave.slot());
         let data = ({cursor = 0, resumable = Option.nonEmpty(SuspendSave.resumable(saved))}: Data);
-        // P4-g: 画面（再）突入のたび状態を初期化（resource 化で withState の seed は 1 回きりのため）。
+        // 画面（再）突入のたび状態を初期化（withState の seed は 1 回きりのため）。
         TitleMenuScene.State.put(data);
         let layer = CanvasLayer.make(drawLayer());
         let built = scene
@@ -140,7 +140,7 @@ mod TitleMenuScene {
             |> Label2D.mapAt(newGamePath(), CanvasItem.setModulate(newGameColor))
             |> Label2D.mapAt(resumePath(), CanvasItem.setModulate(resumeColor))
 
-    // ── state アクセサ（P4-g: resource へ移設） ──
+    // ── state アクセサ ──
     def getData(): Data \ TitleMenuScene.State =
         TitleMenuScene.State.get()
 

@@ -12,12 +12,12 @@
 /// この分担により、取得処理（PlayerScene.addPickedItem）の effect 行を増やさずに済む。
 ///
 /// 文字のフェードについて:
-///   エンジンは Label2D の alpha を持たない（glyph は常に不透明。`DamagePopupScene` 参照）。
+///   エンジンは Label2D の alpha を持たない（glyph は常に不透明。`DamagePopupFx` 参照）。
 ///   そこで窓（Panel）は背景/枠の alpha で本当にフェードし、文字は modulate を
 ///   「窓の背景色 → 白」に補間し、薄い区間では非表示にして“フェードしているように”見せる。
 ///
 /// ノード構造（drawLayer=6。PhaseBanner=5 より前面）:
-///   ItemPickupPopup (CanvasLayer, NodeTag.ItemPickupPopup(PopupData))
+///   ItemPickupPopup (CanvasLayer, NodeTag.ItemPickupPopup)
 ///     ├─ window (Panel, 画面中央の約40%サイズ, NoTag)   ← 背景/枠の alpha でフェード
 ///     └─ text   (Label2D, 中央寄せ, NoTag)               ← modulate 補間 + 可視ゲートで擬似フェード
 mod ItemPickupPopupScene {
@@ -116,7 +116,7 @@ mod ItemPickupPopupScene {
     def initialData(): PopupData =
         {stage = Stage.Idle, elapsed = Duration.zero(), soundPending = false}
 
-    /// P4-e: 中央ポップアップの状態（stage/elapsed/soundPending）を持つ resource（旧: `NodeTag.ItemPickupPopup(PopupData)`）。
+    /// 中央ポップアップの状態（stage/elapsed/soundPending）を持つ resource。
     /// LogScene.State と同型。show 系/process が `State.get()/put()` 経由で読み書きする。
     /// `Game.start` で `with ItemPickupPopupScene.withState(rc)` を注入し、`FrameAef.T`/`ProcessT` に足す。
     pub eff State {
@@ -164,7 +164,7 @@ mod ItemPickupPopupScene {
             |> CanvasItem.setVisible(false);
         scene
             |> Scene.addNode(rootName(),
-                EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup))   // P4-e: 状態は State resource へ
+                EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup))   // 状態は State resource が持つ
             |> Scene.addChild(rootName(), windowName(),
                 EngineNode.PanelWithState(window, NodeTag.NoTag))
             |> Scene.addChild(rootName(), textName(),
@@ -195,7 +195,7 @@ mod ItemPickupPopupScene {
     /// 移動着地の自動取得など「大きな通知は不要だが取得音は鳴らしたい」経路で使う。
     /// 純粋（音は process が鳴らす）。ポップアップ未登録の scene では no-op。
     pub def reserveGetItemSound(scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
-        // P4-e: 取得音予約フラグを resource に立てる（旧: NodeTag ペイロード）。scene はパイプ用に素通し。
+        // 取得音予約フラグを resource に立てる。scene はパイプ用に素通し。
         let d = ItemPickupPopupScene.State.get();
         ItemPickupPopupScene.State.put({soundPending = true | d});
         scene
@@ -264,13 +264,13 @@ mod ItemPickupPopupScene {
 
     /// `step` で状態を進め、予約があれば取得音を1回鳴らし、
     /// 表示の濃さ ratio を窓 alpha・文字色・可視へ反映する。
-    /// P5-c(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System
+    /// gameLoop が 1 回呼ぶ frame-paced System
     /// （純粋な `step` と名前が衝突するため frameStep）。ノード不在（タイトル/選択画面）でも安全:
     /// 状態は Idle のまま進まず（soundPending も Playing 経路でしか立たない）、applyAppearance の
     /// mapAt は対象不在で no-op。
     pub def frameStep(delta: Duration.Duration, scene: Scene[NodeTag]):
                     Scene[NodeTag] \ {GameEngine.Audio, ItemPickupPopupScene.State} =
-        // P4-e: 状態は resource から読む（旧: NodeTag.ItemPickupPopup ペイロード）。ノードは描画 view（Panel/Label）。
+        // 状態は resource から読む。ノードは描画 view（Panel/Label）。
         let data = ItemPickupPopupScene.State.get();
         let result = step(data, delta);
         if (result#playSound) AudioStreamPlayer.play(getItemSound()) else ();
@@ -316,7 +316,7 @@ mod ItemPickupPopupScene {
     /// `case other => other` により、ItemPickupPopup 以外の NodeTag を持つ CanvasLayer があっても
     /// 状態を壊さない（将来ノードが増えた際の防御）。
     def setState(data: PopupData, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
-        // P4-e: 状態は resource へ書く。scene はパイプ互換のためそのまま返す（挙動不変）。
+        // 状態は resource へ書く。scene はパイプ互換のためそのまま返す。
         ItemPickupPopupScene.State.put(data);
         scene
 }

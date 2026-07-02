@@ -12,7 +12,7 @@ mod FrameAef {
 
     /// `ready` / `physicsProcess` 用の Aef 集合 (`FrameAef.T`)。Player.physicsProcess / Cursor.physicsProcess
     /// などが要求する集合 (BoardQuery で盤面参照、Tween でアニメ進行、TurnPhase で gating 等)。
-    /// `World.WorldQuery`: S6 で waited の sim reader（PlayerMovementScene の集合/追従判定）が
+    /// `World.WorldQuery`: S6 で waited の sim reader（PlayerMovementDriver の集合/追従判定）が
     /// frame 内の権威 World を読むため許可（move 前ゆえ World==scene・挙動不変）。gameLoop 全体が
     /// WorldQuery handler 内なので physicsProcess でも取得できる。
     pub type alias T = {GameEngine.Game, BoardQuery,
@@ -26,7 +26,7 @@ mod FrameAef {
                          ItemPickupPopupScene.State}
 
     /// `process` 用の広い Aef 集合 (`FrameAef.ProcessT`)。Player/Enemy の `process` が drainSignals 経由で
-    /// attack:hit / death_blink / attack_lunge を捌き、EnemyTurnDriverScene が phase 判定で
+    /// attack:hit / death_blink / attack_lunge を捌き、EnemyTurnDriver が phase 判定で
     /// `stepOnce` や `commitWaitedAndAdvance` を起動するため、Audio / EnemyTurn / GameOverRequest /
     /// Pacing が追加される。`Math.Random` は attack:hit 時の命中ロール（Combat.isHit 用の乱数）に使う。
     /// `BoardQuery`: P1a 以降、StairsExit の per-frame 進行（`stepOnce`/`advanceFront`）が frame-head の
@@ -48,10 +48,10 @@ mod FrameAef {
                                 LogScene.State, BattlePanelScene.State, TurnEndHoldScene.State,
                                 LevelUpPanelScene.State, ItemPickupPopupScene.State,
                                 // P6-1g: BattlePanel が攻撃予報を ForecastState resource へ put する。
-                                UnitHPBarScene.ForecastState,
+                                UnitHPBarRender.ForecastState,
                                 World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
                                 // slice `rng-world`: combat 命中ロールは World.RngDraw chokepoint 経由
-                                // （CombatScene.process が要求）。Game.flix:177/179 の checked_ecast widening が
+                                // （CombatDriver.process が要求）。Game.flix:177/179 の checked_ecast widening が
                                 // この追加なしでは失敗する。Math.Random は他経路用に残置。
                                 World.RngDraw}
 }

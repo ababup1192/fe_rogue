@@ -8,7 +8,7 @@
 /// きずぐすり: 使用者の HP を `healAmount` だけ回復する。
 ///
 /// このモジュールは Scene[NodeTag] / effect に依存せず、テストが純粋値で完結する。
-/// 効果適用の Scene 操作は呼び出し側 (`StaffCastScene.applyConsumableUse`) が担う。
+/// 効果適用の Scene 操作は呼び出し側 (`StaffCast.applyConsumableUse`) が担う。
 ///
 /// JSON 形状 (`resources/consumables.json`):
 ///   {
@@ -26,7 +26,7 @@ mod Consumable {
     /// 消費アイテムの効果の種類（杖の `Staff.StaffEffect` を手本にした enum）。
     /// `magnitude` / `duration` の意味は種類ごとに異なる（下記コメント参照）。
     /// 新しい薬は基本この enum に値を 1 つ足し、`parseEffect` / `deliveryFor` /
-    /// 自己効果なら `StaffCastScene.applyConsumableSelfEffect` に arm を足すだけで増やせる。
+    /// 自己効果なら `StaffCast.applyConsumableSelfEffect` に arm を足すだけで増やせる。
     ///   - `Heal`       : 使用者の HP を `magnitude` 回復（自己使用）
     ///   - `FullHeal`   : 使用者の HP を全回復（自己使用、`magnitude` 不使用）
     ///   - `MaxHpUp`    : 使用者の最大 HP を `magnitude` 永続上昇（自己使用、`duration` 不使用）

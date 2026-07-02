@@ -21,7 +21,7 @@ mod TestCombatRolls {
             p :: drawFrom(n - 1, st1)
 
     // ════════════════════════════════════════════════════════
-    // フィクスチャ（TestCombatScene と同型の最小戦闘シーン）
+    // フィクスチャ（TestCombatDriver と同型の最小戦闘シーン）
     // ════════════════════════════════════════════════════════
 
     /// 攻撃対象 enemy=1 を抱えた選択中味方。weaponHit/exp/speed を作り分ける。hp は大きめ（反撃で死なない）。
@@ -74,7 +74,7 @@ mod TestCombatRolls {
         bottleUsed     = false
     }
 
-    /// World 配下に Player(0)・Enemy(1) を直接挿した最小シーン（TestCombatScene.battleScene と同型）。
+    /// World 配下に Player(0)・Enemy(1) を直接挿した最小シーン（TestCombatDriver.battleScene と同型）。
     def battleScene(p: PlayerScene.Data, e: EnemyScene.Data): Scene[NodeTag] =
         let world = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
         let pMarker = Marker2D.make(Vec2.zero());
@@ -116,7 +116,7 @@ mod TestCombatRolls {
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withRecordedRolls(rc, 0i64, () ->
-                    CombatScene.applyAttackHit(0, scene))))))))));
+                    CombatDriver.applyAttackHit(0, scene))))))))));
             let (_, rolls) = out3;
             Assert.assertEq(
                 expected = (12, prngSeq(0i64, 12)),
@@ -144,7 +144,7 @@ mod TestCombatRolls {
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withRecordedRolls(rc, 0i64, () ->
-                    CombatScene.applyEnemyAttackHit(1, scene)))))))));
+                    CombatDriver.applyEnemyAttackHit(1, scene)))))))));
             let (_, rolls) = out3;
             Assert.assertEq(
                 expected = (3, prngSeq(0i64, 3)),
@@ -172,7 +172,7 @@ mod TestCombatRolls {
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withRecordedRolls(rc, 0i64, () ->
                     run {
-                        let _ = CombatScene.onLungeDone(Faction.Player, 0, scene);
+                        let _ = CombatDriver.onLungeDone(Faction.Player, 0, scene);
                         ()
                     } with Tween.withScheduler(rc)
                       with TurnPhase.withState(rc)

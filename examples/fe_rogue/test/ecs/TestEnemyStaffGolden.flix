@@ -1,16 +1,15 @@
-// 敵クレリックの Bind 詠唱 cutover の golden 等価テスト（player の TestStaffGolden を敵側へミラー）。
+// 敵クレリックの Bind / Stopgap 詠唱の frozen pin テスト（player の TestStaffGolden を敵側へミラー）。
 //
-// 対象は **敵 → 味方** の Bind 詠唱のみ（Stopgap は legacy 温存・ECS 化対象外）。caster=Enemy を
-// `StaffSystem.resolveStaffCast` に渡すだけで player 杖と同じ sim/emit/scene-反映 経路を踏む。
+// caster=Enemy を `StaffSystem.resolveStaffCast` に渡すと player 杖と同じ sim/emit/scene-反映 経路を踏む。
 // Bind は view fx 0・Moved 無＝World/scene 不変ゆえ `ViewReplay.replay` は呼ばない。
 //
-// 照合方針:
-//   (A) seam     … 出荷 seam `ecsResolveEnemyStaff` を traced harness で駆動し、emit した cmdKey 列と
+// 照合方針（すべて ECS seam 単独を駆動し、凍結リテラルへ pin する）:
+//   (A) seam     … `ecsResolveEnemyStaff` を traced harness で駆動し、emit した cmdKey 列と
 //                   `applyEcsStaffSceneEffects` 後の味方 #statuses を具体値リテラルで pin。
 //   (B) targeting … pub `castableHitPlayer` 直叩きで (id, RayHit) 透過（cell 含む）を pin・停止中味方は None。
-//   (C) threading … `enemyTryStaff`（useEcsEnemyStaff=true ゆえ ECS 分岐）で forM 鎖の連結を固定。
-//   (D) cross    … 単一 scene で legacy と ECS を駆動し、味方 #statuses を **直接** 突き合わせ（self-derive せず）。
-//   (E) log      … ECS 経路の『かなしばりにした』hit-log を legacy と **直接** 突き合わせ（cutover の parity 保全を pin）。
+//   (C) threading … `enemyTryStaff` の forM 鎖の連結を固定。
+//   (D) statuses  … 味方 #statuses（scene 権威と World mirror の両面）を凍結値へ pin。
+//   (E) log      … 『かなしばりにした』hit-log をちょうど 1 行へ pin（黙って落ちる/二重化する退行を捕捉）。
 // テスト本体に match を書かず sceneStatusT / castTargetT の射影ヘルパー経由・期待値は具体値リテラル。
 // RayHit は Eq を持たないため (tag, id, x, y) タプルへ射影して比較する。
 mod TestEnemyStaffGolden {
@@ -101,10 +100,10 @@ mod TestEnemyStaffGolden {
                 EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Enemy(e)), sc),
             withPlayers, enemies)
 
-    /// P1-a: 配置済み階段ノード（top-level ["Stairs"]）を足した scene（Stopgap の warp 先用。TestStaffGolden と同型）。
+    /// 配置済み階段ノード（top-level ["Stairs"]）を足した scene（Stopgap の warp 先用。TestStaffGolden と同型）。
     def sceneWithStairs(players: List[PlayerScene.Data], enemies: List[EnemyScene.Data],
                          stairs: {x = Int32, y = Int32}): Scene[NodeTag] =
-        let stairsData: StairsScene.Data = {gridPos = stairs, placed = true};
+        let stairsData: Stairs.Data = {gridPos = stairs, placed = true};
         Scene.addNode("Stairs",
             EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Stairs(stairsData)),
             sceneOf(players, enemies))
@@ -121,7 +120,7 @@ mod TestEnemyStaffGolden {
 
     /// 出荷 seam `ecsResolveEnemyStaff`（敵 eid → `in#effect` 詠唱）を traced harness + 副作用モックで駆動。
     /// (後 scene, cmdKey 列, 最終 World)。emit ループ・eventToCmds 配線・scene 反映を実踏する。
-    /// P1-a: effect を引数化（Bind/Stopgap 両対応）。
+    /// effect を引数化して Bind/Stopgap 両対応。
     def runEnemyStaffEcs(in: {scene = Scene[NodeTag], eid = Int32, effect = Staff.StaffEffect,
                              dir = {x = Int32, y = Int32}, hit = RayHit}):
             (Scene[NodeTag], List[(String, Int32, Int32, Int32)], World) =
@@ -131,12 +130,12 @@ mod TestEnemyStaffGolden {
                 TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(in#scene), () ->
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withNoopTween(() ->
-                    StaffCastScene.ecsResolveEnemyStaff(in#eid, in#effect, in#dir, in#hit, in#scene)))));
+                    StaffCast.ecsResolveEnemyStaff(in#eid, in#effect, in#dir, in#hit, in#scene)))));
             (s, keys, w)
         }
 
 
-    /// `enemyTryStaff`（forM 鎖。useEcsEnemyStaff=true ゆえ ECS 分岐）を traced harness で駆動。
+    /// `enemyTryStaff`（forM 鎖）を traced harness で駆動。
     def runEnemyTryStaff(in: {scene = Scene[NodeTag], eid = Int32,
                               origin = {x = Int32, y = Int32}, desc = String}):
             Option[Scene[NodeTag]] =
@@ -146,7 +145,7 @@ mod TestEnemyStaffGolden {
                 TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(in#scene), () ->
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withNoopTween(() ->
-                    StaffCastScene.enemyTryStaff(in#eid, in#origin, in#desc, in#scene)))));
+                    StaffCast.enemyTryStaff(in#eid, in#origin, in#desc, in#scene)))));
             s
         }
 
@@ -163,7 +162,7 @@ mod TestEnemyStaffGolden {
         };
         (out, List.reverse(Ref.get(ref)))
 
-    /// ECS seam `ecsResolveEnemyStaff`（敵 eid → `in#effect`）を記録ロガー付きで駆動し hit-log 列を返す。P1-a: effect 引数化。
+    /// ECS seam `ecsResolveEnemyStaff`（敵 eid → `in#effect`）を記録ロガー付きで駆動し hit-log 列を返す。
     def runEnemyStaffEcsLogged(in: {scene = Scene[NodeTag], eid = Int32, effect = Staff.StaffEffect,
                                  dir = {x = Int32, y = Int32}, hit = RayHit}):
             (Scene[NodeTag], List[String]) =
@@ -173,7 +172,7 @@ mod TestEnemyStaffGolden {
                 TestUnitFixtures.withTracedWorld(rc, seed(), in#scene, () ->
                 TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(in#scene), () ->
                 TestUnitFixtures.withNoopTween(() ->
-                    StaffCastScene.ecsResolveEnemyStaff(in#eid, in#effect, in#dir, in#hit, in#scene)))));
+                    StaffCast.ecsResolveEnemyStaff(in#eid, in#effect, in#dir, in#hit, in#scene)))));
             (s, logs)
         }
 
@@ -233,7 +232,7 @@ mod TestEnemyStaffGolden {
         let target = playerAt(1, {x = 5, y = 2}, Nil);
         let sc = sceneOf(target :: Nil, Nil);
         let board = BoardSnapshot.fromScene(sc);
-        let got = StaffCastScene.castableHitPlayer({x = 2, y = 2}, Staff.Direction.Right, board, sc);
+        let got = StaffCast.castableHitPlayer({x = 2, y = 2}, Staff.Direction.Right, board, sc);
         // id=1 と RayHit.HitPlayer(1, {5,2}) を両方透過。
         Assert.assertEq(expected = Some((1, ("HitPlayer", 1, 5, 2))), castTargetT(got))
 
@@ -243,14 +242,14 @@ mod TestEnemyStaffGolden {
         let target = playerAt(1, {x = 5, y = 2}, StatusSystem.immobilizeFor(5) :: Nil);
         let sc = sceneOf(target :: Nil, Nil);
         let board = BoardSnapshot.fromScene(sc);
-        let got = StaffCastScene.castableHitPlayer({x = 2, y = 2}, Staff.Direction.Right, board, sc);
+        let got = StaffCast.castableHitPlayer({x = 2, y = 2}, Staff.Direction.Right, board, sc);
         Assert.assertEq(expected = (None: Option[(Int32, (String, Int32, Int32, Int32))]), castTargetT(got))
 
     // ── (C) threading: enemyTryStaff forM 鎖（ECS 分岐）─────────────────────────
 
-    /// クレリック_T2(=Bind) が直線上の未停止味方(id=1)へ詠唱成立。useEcsEnemyStaff=true ゆえ ECS 分岐を
-    /// 通り、forM の effect/dir/hit/targetId 連結が正しく繋がって味方 #statuses が (Immobilized,0,5) になる
-    ///（#statuses は legacy と等価＝(D) cross が保証。ここは forM 鎖の連結固定が目的）。
+    /// クレリック_T2(=Bind) が直線上の未停止味方(id=1)へ詠唱成立。forM の effect/dir/hit/targetId 連結が
+    /// 正しく繋がって味方 #statuses が (Immobilized,0,5) になる（#statuses 値は (D) が pin。
+    /// ここは forM 鎖の連結固定が目的）。
     @Test
     def testEnemyTryStaffThreadsToEcs(): Unit \ Assert =
         let caster = enemyAt(0, {x = 2, y = 2});
@@ -261,71 +260,69 @@ mod TestEnemyStaffGolden {
         let statuses = out |> Option.map(s -> sceneStatusT(1, s)) |> Option.getWithDefault(Nil);
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, statuses)
 
-    // ── (D) cross-compare: legacy #statuses == ECS #statuses（直接突き合わせ）──────────
+    // ── (D) statuses: 味方 #statuses（scene 権威 + World mirror）を凍結値へ pin ──────────
 
-    /// 単一 scene 上で legacy(`enemyCastStaffLegacy`) と ECS(`ecsResolveEnemyStaff`) を駆動し、味方(id=1)の
-    /// #statuses を **直接** assertEq（self-derive せず）＝敵 applyEcsStaffSceneEffects / scene-threading の
-    /// 取り違えを敵テスト単独で捕捉。加えて (Immobilized,0,5) を独立 pin して両者の偶然一致を排除。
+    /// `ecsResolveEnemyStaff` を駆動し、味方(id=1)の #statuses を scene 権威と World mirror の両面で
+    /// 凍結値 (Immobilized,0,5) へ pin＝敵 applyEcsStaffSceneEffects / scene-threading の取り違えを敵テスト単独で捕捉。
     @Test
-    def testEnemyStaffEcsEqualsLegacy(): Unit \ Assert =
+    def testEnemyStaffEcsStatuses(): Unit \ Assert =
         let caster = enemyAt(0, {x = 2, y = 2});
         let target = playerAt(1, {x = 5, y = 2}, Nil);
         let sc = sceneOf(target :: Nil, caster :: Nil);
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
-        // P6-5b: legacy oracle は撤去＝frozen 値の独立 pin のみ（scene 権威と World mirror の両面）。
+        // scene 権威と World mirror の両面を凍結値で pin。
         let (ecsScene, _, ecsW)    = runEnemyStaffEcs({scene = sc, eid = 0, effect = Staff.StaffEffect.Bind, dir = dir, hit = hit});
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil,
                         sceneStatusT(1, ecsScene));
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil,
                         worldStatusT(1, ecsW))
 
-    // ── (E) log-parity: ECS hit-log == legacy hit-log（cutover の parity 保全）──────────
+    // ── (E) log: 『かなしばりにした』hit-log をちょうど 1 行へ pin ──────────
 
-    /// 単一 scene 上で legacy(`enemyCastStaffLegacy`) と ECS(`ecsResolveEnemyStaff`) を記録ロガーで駆動し、
-    /// 『かなしばりにした』hit-log を **直接** assertEq。hit-log は golden #statuses 契約外ゆえ別 pin＝
-    /// cutover で log が黙って落ちる退行を捕捉する。加えて「ちょうど 1 行」を pin（0=ドロップ / 2=二重を排除）。
+    /// `ecsResolveEnemyStaff` を記録ロガーで駆動し『かなしばりにした』hit-log を pin。hit-log は #statuses 契約外
+    /// ゆえ別 pin＝log が黙って落ちる退行を捕捉する。「ちょうど 1 行」を pin（0=ドロップ / 2=二重を排除）。
     @Test
-    def testEnemyStaffEcsLogEqualsLegacy(): Unit \ Assert =
+    def testEnemyStaffEcsLog(): Unit \ Assert =
         let caster = enemyAt(0, {x = 2, y = 2});
         let target = playerAt(1, {x = 5, y = 2}, Nil);
         let sc = sceneOf(target :: Nil, caster :: Nil);
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
-        // P6-5b: legacy oracle は撤去＝hit-log をちょうど 1 行で pin（落とさない/二重にしない）。
+        // hit-log をちょうど 1 行で pin（落とさない/二重にしない）。
         let (_, ecsLogs)    = runEnemyStaffEcsLogged({scene = sc, eid = 0, effect = Staff.StaffEffect.Bind, dir = dir, hit = hit});
         Assert.assertEq(expected = 1, List.length(ecsLogs))
 
-    // ── (Stopgap) 敵詠唱 bind + warp 等価 + 2 行ログ parity（P1-a）──────────────────
+    // ── (Stopgap) 敵詠唱 bind + warp + 2 行ログの pin ──────────────────
 
     /// player pos を Eq 可能な (x,y) タプルへ射影。
     def posT(id: Int32, w: World): Option[(Int32, Int32)] =
         World.posOf(World.EntityRef.Player(id), w) |> Option.map(p -> (p#x, p#y))
 
-    /// 敵(eid=0) → 味方(tid=1) の Stopgap 詠唱: 完全停止 + 階段{8,8}へワープ。legacy `applyStopgapToPlayer`
-    /// と ECS を単一 scene で駆動し #statuses / pos を **直接** 突き合わせ、warp 先 {8,8} と (Immobilized,0,5) を pin。
+    /// 敵(eid=0) → 味方(tid=1) の Stopgap 詠唱: 完全停止 + 階段{8,8}へワープ。`ecsResolveEnemyStaff` を駆動し
+    /// #statuses / pos を凍結値へ pin＝warp 先 {8,8} と (Immobilized,0,5)。
     @Test
-    def testEnemyStopgapEcsEqualsLegacy(): Unit \ Assert =
+    def testEnemyStopgapEcs(): Unit \ Assert =
         let caster = enemyAt(0, {x = 2, y = 2});
         let target = playerAt(1, {x = 5, y = 2}, Nil);
         let sc = sceneWithStairs(target :: Nil, caster :: Nil, {x = 8, y = 8});
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
-        // P6-5b: legacy oracle は撤去＝frozen 値の独立 pin（bind + warp 先 {8,8}）。
+        // bind + warp 先 {8,8} を凍結値で pin。
         let (ecsScene, _, ecsW)    = runEnemyStaffEcs({scene = sc, eid = 0, effect = Staff.StaffEffect.Stopgap, dir = dir, hit = hit});
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, sceneStatusT(1, ecsScene));
         Assert.assertEq(expected = Some((8, 8)), posT(1, ecsW))
 
-    /// Stopgap 敵詠唱の hit-log parity: legacy は [かなしばり, 階段の方へ] の 2 行、ECS も同じ 2 行
-    ///（bindPlayerLog + warpPlayerLog）。cutover で warp ログが黙って落ちる退行を捕捉。
+    /// Stopgap 敵詠唱の hit-log: [かなしばり, 階段の方へ] の 2 行（bindPlayerLog + warpPlayerLog）を pin＝
+    /// warp ログが黙って落ちる退行を捕捉。
     @Test
-    def testEnemyStopgapLogEqualsLegacy(): Unit \ Assert =
+    def testEnemyStopgapLog(): Unit \ Assert =
         let caster = enemyAt(0, {x = 2, y = 2});
         let target = playerAt(1, {x = 5, y = 2}, Nil);
         let sc = sceneWithStairs(target :: Nil, caster :: Nil, {x = 8, y = 8});
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
-        // P6-5b: legacy oracle は撤去＝bind + warp の 2 行を pin（どちらも落とさない）。
+        // bind + warp の 2 行を pin（どちらも落とさない）。
         let (_, ecsLogs)    = runEnemyStaffEcsLogged({scene = sc, eid = 0, effect = Staff.StaffEffect.Stopgap, dir = dir, hit = hit});
         Assert.assertEq(expected = 2, List.length(ecsLogs))
 

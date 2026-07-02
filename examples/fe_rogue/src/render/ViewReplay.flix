@@ -9,8 +9,8 @@
 //   ノックバック着地 / 敵死亡演出。
 // 未配線（後続スライス・cutover で signal seam と結線）: Alerted の sprite tint、Released の unbind 表示、
 //   Afflicted の status 表示。これらは `plan` で空に落とす（World 状態は reducer が既に反映済み）。
-// ここで空に落とすが別経路で配線済のもの: LeveledUp（modal-gate は `CombatScene.applyEcsSceneEffects` が
-//   pendingLevelUp を立て signal 駆動で発火）、ViewFx(Thief)（drop 実体は `CombatScene.applyThiefDrop` が引く＝
+// ここで空に落とすが別経路で配線済のもの: LeveledUp（modal-gate は `CombatDriver.applyEcsSceneEffects` が
+//   pendingLevelUp を立て signal 駆動で発火）、ViewFx(Thief)（drop 実体は `CombatDriver.applyThiefDrop` が引く＝
 //   フロア落下は view でなく scene 状態ゆえ純 view の本モジュールでなく cutover wrapper で処理・P1-b）。
 mod ViewReplay {
 
@@ -54,7 +54,7 @@ mod ViewReplay {
         case World.ViewFxKind.Popup(p)        => ViewAction.Text(p#x, p#y, p#text) :: Nil
         case World.ViewFxKind.Explosion(c)    => ViewAction.Explode(c#x, c#y) :: Nil
         case World.ViewFxKind.Knockback(r, c) => ViewAction.Snap(r, c#x, c#y) :: Nil
-        case World.ViewFxKind.Thief(_)        => Nil   // drop は scene 状態＝CombatScene.applyThiefDrop が引く（P1-b・純 view でない）
+        case World.ViewFxKind.Thief(_)        => Nil   // drop は scene 状態＝CombatDriver.applyThiefDrop が引く（P1-b・純 view でない）
         case World.ViewFxKind.Died(r)         => ViewAction.Death(r) :: Nil
     }
 
@@ -71,13 +71,13 @@ mod ViewReplay {
         match action {
             case ViewAction.Play(n)        => AudioStreamPlayer.play(n); scene
             case ViewAction.Text(x, y, t)  =>
-                DamagePopupScene.emitText(MapSnapshot.cellCenter({x = x, y = y}), t,
-                    DamagePopupScene.damageToEnemyColor(), scene)
+                DamagePopupFx.emitText(MapSnapshot.cellCenter({x = x, y = y}), t,
+                    DamagePopupFx.damageToEnemyColor(), scene)
             case ViewAction.Damage(r, dmg) =>
                 // ポップアップは ref の現在セルへ（knockback 前。combat は防御側を最後にしか動かさない）。
                 let cell = World.posOf(r, World.WorldQuery.get()) |> Option.getWithDefault({x = 0, y = 0});
-                DamagePopupScene.emit(MapSnapshot.cellCenter(cell), dmg, popupColor(r), scene)
-            case ViewAction.Explode(x, y)  => ExplosionScene.emitAtCell({x = x, y = y}, scene)
+                DamagePopupFx.emit(MapSnapshot.cellCenter(cell), dmg, popupColor(r), scene)
+            case ViewAction.Explode(x, y)  => ExplosionFx.emitAtCell({x = x, y = y}, scene)
             // P6-1g: HP バーは World.hp store から直描き＝リプレイでも押し込み不要（SetHp が既に反映済み）。
             case ViewAction.HpBar(_r, _hp) => scene
             case ViewAction.Snap(r, x, y)  => snapRefTo(r, {x = x, y = y}, scene)
@@ -86,8 +86,8 @@ mod ViewReplay {
 
     /// ダメージポップアップ色（被弾側の faction）。enemy=白 / player=赤（legacy `damageTo*Color`）。
     def popupColor(ref: EntityRef): Color = match ref {
-        case EntityRef.Enemy(_)  => DamagePopupScene.damageToEnemyColor()
-        case EntityRef.Player(_) => DamagePopupScene.damageToPlayerColor()
+        case EntityRef.Enemy(_)  => DamagePopupFx.damageToEnemyColor()
+        case EntityRef.Player(_) => DamagePopupFx.damageToPlayerColor()
     }
 
     /// ノックバック着地（faction で snapTo を振り分け）。

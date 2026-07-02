@@ -1,4 +1,4 @@
-/// StairsExitScene — 集合「階段」の順次退場ドライバ
+/// StairsExitDriver — 集合「階段」の順次退場ドライバ
 ///
 /// 集合(GatherMove)の隣接メニューで「階段」を選ぶと、生存味方（主人公含む）を 1 体ずつ
 /// 階段へ歩かせる。残り移動で階段に届く味方は階段に乗って `useStairs` で退場し、届かない味方も
@@ -6,12 +6,12 @@
 /// 全員退場できたら次フロアへ（`FloorAdvanceRequest`）、届かず残った味方が居ればターンエンド
 /// （`ActionMenuScene.turnEndShortcut` = 敵ターンへ）。
 ///
-/// 自走モデルは `EnemyTurnDriverScene` と同型: 専用タグノード `NodeTag.StairsExitDriver` を
+/// 自走モデルは `EnemyTurnDriver` と同型: 専用タグノード `NodeTag.StairsExitDriver` を
 /// World 配下に常駐させ、`process` redef が phase==StairsExit のとき `stepOnce` を回す。
 /// 退場キュー (id, 残り移動) と停滞カウンタは driver ノードの NodeTag 状態(`Data`)に持つ。
 ///
 /// 4 段 gating は敵ターンと同じ（バナー / Pacing / カメラ / 攻撃中）。
-mod StairsExitScene {
+mod StairsExitDriver {
 
     /// 退場進行の状態。`queue`=これから階段へ向かう (id, 残り移動歩数) 列（階段に近い順）、
     /// `idleRounds`=連続で誰も前進できなかった回数（1 巡で誰も進めなければ finalize＝無限ループ防止）。

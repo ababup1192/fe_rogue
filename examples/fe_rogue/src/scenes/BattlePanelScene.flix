@@ -29,7 +29,7 @@
 ///          └─ dTri (Polygon2D)             反撃側の相性矢印
 mod BattlePanelScene {
 
-    /// P4-b: 「減る分」点滅サイクルの累積時間を持つ resource（旧: `NodeTag.BattlePanel(Duration)` ペイロード）。
+    /// 「減る分」点滅サイクルの累積時間を持つ resource。
     /// process が毎フレーム delta で進め、`blinkDark` で暗/明を判定する。LogScene.State と同型の Ref-backed handler。
     /// `Game.start` で `with BattlePanelScene.withState(rc)` を注入し、`FrameAef.ProcessT` に足す。
     pub eff State {
@@ -106,7 +106,7 @@ mod BattlePanelScene {
     /// ウィンドウ右端の余白。
     def padRight(): Float64 = 3.0
     /// 文字の縦オフセット（design px）。正で丸中心より上、負で下。
-    /// 以前は 0.6（上寄り）だったが、参考に合わせて少し下げる。
+    /// 参考に合わせて丸中心よりわずかに下げる。
     def textNudge(): Float64 = 0.25
 
     /// 各要素の x（左基準）/ 行中心 y。x とウィンドウ幅は毎フレーム process が実測で決める。
@@ -146,7 +146,7 @@ mod BattlePanelScene {
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas,
                                       SceneLoader.constTagParser(NodeTag.NoTag), scene)
-            |> Scene.setState(rootPath(), NodeTag.BattlePanel)   // P4-b: 状態は BattlePanelScene.State resource へ
+            |> Scene.setState(rootPath(), NodeTag.BattlePanel)   // 状態は BattlePanelScene.State resource へ
             |> addDot(aDotName(), row1CenterY(), UITheme.allyBlue())
             |> addDot(dDotName(), row2CenterY(), enemyDotColor())
             // 攻撃側の行（ラベル/% は薄色で左寄せ、数値は白で右詰め＝3 桁列の右端基準）
@@ -229,10 +229,10 @@ mod BattlePanelScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
                        PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery,
-                       BattlePanelScene.State, UnitHPBarScene.ForecastState} =
+                       BattlePanelScene.State, UnitHPBarRender.ForecastState} =
         let phase  = TurnPhase.State.get();
         let synced = syncTargetToCursor(phase, scene);
-        // 「減る分」の暗⇄明点滅サイクルを進める。P4-b: 累積時間は resource が持つ（旧: NodeTag payload）。
+        // 「減る分」の暗⇄明点滅サイクルを進める。累積時間は resource が持つ。
         // dark フラグ（前半=暗 / 後半=明）を足元 HP バー予測に渡す。
         let elapsed = Duration.add(BattlePanelScene.State.get(), delta);
         BattlePanelScene.State.put(elapsed);
@@ -259,15 +259,15 @@ mod BattlePanelScene {
                     |> setNodeX(childPath(dTriName()), triCx, row2CenterY())
                     |> resizeBg(contentW)
                     |> reposition(view, contentW);
-                // P6-1g: 足元 HP バーの「減る分」は ForecastState resource へ put し、
-                // UnitHPBarScene.renderBars が直描き時に反映する（旧: scene ノード書き）。
-                UnitHPBarScene.ForecastState.put(Some(
+                // 足元 HP バーの「減る分」は ForecastState resource へ put し、
+                // UnitHPBarRender.renderBars が直描き時に反映する。
+                UnitHPBarRender.ForecastState.put(Some(
                     {attackerId = view#attackerId, playerHpPost = view#playerHpPost,
                      defenderId = view#defenderId, enemyHpPost = view#enemyHpPost,
                      dark = dark}));
                 (node, shown)
             case None =>
-                UnitHPBarScene.ForecastState.put(None);
+                UnitHPBarRender.ForecastState.put(None);
                 let hidden = synced
                     |> setAllVisible(false);
                 (node, hidden)
@@ -336,8 +336,8 @@ mod BattlePanelScene {
             case None             => scene
             case Some(attackerId) =>
                 match EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene) {
-                    case Some(enemyId) => CombatScene.setAttackTargetId(attackerId, enemyId, scene)
-                    case None          => CombatScene.clearAttackTargetId(attackerId, scene)
+                    case Some(enemyId) => CombatDriver.setAttackTargetId(attackerId, enemyId, scene)
+                    case None          => CombatDriver.clearAttackTargetId(attackerId, scene)
                 }
         }
 
@@ -496,7 +496,6 @@ mod BattlePanelScene {
     // (D'') 足元 HP バーのダメージ予測（パネルとは独立した盤面フィードバック）
     // ────────────────────────────────────────────────────────
 
-    // P6-1g: 旧 applyHpBarForecast/clearAllHpForecasts（scene ノード書き）は撤去。
     // 予報は ForecastState resource へ put し renderBars が消費する（put(None) が全消しに相当）。
 
     // ────────────────────────────────────────────────────────
@@ -623,7 +622,7 @@ mod BattlePanelScene {
             let equipped = PlayerScene.equipWeapon(attackerId, idx, scene);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
             GameLogger.playerLog("${PlayerScene.displayName(attackerId, scene)}の攻撃");
-            CombatScene.startAttack(Faction.Player, attackerId, defenderId, enemy#gridPos, equipped)
+            CombatDriver.startAttack(Faction.Player, attackerId, defenderId, enemy#gridPos, equipped)
         };
         Option.getWithDefault(scene, started)
 
@@ -637,7 +636,7 @@ mod BattlePanelScene {
         match SelectedPlayer.State.get()#id {
             case None             => scene
             case Some(attackerId) =>
-                CombatScene.clearAttackTargetId(attackerId, scene)
+                CombatDriver.clearAttackTargetId(attackerId, scene)
                     |> CursorScene.snapToPlayer
         }
 }

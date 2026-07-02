@@ -1,5 +1,5 @@
 // World（S0 足場）のテスト — scene→World 一方向 sync が id 集合と tick を正しく写すか。
-// 最小 scene は TestCombatScene.battleScene と同じ「World ノード＋直接 addChildAt」パターン。
+// 最小 scene は TestCombatDriver.battleScene と同じ「World ノード＋直接 addChildAt」パターン。
 
 mod TestWorld {
 

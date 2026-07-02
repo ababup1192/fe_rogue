@@ -1,4 +1,4 @@
-/// PlayerMovementScene.stepPlayerMove（移動 System）の sim 判定を純粋に検証する。
+/// PlayerMovementDriver.stepPlayerMove（移動 System）の sim 判定を純粋に検証する。
 ///
 /// F3b: 移動は input(view)→System(sim)→SimEvent→replay(view) の seam に分離された。
 /// この System 部分を単体で固定する:
@@ -6,7 +6,7 @@
 ///   - 敵駒で占有された先 → `None`・emit なし（位置は書かない）。
 ///   - MoveRange 述語が false → `None`・emit なし。
 /// 位置の権威は World（`Cmd.Move`）にあり、System は scene を一切触らない。
-mod TestPlayerMovementScene {
+mod TestPlayerMovementDriver {
 
     /// 10×5・壁なしの素の盤面（壁が無いので usedRect 内は全セル床）。
     def tenByFive(): MapSnapshot =
@@ -19,7 +19,7 @@ mod TestPlayerMovementScene {
     def testStepPlayerMoveLegalEmitsAndReturnsMoved(): Unit \ Assert =
         let board: Board = {map = tenByFive(), pieces = (Piece.Player(0), {x = 4, y = 2}) :: Nil};
         let (evOpt, moves) = TestUnitFixtures.withRecordedMoves(() ->
-            PlayerMovementScene.stepPlayerMove(0, {x = 4, y = 2}, Vec2i.right(), board, _ -> true));
+            PlayerMovementDriver.stepPlayerMove(0, {x = 4, y = 2}, Vec2i.right(), board, _ -> true));
         let target  = evOpt |> Option.map(PlayerScene.movedTarget) |> Option.map(t -> (t#x, t#y));
         let emitted = moves |> List.map(t -> (t#x, t#y));
         Assert.assertEq(expected = (Some((5, 2)), (5, 2) :: Nil), (target, emitted))
@@ -30,7 +30,7 @@ mod TestPlayerMovementScene {
         let board: Board = {map = tenByFive(),
             pieces = (Piece.Player(0), {x = 4, y = 2}) :: (Piece.Enemy(0), {x = 5, y = 2}) :: Nil};
         let (evOpt, moves) = TestUnitFixtures.withRecordedMoves(() ->
-            PlayerMovementScene.stepPlayerMove(0, {x = 4, y = 2}, Vec2i.right(), board, _ -> true));
+            PlayerMovementDriver.stepPlayerMove(0, {x = 4, y = 2}, Vec2i.right(), board, _ -> true));
         let target = evOpt |> Option.map(PlayerScene.movedTarget) |> Option.map(t -> (t#x, t#y));
         Assert.assertEq(expected = (None, 0), (target, List.length(moves)))
 
@@ -39,7 +39,7 @@ mod TestPlayerMovementScene {
     def testStepPlayerMoveBlockedByRangePredReturnsNoneNoEmit(): Unit \ Assert =
         let board: Board = {map = tenByFive(), pieces = (Piece.Player(0), {x = 4, y = 2}) :: Nil};
         let (evOpt, moves) = TestUnitFixtures.withRecordedMoves(() ->
-            PlayerMovementScene.stepPlayerMove(0, {x = 4, y = 2}, Vec2i.right(), board, _ -> false));
+            PlayerMovementDriver.stepPlayerMove(0, {x = 4, y = 2}, Vec2i.right(), board, _ -> false));
         let target = evOpt |> Option.map(PlayerScene.movedTarget) |> Option.map(t -> (t#x, t#y));
         Assert.assertEq(expected = (None, 0), (target, List.length(moves)))
 
@@ -92,7 +92,7 @@ mod TestPlayerMovementScene {
                     TestUnitFixtures.withWorldQuery(World.empty(), () ->
                     // P4-e: 着地の自動取得が中央ポップアップの State resource を書くため no-op で剥がす。
                     TestUnitFixtures.withNoopPickupPopup(() ->
-                    PlayerMovementScene.physicsStep(Duration.zero(), pnode, PlayerScene.playerPath(0), scene)))))))));
+                    PlayerMovementDriver.physicsStep(Duration.zero(), pnode, PlayerScene.playerPath(0), scene)))))))));
             moves |> List.map(c -> (c#x, c#y))
         }
 

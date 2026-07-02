@@ -26,11 +26,11 @@
 |---|---|---|
 | 戦闘解決（味方/敵、damage/crit/exp/knockback） | `ecs/systems/CombatSystem.flix` | `useEcsCombat=true`（ギャップ残: §D-P1） |
 | 杖発動（味方 4-enum / 敵 Bind） | `ecs/systems/StaffSystem.flix` | `useEcsStaff/useEcsEnemyStaff=true`（Stopgap は legacy） |
-| 戦闘演出 replay | `scenes/ViewReplay.flix` | level-up モーダル・thief/status view 未配線 |
+| 戦闘演出 replay | `render/ViewReplay.flix` | level-up モーダル・thief/status view 未配線 |
 | 位置 / HP / status / 各種 flag / level / exp / 装備 view | `ecs/World.flix` store 群 | 権威化・reader flip 済み |
 | Board（盤面） | `World.toBoard` / `sim/BoardSnapshot` | 常時 World 由来 |
-| render-from-World（ユニット/fog/range/tile/HUD） | `scenes/RenderWorld.flix` + `Game.flix:1140-1160` | トグル無し常時（ただし hide-then-render） |
-| 敵ターン / 階段退場 driver | `systems/EnemyTurnDriverScene, StairsExitScene` | frame-paced step 化済み（F8） |
+| render-from-World（ユニット/fog/range/tile/HUD） | `render/RenderWorld.flix` + `Game.flix:1140-1160` | トグル無し常時（ただし hide-then-render） |
+| 敵ターン / 階段退場 driver | `systems/EnemyTurnDriver, StairsExitDriver` | frame-paced step 化済み（F8） |
 | PRNG（splitmix64） | `ecs/Prng.flix` / `World.rng` | dormant（live 値は未経由） |
 | 純粋ルール群 | `ecs/rules/*`（Combat/EnemyAI/LevelSystem 等） | scene 非依存化済み |
 
@@ -45,10 +45,10 @@
 | 5 | TurnPhase 19-case FSM | `resources/TurnPhase.State`（resource なので存続。scene 側 mirror だけ整理） | **P4** |
 | 6 | 演出（DamagePopup/Explosion/Pickup/HoldGauge/lunge marker） | ツリーノード + engine Tween | **P5** |
 | 7 | 残 driver（Fog/Minimap/ArrowCursor）の per-node dispatch | `process` callback | **P5** |
-| 8 | 移動トランザクションの scene 副作用（MoveDraft） | `PlayerMovementScene` 等 | **P5** |
+| 8 | 移動トランザクションの scene 副作用（MoveDraft） | `PlayerMovementDriver`（旧 PlayerMovementScene）等 | **P5** |
 | 9 | Scene ツリー構築・`applyPhaseChange` の `Scene.empty()` 再構築・`syncTreeFromWorld`・hide-then-render | `Game.flix` / `GameLifecycle.flix` | **P6** |
 | 10 | セーブ/ロード（FloorSnapshot/SuspendSave が scene 直列化） | `resources/FloorSnapshot.flix` | **P6** |
-| 11 | `*Legacy` 4 関数・トグル 3 個・golden oracle・並走 DIFF assert | `CombatScene` / `StaffCastScene` / `Game.flix` | **P6**（最後まで消すな） |
+| 11 | `*Legacy` 4 関数・トグル 3 個・golden oracle・並走 DIFF assert | `CombatDriver`（旧 CombatScene） / `StaffCast`（旧 StaffCastScene） / `Game.flix` | **P6**（最後まで消すな） |
 
 ---
 
@@ -264,6 +264,12 @@
 - **恒久 invariant guard**: gameLoop の 4 DIFF（ATTACKTARGET/F2 PHASE/PLAYERDATA/ENEMYDATA）＝「scene 権威 field の変更は Cmd 併記」契約の frame 末検査（撤去しない）。
 - **hybrid-A の最終形**: scene 権威で残る field（statuses/weapons/在庫/facing/selectedItem/hidden/acted 等）は dual-write が設計（stale ではない）。Data record は overlay（dataFromWorld）の view-type を兼ねるため field 削除はしない。
 - **今後の任意課題（計画外）**: P4(b) メニュー選択状態の resource 化（engine ItemList/Cursor・要事前相談）／ユニット Marker2D と scene Data 残滓の完全退役／必要になったときの EcsCodec セーブ形式移行。
+
+> **scenes/ 解体（2026-07-02・移行完了後の後片付け）**: 「名前だけ Scene」の 12 ファイルを役割ディレクトリへ移送・リネームし、`src/scenes/` は実ノード所有の本物の Scene（View 23 本＋Player/Enemy/Map＋EntityScene bridge）のみに。以降、§G より上の歴史記述に旧名が出る場合はこの表で読み替える:
+> - `src/render/` 新設（render-from-World 投影層）: RenderWorld・WeaponGlyph・ViewReplay（移動のみ）／`UnitHPBarScene`→`UnitHPBarRender`／`WeaponIconScene`→`WeaponIconRender`
+> - `src/ecs/spawn/` 新設（純 Cmd emitter）: `DamagePopupScene`→`DamagePopupFx`／`ExplosionScene`→`ExplosionFx`
+> - `src/systems/`（= scene 結合の driver/orchestrator 層。純 `World→World` System は従来どおり `src/ecs/systems/`）: `CombatScene`→`CombatDriver`／`StaffCastScene`→`StaffCast`／`StairsScene`→`Stairs`／`ChestScene`→`Chests`／`ItemScene`→`GroundItems`（配置物 3 種は placement 抽選が scene 読みのため ecs/spawn でなく systems 送り）／`EnemyTurnDriverScene`→`EnemyTurnDriver`／`PlayerMovementScene`→`PlayerMovementDriver`／`StairsExitScene`→`StairsExitDriver`
+> - テスト mod も同名で追随（TestCombatScene→TestCombatDriver 等）。テスト数増減ゼロ・全 green。純 View の `XxxScene` 名と `.scene.json`／`AssetPath` 文字列は不変。
 
 > **P3 完了メモ（2026-07-02・全 Level 1）**: 配置物 3 種の存在/位置/中身を World store に権威化し、gameplay reader（メニュー gate・階段 driver 等）を World へ flip。scene ノードは描画/フォグ/点滅アニメ view として残置（renderSubtrees 経路不変・dual-write で despawn 時にノードも消える）。RenderWorld 調査で「ユニットも scene sprite ノードを保持＝World は存在 gate のみ」「node-less 描画（Render.drawAtlas+regionRect）は Stairs が catalog 非対応で詰む」と判明したため、addChild 撤去＋catalog 直描画は P6（ユニットの脱ノードと同時）へ委譲するのが妥当。
 

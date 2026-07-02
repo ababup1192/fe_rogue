@@ -1,4 +1,4 @@
-/// EnemyTurnDriverScene — 敵ターン進行のオーケストレーション
+/// EnemyTurnDriver — 敵ターン進行のオーケストレーション
 ///
 /// 「敵ターンキューを 1 step ずつ消化して画面に反映する」役割を scene tree 上の
 /// 専用タグノード (`NodeTag.EnemyTurnDriver`) に常駐させ、`process` redef が phase を
@@ -26,7 +26,7 @@
 /// を呼び、`commitWaitedAndAdvance` は全員 waited のとき `beginTurn` を呼び返す。
 /// 「味方ターンの終わり」と「敵ターンの始まり」が表裏一体であるための設計的サイクル
 /// （詳細は TurnFlow.flix ヘッダ参照）。
-mod EnemyTurnDriverScene {
+mod EnemyTurnDriver {
 
     /// 常駐タグ専用ノードの名前。Marker2D を World 配下に置く。
     def driverName(): String = "EnemyTurnDriver"
@@ -204,7 +204,7 @@ mod EnemyTurnDriverScene {
     /// step 1 つぶんの行動を適用する。Move なら Tween で 1 マス進めて remaining-1 を
     /// pushFront、Attack なら **体当たり攻撃モーションを開始** するだけ。HP 適用 / 音 /
     /// 死亡判定は AnimationPlayer の `attack:hit` メソッドが発火されたとき
-    /// `CombatScene.process` 側で行われる。
+    /// `CombatDriver.process` 側で行われる。
     /// Skip/Wait は無動作 (remaining も捨てる)。
     def applyStep(step: EnemyTurn.Step, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, EnemyTurn.Queue,
@@ -232,7 +232,7 @@ mod EnemyTurnDriverScene {
                 PlayerData.PartyQuery} =
         if (StatusSystem.isImmobilized(data#statuses))
             bindSkip(step, data, scene)
-        else match StaffCastScene.enemyTryStaff(step#id, data#gridPos,
+        else match StaffCast.enemyTryStaff(step#id, data#gridPos,
                                                  data#resource#description, scene) {
             case Some(afterCast) => castDone(step, afterCast)
             case None            => tryThrowOrNormal(step, data, scene)
@@ -264,7 +264,7 @@ mod EnemyTurnDriverScene {
                                 |> Option.getWithDefault(false);
         if (curBottleUsed)
             applyNormalStep(step, data, scene)
-        else match StaffCastScene.enemyTryThrow(step#id, data#gridPos,
+        else match StaffCast.enemyTryThrow(step#id, data#gridPos,
                                                  data#resource#description, scene) {
             case Some(afterThrow) =>
                 // 投げた → このターンは投擲で終了。瓶を使用済みにして行動済み暗転。
@@ -319,7 +319,7 @@ mod EnemyTurnDriverScene {
                         // 敵が onEnemyTurn の effectRule(flow:replaceAttack) を持てば、攻撃の代わりに
                         // 差し替え行動（リング職人の指輪化など）をデータ駆動で取る（resolveEnemyAttack）。
                         // それ以外は体当たりモーションを開始するだけ。HP 適用 / 音 / 死亡判定は
-                        // attack_lunge の `attack:hit` メソッド発火時に CombatScene.process が行う。
+                        // attack_lunge の `attack:hit` メソッド発火時に CombatDriver.process が行う。
                         // 攻撃前後の溜め: lunge (~160ms) より長い hold で「攻撃終了の余韻」を作る
                         // Attack はその敵の最終行動 → 行動済み暗転。hold は差し替え/通常攻撃の両方の手前。
                         match PlayerScene.getWithWorldPos(targetId, withAlert) {
@@ -398,7 +398,7 @@ mod EnemyTurnDriverScene {
                                        enemyId, data, targetId, p, scene)
         }
 
-    /// HP 割合（0..100）。最大 HP が 0 以下なら 0（ゼロ除算回避。CombatScene.hpPct と同式）。
+    /// HP 割合（0..100）。最大 HP が 0 以下なら 0（ゼロ除算回避。CombatDriver.hpPct と同式）。
     def hpPct(hp: Int32, maxHp: Int32): Int32 =
         if (maxHp <= 0) 0 else (hp * 100) / maxHp
 
@@ -441,9 +441,9 @@ mod EnemyTurnDriverScene {
     /// 体当たり攻撃モーションを開始する（敵側）。
     def normalEnemyAttack(enemyId: Int32, targetId: Int32, p: PlayerScene.Data,
                           scene: Scene[NodeTag]): Scene[NodeTag] \ {AnimationPlayer.Scheduler, World.Command, World.WorldQuery} =
-        CombatScene.startAttack(Faction.Enemy, enemyId, targetId, p#gridPos, scene)
+        CombatDriver.startAttack(Faction.Enemy, enemyId, targetId, p#gridPos, scene)
 
-    /// 0..99 の一様乱数（CombatScene.rollPercent と同型。差し替え確率 roll に使う）。
+    /// 0..99 の一様乱数（CombatDriver.rollPercent と同型。差し替え確率 roll に使う）。
     def rollPercent(): Int32 \ Math.Random =
         Float64.truncateToInt32(Float64.floor(Math.Random.randomFloat64() * 100.0))
 
@@ -455,7 +455,7 @@ mod EnemyTurnDriverScene {
          amount = {max = p#resource#hp, dealt = 0, incoming = 0, magic = 0}}
 
     /// 敵ターン effectRule 用 PlanHandlers。custom の "ringify" だけ RingTransformRequest へ結線し、
-    /// 他は no-op（敵ターンの差し替えで使う op は現状 ringify のみ）。CombatScene.enemyEffectHandlers
+    /// 他は no-op（敵ターンの差し替えで使う op は現状 ringify のみ）。CombatDriver.enemyEffectHandlers
     /// とは effect row が違う（こちらは RingTransformRequest を持つ）ため別関数。
     def enemyTurnEffectHandlers(data: EnemyScene.Data):
             EffectRunner.PlanHandlers[Scene[NodeTag], {CustomEffects.RingTransformRequest}] = {
@@ -481,7 +481,7 @@ mod EnemyTurnDriverScene {
 
     /// 敵ターンの後始末: ターン番号繰り上げ + 全プレイヤーを `waited = false` にリセット +
     /// カーソル復活 + 味方ターン宣言。
-    /// （反撃でのレベルアップは反撃ごとに `CombatScene.onLungeDone` がその場で表示するので、
+    /// （反撃でのレベルアップは反撃ごとに `CombatDriver.onLungeDone` がその場で表示するので、
     ///  ここに来る時点で保留は残っていない。）
     def endTurn(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,

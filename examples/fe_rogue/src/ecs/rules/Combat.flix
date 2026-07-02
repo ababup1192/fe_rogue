@@ -5,8 +5,8 @@
 /// を導く forecast を集約する。
 ///
 /// 体当たり攻撃モーションの再生は AnimationPlayer + `attack_lunge` Animation
-/// （CombatScene.attackLungeAnimation）が担当し、HP 適用は `attack:hit` メソッド
-/// 発火時に CombatScene.process が呼ぶ CombatScene.onAttackHit
+/// （CombatDriver.attackLungeAnimation）が担当し、HP 適用は `attack:hit` メソッド
+/// 発火時に CombatDriver.process が呼ぶ CombatDriver.onAttackHit
 /// 経由でここの関数を使う。
 ///
 /// Scene[NodeTag] / effect には依存しない。テストは数値だけで書ける。
@@ -167,7 +167,7 @@ mod Combat {
     /// 習熟補正後の命中に加算する（`estimate` 参照）。バフ（攻撃・速さ）は `attack`/`speed`
     /// に反映済みの値を構築側（projection）で渡すため、ここに専用フィールドは持たない。
     /// `maxHp` は背水（Desperation）の「HP%」判定用に持つ（hp は現在値）。
-    /// 武器サブレコードの `effect`/`effectValue` は背水の威力倍率判定に使う（他効果は CombatScene 側）。
+    /// 武器サブレコードの `effect`/`effectValue` は背水の威力倍率判定に使う（他効果は CombatDriver 側）。
     /// 装備武器の戦闘投影（`CombatView#weapon` の中身）。S-A0 で World read-model に格納するため named alias 化。
     pub type alias WeaponView = {weaponType = WeaponCatalog.WeaponType, attack = Int32,
                                  hit = Int32, crit = Int32, isPhysical = Bool, proficient = Bool,

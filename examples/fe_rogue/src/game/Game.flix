@@ -37,8 +37,8 @@ pub enum NodeTag {
     case Cursor(CursorScene.Data)
     /// ArrowCursorScene の Marker2D（杖発射方向を視覚化する矢印カーソル）
     case ArrowCursor(ArrowCursorScene.Data)
-    /// StairsScene の Marker2D（フロアの階段。床のランダムセルに 1 つ配置される）
-    case Stairs(StairsScene.Data)
+    /// Stairs の Marker2D（フロアの階段。床のランダムセルに 1 つ配置される）
+    case Stairs(Stairs.Data)
     /// P4-a: ログ HUD の識別用純タグ（状態は `LogScene.State` resource へ移設・ペイロードレス）。
     case Log
     /// ItemMenuScene の Panel ルート（外枠）
@@ -74,7 +74,7 @@ pub enum NodeTag {
     /// 内部 state は演出の進行（bonus 再生済みか / 右側を出し終えた上昇ステータス数 / 次までの残り時間）。
     /// P4-d: レベルアップ演出パネルの識別用純タグ（状態は `LevelUpPanelScene.State` resource へ移設）。
     case LevelUpPanel
-    /// UnitHPBarScene の Marker2D 親（戦闘表示 timer + currentHp/maxHp を持つ）
+    /// UnitHPBarRender の Marker2D 親（戦闘表示 timer + currentHp/maxHp を持つ）
     /// UnitCardScene の CanvasLayer 親（左サイドの選択ユニット簡易カード）。
     case UnitCard
     /// EnemyCardScene の CanvasLayer 親（右サイドの攻撃対象敵カード。UnitCard と左右対称）。
@@ -82,7 +82,7 @@ pub enum NodeTag {
     /// TopBarScene の CanvasLayer 親（上部フェイズバー。陣営・敵ターンの「間」を持つ）
     /// P6-1e: production ではノードを積まない（描画は renderItems 直描き）。手組みノードで
     /// World を seed するテスト seam（syncFromScene の itemsFromScene が読む）として残置。
-    case GroundItem(ItemScene.Data)
+    case GroundItem(GroundItems.Data)
     /// P4-f: 上部バーの識別用純タグ（状態は `TopBarScene.State` resource へ移設）。
     case TopBar
     /// ItemPickupPopupScene の CanvasLayer 親（アイテム取得ポップアップのフェード演出状態を持つ）
@@ -91,15 +91,15 @@ pub enum NodeTag {
     /// TurnEndHoldScene の CanvasLayer 親（Shift 長押しゲージの経過時間と発火済みフラグを持つ）
     /// P4-c: ターンスキップ長押しゲージの識別用純タグ（状態は `TurnEndHoldScene.State` resource へ移設）。
     case HoldGauge
-    /// ItemScene の床に落ちている武器（拾える）
-    /// ChestScene の床に置かれた宝箱（ローグだけが開けられる。中身は配置時に確定済み）
-    case Chest(ChestScene.Data)
-    /// `EnemyTurnDriverScene` の常駐タグ専用ノード (Marker2D)。process redef で phase を
+    /// GroundItems の床に落ちている武器（拾える）
+    /// Chests の床に置かれた宝箱（ローグだけが開けられる。中身は配置時に確定済み）
+    case Chest(Chests.Data)
+    /// `EnemyTurnDriver` の常駐タグ専用ノード (Marker2D)。process redef で phase を
     /// 見て EnemyTurn 中なら stepOnce、PlayerAttackHold 中なら hold 終了判定を行う。
     case EnemyTurnDriver
-    /// `StairsExitScene` の常駐タグノード (Marker2D)。phase==StairsExit のとき
+    /// `StairsExitDriver` の常駐タグノード (Marker2D)。phase==StairsExit のとき
     /// 退場 id 列(queue)を 1 体ずつ階段へ歩かせて退場させる。
-    case StairsExitDriver(StairsExitScene.Data)
+    case StairsExitDriver(StairsExitDriver.Data)
     /// `FogScene` の常駐タグ専用ノード (Marker2D)。process redef で毎フレーム、現在パーティの
     /// いる部屋/通路だけ明るくし、それ以外は薄暗いモヤ＋敵/アイテム/階段を非表示にする。
     case FogDriver
@@ -137,10 +137,10 @@ instance Node[NodeTag] {
                 let phase = TurnPhase.State.get();
                 if (phase == TurnPhase.Phase.PlayerMoving
                     and SelectedPlayer.State.get()#id == Some(data#id))
-                    PlayerMovementScene.physicsStep(delta, node, path, scene)
+                    PlayerMovementDriver.physicsStep(delta, node, path, scene)
                 // 集合(行軍)中は主人公(id 0)を移動範囲内で動かし、味方が 1 歩ずつ追従する。
                 else if (phase == TurnPhase.Phase.GatherMove and data#id == 0)
-                    PlayerMovementScene.gatherStep(delta, node, path, scene)
+                    PlayerMovementDriver.gatherStep(delta, node, path, scene)
                 else (node, scene)
             case NodeTag.Cursor(_) =>
                 // PlayerCursor / WeaponSelect / PlayerAttack の場合分けは CursorScene 内部に閉じている
@@ -159,22 +159,22 @@ instance Node[NodeTag] {
         // 巡回で各ノードが該当 1 関数に振り分けられる。
         // 分割理由: Flix の型推論で 1 つの match arm 数が増えすぎると複雑度上限を
         // 超えるため、各群を独立した signature で推論させる。
-        // P5-a: dispatchDrivers（Fog/Minimap/ArrowCursor）は F8 で gameLoop の明示 step へ移設し撤去。
-        // P5-c: dispatchTickables（TopBar/Log/Camera/GroundItem 等の表示系）も明示 step へ移設し撤去。
+        // Fog/Minimap/ArrowCursor（driver）と TopBar/Log/Camera/GroundItem 等（表示系）は
+        // ここでは巡回せず、gameLoop の明示 step が駆動する。
         let (n1, s1) = dispatchEntities(delta, node, path, scene);
         dispatchMenus(delta, n1, path, s1)
 }
 
 /// Player / Enemy ノード (AnimationPlayer signal drain を持つエンティティ系)。
-/// 戦闘シグナルの解決は CombatScene.process が攻守共通で受ける。
+/// 戦闘シグナルの解決は CombatDriver.process が攻守共通で受ける。
 def dispatchEntities(delta: Duration.Duration, node: EngineNode[NodeTag],
                       path: NodePath, scene: Scene[NodeTag]):
                      (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
     match EngineNode.getState(node) {
         case NodeTag.Player(_) =>
-            checked_ecast(CombatScene.process(delta, node, path, scene))
+            checked_ecast(CombatDriver.process(delta, node, path, scene))
         case NodeTag.Enemy(_) =>
-            checked_ecast(CombatScene.process(delta, node, path, scene))
+            checked_ecast(CombatDriver.process(delta, node, path, scene))
         case _ => (node, scene)
     }
 
@@ -438,10 +438,10 @@ def staffAimConfirm(scene: Scene[NodeTag]):
     ) yield (playerId, item);
     match selected {
         case Some((playerId, PlayerData.ItemKind.Staff(idx))) =>
-            StaffCastScene.applyStaffCast(playerId, idx, dir, scene)
+            StaffCast.applyStaffCast(playerId, idx, dir, scene)
         // 投擲系の消費アイテム（目潰し薬 / 鈍足薬）も同じ StaffAim 経路で方向投擲する。
         case Some((playerId, PlayerData.ItemKind.Consumable(idx))) =>
-            StaffCastScene.applyConsumableDirectional(playerId, idx, dir, scene)
+            StaffCast.applyConsumableDirectional(playerId, idx, dir, scene)
         case _ => scene
     }
 
@@ -461,7 +461,7 @@ def throwAimConfirm(scene: Scene[NodeTag]):
     ) yield (playerId, item);
     match selected {
         case Some((playerId, kind)) =>
-            StaffCastScene.applyThrow(playerId, kind, dir, scene)
+            StaffCast.applyThrow(playerId, kind, dir, scene)
         case None => scene
     }
 
@@ -670,7 +670,7 @@ mod Game {
     /// この値はカメラのビューポートと投影行列の基準で、ウィンドウサイズに合わせて
     /// 引き伸ばし表示される（Godot の Stretch Mode = canvas_items 相当）。
     /// **project.json の "designWidth"/"designHeight" と必ず一致させること**（HUD の中央寄せ
-    /// 計算がこの値を使うため、ずれると PhaseBanner 等の帯が画面幅とずれる）。
+    /// 計算がこの値を使うため、ずれると TopBar 等の帯が画面幅とずれる）。
     /// 縦横比は windowWi/windowHi と一致させる（240:128 = 1170:624）。ずらすと引き伸ばし歪みになる。
     pub def designWi(): Int32 = 240
     pub def designHi(): Int32 = 128
@@ -890,10 +890,10 @@ mod Game {
                       k(EnemyScene.getAll(scene) |> List.map(d ->
                           World.dataFromWorldEnemy(d#id, world, scene) |> Option.getWithDefault(d)))
                   }
-                  // ★注: findIdAt/anyAttacking は現状 RosterQuery 経由の performer が無い（実 consumer は
+                  // ★注: findIdAt/anyAttacking は現状 RosterQuery 経由の実 consumer が無い（実 consumer は
                   //   `EnemyScene.findIdAt` を scene 直読み〔UnitCard/WeaponSelect/EnemyCard/BattlePanel/ItemMenu〕、
-                  //   driver は `World.anyEnemyAttacking` を WorldQuery 直読み〔F8-slice1〕）。ここは handler の
-                  //   coherence 用に先行 flip＝将来 consumer flip の受け皿。scene 直読みの撤去は P8（scene-tree 撤去）。
+                  //   driver は `World.anyEnemyAttacking` を WorldQuery 直読み）。ここは handler の
+                  //   coherence 用に用意した口で、実 consumer の flip 先になる。
                   def findIdAt(coord, k)   = k(World.enemyIdAt(coord, Ref.get(worldRef)))
                   def anyAttacking(k)      = k(World.anyEnemyAttacking(Ref.get(worldRef)))
               }
@@ -911,7 +911,7 @@ mod Game {
               with LevelUpPanelScene.withState(rc) // P4-d: レベルアップ演出パネルの状態を resource 化
               with TopBarScene.withState(rc) // P4-f: 上部バーの状態を resource 化
               with TitleMenuScene.withState(rc) // P4-g: タイトル画面の状態を resource 化
-              with UnitHPBarScene.withForecast(rc) // P6-1g: 攻撃予報（減る分点滅）の view 状態
+              with UnitHPBarRender.withForecast(rc) // P6-1g: 攻撃予報（減る分点滅）の view 状態
               with ItemPickupPopupScene.withState(rc) // P4-e: 中央アイテム取得ポップアップの状態を resource 化
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
               with EnemyTurn.withQueue(rc)        // 敵ターンキュー（1 step / 1 frame 駆動）
@@ -979,8 +979,8 @@ mod Game {
     }
 
     /// 各 process / input redef 内で「自分が今動くべきか」を phase で判断する (Godot 流)。
-    /// 例: `EnemyTurnDriverScene.process` は phase=EnemyTurn / PlayerAttackHold で動作、
-    ///     `PlayerMovementScene.gatherStep` は phase=GatherMove で主人公(id 0)を動かす。
+    /// 例: `EnemyTurnDriver.process` は phase=EnemyTurn / PlayerAttackHold で動作、
+    ///     `PlayerMovementDriver.gatherStep` は phase=GatherMove で主人公(id 0)を動かす。
     /// ゲームオーバー時のフルリビルドは `CustomEffects.GameOverRequest` handler が
     /// catalog をクロージャに閉じ込めて実行するため、ここで catalog を引き回す必要はない。
     def gameLoop(catalogs: GameLifecycle.Catalogs,
@@ -1007,7 +1007,7 @@ mod Game {
                          GamePhaseState, PartySelection.State,
                          Pacing.State, LogScene.State, BattlePanelScene.State, TurnEndHoldScene.State,
                          LevelUpPanelScene.State, ItemPickupPopupScene.State,
-                         TopBarScene.State, TitleMenuScene.State, UnitHPBarScene.ForecastState,
+                         TopBarScene.State, TitleMenuScene.State, UnitHPBarRender.ForecastState,
                          Math.Random, FloorSnapshot.State,
                          World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
                          World.RngDraw, r} =
@@ -1031,22 +1031,20 @@ mod Game {
                 |> Tween.tickAll(dt)
                 |> AnimationPlayer.tickAll(dt)
                 |> GameEngine.process(delta = dt, paused = false)
-                // P5-c: 表示系 tickable も per-node callback から外し明示 step 化（dispatchTickables 撤去）。
+                // 表示系は明示 step で駆動する。
                 // 順序制約: TopBar は EnemyTurnDriver が World 経由で読む 2 bool の dual-write 元なので
-                // driver step より前（旧「process 中に確定」の再現）。TurnEndHold はログ帯を上書きするため
-                // LogScene.step より後（旧 root 追加順の再現）。他は独立。HPBar は process が no-op だったので
-                // step 無しで撤去のみ。
+                // driver step より前に置く。TurnEndHold はログ帯を上書きするため LogScene.step より後に置く。
+                // 他は独立。
                 |> TopBarScene.step(dt)
                 |> ItemPickupPopupScene.frameStep(dt)
                 |> CharacterSelectScene.step(dt)
                 |> LogScene.step(dt)
                 |> TurnEndHoldScene.frameStep(dt)
                 |> CameraScene.step(dt)
-                // F8: ターン進行 LOGIC driver を OOP node callback から外し、明示的な frame-paced System
-                // としてパイプライン段で 1 回呼ぶ（per-node 巡回でなく gameLoop が駆動）。process の後＝combat
-                // drain と TopBar 更新が確定した post-process scene を読む（前後依存は World 経由で順序非依存）。
-                |> EnemyTurnDriverScene.step
-                |> StairsExitScene.step
+                // ターン進行 LOGIC driver は frame-paced System としてパイプライン段で 1 回呼ぶ（gameLoop が駆動）。
+                // process の後＝combat drain と TopBar 更新が確定した post-process scene を読む（前後依存は World 経由で順序非依存）。
+                |> EnemyTurnDriver.step
+                |> StairsExitDriver.step
                 // P5-a: view driver（Fog/Minimap/ArrowCursor）も per-node callback から外し明示 step 化
                 // （dispatchDrivers 撤去＝対象 0）。process の後・render の前に post-process 状態を読んで
                 // 同一フレームで描画されるため挙動不変。相互依存なし＝順序自由。
@@ -1064,11 +1062,7 @@ mod Game {
                            applyPhaseChange(currentPhase, previousPhase, catalogs, updated)
                                |> Scene.setPrevKeyState(Scene.getPrevKeyState(updated))
                        else updated;
-            // P3/Phase B（位置・hp・isDying・alerted・progress を World 権威化・scene 派生）: これらは refreshMirror が
-            // command 由来を preserve し、frame-end の `syncTreeFromWorld` が scene へ一方向 derive する（dual-write 解消）。
-            // legacy 無音を run 確認済みゆえ旧 DIFF 検出器（F6 HP / ALERTED / DYING / PROGRESS / COMBATVIEW）は撤去した
-            // （write 漏れは「hp が動かない / 敵が死なない / exp が増えない」可視バグとして現れる＝位置 P3 WRITE-MISS 撤去と同じ）。
-            // S6: bottleUsed を World 権威化（scene 直書き撤去・syncTree derive）したため [BOTTLE DIFF] は撤去。
+            // 位置・hp・isDying・alerted・progress・bottleUsed は World 権威。refreshMirror は frame カウンタを進めるだけ。
             // S6: prevPos を World 権威化（scene 直書き撤去・syncTree derive）したため [PREVPOS DIFF] は撤去。
             // S6: followUpUsed を World 権威化（scene 直書き撤去・syncTree derive）したため [FOLLOWUP DIFF] は撤去。
             // S6: waited は World 権威化（scene 直書き撤去・syncTreeFromWorld で derive）したため、
@@ -1079,10 +1073,9 @@ mod Game {
                 case Nil => ()
                 case ms  => println("[ATTACKTARGET DIFF] ${ms}")
             };
-            // 🏁 A完成 sweep（2026-06-30）: dual-write 足場の runtime DIFF 検出器は ATTACKTARGET（attackTargetId は
-            // combat 解決の同期キャリア＝Phase C/B まで恒久 dual-write ゆえ invariant guard を残す）のみ残し全撤去。
-            // usedStairs/acted/topbar は包括 run 検証で無音確認後に撤去（他 store は §G S2.3〜S4.4b batch 済）。
-            // invariant は unit test(testXxxMismatchesEmptyWhenSynced/DetectsDrift)＋spawn-seed test で継続検証。
+            // ATTACKTARGET DIFF（attackTargetId）は combat 解決の同期キャリアで恒久 dual-write ゆえ
+            // invariant guard として残す（他フィールドの runtime DIFF 検出器は撤去済み）。
+            // invariant は unit test（testXxxMismatchesEmptyWhenSynced/DetectsDrift）＋spawn-seed test で継続検証する。
             let world1 = World.refreshMirror(Ref.get(worldRef));
             // B/tiles: マップ再構築（tileGen 変化＝`BumpTileGen` が今フレーム走った）時のみ、新フロアのタイルハンドルを
             // scene から World へ bake する。`world`（gameLoop 引数）は前フレームの gen・`world1` は worldRef 由来の
@@ -1091,10 +1084,9 @@ mod Game {
             let world1b = if (World.tileGenOf(world1) != World.tileGenOf(world))
                               World.setTileLayers(MapScene.tileLayerHandles(next), world1)
                           else world1;
-            // F0（OOP→ECS 移行の足場）: **System パイプライン段**。ロジックを OOP callback でなく
-            // `World -> World` の System で回す将来形の seam。S3 以後 stepWorld は identity（statusEffects は
-            // command-authoritative ＝ターン境界の Seed で tick 反映・frame-paced tick は二重 tick になるため撤去）。
-            // 以後の World→World System はここに足していく。
+            // **System パイプライン段**。ロジックを `World -> World` の System で回す seam。
+            // stepWorld は現在 identity（statusEffects は command-authoritative＝ターン境界の Seed で tick 反映・
+            // frame-paced tick は二重 tick になるため）。以後の World→World System はここに足す。
             // B/m2: moveAnim を実時間 dt（既存の dt: Duration を秒換算）で進める＝engine tween と lockstep 同期。
             let (world2, moved) = World.stepWorld(world1b, Duration.toSeconds(dt));
             // F2b（turn phase 書込を Cmd 化）: phase は `TurnPhase.State` handler が `put` のたび `Cmd.SetPhase` で
@@ -1144,7 +1136,7 @@ mod Game {
 /// B/fog・range・配置物・fx・HUD/menu: scene 側を hideSubtrees で renderArgs から外し、
 /// World render System（各 render*）で描く。camera ViewTransform はフレーム 1 回だけ計算して共有。
 def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[NodeTag]):
-        Unit \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarScene.ForecastState} =
+        Unit \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarRender.ForecastState} =
     // P6-1h: hideUnitSprites は撤去（ユニット sprite ノード自体を積まなくなった）。
     let prepped = RenderWorld.hideSubtrees(synced);
     let transform = RenderWorld.viewTransform(synced);
@@ -1160,8 +1152,8 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[N
         |> List.append(RenderWorld.renderItems(world2, holesOpt, transform))
         |> List.append(RenderWorld.renderPopups(world2, transform, synced))
         |> List.append(RenderWorld.renderExplosions(world2, transform, synced))
-        |> List.append(UnitHPBarScene.renderBars(world2, transform, synced))
-        |> List.append(WeaponIconScene.renderPlates(world2, transform, synced))
+        |> List.append(UnitHPBarRender.renderBars(world2, transform, synced))
+        |> List.append(WeaponIconRender.renderPlates(world2, transform, synced))
         |> List.append(RenderWorld.renderFog(transform, synced))
         |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
         |> List.append(RenderWorld.renderSubtrees(transform, synced));
@@ -1171,4 +1163,4 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[N
         RenderWorld.renderTileMaps(world2, transform, synced),
         List.append(scenePolygons,
             List.append(RenderWorld.renderSubtreePolygons(transform, synced),
-                        WeaponIconScene.renderGlyphs(world2, transform, synced))))
+                        WeaponIconRender.renderGlyphs(world2, transform, synced))))

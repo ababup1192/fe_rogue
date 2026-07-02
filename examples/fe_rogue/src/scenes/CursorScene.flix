@@ -56,8 +56,8 @@ mod CursorScene {
     /// カーソルの見た目は scene.json で四隅 L字 (白 ColorRect 8 枚) として完結しており、
     /// コードからは子ノードを直接参照しない（表示/非表示は親 Marker2D の visible で連動）。
 
-    /// カーソルの描画 zIndex。駒 (= 10) / HP バー (UnitHPBarScene = 50〜52) /
-    /// 武器アイコン (WeaponIconScene = 60〜62) より更に上に表示し、選択マスを常に
+    /// カーソルの描画 zIndex。駒 (= 10) / HP バー (UnitHPBarRender = 50〜52) /
+    /// 武器アイコン (WeaponIconRender = 60〜62) より更に上に表示し、選択マスを常に
     /// 最前面で視認できるようにする (HUD/メニューは CanvasLayer なので更に上)。
     /// scene.json で各 ColorRect の zIndex として記述済み (未使用)。
     def _spriteZIndex(): Int32 = 70

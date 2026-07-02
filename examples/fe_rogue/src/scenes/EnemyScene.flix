@@ -46,7 +46,7 @@ mod EnemyScene {
     /// 通常時 / 点滅の山の alpha 値。
     def fullAlpha(): Float32 = 1.0f32
 
-    /// P6-1h: 死亡点滅の alpha を経過秒から導出する純関数（旧 Alpha track と同値＝均等 6 区間の
+    /// 死亡点滅の alpha を経過秒から導出する純関数（均等 6 区間の
     /// 1→0.3→1→0.3→1→0.3→1 を線形補間）。`World.dyingElapsedOf` を入力に renderUnits が呼ぶ。
     /// 全長超過は 1.0（完了フレーム〜ノード除去までの端数）。
     pub def deathBlinkAlpha(elapsed: Float64): Float32 =
@@ -273,7 +273,7 @@ mod EnemyScene {
             followUpUsed   = false,
             bottleUsed     = false
         };
-        // P6-2c: id 集合/team・effectRule・装備指輪も spawn で seed（旧 refreshMirror derive の代替）。
+        // id 集合/team・effectRule・装備指輪も spawn で seed する。
         World.Command.emit(World.Cmd.Spawn(World.EntityRef.Enemy(sp#id)));
         World.Command.emit(World.Cmd.SetEffectRule(sp#id, res#effectRule));
         World.Command.emit(World.Cmd.SetEnemyRing(sp#id, ring));
@@ -392,7 +392,7 @@ mod EnemyScene {
     /// S3: statusEffects 書込 funnel（`PlayerScene.emitStatusesFromScene` の Enemy 版）。mutation
     /// （add/clearImmobilized/bind/tick）適用後の `scene` から該当敵の `#statuses` を読み戻して `Cmd.Seed`
     /// （全置換 replace 意味論）で World へ dual-write する。変更後の全リストを Seed で置換＝網羅が単純。
-    /// statuses を書く全サイトの末尾で呼ぶ（特に敵ターン開始 tick）。pub（StaffCastScene/CombatScene 起点から）。
+    /// statuses を書く全サイトの末尾で呼ぶ（特に敵ターン開始 tick）。pub（StaffCast/CombatDriver 起点から）。
     pub def emitStatusesFromScene(id: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
         match get(id, scene) {
             case Some(d) => World.Command.emit(World.Cmd.Seed(World.EntityRef.Enemy(id), d#statuses))
@@ -553,8 +553,8 @@ mod EnemyScene {
         //   moveTo = SYSTEM(stepEnemyMove: Cmd.Move emit + Moved 返却) → VIEW(replayMovedEvent 再生)。
         //   歩行可否は呼び出し側（EnemyAI.decideAction）が済ませている前提＝System は判定せず書くだけ。
         // INVARIANT: replayMovedEvent は move-seam 専用＝Moved 以外は bug! で落ちる（no-op ではない）。
-        // ここは stepEnemyMove が常に Moved を返すので安全。Phase C で combat SimEvent を配線したら
-        // この seam に渡す event は必ず Moved に pre-filter すること。
+        // ここは stepEnemyMove が常に Moved を返すので安全。Moved 以外の event を渡す場合は
+        // 必ず Moved に pre-filter すること。
         replayMovedEvent(stepEnemyMove(id, target), map, scene)
 
     /// SYSTEM(sim): 敵 1 体を target へ動かす位置 write。`Cmd.Move` を emit し `Moved` を返す。
@@ -587,8 +587,7 @@ mod EnemyScene {
         // B/m3: 描画位置 tween は World（renderPos）権威＝engine `Tween.tweenPosition` は退役。
         // marker は `RenderWorld.syncMarkers` が renderPos に合わせる（味方と同一の口）。
         World.moveUnit(World.EntityRef.Enemy(id), {start = startWorld, target = targetWorld}, Duration.toSeconds(slideDuration()));
-        // P6-2b: 移動前位置は World.prevPosOf（applyCmd の Move が旧位置を自動記録）から読む。
-        // 旧: scene の pre-move gridPos 読み＋SetPrevPos emit（gridPos twin 退役に伴い sim 側へ移設）。
+        // 移動前位置は World.prevPosOf（applyCmd の Move が直前位置を自動記録）から読む。
         let prevX = World.prevPosOf(World.EntityRef.Enemy(id), World.WorldQuery.get())
             |> Option.map(p -> p#x);
         // flipForFacing 付き (= 左向き絵) の敵だけ左右反転する。match でなく Option パイプで畳む。
@@ -658,7 +657,7 @@ mod EnemyScene {
     pub def completeDeath(id: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameEngine.Audio, World.Command} =
         AudioStreamPlayer.play("down_enemy");
-        // P6-2c: ノード除去と対で World の全 store からも除去（旧 refreshMirror prune の代替）。
+        // ノード除去と対で World の全 store からも除去する。
         World.Command.emit(World.Cmd.Despawn(World.EntityRef.Enemy(id)));
         Scene.removeAt(enemyPath(id), scene)
 
@@ -776,7 +775,7 @@ mod EnemyScene {
 
     // ────────────────────────────────────────────────────────
     // (G) 攻撃モーション関連のクエリとシグナル受信
-    //     攻撃の解決本体（startAttack / 命中適用 / 反撃判定）は CombatScene に集約。
+    //     攻撃の解決本体（startAttack / 命中適用 / 反撃判定）は CombatDriver に集約。
     // ────────────────────────────────────────────────────────
 
     /// 攻撃モーション中の敵が 1 体以上いれば true。

@@ -1,4 +1,4 @@
-// StaffSystem — 杖の発動を `(World, [SimEvent])` として解く純 sim（Phase C・combat cutover の 2 周目流用・branch 温存）。
+// StaffSystem — 杖の発動を `(World, [SimEvent])` として解く純 sim（CombatSystem.resolveAttack の杖版）。
 //
 // CombatSystem.resolveAttack を縮約コピーした杖版。view/anim/scene は触らず、演出は SimEvent log から
 // 後段（ViewReplay）が replay する。combat と違い **RngDraw を引かない**（杖は命中ロールを持たず、
@@ -12,15 +12,15 @@
 //   - Blowback … 1 ダメージ → 敵撃破=Damaged(0)+Dying+ViewFx(Died) / 生存=Damaged+Moved(着地) / 味方撃破=Damaged のみ。
 //   - Swap     … caster と対象の位置を交換＝`Moved`×2（順序保存）。
 //   - Bind     … 対象を 5 ターン完全停止＝`Afflicted(immobilizeFor(5))`。
-//   - Stopgap  … 完全停止 + 階段マスへワープ＝`Afflicted` :: `Moved`（P1-a で `stairsPosOf` read-model 追加により ECS 化）。
-// effectRule(DSL)杖・throw は cutover seam で legacy へ落とす（敵詠唱の Bind/Stopgap は ecsResolveEnemyStaff 経由で ECS）。
+//   - Stopgap  … 完全停止 + 階段マスへワープ＝`Afflicted` :: `Moved`（`stairsPosOf` read-model を読む）。
+// effectRule(DSL)杖・throw は StaffCast の DSL 経路が担う（敵詠唱の Bind/Stopgap は ecsResolveEnemyStaff 経由）。
 mod StaffSystem {
 
     use World.EntityRef
     use World.SimEvent
 
-    /// かなしばりの既定ターン数（legacy `StaffCastScene.defaultBindTurns`=5 を映す。sim 自己完結のため再掲）。
-    /// scene-statuses 等価テストが legacy 値とこの値の drift を、sim 側 cmdKey/remaining pin がこの値の退行を捕捉する。
+    /// かなしばりの既定ターン数（scene 側 `StaffCast.defaultBindTurns`=5 を映す。sim 自己完結のため再掲）。
+    /// scene-statuses 等価テストが両者の drift を、sim 側 cmdKey/remaining pin がこの値の退行を捕捉する。
     def bindTurns(): Int32 = 5
 
     /// SimEvent 列を World へ畳む（`CombatSystem.applyAll` の同型コピー＝`applyEventToWorld` の foldLeft）。
@@ -29,7 +29,7 @@ mod StaffSystem {
 
     /// 杖 1 発を **sim 解決**し (World', [SimEvent]) を返す。`hit` は rayCast の結果（命中対象か壁/盤外）。
     /// World から read-model を読み、SimEvent を産んで applyEventToWorld で畳む。scene も view も触らない。
-    /// 壁/盤外（空振り）は events=Nil ＝ World 不変（呼び出し側が legacy へ fallback してログを温存する）。
+    /// 壁/盤外（空振り）は events=Nil ＝ World 不変（呼び出し側がフィードバックログを出す）。
     pub def resolveStaffCast(world: World, caster: EntityRef,
                               effect: Staff.StaffEffect,
                               dir: {x = Int32, y = Int32}, hit: RayHit):
@@ -50,7 +50,7 @@ mod StaffSystem {
         }
 
     /// effect 別 dispatch（1 段 match・組み立ては各小ヘルパーへ委譲）。全 5 effect を World read-model だけで解く
-    /// （Stopgap は P1-a の `stairsPosOf` 追加で ECS 化）。
+    /// （Stopgap は `stairsPosOf` を読む）。
     def effectEvents(world: World, caster: EntityRef, effect: Staff.StaffEffect,
                       dir: {x = Int32, y = Int32}, target: EntityRef,
                       cell: {x = Int32, y = Int32}, isAlly: Bool): List[SimEvent] =
@@ -122,7 +122,7 @@ mod StaffSystem {
     ///   - bind: `Afflicted(immobilizeFor(5))`（Bind と同じ・順序も bind が先）。
     ///   - warp: `warpCellFor(stairsPosOf, boardOf)` が Some なら `Moved(target, warpCell)`。階段が埋まっていれば
     ///           隣接空きマス、どちらも無ければ warp なし（bind だけ・legacy「ワープ先がなかった」相当）。
-    /// warp 先計算に要る階段位置は World read-model `stairsPosOf`（P1-a で追加）、地形は `boardOf`。両方揃わなければ warp 略。
+    /// warp 先計算に要る階段位置は World read-model `stairsPosOf`、地形は `boardOf`。両方揃わなければ warp 略。
     def stopgapEvents(world: World, target: EntityRef): List[SimEvent] =
         let bind = SimEvent.Afflicted(target, StatusSystem.immobilizeFor(bindTurns()));
         let warp = World.boardOf(world)

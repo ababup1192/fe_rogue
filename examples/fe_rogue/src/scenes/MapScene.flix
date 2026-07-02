@@ -199,7 +199,7 @@ mod MapScene {
             anchorOffset = ({x = 0, y = 0}: {x = Int32, y = Int32}),
             spawnGrid    = safe,
             // map-test では合成しないので床範囲 = gridSize 全体の単一部屋（idx=0=anchor）。
-            // idx>=1 にならないので StairsScene.placeRandom の対象外。
+            // idx>=1 にならないので Stairs.placeRandom の対象外。
             placements   = RoomLayout.singleRoom(gs#x, gs#y),
             roomCount    = 1,
             // map-test は composer を通さない debug 用なので Plan は単一モジュールの placeholder

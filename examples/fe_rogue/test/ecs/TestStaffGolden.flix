@@ -1,6 +1,6 @@
 // 杖 cutover の golden-trace 等価テスト（combat の TestGoldenTrace を 2 周目に縮約コピー）。
 //
-// legacy 杖（`StaffCastScene.applyStaffEffectLegacy`・pub seam）を traced harness で駆動して **最終 World** を
+// legacy 杖（`StaffCast.applyStaffEffectLegacy`・pub seam）を traced harness で駆動して **最終 World** を
 // オラクルにし、純 sim（`StaffSystem.resolveStaffCast`）の最終 World と一致するかを照合する。
 // 杖は命中ロールを引かない（rayCast 結果=hit を引数で受ける）＝seeded RNG 不要・完全決定論。
 //
@@ -121,13 +121,13 @@ mod TestStaffGolden {
                 EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Enemy(e)), sc),
             withPlayers, enemies)
 
-    /// P1-a: 配置済み階段ノードを top-level（`StairsScene.stairsPath()`=["Stairs"]）に足した scene。
-    /// `StairsScene.add` は scene.json ロード（Fs/Game effect）を要するため、テストは placed 状態の
+    /// P1-a: 配置済み階段ノードを top-level（`Stairs.stairsPath()`=["Stairs"]）に足した scene。
+    /// `Stairs.add` は scene.json ロード（Fs/Game effect）を要するため、テストは placed 状態の
     /// `NodeTag.Stairs` を直接注入する（`placeAt` が作る `{gridPos, placed=true}` と同じ payload）。
-    /// これで `StairsScene.getPos` が Some を返し、sim 側 `stairsPosOf`（syncFromScene mirror）も同値になる。
+    /// これで `Stairs.getPos` が Some を返し、sim 側 `stairsPosOf`（syncFromScene mirror）も同値になる。
     def sceneWithStairs(players: List[PlayerScene.Data], enemies: List[EnemyScene.Data],
                          stairs: {x = Int32, y = Int32}): Scene[NodeTag] =
-        let stairsData: StairsScene.Data = {gridPos = stairs, placed = true};
+        let stairsData: Stairs.Data = {gridPos = stairs, placed = true};
         Scene.addNode("Stairs",
             EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Stairs(stairsData)),
             sceneOf(players, enemies))
@@ -148,7 +148,7 @@ mod TestStaffGolden {
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
-                    StaffCastScene.ecsResolveStaffCast(0, in#player, in#staff, in#dir, in#hit, in#scene)))))));
+                    StaffCast.ecsResolveStaffCast(0, in#player, in#staff, in#dir, in#hit, in#scene)))))));
             (s, w)
         }
 
@@ -278,7 +278,7 @@ mod TestStaffGolden {
         // ② scene-statuses: legacy #statuses == ECS（applyEcsStaffSceneEffects 駆動）#statuses。
         let (legacyScene, _) = runStaffLegacy({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
         // S3: applyEcsStaffSceneEffects は Seed emit で World.Command を持つ＝ディスチャージャで wrap。
-        let ecsScene = TestUnitFixtures.dischargeWorldCommand(() -> StaffCastScene.applyEcsStaffSceneEffects(evs, sc));
+        let ecsScene = TestUnitFixtures.dischargeWorldCommand(() -> StaffCast.applyEcsStaffSceneEffects(evs, sc));
         Assert.assertEq(expected = sceneStatusT(1, legacyScene), sceneStatusT(1, ecsScene));
         // ③ remaining=5 を tuple リテラルで pin（immobilizeFor(5) を self-derive しない）。
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, sceneStatusT(1, ecsScene));
@@ -310,7 +310,7 @@ mod TestStaffGolden {
         Assert.assertEq(expected = posT(EntityRef.Player(1), legacyW), posT(EntityRef.Player(1), sysW));
         Assert.assertEq(expected = Some((8, 8)), posT(EntityRef.Player(1), sysW));
         // ③ scene #statuses 等価 + (Immobilized,0,5) pin。
-        let ecsScene = TestUnitFixtures.dischargeWorldCommand(() -> StaffCastScene.applyEcsStaffSceneEffects(evs, sc));
+        let ecsScene = TestUnitFixtures.dischargeWorldCommand(() -> StaffCast.applyEcsStaffSceneEffects(evs, sc));
         Assert.assertEq(expected = sceneStatusT(1, legacyScene), sceneStatusT(1, ecsScene));
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, sceneStatusT(1, ecsScene))
 
@@ -347,7 +347,7 @@ mod TestStaffGolden {
     // ── 出荷 seam（ecsResolveStaffCast）直駆動ハーネス ────────────────────────────
     //
     // 上の等価テストは `resolveStaffCast`（sim）と `applyEcsStaffSceneEffects`（scene）を分解して
-    // 当てるだけで、実際に出荷される cutover seam `StaffCastScene.ecsResolveStaffCast` の
+    // 当てるだけで、実際に出荷される cutover seam `StaffCast.ecsResolveStaffCast` の
     // emit ループ・Nil-fallback 分岐・ViewReplay 配線は未踏だった。それらを traced harness 内で
     // 駆動して固定する（emit は World.Command effect ゆえ effectful run の defer 対象外）。
 
@@ -378,7 +378,7 @@ mod TestStaffGolden {
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                     withRecLogger(rc, () ->
-                        StaffCastScene.ecsResolveStaffCast(0, in#player, in#staff, in#dir, in#hit, in#scene))))))));
+                        StaffCast.ecsResolveStaffCast(0, in#player, in#staff, in#dir, in#hit, in#scene))))))));
             (s, keys, w, logs)
         }
 
@@ -394,7 +394,7 @@ mod TestStaffGolden {
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                     withRecLogger(rc, () ->
-                        StaffCastScene.ecsResolveStaffCast(0, in#player, in#staff, in#dir, in#hit, in#scene)))))));
+                        StaffCast.ecsResolveStaffCast(0, in#player, in#staff, in#dir, in#hit, in#scene)))))));
             (s, keys, w, logs)
         }
 

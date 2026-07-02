@@ -3,7 +3,7 @@
 /// `runPlan`（Scene 副作用＝HP 書き換え・状態付与・演出）が実行する「何が・誰に・いくつ
 /// 起きるか」を純粋データ `PlanItem` の列として確定する層。対象解決（resolveTarget）と
 /// 効果量解決（resolveAmount）を済ませた中間表現なので、runPlan は match して既存関数
-/// （Combat.heal / StatusSystem.add / ExplosionScene / AudioStreamPlayer）へ委譲するだけ。
+/// （Combat.heal / StatusSystem.add / ExplosionFx / AudioStreamPlayer）へ委譲するだけ。
 /// この層は Scene 非依存ゆえテストが値だけで完結する。
 mod EffectPlan {
 
@@ -32,7 +32,7 @@ mod EffectPlan {
     /// planActions に必要な文脈。対象解決（selfId/attackerId/rayUnits/actorIsPlayer）と
     /// 効果量解決（amount）の両方を束ねる。実 Scene が PlayerData/EnemyData から組む。
     /// `actorIsPlayer` は使用者が player 側か（陣営判定と self/attacker の is-player 出し分けに使う）。
-    /// 杖・アイテムは player 使用なので true、敵特殊（CombatScene）は false を渡す。
+    /// 杖・アイテムは player 使用なので true、敵特殊（CombatDriver）は false を渡す。
     pub type alias PlanCtx = {
         selfId        = Int32,
         attackerId    = Int32,

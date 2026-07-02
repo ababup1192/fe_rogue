@@ -1,13 +1,13 @@
-/// ExplosionScene — 一発再生の爆発エフェクト（火炎瓶 / 爆発瓶 / 魔法攻撃の着弾）
+/// ExplosionFx — 一発再生の爆発エフェクト（火炎瓶 / 爆発瓶 / 魔法攻撃の着弾）
 ///
-/// `DamagePopupScene` と同じ「World 配下に永続の親 Marker2D を 1 つ持ち、emit で
+/// `DamagePopupFx` と同じ「World 配下に永続の親 Marker2D を 1 つ持ち、emit で
 /// 子スプライトを連番でぶら下げ、process で寿命を減らしつつ自動消去する」流儀。
 /// 子は `explosion` テクスチャ（assets/effect/explosion.png）の **1 行目** を
 /// 寿命にわたって frame 0 → frameCount-1 まで送ることでコマ送りアニメする。
 ///
 /// P6-1f: scene ノードは全廃。寿命・位置・scale すべて World の `explosionFx` store が持ち、
 /// 描画は `RenderWorld.renderExplosions` が Sprite2D 値を組んで直描きする（コマ送りは経過比率から導出）。
-mod ExplosionScene {
+mod ExplosionFx {
 
     /// explosion.png は 896x576。64px グリッドで 14 列 x 9 行。**1 行目（frame 0..13）が爆発**。
     /// P6-1f: renderExplosions が使うため pub。

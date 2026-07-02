@@ -1,11 +1,11 @@
-/// UnitHPBarScene — キャラ足元に常時表示する連続フィル HP ゲージ
+/// UnitHPBarRender — キャラ足元に常時表示する連続フィル HP ゲージ
 ///
 /// P6-1g: scene ノードは全廃。HP/最大 HP は World store（hp/baseStats）、待機/行動済みの暗転は
 /// World store（waited/enemyActed）から導出し、`renderBars` が ColorRect **値**を組んで毎フレーム
 /// 直描きする（update/setModulate 等の押し込み API は不要になった＝SetHp 等の Cmd が唯一の書込）。
 /// 攻撃予報の「減る分」点滅だけは BattlePanel が毎フレーム計算する view 状態なので、
 /// `ForecastState` resource 経由で受け取る。
-mod UnitHPBarScene {
+mod UnitHPBarRender {
 
     /// HP バーのチーム。フィル色の出し分けに使う（味方=青 / 敵=赤）。
     pub enum Team with Eq {

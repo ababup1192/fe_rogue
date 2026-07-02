@@ -352,7 +352,7 @@ mod WeaponSelectScene {
             let equipped = PlayerScene.equipWeapon(pid, idx, scene);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
             GameLogger.playerLog("${PlayerScene.displayName(pid, equipped)}の攻撃");
-            CombatScene.startAttack(Faction.Player, pid, eid, enemy#gridPos, equipped)
+            CombatDriver.startAttack(Faction.Player, pid, eid, enemy#gridPos, equipped)
         };
         Option.getWithDefault(scene, started)
 

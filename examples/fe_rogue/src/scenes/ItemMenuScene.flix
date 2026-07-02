@@ -742,7 +742,7 @@ mod ItemMenuScene {
         else scene
 
     /// 「投げる」: 方向選択フェーズ `ThrowAim` に進む。selectedItem は保持され、
-    /// 方向確定時に `Game.throwAimConfirm` → `StaffCastScene.applyThrow` が読む。
+    /// 方向確定時に `Game.throwAimConfirm` → `StaffCast.applyThrow` が読む。
     def applyThrowAction(playerId: Int32, scene: Scene[NodeTag]):
                   Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger} =
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は 投げる方向を選び Z で投げる (X で中止)");
@@ -843,7 +843,7 @@ mod ItemMenuScene {
     /// 「つかう」: 杖の場合のみ実行（武器の場合は「装備」項目が出るのでここには来ない）。
     /// 杖の発動方向選択フェーズ `StaffAim` に進み、ログに方向キーの操作プロンプトを出す。
     /// selectedItem は保持しておき、`StaffAim` 中の方向入力で
-    /// `StaffCastScene.applyStaffCast` が読む。
+    /// `StaffCast.applyStaffCast` が読む。
     def applyUse(playerId: Int32, kind: PlayerData.ItemKind,
                    scene: Scene[NodeTag]):
                   Scene[NodeTag]
@@ -874,7 +874,7 @@ mod ItemMenuScene {
                 GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         match consumableDeliveryAt(playerId, idx, scene) {
             case Consumable.Delivery.SelfUse =>
-                StaffCastScene.applyConsumableUse(playerId, idx, scene)
+                StaffCast.applyConsumableUse(playerId, idx, scene)
             case Consumable.Delivery.Directional =>
                 let name = consumableNameOf(playerId, idx, scene);
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${name} を投げる方向を選び Z で発射 (X で中止)");

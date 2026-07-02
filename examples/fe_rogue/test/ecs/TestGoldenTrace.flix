@@ -177,7 +177,7 @@ mod TestGoldenTrace {
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withNoopAnim(() ->
             TestUnitFixtures.withNoopTween(() ->
-                CombatScene.applyAttackHit(0, sc)))))))))
+                CombatDriver.applyAttackHit(0, sc)))))))))
         }
 
     /// applyAttackHit を CONSTANT-RNG harness で駆動（draw を全て `rngVal` 固定にする）。
@@ -192,7 +192,7 @@ mod TestGoldenTrace {
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withNoopAnim(() ->
             TestUnitFixtures.withNoopTween(() ->
-                CombatScene.applyAttackHit(0, sc)))))))))
+                CombatDriver.applyAttackHit(0, sc)))))))))
         }
 
     /// applyEnemyAttackHit を traced harness + 副作用モックで駆動。((後 scene, killed), cmdKey 列, World)。
@@ -207,7 +207,7 @@ mod TestGoldenTrace {
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withNoopAnim(() ->
             TestUnitFixtures.withNoopTween(() ->
-                CombatScene.applyEnemyAttackHit(enemyId, sc)))))))))
+                CombatDriver.applyEnemyAttackHit(enemyId, sc)))))))))
         }
 
     // combatViewOf が attacker/defender 両方で Some か（vacuous scene-fallback の pre-guard）。
@@ -494,7 +494,7 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withNoSelection(() ->
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () ->
-                            CombatScene.onLungeDone(Faction.Player, 0, sc))
+                            CombatDriver.onLungeDone(Faction.Player, 0, sc))
                     } with Pacing.withState(rc))))))))))));
             assertGoldenPremise(sc, keys);
             // golden: 追撃分岐 OFF（plain weapon）→ ClrTgt(player) のみ。
@@ -531,8 +531,8 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withNoSelection(() ->
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () -> {
-                            let s1 = CombatScene.onLungeDone(Faction.Player, 0, sc);
-                            CombatScene.applyEnemyAttackHit(1, s1)
+                            let s1 = CombatDriver.onLungeDone(Faction.Player, 0, sc);
+                            CombatDriver.applyEnemyAttackHit(1, s1)
                         })
                     } with Pacing.withState(rc))))))))))));
             let (_, killed) = result;
@@ -804,7 +804,7 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withNoopTween(() ->
                     run {
                         run {
-                            CombatScene.applyAttackHit(0, sc)
+                            CombatDriver.applyAttackHit(0, sc)
                         } with handler CustomEffects.ThiefDropRequest {
                             def drop(cell, scene, k) = { Ref.put((cell#x, cell#y) :: Ref.get(dropRef), dropRef); k(scene) }
                         }
@@ -1042,9 +1042,9 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withNoSelection(() ->
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () -> {
-                            let s1 = CombatScene.applyAttackHit(0, sc);
-                            let s2 = CombatScene.onLungeDone(Faction.Player, 0, s1);
-                            CombatScene.applyEnemyAttackHit(1, s2)
+                            let s1 = CombatDriver.applyAttackHit(0, sc);
+                            let s2 = CombatDriver.onLungeDone(Faction.Player, 0, s1);
+                            CombatDriver.applyEnemyAttackHit(1, s2)
                         })
                     } with Pacing.withState(rc))))))))))));
             w
@@ -1142,7 +1142,7 @@ mod TestGoldenTrace {
         Assert.assertEq(expected = "miss" :: Nil, soundsOf(evs));
         Assert.assertEq(expected = ("miss", 3, 2) :: Nil, popupsOf(evs))
 
-    /// 敵攻撃は魔法武器でも **爆発を出さない**（legacy 敵攻撃は ExplosionScene を発火しない＝allowExplosion=false）。
+    /// 敵攻撃は魔法武器でも **爆発を出さない**（legacy 敵攻撃は ExplosionFx を発火しない＝allowExplosion=false）。
     /// 命中 SE は出す（必ず 1 件・名前は dmg 依存ゆえ件数で固定）。
     @Test
     def testViewScriptEnemyHitNoExplosion(): Unit \ Assert =

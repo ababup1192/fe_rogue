@@ -6,9 +6,9 @@
 /// 分離したモジュールで、process を持たないため Game.flix の dispatch 表に登録せず
 /// `src/game/` に置く（dispatch 表に載るとフレーム毎に呼ばれる Scene として扱われる）。
 ///
-/// 許容している相互参照（ターン編成ペア）: `EnemyTurnDriverScene.process` は
+/// 許容している相互参照（ターン編成ペア）: `EnemyTurnDriver.process` は
 /// PlayerAttackHold 解除時に `TurnFlow.commitWaitedAndAdvance` を呼び、
-/// `commitWaitedAndAdvance` は全員 waited のとき `EnemyTurnDriverScene.beginTurn` を呼ぶ。
+/// `commitWaitedAndAdvance` は全員 waited のとき `EnemyTurnDriver.beginTurn` を呼ぶ。
 /// 「味方ターンの終わり」と「敵ターンの始まり」が表裏一体であるための設計的サイクルで、
 /// beginTurn を phase 経由に externalize すると敵ターン開始タイミング（同一フレームでの
 /// キュー構築・距離順ソート・clearActedAll）が変わるため直接呼び出しのまま残す。
@@ -49,13 +49,13 @@ mod TurnFlow {
                     World.posOf(World.EntityRef.Player(next#id), World.WorldQuery.get())
                         |> Option.getWithDefault(next#gridPos), withWaited)
             case None       =>
-                EnemyTurnDriverScene.beginTurn(withWaited)
+                EnemyTurnDriver.beginTurn(withWaited)
         }
 
     /// 「ターンエンド」／集合の「全員待機」確定: 全アクティブ味方を行動済みにして即敵ターンへ進む。
     /// `SelectedPlayer.cleared()` で選択を解除する。集合確定なので `drafts`（集合中に積んだ
     /// MovedFrom / GatherWaited）は **巻き戻さず破棄** する（移動・非アクティブ化を確定させる）。
-    /// `ActionMenuScene` の「ターンエンド／全員待機」と、`EnemyTurnDriverScene` の集合移動中の
+    /// `ActionMenuScene` の「ターンエンド／全員待機」と、`EnemyTurnDriver` の集合移動中の
     /// 強制全員待機（敵に見つかったとき）の共通入口。`commitWaitedAndAdvance` と違い `anyPendingLevelUp`
     /// 割り込みは持たない（全員待機が走る局面では戦闘起因のレベルアップ保留が存在しないため。
     /// 個別経路 `commitWaitedAndAdvance` は割り込みを保持する非対称だが、いずれも実害なし＝意図的）。
@@ -77,5 +77,5 @@ mod TurnFlow {
         let afterWait = List.foldLeft((sc, id) -> PlayerScene.setWaited(id, sc), scene, ids);
         GatherResume.State.put(resume);
         SelectedPlayer.State.put(SelectedPlayer.cleared());
-        EnemyTurnDriverScene.beginTurn(afterWait)
+        EnemyTurnDriver.beginTurn(afterWait)
 }

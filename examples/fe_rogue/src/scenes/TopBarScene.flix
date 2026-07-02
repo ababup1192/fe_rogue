@@ -1,4 +1,4 @@
-/// TopBarScene — 画面上部の常設フェイズバー（旧 FloorLabelScene + PhaseBannerScene を統合）
+/// TopBarScene — 画面上部の常設フェイズバー（フロア表示 + フェイズ表示）
 ///
 /// 画面最上部に全幅の帯を出し、左にフロア（番号＋名前、例「1F 始まりの洞窟」）、右に現在
 /// フェイズ（● 自軍フェイズ / PLAYER PHASE、敵は 敵軍フェイズ / ENEMY PHASE）を表示する。
@@ -9,12 +9,12 @@
 ///   新フェイズ色で幅 0→全幅に伸ばす。伸び切ったら base を新フェイズに確定して sweep を畳む。
 ///
 /// 敵ターン開始時は短い「間」（holdDuration）を置いてから敵が動き出す。`isBusy` が hold 中
-/// true を返し、`EnemyTurnDriverScene` がそれを見て敵の行動開始を待つ（旧 PhaseBanner.isBusy 置換）。
+/// true を返し、`EnemyTurnDriver` がそれを見て敵の行動開始を待つ。
 ///
 /// 全幅・右側配置は固定 240px でなく `getViewportRect` の実幅で毎フレーム調整する。
 ///
 /// ノード構造（layer=4）:
-///   TopBar (CanvasLayer, NodeTag.TopBar(Data))
+///   TopBar (CanvasLayer, NodeTag.TopBar)
 ///     ├─ band / bandSweep            (Panel) 帯背景（base / ワイプ用オーバーレイ）
 ///     ├─ underline / underlineSweep  (Panel) 下線（base / ワイプ用オーバーレイ）
 ///     ├─ floorNum / floorName        (Label2D) フロア番号・名前（add 時設定）
@@ -34,7 +34,7 @@ mod TopBarScene {
         hold       = Duration.Duration
     }
 
-    /// P4-f: 上部バーの状態を持つ resource（旧: `NodeTag.TopBar(Data)` ペイロード）。
+    /// 上部バーの状態を持つ resource。
     /// フロア（再）構築のたび `add` が `State.put` で初期化し直す。
     pub eff State {
         def get(): Data
@@ -67,7 +67,7 @@ mod TopBarScene {
     def gatherLabelName(): String = "gatherLabel"
     def gatherIconName(): String = "gatherIcon"
 
-    /// B: render-from-World が HUD サブツリーを描く/隠す際の root（`RenderWorld.renderSubtree`/`hideNode` 用）。
+    /// render-from-World が HUD サブツリーを描く/隠す際の root（`RenderWorld.renderSubtree`/`hideNode` 用）。
     pub def rootPath(): NodePath = rootName() :: Nil
     def bandPath(): NodePath = rootName() :: bandName() :: Nil
     def bandSweepPath(): NodePath = rootName() :: bandSweepName() :: Nil
@@ -125,19 +125,19 @@ mod TopBarScene {
             |> Label2D.mapAt(floorNumPath(), Label2D.setText(floorLabel))
             |> Label2D.mapAt(floorNamePath(), Label2D.setText(floorName))
             // gatherLabel は scene.json で visible:false。集合(GatherMove)中のみ step で表示する。
-            // P4-f: 状態は resource へ（フロア再構築のたび初期化＝旧ペイロード seed と同義）。
+            // 状態は resource へ（フロア再構築のたび初期化する）。
             // root タグは render-from-World の識別用純タグとして残す。
             |> Scene.setState(rootPath(), NodeTag.TopBar)
             |> resetState
 
-    /// P4-f: 状態を初期値へ戻す（add から呼ぶ・scene はパイプ素通し）。
+    /// 状態を初期値へ戻す（add から呼ぶ・scene はパイプ素通し）。
     def resetState(scene: Scene[NodeTag]): Scene[NodeTag] \ TopBarScene.State =
         TopBarScene.State.put(
             {shown = None, animTarget = None, anim = Duration.zero(), hold = Duration.zero()});
         scene
 
     /// 敵ターンの「間」中か（hold>0）。EnemyTurnDriver は World bool（dual-write）経由で読む。
-    /// P4-f: scene 読み → Data 直の純関数に（step が最終 Data から World へ emit する用）。
+    /// step が最終 Data から World へ emit するための純関数（Data 直読み）。
     pub def isBusyOf(data: Data): Bool =
         Duration.toSeconds(data#hold) > 0.0
 
@@ -159,12 +159,12 @@ mod TopBarScene {
 
     def baseOf(shown: Option[Bool]): Bool = Option.getWithDefault(false, shown)
 
-    /// P5-c(F8): per-node dispatch から外し gameLoop が 1 回呼ぶ frame-paced System。
+    /// gameLoop が 1 回呼ぶ frame-paced System。
     /// EnemyTurnDriver が World 経由で読む 2 bool（enemyTurnBusy/phaseObservedEnemy）を
-    /// dual-write するため、パイプラインでは **EnemyTurnDriverScene.step より前**に置く
-    /// （旧 per-node と同じ「driver は当フレームの TopBar 確定値を読む」を維持）。
+    /// dual-write するため、パイプラインでは **EnemyTurnDriver.step より前**に置く
+    /// （driver は当フレームの TopBar 確定値を読む）。
     /// TopBar ノード不在（タイトル/選択画面）は presence gate で no-op。
-    /// P4-f: 状態は resource（`TopBarScene.State`）から読み書きする。
+    /// 状態は resource（`TopBarScene.State`）から読み書きする。
     pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
                     Scene[NodeTag]
                     \ {GameEngine.Game, TurnPhase.State, GameEngine.Audio, World.Command,
@@ -213,10 +213,10 @@ mod TopBarScene {
                 };
                 // 集合(GatherMove)中だけ中央に「集合中」を表示。viewport 実幅の中央へ毎フレーム再配置。
                 let next2 = next |> applyGatherLabel(phase == TurnPhase.Phase.GatherMove, w);
-                // F8-slice2: 敵ターン driver が読む 2 bool を World に dual-write（next2 の確定状態から）。
-                // driver はこれを World 経由で読む＝per-node 順序非依存（pipeline 移設の前提）。
-                // P4-f: 確定状態は resource が持つ（各分岐の setState が put 済み）＝read-after-write で
-                // 最新 Data を読み、そこから World の 2 bool を dual-write する（旧: scene 再読み）。
+                // 敵ターン driver が読む 2 bool を World に dual-write（next2 の確定状態から）。
+                // driver はこれを World 経由で読むので順序非依存。
+                // 確定状態は resource が持つ（各分岐の setState が put 済み）＝read-after-write で
+                // 最新 Data を読み、そこから World の 2 bool を dual-write する。
                 let dFinal = TopBarScene.State.get();
                 World.Command.emit(World.Cmd.SetEnemyTurnBusy(isBusyOf(dFinal)));
                 World.Command.emit(World.Cmd.SetPhaseObservedEnemy(hasObservedEnemyOf(dFinal)));
@@ -306,7 +306,7 @@ mod TopBarScene {
         Duration.seconds(Float64.max(0.0, Duration.toSeconds(t) - Duration.toSeconds(delta)))
 
     /// CanvasLayer に紐づく状態を書き戻す。
-    /// P4-f: 状態を resource へ書く。scene はパイプ互換のためそのまま返す（挙動不変）。
+    /// 状態を resource へ書く。scene はパイプ互換のためそのまま返す（挙動不変）。
     def setState(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] \ TopBarScene.State =
         TopBarScene.State.put(data);
         scene

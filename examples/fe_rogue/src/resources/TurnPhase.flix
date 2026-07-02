@@ -116,7 +116,7 @@ mod TurnPhase {
         /// カーソルは非表示。敵ターンは発生しない（確定後の「全員待機」で敵ターンへ進む）。
         case GatherMove
         /// 集合「階段で離脱」中。届く味方を 1 体ずつ階段へ歩かせ退場させる自動進行フェーズ。
-        /// 入力は無効・カーソル非表示。`StairsExitScene` の driver が進める。
+        /// 入力は無効・カーソル非表示。`StairsExitDriver` の driver が進める。
         case StairsExit
         /// 敵ターン。入力は無効、カーソル非表示、カメラはプレイヤーに固定。
         case EnemyTurn
@@ -449,7 +449,7 @@ mod TurnInputBridge {
             case TurnRules.Transition.OpenAttackForecast(attackerId, defenderId, _defX, _defY) =>
                 // 装備中武器 (weapons.head) を自動使用するので武器選択は介さず AttackForecast 直行。
                 // attackTargetId を立てて BattlePanelScene が予報を組み立てる。
-                CombatScene.setAttackTargetId(attackerId, defenderId, scene)
+                CombatDriver.setAttackTargetId(attackerId, defenderId, scene)
                     |> PhaseTransitions.enterAttackForecast
             case TurnRules.Transition.AttackSkip                        =>
                 TurnFlow.commitWaitedAndAdvance(scene)

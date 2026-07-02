@@ -333,7 +333,7 @@ mod ActionMenuScene {
     /// 成立するものだけ返す（全員待機・キャンセルは常に表示）。判定はすべて主人公(リーダー id=0)基準。
     ///   - 拾う   : 主人公の足元に床アイテムがあれば最上段（既存 `pickupMeta` → applyPickup を流用。
     ///              集合中は SelectedPlayer.id=Some(0) なので拾う主体＝主人公として解決される）
-    ///   - 階段   : 主人公が階段マスに立っているときだけ（`gatherStairsMeta` → StairsExitScene.begin）
+    ///   - 階段   : 主人公が階段マスに立っているときだけ（`gatherStairsMeta` → StairsExitDriver.begin）
     ///   - 交換   : 主人公＋隣接味方の N 人持ち物交換（`gatherTradeMeta` → openGatherTrade）
     ///   - 全員待機: パーティ全員を行動済みにして敵ターンへ（既存 `turnEndMeta` → applyTurnEnd を流用）
     /// （「キャンセル」項目は廃止。GatherMove 中に X を押せば開始位置へ巻き戻る）
@@ -447,10 +447,10 @@ mod ActionMenuScene {
             and d#gridPos#y == player#gridPos#y,
             PlayerData.PartyQuery.getAll())
 
-    /// F1（OOP→ECS 移行・入力→intent seam）: メニュー確定アクションを **「決定(data)」と「適用(effect)」に分離**する。
+    /// メニュー確定アクションを **「決定(data)」と「適用(effect)」に分離**する。
     /// `ActionIntent` は「何をするか」を表す**純粋なデータ**で、入力分岐は scene を直接 mutate せず intent を返すだけ。
-    /// 適用は単一 dispatcher `applyActionIntent` に集約する。これが OOP（分岐が直接ロジック呼び）からの脱却の seam。
-    /// 現状は "wait" のみ変換（最小スライス）。他アクションは以後の F で順次 intent 化し、適用先は World System へ寄せていく。
+    /// 適用は単一 dispatcher `applyActionIntent` に集約する（決定と適用を分ける seam）。
+    /// 現状は "wait" のみ intent 化している。
     pub enum ActionIntent {
         case Wait   // その場で waited 確定（ターン進行）
     }
@@ -506,7 +506,7 @@ mod ActionMenuScene {
                 else if (m == suspendMeta())  SuspendConfirmScene.show(scene)
                 else if (m == stairsMeta())   applyStairs(scene)
                 else if (m == gatherTradeMeta()) openGatherTrade(scene)
-                else if (m == gatherStairsMeta()) StairsExitScene.begin(scene)
+                else if (m == gatherStairsMeta()) StairsExitDriver.begin(scene)
                 else                          scene
                 }
         }
@@ -571,7 +571,7 @@ mod ActionMenuScene {
             |> Option.getWithDefault(false)
 
     /// 「ターンエンド」／集合の「全員待機」確定。実体は `TurnFlow.commitAllWaitedAndAdvance`
-    /// （ターン確定の単一所有者）に委譲する。`EnemyTurnDriverScene` の強制全員待機と共通の入口。
+    /// （ターン確定の単一所有者）に委譲する。`EnemyTurnDriver` の強制全員待機と共通の入口。
     def applyTurnEnd(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State, GatherResume.State,
@@ -608,7 +608,7 @@ mod ActionMenuScene {
         }
 
     /// 拾う主体が足元の床アイテムを拾うと重量過多になるか。PartyQuery で現フレームの Data を、
-    /// `ItemScene.dataAt` で床アイテムを読む。どちらか欠ければ「過多ではない」扱い（防御的）。
+    /// `GroundItems.dataAt` で床アイテムを読む。どちらか欠ければ「過多ではない」扱い（防御的）。
     def wouldPickupOverload(info: {playerId = Int32, gridPos = {x = Int32, y = Int32}},
                              _scene: Scene[NodeTag]): Bool \ {PlayerData.PartyQuery, World.WorldQuery} =
         // P3-c: 床アイテムは World store から読む（`groundItemAtOf`）。
@@ -638,7 +638,7 @@ mod ActionMenuScene {
                     ItemPickupPopupScene.showFull(scene)
                 else
                     PlayerScene.addPickedItem(info#playerId, chest#content, scene)
-                        |> ChestScene.takeAt(info#gridPos)
+                        |> Chests.takeAt(info#gridPos)
                         |> ItemPickupPopupScene.reserveGetItemSound
         }
 
@@ -646,7 +646,7 @@ mod ActionMenuScene {
     /// どれかが欠けたら None（宝箱が無い / 駒が見つからない場合は何もしない）。
     def openTarget(scene: Scene[NodeTag]):
             Option[({playerId = Int32, gridPos = {x = Int32, y = Int32}},
-                    PlayerScene.Data, ChestScene.Data)]
+                    PlayerScene.Data, Chests.Data)]
             \ {SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
         forM (
             info   <- pickupTarget(scene);

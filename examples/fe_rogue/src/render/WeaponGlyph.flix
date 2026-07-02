@@ -13,11 +13,11 @@
 ///   - **アンチエイリアス無し**（plain fill, 本番 ~5x 拡大）。斜めは階段になるが、スクショ準拠を優先する。
 ///
 /// 座標系: 原点中心・+y は下・上右(=(+x,-y))が刀身の向き・WeaponIcon の内寸 ~11px に収める（おおむね ±5.5）。
-/// 各ピースは `EngineNode.Polygon2DWithState` / `Arc2DWithState`（`NodeTag.NoTag`）で、`WeaponIconScene`
-/// が `WeaponIcon`(Marker2D) の子として attach する。白は濃色プレート背景の上で読ませる（[[WeaponIconScene]]）。
+/// 各ピースは `EngineNode.Polygon2DWithState` / `Arc2DWithState`（`NodeTag.NoTag`）で、`WeaponIconRender`
+/// が `WeaponIcon`(Marker2D) の子として attach する。白は濃色プレート背景の上で読ませる（[[WeaponIconRender]]）。
 mod WeaponGlyph {
 
-    /// 各ピースの基準 zIndex（WeaponIconScene の Bg=61 より手前）。ピースは base+i で重ねる。
+    /// 各ピースの基準 zIndex（WeaponIconRender の Bg=61 より手前）。ピースは base+i で重ねる。
     def baseZIndex(): Int32 = 62
 
     /// 対角の単位成分（cos45° = sin45°）。上右向き軸 = (diagD, -diagD)。
@@ -26,7 +26,7 @@ mod WeaponGlyph {
     /// 全系統とも白で統一（濃色プレートの上で視認）。形だけで系統を区別する。
     pub def glyphColor(_wt: WeaponCatalog.WeaponType): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 
-    /// 武器系統 → 子ノード（名前 × EngineNode）列。WeaponIconScene が addChildAt で順に生やす。
+    /// 武器系統 → 子ノード（名前 × EngineNode）列。WeaponIconRender が addChildAt で順に生やす。
     /// 名前は "G0","G1",… の安定名（重複しない・reconcile しない静的アイコン）。
     pub def weaponGlyph(wt: WeaponCatalog.WeaponType): List[(String, EngineNode[NodeTag])] =
         named(pieces(wt, glyphColor(wt)))

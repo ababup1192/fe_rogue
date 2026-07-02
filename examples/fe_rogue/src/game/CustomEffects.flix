@@ -42,7 +42,7 @@ mod CustomEffects {
     }
 
     /// 敵ターン終端でシレン型の通路湧き（Wanderer タイプ）を試みることを要求する。
-    /// emit 元 (EnemyTurnDriverScene.endTurn) は「敵ターンが 1 巡終わった」タイミングで
+    /// emit 元 (EnemyTurnDriver.endTurn) は「敵ターンが 1 巡終わった」タイミングで
     /// `maybeSpawn(scene)` を呼ぶ。実際に湧くかは低確率 + フロア上限 + 視界外通路セルの有無で
     /// handler 側（実体は EnemyScene）が判断する（条件を満たさなければ scene をそのまま返す）。
     /// 現在フロアを `FloorProgress` で解決し `Math.Random` で抽選するため、catalog を
@@ -52,7 +52,7 @@ mod CustomEffects {
     }
 
     /// ringman の特殊行動「相手の持ち物を指輪に変える」を要求する。
-    /// emit 元 (EnemyTurnDriverScene の通常 AI・攻撃枝) は「ringman が隣接して 30% を引き、
+    /// emit 元 (EnemyTurnDriver の通常 AI・攻撃枝) は「ringman が隣接して 30% を引き、
     /// 対象に装備外の持ち物がある」と判定したら `transform(敵の兵種名, 対象味方 id, scene)` を呼ぶ。
     /// 実体 (handler) は `GameLifecycle.applyRingTransform` で、装備外アイテムを 1 つ無作為に選び
     /// 確率分布（7割ただの・1割サビ・2割その他）で選んだ指輪に変える。
@@ -63,9 +63,9 @@ mod CustomEffects {
     }
 
     /// 盗人の剣（ローグ装備時）の「敵がアイテムを落とす」を要求する。
-    /// emit 元 (CombatScene の攻撃解決) は「ローグが盗人の剣で命中して 20% を引いた」と判定したら
+    /// emit 元 (CombatDriver の攻撃解決) は「ローグが盗人の剣で命中して 20% を引いた」と判定したら
     /// `drop(セル, scene)` を呼ぶ。実体 (handler) は現在フロアの items ドロップ表から重み付き抽選し、
-    /// `ItemScene.respawn` で指定セルにアイテムを落とす。フロア表 + 各カタログ + Math.Random が要るため、
+    /// `GroundItems.respawn` で指定セルにアイテムを落とす。フロア表 + 各カタログ + Math.Random が要るため、
     /// catalog をクロージャに閉じ込められる `Game.start` でしか handler 注入できない。
     pub eff ThiefDropRequest {
         def drop(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag]

@@ -14,7 +14,7 @@
 | **Resource** | 単一値の sim 状態（singleton） | World フィールド / `src/ecs/` |
 | **Catalog/Data** | 静的コンテンツ（JSON 由来の定義） | `src/catalog/` |
 | **View(=Scene)** | **目視で変える UI 構造**（menu/HUD/popup/cursor/camera） | `src/scenes/`（維持） |
-| **Render** | World→drawables 投影（sim 描画・将来） | `src/render/` |
+| **Render** | World→drawables 投影（sim 描画） | `src/render/`（2026-07-02 実体化済み） |
 | **Lib** | faction/sim 非依存の純ユーティリティ | `src/lib/` |
 | **Loop/Framework** | main loop・effect handler 配線 | ルート（Game/Main） |
 | **Bridge(過渡)** | 移行中の足場（Scene が drain されると消える） | 暫定 |
@@ -22,8 +22,9 @@
 ## 分類（要点・sim と view の境界）
 
 ### View = Scene 維持（目視 UI・IDE 編集・撲滅しない）
-TopBar / ActionMenu / WeaponSelect / ItemMenu / TradeMenu / GameOverMenu / SuspendConfirm / TitleMenu / BattlePanel / UnitCard / EnemyCard / UnitInfoPopup / LevelUpPanel / UnitHPBar / DamagePopup / Explosion / ItemPickupPopup / Log / Minimap / Fog(view) / TurnEndHold / Cursor / ArrowCursor / RangeScenes / Camera / Bgm / WeaponIcon / WeaponGlyph / Stairs(node) / CharacterSelect。
+TopBar / ActionMenu / WeaponSelect / ItemMenu / TradeMenu / GameOverMenu / SuspendConfirm / TitleMenu / BattlePanel / UnitCard / EnemyCard / UnitInfoPopup / LevelUpPanel / ItemPickupPopup / Log / Minimap / Fog(view) / TurnEndHold / Cursor / ArrowCursor / RangeScenes / Camera / Bgm / CharacterSelect。
 → これらは input/event/render 反応（Plan B gate で残置可と確定済）。**Scene のまま。**
+（旧掲載の UnitHPBar / WeaponIcon / WeaponGlyph / DamagePopup / Explosion / Stairs は P6 の脱ノード化で Scene でなくなり、2026-07-02 の scenes/ 解体で移送済み — 末尾「解体実施状況」参照。）
 
 #### A7 audit 結果（World-touch scene の read/write 監査・2026-06 実測）
 **全6 scene（BattlePanel / ActionMenu / LevelUpPanel / ItemMenu / TradeMenu / Chest）の `World.Cmd` 書込 = 0** → World desync リスク無し・全て **View 据置**で正。World アクセスは Query 読のみ（read-only 派生 view）。
@@ -74,3 +75,12 @@ TopBar / ActionMenu / WeaponSelect / ItemMenu / TradeMenu / GameOverMenu / Suspe
 ## 結論
 - E/C/S ＋ Resource/Catalog/View/Lib/Loop の**役割ディレクトリ**で「目視構造(Scene) vs 純粋ロジック(ECS)」を物理的に分離する。
 - **新規は役割ディレクトリへ**（Scene を増やさない）。**既存は relocate（純粋なもの）→ split（混在）**で段階移行。
+
+## 解体実施状況（2026-07-02・ECS 移行完了後の scenes/ 後片付け）
+「名前だけ Scene」の 12 ファイルを移送・リネームし、`src/scenes/` は実ノード所有の本物の Scene のみになった。
+
+- **`src/render/`（新設・実体化）**: `RenderWorld`・`WeaponGlyph`・`ViewReplay`（移動のみ）／`UnitHPBarScene`→`UnitHPBarRender`／`WeaponIconScene`→`WeaponIconRender`。
+- **`src/ecs/spawn/`（新設）**: `DamagePopupScene`→`DamagePopupFx`／`ExplosionScene`→`ExplosionFx`（純 Cmd emitter のみ。scene 読みを含むものは置かない）。
+- **`src/systems/` = scene 結合の driver / orchestrator 層**（純 `World→World` System は `src/ecs/systems/` のまま、という 2 層分界に確定）:
+  `CombatScene`→`CombatDriver`／`StaffCastScene`→`StaffCast`／`EnemyTurnDriverScene`→`EnemyTurnDriver`／`PlayerMovementScene`→`PlayerMovementDriver`／`StairsExitScene`→`StairsExitDriver`／`StairsScene`→`Stairs`／`ChestScene`→`Chests`／`ItemScene`→`GroundItems`（配置物 3 種は placement 抽選が scene 読み＝A7 audit のとおり World 非モデルのため、ecs/spawn でなく systems 送り）。
+- **未実施（任意）**: `addOnePlayer`/`addOneEnemy` の spawn funnel 抽出（ノード構築と Cmd 発行が不可分・diet 検討で純減 ~50 行止まりと結論済みのため見送り）。`EntityScene` bridge は据置。
