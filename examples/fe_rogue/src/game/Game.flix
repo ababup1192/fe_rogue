@@ -72,7 +72,8 @@ pub enum NodeTag {
     case BattlePanel
     /// LevelUpPanelScene の Panel ルート（レベルアップ時のステータス変化パネルの外枠）。
     /// 内部 state は演出の進行（bonus 再生済みか / 右側を出し終えた上昇ステータス数 / 次までの残り時間）。
-    case LevelUpPanel(LevelUpPanelScene.PanelState)
+    /// P4-d: レベルアップ演出パネルの識別用純タグ（状態は `LevelUpPanelScene.State` resource へ移設）。
+    case LevelUpPanel
     /// DamagePopupScene の Marker2D 親（World 直下に永続）
     case DamagePopupsRoot(DamagePopupScene.RootData)
     /// DamagePopupScene の Label2D 子（寿命を持つ）
@@ -90,9 +91,11 @@ pub enum NodeTag {
     /// TopBarScene の CanvasLayer 親（上部フェイズバー。陣営・敵ターンの「間」を持つ）
     case TopBar(TopBarScene.Data)
     /// ItemPickupPopupScene の CanvasLayer 親（アイテム取得ポップアップのフェード演出状態を持つ）
-    case ItemPickupPopup(ItemPickupPopupScene.PopupData)
+    /// P4-e: 中央アイテム取得ポップアップの識別用純タグ（状態は `ItemPickupPopupScene.State` resource へ移設）。
+    case ItemPickupPopup
     /// TurnEndHoldScene の CanvasLayer 親（Shift 長押しゲージの経過時間と発火済みフラグを持つ）
-    case HoldGauge(TurnEndHoldScene.GaugeData)
+    /// P4-c: ターンスキップ長押しゲージの識別用純タグ（状態は `TurnEndHoldScene.State` resource へ移設）。
+    case HoldGauge
     /// ItemScene の床に落ちている武器（拾える）
     case GroundItem(ItemScene.Data)
     /// ChestScene の床に置かれた宝箱（ローグだけが開けられる。中身は配置時に確定済み）
@@ -195,9 +198,9 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(ItemScene.process(delta, node, path, scene))
         case NodeTag.TopBar(_) =>
             checked_ecast(TopBarScene.process(delta, node, path, scene))
-        case NodeTag.ItemPickupPopup(_) =>
+        case NodeTag.ItemPickupPopup =>
             checked_ecast(ItemPickupPopupScene.process(delta, node, path, scene))
-        case NodeTag.HoldGauge(_) =>
+        case NodeTag.HoldGauge =>
             checked_ecast(TurnEndHoldScene.process(delta, node, path, scene))
         case NodeTag.CharacterSelect(_) =>
             checked_ecast(CharacterSelectScene.process(delta, node, path, scene))
@@ -251,7 +254,7 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(EnemyCardScene.process(delta, node, path, scene))
         case NodeTag.BattlePanel =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
-        case NodeTag.LevelUpPanel(_) =>
+        case NodeTag.LevelUpPanel =>
             checked_ecast(LevelUpPanelScene.process(delta, node, path, scene))
         case _ => (node, scene)
     }
@@ -275,7 +278,9 @@ instance InputEvent.InputHandler[NodeTag] {
                  CustomEffects.SuspendRequest,
                  GamePhaseState, PartySelection.State,
                  // アイテム投擲の命中ロール（Math.Random）と誤射による味方脱落のゲームオーバー判定。
-                 Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery}
+                 Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
+                 // P4-d: レベルアップ演出パネルの確定（LevelUpPanelScene.confirm）が State resource を触る。
+                 LevelUpPanelScene.State, ItemPickupPopupScene.State}
     // ActionMenu / ItemMenu / ItemActionMenu / AttackForecast フェーズでは
     // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）でメニュー操作する。
     // ItemMenu と ItemActionMenu は同じ ItemMenuScene が扱い、`confirmCurrentSelection`
@@ -294,7 +299,8 @@ instance InputEvent.InputHandler[NodeTag] {
                                           CustomEffects.ResumeRequest,
                                           CustomEffects.SuspendRequest,
                                           GamePhaseState, PartySelection.State,
-                                          Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
+                                          Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
+                                          LevelUpPanelScene.State, ItemPickupPopupScene.State} =
         // 画面がタイトル / 選択中なら各画面へ委譲。本編（Playing）のときだけ戦闘用ルーティングを走らせる。
         match GamePhaseState.get() {
             case GamePhase.Title           => TitleMenuScene.onKeyPressed(key, scene)
@@ -311,7 +317,8 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                            SelectedPlayer.State, GatherResume.State, PlayerData.PartyQuery,
                            EnemyData.RosterQuery, CustomEffects.FloorAdvanceRequest,
                            CustomEffects.SuspendRequest,
-                           Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
+                           Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
+                           LevelUpPanelScene.State, ItemPickupPopupScene.State} =
         // 物理キーを「決定 / キャンセル / それ以外 (None)」の意味論的入力に正規化する。
         // phase と独立した直交概念として扱いたいので、bool 2 個ではなく Option[Input] に畳む。
         let input: Option[TurnRules.Input] =
@@ -378,7 +385,8 @@ instance MenuEvent.MenuHandler[NodeTag] {
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
-                 CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery}
+                 CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery,
+                 ItemPickupPopupScene.State}
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                            state: NodeTag,
                            scene: Scene[NodeTag]):
@@ -389,7 +397,8 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              GatherResume.State,
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
-                                             CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery} =
+                                             CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery,
+                                             ItemPickupPopupScene.State} =
         match state {
             case NodeTag.ItemMenu(_, _) =>
                 // ItemSelect / ItemActionSelect いずれも同じ ItemList なので、
@@ -418,7 +427,8 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              GatherResume.State,
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
-                                             CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery} =
+                                             CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery,
+                                             ItemPickupPopupScene.State} =
         match state {
             case NodeTag.ItemMenu(_, _) =>
                 let phase = TurnPhase.State.get();
@@ -583,7 +593,8 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
                                     TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                                     PlayerData.PartyQuery, EnemyData.RosterQuery,
                                     CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
-                                    CustomEffects.GameOverRequest, CustomEffects.SuspendRequest, World.Command, World.WorldQuery, BoardQuery} =
+                                    CustomEffects.GameOverRequest, CustomEffects.SuspendRequest, World.Command, World.WorldQuery, BoardQuery,
+                                    LevelUpPanelScene.State, ItemPickupPopupScene.State} =
         match (phase, input) {
         // 全滅メニュー: Z/Enter で選択確定（restart を emit）、X は無反応（必ず選ばせる）。
         case (TurnPhase.Phase.GameOver, TurnRules.Input.Confirm)
@@ -946,6 +957,9 @@ mod Game {
               with Pacing.withState(rc)           // 演出の溜め (hold)
               with LogScene.withState(rc)         // P4-a: ログ HUD の状態（queue/idleSince）を resource 化
               with BattlePanelScene.withState(rc) // P4-b: 戦闘予報パネルの点滅タイマーを resource 化
+              with TurnEndHoldScene.withState(rc) // P4-c: ターンスキップ長押しゲージの状態を resource 化
+              with LevelUpPanelScene.withState(rc) // P4-d: レベルアップ演出パネルの状態を resource 化
+              with ItemPickupPopupScene.withState(rc) // P4-e: 中央アイテム取得ポップアップの状態を resource 化
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
               with EnemyTurn.withQueue(rc)        // 敵ターンキュー（1 step / 1 frame 駆動）
               with handler TurnPhase.State {       // F2b: inline 化し put を World へ dual-write（全 put が World.turnPhase 反映）
@@ -1031,7 +1045,8 @@ mod Game {
                          CustomEffects.SuspendRequest, CustomEffects.ResumeRequest,
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State,
-                         Pacing.State, LogScene.State, BattlePanelScene.State, Math.Random, FloorSnapshot.State,
+                         Pacing.State, LogScene.State, BattlePanelScene.State, TurnEndHoldScene.State,
+                         LevelUpPanelScene.State, ItemPickupPopupScene.State, Math.Random, FloorSnapshot.State,
                          World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
                          World.RngDraw, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。

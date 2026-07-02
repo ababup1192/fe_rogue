@@ -19,7 +19,8 @@ mod PlayerMovementScene {
                          path: NodePath, scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
                         \ {GameEngine.Game, BoardQuery, GameLogger.GameLogger,
-                           SelectedPlayer.State, World.Command, World.WorldQuery} =
+                           SelectedPlayer.State, World.Command, World.WorldQuery,
+                           ItemPickupPopupScene.State} =
         stepFor(selectAllowedPred(TurnPhase.Phase.PlayerMoving, scene),
                 PlayerScene.selectedSlideDuration(), node, path, scene)
 
@@ -32,7 +33,8 @@ mod PlayerMovementScene {
                         path: NodePath, scene: Scene[NodeTag]):
                        (EngineNode[NodeTag], Scene[NodeTag])
                        \ {GameEngine.Game, BoardQuery, GameLogger.GameLogger,
-                          SelectedPlayer.State, World.Command, World.WorldQuery} =
+                          SelectedPlayer.State, World.Command, World.WorldQuery,
+                          ItemPickupPopupScene.State} =
         let lord = PlayerScene.lordId();
         let prev = PlayerScene.getGridPos(lord, scene);
         let (movedNode, movedScene) =
@@ -65,8 +67,10 @@ mod PlayerMovementScene {
             |> List.filter(c -> not Board.containsCell(c, waited));
         // S6: 「このフレーム追従で動けるか」(= 非 waited & 残移動あり) は当フレームの waited を
         // 正しく見る必要がある sim 判定＝World 権威で読む。
+        // 階段離脱済み(hidden)の駒は盤面から退場済み。占有・追従対象から除く
+        // （board は hidden を除外済み・ここだけ含めるとゴースト駒が階段マスを塞ぐ）。
         let movers    = PlayerScene.getAll(scene)
-            |> List.filter(d -> d#id != PlayerScene.lordId() and d#hp > 0)
+            |> List.filter(d -> d#id != PlayerScene.lordId() and d#hp > 0 and not d#hidden)
             |> List.map(d -> (d#id, d#gridPos,
                               not waitedW(d#id, d#waited, world)
                                   and d#moveStepsTaken < PlayerScene.effectiveMoveTilesOf(d)));
@@ -120,8 +124,10 @@ mod PlayerMovementScene {
     /// S6: waited は World 権威で読む（this-frame の集合移動判定＝sim）。
     def waitedAllyCells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ World.WorldQuery =
         let world = World.WorldQuery.get();
+        // 階段離脱済み(hidden)の駒は盤面から退場済みなので障害物に数えない
+        // （board は hidden を除外済み・含めると離脱者の階段マスに集合で重なれなくなる）。
         PlayerScene.getAll(scene)
-            |> List.filter(d -> waitedW(d#id, d#waited, world) and d#hp > 0)
+            |> List.filter(d -> waitedW(d#id, d#waited, world) and d#hp > 0 and not d#hidden)
             |> List.map(d -> d#gridPos)
 
     /// 手動移動の共通本体。`isMoving` ガード → 入力 → Board 判定 → 駒へ `moveToById` で適用。
@@ -132,7 +138,7 @@ mod PlayerMovementScene {
                  path: NodePath, scene: Scene[NodeTag]):
                 (EngineNode[NodeTag], Scene[NodeTag])
                 \ {GameEngine.Game, BoardQuery, World.WorldQuery, GameLogger.GameLogger,
-                   SelectedPlayer.State, World.Command} =
+                   SelectedPlayer.State, World.Command, ItemPickupPopupScene.State} =
         match node {
             case EngineNode.Marker2DWithState(_, NodeTag.Player(data)) =>
                 // かなしばり（完全停止）中は移動入力を捨てる。攻撃も ActionMenu 側で封じる。
@@ -189,7 +195,8 @@ mod PlayerMovementScene {
     /// pub: 着地時の自動取得/非取得の判定を `TestActionMenuScene` から直接観測するため。
     pub def autoPickupOrLog(data: PlayerScene.Data, target: {x = Int32, y = Int32},
                              scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger, World.Command} =
+            Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger, World.Command,
+                              ItemPickupPopupScene.State} =
         match ItemScene.findAt(target, scene) {
             case None            => scene
             case Some((_, kind)) =>

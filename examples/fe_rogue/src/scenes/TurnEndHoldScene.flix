@@ -43,6 +43,26 @@ mod TurnEndHoldScene {
         prevHeld = Bool
     }
 
+    /// P4-c: ゲージの状態（elapsed + prevHeld）を持つ resource（旧: `NodeTag.HoldGauge(GaugeData)` ペイロード）。
+    /// LogScene.State と同型の Ref-backed handler。process が step 後に put する。
+    /// `Game.start` で `with TurnEndHoldScene.withState(rc)` を注入し、`FrameAef.ProcessT` に足す。
+    pub eff State {
+        def get(): GaugeData
+        def put(data: GaugeData): Unit
+    }
+
+    pub def withState(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            let ref: Ref[GaugeData, r] = Ref.fresh(rc, initialData());
+            run {
+                thunk()
+            } with handler State {
+                def get(k)       = k(Ref.get(ref))
+                def put(data, k) = { Ref.put(data, ref); k() }
+            }
+        }
+
     /// `step` の結果。
     /// `data`    — 次フレームへ持ち越す新しい状態。
     /// `ratio`   — ゲージ充填率 0.0〜1.0。
@@ -141,7 +161,7 @@ mod TurnEndHoldScene {
             |> CanvasItem.setVisible(false);
         scene
             |> Scene.addNode(rootName(),
-                EngineNode.CanvasLayerWithState(layer, NodeTag.HoldGauge(initialData())))
+                EngineNode.CanvasLayerWithState(layer, NodeTag.HoldGauge))   // P4-c: 状態は State resource へ
             |> Scene.addChild(rootName(), textName(),
                 EngineNode.Label2DWithState(text, NodeTag.NoTag))
             |> Scene.addChild(rootName(), ringBgName(),
@@ -197,28 +217,25 @@ mod TurnEndHoldScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, GameEngine.Audio, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                       GatherResume.State, World.Command} =
-        match node {
-            case EngineNode.CanvasLayerWithState(_, NodeTag.HoldGauge(data)) =>
-                let phase = TurnPhase.State.get();
-                // 対象は素のカーソル中と集合移動中のみ。
-                let active = phase == TurnPhase.Phase.PlayerCursor
-                                or phase == TurnPhase.Phase.GatherMove;
-                let held = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
-                let result = step(data, active, held, delta);
-                let shown = scene
-                    |> applyAppearance(result#ratio, result#visible)
-                    |> setState(result#data);
-                let next =
-                    if (result#fire) {
-                        AudioStreamPlayer.play(fireSound());
-                        ActionMenuScene.turnEndShortcut(shown)
-                    } else shown;
-                match Scene.getEngineNode(path, next) {
-                    case Some(latest) => (latest, next)
-                    case None         => (node, next)
-                }
-            case _ => (node, scene)
+                       GatherResume.State, World.Command, TurnEndHoldScene.State} =
+        // P4-c: 状態は resource から読む（旧: NodeTag.HoldGauge ペイロード）。ノードは描画 view（Label/Arc）。
+        let data = TurnEndHoldScene.State.get();
+        let phase = TurnPhase.State.get();
+        // 対象は素のカーソル中と集合移動中のみ。
+        let active = phase == TurnPhase.Phase.PlayerCursor
+                        or phase == TurnPhase.Phase.GatherMove;
+        let held = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
+        let result = step(data, active, held, delta);
+        TurnEndHoldScene.State.put(result#data);
+        let shown = applyAppearance(result#ratio, result#visible, scene);
+        let next =
+            if (result#fire) {
+                AudioStreamPlayer.play(fireSound());
+                ActionMenuScene.turnEndShortcut(shown)
+            } else shown;
+        match Scene.getEngineNode(path, next) {
+            case Some(latest) => (latest, next)
+            case None         => (node, next)
         }
 
     /// 充填率と可視状態をテキスト・リングへ反映する。表示中はログ帯を背景として再利用し
@@ -235,12 +252,4 @@ mod TurnEndHoldScene {
                     n |> EngineNode.mapArc2D(Arc2D.setEndAngle(fillEnd))
                       |> CanvasItem.setVisible(visible));
         if (visible) LogScene.holdForOverlay(overlaid) else overlaid
-
-    /// `case other => other` により、HoldGauge 以外の CanvasLayer の状態を壊さない。
-    def setState(data: GaugeData, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(rootPath(), node -> match node {
-            case EngineNode.CanvasLayerWithState(layer, NodeTag.HoldGauge(_)) =>
-                EngineNode.CanvasLayerWithState(layer, NodeTag.HoldGauge(data))
-            case other => other
-        }, scene)
 }

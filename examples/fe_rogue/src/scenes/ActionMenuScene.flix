@@ -483,7 +483,8 @@ mod ActionMenuScene {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 GatherResume.State, PlayerData.PartyQuery,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery,
+                ItemPickupPopupScene.State} =
         match entry#metadata {
             case None    => scene
             case Some(m) =>
@@ -584,7 +585,8 @@ mod ActionMenuScene {
     /// 何らかの理由で item が無い場合は no-op（防御的）。
     def applyPickup(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger,
-                              SelectedPlayer.State, PlayerData.PartyQuery, World.Command, World.WorldQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.Command, World.WorldQuery,
+                              ItemPickupPopupScene.State} =
         match pickupTarget(scene) {
             case None       => scene
             case Some(info) =>
@@ -621,7 +623,8 @@ mod ActionMenuScene {
     /// 中身は配置時に抽選済みなので開錠側は Math.Random も catalogs も要さない（決定論的）。
     def applyOpenChest(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger,
-                              SelectedPlayer.State, PlayerData.PartyQuery, World.Command, World.WorldQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.Command, World.WorldQuery,
+                              ItemPickupPopupScene.State} =
         match openTarget(scene) {
             case None                      => scene
             case Some((info, player, chest)) =>
@@ -728,7 +731,8 @@ mod ActionMenuScene {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 GatherResume.State, PlayerData.PartyQuery,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery,
+                ItemPickupPopupScene.State} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             // disabled 項目（例: 敵が射程外の「攻撃」）は確定しても何もしない。
             case Some(entry) => if (entry#disabled) scene else onActionConfirmed(entry, scene)

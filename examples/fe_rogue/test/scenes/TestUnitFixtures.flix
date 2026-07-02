@@ -681,6 +681,16 @@ mod TestUnitFixtures {
                     withMockRosterQuery(scene, () ->
                         withWorldQuery(World.syncFromScene(scene, World.empty()), thunk)))))
 
+    /// P4-e: 中央アイテム取得ポップアップの `ItemPickupPopupScene.State` を no-op で剥がす
+    /// （get=非表示の初期状態固定・put=捨てる）。ポップアップの見た目を観測しないテスト用。
+    pub def withNoopPickupPopup(thunk: Unit -> a \ ef):
+            a \ (ef - ItemPickupPopupScene.State) =
+        run { thunk() } with handler ItemPickupPopupScene.State {
+            def get(k)    = k({stage = ItemPickupPopupScene.Stage.Idle,
+                               elapsed = Duration.zero(), soundPending = false})
+            def put(_, k) = k()
+        }
+
     /// `SelectedPlayer.State` を「主人公(0) 選択中・gatherActive=true」で固定するスタブ。
     /// 集合（行軍）の隣接メニュー（交換 / 全員待機 / キャンセル）の項目構築テスト用。
     pub def withGatherSelection(thunk: Unit -> a \ ef):

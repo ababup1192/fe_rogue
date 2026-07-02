@@ -90,7 +90,9 @@ mod TestPlayerMovementScene {
                     // S6: physicsStep が waited を World 権威で読むため WorldQuery を discharge。
                     // PlayerMoving は waited を参照しないので World.empty()（scene fallback）で十分。
                     TestUnitFixtures.withWorldQuery(World.empty(), () ->
-                    PlayerMovementScene.physicsStep(Duration.zero(), pnode, PlayerScene.playerPath(0), scene))))))));
+                    // P4-e: 着地の自動取得が中央ポップアップの State resource を書くため no-op で剥がす。
+                    TestUnitFixtures.withNoopPickupPopup(() ->
+                    PlayerMovementScene.physicsStep(Duration.zero(), pnode, PlayerScene.playerPath(0), scene)))))))));
             moves |> List.map(c -> (c#x, c#y))
         }
 

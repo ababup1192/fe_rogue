@@ -116,6 +116,26 @@ mod ItemPickupPopupScene {
     def initialData(): PopupData =
         {stage = Stage.Idle, elapsed = Duration.zero(), soundPending = false}
 
+    /// P4-e: 中央ポップアップの状態（stage/elapsed/soundPending）を持つ resource（旧: `NodeTag.ItemPickupPopup(PopupData)`）。
+    /// LogScene.State と同型。show 系/process が `State.get()/put()` 経由で読み書きする。
+    /// `Game.start` で `with ItemPickupPopupScene.withState(rc)` を注入し、`FrameAef.T`/`ProcessT` に足す。
+    pub eff State {
+        def get(): PopupData
+        def put(data: PopupData): Unit
+    }
+
+    pub def withState(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            let ref: Ref[PopupData, r] = Ref.fresh(rc, initialData());
+            run {
+                thunk()
+            } with handler State {
+                def get(k)       = k(Ref.get(ref))
+                def put(data, k) = { Ref.put(data, ref); k() }
+            }
+        }
+
     // ────────────────────────────────────────────────────────
     // (C) 構築
     // ────────────────────────────────────────────────────────
@@ -144,7 +164,7 @@ mod ItemPickupPopupScene {
             |> CanvasItem.setVisible(false);
         scene
             |> Scene.addNode(rootName(),
-                EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup(initialData())))
+                EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup))   // P4-e: 状態は State resource へ
             |> Scene.addChild(rootName(), windowName(),
                 EngineNode.PanelWithState(window, NodeTag.NoTag))
             |> Scene.addChild(rootName(), textName(),
@@ -157,16 +177,16 @@ mod ItemPickupPopupScene {
     /// アイテムを拾ったときに呼ぶ。文言を「${itemName}を手に入れた」にして、フェードを
     /// 先頭から開始し、取得音の予約を立てる。副作用は無く（音は `process` が鳴らす）、
     /// 既に表示中でも先頭からやり直す（拾い直しでも必ず最初から演出する）。
-    pub def show(itemName: String, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def show(itemName: String, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
         showWith("${itemName}を手に入れた", true, scene)
 
     /// 取得以外の通知（例: 「持ち物がいっぱいです」）を中央ポップアップに出す。
     /// 取得音は鳴らさず、フェードイン → 表示保持 → フェードアウトの演出だけ流す。
-    pub def showMessage(text: String, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def showMessage(text: String, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
         showWith(text, false, scene)
 
     /// 「持ち物がいっぱいです」を中央ポップアップで知らせる薄いラッパ。
-    pub def showFull(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def showFull(scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
         showMessage("持ち物がいっぱいです", scene)
 
     /// 取得音だけを次フレームに予約する（中央ポップアップは出さない）。`show` と違い
@@ -174,17 +194,15 @@ mod ItemPickupPopupScene {
     /// （`step` は stage に関わらず先頭で `soundPending` を消費して playSound を返す）。
     /// 移動着地の自動取得など「大きな通知は不要だが取得音は鳴らしたい」経路で使う。
     /// 純粋（音は process が鳴らす）。ポップアップ未登録の scene では no-op。
-    pub def reserveGetItemSound(scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(rootPath(), node -> match node {
-            case EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup(d)) =>
-                EngineNode.CanvasLayerWithState(layer,
-                    NodeTag.ItemPickupPopup({soundPending = true | d}))
-            case other => other
-        }, scene)
+    pub def reserveGetItemSound(scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
+        // P4-e: 取得音予約フラグを resource に立てる（旧: NodeTag ペイロード）。scene はパイプ用に素通し。
+        let d = ItemPickupPopupScene.State.get();
+        ItemPickupPopupScene.State.put({soundPending = true | d});
+        scene
 
     /// 文言と「取得音を鳴らすか」を受け取り、フェードを先頭から開始する共通処理。
     /// `playSound = true` のときだけ `process` が取得音を 1 回鳴らす。
-    def showWith(text: String, playSound: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+    def showWith(text: String, playSound: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
         let started: PopupData =
             {stage = Stage.FadeIn, elapsed = Duration.zero(), soundPending = playSound};
         scene
@@ -251,19 +269,17 @@ mod ItemPickupPopupScene {
     pub def process(delta: Duration.Duration,
                      node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ GameEngine.Audio =
-        match node {
-            case EngineNode.CanvasLayerWithState(_, NodeTag.ItemPickupPopup(data)) =>
-                let result = step(data, delta);
-                if (result#playSound) AudioStreamPlayer.play(getItemSound()) else ();
-                let next = scene
-                    |> applyAppearance(result#ratio)
-                    |> setState(result#data);
-                match Scene.getEngineNode(path, next) {
-                    case Some(latest) => (latest, next)
-                    case None         => (node, next)
-                }
-            case _ => (node, scene)
+                    (EngineNode[NodeTag], Scene[NodeTag]) \ {GameEngine.Audio, ItemPickupPopupScene.State} =
+        // P4-e: 状態は resource から読む（旧: NodeTag.ItemPickupPopup ペイロード）。ノードは描画 view（Panel/Label）。
+        let data = ItemPickupPopupScene.State.get();
+        let result = step(data, delta);
+        if (result#playSound) AudioStreamPlayer.play(getItemSound()) else ();
+        let next = scene
+            |> applyAppearance(result#ratio)
+            |> setState(result#data);
+        match Scene.getEngineNode(path, next) {
+            case Some(latest) => (latest, next)
+            case None         => (node, next)
         }
 
     /// Label2D の glyph は CanvasItem の alpha に従わず常に不透明（モジュール doc L15-17 参照）。
@@ -303,10 +319,8 @@ mod ItemPickupPopupScene {
 
     /// `case other => other` により、ItemPickupPopup 以外の NodeTag を持つ CanvasLayer があっても
     /// 状態を壊さない（将来ノードが増えた際の防御）。
-    def setState(data: PopupData, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(rootPath(), node -> match node {
-            case EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup(_)) =>
-                EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup(data))
-            case other => other
-        }, scene)
+    def setState(data: PopupData, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
+        // P4-e: 状態は resource へ書く。scene はパイプ互換のためそのまま返す（挙動不変）。
+        ItemPickupPopupScene.State.put(data);
+        scene
 }

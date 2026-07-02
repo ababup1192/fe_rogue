@@ -256,6 +256,8 @@ mod TestActionMenuScene {
         // P3-a: 確定経路（stairs 判定・gatherStairs→StairsExit.begin）が World.stairsPosOf を読むので
         // 同じ wref を返す WorldQuery を Command の内側に置く（read-after-write・withTracedWorld と同型）。
         run {
+        // P4-e: 拾う確定が中央ポップアップの State resource を書くので withState で剥がす。
+        ItemPickupPopupScene.withState(rc, () ->
         // P1a: 確定経路（gatherStairs→StairsExit.begin）が BoardQuery を読むので mock board を供給。
         TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(args#scene), () ->
         TestUnitFixtures.withPhaseRef(rc, args#initialPhase, () ->
@@ -270,7 +272,7 @@ mod TestActionMenuScene {
                                       TestUnitFixtures.withMockGatherResume(() ->
                                         TestUnitFixtures.withSelectedPlayer(args#selectedId, () ->
                                           ActionMenuScene.onActionConfirmed(args#entry,
-                                                                            args#scene)))))))))))))
+                                                                            args#scene))))))))))))))
         } with handler World.WorldQuery {
             def get(k) = k(Ref.get(wref))
         }
@@ -374,7 +376,8 @@ mod TestActionMenuScene {
             let scene = loadActionMenuSceneWithFloorWeapon();
             let pickupEntry: ItemEntry =
                 { text = "ひろう", disabled = false, metadata = Some("pickup") };
-            let after = TestUnitFixtures.withWorldCommand(rc, () ->
+            let after = TestUnitFixtures.withNoopPickupPopup(() ->
+                TestUnitFixtures.withWorldCommand(rc, () ->
                 TestUnitFixtures.withWorldQuery(World.syncFromScene(scene, World.empty()), () ->
                 TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
                 TestUnitFixtures.withNoopTween(() ->
@@ -392,7 +395,7 @@ mod TestActionMenuScene {
                                                 let afterPick =
                                                     ActionMenuScene.onActionConfirmed(pickupEntry, scene);
                                                 PlayerScene.cancelSelection(afterPick)
-                                            }))))))))))))));
+                                            })))))))))))))));
             let groundItemBack =
                 Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
             // 期待: (床に戻った, 武器が 1 本に戻った)
@@ -422,10 +425,11 @@ mod TestActionMenuScene {
     def testAutoPickupPicksUpWhenWeightAllows(): Unit \ Assert =
         let scene = loadActionMenuSceneWithFloorWeapon();
         let data  = playerDataOf(0, scene);
-        let after = TestUnitFixtures.withMockGameLogger(() ->
-            TestUnitFixtures.withSelectedPlayer(0, () ->
-                TestUnitFixtures.dischargeWorldCommand(() ->
-                    PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, scene))));
+        let after = TestUnitFixtures.withNoopPickupPopup(() ->
+            TestUnitFixtures.withMockGameLogger(() ->
+                TestUnitFixtures.withSelectedPlayer(0, () ->
+                    TestUnitFixtures.dischargeWorldCommand(() ->
+                        PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, scene)))));
         let floorEmpty = Option.isEmpty(ItemScene.findAt({x = 1, y = 1}, after));
         Assert.assertEq(
             expected = (true, 2),
@@ -443,10 +447,11 @@ mod TestActionMenuScene {
                 |> PlayerScene.addWeapon(0, w)
                 |> PlayerScene.addWeapon(0, w));
         let data  = playerDataOf(0, heavy);
-        let after = TestUnitFixtures.withMockGameLogger(() ->
-            TestUnitFixtures.withSelectedPlayer(0, () ->
-                TestUnitFixtures.dischargeWorldCommand(() ->
-                    PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, heavy))));
+        let after = TestUnitFixtures.withNoopPickupPopup(() ->
+            TestUnitFixtures.withMockGameLogger(() ->
+                TestUnitFixtures.withSelectedPlayer(0, () ->
+                    TestUnitFixtures.dischargeWorldCommand(() ->
+                        PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, heavy)))));
         let floorStillThere = Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
         Assert.assertEq(
             expected = (true, 4),
@@ -462,18 +467,19 @@ mod TestActionMenuScene {
         region rc {
             let scene = loadActionMenuSceneWithFloorWeapon();
             let data  = playerDataOf(0, scene);
-            let after = TestUnitFixtures.withNoopTween(() ->
-                TestUnitFixtures.withNoopAnim(() ->
-                    TestUnitFixtures.withMockGameLogger(() ->
-                        TestUnitFixtures.withMockPartyQuery(scene, () ->
-                            TestUnitFixtures.withFixedPhase(TurnPhase.Phase.PlayerMoving, () ->
-                                TestUnitFixtures.withSelectionRef(rc,
-                                    {id = Some(0), drafts = Nil, gatherActive = false}, () ->
-                                        TestUnitFixtures.dischargeWorldCommand(() -> {
-                                            let picked =
-                                                PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, scene);
-                                            PlayerScene.cancelSelection(picked)
-                                        })))))));
+            let after = TestUnitFixtures.withNoopPickupPopup(() ->
+                TestUnitFixtures.withNoopTween(() ->
+                    TestUnitFixtures.withNoopAnim(() ->
+                        TestUnitFixtures.withMockGameLogger(() ->
+                            TestUnitFixtures.withMockPartyQuery(scene, () ->
+                                TestUnitFixtures.withFixedPhase(TurnPhase.Phase.PlayerMoving, () ->
+                                    TestUnitFixtures.withSelectionRef(rc,
+                                        {id = Some(0), drafts = Nil, gatherActive = false}, () ->
+                                            TestUnitFixtures.dischargeWorldCommand(() -> {
+                                                let picked =
+                                                    PlayerMovementScene.autoPickupOrLog(data, {x = 1, y = 1}, scene);
+                                                PlayerScene.cancelSelection(picked)
+                                            }))))))));
             let groundItemBack = Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
             Assert.assertEq(
                 expected = (true, 1),

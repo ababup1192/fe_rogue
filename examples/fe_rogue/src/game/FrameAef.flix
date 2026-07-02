@@ -20,7 +20,10 @@ mod FrameAef {
                          Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
                          TurnPhase.State, SelectedPlayer.State, World.Command,
-                         World.WorldQuery}
+                         World.WorldQuery,
+                         // P4-e: 手動移動の着地自動取得（stepFor→autoPickupOrLog）が中央ポップアップの
+                         // 取得音予約/表示を State resource に書くため。
+                         ItemPickupPopupScene.State}
 
     /// `process` 用の広い Aef 集合 (`FrameAef.ProcessT`)。Player/Enemy の `process` が drainSignals 経由で
     /// attack:hit / death_blink / attack_lunge を捌き、EnemyTurnDriverScene が phase 判定で
@@ -40,8 +43,10 @@ mod FrameAef {
                                 CustomEffects.RingTransformRequest,
                                 CustomEffects.ThiefDropRequest,
                                 Pacing.State, Math.Random,
-                                // P4-a/b: HUD の状態 resource（LogScene=ログ queue、BattlePanelScene=点滅タイマー）。
-                                LogScene.State, BattlePanelScene.State,
+                                // P4-a/b/c/d: HUD の状態 resource（LogScene=ログ queue、BattlePanel=点滅タイマー、
+                                // TurnEndHold=長押しゲージ、LevelUpPanel=レベルアップ演出）。
+                                LogScene.State, BattlePanelScene.State, TurnEndHoldScene.State,
+                                LevelUpPanelScene.State, ItemPickupPopupScene.State,
                                 World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
                                 // slice `rng-world`: combat 命中ロールは World.RngDraw chokepoint 経由
                                 // （CombatScene.process が要求）。Game.flix:177/179 の checked_ecast widening が
