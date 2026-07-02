@@ -359,115 +359,14 @@ mod World {
     /// 初期 seed と床移動/復活/中断再開の reseed は spawn funnel（addOnePlayer/addOneEnemy）の `Cmd.Move` emit が担う
     /// （いずれも World.Command handler スコープ内で走るため worldRef が seed される）。
     /// `syncFromScene`（gridPos を読む版）は frame-1 初期 world（Game.start）専用に残す。
-    pub def refreshMirror(scene: Scene[NodeTag], world: World): World =
+    /// P6-2c: **縮退版**。全 store が command 権威（spawn/despawn/build choke の Cmd が唯一の書込・
+    /// prune は Despawn/ClearUnits が代替）になり、scene からの derive/prune は消滅した。
+    /// 残る仕事は frame カウンタだけ（scene 引数も撤去）。旧 derive 7 系の行き先:
+    ///   ids/team=Cmd.Spawn ／ hidden=Cmd.SetHidden ／ 敵 ring=Cmd.SetEnemyRing ／ growth=Cmd.SetGrowth
+    ///   ／ mapSnapshot=Cmd.SetMapSnapshot ／ effectRule=Cmd.SetEffectRule ／ player 側 equippedRing=accessor 導出。
+    pub def refreshMirror(world: World): World =
         let World.World(w) = world;
-        let players = PlayerScene.getAll(scene);
-        let enemies = EnemyScene.getAll(scene);
-        let pIds = Query.tagOf(d -> d#id, players);
-        let eIds = Query.tagOf(d -> d#id, enemies);
-        // A': unified-id 全体の生存集合。store prune は id 演算でなくこの集合で行う（faction 判断不要）。
-        let validUids = Set.union(pIds, Set.map(id -> enemyUid(id), eIds));
-        World.World({
-            tick           = w#tick + 1,
-            turnPhase      = w#turnPhase,   // F2a: mirror は gameLoop が行う・ここは保持
-            playerIds      = pIds,
-            enemyIds       = eIds,
-            team           = teamTags(players, enemies),  // A': faction タグを毎フレーム再導出
-            // S3: statusEffects も command 由来を保持＋prune（hp/baseStats と同型・再 mirror しない）。全 statuses 書込
-            // （add/clearImmobilized/bind/tick）が `Cmd.Seed`（emitStatusesFromScene・全置換）を dual-write 済みゆえ
-            // World statusEffects == scene #statuses（[STATUSEFFECTS DIFF] 無音）。これで combatViewOf が読む
-            // statusEffectsOf は非 stale（S4.2 の前提）。syncFromScene(frame-1) は seed として残す。
-            statusEffects = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#statusEffects),
-            // F6b: hp も command 由来を保持＋prune（位置と同様）。全 hp 書込が `Cmd.SetHp` を dual-write
-            // 済み（`[F6 HP DIFF]` 無音で確認）ゆえ World hp == scene hp で挙動不変。これで **hp は World 権威**。
-            hp = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#hp),
-            // D3: weapons も command 由来を保持＋prune（hp と同型・再 mirror しない）。全 weapon 書込が
-            // `Cmd.SetWeapons` を dual-write 済みなら World weapons == scene weapons（[WEAPONS DIFF] 無音）。
-            weapons = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#weapons),
-            // D4: staves/consumables/rings/ringEquipped も command 由来を保持＋prune（player-only ＝ pIds で）。
-            staves      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#staves),
-            consumables = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#consumables),
-            rings       = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#rings),
-            ringEquipped = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#ringEquipped),
-            // 位置は command 由来を保持＋scene に居ない id を prune（gridPos からの再構築はしない）。
-            pos = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#pos),
-            // B/m2: renderPos/tweens は command-derive＝preserve＋prune（再 mirror しない）。死 entity の tween は
-            // ここで剪定（engine scene Tween の「target Node 消滅で auto-stop」相当）。tween キーは (uid, channel)
-            // 複合ゆえ fst で uid を取り validUids 判定（死は全部 command 経由＝既存 prune 基準に乗る）。
-            renderPos = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#renderPos),
-            tweens    = Map.filterWithKey((key, _) -> Set.memberOf(fst(key), validUids), w#tweens),
-            // P6-1h: 描画 view store も preserve＋prune（renderPos と同型）。
-            unitAnim = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#unitAnim),
-            unitFlipH = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#unitFlipH),
-            unitModulate = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#unitModulate),
-            dyingElapsed = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#dyingElapsed),
-            playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
-            // 軸1 仕上げ: isDying も command 由来を保持＋prune（death 完了でノード除去→自動 prune）。
-            // A': enemy-only store も unified-id key＝prune は validUids で統一。
-            enemyDying     = Set.filter(uid -> Set.memberOf(uid, validUids), w#enemyDying),
-            enemyAlerted   = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#enemyAlerted),
-            enemyActed     = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#enemyActed),
-            enemyBottleUsed = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#enemyBottleUsed),
-            enemyPrevPos   = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#enemyPrevPos),
-            followUpUsed = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#followUpUsed),
-            playerWaited   = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerWaited),
-            playerUsedStairs = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerUsedStairs),
-            // World 拡張: level/exp も command 由来を保持＋prune（hp と同型）。
-            playerLevel    = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerLevel),
-            playerExp      = Map.filterWithKey((id, _) -> Set.memberOf(id, pIds), w#playerExp),
-            // S2.3: baseStats も command 由来を保持＋prune（hp/weapons と同型・再 mirror しない）。全 resource 書込
-            // （spawn/復元/carry/level-up/maxHp）が `Cmd.SetBaseStats` を dual-write 済みゆえ World baseStats == scene
-            // baseStatsFrom(resource)（[BASESTATS DIFF] 無音）。combatViewOf flip(S4.2) で mid-combat の 1 フレーム stale を解消。
-            baseStats = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#baseStats),
-            // S2.4: weaponView も command 由来を保持＋prune（baseStats と同型・再 mirror しない）。weapons が変わる全
-            // サイト（spawn/carry/復元/装備並べ替え/拾得/耐久消費）が `Cmd.SetWeaponView` を dual-write 済みゆえ World
-            // weaponView == scene equippedWeaponView（[WEAPONVIEW DIFF] 無音）。
-            weaponView = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#weaponView),
-            // S2.4: ringBonus も command 由来を保持＋prune（baseStats と同型）。rings/ringEquipped が変わる全サイトが
-            // `Cmd.SetRingBonus` を dual-write 済みゆえ World ringBonus == scene equippedRingBonus（[RINGBONUS DIFF] 無音）。
-            ringBonus = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#ringBonus),
-            // S2.5: moveTiles も command 由来を保持＋prune（base は spawn 後不変ゆえ stale 化しないが store 規約に合わせ preserve）。
-            moveTiles = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#moveTiles),
-            // P1a: equippedRing の enemy 側は EnemyData#ring 由来で毎フレーム再 mirror。
-            // P2-r1: player 側は scene Data 読み（PlayerData.equippedRing(d)）をやめ、**World の
-            // rings/ringEquipped store から導出**する（両 store は command 由来で dual-write 中は
-            // scene と等値＝挙動不変。scene field 削除〔P6〕の前提を先に満たす）。
-            equippedRing = Map.union(
-                Set.foldLeft((m, id) -> {
-                    let inner = if (Map.get(id, w#ringEquipped) |> Option.getWithDefault(false))
-                                    Map.get(id, w#rings) |> Option.flatMap(List.head)
-                                else None;
-                    Map.insert(id, inner, m)
-                }, Map.empty(), pIds),
-                Query.indexBy(d -> enemyUid(d#id), d -> d#ring, enemies)),
-            // S-A0d: growth も player-only・resource 由来 read-model ＝ 毎フレーム再 mirror。
-            growth = Query.indexBy(d -> d#id,
-                        d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),
-            // P1c: mapSnapshot も scene 静的地形を毎フレーム再 mirror（toBoard と同源）。
-            mapSnapshot = mapSnapshotOpt(scene),
-            // P3-a: stairsPos は command 由来を保持（hp と同型・再 mirror しない）。placeAt が `Cmd.SetStairs` を emit＝
-            // World 権威。frame-1 seed は syncFromScene（scene 読み）、以後は placeAt の Cmd を preserve（Playing 突入/
-            // floor 遷移とも placeAt が World.Command 文脈で emit してから refreshMirror が走るため正しく更新される）。
-            stairsPos = w#stairsPos,
-            // P3-b→P6-1d: chests は command 由来（SpawnChest/RemoveChest/ClearChests）を **preserve のみ**。
-            // scene ノード撤去に伴い在セル prune は廃止＝floor 遷移の掃除は build choke の ClearChests が担う。
-            chests = w#chests,
-            // P3-c→P6-1e: groundItems も純 command 由来を preserve のみ（掃除は build choke の ClearItems）。
-            groundItems = w#groundItems,
-            // P5-b: fx は command/step 由来＝preserve（期限切れ drop は stepWorld が担う・prune 不要）。
-            popupFx = w#popupFx, popupFxNextSeq = w#popupFxNextSeq,
-            explosionFx = w#explosionFx, explosionFxNextSeq = w#explosionFxNextSeq,
-            // B/tiles: tileLayers/tileGen は command-derive＝preserve（rebuild イベント〔tileGen 変化〕時のみ gameLoop が bake）。
-            tileLayers = w#tileLayers, tileGen = w#tileGen,
-            // P2: effectRule も敵 resource 由来 read-model（敵のみ）＝毎フレーム再 mirror。
-            effectRule = Query.indexBy(d -> enemyUid(d#id), d -> d#resource#effectRule, enemies),
-            attackTarget = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#attackTarget),
-            // F8-slice2: scalar bool は command 由来を保持（scene mirror 元なし・TopBar が毎フレーム dual-write）。
-            enemyTurnBusy      = w#enemyTurnBusy,
-            phaseObservedEnemy = w#phaseObservedEnemy,
-            // slice `rng-world`: PRNG 状態を verbatim carry（refreshMirror も sync パス）。
-            rng                = w#rng
-        })
+        World.World({tick = w#tick + 1 | w})
 
     /// statuses を 1 ターン進める System（StatusSystem.tick を再利用）。S1b でターン開始フックに繋ぐ。
     pub def tickStatusEffects(world: World): World =
@@ -647,6 +546,14 @@ mod World {
         case SpawnItem(ItemScene.Data)     // P3-c: 床アイテムを配置（build/復元/respawn/drop）。cell key で groundItems へ挿入
         case RemoveItem({x = Int32, y = Int32})   // P3-c: 床アイテムを拾得して除去（cell key で groundItems から削除）
         case ClearItems                    // P6-1e: フロア再構築時に前フロアの床アイテムを全消去（ClearChests と同型）
+        case Spawn(EntityRef)                  // P6-2c: id 集合/team へ登録（spawn funnel 冒頭で emit）
+        case Despawn(EntityRef)                // P6-2c: 全 per-entity store から除去（旧 refreshMirror prune の代替）
+        case ClearUnits                        // P6-2c: 全ユニット store 一掃（build choke の頭で emit・ClearChests と同型）
+        case SetHidden(EntityRef, Bool)        // P6-2c: 階段退場フラグ（playerHidden・旧 scene derive の代替）
+        case SetEnemyRing(Int32, Option[Ring.RingResource])   // P6-2c: 敵の装備指輪（spawn/復元/指輪変化で emit）
+        case SetGrowth(Int32, Growth)          // P6-2c: 成長 read-model（resource 変化サイト=SetBaseStats と同所で emit）
+        case SetMapSnapshot(Option[MapSnapshot])               // P6-2c: 地形 read-model（floor build choke で emit・Title は None）
+        case SetEffectRule(Int32, Option[Util.Json.Json])      // P6-2c: 敵 effectRule（spawn で emit・以後不変）
         case SetAnim(EntityRef, String)        // P6-1h: 再生アニメ切替（play 意味論=同名継続/別名リセット）
         case SetFlipH(EntityRef, Bool)         // P6-1h: 左右反転（移動 view 再生が書く）
         case SetModulate(EntityRef, Color)     // P6-1h: 待機/行動済み暗転色（本体/バー/アイコン共通）
@@ -793,6 +700,53 @@ mod World {
         World.World({statusEffects = Map.insert(uid, f(cur), w#statusEffects) | w})
 
     /// 1 命令を World へ適用する純粋 applier（Command handler の本体）。
+    /// P6-2c: 1 entity を全 per-entity store から取り除く（`Cmd.Despawn` の実体＝旧 refreshMirror prune の
+    /// 個別版）。ノード除去サイト（死亡完了/戦死/引き継ぎ剪定）が emit する。
+    def despawnUid(ref: EntityRef, world: World): World =
+        let World.World(w) = world;
+        let uid = toUid(ref);
+        let (pIds, eIds) = match ref {
+            case EntityRef.Player(id) => (Set.remove(id, w#playerIds), w#enemyIds)
+            case EntityRef.Enemy(id)  => (w#playerIds, Set.remove(id, w#enemyIds))
+        };
+        World.World({
+            playerIds = pIds, enemyIds = eIds,
+            team = Map.remove(uid, w#team),
+            statusEffects = Map.remove(uid, w#statusEffects),
+            hp = Map.remove(uid, w#hp),
+            weapons = Map.remove(uid, w#weapons),
+            staves = Map.remove(uid, w#staves),
+            consumables = Map.remove(uid, w#consumables),
+            rings = Map.remove(uid, w#rings),
+            ringEquipped = Map.remove(uid, w#ringEquipped),
+            pos = Map.remove(uid, w#pos),
+            renderPos = Map.remove(uid, w#renderPos),
+            tweens = Map.filterWithKey((key, _) -> fst(key) != uid, w#tweens),
+            unitAnim = Map.remove(uid, w#unitAnim),
+            unitFlipH = Map.remove(uid, w#unitFlipH),
+            unitModulate = Map.remove(uid, w#unitModulate),
+            dyingElapsed = Map.remove(uid, w#dyingElapsed),
+            playerHidden = Set.remove(uid, w#playerHidden),
+            enemyDying = Set.remove(uid, w#enemyDying),
+            enemyAlerted = Map.remove(uid, w#enemyAlerted),
+            enemyActed = Map.remove(uid, w#enemyActed),
+            enemyBottleUsed = Map.remove(uid, w#enemyBottleUsed),
+            enemyPrevPos = Map.remove(uid, w#enemyPrevPos),
+            followUpUsed = Map.remove(uid, w#followUpUsed),
+            playerWaited = Map.remove(uid, w#playerWaited),
+            playerUsedStairs = Map.remove(uid, w#playerUsedStairs),
+            playerLevel = Map.remove(uid, w#playerLevel),
+            playerExp = Map.remove(uid, w#playerExp),
+            baseStats = Map.remove(uid, w#baseStats),
+            weaponView = Map.remove(uid, w#weaponView),
+            ringBonus = Map.remove(uid, w#ringBonus),
+            moveTiles = Map.remove(uid, w#moveTiles),
+            equippedRing = Map.remove(uid, w#equippedRing),
+            growth = Map.remove(uid, w#growth),
+            effectRule = Map.remove(uid, w#effectRule),
+            attackTarget = Map.remove(uid, w#attackTarget)
+            | w})
+
     pub def applyCmd(cmd: Cmd, world: World): World =
         match cmd {
             case Cmd.Add(ref, s)           => overEntity(ref, xs -> StatusSystem.add(s, xs), world)
@@ -985,6 +939,53 @@ mod World {
                 // P3-c: 床アイテムを拾得して除去（takeAt が emit）。存在の消失は Map 不在で表現。
                 let World.World(w) = world;
                 World.World({groundItems = Map.remove(cellKey(cell), w#groundItems) | w})
+            case Cmd.Spawn(ref) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(id) => World.World({playerIds = Set.insert(id, w#playerIds),
+                                                              team = Map.insert(id, Faction.Player, w#team) | w})
+                    case EntityRef.Enemy(id)  => World.World({enemyIds = Set.insert(id, w#enemyIds),
+                                                              team = Map.insert(enemyUid(id), Faction.Enemy, w#team) | w})
+                }
+            case Cmd.Despawn(ref) =>
+                despawnUid(ref, world)
+            case Cmd.ClearUnits =>
+                // 全ユニット store を空へ（非ユニット store〔stairs/chests/items/fx/tiles/map/rng/phase 等〕は保持）。
+                let World.World(w) = world;
+                World.World({playerIds = Set.empty(), enemyIds = Set.empty(), team = Map.empty(),
+                             statusEffects = Map.empty(), hp = Map.empty(), weapons = Map.empty(),
+                             staves = Map.empty(), consumables = Map.empty(), rings = Map.empty(),
+                             ringEquipped = Map.empty(), pos = Map.empty(), renderPos = Map.empty(),
+                             tweens = Map.empty(), unitAnim = Map.empty(), unitFlipH = Map.empty(),
+                             unitModulate = Map.empty(), dyingElapsed = Map.empty(),
+                             playerHidden = Set.empty(), enemyDying = Set.empty(),
+                             enemyAlerted = Map.empty(), enemyActed = Map.empty(),
+                             enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
+                             followUpUsed = Map.empty(), playerWaited = Map.empty(),
+                             playerUsedStairs = Map.empty(), playerLevel = Map.empty(),
+                             playerExp = Map.empty(), baseStats = Map.empty(), weaponView = Map.empty(),
+                             ringBonus = Map.empty(), moveTiles = Map.empty(), equippedRing = Map.empty(),
+                             growth = Map.empty(), effectRule = Map.empty(), attackTarget = Map.empty() | w})
+            case Cmd.SetHidden(ref, b) =>
+                let World.World(w) = world;
+                match ref {
+                    case EntityRef.Player(id) =>
+                        let next = if (b) Set.insert(id, w#playerHidden) else Set.remove(id, w#playerHidden);
+                        World.World({playerHidden = next | w})
+                    case EntityRef.Enemy(_) => world   // 敵に hidden は無い（防御 no-op）
+                }
+            case Cmd.SetEnemyRing(id, ring) =>
+                let World.World(w) = world;
+                World.World({equippedRing = Map.insert(enemyUid(id), ring, w#equippedRing) | w})
+            case Cmd.SetGrowth(id, g) =>
+                let World.World(w) = world;
+                World.World({growth = Map.insert(id, g, w#growth) | w})
+            case Cmd.SetMapSnapshot(mOpt) =>
+                let World.World(w) = world;
+                World.World({mapSnapshot = mOpt | w})
+            case Cmd.SetEffectRule(id, rule) =>
+                let World.World(w) = world;
+                World.World({effectRule = Map.insert(enemyUid(id), rule, w#effectRule) | w})
             case Cmd.SetAnim(ref, name) =>
                 // P6-1h: AnimatedSprite2D.play 意味論＝同名なら elapsed 継続、別名なら 0 リセット。
                 let World.World(w) = world;
@@ -1162,6 +1163,14 @@ mod World {
             case Cmd.ClearItems               => ("ClearItems", 0, 0, 0)
             case Cmd.SpawnItem(data)          => ("SpawnItem", data#gridPos#x, data#gridPos#y, 0)
             case Cmd.RemoveItem(cell)         => ("RemoveItem", cell#x, cell#y, 0)
+            case Cmd.Spawn(ref)               => ("Spawn", toUid(ref), 0, 0)
+            case Cmd.Despawn(ref)             => ("Despawn", toUid(ref), 0, 0)
+            case Cmd.ClearUnits               => ("ClearUnits", 0, 0, 0)
+            case Cmd.SetHidden(ref, b)        => ("SetHidden", toUid(ref), if (b) 1 else 0, 0)
+            case Cmd.SetEnemyRing(id, r)      => ("SetEnemyRing", enemyUid(id), if (Option.isEmpty(r)) 0 else 1, 0)
+            case Cmd.SetGrowth(id, g)         => ("SetGrowth", id, g#base#hp, 0)
+            case Cmd.SetMapSnapshot(m)        => ("SetMapSnapshot", if (Option.isEmpty(m)) 0 else 1, 0, 0)
+            case Cmd.SetEffectRule(id, r)     => ("SetEffectRule", enemyUid(id), if (Option.isEmpty(r)) 0 else 1, 0)
             case Cmd.SetAnim(ref, name)       => ("SetAnim(${name})", toUid(ref), 0, 0)
             case Cmd.SetFlipH(ref, b)         => ("SetFlipH", toUid(ref), if (b) 1 else 0, 0)
             case Cmd.SetModulate(ref, col)    => ("SetModulate", toUid(ref),
@@ -1558,7 +1567,16 @@ mod World {
     /// P1a: 装備指輪リソース本体を World から読む（unified-id・両 faction）。外側 Option（entity 未登録）と
     /// 内側 Option（未装備）を flatten ＝未装備で None（`weaponViewOf` を逐語踏襲）。finisher/lifesteal が読む。
     pub def equippedRingOf(ref: EntityRef, world: World): Option[Ring.RingResource] =
-        let World.World(w) = world; Map.get(toUid(ref), w#equippedRing) |> Option.flatten
+        // P6-2c: player 側は rings/ringEquipped store から**読み時導出**（旧 refreshMirror の毎フレーム
+        // 再 mirror を置換）。敵側は Cmd.SetEnemyRing が書く equippedRing store。
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) =>
+                if (Map.get(id, w#ringEquipped) |> Option.getWithDefault(false))
+                    Map.get(id, w#rings) |> Option.flatMap(List.head)
+                else None
+            case EntityRef.Enemy(_) => Map.get(toUid(ref), w#equippedRing) |> Option.flatten
+        }
 
     /// P1a 安全網: World の equippedRing（read-model）と scene の装備指輪が食い違う entity を列挙する。
     /// RingResource は Eq 非自動ゆえ (name, effect, power) タプルへ射影して比較（combatViewMismatches 同型）。

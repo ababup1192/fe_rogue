@@ -39,10 +39,10 @@ mod TestDiagUnitView {
                 def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
             };
             // ライブの frame-end を模す: refreshMirror → stepWorld → syncTreeFromWorld を 3 周。
-            let w1 = World.refreshMirror(scene, Ref.get(wref));
+            let w1 = World.refreshMirror(Ref.get(wref));
             let (w2, _) = World.stepWorld(w1, 0.016);
             let s1 = World.syncTreeFromWorld(w2, scene);
-            let w3 = World.refreshMirror(s1, w2);
+            let w3 = World.refreshMirror(w2);
             let (w4, _) = World.stepWorld(w3, 0.016);
             let s2 = World.syncTreeFromWorld(w4, s1);
             let d = match EnemyScene.get(0, s2) { case Some(x) => x case None => bug!("no enemy") };

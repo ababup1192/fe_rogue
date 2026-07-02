@@ -365,6 +365,11 @@ mod PlayerScene {
             ringEquipped      = false,
             followUpUsed      = false
         };
+        // P6-2c: id 集合/team への登録（旧 refreshMirror derive の代替・spawn funnel の一部）。
+        World.Command.emit(World.Cmd.Spawn(World.EntityRef.Player(sp#id)));
+        // P6-2c: 成長 read-model も spawn で seed（resource 変化サイトは emitBaseStatsFromScene が束ねて emit）。
+        World.Command.emit(World.Cmd.SetGrowth(sp#id,
+            {base = LevelSystem.statsOf(res), rates = res#growthRates, name = res#description}));
         // S2.4: 初期 weaponView/ringBonus も World へ seed（weapons/rings と同源・spawn フレームの各 DIFF を塞ぐ＝preserve の前提）。
         // data 構築後に emit（equippedWeaponView/equippedRingBonus は full Data を要する）。ringEquipped=false ゆえ ringBonus=zeroBonuses。
         World.Command.emit(World.Cmd.SetWeaponView(World.refOf(true, sp#id), equippedWeaponView(data)));
@@ -683,7 +688,11 @@ mod PlayerScene {
     /// level-up（CombatScene）/carry 復元/snapshot 復元/復活など resource を書き換えた直後に呼ぶ。pub（CombatScene から）。
     pub def emitBaseStatsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
         match get(playerId, scene) {
-            case Some(d) => World.Command.emit(World.Cmd.SetBaseStats(World.EntityRef.Player(playerId), Combat.baseStatsFrom(d#resource)))
+            case Some(d) =>
+                World.Command.emit(World.Cmd.SetBaseStats(World.EntityRef.Player(playerId), Combat.baseStatsFrom(d#resource)));
+                // P6-2c: resource が変わる全サイトで growth read-model も束ねて更新（旧 refreshMirror derive の代替）。
+                World.Command.emit(World.Cmd.SetGrowth(playerId,
+                    {base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}))
             case None    => ()
         }
 
@@ -833,6 +842,8 @@ mod PlayerScene {
             let stillDead = revive#stillDead;
             if (List.isEmpty(stillDead)) revivedScene
             else {
+                // P6-2c: ノード除去と対で World の全 store からも除去（旧 refreshMirror prune の代替）。
+                List.forEach(id -> World.Command.emit(World.Cmd.Despawn(World.EntityRef.Player(id))), stillDead);
                 let removed = List.foldLeft(
                     (sc, id) -> Scene.removeAt(playerPath(id), sc),
                     revivedScene, stillDead);
@@ -978,7 +989,9 @@ mod PlayerScene {
     /// hidden を立てる(階段で退場して消える)。`flag = false` で元に戻す。
     /// 親 Marker2D を不可視にすると子 Sprite / HPBar も連動して消える(Godot の
     /// 親子可視性 AND。CursorScene.setVisible と同手法)。
-    pub def setHidden(id: Int32, flag: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def setHidden(id: Int32, flag: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // P6-2c: playerHidden store へ dual-write（旧 refreshMirror の scene derive の代替）。
+        World.Command.emit(World.Cmd.SetHidden(World.EntityRef.Player(id), flag));
         Scene.mapEngineNode(playerPath(id), engineNode -> match engineNode {
             case EngineNode.Marker2DWithState(marker, NodeTag.Player(d)) =>
                 EngineNode.Marker2DWithState(CanvasItem.setVisible(not flag, marker),
@@ -1122,9 +1135,12 @@ mod PlayerScene {
     /// 作り直しているのでリセット不要（= フロア開始時に全員再行動可・たいきリセット）。
     pub def reconcileWithCarry(carry: List[CarryData], scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let carryIds = carry |> List.map(c -> c#id);
-        let pruned = getAll(scene)
+        let deadIds = getAll(scene)
             |> List.filter(d -> not List.exists(id -> id == d#id, carryIds))
-            |> List.foldLeft((sc, d) -> Scene.removeAt(playerPath(d#id), sc), scene);
+            |> List.map(d -> d#id);
+        // P6-2c: ノード除去と対で World からも除去（前フロア戦死者の store 掃除）。
+        List.forEach(id -> World.Command.emit(World.Cmd.Despawn(World.EntityRef.Player(id))), deadIds);
+        let pruned = List.foldLeft((sc, id) -> Scene.removeAt(playerPath(id), sc), scene, deadIds);
         List.foldLeft((sc, c) -> {
             World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(c#id), c#hp));  // F6a: carry hp を World へ
             World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(c#id), c#level, c#exp));  // World 拡張: carry 進行度

@@ -107,7 +107,7 @@ mod TestPrng {
         let (k1, w1) = World.drawPercent(w0);
         let (k2direct, _) = World.drawPercent(w1);
         let empty = Scene.empty();
-        let wSynced = World.refreshMirror(empty, World.syncFromScene(empty, w1));
+        let wSynced = World.refreshMirror(World.syncFromScene(empty, w1));
         let (k2carried, _) = World.drawPercent(wSynced);
         Assert.assertEq(
             expected = (88, 43, 43),

@@ -467,17 +467,17 @@ mod TestWorld {
     def testRefreshMirrorKeepsCommandPosNotGridPos(): Unit \ Assert =
         let seeded = World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 5, y = 5}), World.empty());
         // sampleScene の player 0 の gridPos は {2,2}。refreshMirror は command の {5,5} を保持する。
-        let refreshed = World.refreshMirror(sampleScene(), seeded);
+        let refreshed = World.refreshMirror(seeded);
         let World.World(w) = refreshed;
         Assert.assertEq(expected = Some((5, 5)), Map.get(0, w#pos) |> Option.map(p -> (p#x, p#y)))
 
-    /// P3: scene に居なくなった id（死亡/退場で scene から除去）は pos から prune される（ghost piece 防止）。
-    /// command で enemy 99 を置くが sampleScene に 99 は居ない → prune される。scene に居る player 0 は残る。
+    /// P6-2c: ghost piece 防止は refreshMirror の prune ではなく **Cmd.Despawn**（ノード除去サイトが emit）。
+    /// enemy 99 を Despawn すると pos から消え、player 0 は残ることを pin（旧 prune テストの置換）。
     @Test
-    def testRefreshMirrorPrunesAbsentIds(): Unit \ Assert =
+    def testDespawnRemovesEntityFromStores(): Unit \ Assert =
         let s1 = World.applyCmd(World.Cmd.Move(World.EntityRef.Enemy(99), {x = 9, y = 9}),
                  World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 5, y = 5}), World.empty()));
-        let World.World(w) = World.refreshMirror(sampleScene(), s1);
+        let World.World(w) = World.applyCmd(World.Cmd.Despawn(World.EntityRef.Enemy(99)), s1);
         Assert.assertEq(
             expected = (Some((5, 5)), None),
             (Map.get(0, w#pos) |> Option.map(p -> (p#x, p#y)),
@@ -490,7 +490,7 @@ mod TestWorld {
     def testRefreshMirrorPreservesCommandHp(): Unit \ Assert =
         let seeded  = World.syncFromScene(sampleScene(), World.empty());      // hp 0/1 = 10
         let damaged = World.applyCmd(World.Cmd.SetHp(World.EntityRef.Player(0), 3), seeded);
-        let World.World(w) = World.refreshMirror(sampleScene(), damaged);
+        let World.World(w) = World.refreshMirror(damaged);
         // player 0 は command の 3（scene の 10 で上書きされない）、player 1 は 10 のまま、ids は scene 由来。
         Assert.assertEq(
             expected = (Some(3), Some(10), Set#{0, 1}),
@@ -708,7 +708,7 @@ mod TestWorld {
     @Test
     def testRefreshMirrorPreservesTurnPhase(): Unit \ Assert =
         let seeded = World.mirrorTurnPhase(SimPhase.EnemyTurn, World.empty());
-        let refreshed = World.refreshMirror(sampleScene(), seeded);
+        let refreshed = World.refreshMirror(seeded);
         Assert.assertEq(expected = SimPhase.EnemyTurn, World.turnPhaseOf(refreshed))
 
     /// F2b: `Cmd.SetPhase` が World.turnPhase を command で更新する（TurnPhase.State handler が put 時に emit）。
@@ -728,7 +728,7 @@ mod TestWorld {
     def testSetWaitedCommandAndPreserve(): Unit \ Assert =
         let seeded = World.syncFromScene(sampleScene(), World.empty());   // player 0 waited=false
         let acted  = World.applyCmd(World.Cmd.SetWaited(World.EntityRef.Player(0), true), seeded);
-        let World.World(w) = World.refreshMirror(sampleScene(), acted);
+        let World.World(w) = World.refreshMirror(acted);
         Assert.assertEq(
             expected = (Some(true), Some(true)),
             (World.waitedOf(World.EntityRef.Player(0), acted), Map.get(0, w#playerWaited)))
@@ -741,7 +741,7 @@ mod TestWorld {
         let set     = seeded
             |> World.applyCmd(World.Cmd.SetAttackTarget(World.EntityRef.Player(0), 5))
             |> World.applyCmd(World.Cmd.SetAttackTarget(World.EntityRef.Enemy(5), 0));
-        let World.World(w) = World.refreshMirror(sampleScene(), set);        // scene は None だが command 由来は保持
+        let World.World(w) = World.refreshMirror(set);        // scene は None だが command 由来は保持
         Assert.assertEq(
             expected = (Some(5), Some(0), true, true),
             (World.attackTargetOf(World.EntityRef.Player(0), set),
@@ -768,7 +768,7 @@ mod TestWorld {
         let leveled = seeded
             |> World.applyCmd(World.Cmd.SetProgress(World.EntityRef.Player(0), 3, 40))
             |> World.applyCmd(World.Cmd.SetProgress(World.EntityRef.Enemy(5), 9, 99));  // no-op
-        let kept = World.refreshMirror(sampleScene(), leveled);
+        let kept = World.refreshMirror(leveled);
         Assert.assertEq(
             expected = (Some((3, 40)), None, Some((3, 40))),
             (World.progressOf(World.EntityRef.Player(0), leveled),
@@ -783,7 +783,7 @@ mod TestWorld {
         let dying  = seeded
             |> World.applyCmd(World.Cmd.SetDying(World.EntityRef.Enemy(5)))
             |> World.applyCmd(World.Cmd.SetDying(World.EntityRef.Player(0)));  // no-op
-        let kept = World.refreshMirror(sampleScene(), dying);
+        let kept = World.refreshMirror(dying);
         Assert.assertEq(
             expected = (true, false, true),
             (World.isDyingOf(World.EntityRef.Enemy(5), dying),
@@ -797,7 +797,7 @@ mod TestWorld {
         let set = World.empty()
             |> World.applyCmd(World.Cmd.SetEnemyTurnBusy(true))
             |> World.applyCmd(World.Cmd.SetPhaseObservedEnemy(true));
-        let kept = World.refreshMirror(sampleScene(), set);   // scene に mirror 元なし＝保持されるはず
+        let kept = World.refreshMirror(set);   // scene に mirror 元なし＝保持されるはず
         Assert.assertEq(
             expected = (true, true, true, true),
             (World.enemyTurnBusyOf(set), World.phaseObservedEnemyOf(set),
@@ -810,7 +810,7 @@ mod TestWorld {
         let used   = seeded
             |> World.applyCmd(World.Cmd.SetFollowUpUsed(World.EntityRef.Player(0), true))
             |> World.applyCmd(World.Cmd.SetFollowUpUsed(World.EntityRef.Enemy(5), true));
-        let World.World(w) = World.refreshMirror(sampleScene(), used);
+        let World.World(w) = World.refreshMirror(used);
         Assert.assertEq(
             expected = (Some(true), Some(true)),
             (Map.get(0, w#followUpUsed), Map.get(5 + World.enemyUidBase(), w#followUpUsed)))
@@ -820,7 +820,7 @@ mod TestWorld {
     def testSetPrevPosCommandAndPreserve(): Unit \ Assert =
         let seeded = World.syncFromScene(sampleScene(), World.empty());
         let moved  = World.applyCmd(World.Cmd.SetPrevPos(World.EntityRef.Enemy(5), {x = 7, y = 1}), seeded);
-        let World.World(w) = World.refreshMirror(sampleScene(), moved);
+        let World.World(w) = World.refreshMirror(moved);
         let toT = op -> Option.map(p -> (p#x, p#y), op);
         Assert.assertEq(
             expected = (Some((7, 1)), Some((7, 1))),
@@ -831,7 +831,7 @@ mod TestWorld {
     def testSetBottleUsedCommandAndPreserve(): Unit \ Assert =
         let seeded = World.syncFromScene(sampleScene(), World.empty());   // enemy 5 bottleUsed=false
         let used   = World.applyCmd(World.Cmd.SetBottleUsed(World.EntityRef.Enemy(5), true), seeded);
-        let World.World(w) = World.refreshMirror(sampleScene(), used);
+        let World.World(w) = World.refreshMirror(used);
         Assert.assertEq(
             expected = (Some(true), Some(true)),
             (World.bottleUsedOf(World.EntityRef.Enemy(5), used), Map.get(5 + World.enemyUidBase(), w#enemyBottleUsed)))
@@ -842,7 +842,7 @@ mod TestWorld {
     def testRefreshMirrorPreservesCommandAlerted(): Unit \ Assert =
         let seeded  = World.syncFromScene(sampleScene(), World.empty());
         let alerted = World.applyCmd(World.Cmd.SetAlerted(World.EntityRef.Enemy(5), true), seeded);
-        let World.World(w) = World.refreshMirror(sampleScene(), alerted);
+        let World.World(w) = World.refreshMirror(alerted);
         Assert.assertEq(expected = Some(true), Map.get(5 + World.enemyUidBase(), w#enemyAlerted))
 
     /// F6a: `Cmd.SetHp` が World の hp store を faction 別に更新し、`hpOf` で読める（hp→World 権威化の土台）。
@@ -879,7 +879,7 @@ mod TestWorld {
     @Test
     def testRefreshMirrorPreservesBaseStats(): Unit \ Assert =
         let scene = sampleScene();
-        let w = World.refreshMirror(scene, World.syncFromScene(scene, World.empty()));
+        let w = World.refreshMirror(World.syncFromScene(scene, World.empty()));
         let expectedMaxHp = Option.map(d -> d#resource#hp, PlayerScene.get(0, scene));
         Assert.assertEq(
             expected = expectedMaxHp,
@@ -895,7 +895,7 @@ mod TestWorld {
         let custom = ({attack = 1, magicAttack = 2, defense = 3, magicDefense = 4,
                        skill = 5, speed = 6, luck = 7, maxHp = 999}: Combat.BaseStats);
         let withCmd = World.applyCmd(World.Cmd.SetBaseStats(World.EntityRef.Player(0), custom), seeded);
-        let refreshed = World.refreshMirror(scene, withCmd);
+        let refreshed = World.refreshMirror(withCmd);
         Assert.assertEq(
             expected = Some(999),
             Option.map(bs -> bs#maxHp, World.baseStatsOf(World.EntityRef.Player(0), refreshed)))
@@ -1003,7 +1003,7 @@ mod TestWorld {
         let scene     = sampleScene();
         let seeded    = World.syncFromScene(scene, World.empty());
         let cleared   = World.applyCmd(World.Cmd.SetWeaponView(World.EntityRef.Player(0), None), seeded);
-        let refreshed = World.refreshMirror(scene, cleared);
+        let refreshed = World.refreshMirror(cleared);
         Assert.assertEq(
             expected = None,
             Option.map(wv -> wv#attack, World.weaponViewOf(World.EntityRef.Player(0), refreshed)))
@@ -1017,7 +1017,7 @@ mod TestWorld {
         let seeded    = World.syncFromScene(scene, World.empty());
         let custom    = ({attack = 77 | Ring.zeroBonuses()}: Ring.Bonuses);
         let withCmd   = World.applyCmd(World.Cmd.SetRingBonus(World.EntityRef.Player(0), custom), seeded);
-        let refreshed = World.refreshMirror(scene, withCmd);
+        let refreshed = World.refreshMirror(withCmd);
         Assert.assertEq(
             expected = Some(77),
             Option.map(rb -> rb#attack, World.ringBonusOf(World.EntityRef.Player(0), refreshed)))
@@ -1071,7 +1071,7 @@ mod TestWorld {
         let scene     = sampleScene();
         let seeded    = World.syncFromScene(scene, World.empty());
         let withCmd   = World.applyCmd(World.Cmd.SetMoveTiles(World.EntityRef.Player(0), 99), seeded);
-        let refreshed = World.refreshMirror(scene, withCmd);
+        let refreshed = World.refreshMirror(withCmd);
         Assert.assertEq(expected = Some(99), World.moveTilesOf(World.EntityRef.Player(0), refreshed))
 
     /// syncFromScene 直後は World moveTiles == scene base moveTiles ＝ moveTilesMismatches 空（dual-write 整合の基準）。
@@ -1200,7 +1200,7 @@ mod TestWorld {
         let w0 = World.syncFromScene(scene, World.empty());
         let w1 = World.applyCmd(World.Cmd.SetRings(World.EntityRef.Player(0), d4Ring() :: Nil), w0);
         let w2 = World.applyCmd(World.Cmd.SetRingEquipped(World.EntityRef.Player(0), true), w1);
-        let after = World.refreshMirror(scene, w2);
+        let after = World.refreshMirror(w2);
         let proj = World.equippedRingOf(World.EntityRef.Player(0), after) |> Option.map(r -> r#power);
         Assert.assertEq(expected = Some(3), proj)
 
@@ -1211,7 +1211,7 @@ mod TestWorld {
         let scene = sampleScene();
         let world = World.syncFromScene(scene, World.empty());
         let withStaff = World.applyCmd(World.Cmd.SetStaves(World.EntityRef.Player(0), d4Staff() :: Nil), world);
-        let refreshed = World.refreshMirror(scene, withStaff);
+        let refreshed = World.refreshMirror(withStaff);
         Assert.assertEq(
             expected = Some(1),
             World.stavesOf(World.EntityRef.Player(0), refreshed) |> Option.map(List.length))
@@ -1257,7 +1257,7 @@ mod TestWorld {
     @Test
     def testCombatViewMismatchesEmptyWhenSynced(): Unit \ Assert =
         let scene = sampleScene();
-        let w = World.refreshMirror(scene, World.syncFromScene(scene, World.empty()));
+        let w = World.refreshMirror(World.syncFromScene(scene, World.empty()));
         Assert.assertEq(expected = true, List.isEmpty(World.combatViewMismatches(w, scene)))
 
     /// B1 強化 parity: **状態異常 active** な player でも combatViewOf == combatView（status mods 経路）。
@@ -1643,7 +1643,7 @@ mod TestWorld {
         let white = ({r = 1.0f32, g = 1.0f32, b = 1.0f32}: Color);
         let w1 = World.applyCmd(World.Cmd.SpawnPopupFx(
             {total = 0.7, pos = {x = 0.0, y = 3.0}, text = "3", color = white}), World.empty());
-        let w2 = World.refreshMirror(Scene.empty(), w1);
+        let w2 = World.refreshMirror(w1);
         Assert.assertEq(
             expected = (1, 1),
             (Map.size(World.popupFxOf(w2)), World.popupFxNextSeqOf(w2)))

@@ -273,6 +273,10 @@ mod EnemyScene {
             followUpUsed   = false,
             bottleUsed     = false
         };
+        // P6-2c: id 集合/team・effectRule・装備指輪も spawn で seed（旧 refreshMirror derive の代替）。
+        World.Command.emit(World.Cmd.Spawn(World.EntityRef.Enemy(sp#id)));
+        World.Command.emit(World.Cmd.SetEffectRule(sp#id, res#effectRule));
+        World.Command.emit(World.Cmd.SetEnemyRing(sp#id, ring));
         // S2.4: 初期 weaponView/ringBonus も World へ seed（weapons/ring と 1:1・敵は spawn 後不変＝各 DIFF を塞ぐ・preserve の前提）。
         // data 構築後に emit（equippedWeaponView/equippedRingBonus は full Data を要する）。
         World.Command.emit(World.Cmd.SetWeaponView(World.refOf(false, sp#id), equippedWeaponView(data)));
@@ -303,8 +307,9 @@ mod EnemyScene {
                                       ringCatalog: Ring.RingCatalog,
                                       floor: FloorCatalog.FloorResource,
                                       tick: Int32,
-                                      scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
-        let current = getAll(scene);
+                                      scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command, World.WorldQuery} =
+        // P6-2b/2c: 位置は World 上書き Data（空きセル判定に使うため）。
+        let current = getAllWithWorldPos(scene);
         let wandererCount =
             current |> List.count(d -> d#resource#aiType == EnemyAI.AiType.Wanderer);
         if (Int32.remainder(tick, spawnIntervalTicks()) != 0) scene
@@ -317,12 +322,13 @@ mod EnemyScene {
                                 ringCatalog: Ring.RingCatalog,
                                 floor: FloorCatalog.FloorResource,
                                 current: List[Data],
-                                scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
+                                scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command, World.WorldQuery} =
         let layer      = MapScene.getMapLayer(scene);
         let placements = MapScene.getPlacements(scene);
         let roomCount  = MapScene.getRoomCount(scene);
-        let holes      = FogScene.holesFor(PlayerScene.getAll(scene), placements, roomCount, false);
-        let playerCells = PlayerScene.getAll(scene) |> List.map(d -> d#gridPos);
+        // P6-2b/2c: 空きセル・可視判定は World 位置（scene gridPos twin は退役）。
+        let holes      = FogScene.holesFor(PlayerScene.getAllWithWorldPos(scene), placements, roomCount, false);
+        let playerCells = PlayerScene.getAllWithWorldPos(scene) |> List.map(d -> d#gridPos);
         let enemyCells  = current |> List.map(d -> d#gridPos);
         // アンカー除外の部屋 (idx in [1, roomCount)) の床セルを (idx, cell) 付きで集め、
         // 空き + 視界外（プレイヤーが居ない部屋）のみ残す。初期配置と同じ部屋集合。
@@ -650,8 +656,10 @@ mod EnemyScene {
     /// 敵撃破 SE (down_enemy) を再生し、ノードを scene から削除する
     /// （damage の後に down_enemy が鳴る順序保証）。
     pub def completeDeath(id: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameEngine.Audio =
+            Scene[NodeTag] \ {GameEngine.Audio, World.Command} =
         AudioStreamPlayer.play("down_enemy");
+        // P6-2c: ノード除去と対で World の全 store からも除去（旧 refreshMirror prune の代替）。
+        World.Command.emit(World.Cmd.Despawn(World.EntityRef.Enemy(id)));
         Scene.removeAt(enemyPath(id), scene)
 
     /// World 直下の `Enemy_<id>` 形式の NodePath から id を取り出す。
@@ -690,13 +698,17 @@ mod EnemyScene {
     /// 各敵は `addOneEnemy` を使って HP・alerted・dying を初期値で生成する。
     pub def respawnFromInitial(spawns: List[Spawn], ringCatalog: Ring.RingCatalog,
                                 scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // P6-2c: ノード除去と対で World からも除去（build choke 外から呼ばれても store が腐らない）。
+        List.forEach(d -> World.Command.emit(World.Cmd.Despawn(World.EntityRef.Enemy(d#id))), getAll(scene));
         let cleared = List.foldLeft((sc, d) -> Scene.removeAt(enemyPath(d#id), sc),
                                      scene, getAll(scene));
         List.foldLeft((sc, sp) -> addOneEnemy(sp, ringCatalog, sc), cleared, spawns)
 
     /// 現在の全敵を scene から取り除く（女神の加護でフロアの敵を一掃する）。子スプライト / HP バーも
     /// マーカー subtree ごと消える。
-    pub def removeAll(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def removeAll(scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // P6-2c: ノード除去と対で World からも除去。
+        List.forEach(d -> World.Command.emit(World.Cmd.Despawn(World.EntityRef.Enemy(d#id))), getAll(scene));
         List.foldLeft((sc, d) -> Scene.removeAt(enemyPath(d#id), sc), scene, getAll(scene))
 
     /// スナップショットの敵リストから決定論的に再配置する（乱数なし）。
@@ -721,6 +733,7 @@ mod EnemyScene {
         let ring = snap#ring |> Option.map(id -> Ring.lookup(id, ringCatalog));
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(snap#id), snap#hp));  // F6a: 復元 hp を World へ
         World.Command.emit(World.Cmd.SetAlerted(World.EntityRef.Enemy(snap#id), snap#alerted));  // F7-spike: 復元 alerted を World へ
+        World.Command.emit(World.Cmd.SetEnemyRing(snap#id, ring));  // P6-2c: 復元 ring を World へ
         let restored = mapEnemy(snap#id, d -> {hp = snap#hp, statuses = snap#statuses,
                                  alerted = snap#alerted, ring = ring | d}, scene);
         // S3: 復元 statuses も World へ Seed（中断再開は in-loop phase change で fresh syncFromScene が無く
@@ -780,7 +793,7 @@ mod EnemyScene {
     /// `death_blink` finished イベントのエントリポイント。
     /// SE 再生とノード削除を completeDeath に委譲する。
     pub def onDeathBlinkDone(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameEngine.Audio =
+            Scene[NodeTag] \ {GameEngine.Audio, World.Command} =
         completeDeath(enemyId, scene)
 
     /// この敵の戦闘ビュー（faction 非依存）。`Combat.estimate` / `Encounter` の join で使う。

@@ -765,9 +765,9 @@ mod Game {
                 // 階段でフロア移動する音
                 AudioStreamPlayer.setVolume("change_floor", 0.5f32);
                 // "T1 味方のターン" のログは Playing 突入時（applyPhaseChange）に出す。
-                // 初回 world は scene の mirror（frame-1 で handler が呼ばれても faithful＝空 pieces を返さない）。
-                gameLoop(catalogs, sceneRef, worldRef, GamePhase.Title, scene,
-                         World.syncFromScene(scene, World.empty()))
+                // P6-2c: 初回 world は空で開始（タイトル画面はユニット/地形が無く、以降の全 store は
+                // spawn/build choke の Cmd が seed する）。syncFromScene はテスト seed 専用に退役。
+                gameLoop(catalogs, sceneRef, worldRef, GamePhase.Title, scene, World.empty())
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
             // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /
             // `TurnPhase.State` / `SelectedPlayer.State` / `InitialSpawns.State` 等を
@@ -944,8 +944,14 @@ mod Game {
                 World.WorldQuery, TitleMenuScene.State, TopBarScene.State} =
         match phase {
             case GamePhase.Title =>
+                // P6-2c: ダンジョン外へ出る＝ユニット store と地形 read-model を掃除
+                // （scene 再構築での自動 prune は廃止＝明示 Cmd。ClearChests/Items と同じ流儀）。
+                World.Command.emit(World.Cmd.ClearUnits);
+                World.Command.emit(World.Cmd.SetMapSnapshot(None));
                 TitleMenuScene.add(Scene.empty())
             case GamePhase.CharacterSelect =>
+                World.Command.emit(World.Cmd.ClearUnits);
+                World.Command.emit(World.Cmd.SetMapSnapshot(None));
                 CharacterSelectScene.add(UnitCatalog.pool("players", catalogs#players),
                                           Scene.empty())
             case GamePhase.Playing =>
@@ -1077,7 +1083,7 @@ mod Game {
             // combat 解決の同期キャリア＝Phase C/B まで恒久 dual-write ゆえ invariant guard を残す）のみ残し全撤去。
             // usedStairs/acted/topbar は包括 run 検証で無音確認後に撤去（他 store は §G S2.3〜S4.4b batch 済）。
             // invariant は unit test(testXxxMismatchesEmptyWhenSynced/DetectsDrift)＋spawn-seed test で継続検証。
-            let world1 = World.refreshMirror(next, Ref.get(worldRef));
+            let world1 = World.refreshMirror(Ref.get(worldRef));
             // B/tiles: マップ再構築（tileGen 変化＝`BumpTileGen` が今フレーム走った）時のみ、新フロアのタイルハンドルを
             // scene から World へ bake する。`world`（gameLoop 引数）は前フレームの gen・`world1` は worldRef 由来の
             // 今フレーム gen ゆえ、両者の差＝「今フレーム再構築された」。以後は preserve（毎フレーム走査なし）。

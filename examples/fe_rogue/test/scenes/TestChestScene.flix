@@ -54,7 +54,7 @@ mod TestChestScene {
     /// refreshMirror は command 由来の chests を preserve する（scene 非依存＝ノード無しでも消えない）。
     @Test
     def testRefreshMirrorPreservesChests(): Unit \ Assert =
-        let after = World.refreshMirror(Scene.empty(), worldWithChest());
+        let after = World.refreshMirror(worldWithChest());
         Assert.assertEq(
             expected = Some("wooden"),
             World.chestAtOf({x = 2, y = 3}, after) |> Option.map(d -> d#chestKey))

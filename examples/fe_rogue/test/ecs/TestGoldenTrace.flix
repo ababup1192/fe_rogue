@@ -254,7 +254,9 @@ mod TestGoldenTrace {
             ("SetWeaponView", 0, 2, 0) ::  // S2.4: 武器耐久消費に 1:1 co-emit（attack=2）
             ("SetHp", 0, 10, 0) ::
             ("Progress", 0, 2, 34) ::
-            ("SetBaseStats", 0, 21, 10) :: Nil;
+            ("SetBaseStats", 0, 21, 10) ::
+            // P6-2c: resource 変化サイトは growth read-model も束ねて emit（emitBaseStatsFromScene 内）。
+            ("SetGrowth", 0, 10, 0) :: Nil;
         Assert.assertEq(expected = golden, keys);
         // 最終 World: enemy hp=0 / player hp=10（growthRates=0 ゆえ増分なし）/ progress=(Lv2, exp34)。
         Assert.assertEq(

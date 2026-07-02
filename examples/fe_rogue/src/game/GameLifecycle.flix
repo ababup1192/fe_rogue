@@ -46,6 +46,8 @@ mod GameLifecycle {
         // P6-1d/e: 前フロアの配置物 store（宝箱/床アイテム）を掃除（scene 再構築での自動 prune は廃止＝明示 Cmd）。
         World.Command.emit(World.Cmd.ClearChests);
         World.Command.emit(World.Cmd.ClearItems);
+        // P6-2c: 前フロアのユニット store も一掃（spawn がこの後 seed し直す）。
+        World.Command.emit(World.Cmd.ClearUnits);
         Scene.empty()
             |> MapScene.add(floor)
             |> FogScene.add             // 常駐 FogDriver（暗幕は renderFog 直描き）
@@ -67,6 +69,8 @@ mod GameLifecycle {
             |> MinimapScene.add
             // B/tiles: マップノード再構築の世代を +1（gameLoop の tile bake トリガ＝新フロアのタイルを World へ焼く）。
             |> (s -> { World.Command.emit(World.Cmd.BumpTileGen); s })
+            // P6-2c: 地形 read-model（toBoard の壁/サイズ源）も build choke で World へ（旧 refreshMirror derive の代替）。
+            |> (s -> { World.Command.emit(World.Cmd.SetMapSnapshot(Some(BoardSnapshot.mapSnapshotOf(s)))); s })
 
     /// 駒（味方 / 敵 / アイテム / 宝箱 / 階段）に依存しない HUD・常駐ドライバ・メニュー群をまとめて追加する。
     /// `buildPlayingScene`（通常生成）と `rebuildFloorFromSnapshot`（スナップショット復元）が共有し、
@@ -189,6 +193,7 @@ mod GameLifecycle {
         // （scene 再構築での自動 prune は廃止＝明示 Cmd。addFromSnaps より前が必須）。
         World.Command.emit(World.Cmd.ClearChests);
         World.Command.emit(World.Cmd.ClearItems);
+        World.Command.emit(World.Cmd.ClearUnits);  // P6-2c: 前 run のユニット store も一掃
         let scene = Scene.empty()
             |> MapScene.addFromPlan(snap#mapPlan)
             |> FogScene.add
@@ -206,6 +211,8 @@ mod GameLifecycle {
         SceneLoader.applyAudioAttach(scene);
         // B/tiles: マップノード再構築の世代を +1（gameLoop の tile bake トリガ＝復元/restartFloor のタイルを World へ焼く）。
         World.Command.emit(World.Cmd.BumpTileGen);
+        // P6-2c: 地形 read-model も build choke で World へ。
+        World.Command.emit(World.Cmd.SetMapSnapshot(Some(BoardSnapshot.mapSnapshotOf(scene))));
         scene
 
     /// 保存済み階段位置があればそのセルに階段を確定配置する（無ければ何もしない）。
@@ -333,7 +340,7 @@ mod GameLifecycle {
     /// （周期 + フロア上限 + 視界外部屋セルの有無）は EnemyScene が行う。
     pub def maybeSpawnWanderer(catalogs: Catalogs, tick: Int32,
                                 scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Math.Random, FloorProgress.State, World.Command} =
+            \ {Math.Random, FloorProgress.State, World.Command, World.WorldQuery} =
         let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
         EnemyScene.maybeSpawnWandererInRoom(catalogs#enemies, catalogs#weapons, catalogs#rings, floor, tick, scene)
 
