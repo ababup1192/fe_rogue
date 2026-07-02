@@ -16,14 +16,14 @@ SRPG + roguelike).
 - **JDK 21**
 - **GNU make**
 - Supported OS: macOS (Apple Silicon / Intel) / Windows x86_64
-- Flix **0.73.0** compiler (`bin/flix.jar`) — download it yourself (see below)
+- Flix **0.75.0** compiler (`bin/flix.jar`) — download it yourself (see below)
 
 ## Setup
 
-First, download the Flix 0.73.0 compiler and place it at `bin/flix.jar`:
+First, download the Flix 0.75.0 compiler and place it at `bin/flix.jar`:
 
 ```bash
-curl -L -o bin/flix.jar https://github.com/flix/flix/releases/download/v0.73.0/flix.jar
+curl -L -o bin/flix.jar https://github.com/flix/flix/releases/download/v0.75.0/flix.jar
 ```
 
 Then set up the toolchain and build the engine packages:
@@ -123,7 +123,7 @@ make clean-example-builds # delete examples/*/build/ (speeds up IDE scene loadin
 
 ## Tech stack
 
-- **Flix 0.73.0** — functional programming language
+- **Flix 0.75.0** — functional programming language
 - **LWJGL** — OpenGL / GLFW / STB / OpenAL bindings
 - **OpenGL 3.3 Core Profile** — shader-based 2D rendering
 - **OpenAL** — sound effects and BGM playback
@@ -148,14 +148,14 @@ make clean-example-builds # delete examples/*/build/ (speeds up IDE scene loadin
 - **JDK 21**
 - **GNU make**
 - 対応 OS: macOS（Apple Silicon / Intel）/ Windows x86_64
-- Flix **0.73.0** コンパイラ（`bin/flix.jar`）— 各自でダウンロードして配置する（下記参照）
+- Flix **0.75.0** コンパイラ（`bin/flix.jar`）— 各自でダウンロードして配置する（下記参照）
 
 ## セットアップ
 
-まず Flix 0.73.0 コンパイラをダウンロードして `bin/flix.jar` に配置する:
+まず Flix 0.75.0 コンパイラをダウンロードして `bin/flix.jar` に配置する:
 
 ```bash
-curl -L -o bin/flix.jar https://github.com/flix/flix/releases/download/v0.73.0/flix.jar
+curl -L -o bin/flix.jar https://github.com/flix/flix/releases/download/v0.75.0/flix.jar
 ```
 
 次にツールチェーンを用意し、エンジンパッケージをビルドする:
@@ -254,7 +254,7 @@ make clean-example-builds # examples/*/build/ を削除（IDE のシーン読み
 
 ## 技術スタック
 
-- **Flix 0.73.0** — 関数型プログラミング言語
+- **Flix 0.75.0** — 関数型プログラミング言語
 - **LWJGL** — OpenGL / GLFW / STB / OpenAL バインディング
 - **OpenGL 3.3 Core Profile** — シェーダーベースの 2D レンダリング
 - **OpenAL** — 効果音・BGM 再生

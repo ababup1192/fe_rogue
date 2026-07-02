@@ -2,7 +2,7 @@
 name        = "flix_render_core"
 description = "OpenGL / OpenAL function wrappers for flix_game_engine (GLFW-free, AWT-compatible)"
 version     = "0.1.0"
-flix        = "0.73.0"
+flix        = "0.75.0"
 authors     = ["ababup1192 <ababup1192@gmail.com>"]
 repository  = "github:ababup1192/flix_render_core"
 

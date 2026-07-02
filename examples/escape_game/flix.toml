@@ -2,7 +2,7 @@
 name        = "ex_escape_game"
 description = "Yarn Spinner driven escape-room sample built on flix_game_engine"
 version     = "0.1.0"
-flix        = "0.73.0"
+flix        = "0.75.0"
 authors     = ["ababup1192 <ababup1192@gmail.com>"]
 
 [dependencies]
