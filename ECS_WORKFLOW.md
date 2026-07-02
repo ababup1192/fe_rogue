@@ -9,7 +9,7 @@
 
 「Scene 撲滅」= Scene ツリーから **①状態の権威 → ②ロジック → ③ノードそのもの** の順に責務を抜き、最終的に
 
-- 状態は **World（component store）** と **resources/（*.State effect handler）** のみが持つ
+- 状態は **World（component store）** と **ecs/resources/（*.State effect handler）** のみが持つ
 - ロジックは **ecs/rules/（純関数）+ ecs/systems/（World→World）+ frame-paced step** のみが担う
 - 描画は **render-from-World**（RenderItem/Drawable 直合成）のみ。hide-then-render の二重化を廃止
 - legacy 経路・トグル・golden oracle・`syncTreeFromScene/FromWorld` を撤去
@@ -42,12 +42,12 @@
 | 2 | 在庫・装備・耐久（weapons/staves/consumables/rings） | scene `Data#weapons` 等（World は mirror） | **P2（最後・P6 直前）** |
 | 3 | 配置物（Chest/Stairs/GroundItem）の実体 | ツリーノード | **P3** |
 | 4 | メニュー/HUD/カーソルの UI 状態 | NodeTag ペイロード（`ItemMenu(Int32,Set)` 等） | **P4** |
-| 5 | TurnPhase 19-case FSM | `resources/TurnPhase.State`（resource なので存続。scene 側 mirror だけ整理） | **P4** |
+| 5 | TurnPhase 19-case FSM | `ecs/resources/TurnPhase.State`（resource なので存続。scene 側 mirror だけ整理） | **P4** |
 | 6 | 演出（DamagePopup/Explosion/Pickup/HoldGauge/lunge marker） | ツリーノード + engine Tween | **P5** |
 | 7 | 残 driver（Fog/Minimap/ArrowCursor）の per-node dispatch | `process` callback | **P5** |
 | 8 | 移動トランザクションの scene 副作用（MoveDraft） | `PlayerMovementDriver`（旧 PlayerMovementScene）等 | **P5** |
 | 9 | Scene ツリー構築・`applyPhaseChange` の `Scene.empty()` 再構築・`syncTreeFromWorld`・hide-then-render | `Game.flix` / `GameLifecycle.flix` | **P6** |
-| 10 | セーブ/ロード（FloorSnapshot/SuspendSave が scene 直列化） | `resources/FloorSnapshot.flix` | **P6** |
+| 10 | セーブ/ロード（FloorSnapshot/SuspendSave が scene 直列化） | `save/FloorSnapshot.flix` | **P6** |
 | 11 | `*Legacy` 4 関数・トグル 3 個・golden oracle・並走 DIFF assert | `CombatDriver`（旧 CombatScene） / `StaffCast`（旧 StaffCastScene） / `Game.flix` | **P6**（最後まで消すな） |
 
 ---
@@ -137,7 +137,7 @@
 
 ### P4 — UI 状態の Resource/Component 化（NodeTag ペイロード撲滅）
 
-**目的**: メニュー・カーソル等の UI 状態を NodeTag ペイロード（ツリー埋め込み）から `resources/` の *.State effect handler（または World の ui store）へ移す。NodeTag を「識別のみの純タグ」にする。
+**目的**: メニュー・カーソル等の UI 状態を NodeTag ペイロード（ツリー埋め込み）から `ecs/resources/` の *.State effect handler（または World の ui store）へ移す。NodeTag を「識別のみの純タグ」にする。
 
 **達成条件**:
 - [ ] 各メニューの開閉・カーソル位置・選択状態が resource で読める
@@ -156,7 +156,7 @@
 - **(a) NodeTag payload → resource**（易・LogScene/BattlePanel で確立済）: `NodeTag.Xxx(Data)` に埋めた HUD/演出の状態を effect resource へ。対象は payload を持つ variant のみ。**注意**: `Stairs`/`Chest`/`GroundItem` の payload は P3 で描画 view として意図的に残置＝**P6 で撤去**（P4 対象外）。残る (a) 候補: `TopBar`/`LevelUpPanel`/`Title`/`ItemPickupPopup`/`HoldGauge`/`DamagePopup`/`Explosion`/`HPBar` 等（演出系は P5 と重なる）。
 - **(b) engine プリミティブ（ItemList/Cursor）→ resource**（難・未着手）: メニューの**カーソル位置/選択/項目**は NodeTag でなく engine の `ItemList`/`Cursor` ノードが持つ（例: `GameOverMenu` は既にペイロードレスで状態は ItemList）。「メニュー描画が resource→RenderItem の純関数」達成条件はここ。CursorScene（最重）が代表。ActionMenu/ItemMenu/Trade 等はこの (b) が本体。
 
-**P4-a で確立したパターン（NodeTag ペイロード → resource effect）**: ① 対象 Scene mod 内に `pub eff State { def get(): Data; def put(d: Data): Unit }` ＋ `pub def withState(rc)`（Ref-backed・Pacing.State と同型）を定義（状態が Scene 固有なら co-locate、汎用なら `resources/` へ）。② `NodeTag.Xxx(Data)` → `NodeTag.Xxx`（ペイオードレス）。enum 定義（Game.flix）＋構築/ match 全サイトを修正。③ `process`（or reader）が `Scene.getState` でなく `State.get()/put()` を使う。scene ノードは Label/CanvasLayer 等の**描画 view** として残す。④ `process` に新 effect を足したら **FrameAef.ProcessT** ＋ **gameLoop の効果行**（Game.flix）に `Xxx.State` を追記し、**Game.start に `with Xxx.withState(rc)` を 1 行注入**（既存 Pacing/GatherResume の並びに追加）。⑤ dispatch の `case NodeTag.Xxx(_) =>` を `case NodeTag.Xxx =>` に。純粋ロジック（enqueue/tick 等）は不変ゆえ既存テストがそのまま通る（挙動不変リファクタ）。
+**P4-a で確立したパターン（NodeTag ペイロード → resource effect）**: ① 対象 Scene mod 内に `pub eff State { def get(): Data; def put(d: Data): Unit }` ＋ `pub def withState(rc)`（Ref-backed・Pacing.State と同型）を定義（状態が Scene 固有なら co-locate、汎用なら `ecs/resources/` へ）。② `NodeTag.Xxx(Data)` → `NodeTag.Xxx`（ペイオードレス）。enum 定義（Game.flix）＋構築/ match 全サイトを修正。③ `process`（or reader）が `Scene.getState` でなく `State.get()/put()` を使う。scene ノードは Label/CanvasLayer 等の**描画 view** として残す。④ `process` に新 effect を足したら **FrameAef.ProcessT** ＋ **gameLoop の効果行**（Game.flix）に `Xxx.State` を追記し、**Game.start に `with Xxx.withState(rc)` を 1 行注入**（既存 Pacing/GatherResume の並びに追加）。⑤ dispatch の `case NodeTag.Xxx(_) =>` を `case NodeTag.Xxx =>` に。純粋ロジック（enqueue/tick 等）は不変ゆえ既存テストがそのまま通る（挙動不変リファクタ）。
 
 **注意**: 非 driver Scene の読みは effect 経由の慣習を維持（PartyQuery/RosterQuery パターン、モジュール名直タイプ禁止）。`[xxx]` 表示は BBCode 扱いされる罠 — メニュー描画を組み替えるとき Label2D/別表現を維持。CursorScene は入力ロジック濃度が高いので「状態移送」と「入力→intent 整理」を別スライスに割る。
 
@@ -217,7 +217,7 @@
   - ✅ 5d hp store 縦スライス＋scope 確定。**実バグ級の発見**: DSL/投擲/ふきとばしのダメージ・回復計算が scene の hp を入力にしていた（P6-2a の hp twin 退役後は stale＝「戦闘で削った敵に瓶を投げると満タン扱い」）。全 7 入力を World.hpOf 読みへ flip し、heal 系の書き込みを setHp funnel（SetHp 即時 emit 併記）へ統一（境界 emitHpSets は冪等な再 emit に）。**scope 確定: 残る dual-write field（weapons/staves/consumables/rings/statuses/hidden/usedStairs/alerted/isDying/acted/facing/selectedItem 等）は「scene 権威 + Cmd mirror」の hybrid-A 恒久設計であり stale ではない＝掃除対象外**。Data record の field 削除も見送り（overlay〔dataFromWorld〕が同じ record 型で World 値を運ぶ view-type として機能しており、削除は overlay 消費者を壊すだけで得るものが無い）。
 - [x] 6. `_plan_*.md` 群（examples/fe_rogue の full_ecs/oop_to_ecs/position_ecs）に完了アーカイブ banner を付与、本 doc §G を final 化（先頭を最終到達状態の要約に更新・baseline 更新）
 
-**対象**: `game/Game.flix`, `game/GameLifecycle.flix`, `resources/FloorSnapshot.flix`, `scenes/CombatScene.flix`, `StaffCastScene.flix`, `engine_ecs/src/EcsCodec.flix`(未結線 → wire)
+**対象**: `game/Game.flix`, `game/GameLifecycle.flix`, `save/FloorSnapshot.flix`, `scenes/CombatScene.flix`, `StaffCastScene.flix`, `engine_ecs/src/EcsCodec.flix`(未結線 → wire)
 
 **並列**: 不可。ここは 1 レーン直列（gameLoop の中核を触るため）。
 
