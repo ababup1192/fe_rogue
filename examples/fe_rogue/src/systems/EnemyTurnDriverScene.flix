@@ -103,7 +103,8 @@ mod EnemyTurnDriverScene {
     /// では再発火しない。検出自体は純粋で effect は `SelectedPlayer.State`（drafts 読み）だけ。
     def bumpedDarkRoomEnemy(scene: Scene[NodeTag]): Bool \ {SelectedPlayer.State, BoardQuery, World.WorldQuery} =
         let drafts  = SelectedPlayer.State.get()#drafts;
-        let players = PlayerScene.getAll(scene);
+        // P6-2b: 位置は World 上書き Data（scene gridPos twin は退役）。
+        let players = PlayerScene.getAllWithWorldPos(scene);
         if (not MoveDraft.anyMovedFromOrigin(players, drafts)) false
         else {
             let placements = MapScene.getPlacements(scene);
@@ -117,7 +118,7 @@ mod EnemyTurnDriverScene {
             let litRooms = MinimapScene.litRoomsDrafted(units, placements, roomCount);
             // P2: 接敵判定の board を World 由来へ（units stats は scene read-model・挙動不変）。
             let enc = EncounterBuilder.fromBoardQuery(scene);
-            EnemyScene.getAll(scene)
+            EnemyScene.getAllWithWorldPos(scene)
                 |> List.filter(e -> not e#isDying and not e#alerted)
                 |> List.exists(e ->
                     EnemyAI.adjacentInDarkRoom(enc#board, EnemyScene.unitView(e), litRooms, roomCount))
@@ -143,14 +144,15 @@ mod EnemyTurnDriverScene {
     /// 流れから呼ばれる「敵ターン入口」。
     pub def beginTurn(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, World.Command} =
-        let actives = EnemyScene.getAll(scene)
+                              TurnPhase.State, World.Command, World.WorldQuery} =
+        let actives = EnemyScene.getAllWithWorldPos(scene)
             |> List.filter(e -> not e#isDying and Option.isEmpty(e#attackTargetId));
         // 行動順は純粋関数 `orderedSteps` で決める（下記）。board を組めるときだけ Some で渡す。
-        // 据え置き: board は `BoardSnapshot.fromScene`（dual-write で World==scene・後日まとめて検討）。
+        // P6-2b: board は World 由来（World.toBoard）。scene gridPos twin 退役に伴い
+        // BoardSnapshot.fromScene（scene pieces）は live から撤去（fromScene は board-lock guard/テスト用に残置）。
         let boardOpt =
             if (List.isEmpty(MapScene.tryGetPlacements(scene))) None
-            else Some(BoardSnapshot.fromScene(scene));
+            else Some(World.toBoard(World.WorldQuery.get(), scene));
         let steps = orderedSteps(boardOpt, actives);
         // 敵ターン開始時に全敵の「行動済み」暗転を解除（プレイヤーの clearAllWaited と対称）。
         let cleared = EnemyScene.clearActedAll(scene);
@@ -210,7 +212,7 @@ mod EnemyTurnDriverScene {
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
                 SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery,
                 PlayerData.PartyQuery} =
-        match EnemyScene.get(step#id, scene) {
+        match EnemyScene.getWithWorldPos(step#id, scene) {
             case None       => scene   // 既に除外済み (死亡演出完了など)
             case Some(data) => applyStepForEnemy(step, data, scene)
         }
@@ -320,7 +322,7 @@ mod EnemyTurnDriverScene {
                         // attack_lunge の `attack:hit` メソッド発火時に CombatScene.process が行う。
                         // 攻撃前後の溜め: lunge (~160ms) より長い hold で「攻撃終了の余韻」を作る
                         // Attack はその敵の最終行動 → 行動済み暗転。hold は差し替え/通常攻撃の両方の手前。
-                        match PlayerScene.get(targetId, withAlert) {
+                        match PlayerScene.getWithWorldPos(targetId, withAlert) {
                             case None    => EnemyScene.setActed(enemyId, withAlert)
                             case Some(p) =>
                                 Pacing.State.hold(450 |> Duration.millis);
@@ -513,7 +515,10 @@ mod EnemyTurnDriverScene {
             // リーダーが階段で退場(usedStairs=hidden)済みだと毎ターン階段にカーソルが飛ぶので、
             // フロアに残るアクティブな駒(`firstActive`)へ明示スナップする。
             match PlayerScene.firstActive(lit) {
-                case Some(next) => PhaseTransitions.enterPlayerCursorAt(next#gridPos, lit)
+                // P6-2b: スナップ先セルは World.posOf（scene gridPos twin は退役）。
+                case Some(next) => PhaseTransitions.enterPlayerCursorAt(
+                    World.posOf(World.EntityRef.Player(next#id), World.WorldQuery.get())
+                        |> Option.getWithDefault(next#gridPos), lit)
                 case None       =>
                     // フロアに残っていた味方が敵ターン中に全滅し、生存者が階段退場済み
                     // (usedStairs=hidden) だけになると操作できる駒が 0 になり詰む。

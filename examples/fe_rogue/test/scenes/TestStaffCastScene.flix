@@ -126,6 +126,9 @@ mod TestStaffCastScene {
                 TestUnitFixtures.withNoopAnim(() ->
                     TestUnitFixtures.withMockGameLogger(() ->
                         StaffCastScene.applyStaffEffectDsl(0, staff, rule, hit, dir, scene)))))
+            } with handler World.WorldQuery {
+                // P6-2b: DSL 経路が World 位置を読む（read-after-write で同じ wref）。
+                def get(k) = k(Ref.get(wref))
             } with handler World.Command {
                 def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
             };

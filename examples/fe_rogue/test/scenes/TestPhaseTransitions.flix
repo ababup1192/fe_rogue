@@ -107,7 +107,8 @@ mod TestPhaseTransitions {
         region rc {
             let initial = sceneWithAllRangesAndCursor();
             let result = run {
-                let after = PhaseTransitions.enterPlayerMoving(initial);
+                let after = run { PhaseTransitions.enterPlayerMoving(initial) }
+                    with handler World.WorldQuery { def get(k) = k(World.empty()) };
                 observe(after)
             } with TurnPhase.withState(rc)
               with SelectedPlayer.withState(rc);
@@ -136,7 +137,8 @@ mod TestPhaseTransitions {
                     TestUnitFixtures.withMockPartyQuery(Scene.empty(), () ->
                         TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
                             run {
-                                let after = PhaseTransitions.enterPlayerAttack(initial);
+                                let after = run { PhaseTransitions.enterPlayerAttack(initial) }
+                                    with handler World.WorldQuery { def get(k) = k(World.empty()) };
                                 observe(after)
                             } with TurnPhase.withState(rc)
                               with SelectedPlayer.withState(rc)))));

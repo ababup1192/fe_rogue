@@ -205,7 +205,7 @@ mod ItemMenuScene {
                          _path: NodePath,
                          scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
-                        \ {SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery} =
+                        \ {SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery, World.WorldQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
         let withItems = match phase {
@@ -435,7 +435,7 @@ mod ItemMenuScene {
     /// disabled をスキップするので、左右でターゲットが変わって選択が射程外になったときの補正)。
     /// 武器のみなので weapons 内 index = 表示行 index となり、selIdx 正規化はそのまま使える。
     def refreshAttackWeaponList(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
         match SelectedPlayer.State.get()#id {
             case None => scene
             case Some(playerId) =>
@@ -462,7 +462,7 @@ mod ItemMenuScene {
     /// 現在の選択 index の武器がカーソル上の敵に届けばそのまま、届かなければ届く先頭武器。
     /// カーソルが敵に乗っていない / 届く武器が無いなら None。
     pub def activeAttackWeaponIndex(scene: Scene[NodeTag]): Option[Int32]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
         forM (
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerData.PartyQuery.get(playerId);
@@ -484,7 +484,7 @@ mod ItemMenuScene {
     // カーソル位置・敵をすべて scene から読む（PartyQuery snapshot に寄せると player 不在時の
     // 短絡が崩れ、カーソル未配置の経路で CursorScene.getGridPos が None を bug! として
     // 扱い Err をスローする）。scene-arg のまま。
-    def cursorTargetDistance(playerId: Int32, scene: Scene[NodeTag]): Option[Int32] =
+    def cursorTargetDistance(playerId: Int32, scene: Scene[NodeTag]): Option[Int32] \ World.WorldQuery =
         forM (
             player <- PlayerScene.get(playerId, scene);
             eid    <- EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene);

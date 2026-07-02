@@ -43,8 +43,11 @@ mod TurnFlow {
         // S6: setWaited が scene 直書きを撤去し World 権威化したため、scene 上では `waitedId` の駒が
         // まだ active に見える（frame-end の syncTreeFromWorld 前）。その 1 体を明示除外して拾う。
         match PlayerScene.firstActiveExcluding(waitedId, withWaited) {
+            // P6-2b: スナップ先セルは World.posOf（scene gridPos twin は退役）。
             case Some(next) =>
-                PhaseTransitions.enterPlayerCursorAt(next#gridPos, withWaited)
+                PhaseTransitions.enterPlayerCursorAt(
+                    World.posOf(World.EntityRef.Player(next#id), World.WorldQuery.get())
+                        |> Option.getWithDefault(next#gridPos), withWaited)
             case None       =>
                 EnemyTurnDriverScene.beginTurn(withWaited)
         }

@@ -808,8 +808,17 @@ mod World {
                 World.World({statusEffects = Map.mapWithKey((uid, s) -> if (uidIsEnemy(uid)) StatusSystem.tick(s) else s, w#statusEffects) | w})
             case Cmd.Move(ref, pos) =>
                 // A': 単一 store＋toUid（match ref arm 消失）。
+                // P6-2b: 旧位置を prevPos に自動記録（両 faction）。従来は敵の view 再生が move 後に
+                // scene の pre-move gridPos を読んで SetPrevPos していたが、gridPos twin 退役に伴い
+                // sim 側（ここ）で完結させる。Cmd 列は不変（新 Cmd を増やさない）。初回 Move（spawn seed）は
+                // 旧位置が無いので記録しない（従来も spawn では SetPrevPos されない）。
                 let World.World(w) = world;
-                World.World({pos = Map.insert(toUid(ref), pos, w#pos) | w})
+                let prevs = match Map.get(toUid(ref), w#pos) {
+                    case Some(old) => Map.insert(toUid(ref), old, w#enemyPrevPos)
+                    case None      => w#enemyPrevPos
+                };
+                World.World({pos = Map.insert(toUid(ref), pos, w#pos),
+                             enemyPrevPos = prevs | w})
             case Cmd.SetPhase(phase) =>
                 let World.World(w) = world; World.World({turnPhase = phase | w})
             case Cmd.SetHp(ref, hpVal) =>
@@ -1406,7 +1415,7 @@ mod World {
     /// （tuple arity/Eq 上限回避・§1.3）。sub-key（posKey/resourceStatKey/headKey/statusListKey/
     /// pendingLevelUpKey）を再利用＝leaf drift 不能を継承。ネスト境界は逐語複製。
     pub def playerDataKey(d: PlayerData.Data):
-            ((Int32, String, (Int32, Int32), Int32, Option[Int32],
+            ((Int32, String, Int32, Option[Int32],
               (Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32),
               (Int32, Option[(String, Int32)]),
               (Int32, Option[(String, Int32)]),
@@ -1421,7 +1430,8 @@ mod World {
         // 注: hp / waited / level / exp も P6-2a で外した。scene twin 退役（syncTree 派生撤去・
         //     ECS 経路は World のみ書く）ゆえ scene 値は stale が正＝DIFF 対象外。World 権威は
         //     overlay（dataFromWorld）と World 直読みの読み手 flip ＋ 専用テストが保証。
-        ((d#id, d#classId, posKey(d#gridPos), d#moveTiles,
+        // 注: gridPos も P6-2b で外した（scene twin 退役＝syncTree 撤去・読み手は World.posOf/overlay へ flip 済み）。
+        ((d#id, d#classId, d#moveTiles,
           d#attackTargetId, resourceStatKey(d#resource),
           headKey(d#weapons, weaponKey),
           headKey(d#staves, staffKey),
@@ -1437,7 +1447,7 @@ mod World {
     /// 既存正準キーから再利用＝leaf drift 不能を継承（S2.4/S4.4 級の重複射影 drift バグを再導入しない）。
     /// resource(R 残置)は両辺 scene 由来＝恒等一致ゆえ resourceId(String) を代表値とする。
     pub def enemyDataKey(d: EnemyData.Data):
-            ((Int32, String, (Int32, Int32), Bool, Int32, Int32, Bool, Option[Int32]),
+            ((Int32, String, Bool, Int32, Int32, Bool, Option[Int32]),
              (String, Option[(String, Int32)], Bool,
               List[(StatusSystem.StatusEffect, Int32, Int32)],
               Option[(String, Ring.RingEffect, Int32)])) =
@@ -1445,7 +1455,8 @@ mod World {
         //     ゆえ scene 値は stale＝再構築(World)と必然的に食い違う。scene 読み手が World 経由ゆえ DIFF 対象外が正。
         // 注: hp も P6-2a で外した（ECS 撃破は SetHp(0) のみで scene hp を書かず、syncTree 派生も撤去＝stale が正）。
         //     alerted/isDying は writer が scene 併記（dual-write）ゆえ残す。
-        ((d#id, d#resourceId, posKey(d#gridPos), d#alerted, d#homeModuleIdx,
+        // 注: gridPos も P6-2b で外した（playerDataKey と同じ理由）。
+        ((d#id, d#resourceId, d#alerted, d#homeModuleIdx,
           d#moveTiles, d#isDying, d#attackTargetId),
          (d#resourceId, Option.map(weaponKey, d#weapon), d#acted,
           statusListKey(d#statuses), Option.map(equippedRingKey, d#ring)))
@@ -2160,10 +2171,9 @@ mod World {
                 case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, d -> {statuses = statuses | d}, sc)
             }, scene, w#statusEffects)
 
-    /// S5（§A 完成へ・World→scene 一方向 sync）: 各ユニットの scene `gridPos` を **World の位置で上書き**する。
-    /// `syncStatusesToScene` と同型（`mapPlayer`/`mapEnemy` を再利用・scene 不在 id は no-op）。
-    /// S5a（dual-write 継続中）は World==scene ゆえ **no-op＝挙動不変**で seam を確立。S5b で move 関数の
-    /// scene gridPos 直書きを撤去し、gridPos を**この sync 由来（World の派生）**に一本化する。
+    /// P6-2b: **本番からは退役（テスト seam）**。gameLoop はもう呼ばない（gridPos の読み手は
+    /// World.posOf / overlay / getXxxWithWorldPos へ全 flip 済み）。golden/DSL テストが「World の位置を
+    /// scene Data へ投影して比較する」用途にのみ残す。
     pub def syncTreeFromWorld(world: World, scene: Scene[NodeTag]): Scene[NodeTag] =
         // A': 単一 `pos` store を team タグで faction 分けし、original id で mapPlayer/mapEnemy。
         let World.World(w) = world;

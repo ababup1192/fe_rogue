@@ -228,7 +228,7 @@ mod BattlePanelScene {
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
-                       PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command,
+                       PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery,
                        BattlePanelScene.State, UnitHPBarScene.ForecastState} =
         let phase  = TurnPhase.State.get();
         let synced = syncTargetToCursor(phase, scene);
@@ -330,7 +330,7 @@ mod BattlePanelScene {
     /// PlayerAttack 中、攻撃対象をカーソル位置の敵に毎フレーム同期する。
     /// カーソルが敵に乗っていなければ対象をクリアする（予報は出ない）。
     def syncTargetToCursor(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, World.Command} =
+            Scene[NodeTag] \ {SelectedPlayer.State, World.Command, World.WorldQuery} =
         if (phase != TurnPhase.Phase.PlayerAttack) scene
         else match SelectedPlayer.State.get()#id {
             case None             => scene
@@ -517,7 +517,7 @@ mod BattlePanelScene {
     /// 敵が居ない / 届く武器が無いなら None（予報は出ない）。
     def selectedAttackWeapon(scene: Scene[NodeTag]):
             Option[UnitCatalog.WeaponResource]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
         forM (
             idx      <- ItemMenuScene.activeAttackWeaponIndex(scene);
             playerId <- SelectedPlayer.State.get()#id;
@@ -530,7 +530,7 @@ mod BattlePanelScene {
     ///   - PlayerAttack : 選択中の敵 × 装備武器
     /// 揃わない / 別フェーズなら None。
     def buildForecast(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Option[ForecastView]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         match phase {
             case TurnPhase.Phase.WeaponSelect => buildWeaponSelectForecast(scene)
             case TurnPhase.Phase.PlayerAttack => buildAttackForecast(scene)
@@ -539,7 +539,7 @@ mod BattlePanelScene {
 
     /// PlayerAttack: 選択中味方 / カーソル上の敵 / 装備（活性）武器が揃ったら予報。
     def buildAttackForecast(scene: Scene[NodeTag]): Option[ForecastView]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         forM (
             pid    <- SelectedPlayer.State.get()#id;
             player <- PlayerData.PartyQuery.get(pid);
@@ -551,7 +551,7 @@ mod BattlePanelScene {
     /// WeaponSelect: 選択中味方 / カーソル中の武器 / カーソルが乗っている敵が揃ったら予報。
     /// カーソルは `WeaponSelectScene` が「その武器が届く最寄りの敵」へスナップ済み。
     def buildWeaponSelectForecast(scene: Scene[NodeTag]): Option[ForecastView]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         forM (
             pid    <- SelectedPlayer.State.get()#id;
             player <- PlayerData.PartyQuery.get(pid);
@@ -609,7 +609,7 @@ mod BattlePanelScene {
     /// `PlayerAttack` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
     /// 遷移先は入力をロックする `PlayerAttackHold`（Z 連打での再起動を防ぐ）。
     pub def confirm(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, World.WorldQuery,
                               GameLogger.GameLogger,
                               TurnPhase.State, SelectedPlayer.State,
                               PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command} =

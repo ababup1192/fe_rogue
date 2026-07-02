@@ -187,14 +187,15 @@ mod RenderWorld {
     /// solidBox の Drawable にする。敵/アイテムの点灯（可視性）制御は従来どおり FogScene が担い、ここは
     /// 暗幕の描画のみ。P6-1b: scene 側の haze プールは撤去済み＝この直描きが唯一の暗幕経路。
     /// 入力（origin 基準の部屋点灯・通路 torch）は `FogScene.process` と同一＝挙動不変。
-    pub def renderFog(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ SelectedPlayer.State =
+    pub def renderFog(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ {SelectedPlayer.State, World.WorldQuery} =
         // ダンジョン以外（タイトル/パーティ選択/メニュー等）は Map ノードが無い＝暗幕なし。
         // `MapScene.getPlacements` は Map 不在で bug! するので、`World.mapSnapshotOpt` と同じ存在ガードで早期 Nil。
         match Scene.getEngineNode(MapScene.mapPath(), scene) {
             case None    => Nil
             case Some(_) =>
                 let drafts     = SelectedPlayer.State.get()#drafts;
-                let units      = PlayerScene.getAll(scene)
+                // P6-2b: live 位置は World 上書き Data（scene gridPos twin は退役）。
+                let units      = PlayerScene.getAllWithWorldPos(scene)
                     |> List.map(d -> {gridPos = d#gridPos, hidden = d#hidden,
                                       origin = MoveDraft.originOf(d#id, drafts) |> Option.getWithDefault(d#gridPos)});
                 let placements = MapScene.getPlacements(scene);
@@ -206,12 +207,13 @@ mod RenderWorld {
 
     /// P6-1c/d: fog の「明るい穴」を frame に 1 回計算し、配置物の直描き（renderStairs/renderChests…）
     /// で共有する lit ゲート入力。Map 不在（タイトル/選択画面）は None＝配置物を描かない。
-    pub def fogHolesOpt(scene: Scene[NodeTag]): Option[List[GridRect]] \ SelectedPlayer.State =
+    pub def fogHolesOpt(scene: Scene[NodeTag]): Option[List[GridRect]] \ {SelectedPlayer.State, World.WorldQuery} =
         match Scene.getEngineNode(MapScene.mapPath(), scene) {
             case None    => None
             case Some(_) =>
                 let drafts = SelectedPlayer.State.get()#drafts;
-                let units  = PlayerScene.getAll(scene)
+                // P6-2b: live 位置は World 上書き Data（scene gridPos twin は退役）。
+                let units  = PlayerScene.getAllWithWorldPos(scene)
                     |> List.map(d -> {gridPos = d#gridPos, hidden = d#hidden,
                                       origin = MoveDraft.originOf(d#id, drafts) |> Option.getWithDefault(d#gridPos)});
                 Some(FogScene.holesForDraft(units, MapScene.getPlacements(scene),

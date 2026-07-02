@@ -503,9 +503,10 @@ mod EnemyScene {
     /// 親 Marker2D の visible を切り替えるので子 Sprite / HPBar も連動する。
     /// visible を落としても AI は継続するため、フォグで隠れた敵も行動する点に注意。
     pub def applyFog(isLit: {x = Int32, y = Int32} -> Bool,
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ World.WorldQuery =
+        // P6-2b: 点灯判定は World 位置（scene gridPos twin は退役）。
         List.foldLeft((acc, d) -> setEnemyVisible(d#id, isLit(d#gridPos), acc),
-                      scene, getAll(scene))
+                      scene, getAllWithWorldPos(scene))
 
     /// 敵 id の親 Marker2D の visible を設定する（Data は素通し）。
     def setEnemyVisible(id: Int32, vis: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
@@ -527,9 +528,21 @@ mod EnemyScene {
     /// 移動は `EnemyTurn.Queue` に step を積み、1 フレームに 1 step ずつ呼ぶことで実現する。
     /// **歩行可否（壁・他駒）の判定は呼び出し側（EnemyAI）が済ませている前提**で、
     /// EnemyScene 自身は衝突判定を持たない。
+    /// P6-2b: scene Data の gridPos だけ World.posOf で上書きして返す（PlayerScene と同型）。
+    pub def getWithWorldPos(id: Int32, scene: Scene[NodeTag]): Option[Data] \ World.WorldQuery =
+        let w = World.WorldQuery.get();
+        get(id, scene) |> Option.map(d ->
+            {gridPos = World.posOf(World.EntityRef.Enemy(id), w) |> Option.getWithDefault(d#gridPos) | d})
+
+    /// `getWithWorldPos` の全員版。
+    pub def getAllWithWorldPos(scene: Scene[NodeTag]): List[Data] \ World.WorldQuery =
+        let w = World.WorldQuery.get();
+        getAll(scene) |> List.map(d ->
+            {gridPos = World.posOf(World.EntityRef.Enemy(d#id), w) |> Option.getWithDefault(d#gridPos) | d})
+
     pub def moveTo(id: Int32, target: {x = Int32, y = Int32},
                     map: MapSnapshot,
-                    scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         // F4a: プレイヤー移動（PlayerScene）と同じ `SimEvent.Moved` seam に統一。
         //   moveTo = SYSTEM(stepEnemyMove: Cmd.Move emit + Moved 返却) → VIEW(replayMovedEvent 再生)。
         //   歩行可否は呼び出し側（EnemyAI.decideAction）が済ませている前提＝System は判定せず書くだけ。
@@ -550,7 +563,7 @@ mod EnemyScene {
     /// （`PlayerScene.replayMovedEvent` が担当）＝faction ごとに自分の event を再生。
     /// faction 分岐は 1 段の match に留め、敵の見た目再生は `replayEnemyMoveView` に委譲（ネスト回避）。
     pub def replayMovedEvent(event: World.SimEvent, map: MapSnapshot,
-                              scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         match event {
             case World.SimEvent.Moved(World.EntityRef.Enemy(id), target)  => replayEnemyMoveView(id, target, map, scene)
             case World.SimEvent.Moved(World.EntityRef.Player(_), _)        => scene
@@ -562,25 +575,22 @@ mod EnemyScene {
     /// 敵 1 体の move 見た目再生（Tween 滑走 + 左右反転 + prevPos 記録）。
     def replayEnemyMoveView(id: Int32, target: {x = Int32, y = Int32},
                              map: MapSnapshot, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ World.Command =
+            Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         let startWorld  = Scene.globalPositionAt(enemyPath(id), scene);
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         // B/m3: 描画位置 tween は World（renderPos）権威＝engine `Tween.tweenPosition` は退役。
         // marker は `RenderWorld.syncMarkers` が renderPos に合わせる（味方と同一の口）。
         World.moveUnit(World.EntityRef.Enemy(id), {start = startWorld, target = targetWorld}, Duration.toSeconds(slideDuration()));
+        // P6-2b: 移動前位置は World.prevPosOf（applyCmd の Move が旧位置を自動記録）から読む。
+        // 旧: scene の pre-move gridPos 読み＋SetPrevPos emit（gridPos twin 退役に伴い sim 側へ移設）。
+        let prevX = World.prevPosOf(World.EntityRef.Enemy(id), World.WorldQuery.get())
+            |> Option.map(p -> p#x);
         // flipForFacing 付き (= 左向き絵) の敵だけ左右反転する。match でなく Option パイプで畳む。
-        let flipped = get(id, scene)
+        get(id, scene)
             |> Option.filter(d -> d#resource#sprite#flipForFacing)
-            |> Option.map(d -> applyFacingFlip(id, d#gridPos#x, target#x, scene))
-            |> Option.getWithDefault(scene);
-        // 直前位置を記録（徘徊の「来た道へ戻らない」判定に使う）。`d#gridPos` は frame-head の
-        // 移動前位置なので正しい（gridPos 自体は frame-end の syncTreeFromWorld で World 由来に derive）。
-        // S6: prevPos は World 権威。Cmd emit のみ・scene 直書きは撤去（syncTree が derive）。
-        match get(id, scene) |> Option.map(d -> d#gridPos) {
-            case Some(p) => World.Command.emit(World.Cmd.SetPrevPos(World.EntityRef.Enemy(id), p))
-            case None    => ()
-        };
-        flipped
+            |> Option.flatMap(_ -> prevX)
+            |> Option.map(px -> applyFacingFlip(id, px, target#x, scene))
+            |> Option.getWithDefault(scene)
 
     /// P6-1h: 左右反転を World store（unitFlipH）へ emit（sprite ノード撤去に伴い Cmd 化）。
     def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
@@ -612,8 +622,9 @@ mod EnemyScene {
 
     /// 指定セルに居る（生きている）敵の id を返す。死亡演出中の敵は対象外。
     /// PlayerAttack フェーズで「カーソルが赤マス上の敵に乗っているか」の判定に使う。
-    pub def findIdAt(coord: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Option[Int32] =
-        getAll(scene)
+    pub def findIdAt(coord: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Option[Int32] \ World.WorldQuery =
+        // P6-2b: 位置は World 上書き Data（scene gridPos twin は退役）。isDying は writer 併記で fresh。
+        getAllWithWorldPos(scene)
             |> List.findMap(d ->
                 if (not d#isDying
                     and d#gridPos#x == coord#x

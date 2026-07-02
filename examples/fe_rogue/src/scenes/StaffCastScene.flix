@@ -34,7 +34,7 @@ mod StaffCastScene {
         // プレイヤーと杖の両方が解決できたときだけ発動。どちらか欠ければ scene のまま。
         // ネストした match を避けるため Option を forM で短絡的に畳む。
         let cast = forM (
-            player <- PlayerScene.get(playerId, scene);
+            player <- PlayerScene.getWithWorldPos(playerId, scene);
             staff  <- List.nth(staffIdx, player#staves)
         ) yield fireStaff(playerId, staffIdx, player, staff, direction, scene);
         Option.getWithDefault(scene, cast)
@@ -78,9 +78,9 @@ mod StaffCastScene {
     /// 回復杖でない / 負傷味方が居ないなら None（呼び出し側はデフォルト Up のまま）。
     /// ネストした match を避けるため Option の forM で短絡的に畳む。
     pub def staffAimInitialDirection(playerId: Int32, scene: Scene[NodeTag]):
-            Option[Staff.Direction] =
+            Option[Staff.Direction] \ World.WorldQuery =
         forM (
-            player <- PlayerScene.get(playerId, scene);
+            player <- PlayerScene.getWithWorldPos(playerId, scene);
             idx    <- selectedStaffIndex(player);
             staff  <- List.nth(idx, player#staves);
             dir    <- healDirectionFor(player, playerId, staff, scene)
@@ -96,7 +96,7 @@ mod StaffCastScene {
     /// 回復杖なら負傷味方への方向、それ以外（攻撃杖等）は None。
     /// 負傷味方の位置だけを `Staff.pickHealDirection` に渡す（純粋計算へ委譲）。
     def healDirectionFor(player: PlayerScene.Data, playerId: Int32, staff: Staff.StaffResource,
-                          scene: Scene[NodeTag]): Option[Staff.Direction] =
+                          scene: Scene[NodeTag]): Option[Staff.Direction] \ World.WorldQuery =
         if (staff#effect == Staff.StaffEffect.Heal)
             Staff.pickHealDirection(player#gridPos,
                 injuredAlliesExcept(playerId, scene) |> List.map(a -> a#gridPos))
@@ -105,9 +105,14 @@ mod StaffCastScene {
     /// 自分以外で HP が最大未満（負傷している）の味方一覧。
     /// 自己を除外するのは、自己回復はメニューの「つかう → きずぐすり」で行う別フローだから。
     /// HP < maxHp を「負傷」と定義しており、最大 HP ちょうどの味方は照準候補に含めない。
-    def injuredAlliesExcept(playerId: Int32, scene: Scene[NodeTag]): List[PlayerScene.Data] =
-        PlayerScene.getAll(scene)
-            |> List.filter(a -> a#id != playerId and a#hp < a#resource#hp)
+    def injuredAlliesExcept(playerId: Int32, scene: Scene[NodeTag]):
+            List[PlayerScene.Data] \ World.WorldQuery =
+        // P6-2b: 位置（照準方向計算に使う）は World 上書き Data で。hp は overlay 化済みの読み手が
+        // 大半だがここは負傷判定のみ（scene hp は ECS 被弾後 stale）→ World.hpOf で判定。
+        let w = World.WorldQuery.get();
+        PlayerScene.getAllWithWorldPos(scene)
+            |> List.filter(a -> a#id != playerId
+                and (World.hpOf(World.EntityRef.Player(a#id), w) |> Option.getWithDefault(a#hp)) < a#resource#hp)
 
     /// 杖の効果適用。IDE 合成エディタの effectRule（onUse）があれば **DSL 経路**（runPlan）で
     /// 効かせ、無ければ従来の `staff#effect × hit` legacy 分岐へ落とす。
@@ -226,7 +231,7 @@ mod StaffCastScene {
     pub def applyStaffEffectDsl(playerId: Int32, staff: Staff.StaffResource,
                              rule: EffectRule.EffectRule, hit: RayHit,
                              dir: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, World.WorldQuery, BoardQuery} =
         match staffHitTarget(hit) {
             case Some((id, ally)) =>
                 let ctx = {selfId = playerId, attackerId = playerId, actorIsPlayer = true,
@@ -248,7 +253,7 @@ mod StaffCastScene {
     /// effect 行は legacy 委譲先（Tween / AnimationPlayer / GameLogger）に合わせ広く取る。
     def staffEffectHandlers(srcId: Int32, dir: {x = Int32, y = Int32}):
             EffectRunner.PlanHandlers[Scene[NodeTag],
-                {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery}] = {
+                {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, World.WorldQuery, BoardQuery}] = {
         heal       = (sc, id, ally, n)        -> checked_ecast(healUnit(id, ally, n, sc)),
         fullHeal   = (sc, id, ally)           -> checked_ecast(fullHealUnit(id, ally, sc)),
         maxHpUp    = (sc, id, ally, n)        -> checked_ecast(maxHpUpUnit(id, ally, n, sc)),
@@ -270,15 +275,16 @@ mod StaffCastScene {
         else      applyBindToEnemy(srcLabel, id, turns, sc)
 
     /// 対象の現在グリッド座標を ally で出し分けて取る（custom op の位置導出用。攻撃直後は hitCell と一致）。
-    def gridOf(id: Int32, ally: Bool, sc: Scene[NodeTag]): Option[{x = Int32, y = Int32}] =
-        if (ally) PlayerScene.get(id, sc) |> Option.map(d -> d#gridPos)
-        else      EnemyScene.get(id, sc)  |> Option.map(d -> d#gridPos)
+    def gridOf(id: Int32, ally: Bool, _sc: Scene[NodeTag]): Option[{x = Int32, y = Int32}] \ World.WorldQuery =
+        // P6-2b: 現在位置は World.posOf（scene gridPos twin は退役）。
+        let ref = if (ally) World.EntityRef.Player(id) else World.EntityRef.Enemy(id);
+        World.posOf(ref, World.WorldQuery.get())
 
     /// custom op（盤面副作用系）を当たったユニットへ。位置は scene から id 逆引き、方向は cast の dir。
     /// knockback/swapPos/warpToStairs を legacy 関数へ委譲（挙動・ログ一致）。未知 op / 対象不在は防御 no-op。
     def customStaffEffect(srcId: Int32, dir: {x = Int32, y = Int32},
                            op: String, id: Int32, ally: Bool, sc: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, BoardQuery} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, World.WorldQuery, BoardQuery} =
         let srcLabel = PlayerScene.displayName(srcId, sc);
         match op {
             case "knockback" =>
@@ -563,7 +569,7 @@ mod StaffCastScene {
         // プレイヤーと消費アイテムの両方が解決できたときだけ使用。欠ければ scene のまま。
         // forM による短絡は applyStaffCast と同様。
         let used = forM (
-            player <- PlayerScene.get(playerId, scene);
+            player <- PlayerScene.getWithWorldPos(playerId, scene);
             item   <- List.nth(idx, player#consumables)
         ) yield useConsumable(playerId, idx, player, item, scene);
         Option.getWithDefault(scene, used)
@@ -750,7 +756,7 @@ mod StaffCastScene {
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 World.Command, World.WorldQuery} =
         let cast = forM (
-            player <- PlayerScene.get(playerId, scene);
+            player <- PlayerScene.getWithWorldPos(playerId, scene);
             item   <- List.nth(idx, player#consumables)
         ) yield fireConsumable(playerId, idx, player, item, direction, scene);
         Option.getWithDefault(scene, cast)
@@ -817,7 +823,7 @@ mod StaffCastScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
                 Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
-        let cast = forM (player <- PlayerScene.get(playerId, scene))
+        let cast = forM (player <- PlayerScene.getWithWorldPos(playerId, scene))
             yield fireThrow(playerId, kind, player, direction, scene);
         Option.getWithDefault(scene, cast)
 
@@ -964,7 +970,8 @@ mod StaffCastScene {
                             hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio,
+                World.Command, World.WorldQuery} =
         match item#effect {
             case Consumable.ConsumableEffect.FireBottle  => throwBottleSingle("${PlayerScene.displayName(playerId, scene)}", item, hit, scene)
             case Consumable.ConsumableEffect.BlastBottle => throwBottleBlast("${PlayerScene.displayName(playerId, scene)}", item, hit, scene)
@@ -989,7 +996,8 @@ mod StaffCastScene {
                            hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio,
+                World.Command} =
         AudioStreamPlayer.play("magic");
         let dmg = item#magnitude;
         // 着弾セルに爆発エフェクトを出してからダメージを与える。
@@ -1009,7 +1017,8 @@ mod StaffCastScene {
                           hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio,
+                World.Command, World.WorldQuery} =
         AudioStreamPlayer.play("critical");
         let dmg = item#magnitude;
         match rayHitCell(hit) {
@@ -1037,8 +1046,8 @@ mod StaffCastScene {
     /// 爆発: 中心セルの周囲 1 マス内の全敵に固定ダメージを与える。
     def blastDamageEnemies(srcLabel: String, dmg: Int32, name: String,
                             center: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command} =
-        let ids = EnemyScene.getAll(scene)
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, World.WorldQuery} =
+        let ids = EnemyScene.getAllWithWorldPos(scene)
                     |> List.filter(e -> chebyshev(e#gridPos, center) <= 1)
                     |> List.map(e -> e#id);
         List.foldLeft((sc, id) -> throwDamageToEnemy(srcLabel, id, dmg, name, sc), scene, ids)
@@ -1047,8 +1056,8 @@ mod StaffCastScene {
     def blastDamagePlayers(srcLabel: String, dmg: Int32, name: String,
                             center: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, CustomEffects.GameOverRequest,
-                               SelectedPlayer.State, World.Command} =
-        let ids = PlayerScene.getAll(scene)
+                               SelectedPlayer.State, World.Command, World.WorldQuery} =
+        let ids = PlayerScene.getAllWithWorldPos(scene)
                     |> List.filter(p -> chebyshev(p#gridPos, center) <= 1)
                     |> List.map(p -> p#id);
         List.foldLeft((sc, id) -> throwDamageToPlayer(srcLabel, id, dmg, name, sc), scene, ids)
@@ -1077,7 +1086,8 @@ mod StaffCastScene {
                            description: String, scene: Scene[NodeTag]):
             Option[Scene[NodeTag]]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio,
+                World.Command, World.WorldQuery, BoardQuery} =
         match enemyBottleFor(description) {
             case None       => None
             case Some(item) => enemyThrowWith(enemyId, origin, item, scene)
@@ -1088,7 +1098,8 @@ mod StaffCastScene {
                         item: Consumable.ConsumableResource, scene: Scene[NodeTag]):
             Option[Scene[NodeTag]]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio,
+                World.Command, World.WorldQuery, BoardQuery} =
         // P1b: 敵投擲（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board: Board = BoardQuery.board();
         match enemyThrowDirection(origin, board) {
@@ -1242,7 +1253,8 @@ mod StaffCastScene {
                           hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio,
+                World.Command, World.WorldQuery} =
         match item#effect {
             case Consumable.ConsumableEffect.FireBottle  => throwBottleSingle(srcLabel, item, hit, scene)
             case Consumable.ConsumableEffect.BlastBottle => throwBottleBlast(srcLabel, item, hit, scene)

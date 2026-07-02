@@ -391,7 +391,7 @@ mod PlayerScene {
     pub def moveTo(id: Int32, map: MapSnapshot, target: {x = Int32, y = Int32},
                     marker: Marker2D, data: Data, slide: Duration.Duration,
                     scene: Scene[NodeTag]): (Marker2D, Data)
-                    \ World.Command =
+                    \ {World.Command, World.WorldQuery} =
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         // B/m3: 描画位置 tween は World（renderPos）権威＝engine `Tween.tweenPosition` は退役。
@@ -399,7 +399,10 @@ mod PlayerScene {
         World.moveUnit(World.EntityRef.Player(id), {start = startWorld, target = targetWorld}, Duration.toSeconds(slide));
         // 進行方向を facing に反映し、AnimatedSprite2D なら walk_<dir> 再生 (副作用)。
         // sprite ノード書き換えは moveToById 側でやる (moveTo は state を返すだけ)。
-        let nextFacing = directionOfStep(data#gridPos, target)
+        // P6-2b: 移動前位置は World.posOf（Cmd.Move の emit **前**なので pre-move）。scene twin は退役。
+        let pre = World.posOf(World.EntityRef.Player(id), World.WorldQuery.get())
+                      |> Option.getWithDefault(data#gridPos);
+        let nextFacing = directionOfStep(pre, target)
                             |> Option.getWithDefault(data#facing);
         World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
         (marker, {gridPos = target, facing = nextFacing | data})
@@ -416,7 +419,7 @@ mod PlayerScene {
     /// `EnemyScene.moveTo` と同じインターフェース。**歩行可否は呼び出し側が確認済み前提**。
     pub def moveToById(id: Int32, target: {x = Int32, y = Int32},
                         map: MapSnapshot, slide: Duration.Duration,
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         // F3a: 1 歩移動を sim 書き込みと view 再生に分離。
         // ── SYSTEM(sim): 位置の唯一権威。`Cmd.Move` が World に書く（gridPos は frame-end の
         //    `World.syncTreeFromWorld` で World 由来に derive＝scene へ直書きしない）。
@@ -430,7 +433,7 @@ mod PlayerScene {
     /// 敵の move 再生は F4（敵ターン System 化）で別途扱うため現状は no-op。
     pub def replayMovedEvent(event: World.SimEvent, map: MapSnapshot,
                               slide: Duration.Duration, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ World.Command =
+            Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         match event {
             case World.SimEvent.Moved(World.EntityRef.Player(id), target) =>
                 replayMoveView(id, target, map, slide, scene)
@@ -455,7 +458,7 @@ mod PlayerScene {
     /// sim 書き込みを含まない（`World.Command` を要求しない）＝イベント再生の純 view エントリ。
     pub def replayMoveView(id: Int32, target: {x = Int32, y = Int32},
                         map: MapSnapshot, slide: Duration.Duration,
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         // B/m3: 描画位置 tween は World（renderPos）が唯一の権威＝engine `Tween.tweenPosition` は退役。
@@ -463,7 +466,10 @@ mod PlayerScene {
         World.moveUnit(World.EntityRef.Player(id), {start = startWorld, target = targetWorld}, Duration.toSeconds(slide));
         // 直前のグリッド座標から target への 1 マス差で方向を決める。
         // 0 ベクトル (= 同じセル) の場合は既存の facing を保つ。
-        let prev      = getGridPos(id, scene);
+        // P6-2b: 移動前位置は World.prevPosOf（applyCmd の Move が旧位置を自動記録）。
+        // World 未登録（テスト/spawn 過渡）のみ scene fallback。
+        let prev      = World.prevPosOf(World.EntityRef.Player(id), World.WorldQuery.get())
+                            |> Option.getWithDefault(getGridPos(id, scene));
         let dirOpt    = directionOfStep(prev, target);
         // facing（向き＝視覚状態）だけここで更新する。
         let withState = mapPlayer(id, d -> {
@@ -542,11 +548,12 @@ mod PlayerScene {
     /// 集合直後（手動確定 / ターン継続での自動再突入）に C で個別行動モードへ戻せるかの判定。
     /// `gatherActive` でなければ false。`beginGather` が積んだ各 `MovedFrom` 起点と現在位置を
     /// 比べ、1 体でも origin から動いていれば false（移動を始めたら切替不可）。
-    pub def gatherNotMovedYet(scene: Scene[NodeTag]): Bool \ SelectedPlayer.State =
+    pub def gatherNotMovedYet(scene: Scene[NodeTag]): Bool \ {SelectedPlayer.State, World.WorldQuery} =
         let sel = SelectedPlayer.State.get();
         if (not sel#gatherActive) false
         else {
-            let living = getAll(scene) |> List.filter(d -> d#hp > 0);
+            // P6-2b: 現在位置は World 上書き Data（origin との一致比較）。
+            let living = getAllWithWorldPos(scene) |> List.filter(d -> d#hp > 0);
             not MoveDraft.anyMovedFromOrigin(living, sel#drafts)
         }
 
@@ -1331,7 +1338,22 @@ mod PlayerScene {
     // ────────────────────────────────────────────────────────
 
     /// 指定 id のプレイヤーの現在グリッド座標を返す。未登録なら panic。
+    /// P6-2b: scene Data の gridPos だけ World.posOf で上書きして返す（他 field は scene 権威のまま）。
+    /// gridPos twin 退役後の「現在位置つき Data」取得口。World 未登録（テスト/spawn 過渡）は scene 値。
+    pub def getWithWorldPos(id: Int32, scene: Scene[NodeTag]): Option[Data] \ World.WorldQuery =
+        let w = World.WorldQuery.get();
+        get(id, scene) |> Option.map(d ->
+            {gridPos = World.posOf(World.EntityRef.Player(id), w) |> Option.getWithDefault(d#gridPos) | d})
+
+    /// `getWithWorldPos` の全員版。
+    pub def getAllWithWorldPos(scene: Scene[NodeTag]): List[Data] \ World.WorldQuery =
+        let w = World.WorldQuery.get();
+        getAll(scene) |> List.map(d ->
+            {gridPos = World.posOf(World.EntityRef.Player(d#id), w) |> Option.getWithDefault(d#gridPos) | d})
+
     pub def getGridPos(id: Int32, scene: Scene[NodeTag]): {x = Int32, y = Int32} =
+        // P6-2b 注: scene twin 読み（World 未登録のテスト/spawn 過渡と replayMoveView fallback 用に残置）。
+        // live の現在位置は World.posOf / PartyQuery を使うこと。
         match get(id, scene) {
             case Some(d) => d#gridPos
             case None    => bug!("PlayerScene: player ${id} not found")

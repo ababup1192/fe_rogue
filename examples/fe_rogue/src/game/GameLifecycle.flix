@@ -183,7 +183,7 @@ mod GameLifecycle {
     /// audio は `applyAudioAttach` で再アタッチ（BGM 再生）。
     pub def rebuildFloorFromSnapshot(catalogs: Catalogs, snap: FloorSnapshot.T): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, SelectedPlayer.State, World.Command,
-                TopBarScene.State} =
+                World.WorldQuery, TopBarScene.State} =
         let floor = FloorCatalog.get(snap#floorId, catalogs#floors);
         // P6-1d/e: 前フロア/前 run の配置物 store を掃除してから addFromSnaps で再 spawn する
         // （scene 再構築での自動 prune は廃止＝明示 Cmd。addFromSnaps より前が必須）。

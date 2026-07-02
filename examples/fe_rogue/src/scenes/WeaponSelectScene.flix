@@ -114,7 +114,7 @@ mod WeaponSelectScene {
                         (EngineNode[NodeTag], Scene[NodeTag])
                         \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                            SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery,
-                           EnemyData.RosterQuery} =
+                           EnemyData.RosterQuery, World.WorldQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
         // UX: 閉じている間はカーソルを先頭(0)に戻し、次に開いたとき常に 1 本目の武器から始める。
@@ -136,7 +136,8 @@ mod WeaponSelectScene {
     /// 届く敵が居なければカーソルは触らない。戦闘予報はこのカーソル上の敵で出る。
     def snapCursorToTarget(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
+                              World.WorldQuery} =
         match focusedPlayerWeapon(scene) {
             case None                  => scene
             case Some((player, weapon)) =>
@@ -161,7 +162,7 @@ mod WeaponSelectScene {
     /// `cell` に居る敵が `weapon` の射程内の生存敵か（カーソルが有効な対象に乗っているかの判定）。
     def isReachableEnemyCell(cell: {x = Int32, y = Int32}, pos: {x = Int32, y = Int32},
                              weapon: UnitCatalog.WeaponResource, scene: Scene[NodeTag]):
-            Bool \ EnemyData.RosterQuery =
+            Bool \ {EnemyData.RosterQuery, World.WorldQuery} =
         // P6-2b: 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む（scene 直読みは stale）。
         EnemyScene.findIdAt(cell, scene)
             |> Option.flatMap(id -> EnemyData.RosterQuery.get(id))
@@ -341,7 +342,7 @@ mod WeaponSelectScene {
     pub def onConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                         Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery, World.Command} =
+                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery, World.Command, World.WorldQuery} =
         let started = forM (
             pid   <- SelectedPlayer.State.get()#id;
             idx   <- entry#metadata |> Option.flatMap(parseWeaponIndex);
@@ -367,7 +368,7 @@ mod WeaponSelectScene {
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):
                                     Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery, World.Command} =
+                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery, World.Command, World.WorldQuery} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             case None        => scene
             case Some(entry) => if (entry#disabled) scene else onConfirmed(entry, scene)

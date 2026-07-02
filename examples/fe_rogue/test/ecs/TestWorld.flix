@@ -1352,7 +1352,8 @@ mod TestWorld {
     def testPlayerDataMismatchesDetectsDrift(): Unit \ Assert =
         let scene   = sampleScene();
         let world   = World.syncFromScene(scene, World.empty());
-        let drifted = World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 9, y = 9}), world);
+        // P6-2b: pos も key から退役したため drift 源を moveTiles に変更。
+        let drifted = World.applyCmd(World.Cmd.SetMoveTiles(World.EntityRef.Player(0), 99), world);
         Assert.assertEq(expected = false, List.isEmpty(World.playerDataMismatches(drifted, scene)))
 
     /// フィールド単位 pin: dataFromWorld(0) の代表 field（gridPos/hp/moveTiles/level/classId）が
@@ -1496,7 +1497,8 @@ mod TestWorld {
             expected = (true, true, true, true, true, true, true, true, true, true, true, true, true),
             (k({id = 99 | d})                              != k(d),
              k({classId = "other" | d})                    != k(d),
-             k({gridPos = {x = 99, y = 99} | d})           != k(d),
+             // P6-2b: gridPos は key から退役（含まれないことを == で pin）。
+             k({gridPos = {x = 99, y = 99} | d})           == k(d),
              k({moveTiles = 99 | d})                       != k(d),
              k({hp = 99 | d})                              == k(d),
              k({waited = true | d})                        == k(d),
@@ -1546,7 +1548,8 @@ mod TestWorld {
     def testEnemyDataMismatchesDetectsDrift(): Unit \ Assert =
         let scene   = sampleScene();
         let world   = World.syncFromScene(scene, World.empty());
-        let drifted = World.applyCmd(World.Cmd.Move(World.EntityRef.Enemy(5), {x = 9, y = 9}), world);
+        // P6-2b: pos も key から退役したため drift 源を moveTiles に変更。
+        let drifted = World.applyCmd(World.Cmd.SetMoveTiles(World.EntityRef.Enemy(5), 99), world);
         Assert.assertEq(expected = false, List.isEmpty(World.enemyDataMismatches(drifted, scene)))
 
     /// フィールド単位 pin: dataFromWorldEnemy(5) の代表 field（gridPos/hp/moveTiles/alerted/resourceId）が
@@ -1571,7 +1574,8 @@ mod TestWorld {
             expected = (true, true, true, true, true, true, true, true, true),
             (k({id = 99 | d})                     != k(d),
              k({resourceId = "other" | d})        != k(d),
-             k({gridPos = {x = 99, y = 99} | d})  != k(d),
+             // P6-2b: gridPos は key から退役（含まれないことを == で pin）。
+             k({gridPos = {x = 99, y = 99} | d})  == k(d),
              k({alerted = true | d})              != k(d),
              k({homeModuleIdx = 99 | d})          != k(d),
              k({moveTiles = 99 | d})              != k(d),

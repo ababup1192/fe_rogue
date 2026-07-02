@@ -302,7 +302,10 @@ mod TestUnitFixtures {
         run { thunk() } with handler EnemyData.RosterQuery {
             def get(id, k)         = k(EnemyScene.get(id, scene))
             def getAll(k)          = k(EnemyScene.getAll(scene))
-            def findIdAt(coord, k) = k(EnemyScene.findIdAt(coord, scene))
+            // P6-2b: findIdAt が World 位置を読むようになった（posOf None→scene fallback）＝
+            // モックは空 World を与えて scene 値のまま返す。
+            def findIdAt(coord, k) = k(run { EnemyScene.findIdAt(coord, scene) }
+                                        with handler World.WorldQuery { def get(k1) = k1(World.empty()) })
             def anyAttacking(k)    = k(EnemyScene.anyAttacking(scene))
         }
 
@@ -570,9 +573,15 @@ mod TestUnitFixtures {
     /// emit された全 Cmd を空 World に `applyCmd` で積み、`(thunk の結果, 最終 World)` を返す。
     /// move の描画 tween（`Cmd.StartTween`→renderPos）を実 World で回して marker 位置を検証する
     /// 統合テスト向け（`stepWorld` で完了まで進め `RenderWorld.syncMarkers` で marker へ載せる）。
-    pub def withWorldApplied(rc: Region[r], thunk: Unit -> a \ ef): (a, World) \ ((ef - World.Command) + r) =
+    pub def withWorldApplied(rc: Region[r], thunk: Unit -> a \ ef): (a, World) \ (((ef - World.Command) - World.WorldQuery) + r) =
         let worldRef = Ref.fresh(rc, World.empty());
-        let out = run { thunk() } with handler World.Command {
+        // P6-2b: WorldQuery も同一 Ref に結線（read-after-write）。move seam の pre-move 読み
+        //（posOf/prevPosOf）が Query を要求するため（withWorldCommand と同型）。
+        let out = run {
+            run { thunk() } with handler World.WorldQuery {
+                def get(k) = k(Ref.get(worldRef))
+            }
+        } with handler World.Command {
             def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(worldRef)), worldRef); k() }
         };
         (out, Ref.get(worldRef))
@@ -740,17 +749,21 @@ mod TestUnitFixtures {
                                        thunk: Unit -> a \ ef):
             (a, TurnPhase.Phase) \
                 (ef - Tween.Scheduler - AnimationPlayer.Scheduler - PlayerData.PartyQuery
-                    - TurnPhase.State - SelectedPlayer.State - World.Command) =
+                    - TurnPhase.State - SelectedPlayer.State - World.Command - World.WorldQuery) =
         region rc {
             withNoopTween(() ->
                 withNoopAnim(() ->
                     withMockPartyQuery(Scene.empty(), () ->
                         withPhaseRef(rc, TurnPhase.Phase.ActionSelect, () ->
                             withSelectionRef(rc, initialSel, () ->
-                                // P6-1h: 遷移が view 状態 Cmd（SetModulate/SetAnim 等）を emit する
+                                // P6-1h/P6-2b: 遷移が view 状態 Cmd を emit・World 位置を read する
                                 // ようになったため捨て handler で吸収（このヘルパーの観測対象は
-                                // phase とカーソル可視のみ）。
-                                run { thunk() } with handler World.Command {
+                                // phase とカーソル可視のみ。posOf は None→scene fallback）。
+                                run {
+                                    run { thunk() } with handler World.WorldQuery {
+                                        def get(k) = k(World.empty())
+                                    }
+                                } with handler World.Command {
                                     def emit(_c, k) = k()
                                 })))))
         }

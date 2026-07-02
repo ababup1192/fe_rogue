@@ -449,12 +449,12 @@ mod PlayerAttackRangeScene {
     /// 親ノードだけ追加する。これにより PlayerAttack フェーズに入ってもカーソルが
     /// 敵に乗らず、Z 押下で AttackHit が発火しない (X でスキップして抜ける)。
     pub def show(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ SelectedPlayer.State =
+            Scene[NodeTag] \ {SelectedPlayer.State, World.WorldQuery} =
         let cleared = clear(scene);
         match SelectedPlayer.State.get()#id {
             case None     => cleared
             case Some(id) =>
-                match PlayerScene.get(id, cleared) {
+                match PlayerScene.getWithWorldPos(id, cleared) {
                     case None    => cleared
                     case Some(d) =>
                         let layer = MapScene.getMapLayer(cleared);
@@ -635,14 +635,14 @@ mod DangerZoneScene {
         }
 
     /// Shift トグル: 表示中なら消す、非表示なら全敵の危険範囲を組んで紫で描く。
-    pub def toggle(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def toggle(scene: Scene[NodeTag]): Scene[NodeTag] \ World.WorldQuery =
         if (isShown(scene)) clear(scene) else show(scene)
 
     /// 全可視敵の危険マス（移動到達 ∪ 攻撃到達）を統合して紫で描く。空なら何もしない。
     /// `EnemyScene.getAll` は scene ツリーを走査するだけで外部 effect を発火しないため、
     /// `EnemyData.RosterQuery` を使わずに呼び出せる (Flix では pure 関数でも
     /// 内部で scene を読むことは許容されている)。
-    def show(scene: Scene[NodeTag]): Scene[NodeTag] =
+    def show(scene: Scene[NodeTag]): Scene[NodeTag] \ World.WorldQuery =
         let cleared = clear(scene);
         let layer   = MapScene.getMapLayer(cleared);
         // 敵 1 体の危険マス: 移動到達セル + (武器があれば)そこから射程で届くセル。
@@ -657,7 +657,8 @@ mod DangerZoneScene {
                     List.append(reachable, Board.computeThreatCells(reachable, lo, hi))
             }
         };
-        let cells = EnemyScene.getAll(cleared)
+        // P6-2b: 位置は World 上書き Data（scene gridPos twin は退役）。
+        let cells = EnemyScene.getAllWithWorldPos(cleared)
             |> List.filter(e -> EnemyScene.isVisible(e#id, cleared))
             |> List.foldLeft((acc, e) -> List.append(acc, dangerOf(e)), Nil)
             |> Board.dedupCells;

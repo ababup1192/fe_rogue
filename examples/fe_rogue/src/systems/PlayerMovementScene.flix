@@ -69,7 +69,7 @@ mod PlayerMovementScene {
         // 正しく見る必要がある sim 判定＝World 権威で読む。
         // 階段離脱済み(hidden)の駒は盤面から退場済み。占有・追従対象から除く
         // （board は hidden を除外済み・ここだけ含めるとゴースト駒が階段マスを塞ぐ）。
-        let movers    = PlayerScene.getAll(scene)
+        let movers    = PlayerScene.getAllWithWorldPos(scene)
             |> List.filter(d -> d#id != PlayerScene.lordId() and d#hp > 0 and not d#hidden)
             |> List.map(d -> (d#id, d#gridPos,
                               not waitedW(d#id, d#waited, world)
@@ -126,7 +126,7 @@ mod PlayerMovementScene {
         let world = World.WorldQuery.get();
         // 階段離脱済み(hidden)の駒は盤面から退場済みなので障害物に数えない
         // （board は hidden を除外済み・含めると離脱者の階段マスに集合で重なれなくなる）。
-        PlayerScene.getAll(scene)
+        PlayerScene.getAllWithWorldPos(scene)
             |> List.filter(d -> waitedW(d#id, d#waited, world) and d#hp > 0 and not d#hidden)
             |> List.map(d -> d#gridPos)
 

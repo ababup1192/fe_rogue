@@ -97,7 +97,9 @@ mod TestBattlePanelScene {
                     drafts = Nil,
                     gatherActive = false
                 });
-                let _ = BattlePanelScene.confirm(Scene.empty());
+                // P6-2b: confirm 経路が World 位置を読む（posOf は None→scene/引数 fallback）。
+                let _ = run { BattlePanelScene.confirm(Scene.empty()) }
+                    with handler World.WorldQuery { def get(k) = k(World.empty()) };
                 TurnPhase.State.get()
             } with handler PlayerData.PartyQuery {
                 def get(id, k) =

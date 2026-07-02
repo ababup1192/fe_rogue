@@ -93,8 +93,8 @@ mod StairsExitScene {
 
     /// 生存・非 hidden の味方を (id, 現在マス, 残り移動) で集める。
     /// 残り移動は積載ペナルティ込みの実効移動力で計算する（青マス表示と階段到達判定を揃える）。
-    def livingUnits(scene: Scene[NodeTag]): List[(Int32, {x = Int32, y = Int32}, Int32)] =
-        PlayerScene.getAll(scene)
+    def livingUnits(scene: Scene[NodeTag]): List[(Int32, {x = Int32, y = Int32}, Int32)] \ World.WorldQuery =
+        PlayerScene.getAllWithWorldPos(scene)
             |> List.filter(d -> d#hp > 0 and not d#hidden)
             |> List.map(d -> (d#id, d#gridPos,
                               PlayerScene.effectiveMoveTilesOf(d) - d#moveStepsTaken))

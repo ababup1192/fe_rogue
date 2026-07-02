@@ -1098,11 +1098,10 @@ mod Game {
             if (World.turnPhaseOf(world2) != simPhaseOf(TurnPhase.State.get()))
                 println("[F2 PHASE DIFF] world=${World.turnPhaseOf(world2)} state=${simPhaseOf(TurnPhase.State.get())}")
             else ();
-            // S5b（§A 完成・World→scene 一方向 sync）: scene の gridPos を **World の位置で derive** する
-            // （move 関数は gridPos を直書きしなくなった＝`Cmd.Move` が唯一の位置 source）。これで
-            // scene は World の純粋な派生ビューになり、dual-write は解消。write 漏れは「ユニットが動かない」
-            // 可視バグとして現れるので、旧 `[P3 WRITE-MISS]` 検出器（独立 dual-write 前提）は撤去した。
-            let synced0 = World.syncTreeFromWorld(world2, next);
+            // P6-2b: `syncTreeFromWorld` は本番から撤去（最後の derive だった gridPos の読み手を
+            // World.posOf / overlay / getXxxWithWorldPos へ全 flip 済み＝scene Data の gridPos twin は退役。
+            // 関数自体は golden/テストの scene 側投影 seam として残置）。
+            let synced0 = next;
             // B/m3: 移動した entity の marker を renderPos に合わせる（engine tween 退役の受け皿・marker 単一権威）。
             // syncTreeFromWorld は marker の global 位置を書かない（gridPos 等 Data のみ derive）ので、ここで上書きしても
             // 齟齬なし。書いた synced は末尾 gameLoop へ渡り次フレームへ永続。以降 synced は marker 反映済みを指す。
@@ -1139,7 +1138,7 @@ mod Game {
 /// B/fog・range・配置物・fx・HUD/menu: scene 側を hideSubtrees で renderArgs から外し、
 /// World render System（各 render*）で描く。camera ViewTransform はフレーム 1 回だけ計算して共有。
 def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[NodeTag]):
-        Unit \ {GameEngine.Game, SelectedPlayer.State, UnitHPBarScene.ForecastState} =
+        Unit \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarScene.ForecastState} =
     // P6-1h: hideUnitSprites は撤去（ユニット sprite ノード自体を積まなくなった）。
     let prepped = RenderWorld.hideSubtrees(synced);
     let transform = RenderWorld.viewTransform(synced);

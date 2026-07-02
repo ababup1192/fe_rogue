@@ -276,7 +276,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, Pacing.State, World.Command, World.WorldQuery} =
-        match EnemyScene.get(enemyId, scene) {
+        match EnemyScene.getWithWorldPos(enemyId, scene) {
             case Some(e) =>
                 GameLogger.playerLog("追撃！");
                 startAttack(Faction.Player, playerId, enemyId, e#gridPos, scene)
@@ -325,7 +325,7 @@ mod CombatScene {
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, World.Command, World.WorldQuery} =
         let countered = forM (
-            p <- PlayerScene.get(playerId, scene)
+            p <- PlayerScene.getWithWorldPos(playerId, scene)
         ) yield {
             GameLogger.enemyLog("${EnemyScene.displayName(enemyId, scene)}の反撃");
             startAttack(Faction.Enemy, enemyId, playerId, p#gridPos, scene)
@@ -396,7 +396,7 @@ mod CombatScene {
     /// 敵の追撃モーションを開始する（同じ味方へ再突進）。味方が消えていれば反撃判定に落とす。
     def startEnemyFollowUp(enemyId: Int32, playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, World.WorldQuery} =
-        match PlayerScene.get(playerId, scene) {
+        match PlayerScene.getWithWorldPos(playerId, scene) {
             case Some(p) =>
                 GameLogger.enemyLog("追撃！");
                 startAttack(Faction.Enemy, enemyId, playerId, p#gridPos, scene)
@@ -411,7 +411,7 @@ mod CombatScene {
         // P6-2b: view は World 由来（resolvePlayerMainAttack と同じ理由＝直前ダメージの hp が scene では stale）。
         let w0 = World.WorldQuery.get();
         let decision = forM (
-            e <- EnemyScene.get(enemyId, scene)
+            e <- EnemyScene.getWithWorldPos(enemyId, scene)
         ) yield (e, CounterAttackRules.decideView(
                      World.unitViewFromWorld(World.EntityRef.Enemy(enemyId), w0, scene)
                          |> Option.getWithDefault(EnemyScene.unitView(e)),

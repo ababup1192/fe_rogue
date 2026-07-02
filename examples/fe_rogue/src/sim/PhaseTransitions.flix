@@ -118,7 +118,7 @@ mod PhaseTransitions {
     pub def enterPlayerAttack(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery} =
+                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
         clearMoveOnlyRanges(scene)
             |> PlayerAttackRangeScene.show
@@ -176,7 +176,7 @@ mod PhaseTransitions {
     /// 隣接マス (デフォルト方向 Up) に矢印カーソルを表示する。方向キーで矢印を
     /// 回し、Z で発射する。
     pub def enterStaffAim(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery} =
         TurnPhase.State.put(TurnPhase.Phase.StaffAim);
         let withCursorHidden = CursorScene.setVisible(false, scene);
         match SelectedPlayer.State.get()#id {

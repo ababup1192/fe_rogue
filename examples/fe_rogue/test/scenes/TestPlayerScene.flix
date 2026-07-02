@@ -215,7 +215,9 @@ mod TestPlayerScene {
                 |> addOnePlayerT(mkSpawn(0, lordPos))
                 |> addOnePlayerT(mkSpawn(1, {x = 5, y = 4}));
             TestUnitFixtures.withSelectionRef(rc, sel, () ->
-                PlayerScene.gatherNotMovedYet(scene))
+                // P6-2b: 現在位置は World 読み（空 World → scene fallback で従来どおり）。
+                run { PlayerScene.gatherNotMovedYet(scene) }
+                    with handler World.WorldQuery { def get(k) = k(World.empty()) })
         }
 
     /// 集合中で全員が draft の origin に居る（一歩も動いていない）→ true（C で切替可能）。
