@@ -5,12 +5,11 @@
 ///
 /// P6-1c: scene ノードは撤去済み。位置の権威は World.stairsPos（`Cmd.SetStairs`）、描画は
 /// `RenderWorld.renderStairs` が見た目定数（texture/scale/zIndex＝旧 scene.json 値）から直描きする。
-/// `Data`/`isAt`/`getPos` は legacy 杖 twin（StaffCast の warp）と golden fixture が
-/// 手組みノードで使うテスト seam として残置（P6 手順 5 の legacy 撤去と同時に消す）。
+/// `Data`/`getPos` は StaffCast の warp（杖）と golden fixture が手組みノードで使うテスト seam。
 mod Stairs {
 
     /// `gridPos`: 階段を置いたグリッド座標（placed = false のときは未使用）
-    /// `placed`: 階段が配置済みか。false の間は描画されず、`isAt` も常に false を返す
+    /// `placed`: 階段が配置済みか。false の間は描画されず、`getPos` は None を返す
     pub type alias Data = {
         gridPos = {x = Int32, y = Int32},
         placed  = Bool
@@ -63,17 +62,6 @@ mod Stairs {
     pub def placeAt(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         World.Command.emit(World.Cmd.SetStairs(Some(target)));
         scene
-
-    /// 指定セルに（配置済みの）階段があるか。ActionMenuScene が「かいだん」コマンドの
-    /// 出現条件として使う。
-    pub def isAt(gridPos: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Bool =
-        match Scene.getState(stairsPath(), scene) {
-            case Some(NodeTag.Stairs(data)) =>
-                data#placed
-                and data#gridPos#x == gridPos#x
-                and data#gridPos#y == gridPos#y
-            case _ => false
-        }
 
     /// placed = false（未配置）のときは座標として意味のある値を持たないため None を返す。
     pub def getPos(scene: Scene[NodeTag]): Option[{x = Int32, y = Int32}] =

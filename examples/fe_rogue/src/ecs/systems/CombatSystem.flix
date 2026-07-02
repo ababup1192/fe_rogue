@@ -31,14 +31,13 @@
 //     miss テキストポップアップを `ViewFx(Sound/Explosion/Popup)` としてログに載せた＝ログが「完全な view-script」。
 //     これらは World identity（reducer no-op・eventToCmds=Nil）ゆえ golden/final-World 等価は不変。ダメージ数字
 //     ポップアップ・HPバー・death 演出は既存 `Damaged`/`Dying`/`ViewFx(Died)` から ViewReplay が引ける。
-//   ✓ **ViewReplay dispatcher ＋ cutover 配線済み**（`CombatDriver.useEcsCombat` トグル・branch 温存）。scene 権威の
+//   ✓ **ViewReplay dispatcher ＋ cutover 配線済み**（戦闘は常時 ECS 経路・トグルも legacy branch も無し）。scene 権威の
 //     副作用は cutover wrapper（`applyEcsSceneEffects`）が反映: statuses（Afflicted/Released）・level-up（pendingLevelUp
 //     panel ＋ resource stat 成長 via `grownStats`）・武器耐久（`consumeEquippedWeapon`）。World 権威 field（hp/dying/
-//     progress/alerted/pos）は eventToCmds→World→`syncTreeFromWorld` derive（Phase B）。
+//     progress/alerted/pos）は eventToCmds→World の Cmd 経由。
 //   ✓ P1-b: thief view-fx（`ViewFx(Thief)`＝`isRogueOf` read-model で点火）・drop 実体は wrapper `applyThiefDrop`。
 //   ✓ P1-c: 敵ノックバック（faction-blind `knockbackEvents` を `resolveEnemyAttack` で再利用）。
-//   ☐ 残: 敵 heal effectRule（HealAt/FullHealAt→`Healed`・P2b）・lifesteal+heal stacking・cutover の ECS 既定化
-//     （legacy 挙動 pin の unit テスト書き換え＋分岐撤去）。
+//   cutover は ECS 既定化まで完了済み（legacy 分岐・トグルは撤去）。敵 heal effectRule / lifesteal+heal stacking も ECS 経路で解決する。
 mod CombatSystem {
 
     /// 9 stat 成長ロール（legacy CombatDriver.rollGrowth と同義）。draw 順の厳密一致は spike では要求しない

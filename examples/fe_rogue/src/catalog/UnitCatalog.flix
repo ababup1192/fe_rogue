@@ -223,10 +223,6 @@ mod UnitCatalog {
               "speed", "skill", "luck", "constitution", "sprite", "initialInventory",
               "description", "spriteFrames", "growthRates", "proficientWeaponTypes",
               "canOpenChests"}
-
-    /// `WeaponResource` のフィールド名集合（後方互換の委譲）。
-    pub def expectedWeaponFields(): Set[String] =
-        WeaponCatalog.expectedFields()
 }
 
 // ════════════════════════════════════════════════════════════════════════

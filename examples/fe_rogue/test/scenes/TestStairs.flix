@@ -1,9 +1,9 @@
 // Stairs のテスト
 //
 // 階段は床のランダムセルに 1 つ置かれ、味方がそのセルに乗ると「かいだん」コマンドが
-// 出る。ここでは配置とその後の問い合わせ（isAt / getPos）の性質を固定する:
-//   - 配置前は isAt が常に false、getPos は None（placed ゲート）
-//   - placeAt したセルだけ isAt = true、別セルは false
+// 出る。ここでは配置とその後の問い合わせ（getPos）の性質を固定する:
+//   - 配置前は getPos が None（placed ゲート）
+//   - placeAt したセルだけ getPos が Some、別セルには一致しない
 //
 // ランダム配置 (placeRandom) は実マップ (LDTK) を要求するためここでは扱わず、
 // セルを固定した placeAt で「配置 → 問い合わせ」の論理だけを検証する。
@@ -21,24 +21,24 @@ mod TestStairs {
                                       placed  = false}: Stairs.Data))))
 
     // ========================================================================
-    // 配置前: placed ゲートで isAt は常に false、getPos は None
+    // 配置前: placed ゲートで getPos は None
     // ========================================================================
 
-    /// add 直後（未配置）は、どのセルを問い合わせても階段は無い扱い。
+    /// add 直後（未配置）は、どのセルを問い合わせても階段は無い扱い（getPos = None）。
     @Test
     def testUnplacedStairsHasNoPosition(): Unit \ Assert =
         let scene = emptyStairsScene();
         Assert.assertEq(
-            expected = (false, None),
-            (Stairs.isAt({x = 0, y = 0}, scene),
-             Stairs.getPos(scene) |> Option.map(pos -> (pos#x, pos#y))))
+            expected = None,
+            Stairs.getPos(scene) |> Option.map(pos -> (pos#x, pos#y)))
 
     // ========================================================================
-    // 配置後: 置いたセルだけ isAt = true
+    // 配置後: 置いたセルだけ getPos が Some を返す
     // ========================================================================
 
-    /// P6-1c: placeAt は Cmd emit のみ（scene ノード書きは撤去）。isAt/getPos は legacy 杖 twin と
-    /// golden fixture が使う手組みノード用 seam ＝ placed=true の手組みノードに対する挙動を pin する。
+    /// placeAt は Cmd emit のみ（scene ノード書きは撤去）。getPos は StaffCast の warp と
+    /// golden fixture が使う手組みノード用 seam ＝ placed=true の手組みノードで置いたセルだけを返し、
+    /// 別セルには一致しないことを pin する。
     @Test
     def testPlaceAtMarksOnlyThatCell(): Unit \ Assert =
         let placed = Scene.empty()
@@ -46,10 +46,10 @@ mod TestStairs {
                 EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()),
                     NodeTag.Stairs(({gridPos = {x = 3, y = 4}, placed = true}: Stairs.Data))));
         Assert.assertEq(
-            expected = (true, false, Some((3, 4))),
-            (Stairs.isAt({x = 3, y = 4}, placed),
-             Stairs.isAt({x = 3, y = 5}, placed),
-             Stairs.getPos(placed) |> Option.map(pos -> (pos#x, pos#y))))
+            expected = (Some((3, 4)), true, false),
+            (Stairs.getPos(placed) |> Option.map(pos -> (pos#x, pos#y)),
+             Stairs.getPos(placed) |> Option.exists(pos -> pos#x == 3 and pos#y == 4),
+             Stairs.getPos(placed) |> Option.exists(pos -> pos#x == 3 and pos#y == 5)))
 
     // ========================================================================
     // P3-a: placeAt は `Cmd.SetStairs` を emit し、それが World.stairsPosOf を権威化する

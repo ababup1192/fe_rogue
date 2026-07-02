@@ -1,8 +1,8 @@
 // slice `golden-trace` のテスト（CORE/PARTIAL オラクル）。
 //
-// 現行 OOP combat（Cmd を emit する legacy 経路）を固定 seed で PUBLIC seam 経由に駆動し、
+// live combat orchestrator（Cmd を emit する PUBLIC seam）を固定 seed で駆動し、
 // その決定論的な **Cmd-stream（cmdKey 列）+ 最終 World** を golden literal として凍結する。
-// これが将来の `resolveCombat → (World, [SimEvent])` が再現すべきオラクルになる。
+// これが `resolveCombat → (World, [SimEvent])`（純 sim）が再現すべきオラクルになる（wrapper↔system 整合 pin）。
 //
 // 駆動は PUBLIC seam（applyAttackHit / applyEnemyAttackHit / onLungeDone）。private な
 // resolveAttack/resolveEnemyAttack ではない。attackTargetId は **SCENE** で seed する
@@ -306,98 +306,98 @@ mod TestGoldenTrace {
     /// no-level-up path は draw 順（crit/thief は crit率0・noopThief で outcome 不変）の影響を受けないので、
     /// hit ロール 1 本で legacy と等価になる。これが cutover の final-World 安全網の最小単位。
     @Test
-    def testResolveCombatEqualsLegacyNoLevelUp(): Unit \ Assert =
+    def testResolveCombatEqualsSimNoLevelUp(): Unit \ Assert =
         let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evCount) = driveResolve(sc);
         assertNonVacuous(sc, evCount);
-        // 等価: 撃破 path の (enemy hp, player hp, progress) が legacy と一致。
-        Assert.assertEq(expected = killProj(legacyW), killProj(sysW))
+        // 等価: 撃破 path の (enemy hp, player hp, progress) が オラクルと一致。
+        Assert.assertEq(expected = killProj(oracleW), killProj(sysW))
 
     /// B5: level-up path も legacy 等価か。A fixture（player exp=99 → 撃破で 100 跨ぎ→ Lv2/exp34）。
     /// growthRates=0 ゆえ hit→growth(spike) と hit→crit→thief→growth(legacy) の draw 順差は最終 World に効かない
     /// 範囲（成長が起きない）で legacy 凍結 World に一致する（その制約は CombatSystem header の ☐ に明記）。
     @Test
-    def testResolveCombatEqualsLegacyLevelUp(): Unit \ Assert =
+    def testResolveCombatEqualsSimLevelUp(): Unit \ Assert =
         let sc = sceneOf(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evCount) = driveResolve(sc);
         assertNonVacuous(sc, evCount);
-        // 等価: 撃破＋level-up（Lv2/exp34/hp10）の (enemy hp, player hp, progress) が legacy と一致。
-        Assert.assertEq(expected = killProj(legacyW), killProj(sysW))
+        // 等価: 撃破＋level-up（Lv2/exp34/hp10）の (enemy hp, player hp, progress) が オラクルと一致。
+        Assert.assertEq(expected = killProj(oracleW), killProj(sysW))
 
     /// B1 を pin: **overkill**（enemy hp=3 を dmg=4 で撃破→ strike#newHp=-1）でも、CombatSystem の clamp で
     /// 最終 enemy hp=0 になり legacy（startDeathAnimation の hard 0）と一致する。clamp が無ければ resolveAttack は
     /// -1 を残し legacy の 0 と乖離してこのテストが落ちる＝clamp の divergence 防止価値を回帰固定する。
     @Test
-    def testResolveCombatEqualsLegacyOverkill(): Unit \ Assert =
+    def testResolveCombatEqualsSimOverkill(): Unit \ Assert =
         let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 3, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evCount) = driveResolve(sc);
         assertNonVacuous(sc, evCount);
-        // 等価: overkill（hp3 を dmg4）でも enemy hp が legacy と一致。
-        Assert.assertEq(expected = World.hpOf(EntityRef.Enemy(1), legacyW), World.hpOf(EntityRef.Enemy(1), sysW));
+        // 等価: overkill（hp3 を dmg4）でも enemy hp が オラクルと一致。
+        Assert.assertEq(expected = World.hpOf(EntityRef.Enemy(1), oracleW), World.hpOf(EntityRef.Enemy(1), sysW));
         // 独立 pin: clamp が効き strike#newHp=-1 でなく 0 に落ちる（clamp が無ければ -1 残りでここが落ちる）。
         Assert.assertEq(expected = Some(0), World.hpOf(EntityRef.Enemy(1), sysW))
 
     /// draw 順整合の証明: **growthRates>0（roll-sensitive な hp=50）** の level-up で resolveAttack の最終 hp が
-    /// legacy と一致する。crit/thief draw を入れたことで growth draw が legacy と同位置（position 4+）に揃い、
+    /// オラクルと一致する。crit/thief draw を入れたことで growth draw が legacy と同位置（position 4+）に揃い、
     /// 同 seed で同じ成長ロールを引く＝同じ hp 成長になる。旧実装（hit のみ 1 draw）なら growth が position 2 で
     /// 引かれ legacy(position 4) とロールがずれ、この roll-sensitive fixture で乖離していた（＝本テストが整合を pin）。
     @Test
-    def testResolveCombatEqualsLegacyLevelUpRollSensitive(): Unit \ Assert =
+    def testResolveCombatEqualsSimLevelUpRollSensitive(): Unit \ Assert =
         let bp = player(99, 10, Some(1), 200);
         let gp = {resource = {growthRates = {hp = 50 | UnitCatalog.zeroGrowthRates()} | bp#resource} | bp};
         let sc = sceneOf(gp, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evCount) = driveResolve(sc);
         assertNonVacuous(sc, evCount);
-        // 等価: roll-sensitive な成長(hp=50)でも (player hp, progress) が legacy と一致＝growth draw が同位置で引かれる証明。
+        // 等価: roll-sensitive な成長(hp=50)でも (player hp, progress) が オラクルと一致＝growth draw が同位置で引かれる証明。
         let proj = w -> (World.hpOf(EntityRef.Player(0), w), World.progressOf(EntityRef.Player(0), w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW))
+        Assert.assertEq(expected = proj(oracleW), proj(sysW))
 
     /// 非撃破 path 等価: enemy hp=20 を dmg4 で攻撃→生存。hp 更新 + **SetAlerted(true)** + releaseBind が
-    /// legacy と一致する（resolveAttack の非撃破分岐が Alerted/Released を emit する。emit 漏れなら alerted が
+    /// オラクルと一致する（resolveAttack の非撃破分岐が Alerted/Released を emit する。emit 漏れなら alerted が
     /// false のままで legacy(true) と乖離して落ちる）。
     @Test
-    def testResolveCombatEqualsLegacyNonKill(): Unit \ Assert =
+    def testResolveCombatEqualsSimNonKill(): Unit \ Assert =
         let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evCount) = driveResolve(sc);
         assertNonVacuous(sc, evCount);
-        // 等価: 非撃破での (enemy hp, alerted, progress) が legacy と一致。progress を含めるのが要点
+        // 等価: 非撃破での (enemy hp, alerted, progress) が オラクルと一致。progress を含めるのが要点
         // ＝命中 EXP（B1 hit-exp 漏れ）を検出する。alerted を含めるのは SetAlerted emit を legacy にピンするため。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w),
                          World.alertedOf(EntityRef.Enemy(1), w),
                          World.progressOf(EntityRef.Player(0), w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW))
+        Assert.assertEq(expected = proj(oracleW), proj(sysW))
 
     /// crit path 等価: crit=100 武器で必ず必殺。base ダメージ4 では enemy hp=10 を撃破できないが、必殺3倍=12 で
     /// 撃破する＝crit が「非撃破→撃破」「hit exp→kill exp」を変える。resolveAttack の applyCrit + crit-kill exp 再計算が
-    /// legacy と一致するか（applyCrit を実際に通す唯一のテスト）。
+    /// オラクルと一致するか（applyCrit を実際に通す唯一のテスト）。
     @Test
-    def testResolveCombatEqualsLegacyCrit(): Unit \ Assert =
+    def testResolveCombatEqualsSimCrit(): Unit \ Assert =
         let critWeapon = ({hit = 200, crit = 100 | testWeapon()}: UnitCatalog.WeaponResource);
         let bp = player(0, 10, Some(1), 200);
         let critP = {weapons = critWeapon :: Nil | bp};
         let sc = sceneOf(critP, enemy(1, 10, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evCount) = driveResolve(sc);
         assertNonVacuous(sc, evCount);
-        // 等価: crit が「非撃破→撃破」「hit exp→kill exp」へ反転させた結果の (enemy hp, progress) が legacy と一致。
+        // 等価: crit が「非撃破→撃破」「hit exp→kill exp」へ反転させた結果の (enemy hp, progress) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), World.progressOf(EntityRef.Player(0), w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: crit が確かに撃破へ反転した（敵 hp10→0・base dmg4 では到達不能）＝applyCrit no-op を検出する。
         Assert.assertEq(expected = Some(0), World.hpOf(EntityRef.Enemy(1), sysW))
 
     /// Released(=releaseBind/ClearImmobilized) を pin: かなしばり中の enemy を非撃破で攻撃すると immobilize が
-    /// 解除される。w0 は immobilize あり（非空）、攻撃後は sysW/legacyW とも空＝resolveAttack の Released emit を固定。
+    /// 解除される。w0 は immobilize あり（非空）、攻撃後は sysW/oracleW とも空＝resolveAttack の Released emit を固定。
     @Test
-    def testResolveCombatEqualsLegacyReleasesImmobilize(): Unit \ Assert =
+    def testResolveCombatEqualsSimReleasesImmobilize(): Unit \ Assert =
         let e  = {statuses = StatusSystem.immobilizeFor(3) :: Nil
                    | enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80)};
         let sc = sceneOf(player(0, 10, Some(1), 200), e :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let w0 = World.syncFromScene(sc, World.empty());
         let (sysW, evCount) = driveResolve(sc);
         assertNonVacuous(sc, evCount);
@@ -405,7 +405,7 @@ mod TestGoldenTrace {
         // 前提: 攻撃前の enemy はかなしばり中（status 非空）。
         Assert.assertEq(expected = true, immobilized(w0));
         // 等価: 非撃破攻撃で Released が発火し、sim/legacy とも解除される。
-        Assert.assertEq(expected = immobilized(legacyW), immobilized(sysW));
+        Assert.assertEq(expected = immobilized(oracleW), immobilized(sysW));
         // 独立 pin: 攻撃後の sim は確かに解除済み（status 空）。
         Assert.assertEq(expected = false, immobilized(sysW))
 
@@ -594,7 +594,7 @@ mod TestGoldenTrace {
     @Test
     def testSimEventOracleLevelUp(): Unit \ Assert =
         let sc = sceneOf(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let events =
             World.SimEvent.Damaged(EntityRef.Enemy(1), {newHp = 0, dmg = 4}) ::
             World.SimEvent.ViewFx(World.ViewFxKind.Died(EntityRef.Enemy(1))) ::
@@ -609,14 +609,14 @@ mod TestGoldenTrace {
             ("SetHp", 0, 10, 0) ::
             ("Progress", 0, 2, 34) :: Nil;
         Assert.assertEq(expected = cmdGolden, cmdKeys);
-        // (b) events を初期 World へ fold した最終射影が legacy と一致（SimEvent オラクル ≡ legacy オラクル）。
+        // (b) events を初期 World へ fold した最終射影が オラクルと一致（SimEvent オラクル ≡ legacy オラクル）。
         let initW  = World.syncFromScene(sc, World.empty());
         let folded = List.foldLeft((w, ev) -> World.applyEventToWorld(ev, w), initW, events);
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w),
                          World.hpOf(EntityRef.Player(0), w),
                          World.progressOf(EntityRef.Player(0), w),
                          World.isDyingOf(EntityRef.Enemy(1), w));
-        Assert.assertEq(expected = proj(legacyW), proj(folded));
+        Assert.assertEq(expected = proj(oracleW), proj(folded));
         // 独立 pin: enemy hp=0 / player hp=10 / progress=(Lv2, exp34) / enemy dying。
         Assert.assertEq(expected = (Some(0), Some(10), Some((2, 34)), true), proj(folded))
 
@@ -626,7 +626,7 @@ mod TestGoldenTrace {
     def testSimEventOracleEnemyEffectRule(): Unit \ Assert =
         let rule = ruleJson("{\"when\":\"onHit\",\"to\":\"enemy\",\"op\":\"spdDown\",\"amount\":3,\"for\":\"turns\",\"forTurns\":3}");
         let sc = sceneOf(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
-        let (_, _, legacyW) = runEnemyAttack(sc, 1);
+        let (_, _, oracleW) = runEnemyAttack(sc, 1);
         let spd = ({effect = StatusSystem.StatusEffect.SpdDown, magnitude = 3, remaining = 3}: StatusSystem.Status);
         let events =
             World.SimEvent.Damaged(EntityRef.Player(0), {newHp = 6, dmg = 4}) ::
@@ -639,13 +639,13 @@ mod TestGoldenTrace {
             ("ClrImmob", 0, 0, 0) ::
             ("Add", 0, 1, 3) :: Nil;
         Assert.assertEq(expected = cmdGolden, cmdKeys);
-        // (b) fold した最終射影が legacy と一致（hp/status へ収束）。
+        // (b) fold した最終射影が オラクルと一致（hp/status へ収束）。
         let initW  = World.syncFromScene(sc, World.empty());
         let folded = List.foldLeft((w, ev) -> World.applyEventToWorld(ev, w), initW, events);
         let proj = w -> (World.hpOf(EntityRef.Player(0), w),
                          World.statusEffectsOf(EntityRef.Player(0), w)
                             |> List.map(s -> (s#effect, s#magnitude, s#remaining)));
-        Assert.assertEq(expected = proj(legacyW), proj(folded));
+        Assert.assertEq(expected = proj(oracleW), proj(folded));
         // 独立 pin: player hp=6 / spdDown(mag3, rem3)。
         Assert.assertEq(expected = (Some(6), (StatusSystem.StatusEffect.SpdDown, 3, 3) :: Nil), proj(folded))
 
@@ -660,17 +660,17 @@ mod TestGoldenTrace {
         let e0 = enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80);
         {resource = {defense = 8 | e0#resource} | e0}
 
-    /// (A) Ring{Finisher,50} 装備 → finisher が硬い敵を確殺。撃破後の (enemy hp, progress) が legacy と一致。
+    /// (A) Ring{Finisher,50} 装備 → finisher が硬い敵を確殺。撃破後の (enemy hp, progress) が オラクルと一致。
     @Test
     def testResolveCombatFinisherKillsWithRing(): Unit \ Assert =
         let fp = {rings = testRing(Ring.RingEffect.Finisher, 50) :: Nil, ringEquipped = true | player(0, 10, Some(1), 200)};
         let sc = sceneOf(fp, finisherEnemy() :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evCount) = driveResolve(sc);
         assertNonVacuous(sc, evCount);
-        // 等価: finisher 確殺後の (enemy hp, progress) が legacy と一致。
+        // 等価: finisher 確殺後の (enemy hp, progress) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), World.progressOf(EntityRef.Player(0), w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: finisher が確かに撃破した（敵 hp=0）＝legacy/sim 同時 no-op で "Kills" が vacuous に通るのを防ぐ。
         Assert.assertEq(expected = Some(0), World.hpOf(EntityRef.Enemy(1), sysW))
 
@@ -679,11 +679,11 @@ mod TestGoldenTrace {
     @Test
     def testResolveCombatFinisherControlNoRingSurvives(): Unit \ Assert =
         let sc = sceneOf(player(0, 10, Some(1), 200), finisherEnemy() :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evCount) = driveResolve(sc);
         assertNonVacuous(sc, evCount);
-        // 等価: ring 無しでは enemy hp が legacy と一致。
-        Assert.assertEq(expected = World.hpOf(EntityRef.Enemy(1), legacyW), World.hpOf(EntityRef.Enemy(1), sysW));
+        // 等価: ring 無しでは enemy hp が オラクルと一致。
+        Assert.assertEq(expected = World.hpOf(EntityRef.Enemy(1), oracleW), World.hpOf(EntityRef.Enemy(1), sysW));
         // 独立 pin: base ダメージ 0 ゆえ enemy は生存（hp4 のまま）＝(A) の kill は finisher 起因。
         Assert.assertEq(expected = Some(4), World.hpOf(EntityRef.Enemy(1), sysW))
 
@@ -691,32 +691,32 @@ mod TestGoldenTrace {
 
     /// (a) ring-lifesteal: hp5/maxHp10、Ring{Lifesteal,power=5}、敵 hp4→撃破→ +5 で hp10。
     @Test
-    def testResolveCombatEqualsLegacyRingLifesteal(): Unit \ Assert =
+    def testResolveCombatEqualsSimRingLifesteal(): Unit \ Assert =
         let bp = player(0, 5, Some(1), 200);
         let lp = {rings = testRing(Ring.RingEffect.Lifesteal, 5) :: Nil, ringEquipped = true | bp};
         let sc = sceneOf(lp, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evC) = driveResolve(sc);
         assertNonVacuous(sc, evC);
-        // 等価: 撃破時 ring-lifesteal 後の (player hp, enemy hp) が legacy と一致。
+        // 等価: 撃破時 ring-lifesteal 後の (player hp, enemy hp) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Player(0), w), World.hpOf(EntityRef.Enemy(1), w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: +5 回復で hp5→10・敵は撃破（hp0）。
         Assert.assertEq(expected = (Some(10), Some(0)), proj(sysW))
 
     /// (b) weapon-lifesteal: hp5、血吸い weapon{Lifesteal,effectValue=50}、敵 hp20 survives、dmg4→ +2 で hp7。
     @Test
-    def testResolveCombatEqualsLegacyWeaponLifesteal(): Unit \ Assert =
+    def testResolveCombatEqualsSimWeaponLifesteal(): Unit \ Assert =
         let bp = player(0, 5, Some(1), 200);
         let lp = {weapons = fxWeapon(WeaponCatalog.WeaponEffect.Lifesteal, 50) :: Nil | bp};
         let sc = sceneOf(lp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evC) = driveResolve(sc);
         assertNonVacuous(sc, evC);
-        // 等価: 非撃破での毎ヒット weapon-lifesteal 後の (player hp, enemy hp, alerted) が legacy と一致。
+        // 等価: 非撃破での毎ヒット weapon-lifesteal 後の (player hp, enemy hp, alerted) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Player(0), w), World.hpOf(EntityRef.Enemy(1), w),
                          World.alertedOf(EntityRef.Enemy(1), w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: dmg4 の 50% = +2 回復で hp5→7（敵 hp20 survives）。
         Assert.assertEq(expected = Some(7), World.hpOf(EntityRef.Player(0), sysW))
 
@@ -729,11 +729,11 @@ mod TestGoldenTrace {
         let lp = {rings = testRing(Ring.RingEffect.Lifesteal, 5) :: Nil, ringEquipped = true,
                   weapons = fxWeapon(WeaponCatalog.WeaponEffect.Lifesteal, 50) :: Nil | bp};
         let sc = sceneOf(lp, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evC) = driveResolve(sc);
         assertNonVacuous(sc, evC);
-        // 等価: ring→weapon の emit 順（両者オリジナル hp5 起点・weapon が last-write）後の player hp が legacy と一致。
-        Assert.assertEq(expected = World.hpOf(EntityRef.Player(0), legacyW), World.hpOf(EntityRef.Player(0), sysW));
+        // 等価: ring→weapon の emit 順（両者オリジナル hp5 起点・weapon が last-write）後の player hp が オラクルと一致。
+        Assert.assertEq(expected = World.hpOf(EntityRef.Player(0), oracleW), World.hpOf(EntityRef.Player(0), sysW));
         // 独立 pin: ring(hp5→10)→weapon(original hp5→7・last-write)＝最終 hp7。
         Assert.assertEq(expected = Some(7), World.hpOf(EntityRef.Player(0), sysW))
 
@@ -746,12 +746,12 @@ mod TestGoldenTrace {
         let gr = {resource = {growthRates = {hp = 100 | UnitCatalog.zeroGrowthRates()} | bp#resource},
                   rings = testRing(Ring.RingEffect.Lifesteal, 5) :: Nil, ringEquipped = true | bp};
         let sc = sceneOf(gr, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evC) = driveResolve(sc);
         assertNonVacuous(sc, evC);
-        // 等価: 二相 fold（lifesteal で hp10 → level-up が post-lifesteal hp に +1 = hp11）後の (player hp, progress) が legacy と一致。
+        // 等価: 二相 fold（lifesteal で hp10 → level-up が post-lifesteal hp に +1 = hp11）後の (player hp, progress) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Player(0), w), World.progressOf(EntityRef.Player(0), w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: lifesteal で hp10 → post-lifesteal hp に +1 = hp11（二相 fold が必須な証拠：pre-lifesteal hp6 なら 7 になる）。
         Assert.assertEq(expected = Some(11), World.hpOf(EntityRef.Player(0), sysW))
 
@@ -767,15 +767,15 @@ mod TestGoldenTrace {
         let tp = {resource = {description = "ローグ" | bp#resource},
                   weapons = fxWeapon(WeaponCatalog.WeaponEffect.ThiefDrop, 100) :: Nil | bp};
         let sc = sceneOf(tp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evC) = driveResolve(sc);
         assertNonVacuous(sc, evC);
         // P1-b: ViewFx(Thief(敵元セル{3,2})) がちょうど 1 つ emit される（drop 実体は wrapper の applyThiefDrop が引く）。
         Assert.assertEq(expected = (3, 2) :: Nil, thiefCellsT(driveResolveEvs(sc)));
-        // 等価: thief 発火しても World 不変＝(enemy hp, player hp, alerted, progress) が全て legacy と一致（draw 消費のみ）。
+        // 等価: thief 発火しても World 不変＝(enemy hp, player hp, alerted, progress) が全て オラクルと一致（draw 消費のみ）。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), World.hpOf(EntityRef.Player(0), w),
                          World.alertedOf(EntityRef.Enemy(1), w), World.progressOf(EntityRef.Player(0), w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW))
+        Assert.assertEq(expected = proj(oracleW), proj(sysW))
 
     /// 非ローグ（description≠"ローグ"）は同じ thief weapon でも ViewFx(Thief) を emit しない（isRogueOf ゲート）。
     /// これが無いと isRogueOf を握り潰しても testResolveCombatThiefEmitsViewFx が緑のままになりうる（点火条件の負テスト）。
@@ -787,9 +787,9 @@ mod TestGoldenTrace {
         let sc = sceneOf(tp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
         Assert.assertEq(expected = (Nil: List[(Int32, Int32)]), thiefCellsT(driveResolveEvs(sc)))
 
-    /// P1-b 出荷 seam: `applyAttackHit`（useEcsCombat=true）を記録 ThiefDrop + 記録ロガーで駆動し、
-    /// wrapper の `applyThiefDrop` が実際に drop を敵元セル{3,2}へ 1 回引き、legacy と同じ『…が アイテムを落とした』
-    /// ログを 1 行出すことを pin する（runAttack は legacy 直叩きゆえ ecs 版 applyThiefDrop 配線は未踏だった）。
+    /// P1-b 出荷 seam: `applyAttackHit`（常時 ECS 経路）を記録 ThiefDrop + 記録ロガーで駆動し、
+    /// wrapper の `applyThiefDrop` が実際に drop を敵元セル{3,2}へ 1 回引き、『…が アイテムを落とした』
+    /// ログを 1 行出すことを pin する。
     /// applyThiefDrop を外す/events フィルタを壊す退行をここで捕捉する。
     def runEcsAttackRecThief(sc: Scene[NodeTag]): (List[(Int32, Int32)], List[String]) =
         region rc {
@@ -834,17 +834,17 @@ mod TestGoldenTrace {
     // ── P1c: ノックバック（敵 survives → 敵 pos を Moved 経由）─────────────────────
 
     /// Knockback weapon{effectValue=2}、敵 hp20 survives、壁なし floor。敵{3,2}・プレイヤー{2,2}→ +x 方向に
-    /// 2 マス押されて {5,2}。legacyW（snapTo→Cmd.Move）の最終 pos/hp と resolveAttack sysW を一致比較。
+    /// 2 マス押されて {5,2}。oracleW（snapTo→Cmd.Move）の最終 pos/hp と resolveAttack sysW を一致比較。
     @Test
-    def testResolveCombatEqualsLegacyKnockback(): Unit \ Assert =
+    def testResolveCombatEqualsSimKnockback(): Unit \ Assert =
         let kp = {weapons = fxWeapon(WeaponCatalog.WeaponEffect.Knockback, 2) :: Nil | player(0, 10, Some(1), 200)};
         let sc = sceneOf(kp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evC) = driveResolve(sc);
         assertNonVacuous(sc, evC);
-        // 等価: 敵生存→ +x に 2 マス押された後の (enemy pos, enemy hp) が legacy と一致。
+        // 等価: 敵生存→ +x に 2 マス押された後の (enemy pos, enemy hp) が オラクルと一致。
         let proj = w -> (posT(EntityRef.Enemy(1), w), World.hpOf(EntityRef.Enemy(1), w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: 敵{3,2}→{5,2} へ着地（壁なし floor・cap=2）。
         Assert.assertEq(expected = Some((5, 2)), posT(EntityRef.Enemy(1), sysW))
 
@@ -855,13 +855,13 @@ mod TestGoldenTrace {
         let cw = ({hit = 200, crit = 200, effect = WeaponCatalog.WeaponEffect.Knockback, effectValue = 2 | testWeapon()}: UnitCatalog.WeaponResource);
         let kp = {weapons = cw :: Nil | player(0, 10, Some(1), 200)};
         let sc = sceneOf(kp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, legacyW) = runAttack(sc);
+        let (_, _, oracleW) = runAttack(sc);
         let (sysW, evC) = driveResolve(sc);
         assertNonVacuous(sc, evC);
-        // 等価: crit dmg12 で hp8 に削り→押し流す（Damaged→Alerted→Released→knockback 順）後の (enemy hp, pos, alerted) が legacy と一致。
+        // 等価: crit dmg12 で hp8 に削り→押し流す（Damaged→Alerted→Released→knockback 順）後の (enemy hp, pos, alerted) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), posT(EntityRef.Enemy(1), w),
                          World.alertedOf(EntityRef.Enemy(1), w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW))
+        Assert.assertEq(expected = proj(oracleW), proj(sysW))
 
     // ── P2: 敵攻撃パス（敵→味方・deferred death・effectRule→Afflicted・level-up なし・KNOCKBACK-FREE）──
 
@@ -883,15 +883,15 @@ mod TestGoldenTrace {
     /// かつ sim の [SimEvent]→cmdKey 列が fixture-B golden [SetHp(player,6), ClrImmob(player), Add(player,SpdDown,3)]
     /// に一致（Damaged→Released→Afflicted。ViewFx→Nil。emitStatusAdds の StatusAt 写像を逐語固定）。
     @Test
-    def testResolveEnemyCombatEqualsLegacyEffectRule(): Unit \ Assert =
+    def testResolveEnemyCombatEqualsSimEffectRule(): Unit \ Assert =
         let rule = ruleJson("{\"when\":\"onHit\",\"to\":\"enemy\",\"op\":\"spdDown\",\"amount\":3,\"for\":\"turns\",\"forTurns\":3}");
         let sc = sceneOf(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
-        let (_, _, legacyW) = runEnemyAttack(sc, 1);
+        let (_, _, oracleW) = runEnemyAttack(sc, 1);
         let (sysW, evs) = driveEnemyResolve(sc);
         assertNonVacuous(sc, List.length(evs));
-        // 等価: 命中で味方 hp10→6・spdDown 付与後の (player hp, status) が legacy と一致。
+        // 等価: 命中で味方 hp10→6・spdDown 付与後の (player hp, status) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Player(0), w), statusT(EntityRef.Player(0), w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // cmd-stream: sim の [SimEvent]→cmdKey が fixture-B golden（Damaged→Released→Afflicted・ViewFx→Nil）に一致。
         let cmdKeys = evs |> List.flatMap(World.eventToCmds) |> List.map(World.cmdKey);
         let cmdGolden =
@@ -906,16 +906,16 @@ mod TestGoldenTrace {
     def testResolveEnemyImmobilize(): Unit \ Assert =
         let rule = ruleJson("{\"when\":\"onHit\",\"to\":\"enemy\",\"op\":\"immobilize\",\"for\":\"turns\",\"forTurns\":2}");
         let sc = sceneOf(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
-        let (_, _, legacyW) = runEnemyAttack(sc, 1);
+        let (_, _, oracleW) = runEnemyAttack(sc, 1);
         let (sysW, evs) = driveEnemyResolve(sc);
         assertNonVacuous(sc, List.length(evs));
-        // 等価: 命中で immobilize 付与後の status が legacy と一致。
-        Assert.assertEq(expected = statusT(EntityRef.Player(0), legacyW), statusT(EntityRef.Player(0), sysW));
+        // 等価: 命中で immobilize 付与後の status が オラクルと一致。
+        Assert.assertEq(expected = statusT(EntityRef.Player(0), oracleW), statusT(EntityRef.Player(0), sysW));
         // 独立 pin: status は非空＝Immobilized が確かに付与された。
         Assert.assertEq(expected = false, List.isEmpty(statusT(EntityRef.Player(0), sysW)))
 
     /// P1-c: 敵ノックバック（如意棒等・味方生存時）。敵{2,2}が Knockback 武器で味方{3,2}を殴り、味方を攻撃方向
-    /// (+x) へ 2 マス押して {5,2}（player-attack 版 testResolveCombatEqualsLegacyKnockback と対称の幾何）。
+    /// (+x) へ 2 マス押して {5,2}（player-attack 版 testResolveCombatEqualsSimKnockback と対称の幾何）。
     /// legacy applyEnemyAttackHit（applyEnemyKnockback→pushPlayerBack→snapTo）の最終 (player pos, hp) と
     /// resolveEnemyAttack sysW を一致比較し {5,2} を pin。faction-blind な knockbackEvents 再利用の証跡。
     /// （既存敵テストは KNOCKBACK-FREE な testWeapon を使う＝testTestWeaponKnockbackFree の不変条件は保つ。）
@@ -925,12 +925,12 @@ mod TestGoldenTrace {
         let ke = {weapon = Some(fxWeapon(WeaponCatalog.WeaponEffect.Knockback, 2))
                   | enemy(1, 20, {x = 2, y = 2}, false, Some(0), ruleJson(""), 200)};
         let sc = sceneOf(kp, ke :: Nil);
-        let (_, _, legacyW) = runEnemyAttack(sc, 1);
+        let (_, _, oracleW) = runEnemyAttack(sc, 1);
         let (sysW, evs) = driveEnemyResolve(sc);
         assertNonVacuous(sc, List.length(evs));
-        // 等価: 味方生存→ +x に 2 マス押された後の (player pos, player hp) が legacy と一致。
+        // 等価: 味方生存→ +x に 2 マス押された後の (player pos, player hp) が オラクルと一致。
         let proj = w -> (posT(EntityRef.Player(0), w), World.hpOf(EntityRef.Player(0), w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: 味方{3,2}→{5,2}（壁なし floor・cap=2）。
         Assert.assertEq(expected = Some((5, 2)), posT(EntityRef.Player(0), sysW))
 
@@ -942,15 +942,15 @@ mod TestGoldenTrace {
         let imP = {statuses = StatusSystem.immobilizeFor(3) :: Nil | player(0, 2, None, 80)};
         let sc  = sceneOf(imP, enemy(1, 10, {x = 3, y = 2}, false, Some(0), ruleJson(""), 200) :: Nil);
         let w0  = World.syncFromScene(sc, World.empty());
-        let (_, _, legacyW) = runEnemyAttack(sc, 1);
+        let (_, _, oracleW) = runEnemyAttack(sc, 1);
         let (sysW, evs) = driveEnemyResolve(sc);
         assertNonVacuous(sc, List.length(evs));
         let cleared = w -> List.isEmpty(statusT(EntityRef.Player(0), w));
         // 前提: 攻撃前の味方はかなしばり中（status 非空）。
         Assert.assertEq(expected = false, cleared(w0));
-        // 等価: RAW 被弾＋killing blow の無条件 Released 後の (player hp, かなしばり解除) が legacy と一致。
+        // 等価: RAW 被弾＋killing blow の無条件 Released 後の (player hp, かなしばり解除) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Player(0), w), cleared(w));
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: clamp なし＝hp は RAW -2（hard-0 clamp と区別可能）。
         Assert.assertEq(expected = Some(-2), World.hpOf(EntityRef.Player(0), sysW))
 
@@ -1019,15 +1019,15 @@ mod TestGoldenTrace {
     // invariant ゆえ EXCLUDE）。
     //
     // 中間ガードは ORACLE にピン留め（self-guess リテラルではない）:
-    //   - w1 hpOf(Enemy1) == legacyW hpOf(Enemy1)（敵が single strike を survive・counter 後も敵 hp 不変）
+    //   - w1 hpOf(Enemy1) == oracleW hpOf(Enemy1)（敵が single strike を survive・counter 後も敵 hp 不変）
     //   - evCount(evs1)>0（プレイヤー strike が起きた・空 stream ではない）
-    //   - progressOf(Player0) sysW==legacyW（exp sub-threshold で level-up なし）
-    //   - プレイヤーが counter で DIE（hpOf(Player0) sysW==legacyW・deferred death を end-to-end でピン）
+    //   - progressOf(Player0) sysW==oracleW（exp sub-threshold で level-up なし）
+    //   - プレイヤーが counter で DIE（hpOf(Player0) sysW==oracleW・deferred death を end-to-end でピン）
     @Test
-    def testResolveCounterChainEqualsLegacy(): Unit \ Assert =
+    def testResolveCounterChainEqualsSim(): Unit \ Assert =
         let sc = sceneOf(player(0, 4, Some(1), 200), enemy(1, 10, {x = 3, y = 2}, false, None, ruleJson(""), 200) :: Nil);
         // 合成 legacy oracle（3 seam を ONE withTracedWorld で累積駆動）。
-        let legacyW = region rc {
+        let oracleW = region rc {
             let ((_, _), _, w) =
                 TestUnitFixtures.withTracedWorld(rc, seed(), sc, () ->
                 TestUnitFixtures.withWorldPhase(SimPhase.PlayerTurn, () ->
@@ -1062,12 +1062,12 @@ mod TestGoldenTrace {
         };
         assertNonVacuous(sc, evCount1);
         // 中間ガード: プレイヤー strike 後の敵 hp を legacy にピン（敵は single strike を survive・以後 hp 不変）。
-        Assert.assertEq(expected = World.hpOf(EntityRef.Enemy(1), legacyW), w1EnemyHp);
-        // 等価: counter 連鎖後（敵反撃が味方を撃破）の (enemy hp, player hp, alerted, status, progress) が legacy と一致。
+        Assert.assertEq(expected = World.hpOf(EntityRef.Enemy(1), oracleW), w1EnemyHp);
+        // 等価: counter 連鎖後（敵反撃が味方を撃破）の (enemy hp, player hp, alerted, status, progress) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), World.hpOf(EntityRef.Player(0), w),
                          World.alertedOf(EntityRef.Enemy(1), w), statusT(EntityRef.Player(0), w),
                          World.progressOf(EntityRef.Player(0), w));
-        Assert.assertEq(expected = proj(legacyW), proj(w2))
+        Assert.assertEq(expected = proj(oracleW), proj(w2))
 
     // ── view-script 充実（ViewReplay 前段）: resolveCombat のログが view-fx を載せるか ──────────
     //

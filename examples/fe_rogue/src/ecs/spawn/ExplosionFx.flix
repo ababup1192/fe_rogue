@@ -35,11 +35,6 @@ mod ExplosionFx {
             Scene[NodeTag] \ World.Command =
         emit(MapSnapshot.cellCenter(cell), bigScaleFactor(), scene)
 
-    /// 指定ワールド座標に通常サイズの爆発を 1 つ発生させる（魔法攻撃の着弾用）。
-    pub def emitNormal(worldPos: Vec2.Vec2, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ World.Command =
-        emit(worldPos, scaleFactor(), scene)
-
     /// 指定ワールド座標に `scale` 倍の爆発を 1 つ発生させる。
     /// P6-1f: `Cmd.SpawnExplosionFx` の emit のみ（ノード無し・scene はパイプ素通し）。
     pub def emit(worldPos: Vec2.Vec2, scale: Float64, scene: Scene[NodeTag]):

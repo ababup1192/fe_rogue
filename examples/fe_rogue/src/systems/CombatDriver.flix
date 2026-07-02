@@ -550,7 +550,7 @@ mod CombatDriver {
             case _ => sc
         }, scene, events)
 
-    /// P1-b: sim が発火した `ViewFx(Thief(cell))` を見て legacy `maybeThiefDrop`（CombatDriver:708-719）相当の
+    /// P1-b: sim が発火した `ViewFx(Thief(cell))` を見て、盗み drop の
     /// scene 副作用（フロア落下＋『…が アイテムを落とした』ログ）を引く。発火判定（ローグ職・敵生存・確率）は
     /// sim（`thiefDropEvents`）が済ませ、ここは drop 実体だけ担う。enemyId は wrapper が持つ＝ログの敵名に使う。
     /// ViewReplay（純 view）でなく wrapper で処理するのは、ドロップが scene 状態変更（consumeEquippedWeapon と同レーン）だから。

@@ -670,10 +670,6 @@ mod World {
     pub def seedRng(s: Int64, world: World): World =
         let World.World(w) = world; World.World({rng = Prng.seed(s) | w})
 
-    /// world の現在の PRNG 状態を読む（multi-frame carry テスト用）。
-    pub def rngOf(world: World): Prng.State =
-        let World.World(w) = world; w#rng
-
     /// statusEffects を引く（既定 Nil＝mid-game spawn は seed 不要）。Query handler から呼ぶ。
     /// A': 単一 store。player uid=id ゆえ get(id) のまま、enemy は enemyUid(id) へ写す。
     pub def playerStatusEffectsOf(id: EntityId, world: World): StatusSystem.StatusEffects =
@@ -1180,14 +1176,6 @@ mod World {
             case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyAlerted)
         }
 
-    /// S5: 敵の acted を World から読む。Player は常に None。
-    pub def actedOf(ref: EntityRef, world: World): Option[Bool] =
-        let World.World(w) = world;
-        match ref {
-            case EntityRef.Player(_)  => None
-            case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyActed)
-        }
-
     /// 軸1 仕上げ: 敵が死亡演出中か（reader flip の供給元）。Player は常に false。
     pub def isDyingOf(ref: EntityRef, world: World): Bool =
         let World.World(w) = world;
@@ -1373,10 +1361,6 @@ mod World {
     /// 元 lambda: r -> (r#name, r#effect, r#power)
     pub def equippedRingKey(r: Ring.RingResource): (String, Ring.RingEffect, Int32) =
         (r#name, r#effect, r#power)
-
-    /// 敵 effectRule（生 Json）の ToString キー（effectRuleMismatches）。
-    /// 元 lambda: j -> "${j}"
-    pub def effectRuleKey(j: Util.Json.Json): String = "${j}"
 
     /// 位置 {x,y} のキー (x, y)。unitViewKey / playerDataKey 等の source 共有
     /// （3 source とも closed row {x=Int32,y=Int32} ゆえ monomorphic 安全・§1.2）。
@@ -1646,33 +1630,6 @@ mod World {
                         }
                 }
             case _ => None
-        }
-
-    /// S4.1 安全網: World 由来 `unitViewFromWorld` と scene `unitView` が食い違う entity を列挙する（両 faction）。
-    /// UnitView は Eq 非自動ゆえ全 10 field を tuple へ射影（pos/weaponRange/combat は更にネスト射影）して比較する。
-    /// parity（消費者 flip の前提＝挙動不変の担保）が命で、食い違いは load 式 / head 規約 / combat 合成の drift を意味する（[UNITVIEW DIFF]）。
-    /// P6-2a 調査用: mismatch した entity について「どの field が違うか」を人間可読で返す。
-    /// [UNITVIEW DIFF] のログ強化（恒久ではなくデバッグ支援・比較は unitViewKey と同じ粒度）。
-    pub def unitViewFieldDiff(ref: EntityRef, world: World, scene: Scene[NodeTag]): String =
-        let svOpt = match ref {
-            case EntityRef.Player(id) => PlayerScene.get(id, scene) |> Option.map(PlayerScene.unitView)
-            case EntityRef.Enemy(id)  => EnemyScene.get(id, scene) |> Option.map(EnemyScene.unitView)
-        };
-        match (unitViewFromWorld(ref, world, scene), svOpt) {
-            case (None, _)    => "worldView=None"
-            case (_, None)    => "sceneView=None"
-            case (Some(wv), Some(sv)) =>
-                let tag = (name, eq) -> if (eq) "" else " ${name}";
-                let ds =
-                    tag("pos", (wv#pos#x, wv#pos#y) == (sv#pos#x, sv#pos#y))
-                    + tag("hp(w=${wv#hp},s=${sv#hp})", wv#hp == sv#hp)
-                    + tag("moveTiles(w=${wv#moveTiles},s=${sv#moveTiles})", wv#moveTiles == sv#moveTiles)
-                    + tag("weaponRange", Option.map(r -> (r#min, r#max), wv#weaponRange) == Option.map(r -> (r#min, r#max), sv#weaponRange))
-                    + tag("combat", combatViewKey(wv#combat) == combatViewKey(sv#combat))
-                    + tag("isDying", wv#isDying == sv#isDying)
-                    + tag("hidden", wv#hidden == sv#hidden)
-                    + tag("aiType", wv#aiType == sv#aiType);
-                if (ds == "") "(key-equal?)" else ds
         }
 
     pub def unitViewMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
@@ -2026,10 +1983,6 @@ mod World {
     /// P5-b: 爆発 fx store（seq → 寿命）。
     pub def explosionFxOf(world: World): Map[Int32, ExplosionFx] =
         let World.World(w) = world; w#explosionFx
-
-    /// P5-b: 次に spawn する爆発 fx の連番（popupFxNextSeqOf と同型）。
-    pub def explosionFxNextSeqOf(world: World): Int32 =
-        let World.World(w) = world; w#explosionFxNextSeq
 
     /// P6-1h: 再生中アニメ（AnimatedSprite2D 個体のみ登録）。未登録は None。
     pub def unitAnimOf(ref: EntityRef, world: World): Option[UnitAnim] =

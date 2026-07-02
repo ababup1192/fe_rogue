@@ -1,14 +1,14 @@
 // 杖 cutover の golden-trace 等価テスト（combat の TestGoldenTrace を 2 周目に縮約コピー）。
 //
-// legacy 杖（`StaffCast.applyStaffEffectLegacy`・pub seam）を traced harness で駆動して **最終 World** を
-// オラクルにし、純 sim（`StaffSystem.resolveStaffCast`）の最終 World と一致するかを照合する。
+// live orchestrator（`StaffCast.ecsResolveStaffCast`・pub seam）を traced harness で駆動して **最終 World** を
+// オラクルにし、純 sim（`StaffSystem.resolveStaffCast`）の最終 World と一致するかを照合する（wrapper↔system 整合 pin）。
 // 杖は命中ロールを引かない（rayCast 結果=hit を引数で受ける）＝seeded RNG 不要・完全決定論。
 //
 // 照合方針（plan §goldenTrace）:
-//   - Heal/Blowback/Swap … World 権威 field（hp/pos/dying）の射影を legacy と sim で assertEq ＋ 具体値リテラル pin。
-//   - Bind … legacy は mapPlayer 直書きで Cmd.Add を emit せず legacy World に immobilize が載らない（World 等価不可）ため、
+//   - Heal/Blowback/Swap … World 権威 field（hp/pos/dying）の射影をオラクルと sim で assertEq ＋ 具体値リテラル pin。
+//   - Bind … orchestrator は scene #statuses 直書きで Cmd.Add を emit せずオラクル World に immobilize が載らない（World 等価不可）ため、
 //     ① sim 側 evCount==1 + cmdKey==("Add",uid,5,0) リテラルで Afflicted→eventToCmds→Cmd.Add の新コード経路を実踏、
-//     ② applyEcsStaffSceneEffects を駆動した scene #statuses を legacy #statuses と等価比較、③ remaining=5 を tuple で pin。
+//     ② applyEcsStaffSceneEffects を駆動した scene #statuses をオラクル #statuses と等価比較、③ remaining=5 を tuple で pin。
 //   - whiff（壁）… evCount==0 を pin（意図的 vacuity の明示）。
 // GameLogger hit-log は equivalence contract 外（sim/ViewReplay とも log を積まない）＝数値状態の等価であり log 等価ではない。
 // テスト本体に match を書かず posT/sceneStatusT の射影ヘルパー経由・期待値は具体値リテラル（self-derivation を避ける）。
@@ -134,10 +134,9 @@ mod TestStaffGolden {
 
     // ── harness ───────────────────────────────────────────────────────────────
 
-    /// legacy 杖（`applyStaffEffectLegacy`・playerId=0 固定の caster）を traced harness + 副作用モックで駆動し、
-    /// (後 scene, 最終 World) を返す。P6-5b: legacy oracle 撤去に伴い **live seam（ecsResolveStaffCast）**
-    /// を駆動する（以降の cross-compare は「wrapper↔system 整合」の pin になる）。多引数ゆえレコード名前渡し。
-    def runStaffLegacy(in: {scene = Scene[NodeTag], player = PlayerScene.Data,
+    /// live orchestrator（`ecsResolveStaffCast`・playerId=0 固定の caster）を traced harness + 副作用モックで駆動し、
+    /// (後 scene, 最終 World) をオラクルとして返す（cross-compare は「wrapper↔system 整合」の pin）。多引数ゆえレコード名前渡し。
+    def runStaffOracle(in: {scene = Scene[NodeTag], player = PlayerScene.Data,
                             staff = Staff.StaffResource, dir = {x = Int32, y = Int32}, hit = RayHit}):
             (Scene[NodeTag], World) =
         region rc {
@@ -178,18 +177,18 @@ mod TestStaffGolden {
     /// legacy（applyHealToPlayer→setHp dual-write）の最終 World hp と sim（Healed→SetHp）が一致し、
     /// 17 を具体値で pin して magicAttack 源泉（baseStatsOf=resource verbatim）を固定する（偶然一致を排除）。
     @Test
-    def testStaffHealEqualsLegacy(): Unit \ Assert =
+    def testStaffHealEqualsSim(): Unit \ Assert =
         let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 4);
         let target = playerAt(1, {x = 5, y = 2}, 3, 20, 0);
         let sc = sceneOf(caster :: target :: Nil, Nil);
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Heal);
-        let (_, legacyW) = runStaffLegacy({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
+        let (_, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
         let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Heal, dir, hit);
         Assert.assertEq(expected = true, List.length(evs) > 0);
-        // 等価: 回復後の target hp が legacy と一致。
-        Assert.assertEq(expected = World.hpOf(EntityRef.Player(1), legacyW),
+        // 等価: 回復後の target hp が オラクルと一致。
+        Assert.assertEq(expected = World.hpOf(EntityRef.Player(1), oracleW),
                         World.hpOf(EntityRef.Player(1), sysW));
         // non-vacuity: 3 + (魔力4 + 10) = 17（maxHp20 でクランプなし）を pin。
         Assert.assertEq(expected = Some(17), World.hpOf(EntityRef.Player(1), sysW))
@@ -199,38 +198,38 @@ mod TestStaffGolden {
     /// ふきとばし × 敵(生存): 敵 hp5→4・hitCell{3,2} から右へ knockbackPath で壁手前{12,2}へ着地。
     /// legacy（setHp+snapTo dual-write）と sim（Damaged+Moved）の (敵 hp, pos) が一致し、(4,{12,2}) を pin。
     @Test
-    def testStaffBlowbackEnemySurvivesEqualsLegacy(): Unit \ Assert =
+    def testStaffBlowbackEnemySurvivesEqualsSim(): Unit \ Assert =
         let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
         let target = enemyAt(1, {x = 3, y = 2}, 5, 10);
         let sc = sceneOf(caster :: Nil, target :: Nil);
         let hit = RayHit.HitEnemy(1, {x = 3, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Blowback);
-        let (_, legacyW) = runStaffLegacy({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
+        let (_, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
         let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Blowback, dir, hit);
         Assert.assertEq(expected = true, List.length(evs) > 0);
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), posT(EntityRef.Enemy(1), w));
-        // 等価: 1 ダメージ + 着地後の (敵 hp, pos) が legacy と一致。
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        // 等価: 1 ダメージ + 着地後の (敵 hp, pos) が オラクルと一致。
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: hp5→4・{3,2}→{12,2}（壁なし 13×13・右端手前）。
         Assert.assertEq(expected = (Some(4), Some((12, 2))), proj(sysW))
 
     /// ふきとばし × 敵(撃破): 敵 hp1→0（hard-0）+ 死亡演出。legacy（startDeathAnimation=SetHp0+SetDying）と
     /// sim（Damaged(0)+Dying+ViewFx(Died)）の (敵 hp, dying) が一致し、(0,true) を pin。
     @Test
-    def testStaffBlowbackEnemyKillEqualsLegacy(): Unit \ Assert =
+    def testStaffBlowbackEnemyKillEqualsSim(): Unit \ Assert =
         let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
         let target = enemyAt(1, {x = 3, y = 2}, 1, 10);
         let sc = sceneOf(caster :: Nil, target :: Nil);
         let hit = RayHit.HitEnemy(1, {x = 3, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Blowback);
-        let (_, legacyW) = runStaffLegacy({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
+        let (_, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
         let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Blowback, dir, hit);
         Assert.assertEq(expected = true, List.length(evs) > 0);
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), World.isDyingOf(EntityRef.Enemy(1), w));
-        // 等価: 撃破後の (敵 hp, dying) が legacy と一致。
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        // 等価: 撃破後の (敵 hp, dying) が オラクルと一致。
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: hp=0（hard-0 リテラル）・dying=true。
         Assert.assertEq(expected = (Some(0), true), proj(sysW))
 
@@ -239,19 +238,19 @@ mod TestStaffGolden {
     /// いれかえ × 敵: caster{2,2} と敵{5,2} を交換。legacy（snapTo×2 dual-write）と sim（Moved×2・順序保存）の
     /// (caster pos, 敵 pos) が一致し、(({5,2}),({2,2})) を pin。
     @Test
-    def testStaffSwapEqualsLegacy(): Unit \ Assert =
+    def testStaffSwapEqualsSim(): Unit \ Assert =
         let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
         let target = enemyAt(1, {x = 5, y = 2}, 10, 10);
         let sc = sceneOf(caster :: Nil, target :: Nil);
         let hit = RayHit.HitEnemy(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Swap);
-        let (_, legacyW) = runStaffLegacy({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
+        let (_, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
         let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Swap, dir, hit);
         Assert.assertEq(expected = true, List.length(evs) > 0);
         let proj = w -> (posT(EntityRef.Player(0), w), posT(EntityRef.Enemy(1), w));
-        // 等価: 交換後の (caster pos, 敵 pos) が legacy と一致。
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        // 等価: 交換後の (caster pos, 敵 pos) が オラクルと一致。
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: caster{2,2}↔敵{5,2}。
         Assert.assertEq(expected = (Some((5, 2)), Some((2, 2))), proj(sysW))
 
@@ -276,10 +275,10 @@ mod TestStaffGolden {
         let cmdKeys = evs |> List.flatMap(World.eventToCmds) |> List.map(World.cmdKey);
         Assert.assertEq(expected = ("Add", 1, 5, 0) :: Nil, cmdKeys);
         // ② scene-statuses: legacy #statuses == ECS（applyEcsStaffSceneEffects 駆動）#statuses。
-        let (legacyScene, _) = runStaffLegacy({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
+        let (oracleScene, _) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
         // S3: applyEcsStaffSceneEffects は Seed emit で World.Command を持つ＝ディスチャージャで wrap。
         let ecsScene = TestUnitFixtures.dischargeWorldCommand(() -> StaffCast.applyEcsStaffSceneEffects(evs, sc));
-        Assert.assertEq(expected = sceneStatusT(1, legacyScene), sceneStatusT(1, ecsScene));
+        Assert.assertEq(expected = sceneStatusT(1, oracleScene), sceneStatusT(1, ecsScene));
         // ③ remaining=5 を tuple リテラルで pin（immobilizeFor(5) を self-derive しない）。
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, sceneStatusT(1, ecsScene));
         // sysW は ① で World へ Cmd.Add 済（read-model 側の sanity）＝immobilize が World にも載る。
@@ -290,10 +289,10 @@ mod TestStaffGolden {
     /// 一時しのぎ × 味方(id=1): 完全停止 + 階段{8,8}へワープ。legacy `applyStopgapToPlayer`
     /// （bind→warpPlayer.snapTo dual-write）と sim `stopgapEvents`（Afflicted :: Moved）を突き合わせる:
     ///   ① evCount==2 + cmdKeys==("Add",1,5,0)::("Move",1,8,8)（bind→warp の順序・新コード経路の実踏）、
-    ///   ② warp 後 pos が legacy と一致し {8,8} を pin（stairsPosOf read-model が warpCellFor に届いている証跡）、
+    ///   ② warp 後 pos が オラクルと一致し {8,8} を pin（stairsPosOf read-model が warpCellFor に届いている証跡）、
     ///   ③ scene #statuses が legacy と等価で (Immobilized,0,5) を pin（bind 部の parity）。
     @Test
-    def testStaffStopgapWarpsToStairsEqualsLegacy(): Unit \ Assert =
+    def testStaffStopgapWarpsToStairsEqualsSim(): Unit \ Assert =
         let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
         let target = playerAt(1, {x = 5, y = 2}, 10, 10, 0);
         let sc = sceneWithStairs(caster :: target :: Nil, Nil, {x = 8, y = 8});
@@ -306,12 +305,12 @@ mod TestStaffGolden {
         let cmdKeys = evs |> List.flatMap(World.eventToCmds) |> List.map(World.cmdKey);
         Assert.assertEq(expected = ("Add", 1, 5, 0) :: ("Move", 1, 8, 8) :: Nil, cmdKeys);
         // ② pos: legacy warpPlayer.snapTo と一致 + {8,8} を pin。
-        let (legacyScene, legacyW) = runStaffLegacy({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
-        Assert.assertEq(expected = posT(EntityRef.Player(1), legacyW), posT(EntityRef.Player(1), sysW));
+        let (oracleScene, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
+        Assert.assertEq(expected = posT(EntityRef.Player(1), oracleW), posT(EntityRef.Player(1), sysW));
         Assert.assertEq(expected = Some((8, 8)), posT(EntityRef.Player(1), sysW));
         // ③ scene #statuses 等価 + (Immobilized,0,5) pin。
         let ecsScene = TestUnitFixtures.dischargeWorldCommand(() -> StaffCast.applyEcsStaffSceneEffects(evs, sc));
-        Assert.assertEq(expected = sceneStatusT(1, legacyScene), sceneStatusT(1, ecsScene));
+        Assert.assertEq(expected = sceneStatusT(1, oracleScene), sceneStatusT(1, ecsScene));
         Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, sceneStatusT(1, ecsScene))
 
     /// 一時しのぎ × 味方(id=1)・階段なし: warpCellFor(None)=None ゆえ warp せず bind のみ。legacy warpPlayer も
@@ -382,8 +381,8 @@ mod TestStaffGolden {
             (s, keys, w, logs)
         }
 
-    /// legacy 杖 seam を traced harness + recording logger で駆動（whiff fallback の log/cmds オラクル）。
-    def runStaffLegacyLogged(in: {scene = Scene[NodeTag], player = PlayerScene.Data,
+    /// live orchestrator seam を traced harness + recording logger で駆動（whiff fallback の log/cmds オラクル）。
+    def runStaffOracleLogged(in: {scene = Scene[NodeTag], player = PlayerScene.Data,
                                   staff = Staff.StaffResource, dir = {x = Int32, y = Int32}, hit = RayHit}):
             (Scene[NodeTag], List[(String, Int32, Int32, Int32)], World, List[String]) =
         region rc {
@@ -398,13 +397,13 @@ mod TestStaffGolden {
             (s, keys, w, logs)
         }
 
-    // ── (seam-a) whiff → legacy fallback の log 等価 ───────────────────────────────
+    // ── (seam-a) whiff → scene fallback の log 等価 ───────────────────────────────
 
-    /// 空振り（壁 hit）で `ecsResolveStaffCast` は events=Nil を見て `applyStaffEffectLegacy` へ fallback する。
-    /// 出荷 seam の log/cmds が直 legacy whiff 呼びと一致することを固定。else 分岐（empty events を replay）が
-    /// 誤って走ると『届かなかった』ログが 0 行になり legLogs と乖離して落ちる＝Nil-fallback を非 vacuous に pin。
+    /// 空振り（壁 hit）で `ecsResolveStaffCast` は events=Nil を見て内包した whiff 処理（『届かなかった』ログ）へ fallback する。
+    /// 出荷 seam の log/cmds がオラクル harness の whiff 駆動と一致することを固定。else 分岐（empty events を replay）が
+    /// 誤って走ると『届かなかった』ログが 0 行になり oracleLogs と乖離して落ちる＝Nil-fallback を非 vacuous に pin。
     @Test
-    def testStaffEcsSeamWhiffFallsBackToLegacy(): Unit \ Assert =
+    def testStaffEcsSeamWhiffFallsBackToScene(): Unit \ Assert =
         let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 4);
         let target = playerAt(1, {x = 5, y = 2}, 3, 20, 0);
         let sc = sceneOf(caster :: target :: Nil, Nil);
@@ -413,10 +412,10 @@ mod TestStaffGolden {
         let staff = staffOf(Staff.StaffEffect.Heal);
         let args = {scene = sc, player = caster, staff = staff, dir = dir, hit = hit};
         let (_, ecsKeys, ecsW, ecsLogs) = runStaffEcs(args);
-        let (_, legKeys, _, legLogs)    = runStaffLegacyLogged(args);
-        // fallback 等価: ecs seam の log/cmds が直 legacy whiff 呼びと一致。
-        Assert.assertEq(expected = legLogs, ecsLogs);
-        Assert.assertEq(expected = legKeys, ecsKeys);
+        let (_, oracleKeys, _, oracleLogs) = runStaffOracleLogged(args);
+        // fallback 等価: ecs seam の log/cmds がオラクル harness の whiff 駆動と一致。
+        Assert.assertEq(expected = oracleLogs, ecsLogs);
+        Assert.assertEq(expected = oracleKeys, ecsKeys);
         // 非 vacuity: whiff は Cmd を積まず（World 不変）、"届かなかった" を 1 行だけログる。
         Assert.assertEq(expected = (Nil: List[(String, Int32, Int32, Int32)]), ecsKeys);
         Assert.assertEq(expected = 1, List.length(ecsLogs));
@@ -466,19 +465,19 @@ mod TestStaffGolden {
     /// legacy `applyBlowbackToPlayer`（setHp+snapTo）と sim（Damaged+Moved）の (味方 hp, pos) が一致し、
     /// (4,{12,2}) を pin（ally 生存分岐＝Damaged raw :: Moved を踏む）。
     @Test
-    def testStaffBlowbackAllySurvivesEqualsLegacy(): Unit \ Assert =
+    def testStaffBlowbackAllySurvivesEqualsSim(): Unit \ Assert =
         let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
         let target = playerAt(1, {x = 3, y = 2}, 5, 10, 0);
         let sc = sceneOf(caster :: target :: Nil, Nil);
         let hit = RayHit.HitPlayer(1, {x = 3, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Blowback);
-        let (_, legacyW) = runStaffLegacy({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
+        let (_, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
         let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Blowback, dir, hit);
         Assert.assertEq(expected = true, List.length(evs) > 0);
         let proj = w -> (World.hpOf(EntityRef.Player(1), w), posT(EntityRef.Player(1), w));
-        // 等価: 1 ダメージ + 着地後の (味方 hp, pos) が legacy と一致。
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        // 等価: 1 ダメージ + 着地後の (味方 hp, pos) が オラクルと一致。
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: hp5→4・{3,2}→{12,2}。
         Assert.assertEq(expected = (Some(4), Some((12, 2))), proj(sysW))
 
@@ -487,19 +486,19 @@ mod TestStaffGolden {
     /// legacy `applyBlowbackToPlayer`（isDead→setHp のみ・死亡演出なし）と (味方 hp, dying) が一致し、(0,false) を pin。
     /// ally に Dying を誤発火させると dying=true に転んでここが落ちる。evCount=1（Moved も無い）も pin。
     @Test
-    def testStaffBlowbackAllyKillEqualsLegacy(): Unit \ Assert =
+    def testStaffBlowbackAllyKillEqualsSim(): Unit \ Assert =
         let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
         let target = playerAt(1, {x = 3, y = 2}, 1, 10, 0);
         let sc = sceneOf(caster :: target :: Nil, Nil);
         let hit = RayHit.HitPlayer(1, {x = 3, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Blowback);
-        let (_, legacyW) = runStaffLegacy({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
+        let (_, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
         let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Blowback, dir, hit);
         Assert.assertEq(expected = true, List.length(evs) > 0);
         let proj = w -> (World.hpOf(EntityRef.Player(1), w), World.isDyingOf(EntityRef.Player(1), w));
-        // 等価: 味方撃破後の (hp, dying) が legacy と一致（ally は Dying/Died を出さない）。
-        Assert.assertEq(expected = proj(legacyW), proj(sysW));
+        // 等価: 味方撃破後の (hp, dying) が オラクルと一致（ally は Dying/Died を出さない）。
+        Assert.assertEq(expected = proj(oracleW), proj(sysW));
         // 独立 pin: hp=0・dying=false（ally に Dying 無し）・evCount=1（Damaged のみ・Moved 無し）。
         Assert.assertEq(expected = (Some(0), false), proj(sysW));
         Assert.assertEq(expected = 1, List.length(evs))

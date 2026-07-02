@@ -689,7 +689,7 @@ mod TestUnitFixtures {
             a \ (ef - TurnPhase.State - SelectedPlayer.State
                   - PlayerData.PartyQuery - EnemyData.RosterQuery - World.WorldQuery) =
         // P3-a: メニューは階段判定を World.stairsPosOf で読むため WorldQuery も剥がす。
-        // scene から seed した静的 World（stairsPos が scene ノードを mirror）を返せば isAt 相当が成立する。
+        // scene から seed した静的 World（stairsPos が scene ノードを mirror）を返せば階段判定が成立する。
         withFixedPhase(phase, () ->
             withSelectedPlayer(selectedId, () ->
                 withMockPartyQuery(scene, () ->
