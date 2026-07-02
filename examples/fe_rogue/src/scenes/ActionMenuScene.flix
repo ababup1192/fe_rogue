@@ -416,7 +416,8 @@ mod ActionMenuScene {
     /// 呼び出し側（TurnEndHoldScene）で PlayerCursor / GatherMove のときだけ発火する。
     pub def turnEndShortcut(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, GatherResume.State, World.Command} =
+                              TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                              World.Command, World.WorldQuery} =
         applyTurnEnd(scene)
 
     /// インベントリのいずれかの武器の射程内に生きている敵が居るか。
@@ -463,7 +464,8 @@ mod ActionMenuScene {
     /// 将来はここから World System へ寄せる。現状 Wait は既存 `TurnFlow.commitWaitedAndAdvance` をそのまま呼ぶ（挙動不変）。
     def applyActionIntent(intent: ActionIntent, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, World.Command} =
+               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+               World.Command, World.WorldQuery} =
         match intent {
             case ActionIntent.Wait => TurnFlow.commitWaitedAndAdvance(scene)
         }
@@ -517,7 +519,8 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
+                World.Command, World.WorldQuery} =
         // 階段を決定した瞬間にフロア移動音を鳴らす
         AudioStreamPlayer.play("change_floor");
         GameLogger.playerLog("階段を降りた");
@@ -571,7 +574,8 @@ mod ActionMenuScene {
     /// （ターン確定の単一所有者）に委譲する。`EnemyTurnDriverScene` の強制全員待機と共通の入口。
     def applyTurnEnd(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, GatherResume.State, World.Command} =
+                              TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                              World.Command, World.WorldQuery} =
         // 自発確定（メニュー「全員待機/ターンエンド」・shift スキップ・階段離脱の残存待機）は allowResume=true。
         // 集合中(gatherActive=true)のときだけ実際に resume が立つ（commitAllWaitedAndAdvance 側で AND）。
         TurnFlow.commitAllWaitedAndAdvance(true, scene)

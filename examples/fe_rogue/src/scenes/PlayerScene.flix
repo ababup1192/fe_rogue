@@ -755,31 +755,41 @@ mod PlayerScene {
         members |> List.findMap(m -> if (m#id == id) Some(m#gridPos) else None)
 
     /// アクティブ（waited でない）味方のうち、id 最小のものを返す。誰も居なければ None。
-    /// `commitWaitedAndAdvance` の直後にカーソルを次に動ける駒へ飛ばす用途で使う
-    /// (`PlayerData.PartyQuery` 経由だとフレーム冒頭 snapshot を読むため stale)。
-    pub def firstActive(scene: Scene[NodeTag]): Option[Data] =
+    /// `commitWaitedAndAdvance` の直後にカーソルを次に動ける駒へ飛ばす用途で使う。
+    /// P6-2a: waited は **World 直読み**（read-after-write でフレーム中の SetWaited も即時見える。
+    /// scene の d#waited twin は syncTree 派生を退役し stale）。
+    pub def firstActive(scene: Scene[NodeTag]): Option[Data] \ World.WorldQuery =
+        let w = World.WorldQuery.get();
         getAll(scene)
-            |> List.filter(d -> not d#waited)
+            |> List.filter(d -> not (World.waitedOf(World.EntityRef.Player(d#id), w)
+                                        |> Option.getWithDefault(false)))
             |> List.sortBy(d -> d#id)
             |> List.head
 
-    /// `firstActive` の「`excludeId` を行動済み扱いにする」変種。S6 で waited が World 権威化し
-    /// scene 直書きを撤去したため、`commitWaitedAndAdvance` のように **このフレームで waited 化した直後**に
-    /// 次の active を拾う局面では scene の waited がまだ stale（frame-end の syncTreeFromWorld 前）。
-    /// ただし stale なのは「たった今 waited にした 1 体（= excludeId）」だけ（他は前フレームで sync 済み）なので、
-    /// その id を明示除外すれば World を読まずとも結果は同一になる（純粋・effect cascade 不要）。
-    pub def firstActiveExcluding(excludeId: Option[Int32], scene: Scene[NodeTag]): Option[Data] =
+    /// `firstActive` の「`excludeId` を行動済み扱いにする」変種。
+    /// P6-2a: waited を World 直読みにしたため「たった今 waited 化した駒」も store で即時 true になり
+    /// 除外は冗長になったが、防御的に維持（呼び出し側 API 据置・二重に安全）。
+    pub def firstActiveExcluding(excludeId: Option[Int32], scene: Scene[NodeTag]):
+            Option[Data] \ World.WorldQuery =
+        let w = World.WorldQuery.get();
         getAll(scene)
-            |> List.filter(d -> not d#waited and Some(d#id) != excludeId)
+            |> List.filter(d -> not (World.waitedOf(World.EntityRef.Player(d#id), w)
+                                        |> Option.getWithDefault(false))
+                                and Some(d#id) != excludeId)
             |> List.sortBy(d -> d#id)
             |> List.head
 
     /// 主人公(lordId=0)が集合（行軍）を率いられる状態か。集合は `beginGather` が主人公を
     /// 選択駒に固定するので、主人公が戦闘不能(hp<=0) / 階段退場(hidden) / かなしばり(immobilized)
     /// のいずれかなら率いられない。集合のターン跨ぎ自動継続の前提チェックに使う。
-    pub def lordReadyToGather(scene: Scene[NodeTag]): Bool =
+    pub def lordReadyToGather(scene: Scene[NodeTag]): Bool \ World.WorldQuery =
+        // P6-2a: hp は World 直読み（ECS 戦闘は scene hp を書かず syncTree 派生も退役＝scene twin は stale）。
+        // hidden/statuses は scene 権威のまま。
+        let w = World.WorldQuery.get();
         match get(lordId(), scene) {
-            case Some(d) => d#hp > 0 and not d#hidden and not StatusSystem.isImmobilized(d#statuses)
+            case Some(d) =>
+                let hp = World.hpOf(World.EntityRef.Player(lordId()), w) |> Option.getWithDefault(d#hp);
+                hp > 0 and not d#hidden and not StatusSystem.isImmobilized(d#statuses)
             case None    => false
         }
 

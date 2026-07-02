@@ -1113,10 +1113,10 @@ mod Game {
             // hidden/equippedRing が re-mirror stale で false-positive を出していた。post-sync では gridPos=World 派生・
             // read-model も refreshMirror 済みで揃う。dual-write 系(weapons/staves/statuses 等・syncTree 非派生)は
             // scene が process 値のままゆえ「World store == scene」の coverage を維持する。
-            match World.unitViewMismatches(world2, synced) {  // S4.1
-                case Nil => ()
-                case ms  => println("[UNITVIEW DIFF] ${ms}")
-            };
+            // P6-2b: [UNITVIEW DIFF] は退役。unitView の hp/combat は World 単独権威になり（scene twin 退役）、
+            // 消費者（counter 分岐/AI self/武器選択ターゲット/hover）は unitViewFromWorld / RosterQuery overlay へ
+            // flip 済み＝scene view との比較は「stale で正」の恒常ノイズになる。残る twin field（pos/weapons/
+            // statuses 等）は後続の [PLAYERDATA/ENEMYDATA DIFF] が引き続き突合する。
             match World.playerDataMismatches(world2, synced) {  // S4.4
                 case Nil => ()
                 case ms  => println("[PLAYERDATA DIFF] ${ms}")

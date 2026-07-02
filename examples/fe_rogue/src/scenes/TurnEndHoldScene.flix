@@ -217,7 +217,7 @@ mod TurnEndHoldScene {
                     Scene[NodeTag]
                     \ {GameEngine.Game, GameEngine.Audio, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                       GatherResume.State, World.Command, TurnEndHoldScene.State} =
+                       GatherResume.State, World.Command, World.WorldQuery, TurnEndHoldScene.State} =
         if (Option.isEmpty(Scene.getEngineNode(rootPath(), scene))) scene
         else {
             // P4-c: 状態は resource から読む（旧: NodeTag.HoldGauge ペイロード）。ノードは描画 view（Label/Arc）。

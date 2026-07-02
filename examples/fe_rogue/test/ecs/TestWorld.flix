@@ -1346,13 +1346,13 @@ mod TestWorld {
         let world = World.syncFromScene(scene, World.empty());
         Assert.assertEq(expected = true, List.isEmpty(World.playerDataMismatches(world, scene)))
 
-    /// 非 vacuous ガード: World 側だけ player0 hp を drift させると playerDataMismatches が検出する
-    /// （[PLAYERDATA DIFF] が鳴るべき状況を pin。射影に hp が含まれていることの実証も兼ねる）。
+    /// 非 vacuous ガード: World 側だけ player0 の位置を drift させると playerDataMismatches が検出する
+    /// （[PLAYERDATA DIFF] が鳴るべき状況を pin。P6-2a: hp は key から退役したため drift 源を pos に変更）。
     @Test
     def testPlayerDataMismatchesDetectsDrift(): Unit \ Assert =
         let scene   = sampleScene();
         let world   = World.syncFromScene(scene, World.empty());
-        let drifted = World.applyCmd(World.Cmd.SetHp(World.EntityRef.Player(0), 99), world);
+        let drifted = World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 9, y = 9}), world);
         Assert.assertEq(expected = false, List.isEmpty(World.playerDataMismatches(drifted, scene)))
 
     /// フィールド単位 pin: dataFromWorld(0) の代表 field（gridPos/hp/moveTiles/level/classId）が
@@ -1484,8 +1484,10 @@ mod TestWorld {
              World.unitViewKey({hidden = true | uv})                       != World.unitViewKey(uv),
              World.unitViewKey({aiType = EnemyAI.AiType.Wanderer | uv})    != World.unitViewKey(uv)))
 
-    /// ★MANDATORY (§5.3・§1.3): playerDataKey 第1 group（13 field）を漏れなく見る pin。在庫4種の
+    /// ★MANDATORY (§5.3・§1.3): playerDataKey 第1 group（11 field）を漏れなく見る pin。在庫4種の
     /// headKey・posKey・resourceStatKey の sub-key 落ち（S4.4 再発）まで検出する。
+    /// hp/waited は P6-2a で key から退役（scene twin 退役＝ECS 経路は World のみ書く）＝
+    /// **含まれないこと**を == で pin（誤って復活させない防壁）。
     @Test
     def testPlayerDataKeyCoversGroup1Fields(): Unit \ Assert =
         let d = playerData(0);
@@ -1496,8 +1498,8 @@ mod TestWorld {
              k({classId = "other" | d})                    != k(d),
              k({gridPos = {x = 99, y = 99} | d})           != k(d),
              k({moveTiles = 99 | d})                       != k(d),
-             k({hp = 99 | d})                              != k(d),
-             k({waited = true | d})                        != k(d),
+             k({hp = 99 | d})                              == k(d),
+             k({waited = true | d})                        == k(d),
              k({attackTargetId = Some(7) | d})             != k(d),
              k({resource = TestUnitFixtures.testResource(99, 10) | d}) != k(d),
              k({weapons = Nil | d})                        != k(d),
@@ -1506,10 +1508,10 @@ mod TestWorld {
              k({rings = d4Ring() :: Nil | d})              != k(d),
              k({ringEquipped = true | d})                  != k(d)))
 
-    /// ★MANDATORY (§5.3・§1.3): playerDataKey 第2 group（9 field）を漏れなく見る pin。
+    /// ★MANDATORY (§5.3・§1.3): playerDataKey 第2 group（7 field）を漏れなく見る pin。
     /// pendingLevelUpKey・statusListKey の内包まで検出する。
-    /// followUpUsed は P2 で key から退役（scene copy 退役・World 単独権威）ゆえ対象外
-    ///（World 権威は dataFromWorld None-gate が保証）。
+    /// followUpUsed は P2、level/exp は P6-2a で key から退役（scene copy 退役・World 単独権威）＝
+    /// level/exp は **含まれないこと**を == で pin。
     @Test
     def testPlayerDataKeyCoversGroup2Fields(): Unit \ Assert =
         let d = playerData(0);
@@ -1523,8 +1525,8 @@ mod TestWorld {
              k({facing = Staff.Direction.Up | d})          != k(d),
              k({hidden = true | d})                        != k(d),
              k({usedStairs = true | d})                    != k(d),
-             k({level = 99 | d})                           != k(d),
-             k({exp = 99 | d})                             != k(d),
+             k({level = 99 | d})                           == k(d),
+             k({exp = 99 | d})                             == k(d),
              k({pendingLevelUp = Some(plu) | d})           != k(d),
              k({statuses = st :: Nil | d})                 != k(d)))
 
@@ -1538,13 +1540,13 @@ mod TestWorld {
         let world = World.syncFromScene(scene, World.empty());
         Assert.assertEq(expected = true, List.isEmpty(World.enemyDataMismatches(world, scene)))
 
-    /// 非 vacuous ガード: World 側だけ enemy5 hp を drift させると enemyDataMismatches が検出する
-    /// （[ENEMYDATA DIFF] が鳴るべき状況を pin。射影に hp が含まれていることの実証も兼ねる）。
+    /// 非 vacuous ガード: World 側だけ enemy5 の位置を drift させると enemyDataMismatches が検出する
+    /// （[ENEMYDATA DIFF] が鳴るべき状況を pin。P6-2a: hp は key から退役したため drift 源を pos に変更）。
     @Test
     def testEnemyDataMismatchesDetectsDrift(): Unit \ Assert =
         let scene   = sampleScene();
         let world   = World.syncFromScene(scene, World.empty());
-        let drifted = World.applyCmd(World.Cmd.SetHp(World.EntityRef.Enemy(5), 99), world);
+        let drifted = World.applyCmd(World.Cmd.Move(World.EntityRef.Enemy(5), {x = 9, y = 9}), world);
         Assert.assertEq(expected = false, List.isEmpty(World.enemyDataMismatches(drifted, scene)))
 
     /// フィールド単位 pin: dataFromWorldEnemy(5) の代表 field（gridPos/hp/moveTiles/alerted/resourceId）が
@@ -1573,7 +1575,8 @@ mod TestWorld {
              k({alerted = true | d})              != k(d),
              k({homeModuleIdx = 99 | d})          != k(d),
              k({moveTiles = 99 | d})              != k(d),
-             k({hp = 99 | d})                     != k(d),
+             // P6-2a: hp は key から退役（含まれないことを == で pin）。
+             k({hp = 99 | d})                     == k(d),
              k({isDying = true | d})              != k(d),
              k({attackTargetId = Some(7) | d})    != k(d)))
 

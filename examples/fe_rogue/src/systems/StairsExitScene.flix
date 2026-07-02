@@ -171,7 +171,8 @@ mod StairsExitScene {
                       scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-               GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery} =
+               GatherResume.State, CustomEffects.FloorAdvanceRequest,
+               World.Command, World.WorldQuery, BoardQuery} =
         match data#queue {
             case Nil              => finalize(scene)
             case (u, rem) :: rest =>
@@ -208,7 +209,8 @@ mod StairsExitScene {
     /// 全員退場できたら次フロア、残れば敵ターンへ。driver の queue は空に戻す。
     def finalize(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-               SelectedPlayer.State, GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command} =
+               SelectedPlayer.State, GatherResume.State, CustomEffects.FloorAdvanceRequest,
+               World.Command, World.WorldQuery} =
         let cleared = setState(initialData(), scene);
         if (PlayerScene.allLivingUsedStairs(cleared))
             CustomEffects.FloorAdvanceRequest.advance(cleared)

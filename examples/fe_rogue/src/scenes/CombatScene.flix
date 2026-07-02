@@ -275,7 +275,7 @@ mod CombatScene {
     def startPlayerFollowUp(playerId: Int32, enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, World.Command} =
+                              SelectedPlayer.State, Pacing.State, World.Command, World.WorldQuery} =
         match EnemyScene.get(enemyId, scene) {
             case Some(e) =>
                 GameLogger.playerLog("追撃！");
@@ -288,13 +288,22 @@ mod CombatScene {
     def resolvePlayerMainAttack(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, World.Command} =
+                              SelectedPlayer.State, Pacing.State, World.Command, World.WorldQuery} =
         // Track A: faction-blind な decideView（UnitView ベース）へ移行。旧 decide(味方→敵) と等価。
+        // P6-2b: view は World 由来（unitViewFromWorld）。ECS 戦闘は hp を World にしか書かないため、
+        // 直前の攻撃結果（Kill/Counter 分岐の hp）を scene view で読むと stale になる。
+        let w0 = World.WorldQuery.get();
         let outcome = PlayerScene.get(playerId, scene)
-            |> Option.map(player -> CounterAttackRules.decideView(PlayerScene.unitView(player),
+            |> Option.map(player -> CounterAttackRules.decideView(
+                   World.unitViewFromWorld(World.EntityRef.Player(playerId), w0, scene)
+                       |> Option.getWithDefault(PlayerScene.unitView(player)),
                    player#attackTargetId
-                       |> Option.flatMap(eid -> EnemyScene.get(eid, scene))
-                       |> Option.map(EnemyScene.unitView)));
+                       |> Option.flatMap(eid ->
+                           // World 未登録（テスト/spawn 過渡）のみ scene fallback。
+                           match World.unitViewFromWorld(World.EntityRef.Enemy(eid), w0, scene) {
+                               case Some(v) => Some(v)
+                               case None    => EnemyScene.get(eid, scene) |> Option.map(EnemyScene.unitView)
+                           })));
         match outcome {
             case None => scene
             case Some(CounterAttackRules.Outcome.Kill) =>
@@ -314,7 +323,7 @@ mod CombatScene {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, World.Command} =
+                              SelectedPlayer.State, World.Command, World.WorldQuery} =
         let countered = forM (
             p <- PlayerScene.get(playerId, scene)
         ) yield {
@@ -386,7 +395,7 @@ mod CombatScene {
 
     /// 敵の追撃モーションを開始する（同じ味方へ再突進）。味方が消えていれば反撃判定に落とす。
     def startEnemyFollowUp(enemyId: Int32, playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, World.WorldQuery} =
         match PlayerScene.get(playerId, scene) {
             case Some(p) =>
                 GameLogger.enemyLog("追撃！");
@@ -397,14 +406,22 @@ mod CombatScene {
 
     /// 敵主攻撃完了の従来分岐（追撃なし）。味方反撃の対象を決め、反撃なら startAttack。
     def resolveEnemyMainAttack(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command} =
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, World.WorldQuery} =
         // Track A: faction-blind な decideView へ移行。旧 decidePlayerCounter(敵→味方) と等価。
+        // P6-2b: view は World 由来（resolvePlayerMainAttack と同じ理由＝直前ダメージの hp が scene では stale）。
+        let w0 = World.WorldQuery.get();
         let decision = forM (
             e <- EnemyScene.get(enemyId, scene)
-        ) yield (e, CounterAttackRules.decideView(EnemyScene.unitView(e),
+        ) yield (e, CounterAttackRules.decideView(
+                     World.unitViewFromWorld(World.EntityRef.Enemy(enemyId), w0, scene)
+                         |> Option.getWithDefault(EnemyScene.unitView(e)),
                      e#attackTargetId
-                         |> Option.flatMap(pid -> PlayerScene.get(pid, scene))
-                         |> Option.map(PlayerScene.unitView)));
+                         |> Option.flatMap(pid ->
+                             // World 未登録（テスト/spawn 過渡）のみ scene fallback。
+                             match World.unitViewFromWorld(World.EntityRef.Player(pid), w0, scene) {
+                                 case Some(v) => Some(v)
+                                 case None    => PlayerScene.get(pid, scene) |> Option.map(PlayerScene.unitView)
+                             })));
         match decision {
             case Some((e, CounterAttackRules.Outcome.Counter(playerId))) =>
                 let cleared = clearEnemyAttackTarget(enemyId, scene);

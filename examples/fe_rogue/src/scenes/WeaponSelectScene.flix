@@ -160,9 +160,11 @@ mod WeaponSelectScene {
 
     /// `cell` に居る敵が `weapon` の射程内の生存敵か（カーソルが有効な対象に乗っているかの判定）。
     def isReachableEnemyCell(cell: {x = Int32, y = Int32}, pos: {x = Int32, y = Int32},
-                             weapon: UnitCatalog.WeaponResource, scene: Scene[NodeTag]): Bool =
+                             weapon: UnitCatalog.WeaponResource, scene: Scene[NodeTag]):
+            Bool \ EnemyData.RosterQuery =
+        // P6-2b: 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む（scene 直読みは stale）。
         EnemyScene.findIdAt(cell, scene)
-            |> Option.flatMap(id -> EnemyScene.get(id, scene))
+            |> Option.flatMap(id -> EnemyData.RosterQuery.get(id))
             |> Option.map(e -> {
                 let ev = EnemyScene.unitView(e);
                 ev#hp > 0 and not ev#isDying

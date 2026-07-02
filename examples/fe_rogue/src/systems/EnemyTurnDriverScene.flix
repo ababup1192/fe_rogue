@@ -283,9 +283,11 @@ mod EnemyTurnDriverScene {
                 // P2: EnemyAI 入力の board を World 由来へ（units stats は scene read-model・dual-write で位置一致・挙動不変）。
                 let enc = EncounterBuilder.fromBoardQuery(scene);
                 let board = enc#board;
-                let self = EnemyScene.unitView(data);
                 // F7: alerted を **World 由来**で読む（reader flip・汎用 WorldQuery 経由）。未登録は scene fallback。
                 let w0 = World.WorldQuery.get();
+                // P6-2b: AI の self view も World 由来（scene の d#hp は ECS 被弾後 stale）。未登録は scene fallback。
+                let self = World.unitViewFromWorld(World.EntityRef.Enemy(step#id), w0, scene)
+                    |> Option.getWithDefault(EnemyScene.unitView(data));
                 let curAlerted = World.alertedOf(World.EntityRef.Enemy(step#id), w0)
                                     |> Option.getWithDefault(data#alerted);
                 let (action, updated) = EnemyAI.decideAction(enc, self, curAlerted);
@@ -483,6 +485,7 @@ mod EnemyTurnDriverScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, TurnPhase.State,
                 SelectedPlayer.State, GatherResume.State, PlayerData.PartyQuery,
+                World.WorldQuery,
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.FloorAdvanceRequest, World.Command} =
         GameLogger.endTurn();

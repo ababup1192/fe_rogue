@@ -175,7 +175,7 @@ mod CursorScene {
     def stepWeaponSelectCycle(node: EngineNode[NodeTag], scene: Scene[NodeTag]):
                               (EngineNode[NodeTag], Scene[NodeTag])
                               \ {GameEngine.Game, Tween.Scheduler, AnimationPlayer.Scheduler,
-                                 SelectedPlayer.State} =
+                                 SelectedPlayer.State, EnemyData.RosterQuery} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
                 if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
@@ -196,14 +196,15 @@ mod CursorScene {
     /// フォーカス中の武器が届く生存敵を reading order（y→x）で返す。
     /// 選択中味方 / フォーカス武器が取れないときは空。
     def weaponSelectTargets(scene: Scene[NodeTag]):
-            List[EnemyScene.Data] \ SelectedPlayer.State =
+            List[EnemyScene.Data] \ {SelectedPlayer.State, EnemyData.RosterQuery} =
         let opt = forM (
             pid    <- SelectedPlayer.State.get()#id;
             player <- PlayerScene.get(pid, scene);
             widx   <- WeaponSelectScene.hoveredWeaponIndex(scene);
             weapon <- List.nth(widx, player#weapons)
         ) yield
-            EnemyScene.getAll(scene)
+            // P6-2b: 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む（scene 直読みは stale）。
+            EnemyData.RosterQuery.getAll()
                 |> List.filter(e -> {
                     let ev = EnemyScene.unitView(e);
                     ev#hp > 0 and not ev#isDying

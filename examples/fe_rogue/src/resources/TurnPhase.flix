@@ -435,7 +435,7 @@ mod TurnInputBridge {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery, World.Command} =
+                              PlayerData.PartyQuery, World.Command, World.WorldQuery} =
         match transition {
             case TurnRules.Transition.Stay                              => scene
             case TurnRules.Transition.CursorSelectPlayer(playerId)      =>

@@ -707,7 +707,7 @@ mod ItemMenuScene {
                               Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
-                GameEngine.Audio, World.Command, PlayerData.PartyQuery} =
+                GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         // P2-r1: selectedItem 読みは PartyQuery（World オーバーレイ）経由。
         let result = forM (
             m        <- entry#metadata;
@@ -724,7 +724,7 @@ mod ItemMenuScene {
                        Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
-                GameEngine.Audio, World.Command, PlayerData.PartyQuery} =
+                GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         if (meta == equipMeta())
             applyEquip(playerId, kind, scene)
         else if (meta == unequipMeta())
@@ -849,7 +849,7 @@ mod ItemMenuScene {
                   Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger,
-                GameEngine.Audio, World.Command, PlayerData.PartyQuery} =
+                GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         match kind {
             case PlayerData.ItemKind.Staff(idx) =>
                 let name = staffNameOf(playerId, idx, scene);
@@ -871,7 +871,7 @@ mod ItemMenuScene {
                   Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State, GameLogger.GameLogger,
-                GameEngine.Audio, World.Command, PlayerData.PartyQuery} =
+                GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         match consumableDeliveryAt(playerId, idx, scene) {
             case Consumable.Delivery.SelfUse =>
                 StaffCastScene.applyConsumableUse(playerId, idx, scene)
@@ -930,7 +930,7 @@ mod ItemMenuScene {
                                     Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
-                GameEngine.Audio, World.Command, PlayerData.PartyQuery} =
+                GameEngine.Audio, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         let phase = TurnPhase.State.get();
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             case None        => scene

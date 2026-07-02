@@ -558,7 +558,8 @@ mod StaffCastScene {
     pub def applyConsumableUse(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
+                World.Command, World.WorldQuery} =
         // プレイヤーと消費アイテムの両方が解決できたときだけ使用。欠ければ scene のまま。
         // forM による短絡は applyStaffCast と同様。
         let used = forM (
@@ -573,7 +574,8 @@ mod StaffCastScene {
                        item: Consumable.ConsumableResource, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, World.Command} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
+                World.Command, World.WorldQuery} =
         // 消費アイテムは使う時点で効果が自己確定するため、杖の空振り判定とは異なり無条件で使用音を鳴らす
         AudioStreamPlayer.play("cure");
         let afterEffect  = applyConsumableSelfEffect(playerId, player, item, scene);
@@ -745,7 +747,8 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, World.Command} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                World.Command, World.WorldQuery} =
         let cast = forM (
             player <- PlayerScene.get(playerId, scene);
             item   <- List.nth(idx, player#consumables)
@@ -760,7 +763,8 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, World.Command} =
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                World.Command, World.WorldQuery} =
         let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
         let hit   = Board.rayCast(player#gridPos, dir, staffMaxRange(), board);

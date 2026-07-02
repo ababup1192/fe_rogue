@@ -115,12 +115,9 @@ mod TestActionMenuScene {
                 EngineNode.Marker2DWithState(marker1, NodeTag.Player(data1)));
         actionMenuAddPure(withWorld)
 
-    /// 指定 id のプレイヤーの waited フラグを取り出す。居なければテストを潰す。
-    def waitedOf(id: Int32, scene: Scene[NodeTag]): Bool =
-        match PlayerScene.get(id, scene) {
-            case Some(d) => d#waited
-            case None    => bug!("player ${id} not found")
-        }
+    /// 指定 id のプレイヤーの waited フラグを **World store** から取り出す（P6-2a: scene twin 退役）。
+    def waitedOf(id: Int32, world: World): Bool =
+        World.waitedOf(World.EntityRef.Player(id), world) |> Option.getWithDefault(false)
 
     /// 指定 id のプレイヤーの所持武器本数を返す。居なければテストを潰す。
     def weaponCountOf(id: Int32, scene: Scene[NodeTag]): Int32 =
@@ -299,7 +296,7 @@ mod TestActionMenuScene {
             let scene = loadTwoPlayerActionMenuScene();
             let waitEntry: ItemEntry =
                 { text = "たいき", disabled = false, metadata = Some("wait") };
-            let (after, finalPhase, _wFin) = runOnActionConfirm(rc, {
+            let (_after, finalPhase, wFin) = runOnActionConfirm(rc, {
                 initialPhase   = TurnPhase.Phase.ActionSelect,
                 selectedId     = 0,
                 selectedOrigin = {x = 1, y = 1},
@@ -308,7 +305,7 @@ mod TestActionMenuScene {
             });
             Assert.assertEq(
                 expected = (TurnPhase.Phase.PlayerCursor, true, false),
-                (finalPhase, waitedOf(0, after), waitedOf(1, after)))
+                (finalPhase, waitedOf(0, wFin), waitedOf(1, wFin)))
         }
 
     /// ターンエンド (`turnEndMeta`) を確定すると:
@@ -324,7 +321,7 @@ mod TestActionMenuScene {
             let turnEndEntry: ItemEntry =
                 { text = "ターンエンド", disabled = false, metadata = Some("turnEnd") };
             // SelectedPlayer = None (空マスメニュー扱い) で起動する
-            let (after, finalPhase, _wFin) = runOnActionConfirm(rc, {
+            let (_after, finalPhase, wFin) = runOnActionConfirm(rc, {
                 initialPhase   = TurnPhase.Phase.ActionSelect,
                 selectedId     = -1,
                 selectedOrigin = {x = 0, y = 0},
@@ -333,7 +330,7 @@ mod TestActionMenuScene {
             });
             Assert.assertEq(
                 expected = (TurnPhase.Phase.EnemyTurn, true, true),
-                (finalPhase, waitedOf(0, after), waitedOf(1, after)))
+                (finalPhase, waitedOf(0, wFin), waitedOf(1, wFin)))
         }
 
     /// ひろう (`pickupMeta`) を確定すると:
@@ -361,7 +358,7 @@ mod TestActionMenuScene {
             Assert.assertEq(
                 expected = (TurnPhase.Phase.ActionSelect, false, false, 2),
                 ( finalPhase
-                , waitedOf(0, after)
+                , waitedOf(0, wFin)
                 , groundItemStillThere
                 , weaponCountOf(0, after) ))
         }

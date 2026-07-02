@@ -1402,11 +1402,11 @@ mod World {
     pub def pendingLevelUpKey(o: Option[LevelSystem.Result]): Option[(String, Int32, Int32, Int32)] =
         Option.map(r -> (r#unitName, r#fromLevel, r#toLevel, List.length(r#changes)), o)
 
-    /// ★PlayerData.Data の全 23 field キー（playerDataMismatches）。flat でなく 2段ネスト ((13),(10))
+    /// ★PlayerData.Data の field キー（playerDataMismatches）。flat でなく 2段ネスト ((11),(8))
     /// （tuple arity/Eq 上限回避・§1.3）。sub-key（posKey/resourceStatKey/headKey/statusListKey/
-    /// pendingLevelUpKey）を再利用＝leaf drift 不能を継承。13/10 のネスト境界は逐語複製。
+    /// pendingLevelUpKey）を再利用＝leaf drift 不能を継承。ネスト境界は逐語複製。
     pub def playerDataKey(d: PlayerData.Data):
-            ((Int32, String, (Int32, Int32), Int32, Int32, Bool, Option[Int32],
+            ((Int32, String, (Int32, Int32), Int32, Option[Int32],
               (Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32),
               (Int32, Option[(String, Int32)]),
               (Int32, Option[(String, Int32)]),
@@ -1414,11 +1414,14 @@ mod World {
               (Int32, Option[(String, Int32)]),
               Bool),
              (Option[PlayerData.ItemKind], Int32, Staff.Direction, Bool, Bool,
-              Int32, Int32, Option[(String, Int32, Int32, Int32)],
+              Option[(String, Int32, Int32, Int32)],
               List[(StatusSystem.StatusEffect, Int32, Int32)])) =
         // 注: followUpUsed は含めない。P2 で scene copy 退役（syncTree 派生撤去・World 権威）ゆえ DIFF 対象外
         //     （World 権威は dataFromWorld None-gate＋専用テストが保証）。
-        ((d#id, d#classId, posKey(d#gridPos), d#moveTiles, d#hp, d#waited,
+        // 注: hp / waited / level / exp も P6-2a で外した。scene twin 退役（syncTree 派生撤去・
+        //     ECS 経路は World のみ書く）ゆえ scene 値は stale が正＝DIFF 対象外。World 権威は
+        //     overlay（dataFromWorld）と World 直読みの読み手 flip ＋ 専用テストが保証。
+        ((d#id, d#classId, posKey(d#gridPos), d#moveTiles,
           d#attackTargetId, resourceStatKey(d#resource),
           headKey(d#weapons, weaponKey),
           headKey(d#staves, staffKey),
@@ -1426,22 +1429,24 @@ mod World {
           headKey(d#rings, ringKey),
           d#ringEquipped),
          (d#selectedItem, d#moveStepsTaken, d#facing, d#hidden, d#usedStairs,
-          d#level, d#exp, pendingLevelUpKey(d#pendingLevelUp),
+          pendingLevelUpKey(d#pendingLevelUp),
           statusListKey(d#statuses)))
 
-    /// ★EnemyData.Data の全 17 field キー（enemyDataMismatches）。playerDataKey と同流儀の 2段ネスト
-    /// ((9),(8))（tuple arity/Eq 上限回避・§1.3）。sub-key（posKey/weaponKey/equippedRingKey/statusListKey）を
+    /// ★EnemyData.Data の field キー（enemyDataMismatches）。playerDataKey と同流儀の 2段ネスト
+    /// ((8),(8))（tuple arity/Eq 上限回避・§1.3）。sub-key（posKey/weaponKey/equippedRingKey/statusListKey）を
     /// 既存正準キーから再利用＝leaf drift 不能を継承（S2.4/S4.4 級の重複射影 drift バグを再導入しない）。
     /// resource(R 残置)は両辺 scene 由来＝恒等一致ゆえ resourceId(String) を代表値とする。
     pub def enemyDataKey(d: EnemyData.Data):
-            ((Int32, String, (Int32, Int32), Bool, Int32, Int32, Int32, Bool, Option[Int32]),
+            ((Int32, String, (Int32, Int32), Bool, Int32, Int32, Bool, Option[Int32]),
              (String, Option[(String, Int32)], Bool,
               List[(StatusSystem.StatusEffect, Int32, Int32)],
               Option[(String, Ring.RingEffect, Int32)])) =
         // 注: bottleUsed / followUpUsed / prevPos は含めない。P2 で scene copy 退役（syncTree 派生撤去・World 権威）
         //     ゆえ scene 値は stale＝再構築(World)と必然的に食い違う。scene 読み手が World 経由ゆえ DIFF 対象外が正。
+        // 注: hp も P6-2a で外した（ECS 撃破は SetHp(0) のみで scene hp を書かず、syncTree 派生も撤去＝stale が正）。
+        //     alerted/isDying は writer が scene 併記（dual-write）ゆえ残す。
         ((d#id, d#resourceId, posKey(d#gridPos), d#alerted, d#homeModuleIdx,
-          d#moveTiles, d#hp, d#isDying, d#attackTargetId),
+          d#moveTiles, d#isDying, d#attackTargetId),
          (d#resourceId, Option.map(weaponKey, d#weapon), d#acted,
           statusListKey(d#statuses), Option.map(equippedRingKey, d#ring)))
 
@@ -1655,6 +1660,30 @@ mod World {
     /// S4.1 安全網: World 由来 `unitViewFromWorld` と scene `unitView` が食い違う entity を列挙する（両 faction）。
     /// UnitView は Eq 非自動ゆえ全 10 field を tuple へ射影（pos/weaponRange/combat は更にネスト射影）して比較する。
     /// parity（消費者 flip の前提＝挙動不変の担保）が命で、食い違いは load 式 / head 規約 / combat 合成の drift を意味する（[UNITVIEW DIFF]）。
+    /// P6-2a 調査用: mismatch した entity について「どの field が違うか」を人間可読で返す。
+    /// [UNITVIEW DIFF] のログ強化（恒久ではなくデバッグ支援・比較は unitViewKey と同じ粒度）。
+    pub def unitViewFieldDiff(ref: EntityRef, world: World, scene: Scene[NodeTag]): String =
+        let svOpt = match ref {
+            case EntityRef.Player(id) => PlayerScene.get(id, scene) |> Option.map(PlayerScene.unitView)
+            case EntityRef.Enemy(id)  => EnemyScene.get(id, scene) |> Option.map(EnemyScene.unitView)
+        };
+        match (unitViewFromWorld(ref, world, scene), svOpt) {
+            case (None, _)    => "worldView=None"
+            case (_, None)    => "sceneView=None"
+            case (Some(wv), Some(sv)) =>
+                let tag = (name, eq) -> if (eq) "" else " ${name}";
+                let ds =
+                    tag("pos", (wv#pos#x, wv#pos#y) == (sv#pos#x, sv#pos#y))
+                    + tag("hp(w=${wv#hp},s=${sv#hp})", wv#hp == sv#hp)
+                    + tag("moveTiles(w=${wv#moveTiles},s=${sv#moveTiles})", wv#moveTiles == sv#moveTiles)
+                    + tag("weaponRange", Option.map(r -> (r#min, r#max), wv#weaponRange) == Option.map(r -> (r#min, r#max), sv#weaponRange))
+                    + tag("combat", combatViewKey(wv#combat) == combatViewKey(sv#combat))
+                    + tag("isDying", wv#isDying == sv#isDying)
+                    + tag("hidden", wv#hidden == sv#hidden)
+                    + tag("aiType", wv#aiType == sv#aiType);
+                if (ds == "") "(key-equal?)" else ds
+        }
+
     pub def unitViewMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
         let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
             if (Option.map(unitViewKey, unitViewFromWorld(EntityRef.Player(d#id), world, scene))
@@ -2139,44 +2168,16 @@ mod World {
         // A': 単一 `pos` store を team タグで faction 分けし、original id で mapPlayer/mapEnemy。
         let World.World(w) = world;
         // 位置（S5b・既存）。store に居る entity だけ derive＝spawn-transient（store 未登録）は scene を保持。
-        let withPos = Map.foldLeftWithKey((sc, uid, pos) ->
+        // P6-2a: hp/waited/isDying/alerted/level/exp の derive を撤去。
+        //   - waited/hp/level/exp: scene twin 退役（live 読み手は overlay か World 直読みへ flip 済み。
+        //     waited は scene 直書きも撤去済＝S6、hp/level/exp は ECS 経路が World のみ書く）。
+        //     playerDataKey/enemyDataKey（DIFF）からも外した＝scene 値は stale で正。
+        //   - isDying/alerted: writer が scene へも併記（startDeathAnimation/driver/restore の dual-write）
+        //     ゆえ derive は冗長＝撤去（scene は writer 由来で fresh のまま・DIFF キーに残す）。
+        // 残るは gridPos のみ（P6-2b で読み手 flip 後に撤去 → syncTree 全体を退役）。
+        Map.foldLeftWithKey((sc, uid, pos) ->
             match uidToRef(uid) {
                 case EntityRef.Player(pid) => PlayerScene.mapPlayer(pid, d -> {gridPos = pos | d}, sc)
                 case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, d -> {gridPos = pos | d}, sc)
-            }, scene, w#pos);
-        // Phase B（hp/dying/progress も World 権威・scene 派生化）: refreshMirror が command 由来をすでに preserve
-        // しているこれらを scene へ一方向 derive する。legacy（dual-write 済み）では idempotent＝scene==World で
-        // 挙動不変。ECS 経路（World のみ書く cutover）では scene の stale を解消する。write 漏れは「hp が動かない /
-        // 敵が死なない / exp が増えない」可視バグとして現れる（位置と同じ＝独立 DIFF 検出器に依存しない）。
-        let withHp = Map.foldLeftWithKey((sc, uid, hp) ->
-            match uidToRef(uid) {
-                case EntityRef.Player(pid) => PlayerScene.mapPlayer(pid, d -> {hp = hp | d}, sc)
-                case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, d -> {hp = hp | d}, sc)
-            }, withPos, w#hp);
-        // S6（waited も World 権威・scene 派生化）: setWaited/setActive/useStairs は scene 直書きを撤去し
-        // Cmd.SetWaited のみ emit する。ここで playerWaited store から scene へ一方向 derive する（player のみ）。
-        let withWaited = Map.foldLeftWithKey((sc, pid, wd) ->
-            PlayerScene.mapPlayer(pid, d -> {waited = wd | d}, sc), withHp, w#playerWaited);
-        // isDying は enemyDying(Set) の membership で全敵に derive（true/false 両方・敵のみ）。
-        let withDying = List.foldLeft((sc, d) ->
-            EnemyScene.mapEnemy(d#id, e -> {isDying = Set.memberOf(enemyUid(d#id), w#enemyDying) | e}, sc),
-            withWaited, EnemyScene.getAll(scene));
-        // alerted も World(enemyAlerted) 由来に derive（敵のみ）。
-        let withAlerted = Map.foldLeftWithKey((sc, uid, b) ->
-            match uidToRef(uid) {
-                case EntityRef.Enemy(eid) => EnemyScene.mapEnemy(eid, e -> {alerted = b | e}, sc)
-                case EntityRef.Player(_)  => sc
-            }, withDying, w#enemyAlerted);
-        // P2 field-complete: bottleUsed / followUpUsed / prevPos の syncTree 派生を撤去。いずれも scene 読み手が
-        // World 経由（followUpUsed=dataFromWorld/CombatScene の World 直読み・prevPos=driver 直読み・
-        // bottleUsed=driver 直読み）、専用 DIFF は撤去済、refreshMirror は preserve+prune で scene を re-mirror
-        // しない（＝派生撤去で scene が stale になっても World は clobber されない）。scene copy 退役ゆえ
-        // player/enemyDataKey からも外す（旧 prevPos コメントの「refreshMirror が re-mirror」は誤り＝1.339 は prune）。
-        // 注: attackTargetId は syncTree で derive しない。combat 解決の同期キャリア（startAttack→attack:hit を
-        // scene 経由で同期 thread）ゆえ dual-write 据置が正当。driver の anyAttacking は World 化済(F8-slice1)。
-        // progress（level/exp）は player のみ。store key は player id。
-        let withLevel = Map.foldLeftWithKey((sc, pid, lvl) ->
-            PlayerScene.mapPlayer(pid, d -> {level = lvl | d}, sc), withAlerted, w#playerLevel);
-        Map.foldLeftWithKey((sc, pid, xp) ->
-            PlayerScene.mapPlayer(pid, d -> {exp = xp | d}, sc), withLevel, w#playerExp)
+            }, scene, w#pos)
 }

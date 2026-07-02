@@ -531,15 +531,21 @@ mod TestUnitFixtures {
     /// `World.Command`（statusEffects 書込）を region Ref[World] で受け流す。Game.start の handler と同型。
     /// ターン確定・戦闘解決を呼ぶテストが emit する Cmd を discharge する（World 状態は観測しないテスト向け）。
     pub def withWorldCommand(rc: Region[r], thunk: Unit -> a \ ef):
-            a \ (ef - World.Command) + r =
+            a \ ((ef - World.Command) - World.WorldQuery) + r =
         let wref: Ref[World, r] = Ref.fresh(rc, World.empty());
-        run { thunk() } with handler World.Command {
+        // P6-2a: WorldQuery も同じ Ref に結線（read-after-write）。firstActive 等の waited/hp
+        // World 直読み flip で、Command 発行系のテスト経路が Query も要求するようになったため。
+        run {
+            run { thunk() } with handler World.WorldQuery {
+                def get(k) = k(Ref.get(wref))
+            }
+        } with handler World.Command {
             def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
         }
 
     /// `withWorldCommand` の region 自前版（`rc` 不要）。`let after = dischargeWorldCommand(() -> ...)` で
     /// World.Command を discharge できる（DSL 経路を呼ぶ単発テスト向け）。
-    pub def dischargeWorldCommand(thunk: Unit -> a \ ef): a \ (ef - World.Command) =
+    pub def dischargeWorldCommand(thunk: Unit -> a \ ef): a \ ((ef - World.Command) - World.WorldQuery) =
         region rc { withWorldCommand(rc, thunk) }
 
     /// `World.Command` を記録するディスチャージャ。emit された `Cmd.Move` の着地マスを順に集める。
