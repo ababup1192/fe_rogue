@@ -1131,7 +1131,8 @@ mod Game {
             // B: render-from-World。scene-tree drawable に World 由来 drawable を合成して
             // 1 回の renderCommands で描く（renderCommands は毎回 clear ゆえ 2 回呼びは不可＝合成する）。
             // m1c: scene 側ユニット sprite を隠して描画 → ユニットは World 由来のみで描く。
-            // ※ marker(武器/HPバー)は engine 駆動のまま（移動 tween + 攻撃 lunge 等を全部保持）。
+            // P5-e: marker 装飾（武器アイコン/HPバー）も renderSubtrees/renderSubtreePolygons へ合流し
+            //   RenderWorld 直描き化（位置駆動は従来どおり marker=移動 tween + 攻撃 lunge が単一権威）。
             // B/fog・range・配置物・HUD/menu: scene 側の fog 暗幕・range タイル・アイテム/宝箱/階段・全 HUD/メニューを隠し、World render System で描く。
             // B: 全 subtree（配置物/HUD/メニュー/minimap/ポップアップ/カーソル等）を hideSubtrees で scene から外し、
             //    renderSubtrees（drawables）+ renderSubtreePolygons（polygon）で World 経路描画。
@@ -1147,8 +1148,8 @@ mod Game {
                 |> List.append(RenderWorld.renderFog(transform, synced))
                 |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
                 |> List.append(RenderWorld.renderSubtrees(transform, synced));
-            // B: polygon チャンネルも World 由来 subtree（minimap 円/BattlePanel ドット/TurnEndHold リング）を合流。
-            // scenePolygons は hideSubtrees で除外済み（marker 上の武器グリフ polygon 等はそのまま renderArgs 由来）。
+            // B: polygon チャンネルも World 由来 subtree（minimap 円/BattlePanel ドット/TurnEndHold リング
+            //   ＋P5-e: per-unit 武器グリフ）を合流。scenePolygons は hideSubtrees で除外済み。
             GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
                 RenderWorld.renderTileMaps(world2, transform, synced),
                 List.append(scenePolygons, RenderWorld.renderSubtreePolygons(transform, synced)));

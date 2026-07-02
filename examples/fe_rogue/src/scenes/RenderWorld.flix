@@ -113,6 +113,25 @@ mod RenderWorld {
     /// 2 サブリストで保持。順序は z-sort/effzIndex で描画に無関係。
     def subtreeRoots(): List[NodePath] = List.append(worldSubtreeRoots(), hudSubtreeRoots())
 
+    /// P5-e: ユニット marker 上の常設装飾 subtree root（per-unit・動的）。武器アイコン（囲い ColorRect
+    /// ＋グリフ Polygon2D/Arc2D）と HP バー（ColorRect 3 枚）。marker（Player_/Enemy_）の**子**を root に
+    /// するので、移動 tween / 攻撃 lunge / 待機暗転（親 marker の位置・modulate）は drawContext の祖先合成で
+    /// そのまま乗る。素手ユニットの WeaponIcon は不在（attach が生やさない）＝subtree API/hideNode とも no-op。
+    def unitMarkerRoots(scene: Scene[NodeTag]): List[NodePath] =
+        let perUnit = unitPath ->
+            List.append(unitPath, WeaponIconScene.childName() :: Nil) ::
+            List.append(unitPath, UnitHPBarScene.childName() :: Nil) :: Nil;
+        let players = PlayerScene.getAll(scene) |> List.flatMap(d -> perUnit(PlayerScene.playerPath(d#id)));
+        let enemies = EnemyScene.getAll(scene) |> List.flatMap(d -> perUnit(EnemyScene.enemyPath(d#id)));
+        List.append(players, enemies)
+
+    /// P5-e: 武器グリフ（Polygon2D/Arc2D）を持つ per-unit root のみ（HPBar は ColorRect のみゆえ除外）。
+    def unitGlyphRoots(scene: Scene[NodeTag]): List[NodePath] =
+        let iconOf = unitPath -> List.append(unitPath, WeaponIconScene.childName() :: Nil);
+        let players = PlayerScene.getAll(scene) |> List.map(d -> iconOf(PlayerScene.playerPath(d#id)));
+        let enemies = EnemyScene.getAll(scene) |> List.map(d -> iconOf(EnemyScene.enemyPath(d#id)));
+        List.append(players, enemies)
+
     /// B: polygon（Polygon2D/Arc2D）を持つ subtree root のみ（minimap マーカー円 / BattlePanel ドット / TurnEndHold リング）。
     /// polygon の無い root を毎フレーム走査しないよう明示。
     def polygonSubtreeRoots(): List[NodePath] =
@@ -120,16 +139,23 @@ mod RenderWorld {
 
     /// B: 全 subtree（配置物/HUD/メニュー/minimap/ポップアップ等）を World render System で描く。
     /// B/perf: `renderOrderPaths` を全 root で 1 回共有する batch API に委譲（旧: root ごと再走査＝O(roots×N)）。
+    /// P5-e: per-unit の marker 装飾（武器アイコン囲い/HP バー）も同じ batch へ合流＝「marker は engine
+    /// 駆動のまま」の描画側を解消（位置駆動は従来どおり marker が単一権威）。
     pub def renderSubtrees(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        Scene.subtreeDrawablesForRoots(transform, subtreeRoots(), scene)
+        Scene.subtreeDrawablesForRoots(transform,
+            List.append(subtreeRoots(), unitMarkerRoots(scene)), scene)
 
     /// B: polygon を持つ subtree の Polygon2D/Arc2D を polygon チャンネルで描く（`preorderPaths` を 1 回共有）。
+    /// P5-e: 武器グリフ（per-unit）も合流＝renderArgs の scenePolygons から武器グリフが消える。
     pub def renderSubtreePolygons(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.PolygonRenderCmd] =
-        Scene.subtreePolygonsForRoots(transform, polygonSubtreeRoots(), scene)
+        Scene.subtreePolygonsForRoots(transform,
+            List.append(polygonSubtreeRoots(), unitGlyphRoots(scene)), scene)
 
     /// B: 全 subtree の scene 側 root を隠す（renderArgs から外し二重描画防止）。
+    /// P5-e: per-unit の marker 装飾 root も隠す（renderSubtrees/renderSubtreePolygons と対）。
     pub def hideSubtrees(scene: Scene[NodeTag]): Scene[NodeTag] =
-        subtreeRoots() |> List.foldLeft((acc, root) -> hideNode(root, acc), scene)
+        List.append(subtreeRoots(), unitMarkerRoots(scene))
+            |> List.foldLeft((acc, root) -> hideNode(root, acc), scene)
 
     /// B/tiles: World の tileLayers（bake 済ハンドル）を camera 適用して engine の instanced tile 描画コマンドにする。
     /// renderArgs のタイル経路（`globalPositionAt`→`applyToWorldPos` + `transform#scale`）と同一 spine。
