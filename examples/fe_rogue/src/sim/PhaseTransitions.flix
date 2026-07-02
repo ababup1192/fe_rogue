@@ -103,7 +103,7 @@ mod PhaseTransitions {
     /// この関数を呼ぶ **前** に `SelectedPlayer.State` に id をセットしておくこと。
     /// 逆順 (先に refresh) にすると敵の危険範囲と移動範囲が重複表示される。
     pub def enterPlayerMoving(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
         scene
             |> EnemyRangeScene.clear
@@ -132,7 +132,7 @@ mod PhaseTransitions {
     /// 呼ぶ前に `SelectedPlayer.State` に主人公 id(0) をセットしておくこと
     /// （`MoveRangeScene.refresh` が選択駒 id を読むため。enterPlayerMoving と同じ契約）。
     pub def enterGatherMove(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery} =
         TurnPhase.State.put(TurnPhase.Phase.GatherMove);
         scene
             |> EnemyRangeScene.clear

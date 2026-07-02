@@ -178,7 +178,9 @@ mod StairsExitScene {
             case (u, rem) :: rest =>
                 // P1a: frame-head の board 読みを World 由来へ（この frame の move 前ゆえ World==scene・挙動不変）。
                 let board    = BoardQuery.board();
-                let frontPos = PlayerScene.getGridPos(u, scene);
+                // P6-2b fix: 現在位置は World.posOf（scene twin は stale）。
+                let frontPos = World.posOf(World.EntityRef.Player(u), World.WorldQuery.get())
+                                   |> Option.getWithDefault(PlayerScene.getGridPos(u, scene));
                 let field    = stairsField(board, stairs);
                 // 階段へ近づく「空きマス」へ 1 歩（占有/壁は ok で除外＝停止できないマスを避ける）。
                 let nextCell = Board.stepDownhill(field, frontPos, c -> not Board.isOccupied(c, board));

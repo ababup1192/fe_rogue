@@ -124,7 +124,7 @@ mod MoveRangeScene {
     /// `add` は `buildPlayingScene` の初回構築でも呼ばれる (`sceneRef` 更新前) ため、
     /// PartyQuery effect は使わず scene 引数を直接読む。`refresh` 経由のランタイム呼び出しでも
     /// 渡される scene は常に最新なので問題ない。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, World.WorldQuery} =
         match SelectedPlayer.State.get()#id {
             case None     => scene
             case Some(id) =>
@@ -149,10 +149,14 @@ mod MoveRangeScene {
     /// (自分 + 他味方) を除いたものを青マスとして描画する。AutoMove も同じプリミティブで
     /// 動くため、ここで仕様が一致していれば自動で挙動が揃う。
     /// 原点は **現在位置でなくターン開始位置**（`chooseMoveOrigin` 経由）に固定する。
-    def buildFor(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ SelectedPlayer.State =
-        let board     = BoardSnapshot.fromScene(scene);
+    def buildFor(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, World.WorldQuery} =
+        // P6-2b fix: 盤面 pieces・現在位置とも World 由来（scene gridPos twin は退役＝stale）。
+        let w0        = World.WorldQuery.get();
+        let board     = World.toBoard(w0, scene);
         let drafts    = SelectedPlayer.State.get()#drafts;
-        let origin    = chooseMoveOrigin(id, PlayerScene.getGridPos(id, scene), drafts);
+        let origin    = chooseMoveOrigin(id,
+            World.posOf(World.EntityRef.Player(id), w0)
+                |> Option.getWithDefault(PlayerScene.getGridPos(id, scene)), drafts);
         let steps     = PlayerScene.getMoveTiles(id, scene);
         let cells     = Board.reachableForUnit(board, origin, steps);
         let drawCells = Board.stoppableForUnit(board, origin, steps);
@@ -161,7 +165,7 @@ mod MoveRangeScene {
 
     /// 既存の MoveRange ノードを丸ごと取り除いて `add` で組み直す。
     pub def refresh(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ SelectedPlayer.State =
+            \ {SelectedPlayer.State, World.WorldQuery} =
         Scene.removeAt(moveRangePath(), scene) |> add
 
     /// 表示中の MoveRange ノードがあれば取り除く。なければ何もしない。

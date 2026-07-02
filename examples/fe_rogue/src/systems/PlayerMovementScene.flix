@@ -36,7 +36,9 @@ mod PlayerMovementScene {
                           SelectedPlayer.State, World.Command, World.WorldQuery,
                           ItemPickupPopupScene.State} =
         let lord = PlayerScene.lordId();
-        let prev = PlayerScene.getGridPos(lord, scene);
+        // P6-2b fix: 移動前位置は World.posOf（stepFor が emit する **前**の読み＝pre-move。scene twin は stale）。
+        let prev = World.posOf(World.EntityRef.Player(lord), World.WorldQuery.get())
+                       |> Option.getWithDefault(PlayerScene.getGridPos(lord, scene));
         let (movedNode, movedScene) =
             stepFor(selectAllowedPred(TurnPhase.Phase.GatherMove, scene),
                     PlayerScene.selectedSlideDuration(), node, path, scene);
@@ -152,9 +154,14 @@ mod PlayerMovementScene {
                     //   SYSTEM: stepPlayerMove が合法判定（壁/範囲/敵占有）→World に Cmd.Move→Moved を返す。
                     //   VIEW: replayMovedEvent が Moved を Tween/anim 再生し、着地マスを自動取得。
                     // 同 dispatch 内で emit→replay ゆえ timing 不変（pipeline 段移設は F3c）。
+                    // P6-2b fix: 移動の起点は World.posOf（Cmd.Move の emit **前**＝pre-move）。
+                    // ノード Data の gridPos は twin 退役（syncTree 撤去）後は更新されず stale で、
+                    // これを起点に使うと「古い位置＋方向」へ Move が飛び斜め移動に見えるバグになる。
+                    let origin = World.posOf(World.EntityRef.Player(data#id), World.WorldQuery.get())
+                                     |> Option.getWithDefault(data#gridPos);
                     let outcome = forM (
                         dir   <- readHeldDirection();
-                        event <- stepPlayerMove(data#id, data#gridPos, dir, board, allowedPred)
+                        event <- stepPlayerMove(data#id, origin, dir, board, allowedPred)
                     ) yield event;
                     match outcome {
                         case None        => (node, scene)

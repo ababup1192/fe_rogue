@@ -504,11 +504,14 @@ mod PlayerScene {
     /// overlay (MoveRange / MoveAttackRange / EnemyRange) と Cursor の整理は
     /// `PhaseTransitions.enterPlayerMoving` が担当する (この関数は SelectedPlayer 更新だけ)。
     pub def beginSelection(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery} =
         SelectedPlayer.State.put({
             id     = Some(playerId),
             // 移動開始。元位置を巻き戻しドラフトの底に積む（前の移動の残骸は drafts ごと破棄）
-            drafts = MoveDraft.DraftAction.MovedFrom(playerId, getGridPos(playerId, scene)) :: Nil,
+            // P6-2b fix: 巻き戻し origin は World.posOf（scene gridPos twin は退役＝stale）。
+            drafts = MoveDraft.DraftAction.MovedFrom(playerId,
+                World.posOf(World.EntityRef.Player(playerId), World.WorldQuery.get())
+                    |> Option.getWithDefault(getGridPos(playerId, scene))) :: Nil,
             gatherActive = false
         });
         PhaseTransitions.enterPlayerMoving(scene)
@@ -521,8 +524,9 @@ mod PlayerScene {
     /// （積むと巻き戻しが多重適用され開始位置に戻らなくなる）。
     /// overlay / cursor は `PhaseTransitions.enterGatherMove` が担当する。
     pub def beginGather(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
-        let origins = getAll(scene)
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery} =
+        // P6-2b fix: 巻き戻し origin は World 位置（scene gridPos twin は退役＝stale）。
+        let origins = getAllWithWorldPos(scene)
             |> List.filter(d -> d#hp > 0)
             |> List.map(d -> MoveDraft.DraftAction.MovedFrom(d#id, d#gridPos));
         SelectedPlayer.State.put({id = Some(lordId()), drafts = origins, gatherActive = true});
@@ -810,13 +814,14 @@ mod PlayerScene {
     pub def removeDeadAndCheckGameOver(killed: List[Int32],
                                          scene: Scene[NodeTag]):
             Scene[NodeTag] \ {CustomEffects.GameOverRequest, SelectedPlayer.State,
-                               GameLogger.GameLogger, World.Command} =
+                               GameLogger.GameLogger, World.Command, World.WorldQuery} =
         if (List.isEmpty(killed)) scene
         else {
             // ノード除去の前に、現在いる全味方の位置を記録する（女神の加護の「その場復活」用）。
             // 死亡する駒もこの時点ではまだ scene 上におり、最後の位置が取れる。handler 側で蓄積する。
+            // P6-2b fix: 位置は World 上書き Data（scene gridPos twin は退役）。
             CustomEffects.GameOverRequest.markDeaths(
-                getAll(scene) |> List.map(d -> (d#id, d#gridPos)) |> List.toMap);
+                getAllWithWorldPos(scene) |> List.map(d -> (d#id, d#gridPos)) |> List.toMap);
             // 蘇生薬(AutoRevive)を所持している脱落者は、scene から取り除く前に全回復して復活させる。
             // この時点ではまだ味方ノードが生きている（removeAt 前）ので consumables/最大HP を読める。
             // 復活した分は killed から外れ、ロード戦死や全滅もそのぶん回避される。

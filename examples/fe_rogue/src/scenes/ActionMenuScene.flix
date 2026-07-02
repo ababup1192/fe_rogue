@@ -408,7 +408,7 @@ mod ActionMenuScene {
     /// `gatherAvailable()` のときだけ呼ぶこと（空マスメニューの「集合」確定と同じ帰結）。
     pub def gatherShortcut(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                              SelectedPlayer.State, PlayerData.PartyQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
         applyGather(scene)
 
     /// Shift 長押しゲージ満了時のショートカット: メニューを開かず「全員待機」と同じ
@@ -556,7 +556,7 @@ mod ActionMenuScene {
     /// リーダー（主人公）が既に行動済み(waited)なら開始せず、ログだけ出してメニューに留まる。
     def applyGather(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                              SelectedPlayer.State, PlayerData.PartyQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
         if (leaderWaited())
             { GameLogger.playerLog("リーダーは既に行動済みです。"); scene }
         else {
@@ -719,7 +719,7 @@ mod ActionMenuScene {
     pub def onActionCancelled(scene: Scene[NodeTag]):
                               Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                                 TurnPhase.State, SelectedPlayer.State,
-                                                PlayerData.PartyQuery, World.Command} =
+                                                PlayerData.PartyQuery, World.Command, World.WorldQuery} =
         let sel = SelectedPlayer.State.get();
         if (sel#gatherActive)
             PhaseTransitions.enterGatherMove(scene)

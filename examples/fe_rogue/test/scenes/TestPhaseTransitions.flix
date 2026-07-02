@@ -162,7 +162,8 @@ mod TestPhaseTransitions {
         region rc {
             let initial = sceneWithAllRangesAndCursor();
             let result = run {
-                let after = PhaseTransitions.enterGatherMove(initial);
+                let after = run { PhaseTransitions.enterGatherMove(initial) }
+                    with handler World.WorldQuery { def get(k) = k(World.empty()) };
                 observe(after)
             } with TurnPhase.withState(rc)
               with SelectedPlayer.withState(rc);

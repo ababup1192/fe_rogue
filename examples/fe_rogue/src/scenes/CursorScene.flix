@@ -157,7 +157,7 @@ mod CursorScene {
                                Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyData.RosterQuery, TurnPhase.State,
-                               SelectedPlayer.State} =
+                               SelectedPlayer.State, World.WorldQuery} =
         match TurnPhase.State.get() {
             case TurnPhase.Phase.PlayerCursor       => stepFreeMovement(delta, node, path, scene)
             // 武器選択中も左右で対象の敵を選べる（フォーカス武器が届く敵を巡回）。
@@ -175,7 +175,7 @@ mod CursorScene {
     def stepWeaponSelectCycle(node: EngineNode[NodeTag], scene: Scene[NodeTag]):
                               (EngineNode[NodeTag], Scene[NodeTag])
                               \ {GameEngine.Game, Tween.Scheduler, AnimationPlayer.Scheduler,
-                                 SelectedPlayer.State, EnemyData.RosterQuery} =
+                                 SelectedPlayer.State, EnemyData.RosterQuery, World.WorldQuery} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
                 if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
@@ -196,10 +196,11 @@ mod CursorScene {
     /// フォーカス中の武器が届く生存敵を reading order（y→x）で返す。
     /// 選択中味方 / フォーカス武器が取れないときは空。
     def weaponSelectTargets(scene: Scene[NodeTag]):
-            List[EnemyScene.Data] \ {SelectedPlayer.State, EnemyData.RosterQuery} =
+            List[EnemyScene.Data] \ {SelectedPlayer.State, EnemyData.RosterQuery, World.WorldQuery} =
         let opt = forM (
             pid    <- SelectedPlayer.State.get()#id;
-            player <- PlayerScene.get(pid, scene);
+            // P6-2b fix: 射程判定の自位置は World 上書き Data。
+            player <- PlayerScene.getWithWorldPos(pid, scene);
             widx   <- WeaponSelectScene.hoveredWeaponIndex(scene);
             weapon <- List.nth(widx, player#weapons)
         ) yield

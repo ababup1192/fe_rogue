@@ -107,7 +107,7 @@ mod CombatScene {
     pub def startAttack(side: Faction, attackerId: Int32, defenderId: Int32,
                          targetGrid: {x = Int32, y = Int32},
                          scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, World.Command} =
+            \ {AnimationPlayer.Scheduler, World.Command, World.WorldQuery} =
         let attacker = World.refOfSide(side, attackerId);
         let path     = EntityScene.path(attacker);
         let started = forM (

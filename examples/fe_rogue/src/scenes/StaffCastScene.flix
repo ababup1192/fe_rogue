@@ -912,7 +912,7 @@ mod StaffCastScene {
                              weapon: UnitCatalog.WeaponResource, hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, World.Command} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, World.Command, World.WorldQuery} =
         let atkPower = Combat.attackStatFor(player#resource#attack, player#resource#magicAttack,
                                              weapon#attack, WeaponCatalog.isPhysical(weapon#weaponType));
         let dmg = Combat.thrownWeaponDamage(atkPower);
@@ -950,7 +950,7 @@ mod StaffCastScene {
     def throwDamageToPlayer(srcLabel: String, targetId: Int32, dmg: Int32, name: String,
                              scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, CustomEffects.GameOverRequest,
-                               SelectedPlayer.State, World.Command} =
+                               SelectedPlayer.State, World.Command, World.WorldQuery} =
         Option.getWithDefault(scene,
             forM (target <- PlayerScene.get(targetId, scene)) yield {
                 let dmgResult = Combat.damage(hp = target#hp, amount = dmg);
@@ -997,7 +997,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio,
-                World.Command} =
+                World.Command, World.WorldQuery} =
         AudioStreamPlayer.play("magic");
         let dmg = item#magnitude;
         // 着弾セルに爆発エフェクトを出してからダメージを与える。

@@ -354,7 +354,7 @@ mod EnemyTurnDriverScene {
     def resolveEnemyAttack(enemyId: Int32, data: EnemyScene.Data, targetId: Int32,
                            p: PlayerScene.Data, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, Math.Random, CustomEffects.RingTransformRequest, World.Command,
-                PlayerData.PartyQuery} =
+                World.WorldQuery, PlayerData.PartyQuery} =
         match enemyTurnRule(data) {
             case Some(rule) => runEnemyTurnFlow(rule, enemyId, data, targetId, p, scene)
             case None       => normalEnemyAttack(enemyId, targetId, p, scene)
@@ -379,7 +379,7 @@ mod EnemyTurnDriverScene {
     def runEnemyTurnFlow(rule: EffectRule.EffectRule, enemyId: Int32, data: EnemyScene.Data,
                          targetId: Int32, p: PlayerScene.Data, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, Math.Random, CustomEffects.RingTransformRequest, World.Command,
-                PlayerData.PartyQuery} =
+                World.WorldQuery, PlayerData.PartyQuery} =
         match replaceFlowOf(rule) {
             case None       => normalEnemyAttack(enemyId, targetId, p, scene)
             case Some(flow) =>
@@ -429,7 +429,7 @@ mod EnemyTurnDriverScene {
     def applyReplaceResult(effects: List[EffectFlow.FlowEffect], enemyId: Int32,
                            data: EnemyScene.Data, targetId: Int32, p: PlayerScene.Data,
                            scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, CustomEffects.RingTransformRequest, World.Command} =
+            \ {AnimationPlayer.Scheduler, CustomEffects.RingTransformRequest, World.Command, World.WorldQuery} =
         match List.head(effects) {
             case Some(EffectFlow.FlowEffect.RequestReplace(actions)) =>
                 let plan = List.flatMap(a -> EffectPlan.planAction(a, replacePlanCtx(enemyId, targetId, p)), actions);
@@ -440,7 +440,7 @@ mod EnemyTurnDriverScene {
 
     /// 体当たり攻撃モーションを開始する（敵側）。
     def normalEnemyAttack(enemyId: Int32, targetId: Int32, p: PlayerScene.Data,
-                          scene: Scene[NodeTag]): Scene[NodeTag] \ {AnimationPlayer.Scheduler, World.Command} =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ {AnimationPlayer.Scheduler, World.Command, World.WorldQuery} =
         CombatScene.startAttack(Faction.Enemy, enemyId, targetId, p#gridPos, scene)
 
     /// 0..99 の一様乱数（CombatScene.rollPercent と同型。差し替え確率 roll に使う）。

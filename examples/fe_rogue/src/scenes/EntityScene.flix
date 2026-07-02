@@ -14,11 +14,16 @@ mod EntityScene {
         case World.EntityRef.Enemy(id)  => EnemyScene.enemyPath(id)
     }
 
-    /// EntityRef の UnitView（faction 非依存ビュー）を scene から引く。
-    pub def unitView(ref: World.EntityRef, scene: Scene[NodeTag]): Option[UnitView] = match ref {
-        case World.EntityRef.Player(id) => PlayerScene.get(id, scene) |> Option.map(PlayerScene.unitView)
-        case World.EntityRef.Enemy(id)  => EnemyScene.get(id, scene) |> Option.map(EnemyScene.unitView)
-    }
+    /// EntityRef の UnitView（faction 非依存ビュー）。
+    /// P6-2b fix: pos は **World.posOf で上書き**する（scene Data の gridPos twin は退役＝凍結値。
+    /// これを attack lunge の origin に使うとマーカーが古いセルへ飛び・戻るバグになる）。
+    pub def unitView(ref: World.EntityRef, scene: Scene[NodeTag]): Option[UnitView] \ World.WorldQuery =
+        let w = World.WorldQuery.get();
+        let base = match ref {
+            case World.EntityRef.Player(id) => PlayerScene.get(id, scene) |> Option.map(PlayerScene.unitView)
+            case World.EntityRef.Enemy(id)  => EnemyScene.get(id, scene) |> Option.map(EnemyScene.unitView)
+        };
+        base |> Option.map(uv -> {pos = World.posOf(ref, w) |> Option.getWithDefault(uv#pos) | uv})
 
     /// EntityRef の scene `attackTargetId` を書く（faction-blind）。
     pub def setAttackTargetId(ref: World.EntityRef, target: Int32, scene: Scene[NodeTag]): Scene[NodeTag] = match ref {

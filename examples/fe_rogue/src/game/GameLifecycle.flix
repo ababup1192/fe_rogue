@@ -74,7 +74,7 @@ mod GameLifecycle {
     /// MapScene / Fog / DamagePopup / Explosion の後、駒配置の後に呼ぶ前提。
     /// `label` はフロア番号表示（"1F" 等）、`name` はフロア名（"始まりの洞窟" 等。空可）。
     def addHudAndDrivers(label: String, name: String, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead, SelectedPlayer.State, TopBarScene.State} =
+            \ {GameEngine.Game, Fs.FileRead, SelectedPlayer.State, World.WorldQuery, TopBarScene.State} =
         scene
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
