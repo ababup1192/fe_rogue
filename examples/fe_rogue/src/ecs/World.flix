@@ -401,9 +401,18 @@ mod World {
             ringBonus = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#ringBonus),
             // S2.5: moveTiles も command 由来を保持＋prune（base は spawn 後不変ゆえ stale 化しないが store 規約に合わせ preserve）。
             moveTiles = Map.filterWithKey((uid, _) -> Set.memberOf(uid, validUids), w#moveTiles),
-            // P1a: equippedRing も装備指輪由来の read-model ＝ ringBonus と同源で毎フレーム再 mirror。
-            equippedRing = Map.union(Query.indexBy(d -> d#id, d -> PlayerData.equippedRing(d), players),
-                                     Query.indexBy(d -> enemyUid(d#id), d -> d#ring, enemies)),
+            // P1a: equippedRing の enemy 側は EnemyData#ring 由来で毎フレーム再 mirror。
+            // P2-r1: player 側は scene Data 読み（PlayerData.equippedRing(d)）をやめ、**World の
+            // rings/ringEquipped store から導出**する（両 store は command 由来で dual-write 中は
+            // scene と等値＝挙動不変。scene field 削除〔P6〕の前提を先に満たす）。
+            equippedRing = Map.union(
+                Set.foldLeft((m, id) -> {
+                    let inner = if (Map.get(id, w#ringEquipped) |> Option.getWithDefault(false))
+                                    Map.get(id, w#rings) |> Option.flatMap(List.head)
+                                else None;
+                    Map.insert(id, inner, m)
+                }, Map.empty(), pIds),
+                Query.indexBy(d -> enemyUid(d#id), d -> d#ring, enemies)),
             // S-A0d: growth も player-only・resource 由来 read-model ＝ 毎フレーム再 mirror。
             growth = Query.indexBy(d -> d#id,
                         d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),

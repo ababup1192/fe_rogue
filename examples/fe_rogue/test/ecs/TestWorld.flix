@@ -1190,6 +1190,20 @@ mod TestWorld {
         let drifted = World.applyCmd(World.Cmd.SetRingEquipped(World.EntityRef.Player(0), true), world);
         Assert.assertEq(expected = false, List.isEmpty(World.ringEquippedMismatches(drifted, scene)))
 
+    /// P2-r1: refreshMirror の equippedRing（player 側）は **World の rings/ringEquipped store から
+    /// 導出**する（scene Data 読みを撤去済み）。scene の装備状態と食い違っても World store 側に従う
+    /// ことを pin する: store に ring+装備 true を積み、scene（未装備）で refreshMirror →
+    /// equippedRingOf が store 由来の Some(ring) を返す。
+    @Test
+    def testRefreshMirrorDerivesEquippedRingFromStore(): Unit \ Assert =
+        let scene = sampleScene();
+        let w0 = World.syncFromScene(scene, World.empty());
+        let w1 = World.applyCmd(World.Cmd.SetRings(World.EntityRef.Player(0), d4Ring() :: Nil), w0);
+        let w2 = World.applyCmd(World.Cmd.SetRingEquipped(World.EntityRef.Player(0), true), w1);
+        let after = World.refreshMirror(scene, w2);
+        let proj = World.equippedRingOf(World.EntityRef.Player(0), after) |> Option.map(r -> r#power);
+        Assert.assertEq(expected = Some(3), proj)
+
     /// refreshMirror が command 由来の inventory store を preserve しつつ scene 不在 id を prune する。
     /// player0 に SetStaves で 1 本積み、refreshMirror 後も保持される（再 mirror で消えない）。
     @Test

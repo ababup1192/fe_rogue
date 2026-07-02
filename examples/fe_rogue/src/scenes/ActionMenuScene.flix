@@ -535,7 +535,7 @@ mod ActionMenuScene {
 
     /// 「アイテム」確定で ItemMenuScene を開く。選択中味方の id が必要。
     def openItemMenu(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, PlayerData.PartyQuery} =
         match SelectedPlayer.State.get()#id {
             case None           => scene
             case Some(playerId) => ItemMenuScene.openFor(playerId, scene)

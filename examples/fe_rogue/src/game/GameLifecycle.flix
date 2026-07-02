@@ -105,7 +105,8 @@ mod GameLifecycle {
     pub def buildAndRecord(catalogs: Catalogs,
                             floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
-                SelectedPlayer.State, InitialSpawns.State, PartySelection.State, World.Command} =
+                SelectedPlayer.State, InitialSpawns.State, PartySelection.State, World.Command,
+                World.WorldQuery} =
         let scene = buildPlayingScene(catalogs, floor);
         InitialSpawns.State.put({
             enemies = EnemyScene.snapshotSpawns(scene),
@@ -146,7 +147,7 @@ mod GameLifecycle {
     pub def buildCurrentFloor(catalogs: Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, InitialSpawns.State, FloorProgress.State,
-                PartySelection.State, FloorSnapshot.State, World.Command} =
+                PartySelection.State, FloorSnapshot.State, World.Command, World.WorldQuery} =
         let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
         recordFloorEntry(catalogs, buildAndRecord(catalogs, floor))
 
@@ -157,7 +158,7 @@ mod GameLifecycle {
     /// 現在のフロア状態を `FloorSnapshot.T`（カタログ id ＋ 動的値の純粋データ）に射影する。
     /// マップは Plan、駒/アイテム/宝箱/階段は各 Scene の captureSnaps で id 化して集約する。
     pub def captureFloorSnapshot(catalogs: Catalogs, scene: Scene[NodeTag]): FloorSnapshot.T
-            \ FloorProgress.State =
+            \ {FloorProgress.State, World.WorldQuery} =
         ({floorId = FloorProgress.State.get(),
           mapPlan  = MapScene.getPlan(scene),
           players  = PlayerScene.captureSnaps(scene, catalogs#weapons, catalogs#staves,
@@ -170,7 +171,7 @@ mod GameLifecycle {
     /// 進入時スナップショットを `FloorSnapshot.State` に保存して scene をそのまま返す。
     /// 各フロア進入点（`buildCurrentFloor` / `advanceFloor`）の末尾で呼ぶ。
     pub def recordFloorEntry(catalogs: Catalogs, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {FloorProgress.State, FloorSnapshot.State} =
+            \ {FloorProgress.State, FloorSnapshot.State, World.WorldQuery} =
         FloorSnapshot.State.put(captureFloorSnapshot(catalogs, scene));
         scene
 
@@ -217,7 +218,7 @@ mod GameLifecycle {
                 GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State,
-                World.Command} =
+                World.Command, World.WorldQuery} =
         match FloorSnapshot.State.get() {
             case Some(snap) =>
                 resetTurnQueues();
@@ -244,7 +245,8 @@ mod GameLifecycle {
     /// `CustomEffects.SuspendRequest.save` の本体。次フレームで `applyPhaseChange(Title)` が
     /// タイトルを組む。保存失敗（saves/ 不在等）はログに出して握り潰す（盤面は壊さない）。
     pub def suspendAndQuit(catalogs: Catalogs, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Fs.FileWrite, FloorProgress.State, GameLogger.GameLogger, GamePhaseState} =
+            \ {Fs.FileWrite, FloorProgress.State, GameLogger.GameLogger, GamePhaseState,
+                World.WorldQuery} =
         let snap = captureFloorSnapshot(catalogs, scene);
         match SaveManager.write(SuspendSave.slot(), SuspendSave.make(false, snap)) {
             case Ok(_)   =>
@@ -298,7 +300,7 @@ mod GameLifecycle {
                 GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State,
-                World.Command} =
+                World.Command, World.WorldQuery} =
         match FloorSnapshot.State.get() {
             case Some(snap) =>
                 resetTurnQueues();
@@ -350,8 +352,8 @@ mod GameLifecycle {
     /// 変化先の指輪解決に `Ring.lookup` が要るため、catalog を持つ handler からのみ呼ばれる。
     pub def applyRingTransform(catalogs: Catalogs, enemyName: String, targetId: Int32,
                                 scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Math.Random, GameLogger.GameLogger, World.Command} =
-        match RandomUtil.pick(PlayerScene.transformableItems(targetId, scene)) {
+            \ {Math.Random, GameLogger.GameLogger, World.Command, PlayerData.PartyQuery} =
+        match RandomUtil.pick(PlayerScene.transformableItems(targetId)) {
             case None               => scene
             case Some((kind, name)) =>
                 let ring = Ring.lookup(pickTransformRingId(catalogs#rings), catalogs#rings);
@@ -382,7 +384,7 @@ mod GameLifecycle {
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State,
-                FloorSnapshot.State, World.Command} =
+                FloorSnapshot.State, World.Command, World.WorldQuery} =
         resetTurnState();
         FloorProgress.State.put(FloorCatalog.firstFloorId(catalogs#floors));
         // リスタートは新しい run 扱い: 前回の party 構成を引き継がず再抽選する。
@@ -399,7 +401,7 @@ mod GameLifecycle {
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State,
-                FloorSnapshot.State, World.Command} =
+                FloorSnapshot.State, World.Command, World.WorldQuery} =
         // 引き継ぐステータスを「現フロア退場前」に確保しておく。
         let carry = PlayerScene.snapshotCarry(scene);
         match FloorCatalog.nextFloorId(FloorProgress.State.get(), catalogs#floors) {

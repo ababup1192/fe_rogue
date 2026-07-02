@@ -92,7 +92,7 @@ mod UnitCardScene {
     pub def process(_delta: Duration.Duration, node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {GameEngine.Game, SelectedPlayer.State, TurnPhase.State} =
+                    \ {GameEngine.Game, SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery} =
         let phase = TurnPhase.State.get();
         // 下見（PlayerCursor）中はカーソル上のユニットを出す。
         let cursorActive = phase == TurnPhase.Phase.PlayerCursor;
@@ -105,10 +105,11 @@ mod UnitCardScene {
         }
 
     /// 選択中の味方（id）を表示。未選択なら隠す。
+    /// P2-r1: 表示 Data（hp/在庫/装備指輪/level/exp）は PartyQuery（World オーバーレイ）経由で読む。
     def renderSelected(idOpt: Option[Int32], scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameEngine.Game =
+            Scene[NodeTag] \ {GameEngine.Game, PlayerData.PartyQuery} =
         match idOpt {
-            case Some(id) => match PlayerScene.get(id, scene) {
+            case Some(id) => match PlayerData.PartyQuery.get(id) {
                 case Some(d) => renderPlayer(d, scene)
                 case None    => hidePanel(panelPath(), scene)
             }
@@ -116,7 +117,8 @@ mod UnitCardScene {
         }
 
     /// カーソル上のユニット（敵優先 / フォグ隠れは除外）を表示。空マスなら隠す。
-    def renderHovered(scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
+    /// P2-r1: ident（位置/hidden/フォグ）は scene 読みのまま、味方の表示 Data だけ PartyQuery 経由。
+    def renderHovered(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, PlayerData.PartyQuery} =
         match hoveredIdent(scene) {
             case Some((kind, id)) =>
                 if (kind == "enemy")
@@ -125,7 +127,7 @@ mod UnitCardScene {
                         case None    => hidePanel(panelPath(), scene)
                     }
                 else
-                    match PlayerScene.get(id, scene) {
+                    match PlayerData.PartyQuery.get(id) {
                         case Some(d) => renderPlayer(d, scene)
                         case None    => hidePanel(panelPath(), scene)
                     }

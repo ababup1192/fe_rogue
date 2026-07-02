@@ -654,7 +654,7 @@ def tradeInventoryDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[N
 /// Left / A → 前カテゴリ、Right / D → 次カテゴリ（武器/消費/杖/指輪。空はスキップ）。
 /// Up / Down は handleMenus が ItemList のスクロール（カーソル移動）に使うので素通し。
 def itemSelectDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
-        Scene[NodeTag] \ SelectedPlayer.State =
+        Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery} =
     match key {
         case GameEngine.Key.Left  => ItemMenuScene.categoryPrev(scene)
         case GameEngine.Key.A     => ItemMenuScene.categoryPrev(scene)
@@ -942,7 +942,8 @@ mod Game {
                           _scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Math.Random,
                 SelectedPlayer.State, InitialSpawns.State, FloorProgress.State,
-                PartySelection.State, GameLogger.GameLogger, FloorSnapshot.State, World.Command} =
+                PartySelection.State, GameLogger.GameLogger, FloorSnapshot.State, World.Command,
+                World.WorldQuery} =
         match phase {
             case GamePhase.Title =>
                 TitleMenuScene.add(Scene.empty())

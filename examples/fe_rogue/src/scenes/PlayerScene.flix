@@ -897,7 +897,7 @@ mod PlayerScene {
     /// ターン開始時に呼ばれ、AnimatedSprite2D 持ち unit は idle アニメに戻す
     /// (= 新ターン開始時の待機モーション)。
     /// 敵ターン終了後に呼ぶ（次の味方ターン開始）。
-    pub def clearAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
+    pub def clearAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, PlayerData.PartyQuery} =
         // 階段で退場した味方 (usedStairs) は「行動済み」を維持し、敵ターン後も再行動させない。
         let ids = getAll(scene) |> List.filter(d -> not d#usedStairs) |> List.map(d -> d#id);
         // emit-flip(E1, dual-write): 味方ターン開始 tick を World へ発行（scene の inline tick も当面維持）。
@@ -922,13 +922,16 @@ mod PlayerScene {
 
     /// いやしのリングを装備した味方の HP を回復する（最大 HP でクランプ）。味方ターン開始で呼ぶ。
     /// 実際に回復した味方はログに出す。
-    pub def applyRingRegen(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
+    pub def applyRingRegen(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, PlayerData.PartyQuery} =
         let ids = getAll(scene) |> List.map(d -> d#id);
         List.foldLeft((sc, id) -> regenOnePlayer(id, sc), scene, ids)
 
     /// 1 味方ぶんの Mend 回復。Mend 以外 / 未装備なら no-op（match は入れ子にしない）。
-    def regenOnePlayer(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
-        match get(id, scene) {
+    /// P2-r1: 判定読み（装備指輪/hp）は PartyQuery（World オーバーレイ）経由。
+    def regenOnePlayer(id: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, PlayerData.PartyQuery} =
+        match PlayerData.PartyQuery.get(id) {
             case None    => scene
             case Some(d) => mendOnePlayer(id, d, scene)
         }
@@ -1054,9 +1057,13 @@ mod PlayerScene {
     /// 現在の全プレイヤーの spawn 情報（id / gridPos / resource / weapons / staves）を抽出する。
     /// `Game.start` で初回 build 直後に呼んで保存する。
     /// 攻撃前に取られる前提でインベントリは無破損の初期値。respawn ではこの値で復元される。
-    pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] =
+    /// P2-r1: 射影元 Data を `World.dataFromWorld` オーバーレイで World store 由来にする
+    /// （captureSnaps と同型・dual-write 中は等値＝挙動不変）。
+    pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] \ World.WorldQuery =
+        let world = World.WorldQuery.get();
         getAll(scene)
-            |> List.map(d ->
+            |> List.map(d0 ->
+                let d = World.dataFromWorld(d0#id, world, scene) |> Option.getWithDefault(d0);
                 ({id = d#id, classId = d#classId, gridPos = d#gridPos, resource = d#resource,
                    weapons = d#weapons, staves = d#staves,
                    consumables = d#consumables, rings = d#rings}: Spawn))
@@ -1106,8 +1113,12 @@ mod PlayerScene {
 
     /// 現在の生存味方の引き継ぎ用ステータス（HP / 武器 / 持ち物）を抽出する。
     /// 次フロアへ進む直前に呼び、構築後の `reconcileWithCarry` で復元する。
-    pub def snapshotCarry(scene: Scene[NodeTag]): List[CarryData] =
+    /// P2-r1: 射影元 Data を `World.dataFromWorld` オーバーレイで World store 由来にする
+    /// （captureSnaps と同型・dual-write 中は等値＝挙動不変）。
+    pub def snapshotCarry(scene: Scene[NodeTag]): List[CarryData] \ World.WorldQuery =
+        let world = World.WorldQuery.get();
         getAll(scene)
+            |> List.map(d0 -> World.dataFromWorld(d0#id, world, scene) |> Option.getWithDefault(d0))
             |> List.filter(d -> d#hp > 0)
             |> List.map(d ->
                 ({id = d#id, hp = d#hp, weapons = d#weapons, staves = d#staves,
@@ -1304,12 +1315,18 @@ mod PlayerScene {
 
     /// 現在の全味方を `PlayerSnap` 列に射影する（スナップショット保存用）。持ち物 resource は
     /// 各 catalog の `idOf`（name 逆引き）で id 化し、耐久など動的値を併せて保持する。
+    /// P2-r1（セーブ capture の World 化）: 射影元 Data を `World.dataFromWorld` オーバーレイで
+    /// World store（hp/在庫/level/exp/statuses/pos 等）由来にする（core store 欠けは scene fallback）。
+    /// dual-write 中は scene と等値（[PLAYERDATA DIFF] 無音が担保）＝挙動不変で、P6 の
+    /// scene field 削除に先行して読み口だけ World へ寄せる。セーブ**形式**は不変。
     pub def captureSnaps(scene: Scene[NodeTag],
                           weaponCatalog: WeaponCatalog.WeaponCatalog,
                           staffCatalog: Staff.StaffCatalog,
                           consumableCatalog: Consumable.ConsumableCatalog,
-                          ringCatalog: Ring.RingCatalog): List[FloorSnapshot.PlayerSnap] =
-        getAll(scene) |> List.map(d ->
+                          ringCatalog: Ring.RingCatalog): List[FloorSnapshot.PlayerSnap] \ World.WorldQuery =
+        let world = World.WorldQuery.get();
+        getAll(scene) |> List.map(d0 ->
+            let d = World.dataFromWorld(d0#id, world, scene) |> Option.getWithDefault(d0);
             ({id = d#id, classId = d#classId, gridPos = d#gridPos, hp = d#hp,
                level = d#level, exp = d#exp, stats = LevelSystem.statsOf(d#resource),
                facing = d#facing, statuses = d#statuses,
@@ -1642,9 +1659,10 @@ mod PlayerScene {
     /// ringman の特殊行動で「指輪に変えられる」持ち物 = 装備外のアイテムを (種別 index, 表示名) で列挙する。
     /// 装備中の武器（weapons 先頭）と装備中の指輪（ringEquipped のときの rings 先頭）は守り、
     /// それ以外の武器・杖・薬・指輪を対象にする。居ない player は Nil。
-    pub def transformableItems(playerId: Int32, scene: Scene[NodeTag]):
-            List[(PlayerData.ItemKind, String)] =
-        match get(playerId, scene) {
+    /// P2-r1: 在庫読みは PartyQuery（World.dataFromWorld オーバーレイ）経由。
+    pub def transformableItems(playerId: Int32):
+            List[(PlayerData.ItemKind, String)] \ PlayerData.PartyQuery =
+        match PlayerData.PartyQuery.get(playerId) {
             case None    => Nil
             case Some(d) => transformableOf(d)
         }

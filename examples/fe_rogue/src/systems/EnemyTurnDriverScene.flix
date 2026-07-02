@@ -208,7 +208,8 @@ mod EnemyTurnDriverScene {
             \ {AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery,
+                PlayerData.PartyQuery} =
         match EnemyScene.get(step#id, scene) {
             case None       => scene   // 既に除外済み (死亡演出完了など)
             case Some(data) => applyStepForEnemy(step, data, scene)
@@ -225,7 +226,8 @@ mod EnemyTurnDriverScene {
             \ {AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery,
+                PlayerData.PartyQuery} =
         if (StatusSystem.isImmobilized(data#statuses))
             bindSkip(step, data, scene)
         else match StaffCastScene.enemyTryStaff(step#id, data#gridPos,
@@ -252,7 +254,8 @@ mod EnemyTurnDriverScene {
             \ {AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
-                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
+                SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery,
+                PlayerData.PartyQuery} =
         // P2 field-complete: bottleUsed は World 権威（reader flip 完了）。未登録の敵は「未投擲」＝false 既定。
         //（旧: scene fallback `data#bottleUsed`。syncTree 撤去で scene 側は spawn 値のまま＝未登録時も false ゆえ等価。）
         let curBottleUsed = World.bottleUsedOf(World.EntityRef.Enemy(step#id), World.WorldQuery.get())
@@ -275,7 +278,7 @@ mod EnemyTurnDriverScene {
                          scene: Scene[NodeTag]): Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, EnemyTurn.Queue,
                 Pacing.State, Math.Random, CustomEffects.RingTransformRequest, World.Command, BoardQuery,
-                World.WorldQuery} =
+                World.WorldQuery, PlayerData.PartyQuery} =
                 // 盤面 + 盤上ユニットを 1 箇所で結合 (位置×ステータスの join は Encounter に集約)。
                 // P2: EnemyAI 入力の board を World 由来へ（units stats は scene read-model・dual-write で位置一致・挙動不変）。
                 let enc = EncounterBuilder.fromBoardQuery(scene);
@@ -346,7 +349,8 @@ mod EnemyTurnDriverScene {
     /// 持たなければ通常攻撃を取る。リング職人は enemies.json の effectRule で駆動される。
     def resolveEnemyAttack(enemyId: Int32, data: EnemyScene.Data, targetId: Int32,
                            p: PlayerScene.Data, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, Math.Random, CustomEffects.RingTransformRequest, World.Command} =
+            \ {AnimationPlayer.Scheduler, Math.Random, CustomEffects.RingTransformRequest, World.Command,
+                PlayerData.PartyQuery} =
         match enemyTurnRule(data) {
             case Some(rule) => runEnemyTurnFlow(rule, enemyId, data, targetId, p, scene)
             case None       => normalEnemyAttack(enemyId, targetId, p, scene)
@@ -370,7 +374,8 @@ mod EnemyTurnDriverScene {
     /// 確率」という設計のため。隣接限定は仕様（replaceForm が if:"adjacent" を暗黙付与。RingMan は近接前提）。
     def runEnemyTurnFlow(rule: EffectRule.EffectRule, enemyId: Int32, data: EnemyScene.Data,
                          targetId: Int32, p: PlayerScene.Data, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, Math.Random, CustomEffects.RingTransformRequest, World.Command} =
+            \ {AnimationPlayer.Scheduler, Math.Random, CustomEffects.RingTransformRequest, World.Command,
+                PlayerData.PartyQuery} =
         match replaceFlowOf(rule) {
             case None       => normalEnemyAttack(enemyId, targetId, p, scene)
             case Some(flow) =>
@@ -404,9 +409,9 @@ mod EnemyTurnDriverScene {
 
     /// 差し替えが意味を持つか。ringify を含む差し替えは、対象に装備外アイテムが無ければ無意味なので
     /// 通常攻撃へ戻す（旧 isRingSpecial と同じ＝棒立ち回避 + roll 不消費で乱数列維持）。ringify 以外は常に可。
-    def replaceFeasible(flow: EffectRule.Flow, targetId: Int32, scene: Scene[NodeTag]): Bool =
+    def replaceFeasible(flow: EffectRule.Flow, targetId: Int32, _scene: Scene[NodeTag]): Bool \ PlayerData.PartyQuery =
         if (replaceHasRingify(flow))
-            not List.isEmpty(PlayerScene.transformableItems(targetId, scene))
+            not List.isEmpty(PlayerScene.transformableItems(targetId))
         else
             true
 
