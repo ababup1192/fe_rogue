@@ -103,8 +103,9 @@ mod StairsExitScene {
     /// 届かない味方も含めてキューに入れる（近づけるところまで近づいて止まる）。
     pub def begin(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, GameEngine.Audio,
-                              TurnPhase.State, SelectedPlayer.State, BoardQuery} =
-        match StairsScene.getPos(scene) {
+                              TurnPhase.State, SelectedPlayer.State, BoardQuery, World.WorldQuery} =
+        // P3-a: 階段位置は World 権威（stairsPosOf）を読む（scene 直読み撤去）。
+        match World.stairsPosOf(World.WorldQuery.get()) {
             case None         => scene
             case Some(stairs) =>
                 // P1a: frame-head の board 読みを World 由来へ（move 前ゆえ World==scene・挙動不変）。
@@ -159,7 +160,7 @@ mod StairsExitScene {
             case Nil         => finalize(scene)
             case (u, _) :: _ =>
                 if (PlayerScene.isMoving(u)) scene
-                else match StairsScene.getPos(scene) {
+                else match World.stairsPosOf(World.WorldQuery.get()) {   // P3-a: World 権威
                     case None         => finalize(scene)   // 階段消失(通常来ない)→後始末
                     case Some(stairs) => advanceFront(data, stairs, scene)
                 }

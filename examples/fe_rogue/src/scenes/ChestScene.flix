@@ -55,7 +55,7 @@ mod ChestScene {
                  consumableCatalog: Consumable.ConsumableCatalog,
                  ringCatalog: Ring.RingCatalog,
                  floor: FloorCatalog.FloorResource,
-                 scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+                 scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
         // 宝箱は希少: フロアごとに chestSpawnChance の確率でのみ出現させる
         // （外れたフロアは 0 個）。`and` の短絡で chests 空なら乱数は引かない。
         let willSpawn = not List.isEmpty(floor#chests)
@@ -112,7 +112,7 @@ mod ChestScene {
                      consumableCatalog: Consumable.ConsumableCatalog,
                      ringCatalog: Ring.RingCatalog,
                      floor: FloorCatalog.FloorResource,
-                     scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+                     scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
         if (remaining <= 0) scene
         else {
             let chosen = forM (
@@ -138,9 +138,10 @@ mod ChestScene {
         List.filter(c -> not (c#x == cell#x and c#y == cell#y), cells)
 
     /// 宝箱 1 個ぶんの Sprite2D を World/Chests 配下に追加する。
+    /// P3-b: あわせて `Cmd.SpawnChest` を emit して World store を権威に更新する（scene ノードは描画/フォグ view）。
     def addOneChest(idx: Int32, cell: {x = Int32, y = Int32},
                      chestKey: String, contentId: String, sprite: Sprite.SpriteResource,
-                     content: GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] =
+                     content: GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let center = MapSnapshot.cellCenter(cell);
         let pos: Vec2.Vec2 = {x = center#x + sprite#offset#x, y = center#y + sprite#offset#y};
         let node = Sprite2D.make(sprite#texture, pos, Vec2.one())
@@ -149,6 +150,7 @@ mod ChestScene {
             |> Sprite2D.setFrame(sprite#frame)
             |> CanvasItem.setZIndex(chestZIndex());
         let data: Data = {gridPos = cell, chestKey = chestKey, contentId = contentId, content = content};
+        World.Command.emit(World.Cmd.SpawnChest(data));
         Scene.addChildAt(parentPath(), chestName(idx),
             EngineNode.Sprite2DWithState(node, NodeTag.Chest(data)), scene)
 
@@ -183,10 +185,14 @@ mod ChestScene {
         entryAt(coord, scene) |> Option.map(pair -> { let (_, d) = pair; d })
 
     /// 指定セルの宝箱ノードを scene から取り除く（開錠後に呼ぶ）。無ければ何もしない。
-    pub def takeAt(coord: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
-        entryAt(coord, scene)
-            |> Option.map(pair -> { let (path, _) = pair; Scene.removeAt(path, scene) })
-            |> Option.getWithDefault(scene)
+    /// P3-b: 除去できたときだけ `Cmd.RemoveChest` を emit して World store からも落とす（存在の消失を component 化）。
+    pub def takeAt(coord: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        match entryAt(coord, scene) {
+            case Some((path, _)) =>
+                World.Command.emit(World.Cmd.RemoveChest(coord));
+                Scene.removeAt(path, scene)
+            case None => scene
+        }
 
     /// 配置済み全宝箱のグリッド座標（占有判定・ミニマップ表示など読み取り用途）。
     pub def getAllPositions(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] =
@@ -222,7 +228,7 @@ mod ChestScene {
                           staffCatalog: Staff.StaffCatalog,
                           consumableCatalog: Consumable.ConsumableCatalog,
                           ringCatalog: Ring.RingCatalog,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         if (List.isEmpty(snaps)) scene
         else {
             let withParent = ensureParent(scene);

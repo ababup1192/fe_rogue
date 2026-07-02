@@ -376,7 +376,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
-                 CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery}
+                 CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery}
     redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
                            state: NodeTag,
                            scene: Scene[NodeTag]):
@@ -387,7 +387,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              GatherResume.State,
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
-                                             CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery} =
+                                             CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery} =
         match state {
             case NodeTag.ItemMenu(_, _) =>
                 // ItemSelect / ItemActionSelect いずれも同じ ItemList なので、
@@ -416,7 +416,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                                              GatherResume.State,
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
-                                             CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery} =
+                                             CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery} =
         match state {
             case NodeTag.ItemMenu(_, _) =>
                 let phase = TurnPhase.State.get();
@@ -581,7 +581,7 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
                                     TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                                     PlayerData.PartyQuery, EnemyData.RosterQuery,
                                     CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
-                                    CustomEffects.GameOverRequest, CustomEffects.SuspendRequest, World.Command, BoardQuery} =
+                                    CustomEffects.GameOverRequest, CustomEffects.SuspendRequest, World.Command, World.WorldQuery, BoardQuery} =
         match (phase, input) {
         // 全滅メニュー: Z/Enter で選択確定（restart を emit）、X は無反応（必ず選ばせる）。
         case (TurnPhase.Phase.GameOver, TurnRules.Input.Confirm)

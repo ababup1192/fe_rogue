@@ -253,6 +253,9 @@ mod TestActionMenuScene {
         // してから assert に返す（waited が World→scene へ反映される点を含めて挙動を固定する）。
         let wref = Ref.fresh(rc, World.syncFromScene(args#scene, World.empty()));
         let (after, phase) = run {
+        // P3-a: 確定経路（stairs 判定・gatherStairs→StairsExit.begin）が World.stairsPosOf を読むので
+        // 同じ wref を返す WorldQuery を Command の内側に置く（read-after-write・withTracedWorld と同型）。
+        run {
         // P1a: 確定経路（gatherStairs→StairsExit.begin）が BoardQuery を読むので mock board を供給。
         TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(args#scene), () ->
         TestUnitFixtures.withPhaseRef(rc, args#initialPhase, () ->
@@ -268,6 +271,9 @@ mod TestActionMenuScene {
                                         TestUnitFixtures.withSelectedPlayer(args#selectedId, () ->
                                           ActionMenuScene.onActionConfirmed(args#entry,
                                                                             args#scene)))))))))))))
+        } with handler World.WorldQuery {
+            def get(k) = k(Ref.get(wref))
+        }
         } with handler World.Command {
             def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
         };
@@ -369,6 +375,7 @@ mod TestActionMenuScene {
             let pickupEntry: ItemEntry =
                 { text = "ひろう", disabled = false, metadata = Some("pickup") };
             let after = TestUnitFixtures.withWorldCommand(rc, () ->
+                TestUnitFixtures.withWorldQuery(World.syncFromScene(scene, World.empty()), () ->
                 TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
@@ -385,7 +392,7 @@ mod TestActionMenuScene {
                                                 let afterPick =
                                                     ActionMenuScene.onActionConfirmed(pickupEntry, scene);
                                                 PlayerScene.cancelSelection(afterPick)
-                                            })))))))))))));
+                                            }))))))))))))));
             let groundItemBack =
                 Option.nonEmpty(ItemScene.findAt({x = 1, y = 1}, after));
             // 期待: (床に戻った, 武器が 1 本に戻った)

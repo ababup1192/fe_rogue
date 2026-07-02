@@ -140,6 +140,16 @@ pub enum World {
                  // P1-a（Stopgap 杖 ECS）: 階段セル座標の read-model（None=未配置）。`StairsScene.getPos(scene)`
                  // 由来＝mapSnapshot と同じ scene-derive 毎フレーム再 mirror。Stopgap の warp 先計算（`warpCellFor`）が読む。
                  stairsPos = Option[{x = Int32, y = Int32}],
+                 // P3-b（配置物 Entity 化）: 宝箱の read/write-model。セル key（`chestCellKey`）→ 宝箱 Data。
+                 // spawn（`Cmd.SpawnChest`）/開封（`Cmd.RemoveChest`）が動かす＝存在は component（Map 在/不在）で表現。
+                 // syncFromScene で frame-1 seed（ChestScene.getAll）、refreshMirror は command 由来を preserve＋
+                 // scene 在セルで prune（unit の pos と同型・floor 遷移で旧フロア分が自動 prune される）。
+                 chests = Map[Int32, ChestScene.Data],
+                 // P3-c（配置物 Entity 化）: 床アイテムの read/write-model。セル key（`cellKey`）→ GroundItem Data。
+                 // spawn（`Cmd.SpawnItem`）/拾得（`Cmd.RemoveItem`）が動かす＝存在は component（Map 在/不在）で表現。
+                 // `elapsed`（点滅位相）は view 専用ゆえ store の値は spawn 時のスナップショット（World reader は読まない）。
+                 // 3-builder は chests と同型（seed=itemsFromScene／preserve＋scene 在セルで prune）。
+                 groundItems = Map[Int32, ItemScene.Data],
                  // B/tiles: 背景 map タイルの描画ハンドル（floor+walls 層・静的）。rebuild イベント（tileGen 変化）で
                  // bake し、render System が camera 適用して instanced 描画。scene TileMapLayer ノードは衝突用に存続。
                  tileLayers = List[TileLayerHandle],
@@ -186,6 +196,8 @@ mod World {
                      growth = Map.empty(),
                      mapSnapshot = None,
                      stairsPos = None,
+                     chests = Map.empty(),
+                     groundItems = Map.empty(),
                      tileLayers = Nil, tileGen = 0,
                      effectRule = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false,
@@ -275,8 +287,14 @@ mod World {
                         d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),
             // P1c: mapSnapshot は scene 静的地形（toBoard が借りるのと同源）を毎フレーム再 mirror。
             mapSnapshot = mapSnapshotOpt(scene),
-            // P1-a: stairsPos は scene の Stairs ノード（未配置なら None）を毎フレーム再 mirror（mapSnapshot と同源）。
+            // P3-a: stairsPos は frame-1 seed だけ scene の Stairs ノードから読む（hp と同型）。以後は
+            // refreshMirror が placeAt の `Cmd.SetStairs` を preserve＝World 権威。
             stairsPos = StairsScene.getPos(scene),
+            // P3-b: chests は frame-1 seed だけ scene の Chest ノード群から読む（stairsPos と同型）。以後は
+            // refreshMirror が SpawnChest/RemoveChest 由来を preserve＋scene 在セルで prune＝World 権威。
+            chests = chestsFromScene(scene),
+            // P3-c: groundItems も frame-1 seed だけ scene の GroundItem ノード群から読む（chests と同型）。
+            groundItems = itemsFromScene(scene),
             // B/tiles: tileLayers/tileGen は command-derive（BumpTileGen/setTileLayers）＝preserve（frame-1 は空/0 を carry）。
             tileLayers = w#tileLayers, tileGen = w#tileGen,
             // P2: effectRule は敵 resource 由来の read-model（敵のみ・内側 Option=ルールなし）＝毎フレーム再 mirror。
@@ -370,8 +388,16 @@ mod World {
                         d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),
             // P1c: mapSnapshot も scene 静的地形を毎フレーム再 mirror（toBoard と同源）。
             mapSnapshot = mapSnapshotOpt(scene),
-            // P1-a: stairsPos も scene の Stairs ノードを毎フレーム再 mirror（mapSnapshot と同源）。
-            stairsPos = StairsScene.getPos(scene),
+            // P3-a: stairsPos は command 由来を保持（hp と同型・再 mirror しない）。placeAt が `Cmd.SetStairs` を emit＝
+            // World 権威。frame-1 seed は syncFromScene（scene 読み）、以後は placeAt の Cmd を preserve（Playing 突入/
+            // floor 遷移とも placeAt が World.Command 文脈で emit してから refreshMirror が走るため正しく更新される）。
+            stairsPos = w#stairsPos,
+            // P3-b: chests は command 由来（SpawnChest/RemoveChest）を preserve＋scene 在セルで prune。
+            // 開封は同フレームで scene ノード削除＋RemoveChest の dual-write、floor 遷移は新 scene の在セル集合で
+            // 旧フロア分が落ちる（unit の pos prune と同型・scene が権威集合の供給元）。
+            chests = Map.filterWithKey((k, _) -> Set.memberOf(k, sceneChestKeys(scene)), w#chests),
+            // P3-c: groundItems も command 由来（SpawnItem/RemoveItem）を preserve＋scene 在セルで prune（chests と同型）。
+            groundItems = Map.filterWithKey((k, _) -> Set.memberOf(k, sceneItemKeys(scene)), w#groundItems),
             // B/tiles: tileLayers/tileGen は command-derive＝preserve（rebuild イベント〔tileGen 変化〕時のみ gameLoop が bake）。
             tileLayers = w#tileLayers, tileGen = w#tileGen,
             // P2: effectRule も敵 resource 由来 read-model（敵のみ）＝毎フレーム再 mirror。
@@ -533,6 +559,11 @@ mod World {
         case SetEnemyTurnBusy(Bool)            // F8-slice2: 敵ターン intro hold 中 bool write（TopBar dual-write）
         case SetPhaseObservedEnemy(Bool)       // F8-slice2: バーが敵ターン観測済み bool write（TopBar dual-write）
         case BumpTileGen                       // B/tiles: マップ再構築の世代 +1（build choke が emit・gameLoop の tile bake トリガ）
+        case SetStairs(Option[{x = Int32, y = Int32}])  // P3-a: 階段セル write（配置=Some/未配置=None・floor 単位で 1 回）。stairsPos を World 権威化
+        case SpawnChest(ChestScene.Data)   // P3-b: 宝箱を配置（build/復元）。cell key で chests へ挿入（存在=Map 在）
+        case RemoveChest({x = Int32, y = Int32})  // P3-b: 宝箱を開封して除去（cell key で chests から削除）
+        case SpawnItem(ItemScene.Data)     // P3-c: 床アイテムを配置（build/復元/respawn/drop）。cell key で groundItems へ挿入
+        case RemoveItem({x = Int32, y = Int32})   // P3-c: 床アイテムを拾得して除去（cell key で groundItems から削除）
     }
 
     /// System が出力する sim-event（F-clock の最小骨組み・F3b 導入 → slice `simevent-algebra` で拡張）。
@@ -827,6 +858,25 @@ mod World {
                 // B/tiles: マップ再構築の世代 +1。build choke（buildPlayingScene/rebuildFloorFromSnapshot）が emit し、
                 // gameLoop が world1 と incoming world の gen 差でタイル bake を判定する。
                 let World.World(w) = world; World.World({tileGen = w#tileGen + 1 | w})
+            case Cmd.SetStairs(cell) =>
+                // P3-a: 階段セルを World 権威に write（placeAt が emit）。floor 単位で 1 回・未配置は None。
+                let World.World(w) = world; World.World({stairsPos = cell | w})
+            case Cmd.SpawnChest(data) =>
+                // P3-b: 宝箱を cell key で挿入（addOneChest が emit）。存在は Map 在で表現。
+                let World.World(w) = world;
+                World.World({chests = Map.insert(chestCellKey(data#gridPos), data, w#chests) | w})
+            case Cmd.RemoveChest(cell) =>
+                // P3-b: 宝箱を開封して除去（takeAt が emit）。存在の消失は Map 不在で表現。
+                let World.World(w) = world;
+                World.World({chests = Map.remove(chestCellKey(cell), w#chests) | w})
+            case Cmd.SpawnItem(data) =>
+                // P3-c: 床アイテムを cell key で挿入（addOneItem が emit）。存在は Map 在で表現。
+                let World.World(w) = world;
+                World.World({groundItems = Map.insert(cellKey(data#gridPos), data, w#groundItems) | w})
+            case Cmd.RemoveItem(cell) =>
+                // P3-c: 床アイテムを拾得して除去（takeAt が emit）。存在の消失は Map 不在で表現。
+                let World.World(w) = world;
+                World.World({groundItems = Map.remove(cellKey(cell), w#groundItems) | w})
         }
 
     // ── slice `simevent-algebra`: SimEvent reducer / adapter / cmdKey ────────────────
@@ -964,6 +1014,13 @@ mod World {
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)
             case Cmd.SetPhaseObservedEnemy(b) => ("PhObs", bool01(b), 0, 0)
             case Cmd.BumpTileGen              => ("BumpTileGen", 0, 0, 0)
+            case Cmd.SetStairs(cell)          =>
+                let (x, y) = Option.map(p -> (p#x, p#y), cell) |> Option.getWithDefault((-1, -1));
+                ("SetStairs", x, y, 0)
+            case Cmd.SpawnChest(data)         => ("SpawnChest", data#gridPos#x, data#gridPos#y, 0)
+            case Cmd.RemoveChest(cell)        => ("RemoveChest", cell#x, cell#y, 0)
+            case Cmd.SpawnItem(data)          => ("SpawnItem", data#gridPos#x, data#gridPos#y, 0)
+            case Cmd.RemoveItem(cell)         => ("RemoveItem", cell#x, cell#y, 0)
         }
 
     /// F7-spike: 敵の alerted を World から読む（reader flip の供給元・hpOf 同型）。Player は常に None。
@@ -1799,6 +1856,49 @@ mod World {
     /// scene の `StairsScene.getPos` を mirror した read-model（`boardOf` と同じく scene 非依存 sim を可能にする seam）。
     pub def stairsPosOf(world: World): Option[{x = Int32, y = Int32}] =
         let World.World(w) = world; w#stairsPos
+
+    /// P3-b/c: 配置物 store のセル key（1 セル 1 個ゆえ cell が一意 key＝record の Eq/Order を避け Int32 に符号化）。
+    /// グリッドは各軸 1000 未満（ダンジョンセル）ゆえ `x*1000 + y` で衝突しない。chests/groundItems 共通。
+    pub def cellKey(cell: {x = Int32, y = Int32}): Int32 = cell#x * 1000 + cell#y
+
+    /// P3-b: 宝箱 store のセル key（`cellKey` の別名・既存 API 名として保持）。
+    pub def chestCellKey(cell: {x = Int32, y = Int32}): Int32 = cellKey(cell)
+
+    /// P3-b: scene の Chest ノード群を cell key → Data の Map に射影（frame-1 seed 用）。
+    def chestsFromScene(scene: Scene[NodeTag]): Map[Int32, ChestScene.Data] =
+        ChestScene.getAll(scene)
+            |> List.foldLeft((m, d) -> Map.insert(cellKey(d#gridPos), d, m), Map.empty())
+
+    /// P3-b: scene に現存する宝箱の cell key 集合（refreshMirror の prune 基準＝unit の validUids 相当）。
+    def sceneChestKeys(scene: Scene[NodeTag]): Set[Int32] =
+        ChestScene.getAll(scene)
+            |> List.foldLeft((s, d) -> Set.insert(cellKey(d#gridPos), s), Set.empty())
+
+    /// P3-b: 宝箱 store を World から読む（cell key → Data）。
+    pub def chestsOf(world: World): Map[Int32, ChestScene.Data] =
+        let World.World(w) = world; w#chests
+
+    /// P3-b: 指定セルの宝箱を World から読む（`ChestScene.findAt` の World 版）。
+    pub def chestAtOf(cell: {x = Int32, y = Int32}, world: World): Option[ChestScene.Data] =
+        let World.World(w) = world; Map.get(cellKey(cell), w#chests)
+
+    /// P3-c: scene の GroundItem ノード群を cell key → Data の Map に射影（frame-1 seed 用）。
+    def itemsFromScene(scene: Scene[NodeTag]): Map[Int32, ItemScene.Data] =
+        ItemScene.getAll(scene)
+            |> List.foldLeft((m, d) -> Map.insert(cellKey(d#gridPos), d, m), Map.empty())
+
+    /// P3-c: scene に現存する床アイテムの cell key 集合（refreshMirror の prune 基準）。
+    def sceneItemKeys(scene: Scene[NodeTag]): Set[Int32] =
+        ItemScene.getAll(scene)
+            |> List.foldLeft((s, d) -> Set.insert(cellKey(d#gridPos), s), Set.empty())
+
+    /// P3-c: 床アイテム store を World から読む（cell key → Data）。
+    pub def groundItemsOf(world: World): Map[Int32, ItemScene.Data] =
+        let World.World(w) = world; w#groundItems
+
+    /// P3-c: 指定セルの床アイテムを World から読む（`ItemScene.dataAt` の World 版）。
+    pub def groundItemAtOf(cell: {x = Int32, y = Int32}, world: World): Option[ItemScene.Data] =
+        let World.World(w) = world; Map.get(cellKey(cell), w#groundItems)
 
     /// P1c 安全網: store した mapSnapshot（地形）が scene 由来と食い違うか（boardKey は駒のみ見るため別建て）。
     /// MapSnapshot は Eq 非自動ゆえ (tileSize, wallCells) へ射影して比較（壁レイアウトの drift 検出）。

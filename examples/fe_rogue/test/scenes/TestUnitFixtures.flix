@@ -660,22 +660,26 @@ mod TestUnitFixtures {
     pub def withMenuReadMocks(phase: TurnPhase.Phase, selectedId: Int32,
                                scene: Scene[NodeTag], thunk: Unit -> a \ ef):
             a \ (ef - TurnPhase.State - SelectedPlayer.State
-                  - PlayerData.PartyQuery - EnemyData.RosterQuery) =
+                  - PlayerData.PartyQuery - EnemyData.RosterQuery - World.WorldQuery) =
+        // P3-a: メニューは階段判定を World.stairsPosOf で読むため WorldQuery も剥がす。
+        // scene から seed した静的 World（stairsPos が scene ノードを mirror）を返せば isAt 相当が成立する。
         withFixedPhase(phase, () ->
             withSelectedPlayer(selectedId, () ->
                 withMockPartyQuery(scene, () ->
-                    withMockRosterQuery(scene, thunk))))
+                    withMockRosterQuery(scene, () ->
+                        withWorldQuery(World.syncFromScene(scene, World.empty()), thunk)))))
 
     /// `withMenuReadMocks` の未選択版（選択駒なし）。`withSelectedPlayer` を `withNoSelection` に
     /// 差し替えただけ。空マスメニューの項目構築テスト用。
     pub def withMenuReadMocksNoSel(phase: TurnPhase.Phase,
                                     scene: Scene[NodeTag], thunk: Unit -> a \ ef):
             a \ (ef - TurnPhase.State - SelectedPlayer.State
-                  - PlayerData.PartyQuery - EnemyData.RosterQuery) =
+                  - PlayerData.PartyQuery - EnemyData.RosterQuery - World.WorldQuery) =
         withFixedPhase(phase, () ->
             withNoSelection(() ->
                 withMockPartyQuery(scene, () ->
-                    withMockRosterQuery(scene, thunk))))
+                    withMockRosterQuery(scene, () ->
+                        withWorldQuery(World.syncFromScene(scene, World.empty()), thunk)))))
 
     /// `SelectedPlayer.State` を「主人公(0) 選択中・gatherActive=true」で固定するスタブ。
     /// 集合（行軍）の隣接メニュー（交換 / 全員待機 / キャンセル）の項目構築テスト用。
@@ -690,11 +694,12 @@ mod TestUnitFixtures {
     /// 主人公選択中・gatherActive=true で項目構築を観測する。
     pub def withMenuReadMocksGather(scene: Scene[NodeTag], thunk: Unit -> a \ ef):
             a \ (ef - TurnPhase.State - SelectedPlayer.State
-                  - PlayerData.PartyQuery - EnemyData.RosterQuery) =
+                  - PlayerData.PartyQuery - EnemyData.RosterQuery - World.WorldQuery) =
         withFixedPhase(TurnPhase.Phase.ActionSelect, () ->
             withGatherSelection(() ->
                 withMockPartyQuery(scene, () ->
-                    withMockRosterQuery(scene, thunk))))
+                    withMockRosterQuery(scene, () ->
+                        withWorldQuery(World.syncFromScene(scene, World.empty()), thunk)))))
 
     /// `ActionMenuScene.onActionCancelled` の遷移テスト用に、必要な 5 effect
     /// (Tween / Anim / PartyQuery / TurnPhase / SelectedPlayer) を **1 呼び出し**で剥がす束ね。

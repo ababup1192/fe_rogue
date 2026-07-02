@@ -203,9 +203,9 @@ mod GameLifecycle {
 
     /// 保存済み階段位置があればそのセルに階段を確定配置する（無ければ何もしない）。
     def placeStairsFromSnap(stairs: Option[{x = Int32, y = Int32}],
-                             scene: Scene[NodeTag]): Scene[NodeTag] =
+                             scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match stairs {
-            case Some(cell) => StairsScene.placeAt(cell, scene)
+            case Some(cell) => StairsScene.placeAt(cell, scene)   // P3-a: placeAt が Cmd.SetStairs を emit（World 権威）
             case None       => scene
         }
 
@@ -334,7 +334,7 @@ mod GameLifecycle {
     /// 抽選不能（表が空）なら no-op。
     pub def dropFloorItem(catalogs: Catalogs, cell: {x = Int32, y = Int32},
                            scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Math.Random, FloorProgress.State} =
+            \ {Math.Random, FloorProgress.State, World.Command} =
         let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
         match FloorCatalog.pickWeighted(floor#items) {
             case None     => scene

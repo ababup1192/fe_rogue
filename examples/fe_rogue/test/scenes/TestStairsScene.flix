@@ -40,10 +40,32 @@ mod TestStairsScene {
     /// (3,4) に置くと、(3,4) だけ isAt = true、隣の (3,5) は false、getPos = (3,4)。
     @Test
     def testPlaceAtMarksOnlyThatCell(): Unit \ Assert =
-        let placed = StairsScene.placeAt({x = 3, y = 4}, emptyStairsScene());
+        // placeAt は P3-a で `Cmd.SetStairs` を emit する。scene ノードの配置ロジックだけを検証するので
+        // World.Command は no-op で捨てる（World 権威化の等価性は golden 側で pin）。
+        let placed = run { StairsScene.placeAt({x = 3, y = 4}, emptyStairsScene()) }
+                     with handler World.Command { def emit(_, k) = k() };
         Assert.assertEq(
             expected = (true, false, Some((3, 4))),
             (StairsScene.isAt({x = 3, y = 4}, placed),
              StairsScene.isAt({x = 3, y = 5}, placed),
              StairsScene.getPos(placed) |> Option.map(pos -> (pos#x, pos#y))))
+
+    // ========================================================================
+    // P3-a: placeAt は `Cmd.SetStairs` を emit し、それが World.stairsPosOf を権威化する
+    // ========================================================================
+
+    /// placeAt の emit した Cmd を region Ref[World] へ applyCmd し、World.stairsPosOf が
+    /// 置いたセルを返すことを pin する（gameplay reader が読む権威が World である証跡）。
+    @Test
+    def testPlaceAtDrivesWorldStairsPos(): Unit \ Assert =
+        region rc {
+            let wref = Ref.fresh(rc, World.empty());
+            run { discard StairsScene.placeAt({x = 3, y = 4}, emptyStairsScene()) }
+                with handler World.Command {
+                    def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
+                };
+            Assert.assertEq(
+                expected = Some((3, 4)),
+                World.stairsPosOf(Ref.get(wref)) |> Option.map(pos -> (pos#x, pos#y)))
+        }
 }

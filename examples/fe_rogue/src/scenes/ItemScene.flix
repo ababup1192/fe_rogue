@@ -104,7 +104,7 @@ mod ItemScene {
                  ringCatalog: Ring.RingCatalog,
                  floor: FloorCatalog.FloorResource,
                  scene: Scene[NodeTag]):
-            Scene[NodeTag] \ Math.Random =
+            Scene[NodeTag] \ {Math.Random, World.Command} =
         let items = floor#items;
         if (List.isEmpty(items)) scene
         else {
@@ -172,9 +172,10 @@ mod ItemScene {
 
     /// アイテム 1 個ぶんの Sprite2D を World/Items 配下に追加する。
     /// 視認性のため 4 方向 1px シフトの縁取り Sprite を先に重ね、本体を上に置く。
+    /// P3-c: あわせて `Cmd.SpawnItem` を emit して World store を権威に更新する（scene ノードは描画/点滅 view）。
     def addOneItem(idx: Int32, cell: {x = Int32, y = Int32},
                     itemKey: String, item: ItemData.GroundItemKind,
-                    scene: Scene[NodeTag]): Scene[NodeTag] =
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let sprite0 = spriteOf(item);
         // セル中心 + sprite#offset で sheet padding を補正した位置に置く
         let center = MapSnapshot.cellCenter(cell);
@@ -207,6 +208,7 @@ mod ItemScene {
             gridPos = cell, itemKey = itemKey, item = item,
             elapsed = initElapsed
         };
+        World.Command.emit(World.Cmd.SpawnItem(data));
         Scene.addChildAt(parentPath(), itemName(idx),
             EngineNode.Sprite2DWithState(sprite, NodeTag.GroundItem(data)), withOutlines)
 
@@ -295,12 +297,14 @@ mod ItemScene {
 
     /// 指定セルのアイテムを scene から取り除いてアイテム実体を返す。
     /// 本体ノードと一緒に 4 つの縁取り兄弟ノードも消す。
+    /// P3-c: 除去できたときだけ `Cmd.RemoveItem` を emit して World store からも落とす（存在の消失を component 化）。
     pub def takeAt(coord: {x = Int32, y = Int32},
                     scene: Scene[NodeTag]):
-            (Scene[NodeTag], Option[ItemData.GroundItemKind]) =
+            (Scene[NodeTag], Option[ItemData.GroundItemKind]) \ World.Command =
         match findAt(coord, scene) {
             case None              => (scene, None)
             case Some((path, kind)) =>
+                World.Command.emit(World.Cmd.RemoveItem(coord));
                 let cleaned = scene
                     |> removeOutlinesFor(path)
                     |> Scene.removeAt(path);
@@ -345,7 +349,7 @@ mod ItemScene {
                           staffCatalog: Staff.StaffCatalog,
                           consumableCatalog: Consumable.ConsumableCatalog,
                           ringCatalog: Ring.RingCatalog,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         List.foldLeft((acc, snap) -> {
             let kind = lookupItem(snap#itemKey, catalog, staffCatalog, consumableCatalog, ringCatalog);
             respawn(snap#gridPos, snap#itemKey, kind, acc)
@@ -354,7 +358,7 @@ mod ItemScene {
     /// `takeAt` の逆操作として、アイテムを `cell` に再配置する。
     /// 新しい idx を採番して本体 + 縁取りを作り直す。
     pub def respawn(cell: {x = Int32, y = Int32}, itemKey: String,
-                     kind: ItemData.GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] =
+                     kind: ItemData.GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let withParent = ensureParent(scene);
         addOneItem(nextItemIdx(withParent), cell, itemKey, kind, withParent)
 

@@ -39,7 +39,7 @@
 | # | 残存機能 | 権威の場所 | 対応フェーズ |
 |---|---|---|---|
 | 1 | ECS combat/staff の cutover ギャップ（level-up モーダル・thief/status view・Stopgap 杖・敵 knockback・武器耐久・lifesteal+heal stacking） | legacy 経路 | **P1** |
-| 2 | 在庫・装備・耐久（weapons/staves/consumables/rings） | scene `Data#weapons` 等（World は mirror） | **P2** |
+| 2 | 在庫・装備・耐久（weapons/staves/consumables/rings） | scene `Data#weapons` 等（World は mirror） | **P2（最後・P6 直前）** |
 | 3 | 配置物（Chest/Stairs/GroundItem）の実体 | ツリーノード | **P3** |
 | 4 | メニュー/HUD/カーソルの UI 状態 | NodeTag ペイロード（`ItemMenu(Int32,Set)` 等） | **P4** |
 | 5 | TurnPhase 19-case FSM | `resources/TurnPhase.State`（resource なので存続。scene 側 mirror だけ整理） | **P4** |
@@ -71,7 +71,8 @@
 
 ## §D フェーズ別ワークフロー
 
-依存関係: **P1 → (P2 ∥ P3) → (P4 ∥ P5) → P6**。P2/P3 は完全独立、P4/P5 もほぼ独立（TurnEndHold だけ P4 の入力状態に触る）。
+実施順: **P1 → P3 → (P4 ∥ P5) → P2 → P6**。P4/P5 はほぼ独立（TurnEndHold だけ P4 の入力状態に触る）。
+**P2（在庫の World 権威化）は最後に回す**（ユーザー判断・2026-07-02）: writer flip がセーブ capture の付け替えと不可分ゆえ、セーブ移行を行う P6 の直前でまとめて実施する方が手戻りが少ない。dual-write は既に稼働・`[PLAYERDATA DIFF]` 検証済みで機能上は困らないため、それまで温存。番号 P2 は据え置き（順序だけ末尾へ）。
 
 ---
 
@@ -95,9 +96,11 @@
 
 ---
 
-### P2 — 在庫・装備・耐久の World 権威化
+### P2 — 在庫・装備・耐久の World 権威化 （**実施は最後・P6 直前**）
 
-**目的**: weapons/staves/consumables/rings の権威を scene `Data#...` から World store へ flip。`Weapon.consumeEquippedWeapon` 等の scene 副作用を Cmd 化。
+> **順序メモ**: セクション番号は P2 のままだが、実施は P3→P4/P5 の後・P6 直前に回す（上記「実施順」参照）。writer flip がセーブ capture 付け替えと不可分＝P6 のセーブ移行とまとめると手戻りが少ない。再開時は rings/ringEquipped（player-only 最小）から read→writer→save→render→field削除 の縦スライスで。
+
+**目的**: weapons/staves/consumables/rings の権威を scene `Data#...` から World store へ flip。`Weapon.consumeEquippedWeapon` 等の scene 副作用を Cmd 化。**インフラ（7 Cmd・emit funnel・accessor・refreshMirror preserve+prune）は全て既存**＝新規実装でなく「scene 直書きの撤去＋読み/描画/セーブの World 付け替え」が実務。
 
 **達成条件**:
 - [ ] 在庫の read/write が全て World 経由（メニューの読みも含む）
@@ -113,7 +116,7 @@
 
 ---
 
-### P3 — 配置物の Entity 化（P2 と並列可）
+### P3 — 配置物の Entity 化（P1 の次に実施）
 
 **目的**: Chest / Stairs / GroundItem をツリーノードから World entity（pos + kind component）にする。
 
@@ -126,7 +129,9 @@
 
 **並列**: 3 種で 3 レーン完全独立。
 
-**注意**: GroundItem は P2 の在庫 store と受け渡し（拾う=ground から消して inventory へ）があるので、P2/P3 並走時は **Cmd の境界を先に合意**してから分担。unified-id 規約（enemy=+1,000,000）に倣い、配置物にも id 帯域を割る（例: +2,000,000〜）。
+**進捗**: ✅ 全完了（Level 1）。P3-a Stairs（stairsPos scalar）／P3-b Chest（chests store・cell key→Data）／P3-c GroundItem（groundItems store・elapsed は view 専用で store 対象外）。存在=World store の在/不在、spawn/開封/取得=Cmd、gameplay reader は World へ flip。scene ノード（＋item の 4 outline/点滅）は描画 view 残置。**未達（意図的に P6 へ委譲）**: addChild 撤去・catalog 直描画・セーブ capture の World 化・minimap/occupancy の World 化（いずれも World 等価の scene view 読みで代替中）。パターンは §G「次の一手」参照。
+
+**注意**: GroundItem は在庫（拾う=ground から消して inventory へ）と受け渡すが、P2 は保留中で在庫は今も scene 直書き+dual-write のまま。P3 は GroundItem の**存在・位置**の Entity 化に限り、拾得先の inventory 書込は既存経路（scene+Cmd）をそのまま呼ぶ（在庫権威の flip は P2 の担当）。unified-id 規約（enemy=+1,000,000）に倣い、配置物にも id 帯域を割る（例: +2,000,000〜）。
 
 ---
 
@@ -220,12 +225,20 @@
 
 ## §G 進捗（living — 更新はここだけで良い）
 
-**現在フェーズ: P1（Cutover 完遂）— 完了。次は P2（在庫の World 権威化）∥ P3（配置物 Entity 化）**
+**現在フェーズ: P3（配置物 Entity 化）**完了**（Stairs/Chest/GroundItem すべて Level 1 で World 権威化）。次は P4 ∥ P5。P2（在庫の World 権威化）はユーザー判断で保留（P6 直前）**
 
-- テスト baseline: 1063 green（P1 着手前）→ **1070 green**（P1 完了時・+7）
+> **P3 完了メモ（2026-07-02・全 Level 1）**: 配置物 3 種の存在/位置/中身を World store に権威化し、gameplay reader（メニュー gate・階段 driver 等）を World へ flip。scene ノードは描画/フォグ/点滅アニメ view として残置（renderSubtrees 経路不変・dual-write で despawn 時にノードも消える）。RenderWorld 調査で「ユニットも scene sprite ノードを保持＝World は存在 gate のみ」「node-less 描画（Render.drawAtlas+regionRect）は Stairs が catalog 非対応で詰む」と判明したため、addChild 撤去＋catalog 直描画は P6（ユニットの脱ノードと同時）へ委譲するのが妥当。
+
+> **P2 保留メモ（2026-07-02）**: 在庫の Cmd/emit/accessor/dual-write は全て既存で稼働・`[PLAYERDATA DIFF]` で World==scene 検証済み。残りの「scene 権威を落として World 単独化」は read-before-mutate＋描画（UnitCard 等）＋**セーブ capture（`captureSnaps` が scene Data 直読み）**の付け替えを伴う重い縦スライスで、セーブ移行が不可分。機能上は今困っていない（P6 撤去まで dual-write 温存で動く）ため、独立でクリーンな P3 を先行。P2 再開時は rings/ringEquipped（player-only 最小）から縦スライスで。
+
+- テスト baseline: 1063 green（P1 着手前）→ 1070 green（P1 完了）→ 1071（P3-a）→ 1072（P3-b）→ **1073 green**（P3-c 完了＝P3 完了・各 +1）
 - 完了済み前史: Track A/A'（faction 統合・unified-id）、F0-F8（sim state 権威化・driver step 化）、pos 統合、Phase C 前提 4 スライス、combat/staff cutover（トグル 3 つ true）、render-from-World 常時化
 - **P1 実像の訂正**: 当初 6 TODO のうち level-up モーダルと武器耐久は既に配線済み（doc 陳腐化のみ）だった。実装が要ったのは Stopgap 杖・thief drop・敵ノックバックの 3 点。
-- **次の一手**: P2/P3 は独立で並行可。P2 は PlayerScene.flix(W=119) の在庫 store flip、P3 は Chest/Stairs/GroundItem の Entity 化。§D-P2/P3 参照。
+- **次の一手**: P3 完了。次は **P4（UI 状態の Resource/Component 化）∥ P5（演出・残 driver の System 化）**。ほぼ独立で並行可（TurnEndHold だけ P4 の入力状態に触る）。P4 は LogScene（最軽量）で変換パターンをコミット確立→他レーン fan-out。P2 は保留継続（P6 直前）。
+  - **P3 で確立したパターン（配置物 = World 権威・scene ノードは view）※P6 の脱ノードや他 store 化で再利用**: ① World に store field ＋ `Cmd.SpawnXxx/RemoveXxx`（scalar なら `SetXxx`）＋ applyCmd ＋ cmdKey を足す。② 配置/除去関数が `Cmd` を emit（scene ノードも従来通り set/remove＝描画/フォグ/frame-1 seed の view として残す＝dual-write）。③ refreshMirror は **command 由来を preserve**（変数個は scene 在キーで prune＝unit の validUids 相当）／syncFromScene は frame-1 seed として scene を読む＝hp/pos と同型。emit が Playing 突入・floor 遷移とも `World.Command` 文脈で refreshMirror より先に走るので seed は正しい。④ gameplay reader（driver/メニュー gate/overload 判定）を `World.xxxOf` へ flip。⑤ 描画/フォグ/セーブ capture/build-time 占有判定・deep な execution 経路は scene 読みのまま可（dual-write で World と等価。真の脱ノードは P6）。⑥ record は Eq/Order 未定義＝比較は `Option.exists(c -> c#x==.. and c#y==..)`、Map key は cell を `cellKey=x*1000+y` で Int32 符号化。⑦ reader へ WorldQuery を足すと呼び出し連鎖に伝播（ActionMenu では buildItems/refreshItems/onActionConfirmed と MenuHandler の `type Aef`・Game.flix dispatch まで）。全 reader flip で menu 関数の `scene` 引数が未使用化することがある＝`_scene`。テストは `withMenuReadMocks*` に `withWorldQuery(syncFromScene(scene,empty()))` を仕込み済みで一括で通る。scene ノードを直接組む純粋テストで emit 関数を呼ぶ場合は `run { … } with handler World.Command { def emit(_,k)=k() }` で捨てるか、Ref[World] 版で applyCmd して store 権威を pin。
 - 履歴:
   - 2026-07-02: 本 doc 作成（Scene vs ECS 全棚卸し → P1-P6 ワークフロー策定）
   - 2026-07-02: P1 完了。P1-a Stopgap ECS化（World.stairsPos read-model + StaffSystem.stopgapEvents + 敵詠唱 log parity）、P1-b thief drop ECS化（World.isRogueOf〔growth#name 由来〕+ ViewFx(Thief) emit + wrapper applyThiefDrop）、P1-c 敵ノックバック（resolveEnemyAttack で faction-blind knockbackEvents 再利用）、P1-d 陳腐化コメント修正。golden +7（Stopgap 味方/敵・thief emit/非ローグ/seam・敵 knockback）。実機 run はユーザー確認へ defer。
+  - 2026-07-02: P3-c GroundItem を World 権威化（Level 1）＝**P3 完了**。World store `groundItems = Map[cellKey, ItemScene.Data]`（`cellKey` を chests と共有）、3-builder（seed=itemsFromScene／preserve＋prune・chests 同型）、`Cmd.SpawnItem/RemoveItem`（applyCmd/cmdKey）を addOneItem/takeAt が emit（add/respawn/addFromSnaps/dropFloorItem に World.Command 伝播）、accessor groundItemsOf/groundItemAtOf。gameplay reader flip: 「拾う」gate（selectedPlayerMenuItems＋gatherAdjacentMenuItems）＋ wouldPickupOverload → `World.groundItemAtOf`（reader 全 flip で 2 menu 関数の `scene` 引数が未使用化＝`_scene`）。`elapsed`（点滅位相）は view 専用ゆえ store は spawn 値スナップショット。pickupFloorItem 内部の dataAt/takeAt・auto-pickup・minimap・セーブは scene view（World 等価）のまま P6 へ。RenderWorld 調査完了（Level 2 は Stairs が catalog 非対応で詰む＝P6 委譲が妥当と確認）。test +1（`testTakeAtDrivesWorldItemStore`）・全 1073 green。実機 run はユーザー確認へ defer。
+  - 2026-07-02: P3-b Chest を World 権威化（Level 1・ユーザー選択）。World store `chests = Map[cellKey, Data]`（`chestCellKey=x*1000+y`）、3-builder（syncFromScene seed=chestsFromScene／refreshMirror preserve＋scene 在セルで prune＝unit pos 同型）、`Cmd.SpawnChest/RemoveChest`（applyCmd/cmdKey）を addOneChest/takeAt が emit（dual-write）、accessor chestsOf/chestAtOf。gameplay reader flip: ActionMenu の「あける」gate（selectedPlayerMenuItems）＋ openTarget → `World.chestAtOf`。占有回避/minimap/セーブ capture は scene view のまま（World 等価・P6 で撤去）。test +1（`testTakeAtDrivesWorldChestStore`）・全 1072 green。実機 run はユーザー確認へ defer。
+  - 2026-07-02: P3-a Stairs を World 権威化（完全縦スライス）。`Cmd.SetStairs(Option[cell])` 追加（applyCmd/cmdKey）、`StairsScene.placeAt` が emit、`refreshMirror` を stairsPos preserve へ（syncFromScene は frame-1 seed 維持＝hp 同型）。gameplay reader を flip: `StairsExitScene.begin`/`stepOnce`（退場 driver）と `ActionMenuScene` の「階段」gate ×2。WorldQuery 伝播で buildItems/refreshItems/onActionConfirmed/MenuHandler.Aef と Game.flix dispatch を更新。描画/フォグ/セーブ capture/宝箱占有判定・legacy 杖 warp は scene ノード読みのまま（World と等価・真のノード撤去は P6）。`StairsScene.isAt` は test-only seam 化（残置）。test +1（`testPlaceAtDrivesWorldStairsPos`）・全 1071 green。実機 run はユーザー確認へ defer。

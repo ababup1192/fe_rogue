@@ -46,7 +46,7 @@ mod StairsScene {
     /// 階段が「通路にある」状態にならない。
     /// 候補が 1 つも無い極端なマップでは何もしない（階段は非表示のまま）。
     /// プレイヤー・敵・アイテム配置が済んだ後（= buildPlayingScene の末尾）に呼ぶ。
-    pub def placeRandom(scene: Scene[NodeTag]): Scene[NodeTag] \ Math.Random =
+    pub def placeRandom(scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
         let placements = MapScene.getPlacements(scene);
         let roomCount  = MapScene.getRoomCount(scene);
         let occupied   = List.append(
@@ -68,10 +68,14 @@ mod StairsScene {
                     occupied: List[{x = Int32, y = Int32}]): Bool =
         List.exists(o -> o#x == cell#x and o#y == cell#y, occupied)
 
-    /// `target` セルに階段を配置する純粋なマーク操作（位置更新 + 可視化）。
+    /// `target` セルに階段を配置する。scene ノード（位置更新 + 可視化 + Data）を書き、
+    /// あわせて `Cmd.SetStairs(Some(cell))` を emit して World を権威に更新する（P3-a）。
     /// `placeRandom` の内部実装。テストからも床セルを固定して配置確認に使う。
-    pub def placeAt(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// scene ノードは描画/フォグの view として残す（`renderSubtrees`/`applyFog` が読む）。gameplay の階段位置読みは
+    /// `World.stairsPosOf` に flip 済み。
+    pub def placeAt(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let world = MapSnapshot.cellCenter(target);
+        World.Command.emit(World.Cmd.SetStairs(Some(target)));
         scene
             |> Scene.setGlobalPositionAt(stairsPath(), world)
             |> mapStairs((marker, _) ->

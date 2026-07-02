@@ -47,4 +47,33 @@ mod TestItemScene {
             expected = (true, false),
             (ItemScene.isTaken({x = 1, y = 1}, taken),
              ItemScene.isTaken({x = 2, y = 2}, taken)))
+
+    /// (4,5) に武器アイテム 1 個を置いた最小シーン（World/Items/Item_0 を直接構築）。
+    def sceneWithItem(): Scene[NodeTag] =
+        let item = ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon());
+        let body = EngineNode.Sprite2DWithState(
+            Sprite2D.make("item_icons", Vec2.zero(), Vec2.one()),
+            NodeTag.GroundItem(({gridPos = {x = 4, y = 5}, itemKey = "test_weapon",
+                                  item = item, elapsed = Duration.seconds(0.0)}: ItemScene.Data)));
+        let marker = () -> EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.NoTag);
+        Scene.empty()
+            |> Scene.addNode(MapScene.worldName(), marker())
+            |> Scene.addChildAt(MapScene.worldPath(), "Items", marker())
+            |> Scene.addChildAt(ItemScene.parentPath(), "Item_0", body)
+
+    /// P3-c: World store 権威の証跡。scene から seed した World は床アイテムを groundItemAtOf で返し、
+    /// takeAt の emit した `Cmd.RemoveItem` を applyCmd すると Map から消える。
+    @Test
+    def testTakeAtDrivesWorldItemStore(): Unit \ Assert =
+        region rc {
+            let scene = sceneWithItem();
+            let wref = Ref.fresh(rc, World.syncFromScene(scene, World.empty()));
+            let before = World.groundItemAtOf({x = 4, y = 5}, Ref.get(wref)) |> Option.map(d -> d#itemKey);
+            run { discard ItemScene.takeAt({x = 4, y = 5}, scene) }
+                with handler World.Command {
+                    def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
+                };
+            let after = World.groundItemAtOf({x = 4, y = 5}, Ref.get(wref)) |> Option.map(d -> d#itemKey);
+            Assert.assertEq(expected = (Some("test_weapon"), None), (before, after))
+        }
 }
