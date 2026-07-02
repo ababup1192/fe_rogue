@@ -14,7 +14,7 @@
 /// ノード構造（visible のとき）。本文は列ごとに Label2D を分け、数値列を右揃えにして
 /// フォントのスペース幅・全角幅に依存せず桁と `+1` がそろうようにしている:
 ///   LevelUpPanel (CanvasLayer, layer=5)
-///     ├─ panel      (Panel, NodeTag.LevelUpPanel(PanelState))
+///     ├─ panel      (Panel, NodeTag.LevelUpPanel)
 ///     ├─ header     (Label2D, NoTag) — 「{兵種名} Lv 前 -> 後」
 ///     ├─ bodyLabels (Label2D, 左揃え) — ステータス名 9 行
 ///     ├─ bodyBefore (Label2D, 右揃え) — 現在値 9 行
@@ -30,7 +30,7 @@ mod LevelUpPanelScene {
     // (A) 演出ステート
     // ────────────────────────────────────────────────────────
 
-    /// パネル表示中の演出の進行状態。Panel ノードのタグに載せてフレーム間で持ち越す。
+    /// パネル表示中の演出の進行状態。`State` resource でフレーム間に持ち越す。
     ///   - `started`  : bonus.ogg を鳴らして演出を開始済みか（LevelUpView 突入の最初のフレームで true）。
     ///   - `revealed` : 右側「-> 新値 +1」を出し終えた「上昇ステータス」の数。
     ///   - `timer`    : 次のアクション（最初の reveal / 次の reveal）までの残り待ち時間。フレームごとに delta だけ減算し 0 になったら次の演出へ進む。
@@ -43,6 +43,26 @@ mod LevelUpPanelScene {
     /// 演出開始前の初期状態。LevelUpView の外では常にこれに戻し、次のレベルアップで鳴らし直す。
     def initialState(): PanelState =
         {started = false, revealed = 0, timer = Duration.zero()}
+
+    /// レベルアップ演出のステート（started/revealed/timer）を持つ resource。
+    /// LogScene.State と同型。process/confirm が `currentState()`/`writeState(...)` 経由で読み書きする。
+    /// `Game.start` で `with LevelUpPanelScene.withState(rc)` を注入し、`FrameAef.ProcessT` に足す。
+    pub eff State {
+        def get(): PanelState
+        def put(st: PanelState): Unit
+    }
+
+    pub def withState(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            let ref: Ref[PanelState, r] = Ref.fresh(rc, initialState());
+            run {
+                thunk()
+            } with handler State {
+                def get(k)     = k(Ref.get(ref))
+                def put(st, k) = { Ref.put(st, ref); k() }
+            }
+        }
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
@@ -88,6 +108,8 @@ mod LevelUpPanelScene {
     def bodyPlus2Name(): String   = "bodyPlus2"
     def footerName(): String     = "footer"
 
+    /// render-from-World が HUD/メニューサブツリーを描く/隠す root。
+    pub def rootPath(): NodePath   = rootName() :: Nil
     def panelPath(): NodePath      = rootName() :: panelName()      :: Nil
     def headerPath(): NodePath     = rootName() :: headerName()     :: Nil
     def bodyLabelsPath(): NodePath = rootName() :: bodyLabelsName() :: Nil
@@ -109,7 +131,7 @@ mod LevelUpPanelScene {
         match opt {
             case None                   => Ok(NodeTag.NoTag)
             case Some("NoTag")          => Ok(NodeTag.NoTag)
-            case Some("LevelUpPanel")   => Ok(NodeTag.LevelUpPanel(initialState()))
+            case Some("LevelUpPanel")   => Ok(NodeTag.LevelUpPanel)   // 状態は State resource へ
             case Some(unknown)          =>
                 Err(JsonCompat.jsonError(Root, Set#{"LevelUpPanelScene tag (got: ${unknown})"}))
         }
@@ -124,14 +146,12 @@ mod LevelUpPanelScene {
     // ────────────────────────────────────────────────────────
 
     /// LevelUpPanel ノード（Panel）に対して毎フレーム dispatch される。
-    /// Scene は immutable に扱う設計のため演出ステートを Scene 外に持てない。
-    /// Panel ノードのタグ（`NodeTag.LevelUpPanel(PanelState)`）を状態置き場にすることで、
-    /// フレーム間の演出進行をイミュータブルな Scene 更新として表現している。
+    /// 演出ステートは `State` resource が持つ。
     /// LevelUpView 中は演出を 1 フレームぶん進め、可視性と本文を再評価する。
     pub def process(delta: Duration.Duration,
                      node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ {TurnPhase.State, GameEngine.Audio} =
+                    (EngineNode[NodeTag], Scene[NodeTag]) \ {TurnPhase.State, GameEngine.Audio, LevelUpPanelScene.State} =
         let phase = TurnPhase.State.get();
         let next =
             if (phase != TurnPhase.Phase.LevelUpView)
@@ -150,8 +170,8 @@ mod LevelUpPanelScene {
     /// 上昇した行は status_up を鳴らしてゆっくり、上昇しなかった行は無音で一瞬で送る。
     /// `revealed` は「出し終えた行数」(0 .. List.length(result#changes)、例: 9 ステータスなら 0..9)。
     def stepReveal(delta: Duration.Duration, result: LevelSystem.Result,
-                    scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Audio =
-        let st   = currentState(scene);
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Audio, LevelUpPanelScene.State} =
+        let st   = currentState();
         let rows = List.length(result#changes);
         let nextState =
             if (not st#started) {
@@ -246,20 +266,14 @@ mod LevelUpPanelScene {
                 |> Label2D.setHorizontalAlignment(align)
                 |> CanvasItem.setModulate(color), scene)
 
-    /// Panel ノードのタグから現在の演出ステートを読む。未設定なら初期状態。
-    def currentState(scene: Scene[NodeTag]): PanelState =
-        match Scene.getState(panelPath(), scene) {
-            case Some(NodeTag.LevelUpPanel(st)) => st
-            case _                              => initialState()
-        }
+    /// 現在の演出ステートを resource から読む。
+    def currentState(): PanelState \ LevelUpPanelScene.State =
+        LevelUpPanelScene.State.get()
 
-    /// 演出ステートを Panel ノードのタグに書き戻す。
-    def writeState(st: PanelState, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(panelPath(), n -> match n {
-            case EngineNode.PanelWithState(panel, NodeTag.LevelUpPanel(_)) =>
-                EngineNode.PanelWithState(panel, NodeTag.LevelUpPanel(st))
-            case other => other
-        }, scene)
+    /// 演出ステートを resource へ書く。scene はパイプ互換のためそのまま返す（挙動不変）。
+    def writeState(st: PanelState, scene: Scene[NodeTag]): Scene[NodeTag] \ LevelUpPanelScene.State =
+        LevelUpPanelScene.State.put(st);
+        scene
 
     /// レベルアップ保留中の味方の結果を 1 つ拾う（味方ターンなので同時に複数は出ない）。
     def pendingResult(scene: Scene[NodeTag]): Option[LevelSystem.Result] =
@@ -283,8 +297,9 @@ mod LevelUpPanelScene {
     pub def confirm(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State} =
-        let st    = currentState(scene);
+                              TurnPhase.State, SelectedPlayer.State, World.Command, World.WorldQuery,
+                              LevelUpPanelScene.State} =
+        let st    = currentState();
         let total = pendingResult(scene) |> Option.map(totalRows) |> Option.getWithDefault(0);
         if (st#revealed < total)
             // まだ出し切っていない → 全行を即座に表示して止める（閉じない）。
@@ -308,7 +323,7 @@ mod LevelUpPanelScene {
     def resume(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State} =
+                              TurnPhase.State, SelectedPlayer.State, World.Command, World.WorldQuery} =
         match SelectedPlayer.State.get()#id {
             case Some(_) => TurnFlow.commitWaitedAndAdvance(scene)
             case None    => PhaseTransitions.enterEnemyTurn(scene)

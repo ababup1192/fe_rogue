@@ -53,6 +53,29 @@ mod MapScene {
     def name(): String = "DungeonLevel0"
     def floorName(): String = "DungeonLevel0Floor"
     pub def mapPath(): NodePath = name() :: Nil
+    /// B/tiles: floor 層（z=-1）の path。render-from-World の tile bake がこの層と walls 層（`mapPath`）を読む。
+    pub def floorPath(): NodePath = floorName() :: Nil
+
+    /// B/tiles: floor 層 + walls 層の TileMapLayer ノードから軽量描画ハンドルを bake（World 権威化）。
+    /// タイルノードが無い画面（Title/CharacterSelect）は空。camera parity のため `worldPos` は `globalPositionAt`、
+    /// color/zIndex はノード生値（`toRenderCmd` と同一＝祖先合成しない tile 経路）。
+    pub def tileLayerHandles(scene: Scene[NodeTag]): List[TileLayerHandle] =
+        (tileHandleAt(floorPath(), scene) :: tileHandleAt(mapPath(), scene) :: Nil)
+            |> List.filterMap(x -> x)
+
+    def tileHandleAt(layerPath: NodePath, scene: Scene[NodeTag]): Option[TileLayerHandle] =
+        match Scene.getEngineNode(layerPath, scene) {
+            case Some(EngineNode.TileMapLayerWithState(tm, _)) =>
+                let TileMapLayer.TileMapLayer(r) = tm;
+                Some({ textureName = r#tileSet#atlasSource#textureName,
+                       tileSize    = r#tileSet#atlasSource#tileSize,
+                       worldPos    = Scene.globalPositionAt(layerPath, scene),
+                       color       = r#modulate,
+                       zIndex      = r#zIndex,
+                       tileVaoId   = r#tileVaoId,
+                       tileCount   = r#tileCount })
+            case _ => None
+        }
 
     /// 全キャラ（Player / Enemy）の共通親となる Marker2D の名前。
     /// `ySortEnabled = true` を有効にしてここに直接の子を Y 順で並べることで
@@ -176,8 +199,8 @@ mod MapScene {
             anchorOffset = ({x = 0, y = 0}: {x = Int32, y = Int32}),
             spawnGrid    = safe,
             // map-test では合成しないので床範囲 = gridSize 全体の単一部屋（idx=0=anchor）。
-            // idx>=1 にならないので StairsScene.placeRandom の対象外。
-            placements   = singleRoom(gs#x, gs#y),
+            // idx>=1 にならないので Stairs.placeRandom の対象外。
+            placements   = RoomLayout.singleRoom(gs#x, gs#y),
             roomCount    = 1,
             // map-test は composer を通さない debug 用なので Plan は単一モジュールの placeholder
             // （スナップショット復元の対象外）。
@@ -226,10 +249,6 @@ mod MapScene {
             case _ => bug!("MapScene: TileMapLayer not found at ${mapPath()}")
         }
 
-    /// MapScene.add が記録した anchor の正規化後 offset を取り出す。
-    pub def getAnchorOffset(scene: Scene[NodeTag]): {x = Int32, y = Int32} =
-        getMapData(scene)#anchorOffset
-
     /// anchor 内の床セルとして保証されたスポーン地点（ワールド座標）を取り出す。
     /// PlayerScene.add がプレイヤーをここに配置する。
     pub def getSpawnGrid(scene: Scene[NodeTag]): {x = Int32, y = Int32} =
@@ -274,52 +293,8 @@ mod MapScene {
             case _ => bug!("MapScene.snapshotOf: non-integer collision cell (${v#x}, ${v#y})")
         }
 
-    /// テスト・map-test・診断で全床の素朴な部屋を素早く組むための共通構築点。
-    pub def placement(idx: Int32, ox: Int32, oy: Int32, w: Int32, h: Int32):
-            DungeonComposer.ModulePlacement =
-        {
-            idx              = idx,
-            offset           = ({x = ox, y = oy}: {x = Int32, y = Int32}),
-            gridSize         = ({x = w,  y = h }: {x = Int32, y = Int32}),
-            floorBoundsMin   = ({x = 0,  y = 0 }: {x = Int32, y = Int32}),
-            floorBoundsMaxEx = ({x = w,  y = h }: {x = Int32, y = Int32}),
-            interiorCells    = (Nil: List[{x = Int32, y = Int32}])
-        }
-
-    /// 全床 w×h を単一モジュール(idx=0)に割る placements。
-    pub def singleRoom(w: Int32, h: Int32): List[DungeonComposer.ModulePlacement] =
-        placement(0, 0, 0, w, h) :: Nil
-
-    /// floorBounds を左右に分割した 2 モジュール（idx0 / idx1）の placements。
-    /// 検知テスト（同じ部屋にいるか）で moduleOfCell を 2 部屋にしたいときに使う。
-    pub def twoRoom(w: Int32, h: Int32): List[DungeonComposer.ModulePlacement] =
-        let half = w / 2;
-        ({idx = 0, offset = ({x = 0, y = 0}: {x = Int32, y = Int32}),
-          gridSize = ({x = w, y = h}: {x = Int32, y = Int32}),
-          floorBoundsMin = ({x = 0, y = 0}: {x = Int32, y = Int32}),
-          floorBoundsMaxEx = ({x = half, y = h}: {x = Int32, y = Int32}),
-          interiorCells = (Nil: List[{x = Int32, y = Int32}])}: DungeonComposer.ModulePlacement) ::
-        ({idx = 1, offset = ({x = 0, y = 0}: {x = Int32, y = Int32}),
-          gridSize = ({x = w, y = h}: {x = Int32, y = Int32}),
-          floorBoundsMin = ({x = half, y = 0}: {x = Int32, y = Int32}),
-          floorBoundsMaxEx = ({x = w, y = h}: {x = Int32, y = Int32}),
-          interiorCells = (Nil: List[{x = Int32, y = Int32}])}: DungeonComposer.ModulePlacement) :: Nil
-
-    /// 発見演出で「部屋の中心にカメラを寄せる」ために使う。
-    /// floorBounds の bbox 計算を `moduleOfCellIn` と一致させることで、境界判定との一貫性を保つ。
-    pub def moduleCenter(idx: Int32,
-                          placements: List[DungeonComposer.ModulePlacement]):
-            Option[{x = Int32, y = Int32}] =
-        List.findMap(p ->
-            if (p#idx == idx) {
-                let minX = p#offset#x + p#floorBoundsMin#x;
-                let minY = p#offset#y + p#floorBoundsMin#y;
-                let maxX = p#offset#x + p#floorBoundsMaxEx#x;
-                let maxY = p#offset#y + p#floorBoundsMaxEx#y;
-                Some(({x = (minX + maxX - 1) / 2,
-                       y = (minY + maxY - 1) / 2}: {x = Int32, y = Int32}))
-            } else None,
-            placements)
+    // 部屋配置の純ユーティリティ placement / singleRoom / twoRoom / moduleCenter は
+    // sim 非依存 lib として RoomLayout.flix（src/lib/dungeon/）へ移動（A4）。
 
     def getMapData(scene: Scene[NodeTag]): Data =
         match Scene.getEngineNode(mapPath(), scene) {

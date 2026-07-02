@@ -3,11 +3,11 @@
 /// 2 つの文脈で同じカードを出す:
 ///   - PlayerCursor（下見）中: カーソルが乗っているユニット（味方/敵）を表示
 ///   - それ以外で味方を選択中: SelectedPlayer.id の味方を表示
-/// どちらでもなければ非表示。旧 UnitInfoPopupScene を置き換える常設カード。
+/// どちらでもなければ非表示の常設カード。
 ///
 /// 内容: アイコン / 名前 / Lv（味方のみ・金色）/ HP（バー＋数値）/ 装備（武器・指輪 横並び）。
 /// スタイルは ActionMenu と同じ角丸パネル。配色は HTML プロトタイプ準拠。
-/// children は process で毎フレーム再構築する（UnitInfoPopupScene と同作法）。
+/// children は process で毎フレーム再構築する。
 ///
 /// ノード構造（layer=2）:
 ///   UnitCard (CanvasLayer, NodeTag.UnitCard)
@@ -92,7 +92,7 @@ mod UnitCardScene {
     pub def process(_delta: Duration.Duration, node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {GameEngine.Game, SelectedPlayer.State, TurnPhase.State} =
+                    \ {GameEngine.Game, SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery, World.WorldQuery} =
         let phase = TurnPhase.State.get();
         // 下見（PlayerCursor）中はカーソル上のユニットを出す。
         let cursorActive = phase == TurnPhase.Phase.PlayerCursor;
@@ -105,10 +105,11 @@ mod UnitCardScene {
         }
 
     /// 選択中の味方（id）を表示。未選択なら隠す。
+    /// 表示 Data（hp/在庫/装備指輪/level/exp）は PartyQuery（World オーバーレイ）経由で読む。
     def renderSelected(idOpt: Option[Int32], scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameEngine.Game =
+            Scene[NodeTag] \ {GameEngine.Game, PlayerData.PartyQuery} =
         match idOpt {
-            case Some(id) => match PlayerScene.get(id, scene) {
+            case Some(id) => match PlayerData.PartyQuery.get(id) {
                 case Some(d) => renderPlayer(d, scene)
                 case None    => hidePanel(panelPath(), scene)
             }
@@ -116,7 +117,8 @@ mod UnitCardScene {
         }
 
     /// カーソル上のユニット（敵優先 / フォグ隠れは除外）を表示。空マスなら隠す。
-    def renderHovered(scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
+    /// ident（位置/hidden/フォグ）は scene 読み、味方の表示 Data だけ PartyQuery 経由。
+    def renderHovered(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, PlayerData.PartyQuery, World.WorldQuery} =
         match hoveredIdent(scene) {
             case Some((kind, id)) =>
                 if (kind == "enemy")
@@ -125,7 +127,7 @@ mod UnitCardScene {
                         case None    => hidePanel(panelPath(), scene)
                     }
                 else
-                    match PlayerScene.get(id, scene) {
+                    match PlayerData.PartyQuery.get(id) {
                         case Some(d) => renderPlayer(d, scene)
                         case None    => hidePanel(panelPath(), scene)
                     }
@@ -133,15 +135,15 @@ mod UnitCardScene {
         }
 
     /// カーソル位置のユニット種別と id（敵優先）。空マスなら None。
-    /// フォグで隠れた敵・退場済み(hidden)味方は出さない（UnitInfoPopupScene と同じ規約）。
-    def hoveredIdent(scene: Scene[NodeTag]): Option[(String, Int32)] =
+    /// フォグで隠れた敵・退場済み(hidden)味方は出さない。
+    def hoveredIdent(scene: Scene[NodeTag]): Option[(String, Int32)] \ World.WorldQuery =
         let coord = CursorScene.getGridPos(scene);
         let visibleEnemy = EnemyScene.findIdAt(coord, scene)
                             |> Option.filter(id -> EnemyScene.isVisible(id, scene));
         match visibleEnemy {
             case Some(id) => Some(("enemy", id))
             case None     =>
-                PlayerScene.getAll(scene)
+                PlayerScene.getAllWithWorldPos(scene)
                     |> List.findMap(d ->
                         if (not d#hidden and d#gridPos#x == coord#x and d#gridPos#y == coord#y)
                             Some(("player", d#id))

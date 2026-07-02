@@ -14,26 +14,23 @@
 /// ノード構造:
 ///   Fog (Marker2D, NoTag)                          ← root 直下。モヤ矩形プールの親
 ///     ├─ Fog_0 .. Fog_{poolSize-1} (ColorRect)     ← 毎フレーム再配置（補集合の矩形）
-///   World/FogDriver (Marker2D, NodeTag.FogDriver)   ← process redef で毎フレーム applyFog
+///   World/FogDriver (Marker2D, NodeTag.FogDriver)   ← step で毎フレーム applyFog
 
 /// グリッド座標の矩形（半開区間 [x0,x1) × [y0,y1)）。
 pub type alias GridRect = {x0 = Int32, y0 = Int32, x1 = Int32, y1 = Int32}
 
 mod FogScene {
 
-    def fogName(): String = "Fog"
-    def rectChildName(i: Int32): String = "Fog_${i}"
-    def rectChildPath(i: Int32): NodePath = fogName() :: rectChildName(i) :: Nil
     def driverName(): String = "FogDriver"
 
     /// モヤの色（暗い青灰）と不透明度。地形がうっすら見える程度に薄暗くする。
-    /// 視認性とパフォーマンスのトレードオフ調整点。
-    def fogColor(): Color = {r = 0.04f32, g = 0.05f32, b = 0.10f32}
-    def fogAlpha(): Float32 = 0.66f32
+    /// 視認性とパフォーマンスのトレードオフ調整点。B: render-from-World の `renderFog` も同値を使うため pub。
+    pub def fogColor(): Color = {r = 0.04f32, g = 0.05f32, b = 0.10f32}
+    pub def fogAlpha(): Float32 = 0.66f32
 
     /// モヤ矩形の zIndex。Floor=-1 / Walls=0 の上、Item(4,5)/Unit(10) の下。
     /// 可視性制御は z 順ではなく visible=false で行うため z 競合しない。
-    def fogZIndex(): Int32 = 2
+    pub def fogZIndex(): Int32 = 2
 
     /// 明るい部屋矩形を floorBounds から外側へ広げるタイル数（壁リングまで明るくする）。tunable。
     def edgePad(): Int32 = 1
@@ -41,52 +38,45 @@ mod FogScene {
     /// モヤで覆う領域をマップ bbox の外側へ広げるタイル数（画面端まで確実にモヤで覆うため）。
     def marginTiles(): Int32 = 60
 
-    /// 補集合矩形を割り当てる ColorRect プールのサイズ。bandDecompose が生成する矩形数は
-    /// holes 数とバンド分割数の積で増えるが、実ダンジョン規模では経験的にこの値で十分足りる。
-    def poolSize(): Int32 = 24
-
-    /// モヤ矩形プール（poolSize 個、初期非表示）と常駐 FogDriver を scene tree に追加する。
+    /// 常駐 FogDriver を scene tree に追加する。
     /// `GameLifecycle.buildPlayingScene` で MapScene.add の直後に 1 回だけ呼ぶ。
+    /// 暗幕は `RenderWorld.renderFog` が World/placements から純粋計算で直描き＝scene にノードを積まない。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let withParent =
-            Scene.addNode(fogName(),
-                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.NoTag),
-                scene);
-        let withPool =
-            List.foldLeft((acc, i) -> {
-                let rect = ColorRect.make(Vec2.zero(), fogColor())
-                            |> ColorRect.setAlpha(fogAlpha())
-                            |> CanvasItem.setZIndex(fogZIndex())
-                            |> CanvasItem.setVisible(false);
-                Scene.addChild(fogName(), rectChildName(i),
-                    EngineNode.ColorRectWithState(rect, NodeTag.NoTag), acc)
-            }, withParent, List.range(0, poolSize()));
         Scene.addChild(MapScene.worldName(), driverName(),
             EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.FogDriver),
-            withPool)
+            scene)
 
-    /// Game.flix の `Node[NodeTag] instance` の `process` redef から `NodeTag.FogDriver`
-    /// ノードに対して dispatch される per-frame entry。
-    pub def process(_delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ SelectedPlayer.State =
+    /// gameLoop がパイプライン段で 1 回呼ぶ frame-paced System
+    /// （FogDriver ノードは常駐 marker として残置）。
+    /// 明示 step は毎フレーム（タイトル/選択画面含む）走るため、
+    /// 「FogDriver ノードが居るときだけ」を gate で動かす（Map 不在 scene で
+    /// `MapScene.getPlacements` が bug! するのを防ぐ）。
+    pub def step(scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, World.WorldQuery} =
+        if (Option.isEmpty(Scene.getEngineNode(MapScene.worldName() :: driverName() :: Nil, scene)))
+            scene
+        else stepPlaying(scene)
+
+    /// FogDriver 常駐が確認できた Playing scene 用の本体。
+    def stepPlaying(scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, World.WorldQuery} =
         let drafts = SelectedPlayer.State.get()#drafts;
         // 移動ドラフト中も「部屋点灯」はターン開始位置(origin)基準に固定する。コミットで
         // drafts が消えれば origin==live に戻り点灯する（＝待機/接敵まで新規部屋を暗いまま）。
         // キャラのいない部屋は訪問済みでも暗いまま（非永続）。通路は常に周囲1マス(松明)だけ。
-        let units  = PlayerScene.getAll(scene)
+        // live 位置は World 上書き Data（scene gridPos twin は退役）。origin は draft 由来。
+        let units  = PlayerScene.getAllWithWorldPos(scene)
             |> List.map(d -> {
                  id = d#id, gridPos = d#gridPos, hidden = d#hidden,
                  origin = MoveDraft.originOf(d#id, drafts) |> Option.getWithDefault(d#gridPos)
                });
-        (node, applyFogWith(units, scene))
+        applyFogWith(units, scene)
 
     /// 画面全体モヤ＋明るい穴の切り抜き、および敵/アイテム/階段の可視性を一括更新する。
     /// init（drafts 無し・GameLifecycle のスポーン部屋点灯）から呼ぶ入口。
     /// 各ユニットの origin=live としてライブ挙動になる。
-    pub def applyFog(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let units = PlayerScene.getAll(scene)
+    pub def applyFog(scene: Scene[NodeTag]): Scene[NodeTag] \ World.WorldQuery =
+        // 穴は World の現在位置で計算する（位置の権威は World。scene Data の gridPos は
+        // 移動で更新されないため、直読みするとターン開始の敵可視判定が狂う）。
+        let units = PlayerScene.getAllWithWorldPos(scene)
             |> List.map(d -> {id = d#id, gridPos = d#gridPos, hidden = d#hidden, origin = d#gridPos});
         applyFogWith(units, scene)
 
@@ -95,22 +85,19 @@ mod FogScene {
     /// 暗い＝非永続（訪問済みでも点灯しない）。
     def applyFogWith(units: List[{gridPos = {x = Int32, y = Int32},
                                   origin = {x = Int32, y = Int32}, hidden = Bool | r}],
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ World.WorldQuery =
         let placements = MapScene.getPlacements(scene);
         let roomCount  = MapScene.getRoomCount(scene);
         // 通路は常に torch（torchCorridors=true）。部屋は origin 基準で点灯（非永続）。
+        // 暗幕（hazeRects）は renderFog が直描きする。
+        // ここに残るのは点灯 visibility 制御（敵/アイテム/階段/宝箱の lit 判定）のみ。
         let holes      = holesForDraft(units, placements, roomCount, true);
-        let area       = mapRegion(placements);
-        let hazeRects  = bandDecompose(area, holes);
         // isLit クロージャは「let 束縛の最後」に置く（Flix 0.71.0 以降、lambda を let で
         // 束縛した後に更に let を続けるとパーサが lambda 本体を貪欲に取り込んで壊れるため）。
         let isLit      = (cell: {x = Int32, y = Int32}) -> insideAny(cell, holes);
+        // 階段/床アイテムの lit 判定は renderStairs/renderItems が描画時に行う。
         scene
-            |> applyHazePool(hazeRects)
             |> EnemyScene.applyFog(isLit)
-            |> ItemScene.applyFog(isLit)
-            |> StairsScene.applyFog(isLit)
-            |> ChestScene.applyFog(isLit)
 
     /// 非 hidden プレイヤーごとの「明るい穴」矩形リスト（純粋・テスト対象）。
     /// 部屋なら部屋全体、通路は torchCorridors のとき周囲1マスだけ。
@@ -191,37 +178,7 @@ mod FogScene {
                             |> List.map(moduleRect);
         List.append(litExpanded, visitedRects)
 
-    /// 補集合矩形リストを ColorRect プールに割り当てる。余ったプールは非表示にする。
-    def applyHazePool(rects: List[GridRect], scene: Scene[NodeTag]): Scene[NodeTag] =
-        let used = List.length(rects);
-        // 先頭 used 個を配置・表示
-        let withActive =
-            List.foldLeft((acc, entry) -> {
-                let (i, r) = entry;
-                if (i < poolSize()) setPoolRect(i, r, acc) else acc
-            }, scene, List.zipWithIndex(rects));
-        // 残りを非表示
-        List.foldLeft((acc, i) ->
-            if (i >= used) hidePoolRect(i, acc) else acc,
-            withActive, List.range(0, poolSize()))
-
-    /// プール i の ColorRect を矩形 r に合わせて配置・表示する。
-    def setPoolRect(i: Int32, r: GridRect, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let s = MapSnapshot.tileSize();
-        let posV  = Vec2i.toVec2(({x = r#x0, y = r#y0}: {x = Int32, y = Int32}));
-        let sizeV = Vec2i.toVec2(({x = r#x1 - r#x0, y = r#y1 - r#y0}: {x = Int32, y = Int32}));
-        let pos:  Vec2.Vec2 = {x = posV#x * s, y = posV#y * s};
-        let size: Vec2.Vec2 = {x = sizeV#x * s, y = sizeV#y * s};
-        Scene.mapEngineNode(rectChildPath(i),
-            n -> EngineNode.mapColorRect(c ->
-                c |> ColorRect.setSize(size)
-                  |> Node2D.setPosition(pos)
-                  |> CanvasItem.setVisible(true), n),
-            scene)
-
-    def hidePoolRect(i: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(rectChildPath(i),
-            n -> EngineNode.mapColorRect(c -> CanvasItem.setVisible(false, c), n), scene)
+    // 暗幕は `RenderWorld.renderFog` が bandDecompose の矩形を solidBox で直描きする唯一の経路。
 
     /// module の floorBounds(±edgePad で壁リングまで拡張) を world grid 矩形にする。
     pub def moduleRect(p: DungeonComposer.ModulePlacement): GridRect =

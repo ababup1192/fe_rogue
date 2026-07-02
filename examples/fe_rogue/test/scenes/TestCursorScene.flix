@@ -187,7 +187,7 @@ mod TestCursorScene {
             let p0Pos: {x = Int32, y = Int32} = {x = 2, y = 2};
             let p1Pos: {x = Int32, y = Int32} = {x = 5, y = 5};
             let initial = sceneWithTwoPlayers((p0Pos, false), (p1Pos, false));
-            let result = run {
+            let result = TestUnitFixtures.withWorldCommand(rc, () -> run {
                 SelectedPlayer.State.put({
                     id     = Some(0),
                     drafts = Nil,
@@ -206,7 +206,7 @@ mod TestCursorScene {
               with GameLogger.withLogger(rc)
               with EnemyTurn.withQueue(rc)
               with TurnPhase.withState(rc)
-              with SelectedPlayer.withState(rc);
+              with SelectedPlayer.withState(rc));
             Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
         }
 
@@ -227,7 +227,9 @@ mod TestCursorScene {
             let result = TestUnitFixtures.withMockPartyQuery(staleSnapshot, () -> run {
                 let scene = cursorAddPure(freshScene);
                 // 呼び出し側が新 scene から計算した「次のアクティブ味方の gridPos」
-                let snapped = PhaseTransitions.enterPlayerCursorAt(p1Pos, scene);
+                // P6-1h: showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
+                let snapped = run { PhaseTransitions.enterPlayerCursorAt(p1Pos, scene) }
+                    with handler World.Command { def emit(_c, k) = k() };
                 cursorState(snapped)
             } with Tween.withScheduler(rc)
               with AnimationPlayer.withScheduler(rc)
@@ -280,9 +282,11 @@ mod TestCursorScene {
             case Some(node) =>
                 // physicsProcess は WeaponSelect 分岐用に SelectedPlayer.State を要求するので、
                 // ここで discharge する（PlayerCursor / PlayerAttack 分岐では未使用なので値は任意）。
+                // P6-2b: physicsProcess が World 位置を読む（空 World → scene fallback で従来どおり）。
                 let (newNode, newScene) =
                     TestUnitFixtures.withSelectedPlayer(0, () ->
-                        CursorScene.physicsProcess(Duration.seconds(0.016), node, path, scene));
+                        run { CursorScene.physicsProcess(Duration.seconds(0.016), node, path, scene) }
+                            with handler World.WorldQuery { def get(k) = k(World.empty()) });
                 let updated = Scene.setEngineNode(path, newNode, newScene);
                 CursorScene.getCursorData(updated)
             case _ => bug!("Cursor not found at cursorPath()")

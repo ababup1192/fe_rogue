@@ -29,6 +29,26 @@
 ///          └─ dTri (Polygon2D)             反撃側の相性矢印
 mod BattlePanelScene {
 
+    /// 「減る分」点滅サイクルの累積時間を持つ resource。
+    /// process が毎フレーム delta で進め、`blinkDark` で暗/明を判定する。LogScene.State と同型の Ref-backed handler。
+    /// `Game.start` で `with BattlePanelScene.withState(rc)` を注入し、`FrameAef.ProcessT` に足す。
+    pub eff State {
+        def get(): Duration.Duration
+        def put(elapsed: Duration.Duration): Unit
+    }
+
+    pub def withState(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            let ref: Ref[Duration.Duration, r] = Ref.fresh(rc, Duration.zero());
+            run {
+                thunk()
+            } with handler State {
+                def get(k)          = k(Ref.get(ref))
+                def put(elapsed, k) = { Ref.put(elapsed, ref); k() }
+            }
+        }
+
     // ────────────────────────────────────────────────────────
     // (B) 定数 — ノード名 / パス
     // ────────────────────────────────────────────────────────
@@ -86,7 +106,7 @@ mod BattlePanelScene {
     /// ウィンドウ右端の余白。
     def padRight(): Float64 = 3.0
     /// 文字の縦オフセット（design px）。正で丸中心より上、負で下。
-    /// 以前は 0.6（上寄り）だったが、参考に合わせて少し下げる。
+    /// 参考に合わせて丸中心よりわずかに下げる。
     def textNudge(): Float64 = 0.25
 
     /// 各要素の x（左基準）/ 行中心 y。x とウィンドウ幅は毎フレーム process が実測で決める。
@@ -126,7 +146,7 @@ mod BattlePanelScene {
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas,
                                       SceneLoader.constTagParser(NodeTag.NoTag), scene)
-            |> Scene.setState(rootPath(), NodeTag.BattlePanel(Duration.zero()))
+            |> Scene.setState(rootPath(), NodeTag.BattlePanel)   // 状態は BattlePanelScene.State resource へ
             |> addDot(aDotName(), row1CenterY(), UITheme.allyBlue())
             |> addDot(dDotName(), row2CenterY(), enemyDotColor())
             // 攻撃側の行（ラベル/% は薄色で左寄せ、数値は白で右詰め＝3 桁列の右端基準）
@@ -208,22 +228,15 @@ mod BattlePanelScene {
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
-                       PlayerData.PartyQuery, EnemyData.RosterQuery} =
+                       PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery,
+                       BattlePanelScene.State, UnitHPBarRender.ForecastState} =
         let phase  = TurnPhase.State.get();
         let synced = syncTargetToCursor(phase, scene);
-        // 「減る分」の暗⇄明点滅サイクルを進める。state の Duration を delta で進め、
+        // 「減る分」の暗⇄明点滅サイクルを進める。累積時間は resource が持つ。
         // dark フラグ（前半=暗 / 後半=明）を足元 HP バー予測に渡す。
-        let prevElapsed = match node {
-            case EngineNode.CanvasLayerWithState(_, NodeTag.BattlePanel(d)) => d
-            case _                                                          => Duration.zero()
-        };
-        let elapsed = Duration.add(prevElapsed, delta);
+        let elapsed = Duration.add(BattlePanelScene.State.get(), delta);
+        BattlePanelScene.State.put(elapsed);
         let dark    = blinkDark(elapsed);
-        let node2   = match node {
-            case EngineNode.CanvasLayerWithState(layer, NodeTag.BattlePanel(_)) =>
-                EngineNode.CanvasLayerWithState(layer, NodeTag.BattlePanel(elapsed))
-            case other => other
-        };
         match buildForecast(phase, synced) {
             case Some(view) =>
                 let textd = synced |> setAllVisible(true) |> updateContent(view);
@@ -245,14 +258,19 @@ mod BattlePanelScene {
                     |> setNodeX(childPath(aTriName()), triCx, row1CenterY())
                     |> setNodeX(childPath(dTriName()), triCx, row2CenterY())
                     |> resizeBg(contentW)
-                    |> reposition(view, contentW)
-                    |> applyHpBarForecast(view, dark);
-                (node2, shown)
+                    |> reposition(view, contentW);
+                // 足元 HP バーの「減る分」は ForecastState resource へ put し、
+                // UnitHPBarRender.renderBars が直描き時に反映する。
+                UnitHPBarRender.ForecastState.put(Some(
+                    {attackerId = view#attackerId, playerHpPost = view#playerHpPost,
+                     defenderId = view#defenderId, enemyHpPost = view#enemyHpPost,
+                     dark = dark}));
+                (node, shown)
             case None =>
+                UnitHPBarRender.ForecastState.put(None);
                 let hidden = synced
-                    |> setAllVisible(false)
-                    |> clearAllHpForecasts;
-                (node2, hidden)
+                    |> setAllVisible(false);
+                (node, hidden)
         }
 
     /// 「減る分」点滅の暗フレーム判定。周期 `blinkPeriodSec()` 秒の前半を暗（dark=true）、
@@ -312,14 +330,14 @@ mod BattlePanelScene {
     /// PlayerAttack 中、攻撃対象をカーソル位置の敵に毎フレーム同期する。
     /// カーソルが敵に乗っていなければ対象をクリアする（予報は出ない）。
     def syncTargetToCursor(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ SelectedPlayer.State =
+            Scene[NodeTag] \ {SelectedPlayer.State, World.Command, World.WorldQuery} =
         if (phase != TurnPhase.Phase.PlayerAttack) scene
         else match SelectedPlayer.State.get()#id {
             case None             => scene
             case Some(attackerId) =>
                 match EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene) {
-                    case Some(enemyId) => CombatScene.setAttackTargetId(attackerId, enemyId, scene)
-                    case None          => CombatScene.clearAttackTargetId(attackerId, scene)
+                    case Some(enemyId) => CombatDriver.setAttackTargetId(attackerId, enemyId, scene)
+                    case None          => CombatDriver.clearAttackTargetId(attackerId, scene)
                 }
         }
 
@@ -478,24 +496,7 @@ mod BattlePanelScene {
     // (D'') 足元 HP バーのダメージ予測（パネルとは独立した盤面フィードバック）
     // ────────────────────────────────────────────────────────
 
-    /// 攻撃側（味方）と対象（敵）の足元 HP バーに「減る分」の暗色オーバーレイを出す。
-    /// 毎フレーム一旦全消ししてから対象 2 体へ出し直すので、カーソルが別の敵へ移っても残らない。
-    def applyHpBarForecast(view: ForecastView, dark: Bool, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        let cleared = clearAllHpForecasts(scene);
-        cleared
-            |> UnitHPBarScene.showDamageForecast(EnemyScene.enemyPath(view#defenderId),
-                    view#enemyHpCur, view#enemyHpPost, dark)
-            |> UnitHPBarScene.showDamageForecast(PlayerScene.playerPath(view#attackerId),
-                    view#playerHpCur, view#playerHpPost, dark)
-
-    /// 全ユニット（味方・敵）の足元 HP バー予測オーバーレイを消す。
-    def clearAllHpForecasts(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        let hidePlayer = (acc, p) -> UnitHPBarScene.hideDamageForecast(PlayerScene.playerPath(p#id), acc);
-        let hideEnemy  = (acc, e) -> UnitHPBarScene.hideDamageForecast(EnemyScene.enemyPath(e#id), acc);
-        let withPlayers = List.foldLeft(hidePlayer, scene, PlayerData.PartyQuery.getAll());
-        List.foldLeft(hideEnemy, withPlayers, EnemyData.RosterQuery.getAll())
+    // 予報は ForecastState resource へ put し renderBars が消費する（put(None) が全消しに相当）。
 
     // ────────────────────────────────────────────────────────
     // (D''') 予報の組み立て（純計算 + クエリ）
@@ -515,7 +516,7 @@ mod BattlePanelScene {
     /// 敵が居ない / 届く武器が無いなら None（予報は出ない）。
     def selectedAttackWeapon(scene: Scene[NodeTag]):
             Option[UnitCatalog.WeaponResource]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
         forM (
             idx      <- ItemMenuScene.activeAttackWeaponIndex(scene);
             playerId <- SelectedPlayer.State.get()#id;
@@ -528,7 +529,7 @@ mod BattlePanelScene {
     ///   - PlayerAttack : 選択中の敵 × 装備武器
     /// 揃わない / 別フェーズなら None。
     def buildForecast(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Option[ForecastView]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         match phase {
             case TurnPhase.Phase.WeaponSelect => buildWeaponSelectForecast(scene)
             case TurnPhase.Phase.PlayerAttack => buildAttackForecast(scene)
@@ -537,7 +538,7 @@ mod BattlePanelScene {
 
     /// PlayerAttack: 選択中味方 / カーソル上の敵 / 装備（活性）武器が揃ったら予報。
     def buildAttackForecast(scene: Scene[NodeTag]): Option[ForecastView]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         forM (
             pid    <- SelectedPlayer.State.get()#id;
             player <- PlayerData.PartyQuery.get(pid);
@@ -549,7 +550,7 @@ mod BattlePanelScene {
     /// WeaponSelect: 選択中味方 / カーソル中の武器 / カーソルが乗っている敵が揃ったら予報。
     /// カーソルは `WeaponSelectScene` が「その武器が届く最寄りの敵」へスナップ済み。
     def buildWeaponSelectForecast(scene: Scene[NodeTag]): Option[ForecastView]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         forM (
             pid    <- SelectedPlayer.State.get()#id;
             player <- PlayerData.PartyQuery.get(pid);
@@ -607,10 +608,10 @@ mod BattlePanelScene {
     /// `PlayerAttack` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
     /// 遷移先は入力をロックする `PlayerAttackHold`（Z 連打での再起動を防ぐ）。
     pub def confirm(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {AnimationPlayer.Scheduler, World.WorldQuery,
                               GameLogger.GameLogger,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery} =
+                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command} =
         let started = forM (
             attackerId <- SelectedPlayer.State.get()#id;
             player     <- PlayerData.PartyQuery.get(attackerId);
@@ -621,7 +622,7 @@ mod BattlePanelScene {
             let equipped = PlayerScene.equipWeapon(attackerId, idx, scene);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
             GameLogger.playerLog("${PlayerScene.displayName(attackerId, scene)}の攻撃");
-            CombatScene.startAttack(Faction.Player, attackerId, defenderId, enemy#gridPos, equipped)
+            CombatDriver.startAttack(Faction.Player, attackerId, defenderId, enemy#gridPos, equipped)
         };
         Option.getWithDefault(scene, started)
 
@@ -630,12 +631,12 @@ mod BattlePanelScene {
     pub def cancel(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery} =
+                              PlayerData.PartyQuery, World.Command} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         match SelectedPlayer.State.get()#id {
             case None             => scene
             case Some(attackerId) =>
-                CombatScene.clearAttackTargetId(attackerId, scene)
+                CombatDriver.clearAttackTargetId(attackerId, scene)
                     |> CursorScene.snapToPlayer
         }
 }

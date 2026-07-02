@@ -12,7 +12,7 @@
 ///
 /// 操作:
 ///   - ↑↓ で武器を選び Enter/Z で確定 → 選んだ武器を装備 (weapons 先頭へ移動) してから
-///     既存の攻撃フロア (`PlayerScene.enterAttackPhase`) に入る（赤マス→敵選択→予報→攻撃）。
+///     攻撃フロアに入る（赤マス→敵選択→予報→攻撃）。
 ///   - X/Escape でウィンドウを閉じて ActionSelect（コマンドメニュー）に戻る。
 ///
 /// ノード構造（visible のとき）:
@@ -78,12 +78,6 @@ mod WeaponSelectScene {
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
 
-    /// 「武器選択ウィンドウが現在 visible か」のヘルパー。
-    pub def isVisible(scene: Scene[NodeTag]): Bool =
-        Panel.getAt(panelPath(), scene)
-            |> Option.map(CanvasItem.isVisible)
-            |> Option.getWithDefault(false)
-
     // ────────────────────────────────────────────────────────
     // (C) 表示・ロジック
     // ────────────────────────────────────────────────────────
@@ -120,7 +114,7 @@ mod WeaponSelectScene {
                         (EngineNode[NodeTag], Scene[NodeTag])
                         \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                            SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery,
-                           EnemyData.RosterQuery} =
+                           EnemyData.RosterQuery, World.WorldQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
         // UX: 閉じている間はカーソルを先頭(0)に戻し、次に開いたとき常に 1 本目の武器から始める。
@@ -142,7 +136,8 @@ mod WeaponSelectScene {
     /// 届く敵が居なければカーソルは触らない。戦闘予報はこのカーソル上の敵で出る。
     def snapCursorToTarget(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
+                              World.WorldQuery} =
         match focusedPlayerWeapon(scene) {
             case None                  => scene
             case Some((player, weapon)) =>
@@ -166,9 +161,11 @@ mod WeaponSelectScene {
 
     /// `cell` に居る敵が `weapon` の射程内の生存敵か（カーソルが有効な対象に乗っているかの判定）。
     def isReachableEnemyCell(cell: {x = Int32, y = Int32}, pos: {x = Int32, y = Int32},
-                             weapon: UnitCatalog.WeaponResource, scene: Scene[NodeTag]): Bool =
+                             weapon: UnitCatalog.WeaponResource, scene: Scene[NodeTag]):
+            Bool \ {EnemyData.RosterQuery, World.WorldQuery} =
+        // P6-2b: 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む（scene 直読みは stale）。
         EnemyScene.findIdAt(cell, scene)
-            |> Option.flatMap(id -> EnemyScene.get(id, scene))
+            |> Option.flatMap(id -> EnemyData.RosterQuery.get(id))
             |> Option.map(e -> {
                 let ev = EnemyScene.unitView(e);
                 ev#hp > 0 and not ev#isDying
@@ -345,7 +342,7 @@ mod WeaponSelectScene {
     pub def onConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                         Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery} =
+                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery, World.Command, World.WorldQuery} =
         let started = forM (
             pid   <- SelectedPlayer.State.get()#id;
             idx   <- entry#metadata |> Option.flatMap(parseWeaponIndex);
@@ -355,7 +352,7 @@ mod WeaponSelectScene {
             let equipped = PlayerScene.equipWeapon(pid, idx, scene);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
             GameLogger.playerLog("${PlayerScene.displayName(pid, equipped)}の攻撃");
-            CombatScene.startAttack(Faction.Player, pid, eid, enemy#gridPos, equipped)
+            CombatDriver.startAttack(Faction.Player, pid, eid, enemy#gridPos, equipped)
         };
         Option.getWithDefault(scene, started)
 
@@ -371,7 +368,7 @@ mod WeaponSelectScene {
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):
                                     Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery} =
+                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery, World.Command, World.WorldQuery} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             case None        => scene
             case Some(entry) => if (entry#disabled) scene else onConfirmed(entry, scene)

@@ -34,7 +34,7 @@ mod TestMoveRangeScene {
     def floorMapData(): MapScene.Data = {
         anchorOffset = cell(0, 0),
         spawnGrid    = cell(5, 5),
-        placements   = MapScene.singleRoom(13, 13),
+        placements   = RoomLayout.singleRoom(13, 13),
         roomCount    = 1,
         plan         = ({modulePaths = Nil, sideConnections = Nil,
                           roomCount = 1}: DungeonGenerator.Plan)
@@ -48,11 +48,12 @@ mod TestMoveRangeScene {
             resource = TestUnitFixtures.testResource(4, 10),
             weapons = Nil, staves = Nil, consumables = Nil, rings = Nil
         }: PlayerScene.Spawn);
-        Scene.empty()
+        // addOnePlayer は P0b で World.Command を emit する。位置 World は検証外なので discharge で剥がす。
+        TestUnitFixtures.dischargeWorldCommand(() -> Scene.empty()
             |> MapScene.addWorldNode
             |> Scene.addNode("DungeonLevel0",
                 EngineNode.TileMapLayerWithState(floorMapLayer(), NodeTag.Map(floorMapData())))
-            |> PlayerScene.addOnePlayer(sp)
+            |> PlayerScene.addOnePlayer(sp))
 
     // ════════════════════════════════════════════════════════
     // (A) 結線テスト — refresh は origin 基準で範囲を組む（無限移動の回帰ピン）
@@ -71,7 +72,9 @@ mod TestMoveRangeScene {
                         drafts = MoveDraft.DraftAction.MovedFrom(0, cell(5, 5)) :: Nil,
                         gatherActive = false}: SelectedPlayer.Selection);
             let after = TestUnitFixtures.withSelectionRef(rc, sel, () ->
-                MoveRangeScene.refresh(scene));
+                // P6-2b: 盤面/位置は World 読み（空 World → scene fallback で従来どおり）。
+                run { MoveRangeScene.refresh(scene) }
+                    with handler World.WorldQuery { def get(k) = k(World.empty()) });
             Assert.assertEq(
                 expected = (true, false),
                 (MoveRangeScene.isInRange(cell(1, 5), after),

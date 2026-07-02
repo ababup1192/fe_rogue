@@ -84,7 +84,7 @@ mod TestBattlePanelScene {
     /// 連打ループが成立していた。修正後は入力受付の無い `PlayerAttackHold` に
     /// 遷移するため、`attack_lunge` 完了まで Z が無効化される。
     ///
-    /// Scene は空のままにしてあるので `CombatScene.startAttack` は内部 `get(id, scene)`
+    /// Scene は空のままにしてあるので `CombatDriver.startAttack` は内部 `get(id, scene)`
     /// で None → no-op になるが、phase の書き換えは startAttack 呼び出しより前で
     /// 行われるためアサート対象は変わらない。
     @Test
@@ -97,7 +97,9 @@ mod TestBattlePanelScene {
                     drafts = Nil,
                     gatherActive = false
                 });
-                let _ = BattlePanelScene.confirm(Scene.empty());
+                // P6-2b: confirm 経路が World 位置を読む（posOf は None→scene/引数 fallback）。
+                let _ = run { BattlePanelScene.confirm(Scene.empty()) }
+                    with handler World.WorldQuery { def get(k) = k(World.empty()) };
                 TurnPhase.State.get()
             } with handler PlayerData.PartyQuery {
                 def get(id, k) =
@@ -110,6 +112,8 @@ mod TestBattlePanelScene {
                 def findIdAt(coord, k) =
                     k(if (coord#x == 3 and coord#y == 2) Some(1) else None)
                 def anyAttacking(k) = k(false)
+            } with handler World.Command {
+                def emit(_, k) = k()
             }
               with AnimationPlayer.withScheduler(rc)
               with GameLogger.withLogger(rc)
@@ -144,6 +148,8 @@ mod TestBattlePanelScene {
                 def get(id, k) =
                     k(if (id == 0) Some(fixturePlayer()) else None)
                 def getAll(k) = k(fixturePlayer() :: Nil)
+            } with handler World.Command {
+                def emit(_, k) = k()
             } with Tween.withScheduler(rc)
               with AnimationPlayer.withScheduler(rc)
               with SelectedPlayer.withState(rc)

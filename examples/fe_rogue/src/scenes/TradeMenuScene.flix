@@ -176,12 +176,6 @@ mod TradeMenuScene {
     def setPanelData(data: PanelData, scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPanelData(_ -> data, scene)
 
-    /// 「物交換ウィンドウが現在 visible か」のヘルパー。呼び手が visible 判定を行うために使う。
-    pub def isVisible(scene: Scene[NodeTag]): Bool =
-        Panel.getAt(panelPath(), scene)
-            |> Option.map(CanvasItem.isVisible)
-            |> Option.getWithDefault(false)
-
     pub def paneCount(data: PanelData): Int32 = List.length(data#members)
 
     /// ペイン index に対応する player id。範囲外なら None。
@@ -635,7 +629,7 @@ mod TradeMenuScene {
     /// 実際の「誰が渡すか」は実行時に kind の有無で動的に決定する。
     /// 巻き戻しドラフトは `origin == FromTurn` のときだけ積む (ローグは undo 無し)。
     def applyTradeSwap(plan: SwapPlan, origin: Origin, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
         match (plan#pickerKind, plan#receiverKind) {
             case (None, None) =>
                 scene
@@ -711,7 +705,7 @@ mod TradeMenuScene {
     /// まとめて渡す。index の大きい順に 1 個ずつ既存の片方向 transfer に流すので、ログと
     /// 巻き戻しドラフトは 1 個ずつ渡したのと同じになる。渡し終えたら focus を受け取り側に残し印を消す。
     def confirmBulkTransfer(receiverPane: Int32, data: PanelData, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
+Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
         let giverIdOpt    = data#markPane |> Option.flatMap(giverPane -> playerIdAt(giverPane, data));
         let receiverIdOpt = playerIdAt(receiverPane, data);
         let ordered       = PlayerData.marksDescendingPerList(data#marks);
@@ -722,7 +716,7 @@ mod TradeMenuScene {
     /// giver / receiver が両方そろうときだけ、印の付いたアイテムを順に渡す。どちらか欠けたら no-op。
     def transferEach(giverIdOpt: Option[Int32], receiverIdOpt: Option[Int32], origin: Origin,
                       kinds: List[PlayerData.ItemKind], scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
+Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
         let resolved = forM (giverId <- giverIdOpt; receiverId <- receiverIdOpt)
             yield List.foldLeft((acc, kind) -> transferOne(giverId, receiverId, origin, kind, acc),
                 scene, kinds);
@@ -733,7 +727,7 @@ mod TradeMenuScene {
     /// 渡せるときは既存の `applyTradeSwap`（片方向 transfer 経路）に流し、ログとドラフトを揃える。
     def transferOne(giverId: Int32, receiverId: Int32, origin: Origin,
                      kind: PlayerData.ItemKind, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
+Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
         if (receiverCanAccept(giverId, receiverId, kind, scene))
             applyTradeSwap({pickerId = giverId, pickerKind = Some(kind),
                             receiverId = receiverId, receiverKind = None}, origin, scene)
@@ -743,6 +737,10 @@ mod TradeMenuScene {
     /// 拾得ゲート（`PlayerScene.wouldOverloadByPicking`）と同じ基準で、まとめ渡しが受け手を
     /// 移動不可まで積み込むのを防ぐ（アイテム単位で判定し、超える 1 個目の手前で止める）。
     /// giver / receiver / 対象スロットのいずれかが解決できなければ渡さない扱い。
+    /// P2-r1 注: ここは PartyQuery へ flip **しない**。まとめ渡しの fold 内で 1 個渡すごとに
+    /// 最新の積載を見る read-during-mutation であり、threaded な acc scene（fresh）を読むのが正
+    /// （snapshot 供給の mock/overlay に寄せると 2 個目以降の重量ゲートが陳腐化する）。
+    /// World 読みへの付け替えは write 撤去（P6 束ね）と同時に行う。
     def receiverCanAccept(giverId: Int32, receiverId: Int32,
                            kind: PlayerData.ItemKind, scene: Scene[NodeTag]): Bool =
         match (PlayerScene.get(giverId, scene), PlayerScene.get(receiverId, scene)) {
@@ -759,7 +757,7 @@ mod TradeMenuScene {
     /// `confirmCurrentSelection` から focus ペインの selected entry を渡して使うほか、
     /// テストが ItemList の中身に依存せず確定操作を直接駆動するのにも使う。
     pub def confirmAt(paneIndex: Int32, entry: ItemEntry, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
         let data = getPanelData(scene);
         // 印が付いていて、その付け元と違うペインで Z を押したら「まとめ渡し」。
         // それ以外（印なし / 同じペインで Z）は従来どおり 1 個ずつの pick / swap / 並び替え。
@@ -782,7 +780,7 @@ mod TradeMenuScene {
 
     /// Z 押下: focus ペインの selected entry を取り、`confirmAt` に流す。
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
         let data = getPanelData(scene);
         let i = data#focus;
         match ItemList.getAt(menuPath(i), scene) |> Option.flatMap(ItemList.getSelected) {
@@ -793,7 +791,7 @@ mod TradeMenuScene {
     /// X 押下の優先順位: pick=Some なら pick 解除（focus 据置）→ 印があれば印を解除 →
     /// どちらも無ければ origin に応じてウィンドウを閉じる。複数選択を 1 段で全部消さず、
     /// 「まず選択を取り消す」段階を踏めるようにしている。
-    pub def cancelCurrent(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+    pub def cancelCurrent(scene: Scene[NodeTag]): Scene[NodeTag] \ {TurnPhase.State, World.Command} =
         let data = getPanelData(scene);
         if (not Option.isEmpty(data#pick))
             checked_ecast(mapPanelData(d -> {pick = None | d}, scene))

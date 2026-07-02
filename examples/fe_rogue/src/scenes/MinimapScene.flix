@@ -17,10 +17,10 @@
 /// ノード構造:
 ///   Minimap (CanvasLayer, scene.json)                ← 画面 layer。M で内容を出し入れ
 ///     └─ MinimapContent (Marker2D, NoTag)            ← プール親（描画コンテナ）
-///          ├─ Bg (ColorRect)                          ← 背景の暗幕（全画面）
 ///          ├─ Room_0 .. Room_{N-1} (ColorRect)        ← 訪問済み部屋/通路の矩形プール
-///          └─ Marker_0 .. Marker_{M-1} (ColorRect)    ← プレイヤー/階段/アイテムの点プール
-///   World/MinimapDriver (Marker2D, MinimapDriver)     ← process redef で毎フレーム蓄積＋描画
+///          ├─ Floor_0 .. Floor_{K-1} (ColorRect)      ← 歩ける床の黒くり抜きプール
+///          └─ Marker_0 .. Marker_{M-1} (Polygon2D の円) ← プレイヤー/階段/アイテム/敵の点プール
+///   World/MinimapDriver (Marker2D, MinimapDriver)     ← step で毎フレーム蓄積＋描画
 
 mod MinimapScene {
 
@@ -36,6 +36,8 @@ mod MinimapScene {
     pub type alias Fit = { scale = Float64, ox = Float64, oy = Float64 }
 
     def rootName(): String = "Minimap"
+    /// B: render-from-World が minimap サブツリー（ColorRect の room/floor ＋ Polygon2D のマーカー）を描く/隠す root。
+    pub def rootPath(): NodePath = rootName() :: Nil
     def contentName(): String = "MinimapContent"
     def contentPath(): NodePath = rootName() :: contentName() :: Nil
     def driverName(): String = "MinimapDriver"
@@ -170,16 +172,18 @@ mod MinimapScene {
             |> CanvasItem.setZIndex(markerZIndex())
             |> CanvasItem.setVisible(false)
 
-    /// Game.flix の `process` redef から `NodeTag.MinimapDriver` に対して dispatch される
-    /// per-frame entry。訪問 module を蓄積し、M トグルを反映し、ミニマップを再描画する。
+    /// gameLoop がパイプライン段で 1 回呼ぶ frame-paced
+    /// System。訪問 module を蓄積し、M トグルを反映し、ミニマップを再描画する。
     /// レベルアップ画面（`LevelUpView`）の間は M トグル状態を保ったまま強制的に隠す。
-    pub def process(_delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State} =
-        match node {
-            case EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(data)) =>
+    /// driver の DriverData は StairsExit と同型に `driverPath()` ノードの state で持ち、
+    /// `Scene.getState` で読み `writeData` で書き戻す（node 引数不要）。
+    pub def step(scene: Scene[NodeTag]):
+                    Scene[NodeTag]
+                    \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
+                       PlayerData.PartyQuery, EnemyData.RosterQuery,
+                       World.WorldQuery} =  // 味方/敵/階段位置の読みは World 経由
+        match Scene.getState(driverPath(), scene) {
+            case Some(NodeTag.MinimapDriver(data)) =>
                 let phase = TurnPhase.State.get();
                 let mDown = GameEngine.Game.isKeyPressed(GameEngine.Key.M);
                 // 敵ターン中は M を受け付けない（エネミーフェーズ中はミニマップを開けないようにする）。
@@ -193,7 +197,7 @@ mod MinimapScene {
                 // 部屋の記憶（visited）と敵赤丸（litRooms）は fog と同じく origin 基準にする。
                 // 移動ドラフト中に新しく踏み込んだ部屋は確定（drafts クリア）まで地図に出さない。
                 let drafts = SelectedPlayer.State.get()#drafts;
-                let units  = PlayerScene.getAll(scene)
+                let units  = PlayerData.PartyQuery.getAll()
                     |> List.map(d -> {id = d#id, gridPos = d#gridPos, hidden = d#hidden,
                                       origin = MoveDraft.originOf(d#id, drafts)
                                                |> Option.getWithDefault(d#gridPos)});
@@ -207,16 +211,24 @@ mod MinimapScene {
                 let hidden = phase == TurnPhase.Phase.LevelUpView
                               or phase == TurnPhase.Phase.EnemyTurn;
                 let show = visible2 and not hidden;
-                (EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(nextData)),
-                 renderMinimap(show, nextData, litRooms, scene))
-            case _ => (node, scene)
+                renderMinimap(show, nextData, litRooms, writeData(nextData, scene))
+            case _ => scene
         }
 
+    /// DriverData を driver ノードの state へ書き戻す（step の明示書き込み）。
+    def writeData(data: DriverData, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(driverPath(), node -> match node {
+            case EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(_)) =>
+                EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(data))
+            case other => other
+        }, scene)
+
     /// 階段が「発見済み」か。階段セルの属する module が訪問済みなら発見扱い。
+    /// 階段位置は World.stairsPos から読む（scene ノード撤去済み）。
     def stairsDiscovered(visited: Set[Int32],
                           placements: List[DungeonComposer.ModulePlacement],
-                          scene: Scene[NodeTag]): Bool =
-        match StairsScene.getPos(scene) {
+                          _scene: Scene[NodeTag]): Bool \ World.WorldQuery =
+        match World.stairsPosOf(World.WorldQuery.get()) {
             case None       => false
             case Some(cell) =>
                 match MapSnapshot.moduleOfCellIn(cell, placements) {
@@ -230,7 +242,8 @@ mod MinimapScene {
     /// 描画対象は「訪問済み module」＋「訪問済みに隣接する未訪問の通路（出口ヒント）」を
     /// union 分割して一体化（重なり部分を二重描画しない）。
     def renderMinimap(show: Bool, data: DriverData, litRooms: Set[Int32],
-                       scene: Scene[NodeTag]): Scene[NodeTag] =
+                       scene: Scene[NodeTag]): Scene[NodeTag]
+                       \ {PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         if (not show)
             hideAll(scene)
         else {
@@ -298,26 +311,29 @@ mod MinimapScene {
     /// 階段 + 訪問済み部屋内のアイテム。
     def collectMarkers(data: DriverData,
                         placements: List[DungeonComposer.ModulePlacement],
-                        roomCount: Int32, litRooms: Set[Int32], scene: Scene[NodeTag]):
-                       List[{cell = {x = Int32, y = Int32}, color = Color}] =
+                        roomCount: Int32, litRooms: Set[Int32], _scene: Scene[NodeTag]):
+                       List[{cell = {x = Int32, y = Int32}, color = Color}]
+                       \ {PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         let players =
-            PlayerScene.getAll(scene)
+            PlayerData.PartyQuery.getAll()
                 |> List.filter(d -> not d#hidden)
                 |> List.map(d -> {cell = d#gridPos,
                                   color = if (d#id == 0) leaderColor() else playerColor()});
+        // 階段位置は World.stairsPos から読む（scene ノード撤去済み）。
         let stairsM =
             if (data#stairsSeen)
-                match StairsScene.getPos(scene) {
+                match World.stairsPosOf(World.WorldQuery.get()) {
                     case Some(cell) => {cell = cell, color = stairsColor()} :: Nil
                     case None       => Nil
                 }
             else Nil;
         let itemsM =
-            ItemScene.getAllPositions(scene)
+            // 床アイテム位置は World store から読む（scene ノード撤去済み）。
+            (World.groundItemsOf(World.WorldQuery.get()) |> Map.valuesOf |> List.map(d -> d#gridPos))
                 |> List.filter(cell -> inVisitedRoom(cell, placements, roomCount, data#visited))
                 |> List.map(cell -> {cell = cell, color = itemColor()});
         // いま点灯している部屋(litRooms)に居る敵を赤丸で（アイテムより手前＝後ろに連結して上に描く）。
-        let enemiesM = enemiesSharingPlayerRoom(litRooms, placements, scene);
+        let enemiesM = enemiesSharingPlayerRoom(litRooms, placements);
         List.append(players, List.append(stairsM, List.append(itemsM, enemiesM)))
 
     /// 「いま点灯している部屋に居る敵」マーカー（赤丸）。点灯部屋集合 `litRooms`（origin 基準で
@@ -325,10 +341,10 @@ mod MinimapScene {
     /// 点灯している部屋＝霧で照らされ既に見えているので別途の可視判定は省く。移動中に踏み込んだ
     /// だけの暗い新規部屋は litRooms に含まれないため、その敵は地図にも出ない（fog と一貫）。
     def enemiesSharingPlayerRoom(litRooms: Set[Int32],
-                                  placements: List[DungeonComposer.ModulePlacement],
-                                  scene: Scene[NodeTag]):
-                                 List[{cell = {x = Int32, y = Int32}, color = Color}] =
-        EnemyScene.getAll(scene)
+                                  placements: List[DungeonComposer.ModulePlacement]):
+                                 List[{cell = {x = Int32, y = Int32}, color = Color}]
+                                 \ EnemyData.RosterQuery =
+        EnemyData.RosterQuery.getAll()
             |> List.filter(e -> e#hp > 0 and not e#isDying)
             |> List.filter(e -> match MapSnapshot.moduleOfCellIn(e#gridPos, placements) {
                                     case Some(idx) => Set.memberOf(idx, litRooms)
@@ -606,14 +622,6 @@ mod MinimapScene {
         placements
             |> List.filter(p -> Set.memberOf(p#idx, display))
             |> List.map(FogScene.moduleRect)
-
-    /// モジュールの「床のみ」矩形（壁リング edgePad を含めない）。
-    /// 通路・部屋の床は doorway で接するので、これでもおおむね繋がって見える。
-    pub def floorRect(p: DungeonComposer.ModulePlacement): GridRect =
-        ({ x0 = p#offset#x + p#floorBoundsMin#x,
-           y0 = p#offset#y + p#floorBoundsMin#y,
-           x1 = p#offset#x + p#floorBoundsMaxEx#x,
-           y1 = p#offset#y + p#floorBoundsMaxEx#y }: GridRect)
 
     /// 矩形群の union を「互いに重ならない矩形群」に分割する（横バンド分割）。
     /// `FogScene.bandDecompose` が補集合を返すのに対し、こちらは union（被覆部）を返す。

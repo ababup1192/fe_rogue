@@ -1,7 +1,7 @@
 /// Ring の純粋ロジック（ステータス補正・各効果量・しきい値・追撃判定・effect 文字列・decode）を固定する。
 ///
 /// 乱数を引く 15% 追撃はシーン経由でモック発火できないため、判定は純関数
-/// `CombatScene.shouldFollowUp` と `Ring.*` を直接テストする（境界値中心）。
+/// `CombatRules.shouldFollowUp` と `Ring.*` を直接テストする（境界値中心）。
 mod TestRing {
 
     use Ring.RingEffect
@@ -116,32 +116,32 @@ mod TestRing {
     @Test
     def testShouldFollowUpAtThreshold(): Unit \ Assert =
         Assert.assertEq(expected = true,
-            CombatScene.shouldFollowUp(10, 7, 0, true, false))
+            CombatRules.shouldFollowUp(10, 7, 0, true, false))
 
     /// 速さ差が +2（10 vs 8）だと、ほかの条件が揃っても追撃しない（速さ差の境界）。
     @Test
     def testShouldFollowUpSpeedTooClose(): Unit \ Assert =
         Assert.assertEq(expected = false,
-            CombatScene.shouldFollowUp(10, 8, 0, true, false))
+            CombatRules.shouldFollowUp(10, 8, 0, true, false))
 
     /// roll 14 は <15 で当たり、roll 15 は外れ（15% の境界）。
     @Test
     def testShouldFollowUpRollBoundary(): Unit \ Assert =
         Assert.assertEq(expected = (true, false),
-            (CombatScene.shouldFollowUp(10, 0, 14, true, false),
-             CombatScene.shouldFollowUp(10, 0, 15, true, false)))
+            (CombatRules.shouldFollowUp(10, 0, 14, true, false),
+             CombatRules.shouldFollowUp(10, 0, 15, true, false)))
 
     /// すでに追撃済み（alreadyFollowedUp=true）なら、条件が揃っても追撃しない（二重発動防止の核）。
     @Test
     def testShouldFollowUpNoDoubleFollow(): Unit \ Assert =
         Assert.assertEq(expected = false,
-            CombatScene.shouldFollowUp(10, 0, 0, true, true))
+            CombatRules.shouldFollowUp(10, 0, 0, true, true))
 
     /// 追撃リングを持っていない（hasPursuit=false）なら追撃しない。
     @Test
     def testShouldFollowUpNoRing(): Unit \ Assert =
         Assert.assertEq(expected = false,
-            CombatScene.shouldFollowUp(10, 0, 0, false, false))
+            CombatRules.shouldFollowUp(10, 0, 0, false, false))
 
     // ════════════════════════════════════════════════════════
     // effect 文字列の round-trip と decode の既定値

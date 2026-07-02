@@ -51,36 +51,38 @@ mod CameraScene {
                     c |> Node2D.setPosition(initial)
                       |> Camera2D.setSmoothPosition(initial), n))
 
-    /// Game.flix の `Node[NodeTag] instance` の `process` redef から、Camera ノードに
-    /// 対して dispatch される。複数カメラを持たない設計（分割画面・ミニマップ不使用）のため、
+    /// 複数カメラを持たない設計（分割画面・ミニマップ不使用）のため、
     /// Tween / AnimationPlayer による Player / Cursor の世界座標が反映された後に実行する。
     /// 動作:
     ///   1. フェーズに応じてターゲット NodePath の world 位置を取る
     ///   2. Camera2D.position に target をセット（engine の追従計算の入力）
     ///   3. Camera2D.process(delta, viewport, ...) で smoothPosition を進める
     /// 「画面内なら維持」「滑らかに追従」は engine の drag margin / smoothing が代替する。
-    /// 注: 戻り値の node は engine の `processAll` が path に書き戻すので、scene 経由で
-    /// `mapEngineNode(cameraPath, ...)` する代わりに **node 自体** を更新して返すこと
-    /// (そうしないと古い node で上書きされてカメラが動かない)。
-    pub def process(delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     _path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
+    /// gameLoop が 1 回呼ぶ frame-paced System。明示 step には engine の書き戻しが無いので
+    /// `Scene.mapEngineNode(cameraPath())` で自分で書く。
+    /// camera ノード不在（タイトル/選択画面）は gate で no-op（computeTarget が Cursor 等の
+    /// 不在ノードを引いて落ちるのを防ぐ＝ノードが居るときだけ動く）。
+    pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
+                    Scene[NodeTag]
                     \ {GameEngine.Game, EnemyTurn.Queue,
                         TurnPhase.State, SelectedPlayer.State,
                         PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        let phase = TurnPhase.State.get();
-        let selected = SelectedPlayer.State.get()#id;
-        let target = computeTarget(phase, selected, scene);
-        let vp = GameEngine.Game.getViewportRect();
-        let viewport = {viewportWidth = vp#size#x, viewportHeight = vp#size#y};
-        let centered = isCenteredPhase(phase);
-        let newNode = EngineNode.mapCamera2D(
-            c -> c |> Node2D.setPosition(target)
-                   |> applyFollowMode(centered)
-                   |> Camera2D.process(delta, viewport),
-            node);
-        (newNode, scene)
+        if (Option.isEmpty(Scene.getEngineNode(cameraPath(), scene))) scene
+        else {
+            let phase = TurnPhase.State.get();
+            let selected = SelectedPlayer.State.get()#id;
+            let target = computeTarget(phase, selected, scene);
+            let vp = GameEngine.Game.getViewportRect();
+            let viewport = {viewportWidth = vp#size#x, viewportHeight = vp#size#y};
+            let centered = isCenteredPhase(phase);
+            Scene.mapEngineNode(cameraPath(), node ->
+                EngineNode.mapCamera2D(
+                    c -> c |> Node2D.setPosition(target)
+                           |> applyFollowMode(centered)
+                           |> Camera2D.process(delta, viewport),
+                    node),
+                scene)
+        }
 
     /// 「キャラを画面中央に固定する」フェーズか。移動モード (PlayerMoving) のみ true。
     /// true の間は drag margin を切ってキャラ中心に寄せる（`applyFollowMode`）。

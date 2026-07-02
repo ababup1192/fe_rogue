@@ -1,5 +1,5 @@
 /// EffectFlow の followUp/replace 判定と secondHitAmountCtx を固定する。
-/// 既存 CombatScene.braveFollowUp/shouldFollowUp と同じ境界を DSL 文脈で確認し、
+/// 既存 CombatRules.braveFollowUp/shouldFollowUp と同じ境界を DSL 文脈で確認し、
 /// 2 撃目の効果量が純粋に導けることを示す（flow と amount の実行時結合を切った証拠）。
 mod TestEffectFlow {
 

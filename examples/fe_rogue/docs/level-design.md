@@ -73,7 +73,7 @@
 
 - 各フロアの `items` は **iron 以上を主役**にし、bronze の出現比率は序盤フロアでも低めに抑える（3F以降は bronze を置かない）。
 - **`vulnerary`（きずぐすり）を全フロアに weight 15 で投入**。補給を確保しつつ、回復過多にならない程度に。
-  - ※ `vulnerary` は消耗品カタログの id。地面ドロップの id 解決は `ItemScene.lookupItem` が
+  - ※ `vulnerary` は消耗品カタログの id。地面ドロップの id 解決は `GroundItems.lookupItem` が
     **weapons → staves → consumables** の順で引く。`floors.schema.json` の `items.to` は `weapons` のままなので、
     IDE上は consumable id が未解決参照に見えるが**実行時は問題なし**（スキーマrefはエディタ補完用メタ）。
 - `itemsPerRoom` を全体的に増量（おおむね min2/max3〜min3/max5）。武器・回復が枯渇しにくいようにした。

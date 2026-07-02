@@ -299,7 +299,10 @@ mod GameEngine {
     /// アクティブな Camera2D があれば、ビューポートオフセットを計算して描画に適用する
     /// CanvasLayer 配下のノード（HUD 等）にはカメラオフセットを適用しない
     /// TileMapLayer はインスタンシング経由で描画する（1 draw call）
-    pub def render(scene: Scene[s]): Unit \ Game =
+    /// B: render() の drawable 抽出を返す版（renderCommands は呼ばない）。
+    /// scene-tree 描画に World 由来 drawable を overlay する transition 期に、呼び側が
+    /// `renderCommands(sprites ++ extra, tileMaps, polygons)` を 1 回で組めるよう公開する。
+    pub def renderArgs(scene: Scene[s]): (List[Drawable], List[TileMapRenderCmd], List[PolygonRenderCmd]) \ Game =
         let transform = match Scene.findActiveCamera(scene) {
             case Some((cam, globalPos)) =>
                 let vp = Game.getViewportRect();
@@ -316,30 +319,13 @@ mod GameEngine {
                     Some(TileMapLayer.toRenderCmd(layerScreenPos, transform#scale, tm))
                 case _ => None
             }, Scene.preorderPaths(scene));
-        // Polygon2D / Arc2D ノードを収集（CanvasLayer 配下はカメラ非適用、zoom はワールドのみ）。
-        // 不可視（自ノード or 祖先）はスキップ。Arc2D（リング）は中空円のためセグメントごとに複数の
-        // PolygonRenderCmd を返すので flatMap で平坦化する。
-        // 描画原点 screenPos と zoom はポリゴン系ノードに限って計算する（全ノードでは走らせない）。
-        let placement = p ->
-            ( Scene.screenPositionAt(p, transform, scene)
-            , if (Scene.isUnderCanvasLayer(p, scene)) ({x = 1.0, y = 1.0}: Vec2.Vec2)
-              else transform#scale );
-        // sprite 経路と同等にするため、各 cmd の color を祖先 modulate 乗算後の実効色に、
-        // zIndex を CanvasLayer/祖先を加味した実効 z に上書きする（toRenderCmd は node 生の値を返すため）。
-        // これで待機/行動済みの暗転がグリフに乗り、ポップアップ（高 z の CanvasLayer）が手前で覆う。
-        let withEffective = (p, cmd) ->
-            ({ color = Scene.effectiveModulateAt(p, scene), zIndex = Scene.effectiveZIndexAt(p, scene)
-             | cmd }: PolygonRenderCmd);
-        let polygons: List[PolygonRenderCmd] =
-            List.flatMap(p -> match Scene.getEngineNode(p, scene) {
-                case Some(EngineNode.Polygon2DWithState(poly, _)) =>
-                    if (not (CanvasItem.isVisible(poly) and Scene.effectiveVisibleAt(p, scene))) Nil
-                    else { let (sp, sc) = placement(p); withEffective(p, Polygon2D.toRenderCmd(sp, sc, poly)) :: Nil }
-                case Some(EngineNode.Arc2DWithState(arc, _)) =>
-                    if (not (CanvasItem.isVisible(arc) and Scene.effectiveVisibleAt(p, scene))) Nil
-                    else { let (sp, sc) = placement(p); Arc2D.toRenderCmds(sp, sc, arc) |> List.map(c -> withEffective(p, c)) }
-                case _ => Nil
-            }, Scene.preorderPaths(scene));
+        // Polygon2D / Arc2D の収集は `Scene.subtreePolygons(transform, Nil, scene)`（全ツリー）に委譲＝サブツリー版と
+        // 同一機構を通る（構成的 parity）。CanvasLayer 非適用・effective modulate/z 上書き・不可視スキップは同関数内。
+        let polygons: List[PolygonRenderCmd] = Scene.subtreePolygons(transform, Nil, scene);
+        (sprites, tileMaps, polygons)
+
+    pub def render(scene: Scene[s]): Unit \ Game =
+        let (sprites, tileMaps, polygons) = renderArgs(scene);
         Game.renderCommands(sprites, tileMaps, polygons)
 
     // ========================================================================

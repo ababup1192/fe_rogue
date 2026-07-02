@@ -11,7 +11,7 @@
 /// 固着しても、固着中は新規押下エッジが立たないため arm されず、入力なしの毎ターン自動発火を防ぐ
 /// （固着していても「押しっぱなし」とは区別され、再度ちゃんと押し直すまでゲージは出ない）。
 ///
-/// 自走モデル（PhaseBannerScene / ItemPickupPopupScene と同型）:
+/// 自走モデル（ItemPickupPopupScene と同型）:
 ///   - 起動時に CanvasLayer を 1 つ常駐させる（`add`、初期は非表示）。
 ///   - 毎フレームの `process`（`dispatchTickables` 経由で ProcessT の effect が使える）が
 ///     Shift 押下を `isKeyPressed` でポーリングし、純粋 `step` で経過時間を進め、表示へ反映、
@@ -22,8 +22,8 @@
 /// `LogScene.holdForOverlay` でログ帯を背景として再利用し（ログ本文は消す）、その上に左の小さな
 /// 充填リング（長押しの進捗）とテキストを drawLayer=7（ログ layer=1 より前面）で重ねる。
 ///
-/// ノード構造（drawLayer=7。ログ(1)/ItemPickup(6)/PhaseBanner(5) より前面）:
-///   TurnEndHoldGauge (CanvasLayer, NodeTag.HoldGauge(GaugeData))
+/// ノード構造（drawLayer=7。ログ(1)/ItemPickup(6) より前面）:
+///   TurnEndHoldGauge (CanvasLayer, NodeTag.HoldGauge)
 ///     ├─ text   (Label2D "ターンスキップ", 左寄せ, NoTag)
 ///     ├─ ringBg (Arc2D, 全周リングの薄いトラック, NoTag)
 ///     └─ ringFg (Arc2D, 12 時起点に時計回りで伸びる充填弧, NoTag)  ← endAngle = 充填率を反映
@@ -42,6 +42,26 @@ mod TurnEndHoldScene {
         elapsed  = Duration.Duration,
         prevHeld = Bool
     }
+
+    /// ゲージの状態（elapsed + prevHeld）を持つ resource。
+    /// LogScene.State と同型の Ref-backed handler。process が step 後に put する。
+    /// `Game.start` で `with TurnEndHoldScene.withState(rc)` を注入し、`FrameAef.ProcessT` に足す。
+    pub eff State {
+        def get(): GaugeData
+        def put(data: GaugeData): Unit
+    }
+
+    pub def withState(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            let ref: Ref[GaugeData, r] = Ref.fresh(rc, initialData());
+            run {
+                thunk()
+            } with handler State {
+                def get(k)       = k(Ref.get(ref))
+                def put(data, k) = { Ref.put(data, ref); k() }
+            }
+        }
 
     /// `step` の結果。
     /// `data`    — 次フレームへ持ち越す新しい状態。
@@ -64,7 +84,8 @@ mod TurnEndHoldScene {
     def ringBgName(): String = "ringBg"
     def ringFgName(): String = "ringFg"
 
-    def rootPath(): NodePath = rootName() :: Nil
+    /// render-from-World が subtree（Label2D ＋ Arc2D リング）を描く/隠す root（CanvasLayer）。
+    pub def rootPath(): NodePath = rootName() :: Nil
     def textPath(): NodePath = rootName() :: textName() :: Nil
     def ringBgPath(): NodePath = rootName() :: ringBgName() :: Nil
     def ringFgPath(): NodePath = rootName() :: ringFgName() :: Nil
@@ -140,7 +161,7 @@ mod TurnEndHoldScene {
             |> CanvasItem.setVisible(false);
         scene
             |> Scene.addNode(rootName(),
-                EngineNode.CanvasLayerWithState(layer, NodeTag.HoldGauge(initialData())))
+                EngineNode.CanvasLayerWithState(layer, NodeTag.HoldGauge))   // 状態は State resource へ
             |> Scene.addChild(rootName(), textName(),
                 EngineNode.Label2DWithState(text, NodeTag.NoTag))
             |> Scene.addChild(rootName(), ringBgName(),
@@ -187,43 +208,38 @@ mod TurnEndHoldScene {
     // (E) ロジック（毎フレーム・副作用あり）
     // ────────────────────────────────────────────────────────
 
-    /// Game.flix の `process` redef から `NodeTag.HoldGauge` ノードに dispatch される（1 個のみ）。
+    /// gameLoop が 1 回呼ぶ frame-paced System（純粋な `step` と名前が衝突するため frameStep）。
     /// Shift 押下を読み、`step` で進め、表示へ反映し、満タン到達フレームでターンエンドを発火する。
-    /// 末尾で scene から self の最新ノードを取り直して返す（更新が打ち消されないように）。
-    pub def process(delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
+    /// 明示 step は毎フレーム（タイトル/選択画面含む）走るため、ゲージノード不在は gate で no-op
+    /// （対象ノードが居るフレームだけ処理＝Playing 以外で Shift 長押しが誤発火しない）。
+    pub def frameStep(delta: Duration.Duration, scene: Scene[NodeTag]):
+                    Scene[NodeTag]
                     \ {GameEngine.Game, GameEngine.Audio, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                       GatherResume.State} =
-        match node {
-            case EngineNode.CanvasLayerWithState(_, NodeTag.HoldGauge(data)) =>
-                let phase = TurnPhase.State.get();
-                // 対象は素のカーソル中と集合移動中のみ。
-                let active = phase == TurnPhase.Phase.PlayerCursor
-                                or phase == TurnPhase.Phase.GatherMove;
-                let held = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
-                let result = step(data, active, held, delta);
-                let shown = scene
-                    |> applyAppearance(result#ratio, result#visible)
-                    |> setState(result#data);
-                let next =
-                    if (result#fire) {
-                        AudioStreamPlayer.play(fireSound());
-                        ActionMenuScene.turnEndShortcut(shown)
-                    } else shown;
-                match Scene.getEngineNode(path, next) {
-                    case Some(latest) => (latest, next)
-                    case None         => (node, next)
-                }
-            case _ => (node, scene)
+                       GatherResume.State, World.Command, World.WorldQuery, TurnEndHoldScene.State} =
+        if (Option.isEmpty(Scene.getEngineNode(rootPath(), scene))) scene
+        else {
+            // 状態は resource から読む。ノードは描画 view（Label/Arc）。
+            let data = TurnEndHoldScene.State.get();
+            let phase = TurnPhase.State.get();
+            // 対象は素のカーソル中と集合移動中のみ。
+            let active = phase == TurnPhase.Phase.PlayerCursor
+                            or phase == TurnPhase.Phase.GatherMove;
+            let held = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
+            let result = step(data, active, held, delta);
+            TurnEndHoldScene.State.put(result#data);
+            let shown = applyAppearance(result#ratio, result#visible, scene);
+            if (result#fire) {
+                AudioStreamPlayer.play(fireSound());
+                ActionMenuScene.turnEndShortcut(shown)
+            } else shown
         }
 
     /// 充填率と可視状態をテキスト・リングへ反映する。表示中はログ帯を背景として再利用し
     /// （`LogScene.holdForOverlay` で帯を出してログ本文を消す）、その上にリング+テキストを重ねる。
     /// 前景弧は 12 時起点に充填率ぶんだけ時計回りで伸ばす（endAngle = startAngle + 2π·ratio）。
-    /// 本シーンの process は LogScene.process より後に走る（root の追加順）ため上書きが効く。
+    /// 本シーンの frameStep は LogScene.step より後に走らせる（gameLoop のパイプライン順で保証）
+    /// ため上書きが効く。
     def applyAppearance(ratio: Float64, visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
         let fillEnd = ringStartAngle() + Arc2D.tau() * ratio;
         let overlaid =
@@ -234,12 +250,4 @@ mod TurnEndHoldScene {
                     n |> EngineNode.mapArc2D(Arc2D.setEndAngle(fillEnd))
                       |> CanvasItem.setVisible(visible));
         if (visible) LogScene.holdForOverlay(overlaid) else overlaid
-
-    /// `case other => other` により、HoldGauge 以外の CanvasLayer の状態を壊さない。
-    def setState(data: GaugeData, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(rootPath(), node -> match node {
-            case EngineNode.CanvasLayerWithState(layer, NodeTag.HoldGauge(_)) =>
-                EngineNode.CanvasLayerWithState(layer, NodeTag.HoldGauge(data))
-            case other => other
-        }, scene)
 }

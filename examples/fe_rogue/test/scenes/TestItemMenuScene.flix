@@ -134,8 +134,10 @@ mod TestItemMenuScene {
                 TestUnitFixtures.withMockPartyQuery(scene, () ->
                 match Scene.getEngineNode(menuPath, scene) {
                     case Some(node) =>
-                        let (_, scnAfter) = ItemMenuScene.refreshItems(
-                            Duration.seconds(0.016), node, menuPath, scene);
+                        let (_, scnAfter) = run {
+                            ItemMenuScene.refreshItems(
+                                Duration.seconds(0.016), node, menuPath, scene)
+                        } with handler World.WorldQuery { def get(k) = k(World.empty()) };
                         scnAfter
                     case None       => bug!("menu node not found at ${menuPath}")
                 })));
@@ -157,8 +159,10 @@ mod TestItemMenuScene {
                 TestUnitFixtures.withMockPartyQuery(withSelection, () ->
                 match Scene.getEngineNode(menuPath, withSelection) {
                     case Some(node) =>
-                        let (_, scnAfter) = ItemMenuScene.refreshItems(
-                            Duration.seconds(0.016), node, menuPath, withSelection);
+                        let (_, scnAfter) = run {
+                            ItemMenuScene.refreshItems(
+                                Duration.seconds(0.016), node, menuPath, withSelection)
+                        } with handler World.WorldQuery { def get(k) = k(World.empty()) };
                         scnAfter
                     case None       => withSelection
                 })));
@@ -180,8 +184,10 @@ mod TestItemMenuScene {
                 TestUnitFixtures.withMockPartyQuery(withSelection, () ->
                 match Scene.getEngineNode(menuPath, withSelection) {
                     case Some(node) =>
-                        let (_, scnAfter) = ItemMenuScene.refreshItems(
-                            Duration.seconds(0.016), node, menuPath, withSelection);
+                        let (_, scnAfter) = run {
+                            ItemMenuScene.refreshItems(
+                                Duration.seconds(0.016), node, menuPath, withSelection)
+                        } with handler World.WorldQuery { def get(k) = k(World.empty()) };
                         scnAfter
                     case None       => withSelection
                 })));

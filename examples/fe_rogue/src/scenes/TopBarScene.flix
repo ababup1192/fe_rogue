@@ -1,4 +1,4 @@
-/// TopBarScene — 画面上部の常設フェイズバー（旧 FloorLabelScene + PhaseBannerScene を統合）
+/// TopBarScene — 画面上部の常設フェイズバー（フロア表示 + フェイズ表示）
 ///
 /// 画面最上部に全幅の帯を出し、左にフロア（番号＋名前、例「1F 始まりの洞窟」）、右に現在
 /// フェイズ（● 自軍フェイズ / PLAYER PHASE、敵は 敵軍フェイズ / ENEMY PHASE）を表示する。
@@ -9,12 +9,12 @@
 ///   新フェイズ色で幅 0→全幅に伸ばす。伸び切ったら base を新フェイズに確定して sweep を畳む。
 ///
 /// 敵ターン開始時は短い「間」（holdDuration）を置いてから敵が動き出す。`isBusy` が hold 中
-/// true を返し、`EnemyTurnDriverScene` がそれを見て敵の行動開始を待つ（旧 PhaseBanner.isBusy 置換）。
+/// true を返し、`EnemyTurnDriver` がそれを見て敵の行動開始を待つ。
 ///
 /// 全幅・右側配置は固定 240px でなく `getViewportRect` の実幅で毎フレーム調整する。
 ///
 /// ノード構造（layer=4）:
-///   TopBar (CanvasLayer, NodeTag.TopBar(Data))
+///   TopBar (CanvasLayer, NodeTag.TopBar)
 ///     ├─ band / bandSweep            (Panel) 帯背景（base / ワイプ用オーバーレイ）
 ///     ├─ underline / underlineSweep  (Panel) 下線（base / ワイプ用オーバーレイ）
 ///     ├─ floorNum / floorName        (Label2D) フロア番号・名前（add 時設定）
@@ -34,6 +34,26 @@ mod TopBarScene {
         hold       = Duration.Duration
     }
 
+    /// 上部バーの状態を持つ resource。
+    /// フロア（再）構築のたび `add` が `State.put` で初期化し直す。
+    pub eff State {
+        def get(): Data
+        def put(data: Data): Unit
+    }
+
+    pub def withState(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            let ref: Ref[Data, r] = Ref.fresh(rc,
+                {shown = None, animTarget = None, anim = Duration.zero(), hold = Duration.zero()});
+            run {
+                thunk()
+            } with handler State {
+                def get(k)       = k(Ref.get(ref))
+                def put(data, k) = { Ref.put(data, ref); k() }
+            }
+        }
+
     def rootName(): String = "TopBar"
     def bandName(): String = "band"
     def bandSweepName(): String = "bandSweep"
@@ -47,7 +67,8 @@ mod TopBarScene {
     def gatherLabelName(): String = "gatherLabel"
     def gatherIconName(): String = "gatherIcon"
 
-    def rootPath(): NodePath = rootName() :: Nil
+    /// render-from-World が HUD サブツリーを描く/隠す際の root（`RenderWorld.renderSubtree`/`hideNode` 用）。
+    pub def rootPath(): NodePath = rootName() :: Nil
     def bandPath(): NodePath = rootName() :: bandName() :: Nil
     def bandSweepPath(): NodePath = rootName() :: bandSweepName() :: Nil
     def underlinePath(): NodePath = rootName() :: underlineName() :: Nil
@@ -97,31 +118,32 @@ mod TopBarScene {
 
     /// scene.json を読み、フロア番号 (`floorLabel`) と名前 (`floorName`) を左に設定する。
     pub def add(floorLabel: String, floorName: String, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+            Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead, TopBarScene.State} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas,
                                        SceneLoader.constTagParser(NodeTag.NoTag), scene)
             |> Label2D.mapAt(floorNumPath(), Label2D.setText(floorLabel))
             |> Label2D.mapAt(floorNamePath(), Label2D.setText(floorName))
-            // gatherLabel は scene.json で visible:false。集合(GatherMove)中のみ process で表示する。
-            |> Scene.setState(rootPath(),
-                NodeTag.TopBar(({shown = None, animTarget = None,
-                                 anim = Duration.zero(), hold = Duration.zero()}: Data)))
+            // gatherLabel は scene.json で visible:false。集合(GatherMove)中のみ step で表示する。
+            // 状態は resource へ（フロア再構築のたび初期化する）。
+            // root タグは render-from-World の識別用純タグとして残す。
+            |> Scene.setState(rootPath(), NodeTag.TopBar)
+            |> resetState
 
-    /// 敵ターンの「間」中か（hold>0）。`EnemyTurnDriverScene` が敵の行動開始待ちに参照する。
-    pub def isBusy(scene: Scene[NodeTag]): Bool =
-        match Scene.getState(rootPath(), scene) {
-            case Some(NodeTag.TopBar(data)) => Duration.toSeconds(data#hold) > 0.0
-            case _                          => false
-        }
+    /// 状態を初期値へ戻す（add から呼ぶ・scene はパイプ素通し）。
+    def resetState(scene: Scene[NodeTag]): Scene[NodeTag] \ TopBarScene.State =
+        TopBarScene.State.put(
+            {shown = None, animTarget = None, anim = Duration.zero(), hold = Duration.zero()});
+        scene
+
+    /// 敵ターンの「間」中か（hold>0）。EnemyTurnDriver は World bool（dual-write）経由で読む。
+    /// step が最終 Data から World へ emit するための純関数（Data 直読み）。
+    pub def isBusyOf(data: Data): Bool =
+        Duration.toSeconds(data#hold) > 0.0
 
     /// バーが「敵ターン」を認識済みか（確定 or ワイプ目標が enemy）。0 体敵ターンの取りこぼし防止用。
-    pub def hasObservedEnemy(scene: Scene[NodeTag]): Bool =
-        match Scene.getState(rootPath(), scene) {
-            case Some(NodeTag.TopBar(data)) =>
-                data#shown == Some(true) or data#animTarget == Some(true)
-            case _ => false
-        }
+    pub def hasObservedEnemyOf(data: Data): Bool =
+        data#shown == Some(true) or data#animTarget == Some(true)
 
     /// 現フェイズが敵軍か（純粋・テスト用）。EnemyTurn のみ敵。それ以外は自軍。
     pub def isEnemyPhase(phase: TurnPhase.Phase): Bool =
@@ -137,13 +159,19 @@ mod TopBarScene {
 
     def baseOf(shown: Option[Bool]): Bool = Option.getWithDefault(false, shown)
 
-    /// Game.flix の process redef から NodeTag.TopBar に dispatch される（1 フレーム 1 回）。
-    pub def process(delta: Duration.Duration, node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {GameEngine.Game, TurnPhase.State, GameEngine.Audio} =
-        match node {
-            case EngineNode.CanvasLayerWithState(_, NodeTag.TopBar(data)) =>
+    /// gameLoop が 1 回呼ぶ frame-paced System。
+    /// EnemyTurnDriver が World 経由で読む 2 bool（enemyTurnBusy/phaseObservedEnemy）を
+    /// dual-write するため、パイプラインでは **EnemyTurnDriver.step より前**に置く
+    /// （driver は当フレームの TopBar 確定値を読む）。
+    /// TopBar ノード不在（タイトル/選択画面）は presence gate で no-op。
+    /// 状態は resource（`TopBarScene.State`）から読み書きする。
+    pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
+                    Scene[NodeTag]
+                    \ {GameEngine.Game, TurnPhase.State, GameEngine.Audio, World.Command,
+                       TopBarScene.State} =
+        if (Option.isEmpty(Scene.getEngineNode(rootPath(), scene))) scene
+        else {
+                let data = TopBarScene.State.get();
                 let phase  = TurnPhase.State.get();
                 let actual = perceivedIsEnemy(phase, data#shown);
                 let w = GameEngine.Game.getViewportRect()#size#x;
@@ -185,11 +213,14 @@ mod TopBarScene {
                 };
                 // 集合(GatherMove)中だけ中央に「集合中」を表示。viewport 実幅の中央へ毎フレーム再配置。
                 let next2 = next |> applyGatherLabel(phase == TurnPhase.Phase.GatherMove, w);
-                match Scene.getEngineNode(path, next2) {
-                    case Some(latest) => (latest, next2)
-                    case None         => (node, next2)
-                }
-            case _ => (node, scene)
+                // 敵ターン driver が読む 2 bool を World に dual-write（next2 の確定状態から）。
+                // driver はこれを World 経由で読むので順序非依存。
+                // 確定状態は resource が持つ（各分岐の setState が put 済み）＝read-after-write で
+                // 最新 Data を読み、そこから World の 2 bool を dual-write する。
+                let dFinal = TopBarScene.State.get();
+                World.Command.emit(World.Cmd.SetEnemyTurnBusy(isBusyOf(dFinal)));
+                World.Command.emit(World.Cmd.SetPhaseObservedEnemy(hasObservedEnemyOf(dFinal)));
+                next2
         }
 
     /// 中央「集合中」ラベルを viewport 実幅の中央へ置き、集合中のみ可視にする。
@@ -275,10 +306,8 @@ mod TopBarScene {
         Duration.seconds(Float64.max(0.0, Duration.toSeconds(t) - Duration.toSeconds(delta)))
 
     /// CanvasLayer に紐づく状態を書き戻す。
-    def setState(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(rootPath(), node -> match node {
-            case EngineNode.CanvasLayerWithState(layer, NodeTag.TopBar(_)) =>
-                EngineNode.CanvasLayerWithState(layer, NodeTag.TopBar(data))
-            case other => other
-        }, scene)
+    /// 状態を resource へ書く。scene はパイプ互換のためそのまま返す（挙動不変）。
+    def setState(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] \ TopBarScene.State =
+        TopBarScene.State.put(data);
+        scene
 }

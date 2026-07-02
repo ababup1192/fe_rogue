@@ -21,6 +21,8 @@ mod GameOverMenuScene {
     def panelName(): String = "panel"
     def menuName(): String = "menu"
 
+    /// B: render-from-World が HUD/メニューサブツリーを描く/隠す root。
+    pub def rootPath(): NodePath = rootName() :: Nil
     pub def panelPath(): NodePath = rootName() :: panelName() :: Nil
     pub def menuPath(): NodePath = rootName() :: panelName() :: menuName() :: Nil
 
@@ -77,8 +79,9 @@ mod GameOverMenuScene {
     /// 非 GameOver では非表示にしてカーソルを先頭へ戻す（誤確定防止）。
     pub def refreshItems(_delta: Duration.Duration, node: EngineNode[NodeTag],
                          _path: NodePath, scene: Scene[NodeTag]):
-                        (EngineNode[NodeTag], Scene[NodeTag]) \ TurnPhase.State =
-        let visible = TurnPhase.State.get() == TurnPhase.Phase.GameOver;
+                        (EngineNode[NodeTag], Scene[NodeTag]) \ World.PhaseQuery =
+        // F2c: GameOver 可視判定を World 由来へ flip（純 3-case ＝ TurnPhase.State 依存を丸ごと置換）。
+        let visible = World.PhaseQuery.phase() == SimPhase.GameOver;
         let updated = scene
             |> Panel.mapAt(panelPath(), CanvasItem.setVisible(visible))
             |> ItemList.mapAt(menuPath(), list ->

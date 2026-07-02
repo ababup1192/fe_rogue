@@ -53,9 +53,10 @@ mod TestTradeMenuScene {
               staves  = List.map(sId -> Staff.lookup(sId, staffCatalog), spec#staves),
               consumables = Nil, rings = Nil}:
                 PlayerScene.Spawn);
-        let withParty = List.foldLeft((acc, spec) ->
+        // addOnePlayer は P0b で World.Command を emit する。位置 World は検証外なので discharge で剥がす。
+        let withParty = TestUnitFixtures.dischargeWorldCommand(() -> List.foldLeft((acc, spec) ->
             PlayerScene.addOnePlayer(mkSpawn(spec), acc),
-            MapScene.addWorldNode(Scene.empty()), specs);
+            MapScene.addWorldNode(Scene.empty()), specs));
         let withMenu = loadTradeMenu(withParty);
         let members = List.map(s -> s#id, specs);
         let withPanel = TradeMenuScene.mapPanelData(_ ->
@@ -110,16 +111,19 @@ mod TestTradeMenuScene {
             TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State} =
         let pid = memberId(paneIndex, s);
         let entry = entryForInventoryItem(itemName, pid, s#scene);
-        {scene = TradeMenuScene.confirmAt(paneIndex, entry, s#scene) | s}
+        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuScene.confirmAt(paneIndex, entry, s#scene)) | s}
 
     /// ペイン `paneIndex` の「空スロット (空きスロット)」に Z を押す。
     pub def pressZOnPaneEmpty(paneIndex: Int32, s: TradeScenario):
             TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State} =
-        {scene = TradeMenuScene.confirmAt(paneIndex, TradeMenuScene.emptySlotEntry(), s#scene) | s}
+        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuScene.confirmAt(paneIndex, TradeMenuScene.emptySlotEntry(), s#scene)) | s}
 
     /// X を押す (キャンセル / pick 解除)。
     pub def pressXAt(s: TradeScenario): TradeScenario \ TurnPhase.State =
-        {scene = TradeMenuScene.cancelCurrent(s#scene) | s}
+        // P6-1h: 遷移が view 状態 Cmd を emit するようになったため捨て handler で吸収。
+        let closed = run { TradeMenuScene.cancelCurrent(s#scene) }
+            with handler World.Command { def emit(_c, k) = k() };
+        {scene = closed | s}
 
     /// ← (左矢印) = focus を 1 つ左へ。
     pub def moveFocusLeft(s: TradeScenario): TradeScenario =
@@ -145,7 +149,7 @@ mod TestTradeMenuScene {
     /// 受け取り側の entry は bulk 時は使われないので空スロット entry を渡す。
     pub def pressZBulkOnPane(receiverPane: Int32, s: TradeScenario):
             TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State} =
-        {scene = TradeMenuScene.confirmAt(receiverPane, TradeMenuScene.emptySlotEntry(), s#scene) | s}
+        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuScene.confirmAt(receiverPane, TradeMenuScene.emptySlotEntry(), s#scene)) | s}
 
     // ────────────────────────────────────────────────────────
     // (D) 内部ヘルパー

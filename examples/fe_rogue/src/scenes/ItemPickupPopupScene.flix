@@ -12,12 +12,12 @@
 /// この分担により、取得処理（PlayerScene.addPickedItem）の effect 行を増やさずに済む。
 ///
 /// 文字のフェードについて:
-///   エンジンは Label2D の alpha を持たない（glyph は常に不透明。`DamagePopupScene` 参照）。
+///   エンジンは Label2D の alpha を持たない（glyph は常に不透明。`DamagePopupFx` 参照）。
 ///   そこで窓（Panel）は背景/枠の alpha で本当にフェードし、文字は modulate を
 ///   「窓の背景色 → 白」に補間し、薄い区間では非表示にして“フェードしているように”見せる。
 ///
 /// ノード構造（drawLayer=6。PhaseBanner=5 より前面）:
-///   ItemPickupPopup (CanvasLayer, NodeTag.ItemPickupPopup(PopupData))
+///   ItemPickupPopup (CanvasLayer, NodeTag.ItemPickupPopup)
 ///     ├─ window (Panel, 画面中央の約40%サイズ, NoTag)   ← 背景/枠の alpha でフェード
 ///     └─ text   (Label2D, 中央寄せ, NoTag)               ← modulate 補間 + 可視ゲートで擬似フェード
 mod ItemPickupPopupScene {
@@ -66,7 +66,8 @@ mod ItemPickupPopupScene {
     def windowName(): String = "window"
     def textName(): String = "text"
 
-    def rootPath(): NodePath = rootName() :: Nil
+    /// B: render-from-World が subtree を描く/隠す root（CanvasLayer）。
+    pub def rootPath(): NodePath = rootName() :: Nil
     def windowPath(): NodePath = rootName() :: windowName() :: Nil
     def textPath(): NodePath = rootName() :: textName() :: Nil
 
@@ -115,6 +116,26 @@ mod ItemPickupPopupScene {
     def initialData(): PopupData =
         {stage = Stage.Idle, elapsed = Duration.zero(), soundPending = false}
 
+    /// 中央ポップアップの状態（stage/elapsed/soundPending）を持つ resource。
+    /// LogScene.State と同型。show 系/process が `State.get()/put()` 経由で読み書きする。
+    /// `Game.start` で `with ItemPickupPopupScene.withState(rc)` を注入し、`FrameAef.T`/`ProcessT` に足す。
+    pub eff State {
+        def get(): PopupData
+        def put(data: PopupData): Unit
+    }
+
+    pub def withState(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            let ref: Ref[PopupData, r] = Ref.fresh(rc, initialData());
+            run {
+                thunk()
+            } with handler State {
+                def get(k)       = k(Ref.get(ref))
+                def put(data, k) = { Ref.put(data, ref); k() }
+            }
+        }
+
     // ────────────────────────────────────────────────────────
     // (C) 構築
     // ────────────────────────────────────────────────────────
@@ -143,7 +164,7 @@ mod ItemPickupPopupScene {
             |> CanvasItem.setVisible(false);
         scene
             |> Scene.addNode(rootName(),
-                EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup(initialData())))
+                EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup))   // 状態は State resource が持つ
             |> Scene.addChild(rootName(), windowName(),
                 EngineNode.PanelWithState(window, NodeTag.NoTag))
             |> Scene.addChild(rootName(), textName(),
@@ -156,16 +177,16 @@ mod ItemPickupPopupScene {
     /// アイテムを拾ったときに呼ぶ。文言を「${itemName}を手に入れた」にして、フェードを
     /// 先頭から開始し、取得音の予約を立てる。副作用は無く（音は `process` が鳴らす）、
     /// 既に表示中でも先頭からやり直す（拾い直しでも必ず最初から演出する）。
-    pub def show(itemName: String, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def show(itemName: String, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
         showWith("${itemName}を手に入れた", true, scene)
 
     /// 取得以外の通知（例: 「持ち物がいっぱいです」）を中央ポップアップに出す。
     /// 取得音は鳴らさず、フェードイン → 表示保持 → フェードアウトの演出だけ流す。
-    pub def showMessage(text: String, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def showMessage(text: String, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
         showWith(text, false, scene)
 
     /// 「持ち物がいっぱいです」を中央ポップアップで知らせる薄いラッパ。
-    pub def showFull(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def showFull(scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
         showMessage("持ち物がいっぱいです", scene)
 
     /// 取得音だけを次フレームに予約する（中央ポップアップは出さない）。`show` と違い
@@ -173,17 +194,15 @@ mod ItemPickupPopupScene {
     /// （`step` は stage に関わらず先頭で `soundPending` を消費して playSound を返す）。
     /// 移動着地の自動取得など「大きな通知は不要だが取得音は鳴らしたい」経路で使う。
     /// 純粋（音は process が鳴らす）。ポップアップ未登録の scene では no-op。
-    pub def reserveGetItemSound(scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(rootPath(), node -> match node {
-            case EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup(d)) =>
-                EngineNode.CanvasLayerWithState(layer,
-                    NodeTag.ItemPickupPopup({soundPending = true | d}))
-            case other => other
-        }, scene)
+    pub def reserveGetItemSound(scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
+        // 取得音予約フラグを resource に立てる。scene はパイプ用に素通し。
+        let d = ItemPickupPopupScene.State.get();
+        ItemPickupPopupScene.State.put({soundPending = true | d});
+        scene
 
     /// 文言と「取得音を鳴らすか」を受け取り、フェードを先頭から開始する共通処理。
     /// `playSound = true` のときだけ `process` が取得音を 1 回鳴らす。
-    def showWith(text: String, playSound: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+    def showWith(text: String, playSound: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
         let started: PopupData =
             {stage = Stage.FadeIn, elapsed = Duration.zero(), soundPending = playSound};
         scene
@@ -243,27 +262,21 @@ mod ItemPickupPopupScene {
     // (F) ロジック（毎フレーム・副作用あり）
     // ────────────────────────────────────────────────────────
 
-    /// Game.flix の `process` redef から `NodeTag.ItemPickupPopup` ノードに dispatch される
-    /// (ポップアップは1個のみ)。`step` で状態を進め、予約があれば取得音を1回鳴らし、
+    /// `step` で状態を進め、予約があれば取得音を1回鳴らし、
     /// 表示の濃さ ratio を窓 alpha・文字色・可視へ反映する。
-    /// 末尾で scene から self の最新ノードを取り直して返す（更新が打ち消されないように）。
-    pub def process(delta: Duration.Duration,
-                     node: EngineNode[NodeTag],
-                     path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ GameEngine.Audio =
-        match node {
-            case EngineNode.CanvasLayerWithState(_, NodeTag.ItemPickupPopup(data)) =>
-                let result = step(data, delta);
-                if (result#playSound) AudioStreamPlayer.play(getItemSound()) else ();
-                let next = scene
-                    |> applyAppearance(result#ratio)
-                    |> setState(result#data);
-                match Scene.getEngineNode(path, next) {
-                    case Some(latest) => (latest, next)
-                    case None         => (node, next)
-                }
-            case _ => (node, scene)
-        }
+    /// gameLoop が 1 回呼ぶ frame-paced System
+    /// （純粋な `step` と名前が衝突するため frameStep）。ノード不在（タイトル/選択画面）でも安全:
+    /// 状態は Idle のまま進まず（soundPending も Playing 経路でしか立たない）、applyAppearance の
+    /// mapAt は対象不在で no-op。
+    pub def frameStep(delta: Duration.Duration, scene: Scene[NodeTag]):
+                    Scene[NodeTag] \ {GameEngine.Audio, ItemPickupPopupScene.State} =
+        // 状態は resource から読む。ノードは描画 view（Panel/Label）。
+        let data = ItemPickupPopupScene.State.get();
+        let result = step(data, delta);
+        if (result#playSound) AudioStreamPlayer.play(getItemSound()) else ();
+        scene
+            |> applyAppearance(result#ratio)
+            |> setState(result#data)
 
     /// Label2D の glyph は CanvasItem の alpha に従わず常に不透明（モジュール doc L15-17 参照）。
     /// そのため窓と文字で別戦略を取る:
@@ -302,10 +315,8 @@ mod ItemPickupPopupScene {
 
     /// `case other => other` により、ItemPickupPopup 以外の NodeTag を持つ CanvasLayer があっても
     /// 状態を壊さない（将来ノードが増えた際の防御）。
-    def setState(data: PopupData, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(rootPath(), node -> match node {
-            case EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup(_)) =>
-                EngineNode.CanvasLayerWithState(layer, NodeTag.ItemPickupPopup(data))
-            case other => other
-        }, scene)
+    def setState(data: PopupData, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupScene.State =
+        // 状態は resource へ書く。scene はパイプ互換のためそのまま返す。
+        ItemPickupPopupScene.State.put(data);
+        scene
 }

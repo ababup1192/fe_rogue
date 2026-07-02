@@ -38,26 +38,34 @@ mod PlayerScene {
     /// この味方の戦闘ビュー（faction 非依存）。装備武器は `weapons` の先頭。
     /// `Combat.estimate` / `Encounter` の join で使う（ダメージ式は `Combat` に集約）。
     pub def combatView(data: Data): Combat.CombatView =
+        Combat.assembleView({
+            base   = Combat.baseStatsFrom(data#resource),
+            mods   = StatusSystem.combatMods(data#statuses),
+            ring   = equippedRingBonus(data),
+            hp     = data#hp,
+            weapon = equippedWeaponView(data)})
+
+    /// S-A0: この味方の装備武器（先頭 = 装備中）の戦闘投影。`combatView` と World read-model 構築
+    /// （`World.syncFromScene`）が共有し、proficiency 解決の二重実装を避ける。武器なしは None。
+    pub def equippedWeaponView(data: Data): Option[Combat.WeaponView] =
         let equipped = PlayerData.equippedWeapon(data#weapons);
-        let m = StatusSystem.combatMods(data#statuses);
-        let rb = Ring.bonuses(PlayerData.equippedRing(data));
-        {attack = data#resource#attack + m#atkBonus + rb#attack, magicAttack = data#resource#magicAttack,
-         defense = data#resource#defense + rb#defense + m#defDelta, magicDefense = data#resource#magicDefense,
-         skill = data#resource#skill + rb#skill, speed = data#resource#speed + m#spdDelta + rb#speed,
-         luck = data#resource#luck + rb#luck, hp = data#hp, maxHp = data#resource#hp, hitMod = m#hitMod,
-         weapon = Combat.weaponView(equipped, weaponProficient(data, equipped))}
+        Combat.weaponView(equipped, weaponProficient(data, equipped))
+
+    /// S-A0c: この味方の装備指輪ボーナス。`combatView` と World read-model 構築が共有する。
+    /// `ringEquipped` が false なら zeroBonuses（`PlayerData.equippedRing` が None を返す）。
+    pub def equippedRingBonus(data: Data): Ring.Bonuses =
+        Ring.bonuses(PlayerData.equippedRing(data))
 
     /// `combatView` の「装備武器を明示指定する」版。攻撃中に選択した武器（装備中=先頭とは
     /// 限らない）で戦闘予測を計算するため、`BattlePanelScene` から使う。
     pub def combatViewWith(data: Data, weapon: UnitCatalog.WeaponResource): Combat.CombatView =
-        let m = StatusSystem.combatMods(data#statuses);
-        let rb = Ring.bonuses(PlayerData.equippedRing(data));
-        {attack = data#resource#attack + m#atkBonus + rb#attack, magicAttack = data#resource#magicAttack,
-         defense = data#resource#defense + rb#defense + m#defDelta, magicDefense = data#resource#magicDefense,
-         skill = data#resource#skill + rb#skill, speed = data#resource#speed + m#spdDelta + rb#speed,
-         luck = data#resource#luck + rb#luck, hp = data#hp, maxHp = data#resource#hp, hitMod = m#hitMod,
-         weapon = Combat.weaponView(Some(weapon),
-                     UnitCatalog.proficientWith(data#resource, weapon#weaponType))}
+        Combat.assembleView({
+            base   = Combat.baseStatsFrom(data#resource),
+            mods   = StatusSystem.combatMods(data#statuses),
+            ring   = equippedRingBonus(data),
+            hp     = data#hp,
+            weapon = Combat.weaponView(Some(weapon),
+                        UnitCatalog.proficientWith(data#resource, weapon#weaponType))})
 
     /// この味方が指定の装備武器（Option）を得意とするか。武器なしは true（estimate が None を扱う）。
     def weaponProficient(data: Data, weapon: Option[UnitCatalog.WeaponResource]): Bool =
@@ -82,7 +90,7 @@ mod PlayerScene {
         Encumbrance.loadOf(data#resource#constitution, data#resource#attack, data)
 
     /// 積載ペナルティ込みの実効移動力。素の `moveTiles` に積載率ペナルティ（80%/100%/110%）を掛けた値。
-    /// getMoveTiles / unitView / PlayerMovementScene / StairsExitScene はすべてこの 1 関数を通すこと
+    /// getMoveTiles / unitView / PlayerMovementDriver / StairsExitDriver はすべてこの 1 関数を通すこと
     /// （範囲計算と歩数判定の不整合を防ぐため）。
     pub def effectiveMoveTilesOf(data: Data): Int32 =
         Encumbrance.effectiveMoveTiles(data#moveTiles, loadOf(data))
@@ -129,11 +137,11 @@ mod PlayerScene {
         Encumbrance.wouldExceedImmobile(loadOf(data), Encumbrance.groundItemWeight(item))
 
     /// プレイヤー Sprite の zIndex（Player は前面に立つ）。EnemyScene と同じ 10。
-    def spriteZIndex(): Int32 = 10
+    pub def spriteZIndex(): Int32 = 10  // P6-1h: renderUnits が使うため pub
 
     /// 手動移動（PlayerMoving）・集合の主人公移動と味方追従（GatherMove）の 1 マス時間（≈ 0.167 秒）。
     /// 落ち着いて移動先を狙えるよう少しゆっくり（20 フレーム = 約 0.167 秒）にする。
-    /// pub: 打ち手層（PlayerMovementScene）が手動移動 / 追従 step で moveToById に渡す。
+    /// pub: 打ち手層（PlayerMovementDriver）が手動移動 / 追従 step で moveToById に渡す。
     pub def selectedSlideDuration(): Duration.Duration =
         Duration.frames(count = 20, fps = 120)
 
@@ -187,7 +195,7 @@ mod PlayerScene {
     pub def add(catalog: UnitCatalog.UnitCatalog,
                   staffCatalog: Staff.StaffCatalog,
                   consumableCatalog: Consumable.ConsumableCatalog,
-                  scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, PartySelection.State} =
+                  scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, PartySelection.State, World.Command} =
         let selected     = match PartySelection.State.get() {
             case Some(party) => party
             case None        =>
@@ -303,7 +311,32 @@ mod PlayerScene {
     /// プレイヤー 1 体ぶんの Marker2D + 子 Sprite2D を scene に追加する。
     /// ステータス・テクスチャ・フレームは `sp#resource`（UnitResource）から取る。
     /// pub: テストから catalog 経由の Spawn 構築 → 配置経路を直接検証するため公開する。
-    pub def addOnePlayer(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def addOnePlayer(sp: Spawn, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // P0b: spawn/restore の funnel。新規ユニットの初期位置を World へ seed（Cmd.Move=位置 insert）。
+        // dual-write 維持（mirror が P2 まで生きるので無害）＝挙動不変。
+        World.Command.emit(World.Cmd.Move(World.refOf(true, sp#id), sp#gridPos));
+        // F6a: 初期 hp も World へ seed（spawn フレームの [F6 HP DIFF] を塞ぐ＝F6b preserve の前提）。
+        World.Command.emit(World.Cmd.SetHp(World.refOf(true, sp#id), sp#resource#hp));
+        // F7-slice4: 初期 followUpUsed=false も seed。
+        World.Command.emit(World.Cmd.SetFollowUpUsed(World.refOf(true, sp#id), false));
+        // F7-slice5: 初期 waited=false も seed。
+        World.Command.emit(World.Cmd.SetWaited(World.refOf(true, sp#id), false));
+        // S5: 初期 usedStairs=false も seed（command-derive ゆえ floor 遷移で scene reset しても World が
+        // stale true を保持する gap を塞ぐ＝[USEDSTAIRS DIFF] の根本原因）。
+        World.Command.emit(World.Cmd.SetUsedStairs(World.refOf(true, sp#id), false));
+        // World 拡張: 初期 (level, exp=0) を seed（spawn フレームの [PROGRESS DIFF] を塞ぐ）。
+        World.Command.emit(World.Cmd.SetProgress(World.refOf(true, sp#id), sp#resource#level, 0));
+        // D3: 初期 weapons も World へ seed（spawn フレームの [WEAPONS DIFF] を塞ぐ＝preserve の前提）。
+        World.Command.emit(World.Cmd.SetWeapons(World.refOf(true, sp#id), sp#weapons));
+        // S2.3: 初期 baseStats も World へ seed（spawn フレームの [BASESTATS DIFF] を塞ぐ＝preserve の前提）。
+        World.Command.emit(World.Cmd.SetBaseStats(World.refOf(true, sp#id), Combat.baseStatsFrom(sp#resource)));
+        // S2.5: 初期 moveTiles も seed（base＝resource 由来で以後不変＝[MOVETILES DIFF] を塞ぐ＝preserve の前提）。
+        World.Command.emit(World.Cmd.SetMoveTiles(World.refOf(true, sp#id), sp#resource#moveTiles));
+        // D4: 初期 staves/consumables/rings/ringEquipped も seed（spawn フレームの各 DIFF を塞ぐ）。ringEquipped は spawn 時 false。
+        World.Command.emit(World.Cmd.SetStaves(World.refOf(true, sp#id), sp#staves));
+        World.Command.emit(World.Cmd.SetConsumables(World.refOf(true, sp#id), sp#consumables));
+        World.Command.emit(World.Cmd.SetRings(World.refOf(true, sp#id), sp#rings));
+        World.Command.emit(World.Cmd.SetRingEquipped(World.refOf(true, sp#id), false));
         let pos = MapSnapshot.cellCenter(sp#gridPos);
         let marker = Marker2D.make(pos);
         let res    = sp#resource;
@@ -332,32 +365,26 @@ mod PlayerScene {
             ringEquipped      = false,
             followUpUsed      = false
         };
-        // unit に spriteFrames があれば AnimatedSprite2D で配置、無ければ Sprite2D
-        // (静止単一フレーム) で配置する。AnimatedSprite2D は engine の per-node
-        // process が advanceFrame を毎フレーム呼ぶので、こちらでチクチク回す必要は無い。
-        let spriteNode = match res#spriteFrames {
-            case Some(sf) =>
-                let anim = AnimatedSprite2D.make(sf,
-                    {animation = idleAnimName()}, Vec2.zero(), res#sprite#scale)
-                    |> AnimatedSprite2D.setOffset(res#sprite#offset)
-                    |> AnimatedSprite2D.setAutoplay(idleAnimName())
-                    |> CanvasItem.setZIndex(spriteZIndex());
-                EngineNode.AnimSprite2DWithState(anim, NodeTag.NoTag)
-            case None =>
-                let sprite = Sprite2D.make(res#sprite#texture, res#sprite#offset,
-                                            res#sprite#scale)
-                                |> Sprite2D.setHframes(res#sprite#hframes)
-                                |> Sprite2D.setVframes(res#sprite#vframes)
-                                |> Sprite2D.setFrame(res#sprite#frame)
-                                |> CanvasItem.setZIndex(spriteZIndex());
-                EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag)
+        // id 集合/team への登録（spawn funnel の一部）。
+        World.Command.emit(World.Cmd.Spawn(World.EntityRef.Player(sp#id)));
+        // P6-2c: 成長 read-model も spawn で seed（resource 変化サイトは emitBaseStatsFromScene が束ねて emit）。
+        World.Command.emit(World.Cmd.SetGrowth(sp#id,
+            {base = LevelSystem.statsOf(res), rates = res#growthRates, name = res#description}));
+        // S2.4: 初期 weaponView/ringBonus も World へ seed（weapons/rings と同源・spawn フレームの各 DIFF を塞ぐ＝preserve の前提）。
+        // data 構築後に emit（equippedWeaponView/equippedRingBonus は full Data を要する）。ringEquipped=false ゆえ ringBonus=zeroBonuses。
+        World.Command.emit(World.Cmd.SetWeaponView(World.refOf(true, sp#id), equippedWeaponView(data)));
+        World.Command.emit(World.Cmd.SetRingBonus(World.refOf(true, sp#id), equippedRingBonus(data)));
+        // P6-1h: 子 Sprite ノードは廃止。AnimatedSprite2D 個体は初期アニメ（idle）を unitAnim store へ
+        // seed し（コマ送りは stepWorld の elapsed 加算＋描画時の frame 導出）、静止 Sprite2D 個体は
+        // resource の定数 frame を描画時に読むだけ＝store 不要。描画は RenderWorld.renderUnits が
+        // resource + unitAnim/unitFlipH/unitModulate store から Sprite2D 値を直組みする。
+        match res#spriteFrames {
+            case Some(_) => World.Command.emit(World.Cmd.SetAnim(World.EntityRef.Player(sp#id), idleAnimName()))
+            case None    => ()
         };
         scene
             |> Scene.addChildAt(MapScene.worldPath(), playerName(sp#id),
                                  EngineNode.Marker2DWithState(marker, NodeTag.Player(data)))
-            |> Scene.addChildAt(playerPath(sp#id), "Sprite", spriteNode)
-            |> UnitHPBarScene.attach(playerPath(sp#id), res#hp, UnitHPBarScene.Team.Player)
-            |> WeaponIconScene.attach(playerPath(sp#id), PlayerData.equippedWeapon(sp#weapons))
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック — 移動
@@ -369,19 +396,27 @@ mod PlayerScene {
     pub def moveTo(id: Int32, map: MapSnapshot, target: {x = Int32, y = Int32},
                     marker: Marker2D, data: Data, slide: Duration.Duration,
                     scene: Scene[NodeTag]): (Marker2D, Data)
-                    \ Tween.Scheduler =
+                    \ {World.Command, World.WorldQuery} =
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
-        Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
+        // B/m3: 描画位置 tween は World（renderPos）権威＝engine `Tween.tweenPosition` は退役。
+        // faction-blind な moveUnit に統一（敵も同じ口）。duration は秒（slide 同値）。
+        World.moveUnit(World.EntityRef.Player(id), {start = startWorld, target = targetWorld}, Duration.toSeconds(slide));
         // 進行方向を facing に反映し、AnimatedSprite2D なら walk_<dir> 再生 (副作用)。
         // sprite ノード書き換えは moveToById 側でやる (moveTo は state を返すだけ)。
-        let nextFacing = directionOfStep(data#gridPos, target)
+        // P6-2b: 移動前位置は World.posOf（Cmd.Move の emit **前**なので pre-move）。scene twin は退役。
+        let pre = World.posOf(World.EntityRef.Player(id), World.WorldQuery.get())
+                      |> Option.getWithDefault(data#gridPos);
+        let nextFacing = directionOfStep(pre, target)
                             |> Option.getWithDefault(data#facing);
+        World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
         (marker, {gridPos = target, facing = nextFacing | data})
 
-    /// 指定 id のプレイヤーが現在 tween 中（次の入力を受け付けない状態）か。
-    pub def isMoving(id: Int32): Bool \ Tween.Scheduler =
-        Tween.Scheduler.isActive(playerPath(id))
+    /// 指定 id のプレイヤーが現在移動（Position tween）中＝次の入力を受け付けない状態か。
+    /// B/m3: engine tween 退役に伴い権威を World（renderPos tween）へ移行。`isActive`（scene marker の
+    /// engine tween）→ `World.isAnimating`（World の Position tween）。1 フレーム 1 歩のリズムは不変。
+    pub def isMoving(id: Int32): Bool \ World.WorldQuery =
+        World.isAnimating(World.EntityRef.Player(id), World.WorldQuery.get())
 
     /// 指定 id のプレイヤーを `target` グリッドへ Tween で移動させ、scene の Data も
     /// 同時に更新する。`moveTo` は (Marker2D, Data) を返す形だが、こちらは
@@ -389,16 +424,60 @@ mod PlayerScene {
     /// `EnemyScene.moveTo` と同じインターフェース。**歩行可否は呼び出し側が確認済み前提**。
     pub def moveToById(id: Int32, target: {x = Int32, y = Int32},
                         map: MapSnapshot, slide: Duration.Duration,
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, World.WorldQuery} =
+        // F3a: 1 歩移動を sim 書き込みと view 再生に分離。
+        // ── SYSTEM(sim): 位置の唯一権威。`Cmd.Move` が World に書く（gridPos は frame-end の
+        //    `World.syncTreeFromWorld` で World 由来に derive＝scene へ直書きしない）。
+        World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
+        // ── VIEW(replay): Tween/facing/walk-anim はこの move から導出する純粋な見た目再生。
+        //    F3b でこの関数を `SimEvent.Moved` の消費側から呼ぶ（イベント駆動の再生）。
+        replayMoveView(id, target, map, slide, scene)
+
+    /// `SimEvent.Moved` を view 再生する（F3b: イベント駆動の再生エントリ）。
+    /// System が返した Moved を受けて Tween/facing/anim を再生する。位置の権威は World 側。
+    /// 敵の move 再生は F4（敵ターン System 化）で別途扱うため現状は no-op。
+    pub def replayMovedEvent(event: World.SimEvent, map: MapSnapshot,
+                              slide: Duration.Duration, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {World.Command, World.WorldQuery} =
+        match event {
+            case World.SimEvent.Moved(World.EntityRef.Player(id), target) =>
+                replayMoveView(id, target, map, slide, scene)
+            case World.SimEvent.Moved(World.EntityRef.Enemy(_), _) => scene
+            // simevent-algebra: 拡張された非 Moved variant は move seam に来ない（production emitter 無し）。
+            // 黙って no-op せず、move seam 専用 invariant 違反として loud に落とす。
+            case _ => bug!("PlayerScene.replayMovedEvent: non-Moved event on move seam")
+        }
+
+    /// `SimEvent.Moved` の着地マス。着地時の自動取得など view 側が座標を要する箇所で使う。
+    /// move seam 専用＝Moved 以外は渡らない（非 Moved は到達不能ガード）。
+    pub def movedTarget(event: World.SimEvent): {x = Int32, y = Int32} =
+        match event {
+            case World.SimEvent.Moved(_, target) => target
+            // move-seam only invariant: 非 Moved は到達不能。原点 {0,0} を捏造すると
+            // (0,0) で誤って自動取得が走るため、座標を作らず loud に落とす。
+            case _                               => bug!("PlayerScene.movedTarget: non-Moved event on move seam")
+        }
+
+    /// 1 歩移動の **view 再生**（Tween 滑走 + facing + walk アニメ + 左右反転）。
+    /// 位置の権威は World（`Cmd.Move`）にあり、ここは「move が起きた」結果から導く見た目だけを担う。
+    /// sim 書き込みを含まない（`World.Command` を要求しない）＝イベント再生の純 view エントリ。
+    pub def replayMoveView(id: Int32, target: {x = Int32, y = Int32},
+                        map: MapSnapshot, slide: Duration.Duration,
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         let startWorld  = Scene.globalPositionAt(playerPath(id), scene);
         let targetWorld = MapSnapshot.gridToWorld(target, map);
-        Tween.tweenPosition(playerPath(id), startWorld, targetWorld, slide);
+        // B/m3: 描画位置 tween は World（renderPos）が唯一の権威＝engine `Tween.tweenPosition` は退役。
+        // marker は `RenderWorld.syncMarkers` が renderPos に合わせる（敵 `replayEnemyMoveView` と対称）。
+        World.moveUnit(World.EntityRef.Player(id), {start = startWorld, target = targetWorld}, Duration.toSeconds(slide));
         // 直前のグリッド座標から target への 1 マス差で方向を決める。
         // 0 ベクトル (= 同じセル) の場合は既存の facing を保つ。
-        let prev      = getGridPos(id, scene);
+        // P6-2b: 移動前位置は World.prevPosOf（applyCmd の Move が旧位置を自動記録）。
+        // World 未登録（テスト/spawn 過渡）のみ scene fallback。
+        let prev      = World.prevPosOf(World.EntityRef.Player(id), World.WorldQuery.get())
+                            |> Option.getWithDefault(getGridPos(id, scene));
         let dirOpt    = directionOfStep(prev, target);
+        // facing（向き＝視覚状態）だけここで更新する。
         let withState = mapPlayer(id, d -> {
-            gridPos = target,
             facing  = Option.getWithDefault(d#facing, dirOpt) | d
         }, scene);
         // AnimatedSprite2D を持つ unit なら walk_<dir> アニメに切り替える。
@@ -414,23 +493,30 @@ mod PlayerScene {
     /// 進行中の Tween があればキャンセルし、Marker2D の world 位置と Data#gridPos を
     /// 同時に target に揃える。PlayerMoving 中のキャンセルで「選択時の位置」に戻すのに使う。
     pub def snapTo(id: Int32, target: {x = Int32, y = Int32},
-                    scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                    scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let world = MapSnapshot.cellCenter(target);
-        Tween.Scheduler.cancel(playerPath(id));
+        // B/m3: engine tween cancel の置換。SetRenderPos が進行中の World 描画 tween を破棄しつつ renderPos を
+        // target にスナップ（`World.flix` handler で tweens から Position を remove）＝中断後に marker が滑り残らない。
+        World.Command.emit(World.Cmd.SetRenderPos(World.EntityRef.Player(id), world));
+        World.Command.emit(World.Cmd.Move(World.EntityRef.Player(id), target));
+        // S5b: gridPos は frame-end の syncTreeFromWorld で World 由来に derive。ここは Tween 実体（描画位置）の
+        // 即時スナップだけ行う（snapTo は瞬間移動ゆえ Marker2D の world 座標も即合わせる）。
         scene
             |> Scene.setGlobalPositionAt(playerPath(id), world)
-            |> mapPlayer(id, d -> {gridPos = target | d})
 
     /// PlayerCursor + Z で味方マスを選択した瞬間の遷移: 選択中味方を SelectedPlayer に
     /// 記録し、PlayerMoving に進む。
     /// overlay (MoveRange / MoveAttackRange / EnemyRange) と Cursor の整理は
     /// `PhaseTransitions.enterPlayerMoving` が担当する (この関数は SelectedPlayer 更新だけ)。
     pub def beginSelection(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery} =
         SelectedPlayer.State.put({
             id     = Some(playerId),
             // 移動開始。元位置を巻き戻しドラフトの底に積む（前の移動の残骸は drafts ごと破棄）
-            drafts = MoveDraft.DraftAction.MovedFrom(playerId, getGridPos(playerId, scene)) :: Nil,
+            // P6-2b fix: 巻き戻し origin は World.posOf（scene gridPos twin は退役＝stale）。
+            drafts = MoveDraft.DraftAction.MovedFrom(playerId,
+                World.posOf(World.EntityRef.Player(playerId), World.WorldQuery.get())
+                    |> Option.getWithDefault(getGridPos(playerId, scene))) :: Nil,
             gatherActive = false
         });
         PhaseTransitions.enterPlayerMoving(scene)
@@ -443,8 +529,9 @@ mod PlayerScene {
     /// （積むと巻き戻しが多重適用され開始位置に戻らなくなる）。
     /// overlay / cursor は `PhaseTransitions.enterGatherMove` が担当する。
     pub def beginGather(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
-        let origins = getAll(scene)
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery} =
+        // P6-2b fix: 巻き戻し origin は World 位置（scene gridPos twin は退役＝stale）。
+        let origins = getAllWithWorldPos(scene)
             |> List.filter(d -> d#hp > 0)
             |> List.map(d -> MoveDraft.DraftAction.MovedFrom(d#id, d#gridPos));
         SelectedPlayer.State.put({id = Some(lordId()), drafts = origins, gatherActive = true});
@@ -458,7 +545,7 @@ mod PlayerScene {
     pub def cancelSelection(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery} =
+                              PlayerData.PartyQuery, World.Command} =
         // この移動で積んだ可逆ドラフトを新しい順に巻き戻す（拾得→元位置への復帰など）。
         // 「拾ってからキャンセルしたら拾っていないことにする」もこの一括巻き戻しで実現。
         let drafts   = SelectedPlayer.State.get()#drafts;
@@ -470,11 +557,12 @@ mod PlayerScene {
     /// 集合直後（手動確定 / ターン継続での自動再突入）に C で個別行動モードへ戻せるかの判定。
     /// `gatherActive` でなければ false。`beginGather` が積んだ各 `MovedFrom` 起点と現在位置を
     /// 比べ、1 体でも origin から動いていれば false（移動を始めたら切替不可）。
-    pub def gatherNotMovedYet(scene: Scene[NodeTag]): Bool \ SelectedPlayer.State =
+    pub def gatherNotMovedYet(scene: Scene[NodeTag]): Bool \ {SelectedPlayer.State, World.WorldQuery} =
         let sel = SelectedPlayer.State.get();
         if (not sel#gatherActive) false
         else {
-            let living = getAll(scene) |> List.filter(d -> d#hp > 0);
+            // P6-2b: 現在位置は World 上書き Data（origin との一致比較）。
+            let living = getAllWithWorldPos(scene) |> List.filter(d -> d#hp > 0);
             not MoveDraft.anyMovedFromOrigin(living, sel#drafts)
         }
 
@@ -482,20 +570,25 @@ mod PlayerScene {
     /// （新しい可逆操作を足すときはこの match に 1 分岐追加するだけ）。
     ///   - `MovedFrom`: origin に snapTo で戻し、walk 表示を idle に戻す
     ///     （移動中の walk_<dir> のままだと「キャンセル後に動いてないのに横向き」になる）
-    ///   - `PickedUp` : 床へ戻し（`ItemScene.respawn`）+ 在庫末尾の仮取得分を取り消す
+    ///   - `PickedUp` : 床へ戻し（`GroundItems.respawn`）+ 在庫末尾の仮取得分を取り消す
     def revertDraftAction(action: MoveDraft.DraftAction,
                             scene: Scene[NodeTag]):
-            Scene[NodeTag] \ Tween.Scheduler =
+            Scene[NodeTag] \ World.Command =
         match action {
             case MoveDraft.DraftAction.MovedFrom(id, cell)              =>
                 snapTo(id, cell, scene) |> playAnim(id, idleAnimName())
             case MoveDraft.DraftAction.PickedUp(pid, cell, itemKey, kind) =>
                 scene
-                    |> ItemScene.respawn(cell, itemKey, kind)
+                    |> GroundItems.respawn(cell, itemKey, kind)
                     |> removeLastInventoryItem(pid, kind)
             case MoveDraft.DraftAction.Equipped(pid, idx)               =>
                 // 装備 = moveToHead(idx) の逆。先頭を idx 位置へ戻す。
-                mapPlayer(pid, d -> {weapons = moveHeadTo(idx, d#weapons) | d}, scene)
+                // D3: scene #weapons を巻き戻したら World にも SetWeapons を dual-write する。
+                // これを欠くと mid-move equip(idx>0)+cancel で World が装備後の並びを保持し
+                // scene が元並びへ戻り [WEAPONS DIFF] が実機で発火する（equipWeapon と対称）。
+                let reverted = mapPlayer(pid, d -> {weapons = moveHeadTo(idx, d#weapons) | d}, scene);
+                emitWeaponsFromScene(pid, reverted);
+                reverted
             case MoveDraft.DraftAction.Dropped(pid, kind, item)        =>
                 // 捨てる = removeAt(idx) の逆。元 idx に挿入し直す。
                 insertInventoryItem(pid, kind, item, scene)
@@ -513,37 +606,6 @@ mod PlayerScene {
             case MoveDraft.DraftAction.GatherWaited(id)                =>
                 // 集合中の移動距離切れで非アクティブ化した味方を再アクティブに戻す。
                 setActive(id, scene)
-        }
-
-    /// ActionMenu「こうげき」確定で呼ばれる: 攻撃ターゲット選択フェーズへ。
-    /// overlay / cursor 整理は `PhaseTransitions.enterPlayerAttack` が担当
-    /// (全武器の射程の和集合で赤マスを敷き、最初のターゲットへカーソルをスナップ)。
-    /// その後、カーソルが乗った敵に届く先頭の武器を装備(先頭へ移動)しておく。これにより
-    /// 装備中(先頭)武器が届かない敵でも、届く武器を「装備した扱い」で攻撃ウィンドウを開ける。
-    pub def enterAttackPhase(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        let withPhase = PhaseTransitions.enterPlayerAttack(scene);
-        equipReachingWeaponForCursor(withPhase)
-
-    /// カーソルが乗っている敵に届く先頭の武器を装備する (届く武器が無ければ no-op)。
-    /// 進入直後の「装備した扱い」初期化用。`enterAttackPhase` からのみ呼ぶ。
-    /// 意図的な EnemyScene 直接 read: `RosterQuery` handler はフレーム冒頭の snapshot
-    /// (sceneRef) を読むため、mid-frame で更新済みの `scene` を見るにはモジュール直読みが必要。
-    def equipReachingWeaponForCursor(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ SelectedPlayer.State =
-        match SelectedPlayer.State.get()#id {
-            case None     => scene
-            case Some(id) =>
-                let equipped = forM (
-                    player <- get(id, scene);
-                    eid    <- EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene);
-                    enemy  <- EnemyScene.get(eid, scene);
-                    idx    <- firstWeaponIdxReaching(player,
-                                  Weapon.manhattan(player#gridPos, enemy#gridPos))
-                ) yield equipWeapon(id, idx, scene);
-                Option.getWithDefault(scene, equipped)
         }
 
     /// インベントリの先頭から、距離 `distance` に射程が届く最初の武器の index を返す。
@@ -589,6 +651,77 @@ mod PlayerScene {
                 EngineNode.Marker2DWithState(marker, NodeTag.Player(f(d)))
             case other => other
         }, scene)
+
+    /// F6a: hp 書込 funnel。scene の hp を更新しつつ World にも `Cmd.SetHp` で dual-write する。
+    /// 純 hp 書込（回復/吸血/効果回復など）の置換先。複合書込（hp＋他 field）は呼び出し側で単独 emit する。
+    pub def setHp(id: Int32, newHp: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(id), newHp));
+        mapPlayer(id, d -> {hp = newHp | d}, scene)
+
+    /// D3: weapons 書込 funnel。`scene`（mutation 適用後）から該当 player の weapons を読み戻して
+    /// `Cmd.SetWeapons` を World へ dual-write する（`emitHpAt` と同じ「適用後 scene を読んで emit」流儀）。
+    /// 装備並べ替え/捨てる/拾う/並び替え/こうかん など全 weapons mutation funnel の末尾で呼ぶ。
+    pub def emitWeaponsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Player(playerId), getWeapons(playerId, scene)));
+        // S2.4: weaponView は装備武器由来＝weapons funnel と 1:1 で SetWeaponView も co-emit（網羅を構造保証）。
+        emitWeaponViewFromScene(playerId, scene)
+
+    /// S2.4: weaponView 書込 funnel（`emitBaseStatsFromScene` 同型）。mutation 適用後の `scene` から該当 player の
+    /// 装備武器投影を読み戻して `Cmd.SetWeaponView` を World へ dual-write する。`emitWeaponsFromScene` が内部で呼ぶほか、
+    /// emitWeaponsFromScene を経由しない weapons 書込サイト（carry/CombatDriver 耐久消費）からも直接呼ぶ。pub。
+    pub def emitWeaponViewFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        match get(playerId, scene) {
+            case Some(d) => World.Command.emit(World.Cmd.SetWeaponView(World.EntityRef.Player(playerId), equippedWeaponView(d)))
+            case None    => ()
+        }
+
+    /// S2.4: ringBonus 書込 funnel（`emitWeaponViewFromScene` 同型）。mutation 適用後の `scene` から該当 player の
+    /// 装備指輪ボーナスを読み戻して `Cmd.SetRingBonus` を World へ dual-write する。rings/ringEquipped funnel が内部で呼ぶ。pub。
+    pub def emitRingBonusFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        match get(playerId, scene) {
+            case Some(d) => World.Command.emit(World.Cmd.SetRingBonus(World.EntityRef.Player(playerId), equippedRingBonus(d)))
+            case None    => ()
+        }
+
+    /// S2.3: baseStats 書込 funnel。`scene`（resource mutation 適用後）から該当 player の resource を読み戻して
+    /// `Cmd.SetBaseStats` を World へ dual-write する（`emitWeaponsFromScene` と同じ read-after-mutate 流儀）。
+    /// level-up（CombatDriver）/carry 復元/snapshot 復元/復活など resource を書き換えた直後に呼ぶ。pub（CombatDriver から）。
+    pub def emitBaseStatsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        match get(playerId, scene) {
+            case Some(d) =>
+                World.Command.emit(World.Cmd.SetBaseStats(World.EntityRef.Player(playerId), Combat.baseStatsFrom(d#resource)));
+                // resource が変わる全サイトで growth read-model も束ねて更新する。
+                World.Command.emit(World.Cmd.SetGrowth(playerId,
+                    {base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}))
+            case None    => ()
+        }
+
+    /// S3: statusEffects 書込 funnel（`emitBaseStatsFromScene` 同型）。mutation（add/clearImmobilized/bind/tick）
+    /// 適用後の `scene` から該当 player の `#statuses` を読み戻して `Cmd.Seed`（全置換 replace 意味論）で World へ
+    /// dual-write する。各操作を個別 Cmd に写さず変更後の全リストを Seed で置換＝網羅が単純化し漏れにくい。
+    /// statuses を書く全サイトの末尾で呼ぶ（特にターン開始 tick）。pub（StaffCast/CombatDriver/EnemyScene 起点から）。
+    pub def emitStatusesFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        match get(playerId, scene) {
+            case Some(d) => World.Command.emit(World.Cmd.Seed(World.EntityRef.Player(playerId), d#statuses))
+            case None    => ()
+        }
+
+    /// D4: staves/consumables/rings/ringEquipped 書込 funnel（`emitWeaponsFromScene` 同型）。
+    /// mutation 適用後の `scene` から該当 player の各インベントリを読み戻して Cmd を World へ dual-write する。
+    /// `pub`（StaffCast の杖/瓶消費からも呼ぶ）。
+    pub def emitStavesFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        World.Command.emit(World.Cmd.SetStaves(World.EntityRef.Player(playerId), getStaves(playerId, scene)))
+    pub def emitConsumablesFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        World.Command.emit(World.Cmd.SetConsumables(World.EntityRef.Player(playerId), getConsumables(playerId, scene)))
+    pub def emitRingsFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        World.Command.emit(World.Cmd.SetRings(World.EntityRef.Player(playerId), getRings(playerId, scene)));
+        // S2.4: ringBonus は装備指輪由来＝rings funnel と 1:1 で SetRingBonus も co-emit。
+        emitRingBonusFromScene(playerId, scene)
+    pub def emitRingEquippedFromScene(playerId: Int32, scene: Scene[NodeTag]): Unit \ World.Command =
+        let eq = get(playerId, scene) |> Option.map(d -> d#ringEquipped) |> Option.getWithDefault(false);
+        World.Command.emit(World.Cmd.SetRingEquipped(World.EntityRef.Player(playerId), eq));
+        // S2.4: ringBonus は ringEquipped 切替でも変わる＝ringEquipped funnel とも 1:1 で SetRingBonus を co-emit。
+        emitRingBonusFromScene(playerId, scene)
 
     /// 指定プレイヤーの上下左右 1 マスに居る他味方を返す（自分は含まない）。
     /// 「こうかん」コマンドや将来の隣接判定 (例: 助太刀) の出現条件として使う。
@@ -642,25 +775,46 @@ mod PlayerScene {
         members |> List.findMap(m -> if (m#id == id) Some(m#gridPos) else None)
 
     /// アクティブ（waited でない）味方のうち、id 最小のものを返す。誰も居なければ None。
-    /// `commitWaitedAndAdvance` の直後にカーソルを次に動ける駒へ飛ばす用途で使う
-    /// (`PlayerData.PartyQuery` 経由だとフレーム冒頭 snapshot を読むため stale)。
-    pub def firstActive(scene: Scene[NodeTag]): Option[Data] =
+    /// `commitWaitedAndAdvance` の直後にカーソルを次に動ける駒へ飛ばす用途で使う。
+    /// P6-2a: waited は **World 直読み**（read-after-write でフレーム中の SetWaited も即時見える。
+    /// scene の d#waited twin は syncTree 派生を退役し stale）。
+    pub def firstActive(scene: Scene[NodeTag]): Option[Data] \ World.WorldQuery =
+        let w = World.WorldQuery.get();
         getAll(scene)
-            |> List.filter(d -> not d#waited)
+            |> List.filter(d -> not (World.waitedOf(World.EntityRef.Player(d#id), w)
+                                        |> Option.getWithDefault(false)))
+            |> List.sortBy(d -> d#id)
+            |> List.head
+
+    /// `firstActive` の「`excludeId` を行動済み扱いにする」変種。
+    /// P6-2a: waited を World 直読みにしたため「たった今 waited 化した駒」も store で即時 true になり
+    /// 除外は冗長になったが、防御的に維持（呼び出し側 API 据置・二重に安全）。
+    pub def firstActiveExcluding(excludeId: Option[Int32], scene: Scene[NodeTag]):
+            Option[Data] \ World.WorldQuery =
+        let w = World.WorldQuery.get();
+        getAll(scene)
+            |> List.filter(d -> not (World.waitedOf(World.EntityRef.Player(d#id), w)
+                                        |> Option.getWithDefault(false))
+                                and Some(d#id) != excludeId)
             |> List.sortBy(d -> d#id)
             |> List.head
 
     /// 主人公(lordId=0)が集合（行軍）を率いられる状態か。集合は `beginGather` が主人公を
     /// 選択駒に固定するので、主人公が戦闘不能(hp<=0) / 階段退場(hidden) / かなしばり(immobilized)
     /// のいずれかなら率いられない。集合のターン跨ぎ自動継続の前提チェックに使う。
-    pub def lordReadyToGather(scene: Scene[NodeTag]): Bool =
+    pub def lordReadyToGather(scene: Scene[NodeTag]): Bool \ World.WorldQuery =
+        // P6-2a: hp は World 直読み（ECS 戦闘は scene hp を書かず syncTree 派生も退役＝scene twin は stale）。
+        // hidden/statuses は scene 権威のまま。
+        let w = World.WorldQuery.get();
         match get(lordId(), scene) {
-            case Some(d) => d#hp > 0 and not d#hidden and not StatusSystem.isImmobilized(d#statuses)
+            case Some(d) =>
+                let hp = World.hpOf(World.EntityRef.Player(lordId()), w) |> Option.getWithDefault(d#hp);
+                hp > 0 and not d#hidden and not StatusSystem.isImmobilized(d#statuses)
             case None    => false
         }
 
     /// 敵攻撃で HP=0 になったプレイヤーを scene から取り除く。`killed` は
-    /// `CombatScene.applyEnemyAttackHit` が返した死亡 id のリスト (通常 1 要素)。
+    /// `CombatDriver.applyEnemyAttackHit` が返した死亡 id のリスト (通常 1 要素)。
     /// 選択中プレイヤーが含まれていれば (反撃で死亡したケース) 選択も解除する。
     /// 次のいずれかでゲームオーバー (`CustomEffects.GameOverRequest.request`) を emit し、
     /// handler 側でマップ・配置を 1F からフルリビルドする:
@@ -669,13 +823,14 @@ mod PlayerScene {
     pub def removeDeadAndCheckGameOver(killed: List[Int32],
                                          scene: Scene[NodeTag]):
             Scene[NodeTag] \ {CustomEffects.GameOverRequest, SelectedPlayer.State,
-                               GameLogger.GameLogger} =
+                               GameLogger.GameLogger, World.Command, World.WorldQuery} =
         if (List.isEmpty(killed)) scene
         else {
             // ノード除去の前に、現在いる全味方の位置を記録する（女神の加護の「その場復活」用）。
             // 死亡する駒もこの時点ではまだ scene 上におり、最後の位置が取れる。handler 側で蓄積する。
+            // P6-2b fix: 位置は World 上書き Data（scene gridPos twin は退役）。
             CustomEffects.GameOverRequest.markDeaths(
-                getAll(scene) |> List.map(d -> (d#id, d#gridPos)) |> List.toMap);
+                getAllWithWorldPos(scene) |> List.map(d -> (d#id, d#gridPos)) |> List.toMap);
             // 蘇生薬(AutoRevive)を所持している脱落者は、scene から取り除く前に全回復して復活させる。
             // この時点ではまだ味方ノードが生きている（removeAt 前）ので consumables/最大HP を読める。
             // 復活した分は killed から外れ、ロード戦死や全滅もそのぶん回避される。
@@ -687,6 +842,8 @@ mod PlayerScene {
             let stillDead = revive#stillDead;
             if (List.isEmpty(stillDead)) revivedScene
             else {
+                // ノード除去と対で World の全 store からも除去する。
+                List.forEach(id -> World.Command.emit(World.Cmd.Despawn(World.EntityRef.Player(id))), stillDead);
                 let removed = List.foldLeft(
                     (sc, id) -> Scene.removeAt(playerPath(id), sc),
                     revivedScene, stillDead);
@@ -707,73 +864,85 @@ mod PlayerScene {
     /// 蘇生薬で復活する味方 1 体の Scene 反映: HP を最大まで戻し、蘇生薬消費後の
     /// インベントリへ差し替え、HPBar 更新、復活ログを出す。`removeDeadAndCheckGameOver` 専用。
     def reviveOne(id: Int32, newConsumables: List[Consumable.ConsumableResource],
-                   scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+                   scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         match get(id, scene) {
             case None    => scene
             case Some(d) =>
                 let maxHp = d#resource#hp;
+                World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(id), maxHp));  // F6a: 復活 hp を World へ
                 GameLogger.playerLog("${displayName(id, scene)}は 蘇生薬で復活した");
-                scene
-                    |> mapPlayer(id, dd -> {hp = maxHp, consumables = newConsumables | dd})
-                    |> UnitHPBarScene.update(playerPath(id), maxHp)
+                let revived = scene
+                    |> mapPlayer(id, dd -> {hp = maxHp, consumables = newConsumables | dd});
+                // D4: hp と consumables を束ねた書込（蘇生薬消費）＝F6 教訓の束ね書込。consumables も World へ dual-write。
+                emitConsumablesFromScene(id, revived);
+                revived
         }
 
     /// プレイヤーを「行動済み」にして sprite を灰色 modulate にする。
     /// AnimatedSprite2D 持ち unit はここで idle アニメに戻す (= 待機モーション表示)。
     /// PlayerAttack 確定 / スキップ時に呼ばれる。
-    pub def setWaited(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def setWaited(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // S6: waited は World 権威（Cmd.SetWaited が唯一の source）。scene への直書きは撤去し、
+        // frame-end の syncTreeFromWorld が scene へ一方向 derive する（dual-write 解消）。
+        World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), true));  // F7-slice5
         scene
-            |> mapPlayer(id, d -> {waited = true | d})
             |> setSpriteModulate(id, waitedColor())
-            |> UnitHPBarScene.setModulate(playerPath(id), waitedColor())
-            |> WeaponIconScene.setModulate(playerPath(id), waitedColor())
             |> playAnim(id, idleAnimName())
 
     /// プレイヤー 1 体を「行動可能(アクティブ)」に戻す。`waited` を下ろし、sprite/HP ゲージを
     /// 通常色へ、idle アニメへ戻す（`setWaited` の逆）。集合キャンセルの巻き戻しで使う。
-    pub def setActive(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def setActive(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // S6: waited は World 権威。scene 直書きは撤去（syncTreeFromWorld で derive）。
+        World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), false));  // F7-slice5
         scene
-            |> mapPlayer(id, d -> {waited = false | d})
             |> setSpriteModulate(id, activeColor())
-            |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
-            |> WeaponIconScene.setModulate(playerPath(id), activeColor())
             |> playAnim(id, idleAnimName())
 
     /// 完全停止（かなしばり）を解除する。被攻撃 or 被投擲の瞬間に呼ぶ。
     /// 停止していなければ no-op（他の時限ステータスは残す）。
-    pub def releaseBind(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, scene)
+    pub def releaseBind(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // S3: mutation 後に読んで Seed で全置換（read-after-mutate の正しい流儀）。
+        let cleared = mapPlayer(id, d -> {statuses = StatusSystem.clearImmobilized(d#statuses) | d}, scene);
+        emitStatusesFromScene(id, cleared);
+        cleared
 
     /// 全プレイヤーの waited をクリアし、sprite を白に戻す。
     /// ターン開始時に呼ばれ、AnimatedSprite2D 持ち unit は idle アニメに戻す
     /// (= 新ターン開始時の待機モーション)。
     /// 敵ターン終了後に呼ぶ（次の味方ターン開始）。
-    pub def clearAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+    pub def clearAllWaited(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, PlayerData.PartyQuery} =
         // 階段で退場した味方 (usedStairs) は「行動済み」を維持し、敵ターン後も再行動させない。
         let ids = getAll(scene) |> List.filter(d -> not d#usedStairs) |> List.map(d -> d#id);
-        let reset = List.foldLeft((sc, id) ->
-            sc
-                // 味方ターン開始ごとに時限ステータス（自己バフ等）を 1 ターン分減算し、
-                // 追撃リングの二重発動フラグを戻す。
-                |> mapPlayer(id, d -> {waited = false, statuses = StatusSystem.tick(d#statuses),
-                                       followUpUsed = false | d})
+        // emit-flip(E1, dual-write): 味方ターン開始 tick を World へ発行（scene の inline tick も当面維持）。
+        World.Command.emit(World.Cmd.TickPlayers(ids));
+        let reset = List.foldLeft((sc, id) -> {
+            World.Command.emit(World.Cmd.SetFollowUpUsed(World.EntityRef.Player(id), false));  // F7-slice4: reset を World へ
+            World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), false));  // F7-slice5: ターン開始で waited 解除
+            let sc1 = sc
+                // 味方ターン開始ごとに時限ステータス（自己バフ等）を 1 ターン分減算する。
+                // 追撃リングの二重発動フラグ(followUpUsed)は World 権威＝上の Cmd emit のみ（scene 直書き撤去・syncTree derive）。
+                |> mapPlayer(id, d -> {waited = false, statuses = StatusSystem.tick(d#statuses) | d})
                 |> setSpriteModulate(id, activeColor())
-                |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
-                |> WeaponIconScene.setModulate(playerPath(id), activeColor())
-                |> playAnim(id, idleAnimName()),
+                |> playAnim(id, idleAnimName());
+            // S3: 味方ターン開始 tick 後の statuses を per-entity で World へ Seed（tick 網羅の核心）。
+            emitStatusesFromScene(id, sc1);
+            sc1 },
             scene, ids);
         // 味方ターン開始時に、いやしのリングを装備した味方の HP を回復する。
         applyRingRegen(reset)
 
     /// いやしのリングを装備した味方の HP を回復する（最大 HP でクランプ）。味方ターン開始で呼ぶ。
     /// 実際に回復した味方はログに出す。
-    pub def applyRingRegen(scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
+    pub def applyRingRegen(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, PlayerData.PartyQuery} =
         let ids = getAll(scene) |> List.map(d -> d#id);
         List.foldLeft((sc, id) -> regenOnePlayer(id, sc), scene, ids)
 
     /// 1 味方ぶんの Mend 回復。Mend 以外 / 未装備なら no-op（match は入れ子にしない）。
-    def regenOnePlayer(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ GameLogger.GameLogger =
-        match get(id, scene) {
+    /// P2-r1: 判定読み（装備指輪/hp）は PartyQuery（World オーバーレイ）経由。
+    def regenOnePlayer(id: Int32, scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, PlayerData.PartyQuery} =
+        match PlayerData.PartyQuery.get(id) {
             case None    => scene
             case Some(d) => mendOnePlayer(id, d, scene)
         }
@@ -781,27 +950,24 @@ mod PlayerScene {
     /// 回復量を計算して適用するヘルパー（regenOnePlayer から呼ぶ）。
     /// 満タン等で実際に HP が増えないときはログも出さない。
     def mendOnePlayer(id: Int32, d: Data, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         let amt = Ring.mendAmount(PlayerData.equippedRing(d));
         let newHp = Combat.heal(d#hp, d#resource#hp, amt)#newHp;
         if (amt <= 0 or newHp <= d#hp) scene
         else {
             GameLogger.playerLog("${d#resource#description} は いやしのリングで HP+${newHp - d#hp}");
             scene
-                |> mapPlayer(id, dd -> {hp = newHp | dd})
-                |> UnitHPBarScene.update(playerPath(id), newHp)
+                |> setHp(id, newHp)
         }
 
     /// 全プレイヤーの sprite / HP ゲージを通常色(active)に戻す。`waited` フラグは変えない。
     /// 敵フェーズ中に「味方の行動済み灰色」を消してアクティブに見せるために使う
     /// （待機しているという扱い自体は残し、見た目だけ通常色に戻す。階段で退場済みの味方は対象外）。
-    pub def showAllActive(scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def showAllActive(scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let ids = getAll(scene) |> List.filter(d -> not d#usedStairs) |> List.map(d -> d#id);
         List.foldLeft((sc, id) ->
             sc
-                |> setSpriteModulate(id, activeColor())
-                |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
-                |> WeaponIconScene.setModulate(playerPath(id), activeColor()),
+                |> setSpriteModulate(id, activeColor()),
             scene, ids)
 
     /// AutoMove で消費した移動歩数を記録するための setter。
@@ -823,7 +989,9 @@ mod PlayerScene {
     /// hidden を立てる(階段で退場して消える)。`flag = false` で元に戻す。
     /// 親 Marker2D を不可視にすると子 Sprite / HPBar も連動して消える(Godot の
     /// 親子可視性 AND。CursorScene.setVisible と同手法)。
-    pub def setHidden(id: Int32, flag: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def setHidden(id: Int32, flag: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // playerHidden store へ dual-write する。
+        World.Command.emit(World.Cmd.SetHidden(World.EntityRef.Player(id), flag));
         Scene.mapEngineNode(playerPath(id), engineNode -> match engineNode {
             case EngineNode.Marker2DWithState(marker, NodeTag.Player(d)) =>
                 EngineNode.Marker2DWithState(CanvasItem.setVisible(not flag, marker),
@@ -831,39 +999,29 @@ mod PlayerScene {
             case other => other
         }, scene)
 
-    /// 指定 id の子 Sprite の modulate を変える内部ヘルパー。
-    /// Sprite2D / AnimatedSprite2D どちらの実装でも動くように両方の inner mapper を試す。
+    /// P6-1h: 暗転色を World store（unitModulate）へ emit（sprite ノード撤去に伴い Cmd 化。
+    /// 本体描画/HP バー/武器アイコンが同じ store を読む）。scene はパイプ素通し。
     def setSpriteModulate(id: Int32, color: Color,
-                           scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(spritePath(id),
-            n -> n
-                |> EngineNode.mapSprite2D(s -> CanvasItem.setModulate(color, s))
-                |> EngineNode.mapAnimSprite2D(s -> CanvasItem.setModulate(color, s)),
-            scene)
+                           scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetModulate(World.EntityRef.Player(id), color));
+        scene
 
-    /// 子 Sprite が AnimatedSprite2D なら `play(animName)` を適用する内部ヘルパー。
-    /// Sprite2D だった場合 (= spriteFrames を持たない unit) は no-op。
-    /// unknown id や Sprite ノードが無いケースも no-op で安全。
-    def playAnim(id: Int32, animName: String, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(spritePath(id), node -> match node {
-            case EngineNode.AnimSprite2DWithState(sp, tag) =>
-                EngineNode.AnimSprite2DWithState(AnimatedSprite2D.play(animName, sp), tag)
-            case other => other
-        }, scene)
+    /// P6-1h: 再生アニメを World store（unitAnim）へ emit（play 意味論は applyCmd が再現）。
+    /// spriteFrames を持たない unit でも emit 自体は無害（描画側が resource を見て無視）。
+    def playAnim(id: Int32, animName: String, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetAnim(World.EntityRef.Player(id), animName));
+        scene
 
-    /// 子 Sprite (Sprite2D / AnimatedSprite2D いずれの実装でも) に flipH を設定する。
-    def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(spritePath(id),
-            n -> n
-                |> EngineNode.mapSprite2D(s -> Sprite2D.setFlipH(h, s))
-                |> EngineNode.mapAnimSprite2D(s -> AnimatedSprite2D.setFlipH(h, s)),
-            scene)
+    /// P6-1h: 左右反転を World store（unitFlipH）へ emit。
+    def setSpriteFlipH(id: Int32, h: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetFlipH(World.EntityRef.Player(id), h));
+        scene
 
     /// 進行方向に応じて「左向きの絵」を水平反転する。Right で flipH=true (右向き)、
     /// Left で flipH=false (左向き=素材そのまま)。Up/Down/None は現状維持。
     /// `sprite#flipForFacing` を持たない駒では呼び出し側 (`flipsForFacing`) が抑止する。
     def applyFacingFlip(id: Int32, dirOpt: Option[Staff.Direction],
-                         scene: Scene[NodeTag]): Scene[NodeTag] =
+                         scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match dirOpt {
             case Some(Staff.Direction.Right) => setSpriteFlipH(id, true, scene)
             case Some(Staff.Direction.Left)  => setSpriteFlipH(id, false, scene)
@@ -899,20 +1057,16 @@ mod PlayerScene {
     /// 現在の全プレイヤーの spawn 情報（id / gridPos / resource / weapons / staves）を抽出する。
     /// `Game.start` で初回 build 直後に呼んで保存する。
     /// 攻撃前に取られる前提でインベントリは無破損の初期値。respawn ではこの値で復元される。
-    pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] =
+    /// P2-r1: 射影元 Data を `World.dataFromWorld` オーバーレイで World store 由来にする
+    /// （captureSnaps と同型・dual-write 中は等値＝挙動不変）。
+    pub def snapshotSpawns(scene: Scene[NodeTag]): List[Spawn] \ World.WorldQuery =
+        let world = World.WorldQuery.get();
         getAll(scene)
-            |> List.map(d ->
+            |> List.map(d0 ->
+                let d = World.dataFromWorld(d0#id, world, scene) |> Option.getWithDefault(d0);
                 ({id = d#id, classId = d#classId, gridPos = d#gridPos, resource = d#resource,
                    weapons = d#weapons, staves = d#staves,
                    consumables = d#consumables, rings = d#rings}: Spawn))
-
-    /// 既存のプレイヤーを全て scene から取り除き、`spawns` から再構築する。
-    /// HP / waited / gridPos を初期値で生成する。
-    pub def respawnFromInitial(spawns: List[Spawn],
-                                scene: Scene[NodeTag]): Scene[NodeTag] =
-        let cleared = List.foldLeft((sc, d) ->
-            Scene.removeAt(playerPath(d#id), sc), scene, getAll(scene));
-        List.foldLeft((sc, sp) -> addOnePlayer(sp, sc), cleared, spawns)
 
     // ────────────────────────────────────────────────────────
     // (F') フロア進行 — 階段退場 / フロア持ち越し
@@ -942,10 +1096,14 @@ mod PlayerScene {
     /// `waited` も立てるので「行動済み」扱いになり、`firstActive` の対象から
     /// 外れて以後このフロアでは動けない。`clearAllWaited` は usedStairs を維持するため
     /// 敵ターンを跨いでも退場状態のままになる。次フロア構築 (addOnePlayer) で全て false に戻る。
-    pub def useStairs(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def useStairs(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), true));  // F7-slice5: 階段退場で waited を World へ
+        World.Command.emit(World.Cmd.SetUsedStairs(World.EntityRef.Player(id), true));  // S5: usedStairs を World へ dual-write
         scene
             |> setHidden(id, true)
-            |> mapPlayer(id, d -> {usedStairs = true, waited = true | d})
+            // S6: waited は World 権威（上の Cmd.SetWaited が source・syncTreeFromWorld で derive）。
+            // S5: usedStairs は store 化（additive・dual-write）。reader flip は後続ゆえ scene も維持。
+            |> mapPlayer(id, d -> {usedStairs = true | d})
 
     /// 生存している味方が「全員」階段を使ったか（= このフロアの終了条件）。
     /// 生存者が 1 人も居ない場合は false（それは全滅 = ゲームオーバー側の扱い）。
@@ -955,8 +1113,12 @@ mod PlayerScene {
 
     /// 現在の生存味方の引き継ぎ用ステータス（HP / 武器 / 持ち物）を抽出する。
     /// 次フロアへ進む直前に呼び、構築後の `reconcileWithCarry` で復元する。
-    pub def snapshotCarry(scene: Scene[NodeTag]): List[CarryData] =
+    /// P2-r1: 射影元 Data を `World.dataFromWorld` オーバーレイで World store 由来にする
+    /// （captureSnaps と同型・dual-write 中は等値＝挙動不変）。
+    pub def snapshotCarry(scene: Scene[NodeTag]): List[CarryData] \ World.WorldQuery =
+        let world = World.WorldQuery.get();
         getAll(scene)
+            |> List.map(d0 -> World.dataFromWorld(d0#id, world, scene) |> Option.getWithDefault(d0))
             |> List.filter(d -> d#hp > 0)
             |> List.map(d ->
                 ({id = d#id, hp = d#hp, weapons = d#weapons, staves = d#staves,
@@ -971,20 +1133,35 @@ mod PlayerScene {
     ///     HP バーも更新する
     /// `waited` / `usedStairs` / `hidden` / `moveStepsTaken` は addOnePlayer が false / 0 で
     /// 作り直しているのでリセット不要（= フロア開始時に全員再行動可・たいきリセット）。
-    pub def reconcileWithCarry(carry: List[CarryData], scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def reconcileWithCarry(carry: List[CarryData], scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let carryIds = carry |> List.map(c -> c#id);
-        let pruned = getAll(scene)
+        let deadIds = getAll(scene)
             |> List.filter(d -> not List.exists(id -> id == d#id, carryIds))
-            |> List.foldLeft((sc, d) -> Scene.removeAt(playerPath(d#id), sc), scene);
-        List.foldLeft((sc, c) ->
-            sc
+            |> List.map(d -> d#id);
+        // P6-2c: ノード除去と対で World からも除去（前フロア戦死者の store 掃除）。
+        List.forEach(id -> World.Command.emit(World.Cmd.Despawn(World.EntityRef.Player(id))), deadIds);
+        let pruned = List.foldLeft((sc, id) -> Scene.removeAt(playerPath(id), sc), scene, deadIds);
+        List.foldLeft((sc, c) -> {
+            World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(c#id), c#hp));  // F6a: carry hp を World へ
+            World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(c#id), c#level, c#exp));  // World 拡張: carry 進行度
+            World.Command.emit(World.Cmd.SetWeapons(World.EntityRef.Player(c#id), c#weapons));  // D3: carry weapons を World へ
+            World.Command.emit(World.Cmd.SetStaves(World.EntityRef.Player(c#id), c#staves));  // D4: carry inventory を World へ
+            World.Command.emit(World.Cmd.SetConsumables(World.EntityRef.Player(c#id), c#consumables));
+            World.Command.emit(World.Cmd.SetRings(World.EntityRef.Player(c#id), c#rings));
+            World.Command.emit(World.Cmd.SetRingEquipped(World.EntityRef.Player(c#id), c#ringEquipped));
+            let next = sc
                 |> mapPlayer(c#id, d ->
                     {hp = c#hp, weapons = c#weapons, staves = c#staves,
                      consumables = c#consumables, rings = c#rings,
                      ringEquipped = c#ringEquipped,
                      level = c#level, exp = c#exp,
-                     resource = LevelSystem.withStats(c#stats, d#resource) | d})
-                |> UnitHPBarScene.updateMaxHp(playerPath(c#id), c#hp, c#stats#hp),
+                     resource = LevelSystem.withStats(c#stats, d#resource) | d});
+            // S2.3: carry の成長後 stats を resource へ書いた＝baseStats の source が変わったので World へ dual-write。
+            emitBaseStatsFromScene(c#id, next);
+            // S2.4: carry の weapons/rings/ringEquipped 復元に 1:1 で weaponView/ringBonus も World へ dual-write。
+            emitWeaponViewFromScene(c#id, next);
+            emitRingBonusFromScene(c#id, next);
+            next },
             pruned, carry)
 
     /// スナップショットの味方リストから決定論的に再配置する（乱数なし）。
@@ -997,7 +1174,7 @@ mod PlayerScene {
                           staffCatalog: Staff.StaffCatalog,
                           consumableCatalog: Consumable.ConsumableCatalog,
                           ringCatalog: Ring.RingCatalog,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         List.foldLeft((acc, snap) ->
             placeOneFromSnap(snap, catalog, staffCatalog, consumableCatalog, ringCatalog, acc),
             scene, snaps)
@@ -1011,14 +1188,28 @@ mod PlayerScene {
                           staffCatalog: Staff.StaffCatalog,
                           consumableCatalog: Consumable.ConsumableCatalog,
                           ringCatalog: Ring.RingCatalog,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let sp = snapToPlayerSpawn(snap, catalog, staffCatalog, consumableCatalog, ringCatalog);
-        addOnePlayer(sp, scene)
+        let placed = addOnePlayer(sp, scene)
             |> mapPlayer(snap#id, d -> {hp = snap#hp, level = snap#level, exp = snap#exp,
                                          ringEquipped = snap#ringEquipped,
                                          facing = snap#facing, statuses = snap#statuses,
-                                         resource = LevelSystem.withStats(snap#stats, d#resource) | d})
-            |> UnitHPBarScene.updateMaxHp(playerPath(snap#id), snap#hp, snap#stats#hp)
+                                         resource = LevelSystem.withStats(snap#stats, d#resource) | d});
+        // 🐛fix: 復元 hp/progress の World dual-write は **addOnePlayer の後**に emit する。
+        // addOnePlayer が spawn 値(SetHp(maxHp)/SetProgress(level,0)) を emit するので、先に出すと
+        // worldRef で spawn 値に上書きされてしまう（scene は mapPlayer 上書きで snap 値・World だけ spawn ＝[DIFF]）。
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#hp));
+        World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
+        // S2.3: mapPlayer が resource=withStats(snap#stats,..) で成長後 stats に上書き（addOnePlayer は base resource を seed）。
+        // hp/progress 同様 addOnePlayer の後に emit（spawn 値上書き回避）＝[BASESTATS DIFF] を塞ぐ。
+        emitBaseStatsFromScene(snap#id, placed);
+        // D4: mapPlayer が ringEquipped=snap#ringEquipped で上書き（addOnePlayer は false を seed）＝束ね書込の片割れ。
+        emitRingEquippedFromScene(snap#id, placed);
+        // S3: mapPlayer が statuses=snap#statuses で上書き（addOnePlayer は Nil を seed）。中断再開は in-loop phase
+        // change で fresh syncFromScene が無く refreshMirror も preserve ゆえ、ここで Seed しないと scene の復元
+        // statuses（非空のとき）が World へ届かず [STATUSEFFECTS DIFF]＋combatViewOf が buff/debuff を落とす。
+        emitStatusesFromScene(snap#id, placed);
+        placed
 
     /// `PlayerSnap` を配置用 `Spawn`（base resource ＋ 解決済み持ち物）に変換する。
     /// `placeOneFromSnap`（フロア最初から）と `reviveOneFromSnap`（女神の加護）が共有する。
@@ -1063,7 +1254,7 @@ mod PlayerScene {
                                 consumableCatalog: Consumable.ConsumableCatalog,
                                 ringCatalog: Ring.RingCatalog,
                                 leaderPos: {x = Int32, y = Int32},
-                                scene: Scene[NodeTag]): Scene[NodeTag] =
+                                scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let cleared = List.foldLeft((sc, d) -> Scene.removeAt(playerPath(d#id), sc), scene, getAll(scene));
         let layer = MapScene.getMapLayer(cleared);
         // リーダーを先頭にして、近い順に空きセルを割り当てる（先頭がちょうど leaderPos に乗る）。
@@ -1107,22 +1298,35 @@ mod PlayerScene {
                      staffCatalog: Staff.StaffCatalog,
                      consumableCatalog: Consumable.ConsumableCatalog,
                      ringCatalog: Ring.RingCatalog,
-                     scene: Scene[NodeTag]): Scene[NodeTag] =
+                     scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let sp = {gridPos = cell | snapToPlayerSpawn(snap, catalog, staffCatalog, consumableCatalog, ringCatalog)};
-        addOnePlayer(sp, scene)
+        let placed = addOnePlayer(sp, scene)
             |> mapPlayer(snap#id, d -> {hp = snap#stats#hp, level = snap#level, exp = snap#exp,
                                          ringEquipped = snap#ringEquipped,
-                                         resource = LevelSystem.withStats(snap#stats, d#resource) | d})
-            |> UnitHPBarScene.updateMaxHp(playerPath(snap#id), snap#stats#hp, snap#stats#hp)
+                                         resource = LevelSystem.withStats(snap#stats, d#resource) | d});
+        // 🐛fix: 復元 hp/progress の World emit は addOnePlayer の後（spawn 値上書き回避・placeOneFromSnap と同じ）。
+        World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#stats#hp));
+        World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
+        // S2.3: mapPlayer が resource=withStats(snap#stats,..) で成長後 stats に上書き＝baseStats source 変化（placeOneFromSnap と同型）。
+        emitBaseStatsFromScene(snap#id, placed);
+        // D4: mapPlayer が ringEquipped=snap#ringEquipped で上書き（addOnePlayer は false を seed）＝束ね書込の片割れ。
+        emitRingEquippedFromScene(snap#id, placed);
+        placed
 
     /// 現在の全味方を `PlayerSnap` 列に射影する（スナップショット保存用）。持ち物 resource は
     /// 各 catalog の `idOf`（name 逆引き）で id 化し、耐久など動的値を併せて保持する。
+    /// P2-r1（セーブ capture の World 化）: 射影元 Data を `World.dataFromWorld` オーバーレイで
+    /// World store（hp/在庫/level/exp/statuses/pos 等）由来にする（core store 欠けは scene fallback）。
+    /// dual-write 中は scene と等値（[PLAYERDATA DIFF] 無音が担保）＝挙動不変で、P6 の
+    /// scene field 削除に先行して読み口だけ World へ寄せる。セーブ**形式**は不変。
     pub def captureSnaps(scene: Scene[NodeTag],
                           weaponCatalog: WeaponCatalog.WeaponCatalog,
                           staffCatalog: Staff.StaffCatalog,
                           consumableCatalog: Consumable.ConsumableCatalog,
-                          ringCatalog: Ring.RingCatalog): List[FloorSnapshot.PlayerSnap] =
-        getAll(scene) |> List.map(d ->
+                          ringCatalog: Ring.RingCatalog): List[FloorSnapshot.PlayerSnap] \ World.WorldQuery =
+        let world = World.WorldQuery.get();
+        getAll(scene) |> List.map(d0 ->
+            let d = World.dataFromWorld(d0#id, world, scene) |> Option.getWithDefault(d0);
             ({id = d#id, classId = d#classId, gridPos = d#gridPos, hp = d#hp,
                level = d#level, exp = d#exp, stats = LevelSystem.statsOf(d#resource),
                facing = d#facing, statuses = d#statuses,
@@ -1155,7 +1359,22 @@ mod PlayerScene {
     // ────────────────────────────────────────────────────────
 
     /// 指定 id のプレイヤーの現在グリッド座標を返す。未登録なら panic。
+    /// P6-2b: scene Data の gridPos だけ World.posOf で上書きして返す（他 field は scene 権威のまま）。
+    /// gridPos twin 退役後の「現在位置つき Data」取得口。World 未登録（テスト/spawn 過渡）は scene 値。
+    pub def getWithWorldPos(id: Int32, scene: Scene[NodeTag]): Option[Data] \ World.WorldQuery =
+        let w = World.WorldQuery.get();
+        get(id, scene) |> Option.map(d ->
+            {gridPos = World.posOf(World.EntityRef.Player(id), w) |> Option.getWithDefault(d#gridPos) | d})
+
+    /// `getWithWorldPos` の全員版。
+    pub def getAllWithWorldPos(scene: Scene[NodeTag]): List[Data] \ World.WorldQuery =
+        let w = World.WorldQuery.get();
+        getAll(scene) |> List.map(d ->
+            {gridPos = World.posOf(World.EntityRef.Player(d#id), w) |> Option.getWithDefault(d#gridPos) | d})
+
     pub def getGridPos(id: Int32, scene: Scene[NodeTag]): {x = Int32, y = Int32} =
+        // P6-2b 注: scene twin 読み（World 未登録のテスト/spawn 過渡と replayMoveView fallback 用に残置）。
+        // live の現在位置は World.posOf / PartyQuery を使うこと。
         match get(id, scene) {
             case Some(d) => d#gridPos
             case None    => bug!("PlayerScene: player ${id} not found")
@@ -1215,25 +1434,32 @@ mod PlayerScene {
     /// 武器切り替えの単一 commit 点なので、ここで左上の武器系統アイコンも貼り直す
     /// （WeaponSelect / ItemMenu / BattlePanel いずれの経路でも追従する）。
     pub def equipWeapon(playerId: Int32, idx: Int32,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let moved = mapPlayer(playerId, d -> {weapons = moveToHead(idx, d#weapons) | d}, scene);
-        let equipped = PlayerData.equippedWeapon(getWeapons(playerId, moved));
-        WeaponIconScene.refresh(playerPath(playerId), equipped, moved)
+        emitWeaponsFromScene(playerId, moved);  // D3: 装備並べ替え後の weapons を World へ
+        // P6-1g: 武器アイコンは renderGlyphs/renderPlates が World.weaponView から毎フレーム直描き＝貼り直し不要。
+        moved
 
     /// 指定 idx の武器をインベントリから削除（捨てる）。範囲外なら no-op。
     pub def dropWeapon(playerId: Int32, idx: Int32,
-                         scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId, d -> {weapons = removeAt(idx, d#weapons) | d}, scene)
+                         scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let dropped = mapPlayer(playerId, d -> {weapons = removeAt(idx, d#weapons) | d}, scene);
+        emitWeaponsFromScene(playerId, dropped);  // D3: 捨てた後の weapons を World へ
+        dropped
 
     /// 指定 idx の杖をインベントリから削除（捨てる）。範囲外なら no-op。
     pub def dropStaff(playerId: Int32, idx: Int32,
-                        scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId, d -> {staves = removeAt(idx, d#staves) | d}, scene)
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let dropped = mapPlayer(playerId, d -> {staves = removeAt(idx, d#staves) | d}, scene);
+        emitStavesFromScene(playerId, dropped);  // D4: 捨てた後の staves を World へ
+        dropped
 
     /// 指定 idx の消費アイテムをインベントリから削除（捨てる）。範囲外なら no-op。
     pub def dropConsumable(playerId: Int32, idx: Int32,
-                             scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId, d -> {consumables = removeAt(idx, d#consumables) | d}, scene)
+                             scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let dropped = mapPlayer(playerId, d -> {consumables = removeAt(idx, d#consumables) | d}, scene);
+        emitConsumablesFromScene(playerId, dropped);  // D4: 捨てた後の consumables を World へ
+        dropped
 
     /// 2 プレイヤー間でインベントリのアイテム 1 個ずつを交換する純粋関数。
     ///   - 双方が実体アイテム持ちなら相互スワップ（ともに元の場所から消え、相手の末尾に追加）
@@ -1251,7 +1477,7 @@ mod PlayerScene {
     pub def swapItem(args: {selfId = Int32, selfKind = PlayerData.ItemKind,
                               partnerId = Int32,
                               partnerKind = Option[PlayerData.ItemKind]},
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let selfId      = args#selfId;
         let selfKind    = args#selfKind;
         let partnerId   = args#partnerId;
@@ -1275,7 +1501,7 @@ mod PlayerScene {
     /// ときは各リスト内での相対順だけが変わる。weapons[0] が装備なので武器の並び替えは
     /// 装備変更も兼ねる。
     pub def reorderItem(playerId: Int32, kindA: PlayerData.ItemKind, kindB: PlayerData.ItemKind,
-                         scene: Scene[NodeTag]): Scene[NodeTag] =
+                         scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let weapons     = getWeapons(playerId, scene);
         let staves      = getStaves(playerId, scene);
         let consumables = getConsumables(playerId, scene);
@@ -1308,9 +1534,15 @@ mod PlayerScene {
             case ItemData.GroundItemKind.RingItem(r) => Some(r)
             case _                                    => None
         }, swapped);
-        mapPlayer(playerId, d ->
+        let reordered = mapPlayer(playerId, d ->
             {weapons = newWeapons, staves = newStaves, consumables = newConsumables,
-             rings = newRings | d}, scene)
+             rings = newRings | d}, scene);
+        emitWeaponsFromScene(playerId, reordered);  // D3: 並び替え後の weapons を World へ
+        // D4: 並び替えは staves/consumables/rings も書き換える束ね書込＝3 つとも World へ dual-write。
+        emitStavesFromScene(playerId, reordered);
+        emitConsumablesFromScene(playerId, reordered);
+        emitRingsFromScene(playerId, reordered);
+        reordered
 
     /// PlayerData.ItemKind を、表示順 (weapons ++ staves ++ consumables ++ rings) 上の通し index に変換する。
     def displaySeqIndex(kind: PlayerData.ItemKind, nw: Int32, ns: Int32, nc: Int32): Int32 =
@@ -1354,7 +1586,7 @@ mod PlayerScene {
     /// 指定 player の `kind` のアイテムをインベントリから取り除く。
     /// `dropWeapon` / `dropStaff` のディスパッチ統合版。
     def removeInventoryItem(playerId: Int32, kind: PlayerData.ItemKind,
-                              scene: Scene[NodeTag]): Scene[NodeTag] =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match kind {
             case PlayerData.ItemKind.Weapon(idx)     => dropWeapon(playerId, idx, scene)
             case PlayerData.ItemKind.Staff(idx)      => dropStaff(playerId, idx, scene)
@@ -1364,7 +1596,7 @@ mod PlayerScene {
 
     /// `partnerKind = None` (= 空スロット相手) の場合は no-op、Some なら removeInventoryItem。
     def removeOptInventoryItem(playerId: Int32, kindOpt: Option[PlayerData.ItemKind],
-                                 scene: Scene[NodeTag]): Scene[NodeTag] =
+                                 scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         kindOpt
             |> Option.map(k -> removeInventoryItem(playerId, k, scene))
             |> Option.getWithDefault(scene)
@@ -1373,21 +1605,27 @@ mod PlayerScene {
     /// 「ひろう」「こうかん」「キャンセル undo」など複数の追加経路がここに集約されるため、
     /// 追加ルール（末尾 = 装備中の後ろ）の変更は 1 箇所で完結する。
     pub def addWeapon(playerId: Int32, weapon: UnitCatalog.WeaponResource,
-                       scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId,
-            d -> {weapons = List.append(d#weapons, weapon :: Nil) | d}, scene)
+                       scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let added = mapPlayer(playerId,
+            d -> {weapons = List.append(d#weapons, weapon :: Nil) | d}, scene);
+        emitWeaponsFromScene(playerId, added);  // D3: 拾う/こうかん/undo の追加後 weapons を World へ
+        added
 
     /// 杖インベントリの末尾に 1 個追加する。追加ルールは `addWeapon` と同じ（末尾追加）。
     pub def addStaff(playerId: Int32, staff: Staff.StaffResource,
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId,
-            d -> {staves = List.append(d#staves, staff :: Nil) | d}, scene)
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let added = mapPlayer(playerId,
+            d -> {staves = List.append(d#staves, staff :: Nil) | d}, scene);
+        emitStavesFromScene(playerId, added);  // D4: 追加後の staves を World へ
+        added
 
     /// 消費アイテムインベントリの末尾に 1 個追加する。追加ルールは `addWeapon` と同じ（末尾追加）。
     pub def addConsumable(playerId: Int32, item: Consumable.ConsumableResource,
-                            scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId,
-            d -> {consumables = List.append(d#consumables, item :: Nil) | d}, scene)
+                            scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let added = mapPlayer(playerId,
+            d -> {consumables = List.append(d#consumables, item :: Nil) | d}, scene);
+        emitConsumablesFromScene(playerId, added);  // D4: 追加後の consumables を World へ
+        added
 
     /// 指輪インベントリ（先頭が装備中）。居ない player は Nil。
     pub def getRings(id: Int32, scene: Scene[NodeTag]): List[Ring.RingResource] =
@@ -1398,35 +1636,48 @@ mod PlayerScene {
 
     /// 指輪インベントリの末尾に 1 個追加する（末尾追加 = 装備中の後ろ）。
     pub def addRing(playerId: Int32, ring: Ring.RingResource,
-                     scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId,
-            d -> {rings = List.append(d#rings, ring :: Nil) | d}, scene)
+                     scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let added = mapPlayer(playerId,
+            d -> {rings = List.append(d#rings, ring :: Nil) | d}, scene);
+        emitRingsFromScene(playerId, added);  // D4: 追加後の rings を World へ
+        added
 
     /// 指定 idx の指輪を先頭へ移動し、装備状態にする（`ringEquipped = true`）。範囲外なら no-op。
     /// 拾っただけでは装備されないので、ここを通って初めて効果が出る。
     pub def equipRing(playerId: Int32, idx: Int32,
-                       scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId,
-            d -> {rings = moveToHead(idx, d#rings), ringEquipped = true | d}, scene)
+                       scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let equipped = mapPlayer(playerId,
+            d -> {rings = moveToHead(idx, d#rings), ringEquipped = true | d}, scene);
+        // D4: rings と ringEquipped 両方の束ね書込（装備）＝両方 emit する。
+        emitRingsFromScene(playerId, equipped);
+        emitRingEquippedFromScene(playerId, equipped);
+        equipped
 
     /// 装備中の指輪を外す（所持は維持し、効果だけ止める）。並びは変えない。
-    pub def unequipRing(playerId: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId, d -> {ringEquipped = false | d}, scene)
+    pub def unequipRing(playerId: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let unequipped = mapPlayer(playerId, d -> {ringEquipped = false | d}, scene);
+        emitRingEquippedFromScene(playerId, unequipped);  // D4: 解除後の ringEquipped を World へ
+        unequipped
 
     /// 指定 idx の指輪をインベントリから削除（捨てる）。範囲外なら no-op。
     /// 装備中の指輪（先頭）を捨てたら装備状態も解除する（残った先頭が勝手に装備されないように）。
     pub def dropRing(playerId: Int32, idx: Int32,
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
-        mapPlayer(playerId,
+                      scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        let dropped = mapPlayer(playerId,
             d -> {rings = removeAt(idx, d#rings),
-                  ringEquipped = if (idx == 0) false else d#ringEquipped | d}, scene)
+                  ringEquipped = if (idx == 0) false else d#ringEquipped | d}, scene);
+        // D4: rings と ringEquipped 両方の束ね書込（捨てる・先頭なら解除）＝両方 emit する。
+        emitRingsFromScene(playerId, dropped);
+        emitRingEquippedFromScene(playerId, dropped);
+        dropped
 
     /// ringman の特殊行動で「指輪に変えられる」持ち物 = 装備外のアイテムを (種別 index, 表示名) で列挙する。
     /// 装備中の武器（weapons 先頭）と装備中の指輪（ringEquipped のときの rings 先頭）は守り、
     /// それ以外の武器・杖・薬・指輪を対象にする。居ない player は Nil。
-    pub def transformableItems(playerId: Int32, scene: Scene[NodeTag]):
-            List[(PlayerData.ItemKind, String)] =
-        match get(playerId, scene) {
+    /// P2-r1: 在庫読みは PartyQuery（World.dataFromWorld オーバーレイ）経由。
+    pub def transformableItems(playerId: Int32):
+            List[(PlayerData.ItemKind, String)] \ PlayerData.PartyQuery =
+        match PlayerData.PartyQuery.get(playerId) {
             case None    => Nil
             case Some(d) => transformableOf(d)
         }
@@ -1452,13 +1703,13 @@ mod PlayerScene {
     /// 指定 player の `kind` の持ち物を 1 つ取り除き、代わりに `ring` を持ち物末尾に加える。
     /// ringman の特殊行動の scene 変換部（どの指輪にするかの抽選は catalog を持つ呼び出し側）。
     pub def replaceItemWithRing(playerId: Int32, kind: PlayerData.ItemKind,
-                                 ring: Ring.RingResource, scene: Scene[NodeTag]): Scene[NodeTag] =
+                                 ring: Ring.RingResource, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         addRing(playerId, ring, removeInventoryItem(playerId, kind, scene))
 
     /// 指定 player のインベントリに `item` を追加（種別ごとに上記 writer へ委譲）。
     /// `addPickedItem`（ログ付き版）と同じ追加ルールの、ログを出さない版。
     def addInventoryItem(playerId: Int32, item: ItemData.GroundItemKind,
-                          scene: Scene[NodeTag]): Scene[NodeTag] =
+                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match item {
             case ItemData.GroundItemKind.WeaponItem(weapon)        =>
                 addWeapon(playerId, weapon, scene)
@@ -1476,13 +1727,15 @@ mod PlayerScene {
     /// 床撤去 → 在庫末尾へ追加 → ログ、の順で行う。床にアイテムが無ければ素通し（防御的）。
     pub def pickupFloorItem(playerId: Int32, gridPos: {x = Int32, y = Int32},
                              scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger} =
-        match ItemScene.dataAt(gridPos, scene) {
+            Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger, World.Command,
+                              World.WorldQuery} =
+        // P6-1e: 床アイテムは World store から読む（scene ノード撤去済み・read-after-write で fresh）。
+        match World.groundItemAtOf(gridPos, World.WorldQuery.get()) {
             case None    => scene
             case Some(d) =>
                 SelectedPlayer.pushDraft(
                     MoveDraft.DraftAction.PickedUp(playerId, d#gridPos, d#itemKey, d#item));
-                let (afterTake, taken) = ItemScene.takeAt(d#gridPos, scene);
+                let (afterTake, taken) = GroundItems.takeAt(d#gridPos, scene);
                 taken
                     |> Option.map(kind -> addPickedItem(playerId, kind, afterTake))
                     |> Option.getWithDefault(afterTake)
@@ -1493,7 +1746,7 @@ mod PlayerScene {
     /// 取得経路が共有する。武器は weapons 末尾、杖は staves 末尾に積む。
     pub def addPickedItem(playerId: Int32, kind: ItemData.GroundItemKind,
                            scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
         match kind {
             case ItemData.GroundItemKind.WeaponItem(weapon) =>
                 GameLogger.playerLog("${displayName(playerId, scene)} が${weapon#name} を拾った");
@@ -1511,7 +1764,7 @@ mod PlayerScene {
 
     /// `optItem = None` のときは no-op、Some なら addInventoryItem。
     def addOptInventoryItem(playerId: Int32, optItem: Option[ItemData.GroundItemKind],
-                              scene: Scene[NodeTag]): Scene[NodeTag] =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         optItem
             |> Option.map(item -> addInventoryItem(playerId, item, scene))
             |> Option.getWithDefault(scene)
@@ -1520,7 +1773,7 @@ mod PlayerScene {
     /// 「ひろう」をキャンセルしたときに、末尾追加した仮取得アイテムを取り消すのに使う。
     /// 該当リストが空なら no-op。
     def removeLastInventoryItem(playerId: Int32, kind: ItemData.GroundItemKind,
-                                  scene: Scene[NodeTag]): Scene[NodeTag] =
+                                  scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match kind {
             case ItemData.GroundItemKind.WeaponItem(_)     =>
                 let n = List.length(getWeapons(playerId, scene));
@@ -1573,16 +1826,24 @@ mod PlayerScene {
     /// kind と item の種別が食い違う場合は防御的に no-op。
     def insertInventoryItem(playerId: Int32, kind: PlayerData.ItemKind,
                               item: ItemData.GroundItemKind,
-                              scene: Scene[NodeTag]): Scene[NodeTag] =
+                              scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match (kind, item) {
             case (PlayerData.ItemKind.Weapon(idx), ItemData.GroundItemKind.WeaponItem(w))         =>
-                mapPlayer(playerId, d -> {weapons = insertAt(idx, w, d#weapons) | d}, scene)
+                let inserted = mapPlayer(playerId, d -> {weapons = insertAt(idx, w, d#weapons) | d}, scene);
+                emitWeaponsFromScene(playerId, inserted);  // D3: 挿入巻き戻し後の weapons を World へ
+                inserted
             case (PlayerData.ItemKind.Staff(idx), ItemData.GroundItemKind.StaffItem(s))           =>
-                mapPlayer(playerId, d -> {staves = insertAt(idx, s, d#staves) | d}, scene)
+                let inserted = mapPlayer(playerId, d -> {staves = insertAt(idx, s, d#staves) | d}, scene);
+                emitStavesFromScene(playerId, inserted);  // D4: 挿入巻き戻し後の staves を World へ
+                inserted
             case (PlayerData.ItemKind.Consumable(idx), ItemData.GroundItemKind.ConsumableItem(c)) =>
-                mapPlayer(playerId, d -> {consumables = insertAt(idx, c, d#consumables) | d}, scene)
+                let inserted = mapPlayer(playerId, d -> {consumables = insertAt(idx, c, d#consumables) | d}, scene);
+                emitConsumablesFromScene(playerId, inserted);  // D4: 挿入巻き戻し後の consumables を World へ
+                inserted
             case (PlayerData.ItemKind.Ring(idx), ItemData.GroundItemKind.RingItem(r)) =>
-                mapPlayer(playerId, d -> {rings = insertAt(idx, r, d#rings) | d}, scene)
+                let inserted = mapPlayer(playerId, d -> {rings = insertAt(idx, r, d#rings) | d}, scene);
+                emitRingsFromScene(playerId, inserted);  // D4: 挿入巻き戻し後の rings を World へ
+                inserted
             case _ => scene
         }
 

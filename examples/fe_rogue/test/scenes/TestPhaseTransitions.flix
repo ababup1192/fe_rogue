@@ -33,7 +33,7 @@ mod TestPhaseTransitions {
             holdDir            = None,
             holdSteps          = 0
         };
-        let moveData: MoveRangeScene.Data            = {reachable = dummyCells()};
+        let moveData: MoveRangeScene.Data            = {reachable = dummyCells(), drawCells = dummyCells()};
         let moveAttackData: MoveAttackRangeScene.Data = {cells = dummyCells()};
         let playerAttackData: PlayerAttackRangeScene.Data = {cells = dummyCells()};
         let enemyData: EnemyRangeScene.Data          = {enemyId = 0, reachable = dummyCells()};
@@ -81,7 +81,9 @@ mod TestPhaseTransitions {
                 TestUnitFixtures.withNoopAnim(() ->
                     TestUnitFixtures.withMockPartyQuery(Scene.empty(), () ->
                         run {
-                            let after = PhaseTransitions.enterPlayerCursor(initial);
+                            // P6-1h: showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
+                            let after = run { PhaseTransitions.enterPlayerCursor(initial) }
+                                with handler World.Command { def emit(_c, k) = k() };
                             observe(after)
                         } with TurnPhase.withState(rc)
                           with SelectedPlayer.withState(rc))));
@@ -105,7 +107,8 @@ mod TestPhaseTransitions {
         region rc {
             let initial = sceneWithAllRangesAndCursor();
             let result = run {
-                let after = PhaseTransitions.enterPlayerMoving(initial);
+                let after = run { PhaseTransitions.enterPlayerMoving(initial) }
+                    with handler World.WorldQuery { def get(k) = k(World.empty()) };
                 observe(after)
             } with TurnPhase.withState(rc)
               with SelectedPlayer.withState(rc);
@@ -134,7 +137,8 @@ mod TestPhaseTransitions {
                     TestUnitFixtures.withMockPartyQuery(Scene.empty(), () ->
                         TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
                             run {
-                                let after = PhaseTransitions.enterPlayerAttack(initial);
+                                let after = run { PhaseTransitions.enterPlayerAttack(initial) }
+                                    with handler World.WorldQuery { def get(k) = k(World.empty()) };
                                 observe(after)
                             } with TurnPhase.withState(rc)
                               with SelectedPlayer.withState(rc)))));
@@ -158,7 +162,8 @@ mod TestPhaseTransitions {
         region rc {
             let initial = sceneWithAllRangesAndCursor();
             let result = run {
-                let after = PhaseTransitions.enterGatherMove(initial);
+                let after = run { PhaseTransitions.enterGatherMove(initial) }
+                    with handler World.WorldQuery { def get(k) = k(World.empty()) };
                 observe(after)
             } with TurnPhase.withState(rc)
               with SelectedPlayer.withState(rc);
@@ -182,7 +187,9 @@ mod TestPhaseTransitions {
         region rc {
             let initial = sceneWithAllRangesAndCursor();
             let result = run {
-                let after = PhaseTransitions.enterEnemyTurn(initial);
+                // P6-1h: showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
+                let after = run { PhaseTransitions.enterEnemyTurn(initial) }
+                    with handler World.Command { def emit(_c, k) = k() };
                 observe(after)
             } with TurnPhase.withState(rc);
             Assert.assertEq(

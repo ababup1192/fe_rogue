@@ -806,23 +806,92 @@ pub mod Scene {
                 }
         }
 
-    /// 可視ノードを Drawable のリストに変換する。
-    ///
-    /// パイプライン:
-    ///   1. `renderOrderPaths` でツリーを Y-sort 込みの描画順に並べる（Godot 準拠）
-    ///   2. 各パスを `pathToDrawables` で Drawable 群に変換し、走査 index を貼り付ける
-    ///   3. `(zIndex, drawIndex)` で sortBy する。`List.sortBy` は安定でないため、
-    ///      二次キーとして走査 index を tiebreak に使うことで Y-sort 順を z バケット内で保持する
-    ///
-    /// 祖先の visible/modulate/zIndex は drawContext 経由で自動伝播する。
-    /// transform: カメラ ViewTransform。CanvasLayer 配下のノードには適用しない
+    /// Drawable 群を `(zIndex, 走査 index)` で安定 z ソートする。`List.sortBy` は安定でないため、
+    /// 走査 index を二次キー（tiebreak）にして同 z バケット内の Y-sort/描画順を保持する。
+    /// `toDrawables` と `subtreeDrawables` が共有する末尾処理。
+    def stableZSort(ds: List[GameEngine.Drawable]): List[GameEngine.Drawable] =
+        ds
+            |> List.zipWithIndex             // (drawIndex, drawable)
+            |> List.sortBy(idxD -> let (idx, d) = idxD; (d#zIndex, idx))
+            |> List.map(idxD -> let (_, d) = idxD; d)
+
+    /// `rootPath` 配下のサブツリーを、祖先合成込み・自己完結の z 順 Drawable にする（render-from-World 用）。
+    /// 既存の per-node 完全合成 `pathToDrawables`（visible[祖先 AND 自]/modulate[祖先×自]/z/rotation/CanvasLayer
+    /// + globalPositionAt + camera/zoom）を、描画順(Y-sort)の全走査 `renderOrderPaths` を rootPath 前置フィルタで
+    /// 絞った部分列に適用する＝`renderArgs` と同一合成・任意深さ（孫以下も訪問）。`rootPath = Nil` で全ツリー。
+    /// 他 drawable との最終 z 前後は Frame の global 安定ソートに委譲する（順序契約）。
+    /// seam: 祖先 rotation は drawable 自転角へ加算のみ（公転なし）・祖先 scale は非伝播＝`renderArgs` と同一挙動。
+    /// コスト: 単体呼びは `renderOrderPaths`（全 scene 走査）を伴う。**複数 root を描くなら `subtreeDrawablesForRoots`**
+    /// で renderOrderPaths を 1 回に共有できる（O(roots × nodes) → O(nodes)）。
+    pub def subtreeDrawables(transform: Camera2D.ViewTransform, rootPath: NodePath,
+                              scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
+        subtreeDrawablesFrom(transform, renderOrderPaths(scene), rootPath, scene)
+
+    /// 事前計算済み `ordered`（`renderOrderPaths` の出力）から `rootPath` 配下の Drawable を作る内部共通本体。
+    /// `ordered` は rootPath 非依存ゆえ、複数 root で 1 回分を共有しても各 root の出力は単体呼びと完全一致。
+    def subtreeDrawablesFrom(transform: Camera2D.ViewTransform, ordered: List[NodePath],
+                              rootPath: NodePath, scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
+        ordered
+            |> List.filter(p -> List.isPrefixOf(rootPath, p))
+            |> List.flatMap(path -> pathToDrawables(transform, path, scene))
+            |> stableZSort
+
+    /// 複数 root 分の Drawable を **`renderOrderPaths` を 1 回だけ**計算して返す（render-from-World が root ごとに
+    /// 全 scene を歩き直す O(roots × nodes)/frame を O(nodes) に畳む）。root ごとの出力は `subtreeDrawables` 単体
+    /// 呼びと完全一致（renderOrderPaths が rootPath 非依存の純関数ゆえ）。engine が sharing を所有し、呼び側は
+    /// 誤った順序リストを渡せない。
+    pub def subtreeDrawablesForRoots(transform: Camera2D.ViewTransform, roots: List[NodePath],
+                                      scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
+        let ordered = renderOrderPaths(scene);
+        roots |> List.flatMap(r -> subtreeDrawablesFrom(transform, ordered, r, scene))
+
+    /// 可視ノード全体を Drawable のリストに変換する。`subtreeDrawables` の「全ツリー」ケース（rootPath = Nil）
+    /// に委譲＝サブツリー版と同一機構を通る（構成的 parity）。祖先の visible/modulate/zIndex は drawContext
+    /// 経由で自動伝播する。transform: カメラ ViewTransform。CanvasLayer 配下のノードには適用しない。
     pub def toDrawables(transform: Camera2D.ViewTransform,
                          scene: Scene[s]): List[GameEngine.Drawable] \ GameEngine.Game =
-        renderOrderPaths(scene)
-            |> List.flatMap(path -> pathToDrawables(transform, path, scene))
-            |> List.zipWithIndex             // (drawIndex, drawable)
-            |> List.sortBy(idxD ->
-                let (idx, d) = idxD;
-                (d#zIndex, idx))
-            |> List.map(idxD -> let (_, d) = idxD; d)
+        subtreeDrawables(transform, Nil, scene)
+
+    /// `rootPath` 配下のサブツリーの Polygon2D/Arc2D を PolygonRenderCmd に集める（render-from-World 用）。
+    /// renderArgs の polygon 収集を rootPath 前置フィルタで絞って再利用＝**renderArgs polygon 経路と parity**。
+    /// `subtreeDrawables`（Y-sort/stableZSort）と違い `preorderPaths`＋ソートなし＝polygon は renderer が最終 pass で
+    /// effzIndex ソートする前提ゆえ末尾 append は order-safe。`rootPath = Nil` で全ツリー（＝`renderArgs` の polygon）。
+    pub def subtreePolygons(transform: Camera2D.ViewTransform, rootPath: NodePath,
+                             scene: Scene[s]): List[GameEngine.PolygonRenderCmd] =
+        subtreePolygonsFrom(transform, preorderPaths(scene), rootPath, scene)
+
+    /// 事前計算済み `preordered`（`preorderPaths` の出力）から `rootPath` 配下の polygon cmd を作る内部共通本体。
+    /// preorderPaths は rootPath 非依存ゆえ複数 root で 1 回分を共有可（各 root 出力は単体呼びと一致）。
+    def subtreePolygonsFrom(transform: Camera2D.ViewTransform, preordered: List[NodePath],
+                             rootPath: NodePath, scene: Scene[s]): List[GameEngine.PolygonRenderCmd] =
+        preordered
+            |> List.filter(p -> List.isPrefixOf(rootPath, p))
+            |> List.flatMap(p -> polygonCmdsAt(transform, p, scene))
+
+    /// 複数 root 分の polygon cmd を **`preorderPaths` を 1 回だけ**計算して返す（`subtreeDrawablesForRoots` の
+    /// polygon 版）。root ごとの出力は `subtreePolygons` 単体呼びと完全一致。
+    pub def subtreePolygonsForRoots(transform: Camera2D.ViewTransform, roots: List[NodePath],
+                                     scene: Scene[s]): List[GameEngine.PolygonRenderCmd] =
+        let preordered = preorderPaths(scene);
+        roots |> List.flatMap(r -> subtreePolygonsFrom(transform, preordered, r, scene))
+
+    /// 1 パスの Polygon2D/Arc2D を PolygonRenderCmd 群にする（renderArgs から抽出）。祖先/自ノードの不可視で空。
+    /// CanvasLayer 配下は zoom 非適用。color/z は sprite 経路と同等の実効値（`effectiveModulate`/`effectiveZIndex`）に上書き。
+    def polygonCmdsAt(transform: Camera2D.ViewTransform, p: NodePath,
+                       scene: Scene[s]): List[GameEngine.PolygonRenderCmd] =
+        let placement = () ->
+            ( screenPositionAt(p, transform, scene)
+            , if (isUnderCanvasLayer(p, scene)) ({x = 1.0, y = 1.0}: Vec2.Vec2) else transform#scale );
+        let withEffective = cmd ->
+            ({ color = effectiveModulateAt(p, scene), zIndex = effectiveZIndexAt(p, scene)
+             | cmd }: GameEngine.PolygonRenderCmd);
+        match getEngineNode(p, scene) {
+            case Some(EngineNode.Polygon2DWithState(poly, _)) =>
+                if (not (CanvasItem.isVisible(poly) and effectiveVisibleAt(p, scene))) Nil
+                else { let (sp, sc) = placement(); withEffective(Polygon2D.toRenderCmd(sp, sc, poly)) :: Nil }
+            case Some(EngineNode.Arc2DWithState(arc, _)) =>
+                if (not (CanvasItem.isVisible(arc) and effectiveVisibleAt(p, scene))) Nil
+                else { let (sp, sc) = placement(); Arc2D.toRenderCmds(sp, sc, arc) |> List.map(withEffective) }
+            case _ => Nil
+        }
 }

@@ -56,8 +56,8 @@ mod CursorScene {
     /// カーソルの見た目は scene.json で四隅 L字 (白 ColorRect 8 枚) として完結しており、
     /// コードからは子ノードを直接参照しない（表示/非表示は親 Marker2D の visible で連動）。
 
-    /// カーソルの描画 zIndex。駒 (= 10) / HP バー (UnitHPBarScene = 50〜52) /
-    /// 武器アイコン (WeaponIconScene = 60〜62) より更に上に表示し、選択マスを常に
+    /// カーソルの描画 zIndex。駒 (= 10) / HP バー (UnitHPBarRender = 50〜52) /
+    /// 武器アイコン (WeaponIconRender = 60〜62) より更に上に表示し、選択マスを常に
     /// 最前面で視認できるようにする (HUD/メニューは CanvasLayer なので更に上)。
     /// scene.json で各 ColorRect の zIndex として記述済み (未使用)。
     def _spriteZIndex(): Int32 = 70
@@ -157,7 +157,7 @@ mod CursorScene {
                                Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyData.RosterQuery, TurnPhase.State,
-                               SelectedPlayer.State} =
+                               SelectedPlayer.State, World.WorldQuery} =
         match TurnPhase.State.get() {
             case TurnPhase.Phase.PlayerCursor       => stepFreeMovement(delta, node, path, scene)
             // 武器選択中も左右で対象の敵を選べる（フォーカス武器が届く敵を巡回）。
@@ -175,7 +175,7 @@ mod CursorScene {
     def stepWeaponSelectCycle(node: EngineNode[NodeTag], scene: Scene[NodeTag]):
                               (EngineNode[NodeTag], Scene[NodeTag])
                               \ {GameEngine.Game, Tween.Scheduler, AnimationPlayer.Scheduler,
-                                 SelectedPlayer.State} =
+                                 SelectedPlayer.State, EnemyData.RosterQuery, World.WorldQuery} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
                 if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
@@ -196,14 +196,16 @@ mod CursorScene {
     /// フォーカス中の武器が届く生存敵を reading order（y→x）で返す。
     /// 選択中味方 / フォーカス武器が取れないときは空。
     def weaponSelectTargets(scene: Scene[NodeTag]):
-            List[EnemyScene.Data] \ SelectedPlayer.State =
+            List[EnemyScene.Data] \ {SelectedPlayer.State, EnemyData.RosterQuery, World.WorldQuery} =
         let opt = forM (
             pid    <- SelectedPlayer.State.get()#id;
-            player <- PlayerScene.get(pid, scene);
+            // P6-2b fix: 射程判定の自位置は World 上書き Data。
+            player <- PlayerScene.getWithWorldPos(pid, scene);
             widx   <- WeaponSelectScene.hoveredWeaponIndex(scene);
             weapon <- List.nth(widx, player#weapons)
         ) yield
-            EnemyScene.getAll(scene)
+            // P6-2b: 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む（scene 直読みは stale）。
+            EnemyData.RosterQuery.getAll()
                 |> List.filter(e -> {
                     let ev = EnemyScene.unitView(e);
                     ev#hp > 0 and not ev#isDying

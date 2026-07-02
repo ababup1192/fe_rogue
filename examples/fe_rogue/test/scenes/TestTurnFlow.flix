@@ -51,6 +51,7 @@ mod TestTurnFlow {
     /// commitWaitedAndAdvance を選択中 = Player(0) で 1 回呼び、終了時 phase を返す。
     def commitOnce(scene: Scene[NodeTag]): TurnPhase.Phase =
         region rc {
+            TestUnitFixtures.withWorldCommand(rc, () ->
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withMockEnemyTurnQueue(() ->
             TestUnitFixtures.withNoopTween(() ->
@@ -60,7 +61,7 @@ mod TestTurnFlow {
                     let _ = TurnFlow.commitWaitedAndAdvance(scene);
                     TurnPhase.State.get()
                 } with TurnPhase.withState(rc)
-                  with SelectedPlayer.withState(rc)))))
+                  with SelectedPlayer.withState(rc))))))
         }
 
     /// レベルアップ表示待ちの味方が居る間は、ターンを進めず LevelUpView へ割り込む。

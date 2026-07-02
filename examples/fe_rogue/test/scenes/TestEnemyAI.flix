@@ -161,7 +161,7 @@ mod TestEnemyAI {
     /// dormant + 別モジュール → Skip、alerted は false のまま。
     @Test
     def testDecideDormantDifferentModuleSkips(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.twoRoom(10, 5)};
         let player  = ({x = 1, y = 2}: {x = Int32, y = Int32});   // module 0
         let enemyP  = ({x = 7, y = 2}: {x = Int32, y = Int32});   // module 1
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -174,7 +174,7 @@ mod TestEnemyAI {
     /// プレイヤー (4,2)=module0、敵 (7,2)=module1、距離 3 ≤ moveTiles 3 → 到達範囲内 → Move。
     @Test
     def testDecideDormantWithinReachAlerts(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.twoRoom(10, 5)};
         let player  = ({x = 4, y = 2}: {x = Int32, y = Int32});   // module 0
         let enemyP  = ({x = 7, y = 2}: {x = Int32, y = Int32});   // module 1
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -194,7 +194,7 @@ mod TestEnemyAI {
     /// moveTiles=3 のときは床距離 5 の隣室プレイヤーを検知できず dormant のまま (Skip)。
     @Test
     def testCrossRoomMoveTiles3StaysDormant(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 14, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(14, 5)};   // half = 7
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 14, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.twoRoom(14, 5)};   // half = 7
         let player  = ({x = 4, y = 2}: {x = Int32, y = Int32});    // module 0
         let enemyP  = ({x = 9, y = 2}: {x = Int32, y = Int32});    // module 1, 床距離 5
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -206,7 +206,7 @@ mod TestEnemyAI {
     /// これが「通路を挟んだ隣室の敵がいきなり追ってくる」回帰の核心。
     @Test
     def testCrossRoomMoveTiles5AlertsAcrossRoom(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 14, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(14, 5)};   // half = 7
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 14, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.twoRoom(14, 5)};   // half = 7
         let player  = ({x = 4, y = 2}: {x = Int32, y = Int32});    // module 0
         let enemyP  = ({x = 9, y = 2}: {x = Int32, y = Int32});    // module 1, 床距離 5
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -217,7 +217,7 @@ mod TestEnemyAI {
     /// dormant + 同モジュール → alerted=true、Move（Q3-B: 検出フレームに動く）。
     @Test
     def testDecideDormantSameModuleAlertsAndMoves(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let player  = ({x = 1, y = 1}: {x = Int32, y = Int32});
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -228,7 +228,7 @@ mod TestEnemyAI {
     /// 一度 alerted なら別モジュールでも chase 継続。
     @Test
     def testDecideAlertedDifferentModuleStillChases(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.twoRoom(10, 5)};
         let player  = ({x = 1, y = 2}: {x = Int32, y = Int32});
         let enemyP  = ({x = 7, y = 2}: {x = Int32, y = Int32});
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -269,7 +269,7 @@ mod TestEnemyAI {
     /// GuardUntilInRange は同モジュールでも武器射程外なら起動せず Skip（Aggressive なら Move する状況）。
     @Test
     def testGuardSameModuleOutOfRangeStaysDormant(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let player  = ({x = 1, y = 1}: {x = Int32, y = Int32});
         let enemyP  = ({x = 8, y = 8}: {x = Int32, y = Int32});   // 同モジュール・剣射程(1)外
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -280,7 +280,7 @@ mod TestEnemyAI {
     /// GuardUntilInRange は武器射程内（隣接）にプレイヤーが入ると起動して Attack する。
     @Test
     def testGuardInWeaponRangeAlertsAndAttacks(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 隣接 = 剣射程内
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -293,7 +293,7 @@ mod TestEnemyAI {
     /// プレイヤー(4,5) と敵(6,5) はマンハッタン距離 2。
     @Test
     def testGuardAtRangePlusOneAlertsAndMoves(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let player  = ({x = 4, y = 5}: {x = Int32, y = Int32});
         let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 距離 2 = 剣射程(1) + 1
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -305,7 +305,7 @@ mod TestEnemyAI {
     /// 起動条件は Aggressive と同じ OnSightOrReach なので、検知幾何は testDecideDormantDifferentModuleSkips と同一。
     @Test
     def testWandererDormantWanders(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.twoRoom(10, 5)};
         let player  = ({x = 1, y = 2}: {x = Int32, y = Int32});   // module 0
         let enemyP  = ({x = 7, y = 2}: {x = Int32, y = Int32});   // module 1, 範囲外
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -317,7 +317,7 @@ mod TestEnemyAI {
     /// prevPos=None の単室中央セルなら 4 近傍すべてが候補（壁・他駒なし）。
     @Test
     def testWanderCandidatesFourNeighborsInOpenRoom(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let pos     = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let board: Board = {map = map, pieces = (Piece.Enemy(0), pos) :: Nil};
         Assert.assertEq(expected = 4, List.length(EnemyAI.wanderCandidates(board, pos, None)))
@@ -325,7 +325,7 @@ mod TestEnemyAI {
     /// prevPos を除外して「来た道へ戻らない」: 中央セルで直前が左(4,5)なら候補は残り 3 マス。
     @Test
     def testWanderCandidatesExcludesPrev(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let pos     = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let board: Board = {map = map, pieces = (Piece.Enemy(0), pos) :: Nil};
         Assert.assertEq(expected = 3,
@@ -337,7 +337,7 @@ mod TestEnemyAI {
 
     @Test
     def testDecideAdjacentAttacks(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -349,7 +349,7 @@ mod TestEnemyAI {
     /// `Attack` を返さず `Wait` に切り替えること。
     @Test
     def testDecideAdjacentWithoutWeaponWaits(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -366,7 +366,7 @@ mod TestEnemyAI {
     /// 射程外（距離 1 < min 2）なので体当たりせず、後退 Move に切り替わる。
     @Test
     def testBowAdjacentDoesNotAttack(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 距離 1
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -379,7 +379,7 @@ mod TestEnemyAI {
     /// 「間接攻撃後に隣接したら動かなくなる」硬直の回帰防止。
     @Test
     def testBowAdjacentRetreats(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 距離 1
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -392,7 +392,7 @@ mod TestEnemyAI {
     /// 2×1 の通路でプレイヤー (0,0) に隣接した敵 (1,0) は逃げ場が無く、後退不可 → Wait。
     @Test
     def testBowCorneredWaits(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 2, y = 1}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(2, 1)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 2, y = 1}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(2, 1)};
         let player  = ({x = 0, y = 0}: {x = Int32, y = Int32});
         let enemyP  = ({x = 1, y = 0}: {x = Int32, y = Int32});   // 距離 1、逃げ場なし
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -403,7 +403,7 @@ mod TestEnemyAI {
     /// 弓 (range 2-2) の敵が距離 2 の味方を Attack する。
     @Test
     def testBowAtRangeTwoAttacks(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let enemyP  = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 距離 2
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -415,7 +415,7 @@ mod TestEnemyAI {
     /// 近接武器が射程外で chase に落ちることの確認（弓と対になるケース）。
     @Test
     def testSwordAtRangeTwoChases(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let player  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let enemyP  = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 距離 2
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -442,7 +442,7 @@ mod TestEnemyAI {
     /// 何も無い部屋で敵 (5,5) → プレイヤー (1,5)、moveTiles=1 なら 1 歩目は (4,5)。
     @Test
     def testBfsStraightLineOneStep(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let player  = ({x = 1, y = 5}: {x = Int32, y = Int32});
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -455,7 +455,7 @@ mod TestEnemyAI {
     /// 返し、プレイヤーセル (1,5) を踏み越えないことを確認。
     @Test
     def testBfsStopsBeforePlayer(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(10, 10)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 10}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(10, 10)};
         let player  = ({x = 1, y = 5}: {x = Int32, y = Int32});
         let enemyP  = ({x = 3, y = 5}: {x = Int32, y = Int32});
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -473,7 +473,7 @@ mod TestEnemyAI {
     /// ここでは「最短経路の 1 歩目」が取れること（None でない）と Move であることを検証。
     @Test
     def testBfsWallDetour(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 5, y = 3}}, wallCells = Set#{(1, 1)}, mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(5, 3)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 5, y = 3}}, wallCells = Set#{(1, 1)}, mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(5, 3)};
         let player  = ({x = 0, y = 1}: {x = Int32, y = Int32});
         let enemyP  = ({x = 4, y = 1}: {x = Int32, y = Int32});
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -490,7 +490,7 @@ mod TestEnemyAI {
     @Test
     def testNoPathStillStepsTowardPlayer(): Unit \ Assert =
         // 5×3 の床から x=2 の列を壁で抜いて左右を分断する
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 5, y = 3}}, wallCells = Set#{(2, 0), (2, 1), (2, 2)}, mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(5, 3)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 5, y = 3}}, wallCells = Set#{(2, 0), (2, 1), (2, 2)}, mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(5, 3)};
         let player  = ({x = 0, y = 1}: {x = Int32, y = Int32});
         let enemyP  = ({x = 4, y = 1}: {x = Int32, y = Int32});
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -507,7 +507,7 @@ mod TestEnemyAI {
     /// 次の 1 歩は (4,0)（上方向優先の決定的タイブレーク。(3,1) は通らない）。
     @Test
     def testBfsAvoidsOtherEnemy(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 5, y = 3}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(5, 3)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 5, y = 3}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(5, 3)};
         // 敵 0 が本体、敵 1(3,1) は直線を塞ぐ障害物として置く
         let board: Board = {map = map, pieces = (Piece.Player(0), {x = 0, y = 1}) :: (Piece.Enemy(0), {x = 4, y = 1}) :: (Piece.Enemy(1), {x = 3, y = 1}) :: Nil};
         let enemy  = enemyAt(0, {x = 4, y = 1}, true, 0, 3);
@@ -524,7 +524,7 @@ mod TestEnemyAI {
     /// 期待: Killable が最優先なので、反撃される弓P(id1)を距離2で Attack。
     @Test
     def testKillablePreferredEvenIfCounterable(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(12, 12)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(12, 12)};
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let p0      = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 剣・距離2・反撃不能
         let p1      = ({x = 5, y = 3}: {x = Int32, y = Int32});   // 弓・距離2・瀕死
@@ -540,7 +540,7 @@ mod TestEnemyAI {
     /// 期待: 遠くの低HP p1 を追いかけず、射程内の p0(id0) を Attack（待機・素通りしない）。
     @Test
     def testRangedAttacksInRangeRatherThanChasingFarWeaker(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(12, 12)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(12, 12)};
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let pNear   = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 距離2・射程内・HP10
         let pFar    = ({x = 5, y = 10}: {x = Int32, y = Int32});  // 距離5・射程外・HP1
@@ -555,7 +555,7 @@ mod TestEnemyAI {
     /// （上のテストで接近した次のターン相当。）
     @Test
     def testRangedAttacksSafeTargetWhenInRange(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(12, 12)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(12, 12)};
         let enemyP  = ({x = 6, y = 5}: {x = Int32, y = Int32});
         let pSword  = ({x = 8, y = 5}: {x = Int32, y = Int32});   // 距離2・反撃不能
         let board: Board = {map = map, pieces = (Piece.Player(0), pSword) :: (Piece.Enemy(9), enemyP) :: Nil};
@@ -571,7 +571,7 @@ mod TestEnemyAI {
     /// 低HP/仕留め等の評価軸は「射程内に居る相手の攻撃選定」では引き続き効く（下の Attack 系テスト）。
     @Test
     def testRangedPrefersLowerHpAmongSafeTargets(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(12, 12)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(12, 12)};
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let pA      = ({x = 8, y = 5}: {x = Int32, y = Int32});   // 距離3・HP10
         let pB      = ({x = 5, y = 8}: {x = Int32, y = Int32});   // 距離3・HP4
@@ -587,7 +587,7 @@ mod TestEnemyAI {
     /// 期待: 近い p1(id1, 距離2)を選び、射程内なので Attack。
     @Test
     def testRangedPrefersNearerWhenOtherwiseTied(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(12, 12)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(12, 12)};
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let pFar    = ({x = 8, y = 5}: {x = Int32, y = Int32});   // 距離3
         let pNear   = ({x = 7, y = 5}: {x = Int32, y = Int32});   // 距離2
@@ -603,7 +603,7 @@ mod TestEnemyAI {
     /// 期待: 反撃不能 > 低HP なので、満タンでも反撃されない弓P(id1)を Attack。
     @Test
     def testMeleePrefersNoCounterTarget(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(12, 12)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(12, 12)};
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let pSword  = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 隣接・HP5・反撃可
         let pBow    = ({x = 5, y = 6}: {x = Int32, y = Int32});   // 隣接・HP10・反撃不可
@@ -619,7 +619,7 @@ mod TestEnemyAI {
     /// 期待: 低HP の p1(id1) を Attack。
     @Test
     def testMeleeAttacksWeakerAdjacentFirst(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(12, 12)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(12, 12)};
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let p0      = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 隣接・HP8
         let p1      = ({x = 5, y = 6}: {x = Int32, y = Int32});   // 隣接・HP3
@@ -635,7 +635,7 @@ mod TestEnemyAI {
     /// 期待: 遠くの低HP p1 を追わず、隣接の p0(id0) を Attack（攻撃を優先）。
     @Test
     def testMeleeAttacksAdjacentRatherThanChaseFarWeaker(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(12, 12)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 12, y = 12}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(12, 12)};
         let enemyP  = ({x = 5, y = 5}: {x = Int32, y = Int32});
         let p0      = ({x = 6, y = 5}: {x = Int32, y = Int32});   // 隣接・HP9
         let p1      = ({x = 5, y = 8}: {x = Int32, y = Int32});   // 距離3・HP2（射程外）
@@ -653,7 +653,7 @@ mod TestEnemyAI {
     @Test
     def testChasesNearestWhenPreferredUnreachable(): Unit \ Assert =
         // 6×3 の床から x=2 の列を壁で抜いて左右を分断する
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 6, y = 3}}, wallCells = Set#{(2, 0), (2, 1), (2, 2)}, mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(6, 3)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 6, y = 3}}, wallCells = Set#{(2, 0), (2, 1), (2, 2)}, mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(6, 3)};
         let enemyP  = ({x = 5, y = 1}: {x = Int32, y = Int32});
         let p0      = ({x = 0, y = 1}: {x = Int32, y = Int32});   // 壁の向こう・HP1・到達不能
         let p1      = ({x = 3, y = 1}: {x = Int32, y = Int32});   // 同じ側・HP10・距離2
@@ -672,7 +672,7 @@ mod TestEnemyAI {
     @Test
     def testApproachesTowardBlockedCorridorInsteadOfWaiting(): Unit \ Assert =
         // 左に 3×3 部屋、そこから y=1 の 1 マス幅通路で右(x=5)まで伸びる床
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 6, y = 3}}, wallCells = Set#{(3, 0), (4, 0), (5, 0), (3, 2), (4, 2), (5, 2)}, mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(6, 3)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 6, y = 3}}, wallCells = Set#{(3, 0), (4, 0), (5, 0), (3, 2), (4, 2), (5, 2)}, mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(6, 3)};
         let enemyP  = ({x = 1, y = 1}: {x = Int32, y = Int32});
         let playerP = ({x = 5, y = 1}: {x = Int32, y = Int32});
         // 敵 8(3,1) が通路口を塞ぐ。敵 9 から味方への経路は到達不能
@@ -692,7 +692,7 @@ mod TestEnemyAI {
     @Test
     def testSpiralCornerDoesNotFreeze(): Unit \ Assert =
         // 3×3 から (1,0) と (1,1) を壁で抜いた U 字（row2 だけで左右がつながる）
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 3, y = 3}}, wallCells = Set#{(1, 0), (1, 1)}, mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.singleRoom(3, 3)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 3, y = 3}}, wallCells = Set#{(1, 0), (1, 1)}, mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.singleRoom(3, 3)};
         let player  = ({x = 0, y = 0}: {x = Int32, y = Int32});
         let enemyP  = ({x = 2, y = 0}: {x = Int32, y = Int32});
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -724,7 +724,7 @@ mod TestEnemyAI {
     /// 暗い部屋(litRooms に無い)の敵に隣接 → true（接敵で点灯すべき局面）。
     @Test
     def testAdjacentInDarkRoomTrue(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.twoRoom(10, 5)};
         let player  = ({x = 3, y = 2}: {x = Int32, y = Int32});   // module0、敵に隣接
         let enemyP  = ({x = 2, y = 2}: {x = Int32, y = Int32});   // module0
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -735,7 +735,7 @@ mod TestEnemyAI {
     /// 明るい部屋(litRooms=同室を含む＝点灯済み)の敵に隣接 → false（既に見えているので発火しない）。
     @Test
     def testAdjacentInLitRoomFalse(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.twoRoom(10, 5)};
         let player  = ({x = 3, y = 2}: {x = Int32, y = Int32});   // module0、敵に隣接
         let enemyP  = ({x = 2, y = 2}: {x = Int32, y = Int32});   // module0
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -746,7 +746,7 @@ mod TestEnemyAI {
     /// 暗い部屋だが非隣接(距離2) → false（接敵していないので発火しない）。
     @Test
     def testAdjacentInDarkRoomNotAdjacentFalse(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.twoRoom(10, 5)};
         let player  = ({x = 4, y = 2}: {x = Int32, y = Int32});   // module0、敵から距離2
         let enemyP  = ({x = 2, y = 2}: {x = Int32, y = Int32});   // module0
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
@@ -758,11 +758,41 @@ mod TestEnemyAI {
     /// roomCount=1 とすることで module1 を通路扱いにする（TestFogScene と同手法）。
     @Test
     def testAdjacentInCorridorFalse(): Unit \ Assert =
-        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = MapScene.twoRoom(10, 5)};
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.twoRoom(10, 5)};
         let player  = ({x = 6, y = 2}: {x = Int32, y = Int32});   // module1(通路)、敵に隣接
         let enemyP  = ({x = 7, y = 2}: {x = Int32, y = Int32});   // module1(通路)
         let board: Board = {map = map, pieces = (Piece.Player(0), player) :: (Piece.Enemy(0), enemyP) :: Nil};
         let enemy   = enemyAt(0, enemyP, false, 1, 3);
         Assert.assertEq(expected = false,
             EnemyAI.adjacentInDarkRoom(board, EnemyScene.unitView(enemy), (Set#{}: Set[Int32]), 1))
+
+    // ════════════════════════════════════════════════════════
+    // orderedSteps — 敵ターンの行動順（純粋・距離場ソート）
+    // ════════════════════════════════════════════════════════
+
+    /// マップ未構築（boardOpt=None）は id 昇順フォールバック。入力順に依らず id 順になる。
+    @Test
+    def testOrderedStepsNoMapSortsById(): Unit \ Assert =
+        let actives = enemyAt(2, {x = 1, y = 1}, false, 0, 3)
+                   :: enemyAt(0, {x = 2, y = 2}, false, 0, 4)
+                   :: enemyAt(1, {x = 3, y = 3}, false, 0, 5) :: Nil;
+        let steps = EnemyTurnDriver.orderedSteps(None, actives);
+        // id 昇順＋各 remaining は moveTiles（id0=4, id1=5, id2=3）。
+        Assert.assertEq(
+            expected = (0, 4) :: (1, 5) :: (2, 3) :: Nil,
+            steps |> List.map(s -> (s#id, s#remaining)))
+
+    /// boardOpt=Some: プレイヤー始点の距離場で近い敵が先。id 順を距離が上書きすることを固定。
+    /// player@(1,2)・近敵 id1@(3,2)(dist2)・遠敵 id0@(8,2)(dist7)。入力は遠敵先だが出力は近敵(id1)先。
+    @Test
+    def testOrderedStepsByDistanceOverridesId(): Unit \ Assert =
+        let map: MapSnapshot = {tileSize = 26.0, usedRect = {position = {x = 0, y = 0}, size = {x = 10, y = 5}}, wallCells = (Set#{}: Set[(Int32, Int32)]), mapGlobal = {x = 0.0, y = 0.0}, placements = RoomLayout.twoRoom(10, 5)};
+        let far  = enemyAt(0, {x = 8, y = 2}, false, 0, 3);   // dist 7
+        let near = enemyAt(1, {x = 3, y = 2}, false, 0, 3);   // dist 2
+        let board: Board = {map = map,
+            pieces = (Piece.Player(0), {x = 1, y = 2})
+                  :: (Piece.Enemy(0), {x = 8, y = 2})
+                  :: (Piece.Enemy(1), {x = 3, y = 2}) :: Nil};
+        let steps = EnemyTurnDriver.orderedSteps(Some(board), far :: near :: Nil);
+        Assert.assertEq(expected = 1 :: 0 :: Nil, steps |> List.map(s -> s#id))
 }

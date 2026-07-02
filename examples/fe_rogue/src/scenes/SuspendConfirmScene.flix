@@ -25,6 +25,8 @@ mod SuspendConfirmScene {
     def titleName(): String = "title"
     def menuName(): String = "menu"
 
+    /// B: render-from-World が subtree を描く/隠す root（CanvasLayer）。
+    pub def rootPath(): NodePath = rootName() :: Nil
     pub def panelPath(): NodePath = rootName() :: panelName() :: Nil
     def titlePath(): NodePath = rootName() :: panelName() :: titleName() :: Nil
     pub def menuPath(): NodePath = rootName() :: panelName() :: menuName() :: Nil

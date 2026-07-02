@@ -90,12 +90,6 @@ mod ActionMenuScene {
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas, tagParser, scene)
 
-    /// 「行動メニューが現在 visible か」のヘルパー。gameLoop の Escape→quit 判定で使う。
-    pub def isVisible(scene: Scene[NodeTag]): Bool =
-        Panel.getAt(panelPath(), scene)
-            |> Option.map(CanvasItem.isVisible)
-            |> Option.getWithDefault(false)
-
     /// フェーズ遷移時の visibility 適用。
     ///   - Panel : ActionSelect / WeaponSelect フェーズで visible
     ///   - Menu  : ActionSelect / WeaponSelect で visible。focus は ActionSelect のときだけ
@@ -135,7 +129,7 @@ mod ActionMenuScene {
                          scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
                         \ {SelectedPlayer.State, TurnPhase.State,
-                           PlayerData.PartyQuery, EnemyData.RosterQuery} =
+                           PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
         // ActionMenu は ActionSelect と WeaponSelect の両方で表示し続ける（WeaponSelect 中も
@@ -263,7 +257,7 @@ mod ActionMenuScene {
     /// gatherActive=true のときは集合（行軍）の隣接メニュー（交換 / 全員待機 / キャンセル）、
     /// SelectedPlayer が None のときは空マスメニュー（集合 / ターンエンド）を返す。
     def buildItems(scene: Scene[NodeTag]): List[ItemEntry]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         let sel = SelectedPlayer.State.get();
         // 文脈をタプルで 1 段に分岐する:
         //   (gatherActive=true, _)      → 集合（行軍）の隣接メニュー（交換 / 全員待機 / キャンセル）
@@ -281,8 +275,8 @@ mod ActionMenuScene {
     /// 移動を終えた味方の行動メニュー項目（こうげき/アイテム/ひろう/階段/あける/こうかん/たいき）。
     /// 成立するものだけ、固定順「ひろう → 階段 → あける → こうげき → アイテム → こうかん → たいき」で返す。
     /// かなしばり（完全停止）中は行動不能なので「待機」だけ出してターンを閉じられるようにする。
-    def selectedPlayerMenuItems(player: PlayerScene.Data, scene: Scene[NodeTag]): List[ItemEntry]
-            \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
+    def selectedPlayerMenuItems(player: PlayerScene.Data, _scene: Scene[NodeTag]): List[ItemEntry]
+            \ {PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         if (StatusSystem.isImmobilized(player#statuses)) boundMenuItems()
         else {
             // 「攻撃」は常に表示し、射程内に敵が居るときだけ選択可能（HTML プロトタイプと同じ）。
@@ -300,17 +294,18 @@ mod ActionMenuScene {
                     ({text = "アイテム", disabled = false, metadata = Some(itemMeta())}: ItemEntry) :: Nil
                 else Nil;
             let pickupItem =
-                if (Option.nonEmpty(ItemScene.findAt(player#gridPos, scene)))
+                if (Option.nonEmpty(World.groundItemAtOf(player#gridPos, World.WorldQuery.get())))   // P3-c: World 権威
                     ({text = "拾う", disabled = false, metadata = Some(pickupMeta())}: ItemEntry) :: Nil
                 else Nil;
             let stairsItem =
-                if (StairsScene.isAt(player#gridPos, scene))
+                if (World.stairsPosOf(World.WorldQuery.get())
+                        |> Option.exists(c -> c#x == player#gridPos#x and c#y == player#gridPos#y))   // P3-a: World 権威
                     ({text = "階段", disabled = false, metadata = Some(stairsMeta())}: ItemEntry) :: Nil
                 else Nil;
             // 宝箱に乗っていれば「あける」を出す。開錠可否(ローグか)は確定時に判定し、
             // 非ローグは「開けることができない」と表示する（=選択は可能・無効化しない）。
             let openItem =
-                if (Option.nonEmpty(ChestScene.findAt(player#gridPos, scene)))
+                if (Option.nonEmpty(World.chestAtOf(player#gridPos, World.WorldQuery.get())))   // P3-b: World 権威
                     ({text = "あける", disabled = false, metadata = Some(openMeta())}: ItemEntry) :: Nil
                 else Nil;
             let waitItem =
@@ -338,11 +333,11 @@ mod ActionMenuScene {
     /// 成立するものだけ返す（全員待機・キャンセルは常に表示）。判定はすべて主人公(リーダー id=0)基準。
     ///   - 拾う   : 主人公の足元に床アイテムがあれば最上段（既存 `pickupMeta` → applyPickup を流用。
     ///              集合中は SelectedPlayer.id=Some(0) なので拾う主体＝主人公として解決される）
-    ///   - 階段   : 主人公が階段マスに立っているときだけ（`gatherStairsMeta` → StairsExitScene.begin）
+    ///   - 階段   : 主人公が階段マスに立っているときだけ（`gatherStairsMeta` → StairsExitDriver.begin）
     ///   - 交換   : 主人公＋隣接味方の N 人持ち物交換（`gatherTradeMeta` → openGatherTrade）
     ///   - 全員待機: パーティ全員を行動済みにして敵ターンへ（既存 `turnEndMeta` → applyTurnEnd を流用）
     /// （「キャンセル」項目は廃止。GatherMove 中に X を押せば開始位置へ巻き戻る）
-    def gatherAdjacentMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
+    def gatherAdjacentMenuItems(_scene: Scene[NodeTag]): List[ItemEntry] \ {PlayerData.PartyQuery, World.WorldQuery} =
         // 主人公を 1 度だけ引いて、足元（拾う・階段）と隣接（交換）の文脈項目を組む。
         let lordItems = match PlayerData.PartyQuery.get(PlayerScene.lordId()) {
             case None       => Nil
@@ -350,13 +345,14 @@ mod ActionMenuScene {
                 let adj = PlayerScene.adjacentAllies(lord) |> List.filter(d -> d#hp > 0);
                 // 拾う: 主人公の足元に床アイテムがあれば（applyPickup が主人公＝id 0 の足元を解決）。
                 let pickup =
-                    if (Option.nonEmpty(ItemScene.findAt(lord#gridPos, scene)))
+                    if (Option.nonEmpty(World.groundItemAtOf(lord#gridPos, World.WorldQuery.get())))   // P3-c: World 権威
                         ({text = "拾う", disabled = false,
                           metadata = Some(pickupMeta())}: ItemEntry) :: Nil
                     else Nil;
                 // 階段: 主人公が階段マスに立っているときだけ。
                 let stairsExit =
-                    if (StairsScene.isAt(lord#gridPos, scene))
+                    if (World.stairsPosOf(World.WorldQuery.get())
+                            |> Option.exists(c -> c#x == lord#gridPos#x and c#y == lord#gridPos#y))   // P3-a: World 権威
                         ({text = "階段", disabled = false,
                           metadata = Some(gatherStairsMeta())}: ItemEntry) :: Nil
                     else Nil;
@@ -385,18 +381,21 @@ mod ActionMenuScene {
             |> Option.map(d -> d#waited)
             |> Option.getWithDefault(false)
 
-    /// 「集合（行軍）」を開始できるか。生存味方が他に居て、かつ主人公が未行動のとき。
+    /// 「集合（行軍）」を開始できるか。生存味方が他に居て、主人公が未行動で、かつ
+    /// フォグで見えている敵が 1 体もいないとき（ターン跨ぎ自動継続の判定と同じ通貨）。
     /// 空マスメニューの「集合」の disabled 判定と C キーショートカット可否で共有する。
-    pub def gatherEnabled(): Bool \ PlayerData.PartyQuery =
-        gatherAvailable() and not lordWaited()
+    /// 敵可視は applyFog が設定する marker 可視を読む。プレイヤーターン中は敵が動かないので
+    /// 前フレームの値で判定して問題ない（`EnemyScene.isVisible` と同じ前提）。
+    pub def gatherEnabled(scene: Scene[NodeTag]): Bool \ PlayerData.PartyQuery =
+        gatherAvailable() and not lordWaited() and not EnemyScene.anyVisible(scene)
 
     /// 通常の空マスメニュー項目。生存している味方が主人公以外に居れば「集合」、常に「ターンエンド」。
-    /// 集合は主人公が隊列を率いて動くモードなので、敵検知・合流距離の事前条件は持たない。
-    def gatherMenuItems(_scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
-        // 「集合」は常に表示し、開始できないとき（味方が他に居ない／主人公が行動済み）は
-        // disabled=true で淡色表示・選択スキップ・確定無効にする。
+    /// 集合は隊列で無防備に動くモードなので、敵が見えている間は開始できない（合流距離の条件は無し）。
+    def gatherMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
+        // 「集合」は常に表示し、開始できないとき（味方が他に居ない／主人公が行動済み／
+        // 敵が見えている）は disabled=true で淡色表示・選択スキップ・確定無効にする。
         let gather =
-            ({text = "集合", disabled = not gatherEnabled(),
+            ({text = "集合", disabled = not gatherEnabled(scene),
               metadata = Some(gatherMeta())}: ItemEntry) :: Nil;
         let turnEnd =
             ({text = "ターンエンド", disabled = false,
@@ -412,7 +411,7 @@ mod ActionMenuScene {
     /// `gatherAvailable()` のときだけ呼ぶこと（空マスメニューの「集合」確定と同じ帰結）。
     pub def gatherShortcut(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                              SelectedPlayer.State, PlayerData.PartyQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
         applyGather(scene)
 
     /// Shift 長押しゲージ満了時のショートカット: メニューを開かず「全員待機」と同じ
@@ -420,13 +419,14 @@ mod ActionMenuScene {
     /// 呼び出し側（TurnEndHoldScene）で PlayerCursor / GatherMove のときだけ発火する。
     pub def turnEndShortcut(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, GatherResume.State} =
+                              TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                              World.Command, World.WorldQuery} =
         applyTurnEnd(scene)
 
     /// インベントリのいずれかの武器の射程内に生きている敵が居るか。
     /// 装備中(先頭)だけでなく全武器を見る: 射程を変えれば(= 別の武器に持ち替えれば)
     /// 攻撃できる場合も「攻撃」を出すため。武器なし / 全員 isDying / どの武器も射程外なら false。
-    /// 持ち替え後の実際の装備は `PlayerScene.enterAttackPhase` が行う。
+    /// 持ち替え後の実際の装備は WeaponSelect の確定時に行う。
     def canAttackFrom(player: PlayerScene.Data): Bool \ EnemyData.RosterQuery =
         let enemies = EnemyData.RosterQuery.getAll();
         List.exists(w -> weaponReachesAnyEnemy(player#gridPos, w, enemies), player#weapons)
@@ -450,9 +450,32 @@ mod ActionMenuScene {
             and d#gridPos#y == player#gridPos#y,
             PlayerData.PartyQuery.getAll())
 
+    /// メニュー確定アクションを **「決定(data)」と「適用(effect)」に分離**する。
+    /// `ActionIntent` は「何をするか」を表す**純粋なデータ**で、入力分岐は scene を直接 mutate せず intent を返すだけ。
+    /// 適用は単一 dispatcher `applyActionIntent` に集約する（決定と適用を分ける seam）。
+    /// 現状は "wait" のみ intent 化している。
+    pub enum ActionIntent {
+        case Wait   // その場で waited 確定（ターン進行）
+    }
+
+    /// 決定: metadata から `ActionIntent` を引く**純粋関数**（副作用なし＝入力は「データを選ぶ」だけ）。
+    /// まだ intent 化していないアクションは None（呼び出し側の既存 if-else にフォールバック）。
+    def actionIntentOf(metadata: String): Option[ActionIntent] =
+        if (metadata == waitMeta()) Some(ActionIntent.Wait) else None
+
+    /// 適用: `ActionIntent` を scene へ適用する**単一 dispatcher**（intent が effect になる唯一の点）。
+    /// 将来はここから World System へ寄せる。現状 Wait は既存 `TurnFlow.commitWaitedAndAdvance` をそのまま呼ぶ（挙動不変）。
+    def applyActionIntent(intent: ActionIntent, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
+               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+               World.Command, World.WorldQuery} =
+        match intent {
+            case ActionIntent.Wait => TurnFlow.commitWaitedAndAdvance(scene)
+        }
+
     /// ItemList 項目が確定された (Enter) 瞬間に呼ばれる。metadata から
     /// 「attack」/「wait」/「pickup」/「gather」を分岐して、それぞれの帰結を直接適用する。
-    ///   - attack: 攻撃ターゲット選択フェーズへ (`PlayerScene.enterAttackPhase` に委譲)
+    ///   - attack: 武器選択ウィンドウへ (`enterWeaponSelect` に委譲)
     ///   - wait:   その場で waited 確定
     ///   - pickup: 床アイテムを拾って waited 確定 (拾うで 1 ターン使う)
     ///   - gather: 集合。GatherMove へ移って主人公が隊列を率いて動き始める (`applyGather`)
@@ -465,14 +488,19 @@ mod ActionMenuScene {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 GatherResume.State, PlayerData.PartyQuery,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery,
+                ItemPickupPopupScene.State} =
         match entry#metadata {
             case None    => scene
             case Some(m) =>
+                // F1: intent 化済みのアクション（現状 "wait"）は decide→apply の seam を通す。
+                // 未変換アクションは None で下の既存 if-else にフォールバック（strangler-fig）。
+                match actionIntentOf(m) {
+                    case Some(intent) => applyActionIntent(intent, scene)
+                    case None         =>
                 if (m == attackMeta())        enterWeaponSelect(scene)
                 else if (m == exchangeMeta()) PhaseTransitions.enterTradeTargetSelect(scene)
                 else if (m == itemMeta())     openItemMenu(scene)
-                else if (m == waitMeta())     TurnFlow.commitWaitedAndAdvance(scene)
                 else if (m == pickupMeta())   applyPickup(scene)
                 else if (m == openMeta())     applyOpenChest(scene)
                 else if (m == gatherMeta())   applyGather(scene)
@@ -481,8 +509,9 @@ mod ActionMenuScene {
                 else if (m == suspendMeta())  SuspendConfirmScene.show(scene)
                 else if (m == stairsMeta())   applyStairs(scene)
                 else if (m == gatherTradeMeta()) openGatherTrade(scene)
-                else if (m == gatherStairsMeta()) StairsExitScene.begin(scene)
+                else if (m == gatherStairsMeta()) StairsExitDriver.begin(scene)
                 else                          scene
+                }
         }
 
     /// 「かいだん」確定。選択中の味方を階段で退場させる。生存味方が全員退場したら
@@ -493,7 +522,8 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
+                World.Command, World.WorldQuery} =
         // 階段を決定した瞬間にフロア移動音を鳴らす
         AudioStreamPlayer.play("change_floor");
         GameLogger.playerLog("階段を降りた");
@@ -511,7 +541,7 @@ mod ActionMenuScene {
 
     /// 「アイテム」確定で ItemMenuScene を開く。選択中味方の id が必要。
     def openItemMenu(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, PlayerData.PartyQuery} =
         match SelectedPlayer.State.get()#id {
             case None           => scene
             case Some(playerId) => ItemMenuScene.openFor(playerId, scene)
@@ -529,7 +559,7 @@ mod ActionMenuScene {
     /// リーダー（主人公）が既に行動済み(waited)なら開始せず、ログだけ出してメニューに留まる。
     def applyGather(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                              SelectedPlayer.State, PlayerData.PartyQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
         if (leaderWaited())
             { GameLogger.playerLog("リーダーは既に行動済みです。"); scene }
         else {
@@ -544,10 +574,11 @@ mod ActionMenuScene {
             |> Option.getWithDefault(false)
 
     /// 「ターンエンド」／集合の「全員待機」確定。実体は `TurnFlow.commitAllWaitedAndAdvance`
-    /// （ターン確定の単一所有者）に委譲する。`EnemyTurnDriverScene` の強制全員待機と共通の入口。
+    /// （ターン確定の単一所有者）に委譲する。`EnemyTurnDriver` の強制全員待機と共通の入口。
     def applyTurnEnd(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, GatherResume.State} =
+                              TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                              World.Command, World.WorldQuery} =
         // 自発確定（メニュー「全員待機/ターンエンド」・shift スキップ・階段離脱の残存待機）は allowResume=true。
         // 集合中(gatherActive=true)のときだけ実際に resume が立つ（commitAllWaitedAndAdvance 側で AND）。
         TurnFlow.commitAllWaitedAndAdvance(true, scene)
@@ -561,7 +592,8 @@ mod ActionMenuScene {
     /// 何らかの理由で item が無い場合は no-op（防御的）。
     def applyPickup(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger,
-                              SelectedPlayer.State, PlayerData.PartyQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.Command, World.WorldQuery,
+                              ItemPickupPopupScene.State} =
         match pickupTarget(scene) {
             case None       => scene
             case Some(info) =>
@@ -579,10 +611,12 @@ mod ActionMenuScene {
         }
 
     /// 拾う主体が足元の床アイテムを拾うと重量過多になるか。PartyQuery で現フレームの Data を、
-    /// `ItemScene.dataAt` で床アイテムを読む。どちらか欠ければ「過多ではない」扱い（防御的）。
+    /// `GroundItems.dataAt` で床アイテムを読む。どちらか欠ければ「過多ではない」扱い（防御的）。
     def wouldPickupOverload(info: {playerId = Int32, gridPos = {x = Int32, y = Int32}},
-                             scene: Scene[NodeTag]): Bool \ PlayerData.PartyQuery =
-        match (PlayerData.PartyQuery.get(info#playerId), ItemScene.dataAt(info#gridPos, scene)) {
+                             _scene: Scene[NodeTag]): Bool \ {PlayerData.PartyQuery, World.WorldQuery} =
+        // P3-c: 床アイテムは World store から読む（`groundItemAtOf`）。
+        match (PlayerData.PartyQuery.get(info#playerId),
+               World.groundItemAtOf(info#gridPos, World.WorldQuery.get())) {
             case (Some(player), Some(floor)) =>
                 PlayerScene.wouldOverloadByPicking(player, floor#item)
             case _ => false
@@ -596,7 +630,8 @@ mod ActionMenuScene {
     /// 中身は配置時に抽選済みなので開錠側は Math.Random も catalogs も要さない（決定論的）。
     def applyOpenChest(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger,
-                              SelectedPlayer.State, PlayerData.PartyQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.Command, World.WorldQuery,
+                              ItemPickupPopupScene.State} =
         match openTarget(scene) {
             case None                      => scene
             case Some((info, player, chest)) =>
@@ -606,7 +641,7 @@ mod ActionMenuScene {
                     ItemPickupPopupScene.showFull(scene)
                 else
                     PlayerScene.addPickedItem(info#playerId, chest#content, scene)
-                        |> ChestScene.takeAt(info#gridPos)
+                        |> Chests.takeAt(info#gridPos)
                         |> ItemPickupPopupScene.reserveGetItemSound
         }
 
@@ -614,12 +649,12 @@ mod ActionMenuScene {
     /// どれかが欠けたら None（宝箱が無い / 駒が見つからない場合は何もしない）。
     def openTarget(scene: Scene[NodeTag]):
             Option[({playerId = Int32, gridPos = {x = Int32, y = Int32}},
-                    PlayerScene.Data, ChestScene.Data)]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery} =
+                    PlayerScene.Data, Chests.Data)]
+            \ {SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
         forM (
             info   <- pickupTarget(scene);
             player <- PlayerData.PartyQuery.get(info#playerId);
-            chest  <- ChestScene.findAt(info#gridPos, scene)
+            chest  <- World.chestAtOf(info#gridPos, World.WorldQuery.get())   // P3-b: World 権威
         ) yield (info, player, chest)
 
     /// 拾う主体(playerId)と拾う位置(gridPos)を決める。選択中の味方が足元のアイテムを拾う。
@@ -687,7 +722,7 @@ mod ActionMenuScene {
     pub def onActionCancelled(scene: Scene[NodeTag]):
                               Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                                 TurnPhase.State, SelectedPlayer.State,
-                                                PlayerData.PartyQuery} =
+                                                PlayerData.PartyQuery, World.Command, World.WorldQuery} =
         let sel = SelectedPlayer.State.get();
         if (sel#gatherActive)
             PhaseTransitions.enterGatherMove(scene)
@@ -703,7 +738,8 @@ mod ActionMenuScene {
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 GatherResume.State, PlayerData.PartyQuery,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery,
+                ItemPickupPopupScene.State} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             // disabled 項目（例: 敵が射程外の「攻撃」）は確定しても何もしない。
             case Some(entry) => if (entry#disabled) scene else onActionConfirmed(entry, scene)

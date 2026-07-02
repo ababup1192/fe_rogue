@@ -71,17 +71,16 @@ mod TestItemPickupPopupScene {
     /// アイテム取得時に呼ぶ `reserveGetItemSound` は、ポップアップ(stage)を動かさず
     /// `soundPending` だけ true にする。これにより次フレームの step が get_item を 1 回鳴らし
     /// （`testSoundPlaysOnFirstFrame` 参照）、窓は出ない(stage=Idle 維持)。
+    /// P4-e: 状態は resource（`ItemPickupPopupScene.State`）が持つ。withState で包み、reserveGetItemSound の
+    /// 後に State を読んで soundPending=true・stage=Idle 維持を確認する（旧: NodeTag ペイロード読取）。
     @Test
     def testReserveGetItemSoundReservesWithoutPopup(): Unit \ Assert =
-        let scene = Scene.empty()
-            |> Scene.addNode("ItemPickupPopup",
-                EngineNode.CanvasLayerWithState(CanvasLayer.make(6),
-                    NodeTag.ItemPickupPopup(
-                        {stage = Stage.Idle, elapsed = Duration.zero(), soundPending = false})));
-        let after = ItemPickupPopupScene.reserveGetItemSound(scene);
-        let observed = match Scene.getState("ItemPickupPopup" :: Nil, after) {
-            case Some(NodeTag.ItemPickupPopup(d)) => (d#soundPending, d#stage)
-            case _                                 => bug!("popup node missing")
-        };
-        Assert.assertEq(expected = (true, Stage.Idle), observed)
+        region rc {
+            let observed = ItemPickupPopupScene.withState(rc, () -> {
+                discard ItemPickupPopupScene.reserveGetItemSound(Scene.empty());
+                let d = ItemPickupPopupScene.State.get();
+                (d#soundPending, d#stage)
+            });
+            Assert.assertEq(expected = (true, Stage.Idle), observed)
+        }
 }

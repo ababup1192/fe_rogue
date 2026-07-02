@@ -79,61 +79,44 @@ mod TestPlayerScene {
 
     /// scene 内 Player(id) の (marker, data) を moveTo に渡し、戻り値で scene を更新する。
     def applyMove(id: Int32, map: MapSnapshot, target: {x = Int32, y = Int32},
-                   scene: Scene[NodeTag]): Scene[NodeTag] \ Tween.Scheduler =
+                   scene: Scene[NodeTag]): Scene[NodeTag] =
         match Scene.getEngineNode(PlayerScene.playerPath(id), scene) {
             case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
+                // P0a: moveTo は World.Command を emit するので test では discharge（位置 World は検証外）。
                 let (newMarker, newData) =
-                    PlayerScene.moveTo(id, map, target, marker, data,
-                                       Duration.frames(count = 16, fps = 120), scene);
+                    TestUnitFixtures.dischargeWorldCommand(() ->
+                        PlayerScene.moveTo(id, map, target, marker, data,
+                                           Duration.frames(count = 16, fps = 120), scene));
                 Scene.setEngineNode(PlayerScene.playerPath(id),
                     EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)),
                     scene)
             case _ => bug!("applyMove: expected Player at playerPath(${id})")
         }
 
+    /// addOnePlayer は P0b で位置を World へ seed する `World.Command` を emit する。本テスト群は
+    /// 位置 World を検証しないので、scene 構築の各 spawn を discharge で包む薄いラッパ。
+    /// pipe で chain できるよう scene を最後の引数に取る（`|> addOnePlayerT(sp)`）。
+    def addOnePlayerT(sp: PlayerScene.Spawn, scene: Scene[NodeTag]): Scene[NodeTag] =
+        TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.addOnePlayer(sp, scene))
+
     // ========================================================================
-    // moveTo — gridPos を即更新、tween は engine に委譲
+    // moveTo — gridPos を即更新（描画位置 tween は World の renderPos が権威＝engine tween 退役）
     // ========================================================================
 
-    /// moveTo 直後: gridPos は target に更新される。world 座標は tween がまだ進んでいないので
-    /// 元の位置のまま（noop tween で確認）
+    /// moveTo 直後: gridPos は target に更新される。marker の world 座標は engine tween を退役したため
+    /// この場では動かない（描画位置は World の renderPos が担い、marker は `RenderWorld.syncMarkers` が
+    /// stepWorld 後に別途合わせる）。滑走→スナップの World 側性質は `TestWorld` と lib `TestEcsTween` が担保。
     @Test
     def testMoveToUpdatesGridPosImmediately(): Unit \ Assert =
         let target: {x = Int32, y = Int32} = {x = 6, y = 5};
         let initialPos = testGridToWorld(initialGrid());
-        let after = TestUnitFixtures.withNoopTween(() ->
-            applyMove(0, testSnapshot(), target, emptyPlayerScene()));
+        let after = applyMove(0, testSnapshot(), target, emptyPlayerScene());
         let pos = playerWorldPos(0, after);
         let gridX = PlayerScene.getGridPos(0, after)#x;
         let gridY = PlayerScene.getGridPos(0, after)#y;
         Assert.assertEq(
             expected = (6, 5, initialPos#x, initialPos#y),
             (gridX, gridY, pos#x, pos#y))
-
-    /// moveTo 後の流れを実 Tween で end-to-end 検証する。
-    ///   moveTo 直後:        world は initial のまま、isMoving(0) = true
-    ///   tickAll(1.0) 後:    world は target に snap、isMoving(0) = false
-    @Test
-    def testMoveToSchedulesTweenAndSnaps(): Unit \ Assert =
-        region rc {
-            let target: {x = Int32, y = Int32} = {x = 6, y = 5};
-            let initialWorld = testGridToWorld(initialGrid());
-            let targetWorld = testGridToWorld(target);
-            let result = run {
-                let scene1 = applyMove(0, testSnapshot(), target, emptyPlayerScene());
-                let posBefore = playerWorldPos(0, scene1);
-                let activeBefore = PlayerScene.isMoving(0);
-                let scene2 = Tween.tickAll(1.0 |> Duration.seconds, scene1);
-                let posAfter = playerWorldPos(0, scene2);
-                let activeAfter = PlayerScene.isMoving(0);
-                (posBefore#x, posBefore#y, activeBefore,
-                 posAfter#x, posAfter#y, activeAfter)
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(
-                expected = (initialWorld#x, initialWorld#y, true,
-                             targetWorld#x, targetWorld#y, false),
-                result)
-        }
 
     // ========================================================================
     // adjacentAllies — 上下左右 1 マスの他味方だけを返す
@@ -158,13 +141,13 @@ mod TestPlayerScene {
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 5, y = 5}))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 5, y = 4}))
-            |> PlayerScene.addOnePlayer(mkSpawn(2, {x = 4, y = 5}))
-            |> PlayerScene.addOnePlayer(mkSpawn(3, {x = 6, y = 5}))
-            |> PlayerScene.addOnePlayer(mkSpawn(4, {x = 5, y = 6}))
-            |> PlayerScene.addOnePlayer(mkSpawn(5, {x = 4, y = 4}))
-            |> PlayerScene.addOnePlayer(mkSpawn(6, {x = 6, y = 6}));
+            |> addOnePlayerT(mkSpawn(0, {x = 5, y = 5}))
+            |> addOnePlayerT(mkSpawn(1, {x = 5, y = 4}))
+            |> addOnePlayerT(mkSpawn(2, {x = 4, y = 5}))
+            |> addOnePlayerT(mkSpawn(3, {x = 6, y = 5}))
+            |> addOnePlayerT(mkSpawn(4, {x = 5, y = 6}))
+            |> addOnePlayerT(mkSpawn(5, {x = 4, y = 4}))
+            |> addOnePlayerT(mkSpawn(6, {x = 6, y = 6}));
         let self = match PlayerScene.get(0, scene) {
             case Some(d) => d
             case None    => bug!("player 0 not found")
@@ -184,9 +167,9 @@ mod TestPlayerScene {
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 5, y = 5}))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 4}))
-            |> PlayerScene.addOnePlayer(mkSpawn(2, {x = 6, y = 6}));
+            |> addOnePlayerT(mkSpawn(0, {x = 5, y = 5}))
+            |> addOnePlayerT(mkSpawn(1, {x = 4, y = 4}))
+            |> addOnePlayerT(mkSpawn(2, {x = 6, y = 6}));
         let self = match PlayerScene.get(0, scene) {
             case Some(d) => d
             case None    => bug!("player 0 not found")
@@ -194,6 +177,24 @@ mod TestPlayerScene {
         let neighbors = TestUnitFixtures.withMockPartyQuery(scene, () ->
             PlayerScene.adjacentAllies(self));
         Assert.assertEq(expected = Nil, List.map(d -> d#id, neighbors))
+
+    /// spawn-seed gap 回帰（2026-06-30）: command-derive store は refreshMirror が preserve する（毎フレ
+    /// scene から再構築しない）ため、floor 跨ぎで scene が reset されても World は前 floor の stale 値を保持する。
+    /// よって spawn funnel(addOnePlayer)が各 command-derive store を Cmd で seed しないと stale drift が起きる
+    /// （usedStairs で実発生＝[USEDSTAIRS DIFF]・unit test では出ず run 検証でのみ発覚）。addOnePlayer 後の World に
+    /// usedStairs が Some(false) で seed されていること（None=未 seed でない）を pin して再発を防ぐ。
+    /// 敵 acted（addOneEnemy の SetActed seed）も同型ゆえこのパターンで守られる。
+    @Test
+    def testAddOnePlayerSeedsUsedStairs(): Unit \ {Assert, Fs.FileRead} =
+        let fx = loadTestCatalogs();
+        let sp = ({id = 0, classId = "test_player", gridPos = {x = 5, y = 5}, resource = fx#unitSample,
+                   weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
+        let base = Scene.empty() |> MapScene.addWorldNode;
+        region rc {
+            let (_, _, w) = TestUnitFixtures.withTracedWorld(rc, 0i64, base, () ->
+                PlayerScene.addOnePlayer(sp, base));
+            Assert.assertEq(expected = Some(false), World.usedStairsOf(World.EntityRef.Player(0), w))
+        }
 
     // ========================================================================
     // gatherNotMovedYet — 集合直後（誰も origin から動いていない）か
@@ -211,10 +212,12 @@ mod TestPlayerScene {
                                           consumables = Nil, rings = Nil}: PlayerScene.Spawn);
             let scene = Scene.empty()
                 |> MapScene.addWorldNode
-                |> PlayerScene.addOnePlayer(mkSpawn(0, lordPos))
-                |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 5, y = 4}));
+                |> addOnePlayerT(mkSpawn(0, lordPos))
+                |> addOnePlayerT(mkSpawn(1, {x = 5, y = 4}));
             TestUnitFixtures.withSelectionRef(rc, sel, () ->
-                PlayerScene.gatherNotMovedYet(scene))
+                // P6-2b: 現在位置は World 読み（空 World → scene fallback で従来どおり）。
+                run { PlayerScene.gatherNotMovedYet(scene) }
+                    with handler World.WorldQuery { def get(k) = k(World.empty()) })
         }
 
     /// 集合中で全員が draft の origin に居る（一歩も動いていない）→ true（C で切替可能）。
@@ -290,7 +293,7 @@ mod TestPlayerScene {
     //   - `UnitCatalog.load` で本番 resources の catalog を読む
     //   - `UnitCatalog.lookupWeapon(id, catalog)` / `Staff.lookup(id, staffCatalog)`
     //     で本物の resource を取得
-    //   - `MapScene.addWorldNode` + `PlayerScene.addOnePlayer(spawn, scene)` で scene 構築
+    //   - `MapScene.addWorldNode` + `addOnePlayerT(spawn, scene)` で scene 構築
     //   - `PlayerScene.swapItem(args, scene)` を record-style 引数で呼ぶ
     //   - インベントリ確認は `PlayerScene.getWeapons` / `getStaves` の戻り値を直接 map
     //
@@ -326,18 +329,18 @@ mod TestPlayerScene {
         let fire  = UnitCatalog.lookupWeapon("tome_grimoire", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: fire :: Nil, staves = Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = bow :: Nil, staves = Nil, consumables = Nil, rings = Nil});
-        let after = PlayerScene.swapItem({
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Weapon(0),
             partnerId   = 1,
             partnerKind = Some(PlayerData.ItemKind.Weapon(0))
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = ("魔導書" :: "てつの弓" :: Nil, "てつのやり" :: Nil),
             (PlayerScene.getWeapons(0, after) |> List.map(w -> w#name),
@@ -353,18 +356,18 @@ mod TestPlayerScene {
         let swap = Staff.lookup("swap_staff", fx#staffCatalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = live :: Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = swap :: Nil, consumables = Nil, rings = Nil});
-        let after = PlayerScene.swapItem({
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Staff(0),
             partnerId   = 1,
             partnerKind = Some(PlayerData.ItemKind.Staff(0))
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = ("いれかえのつえ" :: Nil, "かいふくのつえ" :: Nil),
             (PlayerScene.getStaves(0, after) |> List.map(s -> s#name),
@@ -382,18 +385,18 @@ mod TestPlayerScene {
         let live  = Staff.lookup("live_staff", fx#staffCatalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = live :: Nil, consumables = Nil, rings = Nil});
-        let after = PlayerScene.swapItem({
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Weapon(0),
             partnerId   = 1,
             partnerKind = Some(PlayerData.ItemKind.Staff(0))
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = ((Nil, "かいふくのつえ" :: Nil), ("てつのやり" :: Nil, Nil)),
             ((PlayerScene.getWeapons(0, after) |> List.map(w -> w#name),
@@ -412,18 +415,18 @@ mod TestPlayerScene {
         let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = Nil, consumables = Nil, rings = Nil});
-        let after = PlayerScene.swapItem({
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Weapon(0),
             partnerId   = 1,
             partnerKind = None
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = (Nil, "てつのやり" :: Nil),
             (PlayerScene.getWeapons(0, after) |> List.map(w -> w#name),
@@ -442,18 +445,18 @@ mod TestPlayerScene {
         let spear = UnitCatalog.lookupWeapon("iron_lance", fx#catalog);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 0, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = Nil, staves = Nil, consumables = Nil, rings = Nil})
-            |> PlayerScene.addOnePlayer({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
+            |> addOnePlayerT({id = 1, classId = "test_player", gridPos = {x = 0, y = 0},
                                           resource = fx#unitSample,
                                           weapons = spear :: Nil, staves = Nil, consumables = Nil, rings = Nil});
-        let after = PlayerScene.swapItem({
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 1,
             selfKind    = PlayerData.ItemKind.Weapon(0),
             partnerId   = 0,
             partnerKind = None
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = ("てつのやり" :: Nil, Nil),
             (PlayerScene.getWeapons(0, after) |> List.map(w -> w#name),
@@ -479,14 +482,14 @@ mod TestPlayerScene {
                                        consumables = cons, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, potion :: Nil))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, Nil));
-        let after = PlayerScene.swapItem({
+            |> addOnePlayerT(mkSpawn(0, potion :: Nil))
+            |> addOnePlayerT(mkSpawn(1, Nil));
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Consumable(0),
             partnerId   = 1,
             partnerKind = None
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = (Nil, "きずぐすり" :: Nil),
             (PlayerScene.getConsumables(0, after) |> List.map(c -> c#name),
@@ -505,14 +508,14 @@ mod TestPlayerScene {
                                         consumables = Nil, rings = rings}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, ring :: Nil))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, Nil));
-        let after = PlayerScene.swapItem({
+            |> addOnePlayerT(mkSpawn(0, ring :: Nil))
+            |> addOnePlayerT(mkSpawn(1, Nil));
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.swapItem({
             selfId      = 0,
             selfKind    = PlayerData.ItemKind.Ring(0),
             partnerId   = 1,
             partnerKind = None
-        }, scene);
+        }, scene));
         Assert.assertEq(
             expected = (Nil, ring#name :: Nil),
             (PlayerScene.getRings(0, after) |> List.map(r -> r#name),
@@ -531,13 +534,22 @@ mod TestPlayerScene {
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}));
-        let after = PlayerScene.useStairs(0, scene);
-        match PlayerScene.get(0, after) {
-            case Some(d) =>
-                Assert.assertEq(expected = (true, true, true),
-                                (d#usedStairs, d#hidden, d#waited))
-            case None    => bug!("player 0 not found")
+            |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}));
+        // P6-2a: waited は scene twin 退役（syncTree 派生も撤去）。usedStairs/hidden は scene 権威、
+        // waited は World store を直接検証する。
+        region rc {
+            let wref = Ref.fresh(rc, World.syncFromScene(scene, World.empty()));
+            let after = run { PlayerScene.useStairs(0, scene) } with handler World.Command {
+                def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
+            };
+            let waitedW = World.waitedOf(World.EntityRef.Player(0), Ref.get(wref))
+                |> Option.getWithDefault(false);
+            match PlayerScene.get(0, after) {
+                case Some(d) =>
+                    Assert.assertEq(expected = (true, true, true),
+                                    (d#usedStairs, d#hidden, waitedW))
+                case None    => bug!("player 0 not found")
+            }
         }
 
     /// フロア終了は「生存味方が全員」階段を使ったときだけ true。
@@ -549,10 +561,10 @@ mod TestPlayerScene {
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 3}));
-        let oneUsed  = PlayerScene.useStairs(0, scene);
-        let bothUsed = PlayerScene.useStairs(1, oneUsed);
+            |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}))
+            |> addOnePlayerT(mkSpawn(1, {x = 4, y = 3}));
+        let oneUsed  = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.useStairs(0, scene));
+        let bothUsed = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.useStairs(1, oneUsed));
         Assert.assertEq(
             expected = (false, true),
             (PlayerScene.allLivingUsedStairs(oneUsed),
@@ -570,16 +582,16 @@ mod TestPlayerScene {
                                weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0))
-            |> PlayerScene.addOnePlayer(mkSpawn(1))
-            |> PlayerScene.addOnePlayer(mkSpawn(2));
+            |> addOnePlayerT(mkSpawn(0))
+            |> addOnePlayerT(mkSpawn(1))
+            |> addOnePlayerT(mkSpawn(2));
         let baseStats = LevelSystem.statsOf(fx#unitSample);
         let carry =
             ({id = 0, hp = 3, weapons = spear :: Nil, staves = Nil, consumables = Nil,
               rings = Nil, ringEquipped = false, level = 1, exp = 0, stats = baseStats}: PlayerScene.CarryData) ::
             ({id = 1, hp = 7, weapons = Nil,          staves = Nil, consumables = Nil,
               rings = Nil, ringEquipped = false, level = 1, exp = 0, stats = baseStats}: PlayerScene.CarryData) :: Nil;
-        let after = PlayerScene.reconcileWithCarry(carry, scene);
+        let after = TestUnitFixtures.dischargeWorldCommand(() -> PlayerScene.reconcileWithCarry(carry, scene));
         Assert.assertEq(
             expected = (0 :: 1 :: Nil, 3, 7, "てつのやり" :: Nil),
             (PlayerScene.getAll(after) |> List.map(d -> d#id),
@@ -614,11 +626,11 @@ mod TestPlayerScene {
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 3}));
-        let result = TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
+            |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}))
+            |> addOnePlayerT(mkSpawn(1, {x = 4, y = 3}));
+        let result = TestUnitFixtures.dischargeWorldCommand(() -> TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
             TestUnitFixtures.withMockGameLogger(() ->
-                PlayerScene.removeDeadAndCheckGameOver(0 :: Nil, scene))));
+                PlayerScene.removeDeadAndCheckGameOver(0 :: Nil, scene)))));
         Assert.assertEq(expected = Nil, PlayerScene.getAll(result) |> List.map(d -> d#id))
 
     /// ロード以外の味方が倒れても、ロードが健在ならゲームオーバーにはならない。
@@ -631,11 +643,11 @@ mod TestPlayerScene {
                                        weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
         let scene = Scene.empty()
             |> MapScene.addWorldNode
-            |> PlayerScene.addOnePlayer(mkSpawn(0, {x = 3, y = 3}))
-            |> PlayerScene.addOnePlayer(mkSpawn(1, {x = 4, y = 3}));
-        let result = TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
+            |> addOnePlayerT(mkSpawn(0, {x = 3, y = 3}))
+            |> addOnePlayerT(mkSpawn(1, {x = 4, y = 3}));
+        let result = TestUnitFixtures.dischargeWorldCommand(() -> TestUnitFixtures.withNoSelection(() -> withGameOverToEmpty(() ->
             TestUnitFixtures.withMockGameLogger(() ->
-                PlayerScene.removeDeadAndCheckGameOver(1 :: Nil, scene))));
+                PlayerScene.removeDeadAndCheckGameOver(1 :: Nil, scene)))));
         Assert.assertEq(expected = 0 :: Nil, PlayerScene.getAll(result) |> List.map(d -> d#id))
 
     // ========================================================================

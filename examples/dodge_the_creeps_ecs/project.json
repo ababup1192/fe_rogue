@@ -1,0 +1,28 @@
+{
+  "title": "Dodge the Creeps!",
+  "designWidth": 480,
+  "designHeight": 720,
+  "windowWidth": 480,
+  "windowHeight": 720,
+  "clearColor": {"r": 0.219608, "g": 0.372549, "b": 0.380392},
+  "maxDeltaTime": 0.05,
+  "textures": [
+    {"name": "playerGrey_walk1", "path": "textures/playerGrey_walk1.png", "hasAlpha": true},
+    {"name": "playerGrey_walk2", "path": "textures/playerGrey_walk2.png", "hasAlpha": true},
+    {"name": "playerGrey_up1",   "path": "textures/playerGrey_up1.png",   "hasAlpha": true},
+    {"name": "playerGrey_up2",   "path": "textures/playerGrey_up2.png",   "hasAlpha": true},
+    {"name": "enemyWalking_1",   "path": "textures/enemyWalking_1.png",   "hasAlpha": true},
+    {"name": "enemyWalking_2",   "path": "textures/enemyWalking_2.png",   "hasAlpha": true},
+    {"name": "enemyFlyingAlt_1", "path": "textures/enemyFlyingAlt_1.png", "hasAlpha": true},
+    {"name": "enemyFlyingAlt_2", "path": "textures/enemyFlyingAlt_2.png", "hasAlpha": true},
+    {"name": "enemySwimming_1",  "path": "textures/enemySwimming_1.png",  "hasAlpha": true},
+    {"name": "enemySwimming_2",  "path": "textures/enemySwimming_2.png",  "hasAlpha": true}
+  ],
+  "fonts": [
+    {"name": "default", "path": "textures/Xolonium-Regular.ttf", "fontSize": 60.0}
+  ],
+  "sounds": [
+    {"name": "music", "path": "sounds/House In a Forest Loop.ogg", "looping": true},
+    {"name": "death", "path": "sounds/gameover.wav",               "looping": false}
+  ]
+}
