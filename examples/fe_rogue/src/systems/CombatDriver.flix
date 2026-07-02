@@ -172,7 +172,7 @@ mod CombatDriver {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
+                              SelectedPlayer.State, CursorState.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
         match side {
             case Faction.Player => playerLungeDone(id, scene)
             case Faction.Enemy  => enemyLungeDone(id, scene)
@@ -188,7 +188,7 @@ mod CombatDriver {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
+                              SelectedPlayer.State, CursorState.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
         // 「敵ターンか」の sim-phase 判定は World 由来（19-case 詳細は不要ゆえ 3-case で足りる）。
         if (World.PhaseQuery.phase() == SimPhase.EnemyTurn) {
             // 敵ターン中の味方反撃が完了した。反撃でレベルアップしていれば、その場で
@@ -250,7 +250,7 @@ mod CombatDriver {
     def startPlayerFollowUp(playerId: Int32, enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, World.Command, World.WorldQuery} =
+                              SelectedPlayer.State, CursorState.State, Pacing.State, World.Command, World.WorldQuery} =
         match EnemyScene.getWithWorldPos(enemyId, scene) {
             case Some(e) =>
                 GameLogger.playerLog("追撃！");
@@ -263,7 +263,7 @@ mod CombatDriver {
     def resolvePlayerMainAttack(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, Pacing.State, World.Command, World.WorldQuery} =
+                              SelectedPlayer.State, CursorState.State, Pacing.State, World.Command, World.WorldQuery} =
         // faction-blind な decideView（UnitView ベース）で分岐する（味方→敵）。
         // view は World 由来（unitViewFromWorld）。ECS 戦闘は hp を World にしか書かないため、
         // 直前の攻撃結果（Kill/Counter 分岐の hp）を scene view で読むと stale になる。
@@ -298,7 +298,7 @@ mod CombatDriver {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, World.Command, World.WorldQuery} =
+                              SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery} =
         let countered = forM (
             p <- PlayerScene.getWithWorldPos(playerId, scene)
         ) yield {
@@ -322,7 +322,7 @@ mod CombatDriver {
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, World.RngDraw, World.Command, World.WorldQuery} =
+                              SelectedPlayer.State, CursorState.State, World.RngDraw, World.Command, World.WorldQuery} =
         if (TurnPhase.State.get() == TurnPhase.Phase.PlayerAttackHold) {
             let cleared = clearEnemyAttackTarget(enemyId, scene);
             TurnFlow.commitWaitedAndAdvance(cleared)
@@ -421,7 +421,7 @@ mod CombatDriver {
                         CustomEffects.GameOverRequest,
                         CustomEffects.ThiefDropRequest,
                         EnemyTurn.Queue, TurnPhase.State,
-                        SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
+                        SelectedPlayer.State, CursorState.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
         match (PlayerScene.idFromPath(path), EnemyScene.idFromPath(path)) {
             case (Some(playerId), _) => drainAndDispatch(Faction.Player, playerId, node, path, scene)
             case (_, Some(enemyId))  => drainAndDispatch(Faction.Enemy, enemyId, node, path, scene)
@@ -442,7 +442,7 @@ mod CombatDriver {
                              CustomEffects.GameOverRequest,
                              CustomEffects.ThiefDropRequest,
                              EnemyTurn.Queue, TurnPhase.State,
-                             SelectedPlayer.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
+                             SelectedPlayer.State, CursorState.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
         let ownerPath = EntityScene.path(World.refOfSide(side, id));  // faction dispatch は EntityScene/World に集約
         let bundle = AnimationPlayer.Scheduler.drainSignals(ownerPath);
         let afterMethods = List.foldLeft(

@@ -27,12 +27,6 @@ mod TestPhaseTransitions {
     /// Cursor は Marker2D.make でデフォルト visible=true。
     def sceneWithAllRangesAndCursor(): Scene[NodeTag] =
         let cursorMarker = Marker2D.make(Vec2.zero());
-        let cursorData: CursorScene.Data = {
-            gridPos            = dummyCell(),
-            lastHoveredEnemyId = None,
-            holdDir            = None,
-            holdSteps          = 0
-        };
         let moveData: MoveRangeScene.Data            = {reachable = dummyCells(), drawCells = dummyCells()};
         let moveAttackData: MoveAttackRangeScene.Data = {cells = dummyCells()};
         let playerAttackData: PlayerAttackRangeScene.Data = {cells = dummyCells()};
@@ -41,7 +35,7 @@ mod TestPhaseTransitions {
             EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), tag);
         Scene.empty()
             |> Scene.addNode("Cursor",
-                EngineNode.Marker2DWithState(cursorMarker, NodeTag.Cursor(cursorData)))
+                EngineNode.Marker2DWithState(cursorMarker, NodeTag.Cursor))
             |> Scene.addNode("MoveRange",         mkMarker(NodeTag.MoveRange(moveData)))
             |> Scene.addNode("MoveAttackRange",   mkMarker(NodeTag.MoveAttackRange(moveAttackData)))
             |> Scene.addNode("PlayerAttackRange", mkMarker(NodeTag.PlayerAttackRange(playerAttackData)))
@@ -86,7 +80,8 @@ mod TestPhaseTransitions {
                                 with handler World.Command { def emit(_c, k) = k() };
                             observe(after)
                         } with TurnPhase.withState(rc)
-                          with SelectedPlayer.withState(rc))));
+                          with SelectedPlayer.withState(rc)
+                          with CursorState.withState(rc))));
             Assert.assertEq(
                 expected = (false, false, false, true, true, TurnPhase.Phase.PlayerCursor),
                 result)
@@ -111,7 +106,8 @@ mod TestPhaseTransitions {
                     with handler World.WorldQuery { def get(k) = k(World.empty()) };
                 observe(after)
             } with TurnPhase.withState(rc)
-              with SelectedPlayer.withState(rc);
+              with SelectedPlayer.withState(rc)
+              with CursorState.withState(rc);
             Assert.assertEq(
                 expected = (false, false, true, false, false, TurnPhase.Phase.PlayerMoving),
                 result)
@@ -141,7 +137,8 @@ mod TestPhaseTransitions {
                                     with handler World.WorldQuery { def get(k) = k(World.empty()) };
                                 observe(after)
                             } with TurnPhase.withState(rc)
-                              with SelectedPlayer.withState(rc)))));
+                              with SelectedPlayer.withState(rc)
+                              with CursorState.withState(rc)))));
             Assert.assertEq(
                 expected = (false, false, false, true, true, TurnPhase.Phase.PlayerAttack),
                 result)
@@ -166,7 +163,8 @@ mod TestPhaseTransitions {
                     with handler World.WorldQuery { def get(k) = k(World.empty()) };
                 observe(after)
             } with TurnPhase.withState(rc)
-              with SelectedPlayer.withState(rc);
+              with SelectedPlayer.withState(rc)
+              with CursorState.withState(rc);
             Assert.assertEq(
                 expected = (false, false, true, false, false, TurnPhase.Phase.GatherMove),
                 result)

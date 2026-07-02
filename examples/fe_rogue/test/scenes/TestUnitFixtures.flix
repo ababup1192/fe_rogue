@@ -490,6 +490,20 @@ mod TestUnitFixtures {
             def put(_, k) = k()
         }
 
+    /// `CursorState.State` をカーソル位置 `coord` で固定するスタブ。put は捨てる。
+    /// メニュー確定・戦闘系テストが `CursorScene.getGridPos` を読むために供給する。
+    /// ホバー対象や holdDir を要するテストは専用の handler を組む。
+    pub def withCursorAt(coord: {x = Int32, y = Int32}, thunk: Unit -> a \ ef):
+            a \ (ef - CursorState.State) =
+        run { thunk() } with handler CursorState.State {
+            def get(k)    = k({gridPos = coord, lastHoveredEnemyId = None, holdDir = None, holdSteps = 0})
+            def put(_, k) = k()
+        }
+
+    /// `withCursorAt` を原点 (0,0) で巻く簡便版。カーソル座標を参照しないテスト向け。
+    pub def withCursor(thunk: Unit -> a \ ef): a \ (ef - CursorState.State) =
+        withCursorAt({x = 0, y = 0}, thunk)
+
     /// `CustomEffects.FloorAdvanceRequest` の no-op スタブ。`advance` は渡された scene をそのまま返す。
     /// 「かいだん」分岐を踏まないアクション確定系テスト用（踏むテストは別途実 handler を使う）。
     pub def withNoopFloorAdvance(thunk: Unit -> a \ ef):
@@ -685,27 +699,30 @@ mod TestUnitFixtures {
     /// 遷移を観測するなら `withPhaseRef` を最外に巻き、こちらは使わない。
     pub def withMenuReadMocks(phase: TurnPhase.Phase, selectedId: Int32,
                                scene: Scene[NodeTag], thunk: Unit -> a \ ef):
-            a \ (ef - TurnPhase.State - SelectedPlayer.State
+            a \ (ef - TurnPhase.State - SelectedPlayer.State - CursorState.State
                   - PlayerData.PartyQuery - EnemyData.RosterQuery - World.WorldQuery) =
         // メニューは階段判定を World.stairsPosOf で読むため WorldQuery も剥がす。
         // scene から seed した静的 World（stairsPos が scene ノードを mirror）を返せば階段判定が成立する。
+        // カーソル座標を参照するメニュー（射程・ホバー）向けに CursorState も原点で剥がす。
         withFixedPhase(phase, () ->
             withSelectedPlayer(selectedId, () ->
-                withMockPartyQuery(scene, () ->
-                    withMockRosterQuery(scene, () ->
-                        withWorldQuery(World.syncFromScene(scene, World.empty()), thunk)))))
+                withCursor(() ->
+                    withMockPartyQuery(scene, () ->
+                        withMockRosterQuery(scene, () ->
+                            withWorldQuery(World.syncFromScene(scene, World.empty()), thunk))))))
 
     /// `withMenuReadMocks` の未選択版（選択駒なし）。`withSelectedPlayer` を `withNoSelection` に
     /// 差し替えただけ。空マスメニューの項目構築テスト用。
     pub def withMenuReadMocksNoSel(phase: TurnPhase.Phase,
                                     scene: Scene[NodeTag], thunk: Unit -> a \ ef):
-            a \ (ef - TurnPhase.State - SelectedPlayer.State
+            a \ (ef - TurnPhase.State - SelectedPlayer.State - CursorState.State
                   - PlayerData.PartyQuery - EnemyData.RosterQuery - World.WorldQuery) =
         withFixedPhase(phase, () ->
             withNoSelection(() ->
-                withMockPartyQuery(scene, () ->
-                    withMockRosterQuery(scene, () ->
-                        withWorldQuery(World.syncFromScene(scene, World.empty()), thunk)))))
+                withCursor(() ->
+                    withMockPartyQuery(scene, () ->
+                        withMockRosterQuery(scene, () ->
+                            withWorldQuery(World.syncFromScene(scene, World.empty()), thunk))))))
 
     /// 中央アイテム取得ポップアップの `ItemPickupPopupScene.State` を no-op で剥がす
     /// （get=非表示の初期状態固定・put=捨てる）。ポップアップの見た目を観測しないテスト用。
@@ -748,13 +765,15 @@ mod TestUnitFixtures {
                                        thunk: Unit -> a \ ef):
             (a, TurnPhase.Phase) \
                 (ef - Tween.Scheduler - AnimationPlayer.Scheduler - PlayerData.PartyQuery
-                    - TurnPhase.State - SelectedPlayer.State - World.Command - World.WorldQuery) =
+                    - TurnPhase.State - SelectedPlayer.State - CursorState.State
+                    - World.Command - World.WorldQuery) =
         region rc {
             withNoopTween(() ->
                 withNoopAnim(() ->
                     withMockPartyQuery(Scene.empty(), () ->
                         withPhaseRef(rc, TurnPhase.Phase.ActionSelect, () ->
                             withSelectionRef(rc, initialSel, () ->
+                            withCursor(() ->
                                 // 遷移は view 状態 Cmd を emit・World 位置を read するので
                                 // 捨て handler で吸収（このヘルパーの観測対象は
                                 // phase とカーソル可視のみ。posOf は None→scene fallback）。
@@ -764,7 +783,7 @@ mod TestUnitFixtures {
                                     }
                                 } with handler World.Command {
                                     def emit(_c, k) = k()
-                                })))))
+                                }))))))
         }
 
     /// scene 内の Cursor(Marker2D) の visible を読む。フェーズ遷移／キャンセル後に

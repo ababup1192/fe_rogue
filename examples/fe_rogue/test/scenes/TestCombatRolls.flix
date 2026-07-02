@@ -177,6 +177,7 @@ mod TestCombatRolls {
                     } with Tween.withScheduler(rc)
                       with TurnPhase.withState(rc)
                       with SelectedPlayer.withState(rc)
+                      with CursorState.withState(rc)
                       with Pacing.withState(rc))))))));
             Assert.assertEq(
                 expected = (1, prngSeq(0i64, 1)),

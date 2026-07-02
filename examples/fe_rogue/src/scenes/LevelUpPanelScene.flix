@@ -297,7 +297,7 @@ mod LevelUpPanelScene {
     pub def confirm(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, World.Command, World.WorldQuery,
+                              TurnPhase.State, SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery,
                               LevelUpPanelScene.State} =
         let st    = currentState();
         let total = pendingResult(scene) |> Option.map(totalRows) |> Option.getWithDefault(0);
@@ -323,7 +323,7 @@ mod LevelUpPanelScene {
     def resume(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, World.Command, World.WorldQuery} =
+                              TurnPhase.State, SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery} =
         match SelectedPlayer.State.get()#id {
             case Some(_) => TurnFlow.commitWaitedAndAdvance(scene)
             case None    => PhaseTransitions.enterEnemyTurn(scene)

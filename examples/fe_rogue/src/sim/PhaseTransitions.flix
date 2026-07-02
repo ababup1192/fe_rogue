@@ -65,7 +65,7 @@ mod PhaseTransitions {
     /// まだアクティブと誤判定してしまう。
     pub def enterPlayerCursor(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State,
+                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
                               PlayerData.PartyQuery, World.Command} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         clearAllPlayerRanges(scene)
@@ -80,7 +80,7 @@ mod PhaseTransitions {
     pub def enterPlayerCursorAt(target: {x = Int32, y = Int32},
                                   scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, World.Command} =
+                              TurnPhase.State, CursorState.State, World.Command} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         clearAllPlayerRanges(scene)
             |> EnemyScene.showAllActive        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
@@ -117,7 +117,7 @@ mod PhaseTransitions {
     ///                    赤マス内の最初の敵にスナップ (敵が居なければ自分位置)。
     pub def enterPlayerAttack(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State,
+                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
                               PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
         clearMoveOnlyRanges(scene)
@@ -280,7 +280,7 @@ mod PhaseTransitions {
     /// 出ないので、ここに来ることはない (防御的に選択中味方位置にスナップ)。
     pub def enterTradeTargetSelect(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State,
+                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
                               PlayerData.PartyQuery} =
         TurnPhase.State.put(TurnPhase.Phase.TradeTargetSelect);
         clearMoveOnlyRanges(scene)

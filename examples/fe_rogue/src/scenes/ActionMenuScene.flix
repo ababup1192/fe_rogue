@@ -467,7 +467,7 @@ mod ActionMenuScene {
     /// 将来はここから World System へ寄せる。現状 Wait は既存 `TurnFlow.commitWaitedAndAdvance` をそのまま呼ぶ（挙動不変）。
     def applyActionIntent(intent: ActionIntent, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                World.Command, World.WorldQuery} =
         match intent {
             case ActionIntent.Wait => TurnFlow.commitWaitedAndAdvance(scene)
@@ -487,7 +487,7 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                GatherResume.State, PlayerData.PartyQuery,
+                CursorState.State, GatherResume.State, PlayerData.PartyQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery,
                 ItemPickupPopupScene.State} =
         match entry#metadata {
@@ -521,7 +521,7 @@ mod ActionMenuScene {
     def applyStairs(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
                 World.Command, World.WorldQuery} =
         // 階段を決定した瞬間にフロア移動音を鳴らす
@@ -721,7 +721,7 @@ mod ActionMenuScene {
     ///   - SelectedPlayer = None → enterPlayerCursor （空マス由来。カーソル再表示＋snap）
     pub def onActionCancelled(scene: Scene[NodeTag]):
                               Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                                                TurnPhase.State, SelectedPlayer.State,
+                                                TurnPhase.State, SelectedPlayer.State, CursorState.State,
                                                 PlayerData.PartyQuery, World.Command, World.WorldQuery} =
         let sel = SelectedPlayer.State.get();
         if (sel#gatherActive)
@@ -737,7 +737,7 @@ mod ActionMenuScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                GatherResume.State, PlayerData.PartyQuery,
+                CursorState.State, GatherResume.State, PlayerData.PartyQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery,
                 ItemPickupPopupScene.State} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {

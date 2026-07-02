@@ -49,7 +49,7 @@ mod EnemyTurnDriver {
                     \ {GameEngine.Game,
                         Tween.Scheduler, AnimationPlayer.Scheduler,
                         GameLogger.GameLogger, EnemyTurn.Queue,
-                        TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                        TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
                         Pacing.State, PlayerData.PartyQuery, Math.Random,
                         CustomEffects.WandererSpawnRequest,
                         CustomEffects.RingTransformRequest,
@@ -169,7 +169,7 @@ mod EnemyTurnDriver {
             \ {GameEngine.Game,
                 Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
                 Pacing.State, PlayerData.PartyQuery, Math.Random,
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.RingTransformRequest,
@@ -483,7 +483,7 @@ mod EnemyTurnDriver {
     def endTurn(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, TurnPhase.State,
-                SelectedPlayer.State, GatherResume.State, PlayerData.PartyQuery,
+                SelectedPlayer.State, CursorState.State, GatherResume.State, PlayerData.PartyQuery,
                 World.WorldQuery,
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.FloorAdvanceRequest, World.Command} =

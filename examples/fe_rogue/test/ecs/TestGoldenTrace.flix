@@ -492,10 +492,11 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoSelection(() ->
+                TestUnitFixtures.withCursor(() ->
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () ->
                             CombatDriver.onLungeDone(Faction.Player, 0, sc))
-                    } with Pacing.withState(rc))))))))))));
+                    } with Pacing.withState(rc)))))))))))));
             assertGoldenPremise(sc, keys);
             // golden: 追撃分岐 OFF（plain weapon）→ ClrTgt(player) のみ。
             let golden = ("ClrTgt", 0, 0, 0) :: Nil;
@@ -529,12 +530,13 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoSelection(() ->
+                TestUnitFixtures.withCursor(() ->
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () -> {
                             let s1 = CombatDriver.onLungeDone(Faction.Player, 0, sc);
                             CombatDriver.applyEnemyAttackHit(1, s1)
                         })
-                    } with Pacing.withState(rc))))))))))));
+                    } with Pacing.withState(rc)))))))))))));
             let (_, killed) = result;
             assertGoldenPremise(sc, keys);
             // golden: P6-5a で ECS 経路に再凍結。ClrTgt(player)→AtkTgt(enemy1,player0)
@@ -1040,13 +1042,14 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoSelection(() ->
+                TestUnitFixtures.withCursor(() ->
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () -> {
                             let s1 = CombatDriver.applyAttackHit(0, sc);
                             let s2 = CombatDriver.onLungeDone(Faction.Player, 0, s1);
                             CombatDriver.applyEnemyAttackHit(1, s2)
                         })
-                    } with Pacing.withState(rc))))))))))));
+                    } with Pacing.withState(rc)))))))))))));
             w
         };
         // sim: ONE withSeededRng の下で resolveAttack THEN resolveEnemyAttack を thread。

@@ -249,6 +249,7 @@ mod TestCombatDriver {
                     } with Tween.withScheduler(rc)
                       with TurnPhase.withState(rc)
                       with SelectedPlayer.withState(rc)
+                      with CursorState.withState(rc)
                       with Pacing.withState(rc))))))));
             Assert.assertEq(
                 expected = (TurnPhase.Phase.PlayerAttackHold, true), result)
@@ -278,6 +279,7 @@ mod TestCombatDriver {
                     } with Tween.withScheduler(rc)
                       with TurnPhase.withState(rc)
                       with SelectedPlayer.withState(rc)
+                      with CursorState.withState(rc)
                       with Pacing.withState(rc))))))));
             // TurnPhase は分岐で触らないので PlayerAttackHold のまま。World=EnemyTurn ゆえ hold は積まれない。
             Assert.assertEq(
@@ -333,6 +335,7 @@ mod TestCombatDriver {
                 } with Tween.withScheduler(rc)
                   with TurnPhase.withState(rc)
                   with SelectedPlayer.withState(rc)
+                  with CursorState.withState(rc)
                   with Pacing.withState(rc)))))))))))))         }
 
     /// 他ユニット宛の signal は食わない: Player(0) 宛の attack_lunge finished があるとき、

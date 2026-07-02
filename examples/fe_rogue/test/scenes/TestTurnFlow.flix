@@ -61,7 +61,8 @@ mod TestTurnFlow {
                     let _ = TurnFlow.commitWaitedAndAdvance(scene);
                     TurnPhase.State.get()
                 } with TurnPhase.withState(rc)
-                  with SelectedPlayer.withState(rc))))))
+                  with SelectedPlayer.withState(rc)
+                  with CursorState.withState(rc))))))
         }
 
     /// レベルアップ表示待ちの味方が居る間は、ターンを進めず LevelUpView へ割り込む。

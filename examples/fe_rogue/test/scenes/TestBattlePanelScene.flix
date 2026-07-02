@@ -118,6 +118,7 @@ mod TestBattlePanelScene {
               with AnimationPlayer.withScheduler(rc)
               with GameLogger.withLogger(rc)
               with SelectedPlayer.withState(rc)
+              with CursorState.withState(rc)
               with TurnPhase.withState(rc);
             Assert.assertEq(
                 expected = TurnPhase.Phase.PlayerAttackHold,
@@ -153,6 +154,7 @@ mod TestBattlePanelScene {
             } with Tween.withScheduler(rc)
               with AnimationPlayer.withScheduler(rc)
               with SelectedPlayer.withState(rc)
+              with CursorState.withState(rc)
               with TurnPhase.withState(rc);
             Assert.assertEq(
                 expected = TurnPhase.Phase.ActionSelect,

@@ -19,7 +19,7 @@ mod FrameAef {
                          EnemyData.RosterQuery,
                          Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
-                         TurnPhase.State, SelectedPlayer.State, World.Command,
+                         TurnPhase.State, SelectedPlayer.State, CursorState.State, World.Command,
                          World.WorldQuery,
                          // 手動移動の着地自動取得（stepFor→autoPickupOrLog）が中央ポップアップの
                          // 取得音予約/表示を State resource に書くため。
@@ -38,7 +38,7 @@ mod FrameAef {
                                 PlayerData.PartyQuery, EnemyData.RosterQuery,
                                 Tween.Scheduler, AnimationPlayer.Scheduler,
                                 GameLogger.GameLogger,
-                                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                                 CustomEffects.GameOverRequest,
                                 CustomEffects.ThiefDropRequest,
                                 Pacing.State,

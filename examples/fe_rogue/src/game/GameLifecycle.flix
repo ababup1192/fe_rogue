@@ -41,7 +41,7 @@ mod GameLifecycle {
     pub def buildPlayingScene(catalogs: Catalogs,
                                 floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
-                SelectedPlayer.State, PartySelection.State, World.Command, World.WorldQuery,
+                SelectedPlayer.State, CursorState.State, PartySelection.State, World.Command, World.WorldQuery,
                 TopBarScene.State} =
         // 前フロアの配置物 store（宝箱/床アイテム）を掃除（scene 再構築での自動 prune は廃止＝明示 Cmd）。
         World.Command.emit(World.Cmd.ClearChests);
@@ -80,7 +80,7 @@ mod GameLifecycle {
     /// MapScene / Fog / DamagePopup / Explosion の後、駒配置の後に呼ぶ前提。
     /// `label` はフロア番号表示（"1F" 等）、`name` はフロア名（"始まりの洞窟" 等。空可）。
     def addHudAndDrivers(label: String, name: String, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead, SelectedPlayer.State, World.WorldQuery, TopBarScene.State} =
+            \ {GameEngine.Game, Fs.FileRead, SelectedPlayer.State, CursorState.State, World.WorldQuery, TopBarScene.State} =
         scene
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
@@ -112,7 +112,7 @@ mod GameLifecycle {
     pub def buildAndRecord(catalogs: Catalogs,
                             floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
-                SelectedPlayer.State, InitialSpawns.State, PartySelection.State, World.Command,
+                SelectedPlayer.State, CursorState.State, InitialSpawns.State, PartySelection.State, World.Command,
                 World.WorldQuery, TopBarScene.State} =
         let scene = buildPlayingScene(catalogs, floor);
         InitialSpawns.State.put({
@@ -153,7 +153,7 @@ mod GameLifecycle {
     /// 起動時 / 全滅リスタート / クリア後ループの共通エントリ。
     pub def buildCurrentFloor(catalogs: Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
-                SelectedPlayer.State, InitialSpawns.State, FloorProgress.State,
+                SelectedPlayer.State, CursorState.State, InitialSpawns.State, FloorProgress.State,
                 PartySelection.State, FloorSnapshot.State, World.Command, World.WorldQuery,
                 TopBarScene.State} =
         let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
@@ -188,7 +188,7 @@ mod GameLifecycle {
     /// スキャフォールド順序で、マップ/駒/アイテム/宝箱/階段だけを from-snapshot の決定論配置に差し替える。
     /// audio は `applyAudioAttach` で再アタッチ（BGM 再生）。
     pub def rebuildFloorFromSnapshot(catalogs: Catalogs, snap: FloorSnapshot.T): Scene[NodeTag]
-            \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, SelectedPlayer.State, World.Command,
+            \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, SelectedPlayer.State, CursorState.State, World.Command,
                 World.WorldQuery, TopBarScene.State} =
         let floor = FloorCatalog.get(snap#floorId, catalogs#floors);
         // 前フロア/前 run の配置物 store を掃除してから addFromSnaps で再 spawn する
@@ -232,7 +232,7 @@ mod GameLifecycle {
     pub def restartFromFloorSnapshot(catalogs: Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                GatherResume.State,
+                CursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State,
                 World.Command, World.WorldQuery, TopBarScene.State} =
         match FloorSnapshot.State.get() {
@@ -314,7 +314,7 @@ mod GameLifecycle {
                                scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                GatherResume.State,
+                CursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State,
                 World.Command, World.WorldQuery, TopBarScene.State} =
         match FloorSnapshot.State.get() {
@@ -398,7 +398,7 @@ mod GameLifecycle {
     pub def resetForGameOver(catalogs: Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State,
                 FloorSnapshot.State, World.Command, World.WorldQuery, TopBarScene.State} =
         resetTurnState();
@@ -415,7 +415,7 @@ mod GameLifecycle {
                           scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
-                TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State,
                 FloorSnapshot.State, World.Command, World.WorldQuery, TopBarScene.State} =
         // 引き継ぐステータスを「現フロア退場前」に確保しておく。

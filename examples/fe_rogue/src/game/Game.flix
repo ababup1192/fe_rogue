@@ -34,7 +34,8 @@ pub enum NodeTag {
     case TradeRange(TradeRangeScene.Data)
     /// DangerZoneScene の紫マス overlay（Shift トグル: 全敵に攻撃されうるマスの統合）
     case DangerZone(DangerZoneScene.Data)
-    case Cursor(CursorScene.Data)
+    /// 選択カーソルの識別用純タグ（論理状態は `CursorState.State` resource へ移設・ペイロードレス）。
+    case Cursor
     /// ArrowCursorScene の Marker2D（杖発射方向を視覚化する矢印カーソル）
     case ArrowCursor(ArrowCursorScene.Data)
     /// Stairs の Marker2D（フロアの階段。床のランダムセルに 1 つ配置される）
@@ -142,7 +143,7 @@ instance Node[NodeTag] {
                 else if (phase == TurnPhase.Phase.GatherMove and data#id == 0)
                     PlayerMovementDriver.gatherStep(delta, node, path, scene)
                 else (node, scene)
-            case NodeTag.Cursor(_) =>
+            case NodeTag.Cursor =>
                 // PlayerCursor / WeaponSelect / PlayerAttack の場合分けは CursorScene 内部に閉じている
                 CursorScene.physicsProcess(delta, node, path, scene)
             case _ => (node, scene)
@@ -222,7 +223,7 @@ instance InputEvent.InputHandler[NodeTag] {
     type Aef = {GameEngine.Game, GameEngine.Audio, BoardQuery, Tween.Scheduler,
                  AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
-                 TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                 TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
                  CustomEffects.FloorAdvanceRequest, CustomEffects.ResumeRequest,
                  CustomEffects.SuspendRequest,
@@ -242,7 +243,7 @@ instance InputEvent.InputHandler[NodeTag] {
                                           AnimationPlayer.Scheduler,
                                           GameLogger.GameLogger,
                                           EnemyTurn.Queue, TurnPhase.State,
-                                          SelectedPlayer.State, GatherResume.State,
+                                          SelectedPlayer.State, CursorState.State, GatherResume.State,
                                           PlayerData.PartyQuery,
                                           EnemyData.RosterQuery,
                                           CustomEffects.FloorAdvanceRequest,
@@ -264,7 +265,7 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
         Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery,
                            Tween.Scheduler, AnimationPlayer.Scheduler,
                            GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
-                           SelectedPlayer.State, GatherResume.State, PlayerData.PartyQuery,
+                           SelectedPlayer.State, CursorState.State, GatherResume.State, PlayerData.PartyQuery,
                            EnemyData.RosterQuery, CustomEffects.FloorAdvanceRequest,
                            CustomEffects.SuspendRequest,
                            Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
@@ -334,7 +335,7 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
 instance MenuEvent.MenuHandler[NodeTag] {
     type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler, GameEngine.Audio,
                  GameLogger.GameLogger, EnemyTurn.Queue,
-                 TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                 TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
                  PlayerData.PartyQuery, EnemyData.RosterQuery,
                  CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery,
                  ItemPickupPopupScene.State}
@@ -344,7 +345,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                           Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                              GameEngine.Audio,
                                              GameLogger.GameLogger, EnemyTurn.Queue,
-                                             TurnPhase.State, SelectedPlayer.State,
+                                             TurnPhase.State, SelectedPlayer.State, CursorState.State,
                                              GatherResume.State,
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
@@ -374,7 +375,7 @@ instance MenuEvent.MenuHandler[NodeTag] {
                           Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                              GameEngine.Audio,
                                              GameLogger.GameLogger, EnemyTurn.Queue,
-                                             TurnPhase.State, SelectedPlayer.State,
+                                             TurnPhase.State, SelectedPlayer.State, CursorState.State,
                                              GatherResume.State,
                                              PlayerData.PartyQuery,
                                              EnemyData.RosterQuery,
@@ -427,7 +428,7 @@ def staffAimDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
 def staffAimConfirm(scene: Scene[NodeTag]):
         Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                            BoardQuery, GameLogger.GameLogger,
-                           EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                           EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                            GameEngine.Audio, World.Command, World.WorldQuery} =
         let dir = ArrowCursorScene.getDirection(scene);
     // 選択中プレイヤー → その Data → selectedItem を forM で 1 本に畳み、
@@ -451,7 +452,7 @@ def staffAimConfirm(scene: Scene[NodeTag]):
 def throwAimConfirm(scene: Scene[NodeTag]):
         Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                            BoardQuery, GameLogger.GameLogger,
-                           EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                           EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                            GameEngine.Audio, Math.Random,
                            CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
         let dir = ArrowCursorScene.getDirection(scene);
@@ -541,7 +542,7 @@ def isMenuCursorMove(phase: TurnPhase.Phase, key: GameEngine.Key): Bool =
 def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene[NodeTag]):
         Option[Scene[NodeTag]] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                                     GameLogger.GameLogger, EnemyTurn.Queue,
-                                    TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                                    TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
                                     PlayerData.PartyQuery, EnemyData.RosterQuery,
                                     CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
                                     CustomEffects.GameOverRequest, CustomEffects.SuspendRequest, World.Command, World.WorldQuery, BoardQuery,
@@ -594,7 +595,7 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                             AnimationPlayer.Scheduler,
                             GameLogger.GameLogger,
                             EnemyTurn.Queue, TurnPhase.State,
-                            SelectedPlayer.State,
+                            SelectedPlayer.State, CursorState.State,
                             PlayerData.PartyQuery,
                             EnemyData.RosterQuery,
                             Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
@@ -924,6 +925,7 @@ mod Game {
                   }
               }
               with SelectedPlayer.withState(rc)   // 操作中プレイヤー id の保持
+              with CursorState.withState(rc)      // 選択カーソルの論理状態（指しセル/加速/ホバー）を resource 化
               with GatherResume.withState(rc)     // 集合モードのターン跨ぎ自動継続フラグ
               with InitialSpawns.withState(rc)    // ゲームオーバー時に同じ敵 / 味方配置を復元
               with FloorSnapshot.withState(rc)    // 進入時フロアスナップショット（全滅時の「フロア最初から」用）
@@ -939,7 +941,7 @@ mod Game {
     def applyPhaseChange(phase: GamePhase, prevPhase: GamePhase, catalogs: GameLifecycle.Catalogs,
                           _scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Math.Random,
-                SelectedPlayer.State, InitialSpawns.State, FloorProgress.State,
+                SelectedPlayer.State, CursorState.State, InitialSpawns.State, FloorProgress.State,
                 PartySelection.State, GameLogger.GameLogger, FloorSnapshot.State, World.Command,
                 World.WorldQuery, TitleMenuScene.State, TopBarScene.State} =
         match phase {
@@ -996,7 +998,7 @@ mod Game {
                          Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
                          EnemyTurn.Queue, TurnPhase.State,
-                         SelectedPlayer.State, GatherResume.State,
+                         SelectedPlayer.State, CursorState.State, GatherResume.State,
                          CustomEffects.GameOverRequest,
                          CustomEffects.FloorAdvanceRequest,
                          CustomEffects.WandererSpawnRequest,

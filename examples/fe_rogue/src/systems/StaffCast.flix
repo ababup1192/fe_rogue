@@ -30,7 +30,7 @@ mod StaffCast {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                 GameEngine.Audio, World.Command, World.WorldQuery} =
         // プレイヤーと杖の両方が解決できたときだけ発動。どちらか欠ければ scene のまま。
         // ネストした match を避けるため Option を forM で短絡的に畳む。
@@ -48,7 +48,7 @@ mod StaffCast {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                 GameEngine.Audio, World.Command, World.WorldQuery} =
         let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
@@ -470,7 +470,7 @@ mod StaffCast {
     pub def applyConsumableUse(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State, GameEngine.Audio,
                 World.Command, World.WorldQuery} =
         // プレイヤーと消費アイテムの両方が解決できたときだけ使用。欠ければ scene のまま。
         // forM による短絡は applyStaffCast と同様。
@@ -486,7 +486,7 @@ mod StaffCast {
                        item: Consumable.ConsumableResource, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State, GameEngine.Audio,
                 World.Command, World.WorldQuery} =
         // 消費アイテムは使う時点で効果が自己確定するため、杖の空振り判定とは異なり無条件で使用音を鳴らす
         AudioStreamPlayer.play("cure");
@@ -667,7 +667,7 @@ mod StaffCast {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                 World.Command, World.WorldQuery} =
         let cast = forM (
             player <- PlayerScene.getWithWorldPos(playerId, scene);
@@ -683,7 +683,7 @@ mod StaffCast {
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                 World.Command, World.WorldQuery} =
         let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
@@ -735,7 +735,7 @@ mod StaffCast {
                         direction: Staff.Direction, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State, GameEngine.Audio,
                 Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
         let cast = forM (player <- PlayerScene.getWithWorldPos(playerId, scene))
             yield fireThrow(playerId, kind, player, direction, scene);
@@ -746,7 +746,7 @@ mod StaffCast {
                    direction: Staff.Direction, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State, GameEngine.Audio,
                 Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
         let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);

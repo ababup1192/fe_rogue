@@ -113,7 +113,7 @@ mod WeaponSelectScene {
                          scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
                         \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                           SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery,
+                           SelectedPlayer.State, CursorState.State, TurnPhase.State, PlayerData.PartyQuery,
                            EnemyData.RosterQuery, World.WorldQuery} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
@@ -136,12 +136,12 @@ mod WeaponSelectScene {
     /// 届く敵が居なければカーソルは触らない。戦闘予報はこのカーソル上の敵で出る。
     def snapCursorToTarget(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
+                              SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
                               World.WorldQuery} =
         match focusedPlayerWeapon(scene) {
             case None                  => scene
             case Some((player, weapon)) =>
-                if (isReachableEnemyCell(CursorScene.getGridPos(scene), player#gridPos, weapon, scene))
+                if (isReachableEnemyCell(CursorScene.getGridPos(), player#gridPos, weapon, scene))
                     CursorScene.setVisible(true, scene)   // 既に対象上 → 位置は保持（左右選択を維持）
                 else match nearestReachableEnemy(player#gridPos, weapon) {
                     case Some(e) => scene |> CursorScene.setVisible(true) |> CursorScene.snapToCell(e#gridPos)
@@ -342,11 +342,11 @@ mod WeaponSelectScene {
     pub def onConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                         Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery, World.Command, World.WorldQuery} =
+                TurnPhase.State, SelectedPlayer.State, CursorState.State, EnemyData.RosterQuery, World.Command, World.WorldQuery} =
         let started = forM (
             pid   <- SelectedPlayer.State.get()#id;
             idx   <- entry#metadata |> Option.flatMap(parseWeaponIndex);
-            eid   <- EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene);
+            eid   <- EnemyScene.findIdAt(CursorScene.getGridPos(), scene);
             enemy <- EnemyData.RosterQuery.get(eid)
         ) yield {
             let equipped = PlayerScene.equipWeapon(pid, idx, scene);
@@ -368,7 +368,7 @@ mod WeaponSelectScene {
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):
                                     Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                TurnPhase.State, SelectedPlayer.State, EnemyData.RosterQuery, World.Command, World.WorldQuery} =
+                TurnPhase.State, SelectedPlayer.State, CursorState.State, EnemyData.RosterQuery, World.Command, World.WorldQuery} =
         match ItemList.getAt(menuPath(), scene) |> Option.flatMap(ItemList.getSelected) {
             case None        => scene
             case Some(entry) => if (entry#disabled) scene else onConfirmed(entry, scene)

@@ -48,7 +48,7 @@ mod EnemyCardScene {
     pub def process(_delta: Duration.Duration, node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {GameEngine.Game, SelectedPlayer.State, TurnPhase.State, World.WorldQuery} =
+                    \ {GameEngine.Game, SelectedPlayer.State, CursorState.State, TurnPhase.State, World.WorldQuery} =
         let phase = TurnPhase.State.get();
         let next = match targetEnemyId(phase, scene) {
             case Some(eid) => match EnemyScene.get(eid, scene) {
@@ -79,10 +79,10 @@ mod EnemyCardScene {
     ///   - PlayerAttack : 選択中味方の attackTargetId
     /// それ以外は None。
     def targetEnemyId(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
-            Option[Int32] \ {SelectedPlayer.State, World.WorldQuery} =
+            Option[Int32] \ {SelectedPlayer.State, CursorState.State, World.WorldQuery} =
         match phase {
             case TurnPhase.Phase.WeaponSelect =>
-                EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene)
+                EnemyScene.findIdAt(CursorScene.getGridPos(), scene)
                     |> Option.filter(id -> EnemyScene.isVisible(id, scene))
             case TurnPhase.Phase.PlayerAttack =>
                 match SelectedPlayer.State.get()#id {

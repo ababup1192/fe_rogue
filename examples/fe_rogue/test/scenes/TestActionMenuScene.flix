@@ -267,8 +267,9 @@ mod TestActionMenuScene {
                                     TestUnitFixtures.withNoopFloorAdvance(() ->
                                       TestUnitFixtures.withMockGatherResume(() ->
                                         TestUnitFixtures.withSelectedPlayer(args#selectedId, () ->
+                                         TestUnitFixtures.withCursor(() ->
                                           ActionMenuScene.onActionConfirmed(args#entry,
-                                                                            args#scene))))))))))))))
+                                                                            args#scene)))))))))))))))
         } with handler World.WorldQuery {
             def get(k) = k(Ref.get(wref))
         }
@@ -389,11 +390,12 @@ mod TestActionMenuScene {
                                       TestUnitFixtures.withNoopFloorAdvance(() ->
                                         TestUnitFixtures.withMockGatherResume(() ->
                                           TestUnitFixtures.withSelectionRef(rc,
-                                            {id = Some(0), drafts = Nil, gatherActive = false}, () -> {
+                                            {id = Some(0), drafts = Nil, gatherActive = false}, () ->
+                                            TestUnitFixtures.withCursor(() -> {
                                                 let afterPick =
                                                     ActionMenuScene.onActionConfirmed(pickupEntry, scene);
                                                 PlayerScene.cancelSelection(afterPick)
-                                            }))))))))))))));
+                                            })))))))))))))));
             let groundItemBack =
                 Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             // 期待: (床に戻った, 武器が 1 本に戻った)
@@ -429,7 +431,8 @@ mod TestActionMenuScene {
                 TestUnitFixtures.withNoopPickupPopup(() ->
                     TestUnitFixtures.withMockGameLogger(() ->
                         TestUnitFixtures.withSelectedPlayer(0, () ->
-                            PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}, scene)))));
+                         TestUnitFixtures.withCursor(() ->
+                            PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}, scene))))));
             let floorEmpty = Option.isEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             Assert.assertEq(
                 expected = (true, 2),
@@ -453,7 +456,8 @@ mod TestActionMenuScene {
                 TestUnitFixtures.withNoopPickupPopup(() ->
                     TestUnitFixtures.withMockGameLogger(() ->
                         TestUnitFixtures.withSelectedPlayer(0, () ->
-                            PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}, heavy)))));
+                         TestUnitFixtures.withCursor(() ->
+                            PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}, heavy))))));
             let floorStillThere = Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             Assert.assertEq(
                 expected = (true, 4),
@@ -478,11 +482,12 @@ mod TestActionMenuScene {
                                 TestUnitFixtures.withMockPartyQuery(scene, () ->
                                     TestUnitFixtures.withFixedPhase(TurnPhase.Phase.PlayerMoving, () ->
                                         TestUnitFixtures.withSelectionRef(rc,
-                                            {id = Some(0), drafts = Nil, gatherActive = false}, () -> {
+                                            {id = Some(0), drafts = Nil, gatherActive = false}, () ->
+                                            TestUnitFixtures.withCursor(() -> {
                                                 let picked =
                                                     PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}, scene);
                                                 PlayerScene.cancelSelection(picked)
-                                            }))))))));
+                                            })))))))));
             let groundItemBack = Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             Assert.assertEq(
                 expected = (true, 1),
@@ -518,7 +523,8 @@ mod TestActionMenuScene {
                         TestUnitFixtures.withNoopAnim(() ->
                             TestUnitFixtures.withMockPartyQuery(scene, () ->
                                 TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ActionSelect, () ->
-                                    PlayerScene.cancelSelection(scene)))))));
+                                 TestUnitFixtures.withCursor(() ->
+                                    PlayerScene.cancelSelection(scene))))))));
         (out, world)
 
     /// 報告バグの回帰: 拾得 → 装備 → 選択解除キャンセル で、装備の並び替えも拾得も
@@ -906,15 +912,9 @@ mod TestActionMenuScene {
     /// `onActionCancelled` が委譲する `enter*` はレンジ消去・showAllActive・snap など
     /// 不在ノードに対しては no-op なので、cursor の visible 観測にはこれで十分。
     def sceneWithCursor(visible: Bool): Scene[NodeTag] =
-        let cursorData: CursorScene.Data = {
-            gridPos            = {x = 1, y = 1},
-            lastHoveredEnemyId = None,
-            holdDir            = None,
-            holdSteps          = 0
-        };
         Scene.empty()
             |> Scene.addNode("Cursor",
-                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Cursor(cursorData)))
+                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Cursor))
             |> CursorScene.setVisible(visible)
 
     /// 空マスメニュー由来（SelectedPlayer = None）でメニューに入り、武器/アイテム/交換が

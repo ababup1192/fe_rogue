@@ -227,7 +227,7 @@ mod BattlePanelScene {
                      node: EngineNode[NodeTag],
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
+                    \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                        PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery,
                        BattlePanelScene.State, UnitHPBarRender.ForecastState} =
         let phase  = TurnPhase.State.get();
@@ -330,12 +330,12 @@ mod BattlePanelScene {
     /// PlayerAttack 中、攻撃対象をカーソル位置の敵に毎フレーム同期する。
     /// カーソルが敵に乗っていなければ対象をクリアする（予報は出ない）。
     def syncTargetToCursor(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, World.Command, World.WorldQuery} =
+            Scene[NodeTag] \ {SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery} =
         if (phase != TurnPhase.Phase.PlayerAttack) scene
         else match SelectedPlayer.State.get()#id {
             case None             => scene
             case Some(attackerId) =>
-                match EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene) {
+                match EnemyScene.findIdAt(CursorScene.getGridPos(), scene) {
                     case Some(enemyId) => CombatDriver.setAttackTargetId(attackerId, enemyId, scene)
                     case None          => CombatDriver.clearAttackTargetId(attackerId, scene)
                 }
@@ -516,7 +516,7 @@ mod BattlePanelScene {
     /// 敵が居ない / 届く武器が無いなら None（予報は出ない）。
     def selectedAttackWeapon(scene: Scene[NodeTag]):
             Option[UnitCatalog.WeaponResource]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
+            \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, World.WorldQuery} =
         forM (
             idx      <- ItemMenuScene.activeAttackWeaponIndex(scene);
             playerId <- SelectedPlayer.State.get()#id;
@@ -529,7 +529,7 @@ mod BattlePanelScene {
     ///   - PlayerAttack : 選択中の敵 × 装備武器
     /// 揃わない / 別フェーズなら None。
     def buildForecast(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Option[ForecastView]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
+            \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         match phase {
             case TurnPhase.Phase.WeaponSelect => buildWeaponSelectForecast(scene)
             case TurnPhase.Phase.PlayerAttack => buildAttackForecast(scene)
@@ -538,7 +538,7 @@ mod BattlePanelScene {
 
     /// PlayerAttack: 選択中味方 / カーソル上の敵 / 装備（活性）武器が揃ったら予報。
     def buildAttackForecast(scene: Scene[NodeTag]): Option[ForecastView]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
+            \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         forM (
             pid    <- SelectedPlayer.State.get()#id;
             player <- PlayerData.PartyQuery.get(pid);
@@ -550,13 +550,13 @@ mod BattlePanelScene {
     /// WeaponSelect: 選択中味方 / カーソル中の武器 / カーソルが乗っている敵が揃ったら予報。
     /// カーソルは `WeaponSelectScene` が「その武器が届く最寄りの敵」へスナップ済み。
     def buildWeaponSelectForecast(scene: Scene[NodeTag]): Option[ForecastView]
-            \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
+            \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         forM (
             pid    <- SelectedPlayer.State.get()#id;
             player <- PlayerData.PartyQuery.get(pid);
             widx   <- WeaponSelectScene.hoveredWeaponIndex(scene);
             weapon <- List.nth(widx, player#weapons);
-            eid    <- EnemyScene.findIdAt(CursorScene.getGridPos(scene), scene);
+            eid    <- EnemyScene.findIdAt(CursorScene.getGridPos(), scene);
             enemy  <- EnemyData.RosterQuery.get(eid)
         ) yield computeView(pid, player, eid, enemy, weapon)
 
@@ -610,7 +610,7 @@ mod BattlePanelScene {
     pub def confirm(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, World.WorldQuery,
                               GameLogger.GameLogger,
-                              TurnPhase.State, SelectedPlayer.State,
+                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
                               PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command} =
         let started = forM (
             attackerId <- SelectedPlayer.State.get()#id;
@@ -630,7 +630,7 @@ mod BattlePanelScene {
     /// 待機にはせず、`attackTargetId` をクリアしてカーソルを選択中味方に戻す。
     pub def cancel(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State,
+                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
                               PlayerData.PartyQuery, World.Command} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         match SelectedPlayer.State.get()#id {

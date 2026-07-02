@@ -28,24 +28,12 @@ mod CursorScene {
     // (A) 型定義
     // ────────────────────────────────────────────────────────
 
-    /// カーソル固有の状態。
-    /// `gridPos`: カーソルが指している論理マス。moveStep で即更新される
-    /// `lastHoveredEnemyId`: 直前フレームでカーソルが乗っていた敵 id。
-    ///   None ↔ Some(id) や Some(a) ↔ Some(b) の遷移をログ・赤レンジ再構築の
-    ///   トリガーに使う。同じ id の間は no-op に倒すためのキャッシュ。
-    /// `holdDir`: 直前フレームに方向キーが押されていた向き。None ↔ Some の遷移と
-    ///   別方向への切替で `holdSteps` を 0 にリセットする。
-    /// `holdSteps`: 同方向に連続で進んだマス数。`computeSlideDuration` で
-    ///   1 マス分のスライド時間を初速 → 最高速に補間するのに使う。
-    /// 駒（味方/敵）に乗ったときの「引っかかり」は AnimationPlayer の `snag` 空アニメ
-    /// で表現する。`AnimationPlayer.Scheduler.isPlaying(cursorPath())` が true の間は
-    /// 方向入力を捨てる。`snag` アニメ完了 + Tween 完了で次の移動が始まる。
-    pub type alias Data = {
-        gridPos            = {x = Int32, y = Int32},
-        lastHoveredEnemyId = Option[Int32],
-        holdDir            = Option[{x = Int32, y = Int32}],
-        holdSteps          = Int32
-    }
+    /// カーソルの論理状態（指しセル / ホバー / 加速）は `CursorState.State` resource が持つ。
+    /// helper と外部（テスト）の型参照用に別名を再輸出する。フィールドの意味は
+    /// `CursorState.Data` の定義を参照。駒に乗ったときの「引っかかり」は AnimationPlayer の
+    /// `snag` 空アニメで表現し、`AnimationPlayer.Scheduler.isPlaying(cursorPath())` が true の間は
+    /// 方向入力を捨てる（`snag` アニメ完了 + Tween 完了で次の移動が始まる）。
+    pub type alias Data = CursorState.Data
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
@@ -113,19 +101,18 @@ mod CursorScene {
     /// MapScene + PlayerScene 登録済みの scene にカーソルを追加する。
     /// 初期位置はパーティ先頭プレイヤー（id=0）と同じセル。
     pub def add(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+            Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead, CursorState.State} =
         let initial = firstPlayerPos(scene);
         let pos = MapSnapshot.cellCenter(initial);
-        let data: Data = {
-            gridPos            = initial,
-            lastHoveredEnemyId = None,
-            holdDir            = None,
-            holdSteps          = 0
-        };
+        // 論理状態は resource へ。scene ノードは識別用のペイロードレスタグだけを持つ。
+        CursorState.State.put({gridPos            = initial,
+                               lastHoveredEnemyId = None,
+                               holdDir            = None,
+                               holdSteps          = 0});
         SceneLoader.loadScene(scenePath(),
                               SceneLoader.constTagParser(NodeTag.NoTag),
                               scene)
-            |> Scene.setState(cursorPath(), NodeTag.Cursor(data))
+            |> Scene.setState(cursorPath(), NodeTag.Cursor)
             |> Marker2D.mapAt(cursorPath(), Node2D.setPosition(pos))
 
     /// パーティ先頭プレイヤー（id=0）の grid 位置。`add` 初期化用。
@@ -157,7 +144,7 @@ mod CursorScene {
                                Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyData.RosterQuery, TurnPhase.State,
-                               SelectedPlayer.State, World.WorldQuery} =
+                               SelectedPlayer.State, CursorState.State, World.WorldQuery} =
         match TurnPhase.State.get() {
             case TurnPhase.Phase.PlayerCursor       => stepFreeMovement(delta, node, path, scene)
             // 武器選択中も左右で対象の敵を選べる（フォーカス武器が届く敵を巡回）。
@@ -175,22 +162,22 @@ mod CursorScene {
     def stepWeaponSelectCycle(node: EngineNode[NodeTag], scene: Scene[NodeTag]):
                               (EngineNode[NodeTag], Scene[NodeTag])
                               \ {GameEngine.Game, Tween.Scheduler, AnimationPlayer.Scheduler,
-                                 SelectedPlayer.State, EnemyData.RosterQuery, World.WorldQuery} =
-        match node {
-            case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
-                if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
-                else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
-                else match (data#holdDir, readHeldHorizontal()) {
-                    case (_, None) =>
-                        let nextData = {holdDir = None, holdSteps = 0 | data};
-                        (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)), scene)
-                    case (Some(_), Some(dir)) =>
-                        let nextData = {holdDir = Some(dir), holdSteps = 1 | data};
-                        (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)), scene)
-                    case (None, Some(dir)) =>
-                        cycleToTargetIn(weaponSelectTargets(scene), dir, marker, data, scene)
-                }
-            case _ => (node, scene)
+                                 SelectedPlayer.State, CursorState.State, EnemyData.RosterQuery,
+                                 World.WorldQuery} =
+        if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
+        else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+        else {
+            let data = CursorState.State.get();
+            match (data#holdDir, readHeldHorizontal()) {
+                case (_, None) =>
+                    CursorState.State.put({holdDir = None, holdSteps = 0 | data});
+                    (node, scene)
+                case (Some(_), Some(dir)) =>
+                    CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
+                    (node, scene)
+                case (None, Some(dir)) =>
+                    cycleToTargetIn(weaponSelectTargets(scene), dir, node, data, scene)
+            }
         }
 
     /// フォーカス中の武器が届く生存敵を reading order（y→x）で返す。
@@ -233,56 +220,42 @@ mod CursorScene {
                          \ {GameEngine.Game, BoardQuery,
                              Tween.Scheduler, AnimationPlayer.Scheduler,
                              GameLogger.GameLogger,
-                             EnemyData.RosterQuery, World.WorldQuery} =
-        match node {
-            case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
-                if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
-                else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
-                else
-                    match readHeldDirection() {
-                        case None =>
-                            // キーが離れたら hold 状態をリセット（再度押したときに初速から）
-                            let nextData = {holdDir = None, holdSteps = 0 | data};
-                            (EngineNode.Marker2DWithState(marker,
-                                                           NodeTag.Cursor(nextData)),
-                             scene)
-                        case Some(dir) =>
-                            let board = BoardQuery.board();
-                            let nextSteps = stepCountAfter(data#holdDir,
-                                                            data#holdSteps, dir);
-                            // マップ端で clamp したうえで、可動域（明るい部屋+半径 ∪ 既訪）外なら
-                            // 据え置く。target == gridPos なら下の「端で動けない」分岐が発火する。
-                            let candidate = clampToMap(Vec2i.add(data#gridPos, dir),
-                                                        board#map);
-                            let target = if (cursorCanEnter(candidate, scene)) candidate
-                                         else data#gridPos;
-                            if (target#x == data#gridPos#x and target#y == data#gridPos#y) {
-                                // 端で動けない。hold 状態だけ更新して入力は捨てる。
-                                let nextData = {holdDir = Some(dir),
-                                                  holdSteps = nextSteps | data};
-                                (EngineNode.Marker2DWithState(marker,
-                                                               NodeTag.Cursor(nextData)),
-                                 scene)
-                            }
-                            else {
-                                let slide = computeSlideDuration(nextSteps);
-                                let (newMarker, movedData) =
-                                    moveStep(target, marker, data, slide);
-                                let (hovered, updatedScene) =
-                                    handleHoverChange(movedData, board, scene);
-                                // フォグで隠れている敵では snag させない（一瞬の引っかかりで
-                                // 見えない敵の位置がバレるのを防ぐ）。可視の駒のみ引っかける。
-                                let onPiece = isVisiblyOccupied(target, board, scene);
-                                if (onPiece) AnimationPlayer.play(cursorPath(), snagAnimation())
-                                else ();
-                                let finalData = applyHoldUpdate(hovered, dir,
-                                                                 nextSteps, onPiece);
-                                (EngineNode.Marker2DWithState(newMarker,
-                                                                NodeTag.Cursor(finalData)),
-                                 updatedScene)
-                            }
+                             EnemyData.RosterQuery, CursorState.State, World.WorldQuery} =
+        if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
+        else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+        else {
+            let data = CursorState.State.get();
+            match readHeldDirection() {
+                case None =>
+                    // キーが離れたら hold 状態をリセット（再度押したときに初速から）
+                    CursorState.State.put({holdDir = None, holdSteps = 0 | data});
+                    (node, scene)
+                case Some(dir) =>
+                    let board = BoardQuery.board();
+                    let nextSteps = stepCountAfter(data#holdDir, data#holdSteps, dir);
+                    // マップ端で clamp したうえで、可動域（明るい部屋+半径 ∪ 既訪）外なら
+                    // 据え置く。target == gridPos なら下の「端で動けない」分岐が発火する。
+                    let candidate = clampToMap(Vec2i.add(data#gridPos, dir), board#map);
+                    let target = if (cursorCanEnter(candidate, scene)) candidate
+                                 else data#gridPos;
+                    if (target#x == data#gridPos#x and target#y == data#gridPos#y) {
+                        // 端で動けない。hold 状態だけ更新して入力は捨てる。
+                        CursorState.State.put({holdDir = Some(dir), holdSteps = nextSteps | data});
+                        (node, scene)
                     }
-            case _ => (node, scene)
+                    else {
+                        let slide = computeSlideDuration(nextSteps);
+                        let movedData = moveStep(target, data, slide);
+                        let (hovered, updatedScene) = handleHoverChange(movedData, board, scene);
+                        // フォグで隠れている敵では snag させない（一瞬の引っかかりで
+                        // 見えない敵の位置がバレるのを防ぐ）。可視の駒のみ引っかける。
+                        let onPiece = isVisiblyOccupied(target, board, scene);
+                        if (onPiece) AnimationPlayer.play(cursorPath(), snagAnimation())
+                        else ();
+                        CursorState.State.put(applyHoldUpdate(hovered, dir, nextSteps, onPiece));
+                        (node, updatedScene)
+                    }
+            }
         }
 
     /// 直前の `holdDir` と新しい方向から、ステップ数を更新する。
@@ -309,13 +282,12 @@ mod CursorScene {
     /// 隣接判定は呼び出し側が済ませている前提（target は data.gridPos + 4 方向単位）。
     /// `slideDuration` 引数で 1 マス分のスライド時間を可変にする（加速制御）。
     /// `lastHoveredEnemyId` / `holdDir` などは呼び出し側で更新するためここでは触らない。
-    def moveStep(target: {x = Int32, y = Int32}, marker: Marker2D, data: Data,
-                  slideDuration: Duration.Duration):
-            (Marker2D, Data) \ Tween.Scheduler =
+    def moveStep(target: {x = Int32, y = Int32}, data: Data,
+                  slideDuration: Duration.Duration): Data \ Tween.Scheduler =
         let startWorld = MapSnapshot.cellCenter(data#gridPos);
         let targetWorld = MapSnapshot.cellCenter(target);
         Tween.tweenPosition(cursorPath(), startWorld, targetWorld, slideDuration);
-        (marker, {gridPos = target | data})
+        {gridPos = target | data}
 
     /// 移動後のセルに敵が居るかを判定し、`lastHoveredEnemyId` の遷移に応じて
     /// EnemyRangeScene を出し入れ + ログを出す。返り値の Data は
@@ -415,58 +387,51 @@ mod CursorScene {
                         (EngineNode[NodeTag], Scene[NodeTag])
                         \ {GameEngine.Game,
                             Tween.Scheduler, AnimationPlayer.Scheduler,
-                            EnemyData.RosterQuery} =
-        match node {
-            case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
-                if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
-                else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
-                else
-                    // 左右だけでターゲットを選ぶ (上下は武器リストへ)。
-                    let held = readHeldHorizontal();
-                    match (data#holdDir, held) {
-                        case (_, None) =>
-                            // キー離した: holdDir をリセットして次の押下に備える
-                            let nextData = {holdDir = None, holdSteps = 0 | data};
-                            (EngineNode.Marker2DWithState(marker,
-                                                           NodeTag.Cursor(nextData)),
-                             scene)
-                        case (Some(_), Some(dir)) =>
-                            // 押しっぱなし: holdDir を更新するだけでサイクル発火しない
-                            let nextData = {holdDir = Some(dir), holdSteps = 1 | data};
-                            (EngineNode.Marker2DWithState(marker,
-                                                           NodeTag.Cursor(nextData)),
-                             scene)
-                        case (None, Some(dir)) =>
-                            // 押下開始フレーム: 射程内の敵リストから次/前を選んでジャンプ
-                            cycleToTarget(dir, marker, data, scene)
-                    }
-            case _ => (node, scene)
+                            CursorState.State, EnemyData.RosterQuery} =
+        if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
+        else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+        else {
+            let data = CursorState.State.get();
+            // 左右だけでターゲットを選ぶ (上下は武器リストへ)。
+            match (data#holdDir, readHeldHorizontal()) {
+                case (_, None) =>
+                    // キー離した: holdDir をリセットして次の押下に備える
+                    CursorState.State.put({holdDir = None, holdSteps = 0 | data});
+                    (node, scene)
+                case (Some(_), Some(dir)) =>
+                    // 押しっぱなし: holdDir を更新するだけでサイクル発火しない
+                    CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
+                    (node, scene)
+                case (None, Some(dir)) =>
+                    // 押下開始フレーム: 射程内の敵リストから次/前を選んでジャンプ
+                    cycleToTarget(dir, node, data, scene)
+            }
         }
 
     /// 押下開始時のターゲットサイクル本体。`PlayerAttackRangeScene.targetsInRange` で
     /// 取得した reading-order 順のリストの中から、現在カーソル位置の index を引いて
     /// 方向に応じて prev / next を選ぶ。敵が居なければ何もしない。
     def cycleToTarget(dir: {x = Int32, y = Int32},
-                       marker: Marker2D, data: Data,
+                       node: EngineNode[NodeTag], data: Data,
                        scene: Scene[NodeTag]):
                       (EngineNode[NodeTag], Scene[NodeTag])
                       \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                         EnemyData.RosterQuery} =
-        cycleToTargetIn(PlayerAttackRangeScene.targetsInRange(scene), dir, marker, data, scene)
+                         CursorState.State, EnemyData.RosterQuery} =
+        cycleToTargetIn(PlayerAttackRangeScene.targetsInRange(scene), dir, node, data, scene)
 
     /// 与えられた敵リストの中で、現在カーソル位置から方向に応じて prev / next へジャンプする。
     /// `cycleToTarget`（PlayerAttack）と `stepWeaponSelectCycle`（WeaponSelect）が対象リストだけ
     /// 差し替えて共有する本体。敵が居なければ holdDir だけ更新して何もしない。
     def cycleToTargetIn(targets: List[EnemyScene.Data],
                         dir: {x = Int32, y = Int32},
-                        marker: Marker2D, data: Data,
+                        node: EngineNode[NodeTag], data: Data,
                         scene: Scene[NodeTag]):
                        (EngineNode[NodeTag], Scene[NodeTag])
-                       \ {Tween.Scheduler, AnimationPlayer.Scheduler} =
+                       \ {Tween.Scheduler, AnimationPlayer.Scheduler, CursorState.State} =
         match targets {
             case Nil =>
-                let nextData = {holdDir = Some(dir), holdSteps = 1 | data};
-                (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)), scene)
+                CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
+                (node, scene)
             case _   =>
                 let n = List.length(targets);
                 let curIdx = findCursorTargetIndex(data#gridPos, targets);
@@ -479,18 +444,15 @@ mod CursorScene {
                         Int32.modulo(curIdx + step + n, n);
                 match List.nth(nextIdx, targets) {
                     case None         =>
-                        let nextData = {holdDir = Some(dir), holdSteps = 1 | data};
-                        (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)), scene)
+                        CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
+                        (node, scene)
                     case Some(target) =>
                         let slide = computeSlideDuration(1);
-                        let (newMarker, movedData) =
-                            moveStep(target#gridPos, marker, data, slide);
+                        let movedData = moveStep(target#gridPos, data, slide);
                         AnimationPlayer.play(cursorPath(), snagAnimation());
-                        let finalData = {holdDir = Some(dir), holdSteps = 1,
-                                          lastHoveredEnemyId = Some(target#id) | movedData};
-                        (EngineNode.Marker2DWithState(newMarker,
-                                                       NodeTag.Cursor(finalData)),
-                         scene)
+                        CursorState.State.put({holdDir = Some(dir), holdSteps = 1,
+                                               lastHoveredEnemyId = Some(target#id) | movedData});
+                        (node, scene)
                 }
         }
 
@@ -522,43 +484,36 @@ mod CursorScene {
                              scene: Scene[NodeTag]):
                             (EngineNode[NodeTag], Scene[NodeTag])
                             \ {GameEngine.Game,
-                               Tween.Scheduler, AnimationPlayer.Scheduler} =
-        match node {
-            case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
-                if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
-                else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
-                else
-                    let held = readHeldDirection();
-                    match (data#holdDir, held) {
-                        case (_, None) =>
-                            let nextData = {holdDir = None, holdSteps = 0 | data};
-                            (EngineNode.Marker2DWithState(marker,
-                                                           NodeTag.Cursor(nextData)),
-                             scene)
-                        case (Some(_), Some(dir)) =>
-                            let nextData = {holdDir = Some(dir), holdSteps = 1 | data};
-                            (EngineNode.Marker2DWithState(marker,
-                                                           NodeTag.Cursor(nextData)),
-                             scene)
-                        case (None, Some(dir)) =>
-                            cycleToTradeCell(dir, marker, data, scene)
-                    }
-            case _ => (node, scene)
+                               Tween.Scheduler, AnimationPlayer.Scheduler, CursorState.State} =
+        if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
+        else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+        else {
+            let data = CursorState.State.get();
+            match (data#holdDir, readHeldDirection()) {
+                case (_, None) =>
+                    CursorState.State.put({holdDir = None, holdSteps = 0 | data});
+                    (node, scene)
+                case (Some(_), Some(dir)) =>
+                    CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
+                    (node, scene)
+                case (None, Some(dir)) =>
+                    cycleToTradeCell(dir, node, data, scene)
+            }
         }
 
     /// 緑マスの中から方向に応じて next / prev のセルへカーソルを飛ばす。
     /// `TradeRangeScene.cells` を reading order (y → x) にソートしてサイクルする。
     /// 緑マスが空ならホールド状態だけ更新して何もしない。
     def cycleToTradeCell(dir: {x = Int32, y = Int32},
-                          marker: Marker2D, data: Data,
+                          node: EngineNode[NodeTag], data: Data,
                           scene: Scene[NodeTag]):
                          (EngineNode[NodeTag], Scene[NodeTag])
-                         \ {Tween.Scheduler, AnimationPlayer.Scheduler} =
+                         \ {Tween.Scheduler, AnimationPlayer.Scheduler, CursorState.State} =
         let sortedCells = TradeRangeScene.cells(scene)
                             |> List.sortBy(c -> (c#y, c#x));
         pickNextCellInCycle(dir, data#gridPos, sortedCells)
-            |> Option.map(target -> snapCursorAndUpdateHold(target, dir, marker, data, scene))
-            |> Option.getWithDefault(updateHoldOnly(dir, marker, data, scene))
+            |> Option.map(target -> snapCursorAndUpdateHold(target, dir, node, data, scene))
+            |> Option.getWithDefault(updateHoldOnly(dir, node, data, scene))
 
     /// `sortedCells` を方向 (dir) でサイクルし、prev / next のセルを返す。
     /// 上 / 左 = 前、下 / 右 = 次。現在位置がセル外なら、方向に応じて先頭 / 末尾を返す。
@@ -583,21 +538,21 @@ mod CursorScene {
     /// 目標セルへ Tween でスライドし、snag アニメ再生 + holdDir 更新まで一気に行う。
     def snapCursorAndUpdateHold(target: {x = Int32, y = Int32},
                                   dir: {x = Int32, y = Int32},
-                                  marker: Marker2D, data: Data,
+                                  node: EngineNode[NodeTag], data: Data,
                                   scene: Scene[NodeTag]):
                                  (EngineNode[NodeTag], Scene[NodeTag])
-                                 \ {Tween.Scheduler, AnimationPlayer.Scheduler} =
+                                 \ {Tween.Scheduler, AnimationPlayer.Scheduler, CursorState.State} =
         let slide = computeSlideDuration(1);
-        let (newMarker, movedData) = moveStep(target, marker, data, slide);
+        let movedData = moveStep(target, data, slide);
         AnimationPlayer.play(cursorPath(), snagAnimation());
-        let finalData = {holdDir = Some(dir), holdSteps = 1 | movedData};
-        (EngineNode.Marker2DWithState(newMarker, NodeTag.Cursor(finalData)), scene)
+        CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | movedData});
+        (node, scene)
 
     /// セル移動できなかったとき (空 / 範囲外) の戻り値: holdDir だけ更新して scene 据え置き。
-    def updateHoldOnly(dir: {x = Int32, y = Int32}, marker: Marker2D, data: Data,
-                        scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) =
-        let nextData = {holdDir = Some(dir), holdSteps = 1 | data};
-        (EngineNode.Marker2DWithState(marker, NodeTag.Cursor(nextData)), scene)
+    def updateHoldOnly(dir: {x = Int32, y = Int32}, node: EngineNode[NodeTag], data: Data,
+                        scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ CursorState.State =
+        CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
+        (node, scene)
 
     /// セルリストの中で `cell` と一致するセルの index を返す。一致しなければ -1。
     /// `findCursorTargetIndex` の generic 版 (gridPos を持つ任意のレコード対象でなく、
@@ -686,24 +641,23 @@ mod CursorScene {
     /// 明示的に snap 先座標を渡し、この関数を経由しないようにする。
     pub def snapToPlayer(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              SelectedPlayer.State, PlayerData.PartyQuery} =
+                              SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery} =
         let target = snapTargetPos();
         snapToCell(target, scene)
 
     /// 任意のグリッドセルへ瞬時にカーソルを移動させる。Tween / snag アニメを止めて
     /// hoveredEnemyId と hold 状態を初期化する。`snapToPlayer` の汎用版。
     pub def snapToCell(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler} =
+            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, CursorState.State} =
         let world = MapSnapshot.cellCenter(target);
         Tween.Scheduler.cancel(cursorPath());
         AnimationPlayer.Scheduler.stop(cursorPath());
-        let snapped = Scene.setGlobalPositionAt(cursorPath(), world, scene);
-        mapCursor((m, d) ->
-            (m, {gridPos            = target,
-                 lastHoveredEnemyId = None,
-                 holdDir            = None,
-                 holdSteps          = 0 | d}),
-            snapped)
+        // 論理状態は resource へ、視覚位置は Marker2D へ瞬間 set。
+        CursorState.State.put({gridPos            = target,
+                               lastHoveredEnemyId = None,
+                               holdDir            = None,
+                               holdSteps          = 0});
+        Scene.setGlobalPositionAt(cursorPath(), world, scene)
 
     /// `PlayerAttack` フェーズ突入時に、赤マス内に居る「生きている敵」が居れば最初の
     /// 敵にカーソルをスナップする。敵が居なければ選択中プレイヤーへ。
@@ -711,7 +665,7 @@ mod CursorScene {
     /// `snapToPlayer` 単独では「カーソルが届かない場所に居る」状態になるのを防ぐ。
     pub def snapToFirstTargetOrPlayer(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              SelectedPlayer.State, PlayerData.PartyQuery,
+                              SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery,
                               EnemyData.RosterQuery} =
         match List.head(PlayerAttackRangeScene.targetsInRange(scene)) {
             case Some(target) => snapToCell(target#gridPos, scene)
@@ -725,7 +679,7 @@ mod CursorScene {
     /// (この経路は ActionMenu の「こうかん」項目が出ない時しか起きない防御ケース)。
     pub def snapToFirstTradeCellOrPlayer(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              SelectedPlayer.State, PlayerData.PartyQuery} =
+                              SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery} =
         let firstCell = TradeRangeScene.cells(scene)
                           |> List.sortBy(c -> (c#y, c#x))
                           |> List.head;
@@ -763,27 +717,14 @@ mod CursorScene {
         }
 
     // ────────────────────────────────────────────────────────
-    // (F) ボイラプレート — pattern match を関数化
+    // (F) 論理状態アクセサ（CursorState resource 経由）
     // ────────────────────────────────────────────────────────
 
-    /// Cursor の Marker2D と Data をまとめて変換する。
-    pub def mapCursor(f: (Marker2D, Data) -> (Marker2D, Data),
-                       scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(cursorPath(), engineNode -> match engineNode {
-            case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
-                let (newMarker, newData) = f(marker, data);
-                EngineNode.Marker2DWithState(newMarker, NodeTag.Cursor(newData))
-            case other => other
-        }, scene)
-
-    /// Cursor の Data を取り出す。未登録なら bug!（add 後に呼ぶ前提）。
-    pub def getCursorData(scene: Scene[NodeTag]): Data =
-        match Scene.getState(cursorPath(), scene) {
-            case Some(NodeTag.Cursor(data)) => data
-            case _ => bug!("CursorScene: cursor not found at ${cursorPath()}")
-        }
+    /// カーソルの論理状態を resource から取り出す。
+    pub def getCursorData(): Data \ CursorState.State =
+        CursorState.State.get()
 
     /// カーソルの現在グリッド座標。
-    pub def getGridPos(scene: Scene[NodeTag]): {x = Int32, y = Int32} =
-        getCursorData(scene)#gridPos
+    pub def getGridPos(): {x = Int32, y = Int32} \ CursorState.State =
+        CursorState.State.get()#gridPos
 }

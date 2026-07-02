@@ -92,7 +92,7 @@ mod UnitCardScene {
     pub def process(_delta: Duration.Duration, node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {GameEngine.Game, SelectedPlayer.State, TurnPhase.State, PlayerData.PartyQuery, World.WorldQuery} =
+                    \ {GameEngine.Game, SelectedPlayer.State, CursorState.State, TurnPhase.State, PlayerData.PartyQuery, World.WorldQuery} =
         let phase = TurnPhase.State.get();
         // 下見（PlayerCursor）中はカーソル上のユニットを出す。
         let cursorActive = phase == TurnPhase.Phase.PlayerCursor;
@@ -118,7 +118,7 @@ mod UnitCardScene {
 
     /// カーソル上のユニット（敵優先 / フォグ隠れは除外）を表示。空マスなら隠す。
     /// ident（位置/hidden/フォグ）は scene 読み、味方の表示 Data だけ PartyQuery 経由。
-    def renderHovered(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, PlayerData.PartyQuery, World.WorldQuery} =
+    def renderHovered(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, PlayerData.PartyQuery, CursorState.State, World.WorldQuery} =
         match hoveredIdent(scene) {
             case Some((kind, id)) =>
                 if (kind == "enemy")
@@ -136,8 +136,8 @@ mod UnitCardScene {
 
     /// カーソル位置のユニット種別と id（敵優先）。空マスなら None。
     /// フォグで隠れた敵・退場済み(hidden)味方は出さない。
-    def hoveredIdent(scene: Scene[NodeTag]): Option[(String, Int32)] \ World.WorldQuery =
-        let coord = CursorScene.getGridPos(scene);
+    def hoveredIdent(scene: Scene[NodeTag]): Option[(String, Int32)] \ {World.WorldQuery, CursorState.State} =
+        let coord = CursorScene.getGridPos();
         let visibleEnemy = EnemyScene.findIdAt(coord, scene)
                             |> Option.filter(id -> EnemyScene.isVisible(id, scene));
         match visibleEnemy {

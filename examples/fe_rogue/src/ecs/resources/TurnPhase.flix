@@ -386,9 +386,9 @@ mod TurnInputBridge {
     pub def handle(input: TurnRules.Input, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                               PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery} =
-        let context = buildContext(input, BoardQuery.board(), scene);
+        let context = buildContext(input, BoardQuery.board());
         apply(TurnRules.decide(context), scene)
 
     /// 現フレームの scene と各 effect から `TurnRules.Context` を組み立てる。
@@ -399,13 +399,13 @@ mod TurnInputBridge {
     /// `TurnRules.decide` は純粋関数だが、その入力 (Context) を作るには:
     ///   - `TurnPhase.State.get()` (現フェーズ)
     ///   - `SelectedPlayer.State.get()` (選択中味方 id)
-    ///   - `CursorScene.getGridPos(scene)` (カーソル位置)
+    ///   - `CursorScene.getGridPos()` (カーソル位置)
     ///   - `PlayerScene.getAll` / `EnemyScene.getAll` (waited / dying の id 集合)
     ///   - `World.isAnimating(...)` (選択中味方が移動中か)
     /// と複数の窓口を引く必要がある。これを 1 関数に集約する。
-    pub def buildContext(input: TurnRules.Input, board: Board, scene: Scene[NodeTag]):
+    pub def buildContext(input: TurnRules.Input, board: Board):
             TurnRules.Context \ {World.WorldQuery,
-                                  TurnPhase.State, SelectedPlayer.State,
+                                  TurnPhase.State, SelectedPlayer.State, CursorState.State,
                                   PlayerData.PartyQuery, EnemyData.RosterQuery} =
         let selected = SelectedPlayer.State.get()#id;
         let busy = match selected {
@@ -420,7 +420,7 @@ mod TurnInputBridge {
             phase           = TurnPhase.State.get(),
             input           = input,
             board           = board,
-            cursor          = CursorScene.getGridPos(scene),
+            cursor          = CursorScene.getGridPos(),
             selected        = selected,
             waitedPlayerIds = waitedIds,
             dyingEnemyIds   = dyingIds,
@@ -434,7 +434,7 @@ mod TurnInputBridge {
                scene: Scene[NodeTag]):
             Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                               PlayerData.PartyQuery, World.Command, World.WorldQuery} =
         match transition {
             case TurnRules.Transition.Stay                              => scene

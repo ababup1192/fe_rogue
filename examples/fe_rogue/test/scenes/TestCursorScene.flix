@@ -20,12 +20,14 @@ mod TestCursorScene {
     /// pure に見せる test 用ラッパ。`@Test` は `\ Assert` 限定のため unchecked_cast で
     /// IO effect を消す (Fs.FileRead は flix test の CWD = examples/fe_rogue から
     /// 実ファイルを読む)。
-    def cursorAddPure(scene: Scene[NodeTag]): Scene[NodeTag] =
+    /// カーソル論理状態は `CursorState.State` resource に入るため、その effect は残す
+    /// （呼び出し側が put を観測できるよう Ref-backed handler を最外で巻く）。
+    def cursorAddPure(scene: Scene[NodeTag]): Scene[NodeTag] \ CursorState.State =
         unchecked_cast(
             (run {
                 TestUnitFixtures.withMockGame(() -> CursorScene.add(scene))
             } with Fs.FileRead.runWithIO)
-            as _ \ {})
+            as _ \ CursorState.State)
 
     /// プレイヤー id=0 1 体だけを (gridPos) に置いた scene を組む。
     /// JSON ロードを介さず Marker2D を直接構築する（PlayerScene.playerPath は
@@ -66,9 +68,9 @@ mod TestCursorScene {
                         followUpUsed   = false
                     })))
 
-    /// `add` 後の (gridPos, lastHoveredEnemyId) を 1 タプルにまとめて取り出す
-    def cursorState(scene: Scene[NodeTag]): (Int32, Int32, Option[Int32]) =
-        let d = CursorScene.getCursorData(scene);
+    /// カーソル resource の (gridPos, lastHoveredEnemyId) を 1 タプルにまとめて取り出す
+    def cursorState(): (Int32, Int32, Option[Int32]) \ CursorState.State =
+        let d = CursorScene.getCursorData();
         (d#gridPos#x, d#gridPos#y, d#lastHoveredEnemyId)
 
     /// 味方を 2 体置いた scene を組む。`waited` を個別に指定できる。
@@ -123,19 +125,29 @@ mod TestCursorScene {
     /// lastHoveredEnemyId は None（味方マスにはどの敵も乗っていない）
     @Test
     def testAddPlacesCursorAtPlayerGrid(): Unit \ Assert =
-        let player: {x = Int32, y = Int32} = {x = 5, y = 5};
-        let scene = cursorAddPure(sceneWithPlayer(player));
-        Assert.assertEq(expected = (5, 5, (None: Option[Int32])),
-            cursorState(scene))
+        region rc {
+            let player: {x = Int32, y = Int32} = {x = 5, y = 5};
+            let scene = sceneWithPlayer(player);
+            let result = run {
+                let _ = cursorAddPure(scene);
+                cursorState()
+            } with CursorState.withState(rc);
+            Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
+        }
 
     /// add でプレイヤーが (3, 7) にいれば、カーソルも (3, 7) にスポーンする
     /// （プレイヤーの初期セルが 5,5 でない場合の追従を確認）
     @Test
     def testAddFollowsPlayerSpawnPosition(): Unit \ Assert =
-        let player: {x = Int32, y = Int32} = {x = 3, y = 7};
-        let scene = cursorAddPure(sceneWithPlayer(player));
-        Assert.assertEq(expected = (3, 7, (None: Option[Int32])),
-            cursorState(scene))
+        region rc {
+            let player: {x = Int32, y = Int32} = {x = 3, y = 7};
+            let scene = sceneWithPlayer(player);
+            let result = run {
+                let _ = cursorAddPure(scene);
+                cursorState()
+            } with CursorState.withState(rc);
+            Assert.assertEq(expected = (3, 7, (None: Option[Int32])), result)
+        }
 
     // ════════════════════════════════════════════════════════
     // snapToPlayer: どこに居ても味方位置に戻り、ホバーもリセット
@@ -146,18 +158,22 @@ mod TestCursorScene {
     /// （敵ターン明けに「カーソルは味方の上から再開・赤レンジは無し」を保証する）
     @Test
     def testSnapToPlayerResetsCursorAndHover(): Unit \ Assert =
-        let player: {x = Int32, y = Int32} = {x = 4, y = 4};
-        let initial = sceneWithPlayer(player);
-        let result = TestUnitFixtures.withNoSelection(() -> TestUnitFixtures.withNoopTween(() -> TestUnitFixtures.withNoopAnim(() ->
-            TestUnitFixtures.withMockPartyQuery(initial, () ->
-                let scene = cursorAddPure(initial);
-                // カーソルを (10, 10) に移し、ホバー履歴も Some(99) に偽装
-                let drifted = scene |> CursorScene.mapCursor((m, d) ->
-                    (m, {gridPos = ({x = 10, y = 10}: {x = Int32, y = Int32}),
-                         lastHoveredEnemyId = Some(99) | d}));
-                let snapped = CursorScene.snapToPlayer(drifted);
-                cursorState(snapped)))));
-        Assert.assertEq(expected = (4, 4, (None: Option[Int32])), result)
+        region rc {
+            let player: {x = Int32, y = Int32} = {x = 4, y = 4};
+            let initial = sceneWithPlayer(player);
+            let result = TestUnitFixtures.withNoSelection(() -> TestUnitFixtures.withNoopTween(() -> TestUnitFixtures.withNoopAnim(() ->
+                TestUnitFixtures.withMockPartyQuery(initial, () ->
+                    run {
+                        let scene = cursorAddPure(initial);
+                        // カーソルを (10, 10) に移し、ホバー履歴も Some(99) に偽装
+                        CursorState.State.put({gridPos = {x = 10, y = 10},
+                                               lastHoveredEnemyId = Some(99),
+                                               holdDir = None, holdSteps = 0});
+                        let _ = CursorScene.snapToPlayer(scene);
+                        cursorState()
+                    } with CursorState.withState(rc)))));
+            Assert.assertEq(expected = (4, 4, (None: Option[Int32])), result)
+        }
 
     /// commit 後の「行動済みじゃない味方にカーソルが飛ぶ」フォールバックを検証する。
     /// 状況: SelectedPlayer は cleared() (`commitWaitedAndAdvance` でクリア済み)、
@@ -166,15 +182,19 @@ mod TestCursorScene {
     /// 実装は `CursorScene.snapTargetPos → fallbackPos` (`CursorScene.flix:449-470`)。
     @Test
     def testSnapToPlayerJumpsToActiveAllyWhenSelectedCleared(): Unit \ Assert =
-        let waitedPos: {x = Int32, y = Int32}  = {x = 2, y = 2};
-        let activePos: {x = Int32, y = Int32}  = {x = 5, y = 5};
-        let initial = sceneWithTwoPlayers((waitedPos, true), (activePos, false));
-        let result = TestUnitFixtures.withNoSelection(() -> TestUnitFixtures.withNoopTween(() -> TestUnitFixtures.withNoopAnim(() ->
-            TestUnitFixtures.withMockPartyQuery(initial, () ->
-                let scene = cursorAddPure(initial);
-                let snapped = CursorScene.snapToPlayer(scene);
-                cursorState(snapped)))));
-        Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
+        region rc {
+            let waitedPos: {x = Int32, y = Int32}  = {x = 2, y = 2};
+            let activePos: {x = Int32, y = Int32}  = {x = 5, y = 5};
+            let initial = sceneWithTwoPlayers((waitedPos, true), (activePos, false));
+            let result = TestUnitFixtures.withNoSelection(() -> TestUnitFixtures.withNoopTween(() -> TestUnitFixtures.withNoopAnim(() ->
+                TestUnitFixtures.withMockPartyQuery(initial, () ->
+                    run {
+                        let scene = cursorAddPure(initial);
+                        let _ = CursorScene.snapToPlayer(scene);
+                        cursorState()
+                    } with CursorState.withState(rc)))));
+            Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
+        }
 
     /// 統合テスト: `commitWaitedAndAdvance` を **古い PartyQuery snapshot** ありの状態で呼んでも、
     /// カーソルが「いま waited にした駒」(Player(0)) ではなく「次のアクティブ味方」(Player(1)) に飛ぶ。
@@ -194,8 +214,8 @@ mod TestCursorScene {
                     gatherActive = false
                 });
                 let scene = cursorAddPure(initial);
-                let after = TurnFlow.commitWaitedAndAdvance(scene);
-                cursorState(after)
+                let _ = TurnFlow.commitWaitedAndAdvance(scene);
+                cursorState()
             } with handler PlayerData.PartyQuery {
                 // 古い snapshot: setWaited 前の両方 active な状態を返し続ける
                 def get(id, k)           = k(PlayerScene.get(id, initial))
@@ -206,7 +226,8 @@ mod TestCursorScene {
               with GameLogger.withLogger(rc)
               with EnemyTurn.withQueue(rc)
               with TurnPhase.withState(rc)
-              with SelectedPlayer.withState(rc));
+              with SelectedPlayer.withState(rc)
+              with CursorState.withState(rc));
             Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
         }
 
@@ -228,12 +249,13 @@ mod TestCursorScene {
                 let scene = cursorAddPure(freshScene);
                 // 呼び出し側が新 scene から計算した「次のアクティブ味方の gridPos」
                 // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
-                let snapped = run { PhaseTransitions.enterPlayerCursorAt(p1Pos, scene) }
+                let _ = run { PhaseTransitions.enterPlayerCursorAt(p1Pos, scene) }
                     with handler World.Command { def emit(_c, k) = k() };
-                cursorState(snapped)
+                cursorState()
             } with Tween.withScheduler(rc)
               with AnimationPlayer.withScheduler(rc)
-              with TurnPhase.withState(rc));
+              with TurnPhase.withState(rc)
+              with CursorState.withState(rc));
             Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
         }
 
@@ -245,7 +267,7 @@ mod TestCursorScene {
     /// 経由しないので任意の `gridPos` / `holdDir` / `holdSteps` で初期化できる。
     def cursorSceneAt(gridPos: {x = Int32, y = Int32},
                        holdDir: Option[{x = Int32, y = Int32}],
-                       holdSteps: Int32): Scene[NodeTag] =
+                       holdSteps: Int32): (Scene[NodeTag], CursorScene.Data) =
         let marker = Marker2D.make(MapSnapshot.cellCenter(gridPos));
         let data: CursorScene.Data = {
             gridPos            = gridPos,
@@ -253,9 +275,10 @@ mod TestCursorScene {
             holdDir            = holdDir,
             holdSteps          = holdSteps
         };
-        Scene.empty()
+        let scene = Scene.empty()
             |> Scene.addNode("Cursor",
-                EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)))
+                EngineNode.Marker2DWithState(marker, NodeTag.Cursor));
+        (scene, data)
 
     /// 13×13 床のみ・駒なしのテスト用 Board。`clampToMap` で端マスを判定できる範囲。
     def testBoard(): Board =
@@ -271,11 +294,14 @@ mod TestCursorScene {
     /// 指定フェーズで `physicsProcess` を 1 フレーム回し、Cursor の Data を取り出す。
     /// physicsProcess は phase 分岐するので、テスト側でも phase を立ててから呼ぶ。
     /// `PlayerAttack` 用テストも同じ runner を使う。
-    def runPhysics(phase: TurnPhase.Phase, scene: Scene[NodeTag]): CursorScene.Data
+    def runPhysics(phase: TurnPhase.Phase, initial: CursorScene.Data,
+                    scene: Scene[NodeTag]): CursorScene.Data
             \ {GameEngine.Game, BoardQuery,
                 Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
-                EnemyData.RosterQuery, TurnPhase.State} =
+                EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
+        // カーソル論理状態は resource 権威。初期 gridPos / hold をここで seed する。
+        CursorState.State.put(initial);
         TurnPhase.State.put(phase);
         let path = CursorScene.cursorPath();
         match Scene.getEngineNode(path, scene) {
@@ -283,12 +309,11 @@ mod TestCursorScene {
                 // physicsProcess は WeaponSelect 分岐用に SelectedPlayer.State を要求するので、
                 // ここで discharge する（PlayerCursor / PlayerAttack 分岐では未使用なので値は任意）。
                 // physicsProcess が World 位置を読む（空 World → scene fallback で従来どおり）。
-                let (newNode, newScene) =
+                let (_, _) =
                     TestUnitFixtures.withSelectedPlayer(0, () ->
                         run { CursorScene.physicsProcess(Duration.seconds(0.016), node, path, scene) }
                             with handler World.WorldQuery { def get(k) = k(World.empty()) });
-                let updated = Scene.setEngineNode(path, newNode, newScene);
-                CursorScene.getCursorData(updated)
+                CursorScene.getCursorData()
             case _ => bug!("Cursor not found at cursorPath()")
         }
 
@@ -297,16 +322,17 @@ mod TestCursorScene {
     @Test
     def testPhysicsProcessMovesCursorUpOnUpKey(): Unit \ Assert =
         region rc {
-            let scene = cursorSceneAt({x = 5, y = 5}, None, 0);
+            let (scene, initial) = cursorSceneAt({x = 5, y = 5}, None, 0);
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
                         TestUnitFixtures.withNoopTween(() ->
                             TestUnitFixtures.withNoopAnim(() ->
                                 TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
-                                    runPhysics(TurnPhase.Phase.PlayerCursor, scene))))))
+                                    runPhysics(TurnPhase.Phase.PlayerCursor, initial, scene))))))
             } with GameLogger.withLogger(rc)
-              with TurnPhase.withState(rc);
+              with TurnPhase.withState(rc)
+              with CursorState.withState(rc);
             Assert.assertEq(expected = (5, 4), (data#gridPos#x, data#gridPos#y))
         }
 
@@ -315,16 +341,17 @@ mod TestCursorScene {
     @Test
     def testPhysicsProcessNoopsWhilePlayingAnimation(): Unit \ Assert =
         region rc {
-            let scene = cursorSceneAt({x = 5, y = 5}, None, 0);
+            let (scene, initial) = cursorSceneAt({x = 5, y = 5}, None, 0);
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
                         TestUnitFixtures.withNoopTween(() ->
                             TestUnitFixtures.withPlayingAnim(() ->
                                 TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
-                                    runPhysics(TurnPhase.Phase.PlayerCursor, scene))))))
+                                    runPhysics(TurnPhase.Phase.PlayerCursor, initial, scene))))))
             } with GameLogger.withLogger(rc)
-              with TurnPhase.withState(rc);
+              with TurnPhase.withState(rc)
+              with CursorState.withState(rc);
             Assert.assertEq(expected = (5, 5), (data#gridPos#x, data#gridPos#y))
         }
 
@@ -334,16 +361,17 @@ mod TestCursorScene {
     @Test
     def testPhysicsProcessClearsHoldWhenNoKeyPressed(): Unit \ Assert =
         region rc {
-            let scene = cursorSceneAt({x = 5, y = 5}, Some(Vec2i.up()), 3);
+            let (scene, initial) = cursorSceneAt({x = 5, y = 5}, Some(Vec2i.up()), 3);
             let data = run {
                 TestUnitFixtures.withMockGameKeys(_ -> false, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
                         TestUnitFixtures.withNoopTween(() ->
                             TestUnitFixtures.withNoopAnim(() ->
                                 TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
-                                    runPhysics(TurnPhase.Phase.PlayerCursor, scene))))))
+                                    runPhysics(TurnPhase.Phase.PlayerCursor, initial, scene))))))
             } with GameLogger.withLogger(rc)
-              with TurnPhase.withState(rc);
+              with TurnPhase.withState(rc)
+              with CursorState.withState(rc);
             Assert.assertEq(
                 expected = (5, 5, true, 0),
                 (data#gridPos#x, data#gridPos#y,
@@ -360,16 +388,17 @@ mod TestCursorScene {
     @Test
     def testPhysicsProcessAttackNoopsWhenNoTargetsInRange(): Unit \ Assert =
         region rc {
-            let scene = cursorSceneAt({x = 3, y = 3}, None, 0);
+            let (scene, initial) = cursorSceneAt({x = 3, y = 3}, None, 0);
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Down, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
                         TestUnitFixtures.withNoopTween(() ->
                             TestUnitFixtures.withNoopAnim(() ->
                                 TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
-                                    runPhysics(TurnPhase.Phase.PlayerAttack, scene))))))
+                                    runPhysics(TurnPhase.Phase.PlayerAttack, initial, scene))))))
             } with GameLogger.withLogger(rc)
-              with TurnPhase.withState(rc);
+              with TurnPhase.withState(rc)
+              with CursorState.withState(rc);
             Assert.assertEq(expected = (3, 3), (data#gridPos#x, data#gridPos#y))
         }
 
@@ -378,16 +407,17 @@ mod TestCursorScene {
     @Test
     def testPhysicsProcessAttackNoopsWhilePlayingAnimation(): Unit \ Assert =
         region rc {
-            let scene = cursorSceneAt({x = 3, y = 3}, None, 0);
+            let (scene, initial) = cursorSceneAt({x = 3, y = 3}, None, 0);
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Down, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
                         TestUnitFixtures.withNoopTween(() ->
                             TestUnitFixtures.withPlayingAnim(() ->
                                 TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
-                                    runPhysics(TurnPhase.Phase.PlayerAttack, scene))))))
+                                    runPhysics(TurnPhase.Phase.PlayerAttack, initial, scene))))))
             } with GameLogger.withLogger(rc)
-              with TurnPhase.withState(rc);
+              with TurnPhase.withState(rc)
+              with CursorState.withState(rc);
             Assert.assertEq(expected = (3, 3), (data#gridPos#x, data#gridPos#y))
         }
 
@@ -455,9 +485,9 @@ mod TestCursorScene {
                 TestUnitFixtures.withNoopTween(() ->
                     TestUnitFixtures.withNoopAnim(thunk))))
 
-    /// cursor の現在 gridPos を (x, y) タプルで取り出す。
-    def cursorPosOf(scene: Scene[NodeTag]): (Int32, Int32) =
-        let d = CursorScene.getCursorData(scene);
+    /// cursor resource の現在 gridPos を (x, y) タプルで取り出す。
+    def cursorPosOf(): (Int32, Int32) \ CursorState.State =
+        let d = CursorScene.getCursorData();
         (d#gridPos#x, d#gridPos#y)
 
     /// 配置 (id=0 self at (5,5)):
@@ -471,32 +501,42 @@ mod TestCursorScene {
     /// 「こうかん」確定時に北の味方にカーソルがスナップする。
     @Test
     def testSnapToFirstTradeCellPicksNorthAmongFourNeighbors(): Unit \ Assert =
-        let self     = makePartyMember(0, {x = 5, y = 5});
-        let northern = makePartyMember(1, {x = 5, y = 4});
-        let western  = makePartyMember(2, {x = 4, y = 5});
-        let eastern  = makePartyMember(3, {x = 6, y = 5});
-        let southern = makePartyMember(4, {x = 5, y = 6});
-        let baseScene = cursorAddPure(
-            sceneWithParty(self :: northern :: western :: eastern :: southern :: Nil));
-        let after = runWithTradeSnapMocks(baseScene, 0, {x = 5, y = 5}, () -> {
-            let withRange = TradeRangeScene.show(baseScene);
-            CursorScene.snapToFirstTradeCellOrPlayer(withRange)
-        });
-        Assert.assertEq(expected = (5, 4), cursorPosOf(after))
+        region rc {
+            let self     = makePartyMember(0, {x = 5, y = 5});
+            let northern = makePartyMember(1, {x = 5, y = 4});
+            let western  = makePartyMember(2, {x = 4, y = 5});
+            let eastern  = makePartyMember(3, {x = 6, y = 5});
+            let southern = makePartyMember(4, {x = 5, y = 6});
+            let result = run {
+                let baseScene = cursorAddPure(
+                    sceneWithParty(self :: northern :: western :: eastern :: southern :: Nil));
+                runWithTradeSnapMocks(baseScene, 0, {x = 5, y = 5}, () -> {
+                    let withRange = TradeRangeScene.show(baseScene);
+                    let _ = CursorScene.snapToFirstTradeCellOrPlayer(withRange);
+                    cursorPosOf()
+                })
+            } with CursorState.withState(rc);
+            Assert.assertEq(expected = (5, 4), result)
+        }
 
     /// 隣接味方が 1 人だけ (東に id=1) のとき、その人の位置に直接スナップする。
     /// 複数考慮の特殊ケースとして単一ケースも pin。
     @Test
     def testSnapToFirstTradeCellPicksTheOnlyAdjacentAlly(): Unit \ Assert =
-        let self    = makePartyMember(0, {x = 5, y = 5});
-        let eastern = makePartyMember(1, {x = 6, y = 5});
-        let baseScene = cursorAddPure(
-            sceneWithParty(self :: eastern :: Nil));
-        let after = runWithTradeSnapMocks(baseScene, 0, {x = 5, y = 5}, () -> {
-            let withRange = TradeRangeScene.show(baseScene);
-            CursorScene.snapToFirstTradeCellOrPlayer(withRange)
-        });
-        Assert.assertEq(expected = (6, 5), cursorPosOf(after))
+        region rc {
+            let self    = makePartyMember(0, {x = 5, y = 5});
+            let eastern = makePartyMember(1, {x = 6, y = 5});
+            let result = run {
+                let baseScene = cursorAddPure(
+                    sceneWithParty(self :: eastern :: Nil));
+                runWithTradeSnapMocks(baseScene, 0, {x = 5, y = 5}, () -> {
+                    let withRange = TradeRangeScene.show(baseScene);
+                    let _ = CursorScene.snapToFirstTradeCellOrPlayer(withRange);
+                    cursorPosOf()
+                })
+            } with CursorState.withState(rc);
+            Assert.assertEq(expected = (6, 5), result)
+        }
 
     // ════════════════════════════════════════════════════════
     // cursorVisibleForPhase — フェーズ→カーソル可視の単一の真理表

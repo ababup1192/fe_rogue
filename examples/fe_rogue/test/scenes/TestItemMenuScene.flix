@@ -132,6 +132,7 @@ mod TestItemMenuScene {
         let updated = TestUnitFixtures.withSelectedPlayer(0, () ->
             TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemSelect, () ->
                 TestUnitFixtures.withMockPartyQuery(scene, () ->
+                TestUnitFixtures.withCursor(() ->
                 match Scene.getEngineNode(menuPath, scene) {
                     case Some(node) =>
                         let (_, scnAfter) = run {
@@ -140,7 +141,7 @@ mod TestItemMenuScene {
                         } with handler World.WorldQuery { def get(k) = k(World.empty()) };
                         scnAfter
                     case None       => bug!("menu node not found at ${menuPath}")
-                })));
+                }))));
         Assert.assertEq(expected = Some(1),
             itemListAt(menuPath, updated) |> Option.map(list -> List.length(ItemList.getItems(list))))
 
@@ -157,6 +158,7 @@ mod TestItemMenuScene {
         let updated = TestUnitFixtures.withSelectedPlayer(0, () ->
             TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemActionSelect, () ->
                 TestUnitFixtures.withMockPartyQuery(withSelection, () ->
+                TestUnitFixtures.withCursor(() ->
                 match Scene.getEngineNode(menuPath, withSelection) {
                     case Some(node) =>
                         let (_, scnAfter) = run {
@@ -165,7 +167,7 @@ mod TestItemMenuScene {
                         } with handler World.WorldQuery { def get(k) = k(World.empty()) };
                         scnAfter
                     case None       => withSelection
-                })));
+                }))));
         let texts = match Scene.getEngineNode(menuPath, updated) {
             case Some(EngineNode.ItemListWithState(list, _)) =>
                 List.map(entry -> entry#text, ItemList.getItems(list))
@@ -182,6 +184,7 @@ mod TestItemMenuScene {
         let updated = TestUnitFixtures.withSelectedPlayer(0, () ->
             TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ItemActionSelect, () ->
                 TestUnitFixtures.withMockPartyQuery(withSelection, () ->
+                TestUnitFixtures.withCursor(() ->
                 match Scene.getEngineNode(menuPath, withSelection) {
                     case Some(node) =>
                         let (_, scnAfter) = run {
@@ -190,7 +193,7 @@ mod TestItemMenuScene {
                         } with handler World.WorldQuery { def get(k) = k(World.empty()) };
                         scnAfter
                     case None       => withSelection
-                })));
+                }))));
         let texts = match Scene.getEngineNode(menuPath, updated) {
             case Some(EngineNode.ItemListWithState(list, _)) =>
                 List.map(entry -> entry#text, ItemList.getItems(list))
