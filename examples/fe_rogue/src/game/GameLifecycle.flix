@@ -46,6 +46,8 @@ mod GameLifecycle {
         // 前フロアの配置物 store（宝箱/床アイテム）を掃除（scene 再構築での自動 prune は廃止＝明示 Cmd）。
         World.Command.emit(World.Cmd.ClearChests);
         World.Command.emit(World.Cmd.ClearItems);
+        // 前フロアの探索記憶（ミニマップ）を一掃（配置物 store と同じく明示 Cmd で掃除）。
+        World.Command.emit(World.Cmd.ClearVisited);
         // 前フロアのユニット store も一掃（spawn がこの後 seed し直す）。
         World.Command.emit(World.Cmd.ClearUnits);
         Scene.empty()
@@ -65,7 +67,7 @@ mod GameLifecycle {
             |> Chests.add(catalogs#chests, catalogs#players, catalogs#staves, catalogs#consumables, catalogs#rings, floor)
             // players/stairs 確定後に初回フォグ適用 (スポーン部屋を点灯。以降は FogScene.process が毎フレーム更新)
             |> FogScene.applyFog
-            // ミニマップ (最終 placements / 階段を読むため末尾)。訪問記憶はフロア再構築で自動リセット。
+            // ミニマップ (最終 placements / 階段を読むため末尾)。訪問記憶は World 権威で ClearVisited が掃除。
             |> MinimapScene.add
             // マップノード再構築の世代を +1（gameLoop の tile bake トリガ＝新フロアのタイルを World へ焼く）。
             |> (s -> { World.Command.emit(World.Cmd.BumpTileGen); s })
@@ -193,6 +195,7 @@ mod GameLifecycle {
         // （scene 再構築での自動 prune は廃止＝明示 Cmd。addFromSnaps より前が必須）。
         World.Command.emit(World.Cmd.ClearChests);
         World.Command.emit(World.Cmd.ClearItems);
+        World.Command.emit(World.Cmd.ClearVisited);  // 前フロアの探索記憶（ミニマップ）も一掃
         World.Command.emit(World.Cmd.ClearUnits);  // 前 run のユニット store も一掃
         let scene = Scene.empty()
             |> MapScene.addFromPlan(snap#mapPlan)

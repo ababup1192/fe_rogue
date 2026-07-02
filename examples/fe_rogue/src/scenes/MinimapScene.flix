@@ -2,8 +2,8 @@
 ///
 /// `FogScene`（霧）は「現在いる部屋だけを毎フレーム明るくする・非永続」だが、ミニマップは
 /// 逆に **一度でも訪れた部屋/通路(module)を覚え続ける**（探索が進むほど書き足される）。
-/// 記憶は driver ノードの state（`Set[Int32]` の訪問 module idx）に蓄積する。フロアを進むと
-/// `GameLifecycle.buildPlayingScene` でシーンごと作り直されるため、訪問記憶は自動でリセットされる。
+/// 訪問記憶（`Set[Int32]` の訪問 module idx）は World 権威で持つ（`World.visitedModulesOf`）。
+/// step が今フレーム分を `Cmd.AddVisited` で union し、フロア再構築時は `Cmd.ClearVisited` が一掃する。
 ///
 /// 表示は `FogScene` と同じ「固定 ColorRect プールを毎フレーム再配置」方式。部屋/通路の矩形と、
 /// プレイヤー・階段・アイテムのマーカーを、探索マップ全体が全画面ボックスに収まるよう一様
@@ -20,16 +20,15 @@
 ///          ├─ Room_0 .. Room_{N-1} (ColorRect)        ← 訪問済み部屋/通路の矩形プール
 ///          ├─ Floor_0 .. Floor_{K-1} (ColorRect)      ← 歩ける床の黒くり抜きプール
 ///          └─ Marker_0 .. Marker_{M-1} (Polygon2D の円) ← プレイヤー/階段/アイテム/敵の点プール
-///   World/MinimapDriver (Marker2D, MinimapDriver)     ← step で毎フレーム蓄積＋描画
+///   World/MinimapDriver (Marker2D, MinimapDriver)     ← step で毎フレーム描画（M トグル状態を保持）
 
 mod MinimapScene {
 
-    /// driver ノードが持つ永続 state。フロア跨ぎはシーン再構築でリセットされる。
+    /// driver ノードが持つ純 UI ephemera（M トグルの表示状態と入力エッジ）。
+    /// 探索記憶（visited）は World 権威（`World.visitedModulesOf`）が持つ。
     pub type alias DriverData = {
-        visited    = Set[Int32],  // 訪問済み module idx（= 記憶。核心）
-        stairsSeen = Bool,        // 一度発見した階段を覚え続ける
-        visible    = Bool,        // M 全画面トグル状態
-        mPrev      = Bool         // M の前フレーム押下状態（エッジ検出用）
+        visible = Bool,        // M 全画面トグル状態
+        mPrev   = Bool         // M の前フレーム押下状態（エッジ検出用）
     }
 
     /// fitTransform が返す「grid → minimap ピクセル」のアフィン変換パラメータ。
@@ -110,15 +109,13 @@ mod MinimapScene {
 
     /// 起動時から左下に表示（非侵襲な常設 HUD）。M で出し入れする。
     def initialData(): DriverData =
-        {visited = Set.empty(), stairsSeen = false, visible = true, mPrev = false}
+        {visible = true, mPrev = false}
 
-    /// driver ノードに蓄積された訪問済み module idx を返す。未登録なら空集合（安全側）。
-    /// カーソルの移動可能範囲（既訪エリア）の算出に CursorScene が使う。
-    pub def visitedModules(scene: Scene[NodeTag]): Set[Int32] =
-        match Scene.getState(driverPath(), scene) {
-            case Some(NodeTag.MinimapDriver(d)) => d#visited
-            case _                              => Set.empty()
-        }
+    /// 訪問済み module idx を World 権威から返す。カーソルの移動可能範囲（既訪エリア）の
+    /// 算出に CursorScene が使う。記憶の蓄積は step の `Cmd.AddVisited`、リセットは
+    /// `Cmd.ClearVisited`（フロア再構築時）が担う。
+    pub def visitedModules(): Set[Int32] \ World.WorldQuery =
+        World.visitedModulesOf(World.WorldQuery.get())
 
     /// CanvasLayer（scene.json）+ 描画コンテナ + 背景 + 矩形/マーカープール（初期非表示）+
     /// 常駐 MinimapDriver を scene tree に追加する。`GameLifecycle.buildPlayingScene` の末尾
@@ -181,7 +178,7 @@ mod MinimapScene {
                     Scene[NodeTag]
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
                        PlayerData.PartyQuery, EnemyData.RosterQuery,
-                       World.WorldQuery} =  // 味方/敵/階段位置の読みは World 経由
+                       World.WorldQuery, World.Command} =  // 味方/敵/階段/探索記憶の読み書きは World 経由
         match Scene.getState(driverPath(), scene) {
             case Some(NodeTag.MinimapDriver(data)) =>
                 let phase = TurnPhase.State.get();
@@ -203,15 +200,17 @@ mod MinimapScene {
                                                |> Option.getWithDefault(d#gridPos)});
                 let frame    = visitedThisFrameDrafted(units, placements, roomCount);
                 let litRooms = litRoomsDrafted(units, placements, roomCount);
-                let visited2 = accumulate(data#visited, frame);
-                let stairs2 = data#stairsSeen or stairsDiscovered(visited2, placements, scene);
-                let nextData = {visited = visited2, stairsSeen = stairs2,
-                                visible = visible2, mPrev = mDown};
+                // 探索記憶は World 権威。今フレーム訪問分を World へ union し、描画用に手元でも合成する。
+                let visited2 = accumulate(World.visitedModulesOf(World.WorldQuery.get()), frame);
+                World.Command.emit(World.Cmd.AddVisited(frame));
+                // stairsSeen は「階段 module が既訪か」を visited から導出する（単調＝一度見たら残る）。
+                let stairsSeen = stairsDiscovered(visited2, placements, scene);
+                let nextData = {visible = visible2, mPrev = mDown};
                 // レベルアップ画面・敵ターン中は隠す（M トグルの記憶 visible2 は維持）。
                 let hidden = phase == TurnPhase.Phase.LevelUpView
                               or phase == TurnPhase.Phase.EnemyTurn;
                 let show = visible2 and not hidden;
-                renderMinimap(show, nextData, litRooms, writeData(nextData, scene))
+                renderMinimap(show, visited2, stairsSeen, litRooms, writeData(nextData, scene))
             case _ => scene
         }
 
@@ -241,7 +240,7 @@ mod MinimapScene {
     /// フレームは「フロア全体の bbox」基準にして、探索しても配置が動かないようにする。
     /// 描画対象は「訪問済み module」＋「訪問済みに隣接する未訪問の通路（出口ヒント）」を
     /// union 分割して一体化（重なり部分を二重描画しない）。
-    def renderMinimap(show: Bool, data: DriverData, litRooms: Set[Int32],
+    def renderMinimap(show: Bool, visited: Set[Int32], stairsSeen: Bool, litRooms: Set[Int32],
                        scene: Scene[NodeTag]): Scene[NodeTag]
                        \ {PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         if (not show)
@@ -249,7 +248,7 @@ mod MinimapScene {
         else {
             let placements = MapScene.getPlacements(scene);
             let roomCount  = MapScene.getRoomCount(scene);
-            let rawRects   = displayedModuleRects(data#visited, placements, roomCount);
+            let rawRects   = displayedModuleRects(visited, placements, roomCount);
             // 縮尺は全フロア共通の固定値（`referenceScale`）。フロアの実寸に依らず一定。
             // ただし参照より大きい稀な巨大フロアは画面ボックスからはみ出さないよう、その
             // フロアの fit 倍率でクランプ（縮小）する。配置は探索済みコンテンツの bbox を
@@ -262,7 +261,7 @@ mod MinimapScene {
             // その上に「歩ける床セルだけ」を黒くくり抜く（壁セルは MapSnapshot で除外）。
             let snapshot   = mapSnapshot(scene);
             let floorRuns  = floorRunsIn(disjoint, snapshot);
-            let markers    = collectMarkers(data, placements, roomCount, litRooms, scene);
+            let markers    = collectMarkers(visited, stairsSeen, placements, roomCount, litRooms, scene);
             scene
                 |> drawRoomPool(disjoint, t)
                 |> drawFloorPool(floorRuns, t)
@@ -309,7 +308,7 @@ mod MinimapScene {
 
     /// 表示すべきマーカー（セル + 色）一覧。プレイヤー（非 hidden、リーダーは別色）+ 発見済み
     /// 階段 + 訪問済み部屋内のアイテム。
-    def collectMarkers(data: DriverData,
+    def collectMarkers(visited: Set[Int32], stairsSeen: Bool,
                         placements: List[DungeonComposer.ModulePlacement],
                         roomCount: Int32, litRooms: Set[Int32], _scene: Scene[NodeTag]):
                        List[{cell = {x = Int32, y = Int32}, color = Color}]
@@ -321,7 +320,7 @@ mod MinimapScene {
                                   color = if (d#id == 0) leaderColor() else playerColor()});
         // 階段位置は World.stairsPos から読む。
         let stairsM =
-            if (data#stairsSeen)
+            if (stairsSeen)
                 match World.stairsPosOf(World.WorldQuery.get()) {
                     case Some(cell) => {cell = cell, color = stairsColor()} :: Nil
                     case None       => Nil
@@ -330,7 +329,7 @@ mod MinimapScene {
         let itemsM =
             // 床アイテム位置は World store から読む。
             (World.groundItemsOf(World.WorldQuery.get()) |> Map.valuesOf |> List.map(d -> d#gridPos))
-                |> List.filter(cell -> inVisitedRoom(cell, placements, roomCount, data#visited))
+                |> List.filter(cell -> inVisitedRoom(cell, placements, roomCount, visited))
                 |> List.map(cell -> {cell = cell, color = itemColor()});
         // いま点灯している部屋(litRooms)に居る敵を赤丸で（アイテムより手前＝後ろに連結して上に描く）。
         let enemiesM = enemiesSharingPlayerRoom(litRooms, placements);

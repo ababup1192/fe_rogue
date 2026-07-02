@@ -233,7 +233,7 @@ mod CursorScene {
                          \ {GameEngine.Game, BoardQuery,
                              Tween.Scheduler, AnimationPlayer.Scheduler,
                              GameLogger.GameLogger,
-                             EnemyData.RosterQuery} =
+                             EnemyData.RosterQuery, World.WorldQuery} =
         match node {
             case EngineNode.Marker2DWithState(marker, NodeTag.Cursor(data)) =>
                 if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
@@ -370,14 +370,14 @@ mod CursorScene {
 
     /// 候補セルがカーソルの可動域（明るい部屋 +半径 ∪ 訪問済み module）に入っているか。
     /// 範囲は FogScene.cursorRangeRects（明るい部屋を半径拡張 ∪ 既訪 module 矩形）で求め、
-    /// 既訪記憶は MinimapScene の driver state を再利用する。scene 直読みの純粋判定。
-    def cursorCanEnter(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Bool =
+    /// 既訪記憶は World（`MinimapScene.visitedModules`）から読む。
+    def cursorCanEnter(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Bool \ World.WorldQuery =
         let placements = MapScene.tryGetPlacements(scene);
         // マップ情報が無い（= 単体テスト等）なら制限しない（fail-open: カーソルを固めない）。
         if (List.isEmpty(placements)) true
         else {
             let roomCount = MapScene.getRoomCount(scene);
-            let visited   = MinimapScene.visitedModules(scene);
+            let visited   = MinimapScene.visitedModules();
             let rects = FogScene.cursorRangeRects(PlayerScene.getAll(scene), placements,
                                                    roomCount, visited, cursorRangeRadius());
             // 可動域がまだ算出できないフレームでも固めない（防御的）。

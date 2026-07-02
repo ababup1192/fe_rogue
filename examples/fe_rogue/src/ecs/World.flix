@@ -157,6 +157,10 @@ pub enum World {
                  // 階段セル座標の read-model（None=未配置）。`Stairs.getPos(scene)`
                  // 由来を `Cmd.SetStairs` が書く（mapSnapshot と同型）。warp 先計算（`warpCellFor`）が読む。
                  stairsPos = Option[{x = Int32, y = Int32}],
+                 // フロア全域の探索記憶（訪問済み module idx 集合）。ミニマップの描画と
+                 // カーソル可動域（既訪エリア）判定が読む。`Cmd.AddVisited` が今フレーム分を union、
+                 // フロア再構築時は `Cmd.ClearVisited` が一掃する（chests/items と同型・scene 非依存）。
+                 visited = Set[Int32],
                  // 宝箱の read/write-model。セル key（`chestCellKey`）→ 宝箱 Data。
                  // spawn（`Cmd.SpawnChest`）/開封（`Cmd.RemoveChest`）が動かす＝存在は component（Map 在/不在）で表現。
                  // 純 command 由来（scene ノードなし）。floor 再構築時は `Cmd.ClearChests` が旧フロア分を一掃する。
@@ -222,6 +226,7 @@ mod World {
                      growth = Map.empty(),
                      mapSnapshot = None,
                      stairsPos = None,
+                     visited = Set.empty(),
                      chests = Map.empty(),
                      groundItems = Map.empty(),
                      popupFx = Map.empty(), popupFxNextSeq = 0,
@@ -321,6 +326,8 @@ mod World {
             // stairsPos は frame-1 seed だけ scene の Stairs ノードから読む（hp と同型）。以後は
             // `Cmd.SetStairs`（placeAt）由来を保持＝World 権威。
             stairsPos = Stairs.getPos(scene),
+            // 探索記憶は command 由来（AddVisited/ClearVisited）＝sync パスでも preserve。
+            visited = w#visited,
             // chests は純 command 由来（SpawnChest/RemoveChest/ClearChests）＝
             // sync パスでも preserve（seed は build choke の Spawn emit が担う）。
             chests = w#chests,
@@ -518,6 +525,8 @@ mod World {
         case SetPhaseObservedEnemy(Bool)       // バーが敵ターン観測済み bool write（TopBar dual-write）
         case BumpTileGen                       // マップ再構築の世代 +1（build choke が emit・gameLoop の tile bake トリガ）
         case SetStairs(Option[{x = Int32, y = Int32}])  // 階段セル write（配置=Some/未配置=None・floor 単位で 1 回）。stairsPos を World 権威化
+        case AddVisited(Set[Int32])        // 探索記憶に今フレームの訪問 module idx を union（Minimap step が emit）
+        case ClearVisited                  // フロア再構築時に探索記憶を一掃（ClearChests と同型）
         case SpawnChest(Chests.Data)   // 宝箱を配置（build/復元）。cell key で chests へ挿入（存在=Map 在）
         case ClearChests                   // フロア再構築時に前フロアの宝箱を全消去（build choke が emit）
         case RemoveChest({x = Int32, y = Int32})  // 宝箱を開封して除去（cell key で chests から削除）
@@ -879,6 +888,12 @@ mod World {
             case Cmd.SetStairs(cell) =>
                 // 階段セルを World 権威に write（placeAt が emit）。floor 単位で 1 回・未配置は None。
                 let World.World(w) = world; World.World({stairsPos = cell | w})
+            case Cmd.AddVisited(mods) =>
+                // 探索記憶に今フレーム訪問分を union（Minimap step 由来）。記憶＝離脱後も残る。
+                let World.World(w) = world; World.World({visited = Set.union(w#visited, mods) | w})
+            case Cmd.ClearVisited =>
+                // フロア再構築の頭で探索記憶を一掃（ClearChests と同型）。
+                let World.World(w) = world; World.World({visited = Set.empty() | w})
             case Cmd.SpawnChest(data) =>
                 // 宝箱を cell key で挿入（addOneChest が emit）。存在は Map 在で表現。
                 let World.World(w) = world;
@@ -1122,6 +1137,8 @@ mod World {
             case Cmd.SetStairs(cell)          =>
                 let (x, y) = Option.map(p -> (p#x, p#y), cell) |> Option.getWithDefault((-1, -1));
                 ("SetStairs", x, y, 0)
+            case Cmd.AddVisited(mods)         => ("AddVisited", Set.size(mods), 0, 0)
+            case Cmd.ClearVisited             => ("ClearVisited", 0, 0, 0)
             case Cmd.SpawnChest(data)         => ("SpawnChest", data#gridPos#x, data#gridPos#y, 0)
             case Cmd.RemoveChest(cell)        => ("RemoveChest", cell#x, cell#y, 0)
             case Cmd.ClearChests              => ("ClearChests", 0, 0, 0)
@@ -1908,6 +1925,11 @@ mod World {
     /// scene の `Stairs.getPos` を mirror した read-model（`boardOf` と同じく scene 非依存 sim を可能にする seam）。
     pub def stairsPosOf(world: World): Option[{x = Int32, y = Int32}] =
         let World.World(w) = world; w#stairsPos
+
+    /// フロア全域の探索記憶（訪問済み module idx）を World から読む。ミニマップ描画と
+    /// カーソル可動域判定が読む read-model。`Cmd.AddVisited` が union・`Cmd.ClearVisited` が一掃。
+    pub def visitedModulesOf(world: World): Set[Int32] =
+        let World.World(w) = world; w#visited
 
     /// 配置物 store のセル key（1 セル 1 個ゆえ cell が一意 key＝record の Eq/Order を避け Int32 に符号化）。
     /// グリッドは各軸 1000 未満（ダンジョンセル）ゆえ `x*1000 + y` で衝突しない。chests/groundItems 共通。
