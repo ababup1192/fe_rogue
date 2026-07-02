@@ -30,7 +30,7 @@ mod StaffCastScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                GameEngine.Audio, GameEngine.Game, World.Command, World.WorldQuery} =
+                GameEngine.Audio, World.Command, World.WorldQuery} =
         // プレイヤーと杖の両方が解決できたときだけ発動。どちらか欠ければ scene のまま。
         // ネストした match を避けるため Option を forM で短絡的に畳む。
         let cast = forM (
@@ -48,7 +48,7 @@ mod StaffCastScene {
             \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                GameEngine.Audio, GameEngine.Game, World.Command, World.WorldQuery} =
+                GameEngine.Audio, World.Command, World.WorldQuery} =
         let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
         // 杖は射程を持たない: 盤面外は壁扱いなので、十分大きい上限を渡せば
@@ -119,7 +119,7 @@ mod StaffCastScene {
                           scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, World.Command, BoardQuery,
-                              GameEngine.Game, GameEngine.Audio, World.WorldQuery} =
+                              GameEngine.Audio, World.WorldQuery} =
         match dslStaffRule(staff) {
             case Some(rule) => applyStaffEffectDsl(playerId, staff, rule, hit, dir, scene)
             // effectRule 無しの legacy 5 enum 杖。cutover toggle（既定 true・branch 温存）が ON かつ
@@ -166,7 +166,7 @@ mod StaffCastScene {
                              scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, World.Command, BoardQuery,
-                              GameEngine.Game, GameEngine.Audio, World.WorldQuery} =
+                              GameEngine.Audio, World.WorldQuery} =
         let world = World.WorldQuery.get();
         let (_, events) = StaffSystem.resolveStaffCast(world,
             World.EntityRef.Player(playerId), staff#effect, dir, hit);
@@ -819,7 +819,7 @@ mod StaffCastScene {
                         direction: Staff.Direction, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, GameEngine.Game,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
                 Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
         let cast = forM (player <- PlayerScene.get(playerId, scene))
             yield fireThrow(playerId, kind, player, direction, scene);
@@ -830,7 +830,7 @@ mod StaffCastScene {
                    direction: Staff.Direction, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
-                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio, GameEngine.Game,
+                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, GameEngine.Audio,
                 Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
         let board = BoardQuery.board();
         let dir   = Staff.toVec2i(direction);
@@ -846,7 +846,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 Math.Random, CustomEffects.GameOverRequest, SelectedPlayer.State,
-                GameEngine.Audio, GameEngine.Game, World.Command, World.WorldQuery, BoardQuery} =
+                GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery} =
         match hit {
             case RayHit.HitEnemy(_, _)  => rolledThrow(playerId, kind, player, dir, hit, scene)
             case RayHit.HitPlayer(_, _) => rolledThrow(playerId, kind, player, dir, hit, scene)
@@ -861,7 +861,7 @@ mod StaffCastScene {
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
                 Math.Random, CustomEffects.GameOverRequest, SelectedPlayer.State,
-                GameEngine.Audio, GameEngine.Game, World.Command, World.WorldQuery, BoardQuery} =
+                GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery} =
         let roll = throwRoll();
         let threshold = Combat.throwHitRate(isAccurateThrower(player));
         if (not Combat.isHit(threshold, roll)) {
@@ -885,7 +885,7 @@ mod StaffCastScene {
                              dir: {x = Int32, y = Int32}, hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, GameEngine.Game,
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio,
                 World.Command, World.WorldQuery, BoardQuery} =
         match kind {
             case PlayerData.ItemKind.Weapon(idx) =>
@@ -971,8 +971,7 @@ mod StaffCastScene {
                             hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command,
-                World.WorldQuery} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
         match item#effect {
             case Consumable.ConsumableEffect.FireBottle  => throwBottleSingle("${PlayerScene.displayName(playerId, scene)}", item, hit, scene)
             case Consumable.ConsumableEffect.BlastBottle => throwBottleBlast("${PlayerScene.displayName(playerId, scene)}", item, hit, scene)
@@ -997,8 +996,7 @@ mod StaffCastScene {
                            hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command,
-                World.WorldQuery} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
         AudioStreamPlayer.play("magic");
         let dmg = item#magnitude;
         // 着弾セルに爆発エフェクトを出してからダメージを与える。
@@ -1018,8 +1016,7 @@ mod StaffCastScene {
                           hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command,
-                World.WorldQuery} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
         AudioStreamPlayer.play("critical");
         let dmg = item#magnitude;
         match rayHitCell(hit) {
@@ -1087,8 +1084,7 @@ mod StaffCastScene {
                            description: String, scene: Scene[NodeTag]):
             Option[Scene[NodeTag]]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery,
-                World.WorldQuery} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery} =
         match enemyBottleFor(description) {
             case None       => None
             case Some(item) => enemyThrowWith(enemyId, origin, item, scene)
@@ -1099,8 +1095,7 @@ mod StaffCastScene {
                         item: Consumable.ConsumableResource, scene: Scene[NodeTag]):
             Option[Scene[NodeTag]]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery,
-                World.WorldQuery} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery} =
         // P1b: 敵投擲（mid-frame）の board 読みを World 由来へ（dual-write で World==scene・挙動不変）。
         let board: Board = BoardQuery.board();
         match enemyThrowDirection(origin, board) {
@@ -1254,8 +1249,7 @@ mod StaffCastScene {
                           hit: RayHit, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {AnimationPlayer.Scheduler, GameLogger.GameLogger,
-                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command,
-                World.WorldQuery} =
+                CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio, World.Command} =
         match item#effect {
             case Consumable.ConsumableEffect.FireBottle  => throwBottleSingle(srcLabel, item, hit, scene)
             case Consumable.ConsumableEffect.BlastBottle => throwBottleBlast(srcLabel, item, hit, scene)

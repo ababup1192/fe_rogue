@@ -1599,24 +1599,30 @@ mod TestWorld {
     //   spawn=Cmd（applyCmd が nextSeq 採番）・寿命 tick と期限切れ drop=stepWorld
     // ════════════════════════════════════════════════════════
 
-    /// SpawnPopupFx 2 連発で seq 0,1 に挿入され nextSeq が 2 になる（emit の子ノード名
-    /// `Popup_<seq>` 先読みと applyCmd 採番の一致を支える性質）。startY は spawn 値を保持。
+    /// SpawnPopupFx 2 連発で seq 0,1 に挿入され nextSeq が 2 になる。text/pos は spawn 値を保持
+    /// （P6-1f: 見た目も store 持ち）。
     @Test
     def testSpawnPopupFxAllocatesSequentialSeqs(): Unit \ Assert =
-        let w1 = World.applyCmd(World.Cmd.SpawnPopupFx({total = 0.7, startY = 5.0}), World.empty());
-        let w2 = World.applyCmd(World.Cmd.SpawnPopupFx({total = 0.7, startY = 9.0}), w1);
-        let startYs = World.popupFxOf(w2)
-            |> Map.toList |> List.map(p -> {let (seq, d) = p; (seq, d#startY)});
+        let white = ({r = 1.0f32, g = 1.0f32, b = 1.0f32}: Color);
+        let w1 = World.applyCmd(World.Cmd.SpawnPopupFx(
+            {total = 0.7, pos = {x = 0.0, y = 5.0}, text = "5", color = white}), World.empty());
+        let w2 = World.applyCmd(World.Cmd.SpawnPopupFx(
+            {total = 0.7, pos = {x = 0.0, y = 9.0}, text = "miss", color = white}), w1);
+        let entries = World.popupFxOf(w2)
+            |> Map.toList |> List.map(p -> {let (seq, d) = p; (seq, d#pos#y, d#text)});
         Assert.assertEq(
-            expected = ((0, 5.0) :: (1, 9.0) :: Nil, 2),
-            (startYs, World.popupFxNextSeqOf(w2)))
+            expected = ((0, 5.0, "5") :: (1, 9.0, "miss") :: Nil, 2),
+            (entries, World.popupFxNextSeqOf(w2)))
 
     /// stepWorld が fx の remaining を dt 減算し 0 以下で drop する（popup/爆発同型）。
     /// 0.1s 寿命 → 0.05s 進めて両方生存・さらに 0.06s で両方消滅、を pin。
     @Test
     def testStepWorldTicksAndDropsExpiredFx(): Unit \ Assert =
-        let w1 = World.applyCmd(World.Cmd.SpawnPopupFx({total = 0.1, startY = 0.0}), World.empty());
-        let w1b = World.applyCmd(World.Cmd.SpawnExplosionFx({total = 0.1}), w1);
+        let white = ({r = 1.0f32, g = 1.0f32, b = 1.0f32}: Color);
+        let w1 = World.applyCmd(World.Cmd.SpawnPopupFx(
+            {total = 0.1, pos = {x = 0.0, y = 0.0}, text = "1", color = white}), World.empty());
+        let w1b = World.applyCmd(World.Cmd.SpawnExplosionFx(
+            {total = 0.1, pos = {x = 0.0, y = 0.0}, scale = 0.4}), w1);
         let (w2, _) = World.stepWorld(w1b, 0.05);
         let (w3, _) = World.stepWorld(w2, 0.06);
         Assert.assertEq(
@@ -1627,7 +1633,9 @@ mod TestWorld {
     /// refreshMirror は fx store と nextSeq を preserve する（scene mirror 元なし・command/step 由来）。
     @Test
     def testRefreshMirrorPreservesFxStores(): Unit \ Assert =
-        let w1 = World.applyCmd(World.Cmd.SpawnPopupFx({total = 0.7, startY = 3.0}), World.empty());
+        let white = ({r = 1.0f32, g = 1.0f32, b = 1.0f32}: Color);
+        let w1 = World.applyCmd(World.Cmd.SpawnPopupFx(
+            {total = 0.7, pos = {x = 0.0, y = 3.0}, text = "3", color = white}), World.empty());
         let w2 = World.refreshMirror(Scene.empty(), w1);
         Assert.assertEq(
             expected = (1, 1),

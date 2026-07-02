@@ -53,8 +53,6 @@ mod GameLifecycle {
             //   EnemyTurnDriverScene.endTurn の集合自動継続判定 anyVisibleEnemy が「同フレーム最新の
             //   フォグ可視（applyFog 適用後）」を読めるのはこの add 順前提。順序を入れ替えると 1 フレーム
             //   古い可視値で判定してしまうので注意。
-            |> DamagePopupScene.add     // World 配下に空の Marker2D 親を 1 つ生やす
-            |> ExplosionScene.add       // 爆発エフェクト用の空 Marker2D 親（火炎瓶/爆発瓶/魔法着弾）
             |> PlayerScene.add(catalogs#players, catalogs#staves, catalogs#consumables)
             |> EnemyScene.add(catalogs#enemies, catalogs#weapons, catalogs#rings, floor)
             |> ItemScene.add(catalogs#players, catalogs#staves, catalogs#consumables, catalogs#rings, floor)   // 部屋の床に武器/杖/消耗品/指輪をランダムドロップ
@@ -194,8 +192,6 @@ mod GameLifecycle {
         let scene = Scene.empty()
             |> MapScene.addFromPlan(snap#mapPlan)
             |> FogScene.add
-            |> DamagePopupScene.add
-            |> ExplosionScene.add
             |> PlayerScene.addFromSnaps(snap#players, catalogs#players, catalogs#staves,
                                          catalogs#consumables, catalogs#rings)
             |> EnemyScene.addFromSnaps(snap#enemies, catalogs#enemies, catalogs#weapons, catalogs#rings)

@@ -95,8 +95,7 @@ mod RenderWorld {
     /// B: World 描画する **in-world（camera 適用）** サブツリー root。配置物（アイテム/宝箱/階段）＋ダメージ数字/
     /// 爆発/カーソル/矢印カーソル。top-level の Cursor/ArrowCursor は World 直下でないため明示列挙。
     def worldSubtreeRoots(): List[NodePath] =
-        // P6-1c/d/e: Stairs/Chest/GroundItem はノード廃止＝renderStairs/renderChests/renderItems が直描き。
-        DamagePopupScene.rootPath() :: ExplosionScene.rootPath() ::
+        // P6-1c〜f: 配置物 3 種と fx（ダメージ数字/爆発）はノード廃止＝render* 直描き。
         CursorScene.cursorPath() :: ArrowCursorScene.arrowPath() :: Nil
 
     /// B: World 描画する **CanvasLayer（camera 免除・画面固定）** サブツリー root。HUD/メニュー/minimap/各種ポップアップ。
@@ -298,6 +297,54 @@ mod RenderWorld {
                             List.append(outlines,
                                 standaloneSprite(makeFramed(), pos, ItemScene.spriteZIndex(), transform))
                         })
+        }
+
+    /// P6-1f: ダメージ数字 fx を World.popupFx store から直描きする（Label2D 値を組む＝tree に積まない）。
+    /// 上方向 float は経過比率から導出。fog ゲートは掛けない（戦闘発生セル＝点灯前提・旧ノード版と同じ）。
+    /// Map 不在（タイトル等）は早期 Nil（フロア跨ぎ残骸の誤描画防止）。
+    pub def renderPopups(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
+            List[GameEngine.Drawable] \ GameEngine.Game =
+        match Scene.getEngineNode(MapScene.mapPath(), scene) {
+            case None    => Nil
+            case Some(_) =>
+                let atlas = GameEngine.Game.getFontAtlas(DamagePopupScene.fontName());
+                World.popupFxOf(world)
+                    |> Map.valuesOf
+                    |> List.flatMap(d -> {
+                        let ratio = (d#total - d#remaining) / d#total;
+                        let pos: Vec2.Vec2 = {x = d#pos#x, y = d#pos#y - DamagePopupScene.floatDistancePx() * ratio};
+                        let label = Label2D.make(d#text, atlas, DamagePopupScene.fontSize())
+                            |> Label2D.setHorizontalAlignment(HorizontalAlignment.Center)
+                            |> Label2D.setVerticalAlignment(VerticalAlignment.Bottom)
+                            |> CanvasItem.setModulate(d#color);
+                        let screenPos = Camera2D.applyToWorldPos(transform, pos);
+                        GameEngine.Renderable.toDrawables(
+                            EngineNode.Label2DWithState(label, NodeTag.NoTag), screenPos)
+                            |> Render.applyCameraScale(transform)
+                            |> List.map(dr -> {zIndex = DamagePopupScene.popupZIndex() | dr})
+                    })
+        }
+
+    /// P6-1f: 爆発 fx を World.explosionFx store から直描きする（コマ番号は経過比率から導出）。
+    pub def renderExplosions(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
+            List[GameEngine.Drawable] \ GameEngine.Game =
+        match Scene.getEngineNode(MapScene.mapPath(), scene) {
+            case None    => Nil
+            case Some(_) =>
+                World.explosionFxOf(world)
+                    |> Map.valuesOf
+                    |> List.flatMap(d -> {
+                        let ratio = (d#total - d#remaining) / d#total;
+                        let raw = Float64.truncateToInt32(
+                                    Float64.floor(ratio * Int32.toFloat64(ExplosionScene.frameCount())));
+                        let frame = Int32.max(0, Int32.min(ExplosionScene.frameCount() - 1, raw));
+                        let sprite = Sprite2D.make(ExplosionScene.texture(), Vec2.zero(),
+                                        ({x = d#scale, y = d#scale}: Vec2.Vec2))
+                            |> Sprite2D.setHframes(ExplosionScene.hframes())
+                            |> Sprite2D.setVframes(ExplosionScene.vframes())
+                            |> Sprite2D.setFrame(frame);
+                        standaloneSprite(sprite, d#pos, ExplosionScene.zIndex(), transform)
+                    })
         }
 
     /// B: 全 grid 範囲オーバーレイ（移動 / 攻撃 / 敵移動 / 敵攻撃 / 味方攻撃 / 交換 / 危険範囲）を World render

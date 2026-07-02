@@ -618,7 +618,13 @@ mod TestUnitFixtures {
                 }
             } with handler World.Command {
                 def emit(c, k) = {
-                    Ref.put(World.cmdKey(c) :: Ref.get(recRef), recRef);
+                    // P6-1f: fx（ダメージ数字/爆発）の Spawn は **view の Cmd**（sim 状態を動かさない）。
+                    // golden trace は sim Cmd 列の比較通貨なので記録から除外する（apply はする）。
+                    let key = World.cmdKey(c);
+                    let (name, _, _, _) = key;
+                    if (name != "SpawnPopupFx" and name != "SpawnExplosionFx")
+                        Ref.put(key :: Ref.get(recRef), recRef)
+                    else ();
                     Ref.put(World.applyCmd(c, Ref.get(wref)), wref);
                     k()
                 }
@@ -646,7 +652,13 @@ mod TestUnitFixtures {
                 }
             } with handler World.Command {
                 def emit(c, k) = {
-                    Ref.put(World.cmdKey(c) :: Ref.get(recRef), recRef);
+                    // P6-1f: fx（ダメージ数字/爆発）の Spawn は **view の Cmd**（sim 状態を動かさない）。
+                    // golden trace は sim Cmd 列の比較通貨なので記録から除外する（apply はする）。
+                    let key = World.cmdKey(c);
+                    let (name, _, _, _) = key;
+                    if (name != "SpawnPopupFx" and name != "SpawnExplosionFx")
+                        Ref.put(key :: Ref.get(recRef), recRef)
+                    else ();
                     Ref.put(World.applyCmd(c, Ref.get(wref)), wref);
                     k()
                 }

@@ -74,14 +74,6 @@ pub enum NodeTag {
     /// 内部 state は演出の進行（bonus 再生済みか / 右側を出し終えた上昇ステータス数 / 次までの残り時間）。
     /// P4-d: レベルアップ演出パネルの識別用純タグ（状態は `LevelUpPanelScene.State` resource へ移設）。
     case LevelUpPanel
-    /// DamagePopupScene の Marker2D 親（World 直下に永続）。P5-b: 採番は World.popupFxNextSeq へ
-    case DamagePopupsRoot
-    /// DamagePopupScene の Label2D 子（描画 view）。P5-b: 寿命は World.popupFx へ
-    case DamagePopup
-    /// ExplosionScene の Marker2D 親（World 直下に永続）。P5-b: 採番は World.explosionFxNextSeq へ
-    case ExplosionsRoot
-    /// ExplosionScene の Sprite2D 子（描画 view）。P5-b: 寿命は World.explosionFx へ
-    case Explosion
     /// UnitHPBarScene の Marker2D 親（戦闘表示 timer + currentHp/maxHp を持つ）
     case HPBar(UnitHPBarScene.HPBarData)
     /// UnitCardScene の CanvasLayer 親（左サイドの選択ユニット簡易カード）。
@@ -436,7 +428,7 @@ def staffAimConfirm(scene: Scene[NodeTag]):
         Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                            BoardQuery, GameLogger.GameLogger,
                            EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                           GameEngine.Audio, GameEngine.Game, World.Command, World.WorldQuery} =
+                           GameEngine.Audio, World.Command, World.WorldQuery} =
         let dir = ArrowCursorScene.getDirection(scene);
     // 選択中プレイヤー → その Data → selectedItem を forM で 1 本に畳み、
     // 杖(Staff)を選んでいるときだけ発射する（3 段の match ネストを解消）。
@@ -460,7 +452,7 @@ def throwAimConfirm(scene: Scene[NodeTag]):
         Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
                            BoardQuery, GameLogger.GameLogger,
                            EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
-                           GameEngine.Audio, GameEngine.Game, Math.Random,
+                           GameEngine.Audio, Math.Random,
                            CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
         let dir = ArrowCursorScene.getDirection(scene);
     let selected = forM (
@@ -1113,11 +1105,8 @@ mod Game {
             // B/m3: 移動した entity の marker を renderPos に合わせる（engine tween 退役の受け皿・marker 単一権威）。
             // syncTreeFromWorld は marker の global 位置を書かない（gridPos 等 Data のみ derive）ので、ここで上書きしても
             // 齟齬なし。書いた synced は末尾 gameLoop へ渡り次フレームへ永続。以降 synced は marker 反映済みを指す。
-            let synced = RenderWorld.syncMarkers(moved, synced0)
-                // P5-b: fx（ダメージ数字/爆発）の子ノードを World store から派生。寿命 tick は
-                // stepWorld（world2 に反映済み）＝ここは Y 補間/コマ送りの反映と期限切れ除去のみ。
-                |> DamagePopupScene.syncView(world2)
-                |> ExplosionScene.syncView(world2);
+            // P6-1f: fx の syncView は撤去（ノード全廃＝renderPopups/renderExplosions が直描き）。
+            let synced = RenderWorld.syncMarkers(moved, synced0);
             // S4 twin parity 検査は **syncTreeFromWorld の後**に置く（scene が World から派生し終えた点）。
             // pre-sync だと gridPos が 1 フレーム遅延（World pos=当フレーム / scene gridPos=前フレームの派生）、
             // hidden/equippedRing が re-mirror stale で false-positive を出していた。post-sync では gridPos=World 派生・
@@ -1159,6 +1148,8 @@ mod Game {
                 |> List.append(RenderWorld.renderStairs(world2, holesOpt, transform))
                 |> List.append(RenderWorld.renderChests(catalogs#chests, world2, holesOpt, transform))
                 |> List.append(RenderWorld.renderItems(world2, holesOpt, transform))
+                |> List.append(RenderWorld.renderPopups(world2, transform, synced))
+                |> List.append(RenderWorld.renderExplosions(world2, transform, synced))
                 |> List.append(RenderWorld.renderFog(transform, synced))
                 |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
                 |> List.append(RenderWorld.renderSubtrees(transform, synced));

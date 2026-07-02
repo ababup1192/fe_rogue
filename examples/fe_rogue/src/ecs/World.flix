@@ -36,13 +36,14 @@ pub enum Channel with Eq, Order {
     case Position   // renderPos（連続描画位置＝移動）
 }
 
-/// P5-b: ダメージ数字ポップアップ fx の寿命 store エントリ（秒・実時間）。
-/// `remaining` は stepWorld が毎フレーム dt 減算し 0 以下で drop。`startY` は生成時ワールド Y
-/// （経過比率から現在 Y を逆算＝上方向 float）。テキスト/色/X は view（Label2D ノード）が持つ。
-pub type alias PopupFx = { remaining = Float64, total = Float64, startY = Float64 }
+/// P5-b→P6-1f: ダメージ数字ポップアップ fx の store エントリ（秒・実時間）。
+/// `remaining` は stepWorld が毎フレーム dt 減算し 0 以下で drop。P6-1f で text/色/位置も store が
+/// 持ち（view ノード全廃）、描画は `RenderWorld.renderPopups` が経過比率から上方向 float を導出する。
+pub type alias PopupFx = { remaining = Float64, total = Float64, pos = Vec2.Vec2, text = String, color = Color }
 
-/// P5-b: 爆発 fx の寿命 store エントリ（秒・実時間）。経過比率からコマ番号を view が導出する。
-pub type alias ExplosionFx = { remaining = Float64, total = Float64 }
+/// P5-b→P6-1f: 爆発 fx の store エントリ。位置/scale も store が持ち、経過比率からコマ番号を
+/// `RenderWorld.renderExplosions` が導出する。
+pub type alias ExplosionFx = { remaining = Float64, total = Float64, pos = Vec2.Vec2, scale = Float64 }
 
 /// B/m3: 1 フレームで移動（Position tween）した entity の marker 駆動情報（EntityRef＋補間 pixel）。
 /// `stepWorld` が active∪done を返し、`RenderWorld.syncMarkers` が実 scene の marker を pos へ置く。
@@ -617,8 +618,8 @@ mod World {
         case SpawnItem(ItemScene.Data)     // P3-c: 床アイテムを配置（build/復元/respawn/drop）。cell key で groundItems へ挿入
         case RemoveItem({x = Int32, y = Int32})   // P3-c: 床アイテムを拾得して除去（cell key で groundItems から削除）
         case ClearItems                    // P6-1e: フロア再構築時に前フロアの床アイテムを全消去（ClearChests と同型）
-        case SpawnPopupFx({total = Float64, startY = Float64})  // P5-b: ダメージ数字 fx を nextSeq で採番して spawn（remaining=total で開始）
-        case SpawnExplosionFx({total = Float64})                // P5-b: 爆発 fx を nextSeq で採番して spawn
+        case SpawnPopupFx({total = Float64, pos = Vec2.Vec2, text = String, color = Color})  // P5-b/P6-1f: ダメージ数字 fx を spawn（remaining=total で開始・見た目も store 持ち）
+        case SpawnExplosionFx({total = Float64, pos = Vec2.Vec2, scale = Float64})            // P5-b/P6-1f: 爆発 fx を spawn
     }
 
     /// System が出力する sim-event（F-clock の最小骨組み・F3b 導入 → slice `simevent-algebra` で拡張）。
@@ -946,14 +947,16 @@ mod World {
                 let World.World(w) = world;
                 let seq = w#popupFxNextSeq;
                 World.World({popupFx = Map.insert(seq,
-                                 {remaining = d#total, total = d#total, startY = d#startY}, w#popupFx),
+                                 {remaining = d#total, total = d#total, pos = d#pos,
+                                  text = d#text, color = d#color}, w#popupFx),
                              popupFxNextSeq = seq + 1 | w})
             case Cmd.SpawnExplosionFx(d) =>
                 // P5-b: popupFx と同型（採番して挿入し +1）。
                 let World.World(w) = world;
                 let seq = w#explosionFxNextSeq;
                 World.World({explosionFx = Map.insert(seq,
-                                 {remaining = d#total, total = d#total}, w#explosionFx),
+                                 {remaining = d#total, total = d#total, pos = d#pos, scale = d#scale},
+                                 w#explosionFx),
                              explosionFxNextSeq = seq + 1 | w})
         }
 
@@ -1101,8 +1104,8 @@ mod World {
             case Cmd.ClearItems               => ("ClearItems", 0, 0, 0)
             case Cmd.SpawnItem(data)          => ("SpawnItem", data#gridPos#x, data#gridPos#y, 0)
             case Cmd.RemoveItem(cell)         => ("RemoveItem", cell#x, cell#y, 0)
-            case Cmd.SpawnPopupFx(d)          => ("SpawnPopupFx", Float64.truncateToInt32(d#startY), 0, 0)
-            case Cmd.SpawnExplosionFx(_)      => ("SpawnExplosionFx", 0, 0, 0)
+            case Cmd.SpawnPopupFx(d)          => ("SpawnPopupFx", Float64.truncateToInt32(d#pos#x), Float64.truncateToInt32(d#pos#y), 0)
+            case Cmd.SpawnExplosionFx(d)      => ("SpawnExplosionFx", Float64.truncateToInt32(d#pos#x), Float64.truncateToInt32(d#pos#y), 0)
         }
 
     /// F7-spike: 敵の alerted を World から読む（reader flip の供給元・hpOf 同型）。Player は常に None。

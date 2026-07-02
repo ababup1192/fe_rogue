@@ -125,7 +125,7 @@ mod CombatScene {
     ///   に流し、全滅時は `CustomEffects.GameOverRequest` でフルリビルドさせる。
     pub def onAttackHit(side: Faction, id: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                              GameEngine.Game, GameLogger.GameLogger,
+                              GameLogger.GameLogger,
                               CustomEffects.GameOverRequest,
                               SelectedPlayer.State, World.RngDraw,
                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
@@ -143,7 +143,6 @@ mod CombatScene {
     /// ゲーム本体の味方攻撃適用（`useEcsCombat()` で ECS/legacy を選ぶ＝既定 ECS）。
     pub def applyAttackHit(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                              GameEngine.Game,
                               GameLogger.GameLogger, World.RngDraw,
                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         applyAttackHitWith(useEcsCombat(), playerId, scene)
@@ -151,14 +150,12 @@ mod CombatScene {
     /// **legacy 直叩き**（トグル非依存）。golden-trace 等が legacy 経路を oracle として pin するため。
     pub def applyAttackHitLegacy(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                              GameEngine.Game,
                               GameLogger.GameLogger, World.RngDraw,
                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         applyAttackHitWith(false, playerId, scene)
 
     def applyAttackHitWith(useEcs: Bool, playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                              GameEngine.Game,
                               GameLogger.GameLogger, World.RngDraw,
                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
@@ -172,20 +169,20 @@ mod CombatScene {
     /// killedIds が空でないとき呼び出し側は死亡処理（removeDeadAndCheckGameOver）を発火する。
     pub def applyEnemyAttackHit(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
+            {AnimationPlayer.Scheduler, GameEngine.Audio, GameLogger.GameLogger, World.RngDraw,
              World.Command, World.WorldQuery, BoardQuery} =
         applyEnemyAttackHitWith(useEcsCombat(), enemyId, scene)
 
     /// **legacy 直叩き**（トグル非依存・テスト oracle 用）。
     pub def applyEnemyAttackHitLegacy(enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
+            {AnimationPlayer.Scheduler, GameEngine.Audio, GameLogger.GameLogger, World.RngDraw,
              World.Command, World.WorldQuery, BoardQuery} =
         applyEnemyAttackHitWith(false, enemyId, scene)
 
     def applyEnemyAttackHitWith(useEcs: Bool, enemyId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
+            {AnimationPlayer.Scheduler, GameEngine.Audio, GameLogger.GameLogger, World.RngDraw,
              World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
             d              <- EnemyScene.get(enemyId, scene);
@@ -427,7 +424,7 @@ mod CombatScene {
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                        GameEngine.Audio, GameEngine.Game,
+                        GameEngine.Audio,
                         GameLogger.GameLogger,
                         CustomEffects.GameOverRequest,
                         CustomEffects.ThiefDropRequest,
@@ -448,7 +445,7 @@ mod CombatScene {
                           path: NodePath, scene: Scene[NodeTag]):
                          (EngineNode[NodeTag], Scene[NodeTag])
                          \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                             GameEngine.Audio, GameEngine.Game,
+                             GameEngine.Audio,
                              GameLogger.GameLogger,
                              CustomEffects.GameOverRequest,
                              CustomEffects.ThiefDropRequest,
@@ -520,7 +517,7 @@ mod CombatScene {
     def applyDamageToEnemy(useEcs: Bool, playerId: Int32, player: PlayerScene.Data, enemyId: Int32,
                             scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
+                               GameLogger.GameLogger, World.RngDraw,
                                CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         let resolved = forM (
             weapon <- PlayerData.equippedWeapon(player#weapons);
@@ -595,7 +592,7 @@ mod CombatScene {
                                 weapon: UnitCatalog.WeaponResource, enemyId: Int32,
                                 enemy: EnemyScene.Data, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, GameLogger.GameLogger, World.RngDraw, World.Command,
+                               GameLogger.GameLogger, World.RngDraw, World.Command,
                                World.WorldQuery, CustomEffects.ThiefDropRequest} =
         let world = World.WorldQuery.get();
         let (_, events) = CombatSystem.resolveAttack(world,
@@ -613,7 +610,7 @@ mod CombatScene {
                        weapon: UnitCatalog.WeaponResource, enemy: EnemyScene.Data,
                        enemyId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
+                               GameLogger.GameLogger, World.RngDraw,
                                CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery, BoardQuery} =
         // S-A0/B1: 攻撃の combat view を World 由来へ flip（weapon=equipped ゆえ combatViewOf と一致・
         // WorldQuery=read-after-write 正・None は scene fallback）。レベルは scene（progress と dual-write 同値）。
@@ -740,8 +737,7 @@ mod CombatScene {
     /// 回避: miss SE を鳴らし "miss" を浮かす。HP も死亡演出も変えない。
     def applyMiss(playerId: Int32, enemyId: Int32, popupPos: Vec2.Vec2, color: Color,
                    scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger,
-                              World.Command, World.WorldQuery} =
+            Scene[NodeTag] \ {GameEngine.Audio, GameLogger.GameLogger, World.Command} =
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}に攻撃を外した");
         AudioStreamPlayer.play("miss");
         DamagePopupScene.emitText(popupPos, "miss", color, scene)
@@ -754,7 +750,7 @@ mod CombatScene {
                   weaponType: WeaponCatalog.WeaponType,
                   popupPos: Vec2.Vec2, color: Color, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, GameLogger.GameLogger, World.Command, World.WorldQuery} =
+                               GameLogger.GameLogger, World.Command} =
         AudioStreamPlayer.play(CombatRules.hitSoundName(plan#dmg, isCrit, weaponType));
         // 魔法攻撃（マージ等）の着弾時は敵中心に爆発エフェクトを出す。
         let withFx = match weaponType {
@@ -811,7 +807,7 @@ mod CombatScene {
     def applyDamageToPlayer(useEcs: Bool, enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,
                              scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {AnimationPlayer.Scheduler, GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
+            {AnimationPlayer.Scheduler, GameEngine.Audio, GameLogger.GameLogger, World.RngDraw,
              World.Command, World.WorldQuery, BoardQuery} =
         // 前提（武器あり・対象あり）の解決だけを担う。実体は legacy resolveEnemyAttack または（useEcs 時）ECS 経路。
         let resolved = forM (
@@ -830,7 +826,7 @@ mod CombatScene {
     def ecsResolveEnemyAttack(enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,
                                player: PlayerScene.Data, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \ {AnimationPlayer.Scheduler, GameEngine.Audio,
-                               GameEngine.Game, World.RngDraw, World.Command, World.WorldQuery} =
+                               World.RngDraw, World.Command, World.WorldQuery} =
         let world = World.WorldQuery.get();
         let (_, events) = CombatSystem.resolveEnemyAttack(world,
             {ref = World.EntityRef.Enemy(enemyId), level = enemy#resource#level},
@@ -850,7 +846,7 @@ mod CombatScene {
                             weapon: UnitCatalog.WeaponResource, player: PlayerScene.Data,
                             targetId: Int32, scene: Scene[NodeTag]):
             (Scene[NodeTag], List[Int32]) \
-            {GameEngine.Audio, GameEngine.Game, GameLogger.GameLogger, World.RngDraw,
+            {GameEngine.Audio, GameLogger.GameLogger, World.RngDraw,
              World.Command, World.WorldQuery, BoardQuery} =
         // S-A0/B1: ダメージ計算の combat view を World 由来へ flip（WorldQuery=read-after-write 正・parity 同値）。
         let world = World.WorldQuery.get();
