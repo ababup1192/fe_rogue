@@ -215,7 +215,7 @@
   - ✅ 5b トグル 3 個＋legacy チェーン削除: `useEcsCombat/useEcsStaff/useEcsEnemyStaff` 撤去・`useEcs` 引数除去。戦闘 legacy 閉包 24 関数を **compiler 主導ループ**（Unused definition を whitelist 照合で block 削除）で撤去（CombatScene 1164→650 行）。杖は whiff fallback を `ecsResolveStaffCast` に**内包**（『届かなかった』/Swap『消えた』ログ）して `applyStaffEffectLegacy`/`enemyCastStaffLegacy`/`applyHealTo*` を削除。TestStaffGolden の harness は live seam 駆動へ（cross-compare は wrapper↔system pin 化）、TestEnemyStaffGolden の (c) 4 本は独立 frozen pin のみに縮約。legacy 専用の不変条件テスト（testLevelUpDualWritesHpToWorld・legacy 12-draw 列 pin×2→ONE-Ref 化で存続）を整理。
   - ✅ 5c DIFF/checker 掃除。**設計判断: gameLoop の 4 DIFF（ATTACKTARGET/F2 PHASE/PLAYERDATA/ENEMYDATA）は撤去せず恒久 invariant guard に昇格** — これらは「scene 権威 field の変更には必ず Cmd を併記する」という hybrid-A の恒久契約を frame 末に守る安価な検査で、退役対象ではなく資産。撤去したのは**守る契約が消えた** checker 9 本（hp/progress/dying/alerted/equippedRing/effectRule/statusEffects の mismatches ＋ board-lock の boardMatchesScene/boardKeyMismatch）とその TestWorld テスト（toBoard の seed 整合 pin だけ残置）。
   - ✅ 5d hp store 縦スライス＋scope 確定。**実バグ級の発見**: DSL/投擲/ふきとばしのダメージ・回復計算が scene の hp を入力にしていた（P6-2a の hp twin 退役後は stale＝「戦闘で削った敵に瓶を投げると満タン扱い」）。全 7 入力を World.hpOf 読みへ flip し、heal 系の書き込みを setHp funnel（SetHp 即時 emit 併記）へ統一（境界 emitHpSets は冪等な再 emit に）。**scope 確定: 残る dual-write field（weapons/staves/consumables/rings/statuses/hidden/usedStairs/alerted/isDying/acted/facing/selectedItem 等）は「scene 権威 + Cmd mirror」の hybrid-A 恒久設計であり stale ではない＝掃除対象外**。Data record の field 削除も見送り（overlay〔dataFromWorld〕が同じ record 型で World 値を運ぶ view-type として機能しており、削除は overlay 消費者を壊すだけで得るものが無い）。
-- [ ] 6. `_plan_*.md` 群を「完了アーカイブ」節に整理、本 doc §G を final 化
+- [x] 6. `_plan_*.md` 群（examples/fe_rogue の full_ecs/oop_to_ecs/position_ecs）に完了アーカイブ banner を付与、本 doc §G を final 化（先頭を最終到達状態の要約に更新・baseline 更新）
 
 **対象**: `game/Game.flix`, `game/GameLifecycle.flix`, `resources/FloorSnapshot.flix`, `scenes/CombatScene.flix`, `StaffCastScene.flix`, `engine_ecs/src/EcsCodec.flix`(未結線 → wire)
 
@@ -257,16 +257,22 @@
 
 ## §G 進捗（living — 更新はここだけで良い）
 
-**現在フェーズ: P5 完了（run 確認待ち: P5-d/e 分）— 達成条件 5/5。a=view driver step 化・b=fx store・c=tickable step 化（dispatch 対象 0）・d=MoveDraft revert は既達と検証・e=marker 装飾の RenderWorld 直描き。次は P2（在庫の World 単独化・セーブ改修と不可分）→ P6（Scene ツリー撤去・直列）。P4 残（TopBar/Title の△・(b) engine ItemList/Cursor〔要事前相談〕）は P6 前の任意タイミングで**
+**現在フェーズ: 🏁 全フェーズ完了（2026-07-02）— P1〜P6 の計画は final。** 到達状態:
+- **World が唯一の sim 真実源**: 全 store が command 駆動（Spawn/Despawn/ClearUnits 含む）。frame 境界の scene⇄World 同期（syncTreeFromWorld/refreshMirror の derive・prune/起動 syncFromScene）は全廃＝refreshMirror は frame カウンタのみ。
+- **render-from-World**: ダンジョン内の描画対象ノードはゼロ（range/fog 暗幕/階段/宝箱/床アイテム/fx/HP バー/武器アイコン/ユニット sprite すべて直描き）。残ノード＝Camera/Audio/ユニット Marker2D（位置権威・lunge target）/カーソル/HUD・メニュー（P4(b) 未実施）/driver タグ。
+- **legacy ゼロ**: `*Legacy`・トグル 3 個・戦闘 legacy 閉包を撤去。golden は「ECS 実行＋frozen literal」と「wrapper↔system 整合 pin」。
+- **恒久 invariant guard**: gameLoop の 4 DIFF（ATTACKTARGET/F2 PHASE/PLAYERDATA/ENEMYDATA）＝「scene 権威 field の変更は Cmd 併記」契約の frame 末検査（撤去しない）。
+- **hybrid-A の最終形**: scene 権威で残る field（statuses/weapons/在庫/facing/selectedItem/hidden/acted 等）は dual-write が設計（stale ではない）。Data record は overlay（dataFromWorld）の view-type を兼ねるため field 削除はしない。
+- **今後の任意課題（計画外）**: P4(b) メニュー選択状態の resource 化（engine ItemList/Cursor・要事前相談）／ユニット Marker2D と scene Data 残滓の完全退役／必要になったときの EcsCodec セーブ形式移行。
 
 > **P3 完了メモ（2026-07-02・全 Level 1）**: 配置物 3 種の存在/位置/中身を World store に権威化し、gameplay reader（メニュー gate・階段 driver 等）を World へ flip。scene ノードは描画/フォグ/点滅アニメ view として残置（renderSubtrees 経路不変・dual-write で despawn 時にノードも消える）。RenderWorld 調査で「ユニットも scene sprite ノードを保持＝World は存在 gate のみ」「node-less 描画（Render.drawAtlas+regionRect）は Stairs が catalog 非対応で詰む」と判明したため、addChild 撤去＋catalog 直描画は P6（ユニットの脱ノードと同時）へ委譲するのが妥当。
 
 > **P2 保留メモ（2026-07-02）**: 在庫の Cmd/emit/accessor/dual-write は全て既存で稼働・`[PLAYERDATA DIFF]` で World==scene 検証済み。残りの「scene 権威を落として World 単独化」は read-before-mutate＋描画（UnitCard 等）＋**セーブ capture（`captureSnaps` が scene Data 直読み）**の付け替えを伴う重い縦スライスで、セーブ移行が不可分。機能上は今困っていない（P6 撤去まで dual-write 温存で動く）ため、独立でクリーンな P3 を先行。P2 再開時は rings/ringEquipped（player-only 最小）から縦スライスで。
 
-- テスト baseline: 1063（P1 着手前）→ 1070（P1）→ 1071（P3-a）→ 1072（P3-b）→ 1073（P3-c＝P3 完了）→ 1073（P4-a〜e・挙動不変）→ 1076（P5-b fx store +3）→ **1077 green**（P2-r1 equippedRing 導出 pin +1）
+- テスト baseline: 1063（P1 着手前）→ 1070（P1）→ 1073（P3 完了）→ 1076（P5-b）→ 1077（P2-r1）→ 1082（P6-2 診断 pin +5）→ **1079 green（final）**（P6-5 で legacy 専用テスト 3 本を退役・board-lock 2 本を縮約）
 - 完了済み前史: Track A/A'（faction 統合・unified-id）、F0-F8（sim state 権威化・driver step 化）、pos 統合、Phase C 前提 4 スライス、combat/staff cutover（トグル 3 つ true）、render-from-World 常時化
 - **P1 実像の訂正**: 当初 6 TODO のうち level-up モーダルと武器耐久は既に配線済み（doc 陳腐化のみ）だった。実装が要ったのは Stopgap 杖・thief drop・敵ノックバックの 3 点。
-- **次の一手**: P2 read 側（P2-r1/r2）・P4 (a) 全消化・P5 完了。残る大物は 2 つ: ①**P4 (b) engine ItemList/Cursor の resource 化**（メニュー選択状態を engine プリミティブから引き剥がす。**engine 変更を伴うため事前相談必須**）②**P6（Scene ツリー撤去・直列）** — 手順 1 の hide-then-render 廃止から。手順 4 のセーブ形式変更（EcsCodec 直列化）は**破壊的＝ユーザー承認必須**だが、capture は P2-r2 で全面 World 読みになっており射影先の差し替えだけで済む。P2 の残（write 撤去・field 削除・DIFF 撤去）は P6 手順 5（legacy 撤去）と同時に。どちらへ進むかはユーザーと相談。
+- **次の一手**: なし（計画完了）。以下は完了時点の記録。旧・残る大物は 2 つ: ①**P4 (b) engine ItemList/Cursor の resource 化**（メニュー選択状態を engine プリミティブから引き剥がす。**engine 変更を伴うため事前相談必須**）②**P6（Scene ツリー撤去・直列）** — 手順 1 の hide-then-render 廃止から。手順 4 のセーブ形式変更（EcsCodec 直列化）は**破壊的＝ユーザー承認必須**だが、capture は P2-r2 で全面 World 読みになっており射影先の差し替えだけで済む。P2 の残（write 撤去・field 削除・DIFF 撤去）は P6 手順 5（legacy 撤去）と同時に。どちらへ進むかはユーザーと相談。
   - **P3 で確立したパターン（配置物 = World 権威・scene ノードは view）※P6 の脱ノードや他 store 化で再利用**: ① World に store field ＋ `Cmd.SpawnXxx/RemoveXxx`（scalar なら `SetXxx`）＋ applyCmd ＋ cmdKey を足す。② 配置/除去関数が `Cmd` を emit（scene ノードも従来通り set/remove＝描画/フォグ/frame-1 seed の view として残す＝dual-write）。③ refreshMirror は **command 由来を preserve**（変数個は scene 在キーで prune＝unit の validUids 相当）／syncFromScene は frame-1 seed として scene を読む＝hp/pos と同型。emit が Playing 突入・floor 遷移とも `World.Command` 文脈で refreshMirror より先に走るので seed は正しい。④ gameplay reader（driver/メニュー gate/overload 判定）を `World.xxxOf` へ flip。⑤ 描画/フォグ/セーブ capture/build-time 占有判定・deep な execution 経路は scene 読みのまま可（dual-write で World と等価。真の脱ノードは P6）。⑥ record は Eq/Order 未定義＝比較は `Option.exists(c -> c#x==.. and c#y==..)`、Map key は cell を `cellKey=x*1000+y` で Int32 符号化。⑦ reader へ WorldQuery を足すと呼び出し連鎖に伝播（ActionMenu では buildItems/refreshItems/onActionConfirmed と MenuHandler の `type Aef`・Game.flix dispatch まで）。全 reader flip で menu 関数の `scene` 引数が未使用化することがある＝`_scene`。テストは `withMenuReadMocks*` に `withWorldQuery(syncFromScene(scene,empty()))` を仕込み済みで一括で通る。scene ノードを直接組む純粋テストで emit 関数を呼ぶ場合は `run { … } with handler World.Command { def emit(_,k)=k() }` で捨てるか、Ref[World] 版で applyCmd して store 権威を pin。
 - 履歴:
   - 2026-07-02: 本 doc 作成（Scene vs ECS 全棚卸し → P1-P6 ワークフロー策定）

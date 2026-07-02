@@ -1,3 +1,6 @@
+> **📦 アーカイブ（2026-07-02）**: この計画 doc は歴史的記録。ECS 移行は `ECS_WORKFLOW.md`（リポジトリ root）
+> の P1〜P6 として **完了済み**。現在の設計・到達状態は同 doc §G を参照（本文の記述は当時のもので陳腐化している）。
+
 # OOP→ECS System 移行計画（v4・レビュー90+確定）— scene のロジック根絶・OOP node-callback 脱却
 
 > **採点推移: v1(70/72) → v2(86) → v3(90) → v4**。v3→v4 で残り2 nit を hardening（comfortably 90+）:
