@@ -150,6 +150,14 @@
 
 **並列/高速化**: 完全にファイル独立なので最も fan-out が効くフェーズ。先に 1 本（LogScene 推奨・最軽量）を通して**変換パターンをコミットで確立**し、それを他レーンの参照実装にする。
 
+**進捗**: ✅ P4-a LogScene（参照実装）・✅ P4-b BattlePanel（点滅タイマー）／☐ 他レーン fan-out 可。
+
+**P4 の 2 種の作業（調査で判明）**:
+- **(a) NodeTag payload → resource**（易・LogScene/BattlePanel で確立済）: `NodeTag.Xxx(Data)` に埋めた HUD/演出の状態を effect resource へ。対象は payload を持つ variant のみ。**注意**: `Stairs`/`Chest`/`GroundItem` の payload は P3 で描画 view として意図的に残置＝**P6 で撤去**（P4 対象外）。残る (a) 候補: `TopBar`/`LevelUpPanel`/`Title`/`ItemPickupPopup`/`HoldGauge`/`DamagePopup`/`Explosion`/`HPBar` 等（演出系は P5 と重なる）。
+- **(b) engine プリミティブ（ItemList/Cursor）→ resource**（難・未着手）: メニューの**カーソル位置/選択/項目**は NodeTag でなく engine の `ItemList`/`Cursor` ノードが持つ（例: `GameOverMenu` は既にペイロードレスで状態は ItemList）。「メニュー描画が resource→RenderItem の純関数」達成条件はここ。CursorScene（最重）が代表。ActionMenu/ItemMenu/Trade 等はこの (b) が本体。
+
+**P4-a で確立したパターン（NodeTag ペイロード → resource effect）**: ① 対象 Scene mod 内に `pub eff State { def get(): Data; def put(d: Data): Unit }` ＋ `pub def withState(rc)`（Ref-backed・Pacing.State と同型）を定義（状態が Scene 固有なら co-locate、汎用なら `resources/` へ）。② `NodeTag.Xxx(Data)` → `NodeTag.Xxx`（ペイオードレス）。enum 定義（Game.flix）＋構築/ match 全サイトを修正。③ `process`（or reader）が `Scene.getState` でなく `State.get()/put()` を使う。scene ノードは Label/CanvasLayer 等の**描画 view** として残す。④ `process` に新 effect を足したら **FrameAef.ProcessT** ＋ **gameLoop の効果行**（Game.flix）に `Xxx.State` を追記し、**Game.start に `with Xxx.withState(rc)` を 1 行注入**（既存 Pacing/GatherResume の並びに追加）。⑤ dispatch の `case NodeTag.Xxx(_) =>` を `case NodeTag.Xxx =>` に。純粋ロジック（enqueue/tick 等）は不変ゆえ既存テストがそのまま通る（挙動不変リファクタ）。
+
 **注意**: 非 driver Scene の読みは effect 経由の慣習を維持（PartyQuery/RosterQuery パターン、モジュール名直タイプ禁止）。`[xxx]` 表示は BBCode 扱いされる罠 — メニュー描画を組み替えるとき Label2D/別表現を維持。CursorScene は入力ロジック濃度が高いので「状態移送」と「入力→intent 整理」を別スライスに割る。
 
 ---
@@ -225,13 +233,13 @@
 
 ## §G 進捗（living — 更新はここだけで良い）
 
-**現在フェーズ: P3（配置物 Entity 化）**完了**（Stairs/Chest/GroundItem すべて Level 1 で World 権威化）。次は P4 ∥ P5。P2（在庫の World 権威化）はユーザー判断で保留（P6 直前）**
+**現在フェーズ: P4（UI 状態の Resource 化）進行中 — P4-a LogScene・P4-b BattlePanel 完了（payload→resource パターン確立）。他レーン fan-out 可。P3 完了・P2 は保留（P6 直前）・P5 は P4 と並行可**
 
 > **P3 完了メモ（2026-07-02・全 Level 1）**: 配置物 3 種の存在/位置/中身を World store に権威化し、gameplay reader（メニュー gate・階段 driver 等）を World へ flip。scene ノードは描画/フォグ/点滅アニメ view として残置（renderSubtrees 経路不変・dual-write で despawn 時にノードも消える）。RenderWorld 調査で「ユニットも scene sprite ノードを保持＝World は存在 gate のみ」「node-less 描画（Render.drawAtlas+regionRect）は Stairs が catalog 非対応で詰む」と判明したため、addChild 撤去＋catalog 直描画は P6（ユニットの脱ノードと同時）へ委譲するのが妥当。
 
 > **P2 保留メモ（2026-07-02）**: 在庫の Cmd/emit/accessor/dual-write は全て既存で稼働・`[PLAYERDATA DIFF]` で World==scene 検証済み。残りの「scene 権威を落として World 単独化」は read-before-mutate＋描画（UnitCard 等）＋**セーブ capture（`captureSnaps` が scene Data 直読み）**の付け替えを伴う重い縦スライスで、セーブ移行が不可分。機能上は今困っていない（P6 撤去まで dual-write 温存で動く）ため、独立でクリーンな P3 を先行。P2 再開時は rings/ringEquipped（player-only 最小）から縦スライスで。
 
-- テスト baseline: 1063 green（P1 着手前）→ 1070 green（P1 完了）→ 1071（P3-a）→ 1072（P3-b）→ **1073 green**（P3-c 完了＝P3 完了・各 +1）
+- テスト baseline: 1063（P1 着手前）→ 1070（P1）→ 1071（P3-a）→ 1072（P3-b）→ 1073（P3-c＝P3 完了）→ **1073 green**（P4-a LogScene・挙動不変リファクタゆえテスト数不変）
 - 完了済み前史: Track A/A'（faction 統合・unified-id）、F0-F8（sim state 権威化・driver step 化）、pos 統合、Phase C 前提 4 スライス、combat/staff cutover（トグル 3 つ true）、render-from-World 常時化
 - **P1 実像の訂正**: 当初 6 TODO のうち level-up モーダルと武器耐久は既に配線済み（doc 陳腐化のみ）だった。実装が要ったのは Stopgap 杖・thief drop・敵ノックバックの 3 点。
 - **次の一手**: P3 完了。次は **P4（UI 状態の Resource/Component 化）∥ P5（演出・残 driver の System 化）**。ほぼ独立で並行可（TurnEndHold だけ P4 の入力状態に触る）。P4 は LogScene（最軽量）で変換パターンをコミット確立→他レーン fan-out。P2 は保留継続（P6 直前）。
@@ -239,6 +247,8 @@
 - 履歴:
   - 2026-07-02: 本 doc 作成（Scene vs ECS 全棚卸し → P1-P6 ワークフロー策定）
   - 2026-07-02: P1 完了。P1-a Stopgap ECS化（World.stairsPos read-model + StaffSystem.stopgapEvents + 敵詠唱 log parity）、P1-b thief drop ECS化（World.isRogueOf〔growth#name 由来〕+ ViewFx(Thief) emit + wrapper applyThiefDrop）、P1-c 敵ノックバック（resolveEnemyAttack で faction-blind knockbackEvents 再利用）、P1-d 陳腐化コメント修正。golden +7（Stopgap 味方/敵・thief emit/非ローグ/seam・敵 knockback）。実機 run はユーザー確認へ defer。
+  - 2026-07-02: P4-b BattlePanelScene の点滅タイマーを resource 化。`BattlePanelScene.State`（eff get/put Duration）＋`withState`、`NodeTag.BattlePanel(Duration)`→`BattlePanel`（ペイオードレス）、process は node payload 操作を撤去し `State.get/put`。ProcessT/gameLoop 行/Game.start 配線。全 1073 green（挙動不変）。P4 で判明: NodeTag payload を持つ variant は (a) の対象だが Stairs/Chest/GroundItem は P6 送り、メニュー選択状態は engine ItemList プリミティブ＝(b) 未着手（本体は Cursor/ActionMenu/ItemMenu/Trade）。
+  - 2026-07-02: P4-a LogScene の状態を resource 化（**P4 パターン確立**）。`LogScene.State`（eff get/put Data）＋`withState(rc)` を co-locate、`NodeTag.Log(Data)`→`Log`（ペイオードレス・enum/dispatch/構築 全 5 サイト修正）、process は `Scene.getState` でなく `State.get()/put()`。FrameAef.ProcessT＋gameLoop 効果行に `LogScene.State` 追記、Game.start に `with LogScene.withState(rc)` 注入。純粋ロジック（enqueue/tickIdle）不変ゆえ既存 TestLogScene がそのまま green＝挙動不変。全 1073 green。
   - 2026-07-02: P3-c GroundItem を World 権威化（Level 1）＝**P3 完了**。World store `groundItems = Map[cellKey, ItemScene.Data]`（`cellKey` を chests と共有）、3-builder（seed=itemsFromScene／preserve＋prune・chests 同型）、`Cmd.SpawnItem/RemoveItem`（applyCmd/cmdKey）を addOneItem/takeAt が emit（add/respawn/addFromSnaps/dropFloorItem に World.Command 伝播）、accessor groundItemsOf/groundItemAtOf。gameplay reader flip: 「拾う」gate（selectedPlayerMenuItems＋gatherAdjacentMenuItems）＋ wouldPickupOverload → `World.groundItemAtOf`（reader 全 flip で 2 menu 関数の `scene` 引数が未使用化＝`_scene`）。`elapsed`（点滅位相）は view 専用ゆえ store は spawn 値スナップショット。pickupFloorItem 内部の dataAt/takeAt・auto-pickup・minimap・セーブは scene view（World 等価）のまま P6 へ。RenderWorld 調査完了（Level 2 は Stairs が catalog 非対応で詰む＝P6 委譲が妥当と確認）。test +1（`testTakeAtDrivesWorldItemStore`）・全 1073 green。実機 run はユーザー確認へ defer。
   - 2026-07-02: P3-b Chest を World 権威化（Level 1・ユーザー選択）。World store `chests = Map[cellKey, Data]`（`chestCellKey=x*1000+y`）、3-builder（syncFromScene seed=chestsFromScene／refreshMirror preserve＋scene 在セルで prune＝unit pos 同型）、`Cmd.SpawnChest/RemoveChest`（applyCmd/cmdKey）を addOneChest/takeAt が emit（dual-write）、accessor chestsOf/chestAtOf。gameplay reader flip: ActionMenu の「あける」gate（selectedPlayerMenuItems）＋ openTarget → `World.chestAtOf`。占有回避/minimap/セーブ capture は scene view のまま（World 等価・P6 で撤去）。test +1（`testTakeAtDrivesWorldChestStore`）・全 1072 green。実機 run はユーザー確認へ defer。
   - 2026-07-02: P3-a Stairs を World 権威化（完全縦スライス）。`Cmd.SetStairs(Option[cell])` 追加（applyCmd/cmdKey）、`StairsScene.placeAt` が emit、`refreshMirror` を stairsPos preserve へ（syncFromScene は frame-1 seed 維持＝hp 同型）。gameplay reader を flip: `StairsExitScene.begin`/`stepOnce`（退場 driver）と `ActionMenuScene` の「階段」gate ×2。WorldQuery 伝播で buildItems/refreshItems/onActionConfirmed/MenuHandler.Aef と Game.flix dispatch を更新。描画/フォグ/セーブ capture/宝箱占有判定・legacy 杖 warp は scene ノード読みのまま（World と等価・真のノード撤去は P6）。`StairsScene.isAt` は test-only seam 化（残置）。test +1（`testPlaceAtDrivesWorldStairsPos`）・全 1071 green。実機 run はユーザー確認へ defer。

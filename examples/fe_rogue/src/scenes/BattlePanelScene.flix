@@ -29,6 +29,26 @@
 ///          └─ dTri (Polygon2D)             反撃側の相性矢印
 mod BattlePanelScene {
 
+    /// P4-b: 「減る分」点滅サイクルの累積時間を持つ resource（旧: `NodeTag.BattlePanel(Duration)` ペイロード）。
+    /// process が毎フレーム delta で進め、`blinkDark` で暗/明を判定する。LogScene.State と同型の Ref-backed handler。
+    /// `Game.start` で `with BattlePanelScene.withState(rc)` を注入し、`FrameAef.ProcessT` に足す。
+    pub eff State {
+        def get(): Duration.Duration
+        def put(elapsed: Duration.Duration): Unit
+    }
+
+    pub def withState(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            let ref: Ref[Duration.Duration, r] = Ref.fresh(rc, Duration.zero());
+            run {
+                thunk()
+            } with handler State {
+                def get(k)          = k(Ref.get(ref))
+                def put(elapsed, k) = { Ref.put(elapsed, ref); k() }
+            }
+        }
+
     // ────────────────────────────────────────────────────────
     // (B) 定数 — ノード名 / パス
     // ────────────────────────────────────────────────────────
@@ -126,7 +146,7 @@ mod BattlePanelScene {
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas,
                                       SceneLoader.constTagParser(NodeTag.NoTag), scene)
-            |> Scene.setState(rootPath(), NodeTag.BattlePanel(Duration.zero()))
+            |> Scene.setState(rootPath(), NodeTag.BattlePanel)   // P4-b: 状態は BattlePanelScene.State resource へ
             |> addDot(aDotName(), row1CenterY(), UITheme.allyBlue())
             |> addDot(dDotName(), row2CenterY(), enemyDotColor())
             // 攻撃側の行（ラベル/% は薄色で左寄せ、数値は白で右詰め＝3 桁列の右端基準）
@@ -208,22 +228,15 @@ mod BattlePanelScene {
                      _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
-                       PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command} =
+                       PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command,
+                       BattlePanelScene.State} =
         let phase  = TurnPhase.State.get();
         let synced = syncTargetToCursor(phase, scene);
-        // 「減る分」の暗⇄明点滅サイクルを進める。state の Duration を delta で進め、
+        // 「減る分」の暗⇄明点滅サイクルを進める。P4-b: 累積時間は resource が持つ（旧: NodeTag payload）。
         // dark フラグ（前半=暗 / 後半=明）を足元 HP バー予測に渡す。
-        let prevElapsed = match node {
-            case EngineNode.CanvasLayerWithState(_, NodeTag.BattlePanel(d)) => d
-            case _                                                          => Duration.zero()
-        };
-        let elapsed = Duration.add(prevElapsed, delta);
+        let elapsed = Duration.add(BattlePanelScene.State.get(), delta);
+        BattlePanelScene.State.put(elapsed);
         let dark    = blinkDark(elapsed);
-        let node2   = match node {
-            case EngineNode.CanvasLayerWithState(layer, NodeTag.BattlePanel(_)) =>
-                EngineNode.CanvasLayerWithState(layer, NodeTag.BattlePanel(elapsed))
-            case other => other
-        };
         match buildForecast(phase, synced) {
             case Some(view) =>
                 let textd = synced |> setAllVisible(true) |> updateContent(view);
@@ -247,12 +260,12 @@ mod BattlePanelScene {
                     |> resizeBg(contentW)
                     |> reposition(view, contentW)
                     |> applyHpBarForecast(view, dark);
-                (node2, shown)
+                (node, shown)
             case None =>
                 let hidden = synced
                     |> setAllVisible(false)
                     |> clearAllHpForecasts;
-                (node2, hidden)
+                (node, hidden)
         }
 
     /// 「減る分」点滅の暗フレーム判定。周期 `blinkPeriodSec()` 秒の前半を暗（dark=true）、

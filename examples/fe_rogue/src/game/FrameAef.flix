@@ -40,6 +40,8 @@ mod FrameAef {
                                 CustomEffects.RingTransformRequest,
                                 CustomEffects.ThiefDropRequest,
                                 Pacing.State, Math.Random,
+                                // P4-a/b: HUD の状態 resource（LogScene=ログ queue、BattlePanelScene=点滅タイマー）。
+                                LogScene.State, BattlePanelScene.State,
                                 World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
                                 // slice `rng-world`: combat 命中ロールは World.RngDraw chokepoint 経由
                                 // （CombatScene.process が要求）。Game.flix:177/179 の checked_ecast widening が

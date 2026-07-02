@@ -39,7 +39,8 @@ pub enum NodeTag {
     case ArrowCursor(ArrowCursorScene.Data)
     /// StairsScene の Marker2D（フロアの階段。床のランダムセルに 1 つ配置される）
     case Stairs(StairsScene.Data)
-    case Log(LogScene.Data)
+    /// P4-a: ログ HUD の識別用純タグ（状態は `LogScene.State` resource へ移設・ペイロードレス）。
+    case Log
     /// ItemMenuScene の Panel ルート（外枠）
     case ItemPanel
     /// ItemMenuScene の ItemList（武器+杖の一覧 + サブメニュー兼用）。
@@ -67,7 +68,8 @@ pub enum NodeTag {
     /// BattlePanelScene の CanvasLayer ルート（画面空間の戦闘予報ミニウィンドウ）。
     /// 内部 Duration は未使用（将来の演出用に枠だけ残す）。panel とその子（丸/ラベル/三角）は
     /// `NodeTag.NoTag` でぶら下げ、process がパス経由で更新・対象近傍へ移動する。
-    case BattlePanel(Duration.Duration)
+    /// P4-b: 戦闘予報パネルの識別用純タグ（点滅タイマーは `BattlePanelScene.State` resource へ移設）。
+    case BattlePanel
     /// LevelUpPanelScene の Panel ルート（レベルアップ時のステータス変化パネルの外枠）。
     /// 内部 state は演出の進行（bonus 再生済みか / 右側を出し終えた上昇ステータス数 / 次までの残り時間）。
     case LevelUpPanel(LevelUpPanelScene.PanelState)
@@ -199,7 +201,7 @@ def dispatchTickables(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(TurnEndHoldScene.process(delta, node, path, scene))
         case NodeTag.CharacterSelect(_) =>
             checked_ecast(CharacterSelectScene.process(delta, node, path, scene))
-        case NodeTag.Log(_) =>
+        case NodeTag.Log =>
             checked_ecast(LogScene.process(delta, node, path, scene))
         case NodeTag.Camera =>
             checked_ecast(CameraScene.process(delta, node, path, scene))
@@ -247,7 +249,7 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(UnitCardScene.process(delta, node, path, scene))
         case NodeTag.EnemyCard =>
             checked_ecast(EnemyCardScene.process(delta, node, path, scene))
-        case NodeTag.BattlePanel(_) =>
+        case NodeTag.BattlePanel =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
         case NodeTag.LevelUpPanel(_) =>
             checked_ecast(LevelUpPanelScene.process(delta, node, path, scene))
@@ -942,6 +944,8 @@ mod Game {
               with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
               with AnimationPlayer.withScheduler(rc)  // 名前付きアニメ + イベントドレイン
               with Pacing.withState(rc)           // 演出の溜め (hold)
+              with LogScene.withState(rc)         // P4-a: ログ HUD の状態（queue/idleSince）を resource 化
+              with BattlePanelScene.withState(rc) // P4-b: 戦闘予報パネルの点滅タイマーを resource 化
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
               with EnemyTurn.withQueue(rc)        // 敵ターンキュー（1 step / 1 frame 駆動）
               with handler TurnPhase.State {       // F2b: inline 化し put を World へ dual-write（全 put が World.turnPhase 反映）
@@ -1027,7 +1031,7 @@ mod Game {
                          CustomEffects.SuspendRequest, CustomEffects.ResumeRequest,
                          FloorProgress.State, InitialSpawns.State,
                          GamePhaseState, PartySelection.State,
-                         Pacing.State, Math.Random, FloorSnapshot.State,
+                         Pacing.State, LogScene.State, BattlePanelScene.State, Math.Random, FloorSnapshot.State,
                          World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
                          World.RngDraw, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。

@@ -19,12 +19,35 @@ mod LogScene {
     /// color は engine の Color(`{r,g,b}` Float32)を構造的レコードで展開(cross-package alias 回避)。
     pub type alias LogEntry = { text = String, color = {r = Float32, g = Float32, b = Float32} }
 
-    /// 親 CanvasLayer に紐づくデータ。
+    /// ログ HUD の状態（P4: NodeTag ペイロードから resource へ移設）。
     /// `queue` は先頭=最新・末尾=最古で最大 `maxQueue()` 件。`idleSince` は最後に新着があってからの経過時間。
     pub type alias Data = {
         queue     = List[LogEntry],
         idleSince = Duration.Duration
     }
+
+    /// P4-a: ログ HUD の状態を持つ resource（Pacing.State / SelectedPlayer.State と同じ Ref-backed handler）。
+    /// 旧: `NodeTag.Log(Data)` に埋め込んでいた queue/idleSince を effect へ移し、`NodeTag.Log` をペイロードレス化。
+    /// `Game.start` で `with LogScene.withState(rc)` を 1 行注入し、`FrameAef.ProcessT` に `LogScene.State` を足す。
+    pub eff State {
+        /// 現在の状態（queue + idleSince）を読む。
+        def get(): Data
+        /// 状態を全置換する（process が drain→enqueue→tickIdle 後に 1 回書く）。
+        def put(data: Data): Unit
+    }
+
+    /// Ref を closure に閉じ込めた状態 handler。初期は空キュー（`add` 直後は画面外に隠す）。
+    pub def withState(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            let ref: Ref[Data, r] = Ref.fresh(rc, {queue = Nil, idleSince = Duration.zero()});
+            run {
+                thunk()
+            } with handler State {
+                def get(k)       = k(Ref.get(ref))
+                def put(data, k) = { Ref.put(data, ref); k() }
+            }
+        }
 
     // ─── 定数・パス ───────────────────────────────────────────
     def name(): String = "Log"
@@ -71,10 +94,10 @@ mod LogScene {
     /// レイアウトは scene.json、ここでは初期 Data 注入・5 行の右寄せ・初期非表示(画面外)を行う。
     pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas(fontName());
-        let data: Data = { queue = Nil, idleSince = Duration.zero() };
+        // P4-a: 状態は `LogScene.State`（resource）が持つ。ノードは識別用の純タグ `NodeTag.Log`。
         let loaded = SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas,
                          SceneLoader.constTagParser(NodeTag.NoTag), scene)
-            |> Scene.setState(logPath(), NodeTag.Log(data))
+            |> Scene.setState(logPath(), NodeTag.Log)
             |> setOffsetX(hiddenOffsetX());   // 初期は空なので画面外へ
         // 5 行とも右寄せ(右下に寄せて出すため)。scene.json は alignment 非対応なのでここで適用。
         List.foldLeft((s, i) ->
@@ -91,23 +114,21 @@ mod LogScene {
                      node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ GameLogger.GameLogger =
+                    \ {GameLogger.GameLogger, LogScene.State} =
         let drained = GameLogger.drainEntries();
-        match Scene.getState(logPath(), scene) {
-            case Some(NodeTag.Log(data)) =>
-                let newQueue = enqueue(toLogEntries(drained), data#queue);
-                // 新着があったフレームはタイマーを 0 に戻す(その後 tickIdle で進めるので当フレームでは消えない)。
-                let idleReset = if (List.isEmpty(drained)) data#idleSince else Duration.zero();
-                let (finalQueue, finalIdle) = tickIdle(newQueue, idleReset, delta);
-                let updated = scene
-                    |> Scene.setState(logPath(), NodeTag.Log({queue = finalQueue, idleSince = finalIdle}))
-                    |> renderLines(finalQueue)
-                    |> setOffsetX(if (List.isEmpty(finalQueue)) hiddenOffsetX() else homeOffsetX());
-                match Scene.getEngineNode(path, updated) {
-                    case Some(latest) => (latest, updated)
-                    case None         => (node, updated)
-                }
-            case _ => (node, scene)
+        // P4-a: 状態は resource から読む（旧: NodeTag.Log ペイロード）。ノードは描画 view（Label/CanvasLayer）。
+        let data = LogScene.State.get();
+        let newQueue = enqueue(toLogEntries(drained), data#queue);
+        // 新着があったフレームはタイマーを 0 に戻す(その後 tickIdle で進めるので当フレームでは消えない)。
+        let idleReset = if (List.isEmpty(drained)) data#idleSince else Duration.zero();
+        let (finalQueue, finalIdle) = tickIdle(newQueue, idleReset, delta);
+        LogScene.State.put({queue = finalQueue, idleSince = finalIdle});
+        let updated = scene
+            |> renderLines(finalQueue)
+            |> setOffsetX(if (List.isEmpty(finalQueue)) hiddenOffsetX() else homeOffsetX());
+        match Scene.getEngineNode(path, updated) {
+            case Some(latest) => (latest, updated)
+            case None         => (node, updated)
         }
 
     /// `GameLogger.Entry`(古→新)を表示用 `LogEntry` へ写す。
