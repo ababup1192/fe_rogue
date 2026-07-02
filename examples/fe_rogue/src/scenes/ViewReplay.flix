@@ -78,7 +78,8 @@ mod ViewReplay {
                 let cell = World.posOf(r, World.WorldQuery.get()) |> Option.getWithDefault({x = 0, y = 0});
                 DamagePopupScene.emit(MapSnapshot.cellCenter(cell), dmg, popupColor(r), scene)
             case ViewAction.Explode(x, y)  => ExplosionScene.emitAtCell({x = x, y = y}, scene)
-            case ViewAction.HpBar(r, hp)   => UnitHPBarScene.update(pathOf(r), hp, scene)
+            // P6-1g: HP バーは World.hp store から直描き＝リプレイでも押し込み不要（SetHp が既に反映済み）。
+            case ViewAction.HpBar(_r, _hp) => scene
             case ViewAction.Snap(r, x, y)  => snapRefTo(r, {x = x, y = y}, scene)
             case ViewAction.Death(r)       => deathAnim(r, scene)
         }
@@ -87,12 +88,6 @@ mod ViewReplay {
     def popupColor(ref: EntityRef): Color = match ref {
         case EntityRef.Enemy(_)  => DamagePopupScene.damageToEnemyColor()
         case EntityRef.Player(_) => DamagePopupScene.damageToPlayerColor()
-    }
-
-    /// HPバー等の node path 解決。
-    def pathOf(ref: EntityRef): NodePath = match ref {
-        case EntityRef.Enemy(i)  => EnemyScene.enemyPath(i)
-        case EntityRef.Player(i) => PlayerScene.playerPath(i)
     }
 
     /// ノックバック着地（faction で snapTo を振り分け）。

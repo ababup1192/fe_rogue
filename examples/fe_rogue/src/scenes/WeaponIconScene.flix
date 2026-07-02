@@ -1,11 +1,9 @@
 /// WeaponIconScene — キャラ左上に常時表示する「装備武器の系統シンボル」アイコン
 ///
-/// ノード構造（ユニット 1 体あたり）:
-///   Player_<id> / Enemy_<id> (Marker2D)
-///     └─ WeaponIcon (Marker2D, 左上オフセット)
-///          ├─ Border  (ColorRect, 濃色の枠 = 視認性のための囲み)
-///          ├─ Bg      (ColorRect, 濃紺のプレート背景。枠を 1px 残してインセット)
-///          └─ G0,G1,… (Polygon2D / Arc2D, 武器系統の塗りシルエットを直描き = WeaponGlyph)
+/// P6-1g: scene ノードは全廃。装備武器の系統は World store（weaponView）から導出し、
+/// `renderPlates`（囲い ColorRect×2 = drawables チャンネル）と `renderGlyphs`
+/// （WeaponGlyph の Polygon2D/Arc2D 値 = polygon チャンネル）が毎フレーム直描きする。
+/// 待機/行動済みの暗転は waited/enemyActed store からの乗算合成で再現する。
 ///
 /// 仕様:
 ///   - 表示する絵は「実際の装備武器そのもの」ではなく、武器系統（剣/斧/槍/弓/魔法）を
@@ -45,62 +43,91 @@ mod WeaponIconScene {
     /// グリフ本体（Polygon2D / Arc2D）は不透明のまま残し、囲みだけ薄くする。
     def boxAlpha(): Float32 = 0.6f32
 
-    // ─── 公開 API ─────────────────────────────────────────────
-    /// ユニット（Marker2D）の子として、濃紺プレート＋枠で囲った武器系統シルエット（白）を生やす。常時表示。
-    /// `equipped` が None（素手）なら子を生やさない（非表示）。アイコンは `WeaponGlyph` が
-    /// engine の Polygon2D / Arc2D で直接描く塗りシルエット（スプライト不使用）。
-    pub def attach(unitPath: NodePath, equipped: Option[WeaponCatalog.WeaponResource],
-                    scene: Scene[NodeTag]): Scene[NodeTag] =
-        match equipped {
-            case None    => scene
-            case Some(w) =>
-                let half = boxSize() / 2.0;
-                let inner = boxSize() - 2.0 * borderPx();
-                // 囲みの親 Marker2D（左上オフセット）。modulate はこの 1 か所で一括制御する。
-                let withParent = Scene.addChildAt(unitPath, childName(),
-                    EngineNode.Marker2DWithState(Marker2D.make(iconOffset()), NodeTag.NoTag), scene);
-                let iconPath = List.append(unitPath, childName() :: Nil);
-                // 枠（濃色）。原点中心に置くため左上を半辺ぶん戻す。
-                let border = ColorRect.make({x = boxSize(), y = boxSize()}, borderColor())
-                    |> ColorRect.setAlpha(boxAlpha())
-                    |> Node2D.setPosition({x = 0.0 - half, y = 0.0 - half})
-                    |> CanvasItem.setZIndex(iconZIndex());
-                let withBorder = Scene.addChildAt(iconPath, "Border",
-                    EngineNode.ColorRectWithState(border, NodeTag.NoTag), withParent);
-                // プレート背景（濃紺。枠を 1px 残してインセット）。
-                let bg = ColorRect.make({x = inner, y = inner}, plateColor())
-                    |> ColorRect.setAlpha(boxAlpha())
-                    |> Node2D.setPosition({x = 0.0 - half + borderPx(), y = 0.0 - half + borderPx()})
-                    |> CanvasItem.setZIndex(iconZIndex() + 1);
-                let withBg = Scene.addChildAt(iconPath, "Bg",
-                    EngineNode.ColorRectWithState(bg, NodeTag.NoTag), withBorder);
-                // 武器系統の塗りシルエットを枠の中央（原点）に直描きで重ねる（G0,G1,…）。
-                List.foldLeft((acc, ne) ->
-                        let (name, node) = ne;
-                        Scene.addChildAt(iconPath, name, node, acc),
-                    withBg, WeaponGlyph.weaponGlyph(w#weaponType))
+    // ─── 公開 API（P6-1g: 直描き） ────────────────────────────
+
+    /// 対象ユニット列（味方＋敵）を「アイコン中心 world 座標・武器系統・暗転」の描画入力に畳む。
+    /// 素手（weaponView 内側 None）は描かない。退場（hidden）ユニットも描かない。
+    def iconInputs(world: World, scene: Scene[NodeTag]):
+            List[{center = Vec2.Vec2, weaponType = WeaponCatalog.WeaponType, modColor = Color}] =
+        let ofUnit = (ref, unitPath, modColor) ->
+            match (World.posOf(ref, world), Scene.getEngineNode(unitPath, scene),
+                   World.weaponViewOf(ref, world)) {
+                case (Some(_), Some(_), Some(wv)) =>
+                    let markerG = Scene.globalPositionAt(unitPath, scene);
+                    let center: Vec2.Vec2 = {x = markerG#x + iconOffset()#x, y = markerG#y + iconOffset()#y};
+                    ({center = center, weaponType = wv#weaponType, modColor = modColor}) :: Nil
+                case _ => Nil
+            };
+        // 暗転は本体 sprite の modulate を流用（UnitHPBarScene.renderBars と同じ理由＝完全パリティ）。
+        let players = PlayerScene.getAll(scene)
+            |> List.filter(d -> not d#hidden)
+            |> List.flatMap(d -> ofUnit(World.EntityRef.Player(d#id), PlayerScene.playerPath(d#id),
+                UnitHPBarScene.spriteModulate(PlayerScene.spritePath(d#id), scene)));
+        // フォグで隠れた敵は描かない（applyFog が marker を隠す＝isVisible が真実源）。
+        let enemies = EnemyScene.getAll(scene)
+            |> List.filter(d -> EnemyScene.isVisible(d#id, scene))
+            |> List.flatMap(d -> ofUnit(World.EntityRef.Enemy(d#id), EnemyScene.enemyPath(d#id),
+                UnitHPBarScene.spriteModulate(EnemyScene.spritePath(d#id), scene)));
+        List.append(players, enemies)
+
+    /// 囲い（枠＋プレート背景）の Drawable 列（drawables チャンネル）。
+    pub def renderPlates(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
+            List[GameEngine.Drawable] \ GameEngine.Game =
+        iconInputs(world, scene) |> List.flatMap(inp -> {
+            let half = boxSize() / 2.0;
+            let inner = boxSize() - 2.0 * borderPx();
+            let modColor = inp#modColor;
+            let border = ColorRect.make({x = boxSize(), y = boxSize()}, mulColor(borderColor(), modColor))
+                |> ColorRect.setAlpha(boxAlpha());
+            let bg = ColorRect.make({x = inner, y = inner}, mulColor(plateColor(), modColor))
+                |> ColorRect.setAlpha(boxAlpha());
+            let borderDs = rectDrawables(border,
+                {x = inp#center#x - half, y = inp#center#y - half}, iconZIndex(), transform);
+            let bgDs = rectDrawables(bg,
+                {x = inp#center#x - half + borderPx(), y = inp#center#y - half + borderPx()},
+                iconZIndex() + 1, transform);
+            List.append(borderDs, bgDs)
+        })
+
+    /// 武器系統グリフの PolygonRenderCmd 列（polygon チャンネル）。
+    /// WeaponGlyph の各ピース（Polygon2D/Arc2D 値・アイコン中心基準のローカル位置）を
+    /// world 座標へ動かして cmd 化する。暗転は cmd color への乗算で再現。
+    pub def renderGlyphs(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
+            List[GameEngine.PolygonRenderCmd] =
+        iconInputs(world, scene) |> List.flatMap(inp -> {
+            let modColor = inp#modColor;
+            WeaponGlyph.weaponGlyph(inp#weaponType) |> List.flatMap(ne -> {
+                let (_, node) = ne;
+                pieceCmds(node, inp#center, modColor, transform)
+            })
+        })
+
+    /// グリフ 1 ピース（Polygon2D/Arc2D の EngineNode 値）→ PolygonRenderCmd 列。
+    def pieceCmds(node: EngineNode[NodeTag], center: Vec2.Vec2, modColor: Color,
+                   transform: Camera2D.ViewTransform): List[GameEngine.PolygonRenderCmd] =
+        let withMod = (cmd: GameEngine.PolygonRenderCmd) ->
+            ({color = mulColor(cmd#color, modColor), zIndex = iconZIndex() + 2 | cmd}: GameEngine.PolygonRenderCmd);
+        match node {
+            case EngineNode.Polygon2DWithState(poly, _) =>
+                let p = Node2D.getPosition(poly);
+                let screenPos = Camera2D.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
+                withMod(Polygon2D.toRenderCmd(screenPos, transform#scale, poly)) :: Nil
+            case EngineNode.Arc2DWithState(arc, _) =>
+                let p = Node2D.getPosition(arc);
+                let screenPos = Camera2D.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
+                Arc2D.toRenderCmds(screenPos, transform#scale, arc) |> List.map(withMod)
+            case _ => Nil
         }
 
-    /// 装備武器が変わったときにアイコンを貼り直す（系統が変われば見た目も変わる）。
-    /// 既存の WeaponIcon 子サブツリーを丸ごと取り除いてから `attach` し直す。素手化（None）なら
-    /// 子を消すだけ（attach は no-op）。再 attach は modulate が白に戻るため、直前の暗転状態
-    /// （祖先 modulate）を退避して引き継ぐ。武器の commit 点（`PlayerScene.equipWeapon`）から呼ぶ。
-    pub def refresh(unitPath: NodePath, equipped: Option[WeaponCatalog.WeaponResource],
-                     scene: Scene[NodeTag]): Scene[NodeTag] =
-        let iconPath = List.append(unitPath, childName() :: Nil);
-        let prevMod = match Scene.getEngineNode(iconPath, scene) {
-            case Some(EngineNode.Marker2DWithState(m, _)) => CanvasItem.getModulate(m)
-            case _                                        => {r = 1.0f32, g = 1.0f32, b = 1.0f32}
-        };
-        Scene.removeAt(iconPath, scene)
-            |> attach(unitPath, equipped)
-            |> setModulate(unitPath, prevMod)
+    /// ColorRect 値 1 枚を world 左上座標へ Drawable 化する（UnitHPBarScene と同型）。
+    def rectDrawables(rect: ColorRect, worldTopLeft: Vec2.Vec2, z: Int32,
+                       transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
+        let screenPos = Camera2D.applyToWorldPos(transform, worldTopLeft);
+        GameEngine.Renderable.toDrawables(EngineNode.ColorRectWithState(rect, NodeTag.NoTag), screenPos)
+            |> Render.applyCameraScale(transform)
+            |> List.map(d -> {zIndex = z | d})
 
-    /// 囲み全体（枠・背景・アイコン）の modulate を変える（待機/行動済みの灰色化と復帰）。
-    /// 親 Marker2D 1 か所に設定すれば engine の祖先 modulate 乗算伝播で子ごと暗転する。
-    /// アイコン未設置（素手）ユニットでは該当パスが無く no-op。HPBar の setModulate と
-    /// 同じ箇所で呼ぶことで本体スプライト・HPBar・アイコンの暗転を揃える。
-    pub def setModulate(unitPath: NodePath, color: Color, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let iconPath = List.append(unitPath, childName() :: Nil);
-        Marker2D.mapAt(iconPath, CanvasItem.setModulate(color), scene)
+    /// 乗算合成（engine の祖先 modulate 伝播の代替）。
+    def mulColor(a: Color, b: Color): Color =
+        {r = a#r * b#r, g = a#g * b#g, b = a#b * b#b}
 }

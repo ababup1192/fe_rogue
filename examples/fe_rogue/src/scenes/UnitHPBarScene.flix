@@ -1,15 +1,10 @@
-/// UnitHPBarScene — キャラ足元に常時表示する連続フィル HP ゲージ（ColorRect ベース）
+/// UnitHPBarScene — キャラ足元に常時表示する連続フィル HP ゲージ
 ///
-/// ノード構造:
-///   HPBar (Marker2D, NodeTag.HPBar({maxHp, currentHp}))
-///     ├─ Bg   (ColorRect, バー全体・暗トラック = 枠兼用)
-///     └─ Fill (ColorRect, 残量比ぶんの幅・チーム色 = 味方青 / 敵赤)
-///
-/// 仕様:
-///   - 幅は 1 マス × 0.9 固定（最大 HP に依らない）。足元（下）へ中央寄せ。**常時表示**。
-///   - フィルは残量比 currentHp/maxHp の幅。残りは暗トラックが見える。
-///   - 待機/行動済みのときは親 Marker2D の modulate を下げる（`setModulate`）。
-///     engine は祖先 modulate を乗算伝播するため Bg/Fill ごと暗転する。
+/// P6-1g: scene ノードは全廃。HP/最大 HP は World store（hp/baseStats）、待機/行動済みの暗転は
+/// World store（waited/enemyActed）から導出し、`renderBars` が ColorRect **値**を組んで毎フレーム
+/// 直描きする（update/setModulate 等の押し込み API は不要になった＝SetHp 等の Cmd が唯一の書込）。
+/// 攻撃予報の「減る分」点滅だけは BattlePanel が毎フレーム計算する view 状態なので、
+/// `ForecastState` resource 経由で受け取る。
 mod UnitHPBarScene {
 
     /// HP バーのチーム。フィル色の出し分けに使う（味方=青 / 敵=赤）。
@@ -18,11 +13,30 @@ mod UnitHPBarScene {
         case Enemy
     }
 
-    // ─── 状態（親 Marker2D の NodeTag に格納） ─────────────────
-    pub type alias HPBarData = {
-        maxHp = Int32,
-        currentHp = Int32
+    /// P6-1g: 攻撃予報（BattlePanel が毎フレーム計算）を renderBars へ渡す view 状態。
+    /// attacker=味方/defender=敵の「予測後 HP」と点滅位相（dark）。None=予報なし。
+    pub type alias Forecast = {
+        attackerId = Int32, playerHpPost = Int32,
+        defenderId = Int32, enemyHpPost = Int32,
+        dark = Bool
     }
+
+    pub eff ForecastState {
+        def get(): Option[Forecast]
+        def put(v: Option[Forecast]): Unit
+    }
+
+    pub def withForecast(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - ForecastState) + r =
+        thunk -> {
+            let ref: Ref[Option[Forecast], r] = Ref.fresh(rc, None);
+            run {
+                thunk()
+            } with handler ForecastState {
+                def get(k)    = k(Ref.get(ref))
+                def put(v, k) = { Ref.put(v, ref); k() }
+            }
+        }
 
     // ─── 色 ───────────────────────────────────────────────────
     def fillColorPlayer(): Color = {r = 0.25f32, g = 0.5f32, b = 0.95f32}
@@ -34,8 +48,6 @@ mod UnitHPBarScene {
     /// 残量トラック（暗背景・枠兼用）。
     def trackColor(): Color = {r = 0.08f32, g = 0.08f32, b = 0.08f32}
 
-    /// 攻撃予報中に「これから減る分」を示す暗色オーバーレイの子ノード名。
-    def dmgPreviewName(): String = "DmgPreview"
     /// 点滅の「暗」側 modulate（フィル色を暗く落とす乗算色）。減少分が暗く沈んで見える。
     def dmgDarkModulate(): Color = {r = 0.3f32, g = 0.3f32, b = 0.3f32}
     /// 点滅の「明」側 modulate（通常色 = フィルと同色に見え、満タンに戻って見える）。
@@ -83,122 +95,105 @@ mod UnitHPBarScene {
     /// チームのフィル色（テスト用に公開）。
     pub def teamFillColor(team: Team): Color = fillColorFor(team)
 
-    // ─── 公開 API ─────────────────────────────────────────────
+    // ─── 公開 API（P6-1g: 直描き） ────────────────────────────
 
-    /// unit Marker2D の子として HP ゲージ（親 Marker2D + Bg + Fill）を生やす。常時表示。
-    pub def attach(unitPath: NodePath, maxHp: Int32, team: Team, scene: Scene[NodeTag]): Scene[NodeTag] =
-        if (maxHp <= 0) scene
-        else {
-            let barOffset: Vec2.Vec2 = {x = 0.0 - barWidthPx() / 2.0, y = barFeetY()};
-            let data: HPBarData = {maxHp = maxHp, currentHp = maxHp};
-            // HPBar は常時表示（待機/行動済み状態も色で伝えるためゲージ自体は消さない）
-            let parent = Marker2D.make(barOffset);
-            let barPath = List.append(unitPath, childName() :: Nil);
-            let withParent =
-                Scene.addChildAt(unitPath, childName(),
-                    EngineNode.Marker2DWithState(parent, NodeTag.HPBar(data)), scene);
-            // 暗トラックを枠として兼用することでノード数を減らしている（別枠ノードは不要）
-            let bg = ColorRect.make({x = barWidthPx(), y = barHeightPx()}, trackColor())
-                |> ColorRect.setCornerRadius(barCornerRadius())
-                |> CanvasItem.setZIndex(barZIndex());
-            let withBg =
-                Scene.addChildAt(barPath, "Bg",
-                    EngineNode.ColorRectWithState(bg, NodeTag.NoTag), withParent);
-            // borderPx 分だけ内側に配置することで暗トラックを枠として見せる
-            let fill = ColorRect.make({x = innerWidthPx(), y = innerHeightPx()}, fillColorFor(team))
-                |> ColorRect.setCornerRadius(fillCornerRadius())
-                |> Node2D.setPosition({x = borderPx(), y = borderPx()})
-                |> CanvasItem.setZIndex(barZIndex() + 1);
-            let withFill = Scene.addChildAt(barPath, "Fill",
-                EngineNode.ColorRectWithState(fill, NodeTag.NoTag), withBg);
-            // フィルと同色にすることで、通常 modulate では Fill と一体に見え、
-            // 暗 modulate に切り替えるだけで「減る分」が沈んで見える点滅演出が成立する。
-            let preview = ColorRect.make({x = 0.0, y = innerHeightPx()}, fillColorFor(team))
-                |> ColorRect.setStripe(dmgStripeColor(), dmgStripeAlpha(),
-                                       dmgStripeWidth(), dmgStripePeriod())
-                |> Node2D.setPosition({x = borderPx(), y = borderPx()})
-                |> CanvasItem.setZIndex(barZIndex() + 2)
-                |> CanvasItem.setVisible(false);
-            Scene.addChildAt(barPath, dmgPreviewName(),
-                EngineNode.ColorRectWithState(preview, NodeTag.NoTag), withFill)
+    /// 全ユニットの足元 HP バーを World store から直描きする。
+    ///   - HP = World.hpOf / 最大 HP = World.baseStatsOf#hp（SetHp/SetBaseStats が唯一の書込）
+    ///   - 暗転 = waited（味方）/ enemyActed（敵）→ UITheme.dimmed() 乗算
+    ///   - 位置 = unit marker global + 足元オフセット（marker が移動 tween/lunge の位置権威のまま）
+    ///   - 攻撃予報の「減る分」= ForecastState（BattlePanel が毎フレーム put）
+    /// 退場（hidden）ユニットは描かない。ノード不在ユニット（死亡除去後）も自然にスキップ。
+    pub def renderBars(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
+            List[GameEngine.Drawable] \ {GameEngine.Game, ForecastState} =
+        let fc = ForecastState.get();
+        let players = PlayerScene.getAll(scene)
+            |> List.filter(d -> not d#hidden)
+            |> List.flatMap(d -> {
+                let ref = World.EntityRef.Player(d#id);
+                // 暗転は本体 sprite の modulate をそのまま流用する（旧実装は setSpriteModulate と
+                // 同じ箇所で bar/icon にも setModulate していた＝sprite が真実源。waited store 導出だと
+                // 敵ターン中の showAllActive〔待機者も通常色に戻す〕を再現できない）。
+                let post = fc |> Option.flatMap(f ->
+                    if (f#attackerId == d#id) Some((f#playerHpPost, f#dark)) else None);
+                barDrawables(ref, PlayerScene.playerPath(d#id), Team.Player,
+                    spriteModulate(PlayerScene.spritePath(d#id), scene), post, world, transform, scene)
+            });
+        let enemies = EnemyScene.getAll(scene)
+            // フォグで隠れた敵は描かない（applyFog が marker を隠す＝isVisible が真実源。
+            // 旧実装は bar/icon が marker の子だったため祖先不可視で連動して消えていた）。
+            |> List.filter(d -> EnemyScene.isVisible(d#id, scene))
+            |> List.flatMap(d -> {
+                let ref = World.EntityRef.Enemy(d#id);
+                let post = fc |> Option.flatMap(f ->
+                    if (f#defenderId == d#id) Some((f#enemyHpPost, f#dark)) else None);
+                barDrawables(ref, EnemyScene.enemyPath(d#id), Team.Enemy,
+                    spriteModulate(EnemyScene.spritePath(d#id), scene), post, world, transform, scene)
+            });
+        List.append(players, enemies)
+
+    /// 本体 sprite ノードの modulate（待機/行動済み暗転の真実源）。不在は白。
+    pub def spriteModulate(spritePath: NodePath, scene: Scene[NodeTag]): Color =
+        match Scene.getEngineNode(spritePath, scene) {
+            case Some(EngineNode.Sprite2DWithState(sp, _))          => CanvasItem.getModulate(sp)
+            case Some(EngineNode.AnimSprite2DWithState(sp, _))      => CanvasItem.getModulate(sp)
+            case _                                                   => UITheme.white()
         }
 
-    /// HP 変化を反映する。Fill の幅を残量比でリサイズし、HPBarData.currentHp を更新する。
-    /// 対象ユニットに HPBar が未設置なら no-op。
-    pub def update(unitPath: NodePath, currentHp: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let barPath = List.append(unitPath, childName() :: Nil);
-        match Scene.getState(barPath, scene) {
-            case Some(NodeTag.HPBar(d)) =>
-                let w = fillWidth(currentHp, d#maxHp, innerWidthPx());
-                let fillPath = List.append(barPath, "Fill" :: Nil);
-                let withFill = Scene.mapEngineNode(fillPath, n ->
-                    EngineNode.mapColorRect(c -> ColorRect.setSize({x = w, y = innerHeightPx()}, c), n),
-                    scene);
-                Scene.mapEngineNode(barPath, n -> match n {
-                    case EngineNode.Marker2DWithState(m, NodeTag.HPBar(dd)) =>
-                        EngineNode.Marker2DWithState(m, NodeTag.HPBar({currentHp = currentHp | dd}))
-                    case other => other
-                }, withFill)
-            case _ => scene
-        }
-
-    /// 最大 HP が変わったとき（レベルアップ / フロア持ち越し）に、保存している maxHp を
-    /// 更新してから現在 HP と Fill 幅を新しい maxHp 基準で反映する。
-    /// 通常のダメージ/回復（最大 HP 不変）は従来どおり `update` を使う。
-    pub def updateMaxHp(unitPath: NodePath, currentHp: Int32, maxHp: Int32,
-                         scene: Scene[NodeTag]): Scene[NodeTag] =
-        let barPath = List.append(unitPath, childName() :: Nil);
-        let withMax = Scene.mapEngineNode(barPath, n -> match n {
-            case EngineNode.Marker2DWithState(m, NodeTag.HPBar(dd)) =>
-                EngineNode.Marker2DWithState(m, NodeTag.HPBar({maxHp = maxHp | dd}))
-            case other => other
-        }, scene);
-        // maxHp 反映済みの scene に対して update を呼ぶと、Fill は新 maxHp 基準で再計算される
-        update(unitPath, currentHp, withMax)
-
-    /// Bg/Fill を個別に操作せず親 Marker2D 1 か所に設定することで一括暗転できる。
-    /// 待機（プレイヤー）・行動済み（敵）の本体スプライト暗転と揃えて呼ぶ。
-    pub def setModulate(unitPath: NodePath, color: Color, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let barPath = List.append(unitPath, childName() :: Nil);
-        Marker2D.mapAt(barPath, CanvasItem.setModulate(color), scene)
-
-    /// 攻撃予報中、対象ユニットの HP バーで「これから減る分」(postHp..currentHp) を
-    /// 暗色オーバーレイで示す。`dark=true` のフレームは暗 modulate（= 減少分が暗く沈む）、
-    /// `false` のフレームは通常色（= フィルと同色で満タンに見える）。点滅は呼び出し側が
-    /// `dark` を毎フレーム切り替えて作る（BattlePanel の HP 点滅と同位相にする）。
-    /// ダメージが無い（postHp >= currentHp）か HPBar 未設置なら非表示にする。
-    pub def showDamageForecast(unitPath: NodePath, currentHp: Int32, postHp: Int32,
-                                dark: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let barPath = List.append(unitPath, childName() :: Nil);
-        match Scene.getState(barPath, scene) {
-            case Some(NodeTag.HPBar(d)) =>
-                if (postHp >= currentHp) hideDamageForecast(unitPath, scene)
+    /// 1 ユニットぶんの HP バー Drawable 列（Bg トラック + Fill + 予報オーバーレイ）。
+    def barDrawables(ref: World.EntityRef, unitPath: NodePath, team: Team, modColor: Color,
+                      post: Option[(Int32, Bool)], world: World,
+                      transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
+            List[GameEngine.Drawable] \ GameEngine.Game =
+        match (World.posOf(ref, world), Scene.getEngineNode(unitPath, scene)) {
+            case (Some(_), Some(_)) =>
+                let hp    = World.hpOf(ref, world) |> Option.getWithDefault(0);
+                let maxHp = World.baseStatsOf(ref, world) |> Option.map(b -> b#maxHp) |> Option.getWithDefault(0);
+                if (maxHp <= 0) Nil
                 else {
-                    let innerW = innerWidthPx();
-                    let xStart = borderPx() + fillWidth(postHp, d#maxHp, innerW);
-                    let w      = fillWidth(currentHp, d#maxHp, innerW)
-                                 - fillWidth(postHp, d#maxHp, innerW);
-                    let modColor = if (dark) dmgDarkModulate() else dmgNormalModulate();
-                    let previewPath = List.append(barPath, dmgPreviewName() :: Nil);
-                    Scene.mapEngineNode(previewPath, n ->
-                        EngineNode.mapColorRect(c ->
-                            c |> ColorRect.setSize({x = w, y = innerHeightPx()})
-                              |> Node2D.setPosition({x = xStart, y = borderPx()})
-                              |> CanvasItem.setModulate(modColor)
-                              |> CanvasItem.setVisible(true), n),
-                        scene)
+                    let markerG = Scene.globalPositionAt(unitPath, scene);
+                    let barTopLeft: Vec2.Vec2 =
+                        {x = markerG#x - barWidthPx() / 2.0, y = markerG#y + barFeetY()};
+                    let bg = ColorRect.make({x = barWidthPx(), y = barHeightPx()}, mulColor(trackColor(), modColor))
+                        |> ColorRect.setCornerRadius(barCornerRadius());
+                    let fill = ColorRect.make(
+                            {x = fillWidth(hp, maxHp, innerWidthPx()), y = innerHeightPx()},
+                            mulColor(fillColorFor(team), modColor))
+                        |> ColorRect.setCornerRadius(fillCornerRadius());
+                    let bgDs = rectDrawables(bg, barTopLeft, barZIndex(), transform);
+                    let fillDs = rectDrawables(fill,
+                        {x = barTopLeft#x + borderPx(), y = barTopLeft#y + borderPx()},
+                        barZIndex() + 1, transform);
+                    let prevDs = match post {
+                        case Some((postHp, dark)) =>
+                            if (postHp >= hp) Nil
+                            else {
+                                let xStart = borderPx() + fillWidth(postHp, maxHp, innerWidthPx());
+                                let w = fillWidth(hp, maxHp, innerWidthPx()) - fillWidth(postHp, maxHp, innerWidthPx());
+                                let blink = if (dark) dmgDarkModulate() else dmgNormalModulate();
+                                let prev = ColorRect.make({x = w, y = innerHeightPx()},
+                                        mulColor(mulColor(fillColorFor(team), blink), modColor))
+                                    |> ColorRect.setStripe(dmgStripeColor(), dmgStripeAlpha(),
+                                                           dmgStripeWidth(), dmgStripePeriod());
+                                rectDrawables(prev,
+                                    {x = barTopLeft#x + xStart, y = barTopLeft#y + borderPx()},
+                                    barZIndex() + 2, transform)
+                            }
+                        case None => Nil
+                    };
+                    bgDs |> List.append(fillDs) |> List.append(prevDs)
                 }
-            case _ => scene
+            case _ => Nil
         }
 
-    /// ダメージ予測オーバーレイを隠す（攻撃予報を抜けた / 対象が変わった / ダメージ無し）。
-    /// HPBar や DmgPreview が無いパスでも安全な no-op。
-    pub def hideDamageForecast(unitPath: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let previewPath =
-            List.append(List.append(unitPath, childName() :: Nil), dmgPreviewName() :: Nil);
-        Scene.mapEngineNode(previewPath, n ->
-            EngineNode.mapColorRect(c -> CanvasItem.setVisible(false, c), n), scene)
+    /// ColorRect 値 1 枚を world 左上座標へ Drawable 化する（tree に積まない）。
+    def rectDrawables(rect: ColorRect, worldTopLeft: Vec2.Vec2, z: Int32,
+                       transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
+        let screenPos = Camera2D.applyToWorldPos(transform, worldTopLeft);
+        GameEngine.Renderable.toDrawables(EngineNode.ColorRectWithState(rect, NodeTag.NoTag), screenPos)
+            |> Render.applyCameraScale(transform)
+            |> List.map(d -> {zIndex = z | d})
 
-    // P5-c: 旧 no-op `process`（per-node dispatch の要件充足だけの空実装）は dispatchTickables
-    // 撤去に伴い削除。常時表示ゆえ per-frame 更新は元々不要（値の変化は update 等の明示 API が push）。
+    /// 乗算合成（engine の祖先 modulate 伝播の代替）。
+    def mulColor(a: Color, b: Color): Color =
+        {r = a#r * b#r, g = a#g * b#g, b = a#b * b#b}
 }

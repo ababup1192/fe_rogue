@@ -270,8 +270,6 @@ mod EnemyScene {
                                  EngineNode.Marker2DWithState(marker, NodeTag.Enemy(data)))
             |> Scene.addChildAt(enemyPath(sp#id), "Sprite",
                                  EngineNode.Sprite2DWithState(sprite, NodeTag.NoTag))
-            |> UnitHPBarScene.attach(enemyPath(sp#id), res#hp, UnitHPBarScene.Team.Enemy)
-            |> WeaponIconScene.attach(enemyPath(sp#id), Some(sp#weapon))
 
     // ────────────────────────────────────────────────────────
     // (C2) 試練(シレン)型・部屋湧き（Wanderer タイプの敵をフロア進行中にじわっとスポーン）
@@ -426,8 +424,6 @@ mod EnemyScene {
         scene
             |> mapEnemy(id, d -> {acted = true | d})
             |> setSpriteModulate(id, actedColor())
-            |> UnitHPBarScene.setModulate(enemyPath(id), actedColor())
-            |> WeaponIconScene.setModulate(enemyPath(id), actedColor())
 
     /// 完全停止（かなしばり）を解除する。被攻撃 or 被投擲の瞬間に呼ぶ。
     /// 停止していなければ no-op（他の時限ステータスは残す）。
@@ -450,9 +446,7 @@ mod EnemyScene {
                 // 敵ターン開始ごとに時限デバフ（目潰し/鈍足）を 1 ターン分減算する。
                 // 追撃リングの二重発動フラグ(followUpUsed)は World 権威＝上の Cmd emit のみ（scene 直書き撤去・syncTree derive）。
                 |> mapEnemy(id, d -> {acted = false, statuses = StatusSystem.tick(d#statuses) | d})
-                |> setSpriteModulate(id, activeColor())
-                |> UnitHPBarScene.setModulate(enemyPath(id), activeColor())
-                |> WeaponIconScene.setModulate(enemyPath(id), activeColor());
+                |> setSpriteModulate(id, activeColor());
             // S3: 敵ターン開始 tick 後の statuses を per-entity で World へ Seed（tick 網羅の核心）。
             emitStatusesFromScene(id, sc1);
             sc1 },
@@ -484,7 +478,6 @@ mod EnemyScene {
             GameLogger.enemyLog("${d#resource#description} は いやしのリングで HP+${newHp - d#hp}");
             scene
                 |> setHp(id, newHp)
-                |> UnitHPBarScene.update(enemyPath(id), newHp)
         }
 
     /// 全敵の sprite / HP ゲージを通常色(active)に戻す。`acted` フラグは変えない。
@@ -494,9 +487,7 @@ mod EnemyScene {
         let ids = getAll(scene) |> List.map(d -> d#id);
         List.foldLeft((sc, id) ->
             sc
-                |> setSpriteModulate(id, activeColor())
-                |> UnitHPBarScene.setModulate(enemyPath(id), activeColor())
-                |> WeaponIconScene.setModulate(enemyPath(id), activeColor()),
+                |> setSpriteModulate(id, activeColor()),
             scene, ids)
 
     /// フォグ適用: 各敵を「現在地が lit(=isLit) なら表示、さもなくば非表示」にする。
@@ -704,15 +695,14 @@ mod EnemyScene {
         List.foldLeft((acc, snap) -> restoreEnemyState(snap, ringCatalog, acc), placed, snaps)
 
     /// 敵 1 体の現在状態（HP / 時限ステータス / 検知フラグ / 指輪）を snap から上書きする。
-    /// HP バーの見た目も `UnitHPBarScene.update` で現在値に合わせる（最大 HP は spawn 時の resource#hp 据え置き）。
+    /// HP バーは World.hp から直描き（P6-1g）＝ここでの押し込み更新は不要。
     def restoreEnemyState(snap: FloorSnapshot.EnemySnap, ringCatalog: Ring.RingCatalog,
                            scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let ring = snap#ring |> Option.map(id -> Ring.lookup(id, ringCatalog));
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Enemy(snap#id), snap#hp));  // F6a: 復元 hp を World へ
         World.Command.emit(World.Cmd.SetAlerted(World.EntityRef.Enemy(snap#id), snap#alerted));  // F7-spike: 復元 alerted を World へ
         let restored = mapEnemy(snap#id, d -> {hp = snap#hp, statuses = snap#statuses,
-                                 alerted = snap#alerted, ring = ring | d}, scene)
-            |> UnitHPBarScene.update(enemyPath(snap#id), snap#hp);
+                                 alerted = snap#alerted, ring = ring | d}, scene);
         // S3: 復元 statuses も World へ Seed（中断再開は in-loop phase change で fresh syncFromScene が無く
         // refreshMirror も preserve ゆえ、Seed しないと scene の復元 statuses が World に届かない＝[STATUSEFFECTS DIFF]）。
         emitStatusesFromScene(snap#id, restored);

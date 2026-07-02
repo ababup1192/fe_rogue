@@ -676,7 +676,6 @@ mod CombatScene {
             let newHp = Combat.heal(player#hp, player#resource#hp, amt)#newHp;
             scene
                 |> PlayerScene.setHp(playerId, newHp)
-                |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), newHp)
 
     /// 血吸いの剣: 与えたダメージの `effectValue`% を攻撃側へ回復（毎ヒット・撃破非依存）。
     /// 攻撃側の HP は自分の攻撃では変わらないので `player#hp` をそのまま基準にしてよい。
@@ -691,7 +690,6 @@ mod CombatScene {
             GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)}は 血を吸って HP+${newHp - player#hp}");
             scene
                 |> PlayerScene.setHp(playerId, newHp)
-                |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), newHp)
 
     /// ノックバックの攻撃側・被攻撃側セル（同型 {x,y} が 2 つで誤順しやすいので名前渡し）。
     type alias KnockbackPos = {attacker = {x = Int32, y = Int32}, defender = {x = Int32, y = Int32}}
@@ -765,7 +763,6 @@ mod CombatScene {
         if (plan#killed) {
             GameLogger.playerLog("${critTag}${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}を倒した");
             withPopup
-                |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), plan#newHp)
                 |> EnemyScene.startDeathAnimation(enemyId)
         } else {
             GameLogger.playerLog("${critTag}${PlayerScene.displayName(playerId, scene)}は ${EnemyScene.displayName(enemyId, scene)}に ${plan#dmg}ダメージ与えた");
@@ -775,7 +772,6 @@ mod CombatScene {
             World.Command.emit(World.Cmd.SetAlerted(World.EntityRef.Enemy(enemyId), true));  // F7-spike: 被弾で起動を World へ
             withPopup
                 |> EnemyScene.mapEnemy(enemyId, enemyData -> {hp = plan#newHp, alerted = true | enemyData})
-                |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), plan#newHp)
                 |> EnemyScene.releaseBind(enemyId)
         }
 
@@ -894,7 +890,6 @@ mod CombatScene {
                 let dmgScene = withPopup
                     |> PlayerScene.mapPlayer(targetId,
                         playerData -> {hp = outcome#newHp | playerData})
-                    |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), outcome#newHp)
                     |> PlayerScene.releaseBind(targetId);
                 // みかえりのリング: 敵が味方を倒したら、その敵の HP を回復する。
                 let afterRingSteal = if (outcome#killed) applyEnemyLifesteal(enemyId, enemy, dmgScene) else dmgScene;
@@ -1002,7 +997,6 @@ mod CombatScene {
                 case Some(p) =>
                     let r = Combat.heal(p#hp, p#resource#hp, n);
                     sc |> PlayerScene.mapPlayer(id, d -> {hp = r#newHp | d})
-                       |> UnitHPBarScene.update(PlayerScene.playerPath(id), r#newHp)
                 case None => sc
             }
         else
@@ -1010,7 +1004,6 @@ mod CombatScene {
                 case Some(e) =>
                     let r = Combat.heal(e#hp, e#resource#hp, n);
                     sc |> EnemyScene.mapEnemy(id, d -> {hp = r#newHp | d})
-                       |> UnitHPBarScene.update(EnemyScene.enemyPath(id), r#newHp)
                 case None => sc
             }
 
@@ -1020,14 +1013,12 @@ mod CombatScene {
             match PlayerScene.get(id, sc) {
                 case Some(p) =>
                     sc |> PlayerScene.mapPlayer(id, d -> {hp = p#resource#hp | d})
-                       |> UnitHPBarScene.update(PlayerScene.playerPath(id), p#resource#hp)
                 case None => sc
             }
         else
             match EnemyScene.get(id, sc) {
                 case Some(e) =>
                     sc |> EnemyScene.mapEnemy(id, d -> {hp = e#resource#hp | d})
-                       |> UnitHPBarScene.update(EnemyScene.enemyPath(id), e#resource#hp)
                 case None => sc
             }
 
@@ -1052,7 +1043,6 @@ mod CombatScene {
             let newHp = Combat.heal(enemy#hp, enemy#resource#hp, amt)#newHp;
             scene
                 |> EnemyScene.setHp(enemyId, newHp)
-                |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), newHp)
 
     /// 血吸いの剣を敵が装備していたとき: 与ダメージの `effectValue`% を敵へ回復（毎ヒット）。
     def applyEnemyWeaponLifesteal(enemyId: Int32, enemy: EnemyScene.Data,
@@ -1066,7 +1056,6 @@ mod CombatScene {
             GameLogger.enemyLog("${enemy#resource#description}は 血を吸って HP+${newHp - enemy#hp}");
             scene
                 |> EnemyScene.setHp(enemyId, newHp)
-                |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), newHp)
 
     /// 敵の如意棒 / 突風の書: ノックバック武器なら、生存している味方を攻撃方向へ押し流す。
     def applyEnemyKnockback(weapon: UnitCatalog.WeaponResource, pos: KnockbackPos,
@@ -1147,8 +1136,7 @@ mod CombatScene {
              level          = dd#level + 1,
              resource       = LevelSystem.withStats(after, dd#resource),
              hp             = newHp,
-             pendingLevelUp = Some(result) | dd}, scene)
-            |> UnitHPBarScene.updateMaxHp(PlayerScene.playerPath(playerId), newHp, after#hp);
+             pendingLevelUp = Some(result) | dd}, scene);
         // S2.3: legacy 経路でも level-up で resource（baseStats の source）が成長する。ECS 経路
         // （applyEcsSceneEffects の emitBaseStatsFromScene）と対称に command-derive store へ dual-write する。
         // 漏らすと useEcsCombat()=false に戻したとき level-up で [BASESTATS DIFF]（hp/progress は :1115/:1117 で

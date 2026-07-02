@@ -175,7 +175,6 @@ mod TestStaffCastScene {
             case Some(p) =>
                 let r = Combat.heal(p#hp, p#resource#hp, amount);
                 sc |> PlayerScene.mapPlayer(id, d -> {hp = r#newHp | d})
-                   |> UnitHPBarScene.update(PlayerScene.playerPath(id), r#newHp)
             case None    => sc
         },
         fullHeal   = (sc, _, _)          -> sc,

@@ -229,7 +229,7 @@ mod BattlePanelScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
                        PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command,
-                       BattlePanelScene.State} =
+                       BattlePanelScene.State, UnitHPBarScene.ForecastState} =
         let phase  = TurnPhase.State.get();
         let synced = syncTargetToCursor(phase, scene);
         // 「減る分」の暗⇄明点滅サイクルを進める。P4-b: 累積時間は resource が持つ（旧: NodeTag payload）。
@@ -258,13 +258,18 @@ mod BattlePanelScene {
                     |> setNodeX(childPath(aTriName()), triCx, row1CenterY())
                     |> setNodeX(childPath(dTriName()), triCx, row2CenterY())
                     |> resizeBg(contentW)
-                    |> reposition(view, contentW)
-                    |> applyHpBarForecast(view, dark);
+                    |> reposition(view, contentW);
+                // P6-1g: 足元 HP バーの「減る分」は ForecastState resource へ put し、
+                // UnitHPBarScene.renderBars が直描き時に反映する（旧: scene ノード書き）。
+                UnitHPBarScene.ForecastState.put(Some(
+                    {attackerId = view#attackerId, playerHpPost = view#playerHpPost,
+                     defenderId = view#defenderId, enemyHpPost = view#enemyHpPost,
+                     dark = dark}));
                 (node, shown)
             case None =>
+                UnitHPBarScene.ForecastState.put(None);
                 let hidden = synced
-                    |> setAllVisible(false)
-                    |> clearAllHpForecasts;
+                    |> setAllVisible(false);
                 (node, hidden)
         }
 
@@ -491,24 +496,8 @@ mod BattlePanelScene {
     // (D'') 足元 HP バーのダメージ予測（パネルとは独立した盤面フィードバック）
     // ────────────────────────────────────────────────────────
 
-    /// 攻撃側（味方）と対象（敵）の足元 HP バーに「減る分」の暗色オーバーレイを出す。
-    /// 毎フレーム一旦全消ししてから対象 2 体へ出し直すので、カーソルが別の敵へ移っても残らない。
-    def applyHpBarForecast(view: ForecastView, dark: Bool, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        let cleared = clearAllHpForecasts(scene);
-        cleared
-            |> UnitHPBarScene.showDamageForecast(EnemyScene.enemyPath(view#defenderId),
-                    view#enemyHpCur, view#enemyHpPost, dark)
-            |> UnitHPBarScene.showDamageForecast(PlayerScene.playerPath(view#attackerId),
-                    view#playerHpCur, view#playerHpPost, dark)
-
-    /// 全ユニット（味方・敵）の足元 HP バー予測オーバーレイを消す。
-    def clearAllHpForecasts(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        let hidePlayer = (acc, p) -> UnitHPBarScene.hideDamageForecast(PlayerScene.playerPath(p#id), acc);
-        let hideEnemy  = (acc, e) -> UnitHPBarScene.hideDamageForecast(EnemyScene.enemyPath(e#id), acc);
-        let withPlayers = List.foldLeft(hidePlayer, scene, PlayerData.PartyQuery.getAll());
-        List.foldLeft(hideEnemy, withPlayers, EnemyData.RosterQuery.getAll())
+    // P6-1g: 旧 applyHpBarForecast/clearAllHpForecasts（scene ノード書き）は撤去。
+    // 予報は ForecastState resource へ put し renderBars が消費する（put(None) が全消しに相当）。
 
     // ────────────────────────────────────────────────────────
     // (D''') 予報の組み立て（純計算 + クエリ）

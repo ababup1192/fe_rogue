@@ -47,6 +47,8 @@ mod FrameAef {
                                 // TurnEndHold=長押しゲージ、LevelUpPanel=レベルアップ演出）。
                                 LogScene.State, BattlePanelScene.State, TurnEndHoldScene.State,
                                 LevelUpPanelScene.State, ItemPickupPopupScene.State,
+                                // P6-1g: BattlePanel が攻撃予報を ForecastState resource へ put する。
+                                UnitHPBarScene.ForecastState,
                                 World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
                                 // slice `rng-world`: combat 命中ロールは World.RngDraw chokepoint 経由
                                 // （CombatScene.process が要求）。Game.flix:177/179 の checked_ecast widening が

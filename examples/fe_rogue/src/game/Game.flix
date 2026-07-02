@@ -75,7 +75,6 @@ pub enum NodeTag {
     /// P4-d: レベルアップ演出パネルの識別用純タグ（状態は `LevelUpPanelScene.State` resource へ移設）。
     case LevelUpPanel
     /// UnitHPBarScene の Marker2D 親（戦闘表示 timer + currentHp/maxHp を持つ）
-    case HPBar(UnitHPBarScene.HPBarData)
     /// UnitCardScene の CanvasLayer 親（左サイドの選択ユニット簡易カード）。
     case UnitCard
     /// EnemyCardScene の CanvasLayer 親（右サイドの攻撃対象敵カード。UnitCard と左右対称）。
@@ -912,6 +911,7 @@ mod Game {
               with LevelUpPanelScene.withState(rc) // P4-d: レベルアップ演出パネルの状態を resource 化
               with TopBarScene.withState(rc) // P4-f: 上部バーの状態を resource 化
               with TitleMenuScene.withState(rc) // P4-g: タイトル画面の状態を resource 化
+              with UnitHPBarScene.withForecast(rc) // P6-1g: 攻撃予報（減る分点滅）の view 状態
               with ItemPickupPopupScene.withState(rc) // P4-e: 中央アイテム取得ポップアップの状態を resource 化
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
               with EnemyTurn.withQueue(rc)        // 敵ターンキュー（1 step / 1 frame 駆動）
@@ -1001,7 +1001,8 @@ mod Game {
                          GamePhaseState, PartySelection.State,
                          Pacing.State, LogScene.State, BattlePanelScene.State, TurnEndHoldScene.State,
                          LevelUpPanelScene.State, ItemPickupPopupScene.State,
-                         TopBarScene.State, TitleMenuScene.State, Math.Random, FloorSnapshot.State,
+                         TopBarScene.State, TitleMenuScene.State, UnitHPBarScene.ForecastState,
+                         Math.Random, FloorSnapshot.State,
                          World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
                          World.RngDraw, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
@@ -1127,37 +1128,42 @@ mod Game {
             // B: render-from-World。scene-tree drawable に World 由来 drawable を合成して
             // 1 回の renderCommands で描く（renderCommands は毎回 clear ゆえ 2 回呼びは不可＝合成する）。
             // m1c: scene 側ユニット sprite を隠して描画 → ユニットは World 由来のみで描く。
-            // P5-e: marker 装飾（武器アイコン/HPバー）も renderSubtrees/renderSubtreePolygons へ合流し
-            //   RenderWorld 直描き化（位置駆動は従来どおり marker=移動 tween + 攻撃 lunge が単一権威）。
-            // B/fog・range・配置物・HUD/menu: scene 側の fog 暗幕・range タイル・アイテム/宝箱/階段・全 HUD/メニューを隠し、World render System で描く。
-            // B: 全 subtree（配置物/HUD/メニュー/minimap/ポップアップ/カーソル等）を hideSubtrees で scene から外し、
-            //    renderSubtrees（drawables）+ renderSubtreePolygons（polygon）で World 経路描画。
-            // P6-1a/b: hideRangeTiles・hideHaze は撤去（range タイル/fog 暗幕はノード自体を積まなくなった）。
-            let prepped = RenderWorld.hideUnitSprites(synced)
-                |> RenderWorld.hideSubtrees;
-            // B/perf: camera ViewTransform は findActiveCamera が全 scene 走査ゆえ**フレーム 1 回**だけ計算し、
-            // 全 render 関数へ渡す（旧: 各関数・各 subtree root が個別に呼び ~30 回/frame 走査していた）。
-            let transform = RenderWorld.viewTransform(synced);
-            // B/tiles: tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
-            // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。
-            let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(prepped);
-            // P6-1c/d: fog の明るい穴を frame に 1 回計算し、配置物直描きの lit ゲートで共有。
-            let holesOpt = RenderWorld.fogHolesOpt(synced);
-            let worldDrawables = RenderWorld.renderUnits(world2, transform, synced)
-                // P6-1c/d: 階段/宝箱は World store + catalog/定数から直描き（scene ノード無し）。
-                |> List.append(RenderWorld.renderStairs(world2, holesOpt, transform))
-                |> List.append(RenderWorld.renderChests(catalogs#chests, world2, holesOpt, transform))
-                |> List.append(RenderWorld.renderItems(world2, holesOpt, transform))
-                |> List.append(RenderWorld.renderPopups(world2, transform, synced))
-                |> List.append(RenderWorld.renderExplosions(world2, transform, synced))
-                |> List.append(RenderWorld.renderFog(transform, synced))
-                |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
-                |> List.append(RenderWorld.renderSubtrees(transform, synced));
-            // B: polygon チャンネルも World 由来 subtree（minimap 円/BattlePanel ドット/TurnEndHold リング
-            //   ＋P5-e: per-unit 武器グリフ）を合流。scenePolygons は hideSubtrees で除外済み。
-            GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
-                RenderWorld.renderTileMaps(world2, transform, synced),
-                List.append(scenePolygons, RenderWorld.renderSubtreePolygons(transform, synced)));
+            // P6-1g: 描画セクションは `renderFrame` へ抽出（gameLoop が JVM の 64KB メソッド上限を
+            // 超えたため。挙動は同一）。
+            renderFrame(catalogs, world2, synced);
             gameLoop(catalogs, sceneRef, worldRef, currentPhase, synced, world2)
         }
 }
+
+/// フレーム描画（render-from-World の合流点）。gameLoop のサイズ削減のため関数分離（P6-1g）。
+/// B/fog・range・配置物・fx・HUD/menu: scene 側を hideUnitSprites/hideSubtrees で renderArgs から外し、
+/// World render System（各 render*）で描く。camera ViewTransform はフレーム 1 回だけ計算して共有。
+def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[NodeTag]):
+        Unit \ {GameEngine.Game, SelectedPlayer.State, UnitHPBarScene.ForecastState} =
+    let prepped = RenderWorld.hideUnitSprites(synced)
+        |> RenderWorld.hideSubtrees;
+    let transform = RenderWorld.viewTransform(synced);
+    // B/tiles: tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
+    // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。
+    let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(prepped);
+    // P6-1c/d: fog の明るい穴を frame に 1 回計算し、配置物直描きの lit ゲートで共有。
+    let holesOpt = RenderWorld.fogHolesOpt(synced);
+    let worldDrawables = RenderWorld.renderUnits(world2, transform, synced)
+        // P6-1c〜g: 配置物/fx/HP バー/武器アイコンは World store + catalog/定数から直描き（scene ノード無し）。
+        |> List.append(RenderWorld.renderStairs(world2, holesOpt, transform))
+        |> List.append(RenderWorld.renderChests(catalogs#chests, world2, holesOpt, transform))
+        |> List.append(RenderWorld.renderItems(world2, holesOpt, transform))
+        |> List.append(RenderWorld.renderPopups(world2, transform, synced))
+        |> List.append(RenderWorld.renderExplosions(world2, transform, synced))
+        |> List.append(UnitHPBarScene.renderBars(world2, transform, synced))
+        |> List.append(WeaponIconScene.renderPlates(world2, transform, synced))
+        |> List.append(RenderWorld.renderFog(transform, synced))
+        |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
+        |> List.append(RenderWorld.renderSubtrees(transform, synced));
+    // B: polygon チャンネルも World 由来 subtree（minimap 円/BattlePanel ドット/TurnEndHold リング
+    //   ＋P6-1g: per-unit 武器グリフ）を合流。scenePolygons は hideSubtrees で除外済み。
+    GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
+        RenderWorld.renderTileMaps(world2, transform, synced),
+        List.append(scenePolygons,
+            List.append(RenderWorld.renderSubtreePolygons(transform, synced),
+                        WeaponIconScene.renderGlyphs(world2, transform, synced))))

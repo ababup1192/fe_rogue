@@ -393,8 +393,6 @@ mod PlayerScene {
             |> Scene.addChildAt(MapScene.worldPath(), playerName(sp#id),
                                  EngineNode.Marker2DWithState(marker, NodeTag.Player(data)))
             |> Scene.addChildAt(playerPath(sp#id), "Sprite", spriteNode)
-            |> UnitHPBarScene.attach(playerPath(sp#id), res#hp, UnitHPBarScene.Team.Player)
-            |> WeaponIconScene.attach(playerPath(sp#id), PlayerData.equippedWeapon(sp#weapons))
 
     // ────────────────────────────────────────────────────────
     // (D) ロジック — 移動
@@ -854,8 +852,7 @@ mod PlayerScene {
                 World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(id), maxHp));  // F6a: 復活 hp を World へ
                 GameLogger.playerLog("${displayName(id, scene)}は 蘇生薬で復活した");
                 let revived = scene
-                    |> mapPlayer(id, dd -> {hp = maxHp, consumables = newConsumables | dd})
-                    |> UnitHPBarScene.update(playerPath(id), maxHp);
+                    |> mapPlayer(id, dd -> {hp = maxHp, consumables = newConsumables | dd});
                 // D4: hp と consumables を束ねた書込（蘇生薬消費）＝F6 教訓の束ね書込。consumables も World へ dual-write。
                 emitConsumablesFromScene(id, revived);
                 revived
@@ -870,8 +867,6 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), true));  // F7-slice5
         scene
             |> setSpriteModulate(id, waitedColor())
-            |> UnitHPBarScene.setModulate(playerPath(id), waitedColor())
-            |> WeaponIconScene.setModulate(playerPath(id), waitedColor())
             |> playAnim(id, idleAnimName())
 
     /// プレイヤー 1 体を「行動可能(アクティブ)」に戻す。`waited` を下ろし、sprite/HP ゲージを
@@ -881,8 +876,6 @@ mod PlayerScene {
         World.Command.emit(World.Cmd.SetWaited(World.EntityRef.Player(id), false));  // F7-slice5
         scene
             |> setSpriteModulate(id, activeColor())
-            |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
-            |> WeaponIconScene.setModulate(playerPath(id), activeColor())
             |> playAnim(id, idleAnimName())
 
     /// 完全停止（かなしばり）を解除する。被攻撃 or 被投擲の瞬間に呼ぶ。
@@ -910,8 +903,6 @@ mod PlayerScene {
                 // 追撃リングの二重発動フラグ(followUpUsed)は World 権威＝上の Cmd emit のみ（scene 直書き撤去・syncTree derive）。
                 |> mapPlayer(id, d -> {waited = false, statuses = StatusSystem.tick(d#statuses) | d})
                 |> setSpriteModulate(id, activeColor())
-                |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
-                |> WeaponIconScene.setModulate(playerPath(id), activeColor())
                 |> playAnim(id, idleAnimName());
             // S3: 味方ターン開始 tick 後の statuses を per-entity で World へ Seed（tick 網羅の核心）。
             emitStatusesFromScene(id, sc1);
@@ -947,7 +938,6 @@ mod PlayerScene {
             GameLogger.playerLog("${d#resource#description} は いやしのリングで HP+${newHp - d#hp}");
             scene
                 |> setHp(id, newHp)
-                |> UnitHPBarScene.update(playerPath(id), newHp)
         }
 
     /// 全プレイヤーの sprite / HP ゲージを通常色(active)に戻す。`waited` フラグは変えない。
@@ -957,9 +947,7 @@ mod PlayerScene {
         let ids = getAll(scene) |> List.filter(d -> not d#usedStairs) |> List.map(d -> d#id);
         List.foldLeft((sc, id) ->
             sc
-                |> setSpriteModulate(id, activeColor())
-                |> UnitHPBarScene.setModulate(playerPath(id), activeColor())
-                |> WeaponIconScene.setModulate(playerPath(id), activeColor()),
+                |> setSpriteModulate(id, activeColor()),
             scene, ids)
 
     /// AutoMove で消費した移動歩数を記録するための setter。
@@ -1152,8 +1140,7 @@ mod PlayerScene {
                      consumables = c#consumables, rings = c#rings,
                      ringEquipped = c#ringEquipped,
                      level = c#level, exp = c#exp,
-                     resource = LevelSystem.withStats(c#stats, d#resource) | d})
-                |> UnitHPBarScene.updateMaxHp(playerPath(c#id), c#hp, c#stats#hp);
+                     resource = LevelSystem.withStats(c#stats, d#resource) | d});
             // S2.3: carry の成長後 stats を resource へ書いた＝baseStats の source が変わったので World へ dual-write。
             emitBaseStatsFromScene(c#id, next);
             // S2.4: carry の weapons/rings/ringEquipped 復元に 1:1 で weaponView/ringBonus も World へ dual-write。
@@ -1192,8 +1179,7 @@ mod PlayerScene {
             |> mapPlayer(snap#id, d -> {hp = snap#hp, level = snap#level, exp = snap#exp,
                                          ringEquipped = snap#ringEquipped,
                                          facing = snap#facing, statuses = snap#statuses,
-                                         resource = LevelSystem.withStats(snap#stats, d#resource) | d})
-            |> UnitHPBarScene.updateMaxHp(playerPath(snap#id), snap#hp, snap#stats#hp);
+                                         resource = LevelSystem.withStats(snap#stats, d#resource) | d});
         // 🐛fix: 復元 hp/progress の World dual-write は **addOnePlayer の後**に emit する。
         // addOnePlayer が spawn 値(SetHp(maxHp)/SetProgress(level,0)) を emit するので、先に出すと
         // worldRef で spawn 値に上書きされてしまう（scene は mapPlayer 上書きで snap 値・World だけ spawn ＝[DIFF]）。
@@ -1302,8 +1288,7 @@ mod PlayerScene {
         let placed = addOnePlayer(sp, scene)
             |> mapPlayer(snap#id, d -> {hp = snap#stats#hp, level = snap#level, exp = snap#exp,
                                          ringEquipped = snap#ringEquipped,
-                                         resource = LevelSystem.withStats(snap#stats, d#resource) | d})
-            |> UnitHPBarScene.updateMaxHp(playerPath(snap#id), snap#stats#hp, snap#stats#hp);
+                                         resource = LevelSystem.withStats(snap#stats, d#resource) | d});
         // 🐛fix: 復元 hp/progress の World emit は addOnePlayer の後（spawn 値上書き回避・placeOneFromSnap と同じ）。
         World.Command.emit(World.Cmd.SetHp(World.EntityRef.Player(snap#id), snap#stats#hp));
         World.Command.emit(World.Cmd.SetProgress(World.EntityRef.Player(snap#id), snap#level, snap#exp));
@@ -1422,8 +1407,8 @@ mod PlayerScene {
                           scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         let moved = mapPlayer(playerId, d -> {weapons = moveToHead(idx, d#weapons) | d}, scene);
         emitWeaponsFromScene(playerId, moved);  // D3: 装備並べ替え後の weapons を World へ
-        let equipped = PlayerData.equippedWeapon(getWeapons(playerId, moved));
-        WeaponIconScene.refresh(playerPath(playerId), equipped, moved)
+        // P6-1g: 武器アイコンは renderGlyphs/renderPlates が World.weaponView から毎フレーム直描き＝貼り直し不要。
+        moved
 
     /// 指定 idx の武器をインベントリから削除（捨てる）。範囲外なら no-op。
     pub def dropWeapon(playerId: Int32, idx: Int32,

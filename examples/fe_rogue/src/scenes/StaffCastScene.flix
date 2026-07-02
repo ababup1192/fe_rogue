@@ -367,7 +367,6 @@ mod StaffCastScene {
                 GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} ▶ ${PlayerScene.displayName(targetId, scene)} を ${healed}回復");
                 scene
                     |> PlayerScene.setHp(targetId, result#newHp)
-                    |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), result#newHp)
         }
 
     /// Heal × 敵: 敵の HP を「魔力 + 10」回復（敵にも効く仕様）。
@@ -383,7 +382,6 @@ mod StaffCastScene {
                 GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} ▶ ${EnemyScene.displayName(enemyId, scene)} を ${healed}回復");
                 scene
                     |> EnemyScene.setHp(enemyId, result#newHp)
-                    |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), result#newHp)
         }
 
     /// ふきとばし × 味方: 1 ダメ → 死亡なら止まる、生存なら最終位置までスナップで移動。
@@ -398,8 +396,7 @@ mod StaffCastScene {
             case Some(target) =>
                 let dmgResult = Combat.damage(hp = target#hp, amount = 1);
                 let withDamage = scene
-                    |> PlayerScene.setHp(targetId, dmgResult#newHp)
-                    |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), dmgResult#newHp);
+                    |> PlayerScene.setHp(targetId, dmgResult#newHp);
                 GameLogger.playerLog(
                     "${PlayerScene.displayName(srcId, scene)} ▶ ${PlayerScene.displayName(targetId, scene)} を ふきとばし (1ダメージ)");
                 if (dmgResult#isDead) withDamage
@@ -421,12 +418,10 @@ mod StaffCastScene {
                 if (dmgResult#isDead) {
                     GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} ▶ ${EnemyScene.displayName(enemyId, scene)} を ふきとばし撃破");
                     scene
-                        |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), 0)
                         |> EnemyScene.startDeathAnimation(enemyId)
                 } else {
                     let withDamage = scene
-                        |> EnemyScene.setHp(enemyId, dmgResult#newHp)
-                        |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), dmgResult#newHp);
+                        |> EnemyScene.setHp(enemyId, dmgResult#newHp);
                     GameLogger.playerLog(
                         "${PlayerScene.displayName(srcId, scene)} ▶ ${EnemyScene.displayName(enemyId, scene)} を ふきとばし (1ダメージ)");
                     applyBlowbackMove({hit = hitCell, dir = dir}, withDamage,
@@ -683,7 +678,6 @@ mod StaffCastScene {
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} で ${healed}回復");
         scene
             |> PlayerScene.mapPlayer(playerId, d -> {hp = result#newHp | d})
-            |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), result#newHp)
 
     /// 全快薬: HP を最大まで戻す。`magnitude` は不使用。
     pub def applyFullHeal(playerId: Int32, player: PlayerScene.Data,
@@ -695,7 +689,6 @@ mod StaffCastScene {
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} で ${healed}回復");
         scene
             |> PlayerScene.mapPlayer(playerId, d -> {hp = maxHp | d})
-            |> UnitHPBarScene.update(PlayerScene.playerPath(playerId), maxHp)
 
     /// 命の草: 最大 HP を `magnitude` 永続上昇させ、現在 HP も同量上げる（その場で増えた分が回復）。
     pub def applyMaxHpUp(playerId: Int32, player: PlayerScene.Data,
@@ -711,7 +704,6 @@ mod StaffCastScene {
         scene
             |> PlayerScene.mapPlayer(playerId,
                 d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
-            |> UnitHPBarScene.updateMaxHp(PlayerScene.playerPath(playerId), newHp, newMax)
 
     /// ちから薬 / すばやさ薬: 使用者へ時限バフ（`magnitude` を `duration` ターン）を付与する。
     /// `kind` は付与する `StatusEffect`（AtkUp / SpdUp）。効果は次の戦闘予測・実戦闘に反映される。
@@ -934,14 +926,12 @@ mod StaffCastScene {
                 if (dmgResult#isDead) {
                     GameLogger.playerLog("${srcLabel} は ${name} を投げて ${EnemyScene.displayName(enemyId, scene)} を撃破 (${dmg}ダメージ)");
                     scene
-                        |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), 0)
                         |> EnemyScene.startDeathAnimation(enemyId)
                 } else {
                     GameLogger.playerLog("${srcLabel} は ${name} を投げて ${EnemyScene.displayName(enemyId, scene)} に ${dmg}ダメージ");
                     // アイテムをぶつけられたので、かなしばり中なら完全停止を解除する。
                     scene
                         |> EnemyScene.setHp(enemyId, dmgResult#newHp)
-                        |> UnitHPBarScene.update(EnemyScene.enemyPath(enemyId), dmgResult#newHp)
                         |> EnemyScene.releaseBind(enemyId)
                 }
             })
@@ -958,7 +948,6 @@ mod StaffCastScene {
                 // アイテムをぶつけられたので、かなしばり中なら完全停止を解除する。
                 let withDamage = scene
                     |> PlayerScene.setHp(targetId, dmgResult#newHp)
-                    |> UnitHPBarScene.update(PlayerScene.playerPath(targetId), dmgResult#newHp)
                     |> PlayerScene.releaseBind(targetId);
                 if (dmgResult#isDead)
                     PlayerScene.removeDeadAndCheckGameOver(targetId :: Nil, withDamage)
@@ -1334,7 +1323,6 @@ mod StaffCastScene {
                 case Some(p) =>
                     let r = Combat.heal(p#hp, p#resource#hp, n);
                     sc |> PlayerScene.mapPlayer(id, d -> {hp = r#newHp | d})
-                       |> UnitHPBarScene.update(PlayerScene.playerPath(id), r#newHp)
                 case None => sc
             }
         else
@@ -1342,7 +1330,6 @@ mod StaffCastScene {
                 case Some(e) =>
                     let r = Combat.heal(e#hp, e#resource#hp, n);
                     sc |> EnemyScene.mapEnemy(id, d -> {hp = r#newHp | d})
-                       |> UnitHPBarScene.update(EnemyScene.enemyPath(id), r#newHp)
                 case None => sc
             }
 
@@ -1352,14 +1339,12 @@ mod StaffCastScene {
             match PlayerScene.get(id, sc) {
                 case Some(p) =>
                     sc |> PlayerScene.mapPlayer(id, d -> {hp = p#resource#hp | d})
-                       |> UnitHPBarScene.update(PlayerScene.playerPath(id), p#resource#hp)
                 case None => sc
             }
         else
             match EnemyScene.get(id, sc) {
                 case Some(e) =>
                     sc |> EnemyScene.mapEnemy(id, d -> {hp = e#resource#hp | d})
-                       |> UnitHPBarScene.update(EnemyScene.enemyPath(id), e#resource#hp)
                 case None => sc
             }
 
@@ -1373,7 +1358,6 @@ mod StaffCastScene {
                     let newMax = p#resource#hp + inc;
                     let newHp  = p#hp + inc;
                     sc |> PlayerScene.mapPlayer(id, d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
-                       |> UnitHPBarScene.updateMaxHp(PlayerScene.playerPath(id), newHp, newMax)
                 case None => sc
             }
         else
@@ -1382,7 +1366,6 @@ mod StaffCastScene {
                     let newMax = e#resource#hp + inc;
                     let newHp  = e#hp + inc;
                     sc |> EnemyScene.mapEnemy(id, d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
-                       |> UnitHPBarScene.updateMaxHp(EnemyScene.enemyPath(id), newHp, newMax)
                 case None => sc
             }
 
