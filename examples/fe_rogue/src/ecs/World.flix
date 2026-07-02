@@ -1487,19 +1487,6 @@ mod World {
                 Some(EntityRef.Enemy(d#id)) else None);
         List.append(pms, ems)
 
-    /// S3 安全網: World statusEffects（command 由来）と scene の `#statuses` が食い違う entity を列挙する（両 faction）。
-    /// Status は record（StatusEffect は Eq 持ち）だが順序込みの安定比較のため (effect, magnitude, remaining) tuple list へ
-    /// 射影して比較（baseStatsMismatches 同型）。preserve 化後 frame-end では常に一致するはずで、食い違いは
-    /// emitStatusesFromScene(Seed) の dual-write 漏れ（[STATUSEFFECTS DIFF]）を意味する。
-    pub def statusEffectsMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (statusListKey(statusEffectsOf(EntityRef.Player(d#id), world)) != statusListKey(d#statuses))
-                Some(EntityRef.Player(d#id)) else None);
-        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (statusListKey(statusEffectsOf(EntityRef.Enemy(d#id), world)) != statusListKey(d#statuses))
-                Some(EntityRef.Enemy(d#id)) else None);
-        List.append(pms, ems)
-
     pub def moveTilesOf(ref: EntityRef, world: World): Option[Int32] =
         let World.World(w) = world; Map.get(toUid(ref), w#moveTiles)
 
@@ -1578,28 +1565,10 @@ mod World {
             case EntityRef.Enemy(_) => Map.get(toUid(ref), w#equippedRing) |> Option.flatten
         }
 
-    /// P1a 安全網: World の equippedRing（read-model）と scene の装備指輪が食い違う entity を列挙する。
-    /// RingResource は Eq 非自動ゆえ (name, effect, power) タプルへ射影して比較（combatViewMismatches 同型）。
-    pub def equippedRingMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(equippedRingKey, equippedRingOf(EntityRef.Player(d#id), world)) != Option.map(equippedRingKey, PlayerData.equippedRing(d)))
-                Some(EntityRef.Player(d#id)) else None);
-        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(equippedRingKey, equippedRingOf(EntityRef.Enemy(d#id), world)) != Option.map(equippedRingKey, d#ring))
-                Some(EntityRef.Enemy(d#id)) else None);
-        List.append(pms, ems)
-
     /// P2: 敵特殊能力 effectRule（生 Json）を World から読む（敵のみ・unified-id）。外側 Option（未登録）と
     /// 内側 Option（ルールなし）を flatten ＝ルールなしで None（`weaponViewOf` を逐語踏襲）。敵パスの sim 発火判定が読む。
     pub def effectRuleOf(ref: EntityRef, world: World): Option[Util.Json.Json] =
         let World.World(w) = world; Map.get(toUid(ref), w#effectRule) |> Option.flatten
-
-    /// P2 安全網: World の effectRule（read-model）と scene の敵 effectRule が食い違う敵を列挙する。
-    /// Json は Eq 非自動ゆえ ToString へ射影して比較（equippedRingMismatches 同型）。
-    pub def effectRuleMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(effectRuleKey, effectRuleOf(EntityRef.Enemy(d#id), world)) != Option.map(effectRuleKey, d#resource#effectRule))
-                Some(EntityRef.Enemy(d#id)) else None)
 
     /// B1: `combatView` を **World だけから再構築**する（faction 非依存）。base 戦闘値 + 指輪 + status mods
     /// + hp + 装備武器投影を合成し、`PlayerScene.combatView` / `EnemyScene.combatView` と同一の `Combat.CombatView`
@@ -1819,14 +1788,6 @@ mod World {
             case EntityRef.Enemy(_)   => None
         }
 
-    /// World 拡張 検証器: 味方 (level, exp) の World/scene 不一致。
-    pub def progressMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[(Int32, Int32)], (Int32, Int32))] =
-        PlayerScene.getAll(scene) |> List.filterMap(d -> {
-            let wp = progressOf(EntityRef.Player(d#id), world);
-            let sp = (d#level, d#exp);
-            if (wp != Some(sp)) Some((EntityRef.Player(d#id), wp, sp)) else None
-        })
-
     /// F8-slice2: 敵ターン intro hold 中か（`TopBarScene.isBusy` の World 版・順序非依存）。
     pub def enemyTurnBusyOf(world: World): Bool =
         let World.World(w) = world; w#enemyTurnBusy
@@ -1845,33 +1806,6 @@ mod World {
             let wt = attackTargetOf(EntityRef.Enemy(d#id), world);
             if (wt != d#attackTargetId) Some((EntityRef.Enemy(d#id), wt, d#attackTargetId)) else None
         });
-        List.append(ps, es)
-
-    /// 軸1 仕上げ 検証器: 敵の World isDying（command 由来）と scene isDying の不一致を返す。
-    pub def dyingMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Bool, Bool)] =
-        EnemyScene.getAll(scene) |> List.filterMap(d -> {
-            let wd = isDyingOf(EntityRef.Enemy(d#id), world);
-            if (wd != d#isDying) Some((EntityRef.Enemy(d#id), wd, d#isDying)) else None
-        })
-
-    /// F7-spike 検証器: 敵の World alerted（command 由来）と scene alerted の不一致を返す（`hpMismatches` 同型）。
-    pub def alertedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
-        EnemyScene.getAll(scene) |> List.filterMap(d -> {
-            let wa = alertedOf(EntityRef.Enemy(d#id), world);
-            if (wa != Some(d#alerted)) Some((EntityRef.Enemy(d#id), wa, d#alerted)) else None
-        })
-
-    /// F6b 検証器: scene の各ユニットについて **World hp（command 由来）と scene hp の不一致**を返す。
-    /// gameLoop が refreshMirror（hp re-mirror）の **前**に呼ぶ＝全 hp 書込が `Cmd.SetHp` を dual-write して
-    /// いれば空。書き漏れがあると `(ref, worldHp, sceneHp)` が出る（`[F6 HP DIFF]`）。spawn 直後など World 未登録は
-    /// transient（次フレーム refreshMirror で解消）。preserve 化（refreshMirror が hp を保持）の前提を pin する。
-    pub def hpMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Int32], Int32)] =
-        let mism = (ref, sceneHp) -> {
-            let wHp = hpOf(ref, world);
-            if (wHp != Some(sceneHp)) Some((ref, wHp, sceneHp)) else None
-        };
-        let ps = PlayerScene.getAll(scene) |> List.filterMap(d -> mism(EntityRef.Player(d#id), d#hp));
-        let es = EnemyScene.getAll(scene)  |> List.filterMap(d -> mism(EntityRef.Enemy(d#id), d#hp));
         List.append(ps, es)
 
     /// hp を World から読む（read-model アクセサ）。F6 の reader flip / 検証器の供給元。
@@ -2157,24 +2091,6 @@ mod World {
                 case EntityRef.Enemy(eid)  => Some((Piece.Enemy(eid), pos))
             }
         })
-
-    /// board-lock（Phase C 契約）: 「World 由来の盤面 == scene 由来の盤面」を **順序非依存キー**で突合する。
-    /// `toBoard`（pieces=World pos-store・Cmd.Move 権威・hidden 除外／map=scene 静的）と
-    /// `BoardSnapshot.fromScene`（pieces=scene gridPos・hidden 除外）を同じ `boardKey` 正規形で比較。
-    /// dual-write が整合する通常フレームでは true。これが、将来の `resolveCombat` の board 入力が
-    /// 満たすべき凍結契約（World-derived board が legacy scene-derived board と一致する）。
-    /// 非対称ガード: `boardKey` が各 source を独立に walk する＝id 集合の **和** 上で symmetric ゆえ、
-    /// 片側にしか居ない可視 entity（prune/pre-sync ずれ）も mismatch として検出する。
-    pub def boardMatchesScene(world: World, scene: Scene[NodeTag]): Bool =
-        boardKey(toBoard(world, scene)) == boardKey(BoardSnapshot.fromScene(scene))
-
-    /// `boardMatchesScene` の diff 版。一致なら None、不一致なら正規化済みの 2 キー
-    /// `(World 由来, scene 由来)` を返す（[BOARD DIFF] 検証器・デバッグ出力の供給元）。
-    pub def boardKeyMismatch(world: World, scene: Scene[NodeTag]):
-            Option[(List[(Int32, Int32, Int32, Int32)], List[(Int32, Int32, Int32, Int32)])] =
-        let wk = boardKey(toBoard(world, scene));
-        let sk = boardKey(BoardSnapshot.fromScene(scene));
-        if (wk == sk) None else Some((wk, sk))
 
     /// World→scene の逆向き write-back（S1b）。World が持つ statuses を scene の Data#statuses へ書き戻す。
     /// 既存の純粋 writer `PlayerScene.mapPlayer` / `EnemyScene.mapEnemy` を再利用（走査・書込を再実装しない）。

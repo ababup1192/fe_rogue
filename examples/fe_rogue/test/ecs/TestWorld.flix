@@ -277,46 +277,13 @@ mod TestWorld {
         Scene.addNode("DungeonLevel0",
             EngineNode.TileMapLayerWithState(floorMapLayer(), NodeTag.Map(floorMapData())), scene)
 
-    /// World 配下に player 0 のみ（可視・{2,2}）を挿した最小 scene。one-sided guard 用に
-    /// 「scene に居る可視 entity が World pos に居ない」状態を作るための片肺 World を syncFromScene する元。
-    def sceneOnlyPlayer0(): Scene[NodeTag] =
-        let worldM = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(), EngineNode.Marker2DWithState(worldM, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Player(playerData(0))))
-
-    /// (1) positive: syncFromScene 直後は World 由来盤面 == scene 由来盤面。hidden 味方 3 は両側で除外され、
-    /// boardMatchesScene true かつ boardKey(toBoard) == boardKey(fromScene)（順序非依存・明示等価）。
     @Test
     def testToBoardEqualsFromScene(): Unit \ Assert =
         let scene = addMap(sceneWithHidden());
         let world = World.syncFromScene(scene, World.empty());
         Assert.assertEq(
-            expected = (true, true),
-            (World.boardMatchesScene(world, scene),
-             World.boardKey(World.toBoard(world, scene)) == World.boardKey(BoardSnapshot.fromScene(scene))))
-
-    /// (2) negative（World 権威）: World のみに Cmd.Move を適用し scene を stale に保つと、その mid-frame で
-    /// World 由来盤面が先行し boardMatchesScene false。boardKeyMismatch も Some（2 キーが食い違う）。
-    @Test
-    def testBoardMismatchWhenWorldMovesAhead(): Unit \ Assert =
-        let scene = addMap(sceneWithHidden());
-        let world = World.syncFromScene(scene, World.empty());
-        let moved = World.applyCmd(World.Cmd.Move(World.EntityRef.Player(0), {x = 9, y = 9}), world);
-        Assert.assertEq(
-            expected = (false, true),
-            (World.boardMatchesScene(moved, scene),
-             Option.isEmpty(World.boardKeyMismatch(moved, scene)) == false))
-
-    /// (3) one-sided guard（非 vacuous・id 和上で symmetric）: scene に **可視** entity（player 1・enemy 5）が
-    /// 居るのに World pos に居ない（prune/pre-sync を模擬＝player 0 だけ sync した片肺 World）→ false。
-    /// hidden ではなく可視を使うのが要点（hidden は両側で除外されガードを誤って pass させるため）。
-    @Test
-    def testBoardMismatchWhenSceneEntityMissingFromWorld(): Unit \ Assert =
-        let scene = addMap(sampleScene());                                  // 可視 player 0,1 + enemy 5
-        let world = World.syncFromScene(sceneOnlyPlayer0(), World.empty());  // World pos は player 0 のみ
-        Assert.assertEq(expected = false, World.boardMatchesScene(world, scene))
+            expected = true,
+            World.boardKey(World.toBoard(world, scene)) == World.boardKey(BoardSnapshot.fromScene(scene)))
 
     // ── S1: World.Cmd applier（statuses 権威化の System/command。StatusSystem 再利用）──
 

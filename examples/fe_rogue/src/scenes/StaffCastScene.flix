@@ -295,11 +295,14 @@ mod StaffCastScene {
                                 hitCell: {x = Int32, y = Int32},
                                 dir: {x = Int32, y = Int32},
                                 scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, BoardQuery} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery, BoardQuery} =
         match PlayerScene.get(targetId, scene) {
             case None         => scene
             case Some(target) =>
-                let dmgResult = Combat.damage(hp = target#hp, amount = 1);
+                // P6-5d: 現在 hp は World 読み（ECS 戦闘は scene hp を書かない＝scene は stale）。
+                let curHp = World.hpOf(World.EntityRef.Player(targetId), World.WorldQuery.get())
+                                |> Option.getWithDefault(target#hp);
+                let dmgResult = Combat.damage(hp = curHp, amount = 1);
                 let withDamage = scene
                     |> PlayerScene.setHp(targetId, dmgResult#newHp);
                 GameLogger.playerLog(
@@ -315,11 +318,14 @@ mod StaffCastScene {
                                dir: {x = Int32, y = Int32},
                                scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler,
-                                GameLogger.GameLogger, World.Command, BoardQuery} =
+                                GameLogger.GameLogger, World.Command, World.WorldQuery, BoardQuery} =
         match EnemyScene.get(enemyId, scene) {
             case None        => scene
             case Some(enemy) =>
-                let dmgResult = Combat.damage(hp = enemy#hp, amount = 1);
+                // P6-5d: 現在 hp は World 読み（scene は stale）。
+                let curHp = World.hpOf(World.EntityRef.Enemy(enemyId), World.WorldQuery.get())
+                                |> Option.getWithDefault(enemy#hp);
+                let dmgResult = Combat.damage(hp = curHp, amount = 1);
                 if (dmgResult#isDead) {
                     GameLogger.playerLog("${PlayerScene.displayName(srcId, scene)} ▶ ${EnemyScene.displayName(enemyId, scene)} を ふきとばし撃破");
                     scene
@@ -497,7 +503,7 @@ mod StaffCastScene {
     pub def applyConsumableSelfEffect(playerId: Int32, player: PlayerScene.Data,
                                    item: Consumable.ConsumableResource,
                                    scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         match dslUseRule(item) {
             // IDE 合成エディタの effectRule（onUse）があればそれを優先発火。PlanItem の値（IDE で
             // 編集した量/op/継続）で効くので、ゲーム挙動が IDE の設定に追従する。対象は自分。
@@ -549,12 +555,12 @@ mod StaffCastScene {
     /// PlanItem を既存 primitive へ振り分ける handler。HP/status 変更・ログは primitive がそのまま行う
     /// （＝旧 match と挙動同一）。self-use では heal/fullHeal/maxHpUp/status のみ発火する。
     def selfEffectHandlers(item: Consumable.ConsumableResource):
-            EffectRunner.PlanHandlers[Scene[NodeTag], {GameLogger.GameLogger, World.Command}] = {
+            EffectRunner.PlanHandlers[Scene[NodeTag], {GameLogger.GameLogger, World.Command, World.WorldQuery}] = {
         // self-use なので対象は常に自分（ally=true）。ally は使わない。
         heal       = (sc, id, _, _)        -> checked_ecast(withPlayer(id, sc, p -> applyConsumableHeal(id, p, item, sc))),
         fullHeal   = (sc, id, _)           -> checked_ecast(withPlayer(id, sc, p -> applyFullHeal(id, p, item, sc))),
         maxHpUp    = (sc, id, _, _)        -> checked_ecast(withPlayer(id, sc, p -> applyMaxHpUp(id, p, item, sc))),
-        status     = (sc, id, _, se, _, _) -> applySelfStatus(id, item, se, sc),  // S3: {GameLogger, World.Command}（Seed）
+        status     = (sc, id, _, se, _, _) -> checked_ecast(applySelfStatus(id, item, se, sc)),  // S3: Seed
         // self-use では発火しない handler。全 handler が同一 effect(GameLogger) を持つ必要があるため
         // 純粋な恒等を checked_ecast で GameLogger へ上げる（実際の作用は無し）。
         damage     = (sc, _, _, _)         -> checked_ecast(sc),
@@ -579,38 +585,46 @@ mod StaffCastScene {
     pub def applyConsumableHeal(playerId: Int32, player: PlayerScene.Data,
                              item: Consumable.ConsumableResource,
                              scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
-        let result = Combat.heal(player#hp, player#resource#hp, item#magnitude);
-        let healed = result#newHp - player#hp;
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
+        // P6-5d: 現在 hp は World 読み（scene は stale）。
+        let curHp = World.hpOf(World.EntityRef.Player(playerId), World.WorldQuery.get())
+                        |> Option.getWithDefault(player#hp);
+        let result = Combat.heal(curHp, player#resource#hp, item#magnitude);
+        let healed = result#newHp - curHp;
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} で ${healed}回復");
+        // P6-5d: 書き込みは setHp funnel（SetHp emit 併記＝World 即時反映・境界 emit に依存しない）。
         scene
-            |> PlayerScene.mapPlayer(playerId, d -> {hp = result#newHp | d})
+            |> PlayerScene.setHp(playerId, result#newHp)
 
     /// 全快薬: HP を最大まで戻す。`magnitude` は不使用。
     pub def applyFullHeal(playerId: Int32, player: PlayerScene.Data,
                            item: Consumable.ConsumableResource,
                            scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
+        // P6-5d: 現在 hp は World 読み・書き込みは setHp funnel（SetHp emit 併記）。
         let maxHp  = player#resource#hp;
-        let healed = maxHp - player#hp;
+        let curHp  = World.hpOf(World.EntityRef.Player(playerId), World.WorldQuery.get())
+                         |> Option.getWithDefault(player#hp);
+        let healed = maxHp - curHp;
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} で ${healed}回復");
         scene
-            |> PlayerScene.mapPlayer(playerId, d -> {hp = maxHp | d})
+            |> PlayerScene.setHp(playerId, maxHp)
 
     /// 命の草: 最大 HP を `magnitude` 永続上昇させ、現在 HP も同量上げる（その場で増えた分が回復）。
     pub def applyMaxHpUp(playerId: Int32, player: PlayerScene.Data,
                           item: Consumable.ConsumableResource,
                           scene: Scene[NodeTag]):
-            Scene[NodeTag] \ GameLogger.GameLogger =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
+        // P6-5d: 現在 hp は World 読み・hp 書き込みは setHp funnel（SetHp emit 併記）。
+        // resource（maxHp）は scene 権威のまま＝mapPlayer で更新し、境界の SetBaseStats dual-write が World へ運ぶ。
         let inc    = item#magnitude;
         let newMax = player#resource#hp + inc;
-        let newHp  = player#hp + inc;
+        let newHp  = (World.hpOf(World.EntityRef.Player(playerId), World.WorldQuery.get())
+                         |> Option.getWithDefault(player#hp)) + inc;
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${item#name} で 最大HP+${inc}");
-        // S2.3: resource#hp=maxHp 変更で baseStats#maxHp が動く。World 側は hp と同 funnel（runPlan 後の
-        // World.emitHpSets/MaxHpUpAt 境界で SetBaseStats を dual-write）＝pure handler はここで World を触らない。
         scene
-            |> PlayerScene.mapPlayer(playerId,
-                d -> {hp = newHp, resource = {hp = newMax | d#resource} | d})
+            |> PlayerScene.mapPlayer(playerId, d -> {resource = {hp = newMax | d#resource} | d})
+            |> PlayerScene.setHp(playerId, newHp)
 
     /// ちから薬 / すばやさ薬: 使用者へ時限バフ（`magnitude` を `duration` ターン）を付与する。
     /// `kind` は付与する `StatusEffect`（AtkUp / SpdUp）。効果は次の戦闘予測・実戦闘に反映される。
@@ -683,7 +697,7 @@ mod StaffCastScene {
     /// `applyStaffEffect` と同じく `(付与する Status, hit)` のタプルで 1 段マッチに畳む。
     def applyDirectionalEffect(playerId: Int32, item: Consumable.ConsumableResource,
                                 hit: RayHit, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         // directionalStatus は「投擲系デバフか（Some/None）」の門番として使い、状態適用そのものは
         // 統一 DSL 経路（applyConsumableEffectDsl）へ寄せる（当たった敵/味方を ally で出し分け）。
         match (StaffRules.directionalStatus(item), hit) {
@@ -828,10 +842,13 @@ mod StaffCastScene {
     def throwDamageToEnemy(srcLabel: String, enemyId: Int32, dmg: Int32, name: String,
                             scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command} =
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, World.Command, World.WorldQuery} =
         Option.getWithDefault(scene,
             forM (enemy <- EnemyScene.get(enemyId, scene)) yield {
-                let dmgResult = Combat.damage(hp = enemy#hp, amount = dmg);
+                // P6-5d: 現在 hp は World 読み（scene は stale）。
+                let curHp = World.hpOf(World.EntityRef.Enemy(enemyId), World.WorldQuery.get())
+                                |> Option.getWithDefault(enemy#hp);
+                let dmgResult = Combat.damage(hp = curHp, amount = dmg);
                 if (dmgResult#isDead) {
                     GameLogger.playerLog("${srcLabel} は ${name} を投げて ${EnemyScene.displayName(enemyId, scene)} を撃破 (${dmg}ダメージ)");
                     scene
@@ -852,7 +869,10 @@ mod StaffCastScene {
                                SelectedPlayer.State, World.Command, World.WorldQuery} =
         Option.getWithDefault(scene,
             forM (target <- PlayerScene.get(targetId, scene)) yield {
-                let dmgResult = Combat.damage(hp = target#hp, amount = dmg);
+                // P6-5d: 現在 hp は World 読み（scene は stale）。
+                let curHp = World.hpOf(World.EntityRef.Player(targetId), World.WorldQuery.get())
+                                |> Option.getWithDefault(target#hp);
+                let dmgResult = Combat.damage(hp = curHp, amount = dmg);
                 GameLogger.playerLog("${srcLabel} の ${name} が ${PlayerScene.displayName(targetId, scene)} に当たった (${dmg}ダメージ)");
                 // アイテムをぶつけられたので、かなしばり中なら完全停止を解除する。
                 let withDamage = scene
@@ -1171,7 +1191,7 @@ mod StaffCastScene {
     /// 薬投げの解決: 当たったキャラ（敵/味方）へ薬の効果を出す。1 段マッチ。
     def throwConsumableResolved(playerId: Int32, item: Consumable.ConsumableResource,
                                  hit: RayHit, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         match hit {
             case RayHit.HitEnemy(enemyId, _)   => throwConsumableAtEnemy(playerId, item, enemyId, scene)
             case RayHit.HitPlayer(targetId, _) => throwConsumableAtPlayer(playerId, item, targetId, scene)
@@ -1181,7 +1201,7 @@ mod StaffCastScene {
     /// 薬の効果を敵へ。効果種別で 1 段マッチ。
     def throwConsumableAtEnemy(playerId: Int32, item: Consumable.ConsumableResource,
                                 enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         Option.getWithDefault(scene,
             forM (enemy <- EnemyScene.get(enemyId, scene)) yield {
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${EnemyScene.displayName(enemyId, scene)} に ${item#name} を当てた");
@@ -1193,7 +1213,7 @@ mod StaffCastScene {
     /// 統一ハンドラが ally で player/enemy ノードを出し分ける。HP/status の数値・挙動は旧 per-effect
     /// match と同一。火炎瓶/爆発瓶は throwConsumableHit が先に処理するためここには来ない。
     pub def applyConsumableEffectDsl(item: Consumable.ConsumableResource,
-                                  id: Int32, ally: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+                                  id: Int32, ally: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         let target = ({id = id, ally = ally, immobilized = false, alive = true}: EffectRule.RayUnit);
         let ctx = {selfId = id, attackerId = id, actorIsPlayer = true, rayUnits = target :: Nil,
                    amount = {max = 0, dealt = 0, incoming = 0, magic = 0}};
@@ -1204,11 +1224,11 @@ mod StaffCastScene {
 
     /// 投擲効果の統一ハンドラ。ally で player/enemy を出し分け、HP/status を適用する（ログなし）。
     /// damage/immobilize 等は投擲薬の経路には現れないので恒等。
-    def throwEffectHandlers(): EffectRunner.PlanHandlers[Scene[NodeTag], {World.Command}] = {
+    def throwEffectHandlers(): EffectRunner.PlanHandlers[Scene[NodeTag], {World.Command, World.WorldQuery}] = {
         heal       = (sc, id, ally, n)         -> checked_ecast(healUnit(id, ally, n, sc)),
         fullHeal   = (sc, id, ally)            -> checked_ecast(fullHealUnit(id, ally, sc)),
         maxHpUp    = (sc, id, ally, n)         -> checked_ecast(maxHpUpUnit(id, ally, n, sc)),
-        status     = (sc, id, ally, se, m, t)  -> statusUnit(id, ally, se, m, t, sc),  // S3: World.Command（Seed）
+        status     = (sc, id, ally, se, m, t)  -> checked_ecast(statusUnit(id, ally, se, m, t, sc)),  // S3: Seed
         damage     = (sc, _, _, _)             -> checked_ecast(sc),
         immobilize = (sc, _, _, _)             -> checked_ecast(sc),
         revive     = (sc, _, _)                -> checked_ecast(sc),
@@ -1218,34 +1238,38 @@ mod StaffCastScene {
     }
 
     /// HP 回復を ally で出し分け（旧 Heal arm と同一）。
-    def healUnit(id: Int32, ally: Bool, n: Int32, sc: Scene[NodeTag]): Scene[NodeTag] =
+    def healUnit(id: Int32, ally: Bool, n: Int32, sc: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, World.WorldQuery} =
+        // P6-5d: 入力 hp は World 読み・書き込みは setHp funnel（SetHp emit 併記）。plan 内の連鎖は
+        // read-after-write（worldRef 即時適用）で成立する。境界の emitHpSets は同値の再 emit＝冪等。
+        let w = World.WorldQuery.get();
         if (ally)
             match PlayerScene.get(id, sc) {
                 case Some(p) =>
-                    let r = Combat.heal(p#hp, p#resource#hp, n);
-                    sc |> PlayerScene.mapPlayer(id, d -> {hp = r#newHp | d})
+                    let cur = World.hpOf(World.EntityRef.Player(id), w) |> Option.getWithDefault(p#hp);
+                    let r = Combat.heal(cur, p#resource#hp, n);
+                    sc |> PlayerScene.setHp(id, r#newHp)
                 case None => sc
             }
         else
             match EnemyScene.get(id, sc) {
                 case Some(e) =>
-                    let r = Combat.heal(e#hp, e#resource#hp, n);
-                    sc |> EnemyScene.mapEnemy(id, d -> {hp = r#newHp | d})
+                    let cur = World.hpOf(World.EntityRef.Enemy(id), w) |> Option.getWithDefault(e#hp);
+                    let r = Combat.heal(cur, e#resource#hp, n);
+                    sc |> EnemyScene.setHp(id, r#newHp)
                 case None => sc
             }
 
     /// 全回復を ally で出し分け（旧 FullHeal / AutoRevive arm と同一）。
-    def fullHealUnit(id: Int32, ally: Bool, sc: Scene[NodeTag]): Scene[NodeTag] =
+    def fullHealUnit(id: Int32, ally: Bool, sc: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+        // P6-5d: 書き込みは setHp funnel（SetHp emit 併記）。全回復は入力 hp 不要。
         if (ally)
             match PlayerScene.get(id, sc) {
-                case Some(p) =>
-                    sc |> PlayerScene.mapPlayer(id, d -> {hp = p#resource#hp | d})
+                case Some(p) => sc |> PlayerScene.setHp(id, p#resource#hp)
                 case None => sc
             }
         else
             match EnemyScene.get(id, sc) {
-                case Some(e) =>
-                    sc |> EnemyScene.mapEnemy(id, d -> {hp = e#resource#hp | d})
+                case Some(e) => sc |> EnemyScene.setHp(id, e#resource#hp)
                 case None => sc
             }
 
@@ -1284,13 +1308,13 @@ mod StaffCastScene {
     /// 敵 1 体への薬効果適用 → DSL 経路へ委譲（数値・挙動は同一、ally=false）。
     def applyConsumableEffectToEnemy(item: Consumable.ConsumableResource,
                                       _enemy: EnemyScene.Data, enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ World.Command =
+            Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         applyConsumableEffectDsl(item, enemyId, false, scene)
 
     /// 薬の効果を味方へ。効果種別で 1 段マッチ。
     def throwConsumableAtPlayer(playerId: Int32, item: Consumable.ConsumableResource,
                                  targetId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command} =
+            Scene[NodeTag] \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         Option.getWithDefault(scene,
             forM (target <- PlayerScene.get(targetId, scene)) yield {
                 GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${PlayerScene.displayName(targetId, scene)} に ${item#name} を当てた");
@@ -1300,7 +1324,7 @@ mod StaffCastScene {
     /// 味方 1 体への薬効果適用 → DSL 経路へ委譲（数値・挙動は同一、ally=true）。
     def applyConsumableEffectToPlayer(item: Consumable.ConsumableResource,
                                        _target: PlayerScene.Data, targetId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ World.Command =
+            Scene[NodeTag] \ {World.Command, World.WorldQuery} =
         applyConsumableEffectDsl(item, targetId, true, scene)
 
     /// 投げたアイテムを 1 個（耐久 1）消費する。種別ごとに対応リストへ反映。match ネストなし。

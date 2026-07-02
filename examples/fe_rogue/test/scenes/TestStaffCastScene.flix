@@ -154,11 +154,15 @@ mod TestStaffCastScene {
     /// （4 + 3 = 7、上限 10 には届かないのでそのまま）。
     @Test
     def testConsumableHealRestoresHp(): Unit \ Assert =
-        let scene = playerScene(4, 0);
-        let user = playerData(scene);
-        let after = TestUnitFixtures.withMockGameLogger(() ->
-            StaffCastScene.applyConsumableHeal(0, user, healItem(3), scene));
-        Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
+        // P6-5d: 入力 hp は World 読み・結果検証も World（scene twin 退役）。
+        region rc {
+            let scene = playerScene(4, 0);
+            let user = playerData(scene);
+            let (_, _, w) = TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
+                TestUnitFixtures.withMockGameLogger(() ->
+                    StaffCastScene.applyConsumableHeal(0, user, healItem(3), scene)));
+            Assert.assertEq(expected = Some(7), World.hpOf(World.EntityRef.Player(0), w))
+        }
 
     // ════════════════════════════════════════════════════════
     // DSL 経路（EffectRule → planActions → runPlan）が旧経路と同じ HP を生むか

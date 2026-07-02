@@ -569,18 +569,16 @@ mod TestGoldenTrace {
         // 最終 World 射影も bit-identical。
         Assert.assertEq(expected = projOf(w1), projOf(w2))
 
-    /// 隣接攻撃は駒を動かさない＝最終 World 由来の board が、独立に凍結した piece-list literal と一致し、
-    /// かつ original scene 由来の board と `boardMatchesScene` で一致する（board-lock を使う凍結契約）。
+    /// 隣接攻撃は駒を動かさない＝最終 World 由来の board が、独立に凍結した piece-list literal と一致する。
+    /// P6-5c: boardMatchesScene（board-lock 契約 = scene pieces との突合）は退役（scene gridPos twin 撤去で
+    /// live に scene 側 board が存在しない）。frozen literal pin のみ残す。
     @Test
     def testGoldenFinalBoardParity(): Unit \ Assert =
         let sc = sceneOf(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
         let (_, _, w) = runAttack(sc);
         // (faction, id, x, y): player(0)@{2,2}, enemy(1)@{3,2}（撃破しても pos は不変）。
         let goldenPieces = (0, 0, 2, 2) :: (1, 1, 3, 2) :: Nil;
-        // 最終 World 由来の board が、独立に凍結した piece-list に一致（隣接攻撃は駒を動かさない）。
-        Assert.assertEq(expected = goldenPieces, World.boardKey(World.toBoard(w, sc)));
-        // かつ original scene 由来の board とも一致（board-lock 契約）。
-        Assert.assertEq(expected = true, World.boardMatchesScene(w, sc))
+        Assert.assertEq(expected = goldenPieces, World.boardKey(World.toBoard(w, sc)))
 
     // ── SimEvent ORACLE（frozen [SimEvent] = resolveCombat の比較対象）──────────────
     //
