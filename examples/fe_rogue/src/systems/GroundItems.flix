@@ -5,7 +5,7 @@
 /// プレイヤーが同じセルに乗ると（重量が許せば自動で）、または ActionMenu で「ひろう」を選ぶと
 /// `PlayerScene.pickupFloorItem` で取り出してインベントリに加える。
 ///
-/// P6-1e: scene ノードは撤去済み。存在/中身/点滅位相の権威は World.groundItems
+/// scene ノードは撤去済み。存在/中身/点滅位相の権威は World.groundItems
 /// （`Cmd.SpawnItem/RemoveItem/ClearItems`・elapsed は stepWorld が tick）、描画は
 /// `RenderWorld.renderItems` が spriteOf(kind) から本体＋縁取り 4 枚を直描きする。
 ///
@@ -49,7 +49,7 @@ mod GroundItems {
 
     // ─── 定数 ─────────────────────────────────────────────────
 
-    /// Sprite の zIndex（床より上、Sprite (=10) より下に置く）。P6-1e: renderItems が使うため pub。
+    /// Sprite の zIndex（床より上、Sprite (=10) より下に置く）。renderItems が使うため pub。
     pub def spriteZIndex(): Int32 = 5
 
     /// 縁取り Sprite の zIndex（アイテム本体のすぐ下）。
@@ -71,7 +71,7 @@ mod GroundItems {
     /// サイクル先頭で「光っている」時間。この間に三角波で base→peak→base と変化する
     def pulseDuration(): Duration.Duration = Duration.seconds(0.3)
 
-    /// 4 方向 (suffix, 描画オフセット) ペア。P6-1e: renderItems が使うため pub。
+    /// 4 方向 (suffix, 描画オフセット) ペア。renderItems が使うため pub。
     pub def outlineDeltas(): List[(String, Vec2.Vec2)] =
         ("n", ({x =  0.0, y = -1.0}: Vec2.Vec2)) ::
         ("s", ({x =  0.0, y =  1.0}: Vec2.Vec2)) ::
@@ -118,7 +118,7 @@ mod GroundItems {
                              items, catalog, staffCatalog, consumableCatalog, ringCatalog, state),
                 initial, rooms);
             let drops = List.reverse(accDrops);
-            // P6-1e: ノードは積まない＝Cmd spawn のみ（点滅の初期位相 stagger は id で付与）。
+            // ノードは積まない＝Cmd spawn のみ（点滅の初期位相 stagger は id で付与）。
             List.foldLeft((acc, drop) -> {
                 let (id, cell, key, kind) = drop;
                 addOneItem(id, cell, key, kind, acc)
@@ -147,7 +147,7 @@ mod GroundItems {
         }
 
     /// アイテム 1 個ぶんを配置する＝`Cmd.SpawnItem` を emit して World store を更新する。
-    /// P6-1e: scene ノード書きは撤去（描画は `RenderWorld.renderItems` が World から直描き）。
+    /// 描画は `RenderWorld.renderItems` が World から直描きするため scene ノードは積まない。
     /// `idx` は点滅の初期位相 stagger（同時点滅回避）にだけ使う。
     def addOneItem(idx: Int32, cell: {x = Int32, y = Int32},
                     itemKey: String, item: ItemData.GroundItemKind,
@@ -227,11 +227,10 @@ mod GroundItems {
         List.exists(t -> t#x == c#x and t#y == c#y, taken)
 
     // ─── クエリ ───────────────────────────────────────────────
-    // P6-1e: 旧 findAt/dataAt/getAll（scene ノード走査）は撤去。読みは World.groundItemAtOf /
-    // groundItemsOf が唯一の経路。
+    // 読みは World.groundItemAtOf / groundItemsOf が唯一の経路。
 
     /// 指定セルのアイテムを除去してアイテム実体を返す＝`Cmd.RemoveItem` を emit。
-    /// P6-1e: World store に居るときだけ emit（旧: scene ノード有無で判定）。scene は素通し。
+    /// World store に居るときだけ emit。scene は素通し。
     pub def takeAt(coord: {x = Int32, y = Int32},
                     scene: Scene[NodeTag]):
             (Scene[NodeTag], Option[ItemData.GroundItemKind]) \ {World.Command, World.WorldQuery} =
@@ -244,9 +243,8 @@ mod GroundItems {
 
     /// 現在の床アイテムを `ItemSnap` 列（セル座標 ＋ 種別 id）に射影する（スナップショット保存用）。
     /// 床アイテムは `itemKey`（id）を持つので逆引き不要。
-    /// P2-r2（セーブ capture の World 化）: 射影元を scene ノード群から **World の groundItems store**
-    /// に変更（P3-c で権威化済み・dual-write 中は等値）。並び順は scene 子順 → cellKey 昇順に変わるが
-    /// 決定論・セーブ形式とも不変（復元は位置キーで意味論同一）。
+    /// 射影元は World の groundItems store。並び順は cellKey 昇順で、決定論・セーブ形式とも不変
+    /// （復元は位置キーで意味論同一）。
     pub def captureSnaps(_scene: Scene[NodeTag]): List[FloorSnapshot.ItemSnap] \ World.WorldQuery =
         World.groundItemsOf(World.WorldQuery.get())
             |> Map.valuesOf

@@ -361,11 +361,10 @@ mod RenderWorld {
             tiles(DangerZoneScene.cells(scene),        DangerZoneScene.color(),        DangerZoneScene.alpha()) ::
             Nil)
 
-    // P6-1a: `hideRangeTiles` は撤去。range の Tile Panel ノードはもう積まれない
-    // （renderRangeOverlays が cells から直描き＝hide-then-render の一角を解消）。
+    // range の Tile Panel ノードは積まず、renderRangeOverlays が cells から直描きする。
 
-    /// 1 つの暗幕グリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は `FogScene.setPoolRect` と
-    /// 同一（grid × tileSize）。solidBox は alpha=1.0 ゆえ fog 用 alpha に上書きし、scale（=ピクセルサイズ）を
+    /// 1 つの暗幕グリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は grid × tileSize。
+    /// solidBox は alpha=1.0 ゆえ fog 用 alpha に上書きし、scale（=ピクセルサイズ）を
     /// zoom 倍する（unitDraw のスケール処理と対称）。
     def fogRectDrawables(r: GridRect, transform: Camera2D.ViewTransform): List[GameEngine.Drawable] =
         let s = MapSnapshot.tileSize();

@@ -663,6 +663,46 @@ mod TestActionMenuScene {
         let after = runRefreshItemsNoSel(loadWaitedLordScene());
         Assert.assertEq(expected = Some(true), entryDisabledOf("gather", after))
 
+    /// 空マスメニュー: フォグで見えている敵が居る間は「集合」は出るが disabled。
+    @Test
+    def testGatherDisabledWhenEnemyVisible(): Unit \ Assert =
+        let after = runRefreshItemsNoSel(
+            addEnemyNode(visible = true, loadTwoPlayerActionMenuScene()));
+        Assert.assertEq(expected = Some(true), entryDisabledOf("gather", after))
+
+    /// 空マスメニュー: 敵が居てもフォグで見えていなければ「集合」は選択可能。
+    @Test
+    def testGatherEnabledWhenEnemyHiddenByFog(): Unit \ Assert =
+        let after = runRefreshItemsNoSel(
+            addEnemyNode(visible = false, loadTwoPlayerActionMenuScene()));
+        Assert.assertEq(expected = Some(false), entryDisabledOf("gather", after))
+
+    /// World 配下に生存敵(id=9)を 1 体挿す。`visible` は marker の可視（applyFog が
+    /// 本番で設定する「フォグで見えているか」を直接与える）。
+    def addEnemyNode(visible: {visible = Bool}, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let marker = Marker2D.make(Vec2.zero()) |> CanvasItem.setVisible(visible#visible);
+        let data: EnemyScene.Data = {
+            id             = 9,
+            resourceId     = "test_enemy",
+            gridPos        = {x = 5, y = 5},
+            alerted        = false,
+            homeModuleIdx  = 0,
+            moveTiles      = 3,
+            hp             = 10,
+            isDying        = false,
+            attackTargetId = None,
+            resource       = TestUnitFixtures.testEnemyResource(3, 10),
+            weapon         = Some(TestUnitFixtures.testWeapon()),
+            acted          = false,
+            prevPos        = None,
+            statuses       = Nil,
+            ring           = None,
+            followUpUsed   = false,
+            bottleUsed     = false
+        };
+        Scene.addChildAt(MapScene.worldPath(), EnemyScene.enemyName(9),
+            EngineNode.Marker2DWithState(marker, NodeTag.Enemy(data)), scene)
+
     // ════════════════════════════════════════════════════════
     // 集合（行軍）の隣接メニュー (gatherActive=true × 主人公選択中)
     //   主人公に隣接する味方が居れば「交換」、常に「全員待機」。

@@ -50,8 +50,7 @@ mod RangeOverlay {
             scene)
 
     /// 1 セル分のハッチ Panel（サイズ＋塗り/縞/枠、位置なし）。塗りは淡く床を見せ、色は斜線と枠で表現する
-    /// （CSS の重み付けを踏襲）。scene ノード描画（`renderTiles`）と World 描画（`tileDrawables`）が同一の
-    /// 見た目を共有するために切り出す。
+    /// （CSS の重み付けを踏襲）。World 描画（`tileDrawables`）が使う見た目定義として切り出す。
     pub def tilePanel(color: Color, alpha: Float32): Panel =
         let side = MapSnapshot.tileSize() - inset() * 2.0;
         Panel.make(({x = side, y = side}: Vec2.Vec2), color)
@@ -63,17 +62,16 @@ mod RangeOverlay {
             |> Panel.setStripe(lighten(color, 0.5f32), alpha * 0.65f32, stripeWidth(), stripePeriod())
             |> CanvasItem.setZIndex(tileZIndex())
 
-    /// セル中心を基準に Panel を置く左上座標（世界座標）。`renderTiles` と `tileDrawables` で共用。
+    /// セル中心を基準に Panel を置く左上座標（世界座標）。`tileDrawables` が使う。
     def tileTopLeft(cell: {x = Int32, y = Int32}): Vec2.Vec2 =
         let half = (MapSnapshot.tileSize() - inset() * 2.0) / 2.0;
         let center = MapSnapshot.cellCenter(cell);
         {x = center#x - half, y = center#y - half}
 
-    // P6-1a: 旧 `renderTiles`（Tile_<idx> Panel の scene ノード描画）は撤去。描画は
-    // `tileDrawables`（World render System）が唯一の経路＝ノードを積まない。
+    // 描画は `tileDrawables`（World render System）が唯一の経路＝ノードを積まない。
 
-    /// B: `cells` を camera 適用済みのハッチ box Drawable にする（World render System 用）。`Panel.toDrawables`
-    /// で `renderTiles` と同一 styling を再利用し、位置は `tileTopLeft` を camera 変換、scale（=Panel サイズ）を
+    /// B: `cells` を camera 適用済みのハッチ box Drawable にする（World render System 用）。`tilePanel` の
+    /// styling を `Panel.toDrawables` で描き、位置は `tileTopLeft` を camera 変換、scale（=Panel サイズ）を
     /// zoom 倍する（`RenderWorld.unitDraw` のスケール処理と対称）。
     pub def tileDrawables(cells: List[{x = Int32, y = Int32}], color: Color, alpha: Float32,
                           transform: Camera2D.ViewTransform): List[GameEngine.Drawable] =

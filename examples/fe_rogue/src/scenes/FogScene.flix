@@ -74,7 +74,9 @@ mod FogScene {
     /// init（drafts 無し・GameLifecycle のスポーン部屋点灯）から呼ぶ入口。
     /// 各ユニットの origin=live としてライブ挙動になる。
     pub def applyFog(scene: Scene[NodeTag]): Scene[NodeTag] \ World.WorldQuery =
-        let units = PlayerScene.getAll(scene)
+        // 穴は World の現在位置で計算する（位置の権威は World。scene Data の gridPos は
+        // 移動で更新されないため、直読みするとターン開始の敵可視判定が狂う）。
+        let units = PlayerScene.getAllWithWorldPos(scene)
             |> List.map(d -> {id = d#id, gridPos = d#gridPos, hidden = d#hidden, origin = d#gridPos});
         applyFogWith(units, scene)
 

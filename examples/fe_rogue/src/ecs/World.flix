@@ -89,14 +89,14 @@ pub enum World {
                  // 位置 store。型は Vec2i の structural record（engine_core.Vec2i の演算 API 対象）。
                  // pos は単一 store（unified-id・`Cmd.Move` 権威）。
                  pos = Map[EntityId, {x = Int32, y = Int32}],
-                 // B/m2: 連続的な描画位置（pixel・tween 込み）。render System(renderUnits)が読む。command-derive。
+                 // 連続的な描画位置（pixel・tween 込み）。render System(renderUnits)が読む。command-derive。
                  //   静止時は最後の値（セル pixel）を保持。move で moveAnim が補間更新（stepWorld）。
                  renderPos = Map[EntityId, Vec2.Vec2],
-                 // B/m2: 進行中の tween（複合キー (EntityId, Channel)）。stepWorld が毎フレ実時間 dt(秒) 進め、
+                 // 進行中の tween（複合キー (EntityId, Channel)）。stepWorld が毎フレ実時間 dt(秒) 進め、
                  //   出力を対象 component（Position→renderPos）へ書く。完了で除去。**実時間ベース**（engine tween と
                  //   同じ dt で進む＝lockstep 同期・fps 非依存）。1 entity が複数チャンネルを同時に持てる。
                  tweens = EcsTween.Tweens[EntityId, Channel],
-                 // P6-1h（ユニット sprite 脱ノード）: 描画 view 状態の store（全て command/step 由来・
+                 // 描画 view 状態の store（全て command/step 由来・
                  // preserve＋validUids prune）。unitAnim=再生アニメ（player の AnimatedSprite2D 個体のみ・
                  // elapsed は stepWorld が加算）、unitFlipH=左右反転（移動 view 再生が書く）、
                  // unitModulate=待機/行動済み暗転（本体/HP バー/武器アイコンの 3 読者の単一真実源）、
@@ -105,69 +105,69 @@ pub enum World {
                  unitFlipH = Map[EntityId, Bool],
                  unitModulate = Map[EntityId, Color],
                  dyingElapsed = Map[EntityId, Float64],
-                 // S4: 盤面除外（集合・階段退場）中の味方 id。Board.pieces は hidden 味方を除くので fromWorld に必要。
+                 // 盤面除外（集合・階段退場）中の味方 id。Board.pieces は hidden 味方を除くので fromWorld に必要。
                  playerHidden = Set[EntityId],
-                 // F7-spike: 敵の検知フラグ（dormant→chase）。flag→World の最初のプローブ。
+                 // 敵の検知フラグ（dormant→chase）。
                  enemyAlerted = Map[EntityId, Bool],
-                 // S5: 敵の行動済みフラグ（ターン flow・view 灰色の権威）。enemy-only。faction-blind tick の前提。
+                 // 敵の行動済みフラグ（ターン flow・view 灰色の権威）。enemy-only。faction-blind tick の前提。
                  enemyActed = Map[EntityId, Bool],
-                 // 軸1 仕上げ: 死亡演出中の敵 id（death_blink 中＝全 LOGIC から除外される sim フラグ）。
+                 // 死亡演出中の敵 id（death_blink 中＝全 LOGIC から除外される sim フラグ）。
                  // present=isDying。death 完了でノード除去→refreshMirror が prune（absence=非 dying）。
                  enemyDying = Set[EntityId],
-                 // F7-slice2: 敵の瓶使用済みフラグ（1ターン1投の sticky）。
+                 // 敵の瓶使用済みフラグ（1ターン1投の sticky）。
                  enemyBottleUsed = Map[EntityId, Bool],
-                 // F7-slice3: 敵の直前位置（wander の戻り防止）。None=未移動はマップ非在で表現。
+                 // 敵の直前位置（wander の戻り防止）。None=未移動はマップ非在で表現。
                  enemyPrevPos = Map[EntityId, {x = Int32, y = Int32}],
-                 // F7-slice4: followUp 使用済み（1 攻撃 1 追撃の per-turn transient）。両 faction。
-                 // A': followUpUsed は単一 store（unified-id）。両 faction の split を撤廃。
+                 // followUp 使用済み（1 攻撃 1 追撃の per-turn transient）。両 faction。
+                 // followUpUsed は単一 store（unified-id・両 faction）。
                  followUpUsed = Map[EntityId, Bool],
-                 // F7-slice5: 味方の行動済み（ターン flow の権威）。player-only。reader flip は F8 で。
+                 // 味方の行動済み（ターン flow の権威）。player-only。
                  playerWaited = Map[EntityId, Bool],
-                 // S5: 味方の階段退場フラグ（フロア終了条件・tick gating の権威）。player-only。reader flip は後続。
+                 // 味方の階段退場フラグ（フロア終了条件・tick gating の権威）。player-only。
                  playerUsedStairs = Map[EntityId, Bool],
-                 // F8-slice1: 攻撃対象 id（攻撃モーション中＝anyAttacking の権威）。None=非攻撃はマップ非在。両 faction。
-                 // A': attackTarget は単一 store（unified-id）。両 faction の split を撤廃。
+                 // 攻撃対象 id（攻撃モーション中＝anyAttacking の権威）。None=非攻撃はマップ非在。両 faction。
+                 // attackTarget は単一 store（unified-id・両 faction）。
                  attackTarget = Map[EntityId, Int32],
-                 // World 拡張: 味方の進行度（level/exp）。combat の撃破→exp→level-up が動かす sim 状態。
-                 // 過去に level-up の hp 増分 dual-write が漏れた領域＝検証器で同種漏れを捕える。player-only。
+                 // 味方の進行度（level/exp）。combat の撃破→exp→level-up が動かす sim 状態。
+                 // dual-write の漏れは検証器で捕える。player-only。
                  playerLevel = Map[EntityId, Int32], playerExp = Map[EntityId, Int32],
-                 // S-A0: base 戦闘値 + maxHp の read-model（unified-id・両 faction）。resource 由来ゆえ
+                 // base 戦闘値 + maxHp の read-model（unified-id・両 faction）。resource 由来ゆえ
                  // refreshMirror で毎フレーム scene から再 mirror（statusEffects と同型）。combatView flip 用。
                  baseStats = Map[EntityId, Combat.BaseStats],
-                 // S-A0b: 装備武器の戦闘投影 read-model（unified-id・両 faction）。内側 Option=武器なし。
+                 // 装備武器の戦闘投影 read-model（unified-id・両 faction）。内側 Option=武器なし。
                  // PlayerScene/EnemyScene.equippedWeaponView 由来ゆえ毎フレーム再 mirror。combatView flip 用。
                  weaponView = Map[EntityId, Option[Combat.WeaponView]],
-                 // S-A0c: 装備指輪ボーナス read-model（unified-id・両 faction）。未装備は zeroBonuses。
+                 // 装備指輪ボーナス read-model（unified-id・両 faction）。未装備は zeroBonuses。
                  // equippedRingBonus 由来ゆえ毎フレーム再 mirror。combatView flip 用。
                  ringBonus = Map[EntityId, Ring.Bonuses],
-                 // S2.5: 基礎移動力 moveTiles の store（unified-id・両 faction）。resource 由来で spawn 後不変＝
+                 // 基礎移動力 moveTiles の store（unified-id・両 faction）。resource 由来で spawn 後不変＝
                  // 実効移動力は effectiveMoveTilesOf が encumbrance を読み時計算（base のみ保持）。
                  moveTiles = Map[EntityId, Int32],
-                 // P1a（resolveCombat sim）: 装備指輪リソース本体の read-model（unified-id・両 faction）。
+                 // 装備指輪リソース本体の read-model（unified-id・両 faction）。
                  // ringBonus はステ補正だけを持つが、finisher/lifesteal は RingResource（effect/power）を要する。
                  // weaponView と同じ Option-store パターン（内側 Option=未装備）＝毎フレーム再 mirror。
                  equippedRing = Map[EntityId, Option[Ring.RingResource]],
-                 // S-A0d（spike が露出した gap）: level-up 成長に要る resource 由来データ（基準 Stats + 成長率）。
+                 // level-up 成長に要る resource 由来データ（基準 Stats + 成長率）。
                  // player-only・resource 由来ゆえ毎フレーム再 mirror。resolveCombat の level-up を World 完結に。
                  growth = Map[EntityId, Growth],
-                 // P1c（resolveCombat sim）: 静的地形スナップショット（プレーンな type-alias＝storable）。
+                 // 静的地形スナップショット（プレーンな type-alias＝storable）。
                  // ノックバックの着地計算が要する `boardOf` の地形ソース。empty()=None（シーン未確定）。
                  // syncFromScene/refreshMirror で `BoardSnapshot.mapSnapshotOf(scene)` を再 mirror（toBoard と同源）。
                  mapSnapshot = Option[MapSnapshot],
-                 // P1-a（Stopgap 杖 ECS）: 階段セル座標の read-model（None=未配置）。`Stairs.getPos(scene)`
+                 // 階段セル座標の read-model（None=未配置）。`Stairs.getPos(scene)`
                  // 由来＝mapSnapshot と同じ scene-derive 毎フレーム再 mirror。Stopgap の warp 先計算（`warpCellFor`）が読む。
                  stairsPos = Option[{x = Int32, y = Int32}],
-                 // P3-b（配置物 Entity 化）: 宝箱の read/write-model。セル key（`chestCellKey`）→ 宝箱 Data。
+                 // 宝箱の read/write-model。セル key（`chestCellKey`）→ 宝箱 Data。
                  // spawn（`Cmd.SpawnChest`）/開封（`Cmd.RemoveChest`）が動かす＝存在は component（Map 在/不在）で表現。
                  // syncFromScene で frame-1 seed（Chests.getAll）、refreshMirror は command 由来を preserve＋
                  // scene 在セルで prune（unit の pos と同型・floor 遷移で旧フロア分が自動 prune される）。
                  chests = Map[Int32, Chests.Data],
-                 // P3-c（配置物 Entity 化）: 床アイテムの read/write-model。セル key（`cellKey`）→ GroundItem Data。
+                 // 床アイテムの read/write-model。セル key（`cellKey`）→ GroundItem Data。
                  // spawn（`Cmd.SpawnItem`）/拾得（`Cmd.RemoveItem`）が動かす＝存在は component（Map 在/不在）で表現。
                  // `elapsed`（点滅位相）は view 専用ゆえ store の値は spawn 時のスナップショット（World reader は読まない）。
                  // 3-builder は chests と同型（seed=itemsFromScene／preserve＋scene 在セルで prune）。
                  groundItems = Map[Int32, GroundItems.Data],
-                 // P5-b（演出の World 権威化）: fx の寿命 store。spawn は `Cmd.SpawnPopupFx/SpawnExplosionFx`
+                 // fx の寿命 store。spawn は `Cmd.SpawnPopupFx/SpawnExplosionFx`
                  // （applyCmd が nextSeq で採番し +1）、寿命 tick と期限切れ drop は stepWorld（EcsTween と同じ
                  // 「stepWorld が World を直接進める」前例）。scene の子 Label2D/Sprite2D は描画 view で、
                  // gameLoop が `DamagePopupFx.syncView`/`ExplosionFx.syncView` で store から派生する。
@@ -175,22 +175,22 @@ pub enum World {
                  // floor 遷移で残っても自然 expire＝prune 不要）。
                  popupFx = Map[Int32, PopupFx], popupFxNextSeq = Int32,
                  explosionFx = Map[Int32, ExplosionFx], explosionFxNextSeq = Int32,
-                 // B/tiles: 背景 map タイルの描画ハンドル（floor+walls 層・静的）。rebuild イベント（tileGen 変化）で
+                 // 背景 map タイルの描画ハンドル（floor+walls 層・静的）。rebuild イベント（tileGen 変化）で
                  // bake し、render System が camera 適用して instanced 描画。scene TileMapLayer ノードは衝突用に存続。
                  tileLayers = List[TileLayerHandle],
-                 // B/tiles: マップ再構築の世代カウンタ。build choke（buildPlayingScene/rebuildFloorFromSnapshot）が
+                 // マップ再構築の世代カウンタ。build choke（buildPlayingScene/rebuildFloorFromSnapshot）が
                  // `Cmd.BumpTileGen` で +1。gameLoop は world1 と incoming world の gen を比べ、変化時のみ tileLayers を bake。
                  tileGen = Int32,
-                 // P2（resolveCombat sim・敵のみ）: 敵特殊能力 effectRule の生 Json read-model（unified-id）。
+                 // 敵特殊能力 effectRule の生 Json read-model（unified-id）。
                  // 内側 Option=ルールなし。enemy `#resource#effectRule`（Option[Json]）由来＝weaponView と同じ
                  // Option-store パターン（accessor が flatten）＝毎フレーム再 mirror。敵パスの sim 発火判定が読む。
                  effectRule = Map[EntityId, Option[Util.Json.Json]],
-                 // F8-slice2: 敵ターン driver が読む phase-banner 同期 bool（TopBar が毎フレーム dual-write）。
+                 // 敵ターン driver が読む phase-banner 同期 bool（TopBar が毎フレーム dual-write）。
                  //   enemyTurnBusy      — 敵ターン開始 intro の hold 中（>0）＝敵の行動開始待ち。
                  //   phaseObservedEnemy — 上部バーが「敵ターン」を観測済み（0 体ターンの取りこぼし防止）。
                  // どちらも view-timing 由来だが driver の順序非依存化のため World 経由で読む（生アニメ Data は TopBar 残置）。
                  enemyTurnBusy = Bool, phaseObservedEnemy = Bool,
-                 // slice `rng-world`: 決定論的 PRNG 状態。live パスでは DORMANT（live ハンドラは
+                 // 決定論的 PRNG 状態。live パスでは DORMANT（live ハンドラは
                  // Math.Random に delegate し w#rng を進めない）。両 sync パスで verbatim carry し、
                  // seeded PRNG を行使するのは test / trace ハーネスのみ。
                  rng = Prng.State })

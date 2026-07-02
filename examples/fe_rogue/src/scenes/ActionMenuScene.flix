@@ -381,18 +381,21 @@ mod ActionMenuScene {
             |> Option.map(d -> d#waited)
             |> Option.getWithDefault(false)
 
-    /// 「集合（行軍）」を開始できるか。生存味方が他に居て、かつ主人公が未行動のとき。
+    /// 「集合（行軍）」を開始できるか。生存味方が他に居て、主人公が未行動で、かつ
+    /// フォグで見えている敵が 1 体もいないとき（ターン跨ぎ自動継続の判定と同じ通貨）。
     /// 空マスメニューの「集合」の disabled 判定と C キーショートカット可否で共有する。
-    pub def gatherEnabled(): Bool \ PlayerData.PartyQuery =
-        gatherAvailable() and not lordWaited()
+    /// 敵可視は applyFog が設定する marker 可視を読む。プレイヤーターン中は敵が動かないので
+    /// 前フレームの値で判定して問題ない（`EnemyScene.isVisible` と同じ前提）。
+    pub def gatherEnabled(scene: Scene[NodeTag]): Bool \ PlayerData.PartyQuery =
+        gatherAvailable() and not lordWaited() and not EnemyScene.anyVisible(scene)
 
     /// 通常の空マスメニュー項目。生存している味方が主人公以外に居れば「集合」、常に「ターンエンド」。
-    /// 集合は主人公が隊列を率いて動くモードなので、敵検知・合流距離の事前条件は持たない。
-    def gatherMenuItems(_scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
-        // 「集合」は常に表示し、開始できないとき（味方が他に居ない／主人公が行動済み）は
-        // disabled=true で淡色表示・選択スキップ・確定無効にする。
+    /// 集合は隊列で無防備に動くモードなので、敵が見えている間は開始できない（合流距離の条件は無し）。
+    def gatherMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
+        // 「集合」は常に表示し、開始できないとき（味方が他に居ない／主人公が行動済み／
+        // 敵が見えている）は disabled=true で淡色表示・選択スキップ・確定無効にする。
         let gather =
-            ({text = "集合", disabled = not gatherEnabled(),
+            ({text = "集合", disabled = not gatherEnabled(scene),
               metadata = Some(gatherMeta())}: ItemEntry) :: Nil;
         let turnEnd =
             ({text = "ターンエンド", disabled = false,

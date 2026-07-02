@@ -10,8 +10,8 @@
 /// `src/systems/` は「scene 結合の driver / orchestrator」（step()・シグナル配信で
 /// Scene と World を橋渡しする層）、純 `World→World` System（scene 非依存）は
 /// `src/ecs/systems/`（CombatSystem / StaffSystem）に置く分界。
-/// 純 sim の戦闘解決は `CombatSystem.resolveCombat` へ抽出済みで、ここは
-/// signal 駆動の攻撃演出とターン進行の orchestration を担う。
+/// 純 sim の戦闘解決は `CombatSystem.resolveCombat` が担い、ここは
+/// signal 駆動の攻撃演出とターン進行の orchestration を受け持つ。
 ///
 /// 攻撃の流れ（攻守共通）:
 ///   1. `startAttack(side, ...)` で `attack_lunge` アニメを登録し `attackTargetId` を立てる
