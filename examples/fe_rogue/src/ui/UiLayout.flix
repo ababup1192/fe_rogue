@@ -1,0 +1,249 @@
+// UiLayout — UI レイアウト記述子と flex 解決アルゴリズム（完全純粋）
+//
+// Bevy の Taffy に相当する軽量 flex（縦横 1 方向のみ）。ノードは Style を持ち、
+// computeLayout が親子関係（parents）と兄弟並び（order）とテキスト実寸（measures）から
+// 各 entity の画面絶対矩形を割り当てる。wrap / CSS Grid / percent は持たない。
+//
+// 2 パス構成:
+//   パス1（bottom-up）: Auto の内在サイズ解決。テキストは measures、コンテナは子の合計 + gap + pad。
+//   パス2（top-down）: 実 rect 割当。Px 固定 → Auto 内在 → 残りを Grow 重み配分。
+//                      Grow が無い余りは mainAlign で分配し、cross は crossAlign と Stretch で決める。
+
+mod UiLayout {
+
+    /// 主軸方向。Row=横並び（主軸=X）、Column=縦並び（主軸=Y）。
+    pub enum Dir with Eq { case Row, case Column }
+
+    /// 主軸方向の余白配分。
+    /// Start=先頭詰め、Center=中央寄せ、End=末尾詰め、SpaceBetween=両端揃えで間を均等。
+    pub enum MainAlign with Eq { case Start, case Center, case End, case SpaceBetween }
+
+    /// 交差軸方向の子の寄せ方。Stretch は子を親の交差サイズいっぱいに広げる。
+    pub enum CrossAlign with Eq { case Start, case Center, case End, case Stretch }
+
+    /// 軸ごとのサイズ指定。
+    /// Auto=内在サイズ（テキスト実寸 / 子のヒュッグ）、Px=固定 px、Grow=余りを配る重み。
+    pub enum SizeSpec with Eq {
+        case Auto
+        case Px(Float64)
+        case Grow(Float64)
+    }
+
+    /// ノードのレイアウト属性。
+    /// `dir`: 子を並べる主軸方向。
+    /// `gap`: 子どうしの間隔（主軸方向）。
+    /// `padLeft`/`padTop`/`padRight`/`padBottom`: 内側パディング。
+    /// `width`/`height`: 自分の幅・高さの決め方。
+    /// `mainAlign`/`crossAlign`: 子の主軸・交差軸の寄せ方。
+    /// `abs`: Some のときフロー外（親コンテンツ原点からの絶対オフセットに置く。HUD の右上ピン等）。
+    pub type alias Style = {
+        dir = Dir, gap = Float64,
+        padLeft = Float64, padTop = Float64, padRight = Float64, padBottom = Float64,
+        width = SizeSpec, height = SizeSpec,
+        mainAlign = MainAlign, crossAlign = CrossAlign,
+        abs = Option[Vec2.Vec2]
+    }
+
+    /// 既定スタイル。縦並び・gap0・pad0・Auto×Auto・Start/Start・フロー内。
+    pub def defaultStyle(): Style =
+        {dir = Dir.Column, gap = 0.0,
+         padLeft = 0.0, padTop = 0.0, padRight = 0.0, padBottom = 0.0,
+         width = SizeSpec.Auto, height = SizeSpec.Auto,
+         mainAlign = MainAlign.Start, crossAlign = CrossAlign.Start,
+         abs = None}
+
+    // ========================================================================
+    // 公開 API
+    // ========================================================================
+
+    /// レイアウトを解決し、各 entity の画面絶対矩形を返す。
+    /// root には rootRect（viewport 等）をそのまま割り当て、子孫へ再帰配置する。
+    pub def computeLayout(styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
+                          order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2],
+                          root: EntityId, rootRect: Rect2.Rect2): Map[EntityId, Rect2.Rect2] =
+        assignRect(root, rootRect, styles, parents, order, measures, Map.empty())
+
+    // ========================================================================
+    // パス1: 内在サイズ
+    // ========================================================================
+
+    /// entity の内在サイズ（幅・高さ）。width/height が Px なら固定値、
+    /// それ以外（Auto/Grow）はコンテンツ由来サイズを使う。
+    def intrinsicSizeOf(id: EntityId, styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
+                        order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2]): Vec2.Vec2 =
+        let style = styleOf(id, styles);
+        let content = contentSizeOf(id, style, styles, parents, order, measures);
+        {x = axisIntrinsic(style#width, content#x), y = axisIntrinsic(style#height, content#y)}
+
+    /// 軸のサイズ指定から内在サイズを取り出す。Px は固定値、Auto/Grow はコンテンツ値。
+    def axisIntrinsic(spec: SizeSpec, content: Float64): Float64 =
+        match spec {
+            case SizeSpec.Px(v) => v
+            case SizeSpec.Auto  => content
+            case SizeSpec.Grow(_) => content
+        }
+
+    /// entity のコンテンツ由来サイズ（パディング込み）。
+    /// 子を持たなければテキスト実寸（無ければ 0）、持てば主軸に沿った子の合計 + gap、交差軸は子の最大。
+    /// abs=Some の子はフロー外なのでコンテンツ集計に含めない。
+    def contentSizeOf(id: EntityId, style: Style, styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
+                      order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2]): Vec2.Vec2 =
+        let flowChildren = UiHierarchy.childrenOf(id, parents, order)
+            |> List.filter(child -> Option.isEmpty(styleOf(child, styles)#abs));
+        let inner = match flowChildren {
+            case Nil => Option.getWithDefault({x = 0.0, y = 0.0}, Map.get(id, measures))
+            case _   =>
+                let childSizes = List.map(child -> intrinsicSizeOf(child, styles, parents, order, measures), flowChildren);
+                let mains = List.map(sz -> mainOf(style#dir, sz), childSizes);
+                let crosses = List.map(sz -> crossOf(style#dir, sz), childSizes);
+                let mainTotal = List.foldLeft((acc, m) -> acc + m, 0.0, mains)
+                              + style#gap * Int32.toFloat64(Int32.max(0, List.length(flowChildren) - 1));
+                let crossMax = List.foldLeft((acc, c) -> Float64.max(acc, c), 0.0, crosses);
+                fromMainCross(style#dir, mainTotal, crossMax)
+        };
+        {x = inner#x + style#padLeft + style#padRight, y = inner#y + style#padTop + style#padBottom}
+
+    // ========================================================================
+    // パス2: 実 rect 割当
+    // ========================================================================
+
+    /// entity に rect を確定し、子孫へ再帰的に配置していく。
+    def assignRect(id: EntityId, rect: Rect2.Rect2, styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
+                   order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2],
+                   acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
+        let acc1 = Map.insert(id, rect, acc);
+        let style = styleOf(id, styles);
+        let children = UiHierarchy.childrenOf(id, parents, order);
+        // コンテンツ領域 = rect からパディングを引いた内側
+        let contentPos = {x = rect#position#x + style#padLeft, y = rect#position#y + style#padTop};
+        let contentSize = {x = rect#size#x - style#padLeft - style#padRight,
+                           y = rect#size#y - style#padTop - style#padBottom};
+        // フロー内 / フロー外（abs）に分ける
+        let (flowChildren, absChildren) = List.partition(child -> Option.isEmpty(styleOf(child, styles)#abs), children);
+        let acc2 = layoutFlow(style, contentPos, contentSize, flowChildren, styles, parents, order, measures, acc1);
+        List.foldLeft((a, child) -> layoutAbs(child, contentPos, styles, parents, order, measures, a), acc2, absChildren)
+
+    /// フロー内の子を主軸に沿って配置する。
+    def layoutFlow(style: Style, contentPos: Vec2.Vec2, contentSize: Vec2.Vec2, flowChildren: List[EntityId],
+                   styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
+                   order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2],
+                   acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
+        let dir = style#dir;
+        let contentMain = mainOf(dir, contentSize);
+        let contentCross = crossOf(dir, contentSize);
+        let count = List.length(flowChildren);
+        // 子ごとの主軸ベースサイズと Grow 重みを求める
+        let bases = List.map(child -> baseMainOf(child, dir, styles, parents, order, measures), flowChildren);
+        let sumBase = List.foldLeft((acc2, entry) -> acc2 + fst(entry), 0.0, bases);
+        let totalWeight = List.foldLeft((acc2, entry) -> acc2 + snd(entry), 0.0, bases);
+        let gapTotal = style#gap * Int32.toFloat64(Int32.max(0, count - 1));
+        let free = contentMain - sumBase - gapTotal;
+        // Grow があれば余りを重み配分、無ければ mainAlign で開始位置・間隔を決める
+        let (startOffset, effectiveGap) = flowSpacing(style#mainAlign, style#gap, free, totalWeight, count);
+        let childList = List.zip(flowChildren, bases);
+        let result = List.foldLeft((st, pair) -> {
+            let (child, base) = pair;
+            let (baseMain, weight) = base;
+            let mainSize = if (totalWeight > 0.0) baseMain + growShare(weight, totalWeight, free) else baseMain;
+            let crossSize = crossSizeOf(child, dir, style#crossAlign, contentCross, styles, parents, order, measures);
+            let crossOffset = crossOffsetFor(style#crossAlign, contentCross, crossSize);
+            let childPos = fromMainCross(dir,
+                                          mainOf(dir, contentPos) + st#pen,
+                                          crossOf(dir, contentPos) + crossOffset);
+            let childSize = fromMainCross(dir, mainSize, crossSize);
+            let childRect: Rect2.Rect2 = {position = childPos, size = childSize};
+            let newAcc = assignRect(child, childRect, styles, parents, order, measures, st#acc);
+            {pen = st#pen + mainSize + effectiveGap, acc = newAcc}
+        }, {pen = startOffset, acc = acc}, childList);
+        result#acc
+
+    /// フロー外（abs）の子を親コンテンツ原点 + オフセットに内在サイズで配置する。
+    def layoutAbs(child: EntityId, contentPos: Vec2.Vec2, styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
+                  order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2],
+                  acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
+        let offset = Option.getWithDefault({x = 0.0, y = 0.0}, styleOf(child, styles)#abs);
+        let size = intrinsicSizeOf(child, styles, parents, order, measures);
+        let rect: Rect2.Rect2 = {position = {x = contentPos#x + offset#x, y = contentPos#y + offset#y}, size = size};
+        assignRect(child, rect, styles, parents, order, measures, acc)
+
+    /// mainAlign と余り（free）から、先頭オフセットと実効間隔を決める。
+    /// Grow がある（totalWeight>0）ときは詰めて配置し、間隔は宣言 gap のまま。
+    def flowSpacing(mainAlign: MainAlign, gap: Float64, free: Float64, totalWeight: Float64, count: Int32): (Float64, Float64) =
+        if (totalWeight > 0.0) (0.0, gap)
+        else {
+            let leftover = Float64.max(0.0, free);
+            match mainAlign {
+                case MainAlign.Start        => (0.0, gap)
+                case MainAlign.Center       => (leftover / 2.0, gap)
+                case MainAlign.End          => (leftover, gap)
+                case MainAlign.SpaceBetween =>
+                    if (count > 1) (0.0, gap + leftover / Int32.toFloat64(count - 1)) else (0.0, gap)
+            }
+        }
+
+    /// Grow 子が受け取る余りの取り分。
+    def growShare(weight: Float64, totalWeight: Float64, free: Float64): Float64 =
+        if (totalWeight > 0.0) Float64.max(0.0, free) * (weight / totalWeight) else 0.0
+
+    /// 子の主軸ベースサイズと Grow 重みの組。Px は固定値、Auto は内在サイズ、Grow は base0 + 重み。
+    def baseMainOf(child: EntityId, dir: Dir, styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
+                   order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2]): (Float64, Float64) =
+        match mainSpecOf(dir, styleOf(child, styles)) {
+            case SizeSpec.Px(v)   => (v, 0.0)
+            case SizeSpec.Auto    => (mainOf(dir, intrinsicSizeOf(child, styles, parents, order, measures)), 0.0)
+            case SizeSpec.Grow(w) => (0.0, w)
+        }
+
+    /// 子の交差軸サイズ。Stretch なら親の交差サイズいっぱい、それ以外は子の指定（Px/Auto/Grow）に従う。
+    def crossSizeOf(child: EntityId, dir: Dir, crossAlign: CrossAlign, contentCross: Float64,
+                    styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
+                    order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2]): Float64 =
+        match crossAlign {
+            case CrossAlign.Stretch => contentCross
+            case _ => match crossSpecOf(dir, styleOf(child, styles)) {
+                case SizeSpec.Px(v)   => v
+                case SizeSpec.Auto    => crossOf(dir, intrinsicSizeOf(child, styles, parents, order, measures))
+                case SizeSpec.Grow(_) => crossOf(dir, intrinsicSizeOf(child, styles, parents, order, measures))
+            }
+        }
+
+    /// 交差軸方向の寄せオフセット。
+    def crossOffsetFor(crossAlign: CrossAlign, contentCross: Float64, crossSize: Float64): Float64 =
+        match crossAlign {
+            case CrossAlign.Start   => 0.0
+            case CrossAlign.Center  => (contentCross - crossSize) / 2.0
+            case CrossAlign.End     => contentCross - crossSize
+            case CrossAlign.Stretch => 0.0
+        }
+
+    // ========================================================================
+    // 軸ヘルパ
+    // ========================================================================
+
+    /// entity の Style（未登録なら defaultStyle）。
+    def styleOf(id: EntityId, styles: Map[EntityId, Style]): Style =
+        Option.getWithDefault(defaultStyle(), Map.get(id, styles))
+
+    /// 主軸方向の成分。Row なら X、Column なら Y。
+    def mainOf(dir: Dir, v: Vec2.Vec2): Float64 =
+        match dir { case Dir.Row => v#x, case Dir.Column => v#y }
+
+    /// 交差軸方向の成分。Row なら Y、Column なら X。
+    def crossOf(dir: Dir, v: Vec2.Vec2): Float64 =
+        match dir { case Dir.Row => v#y, case Dir.Column => v#x }
+
+    /// 主軸値・交差軸値から Vec2 を組む（mainOf / crossOf の逆）。
+    def fromMainCross(dir: Dir, main: Float64, cross: Float64): Vec2.Vec2 =
+        match dir { case Dir.Row => {x = main, y = cross}, case Dir.Column => {x = cross, y = main} }
+
+    /// 主軸方向のサイズ指定。
+    def mainSpecOf(dir: Dir, style: Style): SizeSpec =
+        match dir { case Dir.Row => style#width, case Dir.Column => style#height }
+
+    /// 交差軸方向のサイズ指定。
+    def crossSpecOf(dir: Dir, style: Style): SizeSpec =
+        match dir { case Dir.Row => style#height, case Dir.Column => style#width }
+
+    def fst(pair: (a, b)): a = let (x, _) = pair; x
+    def snd(pair: (a, b)): b = let (_, y) = pair; y
+}

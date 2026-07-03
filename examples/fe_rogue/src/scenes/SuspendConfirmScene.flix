@@ -5,7 +5,7 @@
 ///   - はい  → `CustomEffects.SuspendRequest.save`（保存成功でタイトルへ。失敗時は PlayerCursor に留まる）
 ///   - いいえ → `PlayerCursor` に戻る（中断をやめる）
 ///
-/// `GameOverMenuScene` と同じモーダル構成（dispatchMenuKey 駆動 + refreshItems で phase 連動 visible）。
+/// モーダル構成: dispatchMenuKey 駆動 + refreshItems で phase 連動 visible（scene ノードで組む）。
 ///
 /// ノード構造（visible のとき）:
 ///   SuspendConfirm (CanvasLayer, layer=3)

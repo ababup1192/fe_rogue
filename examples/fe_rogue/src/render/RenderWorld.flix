@@ -121,11 +121,11 @@ mod RenderWorld {
     /// World 描画する **CanvasLayer（camera 免除・画面固定）** サブツリー root。HUD/メニュー/minimap/各種ポップアップ。
     /// 不在（未オープンの動的 menu 等）は `subtreeDrawables`/`hideNode` とも no-op。
     def hudSubtreeRoots(): List[NodePath] =
-        TopBarScene.rootPath() :: UnitCardScene.rootPath() ::
+        // TopBar / ユニット簡易カード（UnitCard / EnemyCard）は World-entity UI へ移行済み。ここには積まない。
         ActionMenuScene.rootPath() :: ItemMenuScene.rootPath() :: WeaponSelectScene.rootPath() ::
-        TradeMenuScene.rootPath() :: GameOverMenuScene.rootPath() :: LevelUpPanelScene.rootPath() ::
+        TradeMenuScene.rootPath() :: LevelUpPanelScene.rootPath() ::
         MinimapScene.rootPath() ::
-        LogScene.logPath() :: EnemyCardScene.rootPath() :: BattlePanelScene.rootPath() ::
+        LogScene.logPath() :: BattlePanelScene.rootPath() ::
         SuspendConfirmScene.rootPath() :: ItemPickupPopupScene.rootPath() :: TurnEndHoldScene.rootPath() :: Nil
 
     /// World 描画する全サブツリー root（world〔camera 適用〕 ++ hud〔CanvasLayer〕）。camera 適用/免除の seam を

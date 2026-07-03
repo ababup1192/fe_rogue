@@ -62,10 +62,6 @@ pub enum NodeTag {
     case WeaponSelectPanel
     /// WeaponSelectScene の ItemList（選択中味方の武器一覧。確定で装備→攻撃フェーズへ）
     case WeaponSelectMenu
-    /// GameOverMenuScene の Panel ルート（全滅時のモーダル選択ウィンドウ外枠）
-    case GameOverPanel
-    /// GameOverMenuScene の ItemList（最初から / そのフロアの最初から）
-    case GameOverMenu
     /// BattlePanelScene の CanvasLayer ルート（画面空間の戦闘予報ミニウィンドウ）。
     /// 内部 Duration は未使用（将来の演出用に枠だけ残す）。panel とその子（丸/ラベル/三角）は
     /// `NodeTag.NoTag` でぶら下げ、process がパス経由で更新・対象近傍へ移動する。
@@ -75,17 +71,10 @@ pub enum NodeTag {
     /// 内部 state は演出の進行（bonus 再生済みか / 右側を出し終えた上昇ステータス数 / 次までの残り時間）。
     /// レベルアップ演出パネルの識別用純タグ（状態は `LevelUpPanelScene.State` resource へ移設）。
     case LevelUpPanel
-    /// UnitHPBarRender の Marker2D 親（戦闘表示 timer + currentHp/maxHp を持つ）
-    /// UnitCardScene の CanvasLayer 親（左サイドの選択ユニット簡易カード）。
-    case UnitCard
-    /// EnemyCardScene の CanvasLayer 親（右サイドの攻撃対象敵カード。UnitCard と左右対称）。
-    case EnemyCard
-    /// TopBarScene の CanvasLayer 親（上部フェイズバー。陣営・敵ターンの「間」を持つ）
-    /// production ではノードを積まない（描画は renderItems 直描き）。手組みノードで
-    /// World を seed するテスト seam（syncFromScene の itemsFromScene が読む）として残置。
+    /// GroundItems の床アイテム識別タグ。production ではノードを積まない（描画は renderItems
+    /// 直描き）。手組みノードで World を seed するテスト seam（syncFromScene の itemsFromScene
+    /// が読む）として残置。
     case GroundItem(GroundItems.Data)
-    /// 上部バーの識別用純タグ（状態は `TopBarScene.State` resource へ移設）。
-    case TopBar
     /// ItemPickupPopupScene の CanvasLayer 親（アイテム取得ポップアップのフェード演出状態を持つ）
     /// 中央アイテム取得ポップアップの識別用純タグ（状態は `ItemPickupPopupScene.State` resource へ移設）。
     case ItemPickupPopup
@@ -193,16 +182,10 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
             checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
         case NodeTag.WeaponSelectMenu =>
             checked_ecast(WeaponSelectScene.refreshItems(delta, node, path, scene))
-        case NodeTag.GameOverMenu =>
-            checked_ecast(GameOverMenuScene.refreshItems(delta, node, path, scene))
         case NodeTag.SuspendConfirmMenu =>
             checked_ecast(SuspendConfirmScene.refreshItems(delta, node, path, scene))
         case NodeTag.TradeMenu(_) =>
             checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
-        case NodeTag.UnitCard =>
-            checked_ecast(UnitCardScene.process(delta, node, path, scene))
-        case NodeTag.EnemyCard =>
-            checked_ecast(EnemyCardScene.process(delta, node, path, scene))
         case NodeTag.BattlePanel =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
         case NodeTag.LevelUpPanel =>
@@ -230,6 +213,8 @@ instance InputEvent.InputHandler[NodeTag] {
                  GamePhaseState, PartySelection.State, CharacterSelectState.State,
                  // アイテム投擲の命中ロール（Math.Random）と誤射による味方脱落のゲームオーバー判定。
                  Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
+                 // 全滅モーダルの選択・確定・F1 ホットリロードが UI 状態とファイルを触る。
+                 Fs.FileRead, UiWorldState.State,
                  // レベルアップ演出パネルの確定（LevelUpPanelScene.confirm）が State resource を触る。
                  LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State, ItemMenuState.State, TradeMenuState.State}
     // ActionMenu / ItemMenu / ItemActionMenu / AttackForecast フェーズでは
@@ -251,9 +236,12 @@ instance InputEvent.InputHandler[NodeTag] {
                                           CustomEffects.SuspendRequest,
                                           GamePhaseState, PartySelection.State, CharacterSelectState.State,
                                           Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
+                                          Fs.FileRead, UiWorldState.State,
                                           LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State, ItemMenuState.State, TradeMenuState.State} =
+        // F1: World-entity UI の ui.json を sources 台帳ごとホットリロードする（デバッグ用・画面問わず）。
+        if (key == GameEngine.Key.F1) { UiWorldState.State.put(UiSpec.reloadAll(UiWorldState.State.get())); scene }
         // 画面がタイトル / 選択中なら各画面へ委譲。本編（Playing）のときだけ戦闘用ルーティングを走らせる。
-        match GamePhaseState.get() {
+        else match GamePhaseState.get() {
             case GamePhase.Title           => TitleMenuScene.onKeyPressed(key, scene)
             case GamePhase.CharacterSelect => CharacterSelectScene.onKeyPressed(key, scene)
             case GamePhase.Playing         => onPlayingKeyPressed(key, scene)
@@ -269,6 +257,7 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                            EnemyData.RosterQuery, CustomEffects.FloorAdvanceRequest,
                            CustomEffects.SuspendRequest,
                            Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
+                           UiWorldState.State,
                            LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State, ItemMenuState.State, TradeMenuState.State} =
         // 物理キーを「決定 / キャンセル / それ以外 (None)」の意味論的入力に正規化する。
         // phase と独立した直交概念として扱いたいので、bool 2 個ではなく Option[Input] に畳む。
@@ -548,11 +537,12 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
                                     PlayerData.PartyQuery, EnemyData.RosterQuery,
                                     CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
                                     CustomEffects.GameOverRequest, CustomEffects.SuspendRequest, World.Command, World.WorldQuery, BoardQuery,
+                                    UiWorldState.State,
                                     LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State, ItemMenuState.State, TradeMenuState.State} =
         match (phase, input) {
         // 全滅メニュー: Z/Enter で選択確定（restart を emit）、X は無反応（必ず選ばせる）。
         case (TurnPhase.Phase.GameOver, TurnRules.Input.Confirm)
-                                              => Some(GameOverMenuScene.confirmCurrentSelection(scene))
+                                              => Some(GameOverMenuUi.confirmSelection(scene))
         case (TurnPhase.Phase.GameOver, TurnRules.Input.Cancel)
                                               => Some(scene)
         // 中断確認: Z/Enter で「はい/いいえ」確定、X で中断をやめて PlayerCursor へ。
@@ -601,7 +591,8 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                             ItemMenuState.State, TradeMenuState.State,
                             PlayerData.PartyQuery,
                             EnemyData.RosterQuery,
-                            Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
+                            Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
+                            UiWorldState.State} =
         match (phase, input) {
         case (TurnPhase.Phase.StaffAim,       Some(TurnRules.Input.Cancel))
                                               => checked_ecast(staffAimCancel(scene))
@@ -631,11 +622,25 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                                               => BattlePanelScene.confirm(scene)
         case (TurnPhase.Phase.PlayerAttack,   Some(TurnRules.Input.Cancel))
                                               => checked_ecast(BattlePanelScene.cancel(scene))
+        // 全滅モーダルの ↑↓（W/S）で選択カーソルを動かす（旧 ItemList + handleMenus の置換）。
+        case (TurnPhase.Phase.GameOver,       None)
+                                              => gameOverDirection(key, scene)
         // 明示 case が無いフェーズの Z/X は TurnRules.decide にそのまま渡す
         case (_,                              Some(inp))
                                               => TurnInputBridge.handle(inp, scene)
         // 方向キーなどはここまで来る (各 Scene が physicsProcess で polling する)
         case (_,                              None) => scene
+    }
+
+/// 全滅モーダル中の方向キーを選択カーソル移動へ変換する。
+/// Up / W → 1 つ上、Down / S → 1 つ下（端で回り込む）。他キーは素通し。
+def gameOverDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[NodeTag] \ UiWorldState.State =
+    match key {
+        case GameEngine.Key.Up   => GameOverMenuUi.moveSelection(-1); scene
+        case GameEngine.Key.W    => GameOverMenuUi.moveSelection(-1); scene
+        case GameEngine.Key.Down => GameOverMenuUi.moveSelection(1); scene
+        case GameEngine.Key.S    => GameOverMenuUi.moveSelection(1); scene
+        case _                   => scene
     }
 
 /// TradeInventory 中の方向キーを左右ペイン切替に変換する。
@@ -678,6 +683,23 @@ mod Game {
     /// 計算がこの値を使うため、ずれると TopBar 等の帯が画面幅とずれる）。
     pub def designWi(): Int32 = 240
     pub def designHi(): Int32 = 128
+
+    /// 起動時に World-entity UI の ui.json を spawnAsset で 1 回だけ組み込む。
+    /// spawnAsset は sources 台帳への登録まで済ませるので、以後は F1 の reloadAll が拾う。
+    /// 静的ツリーの読み込み失敗は設定ミスなので即 panic（fail-fast）。
+    def spawnUiOrBug(path: String): Unit \ {Fs.FileRead, UiWorldState.State} =
+        match UiSpec.spawnAsset(path, UiWorldState.State.get()) {
+            case Err(_)       => bug!("spawnUiOrBug: failed to spawn ui from ${path}")
+            case Ok((_, ui2)) => UiWorldState.State.put(ui2)
+        }
+
+    /// `spawnUiOrBug` の別名 root 版。同じ ui.json を `rootName` を差し替えて spawn する
+    /// （ユニット簡易カードを味方=左 / 敵=右の 2 root で使うため）。読み込み失敗は即 panic。
+    def spawnUiAsOrBug(path: String, rootName: String): Unit \ {Fs.FileRead, UiWorldState.State} =
+        match UiSpec.spawnAssetAs(path, rootName, UiWorldState.State.get()) {
+            case Err(_)       => bug!("spawnUiAsOrBug: failed to spawn ui from ${path} as ${rootName}")
+            case Ok((_, ui2)) => UiWorldState.State.put(ui2)
+        }
 
     /// ゲーム起動エントリ。Region と各 effect handler を立ち上げ、初回シーンを
     /// `SceneSetup.buildPlayingScene` で組み立てて `gameLoop` に入る。
@@ -763,6 +785,16 @@ mod Game {
                 // 階段でフロア移動する音
                 AudioStreamPlayer.setVolume("change_floor", 0.5f32);
                 // "T1 味方のターン" のログは Playing 突入時（applyPhaseChange）に出す。
+                // 全滅モーダルの World-entity UI を 1 回だけ spawn する（静的ツリー。以降は
+                // UiRender が毎フレーム描き、GameOverMenuUi.frameStep が可視/選択を同期する）。
+                spawnUiOrBug(GameOverMenuUi.specPath());
+                // 上部フェイズバーの World-entity UI も 1 回だけ spawn する（初期は不可視。
+                // フロア進入時に TopBarUi.enter が可視化する）。
+                spawnUiOrBug(TopBarUi.specPath());
+                // ユニット簡易カードは 1 枚の UnitCard.ui.json を左右 2 root で spawn する
+                // （味方カード=左 / 敵カード=右）。初期は不可視で、UnitCardUi.frameStep が対象解決で出す。
+                spawnUiAsOrBug(UnitCardUi.specPath(), UnitCardUi.allyRootName());
+                spawnUiAsOrBug(UnitCardUi.specPath(), UnitCardUi.enemyRootName());
                 // 初回 world は空で開始（タイトル画面はユニット/地形が無く、以降の全 store は
                 // spawn/build choke の Cmd が seed する）。syncFromScene はテスト seed 専用に退役。
                 gameLoop(catalogs, sceneRef, worldRef, GamePhase.Title, scene, World.empty())
@@ -777,7 +809,8 @@ mod Game {
                       k()
                   }
                   // 全味方脱落: 即リビルドせず盤面をフリーズしてモーダル選択メニューを出す。
-                  def request(scene, k) = k(GameOverMenuScene.freezeAndShow(scene))
+                  // モーダルは World-entity UI（UiWorldState）で保持するため scene は素通し。
+                  def request(scene, k) = { GameOverMenuUi.show(); k(scene) }
                   // 「最初から」: フロアを 1F に戻し turn 系をリセットしてフルリビルド（新ラン）。
                   def restartBeginning(_scene, k) = k(GameLifecycle.resetForGameOver(catalogs))
                   // 「そのフロアの最初から」: 進入時スナップショットから同フロアを決定論再構築。
@@ -881,7 +914,7 @@ mod Game {
               with BattlePanelScene.withState(rc) // 戦闘予報パネルの点滅タイマーを resource 化
               with TurnEndHoldScene.withState(rc) // ターンスキップ長押しゲージの状態を resource 化
               with LevelUpPanelScene.withState(rc) // レベルアップ演出パネルの状態を resource 化
-              with TopBarScene.withState(rc) // 上部バーの状態を resource 化
+              with TopBarState.withState(rc) // 上部バーの状態を resource 化
               with TitleMenuScene.withState(rc) // タイトル画面の状態を resource 化
               with UnitHPBarRender.withForecast(rc) // 攻撃予報（減る分点滅）の view 状態
               with ItemPickupPopupScene.withState(rc) // 中央アイテム取得ポップアップの状態を resource 化
@@ -906,6 +939,7 @@ mod Game {
               with CharacterSelectState.withState(rc) // 出撃メンバー選択画面の選択状態（注目/選択/サブモード/カルーセル）を resource 化
               with ItemMenuState.withState(rc)    // アイテム窓の選択状態（カテゴリ index / 一括選択マーク）を resource 化
               with TradeMenuState.withState(rc)   // 物交換窓のセッション状態（members/focus/pick/origin/marks）を resource 化
+              with UiWorldState.withState(rc)     // World-entity UI（全滅モーダル）の状態を resource 化
         }
 
     /// GamePhase に応じて画面（Scene）を組み立てる。**配線役** に徹し、各画面の構築は
@@ -919,7 +953,7 @@ mod Game {
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Math.Random,
                 SelectedPlayer.State, CursorState.State, ArrowCursorState.State, InitialSpawns.State, FloorProgress.State,
                 PartySelection.State, CharacterSelectState.State, GameLogger.GameLogger, FloorSnapshot.State, World.Command,
-                World.WorldQuery, TitleMenuScene.State, TopBarScene.State} =
+                World.WorldQuery, TitleMenuScene.State, TopBarState.State, UiWorldState.State} =
         match phase {
             case GamePhase.Title           => SceneSetup.buildTitle()
             case GamePhase.CharacterSelect => SceneSetup.buildCharacterSelect(catalogs)
@@ -957,10 +991,10 @@ mod Game {
                          GamePhaseState, PartySelection.State, CharacterSelectState.State,
                          Pacing.State, LogScene.State, BattlePanelScene.State, TurnEndHoldScene.State,
                          LevelUpPanelScene.State, ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State,
-                         TopBarScene.State, TitleMenuScene.State, UnitHPBarRender.ForecastState,
+                         TopBarState.State, TitleMenuScene.State, UnitHPBarRender.ForecastState,
                          Math.Random, FloorSnapshot.State,
                          World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
-                         World.RngDraw, r} =
+                         World.RngDraw, UiWorldState.State, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
         if (GameEngine.Game.shouldClose()) ()
         else {
@@ -985,7 +1019,7 @@ mod Game {
                 // 順序制約: TopBar は EnemyTurnDriver が World 経由で読む 2 bool の dual-write 元なので
                 // driver step より前に置く。TurnEndHold はログ帯を上書きするため LogScene.step より後に置く。
                 // 他は独立。
-                |> TopBarScene.step(dt)
+                |> TopBarUi.step(dt)
                 |> ItemPickupPopupScene.frameStep(dt)
                 |> CharacterSelectScene.step(dt)
                 |> LogScene.step(dt)
@@ -1000,7 +1034,11 @@ mod Game {
                 // 同一フレームで描画されるため挙動不変。相互依存なし＝順序自由。
                 |> FogScene.step
                 |> MinimapScene.step
-                |> ArrowCursorScene.step;
+                |> ArrowCursorScene.step
+                // 全滅モーダル UI の可視/選択ハイライトを phase から同期（旧 refreshItems の置換）。
+                |> GameOverMenuUi.frameStep(dt)
+                // ユニット簡易カード（味方左 / 敵右）の表示対象を解決して流し込む（旧 process 2 case の置換）。
+                |> UnitCardUi.frameStep(dt);
             // 画面（GamePhase）が変わったフレームだけ、新しい画面を組み立て直す。
             // 例: 選択画面でリーダー確定 → Playing に切り替わり、ここでダンジョンが組まれる。
             let currentPhase = GamePhaseState.get();
@@ -1031,7 +1069,8 @@ mod Game {
 /// fog・range・配置物・fx・HUD/menu: scene 側を hideSubtrees で renderArgs から外し、
 /// World render System（各 render*）で描く。camera ViewTransform はフレーム 1 回だけ計算して共有。
 def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[NodeTag]):
-        Unit \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarRender.ForecastState} =
+        Unit \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarRender.ForecastState,
+                UiWorldState.State} =
     let prepped = RenderWorld.hideSubtrees(synced);
     let transform = RenderWorld.viewTransform(synced);
     // tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
@@ -1039,6 +1078,8 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[N
     let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(prepped);
     // fog の明るい穴を frame に 1 回計算し、配置物直描きの lit ゲートで共有。
     let holesOpt = RenderWorld.fogHolesOpt(synced);
+    // World-entity UI を 1 度のレイアウト解決で sprite（drawables）と polygon の 2 チャンネルへ射影。
+    let uiRendered = UiRender.renderUi();
     let worldDrawables = RenderWorld.renderUnits(world2, transform, synced)
         // 配置物/fx/HP バー/武器アイコンは World store + catalog/定数から直描き（scene ノード無し）。
         |> List.append(RenderWorld.renderStairs(world2, holesOpt, transform))
@@ -1050,11 +1091,15 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[N
         |> List.append(WeaponIconRender.renderPlates(world2, transform, synced))
         |> List.append(RenderWorld.renderFog(transform, synced))
         |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
-        |> List.append(RenderWorld.renderSubtrees(transform, synced));
-    // polygon チャンネルも World 由来 subtree（minimap 円/BattlePanel ドット/TurnEndHold リング
-    //   ＋ per-unit 武器グリフ）を合流。scenePolygons は hideSubtrees で除外済み。
+        |> List.append(RenderWorld.renderSubtrees(transform, synced))
+        // World-entity UI（全滅モーダル・TopBar 等）の box/text/sprite を HUD レイヤに合流（画面固定・camera 免除）。
+        |> List.append(uiRendered#drawables);
+    // polygon チャンネルは World 由来 subtree（minimap 円/BattlePanel ドット/TurnEndHold リング
+    //   ＋ per-unit 武器グリフ）に、World-entity UI 由来 polygon（TopBar の集合中▶）を合流。
+    //   scenePolygons は hideSubtrees で除外済み。
     GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
         RenderWorld.renderTileMaps(world2, transform, synced),
         List.append(scenePolygons,
             List.append(RenderWorld.renderSubtreePolygons(transform, synced),
-                        WeaponIconRender.renderGlyphs(world2, transform, synced))))
+                List.append(WeaponIconRender.renderGlyphs(world2, transform, synced),
+                            uiRendered#polygons))))

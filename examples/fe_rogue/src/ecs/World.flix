@@ -1728,11 +1728,11 @@ mod World {
             case EntityRef.Enemy(_)   => None
         }
 
-    /// 敵ターン intro hold 中か（`TopBarScene.isBusy` の World 版・順序非依存）。
+    /// 敵ターン intro hold 中か（`TopBarUi.isBusyOf` の World 版・順序非依存）。
     pub def enemyTurnBusyOf(world: World): Bool =
         let World.World(w) = world; w#enemyTurnBusy
 
-    /// バーが敵ターン観測済みか（`TopBarScene.hasObservedEnemy` の World 版・順序非依存）。
+    /// バーが敵ターン観測済みか（`TopBarUi.hasObservedEnemyOf` の World 版・順序非依存）。
     pub def phaseObservedEnemyOf(world: World): Bool =
         let World.World(w) = world; w#phaseObservedEnemy
 

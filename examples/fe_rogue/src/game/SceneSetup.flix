@@ -27,7 +27,7 @@ mod SceneSetup {
                                 floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, CursorState.State, ArrowCursorState.State, PartySelection.State, World.Command, World.WorldQuery,
-                TopBarScene.State} =
+                TopBarState.State, UiWorldState.State} =
         // 前フロアの配置物（宝箱/床アイテム）・探索記憶（ミニマップ）・ユニット store を掃除する
         // （scene 再構築での自動 prune は廃止＝明示 Cmd。この直後の spawn が seed し直す）。
         WorldDriver.clearFloorStores();
@@ -60,7 +60,7 @@ mod SceneSetup {
     /// MapScene / Fog / DamagePopup / Explosion の後、駒配置の後に呼ぶ前提。
     /// `label` はフロア番号表示（"1F" 等）、`name` はフロア名（"始まりの洞窟" 等。空可）。
     def addHudAndDrivers(label: String, name: String, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, World.WorldQuery, TopBarScene.State} =
+            \ {GameEngine.Game, Fs.FileRead, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, World.WorldQuery, TopBarState.State, UiWorldState.State} =
         scene
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
@@ -69,18 +69,17 @@ mod SceneSetup {
             |> EnemyTurnDriver.add // 敵ターン進行の常駐タグノード (process で phase 判定)
             |> StairsExitDriver.add      // 集合「階段で離脱」の順次退場ドライバ (process で phase 判定)
             |> ItemMenuScene.add        // アイテム選択ウィンドウ (初期は非表示)
-            |> UnitCardScene.add        // 左サイドの選択ユニット簡易カード (初期は非表示)
-            |> EnemyCardScene.add       // 右サイドの攻撃対象敵カード (UnitCard と左右対称・初期は非表示)
+            // ユニット簡易カード（味方左 / 敵右）は World-entity UI（UnitCardUi / UiWorldState）へ移行済み。scene には積まない。
             |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
             |> WeaponSelectScene.add    // 武器選択ウィンドウ (ActionMenu「攻撃」確定で右隣に出る。初期は非表示)
-            |> GameOverMenuScene.add    // 全滅時のモーダル選択 (初期は非表示)
+            // 全滅モーダルは World-entity UI（GameOverMenuUi / UiWorldState）へ移行済み。scene には積まない。
             |> SuspendConfirmScene.add  // 中断確認のモーダル (初期は非表示)
             |> TradeMenuScene.add       // 物交換ウィンドウ (2 ペイン、初期は非表示)
             |> BattlePanelScene.add     // 戦闘予報ミニウィンドウ (World 配下・初期は非表示)
             |> LevelUpPanelScene.add    // レベルアップのステータス変化パネル (初期は非表示)
-            // ユニット情報は UnitCardScene（左サイドの常設カード）が担う。
-            // カーソル下のユニット情報も UnitCardScene が PlayerCursor 中に表示する。
-            |> TopBarScene.add(label, name)  // 上部フェイズバー（フロア番号+名前 / フェイズ / 下線）
+            // ユニット簡易カード（選択/カーソル上ユニット・攻撃対象敵）は World-entity UI（UnitCardUi）が
+            // 起動時 spawn ＋ frameStep 表示するため、ここでは scene に積まない。
+            |> TopBarUi.enter(label, name)   // 上部フェイズバー（World-entity UI・フロア設定 + 可視化 + 状態初期化）
             |> LogScene.add             // 右下の3行一時ログ (5秒で消える)
             |> ItemPickupPopupScene.add // アイテム取得ポップアップ (初期は非表示)
             |> TurnEndHoldScene.add     // Shift 長押しでターンエンドする中央ゲージ (初期は非表示)
@@ -93,7 +92,7 @@ mod SceneSetup {
                             floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, CursorState.State, ArrowCursorState.State, InitialSpawns.State, PartySelection.State, World.Command,
-                World.WorldQuery, TopBarScene.State} =
+                World.WorldQuery, TopBarState.State, UiWorldState.State} =
         let scene = buildPlayingScene(catalogs, floor);
         InitialSpawns.State.put({
             enemies = EnemyScene.snapshotSpawns(scene),
@@ -110,7 +109,7 @@ mod SceneSetup {
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, CursorState.State, ArrowCursorState.State, InitialSpawns.State, FloorProgress.State,
                 PartySelection.State, FloorSnapshot.State, World.Command, World.WorldQuery,
-                TopBarScene.State} =
+                TopBarState.State, UiWorldState.State} =
         let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
         recordFloorEntry(catalogs, buildAndRecord(catalogs, floor))
 
@@ -144,7 +143,7 @@ mod SceneSetup {
     /// audio は `applyAudioAttach` で再アタッチ（BGM 再生）。
     pub def rebuildFloorFromSnapshot(catalogs: GameLifecycle.Catalogs, snap: FloorSnapshot.T): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, World.Command,
-                World.WorldQuery, TopBarScene.State} =
+                World.WorldQuery, TopBarState.State, UiWorldState.State} =
         let floor = FloorCatalog.get(snap#floorId, catalogs#floors);
         // 前フロア/前 run の配置物・探索記憶・ユニット store を掃除してから addFromSnaps で再 spawn する
         // （scene 再構築での自動 prune は廃止＝明示 Cmd。addFromSnaps より前が必須）。
@@ -182,15 +181,17 @@ mod SceneSetup {
 
     /// タイトル画面を組む。ダンジョン外へ出るので World のユニット store と地形 read-model を掃除する。
     pub def buildTitle(): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead, World.Command, TitleMenuScene.State} =
+            \ {GameEngine.Game, Fs.FileRead, World.Command, TitleMenuScene.State, UiWorldState.State} =
         WorldDriver.exitDungeon();
         TitleMenuScene.add(Scene.empty())
+            |> TopBarUi.leave   // ダンジョン外では上部バーを隠す
 
     /// 出撃メンバー選択画面を組む。タイトルと同じくダンジョン外なので World を掃除する。
     pub def buildCharacterSelect(catalogs: GameLifecycle.Catalogs): Scene[NodeTag]
-            \ {GameEngine.Game, World.Command, CharacterSelectState.State} =
+            \ {GameEngine.Game, World.Command, CharacterSelectState.State, UiWorldState.State} =
         WorldDriver.exitDungeon();
         CharacterSelectScene.add(UnitCatalog.pool("players", catalogs#players), Scene.empty())
+            |> TopBarUi.leave   // ダンジョン外では上部バーを隠す
 
     /// 現在フロアのダンジョンを組む。タイトル由来 ＋ スナップショット有り ＝ 中断再開で、
     /// `FloorSnapshot.State` の snapshot から **乱数なし** で決定論再構築する（`buildCurrentFloor` は
@@ -200,7 +201,7 @@ mod SceneSetup {
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State,
-                World.Command, World.WorldQuery, TopBarScene.State} =
+                World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State} =
         match (prevPhase, FloorSnapshot.State.get()) {
             case (GamePhase.Title, Some(snap)) =>
                 GameLogger.playerLog("中断データから再開");

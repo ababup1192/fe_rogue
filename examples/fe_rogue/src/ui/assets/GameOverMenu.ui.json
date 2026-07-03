@@ -1,0 +1,26 @@
+{
+  "templates": {
+    "menuItem": { "widget": "text", "font": "ui", "fontSize": 4.0, "tint": "#e8e8e8", "zIndex": 120 }
+  },
+  "root": {
+    "name": "GameOverMenu", "widget": "none", "visible": false, "layer": 3,
+    "children": [
+      {
+        "name": "panel", "widget": "box", "color": "#0d0d26", "alpha": 0.9,
+        "borderWidth": 1, "borderColor": "#ffffff",
+        "abs": [42, 42], "width": 86, "height": "auto", "zIndex": 110,
+        "dir": "column", "pad": [3, 3, 3, 3],
+        "children": [
+          {
+            "name": "menu", "widget": "none", "dir": "column", "gap": 2.0,
+            "children": [
+              { "use": "menuItem", "name": "item0", "text": "女神の加護（その場復活）", "meta": "goddess" },
+              { "use": "menuItem", "name": "item1", "text": "フロアの最初から", "meta": "floor" },
+              { "use": "menuItem", "name": "item2", "text": "最初から", "meta": "beginning" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
