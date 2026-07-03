@@ -306,13 +306,17 @@ mod TestCursorScene {
         let path = CursorScene.cursorPath();
         match Scene.getEngineNode(path, scene) {
             case Some(node) =>
-                // physicsProcess は WeaponSelect 分岐用に SelectedPlayer.State を要求するので、
-                // ここで discharge する（PlayerCursor / PlayerAttack 分岐では未使用なので値は任意）。
-                // physicsProcess が World 位置を読む（空 World → scene fallback で従来どおり）。
+                // physicsProcess は WeaponSelect 分岐用に SelectedPlayer.State / UiWorldState.State を
+                // 要求するので、ここで discharge する（PlayerCursor / PlayerAttack 分岐では未使用なので
+                // 値は任意）。physicsProcess が World 位置を読む（空 World → scene fallback で従来どおり）。
                 let (_, _) =
                     TestUnitFixtures.withSelectedPlayer(0, () ->
                         run { CursorScene.physicsProcess(Duration.seconds(0.016), node, path, scene) }
-                            with handler World.WorldQuery { def get(k) = k(World.empty()) });
+                            with handler World.WorldQuery { def get(k) = k(World.empty()) }
+                            with handler UiWorldState.State {
+                                def get(k)      = k(UiStore.empty())
+                                def put(_ui, k) = k()
+                            });
                 CursorScene.getCursorData()
             case _ => bug!("Cursor not found at cursorPath()")
         }

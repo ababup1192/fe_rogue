@@ -217,7 +217,7 @@ mod StairsExitDriver {
         if (PlayerScene.allLivingUsedStairs(cleared))
             CustomEffects.FloorAdvanceRequest.advance(cleared)
         else
-            ActionMenuScene.turnEndShortcut(cleared)
+            ActionMenuUi.turnEndShortcut(cleared)
 
     /// driver ノードの状態を書き換える（HoldGauge と同手法）。
     def setState(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] =

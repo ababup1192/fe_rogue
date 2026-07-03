@@ -231,7 +231,7 @@ mod TurnEndHoldScene {
             let shown = applyAppearance(result#ratio, result#visible, scene);
             if (result#fire) {
                 AudioStreamPlayer.play(fireSound());
-                ActionMenuScene.turnEndShortcut(shown)
+                ActionMenuUi.turnEndShortcut(shown)
             } else shown
         }
 

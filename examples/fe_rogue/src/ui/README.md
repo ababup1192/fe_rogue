@@ -29,7 +29,7 @@ entity として `UiStore` に登録する。見た目は `UiRender` が毎フ�
 | `name` | 文字列 | 必須 | 兄弟内で一意な識別名。名前パスの構成要素。**空文字・`/` 含みは不可**（名前パスを壊す）。 |
 | `widget` | 文字列 | `"none"` | 描画種別。`"box"` / `"text"` / `"sprite"` / `"poly"` / `"none"`（レイアウト専用コンテナ）。未知値は不可。 |
 | `use` | 文字列 | なし | 参照するテンプレート名。テンプレ値を既定にノード側フィールドで上書きする。未定義名は不可。 |
-| `visible` | 真偽 | `true` | 初期可視。祖先が不可視なら子も不可視（継承）。 |
+| `visible` | 真偽 | `true` | 初期可視。祖先が不可視なら子も不可視（継承）。`false` のノードは**レイアウトからも除外**され、その部分木は場所を取らない（CSS の `display:none` 相当）。フロー内の兄弟は隙間を詰め、`abs` の子も配置されない。`height:auto` の親は可視な子だけで高さが決まるので、項目を隠すと窓が縮む。 |
 | `bind` | 文字列 | なし | text の流し込み先 bind key。実行時に `UiBinding.apply` が値を解決して text へ入れる。 |
 | `meta` | 文字列 | なし | メニュー項目等の識別 metadata。選択解決（`choiceOf` 等）が読む。 |
 | `layer` | 整数 | `0` | **root のみ有効**（非 root では無視）。`CanvasLayer.layerStride` 倍して zIndex に加算し、他 HUD と同じ z 序列へ合流する。 |
@@ -118,6 +118,18 @@ parse エラー。用途例: TopBar 中央の「集合中」ラベル左の再�
 背面→前面に並べる。同じ `zIndex` なら**宣言順（兄弟順）が効く**ので、単純な前後関係は
 `zIndex` を書かず宣言順で済ませられる。
 
+## 窓ごとの前後は z 帯で分ける（同 layer に複数窓が重なるとき）
+
+同じ `layer` に複数の root（窓）が同時に見え、かつ**重なって開く**とき（例: ActionMenu の右隣に
+WeaponSelect が被さる）は、後から手前に出す窓に **`zIndex` の帯を丸ごと上へ確保**する。extract は
+全 root の drawable を `zIndex` 単位でフラットに並べるため、窓どうしが同じ帯（panel/header/highlight/
+text が同じ値域）だと、後ろの窓の text が前の窓の panel の上へ載って交錯する（窓単位の前後にならない）。
+
+- 帯は窓ごとに間隔を空けて割り当てる。例: ActionMenu = panel110 / header118 / highlight119 / text120-121、
+  その手前に出す WeaponSelect = panel130 / header138 / highlight139 / text·icon140-142。
+- 帯の中の相対序列（panel<header<highlight<text）は各窓で保つ。窓間の分離は帯の**下駄**（+20 等）で付ける。
+- 別 `layer` の窓（CanvasLayer が別）は `layer` 差で既に分離されるので、この帯調整は要らない。
+
 ## 動的状態はリロードを生き延びる
 
 以下はファイル由来でなくゲームが実行時に設定する状態で、`UiSpec.reloadAll`（F1 ホットリロード）
@@ -150,3 +162,29 @@ color / text / tint など毎フレーム同期される見た目は、リロー
   `reloadAll` → `reloadOne` は読み直した spec の root 名を **常にこのキーへ強制的に付け直して**
   respawn する。ゆえに ①別名 spawn した root が同じキーで正しくリロードされ、②`ui.json` 側の
   root `name` を書き換えても旧キーの孤児ツリーが残らない（登録キーが勝つ）。
+
+## 選択メニューの標準構成（塗り箱ハイライト + 固定行ピッチ）
+
+縦並びの選択メニュー（ActionMenu / WeaponSelect / GameOverMenu / SuspendConfirm）は、選択行を
+**塗り箱ハイライト**で示し、行は**固定ピッチ**で並べる。新しいメニューもこの構成に揃えること。
+
+- **項目行は固定高**にする。`menu` を `gap: 0.0` にし、各項目（またはそれを包む行コンテナ）へ
+  `height: <行ピッチ>` を Px で与える。行ピッチが固定なので、後述の塗り箱を**レイアウト結果を
+  読み戻さずに**決定論的に置ける（`= inset + sel × 行ピッチ`）。1 行テキストは行コンテナ
+  （`none`, `mainAlign: center`）で包んで `label` text を上下中央に置く（テキストは矩形左上に
+  描かれるため、固定高セルに直に置くと上寄せになる）。項目の `meta` は行コンテナ側に持たせる
+  （`UiMenu.itemIds` は `menu` 直下の meta 持ち子を項目列と見なす）。
+
+- **塗り箱ハイライト**は `menu` 直下に **abs 子** として 1 枚宣言する（項目より背面 z、`box`）。
+  塗り・枠・角丸・寸法は ui.json 側で固定宣言し（行セルより `inset` 分だけ小さくして隣行と
+  接しないようにする）、位置だけ毎フレーム `UiMenu.applyHighlight(menuPath, highlightPath, sel,
+  rowPitch, inset, ui)` が選択行へ動かす。配色は `fill #16314f / 枠 #2f6df0 0.5px / cornerRadius 2`
+  （inset 0.5）。
+
+- **選択行の文字色は変えない**（通常色のまま）。選択は塗り箱で示すので、文字色まで変えると
+  二重強調になる。disabled 項目だけ淡色にする。
+
+- **防御**: 毎フレームの `frameStep` で `UiMenu.clampSelection`（または同等のクランプ）で選択を
+  `[0, 項目数)` に収める。動的に項目を流し込むメニューは、スロット数超過を `bug!` で弾く。
+  ui.json のスロット数とコード側の `maxSlots()` は一致させる（実 asset を parse して数える
+  テストで pin する）。

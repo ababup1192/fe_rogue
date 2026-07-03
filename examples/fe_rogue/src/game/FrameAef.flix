@@ -23,13 +23,18 @@ mod FrameAef {
                          World.WorldQuery,
                          // 手動移動の着地自動取得（stepFor→autoPickupOrLog）が中央ポップアップの
                          // 取得音予約/表示を State resource に書くため。
-                         ItemPickupPopupScene.State}
+                         ItemPickupPopupScene.State,
+                         // WeaponSelect 中の左右ターゲットサイクル（CursorScene.stepWeaponSelectCycle）が
+                         // フォーカス中武器を World-entity UI の選択カーソルから読む
+                         // （WeaponSelectUi.hoveredWeaponIndex）ため。
+                         UiWorldState.State}
 
     /// `process` redef の分岐先が消費する Aef 集合 (`FrameAef.ProcessT`)。
     /// 分岐先は `CombatDriver.process`（Player/Enemy の drainSignals で attack:hit /
     /// death_blink / attack_lunge を解決）と、メニュー/カード/パネルの `refreshItems`/`process`
-    /// （ItemMenu/ActionMenu/WeaponSelect/GameOverMenu/SuspendConfirm/Trade/
-    /// UnitCard/EnemyCard/BattlePanel/LevelUpPanel）。
+    /// （ItemMenu/Trade/BattlePanel/LevelUpPanel。ActionMenu/WeaponSelect/GameOverMenu/
+    /// SuspendConfirm/UnitCard/EnemyCard は World-entity UI へ移行済みで gameLoop の
+    /// 明示 frameStep から駆動する）。
     ///   - `EnemyTurn.Queue` / `Pacing.State` / `GameOverRequest` / `ThiefDropRequest` /
     ///     `World.RngDraw` は `CombatDriver.process` が要求（命中ロールは RngDraw chokepoint 経由）。
     ///   - `BattlePanelScene.State` / `UnitHPBarRender.ForecastState` は BattlePanel.process が
@@ -46,5 +51,8 @@ mod FrameAef {
                                 ItemMenuState.State, TradeMenuState.State,
                                 UnitHPBarRender.ForecastState,
                                 World.Command, World.PhaseQuery, World.WorldQuery,
-                                World.RngDraw}
+                                World.RngDraw,
+                                // BattlePanelScene.process の WeaponSelect 予報が対象武器を
+                                // World-entity UI の選択カーソルから読む（WeaponSelectUi.hoveredWeaponIndex）ため。
+                                UiWorldState.State}
 }

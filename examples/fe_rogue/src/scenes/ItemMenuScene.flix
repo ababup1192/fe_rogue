@@ -206,7 +206,7 @@ mod ItemMenuScene {
                          _path: NodePath,
                          scene: Scene[NodeTag]):
                         (EngineNode[NodeTag], Scene[NodeTag])
-                        \ {SelectedPlayer.State, CursorState.State, TurnPhase.State, ItemMenuState.State, PlayerData.PartyQuery, World.WorldQuery} =
+                        \ {SelectedPlayer.State, CursorState.State, TurnPhase.State, ItemMenuState.State, PlayerData.PartyQuery, World.WorldQuery, UiWorldState.State} =
         let phase = TurnPhase.State.get();
         let withVisibility = applyVisibility(phase, scene);
         let withItems = match phase {
@@ -326,7 +326,7 @@ mod ItemMenuScene {
             (List[ItemEntry], Map[Int32, String], Map[Int32, String], Map[Int32, ItemIcon]) =
         if (cat == catWeapon())
             buildRows("w", player#weapons,
-                w -> w#name, w -> WeaponSelectScene.weaponSubline(w), w -> w#sprite, true)
+                w -> w#name, w -> WeaponSelectUi.weaponSubline(w), w -> w#sprite, true)
         else if (cat == catConsumable())
             buildRows("c", player#consumables,
                 c -> c#name, consumableSubline, c -> c#sprite, false)
@@ -368,15 +368,12 @@ mod ItemMenuScene {
             |> Label2D.mapAt(headerPath(), CanvasItem.setModulate(UITheme.encumbranceTierColor(load#tier)))
 
     /// アイテム窓を ActionMenu の右端基準に重ねて配置する（武器メニューと同じ）。
-    def positionBesideActionMenu(scene: Scene[NodeTag]): Scene[NodeTag] =
-        match Panel.getAt(ActionMenuScene.panelPath(), scene) {
-            case None         => scene
-            case Some(action) =>
-                let actionRight = Node2D.getPosition(action)#x + Panel.getSize(action)#x;
-                let newX = actionRight - panelOverlapPx();
-                scene |> Panel.mapAt(panelPath(), p ->
-                    Node2D.setPosition({x = newX, y = Node2D.getPosition(p)#y}, p))
-        }
+    /// ActionMenu（ActionMenuUi）のパネル幅は内容フィットで毎フレーム変わるので、その design 右端を
+    /// UiWorldState から読み取って基準にする。
+    def positionBesideActionMenu(scene: Scene[NodeTag]): Scene[NodeTag] \ UiWorldState.State =
+        let newX = ActionMenuUi.panelDesignRight() - panelOverlapPx();
+        scene |> Panel.mapAt(panelPath(), p ->
+            Node2D.setPosition({x = newX, y = Node2D.getPosition(p)#y}, p))
 
     /// 攻撃中 (PlayerAttack) の武器リスト用に在庫を読む薄ラッパ（PartyQuery 経由）。
     def weaponsOf(id: Int32): List[UnitCatalog.WeaponResource] \ PlayerData.PartyQuery =
@@ -395,7 +392,8 @@ mod ItemMenuScene {
     /// 選択中プレイヤーの「現在カテゴリ」を ItemList に並べる（ItemSelect 中）。
     /// 現在カテゴリが空ならアイテムのある先頭カテゴリへスナップする。窓は ActionMenu の右隣へ。
     def refreshItemList(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery,
+                              UiWorldState.State} =
         match SelectedPlayer.State.get()#id {
             case None => scene
             // 在庫読みは PartyQuery（World オーバーレイ）経由。

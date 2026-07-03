@@ -577,7 +577,7 @@ mod TradeMenuScene {
         let staves      = stavesOf(playerId);
         let consumables = consumablesOf(playerId);
         let rings       = ringsOf(playerId);
-        let wD = List.map(w -> (WeaponSelectScene.weaponSubline(w), spriteIcon(w#sprite)), weapons);
+        let wD = List.map(w -> (WeaponSelectUi.weaponSubline(w), spriteIcon(w#sprite)), weapons);
         let sD = List.map(s -> (ItemMenuScene.staffSubline(s),       spriteIcon(s#sprite)), staves);
         let cD = List.map(c -> (ItemMenuScene.consumableSubline(c),  spriteIcon(c#sprite)), consumables);
         let rD = List.map(r -> (ItemMenuScene.ringStatLine(r),       spriteIcon(r#sprite)), rings);

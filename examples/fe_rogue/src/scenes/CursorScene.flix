@@ -144,7 +144,8 @@ mod CursorScene {
                                Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyData.RosterQuery, TurnPhase.State,
-                               SelectedPlayer.State, CursorState.State, World.WorldQuery} =
+                               SelectedPlayer.State, CursorState.State, World.WorldQuery,
+                               UiWorldState.State} =
         match TurnPhase.State.get() {
             case TurnPhase.Phase.PlayerCursor       => stepFreeMovement(delta, node, path, scene)
             // 武器選択中も左右で対象の敵を選べる（フォーカス武器が届く敵を巡回）。
@@ -163,7 +164,7 @@ mod CursorScene {
                               (EngineNode[NodeTag], Scene[NodeTag])
                               \ {GameEngine.Game, Tween.Scheduler, AnimationPlayer.Scheduler,
                                  SelectedPlayer.State, CursorState.State, EnemyData.RosterQuery,
-                                 World.WorldQuery} =
+                                 World.WorldQuery, UiWorldState.State} =
         if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
         else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
         else {
@@ -183,12 +184,12 @@ mod CursorScene {
     /// フォーカス中の武器が届く生存敵を reading order（y→x）で返す。
     /// 選択中味方 / フォーカス武器が取れないときは空。
     def weaponSelectTargets(scene: Scene[NodeTag]):
-            List[EnemyScene.Data] \ {SelectedPlayer.State, EnemyData.RosterQuery, World.WorldQuery} =
+            List[EnemyScene.Data] \ {SelectedPlayer.State, EnemyData.RosterQuery, World.WorldQuery, UiWorldState.State} =
         let opt = forM (
             pid    <- SelectedPlayer.State.get()#id;
             // 射程判定の自位置は World 上書き Data。
             player <- PlayerScene.getWithWorldPos(pid, scene);
-            widx   <- WeaponSelectScene.hoveredWeaponIndex(scene);
+            widx   <- WeaponSelectUi.hoveredWeaponIndex();
             weapon <- List.nth(widx, player#weapons)
         ) yield
             // 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む（scene 直読みは stale）。

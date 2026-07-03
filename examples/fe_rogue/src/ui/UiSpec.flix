@@ -574,4 +574,33 @@ mod UiSpec {
     def nameOf(spec: Spec): String =
         let Spec.Spec(fields) = spec;
         fields#name
+
+    // ========================================================================
+    // Spec ツリーの走査（宣言検査用）
+    // ========================================================================
+
+    /// Spec ノードの子一覧を取り出す。
+    def childrenOf(spec: Spec): List[Spec] =
+        let Spec.Spec(fields) = spec;
+        fields#children
+
+    /// 直下の子から name が一致する最初のノードを引く。
+    def childNamed(name: String, spec: Spec): Option[Spec] =
+        childrenOf(spec) |> List.findLeft(child -> nameOf(child) == name)
+
+    /// 名前列 path で spec を上から辿った先のノード（途中で見つからなければ None）。
+    def navigate(path: List[String], spec: Spec): Option[Spec] =
+        match path {
+            case Nil          => Some(spec)
+            case name :: rest => childNamed(name, spec) |> Option.flatMap(child -> navigate(rest, child))
+        }
+
+    /// spec を名前列 path で辿った先のノードの直下で、name が prefix で始まる子の数を返す。
+    /// 途中のノードが見つからなければ 0。ui.json のスロット宣言数を（UiWorld を組まずに）
+    /// 数えてコード側の想定数と突き合わせるテスト seam。
+    pub def countPrefixedChildren(path: List[String], prefix: String, spec: Spec): Int32 =
+        match navigate(path, spec) {
+            case None       => 0
+            case Some(node) => childrenOf(node) |> List.count(child -> String.startsWith({prefix = prefix}, nameOf(child)))
+        }
 }

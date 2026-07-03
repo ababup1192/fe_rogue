@@ -10,6 +10,9 @@ mod TestUiLayout {
     /// 既定スタイル（Column・pad0・gap0・Auto×Auto・Start/Start）。
     def base(): UiLayout.Style = UiLayout.defaultStyle()
 
+    /// 全 entity 可視（visible 未登録＝可視扱いなので空 Map でよい）。
+    def allVisible(): Map[EntityId, Bool] = Map.empty()
+
     /// 矩形を (posX, posY, sizeX, sizeY) に落とす。
     def rectTuple(rect: Rect2.Rect2): (Float64, Float64, Float64, Float64) =
         (rect#position#x, rect#position#y, rect#size#x, rect#size#y)
@@ -38,7 +41,7 @@ mod TestUiLayout {
         let order = Map#{2 => 0, 3 => 1};
         let measures = (Map.empty(): Map[EntityId, Vec2.Vec2]);
         let rootRect = {position = {x = 0.0, y = 0.0}, size = {x = 20.0, y = 20.0}};
-        let result = UiLayout.computeLayout(styles, parents, order, measures, 1, rootRect);
+        let result = UiLayout.computeLayout(styles, parents, order, measures, allVisible(), 1, rootRect);
         Assert.assertEq(
             expected = (Some((0.0, 0.0, 10.0, 4.0)), Some((0.0, 6.0, 10.0, 6.0))),
             (lookup(2, result), lookup(3, result)))
@@ -62,7 +65,7 @@ mod TestUiLayout {
         let order = Map#{2 => 0, 3 => 0, 4 => 1};
         let measures = Map#{3 => {x = 10.0, y = 4.0}, 4 => {x = 14.0, y = 4.0}};
         let rootRect = {position = {x = 0.0, y = 0.0}, size = {x = 100.0, y = 100.0}};
-        let result = UiLayout.computeLayout(styles, parents, order, measures, 1, rootRect);
+        let result = UiLayout.computeLayout(styles, parents, order, measures, allVisible(), 1, rootRect);
         Assert.assertEq(
             expected = (Some((0.0, 0.0, 20.0, 13.0)), Some((3.0, 7.0, 14.0, 4.0))),
             (lookup(2, result), lookup(4, result)))
@@ -84,7 +87,7 @@ mod TestUiLayout {
         let order = Map#{2 => 0, 3 => 1, 4 => 2};
         let measures = (Map.empty(): Map[EntityId, Vec2.Vec2]);
         let rootRect = {position = {x = 0.0, y = 0.0}, size = {x = 10.0, y = 30.0}};
-        let result = UiLayout.computeLayout(styles, parents, order, measures, 1, rootRect);
+        let result = UiLayout.computeLayout(styles, parents, order, measures, allVisible(), 1, rootRect);
         Assert.assertEq(
             expected = (Some((0.0, 6.0, 10.0, 8.0)), Some((0.0, 14.0, 10.0, 16.0))),
             (lookup(3, result), lookup(4, result)))
@@ -104,7 +107,7 @@ mod TestUiLayout {
         let order = Map#{2 => 0, 3 => 1, 4 => 2};
         let measures = (Map.empty(): Map[EntityId, Vec2.Vec2]);
         let rootRect = {position = {x = 0.0, y = 0.0}, size = {x = 10.0, y = 30.0}};
-        let result = UiLayout.computeLayout(styles, parents, order, measures, 1, rootRect);
+        let result = UiLayout.computeLayout(styles, parents, order, measures, allVisible(), 1, rootRect);
         Assert.assertEq(
             expected = (Some((0.0, 0.0, 10.0, 4.0)), Some((0.0, 13.0, 10.0, 4.0)), Some((0.0, 26.0, 10.0, 4.0))),
             (lookup(2, result), lookup(3, result), lookup(4, result)))
@@ -127,7 +130,7 @@ mod TestUiLayout {
         let order = Map#{2 => 0, 3 => 1};
         let measures = (Map.empty(): Map[EntityId, Vec2.Vec2]);
         let rootRect = {position = {x = 0.0, y = 0.0}, size = {x = 50.0, y = 50.0}};
-        let result = UiLayout.computeLayout(styles, parents, order, measures, 1, rootRect);
+        let result = UiLayout.computeLayout(styles, parents, order, measures, allVisible(), 1, rootRect);
         Assert.assertEq(
             expected = (Some((3.0, 2.0, 10.0, 4.0)), Some((43.0, 7.0, 8.0, 6.0))),
             (lookup(2, result), lookup(3, result)))
@@ -146,6 +149,50 @@ mod TestUiLayout {
         let order = Map#{2 => 0};
         let measures = (Map.empty(): Map[EntityId, Vec2.Vec2]);
         let rootRect = {position = {x = 0.0, y = 0.0}, size = {x = 20.0, y = 30.0}};
-        let result = UiLayout.computeLayout(styles, parents, order, measures, 1, rootRect);
+        let result = UiLayout.computeLayout(styles, parents, order, measures, allVisible(), 1, rootRect);
         Assert.assertEq(expected = Some((0.0, 0.0, 20.0, 4.0)), lookup(2, result))
+
+    // ════════════════════════════════════════════════════════
+    // display:none（visible=false の子はフローから除外）
+    // ════════════════════════════════════════════════════════
+
+    /// root(1) Column gap=2。子 c1(2)=Px 10x4・c2(3)=Px 10x6・c3(4)=Px 10x5。
+    /// c2 を visible=false にすると、フローから外れて c1 の直後に c3 が詰まる。
+    ///   (0,0) c1 10x4
+    ///          gap 2
+    ///   (0,6) c3 10x5   ← c2 が居た隙間は空かない（display:none 相当）
+    /// c2 は矩形が割り当てられない（None）。
+    @Test
+    def testDisplayNoneExcludesHiddenChildFromFlow(): Unit \ Assert =
+        let rootStyle = {dir = UiLayout.Dir.Column, gap = 2.0 | base()};
+        let c1 = {width = UiLayout.SizeSpec.Px(10.0), height = UiLayout.SizeSpec.Px(4.0) | base()};
+        let c2 = {width = UiLayout.SizeSpec.Px(10.0), height = UiLayout.SizeSpec.Px(6.0) | base()};
+        let c3 = {width = UiLayout.SizeSpec.Px(10.0), height = UiLayout.SizeSpec.Px(5.0) | base()};
+        let styles = Map#{1 => rootStyle, 2 => c1, 3 => c2, 4 => c3};
+        let parents = Map#{2 => 1, 3 => 1, 4 => 1};
+        let order = Map#{2 => 0, 3 => 1, 4 => 2};
+        let measures = (Map.empty(): Map[EntityId, Vec2.Vec2]);
+        let visible = Map#{3 => false};
+        let rootRect = {position = {x = 0.0, y = 0.0}, size = {x = 20.0, y = 30.0}};
+        let result = UiLayout.computeLayout(styles, parents, order, measures, visible, 1, rootRect);
+        Assert.assertEq(
+            expected = (Some((0.0, 0.0, 10.0, 4.0)), None, Some((0.0, 6.0, 10.0, 5.0))),
+            (lookup(2, result), lookup(3, result), lookup(4, result)))
+
+    /// Auto ヒュッグの親は隠した子を集計しない（パネル高さが可視項目数に追随する）。
+    /// panel(2) Auto×Auto・gap=1。子 a(3)=4高・b(4)=4高・c(5)=4高。b を隠すと
+    /// 高さ = 4 + gap1 + 4 = 9（3 項目なら 4+1+4+1+4=14 のところ）。
+    @Test
+    def testDisplayNoneShrinksAutoParent(): Unit \ Assert =
+        let rootStyle = base();
+        let panel = {dir = UiLayout.Dir.Column, gap = 1.0 | base()};
+        let leaf = base();
+        let styles = Map#{1 => rootStyle, 2 => panel, 3 => leaf, 4 => leaf, 5 => leaf};
+        let parents = Map#{2 => 1, 3 => 2, 4 => 2, 5 => 2};
+        let order = Map#{2 => 0, 3 => 0, 4 => 1, 5 => 2};
+        let measures = Map#{3 => {x = 10.0, y = 4.0}, 4 => {x = 10.0, y = 4.0}, 5 => {x = 10.0, y = 4.0}};
+        let visible = Map#{4 => false};
+        let rootRect = {position = {x = 0.0, y = 0.0}, size = {x = 100.0, y = 100.0}};
+        let result = UiLayout.computeLayout(styles, parents, order, measures, visible, 1, rootRect);
+        Assert.assertEq(expected = Some((0.0, 0.0, 10.0, 9.0)), lookup(2, result))
 }

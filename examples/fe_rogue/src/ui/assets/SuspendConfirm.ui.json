@@ -1,0 +1,33 @@
+{
+  "templates": {
+    "row": { "widget": "none", "height": 8, "dir": "column", "mainAlign": "center", "crossAlign": "start", "pad": [1.5, 0, 1.5, 0] },
+    "label": { "widget": "text", "font": "ui", "fontSize": 4.0, "tint": "#eef1f7", "zIndex": 120 }
+  },
+  "root": {
+    "name": "SuspendConfirm", "widget": "none", "visible": false, "layer": 3,
+    "children": [
+      {
+        "name": "panel", "widget": "box", "color": "#0d0d26", "alpha": 0.9,
+        "borderWidth": 1, "borderColor": "#ffffff", "zIndex": 110,
+        "abs": [48, 44], "width": 74, "height": "auto",
+        "dir": "column", "pad": [5, 4, 5, 5], "gap": 4.0, "crossAlign": "stretch",
+        "children": [
+          { "name": "title", "widget": "text", "text": "本当に中断しますか？", "font": "ui",
+            "fontSize": 4.0, "tint": "#ffffff", "zIndex": 120 },
+          {
+            "name": "menu", "widget": "none", "dir": "column", "gap": 0.0, "crossAlign": "stretch",
+            "children": [
+              { "name": "highlight", "widget": "box", "color": "#16314f", "alpha": 1.0,
+                "borderWidth": 0.5, "borderColor": "#2f6df0", "cornerRadius": 2, "zIndex": 119,
+                "abs": [0.5, 0.5], "width": 63, "height": 7 },
+              { "use": "row", "name": "item0", "meta": "yes",
+                "children": [ { "use": "label", "name": "label", "text": "はい" } ] },
+              { "use": "row", "name": "item1", "meta": "no",
+                "children": [ { "use": "label", "name": "label", "text": "いいえ" } ] }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -139,7 +139,11 @@ mod TestItemMenuScene {
                         let (_, scnAfter) = run {
                             ItemMenuScene.refreshItems(
                                 Duration.seconds(0.016), node, menuPath, scene)
-                        } with handler World.WorldQuery { def get(k) = k(World.empty()) };
+                        } with handler World.WorldQuery { def get(k) = k(World.empty()) }
+                          with handler UiWorldState.State {
+                              def get(k)      = k(UiStore.empty())
+                              def put(_ui, k) = k()
+                          };
                         scnAfter
                     case None       => bug!("menu node not found at ${menuPath}")
                 })))));
@@ -166,7 +170,11 @@ mod TestItemMenuScene {
                         let (_, scnAfter) = run {
                             ItemMenuScene.refreshItems(
                                 Duration.seconds(0.016), node, menuPath, withSelection)
-                        } with handler World.WorldQuery { def get(k) = k(World.empty()) };
+                        } with handler World.WorldQuery { def get(k) = k(World.empty()) }
+                          with handler UiWorldState.State {
+                              def get(k)      = k(UiStore.empty())
+                              def put(_ui, k) = k()
+                          };
                         scnAfter
                     case None       => withSelection
                 })))));
@@ -193,7 +201,11 @@ mod TestItemMenuScene {
                         let (_, scnAfter) = run {
                             ItemMenuScene.refreshItems(
                                 Duration.seconds(0.016), node, menuPath, withSelection)
-                        } with handler World.WorldQuery { def get(k) = k(World.empty()) };
+                        } with handler World.WorldQuery { def get(k) = k(World.empty()) }
+                          with handler UiWorldState.State {
+                              def get(k)      = k(UiStore.empty())
+                              def put(_ui, k) = k()
+                          };
                         scnAfter
                     case None       => withSelection
                 })))));

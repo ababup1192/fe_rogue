@@ -219,7 +219,7 @@ mod BattlePanelScene {
     /// `Game.flix` の `process` redef から `BattlePanel` タグの CanvasLayer に dispatch される。
     /// 予報を出すのは 2 フェーズ:
     ///   - WeaponSelect : 武器選択中。カーソルが乗っている対象の敵 × カーソル中の武器で予報
-    ///                    （WeaponSelectScene がカーソルを対象の敵へスナップする）
+    ///                    （WeaponSelectUi がカーソルを対象の敵へスナップする）
     ///   - PlayerAttack : 赤マスで敵を選択中。カーソル上の敵 × 装備武器で予報
     /// それ以外のフェーズや対象が居ないときはウィンドウを隠し、足元 HP バー予測も消す。
     /// `GameEngine.Game` は viewport / カメラ ViewTransform 取得（対象ワールド座標→画面座標）に使う。
@@ -229,7 +229,7 @@ mod BattlePanelScene {
                     (EngineNode[NodeTag], Scene[NodeTag])
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                        PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery,
-                       BattlePanelScene.State, UnitHPBarRender.ForecastState} =
+                       BattlePanelScene.State, UnitHPBarRender.ForecastState, UiWorldState.State} =
         let phase  = TurnPhase.State.get();
         let synced = syncTargetToCursor(phase, scene);
         // 「減る分」の暗⇄明点滅サイクルを進める。累積時間は resource が持つ。
@@ -529,7 +529,8 @@ mod BattlePanelScene {
     ///   - PlayerAttack : 選択中の敵 × 装備武器
     /// 揃わない / 別フェーズなら None。
     def buildForecast(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Option[ForecastView]
-            \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
+            \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
+               World.WorldQuery, UiWorldState.State} =
         match phase {
             case TurnPhase.Phase.WeaponSelect => buildWeaponSelectForecast(scene)
             case TurnPhase.Phase.PlayerAttack => buildAttackForecast(scene)
@@ -548,13 +549,14 @@ mod BattlePanelScene {
         ) yield computeView(pid, player, eid, enemy, weapon)
 
     /// WeaponSelect: 選択中味方 / カーソル中の武器 / カーソルが乗っている敵が揃ったら予報。
-    /// カーソルは `WeaponSelectScene` が「その武器が届く最寄りの敵」へスナップ済み。
+    /// カーソルは `WeaponSelectUi` が「その武器が届く最寄りの敵」へスナップ済み。
     def buildWeaponSelectForecast(scene: Scene[NodeTag]): Option[ForecastView]
-            \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
+            \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
+               World.WorldQuery, UiWorldState.State} =
         forM (
             pid    <- SelectedPlayer.State.get()#id;
             player <- PlayerData.PartyQuery.get(pid);
-            widx   <- WeaponSelectScene.hoveredWeaponIndex(scene);
+            widx   <- WeaponSelectUi.hoveredWeaponIndex();
             weapon <- List.nth(widx, player#weapons);
             eid    <- EnemyScene.findIdAt(CursorScene.getGridPos(), scene);
             enemy  <- EnemyData.RosterQuery.get(eid)

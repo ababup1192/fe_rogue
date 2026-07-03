@@ -54,14 +54,6 @@ pub enum NodeTag {
     case TradePanel
     /// TradeMenuScene の各ペイン ItemList。内部の Int32 はペイン index (0 起点、最大 3)。
     case TradeMenu(Int32)
-    /// ActionMenuScene の Panel ルート（外枠）
-    case ActionPanel
-    /// ActionMenuScene の ItemList（こうげき / たいき）
-    case ActionMenu
-    /// WeaponSelectScene の Panel ルート（ActionMenu「攻撃」確定で右隣に出る武器選択ウィンドウ外枠）
-    case WeaponSelectPanel
-    /// WeaponSelectScene の ItemList（選択中味方の武器一覧。確定で装備→攻撃フェーズへ）
-    case WeaponSelectMenu
     /// BattlePanelScene の CanvasLayer ルート（画面空間の戦闘予報ミニウィンドウ）。
     /// 内部 Duration は未使用（将来の演出用に枠だけ残す）。panel とその子（丸/ラベル/三角）は
     /// `NodeTag.NoTag` でぶら下げ、process がパス経由で更新・対象近傍へ移動する。
@@ -99,9 +91,6 @@ pub enum NodeTag {
     /// 起動時のタイトル画面のルート（カーソル位置・再開可否を保持）。
     /// タイトル画面の識別用純タグ（状態は `TitleMenuScene.State` resource へ移設）。
     case Title
-    /// 中断確認ダイアログ（「本当に中断しますか？ はい / いいえ」）の Panel / ItemList。
-    case SuspendConfirmPanel
-    case SuspendConfirmMenu
     /// 追従カメラ（Camera2D）。process でフェーズに応じた追従先へ動かす。
     case Camera
     case NoTag
@@ -178,12 +167,6 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
     match EngineNode.getState(node) {
         case NodeTag.ItemMenu =>
             checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
-        case NodeTag.ActionMenu =>
-            checked_ecast(ActionMenuScene.refreshItems(delta, node, path, scene))
-        case NodeTag.WeaponSelectMenu =>
-            checked_ecast(WeaponSelectScene.refreshItems(delta, node, path, scene))
-        case NodeTag.SuspendConfirmMenu =>
-            checked_ecast(SuspendConfirmScene.refreshItems(delta, node, path, scene))
         case NodeTag.TradeMenu(_) =>
             checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
         case NodeTag.BattlePanel =>
@@ -295,9 +278,9 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
         //   GatherMove   … 一歩も動いていない（手動確定直後 / 継続でターン開始した状態）なら
         //                  集合を解いて個別行動モード(PlayerCursor)へ戻す。移動を始めたら不可。
         else if (key == GameEngine.Key.C)
-            if (phase == TurnPhase.Phase.PlayerCursor and ActionMenuScene.gatherEnabled(scene)) {
+            if (phase == TurnPhase.Phase.PlayerCursor and ActionMenuUi.gatherEnabled(scene)) {
                 AudioStreamPlayer.play("confirm");
-                ActionMenuScene.gatherShortcut(scene)
+                ActionMenuUi.gatherShortcut(scene)
             } else if (phase == TurnPhase.Phase.GatherMove and PlayerScene.gatherNotMovedYet(scene)) {
                 // 何も動いていないので cancelSelection の巻き戻しは実質 no-op。gatherActive を
                 // 解いてカーソル選択（個別行動）へ復帰する。
@@ -352,10 +335,8 @@ instance MenuEvent.MenuHandler[NodeTag] {
                         checked_ecast(ItemMenuScene.onActionConfirmed(entry, scene))
                     case _                                 => scene
                 }
-            // onActionConfirmed は「かいだん」で CustomEffects.FloorAdvanceRequest を emit するため、
-            // この instance の Aef にも FloorAdvanceRequest を含めてある（start で handler 注入済み）。
-            case NodeTag.ActionMenu        => ActionMenuScene.onActionConfirmed(entry, scene)
-            case NodeTag.WeaponSelectMenu  => checked_ecast(WeaponSelectScene.onConfirmed(entry, scene))
+            // ActionMenu / WeaponSelect は World-entity UI（ActionMenuUi / WeaponSelectUi）へ移行済み。
+            // 確定は engine handleMenus 経由ではなく dispatchMenuKey のフェーズ分岐が直接 confirm する。
             case NodeTag.TradeMenu(_)      => checked_ecast(TradeMenuScene.confirmCurrentSelection(scene))
             case _                         => scene
         }
@@ -380,8 +361,6 @@ instance MenuEvent.MenuHandler[NodeTag] {
                         checked_ecast(ItemMenuScene.onActionCancelled(scene))
                     case _                                 => scene
                 }
-            case NodeTag.ActionMenu        => checked_ecast(ActionMenuScene.onActionCancelled(scene))
-            case NodeTag.WeaponSelectMenu  => checked_ecast(WeaponSelectScene.onCancelled(scene))
             case NodeTag.TradeMenu(_)      => checked_ecast(TradeMenuScene.cancelCurrent(scene))
             case _                         => scene
         }
@@ -515,6 +494,7 @@ def isMenuCursorMove(phase: TurnPhase.Phase, key: GameEngine.Key): Bool =
     };
     match phase {
         case TurnPhase.Phase.ActionSelect     => vertical
+        case TurnPhase.Phase.SuspendConfirm   => vertical
         // ItemSelect は ↑↓ がアイテム選択、←→ がページ切替（ロード職の 2 ページ）。
         case TurnPhase.Phase.ItemSelect       => vertical or horizontal
         case TurnPhase.Phase.ItemActionSelect => vertical
@@ -547,17 +527,17 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
                                               => Some(scene)
         // 中断確認: Z/Enter で「はい/いいえ」確定、X で中断をやめて PlayerCursor へ。
         case (TurnPhase.Phase.SuspendConfirm, TurnRules.Input.Confirm)
-                                              => Some(SuspendConfirmScene.confirmCurrentSelection(scene))
+                                              => Some(SuspendConfirmUi.confirmCurrentSelection(scene))
         case (TurnPhase.Phase.SuspendConfirm, TurnRules.Input.Cancel)
-                                              => Some(SuspendConfirmScene.cancel(scene))
+                                              => Some(SuspendConfirmUi.cancel(scene))
         case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Confirm)
-                                              => Some(ActionMenuScene.confirmCurrentSelection(scene))
+                                              => Some(ActionMenuUi.confirmCurrentSelection(scene))
         case (TurnPhase.Phase.ActionSelect,      TurnRules.Input.Cancel)
-                                              => Some(checked_ecast(ActionMenuScene.onActionCancelled(scene)))
+                                              => Some(checked_ecast(ActionMenuUi.onActionCancelled(scene)))
         case (TurnPhase.Phase.WeaponSelect,      TurnRules.Input.Confirm)
-                                              => Some(checked_ecast(WeaponSelectScene.confirmCurrentSelection(scene)))
+                                              => Some(checked_ecast(WeaponSelectUi.confirmCurrentSelection(scene)))
         case (TurnPhase.Phase.WeaponSelect,      TurnRules.Input.Cancel)
-                                              => Some(checked_ecast(WeaponSelectScene.onCancelled(scene)))
+                                              => Some(checked_ecast(WeaponSelectUi.onCancelled(scene)))
         case (TurnPhase.Phase.ItemSelect,        TurnRules.Input.Confirm)
                                               => Some(checked_ecast(ItemMenuScene.confirmCurrentSelection(scene)))
         case (TurnPhase.Phase.ItemSelect,        TurnRules.Input.Cancel)
@@ -622,6 +602,17 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                                               => BattlePanelScene.confirm(scene)
         case (TurnPhase.Phase.PlayerAttack,   Some(TurnRules.Input.Cancel))
                                               => checked_ecast(BattlePanelScene.cancel(scene))
+        // ActionMenu の ↑↓（W/S）で選択カーソルを動かす（World-entity UI 化に伴い旧 ItemList +
+        // handleMenus の置換。disabled 項目はスキップする）。
+        case (TurnPhase.Phase.ActionSelect,   None)
+                                              => checked_ecast(actionMenuDirection(key, scene))
+        // 中断確認の ↑↓（W/S）で選択カーソルを動かす（旧 ItemList + handleMenus の置換）。
+        case (TurnPhase.Phase.SuspendConfirm, None)
+                                              => suspendConfirmDirection(key, scene)
+        // 武器選択ウィンドウの ↑↓（W/S）で武器カーソルを動かす（disabled はスキップ。
+        // ←→ の対象敵サイクルは CursorScene.physicsProcess が別途 polling する）。
+        case (TurnPhase.Phase.WeaponSelect,   None)
+                                              => checked_ecast(weaponSelectDirection(key, scene))
         // 全滅モーダルの ↑↓（W/S）で選択カーソルを動かす（旧 ItemList + handleMenus の置換）。
         case (TurnPhase.Phase.GameOver,       None)
                                               => gameOverDirection(key, scene)
@@ -640,6 +631,41 @@ def gameOverDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[NodeTag
         case GameEngine.Key.W    => GameOverMenuUi.moveSelection(-1); scene
         case GameEngine.Key.Down => GameOverMenuUi.moveSelection(1); scene
         case GameEngine.Key.S    => GameOverMenuUi.moveSelection(1); scene
+        case _                   => scene
+    }
+
+/// ActionMenu（行動選択ウィンドウ）中の方向キーを選択カーソル移動へ変換する。
+/// Up / W → 1 つ上、Down / S → 1 つ下（disabled をスキップ・端で回り込む）。他キーは素通し。
+def actionMenuDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[NodeTag]
+        \ {UiWorldState.State, SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
+    match key {
+        case GameEngine.Key.Up   => ActionMenuUi.moveSelection(-1, scene)
+        case GameEngine.Key.W    => ActionMenuUi.moveSelection(-1, scene)
+        case GameEngine.Key.Down => ActionMenuUi.moveSelection(1, scene)
+        case GameEngine.Key.S    => ActionMenuUi.moveSelection(1, scene)
+        case _                   => scene
+    }
+
+/// 中断確認モーダル中の方向キーを選択カーソル移動へ変換する。
+/// Up / W → 1 つ上、Down / S → 1 つ下（端で回り込む）。他キーは素通し。
+def suspendConfirmDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[NodeTag] \ UiWorldState.State =
+    match key {
+        case GameEngine.Key.Up   => SuspendConfirmUi.moveSelection(-1); scene
+        case GameEngine.Key.W    => SuspendConfirmUi.moveSelection(-1); scene
+        case GameEngine.Key.Down => SuspendConfirmUi.moveSelection(1); scene
+        case GameEngine.Key.S    => SuspendConfirmUi.moveSelection(1); scene
+        case _                   => scene
+    }
+
+/// 武器選択ウィンドウ中の方向キーを武器カーソル移動へ変換する。
+/// Up / W → 1 つ上、Down / S → 1 つ下（disabled をスキップ・端で回り込む）。他キーは素通し。
+def weaponSelectDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[NodeTag]
+        \ {UiWorldState.State, SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+    match key {
+        case GameEngine.Key.Up   => WeaponSelectUi.moveSelection(-1, scene)
+        case GameEngine.Key.W    => WeaponSelectUi.moveSelection(-1, scene)
+        case GameEngine.Key.Down => WeaponSelectUi.moveSelection(1, scene)
+        case GameEngine.Key.S    => WeaponSelectUi.moveSelection(1, scene)
         case _                   => scene
     }
 
@@ -791,6 +817,15 @@ mod Game {
                 // 上部フェイズバーの World-entity UI も 1 回だけ spawn する（初期は不可視。
                 // フロア進入時に TopBarUi.enter が可視化する）。
                 spawnUiOrBug(TopBarUi.specPath());
+                // 行動選択ウィンドウ（コマンドメニュー）の World-entity UI を 1 回だけ spawn する
+                // （初期は不可視。ActionSelect フェーズで ActionMenuUi.frameStep が可視化・項目流し込み）。
+                spawnUiOrBug(ActionMenuUi.specPath());
+                // 武器選択ウィンドウ（ActionMenu「攻撃」確定で右隣に出る）の World-entity UI を
+                // 1 回だけ spawn する（初期は不可視。WeaponSelect フェーズで WeaponSelectUi.frameStep が可視化）。
+                spawnUiOrBug(WeaponSelectUi.specPath());
+                // 中断確認モーダルの World-entity UI を 1 回だけ spawn する
+                // （初期は不可視。SuspendConfirm フェーズで SuspendConfirmUi.frameStep が可視化）。
+                spawnUiOrBug(SuspendConfirmUi.specPath());
                 // ユニット簡易カードは 1 枚の UnitCard.ui.json を左右 2 root で spawn する
                 // （味方カード=左 / 敵カード=右）。初期は不可視で、UnitCardUi.frameStep が対象解決で出す。
                 spawnUiAsOrBug(UnitCardUi.specPath(), UnitCardUi.allyRootName());
@@ -1037,6 +1072,13 @@ mod Game {
                 |> ArrowCursorScene.step
                 // 全滅モーダル UI の可視/選択ハイライトを phase から同期（旧 refreshItems の置換）。
                 |> GameOverMenuUi.frameStep(dt)
+                // 行動選択ウィンドウの可視/項目流し込み/選択ハイライトを phase から同期
+                // （旧 ActionMenuScene.refreshItems + applyVisibility の置換）。
+                |> ActionMenuUi.frameStep(dt)
+                // 武器選択ウィンドウの可視/行流し込み/選択ハイライト/カーソルスナップを phase から同期。
+                |> WeaponSelectUi.frameStep(dt)
+                // 中断確認モーダルの可視/選択ハイライトを phase から同期。
+                |> SuspendConfirmUi.frameStep(dt)
                 // ユニット簡易カード（味方左 / 敵右）の表示対象を解決して流し込む（旧 process 2 case の置換）。
                 |> UnitCardUi.frameStep(dt);
             // 画面（GamePhase）が変わったフレームだけ、新しい画面を組み立て直す。

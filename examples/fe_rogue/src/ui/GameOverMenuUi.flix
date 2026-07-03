@@ -7,10 +7,11 @@
 // ノード構造（GameOverMenu.ui.json）:
 //   GameOverMenu (none, 画面全体)
 //     └─ panel (box, 中央モーダル・パネル地)
-//           └─ menu (none, 選択肢を縦並び)
-//                 ├─ item0 (goddess)  女神の加護（その場復活）
-//                 ├─ item1 (floor)    フロアの最初から
-//                 └─ item2 (beginning) 最初から
+//           └─ menu (none, 選択肢を縦並び・gap 0・行ピッチ 8px 固定)
+//                 ├─ highlight (box) 選択行の塗り箱（abs 子・項目より背面 z・選択位置へ毎フレ移動）
+//                 ├─ item0 (goddess)  女神の加護（その場復活）  ─┐ 各項目は固定高 8px の行で
+//                 ├─ item1 (floor)    フロアの最初から          ├ label を上下中央に置く。
+//                 └─ item2 (beginning) 最初から                 ─┘ meta は行が持つ（項目列の識別）。
 
 mod GameOverMenuUi {
 
@@ -27,10 +28,16 @@ mod GameOverMenuUi {
     /// root（可視トグルの対象）とリスト所有 entity（選択カーソルのキー）の名前パス。
     pub def rootPath(): String = "GameOverMenu"
     def menuPath(): String = "GameOverMenu/panel/menu"
+    /// 選択行の塗り箱（menu 直下の abs 子）の名前パス。
+    def highlightPath(): String = "${menuPath()}/highlight"
 
-    /// 選択項目のハイライト色（accent）と通常色。
-    def accentColor(): Color = {r = 1.0f32, g = 0.87f32, b = 0.4f32}
-    def normalColor(): Color = {r = 0.91f32, g = 0.91f32, b = 0.91f32}
+    /// 行ピッチ（px）。ui.json の各項目 height と一致させること。
+    def rowPitch(): Float64 = 8.0
+    /// 塗り箱の行セル内マージン（px）。ui.json の highlight abs / 寸法と整合させること。
+    def highlightInset(): Float64 = 0.5
+
+    /// 項目の文字色（通常色）。選択は塗り箱ハイライトで示すため選択行も通常色のまま。
+    def normalColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 
     // ========================================================================
     // 純粋: 選択 → 復帰種別
@@ -42,19 +49,6 @@ mod GameOverMenuUi {
         else if (meta == "floor") Some(Choice.RestartFloor)
         else if (meta == "beginning") Some(Choice.RestartBeginning)
         else None
-
-    /// 選択カーソル位置の metadata を取り出す（範囲外は None）。
-    pub def metaAtSelection(selection: Int32, metas: List[String]): Option[String] =
-        List.nth(selection, metas)
-
-    /// menu の子項目を order 順に辿り、宣言された metadata を集める。
-    def orderedMetas(ui: UiStore.UiWorld): List[String] =
-        match UiStore.idOf(menuPath(), ui) {
-            case None         => Nil
-            case Some(menuId) =>
-                UiHierarchy.childrenOf(menuId, ui#parents, ui#order)
-                    |> List.filterMap(id -> Map.get(id, ui#metas))
-        }
 
     // ========================================================================
     // 表示 / 選択 / 確定
@@ -78,7 +72,7 @@ mod GameOverMenuUi {
     /// 選択カーソルを delta（±1）動かす（端で回り込む）。
     pub def moveSelection(delta: Int32): Unit \ UiWorldState.State =
         let ui = UiWorldState.State.get();
-        let count = List.length(orderedMetas(ui));
+        let count = UiMenu.count(menuPath(), ui);
         let next = UiWidget.selectionMove(count, delta, UiStore.selectionOf(menuPath(), ui));
         UiWorldState.State.put(UiStore.putSelection(menuPath(), next, ui))
 
@@ -88,7 +82,7 @@ mod GameOverMenuUi {
             \ {CustomEffects.GameOverRequest, GameEngine.Audio, UiWorldState.State} =
         let ui = UiWorldState.State.get();
         let sel = UiStore.selectionOf(menuPath(), ui);
-        match metaAtSelection(sel, orderedMetas(ui)) |> Option.flatMap(choiceOf) {
+        match UiMenu.metaAtSelection(menuPath(), sel, ui) |> Option.flatMap(choiceOf) {
             case None         => scene
             case Some(choice) =>
                 AudioStreamPlayer.play("confirm");
@@ -107,37 +101,19 @@ mod GameOverMenuUi {
     // 毎フレーム同期（可視 + 選択ハイライト）
     // ========================================================================
 
-    /// phase==GameOver の間だけ root を可視化し、選択項目の tint を accent 色へ寄せる。
+    /// phase==GameOver の間だけ root を可視化し、選択行を塗り箱ハイライトで示す。
     /// gameLoop のパイプ段として 1 回呼ばれる（refreshItems の per-node dispatch を置換）。
     pub def frameStep(_dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {UiWorldState.State, World.PhaseQuery} =
         let visible = World.PhaseQuery.phase() == SimPhase.GameOver;
-        let ui = UiWorldState.State.get();
+        // カーソルを [0, count) へ防御クランプしてから、その位置へ塗り箱を置く。
+        let ui = UiMenu.clampSelection(menuPath(), UiWorldState.State.get());
         let sel = UiStore.selectionOf(menuPath(), ui);
-        UiWorldState.State.put(ui |> UiStore.setVisible(rootPath(), visible) |> applyTints(sel));
+        // 全項目を通常色に塗る（選択は塗り箱で示すので文字色は変えない）。
+        let tintOf = _idx -> normalColor();
+        UiWorldState.State.put(ui
+            |> UiStore.setVisible(rootPath(), visible)
+            |> UiMenu.applyItemTints(menuPath(), tintOf)
+            |> UiMenu.applyHighlight(menuPath(), highlightPath(), sel, rowPitch(), highlightInset()));
         scene
-
-    /// menu の meta 持ち子項目に選択ハイライトを適用する（選択位置=accent、他=normal）。
-    /// index は meta を持つ子だけで振る（orderedMetas と同一基準）。meta を持たない
-    /// text 子（将来の hint 等）は選択対象でないので tint を触らない。
-    def applyTints(sel: Int32, ui: UiStore.UiWorld): UiStore.UiWorld =
-        match UiStore.idOf(menuPath(), ui) {
-            case None         => ui
-            case Some(menuId) =>
-                UiHierarchy.childrenOf(menuId, ui#parents, ui#order)
-                    |> List.filter(id -> not Option.isEmpty(Map.get(id, ui#metas)))
-                    |> List.zipWithIndex
-                    |> List.foldLeft((acc, pair) -> {
-                        let (idx, id) = pair;
-                        let tint = if (idx == sel) accentColor() else normalColor();
-                        tintById(id, tint, acc)
-                    }, ui)
-        }
-
-    /// entity の名前パスを引いて text tint を差し替える（path 経由の setter を再利用）。
-    def tintById(id: EntityId, tint: Color, ui: UiStore.UiWorld): UiStore.UiWorld =
-        match UiStore.pathOf(id, ui) {
-            case None       => ui
-            case Some(path) => UiStore.setTextTint(path, tint, ui)
-        }
 }

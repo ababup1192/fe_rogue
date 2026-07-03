@@ -41,4 +41,28 @@ mod UiWidget {
             let raw = Int32.modulo(current + delta, count);
             if (raw < 0) raw + count else raw
         }
+
+    /// disabled 項目を飛ばしてカーソルを 1 つ動かす（端で反対側へ回り込む）。
+    /// `delta` は向き（<0 で上／>0 で下、大きさは無視）。`disabledAt(i)` が true の index は
+    /// 選べないので飛ばす。移動方向に選べる項目が 1 つも無ければ（全 disabled 含む）`current`
+    /// を保つ。count<=0 は選択肢が無いので 0。
+    /// 例: count=4 で index1・2 が disabled のとき、0 から +1 で 3、3 から -1 で 0。
+    pub def selectionMoveSkipping(count: Int32, delta: Int32, current: Int32, disabledAt: Int32 -> Bool): Int32 =
+        if (count <= 0) 0
+        else {
+            // step は +1 方向へ正規化（-1 は count-1 ≡ -1 mod count で表す→負 modulo を避ける）。
+            let step = if (delta < 0) count - 1 else 1;
+            skipFrom(count, step, current, current, disabledAt, count)
+        }
+
+    /// `cursor` から step 方向へ最大 budget 回進み、最初に見つかる非 disabled の index を返す。
+    /// budget を使い切ったら（全て disabled で移動先が無い）`original` を返す。
+    def skipFrom(count: Int32, step: Int32, cursor: Int32, original: Int32,
+                 disabledAt: Int32 -> Bool, budget: Int32): Int32 =
+        if (budget <= 0) original
+        else {
+            let next = Int32.modulo(cursor + step, count);
+            if (not disabledAt(next)) next
+            else skipFrom(count, step, next, original, disabledAt, budget - 1)
+        }
 }

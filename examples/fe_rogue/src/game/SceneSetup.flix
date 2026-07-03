@@ -13,7 +13,8 @@
 ///   - PlayerScene / EnemyScene は MapScene の placements に従ってスポーン
 ///   - MoveRangeScene は SelectedPlayer 状態を読むが起動時は未選択なので no-op
 ///   - Camera は最後に追加して全プレイヤー出揃った後に追従開始
-///   - UI 系 (WeaponMenu / ActionMenu / BattlePanel / UnitCard) は最後 (描画前面)
+///   - UI 系 (BattlePanel / TradeMenu 等) は最後 (描画前面)。ActionMenu / WeaponSelect /
+///     SuspendConfirm / UnitCard は World-entity UI へ移行済みで scene には積まない。
 ///
 /// カタログ束 (`GameLifecycle.Catalogs`) は `Game.start` でロード済みのユニット / 敵 / フロア
 /// 定義。PlayerScene と EnemyScene にプール定義 (`party` / `enemyTier1`) を辿らせる。
@@ -69,11 +70,10 @@ mod SceneSetup {
             |> EnemyTurnDriver.add // 敵ターン進行の常駐タグノード (process で phase 判定)
             |> StairsExitDriver.add      // 集合「階段で離脱」の順次退場ドライバ (process で phase 判定)
             |> ItemMenuScene.add        // アイテム選択ウィンドウ (初期は非表示)
-            // ユニット簡易カード（味方左 / 敵右）は World-entity UI（UnitCardUi / UiWorldState）へ移行済み。scene には積まない。
-            |> ActionMenuScene.add      // 行動選択ウィンドウ (初期は非表示)
-            |> WeaponSelectScene.add    // 武器選択ウィンドウ (ActionMenu「攻撃」確定で右隣に出る。初期は非表示)
-            // 全滅モーダルは World-entity UI（GameOverMenuUi / UiWorldState）へ移行済み。scene には積まない。
-            |> SuspendConfirmScene.add  // 中断確認のモーダル (初期は非表示)
+            // ユニット簡易カード（味方左 / 敵右）・行動選択ウィンドウ（ActionMenu）・
+            // 武器選択ウィンドウ（WeaponSelect）・中断確認モーダル（SuspendConfirm）は
+            // World-entity UI（UnitCardUi / ActionMenuUi / WeaponSelectUi / SuspendConfirmUi /
+            // UiWorldState）へ移行済み。scene には積まない。
             |> TradeMenuScene.add       // 物交換ウィンドウ (2 ペイン、初期は非表示)
             |> BattlePanelScene.add     // 戦闘予報ミニウィンドウ (World 配下・初期は非表示)
             |> LevelUpPanelScene.add    // レベルアップのステータス変化パネル (初期は非表示)

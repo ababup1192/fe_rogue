@@ -50,8 +50,8 @@ mod TurnPhase {
         /// に戻る (別の場所に動かし直せる)。
         case ActionSelect
         /// 味方ターン・武器選択フェーズ。
-        /// ActionMenu「攻撃」確定で入り、ActionMenu の右隣に武器選択ウィンドウ (WeaponSelectScene)
-        /// が出る。ActionMenu は表示したまま「攻撃」行をハイライト維持し、focus は武器側に移る。
+        /// ActionMenu「攻撃」確定で入り、ActionMenu の右隣に武器選択ウィンドウ (`WeaponSelectUi`)
+        /// が出る。ActionMenu は表示したまま「攻撃」行をハイライト維持する。
         /// 上下キーで武器を選び Enter/Z で確定すると、その武器を装備 (weapons 先頭へ) してから
         /// 攻撃フロアに入る。X/Escape で ActionSelect に戻る。
         case WeaponSelect
@@ -123,7 +123,7 @@ mod TurnPhase {
         /// 全滅後のモーダル選択フェーズ。盤面はフリーズし、`GameOverMenuUi` の選択肢
         /// （その場復活 / フロアの最初から / 最初から）だけを受け付ける。確定で run が再構築される。
         case GameOver
-        /// 中断確認のモーダルフェーズ。「中断」選択で入り、`SuspendConfirmScene` の
+        /// 中断確認のモーダルフェーズ。「中断」選択で入り、`SuspendConfirmUi` の
         /// 「本当に中断しますか？ はい / いいえ」だけを受け付ける。はいで保存しタイトルへ、いいえで PlayerCursor に戻る。
         case SuspendConfirm
     }
@@ -441,9 +441,9 @@ mod TurnInputBridge {
             case TurnRules.Transition.CursorSelectPlayer(playerId)      =>
                 PlayerScene.beginSelection(playerId, scene)
             case TurnRules.Transition.CursorOpenGatherMenu              =>
-                ActionMenuScene.openFromCursor(scene)
+                ActionMenuUi.openFromCursor(scene)
             case TurnRules.Transition.MovingOpenActionMenu              =>
-                ActionMenuScene.openFromMoving(scene)
+                ActionMenuUi.openFromMoving(scene)
             case TurnRules.Transition.MovingCancel                      =>
                 PlayerScene.cancelSelection(scene)
             case TurnRules.Transition.OpenAttackForecast(attackerId, defenderId, _defX, _defY) =>
@@ -458,7 +458,7 @@ mod TurnInputBridge {
             case TurnRules.Transition.TradeCancel                       =>
                 PhaseTransitions.enterActionSelectFromTrade(scene)
             case TurnRules.Transition.GatherOpenMenu                    =>
-                ActionMenuScene.openFromGather(scene)
+                ActionMenuUi.openFromGather(scene)
             case TurnRules.Transition.GatherCancel                      =>
                 PlayerScene.cancelSelection(scene)
         }

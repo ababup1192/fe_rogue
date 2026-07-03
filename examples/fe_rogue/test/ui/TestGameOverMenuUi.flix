@@ -28,10 +28,11 @@ mod TestGameOverMenuUi {
     // ════════════════════════════════════════════════════════
 
     /// 0/1/2 が各項目の metadata を返し、範囲外 3 は None。
+    /// 選択位置 → metadata の解決は `UiMenu.metaAtSelection`（項目列 = List.nth）に共通化済み。
     @Test
     def testMetaAtSelection(): Unit \ Assert =
-        let picked = (GameOverMenuUi.metaAtSelection(0, metas()), GameOverMenuUi.metaAtSelection(1, metas()),
-                      GameOverMenuUi.metaAtSelection(2, metas()), GameOverMenuUi.metaAtSelection(3, metas()));
+        let picked = (List.nth(0, metas()), List.nth(1, metas()),
+                      List.nth(2, metas()), List.nth(3, metas()));
         Assert.assertEq(
             expected = (Some("goddess"), Some("floor"), Some("beginning"), None),
             picked)
@@ -43,7 +44,7 @@ mod TestGameOverMenuUi {
     /// 各カーソル位置が「metadata → Choice」を通して期待の Choice に解決される。
     @Test
     def testSelectionResolvesToChoice(): Unit \ Assert =
-        let resolve = sel -> GameOverMenuUi.metaAtSelection(sel, metas()) |> Option.flatMap(GameOverMenuUi.choiceOf);
+        let resolve = sel -> List.nth(sel, metas()) |> Option.flatMap(GameOverMenuUi.choiceOf);
         Assert.assertEq(
             expected = (Some(Choice.ReviveInPlace), Some(Choice.RestartFloor), Some(Choice.RestartBeginning)),
             (resolve(0), resolve(1), resolve(2)))

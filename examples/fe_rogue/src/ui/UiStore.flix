@@ -75,6 +75,23 @@ mod UiStore {
             case Some(id) => {visible = Map.insert(id, v, ui#visible) | ui}
         }
 
+    /// 名前パスの entity の識別 metadata（メニュー項目の識別子）を設定する。未登録パスは no-op。
+    /// 項目列が文脈で変わるメニュー（ActionMenu 等）で、スロットの meta を毎フレーム差し替える。
+    pub def setMeta(path: String, meta: String, ui: UiWorld): UiWorld =
+        match idOf(path, ui) {
+            case None     => ui
+            case Some(id) => {metas = Map.insert(id, meta, ui#metas) | ui}
+        }
+
+    /// 名前パスの entity の metadata を消す（未使用スロットを項目列から外す）。未登録パスは no-op。
+    /// meta を持つ子だけを項目列とみなす規約（UiMenu.itemIds）と組で使い、meta を消したスロットは
+    /// 選択カーソルの対象から外れる。
+    pub def clearMeta(path: String, ui: UiWorld): UiWorld =
+        match idOf(path, ui) {
+            case None     => ui
+            case Some(id) => {metas = Map.remove(id, ui#metas) | ui}
+        }
+
     /// 名前パスの text コンポーネントの文字列を差し替える。text を持たなければ no-op。
     pub def setText(path: String, text: String, ui: UiWorld): UiWorld =
         let updated = idOf(path, ui)
@@ -102,6 +119,16 @@ mod UiStore {
             case None             => ui
             case Some((id, style)) => {styles = Map.insert(id, style, ui#styles) | ui}
         }
+
+    /// 名前パスの entity の style 幅が固定 px（`SizeSpec.Px`）ならその値を返す。
+    /// Auto / Grow / 未登録は None。内容フィットで設定した幅を読み戻す（隣接窓の右端追従）ために使う。
+    pub def widthPxOf(path: String, ui: UiWorld): Option[Float64] =
+        idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, ui#styles))
+            |> Option.flatMap(style -> match style#width {
+                case UiLayout.SizeSpec.Px(v) => Some(v)
+                case _                       => None
+            })
 
     /// 名前パスの box コンポーネントの色を差し替える。box を持たなければ no-op。
     pub def setBoxColor(path: String, c: Color, ui: UiWorld): UiWorld =
