@@ -38,7 +38,7 @@ mod CombatDriver {
 
     /// 攻撃ターゲットの敵 id を Data#attackTargetId に記録する。
     /// 武器選択ウィンドウを開く前に GameManager から呼ばれ、ウィンドウ確定後の
-    /// フェーズが AttackForecast に進み、`BattlePanelScene.confirm` がこの値を読んで
+    /// フェーズが AttackForecast に進み、`BattlePanelUi.confirm` がこの値を読んで
     /// 実際の攻撃モーションを開始する。
     pub def setAttackTargetId(playerId: Int32, targetEnemyId: Int32,
                                 scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =

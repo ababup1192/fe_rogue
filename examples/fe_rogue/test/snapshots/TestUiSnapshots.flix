@@ -39,8 +39,10 @@ mod TestUiSnapshots {
     // オーケストレータ
     // ════════════════════════════════════════════════════════
 
-    /// 全 UI スナップショットを 1 度のアトラス焼き込みで処理する。golden 不一致があれば
-    /// そのリストを assert で提示して落ちる（更新モードでは golden を書き直して pass）。
+    /// 全 UI スナップショットを 1 度のアトラス焼き込みで処理する。撮る対象は SnapshotCatalog の
+    /// PNG エントリ、drive は名前で driveByName に分岐する。golden 不一致があればそのリストを
+    /// assert で提示して落ちる（更新モードでは golden を書き直して pass）。撮り終えたら
+    /// SnapshotSite でカタログ全体（PNG+GIF）を回遊できる HTML サイトに焼き直す。
     @Test
     def testUiSnapshots(): Unit \ {Assert, Fs.FileRead, Fs.FileWrite, IO} = region rc {
         let atlas = HeadlessFont.buildUiAtlas(ttfPath(), joyoPath());
@@ -50,30 +52,79 @@ mod TestUiSnapshots {
             atlas = atlas, atlasDim = atlasDim(), ttfPath = ttfPath(), texInfo = texInfo, texPaths = texPaths,
             background = clearColor(), scale = outScale(), design = designSize()
         };
-        let fixtures = fixtureList();
-        let failures = List.filterMap(fx ->
-            SnapshotSupport.snapshot(ctx, fx#name,
-                renderFixture(rc, ctx, fx#name)), fixtures);
-        SnapshotSupport.writeIndex(List.map(fx -> (fx#name, fx#desc), fixtures), outWidthPx(),
-                                   TestGifSnapshots.gifCatalog(), TestGifSnapshots.gifWidthPx());
-        Assert.assertEq(expected = (Nil: List[String]), failures)
+        // 各シーンを撮影しつつ幾何リンタ（RenderLint）を走らせる。結果は (名前, golden 相違, Finding 列)。
+        let results = SnapshotCatalog.pngEntries() |> List.map(entry -> renderAndLint(rc, ctx, entry));
+        let goldenFailures = results |> List.filterMap(r -> {let (_n, gf, _fs) = r; gf});
+        // 抑制タグ（lint-allow:Rx）で許していない Finding だけを fail 対象にする。
+        let activeFindings = results
+            |> List.flatMap(r -> {let (_n, _gf, fs) = r; List.filter(f -> not f#suppressed, fs)});
+        // GIF は素の flix test では再生成しないが、test/snapshots/gifs/（コミット対象）に既にあれば
+        // build/snapshots/ へコピーしてページに常時表示させる（恒久化。無ければ何もしない）。
+        SnapshotSupport.syncGifs(SnapshotCatalog.gifEntries() |> List.map(entry -> entry#name));
+        // lint 結果を name→バッジにしてダッシュボード（カード）へ渡す。
+        let lintByName = results
+            |> List.foldLeft((m, r) -> {let (n, _gf, fs) = r; Map.insert(n, badgeOf(fs), m)}, Map.empty());
+        SnapshotSite.generate(siteConfig(), catalogItemsWithLint(lintByName));
+        // golden 相違・有効 lint 違反のどちらも 0 でなければ、全詳細を並べて落とす。
+        Assert.assertEq(expected = (Nil: List[String]),
+            List.append(goldenFailures, List.map(formatFinding, activeFindings)))
     }
 
-    /// 1 フィクスチャの定義。`name` は golden / PNG のファイル名・drive の分岐キー、
-    /// `desc` は index.html の 1 行説明。
-    pub type alias Fixture = { name = String, desc = String }
+    /// カタログのタグから抑制 rule 名（`lint-allow:R1` → `R1`）だけを抜き出す。
+    def lintAllow(tags: List[String]): List[String] =
+        tags |> List.filterMap(t ->
+            if (String.startsWith(prefix = "lint-allow:", t)) Some(String.drop(11, t)) else None)
 
-    /// `name` の drive（root を spawn → 本物の frameStep で組む）を mock Game + UiWorldState 下で
-    /// 走らせ、残った UiWorld を renderUi で描画する。drive を record 越しに持ち回すと Flix の
-    /// 効果多相が効かない（closure 保存に subeffecting が無い）ので、名前で `driveByName` に分岐する
-    /// （match の各腕は効果を合流できる）。
-    def renderFixture(rc: Region[r], ctx: SnapshotSupport.Ctx, name: String):
-            {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]} \ Fs.FileRead + r =
-        SnapshotSupport.withMockGame(ctx#atlas, ctx#texInfo, () ->
+    /// Finding 列を 1 枚のバッジ（有効/抑制の件数＋詳細）へ。
+    def badgeOf(findings: List[RenderLint.Finding]): SnapshotSite.LintBadge =
+        let active = List.filter(f -> not f#suppressed, findings);
+        let supp = List.filter(f -> f#suppressed, findings);
+        {checked = true, findingCount = List.length(active), suppressedCount = List.length(supp),
+         details = List.append(List.map(f -> detailLine(false, f), active),
+                               List.map(f -> detailLine(true, f), supp))}
+
+    def detailLine(suppressed: Bool, f: RenderLint.Finding): String =
+        "${if (suppressed) "[抑制] " else ""}${f#rule}: ${f#detail}"
+
+    /// assert メッセージ用の 1 行（シーン名つき）。
+    def formatFinding(f: RenderLint.Finding): String =
+        "[${f#sceneName}] ${f#rule} ${f#severity}: ${f#detail}"
+
+    /// カタログ Item に lint バッジを差し込む（GIF など未検査項目は既定 noLint のまま）。
+    pub def catalogItemsWithLint(lintByName: Map[String, SnapshotSite.LintBadge]): List[SnapshotSite.Item] =
+        catalogItems() |> List.map(item ->
+            {lint = Option.getWithDefault(SnapshotSite.noLint(), Map.get(item#name, lintByName)) | item})
+
+    /// SnapshotSite の設定。出力先・見出し・Retina 前提の CSS 縮小率（実ピクセル ÷ 2）。
+    pub def siteConfig(): SnapshotSite.Config =
+        {outDir = "build/snapshots", title = "fe_rogue UI snapshots", cssScale = 2i32}
+
+    /// カタログ全 31 枚を SnapshotSite の表示用 Item 列へ。PNG/GIF で実ピクセル幅が違うので両方渡す
+    /// （GIF が未生成なら生成コマンドの案内をカードに出す）。
+    pub def catalogItems(): List[SnapshotSite.Item] =
+        SnapshotCatalog.toItems({pngPxWidth = outWidthPx(), gifPxWidth = TestGifSnapshots.gifWidthPx()},
+            "未生成。<code>FE_ROGUE_SNAPSHOT_GIF=1 FE_ROGUE_SNAPSHOT_UPDATE=1 flix test</code> で生成できます。")
+
+    /// 1 シーンを撮影し（golden 比較 + PNG 出力）、同じ UiWorld へ幾何リンタをかける。
+    /// drive → renderUi → build/snapshots へ焼く、の後に、描画に使ったのと同じ UiWorld を
+    /// SnapshotLint で構造データへ射影して RenderLint.check する（描画には一切影響しない検査のみ）。
+    /// 返り値は (名前, golden 相違 Option, Finding 列)。
+    /// drive を record 越しに持ち回すと効果多相が効かないので名前で `driveByName` に分岐する。
+    def renderAndLint(rc: Region[r], ctx: SnapshotSupport.Ctx, entry: SnapshotCatalog.Entry):
+            (String, Option[String], List[RenderLint.Finding]) \ (IO + Fs.FileRead + Fs.FileWrite + r) =
+        let bundle = SnapshotSupport.withMockGame(ctx#atlas, ctx#texInfo, () ->
             UiWorldState.withState(rc, () -> {
-                driveByName(name);
-                UiRender.renderUi()
-            }))
+                driveByName(entry#name);
+                let rendered = UiRender.renderUi();
+                let ui = UiWorldState.State.get();
+                let input = SnapshotLint.buildInput(entry#name, lintAllow(entry#tags),
+                    designSize()#x, designSize()#y, ui);
+                {drawables = rendered#drawables, polygons = rendered#polygons,
+                 findings = RenderLint.check(input)}
+            }));
+        let goldenFail = SnapshotSupport.snapshot(ctx, entry#name,
+            {drawables = bundle#drawables, polygons = bundle#polygons});
+        (entry#name, goldenFail, bundle#findings)
 
     /// フィクスチャ名 → drive の副作用。各腕は個別の drive（効果は Fs / Game / State の部分集合）を
     /// 呼び、match が全体の効果を合流する。
@@ -87,6 +138,12 @@ mod TestUiSnapshots {
             case "trade_menu"           => driveTradeMenu2()
             case "game_over_menu"       => driveGameOverMenu()
             case "suspend_confirm"      => driveSuspendConfirm()
+            case "title_menu"           => driveTitleMenu()
+            case "log_lines"            => driveLogLines()
+            case "turn_end_hold_50"     => driveTurnEndHold()
+            case "item_pickup_popup"    => driveItemPickupPopup()
+            case "battle_panel"         => driveBattlePanel()
+            case "level_up_panel"       => driveLevelUpPanel()
             case "top_bar_ally"         => applyTopBar(allyFrame(), false)
             case "top_bar_enemy"        => applyTopBar(enemyFrame(), false)
             case "top_bar_wipe"         => applyTopBar(wipeFrame(), false)
@@ -104,33 +161,6 @@ mod TestUiSnapshots {
             case "trade_menu_4panes"    => driveTradeMenu4()
             case _                       => bug!("unknown snapshot fixture: ${name}")
         }
-
-    /// 全フィクスチャの一覧（name は golden / PNG ファイル名 + driveByName の分岐キー）。
-    /// 単体シーン → 実ロジック TopBar → 組み合わせ HUD → 満載・境界、の順に並べる。
-    pub def fixtureList(): List[Fixture] =
-        {name = "action_menu_7", desc = "アクションメニュー・フル（味方が拾う/あける/階段/攻撃の全条件を満たす）"} ::
-        {name = "action_menu_3", desc = "空マスメニュー 3 項目（集合/ターンエンド/中断）"} ::
-        {name = "weapon_select", desc = "武器選択（威力/耐久/重さサブライン・苦手バッジ・射程外は淡色）"} ::
-        {name = "item_menu_select", desc = "持ち物（本物は 1 カテゴリ表示・◀ 武器 ▶・重量ヘッダ）"} ::
-        {name = "item_menu_action", desc = "持ち物サブメニュー（武器選択中＝そうび/なげる/すてる）"} ::
-        {name = "trade_menu", desc = "交換メニュー 2 人ぶん（本物の syncPane が末尾に空きスロットを出す）"} ::
-        {name = "game_over_menu", desc = "ゲームオーバーのモーダル選択（GameOver フェーズで可視）"} ::
-        {name = "suspend_confirm", desc = "中断確認のモーダル（SuspendConfirm フェーズで可視）"} ::
-        {name = "top_bar_ally", desc = "上部バー・自軍確定（青帯・青下線・青ドット・自軍フェイズ）"} ::
-        {name = "top_bar_enemy", desc = "上部バー・敵軍確定（赤帯・赤下線・赤ドット・ENEMY PHASE）"} ::
-        {name = "top_bar_wipe", desc = "上部バー・陣営ワイプ 50%（青ベースに赤 sweep が半分）"} ::
-        {name = "top_bar_gather", desc = "上部バー・集合中（▶ + 集合中ラベル）"} ::
-        {name = "unit_card", desc = "自軍ユニットカード（選択中味方・Lv/EXP/HP・武器/指輪アイコン）"} ::
-        {name = "enemy_card", desc = "敵ユニットカード（WeaponSelect のカーソル上の敵・Lv/EXP 行なし・赤枠）"} ::
-        {name = "hud_player_phase", desc = "自軍フェイズ HUD：TopBar(自軍) + ユニットカード"} ::
-        {name = "hud_enemy_phase", desc = "敵フェイズ HUD：TopBar(敵軍・赤) + ユニットカード"} ::
-        {name = "hud_action_menu", desc = "コマンド選択 HUD：TopBar + アクションメニュー(フル)"} ::
-        {name = "hud_attack_flow", desc = "攻撃フロー最盛：TopBar + アクション + 武器選択 + 自軍/敵カード（窓の重なり・z 序列）"} ::
-        {name = "hud_item_menu", desc = "アイテム HUD：TopBar + 持ち物メニュー"} ::
-        {name = "hud_game_over", desc = "ゲームオーバー HUD：TopBar + モーダル"} ::
-        {name = "item_menu_full_top", desc = "持ち物満載・窓の上端を選択（重い在庫の重量ヘッダ色は実ロジック）"} ::
-        {name = "item_menu_full_bottom", desc = "持ち物満載・窓の下端を選択（スクロール offset も実ロジック）"} ::
-        {name = "trade_menu_4panes", desc = "交換メニュー 4 ペイン満載（空きスロットの出方も実 syncPane 由来）"} :: Nil
 
     // ════════════════════════════════════════════════════════
     // カタログ由来の実データ（味方 / 敵 / 在庫）でシーンを組む
@@ -404,6 +434,102 @@ mod TestUiSnapshots {
         let cfg = {phase = TurnPhase.Phase.SuspendConfirm | SnapshotHarness.config(worldScene())};
         spawnUi(SuspendConfirmUi.specPath());
         discard SnapshotHarness.withMocks(cfg, () -> SuspendConfirmUi.frameStep(dt(), cfg#scene))
+
+    // ── TitleMenu / Log（frameStep / step の実ロジックをフィクスチャ状態で駆動）──
+
+    /// タイトル画面: 再開可能（resumable=true）で 2 択が有効・カーソル先頭に塗り箱ハイライト。
+    /// TitleMenuUi.frameStep は root が可視のときだけハイライトを置くので、先に可視化してから回す。
+    def driveTitleMenu(): Unit \ (Fs.FileRead + UiWorldState.State) = region rc {
+        spawnUi(TitleMenuUi.specPath());
+        UiWorldState.State.put(UiStore.setVisible(TitleMenuUi.rootPath(), true, UiWorldState.State.get()));
+        TitleMenuState.withState(rc, () -> {
+            TitleMenuState.State.put({cursor = 0, resumable = true});
+            discard TitleMenuUi.frameStep(dt(), worldScene())
+        })
+    }
+
+    /// ログ HUD: 3 件のログをキューに積んだ状態で LogUi.step を回し、3 行が右下に並ぶ様子を撮る
+    /// （GameLogger は空 drain のモック。新着なしなので既存 3 件がそのまま表示される）。
+    def driveLogLines(): Unit \ (Fs.FileRead + UiWorldState.State) = region rc {
+        spawnUi(LogUi.specPath());
+        let seeded = {queue = logEntry("T1: 剣士 の こうげき", GameLogger.playerColor())
+                              :: logEntry("T1: ゴブリン に 6 のダメージ", GameLogger.playerColor())
+                              :: logEntry("T1: ゴブリン の はんげき", GameLogger.enemyColor()) :: Nil,
+                      idleSince = Duration.zero()};
+        LogState.withState(rc, () -> {
+            LogState.State.put(seeded);
+            TestUnitFixtures.withMockGameLogger(() -> discard LogUi.step(dt(), worldScene()))
+        })
+    }
+
+    /// 表示用ログエントリの簡易ビルダ。color は engine の Color（構造的に {r,g,b} Float32）。
+    def logEntry(text: String, color: {r = Float32, g = Float32, b = Float32}): LogState.LogEntry =
+        {text = text, color = color}
+
+    /// ターンスキップ長押しゲージ 50%: ログ帯を背景に出し、実ロジック（TurnEndHoldUi.applyRing）で
+    /// 充填リング 50% を UiWorld へ塗る。ログ帯 + 充填リング + 「ターンスキップ」文字が重なる様子を撮る。
+    def driveTurnEndHold(): Unit \ (Fs.FileRead + UiWorldState.State) =
+        spawnUi(LogUi.specPath());
+        spawnUi(TurnEndHoldUi.specPath());
+        UiWorldState.State.put(UiStore.setVisible(LogUi.rootPath(), true, UiWorldState.State.get()));
+        UiWorldState.State.put(TurnEndHoldUi.applyRing(0.5, true, UiWorldState.State.get()))
+
+    /// 中央アイテム取得ポップアップ（表示中）: 実ロジック（ItemPickupPopupUi.applyAppearance）で
+    /// ratio=1.0・文言つきの見た目を UiWorld へ塗る。窓 + 中央の「○○を手に入れた」を撮る。
+    def driveItemPickupPopup(): Unit \ (Fs.FileRead + UiWorldState.State) =
+        spawnUi(ItemPickupPopupUi.specPath());
+        UiWorldState.State.put(
+            ItemPickupPopupUi.applyAppearance(1.0, "銀の剣を手に入れた", UiWorldState.State.get()))
+
+    /// 戦闘予報ミニウィンドウ（表示中）: PlayerAttack フェーズで攻撃対象を抱えた味方 × 隣接の敵を組み、
+    /// 本物の BattlePanelUi.frameStep に命中/必殺/反撃の予報数値・相性三角を組ませて撮る
+    /// （カメラ無しなので panel は ui.json の既定位置に出る）。
+    def driveBattlePanel(): Unit \ (Fs.FileRead + GameEngine.Game + UiWorldState.State) = region rc {
+        let lord = {attackTargetId = Some(9)
+                    | mkPlayer({weaponIds = "iron_sword" :: Nil | basePlayer(0, "knight", {x = 1, y = 1})})};
+        let enemy = mkEnemy(9, "fighter_t1", {x = 1, y = 2}, 12, Some("iron_sword"));
+        let scene = worldScene() |> addPlayer(lord) |> addEnemy(enemy, true);
+        let cfg = {phase = TurnPhase.Phase.PlayerAttack, selectedId = Some(0), cursor = {x = 1, y = 2}
+                   | SnapshotHarness.config(scene)};
+        spawnUi(BattlePanelUi.specPath());
+        BattlePanelState.withState(rc, () ->
+          UnitHPBarRender.withForecast(rc, () ->
+            SnapshotHarness.withFullMocks(cfg, () ->
+              discard BattlePanelUi.frameStep(dt(), cfg#scene))))
+    }
+
+    /// レベルアップのステータス変化パネル（増分表示の途中）: 味方に保留レベルアップ結果を持たせ、
+    /// 演出ステートを「途中まで出した」状態（started・revealed=6・待ち時間残り）に直接注入してから
+    /// 本物の LevelUpPanelUi.frameStep を 1 回回す（timer が残るので revealed は動かず、その revealed
+    /// ぶんの本文が描かれる）。左列は全行・右列は途中まで出た様子を撮る。
+    def driveLevelUpPanel(): Unit \ (Fs.FileRead + GameEngine.Game + UiWorldState.State) = region rc {
+        spawnUi(LevelUpPanelUi.specPath());
+        let lord = {pendingLevelUp = Some(levelUpFixtureResult())
+                    | mkPlayer(basePlayer(0, "knight", {x = 1, y = 1}))};
+        let scene = worldScene() |> addPlayer(lord);
+        LevelUpPanelState.withState(rc, () -> {
+            LevelUpPanelState.State.put({started = true, revealed = 6, timer = Duration.millis(500)});
+            TestUnitFixtures.withFixedPhase(TurnPhase.Phase.LevelUpView, () ->
+              TestUnitFixtures.withMockAudio(() ->
+                discard LevelUpPanelUi.frameStep(dt(), scene)))
+        })
+    }
+
+    /// スナップショット / GIF 共通のレベルアップ結果フィクスチャ（9 ステータス）。
+    /// レイアウト最悪ケースを固定して被り再発を検知する: 「こううん」等の**4 文字ラベルが上昇**し、
+    /// かつ**2 桁の現在値・新値**（例 こううん 15 -> 16）を含む。4 文字ラベル + 2 桁 + 矢印 + +1 が
+    /// 1 行に並んでも数値・矢印列に被らないことを golden で凍結する。
+    pub def levelUpFixtureResult(): LevelSystem.Result =
+        {unitName = "ロード", fromLevel = 4, toLevel = 5, changes =
+            ({label = "HP",   before = 20, after = 21, gained = true}:  LevelSystem.StatChange) ::
+            ({label = "ちから", before = 6,  after = 7,  gained = true}:  LevelSystem.StatChange) ::
+            ({label = "まりょく", before = 12, after = 13, gained = true}: LevelSystem.StatChange) ::
+            ({label = "わざ",   before = 8,  after = 9,  gained = true}:  LevelSystem.StatChange) ::
+            ({label = "すばやさ", before = 17, after = 18, gained = true}: LevelSystem.StatChange) ::
+            ({label = "こううん", before = 15, after = 16, gained = true}:  LevelSystem.StatChange) ::
+            ({label = "しゅび", before = 6,  after = 6,  gained = false}: LevelSystem.StatChange) ::
+            ({label = "まぼう", before = 1,  after = 1,  gained = false}: LevelSystem.StatChange) ::
+            ({label = "たいかく", before = 8, after = 8, gained = false}: LevelSystem.StatChange) :: Nil}
 
     // ── UnitCard / EnemyCard（frameStep が対象を解決して両カードを描く）──
 

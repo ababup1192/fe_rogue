@@ -106,7 +106,7 @@ mod TurnPhase {
         /// を呼び、PlayerCursor または EnemyTurn に遷移する。
         case PlayerAttackHold
         /// レベルアップのステータス変化パネルを表示して入力待ちにするフェーズ。
-        /// 攻撃解決でレベルアップを検出した味方の `pendingLevelUp` を LevelUpPanelScene が表示し、
+        /// 攻撃解決でレベルアップを検出した味方の `pendingLevelUp` を LevelUpPanelUi が表示し、
         /// Z / Enter で閉じると通常のターン確定（commitWaitedAndAdvance）に戻る。
         /// その間は移動・選択など他の入力を受け付けない（モーダル）。
         case LevelUpView
@@ -448,7 +448,7 @@ mod TurnInputBridge {
                 PlayerScene.cancelSelection(scene)
             case TurnRules.Transition.OpenAttackForecast(attackerId, defenderId, _defX, _defY) =>
                 // 装備中武器 (weapons.head) を自動使用するので武器選択は介さず AttackForecast 直行。
-                // attackTargetId を立てて BattlePanelScene が予報を組み立てる。
+                // attackTargetId を立てて BattlePanelUi が予報を組み立てる。
                 CombatDriver.setAttackTargetId(attackerId, defenderId, scene)
                     |> PhaseTransitions.enterAttackForecast
             case TurnRules.Transition.AttackSkip                        =>

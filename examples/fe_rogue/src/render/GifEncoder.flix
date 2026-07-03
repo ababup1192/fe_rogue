@@ -5,7 +5,8 @@
 // ApplicationExtension（NETSCAPE2.0・loop count 0）で設定する定石実装。
 //
 // SoftRaster.renderToImage が 1 フレームずつ焼いた BufferedImage を集め、ここで 1 本の
-// GIF にまとめる。GL 無しの操作リプレイ動画（build/snapshots/*.gif）を作る経路。
+// GIF にまとめる。GL 無しの操作リプレイ動画（呼び出し側が outPath を渡す。TestGifSnapshots は
+// test/snapshots/gifs/*.gif へ永続化する）を作る経路。
 mod GifEncoder {
     import java.awt.image.BufferedImage
     import java.awt.image.RenderedImage

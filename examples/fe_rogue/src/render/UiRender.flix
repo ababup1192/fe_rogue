@@ -41,10 +41,12 @@ mod UiRender {
         let offset = layerOffset(ui, root);
         let drawables = Render.drawAtlas(items) |> List.map(d -> {zIndex = d#zIndex + offset | d});
         let polygons = UiExtract.extractPolys(ui, rects, vis)
-            |> List.map(entry -> {
+            |> List.flatMap(entry -> {
                 let (_id, _pos, poly) = entry;
-                ({vertices = poly#points, color = poly#color, alpha = poly#alpha,
-                  zIndex = poly#zIndex + offset}: GameEngine.PolygonRenderCmd)
+                // 1 サブポリ = 1 PolygonRenderCmd（レンダラは凸多角形しか塗れない）。
+                poly#polys |> List.map(sub ->
+                    ({vertices = sub, color = poly#color, alpha = poly#alpha,
+                      zIndex = poly#zIndex + offset}: GameEngine.PolygonRenderCmd))
             });
         {drawables = drawables, polygons = polygons}
 

@@ -1,4 +1,4 @@
-/// ItemPickupPopupScene の純粋な状態更新 `step` を検証する。
+/// ItemPickupPopupUi の純粋な状態更新 `step` を検証する。
 ///
 /// `step` は (1) 取得音の予約を1回だけ消費する、(2) フェードの段階を時間で進めて
 /// 表示の濃さ `ratio` を返す、を担う。窓の alpha・文字色・可視への反映は scene 副作用なので、
@@ -7,9 +7,9 @@
 /// 段階の長さ: 浮かび上がり 300ms / 表示保持 1100ms / 消える 400ms。
 /// 「段階が終わる」系のテストは、どの段階の長さ(最大 1100ms)も確実に超える 2 秒(2000ms)を
 /// 1 回進めて、次の段階へ移ることを確認する。
-mod TestItemPickupPopupScene {
+mod TestItemPickupPopupUi {
 
-    use ItemPickupPopupScene.Stage
+    use ItemPickupPopupState.Stage
 
     // ════════════════════════════════════════════════════════
     // 取得音: 予約を最初の1フレームだけ消費する
@@ -19,8 +19,8 @@ mod TestItemPickupPopupScene {
     /// 持ち越す状態では予約が消える(soundPending=false)。
     @Test
     def testSoundPlaysOnFirstFrame(): Unit \ Assert =
-        let result = ItemPickupPopupScene.step(
-            {stage = Stage.FadeIn, elapsed = Duration.zero(), soundPending = true},
+        let result = ItemPickupPopupUi.step(
+            {stage = Stage.FadeIn, elapsed = Duration.zero(), soundPending = true, text = ""},
             Duration.millis(50));
         Assert.assertEq(expected = (true, false),
                         (result#playSound, result#data#soundPending))
@@ -28,8 +28,8 @@ mod TestItemPickupPopupScene {
     /// 予約なし(soundPending=false)のフレームでは音を鳴らさない。
     @Test
     def testSoundSilentWhenNotPending(): Unit \ Assert =
-        let result = ItemPickupPopupScene.step(
-            {stage = Stage.FadeIn, elapsed = Duration.millis(100), soundPending = false},
+        let result = ItemPickupPopupUi.step(
+            {stage = Stage.FadeIn, elapsed = Duration.millis(100), soundPending = false, text = ""},
             Duration.millis(50));
         Assert.assertEq(expected = false, result#playSound)
 
@@ -40,8 +40,8 @@ mod TestItemPickupPopupScene {
     /// 浮かび上がり(300ms)が終わると保持段階へ移り、表示は最大の濃さ(ratio=1)になる。
     @Test
     def testFadeInEndsAtFullOpacity(): Unit \ Assert =
-        let result = ItemPickupPopupScene.step(
-            {stage = Stage.FadeIn, elapsed = Duration.zero(), soundPending = false},
+        let result = ItemPickupPopupUi.step(
+            {stage = Stage.FadeIn, elapsed = Duration.zero(), soundPending = false, text = ""},
             Duration.millis(2000));
         Assert.assertEq(expected = (Stage.Hold, 1.0),
                         (result#data#stage, result#ratio))
@@ -49,8 +49,8 @@ mod TestItemPickupPopupScene {
     /// 保持(1100ms)が終わると消える段階へ移る。消え始めなのでまだ最大の濃さ(ratio=1)。
     @Test
     def testHoldEndsStartsFadeOut(): Unit \ Assert =
-        let result = ItemPickupPopupScene.step(
-            {stage = Stage.Hold, elapsed = Duration.zero(), soundPending = false},
+        let result = ItemPickupPopupUi.step(
+            {stage = Stage.Hold, elapsed = Duration.zero(), soundPending = false, text = ""},
             Duration.millis(2000));
         Assert.assertEq(expected = (Stage.FadeOut, 1.0),
                         (result#data#stage, result#ratio))
@@ -58,8 +58,8 @@ mod TestItemPickupPopupScene {
     /// 消える(400ms)が終わると非表示(Idle)になり、表示の濃さは 0 になる。
     @Test
     def testFadeOutEndsHidden(): Unit \ Assert =
-        let result = ItemPickupPopupScene.step(
-            {stage = Stage.FadeOut, elapsed = Duration.zero(), soundPending = false},
+        let result = ItemPickupPopupUi.step(
+            {stage = Stage.FadeOut, elapsed = Duration.zero(), soundPending = false, text = ""},
             Duration.millis(2000));
         Assert.assertEq(expected = (Stage.Idle, 0.0),
                         (result#data#stage, result#ratio))
@@ -71,14 +71,14 @@ mod TestItemPickupPopupScene {
     /// アイテム取得時に呼ぶ `reserveGetItemSound` は、ポップアップ(stage)を動かさず
     /// `soundPending` だけ true にする。これにより次フレームの step が get_item を 1 回鳴らし
     /// （`testSoundPlaysOnFirstFrame` 参照）、窓は出ない(stage=Idle 維持)。
-    /// 状態は resource（`ItemPickupPopupScene.State`）が持つ。withState で包み、reserveGetItemSound の
+    /// 状態は resource（`ItemPickupPopupState.State`）が持つ。withState で包み、reserveGetItemSound の
     /// 後に State を読んで soundPending=true・stage=Idle 維持を確認する。
     @Test
     def testReserveGetItemSoundReservesWithoutPopup(): Unit \ Assert =
         region rc {
-            let observed = ItemPickupPopupScene.withState(rc, () -> {
-                discard ItemPickupPopupScene.reserveGetItemSound(Scene.empty());
-                let d = ItemPickupPopupScene.State.get();
+            let observed = ItemPickupPopupState.withState(rc, () -> {
+                discard ItemPickupPopupUi.reserveGetItemSound(Scene.empty());
+                let d = ItemPickupPopupState.State.get();
                 (d#soundPending, d#stage)
             });
             Assert.assertEq(expected = (true, Stage.Idle), observed)

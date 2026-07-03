@@ -17,7 +17,7 @@
 mod DamagePopupFx {
 
     /// fontManifest で登録した name。フォントアトラスはゲーム全体で共有されるため、
-    /// LogScene / BattlePanelScene など他の UI シーンと同じ "ui" を指定しないと
+    /// LogUi / BattlePanelUi など他の UIと同じ "ui" を指定しないと
     /// 実行時に別アトラスを要求してクラッシュする。renderPopups が使うため pub。
     pub def fontName(): String = "ui"
 

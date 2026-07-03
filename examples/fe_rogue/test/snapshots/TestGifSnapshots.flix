@@ -2,12 +2,15 @@
 //
 // 入力スクリプト（ReplayScript.Step 列）を SnapshotHarness + 本物の入力処理 / frameStep で
 // 1 フレームずつ実行し、各フレームを SoftRaster で BufferedImage に焼いて GifEncoder で
-// アニメ GIF にまとめ、build/snapshots/*.gif へ出力する。ゲームを起動せずに「操作の流れ」を
-// 動画で確認できる。
+// アニメ GIF にまとめ、test/snapshots/gifs/*.gif（コミット対象・golden と同じ「保存する生成資産」）
+// へ出力する。ゲームを起動せずに「操作の流れ」を動画で確認できる。
 //
 // 生成は環境変数 FE_ROGUE_SNAPSHOT_GIF が空でない時だけ（通常の flix test では走らない —
 // テスト時間を守る）。golden 比較はしない（人間の目視用）。最終フレームの Drawable 数だけ軽く
-// sanity assert する。GIF は build/snapshots/index.html の「操作フロー（GIF）」に並ぶ。
+// sanity assert する。閲覧用の build/snapshots/*.gif は SnapshotSupport.syncGifs が
+// test/snapshots/gifs/ からコピーして作る（素の flix test でも毎回コピーするので、既存 GIF は
+// クリーンビルドしても消えない）。ページの束ねは各機能の scenario（目録・種別は SnapshotCatalog、
+// ページ生成は SnapshotSite）。
 //
 // 入力→API の対応は Game.flix の dispatch を写す:
 //   ActionMenu: ↑↓ = ActionMenuUi.moveSelection(∓1)
@@ -35,16 +38,10 @@ mod TestGifSnapshots {
     /// 1 入力の後に挟むフィラーフレーム数（選択の間を見せる）。
     def betweenFrames(): Int32 = 3i32
 
-    /// GIF の一覧（名前 + 1 行説明）。writeIndex の GIF セクションと生成対象の正。
-    pub def gifCatalog(): List[(String, String)] =
-        ("topbar_wipe",       "上部バー・陣営ワイプ（自軍確定→敵ターン点火→赤ワイプが左から流れて確定）") ::
-        ("flow_action_menu",  "コマンドメニューの選択移動（↓↓↓→↑・ハイライト箱が動く）") ::
-        ("flow_item_scroll",  "持ち物・満載で窓スクロール（↓×10・窓が選択に追従）") ::
-        ("flow_game_over",    "ゲームオーバーのモーダル選択移動（↓↓↑）") ::
-        ("flow_open_item",    "コマンド→アイテム確定で持ち物窓が開く（↓で選び Z で開き→↓↓→X で戻る・phase 遷移）") ::
-        ("flow_attack_weapon","攻撃確定で武器窓が右に開く（Z で開き→↓で武器切替・ActionSelect→WeaponSelect 遷移）") :: Nil
-
-    def gifPath(name: String): String = "build/snapshots/${name}.gif"
+    /// GIF は build/snapshots/（揮発）でなく test/snapshots/gifs/（コミット対象）へ焼く。
+    /// クリーンビルドや素の flix test でも消えない「保存する生成資産」として golden と同じ扱いにする
+    /// （build/snapshots への表示は SnapshotSupport.syncGifs が担う）。
+    def gifPath(name: String): String = "${SnapshotSupport.gifSourceDir()}/${name}.gif"
 
     /// FE_ROGUE_SNAPSHOT_GIF が空でなければ GIF を生成する。
     def gifEnabled(): Bool \ IO =
@@ -55,7 +52,7 @@ mod TestGifSnapshots {
     // オーケストレータ
     // ════════════════════════════════════════════════════════
 
-    /// 4 本の GIF を生成し、各最終フレームの Drawable 数を sanity assert する。
+    /// 全 GIF を生成し、各 sanity 用フレームの Drawable 数を assert する。
     /// 環境変数が無ければ即 no-op（通常の flix test は GIF なしで素通り）。
     @Test
     def testGifSnapshots(): Unit \ {Assert, Fs.FileRead, Fs.FileWrite, IO} = region rc {
@@ -75,13 +72,16 @@ mod TestGifSnapshots {
             let c4 = genGameOver(rc, ctx);
             let c5 = genFlowOpenItem(rc, ctx);
             let c6 = genFlowAttackWeapon(rc, ctx);
-            // この一発の実行でも index に GIF が並ぶよう、生成後に index を焼き直す。
-            SnapshotSupport.writeIndex(
-                List.map(fx -> (fx#name, fx#desc), TestUiSnapshots.fixtureList()),
-                TestUiSnapshots.outWidthPx(), gifCatalog(), gifWidthPx());
+            let c7 = genFlowTurnEndHold(rc, ctx);
+            let c8 = genFlowLevelUp(rc, ctx);
+            let c9 = genFlowLog(rc, ctx);
+            // この一発の実行でも GIF が各ページに載るよう、test/snapshots/gifs/ から build/snapshots/
+            // へコピーしてからサイトを焼き直す（存在チェックで生成済み GIF は img に、未生成は案内に切り替わる）。
+            SnapshotSupport.syncGifs(SnapshotCatalog.gifEntries() |> List.map(entry -> entry#name));
+            SnapshotSite.generate(TestUiSnapshots.siteConfig(), TestUiSnapshots.catalogItems());
             // sanity: どの最終フレームも空でない（描画が成立している）。
             Assert.assertEq(expected = true,
-                c1 > 5 and c2 > 5 and c3 > 5 and c4 > 5 and c5 > 5 and c6 > 5)
+                c1 > 5 and c2 > 5 and c3 > 5 and c4 > 5 and c5 > 5 and c6 > 5 and c7 > 5 and c8 > 5 and c9 > 5)
         }
     }
 
@@ -146,6 +146,144 @@ mod TestGifSnapshots {
                 drawableCount()
             }));
         GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("topbar_wipe"));
+        count
+
+    // ════════════════════════════════════════════════════════
+    // flow_turn_end_hold（Shift 長押し → 充填リングが満ちる → 発動）
+    // ════════════════════════════════════════════════════════
+
+    /// count フレーム、held=true・active=true で純粋 step を進め、applyRing で UiWorld へ塗って収録する。
+    /// ログ帯を背景として毎フレーム可視にする。持ち越し GaugeData を返す。
+    def turnEndHoldFrames(ctx: SnapshotSupport.Ctx, framesRef: Ref[List[BufferedImage], r],
+                          count: Int32, data: TurnEndHoldState.GaugeData):
+            TurnEndHoldState.GaugeData \ {IO + GameEngine.Game + UiWorldState.State + r} =
+        if (count <= 0) data
+        else {
+            let result = TurnEndHoldUi.step(data, true, true, TestUiSnapshots.dt());
+            let ui = UiStore.setVisible(LogUi.rootPath(), true, UiWorldState.State.get());
+            UiWorldState.State.put(TurnEndHoldUi.applyRing(result#ratio, result#visible, ui));
+            captureFrame(ctx, framesRef);
+            turnEndHoldFrames(ctx, framesRef, count - 1, result#data)
+        }
+
+    /// Shift 長押しで充填リングが 0→満タン→発動する様子を 1/60 ずつ進めて撮る（キー駆動でなく純粋 step 観測）。
+    def genFlowTurnEndHold(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + Fs.FileRead + r} =
+        let framesRef = Ref.fresh(rc, (Nil: List[BufferedImage]));
+        let count = SnapshotSupport.withMockGame(ctx#atlas, ctx#texInfo, () ->
+            UiWorldState.withState(rc, () -> {
+                TestUiSnapshots.spawnUi(LogUi.specPath());
+                TestUiSnapshots.spawnUi(TurnEndHoldUi.specPath());
+                // 初期状態から held=true で 48 フレーム（≒0.77 秒）進める。0.64 秒で満タン→発動し以後満タン維持。
+                discard turnEndHoldFrames(ctx, framesRef, 48, TurnEndHoldState.initial());
+                drawableCount()
+            }));
+        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_turn_end_hold"));
+        count
+
+    // ════════════════════════════════════════════════════════
+    // flow_level_up（出現 → 各ステータス増分 → 確定で閉じる）
+    // ════════════════════════════════════════════════════════
+
+    /// レベルアップ演出の時間発展は遅い（bonus ≈ 2.0 秒 / 各 status_up ≈ 0.8 秒）ので、GIF では 1 フレーム
+    /// あたりの delta を大きめ（120ms）にして実 frameStep のまま早送りする（演出の因果は保つ）。
+    def levelUpDt(): Duration.Duration = Duration.millis(120)
+
+    /// count フレーム、実 frameStep を levelUpDt() ずつ進めて収録する（bonus → 各ステータス増分）。
+    def levelUpFrames(ctx: SnapshotSupport.Ctx, framesRef: Ref[List[BufferedImage], r],
+                      count: Int32, scene: Scene[NodeTag]):
+            Unit \ {IO + GameEngine.Game + UiWorldState.State + GameEngine.Audio
+                     + TurnPhase.State + LevelUpPanelState.State + r} =
+        if (count <= 0) ()
+        else {
+            discard LevelUpPanelUi.frameStep(levelUpDt(), scene);
+            captureFrame(ctx, framesRef);
+            levelUpFrames(ctx, framesRef, count - 1, scene)
+        }
+
+    /// パネルが出現 → ステータス増分が順に出る演出（実 frameStep の時間発展）→ 確定で閉じる を撮る。
+    /// パネル状態（保留レベルアップ結果）は scene へ直接注入し、確定の phase 遷移は withFullMocks の
+    /// 可変 Ref が持続させる（2 回目の確定で LevelUpView を抜け、次フレームで panel が消える）。
+    /// sanity 用の Drawable 数は「全行を出し切った（閉じる前の）」フレームで採る（閉じると空になるため）。
+    def genFlowLevelUp(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + Fs.FileRead + r} =
+        let framesRef = Ref.fresh(rc, (Nil: List[BufferedImage]));
+        let count = SnapshotSupport.withMockGame(ctx#atlas, ctx#texInfo, () ->
+            UiWorldState.withState(rc, () -> {
+                TestUiSnapshots.spawnUi(LevelUpPanelUi.specPath());
+                let lord = {pendingLevelUp = Some(TestUiSnapshots.levelUpFixtureResult())
+                            | TestUiSnapshots.mkPlayer(TestUiSnapshots.basePlayer(0, "knight", {x = 1, y = 1}))};
+                let scene = TestUiSnapshots.worldScene() |> TestUiSnapshots.addPlayer(lord);
+                let cfg = {phase = TurnPhase.Phase.LevelUpView, selectedId = Some(0)
+                           | SnapshotHarness.config(scene)};
+                LevelUpPanelState.withState(rc, () ->
+                  SnapshotHarness.withFullMocks(cfg, () -> {
+                      // 出現 → bonus → 各ステータス増分が順に出る（実 frameStep の時間発展）。
+                      levelUpFrames(ctx, framesRef, 34, scene);
+                      // 1 回目の確定: まだ出し切っていなければ残りを一気に出す（閉じない）。
+                      discard LevelUpPanelUi.confirm(scene);
+                      levelUpFrames(ctx, framesRef, 4, scene);
+                      let full = drawableCount();  // 全行が出た（閉じる前の）Drawable 数
+                      // 2 回目の確定: 閉じる → 次フレームで panel が消える（phase 復帰が可変 Ref で持続）。
+                      discard LevelUpPanelUi.confirm(scene);
+                      levelUpFrames(ctx, framesRef, 6, scene);
+                      full
+                  }))
+            }));
+        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_level_up"));
+        count
+
+    // ════════════════════════════════════════════════════════
+    // flow_log（ログ帯: 白=プレイヤー / 赤=敵 を時間差で注入 → 行が押し上がる → アイドルで帯ごと消える）
+    // ════════════════════════════════════════════════════════
+
+    /// ログ帯の見やすい早送り dt（実 step のまま時間を進める。1 フレーム 200ms）。
+    /// アイドル寿命は LogUi.holdSeconds()=5 秒なので、この dt なら数十フレームで帯が消える。
+    def logDt(): Duration.Duration = Duration.millis(200)
+
+    /// count フレーム、新着なしで実 LogUi.step を logDt() ずつ進めて収録する
+    /// （呼ぶ前に emit された新着はこの中の最初の step が drain する。以後はアイドルとして寿命が進む）。
+    def logFrames(ctx: SnapshotSupport.Ctx, framesRef: Ref[List[BufferedImage], r],
+                  count: Int32, scene: Scene[NodeTag]):
+            Unit \ {IO + GameEngine.Game + UiWorldState.State
+                     + GameLogger.GameLogger + LogState.State + r} =
+        if (count <= 0) ()
+        else {
+            discard LogUi.step(logDt(), scene);
+            captureFrame(ctx, framesRef);
+            logFrames(ctx, framesRef, count - 1, scene)
+        }
+
+    /// プレイヤー行動ログ（白）→ 敵ログ（赤）を時間差で GameLogger へ注入し、行が下から押し上がる様子と、
+    /// 最後の新着から holdSeconds() 秒のアイドルで帯ごと消えるまでを撮る。GameLogger は本物の handler
+    /// （withLogger）で回すので、drain / キュー詰め替え / 寿命判定はすべて実ロジック。
+    /// sanity 用の Drawable 数は「帯が満ちた（アイドルで消える前の）」フレームで採る（消えると空になるため）。
+    def genFlowLog(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + Fs.FileRead + r} =
+        let framesRef = Ref.fresh(rc, (Nil: List[BufferedImage]));
+        let count = SnapshotSupport.withMockGame(ctx#atlas, ctx#texInfo, () ->
+            UiWorldState.withState(rc, () ->
+                LogState.withState(rc, () ->
+                    GameLogger.withLogger(rc, () -> {
+                        TestUiSnapshots.spawnUi(LogUi.specPath());
+                        let scene = TestUiSnapshots.worldScene();
+                        // 白（プレイヤー）→ 赤（敵）を数行、行の押し上げが見える間隔で注入する。
+                        GameLogger.playerLog("剣士 の こうげき");
+                        logFrames(ctx, framesRef, 3, scene);
+                        GameLogger.playerLog("ゴブリン に 6 のダメージ");
+                        logFrames(ctx, framesRef, 3, scene);
+                        GameLogger.enemyLog("ゴブリン の はんげき");
+                        logFrames(ctx, framesRef, 3, scene);
+                        GameLogger.playerLog("僧侶 の いやし");
+                        logFrames(ctx, framesRef, 3, scene);
+                        GameLogger.enemyLog("ゴブリン の こうげき");
+                        logFrames(ctx, framesRef, 3, scene);
+                        // 6 行目でいちばん古い行が押し出される（窓は maxQueue()=5 行）。
+                        GameLogger.playerLog("剣士 の とどめ");
+                        logFrames(ctx, framesRef, 4, scene);
+                        let full = drawableCount();  // 帯が満ちた（消える前の）Drawable 数
+                        // 以後は無入力アイドル。holdSeconds()=5 秒 ≒ 25 フレームで帯ごと消えるまで回す。
+                        logFrames(ctx, framesRef, 30, scene);
+                        full
+                    }))));
+        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_log"));
         count
 
     // ════════════════════════════════════════════════════════
@@ -286,7 +424,7 @@ mod TestGifSnapshots {
                TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                GatherResume.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery,
-               BoardQuery, ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State,
+               BoardQuery, ItemPickupPopupState.State, ItemMenuState.State, TradeMenuState.State,
                UiWorldState.State} =
         match (TurnPhase.State.get(), key) {
             // ActionSelect（コマンドメニュー）

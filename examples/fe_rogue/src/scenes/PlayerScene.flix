@@ -57,7 +57,7 @@ mod PlayerScene {
         Ring.bonuses(PlayerData.equippedRing(data))
 
     /// `combatView` の「装備武器を明示指定する」版。攻撃中に選択した武器（装備中=先頭とは
-    /// 限らない）で戦闘予測を計算するため、`BattlePanelScene` から使う。
+    /// 限らない）で戦闘予測を計算するため、`BattlePanelUi` から使う。
     pub def combatViewWith(data: Data, weapon: UnitCatalog.WeaponResource): Combat.CombatView =
         Combat.assembleView({
             base   = Combat.baseStatsFrom(data#resource),

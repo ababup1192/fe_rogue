@@ -24,7 +24,7 @@ mod TurnFlow {
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery} =
         // レベルアップ表示待ちの味方が居れば、ターンを進めずステータス変化パネル (LevelUpView) へ割り込む。
-        // パネルを閉じると LevelUpPanelScene.confirm が pendingLevelUp を消して再度ここを呼ぶので、
+        // パネルを閉じると LevelUpPanelUi.confirm が pendingLevelUp を消して再度ここを呼ぶので、
         // そのとき保留が無くなって通常の確定・前進に進む。Kill / Counter / Commit の 3 経路すべてが
         // 最後にここを通るため、自分の攻撃で得たレベルアップ表示の割り込みは 1 箇所で足りる。
         if (PlayerScene.anyPendingLevelUp(scene))
@@ -81,7 +81,7 @@ mod TurnFlow {
 
     /// レベルアップ表示を閉じ切ったあとの復帰先を文脈で分ける。
     /// modal 割り込みの入口（`commitWaitedAndAdvance` の `anyPendingLevelUp` 分岐）に対応する
-    /// 出口をここに置き、往復契約を turn 層 1 箇所に閉じる（`LevelUpPanelScene.confirm` は
+    /// 出口をここに置き、往復契約を turn 層 1 箇所に閉じる（`LevelUpPanelUi.confirm` は
     /// 「保留を消す / 演出をリセットする」という view 側の modal ループだけを持つ）。
     ///   - 自分の攻撃中（`SelectedPlayer` あり）→ `commitWaitedAndAdvance` でターンを確定・続行。
     ///   - 敵ターン中の反撃由来（`SelectedPlayer` なし）→ 敵ターンに戻って続行（キューはそのまま）。

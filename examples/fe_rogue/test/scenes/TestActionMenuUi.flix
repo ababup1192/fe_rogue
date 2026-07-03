@@ -326,7 +326,7 @@ mod TestActionMenuUi {
         let wref = Ref.fresh(rc, World.syncFromScene(args#scene, World.empty()));
         let (after, phase) = run {
         run {
-        ItemPickupPopupScene.withState(rc, () ->
+        ItemPickupPopupState.withState(rc, () ->
         TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(args#scene), () ->
         TestUnitFixtures.withPhaseRef(rc, args#initialPhase, () ->
             TestUnitFixtures.withNoopTween(() ->

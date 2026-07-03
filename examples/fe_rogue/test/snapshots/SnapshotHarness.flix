@@ -108,7 +108,7 @@ mod SnapshotHarness {
     //   - SelectedPlayer は Ref-backed（drafts / gatherActive を持ち越す）。
     //   - 確定経路が要求する障害 effect を全供給:
     //       no-op    : GameLogger / Audio / FloorAdvanceRequest / GatherResume
-    //       Ref-back : EnemyTurn.Queue / ArrowCursorState / ItemPickupPopupScene / ItemMenuState / TradeMenuState
+    //       Ref-back : EnemyTurn.Queue / ArrowCursorState / ItemPickupPopupState / ItemMenuState / TradeMenuState
     //       World    : World.Command はローカル World Ref へ畳み、World.WorldQuery が同 Ref を読む
     //                  （read-after-write。確定経路の pickup/stairs 系 Cmd も内容に矛盾なく反映される。
     //                   ItemMenu/Weapon の可視・内容は PartyQuery=scene 直読みなので World 書込に非依存）。
@@ -125,7 +125,7 @@ mod SnapshotHarness {
                     - EnemyTurn.Queue - TurnPhase.State - SelectedPlayer.State - CursorState.State
                     - ArrowCursorState.State - GatherResume.State - PlayerData.PartyQuery
                     - EnemyData.RosterQuery - CustomEffects.FloorAdvanceRequest - GameEngine.Audio
-                    - World.Command - World.WorldQuery - BoardQuery - ItemPickupPopupScene.State
+                    - World.Command - World.WorldQuery - BoardQuery - ItemPickupPopupState.State
                     - ItemMenuState.State - TradeMenuState.State) =
         let initialSel: SelectedPlayer.Selection =
             {id = cfg#selectedId, drafts = Nil, gatherActive = cfg#gatherActive};
@@ -145,7 +145,7 @@ mod SnapshotHarness {
         TestUnitFixtures.withSelectionRef(rc, initialSel, () ->
         EnemyTurn.withQueue(rc, () ->
         ArrowCursorState.withState(rc, () ->
-        ItemPickupPopupScene.withState(rc, () ->
+        ItemPickupPopupState.withState(rc, () ->
         ItemMenuState.withState(rc, () ->
         withPhaseState(rc, cfg#phase, () ->
         withLocalWorld(rc, seededWorld, thunk))))))))))))))))))

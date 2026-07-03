@@ -184,7 +184,8 @@ mod TestUiSpec {
     // ════════════════════════════════════════════════════════
 
     /// poly の points([[0,0],[0,2.6],[2.3,1.3]])/color(#00ff00=(0,1,0))/alpha(未指定=1.0)を
-    /// parse し polys store に登録する。points は成分タプル列で、color は成分タプルで比較する。
+    /// parse し polys store に登録する。宣言 poly はサブポリ 1 個で、頂点は成分タプル列、
+    /// color は成分タプルで比較する。
     @Test
     def testParsePolyPointsColorAlpha(): Unit \ Assert =
         let json =
@@ -193,12 +194,12 @@ mod TestUiSpec {
         let poly = spawnFrom(json) |> Option.flatMap(ui ->
             lookup("Mark", u -> u#polys, ui)
                 |> Option.map(comp -> (
-                    comp#points |> List.map(p -> (p#x, p#y)),
+                    comp#polys |> List.map(sub -> sub |> List.map(p -> (p#x, p#y))),
                     (comp#color#r, comp#color#g, comp#color#b),
                     comp#alpha)));
         Assert.assertEq(
             expected = Some((
-                (0.0, 0.0) :: (0.0, 2.6) :: (2.3, 1.3) :: Nil,
+                ((0.0, 0.0) :: (0.0, 2.6) :: (2.3, 1.3) :: Nil) :: Nil,
                 (0.0f32, 1.0f32, 0.0f32),
                 1.0f32)),
             poly)

@@ -274,7 +274,7 @@ mod ActionMenuUi {
                 EnemyData.RosterQuery,
                 CustomEffects.FloorAdvanceRequest,
                 GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery,
-                ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State, UiWorldState.State} =
+                ItemPickupPopupState.State, ItemMenuState.State, TradeMenuState.State, UiWorldState.State} =
         let sel = UiStore.selectionOf(menuPath(), UiWorldState.State.get());
         match List.nth(sel, buildItems(scene)) {
             // disabled 項目（例: 敵が射程外の「攻撃」）は確定しても何もしない。
@@ -516,7 +516,7 @@ mod ActionMenuUi {
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 CursorState.State, GatherResume.State, PlayerData.PartyQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery,
-                ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State} =
+                ItemPickupPopupState.State, ItemMenuState.State, TradeMenuState.State} =
         match entry#metadata {
             case None    => scene
             case Some(m) =>
@@ -600,15 +600,15 @@ mod ActionMenuUi {
     def applyPickup(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger,
                               SelectedPlayer.State, PlayerData.PartyQuery, World.Command, World.WorldQuery,
-                              ItemPickupPopupScene.State} =
+                              ItemPickupPopupState.State} =
         match pickupTarget() {
             case None       => scene
             case Some(info) =>
                 if (wouldPickupOverload(info))
-                    ItemPickupPopupScene.showFull(scene)
+                    ItemPickupPopupUi.showFull(scene)
                 else
                     PlayerScene.pickupFloorItem(info#playerId, info#gridPos, scene)
-                        |> ItemPickupPopupScene.reserveGetItemSound
+                        |> ItemPickupPopupUi.reserveGetItemSound
         }
 
     /// 拾う主体が足元の床アイテムを拾うと重量過多になるか。
@@ -625,18 +625,18 @@ mod ActionMenuUi {
     def applyOpenChest(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger,
                               SelectedPlayer.State, PlayerData.PartyQuery, World.Command, World.WorldQuery,
-                              ItemPickupPopupScene.State} =
+                              ItemPickupPopupState.State} =
         match openTarget() {
             case None                      => scene
             case Some((info, player, chest)) =>
                 if (not PlayerScene.canOpenChests(player))
-                    ItemPickupPopupScene.showMessage("開けることができない", scene)
+                    ItemPickupPopupUi.showMessage("開けることができない", scene)
                 else if (PlayerScene.wouldOverloadByPicking(player, chest#content))
-                    ItemPickupPopupScene.showFull(scene)
+                    ItemPickupPopupUi.showFull(scene)
                 else
                     PlayerScene.addPickedItem(info#playerId, chest#content, scene)
                         |> Chests.takeAt(info#gridPos)
-                        |> ItemPickupPopupScene.reserveGetItemSound
+                        |> ItemPickupPopupUi.reserveGetItemSound
         }
 
     /// 開錠対象を 1 本の Option 連鎖で解決する。

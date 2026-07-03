@@ -79,7 +79,7 @@ mod CustomEffects {
         def save(scene: Scene[NodeTag]): Scene[NodeTag]
     }
 
-    /// 中断セーブからの再開を要求する。emit 元（TitleMenuScene の「中断から再開」）は
+    /// 中断セーブからの再開を要求する。emit 元（TitleMenuUi の「中断から再開」）は
     /// 中断データがある（resumable）ときだけ `resume(scene)` を呼ぶ。実体（handler）は
     /// `GameLifecycle.resumeFromSuspend` で、slot を読み・パーティ / フロア / ターン系を整え・
     /// セーブを使用済みで上書き（save-scum 防止）してから Playing へ遷移する。

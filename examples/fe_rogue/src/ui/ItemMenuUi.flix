@@ -906,10 +906,10 @@ mod ItemMenuUi {
         }
 
     // ========================================================================
-    // 攻撃中の武器 index 解決（BattlePanelScene と共用する seam）
+    // 攻撃中の武器 index 解決（BattlePanelUi と共用する seam）
     // ========================================================================
 
-    /// カーソル上の敵に届く「選択すべき武器」の index（weapons 内）。`BattlePanelScene` が予報と
+    /// カーソル上の敵に届く「選択すべき武器」の index（weapons 内）。`BattlePanelUi` が予報と
     /// 攻撃開始で読む。現在カーソル上の敵との距離に届く先頭武器を返す。カーソルが敵に乗っていない /
     /// 届く武器が無いなら None。
     pub def activeAttackWeaponIndex(scene: Scene[NodeTag]): Option[Int32]

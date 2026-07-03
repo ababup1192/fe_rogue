@@ -291,7 +291,7 @@ mod WeaponSelectUi {
         scene
 
     /// カーソルがある武器の weapons 内 index。選択行の meta `"w:<idx>"` を選択位置から読む
-    /// （`CursorScene`/`BattlePanelScene` が対象敵の解決に使う）。未登録 / 無選択なら None。
+    /// （`CursorScene`/`BattlePanelUi` が対象敵の解決に使う）。未登録 / 無選択なら None。
     pub def hoveredWeaponIndex(): Option[Int32] \ UiWorldState.State =
         let ui = UiWorldState.State.get();
         let sel = UiStore.selectionOf(menuPath(), ui);

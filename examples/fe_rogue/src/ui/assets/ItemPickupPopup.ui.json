@@ -1,0 +1,17 @@
+{
+  "root": {
+    "name": "ItemPickupPopup", "widget": "none", "layer": 6, "visible": false,
+    "children": [
+      { "name": "window", "widget": "box", "abs": [70, 56.4], "width": 100, "height": 15.2,
+        "color": "#0d121f", "alpha": 0.0, "borderWidth": 1.0, "borderColor": "#ffffff",
+        "zIndex": 0, "visible": false },
+      { "name": "textBox", "widget": "none", "abs": [70, 56.4], "width": 100, "height": 15.2,
+        "dir": "row", "mainAlign": "center", "crossAlign": "center",
+        "children": [
+          { "name": "label", "widget": "text", "text": "", "font": "ui", "fontSize": 5.2,
+            "tint": "#ffffff", "zIndex": 1, "visible": false }
+        ]
+      }
+    ]
+  }
+}

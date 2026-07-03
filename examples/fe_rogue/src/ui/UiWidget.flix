@@ -27,10 +27,13 @@ mod UiWidget {
                                   scale = Vec2.Vec2, flipH = Bool, flipV = Bool, tint = Color, zIndex = Int32,
                                   hframes = Int32, vframes = Int32, frame = Int32 }
 
-    /// 塗り潰し凸多角形の描画属性。サイズは layout が決め、頂点はその矩形内へ置く。
-    /// `points`: 頂点列。ノードのレイアウト矩形左上を原点とするローカル design px（3 点以上）。
-    /// `color`: 塗り色。`alpha`: 不透明度。`zIndex`: 重なり順。
-    pub type alias PolyComp = { points = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32 }
+    /// 塗り潰し凸多角形（の集合）の描画属性。サイズは layout が決め、頂点はその矩形内へ置く。
+    /// `polys`: 凸サブポリゴンの列。各サブポリは頂点列（ノードのレイアウト矩形左上を原点とする
+    ///   ローカル design px・3 点以上・凸）で、1 サブポリ = 1 PolygonRenderCmd として塗る。
+    ///   レンダラは GL_TRIANGLE_FAN（凸前提）なので、凹形状は凸単位に割った複数サブポリで表す
+    ///   （中空リング＝アヌラスは外周 2 点＋内周 2 点の凸クアッド列など）。単純な三角形は 1 要素。
+    /// `color`: 塗り色。`alpha`: 不透明度。`zIndex`: 重なり順（全サブポリ共通）。
+    pub type alias PolyComp = { polys = List[List[Vec2.Vec2]], color = Color, alpha = Float32, zIndex = Int32 }
 
     /// リスト選択カーソルを delta だけ動かす（端で反対側へ回り込む）。
     /// count<=0 は選択肢が無いので 0 を返す。

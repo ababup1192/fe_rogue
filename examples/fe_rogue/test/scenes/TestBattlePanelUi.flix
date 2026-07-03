@@ -1,4 +1,4 @@
-/// BattlePanelScene.confirm のテスト
+/// BattlePanelUi.confirm / cancel のテスト
 ///
 /// 連打バグ回帰防止: Z 連打で `AttackForecast → PlayerAttack → WeaponSelect → AttackForecast`
 /// のループが回って攻撃モーションが再起動されないよう、`confirm` 直後のフェーズが
@@ -6,9 +6,10 @@
 ///
 /// 検証する性質:
 ///   - 状況が揃った状態で `confirm` を呼ぶと TurnPhase.State が `PlayerAttackHold` になる
+///   - `cancel` を呼ぶと ActionSelect（行動メニュー）に戻る
 ///   - `TurnRules.decide` は `PlayerAttackHold + Confirm` で必ず `Stay` を返す
 ///     (上の遷移先と組み合わせて「攻撃モーション中の Z は無効」が機能することを担保)
-mod TestBattlePanelScene {
+mod TestBattlePanelUi {
 
     // ════════════════════════════════════════════════════════
     // フィクスチャ
@@ -77,16 +78,12 @@ mod TestBattlePanelScene {
     // confirm の遷移先 = PlayerAttackHold（入力ロック相当）
     // ════════════════════════════════════════════════════════
 
-    /// `BattlePanelScene.confirm` を呼んだ直後の TurnPhase が `PlayerAttackHold` であること。
+    /// `BattlePanelUi.confirm` を呼んだ直後の TurnPhase が `PlayerAttackHold` であること。
     ///
     /// バグ修正前は `PlayerAttack` に遷移していたため、次フレームの Z が
     /// `TurnRules.decide` の PlayerAttack 分岐で `OpenWeaponMenu` を返してしまい
     /// 連打ループが成立していた。修正後は入力受付の無い `PlayerAttackHold` に
     /// 遷移するため、`attack_lunge` 完了まで Z が無効化される。
-    ///
-    /// Scene は空のままにしてあるので `CombatDriver.startAttack` は内部 `get(id, scene)`
-    /// で None → no-op になるが、phase の書き換えは startAttack 呼び出しより前で
-    /// 行われるためアサート対象は変わらない。
     @Test
     def testConfirmTransitionsToInputLockedPhase(): Unit \ Assert =
         region rc {
@@ -98,7 +95,7 @@ mod TestBattlePanelScene {
                     gatherActive = false
                 });
                 // confirm 経路が World 位置を読む（posOf は None→scene/引数 fallback）。
-                let _ = run { BattlePanelScene.confirm(Scene.empty()) }
+                let _ = run { BattlePanelUi.confirm(Scene.empty()) }
                     with handler World.WorldQuery { def get(k) = k(World.empty()) };
                 TurnPhase.State.get()
             } with handler PlayerData.PartyQuery {
@@ -129,9 +126,9 @@ mod TestBattlePanelScene {
     // cancel の遷移先 = ActionSelect（行動メニューに戻る / 待機しない）
     // ════════════════════════════════════════════════════════
 
-    /// `BattlePanelScene.cancel` を呼んだ直後の TurnPhase が `ActionSelect` であること。
+    /// `BattlePanelUi.cancel` を呼んだ直後の TurnPhase が `ActionSelect` であること。
     /// 攻撃予測を X でキャンセルしたら待機 (commit) や PlayerAttack ではなく行動メニューに
-    /// 戻る、という仕様の回帰防止。次フレームの ActionMenuScene.refreshItems が
+    /// 戻る、という仕様の回帰防止。次フレームの ActionMenuUi.frameStep が
     /// ActionSelect を見てメニューを再表示する。
     @Test
     def testCancelReturnsToActionSelect(): Unit \ Assert =
@@ -143,7 +140,7 @@ mod TestBattlePanelScene {
                     drafts = Nil,
                     gatherActive = false
                 });
-                let _ = BattlePanelScene.cancel(Scene.empty());
+                let _ = BattlePanelUi.cancel(Scene.empty());
                 TurnPhase.State.get()
             } with handler PlayerData.PartyQuery {
                 def get(id, k) =

@@ -1,0 +1,18 @@
+{
+  "root": {
+    "name": "TurnEndHold", "widget": "none", "layer": 7, "visible": false,
+    "children": [
+      { "name": "ringBg", "widget": "poly", "abs": [67, 116], "width": 6, "height": 6,
+        "points": [[0, 0], [6, 0], [3, 6]], "color": "#383d4d", "alpha": 0.85, "zIndex": 2 },
+      { "name": "ringFg", "widget": "poly", "abs": [67, 116], "width": 6, "height": 6,
+        "points": [[0, 0], [6, 0], [3, 6]], "color": "#f2b333", "alpha": 1.0, "zIndex": 3 },
+      { "name": "textRow", "widget": "none", "abs": [76, 111.5], "height": 15,
+        "dir": "row", "crossAlign": "center",
+        "children": [
+          { "name": "label", "widget": "text", "text": "ターンスキップ", "font": "ui",
+            "fontSize": 3.8, "tint": "#ffffff", "zIndex": 3 }
+        ]
+      }
+    ]
+  }
+}

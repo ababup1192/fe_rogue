@@ -103,6 +103,13 @@ box/text/sprite が Drawable（sprite チャンネル）に出るのに対し、
 root の `layer` オフセットは zIndex に加算される。`points` が 2 点以下、または各要素が `[x, y]` でなければ
 parse エラー。用途例: TopBar 中央の「集合中」ラベル左の再生（▶）マーク。
 
+**poly は凸単位で持つ**。実機レンダラは `GL_TRIANGLE_FAN`（凸前提）で塗るため、凹多角形は正しく塗れず
+潰れる（中空リングは塗り潰しになる）。ui.json の `points` で宣言できるのは**単一の凸多角形**。中空リング
+（アヌラス）や凹形状は、実行時に `UiStore.setPolyPolys(path, polys)` で**凸サブポリゴンの列**
+（`List[List[Vec2]]`。各要素が 1 つの凸多角形）を流し込む。1 サブポリ = 1 `PolygonRenderCmd`。
+例: `TurnEndHoldUi` の充填リングは外周 2 点＋内周 2 点の凸クアッドをセグメントぶん並べて渡す
+（engine `Arc2D.toRenderCmds` と同じ分割）。
+
 ## 名前パスとコード契約
 
 各ノードは root 名を起点に `"root/child/grandchild/..."` の**名前パス**で一意に引ける。

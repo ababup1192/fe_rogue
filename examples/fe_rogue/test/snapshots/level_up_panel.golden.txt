@@ -1,0 +1,6 @@
+box    z=50000 pos=(8.00,13.00) size=(112.00,64.00) rgb=#1a3399 a=0.80 corner=0.00 border=1.00/#ffffff/1.00
+text   z=50001 n=59 bbox=(14.00,18.00)-(74.19,67.81) rgb=#ffffff
+text   z=50001 n=10 bbox=(57.09,30.00)-(63.96,67.81) rgb=#ffe94a
+text   z=50001 n=20 bbox=(65.96,30.00)-(108.25,60.31) rgb=#ffffff
+text   z=50001 n=2 bbox=(109.05,30.00)-(115.92,37.81) rgb=#ffe94a
+text   z=50001 n=15 bbox=(14.00,70.00)-(51.50,76.25) rgb=#ffffff

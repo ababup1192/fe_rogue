@@ -123,11 +123,11 @@ mod RenderWorld {
     def hudSubtreeRoots(): List[NodePath] =
         // TopBar / ユニット簡易カード（UnitCard / EnemyCard）/ 行動選択ウィンドウ（ActionMenu）/
         // 武器選択ウィンドウ（WeaponSelect）/ アイテム選択ウィンドウ（ItemMenu）/ 物交換ウィンドウ
-        // （TradeMenu）/ 中断確認モーダル（SuspendConfirm）は World-entity UI へ移行済み。ここには積まない。
-        LevelUpPanelScene.rootPath() ::
-        MinimapScene.rootPath() ::
-        LogScene.logPath() :: BattlePanelScene.rootPath() ::
-        ItemPickupPopupScene.rootPath() :: TurnEndHoldScene.rootPath() :: Nil
+        // （TradeMenu）/ 中断確認モーダル（SuspendConfirm）/ タイトル画面（TitleMenu）/ 一時ログ HUD（Log）/
+        // 中央アイテム取得ポップアップ（ItemPickupPopup）/ ターンスキップ長押しゲージ（TurnEndHold）/
+        // 戦闘予報ミニウィンドウ（BattlePanel）/ レベルアップ演出パネル（LevelUpPanel）
+        // は World-entity UI へ移行済み。ここには積まない。
+        MinimapScene.rootPath() :: Nil
 
     /// World 描画する全サブツリー root（world〔camera 適用〕 ++ hud〔CanvasLayer〕）。camera 適用/免除の seam を
     /// 2 サブリストで保持。順序は z-sort/effzIndex で描画に無関係。
@@ -136,10 +136,11 @@ mod RenderWorld {
     // 武器アイコン/HP バーはノード自体を積まず UnitHPBarRender.renderBars / WeaponIconRender.renderIcons
     // が World store から直描きする。
 
-    /// polygon（Polygon2D/Arc2D）を持つ subtree root のみ（minimap マーカー円 / BattlePanel ドット / TurnEndHold リング）。
-    /// polygon の無い root を毎フレーム走査しないよう明示。
+    /// polygon（Polygon2D/Arc2D）を持つ subtree root のみ（minimap マーカー円）。
+    /// polygon の無い root を毎フレーム走査しないよう明示（TurnEndHold リング / BattlePanel の丸・三角は
+    /// World-entity UI の poly / box へ移行済み）。
     def polygonSubtreeRoots(): List[NodePath] =
-        MinimapScene.rootPath() :: BattlePanelScene.rootPath() :: TurnEndHoldScene.rootPath() :: Nil
+        MinimapScene.rootPath() :: Nil
 
     /// 全 subtree（HUD/メニュー/minimap/ポップアップ等）を World render System で描く。
     /// perf: `renderOrderPaths` を全 root で 1 回共有する batch API に委譲（root ごと再走査すると O(roots×N) になるため）。

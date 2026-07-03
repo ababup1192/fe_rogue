@@ -20,7 +20,7 @@ mod PlayerMovementDriver {
                         (EngineNode[NodeTag], Scene[NodeTag])
                         \ {GameEngine.Game, BoardQuery, GameLogger.GameLogger,
                            SelectedPlayer.State, World.Command, World.WorldQuery,
-                           ItemPickupPopupScene.State} =
+                           ItemPickupPopupState.State} =
         stepFor(selectAllowedPred(TurnPhase.Phase.PlayerMoving, scene),
                 PlayerScene.selectedSlideDuration(), node, path, scene)
 
@@ -34,7 +34,7 @@ mod PlayerMovementDriver {
                        (EngineNode[NodeTag], Scene[NodeTag])
                        \ {GameEngine.Game, BoardQuery, GameLogger.GameLogger,
                           SelectedPlayer.State, World.Command, World.WorldQuery,
-                          ItemPickupPopupScene.State} =
+                          ItemPickupPopupState.State} =
         let lord = PlayerScene.lordId();
         // 移動前位置は World.posOf（stepFor が emit する **前**の読み＝pre-move。scene twin は持たない）。
         let prev = World.posOf(World.EntityRef.Player(lord), World.WorldQuery.get())
@@ -139,7 +139,7 @@ mod PlayerMovementDriver {
                  path: NodePath, scene: Scene[NodeTag]):
                 (EngineNode[NodeTag], Scene[NodeTag])
                 \ {GameEngine.Game, BoardQuery, World.WorldQuery, GameLogger.GameLogger,
-                   SelectedPlayer.State, World.Command, ItemPickupPopupScene.State} =
+                   SelectedPlayer.State, World.Command, ItemPickupPopupState.State} =
         match node {
             case EngineNode.Marker2DWithState(_, NodeTag.Player(data)) =>
                 // かなしばり（完全停止）中は移動入力を捨てる。攻撃も ActionMenu 側で封じる。
@@ -202,7 +202,7 @@ mod PlayerMovementDriver {
     pub def autoPickupOrLog(data: PlayerScene.Data, target: {x = Int32, y = Int32},
                              scene: Scene[NodeTag]):
             Scene[NodeTag] \ {SelectedPlayer.State, GameLogger.GameLogger, World.Command,
-                              ItemPickupPopupScene.State, World.WorldQuery} =
+                              ItemPickupPopupState.State, World.WorldQuery} =
         // 床アイテムは World store から読む。
         match World.groundItemAtOf(target, World.WorldQuery.get()) |> Option.map(d -> d#item) {
             case None            => scene
@@ -215,7 +215,7 @@ mod PlayerMovementDriver {
                     // 取得音(get_item)を予約（process が次フレームに鳴らす。physicsProcess に
                     // GameEngine.Audio は無いため、純粋な予約で process 側へ委ねる）。
                     PlayerScene.pickupFloorItem(data#id, target, scene)
-                        |> ItemPickupPopupScene.reserveGetItemSound
+                        |> ItemPickupPopupUi.reserveGetItemSound
         }
 
     /// engine の physicsProcess 契約に合わせ、scene を更新したあとの最新ノードを取り直して返す。

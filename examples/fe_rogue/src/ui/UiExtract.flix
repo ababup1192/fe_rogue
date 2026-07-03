@@ -38,8 +38,9 @@ mod UiExtract {
             |> List.map(entry -> {let (_id, _z, pos, item) = entry; (pos, item)})
 
     /// poly entity を (id, rect 左上, ワールド座標へ移した PolyComp) 列へ射影する。可視かつ rect 確定のみ。
-    /// PolyComp#points はレイアウト矩形左上を原点とするローカル design px。ここで rect 左上を足し、
-    /// design 空間の絶対座標にした points を持つ PolyComp を返す（tuple の Vec2 は適用した左上そのもの）。
+    /// PolyComp#polys の各サブポリ頂点はレイアウト矩形左上を原点とするローカル design px。ここで rect
+    /// 左上を全頂点へ足し、design 空間の絶対座標にした polys を持つ PolyComp を返す（tuple の Vec2 は
+    /// 適用した左上そのもの）。
     /// 並びは extract と同じ (zIndex, 階層深さ, order, id)。PolygonRenderCmd への最終変換
     /// （layer zIndex 加算・engine 型への詰め替え）は UiRender が行い、ここは engine 型へ依存しない。
     pub def extractPolys(ui: UiStore.UiWorld, rects: Map[EntityId, Rect2.Rect2],
@@ -53,9 +54,11 @@ mod UiExtract {
             })
             |> List.sortBy(entry -> {let (id, _pos, poly) = entry; (poly#zIndex, depthOf(id, ui#parents), orderOf(id, ui), id)})
 
-    /// PolyComp の各頂点にレイアウト矩形左上 origin を足し、ローカル座標を design 空間の絶対座標へ移す。
+    /// PolyComp の全サブポリの各頂点にレイアウト矩形左上 origin を足し、ローカル座標を design 空間の
+    /// 絶対座標へ移す。
     def offsetPoly(poly: UiWidget.PolyComp, origin: Vec2.Vec2): UiWidget.PolyComp =
-        {points = poly#points |> List.map(p -> ({x = p#x + origin#x, y = p#y + origin#y}: Vec2.Vec2)) | poly}
+        {polys = poly#polys |> List.map(sub ->
+            sub |> List.map(p -> ({x = p#x + origin#x, y = p#y + origin#y}: Vec2.Vec2))) | poly}
 
     /// box の RenderItem。BoxComp の枠・角丸を BoxStyle へ写す（stripe 系は UI では未使用）。
     /// borderWidth>0 のときだけ borderAlpha=1.0 にして枠を有効化する。

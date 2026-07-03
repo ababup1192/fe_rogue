@@ -71,17 +71,14 @@ mod SceneSetup {
             |> StairsExitDriver.add      // 集合「階段で離脱」の順次退場ドライバ (process で phase 判定)
             // ユニット簡易カード（味方左 / 敵右）・行動選択ウィンドウ（ActionMenu）・武器選択ウィンドウ
             // （WeaponSelect）・アイテム選択ウィンドウ（ItemMenu）・物交換ウィンドウ（TradeMenu）・
-            // 中断確認モーダル（SuspendConfirm）は World-entity UI（UnitCardUi / ActionMenuUi /
-            // WeaponSelectUi / ItemMenuUi / TradeMenuUi / SuspendConfirmUi / UiWorldState）へ移行済み。
-            // scene には積まない。
-            |> BattlePanelScene.add     // 戦闘予報ミニウィンドウ (World 配下・初期は非表示)
-            |> LevelUpPanelScene.add    // レベルアップのステータス変化パネル (初期は非表示)
-            // ユニット簡易カード（選択/カーソル上ユニット・攻撃対象敵）は World-entity UI（UnitCardUi）が
-            // 起動時 spawn ＋ frameStep 表示するため、ここでは scene に積まない。
+            // 中断確認モーダル（SuspendConfirm）・戦闘予報ミニウィンドウ（BattlePanel）・レベルアップ演出
+            // パネル（LevelUpPanel）は World-entity UI（UnitCardUi / ActionMenuUi / WeaponSelectUi /
+            // ItemMenuUi / TradeMenuUi / SuspendConfirmUi / BattlePanelUi / LevelUpPanelUi / UiWorldState）へ
+            // 移行済み。起動時 spawn ＋ 各 frameStep 駆動で scene には積まない。
             |> TopBarUi.enter(label, name)   // 上部フェイズバー（World-entity UI・フロア設定 + 可視化 + 状態初期化）
-            |> LogScene.add             // 右下の3行一時ログ (5秒で消える)
-            |> ItemPickupPopupScene.add // アイテム取得ポップアップ (初期は非表示)
-            |> TurnEndHoldScene.add     // Shift 長押しでターンエンドする中央ゲージ (初期は非表示)
+            // 右下の一時ログ HUD（LogUi）/ 中央アイテム取得ポップアップ（ItemPickupPopupUi）/ ターンスキップ
+            // 長押しゲージ（TurnEndHoldUi）は World-entity UI へ移行済み。起動時 spawn ＋ 各 frameStep 駆動で
+            // scene には積まない。
             |> BgmScene.add             // BGM (AudioStreamPlayer, autoplay=true)
 
     /// プレイ用シーンを組み立て + 初期 spawn 一覧 (敵 / 味方) を `InitialSpawns` に保存する。
@@ -179,18 +176,22 @@ mod SceneSetup {
     // ────────────────────────────────────────────────────────
 
     /// タイトル画面を組む。ダンジョン外へ出るので World のユニット store と地形 read-model を掃除する。
+    /// 見た目は World-entity UI（TitleMenuUi）が持つため scene は空で、進入処理（再開可否の再判定 +
+    /// 可視化）を `TitleMenuUi.enter` に任せる。
     pub def buildTitle(): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead, World.Command, TitleMenuScene.State, UiWorldState.State} =
+            \ {Fs.FileRead, World.Command, TitleMenuState.State, UiWorldState.State} =
         WorldDriver.exitDungeon();
-        TitleMenuScene.add(Scene.empty())
-            |> TopBarUi.leave   // ダンジョン外では上部バーを隠す
+        Scene.empty()
+            |> TitleMenuUi.enter   // タイトル画面（World-entity UI・再開可否の確定 + 可視化）
+            |> TopBarUi.leave      // ダンジョン外では上部バーを隠す
 
     /// 出撃メンバー選択画面を組む。タイトルと同じくダンジョン外なので World を掃除する。
     pub def buildCharacterSelect(catalogs: GameLifecycle.Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, World.Command, CharacterSelectState.State, UiWorldState.State} =
         WorldDriver.exitDungeon();
         CharacterSelectScene.add(UnitCatalog.pool("players", catalogs#players), Scene.empty())
-            |> TopBarUi.leave   // ダンジョン外では上部バーを隠す
+            |> TopBarUi.leave      // ダンジョン外では上部バーを隠す
+            |> TitleMenuUi.leave   // タイトル画面（World-entity UI）を隠す
 
     /// 現在フロアのダンジョンを組む。タイトル由来 ＋ スナップショット有り ＝ 中断再開で、
     /// `FloorSnapshot.State` の snapshot から **乱数なし** で決定論再構築する（`buildCurrentFloor` は
@@ -201,12 +202,15 @@ mod SceneSetup {
                 GameLogger.GameLogger, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State,
                 World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State} =
-        match (prevPhase, FloorSnapshot.State.get()) {
+        // タイトル画面（World-entity UI）を隠してからダンジョンを組む（中断再開の Title 由来経路で
+        // タイトルが残らないように）。
+        let built = match (prevPhase, FloorSnapshot.State.get()) {
             case (GamePhase.Title, Some(snap)) =>
                 GameLogger.playerLog("中断データから再開");
                 rebuildFloorFromSnapshot(catalogs, snap)
             case _ =>
                 GameLogger.playerLog("T1 味方のターン");
                 buildCurrentFloor(catalogs)
-        }
+        };
+        TitleMenuUi.leave(built)
 }

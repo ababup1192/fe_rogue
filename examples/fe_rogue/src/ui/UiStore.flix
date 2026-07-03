@@ -139,6 +139,16 @@ mod UiStore {
             case Some((id, comp)) => {boxes = Map.insert(id, comp, ui#boxes) | ui}
         }
 
+    /// 名前パスの box コンポーネントの不透明度（fill alpha）を差し替える。box を持たなければ no-op。
+    /// 中央ポップアップの窓のようにフェードで alpha を毎フレーム動かす widget で使う。
+    pub def setBoxAlpha(path: String, alpha: Float32, ui: UiWorld): UiWorld =
+        let updated = idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, ui#boxes) |> Option.map(comp -> (id, {alpha = alpha | comp})));
+        match updated {
+            case None             => ui
+            case Some((id, comp)) => {boxes = Map.insert(id, comp, ui#boxes) | ui}
+        }
+
     /// 名前パスの box コンポーネントの枠線色を差し替える。box を持たなければ no-op。
     /// ユニットカードの枠を味方=青 / 敵=赤 に毎フレーム塗り分けるために使う（塗り色は setBoxColor）。
     pub def setBoxBorderColor(path: String, c: Color, ui: UiWorld): UiWorld =
@@ -158,6 +168,19 @@ mod UiStore {
         match updated {
             case None              => ui
             case Some((id, style)) => {styles = Map.insert(id, style, ui#styles) | ui}
+        }
+
+    /// 名前パスの poly コンポーネントの凸サブポリゴン列を差し替える。poly を持たなければ no-op。
+    /// 各サブポリの頂点はノードのレイアウト矩形左上を原点とするローカル design px（extract が矩形
+    /// 左上を足す）。1 サブポリ = 1 PolygonRenderCmd（凸前提）なので、中空リング等の凹形状は
+    /// 凸クアッド列として渡す。進捗リング（弧が満ちる充填ゲージ）のように毎フレーム点列が変わる
+    /// widget で使う。
+    pub def setPolyPolys(path: String, polys: List[List[Vec2.Vec2]], ui: UiWorld): UiWorld =
+        let updated = idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, ui#polys) |> Option.map(comp -> (id, {polys = polys | comp})));
+        match updated {
+            case None             => ui
+            case Some((id, comp)) => {polys = Map.insert(id, comp, ui#polys) | ui}
         }
 
     /// `setSprite` の引数束。

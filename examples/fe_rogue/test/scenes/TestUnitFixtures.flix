@@ -742,13 +742,13 @@ mod TestUnitFixtures {
                         withMockRosterQuery(scene, () ->
                             withWorldQuery(World.syncFromScene(scene, World.empty()), thunk))))))
 
-    /// 中央アイテム取得ポップアップの `ItemPickupPopupScene.State` を no-op で剥がす
+    /// 中央アイテム取得ポップアップの `ItemPickupPopupState.State` を no-op で剥がす
     /// （get=非表示の初期状態固定・put=捨てる）。ポップアップの見た目を観測しないテスト用。
     pub def withNoopPickupPopup(thunk: Unit -> a \ ef):
-            a \ (ef - ItemPickupPopupScene.State) =
-        run { thunk() } with handler ItemPickupPopupScene.State {
-            def get(k)    = k({stage = ItemPickupPopupScene.Stage.Idle,
-                               elapsed = Duration.zero(), soundPending = false})
+            a \ (ef - ItemPickupPopupState.State) =
+        run { thunk() } with handler ItemPickupPopupState.State {
+            def get(k)    = k({stage = ItemPickupPopupState.Stage.Idle,
+                               elapsed = Duration.zero(), soundPending = false, text = ""})
             def put(_, k) = k()
         }
 

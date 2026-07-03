@@ -14,13 +14,13 @@ mod TestUiExtract {
 
     // ════════════════════════════════════════════════════════
     // extractPolys: rect 左上をローカル頂点へ足して design 絶対座標へ移す
-    //   rect 左上 = (10, 20) を各頂点へ加算
-    //   local  [[0,0],[0,4],[3,2]]
-    //   world  [[10,20],[10,24],[13,22]]
+    //   rect 左上 = (10, 20) を全サブポリの各頂点へ加算（宣言 poly はサブポリ 1 個）
+    //   local  [[[0,0],[0,4],[3,2]]]
+    //   world  [[[10,20],[10,24],[13,22]]]
     //   tuple の Vec2 は適用した左上 (10,20)、zIndex は comp のまま 3。
     // ════════════════════════════════════════════════════════
 
-    /// id=1 の poly を rect 左上 (10,20) で extract し、world 頂点・左上・zIndex を pin する。
+    /// id=1 の poly を rect 左上 (10,20) で extract し、world サブポリ頂点・左上・zIndex を pin する。
     @Test
     def testExtractPolysOffsetsPointsByRectOrigin(): Unit \ Assert =
         let rects = Map#{1 => ({position = {x = 10.0, y = 20.0}, size = {x = 3.0, y = 4.0}}: Rect2.Rect2)};
@@ -29,11 +29,13 @@ mod TestUiExtract {
             UiExtract.extractPolys(ui, rects, vis)
                 |> List.map(entry -> {
                     let (id, origin, poly) = entry;
-                    (id, (origin#x, origin#y), poly#points |> List.map(p -> (p#x, p#y)), poly#zIndex)
+                    (id, (origin#x, origin#y),
+                     poly#polys |> List.map(sub -> sub |> List.map(p -> (p#x, p#y))), poly#zIndex)
                 }));
         Assert.assertEq(
             expected = Some(
-                (1, (10.0, 20.0), (10.0, 20.0) :: (10.0, 24.0) :: (13.0, 22.0) :: Nil, 3) :: Nil),
+                (1, (10.0, 20.0),
+                 ((10.0, 20.0) :: (10.0, 24.0) :: (13.0, 22.0) :: Nil) :: Nil, 3) :: Nil),
             out)
 
     // ════════════════════════════════════════════════════════

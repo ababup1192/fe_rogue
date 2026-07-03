@@ -5,7 +5,8 @@
 //  - buildTexture* : project.json のテクスチャ名 → 実 PNG 寸法 / パスの表
 //  - formatScene   : List[Drawable]+polygons を決定的なテキストへ（float は小数2桁）
 //  - snapshot      : golden と比較し、PNG を build/snapshots へ焼く（更新モード対応）
-//  - writeIndex    : 全 PNG を一覧する index.html を書く
+//
+// カタログ→HTML サイトの生成は SnapshotCatalog（目録）+ SnapshotSite（汎用生成器）が担う。
 //
 // golden は test/snapshots/<name>.golden.txt（コミット対象）。PNG は build/snapshots/（.gitignore）。
 mod SnapshotSupport {
@@ -101,6 +102,38 @@ mod SnapshotSupport {
             if (Object.isNull(img)) None
             else Some((Int32.toFloat64(img.getWidth()), Int32.toFloat64(img.getHeight())))
         } else None
+
+    // ════════════════════════════════════════════════════════
+    // GIF の永続化（test/snapshots/gifs/ → build/snapshots/）
+    // ════════════════════════════════════════════════════════
+    //
+    // GIF は PNG と違い毎回焼き直すには重いので、生成物を test/snapshots/gifs/（コミット対象）に
+    // 置く。SnapshotSite は build/snapshots/ 直下のファイル存在で表示可否を決めるので、サイト生成の
+    // 直前に gifs/ から build/snapshots/ へコピーする（FE_ROGUE_SNAPSHOT_GIF=1 の新規生成後も、
+    // 素の flix test で既存 GIF を表示するときも、このコピーだけを通る）。
+
+    /// GIF の永続置き場（コミット対象）。
+    pub def gifSourceDir(): String = "test/snapshots/gifs"
+
+    /// `names` の GIF を test/snapshots/gifs/ から build/snapshots/ へコピーする。
+    /// 出典が無い（未生成）名前は無視する（SnapshotSite が generateHint 案内を出す）。
+    pub def syncGifs(names: List[String]): Unit \ IO + Fs.FileWrite =
+        List.forEach(copyGifIfPresent, names)
+
+    /// 1 本の GIF を上書きコピーする。存在チェックと出力先ディレクトリ作成は java.io.File
+    /// （readDims / SnapshotSite.fileExists と同じ流儀）、コピー本体は Fs.CopyFile。
+    def copyGifIfPresent(name: String): Unit \ IO + Fs.FileWrite =
+        let srcPath = "${gifSourceDir()}/${name}.gif";
+        let src = new File(srcPath);
+        if (src.exists()) {
+            let dst = new File("build/snapshots/${name}.gif");
+            let parent = dst.getParentFile();
+            if (not Object.isNull(parent)) discard parent.mkdirs() else ();
+            run {
+                discard Fs.CopyFile.copyWith({src = srcPath}, "build/snapshots/${name}.gif",
+                    Set#{Fs.CopyOption.CopyOption.ReplaceExisting})
+            } with Fs.CopyFile.runWithFileWrite
+        } else ()
 
     // ════════════════════════════════════════════════════════
     // 1 枚のスナップショット処理
@@ -329,75 +362,4 @@ mod SnapshotSupport {
 
     def hexDigit(n: Int32): Char =
         List.nth(n, String.toList("0123456789abcdef")) |> Option.getWithDefault('0')
-
-    // ════════════════════════════════════════════════════════
-    // index.html
-    // ════════════════════════════════════════════════════════
-
-    /// 全スナップショット PNG を並べた index.html を build/snapshots に書く。
-    /// `entries` は (スナップショット名, 1 行説明)。名前は不具合報告の「正」なので、コード表記で
-    /// 目立たせ（クリックでコピーできるよう）、その下に説明を添える。これを開けば全メニューを
-    /// 一覧で目視確認できる。
-    /// `pxWidth` は PNG の実ピクセル幅（design#x × scale）。img の CSS 幅はその半分にする
-    /// （Retina＝devicePixelRatio 2 のディスプレイで CSS px 1 個 = 実ピクセル 2 個 = 1:2 の整数マッピングに
-    /// なり、ブラウザの補間が入らず SoftRaster が焼いたピクセルがそのまま出る）。
-    pub def writeIndex(entries: List[(String, String)], pxWidth: Int32,
-                       gifs: List[(String, String)], gifPxWidth: Int32): Unit \ IO + Fs.FileWrite =
-        let cssWidth = pxWidth / 2i32;
-        let cards = entries
-            |> List.map(pair -> {
-                let (name, desc) = pair;
-                "  <figure><figcaption><code onclick=\"navigator.clipboard&&navigator.clipboard.writeText('${name}')\" "
-                    + "title=\"クリックで名前をコピー\">${name}</code>"
-                    + "<span class=\"desc\">${desc}</span></figcaption>"
-                    + "<img src=\"${name}.png\" alt=\"${name}\"></figure>"
-            })
-            |> String.unlines;
-        let gifSection = gifSectionHtml(gifs, gifPxWidth / 2i32);
-        let html =
-            "<!doctype html><meta charset=\"utf-8\"><title>fe_rogue UI snapshots</title>\n"
-            + "<style>body{background:#1a1f2b;color:#cdd5e6;font-family:sans-serif;margin:16px}\n"
-            + "h1{font-size:18px}h2{font-size:16px;margin:8px 0}p.hint{font-size:12px;color:#8c99ad;margin:0 0 16px}\n"
-            + "main{display:flex;flex-wrap:wrap;gap:16px}\n"
-            + "figure{margin:0;background:#0d1220;border:1px solid #2a3445;border-radius:6px;padding:8px;width:${cssWidth}px}\n"
-            + "figure.gif{width:${gifPxWidth / 2i32}px}\n"
-            + "figcaption{margin-bottom:6px;display:flex;flex-direction:column;gap:3px}\n"
-            + "figcaption code{font-size:14px;font-weight:700;color:#ffd479;background:#241c07;\n"
-            + "  padding:2px 6px;border-radius:4px;align-self:flex-start;cursor:pointer;\n"
-            + "  font-family:ui-monospace,Menlo,Consolas,monospace}\n"
-            + "figcaption .desc{font-size:12px;color:#9cc0ff}\n"
-            + "img{display:block;image-rendering:pixelated;width:100%;height:auto;background:#000}</style>\n"
-            + "<h1>fe_rogue UI snapshots</h1>\n"
-            + "<p class=\"hint\">黄色のコード表記がスナップショット名（不具合報告はこの名前で）。クリックでコピー。</p>\n"
-            + gifSection
-            + "<h2>UI スナップショット（PNG）</h2>\n"
-            + "<main>\n${cards}\n</main>\n";
-        run { discard Fs.WriteFile.write({str = html}, "build/snapshots/index.html") }
-            with Fs.WriteFile.runWithFileWrite
-
-    /// 「操作フロー（GIF）」セクション。GIF ファイルが 1 本でも build 配下に在れば、在るものだけ
-    /// カードで並べる。1 本も無ければ生成方法の案内だけ出す（通常 flix test では GIF を作らないため）。
-    def gifSectionHtml(gifs: List[(String, String)], _cssWidth: Int32): String \ IO =
-        let present = gifs |> List.filter(pair -> gifExists(fst(pair)));
-        if (List.isEmpty(present))
-            "<h2>操作フロー（GIF）</h2>\n"
-            + "<p class=\"hint\">GIF は未生成です。"
-            + "<code>FE_ROGUE_SNAPSHOT_GIF=1 FE_ROGUE_SNAPSHOT_UPDATE=1 flix test</code> で生成できます。</p>\n"
-        else {
-            let cards = present
-                |> List.map(pair -> {
-                    let (name, desc) = pair;
-                    "  <figure class=\"gif\"><figcaption>"
-                        + "<code onclick=\"navigator.clipboard&&navigator.clipboard.writeText('${name}')\" "
-                        + "title=\"クリックで名前をコピー\">${name}</code>"
-                        + "<span class=\"desc\">${desc}</span></figcaption>"
-                        + "<img src=\"${name}.gif\" alt=\"${name}\"></figure>"
-                })
-                |> String.unlines;
-            "<h2>操作フロー（GIF）</h2>\n<main>\n${cards}\n</main>\n"
-        }
-
-    /// build/snapshots/<name>.gif が存在するか。
-    def gifExists(name: String): Bool \ IO =
-        new File("build/snapshots/${name}.gif").exists()
 }

@@ -45,7 +45,7 @@ mod Combat {
 
     /// 装備武器の `isPhysical` に応じて、攻撃側の素ステ + 武器ボーナスの「総合攻撃力」を返す。
     /// 物理: `attack + weaponAttack`、魔法: `magicAttack + weaponAttack`。
-    /// 呼び出し側 (PlayerScene / EnemyScene / BattlePanelScene) で同じ分岐を書かないように
+    /// 呼び出し側 (PlayerScene / EnemyScene / BattlePanelUi) で同じ分岐を書かないように
     /// 1 箇所に集約する。`forecast` / `attackDamage` の入力として使う。
     /// Flix のレコード型は exact なので row polymorphism を避けてスカラー引数で受ける。
     pub def attackStatFor(attack: Int32, magicAttack: Int32,

@@ -89,7 +89,7 @@ mod PhaseTransitions {
 
     /// LevelUpView フェーズに入る (攻撃解決でレベルアップを検出したとき)。
     /// ステータス変化パネルを出して入力待ちにするフェーズ。味方の範囲表示を全消しし、
-    /// カーソルも隠してモーダル表示にする。パネルの可視化と内容は LevelUpPanelScene.process が
+    /// カーソルも隠してモーダル表示にする。パネルの可視化と内容は LevelUpPanelUi.frameStep が
     /// phase を見て行うので、ここはフェーズ設定と下地の片付けだけに徹する。
     pub def enterLevelUpView(scene: Scene[NodeTag]):
             Scene[NodeTag] \ TurnPhase.State =
@@ -214,7 +214,7 @@ mod PhaseTransitions {
 
     /// AttackForecast フェーズに入る (PlayerAttack で敵に Z 押下時)。
     /// 動作: overlay/cursor は PlayerAttack 中の状態を温存し、フェーズだけ進める。
-    /// `BattlePanelScene` の毎フレーム process が visible 切替と内容更新を担う。
+    /// `BattlePanelUi` の毎フレーム frameStep が visible 切替と内容更新を担う。
     pub def enterAttackForecast(scene: Scene[NodeTag]):
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.AttackForecast);

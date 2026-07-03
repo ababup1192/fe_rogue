@@ -1,0 +1,24 @@
+{
+  "templates": {
+    "line": { "widget": "none", "width": 235, "dir": "row", "mainAlign": "end" },
+    "lineText": { "widget": "text", "text": "", "font": "ui", "fontSize": 2.8, "tint": "#ffffff", "zIndex": 1 }
+  },
+  "root": {
+    "name": "Log", "widget": "none", "visible": false, "layer": 1,
+    "children": [
+      { "name": "Bg", "widget": "box", "abs": [132, 108], "width": 106, "height": 18,
+        "color": "#000000", "alpha": 0.55, "zIndex": 0 },
+
+      { "use": "line", "name": "line0", "abs": [0, 109.5],
+        "children": [ { "use": "lineText", "name": "label" } ] },
+      { "use": "line", "name": "line1", "abs": [0, 112.7],
+        "children": [ { "use": "lineText", "name": "label" } ] },
+      { "use": "line", "name": "line2", "abs": [0, 115.9],
+        "children": [ { "use": "lineText", "name": "label" } ] },
+      { "use": "line", "name": "line3", "abs": [0, 119.1],
+        "children": [ { "use": "lineText", "name": "label" } ] },
+      { "use": "line", "name": "line4", "abs": [0, 122.3],
+        "children": [ { "use": "lineText", "name": "label" } ] }
+    ]
+  }
+}

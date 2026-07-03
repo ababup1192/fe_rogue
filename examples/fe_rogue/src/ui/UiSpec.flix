@@ -322,8 +322,9 @@ mod UiSpec {
             case _ => Ok(None)
         }
 
-    /// poly ノードの PolyComp。points は必須（[[x,y], ...]・3 点以上）、color 必須（"#rrggbb"）、
-    /// alpha 既定 1.0、zIndex 既定 0。
+    /// poly ノードの PolyComp。points は必須（[[x,y], ...]・3 点以上）で 1 つの凸サブポリを表す
+    /// （宣言できるのは単一の凸多角形。中空リング等の凹形状は実行時に setPolyPolys で複数サブポリを
+    /// 流し込む）、color 必須（"#rrggbb"）、alpha 既定 1.0、zIndex 既定 0。
     def parsePoly(widget: Widget, map: Map[String, Json]): Result[JsonError, Option[UiWidget.PolyComp]] =
         match widget {
             case Widget.PolyW => forM (
@@ -332,7 +333,7 @@ mod UiSpec {
                 alphaOpt  <- (JsonCompat.getAtKeyOpt(Root, "alpha", map): Result[JsonError, Option[Float64]]);
                 zIndexOpt <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]])
             ) yield Some(({
-                points = points,
+                polys = points :: Nil,
                 color = color,
                 alpha = Float64.truncateToFloat32(Option.getWithDefault(1.0, alphaOpt)),
                 zIndex = Option.getWithDefault(0, zIndexOpt)
