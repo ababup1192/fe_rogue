@@ -122,10 +122,9 @@ mod RenderWorld {
     /// 不在（未オープンの動的 menu 等）は `subtreeDrawables`/`hideNode` とも no-op。
     def hudSubtreeRoots(): List[NodePath] =
         // TopBar / ユニット簡易カード（UnitCard / EnemyCard）/ 行動選択ウィンドウ（ActionMenu）/
-        // 武器選択ウィンドウ（WeaponSelect）/ 中断確認モーダル（SuspendConfirm）は
-        // World-entity UI へ移行済み。ここには積まない。
-        ItemMenuScene.rootPath() ::
-        TradeMenuScene.rootPath() :: LevelUpPanelScene.rootPath() ::
+        // 武器選択ウィンドウ（WeaponSelect）/ アイテム選択ウィンドウ（ItemMenu）/ 物交換ウィンドウ
+        // （TradeMenu）/ 中断確認モーダル（SuspendConfirm）は World-entity UI へ移行済み。ここには積まない。
+        LevelUpPanelScene.rootPath() ::
         MinimapScene.rootPath() ::
         LogScene.logPath() :: BattlePanelScene.rootPath() ::
         ItemPickupPopupScene.rootPath() :: TurnEndHoldScene.rootPath() :: Nil

@@ -160,13 +160,27 @@ mod UiStore {
             case Some((id, style)) => {styles = Map.insert(id, style, ui#styles) | ui}
         }
 
+    /// `setSprite` の引数束。
+    /// `path`: 差し替え対象 entity の名前パス。
+    /// `texture`: 差し替え後のテクスチャ。
+    /// `hframes`/`vframes`: スプライトシートの格子分割数。
+    /// `frame`: 格子内のセル番号（0 起点）。
+    pub type alias SpriteSpec = {
+        path    = String,
+        texture = String,
+        hframes = Int32,
+        vframes = Int32,
+        frame   = Int32
+    }
+
     /// 名前パスの sprite コンポーネントの texture と格子分割（hframes/vframes/frame）を差し替える。
     /// regionRect / scale / flip / tint / zIndex は保持する。sprite を持たなければ no-op。
     /// スプライトシートの表示セルを実行時に切り替える（アニメ・状態差分）ために使う。
-    pub def setSprite(path: String, texture: String, hframes: Int32, vframes: Int32, frame: Int32, ui: UiWorld): UiWorld =
-        let updated = idOf(path, ui)
+    pub def setSprite(spec: SpriteSpec, ui: UiWorld): UiWorld =
+        let updated = idOf(spec#path, ui)
             |> Option.flatMap(id -> Map.get(id, ui#sprites)
-                |> Option.map(comp -> (id, {texture = texture, hframes = hframes, vframes = vframes, frame = frame | comp})));
+                |> Option.map(comp -> (id, {texture = spec#texture, hframes = spec#hframes,
+                                            vframes = spec#vframes, frame = spec#frame | comp})));
         match updated {
             case None             => ui
             case Some((id, comp)) => {sprites = Map.insert(id, comp, ui#sprites) | ui}

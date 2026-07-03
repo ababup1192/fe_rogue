@@ -1414,7 +1414,7 @@ mod PlayerScene {
         }
 
     /// ItemMenu で選ばれたアイテム（武器 or 杖）の種別と index を Data#selectedItem にセットする。
-    /// `ItemActionSelect` フェーズに進むときに ItemMenuScene から呼ばれる。
+    /// `ItemActionSelect` フェーズに進むときに ItemMenuUi から呼ばれる。
     pub def setSelectedItem(playerId: Int32, item: PlayerData.ItemKind,
                               scene: Scene[NodeTag]): Scene[NodeTag] =
         mapPlayer(playerId, d -> {selectedItem = Some(item) | d}, scene)
@@ -1463,7 +1463,7 @@ mod PlayerScene {
     ///     (自分のアイテムが消えて相手の対応リスト末尾に積まれる)
     /// 種別 (武器/杖) は元のままなので、武器 ↔ 杖の交換も自動的に両者の対応リストへ振り分けられる。
     /// `selfKind` が範囲外 / `selfId` が存在しない場合は防御的に no-op。
-    /// 「こうかん」確定 (Phase 4) で TradeMenuScene から呼ばれる。
+    /// 「こうかん」確定 (Phase 4) で TradeMenuUi から呼ばれる。
     ///
     /// 引数 (record-style):
     ///   - `selfId`      : 必ず実体アイテムを渡す側のプレイヤー id

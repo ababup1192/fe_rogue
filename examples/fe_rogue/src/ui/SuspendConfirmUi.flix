@@ -71,7 +71,8 @@ mod SuspendConfirmUi {
             UiWorldState.State.put(clamped
                 |> UiStore.setVisible(rootPath(), true)
                 |> UiMenu.applyItemTints(menuPath(), tintOf)
-                |> UiMenu.applyHighlight(menuPath(), highlightPath(), sel, rowPitch(), highlightInset()));
+                |> UiMenu.applyHighlight({listPath = menuPath(), highlightPath = highlightPath(),
+                                          sel = sel, rowPitch = rowPitch(), inset = highlightInset()}));
             scene
         }
 

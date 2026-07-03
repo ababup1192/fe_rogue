@@ -87,7 +87,7 @@ mod Consumable {
     }
 
     /// 効果 → デリバリの 1:1 導出。`Staff` のように方向を要するもの（投擲デバフ）と、
-    /// 自己使用、所持中自動発動を振り分ける。`ItemMenuScene.applyUse` がこの結果で経路を分岐する。
+    /// 自己使用、所持中自動発動を振り分ける。`ItemMenuUi.applyUse` がこの結果で経路を分岐する。
     pub def deliveryFor(effect: ConsumableEffect): Delivery = match effect {
         case ConsumableEffect.Heal       => Delivery.SelfUse
         case ConsumableEffect.FullHeal   => Delivery.SelfUse

@@ -85,7 +85,7 @@ mod TurnPhase {
         /// 味方ターン・物交換のインベントリ画面フェーズ。
         /// `TradeTargetSelect` で交換相手を Z で確定すると入り、画面に
         /// 「じぶん (左) / あいて (右)」の 2 ペインの ItemList が出る
-        /// (`TradeMenuScene`)。↑↓ でアイテム移動、Enter/Z で確定。
+        /// (`TradeMenuUi`)。↑↓ でアイテム移動、Enter/Z で確定。
         /// 自分側で 1 個選ぶ → focus があいて側に切替 → あいて側で 1 個選んで
         /// スワップ実行 → focus がじぶん側に戻る (連続交換可能)。
         /// 未選択で X/Escape → `ActionSelect` に戻る (行動継続)。

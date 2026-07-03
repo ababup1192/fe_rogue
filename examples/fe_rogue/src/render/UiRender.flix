@@ -33,7 +33,9 @@ mod UiRender {
     def renderRoot(ui: UiStore.UiWorld, measures: Map[EntityId, Vec2.Vec2], rootRect: Rect2.Rect2,
                    root: EntityId): {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]} \ GameEngine.Game =
         let atlasOf = name -> GameEngine.Game.getFontAtlas(name);
-        let rects = UiLayout.computeLayout(ui#styles, ui#parents, ui#order, measures, ui#visible, root, rootRect);
+        let rects = UiLayout.computeLayout(
+            {styles = ui#styles, parents = ui#parents, order = ui#order, measures = measures, visible = ui#visible},
+            root, rootRect);
         let vis = UiHierarchy.resolveInherited(ui#visible, ui#parents, root, ui#order);
         let items = UiExtract.extract(ui, rects, vis, atlasOf);
         let offset = layerOffset(ui, root);

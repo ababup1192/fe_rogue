@@ -169,8 +169,10 @@ mod TestWeaponSelectUi {
             case Ok(spec) =>
                 let (rootId, ui0) = UiSpec.spawnRoot(spec, UiStore.empty());
                 let ui = UiStore.setVisible("WeaponSelect/panel/menu/row0", true, ui0);
-                let layout = UiLayout.computeLayout(ui#styles, ui#parents, ui#order,
-                                                    Map.empty(), ui#visible, rootId, designRect());
+                let layout = UiLayout.computeLayout(
+                    {styles = ui#styles, parents = ui#parents, order = ui#order,
+                     measures = Map.empty(), visible = ui#visible},
+                    rootId, designRect());
                 (ui, layout)
         }
 

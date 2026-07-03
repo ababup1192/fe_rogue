@@ -165,8 +165,12 @@ color / text / tint など毎フレーム同期される見た目は、リロー
 
 ## 選択メニューの標準構成（塗り箱ハイライト + 固定行ピッチ）
 
-縦並びの選択メニュー（ActionMenu / WeaponSelect / GameOverMenu / SuspendConfirm）は、選択行を
+縦並びの選択メニュー（ActionMenu / WeaponSelect / ItemMenu / GameOverMenu / SuspendConfirm）は、選択行を
 **塗り箱ハイライト**で示し、行は**固定ピッチ**で並べる。新しいメニューもこの構成に揃えること。
+
+- **項目数が窓（表示行数）を超えうるメニューはウィンドウ化する**（ItemMenu の在庫は個数上限なし・
+  重量制のみ）。表示行を固定数の窓にし、`windowOffset`（選択が窓に入るよう表示 offset をクランプする
+  純関数）で `items[offset..offset+行数)` を各行へ流し込む。ハイライトは窓内の相対行 `sel − offset` に置く。
 
 - **項目行は固定高**にする。`menu` を `gap: 0.0` にし、各項目（またはそれを包む行コンテナ）へ
   `height: <行ピッチ>` を Px で与える。行ピッチが固定なので、後述の塗り箱を**レイアウト結果を
@@ -177,8 +181,8 @@ color / text / tint など毎フレーム同期される見た目は、リロー
 
 - **塗り箱ハイライト**は `menu` 直下に **abs 子** として 1 枚宣言する（項目より背面 z、`box`）。
   塗り・枠・角丸・寸法は ui.json 側で固定宣言し（行セルより `inset` 分だけ小さくして隣行と
-  接しないようにする）、位置だけ毎フレーム `UiMenu.applyHighlight(menuPath, highlightPath, sel,
-  rowPitch, inset, ui)` が選択行へ動かす。配色は `fill #16314f / 枠 #2f6df0 0.5px / cornerRadius 2`
+  接しないようにする）、位置だけ毎フレーム `UiMenu.applyHighlight({listPath, highlightPath, sel,
+  rowPitch, inset}, ui)` が選択行へ動かす。配色は `fill #16314f / 枠 #2f6df0 0.5px / cornerRadius 2`
   （inset 0.5）。
 
 - **選択行の文字色は変えない**（通常色のまま）。選択は塗り箱で示すので、文字色まで変えると

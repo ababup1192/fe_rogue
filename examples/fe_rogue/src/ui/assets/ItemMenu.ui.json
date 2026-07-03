@@ -1,0 +1,73 @@
+{
+  "templates": {
+    "itemRow": {
+      "widget": "none", "visible": false, "height": 12, "dir": "row", "gap": 1.5, "crossAlign": "center",
+      "pad": [1.5, 0, 1.5, 0],
+      "children": [
+        {
+          "name": "iconBg", "widget": "box", "width": 7, "height": 7,
+          "color": "#6b7899", "cornerRadius": 1.5, "borderWidth": 0.5, "borderColor": "#9eabc7", "zIndex": 141,
+          "children": [
+            { "name": "icon", "widget": "sprite", "abs": [1, 1], "texture": "item_weapons",
+              "scale": [0.3125, 0.3125], "zIndex": 142 }
+          ]
+        },
+        { "name": "iconSpacer", "widget": "none", "visible": false, "width": 7, "height": 7 },
+        {
+          "name": "info", "widget": "none", "dir": "column", "gap": 0.3,
+          "children": [
+            {
+              "name": "nameRow", "widget": "none", "dir": "row", "gap": 1.5, "crossAlign": "center",
+              "children": [
+                { "name": "name", "widget": "text", "font": "ui", "fontSize": 2.2, "tint": "#eef1f7", "zIndex": 141 },
+                { "name": "badge", "widget": "box", "color": "#3273ce", "alpha": 1.0, "cornerRadius": 1.5,
+                  "visible": false, "dir": "row", "crossAlign": "center", "pad": [0.8, 0.2, 0.8, 0.2], "zIndex": 141,
+                  "children": [
+                    { "name": "badgeText", "widget": "text", "font": "ui", "fontSize": 2.0,
+                      "tint": "#eef1f7", "text": "装備", "zIndex": 142 }
+                  ]
+                }
+              ]
+            },
+            { "name": "subline", "widget": "text", "font": "ui", "fontSize": 2.2, "tint": "#aab0b8", "zIndex": 141 }
+          ]
+        }
+      ]
+    }
+  },
+  "root": {
+    "name": "ItemMenu", "widget": "none", "visible": false, "layer": 8,
+    "children": [
+      {
+        "name": "panel", "widget": "box", "color": "#1e2638", "alpha": 0.95,
+        "borderWidth": 1, "borderColor": "#2a3445", "cornerRadius": 3, "zIndex": 130,
+        "abs": [28, 40], "width": 52, "height": "auto",
+        "dir": "column", "pad": [2, 2, 2, 2], "gap": 1.5, "crossAlign": "stretch",
+        "children": [
+          {
+            "name": "header", "widget": "box", "color": "#11182a", "alpha": 1.0,
+            "cornerRadius": 2, "zIndex": 138,
+            "dir": "row", "mainAlign": "spaceBetween", "crossAlign": "center", "pad": [2, 1, 2, 1],
+            "children": [
+              { "name": "weight", "widget": "text", "text": "重 0.0/0.0", "font": "ui",
+                "fontSize": 2.4, "tint": "#9cc0ff", "zIndex": 140 },
+              { "name": "hint", "widget": "text", "text": "◀ 武器 ▶", "font": "ui",
+                "fontSize": 2.2, "tint": "#9ea3b3", "zIndex": 140 }
+            ]
+          },
+          {
+            "name": "menu", "widget": "none", "dir": "column", "gap": 0.0, "crossAlign": "stretch",
+            "children": [
+              { "name": "highlight", "widget": "box", "color": "#16314f", "alpha": 1.0,
+                "borderWidth": 0.5, "borderColor": "#2f6df0", "cornerRadius": 2, "zIndex": 139,
+                "abs": [0.5, 0.5], "width": 47, "height": 11 },
+              { "use": "itemRow", "name": "row0" },
+              { "use": "itemRow", "name": "row1" },
+              { "use": "itemRow", "name": "row2" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

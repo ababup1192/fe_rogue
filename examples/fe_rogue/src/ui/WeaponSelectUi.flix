@@ -220,7 +220,8 @@ mod WeaponSelectUi {
                 |> fillIcons(view#weapons)
                 |> UiStore.putSelection(menuPath(), sel)
                 |> applyTints(view#items, sel)
-                |> UiMenu.applyHighlight(menuPath(), highlightPath(), sel, rowPitch(), highlightInset()));
+                |> UiMenu.applyHighlight({listPath = menuPath(), highlightPath = highlightPath(),
+                                          sel = sel, rowPitch = rowPitch(), inset = highlightInset()}));
             // 武器フォーカス中、対象の敵へカーソルを寄せる（選択確定後の最新カーソルを読む）。
             snapCursorToTarget(scene)
         }
@@ -259,7 +260,8 @@ mod WeaponSelectUi {
         List.zipWithIndex(weapons) |> List.foldLeft((acc, pair) ->
             let (idx, w) = pair;
             if (idx >= maxSlots()) acc
-            else UiStore.setSprite(iconPath(idx), w#sprite#texture, w#sprite#hframes, w#sprite#vframes, w#sprite#frame, acc),
+            else UiStore.setSprite({path = iconPath(idx), texture = w#sprite#texture, hframes = w#sprite#hframes,
+                                    vframes = w#sprite#vframes, frame = w#sprite#frame}, acc),
             ui)
 
     /// 行の name text tint を塗る。disabled=淡色、それ以外（選択含む）=通常色

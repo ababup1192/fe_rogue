@@ -69,12 +69,11 @@ mod SceneSetup {
             |> CameraScene.add
             |> EnemyTurnDriver.add // 敵ターン進行の常駐タグノード (process で phase 判定)
             |> StairsExitDriver.add      // 集合「階段で離脱」の順次退場ドライバ (process で phase 判定)
-            |> ItemMenuScene.add        // アイテム選択ウィンドウ (初期は非表示)
-            // ユニット簡易カード（味方左 / 敵右）・行動選択ウィンドウ（ActionMenu）・
-            // 武器選択ウィンドウ（WeaponSelect）・中断確認モーダル（SuspendConfirm）は
-            // World-entity UI（UnitCardUi / ActionMenuUi / WeaponSelectUi / SuspendConfirmUi /
-            // UiWorldState）へ移行済み。scene には積まない。
-            |> TradeMenuScene.add       // 物交換ウィンドウ (2 ペイン、初期は非表示)
+            // ユニット簡易カード（味方左 / 敵右）・行動選択ウィンドウ（ActionMenu）・武器選択ウィンドウ
+            // （WeaponSelect）・アイテム選択ウィンドウ（ItemMenu）・物交換ウィンドウ（TradeMenu）・
+            // 中断確認モーダル（SuspendConfirm）は World-entity UI（UnitCardUi / ActionMenuUi /
+            // WeaponSelectUi / ItemMenuUi / TradeMenuUi / SuspendConfirmUi / UiWorldState）へ移行済み。
+            // scene には積まない。
             |> BattlePanelScene.add     // 戦闘予報ミニウィンドウ (World 配下・初期は非表示)
             |> LevelUpPanelScene.add    // レベルアップのステータス変化パネル (初期は非表示)
             // ユニット簡易カード（選択/カーソル上ユニット・攻撃対象敵）は World-entity UI（UnitCardUi）が

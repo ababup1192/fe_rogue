@@ -114,6 +114,7 @@ mod GameOverMenuUi {
         UiWorldState.State.put(ui
             |> UiStore.setVisible(rootPath(), visible)
             |> UiMenu.applyItemTints(menuPath(), tintOf)
-            |> UiMenu.applyHighlight(menuPath(), highlightPath(), sel, rowPitch(), highlightInset()));
+            |> UiMenu.applyHighlight({listPath = menuPath(), highlightPath = highlightPath(),
+                                      sel = sel, rowPitch = rowPitch(), inset = highlightInset()}));
         scene
 }

@@ -518,7 +518,7 @@ mod BattlePanelScene {
             Option[UnitCatalog.WeaponResource]
             \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, World.WorldQuery} =
         forM (
-            idx      <- ItemMenuScene.activeAttackWeaponIndex(scene);
+            idx      <- ItemMenuUi.activeAttackWeaponIndex(scene);
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerData.PartyQuery.get(playerId);
             w        <- List.nth(idx, player#weapons)
@@ -620,7 +620,7 @@ mod BattlePanelScene {
             defenderId <- player#attackTargetId;
             enemy      <- EnemyData.RosterQuery.get(defenderId)
         ) yield {
-            let idx      = ItemMenuScene.activeAttackWeaponIndex(scene) |> Option.getWithDefault(0);
+            let idx      = ItemMenuUi.activeAttackWeaponIndex(scene) |> Option.getWithDefault(0);
             let equipped = PlayerScene.equipWeapon(attackerId, idx, scene);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
             GameLogger.playerLog("${PlayerScene.displayName(attackerId, scene)}の攻撃");

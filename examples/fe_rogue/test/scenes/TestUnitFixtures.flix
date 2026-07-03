@@ -516,7 +516,7 @@ mod TestUnitFixtures {
     /// `TradeMenuState.State` を Ref-backed で供給する。put を観測したいので状態を保持する
     /// （交換の pick→swap→marks が同じセッション内で持ち越される）。`rc` はテストの region。
     pub def withTradeMenu(rc: Region[r], thunk: Unit -> a \ ef): a \ (ef - TradeMenuState.State) + r =
-        let ref = Ref.fresh(rc, TradeMenuScene.defaultPanelData());
+        let ref = Ref.fresh(rc, TradeMenuUi.defaultPanelData());
         run { thunk() } with handler TradeMenuState.State {
             def get(k)    = k(Ref.get(ref))
             def put(d, k) = { Ref.put(d, ref); k() }

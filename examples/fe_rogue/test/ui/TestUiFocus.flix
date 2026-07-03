@@ -24,7 +24,7 @@ mod TestUiFocus {
         let vis = Map#{2 => true, 3 => true};
         let zOf = intLookup(Map#{2 => 1, 3 => 5});
         let depthOf = intLookup(Map#{2 => 0, 3 => 0});
-        Assert.assertEq(expected = Some(3), UiFocus.hitTest(rects, vis, zOf, depthOf, {x = 5.0, y = 5.0}))
+        Assert.assertEq(expected = Some(3), UiFocus.hitTest({rects = rects, vis = vis, zOf = zOf, depthOf = depthOf}, {x = 5.0, y = 5.0}))
 
     // ════════════════════════════════════════════════════════
     // hitTest: z 同値は深い方
@@ -37,7 +37,7 @@ mod TestUiFocus {
         let vis = Map#{2 => true, 3 => true};
         let zOf = intLookup(Map#{2 => 2, 3 => 2});
         let depthOf = intLookup(Map#{2 => 1, 3 => 3});
-        Assert.assertEq(expected = Some(3), UiFocus.hitTest(rects, vis, zOf, depthOf, {x = 5.0, y = 5.0}))
+        Assert.assertEq(expected = Some(3), UiFocus.hitTest({rects = rects, vis = vis, zOf = zOf, depthOf = depthOf}, {x = 5.0, y = 5.0}))
 
     // ════════════════════════════════════════════════════════
     // hitTest: 不可視は無視
@@ -50,7 +50,7 @@ mod TestUiFocus {
         let vis = Map#{2 => true, 3 => false};
         let zOf = intLookup(Map#{2 => 1, 3 => 5});
         let depthOf = intLookup(Map#{2 => 0, 3 => 0});
-        Assert.assertEq(expected = Some(2), UiFocus.hitTest(rects, vis, zOf, depthOf, {x = 5.0, y = 5.0}))
+        Assert.assertEq(expected = Some(2), UiFocus.hitTest({rects = rects, vis = vis, zOf = zOf, depthOf = depthOf}, {x = 5.0, y = 5.0}))
 
     // ════════════════════════════════════════════════════════
     // selectionMove: 回り込み

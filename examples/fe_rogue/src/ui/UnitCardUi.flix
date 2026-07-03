@@ -252,16 +252,17 @@ mod UnitCardUi {
             |> UiStore.setText(childPath(root, "Name"), view#description)
             |> setLevel(root, view#levelInfo, view#description, atlas)
             |> setHp(root, view, atlas)
-            |> setEquipSlot(root, "Weapon", weaponIconX(), weaponTextX(), weaponMaxW(), atlas,
-                            view#weapon |> Option.map(weaponEquipView))
-            |> setEquipSlot(root, "Ring", ringIconX(), ringTextX(), ringMaxW(), atlas,
-                            view#ring |> Option.map(ringEquipView))
+            |> setEquipSlot({root = root, key = "Weapon", iconX = weaponIconX(), textX = weaponTextX(),
+                            maxW = weaponMaxW(), atlas = atlas, equipOpt = view#weapon |> Option.map(weaponEquipView)})
+            |> setEquipSlot({root = root, key = "Ring", iconX = ringIconX(), textX = ringTextX(),
+                            maxW = ringMaxW(), atlas = atlas, equipOpt = view#ring |> Option.map(ringEquipView)})
 
     /// ユニットアイコン（中央基準・元の約 1/3）。texture 実寸から半セルぶん左上へ寄せて中心合わせする。
     def setPortrait(root: String, sprite: Sprite.SpriteResource, ui: UiStore.UiWorld): UiStore.UiWorld \ GameEngine.Game =
         let path = childPath(root, "Icon");
         ui
-            |> UiStore.setSprite(path, sprite#texture, sprite#hframes, sprite#vframes, sprite#frame)
+            |> UiStore.setSprite({path = path, texture = sprite#texture, hframes = sprite#hframes,
+                                  vframes = sprite#vframes, frame = sprite#frame})
             |> UiStore.setAbs(path, portraitAbs(sprite))
 
     /// アイコンの左上（top-left）。中心 iconCenter に offset を足し、半セル（texW/hframes × scale）ぶん戻す。
@@ -317,21 +318,37 @@ mod UnitCardUi {
             |> UiStore.setText(childPath(root, "HpText"), hpTextStr)
             |> UiStore.setAbs(childPath(root, "HpText"), {x = panelInnerRight() - hpTextW, y = hpTextTop})
 
+    /// `setEquipSlot` の引数束。
+    /// `root`: カード root 名（`allyRootName()` / `enemyRootName()`）。
+    /// `key`: スロット種別（"Weapon" / "Ring"。子ノード名 `${key}Mat`/`${key}Icon`/`${key}Text` の接頭辞）。
+    /// `iconX`/`textX`: アイコン・名前の x 位置（panel ローカル px）。
+    /// `maxW`: 名前を収める最大幅（超えたら "…" 省略）。
+    /// `atlas`: 名前の幅計測に使うフォント。
+    /// `equipOpt`: 表示する装備（None なら 3 ノードを隠す）。
+    type alias EquipSlotSpec = {
+        root     = String,
+        key      = String,
+        iconX    = Float64,
+        textX    = Float64,
+        maxW     = Float64,
+        atlas    = FontAtlas,
+        equipOpt = Option[EquipView]
+    }
+
     /// 装備 1 スロット（アイコン + 色紙 + 名前）。未装備は 3 ノードを隠す。
     /// 色紙 / アイコンは off*scale ぶん位置補正、名前は maxW に収まるところまで "…" 省略する。
-    def setEquipSlot(root: String, key: String, iconX: Float64, textX: Float64, maxW: Float64,
-                     atlas: FontAtlas, equipOpt: Option[EquipView], ui: UiStore.UiWorld): UiStore.UiWorld =
-        let matPath = childPath(root, "${key}Mat");
-        let iconPath = childPath(root, "${key}Icon");
-        let textPath = childPath(root, "${key}Text");
-        match equipOpt {
+    def setEquipSlot(spec: EquipSlotSpec, ui: UiStore.UiWorld): UiStore.UiWorld =
+        let matPath = childPath(spec#root, "${spec#key}Mat");
+        let iconPath = childPath(spec#root, "${spec#key}Icon");
+        let textPath = childPath(spec#root, "${spec#key}Text");
+        match spec#equipOpt {
             case None        =>
                 ui
                     |> UiStore.setVisible(matPath, false)
                     |> UiStore.setVisible(iconPath, false)
                     |> UiStore.setVisible(textPath, false)
             case Some(equip) =>
-                let iconPos = {x = iconX + equip#offset#x * equipScale()#x,
+                let iconPos = {x = spec#iconX + equip#offset#x * equipScale()#x,
                                y = equipY() + equip#offset#y * equipScale()#y};
                 let matPos = {x = iconPos#x - equipMatPad(), y = iconPos#y - equipMatPad()};
                 ui
@@ -339,10 +356,11 @@ mod UnitCardUi {
                     |> UiStore.setAbs(matPath, matPos)
                     |> UiStore.setVisible(iconPath, true)
                     |> UiStore.setAbs(iconPath, iconPos)
-                    |> UiStore.setSprite(iconPath, equip#texture, equip#hframes, equip#vframes, equip#frame)
+                    |> UiStore.setSprite({path = iconPath, texture = equip#texture, hframes = equip#hframes,
+                                         vframes = equip#vframes, frame = equip#frame})
                     |> UiStore.setVisible(textPath, true)
-                    |> UiStore.setAbs(textPath, {x = textX, y = equipTextY()})
-                    |> UiStore.setText(textPath, fitText(equip#name, atlas, fsTiny(), maxW))
+                    |> UiStore.setAbs(textPath, {x = spec#textX, y = equipTextY()})
+                    |> UiStore.setText(textPath, fitText(equip#name, spec#atlas, fsTiny(), spec#maxW))
         }
 
     /// 武器 → 装備スロット表示データ（sprite の入れ子を 1 段に平坦化）。

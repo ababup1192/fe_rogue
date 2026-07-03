@@ -6,14 +6,23 @@
 
 mod UiFocus {
 
+    /// `hitTest` が当たり判定に使う対象シーンの記述。
+    /// `rects`: 各 entity の画面矩形。`vis`: 各 entity の可視（未登録は可視扱い）。
+    /// `zOf`/`depthOf`: entity → zIndex / 階層深さ（最前面判定に使う）。
+    pub type alias HitTestScene = {
+        rects   = Map[EntityId, Rect2.Rect2],
+        vis     = Map[EntityId, Bool],
+        zOf     = EntityId -> Int32,
+        depthOf = EntityId -> Int32
+    }
+
     /// point を含む可視 entity のうち最前面のものを返す。
     /// 最前面判定は (zIndex, 階層深さ, id) の大きい方を優先する（z 同値なら深い方、深さも同値なら id 大）。
     /// vis 未登録の entity は可視扱い。当たりが無ければ None。
-    pub def hitTest(rects: Map[EntityId, Rect2.Rect2], vis: Map[EntityId, Bool],
-                    zOf: EntityId -> Int32, depthOf: EntityId -> Int32, point: Vec2.Vec2): Option[EntityId] =
-        rects |> Map.foldLeftWithKey((best, id, rect) ->
-            if (Rect2.hasPoint(point, rect) and Option.getWithDefault(true, Map.get(id, vis)))
-                betterHit(best, id, zOf, depthOf)
+    pub def hitTest(scene: HitTestScene, point: Vec2.Vec2): Option[EntityId] =
+        scene#rects |> Map.foldLeftWithKey((best, id, rect) ->
+            if (Rect2.hasPoint(point, rect) and Option.getWithDefault(true, Map.get(id, scene#vis)))
+                betterHit(best, id, scene#zOf, scene#depthOf)
             else best,
             None)
 

@@ -433,7 +433,7 @@ mod TestPlayerScene {
              PlayerScene.getWeapons(1, after) |> List.map(w -> w#name)))
 
     /// TradeMenu 「空スロット picker」シナリオ相当: 自分が空スロット pick、相手の実体を選択
-    /// → TradeMenuScene.applyTradeSwap が引数を反転して `swapItem({selfId=partner, ...})`
+    /// → TradeMenuUi.applyTradeSwap が引数を反転して `swapItem({selfId=partner, ...})`
     /// を呼ぶ経路の確認 (P1 が giver、P0 が receiver)。
     /// 配置: P0 weapons=[] / P1 weapons=[槍]
     /// 期待:

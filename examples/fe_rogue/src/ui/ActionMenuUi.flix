@@ -186,7 +186,8 @@ mod ActionMenuUi {
                 |> UiStore.setWidthPx(highlightPath(), fit#innerW - 2.0 * highlightInset())
                 |> UiStore.putSelection(menuPath(), sel)
                 |> applyTints(items, sel)
-                |> UiMenu.applyHighlight(menuPath(), highlightPath(), sel, rowPitch(), highlightInset()));
+                |> UiMenu.applyHighlight({listPath = menuPath(), highlightPath = highlightPath(),
+                                          sel = sel, rowPitch = rowPitch(), inset = highlightInset()}));
             scene
         }
 
@@ -558,12 +559,12 @@ mod ActionMenuUi {
                 CustomEffects.FloorAdvanceRequest.advance(scene)
         }
 
-    /// 「アイテム」確定で ItemMenuScene を開く。
+    /// 「アイテム」確定で ItemMenuUi を開く。
     def openItemMenu(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery} =
         match SelectedPlayer.State.get()#id {
             case None           => scene
-            case Some(playerId) => ItemMenuScene.openFor(playerId, scene)
+            case Some(playerId) => ItemMenuUi.openFor(playerId, scene)
         }
 
     /// 「交換」確定（集合の隣接メニュー）: 主人公＋隣接味方の N 人持ち物交換画面を開く。

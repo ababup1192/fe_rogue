@@ -61,23 +61,35 @@ mod UiMenu {
     // 選択ハイライト箱（塗り箱）の位置合わせ
     // ========================================================================
 
+    /// `applyHighlight` の引数束。
+    /// `listPath`: 項目列を所有する entity の名前パス（`UiMenu.itemIds` の起点）。
+    /// `highlightPath`: 塗り箱（abs 子）の名前パス。
+    /// `sel`: 選択カーソルの index（項目列基準。範囲外は防御的にクランプする）。
+    /// `rowPitch`: 行の固定ピッチ（px）。
+    /// `inset`: 行セルの内側マージン（px。箱を行セルより少し小さくして隣行と接しないため）。
+    pub type alias HighlightArgs = {
+        listPath      = String,
+        highlightPath = String,
+        sel           = Int32,
+        rowPitch      = Float64,
+        inset         = Float64
+    }
+
     /// 選択行の塗り箱を選択位置へ動かす。箱は listPath 直下に置いた abs 子（highlightPath）で、
     /// 塗り・枠・角丸・寸法は ui.json 側で固定宣言し、ここでは選択 index と行ピッチから
     /// フロー外オフセット（listPath コンテンツ原点基準）だけを決め打ちで再計算する。
     ///
     /// 行ピッチが固定（各行 = 固定高スロット・gap 0）なので、レイアウト結果を読み戻さずに
-    /// `y = inset + sel × rowPitch` で決定論的に置ける。`inset` は行セルの内側マージン
-    /// （旧 selectedHighlight の inset と同じ。箱を行セルより少し小さくして隣行と接しないため）。
+    /// `y = inset + sel × rowPitch` で決定論的に置ける。
     ///
     /// 項目が無いときは箱を隠す。sel は防御的に [0, count) へクランプする。
-    pub def applyHighlight(listPath: String, highlightPath: String, sel: Int32,
-                           rowPitch: Float64, inset: Float64, ui: UiStore.UiWorld): UiStore.UiWorld =
-        match highlightPlacement(count(listPath, ui), sel, rowPitch, inset) {
-            case None      => UiStore.setVisible(highlightPath, false, ui)
+    pub def applyHighlight(args: HighlightArgs, ui: UiStore.UiWorld): UiStore.UiWorld =
+        match highlightPlacement(count(args#listPath, ui), args#sel, args#rowPitch, args#inset) {
+            case None      => UiStore.setVisible(args#highlightPath, false, ui)
             case Some(pos) =>
                 ui
-                    |> UiStore.setVisible(highlightPath, true)
-                    |> UiStore.setAbs(highlightPath, pos)
+                    |> UiStore.setVisible(args#highlightPath, true)
+                    |> UiStore.setAbs(args#highlightPath, pos)
         }
 
     /// 塗り箱のフロー外オフセットを決める純関数（UiWorld 非依存）。

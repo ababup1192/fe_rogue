@@ -164,7 +164,7 @@ mod PhaseTransitions {
 
     /// ItemSelect フェーズに入る (ActionMenu「アイテム」確定時)。
     /// 動作: 味方系の青/赤マスを片付けて、カーソルを隠す（メニュー操作専用画面のため）。
-    /// EnemyRange は触らない。`ItemMenuScene.applyVisibility` が表示を毎フレーム反映する。
+    /// EnemyRange は触らない。`ItemMenuUi.frameStep` が表示を毎フレーム反映する。
     pub def enterItemSelect(scene: Scene[NodeTag]):
             Scene[NodeTag] \ TurnPhase.State =
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
@@ -229,7 +229,7 @@ mod PhaseTransitions {
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene
             |> TradeRangeScene.clear
-            |> TradeMenuScene.mapPanelData(_ -> TradeMenuScene.defaultPanelData())
+            |> TradeMenuUi.mapPanelData(_ -> TradeMenuUi.defaultPanelData())
 
     /// TradeInventory フェーズに入る (TradeTargetSelect で Z 押下時の隣接 2 人交換)。
     /// 緑マス overlay を片付け (もう不要)、`members = [選択中味方, partnerId]` を PanelData に
@@ -243,13 +243,13 @@ mod PhaseTransitions {
         scene
             |> TradeRangeScene.clear
             |> CursorScene.setVisible(false)
-            |> TradeMenuScene.mapPanelData(_ ->
+            |> TradeMenuUi.mapPanelData(_ ->
                 ({members  = selfId :: partnerId :: Nil,
                   focus    = 0,
                   pick     = None,
-                  origin   = TradeMenuScene.Origin.FromTurn,
+                  origin   = TradeMenuUi.Origin.FromTurn,
                   marks    = Set#{},
-                  markPane = None}: TradeMenuScene.PanelData))
+                  markPane = None}: TradeMenuUi.PanelData))
 
     /// TradeInventory フェーズに入る (集合（行軍）の隣接メニュー「交換」確定時の N 人交換)。
     /// `members` は主人公 + 主人公に隣接する生存味方の player id (最大 4 人)。
@@ -263,13 +263,13 @@ mod PhaseTransitions {
             TurnPhase.State.put(TurnPhase.Phase.TradeInventory);
             scene
                 |> CursorScene.setVisible(false)
-                |> TradeMenuScene.mapPanelData(_ ->
+                |> TradeMenuUi.mapPanelData(_ ->
                     ({members  = members,
                       focus    = 0,
                       pick     = None,
-                      origin   = TradeMenuScene.Origin.FromGather,
+                      origin   = TradeMenuUi.Origin.FromGather,
                       marks    = Set#{},
-                      markPane = None}: TradeMenuScene.PanelData))
+                      markPane = None}: TradeMenuUi.PanelData))
         }
 
     /// TradeTargetSelect フェーズに入る (ActionMenu「こうかん」確定時)。

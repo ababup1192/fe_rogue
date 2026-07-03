@@ -44,16 +44,6 @@ pub enum NodeTag {
     case Stairs(Stairs.Data)
     /// ログ HUD の識別用純タグ（状態は `LogScene.State` resource へ移設・ペイロードレス）。
     case Log
-    /// ItemMenuScene の Panel ルート（外枠）
-    case ItemPanel
-    /// ItemMenuScene の ItemList（武器+杖の一覧 + サブメニュー兼用）の識別用純タグ。
-    /// カテゴリ index と複数選択マークは `ItemMenuState.State` resource へ移設・ペイロードレス。
-    case ItemMenu
-    /// TradeMenuScene の Panel ルートの識別用純タグ。セッション状態
-    /// （members / focus / pick / origin / marks）は `TradeMenuState.State` resource へ移設・ペイロードレス。
-    case TradePanel
-    /// TradeMenuScene の各ペイン ItemList。内部の Int32 はペイン index (0 起点、最大 3)。
-    case TradeMenu(Int32)
     /// BattlePanelScene の CanvasLayer ルート（画面空間の戦闘予報ミニウィンドウ）。
     /// 内部 Duration は未使用（将来の演出用に枠だけ残す）。panel とその子（丸/ラベル/三角）は
     /// `NodeTag.NoTag` でぶら下げ、process がパス経由で更新・対象近傍へ移動する。
@@ -165,10 +155,6 @@ def dispatchMenus(delta: Duration.Duration, node: EngineNode[NodeTag],
                    path: NodePath, scene: Scene[NodeTag]):
                   (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
     match EngineNode.getState(node) {
-        case NodeTag.ItemMenu =>
-            checked_ecast(ItemMenuScene.refreshItems(delta, node, path, scene))
-        case NodeTag.TradeMenu(_) =>
-            checked_ecast(TradeMenuScene.refreshItems(delta, node, path, scene))
         case NodeTag.BattlePanel =>
             checked_ecast(BattlePanelScene.process(delta, node, path, scene))
         case NodeTag.LevelUpPanel =>
@@ -202,7 +188,7 @@ instance InputEvent.InputHandler[NodeTag] {
                  LevelUpPanelScene.State, ItemPickupPopupScene.State, TitleMenuScene.State, ItemMenuState.State, TradeMenuState.State}
     // ActionMenu / ItemMenu / ItemActionMenu / AttackForecast フェーズでは
     // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）でメニュー操作する。
-    // ItemMenu と ItemActionMenu は同じ ItemMenuScene が扱い、`confirmCurrentSelection`
+    // ItemMenu と ItemActionMenu は同じ ItemMenuUi が扱い、`confirmCurrentSelection`
     // 内部で現在のフェーズに応じて分岐する。
     // それ以外のフェーズはこれまで通り TurnRules 経由で振る舞いを決める。
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
@@ -266,10 +252,10 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                     DangerZoneScene.toggle(scene)
                 case TurnPhase.Phase.ItemSelect =>
                     AudioStreamPlayer.play("confirm");
-                    ItemMenuScene.toggleMarkAtCursor(scene)
+                    ItemMenuUi.toggleMarkAtCursor(scene)
                 case TurnPhase.Phase.TradeInventory =>
                     AudioStreamPlayer.play("confirm");
-                    TradeMenuScene.toggleTradeMarkAtCursor(scene)
+                    TradeMenuUi.toggleTradeMarkAtCursor(scene)
                 case _ => scene
             }
         // C キー / ゲームパッド Y: 集合モードのトグル。
@@ -302,68 +288,12 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
             }
         }
 
-/// MenuHandler instance — ItemList の Enter/Escape を各 MenuScene へ流す。
-/// 入力キー固定: Up/Down=カーソル移動 / Enter=確定 / Escape=キャンセル（engine 規約）。
+/// MenuHandler instance — engine の ItemList メニュー確定/取消を受ける口。
+/// 全メニュー（ActionMenu / WeaponSelect / ItemMenu / TradeMenu / SuspendConfirm）は World-entity
+/// UI へ移行済みで、確定・取消は `dispatchMenuKey` のフェーズ分岐が直接扱う。engine ItemList 由来の
+/// MenuEvent を受けるノードはもう存在しないため、trait の既定実装（scene 素通し）に委ねる。
 instance MenuEvent.MenuHandler[NodeTag] {
-    type Aef = {Tween.Scheduler, AnimationPlayer.Scheduler, GameEngine.Audio,
-                 GameLogger.GameLogger, EnemyTurn.Queue,
-                 TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
-                 PlayerData.PartyQuery, EnemyData.RosterQuery,
-                 CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery,
-                 ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State}
-    redef onItemConfirmed(_menuPath: NodePath, _idx: Int32, entry: ItemEntry,
-                           state: NodeTag,
-                           scene: Scene[NodeTag]):
-                          Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                                             GameEngine.Audio,
-                                             GameLogger.GameLogger, EnemyTurn.Queue,
-                                             TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
-                                             GatherResume.State,
-                                             PlayerData.PartyQuery,
-                                             EnemyData.RosterQuery,
-                                             CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery,
-                                             ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State} =
-        match state {
-            case NodeTag.ItemMenu =>
-                // ItemSelect / ItemActionSelect いずれも同じ ItemList なので、
-                // フェーズに応じて ItemMenuScene 内部で分岐させる。
-                let phase = TurnPhase.State.get();
-                match phase {
-                    case TurnPhase.Phase.ItemSelect       =>
-                        checked_ecast(ItemMenuScene.onItemConfirmed(entry, scene))
-                    case TurnPhase.Phase.ItemActionSelect =>
-                        checked_ecast(ItemMenuScene.onActionConfirmed(entry, scene))
-                    case _                                 => scene
-                }
-            // ActionMenu / WeaponSelect は World-entity UI（ActionMenuUi / WeaponSelectUi）へ移行済み。
-            // 確定は engine handleMenus 経由ではなく dispatchMenuKey のフェーズ分岐が直接 confirm する。
-            case NodeTag.TradeMenu(_)      => checked_ecast(TradeMenuScene.confirmCurrentSelection(scene))
-            case _                         => scene
-        }
-    redef onItemCancelled(_menuPath: NodePath, state: NodeTag,
-                           scene: Scene[NodeTag]):
-                          Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                                             GameEngine.Audio,
-                                             GameLogger.GameLogger, EnemyTurn.Queue,
-                                             TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
-                                             GatherResume.State,
-                                             PlayerData.PartyQuery,
-                                             EnemyData.RosterQuery,
-                                             CustomEffects.FloorAdvanceRequest, World.Command, World.WorldQuery, BoardQuery,
-                                             ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State} =
-        match state {
-            case NodeTag.ItemMenu =>
-                let phase = TurnPhase.State.get();
-                match phase {
-                    case TurnPhase.Phase.ItemSelect       =>
-                        checked_ecast(ItemMenuScene.onItemCancelled(scene))
-                    case TurnPhase.Phase.ItemActionSelect =>
-                        checked_ecast(ItemMenuScene.onActionCancelled(scene))
-                    case _                                 => scene
-                }
-            case NodeTag.TradeMenu(_)      => checked_ecast(TradeMenuScene.cancelCurrent(scene))
-            case _                         => scene
-        }
+    type Aef = {}
 }
 
 // ────────────────────────────────────────────────────────
@@ -539,17 +469,17 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
         case (TurnPhase.Phase.WeaponSelect,      TurnRules.Input.Cancel)
                                               => Some(checked_ecast(WeaponSelectUi.onCancelled(scene)))
         case (TurnPhase.Phase.ItemSelect,        TurnRules.Input.Confirm)
-                                              => Some(checked_ecast(ItemMenuScene.confirmCurrentSelection(scene)))
+                                              => Some(checked_ecast(ItemMenuUi.confirmCurrentSelection(scene)))
         case (TurnPhase.Phase.ItemSelect,        TurnRules.Input.Cancel)
-                                              => Some(checked_ecast(ItemMenuScene.onItemCancelled(scene)))
+                                              => Some(checked_ecast(ItemMenuUi.onItemCancelled(scene)))
         case (TurnPhase.Phase.ItemActionSelect,  TurnRules.Input.Confirm)
-                                              => Some(checked_ecast(ItemMenuScene.confirmCurrentSelection(scene)))
+                                              => Some(checked_ecast(ItemMenuUi.confirmCurrentSelection(scene)))
         case (TurnPhase.Phase.ItemActionSelect,  TurnRules.Input.Cancel)
-                                              => Some(checked_ecast(ItemMenuScene.onActionCancelled(scene)))
+                                              => Some(checked_ecast(ItemMenuUi.onActionCancelled(scene)))
         case (TurnPhase.Phase.TradeInventory,    TurnRules.Input.Confirm)
-                                              => Some(checked_ecast(TradeMenuScene.confirmCurrentSelection(scene)))
+                                              => Some(checked_ecast(TradeMenuUi.confirmCurrentSelection(scene)))
         case (TurnPhase.Phase.TradeInventory,    TurnRules.Input.Cancel)
-                                              => Some(checked_ecast(TradeMenuScene.cancelCurrent(scene)))
+                                              => Some(checked_ecast(TradeMenuUi.cancelCurrent(scene)))
         // レベルアップのステータス変化パネルは Z / Enter / X いずれでも閉じる（確認するだけ）。
         case (TurnPhase.Phase.LevelUpView,       TurnRules.Input.Confirm)
                                               => Some(checked_ecast(LevelUpPanelScene.confirm(scene)))
@@ -563,7 +493,7 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
 /// 方向キーなど input = None もここに来る (StaffAim 中の direction、ほかは no-op)。
 def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                         key: GameEngine.Key, scene: Scene[NodeTag]):
-        Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery, Tween.Scheduler,
+        Scene[NodeTag] \ {GameEngine.Audio, BoardQuery, Tween.Scheduler,
                             AnimationPlayer.Scheduler,
                             GameLogger.GameLogger,
                             EnemyTurn.Queue, TurnPhase.State,
@@ -592,10 +522,12 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
         // ItemList のカーソル移動に使われるので素通り)
         case (TurnPhase.Phase.TradeInventory, None)
                                               => checked_ecast(tradeInventoryDirection(key, scene))
-        // ItemSelect 中の ←/→ はアイテム window のページ切替へ (↑↓ は handleMenus 側で
-        // ItemList のカーソル移動に使われるので素通り)
+        // ItemSelect 中の方向キー: ↑↓ はアイテムカーソル移動、←→ はカテゴリ切替（World-entity UI）。
         case (TurnPhase.Phase.ItemSelect,     None)
-                                              => checked_ecast(itemSelectDirection(key, scene))
+                                              => itemSelectDirection(key, scene)
+        // ItemActionSelect（サブメニュー）中の ↑↓ で選択カーソルを動かす（World-entity UI）。
+        case (TurnPhase.Phase.ItemActionSelect, None)
+                                              => itemActionDirection(key, scene)
         // PlayerAttack = ターゲット選択 + 戦闘予測。Z で(カーソル上の敵に)攻撃確定、
         // X でメニューに戻る。BattlePanelScene が予報表示と対象同期を担う。
         case (TurnPhase.Phase.PlayerAttack,   Some(TurnRules.Input.Confirm))
@@ -669,28 +601,51 @@ def weaponSelectDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[Nod
         case _                   => scene
     }
 
-/// TradeInventory 中の方向キーを左右ペイン切替に変換する。
-/// Left / A → focus を 1 つ左へ、Right / D → 1 つ右へ (0..paneCount-1 にクランプ)。
-/// Up / Down は handleMenus が ItemList カーソル移動に使うので、ここでは素通し。
-def tradeInventoryDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[NodeTag] \ TradeMenuState.State =
+/// TradeInventory 中の方向キーを変換する（World-entity UI 化に伴い ↑↓ もここで扱う）。
+/// Left / A → focus を 1 つ左へ、Right / D → 1 つ右へ（両端でラップ）。
+/// Up / W → focus ペインの選択カーソルを 1 つ上、Down / S → 1 つ下（端で停止）。
+def tradeInventoryDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[NodeTag]
+        \ {TradeMenuState.State, PlayerData.PartyQuery, UiWorldState.State} =
     match key {
-        case GameEngine.Key.Left  => TradeMenuScene.setPaneFocusDelta(-1, scene)
-        case GameEngine.Key.A     => TradeMenuScene.setPaneFocusDelta(-1, scene)
-        case GameEngine.Key.Right => TradeMenuScene.setPaneFocusDelta(1, scene)
-        case GameEngine.Key.D     => TradeMenuScene.setPaneFocusDelta(1, scene)
+        case GameEngine.Key.Left  => TradeMenuUi.setPaneFocusDelta(-1, scene)
+        case GameEngine.Key.A     => TradeMenuUi.setPaneFocusDelta(-1, scene)
+        case GameEngine.Key.Right => TradeMenuUi.setPaneFocusDelta(1, scene)
+        case GameEngine.Key.D     => TradeMenuUi.setPaneFocusDelta(1, scene)
+        case GameEngine.Key.Up    => TradeMenuUi.moveSelection(-1, scene)
+        case GameEngine.Key.W     => TradeMenuUi.moveSelection(-1, scene)
+        case GameEngine.Key.Down  => TradeMenuUi.moveSelection(1, scene)
+        case GameEngine.Key.S     => TradeMenuUi.moveSelection(1, scene)
         case _                    => scene
     }
 
-/// ItemSelect 中の方向キーをアイテム window のページ切替に変換する。
-/// Left / A → 前カテゴリ、Right / D → 次カテゴリ（武器/消費/杖/指輪。空はスキップ）。
-/// Up / Down は handleMenus が ItemList のスクロール（カーソル移動）に使うので素通し。
+/// ItemSelect 中の方向キーを変換する。Up/Down/W/S → アイテムカーソル移動（窓スクロール）、
+/// Left/A → 前カテゴリ、Right/D → 次カテゴリ（武器/消費/杖/指輪。空はスキップ）。
+/// カーソル移動もカテゴリ切替も World-entity UI 化（旧 ItemList + handleMenus の置換）。
 def itemSelectDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
-        Scene[NodeTag] \ {SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery} =
+        Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ItemMenuState.State,
+                          PlayerData.PartyQuery, UiWorldState.State} =
     match key {
-        case GameEngine.Key.Left  => ItemMenuScene.categoryPrev(scene)
-        case GameEngine.Key.A     => ItemMenuScene.categoryPrev(scene)
-        case GameEngine.Key.Right => ItemMenuScene.categoryNext(scene)
-        case GameEngine.Key.D     => ItemMenuScene.categoryNext(scene)
+        case GameEngine.Key.Up    => ItemMenuUi.moveSelection(-1, scene)
+        case GameEngine.Key.W     => ItemMenuUi.moveSelection(-1, scene)
+        case GameEngine.Key.Down  => ItemMenuUi.moveSelection(1, scene)
+        case GameEngine.Key.S     => ItemMenuUi.moveSelection(1, scene)
+        case GameEngine.Key.Left  => ItemMenuUi.categoryPrev(scene)
+        case GameEngine.Key.A     => ItemMenuUi.categoryPrev(scene)
+        case GameEngine.Key.Right => ItemMenuUi.categoryNext(scene)
+        case GameEngine.Key.D     => ItemMenuUi.categoryNext(scene)
+        case _                    => scene
+    }
+
+/// ItemActionSelect（サブメニュー）中の方向キーを選択カーソル移動へ変換する。
+/// Up/Down/W/S → 1 つ上下（disabled をスキップ・端で回り込む）。他キーは素通し。
+def itemActionDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
+        Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ItemMenuState.State,
+                          PlayerData.PartyQuery, UiWorldState.State} =
+    match key {
+        case GameEngine.Key.Up    => ItemMenuUi.moveSelection(-1, scene)
+        case GameEngine.Key.W     => ItemMenuUi.moveSelection(-1, scene)
+        case GameEngine.Key.Down  => ItemMenuUi.moveSelection(1, scene)
+        case GameEngine.Key.S     => ItemMenuUi.moveSelection(1, scene)
         case _                    => scene
     }
 
@@ -823,6 +778,12 @@ mod Game {
                 // 武器選択ウィンドウ（ActionMenu「攻撃」確定で右隣に出る）の World-entity UI を
                 // 1 回だけ spawn する（初期は不可視。WeaponSelect フェーズで WeaponSelectUi.frameStep が可視化）。
                 spawnUiOrBug(WeaponSelectUi.specPath());
+                // アイテム選択ウィンドウ（ActionMenu「アイテム」確定で右隣に出る）の World-entity UI を
+                // 1 回だけ spawn する（初期は不可視。ItemSelect/ItemActionSelect で ItemMenuUi.frameStep が可視化）。
+                spawnUiOrBug(ItemMenuUi.specPath());
+                // 物交換ウィンドウ（最大 4 ペイン。「こうかん」/ 集合「交換」確定で中央に出る）の
+                // World-entity UI を 1 回だけ spawn する（初期は不可視。TradeInventory で TradeMenuUi.frameStep が可視化）。
+                spawnUiOrBug(TradeMenuUi.specPath());
                 // 中断確認モーダルの World-entity UI を 1 回だけ spawn する
                 // （初期は不可視。SuspendConfirm フェーズで SuspendConfirmUi.frameStep が可視化）。
                 spawnUiOrBug(SuspendConfirmUi.specPath());
@@ -1077,6 +1038,10 @@ mod Game {
                 |> ActionMenuUi.frameStep(dt)
                 // 武器選択ウィンドウの可視/行流し込み/選択ハイライト/カーソルスナップを phase から同期。
                 |> WeaponSelectUi.frameStep(dt)
+                // アイテム選択ウィンドウ（ItemSelect/ItemActionSelect）の可視/窓流し込み/選択ハイライトを phase から同期。
+                |> ItemMenuUi.frameStep(dt)
+                // 物交換ウィンドウ（TradeInventory）の可視/中央寄せ/各ペインの窓流し込み/フォーカス表現を phase から同期。
+                |> TradeMenuUi.frameStep(dt)
                 // 中断確認モーダルの可視/選択ハイライトを phase から同期。
                 |> SuspendConfirmUi.frameStep(dt)
                 // ユニット簡易カード（味方左 / 敵右）の表示対象を解決して流し込む（旧 process 2 case の置換）。

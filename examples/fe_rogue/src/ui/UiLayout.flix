@@ -52,26 +52,36 @@ mod UiLayout {
          mainAlign = MainAlign.Start, crossAlign = CrossAlign.Start,
          abs = None}
 
+    /// レイアウト解決アルゴリズム全体が引き回す入力の束。パス1・パス2の内部ヘルパーが
+    /// すべて同じ 5 つを引きずるため、1 レコードにまとめて名前渡しする。
+    /// `styles`: 各 entity のレイアウト属性。
+    /// `parents`: 子→親（root は非在）。
+    /// `order`: 兄弟内の並び順。
+    /// `measures`: テキスト等の実寸（内在サイズ解決の葉値に使う）。
+    /// `visible`: 各 entity の設定可視（継承前）。visible=false の entity はその部分木ごと
+    /// フローから除外する（CSS の display:none 相当）。未登録の entity は可視扱い。
+    pub type alias LayoutInput = {
+        styles   = Map[EntityId, Style],
+        parents  = Map[EntityId, EntityId],
+        order    = Map[EntityId, Int32],
+        measures = Map[EntityId, Vec2.Vec2],
+        visible  = Map[EntityId, Bool]
+    }
+
     // ========================================================================
     // 公開 API
     // ========================================================================
 
     /// レイアウトを解決し、各 entity の画面絶対矩形を返す。
     /// root には rootRect（viewport 等）をそのまま割り当て、子孫へ再帰配置する。
-    /// `visible`: 各 entity の設定可視（継承前）。visible=false の entity はその部分木ごと
-    /// フローから除外する（CSS の display:none 相当）。未登録の entity は可視扱い。
-    pub def computeLayout(styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
-                          order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2],
-                          visible: Map[EntityId, Bool],
-                          root: EntityId, rootRect: Rect2.Rect2): Map[EntityId, Rect2.Rect2] =
-        assignRect(root, rootRect, styles, parents, order, measures, visible, Map.empty())
+    pub def computeLayout(input: LayoutInput, root: EntityId, rootRect: Rect2.Rect2): Map[EntityId, Rect2.Rect2] =
+        assignRect(root, rootRect, input, Map.empty())
 
     /// 可視な子だけを order 順に返す（visible=false の子はレイアウトから除外＝display:none 相当）。
     /// visible 未登録の子は可視扱い。フロー内・フロー外（abs）を問わず、隠した子は配置対象から外れる。
-    def visibleChildrenOf(id: EntityId, parents: Map[EntityId, EntityId],
-                          order: Map[EntityId, Int32], visible: Map[EntityId, Bool]): List[EntityId] =
-        UiHierarchy.childrenOf(id, parents, order)
-            |> List.filter(child -> Option.getWithDefault(true, Map.get(child, visible)))
+    def visibleChildrenOf(id: EntityId, input: LayoutInput): List[EntityId] =
+        UiHierarchy.childrenOf(id, input#parents, input#order)
+            |> List.filter(child -> Option.getWithDefault(true, Map.get(child, input#visible)))
 
     // ========================================================================
     // パス1: 内在サイズ
@@ -79,11 +89,9 @@ mod UiLayout {
 
     /// entity の内在サイズ（幅・高さ）。width/height が Px なら固定値、
     /// それ以外（Auto/Grow）はコンテンツ由来サイズを使う。
-    def intrinsicSizeOf(id: EntityId, styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
-                        order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2],
-                        visible: Map[EntityId, Bool]): Vec2.Vec2 =
-        let style = styleOf(id, styles);
-        let content = contentSizeOf(id, style, styles, parents, order, measures, visible);
+    def intrinsicSizeOf(id: EntityId, input: LayoutInput): Vec2.Vec2 =
+        let style = styleOf(id, input#styles);
+        let content = contentSizeOf(id, style, input);
         {x = axisIntrinsic(style#width, content#x), y = axisIntrinsic(style#height, content#y)}
 
     /// 軸のサイズ指定から内在サイズを取り出す。Px は固定値、Auto/Grow はコンテンツ値。
@@ -97,15 +105,13 @@ mod UiLayout {
     /// entity のコンテンツ由来サイズ（パディング込み）。
     /// 子を持たなければテキスト実寸（無ければ 0）、持てば主軸に沿った子の合計 + gap、交差軸は子の最大。
     /// abs=Some の子はフロー外なのでコンテンツ集計に含めない。
-    def contentSizeOf(id: EntityId, style: Style, styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
-                      order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2],
-                      visible: Map[EntityId, Bool]): Vec2.Vec2 =
-        let flowChildren = visibleChildrenOf(id, parents, order, visible)
-            |> List.filter(child -> Option.isEmpty(styleOf(child, styles)#abs));
+    def contentSizeOf(id: EntityId, style: Style, input: LayoutInput): Vec2.Vec2 =
+        let flowChildren = visibleChildrenOf(id, input)
+            |> List.filter(child -> Option.isEmpty(styleOf(child, input#styles)#abs));
         let inner = match flowChildren {
-            case Nil => Option.getWithDefault({x = 0.0, y = 0.0}, Map.get(id, measures))
+            case Nil => Option.getWithDefault({x = 0.0, y = 0.0}, Map.get(id, input#measures))
             case _   =>
-                let childSizes = List.map(child -> intrinsicSizeOf(child, styles, parents, order, measures, visible), flowChildren);
+                let childSizes = List.map(child -> intrinsicSizeOf(child, input), flowChildren);
                 let mains = List.map(sz -> mainOf(style#dir, sz), childSizes);
                 let crosses = List.map(sz -> crossOf(style#dir, sz), childSizes);
                 let mainTotal = List.foldLeft((acc, m) -> acc + m, 0.0, mains)
@@ -120,35 +126,30 @@ mod UiLayout {
     // ========================================================================
 
     /// entity に rect を確定し、子孫へ再帰的に配置していく。
-    def assignRect(id: EntityId, rect: Rect2.Rect2, styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
-                   order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2],
-                   visible: Map[EntityId, Bool],
+    def assignRect(id: EntityId, rect: Rect2.Rect2, input: LayoutInput,
                    acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
         let acc1 = Map.insert(id, rect, acc);
-        let style = styleOf(id, styles);
+        let style = styleOf(id, input#styles);
         // 隠した子（visible=false）はその部分木ごと配置しない（display:none）。
-        let children = visibleChildrenOf(id, parents, order, visible);
+        let children = visibleChildrenOf(id, input);
         // コンテンツ領域 = rect からパディングを引いた内側
         let contentPos = {x = rect#position#x + style#padLeft, y = rect#position#y + style#padTop};
         let contentSize = {x = rect#size#x - style#padLeft - style#padRight,
                            y = rect#size#y - style#padTop - style#padBottom};
         // フロー内 / フロー外（abs）に分ける
-        let (flowChildren, absChildren) = List.partition(child -> Option.isEmpty(styleOf(child, styles)#abs), children);
-        let acc2 = layoutFlow(style, contentPos, contentSize, flowChildren, styles, parents, order, measures, visible, acc1);
-        List.foldLeft((a, child) -> layoutAbs(child, contentPos, styles, parents, order, measures, visible, a), acc2, absChildren)
+        let (flowChildren, absChildren) = List.partition(child -> Option.isEmpty(styleOf(child, input#styles)#abs), children);
+        let acc2 = layoutFlow(style, contentPos, contentSize, flowChildren, input, acc1);
+        List.foldLeft((a, child) -> layoutAbs(child, contentPos, input, a), acc2, absChildren)
 
     /// フロー内の子を主軸に沿って配置する。
     def layoutFlow(style: Style, contentPos: Vec2.Vec2, contentSize: Vec2.Vec2, flowChildren: List[EntityId],
-                   styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
-                   order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2],
-                   visible: Map[EntityId, Bool],
-                   acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
+                   input: LayoutInput, acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
         let dir = style#dir;
         let contentMain = mainOf(dir, contentSize);
         let contentCross = crossOf(dir, contentSize);
         let count = List.length(flowChildren);
         // 子ごとの主軸ベースサイズと Grow 重みを求める
-        let bases = List.map(child -> baseMainOf(child, dir, styles, parents, order, measures, visible), flowChildren);
+        let bases = List.map(child -> baseMainOf(child, dir, input), flowChildren);
         let sumBase = List.foldLeft((acc2, entry) -> acc2 + fst(entry), 0.0, bases);
         let totalWeight = List.foldLeft((acc2, entry) -> acc2 + snd(entry), 0.0, bases);
         let gapTotal = style#gap * Int32.toFloat64(Int32.max(0, count - 1));
@@ -160,27 +161,25 @@ mod UiLayout {
             let (child, base) = pair;
             let (baseMain, weight) = base;
             let mainSize = if (totalWeight > 0.0) baseMain + growShare(weight, totalWeight, free) else baseMain;
-            let crossSize = crossSizeOf(child, dir, style#crossAlign, contentCross, styles, parents, order, measures, visible);
+            let crossSize = crossSizeOf(child, dir, style#crossAlign, contentCross, input);
             let crossOffset = crossOffsetFor(style#crossAlign, contentCross, crossSize);
             let childPos = fromMainCross(dir,
                                           mainOf(dir, contentPos) + st#pen,
                                           crossOf(dir, contentPos) + crossOffset);
             let childSize = fromMainCross(dir, mainSize, crossSize);
             let childRect: Rect2.Rect2 = {position = childPos, size = childSize};
-            let newAcc = assignRect(child, childRect, styles, parents, order, measures, visible, st#acc);
+            let newAcc = assignRect(child, childRect, input, st#acc);
             {pen = st#pen + mainSize + effectiveGap, acc = newAcc}
         }, {pen = startOffset, acc = acc}, childList);
         result#acc
 
     /// フロー外（abs）の子を親コンテンツ原点 + オフセットに内在サイズで配置する。
-    def layoutAbs(child: EntityId, contentPos: Vec2.Vec2, styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
-                  order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2],
-                  visible: Map[EntityId, Bool],
+    def layoutAbs(child: EntityId, contentPos: Vec2.Vec2, input: LayoutInput,
                   acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
-        let offset = Option.getWithDefault({x = 0.0, y = 0.0}, styleOf(child, styles)#abs);
-        let size = intrinsicSizeOf(child, styles, parents, order, measures, visible);
+        let offset = Option.getWithDefault({x = 0.0, y = 0.0}, styleOf(child, input#styles)#abs);
+        let size = intrinsicSizeOf(child, input);
         let rect: Rect2.Rect2 = {position = {x = contentPos#x + offset#x, y = contentPos#y + offset#y}, size = size};
-        assignRect(child, rect, styles, parents, order, measures, visible, acc)
+        assignRect(child, rect, input, acc)
 
     /// mainAlign と余り（free）から、先頭オフセットと実効間隔を決める。
     /// Grow がある（totalWeight>0）ときは詰めて配置し、間隔は宣言 gap のまま。
@@ -202,26 +201,22 @@ mod UiLayout {
         if (totalWeight > 0.0) Float64.max(0.0, free) * (weight / totalWeight) else 0.0
 
     /// 子の主軸ベースサイズと Grow 重みの組。Px は固定値、Auto は内在サイズ、Grow は base0 + 重み。
-    def baseMainOf(child: EntityId, dir: Dir, styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
-                   order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2],
-                   visible: Map[EntityId, Bool]): (Float64, Float64) =
-        match mainSpecOf(dir, styleOf(child, styles)) {
+    def baseMainOf(child: EntityId, dir: Dir, input: LayoutInput): (Float64, Float64) =
+        match mainSpecOf(dir, styleOf(child, input#styles)) {
             case SizeSpec.Px(v)   => (v, 0.0)
-            case SizeSpec.Auto    => (mainOf(dir, intrinsicSizeOf(child, styles, parents, order, measures, visible)), 0.0)
+            case SizeSpec.Auto    => (mainOf(dir, intrinsicSizeOf(child, input)), 0.0)
             case SizeSpec.Grow(w) => (0.0, w)
         }
 
     /// 子の交差軸サイズ。Stretch なら親の交差サイズいっぱい、それ以外は子の指定（Px/Auto/Grow）に従う。
     def crossSizeOf(child: EntityId, dir: Dir, crossAlign: CrossAlign, contentCross: Float64,
-                    styles: Map[EntityId, Style], parents: Map[EntityId, EntityId],
-                    order: Map[EntityId, Int32], measures: Map[EntityId, Vec2.Vec2],
-                    visible: Map[EntityId, Bool]): Float64 =
+                    input: LayoutInput): Float64 =
         match crossAlign {
             case CrossAlign.Stretch => contentCross
-            case _ => match crossSpecOf(dir, styleOf(child, styles)) {
+            case _ => match crossSpecOf(dir, styleOf(child, input#styles)) {
                 case SizeSpec.Px(v)   => v
-                case SizeSpec.Auto    => crossOf(dir, intrinsicSizeOf(child, styles, parents, order, measures, visible))
-                case SizeSpec.Grow(_) => crossOf(dir, intrinsicSizeOf(child, styles, parents, order, measures, visible))
+                case SizeSpec.Auto    => crossOf(dir, intrinsicSizeOf(child, input))
+                case SizeSpec.Grow(_) => crossOf(dir, intrinsicSizeOf(child, input))
             }
         }
 

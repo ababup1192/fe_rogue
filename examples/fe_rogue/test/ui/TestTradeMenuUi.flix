@@ -4,7 +4,7 @@
 // ここでは index ベースのペイン操作 DSL で「一連のキー操作 → 最終インベントリ / phase」を検証する。
 //
 // 設計方針:
-//   - 本体 (`TradeMenuScene.weaponEntry` / `staffEntry` / `emptySlotEntry`) が並べているのと
+//   - 本体 (`TradeMenuUi.weaponEntry` / `staffEntry` / `emptySlotEntry`) が並べているのと
 //     同じ `ItemEntry` を `confirmAt` に渡す (テスト固有の entry コンストラクタを置かない)
 //   - フィクスチャは本体経路: `UnitCatalog.load` / `Staff.load` + `PlayerScene.addOnePlayer`
 //   - DSL はアクション (`pressZOnPane` 等) のみ。assertion はテスト末尾の 1 回だけ
@@ -13,7 +13,7 @@
 // 純粋な swap ロジックは TestPlayerScene の swapItem テストで網羅済。
 // 純粋な状態遷移 (decideConfirm / moveFocus) はこのファイル末尾で別途単体テストする。
 
-mod TestTradeMenuScene {
+mod TestTradeMenuUi {
 
     // ────────────────────────────────────────────────────────
     // (A) シナリオ状態 + プレイヤー仕様
@@ -25,7 +25,7 @@ mod TestTradeMenuScene {
     pub type alias TradeScenario = {
         scene   = Scene[NodeTag],
         members = List[Int32],
-        panel   = TradeMenuScene.PanelData
+        panel   = TradeMenuUi.PanelData
     }
 
     type alias PlayerSpec = {
@@ -40,7 +40,7 @@ mod TestTradeMenuScene {
 
     /// 各メンバーのインベントリ (本番 catalog の ID) と origin から TradeMenu フィクスチャを組む。
     /// players は specs の順に id を付け、PanelData の members も同じ並びにする。
-    def buildScenario(specs: List[PlayerSpec], origin: TradeMenuScene.Origin):
+    def buildScenario(specs: List[PlayerSpec], origin: TradeMenuUi.Origin):
             TradeScenario \ Fs.FileRead =
         let weaponCatalog = WeaponCatalog.load();
         let catalog = UnitCatalog.load("resources/units.json", weaponCatalog);
@@ -56,16 +56,17 @@ mod TestTradeMenuScene {
               consumables = Nil, rings = Nil}:
                 PlayerScene.Spawn);
         // addOnePlayer は World.Command を emit する。位置 World は検証外なので discharge で剥がす。
+        // World-entity UI 版はウィンドウノードを scene に積まない（確定ロジックは TradeMenuState +
+        // PartyQuery だけを読む）。scene には交換する味方だけ居ればよい。
         let withParty = TestUnitFixtures.dischargeWorldCommand(() -> List.foldLeft((acc, spec) ->
             PlayerScene.addOnePlayer(mkSpawn(spec), acc),
             MapScene.addWorldNode(Scene.empty()), specs));
-        let withMenu = loadTradeMenu(withParty);
         let members = List.map(s -> s#id, specs);
         // PanelData は resource へ直接書かず scenario に載せ、`runScenario` が seed する
         // （`TradeMenuState.State` handler の外で書けないため）。
         let panel = ({members = members, focus = 0, pick = None, origin = origin,
-                      marks = Set#{}, markPane = None}: TradeMenuScene.PanelData);
-        {scene = withMenu, members = members, panel = panel}
+                      marks = Set#{}, markPane = None}: TradeMenuUi.PanelData);
+        {scene = withParty, members = members, panel = panel}
 
     /// 武器だけ持つ 2 人 (id 0,1) の隣接交換シナリオ (origin = FromTurn)。
     /// 引数の string は **catalog 武器 ID** ("iron_lance", "iron_bow" 等)。
@@ -74,7 +75,7 @@ mod TestTradeMenuScene {
         buildScenario(
             ({id = 0, weapons = selfWeapons,    staves = Nil}: PlayerSpec) ::
             ({id = 1, weapons = partnerWeapons, staves = Nil}: PlayerSpec) :: Nil,
-            TradeMenuScene.Origin.FromTurn)
+            TradeMenuUi.Origin.FromTurn)
 
     /// 武器だけ持つ 3 人 (id 0,1,2) の集合交換シナリオ (origin = FromGather)。
     def freshGatherTrade(w0: List[String], w1: List[String], w2: List[String]):
@@ -83,26 +84,7 @@ mod TestTradeMenuScene {
             ({id = 0, weapons = w0, staves = Nil}: PlayerSpec) ::
             ({id = 1, weapons = w1, staves = Nil}: PlayerSpec) ::
             ({id = 2, weapons = w2, staves = Nil}: PlayerSpec) :: Nil,
-            TradeMenuScene.Origin.FromGather)
-
-    /// `TradeMenuScene.add` の `{GameEngine.Game, Fs.FileRead}` 効果を discharge。
-    def loadTradeMenu(scene: Scene[NodeTag]): Scene[NodeTag] \ Fs.FileRead =
-        run {
-            TestUnitFixtures.withMockGame(() -> TradeMenuScene.add(scene))
-        } with handler GameEngine.Game {
-            def renderCommands(_, _, _, k)  = k(())
-            def initTileBuffer(_, k)        = k((0i32, 0i32))
-            def shouldClose(k)              = k(false)
-            def getDeltaTime(k)             = k(Duration.seconds(0.016))
-            def isKeyPressed(_, k)          = k(false)
-            def getMousePosition(k)         = k({x = 0.0, y = 0.0})
-            def isMouseButtonPressed(_, k)  = k(false)
-            def consumeScrollDelta(k)       = k(0.0)
-            def getFontAtlas(_, k)          = k(TestUnitFixtures.testFontAtlas())
-            def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 128.0, y = 128.0}})
-            def getTextureInfo(_, k)        = k(None)
-            def setCursor(_, k)             = k(())
-        }
+            TradeMenuUi.Origin.FromGather)
 
     // ────────────────────────────────────────────────────────
     // (C) DSL アクション: キー押下 (scenario -> scenario)
@@ -113,37 +95,37 @@ mod TestTradeMenuScene {
             TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State, TradeMenuState.State} =
         let pid = memberId(paneIndex, s);
         let entry = entryForInventoryItem(itemName, pid, s#scene);
-        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuScene.confirmAt(paneIndex, entry, s#scene)) | s}
+        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuUi.confirmAt(paneIndex, entry, s#scene)) | s}
 
     /// ペイン `paneIndex` の「空スロット (空きスロット)」に Z を押す。
     pub def pressZOnPaneEmpty(paneIndex: Int32, s: TradeScenario):
             TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State, TradeMenuState.State} =
-        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuScene.confirmAt(paneIndex, TradeMenuScene.emptySlotEntry(), s#scene)) | s}
+        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuUi.confirmAt(paneIndex, TradeMenuUi.emptySlotEntry(), s#scene)) | s}
 
     /// X を押す (キャンセル / pick 解除)。
     pub def pressXAt(s: TradeScenario): TradeScenario \ {TurnPhase.State, TradeMenuState.State} =
         // 遷移が view 状態 Cmd を emit するため捨て handler で吸収。
-        let closed = run { TradeMenuScene.cancelCurrent(s#scene) }
+        let closed = run { TradeMenuUi.cancelCurrent(s#scene) }
             with handler World.Command { def emit(_c, k) = k() };
         {scene = closed | s}
 
     /// ← (左矢印) = focus を 1 つ左へ。
     pub def moveFocusLeft(s: TradeScenario): TradeScenario \ TradeMenuState.State =
-        {scene = TradeMenuScene.setPaneFocusDelta(-1, s#scene) | s}
+        {scene = TradeMenuUi.setPaneFocusDelta(-1, s#scene) | s}
 
     /// → (右矢印) = focus を 1 つ右へ。
     pub def moveFocusRight(s: TradeScenario): TradeScenario \ TradeMenuState.State =
-        {scene = TradeMenuScene.setPaneFocusDelta(1, s#scene) | s}
+        {scene = TradeMenuUi.setPaneFocusDelta(1, s#scene) | s}
 
     /// ペイン `giverPane` の `itemName` に印を付ける (Shift 相当)。ItemList カーソルを介さず
     /// PanelData を直接更新するので、本体の `toggledMarks` のトグル規約をそのまま通す。
     pub def markOnPane(giverPane: Int32, itemName: String, s: TradeScenario): TradeScenario \ TradeMenuState.State =
         let pid = memberId(giverPane, s);
         let entry = entryForInventoryItem(itemName, pid, s#scene);
-        match entry#metadata |> Option.flatMap(ItemMenuScene.parseItemKind) {
+        match entry#metadata |> Option.flatMap(ItemMenuUi.parseItemKind) {
             case Some(kind) =>
-                {scene = TradeMenuScene.mapPanelData(
-                    d -> TradeMenuScene.toggledMarks(giverPane, kind, d), s#scene) | s}
+                {scene = TradeMenuUi.mapPanelData(
+                    d -> TradeMenuUi.toggledMarks(giverPane, kind, d), s#scene) | s}
             case None => bug!("cannot parse item kind for '${itemName}'")
         }
 
@@ -151,7 +133,7 @@ mod TestTradeMenuScene {
     /// 受け取り側の entry は bulk 時は使われないので空スロット entry を渡す。
     pub def pressZBulkOnPane(receiverPane: Int32, s: TradeScenario):
             TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State, TradeMenuState.State} =
-        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuScene.confirmAt(receiverPane, TradeMenuScene.emptySlotEntry(), s#scene)) | s}
+        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuUi.confirmAt(receiverPane, TradeMenuUi.emptySlotEntry(), s#scene)) | s}
 
     // ────────────────────────────────────────────────────────
     // (D) 内部ヘルパー
@@ -170,11 +152,11 @@ mod TestTradeMenuScene {
                                 scene: Scene[NodeTag]): ItemEntry =
         let weapons = PlayerScene.getWeapons(playerId, scene);
         match findIndexed(w -> w#name == itemName, weapons) {
-            case Some((idx, weapon)) => TradeMenuScene.weaponEntry(idx, weapon)
+            case Some((idx, weapon)) => TradeMenuUi.weaponEntry(idx, weapon)
             case None                =>
                 let staves = PlayerScene.getStaves(playerId, scene);
                 match findIndexed(s -> s#name == itemName, staves) {
-                    case Some((idx, staff)) => TradeMenuScene.staffEntry(idx, staff)
+                    case Some((idx, staff)) => TradeMenuUi.staffEntry(idx, staff)
                     case None               =>
                         bug!("Item '${itemName}' not found in player ${playerId}")
                 }
@@ -399,7 +381,7 @@ mod TestTradeMenuScene {
             let s0 = buildScenario(
                 ({id = 0, weapons = "iron_lance" :: "iron_bow" :: Nil, staves = Nil}: PlayerSpec) ::
                 ({id = 1, weapons = three, staves = Nil}: PlayerSpec) :: Nil,
-                TradeMenuScene.Origin.FromTurn);
+                TradeMenuUi.Origin.FromTurn);
             let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
                 s0 |> markOnPane(0, "てつのやり")
                    |> markOnPane(0, "てつの弓")
@@ -417,11 +399,11 @@ mod TestTradeMenuScene {
     @Test
     def testToggledMarksReplacesPaneAndClears(): Unit \ Assert =
         let base = {members = 0 :: 1 :: Nil, focus = 0, pick = None,
-                    origin = TradeMenuScene.Origin.FromTurn, marks = Set#{}, markPane = None};
+                    origin = TradeMenuUi.Origin.FromTurn, marks = Set#{}, markPane = None};
         // ペイン0で武器0に印 → ペイン1で武器0に印 (ペイン替え) → もう一度ペイン1武器0 (解除)
-        let m0 = TradeMenuScene.toggledMarks(0, PlayerData.ItemKind.Weapon(0), base);
-        let m1 = TradeMenuScene.toggledMarks(1, PlayerData.ItemKind.Weapon(0), m0);
-        let m2 = TradeMenuScene.toggledMarks(1, PlayerData.ItemKind.Weapon(0), m1);
+        let m0 = TradeMenuUi.toggledMarks(0, PlayerData.ItemKind.Weapon(0), base);
+        let m1 = TradeMenuUi.toggledMarks(1, PlayerData.ItemKind.Weapon(0), m0);
+        let m2 = TradeMenuUi.toggledMarks(1, PlayerData.ItemKind.Weapon(0), m1);
         Assert.assertEq(
             expected = (Some(0), Some(1), None, 0),
             (m0#markPane, m1#markPane, m2#markPane, Set.size(m2#marks)))
@@ -434,42 +416,21 @@ mod TestTradeMenuScene {
     @Test
     def testMoveFocusWrapsAtEnds(): Unit \ Assert =
         let data3 = {members = 0 :: 1 :: 2 :: Nil, focus = 0, pick = None,
-                     origin = TradeMenuScene.Origin.FromGather, marks = Set#{}, markPane = None};
-        let leftAt0  = TradeMenuScene.moveFocus(-1, data3);                 // 0 で左 → 2 (wrap)
-        let rightMax = TradeMenuScene.moveFocus(1, {focus = 2 | data3});    // 2 で右 → 0 (wrap)
-        let right    = TradeMenuScene.moveFocus(1, data3);                  // 0 で右 → 1
+                     origin = TradeMenuUi.Origin.FromGather, marks = Set#{}, markPane = None};
+        let leftAt0  = TradeMenuUi.moveFocus(-1, data3);                 // 0 で左 → 2 (wrap)
+        let rightMax = TradeMenuUi.moveFocus(1, {focus = 2 | data3});    // 2 で右 → 0 (wrap)
+        let right    = TradeMenuUi.moveFocus(1, data3);                  // 0 で右 → 1
         Assert.assertEq(expected = (2, 0, 1), (leftAt0#focus, rightMax#focus, right#focus))
-
-    /// needsSecondColumn: 1 列に収まる行数 (paneHeight 80 / itemHeight 9 = 8) までは false、
-    /// 9 以上で 2 列目に達して true。
-    @Test
-    def testNeedsSecondColumnThreshold(): Unit \ Assert =
-        Assert.assertEq(
-            expected = (false, true, true),
-            (TradeMenuScene.needsSecondColumn(8),
-             TradeMenuScene.needsSecondColumn(9),
-             TradeMenuScene.needsSecondColumn(16)))
-
-    /// panelWidthFor: ロードが 1 列で足りるとき (false) はウィンドウ幅を ~112.7 に縮め、
-    /// 2 列必要なとき (true) はフル幅 166 に張る。
-    @Test
-    def testPanelWidthShrinksWhenLordSingleColumn(): Unit \ Assert =
-        let members = PlayerScene.lordId() :: 1 :: Nil;  // [ロード, ファイター]
-        let narrow  = TradeMenuScene.panelWidthFor(members, false);
-        let full    = TradeMenuScene.panelWidthFor(members, true);
-        Assert.assertEq(
-            expected = (true, true, true),
-            (narrow > 100.0 and narrow < 120.0, full > 160.0, narrow < full))
 
     /// decideConfirm: pick=None でスロットを pick → JustUpdate で pick がセットされる。
     @Test
     def testDecideConfirmSetsPick(): Unit \ Assert =
         let data = {members = 0 :: 1 :: Nil, focus = 0, pick = None,
-                    origin = TradeMenuScene.Origin.FromTurn, marks = Set#{}, markPane = None};
+                    origin = TradeMenuUi.Origin.FromTurn, marks = Set#{}, markPane = None};
         let kind = Some(PlayerData.ItemKind.Weapon(0));
         // Pick は record alias で Eq が無いので、primitive のタプルに落として比較する。
-        let picked = match TradeMenuScene.decideConfirm(0, kind, data) {
-            case TradeMenuScene.ConfirmOutcome.JustUpdate(d) =>
+        let picked = match TradeMenuUi.decideConfirm(0, kind, data) {
+            case TradeMenuUi.ConfirmOutcome.JustUpdate(d) =>
                 d#pick |> Option.map(p -> (p#paneIndex, p#kind))
             case _                                            => None
         };
@@ -480,10 +441,10 @@ mod TestTradeMenuScene {
     def testDecideConfirmDifferentPaneProducesSwap(): Unit \ Assert =
         let data = {members = 10 :: 20 :: 30 :: Nil, focus = 0,
                     pick = Some({paneIndex = 0, kind = Some(PlayerData.ItemKind.Weapon(1))}),
-                    origin = TradeMenuScene.Origin.FromGather, marks = Set#{}, markPane = None};
+                    origin = TradeMenuUi.Origin.FromGather, marks = Set#{}, markPane = None};
         let receiverKind = Some(PlayerData.ItemKind.Staff(0));
-        let plan = match TradeMenuScene.decideConfirm(2, receiverKind, data) {
-            case TradeMenuScene.ConfirmOutcome.DoSwap(_, p) =>
+        let plan = match TradeMenuUi.decideConfirm(2, receiverKind, data) {
+            case TradeMenuUi.ConfirmOutcome.DoSwap(_, p) =>
                 Some((p#pickerId, p#pickerKind, p#receiverId, p#receiverKind))
             case _ => None
         };
@@ -496,9 +457,9 @@ mod TestTradeMenuScene {
     def testDecideConfirmSamePaneProducesReorder(): Unit \ Assert =
         let data = {members = 10 :: 20 :: Nil, focus = 0,
                     pick = Some({paneIndex = 0, kind = Some(PlayerData.ItemKind.Weapon(0))}),
-                    origin = TradeMenuScene.Origin.FromGather, marks = Set#{}, markPane = None};
-        let plan = match TradeMenuScene.decideConfirm(0, Some(PlayerData.ItemKind.Weapon(1)), data) {
-            case TradeMenuScene.ConfirmOutcome.DoReorder(_, p) => Some((p#playerId, p#kindA, p#kindB))
+                    origin = TradeMenuUi.Origin.FromGather, marks = Set#{}, markPane = None};
+        let plan = match TradeMenuUi.decideConfirm(0, Some(PlayerData.ItemKind.Weapon(1)), data) {
+            case TradeMenuUi.ConfirmOutcome.DoReorder(_, p) => Some((p#playerId, p#kindA, p#kindB))
             case _ => None
         };
         Assert.assertEq(
@@ -514,9 +475,68 @@ mod TestTradeMenuScene {
         let s0 = buildScenario(
             ({id = 0, weapons = sixteen, staves = Nil}: PlayerSpec) ::
             ({id = 1, weapons = "iron_bow" :: Nil, staves = Nil}: PlayerSpec) :: Nil,
-            TradeMenuScene.Origin.FromGather);
+            TradeMenuUi.Origin.FromGather);
         let entries = TestUnitFixtures.withMockPartyQuery(s0#scene, () ->
-            TradeMenuScene.paneEntries(0, s0#scene));
-        let hasEmpty = List.exists(e -> e#metadata == Some(TradeMenuScene.emptySlotMeta()), entries);
+            TradeMenuUi.paneEntries(0, s0#scene));
+        let hasEmpty = List.exists(e -> e#metadata == Some(TradeMenuUi.emptySlotMeta()), entries);
         Assert.assertEq(expected = (16, false), (List.length(entries), hasEmpty))
+
+    // ════════════════════════════════════════════════════════
+    // 実 asset の窓行数 ⇔ maxSlots() の一致 / チップがハイライトに収まる（幾何・ItemMenu と同型）
+    // ════════════════════════════════════════════════════════
+
+    /// 実 asset（TradeMenu.ui.json）を parse し、1 ペインの menu 直下の "row" 名の子の数を数える。
+    def tradeMenuRowCount(): Int32 \ Fs.FileRead =
+        match UiSpec.load(TradeMenuUi.specPath()) {
+            case Ok(root) => UiSpec.countPrefixedChildren(
+                                "panel" :: "panesRow" :: "pane0" :: "menu" :: Nil, "row", root)
+            case Err(_)   => bug!("TradeMenu.ui.json load failed")
+        }
+
+    /// 実 asset の row 宣言数が `TradeMenuUi.maxSlots()` と一致する（窓の行数の宣言過不足を弾く）。
+    @Test
+    def testRowDeclarationCountMatchesMaxSlots(): Unit \ {Assert, Fs.FileRead} =
+        Assert.assertEq(expected = TradeMenuUi.maxSlots(), tradeMenuRowCount())
+
+    /// design 空間の rootRect。panel は abs で内側に置かれる。
+    def designRect(): Rect2.Rect2 =
+        {position = {x = 0.0, y = 0.0}, size = {x = 240.0, y = 128.0}}
+
+    /// 実 asset を spawn し、pane0/row0 を可視にして computeLayout を掛けた結果（UiWorld 同梱）。
+    def tradeMenuLayout(): (UiStore.UiWorld, Map[EntityId, Rect2.Rect2]) \ Fs.FileRead =
+        match UiSpec.load(TradeMenuUi.specPath()) {
+            case Err(_)   => bug!("TradeMenu.ui.json load failed")
+            case Ok(spec) =>
+                let (rootId, ui0) = UiSpec.spawnRoot(spec, UiStore.empty());
+                let ui = UiStore.setVisible("TradeMenu/panel/panesRow/pane0/menu/row0", true, ui0);
+                let layout = UiLayout.computeLayout(
+                    {styles = ui#styles, parents = ui#parents, order = ui#order,
+                     measures = Map.empty(), visible = ui#visible},
+                    rootId, designRect());
+                (ui, layout)
+        }
+
+    /// 名前パスの rect を (x, y, w, h) tuple で引く。未確定は None。
+    def rectAt(path: String, ui: UiStore.UiWorld, layout: Map[EntityId, Rect2.Rect2]):
+            Option[(Float64, Float64, Float64, Float64)] =
+        UiStore.idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, layout))
+            |> Option.map(r -> (r#position#x, r#position#y, r#size#x, r#size#y))
+
+    /// inner が outer に 4 辺とも収まるか（左右上下）。
+    def contains(outer: (Float64, Float64, Float64, Float64), inner: (Float64, Float64, Float64, Float64)): Bool =
+        let (ox, oy, ow, oh) = outer;
+        let (ix, iy, iw, ih) = inner;
+        ix >= ox and iy >= oy and (ix + iw) <= (ox + ow) and (iy + ih) <= (oy + oh)
+
+    /// チップ（iconBg 色紙）の箱が選択ハイライトの箱に上下左右とも完全収容される
+    /// （行テンプレの左 pad 1.5 でチップをハイライト内へ収める。ItemMenu と同じ不変条件）。
+    @Test
+    def testChipFullyContainedInHighlight(): Unit \ {Assert, Fs.FileRead} =
+        let (ui, layout) = tradeMenuLayout();
+        let chip = rectAt("TradeMenu/panel/panesRow/pane0/menu/row0/iconBg", ui, layout);
+        let hl   = rectAt("TradeMenu/panel/panesRow/pane0/menu/highlight", ui, layout);
+        Assert.assertEq(
+            expected = Some(true),
+            forM (h <- hl; c <- chip) yield contains(h, c))
 }
