@@ -118,15 +118,19 @@ mod SnapshotHarness {
     //
     // 使い方: `execute` 全体を 1 回だけこの handler で包む（applyKey/tick を個別に包まない）。
     // これで phase など可変状態が 1 スコープを貫通して持続する。
-    pub def withFullMocks(rc: Region[r], cfg: Config, thunk: Unit -> a \ ef):
+    // region は内部で開いて閉じる（可変状態は thunk 実行中だけ生存すれば足り、`withCancelTransitionMocks`
+    // と同じく rc を引数に取らない＝Region[r] を sub-combinator 経由で使う際の擬似 unused 警告も避ける）。
+    pub def withFullMocks(cfg: Config, thunk: Unit -> a \ ef):
             a \ (ef - Tween.Scheduler - AnimationPlayer.Scheduler - GameLogger.GameLogger
                     - EnemyTurn.Queue - TurnPhase.State - SelectedPlayer.State - CursorState.State
                     - ArrowCursorState.State - GatherResume.State - PlayerData.PartyQuery
                     - EnemyData.RosterQuery - CustomEffects.FloorAdvanceRequest - GameEngine.Audio
                     - World.Command - World.WorldQuery - BoardQuery - ItemPickupPopupScene.State
-                    - ItemMenuState.State - TradeMenuState.State) + r =
-        let initialSel = {id = cfg#selectedId, drafts = Nil, gatherActive = cfg#gatherActive};
+                    - ItemMenuState.State - TradeMenuState.State) =
+        let initialSel: SelectedPlayer.Selection =
+            {id = cfg#selectedId, drafts = Nil, gatherActive = cfg#gatherActive};
         let seededWorld = cfg#worldMods(World.syncFromScene(cfg#scene, World.empty()));
+        region rc {
         TestUnitFixtures.withNoopTween(() ->
         TestUnitFixtures.withNoopAnim(() ->
         TestUnitFixtures.withMockGameLogger(() ->
@@ -144,7 +148,8 @@ mod SnapshotHarness {
         ItemPickupPopupScene.withState(rc, () ->
         ItemMenuState.withState(rc, () ->
         withPhaseState(rc, cfg#phase, () ->
-        withLocalWorld(rc, seededWorld, thunk)))))))))))))))))))
+        withLocalWorld(rc, seededWorld, thunk))))))))))))))))))
+        }
 
     /// TurnPhase.State を初期値 `initial` の可変 Ref で供給する（`put` が持続 = 確定でフェーズが変わる）。
     /// engine の `TurnPhase.withState` は初期値 PlayerCursor 固定なので、fixture の開始フェーズを

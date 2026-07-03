@@ -268,4 +268,135 @@ mod TestGifSnapshots {
             }));
         GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_game_over"));
         count
+
+    // ════════════════════════════════════════════════════════
+    // 多段階フロー（確定でフェーズが変わる遷移）— phase-aware dispatch + 可変ハーネス
+    // ════════════════════════════════════════════════════════
+
+    /// 意味入力を現在フェーズに応じた Ui API へ束ねる（Game.flix の dispatch の写し）。
+    /// 対応表（Game.flix の `dispatchMenuKey` / `*Direction` を写す。この 1 表が単一の真理点）:
+    ///   ActionSelect      : ↑↓=ActionMenuUi.moveSelection(∓1) / Z=confirmCurrentSelection / X=onActionCancelled
+    ///   ItemSelect        : ↑↓=ItemMenuUi.moveSelection(∓1) / ←→=categoryPrev/Next / Z=confirmCurrentSelection / X=onItemCancelled
+    ///   ItemActionSelect  : ↑↓=ItemMenuUi.moveSelection(∓1) / Z=confirmCurrentSelection / X=onActionCancelled
+    ///   WeaponSelect      : ↑↓=WeaponSelectUi.moveSelection(∓1) / Z=confirmCurrentSelection / X=onCancelled
+    /// 単一 match（(phase, key) タプル）に束ねて arm 集合で効果を合流させる（checked_ecast 不要）。
+    /// 確定（Z）のゲームロジックは本物を実行し、書かれた phase が可変ハーネスの Ref に残る。
+    pub def applyFlowKey(key: ReplayScript.Key, scene: Scene[NodeTag]): Scene[NodeTag]
+            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger, EnemyTurn.Queue,
+               TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
+               GatherResume.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
+               CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery,
+               BoardQuery, ItemPickupPopupScene.State, ItemMenuState.State, TradeMenuState.State,
+               UiWorldState.State} =
+        match (TurnPhase.State.get(), key) {
+            // ActionSelect（コマンドメニュー）
+            case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Up)      => ActionMenuUi.moveSelection(-1, scene)
+            case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Down)    => ActionMenuUi.moveSelection(1, scene)
+            case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Confirm) => ActionMenuUi.confirmCurrentSelection(scene)
+            case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Cancel)  => ActionMenuUi.onActionCancelled(scene)
+            // ItemSelect（持ち物・1 カテゴリ表示）
+            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Up)        => ItemMenuUi.moveSelection(-1, scene)
+            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Down)      => ItemMenuUi.moveSelection(1, scene)
+            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Left)      => ItemMenuUi.categoryPrev(scene)
+            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Right)     => ItemMenuUi.categoryNext(scene)
+            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Confirm)   => ItemMenuUi.confirmCurrentSelection(scene)
+            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Cancel)    => ItemMenuUi.onItemCancelled(scene)
+            // ItemActionSelect（サブメニュー：そうび/なげる/すてる）
+            case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Up)      => ItemMenuUi.moveSelection(-1, scene)
+            case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Down)    => ItemMenuUi.moveSelection(1, scene)
+            case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Confirm) => ItemMenuUi.confirmCurrentSelection(scene)
+            case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Cancel)  => ItemMenuUi.onActionCancelled(scene)
+            // WeaponSelect（武器窓）
+            case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Up)      => WeaponSelectUi.moveSelection(-1, scene)
+            case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Down)    => WeaponSelectUi.moveSelection(1, scene)
+            case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Confirm) => WeaponSelectUi.confirmCurrentSelection(scene)
+            case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Cancel)  => WeaponSelectUi.onCancelled(scene)
+            // それ以外のフェーズ / キーは無反応（GIF ではこの表の範囲だけ入力する）。
+            case _ => scene
+        }
+
+    /// 3 メニュー窓（コマンド / 武器 / 持ち物）の frameStep を毎フレーム回して収録する tick。
+    /// gameLoop が全 UI の frameStep を毎フレーム呼ぶのと同じく、各 frameStep が phase で自己 gate し、
+    /// 可視・内容・パネル追従を実ロジックで組む。scene は fixture（cfg#scene）を使い回す
+    /// （可変状態は phase / 選択 / UiWorld などの resource 側に載るため、確定が返す scene は捨ててよい）。
+    def flowTick(ctx: SnapshotSupport.Ctx, scene: Scene[NodeTag],
+                 framesRef: Ref[List[BufferedImage], r]):
+            Unit \ {IO + GameEngine.Game + UiWorldState.State + TurnPhase.State + SelectedPlayer.State
+                     + CursorState.State + PlayerData.PartyQuery + EnemyData.RosterQuery
+                     + World.WorldQuery + Tween.Scheduler + AnimationPlayer.Scheduler
+                     + ItemMenuState.State + r} =
+        discard ActionMenuUi.frameStep(TestUiSnapshots.dt(), scene);
+        discard WeaponSelectUi.frameStep(TestUiSnapshots.dt(), scene);
+        discard ItemMenuUi.frameStep(TestUiSnapshots.dt(), scene);
+        captureFrame(ctx, framesRef)
+
+    /// flow_open_item / flow_attack_weapon 共通の drive。3 窓を spawn し、execute 全体を 1 回だけ
+    /// `withFullMocks` で包む（可変 phase が 1 スコープを貫通）。最終フレームの Drawable 数を返す。
+    def genFlow(rc: Region[r], ctx: SnapshotSupport.Ctx, name: String,
+                cfg: SnapshotHarness.Config, script: List[ReplayScript.Step]):
+            Int32 \ {IO + Fs.FileRead + r} =
+        let framesRef = Ref.fresh(rc, (Nil: List[BufferedImage]));
+        let count = SnapshotSupport.withMockGame(ctx#atlas, ctx#texInfo, () ->
+            UiWorldState.withState(rc, () -> {
+                TestUiSnapshots.spawnUi(ActionMenuUi.specPath());
+                TestUiSnapshots.spawnUi(WeaponSelectUi.specPath());
+                TestUiSnapshots.spawnUi(ItemMenuUi.specPath());
+                SnapshotHarness.withFullMocks(cfg, () -> {
+                    let applyKey = k -> discard applyFlowKey(k, cfg#scene);
+                    let tick = () -> flowTick(ctx, cfg#scene, framesRef);
+                    ReplayScript.execute(betweenFrames(), script, applyKey, tick)
+                });
+                drawableCount()
+            }));
+        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath(name));
+        count
+
+    // ── flow_open_item（コマンド→アイテム確定で持ち物窓が開き、X で閉じる）──
+
+    /// 主人公(id0)が武器 3 本を持ち、射程内に敵（攻撃成立）・隣接味方なし（交換は出ない）。
+    /// 項目は「攻撃(0) / アイテム(1) / たいき(2)」。↓ で「アイテム」へ寄せて Z で開く。
+    def flowOpenItemConfig(): SnapshotHarness.Config \ Fs.FileRead =
+        let lord = TestUiSnapshots.mkPlayer(
+            {weaponIds = "iron_sword" :: "steel_lance" :: "silver_sword" :: Nil
+             | TestUiSnapshots.basePlayer(0, "knight", {x = 1, y = 1})});
+        let enemy = TestUiSnapshots.mkEnemy(9, "fighter_t1", {x = 1, y = 2}, 12, Some("iron_sword"));
+        let scene = TestUiSnapshots.worldScene()
+            |> TestUiSnapshots.addPlayer(lord)
+            |> TestUiSnapshots.addEnemy(enemy, true);
+        {phase = TurnPhase.Phase.ActionSelect, selectedId = Some(0), cursor = {x = 1, y = 2}
+         | SnapshotHarness.config(scene)}
+
+    def flowOpenItemScript(): List[ReplayScript.Step] =
+        ReplayScript.Step.KeyPress(ReplayScript.Key.Down) ::    // 攻撃 → アイテム
+        ReplayScript.Step.KeyPress(ReplayScript.Key.Confirm) :: // アイテム確定 → ItemMenu が開く（ItemSelect）
+        ReplayScript.Step.KeyPress(ReplayScript.Key.Down) ::    // 持ち物カーソル移動
+        ReplayScript.Step.KeyPress(ReplayScript.Key.Down) ::
+        ReplayScript.Step.KeyPress(ReplayScript.Key.Cancel) :: Nil // X → コマンドへ戻る（ActionSelect）
+
+    def genFlowOpenItem(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + Fs.FileRead + r} =
+        genFlow(rc, ctx, "flow_open_item", flowOpenItemConfig(), flowOpenItemScript())
+
+    // ── flow_attack_weapon（攻撃確定で武器窓が右に開き、↓ で武器切替）──
+
+    /// 主人公(id0)が武器 2 本を持ち、射程内に敵。項目「攻撃(0)」を Z で確定すると
+    /// enterWeaponSelect が phase=WeaponSelect にし、武器窓が ActionMenu の右隣に開く（実遷移）。
+    /// PlayerAttackHold まで進めず WeaponSelect で止め、↓ で武器カーソルを動かす。
+    def flowAttackWeaponConfig(): SnapshotHarness.Config \ Fs.FileRead =
+        let lord = TestUiSnapshots.mkPlayer(
+            {weaponIds = "iron_sword" :: "steel_lance" :: Nil
+             | TestUiSnapshots.basePlayer(0, "knight", {x = 1, y = 1})});
+        let enemy = TestUiSnapshots.mkEnemy(9, "fighter_t1", {x = 1, y = 2}, 12, Some("iron_sword"));
+        let scene = TestUiSnapshots.worldScene()
+            |> TestUiSnapshots.addPlayer(lord)
+            |> TestUiSnapshots.addEnemy(enemy, true);
+        {phase = TurnPhase.Phase.ActionSelect, selectedId = Some(0), cursor = {x = 1, y = 2}
+         | SnapshotHarness.config(scene)}
+
+    def flowAttackWeaponScript(): List[ReplayScript.Step] =
+        ReplayScript.Step.KeyPress(ReplayScript.Key.Confirm) :: // 攻撃確定 → 武器窓が開く（WeaponSelect）
+        ReplayScript.Step.KeyPress(ReplayScript.Key.Down) ::    // 武器切替
+        ReplayScript.Step.KeyPress(ReplayScript.Key.Down) :: Nil
+
+    def genFlowAttackWeapon(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + Fs.FileRead + r} =
+        genFlow(rc, ctx, "flow_attack_weapon", flowAttackWeaponConfig(), flowAttackWeaponScript())
 }
