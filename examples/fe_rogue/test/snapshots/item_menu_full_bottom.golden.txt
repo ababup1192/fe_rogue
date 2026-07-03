@@ -1,0 +1,13 @@
+box    z=80130 pos=(37.00,40.00) size=(52.00,47.10) rgb=#1e2638 a=0.95 corner=3.00 border=1.00/#2a3445/1.00
+box    z=80138 pos=(39.00,42.00) size=(48.00,5.60) rgb=#11182a a=1.00 corner=2.00 border=0.00/#ffffff/0.00
+box    z=80139 pos=(39.50,73.60) size=(47.00,11.00) rgb=#16314f a=1.00 corner=2.00 border=0.50/#2f6df0/1.00
+text   z=80140 n=11 bbox=(41.00,43.00)-(56.83,46.75) rgb=#ff4d4d
+text   z=80140 n=2 bbox=(80.60,43.15)-(85.00,46.59) rgb=#9ea3b3
+box    z=80141 pos=(40.50,51.60) size=(7.00,7.00) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+box    z=80141 pos=(40.50,63.60) size=(7.00,7.00) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+box    z=80141 pos=(40.50,75.60) size=(7.00,7.00) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+text   z=80141 n=52 bbox=(49.00,55.25)-(75.06,82.69) rgb=#aab0b8
+text   z=80141 n=14 bbox=(49.00,51.65)-(62.20,79.09) rgb=#eef1f7
+sprite z=80142 tex=item_weapons pos=(41.50,52.60) scale=(0.02,0.01) uvOff=(0.00,0.04) uvScale=(0.05,0.04) rgb=#ffffff a=1.00 centered=false
+sprite z=80142 tex=item_weapons pos=(41.50,64.60) scale=(0.02,0.01) uvOff=(0.40,0.56) uvScale=(0.05,0.04) rgb=#ffffff a=1.00 centered=false
+sprite z=80142 tex=item_weapons pos=(41.50,76.60) scale=(0.02,0.01) uvOff=(0.70,0.56) uvScale=(0.05,0.04) rgb=#ffffff a=1.00 centered=false

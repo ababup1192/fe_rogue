@@ -1,0 +1,25 @@
+box    z=20000 pos=(2.00,9.00) size=(70.00,20.00) rgb=#1f2638 a=0.95 corner=3.00 border=0.50/#3b73c9/1.00
+box    z=20001 pos=(41.93,13.00) size=(16.00,1.00) rgb=#100f08 a=1.00 corner=0.50 border=0.00/#ffffff/0.00
+box    z=20001 pos=(31.00,17.00) size=(26.00,1.50) rgb=#080b10 a=1.00 corner=0.75 border=0.00/#ffffff/0.00
+box    z=20001 pos=(22.40,20.40) size=(6.80,6.80) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+box    z=20001 pos=(45.40,20.40) size=(6.80,6.80) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+sprite z=20002 tex=rogues pos=(7.68,14.18) scale=(0.04,0.04) uvOff=(0.43,0.14) uvScale=(0.14,0.14) rgb=#ffffff a=1.00 centered=false
+text   z=20002 n=3 bbox=(23.00,11.50)-(32.60,16.50) rgb=#eef1f7
+text   z=20002 n=4 bbox=(34.60,12.10)-(39.92,15.85) rgb=#f5c542
+box    z=20002 pos=(41.93,13.00) size=(6.40,1.00) rgb=#f2de73 a=1.00 corner=0.50 border=0.00/#ffffff/0.00
+text   z=20002 n=2 bbox=(23.00,16.10)-(26.23,19.54) rgb=#9aa6bd
+box    z=20002 pos=(31.00,17.00) size=(26.00,1.50) rgb=#5094e6 a=1.00 corner=0.75 border=0.00/#ffffff/0.00
+text   z=20002 n=5 bbox=(61.71,16.10)-(69.00,19.54) rgb=#cdd5e6
+sprite z=20002 tex=item_weapons pos=(23.00,21.00) scale=(0.02,0.01) uvOff=(0.00,0.04) uvScale=(0.05,0.04) rgb=#ffffff a=1.00 centered=false
+text   z=20002 n=4 bbox=(30.00,22.50)-(38.80,25.94) rgb=#b4bed1
+sprite z=20002 tex=item_icons pos=(46.00,21.00) scale=(0.02,0.01) uvOff=(0.06,0.54) uvScale=(0.06,0.03) rgb=#ffffff a=1.00 centered=false
+text   z=20002 n=7 bbox=(53.00,22.50)-(68.40,25.94) rgb=#b4bed1
+box    z=40000 pos=(0.00,0.00) size=(240.00,7.50) rgb=#240e0f a=0.88 corner=0.00 border=0.00/#ffffff/0.00
+box    z=40001 pos=(0.00,0.00) size=(0.00,7.50) rgb=#2f6df0 a=0.45 corner=0.00 border=0.00/#ffffff/0.00
+box    z=40001 pos=(0.00,7.50) size=(240.00,0.60) rgb=#e0463f a=1.00 corner=0.00 border=0.00/#ffffff/0.00
+box    z=40002 pos=(0.00,7.50) size=(0.00,0.60) rgb=#e0463f a=1.00 corner=0.00 border=0.00/#ffffff/0.00
+text   z=40003 n=2 bbox=(4.00,1.20)-(8.78,6.51) rgb=#ffffff
+box    z=40003 pos=(200.09,3.00) size=(1.50,1.50) rgb=#e0463f a=1.00 corner=0.75 border=0.00/#ffffff/0.00
+text   z=40003 n=7 bbox=(11.28,1.80)-(29.48,5.86) rgb=#8c99ad
+text   z=40003 n=6 bbox=(203.09,1.80)-(218.69,5.86) rgb=#ffc7bd
+text   z=40003 n=11 bbox=(220.69,2.25)-(236.00,5.38) rgb=#99a3b8

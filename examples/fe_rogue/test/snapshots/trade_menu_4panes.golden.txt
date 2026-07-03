@@ -1,0 +1,25 @@
+box    z=20130 pos=(19.00,18.00) size=(202.00,90.90) rgb=#1e2638 a=0.95 corner=3.00 border=1.00/#2a3445/1.00
+box    z=20138 pos=(21.00,20.00) size=(198.00,5.00) rgb=#11182a a=1.00 corner=2.00 border=0.00/#ffffff/0.00
+box    z=20139 pos=(21.50,30.90) size=(47.00,11.00) rgb=#16314f a=1.00 corner=2.00 border=0.50/#2f6df0/1.00
+text   z=20140 n=30 bbox=(21.00,103.90)-(64.56,107.03) rgb=#7d8aa3
+text   z=20140 n=57 bbox=(21.00,20.70)-(194.78,30.25) rgb=#9cc0ff
+box    z=20141 pos=(22.50,32.90) size=(7.00,7.00) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+box    z=20141 pos=(22.50,44.90) size=(7.00,7.00) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+box    z=20141 pos=(22.50,56.90) size=(7.00,7.00) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+box    z=20141 pos=(72.50,32.90) size=(7.00,7.00) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+box    z=20141 pos=(72.50,44.90) size=(7.00,7.00) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+box    z=20141 pos=(122.50,32.90) size=(7.00,7.00) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+box    z=20141 pos=(122.50,44.90) size=(7.00,7.00) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+box    z=20141 pos=(172.50,32.90) size=(7.00,7.00) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+box    z=20141 pos=(172.50,44.90) size=(7.00,7.00) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
+text   z=20141 n=70 bbox=(31.00,32.95)-(194.20,74.19) rgb=#eef1f7
+text   z=20141 n=149 bbox=(31.00,36.55)-(207.33,63.99) rgb=#aab0b8
+sprite z=20142 tex=item_weapons pos=(23.50,33.90) scale=(0.02,0.01) uvOff=(0.00,0.04) uvScale=(0.05,0.04) rgb=#ffffff a=1.00 centered=false
+sprite z=20142 tex=item_icons pos=(23.50,45.90) scale=(0.02,0.01) uvOff=(0.00,0.82) uvScale=(0.06,0.03) rgb=#ffffff a=1.00 centered=false
+sprite z=20142 tex=item_icons pos=(23.50,57.90) scale=(0.02,0.01) uvOff=(0.06,0.54) uvScale=(0.06,0.03) rgb=#ffffff a=1.00 centered=false
+sprite z=20142 tex=item_weapons pos=(73.50,33.90) scale=(0.02,0.01) uvOff=(0.15,0.56) uvScale=(0.05,0.04) rgb=#ffffff a=1.00 centered=false
+sprite z=20142 tex=item_icons pos=(73.50,45.90) scale=(0.02,0.01) uvOff=(0.06,0.82) uvScale=(0.06,0.03) rgb=#ffffff a=1.00 centered=false
+sprite z=20142 tex=item_weapons pos=(123.50,33.90) scale=(0.02,0.01) uvOff=(0.40,0.56) uvScale=(0.05,0.04) rgb=#ffffff a=1.00 centered=false
+sprite z=20142 tex=item_weapons pos=(123.50,45.90) scale=(0.02,0.01) uvOff=(0.70,0.56) uvScale=(0.05,0.04) rgb=#ffffff a=1.00 centered=false
+sprite z=20142 tex=item_icons pos=(173.50,33.90) scale=(0.02,0.01) uvOff=(0.13,0.82) uvScale=(0.06,0.03) rgb=#ffffff a=1.00 centered=false
+sprite z=20142 tex=item_icons pos=(173.50,45.90) scale=(0.02,0.01) uvOff=(0.00,0.82) uvScale=(0.06,0.03) rgb=#ffffff a=1.00 centered=false

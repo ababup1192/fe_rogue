@@ -1,0 +1,11 @@
+box    z=40000 pos=(0.00,0.00) size=(240.00,7.50) rgb=#0d1429 a=0.88 corner=0.00 border=0.00/#ffffff/0.00
+box    z=40001 pos=(0.00,0.00) size=(0.00,7.50) rgb=#2f6df0 a=0.45 corner=0.00 border=0.00/#ffffff/0.00
+box    z=40001 pos=(0.00,7.50) size=(240.00,0.60) rgb=#2f6df0 a=1.00 corner=0.00 border=0.00/#ffffff/0.00
+box    z=40002 pos=(0.00,7.50) size=(0.00,0.60) rgb=#e0463f a=1.00 corner=0.00 border=0.00/#ffffff/0.00
+text   z=40003 n=2 bbox=(4.00,1.20)-(8.78,6.51) rgb=#ffffff
+box    z=40003 pos=(199.28,3.00) size=(1.50,1.50) rgb=#2f6df0 a=1.00 corner=0.75 border=0.00/#ffffff/0.00
+text   z=40003 n=6 bbox=(11.28,1.80)-(26.88,5.86) rgb=#8c99ad
+text   z=40003 n=3 bbox=(117.70,1.65)-(126.10,6.03) rgb=#ffd966
+text   z=40003 n=6 bbox=(202.28,1.80)-(217.88,5.86) rgb=#dbebff
+text   z=40003 n=12 bbox=(219.88,2.25)-(236.00,5.38) rgb=#99a3b8
+poly   z=40003 n=3 bbox=(113.90,2.45)-(116.20,5.05) rgb=#ffd966 a=1.00

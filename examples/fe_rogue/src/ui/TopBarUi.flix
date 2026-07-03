@@ -180,11 +180,7 @@ mod TopBarUi {
             let frame = advance(delta, phase, data);
             if (frame#startWipe) AudioStreamPlayer.play(phaseChangeSound()) else ();
             TopBarState.State.put(frame#data);
-            let ui1 = ui0
-                |> applyBaseVisuals(frame#baseEnemy)
-                |> applySweep(frame#sweepTarget, frame#progress)
-                |> applyGather(phase == TurnPhase.Phase.GatherMove)
-                |> UiBinding.apply(resolver(frame));
+            let ui1 = applyFrame(frame, phase == TurnPhase.Phase.GatherMove, ui0);
             UiWorldState.State.put(ui1);
             // 敵ターン driver が読む 2 bool を World に dual-write（確定 Data から）。
             World.Command.emit(World.Cmd.SetEnemyTurnBusy(isBusyOf(frame#data)));
@@ -197,6 +193,17 @@ mod TopBarUi {
         UiStore.idOf(rootPath(), ui)
             |> Option.flatMap(id -> Map.get(id, ui#visible))
             |> Option.getWithDefault(false)
+
+    /// 1 フレーム分の描画指示（Frame）を UiWorld へ塗り込む純粋適用。base 塗り → sweep →
+    /// 集合中表示 → フェイズ/フロア文字の bind をこの順で重ねる。step が毎フレーム呼ぶほか、
+    /// スナップショットが「実ロジックで作った見た目」を再現するのに使う共有の入口。
+    /// `gathering` は集合(GatherMove)フェイズ中か（中央「集合中」表示の可視）。
+    pub def applyFrame(frame: Frame, gathering: Bool, ui: UiStore.UiWorld): UiStore.UiWorld =
+        ui
+            |> applyBaseVisuals(frame#baseEnemy)
+            |> applySweep(frame#sweepTarget, frame#progress)
+            |> applyGather(gathering)
+            |> UiBinding.apply(resolver(frame))
 
     /// フロア文字（floorNum/floorName）とフェイズ文字（phaseJp/phaseEn）の bind key を解決する。
     /// フロアは resource（TopBarState）から、フェイズ文字は base 確定陣営から引く。
