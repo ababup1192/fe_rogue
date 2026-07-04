@@ -2077,6 +2077,208 @@ knows the way: CLEAR, Enter, next board, and the title again after the last.
 
 ---
 
+## Chapter 7 — Proof by Replay
+
+**Goal:** run the whole game with no window at all — prove a solution, film
+it, and publish a gallery — and meet the last two words of the vocabulary.
+This chapter adds nothing to the game: no state, no rule, no pixel. It is
+about what a game built this way hands you for free.
+
+### The seventh word: Harness
+
+To run a game without a screen, something must answer every question the
+game would normally ask a window: which keys are down, what time it is,
+where the font lives. The bundle of stand-in answers is called a
+**Harness**. In a large game the harness is a serious piece of engineering —
+a stack of handlers, one per effect the game leans on; this engine's big
+example wires up eighteen. Here is sokoban's, in full:
+
+```flix
+// Harness — everything needed to run the whole game without a screen.
+//
+// It is short on purpose, and the shortness is the point: tick is a pure
+// function, so the rules need no harness at all. Only the *picture* touches
+// the outside world, and it wants exactly three things — a font atlas baked
+// headlessly, the Fs handlers to read the ui.json Specs, and a stub of the
+// Game effect whose only real answer is that font atlas. Every other
+// operation returns a constant.
+mod Harness {
+
+    def ttfPath(): String = "assets/Xolonium-Regular.ttf"
+
+    /// The font, baked without a window (AWT headless metrics only).
+    pub def atlas(): FontAtlas \ IO =
+        HeadlessFont.ensureHeadless();
+        HeadlessFont.buildUiAtlas(ttfPath(), "assets/joyo.txt")
+
+    /// Both page Specs spawned into one UiWorld, as the launcher does.
+    pub def ui(): Option[UiStore.UiWorld] \ IO =
+        run {
+            forM (a <- UiSpec.spawnAsset(Sokoban.titleUiPath(), UiStore.empty()) |> Result.toOption;
+                  b <- UiSpec.spawnAsset(Sokoban.clearUiPath(), snd(a)) |> Result.toOption)
+            yield snd(b)
+        } with Fs.FileRead.runWithIO
+
+    /// A Game handler with no GL behind it. renderUi only ever asks for the
+    /// font atlas; a handler must still name every operation, so the rest
+    /// answer with constants.
+    pub def withMockGame(atlas: FontAtlas, f: Unit -> a \ ef + GameEngine.Game): a \ ef =
+        run f() with handler GameEngine.Game {
+            def renderCommands(_, _, _, k)  = k(())
+            def initTileBuffer(_, k)        = k((0i32, 0i32))
+            def shouldClose(k)              = k(false)
+            def getDeltaTime(k)             = k(Duration.seconds(0.1))
+            def isKeyPressed(_, k)          = k(false)
+            def getMousePosition(k)         = k({x = 0.0, y = 0.0})
+            def isMouseButtonPressed(_, k)  = k(false)
+            def consumeScrollDelta(k)       = k(0.0)
+            def getFontAtlas(_, k)          = k(atlas)
+            def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 320.0, y = 240.0}})
+            def getTextureInfo(_, k)        = k(None)
+            def setCursor(_, k)             = k(())
+        }
+}
+```
+
+Read the header comment again, because it is the paradox this whole
+tutorial has been walking toward. Six chapters of insisting that `tick`
+stays pure — keys as data, the clock as an argument — looked like
+discipline for its own sake. Here it pays out as *absence*: the rules need
+no harness at all. Not a small one. None. Every stand-in above serves the
+picture, not the game — a font, two file handlers, and a Game stub whose
+twelve operations are eleven constants and one atlas. The thinner the
+boundary your pure core touches, the thinner the harness that fakes it.
+
+### The eighth word: Trace
+
+A **Trace** is a list of inputs — nothing more:
+
+```flix
+    /// One beat of a Trace: hold this input for n frames.
+    pub type alias Cue = { input = Sokoban.Input, frames = Int32 }
+
+    /// The fixed clock every replay runs on: 1/64 s per frame — dyadic, so
+    /// every slide t and walk phase in the pinned outcomes is exact.
+    pub def dt(): Float64 = 1.0 / 64.0
+```
+
+and driving one is a fold, because `tick` is pure and the clock arrives as
+a value. Same list in, same Worldline out — every run, every machine,
+forever. On top of that certainty you can write a solution *as data*:
+
+```flix
+    /// One walked move: tap the key for a frame, then let the slide land
+    /// (a slide is 0.125 s = 8 frames at this clock).
+    pub def walk(d: Robot.Direction): List[Cue] =
+        hold(dirInput(d), 1) :: hold(idle(), 8) :: Nil
+
+    /// Z held for n frames — each landed reverse slide chains the next
+    /// rewind, so one long hold walks the history back move by move.
+    pub def rewind(frames: Int32): Cue =
+        hold({ undo = true | idle() }, frames)
+
+    /// The shipped solution of level 1, as data: seven moves. The two
+    /// pushes are the third move (lower crate to its goal) and the last
+    /// (upper crate home — CLEAR).
+    pub def solveLevelOne(): List[Cue] =
+        List.flatMap(walk,
+            Robot.Direction.Left :: Robot.Direction.Up :: Robot.Direction.Right ::
+            Robot.Direction.Up :: Robot.Direction.Right :: Robot.Direction.Up ::
+            Robot.Direction.Left :: Nil)
+```
+
+and then a solution *is a test* — this is the chapter's title:
+
+```flix
+    @Test
+    def testReplaySolvesLevelOne(): Unit \ Assert =
+        // The shipped solution, driven through the pure tick at a fixed dt.
+        // Same Trace, same Worldline, always: the win, the move count and
+        // the final positions are pinned as plain values.
+        let end = Replay.play(Replay.solveLevelOne(), fresh(Sokoban.playingWorld(1)));
+        let w = Worldline.current(end);
+        Assert.assertEq(expected = (true, 7, (3, 2), Set#{(2, 2), (4, 4)}),
+            (Sokoban.won(w), Worldline.pastLength(end), robotOf(w), cratesOf(w)))
+```
+
+Tests like this are called **golden**: the expected value is not derived in
+the test, it is *pinned* — a concrete fact, checked once by a human and
+frozen. From then on any diff means exactly one of two things: a bug, or an
+intended change that must update the pin on purpose. Nothing in between,
+no flakiness to argue with — determinism is what makes the contract this
+blunt.
+
+Level 2 gets the same treatment: `solveLevelTwo` — twenty-one moves through
+the detours its interior walls force — has a pin of its own. With that,
+both shipped levels are *provably* solvable. Chapter 4 checked this by
+hand, once; now it is a machine's job, every run.
+
+### One Trace, three artifacts
+
+The same seven moves are also a film. `Replay.timeline` returns every frame
+of a Trace, and each frame renders through the *same* projection stack the
+launcher uses — `frame`, `projectUi`, `renderUi` — just under the Harness
+instead of a window:
+
+```flix
+    def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, cues: List[Replay.Cue],
+                start: Worldline[Sokoban.World], path: String): Unit \ IO =
+        let film = Replay.timeline(cues, start);
+        let frames = List.map(l -> SoftRaster.renderToImage(rasterReq(atlas, scene(atlas, ui, l), path)),
+                              every(gifSampleStride(), 0, film));
+        GifEncoder.encode(frames, gifFrameDelayMs(), path)
+```
+
+Run `flix test` and the `gallery/` directory fills up: four screenshots
+(the title page, level 1 at rest, a push frozen mid-slide, the CLEAR panel
+counting seven moves), three films — `solve_level1.gif`, the opening act
+from the title to the first CLEAR; `full_clear.gif`, one full lap of the
+game, both levels, both CLEARs and back to the title; `rewind_demo.gif`,
+three moves and a held Z, the alarm clock turning counterclockwise while
+robot and crate glide home — and an `index.html` dashboard (engine_tools'
+SnapshotSite) that lays them all out in pages. Delete the folder; one test
+run rebuilds every pixel of it.
+
+And the third artifact costs nothing: a failing Trace **is** a bug report.
+"These inputs, this outcome" — attached to a ticket, it reproduces forever;
+folded through `tick`, it is already the regression test.
+
+### What just happened
+
+- **Harness is the seventh word**: the stand-ins that let a game run
+  without a window. Its size is a *measurement* of your architecture —
+  sokoban's measures one font, two file handlers and a twelve-line stub,
+  because the rules themselves are pure and need nothing.
+- **Trace is the eighth**: inputs as data over a fixed clock. Determinism
+  turns one Trace into three artifacts — a golden test, a film, a bug
+  report — and they can never drift apart, because they are the same list.
+- The gallery is disposable output, never source: `flix test` regenerates
+  every PNG, every GIF and the dashboard from the code and the Specs.
+- The vocabulary stops at eight. The Worldline architecture has more words
+  for bigger games — a **Driver** that owns a simulation's stepping, a
+  **Resource** for state shared across worlds — and this game never needed
+  them. That is the honest ending: reach for the words a game needs, not
+  all the words that exist.
+
+### Try it
+
+Take the scenic route: write a deliberately *longer* solution for level 1
+as a Trace — wander a while before each push — and pin it as your own test.
+Both routes end with the same crates on the same goals, but the pins
+disagree on one number: `Worldline.pastLength`. The move count is your
+route's fingerprint. Then tighten your route and watch the fingerprint
+shrink — can you beat the shipped seven?
+
+Retime the films: `gifSampleStride` down to 1 for a slow-motion study of
+the reverse slide, or `gifFrameDelayMs` up to 80 for a flipbook feel. One
+test run re-cuts all three GIFs.
+
+Add a scene of your own to the dashboard: compose a Worldline with `Replay`
+(mid-rewind makes a good picture), `shot` it to a new PNG, and give it an
+`item` line in the catalog. The site generator does the rest.
+
+---
+
 ## Recap
 
 - A game is a loop with a three-part beat: **`world |> step |> frame`** —
@@ -2088,6 +2290,9 @@ knows the way: CLEAR, Enter, next board, and the title again after the last.
   `record` and `undo` walk along; it lives beside the World, not inside it.
   A **Spec** is data that describes a thing — a level string, a page's
   `ui.json` — for everything that should change without recompiling.
+  A **Harness** is the bundle of stand-ins that runs the game without a
+  window; a **Trace** is a list of inputs whose outcome is always the same —
+  one solution that is a test, a film and a bug report at once.
 - Things outside the world — the keyboard, a hand-typed level, the clock —
   are read at the boundary and enter the rules as plain data.
 - State that can be derived (like "is the puzzle solved?") is not stored; it
@@ -2098,6 +2303,7 @@ knows the way: CLEAR, Enter, next board, and the title again after the last.
   composed with **ratios and stacking order**.
 
 The game is whole now: a title that waits, boards that slide and remember,
-mistakes that rewind, a clear panel that knows the score, and pages you can
-restyle while it runs. Six words carried the entire trip — and the next game
-you build can start from all six on day one.
+mistakes that rewind, a clear panel that knows the score, pages you can
+restyle while it runs — and a gallery that proves all of it on every test
+run. Eight words carried the entire trip, and the next game you build can
+start from all eight on day one.

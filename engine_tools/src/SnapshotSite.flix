@@ -119,9 +119,9 @@ mod SnapshotSite {
 
     /// 節の見出しラベル。
     def sectionLabel(section: Section): String = match section {
-        case Section.Basic    => "基本状態"
-        case Section.EdgeCase => "エッジケース"
-        case Section.Flow     => "操作フロー"
+        case Section.Basic    => "Basic states"
+        case Section.EdgeCase => "Edge cases"
+        case Section.Flow     => "Flows"
     }
 
     // ════════════════════════════════════════════════════════
@@ -137,8 +137,8 @@ mod SnapshotSite {
         "<!doctype html><meta charset=\"utf-8\"><title>${config#title}</title>\n"
             + styleBlock()
             + "<h1>${config#title}</h1>\n"
-            + "<p class=\"hint\">ゲーム機能ごとにページを分けています。カードを開くと基本状態/エッジケース/操作フローを"
-            + "一覧できます。各ページの黄色いコード表記がスナップショット名（不具合報告はこの名前で・クリックでコピー）。</p>\n"
+            + "<p class=\"hint\">One page per game feature. Open a card to browse its basic states, edge cases "
+            + "and flows. The yellow code tag on each page is the snapshot name (report bugs by it; click to copy).</p>\n"
             + "<main class=\"hub\">\n${cards}\n</main>\n"
             + tagIndexHtml(tags)
 
@@ -162,7 +162,7 @@ mod SnapshotSite {
         if (List.isEmpty(tags))
             ""
         else
-            "<h2 class=\"section\">タグ</h2>\n<p class=\"tag-index\">"
+            "<h2 class=\"section\">Tags</h2>\n<p class=\"tag-index\">"
                 + (tags |> List.map(tagLinkHtml) |> String.intercalate(" "))
                 + "</p>\n"
 
@@ -184,8 +184,8 @@ mod SnapshotSite {
             + neighborLinks(scenario, scenarios)
             + "</nav>\n"
             + "<h1>${scenario}</h1>\n"
-            + "<p class=\"hint\">黄色のコード表記がスナップショット名（不具合報告はこの名前で）。クリックでコピー。"
-            + "タグはクリックで機能横断ページへ。</p>\n"
+            + "<p class=\"hint\">The yellow code tag is the snapshot name (report bugs by it); click to copy. "
+            + "Tags link to their cross-feature pages.</p>\n"
             + sections
 
     /// 1 節ぶんの見出し + カード列。その節に属する項目がなければ何も出さない。
@@ -211,8 +211,8 @@ mod SnapshotSite {
             + styleBlock()
             + "<nav class=\"crumbs\"><a href=\"index.html\">← index</a></nav>\n"
             + "<h1>#${tag}</h1>\n"
-            + "<p class=\"hint\">タグ「${tag}」を持つ項目をゲーム機能横断で表示（${count} 件）。"
-            + "カード内の「in ...」がその項目の所属ページ。</p>\n"
+            + "<p class=\"hint\">Items tagged \"${tag}\" across all features (${count}). "
+            + "The \"in ...\" link on a card is its home page.</p>\n"
             + "<main>\n${cards}\n</main>\n"
 
     /// 前後シナリオへのリンク（端では出さない）。
@@ -244,7 +244,7 @@ mod SnapshotSite {
             else "";
         "  <figure id=\"${item#name}\" style=\"width:${cssW}px\"><figcaption>"
             + "<code onclick=\"navigator.clipboard&&navigator.clipboard.writeText('${item#name}')\" "
-            + "title=\"クリックで名前をコピー\">${item#name}</code>" + scenarioLink
+            + "title=\"click to copy the name\">${item#name}</code>" + scenarioLink
             + "<span class=\"desc\">${item#desc}</span>"
             + tagsHtml(item#tags)
             + lintHtml(item#lint)
@@ -257,7 +257,7 @@ mod SnapshotSite {
         else if (badge#findingCount == 0 and badge#suppressedCount == 0)
             "<span class=\"lint ok\">✓ lint</span>"
         else {
-            let suppText = if (badge#suppressedCount > 0) " <span class=\"lint sup\">抑制 ${badge#suppressedCount}</span>" else "";
+            let suppText = if (badge#suppressedCount > 0) " <span class=\"lint sup\">suppressed ${badge#suppressedCount}</span>" else "";
             let head =
                 if (badge#findingCount > 0)
                     "<span class=\"lint warn\">⚠ ${badge#findingCount}</span>${suppText}"
@@ -282,7 +282,7 @@ mod SnapshotSite {
         let file = "${item#name}.${item#ext}";
         if (fileExists("${config#outDir}/${file}"))
             "<img src=\"${file}\" alt=\"${item#name}\">"
-        else "<div class=\"placeholder\">（未生成）</div>"
+        else "<div class=\"placeholder\">(not generated yet)</div>"
 
     /// タグ列（`#tag` を空白区切り・各タグは tag_<tag>.html へのリンク）。空なら何も出さない。
     def tagsHtml(tags: List[String]): String =

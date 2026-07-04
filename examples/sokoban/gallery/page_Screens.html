@@ -1,0 +1,50 @@
+<!doctype html><meta charset="utf-8"><title>Sokoban Gallery — Screens</title>
+<style>body{background:#1a1f2b;color:#cdd5e6;font-family:sans-serif;margin:16px}
+a{color:#9cc0ff}h1{font-size:18px}
+p.hint{font-size:12px;color:#8c99ad;margin:0 0 16px}
+p.hint.missing{margin:6px 0 0}
+nav.crumbs{font-size:13px;margin-bottom:8px;display:flex;gap:14px;flex-wrap:wrap}
+main{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+figure{margin:0;background:#0d1220;border:1px solid #2a3445;border-radius:6px;padding:8px}
+figcaption{margin-bottom:6px;display:flex;flex-direction:column;gap:3px}
+figcaption code{font-size:14px;font-weight:700;color:#ffd479;background:#241c07;
+  padding:2px 6px;border-radius:4px;align-self:flex-start;cursor:pointer;
+  font-family:ui-monospace,Menlo,Consolas,monospace}
+figcaption .desc{font-size:12px;color:#9cc0ff}
+.tags{font-size:11px;color:#6f7d94;display:flex;gap:6px;flex-wrap:wrap}
+a.tag{color:#6f7d94;text-decoration:none}a.tag:hover{color:#9cc0ff;text-decoration:underline}
+a.scenario-link{font-size:11px;color:#6f7d94;align-self:flex-start}
+img{display:block;image-rendering:pixelated;width:100%;height:auto;background:#000}
+.placeholder{display:flex;align-items:center;justify-content:center;height:80px;
+  color:#6f7d94;font-size:12px;background:#000;border:1px dashed #2a3445}
+a.scenario{display:block;text-decoration:none;background:#0d1220;border:1px solid #2a3445;
+  border-radius:6px;padding:8px}
+a.scenario:hover{border-color:#4a6fb0}
+.scenario-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.scenario-name{font-size:14px;font-weight:700;color:#ffd479}
+.count{font-size:12px;color:#8c99ad;background:#1a2332;border-radius:10px;padding:1px 8px}
+a.scenario .desc{display:block;font-size:12px;color:#9cc0ff;margin-top:6px}
+h2.section{font-size:13px;color:#8c99ad;margin:18px 0 8px;text-transform:uppercase;
+  letter-spacing:.04em;border-bottom:1px solid #2a3445;padding-bottom:4px}
+h2.section:first-of-type{margin-top:4px}
+p.tag-index{display:flex;gap:10px;flex-wrap:wrap;font-size:12px}
+span.lint{font-size:11px;border-radius:4px;padding:1px 6px;align-self:flex-start}
+span.lint.ok{color:#7bd88f;background:#123020}
+span.lint.warn{color:#ffce6b;background:#3a2a08}
+span.lint.sup{color:#8c99ad;background:#1a2332}
+details.lint-detail{align-self:flex-start}details.lint-detail summary{cursor:pointer;list-style:none}
+details.lint-detail ul{margin:4px 0 0;padding-left:16px;font-size:11px;color:#c9a24a}
+details.lint-detail li{margin:2px 0}
+figure:target{border-color:#ffd479}</style>
+<nav class="crumbs"><a href="index.html">← index</a> <a href="page_Play.html">▶ Play</a></nav>
+<h1>Screens</h1>
+<p class="hint">The yellow code tag is the snapshot name (report bugs by it); click to copy. Tags link to their cross-feature pages.</p>
+<h2 class="section">Basic states</h2>
+<main>
+  <figure id="screen_title" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('screen_title')" title="click to copy the name">screen_title</code><span class="desc">The title page — everything on it is Spec</span></figcaption><img src="screen_title.png" alt="screen_title"></figure>
+  <figure id="screen_level1" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('screen_level1')" title="click to copy the name">screen_level1</code><span class="desc">Level 1 at rest, move zero</span></figcaption><img src="screen_level1.png" alt="screen_level1"></figure>
+  <figure id="screen_push" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('screen_push')" title="click to copy the name">screen_push</code><span class="desc">A push frozen mid-slide (t = 0.5)</span></figcaption><img src="screen_push.png" alt="screen_push"></figure>
+  <figure id="screen_clear" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('screen_clear')" title="click to copy the name">screen_clear</code><span class="desc">The CLEAR panel counting seven moves</span></figcaption><img src="screen_clear.png" alt="screen_clear"></figure>
+
+</main>
+

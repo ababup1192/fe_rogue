@@ -1678,13 +1678,158 @@ CLEAR パネルに飾りを足してみましょう: `moves` の下に4つ目の
 
 ---
 
+## 第7章 — リプレイという証明
+
+**ゴール:** ウィンドウなしでゲーム全体を走らせます — 解法を証明し、フィルムに撮り、ギャラリーを出版する — そして語彙の最後の2語に出会います。この章はゲームに何も足しません: 状態も、ルールも、ピクセルも。この作り方をしたゲームが*ただでくれるもの*の話です。
+
+### 7語目: Harness
+
+画面なしでゲームを走らせるには、ゲームが普段ウィンドウに尋ねるすべての問いに、何かが答えなければなりません: どのキーが下りているか、いま何時か、フォントはどこにあるか。その身代わりの答えの束を **Harness** と呼びます。大きなゲームでは Harness は本格的なエンジニアリングです — 頼っている effect 1つにつき handler が1枚積み上がる。このエンジンの大きい方の例は18枚を配線しています。sokoban のは、これで全文です:
+
+```flix
+// Harness — everything needed to run the whole game without a screen.
+//
+// It is short on purpose, and the shortness is the point: tick is a pure
+// function, so the rules need no harness at all. Only the *picture* touches
+// the outside world, and it wants exactly three things — a font atlas baked
+// headlessly, the Fs handlers to read the ui.json Specs, and a stub of the
+// Game effect whose only real answer is that font atlas. Every other
+// operation returns a constant.
+mod Harness {
+
+    def ttfPath(): String = "assets/Xolonium-Regular.ttf"
+
+    /// The font, baked without a window (AWT headless metrics only).
+    pub def atlas(): FontAtlas \ IO =
+        HeadlessFont.ensureHeadless();
+        HeadlessFont.buildUiAtlas(ttfPath(), "assets/joyo.txt")
+
+    /// Both page Specs spawned into one UiWorld, as the launcher does.
+    pub def ui(): Option[UiStore.UiWorld] \ IO =
+        run {
+            forM (a <- UiSpec.spawnAsset(Sokoban.titleUiPath(), UiStore.empty()) |> Result.toOption;
+                  b <- UiSpec.spawnAsset(Sokoban.clearUiPath(), snd(a)) |> Result.toOption)
+            yield snd(b)
+        } with Fs.FileRead.runWithIO
+
+    /// A Game handler with no GL behind it. renderUi only ever asks for the
+    /// font atlas; a handler must still name every operation, so the rest
+    /// answer with constants.
+    pub def withMockGame(atlas: FontAtlas, f: Unit -> a \ ef + GameEngine.Game): a \ ef =
+        run f() with handler GameEngine.Game {
+            def renderCommands(_, _, _, k)  = k(())
+            def initTileBuffer(_, k)        = k((0i32, 0i32))
+            def shouldClose(k)              = k(false)
+            def getDeltaTime(k)             = k(Duration.seconds(0.1))
+            def isKeyPressed(_, k)          = k(false)
+            def getMousePosition(k)         = k({x = 0.0, y = 0.0})
+            def isMouseButtonPressed(_, k)  = k(false)
+            def consumeScrollDelta(k)       = k(0.0)
+            def getFontAtlas(_, k)          = k(atlas)
+            def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 320.0, y = 240.0}})
+            def getTextureInfo(_, k)        = k(None)
+            def setCursor(_, k)             = k(())
+        }
+}
+```
+
+冒頭のコメントをもう一度読んでください — このチュートリアル全体が歩いて向かってきた逆説がそこにあります。6つの章にわたって `tick` を純粋に保つと言い張ってきたこと — キーはデータで、時計は引数で — は、それ自体のための規律に見えたかもしれません。ここでその配当が*不在*として支払われます: ルールには Harness が要らない。小さいのが要る、ではなく。ゼロ。上の身代わりはすべて絵のためであって、ゲームのためではありません — フォント1つ、ファイル handler 2枚、そして12 operation のうち11個が定数で1個がアトラスの Game スタブ。純粋な芯が触る境界が薄いほど、それを偽る Harness も薄くなります。
+
+### 8語目: Trace
+
+**Trace** は入力のリストです — それだけ:
+
+```flix
+    /// One beat of a Trace: hold this input for n frames.
+    pub type alias Cue = { input = Sokoban.Input, frames = Int32 }
+
+    /// The fixed clock every replay runs on: 1/64 s per frame — dyadic, so
+    /// every slide t and walk phase in the pinned outcomes is exact.
+    pub def dt(): Float64 = 1.0 / 64.0
+```
+
+そしてそれを駆動するのは fold です — `tick` が純粋で、時計が値として届くから。同じリストを入れれば、同じ Worldline が出てくる — どの実行でも、どのマシンでも、永遠に。その確実さの上に、解法を*データとして*書けます:
+
+```flix
+    /// One walked move: tap the key for a frame, then let the slide land
+    /// (a slide is 0.125 s = 8 frames at this clock).
+    pub def walk(d: Robot.Direction): List[Cue] =
+        hold(dirInput(d), 1) :: hold(idle(), 8) :: Nil
+
+    /// Z held for n frames — each landed reverse slide chains the next
+    /// rewind, so one long hold walks the history back move by move.
+    pub def rewind(frames: Int32): Cue =
+        hold({ undo = true | idle() }, frames)
+
+    /// The shipped solution of level 1, as data: seven moves. The two
+    /// pushes are the third move (lower crate to its goal) and the last
+    /// (upper crate home — CLEAR).
+    pub def solveLevelOne(): List[Cue] =
+        List.flatMap(walk,
+            Robot.Direction.Left :: Robot.Direction.Up :: Robot.Direction.Right ::
+            Robot.Direction.Up :: Robot.Direction.Right :: Robot.Direction.Up ::
+            Robot.Direction.Left :: Nil)
+```
+
+すると解法は*テストになります* — それがこの章の題名です:
+
+```flix
+    @Test
+    def testReplaySolvesLevelOne(): Unit \ Assert =
+        // The shipped solution, driven through the pure tick at a fixed dt.
+        // Same Trace, same Worldline, always: the win, the move count and
+        // the final positions are pinned as plain values.
+        let end = Replay.play(Replay.solveLevelOne(), fresh(Sokoban.playingWorld(1)));
+        let w = Worldline.current(end);
+        Assert.assertEq(expected = (true, 7, (3, 2), Set#{(2, 2), (4, 4)}),
+            (Sokoban.won(w), Worldline.pastLength(end), robotOf(w), cratesOf(w)))
+```
+
+この種のテストは **golden** と呼ばれます: 期待値はテストの中で導出されるのではなく、*ピン留め*されています — 具体的な事実として、人間が一度確かめて、凍結する。それ以降、差分の意味はきっかり2つのどちらかです: バグか、意図した変更（なら pin を意図的に更新する）か。中間はなく、言い争う flakiness もない — この契約をここまで無愛想にできるのは決定論のおかげです。
+
+レベル2も同じ扱いを受けます: `solveLevelTwo` — 内壁が強いる遠回りを縫う21手 — にも専用の pin があります。これで出荷している2つのレベルは、どちらも*解けることが証明済み*です。第4章では手で一度確かめただけでした; いまや毎回、機械の仕事です。
+
+### 1つの Trace、3つの成果物
+
+同じ7手は、フィルムでもあります。`Replay.timeline` は Trace の全フレームを返し、各フレームはランチャーが使うのと*同じ*射影の積み重ね — `frame`、`projectUi`、`renderUi` — を、ウィンドウの代わりに Harness の下で通ります:
+
+```flix
+    def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, cues: List[Replay.Cue],
+                start: Worldline[Sokoban.World], path: String): Unit \ IO =
+        let film = Replay.timeline(cues, start);
+        let frames = List.map(l -> SoftRaster.renderToImage(rasterReq(atlas, scene(atlas, ui, l), path)),
+                              every(gifSampleStride(), 0, film));
+        GifEncoder.encode(frames, gifFrameDelayMs(), path)
+```
+
+`flix test` を走らせると `gallery/` が満ちていきます: スクリーンショット4枚（タイトルページ、静止したレベル1、スライド中間で凍った押し、7手を数える CLEAR パネル）、フィルム3本 — `solve_level1.gif` はタイトルから最初の CLEAR までの開幕、`full_clear.gif` はゲームまるごと1周 — 両レベル、両 CLEAR、そしてタイトルへの帰還、`rewind_demo.gif` は3手進めて Z 長押し、ロボットと木箱が家へ滑って帰るあいだ目覚まし時計が反時計回りに回る — そして全部をページに並べる `index.html` ダッシュボード（engine_tools の SnapshotSite）。フォルダごと消しても、テスト1回で全ピクセルが再建されます。
+
+そして3つ目の成果物は無料です: 失敗する Trace は**そのまま**バグ報告です。「この入力列で、この結果」 — チケットに貼れば永遠に再現し、`tick` に畳めばそのまま回帰テストです。
+
+### 何が起きたか
+
+- **Harness が7語目**: ウィンドウなしでゲームを走らせる身代わりの束。その大きさはアーキテクチャの*実測値*です — sokoban の実測はフォント1つ、ファイル handler 2枚、12行のスタブ。ルール自体が純粋で、何も要らないから。
+- **Trace が8語目**: 固定時計の上の、データとしての入力列。決定論が1つの Trace を3つの成果物に変えます — golden テスト、フィルム、バグ報告 — そして三者は決して食い違えない。同じリストなのだから。
+- ギャラリーは使い捨ての出力であってソースではない: `flix test` が全 PNG・全 GIF・ダッシュボードをコードと Spec から再生成します。
+- 語彙は8語で止まります。Worldline アーキテクチャにはもっと大きなゲームのための言葉がまだあります — シミュレーションの歩みを持つ **Driver**、world をまたいで共有される状態のための **Resource** — このゲームには要りませんでした。それが正直な結末です: あるだけの言葉ではなく、ゲームが必要とする言葉に手を伸ばす。
+
+### 試すこと
+
+遠回りをしてみてください: レベル1のわざと*長い*解法を Trace に書いて — 押す前にしばらくさまよって — 自分のテストとして pin する。どちらの道順も同じ箱を同じゴールに置きますが、pin は1つの数字で食い違います: `Worldline.pastLength`。手数はあなたの道順の指紋です。それから道順を切り詰めて、指紋が縮むのを見てください — 出荷版の7手は破れますか？
+
+フィルムの速度を変えてみてください: `gifSampleStride` を 1 に下げれば逆スライドのスローモーション研究、`gifFrameDelayMs` を 80 に上げればパラパラ漫画。テスト1回で3本全部の GIF が切り直されます。
+
+自分の場面をダッシュボードに足してみましょう: `Replay` で Worldline を組み（巻き戻しの途中はいい画になります）、新しい PNG へ `shot` して、カタログに `item` を1行。あとはサイト生成器がやってくれます。
+
+---
+
 ## ここまでのまとめ
 
 - ゲームは3拍子のループ: **`world |> step |> frame`** — 進めて、映して、描く。
-- **World** は全状態が住む1個の値。**Step** はそれを進める純関数。**Projection**（`frame` など）は変えずに読むだけ。**Store** は同じ種類の状態をたくさん持つ World のフィールド。**Worldline** は World の軌跡 — past・current・future — で、`record` と `undo` がその上を歩く。World の中ではなく、隣に住む。**Spec** はものを記述するデータ — レベル文字列、ページの `ui.json` — 再コンパイルせずに変えたいすべてのために。
+- **World** は全状態が住む1個の値。**Step** はそれを進める純関数。**Projection**（`frame` など）は変えずに読むだけ。**Store** は同じ種類の状態をたくさん持つ World のフィールド。**Worldline** は World の軌跡 — past・current・future — で、`record` と `undo` がその上を歩く。World の中ではなく、隣に住む。**Spec** はものを記述するデータ — レベル文字列、ページの `ui.json` — 再コンパイルせずに変えたいすべてのために。**Harness** はウィンドウなしでゲームを走らせる身代わりの束。**Trace** は結果が常に同じになる入力列 — 1つの解法がテストでありフィルムでありバグ報告でもある。
 - 世界の外にあるもの — キーボード、手打ちのレベル、時計 — は境界で読まれ、ただのデータとしてルールに入る。
 - 導出できる状態（「パズルは解けたか？」など）は保存しない。映すだけ。そして1個の値である状態は*取っておける* — だから時間旅行が2つの呼び出しになる。
 - あなたが編集するのは、ほとんどいつも `step` か `frame`。
 - 色は DB32 の**役割名**から、形は**比率と重ね順**で。
 
-ゲームは完成しました: 待っていてくれるタイトル、滑って記憶する盤面、巻き戻せる間違い、スコアを知っている CLEAR パネル、そして動かしたまま着せ替えられるページ。旅の全部を6つの言葉が運びました — 次に作るゲームは、初日からこの6語全部の上で始められます。
+ゲームは完成しました: 待っていてくれるタイトル、滑って記憶する盤面、巻き戻せる間違い、スコアを知っている CLEAR パネル、動かしたまま着せ替えられるページ — そしてテストのたびにその全部を証明するギャラリー。旅の全部を8つの言葉が運びました。次に作るゲームは、初日からこの8語全部の上で始められます。

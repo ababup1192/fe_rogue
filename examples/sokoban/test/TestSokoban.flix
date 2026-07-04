@@ -417,15 +417,46 @@ mod TestSokoban {
         Assert.assertEq(expected = (1, 2, 1),
             (Worldline.pastLength(m1), Worldline.pastLength(m2), Worldline.pastLength(u1)))
 
+    // ── Replay: a Trace is data, and its outcome is a fact ──
+
+    @Test
+    def testReplaySolvesLevelOne(): Unit \ Assert =
+        // The shipped solution, driven through the pure tick at a fixed dt.
+        // Same Trace, same Worldline, always: the win, the move count and
+        // the final positions are pinned as plain values.
+        let end = Replay.play(Replay.solveLevelOne(), fresh(Sokoban.playingWorld(1)));
+        let w = Worldline.current(end);
+        Assert.assertEq(expected = (true, 7, (3, 2), Set#{(2, 2), (4, 4)}),
+            (Sokoban.won(w), Worldline.pastLength(end), robotOf(w), cratesOf(w)))
+
+    @Test
+    def testReplaySolvesLevelTwo(): Unit \ Assert =
+        // With this pin, both shipped levels are provably solvable — what
+        // chapter 4 checked by hand is now a machine's job.
+        let end = Replay.play(Replay.solveLevelTwo(), fresh(Sokoban.playingWorld(2)));
+        let w = Worldline.current(end);
+        Assert.assertEq(expected = (true, 21, (5, 2), Set#{(1, 5), (6, 2)}),
+            (Sokoban.won(w), Worldline.pastLength(end), robotOf(w), cratesOf(w)))
+
+    @Test
+    def testReplayRewindReturnsToTheStart(): Unit \ Assert =
+        // Three moves out, then Z held long enough to rewind them all: the
+        // Stores come back exactly to move zero.
+        let out = List.flatten(
+            Replay.walk(Robot.Direction.Left) ::
+            Replay.walk(Robot.Direction.Up) ::
+            Replay.walk(Robot.Direction.Right) :: Nil);
+        let back = Replay.play(Replay.rewind(56) :: Nil,
+                              Replay.play(out, fresh(Sokoban.playingWorld(1))));
+        let w = Worldline.current(back);
+        let Sokoban.World.World(start) = Sokoban.playingWorld(1);
+        Assert.assertEq(expected = ((3, 5), start#crates, 0),
+            (robotOf(w), cratesOf(w), Worldline.pastLength(back)))
+
     // ── The UI Specs: pages declared in assets/*.ui.json ──
 
     /// Spawn both shipped page Specs into one UiWorld, as the launcher does.
-    def spawnedUi(): Option[UiStore.UiWorld] \ IO =
-        run {
-            forM (a <- UiSpec.spawnAsset(Sokoban.titleUiPath(), UiStore.empty()) |> Result.toOption;
-                  b <- UiSpec.spawnAsset(Sokoban.clearUiPath(), snd(a)) |> Result.toOption)
-            yield snd(b)
-        } with Fs.FileRead.runWithIO
+    def spawnedUi(): Option[UiStore.UiWorld] \ IO = Harness.ui()
 
     def has(path: String, ui: UiStore.UiWorld): Bool =
         not Option.isEmpty(UiStore.idOf(path, ui))
