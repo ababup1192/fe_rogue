@@ -22,39 +22,34 @@ mod TestPhaseTransitions {
     def dummyCells(): List[{x = Int32, y = Int32}] =
         dummyCell() :: Nil
 
-    /// 4 種の range ノードと Cursor を持つ scene を組む。
-    /// 全 range は手で挿入する (refresh/show を呼ばずに観測対象の初期状態を作る)。
-    /// Cursor は Marker2D.make でデフォルト visible=true。
-    def sceneWithAllRangesAndCursor(): Scene[NodeTag] =
-        let cursorMarker = Marker2D.make(Vec2.zero());
-        let moveData: MoveRangeScene.Data            = {reachable = dummyCells(), drawCells = dummyCells()};
-        let moveAttackData: MoveAttackRangeScene.Data = {cells = dummyCells()};
+    /// 4 種の range と Cursor(可視) を範囲 / カーソル resource に仕込む。
+    /// 全 range は手で Some にする (refresh/show を呼ばずに観測対象の初期状態を作る)。
+    /// カーソルは可視で始める（`CursorState.initial()` の既定 + 明示 setVisible(true)）。
+    def seedAllRangesAndCursor(): Unit \ {RangeOverlayState.State, CursorState.State} =
+        let moveData: MoveRangeScene.Data                 = {reachable = dummyCells(), drawCells = dummyCells()};
+        let moveAttackData: MoveAttackRangeScene.Data     = {cells = dummyCells()};
         let playerAttackData: PlayerAttackRangeScene.Data = {cells = dummyCells()};
-        let enemyData: EnemyRangeScene.Data          = {enemyId = 0, reachable = dummyCells()};
-        let mkMarker = tag ->
-            EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), tag);
-        Scene.empty()
-            |> Scene.addNode("Cursor",
-                EngineNode.Marker2DWithState(cursorMarker, NodeTag.Cursor))
-            |> Scene.addNode("MoveRange",         mkMarker(NodeTag.MoveRange(moveData)))
-            |> Scene.addNode("MoveAttackRange",   mkMarker(NodeTag.MoveAttackRange(moveAttackData)))
-            |> Scene.addNode("PlayerAttackRange", mkMarker(NodeTag.PlayerAttackRange(playerAttackData)))
-            |> Scene.addNode("EnemyRange",        mkMarker(NodeTag.EnemyRange(enemyData)))
+        let enemyData: EnemyRangeScene.Data               = {enemyId = 0, reachable = dummyCells()};
+        RangeOverlayState.State.put({
+            moveRange         = Some(moveData),
+            moveAttackRange   = Some(moveAttackData),
+            playerAttackRange = Some(playerAttackData),
+            enemyRange        = Some(enemyData)
+            | RangeOverlayState.State.get()
+        });
+        CursorState.setVisible(true)
 
     /// 観測タプル: (MoveRange あり, MoveAttackRange あり, PlayerAttackRange あり,
-    ///                EnemyRange あり, Cursor visible, TurnPhase の値)
-    def observe(scene: Scene[NodeTag]):
-            (Bool, Bool, Bool, Bool, Bool, TurnPhase.Phase) \ TurnPhase.State =
-        let hasNode = path -> Option.nonEmpty(Scene.getEngineNode(path, scene));
-        let cursorVisible = match Scene.getEngineNode(CursorScene.cursorPath(), scene) {
-            case Some(EngineNode.Marker2DWithState(m, _)) => CanvasItem.isVisible(m)
-            case _                                          => bug!("Cursor node not found")
-        };
-        (hasNode(MoveRangeScene.moveRangePath()),
-         hasNode(MoveAttackRangeScene.rangePath()),
-         hasNode(PlayerAttackRangeScene.attackRangePath()),
-         hasNode(EnemyRangeScene.enemyRangePath()),
-         cursorVisible,
+    ///                EnemyRange あり, Cursor visible, TurnPhase の値)。
+    /// overlay は範囲 resource の Option 有無、可視は `CursorState.visible` が単一真実源。
+    def observe(): (Bool, Bool, Bool, Bool, Bool, TurnPhase.Phase)
+            \ {TurnPhase.State, RangeOverlayState.State, CursorState.State} =
+        let r = RangeOverlayState.State.get();
+        (Option.nonEmpty(r#moveRange),
+         Option.nonEmpty(r#moveAttackRange),
+         Option.nonEmpty(r#playerAttackRange),
+         Option.nonEmpty(r#enemyRange),
+         CursorState.isVisible(),
          TurnPhase.State.get())
 
     // ════════════════════════════════════════════════════════
@@ -70,18 +65,19 @@ mod TestPhaseTransitions {
     @Test
     def testEnterPlayerCursorClearsPlayerRangesAndShowsCursor(): Unit \ Assert =
         region rc {
-            let initial = sceneWithAllRangesAndCursor();
             let result = TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                     TestUnitFixtures.withMockPartyQuery(Scene.empty(), () ->
+                        // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
                         run {
-                            // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
-                            let after = run { PhaseTransitions.enterPlayerCursor(initial) }
-                                with handler World.Command { def emit(_c, k) = k() };
-                            observe(after)
+                            seedAllRangesAndCursor();
+                            let _ = PhaseTransitions.enterPlayerCursor(Scene.empty());
+                            observe()
                         } with TurnPhase.withState(rc)
                           with SelectedPlayer.withState(rc)
-                          with CursorState.withState(rc))));
+                          with CursorState.withState(rc)
+                          with RangeOverlayState.withState(rc)
+                          with handler World.Command { def emit(_c, k) = k() })));
             Assert.assertEq(
                 expected = (false, false, false, true, true, TurnPhase.Phase.PlayerCursor),
                 result)
@@ -100,14 +96,15 @@ mod TestPhaseTransitions {
     @Test
     def testEnterPlayerMovingClearsEnemyAndMoveRangesHidesCursor(): Unit \ Assert =
         region rc {
-            let initial = sceneWithAllRangesAndCursor();
             let result = run {
-                let after = run { PhaseTransitions.enterPlayerMoving(initial) }
-                    with handler World.WorldQuery { def get(k) = k(World.empty()) };
-                observe(after)
+                seedAllRangesAndCursor();
+                let _ = PhaseTransitions.enterPlayerMoving(Scene.empty());
+                observe()
             } with TurnPhase.withState(rc)
               with SelectedPlayer.withState(rc)
-              with CursorState.withState(rc);
+              with CursorState.withState(rc)
+              with RangeOverlayState.withState(rc)
+              with handler World.WorldQuery { def get(k) = k(World.empty()) };
             Assert.assertEq(
                 expected = (false, false, true, false, false, TurnPhase.Phase.PlayerMoving),
                 result)
@@ -127,18 +124,19 @@ mod TestPhaseTransitions {
     @Test
     def testEnterPlayerAttackClearsMoveRangesAndShowsCursor(): Unit \ Assert =
         region rc {
-            let initial = sceneWithAllRangesAndCursor();
             let result = TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                     TestUnitFixtures.withMockPartyQuery(Scene.empty(), () ->
                         TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
                             run {
-                                let after = run { PhaseTransitions.enterPlayerAttack(initial) }
-                                    with handler World.WorldQuery { def get(k) = k(World.empty()) };
-                                observe(after)
+                                seedAllRangesAndCursor();
+                                let _ = PhaseTransitions.enterPlayerAttack(Scene.empty());
+                                observe()
                             } with TurnPhase.withState(rc)
                               with SelectedPlayer.withState(rc)
-                              with CursorState.withState(rc)))));
+                              with CursorState.withState(rc)
+                              with RangeOverlayState.withState(rc)
+                              with handler World.WorldQuery { def get(k) = k(World.empty()) }))));
             Assert.assertEq(
                 expected = (false, false, false, true, true, TurnPhase.Phase.PlayerAttack),
                 result)
@@ -157,14 +155,15 @@ mod TestPhaseTransitions {
     @Test
     def testEnterGatherMoveRefreshesMoveRangeHidesCursor(): Unit \ Assert =
         region rc {
-            let initial = sceneWithAllRangesAndCursor();
             let result = run {
-                let after = run { PhaseTransitions.enterGatherMove(initial) }
-                    with handler World.WorldQuery { def get(k) = k(World.empty()) };
-                observe(after)
+                seedAllRangesAndCursor();
+                let _ = PhaseTransitions.enterGatherMove(Scene.empty());
+                observe()
             } with TurnPhase.withState(rc)
               with SelectedPlayer.withState(rc)
-              with CursorState.withState(rc);
+              with CursorState.withState(rc)
+              with RangeOverlayState.withState(rc)
+              with handler World.WorldQuery { def get(k) = k(World.empty()) };
             Assert.assertEq(
                 expected = (false, false, true, false, false, TurnPhase.Phase.GatherMove),
                 result)
@@ -183,13 +182,15 @@ mod TestPhaseTransitions {
     @Test
     def testEnterEnemyTurnClearsAllPlayerRanges(): Unit \ Assert =
         region rc {
-            let initial = sceneWithAllRangesAndCursor();
+            // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
             let result = run {
-                // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
-                let after = run { PhaseTransitions.enterEnemyTurn(initial) }
-                    with handler World.Command { def emit(_c, k) = k() };
-                observe(after)
-            } with TurnPhase.withState(rc);
+                seedAllRangesAndCursor();
+                let _ = PhaseTransitions.enterEnemyTurn(Scene.empty());
+                observe()
+            } with TurnPhase.withState(rc)
+              with CursorState.withState(rc)
+              with RangeOverlayState.withState(rc)
+              with handler World.Command { def emit(_c, k) = k() };
             Assert.assertEq(
                 expected = (false, false, false, true, true, TurnPhase.Phase.EnemyTurn),
                 result)

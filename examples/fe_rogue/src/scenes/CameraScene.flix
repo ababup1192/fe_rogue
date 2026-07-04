@@ -1,12 +1,11 @@
-/// CameraScene — 単独のトップレベル Camera2D を持ち、フェーズに応じて追従先を切り替える
+/// CameraScene — フェーズに応じてカメラの追従先（World 座標）を選ぶ driver
 ///
 /// FE 風 SRPG では「カーソルにカメラを付ける／キャラ移動中はカメラを止める／
 /// キャラが画面外に行ったらカメラを動かす／敵ターンはキャラを映す」という複合追従を
-/// 実装する必要がある。Camera2D を Player の子にすると Player にしか追従できないため、
-/// 親子関係を断ち切ってトップレベルに置き、毎フレーム `update` で位置を計算する形に変える。
-///
-/// ノード構造（トップレベル）:
-///   Camera (Camera2D, NodeTag.Camera)
+/// 実装する。単独 Camera2D をキャラの子にすると 1 体にしか追従できないため、カメラ状態は
+/// `CameraState` resource（scene ノードを持たない視点の単一権威）に置き、毎フレーム `step` で
+/// 「フェーズ → どの World 座標を見るか」だけを決めて `CameraState.advance` に渡す。
+/// 滑らか追従・画面端マージン・limit clamp は engine `Camera2D` の純粋計算が担う。
 ///
 /// 追従ルール（`TurnPhase.State.get` で分岐）:
 ///   - PlayerCursor    → カーソルのワールド座標
@@ -18,109 +17,73 @@
 ///   - EnemyTurn       → **alerted な敵が行動中ならその敵を映す**（`enemyTurnTarget`）。
 ///                        attacking 中の敵 > キュー先頭の敵 > 非 alerted ならプレイヤーへフォールバック
 ///
-/// **追従の滑らかさ**:
-///   `CameraScene.scene.json` の `positionSmoothingEnabled` / `dragHorizontalEnabled` /
-///   `dragLeftMargin` 等で engine 組込の追従プロパティを宣言しており、
-///   smoothing と drag margin は `Camera2D.process` が毎フレーム適用する。
-///   CameraScene の責務は「フェーズ → どのノードを見るか」だけ（target 選択）。
-///   滑らか追従や画面端マージンは engine が担当するため、手書きの `isPlayerVisible` 等は撤廃。
+/// 追従先の座標は **World 権威**（`renderPosOf` の描画位置、未 seed の静止駒は `posOf` のセル中心）で読み、
+/// カーソルは `CursorState.renderPos`（スライド補間の視覚位置＝単一権威）を読む。Marker2D の
+/// globalPositionAt は読まない（駒 pixel 位置は World store が権威）。
 mod CameraScene {
 
-    def name(): String = "Camera"
-    pub def cameraPath(): NodePath = name() :: Nil
-
-    /// `AssetPath.resolve` はプロジェクトルートを起点に絶対パスに展開するため、
-    /// 起動 cwd がどこであっても常に同じファイルを指す。
-    def scenePath(): String = AssetPath.resolve("src/scenes/CameraScene.scene.json")
-
-    /// MapScene + PlayerScene 登録済みの scene にトップレベル Camera2D を追加する。
-    /// レイアウトと追従パラメータ（zoom / smoothing / drag margin）は scene.json
-    /// に閉じ込めてあり、CameraScene 側は「フェーズ → target」のディスパッチだけ持つ。
-    /// 初期 smoothPosition は scene.json の pos (0,0) になるが、最初の `update` で
-    /// 正しいフォーカス位置に上書きされる（drag margin で 1〜2 フレーム後に追従完了）。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead} =
-        let initial = focusedPlayerWorldPos(0, scene);
-        SceneLoader.loadScene(scenePath(),
-                               SceneLoader.constTagParser(NodeTag.Camera),
-                               scene)
-            // パーティ先頭の位置で position と smoothPosition を初期化して、
-            // ゲーム開始時点のスナップ違和感を消す
-            |> Scene.mapEngineNode(cameraPath(),
-                n -> EngineNode.mapCamera2D(c ->
-                    c |> Node2D.setPosition(initial)
-                      |> Camera2D.setSmoothPosition(initial), n))
-
-    /// 複数カメラを持たない設計（分割画面・ミニマップ不使用）のため、
-    /// Tween / AnimationPlayer による Player / Cursor の世界座標が反映された後に実行する。
-    /// 動作:
-    ///   1. フェーズに応じてターゲット NodePath の world 位置を取る
-    ///   2. Camera2D.position に target をセット（engine の追従計算の入力）
-    ///   3. Camera2D.process(delta, viewport, ...) で smoothPosition を進める
-    /// 「画面内なら維持」「滑らかに追従」は engine の drag margin / smoothing が代替する。
-    /// gameLoop が 1 回呼ぶ frame-paced System。明示 step には engine の書き戻しが無いので
-    /// `Scene.mapEngineNode(cameraPath())` で自分で書く。
-    /// camera ノード不在（タイトル/選択画面）は gate で no-op（computeTarget が Cursor 等の
-    /// 不在ノードを引いて落ちるのを防ぐ＝ノードが居るときだけ動く）。
+    /// 毎フレーム 1 回、フェーズ別ターゲットを計算して `CameraState.advance` に渡す（frame-paced driver）。
+    /// gameLoop が Tween/AnimationPlayer で駒・カーソルの世界座標が反映された後に呼ぶ。scene は素通し
+    /// （カメラ状態は resource 権威で scene ノードを触らない）。ターゲットは World / resource 由来。
+    /// カメラは盤面がある画面でのみ追従する（Title 等の盤面レス画面は advance を空回りさせない）。
     pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
                     Scene[NodeTag]
                     \ {GameEngine.Game, EnemyTurn.Queue,
                         TurnPhase.State, SelectedPlayer.State,
-                        PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        if (Option.isEmpty(Scene.getEngineNode(cameraPath(), scene))) scene
+                        PlayerData.PartyQuery, EnemyData.RosterQuery,
+                        CursorState.State, World.WorldQuery, CameraState.State} =
+        if (not MapScene.isPresent(scene)) scene
         else {
             let phase = TurnPhase.State.get();
             let selected = SelectedPlayer.State.get()#id;
-            let target = computeTarget(phase, selected, scene);
+            let world = World.WorldQuery.get();
+            let target = computeTarget(phase, selected, world);
             let vp = GameEngine.Game.getViewportRect();
             let viewport = {viewportWidth = vp#size#x, viewportHeight = vp#size#y};
-            let centered = isCenteredPhase(phase);
-            Scene.mapEngineNode(cameraPath(), node ->
-                EngineNode.mapCamera2D(
-                    c -> c |> Node2D.setPosition(target)
-                           |> applyFollowMode(centered)
-                           |> Camera2D.process(delta, viewport),
-                    node),
-                scene)
+            CameraState.advance(target, isCenteredPhase(phase), delta, viewport);
+            scene
         }
 
+    /// フロア構築時にカメラをパーティ先頭（id 0）へスナップする（カメラ初期位置の唯一の設定点）。
+    /// `SceneSetup.addHudAndDrivers` が PlayerScene.add（World へ位置 seed）後に 1 回呼ぶ。
+    /// これで開始フレームから正しいフォーカス位置を映す（drag/smoothing の 1〜2 フレーム遅れを消す）。
+    pub def snapToParty(): Unit \ {World.WorldQuery, CameraState.State} =
+        CameraState.snapTo(unitWorldPos(World.EntityRef.Player(0), World.WorldQuery.get()))
+
+    /// カメラがターゲットの drag dead zone 内に収まったか。
+    /// 敵ターン中、カメラが新しい敵に切り替わったあと「カメラが到達するまで敵の行動を待つ」
+    /// gating に使う（`stepEnemyTurn` の冒頭で `not isSettled()` なら処理スキップ）。
+    pub def isSettled(): Bool \ {GameEngine.Game, CameraState.State} =
+        let vp = GameEngine.Game.getViewportRect();
+        CameraState.isSettled({viewportWidth = vp#size#x, viewportHeight = vp#size#y})
+
     /// 「キャラを画面中央に固定する」フェーズか。移動モード (PlayerMoving) のみ true。
-    /// true の間は drag margin を切ってキャラ中心に寄せる（`applyFollowMode`）。
+    /// true の間は drag margin を切ってキャラ中心に寄せる（`CameraState.advance`）。
     def isCenteredPhase(phase: TurnPhase.Phase): Bool =
         match phase {
             case TurnPhase.Phase.PlayerMoving => true
             case _                            => false
         }
 
-    /// 追従モードを camera に反映する。`centered = true`（移動モード）なら drag margin を
-    /// 無効化し、engine 側で logical = target になって smoothing がキャラ中心へ直接寄る。
-    /// それ以外は drag を有効に戻す（scene.json は drag 有効前提。`dragLeftMargin` 等の
-    /// マージン値はそのまま温存される）。
-    def applyFollowMode(centered: Bool, camera: Camera2D): Camera2D =
-        let dragOn = not centered;
-        camera
-            |> Camera2D.setDragHorizontalEnabled(dragOn)
-            |> Camera2D.setDragVerticalEnabled(dragOn)
-
     /// `selected` が None のときはパーティの代表（id=0、または最初のアクティブ）の位置に向く。
-    /// PlayerMoving は「選択中味方の位置」を返すだけ（中央固定の drag 制御は `process` 側の
-    /// `applyFollowMode` が担当する）。
+    /// PlayerMoving は「選択中味方の位置」を返すだけ（中央固定の drag 制御は `step` 側の
+    /// `isCenteredPhase` → `CameraState.advance` が担当する）。
     /// EnemyTurn は `enemyTurnTarget` で「alerted な敵の動きを映す」分岐に入る。
     def computeTarget(phase: TurnPhase.Phase,
-                       selected: Option[Int32],
-                       scene: Scene[NodeTag]): Vec2.Vec2
-            \ {EnemyTurn.Queue, PlayerData.PartyQuery, EnemyData.RosterQuery} =
+                      selected: Option[Int32],
+                      world: World): Vec2.Vec2
+            \ {EnemyTurn.Queue, PlayerData.PartyQuery, EnemyData.RosterQuery, CursorState.State} =
         let focusId = focusIdOf(selected);
-        let focusPos = focusedPlayerWorldPos(focusId, scene);
+        let focusPos = unitWorldPos(World.EntityRef.Player(focusId), world);
         match phase {
-            case TurnPhase.Phase.PlayerCursor     => cursorWorldPos(scene)
+            case TurnPhase.Phase.PlayerCursor     => cursorWorldPos()
             case TurnPhase.Phase.PlayerMoving     => focusPos
             case TurnPhase.Phase.ActionSelect     =>
                 // SelectedPlayer あり (味方メニュー / 集合の隣接メニュー=主人公) は対象を映す。
                 // None (空マスメニュー) はカーソルに保つ。
                 match selected {
                     case Some(_) => focusPos
-                    case None    => cursorWorldPos(scene)
+                    case None    => cursorWorldPos()
                 }
             // 武器選択中は攻撃する味方（選択中の駒）を映したまま（ActionSelect と同じ挙動）。
             case TurnPhase.Phase.WeaponSelect     => focusPos
@@ -128,21 +91,21 @@ mod CameraScene {
             case TurnPhase.Phase.ItemActionSelect => focusPos
             case TurnPhase.Phase.StaffAim         => focusPos
             case TurnPhase.Phase.ThrowAim         => focusPos
-            case TurnPhase.Phase.AttackForecast   => cursorWorldPos(scene)
-            case TurnPhase.Phase.PlayerAttack     => cursorWorldPos(scene)
-            case TurnPhase.Phase.PlayerAttackHold => cursorWorldPos(scene)
+            case TurnPhase.Phase.AttackForecast   => cursorWorldPos()
+            case TurnPhase.Phase.PlayerAttack     => cursorWorldPos()
+            case TurnPhase.Phase.PlayerAttackHold => cursorWorldPos()
             // レベルアップ表示中はレベルアップした味方（選択中の駒）を映したまま据え置く。
             case TurnPhase.Phase.LevelUpView      => focusPos
-            case TurnPhase.Phase.TradeTargetSelect => cursorWorldPos(scene)
+            case TurnPhase.Phase.TradeTargetSelect => cursorWorldPos()
             case TurnPhase.Phase.TradeInventory    => focusPos
-            case TurnPhase.Phase.GatherMove       => lordWorldPos(scene)
+            case TurnPhase.Phase.GatherMove       => unitWorldPos(World.EntityRef.Player(0), world)
             // 階段離脱中は代表キャラ（=パーティ近辺）を映したまま据え置く。
             case TurnPhase.Phase.StairsExit       => focusPos
-            case TurnPhase.Phase.EnemyTurn        => enemyTurnTarget(focusPos, scene)
+            case TurnPhase.Phase.EnemyTurn        => enemyTurnTarget(focusPos, world)
             // 全滅メニュー中は盤面フリーズ。代表キャラを映したまま据え置く。
             case TurnPhase.Phase.GameOver         => focusPos
             // 中断確認中も盤面はそのまま。カーソル位置に保つ（空マスメニューから入るため）。
-            case TurnPhase.Phase.SuspendConfirm   => cursorWorldPos(scene)
+            case TurnPhase.Phase.SuspendConfirm   => cursorWorldPos()
         }
 
     /// 敵ターン中のカメラターゲットを決める。
@@ -151,7 +114,7 @@ mod CameraScene {
     ///   2. **キュー先頭の敵** (移動中 / 次に行動する敵)
     /// その敵が `alerted` なら追従、非 alerted (Skip フェーズ) なら fallback (プレイヤー位置)。
     /// 「敵に発見されている状態では敵の動きが見える」ようにするためのロジック。
-    def enemyTurnTarget(fallback: Vec2.Vec2, scene: Scene[NodeTag]):
+    def enemyTurnTarget(fallback: Vec2.Vec2, world: World):
             Vec2.Vec2 \ {EnemyTurn.Queue, EnemyData.RosterQuery} =
         // 注目する敵: attack_lunge 中の敵を優先、居なければキュー先頭。内側 match は Option.map に畳む。
         let activeId = match attackingEnemyId() {
@@ -162,7 +125,7 @@ mod CameraScene {
         let target = forM (
             id <- activeId;
             d  <- EnemyData.RosterQuery.get(id)
-        ) yield (if (d#alerted) Scene.globalPositionAt(EnemyScene.enemyPath(id), scene) else fallback);
+        ) yield (if (d#alerted) unitWorldPos(World.EntityRef.Enemy(id), world) else fallback);
         Option.getWithDefault(fallback, target)
 
     /// attack_lunge 中の敵 id を 1 つ返す。`stepEnemyTurn` が attacking 中は他の step を
@@ -172,23 +135,6 @@ mod CameraScene {
             |> List.filterMap(e ->
                 if (Option.nonEmpty(e#attackTargetId)) Some(e#id) else None)
             |> List.head
-
-    /// 現在のカメラ target に smoothPosition が「drag dead zone 内」に収まったか。
-    /// 敵ターン中、カメラが新しい敵に切り替わったあと「カメラが到達するまで敵の行動を待つ」
-    /// gating に使う（`stepEnemyTurn` の冒頭で `not isSettled(scene)` なら処理スキップ）。
-    ///
-    /// 判定式は `Camera2D.isWithinDragDeadZone` に閉じてあり、drag margin の幾何から
-    /// 収束 threshold を逆算する（drag 有効時 = `worldHalf × dragMargin` + 2 px buffer、
-    /// drag 無効時 = 4 px）。viewport size が必要なため `GameEngine.Game` 効果を使う。
-    /// カメラノードが未登録の場合は true を返す（テスト/初期化時の安全側）。
-    pub def isSettled(scene: Scene[NodeTag]): Bool \ GameEngine.Game =
-        match Scene.getEngineNode(cameraPath(), scene) {
-            case Some(EngineNode.Camera2DWithState(cam, _)) =>
-                let vp = GameEngine.Game.getViewportRect();
-                Camera2D.isWithinDragDeadZone(cam,
-                    {viewportWidth = vp#size#x, viewportHeight = vp#size#y})
-            case _ => true
-        }
 
     /// 「いまカメラが向くべき」プレイヤー id を選ぶ。
     /// 選択中があればそれ、無ければパーティ先頭（id=0、それも無ければ 0 fallback）。
@@ -202,20 +148,21 @@ mod CameraScene {
                 }
         }
 
-    /// 指定 id のプレイヤーの現在ワールド座標。Tween 中ならその時点の補間位置を返す。
-    /// 該当 id が未登録の場合は Vec2.zero() を返す（初期化前に呼ばれた場合の安全側デフォルト）。
-    def focusedPlayerWorldPos(id: Int32, scene: Scene[NodeTag]): Vec2.Vec2 =
-        match Scene.getEngineNode(PlayerScene.playerPath(id), scene) {
-            case Some(_) => Scene.globalPositionAt(PlayerScene.playerPath(id), scene)
-            case None    => Vec2.zero()
+    /// 指定 entity の現在ワールド座標を World store から読む（Marker2D は読まない）。
+    /// 移動 tween 中/移動済みは `renderPosOf`（描画位置の権威）、まだ動いていない静止駒は renderPos が
+    /// 未 seed なので `posOf` のセル中心へフォールバックする（Marker2D 初期配置 = セル中心と一致）。
+    /// 未登録 entity は原点（初期化前に呼ばれた場合の安全側）。
+    def unitWorldPos(ref: World.EntityRef, world: World): Vec2.Vec2 =
+        match World.renderPosOf(ref, world) {
+            case Some(p) => p
+            case None    =>
+                match World.posOf(ref, world) {
+                    case Some(g) => MapSnapshot.cellCenter(g)
+                    case None    => Vec2.zero()
+                }
         }
 
-    /// カーソルの現在ワールド座標。CursorScene 未登録なら安全側（原点）を返す。
-    def cursorWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
-        Scene.globalPositionAt(CursorScene.cursorPath(), scene)
-
-    /// 集合（行軍）モード中のカメラ target = 主人公(id 0)のワールド座標。
-    /// 主人公が隊列を率いて動くので、主人公を映していれば隊列全体が画面に収まる。
-    def lordWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
-        focusedPlayerWorldPos(0, scene)
+    /// カーソルの現在ワールド座標。`CursorState.renderPos`（スライド補間の視覚位置＝単一権威）を読む。
+    def cursorWorldPos(): Vec2.Vec2 \ CursorState.State =
+        CursorState.renderPos()
 }

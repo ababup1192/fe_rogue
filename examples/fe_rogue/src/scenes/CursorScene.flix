@@ -1,4 +1,4 @@
-/// CursorScene — 味方ターン中の選択カーソル（位置アンカー Marker2D + 入力ロジック）
+/// CursorScene — 味方ターン中の選択カーソル（入力ポーリング＋論理・視覚状態の駆動）
 ///
 /// FE 風 SRPG の「カーソルでマスを選んでから操作」フローを担う。
 /// 味方ターンの開始時はこのカーソルが画面上で動き、味方マス上で Z を押せば
@@ -6,43 +6,38 @@
 /// バトンタッチ）。敵マス上ではカーソルは止まらず、ホバー中だけ赤い移動範囲を
 /// 表示する（実体は EnemyRangeScene が担当）。
 ///
-/// ノードと描画の分担:
-///   - `Cursor` は視覚位置の単一権威となる Marker2D（NodeTag.Cursor）1 枚のみ。
-///     移動は `moveStep` の Tween がこのノードの position を補間し、カメラ追従
-///     （`CameraScene`）もこのノードの global 座標を読む。
-///   - 四隅の角カッコ L字（白）は `RenderWorld.renderCursor` が Marker2D の global 座標と
+/// 状態と描画の分担:
+///   - カーソルは scene ノードを持たない。論理状態（gridPos / hover / hold）も視覚位置
+///     （renderPos / スライド補間 / snag タイマー / 可視）も `CursorState.State` resource が権威。
+///   - 四隅の角カッコ L字（白）は `RenderWorld.renderCursor` が `CursorState.renderPos` と
 ///     `cornerBoxes` から直描きする（camera 適用）。見た目定数 `cornerColor` / `cornerZIndex` /
-///     `cornerBoxes` はこの module が持つ唯一の真実源。
+///     `cornerBoxes` はこの module が持つ唯一の真実源。カメラ追従（`CameraScene`）も renderPos を読む。
 ///
 /// 設計意図:
-///   - 論理状態（gridPos / lastHoveredEnemyId / hold）は `CursorState.State` resource が権威。
-///     Marker2D は視覚位置だけを持つ。
-///   - `gridPos` は moveStep のたびに即更新し、見た目の補間は engine の Tween に委ねる
-///     （Player.moveTo と完全に同じ機構）。Tween 中は次の方向キーをブロックする
+///   - `gridPos` は moveStep のたびに即更新し、見た目の補間は `CursorState` の EcsTween に委ねる。
+///     補間中（`CursorState.isTweening`）は次の方向キーをブロックする。
 ///   - 敵ホバー検知は「フレーム間でカーソルが乗っている敵 id が変化したか」で判定する。
-///     `lastHoveredEnemyId` を Data に持ち、変化したフレームだけログ + 範囲再構築を発火する。
-///     同じ敵に乗りっぱなしの間は何もしない（ログ・再構築の無限ループ回避）
-///   - 表示/非表示は Marker2D の `visible` フラグで切り替え、`renderCursor` がそれを読んで
-///     L字を出す/出さないを決める。
+///     `lastHoveredEnemyId` を持ち、変化したフレームだけログ + 範囲再構築を発火する。
+///     同じ敵に乗りっぱなしの間は何もしない（ログ・再構築の無限ループ回避）。
+///   - 駒に乗った「引っかかり」は `CursorState.snagRemaining`（`beginSnag` で秒セット・`step` で減衰）で
+///     表現し、`CursorState.isSnagging` が true の間は方向入力を捨てる。
+///   - 表示/非表示は `CursorState.visible` で切り替え、`renderCursor` がそれを読んで L字を出す/出さない。
+///
+/// 入力ポーリング（`physicsProcess`）は engine の physicsProcess 巡回でなく gameLoop が明示 System として
+/// 1 回呼ぶ（カーソルは scene ノードを持たないため）。
 mod CursorScene {
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
     // ────────────────────────────────────────────────────────
 
-    /// カーソルの論理状態（指しセル / ホバー / 加速）は `CursorState.State` resource が持つ。
-    /// helper と外部（テスト）の型参照用に別名を再輸出する。フィールドの意味は
-    /// `CursorState.Data` の定義を参照。駒に乗ったときの「引っかかり」は AnimationPlayer の
-    /// `snag` 空アニメで表現し、`AnimationPlayer.Scheduler.isPlaying(cursorPath())` が true の間は
-    /// 方向入力を捨てる（`snag` アニメ完了 + Tween 完了で次の移動が始まる）。
+    /// カーソルの論理・視覚状態は `CursorState.State` resource が持つ。helper と外部（テスト）の
+    /// 型参照用に別名を再輸出する。フィールドの意味は `CursorState.Data` の定義を参照。
     pub type alias Data = CursorState.Data
 
     // ────────────────────────────────────────────────────────
     // (B) 定数
     // ────────────────────────────────────────────────────────
-
-    def name(): String = "Cursor"
-    pub def cursorPath(): NodePath = name() :: Nil
 
     /// 四隅 L字の色（白）。`RenderWorld.renderCursor` が直描きに使う唯一の真実源。
     pub def cornerColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
@@ -52,9 +47,9 @@ mod CursorScene {
     /// 最前面で視認できるようにする (HUD/メニューは CanvasLayer なので更に上)。
     pub def cornerZIndex(): Int32 = 70
 
-    /// 四隅 L字を構成する 8 枚の白ボックス。各要素は Marker2D 原点（セル中心）からの
-    /// 左上オフセットと px サイズを持つ。隅ごとに横 1 本 + 縦 1 本で L字を作る。
-    /// `RenderWorld.renderCursor` がこの並びをそのまま camera 適用して box Drawable にする。
+    /// 四隅 L字を構成する 8 枚の白ボックス。各要素はセル中心からの左上オフセットと px サイズを持つ。
+    /// 隅ごとに横 1 本 + 縦 1 本で L字を作る。`RenderWorld.renderCursor` がこの並びをそのまま
+    /// camera 適用して box Drawable にする。
     pub def cornerBoxes(): List[{offset = Vec2.Vec2, size = Vec2.Vec2}] =
         {offset = {x = -15.0, y = -15.0}, size = {x = 9.0, y = 2.0}} ::   // 左上 横
         {offset = {x = -15.0, y = -15.0}, size = {x = 2.0, y = 9.0}} ::   // 左上 縦
@@ -82,18 +77,12 @@ mod CursorScene {
 
     /// 駒（味方/敵）のマスに乗った後、入力を捨てる長さ（150 ミリ秒）。
     /// 最高速 1 マス（0.067 秒）の 2 倍強で、押しっぱなしのリズムから明確にズレて
-    /// 「引っかかった」感触になる長さ。
+    /// 「引っかかった」感触になる長さ。`CursorState.beginSnag` に秒で渡す。
     def snagDuration(): Duration.Duration = 150 |> Duration.millis
 
-    /// `snag` アニメーション。tracks / methods を持たない純粋なタイマー用途で、
-    /// `AnimationPlayer.Scheduler.isPlaying(cursorPath())` がこの長さの間 true を返す。
-    def snagAnimation(): AnimationPlayer.Animation =
-        {
-            name    = AnimEvent.tagToString(AnimEvent.Tag.Snag),
-            length  = snagDuration(),
-            tracks  = Nil,
-            methods = Nil
-        }
+    /// `snag` 引っかかりを `CursorState` にセットする（駒に乗ったフレームで呼ぶ）。
+    def playSnag(): Unit \ CursorState.State =
+        CursorState.beginSnag(Duration.toSeconds(snagDuration()))
 
     /// `holdSteps` から 1 マス分のスライド時間を線形補間する。
     /// 0 ステップなら初速、stepsToMaxSpeed 以上で最高速に張り付く。
@@ -106,23 +95,24 @@ mod CursorScene {
             (initSec + (minSec - initSec) * t) |> Duration.seconds
 
     // ────────────────────────────────────────────────────────
-    // (C) 構築
+    // (C) 初期化（resource seed・scene ノードは持たない）
     // ────────────────────────────────────────────────────────
 
-    /// MapScene + PlayerScene 登録済みの scene にカーソルを追加する。
-    /// 初期位置はパーティ先頭プレイヤー（id=0）と同じセル。
-    /// ノードは視覚位置を持つ Marker2D 1 枚のみ（L字は `RenderWorld.renderCursor` が直描き）。
-    pub def add(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ CursorState.State =
+    /// `CursorState` をパーティ先頭プレイヤー（id=0）のセルで初期化する。scene ノードは積まない
+    /// （視覚位置は resource の renderPos が権威で `RenderWorld.renderCursor` が直描き）。scene は素通し。
+    /// フロア構築時に呼ばれ、初期セル / renderPos を seed する。
+    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ CursorState.State =
         let initial = firstPlayerPos(scene);
         let pos = MapSnapshot.cellCenter(initial);
-        // 論理状態は resource へ。scene ノードは識別用のペイロードレスタグだけを持つ。
         CursorState.State.put({gridPos            = initial,
                                lastHoveredEnemyId = None,
                                holdDir            = None,
-                               holdSteps          = 0});
-        Scene.addNode(name(),
-            EngineNode.Marker2DWithState(Marker2D.make(pos), NodeTag.Cursor), scene)
+                               holdSteps          = 0,
+                               renderPos          = pos,
+                               tweens             = Map.empty(),
+                               snagRemaining      = 0.0,
+                               visible            = true});
+        scene
 
     /// パーティ先頭プレイヤー（id=0）の grid 位置。`add` 初期化用。
     /// `buildPlayingScene` で `sceneRef` 更新前に呼ばれるため、PartyQuery effect 経由ではなく
@@ -134,59 +124,67 @@ mod CursorScene {
         }
 
     // ────────────────────────────────────────────────────────
-    // (D) ロジック — phase 分岐エントリ
+    // (D) ロジック — phase 分岐エントリ（gameLoop が明示 System として毎フレ 1 回呼ぶ）
     // ────────────────────────────────────────────────────────
 
-    /// 毎フレーム engine から呼ばれる `physicsProcess`。
-    /// 現フェーズで挙動が変わるため、`TurnPhase.State.get()` で 2 種類の polling に
-    /// 振り分ける:
-    ///   - `PlayerCursor` → `stepFreeMovement` (4 方向に 1 マスずつスライド)
-    ///   - `PlayerAttack` → `stepTargetCycle`  (射程内の敵リスト上をジャンプ)
-    /// それ以外のフェーズ (`PlayerMoving` / `EnemyTurn` 等) では `(node, scene)` を返して
-    /// no-op。Game.flix の Node[NodeTag] instance はこの 1 関数だけを呼べばよい。
-    pub def physicsProcess(delta: Duration.Duration,
-                            node: EngineNode[NodeTag],
-                            path: NodePath,
-                            scene: Scene[NodeTag]):
-                           (EngineNode[NodeTag], Scene[NodeTag])
+    /// カーソルの入力ポーリング。現フェーズで挙動が変わるため、`TurnPhase.State.get()` で
+    /// 4 種類の polling に振り分ける:
+    ///   - `PlayerCursor`      → `stepFreeMovement` (4 方向に 1 マスずつスライド)
+    ///   - `WeaponSelect`      → `stepWeaponSelectCycle` (フォーカス武器が届く敵を巡回)
+    ///   - `PlayerAttack`      → `stepTargetCycle`  (射程内の敵リスト上をジャンプ)
+    ///   - `TradeTargetSelect` → `stepTradeCellCycle` (緑マス間サイクル)
+    /// それ以外のフェーズ (`PlayerMoving` / `EnemyTurn` 等) では scene を返して no-op。
+    /// 盤面（Map）の存在は前提とする（本番配線は `stepOnBoard` が Map 存在をゲートしてから呼ぶ。
+    /// 単体テストは mock BoardQuery とともに直接呼ぶ fail-open な seam）。
+    pub def physicsProcess(_delta: Duration.Duration, scene: Scene[NodeTag]):
+                           Scene[NodeTag]
                            \ {GameEngine.Game, BoardQuery,
-                               Tween.Scheduler, AnimationPlayer.Scheduler,
                                GameLogger.GameLogger,
                                EnemyData.RosterQuery, TurnPhase.State,
                                SelectedPlayer.State, CursorState.State, World.WorldQuery,
-                               UiWorldState.State} =
+                               UiWorldState.State, RangeOverlayState.State} =
         match TurnPhase.State.get() {
-            case TurnPhase.Phase.PlayerCursor       => stepFreeMovement(delta, node, path, scene)
-            // 武器選択中も左右で対象の敵を選べる（フォーカス武器が届く敵を巡回）。
-            case TurnPhase.Phase.WeaponSelect       => stepWeaponSelectCycle(node, scene)
-            case TurnPhase.Phase.PlayerAttack       => stepTargetCycle(delta, node, path, scene)
-            case TurnPhase.Phase.TradeTargetSelect  => stepTradeCellCycle(delta, node, path, scene)
-            case _                                  => (node, scene)
+            case TurnPhase.Phase.PlayerCursor       => stepFreeMovement(scene)
+            case TurnPhase.Phase.WeaponSelect       => stepWeaponSelectCycle(scene)
+            case TurnPhase.Phase.PlayerAttack       => stepTargetCycle(scene)
+            case TurnPhase.Phase.TradeTargetSelect  => stepTradeCellCycle(scene)
+            case _                                  => scene
         }
+
+    /// gameLoop 用の入力 polling 入口。カーソルは盤面オーバーレイなので、盤面（Map）がある画面で
+    /// のみ `physicsProcess` を回す。盤面レス画面（Title / CharacterSelect 等）は TurnPhase が
+    /// `PlayerCursor` のままでも no-op — `stepFreeMovement` が `BoardQuery` 経由で TileMapLayer を
+    /// 読むため、Map 不在のまま進むと bug! する（Minimap.step と同じ Map 存在ゲート）。
+    pub def stepOnBoard(delta: Duration.Duration, scene: Scene[NodeTag]):
+                        Scene[NodeTag]
+                        \ {GameEngine.Game, BoardQuery,
+                            GameLogger.GameLogger,
+                            EnemyData.RosterQuery, TurnPhase.State,
+                            SelectedPlayer.State, CursorState.State, World.WorldQuery,
+                            UiWorldState.State, RangeOverlayState.State} =
+        if (MapScene.isPresent(scene)) physicsProcess(delta, scene)
+        else scene
 
     /// `WeaponSelect` フェーズの左右ターゲットサイクル。フォーカス中の武器が届く生存敵を
     /// reading order で巡回する（上下は武器リストへ回るので触らない）。入力ゲート・サイクル本体は
     /// `PlayerAttack` と同じ機構（`cycleToTargetIn`）を、対象リストだけ差し替えて使う。
-    /// 選択音は入力フェーズの `playInputSfx`（WeaponSelect の ←→/↑↓）が鳴らすので、
-    /// ここでは鳴らさない（physicsProcess は GameEngine.Audio を持たない）。
-    def stepWeaponSelectCycle(node: EngineNode[NodeTag], scene: Scene[NodeTag]):
-                              (EngineNode[NodeTag], Scene[NodeTag])
-                              \ {GameEngine.Game, Tween.Scheduler, AnimationPlayer.Scheduler,
-                                 SelectedPlayer.State, CursorState.State, EnemyData.RosterQuery,
-                                 World.WorldQuery, UiWorldState.State} =
-        if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
-        else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+    def stepWeaponSelectCycle(scene: Scene[NodeTag]):
+                              Scene[NodeTag]
+                              \ {GameEngine.Game, SelectedPlayer.State, CursorState.State,
+                                 EnemyData.RosterQuery, World.WorldQuery, UiWorldState.State} =
+        if (CursorState.isSnagging()) scene
+        else if (CursorState.isTweening()) scene
         else {
             let data = CursorState.State.get();
             match (data#holdDir, readHeldHorizontal()) {
                 case (_, None) =>
                     CursorState.State.put({holdDir = None, holdSteps = 0 | data});
-                    (node, scene)
+                    scene
                 case (Some(_), Some(dir)) =>
                     CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
-                    (node, scene)
+                    scene
                 case (None, Some(dir)) =>
-                    cycleToTargetIn(weaponSelectTargets(scene), dir, node, data, scene)
+                    cycleToTargetIn(weaponSelectTargets(scene), dir, data, scene)
             }
         }
 
@@ -215,31 +213,27 @@ mod CursorScene {
     // (D-1) PlayerCursor フェーズの 1 マス進行
     // ────────────────────────────────────────────────────────
 
-    /// `PlayerCursor` フェーズの physicsProcess 本体。
-    /// 入力ゲートは 3 段:
-    ///   1. `snag` アニメ再生中 → 駒上での「引っかかり」中。入力捨てる
-    ///   2. Tween 中 → 補間中。入力捨てる
+    /// `PlayerCursor` フェーズの本体。入力ゲートは 3 段:
+    ///   1. snag 引っかかり中 → 入力捨てる
+    ///   2. 補間中 → 入力捨てる
     ///   3. それ以外 → 方向キーを読み、加速度を計算して 1 マス進める
-    /// 移動後のセルに駒（味方/敵）が居れば `snag` を再生 + holdSteps をリセット
+    /// 移動後のセルに駒（味方/敵）が居れば snag をセット + holdSteps をリセット
     /// （次は再加速）。敵に乗ったら EnemyRangeScene を再構築 + ログを出す。
-    def stepFreeMovement(_delta: Duration.Duration,
-                          node: EngineNode[NodeTag],
-                          _path: NodePath,
-                          scene: Scene[NodeTag]):
-                         (EngineNode[NodeTag], Scene[NodeTag])
+    def stepFreeMovement(scene: Scene[NodeTag]):
+                         Scene[NodeTag]
                          \ {GameEngine.Game, BoardQuery,
-                             Tween.Scheduler, AnimationPlayer.Scheduler,
                              GameLogger.GameLogger,
-                             EnemyData.RosterQuery, CursorState.State, World.WorldQuery} =
-        if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
-        else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+                             EnemyData.RosterQuery, CursorState.State, World.WorldQuery,
+                             RangeOverlayState.State} =
+        if (CursorState.isSnagging()) scene
+        else if (CursorState.isTweening()) scene
         else {
             let data = CursorState.State.get();
             match readHeldDirection() {
                 case None =>
                     // キーが離れたら hold 状態をリセット（再度押したときに初速から）
                     CursorState.State.put({holdDir = None, holdSteps = 0 | data});
-                    (node, scene)
+                    scene
                 case Some(dir) =>
                     let board = BoardQuery.board();
                     let nextSteps = stepCountAfter(data#holdDir, data#holdSteps, dir);
@@ -251,7 +245,7 @@ mod CursorScene {
                     if (target#x == data#gridPos#x and target#y == data#gridPos#y) {
                         // 端で動けない。hold 状態だけ更新して入力は捨てる。
                         CursorState.State.put({holdDir = Some(dir), holdSteps = nextSteps | data});
-                        (node, scene)
+                        scene
                     }
                     else {
                         let slide = computeSlideDuration(nextSteps);
@@ -260,10 +254,9 @@ mod CursorScene {
                         // フォグで隠れている敵では snag させない（一瞬の引っかかりで
                         // 見えない敵の位置がバレるのを防ぐ）。可視の駒のみ引っかける。
                         let onPiece = isVisiblyOccupied(target, board, scene);
-                        if (onPiece) AnimationPlayer.play(cursorPath(), snagAnimation())
-                        else ();
-                        CursorState.State.put(applyHoldUpdate(hovered, dir, nextSteps, onPiece));
-                        (node, updatedScene)
+                        if (onPiece) playSnag() else ();
+                        CursorState.commitLogical(applyHoldUpdate(hovered, dir, nextSteps, onPiece));
+                        updatedScene
                     }
             }
         }
@@ -279,7 +272,7 @@ mod CursorScene {
         }
 
     /// 移動成立後の Data に hold 関連を反映する。
-    /// 駒の上に乗ったら holdSteps を 0 に戻す（snag アニメ再生で停止 → 再加速）。
+    /// 駒の上に乗ったら holdSteps を 0 に戻す（snag で停止 → 再加速）。
     /// 駒が居なければ holdSteps をそのまま nextSteps に進める。
     def applyHoldUpdate(data: Data, dir: {x = Int32, y = Int32}, nextSteps: Int32,
                          onPiece: Bool): Data =
@@ -288,25 +281,23 @@ mod CursorScene {
         else
             {holdDir = Some(dir), holdSteps = nextSteps | data}
 
-    /// カーソルを 1 マス移動させる。gridPos は即更新、見た目は Tween に委ねる。
+    /// カーソルを 1 マス移動させる。gridPos は即更新、見た目は `CursorState` の EcsTween に委ねる。
     /// 隣接判定は呼び出し側が済ませている前提（target は data.gridPos + 4 方向単位）。
     /// `slideDuration` 引数で 1 マス分のスライド時間を可変にする（加速制御）。
     /// `lastHoveredEnemyId` / `holdDir` などは呼び出し側で更新するためここでは触らない。
     def moveStep(target: {x = Int32, y = Int32}, data: Data,
-                  slideDuration: Duration.Duration): Data \ Tween.Scheduler =
+                  slideDuration: Duration.Duration): Data \ CursorState.State =
         let startWorld = MapSnapshot.cellCenter(data#gridPos);
         let targetWorld = MapSnapshot.cellCenter(target);
-        Tween.tweenPosition(cursorPath(), startWorld, targetWorld, slideDuration);
+        CursorState.startMove(startWorld, targetWorld, Duration.toSeconds(slideDuration));
         {gridPos = target | data}
 
     /// 移動後のセルに敵が居るかを判定し、`lastHoveredEnemyId` の遷移に応じて
     /// EnemyRangeScene を出し入れ + ログを出す。返り値の Data は
-    /// `lastHoveredEnemyId` を新しい値に更新済み。呼び出し側は **これを** Cursor
-    /// ノードの NodeTag に詰めて返す（foldNodes はすべてのノードを path ベースで評価・書き戻すため、
-    /// `mapCursor` で scene 経由に書いても評価完了後に上書きされてしまう）。
+    /// `lastHoveredEnemyId` を新しい値に更新済み。
     def handleHoverChange(data: Data, board: Board,
                            scene: Scene[NodeTag]):
-            (Data, Scene[NodeTag]) \ {GameLogger.GameLogger, EnemyData.RosterQuery} =
+            (Data, Scene[NodeTag]) \ {GameLogger.GameLogger, EnemyData.RosterQuery, RangeOverlayState.State} =
         // フォグで隠れている敵はホバーしても情報を出さない（配置バレ防止）。
         // 見えていない敵セルは「敵が居ない」扱いに倒し、ログ・赤レンジを発火させない。
         let enemyId = enemyIdAt(data#gridPos, board)
@@ -346,8 +337,6 @@ mod CursorScene {
     /// 明るい部屋の外周からカーソルが踏み出せるタイル数（可動域の余白）。tunable。
     /// カメラはカーソルを追従するため、この値を小さくするほどカーソル/カメラが
     /// fog の手前で止まり、未踏の部屋がカメラに映り込まなくなる。
-    /// design 幅を 170 に広げてカメラの可視範囲が増えた分、明るい部屋のすぐ外で
-    /// 止まるよう 1 まで絞る（5 → 3 → 1）。通路を覗き込みすぎないのが狙い。
     def cursorRangeRadius(): Int32 = 1
 
     /// 候補セルがカーソルの可動域（明るい部屋 +半径 ∪ 訪問済み module）に入っているか。
@@ -381,67 +370,51 @@ mod CursorScene {
     // (D-2) PlayerAttack フェーズのターゲットサイクル
     // ────────────────────────────────────────────────────────
 
-    /// `PlayerAttack` フェーズの physicsProcess 本体。
-    /// 通常の 1 マス進行ではなく **「方向キー押下で射程内の敵にカーソルをジャンプさせる」**
-    /// ターゲットサイクル方式。間接武器でも自然に敵を選べる。
-    ///   - 押下開始フレーム (`holdDir == None && readHeldDirection == Some(dir)`) でのみ
-    ///     サイクル発火。キーを押しっぱなしの間は連続サイクルしない (誤連打防止)。
-    ///   - **左 = 前の敵、右 = 次の敵** (reading order でソート)。上下は武器切り替え
-    ///     (ItemMenu の focused ItemList) に回すのでカーソルは動かさない。
-    ///   - 射程内に敵が居なければ何もしない (X キャンセル待ち)
-    ///   - スナップは Tween 経由で滑らかに移動。snag アニメも従来通り再生
-    def stepTargetCycle(_delta: Duration.Duration,
-                         node: EngineNode[NodeTag],
-                         _path: NodePath,
-                         scene: Scene[NodeTag]):
-                        (EngineNode[NodeTag], Scene[NodeTag])
-                        \ {GameEngine.Game,
-                            Tween.Scheduler, AnimationPlayer.Scheduler,
-                            CursorState.State, EnemyData.RosterQuery} =
-        if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
-        else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+    /// `PlayerAttack` フェーズの本体。通常の 1 マス進行ではなく **「方向キー押下で射程内の敵に
+    /// カーソルをジャンプさせる」** ターゲットサイクル方式。間接武器でも自然に敵を選べる。
+    ///   - 押下開始フレームでのみサイクル発火。押しっぱなしの間は連続サイクルしない (誤連打防止)。
+    ///   - **左 = 前の敵、右 = 次の敵** (reading order でソート)。上下は武器切り替えに回すので動かさない。
+    ///   - 射程内に敵が居なければ何もしない (X キャンセル待ち)。スナップは補間で滑らかに移動。
+    def stepTargetCycle(scene: Scene[NodeTag]):
+                        Scene[NodeTag]
+                        \ {GameEngine.Game, CursorState.State, EnemyData.RosterQuery,
+                            RangeOverlayState.State} =
+        if (CursorState.isSnagging()) scene
+        else if (CursorState.isTweening()) scene
         else {
             let data = CursorState.State.get();
             // 左右だけでターゲットを選ぶ (上下は武器リストへ)。
             match (data#holdDir, readHeldHorizontal()) {
                 case (_, None) =>
-                    // キー離した: holdDir をリセットして次の押下に備える
                     CursorState.State.put({holdDir = None, holdSteps = 0 | data});
-                    (node, scene)
+                    scene
                 case (Some(_), Some(dir)) =>
-                    // 押しっぱなし: holdDir を更新するだけでサイクル発火しない
                     CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
-                    (node, scene)
+                    scene
                 case (None, Some(dir)) =>
-                    // 押下開始フレーム: 射程内の敵リストから次/前を選んでジャンプ
-                    cycleToTarget(dir, node, data, scene)
+                    cycleToTarget(dir, data, scene)
             }
         }
 
     /// 押下開始時のターゲットサイクル本体。`PlayerAttackRangeScene.targetsInRange` で
-    /// 取得した reading-order 順のリストの中から、現在カーソル位置の index を引いて
-    /// 方向に応じて prev / next を選ぶ。敵が居なければ何もしない。
-    def cycleToTarget(dir: {x = Int32, y = Int32},
-                       node: EngineNode[NodeTag], data: Data,
+    /// 取得した reading-order 順のリストから、方向に応じて prev / next を選ぶ。
+    def cycleToTarget(dir: {x = Int32, y = Int32}, data: Data,
                        scene: Scene[NodeTag]):
-                      (EngineNode[NodeTag], Scene[NodeTag])
-                      \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                         CursorState.State, EnemyData.RosterQuery} =
-        cycleToTargetIn(PlayerAttackRangeScene.targetsInRange(scene), dir, node, data, scene)
+                      Scene[NodeTag]
+                      \ {CursorState.State, EnemyData.RosterQuery, RangeOverlayState.State} =
+        cycleToTargetIn(PlayerAttackRangeScene.targetsInRange(scene), dir, data, scene)
 
     /// 与えられた敵リストの中で、現在カーソル位置から方向に応じて prev / next へジャンプする。
     /// `cycleToTarget`（PlayerAttack）と `stepWeaponSelectCycle`（WeaponSelect）が対象リストだけ
     /// 差し替えて共有する本体。敵が居なければ holdDir だけ更新して何もしない。
     def cycleToTargetIn(targets: List[EnemyScene.Data],
-                        dir: {x = Int32, y = Int32},
-                        node: EngineNode[NodeTag], data: Data,
+                        dir: {x = Int32, y = Int32}, data: Data,
                         scene: Scene[NodeTag]):
-                       (EngineNode[NodeTag], Scene[NodeTag])
-                       \ {Tween.Scheduler, AnimationPlayer.Scheduler, CursorState.State} =
+                       Scene[NodeTag] \ CursorState.State =
         match targets {
             case Nil =>
                 CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
-                (node, scene)
+                scene
             case _   =>
                 let n = List.length(targets);
                 let curIdx = findCursorTargetIndex(data#gridPos, targets);
@@ -455,14 +428,14 @@ mod CursorScene {
                 match List.nth(nextIdx, targets) {
                     case None         =>
                         CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
-                        (node, scene)
+                        scene
                     case Some(target) =>
                         let slide = computeSlideDuration(1);
                         let movedData = moveStep(target#gridPos, data, slide);
-                        AnimationPlayer.play(cursorPath(), snagAnimation());
-                        CursorState.State.put({holdDir = Some(dir), holdSteps = 1,
-                                               lastHoveredEnemyId = Some(target#id) | movedData});
-                        (node, scene)
+                        playSnag();
+                        CursorState.commitLogical({holdDir = Some(dir), holdSteps = 1,
+                                       lastHoveredEnemyId = Some(target#id) | movedData});
+                        scene
                 }
         }
 
@@ -483,47 +456,40 @@ mod CursorScene {
     // (D-3) TradeTargetSelect フェーズの 1 マス進行 (緑マス間サイクル)
     // ────────────────────────────────────────────────────────
 
-    /// `TradeTargetSelect` フェーズでの physicsProcess 本体。
-    /// 緑マス (TradeRangeScene の隣接味方マス) を reading order でソートして、
-    /// 方向キー押下の瞬間に prev / next の緑マスへサイクルでスナップする。
-    /// 入力ゲートは PlayerAttack と同じ (snag / Tween 中は捨てる)。
+    /// `TradeTargetSelect` フェーズの本体。緑マス (TradeRangeScene の隣接味方マス) を reading order で
+    /// ソートして、方向キー押下の瞬間に prev / next の緑マスへサイクルでスナップする。
+    /// 入力ゲートは PlayerAttack と同じ (snag / 補間中は捨てる)。
     /// 緑マスが 0 個 (= 隣接味方なし) のときは何もしない (X キャンセル待ち)。
-    def stepTradeCellCycle(_delta: Duration.Duration,
-                             node: EngineNode[NodeTag],
-                             _path: NodePath,
-                             scene: Scene[NodeTag]):
-                            (EngineNode[NodeTag], Scene[NodeTag])
-                            \ {GameEngine.Game,
-                               Tween.Scheduler, AnimationPlayer.Scheduler, CursorState.State} =
-        if (AnimationPlayer.Scheduler.isPlaying(cursorPath())) (node, scene)
-        else if (Tween.Scheduler.isActive(cursorPath())) (node, scene)
+    def stepTradeCellCycle(scene: Scene[NodeTag]):
+                            Scene[NodeTag]
+                            \ {GameEngine.Game, CursorState.State, RangeOverlayState.State} =
+        if (CursorState.isSnagging()) scene
+        else if (CursorState.isTweening()) scene
         else {
             let data = CursorState.State.get();
             match (data#holdDir, readHeldDirection()) {
                 case (_, None) =>
                     CursorState.State.put({holdDir = None, holdSteps = 0 | data});
-                    (node, scene)
+                    scene
                 case (Some(_), Some(dir)) =>
                     CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
-                    (node, scene)
+                    scene
                 case (None, Some(dir)) =>
-                    cycleToTradeCell(dir, node, data, scene)
+                    cycleToTradeCell(dir, data, scene)
             }
         }
 
     /// 緑マスの中から方向に応じて next / prev のセルへカーソルを飛ばす。
     /// `TradeRangeScene.cells` を reading order (y → x) にソートしてサイクルする。
     /// 緑マスが空ならホールド状態だけ更新して何もしない。
-    def cycleToTradeCell(dir: {x = Int32, y = Int32},
-                          node: EngineNode[NodeTag], data: Data,
+    def cycleToTradeCell(dir: {x = Int32, y = Int32}, data: Data,
                           scene: Scene[NodeTag]):
-                         (EngineNode[NodeTag], Scene[NodeTag])
-                         \ {Tween.Scheduler, AnimationPlayer.Scheduler, CursorState.State} =
+                         Scene[NodeTag] \ {CursorState.State, RangeOverlayState.State} =
         let sortedCells = TradeRangeScene.cells(scene)
                             |> List.sortBy(c -> (c#y, c#x));
         pickNextCellInCycle(dir, data#gridPos, sortedCells)
-            |> Option.map(target -> snapCursorAndUpdateHold(target, dir, node, data, scene))
-            |> Option.getWithDefault(updateHoldOnly(dir, node, data, scene))
+            |> Option.map(target -> snapCursorAndUpdateHold(target, dir, data, scene))
+            |> Option.getWithDefault(updateHoldOnly(dir, data, scene))
 
     /// `sortedCells` を方向 (dir) でサイクルし、prev / next のセルを返す。
     /// 上 / 左 = 前、下 / 右 = 次。現在位置がセル外なら、方向に応じて先頭 / 末尾を返す。
@@ -545,28 +511,24 @@ mod CursorScene {
             List.nth(nextIdx, sortedCells)
         }
 
-    /// 目標セルへ Tween でスライドし、snag アニメ再生 + holdDir 更新まで一気に行う。
+    /// 目標セルへ補間でスライドし、snag セット + holdDir 更新まで一気に行う。
     def snapCursorAndUpdateHold(target: {x = Int32, y = Int32},
-                                  dir: {x = Int32, y = Int32},
-                                  node: EngineNode[NodeTag], data: Data,
+                                  dir: {x = Int32, y = Int32}, data: Data,
                                   scene: Scene[NodeTag]):
-                                 (EngineNode[NodeTag], Scene[NodeTag])
-                                 \ {Tween.Scheduler, AnimationPlayer.Scheduler, CursorState.State} =
+                                 Scene[NodeTag] \ CursorState.State =
         let slide = computeSlideDuration(1);
         let movedData = moveStep(target, data, slide);
-        AnimationPlayer.play(cursorPath(), snagAnimation());
-        CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | movedData});
-        (node, scene)
+        playSnag();
+        CursorState.commitLogical({holdDir = Some(dir), holdSteps = 1 | movedData});
+        scene
 
     /// セル移動できなかったとき (空 / 範囲外) の戻り値: holdDir だけ更新して scene 据え置き。
-    def updateHoldOnly(dir: {x = Int32, y = Int32}, node: EngineNode[NodeTag], data: Data,
-                        scene: Scene[NodeTag]): (EngineNode[NodeTag], Scene[NodeTag]) \ CursorState.State =
+    def updateHoldOnly(dir: {x = Int32, y = Int32}, data: Data,
+                        scene: Scene[NodeTag]): Scene[NodeTag] \ CursorState.State =
         CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
-        (node, scene)
+        scene
 
     /// セルリストの中で `cell` と一致するセルの index を返す。一致しなければ -1。
-    /// `findCursorTargetIndex` の generic 版 (gridPos を持つ任意のレコード対象でなく、
-    /// 直接 {x, y} のリストを取る)。
     def findCursorCellIndex(cell: {x = Int32, y = Int32},
                               cells: List[{x = Int32, y = Int32}]): Int32 =
         let indexed = List.zipWithIndex(cells);
@@ -581,7 +543,6 @@ mod CursorScene {
 
     /// target セルに「見えている駒」が居るか。味方は常に可視。敵はフォグで隠れていれば
     /// 居ないものとして扱う（カーソルの snag が見えない敵の位置を漏らさないように）。
-    /// Board に駒が居て、それが敵でない（=味方）なら可視。敵なら EnemyScene.isVisible で判定。
     def isVisiblyOccupied(coord: {x = Int32, y = Int32}, board: Board,
                            scene: Scene[NodeTag]): Bool =
         if (not Board.isOccupied(coord, board)) false
@@ -603,19 +564,17 @@ mod CursorScene {
     // (E) フェーズ切替に伴う見た目操作
     // ────────────────────────────────────────────────────────
 
-    /// カーソルの可視性を切り替える。Marker2D の visible フラグを書き、
+    /// カーソルの可視性を切り替える。`CursorState.visible` を書き、
     /// `RenderWorld.renderCursor` がそれを読んで四隅 L字を描く/描かないを決める。
-    pub def setVisible(visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(cursorPath(),
-            n -> CanvasItem.setVisible(visible, n), scene)
+    pub def setVisible(visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ CursorState.State =
+        CursorState.setVisible(visible);
+        scene
 
-    /// フェーズごとに通常カーソル（Marker2D）が表示されるべきかの**単一の真理点**。
+    /// フェーズごとに通常カーソルが表示されるべきかの**単一の真理点**。
     /// 下表の「ゲームプレイ復帰フェーズ」の `enter*` は
     /// `setVisible(cursorVisibleForPhase(<自フェーズ>), …)` でこの値を直接使う。
     /// 「カーソルを出し忘れて操作不能な半端状態に陥る」バグの種を表に集約してテストで
-    /// 封じるための **テスタビリティ／ロック**。実行時チョークポイントではなく
-    /// （各 `enter*` は自分の定数フェーズを渡す）、バグ・クラスを断つのは
-    /// `onActionCancelled` を `enter*` 経由にする側（ActionMenuScene）の変更。
+    /// 封じるための **テスタビリティ／ロック**。
     ///
     /// 対象（gameplay-return / input・`enter*` が通常カーソルの setVisible を書く）:
     ///   PlayerCursor / PlayerAttack（表示）, PlayerMoving / GatherMove / ItemSelect /
@@ -625,8 +584,7 @@ mod CursorScene {
     ///   EnemyTurn（カーソル Keep）。これらは自前 setVisible リテラルを持ち
     ///   onActionCancelled の戻り先ではないためこの関数を呼ばない。
     /// `case _` は **到達不能**。新フェーズの `enter*` がこの関数を呼ぶのに表へ
-    /// 追加し忘れたら **bug! で大声で落ちる**よう全域化する。将来 per-frame など
-    /// 動的に呼ぶ箇所を増やすなら、まず表へ対象フェーズを足すこと。
+    /// 追加し忘れたら **bug! で大声で落ちる**よう全域化する。
     pub def cursorVisibleForPhase(phase: TurnPhase.Phase): Bool =
         match phase {
             case TurnPhase.Phase.PlayerCursor => true
@@ -640,8 +598,7 @@ mod CursorScene {
         }
 
     /// カーソルを「選択中プレイヤー」または最初のアクティブプレイヤーの位置にスナップさせ、
-    /// ホバー状態をリセットする。
-    /// 敵ターン突入時 / キャンセル復帰時 / プレイヤー移動完了時に呼んで、
+    /// ホバー状態をリセットする。敵ターン突入時 / キャンセル復帰時 / プレイヤー移動完了時に呼んで、
     /// 「次にカーソル選択フェーズに戻ったとき味方の上から始まる」状態を作る。
     ///
     /// 注意: `PartyQuery` は `Game.start` の `sceneRef` (フレーム冒頭の snapshot) を読むため、
@@ -650,33 +607,33 @@ mod CursorScene {
     /// (= `commitWaitedAndAdvance`) からは `PhaseTransitions.enterPlayerCursorAt` 経由で
     /// 明示的に snap 先座標を渡し、この関数を経由しないようにする。
     pub def snapToPlayer(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery} =
         let target = snapTargetPos();
         snapToCell(target, scene)
 
-    /// 任意のグリッドセルへ瞬時にカーソルを移動させる。Tween / snag アニメを止めて
+    /// 任意のグリッドセルへ瞬時にカーソルを移動させる。補間 / snag を止めて
     /// hoveredEnemyId と hold 状態を初期化する。`snapToPlayer` の汎用版。
     pub def snapToCell(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, CursorState.State} =
+            Scene[NodeTag] \ CursorState.State =
         let world = MapSnapshot.cellCenter(target);
-        Tween.Scheduler.cancel(cursorPath());
-        AnimationPlayer.Scheduler.stop(cursorPath());
-        // 論理状態は resource へ、視覚位置は Marker2D へ瞬間 set。
+        // 論理状態を初期化しつつ、視覚位置を瞬間 set（補間/snag も止める）。
+        let d = CursorState.State.get();
         CursorState.State.put({gridPos            = target,
                                lastHoveredEnemyId = None,
                                holdDir            = None,
-                               holdSteps          = 0});
-        Scene.setGlobalPositionAt(cursorPath(), world, scene)
+                               holdSteps          = 0,
+                               renderPos          = world,
+                               tweens             = Map.empty(),
+                               snagRemaining      = 0.0 | d});
+        scene
 
     /// `PlayerAttack` フェーズ突入時に、赤マス内に居る「生きている敵」が居れば最初の
     /// 敵にカーソルをスナップする。敵が居なければ選択中プレイヤーへ。
     /// 間接武器 (range > 1) の場合、自分のセルが赤マスに含まれないため
     /// `snapToPlayer` 単独では「カーソルが届かない場所に居る」状態になるのを防ぐ。
     pub def snapToFirstTargetOrPlayer(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery,
-                              EnemyData.RosterQuery} =
+            Scene[NodeTag] \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery,
+                              EnemyData.RosterQuery, RangeOverlayState.State} =
         match List.head(PlayerAttackRangeScene.targetsInRange(scene)) {
             case Some(target) => snapToCell(target#gridPos, scene)
             case None         => snapToPlayer(scene)
@@ -684,12 +641,10 @@ mod CursorScene {
 
     /// `TradeTargetSelect` フェーズ突入時に、緑マスの **最初の隣接味方マス**
     /// (reading order: y 昇順 → x 昇順) にカーソルをスナップする。
-    /// 隣接味方が複数居る場合 (例: 上と右の 2 人) は北 (y 小) を優先する。
-    /// 緑マスが空 (= 隣接味方なし) のときは選択中プレイヤー位置にフォールバックする
-    /// (この経路は ActionMenu の「こうかん」項目が出ない時しか起きない防御ケース)。
+    /// 緑マスが空 (= 隣接味方なし) のときは選択中プレイヤー位置にフォールバックする。
     pub def snapToFirstTradeCellOrPlayer(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery,
+                              RangeOverlayState.State} =
         let firstCell = TradeRangeScene.cells(scene)
                           |> List.sortBy(c -> (c#y, c#x))
                           |> List.head;
@@ -737,4 +692,10 @@ mod CursorScene {
     /// カーソルの現在グリッド座標。
     pub def getGridPos(): {x = Int32, y = Int32} \ CursorState.State =
         CursorState.State.get()#gridPos
+
+    /// gameLoop が毎フレーム 1 回呼ぶ視覚 tick。スライド補間を dt 進め renderPos を書き、snag を減らす。
+    /// カーソルの補間と引っかかりは CursorState resource が値で持つため scene は素通しする。
+    pub def stepVisual(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag] \ CursorState.State =
+        CursorState.step(Duration.toSeconds(dt));
+        scene
 }

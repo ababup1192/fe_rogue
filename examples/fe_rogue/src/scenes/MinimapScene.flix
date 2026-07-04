@@ -100,32 +100,31 @@ mod MinimapScene {
                     Scene[NodeTag]
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
                        PlayerData.PartyQuery, World.Command, MinimapState.State} =
-        match Scene.getEngineNode(MapScene.mapPath(), scene) {
-            case None    => scene
-            case Some(_) =>
-                let phase = TurnPhase.State.get();
-                let data  = MinimapState.State.get();
-                let mDown = GameEngine.Game.isKeyPressed(GameEngine.Key.M);
-                // 敵ターン中は M を受け付けない（トグル自体を無視するので、押しても敵ターン明けに
-                // 開いたりしない）。
-                let acceptsToggle = phase != TurnPhase.Phase.EnemyTurn;
-                let visible2 =
-                    if (mDown and not data#mPrev and acceptsToggle) not data#visible
-                    else data#visible;
-                let placements = MapScene.getPlacements(scene);
-                let roomCount  = MapScene.getRoomCount(scene);
-                // 部屋の記憶（visited）は fog と同じく origin 基準にする。移動ドラフト中に新しく踏み込んだ
-                // 部屋は確定（drafts クリア）まで地図に出さない。
-                let drafts = SelectedPlayer.State.get()#drafts;
-                let units  = PlayerData.PartyQuery.getAll()
-                    |> List.map(d -> {id = d#id, gridPos = d#gridPos, hidden = d#hidden,
-                                      origin = MoveDraft.originOf(d#id, drafts)
-                                               |> Option.getWithDefault(d#gridPos)});
-                let frame  = visitedThisFrameDrafted(units, placements, roomCount);
-                // 探索記憶は World 権威。今フレーム訪問分を World へ union する（描画時に読み合わせる）。
-                World.Command.emit(World.Cmd.AddVisited(frame));
-                MinimapState.State.put({visible = visible2, mPrev = mDown});
-                scene
+        if (not MapScene.isPresent(scene)) scene
+        else {
+            let phase = TurnPhase.State.get();
+            let data  = MinimapState.State.get();
+            let mDown = GameEngine.Game.isKeyPressed(GameEngine.Key.M);
+            // 敵ターン中は M を受け付けない（トグル自体を無視するので、押しても敵ターン明けに
+            // 開いたりしない）。
+            let acceptsToggle = phase != TurnPhase.Phase.EnemyTurn;
+            let visible2 =
+                if (mDown and not data#mPrev and acceptsToggle) not data#visible
+                else data#visible;
+            let placements = MapScene.getPlacements(scene);
+            let roomCount  = MapScene.getRoomCount(scene);
+            // 部屋の記憶（visited）は fog と同じく origin 基準にする。移動ドラフト中に新しく踏み込んだ
+            // 部屋は確定（drafts クリア）まで地図に出さない。
+            let drafts = SelectedPlayer.State.get()#drafts;
+            let units  = PlayerData.PartyQuery.getAll()
+                |> List.map(d -> {id = d#id, gridPos = d#gridPos, hidden = d#hidden,
+                                  origin = MoveDraft.originOf(d#id, drafts)
+                                           |> Option.getWithDefault(d#gridPos)});
+            let frame  = visitedThisFrameDrafted(units, placements, roomCount);
+            // 探索記憶は World 権威。今フレーム訪問分を World へ union する（描画時に読み合わせる）。
+            World.Command.emit(World.Cmd.AddVisited(frame));
+            MinimapState.State.put({visible = visible2, mPrev = mDown});
+            scene
         }
 
     // ════════════════════════════════════════════════════════

@@ -23,7 +23,7 @@ mod AnimEvent {
     ///
     /// 命名規約:
     ///   - method: 動詞句 (`AttackHit`)
-    ///   - finished: アニメーション名そのまま (`DeathBlink` / `AttackLunge` / `Snag`)
+    ///   - finished: アニメーション名そのまま (`DeathBlink` / `AttackLunge`)
     pub enum Tag with Eq, ToString {
         /// 攻撃モーションの中点で発火。dispatch 側がダメージ適用 + SE + ログを行う。
         case AttackHit
@@ -31,9 +31,6 @@ mod AnimEvent {
         case DeathBlink
         /// `attack_lunge` 完了。dispatch 側が attackTarget クリア + commitWaitedAndAdvance を行う。
         case AttackLunge
-        /// `snag` 完了。CursorScene が `AnimationPlayer.Scheduler.isPlaying(cursorPath())` を
-        /// 直接監視するため dispatch 不要。
-        case Snag
     }
 
     /// `Animation#name` / `MethodKey#name` に詰める文字列表現。
@@ -41,7 +38,6 @@ mod AnimEvent {
         case Tag.AttackHit   => "attack:hit"
         case Tag.DeathBlink  => "death_blink"
         case Tag.AttackLunge => "attack_lunge"
-        case Tag.Snag        => "snag"
     }
 
     /// dispatch 側で `event#name` を Tag に戻す。外部から流入した未知文字列は `None` として
@@ -50,7 +46,6 @@ mod AnimEvent {
         case "attack:hit"   => Some(Tag.AttackHit)
         case "death_blink"  => Some(Tag.DeathBlink)
         case "attack_lunge" => Some(Tag.AttackLunge)
-        case "snag"         => Some(Tag.Snag)
         case _              => None
     }
 }

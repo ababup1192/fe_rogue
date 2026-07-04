@@ -419,10 +419,8 @@ mod TestUnitFixtures {
     /// combat ロールは `World.RngDraw` chokepoint 経由なので、Math.Random と一緒に
     /// `World.RngDraw=k(50)` も discharge する（50 = floor(0.5*100)＝Math.Random=0.5 スタブと byte-identical）。
     pub def withMockRandom(thunk: Unit -> a \ ef): a \ ((ef - Math.Random) - World.RngDraw) =
-        run {
-            run { thunk() } with handler World.RngDraw {
-                def nextPercent(k) = k(50)
-            }
+        run { thunk() } with handler World.RngDraw {
+            def nextPercent(k) = k(50)
         } with handler Math.Random {
             def randomFloat64(k) = k(0.5)
             def randomInt64(k)   = k(42i64)
@@ -496,13 +494,33 @@ mod TestUnitFixtures {
     pub def withCursorAt(coord: {x = Int32, y = Int32}, thunk: Unit -> a \ ef):
             a \ (ef - CursorState.State) =
         run { thunk() } with handler CursorState.State {
-            def get(k)    = k({gridPos = coord, lastHoveredEnemyId = None, holdDir = None, holdSteps = 0})
+            def get(k)    = k({gridPos = coord | CursorState.initial()})
             def put(_, k) = k()
         }
 
     /// `withCursorAt` を原点 (0,0) で巻く簡便版。カーソル座標を参照しないテスト向け。
     pub def withCursor(thunk: Unit -> a \ ef): a \ (ef - CursorState.State) =
         withCursorAt({x = 0, y = 0}, thunk)
+
+    /// `CursorState.State` を Ref-backed で供給する。`setVisible` / `startMove` / `snapTo` などの
+    /// 書き込みが同一セッションで持ち越されるため状態を保持する（`withCursorAt` は get 固定で
+    /// put を捨てるので、書き込み結果を読み返すテストはこちらを使う）。初期値は `CursorState.initial()`。
+    pub def withCursorState(rc: Region[r], thunk: Unit -> a \ ef): a \ (ef - CursorState.State) + r =
+        let ref = Ref.fresh(rc, CursorState.initial());
+        run { thunk() } with handler CursorState.State {
+            def get(k)    = k(Ref.get(ref))
+            def put(d, k) = { Ref.put(d, ref); k() }
+        }
+
+    /// `RangeOverlayState.State` を Ref-backed で供給する。範囲構築（refresh / show / build）→
+    /// 読み（isInRange / drawCells / targetsInRange 等）が同一セッションで持ち越されるため状態を
+    /// 保持する。初期値は空（全 7 種 None）。`rc` はテストの region。
+    pub def withRangeOverlay(rc: Region[r], thunk: Unit -> a \ ef): a \ (ef - RangeOverlayState.State) + r =
+        let ref = Ref.fresh(rc, RangeOverlayState.empty());
+        run { thunk() } with handler RangeOverlayState.State {
+            def get(k)    = k(Ref.get(ref))
+            def put(d, k) = { Ref.put(d, ref); k() }
+        }
 
     /// `ItemMenuState.State` を初期値（武器カテゴリ・印なし）で供給する。`refreshItems` /
     /// `onItemConfirmed` 等が現在カテゴリ・マークを読むメニューテスト向け。put は捨てる
@@ -569,10 +587,8 @@ mod TestUnitFixtures {
         let wref: Ref[World, r] = Ref.fresh(rc, World.empty());
         // WorldQuery も同じ Ref に結線（read-after-write）。firstActive 等が waited/hp を
         // World から直読みするため、Command 発行系のテスト経路は Query も要求する。
-        run {
-            run { thunk() } with handler World.WorldQuery {
-                def get(k) = k(Ref.get(wref))
-            }
+        run { thunk() } with handler World.WorldQuery {
+            def get(k) = k(Ref.get(wref))
         } with handler World.Command {
             def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
         }
@@ -608,10 +624,8 @@ mod TestUnitFixtures {
         let worldRef = Ref.fresh(rc, World.empty());
         // WorldQuery も同一 Ref に結線（read-after-write）。move seam の pre-move 読み
         //（posOf/prevPosOf）が Query を要求するため（withWorldCommand と同型）。
-        let out = run {
-            run { thunk() } with handler World.WorldQuery {
-                def get(k) = k(Ref.get(worldRef))
-            }
+        let out = run { thunk() } with handler World.WorldQuery {
+            def get(k) = k(Ref.get(worldRef))
         } with handler World.Command {
             def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(worldRef)), worldRef); k() }
         };
@@ -646,35 +660,71 @@ mod TestUnitFixtures {
     /// （SimEvent↔Cmd の橋は別途証明済み・ここは seam の Cmd emission を凍結するだけ）。
     pub def withTracedWorld(rc: Region[r], seed: Int64, scene: Scene[NodeTag], thunk: Unit -> a \ ef):
             (a, List[(String, Int32, Int32, Int32)], World) \
-            (((ef - World.Command) - World.WorldQuery) - World.RngDraw) + r =
+            ((((ef - World.Command) - World.WorldQuery) - World.RngDraw) - RangeOverlayState.State) + r =
         let seeded = World.syncFromScene(scene, World.seedRng(seed, World.empty()));
         let wref: Ref[World, r] = Ref.fresh(rc, seeded);
         let recRef: Ref[List[(String, Int32, Int32, Int32)], r] = Ref.fresh(rc, Nil);
+        // 範囲 resource はフェーズ遷移の掃除で書かれるが sim trace の対象外なので Ref-backed で吸収する。
         let out =
-            run {
-                run {
-                    run { thunk() } with handler World.RngDraw {
-                        def nextPercent(k) =
-                            let (p, w1) = World.drawPercent(Ref.get(wref));
-                            Ref.put(w1, wref);
-                            k(p)
-                    }
-                } with handler World.WorldQuery {
+            run { withRangeOverlay(rc, thunk) }
+                with handler World.RngDraw {
+                    def nextPercent(k) =
+                        let (p, w1) = World.drawPercent(Ref.get(wref));
+                        Ref.put(w1, wref);
+                        k(p)
+                }
+                with handler World.WorldQuery {
                     def get(k) = k(Ref.get(wref))
                 }
-            } with handler World.Command {
-                def emit(c, k) = {
-                    // fx（ダメージ数字/爆発）の Spawn は **view の Cmd**（sim 状態を動かさない）。
-                    // golden trace は sim Cmd 列の比較通貨なので記録から除外する（apply はする）。
-                    let key = World.cmdKey(c);
-                    let (name, _, _, _) = key;
-                    if (name != "SpawnPopupFx" and name != "SpawnExplosionFx")
-                        Ref.put(key :: Ref.get(recRef), recRef)
-                    else ();
-                    Ref.put(World.applyCmd(c, Ref.get(wref)), wref);
-                    k()
+                with handler World.Command {
+                    def emit(c, k) = {
+                        // fx（ダメージ数字/爆発）の Spawn は **view の Cmd**（sim 状態を動かさない）。
+                        // golden trace は sim Cmd 列の比較通貨なので記録から除外する（apply はする）。
+                        let key = World.cmdKey(c);
+                        let (name, _, _, _) = key;
+                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx")
+                            Ref.put(key :: Ref.get(recRef), recRef)
+                        else ();
+                        Ref.put(World.applyCmd(c, Ref.get(wref)), wref);
+                        k()
+                    }
+                };
+        (out, List.reverse(Ref.get(recRef)), Ref.get(wref))
+
+    /// `withTracedWorld` の **World 直 seed 版**。`syncFromScene` の後・記録を始める前に `seedCmds` を
+    /// worldRef へ適用する（seed 自体はトレースに載せない＝比較対象の cmd-stream の外）。golden ハーネスの
+    /// 脱 scene（駒の状態を scene Data でなく World store で seed する）を段階導入するための seam。
+    /// 記録・RngDraw・read-after-write の結線は `withTracedWorld` と同一（ONE worldRef 共有）。
+    pub def withTracedWorldSeeded(rc: Region[r], seed: Int64, scene: Scene[NodeTag],
+                                   seedCmds: List[World.Cmd], thunk: Unit -> a \ ef):
+            (a, List[(String, Int32, Int32, Int32)], World) \
+            (((ef - World.Command) - World.WorldQuery) - World.RngDraw) + r =
+        let base   = World.syncFromScene(scene, World.seedRng(seed, World.empty()));
+        let seeded = List.foldLeft((w, c) -> World.applyCmd(c, w), base, seedCmds);
+        let wref: Ref[World, r] = Ref.fresh(rc, seeded);
+        let recRef: Ref[List[(String, Int32, Int32, Int32)], r] = Ref.fresh(rc, Nil);
+        let out =
+            run { thunk() }
+                with handler World.RngDraw {
+                    def nextPercent(k) =
+                        let (p, w1) = World.drawPercent(Ref.get(wref));
+                        Ref.put(w1, wref);
+                        k(p)
                 }
-            };
+                with handler World.WorldQuery {
+                    def get(k) = k(Ref.get(wref))
+                }
+                with handler World.Command {
+                    def emit(c, k) = {
+                        let key = World.cmdKey(c);
+                        let (name, _, _, _) = key;
+                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx")
+                            Ref.put(key :: Ref.get(recRef), recRef)
+                        else ();
+                        Ref.put(World.applyCmd(c, Ref.get(wref)), wref);
+                        k()
+                    }
+                };
         (out, List.reverse(Ref.get(recRef)), Ref.get(wref))
 
     /// `withTracedWorld` の **CONSTANT-RNG 版**。RngDraw が seeded PRNG ではなく固定値 `rngVal` を返す。
@@ -688,27 +738,26 @@ mod TestUnitFixtures {
         let wref: Ref[World, r] = Ref.fresh(rc, seeded);
         let recRef: Ref[List[(String, Int32, Int32, Int32)], r] = Ref.fresh(rc, Nil);
         let out =
-            run {
-                run {
-                    run { thunk() } with handler World.RngDraw {
-                        def nextPercent(k) = k(rngVal)
-                    }
-                } with handler World.WorldQuery {
+            run { thunk() }
+                with handler World.RngDraw {
+                    def nextPercent(k) = k(rngVal)
+                }
+                with handler World.WorldQuery {
                     def get(k) = k(Ref.get(wref))
                 }
-            } with handler World.Command {
-                def emit(c, k) = {
-                    // fx（ダメージ数字/爆発）の Spawn は **view の Cmd**（sim 状態を動かさない）。
-                    // golden trace は sim Cmd 列の比較通貨なので記録から除外する（apply はする）。
-                    let key = World.cmdKey(c);
-                    let (name, _, _, _) = key;
-                    if (name != "SpawnPopupFx" and name != "SpawnExplosionFx")
-                        Ref.put(key :: Ref.get(recRef), recRef)
-                    else ();
-                    Ref.put(World.applyCmd(c, Ref.get(wref)), wref);
-                    k()
-                }
-            };
+                with handler World.Command {
+                    def emit(c, k) = {
+                        // fx（ダメージ数字/爆発）の Spawn は **view の Cmd**（sim 状態を動かさない）。
+                        // golden trace は sim Cmd 列の比較通貨なので記録から除外する（apply はする）。
+                        let key = World.cmdKey(c);
+                        let (name, _, _, _) = key;
+                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx")
+                            Ref.put(key :: Ref.get(recRef), recRef)
+                        else ();
+                        Ref.put(World.applyCmd(c, Ref.get(wref)), wref);
+                        k()
+                    }
+                };
         (out, List.reverse(Ref.get(recRef)), Ref.get(wref))
 
     /// メニュー系テストで頻出する read-only effect 4 種を 1 呼び出しで剥がす束ね。
@@ -779,38 +828,39 @@ mod TestUnitFixtures {
     /// SelectedPlayer は `initialSel` で初期化（None=`SelectedPlayer.cleared()` / Some / gather を
     /// 呼び出し側が渡す）。region は内部で開いて閉じるので呼び出し側に `rc` は不要。
     /// put 観測のため `withPhaseRef` を State 系の最外に置く。
-    pub def withCancelTransitionMocks(initialSel: SelectedPlayer.Selection,
+    /// X キャンセル遷移テストの effect を一括で剥がす。カーソル可視は `CursorState` resource が
+    /// 権威なので Ref-backed で供給し、`initialVisible` で初期可視を仕込んでから thunk を回し、
+    /// 終了時の `CursorState.isVisible()` を戻り値に含める（scene ノードは観測しない）。
+    /// 戻りは (thunk 結果, 最終フェーズ, 最終カーソル可視)。
+    pub def withCancelTransitionMocks(initialSel: SelectedPlayer.Selection, initialVisible: Bool,
                                        thunk: Unit -> a \ ef):
-            (a, TurnPhase.Phase) \
+            (a, TurnPhase.Phase, Bool) \
                 (ef - Tween.Scheduler - AnimationPlayer.Scheduler - PlayerData.PartyQuery
                     - TurnPhase.State - SelectedPlayer.State - CursorState.State
-                    - World.Command - World.WorldQuery) =
+                    - RangeOverlayState.State - World.Command - World.WorldQuery) =
         region rc {
-            withNoopTween(() ->
-                withNoopAnim(() ->
-                    withMockPartyQuery(Scene.empty(), () ->
-                        withPhaseRef(rc, TurnPhase.Phase.ActionSelect, () ->
-                            withSelectionRef(rc, initialSel, () ->
-                            withCursor(() ->
-                                // 遷移は view 状態 Cmd を emit・World 位置を read するので
-                                // 捨て handler で吸収（このヘルパーの観測対象は
-                                // phase とカーソル可視のみ。posOf は None→scene fallback）。
-                                run {
-                                    run { thunk() } with handler World.WorldQuery {
+            let ((out, vis), phase) =
+                withNoopTween(() ->
+                    withNoopAnim(() ->
+                        withMockPartyQuery(Scene.empty(), () ->
+                            withPhaseRef(rc, TurnPhase.Phase.ActionSelect, () ->
+                                withSelectionRef(rc, initialSel, () ->
+                                withCursorState(rc, () ->
+                                withRangeOverlay(rc, () ->
+                                    // 遷移は view 状態 Cmd を emit・World 位置を read するので
+                                    // 捨て handler で吸収（観測対象は phase とカーソル可視のみ。
+                                    // posOf は None→scene fallback）。
+                                    run {
+                                        CursorState.setVisible(initialVisible);
+                                        let r = thunk();
+                                        (r, CursorState.isVisible())
+                                    } with handler World.WorldQuery {
                                         def get(k) = k(World.empty())
                                     }
-                                } with handler World.Command {
-                                    def emit(_c, k) = k()
-                                }))))))
-        }
-
-    /// scene 内の Cursor(Marker2D) の visible を読む。フェーズ遷移／キャンセル後に
-    /// 「カーソルが出ているか」を観測するテスト共通ヘルパー
-    /// （TestPhaseTransitions.observe のカーソル読みと同型）。
-    pub def readCursorVisible(scene: Scene[NodeTag]): Bool =
-        match Scene.getEngineNode(CursorScene.cursorPath(), scene) {
-            case Some(EngineNode.Marker2DWithState(m, _)) => CanvasItem.isVisible(m)
-            case _                                          => bug!("Cursor node not found")
+                                      with handler World.Command {
+                                        def emit(_c, k) = k()
+                                    })))))));
+            (out, phase, vis)
         }
 
     // ════════════════════════════════════════════════════════

@@ -178,7 +178,8 @@ mod TestCombatRolls {
                       with TurnPhase.withState(rc)
                       with SelectedPlayer.withState(rc)
                       with CursorState.withState(rc)
-                      with Pacing.withState(rc))))))));
+                      with Pacing.withState(rc)
+                      with RangeOverlayState.withState(rc))))))));
             Assert.assertEq(
                 expected = (1, prngSeq(0i64, 1)),
                 (List.length(rolls), rolls))

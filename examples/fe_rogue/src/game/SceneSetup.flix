@@ -12,7 +12,8 @@
 ///   - DamagePopupFx は World 配下の親ノードを必要とするため Map の直後
 ///   - PlayerScene / EnemyScene は MapScene の placements に従ってスポーン
 ///   - MoveRangeScene は SelectedPlayer 状態を読むが起動時は未選択なので no-op
-///   - Camera は最後に追加して全プレイヤー出揃った後に追従開始
+///   - カメラは scene ノードを持たず `CameraState` resource が権威。`addHudAndDrivers` が駒 spawn 後に
+///     `CameraScene.snapToParty` でパーティ先頭へスナップする
 ///   - UI 系 (BattlePanel / TradeMenu 等) は最後 (描画前面)。ActionMenu / WeaponSelect /
 ///     SuspendConfirm / UnitCard は World-entity UI へ移行済みで scene には積まない。
 ///
@@ -28,7 +29,7 @@ mod SceneSetup {
                                 floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, CursorState.State, ArrowCursorState.State, PartySelection.State, World.Command, World.WorldQuery,
-                TopBarState.State, UiWorldState.State} =
+                TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         // 前フロアの配置物（宝箱/床アイテム）・探索記憶（ミニマップ）・ユニット store を掃除する
         // （scene 再構築での自動 prune は廃止＝明示 Cmd。この直後の spawn が seed し直す）。
         WorldDriver.clearFloorStores();
@@ -60,12 +61,16 @@ mod SceneSetup {
     /// MapScene / Fog / DamagePopup / Explosion の後、駒配置の後に呼ぶ前提。
     /// `label` はフロア番号表示（"1F" 等）、`name` はフロア名（"始まりの洞窟" 等。空可）。
     def addHudAndDrivers(label: String, name: String, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game, Fs.FileRead, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, World.WorldQuery, TopBarState.State, UiWorldState.State} =
+            \ {GameEngine.Game, Fs.FileRead, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, World.WorldQuery, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
+        // 範囲オーバーレイ resource を空へ（前フロアの残存を一掃してから MoveRange を組み直す）。
+        RangeOverlayState.State.put(RangeOverlayState.empty());
+        // カメラをパーティ先頭へスナップする（カメラ状態は CameraState resource が権威）。
+        // PlayerScene.add が World へ位置を seed した後なので、パーティ先頭の位置を World から読める。
+        CameraScene.snapToParty();
         scene
             |> MoveRangeScene.add       // SelectedPlayer 未設定なら no-op
             |> CursorScene.add
             |> ArrowCursorScene.add     // 杖発射方向の矢印カーソル (初期は非表示)
-            |> CameraScene.add
             |> EnemyTurnDriver.add // 敵ターン進行の常駐タグノード (process で phase 判定)
             |> StairsExitDriver.add      // 集合「階段で離脱」の順次退場ドライバ (process で phase 判定)
             // ユニット簡易カード（味方左 / 敵右）・行動選択ウィンドウ（ActionMenu）・武器選択ウィンドウ
@@ -87,7 +92,7 @@ mod SceneSetup {
                             floor: FloorCatalog.FloorResource): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, CursorState.State, ArrowCursorState.State, InitialSpawns.State, PartySelection.State, World.Command,
-                World.WorldQuery, TopBarState.State, UiWorldState.State} =
+                World.WorldQuery, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         let scene = buildPlayingScene(catalogs, floor);
         InitialSpawns.State.put({
             enemies = EnemyScene.snapshotSpawns(scene),
@@ -104,7 +109,7 @@ mod SceneSetup {
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 SelectedPlayer.State, CursorState.State, ArrowCursorState.State, InitialSpawns.State, FloorProgress.State,
                 PartySelection.State, FloorSnapshot.State, World.Command, World.WorldQuery,
-                TopBarState.State, UiWorldState.State} =
+                TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
         recordFloorEntry(catalogs, buildAndRecord(catalogs, floor))
 
@@ -138,7 +143,7 @@ mod SceneSetup {
     /// audio は `applyAudioAttach` で再アタッチ（BGM 再生）。
     pub def rebuildFloorFromSnapshot(catalogs: GameLifecycle.Catalogs, snap: FloorSnapshot.T): Scene[NodeTag]
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, World.Command,
-                World.WorldQuery, TopBarState.State, UiWorldState.State} =
+                World.WorldQuery, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         let floor = FloorCatalog.get(snap#floorId, catalogs#floors);
         // 前フロア/前 run の配置物・探索記憶・ユニット store を掃除してから addFromSnaps で再 spawn する
         // （scene 再構築での自動 prune は廃止＝明示 Cmd。addFromSnaps より前が必須）。
@@ -202,7 +207,7 @@ mod SceneSetup {
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State,
-                World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State} =
+                World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         // タイトル / 選択画面（World-entity UI）を隠してからダンジョンを組む（Title 由来の中断再開・
         // CharacterSelect 由来の新規ランのどちらでも前画面が残らないように）。
         let built = match (prevPhase, FloorSnapshot.State.get()) {

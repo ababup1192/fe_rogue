@@ -89,7 +89,7 @@ mod BattlePanelUi {
     pub def frameStep(delta: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery,
-               BattlePanelState.State, UnitHPBarRender.ForecastState, UiWorldState.State} =
+               BattlePanelState.State, UnitHPBarRender.ForecastState, UiWorldState.State, CameraState.State} =
         let phase  = TurnPhase.State.get();
         let synced = syncTargetToCursor(phase, scene);
         // 「減る分」の暗⇄明点滅サイクルを進める。累積時間は resource が持つ。
@@ -265,30 +265,20 @@ mod BattlePanelUi {
     /// 対象 / 攻撃側のワールド座標を camera ViewTransform で画面 px に写し、対象の
     /// 右 → 上 → 下 の順で「画面内に収まり、かつ攻撃側に被らない」最初の位置を選ぶ。
     /// カメラ未登録時（テスト等）は移動しない（前回位置を保つ）。
-    def reposition(view: ForecastView, contentW: Float64, scene: Scene[NodeTag],
-                   ui: UiStore.UiWorld): UiStore.UiWorld \ GameEngine.Game =
-        match viewTransform(scene) {
-            case None                 => ui
-            case Some((vt, vpW, vpH)) =>
-                let st   = Camera2D.applyToWorldPos(vt, MapSnapshot.cellCenter(view#targetCell));
-                let sa   = Camera2D.applyToWorldPos(vt, MapSnapshot.cellCenter(view#attackerCell));
-                let half = MapSnapshot.tileSize() / 2.0 * vt#scale#x;  // 半タイルを画面 px に換算
-                let pos  = anchorPos(st, sa, half, contentW, vpW, vpH);
-                UiStore.setAbs(panelPath(), pos, ui)
-        }
+    def reposition(view: ForecastView, contentW: Float64, _scene: Scene[NodeTag],
+                   ui: UiStore.UiWorld): UiStore.UiWorld \ {GameEngine.Game, CameraState.State} =
+        let (vt, vpW, vpH) = viewTransform();
+        let st   = Camera2D.applyToWorldPos(vt, MapSnapshot.cellCenter(view#targetCell));
+        let sa   = Camera2D.applyToWorldPos(vt, MapSnapshot.cellCenter(view#attackerCell));
+        let half = MapSnapshot.tileSize() / 2.0 * vt#scale#x;  // 半タイルを画面 px に換算
+        let pos  = anchorPos(st, sa, half, contentW, vpW, vpH);
+        UiStore.setAbs(panelPath(), pos, ui)
 
-    /// アクティブカメラの ViewTransform と viewport(design px) を取る。未登録なら None。
-    def viewTransform(scene: Scene[NodeTag]):
-            Option[(Camera2D.ViewTransform, Float64, Float64)] \ GameEngine.Game =
-        match Scene.getEngineNode(CameraScene.cameraPath(), scene) {
-            case Some(EngineNode.Camera2DWithState(cam, _)) =>
-                let camPos = Scene.globalPositionAt(CameraScene.cameraPath(), scene);
-                let vp = GameEngine.Game.getViewportRect();
-                let vt = Camera2D.getViewTransform(cam, camPos,
-                            {viewportWidth = vp#size#x, viewportHeight = vp#size#y});
-                Some((vt, vp#size#x, vp#size#y))
-            case _ => None
-        }
+    /// カメラの ViewTransform と viewport(design px) を取る。視点は `CameraState` resource が権威。
+    def viewTransform(): (Camera2D.ViewTransform, Float64, Float64) \ {GameEngine.Game, CameraState.State} =
+        let vp = GameEngine.Game.getViewportRect();
+        let vt = CameraState.viewTransform({viewportWidth = vp#size#x, viewportHeight = vp#size#y});
+        (vt, vp#size#x, vp#size#y)
 
     /// panel の左上画面座標を決める。対象 `st` の 右 → 上 → 下 を候補にし、
     /// 「画面内に収まり、攻撃側 `sa` に被らない」最初の候補を採用する（左は常設 UI と被るので候補外）。
@@ -470,8 +460,7 @@ mod BattlePanelUi {
     /// `PlayerAttack` + X: 攻撃をやめて行動メニュー (ActionSelect) に戻る。
     /// 待機にはせず、`attackTargetId` をクリアしてカーソルを選択中味方に戻す。
     pub def cancel(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, CursorState.State,
                               PlayerData.PartyQuery, World.Command} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         match SelectedPlayer.State.get()#id {

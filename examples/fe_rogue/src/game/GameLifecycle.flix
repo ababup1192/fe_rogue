@@ -62,7 +62,7 @@ mod GameLifecycle {
                 GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 CursorState.State, ArrowCursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State,
-                World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State} =
+                World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         match FloorSnapshot.State.get() {
             case Some(snap) =>
                 resetTurnQueues();
@@ -144,7 +144,7 @@ mod GameLifecycle {
                 GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 CursorState.State, ArrowCursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State,
-                World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State} =
+                World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         match FloorSnapshot.State.get() {
             case Some(snap) =>
                 resetTurnQueues();
@@ -228,7 +228,7 @@ mod GameLifecycle {
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State,
-                FloorSnapshot.State, World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State} =
+                FloorSnapshot.State, World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         resetTurnState();
         FloorProgress.State.put(FloorCatalog.firstFloorId(catalogs#floors));
         // リスタートは新しい run 扱い: 前回の party 構成を引き継がず再抽選する。
@@ -245,7 +245,7 @@ mod GameLifecycle {
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State,
-                FloorSnapshot.State, World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State} =
+                FloorSnapshot.State, World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         // 引き継ぐステータスを「現フロア退場前」に確保しておく。
         let carry = PlayerScene.snapshotCarry(scene);
         match FloorCatalog.nextFloorId(FloorProgress.State.get(), catalogs#floors) {

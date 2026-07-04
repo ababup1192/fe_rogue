@@ -7,9 +7,10 @@
 /// `snapToPlayer` は敵ターン終了 / キャンセルのたびに呼ばれ、カーソルを味方に
 /// 引き戻す責務を持つ。ホバー状態 (lastHoveredEnemyId) もここでリセットされる。
 ///
-/// `physicsProcess` 経由のキー入力 → 移動 → ホバー検知の経路は `GameEngine.Game`
-/// （キー押下） + `BoardQuery` + `GameLogger` + `Tween.Scheduler` の 4 種類の
-/// effect が絡む統合シナリオなので、ここでは扱わず実機での動作確認に委ねる。
+/// `physicsProcess` 経由のキー入力 → 移動 → ホバー検知の経路も `runPhysics` /
+/// `runPhysicsTween` / `runPhysicsThenVisual` ヘルパーが `GameEngine.Game`
+/// （キー押下） + `BoardQuery` + `GameLogger` 等の effect を mock/withState で
+/// 束ねて直接 pin する（下記「physicsProcess」節）。
 mod TestCursorScene {
 
     // ════════════════════════════════════════════════════════
@@ -167,8 +168,8 @@ mod TestCursorScene {
                         let scene = cursorAddPure(initial);
                         // カーソルを (10, 10) に移し、ホバー履歴も Some(99) に偽装
                         CursorState.State.put({gridPos = {x = 10, y = 10},
-                                               lastHoveredEnemyId = Some(99),
-                                               holdDir = None, holdSteps = 0});
+                                               lastHoveredEnemyId = Some(99)
+                                               | CursorState.State.get()});
                         let _ = CursorScene.snapToPlayer(scene);
                         cursorState()
                     } with CursorState.withState(rc)))));
@@ -221,13 +222,12 @@ mod TestCursorScene {
                 def get(id, k)           = k(PlayerScene.get(id, initial))
                 def getAll(k)            = k(PlayerScene.getAll(initial))
             }
-              with Tween.withScheduler(rc)
-              with AnimationPlayer.withScheduler(rc)
               with GameLogger.withLogger(rc)
               with EnemyTurn.withQueue(rc)
               with TurnPhase.withState(rc)
               with SelectedPlayer.withState(rc)
-              with CursorState.withState(rc));
+              with CursorState.withState(rc)
+              with RangeOverlayState.withState(rc));
             Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
         }
 
@@ -245,17 +245,16 @@ mod TestCursorScene {
             let staleSnapshot = sceneWithTwoPlayers((p0Pos, false), (p1Pos, false));
             // 新 scene: Player(0) が setWaited されたばかり (commitWaitedAndAdvance 内のローカル変数)
             let freshScene = sceneWithTwoPlayers((p0Pos, true), (p1Pos, false));
+            // 呼び出し側が新 scene から計算した「次のアクティブ味方の gridPos」。
+            // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
             let result = TestUnitFixtures.withMockPartyQuery(staleSnapshot, () -> run {
                 let scene = cursorAddPure(freshScene);
-                // 呼び出し側が新 scene から計算した「次のアクティブ味方の gridPos」
-                // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
-                let _ = run { PhaseTransitions.enterPlayerCursorAt(p1Pos, scene) }
-                    with handler World.Command { def emit(_c, k) = k() };
+                let _ = PhaseTransitions.enterPlayerCursorAt(p1Pos, scene);
                 cursorState()
-            } with Tween.withScheduler(rc)
-              with AnimationPlayer.withScheduler(rc)
-              with TurnPhase.withState(rc)
-              with CursorState.withState(rc));
+            } with TurnPhase.withState(rc)
+              with CursorState.withState(rc)
+              with RangeOverlayState.withState(rc)
+              with handler World.Command { def emit(_c, k) = k() });
             Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
         }
 
@@ -263,22 +262,15 @@ mod TestCursorScene {
     // physicsProcess — PlayerCursor フェーズの方向入力 / hold / 入力捨て
     // ════════════════════════════════════════════════════════
 
-    /// 手で Cursor ノードを scene に挿入する。`cursorAddPure` (= scene.json + GameEngine.Game) を
-    /// 経由しないので任意の `gridPos` / `holdDir` / `holdSteps` で初期化できる。
-    def cursorSceneAt(gridPos: {x = Int32, y = Int32},
-                       holdDir: Option[{x = Int32, y = Int32}],
-                       holdSteps: Int32): (Scene[NodeTag], CursorScene.Data) =
-        let marker = Marker2D.make(MapSnapshot.cellCenter(gridPos));
-        let data: CursorScene.Data = {
-            gridPos            = gridPos,
-            lastHoveredEnemyId = None,
-            holdDir            = holdDir,
-            holdSteps          = holdSteps
-        };
-        let scene = Scene.empty()
-            |> Scene.addNode("Cursor",
-                EngineNode.Marker2DWithState(marker, NodeTag.Cursor));
-        (scene, data)
+    /// カーソル論理状態の初期 Data を任意の `gridPos` / `holdDir` / `holdSteps` /
+    /// `snagRemaining` で組む。ノードは持たず（カーソルは resource 権威）、視覚系フィールド
+    /// （renderPos / tweens / visible）は `CursorState.initial()` の既定を継ぐ。
+    /// `snagRemaining > 0` は「駒に乗った直後の入力捨て」区間（`isSnagging`）を表す。
+    def cursorDataAt(gridPos: {x = Int32, y = Int32},
+                      holdDir: Option[{x = Int32, y = Int32}],
+                      holdSteps: Int32, snagRemaining: Float64): CursorScene.Data =
+        {gridPos = gridPos, holdDir = holdDir, holdSteps = holdSteps,
+         snagRemaining = snagRemaining | CursorState.initial()}
 
     /// 13×13 床のみ・駒なしのテスト用 Board。`clampToMap` で端マスを判定できる範囲。
     def testBoard(): Board =
@@ -293,32 +285,124 @@ mod TestCursorScene {
 
     /// 指定フェーズで `physicsProcess` を 1 フレーム回し、Cursor の Data を取り出す。
     /// physicsProcess は phase 分岐するので、テスト側でも phase を立ててから呼ぶ。
-    /// `PlayerAttack` 用テストも同じ runner を使う。
-    def runPhysics(phase: TurnPhase.Phase, initial: CursorScene.Data,
-                    scene: Scene[NodeTag]): CursorScene.Data
+    /// `PlayerAttack` 用テストも同じ runner を使う。カーソルは resource 権威で、
+    /// 位置・hold・snag は `CursorState` に seed してから回す（ノード/パスは不要）。
+    /// PlayerAttack の `targetsInRange` が範囲 resource を読むため `RangeOverlayState` も供給する。
+    def runPhysics(phase: TurnPhase.Phase, initial: CursorScene.Data): CursorScene.Data
             \ {GameEngine.Game, BoardQuery,
-                Tween.Scheduler, AnimationPlayer.Scheduler,
                 GameLogger.GameLogger,
                 EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
-        // カーソル論理状態は resource 権威。初期 gridPos / hold をここで seed する。
+        // カーソル論理状態は resource 権威。初期 gridPos / hold / snag をここで seed する。
         CursorState.State.put(initial);
         TurnPhase.State.put(phase);
-        let path = CursorScene.cursorPath();
-        match Scene.getEngineNode(path, scene) {
-            case Some(node) =>
-                // physicsProcess は WeaponSelect 分岐用に SelectedPlayer.State / UiWorldState.State を
-                // 要求するので、ここで discharge する（PlayerCursor / PlayerAttack 分岐では未使用なので
-                // 値は任意）。physicsProcess が World 位置を読む（空 World → scene fallback で従来どおり）。
-                let (_, _) =
-                    TestUnitFixtures.withSelectedPlayer(0, () ->
-                        run { CursorScene.physicsProcess(Duration.seconds(0.016), node, path, scene) }
+        // physicsProcess は WeaponSelect 分岐用に SelectedPlayer.State / UiWorldState.State を
+        // 要求するので、ここで discharge する（PlayerCursor / PlayerAttack 分岐では未使用なので
+        // 値は任意）。physicsProcess が World 位置を読む（空 World → scene fallback で従来どおり）。
+        region rc {
+            let _ =
+                TestUnitFixtures.withSelectedPlayer(0, () ->
+                    TestUnitFixtures.withRangeOverlay(rc, () ->
+                        run { CursorScene.physicsProcess(Duration.seconds(0.016), Scene.empty()) }
                             with handler World.WorldQuery { def get(k) = k(World.empty()) }
                             with handler UiWorldState.State {
                                 def get(k)      = k(UiStore.empty())
                                 def put(_ui, k) = k()
-                            });
-                CursorScene.getCursorData()
-            case _ => bug!("Cursor not found at cursorPath()")
+                            }));
+            CursorScene.getCursorData()
+        }
+
+    /// 盤面レス scene で `stepOnBoard` を 1 フレーム回す runner。BoardQuery は本番
+    /// （`WorldDriver.withWorld`）と同じく「要求されたとき scene から TileMapLayer を読む」
+    /// 遅延 handler にする — ゲートが無ければ Map 不在の `World.toBoard` が bug! で落ちるため、
+    /// 「board() が要求されないこと」まで含めて pin できる。
+    def runStepOnBoardNoMap(initial: CursorScene.Data): CursorScene.Data
+            \ {GameEngine.Game,
+                GameLogger.GameLogger,
+                EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
+        CursorState.State.put(initial);
+        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
+        region rc {
+            let _ =
+                TestUnitFixtures.withSelectedPlayer(0, () ->
+                    TestUnitFixtures.withRangeOverlay(rc, () ->
+                        run { CursorScene.stepOnBoard(Duration.seconds(0.016), Scene.empty()) }
+                            with handler BoardQuery {
+                                def board(k) = k(World.toBoard(World.empty(), Scene.empty()))
+                            }
+                            with handler World.WorldQuery { def get(k) = k(World.empty()) }
+                            with handler UiWorldState.State {
+                                def get(k)      = k(UiStore.empty())
+                                def put(_ui, k) = k()
+                            }));
+            CursorScene.getCursorData()
+        }
+
+    /// PlayerCursor で 1 フレーム `physicsProcess` を回した直後の
+    /// (gridPos, `isTweening`) を取り出す（stepVisual は回さない）。
+    /// 移動で張った補間が同フレームの論理 put で clobber されず残るかを pin する用途。
+    def runPhysicsTween(initial: CursorScene.Data): (Int32, Int32, Bool)
+            \ {GameEngine.Game, BoardQuery,
+                GameLogger.GameLogger,
+                EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
+        CursorState.State.put(initial);
+        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
+        region rc {
+            TestUnitFixtures.withSelectedPlayer(0, () ->
+                TestUnitFixtures.withRangeOverlay(rc, () ->
+                    run {
+                        let _ = CursorScene.physicsProcess(Duration.seconds(0.016), Scene.empty());
+                        let d = CursorState.State.get();
+                        (d#gridPos#x, d#gridPos#y, CursorState.isTweening())
+                    }
+                        with handler World.WorldQuery { def get(k) = k(World.empty()) }
+                        with handler UiWorldState.State {
+                            def get(k)      = k(UiStore.empty())
+                            def put(_ui, k) = k()
+                        }))
+        }
+
+    /// PlayerCursor で 1 マス移動 → `stepVisual(visualDt)` を 1 回回し、
+    /// (gridPos, `isTweening`, renderPos) を取り出す。補間完了後の視覚追従と
+    /// 入力凍結解除を pin する用途。
+    def runPhysicsThenVisual(initial: CursorScene.Data, visualDt: Float64):
+            (Int32, Int32, Bool, Float64, Float64)
+            \ {GameEngine.Game, BoardQuery,
+                GameLogger.GameLogger,
+                EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
+        CursorState.State.put(initial);
+        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
+        region rc {
+            TestUnitFixtures.withSelectedPlayer(0, () ->
+                TestUnitFixtures.withRangeOverlay(rc, () ->
+                    run {
+                        let _ = CursorScene.physicsProcess(Duration.seconds(0.016), Scene.empty());
+                        let _ = CursorScene.stepVisual(Duration.seconds(visualDt), Scene.empty());
+                        let d = CursorState.State.get();
+                        (d#gridPos#x, d#gridPos#y, CursorState.isTweening(),
+                         d#renderPos#x, d#renderPos#y)
+                    }
+                        with handler World.WorldQuery { def get(k) = k(World.empty()) }
+                        with handler UiWorldState.State {
+                            def get(k)      = k(UiStore.empty())
+                            def put(_ui, k) = k()
+                        }))
+        }
+
+    /// 盤面（Map）が無い画面（Title 等）では `stepOnBoard` が polling ごと no-op する。
+    /// TurnPhase が起動時デフォルトの `PlayerCursor` のまま盤面レス画面で方向キーを保持しても、
+    /// カーソルは動かず BoardQuery（Map 不在で bug!）にも触れない（実機の起動時クラッシュの pin）。
+    @Test
+    def testStepOnBoardNoopsWithoutMap(): Unit \ Assert =
+        region rc {
+            let initial = cursorDataAt({x = 5, y = 5}, None, 0, 0.0);
+            let data = run {
+                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
+                    TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                        runStepOnBoardNoMap(initial)))
+            } with GameLogger.withLogger(rc)
+              with TurnPhase.withState(rc)
+              with CursorState.withState(rc);
+            Assert.assertEq(expected = (5, 5), (data#gridPos#x, data#gridPos#y))
         }
 
     /// Up キーを押下した 1 フレーム後、cursor が y 方向に 1 マス分減ったセルに進む
@@ -326,33 +410,74 @@ mod TestCursorScene {
     @Test
     def testPhysicsProcessMovesCursorUpOnUpKey(): Unit \ Assert =
         region rc {
-            let (scene, initial) = cursorSceneAt({x = 5, y = 5}, None, 0);
+            let initial = cursorDataAt({x = 5, y = 5}, None, 0, 0.0);
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withNoopTween(() ->
-                            TestUnitFixtures.withNoopAnim(() ->
-                                TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
-                                    runPhysics(TurnPhase.Phase.PlayerCursor, initial, scene))))))
+                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                            runPhysics(TurnPhase.Phase.PlayerCursor, initial))))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);
             Assert.assertEq(expected = (5, 4), (data#gridPos#x, data#gridPos#y))
         }
 
-    /// snag アニメ再生中 (isPlaying = true) は方向キーを完全無視する。
+    /// 【回帰】1 マス移動で張ったスライド補間が、同フレームの論理 put で消えない。
+    /// 修正前は `stepFreeMovement` の最終 put がフレーム冒頭スナップショット（tweens 空）
+    /// を丸ごと書き戻し、`moveStep`→`startMove` が張った tween を即上書きしていた。
+    /// 結果 `isTweening` が常に false のまま → `stepVisual` が renderPos を進めず視覚カーソルが
+    /// 固まる一方 gridPos だけ先行し、実機の「カーソルが動かない」「味方に乗せて Enter しても
+    /// 確定メニューが出る」両症状の根になっていた。ここでは移動直後に補間が生存する
+    /// （`isTweening == true`）ことを pin する。
+    @Test
+    def testPhysicsProcessStartsTweenThatSurvivesLogicalPut(): Unit \ Assert =
+        region rc {
+            let initial = cursorDataAt({x = 5, y = 5}, None, 0, 0.0);
+            let (gx, gy, tweening) = run {
+                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
+                    TestUnitFixtures.withMockBoard(testBoard(), () ->
+                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                            runPhysicsTween(initial))))
+            } with GameLogger.withLogger(rc)
+              with TurnPhase.withState(rc)
+              with CursorState.withState(rc);
+            Assert.assertEq(expected = (5, 4, true), (gx, gy, tweening))
+        }
+
+    /// 【回帰】移動後に視覚 tick を十分な dt で回すと補間が完了し、
+    /// (1) `isTweening` が false に戻って再入力を受け付ける（凍結解除 = 症状2）、
+    /// (2) renderPos が移動先セル中心へ追従して gridPos と一致する（視覚と論理の同期 =
+    ///     症状1 の「見た目は味方の上・実際は別セル」誤爆の解消）。
+    /// 修正前は補間が clobber され renderPos が始点に固定されたままだった。
+    @Test
+    def testVisualTickCatchesRenderPosUpToGridAndUnfreezes(): Unit \ Assert =
+        region rc {
+            let initial = cursorDataAt({x = 5, y = 5}, None, 0, 0.0);
+            let (gx, gy, tweening, rpx, rpy) = run {
+                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
+                    TestUnitFixtures.withMockBoard(testBoard(), () ->
+                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                            runPhysicsThenVisual(initial, 1.0))))
+            } with GameLogger.withLogger(rc)
+              with TurnPhase.withState(rc)
+              with CursorState.withState(rc);
+            let target = MapSnapshot.cellCenter({x = 5, y = 4});
+            Assert.assertEq(
+                expected = (5, 4, false, target#x, target#y),
+                (gx, gy, tweening, rpx, rpy))
+        }
+
+    /// snag 区間中 (snagRemaining > 0 = isSnagging) は方向キーを完全無視する。
     /// Up を押しても gridPos は (5,5) のまま動かない。
     @Test
-    def testPhysicsProcessNoopsWhilePlayingAnimation(): Unit \ Assert =
+    def testPhysicsProcessNoopsWhileSnagging(): Unit \ Assert =
         region rc {
-            let (scene, initial) = cursorSceneAt({x = 5, y = 5}, None, 0);
+            let initial = cursorDataAt({x = 5, y = 5}, None, 0, 1.0);
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withNoopTween(() ->
-                            TestUnitFixtures.withPlayingAnim(() ->
-                                TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
-                                    runPhysics(TurnPhase.Phase.PlayerCursor, initial, scene))))))
+                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                            runPhysics(TurnPhase.Phase.PlayerCursor, initial))))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);
@@ -365,14 +490,12 @@ mod TestCursorScene {
     @Test
     def testPhysicsProcessClearsHoldWhenNoKeyPressed(): Unit \ Assert =
         region rc {
-            let (scene, initial) = cursorSceneAt({x = 5, y = 5}, Some(Vec2i.up()), 3);
+            let initial = cursorDataAt({x = 5, y = 5}, Some(Vec2i.up()), 3, 0.0);
             let data = run {
                 TestUnitFixtures.withMockGameKeys(_ -> false, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withNoopTween(() ->
-                            TestUnitFixtures.withNoopAnim(() ->
-                                TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
-                                    runPhysics(TurnPhase.Phase.PlayerCursor, initial, scene))))))
+                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                            runPhysics(TurnPhase.Phase.PlayerCursor, initial))))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);
@@ -392,33 +515,29 @@ mod TestCursorScene {
     @Test
     def testPhysicsProcessAttackNoopsWhenNoTargetsInRange(): Unit \ Assert =
         region rc {
-            let (scene, initial) = cursorSceneAt({x = 3, y = 3}, None, 0);
+            let initial = cursorDataAt({x = 3, y = 3}, None, 0, 0.0);
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Down, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withNoopTween(() ->
-                            TestUnitFixtures.withNoopAnim(() ->
-                                TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
-                                    runPhysics(TurnPhase.Phase.PlayerAttack, initial, scene))))))
+                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                            runPhysics(TurnPhase.Phase.PlayerAttack, initial))))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);
             Assert.assertEq(expected = (3, 3), (data#gridPos#x, data#gridPos#y))
         }
 
-    /// 攻撃フェーズで snag アニメ再生中はターゲット切替も走らない。
+    /// 攻撃フェーズで snag 区間中 (snagRemaining > 0) はターゲット切替も走らない。
     /// Down を押しても gridPos は (3,3) のまま。
     @Test
-    def testPhysicsProcessAttackNoopsWhilePlayingAnimation(): Unit \ Assert =
+    def testPhysicsProcessAttackNoopsWhileSnagging(): Unit \ Assert =
         region rc {
-            let (scene, initial) = cursorSceneAt({x = 3, y = 3}, None, 0);
+            let initial = cursorDataAt({x = 3, y = 3}, None, 0, 1.0);
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Down, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withNoopTween(() ->
-                            TestUnitFixtures.withPlayingAnim(() ->
-                                TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
-                                    runPhysics(TurnPhase.Phase.PlayerAttack, initial, scene))))))
+                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                            runPhysics(TurnPhase.Phase.PlayerAttack, initial))))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);
@@ -519,7 +638,8 @@ mod TestCursorScene {
                     let _ = CursorScene.snapToFirstTradeCellOrPlayer(withRange);
                     cursorPosOf()
                 })
-            } with CursorState.withState(rc);
+            } with CursorState.withState(rc)
+              with RangeOverlayState.withState(rc);
             Assert.assertEq(expected = (5, 4), result)
         }
 
@@ -538,7 +658,8 @@ mod TestCursorScene {
                     let _ = CursorScene.snapToFirstTradeCellOrPlayer(withRange);
                     cursorPosOf()
                 })
-            } with CursorState.withState(rc);
+            } with CursorState.withState(rc)
+              with RangeOverlayState.withState(rc);
             Assert.assertEq(expected = (6, 5), result)
         }
 

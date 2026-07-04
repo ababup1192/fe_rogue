@@ -54,7 +54,8 @@ mod TestTradeRangeScene {
 
     /// `TradeRangeScene.cells` の戻りを (x, y) タプルに整形する。
     /// レコードフィールドの直接比較を避け、assertEq で 1 行で比べやすくする。
-    def cellTuples(scene: Scene[NodeTag]): List[(Int32, Int32)] =
+    /// 緑マスは範囲 resource が権威なので `RangeOverlayState.State` を読む。
+    def cellTuples(scene: Scene[NodeTag]): List[(Int32, Int32)] \ RangeOverlayState.State =
         List.map(c -> (c#x, c#y), TradeRangeScene.cells(scene))
 
     // ════════════════════════════════════════════════════════
@@ -71,32 +72,40 @@ mod TestTradeRangeScene {
     /// 期待 (id 昇順 = (5,4) → (4,5) → (6,5) → (5,6)):
     @Test
     def testShowPaintsOnlyOrthogonalAllyCells(): Unit \ Assert =
-        let self     = buildPartyMember(0, {x = 5, y = 5});
-        let northern = buildPartyMember(1, {x = 5, y = 4});
-        let western  = buildPartyMember(2, {x = 4, y = 5});
-        let eastern  = buildPartyMember(3, {x = 6, y = 5});
-        let southern = buildPartyMember(4, {x = 5, y = 6});
-        let diagSE   = buildPartyMember(5, {x = 6, y = 6});
-        let scene = sceneWithParty(self :: northern :: western ::
-                                    eastern :: southern :: diagSE :: Nil);
-        let after = TestUnitFixtures.withSelectedPlayer(0, () ->
-            TestUnitFixtures.withMockPartyQuery(scene, () ->
-                TradeRangeScene.show(scene)));
-        Assert.assertEq(
-            expected = (5, 4) :: (4, 5) :: (6, 5) :: (5, 6) :: Nil,
-            cellTuples(after))
+        region rc {
+            TestUnitFixtures.withRangeOverlay(rc, () -> {
+                let self     = buildPartyMember(0, {x = 5, y = 5});
+                let northern = buildPartyMember(1, {x = 5, y = 4});
+                let western  = buildPartyMember(2, {x = 4, y = 5});
+                let eastern  = buildPartyMember(3, {x = 6, y = 5});
+                let southern = buildPartyMember(4, {x = 5, y = 6});
+                let diagSE   = buildPartyMember(5, {x = 6, y = 6});
+                let scene = sceneWithParty(self :: northern :: western ::
+                                            eastern :: southern :: diagSE :: Nil);
+                let after = TestUnitFixtures.withSelectedPlayer(0, () ->
+                    TestUnitFixtures.withMockPartyQuery(scene, () ->
+                        TradeRangeScene.show(scene)));
+                Assert.assertEq(
+                    expected = (5, 4) :: (4, 5) :: (6, 5) :: (5, 6) :: Nil,
+                    cellTuples(after))
+            })
+        }
 
     /// 隣接味方が居なければ overlay は作られず `cells` は空 (= Nil)。
     /// 防御的: 描画ノードを無駄に作らない。
     @Test
     def testShowNoOpWhenNoAdjacentAlly(): Unit \ Assert =
-        let self   = buildPartyMember(0, {x = 5, y = 5});
-        let diagSE = buildPartyMember(1, {x = 6, y = 6});
-        let scene = sceneWithParty(self :: diagSE :: Nil);
-        let after = TestUnitFixtures.withSelectedPlayer(0, () ->
-            TestUnitFixtures.withMockPartyQuery(scene, () ->
-                TradeRangeScene.show(scene)));
-        Assert.assertEq(expected = Nil, cellTuples(after))
+        region rc {
+            TestUnitFixtures.withRangeOverlay(rc, () -> {
+                let self   = buildPartyMember(0, {x = 5, y = 5});
+                let diagSE = buildPartyMember(1, {x = 6, y = 6});
+                let scene = sceneWithParty(self :: diagSE :: Nil);
+                let after = TestUnitFixtures.withSelectedPlayer(0, () ->
+                    TestUnitFixtures.withMockPartyQuery(scene, () ->
+                        TradeRangeScene.show(scene)));
+                Assert.assertEq(expected = Nil, cellTuples(after))
+            })
+        }
 
     // ════════════════════════════════════════════════════════
     // clear — overlay ノードを取り除く
@@ -106,16 +115,20 @@ mod TestTradeRangeScene {
     /// TradeTargetSelect → 他フェーズへ抜けるとき overlay を必ず片付けられることの保険。
     @Test
     def testClearRemovesOverlay(): Unit \ Assert =
-        let self     = buildPartyMember(0, {x = 5, y = 5});
-        let northern = buildPartyMember(1, {x = 5, y = 4});
-        let scene = sceneWithParty(self :: northern :: Nil);
-        let withRange = TestUnitFixtures.withSelectedPlayer(0, () ->
-            TestUnitFixtures.withMockPartyQuery(scene, () ->
-                TradeRangeScene.show(scene)));
-        let cleared = TradeRangeScene.clear(withRange);
-        // (show 後は 1 セル / clear 後は 0 セル) を 1 タプルで pin
-        Assert.assertEq(
-            expected = (1, 0),
-            (List.length(TradeRangeScene.cells(withRange)),
-             List.length(TradeRangeScene.cells(cleared))))
+        region rc {
+            TestUnitFixtures.withRangeOverlay(rc, () -> {
+                let self     = buildPartyMember(0, {x = 5, y = 5});
+                let northern = buildPartyMember(1, {x = 5, y = 4});
+                let scene = sceneWithParty(self :: northern :: Nil);
+                let withRange = TestUnitFixtures.withSelectedPlayer(0, () ->
+                    TestUnitFixtures.withMockPartyQuery(scene, () ->
+                        TradeRangeScene.show(scene)));
+                // show 後は 1 セル。clear は resource を空へ戻すので、その後の cells は 0 セル。
+                let shownCount = List.length(TradeRangeScene.cells(withRange));
+                let cleared = TradeRangeScene.clear(withRange);
+                Assert.assertEq(
+                    expected = (1, 0),
+                    (shownCount, List.length(TradeRangeScene.cells(cleared))))
+            })
+        }
 }

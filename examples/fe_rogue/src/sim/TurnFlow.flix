@@ -19,10 +19,10 @@ mod TurnFlow {
     /// 「waited にせず先へ進む」「レベルアップ割り込みを見落とす」バグが起きやすい。
     /// それを防ぐ単一割り込み保証点としてここに集約する。
     pub def commitWaitedAndAdvance(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger,
+            Scene[NodeTag] \ {GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery} =
+                              SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery,
+                              RangeOverlayState.State} =
         // レベルアップ表示待ちの味方が居れば、ターンを進めずステータス変化パネル (LevelUpView) へ割り込む。
         // パネルを閉じると LevelUpPanelUi.confirm が pendingLevelUp を消して再度ここを呼ぶので、
         // そのとき保留が無くなって通常の確定・前進に進む。Kill / Counter / Commit の 3 経路すべてが
@@ -66,7 +66,7 @@ mod TurnFlow {
     pub def commitAllWaitedAndAdvance(allowResume: Bool, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State, GatherResume.State,
-                              World.Command, World.WorldQuery} =
+                              World.Command, World.WorldQuery, RangeOverlayState.State} =
         let resume = allowResume and SelectedPlayer.State.get()#gatherActive;
         // waited は World 直読み（scene twin は持たない）。
         let w0 = World.WorldQuery.get();
@@ -86,10 +86,9 @@ mod TurnFlow {
     ///   - 自分の攻撃中（`SelectedPlayer` あり）→ `commitWaitedAndAdvance` でターンを確定・続行。
     ///   - 敵ターン中の反撃由来（`SelectedPlayer` なし）→ 敵ターンに戻って続行（キューはそのまま）。
     pub def resumeAfterLevelUpView(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              GameLogger.GameLogger, EnemyTurn.Queue,
+            Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State, CursorState.State,
-                              World.Command, World.WorldQuery} =
+                              World.Command, World.WorldQuery, RangeOverlayState.State} =
         match SelectedPlayer.State.get()#id {
             case Some(_) => commitWaitedAndAdvance(scene)
             case None    => PhaseTransitions.enterEnemyTurn(scene)

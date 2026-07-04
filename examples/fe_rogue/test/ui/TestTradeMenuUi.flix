@@ -103,11 +103,9 @@ mod TestTradeMenuUi {
         {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuUi.confirmAt(paneIndex, TradeMenuUi.emptySlotEntry(), s#scene)) | s}
 
     /// X を押す (キャンセル / pick 解除)。
-    pub def pressXAt(s: TradeScenario): TradeScenario \ {TurnPhase.State, TradeMenuState.State} =
-        // 遷移が view 状態 Cmd を emit するため捨て handler で吸収。
-        let closed = run { TradeMenuUi.cancelCurrent(s#scene) }
-            with handler World.Command { def emit(_c, k) = k() };
-        {scene = closed | s}
+    pub def pressXAt(s: TradeScenario):
+            TradeScenario \ {TurnPhase.State, TradeMenuState.State, RangeOverlayState.State} =
+        {scene = TradeMenuUi.cancelCurrent(s#scene) | s}
 
     /// ← (左矢印) = focus を 1 つ左へ。
     pub def moveFocusLeft(s: TradeScenario): TradeScenario \ TradeMenuState.State =
@@ -179,12 +177,15 @@ mod TestTradeMenuUi {
     def runScenario(rc: Region[r], initialPhase: TurnPhase.Phase, s0: TradeScenario,
                      thunk: Unit -> a \ ef):
             (a, TurnPhase.Phase) \
-            (ef - GameLogger.GameLogger - SelectedPlayer.State - TurnPhase.State - TradeMenuState.State + r) =
+            (ef - GameLogger.GameLogger - SelectedPlayer.State - TurnPhase.State - TradeMenuState.State
+                - RangeOverlayState.State + r) =
         TestUnitFixtures.withTradeMenu(rc, () -> {
             TradeMenuState.State.put(s0#panel);   // セッション開始状態を seed
+            // 「こうかん」キャンセルは範囲 resource を掃除するため RangeOverlayState を供給する。
             TestUnitFixtures.withPhaseRef(rc, initialPhase, () ->
                 TestUnitFixtures.withMockGameLogger(() ->
-                    TestUnitFixtures.withSelectedPlayer(0, thunk)))
+                    TestUnitFixtures.withSelectedPlayer(0, () ->
+                        TestUnitFixtures.withRangeOverlay(rc, thunk))))
         })
 
     // ════════════════════════════════════════════════════════

@@ -20,7 +20,7 @@ mod PlayerMovementDriver {
                         (EngineNode[NodeTag], Scene[NodeTag])
                         \ {GameEngine.Game, BoardQuery, GameLogger.GameLogger,
                            SelectedPlayer.State, World.Command, World.WorldQuery,
-                           ItemPickupPopupState.State} =
+                           ItemPickupPopupState.State, RangeOverlayState.State} =
         stepFor(selectAllowedPred(TurnPhase.Phase.PlayerMoving, scene),
                 PlayerScene.selectedSlideDuration(), node, path, scene)
 
@@ -34,7 +34,7 @@ mod PlayerMovementDriver {
                        (EngineNode[NodeTag], Scene[NodeTag])
                        \ {GameEngine.Game, BoardQuery, GameLogger.GameLogger,
                           SelectedPlayer.State, World.Command, World.WorldQuery,
-                          ItemPickupPopupState.State} =
+                          ItemPickupPopupState.State, RangeOverlayState.State} =
         let lord = PlayerScene.lordId();
         // 移動前位置は World.posOf（stepFor が emit する **前**の読み＝pre-move。scene twin は持たない）。
         let prev = World.posOf(World.EntityRef.Player(lord), World.WorldQuery.get())
@@ -105,14 +105,18 @@ mod PlayerMovementDriver {
     /// physicsStep/gatherStep は共通 stepFor に述語を渡す構造のため、フェーズ固有の制限を
     /// 呼び出し元ごとに重複して書かずに済む。driver にハードコードせず関数化することで拡張にも開く。
     def selectAllowedPred(phase: TurnPhase.Phase,
-                           scene: Scene[NodeTag]): ({x = Int32, y = Int32} -> Bool) \ World.WorldQuery =
+                           scene: Scene[NodeTag]): ({x = Int32, y = Int32} -> Bool) \ {World.WorldQuery, RangeOverlayState.State} =
+        // 移動範囲のメンバーシップは範囲 resource から 1 度だけ読んで、純粋な述語に閉じ込める
+        // （`stepFor` は純粋述語 `{x,y} -> Bool` を取る＝毎セル resource を触らせない）。
+        let reach = MoveRangeScene.reachable(scene);
+        let inReach = cell -> List.exists(c -> c#x == cell#x and c#y == cell#y, reach);
         match phase {
-            case TurnPhase.Phase.PlayerMoving => c -> MoveRangeScene.isInRange(c, scene)
+            case TurnPhase.Phase.PlayerMoving => inReach
             // 集合: 主人公は集合開始位置を原点に固定した移動範囲(青マス)内だけ動ける。
             // 待機中(行動済み)の味方マスへは進めない（すれ違い不可。＝押し出しも起きない）。
             case TurnPhase.Phase.GatherMove   =>
                 let waited = waitedAllyCells(scene);
-                c -> MoveRangeScene.isInRange(c, scene) and not Board.containsCell(c, waited)
+                cell -> inReach(cell) and not Board.containsCell(cell, waited)
             case _                            => _ -> true
         }
 

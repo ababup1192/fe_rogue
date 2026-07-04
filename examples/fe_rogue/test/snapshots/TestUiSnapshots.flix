@@ -522,8 +522,13 @@ mod TestUiSnapshots {
         spawnUi(BattlePanelUi.specPath());
         BattlePanelState.withState(rc, () ->
           UnitHPBarRender.withForecast(rc, () ->
-            SnapshotHarness.withFullMocks(cfg, () ->
-              discard BattlePanelUi.frameStep(dt(), cfg#scene))))
+            CameraState.withState(rc, () ->
+              SnapshotHarness.withFullMocks(cfg, () -> {
+                // 本番の PlayerAttack ではカメラがカーソル（攻撃対象マス）へ寄る。panel は
+                // 対象の画面近傍へ出るので、カメラをカーソルマスへスナップして本番同様の配置を撮る。
+                CameraState.snapTo(MapSnapshot.cellCenter({x = 1, y = 2}));
+                discard BattlePanelUi.frameStep(dt(), cfg#scene)
+              }))))
     }
 
     /// レベルアップのステータス変化パネル（増分表示の途中）: 味方に保留レベルアップ結果を持たせ、

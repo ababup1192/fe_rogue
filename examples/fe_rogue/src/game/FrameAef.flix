@@ -10,37 +10,30 @@
 /// `FrameAef.ProcessT` は `process` 用 (signal drain や per-Scene tick で必要な追加 effect 含む)。
 mod FrameAef {
 
-    /// `ready` / `physicsProcess` 用の Aef 集合 (`FrameAef.T`)。Player.physicsProcess / Cursor.physicsProcess
-    /// などが要求する集合 (BoardQuery で盤面参照、Tween でアニメ進行、TurnPhase で gating 等)。
+    /// `physicsProcess` 用の Aef 集合 (`FrameAef.T`)。engine の physicsProcess 巡回で動くのは
+    /// Player ノードだけ（`PlayerMovementDriver.physicsStep` / `gatherStep`）なので、その集合に一致させる。
     /// `World.WorldQuery`: waited の sim reader（PlayerMovementDriver の集合/追従判定）が
-    /// frame 内の権威 World を読むため許可。gameLoop 全体が
-    /// WorldQuery handler 内なので physicsProcess でも取得できる。
+    /// frame 内の権威 World を読むため許可。gameLoop 全体が WorldQuery handler 内なので取得できる。
     pub type alias T = {GameEngine.Game, BoardQuery,
-                         EnemyData.RosterQuery,
-                         Tween.Scheduler, AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
-                         TurnPhase.State, SelectedPlayer.State, CursorState.State, World.Command,
+                         TurnPhase.State, SelectedPlayer.State, World.Command,
                          World.WorldQuery,
+                         // 移動範囲の clamp 述語（selectAllowedPred→MoveRangeScene.isInRange）が範囲 resource を読む。
+                         RangeOverlayState.State,
                          // 手動移動の着地自動取得（stepFor→autoPickupOrLog）が中央ポップアップの
                          // 取得音予約/表示を State resource に書くため。
-                         ItemPickupPopupState.State,
-                         // WeaponSelect 中の左右ターゲットサイクル（CursorScene.stepWeaponSelectCycle）が
-                         // フォーカス中武器を World-entity UI の選択カーソルから読む
-                         // （WeaponSelectUi.hoveredWeaponIndex）ため。
-                         UiWorldState.State}
+                         ItemPickupPopupState.State}
 
-    /// `process` redef の分岐先が消費する Aef 集合 (`FrameAef.ProcessT`)。
-    /// 分岐先は `CombatDriver.process`（Player/Enemy の drainSignals で attack:hit /
-    /// death_blink / attack_lunge を解決）のみ（ActionMenu/WeaponSelect/GameOverMenu/SuspendConfirm/
-    /// UnitCard/EnemyCard/BattlePanel/LevelUpPanel は World-entity UI へ移行済みで gameLoop の
-    /// 明示 frameStep から駆動する）。
+    /// `Node[NodeTag]` の関連型 `ProcessAef` に束ねる Aef 集合 (`FrameAef.ProcessT`)。
+    /// trait Node が関連型を要求するための宣言専用で、engine の process 巡回自体は gameLoop から
+    /// 呼ばない（Player/Enemy の戦闘シグナル解決は `CombatDriver.stepEntities` が明示 System として
+    /// 回す＝この集合の上位互換）。
     ///   - `EnemyTurn.Queue` / `Pacing.State` / `GameOverRequest` / `ThiefDropRequest` /
-    ///     `World.RngDraw` は `CombatDriver.process` が要求（命中ロールは RngDraw chokepoint 経由）。
-    /// 他の consumer が消える前の効果集合をそのまま残し、`dispatchEntities` は `checked_ecast` で
-    /// `CombatDriver.process` の効果をこの上位集合へ widen する。
+    ///     `World.RngDraw` は `CombatDriver.process`（drainSignals で attack:hit / death_blink /
+    ///     attack_lunge を解決）が要求（命中ロールは RngDraw chokepoint 経由）。
     pub type alias ProcessT = {GameEngine.Game, GameEngine.Audio,
                                 PlayerData.PartyQuery, EnemyData.RosterQuery,
-                                Tween.Scheduler, AnimationPlayer.Scheduler,
+                                AnimationPlayer.Scheduler,
                                 GameLogger.GameLogger,
                                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                                 CustomEffects.GameOverRequest,

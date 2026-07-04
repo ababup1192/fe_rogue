@@ -33,11 +33,6 @@ mod TestAnimEvent {
         let s = AnimEvent.tagToString(Tag.AttackLunge);
         Assert.assertEq(expected = Some(Tag.AttackLunge), AnimEvent.parseTag(s))
 
-    @Test
-    def testRoundTripSnag(): Unit \ Assert =
-        let s = AnimEvent.tagToString(Tag.Snag);
-        Assert.assertEq(expected = Some(Tag.Snag), AnimEvent.parseTag(s))
-
     // ════════════════════════════════════════════════════════
     // 防御的: 未知文字列は None
     // ════════════════════════════════════════════════════════

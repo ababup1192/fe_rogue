@@ -42,7 +42,7 @@ mod PhaseTransitions {
 
     /// 味方系 4 range (Move / MoveAttack / PlayerAttack / TradeRange) を全消し。
     /// PlayerCursor / PlayerCursorAt / EnemyTurn が共通で使う「味方の範囲表示を全部閉じる」操作。
-    def clearAllPlayerRanges(scene: Scene[NodeTag]): Scene[NodeTag] =
+    def clearAllPlayerRanges(scene: Scene[NodeTag]): Scene[NodeTag] \ RangeOverlayState.State =
         scene
             |> MoveRangeScene.clear
             |> MoveAttackRangeScene.clear
@@ -51,7 +51,7 @@ mod PhaseTransitions {
 
     /// 移動系 2 range (Move / MoveAttack) を消す。PlayerAttackRange は呼び出し側 (`show`) が
     /// 引き継いで再構築するので、ここでは触らない。PlayerAttack 進入で使う。
-    def clearMoveOnlyRanges(scene: Scene[NodeTag]): Scene[NodeTag] =
+    def clearMoveOnlyRanges(scene: Scene[NodeTag]): Scene[NodeTag] \ RangeOverlayState.State =
         scene
             |> MoveRangeScene.clear
             |> MoveAttackRangeScene.clear
@@ -64,9 +64,8 @@ mod PhaseTransitions {
     /// を読むため、同フレーム内の waited 更新が反映されず「いま waited にした駒」を
     /// まだアクティブと誤判定してしまう。
     pub def enterPlayerCursor(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
-                              PlayerData.PartyQuery, World.Command} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                              PlayerData.PartyQuery, World.Command, RangeOverlayState.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         clearAllPlayerRanges(scene)
             |> EnemyScene.showAllActive        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
@@ -79,8 +78,7 @@ mod PhaseTransitions {
     /// 都合で stale な味方を返してしまうケース (`commitWaitedAndAdvance` 直後) に使う。
     pub def enterPlayerCursorAt(target: {x = Int32, y = Int32},
                                   scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, CursorState.State, World.Command} =
+            Scene[NodeTag] \ {TurnPhase.State, CursorState.State, World.Command, RangeOverlayState.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         clearAllPlayerRanges(scene)
             |> EnemyScene.showAllActive        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
@@ -92,7 +90,7 @@ mod PhaseTransitions {
     /// カーソルも隠してモーダル表示にする。パネルの可視化と内容は LevelUpPanelUi.frameStep が
     /// phase を見て行うので、ここはフェーズ設定と下地の片付けだけに徹する。
     pub def enterLevelUpView(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
+            Scene[NodeTag] \ {TurnPhase.State, RangeOverlayState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.LevelUpView);
         clearAllPlayerRanges(scene)
             |> CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.LevelUpView))
@@ -103,7 +101,7 @@ mod PhaseTransitions {
     /// この関数を呼ぶ **前** に `SelectedPlayer.State` に id をセットしておくこと。
     /// 逆順 (先に refresh) にすると敵の危険範囲と移動範囲が重複表示される。
     pub def enterPlayerMoving(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
         scene
             |> EnemyRangeScene.clear
@@ -116,9 +114,8 @@ mod PhaseTransitions {
     /// 動作 (表 4 行目): Move/MoveAttack 消去 → 武器射程の赤マスを show → カーソル表示し、
     ///                    赤マス内の最初の敵にスナップ (敵が居なければ自分位置)。
     pub def enterPlayerAttack(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery, RangeOverlayState.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
         clearMoveOnlyRanges(scene)
             |> PlayerAttackRangeScene.show
@@ -132,7 +129,7 @@ mod PhaseTransitions {
     /// 呼ぶ前に `SelectedPlayer.State` に主人公 id(0) をセットしておくこと
     /// （`MoveRangeScene.refresh` が選択駒 id を読むため。enterPlayerMoving と同じ契約）。
     pub def enterGatherMove(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.GatherMove);
         scene
             |> EnemyRangeScene.clear
@@ -146,7 +143,7 @@ mod PhaseTransitions {
     /// EnemyRange と cursor visible は触らない。
     /// 敵キューのビルドや log は `EnemyTurnDriver.beginTurn` 側で行うのでここでは扱わない。
     pub def enterEnemyTurn(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, World.Command} =
+            Scene[NodeTag] \ {TurnPhase.State, World.Command, RangeOverlayState.State} =
         TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
         clearAllPlayerRanges(scene)
             // Shift の危険範囲(紫)は敵が動くと古くなるので敵ターン開始で消す（トグルは OFF に戻る）
@@ -156,7 +153,7 @@ mod PhaseTransitions {
     /// StairsExit フェーズに入る (集合「階段で離脱」確定時)。
     /// 味方系 range を片付け、危険範囲(紫)も消し、カーソルを隠す（自動進行＝入力なし）。
     pub def enterStairsExit(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
+            Scene[NodeTag] \ {TurnPhase.State, RangeOverlayState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.StairsExit);
         clearAllPlayerRanges(scene)
             |> DangerZoneScene.clear
@@ -166,7 +163,7 @@ mod PhaseTransitions {
     /// 動作: 味方系の青/赤マスを片付けて、カーソルを隠す（メニュー操作専用画面のため）。
     /// EnemyRange は触らない。`ItemMenuUi.frameStep` が表示を毎フレーム反映する。
     pub def enterItemSelect(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TurnPhase.State =
+            Scene[NodeTag] \ {TurnPhase.State, RangeOverlayState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
         clearAllPlayerRanges(scene)
             |> CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.ItemSelect))
@@ -177,7 +174,7 @@ mod PhaseTransitions {
     /// 回し、Z で発射する。
     pub def enterStaffAim(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State,
-                              World.WorldQuery} =
+                              World.WorldQuery, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.StaffAim);
         let withCursorHidden = CursorScene.setVisible(false, scene);
         match SelectedPlayer.State.get()#id {
@@ -200,7 +197,7 @@ mod PhaseTransitions {
     /// 選択中プレイヤーの隣接マス（デフォルト Up）に出すだけ。回復方向の初期照準は行わない
     /// （投擲は対象を読み合うので一律 Up から始める）。
     pub def enterThrowAim(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ThrowAim);
         let withCursorHidden = CursorScene.setVisible(false, scene);
         match SelectedPlayer.State.get()#id {
@@ -225,7 +222,7 @@ mod PhaseTransitions {
     /// フェーズを戻す (ActionMenu は visibility で自動再表示される)。
     /// X キャンセル + 交換完了後の両方で呼ぶ。
     pub def enterActionSelectFromTrade(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, TradeMenuState.State} =
+            Scene[NodeTag] \ {TurnPhase.State, TradeMenuState.State, RangeOverlayState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         scene
             |> TradeRangeScene.clear
@@ -237,7 +234,7 @@ mod PhaseTransitions {
     /// カーソルは TradeInventory 中は使われないので隠す (ActionSelect から
     /// 戻ったときに再表示される)。
     pub def enterTradeInventory(partnerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, TradeMenuState.State} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, TradeMenuState.State, RangeOverlayState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.TradeInventory);
         let selfId = SelectedPlayer.State.get()#id |> Option.getWithDefault(0);
         scene
@@ -257,7 +254,7 @@ mod PhaseTransitions {
     /// `members` の構築は ActionMenuScene 側で行うが、隣接 0 人で 1 人になる端ケースを
     /// その場で排除しきれないため、ここで 2 人未満ガードを入れる (防御)。
     pub def enterGatherTrade(members: List[Int32], scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, TradeMenuState.State} =
+            Scene[NodeTag] \ {TurnPhase.State, TradeMenuState.State, CursorState.State} =
         if (List.length(members) < 2) scene
         else {
             TurnPhase.State.put(TurnPhase.Phase.TradeInventory);
@@ -280,9 +277,8 @@ mod PhaseTransitions {
     /// 緑マスゼロ (= 隣接味方なし) のときは ActionMenu の「こうかん」項目自体が
     /// 出ないので、ここに来ることはない (防御的に選択中味方位置にスナップ)。
     pub def enterTradeTargetSelect(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
-                              PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                              PlayerData.PartyQuery, RangeOverlayState.State} =
         TurnPhase.State.put(TurnPhase.Phase.TradeTargetSelect);
         clearMoveOnlyRanges(scene)
             |> PlayerAttackRangeScene.clear

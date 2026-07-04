@@ -126,11 +126,12 @@ mod SnapshotHarness {
                     - ArrowCursorState.State - GatherResume.State - PlayerData.PartyQuery
                     - EnemyData.RosterQuery - CustomEffects.FloorAdvanceRequest - GameEngine.Audio
                     - World.Command - World.WorldQuery - BoardQuery - ItemPickupPopupState.State
-                    - ItemMenuState.State - TradeMenuState.State) =
+                    - ItemMenuState.State - TradeMenuState.State - RangeOverlayState.State) =
         let initialSel: SelectedPlayer.Selection =
             {id = cfg#selectedId, drafts = Nil, gatherActive = cfg#gatherActive};
         let seededWorld = cfg#worldMods(World.syncFromScene(cfg#scene, World.empty()));
         region rc {
+        TestUnitFixtures.withRangeOverlay(rc, () ->
         TestUnitFixtures.withNoopTween(() ->
         TestUnitFixtures.withNoopAnim(() ->
         TestUnitFixtures.withMockGameLogger(() ->
@@ -148,7 +149,7 @@ mod SnapshotHarness {
         ItemPickupPopupState.withState(rc, () ->
         ItemMenuState.withState(rc, () ->
         withPhaseState(rc, cfg#phase, () ->
-        withLocalWorld(rc, seededWorld, thunk))))))))))))))))))
+        withLocalWorld(rc, seededWorld, thunk)))))))))))))))))))
         }
 
     /// TurnPhase.State を初期値 `initial` の可変 Ref で供給する（`put` が持続 = 確定でフェーズが変わる）。
@@ -167,11 +168,11 @@ mod SnapshotHarness {
     def withLocalWorld(rc: Region[r], seed: World, thunk: Unit -> a \ ef):
             a \ ((ef - World.Command) - World.WorldQuery) + r =
         let wref: Ref[World, r] = Ref.fresh(rc, seed);
-        run {
-            run { thunk() } with handler World.WorldQuery {
+        run { thunk() }
+            with handler World.WorldQuery {
                 def get(k) = k(Ref.get(wref))
             }
-        } with handler World.Command {
-            def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
-        }
+            with handler World.Command {
+                def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
+            }
 }

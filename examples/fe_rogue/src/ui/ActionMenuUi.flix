@@ -267,7 +267,7 @@ mod ActionMenuUi {
     /// 選択位置の項目はその場で buildItems を再現して index で引く（同一フレームなので一致）。
     pub def confirmCurrentSelection(scene: Scene[NodeTag]):
                                     Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            \ {RangeOverlayState.State,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 CursorState.State, GatherResume.State, PlayerData.PartyQuery,
@@ -288,7 +288,7 @@ mod ActionMenuUi {
     ///   - SelectedPlayer = Some → enterPlayerMoving （駒操作中。カーソルは設計上非表示）
     ///   - SelectedPlayer = None → enterPlayerCursor （空マス由来。カーソル再表示＋snap）
     pub def onActionCancelled(scene: Scene[NodeTag]):
-                              Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                              Scene[NodeTag] \ {RangeOverlayState.State,
                                                 TurnPhase.State, SelectedPlayer.State, CursorState.State,
                                                 PlayerData.PartyQuery, World.Command, World.WorldQuery} =
         let sel = SelectedPlayer.State.get();
@@ -452,14 +452,15 @@ mod ActionMenuUi {
     /// C キー / ゲームパッド Y のショートカット: メニューを開かず「集合」を直接確定する。
     pub def gatherShortcut(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                              SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery,
+                              RangeOverlayState.State, CursorState.State} =
         applyGather(scene)
 
     /// Shift 長押しゲージ満了時のショートカット: メニューを開かず「全員待機」と同じ。
     pub def turnEndShortcut(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State, GatherResume.State,
-                              World.Command, World.WorldQuery} =
+                              World.Command, World.WorldQuery, RangeOverlayState.State} =
         applyTurnEnd(scene)
 
     /// インベントリのいずれかの武器の射程内に生きている敵が居るか。
@@ -500,7 +501,7 @@ mod ActionMenuUi {
 
     /// 適用: `ActionIntent` を scene へ適用する単一 dispatcher。
     def applyActionIntent(intent: ActionIntent, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
+            \ {RangeOverlayState.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                World.Command, World.WorldQuery} =
         match intent {
@@ -511,7 +512,7 @@ mod ActionMenuUi {
     /// pub: confirm 経路のゲームロジック（wait/pickup/gather/turnEnd 等）をテストが pin するため。
     pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
                               Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            \ {RangeOverlayState.State,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 CursorState.State, GatherResume.State, PlayerData.PartyQuery,
@@ -541,7 +542,7 @@ mod ActionMenuUi {
 
     /// 「かいだん」確定。選択中の味方を階段で退場させる。
     def applyStairs(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            \ {RangeOverlayState.State,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
@@ -561,7 +562,7 @@ mod ActionMenuUi {
 
     /// 「アイテム」確定で ItemMenuUi を開く。
     def openItemMenu(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery, RangeOverlayState.State, CursorState.State} =
         match SelectedPlayer.State.get()#id {
             case None           => scene
             case Some(playerId) => ItemMenuUi.openFor(playerId, scene)
@@ -569,13 +570,14 @@ mod ActionMenuUi {
 
     /// 「交換」確定（集合の隣接メニュー）: 主人公＋隣接味方の N 人持ち物交換画面を開く。
     def openGatherTrade(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, PlayerData.PartyQuery, TradeMenuState.State} =
+            Scene[NodeTag] \ {TurnPhase.State, PlayerData.PartyQuery, TradeMenuState.State, CursorState.State} =
         PhaseTransitions.enterGatherTrade(gatherTradeMembers(), scene)
 
     /// 「集合」確定: 集合（行軍）モードを開始する（GatherMove フェーズへ）。
     def applyGather(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                              SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery,
+                              RangeOverlayState.State, CursorState.State} =
         if (leaderWaited())
             { GameLogger.playerLog("リーダーは既に行動済みです。"); scene }
         else {
@@ -593,7 +595,7 @@ mod ActionMenuUi {
     def applyTurnEnd(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State, GatherResume.State,
-                              World.Command, World.WorldQuery} =
+                              World.Command, World.WorldQuery, RangeOverlayState.State} =
         TurnFlow.commitAllWaitedAndAdvance(true, scene)
 
     /// 「ひろう」確定の本体。床アイテムを取得してインベントリに加える（ターン消費しない）。

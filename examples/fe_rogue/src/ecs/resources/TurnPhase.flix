@@ -384,7 +384,7 @@ mod TurnInputBridge {
 
     /// 1 回のキー入力 (Confirm / Cancel) を処理する。
     pub def handle(input: TurnRules.Input, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {BoardQuery, Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {RangeOverlayState.State, BoardQuery,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                               PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery, TradeMenuState.State} =
@@ -432,7 +432,7 @@ mod TurnInputBridge {
     /// 純粋関数（テスト容易・effect なし）に保つ。副作用はこの関数が一手に引き受ける。
     def apply(transition: TurnRules.Transition,
                scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {RangeOverlayState.State,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                               PlayerData.PartyQuery, World.Command, World.WorldQuery, TradeMenuState.State} =

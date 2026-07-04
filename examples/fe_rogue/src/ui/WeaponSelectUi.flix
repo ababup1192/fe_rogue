@@ -192,7 +192,7 @@ mod WeaponSelectUi {
     /// カーソルが disabled 行に乗っていたら選択可能行へ寄せ、対象の敵へカーソルをスナップする。
     pub def frameStep(_dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
             \ {TurnPhase.State, SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
-               Tween.Scheduler, AnimationPlayer.Scheduler, CursorState.State, World.WorldQuery,
+               CursorState.State, World.WorldQuery,
                UiWorldState.State} =
         let phase = TurnPhase.State.get();
         if (phase != TurnPhase.Phase.WeaponSelect) {
@@ -333,7 +333,7 @@ mod WeaponSelectUi {
     /// X / Escape 押下で呼ばれる。武器ウィンドウを閉じて ActionSelect（コマンドメニュー）に戻る。
     /// SelectedPlayer はそのまま（同じ味方の行動選択に戻る）。WeaponSelect 中に対象の敵へ出して
     /// いたカーソルは隠す（ActionSelect / PlayerMoving はカーソル非表示が既定）。
-    pub def onCancelled(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
+    pub def onCancelled(scene: Scene[NodeTag]): Scene[NodeTag] \ {TurnPhase.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         CursorScene.setVisible(false, scene)
 
@@ -346,7 +346,7 @@ mod WeaponSelectUi {
     /// 乗っていない（初回 / 武器を切り替えて今の対象が届かなくなった）ときだけ最寄りの敵へスナップ。
     /// 届く敵が居なければカーソルは触らない。戦闘予報はこのカーソル上の敵で出る。
     def snapCursorToTarget(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, SelectedPlayer.State, CursorState.State,
+            \ {SelectedPlayer.State, CursorState.State,
                PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery, UiWorldState.State} =
         match focusedPlayerWeapon() {
             case None                   => scene

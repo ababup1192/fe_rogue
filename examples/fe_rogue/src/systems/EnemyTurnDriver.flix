@@ -46,8 +46,8 @@ mod EnemyTurnDriver {
     /// 前後順序依存（combat の anyAttacking・TopBar の busy/observed）は World 経由＝順序非依存。
     pub def step(scene: Scene[NodeTag]):
                     Scene[NodeTag]
-                    \ {GameEngine.Game,
-                        Tween.Scheduler, AnimationPlayer.Scheduler,
+                    \ {RangeOverlayState.State, GameEngine.Game,
+                        AnimationPlayer.Scheduler,
                         GameLogger.GameLogger, EnemyTurn.Queue,
                         TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
                         Pacing.State, PlayerData.PartyQuery, Math.Random,
@@ -55,7 +55,7 @@ mod EnemyTurnDriver {
                         CustomEffects.RingTransformRequest,
                         CustomEffects.GameOverRequest,
                         CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
-                        World.Command, BoardQuery, World.WorldQuery} =
+                        World.Command, BoardQuery, World.WorldQuery, CameraState.State} =
         match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce(scene)
             case TurnPhase.Phase.PlayerAttackHold =>
@@ -141,7 +141,7 @@ mod EnemyTurnDriver {
     /// `commitWaitedAndAdvance` (全味方 waited) や集合の「全員待機」(applyTurnEnd) の
     /// 流れから呼ばれる「敵ターン入口」。
     pub def beginTurn(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
+            Scene[NodeTag] \ {RangeOverlayState.State, GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, World.Command, World.WorldQuery} =
         let actives = EnemyScene.getAllWithWorldPos(scene)
             |> List.filter(e -> not e#isDying and Option.isEmpty(e#attackTargetId));
@@ -166,19 +166,19 @@ mod EnemyTurnDriver {
     ///      ログのみ、Skip/Wait は無動作)
     ///   4) キューが空になったらターン終了処理 (フェーズを PlayerCursor に戻す)
     def stepOnce(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game,
-                Tween.Scheduler, AnimationPlayer.Scheduler,
+            \ {RangeOverlayState.State, GameEngine.Game,
+                AnimationPlayer.Scheduler,
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State, CursorState.State, GatherResume.State,
                 Pacing.State, PlayerData.PartyQuery, Math.Random,
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.RingTransformRequest,
                 CustomEffects.GameOverRequest,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery, CameraState.State} =
         // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
         if (World.enemyTurnBusyOf(World.WorldQuery.get())) scene
         else if (Pacing.State.isHolding()) scene
-        else if (not CameraScene.isSettled(scene)) scene
+        else if (not CameraScene.isSettled()) scene
         else if (World.anyEnemyAttacking(World.WorldQuery.get())) scene
         else if (World.anyPlayerAttacking(World.WorldQuery.get())) scene
         else match EnemyTurn.Queue.peekFront() {
@@ -481,7 +481,7 @@ mod EnemyTurnDriver {
     /// （反撃でのレベルアップは反撃ごとに `CombatDriver.onLungeDone` がその場で表示するので、
     ///  ここに来る時点で保留は残っていない。）
     def endTurn(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            \ {RangeOverlayState.State,
                 GameLogger.GameLogger, TurnPhase.State,
                 SelectedPlayer.State, CursorState.State, GatherResume.State, PlayerData.PartyQuery,
                 World.WorldQuery,

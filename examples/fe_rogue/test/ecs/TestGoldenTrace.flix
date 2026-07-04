@@ -5,10 +5,11 @@
 // これが `resolveCombat → (World, [SimEvent])`（純 sim）が再現すべきオラクルになる（wrapper↔system 整合 pin）。
 //
 // 駆動は PUBLIC seam（applyAttackHit / applyEnemyAttackHit / onLungeDone）。private な
-// resolveAttack/resolveEnemyAttack ではない。attackTargetId は **SCENE** で seed する
-// （applyAttackHit は d#attackTargetId を scene から読む。World pre-set では no-op になる）。
-// ハーネスは `TestUnitFixtures.withTracedWorld`（ONE worldRef を Command/WorldQuery/RngDraw で
-// 共有する ref-backed 3-handler）で、combatViewOf の read-after-write を壊さない。
+// resolveAttack/resolveEnemyAttack ではない。攻撃対象 id（attackTarget）は driver が **World.attackTarget**
+// から読む。ハーネス `withTracedWorld` は scene を `syncFromScene` で seed するため、fixture の
+// attackTargetId は World.attackTarget へ mirror され driver に届く（World 直 seed 版の等価は
+// testGoldenAttackTargetWorldSeedMatchesScene が固定）。ハーネスは ONE worldRef を
+// Command/WorldQuery/RngDraw で共有する ref-backed 3-handler で、combatViewOf の read-after-write を壊さない。
 //
 // 凍結する 5 fixture（DoD §4）:
 //   (A)  level-up: 撃破→経験値 100 跨ぎ→ rollGrowth×9（12 draw）。SetHp(enemy,0)→SetHp(player,newHp)→Progress。
@@ -195,6 +196,23 @@ mod TestGoldenTrace {
                 CombatDriver.applyAttackHit(0, sc)))))))))
         }
 
+    /// applyAttackHit を **World 直 seed** harness で駆動（scene には attackTarget を持たせず、
+    /// `seedCmds` で World.attackTarget を直接 seed する）。runAttack と同一のモック stack ＋ seed 以外は同条件。
+    /// golden ハーネス脱 scene の第一歩＝attackTarget store を scene Data でなく World store で seed する。
+    def runAttackWorldSeeded(sc: Scene[NodeTag], seedCmds: List[World.Cmd]):
+            (Scene[NodeTag], List[(String, Int32, Int32, Int32)], World) =
+        region rc {
+            TestUnitFixtures.withTracedWorldSeeded(rc, seed(), sc, seedCmds, () ->
+            TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(sc), () ->
+            TestUnitFixtures.withNoopThiefDrop(() ->
+            TestUnitFixtures.withMockGame(() ->
+            TestUnitFixtures.withMockAudio(() ->
+            TestUnitFixtures.withMockGameLogger(() ->
+            TestUnitFixtures.withNoopAnim(() ->
+            TestUnitFixtures.withNoopTween(() ->
+                CombatDriver.applyAttackHit(0, sc)))))))))
+        }
+
     /// applyEnemyAttackHit を traced harness + 副作用モックで駆動。((後 scene, killed), cmdKey 列, World)。
     def runEnemyAttack(sc: Scene[NodeTag], enemyId: Int32):
             ((Scene[NodeTag], List[Int32]), List[(String, Int32, Int32, Int32)], World) =
@@ -292,6 +310,38 @@ mod TestGoldenTrace {
             (World.hpOf(EntityRef.Enemy(1), w),
              World.hpOf(EntityRef.Player(0), w),
              World.progressOf(EntityRef.Player(0), w)))
+
+    // ── S2: attackTarget の World-authority 証明（脱 scene seed 第一歩）──────────────
+    //
+    // driver（applyAttackHit）は攻撃対象 id を **World.attackTarget** から読む。ここでそれを、
+    // 「scene に attackTarget を持たせた旧 seed」と「scene には持たせず World.attackTarget を Cmd で
+    // 直 seed した新 seed」が **同一の golden cmd-stream + 最終 World** を出すことで証明する
+    // （並走 → 一致 assert）。旧経路（sceneOf の attackTargetId seed）は他 golden が使うため据え置き、
+    // ここは新旧同値の gate だけを固定する。golden literal は不変。
+
+    /// 旧 seed（scene attackTargetId=Some(1)）と 新 seed（scene=None・World.attackTarget を SetAttackTarget で
+    /// 直 seed）が、同 fixture・同 seed で bit-identical な cmd-stream と最終 World 射影を出す。
+    /// ⇒ driver は attackTarget を scene Data でなく World store から読む（S2 flip の証明）。
+    @Test
+    def testGoldenAttackTargetWorldSeedMatchesScene(): Unit \ Assert =
+        // 旧 seed: attackTargetId を SCENE に持たせる（syncFromScene が World.attackTarget へ mirror）。
+        let scScene = sceneOf(player(0, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, keysScene, wScene) = runAttack(scScene);
+        // 新 seed: scene player の attackTargetId=None・World.attackTarget を Cmd で直 seed する。
+        let scWorld = sceneOf(player(0, 10, None, 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let seedCmds = World.Cmd.SetAttackTarget(EntityRef.Player(0), 1) :: Nil;
+        let (_, keysWorld, wWorld) = runAttackWorldSeeded(scWorld, seedCmds);
+        assertGoldenPremise(scScene, keysScene);
+        // 一致①: cmd-stream が新旧 bit-identical（seed 経路に依らず同一トレース）。
+        Assert.assertEq(expected = keysScene, keysWorld);
+        // 一致②: 最終 World 射影（enemy hp / player hp / progress）も新旧一致。
+        let proj = w -> (World.hpOf(EntityRef.Enemy(1), w),
+                         World.hpOf(EntityRef.Player(0), w),
+                         World.progressOf(EntityRef.Player(0), w));
+        Assert.assertEq(expected = proj(wScene), proj(wWorld));
+        // 独立 pin: 新 seed は scene に attackTarget を持たないのに撃破まで到達（＝World seed が効いた・
+        // scene fallback で素通りした vacuous でないことを保証）。
+        Assert.assertEq(expected = Some(0), World.hpOf(EntityRef.Enemy(1), wWorld))
 
     // ── Phase C 等価: resolveCombat 本体 が legacy と final-World 等価か ───────────
 
@@ -805,11 +855,9 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                     run {
-                        run {
-                            CombatDriver.applyAttackHit(0, sc)
-                        } with handler CustomEffects.ThiefDropRequest {
-                            def drop(cell, scene, k) = { Ref.put((cell#x, cell#y) :: Ref.get(dropRef), dropRef); k(scene) }
-                        }
+                        CombatDriver.applyAttackHit(0, sc)
+                    } with handler CustomEffects.ThiefDropRequest {
+                        def drop(cell, scene, k) = { Ref.put((cell#x, cell#y) :: Ref.get(dropRef), dropRef); k(scene) }
                     } with handler GameLogger.GameLogger {
                         def playerLog(s, k)   = { Ref.put(s :: Ref.get(logRef), logRef); k() }
                         def enemyLog(s, k)    = { Ref.put(s :: Ref.get(logRef), logRef); k() }

@@ -422,12 +422,12 @@ mod TestGifSnapshots {
     /// 単一 match（(phase, key) タプル）に束ねて arm 集合で効果を合流させる（checked_ecast 不要）。
     /// 確定（Z）のゲームロジックは本物を実行し、書かれた phase が可変ハーネスの Ref に残る。
     pub def applyFlowKey(key: ReplayScript.Key, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger, EnemyTurn.Queue,
+            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, EnemyTurn.Queue,
                TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                GatherResume.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery,
                BoardQuery, ItemPickupPopupState.State, ItemMenuState.State, TradeMenuState.State,
-               UiWorldState.State} =
+               UiWorldState.State, RangeOverlayState.State} =
         match (TurnPhase.State.get(), key) {
             // ActionSelect（コマンドメニュー）
             case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Up)      => ActionMenuUi.moveSelection(-1, scene)
@@ -463,7 +463,7 @@ mod TestGifSnapshots {
                  framesRef: Ref[List[BufferedImage], r]):
             Unit \ {IO + GameEngine.Game + UiWorldState.State + TurnPhase.State + SelectedPlayer.State
                      + CursorState.State + PlayerData.PartyQuery + EnemyData.RosterQuery
-                     + World.WorldQuery + Tween.Scheduler + AnimationPlayer.Scheduler
+                     + World.WorldQuery
                      + ItemMenuState.State + r} =
         discard ActionMenuUi.frameStep(TestUiSnapshots.dt(), scene);
         discard WeaponSelectUi.frameStep(TestUiSnapshots.dt(), scene);

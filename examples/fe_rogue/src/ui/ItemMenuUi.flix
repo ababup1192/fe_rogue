@@ -605,7 +605,7 @@ mod ItemMenuUi {
     /// InputHandler の Z 押下から呼ばれる。現在フェーズに応じて確定を振り分ける。
     /// ItemSelect の Enter → `onItemConfirmed`、ItemActionSelect の Enter → `onActionConfirmed`。
     pub def confirmCurrentSelection(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+            \ {RangeOverlayState.State, EnemyTurn.Queue,
                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                ArrowCursorState.State, ItemMenuState.State, GameEngine.Audio, World.Command,
                World.WorldQuery, PlayerData.PartyQuery, UiWorldState.State} =
@@ -626,7 +626,7 @@ mod ItemMenuUi {
     /// 常に「アイテムのある先頭カテゴリ」・印なし・カーソル先頭から開く（カーソル 0 は非表示中の
     /// frameStep が戻してある）。
     pub def openFor(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, ItemMenuState.State, PlayerData.PartyQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, ItemMenuState.State, PlayerData.PartyQuery, RangeOverlayState.State, CursorState.State} =
         let entered = PhaseTransitions.enterItemSelect(scene);
         let firstCat = nonEmptyCategories(playerId) |> List.head |> Option.getWithDefault(catWeapon());
         ItemMenuState.State.put({category = firstCat, marks = Set#{}});
@@ -711,7 +711,7 @@ mod ItemMenuUi {
     /// ItemActionSelect でサブメニュー項目を Enter 確定したとき。metadata で処理を分配する。
     /// pub: confirm 経路のゲームロジック（equip/drop/use/throw/bulk）をテストが pin するため。
     pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+            \ {RangeOverlayState.State, EnemyTurn.Queue,
                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                ArrowCursorState.State, ItemMenuState.State, GameEngine.Audio, World.Command,
                World.WorldQuery, PlayerData.PartyQuery} =
@@ -727,7 +727,7 @@ mod ItemMenuUi {
     /// サブメニューの metadata 別に処理を分配する。
     def dispatchAction(meta: String, playerId: Int32, kind: PlayerData.ItemKind,
                        scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+            \ {RangeOverlayState.State, EnemyTurn.Queue,
                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                ArrowCursorState.State, ItemMenuState.State, GameEngine.Audio, World.Command,
                World.WorldQuery, PlayerData.PartyQuery} =
@@ -749,7 +749,7 @@ mod ItemMenuUi {
 
     /// 「投げる」: 方向選択フェーズ `ThrowAim` に進む。selectedItem は保持され、方向確定時に読む。
     def applyThrowAction(playerId: Int32, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State, GameLogger.GameLogger} =
+            \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State, GameLogger.GameLogger, CursorState.State} =
         GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は 投げる方向を選び Z で投げる (X で中止)");
         PhaseTransitions.enterThrowAim(scene)
 
@@ -836,7 +836,7 @@ mod ItemMenuUi {
 
     /// 「つかう」: 杖なら発動方向選択 `StaffAim` へ、消費アイテムはデリバリで分岐。武器/指輪は no-op。
     def applyUse(playerId: Int32, kind: PlayerData.ItemKind, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+            Scene[NodeTag] \ {RangeOverlayState.State, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                               GameLogger.GameLogger, GameEngine.Audio, World.Command, World.WorldQuery,
                               PlayerData.PartyQuery} =
@@ -853,7 +853,7 @@ mod ItemMenuUi {
 
     /// 消費アイテムを効果から導いたデリバリで分岐する（自己使用 / 方向投擲 / 自動発動）。
     def applyConsumableByDelivery(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler, EnemyTurn.Queue,
+            Scene[NodeTag] \ {RangeOverlayState.State, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                               GameLogger.GameLogger, GameEngine.Audio, World.Command, World.WorldQuery,
                               PlayerData.PartyQuery} =

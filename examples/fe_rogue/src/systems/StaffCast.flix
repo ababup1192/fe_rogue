@@ -28,7 +28,7 @@ mod StaffCast {
                              direction: Staff.Direction,
                              scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                 GameEngine.Audio, World.Command, World.WorldQuery} =
@@ -46,7 +46,7 @@ mod StaffCast {
                    staff: Staff.StaffResource, direction: Staff.Direction,
                    scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
                 BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                 GameEngine.Audio, World.Command, World.WorldQuery} =
@@ -469,7 +469,7 @@ mod StaffCast {
     /// 該当プレイヤー / アイテムが見つからない場合は防御的に no-op。
     pub def applyConsumableUse(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
+            \ {RangeOverlayState.State, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State, GameEngine.Audio,
                 World.Command, World.WorldQuery} =
         // プレイヤーと消費アイテムの両方が解決できたときだけ使用。欠ければ scene のまま。
@@ -485,7 +485,7 @@ mod StaffCast {
     def useConsumable(playerId: Int32, idx: Int32, player: PlayerScene.Data,
                        item: Consumable.ConsumableResource, scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, GameLogger.GameLogger,
+            \ {RangeOverlayState.State, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State, GameEngine.Audio,
                 World.Command, World.WorldQuery} =
         // 消費アイテムは使う時点で効果が自己確定するため、杖の空振り判定とは異なり無条件で使用音を鳴らす
@@ -665,7 +665,7 @@ mod StaffCast {
                                         direction: Staff.Direction,
                                         scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            \ {RangeOverlayState.State,
                 BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                 World.Command, World.WorldQuery} =
@@ -681,7 +681,7 @@ mod StaffCast {
                         item: Consumable.ConsumableResource, direction: Staff.Direction,
                         scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            \ {RangeOverlayState.State,
                 BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                 World.Command, World.WorldQuery} =
@@ -734,7 +734,7 @@ mod StaffCast {
     pub def applyThrow(playerId: Int32, kind: PlayerData.ItemKind,
                         direction: Staff.Direction, scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
+            \ {RangeOverlayState.State, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State, GameEngine.Audio,
                 Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
         let cast = forM (player <- PlayerScene.getWithWorldPos(playerId, scene))
@@ -745,7 +745,7 @@ mod StaffCast {
     def fireThrow(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
                    direction: Staff.Direction, scene: Scene[NodeTag]):
             Scene[NodeTag]
-            \ {Tween.Scheduler, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
+            \ {RangeOverlayState.State, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State, GameEngine.Audio,
                 Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
         let board = BoardQuery.board();

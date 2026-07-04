@@ -7,8 +7,8 @@
 ///   Player_<id> (Marker2D, NodeTag.Player(Data))
 ///     └─ Sprite (Sprite2D, character_sheet)
 ///
-/// Camera は CameraScene が独立した最上位ノードとして管理し、毎フレーム
-/// 「選択中プレイヤー」の位置に追従させる（PlayerScene 自身は Camera を持たない）。
+/// Camera は scene ノードを持たず `CameraState` resource が視点の権威で、`CameraScene.step` が
+/// フェーズ別の追従先（選択中プレイヤー等の World 座標）を毎フレーム選ぶ（PlayerScene 自身は Camera を持たない）。
 ///
 /// ターン進行:
 ///   - PlayerCursor で Z 押下 → カーソル位置の **アクティブな** プレイヤーを選択
@@ -508,7 +508,8 @@ mod PlayerScene {
     /// overlay (MoveRange / MoveAttackRange / EnemyRange) と Cursor の整理は
     /// `PhaseTransitions.enterPlayerMoving` が担当する (この関数は SelectedPlayer 更新だけ)。
     pub def beginSelection(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery,
+                              RangeOverlayState.State, CursorState.State} =
         SelectedPlayer.State.put({
             id     = Some(playerId),
             // 移動開始。元位置を巻き戻しドラフトの底に積む（前の移動の残骸は drafts ごと破棄）
@@ -528,7 +529,8 @@ mod PlayerScene {
     /// （積むと巻き戻しが多重適用され開始位置に戻らなくなる）。
     /// overlay / cursor は `PhaseTransitions.enterGatherMove` が担当する。
     pub def beginGather(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery,
+                              RangeOverlayState.State, CursorState.State} =
         // 巻き戻し origin は World 位置（scene gridPos twin は退役＝stale）。
         let origins = getAllWithWorldPos(scene)
             |> List.filter(d -> d#hp > 0)
@@ -542,9 +544,8 @@ mod PlayerScene {
     /// 「キャンセル → 再選択の繰り返しで実質ターン制限なしの自由移動」を防ぐ。
     /// overlay / cursor の片付けは `PhaseTransitions.enterPlayerCursor` が担当。
     pub def cancelSelection(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
-                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
-                              PlayerData.PartyQuery, World.Command} =
+            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                              PlayerData.PartyQuery, World.Command, RangeOverlayState.State} =
         // この移動で積んだ可逆ドラフトを新しい順に巻き戻す（拾得→元位置への復帰など）。
         // 「拾ってからキャンセルしたら拾っていないことにする」もこの一括巻き戻しで実現。
         let drafts   = SelectedPlayer.State.get()#drafts;

@@ -325,7 +325,6 @@ mod TestActionMenuUi {
             (Scene[NodeTag], TurnPhase.Phase, World) \ r =
         let wref = Ref.fresh(rc, World.syncFromScene(args#scene, World.empty()));
         let (after, phase) = run {
-        run {
         ItemPickupPopupState.withState(rc, () ->
         TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(args#scene), () ->
         TestUnitFixtures.withPhaseRef(rc, args#initialPhase, () ->
@@ -340,14 +339,15 @@ mod TestActionMenuUi {
                                       TestUnitFixtures.withMockGatherResume(() ->
                                         TestUnitFixtures.withSelectedPlayer(args#selectedId, () ->
                                          TestUnitFixtures.withCursor(() ->
+                                          TestUnitFixtures.withRangeOverlay(rc, () ->
                                           TestUnitFixtures.withItemMenu(() ->
                                           TestUnitFixtures.withTradeMenu(rc, () ->
                                           ActionMenuUi.onActionConfirmed(args#entry,
-                                                                            args#scene)))))))))))))))))
+                                                                            args#scene))))))))))))))))))
         } with handler World.WorldQuery {
             def get(k) = k(Ref.get(wref))
         }
-        } with handler World.Command {
+          with handler World.Command {
             def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
         };
         (World.syncTreeFromWorld(Ref.get(wref), after), phase, Ref.get(wref))
@@ -588,7 +588,8 @@ mod TestActionMenuUi {
                             TestUnitFixtures.withMockPartyQuery(scene, () ->
                                 TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ActionSelect, () ->
                                  TestUnitFixtures.withCursor(() ->
-                                    PlayerScene.cancelSelection(scene))))))));
+                                  TestUnitFixtures.withRangeOverlay(rc, () ->
+                                    PlayerScene.cancelSelection(scene)))))))));
         (out, world)
 
     /// 拾得 → 装備 → 選択解除キャンセルで、装備の並び替えも拾得も正しく巻き戻る。
@@ -630,47 +631,38 @@ mod TestActionMenuUi {
     // onActionCancelled — X が戻り先フェーズの cursor を必ず確立する
     // ════════════════════════════════════════════════════════
 
-    /// Cursor ノード 1 個だけを持つ最小 scene（visible を指定）。
-    def sceneWithCursor(visible: Bool): Scene[NodeTag] =
-        Scene.empty()
-            |> Scene.addNode("Cursor",
-                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Cursor))
-            |> CursorScene.setVisible(visible)
-
     /// 空マスメニュー由来（SelectedPlayer = None）で X を押すと PlayerCursor + カーソル再表示。
+    /// 初期カーソル可視は false（非表示から復帰することを確認）。
     @Test
     def testActionCancelFromEmptyCellRestoresCursor(): Unit \ Assert =
-        let initial = sceneWithCursor(false);
-        let (after, finalPhase) =
-            TestUnitFixtures.withCancelTransitionMocks(SelectedPlayer.cleared(), () ->
-                ActionMenuUi.onActionCancelled(initial));
+        let (_after, finalPhase, visible) =
+            TestUnitFixtures.withCancelTransitionMocks(SelectedPlayer.cleared(), false, () ->
+                ActionMenuUi.onActionCancelled(Scene.empty()));
         Assert.assertEq(
             expected = (TurnPhase.Phase.PlayerCursor, true),
-            (finalPhase, TestUnitFixtures.readCursorVisible(after)))
+            (finalPhase, visible))
 
     /// 駒選択中（SelectedPlayer = Some(0)）で X を押すと PlayerMoving へ戻る（カーソルは設計上非表示）。
     @Test
     def testActionCancelWithSelectionReturnsToMovingHidden(): Unit \ Assert =
-        let initial = sceneWithCursor(true);
-        let (after, finalPhase) =
+        let (_after, finalPhase, visible) =
             TestUnitFixtures.withCancelTransitionMocks(
-                {id = Some(0), drafts = Nil, gatherActive = false}, () ->
-                ActionMenuUi.onActionCancelled(initial));
+                {id = Some(0), drafts = Nil, gatherActive = false}, true, () ->
+                ActionMenuUi.onActionCancelled(Scene.empty()));
         Assert.assertEq(
             expected = (TurnPhase.Phase.PlayerMoving, false),
-            (finalPhase, TestUnitFixtures.readCursorVisible(after)))
+            (finalPhase, visible))
 
     /// 集合（行軍）の隣接メニュー（gatherActive=true）で X を押すと GatherMove へ戻る（カーソル非表示）。
     @Test
     def testActionCancelGatherReturnsToGatherMoveHidden(): Unit \ Assert =
-        let initial = sceneWithCursor(true);
-        let (after, finalPhase) =
+        let (_after, finalPhase, visible) =
             TestUnitFixtures.withCancelTransitionMocks(
-                {id = Some(0), drafts = Nil, gatherActive = true}, () ->
-                ActionMenuUi.onActionCancelled(initial));
+                {id = Some(0), drafts = Nil, gatherActive = true}, true, () ->
+                ActionMenuUi.onActionCancelled(Scene.empty()));
         Assert.assertEq(
             expected = (TurnPhase.Phase.GatherMove, false),
-            (finalPhase, TestUnitFixtures.readCursorVisible(after)))
+            (finalPhase, visible))
 
     // ════════════════════════════════════════════════════════
     // 実 asset のスロット宣言数 ⇔ maxSlots() の一致（スロット超過防御の前提を pin）

@@ -164,6 +164,7 @@ mod TurnEndHoldUi {
                     \ {GameEngine.Game, GameEngine.Audio, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                        GatherResume.State, World.Command, World.WorldQuery, TurnEndHoldState.State,
+                       RangeOverlayState.State,
                        // 表示中はログ帯（World-entity UI の Log root）を背景として再利用する。
                        UiWorldState.State} =
         if (Option.isEmpty(Scene.getEngineNode(MapScene.mapPath(), scene))) scene

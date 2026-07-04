@@ -56,6 +56,12 @@ mod MapScene {
     /// B/tiles: floor 層（z=-1）の path。render-from-World の tile bake がこの層と walls 層（`mapPath`）を読む。
     pub def floorPath(): NodePath = floorName() :: Nil
 
+    /// 盤面（ダンジョンマップ）がこの scene に存在するか。Title / CharacterSelect など
+    /// 盤面レス画面では偽。カーソル移動・カメラ追従・ミニマップなど「盤面がある画面でのみ
+    /// 動く」ドライバの Map 存在ゲートが共通で使う唯一の判定点。
+    pub def isPresent(scene: Scene[NodeTag]): Bool =
+        not Option.isEmpty(Scene.getEngineNode(mapPath(), scene))
+
     /// B/tiles: floor 層 + walls 層の TileMapLayer ノードから軽量描画ハンドルを bake（World 権威化）。
     /// タイルノードが無い画面（Title/CharacterSelect）は空。camera parity のため `worldPos` は `globalPositionAt`、
     /// color/zIndex はノード生値（`toRenderCmd` と同一＝祖先合成しない tile 経路）。

@@ -103,7 +103,8 @@ mod StairsExitDriver {
     /// 届かない味方も含めてキューに入れる（近づけるところまで近づいて止まる）。
     pub def begin(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {GameLogger.GameLogger, GameEngine.Audio,
-                              TurnPhase.State, SelectedPlayer.State, BoardQuery, World.WorldQuery} =
+                              TurnPhase.State, SelectedPlayer.State, BoardQuery, World.WorldQuery,
+                              RangeOverlayState.State, CursorState.State} =
         // 階段位置は World 権威（stairsPosOf）を読む。
         match World.stairsPosOf(World.WorldQuery.get()) {
             case None         => scene
@@ -136,7 +137,7 @@ mod StairsExitDriver {
                     \ {GameEngine.Game, Pacing.State, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                        GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery,
-                       World.WorldQuery} =
+                       World.WorldQuery, RangeOverlayState.State, CameraState.State} =
         match Scene.getState(driverPath(), scene) {
             case Some(NodeTag.StairsExitDriver(data)) =>
                 match TurnPhase.State.get() {
@@ -151,9 +152,9 @@ mod StairsExitDriver {
             \ {GameEngine.Game, Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery,
-               World.WorldQuery} =
+               World.WorldQuery, RangeOverlayState.State, CameraState.State} =
         if (Pacing.State.isHolding()) scene
-        else if (not CameraScene.isSettled(scene)) scene
+        else if (not CameraScene.isSettled()) scene
         else if (World.anyEnemyAttacking(World.WorldQuery.get())) scene
         else if (World.anyPlayerAttacking(World.WorldQuery.get())) scene
         else match data#queue {
@@ -172,7 +173,7 @@ mod StairsExitDriver {
             \ {Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                GatherResume.State, CustomEffects.FloorAdvanceRequest,
-               World.Command, World.WorldQuery, BoardQuery} =
+               World.Command, World.WorldQuery, BoardQuery, RangeOverlayState.State} =
         match data#queue {
             case Nil              => finalize(scene)
             case (u, rem) :: rest =>
@@ -212,7 +213,7 @@ mod StairsExitDriver {
     def finalize(scene: Scene[NodeTag]): Scene[NodeTag]
             \ {GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
                SelectedPlayer.State, GatherResume.State, CustomEffects.FloorAdvanceRequest,
-               World.Command, World.WorldQuery} =
+               World.Command, World.WorldQuery, RangeOverlayState.State} =
         let cleared = setState(initialData(), scene);
         if (PlayerScene.allLivingUsedStairs(cleared))
             CustomEffects.FloorAdvanceRequest.advance(cleared)

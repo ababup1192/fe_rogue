@@ -60,23 +60,29 @@ mod TestPlayerMovementDriver {
         rings = Nil, ringEquipped = false, followUpUsed = false
     }
 
-    /// World 配下に Player(0)@(4,2) を挿し、`reachable` セルの MoveRange overlay を直挿しした scene と、
-    /// その player ノードを返す（physicsStep の `node` 引数に渡す）。
-    def moveScene(reachable: List[{x = Int32, y = Int32}]): (EngineNode[NodeTag], Scene[NodeTag]) =
+    /// World 配下に Player(0)@(4,2) を挿した scene と、その player ノードを返す
+    /// （physicsStep の `node` 引数に渡す）。移動範囲は `RangeOverlayState` resource が権威なので
+    /// scene には積まず、`seedMoveRange` で resource へ仕込む。
+    def moveScene(): (EngineNode[NodeTag], Scene[NodeTag]) =
         let world = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
         let pnode = EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()),
                         NodeTag.Player(playerAt(0, {x = 4, y = 2})));
         let scene = Scene.empty()
             |> Scene.addNode(MapScene.worldName(), EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0), pnode)
-            |> RangeOverlay.attachParent("MoveRange", NodeTag.MoveRange({reachable = reachable, drawCells = reachable}));
+            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0), pnode);
         (pnode, scene)
+
+    /// `reachable` セルの MoveRange を範囲 resource へ仕込む（physicsStep の clamp 述語が読む）。
+    def seedMoveRange(reachable: List[{x = Int32, y = Int32}]): Unit \ RangeOverlayState.State =
+        RangeOverlayState.State.put({
+            moveRange = Some({reachable = reachable, drawCells = reachable})
+            | RangeOverlayState.State.get()})
 
     /// physicsStep を 1 フレーム駆動し、emit された Cmd.Move の着地マス列を返す。
     /// `pressed` で押下キーを、`reachable` で MoveRange を作り分ける。board は player@(4,2) で固定。
     def runPhysicsStep(pressed: GameEngine.Key -> Bool,
                         reachable: List[{x = Int32, y = Int32}]): List[(Int32, Int32)] =
-        let (pnode, scene) = moveScene(reachable);
+        let (pnode, scene) = moveScene();
         let board = ({map = tenByFive(), pieces = (Piece.Player(0), {x = 4, y = 2}) :: Nil}: Board);
         region rc {
             let (_, moves) = TestUnitFixtures.withRecordedMoves(() ->
@@ -84,6 +90,7 @@ mod TestPlayerMovementDriver {
                 TestUnitFixtures.withMockBoard(board, () ->
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withNoopTween(() ->
+                TestUnitFixtures.withRangeOverlay(rc, () ->
                 TestUnitFixtures.withSelectionRef(rc,
                     ({id = Some(0), drafts = (Nil: List[MoveDraft.DraftAction]), gatherActive = false}: SelectedPlayer.Selection),
                     () ->
@@ -91,8 +98,11 @@ mod TestPlayerMovementDriver {
                     // PlayerMoving は waited を参照しないので World.empty()（scene fallback）で十分。
                     TestUnitFixtures.withWorldQuery(World.empty(), () ->
                     // 着地の自動取得が中央ポップアップの State resource を書くため no-op で剥がす。
-                    TestUnitFixtures.withNoopPickupPopup(() ->
-                    PlayerMovementDriver.physicsStep(Duration.zero(), pnode, PlayerScene.playerPath(0), scene)))))))));
+                    TestUnitFixtures.withNoopPickupPopup(() -> {
+                        // 移動範囲 resource を仕込んでから physicsStep（clamp 述語が読む）。
+                        seedMoveRange(reachable);
+                        PlayerMovementDriver.physicsStep(Duration.zero(), pnode, PlayerScene.playerPath(0), scene)
+                    })))))))));
             moves |> List.map(c -> (c#x, c#y))
         }
 

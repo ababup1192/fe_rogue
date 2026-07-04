@@ -277,7 +277,7 @@ mod LevelUpPanelUi {
     ///   2 回目（既に全て出ている）→ 今表示中の味方のパネルを閉じる。まだレベルアップ待ちの
     ///      味方が居れば演出を初期化して次の味方を表示し、居なければ復帰する。
     pub def confirm(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {RangeOverlayState.State,
                               GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery,
                               LevelUpPanelState.State} =

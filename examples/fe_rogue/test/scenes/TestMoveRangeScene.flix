@@ -71,14 +71,18 @@ mod TestMoveRangeScene {
             let sel = ({id = Some(0),
                         drafts = MoveDraft.DraftAction.MovedFrom(0, cell(5, 5)) :: Nil,
                         gatherActive = false}: SelectedPlayer.Selection);
-            let after = TestUnitFixtures.withSelectionRef(rc, sel, () ->
-                // 盤面/位置は World 読み（空 World → scene fallback で従来どおり）。
-                run { MoveRangeScene.refresh(scene) }
-                    with handler World.WorldQuery { def get(k) = k(World.empty()) });
-            Assert.assertEq(
-                expected = (true, false),
-                (MoveRangeScene.isInRange(cell(1, 5), after),
-                 MoveRangeScene.isInRange(cell(11, 5), after)))
+            // 範囲は resource 権威。refresh が書き、isInRange が読むので同一 resource を共有する。
+            // 盤面/位置は World 読み（空 World → scene fallback で従来どおり）。
+            run {
+                let after = TestUnitFixtures.withSelectionRef(rc, sel, () ->
+                    MoveRangeScene.refresh(scene));
+                Assert.assertEq(
+                    expected = (true, false),
+                    (MoveRangeScene.isInRange(cell(1, 5), after),
+                     MoveRangeScene.isInRange(cell(11, 5), after)))
+            }
+                with RangeOverlayState.withState(rc)
+                with handler World.WorldQuery { def get(k) = k(World.empty()) }
         }
 
     // ════════════════════════════════════════════════════════

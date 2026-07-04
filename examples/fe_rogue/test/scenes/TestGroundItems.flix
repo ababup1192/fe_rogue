@@ -70,12 +70,11 @@ mod TestGroundItems {
             let wref = Ref.fresh(rc, World.syncFromScene(scene, World.empty()));
             let before = World.groundItemAtOf({x = 4, y = 5}, Ref.get(wref)) |> Option.map(d -> d#itemKey);
             // takeAt は World store を読んで RemoveItem を emit する（WorldQuery+Command を同 Ref で wire）。
-            run {
-                run { discard GroundItems.takeAt({x = 4, y = 5}, scene) }
-                    with handler World.WorldQuery { def get(k) = k(Ref.get(wref)) }
-            } with handler World.Command {
-                def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
-            };
+            run { discard GroundItems.takeAt({x = 4, y = 5}, scene) }
+                with handler World.WorldQuery { def get(k) = k(Ref.get(wref)) }
+                with handler World.Command {
+                    def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
+                };
             let after = World.groundItemAtOf({x = 4, y = 5}, Ref.get(wref)) |> Option.map(d -> d#itemKey);
             Assert.assertEq(expected = (Some("test_weapon"), None), (before, after))
         }

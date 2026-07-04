@@ -39,16 +39,11 @@ mod RenderWorld {
             Int32.min(idx, n - 1)
         }
 
-    /// アクティブ camera の ViewTransform（render() と同じ算出）。camera 無しは identity。
-    /// perf: `findActiveCamera` が全 scene 走査ゆえ、Game.flix が**フレーム 1 回**計算して全 render 関数へ渡す
-    /// （各 render 関数・各 subtree root が個別に呼ぶと ~30 回/frame 走査になるため）。
-    pub def viewTransform(scene: Scene[NodeTag]): Camera2D.ViewTransform \ GameEngine.Game =
-        match Scene.findActiveCamera(scene) {
-            case Some((cam, gp)) =>
-                let vp = GameEngine.Game.getViewportRect();
-                Camera2D.getViewTransform(cam, gp, {viewportWidth = vp#size#x, viewportHeight = vp#size#y})
-            case None => Camera2D.identityTransform()
-        }
+    /// カメラの ViewTransform（描画変換）。視点は `CameraState` resource（scene ノードなし）が権威。
+    /// Game.flix が**フレーム 1 回**計算して全 render 関数へ渡す（各 render 関数が個別に呼ばずに共有する）。
+    pub def viewTransform(_scene: Scene[NodeTag]): Camera2D.ViewTransform \ {GameEngine.Game, CameraState.State} =
+        let vp = GameEngine.Game.getViewportRect();
+        CameraState.viewTransform({viewportWidth = vp#size#x, viewportHeight = vp#size#y})
 
     /// 1 ユニット → Drawable list（resource + store から Sprite2D 値を直組み）。
     def unitDraw(ref: World.EntityRef, unitPath: NodePath,
@@ -337,7 +332,7 @@ mod RenderWorld {
     /// System で描く。各 mod は「描画セル・色・α」だけ持ち、描画は `RangeOverlay.tileDrawables` の 1 経路に集約
     /// ＝law の汎用化。非表示のオーバーレイはセルが空ゆえ Drawable も空（毎フレーム全種を引いても無害）。
     /// 表示専用ゆえ格納セルがそのまま描画セル（EnemyRange は reachable・MoveRange は drawCells・他は cells）。
-    pub def renderRangeOverlays(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] =
+    pub def renderRangeOverlays(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ RangeOverlayState.State =
         let tiles = (cells, color, alpha) -> RangeOverlay.tileDrawables(cells, color, alpha, transform);
         List.flatten(
             tiles(MoveRangeScene.drawCells(scene),     MoveRangeScene.color(),         MoveRangeScene.alpha()) ::
@@ -351,20 +346,19 @@ mod RenderWorld {
 
     // range の Tile Panel ノードは積まない（renderRangeOverlays が cells から直描きする）。
 
-    /// 選択カーソルの四隅 L字を World render System で直描きする。位置は Cursor Marker2D の
-    /// global 座標（移動 Tween の補間位置＝視覚位置の単一権威）、可視は同ノードの visible フラグ
-    /// （`CursorScene.setVisible` が書く真実源）。L字の並び・色・zIndex は `CursorScene` の定数。
-    /// Cursor ノード不在（タイトル/選択画面など未構築）や非表示のフレームは Nil。
-    pub def renderCursor(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] =
-        match Scene.getEngineNode(CursorScene.cursorPath(), scene) {
-            case None       => Nil
-            case Some(node) =>
-                if (not CanvasItem.isVisible(node)) Nil
-                else {
-                    let center = Scene.globalPositionAt(CursorScene.cursorPath(), scene);
-                    List.flatMap(box -> cursorCornerDrawables(center, box, transform),
-                                 CursorScene.cornerBoxes())
-                }
+    /// 選択カーソルの四隅 L字を World render System で直描きする。位置は `CursorState.renderPos`
+    /// （スライド補間の視覚位置＝単一権威）、可視は `CursorState.visible`（`CursorScene.setVisible` が
+    /// 書く真実源）。L字の並び・色・zIndex は `CursorScene` の定数。非表示のフレームは Nil。
+    /// 盤面（Map）が無い画面（Title 等）も Nil — CursorState は常在 resource のため、
+    /// visible フラグだけでは盤面レス画面を弾けない（Minimap と同じ Map 存在ゲート）。
+    pub def renderCursor(transform: Camera2D.ViewTransform,
+                         scene: Scene[NodeTag]): List[GameEngine.Drawable] \ CursorState.State =
+        if (not MapScene.isPresent(scene)) Nil
+        else if (not CursorState.isVisible()) Nil
+        else {
+            let center = CursorState.renderPos();
+            List.flatMap(box -> cursorCornerDrawables(center, box, transform),
+                         CursorScene.cornerBoxes())
         }
 
     /// 1 枚の四隅ボックス → box Drawable（camera 適用）。box#offset は Marker2D 原点（セル中心）からの

@@ -57,6 +57,16 @@ mod CombatDriver {
         World.Command.emit(World.Cmd.ClearAttackTarget(World.EntityRef.Enemy(enemyId)));
         EnemyScene.mapEnemy(enemyId, d -> {attackTargetId = None | d}, scene)
 
+    /// 攻撃対象 id を **World.attackTarget 権威** で読む（両 faction・単一 store）。
+    /// combat 解決の同期キャリアは `SetAttackTarget`/`ClearAttackTarget` で恒久 dual-write ゆえ
+    /// live では World==scene（`stepFrame` の [ATTACKTARGET DIFF] がフレーム末に保証）。World 未登録
+    /// （spawn 過渡・World を seed しないテスト）だけ scene Data の attackTargetId へ fallback する。
+    def attackTargetFor(ref: World.EntityRef, world: World, sceneVal: Option[Int32]): Option[Int32] =
+        match World.attackTargetOf(ref, world) {
+            case Some(t) => Some(t)
+            case None    => sceneVal
+        }
+
     /// 体当たりの片道（origin → target）所要時間。Forward + Returning の合計が
     /// アニメ全長になる。視認性を保つため移動 (16/120) より速めに設定する。
     def attackPhaseDuration(): Duration.Duration =
@@ -139,16 +149,17 @@ mod CombatDriver {
         }
 
     /// 味方の `attack:hit` のダメージ適用。
-    /// 当該 player の `attackTargetId` を読み、対応する敵への攻撃を解決する。
+    /// 当該 player の攻撃対象 id を **World.attackTarget** から読み、対応する敵への攻撃を解決する。
     /// 命中ロールは ECS（CombatSystem.resolveCombat）側で行い、命中なら SE + ダメージ + ログ、
     /// 回避なら SE を鳴らさず "miss" 表示のみ。HP <= 0 なら death_blink を開始する。
     pub def applyAttackHit(playerId: Int32, scene: Scene[NodeTag]):
             Scene[NodeTag] \ {AnimationPlayer.Scheduler, GameEngine.Audio,
                               GameLogger.GameLogger, World.RngDraw,
                               CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery} =
+        let world = World.WorldQuery.get();
         let resolved = forM (
             d       <- PlayerScene.get(playerId, scene);
-            enemyId <- d#attackTargetId
+            enemyId <- attackTargetFor(World.EntityRef.Player(playerId), world, d#attackTargetId)
         ) yield applyDamageToEnemy(playerId, d, enemyId, scene);
         Option.getWithDefault(scene, resolved)
 
@@ -159,9 +170,10 @@ mod CombatDriver {
             (Scene[NodeTag], List[Int32]) \
             {AnimationPlayer.Scheduler, GameEngine.Audio, World.RngDraw,
              World.Command, World.WorldQuery} =
+        let world = World.WorldQuery.get();
         let resolved = forM (
             d              <- EnemyScene.get(enemyId, scene);
-            targetPlayerId <- d#attackTargetId
+            targetPlayerId <- attackTargetFor(World.EntityRef.Enemy(enemyId), world, d#attackTargetId)
         ) yield applyDamageToPlayer(enemyId, d, targetPlayerId, scene);
         Option.getWithDefault((scene, Nil), resolved)
 
@@ -169,7 +181,7 @@ mod CombatDriver {
     /// 反撃の往復（味方攻撃 → 敵反撃 / 敵攻撃 → 味方反撃）はこの関数の中で完結する。
     /// FE 風で「反撃の反撃」は実装しない（反撃完了側の分岐は clear + 進行のみ）。
     pub def onLungeDone(side: Faction, id: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, CursorState.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
@@ -185,7 +197,7 @@ mod CombatDriver {
     ///       次フレーム以降で EnemyTurnDriver が PlayerScene.anyAttacking が false に
     ///       なったのを見て次の step に進む。
     def playerLungeDone(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, CursorState.State, Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
@@ -217,7 +229,7 @@ mod CombatDriver {
     /// 攻撃者・対象の敵が揃ったときだけ判定する（match は入れ子にしない）。
     def playerFollowUpEnemy(playerId: Int32, scene: Scene[NodeTag], roll: Int32, world: World): Option[Int32] =
         let pOpt = PlayerScene.get(playerId, scene);
-        let eOpt = pOpt |> Option.flatMap(p -> p#attackTargetId)
+        let eOpt = pOpt |> Option.flatMap(p -> attackTargetFor(World.EntityRef.Player(playerId), world, p#attackTargetId))
                         |> Option.flatMap(eid -> EnemyScene.get(eid, scene));
         match (pOpt, eOpt) {
             case (Some(p), Some(e)) =>
@@ -241,14 +253,14 @@ mod CombatDriver {
                             pursuit = Ring.hasPursuit(PlayerData.equippedRing(p))};
                 if (EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Brave), fctx)
                     or EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Pursuit), fctx))
-                    p#attackTargetId
+                    attackTargetFor(World.EntityRef.Player(playerId), world, p#attackTargetId)
                 else None
             case _ => None
         }
 
     /// 味方の追撃モーションを開始する（同じ敵へ再突進）。敵が消えていれば通常進行に落とす。
     def startPlayerFollowUp(playerId: Int32, enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, CursorState.State, Pacing.State, World.Command, World.WorldQuery} =
         match EnemyScene.getWithWorldPos(enemyId, scene) {
@@ -261,7 +273,7 @@ mod CombatDriver {
 
     /// 味方主攻撃完了の従来分岐（追撃なし）。CounterAttackRules.decideView（faction-blind）で Kill/Counter/Commit。
     def resolvePlayerMainAttack(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, CursorState.State, Pacing.State, World.Command, World.WorldQuery} =
         // faction-blind な decideView（UnitView ベース）で分岐する（味方→敵）。
@@ -272,7 +284,7 @@ mod CombatDriver {
             |> Option.map(player -> CounterAttackRules.decideView(
                    World.unitViewFromWorld(World.EntityRef.Player(playerId), w0, scene)
                        |> Option.getWithDefault(PlayerScene.unitView(player)),
-                   player#attackTargetId
+                   attackTargetFor(World.EntityRef.Player(playerId), w0, player#attackTargetId)
                        |> Option.flatMap(eid ->
                            // World 未登録（テスト/spawn 過渡）のみ scene fallback。
                            match World.unitViewFromWorld(World.EntityRef.Enemy(eid), w0, scene) {
@@ -295,7 +307,7 @@ mod CombatDriver {
     /// 敵 enemyId による反撃モーションを開始する（Counter 分岐の本体）。
     /// 反撃対象の味方が消えていれば反撃せず通常のターン確定に落とす。
     def startEnemyCounter(enemyId: Int32, playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery} =
@@ -319,7 +331,7 @@ mod CombatDriver {
     /// `PlayerAttackHold` は「攻撃を振った側が先に attack_lunge を開始する瞬間から
     /// 反撃 attack_lunge が終わるまで」を Hold させるための設計で、往復の間ずっと Hold が続く。
     def enemyLungeDone(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+            Scene[NodeTag] \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
                               GameLogger.GameLogger,
                               EnemyTurn.Queue, TurnPhase.State,
                               SelectedPlayer.State, CursorState.State, World.RngDraw, World.Command, World.WorldQuery} =
@@ -342,7 +354,7 @@ mod CombatDriver {
     /// 敵が追撃すべきなら対象の味方 id を返す（しないなら None）。speed は combatView の補正後値。
     def enemyFollowUpPlayer(enemyId: Int32, scene: Scene[NodeTag], roll: Int32, world: World): Option[Int32] =
         let eOpt = EnemyScene.get(enemyId, scene);
-        let pOpt = eOpt |> Option.flatMap(e -> e#attackTargetId)
+        let pOpt = eOpt |> Option.flatMap(e -> attackTargetFor(World.EntityRef.Enemy(enemyId), world, e#attackTargetId))
                         |> Option.flatMap(pid -> PlayerScene.get(pid, scene));
         match (eOpt, pOpt) {
             case (Some(e), Some(p)) =>
@@ -363,7 +375,7 @@ mod CombatDriver {
                             pursuit = Ring.hasPursuit(e#ring)};
                 if (EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Brave), fctx)
                     or EffectFlow.followUpDecision(EffectRule.Flow.FollowUp(EffectRule.FollowKind.Pursuit), fctx))
-                    e#attackTargetId
+                    attackTargetFor(World.EntityRef.Enemy(enemyId), world, e#attackTargetId)
                 else None
             case _ => None
         }
@@ -390,7 +402,7 @@ mod CombatDriver {
         ) yield (e, CounterAttackRules.decideView(
                      World.unitViewFromWorld(World.EntityRef.Enemy(enemyId), w0, scene)
                          |> Option.getWithDefault(EnemyScene.unitView(e)),
-                     e#attackTargetId
+                     attackTargetFor(World.EntityRef.Enemy(enemyId), w0, e#attackTargetId)
                          |> Option.flatMap(pid ->
                              // World 未登録（テスト/spawn 過渡）のみ scene fallback。
                              match World.unitViewFromWorld(World.EntityRef.Player(pid), w0, scene) {
@@ -408,14 +420,14 @@ mod CombatDriver {
     /// Player / Enemy ノードの毎フレーム process。AnimationPlayer から自分宛
     /// (`playerPath(id)` / `enemyPath(id)`) の signal だけ pull し、
     /// attack:hit (中点) / attack_lunge (完了) / death_blink (敵のみ、完了) に反応する。
-    /// Game.flix の `dispatchEntities` から Player / Enemy 両ノードに dispatch される
-    /// (per-node)。owner 完全一致なので他ユニットの signal は取りこぼさない。
+    /// `stepEntities` が preorder で Player / Enemy 両ノードを辿り (per-node) ここへ渡す。
+    /// owner 完全一致なので他ユニットの signal は取りこぼさない。
     /// 「Sceneのライフサイクルで処理が完結」する Godot 流の per-node signal モデル。
     pub def process(_delta: Duration.Duration,
                      node: EngineNode[NodeTag],
                      path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                    \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
                         GameEngine.Audio,
                         GameLogger.GameLogger,
                         CustomEffects.GameOverRequest,
@@ -436,7 +448,7 @@ mod CombatDriver {
                           node: EngineNode[NodeTag],
                           path: NodePath, scene: Scene[NodeTag]):
                          (EngineNode[NodeTag], Scene[NodeTag])
-                         \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+                         \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
                              GameEngine.Audio,
                              GameLogger.GameLogger,
                              CustomEffects.GameOverRequest,
@@ -462,6 +474,29 @@ mod CombatDriver {
         // あるため、最新ノードを取り直して返す (古い node で打ち消されないように)
         let latest = Scene.getEngineNode(path, afterFinished) |> Option.getWithDefault(node);
         (latest, afterFinished)
+
+    /// Player / Enemy ノードの戦闘シグナル解決を明示 System として毎フレーム 1 回回す
+    /// （gameLoop の固定パイプライン段）。preorder（`Scene.findPaths` ＝engine の `foldNodes`
+    /// と同順）で Player / Enemy ノードだけを辿り、各ノードを `process` に渡す。各ノードは
+    /// AnimationPlayer から自分宛の signal を drain するため、巡回順に依らず取りこぼさない。
+    /// fold 中に敵撃破でノードが消えた path は `getEngineNode` の None で読み飛ばす（foldNodes と同値）。
+    pub def stepEntities(scene: Scene[NodeTag]):
+            Scene[NodeTag] \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
+                              GameEngine.Audio, GameLogger.GameLogger,
+                              CustomEffects.GameOverRequest, CustomEffects.ThiefDropRequest,
+                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                              Pacing.State, World.RngDraw, World.Command, World.PhaseQuery, World.WorldQuery} =
+        let isEntity = tag -> match tag {
+            case NodeTag.Player(_) => true
+            case NodeTag.Enemy(_)  => true
+            case _                 => false
+        };
+        List.foldLeft((sc, path) -> match Scene.getEngineNode(path, sc) {
+            case None       => sc
+            case Some(node) =>
+                let (latest, next) = process(Duration.zero(), node, path, sc);
+                Scene.setEngineNode(path, latest, next)
+        }, scene, Scene.findPaths(isEntity, scene))
 
     /// 命中ロール用の 0..99 の一様乱数。`Combat.isHit(hitRate, roll)` に渡す。
     def rollPercent(): Int32 \ World.RngDraw =

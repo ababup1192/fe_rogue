@@ -95,8 +95,7 @@ mod TestBattlePanelUi {
                     gatherActive = false
                 });
                 // confirm 経路が World 位置を読む（posOf は None→scene/引数 fallback）。
-                let _ = run { BattlePanelUi.confirm(Scene.empty()) }
-                    with handler World.WorldQuery { def get(k) = k(World.empty()) };
+                let _ = BattlePanelUi.confirm(Scene.empty());
                 TurnPhase.State.get()
             } with handler PlayerData.PartyQuery {
                 def get(id, k) =
@@ -111,6 +110,8 @@ mod TestBattlePanelUi {
                 def anyAttacking(k) = k(false)
             } with handler World.Command {
                 def emit(_, k) = k()
+            } with handler World.WorldQuery {
+                def get(k) = k(World.empty())
             }
               with AnimationPlayer.withScheduler(rc)
               with GameLogger.withLogger(rc)

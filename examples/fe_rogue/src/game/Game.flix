@@ -22,16 +22,6 @@ pub enum NodeTag {
     case Player(PlayerScene.Data)
     case Enemy(EnemyScene.Data)
     case Map(MapScene.Data)
-    case MoveRange(MoveRangeScene.Data)
-    case EnemyRange(EnemyRangeScene.Data)
-    /// EnemyAttackRangeScene の赤マス overlay（敵の攻撃到達=脅威範囲。移動範囲の外側）
-    case EnemyAttackRange(EnemyAttackRangeScene.Data)
-    case PlayerAttackRange(PlayerAttackRangeScene.Data)
-    case MoveAttackRange(MoveAttackRangeScene.Data)
-    /// TradeRangeScene の緑マス overlay（「こうかん」確定後の隣接味方マス）
-    case TradeRange(TradeRangeScene.Data)
-    /// DangerZoneScene の紫マス overlay（Shift トグル: 全敵に攻撃されうるマスの統合）
-    case DangerZone(DangerZoneScene.Data)
     /// 選択カーソルの識別用純タグ（論理状態は `CursorState.State` resource へ移設・ペイロードレス）。
     case Cursor
     /// ArrowCursorScene の Marker2D（杖発射方向を視覚化する矢印カーソル）。
@@ -55,16 +45,14 @@ pub enum NodeTag {
     /// `FogScene` の常駐タグ専用ノード (Marker2D)。process redef で毎フレーム、現在パーティの
     /// いる部屋/通路だけ明るくし、それ以外は薄暗いモヤ＋敵/アイテム/階段を非表示にする。
     case FogDriver
-    /// 追従カメラ（Camera2D）。process でフェーズに応じた追従先へ動かす。
-    case Camera
     case NoTag
 }
 
-// physicsProcess はフェーズに応じて Player / Cursor のいずれか 1 体だけを
-// dispatch する。`PlayerMoving` 中は **選択中の味方 1 体だけ** が方向キーを polling する。
-// Cursor は `PlayerCursor` / `PlayerAttack` の両方で動くため、ここでは
-// NodeTag だけで dispatch して **phase 判定は `CursorScene.physicsProcess` の内部** に任せる。
-// それ以外のフェーズ（`EnemyTurn` 等）では各関数が `(node, scene)` を返して no-op になる。
+// physicsProcess の engine 巡回で動くのは Player ノードだけ。`PlayerMoving` 中は
+// **選択中の味方 1 体だけ** が方向キーを polling し、`GatherMove` 中は主人公(id 0)が動く。
+// カーソルの入力ポーリングは scene ノードを持たないため engine 巡回では回らず、gameLoop が
+// `CursorScene.physicsProcess` を明示 System として 1 回呼ぶ（phase 判定は CursorScene 内部）。
+// それ以外のフェーズ（`EnemyTurn` 等）では `(node, scene)` を返して no-op になる。
 instance Node[NodeTag] {
     type Aef = FrameAef.T
     type ProcessAef = FrameAef.ProcessT
@@ -85,37 +73,12 @@ instance Node[NodeTag] {
                 else if (phase == TurnPhase.Phase.GatherMove and data#id == 0)
                     PlayerMovementDriver.gatherStep(delta, node, path, scene)
                 else (node, scene)
-            case NodeTag.Cursor =>
-                // PlayerCursor / WeaponSelect / PlayerAttack の場合分けは CursorScene 内部に閉じている
-                CursorScene.physicsProcess(delta, node, path, scene)
             case _ => (node, scene)
         }
-    // 各 ノード固有の毎フレーム更新を dispatch する。各 Scene が「自分のノード」に対する
-    // process redef を持ち、ここでは「どの NodeTag をどの Scene 関数に流すか」の対応表に徹する。
-    // Player / Enemy は AnimationPlayer signal を自分で drain (Godot 流 per-AnimationPlayer)。
-    redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
-                   path: NodePath, scene: Scene[NodeTag]):
-                  (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
-        // process redef で残る巡回は Player / Enemy の戦闘シグナル解決だけ（メニュー/カード/パネルは
-        // すべて World-entity UI へ移行し gameLoop の明示 frameStep から駆動する）。
-        // Fog/Minimap/ArrowCursor（driver）と TopBar/Log/Camera/GroundItem 等（表示系）は
-        // ここでは巡回せず、gameLoop の明示 step が駆動する。
-        dispatchEntities(delta, node, path, scene)
+    // process redef は持たない（engine の process 巡回は gameLoop から外し、Player / Enemy の
+    // 戦闘シグナル解決は `CombatDriver.stepEntities` を明示 System としてパイプライン段で回す）。
+    // `type ProcessAef` は trait Node が要求するため宣言だけ残す（既定の no-op process が使われる）。
 }
-
-/// Player / Enemy ノード (AnimationPlayer signal drain を持つエンティティ系)。
-/// 戦闘シグナルの解決は CombatDriver.process が攻守共通で受ける。
-/// `checked_ecast` で `CombatDriver.process` の効果を `FrameAef.ProcessT` へ widen する。
-def dispatchEntities(delta: Duration.Duration, node: EngineNode[NodeTag],
-                      path: NodePath, scene: Scene[NodeTag]):
-                     (EngineNode[NodeTag], Scene[NodeTag]) \ FrameAef.ProcessT =
-    match EngineNode.getState(node) {
-        case NodeTag.Player(_) =>
-            checked_ecast(CombatDriver.process(delta, node, path, scene))
-        case NodeTag.Enemy(_) =>
-            checked_ecast(CombatDriver.process(delta, node, path, scene))
-        case _ => (node, scene)
-    }
 
 // 決定キー（Z / Space / Enter）/ キャンセルキー（X）の意味はフェーズで変わる。
 // 判断ロジックは `TurnRules.decide` に集約してあり、ここでは
@@ -127,7 +90,7 @@ def dispatchEntities(delta: Duration.Duration, node: EngineNode[NodeTag],
 //   GatherMove + Z/X   : Z で隣接メニュー（交換/全員待機/キャンセル）、X で開始位置へ巻き戻し
 //   EnemyTurn          : 入力無視（自動進行）
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = {GameEngine.Game, GameEngine.Audio, BoardQuery, Tween.Scheduler,
+    type Aef = {GameEngine.Game, GameEngine.Audio, BoardQuery, 
                  AnimationPlayer.Scheduler,
                  GameLogger.GameLogger, EnemyTurn.Queue,
                  TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
@@ -140,7 +103,7 @@ instance InputEvent.InputHandler[NodeTag] {
                  // 全滅モーダルの選択・確定・F1 ホットリロードが UI 状態とファイルを触る。
                  Fs.FileRead, UiWorldState.State,
                  // レベルアップ演出パネルの確定（LevelUpPanelUi.confirm）が State resource を触る。
-                 LevelUpPanelState.State, ItemPickupPopupState.State, TitleMenuState.State, ItemMenuState.State, TradeMenuState.State}
+                 LevelUpPanelState.State, ItemPickupPopupState.State, TitleMenuState.State, ItemMenuState.State, TradeMenuState.State, RangeOverlayState.State}
     // ActionMenu / ItemMenu / ItemActionMenu / AttackForecast フェーズでは
     // FERogue のキー慣習として Z（決定）/ X（ウィンドウを閉じる）でメニュー操作する。
     // ItemMenu と ItemActionMenu は同じ ItemMenuUi が扱い、`confirmCurrentSelection`
@@ -148,7 +111,7 @@ instance InputEvent.InputHandler[NodeTag] {
     // それ以外のフェーズはこれまで通り TurnRules 経由で振る舞いを決める。
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                        Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery,
-                                          Tween.Scheduler,
+                                          
                                           AnimationPlayer.Scheduler,
                                           GameLogger.GameLogger,
                                           EnemyTurn.Queue, TurnPhase.State,
@@ -161,7 +124,7 @@ instance InputEvent.InputHandler[NodeTag] {
                                           GamePhaseState, PartySelection.State, CharacterSelectState.State,
                                           Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
                                           Fs.FileRead, UiWorldState.State,
-                                          LevelUpPanelState.State, ItemPickupPopupState.State, TitleMenuState.State, ItemMenuState.State, TradeMenuState.State} =
+                                          LevelUpPanelState.State, ItemPickupPopupState.State, TitleMenuState.State, ItemMenuState.State, TradeMenuState.State, RangeOverlayState.State} =
         // F1: World-entity UI の ui.json を sources 台帳ごとホットリロードする（デバッグ用・画面問わず）。
         if (key == GameEngine.Key.F1) { UiWorldState.State.put(UiSpec.reloadAll(UiWorldState.State.get())); scene }
         // 画面がタイトル / 選択中なら各画面へ委譲。本編（Playing）のときだけ戦闘用ルーティングを走らせる。
@@ -175,14 +138,14 @@ instance InputEvent.InputHandler[NodeTag] {
 /// Playing フェーズのキー処理。GamePhase 分岐を onKeyPressed から分離し推論複雑度を下げる。
 def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
         Scene[NodeTag] \ {GameEngine.Game, GameEngine.Audio, BoardQuery,
-                           Tween.Scheduler, AnimationPlayer.Scheduler,
+                           AnimationPlayer.Scheduler,
                            GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
                            SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State, PlayerData.PartyQuery,
                            EnemyData.RosterQuery, CustomEffects.FloorAdvanceRequest,
                            CustomEffects.SuspendRequest,
                            Math.Random, CustomEffects.GameOverRequest, World.Command, World.WorldQuery,
                            UiWorldState.State,
-                           LevelUpPanelState.State, ItemPickupPopupState.State, TitleMenuState.State, ItemMenuState.State, TradeMenuState.State} =
+                           LevelUpPanelState.State, ItemPickupPopupState.State, TitleMenuState.State, ItemMenuState.State, TradeMenuState.State, RangeOverlayState.State} =
         // 物理キーを「決定 / キャンセル / それ以外 (None)」の意味論的入力に正規化する。
         // phase と独立した直交概念として扱いたいので、bool 2 個ではなく Option[Input] に畳む。
         let input: Option[TurnRules.Input] =
@@ -271,7 +234,7 @@ def staffAimDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
 
 /// StaffAim フェーズで Z が押されたら、矢印が指している方向で applyStaffCast を呼ぶ。
 def staffAimConfirm(scene: Scene[NodeTag]):
-        Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+        Scene[NodeTag] \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
                            BoardQuery, GameLogger.GameLogger,
                            EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                            ArrowCursorState.State,
@@ -296,7 +259,7 @@ def staffAimConfirm(scene: Scene[NodeTag]):
 /// ThrowAim フェーズで Z が押されたら、矢印が指している方向で選択中アイテムを投げる。
 /// 種別（武器/杖/薬/指輪）に依らず `applyThrow` が振り分ける。
 def throwAimConfirm(scene: Scene[NodeTag]):
-        Scene[NodeTag] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+        Scene[NodeTag] \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
                            BoardQuery, GameLogger.GameLogger,
                            EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                            ArrowCursorState.State,
@@ -388,14 +351,14 @@ def isMenuCursorMove(phase: TurnPhase.Phase, key: GameEngine.Key): Bool =
 /// 型推論の複雑度が膨らみがちなので、メニュー dispatch を関数に切り出して肩代わりする。
 /// 戻り値は「dispatcher が処理したら Some、対象外なら None」。
 def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene[NodeTag]):
-        Option[Scene[NodeTag]] \ {Tween.Scheduler, AnimationPlayer.Scheduler,
+        Option[Scene[NodeTag]] \ {AnimationPlayer.Scheduler,
                                     GameLogger.GameLogger, EnemyTurn.Queue,
                                     TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
                                     PlayerData.PartyQuery, EnemyData.RosterQuery,
                                     CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
                                     CustomEffects.GameOverRequest, CustomEffects.SuspendRequest, World.Command, World.WorldQuery, BoardQuery,
                                     UiWorldState.State,
-                                    LevelUpPanelState.State, ItemPickupPopupState.State, TitleMenuState.State, ItemMenuState.State, TradeMenuState.State} =
+                                    LevelUpPanelState.State, ItemPickupPopupState.State, TitleMenuState.State, ItemMenuState.State, TradeMenuState.State, RangeOverlayState.State} =
         match (phase, input) {
         // 全滅メニュー: Z/Enter で選択確定（restart を emit）、X は無反応（必ず選ばせる）。
         case (TurnPhase.Phase.GameOver, TurnRules.Input.Confirm)
@@ -440,7 +403,7 @@ def dispatchMenuKey(phase: TurnPhase.Phase, input: TurnRules.Input, scene: Scene
 /// 方向キーなど input = None もここに来る (StaffAim 中の direction、ほかは no-op)。
 def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                         key: GameEngine.Key, scene: Scene[NodeTag]):
-        Scene[NodeTag] \ {GameEngine.Audio, BoardQuery, Tween.Scheduler,
+        Scene[NodeTag] \ {RangeOverlayState.State, GameEngine.Audio, BoardQuery, 
                             AnimationPlayer.Scheduler,
                             GameLogger.GameLogger,
                             EnemyTurn.Queue, TurnPhase.State,
@@ -874,7 +837,6 @@ mod Game {
                   def get(k)         = k(Ref.get(phaseRef))
                   def put(target, k) = { Ref.put(target, phaseRef); k() }
               }
-              with Tween.withScheduler(rc)        // tween 一覧は内部に隠蔽
               with AnimationPlayer.withScheduler(rc)  // 名前付きアニメ + イベントドレイン
               with Pacing.withState(rc)           // 演出の溜め (hold)
               with LogState.withState(rc)         // ログ HUD の状態（queue/idleSince）を resource 化
@@ -896,7 +858,9 @@ mod Game {
                   }
               }
               with SelectedPlayer.withState(rc)   // 操作中プレイヤー id の保持
-              with CursorState.withState(rc)      // 選択カーソルの論理状態（指しセル/加速/ホバー）を resource 化
+              with CursorState.withState(rc)      // 選択カーソルの論理状態（指しセル/加速/ホバー/描画位置/tween）を resource 化
+              with CameraState.withState(rc)      // 追従カメラの視点状態（ターゲット/smoothPosition/追従パラメータ）を resource 化
+              with RangeOverlayState.withState(rc) // 範囲オーバーレイ 7 種のセル集合（Option 在/不在=表示トグル）を resource 化
               with ArrowCursorState.withState(rc) // 杖/投擲の照準矢印の論理状態（anchor/direction/gridPos）を resource 化
               with GatherResume.withState(rc)     // 集合モードのターン跨ぎ自動継続フラグ
               with InitialSpawns.withState(rc)    // ゲームオーバー時に同じ敵 / 味方配置を復元
@@ -921,7 +885,7 @@ mod Game {
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Math.Random,
                 SelectedPlayer.State, CursorState.State, ArrowCursorState.State, InitialSpawns.State, FloorProgress.State,
                 PartySelection.State, CharacterSelectState.State, GameLogger.GameLogger, FloorSnapshot.State, World.Command,
-                World.WorldQuery, TitleMenuState.State, TopBarState.State, UiWorldState.State} =
+                World.WorldQuery, TitleMenuState.State, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         match phase {
             case GamePhase.Title           => SceneSetup.buildTitle()
             case GamePhase.CharacterSelect => SceneSetup.buildCharacterSelect(catalogs)
@@ -945,7 +909,7 @@ mod Game {
                          Fs.FileRead, IO,
                          BoardQuery,
                          PlayerData.PartyQuery, EnemyData.RosterQuery,
-                         Tween.Scheduler, AnimationPlayer.Scheduler,
+                         AnimationPlayer.Scheduler,
                          GameLogger.GameLogger,
                          EnemyTurn.Queue, TurnPhase.State,
                          SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
@@ -962,7 +926,7 @@ mod Game {
                          TopBarState.State, TitleMenuState.State, UnitHPBarRender.ForecastState,
                          Math.Random, FloorSnapshot.State,
                          World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
-                         World.RngDraw, UiWorldState.State, MinimapState.State, r} =
+                         World.RngDraw, UiWorldState.State, MinimapState.State, RangeOverlayState.State, CameraState.State, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
         if (GameEngine.Game.shouldClose()) ()
         else {
@@ -979,9 +943,17 @@ mod Game {
                 |> GameEngine.handleInput
                 |> GameEngine.physicsProcess(delta = dt, paused = false,
                                               gravity = Vec2.zero())
-                |> Tween.tickAll(dt)
+                // カーソルは scene ノードを持たず CursorState resource が権威なので engine 巡回では
+                // 回らない。入力ポーリングを明示 System として 1 回呼ぶ（盤面がある画面のみ —
+                // stepOnBoard が Map 存在をゲートする）。
+                |> CursorScene.stepOnBoard(dt)
                 |> AnimationPlayer.tickAll(dt)
-                |> GameEngine.process(delta = dt, paused = false)
+                // カーソルのスライド補間・snag タイマーを dt 進めて renderPos を書く
+                // （カーソルは engine Tween/AnimationPlayer を使わずここで直接進める。CameraScene.step より前）。
+                |> CursorScene.stepVisual(dt)
+                // Player / Enemy の戦闘シグナル解決を明示 System として回す（engine の process 巡回は
+                // 使わず、この段が Player/Enemy の dispatch を担う）。
+                |> CombatDriver.stepEntities
                 // 表示系は明示 step で駆動する。
                 // 順序制約: TopBar は EnemyTurnDriver が World 経由で読む 2 bool の dual-write 元なので
                 // driver step より前に置く。TurnEndHold はログ帯を上書きするため LogUi.step より後に置く。
@@ -1056,7 +1028,8 @@ mod Game {
 /// scene-tree drawable（unit sprite 等）はそのまま合成する。camera ViewTransform はフレーム 1 回だけ計算して共有。
 def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[NodeTag]):
         Unit \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarRender.ForecastState,
-                UiWorldState.State, TurnPhase.State, ArrowCursorState.State, MinimapState.State} =
+                UiWorldState.State, TurnPhase.State, ArrowCursorState.State, MinimapState.State,
+                RangeOverlayState.State, CursorState.State, CameraState.State} =
     let transform = RenderWorld.viewTransform(synced);
     // ミニマップは Drawable（矩形）と Polygon（マーカー円）の 2 チャンネルを 1 度に組む（画面固定）。
     let minimap = RenderWorld.renderMinimap(synced);
@@ -1078,7 +1051,7 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[N
         |> List.append(WeaponIconRender.renderPlates(world2, transform, synced))
         |> List.append(RenderWorld.renderFog(transform, synced))
         |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
-        // 選択カーソルの四隅 L字（Marker2D 位置＋visible）と杖照準矢印（ArrowCursorState＋phase）を直描き。
+        // 選択カーソルの四隅 L字（CursorState renderPos＋visible）と杖照準矢印（ArrowCursorState＋phase）を直描き。
         |> List.append(RenderWorld.renderCursor(transform, synced))
         |> List.append(RenderWorld.renderArrowCursor(transform))
         // ミニマップの部屋/床矩形（画面固定 HUD レイヤ）。
