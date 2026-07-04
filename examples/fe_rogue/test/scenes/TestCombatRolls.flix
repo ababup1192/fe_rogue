@@ -39,7 +39,7 @@ mod TestCombatRolls {
         consumables       = Nil,
         selectedItem      = None,
         moveStepsTaken    = 0,
-        facing            = Staff.Direction.Down,
+        facing            = Dir4.Down,
         hidden            = false,
         usedStairs        = false,
         level             = 1,

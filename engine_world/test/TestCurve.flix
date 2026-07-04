@@ -46,4 +46,17 @@ mod TestCurve {
     @Test
     def testPiecesEmpty(): Unit \ Assert =
         Assert.assertEq(expected = 0.0, Curve.pieces(Nil, 3.0))
+
+    /// tri: 周期 4 で 0→1→0。前半で直線に昇り (t=1 で 0.5)、中央 t=2 で山 1.0、後半で
+    /// 直線に降り (t=3 で 0.5)、周期端 t=4 で 0 に戻る。すべて丸めの出ない値。
+    @Test
+    def testTriWave(): Unit \ Assert =
+        Assert.assertEq(expected = (0.0, 0.5, 1.0, 0.5, 0.0),
+            (Curve.tri(4.0, 0.0), Curve.tri(4.0, 1.0), Curve.tri(4.0, 2.0),
+             Curve.tri(4.0, 3.0), Curve.tri(4.0, 4.0)))
+
+    /// tri: 非正の周期は 0（0 除算を避けるためのガード）。
+    @Test
+    def testTriNonPositivePeriod(): Unit \ Assert =
+        Assert.assertEq(expected = (0.0, 0.0), (Curve.tri(0.0, 1.0), Curve.tri(-2.0, 1.0)))
 }

@@ -46,22 +46,18 @@ mod EnemyScene {
     /// 通常時 / 点滅の山の alpha 値。
     def fullAlpha(): Float32 = 1.0f32
 
-    /// 死亡点滅の alpha を経過秒から導出する純関数（均等 6 区間の
-    /// 1→0.3→1→0.3→1→0.3→1 を線形補間）。`World.dyingElapsedOf` を入力に renderUnits が呼ぶ。
-    /// 全長超過は 1.0（完了フレーム〜ノード除去までの端数）。
+    /// 死亡点滅の alpha を経過秒から導出する純関数（山 1.0 → 谷 0.3 を 3 サイクル）。
+    /// `World.dyingElapsedOf` を入力に renderUnits が呼ぶ。全長 total を 3 等分した三角波は
+    /// engine_world の `Curve.tri`（0→1→0）を山 f・谷 d に写して評価する。全長超過は f で
+    /// 平ら（完了フレーム〜ノード除去までの端数。tri は先へ進むと再び谷へ落ちるため明示的に止める）。
     pub def deathBlinkAlpha(elapsed: Float64): Float32 =
         let total = Duration.toSeconds(deathBlinkLength());
-        if (elapsed >= total) fullAlpha()
-        else {
-            let segLen = total / 6.0;
-            let seg = Float64.truncateToInt32(Float64.floor(elapsed / segLen));
-            let t = (elapsed - Int32.toFloat64(seg) * segLen) / segLen;   // 0..1（区間内）
-            let a = if (Int32.modulo(seg, 2) == 0) fullAlpha() else dimAlpha();  // 区間始点
-            let b = if (Int32.modulo(seg, 2) == 0) dimAlpha() else fullAlpha();  // 区間終点
-            let af = Float32.toFloat64(a);
-            let bf = Float32.toFloat64(b);
-            Float64.truncateToFloat32(af + (bf - af) * t)
-        }
+        let f = Float32.toFloat64(fullAlpha());
+        let d = Float32.toFloat64(dimAlpha());
+        let alpha =
+            if (elapsed >= total) f
+            else f - (f - d) * Curve.tri(total / 3.0, elapsed);
+        alpha |> Float64.truncateToFloat32
 
     /// `death_blink` アニメーション。**タイミング/完了シグナル専用**（Alpha track の
     /// target=子 Sprite は撤去済みで書き先が無い＝tickAll の mapEngineNode は不在 no-op。実際の

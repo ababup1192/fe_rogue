@@ -9,8 +9,8 @@ mod StaffRules {
     /// 中心セルに隣接する 4 マスのうち、歩けて空いているマスを 1 つ返す（無ければ None）。
     def adjacentFreeCell(center: {x = Int32, y = Int32}, board: Board):
             Option[{x = Int32, y = Int32}] =
-        let dirs = Staff.Direction.Up :: Staff.Direction.Down
-                    :: Staff.Direction.Left :: Staff.Direction.Right :: Nil;
+        let dirs = Dir4.Up :: Dir4.Down
+                    :: Dir4.Left :: Dir4.Right :: Nil;
         dirs
             |> List.map(d -> Board.stepTarget(center, Staff.toVec2i(d)))
             |> List.filter(c -> Board.isWalkable(board, c) and not Board.isOccupied(c, board))

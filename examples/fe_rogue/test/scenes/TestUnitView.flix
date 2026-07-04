@@ -79,7 +79,7 @@ mod TestUnitView {
         {id = id, classId = "test_player", gridPos = pos, moveTiles = 4, hp = hp, waited = false,
          attackTargetId = None, resource = TestUnitFixtures.testResource(4, hp),
          weapons = weapons, staves = Nil, consumables = Nil, selectedItem = None,
-         moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = hidden,
+         moveStepsTaken = 0, facing = Dir4.Down, hidden = hidden,
          usedStairs = false, level = 1, exp = 0, pendingLevelUp = None, statuses = Nil, rings = Nil, ringEquipped = false, followUpUsed = false}
 
     /// 敵 Data。装備武器は `weapon`（攻2・剣）、攻撃 3（testEnemyResource）。

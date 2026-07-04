@@ -1,17 +1,17 @@
-// Level — boards written in the classic sokoban text form, and the pure parser
-// that turns a string into sets of positions:
+// Level — 古典的な sokoban のテキスト形式で書かれたボードと、文字列を位置の集合
+// へ変換する純粋なパーサー:
 //
-//   #  wall        .  goal          @  robot
-//   $  crate       *  crate on goal +  robot on goal
-//   (space) floor
+//   #  壁          .  ゴール         @  ロボット
+//   $  クレート    *  ゴール上のクレート +  ゴール上のロボット
+//   (空白) 床
 //
-// A level is data: designing a new board never touches the game's rules.
-// Parsing is a pure function returning Result — a bad string is a value
-// describing what is wrong, not a crash.
+// レベルはデータである: 新しいボードを設計してもゲームのルールには一切触れな
+// い。パースは Result を返す純粋な関数である —— 不正な文字列は、クラッシュでは
+// なく何が間違っているかを説明する値になる。
 
 mod Level {
 
-    /// The first board: two crates, two goals, no interior walls.
+    /// 最初のボード: クレート2個、ゴール2個、内部の壁なし。
     pub def one(): String =
         String.unlines(
             "#######" ::
@@ -22,7 +22,7 @@ mod Level {
             "#  @  #" ::
             "#######" :: Nil)
 
-    /// The second board: interior walls force a detour before each push.
+    /// 2番目のボード: 内部の壁が、各プッシュの前に迂回を強いる。
     pub def two(): String =
         String.unlines(
             "########" ::
@@ -33,8 +33,8 @@ mod Level {
             "#. @   #" ::
             "########" :: Nil)
 
-    /// Everything a board says, as plain data. Grid positions are (column, row),
-    /// counted from the top-left of the text.
+    /// あるボードが語るすべてを、素のデータとして。グリッド座標は (列, 行) で、
+    /// テキストの左上から数える。
     pub type alias Parsed = {
         walls = Set[(Int32, Int32)],
         goals = Set[(Int32, Int32)],
@@ -44,7 +44,7 @@ mod Level {
         rows = Int32
     }
 
-    /// A board still being read: the robot may not have appeared yet.
+    /// まだ読み込み中のボード: ロボットはまだ現れていないかもしれない。
     type alias Draft = {
         walls = Set[(Int32, Int32)],
         goals = Set[(Int32, Int32)],

@@ -289,7 +289,7 @@ mod TestUiSpec {
         let (spec, ui) = pair;
         let hidden = UiStore.setVisible("Menu/item0", false, ui);
         let (_, ui2) = UiSpec.respawn(spec, hidden);
-        UiStore.idOf("Menu/item0", ui2) |> Option.flatMap(id -> Map.get(id, ui2#visible))
+        UiStore.visibleOf("Menu/item0", ui2)
 
     // ════════════════════════════════════════════════════════
     // parse: name バリデーション（空文字・"/" 含みは Err）

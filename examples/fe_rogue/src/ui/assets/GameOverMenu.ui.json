@@ -1,7 +1,8 @@
 {
+  "defaultFont": "ui",
   "templates": {
     "row": { "widget": "none", "height": 8, "dir": "column", "mainAlign": "center", "crossAlign": "start", "pad": [1.5, 0, 1.5, 0] },
-    "label": { "widget": "text", "font": "ui", "fontSize": 4.0, "tint": "#ffffff", "zIndex": 120 }
+    "label": { "widget": "text", "fontSize": 4.0, "tint": "#ffffff", "zIndex": 120 }
   },
   "root": {
     "name": "GameOverMenu", "widget": "none", "visible": false, "layer": 3,

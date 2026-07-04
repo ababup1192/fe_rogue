@@ -6,7 +6,6 @@
 mod TestFloorSnapshotCodec {
 
     use FloorSnapshot.{T, PlayerSnap, EnemySnap, ItemSnap, ChestSnap}
-    use Staff.Direction
     use StatusSystem.{Status, StatusEffect}
     use LevelSystem.Stats
     use DungeonComposer.{SideConnection, SideRef, DoorSide}
@@ -19,7 +18,7 @@ mod TestFloorSnapshotCodec {
         let pStatuses = ({effect = StatusEffect.SpdDown, magnitude = 3, remaining = 2}: Status) :: Nil;
         let player = ({id = 0, classId = "lord", gridPos = {x = 10, y = 15},
                        hp = 22, level = 3, exp = 45, stats = stats,
-                       facing = Direction.Down, statuses = pStatuses,
+                       facing = Dir4.Down, statuses = pStatuses,
                        weapons = ({id = "iron_sword", durability = 45}: {id = String, durability = Int32}) :: Nil,
                        staves = (Nil: List[{id = String, durability = Int32}]),
                        consumables = ({id = "vulnerary", durability = 3}: {id = String, durability = Int32}) :: Nil,
@@ -116,15 +115,15 @@ mod TestFloorSnapshotCodec {
             expected = true,
             Option.isEmpty(FloorSnapshotCodec.decode(Util.Json.Json.JString("nope"))))
 
-    /// `Staff.Direction` の文字列 round-trip（全 4 方位）。
+    /// `Dir4.Dir4` の文字列 round-trip（全 4 方位）。
     @Test
     def testDirectionRoundTrip(): Unit \ Assert =
         Assert.assertEq(
             expected = (true, true, true, true),
-            (Staff.parseDirection(Staff.directionToString(Direction.Up))    == Ok(Direction.Up),
-             Staff.parseDirection(Staff.directionToString(Direction.Down))  == Ok(Direction.Down),
-             Staff.parseDirection(Staff.directionToString(Direction.Left))  == Ok(Direction.Left),
-             Staff.parseDirection(Staff.directionToString(Direction.Right)) == Ok(Direction.Right)))
+            (Staff.parseDirection(Staff.directionToString(Dir4.Up))    == Ok(Dir4.Up),
+             Staff.parseDirection(Staff.directionToString(Dir4.Down))  == Ok(Dir4.Down),
+             Staff.parseDirection(Staff.directionToString(Dir4.Left))  == Ok(Dir4.Left),
+             Staff.parseDirection(Staff.directionToString(Dir4.Right)) == Ok(Dir4.Right)))
 
     /// `StatusSystem.StatusEffect` の文字列 round-trip（全 6 種別）。
     @Test

@@ -1,18 +1,18 @@
-// GameGallery — bakes full-game screenshots and play GIFs, headlessly, and
-// generates the gallery dashboard; flix test regenerates everything.
+// GameGallery — ゲーム全体のスクリーンショットとプレイ GIF をヘッドレスに焼き込
+// み、ギャラリーダッシュボードを生成する；flix test がすべてを再生成する。
 //
-//   gallery/screen_title.png   — the title page (all Spec)
-//   gallery/screen_level1.png  — level 1 at rest, move zero
-//   gallery/screen_push.png    — a push frozen mid-slide (t = 0.5)
-//   gallery/screen_clear.png   — the CLEAR panel, Moves: 7
-//   gallery/solve_level1.gif   — the whole game: title, Enter, seven moves, CLEAR
-//   gallery/rewind_demo.gif    — three moves, then Z held: the clock turns
-//                                counterclockwise while the film runs backwards
-//   gallery/index.html         — SnapshotSite dashboard over all of the above
+//   gallery/screen_title.png   — タイトルページ（すべて Spec）
+//   gallery/screen_level1.png  — レベル1、静止状態、0手目
+//   gallery/screen_push.png    — スライド中(t = 0.5)で凍結された押し
+//   gallery/screen_clear.png   — CLEAR パネル、Moves: 7
+//   gallery/solve_level1.gif   — ゲーム全体: タイトル、Enter、7手、CLEAR
+//   gallery/rewind_demo.gif    — 3手、その後 Z を押し続ける: 映像が逆再生される
+//                                間、時計は反時計回りに回る
+//   gallery/index.html         — 上記すべてを見せる SnapshotSite ダッシュボード
 //
-// Every picture is cut from the same cloth: a Trace (Replay) drives the pure
-// tick, and each frame is projected by the same frame + projectUi + renderUi
-// the launcher uses — under Harness instead of a window.
+// どの画像も同じ生地から裁断される: Trace（Replay）が純粋な tick を駆動し、各フ
+// レームはランチャーが使うのと同じ frame + projectUi + renderUi によって、ウィ
+// ンドウの代わりに Harness の下で投影される。
 mod GameGallery {
     import java.io.File
     import java.awt.image.BufferedImage
@@ -20,28 +20,28 @@ mod GameGallery {
     def ttfPath(): String = "assets/Xolonium-Regular.ttf"
     def design(): Vec2.Vec2 = {x = 320.0, y = 240.0}
 
-    /// 2x pixels: crisp on Retina, still small files.
+    /// 2倍のピクセル: Retina でくっきり、ファイルはそれでも小さい。
     def scale(): Int32 = 2
 
     def gifFrameDelayMs(): Int32 = 30
 
-    /// The GIFs keep every 2nd simulated frame: 64 Hz simulation, ~33 ms a
-    /// frame on screen — close to real time.
+    /// GIF はシミュレーションフレームの2つおきを残す: 64Hz のシミュレーション
+    /// を画面上は約33msの1フレームにする —— ほぼリアルタイムに近い。
     def gifSampleStride(): Int32 = 2
 
-    def fresh(w: Sokoban.World): Worldline[Sokoban.World] =
+    def fresh(w: Board.World): Worldline[Board.World] =
         Worldline.make(w, Sokoban.historyCap())
 
-    // ── One frame, exactly as the launcher composes it ──
+    // ── 1フレーム、ランチャーが組み立てるのとまったく同じように ──
 
-    /// The full picture of one moment: board projection + UI pages, merged.
-    /// Pure — the UI pages carry only boxes and text, so `renderUiWith` needs
-    /// nothing but the baked atlas (texture sizes are never asked for).
-    def scene(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[Sokoban.World]):
+    /// ある瞬間の完全な絵: ボードの投影 + UI ページ、合成済み。純粋 —— UI ページ
+    /// はボックスとテキストしか持たないので、`renderUiWith` は焼き込み済みの
+    /// atlas 以外何も必要としない（テクスチャサイズを尋ねることは決してない）。
+    def scene(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[Board.World]):
             {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]} =
         let w = Worldline.current(line);
-        let (ds, ps) = Sokoban.frame(atlas, w);
-        let ui1 = Sokoban.projectUi(Worldline.pastLength(line), w, ui);
+        let (ds, ps) = View.frame(atlas, w);
+        let ui1 = GameUi.projectUi(Worldline.pastLength(line), w, ui);
         let out = UiRender.renderUiWith(_ -> atlas, _ -> None, ui1, design());
         { drawables = List.append(ds, out#drawables),
           polygons = List.append(ps, out#polygons) }
@@ -54,37 +54,38 @@ mod GameGallery {
           texturePath = Map.empty(), fontTtf = ttfPath(), fontAtlas = atlas,
           outPath = path }
 
-    def shot(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[Sokoban.World],
+    def shot(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[Board.World],
              path: String): Unit \ IO =
         SoftRaster.render(rasterReq(atlas, scene(atlas, ui, line), path))
 
-    // ── The four screens ──
+    // ── 4枚の画面 ──
 
-    /// A push frozen halfway: two moves to get behind the lower crate, then
-    /// the pushing move held for 1 + 4 frames — the slide sits at t = 0.5.
-    def midPush(): Worldline[Sokoban.World] =
+    /// 半分の位置で凍結された押し: 下のクレートの後ろに回るための2手、それから
+    /// 押す手を1+4フレーム押し続ける —— スライドは t = 0.5 に位置する。
+    def midPush(): Worldline[Board.World] =
         let cues = List.flatten(
             Trace.walk(Dir4.Left) ::
             Trace.walk(Dir4.Up) ::
             (Trace.hold({ right = true | Trace.idle() }, 1) ::
              Trace.hold(Trace.idle(), 4) :: Nil) :: Nil);
-        Replay.play(Sokoban.tick, Trace.dt(), cues, fresh(Sokoban.playingWorld(1)))
+        Replay.play(Sokoban.tick, Trace.dt(), cues, fresh(Board.playingWorld(1)))
 
-    /// The solved board one second into the party, confetti mid-air.
-    def clearedAndRaining(): Worldline[Sokoban.World] =
+    /// 解決済みのボード、パーティ開始1秒後、紙吹雪が空中に舞っている。
+    def clearedAndRaining(): Worldline[Board.World] =
         let cues = List.append(Trace.solveLevelOne(),
                                Trace.hold(Trace.idle(), 64) :: Nil);
-        Replay.play(Sokoban.tick, Trace.dt(), cues, fresh(Sokoban.playingWorld(1)))
+        Replay.play(Sokoban.tick, Trace.dt(), cues, fresh(Board.playingWorld(1)))
 
     def bakeScreens(atlas: FontAtlas, ui: UiStore.UiWorld): Unit \ IO =
-        shot(atlas, ui, fresh(Sokoban.titleWorld()), "gallery/screen_title.png");
-        shot(atlas, ui, fresh(Sokoban.playingWorld(1)), "gallery/screen_level1.png");
+        shot(atlas, ui, fresh(Board.titleWorld()), "gallery/screen_title.png");
+        shot(atlas, ui, fresh(Board.playingWorld(1)), "gallery/screen_level1.png");
         shot(atlas, ui, midPush(), "gallery/screen_push.png");
         shot(atlas, ui, clearedAndRaining(), "gallery/screen_clear.png")
 
-    // ── The two films ──
+    // ── 2本のフィルム ──
 
-    /// Keep every stride-th frame (the film is shot at 64 Hz; the GIF shows ~32).
+    /// stride 個おきのフレームだけを残す（フィルムは 64Hz で撮影され、GIF は
+    /// 約32Hz で見せる）。
     def every(stride: Int32, i: Int32, xs: List[a]): List[a] = match xs {
         case Nil     => Nil
         case x :: rest =>
@@ -92,16 +93,16 @@ mod GameGallery {
             else every(stride, i + 1, rest)
     }
 
-    def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, cues: List[Replay.Cue[Sokoban.Input]],
-                start: Worldline[Sokoban.World], path: String): Unit \ IO =
+    def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, cues: List[Replay.Cue[Board.Input]],
+                start: Worldline[Board.World], path: String): Unit \ IO =
         let film = Replay.timeline(Sokoban.tick, Trace.dt(), cues, start);
         let frames = List.map(l -> SoftRaster.renderToImage(rasterReq(atlas, scene(atlas, ui, l), path)),
                               every(gifSampleStride(), 0, film));
         GifEncoder.encode(frames, gifFrameDelayMs(), path)
 
-    /// The opening act: the title waits, Enter opens level 1, seven moves
-    /// solve it, the CLEAR panel counts them.
-    def solveCues(): List[Replay.Cue[Sokoban.Input]] =
+    /// オープニング: タイトルが待ち、Enter がレベル1を開き、7手がそれを解き、
+    /// CLEAR パネルがそれを数える。
+    def solveCues(): List[Replay.Cue[Board.Input]] =
         List.flatten(
             (Trace.hold(Trace.idle(), 12) ::
              Trace.hold({ enter = true | Trace.idle() }, 1) ::
@@ -109,10 +110,10 @@ mod GameGallery {
             Trace.solveLevelOne() ::
             (Trace.hold(Trace.idle(), 40) :: Nil) :: Nil)
 
-    /// One full lap of the game: title, Enter, level 1 solved, CLEAR, Enter,
-    /// level 2 solved through its detours, CLEAR — and the last Enter brings
-    /// the title back. About six seconds of film.
-    def fullClearCues(): List[Replay.Cue[Sokoban.Input]] =
+    /// ゲームの1周まるごと: タイトル、Enter、レベル1解決、CLEAR、Enter、レベル
+    /// 2をその迂回込みで解決、CLEAR —— そして最後の Enter がタイトルへ戻す。
+    /// フィルムにして約6秒。
+    def fullClearCues(): List[Replay.Cue[Board.Input]] =
         List.flatten(
             (Trace.hold(Trace.idle(), 12) ::
              Trace.hold({ enter = true | Trace.idle() }, 1) ::
@@ -126,10 +127,10 @@ mod GameGallery {
              Trace.hold({ enter = true | Trace.idle() }, 1) ::
              Trace.hold(Trace.idle(), 36) :: Nil) :: Nil)
 
-    /// The signature move: three moves in (the third pushes a crate onto its
-    /// goal), then Z held — the alarm clock rises and turns counterclockwise
-    /// while robot and crate glide home, then lingers and fades.
-    def rewindCues(): List[Replay.Cue[Sokoban.Input]] =
+    /// 象徴的な動き: 3手進み（3手目でクレートをゴールへ押し込む）、それから Z
+    /// を押し続ける —— アラーム時計が浮かび上がり反時計回りに回りながら、ロボッ
+    /// トとクレートが家路を滑って戻り、その後しばらく留まってフェードする。
+    def rewindCues(): List[Replay.Cue[Board.Input]] =
         List.flatten(
             (Trace.hold(Trace.idle(), 8) :: Nil) ::
             Trace.walk(Dir4.Left) ::
@@ -139,7 +140,7 @@ mod GameGallery {
              Trace.rewind(54) ::
              Trace.hold(Trace.idle(), 32) :: Nil) :: Nil)
 
-    // ── The dashboard ──
+    // ── ダッシュボード ──
 
     def item(name: String, desc: String, scenario: String, ext: String,
              pxWidth: Int32): SnapshotSite.Item =
@@ -159,11 +160,11 @@ mod GameGallery {
         item("robot2_directions", "The chosen cyclops, four facings", "Robot", "png", 576) ::
         item("robot2_walk", "The walk cycle, all facings in step", "Robot", "gif", 576) :: Nil
 
-    /// One test bakes everything, strictly in this order: screenshots and
-    /// films first, the site last — so a single `flix test` always leaves a
-    /// complete dashboard, never a page of placeholders. (The Robot images
-    /// are baked by RobotGallery and also checked into git, so they exist
-    /// whenever this runs.)
+    /// 1つのテストがすべてを、必ずこの順序で焼き込む: まずスクリーンショットと
+    /// フィルム、最後にサイト —— こうすることで単発の `flix test` は常に完全な
+    /// ダッシュボードを残し、プレースホルダーのページを残すことは決してない。
+    /// （ロボットの画像は RobotGallery が焼き込み、git にもチェックインされてい
+    /// るので、これが走るときには必ず存在する。）
     @Test
     def testBakeGalleryAndSite(): Unit \ {Assert, IO} =
         let atlas = Harness.atlas();
@@ -172,9 +173,9 @@ mod GameGallery {
             case None     => Assert.assertEq(expected = "spawned", "the ui specs failed to spawn")
             case Some(ui) =>
                 bakeScreens(atlas, ui);
-                bakeGif(atlas, ui, solveCues(), fresh(Sokoban.titleWorld()), "gallery/solve_level1.gif");
-                bakeGif(atlas, ui, fullClearCues(), fresh(Sokoban.titleWorld()), "gallery/full_clear.gif");
-                bakeGif(atlas, ui, rewindCues(), fresh(Sokoban.playingWorld(1)), "gallery/rewind_demo.gif");
+                bakeGif(atlas, ui, solveCues(), fresh(Board.titleWorld()), "gallery/solve_level1.gif");
+                bakeGif(atlas, ui, fullClearCues(), fresh(Board.titleWorld()), "gallery/full_clear.gif");
+                bakeGif(atlas, ui, rewindCues(), fresh(Board.playingWorld(1)), "gallery/rewind_demo.gif");
                 run {
                     SnapshotSite.generate(
                         { outDir = "gallery", title = "Sokoban Gallery", cssScale = 2 },

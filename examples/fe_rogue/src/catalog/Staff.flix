@@ -44,15 +44,6 @@ mod Staff {
         case Stopgap
     }
 
-    /// 杖の発射方向。縦横 4 方向のみ。
-    /// `toVec2i` でグリッド上の単位ベクトル `{x, y}` に変換できる。
-    pub enum Direction with Eq, ToString {
-        case Up
-        case Down
-        case Left
-        case Right
-    }
-
     /// 杖 1 種類ぶんのデータ。
     /// `name` は表示用の和名（例: "ライブのつえ"）。
     /// `effect` は効果の種類。
@@ -98,46 +89,48 @@ mod Staff {
         if (newDurability <= 0) None
         else Some({durability = newDurability | staff})
 
-    /// 方向をグリッド上の単位ベクトルに変換する。
+    /// 方向をグリッド上の単位ベクトルに変換する。engine_world の `Dir4.delta`（(dx, dy)
+    /// タプル）を、盤面ロジックが使う record 形 `{x, y}` に組み替える薄い入口。
     /// 画面座標系（y 軸下向き）に合わせて Up は y = -1、Down は y = +1。
-    pub def toVec2i(direction: Direction): {x = Int32, y = Int32} = match direction {
-        case Direction.Up    => {x =  0, y = -1}
-        case Direction.Down  => {x =  0, y =  1}
-        case Direction.Left  => {x = -1, y =  0}
-        case Direction.Right => {x =  1, y =  0}
+    pub def toVec2i(direction: Dir4.Dir4): {x = Int32, y = Int32} =
+        let (dx, dy) = Dir4.delta(direction);
+        {x = dx, y = dy}
+
+    /// `Dir4` の文字列表現（JSON セーブ用）。`parseDirection` と round-trip する。
+    /// セーブ形式の権威をこのゲーム側に固定するため、engine の Dir4 derived ToString に
+    /// 依存せず、方位ごとの綴りをここで明示する（engine の表示変更がセーブ互換に波及しない）。
+    pub def directionToString(direction: Dir4.Dir4): String = match direction {
+        case Dir4.Up    => "Up"
+        case Dir4.Down  => "Down"
+        case Dir4.Left  => "Left"
+        case Dir4.Right => "Right"
     }
 
-    /// `Direction` の文字列表現（JSON セーブ用）。`parseDirection` と round-trip する。
-    pub def directionToString(direction: Direction): String = match direction {
-        case Direction.Up    => "Up"
-        case Direction.Down  => "Down"
-        case Direction.Left  => "Left"
-        case Direction.Right => "Right"
-    }
-
-    /// 文字列 → `Direction` のパース。未知文字列は `Err(その文字列)`。
-    /// `directionToString` と round-trip する（JSON セーブ復元で使う）。
-    pub def parseDirection(name: String): Result[String, Direction] = match name {
-        case "Up"    => Ok(Direction.Up)
-        case "Down"  => Ok(Direction.Down)
-        case "Left"  => Ok(Direction.Left)
-        case "Right" => Ok(Direction.Right)
+    /// 文字列 → `Dir4` のパース。未知文字列は `Err(その文字列)`。
+    /// `directionToString` と round-trip する（JSON セーブ復元で使う）。綴りはセーブ形式の
+    /// 権威としてこのゲーム側が持つ（engine の Dir4 表示実装には依存しない）。
+    pub def parseDirection(name: String): Result[String, Dir4.Dir4] = match name {
+        case "Up"    => Ok(Dir4.Up)
+        case "Down"  => Ok(Dir4.Down)
+        case "Left"  => Ok(Dir4.Left)
+        case "Right" => Ok(Dir4.Right)
         case other   => Err(other)
     }
 
     /// グリッドの差分ベクトルを 4 方位に丸める。主軸(絶対値が大きい方)を採用し、
-    /// 整列している(片軸が 0)場合はその軸方向になる。
-    pub def deltaToDirection(dx: Int32, dy: Int32): Direction =
+    /// 整列している(片軸が 0)場合はその軸方向になる。`Dir4.fromDelta` は単位ステップしか
+    /// 復元しないので、任意長の差分を丸めるこの選び方はゲーム側に置く。
+    pub def deltaToDirection(dx: Int32, dy: Int32): Dir4.Dir4 =
         if (Int32.abs(dx) >= Int32.abs(dy))
-            (if (dx < 0) Direction.Left else Direction.Right)
+            (if (dx < 0) Dir4.Left else Dir4.Right)
         else
-            (if (dy < 0) Direction.Up else Direction.Down)
+            (if (dy < 0) Dir4.Up else Dir4.Down)
 
     /// 負傷味方の位置リストから杖を構える 4 方位を選ぶ。同じ行/列に整列している位置
     /// （射線が届く）を優先し、次にマンハッタン距離（縦横の移動マス合計）が近い位置を
     /// 選ぶ。候補が空なら None。`origin` は構える本人の位置、`targets` は候補位置の一覧。
     pub def pickHealDirection(origin: {x = Int32, y = Int32},
-                               targets: List[{x = Int32, y = Int32}]): Option[Direction] =
+                               targets: List[{x = Int32, y = Int32}]): Option[Dir4.Dir4] =
         let scored = targets |> List.map(cell -> {
             let dx = cell#x - origin#x;
             let dy = cell#y - origin#y;

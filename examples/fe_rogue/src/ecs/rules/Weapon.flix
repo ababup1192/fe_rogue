@@ -19,9 +19,10 @@ mod Weapon {
         else Some({durability = newDur | weapon})
 
     /// 2 セル間のマンハッタン距離（|dx|+|dy|）。
-    /// 反撃や射程内判定に共通で使う。
+    /// 反撃や射程内判定に共通で使う。距離の芯は engine_world の `GridSearch.manhattanDistance`
+    /// に委ね、盤面セルの {x,y} を (col,row) タプルへ移し替えて渡す。
     pub def manhattan(a: {x = Int32, y = Int32}, b: {x = Int32, y = Int32}): Int32 =
-        Int32.abs(a#x - b#x) + Int32.abs(a#y - b#y)
+        GridSearch.manhattanDistance((a#x, a#y), (b#x, b#y))
 
     /// `distance` (マンハッタン距離) が射程 `min..max` (inclusive) に入るか。
     /// `WeaponResource` を経由しないゼロ依存の判定関数。射程レコードだけ持つ呼び出し側でも使える。

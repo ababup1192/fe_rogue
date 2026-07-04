@@ -79,10 +79,10 @@ mod TestStaff {
     def testToVec2iFourDirections(): Unit \ Assert =
         Assert.assertEq(
             expected = ((0, -1), (0, 1), (-1, 0), (1, 0)),
-            (vecToTuple(Staff.toVec2i(Staff.Direction.Up)),
-             vecToTuple(Staff.toVec2i(Staff.Direction.Down)),
-             vecToTuple(Staff.toVec2i(Staff.Direction.Left)),
-             vecToTuple(Staff.toVec2i(Staff.Direction.Right))))
+            (vecToTuple(Staff.toVec2i(Dir4.Up)),
+             vecToTuple(Staff.toVec2i(Dir4.Down)),
+             vecToTuple(Staff.toVec2i(Dir4.Left)),
+             vecToTuple(Staff.toVec2i(Dir4.Right))))
 
     /// `{x, y}` record を `(x, y)` Int32 タプルに変換するヘルパー。
     def vecToTuple(v: {x = Int32, y = Int32}): (Int32, Int32) = (v#x, v#y)
@@ -97,8 +97,8 @@ mod TestStaff {
     @Test
     def testDeltaToDirectionPicksDominantAxis(): Unit \ Assert =
         Assert.assertEq(
-            expected = (Staff.Direction.Right, Staff.Direction.Left,
-                         Staff.Direction.Up, Staff.Direction.Down),
+            expected = (Dir4.Right, Dir4.Left,
+                         Dir4.Up, Dir4.Down),
             (Staff.deltaToDirection(3, 0),
              Staff.deltaToDirection(-2, 1),
              Staff.deltaToDirection(0, -4),
@@ -115,12 +115,12 @@ mod TestStaff {
     def testPickHealDirectionPrefersAligned(): Unit \ Assert =
         let dir = Staff.pickHealDirection({x = 0, y = 0},
                     {x = 1, y = 1} :: {x = 0, y = 5} :: Nil);
-        Assert.assertEq(expected = Some(Staff.Direction.Down), dir)
+        Assert.assertEq(expected = Some(Dir4.Down), dir)
 
     /// 候補が空なら None（呼び出し側は既定 Up のまま構える）。
     @Test
     def testPickHealDirectionEmptyIsNone(): Unit \ Assert =
-        let none: Option[Staff.Direction] = None;
+        let none: Option[Dir4.Dir4] = None;
         Assert.assertEq(expected = none,
             Staff.pickHealDirection({x = 0, y = 0}, Nil))
 

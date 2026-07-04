@@ -139,8 +139,9 @@ mod ActionMenuUi {
         {innerW = innerW, panelW = innerW + 2.0 * menuSideMargin()}
 
     /// テキスト 1 本の実測幅（design px）。ui.json の label template と同じ font で測る。
+    /// 幅測りは engine_world の TextDraw.width（唯一の入口）へ委譲する。
     def measureUiText(text: String, fontSize: Float64): Float64 \ GameEngine.Game =
-        Label2D.measure(Label2D.make(text, GameEngine.Game.getFontAtlas(labelFont()), fontSize))#x
+        TextDraw.width(text, GameEngine.Game.getFontAtlas(labelFont()), fontSize)
 
     // ========================================================================
     // 毎フレーム同期（可視 + スロット流し込み + 幅フィット + 選択 / disabled tint）

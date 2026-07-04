@@ -109,7 +109,7 @@ mod PlayerData {
         ringEquipped       = Bool,
         selectedItem       = Option[ItemKind],
         moveStepsTaken     = Int32,
-        facing             = Staff.Direction,
+        facing             = Dir4.Dir4,
         hidden             = Bool,
         usedStairs         = Bool,
         level              = Int32,

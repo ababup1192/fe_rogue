@@ -25,7 +25,7 @@ mod StaffCast {
     /// 杖を発動する。`StaffAim` フェーズで方向キーが押された瞬間に呼ばれる。
     /// 該当プレイヤー / 杖が見つからない場合は防御的に no-op。
     pub def applyStaffCast(playerId: Int32, staffIdx: Int32,
-                             direction: Staff.Direction,
+                             direction: Dir4.Dir4,
                              scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
@@ -43,7 +43,7 @@ mod StaffCast {
     /// プレイヤーと杖が解決できたときの本体: レイキャスト → 命中音 → 効果適用 →
     /// 耐久消費 → 選択クリア → ターン進行。
     def fireStaff(playerId: Int32, staffIdx: Int32, player: PlayerScene.Data,
-                   staff: Staff.StaffResource, direction: Staff.Direction,
+                   staff: Staff.StaffResource, direction: Dir4.Dir4,
                    scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {RangeOverlayState.State, AnimationPlayer.Scheduler,
@@ -79,7 +79,7 @@ mod StaffCast {
     /// 回復杖でない / 負傷味方が居ないなら None（呼び出し側はデフォルト Up のまま）。
     /// ネストした match を避けるため Option の forM で短絡的に畳む。
     pub def staffAimInitialDirection(playerId: Int32, scene: Scene[NodeTag]):
-            Option[Staff.Direction] \ World.WorldQuery =
+            Option[Dir4.Dir4] \ World.WorldQuery =
         forM (
             player <- PlayerScene.getWithWorldPos(playerId, scene);
             idx    <- selectedStaffIndex(player);
@@ -97,7 +97,7 @@ mod StaffCast {
     /// 回復杖なら負傷味方への方向、それ以外（攻撃杖等）は None。
     /// 負傷味方の位置だけを `Staff.pickHealDirection` に渡す（純粋計算へ委譲）。
     def healDirectionFor(player: PlayerScene.Data, playerId: Int32, staff: Staff.StaffResource,
-                          scene: Scene[NodeTag]): Option[Staff.Direction] \ World.WorldQuery =
+                          scene: Scene[NodeTag]): Option[Dir4.Dir4] \ World.WorldQuery =
         if (staff#effect == Staff.StaffEffect.Heal)
             Staff.pickHealDirection(player#gridPos,
                 injuredAlliesExcept(playerId, scene) |> List.map(a -> a#gridPos))
@@ -662,7 +662,7 @@ mod StaffCast {
     /// 投擲系消費アイテムを発動する。`StaffAim` フェーズで Z 確定時に方向付きで呼ばれる。
     /// 該当プレイヤー / アイテムが見つからなければ防御的に no-op。
     pub def applyConsumableDirectional(playerId: Int32, idx: Int32,
-                                        direction: Staff.Direction,
+                                        direction: Dir4.Dir4,
                                         scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {RangeOverlayState.State,
@@ -678,7 +678,7 @@ mod StaffCast {
     /// 投擲系の本体: レイキャスト → 当たり対象へデバフ付与 → 耐久消費 → 選択クリア → ターン進行。
     /// 杖の `fireStaff` と同構造（方向投擲を間借りする）。
     def fireConsumable(playerId: Int32, idx: Int32, player: PlayerScene.Data,
-                        item: Consumable.ConsumableResource, direction: Staff.Direction,
+                        item: Consumable.ConsumableResource, direction: Dir4.Dir4,
                         scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {RangeOverlayState.State,
@@ -732,7 +732,7 @@ mod StaffCast {
     /// 「投げる」を実行する。`StaffAim`（投擲モード）で Z 確定時に方向付きで呼ばれる。
     /// 該当プレイヤー / アイテムは各 throw* が解決するので、ここはプレイヤー解決のみ。
     pub def applyThrow(playerId: Int32, kind: PlayerData.ItemKind,
-                        direction: Staff.Direction, scene: Scene[NodeTag]):
+                        direction: Dir4.Dir4, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {RangeOverlayState.State, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State, GameEngine.Audio,
@@ -743,7 +743,7 @@ mod StaffCast {
 
     /// 投擲本体: レイキャスト → 命中ロール込みで効果適用 → 投擲アイテム消費 → 選択クリア → ターン進行。
     def fireThrow(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
-                   direction: Staff.Direction, scene: Scene[NodeTag]):
+                   direction: Dir4.Dir4, scene: Scene[NodeTag]):
             Scene[NodeTag]
             \ {RangeOverlayState.State, AnimationPlayer.Scheduler, BoardQuery, GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State, GameEngine.Audio,
@@ -1031,13 +1031,13 @@ mod StaffCast {
         }
 
     /// 縦横 4 方向で、レイの最初の当たりが味方になる方向を返す（無ければ None）。
-    def enemyThrowDirection(origin: {x = Int32, y = Int32}, board: Board): Option[Staff.Direction] =
-        let dirs = Staff.Direction.Up :: Staff.Direction.Down
-                    :: Staff.Direction.Left :: Staff.Direction.Right :: Nil;
+    def enemyThrowDirection(origin: {x = Int32, y = Int32}, board: Board): Option[Dir4.Dir4] =
+        let dirs = Dir4.Up :: Dir4.Down
+                    :: Dir4.Left :: Dir4.Right :: Nil;
         List.findLeft(d -> rayHitsPlayer(origin, d, board), dirs)
 
     /// 指定方向のレイの最初の当たりが味方か。
-    def rayHitsPlayer(origin: {x = Int32, y = Int32}, dir: Staff.Direction, board: Board): Bool =
+    def rayHitsPlayer(origin: {x = Int32, y = Int32}, dir: Dir4.Dir4, board: Board): Bool =
         match Board.rayCast(origin, Staff.toVec2i(dir), staffMaxRange(), board) {
             case RayHit.HitPlayer(_, _) => true
             case _                      => false
@@ -1075,7 +1075,7 @@ mod StaffCast {
     /// 既に停止中なら None（無駄詠唱を避け、呼び出し側で接近 → 殴って解除する流れに任せる）。
     /// RayHit を id と一緒に透過するのは ECS 経路（`resolveStaffCast`）が hit cell を必要とするため
     /// （targeting golden が cell 透過を pin する）。`pub` は targeting golden の直叩き用。
-    pub def castableHitPlayer(origin: {x = Int32, y = Int32}, dir: Staff.Direction,
+    pub def castableHitPlayer(origin: {x = Int32, y = Int32}, dir: Dir4.Dir4,
                            board: Board, scene: Scene[NodeTag]): Option[(Int32, RayHit)] =
         match Board.rayCast(origin, Staff.toVec2i(dir), staffMaxRange(), board) {
             case RayHit.HitPlayer(id, cell) =>

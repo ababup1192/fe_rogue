@@ -1,37 +1,38 @@
 {
+  "defaultFont": "ui",
   "root": {
     "name": "LevelUpPanel", "widget": "none", "layer": 5, "visible": false,
     "children": [
       { "name": "panel", "widget": "box", "abs": [8, 13], "width": 112, "height": 64,
         "color": "#1a3399", "alpha": 0.8, "borderWidth": 1, "borderColor": "#ffffff",
         "zIndex": 0, "visible": false },
-      { "name": "header", "widget": "text", "abs": [14, 18], "text": "-", "font": "ui",
+      { "name": "header", "widget": "text", "abs": [14, 18], "text": "-",
         "fontSize": 6, "tint": "#ffffff", "zIndex": 1, "visible": false },
 
-      { "name": "bodyLabels", "widget": "text", "abs": [14, 30], "text": "", "font": "ui",
+      { "name": "bodyLabels", "widget": "text", "abs": [14, 30], "text": "",
         "fontSize": 5, "tint": "#ffffff", "zIndex": 1, "visible": false },
-      { "name": "bodyBefore", "widget": "text", "abs": [35, 30], "text": "", "font": "ui",
+      { "name": "bodyBefore", "widget": "text", "abs": [35, 30], "text": "",
         "fontSize": 5, "tint": "#ffffff", "zIndex": 1, "visible": false },
-      { "name": "bodyArrow", "widget": "text", "abs": [43, 30], "text": "", "font": "ui",
+      { "name": "bodyArrow", "widget": "text", "abs": [43, 30], "text": "",
         "fontSize": 5, "tint": "#ffffff", "zIndex": 1, "visible": false },
-      { "name": "bodyAfter", "widget": "text", "abs": [49, 30], "text": "", "font": "ui",
+      { "name": "bodyAfter", "widget": "text", "abs": [49, 30], "text": "",
         "fontSize": 5, "tint": "#ffffff", "zIndex": 1, "visible": false },
-      { "name": "bodyPlus", "widget": "text", "abs": [57, 30], "text": "", "font": "ui",
+      { "name": "bodyPlus", "widget": "text", "abs": [57, 30], "text": "",
         "fontSize": 5, "tint": "#ffe94a", "zIndex": 1, "visible": false },
 
-      { "name": "bodyLabels2", "widget": "text", "abs": [66, 30], "text": "", "font": "ui",
+      { "name": "bodyLabels2", "widget": "text", "abs": [66, 30], "text": "",
         "fontSize": 5, "tint": "#ffffff", "zIndex": 1, "visible": false },
-      { "name": "bodyBefore2", "widget": "text", "abs": [87, 30], "text": "", "font": "ui",
+      { "name": "bodyBefore2", "widget": "text", "abs": [87, 30], "text": "",
         "fontSize": 5, "tint": "#ffffff", "zIndex": 1, "visible": false },
-      { "name": "bodyArrow2", "widget": "text", "abs": [95, 30], "text": "", "font": "ui",
+      { "name": "bodyArrow2", "widget": "text", "abs": [95, 30], "text": "",
         "fontSize": 5, "tint": "#ffffff", "zIndex": 1, "visible": false },
-      { "name": "bodyAfter2", "widget": "text", "abs": [101, 30], "text": "", "font": "ui",
+      { "name": "bodyAfter2", "widget": "text", "abs": [101, 30], "text": "",
         "fontSize": 5, "tint": "#ffffff", "zIndex": 1, "visible": false },
-      { "name": "bodyPlus2", "widget": "text", "abs": [109, 30], "text": "", "font": "ui",
+      { "name": "bodyPlus2", "widget": "text", "abs": [109, 30], "text": "",
         "fontSize": 5, "tint": "#ffe94a", "zIndex": 1, "visible": false },
 
       { "name": "footer", "widget": "text", "abs": [14, 70], "text": "Z / Enter で 閉じる",
-        "font": "ui", "fontSize": 4, "tint": "#ffffff", "zIndex": 1, "visible": false }
+        "fontSize": 4, "tint": "#ffffff", "zIndex": 1, "visible": false }
     ]
   }
 }

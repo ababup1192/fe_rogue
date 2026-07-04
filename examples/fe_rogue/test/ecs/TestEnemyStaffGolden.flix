@@ -37,7 +37,7 @@ mod TestEnemyStaffGolden {
         consumables       = Nil,
         selectedItem      = None,
         moveStepsTaken    = 0,
-        facing            = Staff.Direction.Down,
+        facing            = Dir4.Down,
         hidden            = false,
         usedStairs        = false,
         level             = 1,
@@ -232,7 +232,7 @@ mod TestEnemyStaffGolden {
         let target = playerAt(1, {x = 5, y = 2}, Nil);
         let sc = sceneOf(target :: Nil, Nil);
         let board = BoardSnapshot.fromScene(sc);
-        let got = StaffCast.castableHitPlayer({x = 2, y = 2}, Staff.Direction.Right, board, sc);
+        let got = StaffCast.castableHitPlayer({x = 2, y = 2}, Dir4.Right, board, sc);
         // id=1 と RayHit.HitPlayer(1, {5,2}) を両方透過。
         Assert.assertEq(expected = Some((1, ("HitPlayer", 1, 5, 2))), castTargetT(got))
 
@@ -242,7 +242,7 @@ mod TestEnemyStaffGolden {
         let target = playerAt(1, {x = 5, y = 2}, StatusSystem.immobilizeFor(5) :: Nil);
         let sc = sceneOf(target :: Nil, Nil);
         let board = BoardSnapshot.fromScene(sc);
-        let got = StaffCast.castableHitPlayer({x = 2, y = 2}, Staff.Direction.Right, board, sc);
+        let got = StaffCast.castableHitPlayer({x = 2, y = 2}, Dir4.Right, board, sc);
         Assert.assertEq(expected = (None: Option[(Int32, (String, Int32, Int32, Int32))]), castTargetT(got))
 
     // ── (C) threading: enemyTryStaff forM 鎖（ECS 分岐）─────────────────────────

@@ -132,13 +132,14 @@ mod UnitCardUi {
         if (max <= 0) 0.0
         else size * Float64.max(0.0, Float64.min(1.0, Int32.toFloat64(value) / Int32.toFloat64(max)))
 
-    /// テキストの表示幅（px）。engine の Label2D.measure を再利用（自前メトリクス計算はしない）。
+    /// テキストの表示幅（px）。engine_world の TextDraw.width（幅測りの唯一の入口）へ委譲する。
     def textWidth(atlas: FontAtlas, fontSize: Float64, text: String): Float64 =
-        Label2D.measure(Label2D.make(text, atlas, fontSize))#x
+        TextDraw.width(text, atlas, fontSize)
 
     /// テキストの表示高さ（px）。縦中心合わせ（HP ラベル / 数値）の top-left y 計算に使う。
+    /// engine_world の TextDraw.size（寸法測りの唯一の入口）の高さ成分へ委譲する。
     def textHeight(atlas: FontAtlas, fontSize: Float64, text: String): Float64 =
-        Label2D.measure(Label2D.make(text, atlas, fontSize))#y
+        TextDraw.size(text, atlas, fontSize)#y
 
     // ========================================================================
     // 毎フレーム System

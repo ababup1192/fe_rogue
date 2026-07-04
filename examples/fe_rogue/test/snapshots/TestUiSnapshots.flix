@@ -214,7 +214,7 @@ mod TestUiSnapshots {
           consumables = List.map(consumableRes, s#consumableIds),
           rings = List.map(ringRes, s#ringIds),
           ringEquipped = s#ringEquipped, selectedItem = s#selectedItem,
-          moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = false, usedStairs = false,
+          moveStepsTaken = 0, facing = Dir4.Down, hidden = false, usedStairs = false,
           level = s#level, exp = s#exp, pendingLevelUp = None, statuses = Nil,
           followUpUsed = false}: PlayerScene.Data)
 

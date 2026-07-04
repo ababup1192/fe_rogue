@@ -1400,7 +1400,7 @@ mod World {
               (Int32, Option[(String, Int32)]),
               (Int32, Option[(String, Int32)]),
               Bool),
-             (Option[PlayerData.ItemKind], Int32, Staff.Direction, Bool, Bool,
+             (Option[PlayerData.ItemKind], Int32, Dir4.Dir4, Bool, Bool,
               Option[(String, Int32, Int32, Int32)],
               List[(StatusSystem.StatusEffect, Int32, Int32)])) =
         // 注: followUpUsed は含めない。scene copy は退役し World 権威ゆえ DIFF 対象外
@@ -1671,7 +1671,7 @@ mod World {
     /// Data は Eq 非自動ゆえ **全 23 field を tuple へ射影**して比較する。射影が 1 field でも漏れると、その field が
     /// ズレても DIFF が鳴らず「parity 成立」と誤認する（S2.4 の length+head 見逃しの拡大版）ため **全 field 完備が命**。
     /// ネスト射影: gridPos={x,y}／weapons/staves/consumables/rings は (長さ, 先頭の name)／resource は数値 stat 群で代表／
-    /// statuses は (effect,magnitude,remaining) list／selectedItem(ItemKind Eq)／facing(Direction Eq)／
+    /// statuses は (effect,magnitude,remaining) list／selectedItem(ItemKind Eq)／facing(Dir4 Eq)／
     /// pendingLevelUp は Option を (unitName,fromLevel,toLevel,変化数) へ射影／他スカラはそのまま。
     pub def playerDataMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
         // 全 23 field の射影は playerDataKey へ集約（2段ネスト ((13),(10))・在庫は weaponsMismatches 等と

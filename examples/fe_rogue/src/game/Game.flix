@@ -210,16 +210,16 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
 // StaffAim フェーズ用ヘルパー（方向キー → applyStaffCast、X/Esc → メニューに戻る）
 // ────────────────────────────────────────────────────────
 
-/// 方向キーを `Staff.Direction` に変換する。方向以外のキーは None。
-def keyToStaffDirection(key: GameEngine.Key): Option[Staff.Direction] = match key {
-    case GameEngine.Key.W     => Some(Staff.Direction.Up)
-    case GameEngine.Key.Up    => Some(Staff.Direction.Up)
-    case GameEngine.Key.S     => Some(Staff.Direction.Down)
-    case GameEngine.Key.Down  => Some(Staff.Direction.Down)
-    case GameEngine.Key.A     => Some(Staff.Direction.Left)
-    case GameEngine.Key.Left  => Some(Staff.Direction.Left)
-    case GameEngine.Key.D     => Some(Staff.Direction.Right)
-    case GameEngine.Key.Right => Some(Staff.Direction.Right)
+/// 方向キーを `Dir4.Dir4` に変換する。方向以外のキーは None。
+def keyToStaffDirection(key: GameEngine.Key): Option[Dir4.Dir4] = match key {
+    case GameEngine.Key.W     => Some(Dir4.Up)
+    case GameEngine.Key.Up    => Some(Dir4.Up)
+    case GameEngine.Key.S     => Some(Dir4.Down)
+    case GameEngine.Key.Down  => Some(Dir4.Down)
+    case GameEngine.Key.A     => Some(Dir4.Left)
+    case GameEngine.Key.Left  => Some(Dir4.Left)
+    case GameEngine.Key.D     => Some(Dir4.Right)
+    case GameEngine.Key.Right => Some(Dir4.Right)
     case _                     => None
 }
 

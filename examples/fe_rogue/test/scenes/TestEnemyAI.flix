@@ -119,7 +119,7 @@ mod TestEnemyAI {
          attackTargetId = None,
          resource = TestUnitFixtures.testResourceFull(4, hp, 3, defense, 3),
          weapons = weapons, staves = Nil, consumables = Nil, selectedItem = None,
-         moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = false,
+         moveStepsTaken = 0, facing = Dir4.Down, hidden = false,
          usedStairs = false, level = 1, exp = 0, pendingLevelUp = None, statuses = Nil, rings = Nil, ringEquipped = false, followUpUsed = false}
 
     /// 評価軸テスト用の味方 UnitView を実 projection（`PlayerScene.unitView`）で組む。

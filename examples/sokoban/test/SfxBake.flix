@@ -1,31 +1,31 @@
-// SfxBake — the four sound effects are generated assets, like the gallery:
-// flix test writes them to assets/sfx/ as plain 16-bit mono PCM WAV files, and
-// project.json's sound manifest loads them at launch. No sample packs, no
-// recording — SfxSynth's square wave, noise burst and fade are enough
-// vocabulary for a robot pushing boxes. This file keeps only the sound design;
-// the synthesis and WAV encoding live in engine_tools.
+// SfxBake — 4つの効果音は、ギャラリーと同様に生成されるアセットである: flix
+// test が assets/sfx/ へ素の16ビットモノラル PCM WAV ファイルとして書き出し、
+// project.json のサウンドマニフェストが起動時にそれらを読み込む。サンプルパック
+// も録音も無し —— SfxSynth の矩形波、ノイズバースト、フェードだけで、箱を押すロ
+// ボットには十分な語彙になる。このファイルはサウンドデザインだけを保持し、合成
+// と WAV エンコードは engine_tools に住む。
 mod SfxBake {
     import java.io.File
 
-    /// 22050 Hz mono: small files, plenty for these blips.
+    /// 22050Hz モノラル: 小さいファイルで、この程度のブリップには十分。
     def cfg(): SfxSynth.Config = { sampleRate = 22050 }
 
-    // ── The four sounds: each a design over SfxSynth's vocabulary ──
+    // ── 4つの音: それぞれが SfxSynth の語彙に対するデザイン ──
 
-    /// Walking: a short mid blip.
+    /// 歩行: 短い中音のブリップ。
     def moveBlip(): List[Float64] = SfxSynth.fade(SfxSynth.tone(cfg(), 660.0, 0.22, 45))
 
-    /// Pushing: a low square under a sharply decaying noise burst — wood
-    /// scraping floor. The noise fades twice, so it dies faster than the tone.
+    /// 押し: 鋭く減衰するノイズバーストの下に低い矩形波 —— 木が床を擦る音。ノイ
+    /// ズは2回フェードするので、トーンより先に消える。
     def pushThud(): List[Float64] =
         SfxSynth.blend(
             SfxSynth.fade(SfxSynth.tone(cfg(), 98.0, 0.3, 90)),
             SfxSynth.fade(SfxSynth.fade(SfxSynth.noise(cfg(), 0.22, 90))))
 
-    /// Rewinding: one high tick per move taken back, in the clock's voice.
+    /// 巻き戻し: 巻き戻された1手につき高い音のチックが1つ、時計の声で。
     def undoTick(): List[Float64] = SfxSynth.fade(SfxSynth.tone(cfg(), 1568.0, 0.16, 22))
 
-    /// CLEAR: four rising square notes — C5, E5, G5, C6.
+    /// CLEAR: 上昇する4つの矩形波の音 —— C5、E5、G5、C6。
     def clearFanfare(): List[Float64] =
         SfxSynth.sequence(
             SfxSynth.fade(SfxSynth.tone(cfg(), 523.25, 0.2, 90)) ::

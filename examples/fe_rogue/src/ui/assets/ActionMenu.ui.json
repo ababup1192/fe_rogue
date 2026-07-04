@@ -1,7 +1,8 @@
 {
+  "defaultFont": "ui",
   "templates": {
     "row": { "widget": "none", "visible": false, "height": 8, "dir": "column", "mainAlign": "center", "crossAlign": "center" },
-    "label": { "widget": "text", "font": "ui", "fontSize": 2.56, "tint": "#eef1f7", "zIndex": 121 }
+    "label": { "widget": "text", "fontSize": 2.56, "tint": "#eef1f7", "zIndex": 121 }
   },
   "root": {
     "name": "ActionMenu", "widget": "none", "visible": false, "layer": 7,
@@ -17,7 +18,7 @@
             "cornerRadius": 2, "zIndex": 118,
             "dir": "column", "crossAlign": "center", "pad": [2, 1, 2, 1],
             "children": [
-              { "name": "title", "widget": "text", "text": "コマンド", "font": "ui",
+              { "name": "title", "widget": "text", "text": "コマンド",
                 "fontSize": 2.4, "tint": "#9cc0ff", "zIndex": 120 }
             ]
           },

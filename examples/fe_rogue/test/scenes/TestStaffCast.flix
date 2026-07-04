@@ -39,7 +39,7 @@ mod TestStaffCast {
             consumables       = Nil,
             selectedItem      = None,
             moveStepsTaken    = 0,
-            facing            = Staff.Direction.Down,
+            facing            = Dir4.Down,
             hidden            = false,
             usedStairs        = false,
             level             = 1,
@@ -68,7 +68,7 @@ mod TestStaffCast {
         {id = id, classId = "test_player", gridPos = {x = gx, y = gy}, moveTiles = 5, hp = 10, waited = false,
          attackTargetId = None, resource = TestUnitFixtures.testResourceMagic(5, 10, 3, 1, 0, 0, 3),
          weapons = Nil, staves = Nil, consumables = Nil, selectedItem = None,
-         moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = false, usedStairs = false,
+         moveStepsTaken = 0, facing = Dir4.Down, hidden = false, usedStairs = false,
          level = 1, exp = 0, pendingLevelUp = None, statuses = Nil, rings = Nil,
          ringEquipped = false, followUpUsed = false}
 

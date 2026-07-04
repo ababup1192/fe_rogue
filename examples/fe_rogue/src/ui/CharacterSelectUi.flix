@@ -423,10 +423,11 @@ mod CharacterSelectUi {
             case SubMode.PickingMembers => "残り ${remaining(data)} 人"
             case SubMode.PickingLeader  => "リーダーを えらんでください"
         };
-        let width = Label2D.measure(Label2D.make(text, atlas, counterFontSize()))#x;
+        // 中央寄せは engine_world の TextDraw.centerLeft（中心 x から左端 x を返す）へ委譲する。
+        let leftX = TextDraw.centerLeft(text, atlas, counterFontSize(), counterCenterX());
         ui
             |> UiStore.setText(counterPath(), text)
-            |> UiStore.setAbs(counterPath(), {x = counterCenterX() - width / 2.0, y = counterTopY()})
+            |> UiStore.setAbs(counterPath(), {x = leftX, y = counterTopY()})
 
     /// 出撃ボタンの見た目を状態に応じて変える（参考 UI に寄せた琥珀グラデ風）:
     ///   3 人未満       → 沈んだ灰背景・くすんだ文字・つや無し・枠なし（押せないと分かる）
@@ -444,7 +445,7 @@ mod CharacterSelectUi {
         // 枠は注目中だけ出す（通常は太さ 0 = 枠なし）。
         let borderWidth = if (data#onButton) 2.0 else 0.0;
         // ラベルは枠内中央（水平・垂直とも中央そろえ）に置く。
-        let measured = Label2D.measure(Label2D.make("出撃", atlas, buttonFontSize()));
+        let measured = TextDraw.size("出撃", atlas, buttonFontSize());
         ui
             |> UiStore.setBoxColor(buttonBgPath(), background)
             |> UiStore.setBoxBorderColor(buttonBgPath(), buttonFocusBorder())

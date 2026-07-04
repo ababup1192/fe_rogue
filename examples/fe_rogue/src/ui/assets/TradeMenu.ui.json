@@ -1,4 +1,5 @@
 {
+  "defaultFont": "ui",
   "templates": {
     "tradeRow": {
       "widget": "none", "visible": false, "height": 12, "dir": "row", "gap": 1.5, "crossAlign": "center",
@@ -16,8 +17,8 @@
         {
           "name": "info", "widget": "none", "dir": "column", "gap": 0.3,
           "children": [
-            { "name": "name", "widget": "text", "font": "ui", "fontSize": 2.2, "tint": "#eef1f7", "zIndex": 141 },
-            { "name": "subline", "widget": "text", "font": "ui", "fontSize": 2.2, "tint": "#aab0b8", "zIndex": 141 }
+            { "name": "name", "widget": "text", "fontSize": 2.2, "tint": "#eef1f7", "zIndex": 141 },
+            { "name": "subline", "widget": "text", "fontSize": 2.2, "tint": "#aab0b8", "zIndex": 141 }
           ]
         }
       ]
@@ -25,7 +26,7 @@
     "tradePane": {
       "widget": "none", "dir": "column", "gap": 0.3, "crossAlign": "stretch", "width": 48,
       "children": [
-        { "name": "class", "widget": "text", "font": "ui", "fontSize": 2.4, "tint": "#eef1f7", "text": "", "zIndex": 140 },
+        { "name": "class", "widget": "text", "fontSize": 2.4, "tint": "#eef1f7", "text": "", "zIndex": 140 },
         {
           "name": "menu", "widget": "none", "dir": "column", "gap": 0.0, "crossAlign": "stretch", "height": 72,
           "children": [
@@ -57,7 +58,7 @@
             "cornerRadius": 2, "zIndex": 138, "height": 5,
             "dir": "row", "mainAlign": "spaceBetween", "crossAlign": "center", "pad": [2, 1, 2, 1],
             "children": [
-              { "name": "title", "widget": "text", "text": "持物の交換", "font": "ui",
+              { "name": "title", "widget": "text", "text": "持物の交換",
                 "fontSize": 2.4, "tint": "#9cc0ff", "zIndex": 140 }
             ]
           },
@@ -72,7 +73,7 @@
           },
           { "name": "hint", "widget": "text",
             "text": "▲▼ 選択 ・ ◀▶ 相手 ・ Z 持つ/置く ・ X 戻る",
-            "font": "ui", "fontSize": 2.0, "tint": "#7d8aa3", "zIndex": 140 }
+            "fontSize": 2.0, "tint": "#7d8aa3", "zIndex": 140 }
         ]
       }
     ]

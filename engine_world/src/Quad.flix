@@ -14,6 +14,19 @@ mod Quad {
         let corner = (sx, sy) -> Vec2.add(center, Vec2.add(Vec2.mul(u, sx * halfW), Vec2.mul(v, sy * halfH)));
         corner(-1.0, -1.0) :: corner(1.0, -1.0) :: corner(1.0, 1.0) :: corner(-1.0, 1.0) :: Nil
 
+    /// 向きを角度でなく単位軸ベクトル `axis` で与える `rotated`。`axis` は箱のローカル +x
+    /// 軸（`halfLen` を測る向き）を指す単位ベクトルで、`halfThick` はそれに直交する半厚。
+    /// すでに正規化した向き（進行方向や法線）が手元にあるとき、角度への atan2 と cos/sin の
+    /// 往復を挟まずに四隅を出せる。`axis = {x = cos angle, y = sin angle}` のとき
+    /// `rotated(center, halfLen, halfThick, angle)` と同一。隅は `rotated`・`strip` と同じ
+    /// 巻き順で、ローカル (-halfLen, -halfThick) の角から (+,-)→(+,+)→(-,+) と回して返す。
+    /// `axis` は単位長を前提とする（長さが 1 でないと箱が伸縮する）。
+    pub def orientedByAxis(center: Vec2.Vec2, axis: Vec2.Vec2, halfLen: Float64, halfThick: Float64): List[Vec2.Vec2] =
+        let u = axis;                          // ローカル +x 軸（halfLen 方向）
+        let v = { x = -u#y, y = u#x };         // ローカル +y 軸（halfThick 方向）
+        let corner = (sx, sy) -> Vec2.add(center, Vec2.add(Vec2.mul(u, sx * halfLen), Vec2.mul(v, sy * halfThick)));
+        corner(-1.0, -1.0) :: corner(1.0, -1.0) :: corner(1.0, 1.0) :: corner(-1.0, 1.0) :: Nil
+
     /// `p0` から `p1` への線分に沿った一定幅の帯で、中心線の両側の符号つき法線オフセット
     /// `o1..o2` を覆う。帯の長辺は p0->p1 に平行に走り、厚み (o2 - o1) はどこでも同じ
     /// （両縁とも線分の法線に沿って作るため）。太線・針・輪郭の片側レール（o1..o2 を片側に

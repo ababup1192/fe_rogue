@@ -32,10 +32,10 @@ mod MapSnapshot {
     /// グリッド座標 → セル中心ピクセル座標。MapSnapshot を持たない呼び出し側が
     /// グローバル `tileSize()` だけで中央座標を得るために用意した軽量版。
     /// MapSnapshot を持つ場合は `mapToLocal` を使えばスナップショット固有の tileSize を参照できる。
+    /// セル中心の芯は engine_world の `Grid.cellCenter` に委譲し（原点は持たない）、
+    /// マップ原点の加算は `gridToWorld` 側の政策として残す。
     pub def cellCenter(cell: {x = Int32, y = Int32}): Vec2.Vec2 =
-        let s = tileSize();
-        let v = Vec2i.toVec2(cell);
-        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
+        Grid.cellCenter(tileSize(), (cell#x, cell#y))
 
     /// セルが壁か。範囲外セルは wallCells に登録されないため、壁として扱わない契約。
     pub def isWall(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
@@ -53,10 +53,9 @@ mod MapSnapshot {
 
     /// グリッド座標 → セル中心ローカル座標。スナップショット固有の tileSize を引数から取るため、
     /// 呼び出し側が MapSnapshot を保持していれば MapScene のグローバル定数に依存せず変換できる。
+    /// セル中心の芯は `Grid.cellCenter` に委譲する（原点なし。原点加算は `gridToWorld`）。
     pub def mapToLocal(c: {x = Int32, y = Int32}, m: MapSnapshot): {x = Float64, y = Float64} =
-        let s = m#tileSize;
-        let v = Vec2i.toVec2(c);
-        {x = v#x * s + s / 2.0, y = v#y * s + s / 2.0}
+        Grid.cellCenter(m#tileSize, (c#x, c#y))
 
     /// グリッド座標 → world 座標（Map global 加算済み。呼び出し側が MapScene の位置を知らずに済む）。
     pub def gridToWorld(c: {x = Int32, y = Int32}, m: MapSnapshot): {x = Float64, y = Float64} =

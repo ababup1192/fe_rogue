@@ -254,9 +254,10 @@ mod LevelUpPanelUi {
     def maxLabelWidth(atlas: FontAtlas, changes: List[LevelSystem.StatChange]): Float64 =
         changes |> List.foldLeft((acc, change) -> Float64.max(acc, measure(change#label, atlas)), 0.0)
 
-    /// テキストの内在幅（design px）。engine の Label2D.measure を本文フォントで再利用する。
+    /// テキストの内在幅（design px）。engine_world の TextDraw.width（幅測りの唯一の入口）へ
+    /// 本文フォントで委譲する。
     def measure(text: String, atlas: FontAtlas): Float64 =
-        Label2D.measure(Label2D.make(text, atlas, bodyFont()))#x
+        TextDraw.width(text, atlas, bodyFont())
 
     /// レベルアップ保留中の味方の結果を 1 つ拾う（味方ターンなので同時に複数は出ない）。
     def pendingResult(scene: Scene[NodeTag]): Option[LevelSystem.Result] =

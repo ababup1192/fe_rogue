@@ -1,43 +1,43 @@
 # Sokoban
 
-A complete little sokoban built on `flix_game_engine`, written as the
-worked example of the **Worldline architecture**: one immutable World, a
-pure `tick`, projections for the screen, the UI and the ear — and a
-Worldline of past Worlds that makes unlimited undo two function calls.
+`flix_game_engine` の上に構築された、完結した小さな sokoban であり、**Worldline
+アーキテクチャ**の実演例として書かれている: 1つの不変な World、純粋な `tick`、
+画面・UI・耳のための投影、そして無制限アンドゥを2回の関数呼び出しにする、過去の
+Worlds の Worldline。
 
-![One full lap of the game](gallery/full_clear.gif)
+![ゲーム1周分の様子](gallery/full_clear.gif)
 
-Slide-based movement, rewind with a spinning alarm clock, two levels, a
-title and CLEAR page declared in `ui.json` (hot-reload with F1), confetti
-without a particle system, and four procedurally generated sound effects.
+スライドベースの移動、回転するアラーム時計による巻き戻し、2つのレベル、
+`ui.json` で宣言されたタイトルと CLEAR のページ（F1 でホットリロード）、パーテ
+ィクルシステムなしの紙吹雪、そして4つの手続き生成された効果音。
 
-## Run
+## 実行方法
 
-From the repository root, distribute the engine libraries once:
+リポジトリのルートから、エンジンライブラリを一度だけ配布する:
 
 ```sh
 make sync
 ```
 
-Then, in this directory (the first test run also bakes the generated
-assets — sounds and gallery):
+続いて、このディレクトリで（最初のテスト実行時に、生成アセット —— 音とギャラリ
+ー —— も焼き込まれる）:
 
 ```sh
 java -XstartOnFirstThread -jar bin/flix.jar test
 java -XstartOnFirstThread -jar bin/flix.jar run
 ```
 
-Arrows move, Z rewinds, Enter turns pages, X abandons a level, F1 reloads
-the UI Specs, Esc quits.
+矢印キーで移動、Z で巻き戻し、Enter でページをめくる、X でレベルを放棄、F1 で
+UI Spec を再読み込み、Esc で終了。
 
-## Learn
+## 学ぶ
 
-The game is built chapter by chapter in the tutorial — one concept at a
-time, no prior Flix required:
+このゲームはチュートリアルの中で章ごとに、一度に1つの概念ずつ、Flix の事前知識
+なしで組み立てられる:
 
-- [TUTORIAL.md](TUTORIAL.md) (English)
-- [TUTORIAL.ja.md](TUTORIAL.ja.md) (日本語)
+- [TUTORIAL.md](TUTORIAL.md)（英語）
+- [TUTORIAL.ja.md](TUTORIAL.ja.md)（日本語）
 
-Every screenshot and GIF above is a test artifact: `flix test` regenerates
-the whole [gallery](gallery/index.html), replays the shipped solutions of
-both levels, and pins their outcomes.
+上のスクリーンショットと GIF はすべてテストの成果物である: `flix test` が
+[ギャラリー](gallery/index.html) 全体を再生成し、両レベルの同梱の解答をリプレイ
+して、その結末を固定する。

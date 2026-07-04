@@ -26,18 +26,18 @@ mod ArrowCursorScene {
     ///   - Down  → 180°
     ///   - Left  → 270° (= -90°)
     /// `RenderWorld.renderArrowCursor` がスプライトの回転として使う。
-    pub def rotationOf(direction: Staff.Direction): Float64 = match direction {
-        case Staff.Direction.Up    => 0.0
-        case Staff.Direction.Right => 1.5707963267948966
-        case Staff.Direction.Down  => 3.141592653589793
-        case Staff.Direction.Left  => -1.5707963267948966
+    pub def rotationOf(direction: Dir4.Dir4): Float64 = match direction {
+        case Dir4.Up    => 0.0
+        case Dir4.Right => 1.5707963267948966
+        case Dir4.Down  => 3.141592653589793
+        case Dir4.Left  => -1.5707963267948966
     }
 
     /// anchor から direction だけ進めた隣接セル。
     /// `Staff.toVec2i` と同等の計算だが、`gridPos` への代入前に cell 値を名前付きで保持できるよう
     /// 関数として独立させている。
     def cellOf(anchor: {x = Int32, y = Int32},
-                direction: Staff.Direction): {x = Int32, y = Int32} =
+                direction: Dir4.Dir4): {x = Int32, y = Int32} =
         let offset = Staff.toVec2i(direction);
         {x = anchor#x + offset#x, y = anchor#y + offset#y}
 
@@ -51,22 +51,22 @@ mod ArrowCursorScene {
     /// セットし、矢印を player の上隣接マスに置く。
     pub def showFor(playerCell: {x = Int32, y = Int32},
                       scene: Scene[NodeTag]): Scene[NodeTag] \ ArrowCursorState.State =
-        putState(playerCell, Staff.Direction.Up, scene)
+        putState(playerCell, Dir4.Up, scene)
 
     /// StaffAim 中に方向キーを受けるたびに呼ぶ。`showFor` で固定された `anchor` は変えず、
     /// `direction` と矢印の指すセルだけを更新する。
-    pub def aim(direction: Staff.Direction,
+    pub def aim(direction: Dir4.Dir4,
                   scene: Scene[NodeTag]): Scene[NodeTag] \ ArrowCursorState.State =
         let anchor = ArrowCursorState.State.get()#anchor;
         putState(anchor, direction, scene)
 
     /// 現在指している direction を取り出す。発射確定時（Z キー押下後）に呼び出し元が方向を取得するために公開している。
-    pub def getDirection(): Staff.Direction \ ArrowCursorState.State =
+    pub def getDirection(): Dir4.Dir4 \ ArrowCursorState.State =
         ArrowCursorState.State.get()#direction
 
     /// resource の Data を新しい anchor / direction / gridPos で書き換える（描画はしない）。
     def putState(anchor: {x = Int32, y = Int32},
-                   direction: Staff.Direction,
+                   direction: Dir4.Dir4,
                    scene: Scene[NodeTag]): Scene[NodeTag] \ ArrowCursorState.State =
         ArrowCursorState.State.put({anchor = anchor, direction = direction,
                                     gridPos = cellOf(anchor, direction)});

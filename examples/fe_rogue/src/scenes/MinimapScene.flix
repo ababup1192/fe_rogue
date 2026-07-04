@@ -109,7 +109,7 @@ mod MinimapScene {
             // 開いたりしない）。
             let acceptsToggle = phase != TurnPhase.Phase.EnemyTurn;
             let visible2 =
-                if (mDown and not data#mPrev and acceptsToggle) not data#visible
+                if (InputEdge.pressed(data#mPrev, mDown) and acceptsToggle) not data#visible
                 else data#visible;
             let placements = MapScene.getPlacements(scene);
             let roomCount  = MapScene.getRoomCount(scene);

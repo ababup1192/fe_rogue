@@ -201,9 +201,9 @@ mod BattlePanelUi {
             |> UiStore.setText(path, text)
             |> UiStore.setAbs(path, {x = rightX - m#x, y = rowCenter - textNudge() - m#y / 2.0})
 
-    /// テキストの内在サイズ（design px）。engine の Label2D.measure を再利用する。
+    /// テキストの内在サイズ（design px）。engine_world の TextDraw.size（寸法測りの唯一の入口）へ委譲する。
     def measure(text: String, atlas: FontAtlas, font: Float64): Vec2.Vec2 =
-        Label2D.measure(Label2D.make(text, atlas, font))
+        TextDraw.size(text, atlas, font)
 
     // ========================================================================
     // 固定列の算出

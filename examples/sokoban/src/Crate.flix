@@ -1,16 +1,16 @@
-// Crate — the pushable box, drawn procedurally: a stack of boxes plus convex
-// polygons for the diagonal brace. Every part is placed relative to the crate's
-// center and sized relative to the requested tile size, so the same functions
-// draw a 96px showcase crate and a 24px board tile.
+// Crate —押せる箱を手続き的に描画する: ボックスの積み重ねに、対角線のブレース
+// 用の凸多角形を加えたもの。すべてのパーツはクレートの中心を基準に配置され、要
+// 求されたタイルサイズを基準にスケールされるので、同じ関数が96pxのショーケース
+// 用クレートも24pxのボードタイルも描く。
 
 mod Crate {
 
-    // Thickness of the outer frame rails, relative to the tile.
+    // 外枠のレールの太さ、タイルに対する割合。
     def railW(t: Float64): Float64 = t * 0.12
 
-    // Drawing order (zIndex): base plank -> vertical seams -> diagonal brace ->
-    // frame rails -> frame joints and outer outline. The rails draw after the
-    // brace, so the brace's extended ends tuck underneath them.
+    // 描画順（zIndex）: 土台の板 -> 縦の継ぎ目 -> 対角線のブレース -> 枠のレール
+    // -> 枠の継ぎ目と外側の輪郭。レールはブレースの後に描かれるので、ブレースの
+    // 延長された両端はレールの下に隠れる。
     def zPlank(): Int32 = 0
     def zSeam(): Int32 = 1
     def zBraceEdge(): Int32 = 2
@@ -21,16 +21,17 @@ mod Crate {
     def topLeftOf(center: Vec2.Vec2, t: Float64): Vec2.Vec2 =
         {x = center#x - t / 2.0, y = center#y - t / 2.0}
 
-    /// Box parts: 1 base plank + 5 vertical seams + 4 frame rails + 4 frame joints + 4 outline edges.
+    /// ボックスのパーツ: 土台の板1 + 縦の継ぎ目5 + 枠のレール4 + 枠の継ぎ目4 +
+    /// 輪郭の辺4。
     pub def boxes(center: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
         let tl = topLeftOf(center, t);
         plank(tl, t) :: List.flatten(seams(tl, t) :: rails(tl, t) :: frameJoints(tl, t) :: outline(tl, t) :: Nil)
 
-    /// Base plank: fill the whole tile with plank brown.
+    /// 土台の板: タイル全体を板の茶色で塗りつぶす。
     def plank(tl: Vec2.Vec2, t: Float64): (Vec2.Vec2, Render.RenderItem) =
         boxAt(tl#x, tl#y, t, t, Palette.cratePlank(), zPlank())
 
-    /// Vertical seams: 5 evenly spaced thin lines that make the interior read as 6 boards.
+    /// 縦の継ぎ目: 等間隔に並んだ5本の細い線が、内部を6枚の板として読ませる。
     def seams(tl: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
         let w = t * 0.04;
         List.map(i ->
@@ -38,8 +39,8 @@ mod Crate {
             boxAt(x, tl#y, w, t, Palette.crateSeam(), zSeam()),
             1 :: 2 :: 3 :: 4 :: 5 :: Nil)
 
-    /// Outer frame: 2 full-width horizontal boards (top, bottom) and 2 vertical boards
-    /// sandwiched between them (left, right).
+    /// 外枠: 全幅の水平な板が2枚（上、下）、その間に挟まれる垂直な板が2枚
+    /// （左、右）。
     def rails(tl: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
         let f = railW(t);
         let x0 = tl#x;
@@ -49,9 +50,8 @@ mod Crate {
         boxAt(x0, y0 + f, f, t - 2.0 * f, Palette.crateFrame(), zRail()) ::
         boxAt(x0 + t - f, y0 + f, f, t - 2.0 * f, Palette.crateFrame(), zRail()) :: Nil
 
-    /// Frame joints: the border lines between the frame and the interior. The 2 full-width
-    /// horizontal lines double as the butt joints at the four corners at their ends;
-    /// the 2 vertical lines run only between them.
+    /// 枠の継ぎ目: 枠と内部の境界線。全幅の2本の水平線はその両端で四隅の突き合
+    /// わせ継ぎ目を兼ね、垂直の2本はそれらの間だけを走る。
     def frameJoints(tl: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
         let f = railW(t);
         let w = t * 0.02;
@@ -62,7 +62,7 @@ mod Crate {
         boxAt(x0 + f - w / 2.0, y0 + f, w, t - 2.0 * f, Palette.crateSeam(), zJoint()) ::
         boxAt(x0 + t - f - w / 2.0, y0 + f, w, t - 2.0 * f, Palette.crateSeam(), zJoint()) :: Nil
 
-    /// Outer outline: a dark 1px (design resolution) line around the whole crate.
+    /// 外側の輪郭: クレート全体を囲む暗い1px（設計解像度）の線。
     def outline(tl: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
         let w = 1.0;
         let x0 = tl#x;
@@ -76,22 +76,22 @@ mod Crate {
               c: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
         ({x = x, y = y}, Render.solidBox({x = w, y = h}, c, z))
 
-    /// Diagonal brace: one thick band from the inner bottom-left to the inner top-right,
-    /// plus 2 dark edge lines. All 3 strips share the same centerline and direction vector;
-    /// only their normal-offset ranges differ (building the edges along the normal keeps
-    /// their thickness constant everywhere).
+    /// 対角線のブレース: 内側の左下から内側の右上へ伸びる1本の太い帯に、暗い縁
+    /// 線を2本加えたもの。3本の帯はすべて同じ中心線と方向ベクトルを共有し、法線
+    /// 方向のオフセット範囲だけが異なる（法線に沿って縁を作ることで、どこでも太
+    /// さが一定に保たれる）。
     pub def polys(center: Vec2.Vec2, t: Float64): List[GameEngine.PolygonRenderCmd] =
         let tl = topLeftOf(center, t);
-        let half = t * 0.09;    // half-width of the central band (0.18T thick)
-        let edge = t * 0.03;    // thickness of one edge line
+        let half = t * 0.09;    // 中央帯の半幅（厚さ 0.18T）
+        let edge = t * 0.03;    // 縁線1本の太さ
         braceStrip(tl, t, -half - edge, -half, Palette.crateFrame(), zBraceEdge()) ::
         braceStrip(tl, t, half, half + edge, Palette.crateFrame(), zBraceEdge()) ::
         braceStrip(tl, t, -half, half, Palette.crateBrace(), zBrace()) :: Nil
 
-    /// A parallelogram (convex quad) covering normal offsets o1..o2 from the band's
-    /// centerline. The centerline runs inner bottom-left corner -> inner top-right corner,
-    /// extended by ext at both ends. The extended ends tuck under the frame rails drawn
-    /// later, so the strip ends need no shaping.
+    /// 帯の中心線から法線方向オフセット o1..o2 を覆う平行四辺形（凸クアッド）。
+    /// 中心線は内側の左下隅から内側の右上隅まで走り、両端を ext だけ延長したも
+    /// の。延長された両端は後で描かれる枠のレールの下に隠れるので、帯の端を整形
+    /// する必要はない。
     def braceStrip(tl: Vec2.Vec2, t: Float64, o1: Float64, o2: Float64,
                    c: Color, z: Int32): GameEngine.PolygonRenderCmd =
         let f = railW(t);

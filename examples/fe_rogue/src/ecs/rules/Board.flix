@@ -185,36 +185,13 @@ mod Board {
     /// `origin` 自身も結果に含む（距離 0）。
     /// `isFloor` は「そのセルが歩行可能か（床か）」を判定する述語。
     /// `MapSnapshot` を直接受け取らないことで、テストや別経路でも合成しやすくする。
+    /// 探索の芯は engine_world の `GridSearch.reachable` に委ね、この盤面固有の政策
+    /// （床か = `isFloor`）だけを述語で注入する。セルの {x,y} ⇔ (col,row) 変換だけ橋渡しする。
     pub def reachableCells(isFloor: {x = Int32, y = Int32} -> Bool,
                             origin: {x = Int32, y = Int32},
                             maxSteps: Int32): List[{x = Int32, y = Int32}] =
-        let initVisited = origin :: Nil;
-        let initQueue   = (origin, 0i32) :: Nil;
-        bfsReachable(isFloor, maxSteps, initVisited, initQueue)
-
-    /// `reachableCells` の BFS。`visited` は到達済みセル（順序保持）。
-    /// 再訪問による無限ループを防ぐため、展開済みセルを `visited` に保持して持ち回る。
-    /// 深さ `maxSteps` に達した節点はそれ以上展開しない。
-    def bfsReachable(isFloor: {x = Int32, y = Int32} -> Bool,
-                      maxSteps: Int32,
-                      visited: List[{x = Int32, y = Int32}],
-                      queue: List[({x = Int32, y = Int32}, Int32)]): List[{x = Int32, y = Int32}] =
-        match queue {
-            case Nil => visited
-            case (cur, depth) :: rest =>
-                if (depth >= maxSteps) bfsReachable(isFloor, maxSteps, visited, rest)
-                else
-                    let dirs = Vec2i.up() :: Vec2i.down()
-                                :: Vec2i.left() :: Vec2i.right() :: Nil;
-                    let candidates = List.map(d -> Vec2i.add(cur, d), dirs);
-                    let fresh = List.filter(c ->
-                        isFloor(c) and not isInList(c, visited),
-                        candidates);
-                    let newVisited = List.append(visited, fresh);
-                    let newQueue   = List.append(rest,
-                        List.map(c -> (c, depth + 1), fresh));
-                    bfsReachable(isFloor, maxSteps, newVisited, newQueue)
-        }
+        GridSearch.reachable(t -> isFloor(toRec(t)), toTup(origin), maxSteps)
+            |> List.map(toRec)
 
     def bfsPathLoop(isOpen: {x = Int32, y = Int32} -> Bool,
                      goal: {x = Int32, y = Int32},
@@ -387,35 +364,12 @@ mod Board {
     /// `sources` を距離 0 とする多始点 BFS で、各セルの最短ステップ数を Map で返す。
     /// `passable` が通行可否（床か・ユニット透過か等）を決める述語。到達不能セルは Map に
     /// 含めない（= ∞）。均一コストなので BFS = ダイクストラ（優先度キュー不要）。
-    /// frontier をレベル毎リストで広げ、距離は Map に積む（list + isInList の O(n²) を回避）。
+    /// 距離場の芯は engine_world の `GridSearch.distances` に委ね、この盤面固有の政策
+    /// （`passable`）だけを述語で注入する。返る Map のキーは (col, row) タプルで両者共通。
     pub def distanceField(passable: {x = Int32, y = Int32} -> Bool,
                            sources: List[{x = Int32, y = Int32}],
                            maxSteps: Int32): Map[(Int32, Int32), Int32] =
-        let seeds = List.filter(passable, sources);
-        let dist0 = List.foldLeft((m, c) -> Map.insert((c#x, c#y), 0, m), Map.empty(), seeds);
-        floodField(passable, maxSteps, 0, seeds, dist0)
-
-    /// `frontier`（距離 `depth` のセル群）の 4 近傍を距離 `depth+1` で登録し、次レベルへ進む。
-    /// 既登録セルは Map メンバ判定で弾く（同レベル内の重複も threading した Map で防ぐ）。
-    def floodField(passable: {x = Int32, y = Int32} -> Bool,
-                    maxSteps: Int32, depth: Int32,
-                    frontier: List[{x = Int32, y = Int32}],
-                    dist: Map[(Int32, Int32), Int32]): Map[(Int32, Int32), Int32] =
-        if (List.isEmpty(frontier) or depth >= maxSteps) dist
-        else
-            let dirs = Vec2i.up() :: Vec2i.down() :: Vec2i.left() :: Vec2i.right() :: Nil;
-            let (nextFrontier, nextDist) =
-                List.foldLeft((acc, cur) ->
-                    List.foldLeft((acc2, d) -> {
-                        let (f2, m2) = acc2;
-                        let n   = Vec2i.add(cur, d);
-                        let key = (n#x, n#y);
-                        if (passable(n) and not Map.memberOf(key, m2))
-                            (n :: f2, Map.insert(key, depth + 1, m2))
-                        else acc2
-                    }, acc, dirs),
-                    (Nil, dist), frontier);
-            floodField(passable, maxSteps, depth + 1, nextFrontier, nextDist)
+        GridSearch.distances(t -> passable(toRec(t)), List.map(toTup, sources), maxSteps)
 
     /// 距離フィールドのセル値。未到達は番兵 `infDist`（実質 ∞）。順位付け・降下判定に使う。
     pub def fieldDist(field: Map[(Int32, Int32), Int32], cell: {x = Int32, y = Int32}): Int32 =
@@ -469,16 +423,10 @@ mod Board {
     /// `lo..hi` のマンハッタン距離内にあるオフセット (dx, dy) を全列挙する。
     /// `lo > hi` のときは空リスト。`lo == 0` を許可するか否かは呼び出し側が判断する
     /// （AttackRange 系は `Int32.max(1, range#min)` で 0 を除外している）。
+    /// 環の芯は engine_world の `GridSearch.manhattanRing` に委ね、中心 (0,0) の相対
+    /// オフセットとして受け取って {x,y} record へ移し替える（絶対セルは呼び出し側が origin と足す）。
     pub def manhattanOffsets(lo: Int32, hi: Int32): List[{x = Int32, y = Int32}] =
-        let coords = List.range(-hi, hi + 1);
-        List.flatMap(dx ->
-            List.foldRight(dy -> acc -> {
-                let d = Int32.abs(dx) + Int32.abs(dy);
-                if (d >= lo and d <= hi)
-                    ({x = dx, y = dy}: {x = Int32, y = Int32}) :: acc
-                else acc
-            }, Nil, coords),
-            coords)
+        GridSearch.manhattanRing((0, 0), lo, hi) |> List.map(toRec)
 
     /// `reachable` の各セルから武器射程 (`min..max` マンハッタン) で届くセル集合を作り、
     /// reachable 自身は除外して返す。同一セルは 1 つにまとめる（先に出たものを残す）。
@@ -608,6 +556,11 @@ mod Board {
     // ════════════════════════════════════════════════════════
     // 内部ヘルパー
     // ════════════════════════════════════════════════════════
+
+    /// 盤面セルは {x, y} record、engine_world の `GridSearch` は (col, row) タプルを扱う。
+    /// この 2 つの表現を境界で移し替えるための橋渡し（値は同じ、器だけ変える）。
+    def toTup(c: {x = Int32, y = Int32}): (Int32, Int32) = (c#x, c#y)
+    def toRec(t: (Int32, Int32)): {x = Int32, y = Int32} = let (x, y) = t; {x = x, y = y}
 
     /// `{x, y}` record alias には Flix の `Eq` derive が無いため `==` 比較ができない。
     /// そのため独自のフィールド比較関数を用意している（Flix の落とし穴）。

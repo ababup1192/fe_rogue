@@ -92,7 +92,7 @@ mod TurnEndHoldUi {
     ///   - `prevHeld` は全枝で必ず今フレームの `held` に更新する（敵ターン中=active false でも更新し続け、
     ///     プレイヤーターン復帰フレームで固着 Shift が誤って arm されないようにする不変条件）。
     pub def step(data: TurnEndHoldState.GaugeData, active: Bool, held: Bool, dt: Duration.Duration): StepResult =
-        let justPressed = held and not data#prevHeld;
+        let justPressed = InputEdge.pressed(data#prevHeld, held);
         if (not (active and held))
             {data = {elapsed = Duration.zero(), prevHeld = held},
              ratio = 0.0, visible = false, fire = false}

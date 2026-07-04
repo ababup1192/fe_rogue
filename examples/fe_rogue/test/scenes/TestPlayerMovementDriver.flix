@@ -55,7 +55,7 @@ mod TestPlayerMovementDriver {
         id = id, classId = "test_player", gridPos = pos, moveTiles = 4, hp = 10,
         waited = false, attackTargetId = None, resource = TestUnitFixtures.testResource(4, 10),
         weapons = TestUnitFixtures.testWeapon() :: Nil, staves = Nil, consumables = Nil,
-        selectedItem = None, moveStepsTaken = 0, facing = Staff.Direction.Down, hidden = false,
+        selectedItem = None, moveStepsTaken = 0, facing = Dir4.Down, hidden = false,
         usedStairs = false, level = 1, exp = 0, pendingLevelUp = None, statuses = Nil,
         rings = Nil, ringEquipped = false, followUpUsed = false
     }

@@ -1,7 +1,8 @@
 {
+  "defaultFont": "ui",
   "templates": {
     "row": { "widget": "none", "height": 8, "dir": "column", "mainAlign": "center", "crossAlign": "start", "pad": [1.5, 0, 1.5, 0] },
-    "label": { "widget": "text", "font": "ui", "fontSize": 4.0, "tint": "#eef1f7", "zIndex": 120 }
+    "label": { "widget": "text", "fontSize": 4.0, "tint": "#eef1f7", "zIndex": 120 }
   },
   "root": {
     "name": "SuspendConfirm", "widget": "none", "visible": false, "layer": 3,
@@ -12,7 +13,7 @@
         "abs": [48, 44], "width": 74, "height": "auto",
         "dir": "column", "pad": [5, 4, 5, 5], "gap": 4.0, "crossAlign": "stretch",
         "children": [
-          { "name": "title", "widget": "text", "text": "本当に中断しますか？", "font": "ui",
+          { "name": "title", "widget": "text", "text": "本当に中断しますか？",
             "fontSize": 4.0, "tint": "#ffffff", "zIndex": 120 },
           {
             "name": "menu", "widget": "none", "dir": "column", "gap": 0.0, "crossAlign": "stretch",

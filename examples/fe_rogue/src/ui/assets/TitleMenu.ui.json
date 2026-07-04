@@ -1,7 +1,8 @@
 {
+  "defaultFont": "ui",
   "templates": {
     "option": { "widget": "none", "height": 16, "dir": "column", "mainAlign": "center", "crossAlign": "center", "pad": [1.5, 0, 1.5, 0] },
-    "label": { "widget": "text", "font": "ui", "fontSize": 8.0, "tint": "#b2b2bf", "zIndex": 2 }
+    "label": { "widget": "text", "fontSize": 8.0, "tint": "#b2b2bf", "zIndex": 2 }
   },
   "root": {
     "name": "TitleMenu", "widget": "none", "visible": false, "layer": 6,
@@ -12,7 +13,7 @@
       { "name": "titleRow", "widget": "none", "abs": [0, 30], "width": 240,
         "dir": "row", "mainAlign": "center",
         "children": [
-          { "name": "title", "widget": "text", "text": "遺宝探索記", "font": "ui", "fontSize": 14.0, "tint": "#ffffff", "zIndex": 1 }
+          { "name": "title", "widget": "text", "text": "遺宝探索記", "fontSize": 14.0, "tint": "#ffffff", "zIndex": 1 }
         ]
       },
 

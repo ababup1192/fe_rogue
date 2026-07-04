@@ -1,4 +1,5 @@
 {
+  "defaultFont": "ui",
   "templates": {
     "cardFrame": { "widget": "box", "width": 30, "height": 42, "color": "#292b38",
                    "borderWidth": 1, "borderColor": "#666680", "zIndex": 1, "visible": false },
@@ -33,9 +34,9 @@
 
       { "name": "descPanel", "widget": "box", "abs": [188, 14], "width": 48, "height": 86,
         "color": "#1f212e", "alpha": 1.0, "borderWidth": 1, "borderColor": "#808099", "zIndex": 150 },
-      { "name": "descTitle", "widget": "text", "abs": [191, 18], "font": "ui", "fontSize": 4.5,
+      { "name": "descTitle", "widget": "text", "abs": [191, 18], "fontSize": 4.5,
         "tint": "#ffffff", "zIndex": 151 },
-      { "name": "descText", "widget": "text", "abs": [191, 28], "font": "ui", "fontSize": 4.0,
+      { "name": "descText", "widget": "text", "abs": [191, 28], "fontSize": 4.0,
         "tint": "#ffffff", "zIndex": 151 },
 
       { "name": "profGlyph0", "use": "glyph" },
@@ -44,14 +45,14 @@
       { "name": "profGlyph3", "use": "glyph" },
       { "name": "profGlyph4", "use": "glyph" },
 
-      { "name": "counter", "widget": "text", "abs": [120, 88], "font": "ui", "fontSize": 7.5,
+      { "name": "counter", "widget": "text", "abs": [120, 88], "fontSize": 7.5,
         "tint": "#ffffff", "zIndex": 6 },
 
       { "name": "buttonBg", "widget": "box", "abs": [97, 102], "width": 46, "height": 16,
         "color": "#383633", "alpha": 1.0, "borderWidth": 1, "borderColor": "#615c57", "zIndex": 5 },
       { "name": "buttonGloss", "widget": "box", "abs": [99, 104], "width": 42, "height": 6,
         "color": "#ffb847", "alpha": 0.5, "zIndex": 6, "visible": false },
-      { "name": "buttonLabel", "widget": "text", "abs": [120, 110], "font": "ui", "fontSize": 8.0,
+      { "name": "buttonLabel", "widget": "text", "abs": [120, 110], "fontSize": 8.0,
         "text": "出撃", "tint": "#8c8780", "zIndex": 7 }
     ]
   }

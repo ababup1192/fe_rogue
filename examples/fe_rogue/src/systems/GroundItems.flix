@@ -280,16 +280,13 @@ mod GroundItems {
         else e
 
     /// サイクル先頭 `pulseDuration` の間は base→peak→base の三角波、それ以外は base 固定。
-    /// renderItems が縁取り alpha に使うため pub。
+    /// 波形は折れ線 (0,base)→(p/2,peak)→(p,base) の宣言データで表し、評価は `Curve.pieces` に
+    /// 委譲する（末尾以降は base で平ら＝サイクル残りの固定区間）。renderItems が縁取り alpha に使うため pub。
     pub def pulseAlpha(elapsed: Duration.Duration): Float32 =
-        let e = Duration.toSeconds(elapsed);
         let p = Duration.toSeconds(pulseDuration());
-        if (e < p) {
-            let t = e / p;                              // 0..1
-            let tri = 1.0 - Float64.abs(2.0 * t - 1.0); // 0..1..0
-            let b = Float32.toFloat64(baseAlpha());
-            let pk = Float32.toFloat64(peakAlpha());
-            Float64.truncateToFloat32(b + (pk - b) * tri)
-        } else baseAlpha()
+        let b = Float32.toFloat64(baseAlpha());
+        let pk = Float32.toFloat64(peakAlpha());
+        Curve.pieces((0.0, b) :: (p / 2.0, pk) :: (p, b) :: Nil, Duration.toSeconds(elapsed))
+            |> Float64.truncateToFloat32
 
 }

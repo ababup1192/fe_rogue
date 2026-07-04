@@ -1,7 +1,8 @@
 {
+  "defaultFont": "ui",
   "templates": {
     "line": { "widget": "none", "width": 235, "dir": "row", "mainAlign": "end" },
-    "lineText": { "widget": "text", "text": "", "font": "ui", "fontSize": 2.8, "tint": "#ffffff", "zIndex": 1 }
+    "lineText": { "widget": "text", "text": "", "fontSize": 2.8, "tint": "#ffffff", "zIndex": 1 }
   },
   "root": {
     "name": "Log", "widget": "none", "visible": false, "layer": 1,

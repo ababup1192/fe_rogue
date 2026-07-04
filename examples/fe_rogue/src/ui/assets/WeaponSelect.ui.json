@@ -1,4 +1,5 @@
 {
+  "defaultFont": "ui",
   "templates": {
     "weaponRow": {
       "widget": "none", "visible": false, "height": 12, "dir": "row", "gap": 1.5, "crossAlign": "center",
@@ -18,17 +19,17 @@
             {
               "name": "nameRow", "widget": "none", "dir": "row", "gap": 1.5, "crossAlign": "center",
               "children": [
-                { "name": "name", "widget": "text", "font": "ui", "fontSize": 2.2, "tint": "#eef1f7", "zIndex": 141 },
+                { "name": "name", "widget": "text", "fontSize": 2.2, "tint": "#eef1f7", "zIndex": 141 },
                 { "name": "badge", "widget": "box", "color": "#c62e32", "alpha": 1.0, "cornerRadius": 1.5,
                   "visible": false, "dir": "row", "crossAlign": "center", "pad": [0.8, 0.2, 0.8, 0.2], "zIndex": 141,
                   "children": [
-                    { "name": "badgeText", "widget": "text", "font": "ui", "fontSize": 2.0,
+                    { "name": "badgeText", "widget": "text", "fontSize": 2.0,
                       "tint": "#eef1f7", "text": "不得意", "zIndex": 142 }
                   ]
                 }
               ]
             },
-            { "name": "subline", "widget": "text", "font": "ui", "fontSize": 2.2, "tint": "#aab0b8", "zIndex": 141 }
+            { "name": "subline", "widget": "text", "fontSize": 2.2, "tint": "#aab0b8", "zIndex": 141 }
           ]
         }
       ]
@@ -48,9 +49,9 @@
             "cornerRadius": 2, "zIndex": 138,
             "dir": "row", "gap": 4.0, "crossAlign": "center", "pad": [2, 1, 2, 1],
             "children": [
-              { "name": "headerTitle", "widget": "text", "text": "武器", "font": "ui",
+              { "name": "headerTitle", "widget": "text", "text": "武器",
                 "fontSize": 2.4, "tint": "#9cc0ff", "zIndex": 140 },
-              { "name": "hint", "widget": "text", "text": "◀ 敵選択 ▶", "font": "ui",
+              { "name": "hint", "widget": "text", "text": "◀ 敵選択 ▶",
                 "fontSize": 2.2, "tint": "#9ea3b3", "zIndex": 140 }
             ]
           },

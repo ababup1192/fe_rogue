@@ -30,4 +30,31 @@ mod TestGrid {
             expected = (true, false, false, false),
             (Grid.inRect((0, 0), 3, 3), Grid.inRect((3, 0), 3, 3),
              Grid.inRect((-1, 0), 3, 3), Grid.inRect((0, 3), 3, 3)))
+
+    /// record 版 cellCenterOf は tuple 版 cellCenter と一致：{x=2,y=3} は tile=10 で (25,35)。
+    @Test
+    def testCellCenterOfMatchesTuple(): Unit \ Assert =
+        let c = Grid.cellCenterOf(10.0, {x = 2, y = 3});
+        Assert.assertEq(expected = (25.0, 35.0), (c#x, c#y))
+
+    /// cellAt は cellCenterOf の逆：中心座標を渡すと元のセルへ戻る（負のセルも floor で戻る）。
+    @Test
+    def testCellAtIsInverseOfCellCenterOf(): Unit \ Assert =
+        let ts = 24.0;
+        let cell = {x = -1, y = 5};
+        let back = Grid.cellAt(ts, Grid.cellCenterOf(ts, cell));
+        Assert.assertEq(expected = (-1, 5), (back#x, back#y))
+
+    /// neighborOf は neighbor と同じ結果を {x,y} で返す：(5,5) の Up は (5,4)。
+    @Test
+    def testNeighborOfMatchesTuple(): Unit \ Assert =
+        let n = Grid.neighborOf({x = 5, y = 5}, Dir4.Up);
+        Assert.assertEq(expected = Grid.neighbor((5, 5), Dir4.Up), (n#x, n#y))
+
+    /// inRectOf は inRect と同じ内外判定：内側は true、右端の外は false。
+    @Test
+    def testInRectOfMatchesTuple(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (true, false),
+            (Grid.inRectOf({x = 0, y = 0}, 3, 3), Grid.inRectOf({x = 3, y = 0}, 3, 3)))
 }

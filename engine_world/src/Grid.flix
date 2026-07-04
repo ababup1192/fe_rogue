@@ -34,4 +34,30 @@ mod Grid {
     /// 浮動小数の除算を、含まれる整数セル添字へ切り下げる。
     def floorDiv(value: Float64, tileSize: Float64): Int32 =
         Float64.floor(value / tileSize) |> Float64.tryToInt32 |> Option.getWithDefault(0)
+
+    /// セル座標を名前付き成分で持つための record 型。列 = `x`、行 = `y`。tuple 版
+    /// `(col, row)` と同じ値を表すが、境界で `(a, b)` へ組み替えずそのまま渡せる。
+    pub type alias Cell = { x = Int32, y = Int32 }
+
+    /// `cellCenter` の record 版。セルを `{x, y}` で受け取り中心のピクセル位置を返す。
+    /// tuple ↔ record の変換を呼び側に書かせないための入口で、値は tuple 版と一致する。
+    pub def cellCenterOf(tileSize: Float64, cell: Cell): Vec2.Vec2 =
+        cellCenter(tileSize, (cell#x, cell#y))
+
+    /// `cellOf` の record 版。ピクセル位置がどのセルに入るかを `{x, y}` で返す。floor で
+    /// 丸めるので原点の左・上の点は負のセルに入る（tuple 版と同じ）。`cellCenterOf` の逆。
+    /// 名前が `cellOfOf` にならないよう、他の record 版（`cellCenterOf` 等）の "Of" 付け足しでは
+    /// なく `cellAt` と別綴りにする（`Of` 自体が「〜が入るセル」を表す接尾で二重になるため）。
+    pub def cellAt(tileSize: Float64, pos: Vec2.Vec2): Cell =
+        let (col, row) = cellOf(tileSize, pos);
+        { x = col, y = row }
+
+    /// `neighbor` の record 版。`cell` から方向 `d` へ 1 歩進んだセルを `{x, y}` で返す。
+    pub def neighborOf(cell: Cell, d: Dir4.Dir4): Cell =
+        let (col, row) = neighbor((cell#x, cell#y), d);
+        { x = col, y = row }
+
+    /// `inRect` の record 版。`cell` が `cols` x `rows`（列 [0,cols)・行 [0,rows)）の内側か。
+    pub def inRectOf(cell: Cell, cols: Int32, rows: Int32): Bool =
+        inRect((cell#x, cell#y), cols, rows)
 }

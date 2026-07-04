@@ -158,11 +158,11 @@ mod PlayerScene {
     /// `walk_<direction>` アニメ名。spriteFrames に方向別 4 アニメを設定する前提。
     /// 未定義のアニメ名を渡すと AnimatedSprite2D は表示が止まる (anim 切り替え失敗) ので、
     /// 命名は spriteFrames 側 (units.json) と必ず揃える。
-    def walkAnimName(dir: Staff.Direction): String = match dir {
-        case Staff.Direction.Up    => "walk_up"
-        case Staff.Direction.Down  => "walk_down"
-        case Staff.Direction.Left  => "walk_left"
-        case Staff.Direction.Right => "walk_right"
+    def walkAnimName(dir: Dir4.Dir4): String = match dir {
+        case Dir4.Up    => "walk_up"
+        case Dir4.Down  => "walk_down"
+        case Dir4.Left  => "walk_left"
+        case Dir4.Right => "walk_right"
     }
 
     /// "Player_2" のようなノード名（World の直接の子）。
@@ -353,7 +353,7 @@ mod PlayerScene {
             consumables       = sp#consumables,
             selectedItem      = None,
             moveStepsTaken    = 0,
-            facing            = Staff.Direction.Down,
+            facing            = Dir4.Down,
             hidden            = false,
             usedStairs        = false,
             level             = res#level,
@@ -1019,11 +1019,11 @@ mod PlayerScene {
     /// 進行方向に応じて「左向きの絵」を水平反転する。Right で flipH=true (右向き)、
     /// Left で flipH=false (左向き=素材そのまま)。Up/Down/None は現状維持。
     /// `sprite#flipForFacing` を持たない駒では呼び出し側 (`flipsForFacing`) が抑止する。
-    def applyFacingFlip(id: Int32, dirOpt: Option[Staff.Direction],
+    def applyFacingFlip(id: Int32, dirOpt: Option[Dir4.Dir4],
                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
         match dirOpt {
-            case Some(Staff.Direction.Right) => setSpriteFlipH(id, true, scene)
-            case Some(Staff.Direction.Left)  => setSpriteFlipH(id, false, scene)
+            case Some(Dir4.Right) => setSpriteFlipH(id, true, scene)
+            case Some(Dir4.Left)  => setSpriteFlipH(id, false, scene)
             case _                           => scene
         }
 
@@ -1038,16 +1038,16 @@ mod PlayerScene {
     /// 同セル / 0 ベクトルは None。斜めは便宜上 |x| >= |y| を横優先で扱う
     /// (FE では基本的に直交 1 マスのみ移動するので通常通らない)。
     def directionOfStep(prev: {x = Int32, y = Int32},
-                         target: {x = Int32, y = Int32}): Option[Staff.Direction] =
+                         target: {x = Int32, y = Int32}): Option[Dir4.Dir4] =
         let dx = target#x - prev#x;
         let dy = target#y - prev#y;
         if (dx == 0 and dy == 0) None
         else if (Int32.abs(dx) >= Int32.abs(dy))
-            if (dx > 0) Some(Staff.Direction.Right)
-            else Some(Staff.Direction.Left)
+            if (dx > 0) Some(Dir4.Right)
+            else Some(Dir4.Left)
         else
-            if (dy > 0) Some(Staff.Direction.Down)
-            else Some(Staff.Direction.Up)
+            if (dy > 0) Some(Dir4.Down)
+            else Some(Dir4.Up)
 
     // ────────────────────────────────────────────────────────
     // (F) ゲームオーバー時のリセット

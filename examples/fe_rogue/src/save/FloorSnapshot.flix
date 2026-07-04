@@ -26,7 +26,7 @@ mod FloorSnapshot {
         // 成長後の 9 ステータス（最大 HP 含む）。レベルアップは成長率乱数なので level から再計算できず、
         // 値を保存する（`PlayerScene.CarryData#stats` と同じ役割）。復元時 base resource に上書きする。
         stats        = LevelSystem.Stats,
-        facing       = Staff.Direction,
+        facing       = Dir4.Dir4,
         statuses     = List[StatusSystem.Status],
         weapons      = List[{id = String, durability = Int32}],
         staves       = List[{id = String, durability = Int32}],
@@ -104,7 +104,7 @@ mod FloorSnapshot {
 // `Saveable` は nominal にラップした `SuspendSave.Save` 側で定義してこの codec へ委譲する。
 // テストは decode 結果を比較可能スカラーのタプルに射影して検証する（`TestFloorSnapshotCodec`）。
 
-/// `FloorSnapshot.T` 1 件分の encode / decode。ネスト型（Plan / Stats / Status / Direction /
+/// `FloorSnapshot.T` 1 件分の encode / decode。ネスト型（Plan / Stats / Status / Dir4 /
 /// {id,durability} / {x,y}）を個別ヘルパーに分け、各 decode は **明示型注釈付き record リテラル**
 /// で構造型を固定する（type alias の構造型 unify 癖を避ける）。`Option` フィールド（敵の weapon/ring・
 /// stairs）は **キー欠落 = None** で表す（forM の束縛にせず yield 内で `Map.get |> flatMap` で読む）。

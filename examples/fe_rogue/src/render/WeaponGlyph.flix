@@ -127,15 +127,12 @@ mod WeaponGlyph {
     def v(x: Float64, y: Float64): Vec2.Vec2 = {x = x, y = y}
 
     /// 中心 (cx,cy)・単位軸 (ax,ay)・軸方向半長 halfLen・直交方向半厚 halfThick の回転矩形（凸）。
-    /// 直交方向は軸を左 90° 回した (-ay, ax)。GL_TRIANGLE_FAN 用に外周順で頂点を並べる。
+    /// 直交方向は軸を左 90° 回した (-ay, ax)。engine_world の Quad.orientedByAxis に委譲し、
+    /// 単位軸から直接四隅を出す（角度への atan2 と cos/sin の往復を挟まない）。同じ凸矩形の
+    /// 外周を巻き順のみ変えて返す（塗り領域は不変）。
     def bar(cx: Float64, cy: Float64, halfLen: Float64, halfThick: Float64,
             ax: Float64, ay: Float64): List[Vec2.Vec2] =
-        let px = 0.0 - ay;
-        let py = ax;
-        let ux = ax * halfLen; let uy = ay * halfLen;
-        let wx = px * halfThick; let wy = py * halfThick;
-        v(cx + ux + wx, cy + uy + wy) :: v(cx + ux - wx, cy + uy - wy) ::
-        v(cx - ux - wx, cy - uy - wy) :: v(cx - ux + wx, cy - uy + wy) :: Nil
+        Quad.orientedByAxis({x = cx, y = cy}, {x = ax, y = ay}, halfLen, halfThick)
 
     /// 三角形（常に凸）。
     def tri(x0: Float64, y0: Float64, x1: Float64, y1: Float64,

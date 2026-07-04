@@ -1,4 +1,5 @@
 {
+  "defaultFont": "ui",
   "root": {
     "name": "UnitCard", "widget": "none", "layer": 2, "visible": false,
     "children": [
@@ -10,24 +11,24 @@
         "children": [
           { "name": "Icon", "widget": "sprite", "abs": [3, 3], "texture": "character_sheet", "scale": [0.27, 0.27], "zIndex": 2 },
 
-          { "name": "Name", "widget": "text", "abs": [21, 2.5], "font": "ui", "fontSize": 3.2, "tint": "#eef1f7", "zIndex": 2 },
-          { "name": "Lv", "widget": "text", "abs": [40, 3.1], "font": "ui", "fontSize": 2.4, "tint": "#f5c542", "zIndex": 2 },
+          { "name": "Name", "widget": "text", "abs": [21, 2.5], "fontSize": 3.2, "tint": "#eef1f7", "zIndex": 2 },
+          { "name": "Lv", "widget": "text", "abs": [40, 3.1], "fontSize": 2.4, "tint": "#f5c542", "zIndex": 2 },
 
           { "name": "ExpTrack", "widget": "box", "abs": [48, 4.0], "width": 16, "height": 1.0, "color": "#100f08", "cornerRadius": 0.5, "zIndex": 1 },
           { "name": "ExpFill",  "widget": "box", "abs": [48, 4.0], "width": 16, "height": 1.0, "color": "#f2de73", "cornerRadius": 0.5, "zIndex": 2 },
 
-          { "name": "HpLabel", "widget": "text", "abs": [21, 7.6], "font": "ui", "fontSize": 2.2, "tint": "#9aa6bd", "zIndex": 2 },
+          { "name": "HpLabel", "widget": "text", "abs": [21, 7.6], "fontSize": 2.2, "tint": "#9aa6bd", "zIndex": 2 },
           { "name": "HpTrack", "widget": "box", "abs": [29, 8.0], "width": 26, "height": 1.5, "color": "#080b10", "cornerRadius": 0.75, "zIndex": 1 },
           { "name": "HpFill",  "widget": "box", "abs": [29, 8.0], "width": 26, "height": 1.5, "color": "#5094e6", "cornerRadius": 0.75, "zIndex": 2 },
-          { "name": "HpText",  "widget": "text", "abs": [55, 7.6], "font": "ui", "fontSize": 2.2, "tint": "#cdd5e6", "zIndex": 2 },
+          { "name": "HpText",  "widget": "text", "abs": [55, 7.6], "fontSize": 2.2, "tint": "#cdd5e6", "zIndex": 2 },
 
           { "name": "WeaponMat",  "widget": "box", "abs": [20.4, 11.4], "width": 6.8, "height": 6.8, "color": "#6b7899", "cornerRadius": 1.5, "borderWidth": 0.5, "borderColor": "#9eabc7", "zIndex": 1 },
           { "name": "WeaponIcon", "widget": "sprite", "abs": [21, 12], "texture": "character_sheet", "scale": [0.35, 0.35], "zIndex": 2 },
-          { "name": "WeaponText", "widget": "text", "abs": [28, 13.5], "font": "ui", "fontSize": 2.2, "tint": "#b4bed1", "zIndex": 2 },
+          { "name": "WeaponText", "widget": "text", "abs": [28, 13.5], "fontSize": 2.2, "tint": "#b4bed1", "zIndex": 2 },
 
           { "name": "RingMat",  "widget": "box", "abs": [43.4, 11.4], "width": 6.8, "height": 6.8, "color": "#6b7899", "cornerRadius": 1.5, "borderWidth": 0.5, "borderColor": "#9eabc7", "zIndex": 1 },
           { "name": "RingIcon", "widget": "sprite", "abs": [44, 12], "texture": "character_sheet", "scale": [0.35, 0.35], "zIndex": 2 },
-          { "name": "RingText", "widget": "text", "abs": [51, 13.5], "font": "ui", "fontSize": 2.2, "tint": "#b4bed1", "zIndex": 2 }
+          { "name": "RingText", "widget": "text", "abs": [51, 13.5], "fontSize": 2.2, "tint": "#b4bed1", "zIndex": 2 }
         ]
       }
     ]

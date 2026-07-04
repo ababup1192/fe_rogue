@@ -1,25 +1,25 @@
-// Harness — everything needed to run the whole game without a screen.
+// Harness — 画面なしでゲーム全体を動かすために必要なものすべて。
 //
-// It is short on purpose, and the shortness is the point: tick is a pure
-// function, so the rules need no harness at all. Only the *picture* touches
-// the outside world, and it wants exactly two things — a font atlas baked
-// headlessly, and the Fs handlers to read the ui.json Specs. The pages carry
-// only boxes and text, so `UiRender.renderUiWith` draws them from the atlas
-// alone: no Game handler, no window.
+// 意図的に短く、その短さこそが要点である: tick は純粋な関数なので、ルールには
+// ハーネスが一切要らない。外の世界に触れるのは「絵」だけであり、それが必要とす
+// るものはちょうど2つ —— ヘッドレスに焼き込まれたフォントの atlas と、ui.json
+// の Spec を読むための Fs ハンドラ。ページはボックスとテキストしか持たないの
+// で、`UiRender.renderUiWith` は atlas だけからそれらを描く: Game ハンドラもウ
+// ィンドウもいらない。
 mod Harness {
 
     def ttfPath(): String = "assets/Xolonium-Regular.ttf"
 
-    /// The font, baked without a window (AWT headless metrics only).
+    /// ウィンドウなしで焼き込まれたフォント（AWT ヘッドレスの計測値のみ）。
     pub def atlas(): FontAtlas \ IO =
         HeadlessFont.ensureHeadless();
         HeadlessFont.buildUiAtlas(ttfPath(), "assets/joyo.txt")
 
-    /// Both page Specs spawned into one UiWorld, as the launcher does.
+    /// 両方のページ Spec を1つの UiWorld へ生成する、ランチャーと同じように。
     pub def ui(): Option[UiStore.UiWorld] \ IO =
         run {
-            forM (a <- UiSpec.spawnAsset(Sokoban.titleUiPath(), UiStore.empty()) |> Result.toOption;
-                  b <- UiSpec.spawnAsset(Sokoban.clearUiPath(), snd(a)) |> Result.toOption)
+            forM (a <- UiSpec.spawnAsset(GameUi.titleUiPath(), UiStore.empty()) |> Result.toOption;
+                  b <- UiSpec.spawnAsset(GameUi.clearUiPath(), snd(a)) |> Result.toOption)
             yield snd(b)
         } with Fs.FileRead.runWithIO
 }

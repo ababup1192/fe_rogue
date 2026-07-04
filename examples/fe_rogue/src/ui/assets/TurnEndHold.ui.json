@@ -1,4 +1,5 @@
 {
+  "defaultFont": "ui",
   "root": {
     "name": "TurnEndHold", "widget": "none", "layer": 7, "visible": false,
     "children": [
@@ -9,7 +10,7 @@
       { "name": "textRow", "widget": "none", "abs": [76, 111.5], "height": 15,
         "dir": "row", "crossAlign": "center",
         "children": [
-          { "name": "label", "widget": "text", "text": "ターンスキップ", "font": "ui",
+          { "name": "label", "widget": "text", "text": "ターンスキップ",
             "fontSize": 3.8, "tint": "#ffffff", "zIndex": 3 }
         ]
       }

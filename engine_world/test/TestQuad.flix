@@ -30,4 +30,23 @@ mod TestQuad {
                            yield Vec2.distanceTo(first, last);
         Assert.assertEq(expected = Some(true),
             Option.map(w -> Float64.abs(w - 5.0) < 0.000001, widthAtStart))
+
+    /// orientedByAxis は axis=(1,0)（ローカル +x そのまま）のとき rotated の angle=0 と
+    /// 完全に一致する（頂点も巻き順も同じ）。
+    @Test
+    def testOrientedByAxisEqualsRotatedAtZero(): Unit \ Assert =
+        let byAxis = Quad.orientedByAxis({x = 10.0, y = 20.0}, {x = 1.0, y = 0.0}, 2.0, 3.0);
+        let byAngle = Quad.rotated({x = 10.0, y = 20.0}, 2.0, 3.0, 0.0);
+        Assert.assertEq(
+            expected = List.map(p -> (p#x, p#y), byAngle),
+            List.map(p -> (p#x, p#y), byAxis))
+
+    /// orientedByAxis の axis=(0,1) は 90° 回した箱：+x 軸が +y を向く。中心 (10,20)・
+    /// halfLen 2・halfThick 3 なら角は (13,18),(13,22),(7,22),(7,18)（rotated と同じ巻き順）。
+    @Test
+    def testOrientedByAxisQuarterTurn(): Unit \ Assert =
+        let corners = Quad.orientedByAxis({x = 10.0, y = 20.0}, {x = 0.0, y = 1.0}, 2.0, 3.0);
+        Assert.assertEq(
+            expected = (13.0, 18.0) :: (13.0, 22.0) :: (7.0, 22.0) :: (7.0, 18.0) :: Nil,
+            List.map(p -> (p#x, p#y), corners))
 }

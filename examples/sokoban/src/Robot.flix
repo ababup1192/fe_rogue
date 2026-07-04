@@ -1,51 +1,50 @@
-// Robot — the player character: a tall one-eyed robot ("cyclops"), drawn procedurally
-// like the crate. One function returns the parts for any facing direction and any
-// walk phase; the pose is a pure function of (dir, phase), never a piece of state.
+// Robot — プレイヤーキャラクター: 背が高く目が1つの「サイクロプス」ロボット、
+// クレートと同様に手続き的に描かれる。1つの関数が、任意の向きと任意の歩行位相
+// に対するパーツを返す；ポーズは (dir, phase) の純粋な関数であり、決して状態の
+// 一片ではない。
 //
-// All four facings share the same ground row and height. The side views use a
-// noticeably narrower body slab (profile depth, not front width), one L-bent near-side
-// arm instead of two arms flanking the body, and a single foot block at rest — the
-// layout a profile silhouette needs, not a front view with the arms trimmed.
+// 4方向すべてが同じ接地行と高さを共有する。横向きの見た目は、目立って狭い胴体
+// のスラブ（正面幅ではなく、奥行き）、体を挟む2本の腕ではなく1本のL字に曲がった
+// 手前側の腕、そして静止時は1つの足ブロックを使う —— これは腕を省略した正面図で
+// はなく、横顔のシルエットが必要とするレイアウトである。
 //
-// The eye is a true circle (a box with cornerRadius = half its size). In profile it is
-// a snail-eye lens: the ball bulges ~1.4 units past the leading edge — the one
-// deliberate break of the silhouette — held on by a base chord ~4 units tall at the
-// edge, so it reads attached, not floating; a body-colored bar hides the part of the
-// ball inside the body. The pupil is a capsule squashed to ~55% of its height — a
-// disc stuck on the sphere seen edge-on — placed at the lens tip.
+// 目は真円である（半分のサイズを cornerRadius に持つボックス）。横顔ではカタツ
+// ムリの目のようなレンズになる: 球が先端から約1.4ユニットせり出し（シルエットの
+// 唯一の意図的な破れ）、縁で約4ユニットの高さの土台の弦によって固定され、体に接
+// 続しているように見える；体色のバーが体の内側にある球の部分を隠す。瞳孔は高さ
+// の約55%に押しつぶされたカプセル —— 球を真横から見た円盤 —— で、レンズの先端
+// に配置される。
 //
-// The walk-in-place cycle has four beats: rest -> step -> rest -> step. Front and back
-// views read a step as a foot lift plus a body bounce, with the arms stretching and
-// shrinking in counter-phase (shoulders pinned) — swinging arms seen head-on; the
-// profile reads it as a stride — the foot block splits into a front/back pair, the
-// forearm swings (back on one step, forward on the next, like alternating arms), and
-// the body dips slightly between the spread feet. The eye rides the body's motion on
-// every facing: the robot bounces as one creature, gaze included. phase 0.0 is the
-// rest pose — a standing robot and a walking robot are the same function at different
-// phases.
+// その場歩行サイクルは4拍で構成される: 静止 -> 一歩 -> 静止 -> 一歩。正面と背面
+// では、一歩は足の上げと体のバウンスとして読まれ、腕は逆位相で伸縮する（肩は固
+// 定）—— 正面から見た腕の前後スイング；横顔ではこれは歩幅として読まれる —— 足
+// ブロックは前後のペアに分かれ、前腕がスイングし（一歩ごとに後ろ・前と交互に）、
+// 体は開いた両足の間でわずかに沈む。目はどの向きでも体の動きに乗る: ロボットは
+// 視線も含めて1つの生き物として弾む。位相 0.0 は静止ポーズである —— 立っている
+// ロボットと歩いているロボットは、異なる位相における同じ関数である。
 //
-// Parts are laid out on a 16-unit tile grid and scaled by the requested tile size,
-// so the same function serves the 8x gallery and the in-game tile.
+// パーツは16ユニットのタイルグリッド上に配置され、要求されたタイルサイズでスケ
+// ールされるので、同じ関数が8倍のギャラリー表示にもゲーム内タイルにも使える。
 
 mod Robot {
 
-    /// One part on the 16-unit grid. r > 0 rounds the corners (r = min(w,h)/2 = circle).
+    /// 16ユニットグリッド上の1パーツ。r > 0 は角を丸める（r = min(w,h)/2 = 円）。
     type alias Part = {
         x = Float64, y = Float64, w = Float64, h = Float64,
         r = Float64, color = Color, z = Int32
     }
 
-    /// Walk pose derived from the phase, in grid units. bob/liftL/liftR drive the
-    /// front and back views (body raise, per-foot lift); stride/swing drive the
-    /// profile (feet opening front/back, forearm shift along the walk axis). swing's
-    /// sign also picks which front/back arm shrinks and which stretches on a step.
+    /// 位相から導出される歩行ポーズ、グリッド単位。bob/liftL/liftR は正面・背面
+    /// ビュー（体の持ち上がり、片足ずつの上げ）を駆動する；stride/swing は横顔
+    /// （足の前後開き、前腕の歩行軸に沿った移動）を駆動する。swing の符号は、一
+    /// 歩ごとに前後どちらの腕が縮み、どちらが伸びるかも決める。
     type alias Pose = {
         bob = Float64, liftL = Float64, liftR = Float64,
         stride = Float64, swing = Float64
     }
 
-    /// All parts of the robot facing `dir` at walk phase `phase` (0..1, 0 = rest pose),
-    /// centered at `center`, on a tile of `size` px.
+    /// `center` を中心に、`size` px のタイル上で、歩行位相 `phase`（0..1、0が
+    /// 静止ポーズ）で `dir` を向くロボットの全パーツ。
     pub def parts(center: Vec2.Vec2, size: Float64, dir: Dir4.Dir4,
                   phase: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
         let pose = poseOf(phase);
@@ -57,10 +56,10 @@ mod Robot {
         };
         List.map(toItem(center, size), ps)
 
-    /// Four beats per cycle: rest -> step -> rest -> step. Step beats lift a foot
-    /// 1.5 units and bounce the body 1 unit (front/back views), and open the stride
-    /// with the forearm swung back on the first step and forward on the second
-    /// (profile). phase 0 is exactly the rest pose.
+    /// サイクルあたり4拍: 静止 -> 一歩 -> 静止 -> 一歩。一歩の拍は足を1.5ユニッ
+    /// ト持ち上げ、体を1ユニットバウンスさせ（正面・背面ビュー）、前腕を1歩目は
+    /// 後ろに、2歩目は前にスイングして歩幅を開く（横顔）。位相0はちょうど静止ポ
+    /// ーズである。
     def poseOf(phase: Float64): Pose =
         let p = phase - Float64.floor(phase);
         if (p < 0.25)      { bob = 0.0, liftL = 0.0, liftR = 0.0, stride = 0.0, swing = 0.0 }
@@ -68,67 +67,67 @@ mod Robot {
         else if (p < 0.75) { bob = 0.0, liftL = 0.0, liftR = 0.0, stride = 0.0, swing = 0.0 }
         else               { bob = 1.0, liftL = 0.0, liftR = 1.5, stride = 1.0, swing = 1.0 }
 
-    // ── Facings (16-unit grid, y down, ground row shared at y = 15.5) ──
-    // Everything except planted feet rides the walk motion (bounce or dip), eye included.
+    // ── 各向き（16ユニットグリッド、y は下向き、接地行は y = 15.5 で共有）──
+    // 接地している足を除くすべてが歩行の動き（バウンスまたは沈み込み）に乗る。
+    // 目も例外ではない。
 
-    /// Front (Down): the round single eye sits centered. The reference facing.
-    /// The arms stretch and shrink in counter-phase while walking — the foreshortened
-    /// look of arms swinging fore and aft seen head-on — shoulders pinned, hems moving.
+    /// 正面（Down）: 丸い1つの目が中央に位置する。基準となる向き。
+    /// 歩行中は腕が逆位相で伸縮する —— 正面から見た前後スイングの短縮された見た
+    /// 目 —— 肩は固定され、裾だけが動く。
     def front(pose: Pose): List[Part] =
         let b = pose#bob;
         let a = 1.2 * pose#swing;
-        part(4.5, 2.0 - b, 7.0, 12.0, Palette.robotBody(), 0) ::        // body slab
-        part(4.5, 2.0 - b, 7.0, 1.0, Palette.robotTrim(), 1) ::         // top highlight
-        round(6.0, 4.0 - b, 4.0, 4.0, Palette.robotEye(), 1) ::         // eye (true circle)
-        round(7.1, 5.1 - b, 1.8, 1.8, Palette.robotDark(), 2) ::        // pupil
-        part(6.0, 9.6 - b, 4.0, 0.7, Palette.robotDark(), 1) ::         // mouth line
-        part(5.4, 11.0 - b, 1.2, 0.6, Palette.robotAccent(), 1) ::      // vent 1
-        part(5.4, 12.0 - b, 1.2, 0.6, Palette.robotAccent(), 1) ::      // vent 2
-        part(3.0, 5.0 - b, 1.5, 5.0 - a, Palette.robotTrim(), 0) ::     // left arm
-        part(11.5, 5.0 - b, 1.5, 5.0 + a, Palette.robotTrim(), 0) ::    // right arm
-        part(5.0, 14.0 - pose#liftL, 2.5, 1.5, Palette.robotTrim(), 0) ::   // left foot
-        part(8.5, 14.0 - pose#liftR, 2.5, 1.5, Palette.robotTrim(), 0) :: Nil  // right foot
+        part(4.5, 2.0 - b, 7.0, 12.0, Palette.robotBody(), 0) ::        // 胴体のスラブ
+        part(4.5, 2.0 - b, 7.0, 1.0, Palette.robotTrim(), 1) ::         // 上部のハイライト
+        round(6.0, 4.0 - b, 4.0, 4.0, Palette.robotEye(), 1) ::         // 目（真円）
+        round(7.1, 5.1 - b, 1.8, 1.8, Palette.robotDark(), 2) ::        // 瞳孔
+        part(6.0, 9.6 - b, 4.0, 0.7, Palette.robotDark(), 1) ::         // 口の線
+        part(5.4, 11.0 - b, 1.2, 0.6, Palette.robotAccent(), 1) ::      // 通気口 1
+        part(5.4, 12.0 - b, 1.2, 0.6, Palette.robotAccent(), 1) ::      // 通気口 2
+        part(3.0, 5.0 - b, 1.5, 5.0 - a, Palette.robotTrim(), 0) ::     // 左腕
+        part(11.5, 5.0 - b, 1.5, 5.0 + a, Palette.robotTrim(), 0) ::    // 右腕
+        part(5.0, 14.0 - pose#liftL, 2.5, 1.5, Palette.robotTrim(), 0) ::   // 左足
+        part(8.5, 14.0 - pose#liftR, 2.5, 1.5, Palette.robotTrim(), 0) :: Nil  // 右足
 
-    /// Back (Up): no eye; a dark service panel with accent-lit slits is the "you see
-    /// its back" sign — the same dark-ground/yellow-line grammar as the front vents.
-    /// Arms stretch and shrink in counter-phase while walking, like the front.
+    /// 背面（Up）: 目はなし；アクセントで照らされたスリット付きの暗いサービスパ
+    /// ネルが「これは背中である」の印 —— 正面の通気口と同じ「暗い地に黄色い線」
+    /// という文法。歩行中は正面と同様、腕が逆位相で伸縮する。
     def back(pose: Pose): List[Part] =
         let b = pose#bob;
         let a = 1.2 * pose#swing;
-        part(4.5, 2.0 - b, 7.0, 12.0, Palette.robotBody(), 0) ::        // body slab
-        part(4.5, 2.0 - b, 7.0, 1.0, Palette.robotTrim(), 1) ::         // top highlight
-        part(5.8, 4.0 - b, 4.4, 4.6, Palette.robotDark(), 1) ::         // back panel
-        part(6.4, 5.0 - b, 3.2, 0.5, Palette.robotAccent(), 2) ::       // slit 1
-        part(6.4, 6.1 - b, 3.2, 0.5, Palette.robotAccent(), 2) ::       // slit 2
-        part(6.4, 7.2 - b, 3.2, 0.5, Palette.robotAccent(), 2) ::       // slit 3
-        part(3.0, 5.0 - b, 1.5, 5.0 - a, Palette.robotTrim(), 0) ::     // left arm
-        part(11.5, 5.0 - b, 1.5, 5.0 + a, Palette.robotTrim(), 0) ::    // right arm
-        part(5.0, 14.0 - pose#liftL, 2.5, 1.5, Palette.robotTrim(), 0) ::   // left foot
-        part(8.5, 14.0 - pose#liftR, 2.5, 1.5, Palette.robotTrim(), 0) :: Nil  // right foot
+        part(4.5, 2.0 - b, 7.0, 12.0, Palette.robotBody(), 0) ::        // 胴体のスラブ
+        part(4.5, 2.0 - b, 7.0, 1.0, Palette.robotTrim(), 1) ::         // 上部のハイライト
+        part(5.8, 4.0 - b, 4.4, 4.6, Palette.robotDark(), 1) ::         // 背面パネル
+        part(6.4, 5.0 - b, 3.2, 0.5, Palette.robotAccent(), 2) ::       // スリット 1
+        part(6.4, 6.1 - b, 3.2, 0.5, Palette.robotAccent(), 2) ::       // スリット 2
+        part(6.4, 7.2 - b, 3.2, 0.5, Palette.robotAccent(), 2) ::       // スリット 3
+        part(3.0, 5.0 - b, 1.5, 5.0 - a, Palette.robotTrim(), 0) ::     // 左腕
+        part(11.5, 5.0 - b, 1.5, 5.0 + a, Palette.robotTrim(), 0) ::    // 右腕
+        part(5.0, 14.0 - pose#liftL, 2.5, 1.5, Palette.robotTrim(), 0) ::   // 左足
+        part(8.5, 14.0 - pose#liftR, 2.5, 1.5, Palette.robotTrim(), 0) :: Nil  // 右足
 
-    /// Profile (Right): a narrow slab reading as depth, not front width. The eye is a
-    /// snail-eye lens: the ball bulges ~1.4 units past the leading edge, held on by a
-    /// ~4-unit base chord at the edge; a body-colored bar hides the part of the ball
-    /// inside the body, and the squashed capsule pupil sits at the tip. The near-side
-    /// arm is an L — upper arm down, forearm bent forward — whose forearm swings with
-    /// the stride; the feet are one block at rest that opens into a front/back pair
-    /// mid-step, while the whole body (lens included) dips 0.7 units between the
-    /// spread feet.
+    /// 横顔（Right）: 奥行きとして読める狭いスラブで、正面幅ではない。目はカタ
+    /// ツムリの目のようなレンズ: 球が先端から約1.4ユニットせり出し、縁の約4ユニ
+    /// ットの土台の弦で固定される；体色のバーが体の内側にある球の部分を隠し、押
+    /// しつぶされたカプセル型の瞳孔が先端に位置する。手前側の腕はL字 —— 上腕は
+    /// 下向き、前腕は前方に曲がる —— で、その前腕は歩幅に合わせてスイングする；
+    /// 足は静止時は1つのブロックで、一歩の途中で前後のペアに開く。体全体（レン
+    /// ズを含む）は開いた両足の間で0.7ユニット沈む。
     def side(pose: Pose): List[Part] =
         let d = 0.7 * pose#bob;
         let st = pose#stride;
         let sw = pose#swing;
-        part(5.5, 2.0 + d, 5.0, 12.0, Palette.robotBody(), 0) ::        // narrow profile body slab
-        part(5.5, 2.0 + d, 5.0, 1.0, Palette.robotTrim(), 1) ::         // top highlight
-        round(7.3, 3.7 + d, 4.6, 4.6, Palette.robotEye(), 1) ::         // lens ball, bulging past the leading edge
-        round(10.4, 5.1 + d, 1.0, 1.8, Palette.robotDark(), 2) ::       // pupil: edge-on capsule at the lens tip
-        part(7.3, 3.7 + d, 3.2, 4.6, Palette.robotBody(), 3) ::         // hides the part of the ball inside the body
-        part(6.9, 8.5 + d, 1.4, 2.5, Palette.robotTrim(), 1) ::         // upper arm, hanging below the lens
-        part(6.9 + sw, 9.6 + d, 2.6, 1.4, Palette.robotTrim(), 1) ::    // forearm bent forward; swings against the step
-        part(6.85 - 1.3 * st, 14.0, 2.3, 1.5, Palette.robotTrim(), 0) ::    // back foot
-        part(6.85 + 1.3 * st, 14.0, 2.3, 1.5, Palette.robotTrim(), 0) :: Nil  // front foot; covers the back foot exactly at rest
+        part(5.5, 2.0 + d, 5.0, 12.0, Palette.robotBody(), 0) ::        // 横顔の狭い胴体スラブ
+        part(5.5, 2.0 + d, 5.0, 1.0, Palette.robotTrim(), 1) ::         // 上部のハイライト
+        round(7.3, 3.7 + d, 4.6, 4.6, Palette.robotEye(), 1) ::         // レンズの球、先端からせり出す
+        round(10.4, 5.1 + d, 1.0, 1.8, Palette.robotDark(), 2) ::       // 瞳孔: レンズの先端の真横カプセル
+        part(7.3, 3.7 + d, 3.2, 4.6, Palette.robotBody(), 3) ::         // 体の内側にある球の部分を隠す
+        part(6.9, 8.5 + d, 1.4, 2.5, Palette.robotTrim(), 1) ::         // 上腕、レンズの下にぶら下がる
+        part(6.9 + sw, 9.6 + d, 2.6, 1.4, Palette.robotTrim(), 1) ::    // 前方に曲がった前腕；歩幅に対してスイングする
+        part(6.85 - 1.3 * st, 14.0, 2.3, 1.5, Palette.robotTrim(), 0) ::    // 後ろ足
+        part(6.85 + 1.3 * st, 14.0, 2.3, 1.5, Palette.robotTrim(), 0) :: Nil  // 前足；静止時にはちょうど後ろ足を覆う
 
-    // ── Helpers ──
+    // ── ヘルパー ──
 
     def part(x: Float64, y: Float64, w: Float64, h: Float64, c: Color, z: Int32): Part =
         { x = x, y = y, w = w, h = h, r = 0.0, color = c, z = z }
@@ -136,7 +135,7 @@ mod Robot {
     def round(x: Float64, y: Float64, w: Float64, h: Float64, c: Color, z: Int32): Part =
         { x = x, y = y, w = w, h = h, r = Float64.min(w, h) / 2.0, color = c, z = z }
 
-    /// Mirror a part across the tile's vertical center line (Left = mirrored Right).
+    /// パーツをタイルの垂直中心線に対して鏡映する（Left = Right の鏡映）。
     def mirrorX(p: Part): Part =
         { x = 16.0 - p#x - p#w | p }
 

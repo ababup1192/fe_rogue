@@ -1,7 +1,8 @@
-// Entry point.
+// エントリーポイント。
 //
-// Reads project.json (window and font settings) and starts the loop with the loaded font.
-// withProject requires the Fs handlers, so they are injected here (the loop itself never uses Fs).
+// project.json（ウィンドウとフォントの設定）を読み込み、ロードしたフォントで
+// loop を開始する。withProject は Fs のハンドラを必要とするので、ここで注入する
+// （loop 自身は Fs を一切使わない）。
 
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()

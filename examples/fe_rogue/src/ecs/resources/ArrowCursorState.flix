@@ -15,13 +15,13 @@ mod ArrowCursorState {
     /// `gridPos`: anchor から direction だけ進めた隣接セル（= 矢印の論理位置）。
     pub type alias Data = {
         anchor    = {x = Int32, y = Int32},
-        direction = Staff.Direction,
+        direction = Dir4.Dir4,
         gridPos   = {x = Int32, y = Int32}
     }
 
     /// 初期状態（原点・Up・原点）。`showFor` が StaffAim 開始時に put で上書きする。
     pub def initial(): Data =
-        {anchor = {x = 0, y = 0}, direction = Staff.Direction.Up, gridPos = {x = 0, y = 0}}
+        {anchor = {x = 0, y = 0}, direction = Dir4.Up, gridPos = {x = 0, y = 0}}
 
     /// `withState` が提供する handler 1 つで処理する。
     pub eff State {
