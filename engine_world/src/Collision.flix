@@ -4,7 +4,7 @@
 // 返すペアを読む。narrowphase は engine の純粋関数 CollisionShape2D.checkOverlap を再利用し、
 // layer/mask は engine と同じビットマスク（Int32.bitwiseAnd）。engine に無い broadphase
 // （一様空間グリッド）だけを新規実装して O(n²) を避ける。
-// 共有パッケージ flix_engine_ecs の一部。どの ECS ゲームも import して Collider を付け、
+// 共有パッケージ flix_engine_world の一部。どの ECS ゲームも import して Collider を付け、
 // detectCollisions のペアを読むだけ（Bevy の物理プラグインと同じ使い心地）。
 
 mod Collision {

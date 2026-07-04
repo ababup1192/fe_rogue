@@ -1,10 +1,10 @@
 [package]
-name        = "flix_engine_ecs"
-description = "Reusable immutable-ECS modules (EntityId, Query combinators, Collision broadphase) for games built on flix_game_engine"
+name        = "flix_engine_world"
+description = "Reusable immutable-World modules (EntityId, Query combinators, Collision broadphase) and a pure UI toolkit (flex layout, widget store, spec/binding, menus, extract) for games built on flix_game_engine"
 version     = "0.1.0"
 flix        = "0.75.0"
 authors     = ["ababup1192 <ababup1192@gmail.com>"]
-repository  = "github:ababup1192/flix_engine_ecs"
+repository  = "github:ababup1192/flix_engine_world"
 
 # 不変 World の ECS を組むための汎用部品。World 本体や各 component 型はゲーム側が持ち、
 # ここは Map[EntityId, _] 上で動く純粋な仕組み（query / collision broadphase）だけを提供する。

@@ -94,7 +94,7 @@ mod TestGifSnapshots {
     /// 現在の UiWorld を描画し、BufferedImage を framesRef の先頭に積む（あとで reverse）。
     def captureFrame(ctx: SnapshotSupport.Ctx, framesRef: Ref[List[BufferedImage], r]):
             Unit \ {IO + GameEngine.Game + UiWorldState.State + r} =
-        let rendered = UiRender.renderUi();
+        let rendered = UiHud.renderUi();
         let img = SoftRaster.renderToImage({
             drawables = rendered#drawables, polygons = rendered#polygons,
             design = ctx#design, scale = ctx#scale, background = ctx#background,
@@ -109,7 +109,7 @@ mod TestGifSnapshots {
 
     /// 現在の UiWorld の Drawable 数（最終フレームの sanity 用）。
     def drawableCount(): Int32 \ {GameEngine.Game + UiWorldState.State} =
-        List.length(UiRender.renderUi()#drawables)
+        List.length(UiHud.renderUi()#drawables)
 
     // ════════════════════════════════════════════════════════
     // topbar_wipe（フェイズ観測でワイプを進める・キー駆動でない）

@@ -3,8 +3,8 @@
 // scene-tree のパイプラインは使わず、不変 World を System で回す。1 フレーム:
 //   入力(start/pause/rewind) → System 連結（pause 中はスキップ）→ phase 立ち上がりで音 → 描画。
 // 不変 World ゆえの payoff:
-//   - 巻き戻し: 直近 K フレームの World を List に保持し、Z で過去へ差し替えるだけ（可変状態の
-//     ノード版には不可能）。
+//   - 巻き戻し: World の軌跡を Worldline（engine_world の zipper）に保持し、Z で過去へ遡るだけ
+//     （可変状態のノード版には不可能）。past は永続 List の tail 共有ゆえ丸コピーにならない。
 //   - 決定論ヘッドレス: runHeadless が seeded Random＋mock Game＋固定 dt で全ループを値として回す。
 //   - pause: sim System を呼ばないだけ。
 //
@@ -18,7 +18,7 @@ mod Game {
     // ── 起動 ──
 
     pub def start(atlas: FontAtlas): Unit \ {GameEngine.Game, GameEngine.Audio, Math.Random} =
-        gameLoop(atlas, GamePhase.Menu, buildMenuWorld(), Nil)
+        gameLoop(atlas, GamePhase.Menu, Worldline.make(buildMenuWorld(), maxHistory()))
 
     /// Menu の初期 World: 標準 HUD entity のみ。player/mob は無し。
     pub def buildMenuWorld(): World =
@@ -27,41 +27,41 @@ mod Game {
 
     // ── メインループ ──
 
-    def gameLoop(atlas: FontAtlas, prevPhase: GamePhase, world: World, history: List[World]):
+    def gameLoop(atlas: FontAtlas, prevPhase: GamePhase, line: Worldline[World]):
             Unit \ {GameEngine.Game, GameEngine.Audio, Math.Random} =
         if (closing()) ()
         else {
             let curKeys = readControlKeys();
-            let World.World(w) = world;
-            if (pressedEdge(GameEngine.Key.Z, curKeys, w#prevKeys) and not List.isEmpty(history))
-                doRewind(atlas, curKeys, world, history)
+            let World.World(w) = Worldline.current(line);
+            if (pressedEdge(GameEngine.Key.Z, curKeys, w#prevKeys) and Worldline.canUndo(line))
+                doRewind(atlas, curKeys, line)
             else
-                doFrame(atlas, prevPhase, curKeys, world, history)
+                doFrame(atlas, prevPhase, curKeys, line)
         }
 
     def closing(): Bool \ GameEngine.Game =
         GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)
 
-    /// Z: 直近 K フレーム前の World へ差し替える（payoff: 不変ゆえタダ）。
-    def doRewind(atlas: FontAtlas, curKeys: Set[GameEngine.Key], world: World, history: List[World]):
+    /// Z: 世界線を rewindFrames 段遡る（payoff: 不変ゆえタダ）。履歴が浅ければ最古で止まる。
+    def doRewind(atlas: FontAtlas, curKeys: Set[GameEngine.Key], line: Worldline[World]):
             Unit \ {GameEngine.Game, GameEngine.Audio, Math.Random} =
-        let (target, hist2) = popHistory(history, rewindFrames(), world);
-        let target2 = setPrevKeys(curKeys, target);
+        let line2 = Worldline.undoBy(rewindFrames(), line);
+        let target2 = setPrevKeys(curKeys, Worldline.current(line2));
         GameEngine.Game.renderCommands(RenderWorld.renderWorld(target2, atlas), Nil, Nil);
-        gameLoop(atlas, World.phaseOf(target2), target2, hist2)
+        gameLoop(atlas, World.phaseOf(target2), Worldline.replaceCurrent(target2, line2))
 
-    /// 通常フレーム: 入力 → System → 音 → 描画 → history へ push。
+    /// 通常フレーム: 入力 → System → 音 → 描画 → 世界線へ record。
     def doFrame(atlas: FontAtlas, prevPhase: GamePhase, curKeys: Set[GameEngine.Key],
-                world: World, history: List[World]):
+                line: Worldline[World]):
             Unit \ {GameEngine.Game, GameEngine.Audio, Math.Random} =
         let dt = Duration.toSeconds(GameEngine.Game.getDeltaTime());
         let mouseDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
         let mousePos = GameEngine.Game.getMousePosition();
-        let controlled = applyControl(curKeys, mouseDown, mousePos, world);
+        let controlled = applyControl(curKeys, mouseDown, mousePos, Worldline.current(line));
         let stepped = if (World.isPaused(controlled)) controlled else stepSystems(dt, controlled);
         playPhaseAudio(prevPhase, World.phaseOf(stepped));
         GameEngine.Game.renderCommands(RenderWorld.renderWorld(stepped, atlas), Nil, Nil);
-        gameLoop(atlas, World.phaseOf(stepped), stepped, pushHistory(stepped, history))
+        gameLoop(atlas, World.phaseOf(stepped), Worldline.record(stepped, line))
 
     /// 純粋＋少数 effect の System を連結する（pause 時は呼ばれない）。
     pub def stepSystems(dt: Float64, world: World): World \ {GameEngine.Game, Math.Random} =
@@ -80,16 +80,6 @@ mod Game {
     pub def runHeadless(dt: Float64, frames: Int32, world: World): World \ {GameEngine.Game, Math.Random} =
         if (frames <= 0) world
         else runHeadless(dt, frames - 1, stepSystems(dt, world))
-
-    // ── history（巻き戻し用リングバッファ）──
-
-    def pushHistory(world: World, history: List[World]): List[World] =
-        List.take(maxHistory(), world :: history)
-
-    def popHistory(history: List[World], k: Int32, fallback: World): (World, List[World]) =
-        let idx = Int32.min(k, List.length(history) - 1);
-        let target = List.nth(idx, history) |> Option.getWithDefault(fallback);
-        (target, List.drop(idx, history))
 
     // ── 入力（pure: 読み取りは loop 側、ここはエッジ計算と状態遷移）──
 

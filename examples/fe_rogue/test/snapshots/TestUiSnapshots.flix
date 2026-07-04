@@ -125,7 +125,7 @@ mod TestUiSnapshots {
         let bundle = SnapshotSupport.withMockGame(ctx#atlas, ctx#texInfo, () ->
             UiWorldState.withState(rc, () -> {
                 driveByName(entry#name);
-                let rendered = UiRender.renderUi();
+                let rendered = UiHud.renderUi();
                 let ui = UiWorldState.State.get();
                 let input = SnapshotLint.buildInput(entry#name, lintAllow(entry#tags),
                     designSize()#x, designSize()#y, ui);

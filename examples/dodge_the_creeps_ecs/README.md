@@ -6,7 +6,7 @@
 
 - **World**（`src/ecs/World.flix`）= ゲーム状態の唯一の正。component ごとの `Map[EntityId, _]` を持つ不変 enum。player と mob は同じ `positions`/`velocities`/`sprites` を共有する。
 - **System**（`src/systems/`）= すべて `World -> World`。move/anim/despawn/collision/phase は純粋、spawn は `\ Math.Random`、player input は `\ GameEngine.Game`。移動は「意図→積分→制約」に分解（input が velocity を設定 → `moveSystem` が `Query.updateWith2` で全 entity を一律積分 → `clampPlayerSystem` が player だけ画面内へ）。
-- **共有 lib `flix_engine_ecs`** = `EntityId`／`Query`（`Map[EntityId,_]` 上の join/update）／`Collision`（`Collider` component＋空間グリッド broadphase＋`detectCollisions`、narrowphase は engine の `checkOverlap` 再利用）を提供。どの ECS ゲームも depend して `Collider` を付け衝突ペアを読むだけ＝Bevy の物理プラグイン相当。衝突を各プロジェクトで書かない。
+- **共有 lib `flix_engine_world`** = `EntityId`／`Query`（`Map[EntityId,_]` 上の join/update）／`Collision`（`Collider` component＋空間グリッド broadphase＋`detectCollisions`、narrowphase は engine の `checkOverlap` 再利用）を提供。どの ECS ゲームも depend して `Collider` を付け衝突ペアを読むだけ＝Bevy の物理プラグイン相当。衝突を各プロジェクトで書かない。
 - **描画**（`src/render/RenderWorld.flix`）= `World -> List[GameEngine.Drawable]` の射影。scene-tree を介さず `Game.renderCommands` に直接渡す。テキストも `Label2D.toDrawables`（純粋）でノード無しに描く。
 - **ループ**（`src/Game.flix`）= 自前。`process/handleCollisions/handleTimers/handleButtons` 等の scene-tree ヘルパは使わない。
 

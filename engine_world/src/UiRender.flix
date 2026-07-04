@@ -1,29 +1,30 @@
-// UiRender — UiWorldState の UI ツリーを毎フレーム描画データへ射影する合流点。
+// UiRender — 渡された UiWorld の UI ツリーを毎フレーム描画データへ射影する合流点。
 //
-// renderFrame の worldDrawables（sprite チャンネル）と polygon チャンネルの双方に合流する。
+// 呼び手の renderFrame では worldDrawables（sprite チャンネル）と polygon チャンネルの双方に合流する。
 // box/text/sprite は Drawable、poly は PolygonRenderCmd と別チャンネルに出るので 2 列で返す。
-// UI は画面固定 HUD（camera 免除）なので
-// rootRect はデザイン解像度（240×128）を使い、extract は camera scale を掛けない。
+// UI は画面固定 HUD（camera 免除）なので rootRect には呼び手が渡す design 解像度を使い、
+// extract は camera scale を掛けない。
 // spawn 済みの各 root ごとにレイアウトを解決し、継承可視性を求めてから extract する。
 // root の layer は CanvasLayer.layerStride() 倍して zIndex に加算し、CanvasLayer HUD
 // （TopBar/Minimap/ItemMenu 等）と同じ z 序列に合流させる。
 
 mod UiRender {
 
-    /// UiWorldState の全 UI root を描画データへ射影する。box/text/sprite は Drawable、poly は
+    /// 渡された `ui` の全 UI root を描画データへ射影する。box/text/sprite は Drawable、poly は
     /// PolygonRenderCmd と別チャンネルに出るため、`drawables` と `polygons` の 2 列を一度のレイアウト
-    /// 解決でまとめて返す（renderFrame が sprite / polygon の各チャンネルへ振り分ける）。
-    /// 文字実寸は Game.getFontAtlas から measure し、root ごとに extract した後、root の layer 分の
+    /// 解決でまとめて返す（呼び手が sprite / polygon の各チャンネルへ振り分ける）。
+    /// `design` は画面固定 HUD の rootRect（原点 0,0・design サイズ）を成す。文字実寸は
+    /// getFontAtlas から measure し、root ごとに extract した後、root の layer 分の
     /// zIndex オフセットを sprites・polygon の双方へ加算してから連結する。
-    pub def renderUi(): {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]}
-                    \ {GameEngine.Game, UiWorldState.State} =
-        let ui = UiWorldState.State.get();
+    pub def renderUi(ui: UiStore.UiWorld, design: Vec2.Vec2):
+                    {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]}
+                    \ GameEngine.Game =
         let atlasOf = name -> GameEngine.Game.getFontAtlas(name);
         let measures = UiExtract.measureTexts(ui#texts, atlasOf);
         let roots = rootsOf(ui);
         let rootRect: Rect2.Rect2 =
             {position = {x = 0.0, y = 0.0},
-             size = {x = Int32.toFloat64(Game.designWi()), y = Int32.toFloat64(Game.designHi())}};
+             size = {x = design#x, y = design#y}};
         let perRoot = roots |> List.map(r -> renderRoot(ui, measures, rootRect, r));
         {drawables = perRoot |> List.flatMap(rendered -> rendered#drawables),
          polygons  = perRoot |> List.flatMap(rendered -> rendered#polygons)}

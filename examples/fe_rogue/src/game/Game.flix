@@ -1039,7 +1039,7 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[N
     // fog の明るい穴を frame に 1 回計算し、配置物直描きの lit ゲートで共有。
     let holesOpt = RenderWorld.fogHolesOpt(synced);
     // World-entity UI を 1 度のレイアウト解決で sprite（drawables）と polygon の 2 チャンネルへ射影。
-    let uiRendered = UiRender.renderUi();
+    let uiRendered = UiHud.renderUi();
     let worldDrawables = RenderWorld.renderUnits(world2, transform, synced)
         // 配置物/fx/HP バー/武器アイコンは World store + catalog/定数から直描き（scene ノード無し）。
         |> List.append(RenderWorld.renderStairs(world2, holesOpt, transform))

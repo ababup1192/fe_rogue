@@ -9,7 +9,7 @@
 // World -> List[Drawable] に射影する。scene-tree は使わない。
 
 // ── 共有型（ファイル横断で使うので top-level）──
-// EntityId は共有 lib flix_engine_ecs が提供（top-level pub alias）。
+// EntityId は共有 lib flix_engine_world が提供（top-level pub alias）。
 
 /// スプライトの見た目。named clip（"walk"/"up" 等）＋フレーム送り＋反転。
 /// AnimatedSprite2D ノードの代替を 1 レコードに畳む。

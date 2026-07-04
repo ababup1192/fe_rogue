@@ -1,6 +1,6 @@
 // UiExtract — UI entity から描画データへの射影
 //
-// Bevy の extract フェーズ相当。レイアウト済みの矩形と可視性から、engine_ecs の Render.RenderItem 列を作る。
+// Bevy の extract フェーズ相当。レイアウト済みの矩形と可視性から、Render.RenderItem 列を作る。
 // テキスト実寸計算は engine の Label2D.measure を再利用する（自前のフォントメトリクス計算はしない）。
 // 描画は画面固定 HUD 想定で camera scale を掛けない。呼び側が Render.drawAtlas に渡す。
 

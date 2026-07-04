@@ -7,7 +7,8 @@
 // チャンネル（移動＋フェード等）を同時に持てる。`Out` を返し、対象 component への書き込みは呼び出し側が行う。
 //
 // 名前は engine scene `Tween`（cursor/popup 用に存続）との衝突回避で `EcsTween`。
-// Phase 4 で lib `flix_engine_ecs` へ昇華予定（要相談）。それまでは fe_rogue 内の spike。
+// 共有パッケージ flix_engine_world の一部。どの ECS ゲームも import して `(entity, channel)` の
+// tween を進め、返る `Out` を対象 component へ書き戻す。
 mod EcsTween {
 
     /// Vec2 の線形補間（start→target）。Position/Knockback 等のベクトル軌道。

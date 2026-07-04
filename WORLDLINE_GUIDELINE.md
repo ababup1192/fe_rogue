@@ -25,7 +25,19 @@ Worldline アーキテクチャで作るための指針書 — 理念・原則�
    **ゲームは機能（縦スライス）で切り、語彙はファイル名の接尾辞に刻む**（`minimap/MinimapState.flix`・`〜Ui`・`〜Projection`・`〜Driver`）。
    名前が責務の宣言になる — `〜Projection` に副作用を書いたら名前が嘘になる
 
-## 責務の置き場（fe_rogue の現在地図）
+## 責務の置き場
+
+### エンジン側パッケージ（ライブラリ = 語彙で切る）
+
+| パッケージ | 住むもの |
+|---|---|
+| `engine_core` | 数学・基本型（Vec2 / Rect2 / Color / FontAtlas） |
+| `render_core` | GL 出口（Frame / シェーダ） |
+| `engine` | プラットフォーム（ウィンドウ / ループ / 入力 / 音 / フォント / Fs） |
+| **`engine_world`** | Worldline アーキテクチャの部品: **Worldline**（zipper: record/undo/redo/scrub）/ Query / Collision / EcsTween / EntityId / Render 射影 / **UI 基盤**（UiStore / UiLayout / UiSpec / UiWidget / UiMenu / UiFocus / UiBinding / UiHierarchy / UiExtract / UiRender） |
+| **`engine_tools`** | GL 不要の開発工具箱: SnapshotSite / RenderLint / ReplayScript / SoftRaster / GifEncoder / HeadlessFont（test からだけ依存） |
+
+### ゲーム側（fe_rogue の現在地図 — 機能で切り、語彙はファイル名接尾辞に）
 
 | ディレクトリ | 住むもの | 語彙 |
 |---|---|---|
@@ -33,10 +45,10 @@ Worldline アーキテクチャで作るための指針書 — 理念・原則�
 | `src/ecs/resources/` | 単一状態 + handler 注入 | Resource |
 | `src/sim/` | 純粋なルール遷移（ターン・フェーズ） | Step |
 | `src/systems/` | フレーム駆動の配線 | Driver |
-| `src/render/` | World → 描画データ | Projection |
-| `src/ui/` + `assets/*.ui.json` | UI（宣言 + frameStep） | Spec + Step |
+| `src/render/` | World → 描画データ（+ UiHud = UI 描画のグルー） | Projection |
+| `src/ui/` + `assets/*.ui.json` | 機能 UI（宣言 + frameStep。基盤は engine_world） | Spec + Step |
 | `src/game/` | ループ・handler 束・dispatch | 配線（Harness の本番版） |
-| `test/snapshots/` | 検証基盤 | Harness / Trace |
+| `test/snapshots/` | 検証の effect 束・カタログ・ブリッジ（骨格は engine_tools） | Harness / Trace |
 
 ---
 
@@ -66,7 +78,8 @@ pub enum World {
 
 **定義**: World が時間とともにたどる軌跡。履歴・巻き戻し・リプレイ・分岐は、すべて世界線上の操作。
 
-- 実物: dodge の `history: List[World]`（Z キー巻き戻し）、決定論リプレイ（同じ seed + 同じ入力 = 同じ世界線）、
+- 実物: `engine_world/src/Worldline.flix`（`List[a]` 上の純粋 zipper: past/current/future + record/undo/redo/undoBy —
+  dodge の Z キー巻き戻しがこれの消費者）、決定論リプレイ（同じ seed + 同じ入力 = 同じ世界線）、
   リプレイ GIF（世界線を1コマずつ絵に起こしたもの）、VN 構想の各ルート（分岐した世界線たち）
 - 旧語彙: 対応物なし（このアーキテクチャ固有の概念・アーキテクチャ全体の看板）
 - 見分け方: 「時間」「歴史」「もしも」を扱っていたら Worldline の話

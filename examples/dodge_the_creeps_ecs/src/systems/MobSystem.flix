@@ -1,6 +1,6 @@
 // MobSystem — モブの spawn / move / despawn
 //
-// 旧 node 版がエンジンに任せていた処理は共有 lib flix_engine_ecs に寄せた:
+// 旧 node 版がエンジンに任せていた処理は共有 lib flix_engine_world に寄せた:
 //   移動（RigidBody2D 積分）        → Motion.integrate
 //   画面外検出（VisibleOnScreenNotifier2D）→ Viewport.offscreenEntities
 // この System 群は「lib のクエリを呼んでゲーム固有の応答（mob を despawn 等）をする」だけ。
