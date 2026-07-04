@@ -17,6 +17,13 @@ mod Palette {
     pub def crateSeam(): Color  = {r = 0.270588f32, g = 0.156863f32, b = 0.235294f32}  // #45283c
     pub def crateBrace(): Color = {r = 0.850980f32, g = 0.627451f32, b = 0.400000f32}  // #d9a066
 
+    // ── Robot (the player) ──
+    pub def robotBody(): Color = {r = 0.356863f32, g = 0.431373f32, b = 0.882353f32}  // #5b6ee1
+    pub def robotTrim(): Color = {r = 0.388235f32, g = 0.607843f32, b = 1.000000f32}  // #639bff
+    pub def robotEye(): Color  = {r = 0.796078f32, g = 0.858824f32, b = 0.988235f32}  // #cbdbfc
+    pub def robotDark(): Color = {r = 0.133333f32, g = 0.125490f32, b = 0.203922f32}  // #222034
+    pub def robotAccent(): Color = {r = 0.984314f32, g = 0.949020f32, b = 0.211765f32}  // #fbf236
+
     // ── Text ──
     pub def titleText(): Color = {r = 0.933333f32, g = 0.764706f32, b = 0.603922f32}  // #eec39a
 
