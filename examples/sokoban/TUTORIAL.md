@@ -1792,14 +1792,15 @@ undo is not a luxury feature. In this architecture it is loose change.
   keeps turning during it (the dragged-feet look), while the glide wears each
   undone move's own facing and hands the snapshot's back at the landing — a
   film in honest reverse, one move at a time.
-- **CLEAR un-clears itself.** `won` is derived from the Stores, so rewinding
-  the winning push simply makes it false again. No flag was set, so no flag
-  needs unsetting — a test pins it.
+- **CLEAR is still nobody's flag.** `won` stays a pure derivation from the
+  Stores — nothing was set, so nothing ever needs unsetting. (In the finished
+  game the CLEAR page is modal — chapter 6 — so the winning push cannot be
+  rewound: once `won` turns true, only Enter and Escape are heard.)
 
 ### Try it
 
 Wire up **redo**. The zipper's future lane is already there, so it is a
-few lines: read the X key into `Input` as `redo`, and in `tick` call
+few lines: read the R key into `Input` as `redo`, and in `tick` call
 `Worldline.redo(line)` when it is pressed and nothing is sliding. Then watch
 the future evaporate: undo twice, make a *different* move, and try to redo —
 `record` discarded the timeline you abandoned.
@@ -1815,6 +1816,267 @@ time".
 
 ---
 
+## Chapter 6 — Screens You Can Edit While It Runs
+
+**Goal:** give the game a front door — a title page, a proper CLEAR panel
+that knows your move count, a road from level to level — and meet the sixth
+word of the vocabulary by editing a screen's look *while the game is
+running*, without recompiling anything.
+
+The game can take back any mistake — but when a level is solved, "CLEAR!"
+just floats there, and the only way to visit the second board is to edit the
+source. The game plays well and greets badly: no title to start from, no way
+to move between levels. Screens raise two questions, and the two answers
+live in two different places.
+
+### Which page is showing? That is state
+
+"Which page is the player looking at" is a fact that must survive between
+frames, and chapter 2 said what that means: it lives in the World, and the
+pure tick owns every change of it.
+
+```flix
+    // ── Screen: which page of the game the frame shows ──
+    // The screen is state like everything else, so it lives in the World and
+    // the pure tick owns every transition: Title --Enter--> level 1,
+    // CLEAR --Enter--> the next level (or back to Title after the last one),
+    // X abandons a level. Each transition starts a fresh Worldline — history
+    // belongs to one attempt at one board.
+    pub enum Screen with Eq {
+        case Title
+        case Playing
+    }
+```
+
+`Input` grows three keys — `enter`, `back` (X) and `esc` — and `enter` and
+`esc` are **edges**, not levels: the loop compares this frame's key against
+last frame's and hands the World `true` only on the frame the key went down.
+One press turns exactly one page, no matter how long the finger rests. And
+`tick` becomes a page-turner on top of the machine chapter 5 built — the
+whole of that machine survives untouched underneath, renamed `playTick`:
+
+```flix
+    pub def tick(input: Input, dt: Float64, line: Worldline[World]): Worldline[World] =
+        let World.World(b) = Worldline.current(line);
+        match b#screen {
+            case Screen.Title =>
+                if (input#enter) freshLine(playingWorld(1)) else line
+            case Screen.Playing =>
+                let world = Worldline.current(line);
+                if (won(world))
+                    // CLEAR is modal: only Enter and Escape are heard. The
+                    // picture still breathes — the winning slide lands, the
+                    // clock fades — but walking and rewinding fall silent.
+                    if (input#enter)
+                        (if (b#level < levelCount()) freshLine(playingWorld(b#level + 1))
+                         else freshLine(titleWorld()))
+                    else if (input#esc)
+                        freshLine(titleWorld())
+                    else
+                        Worldline.replaceCurrent(step(noKeys(), dt, world), line)
+                else if (input#back)
+                    freshLine(titleWorld())
+                else
+                    playTick(input, dt, line)
+        }
+
+    /// A brand new Worldline around one World: how every screen transition
+    /// begins. The previous history is dropped with the previous screen.
+    def freshLine(w: World): Worldline[World] =
+        Worldline.make(w, historyCap())
+```
+
+Two things deserve a closer look. **CLEAR is modal.** The moment `won` turns
+true the solved board becomes a finished photograph: direction keys move
+nothing, and Z — for the first time — is refused, so the winning push cannot
+be rewound out from under the panel. The world is not frozen, only deaf:
+`step(noKeys(), ...)` keeps running, so the final slide still lands and the
+rewind clock still fades. Enter turns the page (the next level, or the title
+after the last one); Escape closes the panel back to the title — the only
+two keys the photograph answers to.
+
+And **every transition is `freshLine`**: a brand new Worldline around one
+World. History belongs to one attempt at one board — abandon a level with X
+and return, and your past is clean. The time machine never crosses a
+doorway.
+
+### The sixth word: Spec
+
+The second question: where does a page's *look* live — the panel color, the
+font size, the words on it? Not in the World: "the title is peach" is not a
+fact the rules consult. And, more interesting: not in the code either. The
+rule of thumb this engine keeps returning to is —
+
+> **Whatever you want to change without recompiling, make data.** Data that
+> *describes* a thing — rather than computes it — is called a **Spec**.
+
+Here is the surprise: you have been writing Specs since chapter 4. A level
+string *is* one — data that describes a board, parsed by a pure function
+into Stores, designed freely without ever touching a rule. The only new step
+is doing for screens what level text already did for boards. The title page,
+in full, is `assets/Title.ui.json`:
+
+```json
+{
+  "root": {
+    "name": "Title", "widget": "none", "visible": false, "layer": 1,
+    "dir": "column", "mainAlign": "center", "crossAlign": "center", "gap": 8,
+    "children": [
+      { "name": "title", "widget": "text", "text": "SOKOBAN",
+        "font": "default", "fontSize": 40, "tint": "#eec39a", "zIndex": 110 },
+      { "name": "rule", "widget": "box", "color": "#d9a066",
+        "width": 150, "height": 2, "zIndex": 110 },
+      { "name": "subtitle", "widget": "text", "text": "push crates. rewind time.",
+        "font": "default", "fontSize": 12, "tint": "#847e87", "zIndex": 110 },
+      { "name": "spacer", "widget": "none", "width": 1, "height": 16 },
+      { "name": "prompt", "widget": "text", "text": "Press Enter",
+        "font": "default", "fontSize": 14, "tint": "#fbf236", "zIndex": 110 }
+    ]
+  }
+}
+```
+
+A tree of named nodes: a `widget` says what a node is (`text`, `box`, or a
+`none` container), layout keys (`dir`, `mainAlign`, `crossAlign`, `gap`) say
+how children flow inside it, and colors are the same DB32 hexes the Palette
+uses by role. `assets/Clear.ui.json` is its sibling: a bordered panel with
+three text lines — `headline`, `moves`, `prompt`. This format belongs to
+`engine_world` (the library that brought you `Worldline`): `UiSpec` parses
+it, and every node lands in a **UiWorld** — a store of UI nodes, one plain
+value — addressable by its name path, like `"Clear/panel/moves"`.
+
+### Spawning pages, projecting the World onto them
+
+```flix
+    pub def titleUiPath(): String = "assets/Title.ui.json"
+    pub def clearUiPath(): String = "assets/Clear.ui.json"
+
+    def designSize(): Vec2.Vec2 = { x = 320.0, y = 240.0 }
+
+    /// Spawn both page Specs into one UiWorld. A broken or missing file
+    /// degrades to no page — the game still runs, like a broken level string.
+    def loadUi(): UiStore.UiWorld \ Fs.FileRead =
+        UiStore.empty() |> spawnPage(titleUiPath()) |> spawnPage(clearUiPath())
+
+    def spawnPage(path: String, ui: UiStore.UiWorld): UiStore.UiWorld \ Fs.FileRead =
+        match UiSpec.spawnAsset(path, ui) {
+            case Result.Ok((_, ui1)) => ui1
+            case Result.Err(_)       => ui
+        }
+
+    /// Stamp the World onto the UI store: page visibility and the move count.
+    /// The count is nobody's counter — it is Worldline.pastLength, handed in
+    /// by the loop: the history was already counting the moves.
+    pub def projectUi(moves: Int32, w: World, ui: UiStore.UiWorld): UiStore.UiWorld =
+        let World.World(b) = w;
+        ui |> UiStore.setVisible("Title", b#screen == Screen.Title)
+           |> UiStore.setVisible("Clear", b#screen == Screen.Playing and won(w))
+           |> UiStore.setText("Clear/panel/moves", "Moves: ${moves}")
+```
+
+`loadUi` runs once at startup (note its effect: `\ Fs.FileRead` — reading
+files is outside the program, and the signature says so). `projectUi` runs
+every frame, and it is a Projection in exactly the chapter 2 sense — it
+reads the World and writes a picture — except the canvas is the UI store
+instead of the screen: which pages show, what the moves line says.
+
+And look where the move count comes from. We never added a move counter.
+There is nothing to increment, nothing to reset, nothing to forget to reset.
+`Worldline.pastLength` — the number of Worlds filed behind you — *is* the
+move count, because chapter 5 records exactly one snapshot per move. Undo a
+move and the count goes down by itself; the number you show is always the
+number you could rewind. The time machine had been keeping score all along.
+
+### The loop, final form
+
+```flix
+    /// While the CLEAR panel is up, Escape closes the panel (back to the
+    /// title) instead of the window.
+    def clearModal(w: World): Bool =
+        let World.World(b) = w;
+        b#screen == Screen.Playing and won(w)
+
+    /// The loop threads three values: the UI store, the Worldline, and last
+    /// frame's key state (enter and esc start true so a key already held at
+    /// launch says nothing until released once).
+    def loop(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[World],
+             prev: { enter = Bool, esc = Bool, f1 = Bool }): Unit \ {GameEngine.Game, Fs.FileRead} =
+        let escDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Escape);
+        let escEdge = escDown and not prev#esc;
+        if (GameEngine.Game.shouldClose()
+            or (escEdge and not clearModal(Worldline.current(line)))) ()
+        else {
+            let enterDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Enter);
+            let f1Down = GameEngine.Game.isKeyPressed(GameEngine.Key.F1);
+            let line1 = tick(readInput(enterDown and not prev#enter, escEdge), readDt(), line);
+            // F1 re-reads every spawned Spec from disk: edit the json while
+            // the game runs, press F1, and the page changes under you.
+            let ui1 = if (f1Down and not prev#f1) UiSpec.reloadAll(ui) else ui;
+            let world = Worldline.current(line1);
+            let ui2 = projectUi(Worldline.pastLength(line1), world, ui1);
+            let (drawables, polys) = frame(atlas, world);
+            let out = UiRender.renderUi(ui2, designSize());
+            GameEngine.Game.renderCommands(
+                List.append(drawables, out#drawables), Nil,
+                List.append(polys, out#polygons));
+            loop(atlas, ui2, line1, { enter = enterDown, esc = escDown, f1 = f1Down })
+        }
+```
+
+The UiWorld lives in the loop, next to the Worldline — the same grammar the
+time machine used: a plain value threaded through, never a global. Each
+frame `UiRender.renderUi` lays the visible pages out and returns boxes and
+glyphs in the same two channels `frame` already produces; the loop appends
+them and hands everything to the engine in one call. The title page draws
+*nothing* from `frame` at all — on that screen, everything you see is Spec.
+
+And one small key with a large consequence: **F1** calls
+`UiSpec.reloadAll`, which re-reads every spawned Spec from disk and rebuilds
+its nodes in place. A file that fails to parse keeps its old page — reload
+never breaks a running game.
+
+### What just happened
+
+- Screens ask two questions with two different homes. *Which page* is state
+  — a `Screen` value in the World, every transition owned by the pure tick.
+  *What the page looks like* is a **Spec** — data on disk, spawned into a
+  UiWorld, never consulted by a rule.
+- **Spec is the sixth word**: whatever should change without recompiling,
+  make data that describes it. Levels were Specs before we had the name;
+  now pages are too. World, Step, Projection, Store, Worldline, **Spec**.
+- **CLEAR is modal.** A solved board answers only Enter and Escape — walking
+  and rewinding fall silent, so the finished position and its move count
+  stay exactly as you earned them. The picture keeps breathing; only the
+  keyboard narrows.
+- **The move count was already there.** `Worldline.pastLength` is the number
+  of moves because history records one snapshot per move — no counter added,
+  and undo subtracts by itself.
+- The UiWorld is one more value in the loop, beside the Worldline. The World
+  never learns the UI exists; a projection stamps verdicts onto it once a
+  frame.
+
+### Try it
+
+This chapter's real exercise is the reload loop. Run the game, leave it on
+the title, and open `assets/Title.ui.json` in your editor. Change the
+`tint` of the title, the `fontSize` of the prompt, the subtitle's words.
+Save, switch to the game, press **F1**. No recompile, no restart, no lost
+state — the page simply becomes what the file says. This is what Spec buys:
+the look iterates at the speed of saving a file.
+
+Now break it on purpose: delete a comma, press F1. The old page stays — a
+Spec that stops parsing keeps its last good shape. Fix the comma, F1 again.
+
+Give the clear panel a flourish: add a fourth text node under `moves`
+(name it anything — it needs no code, because no code addresses it), or
+restyle the panel's `borderColor`. F1.
+
+Then add a third level. `Level.three()` with a new board string, and
+`levelCount()` returns `3` — a Spec and one number. The screen flow already
+knows the way: CLEAR, Enter, next board, and the title again after the last.
+
+---
+
 ## Recap
 
 - A game is a loop with a three-part beat: **`world |> step |> frame`** —
@@ -1824,6 +2086,8 @@ time".
   changing it. A **Store** is a World field that holds many states of one kind.
   A **Worldline** is the trail of Worlds — past, current, future — that
   `record` and `undo` walk along; it lives beside the World, not inside it.
+  A **Spec** is data that describes a thing — a level string, a page's
+  `ui.json` — for everything that should change without recompiling.
 - Things outside the world — the keyboard, a hand-typed level, the clock —
   are read at the boundary and enter the rules as plain data.
 - State that can be derived (like "is the puzzle solved?") is not stored; it
@@ -1833,7 +2097,7 @@ time".
 - Colors are picked from the DB32 palette **by role name**; shapes are
   composed with **ratios and stacking order**.
 
-The game can now take back any mistake — but when a level is solved, "CLEAR!"
-just floats there, and the only way to visit the second board is to edit the
-source. The game plays well and greets badly: no title to start from, no way
-to move between levels. Giving it a front door is the next chapter's problem.
+The game is whole now: a title that waits, boards that slide and remember,
+mistakes that rewind, a clear panel that knows the score, and pages you can
+restyle while it runs. Six words carried the entire trip — and the next game
+you build can start from all six on day one.

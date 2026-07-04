@@ -7,12 +7,18 @@ mod TestSokoban {
     // ── Helpers ──
 
     def keys(u: Bool, d: Bool, l: Bool, r: Bool): Sokoban.Input =
-        { up = u, down = d, left = l, right = r, undo = false }
-
-    def zKey(): Sokoban.Input =
-        { up = false, down = false, left = false, right = false, undo = true }
+        { up = u, down = d, left = l, right = r,
+          undo = false, enter = false, back = false, esc = false }
 
     def none(): Sokoban.Input = keys(false, false, false, false)
+
+    def zKey(): Sokoban.Input = { undo = true | none() }
+
+    def enterKey(): Sokoban.Input = { enter = true | none() }
+
+    def backKey(): Sokoban.Input = { back = true | none() }
+
+    def escKey(): Sokoban.Input = { esc = true | none() }
 
     def right(): Sokoban.Input = keys(false, false, false, true)
 
@@ -20,13 +26,19 @@ mod TestSokoban {
     /// pinned t and phase below is exact.
     def dt(): Float64 = 1.0 / 64.0
 
-    /// A 5x5 open floor with the given contents, at rest.
+    /// A 5x5 open floor with the given contents, at rest, mid-play on level 1.
     def board(walls: List[(Int32, Int32)], crates: List[(Int32, Int32)],
               robot: (Int32, Int32)): Sokoban.World =
         Sokoban.World.World({
             walls = List.toSet(walls), goals = Set.empty(), crates = List.toSet(crates),
             robot = robot, cols = 5, rows = 5,
-            facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None })
+            facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None,
+            screen = Sokoban.Screen.Playing, level = 1 })
+
+    /// An already-solved board (one crate on one goal) on the given level.
+    def wonBoard(level: Int32): Sokoban.World =
+        let Sokoban.World.World(b) = board(Nil, (1, 1) :: Nil, (2, 2));
+        Sokoban.World.World({ goals = Set#{(1, 1)}, level = level | b })
 
     def withSlide(s: Sokoban.Slide, w: Sokoban.World): Sokoban.World =
         let Sokoban.World.World(b) = w;
@@ -259,15 +271,19 @@ mod TestSokoban {
             (robotOf(back), slideOf(back), fxOf(back)))
 
     @Test
-    def testClearThenUndoUnclears(): Unit \ Assert =
+    def testClearIgnoresUndo(): Unit \ Assert =
+        // CLEAR is modal: once every crate rests on a goal, only Enter and
+        // Escape are heard — Z cannot rewind the winning push.
         let goalAt42 = Sokoban.World.World({
             walls = Set.empty(), goals = Set#{(4, 2)}, crates = Set#{(3, 2)},
             robot = (2, 2), cols = 5, rows = 5,
-            facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None });
-        let pushed = Sokoban.tick(right(), dt(), fresh(goalAt42));
-        let undone = undoNow(land(pushed));
-        Assert.assertEq(expected = (true, false),
-            (Sokoban.won(Worldline.current(pushed)), Sokoban.won(Worldline.current(undone))))
+            facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None,
+            screen = Sokoban.Screen.Playing, level = 1 });
+        let pushed = land(Sokoban.tick(right(), dt(), fresh(goalAt42)));
+        let afterZ = Sokoban.tick(zKey(), dt(), pushed);
+        Assert.assertEq(expected = (true, true, (3, 2), None),
+            (Sokoban.won(Worldline.current(pushed)), Sokoban.won(Worldline.current(afterZ)),
+             robotOf(Worldline.current(afterZ)), slideOf(Worldline.current(afterZ))))
 
     @Test
     def testIdleMarchBreathesAcrossUndo(): Unit \ Assert =
@@ -313,6 +329,140 @@ mod TestSokoban {
         Assert.assertEq(expected = (0.0, 3.141592653589793),
             (Sokoban.needleAngle(0.0), Sokoban.needleAngle(0.5)))
 
+    // ── Screens: Title, Playing, and the pages between levels ──
+
+    def screenTag(w: Sokoban.World): String =
+        let Sokoban.World.World(b) = w;
+        match b#screen {
+            case Sokoban.Screen.Title   => "Title"
+            case Sokoban.Screen.Playing => "Playing"
+        }
+
+    def levelOf(w: Sokoban.World): Int32 =
+        let Sokoban.World.World(b) = w;
+        b#level
+
+    def colsOf(w: Sokoban.World): Int32 =
+        let Sokoban.World.World(b) = w;
+        b#cols
+
+    @Test
+    def testTitleEnterStartsLevelOne(): Unit \ Assert =
+        let w = Worldline.current(Sokoban.tick(enterKey(), dt(), fresh(Sokoban.titleWorld())));
+        Assert.assertEq(expected = ("Playing", 1, (3, 5)),
+            (screenTag(w), levelOf(w), robotOf(w)))
+
+    @Test
+    def testTitleIgnoresWalkAndUndoKeys(): Unit \ Assert =
+        let l1 = Sokoban.tick(right(), dt(), fresh(Sokoban.titleWorld()));
+        let w = Worldline.current(Sokoban.tick(zKey(), dt(), l1));
+        Assert.assertEq(expected = ("Title", (3, 5)), (screenTag(w), robotOf(w)))
+
+    @Test
+    def testEnterMidLevelDoesNothing(): Unit \ Assert =
+        // A crate still off its goal keeps the board unsolved, so Enter is
+        // just a quiet frame.
+        let unsolved = board(Nil, (3, 3) :: Nil, (2, 2));
+        let w = Worldline.current(Sokoban.tick(enterKey(), dt(), fresh(unsolved)));
+        Assert.assertEq(expected = ("Playing", (2, 2)), (screenTag(w), robotOf(w)))
+
+    @Test
+    def testClearEnterAdvancesToLevelTwo(): Unit \ Assert =
+        // Level 2 is eight columns wide where level 1 is seven: the fresh
+        // board proves the page really turned.
+        let w = Worldline.current(Sokoban.tick(enterKey(), dt(), fresh(wonBoard(1))));
+        Assert.assertEq(expected = ("Playing", 2, 8),
+            (screenTag(w), levelOf(w), colsOf(w)))
+
+    @Test
+    def testLastLevelClearEnterReturnsToTitle(): Unit \ Assert =
+        let w = Worldline.current(Sokoban.tick(enterKey(), dt(), fresh(wonBoard(2))));
+        Assert.assertEq(expected = "Title", screenTag(w))
+
+    @Test
+    def testBackAbandonsToTitle(): Unit \ Assert =
+        let w = Worldline.current(Sokoban.tick(backKey(), dt(), fresh(board(Nil, Nil, (2, 2)))));
+        Assert.assertEq(expected = "Title", screenTag(w))
+
+    @Test
+    def testClearEscReturnsToTitle(): Unit \ Assert =
+        // On the CLEAR panel Escape closes the panel, not the game.
+        let w = Worldline.current(Sokoban.tick(escKey(), dt(), fresh(wonBoard(1))));
+        Assert.assertEq(expected = "Title", screenTag(w))
+
+    @Test
+    def testClearIgnoresWalkKeys(): Unit \ Assert =
+        // CLEAR is modal: a direction key moves nothing and writes no history.
+        let l = Sokoban.tick(right(), dt(), fresh(wonBoard(1)));
+        let w = Worldline.current(l);
+        Assert.assertEq(expected = ("Playing", (2, 2), Set#{(1, 1)}, 0),
+            (screenTag(w), robotOf(w), cratesOf(w), Worldline.pastLength(l)))
+
+    @Test
+    def testScreenTransitionStartsFreshHistory(): Unit \ Assert =
+        // One landed move, then abandon to the title: the new line has no
+        // past — history belongs to one attempt at one board.
+        let played = movedAndLanded(board(Nil, Nil, (2, 2)));
+        let l = Sokoban.tick(backKey(), dt(), played);
+        Assert.assertEq(expected = (1, 0),
+            (Worldline.pastLength(played), Worldline.pastLength(l)))
+
+    // ── Moves are the past's length: the history was already counting ──
+
+    @Test
+    def testMoveCountIsThePastLength(): Unit \ Assert =
+        let m1 = movedAndLanded(board(Nil, Nil, (2, 2)));
+        let m2 = land(Sokoban.tick(right(), dt(), m1));
+        let u1 = undoNow(m2);
+        Assert.assertEq(expected = (1, 2, 1),
+            (Worldline.pastLength(m1), Worldline.pastLength(m2), Worldline.pastLength(u1)))
+
+    // ── The UI Specs: pages declared in assets/*.ui.json ──
+
+    /// Spawn both shipped page Specs into one UiWorld, as the launcher does.
+    def spawnedUi(): Option[UiStore.UiWorld] \ IO =
+        run {
+            forM (a <- UiSpec.spawnAsset(Sokoban.titleUiPath(), UiStore.empty()) |> Result.toOption;
+                  b <- UiSpec.spawnAsset(Sokoban.clearUiPath(), snd(a)) |> Result.toOption)
+            yield snd(b)
+        } with Fs.FileRead.runWithIO
+
+    def has(path: String, ui: UiStore.UiWorld): Bool =
+        not Option.isEmpty(UiStore.idOf(path, ui))
+
+    def textOf(path: String, ui: UiStore.UiWorld): Option[String] =
+        UiStore.idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, ui#texts))
+            |> Option.map(t -> t#text)
+
+    def pageVisible(page: String, ui: UiStore.UiWorld): Option[Bool] =
+        Map.get(page, UiStore.visibleByPath(page, ui))
+
+    @Test
+    def testShippedUiSpecsCarryTheAddressedNodes(): Unit \ {Assert, IO} =
+        // The names the code addresses must exist in the shipped Specs.
+        let found = spawnedUi() |> Option.map(ui ->
+            (has("Title", ui), has("Title/prompt", ui),
+             has("Clear/panel/headline", ui), has("Clear/panel/moves", ui)));
+        Assert.assertEq(expected = Some((true, true, true, true)), found)
+
+    @Test
+    def testProjectUiTurnsThePages(): Unit \ {Assert, IO} =
+        let pages = w -> spawnedUi() |> Option.map(ui -> {
+            let u = Sokoban.projectUi(0, w, ui);
+            (pageVisible("Title", u), pageVisible("Clear", u))
+        });
+        Assert.assertEq(
+            expected = (Some((Some(true), Some(false))),
+                        (Some((Some(false), Some(true))))),
+            (pages(Sokoban.titleWorld()), pages(wonBoard(1))))
+
+    @Test
+    def testProjectUiWritesTheMoveCount(): Unit \ {Assert, IO} =
+        let text = spawnedUi() |> Option.flatMap(ui ->
+            textOf("Clear/panel/moves", Sokoban.projectUi(3, wonBoard(1), ui)));
+        Assert.assertEq(expected = Some("Moves: 3"), text)
+
     // ── Winning ──
 
     @Test
@@ -320,10 +470,15 @@ mod TestSokoban {
         let onGoals = Sokoban.World.World({
             walls = Set.empty(), goals = List.toSet((1, 1) :: (2, 2) :: Nil),
             crates = List.toSet((1, 1) :: Nil), robot = (3, 3), cols = 5, rows = 5,
-            facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None });
+            facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None,
+            screen = Sokoban.Screen.Playing, level = 1 });
         let strayCrate = Sokoban.World.World({
             walls = Set.empty(), goals = List.toSet((1, 1) :: Nil),
             crates = List.toSet((1, 1) :: (3, 3) :: Nil), robot = (2, 2), cols = 5, rows = 5,
-            facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None });
-        Assert.assertEq(expected = (true, false), (Sokoban.won(onGoals), Sokoban.won(strayCrate)))
+            facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None,
+            screen = Sokoban.Screen.Playing, level = 1 });
+        // A crateless board poses no puzzle and never counts as solved.
+        let crateless = board(Nil, Nil, (2, 2));
+        Assert.assertEq(expected = (true, false, false),
+            (Sokoban.won(onGoals), Sokoban.won(strayCrate), Sokoban.won(crateless)))
 }

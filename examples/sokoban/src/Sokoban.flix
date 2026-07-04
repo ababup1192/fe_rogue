@@ -29,8 +29,12 @@ mod Sokoban {
 
     // ── Input: this frame's keys as plain data ──
     // The keyboard lives outside the World. Every frame the loop reads it once and
-    // hands step the result as a value — so step can stay pure.
-    pub type alias Input = { up = Bool, down = Bool, left = Bool, right = Bool, undo = Bool }
+    // hands step the result as a value — so step can stay pure. enter is an
+    // edge, not a level: true only on the frame the key went down, so one
+    // press turns exactly one page. The loop tells held from pressed; the
+    // pure world only ever sees the verdict.
+    pub type alias Input = { up = Bool, down = Bool, left = Bool, right = Bool,
+                             undo = Bool, enter = Bool, back = Bool, esc = Bool }
 
     // ── World: where the state lives ──
     // walls / goals / crates are Stores: many things of one kind, one Set each.
@@ -47,6 +51,17 @@ mod Sokoban {
     /// out shortly after.
     pub type alias UndoFx = { spin = Float64, linger = Float64 }
 
+    // ── Screen: which page of the game the frame shows ──
+    // The screen is state like everything else, so it lives in the World and
+    // the pure tick owns every transition: Title --Enter--> level 1,
+    // CLEAR --Enter--> the next level (or back to Title after the last one),
+    // X abandons a level. Each transition starts a fresh Worldline — history
+    // belongs to one attempt at one board.
+    pub enum Screen with Eq {
+        case Title
+        case Playing
+    }
+
     pub type alias Board = {
         walls = Set[(Int32, Int32)],
         goals = Set[(Int32, Int32)],
@@ -57,35 +72,52 @@ mod Sokoban {
         facing = Robot.Direction,
         walkPhase = Float64,
         slide = Option[Slide],
-        undoFx = Option[UndoFx]
+        undoFx = Option[UndoFx],
+        screen = Screen,
+        level = Int32
     }
 
     pub enum World {
         case World(Board)
     }
 
-    pub def initialWorld(): World = fromLevel(Level.one())
+    pub def initialWorld(): World = titleWorld()
+
+    pub def levelCount(): Int32 = 2
+
+    def levelText(n: Int32): String =
+        if (n <= 1) Level.one() else Level.two()
+
+    /// The title page. It still carries a (level 1) board — every World has
+    /// one — but the frame never draws it there.
+    pub def titleWorld(): World = fromLevel(Screen.Title, 1)
+
+    /// A fresh attempt at level n, ready to play.
+    pub def playingWorld(n: Int32): World = fromLevel(Screen.Playing, n)
 
     /// The shipped level strings are pinned parseable by the tests; a broken
     /// string degrades to a bare floor instead of crashing the launcher.
-    pub def fromLevel(text: String): World =
-        match Level.parse(text) {
-            case Result.Ok(p)  => toWorld(p)
-            case Result.Err(_) => toWorld({ walls = Set.empty(), goals = Set.empty(),
+    def fromLevel(screen: Screen, n: Int32): World =
+        match Level.parse(levelText(n)) {
+            case Result.Ok(p)  => toWorld(screen, n, p)
+            case Result.Err(_) => toWorld(screen, n,
+                                          { walls = Set.empty(), goals = Set.empty(),
                                             crates = Set.empty(), robot = (0, 0),
                                             cols = 1, rows = 1 })
         }
 
-    def toWorld(p: Level.Parsed): World =
+    def toWorld(screen: Screen, n: Int32, p: Level.Parsed): World =
         World.World({ walls = p#walls, goals = p#goals, crates = p#crates,
                       robot = p#robot, cols = p#cols, rows = p#rows,
                       facing = Robot.Direction.Down, walkPhase = 0.0,
-                      slide = None, undoFx = None })
+                      slide = None, undoFx = None,
+                      screen = screen, level = n })
 
     /// The win condition is not stored anywhere: it is derived from the Stores.
+    /// A board with no crates poses no puzzle, so it never counts as solved.
     pub def won(w: World): Bool =
         let World.World(b) = w;
-        Set.isSubsetOf(b#crates, b#goals)
+        not Set.isEmpty(b#crates) and Set.isSubsetOf(b#crates, b#goals)
 
     // ── tick: one frame of the whole session, time machine included ──
     // The Worldline records one snapshot per committed move — the game's natural
@@ -98,6 +130,37 @@ mod Sokoban {
     pub def historyCap(): Int32 = 10000
 
     pub def tick(input: Input, dt: Float64, line: Worldline[World]): Worldline[World] =
+        let World.World(b) = Worldline.current(line);
+        match b#screen {
+            case Screen.Title =>
+                if (input#enter) freshLine(playingWorld(1)) else line
+            case Screen.Playing =>
+                let world = Worldline.current(line);
+                if (won(world))
+                    // CLEAR is modal: only Enter and Escape are heard. The
+                    // picture still breathes — the winning slide lands, the
+                    // clock fades — but walking and rewinding fall silent.
+                    if (input#enter)
+                        (if (b#level < levelCount()) freshLine(playingWorld(b#level + 1))
+                         else freshLine(titleWorld()))
+                    else if (input#esc)
+                        freshLine(titleWorld())
+                    else
+                        Worldline.replaceCurrent(step(noKeys(), dt, world), line)
+                else if (input#back)
+                    freshLine(titleWorld())
+                else
+                    playTick(input, dt, line)
+        }
+
+    /// A brand new Worldline around one World: how every screen transition
+    /// begins. The previous history is dropped with the previous screen.
+    def freshLine(w: World): Worldline[World] =
+        Worldline.make(w, historyCap())
+
+    /// One frame of actual play: motion, moves committing to history, Z
+    /// rewinding through it.
+    def playTick(input: Input, dt: Float64, line: Worldline[World]): Worldline[World] =
         let world = Worldline.current(line);
         // Holding Z takes the walk keys away; rewinding has right of way.
         let moveInput = if (input#undo) noKeys() else input;
@@ -143,7 +206,8 @@ mod Sokoban {
         not Option.isEmpty(b#slide)
 
     def noKeys(): Input =
-        { up = false, down = false, left = false, right = false, undo = false }
+        { up = false, down = false, left = false, right = false,
+          undo = false, enter = false, back = false, esc = false }
 
     /// What goes into history: the logical state. The picture's travel and the
     /// rewind clock stay out of the past.
@@ -276,17 +340,22 @@ mod Sokoban {
     // ── frame: projects the World into the list of things to draw ──
     // Insertion order layers the board: floor and walls, then goal marks, then
     // crates, then the robot, then the on-goal badges and text on top.
+    // The Title page draws nothing here: everything on it is Spec (see the UI
+    // section below), rendered from the UI store by the loop.
     pub def frame(atlas: FontAtlas, w: World): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
         let World.World(b) = w;
-        let boxes = List.flatten(
-            boardTiles(b) ::
-            goalMarks(b) ::
-            crateBoxes(b) ::
-            Robot.parts(robotCenter(b), tile(), drawnFacing(b), b#walkPhase) ::
-            onGoalBadges(b) ::
-            clockBoxes(b) ::
-            texts(atlas, w) :: Nil);
-        (Render.draw(boxes), List.append(cratePolys(b), clockNeedle(b)))
+        if (b#screen == Screen.Title) (Nil, Nil)
+        else {
+            let boxes = List.flatten(
+                boardTiles(b) ::
+                goalMarks(b) ::
+                crateBoxes(b) ::
+                Robot.parts(robotCenter(b), tile(), drawnFacing(b), b#walkPhase) ::
+                onGoalBadges(b) ::
+                clockBoxes(b) ::
+                texts(atlas) :: Nil);
+            (Render.draw(boxes), List.append(cratePolys(b), clockNeedle(b)))
+        }
 
     /// Top-left corner of the board, chosen so the whole grid sits centered.
     def origin(b: Board): Vec2.Vec2 =
@@ -473,43 +542,102 @@ mod Sokoban {
          Render.RenderItem.Box({ size = {x = d, y = d}, color = c, alpha = a,
                                  style = Some(style), zIndex = z }))
 
-    /// Title always; "CLEAR!" appears the moment every crate sits on a goal —
-    /// not stored anywhere, just projected from the Stores.
-    def texts(atlas: FontAtlas, w: World): List[(Vec2.Vec2, Render.RenderItem)] =
-        let title = centeredText("Sokoban", atlas, 28.0, Palette.titleText(), 10.0);
-        if (won(w)) title :: centeredText("CLEAR!", atlas, 36.0, Palette.clearText(), 104.0) :: Nil
-        else title :: Nil
+    /// The in-game header. The CLEAR panel that used to be drawn here is a
+    /// Spec now (assets/Clear.ui.json); the board keeps only its title line.
+    def texts(atlas: FontAtlas): List[(Vec2.Vec2, Render.RenderItem)] =
+        centeredText("Sokoban", atlas, 28.0, Palette.titleText(), 10.0) :: Nil
 
     def centeredText(text: String, atlas: FontAtlas, size: Float64,
                      color: Color, y: Float64): (Vec2.Vec2, Render.RenderItem) =
         let width = Label2D.measure(Label2D.make(text, atlas, size))#x;
         ({x = centerX() - width / 2.0, y = y}, Render.textTinted(text, atlas, size, color, zTitle()))
 
+    // ── UI: the Title and Clear pages are Specs ──
+    // Their whole look lives in assets/*.ui.json — data, not code. At startup
+    // both files are spawned into one UiWorld (engine_world's UI store), a
+    // plain value that lives in the loop next to the Worldline. Every frame a
+    // projection stamps the World's verdicts onto it — which page shows, how
+    // many moves the clear took — and UiRender turns it into boxes and glyphs.
+
+    pub def titleUiPath(): String = "assets/Title.ui.json"
+    pub def clearUiPath(): String = "assets/Clear.ui.json"
+
+    def designSize(): Vec2.Vec2 = { x = 320.0, y = 240.0 }
+
+    /// Spawn both page Specs into one UiWorld. A broken or missing file
+    /// degrades to no page — the game still runs, like a broken level string.
+    def loadUi(): UiStore.UiWorld \ Fs.FileRead =
+        UiStore.empty() |> spawnPage(titleUiPath()) |> spawnPage(clearUiPath())
+
+    def spawnPage(path: String, ui: UiStore.UiWorld): UiStore.UiWorld \ Fs.FileRead =
+        match UiSpec.spawnAsset(path, ui) {
+            case Result.Ok((_, ui1)) => ui1
+            case Result.Err(_)       => ui
+        }
+
+    /// Stamp the World onto the UI store: page visibility and the move count.
+    /// The count is nobody's counter — it is Worldline.pastLength, handed in
+    /// by the loop: the history was already counting the moves.
+    pub def projectUi(moves: Int32, w: World, ui: UiStore.UiWorld): UiStore.UiWorld =
+        let World.World(b) = w;
+        ui |> UiStore.setVisible("Title", b#screen == Screen.Title)
+           |> UiStore.setVisible("Clear", b#screen == Screen.Playing and won(w))
+           |> UiStore.setText("Clear/panel/moves", "Moves: ${moves}")
+
     // ── Launcher: read input and the clock |> tick |> frame, until the window closes ──
-    pub def start(atlas: FontAtlas): Unit \ GameEngine.Game =
-        loop(atlas, Worldline.make(initialWorld(), historyCap()))
+    pub def start(atlas: FontAtlas): Unit \ {GameEngine.Game, Fs.FileRead} =
+        loop(atlas, loadUi(), Worldline.make(initialWorld(), historyCap()),
+             { enter = true, esc = true, f1 = false })
 
     /// Reading the keyboard touches something outside the program, and the
     /// signature says so: `\ GameEngine.Game`. This is the only place the keys
-    /// are read; past this point they are just a value.
-    def readInput(): Input \ GameEngine.Game =
+    /// are read; past this point they are just a value. The Enter and Escape
+    /// edges are computed by the loop (it holds last frame's state) and
+    /// arrive here as verdicts.
+    def readInput(enterEdge: Bool, escEdge: Bool): Input \ GameEngine.Game =
         { up    = GameEngine.Game.isKeyPressed(GameEngine.Key.Up),
           down  = GameEngine.Game.isKeyPressed(GameEngine.Key.Down),
           left  = GameEngine.Game.isKeyPressed(GameEngine.Key.Left),
           right = GameEngine.Game.isKeyPressed(GameEngine.Key.Right),
-          undo  = GameEngine.Game.isKeyPressed(GameEngine.Key.Z) }
+          undo  = GameEngine.Game.isKeyPressed(GameEngine.Key.Z),
+          enter = enterEdge,
+          back  = GameEngine.Game.isKeyPressed(GameEngine.Key.X),
+          esc   = escEdge }
 
     /// The clock lives outside the World too. The engine clamps the value, so a
     /// long hiccup (or the first frame) never teleports the game forward.
     def readDt(): Float64 \ GameEngine.Game =
         Duration.toSeconds(GameEngine.Game.getDeltaTime())
 
-    def loop(atlas: FontAtlas, line: Worldline[World]): Unit \ GameEngine.Game =
-        if (GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
+    /// While the CLEAR panel is up, Escape closes the panel (back to the
+    /// title) instead of the window.
+    def clearModal(w: World): Bool =
+        let World.World(b) = w;
+        b#screen == Screen.Playing and won(w)
+
+    /// The loop threads three values: the UI store, the Worldline, and last
+    /// frame's key state (enter and esc start true so a key already held at
+    /// launch says nothing until released once).
+    def loop(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[World],
+             prev: { enter = Bool, esc = Bool, f1 = Bool }): Unit \ {GameEngine.Game, Fs.FileRead} =
+        let escDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Escape);
+        let escEdge = escDown and not prev#esc;
+        if (GameEngine.Game.shouldClose()
+            or (escEdge and not clearModal(Worldline.current(line)))) ()
         else {
-            let line1 = tick(readInput(), readDt(), line);
-            let (drawables, polys) = frame(atlas, Worldline.current(line1));
-            GameEngine.Game.renderCommands(drawables, Nil, polys);
-            loop(atlas, line1)
+            let enterDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Enter);
+            let f1Down = GameEngine.Game.isKeyPressed(GameEngine.Key.F1);
+            let line1 = tick(readInput(enterDown and not prev#enter, escEdge), readDt(), line);
+            // F1 re-reads every spawned Spec from disk: edit the json while
+            // the game runs, press F1, and the page changes under you.
+            let ui1 = if (f1Down and not prev#f1) UiSpec.reloadAll(ui) else ui;
+            let world = Worldline.current(line1);
+            let ui2 = projectUi(Worldline.pastLength(line1), world, ui1);
+            let (drawables, polys) = frame(atlas, world);
+            let out = UiRender.renderUi(ui2, designSize());
+            GameEngine.Game.renderCommands(
+                List.append(drawables, out#drawables), Nil,
+                List.append(polys, out#polygons));
+            loop(atlas, ui2, line1, { enter = enterDown, esc = escDown, f1 = f1Down })
         }
 }

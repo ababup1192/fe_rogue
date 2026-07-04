@@ -1495,13 +1495,196 @@ pub def historyCap(): Int32 = 10000
 
 ---
 
+## 第6章 — 動かしたまま編集できる画面
+
+**ゴール:** ゲームに玄関を付けます — タイトルページ、手数を知っている本物の CLEAR パネル、レベルからレベルへの道 — そして語彙の6語目に出会います。画面の見た目を、*ゲームを動かしたまま*、何も再コンパイルせずに編集して。
+
+このゲームはどんな間違いでも取り消せます — でもレベルを解いたとき、"CLEAR!" はただ浮かんでいるだけで、2つ目の盤面へ行く方法はソースを書き換えることだけです。よく遊べて、迎え方を知らないゲーム。画面というものは2つの問いを立て、その2つの答えは別々の場所に住みます。
+
+### どのページが映っているか — それは状態
+
+「プレイヤーがいまどのページを見ているか」はフレームをまたいで生き残るべき事実で、それが何を意味するかは第2章が言いました: World に住み、変えるのは純粋な tick だけです。
+
+```flix
+    // ── Screen: which page of the game the frame shows ──
+    // The screen is state like everything else, so it lives in the World and
+    // the pure tick owns every transition: Title --Enter--> level 1,
+    // CLEAR --Enter--> the next level (or back to Title after the last one),
+    // X abandons a level. Each transition starts a fresh Worldline — history
+    // belongs to one attempt at one board.
+    pub enum Screen with Eq {
+        case Title
+        case Playing
+    }
+```
+
+`Input` にはキーが3つ増えます — `enter`・`back`（X）・`esc` — そして `enter` と `esc` は押しっぱなしの**レベルではなくエッジ**です: ループが今フレームのキーを前フレームと見比べ、キーが下りたそのフレームだけ World に `true` を手渡します。指がどれだけ長く乗っていても、1押しでめくれるページはちょうど1枚。そして `tick` は、第5章が組んだ機械の上に載るページめくり係になります — あの機械は一切無傷のまま下で生きていて、名前だけ `playTick` に変わりました:
+
+```flix
+    pub def tick(input: Input, dt: Float64, line: Worldline[World]): Worldline[World] =
+        let World.World(b) = Worldline.current(line);
+        match b#screen {
+            case Screen.Title =>
+                if (input#enter) freshLine(playingWorld(1)) else line
+            case Screen.Playing =>
+                let world = Worldline.current(line);
+                if (won(world))
+                    // CLEAR is modal: only Enter and Escape are heard. The
+                    // picture still breathes — the winning slide lands, the
+                    // clock fades — but walking and rewinding fall silent.
+                    if (input#enter)
+                        (if (b#level < levelCount()) freshLine(playingWorld(b#level + 1))
+                         else freshLine(titleWorld()))
+                    else if (input#esc)
+                        freshLine(titleWorld())
+                    else
+                        Worldline.replaceCurrent(step(noKeys(), dt, world), line)
+                else if (input#back)
+                    freshLine(titleWorld())
+                else
+                    playTick(input, dt, line)
+        }
+
+    /// A brand new Worldline around one World: how every screen transition
+    /// begins. The previous history is dropped with the previous screen.
+    def freshLine(w: World): Worldline[World] =
+        Worldline.make(w, historyCap())
+```
+
+2つ、目を近づける価値があります。**CLEAR はモーダルです。** `won` が true になった瞬間、解けた盤面は完成した写真になります: 方向キーは何も動かさず、Z は — 初めて — 拒まれます。勝利の一押しがパネルの下から巻き戻されることはありません。世界は凍っているのではなく、耳をふさいでいるだけです: `step(noKeys(), ...)` は回り続けるので、最後のスライドはちゃんと着地し、巻き戻し時計はちゃんと消えていきます。Enter はページをめくり（次のレベル、最後のレベルの後はタイトル）、Escape はパネルを閉じてタイトルへ — 写真が返事をするのはこの2つのキーだけ。
+
+そして**すべての遷移は `freshLine`** — 1つの World を包む真新しい Worldline です。歴史は「1つの盤面への1回の挑戦」に属します: X でレベルを離れて戻ってくれば、past は真っさら。時間機械が戸口をまたぐことはありません。
+
+### 6語目: Spec
+
+2つ目の問い: ページの*見た目*はどこに住むのか — パネルの色、フォントサイズ、書かれた言葉。World ではありません:「タイトルは桃色」はルールが参照する事実ではない。そして、こちらが面白いところ — コードでもありません。このエンジンが何度でも帰ってくる経験則は:
+
+> **再コンパイルせずに変えたいものは、データにする。** ものを計算するのではなく*記述する*データを **Spec** と呼ぶ。
+
+ここに種明かしがあります: あなたは第4章からずっと Spec を書いてきました。レベル文字列こそがそれです — 盤面を記述するデータで、純関数が Store へパースし、ルールに一切触れずに自由にデザインできた。新しいのは、レベルテキストが盤面にしてくれたことを画面にもする、その一歩だけです。タイトルページの全文が `assets/Title.ui.json`:
+
+```json
+{
+  "root": {
+    "name": "Title", "widget": "none", "visible": false, "layer": 1,
+    "dir": "column", "mainAlign": "center", "crossAlign": "center", "gap": 8,
+    "children": [
+      { "name": "title", "widget": "text", "text": "SOKOBAN",
+        "font": "default", "fontSize": 40, "tint": "#eec39a", "zIndex": 110 },
+      { "name": "rule", "widget": "box", "color": "#d9a066",
+        "width": 150, "height": 2, "zIndex": 110 },
+      { "name": "subtitle", "widget": "text", "text": "push crates. rewind time.",
+        "font": "default", "fontSize": 12, "tint": "#847e87", "zIndex": 110 },
+      { "name": "spacer", "widget": "none", "width": 1, "height": 16 },
+      { "name": "prompt", "widget": "text", "text": "Press Enter",
+        "font": "default", "fontSize": 14, "tint": "#fbf236", "zIndex": 110 }
+    ]
+  }
+}
+```
+
+名前つきノードの木です: `widget` がノードの正体を言い（`text`・`box`・入れ物の `none`）、レイアウトキー（`dir`・`mainAlign`・`crossAlign`・`gap`）が子の流れ方を言い、色は Palette が役割名で使うのと同じ DB32 の16進です。`assets/Clear.ui.json` はその兄弟: 枠線つきパネルに3行のテキスト — `headline`・`moves`・`prompt`。このフォーマットは `engine_world`（`Worldline` を連れてきたあのライブラリ）のもので、`UiSpec` がパースし、全ノードが **UiWorld** — UI ノードの Store、ただの1個の値 — に収まって、`"Clear/panel/moves"` のような名前パスで指せるようになります。
+
+### ページを spawn し、World をページへ映す
+
+```flix
+    pub def titleUiPath(): String = "assets/Title.ui.json"
+    pub def clearUiPath(): String = "assets/Clear.ui.json"
+
+    def designSize(): Vec2.Vec2 = { x = 320.0, y = 240.0 }
+
+    /// Spawn both page Specs into one UiWorld. A broken or missing file
+    /// degrades to no page — the game still runs, like a broken level string.
+    def loadUi(): UiStore.UiWorld \ Fs.FileRead =
+        UiStore.empty() |> spawnPage(titleUiPath()) |> spawnPage(clearUiPath())
+
+    def spawnPage(path: String, ui: UiStore.UiWorld): UiStore.UiWorld \ Fs.FileRead =
+        match UiSpec.spawnAsset(path, ui) {
+            case Result.Ok((_, ui1)) => ui1
+            case Result.Err(_)       => ui
+        }
+
+    /// Stamp the World onto the UI store: page visibility and the move count.
+    /// The count is nobody's counter — it is Worldline.pastLength, handed in
+    /// by the loop: the history was already counting the moves.
+    pub def projectUi(moves: Int32, w: World, ui: UiStore.UiWorld): UiStore.UiWorld =
+        let World.World(b) = w;
+        ui |> UiStore.setVisible("Title", b#screen == Screen.Title)
+           |> UiStore.setVisible("Clear", b#screen == Screen.Playing and won(w))
+           |> UiStore.setText("Clear/panel/moves", "Moves: ${moves}")
+```
+
+`loadUi` は起動時に1回走ります（エフェクトに注目: `\ Fs.FileRead` — ファイルを読むのはプログラムの外の話で、シグネチャがそう言っています）。`projectUi` は毎フレーム走り、これは正確に第2章の意味での Projection です — World を読んで絵を書く — ただしキャンバスが画面ではなく UI store なだけ: どのページが見えるか、moves の行が何と言うか。
+
+そして手数がどこから来るかを見てください。手数カウンタは足していません。インクリメントするものも、リセットするものも、リセットし忘れるものもない。`Worldline.pastLength` — 背後に綴じられた World の数 — が*そのまま*手数です。第5章が1手にちょうど1スナップショットを記録するからです。undo すれば数字はひとりでに減り、表示している数はいつでも巻き戻せる数と一致する。時間機械は最初からずっとスコアも付けていました。
+
+### ループ、最終形
+
+```flix
+    /// While the CLEAR panel is up, Escape closes the panel (back to the
+    /// title) instead of the window.
+    def clearModal(w: World): Bool =
+        let World.World(b) = w;
+        b#screen == Screen.Playing and won(w)
+
+    /// The loop threads three values: the UI store, the Worldline, and last
+    /// frame's key state (enter and esc start true so a key already held at
+    /// launch says nothing until released once).
+    def loop(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[World],
+             prev: { enter = Bool, esc = Bool, f1 = Bool }): Unit \ {GameEngine.Game, Fs.FileRead} =
+        let escDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Escape);
+        let escEdge = escDown and not prev#esc;
+        if (GameEngine.Game.shouldClose()
+            or (escEdge and not clearModal(Worldline.current(line)))) ()
+        else {
+            let enterDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Enter);
+            let f1Down = GameEngine.Game.isKeyPressed(GameEngine.Key.F1);
+            let line1 = tick(readInput(enterDown and not prev#enter, escEdge), readDt(), line);
+            // F1 re-reads every spawned Spec from disk: edit the json while
+            // the game runs, press F1, and the page changes under you.
+            let ui1 = if (f1Down and not prev#f1) UiSpec.reloadAll(ui) else ui;
+            let world = Worldline.current(line1);
+            let ui2 = projectUi(Worldline.pastLength(line1), world, ui1);
+            let (drawables, polys) = frame(atlas, world);
+            let out = UiRender.renderUi(ui2, designSize());
+            GameEngine.Game.renderCommands(
+                List.append(drawables, out#drawables), Nil,
+                List.append(polys, out#polygons));
+            loop(atlas, ui2, line1, { enter = enterDown, esc = escDown, f1 = f1Down })
+        }
+```
+
+UiWorld はループの中、Worldline の隣に住みます — 時間機械が使ったのと同じ文法: ただの値を糸のように通す、グローバルにはしない。毎フレーム `UiRender.renderUi` が見えているページをレイアウトし、`frame` が既に作っているのと同じ2チャンネルで箱とグリフを返す; ループはそれを連結して1回の呼び出しでエンジンに渡します。タイトルページでは `frame` は*何も*描きません — あの画面に見えているものは、すべて Spec です。
+
+そして、小さなキーに大きな帰結がひとつ: **F1** は `UiSpec.reloadAll` を呼び、spawn 済みのすべての Spec をディスクから読み直してノードをその場で組み直します。パースに失敗したファイルは古いページを保ちます — リロードが動いているゲームを壊すことはありません。
+
+### 何が起きたか
+
+- 画面は2つの問いを立て、答えの住所は別々です。*どのページか*は状態 — World の `Screen` 値で、遷移はすべて純粋な tick が握る。*ページがどう見えるか*は **Spec** — ディスク上のデータで、UiWorld に spawn され、ルールから参照されることはない。
+- **Spec が6語目です**: 再コンパイルせずに変えるべきものは、それを記述するデータにする。レベルは名前が付く前から Spec でした; いまやページもそうです。World、Step、Projection、Store、Worldline、**Spec**。
+- **CLEAR はモーダルです。** 解けた盤面は Enter と Escape にしか返事をしません — 歩行も巻き戻しも沈黙し、完成した局面とその手数は稼いだままの姿で残ります。絵は呼吸を続け、狭まるのはキーボードだけ。
+- **手数は最初からそこにありました。** 歴史が1手1スナップショットを記録するから、`Worldline.pastLength` がそのまま手数 — カウンタは足さず、undo はひとりでに引き算します。
+- UiWorld はループのもう1つの値で、Worldline の隣にいます。World は UI の存在を知らないまま; 毎フレーム、projection が判定を押印するだけです。
+
+### 試すこと
+
+この章の本当の演習はリロードのループです。ゲームを走らせ、タイトルに置いたまま、エディタで `assets/Title.ui.json` を開いてください。タイトルの `tint` を、prompt の `fontSize` を、subtitle の言葉を変える。保存して、ゲームに切り替えて、**F1**。再コンパイルなし、再起動なし、状態も失われない — ページはただ、ファイルが言う姿になります。これが Spec の買ってくれるもの: 見た目の反復が、ファイル保存の速度で回ります。
+
+今度はわざと壊してください: カンマを1個消して、F1。古いページが残ります — パースできなくなった Spec は最後の正しい形を保つ。カンマを直して、もう一度 F1。
+
+CLEAR パネルに飾りを足してみましょう: `moves` の下に4つ目のテキストノードを足す（名前は何でも構いません — どのコードもそれを指さないので、コードは1行も要りません）、あるいはパネルの `borderColor` を変える。F1。
+
+それから3つ目のレベルを。`Level.three()` に新しい盤面文字列、`levelCount()` が `3` を返す — Spec 1枚と数字1個。画面の流れはもう道を知っています: CLEAR、Enter、次の盤面、最後の後はまたタイトル。
+
+---
+
 ## ここまでのまとめ
 
 - ゲームは3拍子のループ: **`world |> step |> frame`** — 進めて、映して、描く。
-- **World** は全状態が住む1個の値。**Step** はそれを進める純関数。**Projection**（`frame` など）は変えずに読むだけ。**Store** は同じ種類の状態をたくさん持つ World のフィールド。**Worldline** は World の軌跡 — past・current・future — で、`record` と `undo` がその上を歩く。World の中ではなく、隣に住む。
+- **World** は全状態が住む1個の値。**Step** はそれを進める純関数。**Projection**（`frame` など）は変えずに読むだけ。**Store** は同じ種類の状態をたくさん持つ World のフィールド。**Worldline** は World の軌跡 — past・current・future — で、`record` と `undo` がその上を歩く。World の中ではなく、隣に住む。**Spec** はものを記述するデータ — レベル文字列、ページの `ui.json` — 再コンパイルせずに変えたいすべてのために。
 - 世界の外にあるもの — キーボード、手打ちのレベル、時計 — は境界で読まれ、ただのデータとしてルールに入る。
 - 導出できる状態（「パズルは解けたか？」など）は保存しない。映すだけ。そして1個の値である状態は*取っておける* — だから時間旅行が2つの呼び出しになる。
 - あなたが編集するのは、ほとんどいつも `step` か `frame`。
 - 色は DB32 の**役割名**から、形は**比率と重ね順**で。
 
-ゲームはもう、どんな間違いでも取り消せます — でもレベルを解いたとき、"CLEAR!" はただ浮かんでいるだけで、2つ目の盤面へ行く方法はソースを書き換えることだけです。よく遊べて、迎え方を知らないゲーム: 始まりのタイトルも、レベルからレベルへの道もない。玄関を付けてあげるのが、次章の問題です。
+ゲームは完成しました: 待っていてくれるタイトル、滑って記憶する盤面、巻き戻せる間違い、スコアを知っている CLEAR パネル、そして動かしたまま着せ替えられるページ。旅の全部を6つの言葉が運びました — 次に作るゲームは、初日からこの6語全部の上で始められます。
