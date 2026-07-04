@@ -1,11 +1,16 @@
 // Sokoban — a World that holds the state, a pure step that advances it, and a frame
 // that projects it into the list of things to draw.
-// The launcher repeats read input |> step |> frame until the window closes.
+// The launcher repeats read input |> tick |> frame until the window closes.
 //
-// The World now holds a whole board. Walls, goals and crates are Stores: one
-// World field each, holding a Set of grid positions. The rules live on the
-// grid; the picture slides between cells, and the slide's progress is state
-// like everything else.
+// The World holds a whole board. Walls, goals and crates are Stores: one World
+// field each, holding a Set of grid positions. The rules live on the grid; the
+// picture slides between cells, and the slide's progress is state like
+// everything else.
+//
+// The session's history is a Worldline (engine_world's zipper of Worlds): every
+// committed move records the pre-move World, and Z rewinds to it. The Worldline
+// itself lives in the loop, outside the World — the time machine is not inside
+// time.
 
 mod Sokoban {
 
@@ -25,15 +30,22 @@ mod Sokoban {
     // ── Input: this frame's keys as plain data ──
     // The keyboard lives outside the World. Every frame the loop reads it once and
     // hands step the result as a value — so step can stay pure.
-    pub type alias Input = { up = Bool, down = Bool, left = Bool, right = Bool }
+    pub type alias Input = { up = Bool, down = Bool, left = Bool, right = Bool, undo = Bool }
 
     // ── World: where the state lives ──
     // walls / goals / crates are Stores: many things of one kind, one Set each.
-    // slide is the picture's state: when a hop starts, the robot's cell changes
-    // at once — the drawn position then travels from the old cell for a fraction
-    // of a second, and how far it has come (t) must survive between frames, so
-    // it lives in the World like everything else.
-    pub type alias Slide = { fromCell = (Int32, Int32), pushing = Bool, t = Float64 }
+    // slide is the picture's state: when a hop (or a rewind) commits, the
+    // robot's cell changes at once — the drawn position then travels from the
+    // old cell for a fraction of a second, and how far it has come (t) must
+    // survive between frames, so it lives in the World like everything else.
+    // reverse marks a rewind slide: same mechanism, film played backwards.
+    pub type alias Slide = { fromCell = (Int32, Int32), pushing = Bool, reverse = Bool, t = Float64 }
+
+    /// The rewind clock over the robot's head: spin counts rewound moves (the
+    /// needle turns once counterclockwise per move, in step with the reverse
+    /// slide), linger is the time since rewinding stopped — the clock fades
+    /// out shortly after.
+    pub type alias UndoFx = { spin = Float64, linger = Float64 }
 
     pub type alias Board = {
         walls = Set[(Int32, Int32)],
@@ -44,7 +56,8 @@ mod Sokoban {
         rows = Int32,
         facing = Robot.Direction,
         walkPhase = Float64,
-        slide = Option[Slide]
+        slide = Option[Slide],
+        undoFx = Option[UndoFx]
     }
 
     pub enum World {
@@ -67,12 +80,106 @@ mod Sokoban {
         World.World({ walls = p#walls, goals = p#goals, crates = p#crates,
                       robot = p#robot, cols = p#cols, rows = p#rows,
                       facing = Robot.Direction.Down, walkPhase = 0.0,
-                      slide = None })
+                      slide = None, undoFx = None })
 
     /// The win condition is not stored anywhere: it is derived from the Stores.
     pub def won(w: World): Bool =
         let World.World(b) = w;
         Set.isSubsetOf(b#crates, b#goals)
+
+    // ── tick: one frame of the whole session, time machine included ──
+    // The Worldline records one snapshot per committed move — the game's natural
+    // beat — never per frame. Z rewinds move by move; each rewind plays the
+    // move's slide backwards, and the next command (walk or rewind alike) is
+    // accepted only when the picture lands: one gate for both directions of time.
+
+    /// Snapshots to keep. At the engine benchmark's ~172 bytes per record this
+    /// is under 2 MB: unlimited undo is, in effect, free.
+    pub def historyCap(): Int32 = 10000
+
+    pub def tick(input: Input, dt: Float64, line: Worldline[World]): Worldline[World] =
+        let world = Worldline.current(line);
+        // Holding Z takes the walk keys away; rewinding has right of way.
+        let moveInput = if (input#undo) noKeys() else input;
+        let next = step(moveInput, dt, world);
+        if (hopStarted(world, next))
+            // A move committed: file the pre-move World in the past.
+            Worldline.record(next, Worldline.replaceCurrent(normalize(world), line))
+        else if (input#undo and not inFlight(next))
+            // The gate is open (nothing sliding) and Z is down: rewind one move.
+            fireUndo(Worldline.replaceCurrent(next, line))
+        else
+            // Just motion; adjust the current point in place, no history made.
+            Worldline.replaceCurrent(next, line)
+
+    /// Rewind one move: the Stores return to the snapshot at once, and a
+    /// reverse slide carries the picture back — the robot glides backwards
+    /// wearing the undone move's facing, feet dragging, while the clock
+    /// turns; the snapshot's own facing waits at the landing.
+    def fireUndo(line: Worldline[World]): Worldline[World] =
+        if (not Worldline.canUndo(line)) line
+        else {
+            let World.World(l) = Worldline.current(line);
+            let line1 = Worldline.undo(line);
+            let World.World(r) = Worldline.current(line1);
+            let back = World.World({
+                slide = Some({ fromCell = l#robot, pushing = l#crates != r#crates,
+                               reverse = true, t = 0.0 }),
+                walkPhase = l#walkPhase,
+                undoFx = Some({ spin = spinOf(l#undoFx), linger = 0.0 })
+                | r });
+            Worldline.replaceCurrent(back, line1)
+        }
+
+    /// A hop committed exactly when the robot's cell changed (every legal move
+    /// moves the robot; a blocked one moves nothing).
+    def hopStarted(before: World, after: World): Bool =
+        let World.World(a) = before;
+        let World.World(z) = after;
+        a#robot != z#robot
+
+    def inFlight(w: World): Bool =
+        let World.World(b) = w;
+        not Option.isEmpty(b#slide)
+
+    def noKeys(): Input =
+        { up = false, down = false, left = false, right = false, undo = false }
+
+    /// What goes into history: the logical state. The picture's travel and the
+    /// rewind clock stay out of the past.
+    def normalize(w: World): World =
+        let World.World(b) = w;
+        World.World({ slide = None, undoFx = None | b })
+
+    def spinOf(fx: Option[UndoFx]): Float64 =
+        match fx {
+            case Some(f) => f#spin
+            case None    => 0.0
+        }
+
+    /// Seconds the clock outlives its last rewind before fading away.
+    def fxLinger(): Float64 = 0.4
+
+    /// The clock's aging. While a reverse slide runs, the needle turns with it
+    /// (spinAdvance = the slide's progress this frame) and the clock stays
+    /// fresh; otherwise it just gets older until it fades.
+    def tickFx(dt: Float64, spinAdvance: Float64, b: Board): Board =
+        match b#undoFx {
+            case None    => b
+            case Some(f) =>
+                if (spinAdvance > 0.0)
+                    { undoFx = Some({ spin = f#spin + spinAdvance, linger = 0.0 }) | b }
+                else if (f#linger + dt > fxLinger())
+                    { undoFx = None | b }
+                else
+                    { undoFx = Some({ spin = f#spin, linger = f#linger + dt }) | b }
+        }
+
+    /// Needle angle in radians for a given spin — a pure derivation: one full
+    /// counterclockwise turn per move rewound.
+    pub def needleAngle(spin: Float64): Float64 =
+        spin * 6.283185307179586
+
 
     // ── step: advances the world by dt seconds ──
     // Still pure: the keys arrive as an argument, and so does the clock — dt is
@@ -84,6 +191,10 @@ mod Sokoban {
     /// Seconds one tile's slide takes: the single knob for movement speed.
     def slideDuration(): Float64 = 0.125
 
+    /// Seconds one rewound move's reverse slide takes — twice the walking
+    /// slide: rewinding should feel heavier, and the clock deserves the time.
+    def undoDuration(): Float64 = 0.25
+
     /// The walk cycle advances one beat (0.25 of the cycle) per tile slid.
     def strideBeat(): Float64 = 0.25
 
@@ -92,11 +203,16 @@ mod Sokoban {
     def idleBeat(): Float64 = 0.75
 
     pub def step(input: Input, dt: Float64, w: World): World =
-        let World.World(b) = w;
-        match b#slide {
+        let World.World(b0) = w;
+        match b0#slide {
             case Some(s) =>
-                let t = s#t + dt / slideDuration();
-                let walked = { walkPhase = fract(b#walkPhase + strideBeat() * (dt / slideDuration())) | b };
+                // A rewind slide runs on its own, slower clock; the needle
+                // turns exactly as far as the picture travels.
+                let dur = if (s#reverse) undoDuration() else slideDuration();
+                let progress = dt / dur;
+                let b = tickFx(dt, if (s#reverse) progress else 0.0, b0);
+                let t = s#t + progress;
+                let walked = { walkPhase = fract(b#walkPhase + strideBeat() * progress) | b };
                 if (t < 1.0)
                     World.World({ slide = Some({ t = t | s }) | walked })
                 else
@@ -105,6 +221,7 @@ mod Sokoban {
             case None =>
                 // A standing robot marches slowly in place; a starting hop
                 // carries the phase along, so the legs never snap.
+                let b = tickFx(dt, 0.0, b0);
                 let marched = { walkPhase = fract(b#walkPhase + idleBeat() * dt) | b };
                 World.World(beginHop(input, marched))
         }
@@ -135,7 +252,7 @@ mod Sokoban {
             { robot = target,
               crates = if (pushing) Set.insert(beyond, Set.remove(target, b#crates)) else b#crates,
               facing = d,
-              slide = Some({ fromCell = b#robot, pushing = pushing, t = 0.0 })
+              slide = Some({ fromCell = b#robot, pushing = pushing, reverse = false, t = 0.0 })
               | b }
 
     /// Among several held keys: up, then down, then left, then right.
@@ -165,10 +282,11 @@ mod Sokoban {
             boardTiles(b) ::
             goalMarks(b) ::
             crateBoxes(b) ::
-            Robot.parts(robotCenter(b), tile(), b#facing, b#walkPhase) ::
+            Robot.parts(robotCenter(b), tile(), drawnFacing(b), b#walkPhase) ::
             onGoalBadges(b) ::
+            clockBoxes(b) ::
             texts(atlas, w) :: Nil);
-        (Render.draw(boxes), cratePolys(b))
+        (Render.draw(boxes), List.append(cratePolys(b), clockNeedle(b)))
 
     /// Top-left corner of the board, chosen so the whole grid sits centered.
     def origin(b: Board): Vec2.Vec2 =
@@ -188,20 +306,50 @@ mod Sokoban {
             case Some(s) => lerp(cellCenter(b, s#fromCell), cellCenter(b, b#robot), s#t)
         }
 
-    /// While a push is sliding, the pushed crate sits one cell past the robot's
-    /// destination, along the same direction the robot came from.
+    /// The facing the picture wears. A rewind slide shows the direction of
+    /// the undone move — that move went from the restored cell out to
+    /// fromCell, so that line names it — and only when the slide lands does
+    /// the snapshot's own facing (already in the Board) take over.
+    pub def drawnFacing(b: Board): Robot.Direction =
+        match b#slide {
+            case Some(s) => if (s#reverse) directionTo(b#robot, s#fromCell) else b#facing
+            case None    => b#facing
+        }
+
+    /// The unit direction that leads a to z (one cell apart on the grid).
+    def directionTo(a: (Int32, Int32), z: (Int32, Int32)): Robot.Direction =
+        let (ax, ay) = a;
+        let (zx, zy) = z;
+        if (zy < ay) Robot.Direction.Up
+        else if (zy > ay) Robot.Direction.Down
+        else if (zx < ax) Robot.Direction.Left
+        else Robot.Direction.Right
+
+    /// While a push is sliding forward, the pushed crate sits one cell past
+    /// the robot's destination, along the direction the robot came from.
     def slidingCrate(b: Board, s: Slide): (Int32, Int32) =
         let (fx, fy) = s#fromCell;
         let (rx, ry) = b#robot;
         (2 * rx - fx, 2 * ry - fy)
 
-    /// Where a crate is drawn: its cell — unless it is the one being pushed,
-    /// which travels in lockstep with the robot.
+    /// While a push is rewinding, the returning crate now rests where the
+    /// robot stood after the push (s#fromCell) — and its picture travels home
+    /// from one cell further out.
+    def crateReturnStart(b: Board, s: Slide): (Int32, Int32) =
+        let (fx, fy) = s#fromCell;
+        let (rx, ry) = b#robot;
+        (2 * fx - rx, 2 * fy - ry)
+
+    /// Where a crate is drawn: its cell — unless it is the one being pushed
+    /// (or un-pushed), which travels in lockstep with the robot, forward or
+    /// backward: the same slide, film reversed.
     def crateCenter(b: Board, p: (Int32, Int32)): Vec2.Vec2 =
         match b#slide {
             case Some(s) =>
-                if (s#pushing and p == slidingCrate(b, s))
+                if (s#pushing and not s#reverse and p == slidingCrate(b, s))
                     lerp(cellCenter(b, b#robot), cellCenter(b, p), s#t)
+                else if (s#pushing and s#reverse and p == s#fromCell)
+                    lerp(cellCenter(b, crateReturnStart(b, s)), cellCenter(b, p), s#t)
                 else cellCenter(b, p)
             case None => cellCenter(b, p)
         }
@@ -262,6 +410,69 @@ mod Sokoban {
          Render.RenderItem.Box({ size = {x = d, y = d}, color = color, alpha = 1.0f32,
                                  style = Some(style), zIndex = z }))
 
+    // ── The rewind clock: an alarm clock over the robot's head ──
+    // Everything about it is derived: position follows the robot (jumps
+    // included), the needle angle comes from spin, and the whole thing fades
+    // with linger. It never touches the rules and is never recorded.
+
+    def zClock(): Int32 = 50
+
+    def clockCenter(b: Board): Vec2.Vec2 =
+        let r = robotCenter(b);
+        { x = r#x, y = r#y - tile() * 0.95 }
+
+    def clockAlpha(f: UndoFx): Float32 =
+        RenderUtil.f32(1.0 - f#linger / fxLinger())
+
+    /// Dial: a dark outer circle (the rim), a white inner circle (the face),
+    /// and a small square alarm button on top.
+    def clockBoxes(b: Board): List[(Vec2.Vec2, Render.RenderItem)] =
+        match b#undoFx {
+            case None    => Nil
+            case Some(f) =>
+                let c = clockCenter(b);
+                let d = tile() * 0.8;
+                let a = clockAlpha(f);
+                fxBox({x = c#x - d * 0.1, y = c#y - d / 2.0 - d * 0.12}, {x = d * 0.2, y = d * 0.14},
+                      Palette.clockRim(), a, zClock()) ::
+                fxCircle(c, d, Palette.clockRim(), a, zClock()) ::
+                fxCircle(c, d - 3.0, Palette.clockFace(), a, zClock() + 1) :: Nil
+        }
+
+    /// The needle: a thin quad from just behind the center to the face's edge,
+    /// pointing along the (counterclockwise-spinning) needle angle.
+    def clockNeedle(b: Board): List[GameEngine.PolygonRenderCmd] =
+        match b#undoFx {
+            case None    => Nil
+            case Some(f) =>
+                let c = clockCenter(b);
+                let a = needleAngle(f#spin);
+                // 12 o'clock spun counterclockwise on screen (y points down).
+                let dir = {x = -RenderUtil.sinF(a), y = -RenderUtil.cosF(a)};
+                let n = {x = -dir#y, y = dir#x};
+                let reach = (tile() * 0.8 - 3.0) / 2.0 - 1.2;
+                let halfW = 0.7;
+                let p0 = Vec2.sub(c, Vec2.mul(dir, 1.5));
+                let p1 = Vec2.add(c, Vec2.mul(dir, reach));
+                { vertices = Vec2.add(p0, Vec2.mul(n, -halfW)) :: Vec2.add(p1, Vec2.mul(n, -halfW)) ::
+                             Vec2.add(p1, Vec2.mul(n, halfW)) :: Vec2.add(p0, Vec2.mul(n, halfW)) :: Nil,
+                  color = Palette.clockRim(), alpha = clockAlpha(f), zIndex = zClock() + 2 } :: Nil
+        }
+
+    def fxBox(pos: Vec2.Vec2, size: Vec2.Vec2, c: Color, a: Float32,
+              z: Int32): (Vec2.Vec2, Render.RenderItem) =
+        (pos, Render.RenderItem.Box({ size = size, color = c, alpha = a,
+                                      style = None, zIndex = z }))
+
+    def fxCircle(center: Vec2.Vec2, d: Float64, c: Color, a: Float32,
+                 z: Int32): (Vec2.Vec2, Render.RenderItem) =
+        let style = { cornerRadius = d / 2.0, borderWidth = 0.0, borderColor = c,
+                      borderAlpha = 0.0f32, stripeColor = c, stripeAlpha = 0.0f32,
+                      stripeWidth = 0.0, stripePeriod = 0.0 };
+        ({x = center#x - d / 2.0, y = center#y - d / 2.0},
+         Render.RenderItem.Box({ size = {x = d, y = d}, color = c, alpha = a,
+                                 style = Some(style), zIndex = z }))
+
     /// Title always; "CLEAR!" appears the moment every crate sits on a goal —
     /// not stored anywhere, just projected from the Stores.
     def texts(atlas: FontAtlas, w: World): List[(Vec2.Vec2, Render.RenderItem)] =
@@ -274,9 +485,9 @@ mod Sokoban {
         let width = Label2D.measure(Label2D.make(text, atlas, size))#x;
         ({x = centerX() - width / 2.0, y = y}, Render.textTinted(text, atlas, size, color, zTitle()))
 
-    // ── Launcher: read input and the clock |> step |> frame, until the window closes ──
+    // ── Launcher: read input and the clock |> tick |> frame, until the window closes ──
     pub def start(atlas: FontAtlas): Unit \ GameEngine.Game =
-        loop(atlas, initialWorld())
+        loop(atlas, Worldline.make(initialWorld(), historyCap()))
 
     /// Reading the keyboard touches something outside the program, and the
     /// signature says so: `\ GameEngine.Game`. This is the only place the keys
@@ -285,19 +496,20 @@ mod Sokoban {
         { up    = GameEngine.Game.isKeyPressed(GameEngine.Key.Up),
           down  = GameEngine.Game.isKeyPressed(GameEngine.Key.Down),
           left  = GameEngine.Game.isKeyPressed(GameEngine.Key.Left),
-          right = GameEngine.Game.isKeyPressed(GameEngine.Key.Right) }
+          right = GameEngine.Game.isKeyPressed(GameEngine.Key.Right),
+          undo  = GameEngine.Game.isKeyPressed(GameEngine.Key.Z) }
 
     /// The clock lives outside the World too. The engine clamps the value, so a
     /// long hiccup (or the first frame) never teleports the game forward.
     def readDt(): Float64 \ GameEngine.Game =
         Duration.toSeconds(GameEngine.Game.getDeltaTime())
 
-    def loop(atlas: FontAtlas, world: World): Unit \ GameEngine.Game =
+    def loop(atlas: FontAtlas, line: Worldline[World]): Unit \ GameEngine.Game =
         if (GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {
-            let next = step(readInput(), readDt(), world);
-            let (drawables, polys) = frame(atlas, next);
+            let line1 = tick(readInput(), readDt(), line);
+            let (drawables, polys) = frame(atlas, Worldline.current(line1));
             GameEngine.Game.renderCommands(drawables, Nil, polys);
-            loop(atlas, next)
+            loop(atlas, line1)
         }
 }

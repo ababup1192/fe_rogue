@@ -31,6 +31,10 @@ mod Palette {
     pub def floorTile(): Color = {r = 0.196078f32, g = 0.235294f32, b = 0.223529f32}  // #323c39
     pub def goalMark(): Color  = {r = 0.600000f32, g = 0.898039f32, b = 0.313725f32}  // #99e550
 
+    // ── Rewind clock ──
+    pub def clockFace(): Color = {r = 1.000000f32, g = 1.000000f32, b = 1.000000f32}  // #ffffff
+    pub def clockRim(): Color  = {r = 0.133333f32, g = 0.125490f32, b = 0.203922f32}  // #222034
+
     // ── Text ──
     pub def titleText(): Color = {r = 0.933333f32, g = 0.764706f32, b = 0.603922f32}  // #eec39a
     pub def clearText(): Color = {r = 0.984314f32, g = 0.949020f32, b = 0.211765f32}  // #fbf236

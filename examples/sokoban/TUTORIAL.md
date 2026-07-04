@@ -1534,24 +1534,306 @@ will tell you exactly which pinned rules you just rewrote.
 
 ---
 
+## Chapter 5 — Time Travel in Two Calls
+
+**Goal:** press Z and take a move back — any number of moves, all the way back
+to the start — and meet the fifth word of vocabulary, the one this engine is
+named after.
+
+You pushed the wrong crate. Maybe not into a corner (a crate in a corner never
+comes out again — sokoban's little tragedy), but one square too far is enough
+to ruin a plan. Every sokoban since the original has answered this with one
+key: undo. Which raises a question programs usually find painful: **what is
+"the past"?**
+
+In most codebases the past is expensive. Undo means remembering how to
+*reverse* every operation — an undo stack of commands, inverse functions,
+careful bookkeeping that breaks the day someone adds a feature and forgets its
+inverse. But Chapter 2 quietly paid this entire bill in advance. The World is
+**one value**. A past World is just a value we already had in hand. Saving it
+means keeping it. Rewinding means using it again. That is the whole theory of
+time travel available here.
+
+### The fifth word: Worldline
+
+A World is one moment. The trail a game leaves through its moments — the
+current World, every World behind it, and, once you start undoing, the
+abandoned Worlds ahead — is called a **worldline**, and the engine ships it as
+a data structure: `Worldline[World]`, a zipper with three lanes:
+
+```
+past    — the Worlds behind you, newest first
+current — where you are
+future  — Worlds you undid out of (redo fuel)
+```
+
+`Worldline.record` files the present into the past and moves on (discarding
+the future — a new move invalidates the timeline you abandoned).
+`Worldline.undo` steps back, parking the present in the future.
+`Worldline.redo` walks forward again. All pure, all total: undo at the oldest
+point simply stays put.
+
+And here the engine's name stops being a mystery. The package this game
+stands on is `engine_world`; the trail of Worlds is a worldline; and this
+whole way of building a game — one World value, a pure Step, Projections that
+read it, Stores inside it, and a Worldline threading its moments together —
+is called the **Worldline architecture**. World, Step, Projection, Store,
+**Worldline**: five words, and the fifth one is the name on the box.
+
+### Recording on the move's beat
+
+When should history be written? A dodge-em-up records every frame — its past
+is a film. Sokoban's past is not a film; it is a **move list**. The only
+moments worth returning to are the ones just before each push, so we record
+exactly when a move commits — and detecting that takes one comparison,
+because every legal move moves the robot. Here is the entire time machine:
+
+```flix
+    // ── tick: one frame of the whole session, time machine included ──
+    // The Worldline records one snapshot per committed move — the game's natural
+    // beat — never per frame. Z rewinds move by move; each rewind plays the
+    // move's slide backwards, and the next command (walk or rewind alike) is
+    // accepted only when the picture lands: one gate for both directions of time.
+
+    /// Snapshots to keep. At the engine benchmark's ~172 bytes per record this
+    /// is under 2 MB: unlimited undo is, in effect, free.
+    pub def historyCap(): Int32 = 10000
+
+    pub def tick(input: Input, dt: Float64, line: Worldline[World]): Worldline[World] =
+        let world = Worldline.current(line);
+        // Holding Z takes the walk keys away; rewinding has right of way.
+        let moveInput = if (input#undo) noKeys() else input;
+        let next = step(moveInput, dt, world);
+        if (hopStarted(world, next))
+            // A move committed: file the pre-move World in the past.
+            Worldline.record(next, Worldline.replaceCurrent(normalize(world), line))
+        else if (input#undo and not inFlight(next))
+            // The gate is open (nothing sliding) and Z is down: rewind one move.
+            fireUndo(Worldline.replaceCurrent(next, line))
+        else
+            // Just motion; adjust the current point in place, no history made.
+            Worldline.replaceCurrent(next, line)
+
+    /// Rewind one move: the Stores return to the snapshot at once, and a
+    /// reverse slide carries the picture back — the robot glides backwards
+    /// wearing the undone move's facing, feet dragging, while the clock
+    /// turns; the snapshot's own facing waits at the landing.
+    def fireUndo(line: Worldline[World]): Worldline[World] =
+        if (not Worldline.canUndo(line)) line
+        else {
+            let World.World(l) = Worldline.current(line);
+            let line1 = Worldline.undo(line);
+            let World.World(r) = Worldline.current(line1);
+            let back = World.World({
+                slide = Some({ fromCell = l#robot, pushing = l#crates != r#crates,
+                               reverse = true, t = 0.0 }),
+                walkPhase = l#walkPhase,
+                undoFx = Some({ spin = spinOf(l#undoFx), linger = 0.0 })
+                | r });
+            Worldline.replaceCurrent(back, line1)
+        }
+
+    /// A hop committed exactly when the robot's cell changed (every legal move
+    /// moves the robot; a blocked one moves nothing).
+    def hopStarted(before: World, after: World): Bool =
+        let World.World(a) = before;
+        let World.World(z) = after;
+        a#robot != z#robot
+
+    def inFlight(w: World): Bool =
+        let World.World(b) = w;
+        not Option.isEmpty(b#slide)
+
+    def noKeys(): Input =
+        { up = false, down = false, left = false, right = false, undo = false }
+
+    /// What goes into history: the logical state. The picture's travel and the
+    /// rewind clock stay out of the past.
+    def normalize(w: World): World =
+        let World.World(b) = w;
+        World.World({ slide = None, undoFx = None | b })
+```
+
+Two calls. `Worldline.record` when a hop commits (filing the *normalized*
+pre-move World — the picture's slide and the rewind clock stay out of the
+past), `Worldline.undo` when Z fires. `replaceCurrent` — the zipper's "adjust
+in place without making history" — keeps the current point tracking the live
+frame in between. There is no undo system, no command objects, no inverse of
+`move` anywhere: the past is not recomputed, it is *kept*.
+
+And notice the gate. Holding Z takes the walk keys away, and a rewind fires
+only when nothing is sliding — the same rule that spaces walking hops. Undo
+speaks the slide grammar the game already had: one command per landed
+picture, in either direction of time.
+
+### Rewinding is a slide played backwards
+
+When `fireUndo` restores a snapshot, the Stores change instantly — the rules
+are already back in the past — but the *picture* is not teleported. The robot
+glides from the cell it occupied back to the restored one, on the same slide
+mechanism walking uses, only reversed and slower: `undoDuration()` is 0.25
+seconds per move against walking's 0.125 — rewinding should feel heavier, and
+the clock deserves the time. While it glides, the robot wears the facing of
+the move being taken back — undo a step up and it faces up while sliding
+down: a little moonwalk — and the moment it lands, the snapshot's own facing
+takes over, the one it wore *before* that move. It is not walking back; it is
+being *taken* back, feet dragging (the walk phase still turns) the whole way.
+And if the rewound move was a push, the crate rides the same reversed film
+home:
+
+```flix
+    /// While a push is rewinding, the returning crate now rests where the
+    /// robot stood after the push (s#fromCell) — and its picture travels home
+    /// from one cell further out.
+    def crateReturnStart(b: Board, s: Slide): (Int32, Int32) =
+        let (fx, fy) = s#fromCell;
+        let (rx, ry) = b#robot;
+        (2 * fx - rx, 2 * fy - ry)
+
+    /// Where a crate is drawn: its cell — unless it is the one being pushed
+    /// (or un-pushed), which travels in lockstep with the robot, forward or
+    /// backward: the same slide, film reversed.
+    def crateCenter(b: Board, p: (Int32, Int32)): Vec2.Vec2 =
+        match b#slide {
+            case Some(s) =>
+                if (s#pushing and not s#reverse and p == slidingCrate(b, s))
+                    lerp(cellCenter(b, b#robot), cellCenter(b, p), s#t)
+                else if (s#pushing and s#reverse and p == s#fromCell)
+                    lerp(cellCenter(b, crateReturnStart(b, s)), cellCenter(b, p), s#t)
+                else cellCenter(b, p)
+            case None => cellCenter(b, p)
+        }
+```
+
+The facing is one more such derivation. Nothing stores "the undo pose": the
+reverse slide itself names the move it is unwinding — that move went from the
+restored cell out to `fromCell` — and the snapshot's facing is already
+sitting in the Board, waiting for the landing:
+
+```flix
+    /// The facing the picture wears. A rewind slide shows the direction of
+    /// the undone move — that move went from the restored cell out to
+    /// fromCell, so that line names it — and only when the slide lands does
+    /// the snapshot's own facing (already in the Board) take over.
+    pub def drawnFacing(b: Board): Robot.Direction =
+        match b#slide {
+            case Some(s) => if (s#reverse) directionTo(b#robot, s#fromCell) else b#facing
+            case None    => b#facing
+        }
+```
+
+(`frame` now hands `Robot.parts` this `drawnFacing(b)` where it used to pass
+`b#facing`; `directionTo` is the four-way inverse of `deltaOf`.)
+
+While the reverse slide travels, walk keys are ignored and Z cannot fire
+again — the shared gate — so holding Z rewinds move after move at exactly the
+reverse slide's rhythm. Meanwhile a little alarm clock hangs over the robot's
+head: white face, dark rim, one needle that turns **once counterclockwise per
+rewound move**, in lockstep with the slide's own progress (`spin` advances by
+the same fraction the picture travels). When the rewinding stops, the clock
+lingers for a moment and fades. All of it is pure derivation in `frame`:
+angle from `spin`, transparency from `linger`, position following the robot.
+It is never recorded and never consulted by a rule — decoration with a clean
+conscience.
+
+The Worldline itself lives in the loop, next to the world — not inside it.
+The World does not know it is being remembered:
+
+```flix
+    // ── Launcher: read input and the clock |> tick |> frame, until the window closes ──
+    pub def start(atlas: FontAtlas): Unit \ GameEngine.Game =
+        loop(atlas, Worldline.make(initialWorld(), historyCap()))
+
+    // ... readInput (now also reading Z) and readDt as before ...
+
+    def loop(atlas: FontAtlas, line: Worldline[World]): Unit \ GameEngine.Game =
+        if (GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
+        else {
+            let line1 = tick(readInput(), readDt(), line);
+            let (drawables, polys) = frame(atlas, Worldline.current(line1));
+            GameEngine.Game.renderCommands(drawables, Nil, polys);
+            loop(atlas, line1)
+        }
+```
+
+### What memory costs
+
+Isn't keeping every World expensive? Measure before worrying: the engine's
+own benchmark puts a recorded sokoban-sized snapshot at roughly **172 bytes**.
+Not kilobytes — the World's Sets are immutable, so a new snapshot *shares*
+everything that did not change. A push creates a handful of fresh nodes in
+`crates`; `walls` and `goals` are shared with every snapshot ever taken.
+That is structural sharing, and it is why
+
+```flix
+pub def historyCap(): Int32 = 10000
+```
+
+— ten thousand moves of perfect memory — costs under two megabytes. Unlimited
+undo is not a luxury feature. In this architecture it is loose change.
+
+### What just happened
+
+- **Undo is two calls.** `record` at each committed move, `undo` on Z. The
+  feature that terrorizes object-oriented codebases — inverse operations,
+  dirty flags, "restore points" — collapses into keeping values you already
+  had. This is the dividend of Chapter 2's decision, paid five chapters
+  later.
+- History has a beat, and it is the *game's* beat: one snapshot per move, not
+  per frame. And both directions of time speak the same slide grammar — a
+  forward hop and a rewind are one mechanism with `reverse` flipped, so the
+  gate ("next command only when the picture lands") needed no second
+  implementation.
+- The Worldline lives in the loop, beside the world. The World stayed as
+  Chapter 4 left it, save two cosmetic guests: `reverse` on the slide and the
+  rewind clock's `undoFx` — both stripped by `normalize` before anything
+  enters history.
+- The robot breathes across time jumps: `walkPhase` rides over the rewind and
+  keeps turning during it (the dragged-feet look), while the glide wears each
+  undone move's own facing and hands the snapshot's back at the landing — a
+  film in honest reverse, one move at a time.
+- **CLEAR un-clears itself.** `won` is derived from the Stores, so rewinding
+  the winning push simply makes it false again. No flag was set, so no flag
+  needs unsetting — a test pins it.
+
+### Try it
+
+Wire up **redo**. The zipper's future lane is already there, so it is a
+few lines: read the X key into `Input` as `redo`, and in `tick` call
+`Worldline.redo(line)` when it is pressed and nothing is sliding. Then watch
+the future evaporate: undo twice, make a *different* move, and try to redo —
+`record` discarded the timeline you abandoned.
+
+Shrink `historyCap` to `3` and push four times: the fourth undo has nothing
+left to return to. Forgetting takes configuration; remembering was the
+default.
+
+And feel the reverse slide's weight: set `undoDuration` to `0.125` (walking
+speed) and rewinding stops reading as rewinding — then flip the sign in
+`clockNeedle`'s direction to feel *why* counterclockwise means "back in
+time".
+
+---
+
 ## Recap
 
 - A game is a loop with a three-part beat: **`world |> step |> frame`** —
   advance, project, draw.
 - **World** is the one value where all state lives. **Step** is the pure
   function that advances it. A **Projection** (like `frame`) reads it without
-  changing it. A **Store** is a World field that holds many states of one kind
-  — a Set of wall positions — so bulk never multiplies fields.
+  changing it. A **Store** is a World field that holds many states of one kind.
+  A **Worldline** is the trail of Worlds — past, current, future — that
+  `record` and `undo` walk along; it lives beside the World, not inside it.
 - Things outside the world — the keyboard, a hand-typed level, the clock —
-  are read at the boundary and enter the rules as plain data. What a function touches is
-  written in its effect type, and the compiler holds that line.
+  are read at the boundary and enter the rules as plain data.
 - State that can be derived (like "is the puzzle solved?") is not stored; it
-  is projected.
+  is projected. And state that is one value can be *kept*, which makes time
+  travel two calls.
 - The function you edit is almost always `step` or `frame`.
 - Colors are picked from the DB32 palette **by role name**; shapes are
   composed with **ratios and stacking order**.
 
-The robot pushes crates now — and sooner or later it pushes one into a corner
-it can never leave. Every sokoban player knows the feeling, and the wish that
-follows: *take it back*. A World that is one value makes that wish almost
-embarrassingly cheap to grant. That is the next chapter's problem.
+The game can now take back any mistake — but when a level is solved, "CLEAR!"
+just floats there, and the only way to visit the second board is to edit the
+source. The game plays well and greets badly: no title to start from, no way
+to move between levels. Giving it a front door is the next chapter's problem.

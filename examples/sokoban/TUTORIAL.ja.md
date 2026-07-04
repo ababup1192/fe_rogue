@@ -1306,13 +1306,202 @@ mod Sokoban {
 
 ---
 
+## 第5章 — 2つの呼び出しで時間旅行
+
+**ねらい:** Z を押して1手戻す — 何手でも、最初の盤面まででも — そして語彙の5語目、このエンジンの名前になっている言葉に出会う。
+
+押す木箱を間違えました。隅にでなければ幸いですが（隅に入った木箱は二度と出てきません — 倉庫番の小さな悲劇です）、1マス押しすぎただけでも計画は台無しです。元祖以来すべての倉庫番がこれに同じキーで答えてきました: undo。ここで、プログラムが普通は痛がる問いが立ちます: **「過去」とは何でしょう？**
+
+たいていのコードベースで、過去は高くつきます。undo とは全操作の*逆再生*を覚えておくこと — コマンドの undo スタック、逆関数、誰かが機能を足して逆操作を書き忘れた日に壊れる几帳面な帳簿。でも第2章が、この請求書を丸ごと前払いしてありました。World は**1個の値**です。過去の World とは、単にかつて手に持っていた値のこと。保存する = 値を取っておく。巻き戻す = 取っておいた値をまた使う。ここで使える時間旅行の理論は、これで全部です。
+
+### 5語目: Worldline
+
+World は1つの瞬間です。ゲームが瞬間たちの中に残す軌跡 — いまの World、その後ろに連なるすべての World、そして undo を始めれば、乗り捨てた先の World たち — を **worldline（世界線）** と呼びます。エンジンはこれをデータ構造として同梱しています: `Worldline[World]`、3本のレーンを持つ zipper です:
+
+```
+past    — 背後の World たち（新しい順）
+current — いまいる場所
+future  — undo で抜け出してきた World たち（redo の燃料）
+```
+
+`Worldline.record` は現在を past に綴じて先へ進みます（future は捨てます — 新しい一手を指せば、乗り捨てた時間線は無効になるからです）。`Worldline.undo` は1段戻り、手放した現在を future に停めます。`Worldline.redo` はまた前へ歩きます。すべて純粋で、すべて全域: 最古の点で undo しても、そこに留まるだけです。
+
+そしてここで、エンジンの名前が謎でなくなります。このゲームが載っているパッケージは `engine_world`。World の軌跡は worldline。そしてこのゲームの作り方全体 — 1個の World 値、純粋な Step、それを読む Projection、中に住む Store、瞬間たちを綴じる Worldline — が **Worldline アーキテクチャ**と呼ばれるものです。World・Step・Projection・Store・**Worldline**: 5つの言葉、その5番目が箱に書いてある名前でした。
+
+### 手の拍で記録する
+
+歴史はいつ書くべきでしょう？ 避けゲーは毎フレーム記録します — その過去はフィルムです。倉庫番の過去はフィルムではなく**棋譜**です。戻る価値のある瞬間は各押しの直前だけ。だから記録は手が確定した瞬間ちょうどに行います — そしてその検出は比較1回です。合法手は必ずロボットを動かすからです。これが時間機械の全体です:
+
+```flix
+    // ── tick: one frame of the whole session, time machine included ──
+    // The Worldline records one snapshot per committed move — the game's natural
+    // beat — never per frame. Z rewinds move by move; each rewind plays the
+    // move's slide backwards, and the next command (walk or rewind alike) is
+    // accepted only when the picture lands: one gate for both directions of time.
+
+    /// Snapshots to keep. At the engine benchmark's ~172 bytes per record this
+    /// is under 2 MB: unlimited undo is, in effect, free.
+    pub def historyCap(): Int32 = 10000
+
+    pub def tick(input: Input, dt: Float64, line: Worldline[World]): Worldline[World] =
+        let world = Worldline.current(line);
+        // Holding Z takes the walk keys away; rewinding has right of way.
+        let moveInput = if (input#undo) noKeys() else input;
+        let next = step(moveInput, dt, world);
+        if (hopStarted(world, next))
+            // A move committed: file the pre-move World in the past.
+            Worldline.record(next, Worldline.replaceCurrent(normalize(world), line))
+        else if (input#undo and not inFlight(next))
+            // The gate is open (nothing sliding) and Z is down: rewind one move.
+            fireUndo(Worldline.replaceCurrent(next, line))
+        else
+            // Just motion; adjust the current point in place, no history made.
+            Worldline.replaceCurrent(next, line)
+
+    /// Rewind one move: the Stores return to the snapshot at once, and a
+    /// reverse slide carries the picture back — the robot glides backwards
+    /// wearing the undone move's facing, feet dragging, while the clock
+    /// turns; the snapshot's own facing waits at the landing.
+    def fireUndo(line: Worldline[World]): Worldline[World] =
+        if (not Worldline.canUndo(line)) line
+        else {
+            let World.World(l) = Worldline.current(line);
+            let line1 = Worldline.undo(line);
+            let World.World(r) = Worldline.current(line1);
+            let back = World.World({
+                slide = Some({ fromCell = l#robot, pushing = l#crates != r#crates,
+                               reverse = true, t = 0.0 }),
+                walkPhase = l#walkPhase,
+                undoFx = Some({ spin = spinOf(l#undoFx), linger = 0.0 })
+                | r });
+            Worldline.replaceCurrent(back, line1)
+        }
+
+    /// A hop committed exactly when the robot's cell changed (every legal move
+    /// moves the robot; a blocked one moves nothing).
+    def hopStarted(before: World, after: World): Bool =
+        let World.World(a) = before;
+        let World.World(z) = after;
+        a#robot != z#robot
+
+    def inFlight(w: World): Bool =
+        let World.World(b) = w;
+        not Option.isEmpty(b#slide)
+
+    def noKeys(): Input =
+        { up = false, down = false, left = false, right = false, undo = false }
+
+    /// What goes into history: the logical state. The picture's travel and the
+    /// rewind clock stay out of the past.
+    def normalize(w: World): World =
+        let World.World(b) = w;
+        World.World({ slide = None, undoFx = None | b })
+```
+
+呼び出しは2つ。ホップが確定したら `Worldline.record`（*正規化した*直前の World を綴じます — 絵のスライドと巻き戻し時計は過去に入れません）、Z が発火したら `Worldline.undo`。あいだのフレームは `replaceCurrent` — zipper の「歴史を刻まずその場を直す」 — が current を生きたフレームに追従させます。undo システムも、コマンドオブジェクトも、`move` の逆関数も、どこにもありません: 過去は再計算されるのではなく、*取ってある*のです。
+
+そして関門に注目してください。Z を押している間は歩行キーが取り上げられ、巻き戻しは「何も滑っていないとき」にだけ発火します — 歩行のホップに間隔を与えているのと同じ規則です。undo はゲームが最初から持っていたスライドの文法を話します: 絵が着地するごとに1コマンド、時間のどちら向きでも。
+
+### 巻き戻しは逆再生のスライド
+
+`fireUndo` がスナップショットを復元する瞬間、Store は即座に変わります — ルールはもう過去に戻っています — が、*絵*はテレポートしません。ロボットはいたセルから復元先のセルへ、歩行と同じスライド機構で滑って戻ります。ただし逆向きに、そしてゆっくりと: `undoDuration()` は1手 0.25 秒、歩行の 0.125 の2倍です — 巻き戻しには重さがあるべきで、時計にも見せ場が要ります。滑って戻るあいだ、ロボットは**戻している手の向き**を着ています — 上への一歩を undo すると、上を向いたまま下へ滑る: 小さなムーンウォークです — そして着地した瞬間、スナップショット自身の向き、つまり*その手を打つ前*の向きに引き継がれます。歩いて帰るのではなく、時間に*連れ戻されて*いる — 足は最後まで引きずられ続けます（walkPhase は回り続けます）。そして巻き戻した手が押し手だったなら、木箱も同じ逆再生のフィルムに乗って家に帰ります:
+
+```flix
+    /// While a push is rewinding, the returning crate now rests where the
+    /// robot stood after the push (s#fromCell) — and its picture travels home
+    /// from one cell further out.
+    def crateReturnStart(b: Board, s: Slide): (Int32, Int32) =
+        let (fx, fy) = s#fromCell;
+        let (rx, ry) = b#robot;
+        (2 * fx - rx, 2 * fy - ry)
+
+    /// Where a crate is drawn: its cell — unless it is the one being pushed
+    /// (or un-pushed), which travels in lockstep with the robot, forward or
+    /// backward: the same slide, film reversed.
+    def crateCenter(b: Board, p: (Int32, Int32)): Vec2.Vec2 =
+        match b#slide {
+            case Some(s) =>
+                if (s#pushing and not s#reverse and p == slidingCrate(b, s))
+                    lerp(cellCenter(b, b#robot), cellCenter(b, p), s#t)
+                else if (s#pushing and s#reverse and p == s#fromCell)
+                    lerp(cellCenter(b, crateReturnStart(b, s)), cellCenter(b, p), s#t)
+                else cellCenter(b, p)
+            case None => cellCenter(b, p)
+        }
+```
+
+向きもまた、同じ種類の導出です。「undo 中のポーズ」を保存する場所はどこにもありません: 逆スライド自身が、いま巻き戻している手を名指ししています — その手は復元先のセルから `fromCell` へ進んだのですから — そしてスナップショットの向きはもう Board の中に座って、着地を待っています:
+
+```flix
+    /// The facing the picture wears. A rewind slide shows the direction of
+    /// the undone move — that move went from the restored cell out to
+    /// fromCell, so that line names it — and only when the slide lands does
+    /// the snapshot's own facing (already in the Board) take over.
+    pub def drawnFacing(b: Board): Robot.Direction =
+        match b#slide {
+            case Some(s) => if (s#reverse) directionTo(b#robot, s#fromCell) else b#facing
+            case None    => b#facing
+        }
+```
+
+（`frame` は `Robot.parts` に `b#facing` の代わりにこの `drawnFacing(b)` を渡すようになりました。`directionTo` は `deltaOf` の4方向の逆写像です。）
+
+逆スライドの移動中は歩行キーが無視され、Z も再発火できません — 共有の関門です — ので、Z の長押しはちょうど逆スライドのリズムで1手ずつ巻き戻します。そのあいだ、ロボットの頭上に小さな目覚まし時計が浮かびます: 白い文字盤、暗い縁、**巻き戻し1手につき反時計回りに1回転**する針 — スライド自身の進みと足並みを揃えて（`spin` は絵が進んだのと同じ割合だけ進みます）。巻き戻しが止まると、時計はひと呼吸残ってから消えていきます。すべて `frame` の中の純粋な導出です: 角度は `spin` から、透明度は `linger` から、位置はロボットに追従。記録されることはなく、ルールに参照されることもない — 良心に曇りのない飾りです。
+
+Worldline 自身はループの中、world の隣に住んでいます — 中ではなく。World は自分が記憶されていることを知りません:
+
+```flix
+    // ── Launcher: read input and the clock |> tick |> frame, until the window closes ──
+    pub def start(atlas: FontAtlas): Unit \ GameEngine.Game =
+        loop(atlas, Worldline.make(initialWorld(), historyCap()))
+
+    // ... readInput (now also reading Z) and readDt as before ...
+
+    def loop(atlas: FontAtlas, line: Worldline[World]): Unit \ GameEngine.Game =
+        if (GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
+        else {
+            let line1 = tick(readInput(), readDt(), line);
+            let (drawables, polys) = frame(atlas, Worldline.current(line1));
+            GameEngine.Game.renderCommands(drawables, Nil, polys);
+            loop(atlas, line1)
+        }
+```
+
+### 記憶の値段
+
+すべての World を取っておいたら高いのでは？ 心配の前に測りましょう: エンジン自身のベンチマークでは、倉庫番サイズのスナップショット1件はおよそ **172 バイト**です。キロバイトではありません — World の Set は不変なので、新しいスナップショットは変わらなかったものを全部*共有*します。1回の押しが作るのは `crates` の中のひと握りの新ノードだけで、`walls` と `goals` はこれまで撮ったすべてのスナップショットと共有されたままです。これが構造共有で、だから
+
+```flix
+pub def historyCap(): Int32 = 10000
+```
+
+— 1万手ぶんの完全な記憶 — が 2 メガバイト未満で済みます。無制限 undo は贅沢機能ではありません。このアーキテクチャでは小銭です。
+
+### 何が起きたか
+
+- **undo は2つの呼び出しです。** 手の確定ごとに `record`、Z で `undo`。オブジェクト指向のコードベースを恐怖に陥れるあの機能 — 逆操作、ダーティフラグ、「復元ポイント」 — が、かつて手にしていた値を取っておくことに畳まれます。第2章の決断の配当が、5章遅れて支払われました。
+- 歴史には拍があり、それは*ゲームの*拍です: 1手1スナップショット、フレームごとではなく。そして時間の両方向が同じスライド文法を話します — 前進のホップと巻き戻しは `reverse` を裏返しただけの1つの機構で、「絵が着地したときだけ次のコマンド」という関門に2つ目の実装は要りませんでした。
+- Worldline はループに住み、world の隣にいます。World は第4章のまま — 化粧品のお客が2人増えただけです: スライドの `reverse` と巻き戻し時計の `undoFx`。どちらも `normalize` が歴史に入る前に剥がします。
+- ロボットは時間ジャンプをまたいで呼吸します: `walkPhase` は巻き戻しの向こうへ乗り継ぎ、その最中も回り続けます（足を引きずる見た目）。滑っているあいだは戻している手それぞれの向きを着て、着地でスナップショットの向きに引き継ぐ — 1手ずつ、正直な逆再生のフィルムです。
+- **CLEAR は自分で解除されます。** `won` は Store からの導出なので、勝利の一押しを巻き戻せばまた false になるだけ。フラグを立てていないから、下ろすフラグもない — テストがピン留めしています。
+
+### 試すこと
+
+**redo** を配線してください。zipper の future レーンはもうそこにあるので、数行です: X キーを `redo` として `Input` に読み、`tick` で「押されていて、かつ何も滑っていない」ときに `Worldline.redo(line)` を呼ぶだけ。そして future が蒸発するのを見てください: 2回 undo して、*別の*手を指してから redo してみる — `record` が、乗り捨てた時間線を捨てたはずです。
+
+`historyCap` を `3` にして4回押してみてください: 4回目の undo には帰る場所が残っていません。忘れるには設定が要り、覚えていることがデフォルトでした。
+
+そして逆スライドの重さを味わってください: `undoDuration` を `0.125`（歩行と同速）にすると、巻き戻しが巻き戻しに見えなくなります — 次に `clockNeedle` の向きの符号を反転して、なぜ反時計回りが「時間を戻る」の意味になるのかを体感してください。
+
+---
+
 ## ここまでのまとめ
 
 - ゲームは3拍子のループ: **`world |> step |> frame`** — 進めて、映して、描く。
-- **World** は全状態が住む1個の値。**Step** はそれを進める純関数。**Projection**（`frame` など）は変えずに読むだけ。**Store** は同じ種類の状態をたくさん持つ World のフィールド — 壁位置の Set — なので、物量がフィールドを増殖させることはない。
-- 世界の外にあるもの — キーボード、手打ちのレベル、時計 — は境界で読まれ、ただのデータとしてルールに入る。関数が何に触るかは effect 型に書いてあり、コンパイラがその線を守る。
-- 導出できる状態（「パズルは解けたか？」など）は保存しない。映すだけ。
+- **World** は全状態が住む1個の値。**Step** はそれを進める純関数。**Projection**（`frame` など）は変えずに読むだけ。**Store** は同じ種類の状態をたくさん持つ World のフィールド。**Worldline** は World の軌跡 — past・current・future — で、`record` と `undo` がその上を歩く。World の中ではなく、隣に住む。
+- 世界の外にあるもの — キーボード、手打ちのレベル、時計 — は境界で読まれ、ただのデータとしてルールに入る。
+- 導出できる状態（「パズルは解けたか？」など）は保存しない。映すだけ。そして1個の値である状態は*取っておける* — だから時間旅行が2つの呼び出しになる。
 - あなたが編集するのは、ほとんどいつも `step` か `frame`。
 - 色は DB32 の**役割名**から、形は**比率と重ね順**で。
 
-ロボットは木箱を押せるようになりました — そして遅かれ早かれ、二度と出られない隅に1個押し込みます。倉庫番プレイヤーなら全員が知っている感覚で、そのあとに来る願いも同じです: *戻したい*。1個の値である World は、この願いをほとんど拍子抜けするほど安く叶えます。それが次章の問題です。
+ゲームはもう、どんな間違いでも取り消せます — でもレベルを解いたとき、"CLEAR!" はただ浮かんでいるだけで、2つ目の盤面へ行く方法はソースを書き換えることだけです。よく遊べて、迎え方を知らないゲーム: 始まりのタイトルも、レベルからレベルへの道もない。玄関を付けてあげるのが、次章の問題です。
