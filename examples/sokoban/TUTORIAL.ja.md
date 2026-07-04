@@ -533,11 +533,171 @@ mod Sokoban {
 
 ---
 
+## 第3章 — キーボードは世界の外に住む
+
+**ねらい:** ひとりでに滑る木箱を退場させ、矢印キーで*あなたが*操縦するロボットを画面に立たせる — `step` の純粋さは一切手放さずに。
+
+第2章はひとつの問題を残して終わりました: キーボードです。移動は「*いままさに*どの矢印キーが押されているか」に依存すべきですが、その事実は私たちの World のどこにも入っていません。キーボードのハードウェアの中 — プログラムの完全に外側に住んでいます。
+
+つい試したくなるのは、`step` に覗き見させること — 中から `isKeyPressed` を呼ぶことです。Flix はそれを単純にコンパイルしません。キーを読むことは effect であり — シグネチャに `\ GameEngine.Game` と書いてあり — `step` のような注釈なしの `def` は*純粋だと検証される*ので、その呼び出しは弾かれます。型システムが設計判断を迫っているのです。このコードベースの判断はこう:
+
+**ループが毎フレーム1回キーを読み、その結果をただの値として `step` に手渡す。** キーボードは世界の外に住む。データとなって世界に入ってくる。
+
+```flix
+pub type alias Input = { up = Bool, down = Bool, left = Bool, right = Bool }
+
+pub def step(input: Input, w: World): World = ...
+```
+
+`step` は引数がひとつ増えただけで、何も失っていません: 同じ `Input` と同じ `World` を入れれば、同じ次の `World` が出る。これまでどおりコンパイラが保証します。`Input` は新しい語彙ではありません — ただの Bool 4個のレコードです。
+
+### 画像ファイルのないロボット
+
+主役には顔が要ります。このプロジェクトは木箱と同じやり方で顔を描きました: **箱の合成だけで、画像ファイルはどこにもなし**。`src/Robot.flix` は 16 ユニットのグリッド上に丸角ボックスで単眼ロボットを組み — ボディの板・レンズの目・L字の腕・足 — 純関数をひとつ公開します: `Robot.parts(center, size, dir, phase)` が、任意の向き・任意の歩行位相の描画リストを返します。
+
+デザインは目で選びました。テストスイートが PNG と GIF に焼き出すギャラリーからです（`gallery/` を見てください: 候補ロボ6体、当選作の4方向、行進する歩行サイクル）。歩きはアニメクリップではありません: ポーズは `(dir, phase)` の純関数なので、立っているロボットと歩いているロボットは同じ関数の別の位相です — `walkPhase = 0.0` が*そのまま*静止ポーズ。木箱はこの章ではロボットに場所を譲って退場します。盤面ができたら、*押す物*として戻ってきます。
+
+### `src/Sokoban.flix`（この章時点の全コード）
+
+```flix
+mod Sokoban {
+
+    // Colors come only from Palette (DB32) role names. No color literals in drawing code.
+
+    // Design resolution 320x240 and its center.
+    def designW(): Float64 = 320.0
+    def designH(): Float64 = 240.0
+    def centerX(): Float64 = 160.0
+    def centerY(): Float64 = 120.0
+
+    // The robot is one 16px grid tile shown at 6x magnification: 96px square.
+    def robotSize(): Float64 = 96.0
+
+    def zTitle(): Int32 = 100
+
+    // ── Input: this frame's keys as plain data ──
+    // The keyboard lives outside the World. Every frame the loop reads it once and
+    // hands step the result as a value — so step can stay pure.
+    pub type alias Input = { up = Bool, down = Bool, left = Bool, right = Bool }
+
+    // ── World: where the state lives ──
+    // One value that holds everything that changes: where the robot is, which way
+    // it faces, and where it is in its walk cycle.
+    pub enum World {
+        case World({ robotX = Float64, robotY = Float64,
+                     facing = Robot.Direction, walkPhase = Float64 })
+    }
+
+    pub def initialWorld(): World =
+        World.World({ robotX = centerX(), robotY = centerY(),
+                      facing = Robot.Direction.Down, walkPhase = 0.0 })
+
+    // ── step: advances the world by one frame ──
+    // Still no effect annotation: the keys arrive as an argument, so the same
+    // (Input, World) always steps to the same next World.
+
+    // Design px per frame while a key is held.
+    def robotSpeed(): Float64 = 1.5
+    // Walk-cycle phase per moving frame: a full 4-beat cycle every 32 frames.
+    def walkRate(): Float64 = 1.0 / 32.0
+
+    pub def step(input: Input, w: World): World =
+        let World.World(r) = w;
+        let dx = axis(input#left, input#right);
+        let dy = axis(input#up, input#down);
+        if (dx == 0.0 and dy == 0.0)
+            World.World({ walkPhase = 0.0 | r })    // no key: snap to the rest pose, keep the facing
+        else
+            World.World({
+                robotX = clamp(robotSize() / 2.0, designW() - robotSize() / 2.0,
+                               r#robotX + dx * robotSpeed()),
+                robotY = clamp(robotSize() / 2.0, designH() - robotSize() / 2.0,
+                               r#robotY + dy * robotSpeed()),
+                facing = facingOf(dx, dy, r#facing),
+                walkPhase = fract(r#walkPhase + walkRate())
+            })
+
+    /// -1.0, 0.0 or +1.0 from an opposing key pair (both held cancel out).
+    def axis(negative: Bool, positive: Bool): Float64 =
+        (if (positive) 1.0 else 0.0) - (if (negative) 1.0 else 0.0)
+
+    /// Facing follows the movement; the horizontal wins a diagonal, and standing
+    /// still keeps whatever facing the robot already had.
+    def facingOf(dx: Float64, dy: Float64, current: Robot.Direction): Robot.Direction =
+        if (dx > 0.0)      Robot.Direction.Right
+        else if (dx < 0.0) Robot.Direction.Left
+        else if (dy > 0.0) Robot.Direction.Down
+        else if (dy < 0.0) Robot.Direction.Up
+        else current
+
+    def clamp(lo: Float64, hi: Float64, v: Float64): Float64 =
+        Float64.max(lo, Float64.min(hi, v))
+
+    /// Keep only the fractional part (the walk cycle repeats on 0..1).
+    def fract(x: Float64): Float64 = x - Float64.floor(x)
+
+    // ── frame: projects the World into the list of things to draw ──
+    // The same Robot.parts that baked the gallery draws the player: a character
+    // with no image file, composed box by box at whatever size we ask for.
+    pub def frame(atlas: FontAtlas, w: World): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+        let World.World(r) = w;
+        let center = {x = r#robotX, y = r#robotY};
+        let boxes = List.append(
+            Robot.parts(center, robotSize(), r#facing, r#walkPhase),
+            titlePlacement(atlas) :: Nil);
+        (Render.draw(boxes), Nil)
+
+    /// Title text horizontally centered near the top of the screen.
+    def titlePlacement(atlas: FontAtlas): (Vec2.Vec2, Render.RenderItem) =
+        let size = 28.0;
+        let width = Label2D.measure(Label2D.make("Sokoban", atlas, size))#x;
+        let pos = {x = centerX() - width / 2.0, y = 24.0};
+        (pos, Render.textTinted("Sokoban", atlas, size, Palette.titleText(), zTitle()))
+
+    // ── Launcher: read input |> step |> frame, every frame, until the window closes ──
+    pub def start(atlas: FontAtlas): Unit \ GameEngine.Game =
+        loop(atlas, initialWorld())
+
+    /// Reading the keyboard touches something outside the program, and the
+    /// signature says so: `\ GameEngine.Game`. This is the only place the keys
+    /// are read; past this point they are just a value.
+    def readInput(): Input \ GameEngine.Game =
+        { up    = GameEngine.Game.isKeyPressed(GameEngine.Key.Up),
+          down  = GameEngine.Game.isKeyPressed(GameEngine.Key.Down),
+          left  = GameEngine.Game.isKeyPressed(GameEngine.Key.Left),
+          right = GameEngine.Game.isKeyPressed(GameEngine.Key.Right) }
+
+    def loop(atlas: FontAtlas, world: World): Unit \ GameEngine.Game =
+        if (GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
+        else {
+            let next = step(readInput(), world);
+            let (drawables, polys) = frame(atlas, next);
+            GameEngine.Game.renderCommands(drawables, Nil, polys);
+            loop(atlas, next)
+        }
+}
+```
+
+### 何が起きたか
+
+- 拍子は変わっていません。今も毎フレーム `world |> step |> frame` です。ループは拍の始まる前に値をひとつ*用意*するようになっただけ — `step(readInput(), world)` — で、その先は今までどおり純粋です。
+- `readInput` のシグネチャを見てください: `Input \ GameEngine.Game`。Flix では、**その関数が何に触るかは型に書いてあります**。`\ GameEngine.Game` 自体は第0章から `start` と `loop` に付いていました — ループはウィンドウに絵を描くのだから、外に触るのは当然です。新しいのは境界線です: キーボードを読む場所はちょうど1箇所で、そこを過ぎればキーはただの Bool 4個のレコード。`step` の中で `isKeyPressed` を呼ぼうとすればコンパイラが止めます — ここでの純粋さは紳士協定ではなく、検査される性質です。
+- *ルール*は全部いまも `step` の中にあり、どれも普通の世界のルールです: 逆向きのキーは打ち消し合う（`axis`）、斜めは横が勝つ（`facingOf`）、画面端で止まる（clamp）、全キーを離すと `walkPhase` が `0.0` に戻る — そして Robot の設計上、それが*そのまま*直立ポーズです。キーハンドラもコールバックも「入力システム」もなし: データが入り、World が出るだけ。
+- `frame` は `Robot.parts` でプレイヤーを描きます — ギャラリーのファイルを焼いたのと*同じ関数*です。「ゲーム用の絵」は別に存在しません: 目で承認したギャラリーと画面の中のキャラクターは、ひとつの関数です。
+- そして新しい語彙はゼロ: 画面のすべてはいまも **World**・**Step**・**Projection** で説明できます。`Input` は4語目ではなく、ループが `step` に手渡すただの値です。
+
+### 試すこと
+
+`robotSpeed` を `4.0` に — ロボットは急ぎ足になり、歩行サイクルがスケートに見えてきます。`walkRate` も合わせて上げてみてください。次はルールを変えます: 今のロボットは斜めに歩けます（両軸が同時に動く）。`step` でそれを禁止してみてください — たとえば横のキーペアが生きている間は縦のペアを無視する、など。純関数ひとつの `if` ひとつでゲームの手触りが変わります。`test/TestSokoban.flix` のテストを走らせて、どのピン留めされたルールを壊したか確かめてください。
+
+---
+
 ## ここまでのまとめ
 
 - ゲームは3拍子のループ: **`world |> step |> frame`** — 進めて、映して、描く。
 - **World** は全状態が住む1個の値。**Step** はそれを進める純関数。**Projection**（`frame` など）は変えずに読むだけ。
+- 世界の外にあるもの — キーボードなど — はループが読み、ただのデータとして `step` に入る。関数が何に触るかは effect 型に書いてあり、コンパイラがその線を守る。
 - あなたが編集するのは、ほとんどいつも `step` か `frame`。
 - 色は DB32 の**役割名**から、形は**比率と重ね順**で。
 
-次は、漂う木箱を眺めるのでなく*操作*したくなります — つまりキーボード。世界の外に住んでいる何か。それが次章の問題です。
+ロボットはもう、どこへでもなめらかに歩けます — でも倉庫番は「どこへでも」のゲームではありません。タイルのゲームです: 止める壁、1マスずつ動く木箱。木箱を*押す物*として連れ戻すには、みんなの足元に盤面が要ります。それが次章の問題です。
