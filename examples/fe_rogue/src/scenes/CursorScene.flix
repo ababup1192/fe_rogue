@@ -1,4 +1,4 @@
-/// CursorScene — 味方ターン中の選択カーソル（Marker2D + 四隅の角カッコ L字）
+/// CursorScene — 味方ターン中の選択カーソル（位置アンカー Marker2D + 入力ロジック）
 ///
 /// FE 風 SRPG の「カーソルでマスを選んでから操作」フローを担う。
 /// 味方ターンの開始時はこのカーソルが画面上で動き、味方マス上で Z を押せば
@@ -6,22 +6,24 @@
 /// バトンタッチ）。敵マス上ではカーソルは止まらず、ホバー中だけ赤い移動範囲を
 /// 表示する（実体は EnemyRangeScene が担当）。
 ///
-/// ノード構造（Player と並列のトップレベル）:
-///   Cursor (Marker2D, NodeTag.Cursor(Data))
-///     ├─ tl_h / tl_v … 四隅の角カッコ (白 ColorRect、隅ごとに縦横 2 本で L字)
-///     └─ … (計 8 枚)
+/// ノードと描画の分担:
+///   - `Cursor` は視覚位置の単一権威となる Marker2D（NodeTag.Cursor）1 枚のみ。
+///     移動は `moveStep` の Tween がこのノードの position を補間し、カメラ追従
+///     （`CameraScene`）もこのノードの global 座標を読む。
+///   - 四隅の角カッコ L字（白）は `RenderWorld.renderCursor` が Marker2D の global 座標と
+///     `cornerBoxes` から直描きする（camera 適用）。見た目定数 `cornerColor` / `cornerZIndex` /
+///     `cornerBoxes` はこの module が持つ唯一の真実源。
 ///
 /// 設計意図:
-///   - 親 Marker2D に位置と論理状態（gridPos / lastHoveredEnemyId）を持たせ、
-///     子 ColorRect 群は表示専用にする。Player と同じ構造で統一感を維持する
-///     （カーソルの白枠は画像ではなく ColorRect の四隅 L字で FE 風に描く）
+///   - 論理状態（gridPos / lastHoveredEnemyId / hold）は `CursorState.State` resource が権威。
+///     Marker2D は視覚位置だけを持つ。
 ///   - `gridPos` は moveStep のたびに即更新し、見た目の補間は engine の Tween に委ねる
 ///     （Player.moveTo と完全に同じ機構）。Tween 中は次の方向キーをブロックする
 ///   - 敵ホバー検知は「フレーム間でカーソルが乗っている敵 id が変化したか」で判定する。
 ///     `lastHoveredEnemyId` を Data に持ち、変化したフレームだけログ + 範囲再構築を発火する。
 ///     同じ敵に乗りっぱなしの間は何もしない（ログ・再構築の無限ループ回避）
-///   - 表示/非表示は親 Marker2D の `visible` フラグで切り替える。子 ColorRect 群は
-///     親子可視性 AND で連動して消える（`drawContextWalk` の挙動）
+///   - 表示/非表示は Marker2D の `visible` フラグで切り替え、`renderCursor` がそれを読んで
+///     L字を出す/出さないを決める。
 mod CursorScene {
 
     // ────────────────────────────────────────────────────────
@@ -41,14 +43,28 @@ mod CursorScene {
 
     def name(): String = "Cursor"
     pub def cursorPath(): NodePath = name() :: Nil
-    /// カーソルの見た目は scene.json で四隅 L字 (白 ColorRect 8 枚) として完結しており、
-    /// コードからは子ノードを直接参照しない（表示/非表示は親 Marker2D の visible で連動）。
+
+    /// 四隅 L字の色（白）。`RenderWorld.renderCursor` が直描きに使う唯一の真実源。
+    pub def cornerColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 
     /// カーソルの描画 zIndex。駒 (= 10) / HP バー (UnitHPBarRender = 50〜52) /
     /// 武器アイコン (WeaponIconRender = 60〜62) より更に上に表示し、選択マスを常に
     /// 最前面で視認できるようにする (HUD/メニューは CanvasLayer なので更に上)。
-    /// scene.json で各 ColorRect の zIndex として記述済み (未使用)。
-    def _spriteZIndex(): Int32 = 70
+    pub def cornerZIndex(): Int32 = 70
+
+    /// 四隅 L字を構成する 8 枚の白ボックス。各要素は Marker2D 原点（セル中心）からの
+    /// 左上オフセットと px サイズを持つ。隅ごとに横 1 本 + 縦 1 本で L字を作る。
+    /// `RenderWorld.renderCursor` がこの並びをそのまま camera 適用して box Drawable にする。
+    pub def cornerBoxes(): List[{offset = Vec2.Vec2, size = Vec2.Vec2}] =
+        {offset = {x = -15.0, y = -15.0}, size = {x = 9.0, y = 2.0}} ::   // 左上 横
+        {offset = {x = -15.0, y = -15.0}, size = {x = 2.0, y = 9.0}} ::   // 左上 縦
+        {offset = {x =   6.0, y = -15.0}, size = {x = 9.0, y = 2.0}} ::   // 右上 横
+        {offset = {x =  13.0, y = -15.0}, size = {x = 2.0, y = 9.0}} ::   // 右上 縦
+        {offset = {x = -15.0, y =  13.0}, size = {x = 9.0, y = 2.0}} ::   // 左下 横
+        {offset = {x = -15.0, y =   6.0}, size = {x = 2.0, y = 9.0}} ::   // 左下 縦
+        {offset = {x =   6.0, y =  13.0}, size = {x = 9.0, y = 2.0}} ::   // 右下 横
+        {offset = {x =  13.0, y =   6.0}, size = {x = 2.0, y = 9.0}} ::   // 右下 縦
+        Nil
 
     /// 動き出し（押した直後の 1 マス目）のスライド時間。最高速より遅くして、
     /// 「ぽんと押したら一瞬の溜めの後に動く」 FE 風のフィーリングを出す。
@@ -93,15 +109,11 @@ mod CursorScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    /// シーン定義 JSON のパス。Marker2D Cursor + 四隅 L字 (白 ColorRect 8枚, zIndex=70) の
-    /// 構造を持つ。位置はパーティ先頭プレイヤーから計算するため post-load で setPosition する。
-    /// Cursor(Data) は Data を含むため scene.json では復元できず post-load で setState する。
-    def scenePath(): String = AssetPath.resolve("src/scenes/CursorScene.scene.json")
-
     /// MapScene + PlayerScene 登録済みの scene にカーソルを追加する。
     /// 初期位置はパーティ先頭プレイヤー（id=0）と同じセル。
+    /// ノードは視覚位置を持つ Marker2D 1 枚のみ（L字は `RenderWorld.renderCursor` が直描き）。
     pub def add(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead, CursorState.State} =
+            Scene[NodeTag] \ CursorState.State =
         let initial = firstPlayerPos(scene);
         let pos = MapSnapshot.cellCenter(initial);
         // 論理状態は resource へ。scene ノードは識別用のペイロードレスタグだけを持つ。
@@ -109,11 +121,8 @@ mod CursorScene {
                                lastHoveredEnemyId = None,
                                holdDir            = None,
                                holdSteps          = 0});
-        SceneLoader.loadScene(scenePath(),
-                              SceneLoader.constTagParser(NodeTag.NoTag),
-                              scene)
-            |> Scene.setState(cursorPath(), NodeTag.Cursor)
-            |> Marker2D.mapAt(cursorPath(), Node2D.setPosition(pos))
+        Scene.addNode(name(),
+            EngineNode.Marker2DWithState(Marker2D.make(pos), NodeTag.Cursor), scene)
 
     /// パーティ先頭プレイヤー（id=0）の grid 位置。`add` 初期化用。
     /// `buildPlayingScene` で `sceneRef` 更新前に呼ばれるため、PartyQuery effect 経由ではなく
@@ -594,8 +603,8 @@ mod CursorScene {
     // (E) フェーズ切替に伴う見た目操作
     // ────────────────────────────────────────────────────────
 
-    /// カーソルの可視性を切り替える。Marker2D の visible を変えれば子 ColorRect 群も
-    /// 親子可視性 AND で同じ状態になる（`drawContextWalk` の挙動）
+    /// カーソルの可視性を切り替える。Marker2D の visible フラグを書き、
+    /// `RenderWorld.renderCursor` がそれを読んで四隅 L字を描く/描かないを決める。
     pub def setVisible(visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapEngineNode(cursorPath(),
             n -> CanvasItem.setVisible(visible, n), scene)

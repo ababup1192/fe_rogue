@@ -75,13 +75,15 @@ mod TestGifSnapshots {
             let c7 = genFlowTurnEndHold(rc, ctx);
             let c8 = genFlowLevelUp(rc, ctx);
             let c9 = genFlowLog(rc, ctx);
+            let c10 = genCharacterSelect(rc, ctx);
             // この一発の実行でも GIF が各ページに載るよう、test/snapshots/gifs/ から build/snapshots/
             // へコピーしてからサイトを焼き直す（存在チェックで生成済み GIF は img に、未生成は案内に切り替わる）。
             SnapshotSupport.syncGifs(SnapshotCatalog.gifEntries() |> List.map(entry -> entry#name));
             SnapshotSite.generate(TestUiSnapshots.siteConfig(), TestUiSnapshots.catalogItems());
             // sanity: どの最終フレームも空でない（描画が成立している）。
             Assert.assertEq(expected = true,
-                c1 > 5 and c2 > 5 and c3 > 5 and c4 > 5 and c5 > 5 and c6 > 5 and c7 > 5 and c8 > 5 and c9 > 5)
+                c1 > 5 and c2 > 5 and c3 > 5 and c4 > 5 and c5 > 5 and c6 > 5 and c7 > 5 and c8 > 5
+                    and c9 > 5 and c10 > 5)
         }
     }
 
@@ -537,4 +539,52 @@ mod TestGifSnapshots {
 
     def genFlowAttackWeapon(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + Fs.FileRead + r} =
         genFlow(rc, ctx, "flow_attack_weapon", flowAttackWeaponConfig(), flowAttackWeaponScript())
+
+    // ════════════════════════════════════════════════════════
+    // flow_character_select（注目カードを右へ送る → カルーセルが寄る → Z で 3 人選ぶ）
+    // ════════════════════════════════════════════════════════
+
+    /// count フレーム、実 frameStep を進めて収録する（カルーセルが目標へ滑らかに寄る時間発展を撮る）。
+    /// 入力音（Audio）を避けるため、注目移動 / 選択は `CharacterSelectUi` の純関数を直接適用し
+    /// （`onKeyPressed` を通さない）、見た目更新は本物の `frameStep` に任せる。
+    def charSelectFrames(ctx: SnapshotSupport.Ctx, framesRef: Ref[List[BufferedImage], r], count: Int32):
+            Unit \ {IO + GameEngine.Game + UiWorldState.State + CharacterSelectState.State + r} =
+        if (count <= 0) ()
+        else {
+            discard CharacterSelectUi.frameStep(TestUiSnapshots.dt(), TestUiSnapshots.worldScene());
+            captureFrame(ctx, framesRef);
+            charSelectFrames(ctx, framesRef, count - 1)
+        }
+
+    /// 出撃メンバー選択のカルーセルを撮る。実カタログの players プール（8 人）で候補を組み、注目を
+    /// 右へ 3 回送りながら 3 人を選ぶ様子を、実 frameStep の時間発展（lerp で寄るカルーセル）で見せる。
+    def genCharacterSelect(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + Fs.FileRead + r} =
+        let framesRef = Ref.fresh(rc, (Nil: List[BufferedImage]));
+        let count = SnapshotSupport.withMockGame(ctx#atlas, ctx#texInfo, () ->
+            UiWorldState.withState(rc, () ->
+                CharacterSelectState.withState(rc, () -> {
+                    TestUiSnapshots.spawnUi(CharacterSelectUi.specPath());
+                    let catalog = UnitCatalog.load(AssetPath.resolve("resources/units.json"), WeaponCatalog.load());
+                    let players = UnitCatalog.pool("players", catalog);
+                    UiWorldState.State.put(UiStore.setVisible(CharacterSelectUi.rootPath(), true, UiWorldState.State.get()));
+                    CharacterSelectState.State.put(CharacterSelectUi.initialState(players));
+                    let apply = f -> CharacterSelectState.State.put(f(CharacterSelectState.State.get()));
+                    // 注目カード 0 で落ち着かせる → 選ぶ → 右へ送りつつ計 3 人選ぶ（カルーセルが毎回寄る）。
+                    charSelectFrames(ctx, framesRef, 8);
+                    apply(CharacterSelectUi.toggleSelect);                     // card0 を選択
+                    charSelectFrames(ctx, framesRef, 5);
+                    apply(CharacterSelectUi.moveFocus(1));                     // → card1
+                    charSelectFrames(ctx, framesRef, 9);
+                    apply(CharacterSelectUi.toggleSelect);                     // card1 を選択
+                    charSelectFrames(ctx, framesRef, 5);
+                    apply(CharacterSelectUi.moveFocus(1));                     // → card2
+                    charSelectFrames(ctx, framesRef, 9);
+                    apply(CharacterSelectUi.moveFocus(1));                     // → card3
+                    charSelectFrames(ctx, framesRef, 9);
+                    apply(CharacterSelectUi.toggleSelect);                     // card3 を選択（計 3 人 → 出撃有効）
+                    charSelectFrames(ctx, framesRef, 10);
+                    drawableCount()
+                })));
+        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_character_select"));
+        count
 }

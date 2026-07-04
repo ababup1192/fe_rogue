@@ -49,10 +49,9 @@ mod SceneSetup {
             |> Chests.add(catalogs#chests, catalogs#players, catalogs#staves, catalogs#consumables, catalogs#rings, floor)
             // players/stairs 確定後に初回フォグ適用 (スポーン部屋を点灯。以降は FogScene.process が毎フレーム更新)
             |> FogScene.applyFog
-            // ミニマップ (最終 placements / 階段を読むため末尾)。訪問記憶は World 権威で ClearVisited が掃除。
-            |> MinimapScene.add
             // 世代 +1（gameLoop の tile bake トリガ＝新フロアのタイルを World へ焼く）と地形 read-model
             //（toBoard の壁/サイズ源）の seed を build choke で World へ。
+            // ミニマップは scene ノードを持たず、`RenderWorld.renderMinimap` が World/Map から直描きする。
             |> WorldDriver.bakeMap
 
     /// 駒（味方 / 敵 / アイテム / 宝箱 / 階段）に依存しない HUD・常駐ドライバ・メニュー群をまとめて追加する。
@@ -156,8 +155,7 @@ mod SceneSetup {
             |> placeStairsFromSnap(snap#stairs)
             |> Chests.addFromSnaps(snap#chests, catalogs#chests, catalogs#players,
                                         catalogs#staves, catalogs#consumables, catalogs#rings)
-            |> FogScene.applyFog
-            |> MinimapScene.add;
+            |> FogScene.applyFog;
         SceneLoader.applyAudioAttach(scene);
         // 世代 +1（gameLoop の tile bake トリガ＝復元/restartFloor のタイルを World へ焼く）と地形
         // read-model の seed を build choke で World へ。
@@ -186,10 +184,13 @@ mod SceneSetup {
             |> TopBarUi.leave      // ダンジョン外では上部バーを隠す
 
     /// 出撃メンバー選択画面を組む。タイトルと同じくダンジョン外なので World を掃除する。
+    /// 見た目は World-entity UI（CharacterSelectUi）が持つため scene は空で、進入処理（候補の
+    /// 初期化 + 可視化 + 初期描画）を `CharacterSelectUi.enter` に任せる。
     pub def buildCharacterSelect(catalogs: GameLifecycle.Catalogs): Scene[NodeTag]
             \ {GameEngine.Game, World.Command, CharacterSelectState.State, UiWorldState.State} =
         WorldDriver.exitDungeon();
-        CharacterSelectScene.add(UnitCatalog.pool("players", catalogs#players), Scene.empty())
+        Scene.empty()
+            |> CharacterSelectUi.enter(UnitCatalog.pool("players", catalogs#players))  // 選択画面（候補 put + 可視化 + 初期描画）
             |> TopBarUi.leave      // ダンジョン外では上部バーを隠す
             |> TitleMenuUi.leave   // タイトル画面（World-entity UI）を隠す
 
@@ -202,8 +203,8 @@ mod SceneSetup {
                 GameLogger.GameLogger, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State, FloorSnapshot.State,
                 World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State} =
-        // タイトル画面（World-entity UI）を隠してからダンジョンを組む（中断再開の Title 由来経路で
-        // タイトルが残らないように）。
+        // タイトル / 選択画面（World-entity UI）を隠してからダンジョンを組む（Title 由来の中断再開・
+        // CharacterSelect 由来の新規ランのどちらでも前画面が残らないように）。
         let built = match (prevPhase, FloorSnapshot.State.get()) {
             case (GamePhase.Title, Some(snap)) =>
                 GameLogger.playerLog("中断データから再開");
@@ -212,5 +213,7 @@ mod SceneSetup {
                 GameLogger.playerLog("T1 味方のターン");
                 buildCurrentFloor(catalogs)
         };
-        TitleMenuUi.leave(built)
+        built
+            |> TitleMenuUi.leave
+            |> CharacterSelectUi.leave
 }

@@ -43,6 +43,27 @@ mod WeaponGlyph {
                 |> Node2D.setScale({x = scale, y = scale});
             (name, scaled))
 
+    /// 武器系統 → 凸サブポリゴン列（各サブポリは頂点列・グリフ中心を原点とする design px）。
+    /// `weaponGlyph` と同じ `pieces` を単一の真理点として再利用し、各ピース（Polygon2D / Arc2D）を
+    /// その塗り頂点へ射影して `scale` 倍する。EngineNode を持てない World-entity UI（poly widget の
+    /// `setPolyPolys`）で得意武器グリフを出すために使う（板/円は 1 サブポリ、弧は分割クアッド列）。
+    pub def weaponGlyphPolys(wt: WeaponCatalog.WeaponType, scale: Float64): List[List[Vec2.Vec2]] =
+        pieces(wt, glyphColor(wt))
+            |> List.flatMap(nodePolys)
+            |> List.map(sub -> sub |> List.map(p -> ({x = p#x * scale, y = p#y * scale}: Vec2.Vec2)))
+
+    /// 1 ピース（EngineNode）を凸サブポリゴンの頂点列へ射影する。Polygon2D は 1 サブポリ、Arc2D は
+    /// 自身の分割（`toRenderCmds`）ぶんのクアッド列。頂点はノード位置を足したグリフ局所座標。
+    def nodePolys(node: EngineNode[NodeTag]): List[List[Vec2.Vec2]] =
+        let unit = ({x = 1.0, y = 1.0}: Vec2.Vec2);
+        match node {
+            case EngineNode.Polygon2DWithState(poly, _) =>
+                Polygon2D.toRenderCmd(Node2D.getPosition(poly), unit, poly)#vertices :: Nil
+            case EngineNode.Arc2DWithState(arc, _) =>
+                Arc2D.toRenderCmds(Node2D.getPosition(arc), unit, arc) |> List.map(cmd -> cmd#vertices)
+            case _ => Nil
+        }
+
     // ─── 系統ごとのピース合成（すべて凸・向き付き直書き） ───────────────────
 
     // 全系統とも斜め（左下→右上、軸 u=(d,-d)）に統一する。

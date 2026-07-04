@@ -1,4 +1,4 @@
-// SnapshotCatalog — スナップショット全 35 枚の目録（純データ）。
+// SnapshotCatalog — スナップショット全 37 枚の目録（純データ）。
 //
 // ここは「何を撮るか」の唯一の宣言点。各エントリは名前・1 行説明・種別（PNG/GIF）・所属シナリオ・
 // タグだけを持つ。実際にどう組んで描くか（drive）は TestUiSnapshots の driveByName、GIF の収録は
@@ -43,6 +43,14 @@ mod SnapshotCatalog {
         // ── title: タイトル画面 ──
         {name = "title_menu", kind = Kind.Png, scenario = "title", tags = "title" :: Nil,
          desc = "タイトル画面（中断から再開あり・2 択 + 塗り箱ハイライト）"} ::
+        // ── character-select: 出撃メンバー選択 ──
+        // カルーセルは注目カードを中央に寄せ、左右のカードは画面外へはみ出す設計なので R3 を抑制する。
+        {name = "character_select", kind = Kind.Png, scenario = "character-select",
+         tags = "character-select" :: "lint-allow:R3" :: Nil,
+         desc = "出撃メンバー選択（カード列カルーセル・3 人選択済みで出撃可・注目カードの拡大と枠色）"} ::
+        {name = "flow_character_select", kind = Kind.Gif, scenario = "character-select",
+         tags = "flow" :: "character-select" :: Nil,
+         desc = "出撃メンバー選択の流れ（注目カードを右へ送るとカルーセルが滑らかに寄り、Z で 3 人選ぶと出撃ボタンが有効化）"} ::
         // ── top-bar: 上部バー（陣営・フェイズ表示） ──
         {name = "top_bar_ally", kind = Kind.Png, scenario = "top-bar", tags = "top-bar" :: "ally" :: Nil,
          desc = "上部バー・自軍確定（青帯・青下線・青ドット・自軍フェイズ）"} ::
@@ -143,7 +151,12 @@ mod SnapshotCatalog {
         {name = "level_up_panel", kind = Kind.Png, scenario = "level-up", tags = "level-up" :: Nil,
          desc = "レベルアップのステータス変化パネル（増分表示の途中・上昇行に -> 新値 +1）"} ::
         {name = "flow_level_up", kind = Kind.Gif, scenario = "level-up", tags = "flow" :: "level-up" :: Nil,
-         desc = "レベルアップ演出（出現 → 各ステータス増分が順に出る → 確定で閉じる）"} :: Nil
+         desc = "レベルアップ演出（出現 → 各ステータス増分が順に出る → 確定で閉じる）"} ::
+        // ── minimap: ミニマップ（探索済みマップ・M で表示トグル。RenderWorld.renderMinimap 直描き） ──
+        {name = "minimap_normal", kind = Kind.Png, scenario = "minimap", tags = "minimap" :: Nil,
+         desc = "ミニマップ・一部探索（部屋1+通路を訪問・未訪問の隣接通路はヒント表示・味方/アイテム/敵マーカー）"} ::
+        {name = "minimap_explored", kind = Kind.Png, scenario = "minimap", tags = "minimap" :: "full" :: Nil,
+         desc = "ミニマップ・全探索（両部屋+通路を訪問・階段発見マーカーつき）"} :: Nil
 
     /// PNG エントリだけ（TestUiSnapshots が drive + golden 比較する対象）。
     pub def pngEntries(): List[Entry] = List.filter(entry -> entry#kind == Kind.Png, entries())

@@ -112,6 +112,16 @@ mod TestUiSnapshots {
     /// drive を record 越しに持ち回すと効果多相が効かないので名前で `driveByName` に分岐する。
     def renderAndLint(rc: Region[r], ctx: SnapshotSupport.Ctx, entry: SnapshotCatalog.Entry):
             (String, Option[String], List[RenderLint.Finding]) \ (IO + Fs.FileRead + Fs.FileWrite + r) =
+        // ミニマップは renderUi 経路でなく `MinimapScene.minimapDrawList`（純粋）を宣言フィクスチャで
+        // 直接ラスタライズする。UiWorld も lint も持たない（幾何は minimapDrawList 内で確定）。
+        if (isMinimapEntry(entry#name)) {
+            let goldenFail = SnapshotSupport.snapshot(ctx, entry#name, minimapRendered(entry#name));
+            (entry#name, goldenFail, (Nil: List[RenderLint.Finding]))
+        } else renderUiEntry(rc, ctx, entry)
+
+    /// renderUi 経路のシーン（HUD/メニュー各種）を撮影して lint をかける本体。
+    def renderUiEntry(rc: Region[r], ctx: SnapshotSupport.Ctx, entry: SnapshotCatalog.Entry):
+            (String, Option[String], List[RenderLint.Finding]) \ (IO + Fs.FileRead + Fs.FileWrite + r) =
         let bundle = SnapshotSupport.withMockGame(ctx#atlas, ctx#texInfo, () ->
             UiWorldState.withState(rc, () -> {
                 driveByName(entry#name);
@@ -139,6 +149,7 @@ mod TestUiSnapshots {
             case "game_over_menu"       => driveGameOverMenu()
             case "suspend_confirm"      => driveSuspendConfirm()
             case "title_menu"           => driveTitleMenu()
+            case "character_select"     => driveCharacterSelect()
             case "log_lines"            => driveLogLines()
             case "turn_end_hold_50"     => driveTurnEndHold()
             case "item_pickup_popup"    => driveItemPickupPopup()
@@ -448,6 +459,23 @@ mod TestUiSnapshots {
         })
     }
 
+    /// 出撃メンバー選択: 実カタログの players プール（8 人）で候補を組み、3 人選択済み・注目カードを
+    /// 4 番目（index 3）にした状態を実 frameStep で描く。カルーセルは注目カードを中央へ寄せ、選択済み
+    /// カードは金枠、注目カードは白枠で拡大する。3 人揃っているので「出撃」ボタンは有効（オレンジ）。
+    def driveCharacterSelect(): Unit \ (Fs.FileRead + GameEngine.Game + UiWorldState.State) = region rc {
+        spawnUi(CharacterSelectUi.specPath());
+        let catalog = UnitCatalog.load(AssetPath.resolve("resources/units.json"), WeaponCatalog.load());
+        let players = UnitCatalog.pool("players", catalog);
+        UiWorldState.State.put(UiStore.setVisible(CharacterSelectUi.rootPath(), true, UiWorldState.State.get()));
+        CharacterSelectState.withState(rc, () -> {
+            let data = {focus = 3, selected = 0 :: 1 :: 2 :: Nil,
+                        carouselX = CharacterSelectUi.targetCarouselX(3)
+                        | CharacterSelectUi.initialState(players)};
+            CharacterSelectState.State.put(data);
+            discard CharacterSelectUi.frameStep(dt(), worldScene())
+        })
+    }
+
     /// ログ HUD: 3 件のログをキューに積んだ状態で LogUi.step を回し、3 行が右下に並ぶ様子を撮る
     /// （GameLogger は空 drain のモック。新着なしなので既存 3 件がそのまま表示される）。
     def driveLogLines(): Unit \ (Fs.FileRead + UiWorldState.State) = region rc {
@@ -648,4 +676,79 @@ mod TestUiSnapshots {
         applyTopBar(enemyFrame(), false);
         spawnUi(GameOverMenuUi.specPath());
         discard SnapshotHarness.withMocks(cfg, () -> GameOverMenuUi.frameStep(dt(), cfg#scene))
+
+    // ════════════════════════════════════════════════════════
+    // minimap（宣言フィクスチャを純粋 `minimapDrawList` に流して直描き）
+    // ════════════════════════════════════════════════════════
+    //
+    // ミニマップは World-entity UI ではなく `RenderWorld.renderMinimap` の直描き System。実効果つきの
+    // データ解決（訪問記憶 / ユニット位置 / 階段 / アイテムの読み）は live ゲーム & TestMinimapScene の
+    // 純関数テストで担保し、ここでは「解決済みデータ → 幾何 → Drawable/Polygon」の中核 `minimapDrawList`
+    // だけを宣言フィクスチャで凍結する（scene / effect ハーネス不要 = 最小拡張）。
+    //
+    // フィクスチャ地形（左下原点・y 下向き。数字=idx。#=壁 .=床）:
+    //   部屋0 (0,0)-(6,5)   通路2 (6,1)-(12,3)   部屋1 (12,0)-(17,5)
+    //
+    //       0123456789012345678
+    //     0 .0000.      .11111.
+    //     1 .0000.222222.11111.
+    //     2 .0000.222222.11111.
+    //     3 .0000.      .11111.
+    //     4 .0000.      .11111.
+
+    def minimapNames(): List[String] = "minimap_normal" :: "minimap_explored" :: Nil
+    def isMinimapEntry(name: String): Bool = List.memberOf(name, minimapNames())
+
+    /// 部屋2 + 通路1 の module 配置（部屋 idx<2・通路 idx=2）。
+    def minimapPlacements(): List[DungeonComposer.ModulePlacement] =
+        RoomLayout.placement(0, 0,  0, 6, 5) ::
+        RoomLayout.placement(1, 12, 0, 5, 5) ::
+        RoomLayout.placement(2, 6,  1, 6, 2) :: Nil
+    def minimapRoomCount(): Int32 = 2
+
+    /// module 床以外を壁にした地形スナップショット。moduleRect の青塗り bbox から、床セル
+    /// （module の floorBounds 内）だけを黒く抜くため、床でないセルはすべて壁として登録する。
+    def minimapSnapshot(): MapSnapshot =
+        let placements = minimapPlacements();
+        let w = 18; let h = 6;
+        let cells = List.range(0, w)
+            |> List.flatMap(x -> List.map(y -> (x, y), List.range(0, h)));
+        let walls = cells
+            |> List.filter(c -> let (x, y) = c;
+                    Option.isEmpty(MapSnapshot.moduleOfCellIn(({x = x, y = y}: {x = Int32, y = Int32}), placements)))
+            |> List.toSet;
+        {tileSize   = MapSnapshot.tileSize(),
+         usedRect   = {position = {x = 0, y = 0}, size = {x = w, y = h}},
+         wallCells  = walls,
+         mapGlobal  = {x = 0.0, y = 0.0},
+         placements = placements}
+
+    /// 訪問済み module。normal=部屋0+通路2（部屋1 は未訪問→未表示・隣接通路はヒント）、
+    /// explored=全 module。
+    def minimapVisited(name: String): Set[Int32] =
+        if (name == "minimap_explored") Set#{0, 1, 2} else Set#{0, 2}
+
+    /// 宣言マーカー（セル + 色）。色は `MinimapScene` の意味色（リーダー黄 / 味方青 / アイテム橙 /
+    /// 敵赤 / 階段紫）に対応させた固定値。全探索では部屋1 に階段マーカーを足す。
+    def minimapMarkers(name: String): List[{cell = {x = Int32, y = Int32}, color = Color}] =
+        let leaderCol = ({r = 0.95f32, g = 0.85f32, b = 0.20f32}: Color);
+        let playerCol = ({r = 0.30f32, g = 0.70f32, b = 0.95f32}: Color);
+        let itemCol   = ({r = 0.95f32, g = 0.60f32, b = 0.20f32}: Color);
+        let enemyCol  = ({r = 0.92f32, g = 0.25f32, b = 0.22f32}: Color);
+        let stairsCol = ({r = 0.90f32, g = 0.30f32, b = 0.85f32}: Color);
+        let base =
+            {cell = {x = 2, y = 2}, color = leaderCol} ::   // リーダー（部屋0）
+            {cell = {x = 3, y = 3}, color = playerCol} ::   // 味方（部屋0）
+            {cell = {x = 1, y = 1}, color = itemCol}   ::   // アイテム（部屋0）
+            {cell = {x = 8, y = 1}, color = enemyCol}  :: Nil;  // 敵（通路2）
+        if (name == "minimap_explored")
+            List.append(base, {cell = {x = 14, y = 2}, color = stairsCol} :: Nil)  // 階段（部屋1）
+        else base
+
+    /// 宣言フィクスチャ → 純粋な描画リスト（矩形 Drawable + マーカー Polygon）。
+    def minimapRendered(name: String):
+            {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]} =
+        MinimapScene.minimapDrawList(({visited = minimapVisited(name), placements = minimapPlacements(),
+            roomCount = minimapRoomCount(), snapshot = minimapSnapshot(),
+            markers = minimapMarkers(name)}: MinimapScene.RenderInput))
 }

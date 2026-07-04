@@ -1,4 +1,4 @@
-/// CharacterSelectScene の純粋な選択ロジックを固定するテスト。
+/// CharacterSelectUi の純粋な選択ロジックを固定するテスト。
 ///
 /// 観点（画面描画・effect には触れず、選択の振る舞いだけを確認する）:
 ///   - カードの選択 / 解除と、3 人を超えて選べない上限
@@ -7,9 +7,9 @@
 ///   - リーダーを先頭に並べ替えること（集合の合流先 = ロードが先頭になる、最重要の性質）
 ///   - 3 人揃ってからでないとリーダー選びに進めないこと
 ///   - 注目カードが中央に来るためのカード列の横位置
-mod TestCharacterSelectScene {
+mod TestCharacterSelectUi {
 
-    use CharacterSelectScene.SubMode
+    use CharacterSelectUi.SubMode
 
     // ════════════════════════════════════════════════════════
     // フィクスチャ
@@ -29,9 +29,9 @@ mod TestCharacterSelectScene {
     /// 注目カードを Z で選ぶと選択に入り、もう一度押すと外れる。
     @Test
     def testToggleSelectAddsThenRemoves(): Unit \ {Assert, Fs.FileRead} =
-        let base = {focus = 2 | CharacterSelectScene.initialState(testPlayers())};
-        let added = CharacterSelectScene.toggleSelect(base);
-        let removed = CharacterSelectScene.toggleSelect(added);
+        let base = {focus = 2 | CharacterSelectUi.initialState(testPlayers())};
+        let added = CharacterSelectUi.toggleSelect(base);
+        let removed = CharacterSelectUi.toggleSelect(added);
         // 追加後は [2]、解除後は空
         Assert.assertEq(expected = (2 :: Nil, Nil), (added#selected, removed#selected))
 
@@ -39,11 +39,11 @@ mod TestCharacterSelectScene {
     /// 一方、選択済みカードはいつでも外せる。
     @Test
     def testToggleSelectRespectsCap(): Unit \ {Assert, Fs.FileRead} =
-        let full = {selected = 0 :: 1 :: 2 :: Nil | CharacterSelectScene.initialState(testPlayers())};
+        let full = {selected = 0 :: 1 :: 2 :: Nil | CharacterSelectUi.initialState(testPlayers())};
         // 注目が未選択(4)のとき: 上限なので [0,1,2] のまま
-        let tryAddNew = CharacterSelectScene.toggleSelect({focus = 4 | full});
+        let tryAddNew = CharacterSelectUi.toggleSelect({focus = 4 | full});
         // 注目が選択済み(1)のとき: 外れて [0,2]
-        let removeOne = CharacterSelectScene.toggleSelect({focus = 1 | full});
+        let removeOne = CharacterSelectUi.toggleSelect({focus = 1 | full});
         Assert.assertEq(
             expected = (0 :: 1 :: 2 :: Nil, 0 :: 2 :: Nil),
             (tryAddNew#selected, removeOne#selected))
@@ -55,23 +55,23 @@ mod TestCharacterSelectScene {
     /// 0,1,2,3 人と選ぶにつれて「残り」が 3,2,1,0 と減る。
     @Test
     def testRemainingCountsDown(): Unit \ {Assert, Fs.FileRead} =
-        let s0 = CharacterSelectScene.initialState(testPlayers());
-        let s1 = CharacterSelectScene.toggleSelect({focus = 0 | s0});
-        let s2 = CharacterSelectScene.toggleSelect({focus = 1 | s1});
-        let s3 = CharacterSelectScene.toggleSelect({focus = 2 | s2});
+        let s0 = CharacterSelectUi.initialState(testPlayers());
+        let s1 = CharacterSelectUi.toggleSelect({focus = 0 | s0});
+        let s2 = CharacterSelectUi.toggleSelect({focus = 1 | s1});
+        let s3 = CharacterSelectUi.toggleSelect({focus = 2 | s2});
         Assert.assertEq(
             expected = (3, 2, 1, 0),
-            (CharacterSelectScene.remaining(s0), CharacterSelectScene.remaining(s1),
-             CharacterSelectScene.remaining(s2), CharacterSelectScene.remaining(s3)))
+            (CharacterSelectUi.remaining(s0), CharacterSelectUi.remaining(s1),
+             CharacterSelectUi.remaining(s2), CharacterSelectUi.remaining(s3)))
 
     /// 出撃できるのはちょうど 3 人選んだときだけ（2 人では不可）。
     @Test
     def testCanDeployOnlyWhenThree(): Unit \ {Assert, Fs.FileRead} =
-        let two = {selected = 0 :: 1 :: Nil | CharacterSelectScene.initialState(testPlayers())};
-        let three = {selected = 0 :: 1 :: 2 :: Nil | CharacterSelectScene.initialState(testPlayers())};
+        let two = {selected = 0 :: 1 :: Nil | CharacterSelectUi.initialState(testPlayers())};
+        let three = {selected = 0 :: 1 :: 2 :: Nil | CharacterSelectUi.initialState(testPlayers())};
         Assert.assertEq(
             expected = (false, true),
-            (CharacterSelectScene.canDeploy(two), CharacterSelectScene.canDeploy(three)))
+            (CharacterSelectUi.canDeploy(two), CharacterSelectUi.canDeploy(three)))
 
     // ════════════════════════════════════════════════════════
     // 注目カードの移動（両端で巻き込む）
@@ -80,9 +80,9 @@ mod TestCharacterSelectScene {
     /// 先頭で左へ行くと末尾(7)へ、末尾で右へ行くと先頭(0)へ巻き込む（候補は 8 人）。
     @Test
     def testMoveFocusWrapsAtEnds(): Unit \ {Assert, Fs.FileRead} =
-        let base = CharacterSelectScene.initialState(testPlayers());
-        let wrappedLeft = CharacterSelectScene.moveFocus(-1, base);
-        let wrappedRight = CharacterSelectScene.moveFocus(1, {focus = 7 | base});
+        let base = CharacterSelectUi.initialState(testPlayers());
+        let wrappedLeft = CharacterSelectUi.moveFocus(-1, base);
+        let wrappedRight = CharacterSelectUi.moveFocus(1, {focus = 7 | base});
         Assert.assertEq(expected = (7, 0), (wrappedLeft#focus, wrappedRight#focus))
 
     // ════════════════════════════════════════════════════════
@@ -98,12 +98,12 @@ mod TestCharacterSelectScene {
     @Test
     def testOrderedIndicesPutsLeaderFirst(): Unit \ {Assert, Fs.FileRead} =
         let players = testPlayers();
-        let pickThird = {selected = 5 :: 1 :: 3 :: Nil, leaderFocus = 2 | CharacterSelectScene.initialState(players)};
-        let pickFirst = {selected = 5 :: 1 :: 3 :: Nil, leaderFocus = 0 | CharacterSelectScene.initialState(players)};
+        let pickThird = {selected = 5 :: 1 :: 3 :: Nil, leaderFocus = 2 | CharacterSelectUi.initialState(players)};
+        let pickFirst = {selected = 5 :: 1 :: 3 :: Nil, leaderFocus = 0 | CharacterSelectUi.initialState(players)};
         Assert.assertEq(
             expected = (3 :: 5 :: 1 :: Nil, 5 :: 1 :: 3 :: Nil),
-            (CharacterSelectScene.orderedIndices(pickThird),
-             CharacterSelectScene.orderedIndices(pickFirst)))
+            (CharacterSelectUi.orderedIndices(pickThird),
+             CharacterSelectUi.orderedIndices(pickFirst)))
 
     // ════════════════════════════════════════════════════════
     // リーダー選びへの遷移
@@ -112,12 +112,12 @@ mod TestCharacterSelectScene {
     /// 3 人揃っていればリーダー選び段階に進み、2 人ではメンバー選びのまま。
     @Test
     def testBeginLeaderPickRequiresThree(): Unit \ {Assert, Fs.FileRead} =
-        let two = {selected = 0 :: 1 :: Nil | CharacterSelectScene.initialState(testPlayers())};
-        let three = {selected = 0 :: 1 :: 2 :: Nil | CharacterSelectScene.initialState(testPlayers())};
+        let two = {selected = 0 :: 1 :: Nil | CharacterSelectUi.initialState(testPlayers())};
+        let three = {selected = 0 :: 1 :: 2 :: Nil | CharacterSelectUi.initialState(testPlayers())};
         Assert.assertEq(
             expected = (SubMode.PickingMembers, SubMode.PickingLeader),
-            ((CharacterSelectScene.beginLeaderPick(two))#mode,
-             (CharacterSelectScene.beginLeaderPick(three))#mode))
+            ((CharacterSelectUi.beginLeaderPick(two))#mode,
+             (CharacterSelectUi.beginLeaderPick(three))#mode))
 
     // ════════════════════════════════════════════════════════
     // カード列の横位置（注目カードを中央に）
@@ -128,7 +128,7 @@ mod TestCharacterSelectScene {
     def testTargetCarouselXCentersFocus(): Unit \ Assert =
         Assert.assertEq(
             expected = (58.0, 18.0),
-            (CharacterSelectScene.targetCarouselX(0), CharacterSelectScene.targetCarouselX(1)))
+            (CharacterSelectUi.targetCarouselX(0), CharacterSelectUi.targetCarouselX(1)))
 
     // ════════════════════════════════════════════════════════
     // 右パネルの得意武器テキスト
@@ -146,12 +146,12 @@ mod TestCharacterSelectScene {
     def testProficiencyHeaderWithTypes(): Unit \ {Assert, Fs.FileRead} =
         Assert.assertEq(
             expected = "得意武器:",
-            CharacterSelectScene.proficiencyHeader(unitNamed("ロード")#proficientWeaponTypes))
+            CharacterSelectUi.proficiencyHeader(unitNamed("ロード")#proficientWeaponTypes))
 
     /// 得意タイプが無ければ「得意武器:\nなし」。
     @Test
     def testProficiencyHeaderNoTypes(): Unit \ Assert =
         Assert.assertEq(
             expected = "得意武器:\nなし",
-            CharacterSelectScene.proficiencyHeader((Nil: List[WeaponCatalog.WeaponType])))
+            CharacterSelectUi.proficiencyHeader((Nil: List[WeaponCatalog.WeaponType])))
 }

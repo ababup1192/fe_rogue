@@ -22,9 +22,6 @@ pub enum NodeTag {
     case Player(PlayerScene.Data)
     case Enemy(EnemyScene.Data)
     case Map(MapScene.Data)
-    /// CharacterSelectScene のルート CanvasLayer。選択状態は CharacterSelectState.State
-    /// resource が権威で、タグはペイロードレス。
-    case CharacterSelect
     case MoveRange(MoveRangeScene.Data)
     case EnemyRange(EnemyRangeScene.Data)
     /// EnemyAttackRangeScene の赤マス overlay（敵の攻撃到達=脅威範囲。移動範囲の外側）
@@ -58,9 +55,6 @@ pub enum NodeTag {
     /// `FogScene` の常駐タグ専用ノード (Marker2D)。process redef で毎フレーム、現在パーティの
     /// いる部屋/通路だけ明るくし、それ以外は薄暗いモヤ＋敵/アイテム/階段を非表示にする。
     case FogDriver
-    /// `MinimapScene` の常駐タグノード (Marker2D)。process redef で毎フレーム、訪問済み
-    /// module を蓄積 (Set[Int32]) し、M キーで全画面ミニマップを出し入れ・再描画する。
-    case MinimapDriver(MinimapScene.DriverData)
     /// 追従カメラ（Camera2D）。process でフェーズに応じた追従先へ動かす。
     case Camera
     case NoTag
@@ -173,7 +167,7 @@ instance InputEvent.InputHandler[NodeTag] {
         // 画面がタイトル / 選択中なら各画面へ委譲。本編（Playing）のときだけ戦闘用ルーティングを走らせる。
         else match GamePhaseState.get() {
             case GamePhase.Title           => TitleMenuUi.onKeyPressed(key, scene)
-            case GamePhase.CharacterSelect => CharacterSelectScene.onKeyPressed(key, scene)
+            case GamePhase.CharacterSelect => CharacterSelectUi.onKeyPressed(key, scene)
             case GamePhase.Playing         => onPlayingKeyPressed(key, scene)
         }
 }
@@ -748,6 +742,10 @@ mod Game {
                 // タイトル画面の World-entity UI を 1 回だけ spawn する（初期は不可視。GamePhase.Title
                 // 進入時に TitleMenuUi.enter が再開可否を確定して可視化する）。
                 spawnUiOrBug(TitleMenuUi.specPath());
+                // 出撃メンバー選択画面の World-entity UI を 1 回だけ spawn する（初期は不可視。
+                // GamePhase.CharacterSelect 進入時に CharacterSelectUi.enter が候補を put して可視化し、
+                // 以降 CharacterSelectUi.frameStep がカルーセルと選択の見た目を毎フレーム同期する）。
+                spawnUiOrBug(CharacterSelectUi.specPath());
                 // 右下の一時ログ HUD の World-entity UI を 1 回だけ spawn する（初期は不可視。
                 // LogUi.step が GameLogger を drain して 5 行に流し込み、空でないフレームだけ可視化）。
                 spawnUiOrBug(LogUi.specPath());
@@ -917,6 +915,7 @@ mod Game {
               with ItemMenuState.withState(rc)    // アイテム窓の選択状態（カテゴリ index / 一括選択マーク）を resource 化
               with TradeMenuState.withState(rc)   // 物交換窓のセッション状態（members/focus/pick/origin/marks）を resource 化
               with UiWorldState.withState(rc)     // World-entity UI（全滅モーダル）の状態を resource 化
+              with MinimapState.withState(rc)     // ミニマップの表示トグル（M）状態を resource 化
         }
 
     /// GamePhase に応じて画面（Scene）を組み立てる。**配線役** に徹し、各画面の構築は
@@ -971,7 +970,7 @@ mod Game {
                          TopBarState.State, TitleMenuState.State, UnitHPBarRender.ForecastState,
                          Math.Random, FloorSnapshot.State,
                          World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
-                         World.RngDraw, UiWorldState.State, r} =
+                         World.RngDraw, UiWorldState.State, MinimapState.State, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
         if (GameEngine.Game.shouldClose()) ()
         else {
@@ -998,7 +997,7 @@ mod Game {
                 // 他は独立。
                 |> TopBarUi.step(dt)
                 |> ItemPickupPopupUi.frameStep(dt)
-                |> CharacterSelectScene.step(dt)
+                |> CharacterSelectUi.frameStep(dt)
                 |> LogUi.step(dt)
                 |> TurnEndHoldUi.frameStep(dt)
                 |> CameraScene.step(dt)
@@ -1006,12 +1005,12 @@ mod Game {
                 // process の後＝combat drain と TopBar 更新が確定した post-process scene を読む（前後依存は World 経由で順序非依存）。
                 |> EnemyTurnDriver.step
                 |> StairsExitDriver.step
-                // view driver（Fog/Minimap/ArrowCursor）も per-node callback から外し明示 step 化
+                // view driver（Fog/Minimap）も per-node callback から外し明示 step 化
                 // （dispatchDrivers 撤去＝対象 0）。process の後・render の前に post-process 状態を読んで
                 // 同一フレームで描画されるため挙動不変。相互依存なし＝順序自由。
+                // 照準矢印は step を持たず、描画（RenderWorld.renderArrowCursor）が phase から可視を決める。
                 |> FogScene.step
                 |> MinimapScene.step
-                |> ArrowCursorScene.step
                 // 全滅モーダル UI の可視/選択ハイライトを phase から同期（旧 refreshItems の置換）。
                 |> GameOverMenuUi.frameStep(dt)
                 // 行動選択ウィンドウの可視/項目流し込み/選択ハイライトを phase から同期
@@ -1062,16 +1061,17 @@ mod Game {
 }
 
 /// フレーム描画（render-from-World の合流点）。gameLoop のサイズ削減のため関数分離。
-/// fog・range・配置物・fx・HUD/menu: scene 側を hideSubtrees で renderArgs から外し、
-/// World render System（各 render*）で描く。camera ViewTransform はフレーム 1 回だけ計算して共有。
+/// fog・range・配置物・fx・minimap・HUD/menu はすべて World render System（各 render*）で描き、
+/// scene-tree drawable（unit sprite 等）はそのまま合成する。camera ViewTransform はフレーム 1 回だけ計算して共有。
 def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[NodeTag]):
         Unit \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarRender.ForecastState,
-                UiWorldState.State} =
-    let prepped = RenderWorld.hideSubtrees(synced);
+                UiWorldState.State, TurnPhase.State, ArrowCursorState.State, MinimapState.State} =
     let transform = RenderWorld.viewTransform(synced);
+    // ミニマップは Drawable（矩形）と Polygon（マーカー円）の 2 チャンネルを 1 度に組む（画面固定）。
+    let minimap = RenderWorld.renderMinimap(synced);
     // tileMaps は scene 走査由来（_sceneTileMaps）を捨て、World の bake 済ハンドルから組む
     // （camera 適用・instanced 維持）＝背景タイルも render-from-World。tileMaps は単一引数ゆえ二重描画なし。
-    let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(prepped);
+    let (sprites, _sceneTileMaps, scenePolygons) = GameEngine.renderArgs(synced);
     // fog の明るい穴を frame に 1 回計算し、配置物直描きの lit ゲートで共有。
     let holesOpt = RenderWorld.fogHolesOpt(synced);
     // World-entity UI を 1 度のレイアウト解決で sprite（drawables）と polygon の 2 チャンネルへ射影。
@@ -1087,15 +1087,18 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[N
         |> List.append(WeaponIconRender.renderPlates(world2, transform, synced))
         |> List.append(RenderWorld.renderFog(transform, synced))
         |> List.append(RenderWorld.renderRangeOverlays(transform, synced))
-        |> List.append(RenderWorld.renderSubtrees(transform, synced))
+        // 選択カーソルの四隅 L字（Marker2D 位置＋visible）と杖照準矢印（ArrowCursorState＋phase）を直描き。
+        |> List.append(RenderWorld.renderCursor(transform, synced))
+        |> List.append(RenderWorld.renderArrowCursor(transform))
+        // ミニマップの部屋/床矩形（画面固定 HUD レイヤ）。
+        |> List.append(minimap#drawables)
         // World-entity UI（全滅モーダル・TopBar 等）の box/text/sprite を HUD レイヤに合流（画面固定・camera 免除）。
         |> List.append(uiRendered#drawables);
-    // polygon チャンネルは World 由来 subtree（minimap 円 ＋ per-unit 武器グリフ）に、
-    //   World-entity UI 由来 polygon（TopBar の集合中▶ / TurnEndHold の充填リング / BattlePanel の相性三角）を合流。
-    //   scenePolygons は hideSubtrees で除外済み。
+    // polygon チャンネルは minimap のマーカー円 ＋ per-unit 武器グリフに、World-entity UI 由来 polygon
+    //   （TopBar の集合中▶ / TurnEndHold の充填リング / BattlePanel の相性三角）を合流。
     GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
         RenderWorld.renderTileMaps(world2, transform, synced),
         List.append(scenePolygons,
-            List.append(RenderWorld.renderSubtreePolygons(transform, synced),
+            List.append(minimap#polygons,
                 List.append(WeaponIconRender.renderGlyphs(world2, transform, synced),
                             uiRendered#polygons))))

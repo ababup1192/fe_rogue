@@ -199,3 +199,35 @@ color / text / tint など毎フレーム同期される見た目は、リロー
   `[0, 項目数)` に収める。動的に項目を流し込むメニューは、スロット数超過を `bug!` で弾く。
   ui.json のスロット数とコード側の `maxSlots()` は一致させる（実 asset を parse して数える
   テストで pin する）。
+
+## 移行完了サマリ（HUD / メニュー / 画面はすべて World-entity UI）
+
+ゲームの HUD・メニュー・全画面 UI は全部この World-entity UI（`UiStore` / `UiSpec` / `UiRender`）に
+載っている。`scene.json` / `Scene` ノードで組む UI はもう無い。現在の地図:
+
+- **描画** — `ui.json`（`src/ui/assets/<Name>.ui.json`）でツリーを宣言し、起動時に `Game.start` が
+  `spawnUiOrBug`（別名 2 枚立ては `spawnUiAsOrBug`）で 1 回だけ spawn する。毎フレーム `UiRender.renderUi`
+  が box/text/sprite（drawable チャンネル）と poly（polygon チャンネル）へ射影し、`Game.renderFrame` が
+  盤面 drawable と合流させて 1 回で描く。F1 で `UiSpec.reloadAll` が `sources` 台帳ぶんをホットリロードする。
+
+- **状態** — 各 UI の動的状態は 2 系統。①`UiStore` 内の名前パスキー state（`selection` / `focus` / `visible`）
+  ＝リロードを生き延びる。②UI ごとの `XxxState` resource（`TitleMenuState` / `ItemMenuState` / `TradeMenuState` /
+  `CharacterSelectState` / `TopBarState` / `LevelUpPanelState` 等）＝region の Ref を handler 注入。
+  毎フレーム `XxxUi.frameStep`（または `step`）が state を読んで見た目（color / text / abs / 可視 / sprite /
+  poly 頂点）を `UiStore` の setter で塗り直す（フェーズや root 可視で自己 gate）。
+
+- **入力** — `Game.onKeyPressed` が現在の画面（`GamePhase`）/ フェーズ（`TurnPhase`）に応じて各 `XxxUi` の
+  `moveSelection` / `confirmCurrentSelection` / `onKeyPressed` へ委譲する（`dispatchMenuKey` /
+  `*Direction` の 1 表が真理点）。入力ハンドラは state resource を書くだけで、見た目は次フレームの
+  `frameStep` が反映する。
+
+- **移行した UI 一覧** — 全画面: `TitleMenuUi`（タイトル）/ `CharacterSelectUi`（出撃メンバー選択・
+  カード列カルーセル）。メニュー・モーダル: `ActionMenuUi` / `WeaponSelectUi` / `ItemMenuUi`（windowing）/
+  `TradeMenuUi`（最大 4 ペイン）/ `SuspendConfirmUi` / `GameOverMenuUi`。HUD・演出: `TopBarUi` /
+  `LogUi` / `ItemPickupPopupUi` / `TurnEndHoldUi`（充填リング poly）/ `BattlePanelUi`（戦闘予報）/
+  `LevelUpPanelUi` / `UnitCardUi`（味方左 / 敵右の 2 root 共有）。
+
+- **残った `scene/`（Scene ノード）は盤面・シム系のみ** — Player / Enemy / Map / Camera / Cursor（入力）/
+  ArrowCursor / Fog / Minimap / RangeScenes / Bgm / Entity。UI 窓の `NodeTag` は全滅し、残る `NodeTag` は
+  駒・overlay・driver だけ（`Player` / `Enemy` / `Map` / `*Range` / `Cursor` / `Stairs` / `Chest` /
+  `EnemyTurnDriver` / `FogDriver` / `Camera` 等）。

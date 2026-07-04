@@ -104,56 +104,42 @@ mod RenderWorld {
     pub def syncMarkers(moved: List[MarkerMove], scene: Scene[NodeTag]): Scene[NodeTag] =
         List.foldLeft((sc, m) -> Scene.setGlobalPositionAt(EntityScene.path(m#ref), m#pos, sc), scene, moved)
 
-    /// パスのノードを隠す（World 描画へ切替時の二重描画防止）。CanvasLayer/親ノードを隠せば祖先可視で
-    /// サブツリー全体が renderArgs から外れる（drawContext の祖先 visible 合成）。不在パスは no-op（動的 menu 用）。
-    pub def hideNode(path: NodePath, scene: Scene[NodeTag]): Scene[NodeTag] =
-        match Scene.getEngineNode(path, scene) {
-            case None    => scene
-            case Some(_) => Scene.mapEngineNode(path, n -> CanvasItem.setVisible(false, n), scene)
+    /// ミニマップ（探索済みマップ）を World render System で直描きする。scene にノードを積まず、
+    /// World の訪問記憶 / 階段 / 床アイテムと、Map の module 配置 / 地形、味方・敵の World 位置から、
+    /// 部屋/床の矩形（Drawable）とプレイヤー/階段/アイテム/敵のマーカー円（Polygon）を組む。画面固定 HUD
+    /// なので camera 変換は掛けない（座標は既に screen px）。表示可否は `MinimapState`（M トグル）と
+    /// フェーズ（LevelUpView / EnemyTurn は強制非表示）で決める。ダンジョン外（Map 不在）は空。
+    /// 訪問記憶の蓄積・M トグルの反転は `MinimapScene.step` が同一フレームで済ませ、ここは描画のみ。
+    pub def renderMinimap(scene: Scene[NodeTag]):
+            {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]}
+            \ {SelectedPlayer.State, World.WorldQuery, TurnPhase.State, MinimapState.State} =
+        match Scene.getEngineNode(MapScene.mapPath(), scene) {
+            case None    => {drawables = Nil, polygons = Nil}
+            case Some(_) =>
+                let phase   = TurnPhase.State.get();
+                // レベルアップ画面・敵ターン中は隠す（M トグルの記憶 visible は維持）。
+                let hidden  = phase == TurnPhase.Phase.LevelUpView or phase == TurnPhase.Phase.EnemyTurn;
+                let visible = MinimapState.State.get()#visible;
+                if (not (visible and not hidden)) {drawables = Nil, polygons = Nil}
+                else {
+                    let world      = World.WorldQuery.get();
+                    let visited    = World.visitedModulesOf(world);
+                    let placements = MapScene.getPlacements(scene);
+                    let roomCount  = MapScene.getRoomCount(scene);
+                    // litRooms（敵赤丸の絞り込み）は fog と同じく origin 基準。移動ドラフト中に新しく
+                    // 踏み込んだ部屋は確定まで数えない。live 位置は World 権威。
+                    let drafts     = SelectedPlayer.State.get()#drafts;
+                    let units      = PlayerScene.getAllWithWorldPos(scene)
+                        |> List.map(d -> {id = d#id, gridPos = d#gridPos, hidden = d#hidden,
+                                          origin = MoveDraft.originOf(d#id, drafts) |> Option.getWithDefault(d#gridPos)});
+                    let litRooms   = MinimapScene.litRoomsDrafted(units, placements, roomCount);
+                    let stairsSeen = MinimapScene.stairsDiscovered(visited, placements);
+                    let markers    = MinimapScene.collectMarkers(visited, stairsSeen, placements, roomCount, litRooms, scene);
+                    MinimapScene.minimapDrawList(({visited = visited, placements = placements,
+                        roomCount = roomCount, snapshot = MinimapScene.mapSnapshot(scene),
+                        markers = markers}: MinimapScene.RenderInput))
+                }
         }
-
-    /// World 描画する **in-world（camera 適用）** サブツリー root。配置物（アイテム/宝箱/階段）＋ダメージ数字/
-    /// 爆発/カーソル/矢印カーソル。top-level の Cursor/ArrowCursor は World 直下でないため明示列挙。
-    def worldSubtreeRoots(): List[NodePath] =
-        // 配置物 3 種と fx（ダメージ数字/爆発）は render* が直描き＝ノードを積まない。
-        CursorScene.cursorPath() :: ArrowCursorScene.arrowPath() :: Nil
-
-    /// World 描画する **CanvasLayer（camera 免除・画面固定）** サブツリー root。HUD/メニュー/minimap/各種ポップアップ。
-    /// 不在（未オープンの動的 menu 等）は `subtreeDrawables`/`hideNode` とも no-op。
-    def hudSubtreeRoots(): List[NodePath] =
-        // TopBar / ユニット簡易カード（UnitCard / EnemyCard）/ 行動選択ウィンドウ（ActionMenu）/
-        // 武器選択ウィンドウ（WeaponSelect）/ アイテム選択ウィンドウ（ItemMenu）/ 物交換ウィンドウ
-        // （TradeMenu）/ 中断確認モーダル（SuspendConfirm）/ タイトル画面（TitleMenu）/ 一時ログ HUD（Log）/
-        // 中央アイテム取得ポップアップ（ItemPickupPopup）/ ターンスキップ長押しゲージ（TurnEndHold）/
-        // 戦闘予報ミニウィンドウ（BattlePanel）/ レベルアップ演出パネル（LevelUpPanel）
-        // は World-entity UI へ移行済み。ここには積まない。
-        MinimapScene.rootPath() :: Nil
-
-    /// World 描画する全サブツリー root（world〔camera 適用〕 ++ hud〔CanvasLayer〕）。camera 適用/免除の seam を
-    /// 2 サブリストで保持。順序は z-sort/effzIndex で描画に無関係。
-    def subtreeRoots(): List[NodePath] = List.append(worldSubtreeRoots(), hudSubtreeRoots())
-
-    // 武器アイコン/HP バーはノード自体を積まず UnitHPBarRender.renderBars / WeaponIconRender.renderIcons
-    // が World store から直描きする。
-
-    /// polygon（Polygon2D/Arc2D）を持つ subtree root のみ（minimap マーカー円）。
-    /// polygon の無い root を毎フレーム走査しないよう明示（TurnEndHold リング / BattlePanel の丸・三角は
-    /// World-entity UI の poly / box へ移行済み）。
-    def polygonSubtreeRoots(): List[NodePath] =
-        MinimapScene.rootPath() :: Nil
-
-    /// 全 subtree（HUD/メニュー/minimap/ポップアップ等）を World render System で描く。
-    /// perf: `renderOrderPaths` を全 root で 1 回共有する batch API に委譲（root ごと再走査すると O(roots×N) になるため）。
-    pub def renderSubtrees(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] \ GameEngine.Game =
-        Scene.subtreeDrawablesForRoots(transform, subtreeRoots(), scene)
-
-    /// polygon を持つ subtree の Polygon2D/Arc2D を polygon チャンネルで描く（`preorderPaths` を 1 回共有）。
-    pub def renderSubtreePolygons(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.PolygonRenderCmd] =
-        Scene.subtreePolygonsForRoots(transform, polygonSubtreeRoots(), scene)
-
-    /// 全 subtree の scene 側 root を隠す（renderArgs から外し二重描画防止）。
-    pub def hideSubtrees(scene: Scene[NodeTag]): Scene[NodeTag] =
-        subtreeRoots() |> List.foldLeft((acc, root) -> hideNode(root, acc), scene)
 
     /// tiles: World の tileLayers（bake 済ハンドル）を camera 適用して engine の instanced tile 描画コマンドにする。
     /// renderArgs のタイル経路（`globalPositionAt`→`applyToWorldPos` + `transform#scale`）と同一 spine。
@@ -364,6 +350,45 @@ mod RenderWorld {
             Nil)
 
     // range の Tile Panel ノードは積まない（renderRangeOverlays が cells から直描きする）。
+
+    /// 選択カーソルの四隅 L字を World render System で直描きする。位置は Cursor Marker2D の
+    /// global 座標（移動 Tween の補間位置＝視覚位置の単一権威）、可視は同ノードの visible フラグ
+    /// （`CursorScene.setVisible` が書く真実源）。L字の並び・色・zIndex は `CursorScene` の定数。
+    /// Cursor ノード不在（タイトル/選択画面など未構築）や非表示のフレームは Nil。
+    pub def renderCursor(transform: Camera2D.ViewTransform, scene: Scene[NodeTag]): List[GameEngine.Drawable] =
+        match Scene.getEngineNode(CursorScene.cursorPath(), scene) {
+            case None       => Nil
+            case Some(node) =>
+                if (not CanvasItem.isVisible(node)) Nil
+                else {
+                    let center = Scene.globalPositionAt(CursorScene.cursorPath(), scene);
+                    List.flatMap(box -> cursorCornerDrawables(center, box, transform),
+                                 CursorScene.cornerBoxes())
+                }
+        }
+
+    /// 1 枚の四隅ボックス → box Drawable（camera 適用）。box#offset は Marker2D 原点（セル中心）からの
+    /// 左上オフセット。world 上の左上を camera 変換し、px サイズを zoom 倍する（fogRectDrawables と対称）。
+    def cursorCornerDrawables(center: Vec2, box: {offset = Vec2, size = Vec2},
+                               transform: Camera2D.ViewTransform): List[GameEngine.Drawable] =
+        let worldTopLeft: Vec2 = {x = center#x + box#offset#x, y = center#y + box#offset#y};
+        let screenPos = Camera2D.applyToWorldPos(transform, worldTopLeft);
+        Render.toDrawables(Render.solidBox(box#size, CursorScene.cornerColor(), CursorScene.cornerZIndex()), screenPos)
+            |> Render.applyCameraScale(transform)
+
+    /// 杖・投擲の照準矢印を World render System で直描きする。表示は `StaffAim` / `ThrowAim` フェーズの間だけ。
+    /// 位置＝`ArrowCursorState.gridPos` のセル中心、回転＝`ArrowCursorScene.rotationOf(direction)`。
+    /// それ以外のフェーズは Nil。
+    pub def renderArrowCursor(transform: Camera2D.ViewTransform):
+            List[GameEngine.Drawable] \ {GameEngine.Game, TurnPhase.State, ArrowCursorState.State} =
+        let phase = TurnPhase.State.get();
+        if (phase != TurnPhase.Phase.StaffAim and phase != TurnPhase.Phase.ThrowAim) Nil
+        else {
+            let data = ArrowCursorState.State.get();
+            let sprite = Sprite2D.make(ArrowCursorScene.texture(), Vec2.zero(), ArrowCursorScene.spriteScale())
+                |> Node2D.setRotation(ArrowCursorScene.rotationOf(data#direction));
+            standaloneSprite(sprite, MapSnapshot.cellCenter(data#gridPos), ArrowCursorScene.spriteZIndex(), transform)
+        }
 
     /// 1 つの暗幕グリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は grid × tileSize。
     /// solidBox は alpha=1.0 ゆえ fog 用 alpha に上書きし、scale（=ピクセルサイズ）を

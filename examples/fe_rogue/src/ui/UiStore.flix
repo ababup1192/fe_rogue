@@ -209,6 +209,48 @@ mod UiStore {
             case Some((id, comp)) => {sprites = Map.insert(id, comp, ui#sprites) | ui}
         }
 
+    /// 名前パスの sprite コンポーネントの拡大率を差し替える。sprite を持たなければ no-op。
+    /// カルーセル（出撃メンバー選択）のように、注目カードを大きく・隣を小さく毎フレーム
+    /// 動かす widget で使う（texture / frame / tint は保持）。
+    pub def setSpriteScale(path: String, scale: Vec2.Vec2, ui: UiWorld): UiWorld =
+        let updated = idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, ui#sprites) |> Option.map(comp -> (id, {scale = scale | comp})));
+        match updated {
+            case None             => ui
+            case Some((id, comp)) => {sprites = Map.insert(id, comp, ui#sprites) | ui}
+        }
+
+    /// 名前パスの sprite コンポーネントの着色（tint）を差し替える。sprite を持たなければ no-op。
+    /// リーダー選び中に選外カードを暗くするなど、スプライトを状態で明暗させる widget で使う。
+    pub def setSpriteTint(path: String, tint: Color, ui: UiWorld): UiWorld =
+        let updated = idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, ui#sprites) |> Option.map(comp -> (id, {tint = tint | comp})));
+        match updated {
+            case None             => ui
+            case Some((id, comp)) => {sprites = Map.insert(id, comp, ui#sprites) | ui}
+        }
+
+    /// 名前パスの entity の style 高さを固定 px（`SizeSpec.Px`）へ差し替える。style を持たなければ no-op。
+    /// 高さを毎フレーム動かす widget（注目カードの枠を少し高くする等）で `setWidthPx` と対で使う。
+    pub def setHeightPx(path: String, px: Float64, ui: UiWorld): UiWorld =
+        let updated = idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, ui#styles) |> Option.map(style -> (id, {height = UiLayout.SizeSpec.Px(px) | style})));
+        match updated {
+            case None              => ui
+            case Some((id, style)) => {styles = Map.insert(id, style, ui#styles) | ui}
+        }
+
+    /// 名前パスの box コンポーネントの枠線幅を差し替える。box を持たなければ no-op。
+    /// 選択・注目で枠線の太さを出し分けるカード枠のように、枠の有無/太さを状態で変える widget で使う
+    /// （0.0 で枠なし。枠線色は `setBoxBorderColor`）。
+    pub def setBoxBorderWidth(path: String, width: Float64, ui: UiWorld): UiWorld =
+        let updated = idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, ui#boxes) |> Option.map(comp -> (id, {borderWidth = width | comp})));
+        match updated {
+            case None             => ui
+            case Some((id, comp)) => {boxes = Map.insert(id, comp, ui#boxes) | ui}
+        }
+
     // ========================================================================
     // リロード台帳（sources）と可視の名前パス採取
     // ========================================================================

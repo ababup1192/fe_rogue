@@ -1,67 +1,40 @@
-/// MinimapScene — 探索済みマップ（ミニマップ）。M キーで全画面トグル。
+/// MinimapScene — 探索済みマップ（ミニマップ）。M キーで表示/非表示を切り替える。
 ///
 /// `FogScene`（霧）は「現在いる部屋だけを毎フレーム明るくする・非永続」だが、ミニマップは
 /// 逆に **一度でも訪れた部屋/通路(module)を覚え続ける**（探索が進むほど書き足される）。
 /// 訪問記憶（`Set[Int32]` の訪問 module idx）は World 権威で持つ（`World.visitedModulesOf`）。
-/// step が今フレーム分を `Cmd.AddVisited` で union し、フロア再構築時は `Cmd.ClearVisited` が一掃する。
+/// `step` が今フレーム分を `Cmd.AddVisited` で union し、フロア再構築時は `Cmd.ClearVisited` が一掃する。
 ///
-/// 表示は `FogScene` と同じ「固定 ColorRect プールを毎フレーム再配置」方式。部屋/通路の矩形と、
-/// プレイヤー・階段・アイテムのマーカーを、探索マップ全体が全画面ボックスに収まるよう一様
-/// スケールして描く。M を押すたびに表示/非表示が切り替わる（押しっぱなしの連続発火を防ぐため
-/// 前フレームのキー状態 `mPrev` でエッジ検出する。`CursorScene` の方向キー検出と同じ作法）。
+/// 見た目は scene ノードを持たず、`RenderWorld.renderMinimap` が World / Map から Drawable（部屋/床
+/// 矩形）とポリゴン（プレイヤー/階段/アイテム/敵のマーカー円）を直接組む。探索マップ全体が画面左下の
+/// 固定ボックスに収まるよう一様スケールして描く。表示トグル（`visible`）と押しっぱなし防止の前フレーム
+/// キー状態（`mPrev`）は `MinimapState` resource が持つ。M のエッジ検出は `CursorScene` の方向キー検出と
+/// 同じ作法。
 ///
-/// 表示機構（CanvasLayer / 後で SubViewport）から描画ロジックを切り離すため、プール子ノードは
-/// すべて `contentPath()` 配下に置き、配置関数は path 経由で更新する。SubViewport へ載せ替える
-/// 際は `add`（ツリー構築）と `contentPath` だけを差し替えれば `renderMinimap` は無改修で済む。
-///
-/// ノード構造:
-///   Minimap (CanvasLayer, scene.json)                ← 画面 layer。M で内容を出し入れ
-///     └─ MinimapContent (Marker2D, NoTag)            ← プール親（描画コンテナ）
-///          ├─ Room_0 .. Room_{N-1} (ColorRect)        ← 訪問済み部屋/通路の矩形プール
-///          ├─ Floor_0 .. Floor_{K-1} (ColorRect)      ← 歩ける床の黒くり抜きプール
-///          └─ Marker_0 .. Marker_{M-1} (Polygon2D の円) ← プレイヤー/階段/アイテム/敵の点プール
-///   World/MinimapDriver (Marker2D, MinimapDriver)     ← step で毎フレーム描画（M トグル状態を保持）
-
+/// このモジュールは訪問記憶の蓄積（`step`）と、描画に必要な純粋な幾何計算（矩形分割・スケール・マーカー
+/// 収集・Drawable 化）を担う。実効果つきの描画エントリは `RenderWorld.renderMinimap`。
 mod MinimapScene {
 
-    /// driver ノードが持つ純 UI ephemera（M トグルの表示状態と入力エッジ）。
-    /// 探索記憶（visited）は World 権威（`World.visitedModulesOf`）が持つ。
-    pub type alias DriverData = {
-        visible = Bool,        // M 全画面トグル状態
-        mPrev   = Bool         // M の前フレーム押下状態（エッジ検出用）
-    }
+    use Vec2.Vec2
 
     /// fitTransform が返す「grid → minimap ピクセル」のアフィン変換パラメータ。
     pub type alias Fit = { scale = Float64, ox = Float64, oy = Float64 }
 
-    def rootName(): String = "Minimap"
-    /// render-from-World が minimap サブツリー（ColorRect の room/floor ＋ Polygon2D のマーカー）を描く/隠す root。
-    pub def rootPath(): NodePath = rootName() :: Nil
-    def contentName(): String = "MinimapContent"
-    def contentPath(): NodePath = rootName() :: contentName() :: Nil
-    def driverName(): String = "MinimapDriver"
-    /// driver ノードの NodePath（`add` は World 直下に追加する）。
-    def driverPath(): NodePath = List.append(MapScene.worldPath(), driverName() :: Nil)
-    def fontName(): String = "ui"
-    def sceneJsonPath(): String = AssetPath.resolve("src/scenes/MinimapScene.scene.json")
+    /// `minimapDrawList` の入力。描画に必要なデータをすべて解決済みで束ねる（純粋・効果なし）。
+    ///   visited    : 訪問済み module idx（World 権威。今フレーム分も合成済み）。
+    ///   placements : フロアの全 module 配置。
+    ///   roomCount  : 部屋数（idx < roomCount が部屋・それ以外が通路）。
+    ///   snapshot   : 壁/床セル判定に使う地形スナップショット。
+    ///   markers    : 描画するマーカー（セル + 色）一覧。
+    pub type alias RenderInput = {
+        visited    = Set[Int32],
+        placements = List[DungeonComposer.ModulePlacement],
+        roomCount  = Int32,
+        snapshot   = MapSnapshot,
+        markers    = List[{cell = {x = Int32, y = Int32}, color = Color}]
+    }
 
-    def roomChildName(i: Int32): String = "Room_${i}"
-    def roomChildPath(i: Int32): NodePath = List.append(contentPath(), roomChildName(i) :: Nil)
-    /// 歩ける床（黒くり抜き）プール。壁プール（Room_i）と 1:1 対応。
-    def floorChildName(i: Int32): String = "Floor_${i}"
-    def floorChildPath(i: Int32): NodePath = List.append(contentPath(), floorChildName(i) :: Nil)
-    def markerChildName(i: Int32): String = "Marker_${i}"
-    def markerChildPath(i: Int32): NodePath = List.append(contentPath(), markerChildName(i) :: Nil)
-
-    /// 部屋/通路矩形プール。1 フロアの module 数（部屋数 + 通路数）に十分な固定数。
-    /// union 分割は module 数より矩形が増えうるので余裕を持たせる。
-    def roomPoolSize(): Int32 = 64
-    /// 歩ける床の黒くり抜きプール。床セルを行ごとの横ランで描くので部屋プールより多め。
-    def floorPoolSize(): Int32 = 384
-    /// マーカープール（プレイヤー≤3 + 階段1 + アイテム数 + 同室の敵）に十分な固定数。
-    def markerPoolSize(): Int32 = 40
-
-    /// 探索マップを収める「左下のボックス」（design 解像度 170×128 のピクセル座標、y は下向き）。
+    /// 探索マップを収める「左下のボックス」（design 解像度のピクセル座標、y は下向き）。
     /// シレン風に左下隅へ半透明で置く。背景枠は描かず、フロア/通路の矩形だけを描く（29×42 を 2 倍 ≈ 58×84）。
     /// x0=5 で画面左端から約 5px のマージンを空けて左下へ置く（横長キャンバスでの左寄せ）。
     pub def targetRect(): GridRect = ({x0 = 5, y0 = 38, x1 = 63, y1 = 122}: GridRect)
@@ -78,7 +51,7 @@ mod MinimapScene {
 
     /// マーカー（丸）の直径は「セル幅(scale)に比例」させ、隣接セルの円どうしが重ならないよう
     /// セル幅未満に保つ。同時に最大値 `markerMaxPx` で頭打ちにして大きくなりすぎないようにする。
-    /// （アイテム・キャラ等は矩形でなく丸 = engine の Polygon2D で表す。）
+    /// （アイテム・キャラ等は矩形でなく丸 = Polygon2D の 12 角形で表す。）
     def markerCellFraction(): Float64 = 0.85
     def markerMaxPx(): Float64 = 3.9
     /// セル幅 `scale` からマーカー直径（px）を求める。
@@ -86,11 +59,17 @@ mod MinimapScene {
         let d = markerCellFraction() * scale;
         if (d < markerMaxPx()) d else markerMaxPx()
 
-    /// zIndex（同一 CanvasLayer 内の描画順）。壁(下) < 歩ける床の黒(中) < マーカー(上)。
+    /// zIndex（描画順）。壁(下) < 歩ける床の黒(中) < マーカー(上)。
     /// 探索済みエリアを壁色ブロックで塗り、その上に黒で歩ける床を「くり抜く」2 層構成。
     def roomZIndex(): Int32 = 1     // 壁/構造（拡張した外枠ブロック）
     def floorZIndex(): Int32 = 2    // 歩ける床（黒。壁ブロックから碁盤目をくり抜く）
     def markerZIndex(): Int32 = 3
+
+    /// ミニマップは画面固定 HUD なので、in-world 配置物より手前に出す必要がある。旧経路は
+    /// CanvasLayer(layer=6)に載って `layer * layerStride` の実効 zIndex を得ていた。直描きでも
+    /// 各 z にこのオフセットを足して描画順を旧経路と一致させる。
+    def minimapLayer(): Int32 = 6
+    def minimapLayerOffset(): Int32 = minimapLayer() * CanvasLayer.layerStride()
 
     // 色（半透明で操作の邪魔にならないよう alpha を抑える）
     /// 壁/構造の色（歩ける床を囲む外枠ブロック）。
@@ -107,126 +86,111 @@ mod MinimapScene {
     def enemyColor(): Color = {r = 0.92f32, g = 0.25f32, b = 0.22f32}
     def markerAlpha(): Float32 = 0.85f32
 
-    /// 起動時から左下に表示（非侵襲な常設 HUD）。M で出し入れする。
-    def initialData(): DriverData =
-        {visible = true, mPrev = false}
-
     /// 訪問済み module idx を World 権威から返す。カーソルの移動可能範囲（既訪エリア）の
     /// 算出に CursorScene が使う。記憶の蓄積は step の `Cmd.AddVisited`、リセットは
     /// `Cmd.ClearVisited`（フロア再構築時）が担う。
     pub def visitedModules(): Set[Int32] \ World.WorldQuery =
         World.visitedModulesOf(World.WorldQuery.get())
 
-    /// CanvasLayer（scene.json）+ 描画コンテナ + 背景 + 矩形/マーカープール（初期非表示）+
-    /// 常駐 MinimapDriver を scene tree に追加する。`SceneSetup.buildPlayingScene` の末尾
-    /// （placements / 階段が確定した後）で 1 回だけ呼ぶ。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
-        let atlas = GameEngine.Game.getFontAtlas(fontName());
-        let withRoot =
-            SceneLoader.loadSceneWithFont(sceneJsonPath(), atlas,
-                SceneLoader.constTagParser(NodeTag.NoTag), scene);
-        let withContent =
-            Scene.addChild(rootName(), contentName(),
-                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.NoTag),
-                withRoot);
-        let withRooms =
-            List.foldLeft((acc, i) ->
-                Scene.addChildAt(contentPath(), roomChildName(i),
-                    EngineNode.ColorRectWithState(
-                        newPoolRect(moduleColor(), roomZIndex(), moduleAlpha()), NodeTag.NoTag),
-                    acc),
-                withContent, List.range(0, roomPoolSize()));
-        // 歩ける床の黒くり抜きプール（壁プールの上に重ねる。床セルを横ランで描くので多め）。
-        let withFloors =
-            List.foldLeft((acc, i) ->
-                Scene.addChildAt(contentPath(), floorChildName(i),
-                    EngineNode.ColorRectWithState(
-                        newPoolRect(floorColor(), floorZIndex(), floorAlpha()), NodeTag.NoTag),
-                    acc),
-                withRooms, List.range(0, floorPoolSize()));
-        let withMarkers =
-            List.foldLeft((acc, i) ->
-                Scene.addChildAt(contentPath(), markerChildName(i),
-                    EngineNode.Polygon2DWithState(newMarkerCircle(), NodeTag.NoTag),
-                    acc),
-                withFloors, List.range(0, markerPoolSize()));
-        Scene.addChild(MapScene.worldName(), driverName(),
-            EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()),
-                NodeTag.MinimapDriver(initialData())),
-            withMarkers)
-
-    def newPoolRect(color: Color, z: Int32, alpha: Float32): ColorRect =
-        ColorRect.make(Vec2.zero(), color)
-            |> ColorRect.setAlpha(alpha)
-            |> CanvasItem.setZIndex(z)
-            |> CanvasItem.setVisible(false)
-
-    /// マーカー用の丸 Polygon2D（原点中心・直径 1.0 の単位円、初期非表示）。
-    /// 実際の直径は setMarker で Node2D scale を掛けてセル幅に追従させる。色は modulate。
-    def newMarkerCircle(): Polygon2D =
-        Polygon2D.circle(0.5, playerColor())
-            |> Polygon2D.setAlpha(markerAlpha())
-            |> CanvasItem.setZIndex(markerZIndex())
-            |> CanvasItem.setVisible(false)
-
-    /// gameLoop がパイプライン段で 1 回呼ぶ frame-paced
-    /// System。訪問 module を蓄積し、M トグルを反映し、ミニマップを再描画する。
-    /// レベルアップ画面（`LevelUpView`）の間は M トグル状態を保ったまま強制的に隠す。
-    /// driver の DriverData は StairsExit と同型に `driverPath()` ノードの state で持ち、
-    /// `Scene.getState` で読み `writeData` で書き戻す（node 引数不要）。
+    /// gameLoop がパイプライン段で 1 回呼ぶ frame-paced System。今フレームに訪問した module を
+    /// World へ蓄積し、M キーのエッジで表示トグルを反転する。描画そのものは行わない（見た目は
+    /// `RenderWorld.renderMinimap` が同一フレームの状態を読んで直描きする）。
+    /// ダンジョン外（Map ノード不在＝タイトル/選択画面）では何もしない。
     pub def step(scene: Scene[NodeTag]):
                     Scene[NodeTag]
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
-                       PlayerData.PartyQuery, EnemyData.RosterQuery,
-                       World.WorldQuery, World.Command} =  // 味方/敵/階段/探索記憶の読み書きは World 経由
-        match Scene.getState(driverPath(), scene) {
-            case Some(NodeTag.MinimapDriver(data)) =>
+                       PlayerData.PartyQuery, World.Command, MinimapState.State} =
+        match Scene.getEngineNode(MapScene.mapPath(), scene) {
+            case None    => scene
+            case Some(_) =>
                 let phase = TurnPhase.State.get();
+                let data  = MinimapState.State.get();
                 let mDown = GameEngine.Game.isKeyPressed(GameEngine.Key.M);
-                // 敵ターン中は M を受け付けない（エネミーフェーズ中はミニマップを開けないようにする）。
-                // トグル自体を無視するので、敵ターン中に押しても敵ターン明けに開いたりしない。
+                // 敵ターン中は M を受け付けない（トグル自体を無視するので、押しても敵ターン明けに
+                // 開いたりしない）。
                 let acceptsToggle = phase != TurnPhase.Phase.EnemyTurn;
                 let visible2 =
                     if (mDown and not data#mPrev and acceptsToggle) not data#visible
                     else data#visible;
                 let placements = MapScene.getPlacements(scene);
                 let roomCount  = MapScene.getRoomCount(scene);
-                // 部屋の記憶（visited）と敵赤丸（litRooms）は fog と同じく origin 基準にする。
-                // 移動ドラフト中に新しく踏み込んだ部屋は確定（drafts クリア）まで地図に出さない。
+                // 部屋の記憶（visited）は fog と同じく origin 基準にする。移動ドラフト中に新しく踏み込んだ
+                // 部屋は確定（drafts クリア）まで地図に出さない。
                 let drafts = SelectedPlayer.State.get()#drafts;
                 let units  = PlayerData.PartyQuery.getAll()
                     |> List.map(d -> {id = d#id, gridPos = d#gridPos, hidden = d#hidden,
                                       origin = MoveDraft.originOf(d#id, drafts)
                                                |> Option.getWithDefault(d#gridPos)});
-                let frame    = visitedThisFrameDrafted(units, placements, roomCount);
-                let litRooms = litRoomsDrafted(units, placements, roomCount);
-                // 探索記憶は World 権威。今フレーム訪問分を World へ union し、描画用に手元でも合成する。
-                let visited2 = accumulate(World.visitedModulesOf(World.WorldQuery.get()), frame);
+                let frame  = visitedThisFrameDrafted(units, placements, roomCount);
+                // 探索記憶は World 権威。今フレーム訪問分を World へ union する（描画時に読み合わせる）。
                 World.Command.emit(World.Cmd.AddVisited(frame));
-                // stairsSeen は「階段 module が既訪か」を visited から導出する（単調＝一度見たら残る）。
-                let stairsSeen = stairsDiscovered(visited2, placements, scene);
-                let nextData = {visible = visible2, mPrev = mDown};
-                // レベルアップ画面・敵ターン中は隠す（M トグルの記憶 visible2 は維持）。
-                let hidden = phase == TurnPhase.Phase.LevelUpView
-                              or phase == TurnPhase.Phase.EnemyTurn;
-                let show = visible2 and not hidden;
-                renderMinimap(show, visited2, stairsSeen, litRooms, writeData(nextData, scene))
-            case _ => scene
+                MinimapState.State.put({visible = visible2, mPrev = mDown});
+                scene
         }
 
-    /// DriverData を driver ノードの state へ書き戻す（step の明示書き込み）。
-    def writeData(data: DriverData, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(driverPath(), node -> match node {
-            case EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(_)) =>
-                EngineNode.Marker2DWithState(m, NodeTag.MinimapDriver(data))
-            case other => other
-        }, scene)
+    // ════════════════════════════════════════════════════════
+    // 純粋な描画リスト生成（RenderWorld.renderMinimap が解決済みデータで呼ぶ）
+    // ════════════════════════════════════════════════════════
+
+    /// 解決済みの入力から、ミニマップの Drawable（部屋/床の矩形）と PolygonRenderCmd（マーカー円）を組む。
+    /// フレームは「フロア全体の bbox」基準にして、探索しても配置が動かないようにする。描画対象は
+    /// 「訪問済み module」＋「訪問済みに隣接する未訪問の通路（出口ヒント）」を union 分割して一体化する
+    /// （重なり部分を二重描画しない）。壁/構造を青のベタ塗り（module 床 bbox）、その上に歩ける床セルだけを
+    /// 黒くくり抜く。
+    pub def minimapDrawList(input: RenderInput):
+            {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]} =
+        let rawRects  = displayedModuleRects(input#visited, input#placements, input#roomCount);
+        // 縮尺は全フロア共通の固定値（`referenceScale`）。フロアの実寸に依らず一定。ただし参照より
+        // 大きい稀な巨大フロアは画面ボックスからはみ出さないよう、そのフロアの fit 倍率でクランプする。
+        let fitScale  = fitTransform(tightRegion(input#placements), targetRect())#scale;
+        let scale     = minF(referenceScale(), fitScale);
+        let t         = anchorBLWithScale(scale, boundsOf(rawRects), targetRect());
+        let disjoint  = unionBands(rawRects);
+        let floorRuns = floorRunsIn(disjoint, input#snapshot);
+        let roomDrawables  =
+            disjoint  |> List.map(r -> boxDrawableOf(mapRect(r, t), moduleColor(), roomZIndex(), moduleAlpha()));
+        let floorDrawables =
+            floorRuns |> List.map(r -> boxDrawableOf(mapRect(r, t), floorColor(), floorZIndex(), floorAlpha()));
+        let markerCmds =
+            input#markers |> List.map(marker -> markerCmdOf(marker#cell, marker#color, t));
+        {drawables = List.append(roomDrawables, floorDrawables), polygons = markerCmds}
+
+    /// minimap ピクセル矩形 → box Drawable（画面固定。camera 変換なし）。色は modulate、alpha は
+    /// レイヤ半透明、zIndex は旧 CanvasLayer 相当のオフセット込み。
+    def boxDrawableOf(pr: {pos = Vec2, size = Vec2}, color: Color, z: Int32, alpha: Float32):
+            GameEngine.Drawable =
+        let rect = ColorRect.make(pr#size, color) |> ColorRect.setAlpha(alpha);
+        let drawable = ColorRect.toDrawable(rect, pr#pos);
+        {zIndex = z + minimapLayerOffset() | drawable}
+
+    /// セル + 色 → マーカー円の PolygonRenderCmd（画面固定・原点中心の 12 角形）。直径はセル幅に比例。
+    def markerCmdOf(cell: {x = Int32, y = Int32}, color: Color, t: Fit): GameEngine.PolygonRenderCmd =
+        let c    = mapCell(cell, t);
+        let half = t#scale / 2.0;
+        // 円は原点中心なので位置はセル中心。直径はセル幅に比例（隣接円が重ならない）。
+        let pos: Vec2 = {x = c#x + half, y = c#y + half};
+        let d = markerDiameter(t#scale);
+        let poly = Polygon2D.circle(0.5, color)
+            |> Node2D.setScale({x = d, y = d})
+            |> Polygon2D.setAlpha(markerAlpha());
+        let cmd = Polygon2D.toRenderCmd(pos, {x = 1.0, y = 1.0}, poly);
+        {zIndex = markerZIndex() + minimapLayerOffset() | cmd}
+
+    // ════════════════════════════════════════════════════════
+    // 描画に必要なデータの解決（RenderWorld.renderMinimap が呼ぶ純粋/軽効果ヘルパー）
+    // ════════════════════════════════════════════════════════
+
+    /// 描画用の MapSnapshot（壁セル判定に使う）。BoardSnapshot.fromScene と同じ射影。
+    pub def mapSnapshot(scene: Scene[NodeTag]): MapSnapshot =
+        let layer     = MapScene.getMapLayer(scene);
+        let mapGlobal = Scene.globalPositionAt(MapScene.mapPath(), scene);
+        let placements = MapScene.getPlacements(scene);
+        MapScene.snapshotOf(layer, mapGlobal, placements)
 
     /// 階段が「発見済み」か。階段セルの属する module が訪問済みなら発見扱い。
     /// 階段位置は World.stairsPos から読む。
-    def stairsDiscovered(visited: Set[Int32],
-                          placements: List[DungeonComposer.ModulePlacement],
-                          _scene: Scene[NodeTag]): Bool \ World.WorldQuery =
+    pub def stairsDiscovered(visited: Set[Int32],
+                             placements: List[DungeonComposer.ModulePlacement]): Bool \ World.WorldQuery =
         match World.stairsPosOf(World.WorldQuery.get()) {
             case None       => false
             case Some(cell) =>
@@ -236,44 +200,64 @@ mod MinimapScene {
                 }
         }
 
-    /// ミニマップを描画する（純粋な Scene 変換）。`show=false` 時は全プールを隠す。
-    /// フレームは「フロア全体の bbox」基準にして、探索しても配置が動かないようにする。
-    /// 描画対象は「訪問済み module」＋「訪問済みに隣接する未訪問の通路（出口ヒント）」を
-    /// union 分割して一体化（重なり部分を二重描画しない）。
-    def renderMinimap(show: Bool, visited: Set[Int32], stairsSeen: Bool, litRooms: Set[Int32],
-                       scene: Scene[NodeTag]): Scene[NodeTag]
-                       \ {PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
-        if (not show)
-            hideAll(scene)
-        else {
-            let placements = MapScene.getPlacements(scene);
-            let roomCount  = MapScene.getRoomCount(scene);
-            let rawRects   = displayedModuleRects(visited, placements, roomCount);
-            // 縮尺は全フロア共通の固定値（`referenceScale`）。フロアの実寸に依らず一定。
-            // ただし参照より大きい稀な巨大フロアは画面ボックスからはみ出さないよう、その
-            // フロアの fit 倍率でクランプ（縮小）する。配置は探索済みコンテンツの bbox を
-            // 画面ボックスの左下に合わせる（左下の部屋を画面左下へ）。
-            let fitScale   = fitTransform(tightRegion(placements), targetRect())#scale;
-            let scale      = minF(referenceScale(), fitScale);
-            let t          = anchorBLWithScale(scale, boundsOf(rawRects), targetRect());
-            let disjoint   = unionBands(rawRects);
-            // 壁/構造を青のベタ塗り（モジュール床 bbox。内壁・柱もここに含まれて青く残る）、
-            // その上に「歩ける床セルだけ」を黒くくり抜く（壁セルは MapSnapshot で除外）。
-            let snapshot   = mapSnapshot(scene);
-            let floorRuns  = floorRunsIn(disjoint, snapshot);
-            let markers    = collectMarkers(visited, stairsSeen, placements, roomCount, litRooms, scene);
-            scene
-                |> drawRoomPool(disjoint, t)
-                |> drawFloorPool(floorRuns, t)
-                |> drawMarkerPool(markers, t)
+    /// 表示すべきマーカー（セル + 色）一覧。プレイヤー（非 hidden、リーダーは別色）+ 発見済み
+    /// 階段 + 訪問済み部屋内のアイテム + 点灯部屋に居る敵。ユニット位置は World 権威（scene の
+    /// `getAllWithWorldPos`）、階段/アイテムは World store から読む。
+    pub def collectMarkers(visited: Set[Int32], stairsSeen: Bool,
+                           placements: List[DungeonComposer.ModulePlacement],
+                           roomCount: Int32, litRooms: Set[Int32], scene: Scene[NodeTag]):
+                          List[{cell = {x = Int32, y = Int32}, color = Color}]
+                          \ World.WorldQuery =
+        let players =
+            PlayerScene.getAllWithWorldPos(scene)
+                |> List.filter(d -> not d#hidden)
+                |> List.map(d -> {cell = d#gridPos,
+                                  color = if (d#id == 0) leaderColor() else playerColor()});
+        // 階段位置は World.stairsPos から読む。
+        let stairsM =
+            if (stairsSeen)
+                match World.stairsPosOf(World.WorldQuery.get()) {
+                    case Some(cell) => {cell = cell, color = stairsColor()} :: Nil
+                    case None       => Nil
+                }
+            else Nil;
+        let itemsM =
+            // 床アイテム位置は World store から読む。
+            (World.groundItemsOf(World.WorldQuery.get()) |> Map.valuesOf |> List.map(d -> d#gridPos))
+                |> List.filter(cell -> inVisitedRoom(cell, placements, roomCount, visited))
+                |> List.map(cell -> {cell = cell, color = itemColor()});
+        // いま点灯している部屋(litRooms)に居る敵を赤丸で（アイテムより手前＝後ろに連結して上に描く）。
+        let enemiesM = enemiesSharingPlayerRoom(litRooms, placements, scene);
+        List.append(players, List.append(stairsM, List.append(itemsM, enemiesM)))
+
+    /// 「いま点灯している部屋に居る敵」マーカー（赤丸）。点灯部屋集合 `litRooms`（origin 基準で
+    /// 求めた room module）に居る生存敵（hp>0 かつ not isDying）を拾う。点灯している部屋＝霧で照らされ
+    /// 既に見えているので別途の可視判定は省く。移動中に踏み込んだだけの暗い新規部屋は litRooms に
+    /// 含まれないため、その敵は地図にも出ない（fog と一貫）。敵位置は World 権威。
+    def enemiesSharingPlayerRoom(litRooms: Set[Int32],
+                                 placements: List[DungeonComposer.ModulePlacement],
+                                 scene: Scene[NodeTag]):
+                                List[{cell = {x = Int32, y = Int32}, color = Color}]
+                                \ World.WorldQuery =
+        EnemyScene.getAllWithWorldPos(scene)
+            |> List.filter(e -> e#hp > 0 and not e#isDying)
+            |> List.filter(e -> match MapSnapshot.moduleOfCellIn(e#gridPos, placements) {
+                                    case Some(idx) => Set.memberOf(idx, litRooms)
+                                    case None      => false
+                                })
+            |> List.map(e -> {cell = e#gridPos, color = enemyColor()})
+
+    def inVisitedRoom(cell: {x = Int32, y = Int32},
+                       placements: List[DungeonComposer.ModulePlacement],
+                       roomCount: Int32, visited: Set[Int32]): Bool =
+        match MapSnapshot.moduleOfCellIn(cell, placements) {
+            case Some(idx) => idx < roomCount and Set.memberOf(idx, visited)
+            case None      => false
         }
 
-    /// 描画用の MapSnapshot（壁セル判定に使う）。BoardSnapshot.fromScene と同じ射影。
-    def mapSnapshot(scene: Scene[NodeTag]): MapSnapshot =
-        let layer     = MapScene.getMapLayer(scene);
-        let mapGlobal = Scene.globalPositionAt(MapScene.mapPath(), scene);
-        let placements = MapScene.getPlacements(scene);
-        MapScene.snapshotOf(layer, mapGlobal, placements)
+    // ════════════════════════════════════════════════════════
+    // 歩ける床の黒くり抜き（青ベタ塗りから床セルを横ランで抜く）
+    // ════════════════════════════════════════════════════════
 
     /// 青ベタ塗りバンド群の中から「歩ける床セル」だけを行ごとの横ラン（1 セル高の矩形）に
     /// まとめて返す。これを黒で重ね描きすると、壁セル（内壁・柱・外周）が青のまま残る。
@@ -306,154 +290,9 @@ mod MinimapScene {
     def closeRun(s: Int32, e: Int32, y: Int32): GridRect =
         ({x0 = s, y0 = y, x1 = e, y1 = y + 1}: GridRect)
 
-    /// 表示すべきマーカー（セル + 色）一覧。プレイヤー（非 hidden、リーダーは別色）+ 発見済み
-    /// 階段 + 訪問済み部屋内のアイテム。
-    def collectMarkers(visited: Set[Int32], stairsSeen: Bool,
-                        placements: List[DungeonComposer.ModulePlacement],
-                        roomCount: Int32, litRooms: Set[Int32], _scene: Scene[NodeTag]):
-                       List[{cell = {x = Int32, y = Int32}, color = Color}]
-                       \ {PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
-        let players =
-            PlayerData.PartyQuery.getAll()
-                |> List.filter(d -> not d#hidden)
-                |> List.map(d -> {cell = d#gridPos,
-                                  color = if (d#id == 0) leaderColor() else playerColor()});
-        // 階段位置は World.stairsPos から読む。
-        let stairsM =
-            if (stairsSeen)
-                match World.stairsPosOf(World.WorldQuery.get()) {
-                    case Some(cell) => {cell = cell, color = stairsColor()} :: Nil
-                    case None       => Nil
-                }
-            else Nil;
-        let itemsM =
-            // 床アイテム位置は World store から読む。
-            (World.groundItemsOf(World.WorldQuery.get()) |> Map.valuesOf |> List.map(d -> d#gridPos))
-                |> List.filter(cell -> inVisitedRoom(cell, placements, roomCount, visited))
-                |> List.map(cell -> {cell = cell, color = itemColor()});
-        // いま点灯している部屋(litRooms)に居る敵を赤丸で（アイテムより手前＝後ろに連結して上に描く）。
-        let enemiesM = enemiesSharingPlayerRoom(litRooms, placements);
-        List.append(players, List.append(stairsM, List.append(itemsM, enemiesM)))
-
-    /// 「いま点灯している部屋に居る敵」マーカー（赤丸）。点灯部屋集合 `litRooms`（origin 基準で
-    /// 求めた room module。`litRoomsDrafted` が算出）に居る生存敵（hp>0 かつ not isDying）を拾う。
-    /// 点灯している部屋＝霧で照らされ既に見えているので別途の可視判定は省く。移動中に踏み込んだ
-    /// だけの暗い新規部屋は litRooms に含まれないため、その敵は地図にも出ない（fog と一貫）。
-    def enemiesSharingPlayerRoom(litRooms: Set[Int32],
-                                  placements: List[DungeonComposer.ModulePlacement]):
-                                 List[{cell = {x = Int32, y = Int32}, color = Color}]
-                                 \ EnemyData.RosterQuery =
-        EnemyData.RosterQuery.getAll()
-            |> List.filter(e -> e#hp > 0 and not e#isDying)
-            |> List.filter(e -> match MapSnapshot.moduleOfCellIn(e#gridPos, placements) {
-                                    case Some(idx) => Set.memberOf(idx, litRooms)
-                                    case None      => false
-                                })
-            |> List.map(e -> {cell = e#gridPos, color = enemyColor()})
-
-    def inVisitedRoom(cell: {x = Int32, y = Int32},
-                       placements: List[DungeonComposer.ModulePlacement],
-                       roomCount: Int32, visited: Set[Int32]): Bool =
-        match MapSnapshot.moduleOfCellIn(cell, placements) {
-            case Some(idx) => idx < roomCount and Set.memberOf(idx, visited)
-            case None      => false
-        }
-
-    /// 互いに重ならない矩形群（部屋・通路を一体化した union 分割）を部屋プールに割り当てる。
-    /// 重なりが無いので半透明でも継ぎ目（重なり部分の濃い帯）が出ない。
-    def drawRoomPool(rects: List[GridRect], t: Fit, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let used = List.length(rects);
-        let withActive =
-            List.foldLeft((acc, entry) -> {
-                let (i, r) = entry;
-                if (i < roomPoolSize()) setRoomRect(i, r, t, acc) else acc
-            }, scene, List.zipWithIndex(rects));
-        List.foldLeft((acc, i) ->
-            if (i >= used) hideRoom(i, acc) else acc,
-            withActive, List.range(0, roomPoolSize()))
-
-    /// 壁/構造の青ベタ塗り（モジュール床 bbox。内壁・柱もここに含まれて青く残る）。
-    /// 歩ける床はこの上に黒で重ねてくり抜く（`drawFloorPool`）。
-    def setRoomRect(i: Int32, r: GridRect, t: Fit, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let pr = mapRect(r, t);
-        Scene.mapEngineNode(roomChildPath(i),
-            n -> EngineNode.mapColorRect(c ->
-                c |> ColorRect.setSize(pr#size)
-                  |> Node2D.setPosition(pr#pos)
-                  |> CanvasItem.setModulate(moduleColor())
-                  |> CanvasItem.setVisible(true), n),
-            scene)
-
-    def hideRoom(i: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(roomChildPath(i),
-            n -> EngineNode.mapColorRect(c -> CanvasItem.setVisible(false, c), n), scene)
-
-    /// 歩ける床ランを黒くり抜きプール（Floor_i）に割り当てる。先頭 used 個を配置、残りは非表示。
-    def drawFloorPool(runs: List[GridRect], t: Fit, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let used = List.length(runs);
-        let withActive =
-            List.foldLeft((acc, entry) -> {
-                let (i, r) = entry;
-                if (i < floorPoolSize()) setFloorRect(i, r, t, acc) else acc
-            }, scene, List.zipWithIndex(runs));
-        List.foldLeft((acc, i) ->
-            if (i >= used) hideFloor(i, acc) else acc,
-            withActive, List.range(0, floorPoolSize()))
-
-    def setFloorRect(i: Int32, r: GridRect, t: Fit, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let pr = mapRect(r, t);
-        Scene.mapEngineNode(floorChildPath(i),
-            n -> EngineNode.mapColorRect(c ->
-                c |> ColorRect.setSize(pr#size)
-                  |> Node2D.setPosition(pr#pos)
-                  |> CanvasItem.setModulate(floorColor())
-                  |> CanvasItem.setVisible(true), n),
-            scene)
-
-    def hideFloor(i: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(floorChildPath(i),
-            n -> EngineNode.mapColorRect(c -> CanvasItem.setVisible(false, c), n), scene)
-
-    /// マーカーをマーカープールに割り当てる（先頭 used 個を配置・表示、残りは非表示）。
-    def drawMarkerPool(markers: List[{cell = {x = Int32, y = Int32}, color = Color}],
-                        t: Fit, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let used = List.length(markers);
-        let withActive =
-            List.foldLeft((acc, entry) -> {
-                let (i, mk) = entry;
-                if (i < markerPoolSize()) setMarker(i, mk#cell, mk#color, t, acc) else acc
-            }, scene, List.zipWithIndex(markers));
-        List.foldLeft((acc, i) ->
-            if (i >= used) hideMarker(i, acc) else acc,
-            withActive, List.range(0, markerPoolSize()))
-
-    def setMarker(i: Int32, cell: {x = Int32, y = Int32}, color: Color, t: Fit,
-                   scene: Scene[NodeTag]): Scene[NodeTag] =
-        let c    = mapCell(cell, t);
-        let half = t#scale / 2.0;
-        // 円は原点中心なので位置はセル中心。直径はセル幅に比例（隣接円が重ならない）。
-        let pos: Vec2.Vec2 = {x = c#x + half, y = c#y + half};
-        let d = markerDiameter(t#scale);
-        Scene.mapEngineNode(markerChildPath(i),
-            n -> EngineNode.mapPolygon2D(p ->
-                p |> Node2D.setPosition(pos)
-                  |> Node2D.setScale({x = d, y = d})
-                  |> CanvasItem.setModulate(color)
-                  |> CanvasItem.setVisible(true), n),
-            scene)
-
-    def hideMarker(i: Int32, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(markerChildPath(i),
-            n -> EngineNode.mapPolygon2D(p -> CanvasItem.setVisible(false, p), n), scene)
-
-    /// M で閉じたとき・LevelUpView/EnemyTurn で強制非表示になったとき、
-    /// 前フレームのプール残骸が画面に残らないようすべての矩形とマーカーを消す。
-    def hideAll(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let withRooms =
-            List.foldLeft((acc, i) -> hideRoom(i, acc), scene, List.range(0, roomPoolSize()));
-        let withFloors =
-            List.foldLeft((acc, i) -> hideFloor(i, acc), withRooms, List.range(0, floorPoolSize()));
-        List.foldLeft((acc, i) -> hideMarker(i, acc), withFloors, List.range(0, markerPoolSize()))
+    // ════════════════════════════════════════════════════════
+    // 訪問記憶・スケール・座標変換（純粋関数。テストと描画が共有）
+    // ════════════════════════════════════════════════════════
 
     /// 今フレームに非 hidden ユニットが居る module idx の集合（module 外セルは無視）。
     /// 引数は開いた行多相なので `PlayerScene.Data`（gridPos/hidden を含む）をそのまま渡せる。
@@ -557,15 +396,15 @@ mod MinimapScene {
         {scale = scale, ox = ox, oy = oy}
 
     /// grid セル → minimap ピクセル（セル左上）。
-    pub def mapCell(cell: {x = Int32, y = Int32}, t: Fit): Vec2.Vec2 =
+    pub def mapCell(cell: {x = Int32, y = Int32}, t: Fit): Vec2 =
         {x = t#ox + Int32.toFloat64(cell#x) * t#scale,
          y = t#oy + Int32.toFloat64(cell#y) * t#scale}
 
     /// world-grid 矩形 → minimap ピクセル矩形（左上 pos + size）。
-    pub def mapRect(r: GridRect, t: Fit): {pos = Vec2.Vec2, size = Vec2.Vec2} =
+    pub def mapRect(r: GridRect, t: Fit): {pos = Vec2, size = Vec2} =
         let pos = mapCell(({x = r#x0, y = r#y0}: {x = Int32, y = Int32}), t);
-        let size: Vec2.Vec2 = {x = Int32.toFloat64(r#x1 - r#x0) * t#scale,
-                               y = Int32.toFloat64(r#y1 - r#y0) * t#scale};
+        let size: Vec2 = {x = Int32.toFloat64(r#x1 - r#x0) * t#scale,
+                          y = Int32.toFloat64(r#y1 - r#y0) * t#scale};
         {pos = pos, size = size}
 
     /// 訪問済み module → 描画すべき矩形リスト（idx < roomCount を部屋、それ以外を通路と判定）。
