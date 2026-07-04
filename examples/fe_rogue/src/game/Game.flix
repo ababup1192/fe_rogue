@@ -243,14 +243,6 @@ def onPlayingKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
             }
         }
 
-/// MenuHandler instance — engine の ItemList メニュー確定/取消を受ける口。
-/// 全メニュー（ActionMenu / WeaponSelect / ItemMenu / TradeMenu / SuspendConfirm）は World-entity
-/// UI へ移行済みで、確定・取消は `dispatchMenuKey` のフェーズ分岐が直接扱う。engine ItemList 由来の
-/// MenuEvent を受けるノードはもう存在しないため、trait の既定実装（scene 素通し）に委ねる。
-instance MenuEvent.MenuHandler[NodeTag] {
-    type Aef = {}
-}
-
 // ────────────────────────────────────────────────────────
 // StaffAim フェーズ用ヘルパー（方向キー → applyStaffCast、X/Esc → メニューに戻る）
 // ────────────────────────────────────────────────────────
@@ -473,8 +465,8 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                                               => checked_ecast(throwAimConfirm(scene))
         case (TurnPhase.Phase.ThrowAim,       None)
                                               => checked_ecast(staffAimDirection(key, scene))
-        // TradeInventory 中の ←/→ は左右ペイン切替へ (↑↓ は handleMenus 側で
-        // ItemList のカーソル移動に使われるので素通り)
+        // TradeInventory 中は ←/→ と ↑↓ の両方を tradeInventoryDirection に渡す
+        // (←/→ は左右ペイン切替、↑↓ は focus ペインの選択カーソル移動)。
         case (TurnPhase.Phase.TradeInventory, None)
                                               => checked_ecast(tradeInventoryDirection(key, scene))
         // ItemSelect 中の方向キー: ↑↓ はアイテムカーソル移動、←→ はカテゴリ切替（World-entity UI）。
@@ -489,18 +481,18 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
                                               => BattlePanelUi.confirm(scene)
         case (TurnPhase.Phase.PlayerAttack,   Some(TurnRules.Input.Cancel))
                                               => checked_ecast(BattlePanelUi.cancel(scene))
-        // ActionMenu の ↑↓（W/S）で選択カーソルを動かす（World-entity UI 化に伴い旧 ItemList +
-        // handleMenus の置換。disabled 項目はスキップする）。
+        // ActionMenu の ↑↓（W/S）で選択カーソルを動かす（World-entity UI。
+        // disabled 項目はスキップする）。
         case (TurnPhase.Phase.ActionSelect,   None)
                                               => checked_ecast(actionMenuDirection(key, scene))
-        // 中断確認の ↑↓（W/S）で選択カーソルを動かす（旧 ItemList + handleMenus の置換）。
+        // 中断確認の ↑↓（W/S）で選択カーソルを動かす（World-entity UI）。
         case (TurnPhase.Phase.SuspendConfirm, None)
                                               => suspendConfirmDirection(key, scene)
         // 武器選択ウィンドウの ↑↓（W/S）で武器カーソルを動かす（disabled はスキップ。
         // ←→ の対象敵サイクルは CursorScene.physicsProcess が別途 polling する）。
         case (TurnPhase.Phase.WeaponSelect,   None)
                                               => checked_ecast(weaponSelectDirection(key, scene))
-        // 全滅モーダルの ↑↓（W/S）で選択カーソルを動かす（旧 ItemList + handleMenus の置換）。
+        // 全滅モーダルの ↑↓（W/S）で選択カーソルを動かす（World-entity UI）。
         case (TurnPhase.Phase.GameOver,       None)
                                               => gameOverDirection(key, scene)
         // 明示 case が無いフェーズの Z/X は TurnRules.decide にそのまま渡す
@@ -575,7 +567,7 @@ def tradeInventoryDirection(key: GameEngine.Key, scene: Scene[NodeTag]): Scene[N
 
 /// ItemSelect 中の方向キーを変換する。Up/Down/W/S → アイテムカーソル移動（窓スクロール）、
 /// Left/A → 前カテゴリ、Right/D → 次カテゴリ（武器/消費/杖/指輪。空はスキップ）。
-/// カーソル移動もカテゴリ切替も World-entity UI 化（旧 ItemList + handleMenus の置換）。
+/// カーソル移動もカテゴリ切替も World-entity UI で完結する。
 def itemSelectDirection(key: GameEngine.Key, scene: Scene[NodeTag]):
         Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ItemMenuState.State,
                           PlayerData.PartyQuery, UiWorldState.State} =
@@ -937,7 +929,7 @@ mod Game {
         }
 
     /// メインループ。phase で分岐せず、**固定パイプライン** を毎フレーム回す:
-    ///   handleInput → handleMenus → physicsProcess → Tween → Animation → process → epilogue
+    ///   handleInput → physicsProcess → Tween → Animation → process → epilogue
     /// 各 process / input redef 内で「自分が今動くべきか」を phase で判断する (Godot 流)。
     /// 例: `EnemyTurnDriver.process` は phase=EnemyTurn / PlayerAttackHold で動作、
     ///     `PlayerMovementDriver.gatherStep` は phase=GatherMove で主人公(id 0)を動かす。
@@ -985,7 +977,6 @@ mod Game {
             Pacing.State.tick(dt);
             let updated = scene
                 |> GameEngine.handleInput
-                |> GameEngine.handleMenus
                 |> GameEngine.physicsProcess(delta = dt, paused = false,
                                               gravity = Vec2.zero())
                 |> Tween.tickAll(dt)

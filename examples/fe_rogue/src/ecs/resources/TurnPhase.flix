@@ -277,8 +277,8 @@ mod TurnRules {
                 Transition.Stay
             case (TurnPhase.Phase.AttackForecast, _) =>
                 Transition.Stay
-            // TradeInventory は MenuHandler が ItemList の Enter/Escape を直接処理する
-            // ため、TurnRules 経由では遷移しない (キー押下は handleMenus パスに乗る)。
+            // TradeInventory は dispatchMenuKey が TradeMenuUi.confirmCurrentSelection /
+            // cancelCurrent で Enter/Escape を直接処理するため、TurnRules 経由では遷移しない。
             case (TurnPhase.Phase.TradeInventory, _) =>
                 Transition.Stay
             case (TurnPhase.Phase.PlayerMoving, Input.Cancel) =>
