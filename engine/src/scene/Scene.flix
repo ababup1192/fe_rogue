@@ -185,7 +185,7 @@ pub mod Scene {
             entryChildren(entry));
         myPath :: childPaths
 
-    /// SceneEntry から **描画順** でパスリストを返す（Godot Y-sort 準拠）
+    /// SceneEntry から **描画順** でパスリストを返す（Y 昇順ソート）
     ///
     /// 各ノードについて、`CanvasItem.isYSortEnabled = true` なら直接の子を
     /// `globalPositionAt(...).y` 昇順で並べ替える。`List.sortBy` が安定でないため
@@ -384,8 +384,8 @@ pub mod Scene {
                     cleaned)
         }
 
-    /// パスで削除し、NodeRemovedHandler.onNodeRemoved を発火する
-    /// godot の `tree_exited` シグナル相当
+    /// パスでノードを削除し、NodeRemovedHandler.onNodeRemoved を発火する。
+    /// ツリーから外れた瞬間に、そのノードの後片付けを一度だけ通知したいときに使う。
     pub def removeAtAndNotify(path: NodePath, scene: Scene[s]):
             Scene[s] \ NodeRemovedHandler.Aef[s] with NodeRemovedHandler[s] =
         match getState(path, scene) {
@@ -458,7 +458,7 @@ pub mod Scene {
             Nil,
             roots(scene))
 
-    /// 全ノードのパスを **描画順** で返す（Godot Y-sort 準拠）。
+    /// 全ノードのパスを **描画順** で返す（Y 昇順ソート）。
     /// y_sort_enabled 親の直下の子は global_y 昇順、それ以外は preorder と同じ。
     /// `toDrawables` 専用 — 論理処理は preorderPaths を使う
     pub def renderOrderPaths(scene: Scene[s]): List[NodePath] =
@@ -592,11 +592,10 @@ pub mod Scene {
             Ref.get(sceneRef)
         }
 
-    /// 未 ready のノードだけ ready を呼び、readiedPaths に追加する（Godot add_child 準拠）
+    /// 未 ready のノードだけ ready を呼び、readiedPaths に追加する。
     ///
-    /// Godot では add_child() 時に _ready() が発火する。
-    /// 本エンジンでは processAll の冒頭で毎フレームチェックし、
-    /// 動的に追加されたノードにも ready を呼ぶことで同等の挙動を実現する。
+    /// ノードはツリーに加わった時点で一度だけ ready が発火する。
+    /// processAll の冒頭で毎フレームチェックし、動的に追加されたノードにも ready を呼ぶ。
     def readyNew(scene: Scene[s]): Scene[s] \ Node.Aef[s] with Node[s] =
         foldNodes((engineNode, path, sc) ->
             let Scene.Scene(r) = sc;
@@ -638,7 +637,7 @@ pub mod Scene {
 
     /// シーン内の有効な Camera2D を探し、Camera 本体と **そのワールド座標** を返す。
     /// global 座標は階層を辿って計算するため、Camera が他ノードの子になっていても
-    /// 正しい追従位置が得られる（Godot の Camera2D 親追従と同等）。
+    /// 正しい追従位置が得られる（Camera が親ノードに追従する）。
     pub def findActiveCamera(scene: Scene[s]): Option[(Camera2D, Vec2.Vec2)] =
         preorderPaths(scene)
             |> List.findMap(path ->
@@ -652,7 +651,7 @@ pub mod Scene {
             )
 
     // ========================================================================
-    // DrawContext — 親子プロパティ伝播（Godot CanvasItem 準拠）
+    // DrawContext — 親子プロパティ伝播
     // ========================================================================
 
     /// 2つの Color を成分ごとに乗算する（modulate 伝播用）

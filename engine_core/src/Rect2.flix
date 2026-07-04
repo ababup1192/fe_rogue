@@ -1,5 +1,6 @@
-/// Rect2 — 2D 矩形（Godot Rect2 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_rect2.html
+/// Rect2 — 2D の矩形を「左上の座標」と「幅・高さ」で表し、当たり・包含・膨張などを計算する。
+/// 矩形の交差や内外判定を毎回書き下さずに済むので、UI の領域やクリック判定を素直に扱える。
+/// 利用例: ボタンの当たり範囲を決める / 点が枠の中か調べる / 枠を少し広げて余白を作る。
 ///
 /// position は左上座標、size は幅と高さを表す。
 ///
@@ -52,9 +53,7 @@ mod Rect2 {
     // サイズ変更
     // ========================================================================
 
-    /// 全方向に amount 分だけ拡張した矩形を返す。
-    /// 負の値を渡すと縮小（パディング）になる。
-    /// see: https://docs.godotengine.org/ja/4.x/classes/class_rect2.html#class-rect2-method-grow
+    /// 全方向に amount 分だけ広げた矩形を返す。負の値なら縮む（内側の余白）。
     pub def grow(amount: Float64, rect: Rect2): Rect2 =
         {position = {x = rect#position#x - amount,
                      y = rect#position#y - amount},

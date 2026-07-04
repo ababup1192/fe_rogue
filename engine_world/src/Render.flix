@@ -1,10 +1,7 @@
-// Render — ノードでない render component と Drawable への extract 射影
-//
-// Bevy の bevy_sprite プラグイン相当。ゲームは RenderItem（高レベルデータ）を埋めるだけで、
-// 低レベルの GameEngine.Drawable（11 フィールド）構築は lib のこのモジュールに閉じる。
-// RenderItem は Sprite2D のフィールド設計を再利用するが、ノード機構（EngineNode/Scene/
-// ライフサイクル/子）は持たない（＝scene-tree を戻さない）。位置は外（ECS positions / HUD pos）から渡す。
-// Text は engine の public 純粋射影 Label2D.toDrawables を再利用。
+// Render — 「何をどう見せたいか」だけ書いた RenderItem を、描画部が食べられる形に変換する。
+// スプライトやテキストを出すのに、描画命令の細かいフィールドを毎回手で埋めなくてよい。
+// 利用例: 弾や敵を絵として並べる / HUD の数字やラベルを出す / 位置は ECS 側から渡して見た目だけ指定する。
+// 注意: 置き場所（位置）は持たず呼び側が渡す。テキストの実寸計算は engine の純粋関数を使う。
 
 mod Render {
 
@@ -73,19 +70,27 @@ mod Render {
                 boxDrawable(b#size, b#color, b#alpha, b#style, b#zIndex, pos) :: Nil
         }
 
-    /// B0b: region atlas 対応の effectful 射影。textureSize を Game registry から引いて UV を計算する
+    /// B0b: region atlas 対応の射影。textureSize を引いて UV を計算する
     /// （Sprite2D.computeUv 相当の正規化: uvOffset = regionPos/texSize, uvScale = regionSize/texSize）。
     /// 非 region スプライト・text・box は pure 経路と同一。fe_rogue 等の atlas 主体ゲームの render-from-World に必要。
-    /// ⚠ region は textureSize 参照ゆえ extract が `\ GameEngine.Game` 化する（dodge の pure renderWorld と非互換＝B のコスト）。
-    pub def drawAtlas(items: List[(Vec2.Vec2, RenderItem)]): List[GameEngine.Drawable] \ GameEngine.Game =
-        List.flatMap(pair -> let (pos, item) = pair; toDrawablesAtlas(item, pos), items)
+    /// テクスチャ寸法の引き方は `textureInfoOf` で注入する。ゲーム実行時は Game registry 版を渡し、
+    /// 画面なしのテストやプレビューでは `_ -> None` などの純粋関数を渡せる（region を使わなければ結果は同じ）。
+    pub def drawAtlasWith(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
+                          items: List[(Vec2.Vec2, RenderItem)]): List[GameEngine.Drawable] \ ef =
+        List.flatMap(pair -> let (pos, item) = pair; toDrawablesAtlas(textureInfoOf, item, pos), items)
 
-    def toDrawablesAtlas(item: RenderItem, pos: Vec2.Vec2): List[GameEngine.Drawable] \ GameEngine.Game =
+    /// `drawAtlasWith` の Game registry 版（`GameEngine.Game.getTextureInfo` で寸法を引く）。
+    /// region スプライトを含む本番描画の既定口。
+    pub def drawAtlas(items: List[(Vec2.Vec2, RenderItem)]): List[GameEngine.Drawable] \ GameEngine.Game =
+        drawAtlasWith(name -> GameEngine.Game.getTextureInfo(name), items)
+
+    def toDrawablesAtlas(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
+                         item: RenderItem, pos: Vec2.Vec2): List[GameEngine.Drawable] \ ef =
         match item {
             case RenderItem.Sprite(s) =>
                 let (uvOff, uvScl) = match s#regionRect {
                     case None       => ({x = 0.0, y = 0.0}, {x = 1.0, y = 1.0})
-                    case Some(rect) => match GameEngine.Game.getTextureInfo(s#texture) {
+                    case Some(rect) => match textureInfoOf(s#texture) {
                         case Some(ti) => ({x = rect#position#x / ti#width, y = rect#position#y / ti#height},
                                           {x = rect#size#x / ti#width, y = rect#size#y / ti#height})
                         case None     => ({x = 0.0, y = 0.0}, {x = 1.0, y = 1.0})

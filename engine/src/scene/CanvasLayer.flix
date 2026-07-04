@@ -1,10 +1,9 @@
-/// キャンバスレイヤーノード（Godot CanvasLayer 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_canvaslayer.html
+/// 子ノードを、メインシーンの座標系から切り離した独立の描画レイヤーに置くノード。
+/// カメラのスクロールや親の移動に影響されない面を作れるので、HUD やメニュー・背景を
+/// ワールドと分けて重ねられる。
+/// 利用例: 常に画面に貼り付く HUD / 全画面を覆う暗転オーバーレイ。
 ///
-/// 子ノードを独立した描画レイヤーに配置するノード。
-/// HUD・メニュー・背景など、メインシーンの座標系から独立した描画に使う。
-///
-/// Godot 準拠の挙動:
+/// 挙動:
 ///   - 親の座標チェーンを断ち切り、offset をスクリーン座標の基点とする
 ///   - layer 値でレイヤー間の描画順を制御する（大きいほど前面）
 ///   - visible=false で子ノードを一括非表示にする
@@ -34,7 +33,7 @@ mod CanvasLayer {
     pub def layerStride(): Int32 = 10000
 
     /// デフォルト値で CanvasLayer を生成する
-    /// Godot 準拠で layer のデフォルトは 1
+    /// layer の既定値は 1
     pub def make(dl: Int32): CanvasLayer =
         CanvasLayer.CanvasLayer({
             drawLayer = dl,

@@ -1,8 +1,6 @@
-/// 2D マーカーノード（Godot Marker2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_marker2d.html
-///
-/// 位置だけを保持するシンプルなノード。
-/// スポーン地点・ターゲット位置などの参照点として使う。
+/// Marker2D — 位置だけを保持する、それ自身は描画されないノード。
+/// 「ここが基準点」という座標に名前を付けて置けるので、生成位置や狙う先を一箇所で参照できる。
+/// 利用例: 敵のスポーン地点、弾の発射位置、カメラの注視点。
 ///
 ///   Marker2D
 ///     +-- CanvasItem: visible, zIndex, modulate
@@ -16,14 +14,14 @@ pub enum Marker2D {
         visible = Bool,
         zIndex = Int32,
         modulate = Color,
-        ySortEnabled = Bool       // CanvasItem: 子を global_y で並べる（Godot 準拠）
+        ySortEnabled = Bool       // CanvasItem: 子を global_y で並べる
     })
 }
 
 mod Marker2D {
-    /// デフォルト値で Marker2D を生成する
-    /// visible=true は Godot 準拠。Marker2D 自身は描画されないが、子ノードの可視性伝播
-    /// （`drawContextWalk` の AND）で false にすると子も描画されないため
+    /// デフォルト値で Marker2D を生成する。
+    /// visible の既定は true。Marker2D 自身は描画されないが、可視性は子へ伝播する
+    /// （`drawContextWalk` の AND）ため、false にすると子ノードごと描画されなくなる。
     pub def make(position: Vec2.Vec2): Marker2D =
         Marker2D.Marker2D({
             position = position,

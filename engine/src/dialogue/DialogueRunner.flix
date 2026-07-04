@@ -1,24 +1,13 @@
-/// `Dialog` effect の実装。VM を駆動して、Waiting* に到達したら
-/// `DialogueView` の対応する操作を呼ぶ。
-///
-/// 内部状態は呼び出し元から渡された region に閉じる：
-///   - `vmRef`         現在の VM（Option：未開始は None）
-///   - `variables`     全 session が共有する変数ストレージ。Session.start で VM を
-///                     作り直しても storage の identity は保たれ、`$flag_*`,
-///                     `$Yarn.Internal.Visiting.*`, ユーザ定義 `$var` がそのまま
-///                     残る。明示的にリセットしたい場合 (タイトル → 最初から、
-///                     セーブのロード) は `Session.restart(node, Map.empty())` を
-///                     呼ぶと initialValues に戻る。
-///
-/// 1 つの `submit*` 呼び出しは「VM に状態変化を流し込み、次の Waiting* / 完了
-/// まで step を回す」を担う。
-///
-/// `withRunner` はゲームロジック（`Dialog` を `do` する側）から見ると Dialog を
-/// 提供する handler。プレゼンター（`DialogueView`）は上流で別途 handler を積む。
-///
-/// `commandsAreSynchronous` で `<<command>>` を即完了させるか外部完了通知を待つかを
-/// 切替える。本番（gameLoop で CommandInbox を処理する）は `false`。テスト
-/// （直接 Runner を駆動する）は `true`。
+/// `Dialogue.Session` effect の実装。VM を駆動し、行・選択肢・コマンドの待機に
+/// 達したら `DialogueView` の対応する操作を呼ぶ。`submit*` 1 回が「VM に入力を
+/// 流し込み、次の待機／完了まで step を回す」を担う。
+/// これで対話の進行制御を 1 箇所に閉じ込め、ゲームロジックは `Session` を呼ぶだけ、
+/// 表示は `DialogueView` を上流で積むだけで済む。内部状態（VM・変数）は region に閉じる。
+/// 利用例: `withRunner(rc, project, syncCommands, () -> ... Session.start(...) ...)`。
+/// 注意: `variables` は全 session 共有で、`Session.start` で VM を作り直しても
+///       `$flag_*` などは残る。initialValues に戻すには `Session.restart` を使う。
+/// 注意: `syncCommands = true` は `<<command>>` を即完了扱い（テスト用）。本番は
+///       `false` で、完了通知は外部ルータの `submitCommandDone` から返る。
 mod Dialogue.Runner {
     use Yarn.Types.YarnProject
     use Yarn.Types.Value

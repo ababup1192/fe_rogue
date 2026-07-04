@@ -1,7 +1,6 @@
-// ExportedProperty — Godot @export 相当のプロパティ宣言・読み取り基盤
-//
-// Scene 側のコードで Property[a] を宣言し、scene.json の "properties" セクションに
-// 値を書ける。「コード = default の真実 / JSON = 差分」の二層モデル。
+// ExportedProperty — Scene のコードで既定値を宣言し、scene.json 側でその値を上書きできるようにする。
+// コードが既定値の真実、JSON はそこからの差分だけを持つので、数値の微調整でコードを触らずに済む。
+// 利用例: 弾の速度や敵の HP を scene.json で調整する。
 //
 // 使い方:
 //   pub def birdSpeed(): Property[Float64] = Export.float("speed", 144.0)
@@ -110,7 +109,7 @@ mod ExportedProperty {
 /// Scene 側コードからは Export.float / Export.read / Export.toDecl の 3 つを使う
 mod Export {
 
-    /// Float64 プロパティを宣言する。GDScript の `@export var foo: float = 1.0` に相当
+    /// Float64 プロパティを宣言する
     pub def float(key: String, default: Float64): Property[Float64] =
         {key = key, default = default, kind = PropertyKind.KFloat}
 

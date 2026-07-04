@@ -1,17 +1,13 @@
-/// Godot Resource 風の汎用「データ + UI ヒント」抽象。
-///
-/// 各ゲームは独自のデータ型（例: `UnitCatalog`）を持ち、その値は JSON で永続化される。
-/// 加えて IDE が編集 UI を組み立てるための `_schema.json` をサイドカーとして配置する。
-/// このモジュールは schema 側の規格と最小限のロード/検査ヘルパだけを提供する。
-///
-/// 設計方針:
-///   - schema は **どんなフィールドが存在し、どう編集すべきか** だけを記述する
-///     （catalog / single など「ファイル全体の形」は data の構造で示し、schema には含めない）
-///   - schema は `Saveable` 経由で round-trip 可能 → IDE で編集 → ファイルに書き戻し可能
-///   - Flix 型 ↔ schema の同期はゲーム側責任。`checkConsistency` で起動時に検査する
-///
-/// 別ジャンルの Resource を追加するときは `_schema.json` をこの規格で書き、
-/// 自前の data 型に `instance Saveable[T]` を実装するだけで engine の機構に乗る。
+// Resource — ゲーム独自のデータ型に、「どんなフィールドがあり、どう編集するか」という
+// 編集 UI の規格（schema）を与える。データ本体は JSON で保存し、その隣に `_schema.json` を置く。
+// これで IDE はデータの中身を知らなくても、各フィールドに合った入力欄を出せる。
+// 利用例: ユニット表を IDE で編集する / 数値にスライダーを出す / 参照フィールドを選択肢にする。
+// 注意: Flix 型と schema の一致はゲーム側の責任で、`checkConsistency` が起動時にズレを検出する。
+//
+// schema はどんなフィールドが存在しどう編集すべきかだけを記述し、ファイル全体の形（catalog / single 等）は
+// data 側の構造で示す。schema は `Saveable` 経由で往復でき、IDE で編集してファイルに書き戻せる。
+// 別ジャンルの Resource を足すときは、この規格で `_schema.json` を書き、data 型に
+// `instance Saveable[T]` を実装すればエンジンの機構に乗る。
 mod Resource {
     use Util.Json.Json
     use Util.Json.Json.{JObject, JString, JNumber, JBool, JArray, JNull}
@@ -48,10 +44,10 @@ mod Resource {
         case RefT(String)      // 別 catalog (containerKey = target) の sub-entry id
         case RefPercentListT(String)  // [{id: ref, percent: 0-100}] の動的長配列
         case KindedRefListT(List[KindSpec])  // [{kind, id}] の動的長配列。複数 catalog から ref を選ぶ
-        case EnumT(List[String])      // 有限の文字列選択肢（Godot @export_enum 相当）。
+        case EnumT(List[String])      // 有限の文字列選択肢。
                                        // IDE は 2 値なら ToggleGroup、3 値以上なら ComboBox を出す。
                                        // schema JSON では `{"type": "enum", "values": ["A", "B"]}` で表す。
-        case SpriteFramesT     // Godot SpriteFrames リソース (Map[anim_name, Animation])。
+        case SpriteFramesT     // スプライトのアニメ集合 (Map[anim_name, Animation])。
                                 // IDE は アニメ選択 + region (pos/size) spinner + アトラスプレビューの
                                 // 専用 widget を出して spriteFrames の region 編集を視覚化する。
                                 // schema JSON では `"spriteFrames"` 文字列で表す。
@@ -75,8 +71,7 @@ mod Resource {
     /// 1 フィールドぶんの完全記述。
     /// `order` は IDE での表示順を明示するための補助フィールド（小さい値が先頭）。
     /// 指定なし（`None`）なら IDE 側のデフォルト並び（priority + alphabetical）が使われる。
-    /// Godot の @export_group / @export_subgroup と同じく、デザイナの意図する自然な並びを
-    /// schema 側で宣言できるようにするための拡張。
+    /// デザイナの意図する自然な並びを schema 側で宣言できるようにするための拡張。
     pub type alias FieldSchema = {
         ftype = FieldType,
         hint  = FieldHint,

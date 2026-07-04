@@ -1,4 +1,4 @@
-/// タイマータイムアウトイベントの検出と応答（Godot Timer.timeout シグナル準拠）
+/// タイマー満了イベントの検出と応答 — Timer が 0 になった瞬間に処理を呼ぶ。
 ///
 /// AreaEvent / AreaHandler パターンに倣い、TimerHandler トレイトで
 /// タイムアウト時のイベント駆動を実現する。

@@ -1,11 +1,10 @@
-// LwjglLayer — GLFW ウィンドウ + 入力 polling + GameEngine.Game/Audio effect handler。
-//
-// GL / OpenAL / シェーダ / テクスチャ / フォントベイク / フレーム描画 / 音声デコードは
-// `render_core` パッケージ (RenderCore.*) に分離済み。このファイルは GLFW 外周だけを残し、
-// 各 effect メソッドの本体で RenderCore.* の関数を呼び出す。
-//
-// withLwjgl のシグネチャは公開 API として固定: ゲーム側 (examples/* の Main.flix) を
-// 変更せずに済むよう、第 1 引数 EngineConfig と戻り値の effect 制約は保持する。
+// LwjglLayer — ウィンドウ表示・入力の読み取り・音の再生を実機で受け持ち、GameEngine.Game / Audio の
+// effect ハンドラを提供する。ゲーム側はこの窓口越しに描画や入力を頼むだけで、GL や OpenAL の
+// 細部を知らずに済む。
+// 利用例: `withLwjgl(config, ...)` でウィンドウを開き、ゲームループを回す。
+// 注意: GL / OpenAL / シェーダ / テクスチャ / フォントベイク / フレーム描画 / 音声デコードは
+//   `render_core` (RenderCore.*) 側にあり、このファイルは GLFW 外周だけを持って各 effect の本体から呼ぶ。
+//   `withLwjgl` の第1引数 EngineConfig と戻り値の effect 制約は公開 API として固定（ゲーム側を変えずに済む）。
 
 mod LwjglLayer {
     import org.lwjgl.glfw.GLFW
@@ -271,9 +270,12 @@ mod LwjglLayer {
         discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
             def invoke(_this: GLFWFramebufferSizeCallbackI, cbWindow: Int64, width: Int32, height: Int32): Unit \ IO = {
                 let (sprites, tileMaps, polygons) = Array.get(0, renderStateHolder);
-                RenderFrame.renderFrameMixed(spriteShader, tileShader, vao, registry,
-                                 config#clearColor, screenW, screenH,
-                                 width, height, sprites, tileMaps, polygons, polyVao, polyVbo);
+                RenderFrame.renderFrameMixed({
+                    spriteShader = spriteShader, tileShader = tileShader, vao = vao,
+                    registry = registry, clearColor = config#clearColor,
+                    designW = screenW, designH = screenH, fbW = width, fbH = height,
+                    sprites = sprites, tileMaps = tileMaps, polygons = polygons,
+                    polyVao = polyVao, polyVbo = polyVbo});
                 GLFW.glfwSwapBuffers(cbWindow)
             }
         });
@@ -321,9 +323,12 @@ mod LwjglLayer {
                 let fbW = wBuf.get(0);
                 let fbH = hBuf.get(0);
                 discard MemoryStack.stackPop();
-                RenderFrame.renderFrameMixed(spriteShader, tileShader, vao, registry,
-                                 config#clearColor, screenW, screenH, fbW, fbH,
-                                 sprites, tileMaps, polygons, polyVao, polyVbo);
+                RenderFrame.renderFrameMixed({
+                    spriteShader = spriteShader, tileShader = tileShader, vao = vao,
+                    registry = registry, clearColor = config#clearColor,
+                    designW = screenW, designH = screenH, fbW = fbW, fbH = fbH,
+                    sprites = sprites, tileMaps = tileMaps, polygons = polygons,
+                    polyVao = polyVao, polyVbo = polyVbo});
                 GLFW.glfwSwapBuffers(window);
                 k(())
             }

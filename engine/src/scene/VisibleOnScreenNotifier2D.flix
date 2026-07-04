@@ -1,8 +1,9 @@
-/// 画面外検出ノード（Godot VisibleOnScreenNotifier2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_visibleonscreennotifier2d.html
+/// 画面内外検出ノード — 自分の矩形が画面に映っているかを判定する。
 ///
-/// ノードの矩形領域が画面内に表示されているかを判定する。
-/// Godot の screen_entered / screen_exited シグナルに相当する判定ロジックを提供する。
+/// ノードの矩形領域が画面内に映っているかを AABB の重なりで判定する。
+/// 画面外のものを止める・消すといった処理の判断材料になる。
+/// 利用例: 画面外へ出た敵を停止させる。
+/// 注意: 判定のみを担い、入った/出た瞬間のコールバック発火は ScreenNotifyEvent が行う。
 ///
 ///   画面 (0,0)
 ///   +-------------------+

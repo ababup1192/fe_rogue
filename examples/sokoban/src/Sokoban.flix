@@ -69,7 +69,7 @@ mod Sokoban {
         robot = (Int32, Int32),
         cols = Int32,
         rows = Int32,
-        facing = Robot.Direction,
+        facing = Dir4.Dir4,
         walkPhase = Float64,
         slide = Option[Slide],
         undoFx = Option[UndoFx],
@@ -110,7 +110,7 @@ mod Sokoban {
     def toWorld(screen: Screen, n: Int32, p: Level.Parsed): World =
         World.World({ walls = p#walls, goals = p#goals, crates = p#crates,
                       robot = p#robot, cols = p#cols, rows = p#rows,
-                      facing = Robot.Direction.Down, walkPhase = 0.0,
+                      facing = Dir4.Down, walkPhase = 0.0,
                       slide = None, undoFx = None,
                       screen = screen, level = n, clearElapsed = 0.0 })
 
@@ -307,12 +307,9 @@ mod Sokoban {
     /// robot; a crate moves along only if the cell behind it is free; otherwise
     /// nothing moves and the robot just turns. A legal hop changes the cells at
     /// once and starts the slide that lets the picture catch up.
-    def move(d: Robot.Direction, b: Board): Board =
-        let (dx, dy) = deltaOf(d);
-        let (rx, ry) = b#robot;
-        let target = (rx + dx, ry + dy);
-        let (tx, ty) = target;
-        let beyond = (tx + dx, ty + dy);
+    def move(d: Dir4.Dir4, b: Board): Board =
+        let target = Grid.neighbor(b#robot, d);
+        let beyond = Grid.neighbor(target, d);
         let pushing = Set.memberOf(target, b#crates);
         let blocked = Set.memberOf(target, b#walls)
             or (pushing and (Set.memberOf(beyond, b#walls) or Set.memberOf(beyond, b#crates)));
@@ -326,19 +323,12 @@ mod Sokoban {
               | b }
 
     /// Among several held keys: up, then down, then left, then right.
-    def pick(u: Bool, d: Bool, l: Bool, r: Bool): Option[Robot.Direction] =
-        if (u) Some(Robot.Direction.Up)
-        else if (d) Some(Robot.Direction.Down)
-        else if (l) Some(Robot.Direction.Left)
-        else if (r) Some(Robot.Direction.Right)
+    def pick(u: Bool, d: Bool, l: Bool, r: Bool): Option[Dir4.Dir4] =
+        if (u) Some(Dir4.Up)
+        else if (d) Some(Dir4.Down)
+        else if (l) Some(Dir4.Left)
+        else if (r) Some(Dir4.Right)
         else None
-
-    def deltaOf(d: Robot.Direction): (Int32, Int32) = match d {
-        case Robot.Direction.Up    => (0, -1)
-        case Robot.Direction.Down  => (0, 1)
-        case Robot.Direction.Left  => (-1, 0)
-        case Robot.Direction.Right => (1, 0)
-    }
 
     /// Keep only the fractional part (the walk cycle repeats on 0..1).
     def fract(x: Float64): Float64 = x - Float64.floor(x)
@@ -369,11 +359,11 @@ mod Sokoban {
         { x = centerX() - Int32.toFloat64(b#cols) * tile() / 2.0,
           y = boardCenterY() - Int32.toFloat64(b#rows) * tile() / 2.0 }
 
+    /// A cell's centre on screen: its centre within the grid (Grid), shifted by
+    /// where this board's top-left sits (origin). The grid maths is shared; only
+    /// the board's placement is ours.
     def cellCenter(b: Board, p: (Int32, Int32)): Vec2.Vec2 =
-        let o = origin(b);
-        let (x, y) = p;
-        { x = o#x + (Int32.toFloat64(x) + 0.5) * tile(),
-          y = o#y + (Int32.toFloat64(y) + 0.5) * tile() }
+        Vec2.add(origin(b), Grid.cellCenter(tile(), p))
 
     /// Where the robot is drawn: its cell — or partway out of the previous one.
     def robotCenter(b: Board): Vec2.Vec2 =
@@ -398,20 +388,22 @@ mod Sokoban {
     /// the undone move — that move went from the restored cell out to
     /// fromCell, so that line names it — and only when the slide lands does
     /// the snapshot's own facing (already in the Board) take over.
-    pub def drawnFacing(b: Board): Robot.Direction =
+    pub def drawnFacing(b: Board): Dir4.Dir4 =
         match b#slide {
             case Some(s) => if (s#reverse) directionTo(b#robot, s#fromCell) else b#facing
             case None    => b#facing
         }
 
-    /// The unit direction that leads a to z (one cell apart on the grid).
-    def directionTo(a: (Int32, Int32), z: (Int32, Int32)): Robot.Direction =
+    /// The direction that leads a to z (one cell apart on the grid). Ties on an
+    /// axis fall to the horizontal choice, ending on Right — a board rule about
+    /// which way to face, so it stays here rather than in the shared Dir4.
+    def directionTo(a: (Int32, Int32), z: (Int32, Int32)): Dir4.Dir4 =
         let (ax, ay) = a;
         let (zx, zy) = z;
-        if (zy < ay) Robot.Direction.Up
-        else if (zy > ay) Robot.Direction.Down
-        else if (zx < ax) Robot.Direction.Left
-        else Robot.Direction.Right
+        if (zy < ay) Dir4.Up
+        else if (zy > ay) Dir4.Down
+        else if (zx < ax) Dir4.Left
+        else Dir4.Right
 
     /// While a push is sliding forward, the pushed crate sits one cell past
     /// the robot's destination, along the direction the robot came from.
@@ -544,13 +536,11 @@ mod Sokoban {
                 let a = needleAngle(f#spin);
                 // 12 o'clock spun counterclockwise on screen (y points down).
                 let dir = {x = -RenderUtil.sinF(a), y = -RenderUtil.cosF(a)};
-                let n = {x = -dir#y, y = dir#x};
                 let reach = (tile() * 0.8 - 3.0) / 2.0 - 1.2;
                 let halfW = 0.7;
                 let p0 = Vec2.sub(c, Vec2.mul(dir, 1.5));
                 let p1 = Vec2.add(c, Vec2.mul(dir, reach));
-                { vertices = Vec2.add(p0, Vec2.mul(n, -halfW)) :: Vec2.add(p1, Vec2.mul(n, -halfW)) ::
-                             Vec2.add(p1, Vec2.mul(n, halfW)) :: Vec2.add(p0, Vec2.mul(n, halfW)) :: Nil,
+                { vertices = Quad.strip(p0, p1, -halfW, halfW),
                   color = Palette.clockRim(), alpha = clockAlpha(f), zIndex = zClock() + 2 } :: Nil
         }
 
@@ -572,53 +562,44 @@ mod Sokoban {
     // No particle is stored anywhere. Each piece's position, spin and color
     // are a pure function of (its index, the seconds since the board was
     // solved): the whole rain is a derivation from one number in the World,
-    // clearElapsed. There is nothing to spawn, update or free — leaving the
-    // screen simply stops asking for the picture.
+    // clearElapsed. Fx.derive fans the pieces out and hands each one its own
+    // trait tap; Curve turns time into fall, sway and spin. There is nothing
+    // to spawn, update or free — leaving the screen simply stops asking.
 
     def confettiCount(): Int32 = 48
 
     def zConfetti(): Int32 = 95
 
-    /// A cheap integer hash onto [0, 1): piece i's k-th personal constant.
-    /// The same piece always gets the same answers, so it always flutters
-    /// the same way — determinism all the way down to the party.
-    def chip(i: Int32, k: Int32): Float64 =
-        let h = i * 374761393 + k * 668265263 + 1442695041;
-        Int32.toFloat64(Int32.modulo(h * (h + 30011), 100003)) / 100003.0
+    /// The height one piece falls through before wrapping back above the screen.
+    def confettiFall(): Float64 = 260.0
 
-    /// Where piece i hangs t seconds into the party: it falls at its own
-    /// speed, sways on its own sine, spins at its own rate, and wraps back
-    /// above the screen so the rain never runs out.
-    def confettiQuad(t: Float64, i: Int32): GameEngine.PolygonRenderCmd =
-        let speed = 55.0 + 50.0 * chip(i, 1);
-        let sway = 6.0 + 10.0 * chip(i, 2);
-        let phase = 6.283185307179586 * chip(i, 3);
-        let spin = (2.0 + 4.0 * chip(i, 4)) * (if (chip(i, 5) < 0.5) -1.0 else 1.0);
-        let x = 320.0 * chip(i, 6) + sway * RenderUtil.sinF(1.5 * t + phase);
-        let y = fract((speed * t + 260.0 * chip(i, 7)) / 260.0) * 260.0 - 10.0;
-        let a = spin * t + phase;
-        let u = { x = RenderUtil.cosF(a), y = RenderUtil.sinF(a) };
-        let v = { x = -u#y, y = u#x };
-        let c = { x = x, y = y };
-        let corner = (sx, sy) -> Vec2.add(c, Vec2.add(Vec2.mul(u, sx * 2.2), Vec2.mul(v, sy * 1.4)));
-        { vertices = corner(-1.0, -1.0) :: corner(1.0, -1.0) ::
-                     corner(1.0, 1.0) :: corner(-1.0, 1.0) :: Nil,
+    /// Piece i, t seconds into the party. Every trait is drawn from its own
+    /// rand channel: it falls at its own speed, sways on its own sine, and
+    /// spins at its own rate. The index i itself picks the colour (five roles
+    /// dealt round-robin). Nothing per-piece is stored — the whole rain is
+    /// derived from the number.
+    def confettiPiece(i: Int32, rand: Int32 -> Float64, t: Float64): GameEngine.PolygonRenderCmd =
+        let fall = confettiFall();
+        let speed = 55.0 + 50.0 * rand(1);
+        let sway = 6.0 + 10.0 * rand(2);
+        let phase = 6.283185307179586 * rand(3);
+        let spin = (2.0 + 4.0 * rand(4)) * (if (rand(5) < 0.5) -1.0 else 1.0);
+        let x = 320.0 * rand(6) + Curve.sine(sway, 1.5, phase, t);
+        let y = Curve.loop(speed, fall, t + fall * rand(7) / speed) - 10.0;
+        let a = Curve.spin(spin, t) + phase;
+        { vertices = Quad.rotated({ x = x, y = y }, 2.2, 1.4, a),
           color = Palette.confetti(i), alpha = 1.0f32, zIndex = zConfetti() }
 
     /// The whole rain: one quad per index while the party clock runs.
     pub def confettiQuads(b: Board): List[GameEngine.PolygonRenderCmd] =
         if (b#clearElapsed <= 0.0) Nil
-        else List.map(confettiQuad(b#clearElapsed), List.range(0, confettiCount()))
+        else Fx.derive(confettiCount(), b#clearElapsed, confettiPiece)
 
     /// The in-game header. The CLEAR panel that used to be drawn here is a
     /// Spec now (assets/Clear.ui.json); the board keeps only its title line.
     def texts(atlas: FontAtlas): List[(Vec2.Vec2, Render.RenderItem)] =
-        centeredText("Sokoban", atlas, 28.0, Palette.titleText(), 10.0) :: Nil
-
-    def centeredText(text: String, atlas: FontAtlas, size: Float64,
-                     color: Color, y: Float64): (Vec2.Vec2, Render.RenderItem) =
-        let width = Label2D.measure(Label2D.make(text, atlas, size))#x;
-        ({x = centerX() - width / 2.0, y = y}, Render.textTinted(text, atlas, size, color, zTitle()))
+        TextDraw.centered({ text = "Sokoban", atlas = atlas, size = 28.0, color = Palette.titleText(),
+                            z = zTitle(), centerX = centerX(), y = 10.0 }) :: Nil
 
     // ── UI: the Title and Clear pages are Specs ──
     // Their whole look lives in assets/*.ui.json — data, not code. At startup
@@ -713,20 +694,20 @@ mod Sokoban {
     def loop(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[World],
              prev: { enter = Bool, esc = Bool, f1 = Bool }): Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead} =
         let escDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Escape);
-        let escEdge = escDown and not prev#esc;
+        let escEdge = InputEdge.pressed(prev#esc, escDown);
         if (GameEngine.Game.shouldClose()
             or (escEdge and not clearModal(Worldline.current(line)))) ()
         else {
             let enterDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Enter);
             let f1Down = GameEngine.Game.isKeyPressed(GameEngine.Key.F1);
-            let line1 = tick(readInput(enterDown and not prev#enter, escEdge), readDt(), line);
+            let line1 = tick(readInput(InputEdge.pressed(prev#enter, enterDown), escEdge), readDt(), line);
             match sfxEvent(line, line1) {
                 case Some(name) => GameEngine.Audio.playAudio(name)
                 case None       => ()
             };
             // F1 re-reads every spawned Spec from disk: edit the json while
             // the game runs, press F1, and the page changes under you.
-            let ui1 = if (f1Down and not prev#f1) UiSpec.reloadAll(ui) else ui;
+            let ui1 = if (InputEdge.pressed(prev#f1, f1Down)) UiSpec.reloadAll(ui) else ui;
             let world = Worldline.current(line1);
             let ui2 = projectUi(Worldline.pastLength(line1), world, ui1);
             let (drawables, polys) = frame(atlas, world);

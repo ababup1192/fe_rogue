@@ -1,9 +1,7 @@
-// EcsCodec — component store（Map[EntityId, _]）の汎用 JSON 往復
-//
-// 不変 World は「ただの値」なのでシリアライズが本質的に楽。各 component store を JSON 配列
-// [{id, v}] に往復する純粋ヘルパを提供し、ゲーム側は component ごとの encode/decode を渡して
-// World↔JSON を組み立てる（セーブ/ロード/宣言的オーサリングの土台）。
-// engine の JsonCodec（expect*/encodeList/decodeList/intToBd）を再利用する。
+// EcsCodec — 「番号ごとの値の表」を JSON と相互変換する共通ヘルパ。
+// 値ごとの変換だけ渡せば表全体を JSON に落とせるので、セーブ・ロードやデータからの組み立てが楽になる。
+// 利用例: プレイ状況をファイルに保存する / 保存データから World を復元する / 盤面をデータで用意する。
+// 注意: 値1つ分の変換方法はゲーム側が渡す。ここは表全体の往復だけを引き受ける。
 
 mod EcsCodec {
 

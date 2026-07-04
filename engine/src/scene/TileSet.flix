@@ -1,4 +1,4 @@
-/// タイルセットアトラスソース（Godot TileSetAtlasSource 準拠）
+/// タイルセットのアトラス元 — 1 枚のタイル画像と、そこからマスを切り出す設定。
 /// texWidth / texHeight は tilemap loader 側で getTextureInfo() を呼んで自動補完する想定。
 /// tileSize は .ldtkl の __gridSize から自動補完する。
 pub type alias TileSetAtlasSource = {
@@ -12,13 +12,13 @@ pub type alias TileSetAtlasSource = {
     spacingY    = Float64
 }
 
-/// タイルセット（Godot TileSet 準拠）
+/// タイルセット — マップが使うタイル画像一式。
 pub type alias TileSet = { atlasSource = TileSetAtlasSource }
 
 mod TileSet {
     pub def make(source: TileSetAtlasSource): TileSet = { atlasSource = source }
 
-    /// Godot: tile_set.tile_size。本プロジェクトはタイル正方形なので Float64 単一値
+    /// タイル 1 マスの一辺（ピクセル）。本プロジェクトはタイル正方形なので Float64 単一値
     pub def tileSize(tileSet: TileSet): Float64 =
         tileSet#atlasSource#tileSize
 }

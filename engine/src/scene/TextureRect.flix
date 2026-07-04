@@ -1,11 +1,11 @@
-/// UI 用テクスチャ表示ノード（Godot TextureRect 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_texturerect.html
+/// UI 用テクスチャ表示ノード — レイアウトに並べられる画像表示。
 ///
-/// Control 系の画像表示ノード。HBoxContainer / VBoxContainer などの子として
-/// 直接配置でき、`size` を持つので Layout の measureNode で測定可能。
+/// レイアウトに並べられる画像表示ノード。HBoxContainer / VBoxContainer などの子として
+/// 直接配置でき、`size` を持つので Layout が自然サイズを測れる。
+/// 利用例: メニュー内にアイコンやカット絵を並べる。
 ///
 /// Sprite2D との違い:
-///   - position は **左上座標** (Sprite2D の centered=true と異なる、Godot Control 準拠)
+///   - position は **左上座標** (Sprite2D の centered=true と異なる)
 ///   - `size` フィールドを明示的に持つ → Layout が natural size を取れる
 ///   - region/hframes/vframes/frame は持たない (UI 静止画用なのでフルテクスチャ前提)
 ///

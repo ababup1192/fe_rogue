@@ -29,7 +29,7 @@ pub enum EngineNode[state] {
     /// 色付き矩形ノード（テクスチャなしの単色矩形）
     case ColorRectWithState(ColorRect, state)
     case Polygon2DWithState(Polygon2D, state)
-    /// 円弧/リングノード（クールダウン等のインジケータ、Godot draw_arc 相当）
+    /// 円弧/リングノード（クールダウン等のインジケータ）
     case Arc2DWithState(Arc2D, state)
     /// GPU パーティクルエミッター（残像エフェクト）
     case GPUParticles2DWithState(GPUParticles2D, state)
@@ -39,9 +39,9 @@ pub enum EngineNode[state] {
     case ControlWithState(Control, state)
     /// ボタンノード（背景矩形 + テキスト + マウス操作）
     case ButtonWithState(Button, state)
-    /// テクスチャボタンノード（Godot TextureButton 準拠：state 切替で複数テクスチャ）
+    /// テクスチャボタンノード（state 切替で複数テクスチャを出し分ける）
     case TextureButtonWithState(TextureButton, state)
-    /// UI 用テクスチャ表示ノード（Godot TextureRect 準拠：size を持つ Control 系）
+    /// UI 用テクスチャ表示ノード（size を持つ Control 系）
     case TextureRectWithState(TextureRect, state)
     /// 2D カメラノード（ビューポート追従）
     case Camera2DWithState(Camera2D, state)
@@ -49,13 +49,13 @@ pub enum EngineNode[state] {
     case StaticBody2DWithState(StaticBody2D, state)
     /// タイルマップレイヤー（GPU インスタンシングで 1 draw call 描画）
     case TileMapLayerWithState(TileMapLayer, state)
-    /// パネル（背景色 + 枠線つき矩形、Godot Panel + StyleBoxFlat 相当）
+    /// パネル（背景色 + 枠線つき矩形）
     case PanelWithState(Panel, state)
-    /// プログレスバー（Godot ProgressBar + Range 相当、HP バー等の値ゲージ）
+    /// プログレスバー（HP バー等の値ゲージ）
     case ProgressBarWithState(ProgressBar, state)
-    /// 項目リスト（キー駆動カーソル、Godot ItemList 相当）
+    /// 項目リスト（キー駆動カーソル）
     case ItemListWithState(ItemList, state)
-    /// オーディオ再生ノード (Godot AudioStreamPlayer 準拠)。シーン attach 時に
+    /// オーディオ再生ノード。シーン attach 時に
     /// autoplay があれば play、detach 時に stop されるサウンド node
     case AudioStreamPlayerWithState(AudioStreamPlayer, state)
 }

@@ -1,13 +1,8 @@
-/// JSON encode/decode 用の汎用ヘルパ。各 catalog / resource の Codec mod がコピーしていた
-/// 小関数を 1 箇所に集約する。
-///
-/// **設計の柱**: decode 系は完全 pure (`Json -> Option[T]`)、encode 用の BigDecimal
-/// 変換 (`floatToBd` / `intToBd`) は内部 `unsafe IO {}` で副作用を隠蔽し、戻り型は `BigDecimal`
-/// (pure)。これにより呼び出し側の `Saveable.toJson` / `fromJson` は両方 pure シグネチャに保てる。
-/// 既存 `engine/src/Resource.flix:322-333` の `ResourceCodec.floatToBd / intToBd` と同方針。
-///
-/// 各 Codec mod から段階的に重複 helper を取り除き、本 mod への参照に切り替える
-/// (engine 内ドッグフード)。
+// JsonCodec — JSON の読み書きでよく使う小さなヘルパを 1 箇所に集める。
+// 各 Codec がめいめいに書いていた変換を共有でき、`Saveable` の toJson / fromJson を短く書ける。
+// 利用例: JSON object から値を取り出す / Map や List を JSON と相互変換する / Vec2 を読み書きする。
+// 注意: decode 系は純粋 (`Json -> Option[T]`)。encode 用の数値変換 (`floatToBd` / `intToBd`) は
+//   内部の `unsafe IO` で副作用を隠すので、呼び出し側は純粋関数として扱える。
 mod JsonCodec {
     import java.math.{BigDecimal => JBigDecimal}
 

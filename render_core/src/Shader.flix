@@ -1,10 +1,6 @@
-// RenderShader — シェーダソース・コンパイル・projection 行列設定
-//
-// LwjglLayer.flix の以下を移植:
-//   - vertexShaderSource / fragmentShaderSource (sprite 用)
-//   - tileVertexShaderSource / tileFragmentShaderSource (tilemap instanced 用)
-//   - compileShader / createShaderProgram
-//   - setProjectionMatrix
+// RenderShader — 描画に使うシェーダのソース・コンパイル・投影行列の設定をまとめる。
+// スプライト用とタイルマップ用のシェーダ準備を一箇所に閉じるので、上位は組み上がったものを使うだけでよい。
+// 利用例: 起動時にシェーダを用意する / 画面の解像度に合わせて座標変換を設定する。
 
 mod RenderShader {
     import org.lwjgl.opengl.GL11
@@ -70,7 +66,7 @@ mod RenderShader {
         "    } else if (styleEnabled) {\n" +
         "        vec2 hsz = rectSize * 0.5;\n" +
         "        vec2 p = TexCoords * rectSize - hsz;\n" +
-        // 角半径は矩形の最小半辺にクランプ (Godot StyleBoxFlat と同様、巨大値での破綻防止)
+        // 角半径は矩形の最小半辺にクランプ（巨大値を入れても形が破綻しないように）
         "        float cr = clamp(cornerRadius, 0.0, min(hsz.x, hsz.y));\n" +
         "        float dOuter = roundedBox(p, hsz, cr);\n" +
         // AA 幅は画面 px 基準 (fwidth)。カメラ zoom で rectSize が小さくなっても角丸が潰れない

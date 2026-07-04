@@ -1,8 +1,6 @@
-/// 2D エリアノード（Godot Area2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_area2d.html
-///
-/// 2D 空間上の領域を定義し、他の CollisionObject2D との重なりを検出する。
-/// 物理演算は行わず、純粋なセンサー（トリガー）として機能する。
+/// 2D 空間の領域を表し、他の CollisionObject2D との重なりを検出するセンサー。
+/// 物理演算はせず当たり判定だけを持つので、押し合わずに「入った・出た」を知れる。
+/// 利用例: 通ると何かが起きるトリガー領域 / クリック可能な当たり判定。
 ///
 ///   Area2D
 ///     +-- CanvasItem: visible, zIndex, modulate
@@ -28,7 +26,7 @@ pub enum Area2D {
 
 mod Area2D {
     /// デフォルト値で Area2D を生成する。
-    /// monitoring / monitorable は共に true（Godot デフォルト準拠）。
+    /// monitoring / monitorable は既定でともに true。
     pub def make(position: Vec2.Vec2, shape: CollisionShape2D): Area2D =
         Area2D.Area2D({
             position = position,
@@ -71,7 +69,7 @@ mod Area2D {
         let Area2D.Area2D(r) = area;
         Area2D.Area2D({ collisionMask = mask | r })
 
-    /// 衝突レイヤーの指定ビット (0..31) を on/off する（Godot set_collision_layer_value 相当）
+    /// 衝突レイヤーの指定ビット (0..31) を on/off する
     pub def setCollisionLayerValue(bit: Int32, value: Bool, area: Area2D): Area2D =
         let Area2D.Area2D(r) = area;
         let newLayer = if (value)
@@ -80,7 +78,7 @@ mod Area2D {
             Int32.clearBit(pos = bit, r#collisionLayer);
         Area2D.Area2D({ collisionLayer = newLayer | r })
 
-    /// 衝突マスクの指定ビット (0..31) を on/off する（Godot set_collision_mask_value 相当）
+    /// 衝突マスクの指定ビット (0..31) を on/off する
     pub def setCollisionMaskValue(bit: Int32, value: Bool, area: Area2D): Area2D =
         let Area2D.Area2D(r) = area;
         let newMask = if (value)

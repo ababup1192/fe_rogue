@@ -1,11 +1,8 @@
-/// GameLogger — ゲーム内ログ用 effect
-///
-/// `playerLog` / `enemyLog` でメッセージを積み上げ、`drainEntries` で
-/// 一括取り出しする。`Tween.withScheduler` と同じ流儀で、内部 Ref を
-/// closure に隠蔽するハンドラ注入関数 `withLogger` を提供する。
-///
-/// ノード側（LogScene）が gameLoop の毎フレーム末尾で `drainEntries` を
-/// 呼んで蓄積分を取り出し、表示状態を再構築する。
+// GameLogger — 戦闘などで起きたことを 1 行ずつログに積み、あとでまとめて取り出す effect。
+// メッセージをその場で表示せず貯めておけるので、表示は好きなタイミング（毎フレーム末尾など）で
+// 一括して組み立て直せる。
+// 利用例: 「〇〇が攻撃」を積む / ターン区切りを入れる / 溜まった行を取り出してログ欄を作り直す。
+// 注意: 蓄積先の Ref は `withLogger` の closure に隠れ、外からは見えない。
 mod GameLogger {
 
     pub eff GameLogger {

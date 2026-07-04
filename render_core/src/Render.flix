@@ -4,7 +4,7 @@
 
 mod RenderType {
 
-    /// 角丸＋枠線スタイル (Godot StyleBoxFlat 相当)。`Drawable.style = Some(..)` のとき、
+    /// 角丸＋枠線スタイル。`Drawable.style = Some(..)` のとき、
     /// 単色矩形 (texture="") を「塗り＋枠＋角丸＋AA」で 1 フラグメント描画する。
     /// cornerRadius/borderWidth は px。塗り色は Drawable#color/#alpha を使う。
     ///

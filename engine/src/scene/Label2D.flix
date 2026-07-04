@@ -1,15 +1,13 @@
-/// テキスト表示ノード（Godot Label2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_label.html
-///
-/// FontAtlas + TextLayout を使い、テキストをグリフごとに Drawable として描画する。
-/// 横方向・縦方向のアライメントを Godot HorizontalAlignment / VerticalAlignment と同じ
-/// enum で指定する。Fill は本実装では Left/Top と同じ扱い（justify は未対応）。
+/// Label2D — テキストを 1 文字ずつグリフに分けて描画するノード。
+/// 文字描画を一箇所にまとめるので、HUD やメニューのどこでも同じ字体で文字を出せる。
+/// 利用例: スコア表示、セリフ、メニューの項目名。
+/// 注意: アライメントの Fill は Left/Top と同じ扱い（両端揃えは未対応）。
 ///
 ///   Label2D
 ///     +-- CanvasItem: visible, zIndex, modulate
 ///     +-- Node2D: position, rotation, scale, skew
 
-/// 横方向アライメント（Godot HorizontalAlignment 準拠）
+/// 横方向アライメント
 pub enum HorizontalAlignment with Eq, Order, ToString {
     case Left
     case Center
@@ -17,7 +15,7 @@ pub enum HorizontalAlignment with Eq, Order, ToString {
     case Fill
 }
 
-/// 縦方向アライメント（Godot VerticalAlignment 準拠）
+/// 縦方向アライメント
 pub enum VerticalAlignment with Eq, Order, ToString {
     case Top
     case Center
@@ -44,7 +42,7 @@ pub enum Label2D {
 
 mod Label2D {
     /// テキストとフォントアトラスから Label2D を生成する。
-    /// Godot のデフォルトは horizontalAlignment = Left, verticalAlignment = Top
+    /// 既定は horizontalAlignment = Left, verticalAlignment = Top。
     pub def make(text: String, fontAtlas: FontAtlas, fontSize: Float64): Label2D =
         Label2D.Label2D({
             text = text,
@@ -205,8 +203,7 @@ mod Label2D {
         }, {drawables = (Nil: List[GameEngine.Drawable]), lineIdx = 0}, lines);
         result#drawables
 
-    /// path 位置に Label2D が居れば取り出す（Godot の `GetNode<Label2D>(path)` 相当）。
-    /// 別ノードや欠落なら `None`。
+    /// path 位置に Label2D が居れば取り出す。別ノードや欠落なら `None`。
     pub def getAt(path: NodePath, scene: Scene[s]): Option[Label2D] =
         match Scene.getEngineNode(path, scene) {
             case Some(EngineNode.Label2DWithState(label, _)) => Some(label)

@@ -1,5 +1,4 @@
-/// シーンツリーの基本ノード（Godot Node 準拠）
-/// see: https://docs.godotengine.org/en/stable/classes/class_node.html
+/// シーンツリーに並ぶノード共通のふるまい（初期化・毎フレーム更新・物理更新）を定めるトレイト。
 ///
 /// ライフサイクル:
 ///   addNode → ready()
@@ -17,8 +16,8 @@ pub trait Node[s] {
     /// `ready` / `physicsProcess` で発生するエフェクト集合。
     /// 物理ステップは衝突・移動の小さな世界に閉じることが多いので、`Aef` は狭く保ち、
     /// `process` で広い世界 (AnimationPlayer signal の受信など) に触れる場合は
-    /// 別途 `ProcessAef` で広い集合を宣言する。Godot の `_physics_process` と `_process`
-    /// が独立して何でも起こせる自由度を持つのに対応する分離。
+    /// 別途 `ProcessAef` で広い集合を宣言する。物理更新と毎フレーム更新が
+    /// それぞれ独立に別のエフェクトを起こせるよう、集合を分けている。
     type Aef: Eff
 
     /// `process` で発生するエフェクト集合。`ProcessAef = Aef` (Aef と同集合) が
@@ -37,7 +36,7 @@ pub trait Node[s] {
     pub def process(_delta: Duration.Duration, node: EngineNode[s], _path: NodePath, scene: Scene[s]): (EngineNode[s], Scene[s]) \ Node.ProcessAef[s] =
             checked_ecast((node, scene))
 
-    /// 物理ステップ中に呼ばれる更新コールバック（Godot _physics_process 準拠）
+    /// 物理ステップ中に呼ばれる更新コールバック。
     /// PhysicsStep.step の重力・積分の **前** に呼ばれる。
     /// 力の適用・速度の変更など、物理演算に影響する処理をここに書く。
     pub def physicsProcess(_delta: Duration.Duration, node: EngineNode[s], _path: NodePath, scene: Scene[s]): (EngineNode[s], Scene[s]) \ Node.Aef[s] =

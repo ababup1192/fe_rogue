@@ -1,8 +1,10 @@
-/// Tween — Godot 4 流儀の補間アニメーション
+/// Tween — 値（位置やアルファ）を時間をかけて滑らかに変化させる補間アニメーション。
 ///
-/// Godot 4 の `Tween` (RefCounted、Node ではない) と同じ立ち位置：
-///   - Node ではなく engine モジュール
-///   - SceneTree が裏で advance（本実装では `tickAll` を gameLoop が 1 行で呼ぶ）
+/// 開始値と終了値と所要時間を渡すだけで、途中の値を毎フレーム計算してくれる。
+/// 利用例: キャラを目標マスへスッと移動させる / フェードイン・アウト。
+///
+/// ノードではなく engine モジュールとして働き、次の性質を持つ:
+///   - 裏で毎フレーム advance（本実装では `tickAll` を gameLoop が 1 行で呼ぶ）
 ///   - target Node にバウンドされ、Node 削除で auto-stop
 ///   - 完了で auto-free（リストから自動除去）
 ///   - 同パス再登録は古い tween を置換（再利用不可）
@@ -66,8 +68,7 @@ mod Tween {
         def consumeUpdates(delta: Duration.Duration): List[Update]
     }
 
-    /// Godot の `tween.tween_property(self, "position", to, duration)` 同等の便宜関数。
-    /// `targetPath` のノードを `startPos` から `to` へ `duration` かけて lerp する。
+    /// `targetPath` のノードを `startPos` から `to` へ `duration` かけて lerp する便宜関数。
     /// 同パスへの再登録は古い tween を置換。
     pub def tweenPosition(targetPath: NodePath, startPos: Vec2.Vec2,
                           to: Vec2.Vec2, duration: Duration.Duration): Unit \ Scheduler =
@@ -101,7 +102,7 @@ mod Tween {
                 thunk()
             } with handler Scheduler {
                 def schedule(entry, k) = {
-                    // 同パスの旧 tween を置き換え（Godot 4 流儀）
+                    // 同パスの旧 tween を置き換える
                     let filtered = Ref.get(tweensRef)
                         |> List.filter(e -> e#path != entry#path);
                     Ref.put(entry :: filtered, tweensRef);
@@ -152,7 +153,7 @@ mod Tween {
         }
 
     /// gameLoop が 1 行で呼ぶ per-frame advance。
-    /// target Node が scene から消えていれば tween を auto-stop する（Godot の Node バインド相当）。
+    /// target Node が scene から消えていれば tween を auto-stop する。
     pub def tickAll(delta: Duration.Duration, scene: Scene[s]): Scene[s] \ Scheduler =
         let updates = Scheduler.consumeUpdates(delta);
         List.foldLeft((sc, u) ->

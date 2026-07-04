@@ -1,9 +1,8 @@
-// UiStore — UI コンポーネント store の束と基本操作
-//
-// Bevy 方式の UI: entity(EntityId) + 細粒度 component(Map[EntityId, _])。太いノードは作らない。
-// spec 由来 store（parents/order/styles/…）は despawnRoot で消え、再 spawn で作り直される。
-// 動的 store（selection/focus）は安定名パス（String）をキーにするため、despawn+再 spawn で
-// id が変わってもリロードを生き延びる。
+// UiStore — UI を作る「部品ごとの表」の束と、その足し引きの基本操作。
+// 各 UI 要素は番号（EntityId）で表し、色・文字・親子といった属性を種類ごとの表に散らして持つ。
+// 太い一枚岩のノードを作らないので、必要な属性だけを軽く足し引きできる。
+// 利用例: メニューを組み立てる / 一度消して作り直す（リロード） / 選択状態だけ別に持ち回す。
+// 注意: 選択やフォーカスは安定した名前パスで持つので、作り直して番号が変わっても引き継がれる。
 
 mod UiStore {
 
@@ -68,6 +67,11 @@ mod UiStore {
     // ゲームコードからの書き込み口（名前パス指定）
     // ========================================================================
 
+    /// 名前パスの entity に設定された可視（継承前の生値）を読む。未登録パスは None。
+    /// `setVisible` の読み戻し。継承を解決した実効可視ではなく、そのノード自身に置いた値を返す。
+    pub def visibleOf(path: String, ui: UiWorld): Option[Bool] =
+        idOf(path, ui) |> Option.flatMap(id -> Map.get(id, ui#visible))
+
     /// 名前パスの entity の可視を設定する。未登録パスは no-op。
     pub def setVisible(path: String, v: Bool, ui: UiWorld): UiWorld =
         match idOf(path, ui) {
@@ -91,6 +95,13 @@ mod UiStore {
             case None     => ui
             case Some(id) => {metas = Map.remove(id, ui#metas) | ui}
         }
+
+    /// 名前パスの text コンポーネントの文字列を読む。text を持たなければ None。
+    /// `setText` の読み戻し。流し込んだ文字を texts の record 内部に触れず確かめられる（テスト等）。
+    pub def textOf(path: String, ui: UiWorld): Option[String] =
+        idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, ui#texts))
+            |> Option.map(comp -> comp#text)
 
     /// 名前パスの text コンポーネントの文字列を差し替える。text を持たなければ no-op。
     pub def setText(path: String, text: String, ui: UiWorld): UiWorld =

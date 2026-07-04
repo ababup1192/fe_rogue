@@ -102,7 +102,7 @@ mod Game {
             Set.empty(), ks)
 
     def pressedEdge(k: GameEngine.Key, cur: Set[GameEngine.Key], prev: Set[GameEngine.Key]): Bool =
-        Set.memberOf(k, cur) and not Set.memberOf(k, prev)
+        InputEdge.pressed(Set.memberOf(k, prev), Set.memberOf(k, cur))
 
     def storePrev(curKeys: Set[GameEngine.Key], mouseDown: Bool, world: World): World =
         let World.World(w) = world;

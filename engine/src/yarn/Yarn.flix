@@ -1,7 +1,6 @@
-/// 公開ファサード。
-///
-/// エンジン層・対話層が `Yarn` 経由で内部モジュールへアクセスする際の入口。
-/// 直接 `Yarn.Loader` 等を `use` しても良いが、ここに集めると見通しが良い。
+/// Yarn 名前空間の公開ファサード。エンジン層・対話層が内部モジュールへ触れる入口。
+/// 入口を 1 つに集めると、どこから何を使うかの見通しが良くなる。
+/// 利用例: `Yarn.overrideInitialFloat` で初期値を差し替える / `Yarn.VariableAccess` を使う。
 mod Yarn {
     use Yarn.Types.YarnProject
     use Yarn.Types.Value

@@ -58,6 +58,12 @@
 - [ ] コメントは現在形（移行史・作業経緯を書かない）
 - [ ] 予約語に注意: `spawn` / `from` / `region` / `run`（変数名にも不可）
 
+## engine_world UI API メモ（読み戻し・注入・既定フォント）
+
+- **読み戻し getter**（`UiStore`）: setter には対称な getter がある。`textOf(path, ui): Option[String]`（`setText` の逆）/ `visibleOf(path, ui): Option[Bool]`（`setVisible` の逆・継承前の生値）。テストや検算で `ui#texts` など record 内部を直に覗かず、名前パスで読む。未登録パスは `None`。
+- **注入版レンダ**: `UiRender.renderUiWith(atlasOf, textureInfoOf, ui, design)` は font 実寸（`atlasOf`）とスプライトのテクスチャ寸法（`textureInfoOf`）を呼び側から渡す。両者が純粋なら描画全体が純粋になり、画面なしのテスト/プレビューは `GameEngine.Game` ハンドラ（全 op スタブ）を組まずに済む。box/text だけのページなら `renderUiWith(_ -> atlas, _ -> None, ui, design)`。本番は薄い委譲の `renderUi`（Game registry 版）をそのまま使う。
+- **既定フォント**: ui.json トップレベルの `"defaultFont": "<名前>"` が、`font` を明示しない text ノードの既定になる（省略時は `"ui"`）。全 text が同じフォントのページは各ノードの `"font"` 反復を 1 行に畳める。既存 json は無改変で従来どおり。
+
 ## 設計原則（なぜこの手順で品質が出るか）
 
 1. **UI は宣言データ + 純関数** — 構造は ui.json、動きは frameStep。手続き的なノード操作を書いた時点で手順から外れている

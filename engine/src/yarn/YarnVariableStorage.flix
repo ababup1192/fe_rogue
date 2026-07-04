@@ -1,9 +1,7 @@
 /// Yarn 変数の格納庫。region 内 `MutMap` を薄くラップする。
-///
-/// `init` で初期値マップから作り、その後は `get` / `set` / `incrementFloat` で操作する。
-/// VM が `RunNode` で訪問カウンタを更新するときも `incrementFloat` を呼ぶ。
-///
-/// 将来 SQLite ベース等の差し替え可能ストレージを足すなら trait 抽象を被せる。
+/// 変数の読み書き・訪問カウンタ更新・スナップショット取得を 1 箇所にまとめる。
+/// 利用例: `init` で初期値から作り、`get` / `set` / `incrementFloat` で操作する。
+/// 注意: VM が `RunNode` で訪問カウンタを進めるときも `incrementFloat` を呼ぶ。
 mod Yarn.VariableStorage {
     use Yarn.Types.Value
     use Yarn.Types.Value.{FloatV}

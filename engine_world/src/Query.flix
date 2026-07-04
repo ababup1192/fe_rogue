@@ -1,14 +1,12 @@
-// Query — component store（Map[EntityId, _]）上の汎用 join / update コンビネータ
-//
-// 各 System が手書きしていた「2 つの component map を突き合わせる」処理を一般化する。
-// Bevy の Query<(&A, &B)> に相当。すべて純粋。
-// （ecs_flix の Query モジュールを参考にした再利用部品。汎用 lib 化は別途）
-// updateWith2 は keyset 不変・値だけ変換だが、3 関数を foldLeftWithKey で揃え版差異リスクを避ける。
+// Query — 「同じ物が持つ複数の部品」を、部品ごとに分かれた表から突き合わせて取り出す。
+// 「位置も速度も持つ物だけ」といった絞り込みを毎回手書きせず、両方の表に居る物だけを組で返す。
+// 利用例: 移動処理で位置と速度を対にする / 描画で位置とスプライトを揃える / 特定の印が付いた物だけ更新する。
+// 注意: 片方の部品しか持たない物は結果に含めない。すべて純粋な変換。
 
 mod Query {
 
     /// 2 種の component を「両方持つ」entity だけを取り出し、その値の組を返す。
-    /// 片方しか持たない entity は結果に含めない（Bevy `Query<(&A, &B)>`）。
+    /// 片方しか持たない entity は結果に含めない。
     pub def with2(a: Map[EntityId, x], b: Map[EntityId, y]): Map[EntityId, (x, y)] =
         a |> Map.foldLeftWithKey((acc, id, va) ->
             match Map.get(id, b) {
@@ -35,8 +33,7 @@ mod Query {
     pub def tagOf(keyOf: a -> EntityId, xs: List[a]): Set[EntityId] =
         xs |> List.map(keyOf) |> List.toSet
 
-    /// tag に属する entity の値だけ f を適用する（Bevy の `With<T>` フィルタ付き System 相当）。
-    /// tag 外の entity は値そのまま・keyset 不変。
+    /// 印（tag）が付いた entity の値だけ f を通す。印の無い entity は値も並びもそのまま。
     pub def updateTagged(tag: Set[EntityId], f: v -> v, store: Map[EntityId, v]): Map[EntityId, v] =
         Map.mapWithKey((id, v) -> if (Set.memberOf(id, tag)) f(v) else v, store)
 

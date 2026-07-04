@@ -1,8 +1,9 @@
-/// 2D 剛体物理ボディ（Godot RigidBody2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_rigidbody2d.html
+/// 2D 剛体物理ボディ — 重力や速度を受けて自分で動く物理オブジェクト。
 ///
-/// 物理エンジンによって動作する剛体。重力・速度積分・ダンピングを受ける。
-/// PhysicsStep モジュールが毎フレームの物理更新を担当する。
+/// 物理エンジンが毎フレーム動かす剛体で、重力・速度の積分・ダンピングを受けて落下や慣性運動をする。
+/// 手で位置を書かなくても物理法則どおりに動くので、跳ねる・転がる・落ちる挙動を任せられる。
+/// 利用例: 落下するアイテム / 跳ね返るボール。
+/// 注意: 実際のフレーム更新は PhysicsStep モジュールが行う。
 ///
 ///   RigidBody2D
 ///     +-- CanvasItem: visible, zIndex, modulate
@@ -20,19 +21,19 @@ pub enum RigidBody2D {
         scale = Vec2.Vec2,                           // スケール
         skew = Float64,                              // スキュー
         collisionShape = Option[CollisionShape2D],   // 衝突形状
-        monitoring = Bool,                           // ��エリアの侵入を検出するか
-        monitorable = Bool,                          // 他エリアから検���されるか
-        priority = Int32,                            // ��突判定の処理優先度
-        collisionLayer = Int32,                      // 自身が属するレイヤー（ビットマスク、Godot: collision_layer）
-        collisionMask = Int32,                       // 観測対象レイヤー（ビットマスク、Godot: collision_mask）
-        linearVelocity = Vec2.Vec2,                  // 線形速度（ピ��セル/秒）
+        monitoring = Bool,                           // 他エリアの侵入を検出するか
+        monitorable = Bool,                          // 他エリアから検出されるか
+        priority = Int32,                            // 衝突判定の処理優先度
+        collisionLayer = Int32,                      // 自身が属するレイヤー（ビットマスク）
+        collisionMask = Int32,                       // 観測対象レイヤー（ビットマスク）
+        linearVelocity = Vec2.Vec2,                  // 線形速度（ピクセル/秒）
         angularVelocity = Float64,                   // 角速度（ラジアン/秒）
         gravityScale = Float64,                      // 重力倍率（0 で重力無効）
         mass = Float64,                              // 質量（kg）
         bounce = Float64,                            // 反発係数（0.0–1.0）
         linearDamp = Float64,                        // 線形ダンピング
         angularDamp = Float64,                       // 角ダンピング
-        collisionExceptions = Set[NodePath]          // この path のボディとは物理衝突解決をしない（Godot add_collision_exception_with 相当）
+        collisionExceptions = Set[NodePath]          // この path のボディとは物理衝突解決をしない
     })
 }
 
@@ -65,7 +66,7 @@ mod RigidBody2D {
             collisionExceptions = Set.empty()
         })
 
-    /// 衝突例外リストに other path を追加する（Godot add_collision_exception_with 相当）
+    /// 衝突例外リストに other path を追加する。
     /// この body は other path の StaticBody2D との物理衝突解決 (resolveStaticCollisions) を skip する。
     /// Area2D の重なり検出には影響しない。
     pub def addCollisionException(otherPath: NodePath, body: RigidBody2D): RigidBody2D =
@@ -114,7 +115,7 @@ mod RigidBody2D {
         let RigidBody2D.RigidBody2D(r) = body;
         r#mass
 
-    /// ��量を設定��る
+    /// 質量を設定する
     pub def setMass(mass: Float64, body: RigidBody2D): RigidBody2D =
         let RigidBody2D.RigidBody2D(r) = body;
         RigidBody2D.RigidBody2D({mass = mass | r})
@@ -181,7 +182,7 @@ mod RigidBody2D {
         let RigidBody2D.RigidBody2D(r) = body;
         RigidBody2D.RigidBody2D({collisionMask = mask | r})
 
-    /// 衝突レイヤーの指定ビット (0..31) を on/off する（Godot set_collision_layer_value 相当）
+    /// 衝突レイヤーの指定ビット (0..31) を on/off する
     pub def setCollisionLayerValue(bit: Int32, value: Bool, body: RigidBody2D): RigidBody2D =
         let RigidBody2D.RigidBody2D(r) = body;
         let newLayer = if (value)
@@ -190,7 +191,7 @@ mod RigidBody2D {
             Int32.clearBit(pos = bit, r#collisionLayer);
         RigidBody2D.RigidBody2D({collisionLayer = newLayer | r})
 
-    /// 衝突マスクの指定ビット (0..31) を on/off する（Godot set_collision_mask_value 相当）
+    /// 衝突マスクの指定ビット (0..31) を on/off する
     pub def setCollisionMaskValue(bit: Int32, value: Bool, body: RigidBody2D): RigidBody2D =
         let RigidBody2D.RigidBody2D(r) = body;
         let newMask = if (value)

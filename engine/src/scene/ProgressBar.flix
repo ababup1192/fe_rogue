@@ -1,11 +1,7 @@
-/// プログレスバーノード（Godot ProgressBar + Range 相当の最小実装）
-/// see: https://docs.godotengine.org/en/stable/classes/class_progressbar.html
-/// see: https://docs.godotengine.org/en/stable/classes/class_range.html
-///
-/// HP バー・ロード進捗・スタミナゲージなど「現在値 / 最大値」を矩形塗りで見せる
-/// UI ノード。Godot では Range（値の管理）+ Control（レイアウト）+ StyleBoxFlat
-/// （見た目）の組み合わせだが、本実装は StyleBox 抽象を持たないため Panel と同じく
-/// 「背景色 + 塗り色 + 単純な枠線」を直接フィールドに持つ素朴版。
+/// ProgressBar — 「現在値 / 最大値」を矩形の塗りで見せる UI ノード。
+/// HP・ロード進捗・スタミナなどを一つのノードで表せて、tick で目盛りも入れられる。
+/// 利用例: HP バー、読み込み進捗、スタミナゲージ。
+/// StyleBox 抽象を持たず「背景色 + 塗り色 + 単純な枠線」を直接フィールドに持つ素朴版。
 ///
 /// 描画レイヤ（下から上）:
 ///   1. 背景（`size` 全体を `backgroundColor` で塗る）
@@ -16,7 +12,7 @@
 /// 塗りは border の内側に inset されるので、フル値でも border の上に被らず、
 /// 「右端の border が fill を 1px 食う」現象が起きない。
 ///
-/// 値のクランプ規則（Godot Range 準拠）:
+/// 値のクランプ規則:
 ///   - `setValue` は `minValue..maxValue` の範囲にクランプされる
 ///   - `maxValue <= minValue` のときはゼロ割を避けて塗り比率 0.0 として描画する
 ///   - `setBorderWidth` は負値を 0 にクランプ（Panel と同じ）
@@ -31,7 +27,7 @@
 ///         tickInterval, tickColor, tickAlpha, tickWidth,
 ///         borderColor, borderAlpha, borderWidth
 
-/// 塗りの伸長方向（Godot `FillMode` 準拠）
+/// 塗りの伸長方向
 pub enum FillMode with Eq, Order, ToString {
     case LeftToRight
     case RightToLeft
@@ -138,7 +134,7 @@ mod ProgressBar {
         let ProgressBar.ProgressBar(r) = bar;
         r#value
 
-    /// `value` を `minValue..maxValue` にクランプして設定する（Godot Range と同じ）。
+    /// `value` を `minValue..maxValue` にクランプして設定する。
     pub def setValue(value: Float64, bar: ProgressBar): ProgressBar =
         let ProgressBar.ProgressBar(r) = bar;
         let clamped = Float64.min(r#maxValue, Float64.max(r#minValue, value));

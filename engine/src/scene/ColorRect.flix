@@ -1,8 +1,7 @@
-/// 色付き矩形ノード（Godot ColorRect 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_colorrect.html
-///
-/// テクスチャなしで単色の矩形を描画するノード。
-/// 背景色やオーバーレイとして使う。
+/// テクスチャなしで単色の矩形を描くノード。
+/// 画像を用意せず色とサイズだけで塗れるので、背景や覆いを手軽に置ける。
+/// 角丸や 45° の斜線ハッチも指定できる。
+/// 利用例: 画面の背景色 / 全画面を覆う半透明のオーバーレイ。
 ///
 ///   ColorRect
 ///     +-- CanvasItem: visible, zIndex, modulate

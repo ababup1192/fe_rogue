@@ -1,14 +1,13 @@
-/// flix-json → 標準ライブラリ `Util.Json` 移行用の互換シム (engine PoC)。
-///
-/// 旧 `mlutze/flix-json` の呼び出し形
-///   - `Json.FromJson.getAtKey(Root, key, map)` / `getAtKeyOpt(...)`
-///   - `JsonError(Root, Set#{...})`
-///   - `Json.Parse.parse(text)` (Option 返し)
-/// を、標準 `Util.Json` の API へそのまま委譲する。これにより engine 側コードの
-/// 呼び出しサイトをほぼ無改変のまま移行できる。
-///
-/// flix-json はエラーに `Json.Path` 接頭辞を持たせていたが、`Util.Json` は decode 時に
-/// 内部でパスを構築するため、呼び出し側が渡すパス接頭辞 (`Root`) は捨てる。
+// JsonCompat — flix-json 形式の JSON 呼び出しを、標準ライブラリ `Util.Json` の API へそのまま委譲する。
+// これで既存コードの呼び出しサイトを書き換えずに、標準の JSON 実装を使える。
+// 利用例: `getAtKey(Root, key, map)` でキーを引く / `parse(text)` で文字列を JSON にする。
+// 注意: flix-json はエラーにパス接頭辞 (`Root`) を持たせるが、`Util.Json` は decode 時に内部で
+//   パスを構築するため、呼び出し側が渡す接頭辞は捨てる。
+//
+// 対応する呼び出し形:
+//   - `getAtKey(Root, key, map)` / `getAtKeyOpt(...)`
+//   - `jsonError(Root, Set#{...})`
+//   - `parse(text)` (Option 返し)
 mod JsonCompat {
     use Util.Json.Json
     use Util.Json.Json.JObject
@@ -19,7 +18,7 @@ mod JsonCompat {
     use Util.Json.FromJson.FromJson
 
     /// flix-json `Json.Path.Path.Root` の代替。`Util.Json` ではパス接頭辞を使わないので
-    /// 値としては無意味だが、旧呼び出し形 `(Root, key, map)` を保つためのプレースホルダ。
+    /// 値としては無意味だが、呼び出し形 `(Root, key, map)` を保つためのプレースホルダ。
     pub enum PathTag { case Root }
 
     /// `Json.FromJson.getAtKey(Root, key, map)` 互換。map を JObject に包んで委譲。

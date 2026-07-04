@@ -1,19 +1,18 @@
-/// 1 ファイル = 1 catalog container の汎用構造。
-/// `containerKey` 配下に entries (id → 値) を持ち、それ以外の top-level フィールドを
-/// meta として保持する。
-///
-/// 例: `weapons.json` は `{"weapons": {"sword": {...}, ...}}`
-///       containerKey = "weapons", entries = {sword => ...}, meta = {}
-///
-/// 例: `units.json` は `{"units": {...}, "players": [...], "enemies": [...]}`
-///       containerKey = "units", entries = {knight => ...},
-///       meta = {"players" => JArray(...), "enemies" => JArray(...)}
-///
-/// **設計メモ**: `Saveable[CatalogContainer[t]]` 用の polymorphic instance は付けない。
-/// `fromJson` のシグネチャに containerKey を値として渡せないため (純粋関数の型では
-/// 値レベル情報を引数化できない)。代わりに `encode` / `decode` 関数 API を提供し、
-/// 各 catalog 側で `enum WeaponCatalog { case WeaponCatalog(CatalogContainer[WeaponResource]) }`
-/// の wrap enum + 単相 Saveable instance を書く形にする。
+// CatalogContainer — 「1 ファイル = 1 種類の一覧」を表す汎用の入れ物。id から中身を引ける
+// entries と、それ以外のトップレベル項目 meta に分けて持つ。
+// どのゲームのデータ（武器・ユニット等）も同じ形で読み書きでき、id 参照と保存を共通化できる。
+// 利用例: weapons.json を読む / id "sword" の武器を引く / players 一覧を meta から取る。
+//
+// 例: `weapons.json` は `{"weapons": {"sword": {...}, ...}}`
+//       containerKey = "weapons", entries = {sword => ...}, meta = {}
+//
+// 例: `units.json` は `{"units": {...}, "players": [...], "enemies": [...]}`
+//       containerKey = "units", entries = {knight => ...},
+//       meta = {"players" => JArray(...), "enemies" => JArray(...)}
+//
+// 注意: `Saveable[CatalogContainer[t]]` の polymorphic instance は付けない。`fromJson` の型に
+//   containerKey を値として渡せないため。代わりに `encode` / `decode` 関数 API を提供し、各 catalog は
+//   wrap enum + 単相 Saveable instance を書く。
 mod CatalogContainer {
     use Util.Json.Json
     use Util.Json.Json.{JObject}

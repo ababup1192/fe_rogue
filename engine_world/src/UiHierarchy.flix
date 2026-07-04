@@ -28,8 +28,8 @@ mod UiHierarchy {
                 }
         }
 
-    /// 継承済み可視性（Bevy InheritedVisibility）。祖先が不可視なら子も不可視。
-    /// visible 未登録の entity は true 扱い。root から下へ AND を伝播する。
+    /// 親を隠すと子も隠れる、を反映した各要素の実際の表示可否。
+    /// 表示可否が未登録の entity は表示扱い。root から下へ「親が見えるか」を掛け合わせて伝える。
     pub def resolveInherited(visible: Map[EntityId, Bool], parents: Map[EntityId, EntityId],
                              root: EntityId, order: Map[EntityId, Int32]): Map[EntityId, Bool] =
         resolveInheritedRec(root, true, visible, parents, order, Map.empty())

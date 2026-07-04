@@ -1,8 +1,6 @@
-/// GPU パーティクルエミッター（Godot GPUParticles2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_gpuparticles2d.html
-///
-/// テクスチャの残像をフェードアウトしながら放出するノード。
-/// engineProcess で自動的にパーティクルを放出・加齢・除去する。
+/// GPU パーティクルエミッター — テクスチャの粒をフェードアウトさせながら放出するノード。
+/// 毎フレーム自動で放出・加齢・寿命切れの除去まで面倒を見るので、置くだけで煙や火花が撒ける。
+/// 利用例: ジャンプ時の砂煙、弾が飛んだ跡の残像。
 ///
 ///   GPUParticles2D
 ///     +-- CanvasItem: visible, zIndex, modulate

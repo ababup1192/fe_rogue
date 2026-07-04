@@ -1,17 +1,8 @@
-/// 項目リストノード（Godot ItemList 準拠の最小実装）
-/// see: https://docs.godotengine.org/en/stable/classes/class_itemlist.html
-///
-/// 縦並びの項目リストにキー駆動のカーソルを持たせる UI ノード。
-/// 「たたかう / じゅもん / どうぐ」のようなコマンドメニューや、Godot の OptionButton
-/// 風のドロップダウン項目選択を「マウス前提でない」形で実現する。
-///
-/// 各 ItemList は `focused` フラグを持ち、`focused = true` のものだけが
-/// `handleMenus` パイプライン段でキー入力（↑↓/Enter/Escape）を受ける。
-/// サブメニューを実現するときは、親 ItemList の `focused` を false にして
-/// 子 ItemList の `focused` を true に切り替える（ゲーム側で制御）。
-///
-/// 描画は項目テキストを縦に並べ、選択中（かつ focused）の行の左に `cursorGlyph` を表示する。
-/// 各項目を `Label2D.toDrawables` 経由でグリフ化することで、フォント描画ロジックを共通化している。
+/// ItemList — 縦に並べた項目をキー（↑↓/Enter/Escape）で選ばせる UI ノード。
+/// マウス前提でないコマンドメニューを作れて、文字描画は Label2D に委ねるので見た目が揃う。
+/// 利用例: 「たたかう/じゅもん/どうぐ」のコマンド、装備やアイテムの一覧選択。
+/// 注意: `focused = true` の ItemList だけが `handleMenus` でキー入力を受ける。サブメニューは
+/// 親を focused=false・子を focused=true に切り替えて出す（同時に複数を true にしない）。
 ///
 ///   ItemList
 ///     +-- CanvasItem: visible, zIndex, modulate
@@ -19,9 +10,8 @@
 
 /// 1 項目分のデータ。`text` が表示文字、`disabled = true` の項目は選択不可
 /// （カーソル移動時にスキップされ、disabledColor で淡く描画される）。
-/// `metadata` は表示テキストとは別にゲーム側が項目に紐付ける文字列識別子（Godot の
-/// ItemList.set_item_metadata 準拠）。 例: 「ホイミ」 表示の項目に `Some("hoimi")` を
-/// 持たせ、 確定時に MenuHandler 側で spell_id として取り出す。
+/// `metadata` は表示テキストとは別にゲーム側が項目へ紐付ける文字列識別子。
+/// 例: 「ホイミ」表示の項目に `Some("hoimi")` を持たせ、確定時に MenuHandler 側で spell_id として取り出す。
 pub type alias ItemEntry = {
     text     = String,
     disabled = Bool,
@@ -29,7 +19,6 @@ pub type alias ItemEntry = {
 }
 
 /// 行ごとのアイコン情報。`text` の左に sprite sheet の指定 frame を描画するときに使う。
-/// Godot ItemList の `set_item_icon(idx, texture)` + sub-rect 相当。
 /// 任意の行に部分的にアイコンを置きたいので、`itemIcons` は index→ItemIcon の Map で持つ。
 pub type alias ItemIcon = {
     texture = String,
@@ -51,8 +40,7 @@ pub type alias SelectedHighlight = {
     inset        = Float64
 }
 
-/// ItemList の各項目ラベルの横配置。Left=従来の左固定、Center=列内中央寄せ。
-/// Godot Label の HorizontalAlignment（Left/Center）に対応する2値。
+/// ItemList の各項目ラベルの横配置。Left=左固定、Center=列内中央寄せ。
 pub enum ItemAlignment with Eq {
     case Left
     case Center
@@ -65,7 +53,7 @@ pub enum ItemList {
         // iconSize > 0 のときに限り toDrawables が描画する。
         itemIcons       = Map[Int32, ItemIcon],
         // 行 index → 右寄せサブラベル（主テキストの右端に淡色で出す副説明。例「敵を選ぶ」）。
-        // 指定行のみ描画。Godot ItemList には無い拡張。
+        // 指定行のみ描画。
         itemSubtexts    = Map[Int32, String],
         // アイコン表示サイズ（px、正方形）。0 ならアイコン領域を確保しない（既存挙動）。
         iconSize        = Float64,
@@ -84,7 +72,7 @@ pub enum ItemList {
         textColor       = Color,
         disabledColor   = Color,
         // 行 index → 文字色の個別上書き。指定行は textColor/disabledColor の代わりにこの色で描く。
-        // Godot の ItemList.set_item_custom_fg_color 相当（pick 中アイテムの強調などに使う）。
+        // 指定行を強調したいとき（pick 中アイテムなど）に使う。
         itemColors      = Map[Int32, Color],
         // 右寄せサブラベルの文字色（itemSubtexts 用）。
         subtextColor    = Color,
@@ -113,9 +101,9 @@ pub enum ItemList {
         wrap            = Bool,
         // スクロール表示する最大行数（0 = 無制限＝全項目を従来どおり描画）。
         // >0 かつ項目数がこれを超えるとき、選択行が見えるよう縦スクロールし、表示窓外の行は
-        // 描画しない（Godot ItemList のスクロール相当）。単一列（maxColumns<=1）のときのみ有効。
+        // 描画しない。単一列（maxColumns<=1）のときのみ有効。
         maxVisibleRows  = Int32,
-        // 列数（Godot の ItemList.max_columns 相当）。1 で従来どおりの単一縦リスト。
+        // 列数。1 で従来どおりの単一縦リスト。
         // 2 以上のとき toDrawables は「縦詰め（左列に上から、あふれたら次の列）」で並べる。
         // カーソル移動は列に関係なく selectedIndex を上下する 1 次元のまま（描画位置だけ列対応）。
         maxColumns      = Int32,
@@ -219,7 +207,7 @@ mod ItemList {
         let ItemList.ItemList(r) = list;
         ItemList.ItemList({itemIcons = icons | r})
 
-    // ── 個別文字色（Godot の set_item_custom_fg_color 相当）──
+    // ── 個別文字色 ──
 
     pub def getItemColors(list: ItemList): Map[Int32, Color] =
         let ItemList.ItemList(r) = list;
@@ -312,7 +300,6 @@ mod ItemList {
     /// false → true への切替時には、直前フレームのキー状態を「全押下中」と仮定して
     /// `prev*Down` を `true` で初期化する。これにより、別フェーズで Enter キーを押した
     /// 余韻でメニューが即確定してしまう問題（フェーズ遷移時の入力連鎖）を防ぐ。
-    /// Godot で言う「grab_focus() 直後にキューに残った入力イベントを 1 回消費する」挙動。
     pub def setFocused(focused: Bool, list: ItemList): ItemList =
         let ItemList.ItemList(r) = list;
         if (focused and not r#focused)
@@ -662,7 +649,7 @@ mod ItemList {
         // 端では下/上で止まる）。窓外の行は描画しない。複数列や maxVisibleRows=0 は従来どおり。
         let scrollOn = cols <= 1 and r#maxVisibleRows > 0 and count > r#maxVisibleRows;
         let firstVisible = scrollFirstVisible(r#selectedIndex, count, r#maxVisibleRows);
-        // 行内縦中央寄せ: テキスト行高・アイコンを itemHeight の中央に置く（Godot ItemList 準拠）。
+        // 行内縦中央寄せ: テキスト行高・アイコンを itemHeight の中央に置く。
         // itemHeight ちょうどに本文 1 行が収まるときは vCenter≈0（従来の上端揃えとほぼ同じ）。
         let mainScale = r#fontSize / r#font#fontSize;
         let mainLineHeight = (r#font#ascent + r#font#descent + r#font#lineGap) * mainScale;
@@ -820,8 +807,7 @@ mod ItemList {
         }, {drawables = (Nil: List[GameEngine.Drawable]), idx = 0}, r#items);
         result#drawables
 
-    /// path 位置に ItemList が居れば取り出す（Godot の `GetNode<ItemList>(path)` 相当）。
-    /// 別ノードや欠落なら `None`。
+    /// path 位置に ItemList が居れば取り出す。別ノードや欠落なら `None`。
     pub def getAt(path: NodePath, scene: Scene[s]): Option[ItemList] =
         match Scene.getEngineNode(path, scene) {
             case Some(EngineNode.ItemListWithState(list, _)) => Some(list)

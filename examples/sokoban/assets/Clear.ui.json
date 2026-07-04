@@ -1,4 +1,5 @@
 {
+  "defaultFont": "default",
   "root": {
     "name": "Clear", "widget": "none", "visible": false, "layer": 1,
     "dir": "column", "mainAlign": "center", "crossAlign": "center",
@@ -9,11 +10,11 @@
         "width": "auto", "height": "auto",
         "children": [
           { "name": "headline", "widget": "text", "text": "CLEAR!",
-            "font": "default", "fontSize": 30, "tint": "#fbf236", "zIndex": 120 },
+            "fontSize": 30, "tint": "#fbf236", "zIndex": 120 },
           { "name": "moves", "widget": "text", "text": "Moves: 0",
-            "font": "default", "fontSize": 12, "tint": "#cbdbfc", "zIndex": 120 },
+            "fontSize": 12, "tint": "#cbdbfc", "zIndex": 120 },
           { "name": "prompt", "widget": "text", "text": "Enter: next",
-            "font": "default", "fontSize": 10, "tint": "#847e87", "zIndex": 120 }
+            "fontSize": 10, "tint": "#847e87", "zIndex": 120 }
         ]
       }
     ]

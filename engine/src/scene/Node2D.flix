@@ -1,5 +1,4 @@
-/// 2D 空間上のノード（Godot Node2D 準拠）
-/// see: https://docs.godotengine.org/en/stable/classes/class_node2d.html
+/// 2D 空間に置くノードの位置・回転・スケール・せん断を扱うトレイト。
 pub trait Node2D[a] with CanvasItem[a] {
 
     // ── Properties ──

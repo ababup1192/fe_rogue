@@ -1,4 +1,6 @@
-// Vec2 — 2D vector operations module (Godot Vector2 inspired)
+// Vec2 — 2D の位置や向きを表す (x, y) の組と、その足し引き・長さ・回転などの計算。
+// 座標を1つの値として扱えるので、移動・距離・角度の計算をその場で書き下さずに済む。
+// 利用例: キャラを速度ぶん動かす / 2点間の距離を測る / 狙う方向のベクトルを求める。
 
 mod Vec2 {
     import java.lang.Math
@@ -100,12 +102,12 @@ mod Vec2 {
     // Reflect & Bounce
     // ========================================================================
 
-    /// Reflect v off a surface with normal n: v - 2 * dot(v, n) * n
+    /// 向き `n` の壁に `v` を映した向き（鏡写し。壁に沿う成分はそのまま、垂直成分だけ反転）。
     pub def reflect(v: Vec2, n: Vec2): Vec2 =
         let d = dot(v, n);
         sub(v, mul(n, 2.0 * d))
 
-    /// Bounce v off a surface with normal n: -reflect(v, n)
+    /// 向き `n` の壁で `v` を跳ね返した向き（reflect の逆向き）。
     pub def bounce(v: Vec2, n: Vec2): Vec2 =
         neg(reflect(v, n))
 

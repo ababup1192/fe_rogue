@@ -1,7 +1,7 @@
-// RenderFrame — 1 フレーム分の描画パイプライン
-//
-// LwjglLayer.flix の calcViewport / renderFrameMixed を移植。
-// sprites と tileMaps を zIndex で混合描画する (Sprite よりも先に TileMap)。
+// RenderFrame — 1 フレームぶんの絵（スプライト・タイル・多角形）を、重なり順に並べて一気に描く。
+// 描く順番（zIndex）や画面の縦横比合わせ（黒帯）をこの一箇所に任せられるので、上位は絵の材料を渡すだけでよい。
+// 利用例: 毎フレーム、集めた描画物を画面に出す / 手前・奥の重なりを正しく見せる。
+// 注意: 同じ zIndex 内は渡された入力順を保つ（安定ソート）。タイルはスプライトより先に描く。
 
 mod RenderFrame {
     import org.lwjgl.opengl.GL11
@@ -26,16 +26,44 @@ mod RenderFrame {
             (0, vpY, vpW, vpH)
         }
 
+    /// 1 フレーム描画に必要な材料をひとまとめにした名前付き引数。
+    /// 同じ Int32（シェーダ・VAO・VBO のハンドル）が何個も並ぶので、位置引数だと
+    /// 順番を取り違えても気づけない。名前で渡せば取り違いが起きない。
+    /// 利用例: 実行環境（LWJGL 等）のフレームループがこの1件を組んで renderFrameMixed へ渡す。
+    pub type alias FrameArgs = {
+        spriteShader = Int32,
+        tileShader = Int32,
+        vao = Int32,
+        registry = RenderAsset.TextureRegistry,
+        clearColor = Color,
+        designW = Float64,
+        designH = Float64,
+        fbW = Int32,
+        fbH = Int32,
+        sprites = List[RenderType.Drawable],
+        tileMaps = List[RenderType.TileMapRenderCmd],
+        polygons = List[RenderType.PolygonCmd],
+        polyVao = Int32,
+        polyVbo = Int32
+    }
+
     /// 1 フレーム描画: tileMaps を先に zIndex 順で描き、続いて sprites を zIndex 順で描く。
     /// 黒帯部分は scissor で clear する。
-    pub def renderFrameMixed(spriteShader: Int32, tileShader: Int32, vao: Int32,
-                              registry: RenderAsset.TextureRegistry,
-                              clearColor: Color, designW: Float64, designH: Float64,
-                              fbW: Int32, fbH: Int32,
-                              sprites: List[RenderType.Drawable],
-                              tileMaps: List[RenderType.TileMapRenderCmd],
-                              polygons: List[RenderType.PolygonCmd],
-                              polyVao: Int32, polyVbo: Int32): Unit \ IO =
+    pub def renderFrameMixed(args: FrameArgs): Unit \ IO =
+        let spriteShader = args#spriteShader;
+        let tileShader   = args#tileShader;
+        let vao          = args#vao;
+        let registry     = args#registry;
+        let clearColor   = args#clearColor;
+        let designW      = args#designW;
+        let designH      = args#designH;
+        let fbW          = args#fbW;
+        let fbH          = args#fbH;
+        let sprites      = args#sprites;
+        let tileMaps     = args#tileMaps;
+        let polygons     = args#polygons;
+        let polyVao      = args#polyVao;
+        let polyVbo      = args#polyVbo;
         if (fbW > 0 and fbH > 0) {
             let (vpX, vpY, vpW, vpH) = calcViewport(fbW, fbH, designW, designH);
             GL11.glViewport(0, 0, fbW, fbH);
@@ -65,8 +93,8 @@ mod RenderFrame {
             }, sortedTiles);
             // sprites と polygons を 1 本の zIndex 安定ソート列にマージして描く。
             // sprite だけ z 順にし polygon を最後へまとめて描くと、ワールド配置のポリゴン
-            // （武器グリフ等）が CanvasLayer ポップアップを貫通してしまう。両者を同じ z 空間で
-            // 並べることで Godot の CanvasItem 順序（z_index / CanvasLayer）と一致させる。
+            // （武器グリフ等）が手前のポップアップを貫通してしまう。両者を同じ z 空間で
+            // 並べることで、重なり順が zIndex の指定どおりになる。
             // 同一 zIndex 内は入力順（sprites → polygons）を保つため stable sort（zipWithIndex）。
             // Ok = Drawable（スプライト/ColorRect）、Err = PolygonCmd（Polygon2D/Arc2D）。
             let merged: List[Result[RenderType.PolygonCmd, RenderType.Drawable]] =

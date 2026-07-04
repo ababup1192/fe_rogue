@@ -1,25 +1,27 @@
-// TextLayout — pure functions for text layout calculations
+// TextLayout — 文字列の一文字ずつを、どこに置くか（改行・折り返し・中央寄せ）を計算する。
+// 文字の送り幅から各文字のペン位置を出す計算を一箇所にまとめるので、描画側は座標を気にせず置くだけでよい。
+// 利用例: ラベルを中央に揃える / 決まった幅で自動改行する / 何行になるか見積もる。
+// 注意: 位置の計算だけで、実際の描画やフォントの読み込みは扱わない純粋な計算。
 
 mod TextLayout {
 
-    /// Convert a Char to its unsigned Unicode codepoint.
-    /// Flix's Char.toBmpCodePoint returns signed Int32, so chars >= U+8000
-    /// become negative. This function masks to 16-bit unsigned.
+    /// 文字を 0 以上の Unicode 番号に直す。
+    /// 標準の変換は U+8000 以上で負値になるため、16bit の符号なしに丸める。
     pub def charToCodePoint(ch: Char): Int32 =
         Int32.bitwiseAnd(Char.toBmpCodePoint(ch), 0xFFFF)
 
-    /// Line height multiplier (1.2x font size, standard for single-spaced text).
+    /// 行の高さ（文字サイズの 1.2 倍。詰め気味の標準的な行間）。
     pub def lineHeightMultiplier(): Float64 = 1.2
 
-    /// Calculate the horizontal offset for centering single-line text.
+    /// 1 行のテキストを中央に置くための、横方向のずらし量。
     pub def centerOffset(totalAdvance: Float64, scale: Float64): Float64 =
         -1.0 * totalAdvance * scale / 2.0
 
-    /// Sum of glyph advances (total text width in bake-scale units).
+    /// 各文字の送り幅の合計（＝テキスト全体の幅。ベイク基準の単位）。
     pub def totalAdvance(advances: List[Float64]): Float64 =
         List.foldLeft((acc, a) -> acc + a, 0.0, advances)
 
-    /// Split text into lines at newline characters (codepoint 10).
+    /// 改行文字でテキストを行に分ける。
     pub def splitLines(text: String): List[List[Char]] =
         let chars = String.toList(text);
         let result = List.foldLeft((acc, ch) -> {
@@ -30,7 +32,7 @@ mod TextLayout {
         }, {lines = (Nil: List[List[Char]]), current = (Nil: List[Char])}, chars);
         List.reverse(List.reverse(result#current) :: result#lines)
 
-    /// Compute pen positions for each character with word-wrap support.
+    /// 各文字を置くペン位置。折り返し幅を超えたら次の行へ送る。
     pub def layoutPositions(advances: List[Float64], wrapWidth: Float64,
                             scale: Float64, lineHeight: Float64): List[(Float64, Float64)] =
         if (wrapWidth <= 0.0) {
@@ -51,7 +53,7 @@ mod TextLayout {
             List.reverse(result#positions)
         }
 
-    /// Glyph metrics and atlas UV coordinates.
+    /// 1 文字ぶんの寸法と、アトラス上の切り出し位置。
     pub type alias GlyphMetrics = {
         xOff = Float64, yOff = Float64,
         glyphW = Float64, glyphH = Float64,
@@ -59,17 +61,14 @@ mod TextLayout {
         s0 = Float64, t0 = Float64, s1 = Float64, t1 = Float64
     }
 
-    /// Screen-space quad bounds for a single glyph.
+    /// 1 文字を画面上で囲む四角の範囲（左上と右下）。
     pub type alias QuadBounds = {
         x0 = Float64, y0 = Float64, x1 = Float64, y1 = Float64
     }
 
-    /// Calculate screen-space quad bounds for a glyph at a given pen position.
-    /// penPos: (penX, penY) in bake-scale coordinates from layoutPositions
-    /// glyph: glyph metrics (xOff, yOff, glyphW, glyphH)
-    /// scale: fontSize / fontBakeSize
-    /// basePos: label's screen position
-    /// offsetX: centering offset (0 if not centered)
+    /// ペン位置に置いた 1 文字が、画面上で占める四角の範囲を求める。
+    /// penPos は layoutPositions が出したペン位置、basePos はラベルの画面位置、
+    /// offsetX は中央寄せのずらし量（寄せないなら 0）。
     pub def glyphQuadBounds(penPos: (Float64, Float64), glyph: GlyphMetrics,
                             scale: Float64, basePos: Vec2.Vec2,
                             offsetX: Float64): QuadBounds =
@@ -80,7 +79,7 @@ mod TextLayout {
         let y1 = y0 + glyph#glyphH * scale;
         {x0 = x0, y0 = y0, x1 = x1, y1 = y1}
 
-    /// Count the number of lines in a wrapped layout.
+    /// 折り返した結果、何行になるかを数える。
     pub def lineCount(advances: List[Float64], wrapWidth: Float64,
                       scale: Float64, lineHeight: Float64): Int32 =
         let positions = layoutPositions(advances, wrapWidth, scale, lineHeight);

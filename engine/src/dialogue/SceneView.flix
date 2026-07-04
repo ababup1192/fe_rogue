@@ -1,17 +1,9 @@
-/// Yarn → Scene 統合のための view 側 handler 一式。
-///
-/// `Dialogue.DialogueView` の本番（Scene 統合用）handler と、
-/// 蓄積されたイベントを 1 フレーム単位で取り出す `Inbox` effect を
-/// セットで提供する。両者は内部の同じ `MutDeque` を介して受け渡す。
-///
-/// 設計の意図:
-///   - 受信ハンドラ（DialogueView）は scene を直接いじらず queue に push するだけ
-///   - 消費は `Inbox.takeAll` を `process` ライフサイクル内で呼ぶ
-///   - これにより `handleInput` が返すシーンと「side channel で書き込まれたシーン」
-///     がマージされる必要がなくなる（pull 型）
-///
-/// `withSceneView(rc, body)` は queue 確保と両 handler 連結を内包し、
-/// 呼び出し側に queue を露出しない。
+/// 対話イベントを Scene に届けるための view 側 handler 一式。受信 handler と、
+/// 貯めたイベントを 1 フレーム単位で取り出す `Inbox` effect を組で提供する。
+/// 受信 handler は scene を直接いじらず queue に積むだけなので、入力処理が返す
+/// scene と別経路で書き込まれた scene をマージせずに済む（pull 型）。
+/// 利用例: `withSceneView(rc, body)` で被せ、`process` 内で `Inbox.takeAll` して消化する。
+/// 注意: view 系（Line/Choices/Dismiss/Complete）と command 系は別キューに分ける。
 mod Dialogue.SceneView {
     use Dialogue.ViewEvent
     use Dialogue.ViewEvent.{Line, Choices, Dismiss, Complete}

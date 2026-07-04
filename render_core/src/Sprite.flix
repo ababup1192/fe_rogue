@@ -1,11 +1,6 @@
-// RenderSprite — スプライト / タイルマップの描画関数
-//
-// LwjglLayer.flix の以下を移植:
-//   - initSpriteRenderer (共有 quad VBO/VAO)
-//   - drawSprite
-//   - buildTileInstanceVBO
-//   - buildTileMapVAO
-//   - drawTileMapInstanced
+// RenderSprite — スプライト1枚やタイルマップ1面を、実際に画面へ描く低レベルの描画関数。
+// GL の頂点バッファ準備や描画命令をこの一箇所に閉じるので、上位はこれを呼ぶだけで絵を出せる。
+// 利用例: キャラや弾の画像を描く / 敷き詰めた地形タイルをまとめて描く。
 
 mod RenderSprite {
     import org.lwjgl.opengl.GL11

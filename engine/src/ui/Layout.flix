@@ -1,37 +1,28 @@
-/// Layout — UI レイアウト記述子と解決アルゴリズム
-///
-/// scene.json の Container ノードの `layout` フィールドに乗せて、UI ノードの
-/// 配置を宣言的に決めるための ADT。
-///
-/// 設計方針:
-///   - Layout は値で composable。enum case が増えても apply の分岐 1 つで対応できる
-///   - apply / resolve は純粋関数
-///   - Layout の leaf は **実 node 定義の埋め込み** (`Node({name, definition})`)。
-///     SceneLoader が definition から実 engine node を作り scene tree に追加する
-///   - Container の子は **Control 系 (ColorRect, TextureRect, Label2D, RichTextLabel,
-///     Button, TextureButton)** に限定。Node2D 系 (Sprite2D など) は size を持たないため
-///     Container 内では使えない (Godot と同じ制約)。UI 画像は TextureRect を使う
-///
-/// scene.json の規約:
-///   - `"kind": "..."` を持つ object → Layout primitive (HBoxContainer / Overlay 等)
-///   - `"type": "..."` を持つ object → 実 node 定義 (Node case として扱う)
+/// Layout — UI ノードの並べ方（縦積み・横並び・格子・中央寄せ・余白・重ね）を
+/// 宣言的に書き、起点の矩形から各ノードの位置とサイズを算出する。
+/// 配置計算を 1 箇所に閉じ込めるので画面ごとに座標を手で置かずに済み、case が
+/// 増えても apply / resolve の分岐 1 つで対応できる（どちらも純粋関数）。
+/// 利用例: scene.json の Container ノードの `layout` フィールドに並べ方を書く。
+/// 注意: leaf は実ノード定義の埋め込みで、SceneLoader が build して scene tree に足す。
+///       子は size を持つ Control 系 (ColorRect, TextureRect, Label2D, RichTextLabel,
+///       Button, TextureButton) に限る。UI 画像は size を持たない Sprite2D ではなく
+///       TextureRect を使う。
 
-/// HBoxContainer/VBoxContainer の主軸 alignment (Godot BoxContainer.AlignmentMode 準拠)。
-/// 余ったスペースを主軸方向のどこに置くか。
-/// see: https://docs.godotengine.org/en/stable/classes/class_boxcontainer.html
+/// HBoxContainer/VBoxContainer の主軸方向の寄せ方。
+/// 余ったスペースを主軸のどこに置くか（先頭・中央・末尾）を決める。
 pub enum MainAxisAlign with Eq {
-    /// 主軸の先頭から詰める。余りは末尾に残る (Godot ALIGNMENT_BEGIN)
+    /// 主軸の先頭から詰める。余りは末尾に残る。
     case Begin
-    /// 子の塊全体を中央寄せ。余りは両端に半分ずつ (Godot ALIGNMENT_CENTER)
+    /// 子の塊全体を中央寄せ。余りは両端に半分ずつ。
     case Center
-    /// 主軸の末尾から詰める。余りは先頭に残る (Godot ALIGNMENT_END)
+    /// 主軸の末尾から詰める。余りは先頭に残る。
     case End
 }
 
-/// HBoxContainer/VBoxContainer の交差軸 alignment。
-/// 子の交差軸位置（VBoxContainer なら左右、HBoxContainer なら上下）。
-/// Stretch は子矩形に親の交差軸サイズを与える (Godot の size_flags = EXPAND_FILL に相当)。
-/// 非 Godot 独自拡張: Godot では子の size_flags で個別指定するが、本 Layout では親側で一括指定する。
+/// HBoxContainer/VBoxContainer の交差軸方向の寄せ方。
+/// 子を交差軸（VBoxContainer なら左右、HBoxContainer なら上下）のどこに置くか。
+/// Stretch は子矩形に親の交差軸サイズいっぱいを与える。
+/// 注意: 寄せ方は親側でまとめて指定し、全ての子に一律で効く。
 pub enum CrossAxisAlign with Eq {
     case Begin
     case Center
@@ -40,21 +31,21 @@ pub enum CrossAxisAlign with Eq {
 }
 
 pub enum Layout {
-    /// 子を縦方向に並べる (Godot VBoxContainer 準拠)
+    /// 子を縦方向に並べる。
     case VBoxContainer({
         separation = Float64,
         alignment  = MainAxisAlign,
         crossAxis  = CrossAxisAlign,
         children   = List[Layout]
     })
-    /// 子を横方向に並べる (Godot HBoxContainer 準拠)
+    /// 子を横方向に並べる。
     case HBoxContainer({
         separation = Float64,
         alignment  = MainAxisAlign,
         crossAxis  = CrossAxisAlign,
         children   = List[Layout]
     })
-    /// 子を columns 列の格子に並べる (Godot GridContainer 準拠)。左→右、上→下に詰める。
+    /// 子を columns 列の格子に並べる。左→右、上→下に詰める。
     /// 各列は等幅 (cellW = (W - separation*(columns-1)) / columns)、各行高はその行内の子の最大自然高。
     /// 最終行が columns 未満 (端数) でも左詰めで配置する。子は Control/Label 系のみ (measure 制約)。
     case GridContainer({
@@ -62,16 +53,16 @@ pub enum Layout {
         separation = Float64,
         children   = List[Layout]
     })
-    /// 親矩形を内側に margin 縮小して子を配置 (Godot MarginContainer 準拠、本実装は全方向同一値)
+    /// 親矩形を margin 分だけ内側に縮めて子を配置する（margin は全方向同一値）。
     case MarginContainer({ margin = Float64, child = Layout })
-    /// 子レイアウトを親矩形の中央に配置 (Godot CenterContainer 準拠)
+    /// 子レイアウトを親矩形の中央に配置する。
     case CenterContainer(Layout)
     /// 実 engine node の埋め込み。SceneLoader が definition から build して
     /// scene tree (Container の親 path 配下) に追加する。
     /// Layout.apply は parentPath ++ [name] の path に対し setGlobalPositionAt + setSize を呼ぶ。
     /// definition 内の `"anchor"` / `"margin"` は Panel 内での anchor 配置に使われる。
     case Node({ name = String, definition = Util.Json.Json })
-    /// Panel — 親 rect を共有する子レイアウト群。各 Node 子は個別の `anchor` で配置 (Godot の Plain Control に最も近い)。
+    /// Panel — 親 rect を共有する子レイアウト群。各 Node 子は個別の `anchor` で配置する。
     /// anchor 未指定の子は TopLeft 扱い。anchor=FullRect の Node は size も親 rect に合わせる。
     case Panel(List[Layout])
 }

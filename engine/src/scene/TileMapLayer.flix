@@ -1,4 +1,7 @@
-/// タイルマップレイヤー（Godot TileMapLayer 準拠）
+/// タイルマップレイヤー — 格子状に並べたタイルの層を 1 枚まとめて描く。
+///
+/// 大量のタイルを 1 回の描画でまとめて出せるので、床や壁のマップを軽く表示できる。
+/// 利用例: ダンジョンの床・壁レイヤーを 1 枚として置く。
 ///
 /// GPU インスタンシング（glDrawArraysInstanced）で全タイルを 1 draw call で描画する。
 /// 衝突セル（collisionCells）は PhysicsStep が仮想 StaticBody として展開する。
@@ -21,7 +24,7 @@ pub enum TileMapLayer {
         gridSize = {x = Int32, y = Int32},        // マップのグリッド寸法（__cWid, __cHei）
         tileVaoId = Int32,            // GPU VAO ID（0 = 未初期化）
         tileCount = Int32,            // インスタンス数
-        ySortEnabled = Bool           // CanvasItem: 子を global_y で並べる（Godot 準拠）
+        ySortEnabled = Bool           // CanvasItem: 子を global_y で並べる
     })
 }
 
@@ -90,41 +93,39 @@ mod TileMapLayer {
         })
 
     // ────────────────────────────────────────────────────────
-    // Godot TileMapLayer 準拠のクエリ API
+    // タイル座標のクエリ API
     // ────────────────────────────────────────────────────────
 
-    /// Godot: tile_set.tile_size のショートカット（タイル正方形）
+    /// タイル 1 マスの一辺（ピクセル）のショートカット（タイル正方形）
     pub def tileSize(tileMap: TileMapLayer): Float64 =
         let TileMapLayer.TileMapLayer(r) = tileMap;
         TileSet.tileSize(r#tileSet)
 
-    /// Godot: get_used_rect()
+    /// 使用中のマス範囲を矩形で返す。
     /// position は (0,0) 固定（LDTK は座標オフセット無し）、size は gridSize
     pub def getUsedRect(tileMap: TileMapLayer):
             { position = {x = Int32, y = Int32}, size = {x = Int32, y = Int32} } =
         let TileMapLayer.TileMapLayer(r) = tileMap;
         { position = Vec2i.zero(), size = r#gridSize }
 
-    /// Godot: map_to_local(coords)
-    /// グリッド座標 → セル中心のローカルピクセル座標
+    /// グリッド座標 → セル中心のローカルピクセル座標に変換する。
     /// world 座標が必要な場合は呼び出し側で
     ///   Vec2.add(Scene.globalPositionAt(path, scene), local)
-    /// と合成する（Godot で言う to_global(local)）
+    /// と合成する。
     pub def mapToLocal(coords: {x = Int32, y = Int32}, tileMap: TileMapLayer): Vec2.Vec2 =
         let s = tileSize(tileMap);
         let v = Vec2i.toVec2(coords);
         { x = v#x * s + s / 2.0,
           y = v#y * s + s / 2.0 }
 
-    /// Godot: local_to_map(local_position)
-    /// ローカルピクセル座標 → グリッド座標。範囲外でも値を返す（負値あり得る）。
+    /// ローカルピクセル座標 → グリッド座標に変換する。範囲外でも値を返す（負値あり得る）。
     /// floor 切り捨てを使い、負値でも正しい結果になる
     /// （truncate だと -0.5 → 0、floor なら -1 が正解）。
     pub def localToMap(localPos: Vec2.Vec2, tileMap: TileMapLayer): {x = Int32, y = Int32} =
         let s = tileSize(tileMap);
         Vec2i.fromVec2Floor(Vec2.div(localPos, s))
 
-    /// Godot: get_cell_source_id(coords)
+    /// 指定マスのソース ID を返す。
     /// 空セル（範囲外含む）: -1
     /// 壁セル: 0（本プロジェクトは intGrid 二値構造、source は 1 種類のみ）
     pub def getCellSourceId(coords: {x = Int32, y = Int32}, tileMap: TileMapLayer): Int32 =
@@ -137,7 +138,7 @@ mod TileMapLayer {
             else
                 -1
 
-    // ── Godot 拡張（本プロジェクト固有の便宜 API）──
+    // ── 本プロジェクト固有の便宜 API ──
 
     /// 範囲チェック: getUsedRect 内に収まるか
     pub def isInBounds(coords: {x = Int32, y = Int32}, tileMap: TileMapLayer): Bool =

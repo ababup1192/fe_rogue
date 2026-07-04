@@ -195,10 +195,10 @@ mod RobotGallery {
             List.append(Robot.parts(robotCenter(i), 16.0 * u(), dir, phase),
                         labelAt(atlas, i, name) :: Nil);
         List.flatten(
-            one(0)(Robot.Direction.Down)("Down") ::
-            one(1)(Robot.Direction.Left)("Left") ::
-            one(2)(Robot.Direction.Right)("Right") ::
-            one(3)(Robot.Direction.Up)("Up") :: Nil)
+            one(0)(Dir4.Down)("Down") ::
+            one(1)(Dir4.Left)("Left") ::
+            one(2)(Dir4.Right)("Right") ::
+            one(3)(Dir4.Up)("Up") :: Nil)
 
     def directionsReq(atlas: FontAtlas, phase: Float64, path: String): SoftRaster.RasterReq =
         { drawables = Render.draw(directionItems(atlas, phase)), polygons = Nil,

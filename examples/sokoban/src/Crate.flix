@@ -99,10 +99,8 @@ mod Crate {
         let bl = {x = tl#x + f, y = tl#y + t - f};
         let tr = {x = tl#x + t - f, y = tl#y + f};
         let d = Vec2.mul(Vec2.sub(tr, bl), 1.0 / Vec2.length(Vec2.sub(tr, bl)));
-        let n = {x = -d#y, y = d#x};
         let p0 = Vec2.sub(bl, Vec2.mul(d, ext));
         let p1 = Vec2.add(tr, Vec2.mul(d, ext));
-        { vertices = Vec2.add(p0, Vec2.mul(n, o1)) :: Vec2.add(p1, Vec2.mul(n, o1)) ::
-                     Vec2.add(p1, Vec2.mul(n, o2)) :: Vec2.add(p0, Vec2.mul(n, o2)) :: Nil,
+        { vertices = Quad.strip(p0, p1, o1, o2),
           color = c, alpha = 1.0f32, zIndex = z }
 }

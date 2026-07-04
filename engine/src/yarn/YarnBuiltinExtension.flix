@@ -1,13 +1,8 @@
-/// Yarn の `callFunc` で未対応関数名が来たときの拡張ポイント。
-///
-/// 設計意図:
-///   - `Yarn.Builtins.call` はエンジン同梱の組み込み関数（visited / Number.* / Bool.* / has_item）を
-///     ハードコードで実装している。それ以外の関数名はフォールバックとして本 effect の
-///     `lookup` を呼び、`Some(result)` が返れば採用、`None` なら "unknown builtin" エラー。
-///   - 実体（部屋・インベントリなどゲーム固有状態を覗く handler）は `Game.start` で注入する。
-///     エンジン側はゲーム effect を一切知らないまま、効果システム経由で結合する。
-///   - テストや CLI ヘッドレス利用では `withNoExtension` を被せれば既存挙動と変わらない
-///     （常に `None` を返す = ハードコード builtin だけが効く）。
+/// Yarn の `callFunc` で未対応の関数名が来たときの拡張ポイント。
+/// エンジン同梱の組み込み関数で見つからない名前をゲーム側の handler に問い合わせられる
+/// ので、エンジンはゲーム固有の状態（部屋・インベントリ等）を知らないまま結合できる。
+/// 利用例: `Game.start` で実体 handler を注入する / テストは `withNoExtension` を被せる。
+/// 注意: `lookup` が `NotFound` を返すと `Yarn.Builtins.call` が "unknown builtin" にする。
 mod Yarn.BuiltinExtension {
     use Yarn.Types.Value
 

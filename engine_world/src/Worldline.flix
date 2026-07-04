@@ -105,4 +105,37 @@ mod Worldline {
     pub def length(wl: Worldline[a]): Int32 =
         let Worldline.Worldline(r) = wl;
         List.length(r#past) + 1 + List.length(r#future)
+
+    // ── 観測系: 世界線を時間順の1本の列として眺め、区間や絶対位置で読む ──
+    // record/undo/redo が「今どこか」を動かすのに対し、ここは線そのものを外から
+    // 観察する読み取り用の窓。位置は最古=0・現在地=pastLength・最新=length-1 の絶対番号で数える。
+    // 利用例: 履歴をまとめて GIF に焼く / 一定区間だけ取り出して解析する / 任意地点へ一気に移動する。
+    // 注意: past は新しい順に持つので、時間順に見せるときは反転して current・future を繋ぐ。
+
+    /// 世界線を時間順（最古→最新）に平らにした列。GIF・タイムラインデバッガ・スクラブが
+    /// 「線を 1 本の配列として眺める」ための原反。past を反転し、current・future を後ろに繋ぐ。
+    pub def toList(wl: Worldline[a]): List[a] =
+        let Worldline.Worldline(r) = wl;
+        List.append(List.reverse(r#past), r#current :: r#future)
+
+    /// 時間順に平らにした列の絶対添字区間 [fromIdx, toIdx) を取り出す（GIF・区間解析用）。
+    /// 0 が最古・length-1 が最新の座標系（`scrubTo` と同じ）。範囲は列の両端へ clamp し、
+    /// fromIdx >= toIdx なら空。cap で切り詰められた最古より前は列に無い（遡れない）。
+    pub def window(fromIdx: Int32, toIdx: Int32, wl: Worldline[a]): List[a] =
+        let flat = toList(wl);
+        let lo = Int32.max(0, fromIdx);
+        let hi = Int32.min(List.length(flat), toIdx);
+        if (hi <= lo) Nil
+        else List.take(hi - lo, List.drop(lo, flat))
+
+    /// 世界線上の絶対位置 n（0 = 最古、pastLength = 現在地、length-1 = 最新）へ移動する。
+    /// undoBy/redoBy の絶対版: 現在地との差分だけ undo か redo する。n は [0, length-1] に
+    /// clamp。past/future の構造は保たれ、cap で切り詰められた最古より前へは戻れない
+    /// （undoBy と同じ端条件）。record と違い新しい一手にはならない — 線上の位置を移すだけ。
+    pub def scrubTo(n: Int32, wl: Worldline[a]): Worldline[a] =
+        let here = pastLength(wl);
+        let target = Int32.max(0, Int32.min(length(wl) - 1, n));
+        if (target < here) undoBy(here - target, wl)
+        else if (target > here) redoBy(target - here, wl)
+        else wl
 }

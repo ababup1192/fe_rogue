@@ -35,13 +35,14 @@ mod GameGallery {
     // ── One frame, exactly as the launcher composes it ──
 
     /// The full picture of one moment: board projection + UI pages, merged.
-    /// Pure — the mock Game handler answers only the font atlas.
+    /// Pure — the UI pages carry only boxes and text, so `renderUiWith` needs
+    /// nothing but the baked atlas (texture sizes are never asked for).
     def scene(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[Sokoban.World]):
             {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]} =
         let w = Worldline.current(line);
         let (ds, ps) = Sokoban.frame(atlas, w);
         let ui1 = Sokoban.projectUi(Worldline.pastLength(line), w, ui);
-        let out = Harness.withMockGame(atlas, _ -> UiRender.renderUi(ui1, design()));
+        let out = UiRender.renderUiWith(_ -> atlas, _ -> None, ui1, design());
         { drawables = List.append(ds, out#drawables),
           polygons = List.append(ps, out#polygons) }
 
@@ -63,17 +64,17 @@ mod GameGallery {
     /// the pushing move held for 1 + 4 frames — the slide sits at t = 0.5.
     def midPush(): Worldline[Sokoban.World] =
         let cues = List.flatten(
-            Replay.walk(Robot.Direction.Left) ::
-            Replay.walk(Robot.Direction.Up) ::
-            (Replay.hold({ right = true | Replay.idle() }, 1) ::
-             Replay.hold(Replay.idle(), 4) :: Nil) :: Nil);
-        Replay.play(cues, fresh(Sokoban.playingWorld(1)))
+            Trace.walk(Dir4.Left) ::
+            Trace.walk(Dir4.Up) ::
+            (Trace.hold({ right = true | Trace.idle() }, 1) ::
+             Trace.hold(Trace.idle(), 4) :: Nil) :: Nil);
+        Replay.play(Sokoban.tick, Trace.dt(), cues, fresh(Sokoban.playingWorld(1)))
 
     /// The solved board one second into the party, confetti mid-air.
     def clearedAndRaining(): Worldline[Sokoban.World] =
-        let cues = List.append(Replay.solveLevelOne(),
-                               Replay.hold(Replay.idle(), 64) :: Nil);
-        Replay.play(cues, fresh(Sokoban.playingWorld(1)))
+        let cues = List.append(Trace.solveLevelOne(),
+                               Trace.hold(Trace.idle(), 64) :: Nil);
+        Replay.play(Sokoban.tick, Trace.dt(), cues, fresh(Sokoban.playingWorld(1)))
 
     def bakeScreens(atlas: FontAtlas, ui: UiStore.UiWorld): Unit \ IO =
         shot(atlas, ui, fresh(Sokoban.titleWorld()), "gallery/screen_title.png");
@@ -91,52 +92,52 @@ mod GameGallery {
             else every(stride, i + 1, rest)
     }
 
-    def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, cues: List[Replay.Cue],
+    def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, cues: List[Replay.Cue[Sokoban.Input]],
                 start: Worldline[Sokoban.World], path: String): Unit \ IO =
-        let film = Replay.timeline(cues, start);
+        let film = Replay.timeline(Sokoban.tick, Trace.dt(), cues, start);
         let frames = List.map(l -> SoftRaster.renderToImage(rasterReq(atlas, scene(atlas, ui, l), path)),
                               every(gifSampleStride(), 0, film));
         GifEncoder.encode(frames, gifFrameDelayMs(), path)
 
     /// The opening act: the title waits, Enter opens level 1, seven moves
     /// solve it, the CLEAR panel counts them.
-    def solveCues(): List[Replay.Cue] =
+    def solveCues(): List[Replay.Cue[Sokoban.Input]] =
         List.flatten(
-            (Replay.hold(Replay.idle(), 12) ::
-             Replay.hold({ enter = true | Replay.idle() }, 1) ::
-             Replay.hold(Replay.idle(), 8) :: Nil) ::
-            Replay.solveLevelOne() ::
-            (Replay.hold(Replay.idle(), 40) :: Nil) :: Nil)
+            (Trace.hold(Trace.idle(), 12) ::
+             Trace.hold({ enter = true | Trace.idle() }, 1) ::
+             Trace.hold(Trace.idle(), 8) :: Nil) ::
+            Trace.solveLevelOne() ::
+            (Trace.hold(Trace.idle(), 40) :: Nil) :: Nil)
 
     /// One full lap of the game: title, Enter, level 1 solved, CLEAR, Enter,
     /// level 2 solved through its detours, CLEAR — and the last Enter brings
     /// the title back. About six seconds of film.
-    def fullClearCues(): List[Replay.Cue] =
+    def fullClearCues(): List[Replay.Cue[Sokoban.Input]] =
         List.flatten(
-            (Replay.hold(Replay.idle(), 12) ::
-             Replay.hold({ enter = true | Replay.idle() }, 1) ::
-             Replay.hold(Replay.idle(), 8) :: Nil) ::
-            Replay.solveLevelOne() ::
-            (Replay.hold(Replay.idle(), 30) ::
-             Replay.hold({ enter = true | Replay.idle() }, 1) ::
-             Replay.hold(Replay.idle(), 8) :: Nil) ::
-            Replay.solveLevelTwo() ::
-            (Replay.hold(Replay.idle(), 30) ::
-             Replay.hold({ enter = true | Replay.idle() }, 1) ::
-             Replay.hold(Replay.idle(), 36) :: Nil) :: Nil)
+            (Trace.hold(Trace.idle(), 12) ::
+             Trace.hold({ enter = true | Trace.idle() }, 1) ::
+             Trace.hold(Trace.idle(), 8) :: Nil) ::
+            Trace.solveLevelOne() ::
+            (Trace.hold(Trace.idle(), 30) ::
+             Trace.hold({ enter = true | Trace.idle() }, 1) ::
+             Trace.hold(Trace.idle(), 8) :: Nil) ::
+            Trace.solveLevelTwo() ::
+            (Trace.hold(Trace.idle(), 30) ::
+             Trace.hold({ enter = true | Trace.idle() }, 1) ::
+             Trace.hold(Trace.idle(), 36) :: Nil) :: Nil)
 
     /// The signature move: three moves in (the third pushes a crate onto its
     /// goal), then Z held — the alarm clock rises and turns counterclockwise
     /// while robot and crate glide home, then lingers and fades.
-    def rewindCues(): List[Replay.Cue] =
+    def rewindCues(): List[Replay.Cue[Sokoban.Input]] =
         List.flatten(
-            (Replay.hold(Replay.idle(), 8) :: Nil) ::
-            Replay.walk(Robot.Direction.Left) ::
-            Replay.walk(Robot.Direction.Up) ::
-            Replay.walk(Robot.Direction.Right) ::
-            (Replay.hold(Replay.idle(), 14) ::
-             Replay.rewind(54) ::
-             Replay.hold(Replay.idle(), 32) :: Nil) :: Nil)
+            (Trace.hold(Trace.idle(), 8) :: Nil) ::
+            Trace.walk(Dir4.Left) ::
+            Trace.walk(Dir4.Up) ::
+            Trace.walk(Dir4.Right) ::
+            (Trace.hold(Trace.idle(), 14) ::
+             Trace.rewind(54) ::
+             Trace.hold(Trace.idle(), 32) :: Nil) :: Nil)
 
     // ── The dashboard ──
 

@@ -1,9 +1,9 @@
-/// Godot SpriteFrames リソース準拠
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_spriteframes.html
+/// アニメーション素材集 — 名前つきのパラパラ漫画をまとめて持つリソース。
 ///
-/// アニメーション集合を保持するリソース。AnimatedSprite2D が `spriteFrames`
-/// フィールドで参照する。各アニメーションは独自の loop / speed (FPS) と
-/// 個別フレーム（テクスチャ + 表示時間倍率）を持つ。
+/// AnimatedSprite2D が `spriteFrames` フィールドで参照する素材置き場。各アニメーションは
+/// 独自の loop / speed (FPS) と、フレーム（テクスチャ + 表示時間倍率）の列を持つ。
+/// 「歩き」「攻撃」など複数のアニメを 1 か所に登録して名前で呼び出せる。
+/// 利用例: idle / walk / attack を登録し、状況に応じて切り替える。
 pub enum SpriteFrames {
     case SpriteFrames(Map[String, SpriteFrames.Animation])
 }
@@ -12,11 +12,10 @@ mod SpriteFrames {
 
     /// 1 フレームの定義
     /// duration はそのアニメーションの基本フレーム時間 (1/speed) に対する倍率。
-    /// 1.0 = 通常、2.0 = 2 倍長く表示。Godot の Frame Duration と同じ意味。
+    /// 1.0 = 通常、2.0 = 2 倍長く表示。
     /// `regionRect` はテクスチャ内の切り出し矩形（ピクセル単位）。None ならテクスチャ全体
     /// を表示する。スプライトシートを 1 枚のテクスチャに収めて各フレームを切り出すとき
-    /// に使う（Godot の AtlasTexture 相当）。`region` は Flix 予約語なので
-    /// Sprite2D に合わせて `regionRect` 命名。
+    /// に使う。`region` は Flix 予約語なので Sprite2D に合わせて `regionRect` 命名。
     pub type alias Frame = {
         texture = String,                      // 表示するテクスチャ名
         regionRect = Option[Rect2.Rect2],      // 切り出し矩形（None ならテクスチャ全体）

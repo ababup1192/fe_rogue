@@ -1,27 +1,25 @@
-/// LDtk 風の独自スキーマでマップを表現する Resource 群。
-///
-/// `Level` (マップ実体) と `Material` (素材) を別々に永続化する設計で、
-/// Level は `materialId` で Material を参照する。これにより同じマップを
-/// 別 Material に差し替えて複数テーマの見た目を再生できる。
-///
-/// JSON 形状の概略:
-///   Level     : {"tileSize":16, "width":10, "height":10, "materialId":"inca_stone",
-///                "decorTiles":[{"x":..,"y":..,"srcX":..,"srcY":..}, ...],
-///                "manualTiles":[{"x":..,"y":..,"srcX":..,"srcY":..}, ...],
-///                "entities":[{"identifier":"Door","x":5,"y":3,"fields":{...}}]}
-///   Material  : {"tileset":"inca_walls", "tileSize":16,
-///                "wallMap":{"0000":[3,5], "0001":[4,5], ...16件},
-///                "floorPalette":[[0,0],[1,0]], "decorPalette":[[5,5]]}
-///   FieldValue: {"string":"goblin"} / {"int":3} / {"bool":true}
-///
-/// 自動壁 (AutoLayerWalls) は **decorTiles のセル (=床)** を元に動的計算される:
-///   床のないセルで 8 近傍に床があるセル = 壁 (描画 + 衝突)
-/// `wallMap` のキーは "TRBL" 形式 ("0000" 〜 "1111", 16 通り)。
-/// マップ縁は wall として扱う慣習 (LDTKRules と同じ)。
-///
-/// 設計メモ: Flix は type alias に instance を定義できないため、Level / Material は
-/// 単一 case の enum でラップする (UnitCatalog と同じパターン)。データへのアクセスは
-/// `levelData` / `materialData` で record を取り出す。
+// MapResource — タイルマップを表す Resource 群。マップ実体 `Level` と素材 `Material` を分けて持つ。
+// Level は `materialId` で Material を参照するので、同じマップの見た目だけを別 Material に差し替えて
+// 複数テーマで再生できる。
+// 利用例: ダンジョンの1フロアを読む / 同じ間取りを別タイルセットで見せる / 扉などのエンティティを置く。
+//
+// JSON 形状の概略:
+//   Level     : {"tileSize":16, "width":10, "height":10, "materialId":"inca_stone",
+//                "decorTiles":[{"x":..,"y":..,"srcX":..,"srcY":..}, ...],
+//                "manualTiles":[{"x":..,"y":..,"srcX":..,"srcY":..}, ...],
+//                "entities":[{"identifier":"Door","x":5,"y":3,"fields":{...}}]}
+//   Material  : {"tileset":"inca_walls", "tileSize":16,
+//                "wallMap":{"0000":[3,5], "0001":[4,5], ...16件},
+//                "floorPalette":[[0,0],[1,0]], "decorPalette":[[5,5]]}
+//   FieldValue: {"string":"goblin"} / {"int":3} / {"bool":true}
+//
+// 自動壁 (AutoLayerWalls) は decorTiles のセル (=床) から動的に決まる:
+//   床の無いセルで 8 近傍に床があるセル = 壁 (描画 + 衝突)。
+// `wallMap` のキーは "TRBL" 形式 ("0000" 〜 "1111" の 16 通り)。マップ縁は壁として扱う (LDTKRules と同じ)。
+// Walls 層と Floor 層は別 tileset を使う構成なので、層を分けて保持する。
+//
+// 注意: Flix は type alias に instance を定義できないため、Level / Material は単一 case の enum で
+//   ラップする。データへのアクセスは `levelData` / `materialData` で record を取り出す。
 mod MapResource {
 
     /// Level の中身。フィールドの集合はここに集約し、enum 経由で持ち回す。
@@ -643,9 +641,8 @@ mod MapResourceCodec {
             |> List.toVector
     }
 
-    /// pattern 配列を decode する。中央セルも周辺セルと同じく値を保持する
-    /// (LDtk と同じく中央もマッチ条件を持てる)。legacy `-1` (旧 装飾) は
-    /// decodePatternCell 側で Unspecified に変換されるので互換は維持される。
+    /// pattern 配列を decode する。中央セルも周辺セルと同じく値（マッチ条件）を保持する。
+    /// legacy `-1` (装飾中央) は decodePatternCell 側で Unspecified に変換されるので互換は維持される。
     def decodePatternVector(version: Option[Int32], _size: Int32,
                               element: Json): Option[Vector[PatternCell]] = match element {
         case JArray(items) =>

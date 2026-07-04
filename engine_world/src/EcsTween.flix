@@ -1,14 +1,9 @@
-// EcsTween — 汎用 ECS tween（B/m2・動きの統一抽象）。
-//
-// 設計（レビュー 91/100）: lib は **「値の補間」だけ**を知り、「何を動かすか（Position/Alpha…）」は
-// ゲームの `Channel` が持つ（Bevy Lens の no-reflection 版＝Flix idiomatic な typed enum）。
-// engine scene `Tween`（NodePath バインド・Scheduler 効果）の ECS-native 版＝EntityId キー・純粋・World
-// component 出力・**実時間 dt 秒**で進む（fps 非依存）。複合キー `(entity, channel)` で 1 entity が複数
-// チャンネル（移動＋フェード等）を同時に持てる。`Out` を返し、対象 component への書き込みは呼び出し側が行う。
-//
-// 名前は engine scene `Tween`（cursor/popup 用に存続）との衝突回避で `EcsTween`。
-// 共有パッケージ flix_engine_world の一部。どの ECS ゲームも import して `(entity, channel)` の
-// tween を進め、返る `Out` を対象 component へ書き戻す。
+// EcsTween — 値をある値から別の値へ、時間をかけて滑らかに動かす（補間する）。
+// 「どう動かすか（速度カーブ・往復）」だけを引き受け、「何を動かすか」はゲームが指定するので、
+// 移動でも透明度でも同じ仕組みで滑らかな動きが作れる。
+// 利用例: カーソルを隣のマスへ滑らせる / ポップアップをふわっと出す / 攻撃時に色を明滅させる。
+// 注意: 進むのは実時間の秒数なので描画フレーム数に左右されない。1 つの物に移動＋フェードなど複数の
+//   動きを同時に持たせられる。結果の値を返すだけで、対象への書き戻しは呼び側が行う。
 mod EcsTween {
 
     /// Vec2 の線形補間（start→target）。Position/Knockback 等のベクトル軌道。

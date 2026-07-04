@@ -1,16 +1,13 @@
-/// Anchor — Godot Control の anchor preset 準拠
-/// see: https://docs.godotengine.org/en/stable/classes/class_control.html#enum-control-layoutpreset
+/// Anchor — 親の枠の中で子をどこに置くか（左上・中央・全面など）を、決まった型で選ぶ。
+/// 座標を数値で細かく指定せず「どの位置か」を名前で選べるので、画面サイズが変わっても寄せ方が保たれる。
+/// 利用例: ボタンを親の中央に置く / パネルを親いっぱいに広げる / ラベルを右下に寄せる。
 ///
-/// 親 Control の rect 内で子 Control をどう配置するかを表す preset。
-/// 簡略化のため Godot の anchor (Float64 × 4) は使わず、preset enum のみ提供。
-///
-/// 配置算出ルール (`applyAnchor`):
-///   - サイズ系 (FullRect): 子の rect が親 rect 全面 (margin で inset 可)
-///   - 位置系 (TopLeft, Center, etc.): 子の size はそのまま、子の rect.position を
-///     anchor 位置に基づいて計算
+/// 配置の決め方 (`applyAnchor`):
+///   - 全面系 (FullRect): 子は親の枠いっぱい（margin で内側に詰められる）
+///   - 位置系 (TopLeft, Center など): 子の大きさはそのまま、置く位置だけを選んだ寄せに合わせる
 
 pub enum Anchor with Eq, ToString {
-    /// 左上 (Godot ALIGN_TOP_LEFT)。デフォルト
+    /// 左上。デフォルト
     case TopLeft
     /// 上中央
     case TopCenter

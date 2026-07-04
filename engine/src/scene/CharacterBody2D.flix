@@ -1,8 +1,7 @@
-/// 2D キャラクター物理ボディ（Godot CharacterBody2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_characterbody2d.html
-///
-/// 速度ベースの移動とスライド処理を提供するノード。
-/// move_and_slide で velocity に基づく移動を行う。
+/// 速度で動かす 2D キャラクターボディ。velocity を与えると、壁に当たったら沿って
+/// スライドしながら移動する。めり込みや角での引っかかりの解消を自前で書かずにキャラを
+/// 動かせる。
+/// 利用例: プレイヤーやモンスターの移動 / 壁ずり移動。
 ///
 ///   CharacterBody2D
 ///     +-- CanvasItem: visible, zIndex, modulate
@@ -27,8 +26,8 @@ pub enum CharacterBody2D {
         monitoring = Bool,                           // 他エリアの侵入を検出するか
         monitorable = Bool,                          // 他エリアから検出されるか
         priority = Int32,                            // 衝突判定の処理優先度
-        collisionLayer = Int32,                      // 自身が属するレイヤー（ビットマスク、Godot: collision_layer）
-        collisionMask = Int32,                       // 観測対象レイヤー（ビットマスク、Godot: collision_mask）
+        collisionLayer = Int32,                      // 自身が属するレイヤー（ビットマスク、collision_layer）
+        collisionMask = Int32,                       // 観測対象レイヤー（ビットマスク、collision_mask）
         upDirection = Vec2.Vec2,                     // 床判定の上方向（デフォルト: (0, -1)）
         floorMaxAngle = Float64,                     // 床と判定する最大角度（ラジアン、デフォルト: π/4）
         maxSlides = Int32                            // moveAndSlide のスライド最大回数（デフォルト: 4）
@@ -105,7 +104,7 @@ mod CharacterBody2D {
         let CharacterBody2D.CharacterBody2D(r) = body;
         CharacterBody2D.CharacterBody2D({collisionMask = mask | r})
 
-    /// 衝突レイヤーの指定ビット (0..31) を on/off する（Godot set_collision_layer_value 相当）
+    /// 衝突レイヤーの指定ビット (0..31) を on/off する
     pub def setCollisionLayerValue(bit: Int32, value: Bool, body: CharacterBody2D): CharacterBody2D =
         let CharacterBody2D.CharacterBody2D(r) = body;
         let newLayer = if (value)
@@ -114,7 +113,7 @@ mod CharacterBody2D {
             Int32.clearBit(pos = bit, r#collisionLayer);
         CharacterBody2D.CharacterBody2D({collisionLayer = newLayer | r})
 
-    /// 衝突マスクの指定ビット (0..31) を on/off する（Godot set_collision_mask_value 相当）
+    /// 衝突マスクの指定ビット (0..31) を on/off する
     pub def setCollisionMaskValue(bit: Int32, value: Bool, body: CharacterBody2D): CharacterBody2D =
         let CharacterBody2D.CharacterBody2D(r) = body;
         let newMask = if (value)
@@ -156,7 +155,7 @@ mod CharacterBody2D {
         CharacterBody2D.CharacterBody2D({maxSlides = count | r})
 
     /// `body.collisionMask` と一致するレイヤーに属する static 衝突体のみ残す。
-    /// Godot collision_mask 準拠（(bodyMask & staticLayer) != 0 のみ判定対象）。
+    /// collision_mask に従う（(bodyMask & staticLayer) != 0 のみ判定対象）。
     def filterStaticsByMask(body: CharacterBody2D,
                               statics: List[(NodePath, Vec2.Vec2, CollisionShape2D)],
                               scene: Scene[s]):
@@ -170,10 +169,10 @@ mod CharacterBody2D {
             statics)
 
     /// motion ベクトル分だけ移動を試み、移動先で静的衝突体（StaticBody2D + TileMapLayer の壁）
-    /// と重なる場合は元の位置に留まる。Godot move_and_collide のグリッド離散版。
+    /// と重なる場合は元の位置に留まる。移動先の重なりだけを見るグリッド離散版。
     /// 衝突体の集合は `PhysicsStep.collectStaticColliders` から取得するため、
     /// 呼び出し側は TileMapLayer 等の衝突源を直接参照する必要がない。
-    /// `body.collisionMask` と一致するレイヤーのみ対象（Godot collision_mask 準拠）。
+    /// `body.collisionMask` と一致するレイヤーのみ対象。
     /// 戻り値: (更新後ボディ, 衝突発生フラグ)
     pub def moveAndCollide(motion: Vec2.Vec2, scene: Scene[s],
                             body: CharacterBody2D): (CharacterBody2D, Bool) =
@@ -191,19 +190,17 @@ mod CharacterBody2D {
         if (collides) (body, true)
         else (CharacterBody2D.CharacterBody2D({position = targetPos | r}), false)
 
-    /// velocity に基づいて位置を更新する（Godot move_and_slide 準拠）。
+    /// velocity に基づいて位置を更新する（衝突時は壁に沿ってスライドする）。
     ///
     /// 静的衝突体（StaticBody2D + TileMapLayer の壁セル）と衝突した場合、
     /// 衝突面の法線方向に押し出してから接線方向に velocity をスライドし、
     /// `maxSlides` 回まで残り motion で再試行する（角での詰まりを回避するため）。
-    /// velocity は接線成分のみが残るため、壁に垂直な速度は失われる（Godot 同等）。
+    /// velocity は接線成分のみが残るため、壁に垂直な速度は失われる。
     ///
-    /// Godot との違い:
-    ///   - Godot では引数なし（内部で physics delta を使用）だが、
-    ///     本エンジンでは純粋関数のため delta と scene を明示的に受け取る
-    ///   - 戻り値は更新後の CharacterBody2D（Godot は bool を返す）
-    ///   - is_on_floor() / is_on_wall() / is_on_ceiling() フラグは未対応
-    ///     （upDirection / floorMaxAngle はフィールドとして存在するが本実装では未使用）
+    /// 注意:
+    ///   - 純粋関数なので delta と scene を明示的に受け取り、更新後の CharacterBody2D を返す
+    ///   - 床・壁・天井に接しているかの接地判定フラグは未対応
+    ///     （upDirection / floorMaxAngle はフィールドとして持つが本実装では未使用）
     pub def moveAndSlide(delta: Duration.Duration, scene: Scene[s],
                           body: CharacterBody2D): CharacterBody2D =
         let CharacterBody2D.CharacterBody2D(r) = body;

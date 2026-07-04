@@ -1,9 +1,8 @@
-/// アニメーション付きスプライト（Godot AnimatedSprite2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_animatedsprite2d.html
-///
-/// SpriteFrames リソースを参照して、アニメーション名 → フレーム列を切り替えながら表示する。
-/// 各アニメーションは独自の loop / speed (FPS) を持ち、各フレームは duration 倍率で
-/// 表示時間を個別に伸縮できる。speedScale は再生全体の速度倍率。
+/// アニメーション付きスプライト。SpriteFrames が持つ「アニメ名 → フレーム列」を
+/// 参照し、名前を切り替えるだけで表示するパラパラ漫画を差し替えられる。
+/// 各アニメは loop / speed(FPS) を個別に持ち、フレームごとに duration 倍率で表示時間を
+/// 伸縮できる。speedScale は再生全体の速度倍率。
+/// 利用例: 歩行と待機を名前で切り替える / 攻撃モーションを 2 倍速で流す。
 ///
 ///   AnimatedSprite2D
 ///     +-- CanvasItem: visible, zIndex, modulate
@@ -35,7 +34,7 @@ pub enum AnimatedSprite2D {
         speedScale = Float64,
         autoplay = String,
         playing = Bool,
-        ySortEnabled = Bool       // CanvasItem: 子を global_y で並べる（Godot 準拠）
+        ySortEnabled = Bool       // CanvasItem: 子を global_y で並べる
     })
 }
 
@@ -179,7 +178,7 @@ mod AnimatedSprite2D {
             }
         }
 
-    /// アニメーションを再生する（Godot 準拠）。
+    /// アニメーションを再生する。
     /// 同じアニメ名なら現フレームから再開、違えば frame=0 にリセットして再生。
     pub def play(animationName: String, sprite: AnimatedSprite2D): AnimatedSprite2D =
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
@@ -199,7 +198,7 @@ mod AnimatedSprite2D {
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
         AnimatedSprite2D.AnimatedSprite2D({playing = false | r})
 
-    /// 現在のアニメーション名を取得する（Godot の `animation` プロパティ）
+    /// 現在再生中のアニメーション名を取得する。
     pub def getAnimation(sprite: AnimatedSprite2D): String =
         let AnimatedSprite2D.AnimatedSprite2D(r) = sprite;
         r#animation

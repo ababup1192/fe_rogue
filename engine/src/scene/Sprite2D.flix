@@ -1,14 +1,14 @@
-/// 2D スプライトノード（Godot Sprite2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_sprite2d.html
+/// 2D スプライトノード — テクスチャを表示する最小の描画ノード。
 ///
-/// テクスチャを持つ最小の描画可能ノード。
-/// CanvasItem（可視性・描画順）と Node2D（座標変換）を実装する。
+/// テクスチャを 1 枚表示するだけの軽いノードで、可視性・描画順（CanvasItem）と座標変換（Node2D）を持つ。
+/// これがあれば絵をとりあえず画面に出せるので、キャラや背景の基本パーツになる。
+/// 利用例: キャラ 1 体を配置する / スプライトシートの 1 コマを切り出して表示する。
 ///
 ///   Sprite2D
 ///     ├─ CanvasItem: visible, zIndex, modulate
 ///     └─ Node2D: position, rotation, scale, skew
 ///
-/// テクスチャの切り出しは Godot 同様の 2 機構で表現する:
+/// テクスチャの切り出しは 2 つの機構で表現する:
 ///   - region: テクスチャ内のサブ矩形（ピクセル単位）。None ならテクスチャ全体を使う。
 ///   - hframes / vframes / frame: region をさらに格子分割し、表示するセル index を指定。
 ///
@@ -33,7 +33,7 @@ pub enum Sprite2D {
         hframes = Int32,                 // 格子分割の列数（デフォルト 1）
         vframes = Int32,                 // 格子分割の行数（デフォルト 1）
         frame = Int32,                   // 表示セル index = row * hframes + col（デフォルト 0）
-        ySortEnabled = Bool              // CanvasItem: 子を global_y で並べる（Godot 準拠）
+        ySortEnabled = Bool              // CanvasItem: 子を global_y で並べる
     })
 }
 
@@ -137,7 +137,7 @@ mod Sprite2D {
             uvScale  = {x = cellW / textureSize#x, y = cellH / textureSize#y}
         }
 
-    /// path 位置に Sprite2D が居れば取り出す（Godot の `GetNode<Sprite2D>(path)` 相当）。
+    /// path 位置に Sprite2D が居れば取り出す。
     /// 別ノードや欠落なら `None`。
     pub def getAt(path: NodePath, scene: Scene[s]): Option[Sprite2D] =
         match Scene.getEngineNode(path, scene) {

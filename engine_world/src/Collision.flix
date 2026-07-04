@@ -1,11 +1,8 @@
-// Collision — 再利用可能な ECS 衝突モジュール（Bevy の物理プラグイン相当の最小版）
-//
-// 各ゲームが衝突判定を手書きする代わりに、Collider component を付けて detectCollisions の
-// 返すペアを読む。narrowphase は engine の純粋関数 CollisionShape2D.checkOverlap を再利用し、
-// layer/mask は engine と同じビットマスク（Int32.bitwiseAnd）。engine に無い broadphase
-// （一様空間グリッド）だけを新規実装して O(n²) を避ける。
-// 共有パッケージ flix_engine_world の一部。どの ECS ゲームも import して Collider を付け、
-// detectCollisions のペアを読むだけ（Bevy の物理プラグインと同じ使い心地）。
+// Collision — たくさんの物体の中から、実際に重なっている組を見つけて返す。
+// 当たり判定を手書きしなくても、各物体に Collider を付けて detectCollisions を呼ぶだけで
+// 重なりペアが得られる。全組み合わせを総当りせず空間を格子で区切って調べるので、物体が増えても速い。
+// 利用例: 弾と敵の衝突を集める / プレイヤーが踏んだ床を探す / 押し合う物体の対を列挙する。
+// 注意: 重なりの形状判定と layer/mask のビット照合は engine の純粋関数をそのまま使う。
 
 mod Collision {
 

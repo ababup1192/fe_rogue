@@ -1,26 +1,23 @@
-// SceneLoader — JSON ファイルからシーンツリーを構築する
+// SceneLoader — JSON ファイルを読んでシーンツリー（ノードの親子構造）を組み立てる。
+// 画面の中身をコードに直書きせずデータで持てるので、レイアウトを編集・差し替えしやすく、
+// 保存したファイルからそのまま同じ画面を再現できる。
+// 利用例: メニュー画面を JSON で定義する / IDE で並べたノードを読み込む / ホットリロードで見た目を即反映。
 //
-// JSON のルートは単一オブジェクト or 配列を受け付ける。
-// 配列の場合は各要素を独立したルートノードとして scene に addNode する。
-// オブジェクトの場合は単一ルートノードとして addNode し、その children を再帰的に追加する。
+// JSON のルートは単一オブジェクトか配列。配列なら各要素を独立したルートノードとして addNode し、
+// オブジェクトなら単一ルートノードとして addNode してその children を再帰的に追加する。
 //
-// タグ変換は呼び出し側が `tagParser` として渡す。SceneLoader はタグの中身を知らない。
-// 各ゲームは自身の NodeTag に応じた tagParser を定義して渡すこと。
-//
-// Label2D を含むシーンは loadSceneWithFont を使う（FontAtlas が必要）。
-// それ以外は loadScene を使う。
+// タグ変換は呼び出し側が `tagParser` として渡す（SceneLoader はタグの中身を知らない）。
+// 各ゲームは自身の NodeTag に応じた tagParser を定義して渡す。
+// Label2D を含むシーンは FontAtlas が要るので loadSceneWithFont を使い、それ以外は loadScene を使う。
 //
 // 対応ノード型:
 //   CanvasLayer / Sprite2D / AnimatedSprite2D / Label2D / TextureButton /
 //   StaticBody2D / RigidBody2D / Area2D / CharacterBody2D / Marker2D /
-//   Camera2D / TileMapLayer / ColorRect / RichTextLabel
+//   Camera2D / ColorRect / RichTextLabel
 // 対応 collision shape: RectShape2D / CircleShape2D
 //
-// 注:
-//   段階 4 後段で LDtk 経路 (TileMapLayer 用 buildTileMapLayer) を削除済み。
-//   loadScene の eff は他の effectful builder (Fs.FileRead 等) のためのみ残る (TileMapLayer 用 GameEngine.Game 要件は不要になった)。
-//   過去経緯メモ:
-//   JSON では実質 no-op）。
+// 注: loadScene 系が持つ GameEngine.Game / Fs.FileRead eff は、ファイル読み込みなど
+//     副作用を伴う builder のためのもの。
 
 mod SceneLoader {
     import java.math.BigDecimal
@@ -76,7 +73,7 @@ mod SceneLoader {
     /// JSON ファイルを読み込み、scene にノードツリーを追加して返す。
     /// tagParser: JSON の "tag" 文字列（None = キーなし）をゲーム固有の t に変換する関数。
     /// Label2D を含む JSON では loadSceneWithFont を使うこと（FontAtlas が必須）。
-    /// `GameEngine.Game` eff は将来 effectful な builder を追加する余地のため保持している。
+    /// `GameEngine.Game` eff は副作用を伴う builder のために保持している。
     /// 失敗時は bug! でクラッシュする
     pub def loadScene(path: String, tagParser: Option[String] -> Result[Util.Json.JsonError, t],
                       scene: Scene[t]): Scene[t] \ {GameEngine.Game, Fs.FileRead} =
@@ -100,7 +97,7 @@ mod SceneLoader {
 
     /// JSON ファイルを読み込み、scene を構築した後で `propsApplier` を呼ぶ。
     /// scene.json の root が JSON Object のとき、その "properties" キーを PropertyBag として
-    /// applier に渡す（Godot @export 相当）。"properties" が無い、または root が array の
+    /// applier に渡す。"properties" が無い、または root が array の
     /// 場合は空 bag を渡す。applier は通常 `XxxScene.applyProperties` で、`Export.read` を
     /// 使って Data 型に値を流し込む役割を持つ。ホットリロード時もこの関数経由で applier が
     /// 再実行されることで、scene.json の編集が即反映される
@@ -343,7 +340,6 @@ mod SceneLoader {
         checked_ecast(buildPureNodeType(tagParser, nodeType, fontAtlas, map))
 
     /// 副作用を持たないビルダーへのディスパッチ。
-    /// 段階 4 後段で LDtk (`TileMapLayer`) 削除に伴い、effectful 分岐は無くなった。
     def buildPureNodeType(tagParser: Option[String] -> Result[Util.Json.JsonError, t],
                           nodeType: String, fontAtlas: Option[FontAtlas],
                           map: Map[String, Util.Json.Json]): Result[Util.Json.JsonError, EngineNode[t]] =
@@ -710,7 +706,7 @@ mod SceneLoader {
 
     /// JSON の 1 フレーム定義を SpriteFrames.Frame に変換する。
     /// duration は任意（デフォルト 1.0）、region も任意（None ならテクスチャ全体）。
-    /// region JSON 形式: `{"pos": [x, y], "size": [w, h]}` (Godot Rect2 と同じ位置/サイズ)。
+    /// region JSON 形式: `{"pos": [x, y], "size": [w, h]}` (位置とサイズ)。
     def parseFrame(frameMap: Map[String, Util.Json.Json]):
                     Result[Util.Json.JsonError, SpriteFrames.Frame] =
         forM (

@@ -1,7 +1,6 @@
-/// 不可視UIコンテナノード（Godot Control 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_control.html
-///
-/// 描画なしで size を持つ UI コンテナ。Button の基盤。
+/// それ自体は描画せず、位置とサイズだけを持つ UI コンテナノード。
+/// 見た目を持たない当たり判定・レイアウトの枠として使えるので、ボタンなどの土台になる。
+/// 利用例: Button の基盤 / 子をまとめて配置・表示切り替えする枠。
 ///
 ///   Control
 ///     +-- CanvasItem: visible, zIndex, modulate

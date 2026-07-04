@@ -1,4 +1,4 @@
-/// メニュー項目の選択イベント駆動（Godot ItemList.item_selected / index_pressed 相当）。
+/// メニュー項目の選択・確定・キャンセルをキー入力から駆動する。
 ///
 /// `ItemList` は内部で前フレームのキー状態と pending フラグを持っており、
 /// `handleMenus` を毎フレーム呼ぶことで:

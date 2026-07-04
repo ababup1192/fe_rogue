@@ -1,8 +1,8 @@
-/// 静的物理ボディ（Godot StaticBody2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_staticbody2d.html
+/// 静的物理ボディ — 動かない固定の障害物。
 ///
-/// 物理エンジンに動かされない静止ボディ。壁・床・パイプなどの固定障害物に使う。
-/// 他の Area2D や RigidBody2D から衝突検出される。
+/// 物理エンジンに動かされない静止ボディで、壁・床・パイプなどの固定障害物に使う。
+/// 位置が変わらないので、置くだけで RigidBody2D を押し戻したり Area2D の侵入検出の基準になる。
+/// 利用例: 通り抜けられない壁 / 乗れる床。
 ///
 ///   StaticBody2D
 ///     +-- CanvasItem: visible, zIndex, modulate
@@ -22,8 +22,8 @@ pub enum StaticBody2D {
         monitoring = Bool,                           // 他エリアの侵入を検出するか
         monitorable = Bool,                          // 他エリアから検出されるか
         priority = Int32,                            // 衝突判定の処理優先度
-        collisionLayer = Int32,                      // 自身が属するレイヤー（ビットマスク、Godot: collision_layer）
-        collisionMask = Int32,                       // 観測対象レイヤー（ビットマスク、Godot: collision_mask）
+        collisionLayer = Int32,                      // 自身が属するレイヤー（ビットマスク）
+        collisionMask = Int32,                       // 観測対象レイヤー（ビットマスク）
         physicsCollisionEnabled = Bool               // RigidBody2D を物理的に押し戻すか（true=ground のような固体、false=Area2D 検出のみ）
     })
 }
@@ -93,7 +93,7 @@ mod StaticBody2D {
         let StaticBody2D.StaticBody2D(r) = body;
         StaticBody2D.StaticBody2D({collisionMask = mask | r})
 
-    /// 衝突レイヤーの指定ビット (0..31) を on/off する（Godot set_collision_layer_value 相当）
+    /// 衝突レイヤーの指定ビット (0..31) を on/off する
     pub def setCollisionLayerValue(bit: Int32, value: Bool, body: StaticBody2D): StaticBody2D =
         let StaticBody2D.StaticBody2D(r) = body;
         let newLayer = if (value)
@@ -102,7 +102,7 @@ mod StaticBody2D {
             Int32.clearBit(pos = bit, r#collisionLayer);
         StaticBody2D.StaticBody2D({collisionLayer = newLayer | r})
 
-    /// 衝突マスクの指定ビット (0..31) を on/off する（Godot set_collision_mask_value 相当）
+    /// 衝突マスクの指定ビット (0..31) を on/off する
     pub def setCollisionMaskValue(bit: Int32, value: Bool, body: StaticBody2D): StaticBody2D =
         let StaticBody2D.StaticBody2D(r) = body;
         let newMask = if (value)

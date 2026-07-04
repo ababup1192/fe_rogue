@@ -1,18 +1,10 @@
-/// Dialogue 層の effect・型・純粋遷移を集約するモジュール。
-///
-/// 提供するもの:
-///
-///   - 2 つの effect: `Session` / `DialogueView`
-///   - view 用の整形済み型: `PresentedLine` / `PresentedChoice`
-///   - 1 フレーム単位で受け渡す view イベント: `ViewEvent`
-///   - 対話 UI の論理状態: `UIState` と、その純粋遷移（`applyEvent` /
-///     `moveCursor` / `emptyState`）と表示用整形（`formatBody`）
-///   - ジャンルごとのリズム・寸法をまとめた `DialogueProfile` と既製 profile
-///     （`jrpgProfile` / `visualNovelProfile`）
-///   - facade `withDialog`（Runner / SceneView を 1 行で適用）
-///
-/// 描画やノード木の知識は持たないので、別の Scene 実装に差し替えても再利用できる。
-/// JRPG / VN / その他の表現スタイルの違いは `DialogueProfile` の値で吸収する。
+/// 対話層の中核。対話の effect（`Session` / `DialogueView`）、表示用の型
+/// （`PresentedLine` / `PresentedChoice` / `ViewEvent`）、対話 UI の論理状態
+/// `UIState` とその純粋遷移（`applyEvent` / `moveCursor` / `formatBody` 等）、
+/// ジャンル別のリズムを束ねた `DialogueProfile` をまとめて提供する。
+/// 描画やノード木を一切知らないので、別の Scene 実装に載せ替えても再利用でき、
+/// JRPG / VN などの表現差は `DialogueProfile` の値だけで吸収する。
+/// 利用例: facade `withDialog` で handler を一括で被せ、body から `Session.start` を呼ぶ。
 mod Dialogue {
 
     // ════════════════════════════════════════════════════════════════════════

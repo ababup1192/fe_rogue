@@ -56,15 +56,23 @@ mod UiSpec {
     // ========================================================================
 
     /// ui.json（templates + root）を Spec へ畳む。root が無い / JSON Object でない場合は Err。
+    /// トップレベルの任意キー `defaultFont` は、font を明示しない text ノードが使う既定 font 名になる
+    /// （省略時は "ui"）。全 text が同じ font を使うページで各ノードの `"font"` 反復を 1 行にまとめられる。
     pub def parse(json: Json): Result[JsonError, Spec] =
         match json {
             case JObject(topMap) => forM (
-                templates <- parseTemplates(topMap);
-                rootMap   <- (JsonCompat.getAtKey(Root, "root", topMap): Result[JsonError, Map[String, Json]]);
-                spec      <- parseNode(templates, rootMap)
+                templates   <- parseTemplates(topMap);
+                defaultFont <- parseDefaultFont(topMap);
+                rootMap     <- (JsonCompat.getAtKey(Root, "root", topMap): Result[JsonError, Map[String, Json]]);
+                spec        <- parseNode(templates, defaultFont, rootMap)
             ) yield spec
             case _ => Err(JsonCompat.jsonError(Root, Set#{"UiSpec must be a JSON object with a 'root'"}))
         }
+
+    /// トップレベルの `defaultFont`（font 未指定の text ノードが使う font 名）を読む。省略時は "ui"。
+    def parseDefaultFont(topMap: Map[String, Json]): Result[JsonError, String] =
+        (JsonCompat.getAtKeyOpt(Root, "defaultFont", topMap): Result[JsonError, Option[String]])
+            |> Result.map(Option.getWithDefault("ui"))
 
     /// "templates" を「テンプレート名 → 部分ノード map」の辞書へ変換する。キー欠落は空辞書。
     /// 各テンプレート値は JSON Object でなければならない。
@@ -80,7 +88,8 @@ mod UiSpec {
         }
 
     /// 1 ノードを Spec へ変換する。`use` があればテンプレ値を既定にノード値で上書き合成する。
-    def parseNode(templates: Map[String, Map[String, Json]], nodeMap: Map[String, Json]): Result[JsonError, Spec] =
+    /// `defaultFont` は font 未指定の text ノードが使う既定 font 名（トップレベル `defaultFont` 由来）。
+    def parseNode(templates: Map[String, Map[String, Json]], defaultFont: String, nodeMap: Map[String, Json]): Result[JsonError, Spec] =
         forM (
             merged       <- resolveTemplate(templates, nodeMap);
             name         <- (JsonCompat.getAtKey(Root, "name", merged): Result[JsonError, String]);
@@ -89,14 +98,14 @@ mod UiSpec {
             widget       <- parseWidget(widgetStrOpt);
             style        <- parseStyle(merged);
             box          <- parseBox(widget, merged);
-            text         <- parseText(widget, merged);
+            text         <- parseText(widget, defaultFont, merged);
             sprite       <- parseSprite(widget, merged);
             poly         <- parsePoly(widget, merged);
             visibleOpt   <- (JsonCompat.getAtKeyOpt(Root, "visible", merged): Result[JsonError, Option[Bool]]);
             bindingOpt   <- (JsonCompat.getAtKeyOpt(Root, "bind", merged): Result[JsonError, Option[String]]);
             metaOpt      <- (JsonCompat.getAtKeyOpt(Root, "meta", merged): Result[JsonError, Option[String]]);
             layerOpt     <- (JsonCompat.getAtKeyOpt(Root, "layer", merged): Result[JsonError, Option[Int32]]);
-            children     <- parseChildren(templates, merged);
+            children     <- parseChildren(templates, defaultFont, merged);
             _uniq        <- ensureUniqueNames(children)
         ) yield Spec.Spec({
             name = name, widget = widget, style = style,
@@ -136,16 +145,16 @@ mod UiSpec {
         }
 
     /// 子ノード列を宣言順に変換する。"children" 欠落は空。配列でなければ Err。
-    def parseChildren(templates: Map[String, Map[String, Json]], map: Map[String, Json]): Result[JsonError, List[Spec]] =
+    def parseChildren(templates: Map[String, Map[String, Json]], defaultFont: String, map: Map[String, Json]): Result[JsonError, List[Spec]] =
         match Map.get("children", map) {
             case None            => Ok(Nil)
-            case Some(JArray(arr)) => Result.traverse(child -> parseChildJson(templates, child), Vector.toList(arr))
+            case Some(JArray(arr)) => Result.traverse(child -> parseChildJson(templates, defaultFont, child), Vector.toList(arr))
             case Some(_)         => Err(JsonCompat.jsonError(Root, Set#{"children must be an array"}))
         }
 
     /// 子 1 件（JSON Object）を Spec へ。Object でなければ Err。
-    def parseChildJson(templates: Map[String, Map[String, Json]], json: Json): Result[JsonError, Spec] =
-        forM (m <- asObject("child", json); spec <- parseNode(templates, m)) yield spec
+    def parseChildJson(templates: Map[String, Map[String, Json]], defaultFont: String, json: Json): Result[JsonError, Spec] =
+        forM (m <- asObject("child", json); spec <- parseNode(templates, defaultFont, m)) yield spec
 
     /// name が名前パス機構を壊さないことを確認する。空文字、または区切り文字 "/" を含めば Err。
     /// 名前パスは "root/child/..." を "/" で連結するため、name 内の "/" は木構造を曖昧にする。
@@ -273,9 +282,10 @@ mod UiSpec {
             case _ => Ok(None)
         }
 
-    /// text ノードの TextComp。text 既定 ""、font 既定 "ui"、fontSize 既定 8.0、
-    /// tint 既定 白、zIndex 既定 0。bind のみのノードは text 空で始まり実行時に流し込む。
-    def parseText(widget: Widget, map: Map[String, Json]): Result[JsonError, Option[UiWidget.TextComp]] =
+    /// text ノードの TextComp。text 既定 ""、font 既定 `defaultFont`（トップレベル `defaultFont`、
+    /// それも無ければ "ui"）、fontSize 既定 8.0、tint 既定 白、zIndex 既定 0。
+    /// bind のみのノードは text 空で始まり実行時に流し込む。
+    def parseText(widget: Widget, defaultFont: String, map: Map[String, Json]): Result[JsonError, Option[UiWidget.TextComp]] =
         match widget {
             case Widget.TextW => forM (
                 textOpt     <- (JsonCompat.getAtKeyOpt(Root, "text", map): Result[JsonError, Option[String]]);
@@ -285,7 +295,7 @@ mod UiSpec {
                 zIndexOpt   <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]])
             ) yield Some(({
                 text = Option.getWithDefault("", textOpt),
-                font = Option.getWithDefault("ui", fontOpt),
+                font = Option.getWithDefault(defaultFont, fontOpt),
                 fontSize = Option.getWithDefault(8.0, fontSizeOpt),
                 tint = Option.getWithDefault(white(), tintOpt),
                 zIndex = Option.getWithDefault(0, zIndexOpt)

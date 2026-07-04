@@ -1,8 +1,7 @@
-/// 2D 衝突形状（Godot Shape2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_shape2d.html
-///
-/// 衝突判定に使う幾何形状。
-/// Area2D の collisionShape フィールドに設定して使う。
+/// 当たり判定に使う 2D の幾何形状（矩形・円・カプセル）。
+/// 形状同士の重なり・点の内外・押し出しベクトルの計算をまとめて持つので、ノード側は
+/// 形状の組み合わせを気にせず一つの関数で判定できる。
+/// 利用例: Area2D の collisionShape に設定して重なりを検出する。
 ///
 ///   CollisionShape2D
 ///     +-- RectShape2D: 軸平行の矩形（AABB）
@@ -15,7 +14,7 @@ pub enum CollisionShape2D {
     case RectShape2D({width = Float64, height = Float64})
     /// 円
     case CircleShape2D({radius = Float64})
-    /// カプセル（Godot CapsuleShape2D 準拠）
+    /// カプセル（両端が半円の細長い形）
     /// radius: 半円の半径
     /// height: カプセル全体の高さ（両端の半円を含む）
     /// vertical: true なら縦長、false なら横長

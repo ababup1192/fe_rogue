@@ -1,14 +1,13 @@
-/// 2D カメラノード（Godot Camera2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_camera2d.html
-///
-/// ビューポートの中心を特定のノードに追従させるためのカメラ。
-/// position にターゲットの座標を設定し、offset で微調整する。
+/// ビューポートの中心を特定のノードに追従させる 2D カメラ。
+/// position にターゲットの座標を入れておけば、スムージングや制限枠・ドラッグ余白を通して
+/// 画面が滑らかに付いていくので、追従ロジックを毎フレーム書かずに済む（offset で微調整）。
+/// 利用例: プレイヤーを画面中央に保つ / マップ端でスクロールを止める。
 ///
 ///   Camera2D
 ///     ├─ CanvasItem: visible, zIndex, modulate
 ///     └─ Node2D: position, rotation, scale, skew
 
-/// カメラのアンカーモード（Godot Camera2D.AnchorMode 準拠）
+/// カメラのアンカーモード。
 ///
 ///   - DragCenter: カメラの中心がターゲットに追従する（デフォルト）
 ///   - FixedTopLeft: ビューポートの左上をターゲットに固定する
@@ -17,7 +16,7 @@ pub enum Camera2DAnchorMode with Eq, Order, ToString {
     case FixedTopLeft
 }
 
-/// カメラのプロセスコールバックモード（Godot Camera2D.Camera2DProcessCallback 準拠）
+/// カメラの更新タイミング（プロセスコールバック）モード。
 ///
 ///   - PhysicsProcess: physicsProcess で更新する
 ///   - IdleProcess: process（毎フレーム）で更新する（デフォルト）
@@ -72,7 +71,7 @@ mod Camera2D {
 
     /// デフォルト値で Camera2D を生成する
     ///
-    /// Godot のデフォルト値に準拠:
+    /// デフォルト値:
     ///   offset = (0, 0), zoom = (1, 1), enabled = true,
     ///   anchorMode = DragCenter, limit = ±10_000_000
     pub def make(position: Vec2.Vec2): Camera2D =
@@ -142,7 +141,7 @@ mod Camera2D {
         let Camera2D.Camera2D(r) = camera;
         r#enabled
 
-    /// カメラの有効状態を設定する（Godot の current プロパティ）
+    /// カメラの有効状態（current かどうか）を設定する
     pub def setEnabled(enabled: Bool, camera: Camera2D): Camera2D =
         let Camera2D.Camera2D(r) = camera;
         Camera2D.Camera2D({enabled = enabled | r})
@@ -344,7 +343,7 @@ mod Camera2D {
         Camera2D.Camera2D({dragBottomMargin = dragBottomMargin | r})
 
     // ========================================================================
-    // メソッド（Godot Camera2D 準拠）
+    // メソッド
     // ========================================================================
 
     /// `smoothPosition` を取得する（描画用の実視点位置。`process` で更新される）
@@ -355,7 +354,7 @@ mod Camera2D {
     /// target (`position`) が「smoothPosition 中心の drag dead zone 矩形」内に居るか。
     /// drag margin が有効な軸では「収束した = target が dead zone 内」、無効な軸では
     /// 4 px epsilon を threshold にする（後方互換）。
-    /// 「カメラが target に追いついた」判定に使う（gameplay 側の Camera2D 抽象、Godot に対応 API は無いがフィールドは Godot 4 のみで構成）。
+    /// 「カメラが target に追いついた」判定に使う（ゲーム側のための判定で、標準的な相当 API は無い）。
     /// 純関数（viewport を引数で取り、scene/effect に依存しない）なので engine 単独テスト可能。
     pub def isWithinDragDeadZone(camera: Camera2D,
             viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): Bool =
@@ -391,13 +390,13 @@ mod Camera2D {
             or r#dragHorizontalEnabled
             or r#dragVerticalEnabled
 
-    /// カメラの毎フレーム追従処理（Godot Camera2D の `_process` 相当）。
+    /// カメラの毎フレーム追従処理（毎フレーム 1 回呼ぶ更新関数）。
     /// `position` を「ターゲット」、`smoothPosition` を「実際に映している点」として、
     /// drag margin → smoothing lerp → limit clamp の順で `smoothPosition` を更新する。
     /// 純粋関数（カメラの新インスタンスを返す）。`viewportSize` はビューポート px サイズで、
     /// 内部で zoom を反映した world 単位の半幅・半高に変換する。
     ///
-    /// Godot 互換性:
+    /// 挙動:
     ///   - drag margin は world 単位で `viewport / 2 / zoom × dragXMargin` の矩形
     ///   - smoothing は単純 lerp (`speed * delta` を t、夾着クランプ)
     ///   - limit は hard clamp（`limitSmoothed = true` モードは未対応）
@@ -457,7 +456,7 @@ mod Camera2D {
             |> Float64.min(Int32.toFloat64(r#limitBottom));
         Camera2D.Camera2D({smoothPosition = {x = clampedX, y = clampedY} | r})
 
-    /// 画面中央のワールド座標を返す（Godot get_screen_center_position 準拠）
+    /// 画面中央のワールド座標を返す。
     ///
     /// position + offset がスクロール制限でクランプされた座標を返す。
     ///
@@ -483,24 +482,24 @@ mod Camera2D {
             |> Float64.min(Int32.toFloat64(r#limitBottom));
         {x = clampedX, y = clampedY}
 
-    /// カメラのターゲット位置を返す（Godot get_target_position 準拠）
+    /// カメラのターゲット位置を返す。
     ///
     /// スムージング適用前のターゲット座標（= position）を返す。
     pub def getTargetPosition(camera: Camera2D): Vec2.Vec2 =
         let Camera2D.Camera2D(r) = camera;
         r#position
 
-    /// このカメラを現在のカメラに設定する（Godot make_current 準拠）
+    /// このカメラを現在のカメラに設定する。
     pub def makeCurrent(camera: Camera2D): Camera2D =
         setEnabled(true, camera)
 
-    /// カメラが現在のカメラかどうかを返す（Godot is_current 準拠）
+    /// カメラが現在のカメラかどうかを返す。
     pub def isCurrent(camera: Camera2D): Bool =
         isEnabled(camera)
 
     /// カメラのビュー変換（screenPos = worldPos * scale - offset）。
     ///
-    /// Godot 4 の Camera2D 同様、zoom はビューポートに見えるサイズの倍率で、
+    /// zoom はビューポートに見えるサイズの倍率で、
     /// `zoom > 1` で寄り、`zoom < 1` で引きになる。CanvasLayer 配下のノードには
     /// 適用しない（HUD はカメラと無関係なため）
     pub type alias ViewTransform = { offset = Vec2.Vec2, scale = Vec2.Vec2 }
@@ -547,7 +546,7 @@ mod Camera2D {
     ///   - DragCenter: position+offset がビューポート中心。zoom はその中心まわりに作用
     ///   - FixedTopLeft: position+offset がビューポート左上。zoom は左上原点で作用
     /// `globalPos` はシーンツリーから求めた Camera ノードのワールド座標。
-    /// Godot 同様、Camera を他ノードの子にしたとき親の変換を反映できる。
+    /// Camera を他ノードの子にしたときも親の変換を反映できる。
     /// smoothing / drag のいずれかが有効なら、view 中心は `position` ではなく
     /// `smoothPosition`（process が更新する補間後の値）を起点に計算する。
     /// すべて無効なら従来通り `globalPos`（= 親変換込みの position）を起点にする — 後方互換。

@@ -1,4 +1,4 @@
-/// PackedScene — 「シーンのテンプレート」を表す型（Godot PackedScene 相当）
+/// PackedScene — 「シーンのテンプレート」を表す型。
 ///
 /// JSON ファイルを 1 回読んでパースし、得られた JSON ルートをテンプレートとして保持する。
 /// `instantiate` で何度でも独立したインスタンスを scene に追加できる。

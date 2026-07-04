@@ -1,5 +1,7 @@
-/// Godot AudioStreamPlayer 準拠のオーディオ再生モジュール
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_audiostreamplayer.html
+/// 効果音や BGM を論理名で鳴らすオーディオ再生モジュール。
+/// 実ファイルのパスではなくサウンドマニフェスト上の名前で指定するので、ゲームロジックは
+/// ファイルの場所を知らずに「この音を鳴らす」とだけ書ける。
+/// 利用例: BGM をループ再生する / 効果音を音量を指定して鳴らす。
 ///
 /// 2 つの利用形態がある:
 ///   - **モジュール関数** (`AudioStreamPlayer.play` 等) — `GameEngine.Audio` effect 経由で

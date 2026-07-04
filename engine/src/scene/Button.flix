@@ -1,8 +1,7 @@
-/// ボタンノード（Godot Button 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_button.html
-///
-/// 背景矩形 + テキスト + マウス操作を持つ UI ボタン。
-/// 共通インタラクション・座標・可視性は `BaseButton` を内包して実装する。
+/// 背景矩形とテキスト、マウス操作を持つ UI ボタン。
+/// 座標・可視性・押下判定は `BaseButton` に任せ、Button 自身はテキストと見た目の描画だけを
+/// 足す。共通のボタン挙動を再実装せずにテキストボタンを組める。
+/// 利用例: メニューの項目 / 確認ダイアログの「はい・いいえ」。
 ///
 ///   Button
 ///     +-- BaseButton: position, rotation, scale, skew, visible, zIndex, modulate,
@@ -19,7 +18,7 @@ pub enum Button {
 }
 
 mod Button {
-    /// デフォルト値で Button を生成する（centered=false: Godot Control 準拠）
+    /// デフォルト値で Button を生成する（centered=false: 左上基準）
     pub def make(text: String, fontAtlas: FontAtlas, fontSize: Float64, size: Vec2.Vec2): Button =
         Button.Button({
             base = BaseButton.make(size),
@@ -83,17 +82,17 @@ mod Button {
 
     // ── 描画 ──
 
-    /// ビジュアル状態に応じた背景色を返す（Godot 4 デフォルトテーマ準拠）
+    /// ビジュアル状態に応じた背景色を返す（既定テーマの色）
     def bgColor(state: ButtonVisualState): Color = match state {
         case ButtonVisualState.Normal  => {r = 0.1f32, g = 0.1f32, b = 0.1f32}
         case ButtonVisualState.Hovered => {r = 0.225f32, g = 0.225f32, b = 0.225f32}
         case ButtonVisualState.Pressed => {r = 0.0f32, g = 0.0f32, b = 0.0f32}
     }
 
-    /// ビジュアル状態に応じた背景アルファを返す（Godot 4 デフォルトテーマ準拠）
+    /// ビジュアル状態に応じた背景アルファを返す（既定テーマの値）
     def bgAlpha(_state: ButtonVisualState): Float32 = 0.6f32
 
-    /// ビジュアル状態に応じたフォント色を返す（Godot 4 デフォルトテーマ準拠）
+    /// ビジュアル状態に応じたフォント色を返す（既定テーマの色）
     def fontColor(state: ButtonVisualState): Color = match state {
         case ButtonVisualState.Normal  => {r = 0.875f32, g = 0.875f32, b = 0.875f32}
         case ButtonVisualState.Hovered => {r = 0.95f32, g = 0.95f32, b = 0.95f32}

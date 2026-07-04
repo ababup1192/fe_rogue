@@ -1,4 +1,7 @@
-// AudioUtil — pure utility functions for audio file parsing
+// AudioUtil — 音声ファイル（WAV）の中身を読み解くための小さな計算。
+// 音の形式（モノラル/ステレオ・ビット数）の判別や、波形データの在り処探しを一箇所にまとめる。
+// 利用例: 効果音を鳴らす前に再生形式を決める / WAV から実際の音データの位置を突き止める。
+// 注意: バイト列の解釈だけで、実際のファイル読み込みや再生は扱わない純粋な計算。
 
 mod AudioUtil {
 
@@ -11,7 +14,7 @@ mod AudioUtil {
     pub def alFormatStereo8(): Int32 = 0x1102
     pub def alFormatStereo16(): Int32 = 0x1103
 
-    /// Determine OpenAL buffer format from channel count and bits per sample.
+    /// チャンネル数（1=モノラル/2=ステレオ）とビット数から、再生に使う音声形式を選ぶ。
     pub def alFormat(channels: Int32, bitsPerSample: Int32): Int32 =
         if (channels == 1) {
             if (bitsPerSample == 8) alFormatMono8() else alFormatMono16()

@@ -1,11 +1,10 @@
-/// ベースボタンノード（Godot BaseButton 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_basebutton.html
+/// ボタン全般に共通する状態（位置・サイズ・押下状態・見た目の状態）とマウス操作を
+/// まとめた内部型。`Button`（テキスト + 背景矩形）と `TextureButton`（スプライト）が
+/// これを内包することで、当たり判定や「押して離した瞬間＝クリック確定」の判定を
+/// 一箇所で共有できる。
+/// 利用例: Button / TextureButton の土台として使う。
 ///
-/// ボタン全般に共通する状態とインタラクションを担う abstract 相当の内部型。
-/// `Button`（テキスト + 背景矩形）と `TextureButton`（スプライト）が
-/// この `BaseButton` を内包して compose する。
-///
-/// Godot 同様、`BaseButton` 自身はシーングラフのノードとして直接配置されない。
+/// `BaseButton` 自身はシーングラフのノードとして直接配置されない。
 /// `Button` / `TextureButton` を経由してのみ Scene に存在する。
 ///
 ///   BaseButton
@@ -33,13 +32,13 @@ pub enum BaseButton {
         disabled = Bool,
         visualState = ButtonVisualState,
         justPressed = Bool,
-        centered = Bool                  // true: position は中心、false: 左上（Godot Control デフォルト）
+        centered = Bool                  // true: position は中心、false: 左上（既定）
     })
 }
 
 mod BaseButton {
 
-    /// デフォルト値で BaseButton を生成する（centered=false: Godot Control 準拠）
+    /// デフォルト値で BaseButton を生成する（centered=false: 左上基準）
     pub def make(size: Vec2.Vec2): BaseButton =
         BaseButton.BaseButton({
             position = Vec2.zero(),

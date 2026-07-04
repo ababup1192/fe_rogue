@@ -1,9 +1,10 @@
-/// 画面内外検出とハンドラ発火（Godot VisibleOnScreenNotifier2D シグナル準拠）
+/// 画面内外検出とハンドラ発火 — ノードが画面に入った/出た瞬間を捕まえてコールバックを呼ぶ。
 ///
 /// ScreenNotifier2DWithState 子ノードを持つ親ノードを自動検出し、
 /// 画面外に出たときに onScreenExited、画面内に入ったときに onScreenEntered を発火する。
+/// 「画面に現れたら動き出す」「画面外へ去ったら消す」演出を、毎フレームの位置比較を書かずに書ける。
 ///
-/// AreaEvent パターンを踏襲し、Scene 内の prevOnScreen を使ってフレーム間の状態遷移を検出する。
+/// AreaEvent と同じく、Scene 内の prevOnScreen（前フレームの画面内集合）との差分で状態遷移を検出する。
 ///
 ///   フレーム N:   Mob は画面内 → prevOnScreen に登録
 ///   フレーム N+1: Mob は画面外 → prevOnScreen にあるので onScreenExited 発火
@@ -13,10 +14,10 @@
 
 pub mod ScreenNotifyEvent {
 
-    /// 画面内外通知トレイト（VisibleOnScreenNotifier2D のコールバック）
+    /// 画面内外通知トレイト
     ///
     /// ScreenNotifier2DWithState 子ノードの存在で自動検出される。
-    /// ゲーム固有の状態 s を受け取り、Godot の screen_entered / screen_exited シグナル相当を実現する。
+    /// ゲーム固有の状態 s を受け取り、画面に入った/出た瞬間の処理を定義する。
     ///
     /// 使い方:
     ///   1. 親ノードに ScreenNotifier2DWithState 子ノードを追加
@@ -24,7 +25,7 @@ pub mod ScreenNotifyEvent {
     ///   3. ScreenNotifyEvent.handleScreenTransitions がフレーム毎に自動発火
     pub trait ScreenNotifyHandler[s] {
 
-        /// ノードが画面外に出たとき呼ばれる（Godot screen_exited 相当）。
+        /// ノードが画面外に出たとき呼ばれる。
         /// Scene を書き換えて返す。
         ///
         /// path: ノードのパス（親ノードのパス）
@@ -36,7 +37,7 @@ pub mod ScreenNotifyEvent {
             scene: Scene[s]
         ): Scene[s] = scene
 
-        /// ノードが画面内に入ったとき呼ばれる（Godot screen_entered 相当）。
+        /// ノードが画面内に入ったとき呼ばれる。
         /// Scene を書き換えて返す。
         ///
         /// path: ノードのパス（親ノードのパス）

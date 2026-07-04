@@ -1,8 +1,7 @@
-// UiExtract — UI entity から描画データへの射影
-//
-// Bevy の extract フェーズ相当。レイアウト済みの矩形と可視性から、Render.RenderItem 列を作る。
-// テキスト実寸計算は engine の Label2D.measure を再利用する（自前のフォントメトリクス計算はしない）。
-// 描画は画面固定 HUD 想定で camera scale を掛けない。呼び側が Render.drawAtlas に渡す。
+// UiExtract — 配置と表示可否が決まった UI を、描画部が食べられる絵の列に変換する。
+// レイアウト結果をそのまま画面に出せる形に落とすので、UI の見た目づくりと描画を切り離せる。
+// 利用例: HUD の枠や文字を絵にする / メニュー項目を並べて描く / 隠れている要素を絵から外す。
+// 注意: 画面固定の HUD 想定でカメラの拡大縮小は掛けない。文字の実寸は engine の純粋関数を使う。
 
 mod UiExtract {
 
@@ -15,16 +14,18 @@ mod UiExtract {
     /// UI entity を (位置, RenderItem) 列へ射影する。可視 entity のみ・矩形が確定したもののみ。
     /// 並びは (zIndex, 階層深さ, order, id) で安定ソートする（背面から前面へ）。
     /// box → 単色塗り（alpha 反映）、text → 着色テキスト、sprite → スプライト。
-    /// sprite のセル分割（frame→regionRect）でテクスチャ寸法を引くため GameEngine.Game を要求する。
+    /// 文字実寸は `atlasOf`、sprite のセル分割（frame→regionRect）のテクスチャ寸法は `textureInfoOf`
+    /// で引く。どちらも呼び側が注入するので、画面なしのテストでは純粋関数を渡せる。
     pub def extract(ui: UiStore.UiWorld, rects: Map[EntityId, Rect2.Rect2],
-                    vis: Map[EntityId, Bool], atlasOf: String -> FontAtlas \ ef): List[(Vec2.Vec2, Render.RenderItem)] \ (ef + GameEngine.Game) =
+                    vis: Map[EntityId, Bool], atlasOf: String -> FontAtlas \ ef,
+                    textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): List[(Vec2.Vec2, Render.RenderItem)] \ ef =
         let boxEntries = ui#boxes |> Map.foldLeftWithKey((acc, id, box) ->
             match Map.get(id, rects) {
                 case None       => acc
                 case Some(rect) => (id, box#zIndex, boxItem(box, rect#size)) :: acc
             }, Nil);
         let spriteEntries = ui#sprites |> Map.foldLeftWithKey((acc, id, sprite) ->
-            (id, sprite#zIndex, spriteItem(sprite)) :: acc, Nil);
+            (id, sprite#zIndex, spriteItem(sprite, textureInfoOf)) :: acc, Nil);
         let textEntries = Map.foldLeftWithKey((acc, id, comp) ->
             (id, comp#zIndex, textItem(comp, atlasOf)) :: acc,
             (Nil : List[(EntityId, Int32, Render.RenderItem)]), ui#texts);
@@ -80,11 +81,13 @@ mod UiExtract {
         Render.textTinted(comp#text, atlasOf(comp#font), comp#fontSize, comp#tint, comp#zIndex)
 
     /// sprite の RenderItem。左上原点（centered=false）でレイアウト矩形の位置に合わせる。
-    /// regionRect を持たず格子分割（hframes*vframes>1）があるときは frame からセル矩形を導く。
-    def spriteItem(sprite: UiWidget.SpriteComp): Render.RenderItem \ GameEngine.Game =
-        let regionOpt = resolveRegion(sprite);
+    /// regionRect を持たず格子分割（hframes*vframes>1）があるときは frame からセル矩形を導く
+    /// （テクスチャ寸法は `textureInfoOf` で引く）。
+    def spriteItem(sprite: UiWidget.SpriteComp,
+                   textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): Render.RenderItem \ ef =
+        let regionOpt = resolveRegion(sprite, textureInfoOf);
         Render.RenderItem.Sprite({texture = sprite#texture, tint = sprite#tint, alpha = 1.0f32,
-                                  scale = regionAdjustedScale(sprite, regionOpt), rotation = 0.0, centered = false,
+                                  scale = regionAdjustedScale(sprite, regionOpt, textureInfoOf), rotation = 0.0, centered = false,
                                   flipH = sprite#flipH, flipV = sprite#flipV,
                                   regionRect = regionOpt, zIndex = sprite#zIndex})
 
@@ -93,10 +96,11 @@ mod UiExtract {
     /// （engine `spriteToDrawable` の drawScale と同じ補正。`Render.drawAtlas` は UV のみ計算し
     /// scale を素通しするので、ここで織り込まないとアトラス全体サイズで巨大描画される）。
     /// region なし・テクスチャ未登録のときは無補正。
-    def regionAdjustedScale(sprite: UiWidget.SpriteComp, regionOpt: Option[Rect2.Rect2]): Vec2.Vec2 \ GameEngine.Game =
+    def regionAdjustedScale(sprite: UiWidget.SpriteComp, regionOpt: Option[Rect2.Rect2],
+                            textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): Vec2.Vec2 \ ef =
         match regionOpt {
             case None       => sprite#scale
-            case Some(rect) => match GameEngine.Game.getTextureInfo(sprite#texture) {
+            case Some(rect) => match textureInfoOf(sprite#texture) {
                 case None       => sprite#scale
                 case Some(info) =>
                     {x = sprite#scale#x * rect#size#x / info#width,
@@ -108,9 +112,10 @@ mod UiExtract {
     /// 無く格子分割がある場合はテクスチャ寸法を引き、frame をセルへ写す（engine Sprite2D.computeUv と
     /// 同じ規則: cellW=texW/hframes, cellH=texH/vframes, col=frame mod hframes, row=frame/hframes）。
     /// テクスチャ未登録・分割なしのときはテクスチャ全体（None）。
-    def resolveRegion(sprite: UiWidget.SpriteComp): Option[Rect2.Rect2] \ GameEngine.Game =
+    def resolveRegion(sprite: UiWidget.SpriteComp,
+                      textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): Option[Rect2.Rect2] \ ef =
         if (sprite#hframes * sprite#vframes > 1 and Option.isEmpty(sprite#regionRect))
-            match GameEngine.Game.getTextureInfo(sprite#texture) {
+            match textureInfoOf(sprite#texture) {
                 case None       => None
                 case Some(info) => Some(frameRect(info#width, info#height, sprite#hframes, sprite#vframes, sprite#frame))
             }

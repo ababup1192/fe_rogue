@@ -1,4 +1,8 @@
-/// AnimationPlayer — Godot 4 流儀のキーフレームベースアニメーション
+/// AnimationPlayer — 名前付きの宣言的アニメーション。複数の keyframe とメソッド
+/// トラック、完了通知を 1 つのまとまりに束ね、名前で呼び出して再生する。
+/// 攻撃モーションや死亡演出のように「開始～完了～副作用」がひとかたまりで再利用される
+/// 動きを、そのまま名前付きのデータとして持てるのが利点。
+/// 利用例: 攻撃モーションを名前で再生し、ヒット時刻にメソッドイベントを発火させる。
 ///
 /// Tween との違い:
 ///   - Tween は「A → B」を 1 行で書く一発補間。動的に target を計算するムーブ用途
@@ -11,7 +15,7 @@
 ///     （特定時刻に発火するイベント名）を束ねる
 ///   - `Track`: 補間先 NodePath + 補間種別（Position / Alpha）を keyframe 列で保持
 ///   - `Playback`: 再生インスタンス。`owner` NodePath をキーに「同 owner で 1 つ」
-///     を保証する（Godot の AnimationPlayer は Node 1 つに 1 つ）
+///     を保証する（1 つのノードにつき、再生は同時に 1 つだけ）
 ///
 /// 副作用フロー:
 ///   - `play(target, anim)` で再生スケジュール
@@ -53,7 +57,7 @@ mod AnimationPlayer {
     /// `name` はゲーム側で解釈する識別子（例: "attack:hit"）。
     pub type alias MethodKey = { time = Duration.Duration, name = String }
 
-    /// 1 つのアニメーション定義（Godot Animation リソース相当）。
+    /// 1 つのアニメーション定義。
     /// 同じ Animation インスタンスを複数 owner で並列再生して良い（イミュータブル）。
     pub type alias Animation = {
         name    = String,
@@ -63,7 +67,7 @@ mod AnimationPlayer {
     }
 
     /// 再生中インスタンス。`owner` は同時再生の単位（典型的に被アニメーションノードの NodePath）。
-    /// 同じ owner で `play` を呼ぶと旧 playback は破棄される（Godot AnimationPlayer の挙動）。
+    /// 同じ owner で `play` を呼ぶと旧 playback は破棄される。
     /// `firedMethods` は重複発火を防ぐための「発火済みメソッド名」キャッシュ。
     pub type alias Playback = {
         owner        = NodePath,
@@ -117,15 +121,13 @@ mod AnimationPlayer {
         /// engine 内部用: `tickAll` が呼ぶ。delta 進めて property 更新を返し、
         /// 完了 / メソッドイベントは内部 buffer に溜める。
         def consumeTick(delta: Duration.Duration): Tick
-        /// 指定 owner (Godot の AnimationPlayer node に相当) 宛 signal を pull で取り出す。
-        /// Godot では `animation_finished` / `method_called` を per-AnimationPlayer node の
-        /// signal connect で受信するが、Flix では pull モデルなのでこの関数で同じ粒度を
-        /// 実現する。各 Scene の per-node process が「自分の owner 宛だけ drain」して、
-        /// 他 owner 宛は内部 buffer に残るため、複数 Scene が並列に drain しても取りこぼしない。
+        /// 指定 owner 宛の signal（メソッド発火 / 完了通知）を pull で取り出す。
+        /// 各 Scene の per-node process が「自分の owner 宛だけ drain」し、他 owner 宛は
+        /// 内部 buffer に残るため、複数 Scene が並列に drain しても取りこぼさない。
         def drainSignals(owner: NodePath): EventBundle
     }
 
-    /// `play(targetPath, anim)` — Godot の `AnimationPlayer.play("name")` 同等の便宜関数。
+    /// `play(targetPath, anim)` — 対象パスにアニメを載せて再生を始める便宜関数。
     pub def play(target: NodePath, anim: Animation): Unit \ Scheduler =
         Scheduler.schedule({
             owner        = target,

@@ -32,7 +32,7 @@ mod TestSokoban {
         Sokoban.World.World({
             walls = List.toSet(walls), goals = Set.empty(), crates = List.toSet(crates),
             robot = robot, cols = 5, rows = 5,
-            facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None,
+            facing = Dir4.Down, walkPhase = 0.0, slide = None, undoFx = None,
             screen = Sokoban.Screen.Playing, level = 1, clearElapsed = 0.0 })
 
     /// An already-solved board (one crate on one goal) on the given level.
@@ -48,11 +48,11 @@ mod TestSokoban {
         let Sokoban.World.World(b) = w;
         Option.map(s -> (s#fromCell, s#pushing, s#reverse, s#t), b#slide)
 
-    def tagOf(d: Robot.Direction): String = match d {
-        case Robot.Direction.Up    => "Up"
-        case Robot.Direction.Down  => "Down"
-        case Robot.Direction.Left  => "Left"
-        case Robot.Direction.Right => "Right"
+    def tagOf(d: Dir4.Dir4): String = match d {
+        case Dir4.Up    => "Up"
+        case Dir4.Down  => "Down"
+        case Dir4.Left  => "Left"
+        case Dir4.Right => "Right"
     }
 
     // ── Parser ──
@@ -277,7 +277,7 @@ mod TestSokoban {
         let goalAt42 = Sokoban.World.World({
             walls = Set.empty(), goals = Set#{(4, 2)}, crates = Set#{(3, 2)},
             robot = (2, 2), cols = 5, rows = 5,
-            facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None,
+            facing = Dir4.Down, walkPhase = 0.0, slide = None, undoFx = None,
             screen = Sokoban.Screen.Playing, level = 1, clearElapsed = 0.0 });
         let pushed = land(Sokoban.tick(right(), dt(), fresh(goalAt42)));
         let afterZ = Sokoban.tick(zKey(), dt(), pushed);
@@ -424,7 +424,7 @@ mod TestSokoban {
         // The shipped solution, driven through the pure tick at a fixed dt.
         // Same Trace, same Worldline, always: the win, the move count and
         // the final positions are pinned as plain values.
-        let end = Replay.play(Replay.solveLevelOne(), fresh(Sokoban.playingWorld(1)));
+        let end = Replay.play(Sokoban.tick, Trace.dt(), Trace.solveLevelOne(), fresh(Sokoban.playingWorld(1)));
         let w = Worldline.current(end);
         Assert.assertEq(expected = (true, 7, (3, 2), Set#{(2, 2), (4, 4)}),
             (Sokoban.won(w), Worldline.pastLength(end), robotOf(w), cratesOf(w)))
@@ -433,7 +433,7 @@ mod TestSokoban {
     def testReplaySolvesLevelTwo(): Unit \ Assert =
         // With this pin, both shipped levels are provably solvable — what
         // chapter 4 checked by hand is now a machine's job.
-        let end = Replay.play(Replay.solveLevelTwo(), fresh(Sokoban.playingWorld(2)));
+        let end = Replay.play(Sokoban.tick, Trace.dt(), Trace.solveLevelTwo(), fresh(Sokoban.playingWorld(2)));
         let w = Worldline.current(end);
         Assert.assertEq(expected = (true, 21, (5, 2), Set#{(1, 5), (6, 2)}),
             (Sokoban.won(w), Worldline.pastLength(end), robotOf(w), cratesOf(w)))
@@ -443,11 +443,11 @@ mod TestSokoban {
         // Three moves out, then Z held long enough to rewind them all: the
         // Stores come back exactly to move zero.
         let out = List.flatten(
-            Replay.walk(Robot.Direction.Left) ::
-            Replay.walk(Robot.Direction.Up) ::
-            Replay.walk(Robot.Direction.Right) :: Nil);
-        let back = Replay.play(Replay.rewind(56) :: Nil,
-                              Replay.play(out, fresh(Sokoban.playingWorld(1))));
+            Trace.walk(Dir4.Left) ::
+            Trace.walk(Dir4.Up) ::
+            Trace.walk(Dir4.Right) :: Nil);
+        let back = Replay.play(Sokoban.tick, Trace.dt(), Trace.rewind(56) :: Nil,
+                              Replay.play(Sokoban.tick, Trace.dt(), out, fresh(Sokoban.playingWorld(1))));
         let w = Worldline.current(back);
         let Sokoban.World.World(start) = Sokoban.playingWorld(1);
         Assert.assertEq(expected = ((3, 5), start#crates, 0),
@@ -527,12 +527,10 @@ mod TestSokoban {
         not Option.isEmpty(UiStore.idOf(path, ui))
 
     def textOf(path: String, ui: UiStore.UiWorld): Option[String] =
-        UiStore.idOf(path, ui)
-            |> Option.flatMap(id -> Map.get(id, ui#texts))
-            |> Option.map(t -> t#text)
+        UiStore.textOf(path, ui)
 
     def pageVisible(page: String, ui: UiStore.UiWorld): Option[Bool] =
-        Map.get(page, UiStore.visibleByPath(page, ui))
+        UiStore.visibleOf(page, ui)
 
     @Test
     def testShippedUiSpecsCarryTheAddressedNodes(): Unit \ {Assert, IO} =
@@ -566,12 +564,12 @@ mod TestSokoban {
         let onGoals = Sokoban.World.World({
             walls = Set.empty(), goals = List.toSet((1, 1) :: (2, 2) :: Nil),
             crates = List.toSet((1, 1) :: Nil), robot = (3, 3), cols = 5, rows = 5,
-            facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None,
+            facing = Dir4.Down, walkPhase = 0.0, slide = None, undoFx = None,
             screen = Sokoban.Screen.Playing, level = 1, clearElapsed = 0.0 });
         let strayCrate = Sokoban.World.World({
             walls = Set.empty(), goals = List.toSet((1, 1) :: Nil),
             crates = List.toSet((1, 1) :: (3, 3) :: Nil), robot = (2, 2), cols = 5, rows = 5,
-            facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None,
+            facing = Dir4.Down, walkPhase = 0.0, slide = None, undoFx = None,
             screen = Sokoban.Screen.Playing, level = 1, clearElapsed = 0.0 });
         // A crateless board poses no puzzle and never counts as solved.
         let crateless = board(Nil, Nil, (2, 2));

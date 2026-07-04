@@ -29,13 +29,6 @@
 
 mod Robot {
 
-    pub enum Direction with Eq {
-        case Up
-        case Down
-        case Left
-        case Right
-    }
-
     /// One part on the 16-unit grid. r > 0 rounds the corners (r = min(w,h)/2 = circle).
     type alias Part = {
         x = Float64, y = Float64, w = Float64, h = Float64,
@@ -53,14 +46,14 @@ mod Robot {
 
     /// All parts of the robot facing `dir` at walk phase `phase` (0..1, 0 = rest pose),
     /// centered at `center`, on a tile of `size` px.
-    pub def parts(center: Vec2.Vec2, size: Float64, dir: Direction,
+    pub def parts(center: Vec2.Vec2, size: Float64, dir: Dir4.Dir4,
                   phase: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
         let pose = poseOf(phase);
         let ps = match dir {
-            case Direction.Down  => front(pose)
-            case Direction.Up    => back(pose)
-            case Direction.Right => side(pose)
-            case Direction.Left  => List.map(mirrorX, side(pose))
+            case Dir4.Down  => front(pose)
+            case Dir4.Up    => back(pose)
+            case Dir4.Right => side(pose)
+            case Dir4.Left  => List.map(mirrorX, side(pose))
         };
         List.map(toItem(center, size), ps)
 

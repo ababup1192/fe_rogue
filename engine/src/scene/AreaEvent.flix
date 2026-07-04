@@ -1,5 +1,7 @@
-/// エリア重なり検出と AreaHandler 発火（Godot Area2D シグナル準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_area2d.html#signals
+/// エリア同士の重なりを検出し、各ノードの AreaHandler に「入った・出た・クリックされた」を
+/// 通知する。前フレームの重なりと比べて差分を取るので、ノード側は入退場の瞬間だけ受け取れば
+/// よく、全ペアの総当たり判定を自分で書かずに済む。
+/// 利用例: 敵がトリガー領域に入った瞬間に罠を起動する。
 ///
 /// 使い方:
 ///   1. ノード型に AreaHandler[s] を実装し onAreaEntered / onAreaExited を定義
@@ -70,8 +72,7 @@ pub mod AreaEvent {
             scene: Scene[s]
         ): Scene[s] \ AreaHandler.Aef[s] = checked_ecast(scene)
 
-        /// 自分のエリアの CollisionShape2D 内をマウスがクリックしたとき呼ばれる
-        /// (Godot Area2D._input_event の点クリック相当)。
+        /// 自分のエリアの CollisionShape2D 内をマウスがクリックしたとき呼ばれる。
         /// `monitoring = true` のエリアだけが対象。デフォルトでは何もしない。
         ///
         /// selfPath: 自分のパス
@@ -176,7 +177,7 @@ pub mod AreaEvent {
         Scene.setPrevOverlaps(currentPairs, sceneAfterExit)
 
     // ========================================================================
-    // クリック → AreaHandler.onAreaClicked dispatch（Godot Area2D._input_event 相当）
+    // クリック → AreaHandler.onAreaClicked dispatch
     // ========================================================================
 
     /// `position` を含む `monitoring=true` の Area2D 系ノードすべてに対して

@@ -156,4 +156,50 @@ mod TestWorldline {
         Assert.assertEq(
             expected = (0, false),   // seed へ到達・これ以上遡れない
             (Worldline.current(back), Worldline.canUndo(back)))
+
+    // ── 観測系: toList / window / scrubTo（時間順の絶対座標系）──
+    // 共通の題材: seed=1 から 2,3,4 を record し、そこから 2 段 undo。
+    // 時間順の平坦列は [1,2,3,4]、現在地 idx=1（current=2）、future=[3,4]。
+
+    def scrubbed(): Worldline[Int32] =
+        Worldline.make(1, 100)
+            |> Worldline.record(2) |> Worldline.record(3) |> Worldline.record(4)
+            |> Worldline.undoBy(2)
+
+    /// toList は past を反転し current・future を繋いだ時間順（最古→最新）列。
+    @Test
+    def testToListIsChronological(): Unit \ Assert =
+        Assert.assertEq(
+            expected = 1 :: 2 :: 3 :: 4 :: Nil,
+            Worldline.toList(scrubbed()))
+
+    /// window は絶対添字区間 [from, to) を取り出す。両端は clamp、from>=to は空。
+    @Test
+    def testWindowSlicesChronologically(): Unit \ Assert =
+        let wl = scrubbed();
+        Assert.assertEq(
+            expected = (2 :: 3 :: Nil, 1 :: 2 :: 3 :: 4 :: Nil, Nil),
+            (Worldline.window(1, 3, wl),      // 途中の 2 要素
+             Worldline.window(-5, 99, wl),    // 両端 clamp = 全体
+             Worldline.window(3, 3, wl)))     // 空区間
+
+    /// scrubTo は絶対位置へ移動する。現在地 idx=1 から 0（最古）・3（最新）・範囲外へ。
+    /// current が対応する値になり、位置外は [0, length-1] に clamp。
+    @Test
+    def testScrubToAbsolutePosition(): Unit \ Assert =
+        let wl = scrubbed();   // current=2 (idx=1), toList=[1,2,3,4]
+        Assert.assertEq(
+            expected = (1, 4, 1, 4),
+            (Worldline.current(Worldline.scrubTo(0, wl)),    // 最古へ戻る（undo 方向）
+             Worldline.current(Worldline.scrubTo(3, wl)),    // 最新へ進む（redo 方向）
+             Worldline.current(Worldline.scrubTo(-9, wl)),   // 下側 clamp = 最古 1
+             Worldline.current(Worldline.scrubTo(99, wl))))  // 上側 clamp = 最新 4
+
+    /// scrubTo は現在地に留まるとき恒等（差分 0）。
+    @Test
+    def testScrubToHereIsIdentity(): Unit \ Assert =
+        let wl = scrubbed();   // 現在地 idx = pastLength = 1
+        Assert.assertEq(
+            expected = (2, 1),
+            (Worldline.current(Worldline.scrubTo(1, wl)), Worldline.pastLength(Worldline.scrubTo(1, wl))))
 }

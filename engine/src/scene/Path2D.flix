@@ -1,8 +1,6 @@
-/// 2D パスノード（Godot Path2D 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_path2d.html
-///
-/// ポイント列で定義されたパスを保持し、sample(t) でパス上の位置と方向を取得する。
-/// PathFollow2D の代わりに sample メソッドで同等の機能を提供する。
+/// Path2D — 折れ線で定義したパスを保持し、sample(t) でその線上の位置と向きを取り出す。
+/// 経路をデータとして持てるので、パスに沿った移動や画面端からの出現を計算で追える。
+/// 利用例: 敵を決まった軌道で動かす、画面外から中央へ向かわせる。
 ///
 ///   Path2D
 ///     +-- CanvasItem: visible, zIndex, modulate

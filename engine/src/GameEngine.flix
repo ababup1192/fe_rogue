@@ -1,4 +1,7 @@
-// GameEngine module — shared types and effects for the game engine layer
+// GameEngine — ゲームとエンジンの境界に置く共有の型（描画データ・キー・色など）と、
+// 副作用の窓口（描画・入力・音・時間の取得）をまとめて定義する。
+// 各ゲームはここの型とエフェクトだけを見れば、内部実装を知らずに描画や入力を組める。
+// 利用例: 1フレームぶんの描画コマンドを渡す / キー押下を問い合わせる / 経過時間を取る。
 
 mod GameEngine {
     import java.lang.ProcessBuilder
@@ -51,7 +54,7 @@ mod GameEngine {
         maxDeltaTime = Float64
     }
 
-    /// 角丸＋枠線スタイル (Godot StyleBoxFlat 相当)。`Drawable.style = Some(..)` ＆ texture="" のとき
+    /// 角丸＋枠線スタイル。`Drawable.style = Some(..)` ＆ texture="" のとき
     /// 単色矩形を「塗り＋枠＋角丸＋AA」で 1 フラグメント描画する。render_core の `RenderType.BoxStyle` と一致。
     ///
     /// stripe* は塗り領域に重ねる 45° 斜線ハッチ（CSS の repeating-linear-gradient 相当）。

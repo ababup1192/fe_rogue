@@ -1,6 +1,6 @@
-/// 物理ステップ — Node.physicsProcess + RigidBody2D の重力・ダンピング・速度積分
+/// 物理ステップ — 全ノードの physicsProcess を呼んだあと、RigidBody2D に重力・ダンピング・速度積分をかける。
+/// 物理の更新順を一箇所に固定するので、力の適用と積分が毎フレーム同じ順番で走る。
 ///
-/// Godot の physics_process に相当する物理更新。
 /// 静的衝突解決（resolveStaticCollisions）は別関数 — GameEngine.handleCollisions の
 /// 内部で Area2D 重なり検出の後に呼ばれる。順序を逆にすると、RigidBody2D が
 /// StaticBody2D に接触した瞬間に Area2D が「ピッタリ境界」になり、
@@ -17,7 +17,7 @@
 ///
 pub mod PhysicsStep {
 
-    /// デフォルト重力（Godot 準拠: 980 pixels/sec² 下向き）
+    /// デフォルト重力（980 pixels/sec² 下向き）
     pub def defaultGravity(): Vec2.Vec2 = {x = 0.0, y = 980.0}
 
     /// 物理ステップ: physicsProcess → 重力適用 → ダンピング → 速度積分
@@ -63,9 +63,7 @@ pub mod PhysicsStep {
 
     /// RigidBody2D が StaticBody2D（physicsCollisionEnabled=true）と重なっている場合、
     /// 押し出して分離する。法線方向の速度はゼロにする（重力蓄積を防ぐ）。
-    /// Godot の RigidBody2D ↔ StaticBody2D 自動衝突解決相当。
-    /// RigidBody2D 側の collisionExceptions に登録された path のペアは skip
-    /// （Godot add_collision_exception_with 相当）。
+    /// RigidBody2D 側の collisionExceptions に登録された path のペアは skip する。
     /// シーン内のすべての静的衝突体（StaticBody2D + TileMapLayer の壁セル）を集める。
     /// resolveStaticCollisions が物理応答に、RayCast2D が線分クエリに、それぞれ共有して使う。
     pub def collectStaticColliders(scene: Scene[s]):
@@ -113,7 +111,7 @@ pub mod PhysicsStep {
     /// 1 つの RigidBody2D に対し、全静的ボディとの MTV を順に適用する。
     /// 各分離ごとに位置を更新し、法線方向の速度成分をゼロにする。
     /// collisionExceptions に登録された静的ボディ、および (bodyMask & staticLayer) == 0
-    /// のペアは skip する（Godot collision_layer/mask 準拠）。
+    /// のペアは skip する。
     def resolveOneRigid(path: NodePath, initPos: Vec2.Vec2, shape: CollisionShape2D,
                          initBody: RigidBody2D, statics: List[(NodePath, Vec2.Vec2, CollisionShape2D)],
                          scene: Scene[s]): Scene[s] =

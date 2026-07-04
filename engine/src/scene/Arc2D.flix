@@ -1,11 +1,11 @@
-/// 円弧/リングノード（Godot CanvasItem.draw_arc 準拠の簡易版）
-/// see: https://docs.godotengine.org/en/stable/classes/class_canvasitem.html#class-canvasitem-method-draw-arc
-///
-/// 中心（ノード位置）から半径 `radius`（外周）・太さ `width` のリングを、`startAngle` から
-/// `endAngle`（ラジアン、Godot draw_arc と同義で時計回りに増加・画面 +y は下向き）まで単色で塗る。
-/// レンダラは塗り潰し凸ポリゴン（GL_TRIANGLE_FAN）しか持たないため、リングは中空円＝アヌラスとして
-/// `segments` 個の凸クアッド（台形）に分割し、各セグメントを 1 つの PolygonRenderCmd として emit する。
-/// クールダウン/タイマー表示は `endAngle` を毎フレーム更新して円弧を伸縮させる（駆動はゲーム側）。
+/// 円弧・リングを描くノード。中心（ノード位置）から半径 `radius`（外周）・太さ `width` の
+/// リングを、`startAngle` から `endAngle` まで単色で塗る。角度はラジアンで、時計回りに
+/// 増える（画面の +y は下向き）。
+/// `endAngle` を毎フレーム動かすだけで扇形を伸縮できるので、クールダウンやタイマーの
+/// 円形ゲージを状態を持たずに描ける（伸縮の駆動はゲーム側）。
+/// 利用例: スキルのクールダウンを残り時間ぶんの扇形で見せる / 背景の輪を描く。
+/// 注意: 塗りは凸ポリゴンだけなので、リングは中空円として `segments` 個の台形に分割し、
+///       各セグメントを 1 つの PolygonRenderCmd として出す。
 ///
 ///   Arc2D
 ///     +-- CanvasItem: visible, zIndex, modulate, alpha

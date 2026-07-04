@@ -1,13 +1,8 @@
-/// キー・マウス入力イベントの検出と応答（合成イベント方式）
-///
-/// ButtonEvent / TimerEvent パターンに倣い、InputHandler トレイトで
-/// キー押下/離脱、マウスボタン押下/離脱、マウス移動のイベント駆動を実現する。
-///
-/// GLFW のコールバックは使わず、毎フレーム現在の入力状態を取得し、
-/// 前フレーム（Scene の prev*）との差分から押下/離脱・移動を合成する。
-/// 1 フレーム内に押して離されたキー/ボタンは取りこぼすが、通常の操作では実用上問題ない。
-///
-/// Godot の `_input(event)` 準拠で、キーとマウスの両方を 1 つのトレイトで扱う。
+/// InputEvent — キーとマウスの「押した/離した/動いた/ホバーした」瞬間を検出してコールバックへ流す。
+/// 毎フレームの入力状態を前フレームと差分するだけなので、コールバック登録なしに押下エッジが取れる。
+/// InputHandler トレイトにキーもマウスも 1 つにまとめて実装する。
+/// 利用例: Enter で決定する、マウスを乗せた選択肢を光らせる。
+/// 注意: 1 フレーム内に押して離した入力は取りこぼす（通常の操作では問題ない）。
 ///
 /// 使い方:
 ///   1. InputHandler[s] を実装し必要なコールバックを記述
@@ -55,13 +50,12 @@ pub mod InputEvent {
             checked_ecast(scene)
 
         /// マウスポインタがノードに入ったとき呼ばれる（前フレームに居なかった hovered path）。
-        /// `path` はホバー対象ノードの NodePath。Godot の `mouse_entered` 相当。
+        /// `path` はホバー対象ノードの NodePath。
         /// `EngineNode.getSize` を持つ可視ノードのみが対象（不可視サブツリーは除外）。
         pub def onMouseEntered(_path: NodePath, scene: Scene[s]): Scene[s] \ InputHandler.Aef[s] =
             checked_ecast(scene)
 
         /// マウスポインタがノードから出たとき呼ばれる（前フレームに居て今フレームに居ない path）。
-        /// Godot の `mouse_exited` 相当。
         pub def onMouseExited(_path: NodePath, scene: Scene[s]): Scene[s] \ InputHandler.Aef[s] =
             checked_ecast(scene)
 

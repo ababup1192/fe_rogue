@@ -1,9 +1,7 @@
-/// 塗り潰し多角形ノード（Godot Polygon2D 準拠の簡易版）
-/// see: https://docs.godotengine.org/en/stable/classes/class_polygon2d.html
-///
-/// 局所座標の凸多角形 `points` を単色（modulate + alpha）で塗り潰す。テクスチャや
-/// 穴あき・UV は未対応（凸多角形を GL_TRIANGLE_FAN で塗る最小実装）。円は `circle` で
-/// 正多角形（12 角形）として生成する。
+/// Polygon2D — 局所座標の凸多角形 `points` を単色（modulate + alpha）で塗り潰すノード。
+/// 三角形や円などの簡単な図形を画像なしで出せるので、マーカーや図形エフェクトに手軽。
+/// 利用例: 円形マーカー、簡易的な図形の演出。
+/// 注意: テクスチャ・穴あき・UV は未対応（凸多角形を三角形ファンで塗る最小実装）。円は `circle` で 12 角形として生成する。
 ///
 ///   Polygon2D
 ///     +-- CanvasItem: visible, zIndex, modulate, alpha

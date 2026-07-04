@@ -1,5 +1,8 @@
-/// リッチテキストラベル（Godot RichTextLabel 準拠の最小実装）
-/// see: https://docs.godotengine.org/en/stable/classes/class_richtextlabel.html
+/// リッチテキストラベル — 一部の装飾タグ付きテキストを表示する最小実装。
+///
+/// 文中に色や太字を混ぜたり、1 文字ずつ送る演出をしたいときに使う。
+/// 利用例: 会話ウィンドウの typewriter 表示 / 色分けしたチャットログ。
+/// 注意: `[...]` は装飾タグとして解釈されるため、角括弧そのものを文字として表示するのには使えない。
 ///
 /// BBCode カラータグ `[color=...]...[/color]` と太字タグ `[b]...[/b]` をサポート。
 /// 太字は `boldFontAtlas` を別途持たせ、`[b]` 内の文字をそのアトラスのグリフで描画する。
@@ -9,7 +12,7 @@
 /// setText 時に自動で末尾までスクロールする（チャットログ用途を想定）。
 ///
 /// `visibleCharacters` / `visibleRatio` で typewriter 風の段階表示が可能。
-/// Godot RichTextLabel.visible_characters / visible_ratio 準拠:
+/// 段階表示の指定方法:
 ///   - visibleCharacters >= 0 のとき、先頭からその文字数までを表示
 ///   - visibleCharacters < 0 かつ visibleRatio in [0.0, 1.0] のとき、比率で制限
 ///   - どちらも未設定（visibleCharacters = -1, visibleRatio < 0）なら全表示
@@ -330,8 +333,7 @@ mod RichTextLabel {
 
     /// 名前付きの色を Color に変換する。CSS Level 1 の 16 色に加え、ノベル / 演出で
     /// よく使う拡張色（gold / pink / silver / brown / 等）を含む。
-    /// 値は CSS の RGB に準拠（Godot の `green=(0,1,0)` は採用せず、CSS と同じく
-    /// `green=(0,0.5,0)` ＋ `lime=(0,1,0)` で分離）。
+    /// 値は CSS の RGB に準拠（緑は CSS と同じく `green=(0,0.5,0)` ＋ `lime=(0,1,0)` で分離）。
     def parseNamedColor(name: String): Option[Color] = match name {
         // CSS Level 1 — 基本 16 色
         case "black"   => Some({r = 0.0f32,  g = 0.0f32,  b = 0.0f32})
@@ -409,7 +411,7 @@ mod RichTextLabel {
         };
         let scale = r#fontSize / regularAtlas#fontSize;
         let lh = lineHeight(label);
-        // Godot RichTextLabel.visible_characters / visible_ratio による typewriter 制限。
+        // visibleCharacters / visibleRatio による typewriter 制限。
         // BBCode タグは可視文字数に算入されず、タグ自体は露出してから本文が現れる。
         let displayText = match effectiveVisibleCount(r#text, r#visibleCharacters, r#visibleRatio) {
             case Some(n) => Markup.BBCode.sliceVisible(r#text, n)

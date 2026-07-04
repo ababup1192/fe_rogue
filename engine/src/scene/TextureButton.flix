@@ -1,8 +1,9 @@
-/// テクスチャボタンノード（Godot TextureButton 準拠）
-/// see: https://docs.godotengine.org/ja/4.x/classes/class_texturebutton.html
+/// テクスチャボタンノード — 状態ごとに絵が変わる押しボタン。
 ///
-/// 状態（normal/pressed/hover/disabled）に応じてテクスチャを切り替えるボタン。
-/// 共通インタラクション・座標・可視性は `BaseButton` を内包して実装する。
+/// 状態（normal/pressed/hover/disabled）に応じて絵を切り替える押しボタン。
+/// 押した・重ねた見た目を差し替えるだけで、クリック応答のあるボタンが作れる。
+/// 利用例: 通常/押下の 2 枚を渡してメニューボタンにする。
+/// 共通のインタラクション・座標・可視性は `BaseButton` を内包して扱う。
 ///
 ///   TextureButton
 ///     +-- BaseButton: position, rotation, scale, skew, visible, zIndex, modulate,
@@ -21,7 +22,7 @@ pub enum TextureButton {
 
 mod TextureButton {
 
-    /// デフォルト値で TextureButton を生成する（centered=false: Godot Control 準拠）
+    /// デフォルト値で TextureButton を生成する（centered=false: position は左上）
     /// textureNormal: 通常時テクスチャ（必須）
     /// size: ヒット領域サイズ
     pub def make(textureNormal: String, size: Vec2.Vec2): TextureButton =
@@ -116,7 +117,7 @@ mod TextureButton {
         }
 
     /// TextureButton を Drawable に変換する
-    /// centered=true: position は中心、false: 左上（Godot Control 準拠）
+    /// centered=true: position は中心、false: 左上
     pub def toDrawables(btn: TextureButton, globalPos: Vec2.Vec2): List[GameEngine.Drawable] =
         let TextureButton.TextureButton(r) = btn;
         let BaseButton.BaseButton(b) = r#base;

@@ -1,10 +1,6 @@
-/// パネルノード（Godot Panel + StyleBoxFlat の最小組み合わせ）
-/// see: https://docs.godotengine.org/en/stable/classes/class_panel.html
-/// see: https://docs.godotengine.org/en/stable/classes/class_styleboxflat.html
-///
-/// 矩形領域に背景色と枠線を描く UI ノード。Godot では Panel + StyleBoxFlat
-/// による Theme override で同等の見た目を作るが、テーマ機構は重いので
-/// Flix では「背景色 + 枠線色 + 枠線太さ」だけを直接フィールドに持つ素朴版。
+/// Panel — 矩形に背景色と枠線を描く UI ノード。
+/// テーマ機構を持たず「背景色 + 枠線色 + 枠線太さ」を直接フィールドに持つ素朴版なので、軽く使える。
+/// 利用例: メニューやダイアログの下敷き、HUD パネルの背景。
 ///
 /// `toDrawables` は最大 5 枚の ColorRect 由来 Drawable を返す:
 ///   1. 背景（borderWidth ぶん内側に小さく描く形ではなく、size 全体を背景塗りつぶし）
@@ -198,8 +194,7 @@ mod Panel {
             bg :: top :: bot :: lft :: rgt :: Nil
         }
 
-    /// path 位置に Panel が居れば取り出す（Godot の `GetNode<Panel>(path)` 相当）。
-    /// 別ノードや欠落なら `None`。
+    /// path 位置に Panel が居れば取り出す。別ノードや欠落なら `None`。
     pub def getAt(path: NodePath, scene: Scene[s]): Option[Panel] =
         match Scene.getEngineNode(path, scene) {
             case Some(EngineNode.PanelWithState(panel, _)) => Some(panel)
