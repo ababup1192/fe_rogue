@@ -74,7 +74,8 @@ mod Sokoban {
         slide = Option[Slide],
         undoFx = Option[UndoFx],
         screen = Screen,
-        level = Int32
+        level = Int32,
+        clearElapsed = Float64
     }
 
     pub enum World {
@@ -111,7 +112,7 @@ mod Sokoban {
                       robot = p#robot, cols = p#cols, rows = p#rows,
                       facing = Robot.Direction.Down, walkPhase = 0.0,
                       slide = None, undoFx = None,
-                      screen = screen, level = n })
+                      screen = screen, level = n, clearElapsed = 0.0 })
 
     /// The win condition is not stored anywhere: it is derived from the Stores.
     /// A board with no crates poses no puzzle, so it never counts as solved.
@@ -145,8 +146,13 @@ mod Sokoban {
                          else freshLine(titleWorld()))
                     else if (input#esc)
                         freshLine(titleWorld())
-                    else
-                        Worldline.replaceCurrent(step(noKeys(), dt, world), line)
+                    else {
+                        // The party clock: confetti is a pure function of
+                        // how long the board has been solved.
+                        let World.World(b1) = step(noKeys(), dt, world);
+                        Worldline.replaceCurrent(
+                            World.World({ clearElapsed = b1#clearElapsed + dt | b1 }), line)
+                    }
                 else if (input#back)
                     freshLine(titleWorld())
                 else
@@ -350,11 +356,12 @@ mod Sokoban {
                 boardTiles(b) ::
                 goalMarks(b) ::
                 crateBoxes(b) ::
-                Robot.parts(robotCenter(b), tile(), drawnFacing(b), b#walkPhase) ::
+                Robot.parts(robotDrawCenter(b), tile(), drawnFacing(b), b#walkPhase) ::
                 onGoalBadges(b) ::
                 clockBoxes(b) ::
                 texts(atlas) :: Nil);
-            (Render.draw(boxes), List.append(cratePolys(b), clockNeedle(b)))
+            (Render.draw(boxes),
+             List.flatten(cratePolys(b) :: clockNeedle(b) :: confettiQuads(b) :: Nil))
         }
 
     /// Top-left corner of the board, chosen so the whole grid sits centered.
@@ -373,6 +380,18 @@ mod Sokoban {
         match b#slide {
             case None    => cellCenter(b, b#robot)
             case Some(s) => lerp(cellCenter(b, s#fromCell), cellCenter(b, b#robot), s#t)
+        }
+
+    /// The robot leans into its work: while a forward push slides, the whole
+    /// picture sits one pixel lower — weight on the crate, nothing more.
+    def robotDrawCenter(b: Board): Vec2.Vec2 =
+        let c = robotCenter(b);
+        { x = c#x, y = c#y + pushSink(b) }
+
+    def pushSink(b: Board): Float64 =
+        match b#slide {
+            case Some(s) => if (s#pushing and not s#reverse) 1.0 else 0.0
+            case None    => 0.0
         }
 
     /// The facing the picture wears. A rewind slide shows the direction of
@@ -416,12 +435,19 @@ mod Sokoban {
         match b#slide {
             case Some(s) =>
                 if (s#pushing and not s#reverse and p == slidingCrate(b, s))
-                    lerp(cellCenter(b, b#robot), cellCenter(b, p), s#t)
+                    lerp(cellCenter(b, b#robot), cellCenter(b, p), settle(s#t))
                 else if (s#pushing and s#reverse and p == s#fromCell)
                     lerp(cellCenter(b, crateReturnStart(b, s)), cellCenter(b, p), s#t)
                 else cellCenter(b, p)
             case None => cellCenter(b, p)
         }
+
+    /// The pushed crate's travel. It rides the robot's linear slide (a
+    /// pushed thing cannot outrun its pusher), then over the last stretch
+    /// pops about a pixel past the target and settles exactly as it lands.
+    pub def settle(t: Float64): Float64 =
+        if (t < 0.8) t
+        else t + 0.06 * RenderUtil.sinF(3.141592653589793 * (t - 0.8) / 0.2)
 
     def lerp(a: Vec2.Vec2, z: Vec2.Vec2, t: Float64): Vec2.Vec2 =
         { x = a#x + (z#x - a#x) * t, y = a#y + (z#y - a#y) * t }
@@ -542,6 +568,48 @@ mod Sokoban {
          Render.RenderItem.Box({ size = {x = d, y = d}, color = c, alpha = a,
                                  style = Some(style), zIndex = z }))
 
+    // ── Confetti: rain without a particle system ──
+    // No particle is stored anywhere. Each piece's position, spin and color
+    // are a pure function of (its index, the seconds since the board was
+    // solved): the whole rain is a derivation from one number in the World,
+    // clearElapsed. There is nothing to spawn, update or free — leaving the
+    // screen simply stops asking for the picture.
+
+    def confettiCount(): Int32 = 48
+
+    def zConfetti(): Int32 = 95
+
+    /// A cheap integer hash onto [0, 1): piece i's k-th personal constant.
+    /// The same piece always gets the same answers, so it always flutters
+    /// the same way — determinism all the way down to the party.
+    def chip(i: Int32, k: Int32): Float64 =
+        let h = i * 374761393 + k * 668265263 + 1442695041;
+        Int32.toFloat64(Int32.modulo(h * (h + 30011), 100003)) / 100003.0
+
+    /// Where piece i hangs t seconds into the party: it falls at its own
+    /// speed, sways on its own sine, spins at its own rate, and wraps back
+    /// above the screen so the rain never runs out.
+    def confettiQuad(t: Float64, i: Int32): GameEngine.PolygonRenderCmd =
+        let speed = 55.0 + 50.0 * chip(i, 1);
+        let sway = 6.0 + 10.0 * chip(i, 2);
+        let phase = 6.283185307179586 * chip(i, 3);
+        let spin = (2.0 + 4.0 * chip(i, 4)) * (if (chip(i, 5) < 0.5) -1.0 else 1.0);
+        let x = 320.0 * chip(i, 6) + sway * RenderUtil.sinF(1.5 * t + phase);
+        let y = fract((speed * t + 260.0 * chip(i, 7)) / 260.0) * 260.0 - 10.0;
+        let a = spin * t + phase;
+        let u = { x = RenderUtil.cosF(a), y = RenderUtil.sinF(a) };
+        let v = { x = -u#y, y = u#x };
+        let c = { x = x, y = y };
+        let corner = (sx, sy) -> Vec2.add(c, Vec2.add(Vec2.mul(u, sx * 2.2), Vec2.mul(v, sy * 1.4)));
+        { vertices = corner(-1.0, -1.0) :: corner(1.0, -1.0) ::
+                     corner(1.0, 1.0) :: corner(-1.0, 1.0) :: Nil,
+          color = Palette.confetti(i), alpha = 1.0f32, zIndex = zConfetti() }
+
+    /// The whole rain: one quad per index while the party clock runs.
+    pub def confettiQuads(b: Board): List[GameEngine.PolygonRenderCmd] =
+        if (b#clearElapsed <= 0.0) Nil
+        else List.map(confettiQuad(b#clearElapsed), List.range(0, confettiCount()))
+
     /// The in-game header. The CLEAR panel that used to be drawn here is a
     /// Spec now (assets/Clear.ui.json); the board keeps only its title line.
     def texts(atlas: FontAtlas): List[(Vec2.Vec2, Render.RenderItem)] =
@@ -584,8 +652,32 @@ mod Sokoban {
            |> UiStore.setVisible("Clear", b#screen == Screen.Playing and won(w))
            |> UiStore.setText("Clear/panel/moves", "Moves: ${moves}")
 
+    // ── Sound: a projection for the ear ──
+    // The four wav files are generated assets (test/SfxBake.flix writes
+    // them); which one to play is pure — a derivation over this frame's
+    // step, read off the two Worldlines like everything else. Only the
+    // playing itself is an effect, and it lives in the loop with the other
+    // boundary crossings: keys in, pixels and sound out.
+
+    /// What this frame sounds like: the winning push is a fanfare, a rewind
+    /// ticks, a committed move thuds if it pushed and blips if it walked.
+    /// Guarded to one page of one level, so screen changes stay silent.
+    pub def sfxEvent(before: Worldline[World], after: Worldline[World]): Option[String] =
+        let wb = Worldline.current(before);
+        let wa = Worldline.current(after);
+        let World.World(b) = wb;
+        let World.World(a) = wa;
+        let samePage = b#screen == Screen.Playing and a#screen == Screen.Playing
+            and b#level == a#level;
+        if (not samePage) None
+        else if (won(wa) and not won(wb)) Some("clear")
+        else if (Worldline.pastLength(after) == Worldline.pastLength(before) - 1) Some("undo")
+        else if (Worldline.pastLength(after) == Worldline.pastLength(before) + 1)
+            (if (a#crates != b#crates) Some("push") else Some("move"))
+        else None
+
     // ── Launcher: read input and the clock |> tick |> frame, until the window closes ──
-    pub def start(atlas: FontAtlas): Unit \ {GameEngine.Game, Fs.FileRead} =
+    pub def start(atlas: FontAtlas): Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead} =
         loop(atlas, loadUi(), Worldline.make(initialWorld(), historyCap()),
              { enter = true, esc = true, f1 = false })
 
@@ -619,7 +711,7 @@ mod Sokoban {
     /// frame's key state (enter and esc start true so a key already held at
     /// launch says nothing until released once).
     def loop(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[World],
-             prev: { enter = Bool, esc = Bool, f1 = Bool }): Unit \ {GameEngine.Game, Fs.FileRead} =
+             prev: { enter = Bool, esc = Bool, f1 = Bool }): Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead} =
         let escDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Escape);
         let escEdge = escDown and not prev#esc;
         if (GameEngine.Game.shouldClose()
@@ -628,6 +720,10 @@ mod Sokoban {
             let enterDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Enter);
             let f1Down = GameEngine.Game.isKeyPressed(GameEngine.Key.F1);
             let line1 = tick(readInput(enterDown and not prev#enter, escEdge), readDt(), line);
+            match sfxEvent(line, line1) {
+                case Some(name) => GameEngine.Audio.playAudio(name)
+                case None       => ()
+            };
             // F1 re-reads every spawned Spec from disk: edit the json while
             // the game runs, press F1, and the page changes under you.
             let ui1 = if (f1Down and not prev#f1) UiSpec.reloadAll(ui) else ui;

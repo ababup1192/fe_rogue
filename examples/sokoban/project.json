@@ -11,5 +11,10 @@
   "fonts": [
     {"name": "default", "path": "assets/Xolonium-Regular.ttf", "fontSize": 60.0}
   ],
-  "sounds": []
+  "sounds": [
+    {"name": "move",  "path": "assets/sfx/move.wav",  "looping": false},
+    {"name": "push",  "path": "assets/sfx/push.wav",  "looping": false},
+    {"name": "undo",  "path": "assets/sfx/undo.wav",  "looping": false},
+    {"name": "clear", "path": "assets/sfx/clear.wav", "looping": false}
+  ]
 }

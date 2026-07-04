@@ -69,12 +69,17 @@ mod GameGallery {
              Replay.hold(Replay.idle(), 4) :: Nil) :: Nil);
         Replay.play(cues, fresh(Sokoban.playingWorld(1)))
 
+    /// The solved board one second into the party, confetti mid-air.
+    def clearedAndRaining(): Worldline[Sokoban.World] =
+        let cues = List.append(Replay.solveLevelOne(),
+                               Replay.hold(Replay.idle(), 64) :: Nil);
+        Replay.play(cues, fresh(Sokoban.playingWorld(1)))
+
     def bakeScreens(atlas: FontAtlas, ui: UiStore.UiWorld): Unit \ IO =
         shot(atlas, ui, fresh(Sokoban.titleWorld()), "gallery/screen_title.png");
         shot(atlas, ui, fresh(Sokoban.playingWorld(1)), "gallery/screen_level1.png");
         shot(atlas, ui, midPush(), "gallery/screen_push.png");
-        shot(atlas, ui, Replay.play(Replay.solveLevelOne(), fresh(Sokoban.playingWorld(1))),
-             "gallery/screen_clear.png")
+        shot(atlas, ui, clearedAndRaining(), "gallery/screen_clear.png")
 
     // ── The two films ──
 
@@ -145,7 +150,7 @@ mod GameGallery {
         item("screen_title", "The title page — everything on it is Spec", "Screens", "png", 640) ::
         item("screen_level1", "Level 1 at rest, move zero", "Screens", "png", 640) ::
         item("screen_push", "A push frozen mid-slide (t = 0.5)", "Screens", "png", 640) ::
-        item("screen_clear", "The CLEAR panel counting seven moves", "Screens", "png", 640) ::
+        item("screen_clear", "The CLEAR panel counting seven moves, confetti falling", "Screens", "png", 640) ::
         item("solve_level1", "The opening act: title, Enter, seven moves, CLEAR", "Play", "gif", 640) ::
         item("full_clear", "One full lap: both levels, both CLEARs, and back to the title", "Play", "gif", 640) ::
         item("rewind_demo", "Z held: the clock turns while the film runs backwards", "Play", "gif", 640) ::

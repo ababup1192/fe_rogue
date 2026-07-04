@@ -1422,13 +1422,15 @@ future  — undo で抜け出してきた World たち（redo の燃料）
         match b#slide {
             case Some(s) =>
                 if (s#pushing and not s#reverse and p == slidingCrate(b, s))
-                    lerp(cellCenter(b, b#robot), cellCenter(b, p), s#t)
+                    lerp(cellCenter(b, b#robot), cellCenter(b, p), settle(s#t))
                 else if (s#pushing and s#reverse and p == s#fromCell)
                     lerp(cellCenter(b, crateReturnStart(b, s)), cellCenter(b, p), s#t)
                 else cellCenter(b, p)
             case None => cellCenter(b, p)
         }
 ```
+
+（forward 側を包む `settle` は第8章の着地ポップです — いまはただの `s#t` として読んでください。）
 
 向きもまた、同じ種類の導出です。「undo 中のポーズ」を保存する場所はどこにもありません: 逆スライド自身が、いま巻き戻している手を名指ししています — その手は復元先のセルから `fromCell` へ進んだのですから — そしてスナップショットの向きはもう Board の中に座って、着地を待っています:
 
@@ -1537,8 +1539,13 @@ pub def historyCap(): Int32 = 10000
                          else freshLine(titleWorld()))
                     else if (input#esc)
                         freshLine(titleWorld())
-                    else
-                        Worldline.replaceCurrent(step(noKeys(), dt, world), line)
+                    else {
+                        // The party clock: confetti is a pure function of
+                        // how long the board has been solved.
+                        let World.World(b1) = step(noKeys(), dt, world);
+                        Worldline.replaceCurrent(
+                            World.World({ clearElapsed = b1#clearElapsed + dt | b1 }), line)
+                    }
                 else if (input#back)
                     freshLine(titleWorld())
                 else
@@ -1550,6 +1557,8 @@ pub def historyCap(): Int32 = 10000
     def freshLine(w: World): Worldline[World] =
         Worldline.make(w, historyCap())
 ```
+
+（モーダル分岐の party clock の行は第8章の紙吹雪のものです — いまは読み飛ばしてください。）
 
 2つ、目を近づける価値があります。**CLEAR はモーダルです。** `won` が true になった瞬間、解けた盤面は完成した写真になります: 方向キーは何も動かさず、Z は — 初めて — 拒まれます。勝利の一押しがパネルの下から巻き戻されることはありません。世界は凍っているのではなく、耳をふさいでいるだけです: `step(noKeys(), ...)` は回り続けるので、最後のスライドはちゃんと着地し、巻き戻し時計はちゃんと消えていきます。Enter はページをめくり（次のレベル、最後のレベルの後はタイトル）、Escape はパネルを閉じてタイトルへ — 写真が返事をするのはこの2つのキーだけ。
 
@@ -1631,7 +1640,7 @@ pub def historyCap(): Int32 = 10000
     /// frame's key state (enter and esc start true so a key already held at
     /// launch says nothing until released once).
     def loop(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[World],
-             prev: { enter = Bool, esc = Bool, f1 = Bool }): Unit \ {GameEngine.Game, Fs.FileRead} =
+             prev: { enter = Bool, esc = Bool, f1 = Bool }): Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead} =
         let escDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Escape);
         let escEdge = escDown and not prev#esc;
         if (GameEngine.Game.shouldClose()
@@ -1640,6 +1649,10 @@ pub def historyCap(): Int32 = 10000
             let enterDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Enter);
             let f1Down = GameEngine.Game.isKeyPressed(GameEngine.Key.F1);
             let line1 = tick(readInput(enterDown and not prev#enter, escEdge), readDt(), line);
+            match sfxEvent(line, line1) {
+                case Some(name) => GameEngine.Audio.playAudio(name)
+                case None       => ()
+            };
             // F1 re-reads every spawned Spec from disk: edit the json while
             // the game runs, press F1, and the page changes under you.
             let ui1 = if (f1Down and not prev#f1) UiSpec.reloadAll(ui) else ui;
@@ -1653,6 +1666,8 @@ pub def historyCap(): Int32 = 10000
             loop(atlas, ui2, line1, { enter = enterDown, esc = escDown, f1 = f1Down })
         }
 ```
+
+（`sfxEvent` の match と `GameEngine.Audio` effect は第8章の音が先に届いたものです — このループが本当に最終形です。）
 
 UiWorld はループの中、Worldline の隣に住みます — 時間機械が使ったのと同じ文法: ただの値を糸のように通す、グローバルにはしない。毎フレーム `UiRender.renderUi` が見えているページをレイアウトし、`frame` が既に作っているのと同じ2チャンネルで箱とグリフを返す; ループはそれを連結して1回の呼び出しでエンジンに渡します。タイトルページでは `frame` は*何も*描きません — あの画面に見えているものは、すべて Spec です。
 
@@ -1823,6 +1838,137 @@ mod Harness {
 
 ---
 
+## 第8章 — 最後の10%
+
+**ゴール:** 紙吹雪、手応え、音 — プレイヤーが *juice* と呼ぶ磨きの工程です — を、もう卓上にある語彙だけで書きます。この章に新しい言葉は出てきません。それがこの章の主張です。juice はシステムを要求する評判があります: パーティクルシステム、アニメーションシステム、イベントバス。ここではその一滴一滴が、導出と、World の小さな数字1個と、ループの縁の1呼び出しです。
+
+### パーティクルシステム無しの紙吹雪
+
+パーティクルシステムは生きた粒の配列を持ち、毎フレーム全部を更新します — 位置 += 速度、寿命 -= dt、spawn、free。私たちはそのどれも保存しません。World に増える数字はちょうど1個、モーダルな CLEAR 分岐が進める `clearElapsed`（パーティーの時計）だけで、紙吹雪の一片一片はその時計と自分の番号の*閉形式の関数*です:
+
+```flix
+    // ── Confetti: rain without a particle system ──
+    // No particle is stored anywhere. Each piece's position, spin and color
+    // are a pure function of (its index, the seconds since the board was
+    // solved): the whole rain is a derivation from one number in the World,
+    // clearElapsed. There is nothing to spawn, update or free — leaving the
+    // screen simply stops asking for the picture.
+
+    def confettiCount(): Int32 = 48
+
+    def zConfetti(): Int32 = 95
+
+    /// A cheap integer hash onto [0, 1): piece i's k-th personal constant.
+    /// The same piece always gets the same answers, so it always flutters
+    /// the same way — determinism all the way down to the party.
+    def chip(i: Int32, k: Int32): Float64 =
+        let h = i * 374761393 + k * 668265263 + 1442695041;
+        Int32.toFloat64(Int32.modulo(h * (h + 30011), 100003)) / 100003.0
+
+    /// Where piece i hangs t seconds into the party: it falls at its own
+    /// speed, sways on its own sine, spins at its own rate, and wraps back
+    /// above the screen so the rain never runs out.
+    def confettiQuad(t: Float64, i: Int32): GameEngine.PolygonRenderCmd =
+        let speed = 55.0 + 50.0 * chip(i, 1);
+        let sway = 6.0 + 10.0 * chip(i, 2);
+        let phase = 6.283185307179586 * chip(i, 3);
+        let spin = (2.0 + 4.0 * chip(i, 4)) * (if (chip(i, 5) < 0.5) -1.0 else 1.0);
+        let x = 320.0 * chip(i, 6) + sway * RenderUtil.sinF(1.5 * t + phase);
+        let y = fract((speed * t + 260.0 * chip(i, 7)) / 260.0) * 260.0 - 10.0;
+        let a = spin * t + phase;
+        let u = { x = RenderUtil.cosF(a), y = RenderUtil.sinF(a) };
+        let v = { x = -u#y, y = u#x };
+        let c = { x = x, y = y };
+        let corner = (sx, sy) -> Vec2.add(c, Vec2.add(Vec2.mul(u, sx * 2.2), Vec2.mul(v, sy * 1.4)));
+        { vertices = corner(-1.0, -1.0) :: corner(1.0, -1.0) ::
+                     corner(1.0, 1.0) :: corner(-1.0, 1.0) :: Nil,
+          color = Palette.confetti(i), alpha = 1.0f32, zIndex = zConfetti() }
+
+    /// The whole rain: one quad per index while the party clock runs.
+    pub def confettiQuads(b: Board): List[GameEngine.PolygonRenderCmd] =
+        if (b#clearElapsed <= 0.0) Nil
+        else List.map(confettiQuad(b#clearElapsed), List.range(0, confettiCount()))
+```
+
+`chip` が各片に個人的な定数 — 落下速度、揺れ、回転、初期位置 — を配ります。毎フレーム同じもの、永遠に同じもの。落下は折り返し（`fract`）て雨が尽きることはなく、回転は木箱や時計の針が既に使っているポリゴンチャンネルの回転 quad です。何も spawn せず、何も更新せず、何も free しない: Escape を押せば、雨はただ*もう尋ねられなくなる*だけです。そして時刻 t の雨が純粋な値だから、*パーティーはユニットテストできます* — 2回尋ねたら同一の絵、という pin が立っています。
+
+閉形式の粒は見た目より遠くまで運べます: 花火、煙、きらめき — 片どうしが相互作用しないものは何でも `(番号, t)` の関数にできます。天井は相互作用（ぶつかり合う破片には本物の状態が要る）ですが、お祝いに物理はめったに要りません。
+
+### 手応え
+
+押しは歩きより*重く感じられる*べきです。手を入れたのは2箇所、意図してそれ以上はやりません:
+
+```flix
+    /// The robot leans into its work: while a forward push slides, the whole
+    /// picture sits one pixel lower — weight on the crate, nothing more.
+    def robotDrawCenter(b: Board): Vec2.Vec2 =
+        let c = robotCenter(b);
+        { x = c#x, y = c#y + pushSink(b) }
+
+    def pushSink(b: Board): Float64 =
+        match b#slide {
+            case Some(s) => if (s#pushing and not s#reverse) 1.0 else 0.0
+            case None    => 0.0
+        }
+```
+
+```flix
+    /// The pushed crate's travel. It rides the robot's linear slide (a
+    /// pushed thing cannot outrun its pusher), then over the last stretch
+    /// pops about a pixel past the target and settles exactly as it lands.
+    pub def settle(t: Float64): Float64 =
+        if (t < 0.8) t
+        else t + 0.06 * RenderUtil.sinF(3.141592653589793 * (t - 0.8) / 0.2)
+```
+
+どちらも第4章から Slide が持っていた `pushing` フラグからの導出で、新しい状態はゼロ。そしてどちらも意図的に微小です: 沈み1ピクセル、行き過ぎ1.5ピクセル。juice は足りないより、やりすぎで壊れることの方が多い — 仕掛けに気づかれた瞬間、効かなくなります。（`settle` が*やらない*ことに注目してください: 標準の ease-out-back 曲線はスライド中盤で木箱をロボットより先へ走らせてしまう — 押される物は押す者を追い越せないので、飛び出しは最後の一伸びまで待ちます。）
+
+### 境界の音
+
+4つの効果音は、ギャラリーと同じ**生成する資産**です: `test/SfxBake.flix` が 16-bit PCM の WAV として書き出します — 44 バイトのヘッダとサンプルのリスト、各サンプルは自分の番号の純関数。矩形波とノイズと線形フェードだけで、まるごと1つの音の語彙になります: 歩きの blip、押しの低い thud、巻き戻し1手ごとの高い tick、CLEAR の上昇4音。サンプルパックもマイクも無し — `flix test` が焼き、`project.json` が読み込みます。
+
+このフレームが*どの*音に値するかは純粋な問いで、ゲームの他のあらゆる導出と同じように、2つの Worldline から読み取れます:
+
+```flix
+    /// What this frame sounds like: the winning push is a fanfare, a rewind
+    /// ticks, a committed move thuds if it pushed and blips if it walked.
+    /// Guarded to one page of one level, so screen changes stay silent.
+    pub def sfxEvent(before: Worldline[World], after: Worldline[World]): Option[String] =
+        let wb = Worldline.current(before);
+        let wa = Worldline.current(after);
+        let World.World(b) = wb;
+        let World.World(a) = wa;
+        let samePage = b#screen == Screen.Playing and a#screen == Screen.Playing
+            and b#level == a#level;
+        if (not samePage) None
+        else if (won(wa) and not won(wb)) Some("clear")
+        else if (Worldline.pastLength(after) == Worldline.pastLength(before) - 1) Some("undo")
+        else if (Worldline.pastLength(after) == Worldline.pastLength(before) + 1)
+            (if (a#crates != b#crates) Some("push") else Some("move"))
+        else None
+```
+
+事実の出どころに注目してください: 手が確定したのは past がちょうど1つ伸びたとき、巻き戻しは1つ縮んだとき — Worldline は最初からイベントログでもありました。再生そのものは effect で、他の境界越えと一緒にループに住みます。第3章で開いたフレームがここで閉じます: キーと時計は値として*入って*きて、ピクセルと — いまや音も — コマンドとして*出て*いく。そのあいだは全部、純粋です。
+
+（正直な注意をひとつ: 生成する資産は生成されなければなりません。最初の `flix run` の前に一度 `flix test` を走らせてください。さもないとサウンドマニフェストがまだ存在しないファイルを指します。）
+
+### 何が起きたか
+
+- **juice に新しい機構は要りませんでした。** 紙吹雪は数字1個の上の閉形式、手応えは既存フラグからの1ピクセル導出2つ、音は Worldline から読む純粋なイベント + ループの縁の `playAudio` 1つ。パーティクルシステムも、アニメーションシステムも、イベントバスも無し。
+- **閉形式の粒は本物の技法です**、おもちゃではなく: 片どうしが相互作用しないものは `(番号, t) -> 片` にでき、テスト可能で、構造的にライフサイクルバグが存在しない。
+- **音は生成する資産** — ギャラリーと同じ文法: `flix test` が書き、それを書くコードが正であり、出所を説明すべきバイナリの塊がどこにもない。
+- **語彙は増えませんでした。** 磨きの工程にも8語で足りました。
+
+### 試すこと
+
+タイトルページに雪を降らせてください: `confettiQuads` に必要なのは時計だけなので、タイトルに専用の時計を与える — あるいはタイトルの経過時間をそのまま渡す — そして `Palette.confetti` の色を白系に。同じ閉形式が吹雪になります。
+
+5つ目の音を足してください: *拒まれた*押し（壁に当たった木箱）。事実はもう Worldline の中にあります — ロボットのセルは変わらず facing だけ変わった — ので、`sfxEvent` に分岐を1つ、焼き込みに `square` を1つ。80 Hz の鈍い「ゴッ」がよく合います。
+
+thud を調律してください: ノイズを増やし矩形波を減らすと段ボールの滑り、逆にすると石。音の全体が11行 — ダウンロードするより調律の方が速い。
+
+---
+
 ## ここまでのまとめ
 
 - ゲームは3拍子のループ: **`world |> step |> frame`** — 進めて、映して、描く。
@@ -1833,3 +1979,15 @@ mod Harness {
 - 色は DB32 の**役割名**から、形は**比率と重ね順**で。
 
 ゲームは完成しました: 待っていてくれるタイトル、滑って記憶する盤面、巻き戻せる間違い、スコアを知っている CLEAR パネル、動かしたまま着せ替えられるページ — そしてテストのたびにその全部を証明するギャラリー。旅の全部を8つの言葉が運びました。次に作るゲームは、初日からこの8語全部の上で始められます。
+\n
+---
+
+## エピローグ
+
+旅は終わりました。卓の上を数えましょう。完全なゲームが1本 — タイトル、2つのレベル、回る時計つきの undo、動かしたまま着せ替えられるページ、紙吹雪とファンファーレ。解法まるごとをリプレイして結果を具体値で pin する55本のテスト。テストのたびに自分のスクリーンショットとフィルムとダッシュボードを焼き直すギャラリー。コードリスティングがソースと突き合わされる2言語のチュートリアル。そしてその全部を運んだ、8つの言葉: **World、Step、Projection、Store、Worldline、Spec、Harness、Trace**。
+
+8語のどれも突飛ではありません。その中身はたった1つの規律 — 状態は1個の値、変化は純関数、それ以外はすべて導出か境界 — を、例外なく、規律だと感じなくなるまで適用しただけです。配当は勝手に届き続けました: undo は zipper からこぼれ落ち、手数カウンタは歴史からこぼれ落ち、リプレイは純粋さからこぼれ落ち、テストの Harness はほとんど消えてなくなりました。
+
+ここからはあなたのものです。新しいレベルは `Level.flix` の文字列1個 — 書いて、解法を pin して、フィルムに加わるのを見てください。新しいゲームは空のファイルの上の同じ8語です。そしてこのリポジトリのルートにある `WORLDLINE_GUIDELINE.md` が、小さな倉庫番1本には要らなかった先まで含めて、このアーキテクチャの全体を書き上げています。
+
+箱を押せ。時間を巻き戻せ。何かを出荷しよう。

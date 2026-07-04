@@ -1697,13 +1697,16 @@ home:
         match b#slide {
             case Some(s) =>
                 if (s#pushing and not s#reverse and p == slidingCrate(b, s))
-                    lerp(cellCenter(b, b#robot), cellCenter(b, p), s#t)
+                    lerp(cellCenter(b, b#robot), cellCenter(b, p), settle(s#t))
                 else if (s#pushing and s#reverse and p == s#fromCell)
                     lerp(cellCenter(b, crateReturnStart(b, s)), cellCenter(b, p), s#t)
                 else cellCenter(b, p)
             case None => cellCenter(b, p)
         }
 ```
+
+(The `settle` around the forward branch is chapter 8's landing pop — read it
+as plain `s#t` for now.)
 
 The facing is one more such derivation. Nothing stores "the undo pose": the
 reverse slide itself names the move it is unwinding — that move went from the
@@ -1872,8 +1875,13 @@ whole of that machine survives untouched underneath, renamed `playTick`:
                          else freshLine(titleWorld()))
                     else if (input#esc)
                         freshLine(titleWorld())
-                    else
-                        Worldline.replaceCurrent(step(noKeys(), dt, world), line)
+                    else {
+                        // The party clock: confetti is a pure function of
+                        // how long the board has been solved.
+                        let World.World(b1) = step(noKeys(), dt, world);
+                        Worldline.replaceCurrent(
+                            World.World({ clearElapsed = b1#clearElapsed + dt | b1 }), line)
+                    }
                 else if (input#back)
                     freshLine(titleWorld())
                 else
@@ -1885,6 +1893,9 @@ whole of that machine survives untouched underneath, renamed `playTick`:
     def freshLine(w: World): Worldline[World] =
         Worldline.make(w, historyCap())
 ```
+
+(The party-clock lines in the modal branch belong to chapter 8's confetti —
+read past them for now.)
 
 Two things deserve a closer look. **CLEAR is modal.** The moment `won` turns
 true the solved board becomes a finished photograph: direction keys move
@@ -2000,7 +2011,7 @@ number you could rewind. The time machine had been keeping score all along.
     /// frame's key state (enter and esc start true so a key already held at
     /// launch says nothing until released once).
     def loop(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[World],
-             prev: { enter = Bool, esc = Bool, f1 = Bool }): Unit \ {GameEngine.Game, Fs.FileRead} =
+             prev: { enter = Bool, esc = Bool, f1 = Bool }): Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead} =
         let escDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Escape);
         let escEdge = escDown and not prev#esc;
         if (GameEngine.Game.shouldClose()
@@ -2009,6 +2020,10 @@ number you could rewind. The time machine had been keeping score all along.
             let enterDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Enter);
             let f1Down = GameEngine.Game.isKeyPressed(GameEngine.Key.F1);
             let line1 = tick(readInput(enterDown and not prev#enter, escEdge), readDt(), line);
+            match sfxEvent(line, line1) {
+                case Some(name) => GameEngine.Audio.playAudio(name)
+                case None       => ()
+            };
             // F1 re-reads every spawned Spec from disk: edit the json while
             // the game runs, press F1, and the page changes under you.
             let ui1 = if (f1Down and not prev#f1) UiSpec.reloadAll(ui) else ui;
@@ -2022,6 +2037,9 @@ number you could rewind. The time machine had been keeping score all along.
             loop(atlas, ui2, line1, { enter = enterDown, esc = escDown, f1 = f1Down })
         }
 ```
+
+(The `sfxEvent` match and the `GameEngine.Audio` effect are chapter 8's
+sound, arriving early — the loop really is the final form.)
 
 The UiWorld lives in the loop, next to the Worldline — the same grammar the
 time machine used: a plain value threaded through, never a global. Each
@@ -2279,6 +2297,196 @@ Add a scene of your own to the dashboard: compose a Worldline with `Replay`
 
 ---
 
+## Chapter 8 — The Last Ten Percent
+
+**Goal:** confetti, weight and sound — the polish pass players call
+*juice* — written entirely with the vocabulary already on the table. No
+new words in this chapter; that is the chapter's point. Juice has a
+reputation for demanding systems: particle systems, animation systems,
+event buses. Here every drop of it is a derivation, one small number in
+the World, and one call at the loop's edge.
+
+### Confetti without a particle system
+
+A particle system keeps an array of live particles and updates each one
+every frame — position += velocity, life -= dt, spawn, free. We store
+none of that. The World gains exactly one number, `clearElapsed`, which
+the modal CLEAR branch advances (the "party clock"), and every piece of
+confetti is a *closed-form function* of that clock and its own index:
+
+```flix
+    // ── Confetti: rain without a particle system ──
+    // No particle is stored anywhere. Each piece's position, spin and color
+    // are a pure function of (its index, the seconds since the board was
+    // solved): the whole rain is a derivation from one number in the World,
+    // clearElapsed. There is nothing to spawn, update or free — leaving the
+    // screen simply stops asking for the picture.
+
+    def confettiCount(): Int32 = 48
+
+    def zConfetti(): Int32 = 95
+
+    /// A cheap integer hash onto [0, 1): piece i's k-th personal constant.
+    /// The same piece always gets the same answers, so it always flutters
+    /// the same way — determinism all the way down to the party.
+    def chip(i: Int32, k: Int32): Float64 =
+        let h = i * 374761393 + k * 668265263 + 1442695041;
+        Int32.toFloat64(Int32.modulo(h * (h + 30011), 100003)) / 100003.0
+
+    /// Where piece i hangs t seconds into the party: it falls at its own
+    /// speed, sways on its own sine, spins at its own rate, and wraps back
+    /// above the screen so the rain never runs out.
+    def confettiQuad(t: Float64, i: Int32): GameEngine.PolygonRenderCmd =
+        let speed = 55.0 + 50.0 * chip(i, 1);
+        let sway = 6.0 + 10.0 * chip(i, 2);
+        let phase = 6.283185307179586 * chip(i, 3);
+        let spin = (2.0 + 4.0 * chip(i, 4)) * (if (chip(i, 5) < 0.5) -1.0 else 1.0);
+        let x = 320.0 * chip(i, 6) + sway * RenderUtil.sinF(1.5 * t + phase);
+        let y = fract((speed * t + 260.0 * chip(i, 7)) / 260.0) * 260.0 - 10.0;
+        let a = spin * t + phase;
+        let u = { x = RenderUtil.cosF(a), y = RenderUtil.sinF(a) };
+        let v = { x = -u#y, y = u#x };
+        let c = { x = x, y = y };
+        let corner = (sx, sy) -> Vec2.add(c, Vec2.add(Vec2.mul(u, sx * 2.2), Vec2.mul(v, sy * 1.4)));
+        { vertices = corner(-1.0, -1.0) :: corner(1.0, -1.0) ::
+                     corner(1.0, 1.0) :: corner(-1.0, 1.0) :: Nil,
+          color = Palette.confetti(i), alpha = 1.0f32, zIndex = zConfetti() }
+
+    /// The whole rain: one quad per index while the party clock runs.
+    pub def confettiQuads(b: Board): List[GameEngine.PolygonRenderCmd] =
+        if (b#clearElapsed <= 0.0) Nil
+        else List.map(confettiQuad(b#clearElapsed), List.range(0, confettiCount()))
+```
+
+`chip` deals each piece its personal constants — fall speed, sway, spin,
+starting column — the same ones every frame, forever. The fall wraps
+(`fract`) so the rain never runs out, and the spin is a rotated quad in
+the polygon channel the crates and the clock needle already use. Nothing
+spawns, nothing updates, nothing frees: press Escape and the rain is
+simply never asked for again. And because the rain at time t is a pure
+value, the *party is unit-testable* — a pin asserts that asking twice
+gives the identical picture.
+
+Closed-form particles carry further than they look: fireworks, smoke
+puffs, sparkles — anything whose pieces do not interact can be a function
+of `(index, t)`. The trick's ceiling is interaction (colliding debris
+needs real state), but a celebration rarely needs physics.
+
+### Weight
+
+The push should *feel* heavier than the walk. Two touches, deliberately
+no more:
+
+```flix
+    /// The robot leans into its work: while a forward push slides, the whole
+    /// picture sits one pixel lower — weight on the crate, nothing more.
+    def robotDrawCenter(b: Board): Vec2.Vec2 =
+        let c = robotCenter(b);
+        { x = c#x, y = c#y + pushSink(b) }
+
+    def pushSink(b: Board): Float64 =
+        match b#slide {
+            case Some(s) => if (s#pushing and not s#reverse) 1.0 else 0.0
+            case None    => 0.0
+        }
+```
+
+```flix
+    /// The pushed crate's travel. It rides the robot's linear slide (a
+    /// pushed thing cannot outrun its pusher), then over the last stretch
+    /// pops about a pixel past the target and settles exactly as it lands.
+    pub def settle(t: Float64): Float64 =
+        if (t < 0.8) t
+        else t + 0.06 * RenderUtil.sinF(3.141592653589793 * (t - 0.8) / 0.2)
+```
+
+Both are derivations off the `pushing` flag the Slide has carried since
+chapter 4 — no new state at all. And both are tiny on purpose: one pixel
+of sink, a pixel and a half of overshoot. Juice fails by excess more
+often than by absence; the moment you notice the trick, it stops
+working. (Note what `settle` refuses to do: a standard ease-out-back
+curve would send the crate racing ahead of the robot mid-slide — but a
+pushed thing cannot outrun its pusher, so the pop waits for the last
+stretch.)
+
+### Sound at the boundary
+
+The four sound effects are **generated assets**, like the gallery:
+`test/SfxBake.flix` writes them as 16-bit PCM WAV files — a 44-byte
+header and a list of samples, each sample a pure function of its index.
+A square wave, a noise burst and a linear fade turn out to be a whole
+sound vocabulary: a blip for walking, a low thud for pushing, a high
+tick for each rewound move, four rising notes for CLEAR. No sample
+packs, no microphone — `flix test` bakes them and `project.json` loads
+them.
+
+*Which* sound this frame deserves is a pure question, and it reads off
+the two Worldlines like every other derivation in the game:
+
+```flix
+    /// What this frame sounds like: the winning push is a fanfare, a rewind
+    /// ticks, a committed move thuds if it pushed and blips if it walked.
+    /// Guarded to one page of one level, so screen changes stay silent.
+    pub def sfxEvent(before: Worldline[World], after: Worldline[World]): Option[String] =
+        let wb = Worldline.current(before);
+        let wa = Worldline.current(after);
+        let World.World(b) = wb;
+        let World.World(a) = wa;
+        let samePage = b#screen == Screen.Playing and a#screen == Screen.Playing
+            and b#level == a#level;
+        if (not samePage) None
+        else if (won(wa) and not won(wb)) Some("clear")
+        else if (Worldline.pastLength(after) == Worldline.pastLength(before) - 1) Some("undo")
+        else if (Worldline.pastLength(after) == Worldline.pastLength(before) + 1)
+            (if (a#crates != b#crates) Some("push") else Some("move"))
+        else None
+```
+
+Note where the facts come from: a move committed exactly when the past
+grew by one, a rewind when it shrank by one — the Worldline was already
+the event log. The playing itself is an effect, and it lives in the loop
+with the other boundary crossings, closing the frame the tutorial opened
+in chapter 3: keys and the clock come *in* as values, pixels and now
+sound go *out* as commands, and everything between is pure.
+
+(One honest caveat: generated assets must be generated. Run `flix test`
+once before the first `flix run`, or the sound manifest will point at
+files that do not exist yet.)
+
+### What just happened
+
+- **Juice needed no new machinery.** Confetti is a closed form over one
+  number; weight is two one-pixel derivations off a flag that already
+  existed; sound is a pure event read off the Worldline plus one
+  `playAudio` at the loop's edge. No particle system, no animation
+  system, no event bus.
+- **Closed-form particles are a real technique**, not a toy: anything
+  whose pieces do not interact can be `(index, t) -> piece`, testable
+  and free of lifecycle bugs by construction.
+- **The sounds are generated assets** — the same grammar as the gallery:
+  `flix test` writes them, the code that writes them is the source of
+  truth, and no binary blob needs a provenance story.
+- **The vocabulary did not grow.** Eight words were enough for the
+  polish pass too.
+
+### Try it
+
+Make it snow on the title page: `confettiQuads` only needs a clock, so
+give the title its own — or simply pass the title's idle time in — and
+recolor the pieces white with `Palette.confetti`. The same closed form
+is a blizzard.
+
+Add a fifth sound: the *refused* push (crate against a wall). The facts
+are already in the Worldlines — the robot's cell did not change but its
+facing did — so it is one more branch in `sfxEvent` and one more `square`
+call in the bake. A dull "bonk" at 80 Hz reads nicely.
+
+Retune the thud: more noise and less square reads as sliding cardboard;
+more square and less noise reads as stone. The whole sound is eleven
+lines — tuning it is faster than downloading one.
+
+---
+
 ## Recap
 
 - A game is a loop with a three-part beat: **`world |> step |> frame`** —
@@ -2307,3 +2515,31 @@ mistakes that rewind, a clear panel that knows the score, pages you can
 restyle while it runs — and a gallery that proves all of it on every test
 run. Eight words carried the entire trip, and the next game you build can
 start from all eight on day one.
+\n
+---
+
+## Epilogue
+
+The trip is over; count what is on the table. One complete game — title,
+two levels, undo with a spinning clock, pages you can restyle while it
+runs, confetti and a fanfare. Fifty-five tests that replay whole
+solutions and pin their outcomes as plain values. A gallery that bakes
+its own screenshots, films and dashboard on every test run. A tutorial
+in two languages whose code listings are checked against the source. And
+carrying all of it, eight words: **World, Step, Projection, Store,
+Worldline, Spec, Harness, Trace**.
+
+None of the eight is exotic. Their whole content is one discipline —
+state is one value, change is a pure function, everything else is a
+derivation or a boundary — applied without exception until it stopped
+feeling like discipline. The payoffs kept arriving on their own: undo
+fell out of a zipper, the move counter fell out of the history, replays
+fell out of purity, the test harness all but vanished.
+
+Now make it yours. A new level is one string in `Level.flix` — write it,
+pin its solution, watch it join the films. A new game is the same eight
+words on an empty file, and this repository's `WORLDLINE_GUIDELINE.md`
+(at the root) writes the architecture up in full, beyond what one small
+sokoban needed.
+
+Push crates. Rewind time. Ship something.

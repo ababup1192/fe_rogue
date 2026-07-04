@@ -39,6 +39,16 @@ mod Palette {
     pub def titleText(): Color = {r = 0.933333f32, g = 0.764706f32, b = 0.603922f32}  // #eec39a
     pub def clearText(): Color = {r = 0.984314f32, g = 0.949020f32, b = 0.211765f32}  // #fbf236
 
+    // ── Confetti ──
+    /// Piece i's color: five bright DB32 roles dealt round-robin.
+    pub def confetti(i: Int32): Color = match Int32.modulo(i, 5) {
+        case 0 => {r = 0.984314f32, g = 0.949020f32, b = 0.211765f32}  // #fbf236
+        case 1 => {r = 0.600000f32, g = 0.898039f32, b = 0.313725f32}  // #99e550
+        case 2 => {r = 0.388235f32, g = 0.607843f32, b = 1.000000f32}  // #639bff
+        case 3 => {r = 0.933333f32, g = 0.764706f32, b = 0.603922f32}  // #eec39a
+        case _ => {r = 0.796078f32, g = 0.858824f32, b = 0.988235f32}  // #cbdbfc
+    }
+
     // background equals the clearColor in project.json; this is the code-side accessor.
     pub def clearColor(): Color = background()
 }

@@ -33,7 +33,7 @@ mod TestSokoban {
             walls = List.toSet(walls), goals = Set.empty(), crates = List.toSet(crates),
             robot = robot, cols = 5, rows = 5,
             facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None,
-            screen = Sokoban.Screen.Playing, level = 1 })
+            screen = Sokoban.Screen.Playing, level = 1, clearElapsed = 0.0 })
 
     /// An already-solved board (one crate on one goal) on the given level.
     def wonBoard(level: Int32): Sokoban.World =
@@ -278,7 +278,7 @@ mod TestSokoban {
             walls = Set.empty(), goals = Set#{(4, 2)}, crates = Set#{(3, 2)},
             robot = (2, 2), cols = 5, rows = 5,
             facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None,
-            screen = Sokoban.Screen.Playing, level = 1 });
+            screen = Sokoban.Screen.Playing, level = 1, clearElapsed = 0.0 });
         let pushed = land(Sokoban.tick(right(), dt(), fresh(goalAt42)));
         let afterZ = Sokoban.tick(zKey(), dt(), pushed);
         Assert.assertEq(expected = (true, true, (3, 2), None),
@@ -453,6 +453,71 @@ mod TestSokoban {
         Assert.assertEq(expected = ((3, 5), start#crates, 0),
             (robotOf(w), cratesOf(w), Worldline.pastLength(back)))
 
+    // ── Juice: the party clock, the confetti, the push feel, the ear ──
+
+    def clearElapsedOf(w: Sokoban.World): Float64 =
+        let Sokoban.World.World(b) = w;
+        b#clearElapsed
+
+    /// One push to the right away from winning.
+    def aboutToWin(): Sokoban.World =
+        let Sokoban.World.World(b) = board(Nil, (3, 2) :: Nil, (2, 2));
+        Sokoban.World.World({ goals = Set#{(4, 2)} | b })
+
+    @Test
+    def testPartyClockRunsOnlyWhileCleared(): Unit \ Assert =
+        let cleared = Sokoban.tick(none(), dt(), fresh(wonBoard(1)));
+        let playing = Sokoban.tick(none(), dt(), fresh(board(Nil, (3, 3) :: Nil, (2, 2))));
+        Assert.assertEq(expected = (dt(), 0.0),
+            (clearElapsedOf(Worldline.current(cleared)),
+             clearElapsedOf(Worldline.current(playing))))
+
+    @Test
+    def testConfettiIsAClosedFormOfTheClock(): Unit \ Assert =
+        // No particles are stored: the rain at time t is derived, whole,
+        // from t alone — asking twice gives the identical picture.
+        let atTime = t -> {
+            let Sokoban.World.World(b) = wonBoard(1);
+            Sokoban.confettiQuads({ clearElapsed = t | b })
+        };
+        let corners = quads -> List.map(q -> List.map(v -> (v#x, v#y), q#vertices), quads);
+        let rain = atTime(1.0);
+        Assert.assertEq(expected = (0, 48, true, true),
+            (List.length(atTime(0.0)), List.length(rain),
+             corners(rain) == corners(atTime(1.0)),
+             List.forAll(q -> List.length(q#vertices) == 4, rain)))
+
+    @Test
+    def testCrateSettleOvershootsOnlyAtTheEnd(): Unit \ Assert =
+        // The pushed crate rides the linear slide until 0.8, pops past the
+        // target in the last stretch, and is exactly home at landing.
+        Assert.assertEq(expected = (0.5, 0.8, true, 1.0),
+            (Sokoban.settle(0.5), Sokoban.settle(0.8),
+             Sokoban.settle(0.9) > 0.9, Sokoban.settle(1.0)))
+
+    @Test
+    def testSfxEventNamesTheFrame(): Unit \ Assert =
+        let pushStart = fresh(board(Nil, (3, 2) :: Nil, (2, 2)));
+        let pushed = Sokoban.tick(right(), dt(), pushStart);
+        let walkStart = fresh(board(Nil, Nil, (2, 2)));
+        let walked = Sokoban.tick(right(), dt(), walkStart);
+        let landed = land(walked);
+        let undone = undoNow(landed);
+        Assert.assertEq(expected = (Some("push"), Some("move"), Some("undo"), None),
+            (Sokoban.sfxEvent(pushStart, pushed), Sokoban.sfxEvent(walkStart, walked),
+             Sokoban.sfxEvent(landed, undone), Sokoban.sfxEvent(landed, landed)))
+
+    @Test
+    def testSfxClearTrumpsPushAndTransitionsStaySilent(): Unit \ Assert =
+        // The winning push is a fanfare, not a thud; and turning a page
+        // (title to board) makes no sound at all.
+        let winStart = fresh(aboutToWin());
+        let winPush = Sokoban.tick(right(), dt(), winStart);
+        let title = fresh(Sokoban.titleWorld());
+        let opened = Sokoban.tick(enterKey(), dt(), title);
+        Assert.assertEq(expected = (Some("clear"), None),
+            (Sokoban.sfxEvent(winStart, winPush), Sokoban.sfxEvent(title, opened)))
+
     // ── The UI Specs: pages declared in assets/*.ui.json ──
 
     /// Spawn both shipped page Specs into one UiWorld, as the launcher does.
@@ -502,12 +567,12 @@ mod TestSokoban {
             walls = Set.empty(), goals = List.toSet((1, 1) :: (2, 2) :: Nil),
             crates = List.toSet((1, 1) :: Nil), robot = (3, 3), cols = 5, rows = 5,
             facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None,
-            screen = Sokoban.Screen.Playing, level = 1 });
+            screen = Sokoban.Screen.Playing, level = 1, clearElapsed = 0.0 });
         let strayCrate = Sokoban.World.World({
             walls = Set.empty(), goals = List.toSet((1, 1) :: Nil),
             crates = List.toSet((1, 1) :: (3, 3) :: Nil), robot = (2, 2), cols = 5, rows = 5,
             facing = Robot.Direction.Down, walkPhase = 0.0, slide = None, undoFx = None,
-            screen = Sokoban.Screen.Playing, level = 1 });
+            screen = Sokoban.Screen.Playing, level = 1, clearElapsed = 0.0 });
         // A crateless board poses no puzzle and never counts as solved.
         let crateless = board(Nil, Nil, (2, 2));
         Assert.assertEq(expected = (true, false, false),
