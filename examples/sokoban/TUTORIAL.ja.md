@@ -522,7 +522,7 @@ mod Sokoban {
 ### 何が起きたか
 
 - ループは毎フレーム3拍子を刻むようになりました: **`world |> step |> frame`** — 世界を進め、映し、描いて、新しい世界でくり返す。**これがこのエンジンの全てです。** 以後の章 — 入力・盤面・押す箱・undo — は全部この3拍子に部品を足すだけで、拍子そのものは変わりません。
-- `step` は毎フレーム定数（`crateSpeed` = 設計 1px）だけ木箱を動かします。経過時間（dt）ベースでなく毎フレーム定数を選んだのは意図的です: `step` のシグネチャを `World -> World` ちょうどに保てる — それがこの章の教材の芯です — し、倉庫番はグリッドのゲームなので、このチュートリアルの道筋では連続的な時間ベースの移動は通過点であって目的地ではありません。（正直なコスト: 120Hz のディスプレイでは 60Hz の倍速で滑ります。それが困るゲームはフレームの経過秒を `step` に通します。エンジンは経過時間を提供しています。）
+- `step` は毎フレーム定数（`crateSpeed` = 設計 1px）だけ木箱を動かします。経過時間（dt）ベースでなく毎フレーム定数を選んだのは意図的です: `step` のシグネチャを `World -> World` ちょうどに保てる — それがこの章の教材の芯です — し、倉庫番はグリッドのゲームなので、このチュートリアルの道筋では連続的な時間ベースの移動は通過点であって目的地ではありません。（正直なコスト: 120Hz のディスプレイでは 60Hz の倍速で滑ります。それが困るゲームはフレームの経過秒を `step` に通します。エンジンは経過時間を提供しています。この段落を覚えておいてください: 第4章でまさにこの請求書が — 本物の 120Hz の画面で — 届き、私たちは支払います。）
 - 折り返しのルールも `step` の中です — 「右端から完全に出たら、左端のすぐ外へ」。世界がどう変わるかのルールは `step` に置き、他の場所には置きません。
 - 木箱の描画関数群は、画面中央を前提にする代わりに**中心座標を引数に取る**形になりました。1個の木箱をどこにでも描けることは、盤面にたくさんのタイルを描くことへの布石です — このゲームはそこへ向かっています。
 - 変わって*いない*ものにも注目してください: `frame` は相変わらず「描きたい物のリストを返す」だけ、起動部は木箱のことを何も知らない数行のままです。新しい能力は書き換えではなく*新しい部品*として加わりました。
@@ -692,12 +692,627 @@ mod Sokoban {
 
 ---
 
+## 第4章 — たくさんの物が住む世界
+
+**ねらい:** みんなの足元に盤面を敷く — ロボットを止める壁、木箱を待つゴール、1マスずつ動く木箱 — そして「まとまって届く状態」のための言葉、**Store** に出会う。
+
+ここまでの World は状態を1個ずつ運んできました: 第2章は `crateX` が1個、第3章はロボットの位置が1個。倉庫番の盤面は積み荷の種類が違います。下の最初のレベルには壁タイルが24枚、木箱が2個、ゴールが2個 — そして壁のフィールドを24本持つ World なんて誰も見たくありません。
+
+World は前とまったく同じもののまま: 1個の値です。育つのは*フィールド*のほう — フィールドはコレクションをまるごと持てます。
+
+```flix
+pub type alias Board = {
+    walls = Set[(Int32, Int32)],
+    goals = Set[(Int32, Int32)],
+    crates = Set[(Int32, Int32)],
+    ...
+}
+```
+
+### 4語目: Store
+
+**Store** とは、同じ種類の状態をたくさん持つ World のフィールドです — 単一の数値の代わりに、ここでは `Set`、いつかは `Map`。`walls` は壁位置の Store、`crates` は木箱位置の Store、`goals` はゴール位置の Store。物の種類ごとにフィールド1本、個数は何個でも。
+
+これがこのエンジンの語彙の4語目です — **World**・**Step**・**Projection**・**Store** — そして、この言葉が生まれた瞬間に何が買えるかに注目してください。「`target` に壁はあるか？」は `Set.memberOf(target, walls)`: 探索ではなく質問です。木箱を押すことは `Set.remove` と `Set.insert`: 木箱にはオブジェクトも id も専用の小さなクラスもありません — 木箱とは Store の中の位置*そのもの*です。
+
+### レベルはテキスト
+
+24枚の壁はどこから来るのでしょう？ 24行のコードからではありません。レベルは文字列です。パズル作家が何十年も使ってきた、倉庫番の古典記法で書きます:
+
+```
+#  壁         .  ゴール          @  ロボット
+$  木箱       *  ゴール上の木箱   +  ゴール上のロボット
+```
+
+この章に同梱する2つの盤面です — このチュートリアルのために設計し、解けることを手で確認してあります。1つ目は見えてしまえば2回のまっすぐな押し、2つ目は押すたびに遠回りの歩きを要求します:
+
+```
+#######      ########
+#     #      #      #
+# .$  #      # ## $.#
+#     #      # #    #
+#  $. #      # $ ## #
+#  @  #      #. @   #
+#######      ########
+```
+
+気持ちのいいところ: レベルの設計はルールに一切触れません。文字列はパーサ — 純関数 `String -> Result[String, Parsed]` — を通って Store になって出てきます。タイプミスは何も壊しません。どこで何が悪いかを言う `Err` の値になって返ってくるだけです（`unknown tile 'X' at column 1, row 0`）。第3章でキーボードが受けたのと同じ規律です: ルールの外から来るもの — 今回は手打ちの文字列 — は、境界で検査済みのデータに変換されます。
+
+### 2マスの間も状態
+
+ロボットはマス単位で動くようになりました。ルールがそれを要求します: 倉庫番は正確なマスのゲームで、「だいたいゴールの上」に意味はありません。でもキー1回でタイル1枚を*瞬間移動*するロボットはスプレッドシートの編集みたいな手触りです。両方欲しい — ルールはグリッドの上に、動きは画面の上に — ので、この2つを分離します。
+
+ホップが始まると、ロボットのマス（すべてのルールが読むもの）は即座に変わります。時間がかかるのは*絵*のほうです: 続く8分の1秒のあいだ、ロボットは古いマスと新しいマスの中間に描かれます。そして「絵はどこまで進んだか？」 — 補間の `t` — はフレームからフレームへ生き残らなければなりません。つまりそれは状態で、状態の住む場所はもう知っていますね:
+
+```flix
+slide = Option[Slide]    // ホップの絵がまだ移動中なら Some
+```
+
+スライドの移動中、キーボードは無視されます。着地した瞬間、キーがまだ押されていれば次の1マスが始まります。この1つの関門が静かに大仕事をします: タップはちょうど1マス、押しっぱなしはスライドのリズムで1マスずつ滑り、そしてロボットが2マスの間で捕まることは絶対にありません — ルールは中間フレームの存在を聞かされることすらないのです。
+
+### プレイテスト interlude: 120Hz の請求書が届く
+
+この章の最初の版は、スライドを*フレームごとに*一定量ずつ進めていました — 第2章の心地よい近道です。そしてこのゲームが 120Hz のディスプレイで回る機械でプレイされたとき、ロボットはきっかり倍速で動きました: ピーキーで、狙ったマスに止めにくい。第2章が予言した請求書が届いたのです。プレイテストとはこのためにあります。
+
+直し方は、キーボードがもう教えてくれた文法です: **時計も世界の外に住んでいます。** ループがフレームの経過秒を読み、値として `step` に手渡します:
+
+```flix
+pub def step(input: Input, dt: Float64, w: World): World = ...
+```
+
+スライドは `dt / slideDuration()` ずつ進むようになりました — 1秒を60枚の絵に描くディスプレイもあれば120枚のものもありますが、1秒の長さ自体はどこでも同じです。テストは決定論を失うどころか*強く*なりました: 各テストが明示的な `dt` を渡し、正確な値をピン留めします。そして時計を手に入れたロボットは、直立不動をやめました: キーが押されていないあいだ、ゆっくりその場で足踏みをします — 同じ歩行サイクルを3分の1のテンポで。せわしなくなく、生きている。
+
+### `src/Level.flix`（新規）
+
+```flix
+mod Level {
+
+    /// The first board: two crates, two goals, no interior walls.
+    pub def one(): String =
+        String.unlines(
+            "#######" ::
+            "#     #" ::
+            "# .$  #" ::
+            "#     #" ::
+            "#  $. #" ::
+            "#  @  #" ::
+            "#######" :: Nil)
+
+    /// The second board: interior walls force a detour before each push.
+    pub def two(): String =
+        String.unlines(
+            "########" ::
+            "#      #" ::
+            "# ## $.#" ::
+            "# #    #" ::
+            "# $ ## #" ::
+            "#. @   #" ::
+            "########" :: Nil)
+
+    /// Everything a board says, as plain data. Grid positions are (column, row),
+    /// counted from the top-left of the text.
+    pub type alias Parsed = {
+        walls = Set[(Int32, Int32)],
+        goals = Set[(Int32, Int32)],
+        crates = Set[(Int32, Int32)],
+        robot = (Int32, Int32),
+        cols = Int32,
+        rows = Int32
+    }
+
+    /// A board still being read: the robot may not have appeared yet.
+    type alias Draft = {
+        walls = Set[(Int32, Int32)],
+        goals = Set[(Int32, Int32)],
+        crates = Set[(Int32, Int32)],
+        robot = Option[(Int32, Int32)],
+        cols = Int32
+    }
+
+    pub def parse(text: String): Result[String, Parsed] =
+        let lines = String.lines(text);
+        forM (d <- parseRows(0, lines, emptyDraft());
+              robot <- requireRobot(d#robot))
+        yield { walls = d#walls, goals = d#goals, crates = d#crates,
+                robot = robot, cols = d#cols, rows = List.length(lines) }
+
+    def emptyDraft(): Draft =
+        { walls = Set.empty(), goals = Set.empty(), crates = Set.empty(),
+          robot = None, cols = 0 }
+
+    def requireRobot(o: Option[(Int32, Int32)]): Result[String, (Int32, Int32)] =
+        match o {
+            case Some(p) => Result.Ok(p)
+            case None    => Result.Err("the level has no robot '@'")
+        }
+
+    def parseRows(y: Int32, lines: List[String], d: Draft): Result[String, Draft] =
+        match lines {
+            case Nil => Result.Ok(d)
+            case line :: rest =>
+                forM (d1 <- parseCells(0, y, String.toList(line), d);
+                      d2 <- parseRows(y + 1, rest, d1))
+                yield d2
+        }
+
+    def parseCells(x: Int32, y: Int32, cells: List[Char], d: Draft): Result[String, Draft] =
+        match cells {
+            case Nil => Result.Ok({ cols = Int32.max(x, d#cols) | d })
+            case c :: rest =>
+                forM (d1 <- cell(x, y, c, d);
+                      d2 <- parseCells(x + 1, y, rest, d1))
+                yield d2
+        }
+
+    def cell(x: Int32, y: Int32, c: Char, d: Draft): Result[String, Draft] =
+        let p = (x, y);
+        match c {
+            case '#' => Result.Ok({ walls = Set.insert(p, d#walls) | d })
+            case ' ' => Result.Ok(d)
+            case '.' => Result.Ok({ goals = Set.insert(p, d#goals) | d })
+            case '$' => Result.Ok({ crates = Set.insert(p, d#crates) | d })
+            case '*' => Result.Ok({ crates = Set.insert(p, d#crates),
+                                    goals = Set.insert(p, d#goals) | d })
+            case '@' => placeRobot(p, d)
+            case '+' => forM (d1 <- placeRobot(p, d))
+                        yield { goals = Set.insert(p, d1#goals) | d1 }
+            case _   => Result.Err("unknown tile '${c}' at column ${x}, row ${y}")
+        }
+
+    def placeRobot(p: (Int32, Int32), d: Draft): Result[String, Draft] =
+        if (Option.isEmpty(d#robot)) Result.Ok({ robot = Some(p) | d })
+        else Result.Err("more than one robot in the level")
+}
+```
+
+### `src/Crate.flix`（木箱の帰還）
+
+第1章の木箱が独立モジュールとして帰ってきます。変更は1つだけ: すべての比率が固定の96pxではなくタイルサイズ引数からぶら下がるようになり、同じ関数がショーケースの木箱も24pxの盤面タイルも描きます。すべての部品を木箱の中心からの相対位置で置いたのは、このためだったのです。
+
+```flix
+mod Crate {
+
+    // Thickness of the outer frame rails, relative to the tile.
+    def railW(t: Float64): Float64 = t * 0.12
+
+    // Drawing order (zIndex): base plank -> vertical seams -> diagonal brace ->
+    // frame rails -> frame joints and outer outline. The rails draw after the
+    // brace, so the brace's extended ends tuck underneath them.
+    def zPlank(): Int32 = 0
+    def zSeam(): Int32 = 1
+    def zBraceEdge(): Int32 = 2
+    def zBrace(): Int32 = 3
+    def zRail(): Int32 = 4
+    def zJoint(): Int32 = 5
+
+    def topLeftOf(center: Vec2.Vec2, t: Float64): Vec2.Vec2 =
+        {x = center#x - t / 2.0, y = center#y - t / 2.0}
+
+    /// Box parts: 1 base plank + 5 vertical seams + 4 frame rails + 4 frame joints + 4 outline edges.
+    pub def boxes(center: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
+        let tl = topLeftOf(center, t);
+        plank(tl, t) :: List.flatten(seams(tl, t) :: rails(tl, t) :: frameJoints(tl, t) :: outline(tl, t) :: Nil)
+
+    /// Base plank: fill the whole tile with plank brown.
+    def plank(tl: Vec2.Vec2, t: Float64): (Vec2.Vec2, Render.RenderItem) =
+        boxAt(tl#x, tl#y, t, t, Palette.cratePlank(), zPlank())
+
+    /// Vertical seams: 5 evenly spaced thin lines that make the interior read as 6 boards.
+    def seams(tl: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
+        let w = t * 0.04;
+        List.map(i ->
+            let x = tl#x + t * Int32.toFloat64(i) / 6.0 - w / 2.0;
+            boxAt(x, tl#y, w, t, Palette.crateSeam(), zSeam()),
+            1 :: 2 :: 3 :: 4 :: 5 :: Nil)
+
+    /// Outer frame: 2 full-width horizontal boards (top, bottom) and 2 vertical boards
+    /// sandwiched between them (left, right).
+    def rails(tl: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
+        let f = railW(t);
+        let x0 = tl#x;
+        let y0 = tl#y;
+        boxAt(x0, y0, t, f, Palette.crateFrame(), zRail()) ::
+        boxAt(x0, y0 + t - f, t, f, Palette.crateFrame(), zRail()) ::
+        boxAt(x0, y0 + f, f, t - 2.0 * f, Palette.crateFrame(), zRail()) ::
+        boxAt(x0 + t - f, y0 + f, f, t - 2.0 * f, Palette.crateFrame(), zRail()) :: Nil
+
+    /// Frame joints: the border lines between the frame and the interior. The 2 full-width
+    /// horizontal lines double as the butt joints at the four corners at their ends;
+    /// the 2 vertical lines run only between them.
+    def frameJoints(tl: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
+        let f = railW(t);
+        let w = t * 0.02;
+        let x0 = tl#x;
+        let y0 = tl#y;
+        boxAt(x0, y0 + f - w / 2.0, t, w, Palette.crateSeam(), zJoint()) ::
+        boxAt(x0, y0 + t - f - w / 2.0, t, w, Palette.crateSeam(), zJoint()) ::
+        boxAt(x0 + f - w / 2.0, y0 + f, w, t - 2.0 * f, Palette.crateSeam(), zJoint()) ::
+        boxAt(x0 + t - f - w / 2.0, y0 + f, w, t - 2.0 * f, Palette.crateSeam(), zJoint()) :: Nil
+
+    /// Outer outline: a dark 1px (design resolution) line around the whole crate.
+    def outline(tl: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
+        let w = 1.0;
+        let x0 = tl#x;
+        let y0 = tl#y;
+        boxAt(x0, y0, t, w, Palette.crateSeam(), zJoint()) ::
+        boxAt(x0, y0 + t - w, t, w, Palette.crateSeam(), zJoint()) ::
+        boxAt(x0, y0, w, t, Palette.crateSeam(), zJoint()) ::
+        boxAt(x0 + t - w, y0, w, t, Palette.crateSeam(), zJoint()) :: Nil
+
+    def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
+              c: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
+        ({x = x, y = y}, Render.solidBox({x = w, y = h}, c, z))
+
+    /// Diagonal brace: one thick band from the inner bottom-left to the inner top-right,
+    /// plus 2 dark edge lines. All 3 strips share the same centerline and direction vector;
+    /// only their normal-offset ranges differ (building the edges along the normal keeps
+    /// their thickness constant everywhere).
+    pub def polys(center: Vec2.Vec2, t: Float64): List[GameEngine.PolygonRenderCmd] =
+        let tl = topLeftOf(center, t);
+        let half = t * 0.09;    // half-width of the central band (0.18T thick)
+        let edge = t * 0.03;    // thickness of one edge line
+        braceStrip(tl, t, -half - edge, -half, Palette.crateFrame(), zBraceEdge()) ::
+        braceStrip(tl, t, half, half + edge, Palette.crateFrame(), zBraceEdge()) ::
+        braceStrip(tl, t, -half, half, Palette.crateBrace(), zBrace()) :: Nil
+
+    /// A parallelogram (convex quad) covering normal offsets o1..o2 from the band's
+    /// centerline. The centerline runs inner bottom-left corner -> inner top-right corner,
+    /// extended by ext at both ends. The extended ends tuck under the frame rails drawn
+    /// later, so the strip ends need no shaping.
+    def braceStrip(tl: Vec2.Vec2, t: Float64, o1: Float64, o2: Float64,
+                   c: Color, z: Int32): GameEngine.PolygonRenderCmd =
+        let f = railW(t);
+        let ext = t * 0.04;
+        let bl = {x = tl#x + f, y = tl#y + t - f};
+        let tr = {x = tl#x + t - f, y = tl#y + f};
+        let d = Vec2.mul(Vec2.sub(tr, bl), 1.0 / Vec2.length(Vec2.sub(tr, bl)));
+        let n = {x = -d#y, y = d#x};
+        let p0 = Vec2.sub(bl, Vec2.mul(d, ext));
+        let p1 = Vec2.add(tr, Vec2.mul(d, ext));
+        { vertices = Vec2.add(p0, Vec2.mul(n, o1)) :: Vec2.add(p1, Vec2.mul(n, o1)) ::
+                     Vec2.add(p1, Vec2.mul(n, o2)) :: Vec2.add(p0, Vec2.mul(n, o2)) :: Nil,
+          color = c, alpha = 1.0f32, zIndex = z }
+}
+```
+
+### Palette の新しい役割名
+
+新しい役割名は6つ、いつもどおり DB32 から: 壁には石のグレー — 押せない材質なので、盤上の何かと木を見間違えることがありません — 床には沈んだ緑がかったグレー、ゴールには鮮やかな緑。（"CLEAR!" の黄色 `clearText` はテキストの節で `titleText` の隣に加わります。）
+
+```flix
+    // ── Board tiles ──
+    pub def wallFace(): Color  = {r = 0.411765f32, g = 0.415686f32, b = 0.415686f32}  // #696a6a
+    pub def wallTop(): Color   = {r = 0.517647f32, g = 0.494118f32, b = 0.529412f32}  // #847e87
+    pub def wallShade(): Color = {r = 0.349020f32, g = 0.337255f32, b = 0.321569f32}  // #595652
+    pub def floorTile(): Color = {r = 0.196078f32, g = 0.235294f32, b = 0.223529f32}  // #323c39
+    pub def goalMark(): Color  = {r = 0.600000f32, g = 0.898039f32, b = 0.313725f32}  // #99e550
+```
+
+### `src/Sokoban.flix`（この章時点の全コード）
+
+```flix
+mod Sokoban {
+
+    // Colors come only from Palette (DB32) role names. No color literals in drawing code.
+
+    // Design resolution 320x240; the board is centered slightly below the middle
+    // to clear the title line.
+    def centerX(): Float64 = 160.0
+    def boardCenterY(): Float64 = 132.0
+
+    // One board cell on screen, in design px.
+    def tile(): Float64 = 24.0
+
+    def zBadge(): Int32 = 10
+    def zTitle(): Int32 = 100
+
+    // ── Input: this frame's keys as plain data ──
+    // The keyboard lives outside the World. Every frame the loop reads it once and
+    // hands step the result as a value — so step can stay pure.
+    pub type alias Input = { up = Bool, down = Bool, left = Bool, right = Bool }
+
+    // ── World: where the state lives ──
+    // walls / goals / crates are Stores: many things of one kind, one Set each.
+    // slide is the picture's state: when a hop starts, the robot's cell changes
+    // at once — the drawn position then travels from the old cell for a fraction
+    // of a second, and how far it has come (t) must survive between frames, so
+    // it lives in the World like everything else.
+    pub type alias Slide = { fromCell = (Int32, Int32), pushing = Bool, t = Float64 }
+
+    pub type alias Board = {
+        walls = Set[(Int32, Int32)],
+        goals = Set[(Int32, Int32)],
+        crates = Set[(Int32, Int32)],
+        robot = (Int32, Int32),
+        cols = Int32,
+        rows = Int32,
+        facing = Robot.Direction,
+        walkPhase = Float64,
+        slide = Option[Slide]
+    }
+
+    pub enum World {
+        case World(Board)
+    }
+
+    pub def initialWorld(): World = fromLevel(Level.one())
+
+    /// The shipped level strings are pinned parseable by the tests; a broken
+    /// string degrades to a bare floor instead of crashing the launcher.
+    pub def fromLevel(text: String): World =
+        match Level.parse(text) {
+            case Result.Ok(p)  => toWorld(p)
+            case Result.Err(_) => toWorld({ walls = Set.empty(), goals = Set.empty(),
+                                            crates = Set.empty(), robot = (0, 0),
+                                            cols = 1, rows = 1 })
+        }
+
+    def toWorld(p: Level.Parsed): World =
+        World.World({ walls = p#walls, goals = p#goals, crates = p#crates,
+                      robot = p#robot, cols = p#cols, rows = p#rows,
+                      facing = Robot.Direction.Down, walkPhase = 0.0,
+                      slide = None })
+
+    /// The win condition is not stored anywhere: it is derived from the Stores.
+    pub def won(w: World): Bool =
+        let World.World(b) = w;
+        Set.isSubsetOf(b#crates, b#goals)
+
+    // ── step: advances the world by dt seconds ──
+    // Still pure: the keys arrive as an argument, and so does the clock — dt is
+    // this frame's elapsed seconds, read by the loop and handed in as a value.
+    // While a slide is travelling the keys are ignored; the moment it lands, a
+    // key still held starts the next square — taps move exactly one cell, holds
+    // glide cell by cell in rhythm, at the same speed on any display.
+
+    /// Seconds one tile's slide takes: the single knob for movement speed.
+    def slideDuration(): Float64 = 0.125
+
+    /// The walk cycle advances one beat (0.25 of the cycle) per tile slid.
+    def strideBeat(): Float64 = 0.25
+
+    /// Walk cycles per second while standing: a slow march in place — about a
+    /// third of the walking rate, alive rather than busy.
+    def idleBeat(): Float64 = 0.75
+
+    pub def step(input: Input, dt: Float64, w: World): World =
+        let World.World(b) = w;
+        match b#slide {
+            case Some(s) =>
+                let t = s#t + dt / slideDuration();
+                let walked = { walkPhase = fract(b#walkPhase + strideBeat() * (dt / slideDuration())) | b };
+                if (t < 1.0)
+                    World.World({ slide = Some({ t = t | s }) | walked })
+                else
+                    // The slide has landed: only now does the keyboard get a say.
+                    World.World(beginHop(input, { slide = None | walked }))
+            case None =>
+                // A standing robot marches slowly in place; a starting hop
+                // carries the phase along, so the legs never snap.
+                let marched = { walkPhase = fract(b#walkPhase + idleBeat() * dt) | b };
+                World.World(beginHop(input, marched))
+        }
+
+    /// Start a hop if a direction key is down, else keep standing.
+    def beginHop(input: Input, b: Board): Board =
+        match pick(input#up, input#down, input#left, input#right) {
+            case None    => b
+            case Some(d) => move(d, b)
+        }
+
+    /// The whole rulebook of sokoban. The target cell decides: a wall stops the
+    /// robot; a crate moves along only if the cell behind it is free; otherwise
+    /// nothing moves and the robot just turns. A legal hop changes the cells at
+    /// once and starts the slide that lets the picture catch up.
+    def move(d: Robot.Direction, b: Board): Board =
+        let (dx, dy) = deltaOf(d);
+        let (rx, ry) = b#robot;
+        let target = (rx + dx, ry + dy);
+        let (tx, ty) = target;
+        let beyond = (tx + dx, ty + dy);
+        let pushing = Set.memberOf(target, b#crates);
+        let blocked = Set.memberOf(target, b#walls)
+            or (pushing and (Set.memberOf(beyond, b#walls) or Set.memberOf(beyond, b#crates)));
+        if (blocked)
+            { facing = d | b }
+        else
+            { robot = target,
+              crates = if (pushing) Set.insert(beyond, Set.remove(target, b#crates)) else b#crates,
+              facing = d,
+              slide = Some({ fromCell = b#robot, pushing = pushing, t = 0.0 })
+              | b }
+
+    /// Among several held keys: up, then down, then left, then right.
+    def pick(u: Bool, d: Bool, l: Bool, r: Bool): Option[Robot.Direction] =
+        if (u) Some(Robot.Direction.Up)
+        else if (d) Some(Robot.Direction.Down)
+        else if (l) Some(Robot.Direction.Left)
+        else if (r) Some(Robot.Direction.Right)
+        else None
+
+    def deltaOf(d: Robot.Direction): (Int32, Int32) = match d {
+        case Robot.Direction.Up    => (0, -1)
+        case Robot.Direction.Down  => (0, 1)
+        case Robot.Direction.Left  => (-1, 0)
+        case Robot.Direction.Right => (1, 0)
+    }
+
+    /// Keep only the fractional part (the walk cycle repeats on 0..1).
+    def fract(x: Float64): Float64 = x - Float64.floor(x)
+
+    // ── frame: projects the World into the list of things to draw ──
+    // Insertion order layers the board: floor and walls, then goal marks, then
+    // crates, then the robot, then the on-goal badges and text on top.
+    pub def frame(atlas: FontAtlas, w: World): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+        let World.World(b) = w;
+        let boxes = List.flatten(
+            boardTiles(b) ::
+            goalMarks(b) ::
+            crateBoxes(b) ::
+            Robot.parts(robotCenter(b), tile(), b#facing, b#walkPhase) ::
+            onGoalBadges(b) ::
+            texts(atlas, w) :: Nil);
+        (Render.draw(boxes), cratePolys(b))
+
+    /// Top-left corner of the board, chosen so the whole grid sits centered.
+    def origin(b: Board): Vec2.Vec2 =
+        { x = centerX() - Int32.toFloat64(b#cols) * tile() / 2.0,
+          y = boardCenterY() - Int32.toFloat64(b#rows) * tile() / 2.0 }
+
+    def cellCenter(b: Board, p: (Int32, Int32)): Vec2.Vec2 =
+        let o = origin(b);
+        let (x, y) = p;
+        { x = o#x + (Int32.toFloat64(x) + 0.5) * tile(),
+          y = o#y + (Int32.toFloat64(y) + 0.5) * tile() }
+
+    /// Where the robot is drawn: its cell — or partway out of the previous one.
+    def robotCenter(b: Board): Vec2.Vec2 =
+        match b#slide {
+            case None    => cellCenter(b, b#robot)
+            case Some(s) => lerp(cellCenter(b, s#fromCell), cellCenter(b, b#robot), s#t)
+        }
+
+    /// While a push is sliding, the pushed crate sits one cell past the robot's
+    /// destination, along the same direction the robot came from.
+    def slidingCrate(b: Board, s: Slide): (Int32, Int32) =
+        let (fx, fy) = s#fromCell;
+        let (rx, ry) = b#robot;
+        (2 * rx - fx, 2 * ry - fy)
+
+    /// Where a crate is drawn: its cell — unless it is the one being pushed,
+    /// which travels in lockstep with the robot.
+    def crateCenter(b: Board, p: (Int32, Int32)): Vec2.Vec2 =
+        match b#slide {
+            case Some(s) =>
+                if (s#pushing and p == slidingCrate(b, s))
+                    lerp(cellCenter(b, b#robot), cellCenter(b, p), s#t)
+                else cellCenter(b, p)
+            case None => cellCenter(b, p)
+        }
+
+    def lerp(a: Vec2.Vec2, z: Vec2.Vec2, t: Float64): Vec2.Vec2 =
+        { x = a#x + (z#x - a#x) * t, y = a#y + (z#y - a#y) * t }
+
+    def cells(b: Board): List[(Int32, Int32)] =
+        List.flatMap(y -> List.map(x -> (x, y), List.range(0, b#cols)), List.range(0, b#rows))
+
+    def boardTiles(b: Board): List[(Vec2.Vec2, Render.RenderItem)] =
+        List.flatMap(p ->
+            if (Set.memberOf(p, b#walls)) wallTile(cellCenter(b, p))
+            else floorTile(cellCenter(b, p)),
+            cells(b))
+
+    /// Floor: one flat box per cell; the board reads as a lit area on the dark
+    /// clear color around it.
+    def floorTile(c: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+        boxAt(c#x - tile() / 2.0, c#y - tile() / 2.0, tile(), tile(), Palette.floorTile(), 0) :: Nil
+
+    /// Wall: a stone block — flat face with a lit top edge and a shaded foot.
+    def wallTile(c: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+        let t = tile();
+        let x0 = c#x - t / 2.0;
+        let y0 = c#y - t / 2.0;
+        let bevel = t * 0.16;
+        boxAt(x0, y0, t, t, Palette.wallFace(), 0) ::
+        boxAt(x0, y0, t, bevel, Palette.wallTop(), 1) ::
+        boxAt(x0, y0 + t - bevel, t, bevel, Palette.wallShade(), 1) :: Nil
+
+    /// Goal: a small round marker on the floor (crates and the robot draw over it).
+    def goalMarks(b: Board): List[(Vec2.Vec2, Render.RenderItem)] =
+        List.map(p -> circleAt(cellCenter(b, p), tile() * 0.34, Palette.goalMark(), 0),
+                 Set.toList(b#goals))
+
+    /// A crate parked on (or sliding onto) a goal gets a small badge on top:
+    /// the goal answers back.
+    def onGoalBadges(b: Board): List[(Vec2.Vec2, Render.RenderItem)] =
+        List.map(p -> circleAt(crateCenter(b, p), tile() * 0.25, Palette.goalMark(), zBadge()),
+                 Set.toList(Set.intersection(b#crates, b#goals)))
+
+    def crateBoxes(b: Board): List[(Vec2.Vec2, Render.RenderItem)] =
+        List.flatMap(p -> Crate.boxes(crateCenter(b, p), tile()), Set.toList(b#crates))
+
+    def cratePolys(b: Board): List[GameEngine.PolygonRenderCmd] =
+        List.flatMap(p -> Crate.polys(crateCenter(b, p), tile()), Set.toList(b#crates))
+
+    def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
+              c: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
+        ({x = x, y = y}, Render.solidBox({x = w, y = h}, c, z))
+
+    def circleAt(c: Vec2.Vec2, d: Float64, color: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
+        let style = { cornerRadius = d / 2.0, borderWidth = 0.0, borderColor = color,
+                      borderAlpha = 0.0f32, stripeColor = color, stripeAlpha = 0.0f32,
+                      stripeWidth = 0.0, stripePeriod = 0.0 };
+        ({x = c#x - d / 2.0, y = c#y - d / 2.0},
+         Render.RenderItem.Box({ size = {x = d, y = d}, color = color, alpha = 1.0f32,
+                                 style = Some(style), zIndex = z }))
+
+    /// Title always; "CLEAR!" appears the moment every crate sits on a goal —
+    /// not stored anywhere, just projected from the Stores.
+    def texts(atlas: FontAtlas, w: World): List[(Vec2.Vec2, Render.RenderItem)] =
+        let title = centeredText("Sokoban", atlas, 28.0, Palette.titleText(), 10.0);
+        if (won(w)) title :: centeredText("CLEAR!", atlas, 36.0, Palette.clearText(), 104.0) :: Nil
+        else title :: Nil
+
+    def centeredText(text: String, atlas: FontAtlas, size: Float64,
+                     color: Color, y: Float64): (Vec2.Vec2, Render.RenderItem) =
+        let width = Label2D.measure(Label2D.make(text, atlas, size))#x;
+        ({x = centerX() - width / 2.0, y = y}, Render.textTinted(text, atlas, size, color, zTitle()))
+
+    // ── Launcher: read input and the clock |> step |> frame, until the window closes ──
+    pub def start(atlas: FontAtlas): Unit \ GameEngine.Game =
+        loop(atlas, initialWorld())
+
+    /// Reading the keyboard touches something outside the program, and the
+    /// signature says so: `\ GameEngine.Game`. This is the only place the keys
+    /// are read; past this point they are just a value.
+    def readInput(): Input \ GameEngine.Game =
+        { up    = GameEngine.Game.isKeyPressed(GameEngine.Key.Up),
+          down  = GameEngine.Game.isKeyPressed(GameEngine.Key.Down),
+          left  = GameEngine.Game.isKeyPressed(GameEngine.Key.Left),
+          right = GameEngine.Game.isKeyPressed(GameEngine.Key.Right) }
+
+    /// The clock lives outside the World too. The engine clamps the value, so a
+    /// long hiccup (or the first frame) never teleports the game forward.
+    def readDt(): Float64 \ GameEngine.Game =
+        Duration.toSeconds(GameEngine.Game.getDeltaTime())
+
+    def loop(atlas: FontAtlas, world: World): Unit \ GameEngine.Game =
+        if (GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
+        else {
+            let next = step(readInput(), readDt(), world);
+            let (drawables, polys) = frame(atlas, next);
+            GameEngine.Game.renderCommands(drawables, Nil, polys);
+            loop(atlas, next)
+        }
+}
+```
+
+### 何が起きたか
+
+- World は1個の位置から盤面まるごとへ育ちましたが、種は変わっていません: いまも1個の値、いまも純関数で進み、いまも `frame` で映されます。フィールドのうち3本が Store です。World を保存すれば、解きかけのパズルが保存されます。
+- 倉庫番のルールブック全体が `move` 関数 — 十数行です。行き先のマスがすべてを決めます: 壁？ 動かない。裏が空いている木箱？ 両方進む。裏に何かある木箱？ 動かない。1982年から遊ばれてきたゲームがナプキン1枚に収まるのは、盤面が Store *だから*です — すべての質問が所属テストになります。
+- **勝利は保存されません。** `won` は `Set.isSubsetOf(crates, goals)` と尋ねるだけで、"CLEAR!" の文字は他のすべてと同じ Store から映し出されます。立てて、下ろして、戻し忘れる `isCleared` フラグは存在しません: 導出できる状態は状態ではないのです。
+- `frame` は挿入順で盤面を積み重ねます — 床と壁、ゴールマーク、木箱、ロボット、バッジとテキスト。zIndex が同じ部品同士は後から描いたほうが勝つので、リストは場面そのものと同じように下から上へ読めます。ゴールに収まった木箱には小さな緑のバッジが上に乗ります: ゴールが返事をするのです。
+- スライドは純粋に射影です。`robotCenter` と `crateCenter` はスライド移動中だけマスの間を補間し、`won` もすべてのルールも Store しか読みません。ロボットが押すとき、木箱の絵はロボットの絵と足並みを揃えて移動します — 同じ `t` で、1マスだけ先を。そして `t` さえ World に住んでいるので、スライドの途中で World を保存すれば、歩幅の途中から再開されます。
+- 歩行サイクルは、スライド中はタイル1枚につき1拍で闊歩し、静止中は（`idleBeat` で）ゆっくり足踏みします — ロボットが凍りつく瞬間はありません。ホップの開始は静止中の位相をそのまま引き継ぐので、脚が飛びつなぎになることもありません。
+
+### 試すこと
+
+`initialWorld` を `Level.two()` に向けて、遠回りを歩いてください。次に `Level.flix` を開いて盤面を編集します — 木箱とゴールを1組足す、壁に出入り口を彫る — タイプミスのたびにパーサが手を引いてくれます。自分のレベルを設計してみてください。書くコードは文字列だけです。
+
+定数の手触りも: `slideDuration` を `0.25` にするとロボットは悠然と歩き（秒4マス）、`0.06` なら小走りになります。`idleBeat` を `2.0` にすると足踏みがその場ジョギングに変わります。それぞれ数字1個でゲーム全体の歩き方が変わります — ルールは何も気づきません。
+
+そして*ルール*を変えます: 倉庫番の純粋主義者は目をつぶってください — ロボットが**引ける**ようにするのです。`move` で、ロボットが空きマスへ歩くとき、*背後*のマス（歩く向きの反対側）に木箱があったかを調べ、あればその木箱をロボットの元いたマスへ連れてきます。`test/TestSokoban.flix` のテストが、どのピン留めされたルールを書き換えたのかを正確に教えてくれます。
+
+---
+
 ## ここまでのまとめ
 
 - ゲームは3拍子のループ: **`world |> step |> frame`** — 進めて、映して、描く。
-- **World** は全状態が住む1個の値。**Step** はそれを進める純関数。**Projection**（`frame` など）は変えずに読むだけ。
-- 世界の外にあるもの — キーボードなど — はループが読み、ただのデータとして `step` に入る。関数が何に触るかは effect 型に書いてあり、コンパイラがその線を守る。
+- **World** は全状態が住む1個の値。**Step** はそれを進める純関数。**Projection**（`frame` など）は変えずに読むだけ。**Store** は同じ種類の状態をたくさん持つ World のフィールド — 壁位置の Set — なので、物量がフィールドを増殖させることはない。
+- 世界の外にあるもの — キーボード、手打ちのレベル、時計 — は境界で読まれ、ただのデータとしてルールに入る。関数が何に触るかは effect 型に書いてあり、コンパイラがその線を守る。
+- 導出できる状態（「パズルは解けたか？」など）は保存しない。映すだけ。
 - あなたが編集するのは、ほとんどいつも `step` か `frame`。
 - 色は DB32 の**役割名**から、形は**比率と重ね順**で。
 
-ロボットはもう、どこへでもなめらかに歩けます — でも倉庫番は「どこへでも」のゲームではありません。タイルのゲームです: 止める壁、1マスずつ動く木箱。木箱を*押す物*として連れ戻すには、みんなの足元に盤面が要ります。それが次章の問題です。
+ロボットは木箱を押せるようになりました — そして遅かれ早かれ、二度と出られない隅に1個押し込みます。倉庫番プレイヤーなら全員が知っている感覚で、そのあとに来る願いも同じです: *戻したい*。1個の値である World は、この願いをほとんど拍子抜けするほど安く叶えます。それが次章の問題です。

@@ -24,8 +24,16 @@ mod Palette {
     pub def robotDark(): Color = {r = 0.133333f32, g = 0.125490f32, b = 0.203922f32}  // #222034
     pub def robotAccent(): Color = {r = 0.984314f32, g = 0.949020f32, b = 0.211765f32}  // #fbf236
 
+    // ── Board tiles ──
+    pub def wallFace(): Color  = {r = 0.411765f32, g = 0.415686f32, b = 0.415686f32}  // #696a6a
+    pub def wallTop(): Color   = {r = 0.517647f32, g = 0.494118f32, b = 0.529412f32}  // #847e87
+    pub def wallShade(): Color = {r = 0.349020f32, g = 0.337255f32, b = 0.321569f32}  // #595652
+    pub def floorTile(): Color = {r = 0.196078f32, g = 0.235294f32, b = 0.223529f32}  // #323c39
+    pub def goalMark(): Color  = {r = 0.600000f32, g = 0.898039f32, b = 0.313725f32}  // #99e550
+
     // ── Text ──
     pub def titleText(): Color = {r = 0.933333f32, g = 0.764706f32, b = 0.603922f32}  // #eec39a
+    pub def clearText(): Color = {r = 0.984314f32, g = 0.949020f32, b = 0.211765f32}  // #fbf236
 
     // background equals the clearColor in project.json; this is the code-side accessor.
     pub def clearColor(): Color = background()
