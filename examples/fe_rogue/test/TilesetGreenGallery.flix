@@ -1,12 +1,13 @@
-// TilesetGreenGallery — v6 生成器（TilesetGreen）をヘッドレスに焼き、全 108 セルの形・材質・色数を検証する。
+// TilesetGreenGallery — v8 生成器（TilesetGreen・立体面シェーディング＋モチーフテーマ）をヘッドレスに焼き、
+// 全 108 セルの形・材質・色数を検証する。
 //
 //   gallery/tileset_green_regen.png   … 全 108 セルの再現アトラス（green・312×234・座標互換の完成資産）
 //   gallery/tileset_green_compare.png … 原本シート vs 再現シート（green）を各2倍・上下ラベルで比較
-//   gallery/tileset_compare.png       … [原本 | 再現green | fire | forest | ruins] テーマ展開の縦積み比較
+//   gallery/tileset_compare.png       … [原本 | green | fire | forest | ruins | flower | future | desert] の縦積み比較
 //   gallery/tileset_cell_diff.png     … 全 108 セルを [原本 | 再現 | シルエットXOR | 材質XOR] の 4 列で並べる
 //   gallery/rooms_original.png        … 代表 5 マップ（凹形/水プール/障害物/大部屋/Z通路）を原本テクスチャで合成
 //   gallery/rooms_green.png ほか      … 同じ 5 マップをテーマ別アトラスで合成（fire/forest/ruins も）
-//   gallery/tileset_layers.png        … 代表セルを [原本 | 再現 | 材質 | 虚空 | 地 | 建築 | 風化 | 光] に分解
+//   gallery/tileset_layers.png        … 代表セルを [原本 | 再現 | 材質 | 虚空 | 線画 | 地 | 建築 | 風化 | 光] に分解
 //
 // 指標は三重: ①シルエット XOR ②材質 XOR（全 108 セルのワーストで assert・二つとも classify 共通経路）
 // ③総色数（ドット絵の少色数規律。原本 31 色に対し再現も固定ランプ量子化で 50 色以下を assert —
@@ -69,6 +70,86 @@ mod TilesetGreenGallery {
                     List.range(0, img.getWidth())),
                 List.range(0, img.getHeight()));
             MutSet.size(seen)
+        }
+
+    def structAtG(gx: Int32, gy: Int32): Bool =
+        let c = TilesetGreen.cell();
+        TilesetGreen.structureAt(gx / c, gy / c, Int32.modulo(gx, c), Int32.modulo(gy, c))
+
+    /// (gx,gy) の Chebyshev 2px 近傍に構造画素があるか（許容帯検査の dilate 側）。
+    def structNear(gx: Int32, gy: Int32, w: Int32, h: Int32): Bool =
+        List.exists(dy ->
+            List.exists(dx -> {
+                let x = gx + dx; let y = gy + dy;
+                x >= 0 and y >= 0 and x < w and y < h and structAtG(x, y)
+            }, -2 :: -1 :: 0 :: 1 :: 2 :: Nil),
+            -2 :: -1 :: 0 :: 1 :: 2 :: Nil)
+
+    /// (gx,gy) の Chebyshev 2px 近傍に非虚空の塗り画素があるか（許容帯検査の erode 側）。
+    def paintNear(atlas: BufferedImage, gx: Int32, gy: Int32, w: Int32, h: Int32): Bool \ IO =
+        List.exists(dy ->
+            List.exists(dx -> {
+                let x = gx + dx; let y = gy + dy;
+                x >= 0 and y >= 0 and x < w and y < h and not isVoidArgb(atlas.getRGB(x, y))
+            }, -2 :: -1 :: 0 :: 1 :: 2 :: Nil),
+            -2 :: -1 :: 0 :: 1 :: 2 :: Nil)
+
+    /// モチーフのシルエット許容帯検査（±2px）。モチーフは内部を描き替えつつ輪郭を花の円などに沿って
+    /// うねらせるので、原本と完全一致(XOR 0)ではなく「原本の dilate/erode 2px の帯」に収まることを測る。
+    /// 返り値 = (原本の外へ 2px 超はみ出した画素数 over, 原本の内へ 2px 超えぐり込んだ画素数 under)。
+    def silhouetteTolerance(atlas: BufferedImage): (Int32, Int32) \ IO =
+        let w = TilesetGreen.atlasW();
+        let h = TilesetGreen.atlasH();
+        region rc {
+            let over = Ref.fresh(rc, 0);
+            let under = Ref.fresh(rc, 0);
+            List.forEach(gy ->
+                List.forEach(gx -> {
+                    let isStruct = structAtG(gx, gy);
+                    let nonVoid = not isVoidArgb(atlas.getRGB(gx, gy));
+                    if (nonVoid and not isStruct and not structNear(gx, gy, w, h)) Ref.put(Ref.get(over) + 1, over) else ();
+                    if (isStruct and not nonVoid and not paintNear(atlas, gx, gy, w, h)) Ref.put(Ref.get(under) + 1, under) else ()
+                }, List.range(0, w)),
+                List.range(0, h));
+            (Ref.get(over), Ref.get(under))
+        }
+
+    /// 壁塗りの対象画素か（構造かつ 壁石 or 装飾金属。床/水/木などモチーフ別テクスチャは対象外）。
+    def isWallLikeG(gx: Int32, gy: Int32): Bool =
+        let c = TilesetGreen.cell();
+        let col = gx / c; let row = gy / c;
+        let lx = Int32.modulo(gx, c); let ly = Int32.modulo(gy, c);
+        if (not TilesetGreen.structureAt(col, row, lx, ly)) false
+        else {
+            let mn = TilesetGreen.materialName(TilesetGreen.materialAt(col, row, lx, ly));
+            if (mn == "metal") true
+            else if (mn == "stone") row != 5 and not (row == 6 and col >= 3 and col <= 8)
+            else false
+        }
+
+    /// 境界互換検査（同種セルを並べても割れない）。モチーフの壁塗りはグローバル格子で描き、周期がセル 26px を
+    /// 割り切る（花/砂岩=縦横 26px・パネル=13px）。同じ壁タイルを並べたとき右端列と左端列が連続することを、
+    /// 壁塗り画素が 26px（セル 1 個分）隔てても同色（= セル周期 ⟹ 継ぎ目で連続）かで測る。内部画素のみ。
+    def tileSeamBreaks(atlas: BufferedImage): Int32 \ IO =
+        let c = TilesetGreen.cell();
+        let w = TilesetGreen.atlasW();
+        let h = TilesetGreen.atlasH();
+        let interior = (gx, gy) ->
+            isWallLikeG(gx, gy)
+                and gx > 0 and gy > 0 and gx < w - 1 and gy < h - 1
+                and not isVoidArgb(atlas.getRGB(gx - 1, gy)) and not isVoidArgb(atlas.getRGB(gx + 1, gy))
+                and not isVoidArgb(atlas.getRGB(gx, gy - 1)) and not isVoidArgb(atlas.getRGB(gx, gy + 1));
+        region rc {
+            let bad = Ref.fresh(rc, 0);
+            List.forEach(gy ->
+                List.forEach(gx -> {
+                    if (gx + c < w and interior(gx, gy) and interior(gx + c, gy)
+                        and atlas.getRGB(gx, gy) != atlas.getRGB(gx + c, gy)) Ref.put(Ref.get(bad) + 1, bad) else ();
+                    if (gy + c < h and interior(gx, gy) and interior(gx, gy + c)
+                        and atlas.getRGB(gx, gy) != atlas.getRGB(gx, gy + c)) Ref.put(Ref.get(bad) + 1, bad) else ()
+                }, List.range(0, w)),
+                List.range(0, h));
+            Ref.get(bad)
         }
 
     // ════════════════════════════════════════════════════════
@@ -318,16 +399,17 @@ mod TilesetGreenGallery {
         img
 
     // ════════════════════════════════════════════════════════
-    // tileset_layers: [原本 | 再現 | 材質 | 虚空 | 地 | 建築 | 風化 | 光]
+    // tileset_layers: [原本 | 再現 | 材質 | 虚空 | 線画 | 地 | 建築 | 風化 | 光]
     // ════════════════════════════════════════════════════════
     def layerCols(): List[String] =
-        "orig" :: "regen" :: "material" :: "void" :: "ground" :: "arch" :: "weather" :: "light" :: Nil
+        "orig" :: "regen" :: "material" :: "void" :: "line" :: "ground" :: "arch" :: "weather" :: "light" :: Nil
 
     def layerForMode(mode: Int32): TilesetGreen.Layer =
         if (mode == 3)      TilesetGreen.Layer.Void
-        else if (mode == 4) TilesetGreen.Layer.Ground
-        else if (mode == 5) TilesetGreen.Layer.Arch
-        else if (mode == 6) TilesetGreen.Layer.Weather
+        else if (mode == 4) TilesetGreen.Layer.Line
+        else if (mode == 5) TilesetGreen.Layer.Ground
+        else if (mode == 6) TilesetGreen.Layer.Arch
+        else if (mode == 7) TilesetGreen.Layer.Weather
         else                TilesetGreen.Layer.Light
 
     def drawLayerColumn(g: Graphics2D, orig: BufferedImage, regen: BufferedImage,
@@ -358,13 +440,14 @@ mod TilesetGreenGallery {
         (11,0)::(11,1)::(4,4)::(5,4)::(0,5)::(5,6)::
         (0,6)::(1,7)::(2,7)::(10,7)::(0,8)::(2,8)::
         (3,8)::(5,8)::(7,7)::(8,7)::(10,3)::(11,3)::
-        (7,4)::(9,4)::(7,8)::(8,8)::(9,8)::(3,7)::Nil
+        (7,4)::(9,4)::(7,8)::(8,8)::(9,8)::(3,7)::
+        (10,6)::(11,6)::Nil
 
     def buildLayers(orig: BufferedImage, regen: BufferedImage): BufferedImage \ IO =
         let c = TilesetGreen.cell();
         let s = dScale();
         let cellPx = c * s;
-        let ncol = 8;
+        let ncol = 9;
         let colGap = 3;
         let blockW = cellPx * ncol + colGap * (ncol - 1);
         let blockH = cellPx + labelH();
@@ -423,43 +506,37 @@ mod TilesetGreenGallery {
         discard (new File(outDir())).mkdirs();
         let orig = ImageIO.read(new File(originalPath()));
         let regen = renderAtlas(TilesetGreen.themeGreen());
-        let fire = renderAtlas(TilesetGreen.themeFire());
-        let forest = renderAtlas(TilesetGreen.themeForest());
-        let ruins = renderAtlas(TilesetGreen.themeRuins());
+        let flower = renderAtlas(TilesetGreen.themeFlower());
         discard ImageIO.write(regen, "png", new File("${outDir()}/tileset_green_regen.png"));
+        discard ImageIO.write(flower, "png", new File("${outDir()}/tileset_flower.png"));
         let diff = buildCellDiff(orig, regen);
         discard ImageIO.write(diff, "png", new File("${outDir()}/tileset_cell_diff.png"));
         let layers = buildLayers(orig, regen);
         discard ImageIO.write(layers, "png", new File("${outDir()}/tileset_layers.png"));
-        // green の原本比較 + テーマ展開比較（本来の目的物）
+        // green の原本比較（作業A の監修対象）
         let compareGreen = buildStackCompare(
             ("original  (tileset_dungeon_green.png)", orig) ::
-            ("regen v6  (green・固定ランプ量子化・座標互換)", regen) :: Nil);
+            ("regen v10 (green・原本実測の立体面シェーディング・固定ランプ量子化・線画・座標互換)", regen) :: Nil);
         discard ImageIO.write(compareGreen, "png", new File("${outDir()}/tileset_green_compare.png"));
+        // [原本 | green 再現 | flower] の 3 段比較
         let compareThemes = buildStackCompare(
-            ("original (green)", orig) ::
-            ("regen green", regen) ::
-            ("theme fire (玄武岩+溶岩)", fire) ::
-            ("theme forest (苔石+青水)", forest) ::
-            ("theme ruins (砂岩+濁り水)", ruins) :: Nil);
+            ("original", orig) ::
+            ("regen green (原本忠実再現)", regen) ::
+            ("motif flower (セル別に花で装飾)", flower) :: Nil);
         discard ImageIO.write(compareThemes, "png", new File("${outDir()}/tileset_compare.png"));
 
-        // 部屋ギャラリー: 代表 5 マップ × [原本 + 4 テーマ]（本物の autoRules/wallMap/manual 合成）
+        // 部屋ギャラリー: original/green は代表 5 マップ、flower は base_room + room_5 の 2 部屋。
         let rooms = roomMaps() |> List.map(m -> {
             let (nm, path) = m;
             (nm, roomPlacementsFor(path))
         });
-        let sheets =
-            ("original", orig, 0x19201a) ::
-            ("green", regen, TilesetGreen.themeGreen()#voidC) ::
-            ("fire", fire, TilesetGreen.themeFire()#voidC) ::
-            ("forest", forest, TilesetGreen.themeForest()#voidC) ::
-            ("ruins", ruins, TilesetGreen.themeRuins()#voidC) :: Nil;
-        List.forEach(sh -> {
-            let (nm, atlas, voidHex) = sh;
-            let sheet = buildRoomsSheet(atlas, "rooms - ${nm}", rooms, voidHex);
-            discard ImageIO.write(sheet, "png", new File("${outDir()}/rooms_${nm}.png"))
-        }, sheets);
+        let flowerRooms = List.take(2, rooms);
+        discard ImageIO.write(buildRoomsSheet(orig, "rooms - original", rooms, 0x19201a),
+            "png", new File("${outDir()}/rooms_original.png"));
+        discard ImageIO.write(buildRoomsSheet(regen, "rooms - green", rooms, TilesetGreen.themeGreen()#voidC),
+            "png", new File("${outDir()}/rooms_green.png"));
+        discard ImageIO.write(buildRoomsSheet(flower, "rooms - flower", flowerRooms, TilesetGreen.themeFlower()#voidC),
+            "png", new File("${outDir()}/rooms_flower.png"));
 
         // 全 108 セルの二重成績表（シルエット/材質 XOR。ワースト降順）
         let c = TilesetGreen.cell();
@@ -474,7 +551,7 @@ mod TilesetGreenGallery {
             });
         let worstKey = t -> { let (_, sil, mat, _, _) = t; -1i32 * Int32.max(sil, mat) };
         let sorted = List.sortBy(worstKey, scored);
-        println("=== tileset v6 全 108 セル成績表（ワースト降順: silhouetteXOR / materialXOR）===");
+        println("=== tileset v7 全 108 セル成績表（ワースト降順: silhouetteXOR / materialXOR）===");
         List.forEach(t -> {
             let ((col, row), sil, mat, silPct, matPct) = t;
             println("  c${col}/r${row} ${TilesetGreen.cellName(col, row)}"
@@ -484,11 +561,46 @@ mod TilesetGreenGallery {
         let worstMat = scored |> List.map(t -> { let (_, _, mat, _, _) = t; mat }) |> List.maximum |> Option.getWithDefault(0);
         println("=== ワースト: silhouette=${worstSil}px / material=${worstMat}px  [閾値 各 5% = ${ftoi(area * 0.05)}px] ===");
 
-        // 少色数規律（パキッと感の機械指標）: 原本 31 色に対し再現 green も 50 色以下。
+        // 線画レイヤーの健全性: 線画は「構造内の最暗段で締める明度の話」であって材質分類には効かないこと（本丸の不変条件）。
+        // 全 108 セルの線画画素を数え、各画素の再現色を classify し直しても materialAt と一致する（＝材質 XOR を汚さない）ことを assert。
+        let (lineN, lineBad) = region rc {
+            let ln = Ref.fresh(rc, 0);
+            let bad = Ref.fresh(rc, 0);
+            List.forEach(cell -> {
+                let (col, row) = cell;
+                List.forEach(ly ->
+                    List.forEach(lx ->
+                        if (TilesetGreen.isLineAt(col, row, lx, ly)) {
+                            Ref.put(Ref.get(ln) + 1, ln);
+                            let argb = TilesetGreen.pixelArgb(col, row, lx, ly);
+                            let clsName = TilesetGreen.materialName(TilesetGreen.classify(argb));
+                            let maskName = TilesetGreen.materialName(TilesetGreen.materialAt(col, row, lx, ly));
+                            if (clsName != maskName) Ref.put(Ref.get(bad) + 1, bad) else ()
+                        } else (),
+                        List.range(0, c)),
+                    List.range(0, c))
+            }, allCells());
+            (Ref.get(ln), Ref.get(bad))
+        };
+        println("=== 線画: ${lineN}px（全構造の設計線・green 最暗段で締め）/ 分類ずれ ${lineBad}px（0 = 材質 XOR を汚さない）===");
+
+        // 少色数規律（パキッと感の機械指標）: 原本 31 色に対しどのテーマも 50 色以下。
+        // 立体面シェーディングもモチーフも固定ランプの段しか使わない（中間色を作らない）ので少色数を保つ。
         let origColors = countColors(orig);
         let regenColors = countColors(regen);
-        println("=== 総色数: 原本=${origColors} / 再現green=${regenColors}"
-            + " / fire=${countColors(fire)} / forest=${countColors(forest)} / ruins=${countColors(ruins)} ===");
+        let flowerColors = countColors(flower);
+        println("=== 総色数(≤50): 原本=${origColors} / green=${regenColors} / flower=${flowerColors} ===");
+        let colorsOk = regenColors <= 50 and flowerColors <= 50;
+
+        // シルエット許容帯（±2px）: flower は内部を花で描き替えつつ輪郭を花の円に沿ってうねらせるので、
+        // green と完全一致(XOR 0)ではなく「原本の dilate/erode 2px の帯」に収まることを測る（over/under=帯超え画素）。
+        let (flowerOver, flowerUnder) = silhouetteTolerance(flower);
+        println("=== flower のシルエット許容帯(±2px・over/under=0 が理想): flower=${flowerOver}/${flowerUnder} ===");
+        // 境界互換（同種セルを並べても割れない）: セル塗りは周期がセル 26px を割り切るので継ぎ目で連続。
+        let flowerSeam = tileSeamBreaks(flower);
+        println("=== 境界互換(割れ画素 0 が理想): flower=${flowerSeam} ===");
+        let silhouetteOk =
+            flowerOver == 0 and flowerUnder == 0 and flowerSeam == 0;
 
         // TileLint 周回レンガ: 壁レンガのシーム連続性（sliver/横長を機械検出）
         let railW = TilesetGreen.wrapStoneWidths(TilesetGreen.railCuts(), 2);
@@ -499,21 +611,24 @@ mod TilesetGreenGallery {
             and wrapWidthsOk(TilesetGreen.faceCuts(), 6, 14)
             and wrapWidthsOk(TilesetGreen.soldierCuts(), 4, 8);
 
-        // 合格条件: 全 108 セルのワーストが silhouette ≤5% かつ material ≤5%、再現 green は 50 色以下。
+        // 合格条件: green は全 108 セルのワースト silhouette ≤5% かつ material ≤5%、
+        // 全テーマ 50 色以下、モチーフのシルエット漏れ 0。
         let threshPx = ftoi(area * 0.05);
         Assert.assertEq(expected = true,
             worstSil <= threshPx
                 and worstMat <= threshPx
-                and regenColors <= 50
+                and colorsOk
+                and silhouetteOk
+                and lineN > 0
+                and lineBad == 0
                 and wrapOk
                 and (new File("${outDir()}/tileset_green_regen.png")).exists()
+                and (new File("${outDir()}/tileset_flower.png")).exists()
                 and (new File("${outDir()}/tileset_cell_diff.png")).exists()
                 and (new File("${outDir()}/tileset_compare.png")).exists()
                 and (new File("${outDir()}/rooms_original.png")).exists()
                 and (new File("${outDir()}/rooms_green.png")).exists()
-                and (new File("${outDir()}/rooms_fire.png")).exists()
-                and (new File("${outDir()}/rooms_forest.png")).exists()
-                and (new File("${outDir()}/rooms_ruins.png")).exists()
+                and (new File("${outDir()}/rooms_flower.png")).exists()
                 and (new File("${outDir()}/tileset_layers.png")).exists()
                 and (new File("${outDir()}/tileset_green_compare.png")).exists())
 }

@@ -1,0 +1,8 @@
+{
+  "maxBounceAngle": 1.0471975511965976,
+  "speedGainPerHit": 1.025,
+  "edgeSpeedBonus": 0.05,
+  "maxSpeedFactor": 1.6,
+  "paddleSpeed": 200.0,
+  "trailLength": 12
+}
