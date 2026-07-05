@@ -1150,6 +1150,14 @@ mod TestGoldenTrace {
             case _                                                    => None
         }, events)
 
+    /// ViewFx(FireShot) の (詠唱者セル, 対象セル) を抽出。魔導書攻撃の炎 3 幕。
+    def fireShotsOf(events: List[World.SimEvent]): List[((Int32, Int32), (Int32, Int32))] =
+        List.filterMap(ev -> match ev {
+            case World.SimEvent.ViewFx(World.ViewFxKind.FireShot(f)) =>
+                Some(((f#caster#x, f#caster#y), (f#target#x, f#target#y)))
+            case _ => None
+        }, events)
+
     /// ViewFx(Popup) の (text, x, y) を抽出。
     def popupsOf(events: List[World.SimEvent]): List[(String, Int32, Int32)] =
         List.filterMap(ev -> match ev {
@@ -1177,13 +1185,16 @@ mod TestGoldenTrace {
         let sc = sceneOf(player(0, 10, Some(1), 200), finisherEnemy() :: Nil);
         Assert.assertEq(expected = "guard" :: Nil, soundsOf(driveResolveEvs(sc)))
 
-    /// 魔法武器命中 → 敵セル {3,2} に着弾爆発（ViewFx(Explosion)）。爆発は命中で発火し dmg 非依存。
+    /// 魔法武器命中 → 詠唱者セル {2,2} から敵セル {3,2} へ炎 3 幕（ViewFx(FireShot)）。命中で発火し dmg 非依存。
+    /// 従来のスプライト着弾爆発（ViewFx(Explosion)）は魔導書攻撃では出さず FireShot が置き換える。
     @Test
     def testViewScriptMagicHitExplosion(): Unit \ Assert =
         let magicWeapon = ({weaponType = WeaponCatalog.WeaponType.Magic, hit = 200, crit = 0 | testWeapon()}: UnitCatalog.WeaponResource);
         let mp = {weapons = magicWeapon :: Nil | player(0, 10, Some(1), 200)};
         let sc = sceneOf(mp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        Assert.assertEq(expected = (3, 2) :: Nil, explosionCellsOf(driveResolveEvs(sc)))
+        let evs = driveResolveEvs(sc);
+        Assert.assertEq(expected = ((2, 2), (3, 2)) :: Nil, fireShotsOf(evs));
+        Assert.assertEq(expected = true, List.isEmpty(explosionCellsOf(evs)))
 
     /// 回避 → 命中 SE は鳴らず（"miss" SE のみ）＋ "miss" テキストポップアップを敵セル {3,2} に浮かす。
     @Test
@@ -1193,7 +1204,7 @@ mod TestGoldenTrace {
         Assert.assertEq(expected = "miss" :: Nil, soundsOf(evs));
         Assert.assertEq(expected = ("miss", 3, 2) :: Nil, popupsOf(evs))
 
-    /// 敵攻撃は魔法武器でも **爆発を出さない**（legacy 敵攻撃は ExplosionFx を発火しない＝allowExplosion=false）。
+    /// 敵攻撃は魔法武器でも **炎 3 幕を出さない**（legacy 敵攻撃は着弾 fx を発火しない＝allowExplosion=false）。
     /// 命中 SE は出す（必ず 1 件・名前は dmg 依存ゆえ件数で固定）。
     @Test
     def testViewScriptEnemyHitNoExplosion(): Unit \ Assert =
@@ -1201,7 +1212,7 @@ mod TestGoldenTrace {
         let e  = {weapon = Some(magicWeapon) | enemy(1, 10, {x = 3, y = 2}, false, Some(0), ruleJson(""), 200)};
         let sc = sceneOf(player(0, 10, None, 80), e :: Nil);
         let (_, evs) = driveEnemyResolve(sc);
-        Assert.assertEq(expected = true, List.isEmpty(explosionCellsOf(evs)));
+        Assert.assertEq(expected = true, List.isEmpty(fireShotsOf(evs)));
         Assert.assertEq(expected = 1, List.length(soundsOf(evs)))
 
     /// 統合: 実 sim ログ（通常命中・敵 hp20 生存）を `ViewReplay.plan` で view-action 化すると 3 件

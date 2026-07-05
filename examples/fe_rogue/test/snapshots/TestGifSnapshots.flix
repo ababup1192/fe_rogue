@@ -76,6 +76,8 @@ mod TestGifSnapshots {
             let c8 = genFlowLevelUp(rc, ctx);
             let c9 = genFlowLog(rc, ctx);
             let c10 = genCharacterSelect(rc, ctx);
+            let c11 = genFireBursts(rc, ctx);
+            let c12 = genTomeAttack(rc, ctx);
             // この一発の実行でも GIF が各ページに載るよう、test/snapshots/gifs/ から build/snapshots/
             // へコピーしてからサイトを焼き直す（存在チェックで生成済み GIF は img に、未生成は案内に切り替わる）。
             SnapshotSupport.syncGifs(SnapshotCatalog.gifEntries() |> List.map(entry -> entry#name));
@@ -83,7 +85,7 @@ mod TestGifSnapshots {
             // sanity: どの最終フレームも空でない（描画が成立している）。
             Assert.assertEq(expected = true,
                 c1 > 5 and c2 > 5 and c3 > 5 and c4 > 5 and c5 > 5 and c6 > 5 and c7 > 5 and c8 > 5
-                    and c9 > 5 and c10 > 5)
+                    and c9 > 5 and c10 > 5 and c11 > 5 and c12 > 5)
         }
     }
 
@@ -539,6 +541,114 @@ mod TestGifSnapshots {
 
     def genFlowAttackWeapon(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + Fs.FileRead + r} =
         genFlow(rc, ctx, "flow_attack_weapon", flowAttackWeaponConfig(), flowAttackWeaponScript())
+
+    // ════════════════════════════════════════════════════════
+    // flow_fire_burst（魔法の炎着弾 — FireFx の polygon 直描き・UI ハーネスなし）
+    // ════════════════════════════════════════════════════════
+
+    /// 1 発ぶんの区間（秒）。どのプリセットも duration ≤ 0.85 なので余韻込みで 1 秒に収める。
+    def fireSegmentSeconds(): Float64 = 1.0
+    /// GIF の 1 フレームぶんの経過秒（frameDelayMs と同じ = 実速）。
+    def fireDt(): Float64 = 0.06
+    /// 撮る長さ（フレーム数）。3 発 × 1 秒 = 3 秒ぶん。
+    def fireFrameCount(): Int32 = 50
+    /// 左 = 実寸（1 マス 16px 上）/ 右 = 拡大で、同じ seed の炎を同時に撃つ。
+    def fireLeftCenter(): Vec2.Vec2 = {x = 60.0, y = 72.0}
+    def fireRightCenter(): Vec2.Vec2 = {x = 168.0, y = 76.0}
+    def fireZoom(): Float64 = 3.5
+
+    /// セル枠（16px × scale）の 4 辺を細い帯で描く。炎の覆う範囲の目安にする。
+    def cellFrame(center: Vec2.Vec2, scale: Float64): List[GameEngine.PolygonRenderCmd] =
+        let half = 8.0 * scale;
+        let edge = (p0, p1) ->
+            ({ vertices = Quad.strip(p0, p1, -0.5, 0.5),
+               color = {r = 0.35f32, g = 0.4f32, b = 0.5f32}, alpha = 0.5f32,
+               zIndex = 10 }: GameEngine.PolygonRenderCmd);
+        edge({x = center#x - half, y = center#y - half}, {x = center#x + half, y = center#y - half}) ::
+        edge({x = center#x + half, y = center#y - half}, {x = center#x + half, y = center#y + half}) ::
+        edge({x = center#x + half, y = center#y + half}, {x = center#x - half, y = center#y + half}) ::
+        edge({x = center#x - half, y = center#y + half}, {x = center#x - half, y = center#y - half}) :: Nil
+
+    /// 経過秒 tAll → その瞬間の全 polygon（セル枠 + 実寸と拡大の炎）。
+    /// 何発目かは tAll から導き、発ごとに seed を変えて表情替えを見せる。
+    def firePolysAt(spec: FireFx.Spec, tAll: Float64): List[GameEngine.PolygonRenderCmd] =
+        let shot = Float64.tryToInt32(Float64.floor(tAll / fireSegmentSeconds())) |> Option.getWithDefault(0);
+        let tseg = tAll - Int32.toFloat64(shot) * fireSegmentSeconds();
+        List.flatten(
+            cellFrame(fireLeftCenter(), 1.0) ::
+            cellFrame(fireRightCenter(), fireZoom()) ::
+            FireFx.quads(spec, {center = fireLeftCenter(), seed = shot + 1, scale = 1.0}, tseg) ::
+            FireFx.quads(spec, {center = fireRightCenter(), seed = shot + 1, scale = fireZoom()}, tseg) :: Nil)
+
+    /// UI ハーネスなしで polygon 直描きの GIF を焼く（drawables は空）。プリセット 1 つ = GIF 1 本。
+    def genFireBurst(rc: Region[r], ctx: SnapshotSupport.Ctx, name: String, spec: FireFx.Spec):
+            Int32 \ {IO + r} =
+        let framesRef = Ref.fresh(rc, (Nil: List[BufferedImage]));
+        List.forEach(f -> {
+            let img = SoftRaster.renderToImage({
+                drawables = (Nil: List[GameEngine.Drawable]),
+                polygons = firePolysAt(spec, Int32.toFloat64(f) * fireDt()),
+                design = ctx#design, scale = ctx#scale, background = ctx#background,
+                texturePath = ctx#texPaths, fontTtf = ctx#ttfPath, fontAtlas = ctx#atlas,
+                outPath = ""
+            });
+            Ref.put(img :: Ref.get(framesRef), framesRef)
+        }, List.range(0, fireFrameCount()));
+        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath(name));
+        // sanity: 燃え上がりの最盛期（0.24 秒）に polygon が出ていること。
+        List.length(firePolysAt(spec, 0.24))
+
+    /// 全プリセットぶんの GIF を焼き、いちばん粒の少ないものの polygon 数を返す
+    /// （全 GIF が空でないことを 1 つの数で見張る）。
+    def genFireBursts(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + r} =
+        let counts =
+            genFireBurst(rc, ctx, "flow_fire_standard", FireFx.standard()) ::
+            genFireBurst(rc, ctx, "flow_fire_pillar", FireFx.pillar()) ::
+            genFireBurst(rc, ctx, "flow_fire_flare", FireFx.flare()) ::
+            genFireBurst(rc, ctx, "flow_fire_smolder", FireFx.smolder()) ::
+            genFireBurst(rc, ctx, "flow_fire_arcane", FireFx.arcane()) ::
+            genFireBurst(rc, ctx, "flow_fire_droplet", FireFx.droplet()) ::
+            genFireBurst(rc, ctx, "flow_fire_fireball", FireFx.fireball()) ::
+            genFireBurst(rc, ctx, "flow_fire_sidestream", FireFx.sidestream()) ::
+            genFireBurst(rc, ctx, "flow_fire_vortex", FireFx.vortex()) ::
+            genFireBurst(rc, ctx, "flow_fire_sparkler", FireFx.sparkler()) :: Nil;
+        counts |> List.minimum |> Option.getWithDefault(0)
+
+    // ════════════════════════════════════════════════════════
+    // flow_tome_attack（魔導書攻撃の炎 3 幕 — 詠唱→飛翔→着弾を戦闘レイアウトで見せる）
+    // ════════════════════════════════════════════════════════
+
+    /// 詠唱者セル中心（左）と対象セル中心（右）。火の玉が左の頭上に生まれ、右へ飛んで炸裂する。
+    def tomeCasterCenter(): Vec2.Vec2 = {x = 56.0, y = 90.0}
+    def tomeTargetCenter(): Vec2.Vec2 = {x = 188.0, y = 86.0}
+    /// セル枠の見た目スケール（tileSize 26px ≈ 1.6 × 16px）。
+    def tomeCellScale(): Float64 = 1.6
+    /// 収録フレーム数（total 1.1s + 余韻）。3 幕が読めるよう実速 60ms/frame で 28 コマ ≈ 1.68s。
+    def tomeFrameCount(): Int32 = 28
+
+    /// 経過秒 tAll → その瞬間の全 polygon（詠唱者・対象のセル枠 + 炎 3 幕）。
+    def tomePolysAt(tAll: Float64): List[GameEngine.PolygonRenderCmd] =
+        List.flatten(
+            cellFrame(tomeCasterCenter(), tomeCellScale()) ::
+            cellFrame(tomeTargetCenter(), tomeCellScale()) ::
+            FireShotFx.quads(tomeCasterCenter(), tomeTargetCenter(), 1, tAll) :: Nil)
+
+    /// UI ハーネスなしで炎 3 幕の GIF を焼く（drawables は空・polygon 直描き）。
+    def genTomeAttack(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + r} =
+        let framesRef = Ref.fresh(rc, (Nil: List[BufferedImage]));
+        List.forEach(f -> {
+            let img = SoftRaster.renderToImage({
+                drawables = (Nil: List[GameEngine.Drawable]),
+                polygons = tomePolysAt(Int32.toFloat64(f) * fireDt()),
+                design = ctx#design, scale = ctx#scale, background = ctx#background,
+                texturePath = ctx#texPaths, fontTtf = ctx#ttfPath, fontAtlas = ctx#atlas,
+                outPath = ""
+            });
+            Ref.put(img :: Ref.get(framesRef), framesRef)
+        }, List.range(0, tomeFrameCount()));
+        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_tome_attack"));
+        // sanity: 着弾（幕3 flare 直後）に多数の polygon が出ていること。
+        List.length(tomePolysAt(FireShotFx.impactStart() + 0.1))
 
     // ════════════════════════════════════════════════════════
     // flow_character_select（注目カードを右へ送る → カルーセルが寄る → Z で 3 人選ぶ）

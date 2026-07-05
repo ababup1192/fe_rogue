@@ -328,6 +328,27 @@ mod RenderWorld {
                     })
         }
 
+    /// 魔導書攻撃の炎 3 幕 fx を World.fireShots store から polygon 直描きする（幕・位置・スケールは
+    /// elapsed から `FireShotFx` が純関数で導出）。頂点はワールド px ゆえ camera を各頂点に掛けて screen 化する
+    /// （`Camera2D.applyToWorldPos` は screen = world*scale - offset のアフィン変換ゆえ頂点直変換で zoom も乗る）。
+    /// 盤面（Map）が無い画面（Title 等・フロア跨ぎ残骸）は Nil。
+    pub def renderFireShots(world: World, transform: Camera2D.ViewTransform,
+                            scene: Scene[NodeTag]): List[GameEngine.PolygonRenderCmd] =
+        if (not MapScene.isPresent(scene)) Nil
+        else
+            World.fireShotsOf(world)
+                |> Map.valuesOf
+                |> List.flatMap(d -> {
+                    let elapsed = d#total - d#remaining;
+                    FireShotFx.quads(d#caster, d#target, d#seed, elapsed)
+                        |> List.map(cmd -> screenPoly(transform, cmd))
+                })
+
+    /// ワールド座標の polygon 1 枚を screen 座標へ（各頂点に camera を掛けるだけ）。
+    def screenPoly(transform: Camera2D.ViewTransform, cmd: GameEngine.PolygonRenderCmd):
+            GameEngine.PolygonRenderCmd =
+        {vertices = List.map(v -> Camera2D.applyToWorldPos(transform, v), cmd#vertices) | cmd}
+
     /// 全 grid 範囲オーバーレイ（移動 / 攻撃 / 敵移動 / 敵攻撃 / 味方攻撃 / 交換 / 危険範囲）を World render
     /// System で描く。各 mod は「描画セル・色・α」だけ持ち、描画は `RangeOverlay.tileDrawables` の 1 経路に集約
     /// ＝law の汎用化。非表示のオーバーレイはセルが空ゆえ Drawable も空（毎フレーム全種を引いても無害）。

@@ -1,4 +1,4 @@
-// SnapshotCatalog — スナップショット全 37 枚の目録（純データ）。
+// SnapshotCatalog — スナップショット全 42 枚の目録（純データ）。
 //
 // ここは「何を撮るか」の唯一の宣言点。各エントリは名前・1 行説明・種別（PNG/GIF）・所属シナリオ・
 // タグだけを持つ。実際にどう組んで描くか（drive）は TestUiSnapshots の driveByName、GIF の収録は
@@ -156,7 +156,31 @@ mod SnapshotCatalog {
         {name = "minimap_normal", kind = Kind.Png, scenario = "minimap", tags = "minimap" :: Nil,
          desc = "ミニマップ・一部探索（部屋1+通路を訪問・未訪問の隣接通路はヒント表示・味方/アイテム/敵マーカー）"} ::
         {name = "minimap_explored", kind = Kind.Png, scenario = "minimap", tags = "minimap" :: "full" :: Nil,
-         desc = "ミニマップ・全探索（両部屋+通路を訪問・階段発見マーカーつき）"} :: Nil
+         desc = "ミニマップ・全探索（両部屋+通路を訪問・階段発見マーカーつき）"} ::
+        // ── fire-fx: 魔法の炎着弾（閉形式パーティクル直描き・FireFx.quads）──
+        // 10 プリセットの見比べページ。どれも 左=実寸 1 マス / 右=拡大、seed 1→2→3 の 3 連発。
+        {name = "flow_fire_standard", kind = Kind.Gif, scenario = "fire-fx", tags = "flow" :: "fire-fx" :: Nil,
+         desc = "焚き火型（標準）: 黄→橙→赤の舌がバランスよく燃え上がる"} ::
+        {name = "flow_fire_pillar", kind = Kind.Gif, scenario = "fire-fx", tags = "flow" :: "fire-fx" :: Nil,
+         desc = "火柱: 細くまとまった白熱の舌が勢いよく高く噴き上がる"} ::
+        {name = "flow_fire_flare", kind = Kind.Gif, scenario = "fire-fx", tags = "flow" :: "fire-fx" :: Nil,
+         desc = "爆炎: セル中心から全方位へ一斉に弾ける短く激しい爆発（閃光大きめ）"} ::
+        {name = "flow_fire_smolder", kind = Kind.Gif, scenario = "fire-fx", tags = "flow" :: "fire-fx" :: Nil,
+         desc = "残り火: 低く広く深紅の舌がゆっくりくすぶる（閃光なし・余韻長め）"} ::
+        {name = "flow_fire_arcane", kind = Kind.Gif, scenario = "fire-fx", tags = "flow" :: "fire-fx" :: Nil,
+         desc = "蒼炎: 青白い魔法の火。白→水色→青→菫色に冷める"} ::
+        {name = "flow_fire_droplet", kind = Kind.Gif, scenario = "fire-fx", tags = "flow" :: "fire-fx" :: Nil,
+         desc = "雫型: 丸底の柔らかな舌がゆらめく、ろうそく・鬼火のあかり"} ::
+        {name = "flow_fire_fireball", kind = Kind.Gif, scenario = "fire-fx", tags = "flow" :: "fire-fx" :: Nil,
+         desc = "火の玉: 脈動する大玉＋白熱の核（2 層）を舌と火の粉が舐める"} ::
+        {name = "flow_fire_sidestream", kind = Kind.Gif, scenario = "fire-fx", tags = "flow" :: "fire-fx" :: Nil,
+         desc = "横流れ: 風に吹かれて右へ流れ、強く傾いて燃える炎"} ::
+        {name = "flow_fire_vortex", kind = Kind.Gif, scenario = "fire-fx", tags = "flow" :: "fire-fx" :: Nil,
+         desc = "渦巻き: 舌が中心を公転しながら立ち上り、螺旋を描く"} ::
+        {name = "flow_fire_sparkler", kind = Kind.Gif, scenario = "fire-fx", tags = "flow" :: "fire-fx" :: Nil,
+         desc = "線香花火: 速度方向に伸びる streak の火の粉が長い弧を描き、儚くまたたく"} ::
+        {name = "flow_tome_attack", kind = Kind.Gif, scenario = "fire-fx", tags = "flow" :: "fire-fx" :: "combat" :: Nil,
+         desc = "魔導書攻撃の炎 3 幕: 詠唱者の頭上に火の玉が生まれ（詠唱）→対象へ飛び（飛翔）→大きく炸裂する（着弾）"} :: Nil
 
     /// PNG エントリだけ（TestUiSnapshots が drive + golden 比較する対象）。
     pub def pngEntries(): List[Entry] = List.filter(entry -> entry#kind == Kind.Png, entries())

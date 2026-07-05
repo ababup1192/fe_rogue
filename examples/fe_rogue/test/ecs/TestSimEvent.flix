@@ -360,6 +360,7 @@ mod TestSimEvent {
             unchanged(World.ViewFxKind.Popup({x = 1, y = 1, text = "hi"}))
             and unchanged(World.ViewFxKind.Sound("s"))
             and unchanged(World.ViewFxKind.Explosion({x = 2, y = 2}))
+            and unchanged(World.ViewFxKind.FireShot({caster = {x = 1, y = 1}, target = {x = 2, y = 2}}))
             and unchanged(World.ViewFxKind.Knockback(World.EntityRef.Enemy(5), {x = 3, y = 3}))
             and unchanged(World.ViewFxKind.Thief({x = 4, y = 4}))
             and unchanged(World.ViewFxKind.Died(World.EntityRef.Enemy(5)));

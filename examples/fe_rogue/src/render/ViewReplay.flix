@@ -24,6 +24,7 @@ mod ViewReplay {
         case Text(Int32, Int32, String)       // テキストポップアップ（"miss" 等）at (x,y)
         case Damage(EntityRef, Int32)         // ダメージ数字ポップアップ（ref の現在セル・side 色）
         case Explode(Int32, Int32)            // 着弾爆発 at (x,y)
+        case FireBurst(Int32, Int32, Int32, Int32)  // 魔導書の炎 3 幕 caster(x,y)→target(x,y)
         case HpBar(EntityRef, Int32)          // HPバー更新（newHp）
         case Snap(EntityRef, Int32, Int32)    // 位置確定（ノックバック着地）at (x,y)
         case Death(EntityRef)                 // 死亡演出
@@ -53,6 +54,7 @@ mod ViewReplay {
         case World.ViewFxKind.Sound(n)        => ViewAction.Play(n) :: Nil
         case World.ViewFxKind.Popup(p)        => ViewAction.Text(p#x, p#y, p#text) :: Nil
         case World.ViewFxKind.Explosion(c)    => ViewAction.Explode(c#x, c#y) :: Nil
+        case World.ViewFxKind.FireShot(f)     => ViewAction.FireBurst(f#caster#x, f#caster#y, f#target#x, f#target#y) :: Nil
         case World.ViewFxKind.Knockback(r, c) => ViewAction.Snap(r, c#x, c#y) :: Nil
         case World.ViewFxKind.Thief(_)        => Nil   // drop は scene 状態＝CombatDriver.applyThiefDrop が引く（純 view でない）
         case World.ViewFxKind.Died(r)         => ViewAction.Death(r) :: Nil
@@ -78,6 +80,8 @@ mod ViewReplay {
                 let cell = World.posOf(r, World.WorldQuery.get()) |> Option.getWithDefault({x = 0, y = 0});
                 DamagePopupFx.emit(MapSnapshot.cellCenter(cell), dmg, popupColor(r), scene)
             case ViewAction.Explode(x, y)  => ExplosionFx.emitAtCell({x = x, y = y}, scene)
+            case ViewAction.FireBurst(cx, cy, tx, ty) =>
+                FireShotFx.emitAtCells({x = cx, y = cy}, {x = tx, y = ty}, scene)
             // HP バーは World.hp store から直描き＝リプレイでも押し込み不要（SetHp が既に反映済み）。
             case ViewAction.HpBar(_r, _hp) => scene
             case ViewAction.Snap(r, x, y)  => snapRefTo(r, {x = x, y = y}, scene)

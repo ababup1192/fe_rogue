@@ -148,6 +148,22 @@ mod GameGallery {
           pxWidth = pxWidth, generateHint = Some("run `flix test` to generate"),
           lint = SnapshotSite.noLint() }
 
+    /// lint バッジを名前で差し込んだカタログ。検査していない項目（GIF・ボード
+    /// が主役のスクリーンショット・ロボット画像）は未検査バッジのまま。
+    def catalogWithLint(lintByName: Map[String, SnapshotSite.LintBadge]): List[SnapshotSite.Item] =
+        catalog() |> List.map(entry ->
+            { lint = Option.getWithDefault(SnapshotSite.noLint(), Map.get(entry#name, lintByName)) | entry })
+
+    /// 撮影と同じ projectUi でページをめくった UiWorld を、SokobanLint 経由で
+    /// RenderLint の検査入力へ射影する。同じ UiWorld の読み取りだけなので描画
+    /// には一切影響しない —— PNG は1ピクセルも変わらない。
+    def lintInput(name: String, atlas: FontAtlas, ui: UiStore.UiWorld,
+                  line: Worldline[Board.World]): RenderLint.Input =
+        let w = Worldline.current(line);
+        let projected = GameUi.projectUi(Worldline.pastLength(line), w, ui);
+        SokobanLint.buildInput(
+            { sceneName = name, allow = Nil, screen = design(), atlas = atlas }, projected)
+
     def catalog(): List[SnapshotSite.Item] =
         item("screen_title", "The title page — everything on it is Spec", "Screens", "png", 640) ::
         item("screen_level1", "Level 1 at rest, move zero", "Screens", "png", 640) ::
@@ -176,13 +192,25 @@ mod GameGallery {
                 bakeGif(atlas, ui, solveCues(), fresh(Board.titleWorld()), "gallery/solve_level1.gif");
                 bakeGif(atlas, ui, fullClearCues(), fresh(Board.titleWorld()), "gallery/full_clear.gif");
                 bakeGif(atlas, ui, rewindCues(), fresh(Board.playingWorld(1)), "gallery/rewind_demo.gif");
+                // UI が主役の2ページを幾何リンタにかけ、結果をバッジとしてサイト
+                // に載せる。違反（非抑制 Finding）は下の assert で fail になり、
+                // 差分にそのまま違反の説明文が並ぶ。
+                let titleInput = lintInput("screen_title", atlas, ui, fresh(Board.titleWorld()));
+                let clearInput = lintInput("screen_clear", atlas, ui, clearedAndRaining());
+                let titleFindings = RenderLint.check(titleInput);
+                let clearFindings = RenderLint.check(clearInput);
                 run {
                     SnapshotSite.generate(
                         { outDir = "gallery", title = "Sokoban Gallery", cssScale = 2 },
-                        catalog())
+                        catalogWithLint(Map#{
+                            "screen_title" => SokobanLint.badgeOf(titleFindings),
+                            "screen_clear" => SokobanLint.badgeOf(clearFindings)}))
                 } with Fs.FileWrite.runWithIO;
+                // 末尾の2つの bool は「リンタがちゃんと要素を見た」ことの保証:
+                // ブリッジが空リストを返して空虚に clean になる退行を防ぐ。
                 Assert.assertEq(
-                    expected = (true, true, true, true, true, true, true, true),
+                    expected = (true, true, true, true, true, true, true, true,
+                                (Nil: List[String]), (Nil: List[String]), true, true),
                     ((new File("gallery/screen_title.png")).exists(),
                      (new File("gallery/screen_level1.png")).exists(),
                      (new File("gallery/screen_push.png")).exists(),
@@ -190,6 +218,10 @@ mod GameGallery {
                      (new File("gallery/solve_level1.gif")).exists(),
                      (new File("gallery/full_clear.gif")).exists(),
                      (new File("gallery/rewind_demo.gif")).exists(),
-                     (new File("gallery/index.html")).exists()))
+                     (new File("gallery/index.html")).exists(),
+                     SokobanLint.activeDetails(titleFindings),
+                     SokobanLint.activeDetails(clearFindings),
+                     not List.isEmpty(titleInput#elements),
+                     not List.isEmpty(clearInput#elements)))
         }
 }

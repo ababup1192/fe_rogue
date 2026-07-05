@@ -70,13 +70,15 @@ mod CombatSystem {
                 |> Option.toList;
         World.SimEvent.ViewFx(World.ViewFxKind.Sound("miss")) :: popup
 
-    /// 命中時の view-fx（命中 SE ＋ 魔法武器の着弾爆発）。legacy applyHit:643-647 を踏襲＝SE→explosion の順で、
+    /// 命中時の view-fx（命中 SE ＋ 魔導書攻撃の炎 3 幕）。legacy applyHit:643-647 を踏襲＝SE→着弾 fx の順で、
     /// その後に Damaged（数字ポップアップ／SetHp 相当）が続く。命中 SE 名は dmg/isCrit/weaponType 由来
-    /// （`hitSoundName`：0 ダメ=guard / 必殺=critical / 魔法=magic / 通常=damage）。爆発は `allowExplosion`
-    /// （player 攻撃のみ true。legacy 敵攻撃は爆発を出さない）かつ Magic 武器のとき防御側セルへ（dmg 非依存）。
-    /// pos 未登録なら爆発を省く。武器なしは非魔法扱い。いずれも World 不変＝ViewFx。
-    def hitFxEvents(world: World, defenderRef: World.EntityRef, atk: Combat.CombatView,
-                    dmg: Int32, isCrit: Bool, allowExplosion: Bool): List[World.SimEvent] =
+    /// （`hitSoundName`：0 ダメ=guard / 必殺=critical / 魔法=magic / 通常=damage）。炎 3 幕は `allowExplosion`
+    /// （player 攻撃のみ true。legacy 敵攻撃は着弾 fx を出さない）かつ Magic 武器のとき、詠唱者（攻撃側）セル
+    /// から防御側セルへ発生する（dmg 非依存）。詠唱者頭上に火の玉が現れ → 対象へ飛び → 炸裂する 3 幕は
+    /// `ViewFx(FireShot(caster, target))` に集約し、着弾で従来のスプライト爆発（ExplosionFx）を置き換える。
+    /// pos 未登録なら省く。武器なしは非魔法扱い。いずれも World 不変＝ViewFx。
+    def hitFxEvents(world: World, attackerRef: World.EntityRef, defenderRef: World.EntityRef,
+                    atk: Combat.CombatView, dmg: Int32, isCrit: Bool, allowExplosion: Bool): List[World.SimEvent] =
         let weaponType = atk#weapon |> Option.map(w -> w#weaponType);
         let sound = match weaponType {
             case Some(wt) => CombatRules.hitSoundName(dmg, isCrit, wt)
@@ -86,13 +88,16 @@ mod CombatSystem {
             case Some(WeaponCatalog.WeaponType.Magic) => true
             case _                                    => false
         };
-        let explosion =
+        let fireShot =
             if (allowExplosion and isMagic)
-                World.posOf(defenderRef, world)
-                    |> Option.map(c -> World.SimEvent.ViewFx(World.ViewFxKind.Explosion({x = c#x, y = c#y})))
-                    |> Option.toList
+                match (World.posOf(attackerRef, world), World.posOf(defenderRef, world)) {
+                    case (Some(a), Some(c)) =>
+                        World.SimEvent.ViewFx(World.ViewFxKind.FireShot(
+                            {caster = {x = a#x, y = a#y}, target = {x = c#x, y = c#y}})) :: Nil
+                    case _ => Nil
+                }
             else Nil;
-        World.SimEvent.ViewFx(World.ViewFxKind.Sound(sound)) :: explosion
+        World.SimEvent.ViewFx(World.ViewFxKind.Sound(sound)) :: fireShot
 
     /// 結果優先順位 **finisher > crit > base** の選択（legacy CombatDriver:519-531 / :735-742 共通）。
     /// finisher（攻撃側 ring 装備＋防御側瀕死）は draw なしで確殺、crit は `critRoll` 判定、いずれも外れれば base strike。
@@ -195,8 +200,8 @@ mod CombatSystem {
                         // draw 順を揃えるため hit(1)→crit(2) の後・draw 3 として引く。
                         // isRogueOf read-model で ViewFx(Thief) を emit（drop 実体は wrapper が引く）。
                         let thiefRoll = World.RngDraw.nextPercent();
-                        // view-fx（命中 SE ＋ 魔法爆発）を先頭に置く（legacy applyHit:643-647 の SE→explosion→popup 順）。
-                        let fx = hitFxEvents(world, defender#ref, atk, fin#dmg, fin#isCrit, true);
+                        // view-fx（命中 SE ＋ 魔導書の炎 3 幕）を先頭に置く（legacy applyHit:643-647 の SE→着弾 fx→popup 順）。
+                        let fx = hitFxEvents(world, attacker#ref, defender#ref, atk, fin#dmg, fin#isCrit, true);
                         // core（敵への被弾）: 撃破=Damaged(hard 0)::Dying / 非撃破=Damaged::Alerted::Released。
                         // 撃破分岐の hard-0 clamp（legacy startDeathAnimation）を維持＝newHp=0 をベタ書き。
                         let coreEvents =
@@ -291,8 +296,8 @@ mod CombatSystem {
                         // crit は命中時のみ引く（プレイヤーパスと違い miss では引かない＝legacy:728）。
                         let critRoll = World.RngDraw.nextPercent();
                         let outcome  = combatOutcome(world, attacker, defView, strike, critRoll);
-                        // view-fx（命中 SE のみ・爆発なし＝legacy 敵攻撃は ExplosionFx を出さない＝allowExplosion=false）。
-                        let fx = hitFxEvents(world, defender#ref, atk, outcome#dmg, outcome#isCrit, false);
+                        // view-fx（命中 SE のみ・炎なし＝legacy 敵攻撃は着弾 fx を出さない＝allowExplosion=false）。
+                        let fx = hitFxEvents(world, attacker#ref, defender#ref, atk, outcome#dmg, outcome#isCrit, false);
                         // core（味方への被弾）: RAW newHp（clamp なし）。撃破は deferred ＝ ViewFx(Died) のみ（Dying なし）。
                         // Released は UNCONDITIONAL（撃破でもかなしばり解除）。Alerted なし（敵は攻撃で alerted されない）。
                         let deathFx =

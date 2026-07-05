@@ -11,5 +11,14 @@ mod Fx {
     /// [0,1) 乱数）と時刻 `t` を渡して `piece` で写す。番号 `i` も併せて渡すので、丸め込みの
     /// 割り当てのような「乱数ではなく順番そのもの」が要る政策にも使える。
     pub def derive(count: Int32, t: Float64, piece: (Int32, Int32 -> Float64, Float64) -> a): List[a] =
-        List.map(i -> piece(i, k -> Hash01.at(i, k), t), List.range(0, count))
+        deriveSeeded({seed = 0, count = count}, t, piece)
+
+    /// seed を変えると、同じ番号の粒でも別の個性を引く `derive`。着弾や爆発のような
+    /// 「撃つたびに出る」群れが毎回そっくり同じ姿になるのを避けたいとき、発生ごとの
+    /// 通し番号を seed に渡す。同じ seed なら同じ絵（巻き戻し・リプレイでも揺れない）。
+    /// 注意: `deriveSeeded({seed = 0, ...}, ...)` は `derive` と同じ列。粒数が 8191 個
+    /// までなら異なる seed 同士で個性が重ならない。
+    pub def deriveSeeded(spec: {seed = Int32, count = Int32}, t: Float64,
+                          piece: (Int32, Int32 -> Float64, Float64) -> a): List[a] =
+        List.map(i -> piece(i, k -> Hash01.at(spec#seed * 8191 + i, k), t), List.range(0, spec#count))
 }

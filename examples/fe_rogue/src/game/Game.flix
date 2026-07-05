@@ -1063,6 +1063,7 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World, synced: Scene[N
     GameEngine.Game.renderCommands(List.append(sprites, worldDrawables),
         RenderWorld.renderTileMaps(world2, transform, synced),
         List.append(scenePolygons,
-            List.append(minimap#polygons,
-                List.append(WeaponIconRender.renderGlyphs(world2, transform, synced),
-                            uiRendered#polygons))))
+            List.append(RenderWorld.renderFireShots(world2, transform, synced),
+                List.append(minimap#polygons,
+                    List.append(WeaponIconRender.renderGlyphs(world2, transform, synced),
+                                uiRendered#polygons)))))

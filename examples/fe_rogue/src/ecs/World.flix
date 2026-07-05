@@ -39,6 +39,13 @@ pub type alias PopupFx = { remaining = Float64, total = Float64, pos = Vec2.Vec2
 /// `RenderWorld.renderExplosions` が導出する。
 pub type alias ExplosionFx = { remaining = Float64, total = Float64, pos = Vec2.Vec2, scale = Float64 }
 
+/// 魔導書攻撃の炎 3 幕（詠唱→飛翔→着弾）の store エントリ。詠唱者セル中心 `caster` の頭上に
+/// 火の玉が生まれ、対象セル中心 `target` へ飛んで炸裂する。elapsed（= total - remaining）から
+/// 幕・位置・スケール・プリセットを `FireShotFx` が純関数で導出する（Driver なし・巻き戻し安全）。
+/// `remaining` は tickFxMap が dt 減算し 0 以下で cull（PopupFx/ExplosionFx と同 lane）。`seed` は
+/// 攻撃ごとの通し番号（撃つたびの表情替え。同じ値なら同じ絵）。
+pub type alias FireShot = { remaining = Float64, total = Float64, caster = Vec2.Vec2, target = Vec2.Vec2, seed = Int32 }
+
 /// ユニットの再生中アニメ（AnimatedSprite2D の脱ノード化）。frame/frameProgress は保存せず、
 /// `elapsed`（再生開始からの実時間秒・stepWorld が加算）から描画時に純関数で導出する
 /// （ループ/コマ毎 duration 倍率込み＝engine advanceFrame と同値）。`Cmd.SetAnim` は
@@ -178,6 +185,9 @@ pub enum World {
                  // floor 遷移で残っても自然 expire＝prune 不要）。
                  popupFx = Map[Int32, PopupFx], popupFxNextSeq = Int32,
                  explosionFx = Map[Int32, ExplosionFx], explosionFxNextSeq = Int32,
+                 // 魔導書攻撃の炎 3 幕 fx。spawn は `Cmd.SpawnFireShot`（applyCmd が nextSeq を seed に採番し +1）、
+                 // 老化と cull は stepWorld の tickFxMap（explosionFx と同 lane）。~1.1s の transient ゆえ prune 不要。
+                 fireShots = Map[Int32, FireShot], fireShotsNextSeq = Int32,
                  // 背景 map タイルの描画ハンドル（floor+walls 層・静的）。rebuild イベント（tileGen 変化）で
                  // bake し、render System が camera 適用して instanced 描画。scene TileMapLayer ノードは衝突用に存続。
                  tileLayers = List[TileLayerHandle],
@@ -231,6 +241,7 @@ mod World {
                      groundItems = Map.empty(),
                      popupFx = Map.empty(), popupFxNextSeq = 0,
                      explosionFx = Map.empty(), explosionFxNextSeq = 0,
+                     fireShots = Map.empty(), fireShotsNextSeq = 0,
                      tileLayers = Nil, tileGen = 0,
                      effectRule = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false,
@@ -337,6 +348,7 @@ mod World {
             // fx は command/step 由来＝preserve（scene mirror 元なし・transient）。
             popupFx = w#popupFx, popupFxNextSeq = w#popupFxNextSeq,
             explosionFx = w#explosionFx, explosionFxNextSeq = w#explosionFxNextSeq,
+            fireShots = w#fireShots, fireShotsNextSeq = w#fireShotsNextSeq,
             // tileLayers/tileGen は command-derive（BumpTileGen/setTileLayers）＝preserve（frame-1 は空/0 を carry）。
             tileLayers = w#tileLayers, tileGen = w#tileGen,
             // effectRule は敵 resource 由来の read-model（敵のみ・内側 Option=ルールなし）＝frame-1 seed。
@@ -387,6 +399,7 @@ mod World {
         }, World.World({tweens = nextTweens,
                         popupFx = tickFxMap(dt, w#popupFx),
                         explosionFx = tickFxMap(dt, w#explosionFx),
+                        fireShots = tickFxMap(dt, w#fireShots),
                         // 床アイテムの点滅位相（elapsed）も World が tick（fx と同じ lane）。
                         groundItems = Map.map(d ->
                             {elapsed = GroundItems.advance(Duration.add(d#elapsed, Duration.seconds(dt))) | d},
@@ -546,6 +559,7 @@ mod World {
         case SetModulate(EntityRef, Color)     // 待機/行動済み暗転色（本体/バー/アイコン共通）
         case SpawnPopupFx({total = Float64, pos = Vec2.Vec2, text = String, color = Color})  // ダメージ数字 fx を spawn（remaining=total で開始・見た目も store 持ち）
         case SpawnExplosionFx({total = Float64, pos = Vec2.Vec2, scale = Float64})            // 爆発 fx を spawn
+        case SpawnFireShot({total = Float64, caster = Vec2.Vec2, target = Vec2.Vec2})          // 魔導書の炎 3 幕 fx を spawn（seed=通し番号を採番）
     }
 
     /// System が出力する sim-event。
@@ -606,6 +620,7 @@ mod World {
         case Popup({x = Int32, y = Int32, text = String})
         case Sound(String)
         case Explosion({x = Int32, y = Int32})
+        case FireShot({caster = {x = Int32, y = Int32}, target = {x = Int32, y = Int32}})
         case Knockback(EntityRef, {x = Int32, y = Int32})
         case Thief({x = Int32, y = Int32})
         case Died(EntityRef)
@@ -997,6 +1012,16 @@ mod World {
                                  {remaining = d#total, total = d#total, pos = d#pos, scale = d#scale},
                                  w#explosionFx),
                              explosionFxNextSeq = seq + 1 | w})
+            case Cmd.SpawnFireShot(d) =>
+                // ExplosionFx と同型（採番して挿入し +1）。seq をそのまま seed に使う＝撃つたびの
+                // 表情替え・巻き戻しでも同じ絵。remaining=total で開始し tickFxMap が老化 / cull する。
+                let World.World(w) = world;
+                let seq = w#fireShotsNextSeq;
+                World.World({fireShots = Map.insert(seq,
+                                 {remaining = d#total, total = d#total, caster = d#caster,
+                                  target = d#target, seed = seq},
+                                 w#fireShots),
+                             fireShotsNextSeq = seq + 1 | w})
         }
 
     // ── SimEvent reducer / adapter / cmdKey ────────────────
@@ -1063,6 +1088,7 @@ mod World {
                 case ViewFxKind.Popup(_)          => None
                 case ViewFxKind.Sound(_)          => None
                 case ViewFxKind.Explosion(_)      => None
+                case ViewFxKind.FireShot(_)       => None
                 case ViewFxKind.Thief(_)          => None
             }
         }
@@ -1159,6 +1185,7 @@ mod World {
                                                    Float64.truncateToInt32(Float32.toFloat64(col#r) * 255.0), 0)
             case Cmd.SpawnPopupFx(d)          => ("SpawnPopupFx", Float64.truncateToInt32(d#pos#x), Float64.truncateToInt32(d#pos#y), 0)
             case Cmd.SpawnExplosionFx(d)      => ("SpawnExplosionFx", Float64.truncateToInt32(d#pos#x), Float64.truncateToInt32(d#pos#y), 0)
+            case Cmd.SpawnFireShot(d)         => ("SpawnFireShot", Float64.truncateToInt32(d#target#x), Float64.truncateToInt32(d#target#y), 0)
         }
 
     /// 敵の alerted を World から読む（hpOf 同型）。Player は常に None。
@@ -1977,6 +2004,10 @@ mod World {
     /// 爆発 fx store（seq → 寿命）。
     pub def explosionFxOf(world: World): Map[Int32, ExplosionFx] =
         let World.World(w) = world; w#explosionFx
+
+    /// 魔導書の炎 3 幕 fx store（seq → エントリ）。`RenderWorld.renderFireShots` が elapsed を導いて描く。
+    pub def fireShotsOf(world: World): Map[Int32, FireShot] =
+        let World.World(w) = world; w#fireShots
 
     /// 再生中アニメ（AnimatedSprite2D 個体のみ登録）。未登録は None。
     pub def unitAnimOf(ref: EntityRef, world: World): Option[UnitAnim] =

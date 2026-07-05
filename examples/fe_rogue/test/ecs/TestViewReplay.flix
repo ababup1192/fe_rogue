@@ -13,6 +13,7 @@ mod TestViewReplay {
         case ViewAction.Text(x, y, t)  => "Text:${x},${y}:${t}"
         case ViewAction.Damage(r, d)   => "Damage:${refTag(r)}:${d}"
         case ViewAction.Explode(x, y)  => "Explode:${x},${y}"
+        case ViewAction.FireBurst(cx, cy, tx, ty) => "Fire:${cx},${cy}->${tx},${ty}"
         case ViewAction.HpBar(r, hp)   => "HpBar:${refTag(r)}:${hp}"
         case ViewAction.Snap(r, x, y)  => "Snap:${refTag(r)}:${x},${y}"
         case ViewAction.Death(r)       => "Death:${refTag(r)}"
@@ -50,15 +51,15 @@ mod TestViewReplay {
             expected = "Play:critical" :: "Damage:E1:12" :: "HpBar:E1:0" :: "Death:E1" :: Nil,
             tags(events))
 
-    /// 魔法命中: Sound(magic)→Explosion→Damaged。SE→爆発→ダメージ数字→HPバー。
+    /// 魔導書命中: Sound(magic)→FireShot(詠唱者→対象)→Damaged。SE→炎 3 幕→ダメージ数字→HPバー。
     @Test
     def testPlanMagicHit(): Unit \ Assert =
         let events =
             World.SimEvent.ViewFx(World.ViewFxKind.Sound("magic")) ::
-            World.SimEvent.ViewFx(World.ViewFxKind.Explosion({x = 3, y = 2})) ::
+            World.SimEvent.ViewFx(World.ViewFxKind.FireShot({caster = {x = 2, y = 2}, target = {x = 3, y = 2}})) ::
             World.SimEvent.Damaged(EntityRef.Enemy(1), {newHp = 5, dmg = 5}) :: Nil;
         Assert.assertEq(
-            expected = "Play:magic" :: "Explode:3,2" :: "Damage:E1:5" :: "HpBar:E1:5" :: Nil,
+            expected = "Play:magic" :: "Fire:2,2->3,2" :: "Damage:E1:5" :: "HpBar:E1:5" :: Nil,
             tags(events))
 
     /// 回避: Sound(miss)→Popup("miss")。SE→テキストポップアップ。
