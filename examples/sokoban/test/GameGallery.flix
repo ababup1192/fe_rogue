@@ -16,6 +16,7 @@
 mod GameGallery {
     import java.io.File
     import java.awt.image.BufferedImage
+    import javax.imageio.ImageIO
 
     def ttfPath(): String = "assets/Xolonium-Regular.ttf"
     def design(): Vec2.Vec2 = {x = 320.0, y = 240.0}
@@ -98,7 +99,63 @@ mod GameGallery {
         let film = Replay.timeline(Sokoban.tick, Trace.dt(), cues, start);
         let frames = List.map(l -> SoftRaster.renderToImage(rasterReq(atlas, scene(atlas, ui, l), path)),
                               every(gifSampleStride(), 0, film));
-        GifEncoder.encode(frames, gifFrameDelayMs(), path)
+        GifEncoder.encode(frames, gifFrameDelayMs(), path);
+        // 同じフレーム列を横連結スプライトシート（PNG-8）にも焼く。ダッシュボードのコマ送り
+        // ビューアが 1 枚の背景画像を background-position でずらして再生する（file:// で動く素の JS）。
+        discard Filmstrip.bake(frames, stripPathOf(path))
+
+    /// gif パス（gallery/<name>.gif）→ ストリップ PNG パス（gallery/<name>_strip.png）。
+    def stripPathOf(gifPath: String): String =
+        String.dropRight(4, gifPath) + "_strip.png"    // ".gif"（4 文字）を落として付け替える
+
+    // ── フィルムストリップのメタデータ ──
+    // GIF フレームと同寸（design × scale = 640×480）。コマ数はストリップ幅 ÷ frameW から導く。
+
+    /// GIF の 1 コマ実ピクセル寸法（design 320×240 × scale 2）。
+    def gifFrameW(): Int32 = 640
+    def gifFrameH(): Int32 = 480
+    /// コマ送りの既定 fps（gifFrameDelayMs=30ms ≒ 33fps）。
+    def gifFps(): Int32 = 33
+
+    /// 焼けているストリップ PNG の実幅（存在しない・読めなければ 0）。
+    /// robot2_walk のストリップは RobotGallery が焼くので、このテストが先に走ると未生成でありうる。
+    /// ImageIO.read は存在しないファイルで例外を投げるため、先に存在チェックする。
+    def stripWidth(path: String): Int32 \ IO =
+        if (not (new File(path)).exists())
+            0i32
+        else {
+            let img = ImageIO.read(new File(path));
+            if (Object.isNull(img)) 0i32 else img.getWidth()
+        }
+
+    /// 1 本ぶんのフィルムストリップ情報（ストリップが無ければ None → 従来 GIF カードに落ちる）。
+    def filmstripOf(name: String, frameW: Int32, frameH: Int32, fps: Int32):
+            Option[SnapshotSite.Filmstrip] \ IO =
+        let w = stripWidth("gallery/${name}_strip.png");
+        if (w <= 0i32 or frameW <= 0i32) None
+        else Some({strip = "${name}_strip.png", frameCount = w / frameW,
+                   frameW = frameW, frameH = frameH, fps = fps})
+
+    /// GIF エントリ名 → SnapshotSite.Filmstrip の対応。ゲーム GIF（640×480）と歩行 GIF（576×184）で
+    /// コマ寸法が違うので個別に読む。焼けているストリップだけ入る。
+    def filmstripByName(): Map[String, SnapshotSite.Filmstrip] \ IO =
+        let specs =
+            ("solve_level1", gifFrameW(), gifFrameH(), gifFps()) ::
+            ("full_clear",   gifFrameW(), gifFrameH(), gifFps()) ::
+            ("rewind_demo",  gifFrameW(), gifFrameH(), gifFps()) ::
+            ("robot2_walk",  576i32, 184i32, 7i32) :: Nil;
+        List.foldLeft((m, s) -> {
+            let (name, fw, fh, fps) = s;
+            match filmstripOf(name, fw, fh, fps) {
+                case Some(fs) => Map.insert(name, fs, m)
+                case None     => m
+            }
+        }, (Map.empty(): Map[String, SnapshotSite.Filmstrip]), specs)
+
+    /// 各カタログ Item に、名前が一致すればフィルムストリップ情報を差し込む。
+    def withFilmstrips(fsByName: Map[String, SnapshotSite.Filmstrip],
+                       items: List[SnapshotSite.Item]): List[SnapshotSite.Item] =
+        List.map(it -> {filmstrip = Map.get(it#name, fsByName) | it}, items)
 
     /// オープニング: タイトルが待ち、Enter がレベル1を開き、7手がそれを解き、
     /// CLEAR パネルがそれを数える。
@@ -146,7 +203,7 @@ mod GameGallery {
              pxWidth: Int32): SnapshotSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = ext,
           pxWidth = pxWidth, generateHint = Some("run `flix test` to generate"),
-          lint = SnapshotSite.noLint() }
+          lint = SnapshotSite.noLint(), filmstrip = SnapshotSite.noFilmstrip() }
 
     /// lint バッジを名前で差し込んだカタログ。検査していない項目（GIF・ボード
     /// が主役のスクリーンショット・ロボット画像）は未検査バッジのまま。
@@ -199,12 +256,15 @@ mod GameGallery {
                 let clearInput = lintInput("screen_clear", atlas, ui, clearedAndRaining());
                 let titleFindings = RenderLint.check(titleInput);
                 let clearFindings = RenderLint.check(clearInput);
+                // 焼いたストリップ（gallery/<name>_strip.png）からコマ送りビューア情報を集め、
+                // GIF カードをインタラクティブにする（ストリップが無い項目は従来の GIF 表示のまま）。
+                let fsByName = filmstripByName();
                 run {
                     SnapshotSite.generate(
                         { outDir = "gallery", title = "Sokoban Gallery", cssScale = 2 },
-                        catalogWithLint(Map#{
+                        withFilmstrips(fsByName, catalogWithLint(Map#{
                             "screen_title" => SokobanLint.badgeOf(titleFindings),
-                            "screen_clear" => SokobanLint.badgeOf(clearFindings)}))
+                            "screen_clear" => SokobanLint.badgeOf(clearFindings)})))
                 } with Fs.FileWrite.runWithIO;
                 // 末尾の2つの bool は「リンタがちゃんと要素を見た」ことの保証:
                 // ブリッジが空リストを返して空虚に clean になる退行を防ぐ。

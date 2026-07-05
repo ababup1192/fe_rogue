@@ -136,6 +136,24 @@ mod SnapshotSupport {
         } else ()
 
     // ════════════════════════════════════════════════════════
+    // フィルムストリップ情報の読み取り（ストリップ PNG が焼けていれば）
+    // ════════════════════════════════════════════════════════
+
+    /// `stripPath` にストリップ PNG があれば、その実寸から SnapshotSite.Filmstrip を組む
+    /// （frameCount = 画像幅 ÷ frameW）。無ければ None（カードは従来の GIF 表示に落ちる）。
+    /// `stripFile` は outDir 相対のファイル名（HTML の background-image が指すパス）。
+    pub def readFilmstrip(stripPath: String, stripFile: String,
+                          frameW: Int32, frameH: Int32, fps: Int32): Option[SnapshotSite.Filmstrip] \ IO =
+        match readDims(stripPath) {
+            case None            => None
+            case Some((wf, _hf)) =>
+                let w = Float64.tryToInt32(wf) |> Option.getWithDefault(0i32);
+                if (w <= 0i32 or frameW <= 0i32) None
+                else Some({strip = stripFile, frameCount = w / frameW,
+                           frameW = frameW, frameH = frameH, fps = fps})
+        }
+
+    // ════════════════════════════════════════════════════════
     // 1 枚のスナップショット処理
     // ════════════════════════════════════════════════════════
 

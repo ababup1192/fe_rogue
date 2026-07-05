@@ -190,16 +190,18 @@ mod SnapshotCatalog {
 
     /// 目録を SnapshotSite の表示用 Item 列へ変換する。ここが Kind → 拡張子/表示幅/未生成案内の
     /// 対応表で、SnapshotSite にゲーム都合を持ち込ませないためのアダプタ。実ピクセル幅は撮影側の
-    /// 定数（PNG/GIF で解像度が違う）なので引数で受ける。
-    pub def toItems(widths: {pngPxWidth = Int32, gifPxWidth = Int32}, gifHint: String): List[SnapshotSite.Item] =
+    /// 定数（PNG/GIF で解像度が違う）なので引数で受ける。GIF エントリはストリップが焼けていれば
+    /// `filmstripByName` からコマ送りビューア情報を引く（無ければ従来の GIF カードに落ちる）。
+    pub def toItems(widths: {pngPxWidth = Int32, gifPxWidth = Int32}, gifHint: String,
+                    filmstripByName: Map[String, SnapshotSite.Filmstrip]): List[SnapshotSite.Item] =
         List.map(entry -> match entry#kind {
             case Kind.Png =>
                 {name = entry#name, desc = entry#desc, scenario = entry#scenario, tags = entry#tags,
                  ext = "png", pxWidth = widths#pngPxWidth, generateHint = (None: Option[String]),
-                 lint = SnapshotSite.noLint()}
+                 lint = SnapshotSite.noLint(), filmstrip = SnapshotSite.noFilmstrip()}
             case Kind.Gif =>
                 {name = entry#name, desc = entry#desc, scenario = entry#scenario, tags = entry#tags,
                  ext = "gif", pxWidth = widths#gifPxWidth, generateHint = Some(gifHint),
-                 lint = SnapshotSite.noLint()}
+                 lint = SnapshotSite.noLint(), filmstrip = Map.get(entry#name, filmstripByName)}
         }, entries())
 }

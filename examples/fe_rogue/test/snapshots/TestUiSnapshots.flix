@@ -91,7 +91,7 @@ mod TestUiSnapshots {
         "[${f#sceneName}] ${f#rule} ${f#severity}: ${f#detail}"
 
     /// カタログ Item に lint バッジを差し込む（GIF など未検査項目は既定 noLint のまま）。
-    pub def catalogItemsWithLint(lintByName: Map[String, SnapshotSite.LintBadge]): List[SnapshotSite.Item] =
+    pub def catalogItemsWithLint(lintByName: Map[String, SnapshotSite.LintBadge]): List[SnapshotSite.Item] \ IO =
         catalogItems() |> List.map(item ->
             {lint = Option.getWithDefault(SnapshotSite.noLint(), Map.get(item#name, lintByName)) | item})
 
@@ -99,11 +99,13 @@ mod TestUiSnapshots {
     pub def siteConfig(): SnapshotSite.Config =
         {outDir = "build/snapshots", title = "fe_rogue UI snapshots", cssScale = 2i32}
 
-    /// カタログ全 31 枚を SnapshotSite の表示用 Item 列へ。PNG/GIF で実ピクセル幅が違うので両方渡す
-    /// （GIF が未生成なら生成コマンドの案内をカードに出す）。
-    pub def catalogItems(): List[SnapshotSite.Item] =
+    /// カタログ全枚を SnapshotSite の表示用 Item 列へ。PNG/GIF で実ピクセル幅が違うので両方渡す
+    /// （GIF が未生成なら生成コマンドの案内をカードに出す）。ストリップが焼けている GIF は
+    /// コマ送りビューア情報（filmstripByName）を添えてインタラクティブなカードにする。
+    pub def catalogItems(): List[SnapshotSite.Item] \ IO =
         SnapshotCatalog.toItems({pngPxWidth = outWidthPx(), gifPxWidth = TestGifSnapshots.gifWidthPx()},
-            "未生成。<code>FE_ROGUE_SNAPSHOT_GIF=1 FE_ROGUE_SNAPSHOT_UPDATE=1 flix test</code> で生成できます。")
+            "未生成。<code>FE_ROGUE_SNAPSHOT_GIF=1 FE_ROGUE_SNAPSHOT_UPDATE=1 flix test</code> で生成できます。",
+            TestGifSnapshots.filmstripByName())
 
     /// 1 シーンを撮影し（golden 比較 + PNG 出力）、同じ UiWorld へ幾何リンタをかける。
     /// drive → renderUi → build/snapshots へ焼く、の後に、描画に使ったのと同じ UiWorld を

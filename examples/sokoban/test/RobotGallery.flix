@@ -232,5 +232,7 @@ mod RobotGallery {
         let frames = List.map(p -> SoftRaster.renderToImage(directionsReq(atlas, p, walkOutPath())),
                               0.0 :: 0.25 :: 0.5 :: 0.75 :: Nil);
         GifEncoder.encode(frames, walkFrameDelayMs(), walkOutPath());
+        // 同じフレーム列を横連結スプライトシート（PNG-8）へ。ダッシュボードのコマ送りビューア用。
+        discard Filmstrip.bake(frames, "gallery/robot2_walk_strip.png");
         Assert.assertEq(expected = true, (new File(walkOutPath())).exists())
 }

@@ -35,7 +35,19 @@ span.lint.sup{color:#8c99ad;background:#1a2332}
 details.lint-detail{align-self:flex-start}details.lint-detail summary{cursor:pointer;list-style:none}
 details.lint-detail ul{margin:4px 0 0;padding-left:16px;font-size:11px;color:#c9a24a}
 details.lint-detail li{margin:2px 0}
-figure:target{border-color:#ffd479}</style>
+figure:target{border-color:#ffd479}
+.filmstrip{display:flex;flex-direction:column;gap:6px}
+.fs-view{background:#000;background-repeat:no-repeat;image-rendering:pixelated;
+  border:1px solid #2a3445;border-radius:4px}
+.fs-ctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.fs-ctl button{background:#1a2332;color:#cdd5e6;border:1px solid #2a3445;border-radius:4px;
+  cursor:pointer;font-size:12px;line-height:1;padding:3px 7px}
+.fs-ctl button:hover{border-color:#4a6fb0}
+.fs-range{flex:1;min-width:80px;accent-color:#4a6fb0;cursor:pointer}
+code.fs-addr{font-size:12px;font-weight:700;color:#ffd479;background:#241c07;
+  padding:2px 6px;border-radius:4px;cursor:pointer;
+  font-family:ui-monospace,Menlo,Consolas,monospace}
+.filmstrip.playing .fs-play{border-color:#7bd88f;color:#7bd88f}</style>
 <h1>Sokoban Gallery</h1>
 <p class="hint">One page per game feature. Open a card to browse its basic states, edge cases and flows. The yellow code tag on each page is the snapshot name (report bugs by it; click to copy).</p>
 <main class="hub">

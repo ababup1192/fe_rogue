@@ -27,16 +27,32 @@ mod SnapshotSite {
 
     /// カタログ 1 項目の表示情報（生成器が受け取る唯一の入力形）。
     pub type alias Item = {
-        name         = String,         // ファイル basename・コピー用コード表記・img alt
-        desc         = String,         // 1 行説明
-        scenario     = String,         // 所属シナリオ（ページの束ね。表示順は宣言順）
-        tags         = List[String],   // 分類タグ。tag_<tag>.html への横断リンクになる。"edge-case" は
-                                        // シナリオページ内でエッジケース節に振り分けられる予約タグ
-        ext          = String,         // 画像拡張子（"png" / "gif"）→ ファイル名 = name.ext
-        pxWidth      = Int32,          // 画像の実ピクセル幅
-        generateHint = Option[String], // Some かつ画像が未生成なら img の代わりにこの案内を出す
-        lint         = LintBadge       // 幾何リンタの結果（構造データ。生成器はこれを見てバッジを描くだけ）
+        name         = String,             // ファイル basename・コピー用コード表記・img alt
+        desc         = String,             // 1 行説明
+        scenario     = String,             // 所属シナリオ（ページの束ね。表示順は宣言順）
+        tags         = List[String],       // 分類タグ。tag_<tag>.html への横断リンクになる。"edge-case" は
+                                            // シナリオページ内でエッジケース節に振り分けられる予約タグ
+        ext          = String,             // 画像拡張子（"png" / "gif"）→ ファイル名 = name.ext
+        pxWidth      = Int32,              // 画像の実ピクセル幅
+        generateHint = Option[String],     // Some かつ画像が未生成なら img の代わりにこの案内を出す
+        lint         = LintBadge,          // 幾何リンタの結果（構造データ。生成器はこれを見てバッジを描くだけ）
+        filmstrip    = Option[Filmstrip]   // Some かつストリップ画像があれば、img の代わりにコマ送りビューアを出す
     }
+
+    /// フィルムストリップ（横連結スプライトシート）のコマ送りビューアに要る情報。
+    /// GIF 相当のフレーム列を Filmstrip.bake が 1 枚の PNG に横連結して焼いてあり、その 1 枚を
+    /// background-position でずらしてコマを切り替える。`strip` は outDir 相対のファイル名。
+    /// ビューアは `name#N`（コマ番地）を表示し、クリックでその文字列をクリップボードへ写す。
+    pub type alias Filmstrip = {
+        strip      = String,   // ストリップ PNG のファイル名（outDir 相対・name.png ではなく別名でよい）
+        frameCount = Int32,    // コマ数（range の最大値 = frameCount - 1）
+        frameW     = Int32,    // 1 コマの実ピクセル幅（表示幅 = frameW / cssScale）
+        frameH     = Int32,    // 1 コマの実ピクセル高（表示高 = frameH / cssScale）
+        fps        = Int32     // 再生 fps（⏯ の setInterval 間隔 = 1000 / fps ミリ秒）
+    }
+
+    /// フィルムストリップ無し（従来カードのままにする項目の既定）。
+    pub def noFilmstrip(): Option[Filmstrip] = None
 
     /// カード 1 枚に添える幾何リンタの結果（ゲーム非依存の構造データ）。
     /// `checked`: リンタを走らせたか（未検査＝GIF 等はバッジを出さない）。
@@ -187,6 +203,7 @@ mod SnapshotSite {
             + "<p class=\"hint\">The yellow code tag is the snapshot name (report bugs by it); click to copy. "
             + "Tags link to their cross-feature pages.</p>\n"
             + sections
+            + scriptBlock()
 
     /// 1 節ぶんの見出し + カード列。その節に属する項目がなければ何も出さない。
     def sectionHtml(config: Config, section: Section, items: List[Item]): String \ IO =
@@ -214,6 +231,7 @@ mod SnapshotSite {
             + "<p class=\"hint\">Items tagged \"${tag}\" across all features (${count}). "
             + "The \"in ...\" link on a card is its home page.</p>\n"
             + "<main>\n${cards}\n</main>\n"
+            + scriptBlock()
 
     /// 前後シナリオへのリンク（端では出さない）。
     def neighborLinks(scenario: String, scenarios: List[String]): String =
@@ -267,8 +285,19 @@ mod SnapshotSite {
             "<details class=\"lint-detail\"><summary>${head}</summary><ul>${items}</ul></details>"
         }
 
-    /// 本体画像。画像があれば img、無くて generateHint があればその案内、無ければ（生成後に出る）img。
+    /// 本体メディア。filmstrip 情報があってストリップ画像も焼けていればコマ送りビューアを、
+    /// 無ければ従来メディア（img / generateHint 案内）を出す（後方互換）。
     def mediaHtml(config: Config, item: Item): String \ IO =
+        match item#filmstrip {
+            case Some(fs) =>
+                if (fileExists("${config#outDir}/${fs#strip}"))
+                    filmstripHtml(config, item, fs)
+                else fallbackMedia(config, item)
+            case None => fallbackMedia(config, item)
+        }
+
+    /// 従来メディア。画像があれば img、無くて generateHint があればその案内、無ければ（生成後に出る）img。
+    def fallbackMedia(config: Config, item: Item): String \ IO =
         let file = "${item#name}.${item#ext}";
         if (fileExists("${config#outDir}/${file}"))
             "<img src=\"${file}\" alt=\"${item#name}\">"
@@ -276,6 +305,26 @@ mod SnapshotSite {
             case Some(hint) => "<p class=\"hint missing\">${hint}</p>"
             case None       => "<img src=\"${file}\" alt=\"${item#name}\">"
         }
+
+    /// フィルムストリップのコマ送りビューア（1 枚のスプライトシートを background-position でずらす）。
+    /// data-* にコマ数・表示コマ幅・fps・名前を載せ、ページ末尾の scriptBlock の JS が全 .filmstrip を
+    /// 走査して配線する（タイムラインバー・◀▶ コマ送り・⏯ 再生・name#N 表示・クリックでコピー）。
+    def filmstripHtml(config: Config, item: Item, fs: Filmstrip): String =
+        let dw = fs#frameW / config#cssScale;
+        let dh = fs#frameH / config#cssScale;
+        let bgW = fs#frameCount * dw;
+        let maxIdx = fs#frameCount - 1;
+        "<div class=\"filmstrip\" data-name=\"${item#name}\" data-frames=\"${fs#frameCount}\" "
+            + "data-dw=\"${dw}\" data-fps=\"${fs#fps}\" style=\"width:${dw}px\">"
+            + "<div class=\"fs-view\" style=\"width:${dw}px;height:${dh}px;"
+            + "background-image:url('${fs#strip}');background-size:${bgW}px ${dh}px\"></div>"
+            + "<div class=\"fs-ctl\">"
+            + "<button class=\"fs-play\" title=\"再生 / 停止\">⏯</button>"
+            + "<button class=\"fs-prev\" title=\"前のコマ\">◀</button>"
+            + "<input class=\"fs-range\" type=\"range\" min=\"0\" max=\"${maxIdx}\" value=\"0\">"
+            + "<button class=\"fs-next\" title=\"次のコマ\">▶</button>"
+            + "<code class=\"fs-addr\" title=\"クリックで name#N をコピー\">${item#name}#0</code>"
+            + "</div></div>"
 
     /// ハブの代表サムネ。未生成なら小さなプレースホルダを出す（案内文はページ側で見せる）。
     def thumbHtml(config: Config, item: Item): String \ IO =
@@ -341,5 +390,64 @@ mod SnapshotSite {
             + "details.lint-detail{align-self:flex-start}details.lint-detail summary{cursor:pointer;list-style:none}\n"
             + "details.lint-detail ul{margin:4px 0 0;padding-left:16px;font-size:11px;color:#c9a24a}\n"
             + "details.lint-detail li{margin:2px 0}\n"
-            + "figure:target{border-color:#ffd479}</style>\n"
+            + "figure:target{border-color:#ffd479}\n"
+            // ── filmstrip（コマ送りビューア）──
+            + ".filmstrip{display:flex;flex-direction:column;gap:6px}\n"
+            + ".fs-view{background:#000;background-repeat:no-repeat;image-rendering:pixelated;\n"
+            + "  border:1px solid #2a3445;border-radius:4px}\n"
+            + ".fs-ctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap}\n"
+            + ".fs-ctl button{background:#1a2332;color:#cdd5e6;border:1px solid #2a3445;border-radius:4px;\n"
+            + "  cursor:pointer;font-size:12px;line-height:1;padding:3px 7px}\n"
+            + ".fs-ctl button:hover{border-color:#4a6fb0}\n"
+            + ".fs-range{flex:1;min-width:80px;accent-color:#4a6fb0;cursor:pointer}\n"
+            + "code.fs-addr{font-size:12px;font-weight:700;color:#ffd479;background:#241c07;\n"
+            + "  padding:2px 6px;border-radius:4px;cursor:pointer;\n"
+            + "  font-family:ui-monospace,Menlo,Consolas,monospace}\n"
+            + ".filmstrip.playing .fs-play{border-color:#7bd88f;color:#7bd88f}</style>\n"
+
+    /// 全 .filmstrip を配線する素の JS（CDN 不要・file:// で動く）。ページ末尾に 1 度だけ置く。
+    /// タイムラインバー（range）・◀▶ コマ送り・⏯ 再生（setInterval・ループ）・name#N 表示・
+    /// クリックで name#N をクリップボードへ（file:// で navigator.clipboard が効かない環境向けに
+    /// textarea + execCommand のフォールバックつき）。テンプレートリテラルは使わない（Flix の ${} と
+    /// 衝突しないよう文字列連結で組む）。
+    def scriptBlock(): String =
+        "<script>\n"
+            + "function fsWire(el){\n"
+            + "  var frames=parseInt(el.getAttribute('data-frames'),10);\n"
+            + "  var dw=parseFloat(el.getAttribute('data-dw'));\n"
+            + "  var name=el.getAttribute('data-name');\n"
+            + "  var fps=parseInt(el.getAttribute('data-fps'),10);\n"
+            + "  var view=el.querySelector('.fs-view');\n"
+            + "  var range=el.querySelector('.fs-range');\n"
+            + "  var addr=el.querySelector('.fs-addr');\n"
+            + "  var i=0,timer=null;\n"
+            + "  function show(n){i=((n%frames)+frames)%frames;\n"
+            + "    view.style.backgroundPosition=(-i*dw)+'px 0';range.value=i;addr.textContent=name+'#'+i;}\n"
+            + "  function stop(){if(timer){clearInterval(timer);timer=null;el.classList.remove('playing');}}\n"
+            + "  function play(){if(timer){stop();return;}el.classList.add('playing');\n"
+            + "    timer=setInterval(function(){show(i+1);},Math.max(1,Math.round(1000/fps)));}\n"
+            + "  el.querySelector('.fs-prev').onclick=function(){stop();show(i-1);};\n"
+            + "  el.querySelector('.fs-next').onclick=function(){stop();show(i+1);};\n"
+            + "  el.querySelector('.fs-play').onclick=play;\n"
+            + "  range.oninput=function(){stop();show(parseInt(range.value,10));};\n"
+            + "  addr.onclick=function(){fsCopy(name+'#'+i);};\n"
+            + "  show(0);\n"
+            + "}\n"
+            + "function fsCopy(t){\n"
+            + "  if(navigator.clipboard&&navigator.clipboard.writeText){\n"
+            + "    navigator.clipboard.writeText(t).catch(function(){fsFallbackCopy(t);});}\n"
+            + "  else{fsFallbackCopy(t);}\n"
+            + "}\n"
+            + "function fsFallbackCopy(t){\n"
+            + "  var ta=document.createElement('textarea');ta.value=t;\n"
+            + "  ta.style.position='fixed';ta.style.opacity='0';\n"
+            + "  document.body.appendChild(ta);ta.focus();ta.select();\n"
+            + "  try{document.execCommand('copy');}catch(e){}\n"
+            + "  document.body.removeChild(ta);\n"
+            + "}\n"
+            + "document.addEventListener('DOMContentLoaded',function(){\n"
+            + "  var els=document.querySelectorAll('.filmstrip');\n"
+            + "  for(var k=0;k<els.length;k++){fsWire(els[k]);}\n"
+            + "});\n"
+            + "</script>\n"
 }

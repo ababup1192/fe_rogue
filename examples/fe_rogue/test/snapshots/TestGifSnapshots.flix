@@ -43,6 +43,39 @@ mod TestGifSnapshots {
     /// （build/snapshots への表示は SnapshotSupport.syncGifs が担う）。
     def gifPath(name: String): String = "${SnapshotSupport.gifSourceDir()}/${name}.gif"
 
+    // ── フィルムストリップ（コマ送りビューアの素材）──
+    // GIF と対で、同じフレーム列を横連結スプライトシート PNG に焼く。GIF は README/HN 用にコミット
+    // 対象（test/snapshots/gifs/）へ置くが、ストリップは既存慣習どおり build/snapshots/（追跡外・
+    // サイトと同居）に置く。ダッシュボードのコマ送り UI は file:// でも動く素の JS で駆動する。
+
+    /// ストリップ PNG の置き場（サイト outDir と同じ build/snapshots/・追跡外）。
+    def stripDir(): String = "build/snapshots"
+    /// ストリップ PNG のフルパス（焼き出し先）。
+    def stripPath(name: String): String = "${stripDir()}/${name}_strip.png"
+    /// ストリップの outDir 相対ファイル名（HTML の background-image が指す名前）。
+    def stripFile(name: String): String = "${name}_strip.png"
+    /// 1 コマの実ピクセル寸法（GIF フレームと同寸 = design × outScale）。
+    def gifFrameW(): Int32 = designW() * outScale()
+    def gifFrameH(): Int32 = designH() * outScale()
+    /// コマ送りの既定 fps（GIF の frameDelayMs=60ms ≒ 17fps）。
+    def gifFps(): Int32 = 17i32
+
+    /// GIF とストリップを同じフレーム列から焼く。GIF は README/HN 用に維持（コミット対象へ）、
+    /// ストリップはダッシュボードのコマ送りビューア用に build/snapshots/ へ。
+    def bakeFilm(frames: List[BufferedImage], name: String): Unit \ IO =
+        GifEncoder.encode(frames, frameDelayMs(), gifPath(name));
+        discard Filmstrip.bake(frames, stripPath(name))
+
+    /// 焼けているストリップから、GIF エントリ名 → SnapshotSite.Filmstrip の対応を組む。
+    /// build/snapshots/<name>_strip.png があるものだけ入る（無ければカードは従来の GIF 表示に落ちる）。
+    pub def filmstripByName(): Map[String, SnapshotSite.Filmstrip] \ IO =
+        SnapshotCatalog.gifEntries() |> List.foldLeft((m, entry) ->
+            match SnapshotSupport.readFilmstrip(stripPath(entry#name), stripFile(entry#name),
+                                                gifFrameW(), gifFrameH(), gifFps()) {
+                case Some(fs) => Map.insert(entry#name, fs, m)
+                case None     => m
+            }, (Map.empty(): Map[String, SnapshotSite.Filmstrip]))
+
     /// FE_ROGUE_SNAPSHOT_GIF が空でなければ GIF を生成する。
     def gifEnabled(): Bool \ IO =
         let v = JSystem.getenv("FE_ROGUE_SNAPSHOT_GIF");
@@ -149,7 +182,7 @@ mod TestGifSnapshots {
                 discard topbarFrames(ctx, framesRef, 44, TurnPhase.Phase.EnemyTurn, steady);
                 drawableCount()
             }));
-        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("topbar_wipe"));
+        bakeFilm(collectFrames(framesRef), "topbar_wipe");
         count
 
     // ════════════════════════════════════════════════════════
@@ -181,7 +214,7 @@ mod TestGifSnapshots {
                 discard turnEndHoldFrames(ctx, framesRef, 48, TurnEndHoldState.initial());
                 drawableCount()
             }));
-        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_turn_end_hold"));
+        bakeFilm(collectFrames(framesRef), "flow_turn_end_hold");
         count
 
     // ════════════════════════════════════════════════════════
@@ -232,7 +265,7 @@ mod TestGifSnapshots {
                       full
                   }))
             }));
-        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_level_up"));
+        bakeFilm(collectFrames(framesRef), "flow_level_up");
         count
 
     // ════════════════════════════════════════════════════════
@@ -287,7 +320,7 @@ mod TestGifSnapshots {
                         logFrames(ctx, framesRef, 30, scene);
                         full
                     }))));
-        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_log"));
+        bakeFilm(collectFrames(framesRef), "flow_log");
         count
 
     // ════════════════════════════════════════════════════════
@@ -333,7 +366,7 @@ mod TestGifSnapshots {
                 ReplayScript.execute(betweenFrames(), actionScript(), applyKey, tick);
                 drawableCount()
             }));
-        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_action_menu"));
+        bakeFilm(collectFrames(framesRef), "flow_action_menu");
         count
 
     // ════════════════════════════════════════════════════════
@@ -376,7 +409,7 @@ mod TestGifSnapshots {
                 ReplayScript.execute(betweenFrames(), itemScrollScript(), applyKey, tick);
                 drawableCount()
             }));
-        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_item_scroll"));
+        bakeFilm(collectFrames(framesRef), "flow_item_scroll");
         count
 
     // ════════════════════════════════════════════════════════
@@ -408,7 +441,7 @@ mod TestGifSnapshots {
                 ReplayScript.execute(betweenFrames(), gameOverScript(), applyKey, tick);
                 drawableCount()
             }));
-        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_game_over"));
+        bakeFilm(collectFrames(framesRef), "flow_game_over");
         count
 
     // ════════════════════════════════════════════════════════
@@ -490,7 +523,7 @@ mod TestGifSnapshots {
                 });
                 drawableCount()
             }));
-        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath(name));
+        bakeFilm(collectFrames(framesRef), name);
         count
 
     // ── flow_open_item（コマンド→アイテム確定で持ち物窓が開き、X で閉じる）──
@@ -594,7 +627,7 @@ mod TestGifSnapshots {
             });
             Ref.put(img :: Ref.get(framesRef), framesRef)
         }, List.range(0, fireFrameCount()));
-        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath(name));
+        bakeFilm(collectFrames(framesRef), name);
         // sanity: 燃え上がりの最盛期（0.24 秒）に polygon が出ていること。
         List.length(firePolysAt(spec, 0.24))
 
@@ -646,7 +679,7 @@ mod TestGifSnapshots {
             });
             Ref.put(img :: Ref.get(framesRef), framesRef)
         }, List.range(0, tomeFrameCount()));
-        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_tome_attack"));
+        bakeFilm(collectFrames(framesRef), "flow_tome_attack");
         // sanity: 着弾（幕3 flare 直後）に多数の polygon が出ていること。
         List.length(tomePolysAt(FireShotFx.impactStart() + 0.1))
 
@@ -695,6 +728,6 @@ mod TestGifSnapshots {
                     charSelectFrames(ctx, framesRef, 10);
                     drawableCount()
                 })));
-        GifEncoder.encode(collectFrames(framesRef), frameDelayMs(), gifPath("flow_character_select"));
+        bakeFilm(collectFrames(framesRef), "flow_character_select");
         count
 }
