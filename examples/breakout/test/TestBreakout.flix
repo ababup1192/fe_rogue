@@ -144,11 +144,26 @@ mod TestBreakout {
     // カメラシェイクの減衰
     // ========================================================================
 
-    // trauma は二乗で効く: 満タン 1.0 で最大 8px、半分 0.5 で 1/4 の 2px、ゼロは揺れない。
+    // シェイクの式（二乗則・滑らかノイズ）の pin は engine_world の TestCameraRig が持つ。
+    // ここではゲーム固有の配線 —— レイヤーとカメラの対応 —— だけを固定する。
+
+    // レイヤー別カメラ: trauma が積まれた盤でも Screen（HUD の空間）のカメラは動かず、
+    // World のカメラはシェイクのオフセットそのものになる。
     @Test
-    def testShakeStrengthIsQuadratic(): Unit \ Assert =
-        Assert.assertEq(expected = (8.0, 2.0, 0.0),
-            (View.shakeStrength(1.0), View.shakeStrength(0.5), View.shakeStrength(0.0)))
+    def testCameraPerLayer(): Unit \ Assert =
+        let shaken = Step.update(Trace.idle(), Trace.dt(), overlapWorld(Some({ hp = 2, maxHp = 2 })));
+        let core = Trace.coreOf(shaken);
+        let screenCam = core |> Option.map(c -> {
+            let cam = View.cameraOf(View.Layer.Screen, c);
+            (cam#offset#x, cam#offset#y)
+        });
+        let worldMatchesShake = core |> Option.map(c -> {
+            let cam = View.cameraOf(View.Layer.World, c);
+            let shake = View.shakeOffsetOf(c);
+            (cam#offset#x == shake#x, cam#offset#y == shake#y)
+        });
+        Assert.assertEq(expected = (Some((0.0, 0.0)), Some((true, true))),
+            (screenCam, worldMatchesShake))
 
     // ========================================================================
     // ブロックの耐久・破壊・スコア・シェイク

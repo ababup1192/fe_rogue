@@ -191,7 +191,7 @@ mod Step {
                     { durabilities = Map.insert(id, { hp = durability#hp - 1 | durability },
                                                 core#durabilities),
                       sfx = Field.Sfx.BlockChip :: core#sfx | core }
-                        |> addTrauma(Field.chipTrauma())
+                        |> CameraRig.addTrauma(Field.chipTrauma())
         }
 
     /// 破壊: 物理の店とブロックの店から消し、スコアを足し、破片を撒き、シェイクを起こす。
@@ -207,12 +207,7 @@ mod Step {
           bursts = burst :: core#bursts,
           sfx = Field.Sfx.BlockBreak :: core#sfx
           | core }
-            |> addTrauma(Field.destroyTrauma(maxHp))
-
-    /// 揺れを積む: ヒットの重さを trauma に加算する（上限 1.0）。減衰（updateEffects）より速く
-    /// 当て続ければ蓄積し、単発では出ない大揺れが連打で現れる。
-    def addTrauma(amount: Float64, core: Field.GameCore): Field.GameCore =
-        { trauma = Float64.min(1.0, core#trauma + amount) | core }
+            |> CameraRig.addTrauma(Field.destroyTrauma(maxHp))
 
     /// ボールの今の位置を残像リングの先頭に積む（古い端は落として有界を保つ。長さはパラメータ）。
     def updateTrail(frame: Frame): Frame =
@@ -224,12 +219,11 @@ mod Step {
     /// この距離だけ画面下端を割ったらミス（枠の無い底からボールが落ちた）。
     def fellBelow(pos: Vec2.Vec2): Bool = pos#y > Field.designH() + Field.ballFallMargin()
 
-    // ── 演出の経年: trauma を減衰させ、通し時計を進め、寿命の切れた破片を落とす ──
+    // ── 演出の経年: 揺れを減衰させ（CameraRig.tick）、寿命の切れた破片を落とす ──
     def updateEffects(dt: Float64, core: Field.GameCore): Field.GameCore =
-        { trauma = Float64.max(0.0, core#trauma - Field.traumaDecayPerSecond() * dt),
-          fxClock = core#fxClock + dt,
-          bursts = core#bursts
+        let ticked = CameraRig.tick(dt, Field.shakeSpec(), core);
+        { bursts = ticked#bursts
               |> List.map(burst -> { elapsed = burst#elapsed + dt | burst })
               |> List.filter(burst -> burst#elapsed < Field.burstLifetime())
-          | core }
+          | ticked }
 }

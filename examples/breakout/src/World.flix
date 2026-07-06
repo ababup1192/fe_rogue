@@ -143,12 +143,10 @@ mod Field {
 
     // シェイク（trauma 方式）: ヒットで trauma を積み、揺れ幅は trauma の二乗で効く。
     // 単発は控えめに、連打は蓄積して画面が暴れる —— 重なりこそが手応えになる。
+    // 式と進め方（積む・減衰・オフセット導出）は CameraRig が持ち、ここは調整値だけを決める。
 
-    /// trauma が満タン（1.0）のときの揺れ幅（px）。
-    pub def maxShakeOffset(): Float64 = 8.0
-
-    /// trauma の 1 秒あたりの減衰量。
-    pub def traumaDecayPerSecond(): Float64 = 1.5
+    /// シェイクの調整値: 満タン時の揺れ幅（px）・揺れの速さ（格子点/秒）・1 秒あたりの減衰量。
+    pub def shakeSpec(): CameraRig.ShakeSpec = { maxOffset = 8.0, freq = 25.0, decayPerSecond = 1.5 }
 
     /// ハードブロックが耐えたときに積む trauma（単発では目立たず、連打で効いてくる小ささ）。
     pub def chipTrauma(): Float64 = 0.3
