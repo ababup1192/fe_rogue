@@ -10,4 +10,5 @@ def main(): Unit \ IO =
         |> App.addSystem(Game.step)
         |> App.reloadOn(GameEngine.Key.F1, Game.reloadParams)
         |> App.withView(View.frame)
+        |> App.withAudio(Sfx.events)
         |> App.launch

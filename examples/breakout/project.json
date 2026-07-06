@@ -11,5 +11,14 @@
   "fonts": [
     {"name": "default", "path": "assets/Xolonium-Regular.ttf", "fontSize": 60.0}
   ],
-  "sounds": []
+  "sounds": [
+    {"name": "paddle",   "path": "assets/sfx/paddle.wav",   "looping": false},
+    {"name": "wall",     "path": "assets/sfx/wall.wav",     "looping": false},
+    {"name": "chip",     "path": "assets/sfx/chip.wav",     "looping": false},
+    {"name": "break",    "path": "assets/sfx/break.wav",    "looping": false},
+    {"name": "serve",    "path": "assets/sfx/serve.wav",    "looping": false},
+    {"name": "miss",     "path": "assets/sfx/miss.wav",     "looping": false},
+    {"name": "clear",    "path": "assets/sfx/clear.wav",    "looping": false},
+    {"name": "gameover", "path": "assets/sfx/gameover.wav", "looping": false}
+  ]
 }

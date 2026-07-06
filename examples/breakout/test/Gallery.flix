@@ -41,7 +41,6 @@ mod Gallery {
 
     def pathOf(name: String): String = "${outDir()}/${name}.png"
     def gifPathOf(name: String): String = "${outDir()}/${name}.gif"
-    def stripPathOf(name: String): String = "${outDir()}/${name}_strip.png"
 
     // ── PNG / GIF を焼く ──
 
@@ -54,7 +53,7 @@ mod Gallery {
                   polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO =
         SoftRaster.render(reqOfScene(atlas, drawables, polygons, name |> pathOf))
 
-    /// シナリオを Replay.timeline で駆動し、stride 枚ごとに 1 枚描いて GIF＋ストリップに焼く。
+    /// シナリオを Replay.timeline で駆動し、stride 枚ごとに 1 枚描いて GIF＋コマ別 PNG に焼く。
     /// annotate は各フレームの World から重ねる注釈（SPEED の読みなど。不要なら _ -> Nil）。
     /// 返り値は SnapshotSite 用のフィルムストリップ情報（駒送りビューア）。
     def bakeGif(atlas: FontAtlas, world: Field.World, frames: Int32, stride: Int32,
@@ -64,8 +63,10 @@ mod Gallery {
         let images = List.map(w ->
             SoftRaster.renderToImage(reqOfWorld(atlas, w, annotate(w), gifPathOf(name))), sampled);
         GifEncoder.encode(images, gifDelayMs(), gifPathOf(name));
-        discard Filmstrip.bake(images, stripPathOf(name));
-        { strip = "${name}_strip.png", frameCount = List.length(images),
+        // コマ送りビューア用のコマ別 PNG。横連結シートはブラウザが幅 65,535px 超を描けず
+        // 真っ黒に落ちるので、全コマをコマ別に焼いてビューアが canvas でめくる。
+        discard Filmstrip.bakeFrames(images, "${outDir()}/frames/${name}");
+        { strip = "frames/${name}/", frameCount = List.length(images),
           frameW = frameW(), frameH = frameH(), fps = gifFps() }
 
     /// stride 枚ごとに 1 枚を残す（0 番から）。

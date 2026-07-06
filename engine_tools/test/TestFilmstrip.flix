@@ -42,6 +42,25 @@ mod TestFilmstrip {
     def testBakeEmptyIsNone(): Unit \ IO + Assert =
         Assert.assertEq(expected = true, Option.isEmpty(Filmstrip.bake(Nil, "build/test/filmstrip_empty.png")))
 
+    /// コマ別 PNG: 3 枚を dir へ焼くと 0.png .. 2.png ができ、各コマとも 8×6 で読み戻せる。
+    @Test
+    def testBakeFramesWritesEachFrame(): Unit \ IO + Assert =
+        let frames =
+            solid(8i32, 6i32, 200i32, 30i32, 40i32) ::
+            solid(8i32, 6i32, 30i32, 200i32, 40i32) ::
+            solid(8i32, 6i32, 40i32, 30i32, 200i32) :: Nil;
+        let dir = "build/test/filmstrip_frames";
+        let meta = Filmstrip.bakeFrames(frames, dir)
+            |> Option.map(r -> (r#frameCount, r#frameW, r#frameH));
+        Assert.assertEq(
+            expected = (Some((3i32, 8i32, 6i32)), (8i32, 6i32), (8i32, 6i32), (8i32, 6i32)),
+            (meta, readDims("${dir}/0.png"), readDims("${dir}/1.png"), readDims("${dir}/2.png")))
+
+    /// コマ別 PNG: 空フレーム列は None（ディレクトリもファイルも作らない）。
+    @Test
+    def testBakeFramesEmptyIsNone(): Unit \ IO + Assert =
+        Assert.assertEq(expected = true, Option.isEmpty(Filmstrip.bakeFrames(Nil, "build/test/filmstrip_frames_empty")))
+
     /// 256 色を超えるフレーム（各画素を違う色に塗った 20×20 = 400 色）は
     /// フルカラーへフォールバックする（indexed=false）。幅・コマ数は保つ。
     @Test

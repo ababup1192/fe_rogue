@@ -34,6 +34,16 @@ mod Field {
     /// 破壊の破片ひと吹き。状態は持たず、この 3 つ（種＋原点＋経過秒）から粒を導出する。
     pub type alias Burst = { seed = Int32, pos = Vec2.Vec2, elapsed = Float64 }
 
+    /// このフレームにボールが立てた音の種類。Step の政策が盤に記録し、Sfx が音名へ写す。
+    /// 連続物理では「何に当たったか」を前後の World の差分から言い当てられない
+    /// （速さが上限に達するとパドルヒットでも何も変わらない）ので、知っている者が書き残す。
+    pub enum Sfx with Eq, Order, ToString {
+        case PaddleHit    // パドルに当たった（反射角の上書きと同時）
+        case WallHit      // 壁に当たった（物理の跳ね返りのみ）
+        case BlockChip    // ハードブロックが耐えた
+        case BlockBreak   // ブロックを壊した
+    }
+
     // ── このフレームの入力（素のデータ）──
     // left/right はパドル移動なので押しっぱなしを見る。launch/enter は 1 回きり効けばよい
     // 判定（エッジ）で、押された瞬間だけ true になって届く。
@@ -74,9 +84,10 @@ mod Field {
         level = Int32,                              // いま遊んでいる面（1 始まり）
         lives = Int32,                              // 残機
         score = Int32,                              // スコア
-        shakeElapsed = Float64,                     // カメラシェイク時計（発火で 0 に戻り、以後増える）
-        shakeMagnitude = Float64,                   // 直近シェイクの振幅（耐える=小 / ハード破壊=大）
-        bursts = List[Burst]                        // 破壊の破片（closed-form で描くための種の列）
+        trauma = Float64,                           // 揺れの蓄積量 [0,1]。ヒットで積み、時間で減る（連打は重なる）
+        fxClock = Float64,                          // 演出の通し時計（シェイクノイズの位相。常に進む）
+        bursts = List[Burst],                       // 破壊の破片（closed-form で描くための種の列）
+        sfx = List[Sfx]                             // このフレームの衝突音の記録（毎フレーム頭で空へ。凍結盤では読まれない）
     }
 
     /// breakout 1 プレイの全状態: 調整値 params と、いまの局面 phase。ゲームのデータは phase の中。
@@ -130,9 +141,17 @@ mod Field {
     /// ボールの残像リングの長さ（保持する直近フレーム数）。長いほど尾が伸びる調整パラメータ。
     pub def trailLength(): Int32 = 12
 
-    // シェイク振幅（px）。
-    pub def smallShake(): Float64 = 1.5
-    pub def largeShake(): Float64 = 4.0
+    // シェイク（trauma 方式）: ヒットで trauma を積み、揺れ幅は trauma の二乗で効く。
+    // 単発は控えめに、連打は蓄積して画面が暴れる —— 重なりこそが手応えになる。
+
+    /// trauma が満タン（1.0）のときの揺れ幅（px）。
+    pub def maxShakeOffset(): Float64 = 8.0
+
+    /// trauma の 1 秒あたりの減衰量。
+    pub def traumaDecayPerSecond(): Float64 = 1.5
+
+    /// ハードブロックが耐えたときに積む trauma（単発では目立たず、連打で効いてくる小ささ）。
+    pub def chipTrauma(): Float64 = 0.3
 
     // スコア。
     def normalScore(): Int32 = 10
@@ -141,8 +160,8 @@ mod Field {
     /// 壊したブロックの得点。2 発以上耐えたブロック（ハード）ほど高い。
     pub def blockScore(maxHp: Int32): Int32 = if (maxHp >= 2) hardScore() else normalScore()
 
-    /// 壊したブロックのシェイク振幅。ハード（maxHp 2 以上）の破壊は大きく揺れる。
-    pub def destroyShake(maxHp: Int32): Float64 = if (maxHp >= 2) largeShake() else smallShake()
+    /// 壊したブロックが積む trauma。ハード（maxHp 2 以上）の破壊は重く揺れる。
+    pub def destroyTrauma(maxHp: Int32): Float64 = if (maxHp >= 2) 0.7 else 0.45
 
     // ── 物体の id ──
     pub def paddleId(): EntityId = 1
@@ -272,7 +291,7 @@ mod Field {
           ballPos = servePos(centerX),   // パドル上のサーブ待ち位置
           level = n,
           lives = 3, score = 0,
-          shakeElapsed = 999.0, shakeMagnitude = 0.0, bursts = Nil }
+          trauma = 0.0, fxClock = 0.0, bursts = Nil, sfx = Nil }
 
     /// レベル n のプレイ開始時の World: 盤は freshCore(n)、ボールはサーブ待ち、パラメータは既定値。
     pub def playingWorld(n: Int32): World =

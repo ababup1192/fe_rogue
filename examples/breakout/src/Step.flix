@@ -46,9 +46,10 @@ mod Step {
 
     /// サーブ待ち: パドルを動かし、ボールをその上に貼り付ける。launch でその速度を与えて飛ばす。
     /// 待っている間も演出（シェイク・破片）の時計は進む。速度も残像も持たない = Waiting の型のまま。
+    /// 音の記録（sfx）はフレーム頭で空へ（待機中は何にも当たらない）。
     def updateWaiting(input: Field.Input, dt: Float64, params: GameParameters.Params,
                       core: Field.GameCore): Field.Phase =
-        let movedCore = movePaddle(input, dt, params, core);
+        let movedCore = movePaddle(input, dt, params, { sfx = Nil | core });
         let glued = updateEffects(dt, { ballPos = Field.servePos(movedCore#paddle#x) | movedCore });
         if (input#launch)
             Field.Phase.Playing(glued, Field.BallState.Moving({ vel = Field.serveVelocity(), trail = Nil }))
@@ -64,12 +65,13 @@ mod Step {
     /// どの結末でも updateEffects(dt) を必ず通してから移る（破片の経過・シェイクを 1dt 進める）。
     def updateMoving(input: Field.Input, dt: Float64, params: GameParameters.Params,
                      core: Field.GameCore, moving: { vel = Vec2.Vec2, trail = List[Vec2.Vec2] }): Field.Phase =
-        let movedCore = movePaddle(input, dt, params, core);
+        let movedCore = movePaddle(input, dt, params, { sfx = Nil | core });   // 音の記録はフレーム頭で空へ
         let (stepped, collisions) =
             stepPhysics(dt, { core = movedCore, vel = moving#vel, trail = moving#trail, params = params });
         let frame = stepped
             |> onPaddleHit(collisions)
             |> onBlockHit(collisions)
+            |> onWallHit(collisions)
             |> updateTrail;
         let played = frame#core;
         match (Field.won(played), fellBelow(played#ballPos)) {
@@ -153,7 +155,8 @@ mod Step {
                            maxFactor = frame#params#maxSpeedFactor };
             let speed = Bounce.speedAfterHitWith(tuning,
                 { current = Vec2.length(frame#vel), offsetFrac = offset, base = Field.ballSpeed() });
-            { vel = Bounce.paddleReflectAt(frame#params#maxBounceAngle, offset, speed) | frame }
+            { vel = Bounce.paddleReflectAt(frame#params#maxBounceAngle, offset, speed),
+              core = { sfx = Field.Sfx.PaddleHit :: core#sfx | core } | frame }
         }
         else frame
 
@@ -167,6 +170,15 @@ mod Step {
             |> List.toSet;
         { core = Set.foldLeft((accCore, id) -> hitBlock(id, accCore), frame#core, hitIds) | frame }
 
+    /// 政策: 壁に当たった事実の記録。物理は既に跳ね返し済みで、ここは音のために盤へ書くだけ
+    /// （角で 2 枚の壁に触れても音は 1 つ）。
+    def onWallHit(collisions: List[Physics2D.Contact], frame: Frame): Frame =
+        let hitWall = Physics2D.contactsOf(Field.ballId(), collisions)
+            |> List.filterMap(contact -> Physics2D.other(Field.ballId(), contact))
+            |> List.exists(id -> List.memberOf(id, Field.wallIds()));
+        if (hitWall) { core = { sfx = Field.Sfx.WallHit :: frame#core#sfx | frame#core } | frame }
+        else frame
+
     /// ブロック 1 個に 1 発。耐久を持たなければ壊れない（素通し）。耐久が残ればちいさく揺れ、
     /// 尽きれば破壊する。
     def hitBlock(id: EntityId, core: Field.GameCore): Field.GameCore =
@@ -177,8 +189,9 @@ mod Step {
                     destroyBlock(id, durability#maxHp, core)
                 else
                     { durabilities = Map.insert(id, { hp = durability#hp - 1 | durability },
-                                                core#durabilities) | core }
-                        |> triggerShake(Field.smallShake())
+                                                core#durabilities),
+                      sfx = Field.Sfx.BlockChip :: core#sfx | core }
+                        |> addTrauma(Field.chipTrauma())
         }
 
     /// 破壊: 物理の店とブロックの店から消し、スコアを足し、破片を撒き、シェイクを起こす。
@@ -191,15 +204,15 @@ mod Step {
           blocks = Map.remove(id, core#blocks),
           durabilities = Map.remove(id, core#durabilities),
           score = core#score + Field.blockScore(maxHp),
-          bursts = burst :: core#bursts
+          bursts = burst :: core#bursts,
+          sfx = Field.Sfx.BlockBreak :: core#sfx
           | core }
-            |> triggerShake(Field.destroyShake(maxHp))
+            |> addTrauma(Field.destroyTrauma(maxHp))
 
-    /// シェイクを起こす: 時計を 0 に戻し、振幅をこのフレームの最大に取る（同フレームの複数発でも
-    /// 大きい方が勝つ）。前フレームまでの減衰しきった残りは持ち越さない。
-    def triggerShake(magnitude: Float64, core: Field.GameCore): Field.GameCore =
-        let base = if (core#shakeElapsed <= 0.0) core#shakeMagnitude else 0.0;
-        { shakeElapsed = 0.0, shakeMagnitude = Float64.max(magnitude, base) | core }
+    /// 揺れを積む: ヒットの重さを trauma に加算する（上限 1.0）。減衰（updateEffects）より速く
+    /// 当て続ければ蓄積し、単発では出ない大揺れが連打で現れる。
+    def addTrauma(amount: Float64, core: Field.GameCore): Field.GameCore =
+        { trauma = Float64.min(1.0, core#trauma + amount) | core }
 
     /// ボールの今の位置を残像リングの先頭に積む（古い端は落として有界を保つ。長さはパラメータ）。
     def updateTrail(frame: Frame): Frame =
@@ -211,9 +224,10 @@ mod Step {
     /// この距離だけ画面下端を割ったらミス（枠の無い底からボールが落ちた）。
     def fellBelow(pos: Vec2.Vec2): Bool = pos#y > Field.designH() + Field.ballFallMargin()
 
-    // ── 演出の経年: シェイク時計を進め、寿命の切れた破片を落とす ──
+    // ── 演出の経年: trauma を減衰させ、通し時計を進め、寿命の切れた破片を落とす ──
     def updateEffects(dt: Float64, core: Field.GameCore): Field.GameCore =
-        { shakeElapsed = core#shakeElapsed + dt,
+        { trauma = Float64.max(0.0, core#trauma - Field.traumaDecayPerSecond() * dt),
+          fxClock = core#fxClock + dt,
           bursts = core#bursts
               |> List.map(burst -> { elapsed = burst#elapsed + dt | burst })
               |> List.filter(burst -> burst#elapsed < Field.burstLifetime())

@@ -34,6 +34,32 @@ mod Filmstrip {
     /// パレット判定の上限（PNG-8 は 8bit = 256 色まで）。
     def maxColors(): Int32 = 256
 
+    /// bakeFrames の結果（呼び側がビューアのメタデータに使う）。
+    pub type alias FramesResult = { frameCount = Int32, frameW = Int32, frameH = Int32 }
+
+    /// `frames` を 1 コマ 1 ファイルのコマ別 PNG として `dirPath` へ書き出す（`0.png` .. `n-1.png`）。
+    /// 横連結シートはブラウザが描ける幅の上限（65,535px 超で真っ黒）に当たるので、コマ数の多い
+    /// シナリオはこちらで焼き、ビューアがコマ別にめくる。各コマは bake と同じ減量方針
+    /// （256 色以下なら PNG-8、超えたらフルカラー）。frames が空なら None（ファイルは作らない）。
+    pub def bakeFrames(frames: List[BufferedImage], dirPath: String): Option[FramesResult] \ IO =
+        match frames {
+            case Nil        => None
+            case first :: _ =>
+                let fw = Int32.max(1i32, first.getWidth());
+                let fh = Int32.max(1i32, first.getHeight());
+                discard (new File(dirPath)).mkdirs();
+                List.forEachWithIndex((i, img) -> {
+                    let file = new File("${dirPath}/${i}.png");
+                    match collectPalette(img :: Nil, fw, fh) {
+                        case Some(colors) =>
+                            discard ImageIO.write(drawIndexed(img :: Nil, fw, fw, fh, colors), "png", file)
+                        case None =>
+                            discard ImageIO.write(drawFullColor(img :: Nil, fw, fw, fh), "png", file)
+                    }
+                }, frames);
+                Some({ frameCount = List.length(frames), frameW = fw, frameH = fh })
+        }
+
     /// `frames`（同寸の BufferedImage 列）を横連結して `outPath` へ PNG で書き出す。
     /// 256 色以下なら PNG-8（インデックスカラー）、超えたらフルカラーで書く。
     /// frames が空なら None（呼び側の sanity 用・ファイルは作らない）。

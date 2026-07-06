@@ -34,7 +34,8 @@ mod App {
         updateSystems = List[(Frame, w) -> w],                     // 毎フレーム・追加順
         reload = Option[(GameEngine.Key, w -> w \ {Fs.FileRead})], // ホットリロード（キーとファイル読みの縁）
         view = (FontAtlas, w) -> (List[GameEngine.Drawable],       // World を絵の列へ投影する純粋関数
-                                  List[GameEngine.PolygonRenderCmd])
+                                  List[GameEngine.PolygonRenderCmd]),
+        audio = (w, w) -> List[String]                             // 1 フレームの前後から鳴らす音名を導く純粋関数
     }
 
     /// 初期 World だけを持つ空の App。絵はまだ無い（withView で繋ぐまで何も描かない）。
@@ -43,7 +44,8 @@ mod App {
           startupSystems = Nil,
           updateSystems = Nil,
           reload = None,
-          view = (_atlas, _world) -> (Nil, Nil) }
+          view = (_atlas, _world) -> (Nil, Nil),
+          audio = (_before, _after) -> Nil }
 
     /// 起動時に 1 回だけ走るシステムを末尾へ繋ぐ（追加順に適用される）。
     pub def addStartup(sys: w -> w, app: App[w]): App[w] =
@@ -63,6 +65,10 @@ mod App {
                                            List[GameEngine.PolygonRenderCmd]),
                      app: App[w]): App[w] =
         { view = v | app }
+
+    /// 1 フレームの前後の World から鳴らす音名を導く関数を繋ぐ（再生は App が引き受ける）。
+    pub def withAudio(sfx: (w, w) -> List[String], app: App[w]): App[w] =
+        { audio = sfx | app }
 
     // ── 純粋な芯（テストはここを直接叩く）──
 
@@ -97,20 +103,21 @@ mod App {
 
     /// 起動: フォントを取り、startup を 1 回だけ畳み、いま押されているキーを prev の種にして
     /// ループへ入る（起動時にすでに押されているキーは、一度離すまでエッジにならない）。
-    def boot(app: App[w]): Unit \ {GameEngine.Game, Fs.FileRead} =
+    def boot(app: App[w]): Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead} =
         let atlas = GameEngine.Game.getFontAtlas("default");
         let world0 = List.foldLeft((acc, sys) -> sys(acc), app#init, app#startupSystems);
         loop(app, atlas, world0, InputEvent.currentKeys())
 
-    /// 毎フレーム: キーを読み Frame に焼く → 終了判定 → リロード → システム → 描画 → 末尾再帰。
+    /// 毎フレーム: キーを読み Frame に焼く → 終了判定 → リロード → システム → 音 → 描画 → 末尾再帰。
     /// 前フレームのキー集合は引数で糸のように繋ぐ（エッジ検出の記憶はこの糸だけ）。
-    def loop(app: App[w], atlas: FontAtlas, world: w, prevKeys: Set[GameEngine.Key]): Unit \ {GameEngine.Game, Fs.FileRead} =
+    def loop(app: App[w], atlas: FontAtlas, world: w, prevKeys: Set[GameEngine.Key]): Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead} =
         let currentKeys = InputEvent.currentKeys();
         let frame = frameOf(prev = prevKeys, current = currentKeys, readDt());
         if (GameEngine.Game.shouldClose() or justPressed(GameEngine.Key.Escape, frame)) ()
         else {
             let reloaded = applyReload(app, frame, world);
             let advanced = applySystems(frame, app#updateSystems, reloaded);
+            playSounds(app, reloaded, advanced);
             renderFrame(app, atlas, advanced);
             loop(app, atlas, advanced, currentKeys)
         }
@@ -121,6 +128,11 @@ mod App {
             case Some((key, f)) => if (justPressed(key, frame)) f(world) else world
             case None           => world
         }
+
+    /// audio の導いた音名を鳴らす（システム適用の前後の World から導く）。
+    def playSounds(app: App[w], before: w, after: w): Unit \ GameEngine.Audio =
+        let derive = app#audio;
+        derive(before, after) |> List.forEach(name -> GameEngine.Audio.playAudio(name))
 
     /// 時計は World の外に住む。エンジンが値をクランプするので、長いカクつきでも先へワープしない。
     def readDt(): Float64 \ GameEngine.Game =

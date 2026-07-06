@@ -144,14 +144,11 @@ mod TestBreakout {
     // カメラシェイクの減衰
     // ========================================================================
 
-    // t=0 で全振幅、寿命(0.35s)を過ぎたら 0、途中は単調に減る、振幅 0 は揺れない。
+    // trauma は二乗で効く: 満タン 1.0 で最大 8px、半分 0.5 で 1/4 の 2px、ゼロは揺れない。
     @Test
-    def testShakeEnvelopeDecays(): Unit \ Assert =
-        let full = View.shakeEnvelope(4.0, 0.0);
-        let afterLifetime = View.shakeEnvelope(4.0, 1.0);
-        let decreasing = View.shakeEnvelope(4.0, 0.05) > View.shakeEnvelope(4.0, 0.15);
-        let zeroAmplitude = View.shakeEnvelope(0.0, 0.0);
-        Assert.assertEq(expected = (4.0, 0.0, true, 0.0), (full, afterLifetime, decreasing, zeroAmplitude))
+    def testShakeStrengthIsQuadratic(): Unit \ Assert =
+        Assert.assertEq(expected = (8.0, 2.0, 0.0),
+            (View.shakeStrength(1.0), View.shakeStrength(0.5), View.shakeStrength(0.0)))
 
     // ========================================================================
     // ブロックの耐久・破壊・スコア・シェイク
@@ -171,29 +168,30 @@ mod TestBreakout {
             |> Option.flatMap(c -> Map.get(id, c#durabilities))
             |> Option.map(durability -> durability#hp)
 
-    // ハードブロックの 1 発目: 耐えて hp 2→1、得点なし、小シェイク（1.5）。
+    // ハードブロックの 1 発目: 耐えて hp 2→1、得点なし、trauma 0.3 を積む
+    // （pin 値は同フレームの減衰 1dt ぶん 0.0234375 を引いた 0.2766）。
     @Test
     def testHardBlockSurvivesFirstHit(): Unit \ Assert =
         let after = Step.update(Trace.idle(), Trace.dt(), overlapWorld(Some({ hp = 2, maxHp = 2 })));
-        Assert.assertEq(expected = (Some(1), Some(0), Some(1.5)),
+        Assert.assertEq(expected = (Some(1), Some(0), Some(0.2766)),
                         (blockHp(Trace.blockId(), after), Trace.scoreOf(after),
-                         Trace.coreOf(after) |> Option.map(c -> c#shakeMagnitude)))
+                         Trace.coreOf(after) |> Option.map(c -> round4(c#trauma))))
 
-    // ハードブロックの 2 発目（残り1発）: 破壊して消え、得点 30、大シェイク（4.0）。
+    // ハードブロックの 2 発目（残り1発）: 破壊して消え、得点 30、重い trauma 0.7（減衰 1dt 込みで 0.6766）。
     @Test
     def testHardBlockDestroyedOnSecondHit(): Unit \ Assert =
         let after = Step.update(Trace.idle(), Trace.dt(), overlapWorld(Some({ hp = 1, maxHp = 2 })));
-        Assert.assertEq(expected = (None, Some(30), Some(4.0)),
+        Assert.assertEq(expected = (None, Some(30), Some(0.6766)),
                         (blockHp(Trace.blockId(), after), Trace.scoreOf(after),
-                         Trace.coreOf(after) |> Option.map(c -> c#shakeMagnitude)))
+                         Trace.coreOf(after) |> Option.map(c -> round4(c#trauma))))
 
-    // 通常ブロック: 1発で破壊して消え、得点 10、小シェイク（1.5）。
+    // 通常ブロック: 1発で破壊して消え、得点 10、trauma 0.45（減衰 1dt 込みで 0.4266）。
     @Test
     def testNormalBlockDestroyed(): Unit \ Assert =
         let after = Step.update(Trace.idle(), Trace.dt(), overlapWorld(Some({ hp = 1, maxHp = 1 })));
-        Assert.assertEq(expected = (None, Some(10), Some(1.5)),
+        Assert.assertEq(expected = (None, Some(10), Some(0.4266)),
                         (blockHp(Trace.blockId(), after), Trace.scoreOf(after),
-                         Trace.coreOf(after) |> Option.map(c -> c#shakeMagnitude)))
+                         Trace.coreOf(after) |> Option.map(c -> round4(c#trauma))))
 
     // 壊れないブロック（耐久の店に不在）: 当たっても盤に残り、得点もシェイクも起きない。
     // ボールは物理で跳ね返るだけ（y 速度が下向きへ反転）。
@@ -205,7 +203,7 @@ mod TestBreakout {
         Assert.assertEq(expected = (Some(true), Some(0), Some(0.0), Some(true)),
                         (core |> Option.map(c -> Map.memberOf(Trace.blockId(), c#positions)),
                          Trace.scoreOf(after),
-                         core |> Option.map(c -> c#shakeMagnitude), bouncedDown))
+                         core |> Option.map(c -> c#trauma), bouncedDown))
 
     // クリア判定は「壊せるブロックが 0」: 不壊ブロックだけが残った盤は勝ち、通常が残れば未決着。
     // 通常ブロック 1 個の盤（未決着）から耐久の店だけ空にすると、盤に残るブロックは壊せなくなり勝ち

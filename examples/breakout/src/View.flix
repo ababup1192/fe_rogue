@@ -7,9 +7,9 @@
 //
 // ブロックの見た目は durabilities の店から導く: 店に居ない = 壊れない（金属の面シェーディング＋
 // リベット）、耐久 2 = 明るい鋼、残り 1 のハード = くすんだ鋼、通常 = 行の色。
-// カメラシェイクは shakeElapsed からの閉形式の導出（Hash01 ノイズ×指数減衰）。ブロック破壊で
-// 発火し、描画全体を数 px オフセットする。破片も同じく、破壊ごとの (種＋原点＋経過秒) から
-// Fx.derive で導出する状態レス演出。
+// カメラシェイクは trauma からの閉形式の導出（trauma² × Hash01 ノイズ）。ブロックのヒットで
+// 積まれた trauma が盤面を数 px オフセットする（HUD と案内文は画面に固定され、揺れない）。
+// 破片も同じく、破壊ごとの (種＋原点＋経過秒) から Fx.derive で導出する状態レス演出。
 
 mod View {
 
@@ -41,47 +41,46 @@ mod View {
                 boardFrame(atlas, world#params, core, Nil, Vec2.zero(), gameOverOverlay(atlas))
         }
 
-    /// 盤ひとそろいを描く（カメラシェイクで全体をずらす）。trail と vel は飛行中だけ中身があり、
+    /// 盤ひとそろいを描く（カメラシェイクで盤面をずらす）。trail と vel は飛行中だけ中身があり、
     /// 待機・クリア・ゲームオーバーでは空（残像は出ない）。overlay はその局面の案内文。
+    /// シェイクは盤面（世界）の衝撃なので、HUD と案内文（画面に住む文字）は揺らさない。
     def boardFrame(atlas: FontAtlas, params: GameParameters.Params, core: Field.GameCore,
                    trail: List[Vec2.Vec2], vel: Vec2.Vec2, overlay: List[(Vec2.Vec2, Render.RenderItem)]):
                    (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
         let offset = shakeOffsetOf(core);
-        let boxes = List.flatten(
+        let boardBoxes = List.flatten(
             wallBoxes(core) ::
             blockBoxes(core) ::
             paddleBoxes(core) ::
             trailBoxes(params, vel, trail) ::
-            ballBoxes(core) ::
-            List.append(hudTexts(atlas, core), overlay) :: Nil);
-        let shiftedBoxes = List.map(entry -> { let (pos, item) = entry; (Vec2.add(pos, offset), item) }, boxes);
+            ballBoxes(core) :: Nil);
+        let shiftedBoxes = List.map(entry -> { let (pos, item) = entry; (Vec2.add(pos, offset), item) }, boardBoxes);
+        let screenBoxes = List.append(hudTexts(atlas, core), overlay);
         let shiftedPolys = List.map(poly -> shiftPoly(offset, poly), burstPolys(core));
-        (Render.draw(shiftedBoxes), shiftedPolys)
+        (Render.draw(List.append(shiftedBoxes, screenBoxes)), shiftedPolys)
 
     def shiftPoly(offset: Vec2.Vec2, poly: GameEngine.PolygonRenderCmd): GameEngine.PolygonRenderCmd =
         { vertices = List.map(v -> Vec2.add(v, offset), poly#vertices) | poly }
 
-    // ── カメラシェイク（shakeElapsed からの閉形式の導出）──
+    // ── カメラシェイク（trauma からの閉形式の導出）──
 
-    def shakeDuration(): Float64 = 0.35
-    def shakeDecay(): Float64 = 12.0
     def shakeFreq(): Float64 = 45.0
 
-    /// シェイクの減衰包絡（振幅 mag の指数減衰。寿命 shakeDuration を過ぎたら 0）。
-    /// 純粋なので単体テストで具体値を固定できる。
-    pub def shakeEnvelope(mag: Float64, t: Float64): Float64 =
-        if (t >= shakeDuration() or mag <= 0.0) 0.0
-        else mag * Float64.exp(-1.0 * shakeDecay() * t)
+    /// trauma からの揺れ幅（px）: trauma² × 最大オフセット。二乗なので単発の小さな trauma は
+    /// ほとんど揺れず、連打で蓄積すると急に効く。純粋なので単体テストで具体値を固定できる。
+    pub def shakeStrength(trauma: Float64): Float64 =
+        if (trauma <= 0.0) 0.0
+        else trauma * trauma * Field.maxShakeOffset()
 
-    /// カメラシェイクのオフセット（px）。減衰包絡 × フレームごとの Hash01 ノイズ [-1, 1]。
-    /// 時計が寿命を過ぎるか振幅が 0 なら揺れない。盤 GameCore のシェイク時計から導く。
+    /// カメラシェイクのオフセット（px）。揺れ幅（shakeStrength）× フレームごとの Hash01 ノイズ [-1, 1]。
+    /// ノイズの位相は常に進む通し時計 fxClock から刻む。trauma が 0 なら揺れない。
     pub def shakeOffsetOf(core: Field.GameCore): Vec2.Vec2 =
-        let envelope = shakeEnvelope(core#shakeMagnitude, core#shakeElapsed);
-        if (envelope <= 0.0) { x = 0.0, y = 0.0 }
+        let strength = shakeStrength(core#trauma);
+        if (strength <= 0.0) { x = 0.0, y = 0.0 }
         else {
-            let frame = Float64.floor(core#shakeElapsed * shakeFreq()) |> Float64.tryToInt32 |> Option.getWithDefault(0);
-            { x = envelope * (2.0 * Hash01.at(frame, 0) - 1.0),
-              y = envelope * (2.0 * Hash01.at(frame, 1) - 1.0) }
+            let frame = Float64.floor(core#fxClock * shakeFreq()) |> Float64.tryToInt32 |> Option.getWithDefault(0);
+            { x = strength * (2.0 * Hash01.at(frame, 0) - 1.0),
+              y = strength * (2.0 * Hash01.at(frame, 1) - 1.0) }
         }
 
     // ── 壁 ──

@@ -125,7 +125,7 @@ mod Trace {
             durabilities = List.toMap(durabilities),
             ballPos = setup#ball#pos,
             level = 1, lives = 3, score = 0,
-            shakeElapsed = 999.0, shakeMagnitude = 0.0, bursts = Nil
+            trauma = 0.0, fxClock = 0.0, bursts = Nil, sfx = Nil
         };
         { params = GameParameters.defaults(),
           phase = Field.Phase.Playing(core, Field.BallState.Moving({ vel = setup#ball#vel, trail = Nil })) }

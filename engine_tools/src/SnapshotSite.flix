@@ -39,12 +39,16 @@ mod SnapshotSite {
         filmstrip    = Option[Filmstrip]   // Some かつストリップ画像があれば、img の代わりにコマ送りビューアを出す
     }
 
-    /// フィルムストリップ（横連結スプライトシート）のコマ送りビューアに要る情報。
-    /// GIF 相当のフレーム列を Filmstrip.bake が 1 枚の PNG に横連結して焼いてあり、その 1 枚を
-    /// background-position でずらしてコマを切り替える。`strip` は outDir 相対のファイル名。
+    /// フィルムストリップ（コマ送りビューア）に要る情報。素材は 2 形態のどちらか:
+    ///   シート方式   … Filmstrip.bake の横連結 PNG 1 枚。`strip` はそのファイル名（outDir 相対）。
+    ///                  ビューアは background-position でずらしてコマを切り替える。
+    ///   コマ別方式   … Filmstrip.bakeFrames のコマ別 PNG（`0.png` .. `N-1.png`）。`strip` は
+    ///                  そのディレクトリを **末尾 "/"** で渡す（例 "frames/pocket/"）。ビューアは
+    ///                  canvas に 1 コマずつ描く。シートはブラウザが幅 65,535px 超を描けないので、
+    ///                  コマ数の多いシナリオはこちらを使う。
     /// ビューアは `name#N`（コマ番地）を表示し、クリックでその文字列をクリップボードへ写す。
     pub type alias Filmstrip = {
-        strip      = String,   // ストリップ PNG のファイル名（outDir 相対・name.png ではなく別名でよい）
+        strip      = String,   // シート PNG のファイル名、または末尾 "/" のコマ別ディレクトリ（outDir 相対）
         frameCount = Int32,    // コマ数（range の最大値 = frameCount - 1）
         frameW     = Int32,    // 1 コマの実ピクセル幅（表示幅 = frameW / cssScale）
         frameH     = Int32,    // 1 コマの実ピクセル高（表示高 = frameH / cssScale）
@@ -306,18 +310,30 @@ mod SnapshotSite {
             case None       => "<img src=\"${file}\" alt=\"${item#name}\">"
         }
 
-    /// フィルムストリップのコマ送りビューア（1 枚のスプライトシートを background-position でずらす）。
-    /// data-* にコマ数・表示コマ幅・fps・名前を載せ、ページ末尾の scriptBlock の JS が全 .filmstrip を
-    /// 走査して配線する（タイムラインバー・◀▶ コマ送り・⏯ 再生・name#N 表示・クリックでコピー）。
+    /// フィルムストリップのコマ送りビューア。シート方式は 1 枚のスプライトシートを
+    /// background-position でずらし、コマ別方式（strip が末尾 "/"）は canvas に 1 コマずつ描く。
+    /// data-* にコマ数・表示コマ幅・fps・名前（コマ別ならディレクトリも）を載せ、ページ末尾の
+    /// scriptBlock の JS が全 .filmstrip を走査して配線する
+    /// （タイムラインバー・◀▶ コマ送り・⏯ 再生・name#N 表示・クリックでコピー）。
     def filmstripHtml(config: Config, item: Item, fs: Filmstrip): String =
         let dw = fs#frameW / config#cssScale;
         let dh = fs#frameH / config#cssScale;
-        let bgW = fs#frameCount * dw;
         let maxIdx = fs#frameCount - 1;
+        let framesMode = String.endsWith(suffix = "/", fs#strip);
+        let viewHtml =
+            if (framesMode)
+                "<canvas class=\"fs-canvas\" width=\"${fs#frameW}\" height=\"${fs#frameH}\" "
+                    + "style=\"width:${dw}px;height:${dh}px\"></canvas>"
+            else {
+                let bgW = fs#frameCount * dw;
+                "<div class=\"fs-view\" style=\"width:${dw}px;height:${dh}px;"
+                    + "background-image:url('${fs#strip}');background-size:${bgW}px ${dh}px\"></div>"
+            };
+        let dirAttr = if (framesMode) "data-dir=\"${fs#strip}\" " else "";
         "<div class=\"filmstrip\" data-name=\"${item#name}\" data-frames=\"${fs#frameCount}\" "
+            + dirAttr
             + "data-dw=\"${dw}\" data-fps=\"${fs#fps}\" style=\"width:${dw}px\">"
-            + "<div class=\"fs-view\" style=\"width:${dw}px;height:${dh}px;"
-            + "background-image:url('${fs#strip}');background-size:${bgW}px ${dh}px\"></div>"
+            + viewHtml
             + "<div class=\"fs-ctl\">"
             + "<button class=\"fs-play\" title=\"再生 / 停止\">⏯</button>"
             + "<button class=\"fs-prev\" title=\"前のコマ\">◀</button>"
@@ -395,6 +411,8 @@ mod SnapshotSite {
             + ".filmstrip{display:flex;flex-direction:column;gap:6px}\n"
             + ".fs-view{background:#000;background-repeat:no-repeat;image-rendering:pixelated;\n"
             + "  border:1px solid #2a3445;border-radius:4px}\n"
+            + ".fs-canvas{display:block;background:#000;image-rendering:pixelated;\n"
+            + "  border:1px solid #2a3445;border-radius:4px}\n"
             + ".fs-ctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap}\n"
             + ".fs-ctl button{background:#1a2332;color:#cdd5e6;border:1px solid #2a3445;border-radius:4px;\n"
             + "  cursor:pointer;font-size:12px;line-height:1;padding:3px 7px}\n"
@@ -406,10 +424,11 @@ mod SnapshotSite {
             + ".filmstrip.playing .fs-play{border-color:#7bd88f;color:#7bd88f}</style>\n"
 
     /// 全 .filmstrip を配線する素の JS（CDN 不要・file:// で動く）。ページ末尾に 1 度だけ置く。
-    /// タイムラインバー（range）・◀▶ コマ送り・⏯ 再生（setInterval・ループ）・name#N 表示・
-    /// クリックで name#N をクリップボードへ（file:// で navigator.clipboard が効かない環境向けに
-    /// textarea + execCommand のフォールバックつき）。テンプレートリテラルは使わない（Flix の ${} と
-    /// 衝突しないよう文字列連結で組む）。
+    /// シート方式は background-position、コマ別方式（data-dir あり）は Image を遅延ロードして
+    /// canvas に描く。タイムラインバー（range）・◀▶ コマ送り・⏯ 再生（setInterval・ループ）・
+    /// name#N 表示・クリックで name#N をクリップボードへ（file:// で navigator.clipboard が
+    /// 効かない環境向けに textarea + execCommand のフォールバックつき）。テンプレートリテラルは
+    /// 使わない（Flix の ${} と衝突しないよう文字列連結で組む）。
     def scriptBlock(): String =
         "<script>\n"
             + "function fsWire(el){\n"
@@ -417,12 +436,21 @@ mod SnapshotSite {
             + "  var dw=parseFloat(el.getAttribute('data-dw'));\n"
             + "  var name=el.getAttribute('data-name');\n"
             + "  var fps=parseInt(el.getAttribute('data-fps'),10);\n"
+            + "  var dir=el.getAttribute('data-dir');\n"
             + "  var view=el.querySelector('.fs-view');\n"
+            + "  var canvas=el.querySelector('.fs-canvas');\n"
             + "  var range=el.querySelector('.fs-range');\n"
             + "  var addr=el.querySelector('.fs-addr');\n"
-            + "  var i=0,timer=null;\n"
+            + "  var i=0,timer=null,ctx=null,imgs=null;\n"
+            + "  if(dir){ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=false;imgs=new Array(frames);}\n"
+            + "  function frameAt(n){var im=imgs[n];\n"
+            + "    if(!im){im=new Image();im.src=dir+n+'.png';imgs[n]=im;}return im;}\n"
             + "  function show(n){i=((n%frames)+frames)%frames;\n"
-            + "    view.style.backgroundPosition=(-i*dw)+'px 0';range.value=i;addr.textContent=name+'#'+i;}\n"
+            + "    if(dir){var im=frameAt(i),want=i;\n"
+            + "      if(im.complete&&im.naturalWidth>0){ctx.drawImage(im,0,0);}\n"
+            + "      else{im.onload=function(){if(i===want){ctx.drawImage(im,0,0);}};}}\n"
+            + "    else{view.style.backgroundPosition=(-i*dw)+'px 0';}\n"
+            + "    range.value=i;addr.textContent=name+'#'+i;}\n"
             + "  function stop(){if(timer){clearInterval(timer);timer=null;el.classList.remove('playing');}}\n"
             + "  function play(){if(timer){stop();return;}el.classList.add('playing');\n"
             + "    timer=setInterval(function(){show(i+1);},Math.max(1,Math.round(1000/fps)));}\n"
