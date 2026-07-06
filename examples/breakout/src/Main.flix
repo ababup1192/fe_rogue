@@ -1,23 +1,13 @@
 // エントリーポイント。
 //
-// フロー地図: Main → Game.loop →（World |> Step |> View → 画面）
-//   World … 1 プレイぶんの状態の「値」。Step が進め、View が絵にし、Game の縁だけが副作用。
-//   毎フレーム: Game がキーと時計を読み（縁）→ Step.update で World を次の World へ（純）→
-//   View.frame で Drawable へ投影（純）→ Game がエンジンへ描く（縁）。
-//   値が流れ、Step で進み、View で絵になり、縁だけが世界に触れる。
-//
-// project.json（ウィンドウとフォントの設定）を読み込み、ロードしたフォントで loop を開始する。
-// withProject は Fs のハンドラを必要とするので、ここで注入する（loop 自身は Fs を一切使わない）。
+// フロー地図: Main は App に三点 — World の出発点・Game.step・View.frame — を繋ぐだけ。
+//   毎フレーム: App がキーと時計を Frame に焼く（縁）→ Game.step が World を進める（純）→
+//   View.frame が絵へ投影する（純）→ App が画面へ描く（縁）。
+//   値が流れ、Step で進み、View で絵になり、縁は App の中に閉じる。
 
 def main(): Unit \ IO =
-    if (GameEngine.ensureMainThread()) ()
-    else {
-        run {
-            Game.start(GameEngine.Game.getFontAtlas("default"))
-        } with LwjglLayer.withProject(".")
-          with Fs.FileRead.runWithIO
-          with Fs.FileWrite.runWithIO
-          with Fs.Glob.runWithIO
-          with Fs.ModificationTime.runWithFileTime
-          with Fs.FileTime.runWithIO
-    }
+    App.make(Field.initialWorld())
+        |> App.addSystem(Game.step)
+        |> App.reloadOn(GameEngine.Key.F1, Game.reloadParams)
+        |> App.withView(View.frame)
+        |> App.launch
