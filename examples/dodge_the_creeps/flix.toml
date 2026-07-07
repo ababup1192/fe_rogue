@@ -1,9 +1,0 @@
-[package]
-name        = "ex_dodge_the_creeps"
-description = "Dodge the Creeps (Godot tutorial) port built on flix_game_engine"
-version     = "0.1.0"
-flix        = "0.75.0"
-authors     = ["ababup1192 <ababup1192@gmail.com>"]
-
-[dependencies]
-"github:ababup1192/flix_game_engine" = { version = "0.1.0", security = "unrestricted" }

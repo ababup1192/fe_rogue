@@ -9,8 +9,8 @@
 //   cd ide && ./bin/flix run
 // 期待:
 //   - 起動: ダークグレー canvas、Scenes リスト空、Inspector プレースホルダ
-//   - File → Open Project... → examples/flappy_bird を選ぶと Scenes リストに
-//     BirdScene/MenuScene/... が並ぶ。クリックで該当 scene が表示される。
+//   - File → Open Project... → examples/fe_rogue を選ぶと Scenes リストに
+//     BgmScene/... が並ぶ。クリックで該当 scene が表示される。
 
 def main(): Unit \ {IO, Chan, NonDet} =
     run {

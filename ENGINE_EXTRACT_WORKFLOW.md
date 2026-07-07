@@ -553,7 +553,7 @@ pub def gauge(spec: GaugeSpec): List[(Vec2.Vec2, RenderItem)]
 
 フェーズ進捗:
 - [ ] E1-1 Store.flix 新設
-- [ ] E1-2 dodge lens 化（API 試走）
+- [ ] ~~E1-2 dodge lens 化（API 試走）~~ 対象消滅（2026-07-07 dodge_the_creeps_ecs 削除）。API 試走が必要なら値ベースの小型消費者（sokoban/breakout）で代替するか、E1-3 冒頭の小 store 群を試走に充てる
 - [ ] E1-3 fe_rogue lens カタログ + arm/accessor flip
 - [ ] E1-4 despawnUid/ClearUnits 登録リスト化
 - [ ] E1-5 CmdRun.flix（優先度低・スキップ可）
@@ -574,3 +574,4 @@ pub def gauge(spec: GaugeSpec): List[(Vec2.Vec2, RenderItem)]
 
 - 履歴:
   - 2026-07-02: 本 doc 作成（調査 3 本 + 設計 2 本の結果を統合。決定事項: engine_ecs は Godot 制約対象外 / 実施は P2/P6 完了後 / dodge も移行 / E1 先行）
+  - 2026-07-07: examples 棚卸しで dodge_the_creeps_ecs を削除 → E1-2（dodge 試走）は対象消滅。第二消費者検証は残存 example で代替する

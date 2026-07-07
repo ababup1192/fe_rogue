@@ -164,5 +164,4 @@ IDE 上では「+ フィールド追加」ボタンを **意図的に出さな�
 - `examples/fe_rogue/src/game/UnitCatalog.flix` — game 側の `Saveable[UnitCatalog]` 実装例
 - `examples/fe_rogue/assets/units/{units,_schema}.json` — 規格に沿ったデータ + schema 一例
 - `engine/src/Persistence.flix:33,46` — save / load の I/O 本体
-- `examples/escape_game/src/game/SaveData.flix:49-55` — 別ジャンルでの `Saveable` 実装例
 - `ide/src/JsonOps.flix` — JSON ノードのパス指定での参照・書き換えユーティリティ

@@ -85,10 +85,8 @@ building a JRE-bundled `.dmg` / `.exe` or a jar + launcher.
 | **breakout** | Breakout clone — the value-based entry tutorial (start here; see its README) |
 | **sokoban** | Sokoban with unlimited undo (Worldline) — has a full build-it-yourself TUTORIAL (EN/JA) |
 | **fe_rogue** | Fire Emblem-style turn-based SRPG + roguelike (recommended) |
-| **flappy_bird** | Flappy Bird clone |
-| **escape_game** | Yarn Spinner visual novel + scene editor |
-| **dodge_the_creeps** | Dodge-the-enemies game (port of the Godot tutorial) |
-| **command_battle** | Simple turn-based command battle |
+| **liars_room** | Liar logic puzzle — every stage is machine-proven solvable (Datalog) |
+| **nobi_patissier** | Pâtissier game (work in progress) |
 
 Every example runs and tests the same way:
 
@@ -218,10 +216,8 @@ JRE 同梱の `.dmg` / `.exe` や jar + ランチャの作り方は
 | **breakout** | ブロック崩し — 値ベースの入口教材（最初に読むならこれ。README あり） |
 | **sokoban** | 無制限アンドゥ（Worldline）の倉庫番 — 組み立て式 TUTORIAL 英日つき |
 | **fe_rogue** | FE 風ターン制 SRPG + ローグライク（おすすめ） |
-| **flappy_bird** | Flappy Bird クローン |
-| **escape_game** | Yarn Spinner ビジュアルノベル + シーンエディタ |
-| **dodge_the_creeps** | 敵回避ゲーム（Godot チュートリアルの移植） |
-| **command_battle** | シンプルなターン制コマンド戦闘 |
+| **liars_room** | 嘘つき論理パズル — 全ステージ機械証明済み（Datalog） |
+| **nobi_patissier** | パティシエゲーム（制作中） |
 
 どの example も同じ手順で実行・テストできる:
 
