@@ -17,9 +17,9 @@ mod Trace {
     /// idle のまま n フレーム流す（物理だけを走らせる）。
     pub def flight(frames: Int32): List[Replay.Cue[Field.Input]] = hold(idle(), frames) :: Nil
 
-    // ── 局面の読み取り（テストが World から値を取り出す）──
-    // 盤やボール速度は局面の case の中にあるので、テストは match でなくこの薄いアクセサ越しに読む。
-    // 「その局面に無い値」は Option の None / 空リストで返る（サーブ待ちに速度は無い、等）。
+    // ── フェーズの読み取り（テストが World から値を取り出す）──
+    // 盤やボール速度はフェーズの case の中にあるので、テストは match でなくこの薄いアクセサ越しに読む。
+    // 「そのフェーズに無い値」は Option の None / 空リストで返る（サーブ待ちに速度は無い、等）。
 
     /// Playing / Cleared / GameOver が持つ盤（GameCore）。Title は盤を持たないので None。
     pub def coreOf(world: Field.World): Option[Field.GameCore] = match world#phase {
@@ -38,7 +38,7 @@ mod Trace {
         case Field.Phase.GameOver(_core)                            => None
     }
 
-    /// ボールの残像リング。飛行中だけ中身があり、他の局面は空。
+    /// ボールの残像リング。飛行中だけ中身があり、他のフェーズは空。
     pub def trailOf(world: Field.World): List[Vec2.Vec2] = match world#phase {
         case Field.Phase.Title                                      => Nil
         case Field.Phase.Playing(_core, Field.BallState.Waiting)    => Nil
@@ -64,7 +64,7 @@ mod Trace {
         case Field.Phase.GameOver(_c)    => false
     }
 
-    /// クリア局面か。
+    /// クリアフェーズか。
     pub def isCleared(world: Field.World): Bool = match world#phase {
         case Field.Phase.Title           => false
         case Field.Phase.Playing(_c, _b) => false
@@ -94,7 +94,7 @@ mod Trace {
     pub def hardHp(): Field.Durability = { hp = 2, maxHp = 2 }
 
     /// mkWorld の材料一式。物理の静止群（壁・床・ブロックの形）と、ボール、そして
-    /// ブロックの印（行番号）・耐久を店ごとに渡す（durabilities に載せなければ壊れない）。
+    /// ブロックの印（行番号）・耐久をそれぞれの Store 形式で渡す（durabilities に載せなければ壊れない）。
     pub type alias Setup = {
         statics = List[(EntityId, Vec2.Vec2, CollisionShape2D)],
         ball = { pos = Vec2.Vec2, vel = Vec2.Vec2 },
@@ -104,8 +104,8 @@ mod Trace {
 
     // ── World 組み立て ──
 
-    /// シナリオ World を組む。単独者はそのまま値に（ボール位置は指定どおり、paddle は中央 x=160）、
-    /// statics は静止群の店へ。ボールは飛行中（Moving）＝即プレイで、指定の速度を持って動き出す。
+    /// シナリオ World を組む。ボール位置は指定どおり・paddle は中央 x=160 の値に、
+    /// statics は Store へ。ボールは飛行中（Moving）＝即プレイで、指定の速度を持って動き出す。
     /// 壊せるブロックがひとつも無い setup には、左上隅に手の届かない「置物」ブロックを 1 個
     /// 足す — クリア（won）はモーダルで物理が止まるので、物理を観察するシナリオでは
     /// 「壊せるブロックが残っている」状態を保つ必要がある。
@@ -188,7 +188,7 @@ mod Trace {
     // ── パドル反射シナリオ（当たり位置で角度が変わる）──
 
     /// パドルへ当てるシナリオ: 中心からのオフセット割合 offset（-1..1）の真上からボールを落とす。
-    /// パドル（単独者・中央 x=160）は mkWorld が備え付けるので、当たると角度＋加速規則
+    /// パドル（中央 x=160）は mkWorld が備え付けるので、当たると角度＋加速規則
     /// （Bounce）で速度が上書きされる。
     pub def paddleBounceWorld(offset: Float64): Field.World =
         let ballX = 160.0 + offset * Field.paddleHalfWidth();

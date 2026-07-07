@@ -35,7 +35,7 @@ mod Gallery {
 
     /// World の絵に注釈（extra）を重ねた 1 枚の焼き込み要求。
     def reqOfWorld(atlas: FontAtlas, world: Field.World,
-                   extra: List[(Vec2.Vec2, Render.RenderItem)], path: String): SoftRaster.RasterReq =
+                   extra: List[Render.Placed], path: String): SoftRaster.RasterReq =
         let (drawables, polygons) = Render.draw(List.append(View.frame(atlas, world), extra));
         reqOfScene(atlas, drawables, polygons, path)
 
@@ -57,7 +57,7 @@ mod Gallery {
     /// annotate は各フレームの World から重ねる注釈（SPEED の読みなど。不要なら _ -> Nil）。
     /// 返り値は SnapshotSite 用のフィルムストリップ情報（駒送りビューア）。
     def bakeGif(atlas: FontAtlas, world: Field.World, frames: Int32, stride: Int32,
-                name: String, annotate: Field.World -> List[(Vec2.Vec2, Render.RenderItem)]): SnapshotSite.Filmstrip \ IO =
+                name: String, annotate: Field.World -> List[Render.Placed]): SnapshotSite.Filmstrip \ IO =
         let film = Replay.timeline(Step.update, Trace.dt(), Trace.flight(frames), world);
         let sampled = every(stride, film);
         let images = List.map(w ->
@@ -71,7 +71,7 @@ mod Gallery {
 
     /// stride 枚ごとに 1 枚を残す（0 番から）。
     def every(stride: Int32, xs: List[a]): List[a] =
-        List.zip(List.range(0, List.length(xs)), xs)
+        List.zipWithIndex(xs)
             |> List.filterMap(pair -> { let (i, x) = pair; if (Int32.modulo(i, stride) == 0) Some(x) else None })
 
     // ── 見せ場 1: パドル反射の扇形（当たり位置で変わる角度差を 1 枚に並べる）──
@@ -101,7 +101,7 @@ mod Gallery {
 
     /// 当たり位置から反射方向 direction（速さ 1）へ、点を等間隔に並べた点線。
     def fanRay(startX: Float64, startY: Float64, direction: Vec2.Vec2,
-               color: Color): List[(Vec2.Vec2, Render.RenderItem)] =
+               color: Color): List[Render.Placed] =
         List.map(k -> {
             let distance = Int32.toFloat64(k) * 9.0;
             dot({ x = startX + direction#x * distance, y = startY + direction#y * distance }, 2.0, color, 12)
@@ -110,7 +110,7 @@ mod Gallery {
     // ── 見せ場 6 の注釈: ボールの速さの読み ──
 
     /// このフレームのボールの速さを「SPEED nnn」で盤の上部に重ねる（ラリー室の空きスペース）。
-    def speedNote(atlas: FontAtlas, world: Field.World): List[(Vec2.Vec2, Render.RenderItem)] =
+    def speedNote(atlas: FontAtlas, world: Field.World): List[Render.Placed] =
         let speed = Trace.ballVelOf(world) |> Option.map(v -> Vec2.length(v)) |> Option.getWithDefault(0.0);
         let reading = Float64.floor(speed + 0.5) |> Float64.tryToInt32 |> Option.getWithDefault(0);
         TextDraw.centered({ text = "SPEED ${reading}", atlas = atlas, size = 14.0,
@@ -119,7 +119,7 @@ mod Gallery {
 
     // ── 描画プリミティブ ──
 
-    def dot(center: Vec2.Vec2, radius: Float64, color: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
+    def dot(center: Vec2.Vec2, radius: Float64, color: Color, z: Int32): Render.Placed =
         ({ x = center#x - radius, y = center#y - radius }, Render.circle(radius, color, z))
 
     // ── 全部を焼いてサイトを生成する 1 テスト ──

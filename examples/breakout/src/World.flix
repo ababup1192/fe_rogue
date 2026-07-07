@@ -1,30 +1,33 @@
-// World — Worldline を流れる「値」の番地: breakout 1 プレイぶんの全状態と、レベル配置の宣言データ。
-// 値だけがここに住む —— 1 フレームのルールは Step、描画は View、副作用の縁は Game。
-// 値の型は Field.World（モジュール名は領域名 Field のまま。sokoban の Board.World と同じ流儀で、
-// `World.World` の重複を避ける）。
+// World — breakout 1 プレイぶんの全状態を、1 つの「値」として定義するファイル。
+// ここにあるのは型・定数・出発点の組み立てだけ: 1 フレームのルールは Step、描画は View、
+// 外の世界に触れる処理（ループ・キー読み・描画命令）は App、キー割り当ては Controls、
+// 面の文字データは Levels が持つ。
+// 値の型は Field.World（モジュール名は Field。sokoban の Board.World と同じ流儀で、
+// `World.World` という重複した名前を避ける）。
 //
-// 状態の持ち方の教え その一 **局面ごとに、その局面で意味のあるデータだけを持つ。** World は
-// 調整値 params と局面 phase の二つきり。ゲームのデータは phase の case が所有する: タイトルは
-// 盤を持たず（Title）、飛行中だけボールの速度と残像を持ち（Playing 内の Moving）、クリア・
-// ゲームオーバーは凍結した盤を持つ。「サーブ待ちなのに速度がある」「タイトルなのに残機に
-// 触れる」は、その case にそのデータが無いので型から消える。
+// 状態の持ち方の教え その一 **フェーズごとに、そのフェーズで意味のあるデータだけを持つ。**
+// World は調整値 params とフェーズ phase の二つきり。ゲームのデータは phase の case が所有する:
+// タイトルは盤を持たず（Title）、飛行中だけボールの速度と残像を持ち（Playing 内の Moving）、
+// クリア・ゲームオーバーは凍結した盤を持つ。「サーブ待ちなのに速度がある」「タイトルなのに
+// 残機に触れる」は、その case にそのデータが無いので型から消える。
 //
-// 状態の持ち方の教え その二 **ストアは群れのための道具。1 個しか居ないものは普通の値として持つ。**
-// 盤（GameCore）の中で、ボールの位置とパドルは名前のある単独者なので型つきフィールド
-// （`core#ballPos` / `core#paddle#x` と直に読める）、壁とブロックは群れなので能力ごとの店（Map）へ分ける:
-//   positions    …… 静止群（壁・ブロック）の中心座標
-//   shapes       …… 静止群の当たり判定の形
+// 状態の持ち方の教え その二 **Store は「同じ種類がたくさんあるもの」のための道具。1 個しか
+// 無いものは普通のフィールドで持つ。** Store は ECS の言葉で「能力ごとの表」のこと（ここでは
+// Map で実装）。盤（GameCore）の中で、ボールの位置とパドルは 1 個しか無いのでフィールド
+// （`core#ballPos` / `core#paddle#x` と直に読める）、壁とブロックはたくさんあるので能力ごとの
+// Store へ分ける:
+//   positions    …… 動かないもの（壁・ブロック）の中心座標
+//   shapes       …… 動かないものの当たり判定の形
 //   blocks       …… ブロックである印と、色分け用の行番号
-//   durabilities …… 壊せるブロックだけが持つ耐久。**この店に居ないブロックは壊れない**
-// 店は分類タグではなく、載っているかどうかで役割が創発する: 「壊れない」は durabilities からの
-// 不在、「ハード」は耐久 2、「通常」は耐久 1 という値そのもの。単独者は物理を呼ぶ瞬間だけ
-// 店へ射影される（Step.stepPhysics 参照）。
-// ここにあるのは純粋なデータと出発点の組み立てだけで、1 フレームのルールは Step に、
-// 描画は View に住む。設計解像度は 320x240、原点は左上、y は下向き。
+//   durabilities …… 壊せるブロックだけが持つ耐久。**ここに載っていないブロックは壊れない**
+// Store は分類タグではなく、載っているかどうかで役割が決まる: 「壊れない」= durabilities に
+// 不在、「ハード」= 耐久 2、「通常」= 耐久 1 という値そのもの。ボールとパドルは物理を呼ぶ
+// 瞬間だけ Store に合流する（Step.stepPhysics 参照）。
+// 設計解像度は 320x240、原点は左上、y は下向き。
 
 mod Field {
 
-    /// パドル（単独者）: 中心 x だけが動く。y と形は定数（paddlePos / paddleShape）が持つ。
+    /// パドル: 中心 x だけが動く。y と形は定数（paddlePos / paddleShape）が持つ。
     pub type alias Paddle = { x = Float64 }
 
     /// 壊せるブロックの耐久。hp が残り、maxHp が生まれたときの値（見た目・得点・シェイクの
@@ -52,11 +55,11 @@ mod Field {
     /// 何も押されていない入力。
     pub def noInput(): Input = { left = false, right = false, launch = false, enter = false }
 
-    // ── 局面（Phase）: ゲームのデータは局面の case が所有する ──
-    // タグを作るなら、そのタグが真にするデータを case が所有し、他の局面で無意味なデータは
+    // ── フェーズ（Phase）: ゲームのデータはフェーズの case が所有する ──
+    // タグを作るなら、そのタグが真にするデータを case が所有し、他のフェーズで無意味なデータは
     // 持たない。比較は match で行う（payload に匿名レコード・Map を含むので Eq は自動導出できない）。
 
-    /// ゲームの大きな局面。case ごとに、その局面で意味のあるデータだけを持つ。
+    /// ゲームの大きなフェーズ。case ごとに、そのフェーズで意味のあるデータだけを持つ。
     pub enum Phase {
         case Title                          // タイトル: 文字を見せるだけ。盤（GameCore）を持たない
         case Playing(GameCore, BallState)   // 進行中: 盤 GameCore と、ボールの状態 BallState
@@ -71,29 +74,29 @@ mod Field {
         case Moving({ vel = Vec2.Vec2, trail = List[Vec2.Vec2] }) // 飛行中: 速度と、直近位置の残像リング（新しい順・有界）
     }
 
-    /// 1 面の盤: 単独者（ballPos・paddle）と群れの店、そして盤の意味（残機・スコア・演出）。
+    /// 1 面の盤: 1 個だけのもの（ballPos・paddle）と、たくさんあるものの Store、そして盤の意味（残機・スコア・演出）。
     /// ボールの位置 ballPos は待機・飛行・凍結のすべてで描画に要るのでここに常在し、速度は
     /// BallState.Moving だけが持つ（位置は描画・速度は物理、と生存範囲で割る）。
     pub type alias GameCore = {
-        paddle = Paddle,                            // 単独者: パドル（中心 x）
+        paddle = Paddle,                            // 1 個だけ: パドル（中心 x）
         positions = Map[EntityId, Vec2.Vec2],       // 静止群（壁・ブロック）の中心座標
         shapes = Map[EntityId, CollisionShape2D],   // 静止群の当たり判定の形
         blocks = Map[EntityId, Int32],              // ブロックの印＋行番号（色分け用）
         durabilities = Map[EntityId, Durability],   // 壊せるブロックだけの耐久（不在=壊れない）
-        ballPos = Vec2.Vec2,                        // 単独者: ボールの中心（待機・飛行・凍結すべてで描画に要る）
+        ballPos = Vec2.Vec2,                        // 1 個だけ: ボールの中心（待機・飛行・凍結すべてで描画に要る）
         level = Int32,                              // いま遊んでいる面（1 始まり）
         lives = Int32,                              // 残機
         score = Int32,                              // スコア
         trauma = Float64,                           // 揺れの蓄積量 [0,1]。ヒットで積み、時間で減る（連打は重なる）
         fxClock = Float64,                          // 演出の通し時計（シェイクノイズの位相。常に進む）
-        bursts = List[Burst],                       // 破壊の破片（closed-form で描くための種の列）
+        bursts = List[Burst],                       // 破壊の破片（状態を持たず、種と経過秒から毎フレーム計算で描くための記録）
         sfx = List[Sfx]                             // このフレームの衝突音の記録（毎フレーム頭で空へ。凍結盤では読まれない）
     }
 
-    /// breakout 1 プレイの全状態: 調整値 params と、いまの局面 phase。ゲームのデータは phase の中。
+    /// breakout 1 プレイの全状態: 調整値 params と、いまのフェーズ phase。ゲームのデータは phase の中。
     pub type alias World = {
-        params = GameParameters.Params,   // 調整パラメータ（F1 で parameters.json から差し替わる・全局面共通）
-        phase = Phase                     // いまの局面（ゲームのデータはこの case の中）
+        params = GameParameters.Params,   // 調整パラメータ（F1 で parameters.json から差し替わる・全フェーズ共通）
+        phase = Phase                     // いまのフェーズ（ゲームのデータはこの case の中）
     }
 
     // ── レイアウト定数（design px）──
@@ -118,7 +121,7 @@ mod Field {
     pub def paddleMinX(): Float64 = innerLeft() + paddleHalfWidth()
     pub def paddleMaxX(): Float64 = innerRight() - paddleHalfWidth()
 
-    /// ボールの半径（px）。単独者の形は店ではなくこの定数が持つ。
+    /// ボールの半径（px）。ボールの形は Store ではなくこの定数が持つ。
     pub def ballRadius(): Float64 = 3.0
     /// ボールの基準の速さ（px/秒）。サーブとミス後のリセットはこの値に戻る。
     /// プレイ中はパドルヒットのたびに Bounce の加速規則で少しずつ速くなる。
@@ -177,7 +180,7 @@ mod Field {
     def circle(r: Float64): CollisionShape2D = CollisionShape2D.CircleShape2D({ radius = r })
     def vec(x: Float64, y: Float64): Vec2.Vec2 = { x = x, y = y }
 
-    // ── 単独者の形と位置（店に載せず、定数と x から導く）──
+    // ── ボールとパドルの形と位置（Store に載せず、定数と x から導く）──
 
     /// ボールの当たり判定の形。物理へ射影する瞬間に使う。
     pub def ballShape(): CollisionShape2D = circle(ballRadius())
@@ -203,54 +206,18 @@ mod Field {
         vec(innerLeft() + (Int32.toFloat64(col) + 0.5) * blockCellW(),
             blockAreaTop() + (Int32.toFloat64(row) + 0.5) * (blockH() + blockGap()))
 
-    // ── レベル配置（宣言データ）──
-    // 1 行 = 格子の 1 行、1 文字 = 1 セル:
-    //   .  空          n  通常ブロック（1発 = 耐久 {1,1}）
-    //   h  ハード（2発 = 耐久 {2,2}）   #  壊れないブロック（durabilities に載せない）
-    // 難度曲線: 1面=導入のピラミッド / 2面=不壊の帯に 2 本のスリット / 3面=ポケット完備。
-    // 3面は中央が縦にまるごと通路: 撃ち込んだボールは天井まで駆け上がり、天井と不壊の帯の
-    // 間のポケットで横に流れながら、上段のブロックを上から壊し続ける。
-
-    pub def levelCount(): Int32 = 3
-
-    def levelRows(n: Int32): List[String] = match n {
-        case 1 =>
-            "........." ::
-            ".nnnnnnn." ::
-            ".nnnnnnn." ::
-            "..nnnnn.." ::
-            "...nnn..." :: Nil
-        case 2 =>
-            ".nnnnnnn." ::
-            ".hhhhhhh." ::
-            "##.###.##" ::
-            "........." ::
-            ".nn.n.nn." :: Nil
-        case _ =>
-            "nnnn.nnnn" ::
-            "nnnn.nnnn" ::
-            "####.####" ::
-            "........." ::
-            "hhh...hhh" ::
-            ".nn...nn." :: Nil
-    }
+    // ── レベルとの橋: セルへの id 採番と、文字の意味づけ ──
+    // 盤面そのもの（文字の宣言データ）は Levels が持つ。ここはセルへ id を振り、文字を耐久へ写す。
 
     /// セル (col, row) のブロック id。文字の並びから決まる安定した番号。
     def cellId(col: Int32, row: Int32): EntityId = firstBlockId() + row * blockCols() + col
 
-    /// レベル文字列を (id, col, row, 文字) のセル列へ開く。'.' は空なので現れない。
+    /// レベル n の盤面を (id, col, row, 文字) のセル列で受け取る（文字データは Levels から）。
     def levelCells(n: Int32): List[(EntityId, Int32, Int32, Char)] =
-        let rows = levelRows(n);
-        List.zip(List.range(0, List.length(rows)), rows) |> List.flatMap(rowPair -> {
-            let (row, text) = rowPair;
-            let chars = String.toList(text);
-            List.zip(List.range(0, List.length(chars)), chars) |> List.filterMap(colPair -> {
-                let (col, ch) = colPair;
-                if (ch == '.') None else Some((cellId(col, row), col, row, ch))
-            })
-        })
+        Levels.cells(n) |> List.map(cell ->
+            (cellId(cell#col, cell#row), cell#col, cell#row, cell#glyph))
 
-    /// 文字ごとの耐久。'#'（壊れない）は None = durabilities の店に載らない。
+    /// 文字ごとの耐久。'#'（壊れない）は None = durabilities に載らない。
     def durabilityOf(ch: Char): Option[Durability] = match ch {
         case 'h' => Some({ hp = 2, maxHp = 2 })
         case '#' => None
@@ -268,7 +235,7 @@ mod Field {
     // ── 出発点の World ──
 
     /// レベル n の盤（GameCore）: パドル中央、ボールはパドル上のサーブ待ち位置、残機 3、演出なし。
-    /// 単独者（ballPos・paddle）は普通の値として持ち、店（positions / shapes）には静止群
+    /// ボールとパドルは普通のフィールドとして持ち、Store（positions / shapes）には動かないもの
     /// （壁・ブロック）だけを載せる。レベル進行・やり直しはこの盤を組み直す。
     pub def freshCore(n: Int32): GameCore =
         let cells = levelCells(n);
@@ -295,7 +262,7 @@ mod Field {
     pub def playingWorld(n: Int32): World =
         { params = GameParameters.defaults(), phase = Phase.Playing(freshCore(n), BallState.Waiting) }
 
-    /// タイトル画面の World: 文字を見せるだけの局面（盤は持たない）。
+    /// タイトル画面の World: 文字を見せるだけのフェーズ（盤は持たない）。
     pub def titleWorld(): World = { params = GameParameters.defaults(), phase = Phase.Title }
 
     pub def initialWorld(): World = titleWorld()

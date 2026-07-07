@@ -64,7 +64,7 @@ mod TestApp {
         Assert.assertEq(expected = 7, App.applySystems(emptyFrame(), Nil, 7))
 
     // ========================================================================
-    // Game.inputOf: Frame → Input の写像（連続とエッジの区別）
+    // Controls.inputOf: Frame → Input の写像（連続とエッジの区別）
     // ========================================================================
 
     /// Input を比較できるタプル (left, right, launch, enter) へ射影する。
@@ -76,7 +76,7 @@ mod TestApp {
     def testInputOfHeldKeys(): Unit \ Assert =
         let held = Set#{GameEngine.Key.Left, GameEngine.Key.Space, GameEngine.Key.Enter};
         let frame = App.frameOf(prev = held, current = held, 0.016);
-        Assert.assertEq(expected = (true, false, false, false), inputTuple(Game.inputOf(frame)))
+        Assert.assertEq(expected = (true, false, false, false), inputTuple(Controls.inputOf(frame)))
 
     // 新規押下の Right/Space/Enter: 全部このフレームで意味を持つ（right は連続・launch/enter はエッジ）。
     @Test
@@ -84,11 +84,11 @@ mod TestApp {
         let frame = App.frameOf(
             prev = Set#{},
             current = Set#{GameEngine.Key.Right, GameEngine.Key.Space, GameEngine.Key.Enter}, 0.016);
-        Assert.assertEq(expected = (false, true, true, true), inputTuple(Game.inputOf(frame)))
+        Assert.assertEq(expected = (false, true, true, true), inputTuple(Controls.inputOf(frame)))
 
     // 何も押されていなければ noInput と同じ。
     @Test
     def testInputOfNoKeysIsNoInput(): Unit \ Assert =
         Assert.assertEq(expected = inputTuple(Field.noInput()),
-            inputTuple(Game.inputOf(emptyFrame())))
+            inputTuple(Controls.inputOf(emptyFrame())))
 }

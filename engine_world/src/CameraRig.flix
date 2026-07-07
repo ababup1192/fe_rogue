@@ -2,7 +2,7 @@
 // カメラは状態でなく毎フレーム導出する値なので、変換の保存や復元は要らない。
 // 使い方: World に `trauma`（揺れの蓄積量 [0,1]）と `fxClock`（通し時計）のフィールドを持たせれば、
 // addTrauma で積み・tick で減衰させ・shakeOffset で揺れを導ける（どれも record をそのまま渡せる）。
-// 描画物には apply / applyPoly でレイヤーごとに一括適用する。
+// 描画物には apply でレイヤーごとに一括適用する（多角形も置き場所ごと動く）。
 mod CameraRig {
 
     /// レイヤーの見方。いまはオフセットだけ（ズームや視差を足す日はここが伸びる）。
@@ -13,7 +13,7 @@ mod CameraRig {
 
     /// カメラを描画物の列（(置き場所, RenderItem)）に適用する。多角形（Poly）も置き場所ごと
     /// 動くので、種類を問わずこの 1 本で足りる。
-    pub def apply(cam: Camera, items: List[(Vec2.Vec2, Render.RenderItem)]): List[(Vec2.Vec2, Render.RenderItem)] =
+    pub def apply(cam: Camera, items: List[Render.Placed]): List[Render.Placed] =
         List.map(entry -> { let (pos, item) = entry; (Vec2.add(pos, cam#offset), item) }, items)
 
     // ── 画面シェイク（trauma 方式）──

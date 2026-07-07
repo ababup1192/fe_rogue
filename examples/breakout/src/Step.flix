@@ -1,20 +1,20 @@
-// Step — World→World の純関数＝ルールの番地: 盤（World）を dt だけ進める update と、その政策関数。
+// Step — World→World の純関数＝ルール: 盤（World）を dt だけ進める update と、その政策関数。
 // ここに副作用は無い（`\ GameEngine.Game` を持たない純粋層）。境界越え —— キー読み・描画・
-// parameters.json 読み直し —— は Game に住む。値の定義は World、描画は View。
+// parameters.json 読み直し —— は App と Controls に住む。値の定義は World、描画は View。
 //
-// update は `(input, dt, world) -> world` の純関数で、いまの局面（world#phase）で場合分けする:
+// update は `(input, dt, world) -> world` の純関数で、いまのフェーズ（world#phase）で場合分けする:
 // タイトルは Enter を待ち、サーブ待ちはパドルを動かして launch を待ち、飛行中は物理を回し、
-// クリア・ゲームオーバーはモーダル（Enter だけを読み、演出の余韻だけが進む）。局面の case が
+// クリア・ゲームオーバーはモーダル（Enter だけを読み、演出の余韻だけが進む）。フェーズの case が
 // 網羅されているので「読み落とした状況」はコンパイラが弾く。
 //
 // 飛行中の 1 フレームは Physics2D の 4 つの純関数をパイプで合成して進める（能力を並べる ECS の書き味）:
 //
-//   単独者を店へ射影 → 位置を積分 → 衝突を検出 → 速度を反射 & めり込み解消 → 読み戻し → 政策
+//   ボールとパドルを Store へ合流 → 位置を積分 → 衝突を検出 → 速度を反射 & めり込み解消 → 読み戻し → 政策
 //
-// ストアは群れのための道具。1 個しか居ないボールとパドルは普通の値として盤（GameCore）に住み、
-// stepPhysics の呼び出し瞬間だけ静止群の店に合流する（射影と読み戻しは 1 関数に閉じ、
+// Store は「たくさんあるもの」のための道具。ボールとパドルは普通の値として盤（GameCore）に住み、
+// stepPhysics の間だけ Store に合流する（射影と読み戻しは 1 関数に閉じ、
 // 権威は常に core#ballPos / core#paddle）。飛行 1 フレームのあいだは盤・速度・残像・調整値を
-// Frame に束ねてパイプへ流し、フレーム末にその結末（クリア / ミス / 続行）から次の局面を決める。
+// Frame に束ねてパイプへ流し、フレーム末にその結末（クリア / ミス / 続行）から次のフェーズを決める。
 // 「政策」= 当たったあとゲームがどう反応するか: パドルに当たれば反射角と加速を Bounce 規則で
 // 上書きし、ブロックに当たれば耐久を減らし（0 で破壊・破片・スコア・シェイク）、底へ落ちれば
 // ミス。機構（Physics2D）は「跳ね返す」までを保証し、政策はそれを読んで意味を足す。
@@ -26,12 +26,12 @@ mod Step {
     type alias Frame = { core = Field.GameCore, vel = Vec2.Vec2, trail = List[Vec2.Vec2],
                          params = GameParameters.Params }
 
-    // ── update: 局面ごとに 1 フレーム進める ──
+    // ── update: フェーズごとに 1 フレーム進める ──
 
     pub def update(input: Field.Input, dt: Float64, world: Field.World): Field.World =
         { phase = nextPhase(input, dt, world#params, world#phase) | world }
 
-    /// いまの局面から次の局面を決める。case は網羅（ワイルドカードを使わず、読み落としを型で防ぐ）。
+    /// いまのフェーズから次のフェーズを決める。case は網羅（ワイルドカードを使わず、読み落としを型で防ぐ）。
     def nextPhase(input: Field.Input, dt: Float64, params: GameParameters.Params,
                   phase: Field.Phase): Field.Phase =
         match phase {
@@ -93,7 +93,7 @@ mod Step {
     /// 余韻（updateEffects）だけ進む。凍結した盤とボール位置はそのまま見せ続ける。
     def updateCleared(input: Field.Input, dt: Float64, core: Field.GameCore): Field.Phase =
         if (input#enter)
-            (if (core#level < Field.levelCount())
+            (if (core#level < Levels.count())
                 Field.Phase.Playing({ lives = core#lives, score = core#score | Field.freshCore(core#level + 1) },
                                     Field.BallState.Waiting)
              else
@@ -109,9 +109,9 @@ mod Step {
         else
             Field.Phase.GameOver(updateEffects(dt, core))
 
-    /// 物理の 1 ステップ。単独者（ボール・パドル）をこの瞬間だけ静止群の店へ射影し、
+    /// 物理の 1 ステップ。ボールとパドルをこの間だけ Store へ合流させ、
     /// Physics2D の純関数列（積分 → 検出 → 分離・反射）を通し、ボールの位置と速度を読み戻す。
-    /// ストアは群れのための道具 — 単独者はここで一瞬だけ群れに混ざり、すぐ値へ帰る。
+    /// ボールとパドルはここで一瞬だけ Store に混ざり、すぐ値へ帰る。
     def stepPhysics(dt: Float64, frame: Frame): (Frame, List[Physics2D.Contact]) =
         let core = frame#core;
         let positions = core#positions
@@ -149,13 +149,15 @@ mod Step {
     def onPaddleHit(collisions: List[Physics2D.Contact], frame: Frame): Frame =
         if (Physics2D.touches(Field.paddleId(), collisions)) {
             let core = frame#core;
-            let offset = Bounce.offsetFraction(core#ballPos#x, core#paddle#x, Field.paddleHalfWidth());
+            let offset = Bounce.offsetFraction({ ballX = core#ballPos#x, paddleX = core#paddle#x,
+                                                 halfWidth = Field.paddleHalfWidth() });
             let tuning = { gain = frame#params#speedGainPerHit,
                            edgeBonus = frame#params#edgeSpeedBonus,
                            maxFactor = frame#params#maxSpeedFactor };
             let speed = Bounce.speedAfterHitWith(tuning,
                 { current = Vec2.length(frame#vel), offsetFrac = offset, base = Field.ballSpeed() });
-            { vel = Bounce.paddleReflectAt(frame#params#maxBounceAngle, offset, speed),
+            { vel = Bounce.paddleReflectWith({ maxAngle = frame#params#maxBounceAngle,
+                                               offsetFrac = offset, speed = speed }),
               core = { sfx = Field.Sfx.PaddleHit :: core#sfx | core } | frame }
         }
         else frame
@@ -194,7 +196,7 @@ mod Step {
                         |> CameraRig.addTrauma(Field.chipTrauma())
         }
 
-    /// 破壊: 物理の店とブロックの店から消し、スコアを足し、破片を撒き、シェイクを起こす。
+    /// 破壊: 物理とブロックの Store から消し、スコアを足し、破片を撒き、シェイクを起こす。
     /// 得点と揺れの大きさは生まれたときの耐久（maxHp）から導く: 2 発耐えたブロックほど重い。
     def destroyBlock(id: EntityId, maxHp: Int32, core: Field.GameCore): Field.GameCore =
         let center = posOf(id, core) |> Option.getWithDefault(Vec2.zero());
@@ -213,7 +215,7 @@ mod Step {
     def updateTrail(frame: Frame): Frame =
         { trail = List.take(frame#params#trailLength, frame#core#ballPos :: frame#trail) | frame }
 
-    /// 店からの位置読み（群れ用）。
+    /// Store からの位置読み。
     def posOf(id: EntityId, core: Field.GameCore): Option[Vec2.Vec2] = Map.get(id, core#positions)
 
     /// この距離だけ画面下端を割ったらミス（枠の無い底からボールが落ちた）。

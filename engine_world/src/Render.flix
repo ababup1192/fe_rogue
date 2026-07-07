@@ -21,6 +21,9 @@ mod Render {
         case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32 })
     }
 
+    /// 置き場所つきの描画物。View はこの列を組み、draw が描画命令へ変換する。
+    pub type alias Placed = (Vec2.Vec2, RenderItem)
+
     // ── smart constructor（Drawable/BoxStyle をゲームから隠す）──
 
     def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
@@ -108,7 +111,7 @@ mod Render {
     /// draw list 全体を描画命令へ（zIndex 順は render_core が stable sort する）。
     /// Sprite / Text / Box は Drawable、Poly は置き場所を頂点に織り込んだ PolygonRenderCmd になる —
     /// 呼び側は 1 本のリストを組むだけで、2 系統への振り分けはここで終わる。
-    pub def draw(items: List[(Vec2.Vec2, RenderItem)]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+    pub def draw(items: List[Placed]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
         let drawables = items |> List.flatMap(pair -> {
             let (pos, item) = pair;
             match item {
@@ -159,12 +162,12 @@ mod Render {
     /// テクスチャ寸法の引き方は `textureInfoOf` で注入する。ゲーム実行時は Game registry 版を渡し、
     /// 画面なしのテストやプレビューでは `_ -> None` などの純粋関数を渡せる（region を使わなければ結果は同じ）。
     pub def drawAtlasWith(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
-                          items: List[(Vec2.Vec2, RenderItem)]): List[GameEngine.Drawable] \ ef =
+                          items: List[Placed]): List[GameEngine.Drawable] \ ef =
         List.flatMap(pair -> let (pos, item) = pair; toDrawablesAtlas(textureInfoOf, item, pos), items)
 
     /// `drawAtlasWith` の Game registry 版（`GameEngine.Game.getTextureInfo` で寸法を引く）。
     /// region スプライトを含む本番描画の既定口。
-    pub def drawAtlas(items: List[(Vec2.Vec2, RenderItem)]): List[GameEngine.Drawable] \ GameEngine.Game =
+    pub def drawAtlas(items: List[Placed]): List[GameEngine.Drawable] \ GameEngine.Game =
         drawAtlasWith(name -> GameEngine.Game.getTextureInfo(name), items)
 
     def toDrawablesAtlas(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,

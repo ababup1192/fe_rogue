@@ -37,10 +37,8 @@ mod TestBreakout {
     @Test
     def testOffsetFraction(): Unit \ Assert =
         let halfWidth = 20.0;
-        let actual = (Bounce.offsetFraction(100.0, 100.0, halfWidth),
-                      Bounce.offsetFraction(120.0, 100.0, halfWidth),
-                      Bounce.offsetFraction(80.0, 100.0, halfWidth),
-                      Bounce.offsetFraction(140.0, 100.0, halfWidth));
+        let at = ballX -> Bounce.offsetFraction({ ballX = ballX, paddleX = 100.0, halfWidth = halfWidth });
+        let actual = (at(100.0), at(120.0), at(80.0), at(140.0));
         Assert.assertEq(expected = (0.0, 1.0, -1.0, 2.0), actual)
 
     // 反射は与えた速さをそのまま使う（角度を変えても大きさは 130 のまま）。
@@ -170,7 +168,7 @@ mod TestBreakout {
     // ========================================================================
 
     /// ブロック 1 個の真下にボールを重ねて上向きに置いた World（update 1 回で確実に当たる）。
-    /// durability = None なら耐久の店に載せない = 壊れないブロック。
+    /// durability = None なら耐久 Store に載せない = 壊れないブロック。
     def overlapWorld(durability: Option[Field.Durability]): Field.World =
         Trace.mkWorld({
             statics = (Trace.blockId(), Trace.vec(160.0, 60.0), Trace.rect(30.0, 12.0)) :: Nil,
@@ -208,7 +206,7 @@ mod TestBreakout {
                         (blockHp(Trace.blockId(), after), Trace.scoreOf(after),
                          Trace.coreOf(after) |> Option.map(c -> round4(c#trauma))))
 
-    // 壊れないブロック（耐久の店に不在）: 当たっても盤に残り、得点もシェイクも起きない。
+    // 壊れないブロック（耐久 Store に不在）: 当たっても盤に残り、得点もシェイクも起きない。
     // ボールは物理で跳ね返るだけ（y 速度が下向きへ反転）。
     @Test
     def testUnbreakableBlockShrugsOffHit(): Unit \ Assert =
@@ -221,7 +219,7 @@ mod TestBreakout {
                          core |> Option.map(c -> c#trauma), bouncedDown))
 
     // クリア判定は「壊せるブロックが 0」: 不壊ブロックだけが残った盤は勝ち、通常が残れば未決着。
-    // 通常ブロック 1 個の盤（未決着）から耐久の店だけ空にすると、盤に残るブロックは壊せなくなり勝ち
+    // 通常ブロック 1 個の盤（未決着）から耐久 Store だけ空にすると、盤に残るブロックは壊せなくなり勝ち
     // （不壊ブロック = positions/blocks には居るが durabilities に不在、を耐久を抜いて作る）。
     @Test
     def testWonIgnoresUnbreakableBlocks(): Unit \ Assert =
@@ -266,7 +264,7 @@ mod TestBreakout {
         let after = Step.update({ enter = true | Trace.idle() }, Trace.dt(), cleared);
         Assert.assertEq(expected = true, Trace.isTitle(after))
 
-    // 最後のブロックを壊した瞬間、局面は Cleared になり、速度という状態はボールごと消える
+    // 最後のブロックを壊した瞬間、フェーズは Cleared になり、速度という状態はボールごと消える
     // （Moving でなくなる）。クリアはモーダルなので、以降 Enter を押さずに何フレーム進めても
     // ボールの位置は 1px も動かない（物理は回らない・ballPos は凍結）。
     @Test
@@ -277,7 +275,7 @@ mod TestBreakout {
         let laterPos = Trace.coreOf(later) |> Option.map(c -> (c#ballPos#x, c#ballPos#y));
         Assert.assertEq(
             expected = (true, true, true),
-            (Trace.isCleared(justWon),                    // クリア局面へ移った
+            (Trace.isCleared(justWon),                    // クリアフェーズへ移った
              Option.isEmpty(Trace.ballVelOf(justWon)),    // 速度という状態が無い
              frozen == laterPos))                          // ballPos は凍結して動かない
 

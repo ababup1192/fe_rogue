@@ -1,11 +1,11 @@
-// GameParameters — Game の縁が読み Step へ値で渡す調整パラメータの番地。遊びながら回す:
+// GameParameters — Controls が App の reloadOn 経由で読み、Step へ値で渡す調整パラメータ。遊びながら回す:
 // assets/parameters.json を編集して F1 を押すと、その場で効きが変わる。
 //
 // 運用: 遊びながら json の値を調整 → 決まったらコード内の既定値（Bounce / Field の定数）へ昇格する。
 // 既定値はあくまでコードの定数が正で、json は一時的な上書きにすぎない: ファイルが無い・JSON が
 // 壊れている・キーが足りない、のどれでも既定値で動く（fail-open）。ギャラリーと Replay は
 // 常に既定値を使うので、テストの pin と GIF の決定論はパラメータ弄りの影響を受けない。
-// ファイル読みの effect（Fs.FileRead）は loop の縁だけが使い、update は Params を値として受け取る。
+// ファイル読みの effect（Fs.FileRead）は Controls.reloadParams だけが使い、update は Params を値として受け取る。
 
 mod GameParameters {
     import java.math.BigDecimal

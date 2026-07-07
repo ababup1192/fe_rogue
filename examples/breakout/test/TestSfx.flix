@@ -6,7 +6,7 @@ mod TestSfx {
 
     /// 1 歩進めて、その前後から鳴る音を導く。
     def soundsAfterStep(input: Field.Input, world: Field.World): List[String] =
-        Sfx.events(world, Step.update(input, Trace.dt(), world))
+        Sfx.events({ before = world, after = Step.update(input, Trace.dt(), world) })
 
     /// ブロック 1 個の真下にボールを重ねて上向きに置いた World（update 1 回で確実に当たる）。
     def overlapWorld(durability: Option[Field.Durability]): Field.World =

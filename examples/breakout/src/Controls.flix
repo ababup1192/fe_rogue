@@ -1,8 +1,8 @@
-// Game — キー割り当ての番地: Frame を breakout の意味（Input）へ写し、Step のルールで 1 歩進める。
+// Controls — キー割り当て: Frame を breakout の意味（Input）へ写し、Step のルールで 1 歩進める。
 // 絵は View.frame が App に直結するのでここを通らない。唯一の effect は reloadParams の
 // parameters.json 読み直し（F1 で遊びながら効きを変える）で、シグネチャがそれを語る: `\ {Fs.FileRead}`。
 
-mod Game {
+mod Controls {
     use GameEngine.Key
 
     /// このフレームのキーを breakout の意味（Input）へ写す。left/right はパドル移動なので
@@ -18,7 +18,7 @@ mod Game {
         Step.update(inputOf(frame), frame#dt, world)
 
     /// F1 リロード: assets/parameters.json を読み直してパラメータを差し替える。
-    /// 遊びながら json を編集し、F1 を押せばその場で効きが変わる（ファイル読みの縁はここだけ）。
+    /// 遊びながら json を編集し、F1 を押せばその場で効きが変わる（ファイル読みはここだけ）。
     pub def reloadParams(world: Field.World): Field.World \ {Fs.FileRead} =
         { params = GameParameters.load() | world }
 }
