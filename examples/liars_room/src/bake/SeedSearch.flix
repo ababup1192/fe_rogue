@@ -23,6 +23,24 @@ mod SeedSearch {
                 case None    => searchPool(seed + 1i64, difficulty, count, acc)
             }
 
+    /// デバッグ用: 各ステージのプール先頭 seed の出題を文章で表示する
+    /// （バランス調整・攻略解説・レビュー用の資料）。
+    pub def reveal(): Unit \ IO =
+        List.range(1, Stage.stageCount() + 1) |> List.forEach(n -> {
+            let seed = match List.head(Stage.seedPool(n)) {
+                case Some(s) => s
+                case None    => bug!("SeedSearch.reveal: プールが空")
+            };
+            let generated = Stage.generatedWith(n, seed);
+            println("── ステージ ${n}（seed ${seed}） 嘘つき = ${generated#liars} ──");
+            generated#stmts |> List.forEach(said -> {
+                let (speaker, stmt) = said;
+                let line = Stmt.speech(speaker = speaker, suffix = LiarsRoom.suffixOf(speaker),
+                                       stmt :: Nil) |> Stmt.segText(Palette.nameOf);
+                println("  ${Palette.nameOf(speaker)}: ${line}")
+            })
+        })
+
     /// デバッグ用: 定数化済みプールの各 seed の唯一解と発言数を覗く
     /// （テストの舞台に使う seed を選ぶときの資料）。
     pub def probe(): Unit \ IO =
