@@ -2,9 +2,9 @@ box    z=20000 pos=(168.00,9.00) size=(70.00,20.00) rgb=#1f2638 a=0.95 corner=3.
 box    z=20001 pos=(197.00,17.00) size=(26.00,1.50) rgb=#080b10 a=1.00 corner=0.75 border=0.00/#ffffff/0.00
 box    z=20001 pos=(188.40,20.40) size=(6.80,6.80) rgb=#6b7899 a=1.00 corner=1.50 border=0.50/#9eabc7/1.00
 sprite z=20002 tex=rogues pos=(173.68,14.18) scale=(0.04,0.04) uvOff=(0.14,0.00) uvScale=(0.14,0.14) rgb=#ffffff a=1.00 centered=false
-text   z=20002 n=8 bbox=(189.00,11.50)-(211.30,16.50) rgb=#eef1f7
-text   z=20002 n=2 bbox=(189.00,16.10)-(192.23,19.54) rgb=#9aa6bd
+text   z=20002 n=8 bbox=(189.00,11.50)-(210.20,14.00) rgb=#eef1f7
+text   z=20002 n=2 bbox=(189.00,16.10)-(191.48,17.82) rgb=#9aa6bd
 box    z=20002 pos=(197.00,17.00) size=(17.33,1.50) rgb=#de5648 a=1.00 corner=0.75 border=0.00/#ffffff/0.00
-text   z=20002 n=5 bbox=(227.71,16.10)-(235.00,19.54) rgb=#cdd5e6
+text   z=20002 n=5 bbox=(227.71,16.10)-(234.24,17.82) rgb=#cdd5e6
 sprite z=20002 tex=item_weapons pos=(189.00,21.00) scale=(0.02,0.01) uvOff=(0.00,0.04) uvScale=(0.05,0.04) rgb=#ffffff a=1.00 centered=false
-text   z=20002 n=4 bbox=(196.00,22.50)-(204.80,25.94) rgb=#b4bed1
+text   z=20002 n=4 bbox=(196.00,22.50)-(203.70,24.22) rgb=#b4bed1

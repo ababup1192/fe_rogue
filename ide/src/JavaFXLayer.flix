@@ -284,9 +284,22 @@ mod JavaFXLayer {
                     let curScreenH = Int32.toFloat64(curConfig#designHeight);
                     // Polygon2D はエディタ描画では未対応。空リストを渡す（polyVao/polyVbo は
                     // リストが空なら未使用なので sprite VAO を流用する）。
-                    RenderFrame.renderFrameMixed(spriteShader, tileShader, vao, registry,
-                        curConfig#clearColor, curScreenW, curScreenH, w, h, sprites, tileMaps,
-                        (Nil: List[GameEngine.PolygonRenderCmd]), vao, vao);
+                    RenderFrame.renderFrameMixed({
+                        spriteShader = spriteShader,
+                        tileShader   = tileShader,
+                        vao          = vao,
+                        registry     = registry,
+                        clearColor   = curConfig#clearColor,
+                        designW      = curScreenW,
+                        designH      = curScreenH,
+                        fbW          = w,
+                        fbH          = h,
+                        sprites      = sprites,
+                        tileMaps     = tileMaps,
+                        polygons     = (Nil: List[RenderType.PolygonCmd]),
+                        polyVao      = vao,
+                        polyVbo      = vao
+                    });
 
                     pixels.position(0i32);
                     GL11.glReadPixels(0i32, 0i32, w, h,

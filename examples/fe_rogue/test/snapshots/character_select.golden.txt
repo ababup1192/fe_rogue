@@ -16,11 +16,11 @@ sprite z=60002 tex=rogues pos=(127.92,41.92) scale=(0.09,0.09) uvOff=(0.29,0.00)
 sprite z=60002 tex=rogues pos=(167.92,41.92) scale=(0.09,0.09) uvOff=(0.29,0.29) uvScale=(0.14,0.14) rgb=#ffffff a=1.00 centered=false
 sprite z=60002 tex=rogues pos=(207.92,41.92) scale=(0.09,0.09) uvOff=(0.14,0.57) uvScale=(0.14,0.14) rgb=#ffffff a=1.00 centered=false
 box    z=60005 pos=(97.00,102.00) size=(46.00,16.00) rgb=#d16b1a a=1.00 corner=0.00 border=0.00/#ffffff/0.00
-text   z=60006 n=6 bbox=(104.06,88.00)-(135.94,99.72) rgb=#ffffff
+text   z=60006 n=6 bbox=(104.06,88.00)-(132.19,93.86) rgb=#ffffff
 box    z=60006 pos=(99.00,104.00) size=(42.00,6.00) rgb=#ffb847 a=0.50 corner=0.00 border=0.00/#ffffff/0.00
-text   z=60007 n=2 bbox=(112.00,104.00)-(128.00,116.50) rgb=#ffffff
+text   z=60007 n=2 bbox=(112.00,104.00)-(124.00,110.25) rgb=#ffffff
 box    z=60150 pos=(188.00,14.00) size=(48.00,86.00) rgb=#1f212e a=1.00 corner=0.00 border=1.00/#808099/1.00
-text   z=60151 n=11 bbox=(191.00,18.00)-(218.00,34.25) rgb=#ffffff
+text   z=60151 n=11 bbox=(191.00,18.00)-(215.75,31.13) rgb=#ffffff
 poly   z=60152 n=4 bbox=(192.05,35.05)-(195.95,38.95) rgb=#ffffff a=1.00
 poly   z=60152 n=12 bbox=(193.64,35.60)-(195.40,37.36) rgb=#ffffff a=1.00
 poly   z=60152 n=4 bbox=(192.34,36.04)-(193.71,36.41) rgb=#ffffff a=1.00

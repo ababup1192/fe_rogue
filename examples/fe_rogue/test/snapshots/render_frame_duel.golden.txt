@@ -1,0 +1,19 @@
+sprite z=10 tex=character_sheet pos=(140.80,84.80) scale=(0.06,0.16) uvOff=(0.00,0.00) uvScale=(0.20,0.50) rgb=#ffffff a=1.00 centered=true
+sprite z=10 tex=character_sheet pos=(149.12,84.80) scale=(0.06,0.16) uvOff=(0.00,0.00) uvScale=(0.20,0.50) rgb=#ffffff a=1.00 centered=true
+box    z=50 pos=(137.06,87.04) size=(7.49,1.60) rgb=#141414 a=1.00 corner=2.00 border=0.00/#ffffff/0.00
+box    z=50 pos=(145.38,87.04) size=(7.49,1.60) rgb=#141414 a=1.00 corner=2.00 border=0.00/#ffffff/0.00
+box    z=51 pos=(137.38,87.36) size=(6.85,0.96) rgb=#4080f2 a=1.00 corner=1.50 border=0.00/#ffffff/0.00
+box    z=51 pos=(145.70,87.36) size=(6.85,0.96) rgb=#e54040 a=1.00 corner=1.50 border=0.00/#ffffff/0.00
+box    z=60 pos=(135.84,81.12) size=(4.16,4.16) rgb=#808cb2 a=0.60 corner=0.00 border=0.00/-/0.00
+box    z=60 pos=(144.16,81.12) size=(4.16,4.16) rgb=#808cb2 a=0.60 corner=0.00 border=0.00/-/0.00
+box    z=61 pos=(136.16,81.44) size=(3.52,3.52) rgb=#1f2647 a=0.60 corner=0.00 border=0.00/-/0.00
+box    z=61 pos=(144.48,81.44) size=(3.52,3.52) rgb=#1f2647 a=0.60 corner=0.00 border=0.00/-/0.00
+poly   z=62 n=4 bbox=(137.06,81.70)-(139.42,84.06) rgb=#ffffff a=1.00
+poly   z=62 n=3 bbox=(139.14,81.41)-(139.71,81.98) rgb=#ffffff a=1.00
+poly   z=62 n=4 bbox=(136.78,83.14)-(137.98,84.34) rgb=#ffffff a=1.00
+poly   z=62 n=4 bbox=(136.64,83.84)-(137.28,84.48) rgb=#ffffff a=1.00
+poly   z=62 n=4 bbox=(145.38,81.70)-(147.74,84.06) rgb=#ffffff a=1.00
+poly   z=62 n=3 bbox=(147.46,81.41)-(148.03,81.98) rgb=#ffffff a=1.00
+poly   z=62 n=4 bbox=(145.10,83.14)-(146.30,84.34) rgb=#ffffff a=1.00
+poly   z=62 n=4 bbox=(144.96,83.84)-(145.60,84.48) rgb=#ffffff a=1.00
+

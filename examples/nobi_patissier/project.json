@@ -16,7 +16,7 @@
     {
       "name": "ui",
       "path": "assets/fonts/MPLUSU-Medium.ttf",
-      "fontSize": 16.0
+      "fontSize": 12.0
     }
   ],
   "sounds": []

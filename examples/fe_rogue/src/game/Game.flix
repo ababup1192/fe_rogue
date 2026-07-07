@@ -1023,6 +1023,15 @@ mod Game {
         }
 }
 
+/// テスト専用の公開窓。本番の `renderFrame` をそのまま呼ぶ（複製しない＝本番と同一の描画合成）。
+/// 描画リストは呼び出し側が `GameEngine.Game.renderCommands` を記録する handler で捕まえる。
+/// production 経路（gameLoop）からは呼ばれない。
+pub def renderFrameForCapture(catalogs: GameLifecycle.Catalogs, world: World, synced: Scene[NodeTag]):
+        Unit \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarRender.ForecastState,
+                UiWorldState.State, TurnPhase.State, ArrowCursorState.State, MinimapState.State,
+                RangeOverlayState.State, CursorState.State, CameraState.State} =
+    renderFrame(catalogs, world, synced)
+
 /// フレーム描画（render-from-World の合流点）。gameLoop のサイズ削減のため関数分離。
 /// fog・range・配置物・fx・minimap・HUD/menu はすべて World render System（各 render*）で描き、
 /// scene-tree drawable（unit sprite 等）はそのまま合成する。camera ViewTransform はフレーム 1 回だけ計算して共有。

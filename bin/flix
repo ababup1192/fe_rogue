@@ -17,6 +17,15 @@ case "$PWD" in
         exec java -jar "$SCRIPT_DIR/flix.jar" "$@"
         ;;
     *)
-        exec java -XstartOnFirstThread -jar "$SCRIPT_DIR/flix.jar" "$@"
+        # test と bake (run --entrypoint Bake.*) はヘッドレス処理 (実ウィンドウを開かない) なので
+        # java.awt.headless=true を明示する。-XstartOnFirstThread 下でワーカースレッドが
+        # AWT を初期化 (HeadlessFont → BufferedImage) すると AppKit 待ちで永久ハングし得るため。
+        # ゲーム実機起動 (通常の run) には付けない。
+        HEADLESS=""
+        case "$1 $*" in
+            test\ *|test) HEADLESS="-Djava.awt.headless=true" ;;
+            *"--entrypoint Bake"*) HEADLESS="-Djava.awt.headless=true" ;;
+        esac
+        exec java -XstartOnFirstThread $HEADLESS -jar "$SCRIPT_DIR/flix.jar" "$@"
         ;;
 esac
