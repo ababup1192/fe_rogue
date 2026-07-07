@@ -31,7 +31,7 @@ Run the game (a window opens):
 
 ```sh
 cd examples/sokoban
-java -XstartOnFirstThread -jar bin/flix.jar run
+make run
 ```
 
 Press `Esc` or close the window to quit. Reading along without running anything
@@ -1215,6 +1215,12 @@ mod Sokoban {
     // and inputOf (unchanged since Chapter 3) maps that into these four booleans.
     pub type alias Input = { up = Bool, down = Bool, left = Bool, right = Bool }
 
+    pub def inputOf(frame: App.Frame): Input =
+        { up    = App.isDown(GameEngine.Key.Up, frame),
+          down  = App.isDown(GameEngine.Key.Down, frame),
+          left  = App.isDown(GameEngine.Key.Left, frame),
+          right = App.isDown(GameEngine.Key.Right, frame) }
+
     // ── World: where the state lives ──
     // walls / goals / crates are Stores: many things of one kind, one Set each.
     // slide is the picture's state: when a hop starts, the robot's cell changes
@@ -2002,7 +2008,8 @@ the bundle gets a name:
         b#screen == Screen.Playing and won(w)
 ```
 
-The wiring has also grown enough to deserve its own small file. `Controls.flix`
+The wiring has also grown enough to deserve files of its own. In the shipped
+repo the pages live in `GameUi.flix`, the drawing in `View.flix` — and `Controls.flix`
 holds every bridge between the Frame and the game — the key mapping, the two
 systems, the F1 reload and the quit judge:
 
@@ -2010,7 +2017,7 @@ systems, the F1 reload and the quit judge:
 mod Controls {
     use GameEngine.Key
 
-    pub def inputOf(frame: App.Frame): Input =
+    pub def inputOf(frame: App.Frame): Sokoban.Input =
         { up    = App.isDown(Key.Up, frame),
           down  = App.isDown(Key.Down, frame),
           left  = App.isDown(Key.Left, frame),
@@ -2022,22 +2029,22 @@ mod Controls {
 
     /// System one: turn the keys into Input and advance the board and its
     /// history by one frame (pure).
-    pub def step(frame: App.Frame, s: Session): Session =
+    pub def step(frame: App.Frame, s: Sokoban.Session): Sokoban.Session =
         { line = Sokoban.tick(inputOf(frame), frame#dt, s#line) | s }
 
     /// System two: stamp the advanced World onto the UI pages (pure).
-    pub def projectUi(_frame: App.Frame, s: Session): Session =
-        { ui = Sokoban.projectUi(Worldline.pastLength(s#line),
-                                 Worldline.current(s#line), s#ui) | s }
+    pub def projectUi(_frame: App.Frame, s: Sokoban.Session): Sokoban.Session =
+        { ui = GameUi.projectUi(Worldline.pastLength(s#line),
+                                Worldline.current(s#line), s#ui) | s }
 
     /// F1: re-read every spawned Spec from disk. Edit the json while the
     /// game runs, press F1, and the page changes under you.
-    pub def reloadUi(s: Session): Session \ {Fs.FileRead} =
+    pub def reloadUi(s: Sokoban.Session): Sokoban.Session \ {Fs.FileRead} =
         { ui = UiSpec.reloadAll(s#ui) | s }
 
     /// Quit on Escape's edge — except while the CLEAR panel is up (that
     /// Escape belongs to tick, which closes the panel).
-    pub def wantsQuit(frame: App.Frame, s: Session): Bool =
+    pub def wantsQuit(frame: App.Frame, s: Sokoban.Session): Bool =
         App.justPressed(Key.Escape, frame)
             and not Sokoban.clearModal(Worldline.current(s#line))
 }
@@ -2047,12 +2054,12 @@ And `Main.flix`, final form — every idea in this game is one line here:
 
 ```flix
 def main(): Unit \ IO =
-    let ui = run { Sokoban.loadUi() } with Fs.FileRead.runWithIO;
+    let ui = run { GameUi.loadUi() } with Fs.FileRead.runWithIO;
     App.make({ ui = ui, line = Worldline.make(Sokoban.initialWorld(), Sokoban.historyCap()) })
         |> App.addSystem(Controls.step)
         |> App.addSystem(Controls.projectUi)
         |> App.reloadOn(GameEngine.Key.F1, Controls.reloadUi)
-        |> App.withView(Sokoban.compose)
+        |> App.withView(View.compose)
         |> App.quitWhen(Controls.wantsQuit)
         |> App.launch
 ```
@@ -2068,10 +2075,10 @@ view composes one list from two sources:
 ```flix
     /// The whole Session as one draw list: the board's projection plus the
     /// UI pages, laid out by the engine and returned as the same Placed items.
-    pub def compose(atlas: FontAtlas, s: Session): List[Render.Placed] =
+    pub def compose(atlas: FontAtlas, s: Sokoban.Session): List[Render.Placed] =
         List.append(
-            frame(atlas, Worldline.current(s#line)),
-            UiRender.itemsWith(_ -> atlas, _ -> None, s#ui, designSize()))
+            Sokoban.frame(atlas, Worldline.current(s#line)),
+            UiRender.itemsWith(_ -> atlas, _ -> None, s#ui, GameUi.designSize()))
 ```
 
 The title page draws *nothing* from `frame` at all — on that screen,
@@ -2101,7 +2108,7 @@ the panel instead. The window's close button still works either way.
 - **The move count was already there.** `Worldline.pastLength` is the number
   of moves because history records one snapshot per move — no counter added,
   and undo subtracts by itself.
-- The UiWorld is one more value in the loop, beside the Worldline. The World
+- The UiWorld is one more field of the Session, beside the Worldline. The World
   never learns the UI exists; a projection stamps verdicts onto it once a
   frame.
 
@@ -2148,10 +2155,10 @@ example wires up eighteen. Here is sokoban's, in full:
 //
 // It is short on purpose, and the shortness is the point: tick is a pure
 // function, so the rules need no harness at all. Only the *picture* touches
-// the outside world, and it wants exactly three things — a font atlas baked
-// headlessly, the Fs handlers to read the ui.json Specs, and a stub of the
-// Game effect whose only real answer is that font atlas. Every other
-// operation returns a constant.
+// the outside world, and it wants exactly two things — a font atlas baked
+// headlessly, and the Fs handlers to read the ui.json Specs. The pages hold
+// only boxes and text, so `UiRender.renderUiWith` draws them from the atlas
+// alone: no Game handler, no window.
 mod Harness {
 
     def ttfPath(): String = "assets/Xolonium-Regular.ttf"
@@ -2164,29 +2171,10 @@ mod Harness {
     /// Both page Specs spawned into one UiWorld, as the launcher does.
     pub def ui(): Option[UiStore.UiWorld] \ IO =
         run {
-            forM (a <- UiSpec.spawnAsset(Sokoban.titleUiPath(), UiStore.empty()) |> Result.toOption;
-                  b <- UiSpec.spawnAsset(Sokoban.clearUiPath(), snd(a)) |> Result.toOption)
+            forM (a <- UiSpec.spawnAsset(GameUi.titleUiPath(), UiStore.empty()) |> Result.toOption;
+                  b <- UiSpec.spawnAsset(GameUi.clearUiPath(), snd(a)) |> Result.toOption)
             yield snd(b)
         } with Fs.FileRead.runWithIO
-
-    /// A Game handler with no GL behind it. renderUi only ever asks for the
-    /// font atlas; a handler must still name every operation, so the rest
-    /// answer with constants.
-    pub def withMockGame(atlas: FontAtlas, f: Unit -> a \ ef + GameEngine.Game): a \ ef =
-        run f() with handler GameEngine.Game {
-            def renderCommands(_, _, _, k)  = k(())
-            def initTileBuffer(_, k)        = k((0i32, 0i32))
-            def shouldClose(k)              = k(false)
-            def getDeltaTime(k)             = k(Duration.seconds(0.1))
-            def isKeyPressed(_, k)          = k(false)
-            def getMousePosition(k)         = k({x = 0.0, y = 0.0})
-            def isMouseButtonPressed(_, k)  = k(false)
-            def consumeScrollDelta(k)       = k(0.0)
-            def getFontAtlas(_, k)          = k(atlas)
-            def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 320.0, y = 240.0}})
-            def getTextureInfo(_, k)        = k(None)
-            def setCursor(_, k)             = k(())
-        }
 }
 ```
 
@@ -2195,9 +2183,11 @@ tutorial has been walking toward. Six chapters of insisting that `tick`
 stays pure — keys as data, the clock as an argument — looked like
 discipline for its own sake. Here it pays out as *absence*: the rules need
 no harness at all. Not a small one. None. Every stand-in above serves the
-picture, not the game — a font, two file handlers, and a Game stub whose
-twelve operations are eleven constants and one atlas. The thinner the
-boundary your pure core touches, the thinner the harness that fakes it.
+picture, not the game — one font and two file handlers, twenty-five lines
+including comments. There is not even a stub of the engine's Game effect,
+because the whole projection stack is as pure as the rules: hand it an
+atlas and it returns items. The thinner the boundary your pure core
+touches, the thinner the harness that fakes it.
 
 ### The eighth word: Trace
 
@@ -2267,27 +2257,30 @@ hand, once; now it is a machine's job, every run.
 
 The same seven moves are also a film. `Replay.timeline` returns every frame
 of a Trace, and each frame renders through the *same* projection stack the
-launcher uses — `frame`, `projectUi`, `renderUi` — just under the Harness
+runtime uses — `projectUi` then `View.compose` — just under the Harness
 instead of a window:
 
 ```flix
-    def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, cues: List[Replay.Cue],
-                start: Worldline[Sokoban.World], path: String): Unit \ IO =
-        let film = Replay.timeline(cues, start);
+    def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, cues: List[Replay.Cue[Sokoban.Input]],
+                start: Worldline[Sokoban.World], name: String): Unit \ IO =
+        let path = "gallery/${name}.gif";
+        let film = Replay.timeline(Sokoban.tick, Trace.dt(), cues, start);
         let frames = List.map(l -> SoftRaster.renderToImage(rasterReq(atlas, scene(atlas, ui, l), path)),
                               every(gifSampleStride(), 0, film));
-        GifEncoder.encode(frames, gifFrameDelayMs(), path)
+        GifEncoder.encode(frames, gifFrameDelayMs(), path);
+        discard Filmstrip.bakeFrames(frames, "gallery/frames/${name}")
 ```
 
-Run `flix test` and the `gallery/` directory fills up: four screenshots
+Run `make bake` and the `gallery/` directory fills up: four screenshots
 (the title page, level 1 at rest, a push frozen mid-slide, the CLEAR panel
 counting seven moves), three films — `solve_level1.gif`, the opening act
 from the title to the first CLEAR; `full_clear.gif`, one full lap of the
 game, both levels, both CLEARs and back to the title; `rewind_demo.gif`,
 three moves and a held Z, the alarm clock turning counterclockwise while
 robot and crate glide home — and an `index.html` dashboard (engine_tools'
-SnapshotSite) that lays them all out in pages. Delete the folder; one test
-run rebuilds every pixel of it.
+SnapshotSite) that lays them all out in pages. Delete the folder; one bake
+rebuilds every pixel of it. (`make test` stays fast and pure: the tests verify,
+the bake generates — two different verbs, two different commands.)
 
 And the third artifact costs nothing: a failing Trace **is** a bug report.
 "These inputs, this outcome" — attached to a ticket, it reproduces forever;
@@ -2302,7 +2295,7 @@ folded through `tick`, it is already the regression test.
 - **Trace is the eighth**: inputs as data over a fixed clock. Determinism
   turns one Trace into three artifacts — a golden test, a film, a bug
   report — and they can never drift apart, because they are the same list.
-- The gallery is disposable output, never source: `flix test` regenerates
+- The gallery is disposable output, never source: `make bake` regenerates
   every PNG, every GIF and the dashboard from the code and the Specs.
 - The vocabulary stops at eight. The Worldline architecture has more words
   for bigger games — a **Driver** that owns a simulation's stepping, a
@@ -2444,12 +2437,12 @@ stretch.)
 ### Sound at the boundary
 
 The four sound effects are **generated assets**, like the gallery:
-`test/SfxBake.flix` writes them as 16-bit PCM WAV files — a 44-byte
+`src/bake/SfxBake.flix` writes them as 16-bit PCM WAV files — a 44-byte
 header and a list of samples, each sample a pure function of its index.
 A square wave, a noise burst and a linear fade turn out to be a whole
 sound vocabulary: a blip for walking, a low thud for pushing, a high
 tick for each rewound move, four rising notes for CLEAR. No sample
-packs, no microphone — `flix test` bakes them and `project.json` loads
+packs, no microphone — `make bake` bakes them and `project.json` loads
 them.
 
 *Which* sound this frame deserves is a pure question, and it reads off
@@ -2476,27 +2469,35 @@ the two Worldlines like every other derivation in the game:
 
 Note where the facts come from: a move committed exactly when the past
 grew by one, a rewind when it shrank by one — the Worldline was already
-the event log. The playing itself is an effect, and it lives in the loop
-with the other boundary crossings, closing the frame the tutorial opened
-in chapter 3: keys and the clock come *in* as values, pixels and now
-sound go *out* as commands, and everything between is pure.
+the event log. The playing itself is an effect, and the App owns it: one
+last line completes `Main.flix` —
 
-(One honest caveat: generated assets must be generated. Run `flix test`
-once before the first `flix run`, or the sound manifest will point at
+```flix
+        |> App.withAudio(Sfx.events)
+```
+
+— where `Sfx.events` adapts `sfxEvent` to the App's shape (the App hands it
+this frame's `{before, after}` Sessions and plays whatever names come back).
+That closes the frame the tutorial opened in chapter 3: keys and the clock
+come *in* as values, pixels and now sound go *out* as commands, and
+everything between is pure.
+
+(One honest caveat: generated assets must be generated. Run `make bake`
+once before the first `make run`, or the sound manifest will point at
 files that do not exist yet.)
 
 ### What just happened
 
-- **Juice needed no new machinery.** Confetti is a closed form over one
+- **Juice needed no new machinery.** Confetti is a derivation from one
   number; weight is two one-pixel derivations off a flag that already
   existed; sound is a pure event read off the Worldline plus one
-  `playAudio` at the loop's edge. No particle system, no animation
-  system, no event bus.
+  `withAudio` line in Main. No particle system, no animation system, no
+  event bus.
 - **Closed-form particles are a real technique**, not a toy: anything
   whose pieces do not interact can be `(index, t) -> piece`, testable
   and free of lifecycle bugs by construction.
 - **The sounds are generated assets** — the same grammar as the gallery:
-  `flix test` writes them, the code that writes them is the source of
+  `make bake` writes them, the code that writes them is the source of
   truth, and no binary blob needs a provenance story.
 - **The vocabulary did not grow.** Eight words were enough for the
   polish pass too.
@@ -2521,8 +2522,10 @@ lines — tuning it is faster than downloading one.
 
 ## Recap
 
-- A game is a loop with a three-part beat: **`world |> step |> frame`** —
-  advance, project, draw.
+- A game is one value and a three-part beat — advance (your systems), project
+  (your view), draw — and the **App** runs the beat: it snapshots the keys and
+  the clock into a **Frame**, folds your **Systems** over the World, and draws
+  whatever the view returns. You write the parts; the engine owns the loop.
 - **World** is the one value where all state lives. **Step** is the pure
   function that advances it. A **Projection** (like `frame`) reads it without
   changing it. A **Store** is a World field that holds many states of one kind.
@@ -2547,19 +2550,21 @@ mistakes that rewind, a clear panel that knows the score, pages you can
 restyle while it runs — and a gallery that proves all of it on every test
 run. Eight words carried the entire trip, and the next game you build can
 start from all eight on day one.
-\n
+
 ---
 
 ## Epilogue
 
 The trip is over; count what is on the table. One complete game — title,
 two levels, undo with a spinning clock, pages you can restyle while it
-runs, confetti and a fanfare. Fifty-five tests that replay whole
-solutions and pin their outcomes as plain values. A gallery that bakes
-its own screenshots, films and dashboard on every test run. A tutorial
-in two languages whose code listings are checked against the source. And
+runs, confetti and a fanfare. Fifty-eight tests that replay whole
+solutions and pin their outcomes as plain values — including a breadth-first
+solver that machine-proves every shipped level. A gallery that bakes its
+own screenshots, films and dashboard on every `make bake`. A tutorial in
+two languages whose code listings are checked against the source. And
 carrying all of it, eight words: **World, Step, Projection, Store,
-Worldline, Spec, Harness, Trace**.
+Worldline, Spec, Harness, Trace** — performing on a stage the engine
+provides: the **App**, its **Frame**, your **Systems**.
 
 None of the eight is exotic. Their whole content is one discipline —
 state is one value, change is a pure function, everything else is a
