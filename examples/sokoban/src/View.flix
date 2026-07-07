@@ -44,8 +44,9 @@ mod View {
                 onGoalBadges(b) ::
                 clockBoxes(b) ::
                 texts(atlas) :: Nil);
-            (Render.draw(boxes),
-             List.flatten(cratePolys(b) :: clockNeedle(b) :: confettiQuads(b) :: Nil))
+            let (drawables, polys) = Render.draw(boxes);
+            (drawables,
+             List.append(polys, List.flatten(cratePolys(b) :: clockNeedle(b) :: confettiQuads(b) :: Nil)))
         }
 
     // ── ボードの幾何: セルから画面座標へ ──

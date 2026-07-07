@@ -11,13 +11,10 @@ mod CameraRig {
     /// 動かないカメラ（HUD などスクリーン空間のレイヤー用）。
     pub def fixed(): Camera = { offset = Vec2.zero() }
 
-    /// カメラをボックス列（位置つき描画物）に適用する。
+    /// カメラを描画物の列（(置き場所, RenderItem)）に適用する。多角形（Poly）も置き場所ごと
+    /// 動くので、種類を問わずこの 1 本で足りる。
     pub def apply(cam: Camera, items: List[(Vec2.Vec2, Render.RenderItem)]): List[(Vec2.Vec2, Render.RenderItem)] =
         List.map(entry -> { let (pos, item) = entry; (Vec2.add(pos, cam#offset), item) }, items)
-
-    /// カメラをポリゴン列に適用する（全頂点をずらす）。
-    pub def applyPoly(cam: Camera, polys: List[GameEngine.PolygonRenderCmd]): List[GameEngine.PolygonRenderCmd] =
-        List.map(poly -> { vertices = List.map(v -> Vec2.add(v, cam#offset), poly#vertices) | poly }, polys)
 
     // ── 画面シェイク（trauma 方式）──
 

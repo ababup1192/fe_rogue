@@ -1,6 +1,7 @@
 // Render — 「何をどう見せたいか」だけ書いた RenderItem を、描画部が食べられる形に変換する。
-// スプライトやテキストを出すのに、描画命令の細かいフィールドを毎回手で埋めなくてよい。
-// 利用例: 弾や敵を絵として並べる / HUD の数字やラベルを出す / 位置は ECS 側から渡して見た目だけ指定する。
+// スプライトもテキストも箱も円も多角形も、同じ (置き場所, RenderItem) の語彙で並べられる。
+// 利用例: 弾や敵を絵として並べる / HUD の数字やラベルを出す / 破片や紙吹雪を polygon で撒く。
+// 形は box / circle / polygon で作り、稀な属性（角丸・半透明・枠・縞）はパイプ修飾で重ねる。
 // 注意: 置き場所（位置）は持たず呼び側が渡す。テキストの実寸計算は engine の純粋関数を使う。
 
 mod Render {
@@ -16,6 +17,8 @@ mod Render {
         case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color, zIndex = Int32 })
         case Box({ size = Vec2.Vec2, color = Color, alpha = Float32,
                    style = Option[GameEngine.BoxStyle], zIndex = Int32 })
+        /// 単色の凸多角形。頂点は置き場所からの相対座標（draw が置き場所を全頂点に加算する）。
+        case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32 })
     }
 
     // ── smart constructor（Drawable/BoxStyle をゲームから隠す）──
@@ -35,20 +38,98 @@ mod Render {
     pub def textTinted(content: String, fontAtlas: FontAtlas, fontSize: Float64, tint: Color, zIndex: Int32): RenderItem =
         RenderItem.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = tint, zIndex = zIndex })
 
-    /// 単色塗りの矩形（左上原点・サイズ指定）。style は内部で solid に固定。
-    pub def solidBox(size: Vec2.Vec2, color: Color, zIndex: Int32): RenderItem =
+    /// 単色塗りの矩形（左上原点・サイズ指定）。
+    pub def box(size: Vec2.Vec2, color: Color, zIndex: Int32): RenderItem =
         RenderItem.Box({ size = size, color = color, alpha = 1.0f32,
                          style = Some(solidStyle()), zIndex = zIndex })
+
+    /// box の別名（左上原点・サイズ指定の単色矩形）。
+    pub def solidBox(size: Vec2.Vec2, color: Color, zIndex: Int32): RenderItem =
+        box(size, color, zIndex)
+
+    /// 単色塗りの円（直径 radius×2 の全角丸 Box）。置き場所は外接正方形の左上。
+    pub def circle(radius: Float64, color: Color, zIndex: Int32): RenderItem =
+        box({ x = radius * 2.0, y = radius * 2.0 }, color, zIndex) |> rounded(radius)
+
+    /// 単色塗りの多角形。頂点は置き場所からの相対座標で渡す（絶対座標で組みたいときは
+    /// 置き場所を Vec2.zero() にする）。
+    pub def polygon(vertices: List[Vec2.Vec2], color: Color, zIndex: Int32): RenderItem =
+        RenderItem.Poly({ vertices = vertices, color = color, alpha = 1.0f32, zIndex = zIndex })
 
     def solidStyle(): GameEngine.BoxStyle =
         { cornerRadius = 0.0, borderWidth = 0.0, borderColor = white(), borderAlpha = 0.0f32,
           stripeColor = white(), stripeAlpha = 0.0f32, stripeWidth = 0.0, stripePeriod = 0.0 }
 
+    // ── 修飾（稀な属性はパイプで重ねる。効かない種類の item は素通し）──
+
+    /// 角を丸める（Box に効く）。
+    pub def rounded(radius: Float64, item: RenderItem): RenderItem =
+        match item {
+            case RenderItem.Box(b) =>
+                RenderItem.Box({ style = Some({ cornerRadius = radius | styleOf(b#style) }) | b })
+            case other => other
+        }
+
+    /// 半透明にする（Sprite / Box / Poly に効く。Text は tint が濃度を兼ねる）。
+    pub def fade(alpha: Float32, item: RenderItem): RenderItem =
+        match item {
+            case RenderItem.Sprite(s) => RenderItem.Sprite({ alpha = alpha | s })
+            case RenderItem.Box(b)    => RenderItem.Box({ alpha = alpha | b })
+            case RenderItem.Poly(p)   => RenderItem.Poly({ alpha = alpha | p })
+            case other                => other
+        }
+
+    /// 枠線を付ける（Box に効く）。
+    pub def outline(color: Color, width: Float64, item: RenderItem): RenderItem =
+        match item {
+            case RenderItem.Box(b) =>
+                RenderItem.Box({ style = Some({ borderColor = color, borderWidth = width,
+                                                borderAlpha = 1.0f32 | styleOf(b#style) }) | b })
+            case other => other
+        }
+
+    /// 縞模様を敷く（Box に効く）。
+    pub def striped(stripe: { color = Color, alpha = Float32, width = Float64, period = Float64 },
+                    item: RenderItem): RenderItem =
+        match item {
+            case RenderItem.Box(b) =>
+                RenderItem.Box({ style = Some({ stripeColor = stripe#color, stripeAlpha = stripe#alpha,
+                                                stripeWidth = stripe#width, stripePeriod = stripe#period
+                                                | styleOf(b#style) }) | b })
+            case other => other
+        }
+
+    /// 修飾の土台になる style（無ければ solid）。
+    def styleOf(style: Option[GameEngine.BoxStyle]): GameEngine.BoxStyle =
+        Option.getWithDefault(solidStyle(), style)
+
     // ── extract / 射影（lib が Drawable を1回だけ組む）──
 
-    /// draw list 全体を Drawable 化（zIndex 順は render_core が stable sort する）。
-    pub def draw(items: List[(Vec2.Vec2, RenderItem)]): List[GameEngine.Drawable] =
-        List.flatMap(pair -> let (pos, item) = pair; toDrawables(item, pos), items)
+    /// draw list 全体を描画命令へ（zIndex 順は render_core が stable sort する）。
+    /// Sprite / Text / Box は Drawable、Poly は置き場所を頂点に織り込んだ PolygonRenderCmd になる —
+    /// 呼び側は 1 本のリストを組むだけで、2 系統への振り分けはここで終わる。
+    pub def draw(items: List[(Vec2.Vec2, RenderItem)]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+        let drawables = items |> List.flatMap(pair -> {
+            let (pos, item) = pair;
+            match item {
+                case RenderItem.Poly(_) => Nil
+                case other              => toDrawables(other, pos)
+            }
+        });
+        let polygons = items |> List.filterMap(pair -> {
+            let (pos, item) = pair;
+            match item {
+                case RenderItem.Poly(p) => Some(polyCmd(pos, p))
+                case _                  => None
+            }
+        });
+        (drawables, polygons)
+
+    /// Poly を置き場所 pos の描画命令へ（全頂点に pos を加算）。
+    def polyCmd(pos: Vec2.Vec2,
+                p: { vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32 }): GameEngine.PolygonRenderCmd =
+        { vertices = List.map(v -> Vec2.add(v, pos), p#vertices),
+          color = p#color, alpha = p#alpha, zIndex = p#zIndex }
 
     /// World 由来 Drawable 群に camera のズーム倍率を適用する（位置は `Camera2D.applyToWorldPos` で
     /// screenPos を出した後の共通後処理）。render-from-World の各オーバーレイ（ユニット / 背景 / 範囲表示 /
@@ -68,6 +149,8 @@ mod Render {
                 textDrawables(t#text, t#fontAtlas, t#fontSize, t#tint, t#zIndex, pos)
             case RenderItem.Box(b) =>
                 boxDrawable(b#size, b#color, b#alpha, b#style, b#zIndex, pos) :: Nil
+            case RenderItem.Poly(_) =>
+                bug!("Render.toDrawables: Poly は Drawable にならない（draw が PolygonRenderCmd へ振り分ける）")
         }
 
     /// B0b: region atlas 対応の射影。textureSize を引いて UV を計算する

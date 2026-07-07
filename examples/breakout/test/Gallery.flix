@@ -36,8 +36,8 @@ mod Gallery {
     /// World の絵に注釈（extra）を重ねた 1 枚の焼き込み要求。
     def reqOfWorld(atlas: FontAtlas, world: Field.World,
                    extra: List[(Vec2.Vec2, Render.RenderItem)], path: String): SoftRaster.RasterReq =
-        let (drawables, polygons) = View.frame(atlas, world);
-        reqOfScene(atlas, List.append(drawables, Render.draw(extra)), polygons, path)
+        let (drawables, polygons) = Render.draw(List.append(View.frame(atlas, world), extra));
+        reqOfScene(atlas, drawables, polygons, path)
 
     def pathOf(name: String): String = "${outDir()}/${name}.png"
     def gifPathOf(name: String): String = "${outDir()}/${name}.gif"
@@ -97,7 +97,7 @@ mod Gallery {
         let title =
             TextDraw.centered({ text = "PADDLE BOUNCE 5 ZONES", atlas = atlas, size = 12.0,
                                 color = Palette.titleText(), z = 100, centerX = center, y = 12.0 }) :: Nil;
-        (Render.draw(List.flatten(paddleArt :: rays :: title :: Nil)), Nil)
+        Render.draw(List.flatten(paddleArt :: rays :: title :: Nil))
 
     /// 当たり位置から反射方向 direction（速さ 1）へ、点を等間隔に並べた点線。
     def fanRay(startX: Float64, startY: Float64, direction: Vec2.Vec2,
@@ -120,12 +120,7 @@ mod Gallery {
     // ── 描画プリミティブ ──
 
     def dot(center: Vec2.Vec2, radius: Float64, color: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
-        let diameter = radius * 2.0;
-        let style = { cornerRadius = radius, borderWidth = 0.0, borderColor = color, borderAlpha = 0.0f32,
-                      stripeColor = color, stripeAlpha = 0.0f32, stripeWidth = 0.0, stripePeriod = 0.0 };
-        ({ x = center#x - radius, y = center#y - radius },
-         Render.RenderItem.Box({ size = { x = diameter, y = diameter }, color = color, alpha = 1.0f32,
-                                 style = Some(style), zIndex = z }))
+        ({ x = center#x - radius, y = center#y - radius }, Render.circle(radius, color, z))
 
     // ── 全部を焼いてサイトを生成する 1 テスト ──
 

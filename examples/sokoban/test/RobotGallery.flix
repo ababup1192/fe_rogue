@@ -168,9 +168,10 @@ mod RobotGallery {
         HeadlessFont.ensureHeadless();
         let atlas = HeadlessFont.buildUiAtlas(ttfPath(), "assets/joyo.txt");
         let (items, polys) = galleryItems(atlas);
+        let (drawables, _) = Render.draw(items);
         discard (new File("gallery")).mkdirs();
         SoftRaster.render({
-            drawables = Render.draw(items), polygons = polys,
+            drawables = drawables, polygons = polys,
             design = designSize(), scale = 1, background = backdrop(),
             texturePath = Map.empty(), fontTtf = ttfPath(), fontAtlas = atlas,
             outPath = outPath()
@@ -207,7 +208,8 @@ mod RobotGallery {
             one(3)(Dir4.Up)("Up") :: Nil)
 
     def directionsReq(atlas: FontAtlas, phase: Float64, path: String): SoftRaster.RasterReq =
-        { drawables = Render.draw(directionItems(atlas, phase)), polygons = Nil,
+        let (drawables, polygons) = Render.draw(directionItems(atlas, phase));
+        { drawables = drawables, polygons = polygons,
           design = dirDesign(), scale = 1, background = backdrop(),
           texturePath = Map.empty(), fontTtf = ttfPath(), fontAtlas = atlas,
           outPath = path }

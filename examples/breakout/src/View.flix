@@ -1,4 +1,4 @@
-// View — Projection の番地: World から「描くべきものリスト」(Drawable) への投影。
+// View — Projection の番地: World から「(置き場所, 見せたい物) のリスト」への投影。
 // ここに状態は無い: 壁もパドルもボールもブロックも破片も、渡された World の純粋な関数である。
 // いまの局面（world#phase）で場合分けし、盤（GameCore）を持つ局面はその盤を、タイトルは
 // 文字だけを描く。盤の中で単独者（ballPos・paddle）は型つきフィールドを、群れ（壁・ブロック）は
@@ -29,10 +29,10 @@ mod View {
     // ── frame: 局面を描画コマンドへ投影する ──
     // タイトルは文字だけ（盤・HUD を出さない）。盤を持つ局面は盤・ボール・HUD を描き、飛行中だけ
     // 残像を、サーブ待ち/クリア/ゲームオーバーはそれぞれの案内文を重ねる（case は網羅）。
-    pub def frame(atlas: FontAtlas, world: Field.World): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+    pub def frame(atlas: FontAtlas, world: Field.World): List[(Vec2.Vec2, Render.RenderItem)] =
         match world#phase {
             case Field.Phase.Title =>
-                (Render.draw(titleTexts(atlas)), Nil)
+                titleTexts(atlas)
             case Field.Phase.Playing(core, Field.BallState.Waiting) =>
                 boardFrame(atlas, world#params, core, Nil, Vec2.zero(), waitingOverlay(atlas))
             case Field.Phase.Playing(core, Field.BallState.Moving(mv)) =>
@@ -49,7 +49,7 @@ mod View {
     /// World に住むので揺れ、HUD と案内文は Screen に住むので動かない。
     def boardFrame(atlas: FontAtlas, params: GameParameters.Params, core: Field.GameCore,
                    trail: List[Vec2.Vec2], vel: Vec2.Vec2, overlay: List[(Vec2.Vec2, Render.RenderItem)]):
-                   (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+                   List[(Vec2.Vec2, Render.RenderItem)] =
         let worldCam = cameraOf(Layer.World, core);
         let screenCam = cameraOf(Layer.Screen, core);
         let worldItems = List.flatten(
@@ -57,11 +57,10 @@ mod View {
             blockBoxes(core) ::
             paddleBoxes(core) ::
             trailBoxes(params, vel, trail) ::
-            ballBoxes(core) :: Nil);
+            ballBoxes(core) ::
+            burstItems(core) :: Nil);
         let screenItems = List.append(hudTexts(atlas, core), overlay);
-        let boxes = List.append(CameraRig.apply(worldCam, worldItems), CameraRig.apply(screenCam, screenItems));
-        let polys = CameraRig.applyPoly(worldCam, burstPolys(core));
-        (Render.draw(boxes), polys)
+        List.append(CameraRig.apply(worldCam, worldItems), CameraRig.apply(screenCam, screenItems))
 
     // ── レイヤーとカメラ（描画物が住む空間と、その空間の見方）──
 
@@ -208,13 +207,8 @@ mod View {
     def trailDot(pos: Vec2.Vec2, age: Float64, ratio: Float64): (Vec2.Vec2, Render.RenderItem) =
         let diameter = trailHeadDiameter() * (1.0 - (1.0 - trailTailScale()) * age);
         let alpha = RenderUtil.f32(trailBaseAlpha() * (1.0 - age));
-        let color = Palette.trailColor(ratio);
-        let style = { cornerRadius = diameter / 2.0, borderWidth = 0.0, borderColor = color,
-                      borderAlpha = 0.0f32, stripeColor = color, stripeAlpha = 0.0f32,
-                      stripeWidth = 0.0, stripePeriod = 0.0 };
         ({ x = pos#x - diameter / 2.0, y = pos#y - diameter / 2.0 },
-         Render.RenderItem.Box({ size = { x = diameter, y = diameter }, color = color, alpha = alpha,
-                                 style = Some(style), zIndex = zTrail() }))
+         Render.circle(diameter / 2.0, Palette.trailColor(ratio), zTrail()) |> Render.fade(alpha))
 
     /// 飛行中のボールの残像。速度 vel は色ランプ（冷→温→熱）に、位置リング trail は点の並びになる。
     def trailBoxes(params: GameParameters.Params, vel: Vec2.Vec2,
@@ -237,15 +231,16 @@ mod View {
     def fragSpinMin(): Float64 = 3.0
     def fragSpinSpan(): Float64 = 5.0
 
-    def burstPolys(core: Field.GameCore): List[GameEngine.PolygonRenderCmd] =
+    def burstItems(core: Field.GameCore): List[(Vec2.Vec2, Render.RenderItem)] =
         List.flatMap(burstQuads, core#bursts)
 
-    def burstQuads(burst: Field.Burst): List[GameEngine.PolygonRenderCmd] =
+    def burstQuads(burst: Field.Burst): List[(Vec2.Vec2, Render.RenderItem)] =
         Fx.deriveSeeded({ seed = burst#seed, count = fragCount() }, burst#elapsed,
                         (i, rand, t) -> fragmentPiece(burst, i, rand, t))
 
     /// 破片 i、破壊から t 秒目: 自分の方向・速さで飛び散り、少し落ち、回りながら縮んで消える。
-    def fragmentPiece(burst: Field.Burst, i: Int32, rand: Int32 -> Float64, t: Float64): GameEngine.PolygonRenderCmd =
+    /// 形（原点まわりの回転四角）と置き場所（飛散先の中心）を分けて返す。
+    def fragmentPiece(burst: Field.Burst, i: Int32, rand: Int32 -> Float64, t: Float64): (Vec2.Vec2, Render.RenderItem) =
         let angle = tau() * rand(0);
         let speed = fragSpeedMin() + fragSpeedSpan() * rand(1);
         let dist = speed * t;
@@ -256,8 +251,8 @@ mod View {
         let spin = Curve.spin((fragSpinMin() + fragSpinSpan() * rand(3)) * spinDir, t);
         let progress = t / Field.burstLifetime();
         let half = fragHalf() * (1.0 - progress);
-        { vertices = Quad.rotated(center, half, half, spin),
-          color = Palette.fragment(i), alpha = RenderUtil.f32(1.0 - progress), zIndex = zBurst() }
+        (center, Render.polygon(Quad.rotated(Vec2.zero(), half, half, spin), Palette.fragment(i), zBurst())
+                     |> Render.fade(RenderUtil.f32(1.0 - progress)))
 
     // ── テキスト（HUD と各局面のオーバーレイ）──
 
@@ -309,23 +304,14 @@ mod View {
     /// 中心指定の単色ボックス。
     def flatBox(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
         ({ x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
-         Render.solidBox(size, color, z))
+         Render.box(size, color, z))
 
     /// 左上指定・高さの半分まで角を丸めたボックス（パドルの丸端の帯）。
     def roundedBox(topLeft: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
-        let radius = Float64.min(size#x, size#y) / 2.0;
-        let style = { cornerRadius = radius, borderWidth = 0.0, borderColor = color,
-                      borderAlpha = 0.0f32, stripeColor = color, stripeAlpha = 0.0f32,
-                      stripeWidth = 0.0, stripePeriod = 0.0 };
-        (topLeft, Render.RenderItem.Box({ size = size, color = color, alpha = 1.0f32,
-                                          style = Some(style), zIndex = z }))
+        (topLeft, Render.box(size, color, z) |> Render.rounded(Float64.min(size#x, size#y) / 2.0))
 
-    /// center を中心とする直径 d の塗りつぶし円（角丸を最大にしたボックス）。
+    /// center を中心とする直径 d の塗りつぶし円。
     def circleItem(center: Vec2.Vec2, d: Float64, color: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
-        let style = { cornerRadius = d / 2.0, borderWidth = 0.0, borderColor = color,
-                      borderAlpha = 0.0f32, stripeColor = color, stripeAlpha = 0.0f32,
-                      stripeWidth = 0.0, stripePeriod = 0.0 };
         ({ x = center#x - d / 2.0, y = center#y - d / 2.0 },
-         Render.RenderItem.Box({ size = { x = d, y = d }, color = color, alpha = 1.0f32,
-                                 style = Some(style), zIndex = z }))
+         Render.circle(d / 2.0, color, z))
 }

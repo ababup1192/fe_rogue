@@ -28,7 +28,8 @@ mod RenderWorld {
         let bg      = ({x = 0.0, y = 0.0}, bgItem());
         let sprites = spriteItems(w#positions, w#sprites, w#player);
         let huds    = hudItems(w#huds, atlas);
-        Render.draw(bg :: List.append(sprites, huds))
+        let (drawables, _) = Render.draw(bg :: List.append(sprites, huds));
+        drawables
 
     def bgItem(): Render.RenderItem =
         Render.solidBox({x = Int32.toFloat64(World.designWi()), y = Int32.toFloat64(World.designHi())},

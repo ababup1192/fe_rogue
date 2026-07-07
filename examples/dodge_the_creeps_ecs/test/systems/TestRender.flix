@@ -37,13 +37,14 @@ mod TestRender {
     def testDrawCollectsItems(): Unit \ Assert =
         let items = ({x = 0.0, y = 0.0}, Render.sprite("a", 0i32, false, false)) ::
                     ({x = 10.0, y = 10.0}, Render.solidBox({x = 5.0, y = 5.0}, red(), 2i32)) :: Nil;
-        Assert.assertEq(expected = 2, List.length(Render.draw(items)))
+        let (ds, _) = Render.draw(items);
+        Assert.assertEq(expected = 2, List.length(ds))
 
     /// ボタン = Box+Text の2アイテム。先頭は box（texture=""）。text は空グリフ atlas で 0 個でも box は出る。
     @Test
     def testButtonBoxFirst(): Unit \ Assert =
         let items = ({x = 0.0, y = 0.0}, Render.solidBox({x = 80.0, y = 36.0}, red(), 100i32)) ::
                     ({x = 12.0, y = 4.0}, Render.text("Start", testFontAtlas(), 24.0, 100i32)) :: Nil;
-        let ds = Render.draw(items);
+        let (ds, _) = Render.draw(items);
         Assert.assertEq(expected = true, List.length(ds) >= 1 and firstOf(ds)#texture == "")
 }

@@ -33,8 +33,7 @@ mod App {
         startupSystems = List[w -> w],                             // 起動時に 1 回だけ・追加順
         updateSystems = List[(Frame, w) -> w],                     // 毎フレーム・追加順
         reload = Option[(GameEngine.Key, w -> w \ {Fs.FileRead})], // ホットリロード（キーとファイル読みの縁）
-        view = (FontAtlas, w) -> (List[GameEngine.Drawable],       // World を絵の列へ投影する純粋関数
-                                  List[GameEngine.PolygonRenderCmd]),
+        view = (FontAtlas, w) -> List[(Vec2.Vec2, Render.RenderItem)], // World を (置き場所, 見せたい物) の列へ投影する純粋関数
         audio = (w, w) -> List[String]                             // 1 フレームの前後から鳴らす音名を導く純粋関数
     }
 
@@ -44,7 +43,7 @@ mod App {
           startupSystems = Nil,
           updateSystems = Nil,
           reload = None,
-          view = (_atlas, _world) -> (Nil, Nil),
+          view = (_atlas, _world) -> Nil,
           audio = (_before, _after) -> Nil }
 
     /// 起動時に 1 回だけ走るシステムを末尾へ繋ぐ（追加順に適用される）。
@@ -60,9 +59,8 @@ mod App {
     pub def reloadOn(key: GameEngine.Key, f: w -> w \ {Fs.FileRead}, app: App[w]): App[w] =
         { reload = Some((key, f)) | app }
 
-    /// World を絵（スプライトとポリゴンの列）へ投影する関数を繋ぐ。
-    pub def withView(v: (FontAtlas, w) -> (List[GameEngine.Drawable],
-                                           List[GameEngine.PolygonRenderCmd]),
+    /// World を絵（(置き場所, 見せたい物) の列）へ投影する関数を繋ぐ。
+    pub def withView(v: (FontAtlas, w) -> List[(Vec2.Vec2, Render.RenderItem)],
                      app: App[w]): App[w] =
         { view = v | app }
 
@@ -138,9 +136,9 @@ mod App {
     def readDt(): Float64 \ GameEngine.Game =
         Duration.toSeconds(GameEngine.Game.getDeltaTime())
 
-    /// view の投影した絵をエンジンへ渡す（タイルマップは使わないので空の列を添える）。
+    /// view の投影した絵を描画命令にしてエンジンへ渡す（タイルマップは使わないので空の列を添える）。
     def renderFrame(app: App[w], atlas: FontAtlas, world: w): Unit \ GameEngine.Game =
-        let draw = app#view;
-        let (sprites, polygons) = draw(atlas, world);
+        let toItems = app#view;
+        let (sprites, polygons) = Render.draw(toItems(atlas, world));
         GameEngine.Game.renderCommands(sprites, Nil, polygons)
 }
