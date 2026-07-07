@@ -1,6 +1,6 @@
 // Controls — キー割り当て: Frame をこのゲームの意味（Room.Input）へ写し、Session を進める。
-// 矢印は押しっぱなしで歩き、Z（話す・決定）/ C（メモ）/ X（もどる）/ Enter / Escape は
-// 押した瞬間だけ効く。唯一の effect は reloadUi の ui.json 読み直し（F1）。
+// 矢印は押しっぱなしで歩き、Z（話す・決定）/ C（メモ）/ H（ヒント）/ X（もどる）/
+// Enter / Escape は押した瞬間だけ効く。唯一の effect は reloadUi の ui.json 読み直し（F1）。
 mod Controls {
     use GameEngine.Key
 
@@ -14,9 +14,11 @@ mod Controls {
           downTap = App.justPressed(Key.Down, frame),
           talk    = App.justPressed(Key.Z, frame),
           memo    = App.justPressed(Key.C, frame),
+          hint    = App.justPressed(Key.H, frame),
           cancel  = App.justPressed(Key.X, frame),
           enter   = App.justPressed(Key.Enter, frame),
-          esc     = App.justPressed(Key.Escape, frame) }
+          esc     = App.justPressed(Key.Escape, frame),
+          debug   = App.isDown(Key.D, frame) }
 
     /// 毎フレームのシステムその一: キーを Input へ写し、tick のルールで World を進める（純粋）。
     pub def step(frame: App.Frame, s: LiarsRoom.Session): LiarsRoom.Session =

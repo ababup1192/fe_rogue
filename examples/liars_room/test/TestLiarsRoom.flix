@@ -11,9 +11,10 @@ mod TestLiarsRoom {
         let Room.World.World(s) = w;
         s
 
-    /// タイトルから Enter でステージ 1 に入った直後の World。
+    /// ステージ 1 をシード 1 で直接開いた World（挙動テストの舞台を固定する —
+    /// タイトル経由だと entropy のくじ引きでプールのどれが出るか揺れる）。
     def freshGame(): Room.World =
-        Trace.step(Trace.enterTap(), Room.titleWorld())
+        Room.stageWorld(1, Map.empty(), 1i64)
 
     /// NPC id の目の前で発言を読み終えて確認メニューまで進めた World
     /// （話しかけ → 文字送りの早送り → 決定、の 3 タップ）。
@@ -29,10 +30,39 @@ mod TestLiarsRoom {
     @Test
     def testTitleEnterStartsStage1(): Unit \ Assert =
         // Enter でステージ 1 の探索が始まり、その遷移が BGM の火入れの合図になる。
+        // 出題シードはステージ 1 のプールから選ばれている。
         let before = Room.titleWorld();
-        let after = freshGame();
-        Assert.assertEq(expected = (Room.Phase.Exploring, 1, true),
-            (state(after)#phase, state(after)#stage, LiarsRoom.bgmStarts(before, after)))
+        let after = Trace.step(Trace.enterTap(), before);
+        Assert.assertEq(expected = (Room.Phase.Exploring, 1, true, true),
+            (state(after)#phase, state(after)#stage, LiarsRoom.bgmStarts(before, after),
+             List.memberOf(state(after)#puzzleSeed, Stage.seedPool(1))))
+
+    @Test
+    def testRetryKeepsSeedAndNextStageRedraws(): Unit \ Assert =
+        // 不正解のやり直しは同じシード（同じ発言）、正解後の次ステージはそのステージの
+        // プールから引き直す。
+        let wrong = freshGame()
+            |> atConfirm(1) |> Trace.step(Trace.upOnce()) |> Trace.step(Trace.talkTap());
+        let retried = wrong |> Trace.step(Trace.enterTap());
+        let advanced = freshGame()
+            |> atConfirm(0) |> Trace.step(Trace.upOnce()) |> Trace.step(Trace.talkTap())
+            |> Trace.step(Trace.enterTap());
+        Assert.assertEq(expected = (1i64, true),
+            (state(retried)#puzzleSeed,
+             List.memberOf(state(advanced)#puzzleSeed, Stage.seedPool(2))))
+
+    @Test
+    def testHintMarksOneLiarOncePerStage(): Unit \ Assert =
+        // M でヒント: 嘘つき 1 人（ステージ 1 シード 1 では NPC1）にメモの「うそ」が付き、
+        // メモが開いてカーソルが当たる。2 回目は何も増えない（1 ステージ 1 回だけ）。
+        let hinted = freshGame() |> Trace.step(Trace.hintTap());
+        let again = hinted
+            |> Trace.step(Trace.memoTap())
+            |> Trace.step(Trace.hintTap());
+        Assert.assertEq(
+            expected = (Some(Room.Mark.LiarMark), true, 1, true, 1),
+            (Map.get(1, state(hinted)#memo), state(hinted)#memoOpen, state(hinted)#memoSel,
+             state(again)#hintUsed, Map.size(state(again)#memo)))
 
     // ── 移動 ──
 
@@ -161,6 +191,20 @@ mod TestLiarsRoom {
             expected = (true, Some(Room.Mark.HonestMark), 1, false),
             (state(open)#memoOpen, Map.get(0, state(cycled)#memo),
              state(moved)#memoSel, state(closed)#memoOpen))
+
+    @Test
+    def testDebugHoldFillsAllMemos(): Unit \ Assert =
+        // デバッグ: D を 5 秒（dt=1/64 × 320 フレーム）押し続けると全メモが正解で埋まる。
+        // 319 フレーム（5 秒未満）では何も書かれず、途中で離すと数え直しになる。
+        let debugHold = ({ debug = true | Room.noKeys() });
+        let almost = freshGame() |> Trace.stepN(319, debugHold);
+        let filled = almost |> Trace.step(debugHold);
+        let released = almost |> Trace.step(Room.noKeys());
+        Assert.assertEq(
+            expected = (Map.empty(),
+                        Map#{0 => Room.Mark.HonestMark, 1 => Room.Mark.LiarMark, 2 => Room.Mark.HonestMark},
+                        0.0),
+            (state(almost)#memo, state(filled)#memo, state(released)#debugHold))
 
     // ── 音の投影 ──
 

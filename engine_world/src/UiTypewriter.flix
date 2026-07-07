@@ -32,11 +32,15 @@ mod UiTypewriter {
     pub def isDone(reveal: Reveal): Bool =
         reveal#shown >= Int32.toFloat64(charCount(reveal#text))
 
+    /// いま見えている文字数（整数）。スパン列など文字列以外の見せ方をする側が
+    /// RichText.take などに渡して使う。
+    pub def visibleCount(reveal: Reveal): Int32 =
+        Float64.floor(reveal#shown) |> Float64.tryToInt32 |> Option.getWithDefault(0)
+
     /// いま見えている先頭部分の文字列。UiStore.setText へそのまま渡せる。
     pub def visibleText(reveal: Reveal): String =
-        let visibleCount = Float64.floor(reveal#shown) |> Float64.tryToInt32 |> Option.getWithDefault(0);
         String.toList(reveal#text)
-            |> List.take(visibleCount)
+            |> List.take(visibleCount(reveal))
             |> List.map(Char.toString)
             |> List.foldLeft(String.concat, "")
 

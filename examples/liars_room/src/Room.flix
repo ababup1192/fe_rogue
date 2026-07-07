@@ -9,16 +9,16 @@ mod Room {
     pub type alias Input = {
         up = Bool, down = Bool, left = Bool, right = Bool,
         upTap = Bool, downTap = Bool,
-        talk = Bool, memo = Bool, cancel = Bool,
-        enter = Bool, esc = Bool
+        talk = Bool, memo = Bool, hint = Bool, cancel = Bool,
+        enter = Bool, esc = Bool, debug = Bool
     }
 
     /// 中立の入力（何も押されていない）。スライド中などキーを黙らせたいフレームで使う。
     pub def noKeys(): Input =
         { up = false, down = false, left = false, right = false,
           upTap = false, downTap = false,
-          talk = false, memo = false, cancel = false,
-          enter = false, esc = false }
+          talk = false, memo = false, hint = false, cancel = false,
+          enter = false, esc = false, debug = false }
 
     // ── 進行フェーズ ──
     pub enum Phase with Eq, ToString {
@@ -58,8 +58,10 @@ mod Room {
     /// プレイヤーの絵の移動量（1 マスぶんのスライド。sokoban と同じ仕組み）。
     pub type alias Slide = { fromCell = (Int32, Int32), t = Float64 }
 
-    /// フィールドの並びは、部屋とプレイヤー / パズル（Stage.generated(stage) から決定論的に
-    /// 再構成できる）/ 進行 / メモ（やり直しでは残り、次のステージで消える）/ 演出時計、の順。
+    /// フィールドの並びは、部屋とプレイヤー / パズル（(stage, puzzleSeed) から決定論的に
+    /// 再構成できる。puzzleSeed はやり直しで同じ問題を出すために覚える）/ 進行 /
+    /// メモとヒント（やり直しでは残り、次のステージで消える）/ 演出時計と entropy
+    /// （entropy = 毎フレーム進む通し番号。次の出題をプールから選ぶくじ引きに使う）、の順。
     pub type alias State = {
         walls = Set[(Int32, Int32)],
         cols = Int32,
@@ -69,6 +71,7 @@ mod Room {
         walkPhase = Float64,
         slide = Option[Slide],
         stage = Int32,
+        puzzleSeed = Int64,
         npcs = List[Npc],
         stmts = List[(Int32, Stmt.Stmt)],
         liarCount = Int32,
@@ -80,9 +83,12 @@ mod Room {
         memo = Map[Int32, Mark],
         memoOpen = Bool,
         memoSel = Int32,
+        hintUsed = Bool,
+        debugHold = Float64,
         idlePhase = Float64,
         shakeT = Float64,
-        resultElapsed = Float64
+        resultElapsed = Float64,
+        entropy = Int32
     }
 
     pub enum World {
@@ -95,13 +101,14 @@ mod Room {
 
     /// タイトル画面。部屋は（ステージ 1 の）ものを一応持つが、描かれない。
     pub def titleWorld(): World =
-        let World.World(state) = stageWorld(1, Map.empty());
+        let World.World(state) = stageWorld(1, Map.empty(), Stage.pickSeed(1, 0));
         World.World({ phase = Phase.Title | state })
 
-    /// ステージ n への挑戦。memo は引き継ぎたい書き込み（やり直し時）か空（新ステージ）。
-    pub def stageWorld(n: Int32, memo: Map[Int32, Mark]): World =
+    /// ステージ n への挑戦。memo は引き継ぎたい書き込み（やり直し時）か空（新ステージ）、
+    /// seed は出題プールから選んだシード（やり直しなら前回と同じものを渡す）。
+    pub def stageWorld(n: Int32, memo: Map[Int32, Mark], seed: Int64): World =
         let difficulty = Stage.difficultyOf(n);
-        let generated = Stage.generated(n);
+        let generated = Stage.generatedWith(n, seed);
         let parsed = RoomMap.parse(RoomMap.roomFor(difficulty#npcCount));
         let npcs = List.range(0, difficulty#npcCount) |> List.map(id ->
             match Map.get(id, parsed#npcCells) {
@@ -114,13 +121,42 @@ mod Room {
         World.World({
             walls = parsed#walls, cols = parsed#cols, rows = parsed#rows,
             player = parsed#player, facing = Dir4.Up, walkPhase = 0.0, slide = None,
-            stage = n, npcs = npcs, stmts = generated#stmts,
+            stage = n, puzzleSeed = seed, npcs = npcs, stmts = generated#stmts,
             liarCount = difficulty#liarCount, honestSet = honest,
             phase = Phase.Exploring, talkingTo = None,
             dialog = UiDialog.closed(), confirmSel = 1,
-            memo = memo, memoOpen = false, memoSel = 0,
-            idlePhase = 0.0, shakeT = 0.0, resultElapsed = 0.0
+            memo = memo, memoOpen = false, memoSel = 0, hintUsed = false, debugHold = 0.0,
+            idlePhase = 0.0, shakeT = 0.0, resultElapsed = 0.0, entropy = 0
         })
+
+    // ── ヒント ──
+
+    /// 嘘つきの id 列（唯一解の補集合、小さい順）。
+    pub def liarsOf(state: State): List[Int32] =
+        state#npcs
+            |> List.map(npc -> npc#id)
+            |> List.filter(id -> not Set.memberOf(id, state#honestSet))
+
+    /// デバッグ用: 全員のメモを正解（嘘つき=うそ・正直者=ほんと）で埋める。
+    pub def debugFillMemo(state: State): State =
+        let filled = state#npcs |> List.foldLeft((acc, npc) ->
+            Map.insert(npc#id,
+                if (Set.memberOf(npc#id, state#honestSet)) Mark.HonestMark else Mark.LiarMark,
+                acc), state#memo);
+        { memo = filled | state }
+
+    /// ヒント: 嘘つきを 1 人確定してメモに「うそ」を書き込み、メモを開いてそこへカーソルを
+    /// 当てる。1 ステージに 1 回だけ（使用済みなら何もしない）。
+    pub def applyHint(state: State): State =
+        if (state#hintUsed)
+            state
+        else
+            match List.head(liarsOf(state)) {
+                case None     => state
+                case Some(id) =>
+                    { memo = Map.insert(id, Mark.LiarMark, state#memo),
+                      hintUsed = true, memoOpen = true, memoSel = id | state }
+            }
 
     // ── グリッドのルール ──
 

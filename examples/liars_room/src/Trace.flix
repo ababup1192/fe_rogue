@@ -9,6 +9,7 @@ mod Trace {
 
     pub def talkTap(): Room.Input = { talk = true | Room.noKeys() }
     pub def memoTap(): Room.Input = { memo = true | Room.noKeys() }
+    pub def hintTap(): Room.Input = { hint = true | Room.noKeys() }
     pub def cancelTap(): Room.Input = { cancel = true | Room.noKeys() }
     pub def enterTap(): Room.Input = { enter = true | Room.noKeys() }
     pub def upOnce(): Room.Input = { up = true, upTap = true | Room.noKeys() }

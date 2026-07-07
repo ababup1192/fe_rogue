@@ -48,8 +48,9 @@ mod GameGallery {
 
     // ── 見せたい瞬間の World たち（TestViewGuards と同じ作り方）──
 
+    /// 撮影の舞台はシード 1 に固定する（タイトル経由の entropy くじ引きだと絵が揺れる）。
     def stage1(): Room.World =
-        Room.titleWorld() |> Trace.step(Trace.enterTap())
+        Room.stageWorld(1, Map.empty(), 1i64)
 
     /// NPC1 の発言を全文まで送った状態。
     def talking(): Room.World =
@@ -73,6 +74,10 @@ mod GameGallery {
             |> Trace.step(Trace.upOnce())
             |> Trace.step(Trace.talkTap())
 
+    /// M でヒントを使った直後（メモが開き、確定した嘘つきにカーソルと「うそ」が付く）。
+    def hintShot(): Room.World =
+        stage1() |> Trace.step(Trace.hintTap())
+
     def bakeScreens(atlas: FontAtlas, ui: UiStore.UiWorld): Unit \ IO =
         shot(atlas, ui, Room.titleWorld(), "gallery/screen_title.png");
         shot(atlas, ui, stage1(), "gallery/screen_room.png");
@@ -80,6 +85,7 @@ mod GameGallery {
         shot(atlas, ui, confirming(), "gallery/screen_confirm.png");
         shot(atlas, ui, stage1() |> Trace.step(Trace.memoTap()) |> Trace.step(Trace.talkTap()),
              "gallery/screen_memo.png");
+        shot(atlas, ui, hintShot(), "gallery/screen_hint.png");
         shot(atlas, ui, wrongShot(), "gallery/screen_wrong.png");
         shot(atlas, ui, clearedShot(), "gallery/screen_clear.png")
 
@@ -132,6 +138,16 @@ mod GameGallery {
             hold(Room.noKeys(), 60) ::
             tap(Trace.enterTap()) ::
             hold(Room.noKeys(), 40) :: Nil)
+
+    /// ヒントデモ: M でヒント → メモが開いて嘘つき 1 人に「うそ」が付く → 閉じると
+    /// 頭上に赤い×が残る。
+    def hintScript(): List[Room.Input] =
+        List.flatten(
+            hold(Room.noKeys(), 12) ::
+            tap(Trace.hintTap()) ::
+            hold(Room.noKeys(), 70) ::
+            tap(Trace.memoTap()) ::
+            hold(Room.noKeys(), 45) :: Nil)
 
     /// メモデモ: すいりメモを開き、3 人にしるしを付けて閉じる（頭上に印が残る）。
     def memoScript(): List[Room.Input] =
@@ -194,12 +210,14 @@ mod GameGallery {
         item("screen_talk", "発言ウィンドウ（全文表示）", "Screens", "png", 640) ::
         item("screen_confirm", "「この人を信じる？」の確認メニュー", "Screens", "png", 640) ::
         item("screen_memo", "すいりメモ（しるし 1 つ + 頭上の印）", "Screens", "png", 640) ::
+        item("screen_hint", "ヒント（M）で嘘つき 1 人が確定した瞬間", "Screens", "png", 640) ::
         item("screen_wrong", "はずれ… のパネル", "Screens", "png", 640) ::
         item("screen_clear", "せいかい！ のパネル", "Screens", "png", 640) ::
         item("talk_demo", "歩いて話しかけて発言を読む", "Play", "gif", 640) ::
         item("correct_demo", "正直者を信じる → せいかい！ → 次のへやへ", "Play", "gif", 640) ::
         item("wrong_demo", "嘘つきを信じる → ブブー（シェイク）→ やり直し", "Play", "gif", 640) ::
         item("memo_demo", "すいりメモに 3 人ぶんのしるしを付ける", "Play", "gif", 640) ::
+        item("hint_demo", "M のヒントで嘘つきが 1 人確定 → 頭上に赤い×が残る", "Play", "gif", 640) ::
         item("people", "NPC 7 色 + プレイヤー × 4 方向（静止ポーズ）", "People", "png", 1152) ::
         item("people_walk", "歩行サイクル、全員そろって行進", "People", "gif", 1152) :: Nil
 
@@ -229,6 +247,7 @@ mod GameGallery {
         let fs2 = bakeGif(atlas, ui, correctScript(), "correct_demo");
         let fs3 = bakeGif(atlas, ui, wrongScript(), "wrong_demo");
         let fs4 = bakeGif(atlas, ui, memoScript(), "memo_demo");
+        let fs5 = bakeGif(atlas, ui, hintScript(), "hint_demo");
         let titleFindings = RenderLint.check(lintInput("screen_title", atlas, ui, Room.titleWorld()));
         let talkFindings = RenderLint.check(lintInput("screen_talk", atlas, ui, talking()));
         let clearFindings = RenderLint.check(lintInput("screen_clear", atlas, ui, clearedShot()));
@@ -241,6 +260,6 @@ mod GameGallery {
                         "screen_talk" => LiarsLint.badgeOf(talkFindings),
                         "screen_clear" => LiarsLint.badgeOf(clearFindings)
                     },
-                    List.toMap(fs1 :: fs2 :: fs3 :: fs4 :: Nil)))
+                    List.toMap(fs1 :: fs2 :: fs3 :: fs4 :: fs5 :: Nil)))
         } with Fs.FileWrite.runWithIO
 }

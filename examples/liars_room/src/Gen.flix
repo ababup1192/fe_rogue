@@ -64,13 +64,18 @@ mod Gen {
     def tryOnce(rng0: Prng.State, difficulty: Difficulty): (Option[Generated], Prng.State) =
         let (liars, rng1) = drawLiars(difficulty, rng0);
         let (baseOpt, rng2) = baseStatements(difficulty, liars, rng1);
-        let (extraOpt, rng3) = extraStatements(difficulty, liars, rng2);
-        match (baseOpt, extraOpt) {
-            case (Some(base), Some(extra)) => {
-                let (stmts, rng4) = wrapNegations(difficulty, List.append(base, extra), rng3);
-                (Some({ stmts = stmts, liars = liars }), rng4)
+        match baseOpt {
+            case None       => (None, rng2)
+            case Some(base) => {
+                let (extraOpt, rng3) = extraStatements(difficulty, liars, base, rng2);
+                match extraOpt {
+                    case None        => (None, rng3)
+                    case Some(extra) => {
+                        let (stmts, rng4) = wrapNegations(difficulty, List.append(base, extra), rng3);
+                        (Some({ stmts = stmts, liars = liars }), rng4)
+                    }
+                }
             }
-            case _ => (None, rng3)
         }
 
     /// 嘘つきを人数ぶんランダムに選ぶ。
@@ -86,6 +91,7 @@ mod Gen {
         }
 
     /// 全員が 1 発言ずつ（自分の種別に整合する主張）。候補が尽きたら None（作り直し）。
+    /// すでに出た主張は候補から外す — 同じセリフを言う人を 2 人出さない。
     def baseStatements(difficulty: Difficulty, liars: Set[Int32],
                        rng0: Prng.State): (Option[List[(Int32, Claim)]], Prng.State) =
         List.range(0, difficulty#npcCount) |> List.foldLeft((acc, speaker) -> {
@@ -93,33 +99,37 @@ mod Gen {
             match listOpt {
                 case None       => (None, rngA)
                 case Some(list) => {
-                    let (claimOpt, rngB) = claimFor(difficulty, liars, speaker, rngA);
+                    let used = list |> List.map(snd) |> List.toSet;
+                    let (claimOpt, rngB) = claimFor(difficulty, liars, speaker, used, rngA);
                     (claimOpt |> Option.map(claim -> List.append(list, (speaker, claim) :: Nil)), rngB)
                 }
             }
         }, (Some(Nil), rng0))
 
-    /// 余分な発言: 話し手をランダムに選んで同じ整合ルールで作る。
-    def extraStatements(difficulty: Difficulty, liars: Set[Int32],
+    /// 余分な発言: 話し手をランダムに選んで同じ整合ルールで作る（重複禁止も同じ）。
+    def extraStatements(difficulty: Difficulty, liars: Set[Int32], base: List[(Int32, Claim)],
                         rng0: Prng.State): (Option[List[(Int32, Claim)]], Prng.State) =
         List.range(0, difficulty#extraStatements) |> List.foldLeft((acc, _) -> {
             let (listOpt, rngA) = acc;
             match listOpt {
                 case None       => (None, rngA)
                 case Some(list) => {
+                    let used = List.append(base, list) |> List.map(snd) |> List.toSet;
                     let (speaker, rngB) = Prng.nextIntRange(lo = 0, hi = difficulty#npcCount, rngA);
-                    let (claimOpt, rngC) = claimFor(difficulty, liars, speaker, rngB);
+                    let (claimOpt, rngC) = claimFor(difficulty, liars, speaker, used, rngB);
                     (claimOpt |> Option.map(claim -> List.append(list, (speaker, claim) :: Nil)), rngC)
                 }
             }
         }, (Some(Nil), rng0))
 
     /// 話し手の種別に整合する主張を 1 つ引く（正直者は真の主張・嘘つきは偽の主張）。
+    /// used に入っている主張は選ばない。
     def claimFor(difficulty: Difficulty, liars: Set[Int32], speaker: Int32,
-                 rng0: Prng.State): (Option[Claim], Prng.State) =
+                 used: Set[Claim], rng0: Prng.State): (Option[Claim], Prng.State) =
         let wanted = not Set.memberOf(speaker, liars);
         let candidates = candidateClaims(difficulty, speaker)
-            |> List.filter(claim -> Stmt.holds(liars, claim) == wanted);
+            |> List.filter(claim -> Stmt.holds(liars, claim) == wanted
+                and not Set.memberOf(claim, used));
         Prng.pick(candidates, rng0)
 
     /// 話し手が言い得る主張の全候補。自分への告発・擁護は無情報なので除く

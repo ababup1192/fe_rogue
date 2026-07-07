@@ -137,6 +137,7 @@ mod GameEngine {
         case X
         case C
         case M
+        case H
         case Up
         case Down
         case Left
@@ -153,7 +154,7 @@ mod GameEngine {
     /// Key の全バリアント。InputEvent などのイベント駆動入力で
     /// 走査対象として使う。新しい Key を追加した際はここにも追加する。
     pub def allKeys(): List[Key] =
-        Key.W :: Key.A :: Key.S :: Key.D :: Key.Z :: Key.X :: Key.C :: Key.M ::
+        Key.W :: Key.A :: Key.S :: Key.D :: Key.Z :: Key.X :: Key.C :: Key.M :: Key.H ::
         Key.Up :: Key.Down :: Key.Left :: Key.Right ::
         Key.Enter :: Key.Space :: Key.Escape :: Key.F1 ::
         Key.LeftShift :: Key.LeftCtrl :: Key.LeftSuper :: Nil

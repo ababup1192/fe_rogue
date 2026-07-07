@@ -22,12 +22,29 @@ mod View {
     // ── compose: App の view スロット ──
 
     /// Session 全体を「(置き場所, 見せたい物) のリスト」へ投影する。
-    /// 盤面はシェイク中だけ揺れ、UI ページは揺れない。
+    /// 盤面はシェイク中だけ揺れ、UI ページは揺れない。会話の本文（色付き名前・太字入りの
+    /// スパン列）は 1 色テキストの UI ノードでは表せないので、ここで直接描く。
     pub def compose(atlas: FontAtlas, s: LiarsRoom.Session): List[Render.Placed] =
         let Room.World.World(state) = s#world;
         List.append(
             frame(atlas, state) |> List.map(shift(shakeOffset(state))),
-            UiRender.itemsWith(_ -> atlas, _ -> None, s#ui, GameUi.designSize()))
+            List.append(
+                UiRender.itemsWith(_ -> atlas, _ -> None, s#ui, GameUi.designSize()),
+                dialogBody(atlas, state)))
+
+    /// 会話パネル内の本文位置（パネル abs [8,176] + 余白 + 話者行のぶん下げた左上）。
+    def dialogBodyPos(): Vec2.Vec2 = { x = 16.0, y = 195.0 }
+
+    /// 会話本文の z。UI ページは「layer × layerStride」を zIndex に足して描かれるので、
+    /// パネル（layer 2 / z 120）の上・確認メニュー（z 126〜）の下に合わせる。
+    def zDialogBody(): Int32 = 2 * CanvasLayer.layerStride() + 124
+
+    /// 会話本文のスパン列を、文字送りの見えているぶんだけ折返し付きで描く。
+    def dialogBody(atlas: FontAtlas, state: Room.State): List[Render.Placed] =
+        RichText.place(
+            { atlas = atlas, size = 10.0, baseTint = Palette.dialogText(), z = zDialogBody(),
+              pos = dialogBodyPos(), maxWidth = 288.0, lineGap = 3.0 },
+            UiDialog.visibleBody(state#dialog))
 
     /// 不正解の残り時間から揺れを導く（時間の純粋な関数。状態は shakeT だけ）。
     def shakeOffset(state: Room.State): Vec2.Vec2 =

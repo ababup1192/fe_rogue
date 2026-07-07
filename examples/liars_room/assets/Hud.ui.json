@@ -11,7 +11,7 @@
             "fontSize": 10, "tint": "#fbf236", "zIndex": 110 },
           { "name": "liars", "widget": "text", "text": "うそつき 1にん",
             "fontSize": 10, "tint": "#d95763", "zIndex": 110 },
-          { "name": "keys", "widget": "text", "text": "Z:はなす C:メモ X:もどる",
+          { "name": "keys", "widget": "text", "text": "Z:はなす C:メモ H:ヒント",
             "fontSize": 10, "tint": "#847e87", "zIndex": 110 }
         ]
       }

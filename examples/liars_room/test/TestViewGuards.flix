@@ -13,10 +13,9 @@ mod TestViewGuards {
             projected);
         (LiarsLint.activeDetails(RenderLint.check(input)), not List.isEmpty(input#elements))
 
-    /// 会話ウィンドウを全文表示まで進めた状態（NPC1 と話す）。
+    /// 会話ウィンドウを全文表示まで進めた状態（ステージ 1 シード 1 で NPC1 と話す）。
     def talkingWorld(): Room.World =
-        Room.titleWorld()
-            |> Trace.step(Trace.enterTap())
+        Room.stageWorld(1, Map.empty(), 1i64)
             |> Trace.facingNpcBelow(1)
             |> Trace.step(Trace.talkTap())
             |> Trace.step(Trace.talkTap())
@@ -25,7 +24,7 @@ mod TestViewGuards {
     def testUiPagesPassRenderLint(): Unit \ {Assert, IO} =
         let atlas = Harness.atlas();
         let ui = Harness.ui();
-        let stage1 = Room.titleWorld() |> Trace.step(Trace.enterTap());
+        let stage1 = Room.stageWorld(1, Map.empty(), 1i64);
         let clean = (Nil: List[String]);
         Assert.assertEq(
             expected = ((clean, true), (clean, true), (clean, true), (clean, true), (clean, true)),
@@ -48,7 +47,7 @@ mod TestViewGuards {
         // 全ステージで、プレイヤーの初期位置から各 NPC の隣（話しかけられるセル）まで
         // 歩いて行ける（Datalog の到達閉包で証明）。
         let unreachable = List.range(1, Stage.stageCount() + 1) |> List.flatMap(n -> {
-            let Room.World.World(s) = Room.stageWorld(n, Map.empty());
+            let Room.World.World(s) = Room.stageWorld(n, Map.empty(), Stage.pickSeed(n, 0));
             let blocked = Set.union(s#walls, Room.npcCells(s));
             let floors = List.flatMap(y -> List.map(x -> (x, y), List.range(0, s#cols)),
                     List.range(0, s#rows))

@@ -6,34 +6,31 @@ mod SeedSearch {
     pub def search(): Unit \ IO =
         List.range(1, Stage.stageCount() + 1) |> List.forEach(n -> {
             let difficulty = Stage.difficultyOf(n);
-            let (seed, generated) = searchFrom(1i64, difficulty);
-            println("stage ${n}: seed = ${seed}i64, liars = ${generated#liars}, stmts = ${List.length(generated#stmts)}")
+            let pool = searchPool(1i64, difficulty, Stage.poolSize(), Nil);
+            let literals = pool |> List.map(seed -> "${seed}i64") |> List.intersperse(" :: ")
+                |> List.foldLeft(String.concat, "");
+            println("stage ${n}: ${literals} :: Nil")
         })
 
-    /// デバッグ用: 各ステージ、最初の数 seed の組み立て・検証結果を覗く。
+    /// 合格 seed を count 本集める（1 から昇順に当たる）。
+    def searchPool(seed: Int64, difficulty: Gen.Difficulty, count: Int32,
+                   acc: List[Int64]): List[Int64] \ IO =
+        if (List.length(acc) >= count)
+            List.reverse(acc)
+        else
+            match Gen.validated(seed, difficulty) {
+                case Some(_) => searchPool(seed + 1i64, difficulty, count, seed :: acc)
+                case None    => searchPool(seed + 1i64, difficulty, count, acc)
+            }
+
+    /// デバッグ用: 定数化済みプールの各 seed の唯一解と発言数を覗く
+    /// （テストの舞台に使う seed を選ぶときの資料）。
     pub def probe(): Unit \ IO =
         List.range(1, Stage.stageCount() + 1) |> List.forEach(n -> {
-            let d = Stage.difficultyOf(n);
-            List.range(1, 4) |> List.forEach(i -> {
-                let seed = Int32.toInt64(i);
-                let built = Gen.tryBuild(seed, d);
-                let stmts = built |> Option.map(g -> List.length(g#stmts));
-                let liars = built |> Option.map(g -> g#liars);
-                let puzzle = built |> Option.map(g -> Gen.puzzleOf(d, g));
-                let unique = puzzle |> Option.flatMap(Solver.uniqueSolution);
-                let depth = puzzle |> Option.flatMap(Solver.probeDepth);
-                println("stage ${n} seed ${seed}: stmts=${stmts} liars=${liars} unique=${unique} depth=${depth}")
+            Stage.seedPool(n) |> List.forEach(seed -> {
+                let generated = Stage.generatedWith(n, seed);
+                println("stage ${n} seed ${seed}: liars=${generated#liars} stmts=${List.length(generated#stmts)}")
             })
         })
 
-    /// validated が Some を返す最小の seed（1 から順に当たる）。
-    def searchFrom(seed: Int64, difficulty: Gen.Difficulty): (Int64, Gen.Generated) \ IO =
-        if (Int64.modulo(seed, 200i64) == 0i64)
-            println("  ... seed ${seed} まで不合格")
-        else
-            ();
-        match Gen.validated(seed, difficulty) {
-            case Some(generated) => (seed, generated)
-            case None            => searchFrom(seed + 1i64, difficulty)
-        }
 }

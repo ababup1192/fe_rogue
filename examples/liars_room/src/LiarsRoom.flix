@@ -31,25 +31,39 @@ mod LiarsRoom {
         let s = age(dt, s0);
         match s#phase {
             case Room.Phase.Title =>
-                if (input#enter) Room.stageWorld(1, Map.empty()) else Room.World.World(s)
+                // 出題はプールからのくじ引き: entropy（経過フレーム数）は実時間で変わるので、
+                // 同じステージでも起動のたびに違う問題が出る。
+                if (input#enter)
+                    Room.stageWorld(1, Map.empty(), Stage.pickSeed(1, s#entropy))
+                else
+                    Room.World.World(s)
             case Room.Phase.Exploring =>
                 if (input#esc)
                     Room.titleWorld()
-                else if (s#memoOpen)
-                    Room.World.World(memoTick(input, s))
-                else
-                    Room.World.World(exploreTick(input, dt, s))
+                else if (input#hint)
+                    Room.World.World(Room.applyHint(s))
+                else {
+                    let s1 = debugTick(input, dt, s);
+                    if (s1#memoOpen)
+                        Room.World.World(memoTick(input, s1))
+                    else
+                        Room.World.World(exploreTick(input, dt, s1))
+                }
             case Room.Phase.Talking =>
                 Room.World.World(talkTick(input, dt, s))
             case Room.Phase.Confirming =>
                 confirmTick(input, s)
             case Room.Phase.Wrong =>
-                // やり直し: 同じステージ（同じ seed = 同じ発言）へ。メモは持ち越す。
-                if (input#enter) Room.stageWorld(s#stage, s#memo) else Room.World.World(s)
+                // やり直し: 同じシード = 同じ発言のまま。メモは持ち越す。
+                if (input#enter)
+                    Room.stageWorld(s#stage, s#memo, s#puzzleSeed)
+                else
+                    Room.World.World(s)
             case Room.Phase.Cleared =>
                 if (input#enter)
                     (if (s#stage < Stage.stageCount())
-                        Room.stageWorld(s#stage + 1, Map.empty())
+                        Room.stageWorld(s#stage + 1, Map.empty(),
+                            Stage.pickSeed(s#stage + 1, s#entropy))
                      else
                         Room.World.World({ phase = Room.Phase.Ending | s }))
                 else
@@ -58,13 +72,31 @@ mod LiarsRoom {
                 if (input#enter) Room.titleWorld() else Room.World.World(s)
         }
 
-    /// どのフェーズでも進む時計: NPC のアイドルボブと、不正解シェイクの減衰。
+    /// どのフェーズでも進む時計: NPC のアイドルボブ、不正解シェイクの減衰、
+    /// そして出題のくじ引きに使う entropy（毎フレーム +1）。
     def age(dt: Float64, s: Room.State): Room.State =
         { idlePhase = fract(s#idlePhase + dt),
-          shakeT = Float64.max(0.0, s#shakeT - dt) | s }
+          shakeT = Float64.max(0.0, s#shakeT - dt),
+          entropy = s#entropy + 1 | s }
 
     /// 小数部分だけを残す（アイドルボブは 0..1 で繰り返す）。
     def fract(x: Float64): Float64 = x - Float64.floor(x)
+
+    /// デバッグモード: D を押し続けた秒数を数え、5 秒に達したら全メモを正解で埋める
+    /// （後半ステージの動作確認用の裏コマンド）。離すと数え直し。
+    pub def debugHoldSeconds(): Float64 = 5.0
+
+    def debugTick(input: Room.Input, dt: Float64, s: Room.State): Room.State =
+        if (input#debug) {
+            let held = s#debugHold + dt;
+            if (held >= debugHoldSeconds())
+                Room.debugFillMemo({ debugHold = 0.0 | s })
+            else
+                { debugHold = held | s }
+        } else if (s#debugHold > 0.0)
+            { debugHold = 0.0 | s }
+        else
+            s
 
     // ── Exploring: 歩き回り・話しかけ・メモ開閉 ──
 
@@ -90,15 +122,23 @@ mod LiarsRoom {
         }
 
     /// 正面に NPC が居れば発言ウィンドウを開く（NPC はこちらを向く）。居なければ何もしない。
+    /// 発言が複数あっても「〜で、〜だよ」と 1 つの文に繋いで 1 ウィンドウに納める。
+    /// 名前はその NPC の色、嘘つき/正直者は太字のスパンにして渡す。
     def tryTalk(s: Room.State): Room.State =
         match Room.facingNpc(s) {
             case None      => s
             case Some(npc) =>
-                let lines = Room.statementsOf(npc#id, s) |> List.map(stmt -> ({
-                    speaker = "${Palette.nameOf(npc#id)}の人",
-                    body = Stmt.text(speaker = npc#id, Palette.nameOf, stmt) }: UiDialog.Line));
+                let segs = Stmt.speech(speaker = npc#id, suffix = suffixOf(npc#id),
+                                       Room.statementsOf(npc#id, s));
+                let body = segs |> List.map(seg -> match seg {
+                    case Stmt.Seg.Plain(text)  => RichText.plain(text)
+                    case Stmt.Seg.Name(id)     =>
+                        RichText.colored(Palette.nameOf(id), Palette.npcText(Palette.colorOf(id)))
+                    case Stmt.Seg.Strong(text) => RichText.strong(text)
+                });
+                let line: UiDialog.Line = { speaker = "${Palette.nameOf(npc#id)}の人", body = body };
                 { phase = Room.Phase.Talking, talkingTo = Some(npc#id),
-                  dialog = UiDialog.openWith(lines)
+                  dialog = UiDialog.openWith(line :: Nil)
                   | Room.turnNpcToPlayer(npc#id, s) }
         }
 
@@ -207,6 +247,14 @@ mod LiarsRoom {
             case 0 => "talk_mid"
             case 1 => "talk_high"
             case _ => "talk_low"
+        }
+
+    /// NPC の語尾（声のトーンと同じ 3 分類: ふつう / 高い声は元気に / 低い声は断定調に）。
+    pub def suffixOf(id: Int32): String =
+        match Int32.modulo(id, 3) {
+            case 0 => "だよ"
+            case 1 => "だね！"
+            case _ => "だぞ"
         }
 
     /// BGM（時計の針のループ）はタイトルからゲームへ入る瞬間に一度だけ火を入れる

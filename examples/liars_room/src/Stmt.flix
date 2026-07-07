@@ -45,33 +45,58 @@ mod Stmt {
         case Claim.DiffSide(a, b) => Set.memberOf(a, liars) != Set.memberOf(b, liars)
     }
 
-    /// 発言の日本語文言。nameOf は NPC id → 呼び名（「あお」など）。
-    /// 角括弧は使わない（引用は 『』 で表す）。
-    pub def text(speaker: {speaker = Int32}, nameOf: Int32 -> String, stmt: Stmt): String =
-        "${phrase(speaker#speaker, nameOf, stmt)}だよ"
-
-    /// 「だよ」を付ける前の名詞句。Not は再帰的に 『…』というのは嘘 で包む。
-    def phrase(speaker: Int32, nameOf: Int32 -> String, stmt: Stmt): String = match stmt {
-        case Stmt.Say(claim) => claimPhrase(speaker, nameOf, claim)
-        case Stmt.Not(inner) => "『${phrase(speaker, nameOf, inner)}』というのは嘘"
+    /// 発言の見た目の部品。文章は部品の列で持ち、描画側が Name を色付き・Strong を太字で描く。
+    pub enum Seg with Eq, ToString {
+        /// 素の字（「は」「で、」「』というのは嘘」など）。
+        case Plain(String)
+        /// NPC の呼び名（その NPC の色で描く）。
+        case Name(Int32)
+        /// 強調語（太字で描く。「嘘つき」「正直者」）。
+        case Strong(String)
     }
 
-    /// 主張 1 件の名詞句。話し手自身が対象に含まれるときは「わたし」と言う。
-    def claimPhrase(speaker: Int32, nameOf: Int32 -> String, claim: Claim): String =
-        match claim {
-            case Claim.IsLiar(t)      => "${subject(speaker, nameOf, t)}は嘘つき"
-            case Claim.IsHonest(t)    => "${subject(speaker, nameOf, t)}は正直者"
-            case Claim.SameSide(a, b) => "${pairSubject(speaker, nameOf, a, b)}は同じ側"
-            case Claim.DiffSide(a, b) => "${pairSubject(speaker, nameOf, a, b)}は違う側"
-        }
+    /// 1 人の発言ぜんぶを 1 つの文にした部品列。複数の主張は「で、」で繋ぎ、語尾は 1 回だけ。
+    /// 例: (あお)は(嘘つき)で、(あか)は(正直者)だよ
+    pub def speech(speaker: {speaker = Int32}, suffix: {suffix = String},
+                   stmts: List[Stmt]): List[Seg] =
+        let phrases = stmts |> List.map(stmt -> phraseSegs(speaker#speaker, stmt));
+        let joined = phrases |> List.intersperse(Seg.Plain("で、") :: Nil) |> List.flatten;
+        List.append(joined, Seg.Plain(suffix#suffix) :: Nil)
 
-    /// 対象 1 人の言い方（「みどりの人」/「わたし」）。
-    def subject(speaker: Int32, nameOf: Int32 -> String, target: Int32): String =
-        if (target == speaker) "わたし" else "${nameOf(target)}の人"
+    /// 部品列の素の文章（テストの pin・幅の見積もりに使う）。nameOf は NPC id → 呼び名。
+    pub def segText(nameOf: Int32 -> String, segs: List[Seg]): String =
+        segs |> List.map(seg -> match seg {
+            case Seg.Plain(text)  => text
+            case Seg.Name(id)     => nameOf(id)
+            case Seg.Strong(text) => text
+        }) |> List.foldLeft(String.concat, "")
 
-    /// 対象 2 人の言い方。話し手自身が含まれるなら「わたしと◯の人」の順で言う。
-    def pairSubject(speaker: Int32, nameOf: Int32 -> String, a: Int32, b: Int32): String =
-        if (a == speaker)      "わたしと${nameOf(b)}の人"
-        else if (b == speaker) "わたしと${nameOf(a)}の人"
-        else                   "${nameOf(a)}の人と${nameOf(b)}の人"
+    /// 語尾を付ける前の 1 主張ぶんの部品列。Not は再帰的に 『…』というのは嘘 で包む。
+    def phraseSegs(speaker: Int32, stmt: Stmt): List[Seg] = match stmt {
+        case Stmt.Say(claim) => claimSegs(speaker, claim)
+        case Stmt.Not(inner) => List.flatten(
+            (Seg.Plain("『") :: Nil) ::
+            phraseSegs(speaker, inner) ::
+            (Seg.Plain("』というのは嘘") :: Nil) :: Nil)
+    }
+
+    /// 主張 1 件の部品列。話し手自身が対象に含まれるときは「わたし」と言う。
+    def claimSegs(speaker: Int32, claim: Claim): List[Seg] = match claim {
+        case Claim.IsLiar(t)      => List.append(subject(speaker, t),
+            Seg.Plain("は") :: Seg.Strong("嘘つき") :: Nil)
+        case Claim.IsHonest(t)    => List.append(subject(speaker, t),
+            Seg.Plain("は") :: Seg.Strong("正直者") :: Nil)
+        case Claim.SameSide(a, b) => List.append(pairSubject(speaker, a, b),
+            Seg.Plain("は同じ側") :: Nil)
+        case Claim.DiffSide(a, b) => List.append(pairSubject(speaker, a, b),
+            Seg.Plain("は違う側") :: Nil)
+    }
+
+    def subject(speaker: Int32, target: Int32): List[Seg] =
+        if (target == speaker) Seg.Plain("わたし") :: Nil else Seg.Name(target) :: Nil
+
+    def pairSubject(speaker: Int32, a: Int32, b: Int32): List[Seg] =
+        if (a == speaker)      Seg.Plain("わたしと") :: Seg.Name(b) :: Nil
+        else if (b == speaker) Seg.Plain("わたしと") :: Seg.Name(a) :: Nil
+        else                   Seg.Name(a) :: Seg.Plain("と") :: Seg.Name(b) :: Nil
 }

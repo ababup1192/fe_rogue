@@ -8,16 +8,18 @@ mod Stage {
     pub def stageCount(): Int32 = 10
 
     /// 全ステージ共通の出発点（ステージ 1 の姿）。以降は差分だけ上書きする。
+    /// 注意: 発言の重複禁止のため「告発のみ」は成り立たない（正直者が真実として言える告発は
+    /// 嘘つきの人数ぶんしかなく、正直者どうしで候補が尽きる）。最初から擁護も混ぜる。
     def base(): Gen.Difficulty =
         { npcCount = 3, liarCount = 1,
-          useAccuse = true, useVouch = false, useSame = false, useDiff = false,
+          useAccuse = true, useVouch = true, useSame = false, useDiff = false,
           doubleNegation = false, extraStatements = 0, requiredDepth = 1 }
 
     /// ステージ n の難易度。人数・嘘つき数・発言タイプ・二重否定・冗長発言・深さが段階的に増える。
     pub def difficultyOf(n: Int32): Gen.Difficulty = match n {
         case 1  => base()
-        case 2  => { useVouch = true                                                  | base() }
-        case 3  => { npcCount = 4, useVouch = true, extraStatements = 1               | base() }
+        case 2  => { npcCount = 4                                                     | base() }
+        case 3  => { npcCount = 4, extraStatements = 1                                | base() }
         // 注意: 告発・擁護だけの構成では「嘘つきが人数のちょうど半分」は一意解にできない
         // （全員の種別を反転した割り当ても整合するため）。半々にするなら同類/別類を入れること。
         case 4  => { npcCount = 5, liarCount = 2, useVouch = true                     | base() }
@@ -38,27 +40,41 @@ mod Stage {
         case _  => bug!("Stage.difficultyOf: ステージ ${n} は未定義")
     }
 
-    /// ステージ n の生成シード（SeedSearch の出力を貼った定数。
-    /// 一意解と狙った深さに合格することは TestSolver が機械証明する）。
-    def seedOf(n: Int32): Int64 = match n {
-        case 1  => 1i64
-        case 2  => 1i64
-        case 3  => 1i64
-        case 4  => 1i64
-        case 5  => 1i64
-        case 6  => 1i64
-        case 7  => 1i64
-        case 8  => 1i64
-        case 9  => 1i64
-        case 10 => 78i64
-        case _  => bug!("Stage.seedOf: ステージ ${n} は未定義")
+    /// 1 ステージあたりの出題プールの本数（SeedSearch が採掘し、TestSolver が全数証明する）。
+    pub def poolSize(): Int32 = 6
+
+    /// ステージ n の出題プール（SeedSearch の出力を貼った定数）。プールのどのシードも
+    /// 「一意解 + 狙った仮置きの深さ」に合格することを TestSolver が機械証明する。
+    pub def seedPool(n: Int32): List[Int64] = match n {
+        case 1  => 1i64 :: 2i64 :: 3i64 :: 4i64 :: 5i64 :: 6i64 :: Nil
+        case 2  => 1i64 :: 2i64 :: 3i64 :: 4i64 :: 5i64 :: 6i64 :: Nil
+        case 3  => 1i64 :: 3i64 :: 5i64 :: 7i64 :: 8i64 :: 9i64 :: Nil
+        case 4  => 1i64 :: 2i64 :: 4i64 :: 6i64 :: 7i64 :: 8i64 :: Nil
+        case 5  => 1i64 :: 2i64 :: 3i64 :: 4i64 :: 5i64 :: 6i64 :: Nil
+        case 6  => 1i64 :: 2i64 :: 3i64 :: 4i64 :: 5i64 :: 6i64 :: Nil
+        case 7  => 1i64 :: 2i64 :: 3i64 :: 4i64 :: 5i64 :: 6i64 :: Nil
+        case 8  => 1i64 :: 2i64 :: 3i64 :: 5i64 :: 6i64 :: 7i64 :: Nil
+        case 9  => 22i64 :: 28i64 :: 29i64 :: 70i64 :: 75i64 :: 85i64 :: Nil
+        case 10 => 125i64 :: 144i64 :: 147i64 :: 171i64 :: 172i64 :: 190i64 :: Nil
+        case _  => bug!("Stage.seedPool: ステージ ${n} は未定義")
     }
 
-    /// ステージ n の問題（発言と唯一解）。同じ n からは常に同じ問題が出る。
-    pub def generated(n: Int32): Gen.Generated =
-        Gen.build(seedOf(n), difficultyOf(n))
+    /// プールから 1 本選ぶ。pick はタイトルからの経過フレーム数などの任意の整数 —
+    /// 実時間で変わるので毎回違う問題が出るが、選んだ後の再構成は決定論的。
+    pub def pickSeed(n: Int32, pick: Int32): Int64 =
+        let pool = seedPool(n);
+        let index = Int32.modulo(pick, List.length(pool));
+        match List.nth(index, pool) {
+            case Some(seed) => seed
+            case None       => bug!("Stage.pickSeed: プールが空（ステージ ${n}）")
+        }
 
-    /// ステージ n を Solver の形で（テスト・ヒントが使う）。
-    pub def puzzleOf(n: Int32): Solver.Puzzle =
-        Gen.puzzleOf(difficultyOf(n), generated(n))
+    /// ステージ n をシード指定で生成する。同じ (n, seed) からは常に同じ問題が出る。
+    /// 実行時は検証なしの build（軽い）。合格の機械証明はテスト側（Gen.validated）。
+    pub def generatedWith(n: Int32, seed: Int64): Gen.Generated =
+        Gen.build(seed, difficultyOf(n))
+
+    /// (n, seed) を Solver の形で（テスト・ヒントが使う）。
+    pub def puzzleWith(n: Int32, seed: Int64): Solver.Puzzle =
+        Gen.puzzleOf(difficultyOf(n), generatedWith(n, seed))
 }

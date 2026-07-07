@@ -18,7 +18,7 @@
 | Solver | 総当たり（solutions / uniqueSolution）と仮置きの深さ（probeDepth）— 独立 2 実装の相互 oracle |
 | Prng | splitmix64（fe_rogue から移植）+ nextIntRange / pick |
 | Gen | 難易度 → 発言セットの組み立て（build = 実行時・無検証、validated = 探索とテスト用） |
-| Stage | 10 ステージの (seed, 難易度) 表。**ステージを足すならここ + SeedSearch + TestSolver の pin** |
+| Stage | 10 ステージの難易度表 + 出題プール（各 6 シード）。**ステージを足すならここ + SeedSearch** |
 | Human | 人間シルエットの手続き描画（ピクトグラム風・4 方向・歩行 / 立ち・探偵帽） |
 | Palette | DB32 のロール名（NPC 7 色 + 呼び名。描画コードは色リテラル禁止） |
 | View | Session → 絵（Placed 列）。部屋 + 人 + 頭上の印。シェイクは盤面だけ揺らす |
@@ -43,8 +43,12 @@ TestLiarsRoom（フェーズ機械とメモの挙動 pin）・TestViewGuards（U
   （正直者の発言は真・嘘つきの発言は逆、同類/別類は推移閉包で伝播）。
 - 二重否定は表示だけの飾り: Stmt.normalize が inject 前に偶奇で潰すので、
   Datalog には否定が一切現れない（層化否定の問題なし）。
-- 実行時の Stage.generated は無検証の Gen.build（軽い）。「一意解 + 狙った深さ」の
-  検証は SeedSearch（探索時）と TestSolver（毎回）がやる。
+- 出題はステージごとの**シードプール（6 本）からのくじ引き**: タイトルからの経過フレーム数
+  （entropy）で選ぶので毎回違う問題が出る。不正解のやり直しは World が覚えた puzzleSeed で
+  同じ問題を再構成する。実行時の再構成は無検証の Gen.build（軽い）。
+  「プールの全シードが一意解 + 狙った深さで必ず解ける」ことは TestSolver が全数証明する。
+- ヒント（M キー・1 ステージ 1 回）は唯一解から嘘つきを 1 人選んでメモに書き込むだけ
+  （Room.applyHint）。推理エンジンではなく答えの一部開示。
 - **告発・擁護だけの構成では「嘘つき = ちょうど半数」は一意解にできない**
   （全員の種別を反転した割り当ても整合するため）。半々にするなら同類/別類を入れる。
 
@@ -59,4 +63,5 @@ TestLiarsRoom（フェーズ機械とメモの挙動 pin）・TestViewGuards（U
 
 ## 操作
 
-矢印 = 歩く / Z = 話す・決定 / C = すいりメモ / X = もどる / Enter = 画面送り / F1 = ui.json リロード
+矢印 = 歩く / Z = 話す・決定 / C = すいりメモ / H = ヒント（1 ステージ 1 回）/ X = もどる /
+Enter = 画面送り / F1 = ui.json リロード / D 長押し 5 秒 = デバッグ（全メモが正解で埋まる）

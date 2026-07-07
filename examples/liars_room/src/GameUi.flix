@@ -20,9 +20,9 @@ mod GameUi {
             case Result.Err(_)           => ui
         }
 
-    /// 会話窓の投影先（UiDialog に渡す名前パス束）。
+    /// 会話窓の投影先（UiDialog に渡す名前パス束）。本文はスパン描画なので View 側が持つ。
     def dialogPaths(): UiDialog.Paths =
-        { root = "Dialog", speaker = "Dialog/panel/speaker", body = "Dialog/panel/body" }
+        { root = "Dialog", speaker = "Dialog/panel/speaker" }
 
     /// メモのスロット規約（7 スロット固定・NPC 数ぶんだけ埋める）。
     def memoSlotSpec(): UiSlots.SlotSpec =
@@ -43,6 +43,7 @@ mod GameUi {
             |> UiStore.setVisible("Title", s#phase == Room.Phase.Title)
             |> applyHud(s)
             |> UiDialog.apply(dialogPaths(), s#dialog)
+            |> applySpeakerTint(s)
             |> applyConfirm(s)
             |> applyMemo(s)
             |> applyResult(s)
@@ -55,6 +56,14 @@ mod GameUi {
             |> UiStore.setVisible("Hud", visible)
             |> UiStore.setText("Hud/bar/stage", "ステージ ${s#stage}／${Stage.stageCount()}")
             |> UiStore.setText("Hud/bar/liars", "うそつき ${s#liarCount}にん")
+
+    /// 話者名を相手の色で塗る（本文の色付き名前と同じ約束）。
+    def applySpeakerTint(s: Room.State, ui: UiStore.UiWorld): UiStore.UiWorld =
+        match s#talkingTo {
+            case None     => ui
+            case Some(id) =>
+                UiStore.setTextTint("Dialog/panel/speaker", Palette.npcText(Palette.colorOf(id)), ui)
+        }
 
     /// 「この人を信じる？」は Confirming の間だけ出す（会話窓の上に重なる小パネル）。
     def applyConfirm(s: Room.State, ui: UiStore.UiWorld): UiStore.UiWorld =

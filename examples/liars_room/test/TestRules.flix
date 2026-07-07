@@ -90,15 +90,19 @@ mod TestRules {
     // ── Stmt.text: 発言の日本語文言 ──
 
     @Test
-    def testStmtTextPinsPhrases(): Unit \ Assert =
-        // 告発・二重否定・「わたしと」の言い方を文字列ごと固定する（フォント焼き対象の回帰も兼ねる）。
+    def testStmtSpeechPinsPhrases(): Unit \ Assert =
+        // 発言 1 文の文言を素の文章で固定する: 告発 / 複数主張の「で、」結合 / 二重否定 /
+        // 「わたしと」の言い方、そして話し手ごとの語尾（だよ/だね！/だぞ）。
+        let say = stmts -> speakerId -> Stmt.speech(
+            speaker = speakerId, suffix = LiarsRoom.suffixOf(speakerId), stmts)
+            |> Stmt.segText(Palette.nameOf);
         Assert.assertEq(
-            expected = ("みどりの人は嘘つきだよ",
-                        "『みどりの人は正直者』というのは嘘だよ",
-                        "わたしとあかの人は同じ側だよ",
-                        "『『みどりの人は嘘つき』というのは嘘』というのは嘘だよ"),
-            (Stmt.text(speaker = 0, Palette.nameOf, Stmt.Say(Claim.IsLiar(1))),
-             Stmt.text(speaker = 0, Palette.nameOf, Stmt.Not(Stmt.Say(Claim.IsHonest(1)))),
-             Stmt.text(speaker = 0, Palette.nameOf, Stmt.Say(Claim.SameSide(0, 2))),
-             Stmt.text(speaker = 0, Palette.nameOf, Stmt.Not(Stmt.Not(Stmt.Say(Claim.IsLiar(1)))))))
+            expected = ("みどりは嘘つきだよ",
+                        "みどりは嘘つきで、あかは正直者だよ",
+                        "『あおは正直者』というのは嘘だね！",
+                        "わたしとあおは同じ側だぞ"),
+            (say(Stmt.Say(Claim.IsLiar(1)) :: Nil)(0),
+             say(Stmt.Say(Claim.IsLiar(1)) :: Stmt.Say(Claim.IsHonest(2)) :: Nil)(0),
+             say(Stmt.Not(Stmt.Say(Claim.IsHonest(0))) :: Nil)(1),
+             say(Stmt.Say(Claim.SameSide(2, 0)) :: Nil)(2)))
 }

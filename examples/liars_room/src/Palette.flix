@@ -88,6 +88,21 @@ mod Palette {
     pub def markHonest(): Color = {r = 0.415686f32, g = 0.745098f32, b = 0.188235f32} // #6abe30
     pub def markUnknown(): Color = {r = 0.517647f32, g = 0.494118f32, b = 0.529412f32} // #847e87
 
+    /// 会話本文の基本色（色付き名前・太字はこの上に載る）。
+    pub def dialogText(): Color = {r = 1.000000f32, g = 1.000000f32, b = 1.000000f32}  // #ffffff
+
+    /// 文字として使うときの NPC 色（暗いパネルの上でも読める、DB32 の明るい隣人）。
+    /// シルエット本体の色（npcBody）より一段明るい。
+    pub def npcText(color: NpcColor): Color = match color {
+        case NpcColor.Blue   => {r = 0.388235f32, g = 0.607843f32, b = 1.000000f32}  // #639bff
+        case NpcColor.Green  => {r = 0.600000f32, g = 0.898039f32, b = 0.313725f32}  // #99e550
+        case NpcColor.Red    => {r = 0.850980f32, g = 0.341176f32, b = 0.388235f32}  // #d95763
+        case NpcColor.Yellow => {r = 0.984314f32, g = 0.949020f32, b = 0.211765f32}  // #fbf236
+        case NpcColor.Purple => {r = 0.843137f32, g = 0.482353f32, b = 0.729412f32}  // #d77bba
+        case NpcColor.White  => {r = 1.000000f32, g = 1.000000f32, b = 1.000000f32}  // #ffffff
+        case NpcColor.Orange => {r = 0.874510f32, g = 0.443137f32, b = 0.149020f32}  // #df7126
+    }
+
     /// ウィンドウのクリア色（project.json の clearColor と同じ。ギャラリーの背景にも使う）。
     pub def clearColor(): Color = {r = 0.133333f32, g = 0.125490f32, b = 0.203922f32}  // #222034
 
