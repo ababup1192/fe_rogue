@@ -92,7 +92,7 @@ function fsWire(el){
   el.querySelector('.fs-play').onclick=play;
   range.oninput=function(){stop();show(parseInt(range.value,10));};
   addr.onclick=function(){fsCopy(name+'#'+i);};
-  show(0);
+  show(0);play();
 }
 function fsCopy(t){
   if(navigator.clipboard&&navigator.clipboard.writeText){

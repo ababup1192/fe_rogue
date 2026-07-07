@@ -122,10 +122,9 @@ mod Gallery {
     def dot(center: Vec2.Vec2, radius: Float64, color: Color, z: Int32): Render.Placed =
         ({ x = center#x - radius, y = center#y - radius }, Render.circle(radius, color, z))
 
-    // ── 全部を焼いてサイトを生成する 1 テスト ──
+    // ── 全部を焼いてサイトを生成する（Bake.all から呼ぶ）──
 
-    @Test
-    def testBakeGalleryAndSite(): Unit \ IO =
+    pub def bakeAll(): Unit \ IO =
         discard (new File(outDir())).mkdirs();
         let atlas = Harness.atlas();
         let noNote = _ -> Nil;

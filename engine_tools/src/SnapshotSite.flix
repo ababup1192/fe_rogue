@@ -424,6 +424,7 @@ mod SnapshotSite {
             + ".filmstrip.playing .fs-play{border-color:#7bd88f;color:#7bd88f}</style>\n"
 
     /// 全 .filmstrip を配線する素の JS（CDN 不要・file:// で動く）。ページ末尾に 1 度だけ置く。
+    /// ページを開くと自動で再生が始まる（⏯ でいつでも停止）。
     /// シート方式は background-position、コマ別方式（data-dir あり）は Image を遅延ロードして
     /// canvas に描く。タイムラインバー（range）・◀▶ コマ送り・⏯ 再生（setInterval・ループ）・
     /// name#N 表示・クリックで name#N をクリップボードへ（file:// で navigator.clipboard が
@@ -459,7 +460,7 @@ mod SnapshotSite {
             + "  el.querySelector('.fs-play').onclick=play;\n"
             + "  range.oninput=function(){stop();show(parseInt(range.value,10));};\n"
             + "  addr.onclick=function(){fsCopy(name+'#'+i);};\n"
-            + "  show(0);\n"
+            + "  show(0);play();\n"
             + "}\n"
             + "function fsCopy(t){\n"
             + "  if(navigator.clipboard&&navigator.clipboard.writeText){\n"

@@ -1,4 +1,4 @@
-// SfxBake — 8 つの効果音も、ギャラリーと同様に生成されるアセットである: flix test が
+// SfxBake — 8 つの効果音も、ギャラリーと同様に生成されるアセットである: Bake.all（bin/flix run --entrypoint Bake.all）が
 // assets/sfx/ へ素の 16 ビットモノラル PCM WAV として書き出し、project.json のサウンド
 // マニフェストが起動時にそれらを読み込む。サンプルパックも録音も無し —— SfxSynth の
 // 矩形波・ノイズバースト・フェードだけで、ボールと煉瓦の語彙になる。
@@ -59,8 +59,8 @@ mod SfxBake {
     def bake(path: String, samples: List[Float64]): Unit \ IO =
         SfxSynth.writeBytes(path, SfxSynth.wavBytes(cfg(), samples))
 
-    @Test
-    def testBakeSfx(): Unit \ {Assert, IO} =
+    /// 8 音すべてを assets/sfx/ へ書き出す（Bake.all から呼ぶ）。
+    pub def bakeAll(): Unit \ IO =
         discard (new File("assets/sfx")).mkdirs();
         bake("assets/sfx/paddle.wav", paddleBlip());
         bake("assets/sfx/wall.wav", wallTick());
@@ -69,9 +69,5 @@ mod SfxBake {
         bake("assets/sfx/serve.wav", serveRise());
         bake("assets/sfx/miss.wav", missFall());
         bake("assets/sfx/clear.wav", clearFanfare());
-        bake("assets/sfx/gameover.wav", gameOverFall());
-        let exists = name -> (new File("assets/sfx/${name}.wav")).exists();
-        Assert.assertEq(expected = true,
-            List.forAll(exists, "paddle" :: "wall" :: "chip" :: "break" ::
-                                "serve" :: "miss" :: "clear" :: "gameover" :: Nil))
+        bake("assets/sfx/gameover.wav", gameOverFall())
 }
