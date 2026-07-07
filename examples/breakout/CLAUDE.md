@@ -1,6 +1,27 @@
 # breakout
 
-値ベースの入口教材。World（値）/ Step（ルール）/ View（絵への投影）/ Sfx（音への投影）/ App（ループと入力の縁 — 外の世界に触れる処理を独占するランナー）/ Controls（キー割り当て）。
+値ベースの入口教材。人間向けの案内（遊び方・読む順・練習課題・用語集）は README.md にある。
+
+## モジュール地図（src 全16ファイル）
+
+| ファイル | 役割 |
+|---|---|
+| Main | App に部品を繋ぐ目次（5行の宣言） |
+| App | ランナー — ループ・入力・描画・音再生など外の世界に触れる処理を独占（エンジン昇格予定層） |
+| Controls | キー割り当て（Frame → Field.Input）+ step/reloadParams |
+| World | 全状態の型（mod Field）と定数。Phase/GameCore/Store/調整値 |
+| Levels | 面の文字データ（4面目を足すならここ。count と rows は同時に増やす — 忘れは bug! で落ちる） |
+| Step | 1フレームのルール（純粋）。物理→衝突の政策→フェーズの結末 |
+| Bounce | パドル反射の角度・加速の式（本作の要） |
+| View | World → 絵（Placed 列）。Layer(World/Screen)・カメラシェイク |
+| Sfx | World の前後 → 鳴らす音名 |
+| Palette | 色のロール名（描画コードは色リテラル禁止） |
+| GameParameters | F1 リロードの調整値（fail-open） |
+| Bake | make bake の入口（Gallery + SfxBake を呼ぶ） |
+| Gallery | ギャラリー生成（PNG/GIF/コマ送りサイト → gallery/index.html） |
+| SfxBake | 効果音8種を SfxSynth で合成して WAV へ |
+| Trace | テストとギャラリー共有のシナリオ（初期 World 集） |
+| Harness | 画面なしフォント焼き |
 
 ## コマンド（このディレクトリで）
 

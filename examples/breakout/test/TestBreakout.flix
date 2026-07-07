@@ -256,10 +256,10 @@ mod TestBreakout {
                          nextCore |> Option.map(c -> c#lives),
                          nextCore |> Option.map(c -> Map.size(c#durabilities))))
 
-    // 最終面（3面）をクリアして Enter するとタイトルへ戻る。
+    // 最終面をクリアして Enter するとタイトルへ戻る（最終面 = Levels.count() 面）。
     @Test
     def testClearOfLastLevelReturnsToTitle(): Unit \ Assert =
-        let clearedCore = { durabilities = Map.empty() | Field.freshCore(3) };
+        let clearedCore = { durabilities = Map.empty() | Field.freshCore(Levels.count()) };
         let cleared = { params = GameParameters.defaults(), phase = Field.Phase.Cleared(clearedCore) };
         let after = Step.update({ enter = true | Trace.idle() }, Trace.dt(), cleared);
         Assert.assertEq(expected = true, Trace.isTitle(after))
