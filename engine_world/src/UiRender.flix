@@ -25,43 +25,55 @@ mod UiRender {
     /// テクスチャ寸法を引く `textureInfoOf`（texture 名→寸法）を呼び側から渡す。両者に副作用が
     /// なければ描画全体が純粋になり、画面なしのテスト/プレビューは `GameEngine.Game` の
     /// ハンドラを組まずに済む（sprite を使わなければ `textureInfoOf` は `_ -> None` でよい）。
-    /// `design` は画面固定 HUD の rootRect（原点 0,0・design サイズ）を成す。root ごとに extract した
-    /// 後、root の layer 分の zIndex オフセットを sprites・polygon の双方へ加算してから連結する。
     pub def renderUiWith(atlasOf: String -> FontAtlas \ ef,
                          textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
                          ui: UiStore.UiWorld, design: Vec2.Vec2):
                     {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]} \ ef =
+        let (drawables, polygons) =
+            Render.drawWith(textureInfoOf, itemsWith(atlasOf, textureInfoOf, ui, design));
+        {drawables = drawables, polygons = polygons}
+
+    /// UI 全体を (置き場所, 見せたい物) の列のまま返す。ゲーム側の絵（View の Placed 列）と
+    /// 1 本のリストへ合成してから描きたいとき（App の view など）はこちらを使い、
+    /// 描画命令まで一気に欲しいときは renderUi / renderUiWith を使う。
+    /// `design` は画面固定 HUD の rootRect（原点 0,0・design サイズ）を成す。root ごとに
+    /// レイアウトを解決し、root の layer 分だけ zIndex を持ち上げてから連結する。
+    pub def itemsWith(atlasOf: String -> FontAtlas \ ef,
+                      textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
+                      ui: UiStore.UiWorld, design: Vec2.Vec2): List[Render.Placed] \ ef =
         let measures = UiExtract.measureTexts(ui#texts, atlasOf);
         let roots = rootsOf(ui);
         let rootRect: Rect2.Rect2 =
             {position = {x = 0.0, y = 0.0},
              size = {x = design#x, y = design#y}};
-        let perRoot = roots |> List.map(r -> renderRoot(atlasOf, textureInfoOf, ui, measures, rootRect, r));
-        {drawables = perRoot |> List.flatMap(rendered -> rendered#drawables),
-         polygons  = perRoot |> List.flatMap(rendered -> rendered#polygons)}
+        roots |> List.flatMap(r -> rootItems(atlasOf, textureInfoOf, ui, measures, rootRect, r))
 
-    /// 1 root 分の layout 解決 → extract → drawAtlas / extractPolys → layer オフセット加算。
-    /// sprites（Drawable）と polygon（PolygonRenderCmd）を同じ layer オフセットで揃えて返す。
-    def renderRoot(atlasOf: String -> FontAtlas \ ef,
-                   textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
-                   ui: UiStore.UiWorld, measures: Map[EntityId, Vec2.Vec2], rootRect: Rect2.Rect2,
-                   root: EntityId): {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]} \ ef =
+    /// 1 root 分の layout 解決 → extract → layer オフセット加算。box/text/sprite と多角形
+    /// （枠線など）を同じ Placed 列に揃えて返す。多角形の頂点はレイアウト済みの絶対座標
+    /// なので、置き場所は原点にする。
+    def rootItems(atlasOf: String -> FontAtlas \ ef,
+                  textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
+                  ui: UiStore.UiWorld, measures: Map[EntityId, Vec2.Vec2], rootRect: Rect2.Rect2,
+                  root: EntityId): List[Render.Placed] \ ef =
         let rects = UiLayout.computeLayout(
             {styles = ui#styles, parents = ui#parents, order = ui#order, measures = measures, visible = ui#visible},
             root, rootRect);
         let vis = UiHierarchy.resolveInherited(ui#visible, ui#parents, root, ui#order);
         let items = UiExtract.extract(ui, rects, vis, atlasOf, textureInfoOf);
         let offset = layerOffset(ui, root);
-        let drawables = Render.drawAtlasWith(textureInfoOf, items) |> List.map(d -> {zIndex = d#zIndex + offset | d});
-        let polygons = UiExtract.extractPolys(ui, rects, vis)
+        let raised = items |> List.map(pair -> {
+            let (pos, item) = pair;
+            (pos, Render.raiseZ(offset, item))
+        });
+        let polyItems = UiExtract.extractPolys(ui, rects, vis)
             |> List.flatMap(entry -> {
                 let (_id, _pos, poly) = entry;
-                // 1 サブポリ = 1 PolygonRenderCmd（レンダラは凸多角形しか塗れない）。
+                // 1 サブポリ = 1 Poly item（レンダラは凸多角形しか塗れない）。
                 poly#polys |> List.map(sub ->
-                    ({vertices = sub, color = poly#color, alpha = poly#alpha,
-                      zIndex = poly#zIndex + offset}: GameEngine.PolygonRenderCmd))
+                    (Vec2.zero(),
+                     Render.polygon(sub, poly#color, poly#zIndex + offset) |> Render.fade(poly#alpha)))
             });
-        {drawables = drawables, polygons = polygons}
+        List.append(raised, polyItems)
 
     /// root の layer を layers store から引き、CanvasLayer.layerStride 倍した zIndex 加算量を返す。未登録は 0。
     def layerOffset(ui: UiStore.UiWorld, root: EntityId): Int32 =

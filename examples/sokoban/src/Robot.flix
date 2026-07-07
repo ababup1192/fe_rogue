@@ -15,7 +15,7 @@
 // の約55%に押しつぶされたカプセル —— 球を真横から見た円盤 —— で、レンズの先端
 // に配置される。
 //
-// その場歩行サイクルは4拍で構成される: 静止 -> 一歩 -> 静止 -> 一歩。正面と背面
+// その場歩行サイクルは4コマで構成される: 静止 -> 一歩 -> 静止 -> 一歩。正面と背面
 // では、一歩は足の上げと体のバウンスとして読まれ、腕は逆位相で伸縮する（肩は固
 // 定）—— 正面から見た腕の前後スイング；横顔ではこれは歩幅として読まれる —— 足
 // ブロックは前後のペアに分かれ、前腕がスイングし（一歩ごとに後ろ・前と交互に）、
@@ -46,7 +46,7 @@ mod Robot {
     /// `center` を中心に、`size` px のタイル上で、歩行位相 `phase`（0..1、0が
     /// 静止ポーズ）で `dir` を向くロボットの全パーツ。
     pub def parts(center: Vec2.Vec2, size: Float64, dir: Dir4.Dir4,
-                  phase: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
+                  phase: Float64): List[Render.Placed] =
         let pose = poseOf(phase);
         let ps = match dir {
             case Dir4.Down  => front(pose)
@@ -56,7 +56,7 @@ mod Robot {
         };
         List.map(toItem(center, size), ps)
 
-    /// サイクルあたり4拍: 静止 -> 一歩 -> 静止 -> 一歩。一歩の拍は足を1.5ユニッ
+    /// サイクルあたり4コマ: 静止 -> 一歩 -> 静止 -> 一歩。一歩のコマは足を1.5ユニッ
     /// ト持ち上げ、体を1ユニットバウンスさせ（正面・背面ビュー）、前腕を1歩目は
     /// 後ろに、2歩目は前にスイングして歩幅を開く（横顔）。位相0はちょうど静止ポ
     /// ーズである。
@@ -139,7 +139,7 @@ mod Robot {
     def mirrorX(p: Part): Part =
         { x = 16.0 - p#x - p#w | p }
 
-    def toItem(center: Vec2.Vec2, size: Float64, p: Part): (Vec2.Vec2, Render.RenderItem) =
+    def toItem(center: Vec2.Vec2, size: Float64, p: Part): Render.Placed =
         let s = size / 16.0;
         let tlx = center#x - size / 2.0;
         let tly = center#y - size / 2.0;
@@ -147,11 +147,6 @@ mod Robot {
         let dim = {x = p#w * s, y = p#h * s};
         if (p#r <= 0.0)
             (pos, Render.solidBox(dim, p#color, p#z))
-        else {
-            let style = { cornerRadius = p#r * s, borderWidth = 0.0, borderColor = p#color,
-                          borderAlpha = 0.0f32, stripeColor = p#color, stripeAlpha = 0.0f32,
-                          stripeWidth = 0.0, stripePeriod = 0.0 };
-            (pos, Render.RenderItem.Box({ size = dim, color = p#color, alpha = 1.0f32,
-                                          style = Some(style), zIndex = p#z }))
-        }
+        else
+            (pos, Render.solidBox(dim, p#color, p#z) |> Render.rounded(p#r * s))
 }

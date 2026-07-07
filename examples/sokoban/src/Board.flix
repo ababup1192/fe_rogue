@@ -5,12 +5,12 @@
 //
 // ここにあるものはすべて純粋で時間から自由: Board と Input が与えられれば、ルール
 // が次の Board を言い当てる。dt による進行、履歴、loop は Sokoban に住み、描画は
-// View に住む。
+// View にある。
 
 mod Board {
 
     // ── Input: このフレームのキー入力を素のデータとして ──
-    // キーボードは World の外に住む。`enter` はレベルではなくエッジ: キーが押された
+    // キーボードの状態は World の外にある。`enter` はレベルではなくエッジ: キーが押された
     // フレームだけ true なので、1回の押下はちょうど1ページだけをめくる。held か
     // pressed かは loop が判定し、ルールは判定結果だけを見る。
     pub type alias Input = { up = Bool, down = Bool, left = Bool, right = Bool,
@@ -26,7 +26,7 @@ mod Board {
     // slide は描画位置の移動量: ホップ（あるいは巻き戻し）が確定すると、ロボットの
     // セルは即座に変わる —— 描画位置はそこから数分の1秒かけて古いセルから移動し、
     // どこまで来たか（t）はフレームをまたいで保持する必要があるので、他のすべてと
-    // 同様 Board に住む。reverse は巻き戻しスライドの印: 仕組みは同じで、映像を逆
+    // 同様 Board が持つ。reverse は巻き戻しスライドの印: 仕組みは同じで、映像を逆
     // 再生しているだけ。
     pub type alias Slide = { fromCell = (Int32, Int32), pushing = Bool, reverse = Bool, t = Float64 }
 
@@ -73,8 +73,12 @@ mod Board {
 
     pub def levelCount(): Int32 = 2
 
-    def levelText(n: Int32): String =
-        if (n <= 1) Level.one() else Level.two()
+    // count を増やしたのにレベルを足し忘れたら、静かに他の面を使い回さず大声で落ちる。
+    def levelText(n: Int32): String = match n {
+        case 1 => Level.one()
+        case 2 => Level.two()
+        case _ => bug!("Board.levelText: レベル ${n} が未定義（levelCount と levelText は同時に増やす）")
+    }
 
     /// タイトルページも（レベル1の）ボードを一応持つ —— どの World も持っている
     /// —— が、フレームはそこでは決してそれを描かない。

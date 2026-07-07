@@ -83,6 +83,7 @@ building a JRE-bundled `.dmg` / `.exe` or a jar + launcher.
 | Game | Description |
 |---|---|
 | **breakout** | Breakout clone — the value-based entry tutorial (start here; see its README) |
+| **sokoban** | Sokoban with unlimited undo (Worldline) — has a full build-it-yourself TUTORIAL (EN/JA) |
 | **fe_rogue** | Fire Emblem-style turn-based SRPG + roguelike (recommended) |
 | **flappy_bird** | Flappy Bird clone |
 | **escape_game** | Yarn Spinner visual novel + scene editor |
@@ -215,6 +216,7 @@ JRE 同梱の `.dmg` / `.exe` や jar + ランチャの作り方は
 | ゲーム | 内容 |
 |---|---|
 | **breakout** | ブロック崩し — 値ベースの入口教材（最初に読むならこれ。README あり） |
+| **sokoban** | 無制限アンドゥ（Worldline）の倉庫番 — 組み立て式 TUTORIAL 英日つき |
 | **fe_rogue** | FE 風ターン制 SRPG + ローグライク（おすすめ） |
 | **flappy_bird** | Flappy Bird クローン |
 | **escape_game** | Yarn Spinner ビジュアルノベル + シーンエディタ |

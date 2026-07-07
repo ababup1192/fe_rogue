@@ -27,27 +27,36 @@ mod View {
     def tau(): Float64 = 6.283185307179586
     def pi(): Float64 = 3.141592653589793
 
+    // ── compose: App の view スロット —— 盤面と UI ページを 1 本のリストへ ──
+
+    /// Session 全体を「(置き場所, 見せたい物) のリスト」へ投影する。盤面の絵
+    /// （frame）と UI ページ（Title / Clear パネル）を 1 本のリストに合成して
+    /// 返すだけで、描画命令への変換は App が引き受ける。
+    pub def compose(atlas: FontAtlas, s: Sokoban.Session): List[Render.Placed] =
+        List.append(
+            frame(atlas, Worldline.current(s#line)),
+            UiRender.itemsWith(_ -> atlas, _ -> None, s#ui, GameUi.designSize()))
+
     // ── frame: World を「描くべきものリスト」へ投影する ──
     // 挿入順がボードを層にする: 床と壁、次にゴールの印、次にクレート、次にロボッ
-    // ト、最後にゴール到達バッジと一番上のテキスト。タイトルページではここでは何
-    // も描かない: そこにあるすべては UI Spec（GameUi 参照）であり、loop によって
-    // UI store から描画される。
-    pub def frame(atlas: FontAtlas, w: Board.World): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+    // ト、次にゴール到達バッジとテキスト、最後に多角形（ブレース・時計の針・紙吹
+    // 雪）。タイトルページではここでは何も描かない: そこにあるすべては UI Spec
+    // （GameUi 参照）であり、compose が UI store から合成する。
+    pub def frame(atlas: FontAtlas, w: Board.World): List[Render.Placed] =
         let Board.World.World(b) = w;
-        if (b#screen == Board.Screen.Title) (Nil, Nil)
-        else {
-            let boxes = List.flatten(
+        if (b#screen == Board.Screen.Title) Nil
+        else
+            List.flatten(
                 boardTiles(b) ::
                 goalMarks(b) ::
                 crateBoxes(b) ::
                 Robot.parts(robotDrawCenter(b), tile(), drawnFacing(b), b#walkPhase) ::
                 onGoalBadges(b) ::
                 clockBoxes(b) ::
-                texts(atlas) :: Nil);
-            let (drawables, polys) = Render.draw(boxes);
-            (drawables,
-             List.append(polys, List.flatten(cratePolys(b) :: clockNeedle(b) :: confettiQuads(b) :: Nil)))
-        }
+                texts(atlas) ::
+                cratePolys(b) ::
+                clockNeedle(b) ::
+                confettiQuads(b) :: Nil)
 
     // ── ボードの幾何: セルから画面座標へ ──
 
@@ -77,7 +86,7 @@ mod View {
     /// ゴール到達バッジの半径（落ち着いたクレートの上に描かれる、より小さい印）。
     def goalBadgeRadiusFactor(): Float64 = 0.25
 
-    def boardTiles(b: Board.Board): List[(Vec2.Vec2, Render.RenderItem)] =
+    def boardTiles(b: Board.Board): List[Render.Placed] =
         List.flatMap(p ->
             if (Set.memberOf(p, b#walls)) wallTile(cellCenter(b, p))
             else floorTile(cellCenter(b, p)),
@@ -85,12 +94,12 @@ mod View {
 
     /// 床: 1マスにつき1つのフラットなボックス；ボードは周囲の暗いクリア色の上に
     /// 明るい領域として読める。
-    def floorTile(c: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def floorTile(c: Vec2.Vec2): List[Render.Placed] =
         let t = tile();
         boxAt({ x = c#x - t / 2.0, y = c#y - t / 2.0, w = t, h = t }, Palette.floorTile(), 0) :: Nil
 
     /// 壁: 石のブロック —— 明るい上端と影の付いた足元を持つフラットな面。
-    def wallTile(c: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def wallTile(c: Vec2.Vec2): List[Render.Placed] =
         let t = tile();
         let x0 = c#x - t / 2.0;
         let y0 = c#y - t / 2.0;
@@ -100,13 +109,13 @@ mod View {
         boxAt({ x = x0, y = y0 + t - bevel, w = t, h = bevel }, Palette.wallShade(), 1) :: Nil
 
     /// ゴール: 床の上の小さな丸い印（クレートとロボットがその上に描かれる）。
-    def goalMarks(b: Board.Board): List[(Vec2.Vec2, Render.RenderItem)] =
+    def goalMarks(b: Board.Board): List[Render.Placed] =
         List.map(p -> circleAt(cellCenter(b, p), tile() * goalMarkRadiusFactor(), Palette.goalMark(), 0),
                  Set.toList(b#goals))
 
     /// ゴールに置かれた（あるいは滑り込みつつある）クレートには上に小さなバッジ
     /// が付く: ゴールが応答する。
-    def onGoalBadges(b: Board.Board): List[(Vec2.Vec2, Render.RenderItem)] =
+    def onGoalBadges(b: Board.Board): List[Render.Placed] =
         List.map(p -> circleAt(crateCenter(b, p), tile() * goalBadgeRadiusFactor(), Palette.goalMark(), zBadge()),
                  Set.toList(Set.intersection(b#crates, b#goals)))
 
@@ -186,10 +195,10 @@ mod View {
         if (t < start) t
         else t + settleOvershootHeight() * RenderUtil.sinF(pi() * (t - start) / (1.0 - start))
 
-    def crateBoxes(b: Board.Board): List[(Vec2.Vec2, Render.RenderItem)] =
+    def crateBoxes(b: Board.Board): List[Render.Placed] =
         List.flatMap(p -> Crate.boxes(crateCenter(b, p), tile()), Set.toList(b#crates))
 
-    def cratePolys(b: Board.Board): List[GameEngine.PolygonRenderCmd] =
+    def cratePolys(b: Board.Board): List[Render.Placed] =
         List.flatMap(p -> Crate.polys(crateCenter(b, p), tile()), Set.toList(b#crates))
 
     // ── 巻き戻し時計: ロボットの頭上のアラーム時計 ──
@@ -225,7 +234,7 @@ mod View {
 
     /// 文字盤: 暗い外側の円（縁）、白い内側の円（面）、そして上部の小さな四角い
     /// アラームボタン。
-    def clockBoxes(b: Board.Board): List[(Vec2.Vec2, Render.RenderItem)] =
+    def clockBoxes(b: Board.Board): List[Render.Placed] =
         match b#undoFx {
             case None    => Nil
             case Some(f) =>
@@ -245,8 +254,8 @@ mod View {
     pub def needleAngle(spin: Float64): Float64 = spin * tau()
 
     /// 針: 中心のすぐ後ろから文字盤の縁まで伸びる細いクアッド。（反時計回りに回
-    /// る）針の角度に沿って向く。
-    def clockNeedle(b: Board.Board): List[GameEngine.PolygonRenderCmd] =
+    /// る）針の角度に沿って向く。頂点は画面の絶対座標なので、置き場所は原点。
+    def clockNeedle(b: Board.Board): List[Render.Placed] =
         match b#undoFx {
             case None    => Nil
             case Some(f) =>
@@ -257,8 +266,10 @@ mod View {
                 let reach = (clockDiameter() - clockRimThickness()) / 2.0 - needleTipInset();
                 let tail = Vec2.sub(c, Vec2.mul(dir, needleTailReach()));
                 let tip = Vec2.add(c, Vec2.mul(dir, reach));
-                { vertices = Quad.strip(tail, tip, -needleHalfWidth(), needleHalfWidth()),
-                  color = Palette.clockRim(), alpha = clockAlpha(f), zIndex = zClock() + 2 } :: Nil
+                (Vec2.zero(),
+                 Render.polygon(Quad.strip(tail, tip, -needleHalfWidth(), needleHalfWidth()),
+                                Palette.clockRim(), zClock() + 2)
+                    |> Render.fade(clockAlpha(f))) :: Nil
         }
 
     // ── 紙吹雪: パーティクルシステムなしの雨 ──
@@ -295,7 +306,7 @@ mod View {
     /// る: 自分の速さで落ち、自分のサイン波で揺れ、自分のレートで回転する。イン
     /// デックス i そのものが色を決める（5つのロールをラウンドロビンで配る）。
     /// 切れ端ごとに保存されるものは何もない —— 雨全体が導出される。
-    def confettiPiece(i: Int32, rand: Int32 -> Float64, t: Float64): GameEngine.PolygonRenderCmd =
+    def confettiPiece(i: Int32, rand: Int32 -> Float64, t: Float64): Render.Placed =
         let fallSpan = confettiFallSpan();
         let fallSpeed = confettiFallSpeedMin() + confettiFallSpeedSpan() * rand(1);
         let sway = confettiSwayMin() + confettiSwaySpan() * rand(2);
@@ -304,11 +315,12 @@ mod View {
         let x = confettiSpreadWidth() * rand(6) + Curve.sine(sway, confettiSwayRate(), phase, t);
         let y = Curve.loop(fallSpeed, fallSpan, t + fallSpan * rand(7) / fallSpeed) - confettiSpawnAbove();
         let angle = Curve.spin(spinRate, t) + phase;
-        { vertices = Quad.rotated({ x = x, y = y }, confettiPieceHalfWidth(), confettiPieceHalfHeight(), angle),
-          color = Palette.confetti(i), alpha = 1.0f32, zIndex = zConfetti() }
+        (Vec2.zero(),
+         Render.polygon(Quad.rotated({ x = x, y = y }, confettiPieceHalfWidth(), confettiPieceHalfHeight(), angle),
+                        Palette.confetti(i), zConfetti()))
 
     /// 雨全体: パーティの時計が動いている間、インデックスごとに1つのクアッド。
-    pub def confettiQuads(b: Board.Board): List[GameEngine.PolygonRenderCmd] =
+    pub def confettiQuads(b: Board.Board): List[Render.Placed] =
         if (b#clearElapsed <= 0.0) Nil
         else Fx.derive(confettiCount(), b#clearElapsed, confettiPiece)
 
@@ -316,7 +328,7 @@ mod View {
 
     /// ゲーム内のヘッダー。CLEAR パネルは今や UI Spec（assets/Clear.ui.json）で
     /// ある；ボードはタイトル行だけを保持する。
-    def texts(atlas: FontAtlas): List[(Vec2.Vec2, Render.RenderItem)] =
+    def texts(atlas: FontAtlas): List[Render.Placed] =
         TextDraw.centered({ text = "Sokoban", atlas = atlas, size = 28.0, color = Palette.titleText(),
                             z = zTitle(), centerX = centerX(), y = 10.0 }) :: Nil
 
@@ -324,31 +336,21 @@ mod View {
 
     /// 塗りつぶし矩形: 左上 (x, y)、サイズ (w, h)、レイヤー z。
     def boxAt(rect: { x = Float64, y = Float64, w = Float64, h = Float64 },
-              c: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
+              c: Color, z: Int32): Render.Placed =
         ({ x = rect#x, y = rect#y }, Render.solidBox({ x = rect#w, y = rect#h }, c, z))
 
-    /// c を中心とする直径 d の塗りつぶし円（角丸を最大にしたボックス）。
-    def circleAt(c: Vec2.Vec2, d: Float64, color: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
-        let style = { cornerRadius = d / 2.0, borderWidth = 0.0, borderColor = color,
-                      borderAlpha = 0.0f32, stripeColor = color, stripeAlpha = 0.0f32,
-                      stripeWidth = 0.0, stripePeriod = 0.0 };
-        ({x = c#x - d / 2.0, y = c#y - d / 2.0},
-         Render.RenderItem.Box({ size = {x = d, y = d}, color = color, alpha = 1.0f32,
-                                 style = Some(style), zIndex = z }))
+    /// c を中心とする直径 d の塗りつぶし円。
+    def circleAt(c: Vec2.Vec2, d: Float64, color: Color, z: Int32): Render.Placed =
+        ({x = c#x - d / 2.0, y = c#y - d / 2.0}, Render.circle(d / 2.0, color, z))
 
     /// 半透明の塗りつぶしボックス（時計のパーツは alpha でフェードする）。
     def fxBox(pos: Vec2.Vec2, size: Vec2.Vec2, c: Color, a: Float32,
-              z: Int32): (Vec2.Vec2, Render.RenderItem) =
-        (pos, Render.RenderItem.Box({ size = size, color = c, alpha = a,
-                                      style = None, zIndex = z }))
+              z: Int32): Render.Placed =
+        (pos, Render.solidBox(size, c, z) |> Render.fade(a))
 
     /// 直径 d の半透明の塗りつぶし円（時計の縁と面）。
     def fxCircle(center: Vec2.Vec2, d: Float64, c: Color, a: Float32,
-                 z: Int32): (Vec2.Vec2, Render.RenderItem) =
-        let style = { cornerRadius = d / 2.0, borderWidth = 0.0, borderColor = c,
-                      borderAlpha = 0.0f32, stripeColor = c, stripeAlpha = 0.0f32,
-                      stripeWidth = 0.0, stripePeriod = 0.0 };
+                 z: Int32): Render.Placed =
         ({x = center#x - d / 2.0, y = center#y - d / 2.0},
-         Render.RenderItem.Box({ size = {x = d, y = d}, color = c, alpha = a,
-                                 style = Some(style), zIndex = z }))
+         Render.circle(d / 2.0, c, z) |> Render.fade(a))
 }

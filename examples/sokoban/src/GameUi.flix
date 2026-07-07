@@ -1,5 +1,5 @@
 // GameUi — タイトルと CLEAR のページを、データとして宣言する。
-// 見た目はすべて assets/*.ui.json に住む。起動時に両方のファイルが1つの
+// 見た目はすべて assets/*.ui.json にある。起動時に両方のファイルが1つの
 // UiWorld（engine_world の UI store）へ生成され、loop はそれを Worldline の隣で
 // 単なる値として持ち運ぶ。毎フレーム projectUi が World の判定結果 —— どのペー
 // ジを見せるか、クリアまでに何手かかったか —— をそこに刻み込み、UiRender がそれ

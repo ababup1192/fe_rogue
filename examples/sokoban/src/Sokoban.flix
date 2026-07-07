@@ -1,13 +1,20 @@
-// Sokoban —心臓部: ボードを dt だけ進める純粋な step、セッション全体（時間機械
-// 込み）を回す tick、そして境界を越えるランチャーの loop —— キーが入り、ピクセル
-// と音が出る。
+// Sokoban — ゲームのルール: ボードを dt だけ進める純粋な step と、セッション全体
+// （undo 履歴込み）を回す tick。キー読み・描画・音の再生は App（engine_world）が
+// 引き受けるので、ここは値から値への純粋関数だけでできている。
 //
 // セッションの履歴は Worldline（engine_world の Worlds のジッパー）: 確定した
 // 各手が移動前の World を記録し、Z がそこへ巻き戻す。Worldline 自体は World の
-// 外、loop の中に住む —— 時間機械は時間の中にはない。Board とそのルールは
-// Board に、描画は View に、ページは GameUi に住む。
+// 外、Session の中にある —— 時間機械は時間の中にはない。Board とそのルールは
+// Board に、描画は View に、ページは GameUi にある。
 
 mod Sokoban {
+
+    /// App が回すゲーム 1 本ぶんの状態: UI ページの Store と、undo 履歴込みの盤面。
+    /// ui はページの見た目（Title / Clear パネル）、line は盤面とその過去すべて。
+    pub type alias Session = {
+        ui = UiStore.UiWorld,
+        line = Worldline[Board.World]
+    }
 
     /// 保持するスナップショット数。エンジンのベンチマークでは1レコードあたり
     /// 約172バイトなので、これでも2MB未満: 無制限アンドゥは事実上タダである。
@@ -27,7 +34,7 @@ mod Sokoban {
     /// 見やすく保つ。
     def undoDuration(): Float64 = 0.25
 
-    /// 歩行サイクルは1マス滑るごとに1拍（サイクルの0.25）進む。
+    /// 歩行サイクルは1マス滑るごとにサイクルの 0.25 だけ進む。
     def strideBeat(): Float64 = 0.25
 
     /// 静止中の歩行サイクル（秒あたり）: その場でのゆっくりした行進 —— 歩行時の
@@ -86,10 +93,10 @@ mod Sokoban {
 
     // ── tick: 時間機械込みの、セッション全体の1フレーム ──
     // Worldline は確定した手ごとに1スナップショットを記録する —— これがゲームの
-    // 自然な拍であり、決してフレームごとではない。Z は手を1つずつ巻き戻す；巻き
+    // 自然な区切りであり、決してフレームごとではない。Z は手を1つずつ巻き戻す；巻き
     // 戻しのたびにその手のスライドを逆再生し、次のコマンド（歩行でも巻き戻しで
     // も同様に）は絵が着地したときにだけ受け付けられる: 時間のどちら向きにも共
-    // 通の1つの門。
+    // 通の 1 つの受付条件。
 
     pub def tick(input: Board.Input, dt: Float64, line: Worldline[Board.World]): Worldline[Board.World] =
         let Board.World.World(b) = Worldline.current(line);
@@ -136,7 +143,7 @@ mod Sokoban {
             // 手が確定した: 移動前の World を過去に記録する。
             Worldline.record(next, Worldline.replaceCurrent(normalize(world), line))
         else if (input#undo and not inFlight(next))
-            // 門は開いている（何も滑っていない）状態で Z が押されている: 1手巻き
+            // 何も滑っていない（＝入力を受け付ける）状態で Z が押されている: 1手巻き
             // 戻す。
             fireUndo(Worldline.replaceCurrent(next, line))
         else
@@ -181,7 +188,7 @@ mod Sokoban {
     // ── 音: 耳のための投影 ──
     // 4つの生成された wav のうちどれを鳴らすかは純粋であり、両方の Worldline から
     // 読み取れる、このフレームの手についての導出である。実際に鳴らす行為だけが
-    // 副作用であり、それは他の境界越えと共に loop に住む。
+    // 副作用であり、それは App が引き受ける。
 
     /// このフレームがどう聞こえるか: 勝利の一押しはファンファーレ、巻き戻しは
     /// チッと鳴り、確定した手はクレートを押していればドン、歩いただけならピッと
@@ -200,73 +207,9 @@ mod Sokoban {
             (if (a#crates != b#crates) Some("push") else Some("move"))
         else None
 
-    // ── ランチャー: 入力と時計を読む |> tick |> frame、ウィンドウが閉じるまで ──
-
-    pub def start(atlas: FontAtlas): Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead} =
-        loop(atlas, GameUi.loadUi(), Worldline.make(Board.initialWorld(), historyCap()),
-             { enter = true, esc = true, f1 = false })
-
-    /// キーボードを読むことはプログラムの外側にある何かに触れることであり、シグ
-    /// ネチャがそれを語る: `\ GameEngine.Game`。キーが読まれるのはここだけであ
-    /// り、この先はただの値である。Enter と Escape のエッジは loop（前フレーム
-    /// の状態を保持している）が計算し、判定結果としてここに届く。
-    def readInput(enterEdge: Bool, escEdge: Bool): Board.Input \ GameEngine.Game =
-        { up    = GameEngine.Game.isKeyPressed(GameEngine.Key.Up),
-          down  = GameEngine.Game.isKeyPressed(GameEngine.Key.Down),
-          left  = GameEngine.Game.isKeyPressed(GameEngine.Key.Left),
-          right = GameEngine.Game.isKeyPressed(GameEngine.Key.Right),
-          undo  = GameEngine.Game.isKeyPressed(GameEngine.Key.Z),
-          enter = enterEdge,
-          back  = GameEngine.Game.isKeyPressed(GameEngine.Key.X),
-          esc   = escEdge }
-
-    /// 時計も World の外に住む。エンジンが値をクランプするので、長いカクつき
-    /// （あるいは最初のフレーム）がゲームを先へワープさせることは決してない。
-    def readDt(): Float64 \ GameEngine.Game =
-        Duration.toSeconds(GameEngine.Game.getDeltaTime())
-
     /// CLEAR パネルが出ている間は、Escape はウィンドウではなくパネルを閉じる
-    /// （タイトルへ戻る）。
-    def clearModal(w: Board.World): Bool =
+    /// （タイトルへ戻る）。終了判定（Controls.wantsQuit）がこれを見る。
+    pub def clearModal(w: Board.World): Bool =
         let Board.World.World(b) = w;
         b#screen == Board.Screen.Playing and Board.won(w)
-
-    /// このフレームの音があれば、それを鳴らす。
-    def playSfx(before: Worldline[Board.World], after: Worldline[Board.World]): Unit \ GameEngine.Audio =
-        match sfxEvent(before, after) {
-            case Some(name) => GameEngine.Audio.playAudio(name)
-            case None       => ()
-        }
-
-    /// ボードの絵と UI ページを合成し、エンジンに渡す。
-    def renderFrame(atlas: FontAtlas, ui: UiStore.UiWorld, world: Board.World): Unit \ GameEngine.Game =
-        let (drawables, polys) = View.frame(atlas, world);
-        let out = UiRender.renderUi(ui, GameUi.designSize());
-        GameEngine.Game.renderCommands(
-            List.append(drawables, out#drawables), Nil,
-            List.append(polys, out#polygons))
-
-    /// loop は3つの値を糸のようにつなぐ: UI store、Worldline、そして前フレームの
-    /// キー状態（enter と esc は true から始まるので、起動時にすでに押されてい
-    /// るキーは一度離されるまで何も語らない）。1周は: キーを読み、セッションを
-    /// tick し、鳴らし、ページを投影し、描く。
-    def loop(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[Board.World],
-             prev: { enter = Bool, esc = Bool, f1 = Bool }): Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead} =
-        let enterDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Enter);
-        let escDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Escape);
-        let f1Down = GameEngine.Game.isKeyPressed(GameEngine.Key.F1);
-        let escEdge = InputEdge.pressed(prev#esc, escDown);
-        if (GameEngine.Game.shouldClose()
-            or (escEdge and not clearModal(Worldline.current(line)))) ()
-        else {
-            let advanced = tick(readInput(InputEdge.pressed(prev#enter, enterDown), escEdge), readDt(), line);
-            playSfx(line, advanced);
-            // F1 は生成済みの Spec を1つ残らずディスクから読み直す: ゲーム実行中
-            // に json を編集し、F1 を押せば、その場でページが変わる。
-            let uiReloaded = if (InputEdge.pressed(prev#f1, f1Down)) UiSpec.reloadAll(ui) else ui;
-            let world = Worldline.current(advanced);
-            let uiProjected = GameUi.projectUi(Worldline.pastLength(advanced), world, uiReloaded);
-            renderFrame(atlas, uiProjected, world);
-            loop(atlas, uiProjected, advanced, { enter = enterDown, esc = escDown, f1 = f1Down })
-        }
 }

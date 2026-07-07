@@ -75,45 +75,34 @@ So all coordinates live in 320×240, and the center of the screen is `(160, 120)
 
 ```flix
 def main(): Unit \ IO =
-    if (GameEngine.ensureMainThread()) ()
-    else {
-        run {
-            Sokoban.start(GameEngine.Game.getFontAtlas("default"))
-        } with LwjglLayer.withProject(".")
-          with Fs.FileRead.runWithIO
-          with Fs.FileWrite.runWithIO
-          with Fs.Glob.runWithIO
-          with Fs.ModificationTime.runWithFileTime
-          with Fs.FileTime.runWithIO
-    }
+    App.make(())
+        |> App.withView(Sokoban.frame)
+        |> App.launch
 ```
 
-No need to memorize this yet. How to read it:
+Three lines, and each one is a sentence:
 
-- `with LwjglLayer.withProject(".")` — reads `project.json`, opens the window,
-  loads the font.
-- `Sokoban.start(...)` — this is where our own code begins. It receives the font
-  loaded under the name `"default"` via `getFontAtlas`.
+- `App.make(())` — declare a game. The argument is the game's **entire state**,
+  and we have none yet, so we pass the empty value `()`.
+- `App.withView(Sokoban.frame)` — plug in the function that says what to draw.
+- `App.launch` — read `project.json`, open the window, load the font, and keep
+  the game running until it should stop. Pressing `Esc` quits, by default.
 
-### `src/Sokoban.flix` (what to draw + the loop)
+`App` is the engine's *runner* (it lives in `engine_world/`, about 150 readable
+lines). Everything that touches the outside world — the window, the clock, the
+keyboard, the actual drawing — is its job, not ours. Our job is the next file.
+
+### `src/Sokoban.flix` (what to draw)
 
 ```flix
 mod Sokoban {
 
-    // The function that returns "what to draw this frame".
-    pub def frame(atlas: FontAtlas): List[GameEngine.Drawable] =
+    /// The function that returns "what to draw this frame".
+    pub def frame(atlas: FontAtlas, _world: Unit): List[Render.Placed] =
         let size = 28.0;
         let box = Label2D.measure(Label2D.make("Hello, Sokoban", atlas, size));
         let pos = {x = 160.0 - box#x / 2.0, y = 120.0 - box#y / 2.0};
-        Render.draw((pos, Render.text("Hello, Sokoban", atlas, size, 100)) :: Nil)
-
-    // Keep drawing the result of frame every frame until the window closes.
-    pub def start(atlas: FontAtlas): Unit \ GameEngine.Game =
-        if (GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
-        else {
-            GameEngine.Game.renderCommands(frame(atlas), Nil, Nil);
-            start(atlas)
-        }
+        (pos, Render.text("Hello, Sokoban", atlas, size, 100)) :: Nil
 }
 ```
 
@@ -121,23 +110,27 @@ mod Sokoban {
 
 - `frame` is a function that **only returns a list of pictures**. It changes
   nothing and remembers nothing. It returns one piece of text, `"Hello, Sokoban"`,
-  paired with the position (`pos`) where it should go.
+  paired with the position (`pos`) where it should go. That pair — *(where, what)*
+  — is called a `Render.Placed`, and a frame is just a list of them.
 - The position math `160.0 - box#x / 2.0` means "step back from the center by half
   the text's width" — that's **centering**. `Label2D.measure` reports the actual
   width and height of the rendered text, so you can center precisely instead of
   guessing.
-- `start` repeats one thing until the window closes or `Esc` is pressed: call
-  `frame`, draw the result, call itself again. That is what "every frame" means in
-  a game. **Everything drawable lives in `frame`** — the loop itself has no idea
-  what is being drawn.
+- Somewhere inside `App.launch` there is a loop that calls `frame` every frame and
+  draws whatever it returns, until the window closes or `Esc` is pressed. You will
+  never write that loop — and `frame` has no idea it is inside one. **Everything
+  drawable lives in `frame`**; everything repetitive lives in `App`.
+- The second parameter `_world` is the game state that `App.make` was given. Ours
+  is `()` for now, so we ignore it — but its seat at the table is already reserved,
+  and most of this tutorial is about what will come to sit in it.
 
 In other words: the function you will edit, almost always, is `frame`.
 
 ### Try it
 
 Change `"Hello, Sokoban"` in `frame` (both occurrences) to some other text and
-`... flix.jar run` again. The text in the window changes — and note that you never
-touched the loop.
+`make run` again. The text in the window changes — and note that there is no loop
+anywhere in your project to touch.
 
 ---
 
@@ -234,22 +227,24 @@ mod Sokoban {
     def zTitle(): Int32 = 100
 
     // ── The function that returns the list of things to draw ──
-    pub def frame(atlas: FontAtlas): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
-        let boxes = List.append(crateBoxes(), titlePlacement(atlas) :: Nil);
-        (Render.draw(boxes), cratePolys())
+    pub def frame(atlas: FontAtlas, _world: Unit): List[Render.Placed] =
+        List.flatten(
+            crateBoxes() ::
+            cratePolys() ::
+            (titlePlacement(atlas) :: Nil) :: Nil)
 
     // ── The crate: a composition of boxes plus convex polygon strips ──
 
     /// Box parts: 1 base plank + 5 vertical seams + 4 frame rails + 4 frame joints + 4 outline edges.
-    def crateBoxes(): List[(Vec2.Vec2, Render.RenderItem)] =
+    def crateBoxes(): List[Render.Placed] =
         plank() :: List.flatten(seams() :: rails() :: frameJoints() :: outline() :: Nil)
 
     /// Base plank: fill the whole tile with plank brown.
-    def plank(): (Vec2.Vec2, Render.RenderItem) =
+    def plank(): Render.Placed =
         boxAt(crateLeft(), crateTop(), crateSize(), crateSize(), Palette.cratePlank(), zPlank())
 
     /// Vertical seams: 5 evenly spaced thin lines that make the interior read as 6 boards.
-    def seams(): List[(Vec2.Vec2, Render.RenderItem)] =
+    def seams(): List[Render.Placed] =
         let t = crateSize();
         let w = t * 0.04;
         List.map(i ->
@@ -259,7 +254,7 @@ mod Sokoban {
 
     /// Outer frame: 2 full-width horizontal boards (top, bottom) and 2 vertical boards
     /// sandwiched between them (left, right).
-    def rails(): List[(Vec2.Vec2, Render.RenderItem)] =
+    def rails(): List[Render.Placed] =
         let t = crateSize();
         let f = railW();
         let x0 = crateLeft();
@@ -272,7 +267,7 @@ mod Sokoban {
     /// Frame joints: the border lines between the frame and the interior. The 2 full-width
     /// horizontal lines double as the butt joints at the four corners at their ends;
     /// the 2 vertical lines run only between them.
-    def frameJoints(): List[(Vec2.Vec2, Render.RenderItem)] =
+    def frameJoints(): List[Render.Placed] =
         let t = crateSize();
         let f = railW();
         let w = t * 0.02;
@@ -284,7 +279,7 @@ mod Sokoban {
         boxAt(x0 + t - f - w / 2.0, y0 + f, w, t - 2.0 * f, Palette.crateSeam(), zJoint()) :: Nil
 
     /// Outer outline: a dark 1px (design resolution) line around the whole crate.
-    def outline(): List[(Vec2.Vec2, Render.RenderItem)] =
+    def outline(): List[Render.Placed] =
         let t = crateSize();
         let w = 1.0;
         let x0 = crateLeft();
@@ -295,14 +290,14 @@ mod Sokoban {
         boxAt(x0 + t - w, y0, w, t, Palette.crateSeam(), zJoint()) :: Nil
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
-              c: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
+              c: Color, z: Int32): Render.Placed =
         ({x = x, y = y}, Render.solidBox({x = w, y = h}, c, z))
 
     /// Diagonal brace: one thick band from the inner bottom-left to the inner top-right,
     /// plus 2 dark edge lines. All 3 strips share the same centerline and direction vector;
     /// only their normal-offset ranges differ (building the edges along the normal keeps
     /// their thickness constant everywhere).
-    def cratePolys(): List[GameEngine.PolygonRenderCmd] =
+    def cratePolys(): List[Render.Placed] =
         let half = crateSize() * 0.09;    // half-width of the central band (0.18T thick)
         let edge = crateSize() * 0.03;    // thickness of one edge line
         braceStrip(-half - edge, -half, Palette.crateFrame(), zBraceEdge()) ::
@@ -312,8 +307,9 @@ mod Sokoban {
     /// A parallelogram (convex quad) covering normal offsets o1..o2 from the band's
     /// centerline. The centerline runs inner bottom-left corner -> inner top-right corner,
     /// extended by ext at both ends. The extended ends tuck under the frame rails drawn
-    /// later, so the strip ends need no shaping.
-    def braceStrip(o1: Float64, o2: Float64, c: Color, z: Int32): GameEngine.PolygonRenderCmd =
+    /// later, so the strip ends need no shaping. The vertices are absolute screen
+    /// coordinates, so the placement is the origin.
+    def braceStrip(o1: Float64, o2: Float64, c: Color, z: Int32): Render.Placed =
         let t = crateSize();
         let f = railW();
         let ext = t * 0.04;
@@ -323,35 +319,31 @@ mod Sokoban {
         let n = {x = -d#y, y = d#x};
         let p0 = Vec2.sub(bl, Vec2.mul(d, ext));
         let p1 = Vec2.add(tr, Vec2.mul(d, ext));
-        { vertices = Vec2.add(p0, Vec2.mul(n, o1)) :: Vec2.add(p1, Vec2.mul(n, o1)) ::
-                     Vec2.add(p1, Vec2.mul(n, o2)) :: Vec2.add(p0, Vec2.mul(n, o2)) :: Nil,
-          color = c, alpha = 1.0f32, zIndex = z }
+        (Vec2.zero(),
+         Render.polygon(
+             Vec2.add(p0, Vec2.mul(n, o1)) :: Vec2.add(p1, Vec2.mul(n, o1)) ::
+             Vec2.add(p1, Vec2.mul(n, o2)) :: Vec2.add(p0, Vec2.mul(n, o2)) :: Nil,
+             c, z))
 
     /// Title text horizontally centered near the top of the screen.
-    def titlePlacement(atlas: FontAtlas): (Vec2.Vec2, Render.RenderItem) =
+    def titlePlacement(atlas: FontAtlas): Render.Placed =
         let size = 28.0;
         let width = Label2D.measure(Label2D.make("Sokoban", atlas, size))#x;
         let pos = {x = centerX() - width / 2.0, y = 24.0};
         (pos, Render.textTinted("Sokoban", atlas, size, Palette.titleText(), zTitle()))
-
-    // ── Launcher: keep drawing frame until the window closes ──
-    pub def start(atlas: FontAtlas): Unit \ GameEngine.Game =
-        if (GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
-        else {
-            let (drawables, polys) = frame(atlas);
-            GameEngine.Game.renderCommands(drawables, Nil, polys);
-            start(atlas)
-        }
 }
 ```
 
+(`Main.flix` has not changed since Chapter 0 — it still just plugs `Sokoban.frame`
+into the App.)
+
 ### What just happened
 
-- `frame` still **only returns the list of things to draw** — but now there are
-  two kinds: the rectangles-and-text list (`Drawable`) plus a polygon list
-  (`PolygonRenderCmd`). Boxes can only be axis-aligned rectangles, so **the
-  diagonal band is the one shape where we specify 4 vertices ourselves** as a
-  convex polygon. `start` hands both lists to the engine together.
+- `frame` still **only returns one list of things to draw** — but the list now
+  mixes three kinds of item: solid boxes, text, and a polygon. Boxes can only be
+  axis-aligned rectangles, so **the diagonal band is the one shape where we
+  specify 4 vertices ourselves**, via `Render.polygon`. It rides in the same list
+  as everything else; the App sorts out what goes where.
 - The crate is 21 parts (18 boxes + 3 polygons) stacked. Each one is just "a
   colored rectangle" or "a colored parallelogram" — it is the **ratios and the
   stacking order** that produce the symbol "crate."
@@ -462,11 +454,13 @@ mod Sokoban {
 
     // ── frame: projects the World into the list of things to draw ──
     // It only reads the world; drawing never changes anything.
-    pub def frame(atlas: FontAtlas, w: World): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+    pub def frame(atlas: FontAtlas, w: World): List[Render.Placed] =
         let World.World(r) = w;
         let center = {x = r#crateX, y = centerY()};
-        let boxes = List.append(crateBoxes(center), titlePlacement(atlas) :: Nil);
-        (Render.draw(boxes), cratePolys(center))
+        List.flatten(
+            crateBoxes(center) ::
+            cratePolys(center) ::
+            (titlePlacement(atlas) :: Nil) :: Nil)
 
     // ── The crate: a composition of boxes plus convex polygon strips ──
     // Every part is placed relative to the crate's center, so one crate can be
@@ -476,16 +470,16 @@ mod Sokoban {
         {x = center#x - crateSize() / 2.0, y = center#y - crateSize() / 2.0}
 
     /// Box parts: 1 base plank + 5 vertical seams + 4 frame rails + 4 frame joints + 4 outline edges.
-    def crateBoxes(center: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def crateBoxes(center: Vec2.Vec2): List[Render.Placed] =
         let tl = topLeftOf(center);
         plank(tl) :: List.flatten(seams(tl) :: rails(tl) :: frameJoints(tl) :: outline(tl) :: Nil)
 
     /// Base plank: fill the whole tile with plank brown.
-    def plank(tl: Vec2.Vec2): (Vec2.Vec2, Render.RenderItem) =
+    def plank(tl: Vec2.Vec2): Render.Placed =
         boxAt(tl#x, tl#y, crateSize(), crateSize(), Palette.cratePlank(), zPlank())
 
     /// Vertical seams: 5 evenly spaced thin lines that make the interior read as 6 boards.
-    def seams(tl: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def seams(tl: Vec2.Vec2): List[Render.Placed] =
         let t = crateSize();
         let w = t * 0.04;
         List.map(i ->
@@ -495,7 +489,7 @@ mod Sokoban {
 
     /// Outer frame: 2 full-width horizontal boards (top, bottom) and 2 vertical boards
     /// sandwiched between them (left, right).
-    def rails(tl: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def rails(tl: Vec2.Vec2): List[Render.Placed] =
         let t = crateSize();
         let f = railW();
         let x0 = tl#x;
@@ -508,7 +502,7 @@ mod Sokoban {
     /// Frame joints: the border lines between the frame and the interior. The 2 full-width
     /// horizontal lines double as the butt joints at the four corners at their ends;
     /// the 2 vertical lines run only between them.
-    def frameJoints(tl: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def frameJoints(tl: Vec2.Vec2): List[Render.Placed] =
         let t = crateSize();
         let f = railW();
         let w = t * 0.02;
@@ -520,7 +514,7 @@ mod Sokoban {
         boxAt(x0 + t - f - w / 2.0, y0 + f, w, t - 2.0 * f, Palette.crateSeam(), zJoint()) :: Nil
 
     /// Outer outline: a dark 1px (design resolution) line around the whole crate.
-    def outline(tl: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def outline(tl: Vec2.Vec2): List[Render.Placed] =
         let t = crateSize();
         let w = 1.0;
         let x0 = tl#x;
@@ -531,7 +525,7 @@ mod Sokoban {
         boxAt(x0 + t - w, y0, w, t, Palette.crateSeam(), zJoint()) :: Nil
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
-              c: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
+              c: Color, z: Int32): Render.Placed =
         ({x = x, y = y}, Render.solidBox({x = w, y = h}, c, z))
 
     /// Diagonal brace: one thick band from the inner bottom-left to the inner top-right,
@@ -566,7 +560,7 @@ mod Sokoban {
           color = c, alpha = 1.0f32, zIndex = z }
 
     /// Title text horizontally centered near the top of the screen.
-    def titlePlacement(atlas: FontAtlas): (Vec2.Vec2, Render.RenderItem) =
+    def titlePlacement(atlas: FontAtlas): Render.Placed =
         let size = 28.0;
         let width = Label2D.measure(Label2D.make("Sokoban", atlas, size))#x;
         let pos = {x = centerX() - width / 2.0, y = 24.0};
@@ -774,7 +768,7 @@ mod Sokoban {
         (Render.draw(boxes), Nil)
 
     /// Title text horizontally centered near the top of the screen.
-    def titlePlacement(atlas: FontAtlas): (Vec2.Vec2, Render.RenderItem) =
+    def titlePlacement(atlas: FontAtlas): Render.Placed =
         let size = 28.0;
         let width = Label2D.measure(Label2D.make("Sokoban", atlas, size))#x;
         let pos = {x = centerX() - width / 2.0, y = 24.0};
@@ -1084,16 +1078,16 @@ mod Crate {
         {x = center#x - t / 2.0, y = center#y - t / 2.0}
 
     /// Box parts: 1 base plank + 5 vertical seams + 4 frame rails + 4 frame joints + 4 outline edges.
-    pub def boxes(center: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
+    pub def boxes(center: Vec2.Vec2, t: Float64): List[Render.Placed] =
         let tl = topLeftOf(center, t);
         plank(tl, t) :: List.flatten(seams(tl, t) :: rails(tl, t) :: frameJoints(tl, t) :: outline(tl, t) :: Nil)
 
     /// Base plank: fill the whole tile with plank brown.
-    def plank(tl: Vec2.Vec2, t: Float64): (Vec2.Vec2, Render.RenderItem) =
+    def plank(tl: Vec2.Vec2, t: Float64): Render.Placed =
         boxAt(tl#x, tl#y, t, t, Palette.cratePlank(), zPlank())
 
     /// Vertical seams: 5 evenly spaced thin lines that make the interior read as 6 boards.
-    def seams(tl: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
+    def seams(tl: Vec2.Vec2, t: Float64): List[Render.Placed] =
         let w = t * 0.04;
         List.map(i ->
             let x = tl#x + t * Int32.toFloat64(i) / 6.0 - w / 2.0;
@@ -1102,7 +1096,7 @@ mod Crate {
 
     /// Outer frame: 2 full-width horizontal boards (top, bottom) and 2 vertical boards
     /// sandwiched between them (left, right).
-    def rails(tl: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
+    def rails(tl: Vec2.Vec2, t: Float64): List[Render.Placed] =
         let f = railW(t);
         let x0 = tl#x;
         let y0 = tl#y;
@@ -1114,7 +1108,7 @@ mod Crate {
     /// Frame joints: the border lines between the frame and the interior. The 2 full-width
     /// horizontal lines double as the butt joints at the four corners at their ends;
     /// the 2 vertical lines run only between them.
-    def frameJoints(tl: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
+    def frameJoints(tl: Vec2.Vec2, t: Float64): List[Render.Placed] =
         let f = railW(t);
         let w = t * 0.02;
         let x0 = tl#x;
@@ -1125,7 +1119,7 @@ mod Crate {
         boxAt(x0 + t - f - w / 2.0, y0 + f, w, t - 2.0 * f, Palette.crateSeam(), zJoint()) :: Nil
 
     /// Outer outline: a dark 1px (design resolution) line around the whole crate.
-    def outline(tl: Vec2.Vec2, t: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
+    def outline(tl: Vec2.Vec2, t: Float64): List[Render.Placed] =
         let w = 1.0;
         let x0 = tl#x;
         let y0 = tl#y;
@@ -1135,7 +1129,7 @@ mod Crate {
         boxAt(x0 + t - w, y0, w, t, Palette.crateSeam(), zJoint()) :: Nil
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
-              c: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
+              c: Color, z: Int32): Render.Placed =
         ({x = x, y = y}, Render.solidBox({x = w, y = h}, c, z))
 
     /// Diagonal brace: one thick band from the inner bottom-left to the inner top-right,
@@ -1394,7 +1388,7 @@ mod Sokoban {
     def cells(b: Board): List[(Int32, Int32)] =
         List.flatMap(y -> List.map(x -> (x, y), List.range(0, b#cols)), List.range(0, b#rows))
 
-    def boardTiles(b: Board): List[(Vec2.Vec2, Render.RenderItem)] =
+    def boardTiles(b: Board): List[Render.Placed] =
         List.flatMap(p ->
             if (Set.memberOf(p, b#walls)) wallTile(cellCenter(b, p))
             else floorTile(cellCenter(b, p)),
@@ -1402,11 +1396,11 @@ mod Sokoban {
 
     /// Floor: one flat box per cell; the board reads as a lit area on the dark
     /// clear color around it.
-    def floorTile(c: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def floorTile(c: Vec2.Vec2): List[Render.Placed] =
         boxAt(c#x - tile() / 2.0, c#y - tile() / 2.0, tile(), tile(), Palette.floorTile(), 0) :: Nil
 
     /// Wall: a stone block — flat face with a lit top edge and a shaded foot.
-    def wallTile(c: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def wallTile(c: Vec2.Vec2): List[Render.Placed] =
         let t = tile();
         let x0 = c#x - t / 2.0;
         let y0 = c#y - t / 2.0;
@@ -1416,27 +1410,27 @@ mod Sokoban {
         boxAt(x0, y0 + t - bevel, t, bevel, Palette.wallShade(), 1) :: Nil
 
     /// Goal: a small round marker on the floor (crates and the robot draw over it).
-    def goalMarks(b: Board): List[(Vec2.Vec2, Render.RenderItem)] =
+    def goalMarks(b: Board): List[Render.Placed] =
         List.map(p -> circleAt(cellCenter(b, p), tile() * 0.34, Palette.goalMark(), 0),
                  Set.toList(b#goals))
 
     /// A crate parked on (or sliding onto) a goal gets a small badge on top:
     /// the goal answers back.
-    def onGoalBadges(b: Board): List[(Vec2.Vec2, Render.RenderItem)] =
+    def onGoalBadges(b: Board): List[Render.Placed] =
         List.map(p -> circleAt(crateCenter(b, p), tile() * 0.25, Palette.goalMark(), zBadge()),
                  Set.toList(Set.intersection(b#crates, b#goals)))
 
-    def crateBoxes(b: Board): List[(Vec2.Vec2, Render.RenderItem)] =
+    def crateBoxes(b: Board): List[Render.Placed] =
         List.flatMap(p -> Crate.boxes(crateCenter(b, p), tile()), Set.toList(b#crates))
 
     def cratePolys(b: Board): List[GameEngine.PolygonRenderCmd] =
         List.flatMap(p -> Crate.polys(crateCenter(b, p), tile()), Set.toList(b#crates))
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
-              c: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
+              c: Color, z: Int32): Render.Placed =
         ({x = x, y = y}, Render.solidBox({x = w, y = h}, c, z))
 
-    def circleAt(c: Vec2.Vec2, d: Float64, color: Color, z: Int32): (Vec2.Vec2, Render.RenderItem) =
+    def circleAt(c: Vec2.Vec2, d: Float64, color: Color, z: Int32): Render.Placed =
         let style = { cornerRadius = d / 2.0, borderWidth = 0.0, borderColor = color,
                       borderAlpha = 0.0f32, stripeColor = color, stripeAlpha = 0.0f32,
                       stripeWidth = 0.0, stripePeriod = 0.0 };
@@ -1446,13 +1440,13 @@ mod Sokoban {
 
     /// Title always; "CLEAR!" appears the moment every crate sits on a goal —
     /// not stored anywhere, just projected from the Stores.
-    def texts(atlas: FontAtlas, w: World): List[(Vec2.Vec2, Render.RenderItem)] =
+    def texts(atlas: FontAtlas, w: World): List[Render.Placed] =
         let title = centeredText("Sokoban", atlas, 28.0, Palette.titleText(), 10.0);
         if (won(w)) title :: centeredText("CLEAR!", atlas, 36.0, Palette.clearText(), 104.0) :: Nil
         else title :: Nil
 
     def centeredText(text: String, atlas: FontAtlas, size: Float64,
-                     color: Color, y: Float64): (Vec2.Vec2, Render.RenderItem) =
+                     color: Color, y: Float64): Render.Placed =
         let width = Label2D.measure(Label2D.make(text, atlas, size))#x;
         ({x = centerX() - width / 2.0, y = y}, Render.textTinted(text, atlas, size, color, zTitle()))
 

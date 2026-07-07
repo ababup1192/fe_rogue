@@ -241,7 +241,7 @@ mod TestSokoban {
         let m2 = land(Sokoban.tick(right(), dt(), movedAndLanded(board(Nil, Nil, (2, 2)))));
         let u1 = undoNow(m2);
         // ...それから Z を押し続けたまま undoDuration まるまる1回分: 最初の逆
-        // スライドが着地し、次の巻き戻しが同じ呼吸の中で始まる。
+        // スライドが着地し、次の巻き戻しが同じフレームの中で始まる。
         let u2 = Sokoban.tick(zKey(), 0.25, u1);
         Assert.assertEq(expected = ((4, 2), (3, 2), (2, 2)),
             (robotOf(Worldline.current(m2)), robotOf(Worldline.current(u1)),
@@ -479,7 +479,8 @@ mod TestSokoban {
         // る —— 2回尋ねても同じ絵が返る。
         let atTime = t -> {
             let Board.World.World(b) = wonBoard(1);
-            View.confettiQuads({ clearElapsed = t | b })
+            let (_ds, cmds) = Render.draw(View.confettiQuads({ clearElapsed = t | b }));
+            cmds
         };
         let corners = quads -> List.map(q -> List.map(v -> (v#x, v#y), q#vertices), quads);
         let rain = atTime(1.0);

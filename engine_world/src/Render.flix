@@ -102,6 +102,16 @@ mod Render {
             case other => other
         }
 
+    /// zIndex を delta だけ持ち上げる（全種類の item に効く）。組み上がった item の列を
+    /// まとめて別の z 帯へ移すとき（UI レイヤーの合流など）に使う。
+    pub def raiseZ(delta: Int32, item: RenderItem): RenderItem =
+        match item {
+            case RenderItem.Sprite(s) => RenderItem.Sprite({ zIndex = s#zIndex + delta | s })
+            case RenderItem.Text(t)   => RenderItem.Text({ zIndex = t#zIndex + delta | t })
+            case RenderItem.Box(b)    => RenderItem.Box({ zIndex = b#zIndex + delta | b })
+            case RenderItem.Poly(p)   => RenderItem.Poly({ zIndex = p#zIndex + delta | p })
+        }
+
     /// 修飾の土台になる style（無ければ solid）。
     def styleOf(style: Option[GameEngine.BoxStyle]): GameEngine.BoxStyle =
         Option.getWithDefault(solidStyle(), style)
@@ -117,6 +127,27 @@ mod Render {
             match item {
                 case RenderItem.Poly(_) => Nil
                 case other              => toDrawables(other, pos)
+            }
+        });
+        let polygons = items |> List.filterMap(pair -> {
+            let (pos, item) = pair;
+            match item {
+                case RenderItem.Poly(p) => Some(polyCmd(pos, p))
+                case _                  => None
+            }
+        });
+        (drawables, polygons)
+
+    /// `draw` の atlas 注入版。Sprite の region UV を textureInfoOf で解決しつつ、
+    /// Poly も PolygonRenderCmd へ振り分ける（draw と同じ 2 列を返す）。
+    /// region 付き sprite と Poly が同じ列に混ざる UI（UiRender）の描画口。
+    pub def drawWith(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
+                     items: List[Placed]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) \ ef =
+        let drawables = items |> List.flatMap(pair -> {
+            let (pos, item) = pair;
+            match item {
+                case RenderItem.Poly(_) => (Nil: List[GameEngine.Drawable])
+                case other              => toDrawablesAtlas(textureInfoOf, other, pos)
             }
         });
         let polygons = items |> List.filterMap(pair -> {
