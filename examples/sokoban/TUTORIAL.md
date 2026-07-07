@@ -1148,7 +1148,7 @@ mod Crate {
     /// plus 2 dark edge lines. All 3 strips share the same centerline and direction vector;
     /// only their normal-offset ranges differ (building the edges along the normal keeps
     /// their thickness constant everywhere).
-    pub def polys(center: Vec2.Vec2, t: Float64): List[GameEngine.PolygonRenderCmd] =
+    pub def polys(center: Vec2.Vec2, t: Float64): List[Render.Placed] =
         let tl = topLeftOf(center, t);
         let half = t * 0.09;    // half-width of the central band (0.18T thick)
         let edge = t * 0.03;    // thickness of one edge line
@@ -1159,9 +1159,10 @@ mod Crate {
     /// A parallelogram (convex quad) covering normal offsets o1..o2 from the band's
     /// centerline. The centerline runs inner bottom-left corner -> inner top-right corner,
     /// extended by ext at both ends. The extended ends tuck under the frame rails drawn
-    /// later, so the strip ends need no shaping.
+    /// later, so the strip ends need no shaping. The vertices are absolute screen
+    /// coordinates, so the placement is the origin.
     def braceStrip(tl: Vec2.Vec2, t: Float64, o1: Float64, o2: Float64,
-                   c: Color, z: Int32): GameEngine.PolygonRenderCmd =
+                   c: Color, z: Int32): Render.Placed =
         let f = railW(t);
         let ext = t * 0.04;
         let bl = {x = tl#x + f, y = tl#y + t - f};
@@ -1170,9 +1171,11 @@ mod Crate {
         let n = {x = -d#y, y = d#x};
         let p0 = Vec2.sub(bl, Vec2.mul(d, ext));
         let p1 = Vec2.add(tr, Vec2.mul(d, ext));
-        { vertices = Vec2.add(p0, Vec2.mul(n, o1)) :: Vec2.add(p1, Vec2.mul(n, o1)) ::
-                     Vec2.add(p1, Vec2.mul(n, o2)) :: Vec2.add(p0, Vec2.mul(n, o2)) :: Nil,
-          color = c, alpha = 1.0f32, zIndex = z }
+        (Vec2.zero(),
+         Render.polygon(
+             Vec2.add(p0, Vec2.mul(n, o1)) :: Vec2.add(p1, Vec2.mul(n, o1)) ::
+             Vec2.add(p1, Vec2.mul(n, o2)) :: Vec2.add(p0, Vec2.mul(n, o2)) :: Nil,
+             c, z))
 }
 ```
 
@@ -2361,7 +2364,7 @@ confetti is a *closed-form function* of that clock and its own index:
     /// Where piece i hangs t seconds into the party: it falls at its own
     /// speed, sways on its own sine, spins at its own rate, and wraps back
     /// above the screen so the rain never runs out.
-    def confettiQuad(t: Float64, i: Int32): GameEngine.PolygonRenderCmd =
+    def confettiQuad(t: Float64, i: Int32): Render.Placed =
         let speed = 55.0 + 50.0 * chip(i, 1);
         let sway = 6.0 + 10.0 * chip(i, 2);
         let phase = 6.283185307179586 * chip(i, 3);
@@ -2373,12 +2376,14 @@ confetti is a *closed-form function* of that clock and its own index:
         let v = { x = -u#y, y = u#x };
         let c = { x = x, y = y };
         let corner = (sx, sy) -> Vec2.add(c, Vec2.add(Vec2.mul(u, sx * 2.2), Vec2.mul(v, sy * 1.4)));
-        { vertices = corner(-1.0, -1.0) :: corner(1.0, -1.0) ::
-                     corner(1.0, 1.0) :: corner(-1.0, 1.0) :: Nil,
-          color = Palette.confetti(i), alpha = 1.0f32, zIndex = zConfetti() }
+        (Vec2.zero(),
+         Render.polygon(
+             corner(-1.0, -1.0) :: corner(1.0, -1.0) ::
+             corner(1.0, 1.0) :: corner(-1.0, 1.0) :: Nil,
+             Palette.confetti(i), zConfetti()))
 
     /// The whole rain: one quad per index while the party clock runs.
-    pub def confettiQuads(b: Board): List[GameEngine.PolygonRenderCmd] =
+    pub def confettiQuads(b: Board): List[Render.Placed] =
         if (b#clearElapsed <= 0.0) Nil
         else List.map(confettiQuad(b#clearElapsed), List.range(0, confettiCount()))
 ```
