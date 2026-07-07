@@ -16,13 +16,25 @@ mod TestLiarsRoom {
     def freshGame(): Room.World =
         Room.stageWorld(1, Map.empty(), 1i64)
 
-    /// NPC id の目の前で発言を読み終えて確認メニューまで進めた World
-    /// （話しかけ → 文字送りの早送り → 決定、の 3 タップ）。
-    def atConfirm(id: Int32, w: Room.World): Room.World =
+    /// メモを開いて正解どおりに埋める（あお=ほんと・みどり=うそ・あか=ほんと）。
+    /// マークの巡回は 未定 → うそ → ほんと なので、ほんと = Z 2 回。メモは開いたまま。
+    def fillCorrectMemo(w: Room.World): Room.World =
         w
-            |> Trace.facingNpcBelow(id)
+            |> Trace.step(Trace.memoTap())
+            |> Trace.step(Trace.talkTap()) |> Trace.step(Trace.talkTap())
+            |> Trace.step(Trace.downOnce())
             |> Trace.step(Trace.talkTap())
+            |> Trace.step(Trace.downOnce())
+            |> Trace.step(Trace.talkTap()) |> Trace.step(Trace.talkTap())
+
+    /// メモを開いて全員「うそ」で埋める（わざと間違った回答）。
+    def fillWrongMemo(w: Room.World): Room.World =
+        w
+            |> Trace.step(Trace.memoTap())
             |> Trace.step(Trace.talkTap())
+            |> Trace.step(Trace.downOnce())
+            |> Trace.step(Trace.talkTap())
+            |> Trace.step(Trace.downOnce())
             |> Trace.step(Trace.talkTap())
 
     // ── タイトルと開始 ──
@@ -41,11 +53,9 @@ mod TestLiarsRoom {
     def testRetryKeepsSeedAndNextStageRedraws(): Unit \ Assert =
         // 不正解のやり直しは同じシード（同じ発言）、正解後の次ステージはそのステージの
         // プールから引き直す。
-        let wrong = freshGame()
-            |> atConfirm(1) |> Trace.step(Trace.upOnce()) |> Trace.step(Trace.talkTap());
+        let wrong = freshGame() |> fillWrongMemo |> Trace.step(Trace.enterTap());
         let retried = wrong |> Trace.step(Trace.enterTap());
-        let advanced = freshGame()
-            |> atConfirm(0) |> Trace.step(Trace.upOnce()) |> Trace.step(Trace.talkTap())
+        let advanced = freshGame() |> fillCorrectMemo |> Trace.step(Trace.enterTap())
             |> Trace.step(Trace.enterTap());
         Assert.assertEq(expected = (1i64, true),
             (state(retried)#puzzleSeed,
@@ -116,11 +126,17 @@ mod TestLiarsRoom {
         Assert.assertEq(expected = Room.Phase.Exploring, state(idle)#phase)
 
     @Test
-    def testTalkFlowReachesConfirmWithSafeDefault(): Unit \ Assert =
-        // 発言を読み終えて Z → 確認メニュー。カーソルは「やっぱりやめる」（誤爆防止の既定）。
-        let confirm = freshGame() |> atConfirm(1);
-        Assert.assertEq(expected = (Room.Phase.Confirming, 1),
-            (state(confirm)#phase, state(confirm)#confirmSel))
+    def testTalkFlowSkipsThenCloses(): Unit \ Assert =
+        // Z の 3 連打: 開く → 全文へ早送り → 閉じる（読み終えた会話はそのまま閉じる）。
+        let reading = freshGame()
+            |> Trace.facingNpcBelow(1)
+            |> Trace.step(Trace.talkTap())
+            |> Trace.step(Trace.talkTap());
+        let closed = reading |> Trace.step(Trace.talkTap());
+        Assert.assertEq(
+            expected = (Room.Phase.Talking, true, Room.Phase.Exploring, false),
+            (state(reading)#phase, UiDialog.lineDone(state(reading)#dialog),
+             state(closed)#phase, UiDialog.isOpen(state(closed)#dialog)))
 
     @Test
     def testCancelClosesDialog(): Unit \ Assert =
@@ -132,51 +148,42 @@ mod TestLiarsRoom {
         Assert.assertEq(expected = (Room.Phase.Exploring, None, false),
             (state(closed)#phase, state(closed)#talkingTo, UiDialog.isOpen(state(closed)#dialog)))
 
-    // ── 回答 ──
+    // ── 回答（メモ = 回答用紙） ──
 
     @Test
-    def testTrustingLiarIsWrongAndRetryKeepsMemo(): Unit \ Assert =
-        // メモを 1 つ付けてから嘘つき（NPC1）を信じる → 不正解 → Enter で同じステージを
-        // やり直し。発言は同一のまま、メモは残る。
-        let marked = freshGame()
-            |> Trace.step(Trace.memoTap())
-            |> Trace.step(Trace.talkTap())
-            |> Trace.step(Trace.memoTap());
-        let wrong = marked
-            |> atConfirm(1)
-            |> Trace.step(Trace.upOnce())
-            |> Trace.step(Trace.talkTap());
+    def testCorrectMemoSubmissionClearsAndAdvances(): Unit \ Assert =
+        // 正解どおりに全員ぶん埋めて Enter → せいかい！ → Enter で次のステージ、メモは白紙。
+        let cleared = freshGame() |> fillCorrectMemo |> Trace.step(Trace.enterTap());
+        let advanced = cleared |> Trace.step(Trace.enterTap());
+        Assert.assertEq(
+            expected = (Room.Phase.Cleared, false, Room.Phase.Exploring, 2, Map.empty()),
+            (state(cleared)#phase, state(cleared)#memoOpen,
+             state(advanced)#phase, state(advanced)#stage, state(advanced)#memo))
+
+    @Test
+    def testWrongMemoSubmissionShakesAndKeepsMemo(): Unit \ Assert =
+        // 全員「うそ」の間違った回答で Enter → はずれ（シェイク）→ Enter でやり直し。
+        // 発言は同一のまま、書いたメモも残る（見直して直せる）。
+        let base = freshGame();
+        let wrong = base |> fillWrongMemo |> Trace.step(Trace.enterTap());
         let retried = wrong |> Trace.step(Trace.enterTap());
         Assert.assertEq(
             expected = (Room.Phase.Wrong, true,
                         Room.Phase.Exploring, 1,
-                        Some(Room.Mark.LiarMark), state(marked)#stmts),
+                        Some(Room.Mark.LiarMark), state(base)#stmts),
             (state(wrong)#phase, state(wrong)#shakeT > 0.0,
              state(retried)#phase, state(retried)#stage,
              Map.get(0, state(retried)#memo), state(retried)#stmts))
 
     @Test
-    def testTrustingHonestClearsAndAdvances(): Unit \ Assert =
-        // 正直者（NPC0）を信じる → 正解 → Enter で次のステージ、メモは白紙に戻る。
-        let cleared = freshGame()
+    def testIncompleteMemoCannotSubmit(): Unit \ Assert =
+        // 1 人でも未定のまま Enter を押しても何も起きない（回答は全員ぶん埋めてから）。
+        let partial = freshGame()
             |> Trace.step(Trace.memoTap())
             |> Trace.step(Trace.talkTap())
-            |> Trace.step(Trace.memoTap())
-            |> atConfirm(0)
-            |> Trace.step(Trace.upOnce())
-            |> Trace.step(Trace.talkTap());
-        let advanced = cleared |> Trace.step(Trace.enterTap());
-        Assert.assertEq(
-            expected = (Room.Phase.Cleared, Room.Phase.Exploring, 2, Map.empty()),
-            (state(cleared)#phase, state(advanced)#phase,
-             state(advanced)#stage, state(advanced)#memo))
-
-    @Test
-    def testConfirmNoClosesDialog(): Unit \ Assert =
-        // 「やっぱりやめる」で決定すると会話ごと閉じて探索に戻る（Z の往復で閉じられなくなるのを防ぐ）。
-        let backed = freshGame() |> atConfirm(1) |> Trace.step(Trace.talkTap());
-        Assert.assertEq(expected = (Room.Phase.Exploring, false),
-            (state(backed)#phase, UiDialog.isOpen(state(backed)#dialog)))
+            |> Trace.step(Trace.enterTap());
+        Assert.assertEq(expected = (Room.Phase.Exploring, true),
+            (state(partial)#phase, state(partial)#memoOpen))
 
     // ── メモ ──
 
@@ -210,15 +217,15 @@ mod TestLiarsRoom {
 
     @Test
     def testSfxEventsPinned(): Unit \ Assert =
-        // 会話開始 = 話し手の声（NPC1 は高い声）、不正解 = wrong、確定した 1 マス移動 = move。
+        // 会話開始 = 話し手の声（NPC1 は高い声）、誤答の提出 = wrong、確定した 1 マス移動 = move。
         let base = freshGame();
         let talking = base |> Trace.facingNpcBelow(1) |> Trace.step(Trace.talkTap());
-        let confirm = base |> atConfirm(1) |> Trace.step(Trace.upOnce());
-        let wrong = confirm |> Trace.step(Trace.talkTap());
+        let filled = base |> fillWrongMemo;
+        let wrong = filled |> Trace.step(Trace.enterTap());
         let moved = base |> Trace.step(Trace.rightHold());
         Assert.assertEq(
             expected = (Some("talk_high"), Some("wrong"), Some("move")),
             (LiarsRoom.sfxEvent(base |> Trace.facingNpcBelow(1), talking),
-             LiarsRoom.sfxEvent(confirm, wrong),
+             LiarsRoom.sfxEvent(filled, wrong),
              LiarsRoom.sfxEvent(base, moved)))
 }

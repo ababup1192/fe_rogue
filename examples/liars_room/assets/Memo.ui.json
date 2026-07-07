@@ -30,6 +30,8 @@
               { "use": "slot", "name": "slot6", "children": [ { "use": "sw", "name": "swatch" }, { "use": "name", "name": "label" }, { "use": "mk", "name": "mark" } ] }
             ]
           },
+          { "name": "submit", "widget": "text", "text": "ぜんいんぶん埋めよう",
+            "fontSize": 8, "tint": "#847e87", "zIndex": 142 },
           { "name": "hint", "widget": "text", "text": "Z:しるし C:とじる",
             "fontSize": 8, "tint": "#847e87", "zIndex": 142 }
         ]

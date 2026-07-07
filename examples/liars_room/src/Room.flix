@@ -28,8 +28,6 @@ mod Room {
         case Exploring
         /// NPC の発言ウィンドウを表示中。
         case Talking
-        /// 「この人を信じる？」の確認メニュー。
-        case Confirming
         /// 不正解の演出中（Enter で同じステージをやり直す）。
         case Wrong
         /// 正解（Enter で次のステージへ）。
@@ -79,7 +77,6 @@ mod Room {
         phase = Phase,
         talkingTo = Option[Int32],
         dialog = UiDialog.Dialog,
-        confirmSel = Int32,
         memo = Map[Int32, Mark],
         memoOpen = Bool,
         memoSel = Int32,
@@ -124,7 +121,7 @@ mod Room {
             stage = n, puzzleSeed = seed, npcs = npcs, stmts = generated#stmts,
             liarCount = difficulty#liarCount, honestSet = honest,
             phase = Phase.Exploring, talkingTo = None,
-            dialog = UiDialog.closed(), confirmSel = 1,
+            dialog = UiDialog.closed(),
             memo = memo, memoOpen = false, memoSel = 0, hintUsed = false, debugHold = 0.0,
             idlePhase = 0.0, shakeT = 0.0, resultElapsed = 0.0, entropy = 0
         })
@@ -136,6 +133,25 @@ mod Room {
         state#npcs
             |> List.map(npc -> npc#id)
             |> List.filter(id -> not Set.memberOf(id, state#honestSet))
+
+    // ── 回答（メモ = 回答用紙）──
+
+    /// 全員ぶんのメモが埋まっているか（Unknown が 1 人も居ない）。これが提出の条件。
+    pub def memoComplete(state: State): Bool =
+        state#npcs |> List.forAll(npc ->
+            match Map.get(npc#id, state#memo) {
+                case Some(Mark.LiarMark)   => true
+                case Some(Mark.HonestMark) => true
+                case _                     => false
+            })
+
+    /// メモの中身が唯一解と全員一致しているか（うそ=嘘つき・ほんと=正直者）。
+    pub def memoMatchesTruth(state: State): Bool =
+        state#npcs |> List.forAll(npc -> {
+            let truth = if (Set.memberOf(npc#id, state#honestSet))
+                Mark.HonestMark else Mark.LiarMark;
+            Map.get(npc#id, state#memo) == Some(truth)
+        })
 
     /// デバッグ用: 全員のメモを正解（嘘つき=うそ・正直者=ほんと）で埋める。
     pub def debugFillMemo(state: State): State =

@@ -59,20 +59,23 @@ mod GameGallery {
             |> Trace.step(Trace.talkTap())
             |> Trace.step(Trace.talkTap())
 
-    def confirming(): Room.World =
-        talking() |> Trace.step(Trace.talkTap())
+    /// メモが全員ぶん正解で埋まって開いている状態（提出プロンプトが点灯した回答画面）。
+    def answerShot(): Room.World =
+        let Room.World.World(s) = stage1();
+        Room.World.World(Room.debugFillMemo({ memoOpen = true | s }))
 
+    /// 全員「うそ」の間違った回答を提出した直後（はずれパネル）。
     def wrongShot(): Room.World =
-        confirming() |> Trace.step(Trace.upOnce()) |> Trace.step(Trace.talkTap())
-
-    def clearedShot(): Room.World =
         stage1()
-            |> Trace.facingNpcBelow(0)
+            |> Trace.step(Trace.memoTap())
             |> Trace.step(Trace.talkTap())
-            |> Trace.step(Trace.talkTap())
-            |> Trace.step(Trace.talkTap())
-            |> Trace.step(Trace.upOnce())
-            |> Trace.step(Trace.talkTap())
+            |> Trace.step(Trace.downOnce()) |> Trace.step(Trace.talkTap())
+            |> Trace.step(Trace.downOnce()) |> Trace.step(Trace.talkTap())
+            |> Trace.step(Trace.enterTap())
+
+    /// 正解を提出した直後（せいかいパネル）。
+    def clearedShot(): Room.World =
+        answerShot() |> Trace.step(Trace.enterTap())
 
     /// M でヒントを使った直後（メモが開き、確定した嘘つきにカーソルと「うそ」が付く）。
     def hintShot(): Room.World =
@@ -82,10 +85,10 @@ mod GameGallery {
         shot(atlas, ui, Room.titleWorld(), "gallery/screen_title.png");
         shot(atlas, ui, stage1(), "gallery/screen_room.png");
         shot(atlas, ui, talking(), "gallery/screen_talk.png");
-        shot(atlas, ui, confirming(), "gallery/screen_confirm.png");
         shot(atlas, ui, stage1() |> Trace.step(Trace.memoTap()) |> Trace.step(Trace.talkTap()),
              "gallery/screen_memo.png");
         shot(atlas, ui, hintShot(), "gallery/screen_hint.png");
+        shot(atlas, ui, answerShot(), "gallery/screen_answer.png");
         shot(atlas, ui, wrongShot(), "gallery/screen_wrong.png");
         shot(atlas, ui, clearedShot(), "gallery/screen_clear.png")
 
@@ -108,33 +111,41 @@ mod GameGallery {
             tap(Trace.talkTap()) ::
             hold(Room.noKeys(), 30) :: Nil)
 
-    /// 発言を読んだ状態から「はい、信じる」で確定するまで（読み → 確認 → カーソル上 → 決定）。
-    def answerScript(): List[Room.Input] =
-        List.flatten(
-            tap(Trace.talkTap()) ::
-            hold(Room.noKeys(), 70) ::
-            tap(Trace.talkTap()) ::
-            hold(Room.noKeys(), 20) ::
-            tap(Trace.upOnce()) ::
-            hold(Room.noKeys(), 16) ::
-            tap(Trace.talkTap()) :: Nil)
+    /// メモを開いてカーソルを送りながらマークを打つ共通部品（tap の間に見せ場の間を挟む）。
+    def markTap(taps: Int32): List[Room.Input] =
+        List.flatten(List.range(0, taps) |> List.map(_ ->
+            List.flatten(tap(Trace.talkTap()) :: hold(Room.noKeys(), 10) :: Nil)))
 
-    /// 正解デモ: 左の NPC0（正直者）の前へ歩き、信じて「せいかい！」→ Enter で次のへやへ。
+    def nextRow(): List[Room.Input] =
+        List.flatten(tap(Trace.downOnce()) :: hold(Room.noKeys(), 8) :: Nil)
+
+    /// 正解デモ: メモを開き、あお=ほんと・みどり=うそ・あか=ほんと と書いて Enter で提出
+    /// →「せいかい！」→ Enter で次のへやへ。
     def correctScript(): List[Room.Input] =
         List.flatten(
-            hold(Trace.leftHold(), 24) ::
-            upHold(16) ::
-            answerScript() ::
+            hold(Room.noKeys(), 12) ::
+            tap(Trace.memoTap()) ::
+            hold(Room.noKeys(), 20) ::
+            markTap(2) :: nextRow() ::
+            markTap(1) :: nextRow() ::
+            markTap(2) ::
+            hold(Room.noKeys(), 20) ::
+            tap(Trace.enterTap()) ::
             hold(Room.noKeys(), 60) ::
             tap(Trace.enterTap()) ::
             hold(Room.noKeys(), 40) :: Nil)
 
-    /// 不正解デモ: 右の NPC1（嘘つき）の前へ歩き、信じて「はずれ…」（シェイク）→ やり直し。
+    /// 不正解デモ: 全員「うそ」の回答を提出 →「はずれ…」（シェイク）→ やり直し。
     def wrongScript(): List[Room.Input] =
         List.flatten(
-            hold(Trace.rightHold(), 24) ::
-            upHold(16) ::
-            answerScript() ::
+            hold(Room.noKeys(), 12) ::
+            tap(Trace.memoTap()) ::
+            hold(Room.noKeys(), 20) ::
+            markTap(1) :: nextRow() ::
+            markTap(1) :: nextRow() ::
+            markTap(1) ::
+            hold(Room.noKeys(), 20) ::
+            tap(Trace.enterTap()) ::
             hold(Room.noKeys(), 60) ::
             tap(Trace.enterTap()) ::
             hold(Room.noKeys(), 40) :: Nil)
@@ -208,14 +219,14 @@ mod GameGallery {
         item("screen_title", "タイトル — すべて ui.json の Spec", "Screens", "png", 640) ::
         item("screen_room", "ステージ 1 の部屋（探索中）", "Screens", "png", 640) ::
         item("screen_talk", "発言ウィンドウ（全文表示）", "Screens", "png", 640) ::
-        item("screen_confirm", "「この人を信じる？」の確認メニュー", "Screens", "png", 640) ::
+        item("screen_answer", "回答用紙が埋まり「こたえあわせ」が点灯した瞬間", "Screens", "png", 640) ::
         item("screen_memo", "すいりメモ（しるし 1 つ + 頭上の印）", "Screens", "png", 640) ::
         item("screen_hint", "ヒント（M）で嘘つき 1 人が確定した瞬間", "Screens", "png", 640) ::
         item("screen_wrong", "はずれ… のパネル", "Screens", "png", 640) ::
         item("screen_clear", "せいかい！ のパネル", "Screens", "png", 640) ::
         item("talk_demo", "歩いて話しかけて発言を読む", "Play", "gif", 640) ::
-        item("correct_demo", "正直者を信じる → せいかい！ → 次のへやへ", "Play", "gif", 640) ::
-        item("wrong_demo", "嘘つきを信じる → ブブー（シェイク）→ やり直し", "Play", "gif", 640) ::
+        item("correct_demo", "メモに正解を書いて提出 → せいかい！ → 次のへやへ", "Play", "gif", 640) ::
+        item("wrong_demo", "全員「うそ」で提出 → ブブー（シェイク）→ やり直し", "Play", "gif", 640) ::
         item("memo_demo", "すいりメモに 3 人ぶんのしるしを付ける", "Play", "gif", 640) ::
         item("hint_demo", "M のヒントで嘘つきが 1 人確定 → 頭上に赤い×が残る", "Play", "gif", 640) ::
         item("people", "NPC 7 色 + プレイヤー × 4 方向（静止ポーズ）", "People", "png", 1152) ::

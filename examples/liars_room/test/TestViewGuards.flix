@@ -20,6 +20,11 @@ mod TestViewGuards {
             |> Trace.step(Trace.talkTap())
             |> Trace.step(Trace.talkTap())
 
+    /// メモが全員ぶん正解で埋まって開いている状態（提出プロンプトが点灯する回答画面）。
+    def answerWorld(): Room.World =
+        let Room.World.World(s) = Room.stageWorld(1, Map.empty(), 1i64);
+        Room.World.World(Room.debugFillMemo({ memoOpen = true | s }))
+
     @Test
     def testUiPagesPassRenderLint(): Unit \ {Assert, IO} =
         let atlas = Harness.atlas();
@@ -31,11 +36,11 @@ mod TestViewGuards {
             (lintFor("title", Room.titleWorld(), atlas, ui),
              lintFor("exploring_memo", stage1 |> Trace.step(Trace.memoTap()), atlas, ui),
              lintFor("talking", talkingWorld(), atlas, ui),
-             lintFor("confirming", talkingWorld() |> Trace.step(Trace.talkTap()), atlas, ui),
-             lintFor("wrong", talkingWorld()
+             lintFor("answer", answerWorld(), atlas, ui),
+             lintFor("wrong", answerWorld()
                  |> Trace.step(Trace.talkTap())
-                 |> Trace.step(Trace.upOnce())
-                 |> Trace.step(Trace.talkTap()), atlas, ui)))
+                 |> Trace.step(Trace.talkTap())
+                 |> Trace.step(Trace.enterTap()), atlas, ui)))
 
     @Test
     def testHumanDrawingsProvideParts(): Unit \ {Assert, IO} =

@@ -51,8 +51,6 @@ mod LiarsRoom {
                 }
             case Room.Phase.Talking =>
                 Room.World.World(talkTick(input, dt, s))
-            case Room.Phase.Confirming =>
-                confirmTick(input, s)
             case Room.Phase.Wrong =>
                 // やり直し: 同じシード = 同じ発言のまま。メモは持ち越す。
                 if (input#enter)
@@ -142,11 +140,19 @@ mod LiarsRoom {
                   | Room.turnNpcToPlayer(npc#id, s) }
         }
 
-    // ── メモ（Exploring 中のオーバーレイ。開いている間は移動キーを取り上げる）──
+    // ── メモ（Exploring 中のオーバーレイ。回答用紙を兼ねる）──
 
+    /// メモが開いている間は移動キーを取り上げる。全員ぶん埋まった状態での Enter が
+    /// 「こたえあわせ」: 唯一解と全員一致なら正解、どこかが違えば不正解（どこかは言わない）。
     def memoTick(input: Room.Input, s: Room.State): Room.State =
         let count = List.length(s#npcs);
-        if (input#memo or input#cancel)
+        if (input#enter and Room.memoComplete(s)) {
+            if (Room.memoMatchesTruth(s))
+                { phase = Room.Phase.Cleared, resultElapsed = 0.0, memoOpen = false | s }
+            else
+                { phase = Room.Phase.Wrong, shakeT = shakeDuration(), memoOpen = false | s }
+        }
+        else if (input#memo or input#cancel)
             { memoOpen = false | s }
         else if (input#upTap)
             { memoSel = UiMenu.clampIndex(count, s#memoSel - 1) | s }
@@ -164,7 +170,7 @@ mod LiarsRoom {
 
     // ── Talking: 発言ウィンドウ ──
 
-    /// 文字送りを進める。決定キーは「タイプ中 → 全文へ / 続きの行 → 次へ / 最終行 → 確認へ」。
+    /// 文字送りを進める。決定キーは「タイプ中 → 全文へ / 読み終えたら閉じる」。
     def talkTick(input: Room.Input, dt: Float64, s: Room.State): Room.State =
         let stepped = { dialog = UiDialog.step(cps = dialogCps(), dt, s#dialog) | s };
         if (input#cancel or input#esc)
@@ -172,11 +178,8 @@ mod LiarsRoom {
         else if (input#talk) {
             if (not UiDialog.lineDone(stepped#dialog))
                 { dialog = UiDialog.advance(stepped#dialog) | stepped }
-            else if (List.length((stepped#dialog)#lines) > 1)
-                { dialog = UiDialog.advance(stepped#dialog) | stepped }
             else
-                // 最終行を読み終えて決定 → 「この人を信じる？」へ。カーソルは「やめる」側から。
-                { phase = Room.Phase.Confirming, confirmSel = 1 | stepped }
+                closeDialog(stepped)
         }
         else
             stepped
@@ -184,37 +187,7 @@ mod LiarsRoom {
     /// 発言ウィンドウを閉じて歩き回りに戻る。
     def closeDialog(s: Room.State): Room.State =
         { phase = Room.Phase.Exploring, talkingTo = None,
-          dialog = UiDialog.closed(), confirmSel = 1 | s }
-
-    // ── Confirming: 「この人を信じる？」 ──
-
-    def confirmTick(input: Room.Input, s: Room.State): Room.World =
-        if (input#cancel or input#esc)
-            Room.World.World(closeDialog(s))
-        else if (input#upTap or input#downTap)
-            Room.World.World({ confirmSel = 1 - s#confirmSel | s })
-        else if (input#talk) {
-            if (s#confirmSel == 0)
-                answer(s)
-            else
-                // やめる → 会話を閉じて歩き回りに戻る（もう一度読みたければ話しかけ直す）。
-                Room.World.World(closeDialog(s))
-        }
-        else
-            Room.World.World(s)
-
-    /// 回答の確定: 信じた相手が唯一解の正直者なら正解、嘘つきなら不正解。
-    def answer(s: Room.State): Room.World =
-        match s#talkingTo {
-            case None     => bug!("LiarsRoom.answer: 会話相手なしで Confirming に居る")
-            case Some(id) =>
-                if (Set.memberOf(id, s#honestSet))
-                    Room.World.World({ phase = Room.Phase.Cleared, resultElapsed = 0.0,
-                                       dialog = UiDialog.closed() | s })
-                else
-                    Room.World.World({ phase = Room.Phase.Wrong, shakeT = shakeDuration(),
-                                       dialog = UiDialog.closed() | s })
-        }
+          dialog = UiDialog.closed() | s }
 
     // ── 音: 耳のための投影 ──
 
@@ -233,11 +206,10 @@ mod LiarsRoom {
             None
 
     def phaseSound(a: Room.State): Option[String] = match a#phase {
-        case Room.Phase.Talking    => Some(voiceOf(a#talkingTo))
-        case Room.Phase.Confirming => Some("confirm")
-        case Room.Phase.Wrong      => Some("wrong")
-        case Room.Phase.Cleared    => Some("clear")
-        case _                     => None
+        case Room.Phase.Talking => Some(voiceOf(a#talkingTo))
+        case Room.Phase.Wrong   => Some("wrong")
+        case Room.Phase.Cleared => Some("clear")
+        case _                  => None
     }
 
     /// NPC の声の高さ（3 種の talk 音を id で使い分けて個性を出す）。

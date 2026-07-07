@@ -29,11 +29,9 @@ mod GameUi {
         { slotPath = i -> "Memo/panel/menu/slot${i}", maxSlots = 7 }
 
     def memoMenuPath(): String = "Memo/panel/menu"
-    def confirmMenuPath(): String = "Dialog/confirm/menu"
 
-    /// メモと確認メニューの行ピッチ（ui.json のスロット高と一致させる）。
+    /// メモの行ピッチ（ui.json のスロット高と一致させる）。
     def memoRowPitch(): Float64 = 13.0
-    def confirmRowPitch(): Float64 = 12.0
 
     // ── 毎フレームの投影 ──
 
@@ -44,7 +42,6 @@ mod GameUi {
             |> applyHud(s)
             |> UiDialog.apply(dialogPaths(), s#dialog)
             |> applySpeakerTint(s)
-            |> applyConfirm(s)
             |> applyMemo(s)
             |> applyResult(s)
             |> UiStore.setVisible("Ending", s#phase == Room.Phase.Ending)
@@ -65,16 +62,8 @@ mod GameUi {
                 UiStore.setTextTint("Dialog/panel/speaker", Palette.npcText(Palette.colorOf(id)), ui)
         }
 
-    /// 「この人を信じる？」は Confirming の間だけ出す（会話窓の上に重なる小パネル）。
-    def applyConfirm(s: Room.State, ui: UiStore.UiWorld): UiStore.UiWorld =
-        ui
-            |> UiStore.setVisible("Dialog/confirm", s#phase == Room.Phase.Confirming)
-            |> UiMenu.applyHighlight({
-                listPath = confirmMenuPath(),
-                highlightPath = "${confirmMenuPath()}/highlight",
-                sel = s#confirmSel, rowPitch = confirmRowPitch(), inset = 0.5 })
-
     /// メモパネル: NPC 数ぶんのスロットに色見本・呼び名・マークを流し込む。
+    /// 全員ぶん埋まったら提出行が「こたえあわせ」に点灯する（メモ = 回答用紙）。
     def applyMemo(s: Room.State, ui: UiStore.UiWorld): UiStore.UiWorld =
         let entries = s#npcs |> List.map(npc ->
             ({ text = Palette.nameOf(npc#id), meta = Some(Int32.toString(npc#id)) }: UiSlots.Entry));
@@ -87,6 +76,18 @@ mod GameUi {
                 listPath = memoMenuPath(),
                 highlightPath = "${memoMenuPath()}/highlight",
                 sel = s#memoSel, rowPitch = memoRowPitch(), inset = 0.5 })
+            |> applySubmitRow(s)
+
+    /// 提出行: 全員ぶん埋まったら「Enter:こたえあわせ！」を点灯、まだなら灰色の案内。
+    def applySubmitRow(s: Room.State, ui: UiStore.UiWorld): UiStore.UiWorld =
+        if (Room.memoComplete(s))
+            ui
+                |> UiStore.setText("Memo/panel/submit", "Enter:こたえあわせ！")
+                |> UiStore.setTextTint("Memo/panel/submit", Palette.talkIndicator())
+        else
+            ui
+                |> UiStore.setText("Memo/panel/submit", "ぜんいんぶん埋めよう")
+                |> UiStore.setTextTint("Memo/panel/submit", Palette.markUnknown())
 
     /// 各スロットの色見本を NPC の色に、マーク文字をマークの色に塗る。
     def applySwatchesAndTints(s: Room.State, ui: UiStore.UiWorld): UiStore.UiWorld =
@@ -112,23 +113,22 @@ mod GameUi {
         case Room.Mark.HonestMark => Palette.markHonest()
     }
 
-    /// 正解・不正解のパネル。信じた相手の名前入りで結果を言い切る。
+    /// 正解・不正解のパネル。不正解ではどこが違うかは言わない（メモを見直させる）。
     def applyResult(s: Room.State, ui: UiStore.UiWorld): UiStore.UiWorld =
-        let name = s#talkingTo |> Option.map(Palette.nameOf) |> Option.getWithDefault("？");
         match s#phase {
             case Room.Phase.Wrong =>
                 ui
                     |> UiStore.setVisible("Result", true)
                     |> UiStore.setText("Result/panel/headline", "はずれ…")
                     |> UiStore.setTextTint("Result/panel/headline", Palette.markLiar())
-                    |> UiStore.setText("Result/panel/detail", "${name}の人はうそつきだった…")
+                    |> UiStore.setText("Result/panel/detail", "メモのどこかがちがう…")
                     |> UiStore.setText("Result/panel/prompt", "Enter: もういちど")
             case Room.Phase.Cleared =>
                 ui
                     |> UiStore.setVisible("Result", true)
                     |> UiStore.setText("Result/panel/headline", "せいかい！")
                     |> UiStore.setTextTint("Result/panel/headline", Palette.markHonest())
-                    |> UiStore.setText("Result/panel/detail", "${name}の人は正直者だった！")
+                    |> UiStore.setText("Result/panel/detail", "ぜんいんの正体を見やぶった！")
                     |> UiStore.setText("Result/panel/prompt",
                         if (s#stage < Stage.stageCount()) "Enter: つぎのへやへ" else "Enter: おしまいへ")
             case _ =>

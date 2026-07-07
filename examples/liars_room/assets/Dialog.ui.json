@@ -1,9 +1,5 @@
 {
   "defaultFont": "default",
-  "templates": {
-    "row": { "widget": "none", "height": 12, "dir": "column", "mainAlign": "center", "crossAlign": "start", "pad": [6, 0, 0, 0] },
-    "opt": { "widget": "text", "fontSize": 10, "tint": "#ffffff", "zIndex": 131 }
-  },
   "root": {
     "name": "Dialog", "widget": "none", "visible": false, "layer": 2,
     "children": [
@@ -15,28 +11,8 @@
           { "name": "speaker", "widget": "text", "text": "",
             "fontSize": 10, "tint": "#fbf236", "zIndex": 125 },
           { "name": "bodySpace", "widget": "none", "width": 1, "height": 24 },
-          { "name": "hint", "widget": "text", "text": "Z:すすむ X:とじる",
+          { "name": "hint", "widget": "text", "text": "Z:とじる",
             "fontSize": 8, "tint": "#847e87", "zIndex": 125 }
-        ]
-      },
-      { "name": "confirm", "widget": "box", "visible": false, "color": "#222034", "alpha": 0.96,
-        "borderWidth": 1, "borderColor": "#fbf236", "cornerRadius": 3, "zIndex": 126,
-        "abs": [178, 138], "width": 134, "height": "auto",
-        "dir": "column", "pad": [6, 5, 6, 6], "gap": 3,
-        "children": [
-          { "name": "title", "widget": "text", "text": "この人を信じる？",
-            "fontSize": 10, "tint": "#eec39a", "zIndex": 130 },
-          { "name": "menu", "widget": "none", "dir": "column", "gap": 0, "crossAlign": "stretch",
-            "children": [
-              { "name": "highlight", "widget": "box", "color": "#16314f", "alpha": 1.0,
-                "borderWidth": 0.5, "borderColor": "#fbf236", "cornerRadius": 2, "zIndex": 128,
-                "abs": [0.5, 0.5], "width": 120, "height": 11 },
-              { "use": "row", "name": "item0", "meta": "yes",
-                "children": [ { "use": "opt", "name": "label", "text": "はい、信じる" } ] },
-              { "use": "row", "name": "item1", "meta": "no",
-                "children": [ { "use": "opt", "name": "label", "text": "やっぱりやめる" } ] }
-            ]
-          }
         ]
       }
     ]
