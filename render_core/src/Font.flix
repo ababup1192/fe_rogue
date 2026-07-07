@@ -19,39 +19,27 @@ mod RenderFont {
     import org.lwjgl.system.MemoryStack
     import java.io.FileInputStream
 
-    /// アトラスにベイクする漢字 + UI 記号のコードポイント列。
-    /// 常用漢字 2,140 字 + ▼ などの UI 記号を engine_core 同梱の `JoyoKanji.text()` から取得し、
-    /// さらに `extraKanji()`（常用漢字外だがゲームで使う字）を足す。
-    /// `Char.toBmpCodePoint` は U+8000 以上で負値になるので 0xFFFF でマスクする。
-    pub def kanjiCodepoints(): List[Int32] =
-        String.toList("${JoyoKanji.text()}${extraKanji()}")
-            |> List.map(ch -> Int32.bitwiseAnd(Char.toBmpCodePoint(ch), 0xFFFF))
-
-    /// 常用漢字に含まれないがゲーム UI で使う文字。
-    ///   斧（アクス）/ 槍（ランス）。武器タイプ表示などで使う。
-    ///   杖（つえ）。アイテムメニューのカテゴリ見出しで使う（常用漢字外）。
-    def extraKanji(): String = "斧槍杖"
-
-    /// SDF ベイク対象の全コードポイント列。
-    /// ASCII / 全角 ASCII / CJK 記号+ひらがな / カタカナ / 漢字+UI 記号 を連結する
-    /// （従来の PackFontRanges のレンジ構成と同一範囲）。
-    def allCodepoints(): List[Int32] =
-        List.range(0x20, 0x20 + 95) :::      // ASCII
-        List.range(0xFF01, 0xFF01 + 94) :::  // 全角 ASCII
-        List.range(0x3000, 0x3000 + 160) ::: // CJK 記号 + ひらがな
-        List.range(0x30A0, 0x30A0 + 96) :::  // カタカナ
-        (0x25B2 :: 0x25BC :: 0x25C0 :: 0x25B6 :: Nil) ::: // ▲▼◀▶（UI 矢印/三角。MPLUSU は ←→ 等の矢印グリフを持たないため幾何学三角で代用）
-        kanjiCodepoints()                    // 漢字 + UI 記号
+    /// SDF ベイク対象のコードポイント列 = **そのフォントが実際にグリフを持つ BMP の全文字**。
+    /// U+0020..U+FFFF を cmap で走査し、グリフ index 0（.notdef）の字を除く。
+    /// 「使う字を人間が登録する」方式はやめた: フォントに入っている字は全部焼けるので、
+    /// 常用漢字リストにも追加登録（旧 extraKanji）にも依存しない。
+    /// 日本語フォント（PixelMplus 等）でも約 7,000〜8,000 字で、fontSize 10〜16 の
+    /// ベイクなら 4096x4096 に収まる。収まらなければベイク時に警告を出す（下記 overflow）。
+    def fontCodepoints(fontInfo: STBTTFontinfo): List[Int32] \ IO =
+        List.range(0x20, 0x10000)
+            |> List.filter(cp -> STBTruetype.stbtt_FindGlyphIndex(fontInfo, cp) != 0)
 
     /// シェルフパッキングの進行状態。
-    ///   glyphs = 確定したグリフメトリクス (cp → GlyphMetrics)
-    ///   cx/cy  = 次に置く左上カーソル (px)
-    ///   rowH   = 現在の行の最大グリフ高 (px)
+    ///   glyphs   = 確定したグリフメトリクス (cp → GlyphMetrics)
+    ///   cx/cy    = 次に置く左上カーソル (px)
+    ///   rowH     = 現在の行の最大グリフ高 (px)
+    ///   overflow = アトラスに収まらず空白（advance のみ）になった字数
     type alias PackState = {
-        glyphs = Map[Int32, TextLayout.GlyphMetrics],
-        cx     = Int32,
-        cy     = Int32,
-        rowH   = Int32
+        glyphs   = Map[Int32, TextLayout.GlyphMetrics],
+        cx       = Int32,
+        cy       = Int32,
+        rowH     = Int32,
+        overflow = Int32
     }
 
     /// advance のみ持つ（矩形を持たない）グリフメトリクスを作る。スペースや溢れ字用。
@@ -136,10 +124,10 @@ mod RenderFont {
                             if (st#cx + gw > bitmapSize) (0, st#cy + st#rowH + 1, 0)
                             else (st#cx, st#cy, st#rowH);
                         if (cx0 + gw > bitmapSize or cy0 + gh > bitmapSize) {
-                            // アトラス溢れ（通常起きない）。描けないが advance は活かす。
+                            // アトラス溢れ。描けないが advance は活かし、末尾で警告を出す。
                             STBTruetype.stbtt_FreeSDF(sdf);
                             { glyphs = Map.insert(cp, advanceOnlyGlyph(advance), st#glyphs),
-                              cx = cx0, cy = cy0, rowH = rowH0 }
+                              cx = cx0, cy = cy0, rowH = rowH0, overflow = st#overflow + 1 }
                         } else {
                             // SDF ビットマップ (gw×gh) をアトラスの (cx0,cy0) に書き込む。
                             List.forEach(y -> {
@@ -165,15 +153,21 @@ mod RenderFont {
                                 s1 = (pxF + gwF) / bitmapSizeF, t1 = (pyF + ghF) / bitmapSizeF
                             };
                             { glyphs = Map.insert(cp, gm, st#glyphs),
-                              cx = cx0 + gw + 1, cy = cy0, rowH = Int32.max(rowH0, gh) }
+                              cx = cx0 + gw + 1, cy = cy0, rowH = Int32.max(rowH0, gh),
+                              overflow = st#overflow }
                         }
                     };
                 discard MemoryStack.stackPop();
                 next
         };
-        let initSt: PackState = { glyphs = Map.empty(), cx = 0, cy = 0, rowH = 0 };
-        let finalSt = List.foldLeft(bakeGlyph, initSt, allCodepoints());
+        let initSt: PackState = { glyphs = Map.empty(), cx = 0, cy = 0, rowH = 0, overflow = 0 };
+        let finalSt = List.foldLeft(bakeGlyph, initSt, fontCodepoints(fontInfo));
         let glyphs = finalSt#glyphs;
+        // 溢れは無音にしない: 空白文字化は「フォントが壊れた」ように見えるので、原因と対処を言う。
+        if (finalSt#overflow > 0)
+            println("[RenderFont] 警告: フォント '${entry#name}' の ${finalSt#overflow} 字が "
+                + "4096x4096 アトラスに収まらず空白になります（project.json の fontSize を下げてください）")
+        else ();
 
         fontInfo.free();
 

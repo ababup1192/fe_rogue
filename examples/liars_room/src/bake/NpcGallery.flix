@@ -62,7 +62,7 @@ mod NpcGallery {
     /// 静止ポーズの一覧 PNG と歩行サイクル GIF を焼く（Bake.all から呼ぶ）。
     pub def bakeAll(): Unit \ IO =
         HeadlessFont.ensureHeadless();
-        let atlas = HeadlessFont.buildUiAtlas(ttfPath(), "assets/joyo.txt");
+        let atlas = HeadlessFont.buildUiAtlas(ttfPath(), "");
         discard (new File("gallery")).mkdirs();
         SoftRaster.render(req(atlas, 0.0, "gallery/people.png"));
         let frames = List.map(p -> SoftRaster.renderToImage(req(atlas, p, "gallery/people_walk.gif")),
@@ -72,6 +72,6 @@ mod NpcGallery {
     /// TestViewGuards 用の読み口: 1 フレームぶんのパーツ数。
     pub def partCount(): Int32 \ IO =
         HeadlessFont.ensureHeadless();
-        let atlas = HeadlessFont.buildUiAtlas(ttfPath(), "assets/joyo.txt");
+        let atlas = HeadlessFont.buildUiAtlas(ttfPath(), "");
         List.length(frameItems(atlas, 0.0))
 }

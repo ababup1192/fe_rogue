@@ -9,7 +9,7 @@
   "maxDeltaTime": 0.05,
   "textures": [],
   "fonts": [
-    {"name": "default", "path": "assets/PixelMplus10-Regular.ttf", "fontSize": 20.0}
+    {"name": "default", "path": "assets/PixelMplus10-Regular.ttf", "fontSize": 10.0}
   ],
   "sounds": [
     {"name": "move",    "path": "assets/sfx/move.wav",    "looping": false},

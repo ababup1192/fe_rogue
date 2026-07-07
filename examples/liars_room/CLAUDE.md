@@ -25,7 +25,7 @@
 | GameUi | 全 ui.json ページの読み込みと毎フレームの投影（UiDialog / UiSlots / UiMenu を使う） |
 | Sfx | 前後 Session → 鳴らす音名（実体は LiarsRoom.sfxEvent） |
 | Trace | テストとギャラリー共有の入力部品（タップ・体勢作り・stepN） |
-| Harness | 画面なしフォント焼き + UI spawn（漢字は assets/joyo.txt に列挙したぶんだけ） |
+| Harness | 画面なしフォント焼き + UI spawn（フォントが持つ全グリフが使える） |
 | LiarsLint | UiWorld → RenderLint 入力の橋（幾何 lint） |
 | bake/Bake | make bake の入口（Sfx + NpcGallery + GameGallery） |
 | bake/SeedSearch | 合格 seed の探索（`bin/flix run --entrypoint SeedSearch.search`） |

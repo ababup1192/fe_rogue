@@ -6,10 +6,10 @@ mod Harness {
     def ttfPath(): String = "assets/PixelMplus10-Regular.ttf"
 
     /// ウィンドウなしで焼き込まれたフォント（AWT ヘッドレスの計測値のみ）。
-    /// 漢字は assets/joyo.txt に列挙したぶんだけ載る（ゲームが使う文言と揃えること）。
+    /// フォントが持つ全グリフが載る（第 2 引数は旧・常用漢字ファイルの名残で、いまは読まれない）。
     pub def atlas(): FontAtlas \ IO =
         HeadlessFont.ensureHeadless();
-        HeadlessFont.buildUiAtlas(ttfPath(), "assets/joyo.txt")
+        HeadlessFont.buildUiAtlas(ttfPath(), "")
 
     /// 全ページの Spec を 1 つの UiWorld へ生成する、ランチャーと同じように。
     pub def ui(): UiStore.UiWorld \ IO =

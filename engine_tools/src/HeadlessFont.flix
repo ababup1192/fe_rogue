@@ -15,9 +15,7 @@ mod HeadlessFont {
     import java.awt.Graphics2D
     import java.awt.Font
     import java.awt.FontMetrics
-    import java.io.File
     import java.io.FileInputStream
-    import java.nio.file.Files
     import java.lang.System
 
     /// AWT をヘッドレスに固定する。macOS では `-XstartOnFirstThread`（GLFW/AppKit がメインスレッドを
@@ -32,24 +30,8 @@ mod HeadlessFont {
 
     /// 仮想アトラスの一辺（正方）。実画像は焼かないが、s0/t0/s1/t1（0..1 正規化 UV）の分母として
     /// Label2D 側の displaySize 計算（texInfo#width == textureSize 前提）と揃える必要がある。
-    /// 常用漢字 + かな + ASCII が余裕で収まる大きさ。
-    def atlasDim(): Int32 = 2048
-
-    /// ASCII 印字可能文字（0x20..0x7E）。
-    def asciiChars(): String =
-        " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
-
-    /// ひらがな（0x3041..0x3096）。
-    def hiraChars(): String =
-        "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろゎわゐゑをんゔゕゖ"
-
-    /// カタカナ（0x30A1..0x30FA）+ 長音・中黒。
-    def kataChars(): String =
-        "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶヷヸヹヺ・ー"
-
-    /// UI が使う記号・矢印・約物。BestTen ドット風 UI 文字列に出るものを網羅する。
-    def punctChars(): String =
-        "、。「」『』（）〔〕？！…‥／％＋－＝×÷℃±→←↑↓◀▶▲▼◆◇■□●○★☆※〜々〆"
+    /// フォントが持つ全 BMP グリフ（日本語フォントで ~8,000 字）が収まる大きさ。
+    def atlasDim(): Int32 = 4096
 
     /// アトラス焼き込みの中間状態。次のグリフを置くペン位置と、確定したメトリクス表。
     type alias PackState = {
@@ -60,10 +42,12 @@ mod HeadlessFont {
 
     /// `ttfPath` の TTF から FontAtlas（メトリクス + codepoint↔セル座標の対応表）を組む。
     /// グリフ画像は焼かない（SoftRaster が出力解像度で直接 drawString するため不要 — HeadlessFont
-    /// 冒頭コメント参照）。`joyoPath` は 1 行に常用漢字を並べたテキスト（区切りなし）。
-    /// 読めなければ漢字なしで続行。返す FontAtlas は Label2D.measure / toDrawables がそのまま
-    /// 使えるメトリクスを持つ（textureName = "font_ui"、textureSize = 仮想アトラス一辺）。
-    pub def buildUiAtlas(ttfPath: String, joyoPath: String): FontAtlas \ IO =
+    /// 冒頭コメント参照）。焼き込む文字は**そのフォントが持つ BMP の全グリフ**（実機の
+    /// RenderFont と同じ思想 — 使う字の登録リストは無い）。第 2 引数はかつての常用漢字ファイル
+    /// パスで、いまは読まない（呼び出し側の互換のため残してある）。
+    /// 返す FontAtlas は Label2D.measure / toDrawables がそのまま使えるメトリクスを持つ
+    /// （textureName = "font_ui"、textureSize = 仮想アトラス一辺）。
+    pub def buildUiAtlas(ttfPath: String, _joyoPath: String): FontAtlas \ IO =
         ensureHeadless();
         let font = loadFont(ttfPath);
         // メトリクス測定用の 1x1 スクラッチ。
@@ -78,10 +62,9 @@ mod HeadlessFont {
         let rowH = ascent + descent + 2i32;
         let dim = atlasDim();
         let dimF = Int32.toFloat64(dim);
-        let chars = String.toList(charset(joyoPath));
         let init: PackState = { penX = 0i32, penY = 0i32, glyphs = Map.empty() };
-        let baked = List.foldLeft((state, ch) ->
-            bakeGlyph(fm, ascent, rowH, dim, dimF, state, ch), init, chars);
+        let baked = List.foldLeft((state, cp) ->
+            bakeGlyph(fm, ascent, rowH, dim, dimF, state, cp), init, codepointsOf(font));
         { textureName = "font_ui",
           fontSize = Float32.toFloat64(bakeSize()),
           textureSize = dimF,
@@ -90,13 +73,16 @@ mod HeadlessFont {
           lineGap = Int32.toFloat64(leading),
           glyphs = baked#glyphs }
 
+    /// フォントが実際にグリフを持つ BMP のコードポイントをすべて列挙する（U+0020..U+FFFF を走査）。
+    def codepointsOf(font: Font): List[Int32] \ IO =
+        List.range(0x20, 0x10000) |> List.filter(cp -> font.canDisplay(cp))
+
     /// 1 グリフの仮想アトラス上の位置を確定し、メトリクスを記録して次のペン位置を返す
     /// （実描画はしない — 位置とメトリクスの計算のみ）。
     /// advance が 0 以下（制御文字など）はスキップ。行に収まらなければ次の行へ折り返す。
     def bakeGlyph(fm: FontMetrics, ascent: Int32, rowH: Int32, dim: Int32,
-                  dimF: Float64, state: PackState, ch: Char): PackState \ IO =
-        let cp = TextLayout.charToCodePoint(ch);
-        let advance = fm.charWidth(ch);
+                  dimF: Float64, state: PackState, cp: Int32): PackState \ IO =
+        let advance = fm.charWidth(cp);
         if (advance <= 0i32)
             state
         else {
@@ -118,15 +104,6 @@ mod HeadlessFont {
             };
             { penX = penX + cellW, penY = penY, glyphs = Map.insert(cp, gm, state#glyphs) }
         }
-
-    /// 焼き込む全文字。ASCII + かな + 記号 + 常用漢字（読めなければ漢字なし）。
-    def charset(joyoPath: String): String \ IO =
-        "${asciiChars()}${hiraChars()}${kataChars()}${punctChars()}${readJoyo(joyoPath)}"
-
-    /// 常用漢字ファイルを丸ごと読む。存在しなければ空文字（漢字はアトラスに載らない）。
-    def readJoyo(joyoPath: String): String \ IO =
-        let file = new File(joyoPath);
-        if (file.exists()) Files.readString(file.toPath()) else ""
 
     /// TTF を TRUETYPE_FONT(0) として読み、焼き込みサイズへ deriveFont する。
     def loadFont(ttfPath: String): Font \ IO =
