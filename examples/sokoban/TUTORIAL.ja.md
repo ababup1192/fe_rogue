@@ -585,12 +585,12 @@ mod Sokoban {
     // it faces, and where it is in its walk cycle.
     pub enum World {
         case World({ robotX = Float64, robotY = Float64,
-                     facing = Robot.Direction, walkPhase = Float64 })
+                     facing = Dir4.Dir4, walkPhase = Float64 })
     }
 
     pub def initialWorld(): World =
         World.World({ robotX = centerX(), robotY = centerY(),
-                      facing = Robot.Direction.Down, walkPhase = 0.0 })
+                      facing = Dir4.Down, walkPhase = 0.0 })
 
     // ── step: advances the world by one frame ──
     // Still no effect annotation: the keys arrive as an argument, so the same
@@ -623,11 +623,11 @@ mod Sokoban {
 
     /// Facing follows the movement; the horizontal wins a diagonal, and standing
     /// still keeps whatever facing the robot already had.
-    def facingOf(dx: Float64, dy: Float64, current: Robot.Direction): Robot.Direction =
-        if (dx > 0.0)      Robot.Direction.Right
-        else if (dx < 0.0) Robot.Direction.Left
-        else if (dy > 0.0) Robot.Direction.Down
-        else if (dy < 0.0) Robot.Direction.Up
+    def facingOf(dx: Float64, dy: Float64, current: Dir4.Dir4): Dir4.Dir4 =
+        if (dx > 0.0)      Dir4.Right
+        else if (dx < 0.0) Dir4.Left
+        else if (dy > 0.0) Dir4.Down
+        else if (dy < 0.0) Dir4.Up
         else current
 
     def clamp(lo: Float64, hi: Float64, v: Float64): Float64 =
@@ -1026,7 +1026,7 @@ mod Sokoban {
         robot = (Int32, Int32),
         cols = Int32,
         rows = Int32,
-        facing = Robot.Direction,
+        facing = Dir4.Dir4,
         walkPhase = Float64,
         slide = Option[Slide]
     }
@@ -1050,7 +1050,7 @@ mod Sokoban {
     def toWorld(p: Level.Parsed): World =
         World.World({ walls = p#walls, goals = p#goals, crates = p#crates,
                       robot = p#robot, cols = p#cols, rows = p#rows,
-                      facing = Robot.Direction.Down, walkPhase = 0.0,
+                      facing = Dir4.Down, walkPhase = 0.0,
                       slide = None })
 
     /// The win condition is not stored anywhere: it is derived from the Stores.
@@ -1104,7 +1104,7 @@ mod Sokoban {
     /// robot; a crate moves along only if the cell behind it is free; otherwise
     /// nothing moves and the robot just turns. A legal hop changes the cells at
     /// once and starts the slide that lets the picture catch up.
-    def move(d: Robot.Direction, b: Board): Board =
+    def move(d: Dir4.Dir4, b: Board): Board =
         let (dx, dy) = deltaOf(d);
         let (rx, ry) = b#robot;
         let target = (rx + dx, ry + dy);
@@ -1123,18 +1123,18 @@ mod Sokoban {
               | b }
 
     /// Among several held keys: up, then down, then left, then right.
-    def pick(u: Bool, d: Bool, l: Bool, r: Bool): Option[Robot.Direction] =
-        if (u) Some(Robot.Direction.Up)
-        else if (d) Some(Robot.Direction.Down)
-        else if (l) Some(Robot.Direction.Left)
-        else if (r) Some(Robot.Direction.Right)
+    def pick(u: Bool, d: Bool, l: Bool, r: Bool): Option[Dir4.Dir4] =
+        if (u) Some(Dir4.Up)
+        else if (d) Some(Dir4.Down)
+        else if (l) Some(Dir4.Left)
+        else if (r) Some(Dir4.Right)
         else None
 
-    def deltaOf(d: Robot.Direction): (Int32, Int32) = match d {
-        case Robot.Direction.Up    => (0, -1)
-        case Robot.Direction.Down  => (0, 1)
-        case Robot.Direction.Left  => (-1, 0)
-        case Robot.Direction.Right => (1, 0)
+    def deltaOf(d: Dir4.Dir4): (Int32, Int32) = match d {
+        case Dir4.Up    => (0, -1)
+        case Dir4.Down  => (0, 1)
+        case Dir4.Left  => (-1, 0)
+        case Dir4.Right => (1, 0)
     }
 
     /// Keep only the fractional part (the walk cycle repeats on 0..1).
@@ -1439,7 +1439,7 @@ future  — undo で抜け出してきた World たち（redo の燃料）
     /// the undone move — that move went from the restored cell out to
     /// fromCell, so that line names it — and only when the slide lands does
     /// the snapshot's own facing (already in the Board) take over.
-    pub def drawnFacing(b: Board): Robot.Direction =
+    pub def drawnFacing(b: Board): Dir4.Dir4 =
         match b#slide {
             case Some(s) => if (s#reverse) directionTo(b#robot, s#fromCell) else b#facing
             case None    => b#facing
@@ -1768,7 +1768,7 @@ mod Harness {
 ```flix
     /// One walked move: tap the key for a frame, then let the slide land
     /// (a slide is 0.125 s = 8 frames at this clock).
-    pub def walk(d: Robot.Direction): List[Cue] =
+    pub def walk(d: Dir4.Dir4): List[Cue] =
         hold(dirInput(d), 1) :: hold(idle(), 8) :: Nil
 
     /// Z held for n frames — each landed reverse slide chains the next
@@ -1781,9 +1781,9 @@ mod Harness {
     /// (upper crate home — CLEAR).
     pub def solveLevelOne(): List[Cue] =
         List.flatMap(walk,
-            Robot.Direction.Left :: Robot.Direction.Up :: Robot.Direction.Right ::
-            Robot.Direction.Up :: Robot.Direction.Right :: Robot.Direction.Up ::
-            Robot.Direction.Left :: Nil)
+            Dir4.Left :: Dir4.Up :: Dir4.Right ::
+            Dir4.Up :: Dir4.Right :: Dir4.Up ::
+            Dir4.Left :: Nil)
 ```
 
 すると解法は*テストになります* — それがこの章の題名です:

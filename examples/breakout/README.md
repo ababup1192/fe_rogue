@@ -52,8 +52,8 @@ Sfx (42行) ── World の前後から「鳴らす音」を導く（絵と対�
 ```
 
 後回しでよいもの: `App.flix`（ループと入力のランナー。いずれエンジンへ昇格する層）、
-`GameParameters.flix`（F1 チューニングの仕組み）、`Bake.flix` / `Gallery.flix` / `SfxBake.flix` /
-`Trace.flix` / `Harness.flix`（生成とテストの道具）。
+`GameParameters.flix`（F1 チューニングの仕組み）、`src/bake/`（Bake・Gallery・SfxBake — 生成の道具）、
+`Trace.flix` / `Harness.flix`（テストとギャラリーの共有部品）。
 
 ## 1 フレームの流れ
 
@@ -69,7 +69,7 @@ Sfx (42行) ── World の前後から「鳴らす音」を導く（絵と対�
 外の世界（キー読み・描画・音再生・ファイル）に触れるのは App だけ。
 Step / View / Sfx は純粋関数なので、テストとギャラリーが同じコードをそのまま検証できます。
 
-## ファイル地図（src の 16 ファイル）
+## ファイル地図（src — 生成系は src/bake/ に隔離）
 
 | ファイル | 1 行で |
 |---|---|
@@ -84,9 +84,9 @@ Step / View / Sfx は純粋関数なので、テストとギャラリーが同�
 | Sfx | World の前後 → 鳴らす音名 |
 | App | ランナー（ループ・入力・描画・音再生の縁の下）。初読スキップ可 |
 | GameParameters | F1 で読み直す調整値（fail-open: 壊れた JSON でも既定値で動く） |
-| Bake | `make bake` の入口 |
-| Gallery | ギャラリー（PNG・GIF・コマ送りサイト）を焼く |
-| SfxBake | 効果音 8 種を矩形波とノイズから合成して WAV に書く（録音素材ゼロ） |
+| bake/Bake | `make bake` の入口 |
+| bake/Gallery | ギャラリー（PNG・GIF・コマ送りサイト）を焼く |
+| bake/SfxBake | 効果音 8 種を矩形波とノイズから合成して WAV に書く（録音素材ゼロ） |
 | Trace | テストとギャラリーが共有するシナリオ（初期 World 集） |
 | Harness | 画面なしでフォントを焼くための道具 |
 
@@ -149,7 +149,7 @@ def ballBoxes(core: Field.GameCore): List[Render.Placed] =
 1. `src/World.flix` — `Field.Sfx` enum に case を足す（例 `EdgeHit`）
 2. `src/Step.flix` — 鳴らしたい瞬間に `sfx = Field.Sfx.EdgeHit :: core#sfx` を積む
 3. `src/Sfx.flix` — `nameOf` で音名（例 `"edge"`）へ写す
-4. `src/SfxBake.flix` — 合成レシピを書いて `bakeAll` に 1 行足す
+4. `src/bake/SfxBake.flix` — 合成レシピを書いて `bakeAll` に 1 行足す
 5. `project.json` — `"sounds"` に `{name, path, looping}` を足す
 6. `make bake` して `make run`
 

@@ -3,7 +3,7 @@
 値ベース第二作（undo が主役）。人間向けの案内（遊び方・読む順・練習課題・用語集）は README.md、
 作りながらの解説は TUTORIAL.md（英）/ TUTORIAL.ja.md（日）にある。コメントは日本語。
 
-## モジュール地図（src 全 18 ファイル）
+## モジュール地図（src — 生成系は src/bake/ に隔離）
 
 | ファイル | 役割 |
 |---|---|
@@ -18,10 +18,10 @@
 | Palette | 色のロール名（描画コードは色リテラル禁止） |
 | GameUi | Title / Clear ページ（assets/*.ui.json）の読み込みと毎フレームの投影 |
 | Sfx | Session の前後 → 鳴らす音名（実体は Sokoban.sfxEvent） |
-| Bake | make bake の入口（GameGallery + RobotGallery + SfxBake） |
-| GameGallery | スクショ 4 枚・GIF 3 本・ダッシュボードを焼く |
-| RobotGallery | ロボット画像 3 点を焼く |
-| SfxBake | 効果音 4 種を SfxSynth で合成して WAV へ |
+| bake/Bake | make bake の入口（GameGallery + RobotGallery + SfxBake） |
+| bake/GameGallery | スクショ 4 枚・GIF 3 本・ダッシュボードを焼く |
+| bake/RobotGallery | ロボット画像 3 点を焼く |
+| bake/SfxBake | 効果音 4 種を SfxSynth で合成して WAV へ |
 | SokobanLint | UiWorld → RenderLint 入力の橋（幾何 lint） |
 | Trace | テストとギャラリー共有のシナリオ（入力キュー列・解答手順） |
 | Harness | 画面なしフォント焼き + UI spawn |

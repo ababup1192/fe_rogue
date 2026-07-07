@@ -532,7 +532,7 @@ mod Sokoban {
     /// plus 2 dark edge lines. All 3 strips share the same centerline and direction vector;
     /// only their normal-offset ranges differ (building the edges along the normal keeps
     /// their thickness constant everywhere).
-    def cratePolys(center: Vec2.Vec2): List[GameEngine.PolygonRenderCmd] =
+    def cratePolys(center: Vec2.Vec2): List[Render.Placed] =
         let tl = topLeftOf(center);
         let half = crateSize() * 0.09;    // half-width of the central band (0.18T thick)
         let edge = crateSize() * 0.03;    // thickness of one edge line
@@ -543,9 +543,10 @@ mod Sokoban {
     /// A parallelogram (convex quad) covering normal offsets o1..o2 from the band's
     /// centerline. The centerline runs inner bottom-left corner -> inner top-right corner,
     /// extended by ext at both ends. The extended ends tuck under the frame rails drawn
-    /// later, so the strip ends need no shaping.
+    /// later, so the strip ends need no shaping. The vertices are absolute screen
+    /// coordinates, so the placement is the origin.
     def braceStrip(tl: Vec2.Vec2, o1: Float64, o2: Float64,
-                   c: Color, z: Int32): GameEngine.PolygonRenderCmd =
+                   c: Color, z: Int32): Render.Placed =
         let t = crateSize();
         let f = railW();
         let ext = t * 0.04;
@@ -555,9 +556,11 @@ mod Sokoban {
         let n = {x = -d#y, y = d#x};
         let p0 = Vec2.sub(bl, Vec2.mul(d, ext));
         let p1 = Vec2.add(tr, Vec2.mul(d, ext));
-        { vertices = Vec2.add(p0, Vec2.mul(n, o1)) :: Vec2.add(p1, Vec2.mul(n, o1)) ::
-                     Vec2.add(p1, Vec2.mul(n, o2)) :: Vec2.add(p0, Vec2.mul(n, o2)) :: Nil,
-          color = c, alpha = 1.0f32, zIndex = z }
+        (Vec2.zero(),
+         Render.polygon(
+             Vec2.add(p0, Vec2.mul(n, o1)) :: Vec2.add(p1, Vec2.mul(n, o1)) ::
+             Vec2.add(p1, Vec2.mul(n, o2)) :: Vec2.add(p0, Vec2.mul(n, o2)) :: Nil,
+             c, z))
 
     /// Title text horizontally centered near the top of the screen.
     def titlePlacement(atlas: FontAtlas): Render.Placed =
@@ -565,25 +568,29 @@ mod Sokoban {
         let width = Label2D.measure(Label2D.make("Sokoban", atlas, size))#x;
         let pos = {x = centerX() - width / 2.0, y = 24.0};
         (pos, Render.textTinted("Sokoban", atlas, size, Palette.titleText(), zTitle()))
-
-    // ── Launcher: run world |> step |> frame, every frame, until the window closes ──
-    pub def start(atlas: FontAtlas): Unit \ GameEngine.Game =
-        loop(atlas, initialWorld())
-
-    def loop(atlas: FontAtlas, world: World): Unit \ GameEngine.Game =
-        if (GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
-        else {
-            let next = step(world);
-            let (drawables, polys) = frame(atlas, next);
-            GameEngine.Game.renderCommands(drawables, Nil, polys);
-            loop(atlas, next)
-        }
 }
 ```
 
+And `Main.flix` grows by exactly one line:
+
+```flix
+def main(): Unit \ IO =
+    App.make(Sokoban.initialWorld())
+        |> App.addSystem((_frame, w) -> Sokoban.step(w))
+        |> App.withView(Sokoban.frame)
+        |> App.launch
+```
+
+`App.make` now receives a real World instead of `()`, and `addSystem` plugs in
+the function that advances it. A **System** is anything of shape
+`(Frame, w) -> w` — the App calls every system once per frame, feeding the result
+of one into the next, and hands each one a `Frame` (this frame's inputs and
+clock). We have no use for it yet, so we ignore it with `_frame` — Chapter 3 is
+where it earns its seat.
+
 ### Three words
 
-This chapter introduces the first three words of this engine's vocabulary. Each
+This chapter introduces the first three words of this project's vocabulary. Each
 one names something you can already see in the code above:
 
 - **World** — the place where state lives. One value that holds everything that
@@ -597,21 +604,26 @@ one names something you can already see in the code above:
   and returns pictures, changing nothing. A projection of the world onto the
   screen.
 
+(App, Frame and System are vocabulary too, but they come *with* the engine rather
+than being built in this tutorial — think of them as the stage our words perform
+on.)
+
 ### What just happened
 
-- The loop now beats three times a frame: **`world |> step |> frame`** — advance
-  the world, project it, draw the result, repeat with the new world. **This is
-  the whole engine.** Every later chapter — input, a board, boxes to push, undo —
-  just adds parts to this beat; the beat itself never changes.
+- Every frame now beats three times: **advance the world (your systems), project
+  it (your view), draw the result** — then repeat with the new world. The App
+  carries the World from one frame to the next; nothing else in the program
+  remembers anything. Every later chapter — input, a board, boxes to push,
+  undo — just adds parts to this beat; the beat itself never changes.
 - `step` moves the crate a constant amount per frame (`crateSpeed` = 1 design px).
   We chose per-frame constants over elapsed-time (`dt`) movement deliberately: it
   keeps `step`'s signature at exactly `World -> World`, which is this chapter's
   whole lesson — and Sokoban is a grid game, so on this tutorial's path,
   continuous time-based motion is a stepping stone, not a destination. (The
   honest cost: on a 120 Hz display the crate slides twice as fast as on 60 Hz.
-  Games that care thread the frame's elapsed seconds through `step`; the engine
-  provides it. Keep this paragraph in mind: in Chapter 4 this exact bill
-  arrives — on a real 120 Hz screen — and we pay it.)
+  Games that care read the frame's elapsed seconds — it is already there, in the
+  `Frame` every system receives. Keep this paragraph in mind: in Chapter 4 this
+  exact bill arrives — on a real 120 Hz screen — and we pay it.)
 - The wrap rule also lives in `step` — "once fully past the right edge, jump to
   just outside the left edge." Rules about how the world changes belong in
   `step`, and nowhere else.
@@ -620,7 +632,7 @@ one names something you can already see in the code above:
   groundwork for drawing many tiles on a board — which is where this game is
   headed.
 - Notice what did *not* change: `frame` still just returns the list of things to
-  draw, and the launcher is still a few lines that know nothing about crates. New
+  draw, and `Main` is still four lines that know nothing about crates. New
   capability arrived as *new parts*, not as rewrites.
 
 ### Try it
@@ -647,11 +659,17 @@ Flix simply won't compile that. Reading a key is an effect — its signature say
 so the call is rejected. The type system is asking us to make a design decision,
 and the decision this codebase makes is:
 
-**The loop reads the keys, once per frame, and hands the result to `step` as a
-plain value.** The keyboard lives outside the world; it enters as data.
+**The App reads the keyboard, once per frame, and hands the result to every
+system as a plain value — the `Frame`.** The keyboard lives outside the world;
+it enters as data. Remember the `_frame` parameter we ignored in Chapter 2? This
+is the chapter where it earns its seat. A `Frame` carries the set of keys that
+are down, the set that were just pressed, and the clock — and our job is one
+pure mapping from it into the game's own words:
 
 ```flix
 pub type alias Input = { up = Bool, down = Bool, left = Bool, right = Bool }
+
+pub def inputOf(frame: App.Frame): Input = ...
 
 pub def step(input: Input, w: World): World = ...
 ```
@@ -669,9 +687,9 @@ lens eye, L-bent arms, feet — and exposes one pure function:
 `Robot.parts(center, size, dir, phase)` returns the draw list for any facing
 direction at any walk phase.
 
-The design was chosen by eye, from galleries the test suite bakes as PNG and GIF
-files (look in `gallery/`: six candidate robots, the four facings of the winner,
-and a marching walk cycle). The walk is not an animation clip: pose is a pure
+The design was chosen by eye, from galleries that `make bake` bakes as PNG and
+GIF files (look in `gallery/`: six candidate robots, the four facings of the
+winner, and a marching walk cycle). The walk is not an animation clip: pose is a pure
 function of `(dir, phase)`, so a standing robot and a walking robot are the same
 function at different phases — `walkPhase = 0.0` *is* the rest pose. The crate
 steps aside this chapter to give the robot room; it returns as something to
@@ -696,21 +714,28 @@ mod Sokoban {
     def zTitle(): Int32 = 100
 
     // ── Input: this frame's keys as plain data ──
-    // The keyboard lives outside the World. Every frame the loop reads it once and
-    // hands step the result as a value — so step can stay pure.
+    // The keyboard lives outside the World. The App reads it once per frame and
+    // hands every system a Frame; inputOf maps that Frame into the game's own
+    // words. Note that inputOf is pure — the reading already happened.
     pub type alias Input = { up = Bool, down = Bool, left = Bool, right = Bool }
+
+    pub def inputOf(frame: App.Frame): Input =
+        { up    = App.isDown(GameEngine.Key.Up, frame),
+          down  = App.isDown(GameEngine.Key.Down, frame),
+          left  = App.isDown(GameEngine.Key.Left, frame),
+          right = App.isDown(GameEngine.Key.Right, frame) }
 
     // ── World: where the state lives ──
     // One value that holds everything that changes: where the robot is, which way
     // it faces, and where it is in its walk cycle.
     pub enum World {
         case World({ robotX = Float64, robotY = Float64,
-                     facing = Robot.Direction, walkPhase = Float64 })
+                     facing = Dir4.Dir4, walkPhase = Float64 })
     }
 
     pub def initialWorld(): World =
         World.World({ robotX = centerX(), robotY = centerY(),
-                      facing = Robot.Direction.Down, walkPhase = 0.0 })
+                      facing = Dir4.Down, walkPhase = 0.0 })
 
     // ── step: advances the world by one frame ──
     // Still no effect annotation: the keys arrive as an argument, so the same
@@ -743,11 +768,11 @@ mod Sokoban {
 
     /// Facing follows the movement; the horizontal wins a diagonal, and standing
     /// still keeps whatever facing the robot already had.
-    def facingOf(dx: Float64, dy: Float64, current: Robot.Direction): Robot.Direction =
-        if (dx > 0.0)      Robot.Direction.Right
-        else if (dx < 0.0) Robot.Direction.Left
-        else if (dy > 0.0) Robot.Direction.Down
-        else if (dy < 0.0) Robot.Direction.Up
+    def facingOf(dx: Float64, dy: Float64, current: Dir4.Dir4): Dir4.Dir4 =
+        if (dx > 0.0)      Dir4.Right
+        else if (dx < 0.0) Dir4.Left
+        else if (dy > 0.0) Dir4.Down
+        else if (dy < 0.0) Dir4.Up
         else current
 
     def clamp(lo: Float64, hi: Float64, v: Float64): Float64 =
@@ -759,13 +784,12 @@ mod Sokoban {
     // ── frame: projects the World into the list of things to draw ──
     // The same Robot.parts that baked the gallery draws the player: a character
     // with no image file, composed box by box at whatever size we ask for.
-    pub def frame(atlas: FontAtlas, w: World): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+    pub def frame(atlas: FontAtlas, w: World): List[Render.Placed] =
         let World.World(r) = w;
         let center = {x = r#robotX, y = r#robotY};
-        let boxes = List.append(
+        List.append(
             Robot.parts(center, robotSize(), r#facing, r#walkPhase),
-            titlePlacement(atlas) :: Nil);
-        (Render.draw(boxes), Nil)
+            titlePlacement(atlas) :: Nil)
 
     /// Title text horizontally centered near the top of the screen.
     def titlePlacement(atlas: FontAtlas): Render.Placed =
@@ -773,42 +797,29 @@ mod Sokoban {
         let width = Label2D.measure(Label2D.make("Sokoban", atlas, size))#x;
         let pos = {x = centerX() - width / 2.0, y = 24.0};
         (pos, Render.textTinted("Sokoban", atlas, size, Palette.titleText(), zTitle()))
-
-    // ── Launcher: read input |> step |> frame, every frame, until the window closes ──
-    pub def start(atlas: FontAtlas): Unit \ GameEngine.Game =
-        loop(atlas, initialWorld())
-
-    /// Reading the keyboard touches something outside the program, and the
-    /// signature says so: `\ GameEngine.Game`. This is the only place the keys
-    /// are read; past this point they are just a value.
-    def readInput(): Input \ GameEngine.Game =
-        { up    = GameEngine.Game.isKeyPressed(GameEngine.Key.Up),
-          down  = GameEngine.Game.isKeyPressed(GameEngine.Key.Down),
-          left  = GameEngine.Game.isKeyPressed(GameEngine.Key.Left),
-          right = GameEngine.Game.isKeyPressed(GameEngine.Key.Right) }
-
-    def loop(atlas: FontAtlas, world: World): Unit \ GameEngine.Game =
-        if (GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
-        else {
-            let next = step(readInput(), world);
-            let (drawables, polys) = frame(atlas, next);
-            GameEngine.Game.renderCommands(drawables, Nil, polys);
-            loop(atlas, next)
-        }
 }
+```
+
+And `Main.flix` wires the keys into the system:
+
+```flix
+def main(): Unit \ IO =
+    App.make(Sokoban.initialWorld())
+        |> App.addSystem((frame, w) -> Sokoban.step(Sokoban.inputOf(frame), w))
+        |> App.withView(Sokoban.frame)
+        |> App.launch
 ```
 
 ### What just happened
 
-- The beat did not change. It is still `world |> step |> frame`, once per frame;
-  the loop now *prepares* one extra value before the beat starts —
-  `step(readInput(), world)` — and everything downstream is as pure as it was.
-- Look at `readInput`'s signature: `Input \ GameEngine.Game`. In Flix, **what a
-  function touches is written in its type**. You have been seeing
-  `\ GameEngine.Game` on `start` and `loop` since Chapter 0 — the loop draws to
-  a window, of course it touches the outside. What is new is the boundary: the
-  keyboard is read in exactly one place, and past that point the keys are just a
-  record of four booleans. If you try to call `isKeyPressed` inside `step`, the
+- The beat did not change. It is still *advance, project, draw*, once per frame;
+  the system now *prepares* one extra value before calling `step` —
+  `step(inputOf(frame), w)` — and everything downstream is as pure as it was.
+- Stop and look for an effect annotation anywhere in our project. There is
+  none. **The whole game is now pure functions** — the one place the keyboard
+  hardware is actually read lives inside the engine's App, which snapshots it
+  into the `Frame` before any of our code runs. `App.isDown` is just a set
+  lookup on that snapshot. If you try to call `isKeyPressed` inside `step`, the
   compiler stops you — purity here is a checked property, not a house rule.
 - All the *rules* still live in `step`, and they are ordinary world rules:
   opposing keys cancel (`axis`), the horizontal wins a diagonal (`facingOf`),
@@ -819,8 +830,8 @@ mod Sokoban {
   files were baked from. There is no separate "game art": the gallery you
   approve by eye and the character on screen are one function.
 - And no new vocabulary: **World**, **Step**, **Projection** still cover
-  everything on screen. `Input` is not a fourth word — it is just a value the
-  loop hands to `step`.
+  everything on screen. `Input` is not a fourth word — it is just the Frame
+  translated into the game's own words.
 
 ### Try it
 
@@ -934,8 +945,9 @@ speed: twitchy, hard to stop on the right square. The bill Chapter 2 predicted
 had arrived, and this is what playtesting is for.
 
 The fix uses the grammar the keyboard already taught us: **the clock lives
-outside the world too.** The loop reads the frame's elapsed seconds and hands
-them to `step` as a value:
+outside the world too.** And it is already waiting in the same place the keys
+were — the `Frame` the App hands every system carries `frame#dt`, this frame's
+elapsed seconds. We pass it on to `step` as a value:
 
 ```flix
 pub def step(input: Input, dt: Float64, w: World): World = ...
@@ -1199,8 +1211,8 @@ mod Sokoban {
     def zTitle(): Int32 = 100
 
     // ── Input: this frame's keys as plain data ──
-    // The keyboard lives outside the World. Every frame the loop reads it once and
-    // hands step the result as a value — so step can stay pure.
+    // The keyboard lives outside the World. The App snapshots it into the Frame,
+    // and inputOf (unchanged since Chapter 3) maps that into these four booleans.
     pub type alias Input = { up = Bool, down = Bool, left = Bool, right = Bool }
 
     // ── World: where the state lives ──
@@ -1218,7 +1230,7 @@ mod Sokoban {
         robot = (Int32, Int32),
         cols = Int32,
         rows = Int32,
-        facing = Robot.Direction,
+        facing = Dir4.Dir4,
         walkPhase = Float64,
         slide = Option[Slide]
     }
@@ -1242,7 +1254,7 @@ mod Sokoban {
     def toWorld(p: Level.Parsed): World =
         World.World({ walls = p#walls, goals = p#goals, crates = p#crates,
                       robot = p#robot, cols = p#cols, rows = p#rows,
-                      facing = Robot.Direction.Down, walkPhase = 0.0,
+                      facing = Dir4.Down, walkPhase = 0.0,
                       slide = None })
 
     /// The win condition is not stored anywhere: it is derived from the Stores.
@@ -1252,7 +1264,7 @@ mod Sokoban {
 
     // ── step: advances the world by dt seconds ──
     // Still pure: the keys arrive as an argument, and so does the clock — dt is
-    // this frame's elapsed seconds, read by the loop and handed in as a value.
+    // this frame's elapsed seconds, taken from the Frame and handed in as a value.
     // While a slide is travelling the keys are ignored; the moment it lands, a
     // key still held starts the next square — taps move exactly one cell, holds
     // glide cell by cell in rhythm, at the same speed on any display.
@@ -1296,7 +1308,7 @@ mod Sokoban {
     /// robot; a crate moves along only if the cell behind it is free; otherwise
     /// nothing moves and the robot just turns. A legal hop changes the cells at
     /// once and starts the slide that lets the picture catch up.
-    def move(d: Robot.Direction, b: Board): Board =
+    def move(d: Dir4.Dir4, b: Board): Board =
         let (dx, dy) = deltaOf(d);
         let (rx, ry) = b#robot;
         let target = (rx + dx, ry + dy);
@@ -1315,18 +1327,18 @@ mod Sokoban {
               | b }
 
     /// Among several held keys: up, then down, then left, then right.
-    def pick(u: Bool, d: Bool, l: Bool, r: Bool): Option[Robot.Direction] =
-        if (u) Some(Robot.Direction.Up)
-        else if (d) Some(Robot.Direction.Down)
-        else if (l) Some(Robot.Direction.Left)
-        else if (r) Some(Robot.Direction.Right)
+    def pick(u: Bool, d: Bool, l: Bool, r: Bool): Option[Dir4.Dir4] =
+        if (u) Some(Dir4.Up)
+        else if (d) Some(Dir4.Down)
+        else if (l) Some(Dir4.Left)
+        else if (r) Some(Dir4.Right)
         else None
 
-    def deltaOf(d: Robot.Direction): (Int32, Int32) = match d {
-        case Robot.Direction.Up    => (0, -1)
-        case Robot.Direction.Down  => (0, 1)
-        case Robot.Direction.Left  => (-1, 0)
-        case Robot.Direction.Right => (1, 0)
+    def deltaOf(d: Dir4.Dir4): (Int32, Int32) = match d {
+        case Dir4.Up    => (0, -1)
+        case Dir4.Down  => (0, 1)
+        case Dir4.Left  => (-1, 0)
+        case Dir4.Right => (1, 0)
     }
 
     /// Keep only the fractional part (the walk cycle repeats on 0..1).
@@ -1335,16 +1347,16 @@ mod Sokoban {
     // ── frame: projects the World into the list of things to draw ──
     // Insertion order layers the board: floor and walls, then goal marks, then
     // crates, then the robot, then the on-goal badges and text on top.
-    pub def frame(atlas: FontAtlas, w: World): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+    pub def frame(atlas: FontAtlas, w: World): List[Render.Placed] =
         let World.World(b) = w;
-        let boxes = List.flatten(
+        List.flatten(
             boardTiles(b) ::
             goalMarks(b) ::
             crateBoxes(b) ::
             Robot.parts(robotCenter(b), tile(), b#facing, b#walkPhase) ::
             onGoalBadges(b) ::
-            texts(atlas, w) :: Nil);
-        (Render.draw(boxes), cratePolys(b))
+            texts(atlas, w) ::
+            cratePolys(b) :: Nil)
 
     /// Top-left corner of the board, chosen so the whole grid sits centered.
     def origin(b: Board): Vec2.Vec2 =
@@ -1423,20 +1435,16 @@ mod Sokoban {
     def crateBoxes(b: Board): List[Render.Placed] =
         List.flatMap(p -> Crate.boxes(crateCenter(b, p), tile()), Set.toList(b#crates))
 
-    def cratePolys(b: Board): List[GameEngine.PolygonRenderCmd] =
+    def cratePolys(b: Board): List[Render.Placed] =
         List.flatMap(p -> Crate.polys(crateCenter(b, p), tile()), Set.toList(b#crates))
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
               c: Color, z: Int32): Render.Placed =
         ({x = x, y = y}, Render.solidBox({x = w, y = h}, c, z))
 
+    /// A filled circle of diameter d centered on c.
     def circleAt(c: Vec2.Vec2, d: Float64, color: Color, z: Int32): Render.Placed =
-        let style = { cornerRadius = d / 2.0, borderWidth = 0.0, borderColor = color,
-                      borderAlpha = 0.0f32, stripeColor = color, stripeAlpha = 0.0f32,
-                      stripeWidth = 0.0, stripePeriod = 0.0 };
-        ({x = c#x - d / 2.0, y = c#y - d / 2.0},
-         Render.RenderItem.Box({ size = {x = d, y = d}, color = color, alpha = 1.0f32,
-                                 style = Some(style), zIndex = z }))
+        ({x = c#x - d / 2.0, y = c#y - d / 2.0}, Render.circle(d / 2.0, color, z))
 
     /// Title always; "CLEAR!" appears the moment every crate sits on a goal —
     /// not stored anywhere, just projected from the Stores.
@@ -1450,33 +1458,18 @@ mod Sokoban {
         let width = Label2D.measure(Label2D.make(text, atlas, size))#x;
         ({x = centerX() - width / 2.0, y = y}, Render.textTinted(text, atlas, size, color, zTitle()))
 
-    // ── Launcher: read input and the clock |> step |> frame, until the window closes ──
-    pub def start(atlas: FontAtlas): Unit \ GameEngine.Game =
-        loop(atlas, initialWorld())
-
-    /// Reading the keyboard touches something outside the program, and the
-    /// signature says so: `\ GameEngine.Game`. This is the only place the keys
-    /// are read; past this point they are just a value.
-    def readInput(): Input \ GameEngine.Game =
-        { up    = GameEngine.Game.isKeyPressed(GameEngine.Key.Up),
-          down  = GameEngine.Game.isKeyPressed(GameEngine.Key.Down),
-          left  = GameEngine.Game.isKeyPressed(GameEngine.Key.Left),
-          right = GameEngine.Game.isKeyPressed(GameEngine.Key.Right) }
-
-    /// The clock lives outside the World too. The engine clamps the value, so a
-    /// long hiccup (or the first frame) never teleports the game forward.
-    def readDt(): Float64 \ GameEngine.Game =
-        Duration.toSeconds(GameEngine.Game.getDeltaTime())
-
-    def loop(atlas: FontAtlas, world: World): Unit \ GameEngine.Game =
-        if (GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
-        else {
-            let next = step(readInput(), readDt(), world);
-            let (drawables, polys) = frame(atlas, next);
-            GameEngine.Game.renderCommands(drawables, Nil, polys);
-            loop(atlas, next)
-        }
 }
+```
+
+And `Main.flix` threads the clock through — `frame#dt` was there all along
+(the engine clamps the value, so a long hiccup never teleports the game forward):
+
+```flix
+def main(): Unit \ IO =
+    App.make(Sokoban.initialWorld())
+        |> App.addSystem((frame, w) -> Sokoban.step(Sokoban.inputOf(frame), frame#dt, w))
+        |> App.withView(Sokoban.frame)
+        |> App.launch
 ```
 
 ### What just happened
@@ -1712,7 +1705,7 @@ sitting in the Board, waiting for the landing:
     /// the undone move — that move went from the restored cell out to
     /// fromCell, so that line names it — and only when the slide lands does
     /// the snapshot's own facing (already in the Board) take over.
-    pub def drawnFacing(b: Board): Robot.Direction =
+    pub def drawnFacing(b: Board): Dir4.Dir4 =
         match b#slide {
             case Some(s) => if (s#reverse) directionTo(b#robot, s#fromCell) else b#facing
             case None    => b#facing
@@ -1733,25 +1726,21 @@ angle from `spin`, transparency from `linger`, position following the robot.
 It is never recorded and never consulted by a rule — decoration with a clean
 conscience.
 
-The Worldline itself lives in the loop, next to the world — not inside it.
-The World does not know it is being remembered:
+The Worldline itself lives beside the world — not inside it. The value that
+`App.make` receives, and that the systems pass along, is now the *whole line*;
+the World does not know it is being remembered:
 
 ```flix
-    // ── Launcher: read input and the clock |> tick |> frame, until the window closes ──
-    pub def start(atlas: FontAtlas): Unit \ GameEngine.Game =
-        loop(atlas, Worldline.make(initialWorld(), historyCap()))
-
-    // ... readInput (now also reading Z) and readDt as before ...
-
-    def loop(atlas: FontAtlas, line: Worldline[World]): Unit \ GameEngine.Game =
-        if (GameEngine.Game.shouldClose() or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
-        else {
-            let line1 = tick(readInput(), readDt(), line);
-            let (drawables, polys) = frame(atlas, Worldline.current(line1));
-            GameEngine.Game.renderCommands(drawables, Nil, polys);
-            loop(atlas, line1)
-        }
+def main(): Unit \ IO =
+    App.make(Worldline.make(Sokoban.initialWorld(), Sokoban.historyCap()))
+        |> App.addSystem((frame, line) ->
+            Sokoban.tick(Sokoban.inputOf(frame), frame#dt, line))
+        |> App.withView((atlas, line) -> Sokoban.frame(atlas, Worldline.current(line)))
+        |> App.launch
 ```
+
+(`inputOf` now also reads Z into `undo`; `tick` wraps `step` and owns the
+history, and the view projects whatever World is *current* on the line.)
 
 ### What memory costs
 
@@ -1781,10 +1770,10 @@ undo is not a luxury feature. In this architecture it is loose change.
   forward hop and a rewind are one mechanism with `reverse` flipped, so the
   gate ("next command only when the picture lands") needed no second
   implementation.
-- The Worldline lives in the loop, beside the world. The World stayed as
-  Chapter 4 left it, save two cosmetic guests: `reverse` on the slide and the
-  rewind clock's `undoFx` — both stripped by `normalize` before anything
-  enters history.
+- The Worldline lives beside the world — it is now the value the App carries.
+  The World stayed as Chapter 4 left it, save two cosmetic guests: `reverse` on
+  the slide and the rewind clock's `undoFx` — both stripped by `normalize`
+  before anything enters history.
 - The robot breathes across time jumps: `walkPhase` rides over the rewind and
   keeps turning during it (the dragged-feet look), while the glide wears each
   undone move's own facing and hands the snapshot's back at the landing — a
@@ -1846,9 +1835,9 @@ pure tick owns every change of it.
 ```
 
 `Input` grows three keys — `enter`, `back` (X) and `esc` — and `enter` and
-`esc` are **edges**, not levels: the loop compares this frame's key against
-last frame's and hands the World `true` only on the frame the key went down.
-One press turns exactly one page, no matter how long the finger rests. And
+`esc` are **edges**, not levels: the Frame carries both "down now" and "went
+down this frame", and `inputOf` picks `App.justPressed` for these two. One
+press turns exactly one page, no matter how long the finger rests. And
 `tick` becomes a page-turner on top of the machine chapter 5 built — the
 whole of that machine survives untouched underneath, renamed `playTick`:
 
@@ -1992,60 +1981,109 @@ move count, because chapter 5 records exactly one snapshot per move. Undo a
 move and the count goes down by itself; the number you show is always the
 number you could rewind. The time machine had been keeping score all along.
 
-### The loop, final form
+### The App, final form
+
+The game now has *two* values that must survive between frames — the
+Worldline and the UiWorld — and the App carries one. So we bundle them, and
+the bundle gets a name:
 
 ```flix
+    /// One game's worth of state: the UI pages' store, and the board with
+    /// its whole past. This is the value the App carries.
+    pub type alias Session = {
+        ui = UiStore.UiWorld,
+        line = Worldline[World]
+    }
+
     /// While the CLEAR panel is up, Escape closes the panel (back to the
-    /// title) instead of the window.
-    def clearModal(w: World): Bool =
+    /// title) instead of the window. The quit judge below consults this.
+    pub def clearModal(w: World): Bool =
         let World.World(b) = w;
         b#screen == Screen.Playing and won(w)
-
-    /// The loop threads three values: the UI store, the Worldline, and last
-    /// frame's key state (enter and esc start true so a key already held at
-    /// launch says nothing until released once).
-    def loop(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[World],
-             prev: { enter = Bool, esc = Bool, f1 = Bool }): Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead} =
-        let escDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Escape);
-        let escEdge = escDown and not prev#esc;
-        if (GameEngine.Game.shouldClose()
-            or (escEdge and not clearModal(Worldline.current(line)))) ()
-        else {
-            let enterDown = GameEngine.Game.isKeyPressed(GameEngine.Key.Enter);
-            let f1Down = GameEngine.Game.isKeyPressed(GameEngine.Key.F1);
-            let line1 = tick(readInput(enterDown and not prev#enter, escEdge), readDt(), line);
-            match sfxEvent(line, line1) {
-                case Some(name) => GameEngine.Audio.playAudio(name)
-                case None       => ()
-            };
-            // F1 re-reads every spawned Spec from disk: edit the json while
-            // the game runs, press F1, and the page changes under you.
-            let ui1 = if (f1Down and not prev#f1) UiSpec.reloadAll(ui) else ui;
-            let world = Worldline.current(line1);
-            let ui2 = projectUi(Worldline.pastLength(line1), world, ui1);
-            let (drawables, polys) = frame(atlas, world);
-            let out = UiRender.renderUi(ui2, designSize());
-            GameEngine.Game.renderCommands(
-                List.append(drawables, out#drawables), Nil,
-                List.append(polys, out#polygons));
-            loop(atlas, ui2, line1, { enter = enterDown, esc = escDown, f1 = f1Down })
-        }
 ```
 
-(The `sfxEvent` match and the `GameEngine.Audio` effect are chapter 8's
-sound, arriving early — the loop really is the final form.)
+The wiring has also grown enough to deserve its own small file. `Controls.flix`
+holds every bridge between the Frame and the game — the key mapping, the two
+systems, the F1 reload and the quit judge:
 
-The UiWorld lives in the loop, next to the Worldline — the same grammar the
-time machine used: a plain value threaded through, never a global. Each
-frame `UiRender.renderUi` lays the visible pages out and returns boxes and
-glyphs in the same two channels `frame` already produces; the loop appends
-them and hands everything to the engine in one call. The title page draws
-*nothing* from `frame` at all — on that screen, everything you see is Spec.
+```flix
+mod Controls {
+    use GameEngine.Key
 
-And one small key with a large consequence: **F1** calls
-`UiSpec.reloadAll`, which re-reads every spawned Spec from disk and rebuilds
-its nodes in place. A file that fails to parse keeps its old page — reload
-never breaks a running game.
+    pub def inputOf(frame: App.Frame): Input =
+        { up    = App.isDown(Key.Up, frame),
+          down  = App.isDown(Key.Down, frame),
+          left  = App.isDown(Key.Left, frame),
+          right = App.isDown(Key.Right, frame),
+          undo  = App.isDown(Key.Z, frame),
+          enter = App.justPressed(Key.Enter, frame),
+          back  = App.isDown(Key.X, frame),
+          esc   = App.justPressed(Key.Escape, frame) }
+
+    /// System one: turn the keys into Input and advance the board and its
+    /// history by one frame (pure).
+    pub def step(frame: App.Frame, s: Session): Session =
+        { line = Sokoban.tick(inputOf(frame), frame#dt, s#line) | s }
+
+    /// System two: stamp the advanced World onto the UI pages (pure).
+    pub def projectUi(_frame: App.Frame, s: Session): Session =
+        { ui = Sokoban.projectUi(Worldline.pastLength(s#line),
+                                 Worldline.current(s#line), s#ui) | s }
+
+    /// F1: re-read every spawned Spec from disk. Edit the json while the
+    /// game runs, press F1, and the page changes under you.
+    pub def reloadUi(s: Session): Session \ {Fs.FileRead} =
+        { ui = UiSpec.reloadAll(s#ui) | s }
+
+    /// Quit on Escape's edge — except while the CLEAR panel is up (that
+    /// Escape belongs to tick, which closes the panel).
+    pub def wantsQuit(frame: App.Frame, s: Session): Bool =
+        App.justPressed(Key.Escape, frame)
+            and not Sokoban.clearModal(Worldline.current(s#line))
+}
+```
+
+And `Main.flix`, final form — every idea in this game is one line here:
+
+```flix
+def main(): Unit \ IO =
+    let ui = run { Sokoban.loadUi() } with Fs.FileRead.runWithIO;
+    App.make({ ui = ui, line = Worldline.make(Sokoban.initialWorld(), Sokoban.historyCap()) })
+        |> App.addSystem(Controls.step)
+        |> App.addSystem(Controls.projectUi)
+        |> App.reloadOn(GameEngine.Key.F1, Controls.reloadUi)
+        |> App.withView(Sokoban.compose)
+        |> App.quitWhen(Controls.wantsQuit)
+        |> App.launch
+```
+
+(One line is still missing — the sound. Chapter 8 adds it.)
+
+Three things to notice. The UiWorld lives in the Session, next to the
+Worldline — the same grammar the time machine used: a plain value carried
+along, never a global. **Two systems** run in order every frame: advance,
+then stamp — `projectUi` always sees the world `step` just produced. And the
+view composes one list from two sources:
+
+```flix
+    /// The whole Session as one draw list: the board's projection plus the
+    /// UI pages, laid out by the engine and returned as the same Placed items.
+    pub def compose(atlas: FontAtlas, s: Session): List[Render.Placed] =
+        List.append(
+            frame(atlas, Worldline.current(s#line)),
+            UiRender.itemsWith(_ -> atlas, _ -> None, s#ui, designSize()))
+```
+
+The title page draws *nothing* from `frame` at all — on that screen,
+everything you see is Spec.
+
+Two of the plugged-in pieces are new App slots. `App.reloadOn(key, f)` runs
+`f` on the key's edge — note `reloadUi`'s signature, `\ {Fs.FileRead}`: the
+one file-reading footprint in the whole game, and it is written on the tin.
+A Spec that fails to parse keeps its old page — reload never breaks a running
+game. And `App.quitWhen` replaces the default "Escape quits": ours refuses to
+quit while the CLEAR panel is up, so that Escape reaches `tick` and closes
+the panel instead. The window's close button still works either way.
 
 ### What just happened
 
@@ -2181,7 +2219,7 @@ forever. On top of that certainty you can write a solution *as data*:
 ```flix
     /// One walked move: tap the key for a frame, then let the slide land
     /// (a slide is 0.125 s = 8 frames at this clock).
-    pub def walk(d: Robot.Direction): List[Cue] =
+    pub def walk(d: Dir4.Dir4): List[Cue] =
         hold(dirInput(d), 1) :: hold(idle(), 8) :: Nil
 
     /// Z held for n frames — each landed reverse slide chains the next
@@ -2194,9 +2232,9 @@ forever. On top of that certainty you can write a solution *as data*:
     /// (upper crate home — CLEAR).
     pub def solveLevelOne(): List[Cue] =
         List.flatMap(walk,
-            Robot.Direction.Left :: Robot.Direction.Up :: Robot.Direction.Right ::
-            Robot.Direction.Up :: Robot.Direction.Right :: Robot.Direction.Up ::
-            Robot.Direction.Left :: Nil)
+            Dir4.Left :: Dir4.Up :: Dir4.Right ::
+            Dir4.Up :: Dir4.Right :: Dir4.Up ::
+            Dir4.Left :: Nil)
 ```
 
 and then a solution *is a test* — this is the chapter's title:

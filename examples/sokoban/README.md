@@ -56,7 +56,7 @@ Crate (105行) / Robot (152行) ── 箱とロボットの手続き描画（�
 Sfx (11行) + GameUi (36行) ── 音への投影と、Title/Clear ページ（json 宣言）
 ```
 
-後回しでよいもの: `Bake` / `GameGallery` / `RobotGallery` / `SfxBake`（生成の道具）、
+後回しでよいもの: `src/bake/`（Bake・GameGallery・RobotGallery・SfxBake — 生成の道具）、
 `Trace` / `Harness` / `SokobanLint`（テストとギャラリーの共有部品）。
 
 ## 1 フレームの流れ
@@ -134,7 +134,7 @@ Flix の `run { ... } with X.runWithY` は「この処理が外の世界に触�
 
 1. `src/Sokoban.flix` — `sfxEvent` に条件を足す（例: ロボットのセルも箱も変わらず
    facing だけ変わった → `Some("bump")`）
-2. `src/SfxBake.flix` — 合成レシピを書いて `bakeAll` に 1 行足す
+2. `src/bake/SfxBake.flix` — 合成レシピを書いて `bakeAll` に 1 行足す
 3. `project.json` — `"sounds"` に `{name, path, looping}` を足す
 4. `make bake` して `make run`
 

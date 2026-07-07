@@ -2,7 +2,7 @@
 
 値ベースの入口教材。人間向けの案内（遊び方・読む順・練習課題・用語集）は README.md にある。
 
-## モジュール地図（src 全16ファイル）
+## モジュール地図（src — 生成系は src/bake/ に隔離）
 
 | ファイル | 役割 |
 |---|---|
@@ -17,9 +17,9 @@
 | Sfx | World の前後 → 鳴らす音名 |
 | Palette | 色のロール名（描画コードは色リテラル禁止） |
 | GameParameters | F1 リロードの調整値（fail-open） |
-| Bake | make bake の入口（Gallery + SfxBake を呼ぶ） |
-| Gallery | ギャラリー生成（PNG/GIF/コマ送りサイト → gallery/index.html） |
-| SfxBake | 効果音8種を SfxSynth で合成して WAV へ |
+| bake/Bake | make bake の入口（Gallery + SfxBake を呼ぶ） |
+| bake/Gallery | ギャラリー生成（PNG/GIF/コマ送りサイト → gallery/index.html） |
+| bake/SfxBake | 効果音8種を SfxSynth で合成して WAV へ |
 | Trace | テストとギャラリー共有のシナリオ（初期 World 集） |
 | Harness | 画面なしフォント焼き |
 
