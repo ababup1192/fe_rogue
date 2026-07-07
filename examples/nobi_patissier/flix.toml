@@ -1,0 +1,11 @@
+[package]
+name        = "ex_nobi_patissier"
+description = "のびのクッキーやさん — 恐竜パティシエのハイスコアゲーム（絵ファースト制作中）"
+version     = "0.1.0"
+flix        = "0.75.0"
+authors     = ["ababup1192 <ababup1192@gmail.com>"]
+
+[dependencies]
+"github:ababup1192/flix_game_engine" = { version = "0.1.0", security = "unrestricted" }
+"github:ababup1192/flix_engine_world" = { version = "0.1.0", security = "unrestricted" }
+"github:ababup1192/flix_engine_tools" = { version = "0.1.0", security = "unrestricted" }
