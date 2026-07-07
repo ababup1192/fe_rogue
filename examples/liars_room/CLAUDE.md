@@ -1,0 +1,62 @@
+# liars_room — うそつきのへや
+
+値ベース第三作（Flix 組み込み Datalog が主役）。部屋を歩いて色つきの住人に話しかけ、
+証言から正直者を推理して 1 人を信じる。全 10 ステージ、難易度はパラメータ化され
+シード固定で決定論的に生成される。コメントは日本語。
+
+## モジュール地図（src — 生成系は src/bake/ に隔離）
+
+| ファイル | 役割 |
+|---|---|
+| Main | App に部品を繋ぐ目次（宣言のみ） |
+| Controls | キー割り当て（Frame → Room.Input）+ step / projectUi / reloadUi / wantsQuit |
+| LiarsRoom | ルールの中心: フェーズ機械込みの tick・Session 型・sfxEvent・BGM の火入れ |
+| Room | 部屋の型（World / Input / Phase / Mark）とグリッドルール（移動・話しかけ対象） |
+| RoomMap | 部屋のテキストアート（小中大 3 テンプレ）+ パーサ |
+| Stmt | 発言の AST（Say / Not）・正規化（否定の偶奇潰し）・日本語文言・直接評価 holds |
+| Rules | ★Datalog ルールパック = 発言の意味論の唯一の置き場（consistent / propagate / reachable） |
+| Solver | 総当たり（solutions / uniqueSolution）と仮置きの深さ（probeDepth）— 独立 2 実装の相互 oracle |
+| Prng | splitmix64（fe_rogue から移植）+ nextIntRange / pick |
+| Gen | 難易度 → 発言セットの組み立て（build = 実行時・無検証、validated = 探索とテスト用） |
+| Stage | 10 ステージの (seed, 難易度) 表。**ステージを足すならここ + SeedSearch + TestSolver の pin** |
+| Human | 人間シルエットの手続き描画（ピクトグラム風・4 方向・歩行 / 立ち・探偵帽） |
+| Palette | DB32 のロール名（NPC 7 色 + 呼び名。描画コードは色リテラル禁止） |
+| View | Session → 絵（Placed 列）。部屋 + 人 + 頭上の印。シェイクは盤面だけ揺らす |
+| GameUi | 全 ui.json ページの読み込みと毎フレームの投影（UiDialog / UiSlots / UiMenu を使う） |
+| Sfx | 前後 Session → 鳴らす音名（実体は LiarsRoom.sfxEvent） |
+| Trace | テストとギャラリー共有の入力部品（タップ・体勢作り・stepN） |
+| Harness | 画面なしフォント焼き + UI spawn（漢字は assets/joyo.txt に列挙したぶんだけ） |
+| LiarsLint | UiWorld → RenderLint 入力の橋（幾何 lint） |
+| bake/Bake | make bake の入口（Sfx + NpcGallery + GameGallery） |
+| bake/SeedSearch | 合格 seed の探索（`bin/flix run --entrypoint SeedSearch.search`） |
+| bake/SfxBake | 効果音 7 種（BGM の時計ループ含む）を SfxSynth で合成 |
+| bake/NpcGallery | シルエット 8 人 × 4 方向の PNG / 歩行 GIF |
+| bake/GameGallery | 画面スクショ 7 枚 + 会話デモ GIF |
+
+test/ は検証のみ: TestRules（意味論の pin）・TestSolver（10 ステージの機械証明:
+唯一解 pin・fold vs Datalog の解集合一致・難易度カーブ・決定論）・
+TestLiarsRoom（フェーズ機械とメモの挙動 pin）・TestViewGuards（UI lint・パーツ数・到達性）。
+
+## パズルの仕組み（要点）
+
+- 発言の意味論は Rules.flix の Datalog ルールパックにしか存在しない
+  （正直者の発言は真・嘘つきの発言は逆、同類/別類は推移閉包で伝播）。
+- 二重否定は表示だけの飾り: Stmt.normalize が inject 前に偶奇で潰すので、
+  Datalog には否定が一切現れない（層化否定の問題なし）。
+- 実行時の Stage.generated は無検証の Gen.build（軽い）。「一意解 + 狙った深さ」の
+  検証は SeedSearch（探索時）と TestSolver（毎回）がやる。
+- **告発・擁護だけの構成では「嘘つき = ちょうど半数」は一意解にできない**
+  （全員の種別を反転した割り当ても整合するため）。半々にするなら同類/別類を入れる。
+
+## コマンド（このディレクトリで）
+
+| コマンド | 用途 |
+|---|---|
+| `make run` | ゲームを起動する |
+| `make bake` | ギャラリーと効果音 WAV を生成する |
+| `make test` | テストを実行する（検証のみ・~6 秒） |
+| `make check` | 型検査だけ走らせる |
+
+## 操作
+
+矢印 = 歩く / Z = 話す・決定 / C = すいりメモ / X = もどる / Enter = 画面送り / F1 = ui.json リロード

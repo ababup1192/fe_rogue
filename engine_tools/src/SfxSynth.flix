@@ -47,6 +47,13 @@ mod SfxSynth {
     pub def blend(a: List[Float64], b: List[Float64]): List[Float64] =
         List.zipWith((x, y) -> x + y, a, b)
 
+    /// 隣り合うサンプルの差分を取り、低い成分を落として「シャッ」というかすれた質感にする
+    /// （紙を走るペン・布ずれのような高い擦過音向け。ノイズにかけると太い「ドッ」が消える）。
+    /// 差分で振幅が増えるぶんは 0.7 倍に均しておく。
+    pub def rasp(samples: List[Float64]): List[Float64] =
+        List.zipWith((current, prev) -> (current - prev) * 0.7,
+                     samples, 0.0 :: samples)
+
     /// 声を順に繋いで一続きにする。
     pub def sequence(voices: List[List[Float64]]): List[Float64] =
         List.flatten(voices)

@@ -1,0 +1,25 @@
+{
+  "title": "Liars' Room — うそつきのへや",
+  "designWidth": 320,
+  "designHeight": 240,
+  "windowWidth": 960,
+  "windowHeight": 720,
+  "windowScale": 3,
+  "clearColor": {"r": 0.133333, "g": 0.125490, "b": 0.203922},
+  "maxDeltaTime": 0.05,
+  "textures": [],
+  "fonts": [
+    {"name": "default", "path": "assets/PixelMplus10-Regular.ttf", "fontSize": 20.0}
+  ],
+  "sounds": [
+    {"name": "move",    "path": "assets/sfx/move.wav",    "looping": false},
+    {"name": "talk_mid",  "path": "assets/sfx/talk_mid.wav",  "looping": false},
+    {"name": "talk_high", "path": "assets/sfx/talk_high.wav", "looping": false},
+    {"name": "talk_low",  "path": "assets/sfx/talk_low.wav",  "looping": false},
+    {"name": "confirm", "path": "assets/sfx/confirm.wav", "looping": false},
+    {"name": "wrong",   "path": "assets/sfx/wrong.wav",   "looping": false},
+    {"name": "clear",   "path": "assets/sfx/clear.wav",   "looping": false},
+    {"name": "memo",    "path": "assets/sfx/memo.wav",    "looping": false},
+    {"name": "bgm",     "path": "assets/sfx/bgm_tick.wav", "looping": true}
+  ]
+}

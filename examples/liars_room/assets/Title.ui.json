@@ -1,0 +1,18 @@
+{
+  "defaultFont": "default",
+  "root": {
+    "name": "Title", "widget": "none", "visible": false, "layer": 1,
+    "dir": "column", "mainAlign": "center", "crossAlign": "center", "gap": 8,
+    "children": [
+      { "name": "title", "widget": "text", "text": "うそつきのへや",
+        "fontSize": 30, "tint": "#eec39a", "zIndex": 110 },
+      { "name": "rule", "widget": "box", "color": "#d9a066",
+        "width": 180, "height": 2, "zIndex": 110 },
+      { "name": "subtitle", "widget": "text", "text": "みんなの話を聞いて 正直者を見つけよう",
+        "fontSize": 10, "tint": "#847e87", "zIndex": 110 },
+      { "name": "spacer", "widget": "none", "width": 1, "height": 14 },
+      { "name": "prompt", "widget": "text", "text": "Enter ではじめる",
+        "fontSize": 12, "tint": "#fbf236", "zIndex": 110 }
+    ]
+  }
+}

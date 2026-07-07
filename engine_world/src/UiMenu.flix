@@ -43,6 +43,22 @@ mod UiMenu {
                 tintById(id, tintOf(idx), acc)
             }, ui)
 
+    /// 項目列の各行の子ノード childName の text を index → 文字列の関数で流し込む
+    /// （applyItemTints の文字版）。チェック欄・状態マークなど「行ごとに変わる短い文字」に使う。
+    /// 例: `applyItemLabels(listPath, "mark", idx -> markGlyph(markOf(idx)), ui)`。
+    /// 対象の子に text が無ければ no-op（setText の性質に従う）。
+    pub def applyItemLabels(listPath: String, childName: String,
+                            textOf: Int32 -> String, ui: UiStore.UiWorld): UiStore.UiWorld =
+        itemIds(listPath, ui)
+            |> List.zipWithIndex
+            |> List.foldLeft((acc, pair) -> {
+                let (idx, id) = pair;
+                match UiStore.pathOf(id, acc) {
+                    case None       => acc
+                    case Some(path) => UiStore.setText("${path}/${childName}", textOf(idx), acc)
+                }
+            }, ui)
+
     /// 項目 entity の text tint を差し替える。項目ノード自身が text を持つ形（項目=text ノード）と、
     /// 固定高の行コンテナ配下に `label` text を置く形（項目=box/none コンテナ）の両対応。
     /// どちらの setTextTint も対象に text が無ければ no-op なので、両パスへ流して存在する方だけ塗る。
@@ -101,6 +117,17 @@ mod UiMenu {
     /// 選択 index を [0, count) へ収める純関数。項目 0 のときは 0。
     pub def clampIndex(itemCount: Int32, sel: Int32): Int32 =
         if (itemCount <= 0) 0 else Int32.max(0, Int32.min(itemCount - 1, sel))
+
+    /// 項目数が表示スロット数を超えるメニューで、選択 sel が見える窓の先頭 offset を決める純関数。
+    /// 選択行を窓の中央寄りに保ちつつ [0, count - slots] にクランプする（先頭で 0 停止・末尾で下停止）。
+    /// slots に収まるときは常に 0。fe_rogue ItemMenu のスクロール窓と同式。
+    pub def windowOffset(sel: {sel = Int32}, count: {count = Int32}, slots: {slots = Int32}): Int32 =
+        if (slots#slots <= 0 or count#count <= slots#slots) 0
+        else {
+            let maxFirst = count#count - slots#slots;
+            let centerOff = (slots#slots - 1) / 2;
+            Int32.min(maxFirst, Int32.max(0, sel#sel - centerOff))
+        }
 
     /// 選択カーソルを項目数 [0, count) の範囲へ収める（防御クランプ）。項目 0 のときは 0。
     /// フェーズ遷移や項目数の変動でカーソルが範囲外に取り残されても、確定・ハイライトが破綻しない。
