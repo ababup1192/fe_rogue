@@ -42,13 +42,6 @@ mod Transform {
     pub def setScale(scale: Vec2.Vec2, t: Transform): Transform =
         { scale = scale | t }
 
-    /// せん断（ラジアン）を取得する
-    pub def getSkew(t: Transform): Float64 = t#skew
-
-    /// せん断（ラジアン）を設定する
-    pub def setSkew(skew: Float64, t: Transform): Transform =
-        { skew = skew | t }
-
     // ── 派生操作 ──
 
     /// ローカル座標系でオフセット分だけ移動する

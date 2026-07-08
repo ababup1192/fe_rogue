@@ -34,46 +34,6 @@ mod AudioStreamPlayer {
             volume   = 1.0f32
         })
 
-    /// stream (サウンド論理名) を取得する
-    pub def getStream(player: AudioStreamPlayer): String =
-        let AudioStreamPlayer.AudioStreamPlayer(r) = player;
-        r#stream
-
-    /// stream を差し替える
-    pub def setStream(stream: String, player: AudioStreamPlayer): AudioStreamPlayer =
-        let AudioStreamPlayer.AudioStreamPlayer(r) = player;
-        AudioStreamPlayer.AudioStreamPlayer({ stream = stream | r })
-
-    /// autoplay フラグを取得する
-    pub def isAutoplay(player: AudioStreamPlayer): Bool =
-        let AudioStreamPlayer.AudioStreamPlayer(r) = player;
-        r#autoplay
-
-    /// autoplay フラグを設定する
-    pub def setAutoplay(autoplay: Bool, player: AudioStreamPlayer): AudioStreamPlayer =
-        let AudioStreamPlayer.AudioStreamPlayer(r) = player;
-        AudioStreamPlayer.AudioStreamPlayer({ autoplay = autoplay | r })
-
-    /// loop フラグを取得する
-    pub def isLoop(player: AudioStreamPlayer): Bool =
-        let AudioStreamPlayer.AudioStreamPlayer(r) = player;
-        r#loop
-
-    /// loop フラグを設定する
-    pub def setLoop(loop: Bool, player: AudioStreamPlayer): AudioStreamPlayer =
-        let AudioStreamPlayer.AudioStreamPlayer(r) = player;
-        AudioStreamPlayer.AudioStreamPlayer({ loop = loop | r })
-
-    /// volume を取得する
-    pub def getVolume(player: AudioStreamPlayer): Float32 =
-        let AudioStreamPlayer.AudioStreamPlayer(r) = player;
-        r#volume
-
-    /// volume を設定する (Node 自身の volume フィールド、ホスト側 OpenAL は別途反映が必要)
-    pub def setVolumeField(volume: Float32, player: AudioStreamPlayer): AudioStreamPlayer =
-        let AudioStreamPlayer.AudioStreamPlayer(r) = player;
-        AudioStreamPlayer.AudioStreamPlayer({ volume = volume | r })
-
     /// 指定した名前のオーディオを再生する（先頭から再生し直す）
     pub def play(name: String): Unit \ GameEngine.Audio =
         GameEngine.Audio.playAudio(name)

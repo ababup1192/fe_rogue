@@ -93,25 +93,13 @@ mod NineSlice {
         let NineSlice.NineSlice(r) = panel;
         NineSlice.NineSlice({backgroundAlpha = alpha | r})
 
-    pub def getBackgroundAlpha(panel: NineSlice): Float32 =
-        let NineSlice.NineSlice(r) = panel;
-        r#backgroundAlpha
-
     pub def setBorderColor(color: Color, panel: NineSlice): NineSlice =
         let NineSlice.NineSlice(r) = panel;
         NineSlice.NineSlice({borderColor = color | r})
 
-    pub def getBorderColor(panel: NineSlice): Color =
-        let NineSlice.NineSlice(r) = panel;
-        r#borderColor
-
     pub def setBorderAlpha(alpha: Float32, panel: NineSlice): NineSlice =
         let NineSlice.NineSlice(r) = panel;
         NineSlice.NineSlice({borderAlpha = alpha | r})
-
-    pub def getBorderAlpha(panel: NineSlice): Float32 =
-        let NineSlice.NineSlice(r) = panel;
-        r#borderAlpha
 
     /// 枠線の太さ（design px）。0 なら枠線描画なし。小数（例 0.5）も指定できる。
     pub def setBorderWidth(width: Float64, panel: NineSlice): NineSlice =
@@ -137,11 +125,6 @@ mod NineSlice {
         NineSlice.NineSlice({stripeColor = color, stripeAlpha = alpha,
                      stripeWidth = Float64.max(0.0, width),
                      stripePeriod = Float64.max(0.0, period) | r})
-
-    /// 斜線ハッチが有効か（width>0 かつ alpha>0）。
-    pub def hasStripe(panel: NineSlice): Bool =
-        let NineSlice.NineSlice(r) = panel;
-        r#stripeWidth > 0.0 and r#stripeAlpha > 0.0f32
 
     pub def getBorderWidth(panel: NineSlice): Float64 =
         let NineSlice.NineSlice(r) = panel;

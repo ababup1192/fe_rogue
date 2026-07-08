@@ -68,14 +68,6 @@ mod Polygon {
         let Polygon.Polygon(r) = poly;
         Polygon.Polygon({visual = f(r#visual) | r})
 
-    pub def getPoints(poly: Polygon): List[Vec2.Vec2] =
-        let Polygon.Polygon(r) = poly;
-        r#points
-
-    pub def setPoints(points: List[Vec2.Vec2], poly: Polygon): Polygon =
-        let Polygon.Polygon(r) = poly;
-        Polygon.Polygon({points = points | r})
-
     pub def setAlpha(alpha: Float32, poly: Polygon): Polygon =
         let Polygon.Polygon(r) = poly;
         Polygon.Polygon({alpha = alpha | r})

@@ -83,13 +83,6 @@ mod Arc {
         let Arc.Arc(r) = arc;
         Arc.Arc({width = width | r})
 
-    pub def getStartAngle(arc: Arc): Float64 =
-        let Arc.Arc(r) = arc; r#startAngle
-
-    pub def setStartAngle(startAngle: Float64, arc: Arc): Arc =
-        let Arc.Arc(r) = arc;
-        Arc.Arc({startAngle = startAngle | r})
-
     pub def getEndAngle(arc: Arc): Float64 =
         let Arc.Arc(r) = arc; r#endAngle
 

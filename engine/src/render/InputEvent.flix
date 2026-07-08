@@ -11,12 +11,4 @@ pub mod InputEvent {
             else acc,
             Set.empty(),
             GameEngine.allKeys())
-
-    /// 現在押されているマウスボタンのセットを取得する
-    pub def currentMouseButtons(): Set[GameEngine.MouseButton] \ GameEngine.Game =
-        List.foldLeft((acc, btn) ->
-            if (GameEngine.Game.isMouseButtonPressed(btn)) Set.insert(btn, acc)
-            else acc,
-            Set.empty(),
-            GameEngine.allMouseButtons())
 }

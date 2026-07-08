@@ -108,13 +108,6 @@ mod TileLayer {
         { x = v#x * s + s / 2.0,
           y = v#y * s + s / 2.0 }
 
-    /// ローカルピクセル座標 → グリッド座標に変換する。範囲外でも値を返す（負値あり得る）。
-    /// floor 切り捨てを使い、負値でも正しい結果になる
-    /// （truncate だと -0.5 → 0、floor なら -1 が正解）。
-    pub def localToMap(localPos: Vec2.Vec2, tileMap: TileLayer): {x = Int32, y = Int32} =
-        let s = tileSize(tileMap);
-        Vec2i.fromVec2Floor(Vec2.div(localPos, s))
-
     /// 指定マスのソース ID を返す。
     /// 空セル（範囲外含む）: -1
     /// 壁セル: 0（本プロジェクトは intGrid 二値構造、source は 1 種類のみ）

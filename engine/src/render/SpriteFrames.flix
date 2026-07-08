@@ -44,11 +44,6 @@ mod SpriteFrames {
         let SpriteFrames.SpriteFrames(map) = spriteFrames;
         Map.get(name, map)
 
-    /// アニメーションが存在するか
-    pub def hasAnimation(name: String, spriteFrames: SpriteFrames): Bool =
-        let SpriteFrames.SpriteFrames(map) = spriteFrames;
-        Map.memberOf(name, map)
-
     /// アニメーション名の一覧を返す
     pub def animationNames(spriteFrames: SpriteFrames): List[String] =
         let SpriteFrames.SpriteFrames(map) = spriteFrames;

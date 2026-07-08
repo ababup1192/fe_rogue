@@ -74,41 +74,15 @@ mod Text {
         let Text.Text(r) = label;
         Text.Text({ text = text | r })
 
-    /// フォントサイズ（display 単位 px）を取得する
-    pub def getFontSize(label: Text): Float64 =
-        let Text.Text(r) = label;
-        r#fontSize
-
-    /// フォントサイズを設定する。Text の表示サイズはこの値で決まる
-    /// （`scale` フィールドは無視される）。リサイズ編集の更新先
-    pub def setFontSize(fontSize: Float64, label: Text): Text =
-        let Text.Text(r) = label;
-        Text.Text({ fontSize = fontSize | r })
-
-    /// テキストを取得する
-    pub def getText(label: Text): String =
-        let Text.Text(r) = label;
-        r#text
-
     /// 横方向アライメントを設定する
     pub def setHorizontalAlignment(alignment: HorizontalAlignment, label: Text): Text =
         let Text.Text(r) = label;
         Text.Text({ horizontalAlignment = alignment | r })
 
-    /// 横方向アライメントを取得する
-    pub def getHorizontalAlignment(label: Text): HorizontalAlignment =
-        let Text.Text(r) = label;
-        r#horizontalAlignment
-
     /// 縦方向アライメントを設定する
     pub def setVerticalAlignment(alignment: VerticalAlignment, label: Text): Text =
         let Text.Text(r) = label;
         Text.Text({ verticalAlignment = alignment | r })
-
-    /// 縦方向アライメントを取得する
-    pub def getVerticalAlignment(label: Text): VerticalAlignment =
-        let Text.Text(r) = label;
-        r#verticalAlignment
 
     /// テキストを描画したときに占める表示サイズを返す。
     /// width  = 行の中で最も幅広い行の advance 合計 (× scale)

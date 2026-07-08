@@ -74,20 +74,10 @@ mod Sprite {
         let Sprite.Sprite(r) = sprite;
         Sprite.Sprite({alpha = alpha | r})
 
-    /// テクスチャ名を変更する
-    pub def setTexture(texture: String, sprite: Sprite): Sprite =
-        let Sprite.Sprite(r) = sprite;
-        Sprite.Sprite({texture = texture | r})
-
     /// 水平反転を設定する
     pub def setFlipH(h: Bool, sprite: Sprite): Sprite =
         let Sprite.Sprite(r) = sprite;
         Sprite.Sprite({flipH = h | r})
-
-    /// 垂直反転を設定する
-    pub def setFlipV(v: Bool, sprite: Sprite): Sprite =
-        let Sprite.Sprite(r) = sprite;
-        Sprite.Sprite({flipV = v | r})
 
     /// テクスチャ内の切り出し矩形を設定する。None ならテクスチャ全体を使う
     pub def setRegionRect(rect: Option[Rect2.Rect2], sprite: Sprite): Sprite =
@@ -109,20 +99,10 @@ mod Sprite {
         let Sprite.Sprite(r) = sprite;
         Sprite.Sprite({frame = frame | r})
 
-    /// centered フラグ (中心を原点にするか) を設定する
-    pub def setCentered(centered: Bool, sprite: Sprite): Sprite =
-        let Sprite.Sprite(r) = sprite;
-        Sprite.Sprite({centered = centered | r})
-
     /// 描画オフセット (centered 基準点からのずれ) を設定する
     pub def setOffset(offset: Vec2.Vec2, sprite: Sprite): Sprite =
         let Sprite.Sprite(r) = sprite;
         Sprite.Sprite({offset = offset | r})
-
-    /// 表示セルを (col, row) 座標で設定する。内部で frame = row * hframes + col に変換される
-    pub def setFrameCoords(col: Int32, row: Int32, sprite: Sprite): Sprite =
-        let Sprite.Sprite(r) = sprite;
-        Sprite.Sprite({frame = row * r#hframes + col | r})
 
     /// Sprite を Drawable に変換する。
     /// region / hframes / vframes / frame から GPU シェーダ用 uvOffset/uvScale を計算するため

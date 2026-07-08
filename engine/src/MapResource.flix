@@ -151,48 +151,6 @@ mod MapResource {
         "1000" :: "1001" :: "1010" :: "1011" ::
         "1100" :: "1101" :: "1110" :: "1111" :: Nil
 
-    /// 4-trit (W=壁, F=床, E=空) の auto-layer パターンを「使用頻度別セクション」で並べた定義。
-    /// IDE の auto-layer タブで段階的に開示するため、セクション毎にキーをまとめる。
-    /// 各タプル = (見出し用ヒント, キーリスト)。見出しは表示しないが debug 用に保持。
-    pub def wallMapSections(): List[(String, List[String])] =
-        // Section 1: 四角い部屋の最低限 (8 パターン)
-        ("room-basic",
-            "EWFW" ::  // 上辺 (床が真下)
-            "FWEW" ::  // 下辺 (床が真上)
-            "WFWE" ::  // 左辺 (床が真右)
-            "WEWF" ::  // 右辺 (床が真左)
-            "EWWE" ::  // 左上外コーナー
-            "EEWW" ::  // 右上外コーナー
-            "WWEE" ::  // 左下外コーナー
-            "WEEW" ::  // 右下外コーナー
-            Nil) ::
-        // Section 2: 壁の塊 / 厚い壁 (5 パターン)
-        ("solid-walls",
-            "WWWW" ::  // 中央壁 (壁の中身)
-            "EWWW" ::  // 上が空、他壁 (壁の上端)
-            "WEWW" ::  // 右が空、他壁
-            "WWEW" ::  // 下が空、他壁
-            "WWWE" ::  // 左が空、他壁
-            Nil) ::
-        // Section 3: 通路 T 字 (床が一方向だけ通る、4 パターン)
-        ("corridors",
-            "FWWW" ::  // 床が上、他壁 (上から床に降りる T 字)
-            "WFWW" ::  // 床が右
-            "WWFW" ::  // 床が下
-            "WWWF" ::  // 床が左
-            Nil) ::
-        // Section 4: 行き止まり / 孤立 (7 パターン)
-        ("dead-ends",
-            "WEEE" ::  // 上にだけ壁 (行き止まりの先)
-            "EWEE" ::  // 右にだけ壁
-            "EEWE" ::  // 下にだけ壁
-            "EEEW" ::  // 左にだけ壁
-            "EEEE" ::  // 孤立壁
-            "FEEE" ::  // 床が上、他空 (床と空の境界)
-            "EFEE" ::  // 床が右、他空
-            Nil) ::
-        Nil
-
     /// PatternCell と intGrid 値 1 個の整合性を判定する。
     pub def patternCellMatches(cell: PatternCell, intGridValue: Int32): Bool =
         match cell {
