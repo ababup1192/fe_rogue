@@ -9,9 +9,9 @@
 ///   3. World ランタイム handler の注入（`withWorld`）と TurnPhase↔World の境界写像（`simPhaseOf`）。
 mod WorldDriver {
 
-    /// TurnPhase↔World の境界写像。19-case `TurnPhase.Phase` を World の 3-case `SimPhase` に写す。
-    /// メニュー遷移・演出待ち系は全て「味方ターン」配下＝`PlayerTurn`（細分は UiState.modalMode /
-    /// anim-queue）。`Game.start` の TurnPhase.State dual-write と `stepFrame` の phase parity 検査が使う。
+    /// 19-case `TurnPhase.Phase`（World 権威）から 3-case `SimPhase` を導出する写像。
+    /// メニュー遷移・演出待ち系は全て「味方ターン」配下＝`PlayerTurn`（細分は 19-case が持つ）。
+    /// `World.PhaseQuery.phase`（3-case read seam）が使う。
     pub def simPhaseOf(phase: TurnPhase.Phase): SimPhase = match phase {
         case TurnPhase.Phase.EnemyTurn => SimPhase.EnemyTurn
         case TurnPhase.Phase.GameOver  => SimPhase.GameOver
@@ -45,8 +45,8 @@ mod WorldDriver {
             // statusEffects 読み込み（Bevy Query）。EntityRef で引く faction 非依存の read seam。
             def statusEffects(ref, k) = k(World.statusEffectsOf(ref, Ref.get(worldRef)))
         } with handler World.PhaseQuery {
-            // turn phase（sim-phase 3-case）を worldRef から読む read seam。
-            def phase(k) = k(World.turnPhaseOf(Ref.get(worldRef)))
+            // turn phase の 3-case sim-phase を worldRef の 19-case 権威から導出する read seam。
+            def phase(k) = k(simPhaseOf(World.turnPhaseOf(Ref.get(worldRef))))
         } with handler World.WorldQuery {
             // 現 World スナップショット（worldRef）を返す汎用 read seam。フラグ reader 共通窓口。
             def get(k) = k(Ref.get(worldRef))
@@ -76,8 +76,8 @@ mod WorldDriver {
     /// （`current`＝worldRef 値）を受け、次フレームへ持ち越す world を返す。
     /// region の worldRef は top-level から触れないため値渡し。
     ///
-    /// パイプライン: refreshMirror → stepWorld → phase parity 検査
-    pub def stepFrame(current: World, dt: Duration.Duration): World \ {IO, TurnPhase.State} =
+    /// パイプライン: refreshMirror → stepWorld
+    pub def stepFrame(current: World, dt: Duration.Duration): World =
         // refreshMirror は frame カウンタを進めるだけ。タイルハンドルは build choke の
         // `Cmd.SetTileLayers` が直接 seed する（フレーム内の差分 bake は無い）。
         let world1 = World.refreshMirror(current);
@@ -86,13 +86,8 @@ mod WorldDriver {
         // 補間結果（MarkerMove）は捨てる: 描画位置は render 側が `World.visualPosOf` で
         // renderPos store から直接導出する（marker への書き戻しは持たない）。
         // 以後の World→World System はここに足す。
+        // phase は World 単一権威（`TurnPhase.State` facade が World.turnPhase へ直接書く）ゆえ
+        // 乖離の余地が無く parity 検査は不要（かつて 3-case mirror と dual-write していた頃の名残を撤去）。
         let (world2, _moved) = World.stepWorld(world1, Duration.toSeconds(dt));
-        // phase は `TurnPhase.State` handler が `put` のたび `Cmd.SetPhase` で World へ dual-write 済み
-        // ＝World.turnPhase は command 由来（全 put サイトを handler 1 箇所で被覆）。並走 assert は
-        // command 由来 phase と State の乖離（write 漏れ）を検出する＝dual-write ゆえ無音だが、将来
-        // dual-write を割る時のガード。
-        if (World.turnPhaseOf(world2) != simPhaseOf(TurnPhase.State.get()))
-            println("[F2 PHASE DIFF] world=${World.turnPhaseOf(world2)} state=${simPhaseOf(TurnPhase.State.get())}")
-        else ();
         world2
 }

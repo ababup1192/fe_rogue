@@ -6,9 +6,9 @@
 // 道標: ルート ECS_WORKFLOW.md。
 
 /// sim としての「誰のターンか」を表す 3-case の phase。
-/// 現 19-case `TurnPhase.Phase`（メニュー遷移・演出待ち混在）は **sim-phase(これ) ＋ UiState.modalMode** に分解する。
-/// World が TurnPhase.Phase を直接持つと循環依存（TurnPhase→World.Command）になるので、World 側はこの中立な
-/// 3-case を持ち、19→3 の写像は境界（`WorldDriver.simPhaseOf`）で行う。
+/// World の権威は 19-case `TurnPhase.Phase`（`turnPhase` field）で持ち、この 3-case は
+/// `WorldDriver.simPhaseOf(turnPhaseOf(world))` で**導出**する派生型（敵ターン / GameOver の粗い判定用）。
+/// `TurnPhase.Phase` は純 ADT なので World→Phase の型依存は一方向で循環しない。
 pub enum SimPhase with Eq, ToString {
     case PlayerTurn   // 味方ターン（カーソル/移動/メニュー/演出待ち = UiState.modalMode と anim-queue で細分）
     case EnemyTurn    // 敵ターン
@@ -86,7 +86,7 @@ pub type alias MapLayout = {
 pub enum World {
     case World({ tick = Int32,
                  // turn FSM の World mirror（dual・read-model）。権威は当面 TurnPhase.State。
-                 turnPhase = SimPhase,
+                 turnPhase = TurnPhase.Phase,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
                  // unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
                  // でなく **この enum タグ `teamOf` で読む**（Bevy の Team component 相当）。
@@ -249,7 +249,7 @@ pub enum World {
 mod World {
 
     pub def empty(): World =
-        World.World({tick = 0, turnPhase = SimPhase.PlayerTurn,
+        World.World({tick = 0, turnPhase = TurnPhase.Phase.PlayerCursor,
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      statusEffects = Map.empty(),
                      hp = Map.empty(), weapons = Map.empty(), team = Map.empty(),
@@ -291,13 +291,10 @@ mod World {
                      enemyTurnBusy = false, phaseObservedEnemy = false,
                      rng = Prng.seed(0i64)})
 
-    /// World の turnPhase を読む（read-model アクセサ）。
-    pub def turnPhaseOf(world: World): SimPhase =
+    /// World の turnPhase（19-case・phase の単一権威）を読む（read-model アクセサ）。
+    /// 3-case sim-phase が要る所は `WorldDriver.simPhaseOf(turnPhaseOf(world))` で導出する。
+    pub def turnPhaseOf(world: World): TurnPhase.Phase =
         let World.World(w) = world; w#turnPhase
-
-    /// turnPhase を World へ mirror（dual・no-op）。gameLoop が TurnPhase.State → SimPhase 写像後に呼ぶ。
-    pub def mirrorTurnPhase(phase: SimPhase, world: World): World =
-        let World.World(w) = world; World.World({turnPhase = phase | w})
 
     /// per-frame の World 更新。**縮退版**: 全 store が command 権威（spawn/despawn/build choke の Cmd が
     /// 唯一の書込・prune は `Cmd.Despawn`/`Cmd.ClearUnits` が担う）なので、scene からの derive/prune は無い。
@@ -491,7 +488,7 @@ mod World {
         case TickPlayers(List[EntityId])    // 味方ターン開始（非 usedStairs の id のみ）
         case TickEnemies                    // 敵ターン開始（全敵）
         case Move(EntityRef, {x = Int32, y = Int32})  // 位置 write（mid-frame currency）
-        case SetPhase(SimPhase)             // turn phase write（TurnPhase.State handler が dual-write で emit）
+        case SetPhase(TurnPhase.Phase)      // turn phase write（19-case・TurnPhase.State facade が World 権威へ書く）
         case SetHp(EntityRef, Int32)        // hp write（dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
         case SetBaseStats(EntityRef, Combat.BaseStats)  // base 戦闘値 write（hp/weapons 同型・両 faction・resource 書換ごとに dual-write）
@@ -1160,10 +1157,26 @@ mod World {
     }
 
     /// SimPhase の ordinal（cmdKey の SetPhase 用）。
-    def phaseToInt(p: SimPhase): Int32 = match p {
-        case SimPhase.PlayerTurn => 0
-        case SimPhase.EnemyTurn  => 1
-        case SimPhase.GameOver   => 2
+    def turnPhaseToInt(p: TurnPhase.Phase): Int32 = match p {
+        case TurnPhase.Phase.PlayerCursor      => 0
+        case TurnPhase.Phase.PlayerMoving      => 1
+        case TurnPhase.Phase.ActionSelect      => 2
+        case TurnPhase.Phase.WeaponSelect      => 3
+        case TurnPhase.Phase.ItemSelect        => 4
+        case TurnPhase.Phase.ItemActionSelect  => 5
+        case TurnPhase.Phase.StaffAim          => 6
+        case TurnPhase.Phase.ThrowAim          => 7
+        case TurnPhase.Phase.TradeTargetSelect => 8
+        case TurnPhase.Phase.TradeInventory    => 9
+        case TurnPhase.Phase.AttackForecast    => 10
+        case TurnPhase.Phase.PlayerAttack      => 11
+        case TurnPhase.Phase.PlayerAttackHold  => 12
+        case TurnPhase.Phase.LevelUpView       => 13
+        case TurnPhase.Phase.GatherMove        => 14
+        case TurnPhase.Phase.StairsExit        => 15
+        case TurnPhase.Phase.EnemyTurn         => 16
+        case TurnPhase.Phase.GameOver          => 17
+        case TurnPhase.Phase.SuspendConfirm    => 18
     }
 
     /// Dir4 の ordinal（cmdKey の SetFacing 用）。
@@ -1224,7 +1237,7 @@ mod World {
             // remaining はここに載らないが golden-trace の最終 World 射影が turn-count を捕捉する。
             case Cmd.Add(ref, s)              => ("Add", toUid(ref), statusKindToInt(s#effect), s#magnitude)
             case Cmd.Seed(ref, _)             => ("Seed", toUid(ref), 0, 0)
-            case Cmd.SetPhase(p)              => ("Phase", phaseToInt(p), 0, 0)
+            case Cmd.SetPhase(p)              => ("Phase", turnPhaseToInt(p), 0, 0)
             case Cmd.TickPlayers(_)           => ("TickP", 0, 0, 0)
             case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)

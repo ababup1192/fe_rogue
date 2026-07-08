@@ -456,28 +456,28 @@ mod TestWorld {
         Assert.assertEq(expected = (1, 0),
             (List.length(World.tileLayersOf(w1)), List.length(World.tileLayersOf(w2))))
 
-    // ── turn FSM の World mirror（SimPhase）──
+    // ── turn FSM の World 権威（19-case TurnPhase.Phase）──
 
-    /// 既定は PlayerTurn・`mirrorTurnPhase`/`turnPhaseOf` が round-trip する。
+    /// 既定は PlayerCursor・`Cmd.SetPhase`/`turnPhaseOf` が round-trip する。
     @Test
-    def testTurnPhaseMirrorRoundTrips(): Unit \ Assert =
-        let after = World.mirrorTurnPhase(SimPhase.EnemyTurn, World.empty());
+    def testTurnPhaseRoundTrips(): Unit \ Assert =
+        let after = World.applyCmd(World.Cmd.SetPhase(TurnPhase.Phase.EnemyTurn), World.empty());
         Assert.assertEq(
-            expected = (SimPhase.PlayerTurn, SimPhase.EnemyTurn),
+            expected = (TurnPhase.Phase.PlayerCursor, TurnPhase.Phase.EnemyTurn),
             (World.turnPhaseOf(World.empty()), World.turnPhaseOf(after)))
 
     /// 不変条件: `refreshMirror`（毎フレーム）は turnPhase を**保持**する（tick を進めるだけの段だから）。
     @Test
     def testRefreshMirrorPreservesTurnPhase(): Unit \ Assert =
-        let seeded = World.mirrorTurnPhase(SimPhase.EnemyTurn, World.empty());
+        let seeded = World.applyCmd(World.Cmd.SetPhase(TurnPhase.Phase.EnemyTurn), World.empty());
         let refreshed = World.refreshMirror(seeded);
-        Assert.assertEq(expected = SimPhase.EnemyTurn, World.turnPhaseOf(refreshed))
+        Assert.assertEq(expected = TurnPhase.Phase.EnemyTurn, World.turnPhaseOf(refreshed))
 
-    /// `Cmd.SetPhase` が World.turnPhase を command で更新する（TurnPhase.State handler が put 時に emit）。
+    /// `Cmd.SetPhase` が World.turnPhase（19-case 権威）を command で更新する（TurnPhase.State facade が put 時に書く）。
     @Test
     def testSetPhaseCommandUpdatesTurnPhase(): Unit \ Assert =
-        let after = World.applyCmd(World.Cmd.SetPhase(SimPhase.EnemyTurn), World.empty());
-        Assert.assertEq(expected = SimPhase.EnemyTurn, World.turnPhaseOf(after))
+        let after = World.applyCmd(World.Cmd.SetPhase(TurnPhase.Phase.EnemyTurn), World.empty());
+        Assert.assertEq(expected = TurnPhase.Phase.EnemyTurn, World.turnPhaseOf(after))
 
     /// `Cmd.SetAlerted` が World の enemyAlerted を更新し `alertedOf` で読める（flag は World 権威）。
     @Test

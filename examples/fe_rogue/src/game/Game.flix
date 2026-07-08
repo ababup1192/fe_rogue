@@ -549,9 +549,6 @@ mod Game {
             // BoardQuery handler が読む World の窓口（毎フレーム頭で gameLoop が更新）。World は
             // 各 store の単一権威。
             let worldRef = Ref.fresh(rc, World.empty());
-            // turn phase の Ref。TurnPhase.State handler を inline 化し、`put` でこの Ref と worldRef.turnPhase を
-            // **同時更新（dual-write）**する＝全 put サイトが自動で World へ command 反映される（per-site 改修ゼロ）。
-            let turnPhaseRef = Ref.fresh(rc, TurnPhase.Phase.PlayerCursor);
             // ゲーム全体の進行状態（画面）。起動直後はタイトル画面（はじめから / 中断から再開）から始める。
             let phaseRef = Ref.fresh(rc, GamePhase.Title);
             // 試練型の部屋湧きクロック。WandererSpawnRequest が来るたび +1 し、
@@ -771,11 +768,10 @@ mod Game {
               with ItemPickupPopupState.withState(rc) // 中央アイテム取得ポップアップの状態を resource 化
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
               with EnemyTurn.withQueue(rc)        // 敵ターンキュー（1 step / 1 frame 駆動）
-              with handler TurnPhase.State {       // inline 化し put を World へ dual-write（全 put が World.turnPhase 反映）
-                  def get(k) = k(Ref.get(turnPhaseRef))
+              with handler TurnPhase.State {       // World 単一権威への facade（get/put とも World.turnPhase 経由・呼び出し側 38+31 は無改修）
+                  def get(k) = k(World.turnPhaseOf(Ref.get(worldRef)))
                   def put(target, k) = {
-                      Ref.put(target, turnPhaseRef);
-                      Ref.put(World.applyCmd(World.Cmd.SetPhase(WorldDriver.simPhaseOf(target)), Ref.get(worldRef)), worldRef);
+                      Ref.put(World.applyCmd(World.Cmd.SetPhase(target), Ref.get(worldRef)), worldRef);
                       k()
                   }
               }

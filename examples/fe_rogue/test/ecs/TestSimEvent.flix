@@ -225,7 +225,7 @@ mod TestSimEvent {
             World.Cmd.ClearImmobilized(pl) ::
             World.Cmd.Add(pl, st) ::
             World.Cmd.Seed(pl, Nil) ::
-            World.Cmd.SetPhase(SimPhase.PlayerTurn) ::
+            World.Cmd.SetPhase(TurnPhase.Phase.PlayerCursor) ::
             World.Cmd.TickPlayers(Nil) ::
             World.Cmd.TickEnemies ::
             World.Cmd.SetEnemyTurnBusy(true) ::
