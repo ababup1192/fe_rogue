@@ -540,6 +540,12 @@ mod Game {
             // 味方の死亡位置（id → セル）。GameOverRequest.markDeaths が除去前に蓄積し、女神の加護の
             // 「その場復活」で参照する。id でキーするので過去フロアの残骸は復活対象 id にだけ読まれ無害。
             let deathMarksRef = Ref.fresh(rc, (Map.empty(): Map[Int32, {x = Int32, y = Int32}]));
+            // 選択カーソルの視覚部（描画位置/tween/引っかかり/可視）の shell 保持。論理部（指しセル等）は
+            // World.cursorLogical が単一権威で、下の CursorState facade が両者を合成/分割する。
+            let cursorVisualRef = Ref.fresh(rc,
+                {renderPos = Vec2.zero(),
+                 tweens = (Map.empty(): EcsTween.Tweens[Int32, CursorState.Channel]),
+                 snagRemaining = 0.0, visible = true});
             // ユニットカタログをロード + schema 整合性検査（不正データを起動直後に検出して即終了する）。
             // 各 load() 内で失敗内容を panic に出して原因を即可視化する。
             // units.json の spriteFrames は格子インデックス形式で書かれているため、
@@ -768,7 +774,28 @@ mod Game {
                   def get(k)         = k(World.selectionOf(Ref.get(worldRef)))
                   def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetSelection(target), Ref.get(worldRef)), worldRef); k() }
               }
-              with CursorState.withState(rc)      // 選択カーソルの論理状態（指しセル/加速/ホバー/描画位置/tween）を resource 化
+              with handler CursorState.State {
+                  // 論理部（指しセル/ホバー/加速の hold）の単一権威は World.cursorLogical。視覚部（描画位置/
+                  // tween/引っかかり/可視）は shell の cursorVisualRef 残置。get は両者を合成し、put は
+                  // 論理→World・視覚→Ref に分けて書く（呼び出し側は whole Data のまま無改修・test は CursorState.withState の Ref）。
+                  def get(k) = {
+                      let lg = World.cursorLogicalOf(Ref.get(worldRef));
+                      let vs = Ref.get(cursorVisualRef);
+                      k({gridPos = lg#gridPos, lastHoveredEnemyId = lg#lastHoveredEnemyId,
+                         holdDir = lg#holdDir, holdSteps = lg#holdSteps,
+                         renderPos = vs#renderPos, tweens = vs#tweens,
+                         snagRemaining = vs#snagRemaining, visible = vs#visible})
+                  }
+                  def put(target, k) = {
+                      Ref.put(World.applyCmd(World.Cmd.SetCursorLogical(
+                          {gridPos = target#gridPos, lastHoveredEnemyId = target#lastHoveredEnemyId,
+                           holdDir = target#holdDir, holdSteps = target#holdSteps}),
+                          Ref.get(worldRef)), worldRef);
+                      Ref.put({renderPos = target#renderPos, tweens = target#tweens,
+                               snagRemaining = target#snagRemaining, visible = target#visible}, cursorVisualRef);
+                      k()
+                  }
+              }
               with CameraState.withState(rc)      // 追従カメラの視点状態（ターゲット/smoothPosition/追従パラメータ）を resource 化
               with RangeOverlayState.withState(rc) // 範囲オーバーレイ 7 種のセル集合（Option 在/不在=表示トグル）を resource 化
               with handler ArrowCursorState.State {

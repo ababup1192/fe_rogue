@@ -63,10 +63,11 @@ mod StaffCast {
 
     /// 回復の杖が味方/敵に当たった瞬間だけ回復音を鳴らす（空振りは鳴らさない）。
     /// Blowback / Swap は命中と移動が視覚的に自明なため効果音を持たない（現状 SE 未設定）。
-    def playHitSound(effect: Staff.StaffEffect, hit: RayHit): Unit \ GameEngine.Audio =
+    def playHitSound(effect: Staff.StaffEffect, hit: RayHit): Unit \
+            {GameEngine.Audio, World.Command, World.WorldQuery} =
         match (effect, hit) {
-            case (Staff.StaffEffect.Heal, RayHit.HitPlayer(_, _)) => AudioStreamPlayer.play("cure")
-            case (Staff.StaffEffect.Heal, RayHit.HitEnemy(_, _))  => AudioStreamPlayer.play("cure")
+            case (Staff.StaffEffect.Heal, RayHit.HitPlayer(_, _)) => ViewReplay.sound("cure")
+            case (Staff.StaffEffect.Heal, RayHit.HitEnemy(_, _))  => ViewReplay.sound("cure")
             case _                                                 => ()
         }
 
@@ -463,7 +464,7 @@ mod StaffCast {
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State, GameEngine.Audio,
                 World.Command, World.WorldQuery} =
         // 消費アイテムは使う時点で効果が自己確定するため、杖の空振り判定とは異なり無条件で使用音を鳴らす
-        AudioStreamPlayer.play("cure");
+        ViewReplay.sound("cure");
         applyConsumableSelfEffect(playerId, player, item);
         consumeConsumable(playerId, idx, item);
         PlayerScene.clearSelectedItem(playerId);
@@ -856,7 +857,7 @@ mod StaffCast {
             case Consumable.ConsumableEffect.BlastBottle => throwBottleBlast("${PlayerScene.displayName(playerId)}", item, hit)
             case _                                       =>
                 // 効果の良し悪しで効果音を出し分ける: 回復・バフ系は "cure"、デバフ系は "damage"。
-                AudioStreamPlayer.play(consumableHitSound(item#effect));
+                ViewReplay.sound(consumableHitSound(item#effect));
                 throwConsumableResolved(playerId, item, hit)
         }
 
@@ -877,7 +878,7 @@ mod StaffCast {
             \ {GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio,
                 World.Command, World.WorldQuery} =
-        AudioStreamPlayer.play("magic");
+        ViewReplay.sound("magic");
         let dmg = item#magnitude;
         // 着弾セルに爆発エフェクトを出してからダメージを与える。
         match hit {
@@ -898,7 +899,7 @@ mod StaffCast {
             \ {GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio,
                 World.Command, World.WorldQuery} =
-        AudioStreamPlayer.play("critical");
+        ViewReplay.sound("critical");
         let dmg = item#magnitude;
         match rayHitCell(hit) {
             case None       => ()
@@ -1127,7 +1128,7 @@ mod StaffCast {
     /// 敵が投げたデバフ薬を当たった対象へ適用する。デバフ音 + 時限ステータス付与。
     def enemyApplyDebuff(item: Consumable.ConsumableResource, hit: RayHit):
             Unit \ {GameEngine.Audio, World.Command, World.WorldQuery} =
-        AudioStreamPlayer.play(consumableHitSound(item#effect));
+        ViewReplay.sound(consumableHitSound(item#effect));
         applyStatusToHit(StaffRules.directionalStatus(item), hit)
 
     /// `directionalStatus` の Option をそのまま受け、Some なら当たったキャラ（敵/味方）へ付与。

@@ -68,6 +68,13 @@ mod ViewReplay {
              World.Command, World.WorldQuery} =
         List.forEach(execute, plan(events))
 
+    /// 単発の効果音を SimEvent fact 経由で鳴らす。ゲームロジックが `AudioStreamPlayer.play`
+    /// を直呼びせず、音の発火を戦闘 SE と同じ replay の 1 点へ集約するための入口。
+    pub def sound(name: String): Unit \
+            {GameEngine.Audio,
+             World.Command, World.WorldQuery} =
+        replay(World.SimEvent.ViewFx(World.ViewFxKind.Sound(name)) :: Nil)
+
     def execute(action: ViewAction): Unit \
             {GameEngine.Audio,
              World.Command, World.WorldQuery} =

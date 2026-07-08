@@ -45,6 +45,15 @@ mod CursorState {
         visible            = Bool
     }
 
+    /// カーソルの論理部（World 単一権威に載せる 4 field）。指しセル / 直前ホバー敵 / 加速の hold。
+    /// 視覚部（renderPos/tweens/snagRemaining/visible）は shell に残す。`commitLogical` が書く集合と同じ。
+    pub type alias Logical = {
+        gridPos            = {x = Int32, y = Int32},
+        lastHoveredEnemyId = Option[Int32],
+        holdDir            = Option[{x = Int32, y = Int32}],
+        holdSteps          = Int32
+    }
+
     /// 初期状態（原点・ホバーなし・hold なし・補間なし・可視）。`add` の初期セルは `CursorScene` が put で上書きする。
     pub def initial(): Data =
         {gridPos = {x = 0, y = 0}, lastHoveredEnemyId = None, holdDir = None, holdSteps = 0,

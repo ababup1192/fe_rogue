@@ -117,6 +117,9 @@ pub enum World {
                  // 操作中プレイヤーの選択状態（id / 移動ドラフトの巻き戻しスタック / 集合モード）。
                  // World 単一権威（production は `Game.start` の inline facade・test は各 SelectedPlayer handler）。
                  selection = SelectedPlayer.Selection,
+                 // 選択カーソルの論理部（指しセル/直前ホバー敵/加速の hold）。視覚（描画位置/tween）は shell 残置。
+                 // World 単一権威（production は `Game.start` の inline facade・test は `CursorState.withState` Ref）。
+                 cursorLogical = CursorState.Logical,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
                  // unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
                  // でなく **この enum タグ `teamOf` で読む**（Bevy の Team component 相当）。
@@ -282,6 +285,7 @@ mod World {
         World.World({tick = 0, turnPhase = TurnPhase.Phase.PlayerCursor, screen = GamePhase.Title, party = None,
                      initialSpawns = {enemies = Nil, players = Nil}, floorSnapshot = None, floorId = "",
                      arrowCursor = ArrowCursorState.initial(), selection = SelectedPlayer.cleared(),
+                     cursorLogical = {gridPos = {x = 0, y = 0}, lastHoveredEnemyId = None, holdDir = None, holdSteps = 0},
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      statusEffects = Map.empty(),
                      hp = Map.empty(), weapons = Map.empty(), team = Map.empty(),
@@ -355,6 +359,10 @@ mod World {
     /// World の selection（操作中プレイヤーの選択状態・単一権威）を読む（read-model アクセサ）。`SelectedPlayer` facade が使う。
     pub def selectionOf(world: World): SelectedPlayer.Selection =
         let World.World(w) = world; w#selection
+
+    /// World の cursorLogical（選択カーソルの論理部・単一権威）を読む（read-model アクセサ）。`CursorState` facade が使う。
+    pub def cursorLogicalOf(world: World): CursorState.Logical =
+        let World.World(w) = world; w#cursorLogical
 
     /// per-frame の World 更新。**縮退版**: 全 store が command 権威（spawn/despawn/build choke の Cmd が
     /// 唯一の書込・prune は `Cmd.Despawn`/`Cmd.ClearUnits` が担う）なので、scene からの derive/prune は無い。
@@ -556,6 +564,7 @@ mod World {
         case SetFloorId(String)             // 現在フロア id write（FloorProgress facade・階段/全滅/周回で遷移）
         case SetArrowCursor(ArrowCursorState.Data)  // 照準矢印の論理状態 write（ArrowCursorState facade）
         case SetSelection(SelectedPlayer.Selection)  // 操作中プレイヤー選択状態 write（SelectedPlayer facade）
+        case SetCursorLogical(CursorState.Logical)   // 選択カーソルの論理部 write（CursorState facade）
         case SetHp(EntityRef, Int32)        // hp write（dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
         case SetBaseStats(EntityRef, Combat.BaseStats)  // base 戦闘値 write（hp/weapons 同型・両 faction・resource 書換ごとに dual-write）
@@ -843,6 +852,8 @@ mod World {
                 let World.World(w) = world; World.World({arrowCursor = a | w})
             case Cmd.SetSelection(s) =>
                 let World.World(w) = world; World.World({selection = s | w})
+            case Cmd.SetCursorLogical(lg) =>
+                let World.World(w) = world; World.World({cursorLogical = lg | w})
             case Cmd.SetHp(ref, hpVal) =>
                 // 単一 store＋toUid。
                 let World.World(w) = world;
@@ -1333,6 +1344,7 @@ mod World {
             case Cmd.SetFloorId(_)           => ("SetFloorId", 0, 0, 0)
             case Cmd.SetArrowCursor(_)       => ("SetArrowCursor", 0, 0, 0)
             case Cmd.SetSelection(_)         => ("SetSelection", 0, 0, 0)
+            case Cmd.SetCursorLogical(_)     => ("SetCursorLogical", 0, 0, 0)
             case Cmd.TickPlayers(_)           => ("TickP", 0, 0, 0)
             case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)
