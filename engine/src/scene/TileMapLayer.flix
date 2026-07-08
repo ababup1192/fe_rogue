@@ -4,8 +4,6 @@
 /// 利用例: ダンジョンの床・壁レイヤーを 1 枚として置く。
 ///
 /// GPU インスタンシング（glDrawArraysInstanced）で全タイルを 1 draw call で描画する。
-/// 衝突セル（collisionCells）は PhysicsStep が仮想 StaticBody として展開する。
-/// Scene に直接 TileMapLayerWithState として登録し、子ノードは一切持たない。
 ///
 /// tileVaoId / tileCount は tilemap loader が initTileBuffer() で設定する。
 /// 初期値 0 = 未初期化（GPU リソース未アップロード）。
@@ -56,20 +54,6 @@ mod TileMapLayer {
           tileVaoId   = r#tileVaoId,
           tileCount   = r#tileCount }
 
-    /// 衝突セルを仮想 StaticBody2D 形状として展開する（PhysicsStep が使用）
-    /// collisionCells はグリッド座標（col, row）で格納されている。
-    pub def expandWallShapes(globalPos: Vec2.Vec2,
-                              tileMap: TileMapLayer): List[(Vec2.Vec2, CollisionShape2D)] =
-        let TileMapLayer.TileMapLayer(r) = tileMap;
-        let s = r#tileSet#atlasSource#tileSize;
-        List.map(cell -> {
-            let center: Vec2.Vec2 = {
-                x = globalPos#x + cell#x * s + s / 2.0,
-                y = globalPos#y + cell#y * s + s / 2.0
-            };
-            (center, CollisionShape2D.RectShape2D({ width = s, height = s }))
-        }, r#collisionCells)
-
     /// デフォルト値で TileMapLayer を構築するビルドヘルパー
     pub def make(config: { tileSet = TileSet,
                             tiles = List[TileData],
@@ -109,9 +93,7 @@ mod TileMapLayer {
         { position = Vec2i.zero(), size = r#gridSize }
 
     /// グリッド座標 → セル中心のローカルピクセル座標に変換する。
-    /// world 座標が必要な場合は呼び出し側で
-    ///   Vec2.add(Scene.globalPositionAt(path, scene), local)
-    /// と合成する。
+    /// world 座標が必要な場合は呼び出し側でレイヤーの原点を足し合わせる。
     pub def mapToLocal(coords: {x = Int32, y = Int32}, tileMap: TileMapLayer): Vec2.Vec2 =
         let s = tileSize(tileMap);
         let v = Vec2i.toVec2(coords);

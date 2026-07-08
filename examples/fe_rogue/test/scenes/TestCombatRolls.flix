@@ -149,8 +149,7 @@ mod TestCombatRolls {
                     run {
                         let _ = CombatDriver.onLungeDone(Faction.Player, 0);
                         ()
-                    } with Tween.withScheduler(rc)
-                      with TurnPhase.withState(rc)
+                    } with TurnPhase.withState(rc)
                       with SelectedPlayer.withState(rc)
                       with CursorState.withState(rc)
                       with Pacing.withState(rc)

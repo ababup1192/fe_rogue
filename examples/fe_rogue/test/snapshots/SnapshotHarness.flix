@@ -55,8 +55,7 @@ mod SnapshotHarness {
     /// PartyQuery / RosterQuery は config の World から再構築した Data 一覧
     /// （TestUnitFixtures.worldPlayers / worldEnemies）を返す。
     pub def withMocks(cfg: Config, thunk: Unit -> a \ ef):
-            a \ (ef - Tween.Scheduler - AnimationPlayer.Scheduler
-                    - TurnPhase.State - SelectedPlayer.State - CursorState.State
+            a \ (ef - TurnPhase.State - SelectedPlayer.State - CursorState.State
                     - PlayerData.PartyQuery - EnemyData.RosterQuery
                     - World.WorldQuery - World.PhaseQuery
                     - ItemMenuState.State - TradeMenuState.State) =
@@ -123,7 +122,7 @@ mod SnapshotHarness {
     // region は内部で開いて閉じる（可変状態は thunk 実行中だけ生存すれば足り、`withCancelTransitionMocks`
     // と同じく rc を引数に取らない＝Region[r] を sub-combinator 経由で使う際の擬似 unused 警告も避ける）。
     pub def withFullMocks(cfg: Config, thunk: Unit -> a \ ef):
-            a \ (ef - Tween.Scheduler - AnimationPlayer.Scheduler - GameLogger.GameLogger
+            a \ (ef - GameLogger.GameLogger
                     - EnemyTurn.Queue - TurnPhase.State - SelectedPlayer.State - CursorState.State
                     - ArrowCursorState.State - GatherResume.State - PlayerData.PartyQuery
                     - EnemyData.RosterQuery - CustomEffects.FloorAdvanceRequest - GameEngine.Audio

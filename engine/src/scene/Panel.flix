@@ -194,22 +194,6 @@ mod Panel {
             bg :: top :: bot :: lft :: rgt :: Nil
         }
 
-    /// path 位置に Panel が居れば取り出す。別ノードや欠落なら `None`。
-    pub def getAt(path: NodePath, scene: Scene[s]): Option[Panel] =
-        match Scene.getEngineNode(path, scene) {
-            case Some(EngineNode.PanelWithState(panel, _)) => Some(panel)
-            case _                                          => None
-        }
-
-    /// path 位置の Panel に f を適用。state タグは保持される。
-    /// path に Panel が居なければ no-op。
-    pub def mapAt(path: NodePath, f: Panel -> Panel,
-                   scene: Scene[s]): Scene[s] =
-        Scene.mapEngineNode(path, node -> match node {
-            case EngineNode.PanelWithState(panel, tag) =>
-                EngineNode.PanelWithState(f(panel), tag)
-            case other => other
-        }, scene)
 }
 
 // ── CanvasItem 実装 ──

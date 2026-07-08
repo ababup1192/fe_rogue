@@ -13,10 +13,18 @@
 ///   - **アンチエイリアス無し**（plain fill, 本番 ~5x 拡大）。斜めは階段になるが、スクショ準拠を優先する。
 ///
 /// 座標系: 原点中心・+y は下・上右(=(+x,-y))が刀身の向き・WeaponIcon の内寸 ~11px に収める（おおむね ±5.5）。
-/// 各ピースは `EngineNode.Polygon2DWithState` / `Arc2DWithState`（状態は `Unit`）の値として組み立て、
+/// 各ピースは `GlyphPiece`（塗り多角形 or 弧）の値として組み立て、
 /// `WeaponIconRender` が中心座標を足して直接 PolygonRenderCmd 化する（tree に積まない）。
 /// 白は濃色プレート背景の上で読ませる（[[WeaponIconRender]]）。
 mod WeaponGlyph {
+    use WeaponGlyph.GlyphPiece.{Poly, Arc}
+
+    /// グリフ 1 ピース。塗り凸多角形（Polygon2D）か弧（Arc2D）のどちらか。
+    /// engine の描画プリミティブ値をそのまま保持し、位置は各値の Node2D 位置に持たせる。
+    pub enum GlyphPiece {
+        case Poly(Polygon2D)
+        case Arc(Arc2D)
+    }
 
     /// 各ピースの基準 zIndex（WeaponIconRender の Bg=61 より手前）。ピースは base+i で重ねる。
     def baseZIndex(): Int32 = 62
@@ -27,48 +35,56 @@ mod WeaponGlyph {
     /// 全系統とも白で統一（濃色プレートの上で視認）。形だけで系統を区別する。
     pub def glyphColor(_wt: WeaponCatalog.WeaponType): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 
-    /// 武器系統 → 子ノード（名前 × EngineNode）列。WeaponIconRender が addChildAt で順に生やす。
-    /// 名前は "G0","G1",… の安定名（重複しない・reconcile しない静的アイコン）。
-    pub def weaponGlyph(wt: WeaponCatalog.WeaponType): List[(String, EngineNode[Unit])] =
+    /// 武器系統 → ピース（名前 × GlyphPiece）列。WeaponIconRender が順に PolygonRenderCmd 化する。
+    /// 名前は "G0","G1",… の安定名（重複しない静的アイコン）。
+    pub def weaponGlyph(wt: WeaponCatalog.WeaponType): List[(String, GlyphPiece)] =
         named(pieces(wt, glyphColor(wt)))
 
-    /// weaponGlyph を原点（グリフ中心）基準で一様に scale 倍した版。各ピースの node 位置を scale 倍し
-    /// node スケールを scale にすることで、全体が原点まわりに縮小/拡大する（祖先スケールは描画へ
-    /// 伝播しないため、ピース側で吸収する）。キャラ選択など小さく横並びにしたい場所で使う。
-    pub def weaponGlyphScaled(wt: WeaponCatalog.WeaponType, scale: Float64): List[(String, EngineNode[Unit])] =
+    /// weaponGlyph を原点（グリフ中心）基準で一様に scale 倍した版。各ピースの位置を scale 倍し
+    /// ピース側のスケールを scale にすることで、全体が原点まわりに縮小/拡大する。
+    /// キャラ選択など小さく横並びにしたい場所で使う。
+    pub def weaponGlyphScaled(wt: WeaponCatalog.WeaponType, scale: Float64): List[(String, GlyphPiece)] =
         weaponGlyph(wt) |> List.map(ne ->
-            let (name, node) = ne;
-            let p = Node2D.getPosition(node);
-            let scaled = node
-                |> Node2D.setPosition({x = p#x * scale, y = p#y * scale})
-                |> Node2D.setScale({x = scale, y = scale});
-            (name, scaled))
+            let (name, piece) = ne;
+            (name, scalePiece(scale, piece)))
+
+    /// 1 ピースを原点基準で scale 倍する（位置を scale 倍・スケールを scale に設定）。
+    def scalePiece(scale: Float64, piece: GlyphPiece): GlyphPiece =
+        let scaleV: Vec2.Vec2 = {x = scale, y = scale};
+        match piece {
+            case Poly(p) =>
+                let pos = Node2D.getPosition(p);
+                Poly(p |> Node2D.setPosition({x = pos#x * scale, y = pos#y * scale})
+                       |> Node2D.setScale(scaleV))
+            case Arc(a) =>
+                let pos = Node2D.getPosition(a);
+                Arc(a |> Node2D.setPosition({x = pos#x * scale, y = pos#y * scale})
+                      |> Node2D.setScale(scaleV))
+        }
 
     /// 武器系統 → 凸サブポリゴン列（各サブポリは頂点列・グリフ中心を原点とする design px）。
-    /// `weaponGlyph` と同じ `pieces` を単一の真理点として再利用し、各ピース（Polygon2D / Arc2D）を
-    /// その塗り頂点へ射影して `scale` 倍する。EngineNode を持てない World-entity UI（poly widget の
-    /// `setPolyPolys`）で得意武器グリフを出すために使う（板/円は 1 サブポリ、弧は分割クアッド列）。
+    /// `weaponGlyph` と同じ `pieces` を単一の真理点として再利用し、各ピースを
+    /// その塗り頂点へ射影して `scale` 倍する。板/円は 1 サブポリ、弧は分割クアッド列。
     pub def weaponGlyphPolys(wt: WeaponCatalog.WeaponType, scale: Float64): List[List[Vec2.Vec2]] =
         pieces(wt, glyphColor(wt))
             |> List.flatMap(nodePolys)
             |> List.map(sub -> sub |> List.map(p -> ({x = p#x * scale, y = p#y * scale}: Vec2.Vec2)))
 
-    /// 1 ピース（EngineNode）を凸サブポリゴンの頂点列へ射影する。Polygon2D は 1 サブポリ、Arc2D は
-    /// 自身の分割（`toRenderCmds`）ぶんのクアッド列。頂点はノード位置を足したグリフ局所座標。
-    def nodePolys(node: EngineNode[Unit]): List[List[Vec2.Vec2]] =
+    /// 1 ピースを凸サブポリゴンの頂点列へ射影する。Polygon2D は 1 サブポリ、Arc2D は
+    /// 自身の分割（`toRenderCmds`）ぶんのクアッド列。頂点はピース位置を足したグリフ局所座標。
+    def nodePolys(piece: GlyphPiece): List[List[Vec2.Vec2]] =
         let unit = ({x = 1.0, y = 1.0}: Vec2.Vec2);
-        match node {
-            case EngineNode.Polygon2DWithState(poly, _) =>
+        match piece {
+            case Poly(poly) =>
                 Polygon2D.toRenderCmd(Node2D.getPosition(poly), unit, poly)#vertices :: Nil
-            case EngineNode.Arc2DWithState(arc, _) =>
+            case Arc(arc) =>
                 Arc2D.toRenderCmds(Node2D.getPosition(arc), unit, arc) |> List.map(cmd -> cmd#vertices)
-            case _ => Nil
         }
 
     // ─── 系統ごとのピース合成（すべて凸・向き付き直書き） ───────────────────
 
     // 全系統とも斜め（左下→右上、軸 u=(d,-d)）に統一する。
-    def pieces(wt: WeaponCatalog.WeaponType, color: Color): List[EngineNode[Unit]] =
+    def pieces(wt: WeaponCatalog.WeaponType, color: Color): List[GlyphPiece] =
         let d = diagD();
         match wt {
             // 剣（据え置き=OK）: 太い斜め刀身 + 切先三角 + 柄元の斜め鍔 + 柄頭。
@@ -144,26 +160,38 @@ mod WeaponGlyph {
     def rect(x0: Float64, y0: Float64, x1: Float64, y1: Float64): List[Vec2.Vec2] =
         v(x0, y0) :: v(x1, y0) :: v(x1, y1) :: v(x0, y1) :: Nil
 
-    /// 凸塗りピースを EngineNode 子として組む（位置は原点・z は後で named で確定）。
-    def poly(points: List[Vec2.Vec2], color: Color): EngineNode[Unit] =
-        EngineNode.Polygon2DWithState(Polygon2D.make(points, color), ())
+    /// 凸塗りピースを組む（位置は原点・z は後で named で確定）。
+    def poly(points: List[Vec2.Vec2], color: Color): GlyphPiece =
+        GlyphPiece.Poly(Polygon2D.make(points, color))
 
     /// 中心 (cx,cy)・半径 radius の塗り潰し円ピース（12 角形）。刃と柄をつなぐハブ等に使う。
-    def circlePiece(radius: Float64, cx: Float64, cy: Float64, color: Color): EngineNode[Unit] =
-        let c = Polygon2D.circle(radius, color) |> Node2D.setPosition(v(cx, cy));
-        EngineNode.Polygon2DWithState(c, ())
+    def circlePiece(radius: Float64, cx: Float64, cy: Float64, color: Color): GlyphPiece =
+        GlyphPiece.Poly(Polygon2D.circle(radius, color) |> Node2D.setPosition(v(cx, cy)))
 
     /// 弧ピース（弓用）。center は WeaponIcon 原点からのオフセット。segments は小サイズ向けに抑える。
     def arc(radius: Float64, width: Float64, startAngle: Float64, endAngle: Float64,
-            color: Color, center: Vec2.Vec2): EngineNode[Unit] =
-        let a = Arc2D.make(radius, width, startAngle, endAngle, color)
+            color: Color, center: Vec2.Vec2): GlyphPiece =
+        GlyphPiece.Arc(Arc2D.make(radius, width, startAngle, endAngle, color)
             |> Arc2D.setSegments(12)
-            |> Node2D.setPosition(center);
-        EngineNode.Arc2DWithState(a, ())
+            |> Node2D.setPosition(center))
 
     /// ピース列に安定名 "G0","G1",… と base+i の zIndex を与える。後勝ち（大きい i が手前）。
-    def named(nodes: List[EngineNode[Unit]]): List[(String, EngineNode[Unit])] =
-        nodes
+    def named(pieceList: List[GlyphPiece]): List[(String, GlyphPiece)] =
+        pieceList
             |> List.zipWithIndex
-            |> List.map(in -> let (i, n) = in; ("G${i}", CanvasItem.setZIndex(baseZIndex() + i, n)))
+            |> List.map(in -> let (i, p) = in; ("G${i}", setPieceZIndex(baseZIndex() + i, p)))
+
+    /// ピースの zIndex を設定する（内部の描画値へ委譲）。
+    def setPieceZIndex(z: Int32, piece: GlyphPiece): GlyphPiece =
+        match piece {
+            case Poly(p) => Poly(CanvasItem.setZIndex(z, p))
+            case Arc(a)  => Arc(CanvasItem.setZIndex(z, a))
+        }
+
+    /// ピースの zIndex を取得する（内部の描画値から読む）。テストの描画順検証で使う。
+    pub def pieceZIndex(piece: GlyphPiece): Int32 =
+        match piece {
+            case Poly(p) => CanvasItem.getZIndex(p)
+            case Arc(a)  => CanvasItem.getZIndex(a)
+        }
 }

@@ -96,35 +96,36 @@ mod WeaponIconRender {
         iconInputs(world, holesOpt) |> List.flatMap(inp -> {
             let modColor = inp#modColor;
             WeaponGlyph.weaponGlyph(inp#weaponType) |> List.flatMap(ne -> {
-                let (_, node) = ne;
-                pieceCmds(node, inp#center, modColor, transform)
+                let (_, piece) = ne;
+                pieceCmds(piece, inp#center, modColor, transform)
             })
         })
 
-    /// グリフ 1 ピース（Polygon2D/Arc2D の EngineNode 値）→ PolygonRenderCmd 列。
-    def pieceCmds(node: EngineNode[Unit], center: Vec2.Vec2, modColor: Color,
+    /// グリフ 1 ピース（Polygon2D/Arc2D の GlyphPiece 値）→ PolygonRenderCmd 列。
+    def pieceCmds(piece: WeaponGlyph.GlyphPiece, center: Vec2.Vec2, modColor: Color,
                    transform: Camera2D.ViewTransform): List[GameEngine.PolygonRenderCmd] =
         let withMod = (cmd: GameEngine.PolygonRenderCmd) ->
             ({color = mulColor(cmd#color, modColor), zIndex = iconZIndex() + 2 | cmd}: GameEngine.PolygonRenderCmd);
-        match node {
-            case EngineNode.Polygon2DWithState(poly, _) =>
+        match piece {
+            case WeaponGlyph.GlyphPiece.Poly(poly) =>
                 let p = Node2D.getPosition(poly);
                 let screenPos = Camera2D.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
                 withMod(Polygon2D.toRenderCmd(screenPos, transform#scale, poly)) :: Nil
-            case EngineNode.Arc2DWithState(arc, _) =>
+            case WeaponGlyph.GlyphPiece.Arc(arc) =>
                 let p = Node2D.getPosition(arc);
                 let screenPos = Camera2D.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
                 Arc2D.toRenderCmds(screenPos, transform#scale, arc) |> List.map(withMod)
-            case _ => Nil
         }
 
     /// ColorRect 値 1 枚を world 左上座標へ Drawable 化する（UnitHPBarRender と同型）。
     def rectDrawables(rect: ColorRect, worldTopLeft: Vec2.Vec2, z: Int32,
                        transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
         let screenPos = Camera2D.applyToWorldPos(transform, worldTopLeft);
-        GameEngine.Renderable.toDrawables(EngineNode.ColorRectWithState(rect, ()), screenPos)
-            |> Render.applyCameraScale(transform)
-            |> List.map(d -> {zIndex = z | d})
+        // ColorRect.toDrawable は純粋。呼び側の Game eff 連鎖を保つため checked_ecast で持ち上げる。
+        checked_ecast(
+            (ColorRect.toDrawable(rect, screenPos) :: Nil)
+                |> Render.applyCameraScale(transform)
+                |> List.map(d -> {zIndex = z | d}))
 
     /// 乗算合成（engine の祖先 modulate 伝播の代替）。
     def mulColor(a: Color, b: Color): Color =

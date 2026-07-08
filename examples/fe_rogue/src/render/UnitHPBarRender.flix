@@ -179,9 +179,11 @@ mod UnitHPBarRender {
     def rectDrawables(rect: ColorRect, worldTopLeft: Vec2.Vec2, z: Int32,
                        transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
         let screenPos = Camera2D.applyToWorldPos(transform, worldTopLeft);
-        GameEngine.Renderable.toDrawables(EngineNode.ColorRectWithState(rect, ()), screenPos)
-            |> Render.applyCameraScale(transform)
-            |> List.map(d -> {zIndex = z | d})
+        // ColorRect.toDrawable は純粋。呼び側の Game eff 連鎖を保つため checked_ecast で持ち上げる。
+        checked_ecast(
+            (ColorRect.toDrawable(rect, screenPos) :: Nil)
+                |> Render.applyCameraScale(transform)
+                |> List.map(d -> {zIndex = z | d}))
 
     /// 乗算合成（engine の祖先 modulate 伝播の代替）。
     def mulColor(a: Color, b: Color): Color =

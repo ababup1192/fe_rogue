@@ -116,6 +116,54 @@ mod Sprite2D {
         let Sprite2D.Sprite2D(r) = sprite;
         Sprite2D.Sprite2D({frame = row * r#hframes + col | r})
 
+    /// Sprite2D を Drawable に変換する。
+    /// region / hframes / vframes / frame から GPU シェーダ用 uvOffset/uvScale を計算するため
+    /// テクスチャサイズが必要で、Game eff を要求する。
+    /// テクスチャ未登録時は bug! でクラッシュする。
+    /// centered=false かつ region 未指定・分割なしの場合は scale を uvScale にして
+    /// タイリング描画する（背景用）。
+    pub def toDrawable(sprite: Sprite2D, globalPos: Vec2.Vec2):
+                        GameEngine.Drawable \ GameEngine.Game =
+        let Sprite2D.Sprite2D(r) = sprite;
+        let texInfo = match GameEngine.Game.getTextureInfo(r#texture) {
+            case Some(info) => info
+            case None       => bug!("Sprite2D.toDrawable: texture '${r#texture}' not registered")
+        };
+        let texSize: Vec2.Vec2 = {x = texInfo#width, y = texInfo#height};
+        let uv = Sprite2D.computeUv(sprite, texSize);
+        // 切り出しなし (regionRect=None, hframes=vframes=1, frame=0) かつ centered=false なら
+        // 背景タイリング扱いで scale を uv にも反映する
+        let isFullTexture = Option.isEmpty(r#regionRect) and r#hframes == 1
+                            and r#vframes == 1 and r#frame == 0;
+        let uvSc: Vec2.Vec2 =
+            if (isFullTexture and not r#centered) r#scale
+            else uv#uvScale;
+        // セル分割／領域指定が有効なときは描画矩形をセルサイズに合わせる必要がある。
+        // レンダラは `displayW = texInfo#width * drawable#scale#x` で矩形を決めるため、
+        // scale に uvScale を掛けて (texSize * scale * uvScale = cellSize * scale) にする
+        let drawScale: Vec2.Vec2 =
+            if (isFullTexture) r#scale
+            else {x = r#scale#x * uv#uvScale#x,
+                  y = r#scale#y * uv#uvScale#y};
+        // flipH / flipV は scale を負にすることで model 行列で反転させる
+        let flippedScale: Vec2.Vec2 = {
+            x = if (r#flipH) -1.0 * drawScale#x else drawScale#x,
+            y = if (r#flipV) -1.0 * drawScale#y else drawScale#y
+        };
+        {
+            texture = r#texture,
+            position = globalPos,
+            scale = flippedScale,
+            rotation = r#rotation,
+            color = r#modulate,
+            alpha = r#alpha,
+            centered = r#centered,
+            uvOffset = uv#uvOffset,
+            uvScale = uvSc,
+            zIndex = r#zIndex,
+            style = None
+        }
+
     /// regionRect / hframes / vframes / frame と元テクスチャサイズから
     /// GPU シェーダ用の uvOffset / uvScale を計算する。
     /// regionRect = None なら textureSize を atlas として使い、hframes×vframes でセル分割する。
@@ -137,23 +185,14 @@ mod Sprite2D {
             uvScale  = {x = cellW / textureSize#x, y = cellH / textureSize#y}
         }
 
-    /// path 位置に Sprite2D が居れば取り出す。
-    /// 別ノードや欠落なら `None`。
-    pub def getAt(path: NodePath, scene: Scene[s]): Option[Sprite2D] =
-        match Scene.getEngineNode(path, scene) {
-            case Some(EngineNode.Sprite2DWithState(sp, _)) => Some(sp)
-            case _                                          => None
-        }
+}
 
-    /// path 位置の Sprite2D に f を適用。state タグは保持される。
-    /// path に Sprite2D が居なければ no-op。
-    pub def mapAt(path: NodePath, f: Sprite2D -> Sprite2D,
-                   scene: Scene[s]): Scene[s] =
-        Scene.mapEngineNode(path, node -> match node {
-            case EngineNode.Sprite2DWithState(sp, tag) =>
-                EngineNode.Sprite2DWithState(f(sp), tag)
-            case other => other
-        }, scene)
+// ── Renderable 実装 ──
+
+instance GameEngine.Renderable[Sprite2D] {
+    pub def toDrawables(sprite: Sprite2D, globalPos: Vec2.Vec2):
+                         List[GameEngine.Drawable] \ GameEngine.Game =
+        Sprite2D.toDrawable(sprite, globalPos) :: Nil
 }
 
 // ── CanvasItem 実装 ──

@@ -65,9 +65,8 @@ mod MinimapScene {
     def floorZIndex(): Int32 = 2    // 歩ける床（黒。壁ブロックから碁盤目をくり抜く）
     def markerZIndex(): Int32 = 3
 
-    /// ミニマップは画面固定 HUD なので、in-world 配置物より手前に出す必要がある。旧経路は
-    /// CanvasLayer(layer=6)に載って `layer * layerStride` の実効 zIndex を得ていた。直描きでも
-    /// 各 z にこのオフセットを足して描画順を旧経路と一致させる。
+    /// ミニマップは画面固定 HUD なので、in-world 配置物より手前に出す必要がある。
+    /// レイヤー番号 × `CanvasLayer.layerStride` の実効 zIndex オフセットを各 z に足して手前へ寄せる。
     def minimapLayer(): Int32 = 6
     def minimapLayerOffset(): Int32 = minimapLayer() * CanvasLayer.layerStride()
 

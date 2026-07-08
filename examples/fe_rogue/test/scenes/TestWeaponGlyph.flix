@@ -44,7 +44,7 @@ mod TestWeaponGlyph {
     def testPiecesAboveBackground(): Unit \ Assert =
         let aboveBg = wt ->
             WeaponGlyph.weaponGlyph(wt)
-                |> List.map(p -> let (_, node) = p; CanvasItem.getZIndex(node))
+                |> List.map(p -> let (_, node) = p; WeaponGlyph.pieceZIndex(node))
                 |> List.forAll(z -> z >= 62);
         Assert.assertEq(expected = true, allTypes() |> List.forAll(aboveBg))
 

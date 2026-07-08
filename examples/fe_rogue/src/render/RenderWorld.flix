@@ -193,7 +193,7 @@ mod RenderWorld {
     def standaloneSprite(sprite: Sprite2D, worldPos: Vec2.Vec2, z: Int32,
                           transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
         let screenPos = Camera2D.applyToWorldPos(transform, worldPos);
-        GameEngine.Renderable.toDrawables(EngineNode.Sprite2DWithState(sprite, ()), screenPos)
+        GameEngine.Renderable.toDrawables(sprite, screenPos)
             |> Render.applyCameraScale(transform)
             |> List.map(d -> {zIndex = z | d})
 
@@ -289,8 +289,7 @@ mod RenderWorld {
                             |> Label2D.setVerticalAlignment(VerticalAlignment.Bottom)
                             |> CanvasItem.setModulate(d#color);
                         let screenPos = Camera2D.applyToWorldPos(transform, pos);
-                        GameEngine.Renderable.toDrawables(
-                            EngineNode.Label2DWithState(label, ()), screenPos)
+                        GameEngine.Renderable.toDrawables(label, screenPos)
                             |> Render.applyCameraScale(transform)
                             |> List.map(dr -> {zIndex = DamagePopupFx.popupZIndex() | dr})
                     })

@@ -113,7 +113,6 @@ mod TestBattlePanelUi {
             } with handler World.WorldQuery {
                 def get(k) = k(World.empty())
             }
-              with AnimationPlayer.withScheduler(rc)
               with GameLogger.withLogger(rc)
               with SelectedPlayer.withState(rc)
               with CursorState.withState(rc)
@@ -149,9 +148,7 @@ mod TestBattlePanelUi {
                 def getAll(k) = k(fixturePlayer() :: Nil)
             } with handler World.Command {
                 def emit(_, k) = k()
-            } with Tween.withScheduler(rc)
-              with AnimationPlayer.withScheduler(rc)
-              with SelectedPlayer.withState(rc)
+            } with SelectedPlayer.withState(rc)
               with CursorState.withState(rc)
               with TurnPhase.withState(rc);
             Assert.assertEq(

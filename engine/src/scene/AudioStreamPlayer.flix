@@ -3,22 +3,17 @@
 /// ファイルの場所を知らずに「この音を鳴らす」とだけ書ける。
 /// 利用例: BGM をループ再生する / 効果音を音量を指定して鳴らす。
 ///
-/// 2 つの利用形態がある:
-///   - **モジュール関数** (`AudioStreamPlayer.play` 等) — `GameEngine.Audio` effect 経由で
-///     サウンドマニフェスト (EngineConfig#soundManifest) の論理名をキーに鳴らす
-///   - **Scene Node** (`AudioStreamPlayer` enum + `EngineNode.AudioStreamPlayerWithState`) —
-///     scene.json に書ける Node 化されたバージョン。Inspector で stream / autoplay / loop /
-///     volume を編集できる。SceneLoader が attach 時に autoplay を実行する
+/// `GameEngine.Audio` effect 経由で、サウンドマニフェスト (EngineConfig#soundManifest) の
+/// 論理名をキーに再生・停止・音量・ループを操作する。
 ///
-/// 使い方 (モジュール関数):
+/// 使い方:
 ///   AudioStreamPlayer.play("bgm")
 ///   AudioStreamPlayer.stop("bgm")
 ///   AudioStreamPlayer.setVolume("bgm", 0.5f32)
 ///   AudioStreamPlayer.setLooping("bgm", true)
 ///
-/// 使い方 (Scene Node, scene.json):
-///   {"type": "AudioStreamPlayer", "name": "BGM",
-///    "stream": "bgm", "autoplay": true, "loop": true, "volume": 0.5}
+/// enum 本体は stream / autoplay / loop / volume を保持する値で、`applyAttach` で
+/// まとめて反映できる。
 pub enum AudioStreamPlayer {
     case AudioStreamPlayer({
         stream   = String,    // サウンドマニフェスト (project.json#sounds) の論理名
@@ -97,7 +92,7 @@ mod AudioStreamPlayer {
     pub def setLooping(name: String, loop: Bool): Unit \ GameEngine.Audio =
         GameEngine.Audio.setLooping(name, loop)
 
-    /// Scene attach 時に呼ぶライフサイクル関数。volume → looping → (autoplay なら play) を順に適用する。
+    /// enum が保持する設定を一括反映する。volume → looping → (autoplay なら play) を順に適用する。
     pub def applyAttach(player: AudioStreamPlayer): Unit \ GameEngine.Audio =
         let AudioStreamPlayer.AudioStreamPlayer(r) = player;
         GameEngine.Audio.setVolume(r#stream, r#volume);

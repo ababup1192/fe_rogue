@@ -203,22 +203,15 @@ mod Label2D {
         }, {drawables = (Nil: List[GameEngine.Drawable]), lineIdx = 0}, lines);
         result#drawables
 
-    /// path 位置に Label2D が居れば取り出す。別ノードや欠落なら `None`。
-    pub def getAt(path: NodePath, scene: Scene[s]): Option[Label2D] =
-        match Scene.getEngineNode(path, scene) {
-            case Some(EngineNode.Label2DWithState(label, _)) => Some(label)
-            case _                                            => None
-        }
+}
 
-    /// path 位置の Label2D に f を適用。state タグは保持される。
-    /// path に Label2D が居なければ no-op。
-    pub def mapAt(path: NodePath, f: Label2D -> Label2D,
-                   scene: Scene[s]): Scene[s] =
-        Scene.mapEngineNode(path, node -> match node {
-            case EngineNode.Label2DWithState(label, tag) =>
-                EngineNode.Label2DWithState(f(label), tag)
-            case other => other
-        }, scene)
+// -- Renderable 実装 --
+
+instance GameEngine.Renderable[Label2D] {
+    pub def toDrawables(label: Label2D, globalPos: Vec2.Vec2):
+                         List[GameEngine.Drawable] \ GameEngine.Game =
+        // 本体は純粋だが trait 側が Game eff を要求するため checked_ecast で持ち上げる。
+        checked_ecast(Label2D.toDrawables(label, globalPos))
 }
 
 // -- CanvasItem 実装 --

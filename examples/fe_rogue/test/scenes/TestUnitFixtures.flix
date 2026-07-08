@@ -242,28 +242,11 @@ mod TestUnitFixtures {
     // 全 helper は effect 多相 (Unit -> a \ ef → a \ (ef - 対象Effect)) で書き、
     // 呼び出し元の他の effect は `ef` で透過させる。テストでは入れ子にせず合成して使う。
 
-    /// Tween.Scheduler のスタブ。schedule / cancel を捨てて何もしない。
-    /// gridPos を即更新するロジックの検証で Tween 実体を立ち上げないために使う。
-    pub def withNoopTween(thunk: Unit -> a \ ef): a \ (ef - Tween.Scheduler) =
-        run { thunk() } with handler Tween.Scheduler {
-            def schedule(_, k) = k()
-            def isActive(_, k) = k(false)
-            def cancel(_, k) = k()
-            def consumeUpdates(_, k) = k(Nil)
-        }
+    /// 旧 Tween スタブ。効果は撤去済みで実体を立ち上げないため、素通しの pass-through。
+    pub def withNoopTween(thunk: Unit -> a \ ef): a \ ef = thunk()
 
-    /// AnimationPlayer.Scheduler のスタブ。snag / 攻撃アニメは流さず、すべて停止扱い。
-    /// physicsProcess の入力 gating が `isPlaying` で行われるため、デフォルトは false 固定。
-    pub def withNoopAnim(thunk: Unit -> a \ ef): a \ (ef - AnimationPlayer.Scheduler) =
-        run { thunk() } with handler AnimationPlayer.Scheduler {
-            def schedule(_, k) = k()
-            def isPlaying(_, k) = k(false)
-            def stop(_, k) = k()
-            def cancelAll(k) = k()
-            def activeOwners(k) = k(Nil)
-            def consumeTick(_, k) = k(({propertyUpdates = Nil}: AnimationPlayer.Tick))
-            def drainSignals(_, k) = k(({methods = Nil, finished = Nil}: AnimationPlayer.EventBundle))
-        }
+    /// 旧アニメスタブ。効果は撤去済みで、何も流さない素通しの pass-through。
+    pub def withNoopAnim(thunk: Unit -> a \ ef): a \ ef = thunk()
 
     /// GameEngine.Game のスタブ。renderCommands / 入力系は何もせず、`getFontAtlas` は
     /// `testFontAtlas()` を返す。`getViewportRect` は design 解像度 (128×128) を返す。
@@ -822,7 +805,7 @@ mod TestUnitFixtures {
     pub def withCancelTransitionMocks(initialSel: SelectedPlayer.Selection, initialVisible: Bool,
                                        thunk: Unit -> a \ ef):
             (a, TurnPhase.Phase, Bool) \
-                (ef - Tween.Scheduler - AnimationPlayer.Scheduler - PlayerData.PartyQuery
+                (ef - PlayerData.PartyQuery
                     - TurnPhase.State - SelectedPlayer.State - CursorState.State
                     - RangeOverlayState.State - World.Command - World.WorldQuery) =
         region rc {
