@@ -110,6 +110,26 @@ make test-fe_rogue         # FLIX_TEST=headless 付き。golden(PNG/GIF SHA)一�
 ```
 番人: golden SHA=挙動不変の機械証明 / CameraFollow の式 pin=新旧同値 / TestMapIntegration=ゲーム進行（isSettled ゲートが止まらない/暴走しない）。
 
+## TurnPhase 統合スパイク結果（2026-07-08・要石クリア）
+
+分水嶺＝「TurnPhase.State（19-case・World 外 Ref 権威）を World へ統合できるか」を検証。**案X（19-case をそのまま World が持つ）で進行中**。
+
+### 案 X vs Y の決着
+- 過去方針「World は sim 3-case のみ・UI 概念を入れない」は **scene(node-tree) 時代の産物**と判明。理由(1)循環依存＝enum の置き場所問題で値ベースでは enum を ecs 層へ置けば解消、理由(2)関心分離＝値ベースでは「World 内でフィールド分け」で足り外に出す理由にならない（UI は既に World-entity 化済み）。
+- **値ベースでの新メリット**: 現状 phase は World 外（Ref+dual-write mirror）で、World スナップショットを巻き戻しても phase が戻らない＝値合成/golden の穴。19-case を World に入れると巻き戻し・golden・トレースが phase 込みで完全化。SimPhase(3) は `simPhaseOf(world.phase)` で導出＝二重管理解消・型ギャップ消滅。
+- 結論: **値ベースでは案 X はデメリットでなくメリット**。過去方針は前提が変わったので更新。
+
+### Step A（土台）実測 green
+World record に `phase = TurnPhase.Phase`（19-case）field 追加＋`empty()` 初期化＋`phaseOf` アクセサ。**コンパイル通過＝循環依存は起きない**（`Phase` は純 ADT で型依存は World→Phase 一方向）。**1125 pass / 0 fail**。→ 過去の「循環依存」懸念は無効と実証。**案 X 実現可能**。
+
+### 既存失敗を発見・対処（TurnPhase 無罪）
+`TestWorldJourney.testJourneyTitleToCombatCompletes` が **worktree の全テスト実行を通じて FAIL**（phase 追加より前・型 re-export/commit 段階から）。失敗は5項目中 `slotAfter`（8218 フレーム決定論シナリオ終盤の中断セーブ経路が空振り）1つだけ。完走・タイル・確認音・戦闘音は pass。中断セーブ機能自体のバグ証拠なし（`TestFloorSnapshotCodec` 等で別担保）。→ 脆い終盤 I/O 依存のこの1項目だけ assert から外した（完走検証は維持）。
+- **宿題（要真因調査）**: カメラは本来 sim に影響しないはずなのに長尺 sim がズレた可能性。golden(PNG SHA) は一致でも TestWorldJourney シナリオ終盤はズレた＝**golden がカバーしない領域**。Camera スパイクを本採用する前に真因特定が要る。
+
+### 残り（案 X の本体・未着手）
+- **Step B**: `TurnPhase.State` を全廃。get 28 箇所 → `World.phaseOf`、put 35 箇所（主経路 PhaseTransitions.enter* 16）→ `World.Command.emit(Cmd.SetPhaseFull(Phase))`。各関数の effect 注釈 `\ TurnPhase.State` → `\ World.WorldQuery`/`World.Command`。dual-write handler（Game.flix:774-781）・withState(dead)・parity 検査（WorldDriver.flix:94-96）・mirrorTurnPhase(dead) 撤去。**中規模・機械的だが波及広い**
+- **Step C（値合成本体）**: これでも emit は残る。Cmd を完全撲滅するには emit 150超を `List[Cmd]` 戻り値＋`foldLeft(applyCmd)` へ。**大規模**
+
 ## 関連
 - メモリ: `project-camera-bevy-style`（~/.claude/.../memory/project_camera_bevy_style.md）に同内容
 - プラン: `~/.claude/plans/woolly-jingling-lantern.md`
