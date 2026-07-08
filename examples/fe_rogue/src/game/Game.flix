@@ -663,7 +663,15 @@ mod Game {
                 // 読むのは新規ゲームの put より前になり得るため（""だと「unknown floor id」で落ちる）。
                 let initialWorld =
                     World.applyCmd(World.Cmd.SetFloorId(FloorCatalog.firstFloorId(floors)), Ref.get(worldRef));
-                gameLoop(catalogs, worldRef, GamePhase.Title, initialWorld, Set.empty())
+                // App 家族の宣言で走らせる: 出発点 World に「1 フレーム = frameStep」を繋ぎ、App.drive が
+                // ウィンドウ・時計・入力(Frame)・終了判定・末尾再帰を担う。描画は frameStep 内で 3 チャンネル
+                // （drawable/tile/polygon）を直接組むため view は None（App には描かせない）。終了は
+                // ウィンドウの閉じる操作（shouldClose）だけ＝Escape ではアプリ終了しないので quit は常に false。
+                let app =
+                    App.make(initialWorld)
+                        |> App.addSystem((frame, world) -> frameStep(catalogs, worldRef, frame, world))
+                        |> App.quitWhen((_frame, _world) -> checked_ecast(false));
+                App.launch(app)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
             // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /
             // `TurnPhase.State` / `SelectedPlayer.State` / `InitialSpawns.State` 等を
@@ -908,12 +916,11 @@ mod Game {
     ///     `PlayerMovementDriver.step` は phase=GatherMove で主人公(id 0)を動かす。
     /// ゲームオーバー時のフルリビルドは `CustomEffects.GameOverRequest` handler が
     /// catalog をクロージャに閉じ込めて実行するため、ここで catalog を引き回す必要はない。
-    def gameLoop(catalogs: GameLifecycle.Catalogs,
-                  worldRef: Ref[World, r],   // BoardQuery handler が読む World の窓口（毎フレーム頭で更新）。
-                  previousPhase: GamePhase,
-                  world: World,            // 権威 World（各 store の単一権威）。gameLoop を貫通して次フレームへ持ち越す。
-                  prevKeys: Set[GameEngine.Key]):  // 前フレームの押下キー集合（エッジ検出の基準。画面組み替えでも持ち回る）。
-                 Unit \ {GameEngine.Game, GameEngine.Audio,
+    def frameStep(catalogs: GameLifecycle.Catalogs,
+                  worldRef: Ref[World, r],   // BoardQuery handler が読む World の窓口（フレーム頭で更新）。
+                  frame: App.Frame,          // App が焼いたこのフレームの入力（down / justPressed / dt）。
+                  world: World):             // 前フレーム末の権威 World（App がスレッド）。screen から前フレーム画面を導く。
+                 World \ {GameEngine.Game, GameEngine.Audio,
                          Fs.FileRead, IO,
                          BoardQuery,
                          PlayerData.PartyQuery, EnemyData.RosterQuery,
@@ -932,27 +939,23 @@ mod Game {
                          LevelUpPanelState.State, ItemPickupPopupState.State, ItemMenuState.State, TradeMenuState.State,
                          TopBarState.State, TitleMenuState.State, UnitHPBarRender.ForecastState,
                          Math.Random, FloorSnapshot.State,
-                         World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
+                         World.Command, World.PhaseQuery, World.WorldQuery,
                          World.RngDraw, UiWorldState.State, MinimapState.State, RangeOverlayState.State, CameraState.State,
-                         StairsExitDriver.State, r} =
-        // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
-        if (GameEngine.Game.shouldClose()) ()
-        else {
-            // BoardQuery handler が読む窓口を毎フレーム最新の world に更新する。
+                         StairsExitDriver.State, r} = {
+            // BoardQuery handler が読む窓口を最新の world に更新する。
             // world は前フレーム末の権威 World（world2）＝各 store の単一権威。
             Ref.put(world, worldRef);
-            let dt = GameEngine.Game.getDeltaTime();
+            // 前フレームの画面は incoming world の screen（World 権威）から導く（App がスレッドした world）。
+            let previousPhase = World.screenOf(world);
+            // dt は App が焼いた frame#dt（秒）から Duration へ戻す。getDeltaTime はフレーム内で状態を
+            // 進めるため二度読みせず、App が読んだ 1 回ぶんの値（frame#dt）を使う。
+            let dt = Duration.seconds(frame#dt);
             // Pacing カウンタを 1 フレーム進める (各 System が gating で参照する)。
             // フレーム頭で進めるので「前フレーム末で hold した値を今フレームの判定で使う」
             // 形になる。
             Pacing.State.tick(dt);
-            // このフレームの入力を Frame 値に焼く（down=いま押下・justPressed=新規押下・dt）。
-            // 生キー読みは currentKeys の 1 回だけ。以降の入力読み（edge 検出・方向 polling）は
-            // すべてこの Frame 値から純粋に読む（App 家族の入力モデル）。
-            let currentKeys = InputEvent.currentKeys();
-            let frame = App.frameOf({prev = prevKeys}, {current = currentKeys}, Duration.toSeconds(dt));
-            // 入力のエッジ検出（frame#justPressed → onKeyPressed ルータ）。currentKeys は
-            // 次フレームの prevKeys として持ち回る。
+            // 入力のエッジ検出（frame#justPressed → onKeyPressed ルータ）。frame は App が焼いて渡す
+            // （生キー読み・prevKeys 持ち回りは App.drive が担う＝App 家族の入力モデル）。
             handleInput(frame);
             // 手動移動の入力ポーリングを明示 System として 1 回呼ぶ
             // （PlayerMoving=選択中の味方 / GatherMove=主人公。phase 判定は step 内部）。
@@ -1024,16 +1027,15 @@ mod Game {
             if (currentPhaseChanged(previousPhase))
                 applyPhaseChange(GamePhaseState.get(), previousPhase, catalogs)
             else ();
-            let currentPhase = GamePhaseState.get();
             // 毎フレームの World System パイプライン（refreshMirror → stepWorld → phase parity 検査）は
             // `WorldDriver.stepFrame` に集約。current は mid-frame 権威（worldRef 値）。
             let world2 = WorldDriver.stepFrame(Ref.get(worldRef), dt);
             // render-from-World。全チャンネル（drawable/tile/polygon）を World 由来で組み、
-            // 1 回の renderCommands で描く。
-            // 描画セクションは `renderFrame` へ抽出（gameLoop が JVM の 64KB メソッド上限を
-            // 超えたため。挙動は同一）。
+            // 1 回の renderCommands で描く。描画セクションは `renderFrame` へ抽出（メソッドサイズ上限対策）。
             renderFrame(catalogs, world2);
-            gameLoop(catalogs, worldRef, currentPhase, world2, currentKeys)
+            // このフレームの権威 World を App へ返す（App が次フレームへスレッドし、終了判定・
+            // prevKeys 持ち回り・末尾再帰を担う）。
+            world2
         }
 
     /// 画面（GamePhase）がこのフレームで変わったか。
