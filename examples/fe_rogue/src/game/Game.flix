@@ -762,11 +762,21 @@ mod Game {
                       k()
                   }
               }
-              with SelectedPlayer.withState(rc)   // 操作中プレイヤー id の保持
+              with handler SelectedPlayer.State {
+                  // 操作中プレイヤーの選択状態（id / 移動ドラフト / 集合モード）の単一権威は World.selection。
+                  // get/put とも facade で World 経由（呼び出し側 get51/put9 は無改修・test は各 SelectedPlayer handler）。
+                  def get(k)         = k(World.selectionOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetSelection(target), Ref.get(worldRef)), worldRef); k() }
+              }
               with CursorState.withState(rc)      // 選択カーソルの論理状態（指しセル/加速/ホバー/描画位置/tween）を resource 化
               with CameraState.withState(rc)      // 追従カメラの視点状態（ターゲット/smoothPosition/追従パラメータ）を resource 化
               with RangeOverlayState.withState(rc) // 範囲オーバーレイ 7 種のセル集合（Option 在/不在=表示トグル）を resource 化
-              with ArrowCursorState.withState(rc) // 杖/投擲の照準矢印の論理状態（anchor/direction/gridPos）を resource 化
+              with handler ArrowCursorState.State {
+                  // 照準矢印の論理状態（anchor/direction/gridPos）の単一権威は World.arrowCursor。
+                  // get/put とも facade で World 経由（呼び出し側 get3/put2 は無改修・test は withState の Ref）。
+                  def get(k)         = k(World.arrowCursorOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetArrowCursor(target), Ref.get(worldRef)), worldRef); k() }
+              }
               with StairsExitDriver.withState(rc) // 集合「階段」の順次退場キュー（queue/idleRounds）を resource 化
               with GatherResume.withState(rc)     // 集合モードのターン跨ぎ自動継続フラグ
               with InitialSpawns.withState(worldRef)    // ゲームオーバー時に同じ敵 / 味方配置を復元 World.initialSpawns 単一権威

@@ -111,6 +111,12 @@ pub enum World {
                  // 現在いるフロア id（floors.json の sub-entry キー、例 "f01"）。""=未 seed（build choke の put が seed）。
                  // World 単一権威（`FloorProgress` は facade）。
                  floorId = String,
+                 // 杖/投擲の照準矢印の論理状態（anchor/direction/gridPos）。見た目は view が描く。
+                 // World 単一権威（production は `Game.start` の inline facade・test は `ArrowCursorState.withState` Ref）。
+                 arrowCursor = ArrowCursorState.Data,
+                 // 操作中プレイヤーの選択状態（id / 移動ドラフトの巻き戻しスタック / 集合モード）。
+                 // World 単一権威（production は `Game.start` の inline facade・test は各 SelectedPlayer handler）。
+                 selection = SelectedPlayer.Selection,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
                  // unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
                  // でなく **この enum タグ `teamOf` で読む**（Bevy の Team component 相当）。
@@ -275,6 +281,7 @@ mod World {
     pub def empty(): World =
         World.World({tick = 0, turnPhase = TurnPhase.Phase.PlayerCursor, screen = GamePhase.Title, party = None,
                      initialSpawns = {enemies = Nil, players = Nil}, floorSnapshot = None, floorId = "",
+                     arrowCursor = ArrowCursorState.initial(), selection = SelectedPlayer.cleared(),
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      statusEffects = Map.empty(),
                      hp = Map.empty(), weapons = Map.empty(), team = Map.empty(),
@@ -340,6 +347,14 @@ mod World {
     /// World の floorId（現在フロア・単一権威）を読む（read-model アクセサ）。`FloorProgress` facade が使う。
     pub def floorIdOf(world: World): String =
         let World.World(w) = world; w#floorId
+
+    /// World の arrowCursor（照準矢印の論理状態・単一権威）を読む（read-model アクセサ）。`ArrowCursorState` facade が使う。
+    pub def arrowCursorOf(world: World): ArrowCursorState.Data =
+        let World.World(w) = world; w#arrowCursor
+
+    /// World の selection（操作中プレイヤーの選択状態・単一権威）を読む（read-model アクセサ）。`SelectedPlayer` facade が使う。
+    pub def selectionOf(world: World): SelectedPlayer.Selection =
+        let World.World(w) = world; w#selection
 
     /// per-frame の World 更新。**縮退版**: 全 store が command 権威（spawn/despawn/build choke の Cmd が
     /// 唯一の書込・prune は `Cmd.Despawn`/`Cmd.ClearUnits` が担う）なので、scene からの derive/prune は無い。
@@ -539,6 +554,8 @@ mod World {
         case SetInitialSpawns(InitialSpawns.Snapshot)  // 初回 spawn 一覧 write（InitialSpawns facade・GameOver 復活用）
         case SetFloorSnapshot(Option[FloorSnapshot.T])  // フロア進入時スナップショット write（FloorSnapshot facade・None=未保存）
         case SetFloorId(String)             // 現在フロア id write（FloorProgress facade・階段/全滅/周回で遷移）
+        case SetArrowCursor(ArrowCursorState.Data)  // 照準矢印の論理状態 write（ArrowCursorState facade）
+        case SetSelection(SelectedPlayer.Selection)  // 操作中プレイヤー選択状態 write（SelectedPlayer facade）
         case SetHp(EntityRef, Int32)        // hp write（dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
         case SetBaseStats(EntityRef, Combat.BaseStats)  // base 戦闘値 write（hp/weapons 同型・両 faction・resource 書換ごとに dual-write）
@@ -822,6 +839,10 @@ mod World {
                 let World.World(w) = world; World.World({floorSnapshot = snap | w})
             case Cmd.SetFloorId(id) =>
                 let World.World(w) = world; World.World({floorId = id | w})
+            case Cmd.SetArrowCursor(a) =>
+                let World.World(w) = world; World.World({arrowCursor = a | w})
+            case Cmd.SetSelection(s) =>
+                let World.World(w) = world; World.World({selection = s | w})
             case Cmd.SetHp(ref, hpVal) =>
                 // 単一 store＋toUid。
                 let World.World(w) = world;
@@ -1310,6 +1331,8 @@ mod World {
             case Cmd.SetInitialSpawns(_)     => ("SetInitialSpawns", 0, 0, 0)
             case Cmd.SetFloorSnapshot(snap)  => ("SetFloorSnapshot", if (Option.isEmpty(snap)) 0 else 1, 0, 0)
             case Cmd.SetFloorId(_)           => ("SetFloorId", 0, 0, 0)
+            case Cmd.SetArrowCursor(_)       => ("SetArrowCursor", 0, 0, 0)
+            case Cmd.SetSelection(_)         => ("SetSelection", 0, 0, 0)
             case Cmd.TickPlayers(_)           => ("TickP", 0, 0, 0)
             case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)
