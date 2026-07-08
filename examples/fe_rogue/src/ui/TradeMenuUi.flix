@@ -184,13 +184,11 @@ mod TradeMenuUi {
         TradeMenuState.State.get()
 
     /// 状態を `f` で更新する。
-    pub def mapPanelData(f: PanelData -> PanelData, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ TradeMenuState.State =
-        TradeMenuState.State.put(f(TradeMenuState.State.get()));
-        scene
+    pub def mapPanelData(f: PanelData -> PanelData): Unit \ TradeMenuState.State =
+        TradeMenuState.State.put(f(TradeMenuState.State.get()))
 
-    def setPanelData(data: PanelData, scene: Scene[NodeTag]): Scene[NodeTag] \ TradeMenuState.State =
-        mapPanelData(_ -> data, scene)
+    def setPanelData(data: PanelData): Unit \ TradeMenuState.State =
+        mapPanelData(_ -> data)
 
     pub def paneCount(data: PanelData): Int32 = List.length(data#members)
 
@@ -313,7 +311,7 @@ mod TradeMenuUi {
     /// 1 ペインに並べる ItemEntry 列。インベントリ +（上限未満のときだけ）末尾の空スロット行。
     /// 上限ちょうど（満杯）なら空スロットを出さない = 片方向流入をブロックする。
     /// pub: テストが「満杯ペインに空スロットが出ない」ことを確認するのに使う。
-    pub def paneEntries(playerId: Int32, _scene: Scene[NodeTag]):
+    pub def paneEntries(playerId: Int32):
             List[ItemEntry] \ PlayerData.PartyQuery =
         let base = inventoryEntries(playerId);
         if (isFull(playerId)) base
@@ -343,7 +341,7 @@ mod TradeMenuUi {
     /// gameLoop が 1 回呼ぶ frame-paced System。TradeInventory の間だけ root を可視化し、
     /// paneCount 個のペインへ対応 player の在庫を窓へ流し込み、focus ペインだけ選択ハイライト箱を
     /// 出す（非 focus ペインは箱を隠す）。それ以外のフェーズでは全て隠し、各ペインのカーソルを先頭へ戻す。
-    pub def frameStep(_dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def frameStep(_dt: Duration.Duration): Unit
             \ {TurnPhase.State, TradeMenuState.State, PlayerData.PartyQuery, UiWorldState.State} =
         if (TurnPhase.State.get() != TurnPhase.Phase.TradeInventory) {
             // 非表示中は全ペインのカーソルを先頭に戻し、全ペインを隠す
@@ -351,8 +349,7 @@ mod TradeMenuUi {
             let ui0 = UiWorldState.State.get();
             let hidden = List.range(0, maxPanes()) |> List.foldLeft((acc, i) ->
                 acc |> UiStore.putSelection(menuPath(i), 0) |> UiStore.setVisible(panePath(i), false), ui0);
-            UiWorldState.State.put(UiStore.setVisible(rootPath(), false, hidden));
-            scene
+            UiWorldState.State.put(UiStore.setVisible(rootPath(), false, hidden))
         } else {
             let data = getPanelData();
             let count = paneCount(data);
@@ -361,9 +358,8 @@ mod TradeMenuUi {
                 |> UiStore.setVisible(rootPath(), true)
                 |> UiStore.setAbs(panelPath(), {x = (designWidth() - width) / 2.0, y = panelTop()});
             let synced = List.range(0, maxPanes()) |> List.foldLeft((acc, i) ->
-                syncPane(i, data, count, scene, acc), ui0);
-            UiWorldState.State.put(synced);
-            scene
+                syncPane(i, data, count, acc), ui0);
+            UiWorldState.State.put(synced)
         }
 
     /// 可視ペイン数から panel の外形幅を求める（中央寄せ用）。ui.json の auto 幅と一致する式:
@@ -375,13 +371,13 @@ mod TradeMenuUi {
              + Int32.toFloat64(count - 1) * paneGap()
 
     /// ペイン i を同期する。i >= count は隠す。それ以外は在庫を窓へ流し込み、見出し・ハイライトを更新する。
-    def syncPane(i: Int32, data: PanelData, count: Int32, scene: Scene[NodeTag],
+    def syncPane(i: Int32, data: PanelData, count: Int32,
                  ui: UiStore.UiWorld): UiStore.UiWorld \ PlayerData.PartyQuery =
         if (i >= count) UiStore.setVisible(panePath(i), false, ui)
         else match playerIdAt(i, data) {
             case None      => UiStore.setVisible(panePath(i), false, ui)
             case Some(pid) =>
-                let entries = paneEntries(pid, scene);
+                let entries = paneEntries(pid);
                 let (sublines, sprites) = paneDecor(pid);
                 let (header, headerColor) = paneHeader(pid);
                 let total = List.length(entries);
@@ -508,102 +504,103 @@ mod TradeMenuUi {
     // ========================================================================
 
     /// ↑↓ 押下: focus ペインの選択カーソルを delta（±1）動かす（端で停止＝wrap しない）。
-    pub def moveSelection(delta: Int32, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def moveSelection(delta: Int32): Unit
             \ {TradeMenuState.State, PlayerData.PartyQuery, UiWorldState.State} =
         let data = getPanelData();
         let i = data#focus;
         match playerIdAt(i, data) {
-            case None      => scene
+            case None      => ()
             case Some(pid) =>
-                let count = List.length(paneEntries(pid, scene));
+                let count = List.length(paneEntries(pid));
                 let ui = UiWorldState.State.get();
                 let next = clampIndex(count, UiStore.selectionOf(menuPath(i), ui) + delta);
-                UiWorldState.State.put(UiStore.putSelection(menuPath(i), next, ui));
-                scene
+                UiWorldState.State.put(UiStore.putSelection(menuPath(i), next, ui))
         }
 
     /// ←/→ 押下: focus ペインを delta(±1) 動かす（両端でラップ）。
-    pub def setPaneFocusDelta(delta: Int32, scene: Scene[NodeTag]): Scene[NodeTag] \ TradeMenuState.State =
-        mapPanelData(d -> moveFocus(delta, d), scene)
+    pub def setPaneFocusDelta(delta: Int32): Unit \ TradeMenuState.State =
+        mapPanelData(d -> moveFocus(delta, d))
 
     // ========================================================================
     // 確定 / キャンセル / 印（Z / X / Shift）
     // ========================================================================
 
     /// focus ペインの選択カーソル位置の ItemEntry。ペインが解決できなければ None。
-    def focusedEntry(paneIndex: Int32, data: PanelData, scene: Scene[NodeTag]):
+    def focusedEntry(paneIndex: Int32, data: PanelData):
             Option[ItemEntry] \ {PlayerData.PartyQuery, UiWorldState.State} =
         match playerIdAt(paneIndex, data) {
             case None      => None
             case Some(pid) =>
                 let sel = UiStore.selectionOf(menuPath(paneIndex), UiWorldState.State.get());
-                List.nth(sel, paneEntries(pid, scene))
+                List.nth(sel, paneEntries(pid))
         }
 
     /// Z 押下: focus ペインの選択 entry を取り、`confirmAt` に流す。
-    pub def confirmCurrentSelection(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command,
-                              TradeMenuState.State, PlayerData.PartyQuery, UiWorldState.State} =
+    pub def confirmCurrentSelection():
+            Unit \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command, World.WorldQuery,
+                    TradeMenuState.State, PlayerData.PartyQuery, UiWorldState.State} =
         let data = getPanelData();
         let i = data#focus;
-        match focusedEntry(i, data, scene) {
-            case None        => scene
-            case Some(entry) => confirmAt(i, entry, scene)
+        match focusedEntry(i, data) {
+            case None        => ()
+            case Some(entry) => confirmAt(i, entry)
         }
 
-    /// 指定ペインの指定 entry に対する Z 確定処理。`decideConfirm` の結果を scene に適用する。
+    /// 指定ペインの指定 entry に対する Z 確定処理。`decideConfirm` の結果を状態に適用する。
     /// `confirmCurrentSelection` から focus ペインの selected entry を渡して使うほか、
     /// テストが選択状態に依存せず確定操作を直接駆動するのにも使う。
-    pub def confirmAt(paneIndex: Int32, entry: ItemEntry, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command, TradeMenuState.State} =
+    pub def confirmAt(paneIndex: Int32, entry: ItemEntry):
+            Unit \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command, World.WorldQuery, TradeMenuState.State} =
         let data = getPanelData();
         // 印が付いていて、その付け元と違うペインで Z を押したら「まとめ渡し」。
         // それ以外（印なし / 同じペインで Z）は従来どおり 1 個ずつの pick / swap / 並び替え。
         if (isBulkConfirm(paneIndex, data))
-            confirmBulkTransfer(paneIndex, data, scene)
+            confirmBulkTransfer(paneIndex, data)
         else {
             let entryKind = parseEntryKind(entry);
             match decideConfirm(paneIndex, entryKind, data) {
                 case ConfirmOutcome.JustUpdate(d2)      =>
-                    checked_ecast(setPanelData(d2, scene))
+                    checked_ecast(setPanelData(d2))
                 case ConfirmOutcome.DoSwap(d2, plan)    =>
-                    applyTradeSwap(plan, data#origin, scene)
-                        |> setPanelData(d2)
+                    applyTradeSwap(plan, data#origin);
+                    setPanelData(d2)
                 case ConfirmOutcome.DoReorder(d2, plan) =>
-                    checked_ecast(
-                        PlayerScene.reorderItem(plan#playerId, plan#kindA, plan#kindB, scene)
-                            |> setPanelData(d2))
+                    checked_ecast({
+                        PlayerScene.reorderItem(plan#playerId, plan#kindA, plan#kindB);
+                        setPanelData(d2)
+                    })
             }
         }
 
     /// X 押下の優先順位: pick=Some なら pick 解除（focus 据置）→ 印があれば印を解除 →
     /// どちらも無ければ origin に応じてウィンドウを閉じる。複数選択を 1 段で全部消さず、
     /// 「まず選択を取り消す」段階を踏めるようにしている。
-    pub def cancelCurrent(scene: Scene[NodeTag]): Scene[NodeTag] \ {TurnPhase.State, TradeMenuState.State, RangeOverlayState.State} =
+    pub def cancelCurrent(): Unit \ {TurnPhase.State, TradeMenuState.State, RangeOverlayState.State} =
         let data = getPanelData();
         if (not Option.isEmpty(data#pick))
-            checked_ecast(mapPanelData(d -> {pick = None | d}, scene))
+            checked_ecast(mapPanelData(d -> {pick = None | d}))
         else if (not Set.isEmpty(data#marks))
-            checked_ecast(mapPanelData(d -> {marks = Set#{}, markPane = None | d}, scene))
-        else closeTrade(data#origin, scene)
+            checked_ecast(mapPanelData(d -> {marks = Set#{}, markPane = None | d}))
+        else closeTrade(data#origin)
 
     /// pick も印も無いときの X: origin に応じて交換ウィンドウを閉じる（どちらも ActionSelect へ）。
-    def closeTrade(origin: Origin, scene: Scene[NodeTag]): Scene[NodeTag] \ {TurnPhase.State, TradeMenuState.State, RangeOverlayState.State} =
+    def closeTrade(origin: Origin): Unit \ {TurnPhase.State, TradeMenuState.State, RangeOverlayState.State} =
         match origin {
-            case Origin.FromTurn   => PhaseTransitions.enterActionSelectFromTrade(scene)
-            case Origin.FromGather => PhaseTransitions.enterActionSelectFromTrade(scene)
+            case Origin.FromTurn   => PhaseTransitions.enterActionSelectFromTrade()
+            case Origin.FromGather => PhaseTransitions.enterActionSelectFromTrade()
         }
 
     /// Shift 押下: focus ペインのカーソル位置にある自分のアイテムの印を付け外しする。
     /// 空スロットには印を付けない（種別が引けず None になる）。
-    pub def toggleTradeMarkAtCursor(scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def toggleTradeMarkAtCursor(): Unit
             \ {TradeMenuState.State, PlayerData.PartyQuery, UiWorldState.State} =
         let data = getPanelData();
         let i = data#focus;
-        focusedEntry(i, data, scene)
-            |> Option.flatMap(parseEntryKind)
-            |> Option.map(kind -> setPanelData(toggledMarks(i, kind, data), scene))
-            |> Option.getWithDefault(scene)
+        let kindOpt = focusedEntry(i, data) |> Option.flatMap(parseEntryKind);
+        match kindOpt {
+            case Some(kind) => setPanelData(toggledMarks(i, kind, data))
+            case None       => ()
+        }
 
     /// 印を付け外しした後の PanelData を返す純粋関数。focus ペインが今の印元（`markPane`）と
     /// 違うときは前の印を捨てて focus を新しい印元にする（印は 1 ペインぶんだけ持つ）。
@@ -630,23 +627,23 @@ mod TradeMenuUi {
     ///   - pickerKind = None & receiverKind = Some → receiver → picker（受取）
     ///   - 両方 None → no-op
     /// 巻き戻しドラフトは `origin == FromTurn` のときだけ積む（ローグは undo 無し）。
-    def applyTradeSwap(plan: SwapPlan, origin: Origin, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
+    def applyTradeSwap(plan: SwapPlan, origin: Origin):
+            Unit \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command, World.WorldQuery} =
         match (plan#pickerKind, plan#receiverKind) {
             case (None, None) =>
-                scene
+                ()
             case (Some(pickerKind), receiverOpt) =>
-                GameLogger.playerLog("${PlayerScene.displayName(plan#pickerId, scene)} と ${PlayerScene.displayName(plan#receiverId, scene)} がアイテム交換");
+                GameLogger.playerLog("${PlayerScene.displayName(plan#pickerId)} と ${PlayerScene.displayName(plan#receiverId)} がアイテム交換");
                 recordIfTurn(origin, {selfId = plan#pickerId, selfKind = pickerKind,
-                                      partnerId = plan#receiverId, partnerKindOpt = receiverOpt}, scene);
+                                      partnerId = plan#receiverId, partnerKindOpt = receiverOpt});
                 PlayerScene.swapItem({selfId      = plan#pickerId,   selfKind    = pickerKind,
-                                       partnerId   = plan#receiverId, partnerKind = receiverOpt}, scene)
+                                       partnerId   = plan#receiverId, partnerKind = receiverOpt})
             case (None, Some(receiverKind)) =>
-                GameLogger.playerLog("${PlayerScene.displayName(plan#pickerId, scene)} と ${PlayerScene.displayName(plan#receiverId, scene)} がアイテム交換");
+                GameLogger.playerLog("${PlayerScene.displayName(plan#pickerId)} と ${PlayerScene.displayName(plan#receiverId)} がアイテム交換");
                 recordIfTurn(origin, {selfId = plan#receiverId, selfKind = receiverKind,
-                                      partnerId = plan#pickerId, partnerKindOpt = None}, scene);
+                                      partnerId = plan#pickerId, partnerKindOpt = None});
                 PlayerScene.swapItem({selfId      = plan#receiverId, selfKind    = receiverKind,
-                                       partnerId   = plan#pickerId,   partnerKind = None}, scene)
+                                       partnerId   = plan#pickerId,   partnerKind = None})
         }
 
     /// 巻き戻しドラフト用の trade 当事者データ。self が起点（実際に持ち物が動く側）、
@@ -659,21 +656,21 @@ mod TradeMenuUi {
     }
 
     /// `origin == FromTurn` のときだけ巻き戻しドラフトを積む。
-    def recordIfTurn(origin: Origin, parties: TradeParties, scene: Scene[NodeTag]): Unit \ SelectedPlayer.State =
+    def recordIfTurn(origin: Origin, parties: TradeParties): Unit \ {SelectedPlayer.State, World.WorldQuery} =
         match origin {
             case Origin.FromTurn   =>
-                recordTradeDraft(parties, scene)
+                recordTradeDraft(parties)
             case Origin.FromGather => ()
         }
 
     /// swap 実行前に、巻き戻し用 `Traded` ドラフトを SelectedPlayer に積む。
     /// self 側に実体が無い（swap が no-op になる）場合は積まない。
-    def recordTradeDraft(parties: TradeParties, scene: Scene[NodeTag]): Unit \ SelectedPlayer.State =
-        match PlayerScene.getInventoryItem(parties#selfId, parties#selfKind, scene) {
+    def recordTradeDraft(parties: TradeParties): Unit \ {SelectedPlayer.State, World.WorldQuery} =
+        match PlayerScene.getInventoryItem(parties#selfId, parties#selfKind) {
             case None           => ()
             case Some(selfItem) =>
                 let partnerItemOpt = parties#partnerKindOpt
-                    |> Option.flatMap(pk -> PlayerScene.getInventoryItem(parties#partnerId, pk, scene));
+                    |> Option.flatMap(pk -> PlayerScene.getInventoryItem(parties#partnerId, pk));
                 SelectedPlayer.pushDraft(MoveDraft.DraftAction.Traded({
                     selfId      = parties#selfId,      selfKind    = parties#selfKind,
                     selfItem    = selfItem,
@@ -685,15 +682,14 @@ mod TradeMenuUi {
     /// 印の付いた自分の複数アイテムを、別ペイン（`receiverPane` = 受け取り側）の空き枠ぶんだけ
     /// まとめて渡す。index の大きい順に 1 個ずつ既存の片方向 transfer に流すので、ログと巻き戻し
     /// ドラフトは 1 個ずつ渡したのと同じになる。渡し終えたら focus を受け取り側に残し印を消す。
-    def confirmBulkTransfer(receiverPane: Int32, data: PanelData, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command, TradeMenuState.State} =
+    def confirmBulkTransfer(receiverPane: Int32, data: PanelData):
+            Unit \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command, World.WorldQuery, TradeMenuState.State} =
         let giverIdOpt    = data#markPane |> Option.flatMap(giverPane -> playerIdAt(giverPane, data));
         let receiverIdOpt = playerIdAt(receiverPane, data);
         let ordered       = PlayerData.marksDescendingPerList(data#marks);
-        let transferred   = transferEach({giverIdOpt = giverIdOpt, receiverIdOpt = receiverIdOpt,
-                                          origin = data#origin, kinds = ordered}, scene);
-        setPanelData({pick = None, marks = Set#{}, markPane = None, focus = receiverPane | data},
-                     transferred)
+        transferEach({giverIdOpt = giverIdOpt, receiverIdOpt = receiverIdOpt,
+                      origin = data#origin, kinds = ordered});
+        setPanelData({pick = None, marks = Set#{}, markPane = None, focus = receiverPane | data})
 
     /// `transferEach` の引数束。giver/receiver は共に片方向渡しの当事者 player id（Option は
     /// ペイン解決の失敗を表す）。`kinds` は渡す順（`PlayerData.marksDescendingPerList` の並び）。
@@ -705,13 +701,15 @@ mod TradeMenuUi {
     }
 
     /// giver / receiver が両方そろうときだけ、印の付いたアイテムを順に渡す。どちらか欠けたら no-op。
-    def transferEach(batch: TransferBatch, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
-        let resolved = forM (giverId <- batch#giverIdOpt; receiverId <- batch#receiverIdOpt)
-            yield List.foldLeft((acc, kind) ->
-                transferOne({giverId = giverId, receiverId = receiverId, origin = batch#origin, kind = kind}, acc),
-                scene, batch#kinds);
-        Option.getWithDefault(scene, resolved)
+    def transferEach(batch: TransferBatch):
+            Unit \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command, World.WorldQuery} =
+        match (batch#giverIdOpt, batch#receiverIdOpt) {
+            case (Some(giverId), Some(receiverId)) =>
+                List.forEach(kind ->
+                    transferOne({giverId = giverId, receiverId = receiverId, origin = batch#origin, kind = kind}),
+                    batch#kinds)
+            case _ => ()
+        }
 
     /// `transferOne` の引数束。giver=渡す側、receiver=受け取る側。
     type alias TransferOne = {
@@ -722,23 +720,24 @@ mod TradeMenuUi {
     }
 
     /// 1 個を giver → receiver に片方向で渡す。受け取ると重量過多になるなら何もしない（部分転送の停止）。
-    /// 容量は scene-arg から最新値を読む（連続して渡す途中で総重量が変わるため snapshot に頼らない）。
-    def transferOne(t: TransferOne, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command} =
-        if (receiverCanAccept(t#giverId, t#receiverId, t#kind, scene))
+    /// 容量は World から最新値を読む（連続して渡す途中で総重量が変わるため snapshot に頼らない）。
+    def transferOne(t: TransferOne):
+            Unit \ {GameLogger.GameLogger, SelectedPlayer.State, World.Command, World.WorldQuery} =
+        if (receiverCanAccept(t#giverId, t#receiverId, t#kind))
             applyTradeSwap({pickerId = t#giverId, pickerKind = Some(t#kind),
-                            receiverId = t#receiverId, receiverKind = None}, t#origin, scene)
-        else scene
+                            receiverId = t#receiverId, receiverKind = None}, t#origin)
+        else ()
 
     /// 受け取り側がこの 1 個を受け取っても重量過多(110%+ ＝ 移動不可)にならないか。
     /// 拾得ゲート（`PlayerScene.wouldOverloadByPicking`）と同じ基準で、まとめ渡しが受け手を
     /// 移動不可まで積み込むのを防ぐ（アイテム単位で判定し、超える 1 個目の手前で止める）。
-    /// ここは PartyQuery へ flip **しない**。まとめ渡しの fold 内で 1 個渡すごとに最新の積載を
-    /// 見る read-during-mutation であり、threaded な acc scene（fresh）を読むのが正
-    /// （snapshot 供給の mock/overlay に寄せると 2 個目以降の重量ゲートが陳腐化する）。
+    /// まとめ渡しの fold 内で 1 個渡すごとに最新の積載を見る read-during-mutation。在庫は
+    /// World 権威で、Cmd emit は worldRef へ即時適用される（read-after-write）ため、WorldQuery の
+    /// dataFromWorld 直読みが常に fold 中の最新在庫を返す（frame-top snapshot の PartyQuery とは別物）。
     def receiverCanAccept(giverId: Int32, receiverId: Int32,
-                           kind: PlayerData.ItemKind, scene: Scene[NodeTag]): Bool =
-        match (PlayerScene.get(giverId, scene), PlayerScene.get(receiverId, scene)) {
+                           kind: PlayerData.ItemKind): Bool \ World.WorldQuery =
+        let w = World.WorldQuery.get();
+        match (World.dataFromWorld(giverId, w), World.dataFromWorld(receiverId, w)) {
             case (Some(giver), Some(receiver)) =>
                 match PlayerScene.heldItemWeight(giver, kind) {
                     case Some(weight) =>

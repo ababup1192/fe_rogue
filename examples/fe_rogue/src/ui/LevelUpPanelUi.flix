@@ -102,8 +102,8 @@ mod LevelUpPanelUi {
     /// gameLoop が 1 回呼ぶ frame-paced System。LevelUpView 中は演出を 1 フレームぶん進め、
     /// 可視性と本文を再評価して UiStore へ反映する。表示外はパネルを隠してステートを初期化する
     /// （次のレベルアップで bonus を鳴らし直すため）。
-    pub def frameStep(delta: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {GameEngine.Game, GameEngine.Audio, TurnPhase.State, LevelUpPanelState.State, UiWorldState.State} =
+    pub def frameStep(delta: Duration.Duration): Unit
+            \ {GameEngine.Game, GameEngine.Audio, TurnPhase.State, LevelUpPanelState.State, UiWorldState.State, World.WorldQuery} =
         let phase = TurnPhase.State.get();
         let ui0 = UiWorldState.State.get();
         let ui1 =
@@ -111,15 +111,14 @@ mod LevelUpPanelUi {
                 // 表示外: 隠してステートを初期化（次のレベルアップで bonus を鳴らし直すため）。
                 LevelUpPanelState.State.put(LevelUpPanelState.initialState());
                 applyVisibility(false, ui0)
-            } else match pendingResult(scene) {
+            } else match pendingResult() {
                 case None         => applyVisibility(true, ui0)
                 case Some(result) =>
                     // ラベル幅を実測して列 x を組む（4 文字ラベルでも数値列に被らない）。
                     let atlas = GameEngine.Game.getFontAtlas(fontName());
                     stepReveal(delta, result, computeColumns(atlas, result#changes), ui0)
             };
-        UiWorldState.State.put(ui1);
-        scene
+        UiWorldState.State.put(ui1)
 
     /// 演出を 1 フレーム進める。bonus → 各ステータス行を上から 1 行ずつ出す。
     /// 上昇した行は status_up を鳴らしてゆっくり、上昇しなかった行は無音で一瞬で送る。
@@ -260,10 +259,11 @@ mod LevelUpPanelUi {
         TextDraw.width(text, atlas, bodyFont())
 
     /// レベルアップ保留中の味方の結果を 1 つ拾う（味方ターンなので同時に複数は出ない）。
-    def pendingResult(scene: Scene[NodeTag]): Option[LevelSystem.Result] =
-        PlayerScene.getAll(scene)
-            |> List.filterMap(d -> d#pendingLevelUp)
-            |> List.head
+    /// pendingLevelUp は World 権威（最小 id が「いま表示中」）。
+    def pendingResult(): Option[LevelSystem.Result] \ World.WorldQuery =
+        let w = World.WorldQuery.get();
+        World.firstPendingLevelUpId(w)
+            |> Option.flatMap(id -> World.pendingLevelUpOf(World.EntityRef.Player(id), w))
 
     /// `List.length` の薄いラッパー。`confirm` での閾値比較の意図を明示する。
     def totalRows(result: LevelSystem.Result): Int32 =
@@ -277,40 +277,30 @@ mod LevelUpPanelUi {
     ///   1 回目（まだ全行を出し切っていない）→ 残りを**一気に全部出して止める**（閉じない）。
     ///   2 回目（既に全て出ている）→ 今表示中の味方のパネルを閉じる。まだレベルアップ待ちの
     ///      味方が居れば演出を初期化して次の味方を表示し、居なければ復帰する。
-    pub def confirm(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {RangeOverlayState.State,
-                              GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery,
-                              LevelUpPanelState.State} =
+    pub def confirm():
+            Unit \ {RangeOverlayState.State,
+                    GameLogger.GameLogger, EnemyTurn.Queue,
+                    TurnPhase.State, SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery,
+                    LevelUpPanelState.State} =
         let st    = LevelUpPanelState.State.get();
-        let total = pendingResult(scene) |> Option.map(totalRows) |> Option.getWithDefault(0);
+        let total = pendingResult() |> Option.map(totalRows) |> Option.getWithDefault(0);
         if (st#revealed < total) {
             // まだ出し切っていない → 全行を即座に表示して止める（閉じない）。
             // revealed を total に飛ばすと frameStep が次フレームで全行・全 `+1` を描く。
-            LevelUpPanelState.State.put({revealed = total, started = true, timer = st#timer});
-            scene
-        } else match firstPendingId(scene) {
+            LevelUpPanelState.State.put({revealed = total, started = true, timer = st#timer})
+        } else match World.firstPendingLevelUpId(World.WorldQuery.get()) {
             // 全行出し切り後の閉じ＝ターン復帰は turn 層（`TurnFlow.resumeAfterLevelUpView`）が担う。
-            case None     => TurnFlow.resumeAfterLevelUpView(scene)
+            case None     => TurnFlow.resumeAfterLevelUpView()
             case Some(id) =>
-                // 今表示中（先頭）の味方の保留を 1 件だけ消す。
-                let cleared = PlayerScene.mapPlayer(id, dd -> {pendingLevelUp = None | dd}, scene);
-                if (PlayerScene.anyPendingLevelUp(cleared)) {
+                // 今表示中（先頭= 最小 id）の味方の保留を 1 件だけ消す（World 権威・emit は即時反映）。
+                World.Command.emit(World.Cmd.SetPendingLevelUp(id, None));
+                if (PlayerScene.anyPendingLevelUp()) {
                     // まだ他に居る → 演出 state を初期化し、次の味方を最初（bonus）から表示。
                     LevelUpPanelState.State.put(LevelUpPanelState.initialState());
-                    PhaseTransitions.enterLevelUpView(cleared)
+                    PhaseTransitions.enterLevelUpView()
                 } else
-                    TurnFlow.resumeAfterLevelUpView(cleared)
+                    TurnFlow.resumeAfterLevelUpView()
         }
-
-    /// レベルアップ表示待ちの味方のうち先頭（= いま表示している味方）の id。
-    /// `confirm` は先頭 id の `pendingLevelUp` だけを 1 件消すので、
-    /// 「先頭 = 今表示中」という不変条件が保たれる。
-    def firstPendingId(scene: Scene[NodeTag]): Option[Int32] =
-        PlayerScene.getAll(scene)
-            |> List.filter(d -> Option.nonEmpty(d#pendingLevelUp))
-            |> List.map(d -> d#id)
-            |> List.head
 
     // ========================================================================
     // テキスト整形（純関数・テスト対象）

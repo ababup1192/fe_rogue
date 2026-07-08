@@ -16,7 +16,7 @@
 //   - TileMapLayer.isFloor / isWall が ASCII マップの真値と一致
 //   - Board.tryMove が初期 (5,5) からの 4 方向で期待値を返す
 //     （特に Down は壁で None — 「壁がないのにとまる」の真相確認）
-//   - PlayerScene.moveTo の targetWorld がタイル中心ピクセル座標に一致
+//   - PlayerScene.moveToById の targetWorld がタイル中心ピクセル座標に一致
 //     （「矢印と違う方向」の Vec2 マッピング検証）
 
 mod TestMapIntegration {
@@ -101,7 +101,7 @@ mod TestMapIntegration {
     /// 実 TileMapLayer をラップした MapSnapshot。
     /// Map ノードのワールド原点は (0,0) と仮定（gridToWorld == mapToLocal）。
     def realMapSnapshot(): MapSnapshot =
-        MapScene.snapshotOf(realTileMapLayer(), Vec2.zero(), Nil)
+        MapSetup.snapshotOf(realTileMapLayer(), Vec2.zero(), Nil)
 
     /// 指定位置に Player(0) 駒だけがある盤面
     def realBoardWithPlayerAt(playerPos: {x = Int32, y = Int32}): Board =
@@ -219,94 +219,49 @@ mod TestMapIntegration {
              down#x,   down#y))
 
     // ========================================================================
-    // (4) PlayerScene.moveTo end-to-end — 単発入力で正しい方向にtweenが向くか
+    // (4) PlayerScene.moveToById end-to-end — 単発入力で正しい方向にtweenが向くか
     // ========================================================================
 
     /// テスト用初期グリッド（PlayerScene.add の経由を回避）。
     def initialGrid(): {x = Int32, y = Int32} = {x = 5, y = 5}
 
-    /// プレイヤーシーン構築（JSON ロード回避、Marker2D 直接生成）。
-    /// world 位置は initialGrid のタイル中心 = (88, 88)。id=0 単独。
-    /// PlayerScene.playerPath が World 配下を指すので World Marker2D を挟む
-    def emptyPlayerScene(): Scene[NodeTag] =
-        let initial = initialGrid();
-        let initialWorld = TileMapLayer.mapToLocal(initial, realTileMapLayer());
-        let marker = Marker2D.make(initialWorld);
-        let world = Marker2D.make(Vec2.zero())
-            |> CanvasItem.setYSortEnabled(true);
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                EngineNode.Marker2DWithState(marker,
-                    NodeTag.Player({
-                        id                = 0,
-                        classId           = "test_player",
-                        gridPos           = initial,
-                        moveTiles         = 5,
-                        hp                = 10,
-                        waited            = false,
-                        attackTargetId    = None,
-                        resource          = TestUnitFixtures.testResource(5, 10),
-                        weapons           = TestUnitFixtures.testWeapon() :: Nil,
-                        staves            = Nil,
-                        consumables       = Nil,
-                        selectedItem      = None,
-                        moveStepsTaken    = 0,
-                        facing            = Dir4.Down,
-                        hidden            = false,
-                        usedStairs            = false,
-                        level                     = 1,
-                        exp                       = 0,
-                        pendingLevelUp            = None,
-                        statuses                  = Nil,
-                        rings          = Nil,
-                        ringEquipped          = false,
-                        followUpUsed   = false
-                    })))
+    /// Player(0) を `pos` に置いた World を組む（moveTiles=5・hp=10 は本テスト群の実機値に揃える）。
+    def worldWithPlayerAt(pos: {x = Int32, y = Int32}): World =
+        TestWorldFixtures.worldOf(
+            TestWorldFixtures.playerCmds({moveTiles = 5 | TestWorldFixtures.unitSpec(0, pos)}))
 
-    /// プレイヤー id=0 の world 座標
-    def playerWorldPos(scene: Scene[NodeTag]): Vec2.Vec2 =
-        Scene.globalPositionAt(PlayerScene.playerPath(0), scene)
-
-    /// scene 内 Player(0) を moveTo で 1 マス動かし、**実ゲームの描画パイプライン相当**で marker を
-    /// 着地セルへ載せた scene を返す。moveTo が emit する `Cmd.Move`＋`Cmd.StartTween`（描画 tween）を
-    /// 空 World に積み、`stepWorld` で tween を完了まで進め、`RenderWorld.syncMarkers` で marker を
-    /// renderPos（＝着地セル中心）へ合わせる（engine tween 退役後の move→stepWorld→syncMarkers を再現）。
-    def applyMove(map: MapSnapshot, target: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] =
+    /// Player(0) を moveToById で `target` へ 1 マス動かし、**実ゲームの描画パイプライン相当**で
+    /// 着地後の描画位置を観測する。moveToById が emit する `Cmd.Move`（位置権威）＋描画 tween を
+    /// `world` に積み、`stepWorld` で tween を完了まで進め、World の renderPos（＝着地セル中心）を
+    /// `landed` として返す。
+    def applyMove(world: World, map: MapSnapshot, target: {x = Int32, y = Int32}):
+            {world = World, landed = Vec2.Vec2} =
         region rc {
-            match Scene.getEngineNode(PlayerScene.playerPath(0), scene) {
-                case Some(EngineNode.Marker2DWithState(marker, NodeTag.Player(data))) =>
-                    let ((newMarker, newData), world) =
-                        TestUnitFixtures.withWorldApplied(rc, () ->
-                            PlayerScene.moveTo(0, map, target, marker, data,
-                                               Duration.frames(count = 16, fps = 120), scene));
-                    let withGrid = Scene.setEngineNode(PlayerScene.playerPath(0),
-                        EngineNode.Marker2DWithState(newMarker, NodeTag.Player(newData)), scene);
-                    // slide ≈ 16/120 秒ゆえ 1 秒進めれば tween は必ず完了し renderPos=着地セル中心。
-                    let (_world2, moved) = World.stepWorld(world, 1.0);
-                    RenderWorld.syncMarkers(moved, withGrid)
-                case _ => bug!("applyMove: expected Player at playerPath(0)")
-            }
+            let (_, world1) = TestUnitFixtures.withWorldAppliedSeeded(rc, world, () ->
+                PlayerScene.moveToById(0, target, map, Duration.frames(count = 16, fps = 120)));
+            // slide ≈ 16/120 秒ゆえ 1 秒進めれば tween は必ず完了し renderPos=着地セル中心。
+            let (world2, _moved) = World.stepWorld(world1, 1.0);
+            let landed = World.renderPosOf(World.EntityRef.Player(0), world2)
+                |> Option.getWithDefault(Vec2.zero());
+            {world = world2, landed = landed}
         }
 
-    /// 4 方向それぞれの単発 moveTo を end-to-end で検証する。
-    /// moveTo + tickAll(1.0) で必ず target world にスナップする
+    /// 4 方向それぞれの単発 moveToById を end-to-end で検証する。
+    /// moveToById + stepWorld(1.0) で必ず target world にスナップする
     /// （slideDuration = 16/120 ≈ 0.133 秒なので 1.0 秒で確実に完了）。
     ///
     /// 期待:
     ///   right (6,5) → ( 104.0,  88.0)
     ///   up    (5,4) → (  88.0,  72.0)
     ///   left  (4,5) → (  72.0,  88.0)
-    ///   ※ down は壁なので moveTo を呼ばない。Board.tryMove で None。
+    ///   ※ down は壁なので moveToById を呼ばない。Board.tryMove で None。
     @Test
     def testMoveToEndsAtCorrectWorldPos(): Unit \ Assert =
         let snapshot = realMapSnapshot();
-        // applyMove が World tween を完了まで進め marker を着地セルへ載せる（tickAll 不要）。
-        let posR = playerWorldPos(applyMove(snapshot, {x = 6, y = 5}, emptyPlayerScene())); // right
-        let posU = playerWorldPos(applyMove(snapshot, {x = 5, y = 4}, emptyPlayerScene())); // up
-        let posL = playerWorldPos(applyMove(snapshot, {x = 4, y = 5}, emptyPlayerScene())); // left
+        // applyMove が World tween を完了まで進め renderPos を着地セルへ載せる。
+        let posR = (applyMove(worldWithPlayerAt(initialGrid()), snapshot, {x = 6, y = 5}))#landed; // right
+        let posU = (applyMove(worldWithPlayerAt(initialGrid()), snapshot, {x = 5, y = 4}))#landed; // up
+        let posL = (applyMove(worldWithPlayerAt(initialGrid()), snapshot, {x = 4, y = 5}))#landed; // left
         Assert.assertEq(
             expected = (104.0, 88.0,    // right
                          88.0, 72.0,    // up
@@ -329,46 +284,33 @@ mod TestMapIntegration {
     //   レンダリング層（Camera2D / TileMapLayer 描画）にある。
     // ========================================================================
 
-    /// 連続入力シミュレータ: gridPos を起点に dir 方向への moveTo を「壁にぶつかるまで」
-    /// 繰り返す。各ステップで moveTo + tickAll(1.0) を回し、最終的な gridPos と
-    /// 移動マス数を返す。実機での「キーを押し続けた連続移動」相当。
+    /// 連続入力シミュレータ: `start` に置いた Player(0) を、dir 方向への moveToById で
+    /// 「壁にぶつかるまで」繰り返す。各ステップで moveToById + stepWorld(1.0) を回し、
+    /// 最終的な gridPos と移動マス数を返す。実機での「キーを押し続けた連続移動」相当。
     def simulateHoldDirection(start: {x = Int32, y = Int32}, dir: {x = Int32, y = Int32},
-                                snapshot: MapSnapshot, scene0: Scene[NodeTag]):
+                                snapshot: MapSnapshot):
             (Int32, {x = Int32, y = Int32}, Vec2.Vec2) =
         // 高々マップ寸法分しか動かない。13×13 なので 20 回も回せば十分
-        def loop(steps: Int32, scene: Scene[NodeTag]): (Int32, Scene[NodeTag]) =
-            if (steps >= 20) (steps, scene)
+        def loop(steps: Int32, world: World, pos: Vec2.Vec2): (Int32, World, Vec2.Vec2) =
+            if (steps >= 20) (steps, world, pos)
             else {
-                let player = PlayerScene.getGridPos(0, scene);
+                let player = World.posOf(World.EntityRef.Player(0), world) |> Option.getWithDefault(start);
                 let board: Board = {
                     map    = snapshot,
                     pieces = (Piece.Player(0), player) :: Nil
                 };
                 match Board.tryMove(board, player, dir) {
-                    case None         => (steps, scene)   // 壁で停止
+                    case None         => (steps, world, pos)   // 壁で停止
                     case Some(target) =>
-                        // applyMove が World tween 完了まで進め marker を着地セルへ載せる（tickAll 不要）。
-                        loop(steps + 1, applyMove(snapshot, target, scene))
+                        // applyMove が World tween 完了まで進め renderPos を着地セルへ載せる。
+                        let moved = applyMove(world, snapshot, target);
+                        loop(steps + 1, moved#world, moved#landed)
                 }
             };
-        let (count, finalScene) = loop(0, scene0 |> placeAt(start, snapshot));
-        let finalGrid = PlayerScene.getGridPos(0, finalScene);
-        let finalWorld = playerWorldPos(finalScene);
-        (count, finalGrid, finalWorld)
-
-    /// 指定グリッドに Player(0) を配置した scene を返す
-    def placeAt(grid: {x = Int32, y = Int32}, snapshot: MapSnapshot): Scene[NodeTag] -> Scene[NodeTag] =
-        scene -> {
-            let world = MapSnapshot.mapToLocal(grid, snapshot);
-            scene
-                |> Scene.setGlobalPositionAt(PlayerScene.playerPath(0), world)
-                |> Scene.mapEngineNode(PlayerScene.playerPath(0), engineNode -> match engineNode {
-                    case EngineNode.Marker2DWithState(marker, NodeTag.Player(data)) =>
-                        EngineNode.Marker2DWithState(marker,
-                            NodeTag.Player({gridPos = grid | data}))
-                    case other => other
-                })
-        }
+        let (count, finalWorld, finalPos) =
+            loop(0, worldWithPlayerAt(start), MapSnapshot.mapToLocal(start, snapshot));
+        let finalGrid = World.posOf(World.EntityRef.Player(0), finalWorld) |> Option.getWithDefault(start);
+        (count, finalGrid, finalPos)
 
     /// 症状 a) 再現: 初期 (5,5) から左を押し続けたら、 何マス進むか?
     /// ASCII y=5 行 "#.#......####" より、 左方向の床は (4,5),(3,5) の 2 マス、
@@ -377,7 +319,7 @@ mod TestMapIntegration {
     def testHoldLeftFromInitialMovesTwoCells(): Unit \ Assert =
         let snapshot = realMapSnapshot();
         let (count, grid, world) =
-            simulateHoldDirection({x = 5, y = 5}, Vec2i.left(), snapshot, emptyPlayerScene());
+            simulateHoldDirection({x = 5, y = 5}, Vec2i.left(), snapshot);
         Assert.assertEq(
             expected = (2, 3, 5, 56.0, 88.0),
             (count, grid#x, grid#y, world#x, world#y))
@@ -391,7 +333,7 @@ mod TestMapIntegration {
     def testHoldRightFromInitialMovesThreeCells(): Unit \ Assert =
         let snapshot = realMapSnapshot();
         let (count, grid, world) =
-            simulateHoldDirection({x = 5, y = 5}, Vec2i.right(), snapshot, emptyPlayerScene());
+            simulateHoldDirection({x = 5, y = 5}, Vec2i.right(), snapshot);
         Assert.assertEq(
             expected = (3, 8, 5, 136.0, 88.0),
             (count, grid#x, grid#y, world#x, world#y))
@@ -402,21 +344,18 @@ mod TestMapIntegration {
     @Test
     def testUpFromLeftEdgeMovesStraightUp(): Unit \ Assert =
         let snapshot = realMapSnapshot();
-        let scene0 = emptyPlayerScene() |> placeAt({x = 1, y = 5}, snapshot);
         let source: {x = Int32, y = Int32} = {x = 1, y = 5};
+        let world0 = worldWithPlayerAt(source);
         let board: Board = {
             map    = snapshot,
             pieces = (Piece.Player(0), source) :: Nil
         };
-        let dir = Vec2i.up();
-        let target = match Board.tryMove(board, source, dir) {
-            case Some(t) => t
-            case None    => bug!("(1,5) up should be open")
-        };
-        // applyMove が World tween 完了まで進め marker を着地セルへ載せる（tickAll 不要）。
-        let scene2 = applyMove(snapshot, target, scene0);
-        let grid = PlayerScene.getGridPos(0, scene2);
-        let world = playerWorldPos(scene2);
+        // (1,5) 上は床が保証されている前提。壊れていれば下の assertEq が (-1,-1) 側で必ず落ちる。
+        let target = Board.tryMove(board, source, Vec2i.up()) |> Option.getWithDefault({x = -1, y = -1});
+        // applyMove が World tween 完了まで進め renderPos を着地セルへ載せる。
+        let moved = applyMove(world0, snapshot, target);
+        let grid = World.posOf(World.EntityRef.Player(0), moved#world) |> Option.getWithDefault(source);
+        let world = moved#landed;
         Assert.assertEq(
             expected = (1, 4,     // tryMove の target も x 不変
                         1, 4,     // 移動後 gridPos も x 不変

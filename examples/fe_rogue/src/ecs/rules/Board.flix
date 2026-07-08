@@ -17,7 +17,7 @@
 ///   (G) 直線射出: rayCast / knockbackPath / dedupCells / padCells
 ///
 /// EnemyAI / AutoMove / MoveRangeScene / EnemyRangeScene / PlayerScene などはこの
-/// Board を 1 つ受け取れば「次の手」を計算できる。Scene[NodeTag] には依存しない。
+/// Board を 1 つ受け取れば「次の手」を計算できる。World には依存しない。
 ///
 /// `BoardQuery` は「現フレームの盤面」を effect 経由で取り回すための窓口。
 /// Game.start の handler が現フレームの Scene と TileMapLayer から構築してクロージャに

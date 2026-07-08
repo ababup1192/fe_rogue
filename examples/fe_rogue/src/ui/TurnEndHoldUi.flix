@@ -157,17 +157,17 @@ mod TurnEndHoldUi {
 
     /// gameLoop が 1 回呼ぶ frame-paced System。Shift 押下を読み、`step` で進め、リング頂点・可視を
     /// 反映し、満タン到達フレームでターンエンドを発火する。ダンジョン外（タイトル/選択画面）は
-    /// Map ノード不在で no-op（対象フェーズが PlayerCursor でも誤発火しない）。
+    /// 盤面未 seed で no-op（対象フェーズが PlayerCursor でも誤発火しない）。
     /// gameLoop のパイプラインでは LogUi.step より後に置く（ログ帯を上書きするため）。
-    pub def frameStep(delta: Duration.Duration, scene: Scene[NodeTag]):
-                    Scene[NodeTag]
+    pub def frameStep(delta: Duration.Duration):
+                    Unit
                     \ {GameEngine.Game, GameEngine.Audio, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                        GatherResume.State, World.Command, World.WorldQuery, TurnEndHoldState.State,
                        RangeOverlayState.State,
                        // 表示中はログ帯（World-entity UI の Log root）を背景として再利用する。
                        UiWorldState.State} =
-        if (Option.isEmpty(Scene.getEngineNode(MapScene.mapPath(), scene))) scene
+        if (not World.hasBoard(World.WorldQuery.get())) ()
         else {
             let data = TurnEndHoldState.State.get();
             let phase = TurnPhase.State.get();
@@ -177,18 +177,18 @@ mod TurnEndHoldUi {
             let held = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
             let result = step(data, active, held, delta);
             TurnEndHoldState.State.put(result#data);
-            let shown = applyAppearance(result#ratio, result#visible, scene);
+            applyAppearance(result#ratio, result#visible);
             if (result#fire) {
                 AudioStreamPlayer.play(fireSound());
-                ActionMenuUi.turnEndShortcut(shown)
-            } else shown
+                ActionMenuUi.turnEndShortcut()
+            } else ()
         }
 
     /// 充填率と可視状態をリング頂点・root 可視へ反映する。表示中はログ帯を背景として再利用する
     /// （`LogUi.holdForOverlay` で帯を出しログ本文を消す）。前景弧は 12 時起点に充填率ぶんだけ満ちる。
-    def applyAppearance(ratio: Float64, visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ UiWorldState.State =
+    def applyAppearance(ratio: Float64, visible: Bool): Unit \ UiWorldState.State =
         UiWorldState.State.put(applyRing(ratio, visible, UiWorldState.State.get()));
-        if (visible) LogUi.holdForOverlay(scene) else scene
+        if (visible) LogUi.holdForOverlay() else ()
 
     /// 充填率・可視から UiWorld へリング頂点と root 可視を塗る純粋適用（frameStep が毎フレーム呼ぶほか、
     /// スナップショット／GIF が「実ロジックで作った見た目」を再現するのに使う共有の入口）。

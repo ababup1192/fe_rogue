@@ -10,11 +10,11 @@
 ///
 /// 影響範囲:
 ///   - 敵ターンの `stepEnemyTurn` のキュー消化が gating される
-///   - アニメーション (Tween / AnimationPlayer) は Pacing と独立に進行する。
+///   - アニメーション (Tween / lunge 等の演出クロック) は Pacing と独立に進行する。
 ///     tween は Pacing に関係なく走り続けるため、hold 時間は「演出後に確保したい最低静止時間」として設定する
 ///
 /// 設計指針:
-///   - `Tween.Scheduler` や `AnimationPlayer.Scheduler` と同じく Ref ベースの effect handler。
+///   - `Tween.Scheduler` と同じく Ref ベースの effect handler。
 ///     Game.start で `with Pacing.withState(rc)` を 1 行注入する
 ///   - 単一の Duration カウンタ。複数同時 hold は最大値で上書きする方針 (新しい hold が
 ///     より長ければ伸びる、短ければそのまま)。「複数演出が重なるとき長い方を採る」が直感的

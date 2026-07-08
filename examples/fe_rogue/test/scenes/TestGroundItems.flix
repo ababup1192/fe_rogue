@@ -1,9 +1,12 @@
-/// GroundItems の純粋ロジックテスト。
+/// GroundItems のテスト。
 ///
 /// `floorCellsInBounds`: 「offset + 半開 bbox」内で床述語を満たすセルを列挙する純粋関数
-/// （床ドロップ/敵スポーンの候補セル）。床判定を引数で注入するので scene/engine 非依存で検証できる。
+/// （床ドロップ/敵スポーンの候補セル）。床判定を引数で注入するので World 非依存で検証できる。
 /// `isTaken`: 同セル二重ドロップ防止の述語。
 /// 守るバグ: アイテムが部屋 bbox 外（通路・壁）に湧いて取得不能 / 同セルに二重ドロップ。
+///
+/// `takeAt` は床アイテムの存在/中身を World の groundItems store（唯一の権威）から読み、
+/// 拾得時は `Cmd.RemoveItem` を emit する。
 mod TestGroundItems {
 
     /// bbox 内の床セルを列挙し、maxEx は排他（半開区間）。
@@ -48,29 +51,22 @@ mod TestGroundItems {
             (GroundItems.isTaken({x = 1, y = 1}, taken),
              GroundItems.isTaken({x = 2, y = 2}, taken)))
 
-    /// (4,5) に武器アイテム 1 個を置いた最小シーン（World/Items/Item_0 を直接構築）。
-    def sceneWithItem(): Scene[NodeTag] =
+    /// (4,5) に武器アイテム 1 個を spawn した World。
+    def worldWithItem(): World =
         let item = ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon());
-        let body = EngineNode.Sprite2DWithState(
-            Sprite2D.make("item_icons", Vec2.zero(), Vec2.one()),
-            NodeTag.GroundItem(({gridPos = {x = 4, y = 5}, itemKey = "test_weapon",
-                                  item = item, elapsed = Duration.seconds(0.0)}: GroundItems.Data)));
-        let marker = () -> EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.NoTag);
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(), marker())
-            |> Scene.addChildAt(MapScene.worldPath(), "Items", marker())
-            |> Scene.addChildAt(MapScene.worldName() :: "Items" :: Nil, "Item_0", body)
+        let data: GroundItems.Data = {gridPos = {x = 4, y = 5}, itemKey = "test_weapon",
+                                       item = item, elapsed = Duration.seconds(0.0)};
+        World.applyCmd(World.Cmd.SpawnItem(data), World.empty())
 
-    /// World store 権威の証跡。scene から seed した World は床アイテムを groundItemAtOf で返し、
-    /// takeAt の emit した `Cmd.RemoveItem` を applyCmd すると Map から消える。
+    /// World store 権威の証跡。groundItemAtOf が床アイテムを返し、takeAt の emit した
+    /// `Cmd.RemoveItem` を applyCmd すると Map から消える。
     @Test
     def testTakeAtDrivesWorldItemStore(): Unit \ Assert =
         region rc {
-            let scene = sceneWithItem();
-            let wref = Ref.fresh(rc, World.syncFromScene(scene, World.empty()));
+            let wref = Ref.fresh(rc, worldWithItem());
             let before = World.groundItemAtOf({x = 4, y = 5}, Ref.get(wref)) |> Option.map(d -> d#itemKey);
             // takeAt は World store を読んで RemoveItem を emit する（WorldQuery+Command を同 Ref で wire）。
-            run { discard GroundItems.takeAt({x = 4, y = 5}, scene) }
+            run { discard GroundItems.takeAt({x = 4, y = 5}) }
                 with handler World.WorldQuery { def get(k) = k(Ref.get(wref)) }
                 with handler World.Command {
                     def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }

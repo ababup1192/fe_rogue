@@ -1,6 +1,6 @@
 // テスト用 UnitResource / WeaponResource フィクスチャと共通モック handler。
 //
-// 各 Test*Scene が `NodeTag.Player(...)` / `NodeTag.Enemy(...)` を直接構築する場面で
+// 各テストが `PlayerData.Data` / `EnemyData.Data` を直接構築する場面で
 // `Data#resource` フィールド（UnitResource）を埋めるためのフィクスチャ群と、
 // 副作用 effect (Tween / AnimationPlayer / GameEngine.Game / PartyQuery / RosterQuery)
 // を打ち消す「動かない」モック handler を提供する。
@@ -284,29 +284,27 @@ mod TestUnitFixtures {
             def setCursor(_, k)             = k(())
         }
 
-    /// PlayerData.PartyQuery のスタブ。クロージャに閉じ込めた `scene` を読みに行く。
-    /// `Game.start` の handler と同じ実装で、`sceneRef` の代わりに引数の scene を使う。
+    /// PlayerData.PartyQuery のスタブ。クロージャに閉じ込めた Data リストをそのまま返す。
     /// テスト中に「PartyQuery が古い snapshot を返す」状況を再現したい場合は、
-    /// このヘルパーに渡す scene を意図的に古い状態にする。
-    pub def withMockPartyQuery(scene: Scene[NodeTag], thunk: Unit -> a \ ef):
+    /// このヘルパーに渡すリストを意図的に古い状態にする。
+    pub def withMockPartyQuery(players: List[PlayerData.Data], thunk: Unit -> a \ ef):
             a \ (ef - PlayerData.PartyQuery) =
         run { thunk() } with handler PlayerData.PartyQuery {
-            def get(id, k)          = k(PlayerScene.get(id, scene))
-            def getAll(k)           = k(PlayerScene.getAll(scene))
+            def get(id, k)          = k(List.find(d -> d#id == id, players))
+            def getAll(k)           = k(players)
         }
 
-    /// EnemyData.RosterQuery のスタブ。クロージャに閉じ込めた `scene` を読みに行く。
-    /// `Game.start` の handler と同じ実装で、`sceneRef` の代わりに引数の scene を使う。
-    pub def withMockRosterQuery(scene: Scene[NodeTag], thunk: Unit -> a \ ef):
+    /// EnemyData.RosterQuery のスタブ。クロージャに閉じ込めた Data リストをそのまま返す。
+    pub def withMockRosterQuery(enemies: List[EnemyData.Data], thunk: Unit -> a \ ef):
             a \ (ef - EnemyData.RosterQuery) =
         run { thunk() } with handler EnemyData.RosterQuery {
-            def get(id, k)         = k(EnemyScene.get(id, scene))
-            def getAll(k)          = k(EnemyScene.getAll(scene))
-            // findIdAt は World 位置を読む（posOf None→scene fallback）＝
-            // モックは空 World を与えて scene 値のまま返す。
-            def findIdAt(coord, k) = k(run { EnemyScene.findIdAt(coord, scene) }
-                                        with handler World.WorldQuery { def get(k1) = k1(World.empty()) })
-            def anyAttacking(k)    = k(EnemyScene.anyAttacking(scene))
+            def get(id, k)         = k(List.find(d -> d#id == id, enemies))
+            def getAll(k)          = k(enemies)
+            // 「生きていて（非 isDying）そのセルに居る」敵 id（production の findIdAt と同じ規約）。
+            def findIdAt(coord, k) = k(enemies |> List.findMap(d ->
+                                        if (not d#isDying and d#gridPos#x == coord#x and d#gridPos#y == coord#y)
+                                            Some(d#id) else None))
+            def anyAttacking(k)    = k(List.exists(d -> Option.nonEmpty(d#attackTargetId), enemies))
         }
 
     /// `withMockGame` のキー押下を指定述語に切り替えるバリエーション。
@@ -327,37 +325,6 @@ mod TestUnitFixtures {
             def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 128.0, y = 128.0}})
             def getTextureInfo(_, k)        = k(None)
             def setCursor(_, k)             = k(())
-        }
-
-    /// AnimationPlayer.Scheduler のスタブで **`isPlaying` を true 固定**。
-    /// `physicsProcess` などの「アニメ再生中は入力捨てる」分岐を観測するためのテストヘルパー。
-    pub def withPlayingAnim(thunk: Unit -> a \ ef): a \ (ef - AnimationPlayer.Scheduler) =
-        run { thunk() } with handler AnimationPlayer.Scheduler {
-            def schedule(_, k) = k()
-            def isPlaying(_, k) = k(true)
-            def stop(_, k) = k()
-            def cancelAll(k) = k()
-            def activeOwners(k) = k(Nil)
-            def consumeTick(_, k) = k(({propertyUpdates = Nil}: AnimationPlayer.Tick))
-            def drainSignals(_, k) = k(({methods = Nil, finished = Nil}: AnimationPlayer.EventBundle))
-        }
-
-    /// AnimationPlayer.Scheduler のスタブで **`drainSignals` を owner 別に応答**させる。
-    /// `ownerPath` 宛の drain にだけ `bundle` を返し、他 owner 宛には空 bundle を返す
-    /// （実物 Scheduler の「自分宛 signal だけ pull できる」挙動の再現）。
-    /// CombatDriver.process の「他ユニットのシグナルを食わない」検証に使う。
-    pub def withSignalsFor(ownerPath: NodePath, bundle: AnimationPlayer.EventBundle,
-                            thunk: Unit -> a \ ef): a \ (ef - AnimationPlayer.Scheduler) =
-        run { thunk() } with handler AnimationPlayer.Scheduler {
-            def schedule(_, k) = k()
-            def isPlaying(_, k) = k(false)
-            def stop(_, k) = k()
-            def cancelAll(k) = k()
-            def activeOwners(k) = k(Nil)
-            def consumeTick(_, k) = k(({propertyUpdates = Nil}: AnimationPlayer.Tick))
-            def drainSignals(owner, k) =
-                if (owner == ownerPath) k(bundle)
-                else k(({methods = Nil, finished = Nil}: AnimationPlayer.EventBundle))
         }
 
     /// BoardQuery のスタブ。指定 `board` を毎回返す。
@@ -540,20 +507,20 @@ mod TestUnitFixtures {
             def put(d, k) = { Ref.put(d, ref); k() }
         }
 
-    /// `CustomEffects.FloorAdvanceRequest` の no-op スタブ。`advance` は渡された scene をそのまま返す。
+    /// `CustomEffects.FloorAdvanceRequest` の no-op スタブ。`advance` は何もしない。
     /// 「かいだん」分岐を踏まないアクション確定系テスト用（踏むテストは別途実 handler を使う）。
     pub def withNoopFloorAdvance(thunk: Unit -> a \ ef):
             a \ (ef - CustomEffects.FloorAdvanceRequest) =
         run { thunk() } with handler CustomEffects.FloorAdvanceRequest {
-            def advance(scene, k) = k(scene)
+            def advance(k) = k()
         }
 
-    /// ThiefDropRequest の no-op スタブ（盗人ドロップが飛んだら scene をそのまま返す）。
+    /// ThiefDropRequest の no-op スタブ（盗人ドロップの要求を捨てる）。
     /// trace ハーネスでも reuse する。
     pub def withNoopThiefDrop(thunk: Unit -> a \ ef):
             a \ (ef - CustomEffects.ThiefDropRequest) =
         run { thunk() } with handler CustomEffects.ThiefDropRequest {
-            def drop(_cell, scene, k) = k(scene)
+            def drop(_cell, k) = k()
         }
 
     /// Ref-backed の `TurnPhase.State`。put を観測でき、最終フェーズを結果と一緒に返す。
@@ -618,12 +585,25 @@ mod TestUnitFixtures {
         }
 
     /// emit された全 Cmd を空 World に `applyCmd` で積み、`(thunk の結果, 最終 World)` を返す。
-    /// move の描画 tween（`Cmd.StartTween`→renderPos）を実 World で回して marker 位置を検証する
-    /// 統合テスト向け（`stepWorld` で完了まで進め `RenderWorld.syncMarkers` で marker へ載せる）。
+    /// move の描画 tween（`Cmd.StartTween`→renderPos）を実 World で回して描画位置を検証する
+    /// 統合テスト向け（`stepWorld` で完了まで進め renderPos を観測する）。
     pub def withWorldApplied(rc: Region[r], thunk: Unit -> a \ ef): (a, World) \ (((ef - World.Command) - World.WorldQuery) + r) =
         let worldRef = Ref.fresh(rc, World.empty());
         // WorldQuery も同一 Ref に結線（read-after-write）。move seam の pre-move 読み
         //（posOf/prevPosOf）が Query を要求するため（withWorldCommand と同型）。
+        let out = run { thunk() } with handler World.WorldQuery {
+            def get(k) = k(Ref.get(worldRef))
+        } with handler World.Command {
+            def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(worldRef)), worldRef); k() }
+        };
+        (out, Ref.get(worldRef))
+
+    /// `withWorldApplied` の seed 付き版: `w0` から開始して emit された Cmd を積み、
+    /// `(thunk の結果, 最終 World)` を返す。scene fixture を `syncFromScene` で焼いた World を渡し、
+    /// World 権威の在庫 writer/reader を 1 region で回すテスト向け。
+    pub def withWorldAppliedSeeded(rc: Region[r], w0: World, thunk: Unit -> a \ ef):
+            (a, World) \ (((ef - World.Command) - World.WorldQuery) + r) =
+        let worldRef = Ref.fresh(rc, w0);
         let out = run { thunk() } with handler World.WorldQuery {
             def get(k) = k(Ref.get(worldRef))
         } with handler World.Command {
@@ -648,7 +628,7 @@ mod TestUnitFixtures {
         }
 
     /// combat seam の決定論オラクル用ハーネス。**単一の region Ref[World]**を
-    /// `seed` で seed し（`syncFromScene` 経由で baseStats/hp/weaponView/ringBonus を mirror＝combatViewOf が Some）、
+    /// `seed` で seed し（`unitCmds` の spawn Cmd 列で baseStats/hp/weaponView/ringBonus を seed＝combatViewOf が Some）、
     /// 3 つの協調ハンドラで wire する:
     ///   - `World.Command`: emit された Cmd を `cmdKey` で記録 AND 同 Ref へ `applyCmd`（dual-write）
     ///   - `World.WorldQuery`: 同 Ref を返す（**ref-backed**＝combatViewOf が this-frame の SetHp 等を見る
@@ -658,10 +638,27 @@ mod TestUnitFixtures {
     /// 戻り値は `(thunk の結果, 記録した cmdKey 列, 最終 World)`。
     /// `applyAttackHit` 等は SimEvent でなく Cmd を emit する＝`applyEventToWorld` は呼ばれない
     /// （SimEvent↔Cmd の橋は別途証明済み・ここは seam の Cmd emission を凍結するだけ）。
-    pub def withTracedWorld(rc: Region[r], seed: Int64, scene: Scene[NodeTag], thunk: Unit -> a \ ef):
+    pub def withTracedWorld(rc: Region[r], seed: Int64, unitCmds: List[World.Cmd], thunk: Unit -> a \ ef):
             (a, List[(String, Int32, Int32, Int32)], World) \
             ((((ef - World.Command) - World.WorldQuery) - World.RngDraw) - RangeOverlayState.State) + r =
-        let seeded = World.syncFromScene(scene, World.seedRng(seed, World.empty()));
+        tracedCore(rc, seed, unitCmds, thunk)
+
+    /// `withTracedWorld` の **地形付き版**。記録を始める前に地形 read-model（`Cmd.SetMapSnapshot`）を
+    /// worldRef へ seed する（seed 自体はトレースに載せない）。`World.boardOf` を読む sim
+    /// （ノックバック着地 / Stopgap warp）を盤面ありで駆動する golden 用。
+    pub def withTracedBoardWorld(rc: Region[r], seed: Int64, terrain: MapSnapshot,
+                                  unitCmds: List[World.Cmd], thunk: Unit -> a \ ef):
+            (a, List[(String, Int32, Int32, Int32)], World) \
+            ((((ef - World.Command) - World.WorldQuery) - World.RngDraw) - RangeOverlayState.State) + r =
+        tracedCore(rc, seed, List.append(unitCmds, World.Cmd.SetMapSnapshot(Some(terrain)) :: Nil), thunk)
+
+    /// withTracedWorld / withTracedBoardWorld の共通本体（handler 結線は 1 か所に固定）。
+    def tracedCore(rc: Region[r], seed: Int64,
+                    seedCmds: List[World.Cmd], thunk: Unit -> a \ ef):
+            (a, List[(String, Int32, Int32, Int32)], World) \
+            ((((ef - World.Command) - World.WorldQuery) - World.RngDraw) - RangeOverlayState.State) + r =
+        let base   = World.seedRng(seed, World.empty());
+        let seeded = List.foldLeft((w, c) -> World.applyCmd(c, w), base, seedCmds);
         let wref: Ref[World, r] = Ref.fresh(rc, seeded);
         let recRef: Ref[List[(String, Int32, Int32, Int32)], r] = Ref.fresh(rc, Nil);
         // 範囲 resource はフェーズ遷移の掃除で書かれるが sim trace の対象外なので Ref-backed で吸収する。
@@ -678,11 +675,12 @@ mod TestUnitFixtures {
                 }
                 with handler World.Command {
                     def emit(c, k) = {
-                        // fx（ダメージ数字/爆発）の Spawn は **view の Cmd**（sim 状態を動かさない）。
+                        // fx（ダメージ数字/爆発）の Spawn と lunge 開始（StartLunge）は **view の Cmd**
+                        // （sim 状態を動かさない演出＝final World 等価に寄与しない）。
                         // golden trace は sim Cmd 列の比較通貨なので記録から除外する（apply はする）。
                         let key = World.cmdKey(c);
                         let (name, _, _, _) = key;
-                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx")
+                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx" and name != "StartLunge")
                             Ref.put(key :: Ref.get(recRef), recRef)
                         else ();
                         Ref.put(World.applyCmd(c, Ref.get(wref)), wref);
@@ -691,15 +689,14 @@ mod TestUnitFixtures {
                 };
         (out, List.reverse(Ref.get(recRef)), Ref.get(wref))
 
-    /// `withTracedWorld` の **World 直 seed 版**。`syncFromScene` の後・記録を始める前に `seedCmds` を
-    /// worldRef へ適用する（seed 自体はトレースに載せない＝比較対象の cmd-stream の外）。golden ハーネスの
-    /// 脱 scene（駒の状態を scene Data でなく World store で seed する）を段階導入するための seam。
+    /// `withTracedWorld` の RangeOverlay 非注入版。記録を始める前に `seedCmds` を
+    /// worldRef へ適用する（seed 自体はトレースに載せない＝比較対象の cmd-stream の外）。
     /// 記録・RngDraw・read-after-write の結線は `withTracedWorld` と同一（ONE worldRef 共有）。
-    pub def withTracedWorldSeeded(rc: Region[r], seed: Int64, scene: Scene[NodeTag],
+    pub def withTracedWorldSeeded(rc: Region[r], seed: Int64,
                                    seedCmds: List[World.Cmd], thunk: Unit -> a \ ef):
             (a, List[(String, Int32, Int32, Int32)], World) \
             (((ef - World.Command) - World.WorldQuery) - World.RngDraw) + r =
-        let base   = World.syncFromScene(scene, World.seedRng(seed, World.empty()));
+        let base   = World.seedRng(seed, World.empty());
         let seeded = List.foldLeft((w, c) -> World.applyCmd(c, w), base, seedCmds);
         let wref: Ref[World, r] = Ref.fresh(rc, seeded);
         let recRef: Ref[List[(String, Int32, Int32, Int32)], r] = Ref.fresh(rc, Nil);
@@ -718,7 +715,7 @@ mod TestUnitFixtures {
                     def emit(c, k) = {
                         let key = World.cmdKey(c);
                         let (name, _, _, _) = key;
-                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx")
+                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx" and name != "StartLunge")
                             Ref.put(key :: Ref.get(recRef), recRef)
                         else ();
                         Ref.put(World.applyCmd(c, Ref.get(wref)), wref);
@@ -731,10 +728,12 @@ mod TestUnitFixtures {
     /// 用途は golden-trace の ROLL-DEPENDENCE 反証実験: 同一フィクスチャを seeded（draw 列依存）と
     /// constant（draw 無視）の双方で駆動し、cmd-stream が分岐する＝「golden は本当に draw 列に依存し、
     /// 定数生成器では再現できない」ことを示す。Command/WorldQuery は `withTracedWorld` と同一（ONE worldRef 共有）。
-    pub def withConstTracedWorld(rc: Region[r], rngVal: Int32, scene: Scene[NodeTag], thunk: Unit -> a \ ef):
+    pub def withConstTracedWorld(rc: Region[r], rngVal: Int32, terrain: MapSnapshot,
+                                  unitCmds: List[World.Cmd], thunk: Unit -> a \ ef):
             (a, List[(String, Int32, Int32, Int32)], World) \
             (((ef - World.Command) - World.WorldQuery) - World.RngDraw) + r =
-        let seeded = World.syncFromScene(scene, World.empty());
+        let base   = List.foldLeft((w, c) -> World.applyCmd(c, w), World.empty(), unitCmds);
+        let seeded = World.applyCmd(World.Cmd.SetMapSnapshot(Some(terrain)), base);
         let wref: Ref[World, r] = Ref.fresh(rc, seeded);
         let recRef: Ref[List[(String, Int32, Int32, Int32)], r] = Ref.fresh(rc, Nil);
         let out =
@@ -747,11 +746,12 @@ mod TestUnitFixtures {
                 }
                 with handler World.Command {
                     def emit(c, k) = {
-                        // fx（ダメージ数字/爆発）の Spawn は **view の Cmd**（sim 状態を動かさない）。
+                        // fx（ダメージ数字/爆発）の Spawn と lunge 開始（StartLunge）は **view の Cmd**
+                        // （sim 状態を動かさない演出＝final World 等価に寄与しない）。
                         // golden trace は sim Cmd 列の比較通貨なので記録から除外する（apply はする）。
                         let key = World.cmdKey(c);
                         let (name, _, _, _) = key;
-                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx")
+                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx" and name != "StartLunge")
                             Ref.put(key :: Ref.get(recRef), recRef)
                         else ();
                         Ref.put(World.applyCmd(c, Ref.get(wref)), wref);
@@ -765,31 +765,38 @@ mod TestUnitFixtures {
     /// refreshItems / 項目可視性など「フェーズ遷移を観測しない」テストの定型。
     /// 遷移を観測するなら `withPhaseRef` を最外に巻き、こちらは使わない。
     pub def withMenuReadMocks(phase: TurnPhase.Phase, selectedId: Int32,
-                               scene: Scene[NodeTag], thunk: Unit -> a \ ef):
+                               world: World, thunk: Unit -> a \ ef):
             a \ (ef - TurnPhase.State - SelectedPlayer.State - CursorState.State
                   - PlayerData.PartyQuery - EnemyData.RosterQuery - World.WorldQuery) =
-        // メニューは階段判定を World.stairsPosOf で読むため WorldQuery も剥がす。
-        // scene から seed した静的 World（stairsPos が scene ノードを mirror）を返せば階段判定が成立する。
+        // メニューは階段判定を World.stairsPosOf で読むため WorldQuery も剥がす（静的 world）。
         // カーソル座標を参照するメニュー（射程・ホバー）向けに CursorState も原点で剥がす。
         withFixedPhase(phase, () ->
             withSelectedPlayer(selectedId, () ->
                 withCursor(() ->
-                    withMockPartyQuery(scene, () ->
-                        withMockRosterQuery(scene, () ->
-                            withWorldQuery(World.syncFromScene(scene, World.empty()), thunk))))))
+                    withMockPartyQuery(worldPlayers(world), () ->
+                        withMockRosterQuery(worldEnemies(world), () ->
+                            withWorldQuery(world, thunk))))))
+
+    /// World の在籍味方 Data 一覧（dataFromWorld 再構築・id 昇順）。mock Query の素。
+    pub def worldPlayers(world: World): List[PlayerData.Data] =
+        World.playerIdsOf(world) |> List.filterMap(id -> World.dataFromWorld(id, world))
+
+    /// World の在籍敵 Data 一覧（dataFromWorldEnemy 再構築・id 昇順）。mock Query の素。
+    pub def worldEnemies(world: World): List[EnemyData.Data] =
+        World.enemyIdsOf(world) |> List.filterMap(id -> World.dataFromWorldEnemy(id, world))
 
     /// `withMenuReadMocks` の未選択版（選択駒なし）。`withSelectedPlayer` を `withNoSelection` に
     /// 差し替えただけ。空マスメニューの項目構築テスト用。
     pub def withMenuReadMocksNoSel(phase: TurnPhase.Phase,
-                                    scene: Scene[NodeTag], thunk: Unit -> a \ ef):
+                                    world: World, thunk: Unit -> a \ ef):
             a \ (ef - TurnPhase.State - SelectedPlayer.State - CursorState.State
                   - PlayerData.PartyQuery - EnemyData.RosterQuery - World.WorldQuery) =
         withFixedPhase(phase, () ->
             withNoSelection(() ->
                 withCursor(() ->
-                    withMockPartyQuery(scene, () ->
-                        withMockRosterQuery(scene, () ->
-                            withWorldQuery(World.syncFromScene(scene, World.empty()), thunk))))))
+                    withMockPartyQuery(worldPlayers(world), () ->
+                        withMockRosterQuery(worldEnemies(world), () ->
+                            withWorldQuery(world, thunk))))))
 
     /// 中央アイテム取得ポップアップの `ItemPickupPopupState.State` を no-op で剥がす
     /// （get=非表示の初期状態固定・put=捨てる）。ポップアップの見た目を観測しないテスト用。
@@ -812,14 +819,14 @@ mod TestUnitFixtures {
 
     /// `withMenuReadMocks` の集合（行軍）隣接メニュー版。フェーズ ActionSelect 固定・
     /// 主人公選択中・gatherActive=true で項目構築を観測する。
-    pub def withMenuReadMocksGather(scene: Scene[NodeTag], thunk: Unit -> a \ ef):
+    pub def withMenuReadMocksGather(world: World, thunk: Unit -> a \ ef):
             a \ (ef - TurnPhase.State - SelectedPlayer.State
                   - PlayerData.PartyQuery - EnemyData.RosterQuery - World.WorldQuery) =
         withFixedPhase(TurnPhase.Phase.ActionSelect, () ->
             withGatherSelection(() ->
-                withMockPartyQuery(scene, () ->
-                    withMockRosterQuery(scene, () ->
-                        withWorldQuery(World.syncFromScene(scene, World.empty()), thunk)))))
+                withMockPartyQuery(worldPlayers(world), () ->
+                    withMockRosterQuery(worldEnemies(world), () ->
+                        withWorldQuery(world, thunk)))))
 
     /// `ActionMenuScene.onActionCancelled` の遷移テスト用に、必要な 5 effect
     /// (Tween / Anim / PartyQuery / TurnPhase / SelectedPlayer) を **1 呼び出し**で剥がす束ね。
@@ -842,7 +849,7 @@ mod TestUnitFixtures {
             let ((out, vis), phase) =
                 withNoopTween(() ->
                     withNoopAnim(() ->
-                        withMockPartyQuery(Scene.empty(), () ->
+                        withMockPartyQuery(Nil, () ->
                             withPhaseRef(rc, TurnPhase.Phase.ActionSelect, () ->
                                 withSelectionRef(rc, initialSel, () ->
                                 withCursorState(rc, () ->

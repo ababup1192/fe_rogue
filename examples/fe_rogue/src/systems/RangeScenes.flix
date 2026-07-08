@@ -5,10 +5,8 @@
 /// 「resource の自フィールドへの put/get」だけを持ち、描画は `RenderWorld.renderRangeOverlays` が
 /// cells から直描きする（`RangeOverlay.tileDrawables` の 1 経路に集約）。
 ///
-/// 各 mod は `Scene[NodeTag]` を引数・戻り値に取るが、これは gameLoop / PhaseTransitions の
-/// pipeline に合わせるためで、scene ツリー自体は変更しない（範囲の状態は resource に書く）。
-/// EnemyRange / PlayerAttackRange / DangerZone のセル計算は地形（`MapScene.getMapLayer`）を
-/// 読むため scene 引数を使う。
+/// 各 mod は scene ノードを持たず、範囲の状態は resource に書く。
+/// EnemyRange / DangerZone のセル計算は地形（`World.terrainOrBug`）を World から読む。
 
 /// 範囲表示が共有する描画プリミティブ。セル計算 / 色・α は呼び出し側（各 range mod）の責任で、
 /// この mod は「セル群を 45° 斜線ハッチ Panel の box Drawable に落とす」ことだけを担う。
@@ -100,17 +98,14 @@ mod MoveRangeScene {
 
     /// **選択中プレイヤー** の位置を origin に `Board.reachableForUnit` で範囲を求め resource に書く。
     /// 未選択 (PlayerCursor / EnemyTurn 等) なら何もしない（既存範囲は `refresh` が先に clear する）。
-    /// `add` は `buildPlayingScene` の初回構築でも呼ばれる (`sceneRef` 更新前) ため、
-    /// PartyQuery effect は使わず scene 引数を直接読む。`refresh` 経由のランタイム呼び出しでも
-    /// 渡される scene は常に最新なので問題ない。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def add(): Unit
             \ {SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State} =
         match SelectedPlayer.State.get()#id {
-            case None     => scene
+            case None     => ()
             case Some(id) =>
-                match PlayerScene.get(id, scene) {
-                    case None    => scene
-                    case Some(_) => buildFor(id, scene)
+                match PlayerScene.get(id) {
+                    case None    => ()
+                    case Some(_) => buildFor(id)
                 }
         }
 
@@ -128,36 +123,37 @@ mod MoveRangeScene {
     /// (自分 + 他味方) を除いたものを青マスとして描画する。AutoMove も同じプリミティブで
     /// 動くため、ここで仕様が一致していれば自動で挙動が揃う。
     /// 原点は **現在位置でなくターン開始位置**（`chooseMoveOrigin` 経由）に固定する。
-    def buildFor(id: Int32, scene: Scene[NodeTag]): Scene[NodeTag]
+    def buildFor(id: Int32): Unit
             \ {SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State} =
-        // 盤面 pieces・現在位置とも World 由来（scene gridPos twin は退役＝stale）。
+        // 盤面 pieces・地形・現在位置とも World 由来。
         let w0        = World.WorldQuery.get();
-        let board     = World.toBoard(w0, scene);
+        let board     = match World.boardOf(w0) {
+            case Some(b) => b
+            case None    => bug!("MoveRangeScene.buildFor: terrain not seeded")
+        };
         let drafts    = SelectedPlayer.State.get()#drafts;
         let origin    = chooseMoveOrigin(id,
             World.posOf(World.EntityRef.Player(id), w0)
-                |> Option.getWithDefault(PlayerScene.getGridPos(id, scene)), drafts);
-        let steps     = PlayerScene.getMoveTiles(id, scene);
+                |> Option.getWithDefault(PlayerScene.getGridPos(id)), drafts);
+        let steps     = PlayerScene.getMoveTiles(id);
         let cells     = Board.reachableForUnit(board, origin, steps);
         let drawCells = Board.stoppableForUnit(board, origin, steps);
         RangeOverlayState.State.put(
-            {moveRange = Some({reachable = cells, drawCells = drawCells}) | RangeOverlayState.State.get()});
-        scene
+            {moveRange = Some({reachable = cells, drawCells = drawCells}) | RangeOverlayState.State.get()})
 
     /// 既存の MoveRange を消してから `add` で組み直す（未選択なら消えたまま）。
-    pub def refresh(scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def refresh(): Unit
             \ {SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State} =
-        clear(scene) |> add
+        clear(); add()
 
     /// 表示中の MoveRange があれば消す。PlayerAttack フェーズ移行時など、青マスを一時的に
     /// 消したいときに使う (`EnemyRangeScene.clear` と対称)。
-    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] \ RangeOverlayState.State =
-        RangeOverlayState.State.put({moveRange = None | RangeOverlayState.State.get()});
-        scene
+    pub def clear(): Unit \ RangeOverlayState.State =
+        RangeOverlayState.State.put({moveRange = None | RangeOverlayState.State.get()})
 
     /// 指定セルが「現在のターンで踏める」範囲内にあるか。
     /// MoveRange が未登録なら false を返す (ゲーム初期化前のフォールバック)。
-    pub def isInRange(cell: {x = Int32, y = Int32}, _scene: Scene[NodeTag]): Bool \ RangeOverlayState.State =
+    pub def isInRange(cell: {x = Int32, y = Int32}): Bool \ RangeOverlayState.State =
         match RangeOverlayState.State.get()#moveRange {
             case Some(data) =>
                 List.exists(c -> c#x == cell#x and c#y == cell#y, data#reachable)
@@ -165,14 +161,14 @@ mod MoveRangeScene {
         }
 
     /// 現在範囲のセル一覧 (テスト・デバッグ用 + MoveAttackRangeScene が読む)。未登録なら空リスト。
-    pub def reachable(_scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
+    pub def reachable(): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
         match RangeOverlayState.State.get()#moveRange {
             case Some(data) => data#reachable
             case None => Nil
         }
 
     /// World 描画が読む「青く描くセル」(stoppable)。未登録なら空リスト。
-    pub def drawCells(_scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
+    pub def drawCells(): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
         match RangeOverlayState.State.get()#moveRange {
             case Some(data) => data#drawCells
             case None => Nil
@@ -213,39 +209,38 @@ mod MoveAttackRangeScene {
 
     /// 既存を消して再構築する。`MoveRangeScene` の青マスが既に build 済みの
     /// 前提で、その reachable を resource から読んで差集合を作る。
-    pub def refresh(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, RangeOverlayState.State} =
-        let cleared = clear(scene);
+    pub def refresh():
+            Unit \ {SelectedPlayer.State, RangeOverlayState.State, World.WorldQuery} =
+        clear();
         match SelectedPlayer.State.get()#id {
-            case None     => cleared
+            case None     => ()
             case Some(id) =>
-                match PlayerScene.get(id, cleared) {
-                    case None         => cleared
+                match PlayerScene.get(id) |> Option.map(p ->
+                          World.dataFromWorld(id, World.WorldQuery.get()) |> Option.getWithDefault(p)) {
+                    case None         => ()
                     case Some(player) =>
+                        // 装備武器（在庫先頭）は World 権威＝overlay 済み Data から読む。
                         match PlayerData.equippedWeapon(player#weapons) {
-                            case None    => cleared
+                            case None    => ()
                             case Some(w) =>
-                                let reachable = MoveRangeScene.reachable(cleared);
+                                let reachable = MoveRangeScene.reachable();
                                 let lo = Int32.max(1, w#range#min);
                                 let hi = w#range#max;
                                 let cells = Board.computeThreatCells(reachable, lo, hi);
-                                if (List.isEmpty(cells)) cleared
-                                else {
+                                if (List.isEmpty(cells)) ()
+                                else
                                     RangeOverlayState.State.put(
-                                        {moveAttackRange = Some({cells = cells}) | RangeOverlayState.State.get()});
-                                    cleared
-                                }
+                                        {moveAttackRange = Some({cells = cells}) | RangeOverlayState.State.get()})
                         }
                 }
         }
 
     /// 表示中の MoveAttackRange があれば消す。
-    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] \ RangeOverlayState.State =
-        RangeOverlayState.State.put({moveAttackRange = None | RangeOverlayState.State.get()});
-        scene
+    pub def clear(): Unit \ RangeOverlayState.State =
+        RangeOverlayState.State.put({moveAttackRange = None | RangeOverlayState.State.get()})
 
     /// テスト・デバッグ用: 現在の脅威セル一覧。未登録なら空リスト。World 描画セルもこれ。
-    pub def cells(_scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
+    pub def cells(): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
         match RangeOverlayState.State.get()#moveAttackRange {
             case Some(data) => data#cells
             case None => Nil
@@ -260,9 +255,9 @@ mod MoveAttackRangeScene {
 /// 提供するための情報表示専用。
 ///
 /// **ライフサイクル**:
-///   - Cursor がフレーム間で乗っている敵 id が変わったとき、`refreshFor(id, scene)` で
+///   - Cursor がフレーム間で乗っている敵 id が変わったとき、`refreshFor(id)` で
 ///     消して新規構築する
-///   - Cursor が敵以外に移ったとき、`clear(scene)` で消す
+///   - Cursor が敵以外に移ったとき、`clear()` で消す
 ///   - 敵ターン開始時 / フェーズ切替で見せたくない場面でも `clear` を呼んで消す
 mod EnemyRangeScene {
 
@@ -283,33 +278,31 @@ mod EnemyRangeScene {
     /// 既存を消し、`enemyId` の敵に対応する範囲で構築し直す。敵が居なければ何もしない (`clear` 相当の保険)。
     /// 壁のみ通れない。味方マスや他敵マスも「想定移動範囲」として表示する
     /// (プレイヤーは「もし誰も居なければここまで来られる」を読む)。
-    pub def refreshFor(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {EnemyData.RosterQuery, RangeOverlayState.State} =
+    pub def refreshFor(enemyId: Int32):
+            Unit \ {EnemyData.RosterQuery, World.WorldQuery, RangeOverlayState.State} =
         match EnemyData.RosterQuery.get(enemyId) {
-            case None       => clear(scene)
+            case None       => clear()
             case Some(data) =>
-                let cleared = clear(scene);
-                let layer   = MapScene.getMapLayer(cleared);
+                clear();
+                let terrain = World.terrainOrBug(World.WorldQuery.get());
                 let cells = Board.reachableCells(
-                    c -> TileMapLayer.isFloor(c, layer),
+                    c -> MapSnapshot.isFloor(c, terrain),
                     data#gridPos,
                     data#moveTiles);
                 RangeOverlayState.State.put(
-                    {enemyRange = Some({enemyId = enemyId, reachable = cells}) | RangeOverlayState.State.get()});
-                cleared
+                    {enemyRange = Some({enemyId = enemyId, reachable = cells}) | RangeOverlayState.State.get()})
         }
 
     /// 表示中の EnemyRange があれば消す。
-    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] \ RangeOverlayState.State =
-        RangeOverlayState.State.put({enemyRange = None | RangeOverlayState.State.get()});
-        scene
+    pub def clear(): Unit \ RangeOverlayState.State =
+        RangeOverlayState.State.put({enemyRange = None | RangeOverlayState.State.get()})
 
     /// 現在表示している敵 id (出ていなければ None)。
-    pub def currentEnemyId(_scene: Scene[NodeTag]): Option[Int32] \ RangeOverlayState.State =
+    pub def currentEnemyId(): Option[Int32] \ RangeOverlayState.State =
         RangeOverlayState.State.get()#enemyRange |> Option.map(data -> data#enemyId)
 
     /// 現在の reachable セル一覧 (テスト・デバッグ用 + EnemyAttackRangeScene が読む)。未登録なら空リスト。
-    pub def reachable(_scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
+    pub def reachable(): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
         match RangeOverlayState.State.get()#enemyRange {
             case Some(data) => data#reachable
             case None       => Nil
@@ -347,38 +340,33 @@ mod EnemyAttackRangeScene {
     /// 敵が居ない / 武器なし / 脅威セルが空なら何も描かない。
     /// 「敵が居て武器を持つ」の 2 段の Option は forM で 1 段に畳み、空セル判定は
     /// `renderThreat` に寄せてネストを浅く保つ。
-    pub def refreshFor(enemyId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {EnemyData.RosterQuery, RangeOverlayState.State} =
-        let cleared = clear(scene);
+    pub def refreshFor(enemyId: Int32):
+            Unit \ {EnemyData.RosterQuery, RangeOverlayState.State} =
+        clear();
         let built = forM (
             data <- EnemyData.RosterQuery.get(enemyId);
             w    <- data#weapon
-        ) yield renderThreat(enemyId, threatCells(w, cleared), cleared);
-        Option.getWithDefault(cleared, built)
+        ) yield renderThreat(enemyId, threatCells(w));
+        Option.getWithDefault((), built)
 
     /// 敵移動到達セル (EnemyRangeScene.reachable) を武器射程で広げた脅威セル。
-    def threatCells(weapon: UnitCatalog.WeaponResource,
-                     scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
-        let reachable = EnemyRangeScene.reachable(scene);
+    def threatCells(weapon: UnitCatalog.WeaponResource): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
+        let reachable = EnemyRangeScene.reachable();
         Board.computeThreatCells(reachable, Int32.max(1, weapon#range#min), weapon#range#max)
 
-    /// 脅威セルが空でなければ EnemyAttackRange を resource に敷く。空なら scene をそのまま返す。
-    def renderThreat(enemyId: Int32, cells: List[{x = Int32, y = Int32}],
-                      scene: Scene[NodeTag]): Scene[NodeTag] \ RangeOverlayState.State =
-        if (List.isEmpty(cells)) scene
-        else {
+    /// 脅威セルが空でなければ EnemyAttackRange を resource に敷く。空なら何もしない。
+    def renderThreat(enemyId: Int32, cells: List[{x = Int32, y = Int32}]): Unit \ RangeOverlayState.State =
+        if (List.isEmpty(cells)) ()
+        else
             RangeOverlayState.State.put(
-                {enemyAttackRange = Some({enemyId = enemyId, cells = cells}) | RangeOverlayState.State.get()});
-            scene
-        }
+                {enemyAttackRange = Some({enemyId = enemyId, cells = cells}) | RangeOverlayState.State.get()})
 
     /// 表示中の EnemyAttackRange があれば消す。
-    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] \ RangeOverlayState.State =
-        RangeOverlayState.State.put({enemyAttackRange = None | RangeOverlayState.State.get()});
-        scene
+    pub def clear(): Unit \ RangeOverlayState.State =
+        RangeOverlayState.State.put({enemyAttackRange = None | RangeOverlayState.State.get()})
 
     /// 現在の脅威セル一覧 (テスト・デバッグ用)。未登録なら空リスト。
-    pub def cells(_scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
+    pub def cells(): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
         match RangeOverlayState.State.get()#enemyAttackRange {
             case Some(data) => data#cells
             case None       => Nil
@@ -393,9 +381,9 @@ mod EnemyAttackRangeScene {
 /// range = 2 なら十字に 2 マスずつ伸びる (くんれんゆみ等の間接攻撃)。
 ///
 /// **ライフサイクル**:
-///   - `PlayerMoving + Z` で `PlayerAttack` フェーズに入るとき `show(scene)` を呼んで
+///   - `PlayerMoving + Z` で `PlayerAttack` フェーズに入るとき `show()` を呼んで
 ///     味方の現在位置を origin に赤マスを描く
-///   - `PlayerAttack` を抜ける (敵ターンへ移行) ときは `clear(scene)` で消す
+///   - `PlayerAttack` を抜ける (敵ターンへ移行) ときは `clear()` で消す
 mod PlayerAttackRangeScene {
 
     /// `cells` は赤く描画されている射程内セル一覧 (origin = 味方セルは含まない)。
@@ -413,46 +401,44 @@ mod PlayerAttackRangeScene {
     /// 既存を消し、**選択中プレイヤー** の現在位置 origin に対して **インベントリ全武器の射程の和集合** で
     /// 赤マスを敷き直す。攻撃中はどの武器に持ち替えても届く敵にカーソルを乗せられるように、装備中(先頭)だけ
     /// でなく全武器の射程を合わせて表示する (重複セルは除去)。
-    /// 未選択時は cleared を返す (赤マス表示なし)。
+    /// 未選択時は消したまま何もしない (赤マス表示なし)。
     /// 選択中プレイヤーの武器が壊れている (`weapons = Nil`) 場合は cells を空にして
     /// 表示だけ有効にする。これにより PlayerAttack フェーズに入ってもカーソルが
     /// 敵に乗らず、Z 押下で AttackHit が発火しない (X でスキップして抜ける)。
-    pub def show(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State} =
-        let cleared = clear(scene);
+    pub def show():
+            Unit \ {SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State} =
+        clear();
         match SelectedPlayer.State.get()#id {
-            case None     => cleared
+            case None     => ()
             case Some(id) =>
-                match PlayerScene.getWithWorldPos(id, cleared) {
-                    case None    => cleared
+                match PlayerScene.get(id) |> Option.map(p ->
+                          World.dataFromWorld(id, World.WorldQuery.get()) |> Option.getWithDefault(p)) {
+                    case None    => ()
                     case Some(d) =>
-                        let layer = MapScene.getMapLayer(cleared);
-                        let cells = unionWeaponCells(d#gridPos, d#weapons, layer);
+                        // 位置・在庫とも World 権威（dataFromWorld overlay）。
+                        let cells = unionWeaponCells(d#gridPos, d#weapons);
                         RangeOverlayState.State.put(
-                            {playerAttackRange = Some({cells = cells}) | RangeOverlayState.State.get()});
-                        cleared
+                            {playerAttackRange = Some({cells = cells}) | RangeOverlayState.State.get()})
                 }
         }
 
     /// インベントリ全武器の射程セルの和集合 (重複除去)。武器ごとに `computeAttackCells` で
     /// 菱形セルを出し、(x, y) タプルで dedup してから record に戻す。武器なしなら空。
     def unionWeaponCells(origin: {x = Int32, y = Int32},
-                          weapons: List[UnitCatalog.WeaponResource],
-                          layer: TileMapLayer): List[{x = Int32, y = Int32}] =
+                          weapons: List[UnitCatalog.WeaponResource]): List[{x = Int32, y = Int32}] =
         weapons
-            |> List.flatMap(w -> computeAttackCells(origin, w#range, layer))
+            |> List.flatMap(w -> computeAttackCells(origin, w#range))
             |> List.map(c -> (c#x, c#y))
             |> List.toSet
             |> Set.toList
             |> List.map(p -> match p { case (x, y) => {x = x, y = y} })
 
     /// 表示中の PlayerAttackRange があれば消す。
-    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] \ RangeOverlayState.State =
-        RangeOverlayState.State.put({playerAttackRange = None | RangeOverlayState.State.get()});
-        scene
+    pub def clear(): Unit \ RangeOverlayState.State =
+        RangeOverlayState.State.put({playerAttackRange = None | RangeOverlayState.State.get()})
 
     /// `show` から切り出して `unionWeaponCells` でも再利用できるようにした純粋関数。
-    /// テスト時は scene や effect なしで直接呼び出せる。
+    /// テスト時は effect なしで直接呼び出せる。
     /// origin から **マンハッタン距離** `range#min..range#max` (inclusive) にある全セルを
     /// 列挙する (= 菱形パターン)。斜め (1,1) もマンハッタン距離 2 として含まれる。
     /// 例:
@@ -463,8 +449,7 @@ mod PlayerAttackRangeScene {
     /// を一貫表示する (実際に攻撃できるのは敵セルだけで、その判定は TurnRules 側)。
     /// `layer` 引数は将来の terrain-aware フィルタ用に残してある (現状 unused)。
     pub def computeAttackCells(origin: {x = Int32, y = Int32},
-                                range: UnitCatalog.WeaponRange,
-                                _layer: TileMapLayer): List[{x = Int32, y = Int32}] =
+                                range: UnitCatalog.WeaponRange): List[{x = Int32, y = Int32}] =
         let lo = Int32.max(1, range#min);
         let hi = range#max;
         Board.manhattanOffsets(lo, hi)
@@ -472,7 +457,7 @@ mod PlayerAttackRangeScene {
                 ({x = origin#x + o#x, y = origin#y + o#y}: {x = Int32, y = Int32}))
 
     /// 現在の射程内セル一覧 (テスト・デバッグ用)。未登録なら空リスト。
-    pub def cells(_scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
+    pub def cells(): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
         match RangeOverlayState.State.get()#playerAttackRange {
             case Some(data) => data#cells
             case None => Nil
@@ -481,9 +466,9 @@ mod PlayerAttackRangeScene {
     /// 赤マス内に居る「生きている敵」の Data リストを reading order (y 昇順 → x 昇順)
     /// で返す。`PlayerAttack` フェーズでカーソルを敵間でサイクルさせる用。
     /// 死亡演出中 (`isDying`) と HP 0 以下の敵は除外する。
-    pub def targetsInRange(scene: Scene[NodeTag]):
+    pub def targetsInRange():
             List[EnemyScene.Data] \ {EnemyData.RosterQuery, RangeOverlayState.State} =
-        let inRangeCells = cells(scene);
+        let inRangeCells = cells();
         EnemyData.RosterQuery.getAll()
             |> List.filter(d ->
                 not d#isDying
@@ -505,7 +490,7 @@ mod PlayerAttackRangeScene {
 /// CursorScene の移動制限述語と TurnRules の Confirm 判定で使う。
 ///
 /// **ライフサイクル**:
-///   - `PhaseTransitions.enterTradeTargetSelect` で `show(scene)` を呼んで描く
+///   - `PhaseTransitions.enterTradeTargetSelect` で `show()` を呼んで描く
 ///   - 別フェーズに抜けるとき (PhaseTransitions の他の enter* / 完了時) は `clear` を呼ぶ
 mod TradeRangeScene {
 
@@ -524,13 +509,13 @@ mod TradeRangeScene {
 
     /// 既存を消し、`SelectedPlayer.State` から選択中味方の隣接味方マスを計算して緑マスを描き直す。
     /// 選択中味方なし / 居ない / 隣接味方ゼロのいずれでも安全に何も描かない。
-    pub def show(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, PlayerData.PartyQuery, RangeOverlayState.State} =
-        let cleared = clear(scene);
+    pub def show():
+            Unit \ {SelectedPlayer.State, PlayerData.PartyQuery, RangeOverlayState.State} =
+        clear();
         adjacentAllyCells()
             |> Option.filter(allyCells -> not List.isEmpty(allyCells))
-            |> Option.map(allyCells -> paintCells(allyCells, cleared))
-            |> Option.getWithDefault(cleared)
+            |> Option.map(paintCells)
+            |> Option.getWithDefault(())
 
     /// 選択中味方の隣接味方マスを返す。
     /// `None` と `Some(Nil)` を区別している理由: 上流の `show` は `Option.filter` で
@@ -547,19 +532,16 @@ mod TradeRangeScene {
         ) yield PlayerScene.adjacentAllies(player) |> List.map(d -> d#gridPos)
 
     /// 指定セル群を resource の tradeRange に書く純粋部分。
-    def paintCells(allyCells: List[{x = Int32, y = Int32}],
-                    scene: Scene[NodeTag]): Scene[NodeTag] \ RangeOverlayState.State =
-        RangeOverlayState.State.put({tradeRange = Some({cells = allyCells}) | RangeOverlayState.State.get()});
-        scene
+    def paintCells(allyCells: List[{x = Int32, y = Int32}]): Unit \ RangeOverlayState.State =
+        RangeOverlayState.State.put({tradeRange = Some({cells = allyCells}) | RangeOverlayState.State.get()})
 
     /// 表示中の TradeRange があれば消す。
-    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] \ RangeOverlayState.State =
-        RangeOverlayState.State.put({tradeRange = None | RangeOverlayState.State.get()});
-        scene
+    pub def clear(): Unit \ RangeOverlayState.State =
+        RangeOverlayState.State.put({tradeRange = None | RangeOverlayState.State.get()})
 
     /// 現在敷かれている緑マス一覧。カーソル移動制限と Confirm 時の対象判定に使う。
     /// 未登録なら空リスト。
-    pub def cells(_scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
+    pub def cells(): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
         match RangeOverlayState.State.get()#tradeRange {
             case Some(data) => data#cells
             case None       => Nil
@@ -590,23 +572,23 @@ mod DangerZoneScene {
     pub def alpha(): Float32 = 0.5f32
 
     /// 現在表示中か（= dangerZone が Some か）。Shift トグルの状態に使う。
-    pub def isShown(_scene: Scene[NodeTag]): Bool \ RangeOverlayState.State =
+    pub def isShown(): Bool \ RangeOverlayState.State =
         Option.nonEmpty(RangeOverlayState.State.get()#dangerZone)
 
     /// Shift トグル: 表示中なら消す、非表示なら全敵の危険範囲を組んで紫で描く。
-    pub def toggle(scene: Scene[NodeTag]): Scene[NodeTag] \ {World.WorldQuery, RangeOverlayState.State} =
-        if (isShown(scene)) clear(scene) else show(scene)
+    pub def toggle(): Unit \ {SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State} =
+        if (isShown()) clear() else show()
 
     /// 全可視敵の危険マス（移動到達 ∪ 攻撃到達）を統合して紫で描く。空なら何もしない。
-    /// `EnemyScene.getAll` は scene ツリーを走査するだけで外部 effect を発火しないため、
+    /// `EnemyScene.getAll` は World store を読むだけで外部 effect を発火しないため、
     /// `EnemyData.RosterQuery` を使わずに呼び出せる。
-    def show(scene: Scene[NodeTag]): Scene[NodeTag] \ {World.WorldQuery, RangeOverlayState.State} =
-        let cleared = clear(scene);
-        let layer   = MapScene.getMapLayer(cleared);
+    def show(): Unit \ {SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State} =
+        clear();
+        let terrain = World.terrainOrBug(World.WorldQuery.get());
         // 敵 1 体の危険マス: 移動到達セル + (武器があれば)そこから射程で届くセル。
         let dangerOf = e -> {
             let reachable = Board.reachableCells(
-                c -> TileMapLayer.isFloor(c, layer), e#gridPos, e#moveTiles);
+                c -> MapSnapshot.isFloor(c, terrain), e#gridPos, e#moveTiles);
             match e#weapon {
                 case None    => reachable
                 case Some(w) =>
@@ -615,24 +597,21 @@ mod DangerZoneScene {
                     List.append(reachable, Board.computeThreatCells(reachable, lo, hi))
             }
         };
-        // 位置は World 上書き Data（scene gridPos twin は退役）。
-        let cells = EnemyScene.getAllWithWorldPos(cleared)
-            |> List.filter(e -> EnemyScene.isVisible(e#id, cleared))
+        // 位置は World 権威 Data。
+        let cells = EnemyScene.getAll()
+            |> List.filter(e -> EnemyScene.isVisible(e#id))
             |> List.foldLeft((acc, e) -> List.append(acc, dangerOf(e)), Nil)
             |> Board.dedupCells;
-        if (List.isEmpty(cells)) cleared
-        else {
-            RangeOverlayState.State.put({dangerZone = Some({cells = cells}) | RangeOverlayState.State.get()});
-            cleared
-        }
+        if (List.isEmpty(cells)) ()
+        else
+            RangeOverlayState.State.put({dangerZone = Some({cells = cells}) | RangeOverlayState.State.get()})
 
     /// 表示中の DangerZone があれば消す。
-    pub def clear(scene: Scene[NodeTag]): Scene[NodeTag] \ RangeOverlayState.State =
-        RangeOverlayState.State.put({dangerZone = None | RangeOverlayState.State.get()});
-        scene
+    pub def clear(): Unit \ RangeOverlayState.State =
+        RangeOverlayState.State.put({dangerZone = None | RangeOverlayState.State.get()})
 
     /// 現在の危険マス一覧 (テスト・デバッグ用)。未登録なら空リスト。
-    pub def cells(_scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
+    pub def cells(): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
         match RangeOverlayState.State.get()#dangerZone {
             case Some(data) => data#cells
             case None       => Nil

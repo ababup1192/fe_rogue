@@ -95,7 +95,7 @@ mod WeaponSelectUi {
         {items = Nil, sublines = Map.empty(), badges = Map.empty(), weapons = Nil}
 
     /// 選択中味方が居なければ空リスト。居れば所持武器を並び順どおり行データへ変換する。
-    def buildWeaponList(_scene: Scene[NodeTag]): WeaponListView
+    def buildWeaponList(): WeaponListView
             \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
         match selectedPlayer() {
             case None         => emptyWeaponListView()
@@ -190,7 +190,7 @@ mod WeaponSelectUi {
     /// gameLoop が 1 回呼ぶ frame-paced System。
     /// WeaponSelect フェーズの間だけ root を可視化し、選択中味方の武器一覧を行へ流し込み、
     /// カーソルが disabled 行に乗っていたら選択可能行へ寄せ、対象の敵へカーソルをスナップする。
-    pub def frameStep(_dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def frameStep(_dt: Duration.Duration): Unit
             \ {TurnPhase.State, SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
                CursorState.State, World.WorldQuery,
                UiWorldState.State} =
@@ -202,10 +202,9 @@ mod WeaponSelectUi {
             UiWorldState.State.put(ui
                 |> UiStore.setVisible(rootPath(), false)
                 |> fillRows(emptyWeaponListView())
-                |> UiStore.putSelection(menuPath(), 0));
-            scene
+                |> UiStore.putSelection(menuPath(), 0))
         } else {
-            let view = buildWeaponList(scene);
+            let view = buildWeaponList();
             let ui0 = UiWorldState.State.get();
             let sel0 = UiStore.selectionOf(menuPath(), ui0);
             let itemCount = List.length(view#items);
@@ -223,7 +222,7 @@ mod WeaponSelectUi {
                 |> UiMenu.applyHighlight({listPath = menuPath(), highlightPath = highlightPath(),
                                           sel = sel, rowPitch = rowPitch(), inset = highlightInset()}));
             // 武器フォーカス中、対象の敵へカーソルを寄せる（選択確定後の最新カーソルを読む）。
-            snapCursorToTarget(scene)
+            snapCursorToTarget()
         }
 
     /// 武器ウィンドウを ActionMenu（コマンドメニュー）の右端基準で配置する。ActionMenu の design
@@ -280,15 +279,14 @@ mod WeaponSelectUi {
     // ========================================================================
 
     /// 選択カーソルを delta（±1）動かす（disabled をスキップ・端で回り込む）。
-    pub def moveSelection(delta: Int32, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def moveSelection(delta: Int32): Unit
             \ {UiWorldState.State, SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery} =
-        let view = buildWeaponList(scene);
+        let view = buildWeaponList();
         let ui = UiWorldState.State.get();
         let count = List.length(view#items);
         let disabledAt = i -> List.nth(i, view#items) |> Option.map(e -> e#disabled) |> Option.getWithDefault(true);
         let next = UiWidget.selectionMoveSkipping(count, delta, UiStore.selectionOf(menuPath(), ui), disabledAt);
-        UiWorldState.State.put(UiStore.putSelection(menuPath(), next, ui));
-        scene
+        UiWorldState.State.put(UiStore.putSelection(menuPath(), next, ui))
 
     /// カーソルがある武器の weapons 内 index。選択行の meta `"w:<idx>"` を選択位置から読む
     /// （`CursorScene`/`BattlePanelUi` が対象敵の解決に使う）。未登録 / 無選択なら None。
@@ -298,44 +296,44 @@ mod WeaponSelectUi {
         UiMenu.metaAtSelection(menuPath(), sel, ui) |> Option.flatMap(parseWeaponIndex)
 
     /// InputHandler の Z 押下から呼ばれる。現在カーソルがある武器を確定する（disabled は no-op）。
-    pub def confirmCurrentSelection(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
+    pub def confirmCurrentSelection(): Unit
+            \ {GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
                CursorState.State, EnemyData.RosterQuery, World.Command, World.WorldQuery,
                PlayerData.PartyQuery, UiWorldState.State} =
-        let view = buildWeaponList(scene);
+        let view = buildWeaponList();
         let ui = UiWorldState.State.get();
         let sel = UiStore.selectionOf(menuPath(), ui);
         match List.nth(sel, view#items) {
-            case None        => scene
-            case Some(entry) => if (entry#disabled) scene else onConfirmed(entry, scene)
+            case None        => ()
+            case Some(entry) => if (entry#disabled) () else onConfirmed(entry)
         }
 
     /// 武器を Enter/Z で確定したとき。**選んだ武器を装備して、カーソルが指している敵に
     /// そのまま攻撃を開始する**（武器フォーカスで対象も選べるので、ここから別の対象選択
     /// フェーズには進まず直接バトルへ）。遷移先は入力ロックの `PlayerAttackHold`。
     /// カーソルが敵に乗っていない（届く敵が無い）ときは何もしない。
-    pub def onConfirmed(entry: ItemEntry, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
+    pub def onConfirmed(entry: ItemEntry): Unit
+            \ {GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State,
                CursorState.State, EnemyData.RosterQuery, World.Command, World.WorldQuery} =
         let started = forM (
             pid   <- SelectedPlayer.State.get()#id;
             idx   <- entry#metadata |> Option.flatMap(parseWeaponIndex);
-            eid   <- EnemyScene.findIdAt(CursorScene.getGridPos(), scene);
+            eid   <- EnemyScene.findIdAt(CursorScene.getGridPos());
             enemy <- EnemyData.RosterQuery.get(eid)
         ) yield {
-            let equipped = PlayerScene.equipWeapon(pid, idx, scene);
+            PlayerScene.equipWeapon(pid, idx);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
-            GameLogger.playerLog("${PlayerScene.displayName(pid, equipped)}の攻撃");
-            CombatDriver.startAttack(Faction.Player, pid, eid, enemy#gridPos, equipped)
+            GameLogger.playerLog("${PlayerScene.displayName(pid)}の攻撃");
+            CombatDriver.startAttack(Faction.Player, pid, eid, enemy#gridPos)
         };
-        Option.getWithDefault(scene, started)
+        Option.getWithDefault((), started)
 
     /// X / Escape 押下で呼ばれる。武器ウィンドウを閉じて ActionSelect（コマンドメニュー）に戻る。
     /// SelectedPlayer はそのまま（同じ味方の行動選択に戻る）。WeaponSelect 中に対象の敵へ出して
     /// いたカーソルは隠す（ActionSelect / PlayerMoving はカーソル非表示が既定）。
-    pub def onCancelled(scene: Scene[NodeTag]): Scene[NodeTag] \ {TurnPhase.State, CursorState.State} =
+    pub def onCancelled(): Unit \ {TurnPhase.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
-        CursorScene.setVisible(false, scene)
+        CursorScene.setVisible(false)
 
     // ========================================================================
     // カーソルの対象敵スナップ（フォーカス武器が届く敵の上へカーソルを置く）
@@ -345,17 +343,17 @@ mod WeaponSelectUi {
     /// 既に届く敵に乗っているならその位置を保つ（左右での敵選択を維持。`CursorScene` が巡回する）。
     /// 乗っていない（初回 / 武器を切り替えて今の対象が届かなくなった）ときだけ最寄りの敵へスナップ。
     /// 届く敵が居なければカーソルは触らない。戦闘予報はこのカーソル上の敵で出る。
-    def snapCursorToTarget(scene: Scene[NodeTag]): Scene[NodeTag]
+    def snapCursorToTarget(): Unit
             \ {SelectedPlayer.State, CursorState.State,
                PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery, UiWorldState.State} =
         match focusedPlayerWeapon() {
-            case None                   => scene
+            case None                   => ()
             case Some((player, weapon)) =>
-                if (isReachableEnemyCell(CursorScene.getGridPos(), player#gridPos, weapon, scene))
-                    CursorScene.setVisible(true, scene)   // 既に対象上 → 位置は保持（左右選択を維持）
+                if (isReachableEnemyCell(CursorScene.getGridPos(), player#gridPos, weapon))
+                    CursorScene.setVisible(true)   // 既に対象上 → 位置は保持（左右選択を維持）
                 else match nearestReachableEnemy(player#gridPos, weapon) {
-                    case Some(e) => scene |> CursorScene.setVisible(true) |> CursorScene.snapToCell(e#gridPos)
-                    case None    => scene
+                    case Some(e) => CursorScene.setVisible(true); CursorScene.snapToCell(e#gridPos)
+                    case None    => ()
                 }
         }
 
@@ -370,10 +368,10 @@ mod WeaponSelectUi {
 
     /// `cell` に居る敵が `weapon` の射程内の生存敵か（カーソルが有効な対象に乗っているかの判定）。
     def isReachableEnemyCell(cell: {x = Int32, y = Int32}, pos: {x = Int32, y = Int32},
-                             weapon: UnitCatalog.WeaponResource, scene: Scene[NodeTag]):
+                             weapon: UnitCatalog.WeaponResource):
             Bool \ {EnemyData.RosterQuery, World.WorldQuery} =
-        // 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む（scene 直読みは stale）。
-        EnemyScene.findIdAt(cell, scene)
+        // 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む。
+        EnemyScene.findIdAt(cell)
             |> Option.flatMap(id -> EnemyData.RosterQuery.get(id))
             |> Option.map(e -> {
                 let ev = EnemyScene.unitView(e);

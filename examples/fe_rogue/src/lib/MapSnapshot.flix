@@ -3,7 +3,7 @@
 /// 地形は純粋データ（wallCells / placements / mapGlobal）で持ち、床判定・座標変換・モジュール
 /// 逆引きはここの純関数（isWall/isFloor/mapToLocal/gridToWorld/moduleOfCell）で計算する。
 /// scene を一切読まないため、game 層（Board / EnemyAI 等）がここに依存できる（盤面ロジック→View の逆流を防ぐ）。
-/// 本物の TileMapLayer からの射影（snapshotOf）と scene ノード操作は view 層の `MapScene` 側に置く。
+/// 本物の TileMapLayer 値からの射影（snapshotOf）は build 側の `MapSetup` に置く。
 ///
 /// モジュール内に入れると `MapSnapshot.MapSnapshot` と修飾が必要になるため、型エイリアスは root に定義する。
 pub type alias MapSnapshot = {
@@ -14,7 +14,7 @@ pub type alias MapSnapshot = {
     wallCells   = Set[(Int32, Int32)],
     // gridToWorld 用の Map ノード global position（加算オフセット）。
     mapGlobal   = {x = Float64, y = Float64},
-    // スナップショット取得時に追加変換が不要なため、MapScene.Data#placements をそのまま保持する。
+    // スナップショット取得時に追加変換が不要なため、DungeonComposer の placements をそのまま保持する。
     placements  = List[{idx = Int32,
                         offset = {x = Int32, y = Int32},
                         gridSize = {x = Int32, y = Int32},
@@ -26,7 +26,7 @@ pub type alias MapSnapshot = {
 mod MapSnapshot {
 
     /// マップのセル幅（ピクセル）。使用タイルセットのグリッド解像度に固定された定数で、
-    /// グリッド ⇄ ピクセル変換が必要な全 Scene が参照する唯一の情報源。
+    /// グリッド ⇄ ピクセル変換が必要な全モジュールが参照する唯一の情報源。
     pub def tileSize(): Float64 = 26.0
 
     /// グリッド座標 → セル中心ピクセル座標。MapSnapshot を持たない呼び出し側が
@@ -52,12 +52,12 @@ mod MapSnapshot {
         c#x >= 0 and c#x < sz#x and c#y >= 0 and c#y < sz#y
 
     /// グリッド座標 → セル中心ローカル座標。スナップショット固有の tileSize を引数から取るため、
-    /// 呼び出し側が MapSnapshot を保持していれば MapScene のグローバル定数に依存せず変換できる。
+    /// 呼び出し側が MapSnapshot を保持していればグローバル定数に依存せず変換できる。
     /// セル中心の芯は `Grid.cellCenter` に委譲する（原点なし。原点加算は `gridToWorld`）。
     pub def mapToLocal(c: {x = Int32, y = Int32}, m: MapSnapshot): {x = Float64, y = Float64} =
         Grid.cellCenter(m#tileSize, (c#x, c#y))
 
-    /// グリッド座標 → world 座標（Map global 加算済み。呼び出し側が MapScene の位置を知らずに済む）。
+    /// グリッド座標 → world 座標（Map global 加算済み。呼び出し側がマップ原点を知らずに済む）。
     pub def gridToWorld(c: {x = Int32, y = Int32}, m: MapSnapshot): {x = Float64, y = Float64} =
         Vec2.add(m#mapGlobal, mapToLocal(c, m))
 

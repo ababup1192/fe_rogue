@@ -6,9 +6,9 @@
 /// 全員退場できたら次フロアへ（`FloorAdvanceRequest`）、届かず残った味方が居ればターンエンド
 /// （`ActionMenuScene.turnEndShortcut` = 敵ターンへ）。
 ///
-/// 自走モデルは `EnemyTurnDriver` と同型: 専用タグノード `NodeTag.StairsExitDriver` を
-/// World 配下に常駐させ、`process` redef が phase==StairsExit のとき `stepOnce` を回す。
-/// 退場キュー (id, 残り移動) と停滞カウンタは driver ノードの NodeTag 状態(`Data`)に持つ。
+/// 自走モデルは `EnemyTurnDriver` と同型: gameLoop のフレームパイプラインが `step` を毎フレーム
+/// 1 回呼び、phase==StairsExit のとき `stepOnce` を回す。
+/// 退場キュー (id, 残り移動) と停滞カウンタは `State` resource に持つ。
 ///
 /// 4 段 gating は敵ターンと同じ（バナー / Pacing / カメラ / 攻撃中）。
 mod StairsExitDriver {
@@ -16,6 +16,29 @@ mod StairsExitDriver {
     /// 退場進行の状態。`queue`=これから階段へ向かう (id, 残り移動歩数) 列（階段に近い順）、
     /// `idleRounds`=連続で誰も前進できなかった回数（1 巡で誰も進めなければ finalize＝無限ループ防止）。
     pub type alias Data = { queue = List[(Int32, Int32)], idleRounds = Int32 }
+
+    /// 退場進行の resource。`begin` が積み、`step` が読み、`stepOnce` 系が書き戻す。
+    pub eff State {
+        def get(): Data
+        def put(target: Data): Unit
+    }
+
+    /// 内部 Ref は closure に閉じ込め、読み書きを `State.get` / `State.put` 経由に強制する
+    /// （ArrowCursorState と同じ Ref-based handler 注入パターン）。
+    pub def withState(rc: Region[r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            let stateRef: Ref[Data, r] = Ref.fresh(rc, initialData());
+            run {
+                thunk()
+            } with handler State {
+                def get(k) = k(Ref.get(stateRef))
+                def put(target, k) = {
+                    Ref.put(target, stateRef);
+                    k()
+                }
+            }
+        }
 
     /// 先頭 1 体の次手（純粋判定・テスト対象）。座標は Eq 導出のため Int32 ペアで持つ。
     pub enum StepDecision with Eq, ToString {
@@ -26,19 +49,10 @@ mod StairsExitDriver {
         case Skip(Int32)           // 前進不可（占有/壁）→ 末尾へ回してリトライ
     }
 
-    def driverName(): String = "StairsExitDriver"
-    pub def driverPath(): NodePath = MapScene.worldName() :: driverName() :: Nil
-
     /// 距離フィールドのフラッド上限（マップ全域を覆う。EnemyAI/Board と同値）。
     def floodSteps(): Int32 = 4096
 
     def initialData(): Data = {queue = Nil, idleRounds = 0}
-
-    /// World 配下に常駐ドライバノードを追加する。`SceneSetup.buildPlayingScene` で 1 回。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let marker = Marker2D.make(Vec2.zero());
-        Scene.addChild(MapScene.worldName(), driverName(),
-            EngineNode.Marker2DWithState(marker, NodeTag.StairsExitDriver(initialData())), scene)
 
     // ────────────────────────────────────────────────────────
     // 到達判定・キュー構築（純粋・テスト対象）
@@ -93,34 +107,31 @@ mod StairsExitDriver {
 
     /// 生存・非 hidden の味方を (id, 現在マス, 残り移動) で集める。
     /// 残り移動は積載ペナルティ込みの実効移動力で計算する（青マス表示と階段到達判定を揃える）。
-    def livingUnits(scene: Scene[NodeTag]): List[(Int32, {x = Int32, y = Int32}, Int32)] \ World.WorldQuery =
-        PlayerScene.getAllWithWorldPos(scene)
+    def livingUnits(): List[(Int32, {x = Int32, y = Int32}, Int32)] \ World.WorldQuery =
+        PlayerScene.getAll()
             |> List.filter(d -> d#hp > 0 and not d#hidden)
             |> List.map(d -> (d#id, d#gridPos,
                               PlayerScene.effectiveMoveTilesOf(d) - d#moveStepsTaken))
 
     /// 「階段」確定。降りられる味方が 1 人以上居れば、全味方を退場キューに積み StairsExit フェーズへ。
     /// 届かない味方も含めてキューに入れる（近づけるところまで近づいて止まる）。
-    pub def begin(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, GameEngine.Audio,
+    pub def begin(): Unit \ {GameLogger.GameLogger, GameEngine.Audio,
                               TurnPhase.State, SelectedPlayer.State, BoardQuery, World.WorldQuery,
-                              RangeOverlayState.State, CursorState.State} =
+                              RangeOverlayState.State, CursorState.State, State} =
         // 階段位置は World 権威（stairsPosOf）を読む。
         match World.stairsPosOf(World.WorldQuery.get()) {
-            case None         => scene
+            case None         => ()
             case Some(stairs) =>
-                // frame-head の board 読みは World 由来（move 前ゆえ World==scene）。
                 let board = BoardQuery.board();
-                let units = livingUnits(scene);
+                let units = livingUnits();
                 // 誰も階段に届かないなら何もしない（メニューは主人公が階段の上に居るときだけ出すので通常来ない）。
-                if (List.isEmpty(eligibleExiters(board, stairs, units))) scene
+                if (List.isEmpty(eligibleExiters(board, stairs, units))) ()
                 else {
                     AudioStreamPlayer.play("change_floor");
                     GameLogger.playerLog("階段へ向かう");
                     SelectedPlayer.State.put(SelectedPlayer.cleared());
-                    scene
-                        |> setState({queue = exitQueue(board, stairs, units), idleRounds = 0})
-                        |> PhaseTransitions.enterStairsExit
+                    State.put({queue = exitQueue(board, stairs, units), idleRounds = 0});
+                    PhaseTransitions.enterStairsExit()
                 }
         }
 
@@ -128,103 +139,89 @@ mod StairsExitDriver {
     // 毎フレーム進行
     // ────────────────────────────────────────────────────────
 
-    /// 階段退場 System（`Scene → Scene`）。EnemyTurnDriver と同様、OOP node callback でなく
+    /// 階段退場 System。EnemyTurnDriver と同様、OOP node callback でなく
     /// gameLoop パイプラインが明示的に呼ぶ frame-paced System。driver の `Data`（queue/idleRounds）は
-    /// `driverPath()` のノード state から取り出し、`stepOnce` が `setState` で同ノードへ書き戻す
-    /// （node 引数不要＝`Scene.getState` で読み、戻りは scene のみ）。phase==StairsExit のとき 1 step 進める。
-    pub def step(scene: Scene[NodeTag]):
-                    Scene[NodeTag]
+    /// `State` resource から取り出し、`stepOnce` が `State.put` で書き戻す。
+    /// phase==StairsExit のとき 1 step 進める。
+    pub def step(): Unit
                     \ {GameEngine.Game, Pacing.State, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                        GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery,
-                       World.WorldQuery, RangeOverlayState.State, CameraState.State} =
-        match Scene.getState(driverPath(), scene) {
-            case Some(NodeTag.StairsExitDriver(data)) =>
-                match TurnPhase.State.get() {
-                    case TurnPhase.Phase.StairsExit => stepOnce(data, scene)
-                    case _                          => scene
-                }
-            case _ => scene
+                       World.WorldQuery, RangeOverlayState.State, CameraState.State, State} =
+        match TurnPhase.State.get() {
+            case TurnPhase.Phase.StairsExit => stepOnce(State.get())
+            case _                          => ()
         }
 
     /// 先頭 1 体を 1 マス進める / 退場させる / その場に残す。敵ターンと同じ 4 段 gating。
-    def stepOnce(data: Data, scene: Scene[NodeTag]): Scene[NodeTag]
+    def stepOnce(data: Data): Unit
             \ {GameEngine.Game, Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery,
-               World.WorldQuery, RangeOverlayState.State, CameraState.State} =
-        if (Pacing.State.isHolding()) scene
-        else if (not CameraScene.isSettled()) scene
-        else if (World.anyEnemyAttacking(World.WorldQuery.get())) scene
-        else if (World.anyPlayerAttacking(World.WorldQuery.get())) scene
+               World.WorldQuery, RangeOverlayState.State, CameraState.State, State} =
+        if (Pacing.State.isHolding()) ()
+        else if (not CameraScene.isSettled()) ()
+        else if (World.anyEnemyAttacking(World.WorldQuery.get())) ()
+        else if (World.anyPlayerAttacking(World.WorldQuery.get())) ()
         else match data#queue {
-            case Nil         => finalize(scene)
+            case Nil         => finalize()
             case (u, _) :: _ =>
-                if (PlayerScene.isMoving(u)) scene
+                if (PlayerScene.isMoving(u)) ()
                 else match World.stairsPosOf(World.WorldQuery.get()) {   // World 権威
-                    case None         => finalize(scene)   // 階段消失(通常来ない)→後始末
-                    case Some(stairs) => advanceFront(data, stairs, scene)
+                    case None         => finalize()   // 階段消失(通常来ない)→後始末
+                    case Some(stairs) => advanceFront(data, stairs)
                 }
         }
 
     /// 先頭の (id, 残り移動) について次手を決めて適用する。
-    def advanceFront(data: Data, stairs: {x = Int32, y = Int32},
-                      scene: Scene[NodeTag]): Scene[NodeTag]
+    def advanceFront(data: Data, stairs: {x = Int32, y = Int32}): Unit
             \ {Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                GatherResume.State, CustomEffects.FloorAdvanceRequest,
-               World.Command, World.WorldQuery, BoardQuery, RangeOverlayState.State} =
+               World.Command, World.WorldQuery, BoardQuery, RangeOverlayState.State, State} =
         match data#queue {
-            case Nil              => finalize(scene)
+            case Nil              => finalize()
             case (u, rem) :: rest =>
-                // frame-head の board 読みは World 由来（この frame の move 前ゆえ World==scene）。
+                // frame-head の board 読みは World 由来（この frame の move 前の値）。
                 let board    = BoardQuery.board();
-                // 現在位置は World.posOf（scene twin は持たない）。
+                // 現在位置は World.posOf。
                 let frontPos = World.posOf(World.EntityRef.Player(u), World.WorldQuery.get())
-                                   |> Option.getWithDefault(PlayerScene.getGridPos(u, scene));
+                                   |> Option.getWithDefault({x = 0, y = 0});
                 let field    = stairsField(board, stairs);
                 // 階段へ近づく「空きマス」へ 1 歩（占有/壁は ok で除外＝停止できないマスを避ける）。
                 let nextCell = Board.stepDownhill(field, frontPos, c -> not Board.isOccupied(c, board));
                 match decideStep(data#queue, frontPos, stairs, nextCell) {
-                    case StepDecision.Finalize         => finalize(scene)
+                    case StepDecision.Finalize         => finalize()
                     case StepDecision.Exit(id)         =>
                         // 階段に到着 → 退場。先頭を外し idleRounds リセット。
-                        let exited = PlayerScene.useStairs(id, scene);
-                        setState({queue = rest, idleRounds = 0}, exited)
+                        PlayerScene.useStairs(id);
+                        State.put({queue = rest, idleRounds = 0})
                     case StepDecision.Stop(_)          =>
                         // 移動力を使い切った → その場に残す（先頭を外す）。
-                        setState({queue = rest, idleRounds = 0}, scene)
+                        State.put({queue = rest, idleRounds = 0})
                     case StepDecision.StepTo(id, x, y) =>
-                        let moved = PlayerScene.moveToById(id, {x = x, y = y}, board#map,
-                                                           PlayerScene.selectedSlideDuration(), scene);
+                        PlayerScene.moveToById(id, {x = x, y = y}, board#map,
+                                               PlayerScene.selectedSlideDuration());
                         Pacing.State.hold(180 |> Duration.millis);
                         // 残り移動を 1 減らして先頭継続。
-                        setState({queue = (id, rem - 1) :: rest, idleRounds = 0}, moved)
+                        State.put({queue = (id, rem - 1) :: rest, idleRounds = 0})
                     case StepDecision.Skip(_)          =>
                         // 前進不可 → 末尾へ回してリトライ。1 巡して誰も進めなければ finalize。
                         let rotated = List.append(rest, (u, rem) :: Nil);
                         let nd: Data = {queue = rotated, idleRounds = data#idleRounds + 1};
-                        if (nd#idleRounds >= List.length(rotated)) finalize(scene)
-                        else setState(nd, scene)
+                        if (nd#idleRounds >= List.length(rotated)) finalize()
+                        else State.put(nd)
                 }
         }
 
     /// 全員退場できたら次フロア、残れば敵ターンへ。driver の queue は空に戻す。
-    def finalize(scene: Scene[NodeTag]): Scene[NodeTag]
+    def finalize(): Unit
             \ {GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
                SelectedPlayer.State, GatherResume.State, CustomEffects.FloorAdvanceRequest,
-               World.Command, World.WorldQuery, RangeOverlayState.State} =
-        let cleared = setState(initialData(), scene);
-        if (PlayerScene.allLivingUsedStairs(cleared))
-            CustomEffects.FloorAdvanceRequest.advance(cleared)
+               World.Command, World.WorldQuery, RangeOverlayState.State, State} =
+        State.put(initialData());
+        if (PlayerScene.allLivingUsedStairs())
+            CustomEffects.FloorAdvanceRequest.advance()
         else
-            ActionMenuUi.turnEndShortcut(cleared)
-
-    /// driver ノードの状態を書き換える（HoldGauge と同手法）。
-    def setState(data: Data, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.mapEngineNode(driverPath(), node -> match node {
-            case EngineNode.Marker2DWithState(m, NodeTag.StairsExitDriver(_)) =>
-                EngineNode.Marker2DWithState(m, NodeTag.StairsExitDriver(data))
-            case other => other
-        }, scene)
+            ActionMenuUi.turnEndShortcut()
 }

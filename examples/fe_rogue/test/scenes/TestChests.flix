@@ -30,7 +30,7 @@ mod TestChests {
         region rc {
             let wref = Ref.fresh(rc, worldWithChest());
             let runTake = cell -> {
-                run { discard Chests.takeAt(cell, Scene.empty()) }
+                run { Chests.takeAt(cell) }
                     with handler World.Command {
                         def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
                     }

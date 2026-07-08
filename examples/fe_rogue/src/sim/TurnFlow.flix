@@ -2,7 +2,7 @@
 ///
 /// PlayerAttack / WeaponSelect / ActionMenu「たいき」/ 杖・アイテム使用 / 反撃完了など、
 /// 「行動が確定した」すべての経路がここを通って次フェーズを判定する。
-/// 状態所有 Scene（PlayerScene / EnemyScene）からターン進行のオーケストレーションを
+/// 状態所有側（PlayerScene / EnemyScene）からターン進行のオーケストレーションを
 /// 分離したモジュールで、process を持たないため Game.flix の dispatch 表に登録せず
 /// `src/game/` に置く（dispatch 表に載るとフレーム毎に呼ばれる Scene として扱われる）。
 ///
@@ -15,41 +15,40 @@
 mod TurnFlow {
 
     /// PlayerAttack / WeaponSelect / ActionMenu「たいき」を抜けるときの共通確定処理。
-    /// 複数 Scene が「行動完了」を検知する経路を持つため、次フェーズ判定を分散させると
+    /// 複数箇所が「行動完了」を検知する経路を持つため、次フェーズ判定を分散させると
     /// 「waited にせず先へ進む」「レベルアップ割り込みを見落とす」バグが起きやすい。
     /// それを防ぐ単一割り込み保証点としてここに集約する。
-    pub def commitWaitedAndAdvance(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State,
-                              SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery,
-                              RangeOverlayState.State} =
+    pub def commitWaitedAndAdvance():
+            Unit \ {GameLogger.GameLogger,
+                    EnemyTurn.Queue, TurnPhase.State,
+                    SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery,
+                    RangeOverlayState.State} =
         // レベルアップ表示待ちの味方が居れば、ターンを進めずステータス変化パネル (LevelUpView) へ割り込む。
         // パネルを閉じると LevelUpPanelUi.confirm が pendingLevelUp を消して再度ここを呼ぶので、
         // そのとき保留が無くなって通常の確定・前進に進む。Kill / Counter / Commit の 3 経路すべてが
         // 最後にここを通るため、自分の攻撃で得たレベルアップ表示の割り込みは 1 箇所で足りる。
-        if (PlayerScene.anyPendingLevelUp(scene))
-            PhaseTransitions.enterLevelUpView(scene)
-        else
-        let waitedId = SelectedPlayer.State.get()#id;  // このフレームで waited 化する駒（stale 対象）
-        let withWaited = match waitedId {
-            case Some(id) => PlayerScene.setWaited(id, scene)
-            case None     => scene   // 防御的: 選択なしで Attack に入ることは UI フロー上起こらないが、
-                                   // waited 化する駒が存在しないだけなので scene をそのまま返しても安全
-        };
-        SelectedPlayer.State.put(SelectedPlayer.cleared());
-        // 次の active 味方の gridPos をローカル `withWaited` から直接拾って渡す。
-        // `enterPlayerCursor` 側の PartyQuery フォールバックは sceneRef (frame 冒頭の snapshot)
-        // を読むので、たった今 setWaited した駒をまだ active として返してしまう。
-        // setWaited は World 権威で書く（scene 直書きは無い）ため、scene 上では `waitedId` の駒が
-        // まだ active に見える。その 1 体を明示除外して拾う。
-        match PlayerScene.firstActiveExcluding(waitedId, withWaited) {
-            // スナップ先セルは World.posOf（位置は World 権威）。
-            case Some(next) =>
-                PhaseTransitions.enterPlayerCursorAt(
-                    World.posOf(World.EntityRef.Player(next#id), World.WorldQuery.get())
-                        |> Option.getWithDefault(next#gridPos), withWaited)
-            case None       =>
-                EnemyTurnDriver.beginTurn(withWaited)
+        if (PlayerScene.anyPendingLevelUp())
+            PhaseTransitions.enterLevelUpView()
+        else {
+            let waitedId = SelectedPlayer.State.get()#id;  // このフレームで waited 化する駒
+            match waitedId {
+                case Some(id) => PlayerScene.setWaited(id)
+                case None     => ()   // 防御的: 選択なしで Attack に入ることは UI フロー上起こらないが、
+                                       // waited 化する駒が存在しないだけなので何もしなくても安全
+            };
+            SelectedPlayer.State.put(SelectedPlayer.cleared());
+            // 次の active 味方の gridPos を拾って渡す。waited は World 直読みなので、
+            // 直前の setWaited は `firstActiveExcluding` の結果に既に反映されている
+            // （`excludeId` 引数は防御的な二重ガードとして残す。PlayerScene.firstActiveExcluding
+            // のコメント参照）。スナップ先セルは World.posOf（位置は World 権威）。
+            match PlayerScene.firstActiveExcluding(waitedId) {
+                case Some(next) =>
+                    PhaseTransitions.enterPlayerCursorAt(
+                        World.posOf(World.EntityRef.Player(next#id), World.WorldQuery.get())
+                            |> Option.getWithDefault(next#gridPos))
+                case None       =>
+                    EnemyTurnDriver.beginTurn()
+            }
         }
 
     /// 「ターンエンド」／集合の「全員待機」確定: 全アクティブ味方を行動済みにして即敵ターンへ進む。
@@ -63,21 +62,21 @@ mod TurnFlow {
     /// なら true。集合移動中に敵へ接敵して起きる **強制** 全員待機は false を渡し、次ターンの集合自動継続
     /// （`GatherResume`）を立てない（接敵直後に集合再突入→即強制待機のループを構造的に断つ）。
     /// 自発でも `gatherActive=false`（集合外の shift スキップ等）なら resume は立たない。
-    pub def commitAllWaitedAndAdvance(allowResume: Bool, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, GatherResume.State,
-                              World.Command, World.WorldQuery, RangeOverlayState.State} =
+    pub def commitAllWaitedAndAdvance(allowResume: Bool):
+            Unit \ {GameLogger.GameLogger, EnemyTurn.Queue,
+                    TurnPhase.State, SelectedPlayer.State, GatherResume.State,
+                    World.Command, World.WorldQuery, RangeOverlayState.State} =
         let resume = allowResume and SelectedPlayer.State.get()#gatherActive;
-        // waited は World 直読み（scene twin は持たない）。
+        // waited は World 直読み。
         let w0 = World.WorldQuery.get();
-        let ids = PlayerScene.getAll(scene)
+        let ids = PlayerScene.getAll()
                     |> List.filter(d -> not (World.waitedOf(World.EntityRef.Player(d#id), w0)
                                                 |> Option.getWithDefault(false)))
                     |> List.map(d -> d#id);
-        let afterWait = List.foldLeft((sc, id) -> PlayerScene.setWaited(id, sc), scene, ids);
+        List.forEach(id -> PlayerScene.setWaited(id), ids);
         GatherResume.State.put(resume);
         SelectedPlayer.State.put(SelectedPlayer.cleared());
-        EnemyTurnDriver.beginTurn(afterWait)
+        EnemyTurnDriver.beginTurn()
 
     /// レベルアップ表示を閉じ切ったあとの復帰先を文脈で分ける。
     /// modal 割り込みの入口（`commitWaitedAndAdvance` の `anyPendingLevelUp` 分岐）に対応する
@@ -85,12 +84,12 @@ mod TurnFlow {
     /// 「保留を消す / 演出をリセットする」という view 側の modal ループだけを持つ）。
     ///   - 自分の攻撃中（`SelectedPlayer` あり）→ `commitWaitedAndAdvance` でターンを確定・続行。
     ///   - 敵ターン中の反撃由来（`SelectedPlayer` なし）→ 敵ターンに戻って続行（キューはそのまま）。
-    pub def resumeAfterLevelUpView(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
-                              World.Command, World.WorldQuery, RangeOverlayState.State} =
+    pub def resumeAfterLevelUpView():
+            Unit \ {GameLogger.GameLogger, EnemyTurn.Queue,
+                    TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                    World.Command, World.WorldQuery, RangeOverlayState.State} =
         match SelectedPlayer.State.get()#id {
-            case Some(_) => commitWaitedAndAdvance(scene)
-            case None    => PhaseTransitions.enterEnemyTurn(scene)
+            case Some(_) => commitWaitedAndAdvance()
+            case None    => PhaseTransitions.enterEnemyTurn()
         }
 }

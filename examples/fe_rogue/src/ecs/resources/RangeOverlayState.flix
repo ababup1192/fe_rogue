@@ -33,7 +33,7 @@ mod RangeOverlayState {
         dangerZone        = Option[DangerZoneScene.Data]
     }
 
-    /// 初期状態（全範囲非表示）。フロア構築（`SceneSetup.addHudAndDrivers`）で put し直して
+    /// 初期状態（全範囲非表示）。フロア構築（`WorldSetup.setupHudAndDrivers`）で put し直して
     /// 前フロアの残存オーバーレイを一掃する。
     pub def empty(): Data =
         {moveRange = None, moveAttackRange = None, enemyRange = None,

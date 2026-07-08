@@ -11,8 +11,8 @@
 /// 消す:   味方ターン開始（`EnemyTurnDriver.endTurn`）で必ず `put(false)` して消費・再評価。
 ///
 /// 設計指針: `Pacing` / `SelectedPlayer` / `TurnPhase` と同じ Ref ベースの effect handler。
-/// `Game.start` で `with GatherResume.withState(rc)` を 1 行注入し、`FrameAef.ProcessT` に
-/// `GatherResume.State` を載せて process 経路から読み書きできるようにする。
+/// `Game.start` で `with GatherResume.withState(rc)` を 1 行注入し、フレームパイプラインの
+/// 各 System から読み書きできるようにする。
 mod GatherResume {
 
     /// 単一 Bool の get/put。入れ子ハンドラは想定しない。

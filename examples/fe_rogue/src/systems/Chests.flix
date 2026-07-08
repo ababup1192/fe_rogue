@@ -8,7 +8,7 @@
 ///     catalogs を持つのでここで `pickWeighted` + `GroundItems.lookupItem` を済ませる。これにより
 ///     開錠側(`ActionMenuScene.applyOpenChest`)は Math.Random も catalogs も要さず決定論的に振る舞える。
 ///   - 配置は駒(味方/敵)・床アイテム・階段・既配置の宝箱と重ならないセルにのみ行う。
-///   - 開錠でノードごと削除する(`takeAt`)。開封済み状態は持たず、同セルを再度踏んでも宝箱は出ない。
+///   - 開錠で World から削除する(`takeAt`)。開封済み状態は持たず、同セルを再度踏んでも宝箱は出ない。
 mod Chests {
 
     use ItemData.GroundItemKind
@@ -38,24 +38,24 @@ mod Chests {
     /// フロアに宝箱を配置する。配置数は `floor#chestsPerFloor` の min..max からランダム、
     /// 種別は `floor#chests` の重み付きプール、中身は各宝箱種別の `contents` プールから抽選する。
     /// 占有回避: 味方/敵/床アイテム/階段/既に置いた宝箱のセルを避ける。
-    /// 階段配置(`Stairs.placeRandom`)の後に呼ぶ前提（階段セルを `Stairs.getPos` で読むため）。
+    /// 階段配置(`Stairs.placeRandom`)の後に呼ぶ前提（階段セルを `World.stairsPosOf` で読むため）。
     pub def add(chestCatalog: ChestCatalog.ChestCatalog,
                  catalog: UnitCatalog.UnitCatalog,
                  staffCatalog: Staff.StaffCatalog,
                  consumableCatalog: Consumable.ConsumableCatalog,
                  ringCatalog: Ring.RingCatalog,
-                 floor: FloorCatalog.FloorResource,
-                 scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command, World.WorldQuery} =
+                 floor: FloorCatalog.FloorResource): Unit \ {Math.Random, World.Command, World.WorldQuery} =
         // 宝箱は希少: フロアごとに chestSpawnChance の確率でのみ出現させる
         // （外れたフロアは 0 個）。`and` の短絡で chests 空なら乱数は引かない。
         let willSpawn = not List.isEmpty(floor#chests)
                           and Math.Random.randomFloat64() < chestSpawnChance();
         let count = FloorCatalog.randomCountInRange(floor#chestsPerFloor);
-        if (not willSpawn or count <= 0) scene
+        if (not willSpawn or count <= 0) ()
         else {
-            let placements = MapScene.getPlacements(scene);
-            let roomCount  = MapScene.getRoomCount(scene);
-            let occupied   = occupiedCells(scene);
+            let world0     = World.WorldQuery.get();
+            let placements = World.placementsOf(world0);
+            let roomCount  = World.roomCountOf(world0);
+            let occupied   = occupiedCells();
             // 第一候補は anchor(idx=0, 開始部屋)を除いた部屋の空き床セル。
             let nonAnchor = freeCellsIn(p -> p#idx >= 1 and p#idx < roomCount, placements, occupied);
             // 狭いフロアで非anchor部屋が埋まっていると候補が枯れて 1 個も置けないため、
@@ -65,7 +65,7 @@ mod Chests {
                     freeCellsIn(p -> p#idx == 0, placements, occupied)
                 else nonAnchor;
             placeChests(count, candidates,
-                         chestCatalog, catalog, staffCatalog, consumableCatalog, ringCatalog, floor, scene)
+                         chestCatalog, catalog, staffCatalog, consumableCatalog, ringCatalog, floor)
         }
 
     /// 述語 `roomPred` を満たす部屋の interiorCells のうち、占有されていない床セルを集める。
@@ -80,10 +80,10 @@ mod Chests {
     /// 駒(味方/敵) + 床アイテム + 階段 のセルを 1 本のリストに集める（配置時の回避集合）。
     /// 階段位置は World.stairsPos から読む（build 中の placeRandom→SetStairs emit は
     /// read-after-write で見える）。
-    def occupiedCells(scene: Scene[NodeTag]): List[{x = Int32, y = Int32}] \ World.WorldQuery =
+    def occupiedCells(): List[{x = Int32, y = Int32}] \ World.WorldQuery =
         let units = List.append(
-            PlayerScene.getAll(scene) |> List.map(d -> d#gridPos),
-            EnemyScene.getAll(scene)  |> List.map(d -> d#gridPos));
+            PlayerScene.getAll() |> List.map(d -> d#gridPos),
+            EnemyScene.getAll()  |> List.map(d -> d#gridPos));
         let items = World.groundItemsOf(World.WorldQuery.get()) |> Map.valuesOf |> List.map(d -> d#gridPos);
         let stairs = Option.toList(World.stairsPosOf(World.WorldQuery.get()));
         List.append(units, List.append(items, stairs))
@@ -102,9 +102,8 @@ mod Chests {
                      staffCatalog: Staff.StaffCatalog,
                      consumableCatalog: Consumable.ConsumableCatalog,
                      ringCatalog: Ring.RingCatalog,
-                     floor: FloorCatalog.FloorResource,
-                     scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command} =
-        if (remaining <= 0) scene
+                     floor: FloorCatalog.FloorResource): Unit \ {Math.Random, World.Command} =
+        if (remaining <= 0) ()
         else {
             let chosen = forM (
                 cell      <- RandomUtil.pick(candidates);
@@ -115,11 +114,11 @@ mod Chests {
                 (cell, chestKey, contentId, content)
             };
             match chosen {
-                case None => scene
+                case None => ()
                 case Some((cell, chestKey, contentId, content)) =>
-                    let placed = addOneChest(cell, chestKey, contentId, content, scene);
+                    addOneChest(cell, chestKey, contentId, content);
                     placeChests(remaining - 1, removeCell(cell, candidates),
-                                 chestCatalog, catalog, staffCatalog, consumableCatalog, ringCatalog, floor, placed)
+                                 chestCatalog, catalog, staffCatalog, consumableCatalog, ringCatalog, floor)
             }
         }
 
@@ -131,25 +130,22 @@ mod Chests {
     /// scene ノードは書かない（描画は `RenderWorld.renderChests` が World から直描き）。
     def addOneChest(cell: {x = Int32, y = Int32},
                      chestKey: String, contentId: String,
-                     content: GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+                     content: GroundItemKind): Unit \ World.Command =
         let data: Data = {gridPos = cell, chestKey = chestKey, contentId = contentId, content = content};
-        World.Command.emit(World.Cmd.SpawnChest(data));
-        scene
+        World.Command.emit(World.Cmd.SpawnChest(data))
 
     /// 指定セルの宝箱を除去する＝`Cmd.RemoveChest` を emit（開錠後に呼ぶ）。
-    /// World store に居るときだけ emit。scene は素通し。
-    pub def takeAt(coord: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] \ {World.Command, World.WorldQuery} =
+    /// World store に居るときだけ emit。
+    pub def takeAt(coord: {x = Int32, y = Int32}): Unit \ {World.Command, World.WorldQuery} =
         match World.chestAtOf(coord, World.WorldQuery.get()) {
-            case Some(_) =>
-                World.Command.emit(World.Cmd.RemoveChest(coord));
-                scene
-            case None => scene
+            case Some(_) => World.Command.emit(World.Cmd.RemoveChest(coord))
+            case None    => ()
         }
 
     /// 現在の宝箱を `ChestSnap` 列（セル座標 ＋ 箱種別 id ＋ 中身 id）に射影する（スナップショット保存用）。
     /// `chestKey` / `contentId` は Data が保持するので逆引き不要。
     /// 射影元は **World の chests store**（存在の権威）。並び順は cellKey 昇順（GroundItems と同じ注記）。
-    pub def captureSnaps(_scene: Scene[NodeTag]): List[FloorSnapshot.ChestSnap] \ World.WorldQuery =
+    pub def captureSnaps(): List[FloorSnapshot.ChestSnap] \ World.WorldQuery =
         World.chestsOf(World.WorldQuery.get())
             |> Map.valuesOf
             |> List.map(d ->
@@ -162,12 +158,11 @@ mod Chests {
                           catalog: UnitCatalog.UnitCatalog,
                           staffCatalog: Staff.StaffCatalog,
                           consumableCatalog: Consumable.ConsumableCatalog,
-                          ringCatalog: Ring.RingCatalog,
-                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        List.foldLeft((acc, snap) -> {
+                          ringCatalog: Ring.RingCatalog): Unit \ World.Command =
+        List.forEach(snap -> {
             let content = GroundItems.lookupItem(snap#contentId, catalog, staffCatalog, consumableCatalog, ringCatalog);
-            addOneChest(snap#gridPos, snap#chestKey, snap#contentId, content, acc)
-        }, scene, snaps)
+            addOneChest(snap#gridPos, snap#chestKey, snap#contentId, content)
+        }, snaps)
 
     // fog の lit ゲートは `RenderWorld.renderChests` が直描き時に判定する。
 }

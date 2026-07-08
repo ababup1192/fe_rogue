@@ -66,33 +66,31 @@ mod ItemPickupPopupUi {
 
     /// アイテムを拾ったときに呼ぶ。文言を「${itemName}を手に入れた」にして、フェードを先頭から開始し、
     /// 取得音の予約を立てる。副作用は無く（音は `frameStep` が鳴らす）、既に表示中でも先頭からやり直す。
-    pub def show(itemName: String, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupState.State =
-        showWith("${itemName}を手に入れた", true, scene)
+    pub def show(itemName: String): Unit \ ItemPickupPopupState.State =
+        showWith("${itemName}を手に入れた", true)
 
     /// 取得以外の通知（例: 「持ち物がいっぱいです」）を中央ポップアップに出す。
     /// 取得音は鳴らさず、フェードイン → 表示保持 → フェードアウトの演出だけ流す。
-    pub def showMessage(text: String, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupState.State =
-        showWith(text, false, scene)
+    pub def showMessage(text: String): Unit \ ItemPickupPopupState.State =
+        showWith(text, false)
 
     /// 「持ち物がいっぱいです」を中央ポップアップで知らせる薄いラッパ。
-    pub def showFull(scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupState.State =
-        showMessage("持ち物がいっぱいです", scene)
+    pub def showFull(): Unit \ ItemPickupPopupState.State =
+        showMessage("持ち物がいっぱいです")
 
     /// 取得音だけを次フレームに予約する（中央ポップアップは出さない）。`show` と違い stage / text を触らないので、
     /// `frameStep` が `get_item` を 1 回鳴らすだけ（`step` は stage に関わらず先頭で `soundPending` を消費して
     /// playSound を返す）。移動着地の自動取得など「大きな通知は不要だが取得音は鳴らしたい」経路で使う。純粋。
-    pub def reserveGetItemSound(scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupState.State =
+    pub def reserveGetItemSound(): Unit \ ItemPickupPopupState.State =
         let d = ItemPickupPopupState.State.get();
-        ItemPickupPopupState.State.put({soundPending = true | d});
-        scene
+        ItemPickupPopupState.State.put({soundPending = true | d})
 
     /// 文言と「取得音を鳴らすか」を受け取り、フェードを先頭から開始する共通処理。
     /// `playSound = true` のときだけ `frameStep` が取得音を 1 回鳴らす。text は状態に持たせ、
     /// `frameStep` が毎フレーム UI へ流し込む（トリガーは UI を直接触らない）。
-    def showWith(text: String, playSound: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ ItemPickupPopupState.State =
+    def showWith(text: String, playSound: Bool): Unit \ ItemPickupPopupState.State =
         ItemPickupPopupState.State.put(
-            {stage = Stage.FadeIn, elapsed = Duration.zero(), soundPending = playSound, text = text});
-        scene
+            {stage = Stage.FadeIn, elapsed = Duration.zero(), soundPending = playSound, text = text})
 
     // ========================================================================
     // 純粋: 1 フレーム分の状態更新
@@ -160,14 +158,13 @@ mod ItemPickupPopupUi {
     /// gameLoop が 1 回呼ぶ frame-paced System。`step` で状態を進め、予約があれば取得音を 1 回鳴らし、
     /// 文言と表示の濃さ ratio を窓 alpha・枠色・文字色・可視へ反映する。ノード不在（タイトル/選択画面）でも
     /// 安全: 状態は Idle のまま進まず（soundPending も Playing 経路でしか立たない）、setXxx は対象不在で no-op。
-    pub def frameStep(delta: Duration.Duration, scene: Scene[NodeTag]):
-                    Scene[NodeTag] \ {GameEngine.Audio, ItemPickupPopupState.State, UiWorldState.State} =
+    pub def frameStep(delta: Duration.Duration):
+                    Unit \ {GameEngine.Audio, ItemPickupPopupState.State, UiWorldState.State} =
         let data = ItemPickupPopupState.State.get();
         let result = step(data, delta);
         ItemPickupPopupState.State.put(result#data);
         if (result#playSound) AudioStreamPlayer.play(getItemSound()) else ();
-        UiWorldState.State.put(applyAppearance(result#ratio, result#data#text, UiWorldState.State.get()));
-        scene
+        UiWorldState.State.put(applyAppearance(result#ratio, result#data#text, UiWorldState.State.get()))
 
     /// 表示の濃さ ratio と文言を UI へ反映する（純粋・テスト対象）。
     ///   窓: fill alpha = ratio × ピーク不透明度。ratio が 0 なら窓ごと非表示。枠色は「窓背景 → 白」を

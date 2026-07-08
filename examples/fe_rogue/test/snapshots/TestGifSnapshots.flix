@@ -227,18 +227,18 @@ mod TestGifSnapshots {
 
     /// count フレーム、実 frameStep を levelUpDt() ずつ進めて収録する（bonus → 各ステータス増分）。
     def levelUpFrames(ctx: SnapshotSupport.Ctx, framesRef: Ref[List[BufferedImage], r],
-                      count: Int32, scene: Scene[NodeTag]):
+                      count: Int32):
             Unit \ {IO + GameEngine.Game + UiWorldState.State + GameEngine.Audio
-                     + TurnPhase.State + LevelUpPanelState.State + r} =
+                     + TurnPhase.State + LevelUpPanelState.State + World.WorldQuery + r} =
         if (count <= 0) ()
         else {
-            discard LevelUpPanelUi.frameStep(levelUpDt(), scene);
+            LevelUpPanelUi.frameStep(levelUpDt());
             captureFrame(ctx, framesRef);
-            levelUpFrames(ctx, framesRef, count - 1, scene)
+            levelUpFrames(ctx, framesRef, count - 1)
         }
 
     /// パネルが出現 → ステータス増分が順に出る演出（実 frameStep の時間発展）→ 確定で閉じる を撮る。
-    /// パネル状態（保留レベルアップ結果）は scene へ直接注入し、確定の phase 遷移は withFullMocks の
+    /// 保留レベルアップ結果は World（pendingLevelUp store）へ seed し、確定の phase 遷移は withFullMocks の
     /// 可変 Ref が持続させる（2 回目の確定で LevelUpView を抜け、次フレームで panel が消える）。
     /// sanity 用の Drawable 数は「全行を出し切った（閉じる前の）」フレームで採る（閉じると空になるため）。
     def genFlowLevelUp(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + Fs.FileRead + r} =
@@ -248,20 +248,20 @@ mod TestGifSnapshots {
                 TestUiSnapshots.spawnUi(LevelUpPanelUi.specPath());
                 let lord = {pendingLevelUp = Some(TestUiSnapshots.levelUpFixtureResult())
                             | TestUiSnapshots.mkPlayer(TestUiSnapshots.basePlayer(0, "knight", {x = 1, y = 1}))};
-                let scene = TestUiSnapshots.worldScene() |> TestUiSnapshots.addPlayer(lord);
+                let world = TestUiSnapshots.emptyWorld() |> TestUiSnapshots.addPlayer(lord);
                 let cfg = {phase = TurnPhase.Phase.LevelUpView, selectedId = Some(0)
-                           | SnapshotHarness.config(scene)};
+                           | SnapshotHarness.config(world)};
                 LevelUpPanelState.withState(rc, () ->
                   SnapshotHarness.withFullMocks(cfg, () -> {
                       // 出現 → bonus → 各ステータス増分が順に出る（実 frameStep の時間発展）。
-                      levelUpFrames(ctx, framesRef, 34, scene);
+                      levelUpFrames(ctx, framesRef, 34);
                       // 1 回目の確定: まだ出し切っていなければ残りを一気に出す（閉じない）。
-                      discard LevelUpPanelUi.confirm(scene);
-                      levelUpFrames(ctx, framesRef, 4, scene);
+                      LevelUpPanelUi.confirm();
+                      levelUpFrames(ctx, framesRef, 4);
                       let full = drawableCount();  // 全行が出た（閉じる前の）Drawable 数
                       // 2 回目の確定: 閉じる → 次フレームで panel が消える（phase 復帰が可変 Ref で持続）。
-                      discard LevelUpPanelUi.confirm(scene);
-                      levelUpFrames(ctx, framesRef, 6, scene);
+                      LevelUpPanelUi.confirm();
+                      levelUpFrames(ctx, framesRef, 6);
                       full
                   }))
             }));
@@ -279,14 +279,14 @@ mod TestGifSnapshots {
     /// count フレーム、新着なしで実 LogUi.step を logDt() ずつ進めて収録する
     /// （呼ぶ前に emit された新着はこの中の最初の step が drain する。以後はアイドルとして寿命が進む）。
     def logFrames(ctx: SnapshotSupport.Ctx, framesRef: Ref[List[BufferedImage], r],
-                  count: Int32, scene: Scene[NodeTag]):
+                  count: Int32):
             Unit \ {IO + GameEngine.Game + UiWorldState.State
                      + GameLogger.GameLogger + LogState.State + r} =
         if (count <= 0) ()
         else {
-            discard LogUi.step(logDt(), scene);
+            LogUi.step(logDt());
             captureFrame(ctx, framesRef);
-            logFrames(ctx, framesRef, count - 1, scene)
+            logFrames(ctx, framesRef, count - 1)
         }
 
     /// プレイヤー行動ログ（白）→ 敵ログ（赤）を時間差で GameLogger へ注入し、行が下から押し上がる様子と、
@@ -300,24 +300,23 @@ mod TestGifSnapshots {
                 LogState.withState(rc, () ->
                     GameLogger.withLogger(rc, () -> {
                         TestUiSnapshots.spawnUi(LogUi.specPath());
-                        let scene = TestUiSnapshots.worldScene();
                         // 白（プレイヤー）→ 赤（敵）を数行、行の押し上げが見える間隔で注入する。
                         GameLogger.playerLog("剣士 の こうげき");
-                        logFrames(ctx, framesRef, 3, scene);
+                        logFrames(ctx, framesRef, 3);
                         GameLogger.playerLog("ゴブリン に 6 のダメージ");
-                        logFrames(ctx, framesRef, 3, scene);
+                        logFrames(ctx, framesRef, 3);
                         GameLogger.enemyLog("ゴブリン の はんげき");
-                        logFrames(ctx, framesRef, 3, scene);
+                        logFrames(ctx, framesRef, 3);
                         GameLogger.playerLog("僧侶 の いやし");
-                        logFrames(ctx, framesRef, 3, scene);
+                        logFrames(ctx, framesRef, 3);
                         GameLogger.enemyLog("ゴブリン の こうげき");
-                        logFrames(ctx, framesRef, 3, scene);
+                        logFrames(ctx, framesRef, 3);
                         // 6 行目でいちばん古い行が押し出される（窓は maxQueue()=5 行）。
                         GameLogger.playerLog("剣士 の とどめ");
-                        logFrames(ctx, framesRef, 4, scene);
+                        logFrames(ctx, framesRef, 4);
                         let full = drawableCount();  // 帯が満ちた（消える前の）Drawable 数
                         // 以後は無入力アイドル。holdSeconds()=5 秒 ≒ 25 フレームで帯ごと消えるまで回す。
-                        logFrames(ctx, framesRef, 30, scene);
+                        logFrames(ctx, framesRef, 30);
                         full
                     }))));
         bakeFilm(collectFrames(framesRef), "flow_log");
@@ -333,11 +332,11 @@ mod TestGifSnapshots {
             {weaponIds = "iron_sword" :: Nil | TestUiSnapshots.basePlayer(0, "knight", {x = 1, y = 1})});
         let ally = TestUiSnapshots.mkPlayer(TestUiSnapshots.basePlayer(1, "paladin", {x = 2, y = 1}));
         let enemy = TestUiSnapshots.mkEnemy(9, "fighter_t1", {x = 1, y = 2}, 12, Some("iron_sword"));
-        let scene = TestUiSnapshots.worldScene()
+        let world = TestUiSnapshots.emptyWorld()
             |> TestUiSnapshots.addPlayer(lord)
             |> TestUiSnapshots.addPlayer(ally)
-            |> TestUiSnapshots.addEnemy(enemy, true);
-        {phase = TurnPhase.Phase.ActionSelect, selectedId = Some(0) | SnapshotHarness.config(scene)}
+            |> TestUiSnapshots.addEnemy(enemy);
+        {phase = TurnPhase.Phase.ActionSelect, selectedId = Some(0) | SnapshotHarness.config(world)}
 
     def actionScript(): List[ReplayScript.Step] =
         ReplayScript.Step.KeyPress(ReplayScript.Key.Down) ::
@@ -357,10 +356,10 @@ mod TestGifSnapshots {
                         case ReplayScript.Key.Down => 1
                         case _                     => 0
                     };
-                    discard SnapshotHarness.withMocks(cfg, () -> ActionMenuUi.moveSelection(delta, cfg#scene))
+                    SnapshotHarness.withMocks(cfg, () -> ActionMenuUi.moveSelection(delta))
                 };
                 let tick = () -> {
-                    discard SnapshotHarness.withMocks(cfg, () -> ActionMenuUi.frameStep(TestUiSnapshots.dt(), cfg#scene));
+                    SnapshotHarness.withMocks(cfg, () -> ActionMenuUi.frameStep(TestUiSnapshots.dt()));
                     captureFrame(ctx, framesRef)
                 };
                 ReplayScript.execute(betweenFrames(), actionScript(), applyKey, tick);
@@ -381,9 +380,9 @@ mod TestGifSnapshots {
                     :: "mithril_sword" :: Nil;
         let lord = TestUiSnapshots.mkPlayer(
             {hp = 22, weaponIds = ids | TestUiSnapshots.basePlayer(0, "knight", {x = 1, y = 1})});
-        let scene = TestUiSnapshots.worldScene() |> TestUiSnapshots.addPlayer(lord);
+        let world = TestUiSnapshots.emptyWorld() |> TestUiSnapshots.addPlayer(lord);
         {phase = TurnPhase.Phase.ItemSelect, selectedId = Some(0), itemCategory = 0
-         | SnapshotHarness.config(scene)}
+         | SnapshotHarness.config(world)}
 
     def itemScrollScript(): List[ReplayScript.Step] =
         List.repeat(10, ReplayScript.Step.KeyPress(ReplayScript.Key.Down))
@@ -400,10 +399,10 @@ mod TestGifSnapshots {
                         case ReplayScript.Key.Down => 1
                         case _                     => 0
                     };
-                    discard SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.moveSelection(delta, cfg#scene))
+                    SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.moveSelection(delta))
                 };
                 let tick = () -> {
-                    discard SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.frameStep(TestUiSnapshots.dt(), cfg#scene));
+                    SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.frameStep(TestUiSnapshots.dt()));
                     captureFrame(ctx, framesRef)
                 };
                 ReplayScript.execute(betweenFrames(), itemScrollScript(), applyKey, tick);
@@ -423,7 +422,7 @@ mod TestGifSnapshots {
 
     def genGameOver(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + Fs.FileRead + r} =
         let framesRef = Ref.fresh(rc, (Nil: List[BufferedImage]));
-        let cfg = {simPhase = SimPhase.GameOver | SnapshotHarness.config(TestUiSnapshots.worldScene())};
+        let cfg = {simPhase = SimPhase.GameOver | SnapshotHarness.config(TestUiSnapshots.emptyWorld())};
         let count = SnapshotSupport.withMockGame(ctx#atlas, ctx#texInfo, () ->
             UiWorldState.withState(rc, () -> {
                 TestUiSnapshots.spawnUi(GameOverMenuUi.specPath());
@@ -435,7 +434,7 @@ mod TestGifSnapshots {
                     case _                     => ()
                 };
                 let tick = () -> {
-                    discard SnapshotHarness.withMocks(cfg, () -> GameOverMenuUi.frameStep(TestUiSnapshots.dt(), cfg#scene));
+                    SnapshotHarness.withMocks(cfg, () -> GameOverMenuUi.frameStep(TestUiSnapshots.dt()));
                     captureFrame(ctx, framesRef)
                 };
                 ReplayScript.execute(betweenFrames(), gameOverScript(), applyKey, tick);
@@ -456,53 +455,52 @@ mod TestGifSnapshots {
     ///   WeaponSelect      : ↑↓=WeaponSelectUi.moveSelection(∓1) / Z=confirmCurrentSelection / X=onCancelled
     /// 単一 match（(phase, key) タプル）に束ねて arm 集合で効果を合流させる（checked_ecast 不要）。
     /// 確定（Z）のゲームロジックは本物を実行し、書かれた phase が可変ハーネスの Ref に残る。
-    pub def applyFlowKey(key: ReplayScript.Key, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {AnimationPlayer.Scheduler, GameLogger.GameLogger, EnemyTurn.Queue,
+    pub def applyFlowKey(key: ReplayScript.Key): Unit
+            \ {GameLogger.GameLogger, EnemyTurn.Queue,
                TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
                GatherResume.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery,
                BoardQuery, ItemPickupPopupState.State, ItemMenuState.State, TradeMenuState.State,
-               UiWorldState.State, RangeOverlayState.State} =
+               UiWorldState.State, RangeOverlayState.State, StairsExitDriver.State} =
         match (TurnPhase.State.get(), key) {
             // ActionSelect（コマンドメニュー）
-            case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Up)      => ActionMenuUi.moveSelection(-1, scene)
-            case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Down)    => ActionMenuUi.moveSelection(1, scene)
-            case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Confirm) => ActionMenuUi.confirmCurrentSelection(scene)
-            case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Cancel)  => ActionMenuUi.onActionCancelled(scene)
+            case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Up)      => ActionMenuUi.moveSelection(-1)
+            case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Down)    => ActionMenuUi.moveSelection(1)
+            case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Confirm) => ActionMenuUi.confirmCurrentSelection()
+            case (TurnPhase.Phase.ActionSelect, ReplayScript.Key.Cancel)  => ActionMenuUi.onActionCancelled()
             // ItemSelect（持ち物・1 カテゴリ表示）
-            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Up)        => ItemMenuUi.moveSelection(-1, scene)
-            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Down)      => ItemMenuUi.moveSelection(1, scene)
-            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Left)      => ItemMenuUi.categoryPrev(scene)
-            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Right)     => ItemMenuUi.categoryNext(scene)
-            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Confirm)   => ItemMenuUi.confirmCurrentSelection(scene)
-            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Cancel)    => ItemMenuUi.onItemCancelled(scene)
+            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Up)        => ItemMenuUi.moveSelection(-1)
+            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Down)      => ItemMenuUi.moveSelection(1)
+            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Left)      => ItemMenuUi.categoryPrev()
+            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Right)     => ItemMenuUi.categoryNext()
+            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Confirm)   => ItemMenuUi.confirmCurrentSelection()
+            case (TurnPhase.Phase.ItemSelect, ReplayScript.Key.Cancel)    => ItemMenuUi.onItemCancelled()
             // ItemActionSelect（サブメニュー：そうび/なげる/すてる）
-            case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Up)      => ItemMenuUi.moveSelection(-1, scene)
-            case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Down)    => ItemMenuUi.moveSelection(1, scene)
-            case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Confirm) => ItemMenuUi.confirmCurrentSelection(scene)
-            case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Cancel)  => ItemMenuUi.onActionCancelled(scene)
+            case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Up)      => ItemMenuUi.moveSelection(-1)
+            case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Down)    => ItemMenuUi.moveSelection(1)
+            case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Confirm) => ItemMenuUi.confirmCurrentSelection()
+            case (TurnPhase.Phase.ItemActionSelect, ReplayScript.Key.Cancel)  => ItemMenuUi.onActionCancelled()
             // WeaponSelect（武器窓）
-            case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Up)      => WeaponSelectUi.moveSelection(-1, scene)
-            case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Down)    => WeaponSelectUi.moveSelection(1, scene)
-            case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Confirm) => WeaponSelectUi.confirmCurrentSelection(scene)
-            case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Cancel)  => WeaponSelectUi.onCancelled(scene)
+            case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Up)      => WeaponSelectUi.moveSelection(-1)
+            case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Down)    => WeaponSelectUi.moveSelection(1)
+            case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Confirm) => WeaponSelectUi.confirmCurrentSelection()
+            case (TurnPhase.Phase.WeaponSelect, ReplayScript.Key.Cancel)  => WeaponSelectUi.onCancelled()
             // それ以外のフェーズ / キーは無反応（GIF ではこの表の範囲だけ入力する）。
-            case _ => scene
+            case _ => ()
         }
 
     /// 3 メニュー窓（コマンド / 武器 / 持ち物）の frameStep を毎フレーム回して収録する tick。
     /// gameLoop が全 UI の frameStep を毎フレーム呼ぶのと同じく、各 frameStep が phase で自己 gate し、
-    /// 可視・内容・パネル追従を実ロジックで組む。scene は fixture（cfg#scene）を使い回す
-    /// （可変状態は phase / 選択 / UiWorld などの resource 側に載るため、確定が返す scene は捨ててよい）。
-    def flowTick(ctx: SnapshotSupport.Ctx, scene: Scene[NodeTag],
-                 framesRef: Ref[List[BufferedImage], r]):
+    /// 可視・内容・パネル追従を実ロジックで組む
+    /// （可変状態は phase / 選択 / UiWorld / World などの resource 側に載る）。
+    def flowTick(ctx: SnapshotSupport.Ctx, framesRef: Ref[List[BufferedImage], r]):
             Unit \ {IO + GameEngine.Game + UiWorldState.State + TurnPhase.State + SelectedPlayer.State
                      + CursorState.State + PlayerData.PartyQuery + EnemyData.RosterQuery
                      + World.WorldQuery
                      + ItemMenuState.State + r} =
-        discard ActionMenuUi.frameStep(TestUiSnapshots.dt(), scene);
-        discard WeaponSelectUi.frameStep(TestUiSnapshots.dt(), scene);
-        discard ItemMenuUi.frameStep(TestUiSnapshots.dt(), scene);
+        ActionMenuUi.frameStep(TestUiSnapshots.dt());
+        WeaponSelectUi.frameStep(TestUiSnapshots.dt());
+        ItemMenuUi.frameStep(TestUiSnapshots.dt());
         captureFrame(ctx, framesRef)
 
     /// flow_open_item / flow_attack_weapon 共通の drive。3 窓を spawn し、execute 全体を 1 回だけ
@@ -517,8 +515,8 @@ mod TestGifSnapshots {
                 TestUiSnapshots.spawnUi(WeaponSelectUi.specPath());
                 TestUiSnapshots.spawnUi(ItemMenuUi.specPath());
                 SnapshotHarness.withFullMocks(cfg, () -> {
-                    let applyKey = k -> discard applyFlowKey(k, cfg#scene);
-                    let tick = () -> flowTick(ctx, cfg#scene, framesRef);
+                    let applyKey = k -> applyFlowKey(k);
+                    let tick = () -> flowTick(ctx, framesRef);
                     ReplayScript.execute(betweenFrames(), script, applyKey, tick)
                 });
                 drawableCount()
@@ -535,11 +533,11 @@ mod TestGifSnapshots {
             {weaponIds = "iron_sword" :: "steel_lance" :: "silver_sword" :: Nil
              | TestUiSnapshots.basePlayer(0, "knight", {x = 1, y = 1})});
         let enemy = TestUiSnapshots.mkEnemy(9, "fighter_t1", {x = 1, y = 2}, 12, Some("iron_sword"));
-        let scene = TestUiSnapshots.worldScene()
+        let world = TestUiSnapshots.emptyWorld()
             |> TestUiSnapshots.addPlayer(lord)
-            |> TestUiSnapshots.addEnemy(enemy, true);
+            |> TestUiSnapshots.addEnemy(enemy);
         {phase = TurnPhase.Phase.ActionSelect, selectedId = Some(0), cursor = {x = 1, y = 2}
-         | SnapshotHarness.config(scene)}
+         | SnapshotHarness.config(world)}
 
     def flowOpenItemScript(): List[ReplayScript.Step] =
         ReplayScript.Step.KeyPress(ReplayScript.Key.Down) ::    // 攻撃 → アイテム
@@ -561,11 +559,11 @@ mod TestGifSnapshots {
             {weaponIds = "iron_sword" :: "steel_lance" :: Nil
              | TestUiSnapshots.basePlayer(0, "knight", {x = 1, y = 1})});
         let enemy = TestUiSnapshots.mkEnemy(9, "fighter_t1", {x = 1, y = 2}, 12, Some("iron_sword"));
-        let scene = TestUiSnapshots.worldScene()
+        let world = TestUiSnapshots.emptyWorld()
             |> TestUiSnapshots.addPlayer(lord)
-            |> TestUiSnapshots.addEnemy(enemy, true);
+            |> TestUiSnapshots.addEnemy(enemy);
         {phase = TurnPhase.Phase.ActionSelect, selectedId = Some(0), cursor = {x = 1, y = 2}
-         | SnapshotHarness.config(scene)}
+         | SnapshotHarness.config(world)}
 
     def flowAttackWeaponScript(): List[ReplayScript.Step] =
         ReplayScript.Step.KeyPress(ReplayScript.Key.Confirm) :: // 攻撃確定 → 武器窓が開く（WeaponSelect）
@@ -694,7 +692,7 @@ mod TestGifSnapshots {
             Unit \ {IO + GameEngine.Game + UiWorldState.State + CharacterSelectState.State + r} =
         if (count <= 0) ()
         else {
-            discard CharacterSelectUi.frameStep(TestUiSnapshots.dt(), TestUiSnapshots.worldScene());
+            CharacterSelectUi.frameStep(TestUiSnapshots.dt());
             captureFrame(ctx, framesRef);
             charSelectFrames(ctx, framesRef, count - 1)
         }

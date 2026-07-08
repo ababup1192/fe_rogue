@@ -1,7 +1,7 @@
 /// GameLifecycle — ゲームの流れ（フロア遷移 / 全滅復帰 / 中断再開 / 特殊効果）を担う層。
 /// `Game.start` の各 `CustomEffects.*Request` handler 本体がここに集約され、状態（ターン系 /
-/// フロア進行 / パーティ / スナップショット）を巻き戻し・整えたうえで、実際の scene 構築は
-/// `SceneSetup`（UI 組み立て）へ委譲する。
+/// フロア進行 / パーティ / スナップショット）を巻き戻し・整えたうえで、実際のフロア構築は
+/// `WorldSetup`（World / UI 組み立て）へ委譲する。
 ///
 /// 外向き API:
 ///   - `resetForGameOver` — 1F へ戻して新ラン開始（GameOverRequest.restartBeginning）
@@ -16,7 +16,7 @@
 mod GameLifecycle {
 
     /// 8 つのカタログを 1 つに束ねた引き回し用 record。`Game.start` で 1 度ロードして
-    /// 構築 / リビルド経路（`SceneSetup.buildAndRecord` / `resetForGameOver` / `advanceFloor`）を
+    /// 構築 / リビルド経路（`WorldSetup.buildAndRecord` / `resetForGameOver` / `advanceFloor`）を
     /// 貫通する。味方 (`players`) と敵 (`enemies`) はここで別カタログとして分かれて入る。
     pub type alias Catalogs = {
         weapons     = WeaponCatalog.WeaponCatalog,
@@ -44,9 +44,9 @@ mod GameLifecycle {
 
     /// ゲームオーバー時のターン進行系 state を初期化する。
     /// ゲームオーバーログを出してから `resetTurnQueues` を呼ぶ。
-    /// scene 書き換えは含まないので **副作用は effect のみ**。スポーンや scene の再構築は
-    /// `resetForGameOver` が `SceneSetup.buildCurrentFloor` 経由で行う。
-    /// この関数を切り出すことで、テストが scene 構築 (LDTK / LWJGL 要求) を経由せずに
+    /// **副作用は effect のみ**。スポーンやフロアの再構築は
+    /// `resetForGameOver` が `WorldSetup.buildCurrentFloor` 経由で行う。
+    /// この関数を切り出すことで、テストがフロア構築 (LDTK / LWJGL 要求) を経由せずに
     /// 「リセットセマンティクス」だけを観測できるようになる。
     pub def resetTurnState(): Unit \ {GameLogger.GameLogger, EnemyTurn.Queue,
                                        TurnPhase.State, SelectedPlayer.State,
@@ -57,7 +57,7 @@ mod GameLifecycle {
     /// 「そのフロアの最初から」復元。ターン進行系を初期化し、保存済みスナップショットから
     /// フロアを決定論再構築する。`FloorProgress` / `PartySelection` は変えない（同フロア・同パーティ維持）。
     /// スナップショット未保存（理論上 CharacterSelect 中のみ）なら防御的に `resetForGameOver` へ。
-    pub def restartFromFloorSnapshot(catalogs: Catalogs): Scene[NodeTag]
+    pub def restartFromFloorSnapshot(catalogs: Catalogs): Unit
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 CursorState.State, ArrowCursorState.State, GatherResume.State,
@@ -66,7 +66,7 @@ mod GameLifecycle {
         match FloorSnapshot.State.get() {
             case Some(snap) =>
                 resetTurnQueues();
-                SceneSetup.rebuildFloorFromSnapshot(catalogs, snap)
+                WorldSetup.rebuildFloorFromSnapshot(catalogs, snap)
             case None =>
                 resetForGameOver(catalogs)
         }
@@ -88,10 +88,10 @@ mod GameLifecycle {
     /// 中断セーブ: 現在のフロアを `SuspendSave`（未使用）として slot に書き出し、タイトル画面へ戻す。
     /// `CustomEffects.SuspendRequest.save` の本体。次フレームで `applyPhaseChange(Title)` が
     /// タイトルを組む。保存失敗（saves/ 不在等）はログに出して握り潰す（盤面は壊さない）。
-    pub def suspendAndQuit(catalogs: Catalogs, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def suspendAndQuit(catalogs: Catalogs): Unit
             \ {Fs.FileWrite, FloorProgress.State, GameLogger.GameLogger, GamePhaseState,
                 World.WorldQuery} =
-        let snap = SceneSetup.captureFloorSnapshot(catalogs, scene);
+        let snap = WorldSetup.captureFloorSnapshot(catalogs);
         match SaveManager.write(SuspendSave.slot(), SuspendSave.make(false, snap)) {
             case Ok(_)   =>
                 // 保存できたときだけタイトルへ戻す。
@@ -100,23 +100,22 @@ mod GameLifecycle {
             case Err(_e) =>
                 // 保存失敗（saves/ 不在等）はタイトルへ戻さずプレイ続行（進行を失わせない）。
                 GameLogger.playerLog("中断データの保存に失敗しました")
-        };
-        scene
+        }
 
     /// 中断セーブからの再開準備: slot を読み、未使用なら フロア / パーティ / ターン系を整え、
     /// セーブを「使用済み」で上書き（save-scum 防止）し、snapshot を `FloorSnapshot.State` へ渡してから
-    /// Playing へ遷移する。実際の scene 構築は `applyPhaseChange(Playing, from=Title)` が
-    /// `FloorSnapshot.State` の snapshot から `SceneSetup.rebuildFloorFromSnapshot`（乱数なし）で行う。
+    /// Playing へ遷移する。実際のフロア構築は `applyPhaseChange(Playing, from=Title)` が
+    /// `FloorSnapshot.State` の snapshot から `WorldSetup.rebuildFloorFromSnapshot`（乱数なし）で行う。
     /// 使用済み / 不在なら何もしない（タイトル側で disable 済みなので通常来ない）。
     /// `CustomEffects.ResumeRequest.resume` の本体。
-    pub def resumeFromSuspend(catalogs: Catalogs, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def resumeFromSuspend(catalogs: Catalogs): Unit
             \ {Fs.FileRead, Fs.FileWrite, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 GatherResume.State,
                 FloorProgress.State, PartySelection.State, FloorSnapshot.State, GamePhaseState,
                 GameLogger.GameLogger} =
         let saved: Option[SuspendSave.Save] = SaveManager.read(SuspendSave.slot());
         match SuspendSave.resumable(saved) {
-            case None       => scene
+            case None       => ()
             case Some(snap) =>
                 FloorProgress.State.put(snap#floorId);
                 restorePartySelection(snap, catalogs);
@@ -129,17 +128,15 @@ mod GameLifecycle {
                     case Err(_e) => GameLogger.playerLog("中断データの無効化に失敗しました")
                 };
                 FloorSnapshot.State.put(snap);
-                GamePhaseState.put(GamePhase.Playing);
-                scene
+                GamePhaseState.put(GamePhase.Playing)
         }
 
     /// 「女神の加護（完全復活）」。**現フロアの敵を全て一掃**し、進入時編成の全員をリーダーの周りに
-    /// 全快で再配置して味方ターンへ戻す（無敵は付与しない／マップ・アイテムは現在 scene のまま）。
+    /// 全快で再配置して味方ターンへ戻す（無敵は付与しない／マップ・アイテムは現在のまま）。
     /// リーダーは倒れたその場（`marks` の死亡位置、無ければ進入時セル）に置き、仲間はその周囲へ。
     /// スナップショット未保存なら防御的に resetForGameOver へ。
     pub def reviveWithGoddess(catalogs: Catalogs,
-                               marks: Map[Int32, {x = Int32, y = Int32}],
-                               scene: Scene[NodeTag]): Scene[NodeTag]
+                               marks: Map[Int32, {x = Int32, y = Int32}]): Unit
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 CursorState.State, ArrowCursorState.State, GatherResume.State,
@@ -158,9 +155,9 @@ mod GameLifecycle {
                     |> Option.getWithDefault(({x = 0, y = 0}: {x = Int32, y = Int32}));
                 let leaderPos = Map.get(PlayerScene.lordId(), marks)
                     |> Option.getWithDefault(leaderFallback);
-                let cleared = EnemyScene.removeAll(scene);
+                EnemyScene.removeAll();
                 PlayerScene.reviveAroundLeader(snap#players, catalogs#players, catalogs#staves,
-                                               catalogs#consumables, catalogs#rings, leaderPos, cleared)
+                                               catalogs#consumables, catalogs#rings, leaderPos)
             case None =>
                 resetForGameOver(catalogs)
         }
@@ -169,41 +166,38 @@ mod GameLifecycle {
     /// 現在フロアを解決して、試練型の部屋湧き（Wanderer タイプ）を `EnemyScene` 側に委ねる。
     /// `tick` は handler が採番する湧きクロック。実際に湧くかの判断
     /// （周期 + フロア上限 + 視界外部屋セルの有無）は EnemyScene が行う。
-    pub def maybeSpawnWanderer(catalogs: Catalogs, tick: Int32,
-                                scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def maybeSpawnWanderer(catalogs: Catalogs, tick: Int32): Unit
             \ {Math.Random, FloorProgress.State, World.Command, World.WorldQuery} =
         let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
-        EnemyScene.maybeSpawnWandererInRoom(catalogs#enemies, catalogs#weapons, catalogs#rings, floor, tick, scene)
+        EnemyScene.maybeSpawnWandererInRoom(catalogs#enemies, catalogs#weapons, catalogs#rings, floor, tick)
 
     /// `CustomEffects.ThiefDropRequest` handler の本体。盗人の剣で敵がアイテムを落とす。
     /// 現在フロアの `items` ドロップ表から重み付き抽選し、解決したアイテムを `cell` に落とす。
     /// 抽選不能（表が空）なら no-op。
-    pub def dropFloorItem(catalogs: Catalogs, cell: {x = Int32, y = Int32},
-                           scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def dropFloorItem(catalogs: Catalogs, cell: {x = Int32, y = Int32}): Unit
             \ {Math.Random, FloorProgress.State, World.Command} =
         let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
         match FloorCatalog.pickWeighted(floor#items) {
-            case None     => scene
+            case None     => ()
             case Some(id) =>
                 let kind = GroundItems.lookupItem(id, catalogs#players, catalogs#staves,
                                                  catalogs#consumables, catalogs#rings);
-                GroundItems.respawn(cell, id, kind, scene)
+                GroundItems.respawn(cell, id, kind)
         }
 
     /// `CustomEffects.RingTransformRequest` handler の本体。ringman の特殊行動。
     /// 対象味方の装備外アイテムを 1 つ無作為に選び、確率分布で選んだ指輪に変える
-    /// （7割ただの・1割サビ・2割その他）。変える持ち物が無ければ scene をそのまま返す。
+    /// （7割ただの・1割サビ・2割その他）。変える持ち物が無ければ何もしない。
     /// 変化先の指輪解決に `Ring.lookup` が要るため、catalog を持つ handler からのみ呼ばれる。
-    pub def applyRingTransform(catalogs: Catalogs, enemyName: String, targetId: Int32,
-                                scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {Math.Random, GameLogger.GameLogger, World.Command, PlayerData.PartyQuery} =
+    pub def applyRingTransform(catalogs: Catalogs, enemyName: String, targetId: Int32): Unit
+            \ {Math.Random, GameLogger.GameLogger, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
         match RandomUtil.pick(PlayerScene.transformableItems(targetId)) {
-            case None               => scene
+            case None               => ()
             case Some((kind, name)) =>
                 let ring = Ring.lookup(pickTransformRingId(catalogs#rings), catalogs#rings);
                 GameLogger.enemyLog(
-                    "${enemyName} は ${PlayerScene.displayName(targetId, scene)} の ${name} を ${ring#name} に変えた");
-                PlayerScene.replaceItemWithRing(targetId, kind, ring, scene)
+                    "${enemyName} は ${PlayerScene.displayName(targetId)} の ${name} を ${ring#name} に変えた");
+                PlayerScene.replaceItemWithRing(targetId, kind, ring)
         }
 
     /// 変化先の指輪 id を確率で選ぶ。7割 plain_ring・1割 rusty_ring・2割 その他（plain/rusty 以外）。
@@ -222,8 +216,8 @@ mod GameLifecycle {
         RandomUtil.pick(others) |> Option.getWithDefault("plain_ring")
 
     /// `CustomEffects.GameOverRequest` handler の本体。
-    /// フロアを 1F に戻し、ターン進行系を初期化してから scene をリビルドして返す。
-    pub def resetForGameOver(catalogs: Catalogs): Scene[NodeTag]
+    /// フロアを 1F に戻し、ターン進行系を初期化してからフロアをリビルドする。
+    pub def resetForGameOver(catalogs: Catalogs): Unit
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
@@ -234,30 +228,30 @@ mod GameLifecycle {
         // リスタートは新しい run 扱い: 前回の party 構成を引き継がず再抽選する。
         // PartySelection をクリアすると次の buildCurrentFloor 時に抽選が走る。
         PartySelection.State.clear();
-        SceneSetup.buildCurrentFloor(catalogs)
+        WorldSetup.buildCurrentFloor(catalogs)
 
     /// `CustomEffects.FloorAdvanceRequest` handler の本体。
     /// 生存味方の HP / 武器 / 持ち物を引き継ぎつつ、次フロアを組み立てる。
     /// 最終フロアをクリアした（次が無い）場合はクリアログを出して 1F へループする。
-    pub def advanceFloor(catalogs: Catalogs,
-                          scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def advanceFloor(catalogs: Catalogs): Unit
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Math.Random, IO,
                 GameLogger.GameLogger, EnemyTurn.Queue,
                 TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
                 InitialSpawns.State, FloorProgress.State, PartySelection.State,
                 FloorSnapshot.State, World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         // 引き継ぐステータスを「現フロア退場前」に確保しておく。
-        let carry = PlayerScene.snapshotCarry(scene);
+        let carry = PlayerScene.snapshotCarry();
         match FloorCatalog.nextFloorId(FloorProgress.State.get(), catalogs#floors) {
             case Some(nextId) =>
                 FloorProgress.State.put(nextId);
                 let nextFloor = FloorCatalog.get(nextId, catalogs#floors);
                 GameLogger.playerLog("${nextFloor#label} に進む");
                 resetTurnQueues();
-                let built = SceneSetup.buildAndRecord(catalogs, nextFloor);
+                WorldSetup.buildAndRecord(catalogs, nextFloor);
                 // 構築直後の party に前フロアの HP / 武器 / 持ち物を反映（待機状態はリセット済み）。
                 // 反映後の「進入時状態」をスナップショットに記録（全滅時の「そのフロアの最初から」用）。
-                SceneSetup.recordFloorEntry(catalogs, PlayerScene.reconcileWithCarry(carry, built))
+                PlayerScene.reconcileWithCarry(carry);
+                WorldSetup.recordFloorEntry(catalogs)
             case None =>
                 // 最終フロアクリア → クリアログ → 1F へループ（フレッシュな party で再開）
                 GameLogger.playerLog("ゲームクリア！ 1F からもう一度");
@@ -265,6 +259,6 @@ mod GameLifecycle {
                 FloorProgress.State.put(FloorCatalog.firstFloorId(catalogs#floors));
                 // 周回も新しい run 扱い（リスタートと同じ理由: party 構成を再抽選）
                 PartySelection.State.clear();
-                SceneSetup.buildCurrentFloor(catalogs)
+                WorldSetup.buildCurrentFloor(catalogs)
         }
 }

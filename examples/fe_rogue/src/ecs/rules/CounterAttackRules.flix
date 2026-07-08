@@ -1,12 +1,12 @@
 /// CounterAttackRules — 味方の攻撃完了後に「次に何が起きるか」を決める純粋ルール
 ///
-/// 攻撃モーション (`attack_lunge`) の finished イベントが届いた瞬間、ゲームは
+/// 攻撃モーション（lunge）の完了 signal（LungeDone）が届いた瞬間、ゲームは
 /// 以下の 3 通りのどれかに進む:
 ///   - Kill: 狙った敵が瀕死 (death_blink 中) → kill 演出を見せる
 ///   - Counter(eid): 敵が生存 + 隣接 + 武器あり → 反撃モーション開始
 ///   - Commit: 敵が生存だが反撃不能 (武器なし / 射程外) → そのまま waited に
 ///
-/// このモジュールは Scene[NodeTag] / effect に一切依存せず、Player / Enemy の
+/// このモジュールは World / effect に一切依存せず、Player / Enemy の
 /// Data record だけで判断する。Scene からの値の取り出しは呼び出し側が済ませる。
 /// テストは Data fixture を直接組み立てて純粋値だけで完結できる。
 mod CounterAttackRules {
@@ -39,7 +39,7 @@ mod CounterAttackRules {
                 else Outcome.Commit
         }
 
-    /// attack_lunge 完了直後に呼ぶことで、KillOutcome 判定と敵 id 取得を一度に行える。
+    /// lunge 完了直後に呼ぶことで、KillOutcome 判定と敵 id 取得を一度に行える。
     /// decide より先に呼んで Kill か否かを確認し、kill 演出の対象 id を得るのが想定用途。
     pub def killedTargetEnemyId(target: Option[EnemyData.Data]): Option[Int32] =
         match target {

@@ -1,202 +1,108 @@
-// Tween モジュールの単体テスト
+// 駒の描画位置 tween（World.moveUnit → World.stepWorld → World.renderPosOf）の単体テスト。
+//
+// 駒の見た目位置は World が唯一の権威で、`World.moveUnit` が (entity, Channel.Position) の
+// tween を開始し、`World.stepWorld` が dt 秒ぶん進め、`World.renderPosOf` が現在の補間位置を返す。
+// `World.isAnimating` は当該 (entity, channel) が進行中かの入力ゲート。
 //
 // 検証する観点:
-//   - tweenPosition でスケジュールした entry が tickAll で advance されること
-//   - 進行中は isActive が true、duration 経過後（snap）で false に戻ること
-//   - 同パス再登録で古い tween が置換されること
-//   - cancel で entry が即除去されること
-//   - target Node が scene に無い場合、tickAll が auto-stop すること（Godot の Node バインド相当）
+//   - moveUnit は renderPos を span の start へ即座にスナップし、isAnimating を true にする
+//   - tween を持たない entity は isAnimating が false
+//   - stepWorld は duration を超える dt でも overshoot せず target に snap する
+//   - 同一 (entity, channel) への再 moveUnit は進行中の tween を置換する
+//   - 別 entity の tween は互いに独立して進む
 //
-// `withScheduler` は polymorphic 戻り値なので、`run { ... } with Tween.withScheduler(rc)` の
-// 形で結果を取り出せる。
-
+// 補間の基本性質（半分で lerp・ちょうど duration で snap）は
+// `test/ecs/TestWorld.flix` の `testStepWorldReportsMovedThroughCompletion` と
+// `engine_world/test/TestEcsTween.flix` が担保するため、ここでは重複させない。
+// cancel と「対象が scene から消えたら自動停止」は、EcsTween が (entity, channel) キーの
+// Map だけを持ち cancel 操作も entity 存在チェックも持たない設計のため、対応する検証は無い。
 mod TestTween {
 
+    /// (startX,startY)→(targetX,targetY) の VecLerp。
+    def span(startX: Float64, startY: Float64, targetX: Float64, targetY: Float64): EcsTween.VecLerp =
+        {start = {x = startX, y = startY}, target = {x = targetX, y = targetY}}
+
+    /// `w0` に対して `ref` への moveUnit を 1 回発行した後の World を返す（region は呼び出し側で開く）。
+    def afterMoveUnit(rc: Region[r], w0: World, ref: World.EntityRef,
+                       vl: EcsTween.VecLerp, sec: Float64): World \ r =
+        let wref = Ref.fresh(rc, w0);
+        run { World.moveUnit(ref, vl, sec) }
+            with handler World.Command {
+                def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
+            };
+        Ref.get(wref)
+
+    /// renderPos を (x, y) タプルで読む。
+    def renderPosT(ref: World.EntityRef, w: World): Option[(Float64, Float64)] =
+        World.renderPosOf(ref, w) |> Option.map(p -> (p#x, p#y))
+
     // ========================================================================
-    // ヘルパー
+    // moveUnit — 発行直後に renderPos を start へスナップし isAnimating を立てる
     // ========================================================================
 
-    /// テスト用に CharacterBody2D を name のノードとして scene に登録する
-    def sceneWithBody(name: String, pos: Vec2.Vec2): Scene[NodeTag] =
-        let body = CharacterBody2D.make(pos, {moveSpeed = 0.0});
-        Scene.empty()
-            |> Scene.addNode(name,
-                EngineNode.Body2DWithState(body, NodeTag.NoTag))
-
-    /// path 文字列 1 段だけの NodePath
-    def nodePath(name: String): NodePath = name :: Nil
-
-    /// path のノードのワールド座標
-    def posOf(path: NodePath, scene: Scene[NodeTag]): Vec2.Vec2 =
-        Scene.globalPositionAt(path, scene)
-
-    // ========================================================================
-    // tickAll で線形補間が進む
-    // ========================================================================
-
-    /// 0.5 秒で半分進む（duration=1.0、from (0,0) → to (10,0)、t=0.5 → x=5.0）
     @Test
-    def testTickAllLerpsHalfway(): Unit \ Assert =
+    def testMoveUnitSnapsRenderPosToSpanStartAndMarksAnimating(): Unit \ Assert =
         region rc {
-            let result = run {
-                let scene = sceneWithBody("p", Vec2.zero());
-                Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0 |> Duration.seconds);
-                let advanced = Tween.tickAll(0.5 |> Duration.seconds, scene);
-                let pos = posOf(nodePath("p"), advanced);
-                let active = Tween.Scheduler.isActive(nodePath("p"));
-                (active, pos#x, pos#y)
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(expected = (true, 5.0, 0.0), result)
-        }
-
-    /// duration 経過後は snap して isActive = false に戻る
-    @Test
-    def testTickAllSnapsAtCompletion(): Unit \ Assert =
-        region rc {
-            let result = run {
-                let scene = sceneWithBody("p", Vec2.zero());
-                Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 0.5 |> Duration.seconds);
-                // 0.5 秒経過 → 完了
-                let advanced = Tween.tickAll(0.5 |> Duration.seconds, scene);
-                let pos = posOf(nodePath("p"), advanced);
-                let active = Tween.Scheduler.isActive(nodePath("p"));
-                (active, pos#x, pos#y)
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(expected = (false, 10.0, 0.0), result)
-        }
-
-    /// duration を超える delta でも overshoot せず target に snap する
-    @Test
-    def testTickAllSnapsAtOvershoot(): Unit \ Assert =
-        region rc {
-            let result = run {
-                let scene = sceneWithBody("p", Vec2.zero());
-                Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 0.5 |> Duration.seconds);
-                // 10.0 秒（duration の 20 倍）でも target で止まる
-                let advanced = Tween.tickAll(10.0 |> Duration.seconds, scene);
-                let pos = posOf(nodePath("p"), advanced);
-                let active = Tween.Scheduler.isActive(nodePath("p"));
-                (active, pos#x, pos#y)
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(expected = (false, 10.0, 0.0), result)
+            let ref = World.EntityRef.Player(0);
+            let w   = afterMoveUnit(rc, World.empty(), ref, span(0.0, 0.0, 10.0, 0.0), 1.0);
+            Assert.assertEq(
+                expected = (Some((0.0, 0.0)), true),
+                (renderPosT(ref, w), World.isAnimating(ref, w)))
         }
 
     // ========================================================================
-    // isActive — スケジュール状態の問い合わせ
+    // isAnimating — tween を持たない entity は false
     // ========================================================================
 
-    /// 初期状態は isActive = false
     @Test
-    def testIsActiveFalseInitially(): Unit \ Assert =
-        region rc {
-            let result = run {
-                Tween.Scheduler.isActive(nodePath("p"))
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(expected = false, result)
-        }
-
-    /// schedule 後は isActive = true
-    @Test
-    def testIsActiveTrueAfterSchedule(): Unit \ Assert =
-        region rc {
-            let result = run {
-                Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0 |> Duration.seconds);
-                Tween.Scheduler.isActive(nodePath("p"))
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(expected = true, result)
-        }
+    def testIsAnimatingFalseWhenNoTweenScheduled(): Unit \ Assert =
+        Assert.assertEq(expected = false, World.isAnimating(World.EntityRef.Player(0), World.empty()))
 
     // ========================================================================
-    // 同パス再登録による置換（Godot 同様）
+    // stepWorld — duration を超える dt でも overshoot せず target に snap する
     // ========================================================================
 
-    /// 同じ path に再登録すると古い tween が置換される（最新のターゲットへ向かう）
     @Test
-    def testReregisterReplacesOldTween(): Unit \ Assert =
+    def testStepWorldSnapsAtOvershootAfterMoveUnit(): Unit \ Assert =
         region rc {
-            let result = run {
-                let scene = sceneWithBody("p", Vec2.zero());
-                Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0 |> Duration.seconds);
-                // 違う target で再登録
-                Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 0.0, y = 20.0}, 1.0 |> Duration.seconds);
-                // 1.0 秒で 2 つ目の tween が完了するはず（古い tween は置換されたので走らない）
-                let advanced = Tween.tickAll(1.0 |> Duration.seconds, scene);
-                let pos = posOf(nodePath("p"), advanced);
-                (pos#x, pos#y)
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(expected = (0.0, 20.0), result)
+            let ref = World.EntityRef.Enemy(0);
+            let w0  = afterMoveUnit(rc, World.empty(), ref, span(0.0, 0.0, 10.0, 0.0), 0.5);
+            // duration (0.5s) の 20 倍の dt でも target で止まる。
+            let (w1, _) = World.stepWorld(w0, 10.0);
+            Assert.assertEq(
+                expected = (Some((10.0, 0.0)), false),
+                (renderPosT(ref, w1), World.isAnimating(ref, w1)))
         }
 
     // ========================================================================
-    // cancel — 進行中の tween を即除去
+    // moveUnit の再登録 — 同一 (entity, channel) は古い tween を置換する
     // ========================================================================
 
-    /// cancel 後は isActive = false、tickAll しても動かない
     @Test
-    def testCancelRemovesTween(): Unit \ Assert =
+    def testMoveUnitReregisterReplacesInFlightTween(): Unit \ Assert =
         region rc {
-            let result = run {
-                let scene = sceneWithBody("p", Vec2.zero());
-                Tween.tweenPosition(nodePath("p"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0 |> Duration.seconds);
-                Tween.Scheduler.cancel(nodePath("p"));
-                let advanced = Tween.tickAll(0.5 |> Duration.seconds, scene);
-                let pos = posOf(nodePath("p"), advanced);
-                let active = Tween.Scheduler.isActive(nodePath("p"));
-                (active, pos#x, pos#y)
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(expected = (false, 0.0, 0.0), result)
+            let ref = World.EntityRef.Player(0);
+            let w1  = afterMoveUnit(rc, World.empty(), ref, span(0.0, 0.0, 10.0, 0.0), 1.0);
+            // 違う target で再登録（古い tween は置換され、新しい target だけへ進む）。
+            let w2  = afterMoveUnit(rc, w1, ref, span(0.0, 0.0, 0.0, 20.0), 1.0);
+            let (w3, _) = World.stepWorld(w2, 1.0);
+            Assert.assertEq(expected = Some((0.0, 20.0)), renderPosT(ref, w3))
         }
 
     // ========================================================================
-    // auto-stop — target Node が scene から消えたら tween を破棄（Godot の Node バインド）
+    // 複数 entity の tween は互いに独立して進む
     // ========================================================================
 
-    /// scene に存在しない path への tween は tickAll で auto-cancel される
     @Test
-    def testAutoStopForMissingTarget(): Unit \ Assert =
+    def testMoveUnitTweensMultipleEntitiesIndependently(): Unit \ Assert =
         region rc {
-            let result = run {
-                // scene には node "p" を入れない
-                let scene = Scene.empty();
-                Tween.tweenPosition(nodePath("ghost"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0 |> Duration.seconds);
-                let _ = Tween.tickAll(0.5 |> Duration.seconds, scene);
-                // tickAll 後に entry が消えているはず
-                Tween.Scheduler.isActive(nodePath("ghost"))
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(expected = false, result)
-        }
-
-    // ========================================================================
-    // 複数 tween の並列進行
-    // ========================================================================
-
-    /// 異なる path の 2 つの tween は同時並行で進む
-    @Test
-    def testMultipleTweensInParallel(): Unit \ Assert =
-        region rc {
-            let result = run {
-                let scene = sceneWithBody("a", Vec2.zero())
-                    |> Scene.addNode("b",
-                        EngineNode.Body2DWithState(
-                            CharacterBody2D.make(Vec2.zero(), {moveSpeed = 0.0}),
-                            NodeTag.NoTag));
-                Tween.tweenPosition(nodePath("a"),
-                    Vec2.zero(), {x = 10.0, y = 0.0}, 1.0 |> Duration.seconds);
-                Tween.tweenPosition(nodePath("b"),
-                    Vec2.zero(), {x = 0.0, y = 20.0}, 1.0 |> Duration.seconds);
-                let advanced = Tween.tickAll(0.5 |> Duration.seconds, scene);
-                let posA = posOf(nodePath("a"), advanced);
-                let posB = posOf(nodePath("b"), advanced);
-                (posA#x, posA#y, posB#x, posB#y)
-            } with Tween.withScheduler(rc);
-            Assert.assertEq(expected = (5.0, 0.0, 0.0, 10.0), result)
+            let a  = World.EntityRef.Player(0);
+            let b  = World.EntityRef.Enemy(1);
+            let w1 = afterMoveUnit(rc, World.empty(), a, span(0.0, 0.0, 10.0, 0.0), 1.0);
+            let w2 = afterMoveUnit(rc, w1, b, span(0.0, 0.0, 0.0, 20.0), 1.0);
+            let (w3, _) = World.stepWorld(w2, 0.5);
+            Assert.assertEq(
+                expected = (Some((5.0, 0.0)), Some((0.0, 10.0))),
+                (renderPosT(a, w3), renderPosT(b, w3)))
         }
 }

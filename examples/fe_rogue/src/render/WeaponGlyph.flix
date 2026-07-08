@@ -13,8 +13,9 @@
 ///   - **アンチエイリアス無し**（plain fill, 本番 ~5x 拡大）。斜めは階段になるが、スクショ準拠を優先する。
 ///
 /// 座標系: 原点中心・+y は下・上右(=(+x,-y))が刀身の向き・WeaponIcon の内寸 ~11px に収める（おおむね ±5.5）。
-/// 各ピースは `EngineNode.Polygon2DWithState` / `Arc2DWithState`（`NodeTag.NoTag`）で、`WeaponIconRender`
-/// が `WeaponIcon`(Marker2D) の子として attach する。白は濃色プレート背景の上で読ませる（[[WeaponIconRender]]）。
+/// 各ピースは `EngineNode.Polygon2DWithState` / `Arc2DWithState`（状態は `Unit`）の値として組み立て、
+/// `WeaponIconRender` が中心座標を足して直接 PolygonRenderCmd 化する（tree に積まない）。
+/// 白は濃色プレート背景の上で読ませる（[[WeaponIconRender]]）。
 mod WeaponGlyph {
 
     /// 各ピースの基準 zIndex（WeaponIconRender の Bg=61 より手前）。ピースは base+i で重ねる。
@@ -28,13 +29,13 @@ mod WeaponGlyph {
 
     /// 武器系統 → 子ノード（名前 × EngineNode）列。WeaponIconRender が addChildAt で順に生やす。
     /// 名前は "G0","G1",… の安定名（重複しない・reconcile しない静的アイコン）。
-    pub def weaponGlyph(wt: WeaponCatalog.WeaponType): List[(String, EngineNode[NodeTag])] =
+    pub def weaponGlyph(wt: WeaponCatalog.WeaponType): List[(String, EngineNode[Unit])] =
         named(pieces(wt, glyphColor(wt)))
 
     /// weaponGlyph を原点（グリフ中心）基準で一様に scale 倍した版。各ピースの node 位置を scale 倍し
     /// node スケールを scale にすることで、全体が原点まわりに縮小/拡大する（祖先スケールは描画へ
     /// 伝播しないため、ピース側で吸収する）。キャラ選択など小さく横並びにしたい場所で使う。
-    pub def weaponGlyphScaled(wt: WeaponCatalog.WeaponType, scale: Float64): List[(String, EngineNode[NodeTag])] =
+    pub def weaponGlyphScaled(wt: WeaponCatalog.WeaponType, scale: Float64): List[(String, EngineNode[Unit])] =
         weaponGlyph(wt) |> List.map(ne ->
             let (name, node) = ne;
             let p = Node2D.getPosition(node);
@@ -54,7 +55,7 @@ mod WeaponGlyph {
 
     /// 1 ピース（EngineNode）を凸サブポリゴンの頂点列へ射影する。Polygon2D は 1 サブポリ、Arc2D は
     /// 自身の分割（`toRenderCmds`）ぶんのクアッド列。頂点はノード位置を足したグリフ局所座標。
-    def nodePolys(node: EngineNode[NodeTag]): List[List[Vec2.Vec2]] =
+    def nodePolys(node: EngineNode[Unit]): List[List[Vec2.Vec2]] =
         let unit = ({x = 1.0, y = 1.0}: Vec2.Vec2);
         match node {
             case EngineNode.Polygon2DWithState(poly, _) =>
@@ -67,7 +68,7 @@ mod WeaponGlyph {
     // ─── 系統ごとのピース合成（すべて凸・向き付き直書き） ───────────────────
 
     // 全系統とも斜め（左下→右上、軸 u=(d,-d)）に統一する。
-    def pieces(wt: WeaponCatalog.WeaponType, color: Color): List[EngineNode[NodeTag]] =
+    def pieces(wt: WeaponCatalog.WeaponType, color: Color): List[EngineNode[Unit]] =
         let d = diagD();
         match wt {
             // 剣（据え置き=OK）: 太い斜め刀身 + 切先三角 + 柄元の斜め鍔 + 柄頭。
@@ -144,24 +145,24 @@ mod WeaponGlyph {
         v(x0, y0) :: v(x1, y0) :: v(x1, y1) :: v(x0, y1) :: Nil
 
     /// 凸塗りピースを EngineNode 子として組む（位置は原点・z は後で named で確定）。
-    def poly(points: List[Vec2.Vec2], color: Color): EngineNode[NodeTag] =
-        EngineNode.Polygon2DWithState(Polygon2D.make(points, color), NodeTag.NoTag)
+    def poly(points: List[Vec2.Vec2], color: Color): EngineNode[Unit] =
+        EngineNode.Polygon2DWithState(Polygon2D.make(points, color), ())
 
     /// 中心 (cx,cy)・半径 radius の塗り潰し円ピース（12 角形）。刃と柄をつなぐハブ等に使う。
-    def circlePiece(radius: Float64, cx: Float64, cy: Float64, color: Color): EngineNode[NodeTag] =
+    def circlePiece(radius: Float64, cx: Float64, cy: Float64, color: Color): EngineNode[Unit] =
         let c = Polygon2D.circle(radius, color) |> Node2D.setPosition(v(cx, cy));
-        EngineNode.Polygon2DWithState(c, NodeTag.NoTag)
+        EngineNode.Polygon2DWithState(c, ())
 
     /// 弧ピース（弓用）。center は WeaponIcon 原点からのオフセット。segments は小サイズ向けに抑える。
     def arc(radius: Float64, width: Float64, startAngle: Float64, endAngle: Float64,
-            color: Color, center: Vec2.Vec2): EngineNode[NodeTag] =
+            color: Color, center: Vec2.Vec2): EngineNode[Unit] =
         let a = Arc2D.make(radius, width, startAngle, endAngle, color)
             |> Arc2D.setSegments(12)
             |> Node2D.setPosition(center);
-        EngineNode.Arc2DWithState(a, NodeTag.NoTag)
+        EngineNode.Arc2DWithState(a, ())
 
     /// ピース列に安定名 "G0","G1",… と base+i の zIndex を与える。後勝ち（大きい i が手前）。
-    def named(nodes: List[EngineNode[NodeTag]]): List[(String, EngineNode[NodeTag])] =
+    def named(nodes: List[EngineNode[Unit]]): List[(String, EngineNode[Unit])] =
         nodes
             |> List.zipWithIndex
             |> List.map(in -> let (i, n) = in; ("G${i}", CanvasItem.setZIndex(baseZIndex() + i, n)))

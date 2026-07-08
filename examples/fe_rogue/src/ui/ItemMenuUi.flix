@@ -367,12 +367,12 @@ mod ItemMenuUi {
     /// gameLoop が 1 回呼ぶ frame-paced System（旧 refreshItems + applyVisibility の置換）。
     /// ItemSelect ではカテゴリの在庫を、ItemActionSelect ではサブメニューを、同じウィンドウへ流し込む。
     /// それ以外のフェーズでは全行を隠し、カーソルとカテゴリを先頭へ戻す。
-    pub def frameStep(_dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def frameStep(_dt: Duration.Duration): Unit
             \ {TurnPhase.State, SelectedPlayer.State, PlayerData.PartyQuery,
                ItemMenuState.State, UiWorldState.State} =
         let phase = TurnPhase.State.get();
-        if (phase == TurnPhase.Phase.ItemSelect) syncItemSelect(scene)
-        else if (phase == TurnPhase.Phase.ItemActionSelect) syncActionSelect(scene)
+        if (phase == TurnPhase.Phase.ItemSelect) syncItemSelect()
+        else if (phase == TurnPhase.Phase.ItemActionSelect) syncActionSelect()
         else {
             // 非表示中はカーソルを先頭に戻し、カテゴリを武器へ戻し、全行を隠す（印は保持）。
             // これで次に開いたとき常に先頭カテゴリ・先頭項目から始まる。
@@ -382,17 +382,15 @@ mod ItemMenuUi {
             UiWorldState.State.put(ui
                 |> UiStore.setVisible(rootPath(), false)
                 |> hideAllRows
-                |> UiStore.putSelection(menuPath(), 0));
-            scene
+                |> UiStore.putSelection(menuPath(), 0))
         }
 
     /// ItemSelect: 現在カテゴリの在庫を窓へ流し込む。
-    def syncItemSelect(scene: Scene[NodeTag]): Scene[NodeTag]
+    def syncItemSelect(): Unit
             \ {SelectedPlayer.State, PlayerData.PartyQuery, ItemMenuState.State, UiWorldState.State} =
         match resolveCategoryView() {
             case None       =>
-                UiWorldState.State.put(UiStore.setVisible(rootPath(), false, UiWorldState.State.get()));
-                scene
+                UiWorldState.State.put(UiStore.setVisible(rootPath(), false, UiWorldState.State.get()))
             case Some(view) =>
                 // クランプ後の実カテゴリを resource に書き戻す（印はそのまま）。
                 let marks = ItemMenuState.State.get()#marks;
@@ -411,12 +409,11 @@ mod ItemMenuUi {
                     |> fillWindow({items = view#items, sublines = view#sublines, badges = view#badges,
                                   sprites = view#sprites, marks = marks, offset = offset, showChrome = true})
                     |> UiStore.putSelection(menuPath(), sel)
-                    |> applyWindowHighlight(sel, offset));
-                scene
+                    |> applyWindowHighlight(sel, offset))
         }
 
     /// ItemActionSelect: サブメニュー（テキストのみ）を窓へ流し込む。
-    def syncActionSelect(scene: Scene[NodeTag]): Scene[NodeTag]
+    def syncActionSelect(): Unit
             \ {SelectedPlayer.State, PlayerData.PartyQuery, ItemMenuState.State, UiWorldState.State} =
         let playerOpt = forM (
             playerId <- SelectedPlayer.State.get()#id;
@@ -424,8 +421,7 @@ mod ItemMenuUi {
         ) yield player;
         match playerOpt {
             case None         =>
-                UiWorldState.State.put(UiStore.setVisible(rootPath(), false, UiWorldState.State.get()));
-                scene
+                UiWorldState.State.put(UiStore.setVisible(rootPath(), false, UiWorldState.State.get()))
             case Some(player) =>
                 let bulk = not Set.isEmpty(ItemMenuState.State.get()#marks);
                 let items = actionItemsFor(player#selectedItem, player#ringEquipped, bulk,
@@ -449,8 +445,7 @@ mod ItemMenuUi {
                     |> fillWindow({items = items, sublines = Map.empty(), badges = Map.empty(),
                                   sprites = Nil, marks = Set#{}, offset = offset, showChrome = false})
                     |> UiStore.putSelection(menuPath(), sel)
-                    |> applyWindowHighlight(sel, offset));
-                scene
+                    |> applyWindowHighlight(sel, offset))
         }
 
     /// アイテム窓を ActionMenu（コマンドメニュー）の右端基準で配置する。武器メニューと同じ量だけ重ねる。
@@ -581,7 +576,7 @@ mod ItemMenuUi {
 
     /// 選択カーソルを delta（±1）動かす（disabled をスキップ・端で回り込む）。
     /// 現在フェーズ（ItemSelect / ItemActionSelect）に応じた項目列を基準にする。
-    pub def moveSelection(delta: Int32, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def moveSelection(delta: Int32): Unit
             \ {TurnPhase.State, UiWorldState.State, SelectedPlayer.State,
                ItemMenuState.State, PlayerData.PartyQuery} =
         let items = currentItems();
@@ -589,8 +584,7 @@ mod ItemMenuUi {
         let count = List.length(items);
         let disabledAt = i -> List.nth(i, items) |> Option.map(e -> e#disabled) |> Option.getWithDefault(true);
         let next = UiWidget.selectionMoveSkipping(count, delta, UiStore.selectionOf(menuPath(), ui), disabledAt);
-        UiWorldState.State.put(UiStore.putSelection(menuPath(), next, ui));
-        scene
+        UiWorldState.State.put(UiStore.putSelection(menuPath(), next, ui))
 
     /// 現在フェーズの項目列（ItemSelect=現在カテゴリの在庫 / ItemActionSelect=サブメニュー）。
     def currentItems(): List[ItemEntry]
@@ -604,7 +598,7 @@ mod ItemMenuUi {
 
     /// InputHandler の Z 押下から呼ばれる。現在フェーズに応じて確定を振り分ける。
     /// ItemSelect の Enter → `onItemConfirmed`、ItemActionSelect の Enter → `onActionConfirmed`。
-    pub def confirmCurrentSelection(scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def confirmCurrentSelection(): Unit
             \ {RangeOverlayState.State, EnemyTurn.Queue,
                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                ArrowCursorState.State, ItemMenuState.State, GameEngine.Audio, World.Command,
@@ -612,29 +606,28 @@ mod ItemMenuUi {
         let phase = TurnPhase.State.get();
         let sel = UiStore.selectionOf(menuPath(), UiWorldState.State.get());
         match List.nth(sel, currentItems()) {
-            case None        => scene
+            case None        => ()
             case Some(entry) =>
                 match phase {
-                    case TurnPhase.Phase.ItemSelect       => onItemConfirmed(entry, scene)
+                    case TurnPhase.Phase.ItemSelect       => onItemConfirmed(entry)
                     case TurnPhase.Phase.ItemActionSelect =>
-                        if (entry#disabled) scene else onActionConfirmed(entry, scene)
-                    case _                                => scene
+                        if (entry#disabled) () else onActionConfirmed(entry)
+                    case _                                => ()
                 }
         }
 
     /// ActionMenu「アイテム」確定で呼ばれる。`ItemSelect` フェーズに遷移する。
     /// 常に「アイテムのある先頭カテゴリ」・印なし・カーソル先頭から開く（カーソル 0 は非表示中の
     /// frameStep が戻してある）。
-    pub def openFor(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, ItemMenuState.State, PlayerData.PartyQuery, RangeOverlayState.State, CursorState.State} =
-        let entered = PhaseTransitions.enterItemSelect(scene);
+    pub def openFor(playerId: Int32):
+            Unit \ {TurnPhase.State, ItemMenuState.State, PlayerData.PartyQuery, RangeOverlayState.State, CursorState.State} =
+        PhaseTransitions.enterItemSelect();
         let firstCat = nonEmptyCategories(playerId) |> List.head |> Option.getWithDefault(catWeapon());
-        ItemMenuState.State.put({category = firstCat, marks = Set#{}});
-        entered
+        ItemMenuState.State.put({category = firstCat, marks = Set#{}})
 
     /// ItemSelect 中に Shift が押されたとき、カーソル位置のアイテムの印を付け外しする。
     /// カーソル行の種別+index を取り、マーク集合をトグルして書き戻す。アイテム以外に乗っていれば no-op。
-    pub def toggleMarkAtCursor(scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def toggleMarkAtCursor(): Unit
             \ {UiWorldState.State, SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery} =
         let sel = UiStore.selectionOf(menuPath(), UiWorldState.State.get());
         let kindOpt = List.nth(sel, currentSelectItems())
@@ -643,10 +636,9 @@ mod ItemMenuUi {
         kindOpt
             |> Option.map(kind -> {
                 let st = ItemMenuState.State.get();
-                ItemMenuState.State.put({marks = PlayerData.toggleMark(kind, st#marks) | st});
-                scene
+                ItemMenuState.State.put({marks = PlayerData.toggleMark(kind, st#marks) | st})
             })
-            |> Option.getWithDefault(scene)
+            |> Option.getWithDefault(())
 
     /// ItemSelect の現在カテゴリ項目列（toggleMark はフェーズ既知なので専用に読む）。
     def currentSelectItems(): List[ItemEntry]
@@ -654,63 +646,59 @@ mod ItemMenuUi {
         resolveCategoryView() |> Option.map(v -> v#items) |> Option.getWithDefault(Nil)
 
     /// ←（前カテゴリ）/ →（次カテゴリ）。在庫のあるカテゴリだけを巡回し、カーソルを先頭へ戻す。
-    pub def categoryPrev(scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def categoryPrev(): Unit
             \ {SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery, UiWorldState.State} =
-        cycleCategory(-1, scene)
-    pub def categoryNext(scene: Scene[NodeTag]): Scene[NodeTag]
+        cycleCategory(-1)
+    pub def categoryNext(): Unit
             \ {SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery, UiWorldState.State} =
-        cycleCategory(1, scene)
-    def cycleCategory(dir: Int32, scene: Scene[NodeTag]): Scene[NodeTag]
+        cycleCategory(1)
+    def cycleCategory(dir: Int32): Unit
             \ {SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery, UiWorldState.State} =
         match SelectedPlayer.State.get()#id {
-            case None           => scene
+            case None           => ()
             case Some(playerId) =>
                 let cats = nonEmptyCategories(playerId);
                 let st = ItemMenuState.State.get();
                 let next = nextCategoryIn(cats, st#category, dir);
                 ItemMenuState.State.put({category = next | st});
                 // カテゴリを変えたら選択カーソルを先頭へ戻す（旧 setCategoryIdx の selectedIndex(0)）。
-                UiWorldState.State.put(UiStore.putSelection(menuPath(), 0, UiWorldState.State.get()));
-                scene
+                UiWorldState.State.put(UiStore.putSelection(menuPath(), 0, UiWorldState.State.get()))
         }
 
     /// ItemSelect で項目を Enter 確定したとき。選択中アイテム種別を Data に書いて
     /// `ItemActionSelect` フェーズに進む（サブメニュー表示へ）。サブメニューは常に先頭から始める。
-    pub def onItemConfirmed(entry: ItemEntry, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {TurnPhase.State, SelectedPlayer.State, UiWorldState.State} =
+    pub def onItemConfirmed(entry: ItemEntry): Unit
+            \ {TurnPhase.State, SelectedPlayer.State, UiWorldState.State, World.Command} =
         let result = forM (
             kind     <- entry#metadata |> Option.flatMap(parseItemKind);
             playerId <- SelectedPlayer.State.get()#id
         ) yield {
-            let withItem = PlayerScene.setSelectedItem(playerId, kind, scene);
+            PlayerScene.setSelectedItem(playerId, kind);
             TurnPhase.State.put(TurnPhase.Phase.ItemActionSelect);
-            UiWorldState.State.put(UiStore.putSelection(menuPath(), 0, UiWorldState.State.get()));
-            withItem
+            UiWorldState.State.put(UiStore.putSelection(menuPath(), 0, UiWorldState.State.get()))
         };
-        Option.getWithDefault(scene, result)
+        Option.getWithDefault((), result)
 
     /// ItemSelect で X / Escape 押下: ActionMenu に戻る（= ActionSelect フェーズ）。
     /// 閉じる時に先頭カテゴリへ戻し、複数選択の印も消し、カーソルを先頭へ戻す。
-    pub def onItemCancelled(scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def onItemCancelled(): Unit
             \ {TurnPhase.State, ItemMenuState.State, UiWorldState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         ItemMenuState.State.put({category = catWeapon(), marks = Set#{}});
-        UiWorldState.State.put(UiStore.putSelection(menuPath(), 0, UiWorldState.State.get()));
-        scene
+        UiWorldState.State.put(UiStore.putSelection(menuPath(), 0, UiWorldState.State.get()))
 
     /// ItemActionSelect で X / Escape 押下: ItemSelect に戻る。選択中アイテムをクリアする。
-    pub def onActionCancelled(scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {TurnPhase.State, SelectedPlayer.State} =
-        let cleared = match SelectedPlayer.State.get()#id {
-            case Some(playerId) => PlayerScene.clearSelectedItem(playerId, scene)
-            case None           => scene
+    pub def onActionCancelled(): Unit
+            \ {TurnPhase.State, SelectedPlayer.State, World.Command} =
+        match SelectedPlayer.State.get()#id {
+            case Some(playerId) => PlayerScene.clearSelectedItem(playerId)
+            case None           => ()
         };
-        TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
-        cleared
+        TurnPhase.State.put(TurnPhase.Phase.ItemSelect)
 
     /// ItemActionSelect でサブメニュー項目を Enter 確定したとき。metadata で処理を分配する。
     /// pub: confirm 経路のゲームロジック（equip/drop/use/throw/bulk）をテストが pin するため。
-    pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def onActionConfirmed(entry: ItemEntry): Unit
             \ {RangeOverlayState.State, EnemyTurn.Queue,
                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                ArrowCursorState.State, ItemMenuState.State, GameEngine.Audio, World.Command,
@@ -721,151 +709,150 @@ mod ItemMenuUi {
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerData.PartyQuery.get(playerId);
             kind     <- player#selectedItem
-        ) yield dispatchAction(m, playerId, kind, scene);
-        Option.getWithDefault(scene, result)
+        ) yield dispatchAction(m, playerId, kind);
+        Option.getWithDefault((), result)
 
     /// サブメニューの metadata 別に処理を分配する。
-    def dispatchAction(meta: String, playerId: Int32, kind: PlayerData.ItemKind,
-                       scene: Scene[NodeTag]): Scene[NodeTag]
+    def dispatchAction(meta: String, playerId: Int32, kind: PlayerData.ItemKind): Unit
             \ {RangeOverlayState.State, EnemyTurn.Queue,
                GameLogger.GameLogger, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                ArrowCursorState.State, ItemMenuState.State, GameEngine.Audio, World.Command,
                World.WorldQuery, PlayerData.PartyQuery} =
         if (meta == equipMeta())
-            applyEquip(playerId, kind, scene)
+            applyEquip(playerId, kind)
         else if (meta == unequipMeta())
-            applyUnequip(playerId, scene)
+            applyUnequip(playerId)
         else if (meta == dropMeta()) {
             // 印が付いていれば印の付いた分をまとめて、無ければカーソルの 1 個だけ捨てる。
             let marks = ItemMenuState.State.get()#marks;
-            if (Set.isEmpty(marks)) applyDrop(playerId, kind, scene)
-            else applyBulkDrop(playerId, marks, scene)
+            if (Set.isEmpty(marks)) applyDrop(playerId, kind)
+            else applyBulkDrop(playerId, marks)
         }
         else if (meta == useMeta())
-            applyUse(playerId, kind, scene)
+            applyUse(playerId, kind)
         else if (meta == throwMeta())
-            applyThrowAction(playerId, scene)
-        else scene
+            applyThrowAction(playerId)
+        else ()
 
     /// 「投げる」: 方向選択フェーズ `ThrowAim` に進む。selectedItem は保持され、方向確定時に読む。
-    def applyThrowAction(playerId: Int32, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State, GameLogger.GameLogger, CursorState.State} =
-        GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は 投げる方向を選び Z で投げる (X で中止)");
-        PhaseTransitions.enterThrowAim(scene)
+    def applyThrowAction(playerId: Int32): Unit
+            \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State, GameLogger.GameLogger,
+               CursorState.State, World.WorldQuery} =
+        GameLogger.playerLog("${PlayerScene.displayName(playerId)} は 投げる方向を選び Z で投げる (X で中止)");
+        PhaseTransitions.enterThrowAim()
 
     /// 「そうび」: 武器/指輪を先頭へ移動して装備し、`ItemSelect` フェーズに戻る（ターン消費なし）。
     /// 杖・消費アイテムは装備概念がないので no-op。
-    def applyEquip(playerId: Int32, kind: PlayerData.ItemKind, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, World.Command, PlayerData.PartyQuery} =
-        let equipped = match kind {
+    def applyEquip(playerId: Int32, kind: PlayerData.ItemKind): Unit
+            \ {TurnPhase.State, SelectedPlayer.State, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
+        match kind {
             case PlayerData.ItemKind.Weapon(idx)   =>
                 // 実際に並びが変わるとき (0 < idx < 本数) だけ巻き戻しドラフトを積む。
                 let n = List.length(weaponsOf(playerId));
                 if (idx >= 1 and idx < n)
                     SelectedPlayer.pushDraft(MoveDraft.DraftAction.Equipped(playerId, idx))
                 else ();
-                PlayerScene.equipWeapon(playerId, idx, scene)
-            case PlayerData.ItemKind.Staff(_)      => scene
-            case PlayerData.ItemKind.Consumable(_) => scene
-            case PlayerData.ItemKind.Ring(idx)     => PlayerScene.equipRing(playerId, idx, scene)
+                PlayerScene.equipWeapon(playerId, idx)
+            case PlayerData.ItemKind.Staff(_)      => ()
+            case PlayerData.ItemKind.Consumable(_) => ()
+            case PlayerData.ItemKind.Ring(idx)     => PlayerScene.equipRing(playerId, idx)
         };
-        let cleared = PlayerScene.clearSelectedItem(playerId, equipped);
-        TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
-        cleared
+        PlayerScene.clearSelectedItem(playerId);
+        TurnPhase.State.put(TurnPhase.Phase.ItemSelect)
 
     /// 「はずす」: 装備中の指輪を外す（所持は維持・効果だけ止める）。ターン消費なし。`ItemSelect` に戻る。
-    def applyUnequip(playerId: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, GameLogger.GameLogger, World.Command} =
-        GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は 指輪を外した");
-        let cleared = PlayerScene.clearSelectedItem(playerId, PlayerScene.unequipRing(playerId, scene));
-        TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
-        cleared
+    def applyUnequip(playerId: Int32): Unit
+            \ {TurnPhase.State, GameLogger.GameLogger, World.Command, World.WorldQuery} =
+        GameLogger.playerLog("${PlayerScene.displayName(playerId)} は 指輪を外した");
+        PlayerScene.unequipRing(playerId);
+        PlayerScene.clearSelectedItem(playerId);
+        TurnPhase.State.put(TurnPhase.Phase.ItemSelect)
 
-    /// `droppedScene` は呼び出し側で `dropXxx` 済みの scene（純粋変換）。
+    /// 対応する削除処理（`dropXxx`）は呼び出し側で実行済み。ここはログと巻き戻しドラフトの記録のみ行う。
     def dropResolved(playerId: Int32, kind: PlayerData.ItemKind, name: String,
-                     ground: ItemData.GroundItemKind, droppedScene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, SelectedPlayer.State} =
-        GameLogger.playerLog("${PlayerScene.displayName(playerId, droppedScene)} は ${name} をすてた");
-        SelectedPlayer.pushDraft(MoveDraft.DraftAction.Dropped(playerId, kind, ground));
-        droppedScene
+                     ground: ItemData.GroundItemKind): Unit
+            \ {GameLogger.GameLogger, SelectedPlayer.State, World.WorldQuery} =
+        GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${name} をすてた");
+        SelectedPlayer.pushDraft(MoveDraft.DraftAction.Dropped(playerId, kind, ground))
 
     /// 「すてる」: 種別に応じて削除し、ターン消費せず ItemSelect に戻る（連続して捨てられる）。
-    def applyDrop(playerId: Int32, kind: PlayerData.ItemKind, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                              SelectedPlayer.State, World.Command, PlayerData.PartyQuery} =
-        let dropped = match kind {
+    def applyDrop(playerId: Int32, kind: PlayerData.ItemKind): Unit
+            \ {GameLogger.GameLogger, TurnPhase.State,
+               SelectedPlayer.State, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
+        match kind {
             case PlayerData.ItemKind.Weapon(idx) =>
-                Option.getWithDefault(scene,
+                Option.getWithDefault((),
                     forM (w <- List.nth(idx, weaponsOf(playerId)))
-                        yield dropResolved(playerId, kind, w#name,
-                                  ItemData.GroundItemKind.WeaponItem(w),
-                                  PlayerScene.dropWeapon(playerId, idx, scene)))
+                        yield {
+                            PlayerScene.dropWeapon(playerId, idx);
+                            dropResolved(playerId, kind, w#name, ItemData.GroundItemKind.WeaponItem(w))
+                        })
             case PlayerData.ItemKind.Staff(idx) =>
-                Option.getWithDefault(scene,
+                Option.getWithDefault((),
                     forM (s <- List.nth(idx, stavesOf(playerId)))
-                        yield dropResolved(playerId, kind, s#name,
-                                  ItemData.GroundItemKind.StaffItem(s),
-                                  PlayerScene.dropStaff(playerId, idx, scene)))
+                        yield {
+                            PlayerScene.dropStaff(playerId, idx);
+                            dropResolved(playerId, kind, s#name, ItemData.GroundItemKind.StaffItem(s))
+                        })
             case PlayerData.ItemKind.Consumable(idx) =>
-                Option.getWithDefault(scene,
+                Option.getWithDefault((),
                     forM (c <- List.nth(idx, consumablesOf(playerId)))
-                        yield dropResolved(playerId, kind, c#name,
-                                  ItemData.GroundItemKind.ConsumableItem(c),
-                                  PlayerScene.dropConsumable(playerId, idx, scene)))
+                        yield {
+                            PlayerScene.dropConsumable(playerId, idx);
+                            dropResolved(playerId, kind, c#name, ItemData.GroundItemKind.ConsumableItem(c))
+                        })
             case PlayerData.ItemKind.Ring(idx) =>
-                Option.getWithDefault(scene,
+                Option.getWithDefault((),
                     forM (r <- List.nth(idx, ringsOf(playerId)))
-                        yield dropResolved(playerId, kind, r#name,
-                                  ItemData.GroundItemKind.RingItem(r),
-                                  PlayerScene.dropRing(playerId, idx, scene)))
+                        yield {
+                            PlayerScene.dropRing(playerId, idx);
+                            dropResolved(playerId, kind, r#name, ItemData.GroundItemKind.RingItem(r))
+                        })
         };
-        let cleared = PlayerScene.clearSelectedItem(playerId, dropped);
-        TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
-        cleared
+        PlayerScene.clearSelectedItem(playerId);
+        TurnPhase.State.put(TurnPhase.Phase.ItemSelect)
 
     /// 印の付いた複数アイテムをまとめて捨てる。index の大きい順に 1 個ずつ `applyDrop` へ流す
     /// （大きい index から消すことで、まだ処理していない小さい index がずれない）。捨て終えたら印を消す。
-    def applyBulkDrop(playerId: Int32, marks: Set[PlayerData.ItemKind], scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                              SelectedPlayer.State, ItemMenuState.State, World.Command, PlayerData.PartyQuery} =
-        let dropped = List.foldLeft((acc, kind) -> applyDrop(playerId, kind, acc),
-            scene, PlayerData.marksDescendingPerList(marks));
+    def applyBulkDrop(playerId: Int32, marks: Set[PlayerData.ItemKind]): Unit
+            \ {GameLogger.GameLogger, TurnPhase.State,
+               SelectedPlayer.State, ItemMenuState.State, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
+        List.forEach(kind -> applyDrop(playerId, kind), PlayerData.marksDescendingPerList(marks));
         let st = ItemMenuState.State.get();
-        ItemMenuState.State.put({marks = Set#{} | st});
-        dropped
+        ItemMenuState.State.put({marks = Set#{} | st})
 
     /// 「つかう」: 杖なら発動方向選択 `StaffAim` へ、消費アイテムはデリバリで分岐。武器/指輪は no-op。
-    def applyUse(playerId: Int32, kind: PlayerData.ItemKind, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {RangeOverlayState.State, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
-                              GameLogger.GameLogger, GameEngine.Audio, World.Command, World.WorldQuery,
-                              PlayerData.PartyQuery} =
+    def applyUse(playerId: Int32, kind: PlayerData.ItemKind): Unit
+            \ {RangeOverlayState.State, EnemyTurn.Queue,
+               TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
+               GameLogger.GameLogger, GameEngine.Audio, World.Command, World.WorldQuery,
+               PlayerData.PartyQuery} =
         match kind {
             case PlayerData.ItemKind.Staff(idx) =>
                 let name = staffNameOf(playerId, idx);
-                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${name} の方向を選び Z で発射 (X で中止)");
-                PhaseTransitions.enterStaffAim(scene)
+                GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${name} の方向を選び Z で発射 (X で中止)");
+                PhaseTransitions.enterStaffAim()
             case PlayerData.ItemKind.Consumable(idx) =>
-                applyConsumableByDelivery(playerId, idx, scene)
-            case PlayerData.ItemKind.Weapon(_) => scene
-            case PlayerData.ItemKind.Ring(_)   => scene
+                applyConsumableByDelivery(playerId, idx)
+            case PlayerData.ItemKind.Weapon(_) => ()
+            case PlayerData.ItemKind.Ring(_)   => ()
         }
 
     /// 消費アイテムを効果から導いたデリバリで分岐する（自己使用 / 方向投擲 / 自動発動）。
-    def applyConsumableByDelivery(playerId: Int32, idx: Int32, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {RangeOverlayState.State, EnemyTurn.Queue,
-                              TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
-                              GameLogger.GameLogger, GameEngine.Audio, World.Command, World.WorldQuery,
-                              PlayerData.PartyQuery} =
+    def applyConsumableByDelivery(playerId: Int32, idx: Int32): Unit
+            \ {RangeOverlayState.State, EnemyTurn.Queue,
+               TurnPhase.State, SelectedPlayer.State, CursorState.State, ArrowCursorState.State,
+               GameLogger.GameLogger, GameEngine.Audio, World.Command, World.WorldQuery,
+               PlayerData.PartyQuery} =
         match consumableDeliveryAt(playerId, idx) {
             case Consumable.Delivery.SelfUse =>
-                StaffCast.applyConsumableUse(playerId, idx, scene)
+                StaffCast.applyConsumableUse(playerId, idx)
             case Consumable.Delivery.Directional =>
                 let name = consumableNameOf(playerId, idx);
-                GameLogger.playerLog("${PlayerScene.displayName(playerId, scene)} は ${name} を投げる方向を選び Z で発射 (X で中止)");
-                PhaseTransitions.enterStaffAim(scene)
+                GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${name} を投げる方向を選び Z で発射 (X で中止)");
+                PhaseTransitions.enterStaffAim()
             case Consumable.Delivery.AutoOnDeath =>
-                scene
+                ()
         }
 
     // ── 在庫読みの薄ラッパ（PartyQuery＝World オーバーレイ経由）──
@@ -912,21 +899,21 @@ mod ItemMenuUi {
     /// カーソル上の敵に届く「選択すべき武器」の index（weapons 内）。`BattlePanelUi` が予報と
     /// 攻撃開始で読む。現在カーソル上の敵との距離に届く先頭武器を返す。カーソルが敵に乗っていない /
     /// 届く武器が無いなら None。
-    pub def activeAttackWeaponIndex(scene: Scene[NodeTag]): Option[Int32]
+    pub def activeAttackWeaponIndex(): Option[Int32]
             \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, World.WorldQuery} =
         forM (
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerData.PartyQuery.get(playerId);
-            d        <- cursorTargetDistance(playerId, scene);
+            d        <- cursorTargetDistance(playerId);
             idx      <- PlayerScene.firstWeaponIdxReaching(player, d)
         ) yield idx
 
     /// カーソルが乗っている敵と選択中味方とのマンハッタン距離。敵が居なければ None。
-    def cursorTargetDistance(playerId: Int32, scene: Scene[NodeTag]):
+    def cursorTargetDistance(playerId: Int32):
             Option[Int32] \ {World.WorldQuery, CursorState.State} =
         forM (
-            player <- PlayerScene.get(playerId, scene);
-            eid    <- EnemyScene.findIdAt(CursorScene.getGridPos(), scene);
-            enemy  <- EnemyScene.get(eid, scene)
+            player <- PlayerScene.get(playerId);
+            eid    <- EnemyScene.findIdAt(CursorScene.getGridPos());
+            enemy  <- EnemyScene.get(eid)
         ) yield Weapon.manhattan(player#gridPos, enemy#gridPos)
 }

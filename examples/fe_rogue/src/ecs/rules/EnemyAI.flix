@@ -2,7 +2,7 @@
 ///
 /// 1 体ごとに `decideAction(enc, self, alerted) -> (EnemyAction, {alerted})` を呼んで
 /// 「次のターンに取る行動」と「alerted フラグの更新差分」を返す。
-/// scene の更新（Marker2D 移動・Tween 開始・ログ出力）は呼び出し側が責務を持つ。
+/// 実際の副作用（World.Command emit・Tween 開始・ログ出力）は呼び出し側が責務を持つ。
 ///
 /// **入力は faction 非依存のビュー**: 盤面 + 盤上ユニットは `Encounter`(board + units)、
 /// 自分自身は `UnitView`(位置・射程・戦闘ステータスを結合済み)。targets は `Encounter` から

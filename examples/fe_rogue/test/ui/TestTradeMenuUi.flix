@@ -1,6 +1,6 @@
 // TradeMenu のキー操作シナリオを「ユーザー操作 → 交換後の各メンバーのインベントリ」で検証する。
 //
-// 物交換は通常ターンの隣接 2 人交換と集合後の N 人 (最大 3 人) 交換を同じ Scene で扱う。
+// 物交換は通常ターンの隣接 2 人交換と集合後の N 人 (最大 3 人) 交換を同じ World で扱う。
 // ここでは index ベースのペイン操作 DSL で「一連のキー操作 → 最終インベントリ / phase」を検証する。
 //
 // 設計方針:
@@ -19,11 +19,12 @@ mod TestTradeMenuUi {
     // (A) シナリオ状態 + プレイヤー仕様
     // ────────────────────────────────────────────────────────
 
-    /// 1 シナリオの状態。`scene` の中に TradePanel + N Player + N ItemList が居る。
+    /// 1 シナリオの状態。`world` の中に N Player が居る（World-entity UI 版はウィンドウノードを
+    /// 持たないので、交換する味方の在庫だけ揃っていればよい）。
     /// `members` はペイン index → player id の対応 (PanelData と同じ並び)。
     /// `panel` はセッション開始時の PanelData。`runScenario` が `TradeMenuState.State` へ seed する。
     pub type alias TradeScenario = {
-        scene   = Scene[NodeTag],
+        world   = World,
         members = List[Int32],
         panel   = TradeMenuUi.PanelData
     }
@@ -35,13 +36,13 @@ mod TestTradeMenuUi {
     }
 
     // ────────────────────────────────────────────────────────
-    // (B) フィクスチャ: 初期 scene 構築
+    // (B) フィクスチャ: 初期 World 構築
     // ────────────────────────────────────────────────────────
 
     /// 各メンバーのインベントリ (本番 catalog の ID) と origin から TradeMenu フィクスチャを組む。
     /// players は specs の順に id を付け、PanelData の members も同じ並びにする。
-    def buildScenario(specs: List[PlayerSpec], origin: TradeMenuUi.Origin):
-            TradeScenario \ Fs.FileRead =
+    def buildScenario(rc: Region[r], specs: List[PlayerSpec], origin: TradeMenuUi.Origin):
+            TradeScenario \ {Fs.FileRead} + r =
         let weaponCatalog = WeaponCatalog.load();
         let catalog = UnitCatalog.load("resources/units.json", weaponCatalog);
         let staffCatalog = Staff.load();
@@ -55,83 +56,84 @@ mod TestTradeMenuUi {
               staves  = List.map(sId -> Staff.lookup(sId, staffCatalog), spec#staves),
               consumables = Nil, rings = Nil}:
                 PlayerScene.Spawn);
-        // addOnePlayer は World.Command を emit する。位置 World は検証外なので discharge で剥がす。
-        // World-entity UI 版はウィンドウノードを scene に積まない（確定ロジックは TradeMenuState +
-        // PartyQuery だけを読む）。scene には交換する味方だけ居ればよい。
-        let withParty = TestUnitFixtures.dischargeWorldCommand(() -> List.foldLeft((acc, spec) ->
-            PlayerScene.addOnePlayer(mkSpawn(spec), acc),
-            MapScene.addWorldNode(Scene.empty()), specs));
+        // addOnePlayer は World.Command を emit する。ここで一括適用して初期 World を組む
+        // （World-entity UI 版はウィンドウノードを scene に積まない＝交換する味方だけ居ればよい）。
+        let (_, world) = TestUnitFixtures.withWorldApplied(rc, () ->
+            List.forEach(spec -> PlayerScene.addOnePlayer(mkSpawn(spec)), specs));
         let members = List.map(s -> s#id, specs);
         // PanelData は resource へ直接書かず scenario に載せ、`runScenario` が seed する
         // （`TradeMenuState.State` handler の外で書けないため）。
         let panel = ({members = members, focus = 0, pick = None, origin = origin,
                       marks = Set#{}, markPane = None}: TradeMenuUi.PanelData);
-        {scene = withParty, members = members, panel = panel}
+        {world = world, members = members, panel = panel}
 
     /// 武器だけ持つ 2 人 (id 0,1) の隣接交換シナリオ (origin = FromTurn)。
     /// 引数の string は **catalog 武器 ID** ("iron_lance", "iron_bow" 等)。
-    def freshTradeWithWeapons(selfWeapons: List[String], partnerWeapons: List[String]):
-            TradeScenario \ Fs.FileRead =
-        buildScenario(
+    def freshTradeWithWeapons(rc: Region[r], selfWeapons: List[String], partnerWeapons: List[String]):
+            TradeScenario \ {Fs.FileRead} + r =
+        buildScenario(rc,
             ({id = 0, weapons = selfWeapons,    staves = Nil}: PlayerSpec) ::
             ({id = 1, weapons = partnerWeapons, staves = Nil}: PlayerSpec) :: Nil,
             TradeMenuUi.Origin.FromTurn)
 
     /// 武器だけ持つ 3 人 (id 0,1,2) の集合交換シナリオ (origin = FromGather)。
-    def freshGatherTrade(w0: List[String], w1: List[String], w2: List[String]):
-            TradeScenario \ Fs.FileRead =
-        buildScenario(
+    def freshGatherTrade(rc: Region[r], w0: List[String], w1: List[String], w2: List[String]):
+            TradeScenario \ {Fs.FileRead} + r =
+        buildScenario(rc,
             ({id = 0, weapons = w0, staves = Nil}: PlayerSpec) ::
             ({id = 1, weapons = w1, staves = Nil}: PlayerSpec) ::
             ({id = 2, weapons = w2, staves = Nil}: PlayerSpec) :: Nil,
             TradeMenuUi.Origin.FromGather)
 
     // ────────────────────────────────────────────────────────
-    // (C) DSL アクション: キー押下 (scenario -> scenario)
+    // (C) DSL アクション: キー押下（World.Command / TradeMenuState を直接更新する）
     // ────────────────────────────────────────────────────────
 
     /// ペイン `paneIndex` の「`itemName` のスロット」に Z を押す (実体アイテムのみ)。
     pub def pressZOnPane(paneIndex: Int32, itemName: String, s: TradeScenario):
-            TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State, TradeMenuState.State} =
+            Unit \ {GameLogger.GameLogger, SelectedPlayer.State, TradeMenuState.State,
+                     World.Command, World.WorldQuery} =
         let pid = memberId(paneIndex, s);
-        let entry = entryForInventoryItem(itemName, pid, s#scene);
-        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuUi.confirmAt(paneIndex, entry, s#scene)) | s}
+        let entry = entryForInventoryItem(itemName, pid);
+        TradeMenuUi.confirmAt(paneIndex, entry)
 
     /// ペイン `paneIndex` の「空スロット (空きスロット)」に Z を押す。
-    pub def pressZOnPaneEmpty(paneIndex: Int32, s: TradeScenario):
-            TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State, TradeMenuState.State} =
-        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuUi.confirmAt(paneIndex, TradeMenuUi.emptySlotEntry(), s#scene)) | s}
+    pub def pressZOnPaneEmpty(paneIndex: Int32, _s: TradeScenario):
+            Unit \ {GameLogger.GameLogger, SelectedPlayer.State, TradeMenuState.State,
+                     World.Command, World.WorldQuery} =
+        TradeMenuUi.confirmAt(paneIndex, TradeMenuUi.emptySlotEntry())
 
     /// X を押す (キャンセル / pick 解除)。
-    pub def pressXAt(s: TradeScenario):
-            TradeScenario \ {TurnPhase.State, TradeMenuState.State, RangeOverlayState.State} =
-        {scene = TradeMenuUi.cancelCurrent(s#scene) | s}
+    pub def pressXAt(_s: TradeScenario):
+            Unit \ {TurnPhase.State, TradeMenuState.State, RangeOverlayState.State} =
+        TradeMenuUi.cancelCurrent()
 
     /// ← (左矢印) = focus を 1 つ左へ。
-    pub def moveFocusLeft(s: TradeScenario): TradeScenario \ TradeMenuState.State =
-        {scene = TradeMenuUi.setPaneFocusDelta(-1, s#scene) | s}
+    pub def moveFocusLeft(_s: TradeScenario): Unit \ TradeMenuState.State =
+        TradeMenuUi.setPaneFocusDelta(-1)
 
     /// → (右矢印) = focus を 1 つ右へ。
-    pub def moveFocusRight(s: TradeScenario): TradeScenario \ TradeMenuState.State =
-        {scene = TradeMenuUi.setPaneFocusDelta(1, s#scene) | s}
+    pub def moveFocusRight(_s: TradeScenario): Unit \ TradeMenuState.State =
+        TradeMenuUi.setPaneFocusDelta(1)
 
     /// ペイン `giverPane` の `itemName` に印を付ける (Shift 相当)。ItemList カーソルを介さず
     /// PanelData を直接更新するので、本体の `toggledMarks` のトグル規約をそのまま通す。
-    pub def markOnPane(giverPane: Int32, itemName: String, s: TradeScenario): TradeScenario \ TradeMenuState.State =
+    pub def markOnPane(giverPane: Int32, itemName: String, s: TradeScenario):
+            Unit \ {TradeMenuState.State, World.WorldQuery} =
         let pid = memberId(giverPane, s);
-        let entry = entryForInventoryItem(itemName, pid, s#scene);
+        let entry = entryForInventoryItem(itemName, pid);
         match entry#metadata |> Option.flatMap(ItemMenuUi.parseItemKind) {
             case Some(kind) =>
-                {scene = TradeMenuUi.mapPanelData(
-                    d -> TradeMenuUi.toggledMarks(giverPane, kind, d), s#scene) | s}
+                TradeMenuUi.mapPanelData(d -> TradeMenuUi.toggledMarks(giverPane, kind, d))
             case None => bug!("cannot parse item kind for '${itemName}'")
         }
 
     /// ペイン `receiverPane` でまとめ渡しの Z を押す。印が別ペインに付いていれば bulk transfer。
     /// 受け取り側の entry は bulk 時は使われないので空スロット entry を渡す。
-    pub def pressZBulkOnPane(receiverPane: Int32, s: TradeScenario):
-            TradeScenario \ {GameLogger.GameLogger, SelectedPlayer.State, TradeMenuState.State} =
-        {scene = TestUnitFixtures.dischargeWorldCommand(() -> TradeMenuUi.confirmAt(receiverPane, TradeMenuUi.emptySlotEntry(), s#scene)) | s}
+    pub def pressZBulkOnPane(receiverPane: Int32, _s: TradeScenario):
+            Unit \ {GameLogger.GameLogger, SelectedPlayer.State, TradeMenuState.State,
+                     World.Command, World.WorldQuery} =
+        TradeMenuUi.confirmAt(receiverPane, TradeMenuUi.emptySlotEntry())
 
     // ────────────────────────────────────────────────────────
     // (D) 内部ヘルパー
@@ -146,13 +148,12 @@ mod TestTradeMenuUi {
 
     /// `itemName` を該当プレイヤーのインベントリから探し、本体の `weaponEntry` / `staffEntry`
     /// を使って ItemEntry を組む。見つからなければテストを潰す (= 入力ミス検知)。
-    def entryForInventoryItem(itemName: String, playerId: Int32,
-                                scene: Scene[NodeTag]): ItemEntry =
-        let weapons = PlayerScene.getWeapons(playerId, scene);
+    def entryForInventoryItem(itemName: String, playerId: Int32): ItemEntry \ World.WorldQuery =
+        let weapons = PlayerScene.getWeapons(playerId);
         match findIndexed(w -> w#name == itemName, weapons) {
             case Some((idx, weapon)) => TradeMenuUi.weaponEntry(idx, weapon)
             case None                =>
-                let staves = PlayerScene.getStaves(playerId, scene);
+                let staves = PlayerScene.getStaves(playerId);
                 match findIndexed(s -> s#name == itemName, staves) {
                     case Some((idx, staff)) => TradeMenuUi.staffEntry(idx, staff)
                     case None               =>
@@ -164,9 +165,9 @@ mod TestTradeMenuUi {
         List.mapWithIndex(i -> x -> (i, x), list)
             |> List.find(p -> pred(snd(p)))
 
-    /// 指定 player の武器名リスト (assertion 用)。
-    def weaponNames(playerId: Int32, scene: Scene[NodeTag]): List[String] =
-        PlayerScene.getWeapons(playerId, scene) |> List.map(w -> w#name)
+    /// 指定 player の武器名リスト (assertion 用・在庫は World 権威)。
+    def weaponNames(playerId: Int32): List[String] \ World.WorldQuery =
+        PlayerScene.getWeapons(playerId) |> List.map(w -> w#name)
 
     // ────────────────────────────────────────────────────────
     // (E) effect handlers
@@ -176,9 +177,12 @@ mod TestTradeMenuUi {
     /// をまとめて discharge して body を実行し、結果と最終 phase を返す。
     def runScenario(rc: Region[r], initialPhase: TurnPhase.Phase, s0: TradeScenario,
                      thunk: Unit -> a \ ef):
-            (a, TurnPhase.Phase) \
+            ((a, TurnPhase.Phase), World) \
             (ef - GameLogger.GameLogger - SelectedPlayer.State - TurnPhase.State - TradeMenuState.State
-                - RangeOverlayState.State + r) =
+                - RangeOverlayState.State - World.Command - World.WorldQuery + r) =
+        // 在庫は World 権威＝`buildScenario` が組んだ初期 World を seed し、
+        // シナリオ全 step を同一 World（1 region）で回す。最終 World は assertion 用に返す。
+        TestUnitFixtures.withWorldAppliedSeeded(rc, s0#world, () ->
         TestUnitFixtures.withTradeMenu(rc, () -> {
             TradeMenuState.State.put(s0#panel);   // セッション開始状態を seed
             // 「こうかん」キャンセルは範囲 resource を掃除するため RangeOverlayState を供給する。
@@ -186,7 +190,7 @@ mod TestTradeMenuUi {
                 TestUnitFixtures.withMockGameLogger(() ->
                     TestUnitFixtures.withSelectedPlayer(0, () ->
                         TestUnitFixtures.withRangeOverlay(rc, thunk))))
-        })
+        }))
 
     // ════════════════════════════════════════════════════════
     // 2 人交換 (回帰ガード) — index 化前と同じ最終結果を確認する
@@ -196,50 +200,55 @@ mod TestTradeMenuUi {
     @Test
     def testFullSwapFlowExchangesInventories(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshTradeWithWeapons("iron_lance" :: Nil, "iron_bow" :: Nil);
-            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> pressZOnPane(0, "てつのやり") |> pressZOnPane(1, "てつの弓")
+            let s0 = freshTradeWithWeapons(rc, "iron_lance" :: Nil, "iron_bow" :: Nil);
+            let ((_, _), wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                pressZOnPane(0, "てつのやり", s0);
+                pressZOnPane(1, "てつの弓", s0)
             });
             Assert.assertEq(
                 expected = ("てつの弓" :: Nil, "てつのやり" :: Nil),
-                (weaponNames(0, after#scene), weaponNames(1, after#scene)))
+                TestUnitFixtures.withWorldQuery(wFin, () ->
+                    (weaponNames(0), weaponNames(1))))
         }
 
     /// 「→ でペイン1に移動 → 弓 Z → ペイン0で槍 Z」→ 互いのインベントリが入れ替わる。
     @Test
     def testPartnerStartSwapExchangesInventories(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshTradeWithWeapons("iron_lance" :: Nil, "iron_bow" :: Nil);
-            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> moveFocusRight
-                   |> pressZOnPane(1, "てつの弓")
-                   |> pressZOnPane(0, "てつのやり")
+            let s0 = freshTradeWithWeapons(rc, "iron_lance" :: Nil, "iron_bow" :: Nil);
+            let ((_, _), wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                moveFocusRight(s0);
+                pressZOnPane(1, "てつの弓", s0);
+                pressZOnPane(0, "てつのやり", s0)
             });
             Assert.assertEq(
                 expected = ("てつの弓" :: Nil, "てつのやり" :: Nil),
-                (weaponNames(0, after#scene), weaponNames(1, after#scene)))
+                TestUnitFixtures.withWorldQuery(wFin, () ->
+                    (weaponNames(0), weaponNames(1))))
         }
 
     /// 「ペイン0で空スロット Z → ペイン1で弓 Z」→ 弓を受取、相手側は空に。
     @Test
     def testReceivePartnerItemViaEmptyPick(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshTradeWithWeapons(Nil, "iron_bow" :: Nil);
-            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> pressZOnPaneEmpty(0) |> pressZOnPane(1, "てつの弓")
+            let s0 = freshTradeWithWeapons(rc, Nil, "iron_bow" :: Nil);
+            let ((_, _), wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                pressZOnPaneEmpty(0, s0);
+                pressZOnPane(1, "てつの弓", s0)
             });
             Assert.assertEq(
                 expected = ("てつの弓" :: Nil, Nil),
-                (weaponNames(0, after#scene), weaponNames(1, after#scene)))
+                TestUnitFixtures.withWorldQuery(wFin, () ->
+                    (weaponNames(0), weaponNames(1))))
         }
 
     /// 隣接 2 人交換 (FromTurn) で「pick 未選択で X」→ ActionSelect に戻る。
     @Test
     def testTurnCancelWithNoPickExitsToActionSelect(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshTradeWithWeapons("iron_lance" :: Nil, "iron_bow" :: Nil);
-            let (_, finalPhase) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> pressXAt
+            let s0 = freshTradeWithWeapons(rc, "iron_lance" :: Nil, "iron_bow" :: Nil);
+            let ((_, finalPhase), _wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                pressXAt(s0)
             });
             Assert.assertEq(expected = TurnPhase.Phase.ActionSelect, finalPhase)
         }
@@ -252,55 +261,59 @@ mod TestTradeMenuUi {
     @Test
     def testGatherSwapBetweenPane0And1(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshGatherTrade("iron_lance" :: Nil, "iron_bow" :: Nil, "iron_sword" :: Nil);
-            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> pressZOnPane(0, "てつのやり")
-                   |> moveFocusRight
-                   |> pressZOnPane(1, "てつの弓")
+            let s0 = freshGatherTrade(rc, "iron_lance" :: Nil, "iron_bow" :: Nil, "iron_sword" :: Nil);
+            let ((_, _), wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                pressZOnPane(0, "てつのやり", s0);
+                moveFocusRight(s0);
+                pressZOnPane(1, "てつの弓", s0)
             });
             Assert.assertEq(
                 expected = ("てつの弓" :: Nil, "てつのやり" :: Nil, "てつの剣" :: Nil),
-                (weaponNames(0, after#scene), weaponNames(1, after#scene), weaponNames(2, after#scene)))
+                TestUnitFixtures.withWorldQuery(wFin, () ->
+                    (weaponNames(0), weaponNames(1), weaponNames(2))))
         }
 
     /// 「ペイン0で槍 Z → ペイン2で空スロット Z」→ P0→P2 片方向 transfer、P1 不変。
     @Test
     def testGatherOneWayTransferToPane2(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshGatherTrade("iron_lance" :: Nil, "iron_bow" :: Nil, Nil);
-            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> pressZOnPane(0, "てつのやり")
-                   |> moveFocusRight |> moveFocusRight
-                   |> pressZOnPaneEmpty(2)
+            let s0 = freshGatherTrade(rc, "iron_lance" :: Nil, "iron_bow" :: Nil, Nil);
+            let ((_, _), wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                pressZOnPane(0, "てつのやり", s0);
+                moveFocusRight(s0);
+                moveFocusRight(s0);
+                pressZOnPaneEmpty(2, s0)
             });
             Assert.assertEq(
                 expected = (Nil, "てつの弓" :: Nil, "てつのやり" :: Nil),
-                (weaponNames(0, after#scene), weaponNames(1, after#scene), weaponNames(2, after#scene)))
+                TestUnitFixtures.withWorldQuery(wFin, () ->
+                    (weaponNames(0), weaponNames(1), weaponNames(2))))
         }
 
     /// 「ペイン1で空スロット Z → ペイン0で剣 Z」→ P0→P1 受取、P2 不変。
     @Test
     def testGatherReceiveViaEmptyPick(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshGatherTrade("iron_sword" :: Nil, Nil, "iron_bow" :: Nil);
-            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> moveFocusRight
-                   |> pressZOnPaneEmpty(1)
-                   |> moveFocusLeft
-                   |> pressZOnPane(0, "てつの剣")
+            let s0 = freshGatherTrade(rc, "iron_sword" :: Nil, Nil, "iron_bow" :: Nil);
+            let ((_, _), wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                moveFocusRight(s0);
+                pressZOnPaneEmpty(1, s0);
+                moveFocusLeft(s0);
+                pressZOnPane(0, "てつの剣", s0)
             });
             Assert.assertEq(
                 expected = (Nil, "てつの剣" :: Nil, "てつの弓" :: Nil),
-                (weaponNames(0, after#scene), weaponNames(1, after#scene), weaponNames(2, after#scene)))
+                TestUnitFixtures.withWorldQuery(wFin, () ->
+                    (weaponNames(0), weaponNames(1), weaponNames(2))))
         }
 
     /// 集合交換 (FromGather) で「pick 未選択で X」→ 集合の隣接メニュー(ActionSelect) に戻る。
     @Test
     def testGatherCancelWithNoPickExitsToActionSelect(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshGatherTrade("iron_lance" :: Nil, "iron_bow" :: Nil, "iron_sword" :: Nil);
-            let (_, finalPhase) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> pressXAt
+            let s0 = freshGatherTrade(rc, "iron_lance" :: Nil, "iron_bow" :: Nil, "iron_sword" :: Nil);
+            let ((_, finalPhase), _wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                pressXAt(s0)
             });
             Assert.assertEq(expected = TurnPhase.Phase.ActionSelect, finalPhase)
         }
@@ -309,13 +322,15 @@ mod TestTradeMenuUi {
     @Test
     def testCancelDuringPickLeavesInventoriesUnchanged(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshGatherTrade("iron_lance" :: Nil, "iron_bow" :: Nil, "iron_sword" :: Nil);
-            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> pressZOnPane(0, "てつのやり") |> pressXAt
+            let s0 = freshGatherTrade(rc, "iron_lance" :: Nil, "iron_bow" :: Nil, "iron_sword" :: Nil);
+            let ((_, _), wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                pressZOnPane(0, "てつのやり", s0);
+                pressXAt(s0)
             });
             Assert.assertEq(
                 expected = ("てつのやり" :: Nil, "てつの弓" :: Nil, "てつの剣" :: Nil),
-                (weaponNames(0, after#scene), weaponNames(1, after#scene), weaponNames(2, after#scene)))
+                TestUnitFixtures.withWorldQuery(wFin, () ->
+                    (weaponNames(0), weaponNames(1), weaponNames(2))))
         }
 
     // ════════════════════════════════════════════════════════
@@ -326,28 +341,31 @@ mod TestTradeMenuUi {
     @Test
     def testReorderWithinOwnPane(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshGatherTrade("iron_sword" :: "iron_bow" :: Nil,
+            let s0 = freshGatherTrade(rc, "iron_sword" :: "iron_bow" :: Nil,
                                        "iron_lance" :: Nil, Nil);
-            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> pressZOnPane(0, "てつの剣") |> pressZOnPane(0, "てつの弓")
+            let ((_, _), wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                pressZOnPane(0, "てつの剣", s0);
+                pressZOnPane(0, "てつの弓", s0)
             });
             Assert.assertEq(
                 expected = ("てつの弓" :: "てつの剣" :: Nil, "てつのやり" :: Nil, Nil),
-                (weaponNames(0, after#scene), weaponNames(1, after#scene), weaponNames(2, after#scene)))
+                TestUnitFixtures.withWorldQuery(wFin, () ->
+                    (weaponNames(0), weaponNames(1), weaponNames(2))))
         }
 
     /// 「ペイン0で剣 Z → 同ペイン0で同じ剣 Z」→ pick 解除のみ。並びは不変。
     @Test
     def testReSelectSameSlotDeselects(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshGatherTrade("iron_sword" :: "iron_bow" :: Nil,
+            let s0 = freshGatherTrade(rc, "iron_sword" :: "iron_bow" :: Nil,
                                        "iron_lance" :: Nil, Nil);
-            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> pressZOnPane(0, "てつの剣") |> pressZOnPane(0, "てつの剣")
+            let ((_, _), wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                pressZOnPane(0, "てつの剣", s0);
+                pressZOnPane(0, "てつの剣", s0)
             });
             Assert.assertEq(
                 expected = "てつの剣" :: "てつの弓" :: Nil,
-                weaponNames(0, after#scene))
+                TestUnitFixtures.withWorldQuery(wFin, () -> weaponNames(0)))
         }
 
     // ════════════════════════════════════════════════════════
@@ -359,15 +377,16 @@ mod TestTradeMenuUi {
     @Test
     def testBulkTransferMovesAllMarkedItems(): Unit \ {Assert, Fs.FileRead} =
         region rc {
-            let s0 = freshTradeWithWeapons("iron_lance" :: "iron_bow" :: Nil, Nil);
-            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> markOnPane(0, "てつのやり")
-                   |> markOnPane(0, "てつの弓")
-                   |> pressZBulkOnPane(1)
+            let s0 = freshTradeWithWeapons(rc, "iron_lance" :: "iron_bow" :: Nil, Nil);
+            let ((_, _), wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                markOnPane(0, "てつのやり", s0);
+                markOnPane(0, "てつの弓", s0);
+                pressZBulkOnPane(1, s0)
             });
             Assert.assertEq(
                 expected = (Nil, "てつの弓" :: "てつのやり" :: Nil),
-                (weaponNames(0, after#scene), weaponNames(1, after#scene)))
+                TestUnitFixtures.withWorldQuery(wFin, () ->
+                    (weaponNames(0), weaponNames(1))))
         }
 
     /// まとめ渡しはアイテム単位で「受け取ると重量過多になるか」を判定し、超える手前で止める。
@@ -379,20 +398,21 @@ mod TestTradeMenuUi {
     def testBulkTransferStopsWhenReceiverFull(): Unit \ {Assert, Fs.FileRead} =
         region rc {
             let three = List.repeat(3, "iron_sword");
-            let s0 = buildScenario(
+            let s0 = buildScenario(rc,
                 ({id = 0, weapons = "iron_lance" :: "iron_bow" :: Nil, staves = Nil}: PlayerSpec) ::
                 ({id = 1, weapons = three, staves = Nil}: PlayerSpec) :: Nil,
                 TradeMenuUi.Origin.FromTurn);
-            let (after, _) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
-                s0 |> markOnPane(0, "てつのやり")
-                   |> markOnPane(0, "てつの弓")
-                   |> pressZBulkOnPane(1)
+            let ((_, _), wFin) = runScenario(rc, TurnPhase.Phase.TradeInventory, s0, () -> {
+                markOnPane(0, "てつのやり", s0);
+                markOnPane(0, "てつの弓", s0);
+                pressZBulkOnPane(1, s0)
             });
             // 渡ったのは 1 個だけ（P0 に 1 個残り、P1 は 3 → 4 個）。
             Assert.assertEq(
                 expected = (1, 4),
-                (List.length(weaponNames(0, after#scene)),
-                 List.length(weaponNames(1, after#scene))))
+                TestUnitFixtures.withWorldQuery(wFin, () ->
+                    (List.length(weaponNames(0)),
+                     List.length(weaponNames(1)))))
         }
 
     /// toggledMarks (純粋): 別ペインに印を付け替えると前ペインの印は捨て、新しいペインを印元にする。
@@ -472,15 +492,17 @@ mod TestTradeMenuUi {
     /// 16 個ちょうど持たせて、paneEntries の末尾が空スロットでないことを確認する。
     @Test
     def testFullPaneHasNoEmptySlot(): Unit \ {Assert, Fs.FileRead} =
-        let sixteen = List.repeat(16, "iron_sword");
-        let s0 = buildScenario(
-            ({id = 0, weapons = sixteen, staves = Nil}: PlayerSpec) ::
-            ({id = 1, weapons = "iron_bow" :: Nil, staves = Nil}: PlayerSpec) :: Nil,
-            TradeMenuUi.Origin.FromGather);
-        let entries = TestUnitFixtures.withMockPartyQuery(s0#scene, () ->
-            TradeMenuUi.paneEntries(0, s0#scene));
-        let hasEmpty = List.exists(e -> e#metadata == Some(TradeMenuUi.emptySlotMeta()), entries);
-        Assert.assertEq(expected = (16, false), (List.length(entries), hasEmpty))
+        region rc {
+            let sixteen = List.repeat(16, "iron_sword");
+            let s0 = buildScenario(rc,
+                ({id = 0, weapons = sixteen, staves = Nil}: PlayerSpec) ::
+                ({id = 1, weapons = "iron_bow" :: Nil, staves = Nil}: PlayerSpec) :: Nil,
+                TradeMenuUi.Origin.FromGather);
+            let entries = TestUnitFixtures.withMockPartyQuery(TestUnitFixtures.worldPlayers(s0#world), () ->
+                TradeMenuUi.paneEntries(0));
+            let hasEmpty = List.exists(e -> e#metadata == Some(TradeMenuUi.emptySlotMeta()), entries);
+            Assert.assertEq(expected = (16, false), (List.length(entries), hasEmpty))
+        }
 
     // ════════════════════════════════════════════════════════
     // 実 asset の窓行数 ⇔ maxSlots() の一致 / チップがハイライトに収まる（幾何・ItemMenu と同型）

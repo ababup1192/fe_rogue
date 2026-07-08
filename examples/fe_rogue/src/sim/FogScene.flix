@@ -6,22 +6,15 @@
 ///   - 通路(corridor): 常に味方キャラの周囲1マス(松明)だけを点灯する（部屋とは別仕様）。
 /// 敵・アイテム・階段は明るい所以外では非表示。
 ///
-/// モヤは加算（暗くする）合成なので「穴」を直接は空けられない。そこで
-/// 「マップ全体を覆う領域(area) から 明るい部屋矩形(holes) を除いた補集合」を
-/// 矩形で敷き詰める（バンド分割 `bandDecompose`）。敷き詰めた矩形は固定プールの
-/// ColorRect に毎フレーム割り当てて再配置する。
-///
-/// ノード構造:
-///   Fog (Marker2D, NoTag)                          ← root 直下。モヤ矩形プールの親
-///     ├─ Fog_0 .. Fog_{poolSize-1} (ColorRect)     ← 毎フレーム再配置（補集合の矩形）
-///   World/FogDriver (Marker2D, NodeTag.FogDriver)   ← step で毎フレーム applyFog
+/// scene ノードは持たない。暗幕は `RenderWorld.renderFog` が補集合の矩形
+/// （バンド分割 `bandDecompose`）を毎フレーム直描きし、敵/アイテム/階段の可視は
+/// 「明るい穴 `holesNow` にセルが入っているか」を読者が描画/判定時に導出する
+/// （marker の visible フラグへの書き込みは持たない）。
 
 /// グリッド座標の矩形（半開区間 [x0,x1) × [y0,y1)）。
 pub type alias GridRect = {x0 = Int32, y0 = Int32, x1 = Int32, y1 = Int32}
 
 mod FogScene {
-
-    def driverName(): String = "FogDriver"
 
     /// モヤの色（暗い青灰）と不透明度。地形がうっすら見える程度に薄暗くする。
     /// 視認性とパフォーマンスのトレードオフ調整点。B: render-from-World の `renderFog` も同値を使うため pub。
@@ -38,66 +31,24 @@ mod FogScene {
     /// モヤで覆う領域をマップ bbox の外側へ広げるタイル数（画面端まで確実にモヤで覆うため）。
     def marginTiles(): Int32 = 60
 
-    /// 常駐 FogDriver を scene tree に追加する。
-    /// `SceneSetup.buildPlayingScene` で MapScene.add の直後に 1 回だけ呼ぶ。
-    /// 暗幕は `RenderWorld.renderFog` が World/placements から純粋計算で直描き＝scene にノードを積まない。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.addChild(MapScene.worldName(), driverName(),
-            EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.FogDriver),
-            scene)
-
-    /// gameLoop がパイプライン段で 1 回呼ぶ frame-paced System
-    /// （FogDriver ノードは常駐 marker として残置）。
-    /// 明示 step は毎フレーム（タイトル/選択画面含む）走るため、
-    /// 「FogDriver ノードが居るときだけ」を gate で動かす（Map 不在 scene で
-    /// `MapScene.getPlacements` が bug! するのを防ぐ）。
-    pub def step(scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, World.WorldQuery} =
-        if (Option.isEmpty(Scene.getEngineNode(MapScene.worldName() :: driverName() :: Nil, scene)))
-            scene
-        else stepPlaying(scene)
-
-    /// FogDriver 常駐が確認できた Playing scene 用の本体。
-    def stepPlaying(scene: Scene[NodeTag]): Scene[NodeTag] \ {SelectedPlayer.State, World.WorldQuery} =
-        let drafts = SelectedPlayer.State.get()#drafts;
-        // 移動ドラフト中も「部屋点灯」はターン開始位置(origin)基準に固定する。コミットで
-        // drafts が消えれば origin==live に戻り点灯する（＝待機/接敵まで新規部屋を暗いまま）。
-        // キャラのいない部屋は訪問済みでも暗いまま（非永続）。通路は常に周囲1マス(松明)だけ。
-        // live 位置は World 上書き Data（scene gridPos twin は退役）。origin は draft 由来。
-        let units  = PlayerScene.getAllWithWorldPos(scene)
-            |> List.map(d -> {
-                 id = d#id, gridPos = d#gridPos, hidden = d#hidden,
-                 origin = MoveDraft.originOf(d#id, drafts) |> Option.getWithDefault(d#gridPos)
-               });
-        applyFogWith(units, scene)
-
-    /// 画面全体モヤ＋明るい穴の切り抜き、および敵/アイテム/階段の可視性を一括更新する。
-    /// init（drafts 無し・GameLifecycle のスポーン部屋点灯）から呼ぶ入口。
-    /// 各ユニットの origin=live としてライブ挙動になる。
-    pub def applyFog(scene: Scene[NodeTag]): Scene[NodeTag] \ World.WorldQuery =
-        // 穴は World の現在位置で計算する（位置の権威は World。scene Data の gridPos は
-        // 移動で更新されないため、直読みするとターン開始の敵可視判定が狂う）。
-        let units = PlayerScene.getAllWithWorldPos(scene)
-            |> List.map(d -> {id = d#id, gridPos = d#gridPos, hidden = d#hidden, origin = d#gridPos});
-        applyFogWith(units, scene)
-
-    /// origin 付きユニット列から画面全体モヤ＋穴を再構築する本体（純粋）。
-    /// 穴 = per-unit（部屋は origin 基準点灯・通路は常に周囲1マス torch）。キャラのいない部屋は
-    /// 暗い＝非永続（訪問済みでも点灯しない）。
-    def applyFogWith(units: List[{gridPos = {x = Int32, y = Int32},
-                                  origin = {x = Int32, y = Int32}, hidden = Bool | r}],
-                      scene: Scene[NodeTag]): Scene[NodeTag] \ World.WorldQuery =
-        let placements = MapScene.getPlacements(scene);
-        let roomCount  = MapScene.getRoomCount(scene);
-        // 通路は常に torch（torchCorridors=true）。部屋は origin 基準で点灯（非永続）。
-        // 暗幕（hazeRects）は renderFog が直描きする。
-        // ここに残るのは点灯 visibility 制御（敵/アイテム/階段/宝箱の lit 判定）のみ。
-        let holes      = holesForDraft(units, placements, roomCount, true);
-        // isLit クロージャは「let 束縛の最後」に置く（Flix 0.71.0 以降、lambda を let で
-        // 束縛した後に更に let を続けるとパーサが lambda 本体を貪欲に取り込んで壊れるため）。
-        let isLit      = (cell: {x = Int32, y = Int32}) -> insideAny(cell, holes);
-        // 階段/床アイテムの lit 判定は renderStairs/renderItems が描画時に行う。
-        scene
-            |> EnemyScene.applyFog(isLit)
+    /// いま明るい穴の矩形リスト。味方の live 位置/hidden は World、部屋点灯の origin は
+    /// 移動ドラフト（`SelectedPlayer` の drafts）由来。移動ドラフト中も「部屋点灯」は
+    /// ターン開始位置(origin)基準に固定し、コミットで drafts が消えれば origin==live に戻る
+    /// （＝待機/接敵まで新規部屋を暗いまま）。通路は常に周囲1マス(松明)。
+    /// Map 不在（タイトル/選択画面などの盤面レス）は None＝読者は「何も照らさない」に倒す。
+    /// 敵可視（`EnemyScene.isVisible`）・配置物の lit ゲート（renderStairs/renderItems 等）が共有する。
+    pub def holesNow(): Option[List[GridRect]] \ {SelectedPlayer.State, World.WorldQuery} =
+        let world = World.WorldQuery.get();
+        match World.terrainOf(world) {
+            case None    => None
+            case Some(_) =>
+                let drafts = SelectedPlayer.State.get()#drafts;
+                let units  = World.fogUnitsOf(world)
+                    |> List.map(d -> {+origin = MoveDraft.originOf(d#id, drafts)
+                                                    |> Option.getWithDefault(d#gridPos) | d});
+                Some(holesForDraft(units, World.placementsOf(world),
+                                    World.roomCountOf(world), true))
+        }
 
     /// 非 hidden プレイヤーごとの「明るい穴」矩形リスト（純粋・テスト対象）。
     /// 部屋なら部屋全体、通路は torchCorridors のとき周囲1マスだけ。

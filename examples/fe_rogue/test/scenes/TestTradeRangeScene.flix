@@ -2,8 +2,8 @@
 ///
 /// 検証する観点:
 ///   - `show` 直後の `cells` が選択中味方の隣接味方マスを返す (斜めや self は除く)
-///   - 隣接味方が居ないときは `show` を呼んでも overlay ノードは作られず `cells` は空
-///   - `clear` 後は `cells` が空に戻る (overlay ノードが取り除かれる)
+///   - 隣接味方が居ないときは `show` を呼んでも `cells` は空
+///   - `clear` 後は `cells` が空に戻る
 mod TestTradeRangeScene {
 
     // ════════════════════════════════════════════════════════
@@ -39,24 +39,11 @@ mod TestTradeRangeScene {
         followUpUsed   = false
     }
 
-    /// World + 与えた party の Marker2D 並びで scene を組む。
-    /// PartyQuery 経由で getAll を呼ぶと id 昇順で取れる。
-    def sceneWithParty(party: List[PlayerScene.Data]): Scene[NodeTag] =
-        let world = Marker2D.make(Vec2.zero());
-        let withWorld = Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag));
-        List.foldLeft((acc, data) -> {
-            let marker = Marker2D.make(Vec2.zero());
-            Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(data#id),
-                EngineNode.Marker2DWithState(marker, NodeTag.Player(data)), acc)
-        }, withWorld, party)
-
     /// `TradeRangeScene.cells` の戻りを (x, y) タプルに整形する。
     /// レコードフィールドの直接比較を避け、assertEq で 1 行で比べやすくする。
     /// 緑マスは範囲 resource が権威なので `RangeOverlayState.State` を読む。
-    def cellTuples(scene: Scene[NodeTag]): List[(Int32, Int32)] \ RangeOverlayState.State =
-        List.map(c -> (c#x, c#y), TradeRangeScene.cells(scene))
+    def cellTuples(): List[(Int32, Int32)] \ RangeOverlayState.State =
+        List.map(c -> (c#x, c#y), TradeRangeScene.cells())
 
     // ════════════════════════════════════════════════════════
     // show — 選択中味方の隣接マスだけを緑で敷く
@@ -80,35 +67,35 @@ mod TestTradeRangeScene {
                 let eastern  = buildPartyMember(3, {x = 6, y = 5});
                 let southern = buildPartyMember(4, {x = 5, y = 6});
                 let diagSE   = buildPartyMember(5, {x = 6, y = 6});
-                let scene = sceneWithParty(self :: northern :: western ::
-                                            eastern :: southern :: diagSE :: Nil);
-                let after = TestUnitFixtures.withSelectedPlayer(0, () ->
-                    TestUnitFixtures.withMockPartyQuery(scene, () ->
-                        TradeRangeScene.show(scene)));
+                let party = self :: northern :: western ::
+                            eastern :: southern :: diagSE :: Nil;
+                TestUnitFixtures.withSelectedPlayer(0, () ->
+                    TestUnitFixtures.withMockPartyQuery(party, () ->
+                        TradeRangeScene.show()));
                 Assert.assertEq(
                     expected = (5, 4) :: (4, 5) :: (6, 5) :: (5, 6) :: Nil,
-                    cellTuples(after))
+                    cellTuples())
             })
         }
 
-    /// 隣接味方が居なければ overlay は作られず `cells` は空 (= Nil)。
-    /// 防御的: 描画ノードを無駄に作らない。
+    /// 隣接味方が居なければ `cells` は空 (= Nil)。
+    /// 防御的: 隣接味方ゼロなら resource に何も書かない。
     @Test
     def testShowNoOpWhenNoAdjacentAlly(): Unit \ Assert =
         region rc {
             TestUnitFixtures.withRangeOverlay(rc, () -> {
                 let self   = buildPartyMember(0, {x = 5, y = 5});
                 let diagSE = buildPartyMember(1, {x = 6, y = 6});
-                let scene = sceneWithParty(self :: diagSE :: Nil);
-                let after = TestUnitFixtures.withSelectedPlayer(0, () ->
-                    TestUnitFixtures.withMockPartyQuery(scene, () ->
-                        TradeRangeScene.show(scene)));
-                Assert.assertEq(expected = Nil, cellTuples(after))
+                let party  = self :: diagSE :: Nil;
+                TestUnitFixtures.withSelectedPlayer(0, () ->
+                    TestUnitFixtures.withMockPartyQuery(party, () ->
+                        TradeRangeScene.show()));
+                Assert.assertEq(expected = Nil, cellTuples())
             })
         }
 
     // ════════════════════════════════════════════════════════
-    // clear — overlay ノードを取り除く
+    // clear — overlay を取り除く
     // ════════════════════════════════════════════════════════
 
     /// 一度 show で緑マスを敷いた後 clear すると `cells` が空に戻る。
@@ -119,16 +106,16 @@ mod TestTradeRangeScene {
             TestUnitFixtures.withRangeOverlay(rc, () -> {
                 let self     = buildPartyMember(0, {x = 5, y = 5});
                 let northern = buildPartyMember(1, {x = 5, y = 4});
-                let scene = sceneWithParty(self :: northern :: Nil);
-                let withRange = TestUnitFixtures.withSelectedPlayer(0, () ->
-                    TestUnitFixtures.withMockPartyQuery(scene, () ->
-                        TradeRangeScene.show(scene)));
+                let party    = self :: northern :: Nil;
+                TestUnitFixtures.withSelectedPlayer(0, () ->
+                    TestUnitFixtures.withMockPartyQuery(party, () ->
+                        TradeRangeScene.show()));
                 // show 後は 1 セル。clear は resource を空へ戻すので、その後の cells は 0 セル。
-                let shownCount = List.length(TradeRangeScene.cells(withRange));
-                let cleared = TradeRangeScene.clear(withRange);
+                let shownCount = List.length(cellTuples());
+                TradeRangeScene.clear();
                 Assert.assertEq(
                     expected = (1, 0),
-                    (shownCount, List.length(TradeRangeScene.cells(cleared))))
+                    (shownCount, List.length(cellTuples())))
             })
         }
 }

@@ -69,6 +69,12 @@ mod TestWorldFixtures {
                                        name = res#description})
             :: Cmd.SetWeaponView(ref, Combat.weaponView(Some(weapon), true))
             :: Cmd.SetRingBonus(ref, Ring.bonuses(None))
+            // テンプレート（classId/resource）と向き/歩数も addOnePlayer と同じく seed する
+            // （renderUnits の World 在籍列挙・dataFromWorld gate がこれを要求する）。
+            :: Cmd.SetClassId(spec#id, "test_player")
+            :: Cmd.SetPlayerResource(spec#id, res)
+            :: Cmd.SetFacing(spec#id, Dir4.Down)
+            :: Cmd.SetMoveSteps(spec#id, 0)
             :: Nil
 
     /// 敵 1 体分の spawn Cmd 列。`EnemyScene.addOneEnemy` が emit する store 集合と同じものを埋める
@@ -92,6 +98,10 @@ mod TestWorldFixtures {
             :: Cmd.SetEnemyRing(spec#id, None)
             :: Cmd.SetWeaponView(ref, Combat.weaponView(Some(weapon), true))
             :: Cmd.SetRingBonus(ref, Ring.bonuses(None))
+            // テンプレート（catalog id / 出身部屋 / resource 本体）も addOneEnemy と同じく seed する
+            // （renderUnits の World 在籍列挙・dataFromWorldEnemy gate がこれを要求する）。
+            :: Cmd.SetEnemyProfile(spec#id, {resourceId = "test_enemy", homeModuleIdx = 0})
+            :: Cmd.SetEnemyResource(spec#id, res)
             :: Nil
 
     // ════════════════════════════════════════════════════════
@@ -107,9 +117,13 @@ mod TestWorldFixtures {
          mapGlobal  = {x = 0.0, y = 0.0},
          placements = RoomLayout.singleRoom(size#w, size#h)}
 
-    /// 盤面 seed の Cmd 列（地形 read-model と階段セル）。`stairs = None` なら階段なし。
+    /// 盤面 seed の Cmd 列（地形 read-model・マップ layout・階段セル）。`stairs = None` なら階段なし。
+    /// layout は 1 部屋 Plan（roomCount=1・floorSnapshot と整合）＝fog / スポーン系が「部屋」として扱う。
     pub def boardCmds(size: {w = Int32, h = Int32}, stairs: Option[{x = Int32, y = Int32}]): List[Cmd] =
         Cmd.SetMapSnapshot(Some(floorSnapshot(size)))
+            :: Cmd.SetMapLayout(Some({
+                   plan = ({modulePaths = Nil, sideConnections = Nil, roomCount = 1}: DungeonGenerator.Plan),
+                   spawnGrid = {x = 2, y = 2}}))
             :: Cmd.SetStairs(stairs)
             :: Nil
 

@@ -3,7 +3,8 @@
 // 設計: sim（`CombatSystem.resolveAttack`/`resolveEnemyAttack`）は (World, [SimEvent]) を返し、
 // World 変更は reducer（`applyEventToWorld`）が済ませる。本モジュールは **その [SimEvent] を view 演出へ dispatch** する。
 //   - dispatch ロジックは **純粋な `plan`（SimEvent → ViewAction 列）** に集約しテストで固める＝ViewReplay の仕様。
-//   - effectful な `replay`/`execute` は ViewAction → 既存 Scene API への薄い 1:1 実行（compile 検証・runtime は run 検証）。
+//   - effectful な `replay`/`execute` は ViewAction → 既存 API（World.Command emit 等）への薄い 1:1 実行
+//     （compile 検証・runtime は run 検証）。
 //
 // 再生するもの: 命中 SE / テキストポップアップ(miss) / ダメージ数字ポップアップ / 着弾爆発 / HPバー /
 //   ノックバック着地 / 敵死亡演出。
@@ -11,7 +12,7 @@
 //   これらは `plan` で空に落とす（World 状態は reducer が既に反映済み）。
 // ここで空に落とすが別経路で配線済のもの: LeveledUp（modal-gate は `CombatDriver.applyEcsSceneEffects` が
 //   pendingLevelUp を立て signal 駆動で発火）、ViewFx(Thief)（drop 実体は `CombatDriver.applyThiefDrop` が引く＝
-//   フロア落下は view でなく scene 状態ゆえ純 view の本モジュールでなく wrapper で処理）。
+//   フロア落下は純 view の本モジュールでなく wrapper で処理）。
 mod ViewReplay {
 
     use World.EntityRef
@@ -60,32 +61,32 @@ mod ViewReplay {
         case World.ViewFxKind.Died(r)         => ViewAction.Death(r) :: Nil
     }
 
-    /// **effectful 実行**: SimEvent ログを `plan` → 各 ViewAction を既存 Scene API へ反映する。
+    /// **effectful 実行**: SimEvent ログを `plan` → 各 ViewAction を既存 API へ反映する。
     /// live combat（`CombatDriver`/`StaffCast` の ECS 経路）の演出発火はこの 1 本を通す。
-    pub def replay(events: List[World.SimEvent], scene: Scene[NodeTag]): Scene[NodeTag] \
-            {GameEngine.Audio, AnimationPlayer.Scheduler,
+    pub def replay(events: List[World.SimEvent]): Unit \
+            {GameEngine.Audio,
              World.Command, World.WorldQuery} =
-        List.foldLeft((sc, a) -> execute(a, sc), scene, plan(events))
+        List.forEach(execute, plan(events))
 
-    def execute(action: ViewAction, scene: Scene[NodeTag]): Scene[NodeTag] \
-            {GameEngine.Audio, AnimationPlayer.Scheduler,
+    def execute(action: ViewAction): Unit \
+            {GameEngine.Audio,
              World.Command, World.WorldQuery} =
         match action {
-            case ViewAction.Play(n)        => AudioStreamPlayer.play(n); scene
+            case ViewAction.Play(n)        => AudioStreamPlayer.play(n)
             case ViewAction.Text(x, y, t)  =>
                 DamagePopupFx.emitText(MapSnapshot.cellCenter({x = x, y = y}), t,
-                    DamagePopupFx.damageToEnemyColor(), scene)
+                    DamagePopupFx.damageToEnemyColor())
             case ViewAction.Damage(r, dmg) =>
                 // ポップアップは ref の現在セルへ（knockback 前。combat は防御側を最後にしか動かさない）。
                 let cell = World.posOf(r, World.WorldQuery.get()) |> Option.getWithDefault({x = 0, y = 0});
-                DamagePopupFx.emit(MapSnapshot.cellCenter(cell), dmg, popupColor(r), scene)
-            case ViewAction.Explode(x, y)  => ExplosionFx.emitAtCell({x = x, y = y}, scene)
+                DamagePopupFx.emit(MapSnapshot.cellCenter(cell), dmg, popupColor(r))
+            case ViewAction.Explode(x, y)  => ExplosionFx.emitAtCell({x = x, y = y})
             case ViewAction.FireBurst(cx, cy, tx, ty) =>
-                FireShotFx.emitAtCells({x = cx, y = cy}, {x = tx, y = ty}, scene)
+                FireShotFx.emitAtCells({x = cx, y = cy}, {x = tx, y = ty})
             // HP バーは World.hp store から直描き＝リプレイでも押し込み不要（SetHp が既に反映済み）。
-            case ViewAction.HpBar(_r, _hp) => scene
-            case ViewAction.Snap(r, x, y)  => snapRefTo(r, {x = x, y = y}, scene)
-            case ViewAction.Death(r)       => deathAnim(r, scene)
+            case ViewAction.HpBar(_r, _hp) => ()
+            case ViewAction.Snap(r, x, y)  => snapRefTo(r, {x = x, y = y})
+            case ViewAction.Death(r)       => deathAnim(r)
         }
 
     /// ダメージポップアップ色（被弾側の faction）。enemy=白 / player=赤（legacy `damageTo*Color`）。
@@ -95,17 +96,15 @@ mod ViewReplay {
     }
 
     /// ノックバック着地（faction で snapTo を振り分け）。
-    def snapRefTo(ref: EntityRef, cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ World.Command = match ref {
-        case EntityRef.Enemy(i)  => EnemyScene.snapTo(i, cell, scene)
-        case EntityRef.Player(i) => PlayerScene.snapTo(i, cell, scene)
+    def snapRefTo(ref: EntityRef, cell: {x = Int32, y = Int32}): Unit \ World.Command = match ref {
+        case EntityRef.Enemy(i)  => EnemyScene.snapTo(i, cell)
+        case EntityRef.Player(i) => PlayerScene.snapTo(i, cell)
     }
 
     /// 死亡演出。enemy は death_blink。player 死亡は game-over 経路（`CombatDriver` が ViewFx(Died(player)) を
     /// filter して `GameOverRequest` を引く）が担うので純 view 層では no-op。
-    def deathAnim(ref: EntityRef, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, World.Command} = match ref {
-        case EntityRef.Enemy(i)  => EnemyScene.startDeathAnimation(i, scene)
-        case EntityRef.Player(_) => scene
+    def deathAnim(ref: EntityRef): Unit \ World.Command = match ref {
+        case EntityRef.Enemy(i)  => EnemyScene.startDeathAnimation(i)
+        case EntityRef.Player(_) => ()
     }
 }

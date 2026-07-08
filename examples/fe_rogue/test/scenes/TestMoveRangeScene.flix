@@ -1,11 +1,11 @@
 /// MoveRangeScene の移動範囲が **ターン開始位置（origin）に固定**されることを検証する。
 ///
 /// 無限移動バグの回帰テスト: ユニットを動かしてからメニューをキャンセルすると
-/// `refresh`（= removeAt + add + buildFor）が走るが、範囲は現在位置でなく `MovedFrom`
+/// `refresh`（= clear + add + buildFor）が走るが、範囲は現在位置でなく `MovedFrom`
 /// ドラフトの開始位置を原点に再構築されなければならない（現在位置基準だと無限移動になる）。
 ///
-/// - 結線テスト(A): 実シーン（床マップ + 移動後の主人公 + MovedFrom ドラフト）で `refresh` を
-///   実行し、`isInRange` が origin 基準か（current 基準でないか）を区別できるセルで pin する。
+/// - 結線テスト(A): World に floor 盤面 + 移動後の主人公 + MovedFrom ドラフトを仕込んで `refresh`
+///   を実行し、`isInRange` が origin 基準か（current 基準でないか）を区別できるセルで pin する。
 /// - 純粋テスト(B): origin 選択ロジック `chooseMoveOrigin` の分岐。`originOf` 自体は
 ///   `TestMoveDraft` で網羅済みなので、ここは「移動後でも MovedFrom を返す」核と fallback だけ。
 mod TestMoveRangeScene {
@@ -17,43 +17,13 @@ mod TestMoveRangeScene {
     def cell(x: Int32, y: Int32): {x = Int32, y = Int32} = {x = x, y = y}
     def cellT(c: {x = Int32, y = Int32}): (Int32, Int32) = (c#x, c#y)
 
-    /// 壁なし 13×13 床マップの TileMapLayer。collisionCells=Nil・gridSize=13×13 なので
-    /// `getUsedRect` が (0,0)..(12,12) を返し、その範囲の全セルが床（walkable）になる。
-    def floorMapLayer(): TileMapLayer =
-        let atlas: TileSetAtlasSource = {
-            textureName = "test", texWidth = 0.0, texHeight = 0.0,
-            tileSize = 16.0, marginX = 0.0, marginY = 0.0, spacingX = 0.0, spacingY = 0.0
-        };
-        TileMapLayer.make({
-            tileSet        = TileSet.make(atlas),
-            tiles          = Nil,
-            collisionCells = Nil,
-            gridSize       = ({x = 13, y = 13}: {x = Int32, y = Int32})
-        })
-
-    def floorMapData(): MapScene.Data = {
-        anchorOffset = cell(0, 0),
-        spawnGrid    = cell(5, 5),
-        placements   = RoomLayout.singleRoom(13, 13),
-        roomCount    = 1,
-        plan         = ({modulePaths = Nil, sideConnections = Nil,
-                          roomCount = 1}: DungeonGenerator.Plan)
-    }
-
-    /// World + 床マップ（"DungeonLevel0"）+ 主人公(id=0, `curPos`) を持つ scene。
-    /// `curPos` は「移動後の現在位置」を表す。moveTiles=4 の素直な resource を使う（Fs 不要）。
-    def sceneWithMapAndPlayerAt(curPos: {x = Int32, y = Int32}): Scene[NodeTag] =
-        let sp = ({
-            id = 0, classId = "test_player", gridPos = curPos,
-            resource = TestUnitFixtures.testResource(4, 10),
-            weapons = Nil, staves = Nil, consumables = Nil, rings = Nil
-        }: PlayerScene.Spawn);
-        // addOnePlayer は World.Command を emit する。位置 World は検証外なので discharge で剥がす。
-        TestUnitFixtures.dischargeWorldCommand(() -> Scene.empty()
-            |> MapScene.addWorldNode
-            |> Scene.addNode("DungeonLevel0",
-                EngineNode.TileMapLayerWithState(floorMapLayer(), NodeTag.Map(floorMapData())))
-            |> PlayerScene.addOnePlayer(sp))
+    /// 壁なし 13×13 床の盤面 + 主人公(id=0, `curPos`) を仕込んだ World。
+    /// `curPos` は「移動後の現在位置」を表す。moveTiles=4 の素直な spec を使う（unitSpec 既定＝Fs 不要）。
+    def worldWithPlayerAt(curPos: {x = Int32, y = Int32}): World =
+        TestWorldFixtures.worldOf(List.flatten(
+            TestWorldFixtures.boardCmds({w = 13, h = 13}, None)
+                :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, curPos))
+                :: Nil))
 
     // ════════════════════════════════════════════════════════
     // (A) 結線テスト — refresh は origin 基準で範囲を組む（無限移動の回帰ピン）
@@ -67,22 +37,19 @@ mod TestMoveRangeScene {
     @Test
     def testRefreshAnchorsRangeToOriginNotCurrentPos(): Unit \ Assert =
         region rc {
-            let scene = sceneWithMapAndPlayerAt(cell(7, 5));
+            let world = worldWithPlayerAt(cell(7, 5));
             let sel = ({id = Some(0),
                         drafts = MoveDraft.DraftAction.MovedFrom(0, cell(5, 5)) :: Nil,
                         gatherActive = false}: SelectedPlayer.Selection);
-            // 範囲は resource 権威。refresh が書き、isInRange が読むので同一 resource を共有する。
-            // 盤面/位置は World 読み（空 World → scene fallback で従来どおり）。
-            run {
-                let after = TestUnitFixtures.withSelectionRef(rc, sel, () ->
-                    MoveRangeScene.refresh(scene));
+            TestUnitFixtures.withRangeOverlay(rc, () ->
+            TestUnitFixtures.withSelectionRef(rc, sel, () ->
+            TestUnitFixtures.withWorldQuery(world, () -> {
+                MoveRangeScene.refresh();
                 Assert.assertEq(
                     expected = (true, false),
-                    (MoveRangeScene.isInRange(cell(1, 5), after),
-                     MoveRangeScene.isInRange(cell(11, 5), after)))
-            }
-                with RangeOverlayState.withState(rc)
-                with handler World.WorldQuery { def get(k) = k(World.empty()) }
+                    (MoveRangeScene.isInRange(cell(1, 5)),
+                     MoveRangeScene.isInRange(cell(11, 5))))
+            })))
         }
 
     // ════════════════════════════════════════════════════════

@@ -10,18 +10,12 @@
 ///     象徴する塗りシルエット。スプライトではなく engine の Polygon2D / Arc2D で直接描く
 ///     （`WeaponGlyph` が系統 → 凸ピース列へ写像）。ビットマップと違いどの zoom でも輪郭がくっきり出る。
 ///   - 武器だけだと盤面に埋もれて見えづらいので、濃紺のプレート背景を明るい枠で囲って浮かせる。
-///   - スポーン時に `attach` で生やし、装備変更時は `refresh` で貼り直す（武器系統が変われば
-///     見た目も変わる）。毎フレーム reconcile・新規 NodeTag・Game.flix dispatch は不要で、更新は
-///     武器切り替えの単一 commit 点 `PlayerScene.equipWeapon` から `refresh` を呼ぶイベント駆動。
-///   - 武器なし（素手）ユニットでは子ノードを生やさない（非表示）。
-///   - 待機/行動済みのときは `setModulate` で親 Marker2D の modulate を落とす。engine は祖先
-///     modulate を乗算伝播するため枠・背景・アイコンごと暗転する（HPBar の暗転と同位相で呼ぶ）。
+///   - 武器なし（素手）ユニットでは描かない（weaponView が内側 None）。
+///   - 待機/行動済みの暗転は World の unitModulate store を乗算合成して再現する
+///     （本体 sprite / HPBar の暗転と同じ単一真実源）。
 mod WeaponIconRender {
 
-    // ─── 子ノード名・表示パラメータ ───────────────────────────
-    /// 親ユニット直下の固定の子ノード名（= 囲みの親 Marker2D）。`setModulate` のパス解決にも使う。
-    pub def childName(): String = "WeaponIcon"
-
+    // ─── 表示パラメータ ───────────────────────────
     /// キャラ中心（スプライトは centered）から、囲みの中心までのオフセット（px・左上）。要微調整。
     def iconOffset(): Vec2.Vec2 = {x = -9.0, y = -5.0}
 
@@ -46,34 +40,38 @@ mod WeaponIconRender {
     // ─── 公開 API（直描き） ────────────────────────────
 
     /// 対象ユニット列（味方＋敵）を「アイコン中心 world 座標・武器系統・暗転」の描画入力に畳む。
-    /// 素手（weaponView 内側 None）は描かない。退場（hidden）ユニットも描かない。
-    def iconInputs(world: World, scene: Scene[NodeTag]):
+    /// 在籍・位置とも World 由来（scene を読まない）。位置は `World.visualPosOf`
+    /// （静止=セル中心／移動=renderPos 補間／lunge=往復導出＝本体 sprite と同じ追従）。
+    /// 素手（weaponView 内側 None）は描かない。退場（hidden）ユニット・フォグで隠れた敵
+    /// （`holesOpt` の lit ゲート）も描かない。
+    def iconInputs(world: World, holesOpt: Option[List[GridRect]]):
             List[{center = Vec2.Vec2, weaponType = WeaponCatalog.WeaponType, modColor = Color}] =
-        let ofUnit = (ref, unitPath, modColor) ->
-            match (World.posOf(ref, world), Scene.getEngineNode(unitPath, scene),
-                   World.weaponViewOf(ref, world)) {
-                case (Some(_), Some(_), Some(wv)) =>
-                    let markerG = Scene.globalPositionAt(unitPath, scene);
-                    let center: Vec2.Vec2 = {x = markerG#x + iconOffset()#x, y = markerG#y + iconOffset()#y};
+        let ofUnit = (ref, modColor) ->
+            match (World.visualPosOf(ref, world), World.weaponViewOf(ref, world)) {
+                case (Some(unitPos), Some(wv)) =>
+                    let center: Vec2.Vec2 = {x = unitPos#x + iconOffset()#x, y = unitPos#y + iconOffset()#y};
                     ({center = center, weaponType = wv#weaponType, modColor = modColor}) :: Nil
                 case _ => Nil
             };
         // 暗転は World.unitModulate store（本体/バー/アイコン共通の単一真実源）。
-        let players = PlayerScene.getAll(scene)
-            |> List.filter(d -> not d#hidden)
-            |> List.flatMap(d -> ofUnit(World.EntityRef.Player(d#id), PlayerScene.playerPath(d#id),
-                World.modulateOf(World.EntityRef.Player(d#id), world)));
-        // フォグで隠れた敵は描かない（applyFog が marker を隠す＝isVisible が真実源）。
-        let enemies = EnemyScene.getAll(scene)
-            |> List.filter(d -> EnemyScene.isVisible(d#id, scene))
-            |> List.flatMap(d -> ofUnit(World.EntityRef.Enemy(d#id), EnemyScene.enemyPath(d#id),
-                World.modulateOf(World.EntityRef.Enemy(d#id), world)));
+        let players = World.playerIdsOf(world)
+            |> List.filter(id -> not World.playerHiddenOf(World.EntityRef.Player(id), world))
+            |> List.flatMap(id -> ofUnit(World.EntityRef.Player(id),
+                World.modulateOf(World.EntityRef.Player(id), world)));
+        // フォグで隠れた敵は描かない（明るい穴の lit ゲート＝本体 sprite と同じ判定）。
+        let enemies = World.enemyIdsOf(world)
+            |> List.filter(id -> holesOpt
+                |> Option.map(holes -> EnemyScene.isLitIn(id, holes, world))
+                |> Option.getWithDefault(false))
+            |> List.flatMap(id -> ofUnit(World.EntityRef.Enemy(id),
+                World.modulateOf(World.EntityRef.Enemy(id), world)));
         List.append(players, enemies)
 
     /// 囲い（枠＋プレート背景）の Drawable 列（drawables チャンネル）。
-    pub def renderPlates(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
+    pub def renderPlates(world: World, holesOpt: Option[List[GridRect]],
+                          transform: Camera2D.ViewTransform):
             List[GameEngine.Drawable] \ GameEngine.Game =
-        iconInputs(world, scene) |> List.flatMap(inp -> {
+        iconInputs(world, holesOpt) |> List.flatMap(inp -> {
             let half = boxSize() / 2.0;
             let inner = boxSize() - 2.0 * borderPx();
             let modColor = inp#modColor;
@@ -92,9 +90,10 @@ mod WeaponIconRender {
     /// 武器系統グリフの PolygonRenderCmd 列（polygon チャンネル）。
     /// WeaponGlyph の各ピース（Polygon2D/Arc2D 値・アイコン中心基準のローカル位置）を
     /// world 座標へ動かして cmd 化する。暗転は cmd color への乗算で再現。
-    pub def renderGlyphs(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
+    pub def renderGlyphs(world: World, holesOpt: Option[List[GridRect]],
+                          transform: Camera2D.ViewTransform):
             List[GameEngine.PolygonRenderCmd] =
-        iconInputs(world, scene) |> List.flatMap(inp -> {
+        iconInputs(world, holesOpt) |> List.flatMap(inp -> {
             let modColor = inp#modColor;
             WeaponGlyph.weaponGlyph(inp#weaponType) |> List.flatMap(ne -> {
                 let (_, node) = ne;
@@ -103,7 +102,7 @@ mod WeaponIconRender {
         })
 
     /// グリフ 1 ピース（Polygon2D/Arc2D の EngineNode 値）→ PolygonRenderCmd 列。
-    def pieceCmds(node: EngineNode[NodeTag], center: Vec2.Vec2, modColor: Color,
+    def pieceCmds(node: EngineNode[Unit], center: Vec2.Vec2, modColor: Color,
                    transform: Camera2D.ViewTransform): List[GameEngine.PolygonRenderCmd] =
         let withMod = (cmd: GameEngine.PolygonRenderCmd) ->
             ({color = mulColor(cmd#color, modColor), zIndex = iconZIndex() + 2 | cmd}: GameEngine.PolygonRenderCmd);
@@ -123,7 +122,7 @@ mod WeaponIconRender {
     def rectDrawables(rect: ColorRect, worldTopLeft: Vec2.Vec2, z: Int32,
                        transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
         let screenPos = Camera2D.applyToWorldPos(transform, worldTopLeft);
-        GameEngine.Renderable.toDrawables(EngineNode.ColorRectWithState(rect, NodeTag.NoTag), screenPos)
+        GameEngine.Renderable.toDrawables(EngineNode.ColorRectWithState(rect, ()), screenPos)
             |> Render.applyCameraScale(transform)
             |> List.map(d -> {zIndex = z | d})
 

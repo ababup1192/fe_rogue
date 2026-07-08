@@ -7,7 +7,7 @@
 // 起動直後（GamePhase.CharacterSelect）に表示する画面。プレイヤーは横スクロールする「しおり」状の
 // カード列から出撃メンバーを 3 人選び、そのあとリーダー（集合したときに仲間が合流する先＝ロード）を
 // 1 人選ぶ。選び終えると `PartySelection.State` にリーダーを先頭にした並びで保存し、GamePhase を
-// Playing に切り替える。ダンジョン構築（`SceneSetup.buildPlaying`）は Playing 突入時に走り、
+// Playing に切り替える。ダンジョン構築（`WorldSetup.buildPlaying`）は Playing 突入時に走り、
 // `PlayerScene.add` が保存済みの並びをそのまま使う（先頭がロードになる）。
 //
 // 操作（キーボード）:
@@ -288,22 +288,20 @@ mod CharacterSelectUi {
     // ========================================================================
 
     /// 出撃メンバー選択画面へ入るたびに呼ぶ。候補一覧から初期状態を put し、root を可視化して
-    /// 1 度見た目を流し込む（次フレームからは `frameStep` が更新する）。`SceneSetup.buildCharacterSelect`
-    /// から呼ばれ、scene はパイプ素通し。
-    pub def enter(playersWithIds: List[(String, UnitCatalog.PlayerResource)], scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, CharacterSelectState.State, UiWorldState.State} =
+    /// 1 度見た目を流し込む（次フレームからは `frameStep` が更新する）。`WorldSetup.buildCharacterSelect`
+    /// から呼ばれる。
+    pub def enter(playersWithIds: List[(String, UnitCatalog.PlayerResource)]):
+            Unit \ {GameEngine.Game, CharacterSelectState.State, UiWorldState.State} =
         let data = initialState(playersWithIds);
         CharacterSelectState.State.put(data);
         let atlas = GameEngine.Game.getFontAtlas(fontName());
         UiWorldState.State.put(UiWorldState.State.get()
             |> UiStore.setVisible(rootPath(), true)
-            |> writeVisuals(data, atlas));
-        scene
+            |> writeVisuals(data, atlas))
 
-    /// ダンジョン / タイトル画面へ出るときに選択画面を隠す。scene はパイプ素通し。
-    pub def leave(scene: Scene[NodeTag]): Scene[NodeTag] \ UiWorldState.State =
-        UiWorldState.State.put(UiStore.setVisible(rootPath(), false, UiWorldState.State.get()));
-        scene
+    /// ダンジョン / タイトル画面へ出るときに選択画面を隠す。
+    pub def leave(): Unit \ UiWorldState.State =
+        UiWorldState.State.put(UiStore.setVisible(rootPath(), false, UiWorldState.State.get()))
 
     // ========================================================================
     // 毎フレーム同期（カルーセルの時間発展 + 状態からの描画）
@@ -311,16 +309,15 @@ mod CharacterSelectUi {
 
     /// gameLoop が 1 回呼ぶ frame-paced System。root が可視（選択画面中）のときだけ、カルーセルを
     /// 目標へ寄せ、状態からカード・カウンタ・ボタン・説明を作り直して状態を書き戻す。可視でなければ no-op。
-    pub def frameStep(delta: Duration.Duration, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Game, CharacterSelectState.State, UiWorldState.State} =
+    pub def frameStep(delta: Duration.Duration):
+            Unit \ {GameEngine.Game, CharacterSelectState.State, UiWorldState.State} =
         let ui0 = UiWorldState.State.get();
-        if (not isActive(ui0)) scene
+        if (not isActive(ui0)) ()
         else {
             let stepped = stepCarousel(CharacterSelectState.State.get(), delta);
             CharacterSelectState.State.put(stepped);
             let atlas = GameEngine.Game.getFontAtlas(fontName());
-            UiWorldState.State.put(writeVisuals(stepped, atlas, ui0));
-            scene
+            UiWorldState.State.put(writeVisuals(stepped, atlas, ui0))
         }
 
     /// root が可視（選択画面中）か。未 spawn / 不可視なら no-op ゲート。
@@ -488,56 +485,53 @@ mod CharacterSelectUi {
     // ========================================================================
 
     /// 1 押下ごとの操作。サブモードで分岐する（見た目は次フレームの frameStep が更新する）。
-    pub def onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Audio, GamePhaseState, PartySelection.State,
-                              CharacterSelectState.State} =
+    pub def onKeyPressed(key: GameEngine.Key):
+            Unit \ {GameEngine.Audio, GamePhaseState, PartySelection.State,
+                    CharacterSelectState.State} =
         let data = CharacterSelectState.State.get();
         match data#mode {
-            case SubMode.PickingMembers => handleMembersKey(key, data, scene)
-            case SubMode.PickingLeader  => handleLeaderKey(key, data, scene)
+            case SubMode.PickingMembers => handleMembersKey(key, data)
+            case SubMode.PickingLeader  => handleLeaderKey(key, data)
         }
 
     /// メンバー選び中のキー処理。
-    def handleMembersKey(key: GameEngine.Key, data: Data, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Audio, CharacterSelectState.State} =
-        if (isLeft(key))      { AudioStreamPlayer.play("cursor"); mapData(moveFocus(-1), scene) }
-        else if (isRight(key)) { AudioStreamPlayer.play("cursor"); mapData(moveFocus(1), scene) }
-        else if (isDown(key))  { AudioStreamPlayer.play("cursor"); mapData(moveToButton(true), scene) }
-        else if (isUp(key))    { AudioStreamPlayer.play("cursor"); mapData(moveToButton(false), scene) }
+    def handleMembersKey(key: GameEngine.Key, data: Data):
+            Unit \ {GameEngine.Audio, CharacterSelectState.State} =
+        if (isLeft(key))      { AudioStreamPlayer.play("cursor"); mapData(moveFocus(-1)) }
+        else if (isRight(key)) { AudioStreamPlayer.play("cursor"); mapData(moveFocus(1)) }
+        else if (isDown(key))  { AudioStreamPlayer.play("cursor"); mapData(moveToButton(true)) }
+        else if (isUp(key))    { AudioStreamPlayer.play("cursor"); mapData(moveToButton(false)) }
         else if (isConfirm(key))
             if (data#onButton and canDeploy(data)) {
                 AudioStreamPlayer.play("confirm");
-                mapData(beginLeaderPick, scene)
+                mapData(beginLeaderPick)
             } else {
                 AudioStreamPlayer.play("confirm");
-                mapData(toggleSelect, scene)
+                mapData(toggleSelect)
             }
-        else scene
+        else ()
 
     /// リーダー選び中のキー処理。確定で出撃パーティを保存して Playing へ進む。
-    def handleLeaderKey(key: GameEngine.Key, _data: Data, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Audio, GamePhaseState, PartySelection.State,
-                              CharacterSelectState.State} =
-        if (isLeft(key))      { AudioStreamPlayer.play("cursor"); mapData(moveLeaderFocus(-1), scene) }
-        else if (isRight(key)) { AudioStreamPlayer.play("cursor"); mapData(moveLeaderFocus(1), scene) }
-        else if (isConfirm(key)) { AudioStreamPlayer.play("confirm"); commitLeader(scene) }
-        else if (isCancel(key))  { AudioStreamPlayer.play("cancel"); mapData(backToMembers, scene) }
-        else scene
+    def handleLeaderKey(key: GameEngine.Key, _data: Data):
+            Unit \ {GameEngine.Audio, GamePhaseState, PartySelection.State,
+                    CharacterSelectState.State} =
+        if (isLeft(key))      { AudioStreamPlayer.play("cursor"); mapData(moveLeaderFocus(-1)) }
+        else if (isRight(key)) { AudioStreamPlayer.play("cursor"); mapData(moveLeaderFocus(1)) }
+        else if (isConfirm(key)) { AudioStreamPlayer.play("confirm"); commitLeader() }
+        else if (isCancel(key))  { AudioStreamPlayer.play("cancel"); mapData(backToMembers) }
+        else ()
 
     /// 出撃パーティを「リーダー先頭」で `PartySelection` に保存し、GamePhase を Playing へ。
     /// 次フレームの差分検出で `applyPhaseChange(Playing)` が走り、その並びでダンジョンが組まれる。
-    def commitLeader(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GamePhaseState, PartySelection.State, CharacterSelectState.State} =
+    def commitLeader():
+            Unit \ {GamePhaseState, PartySelection.State, CharacterSelectState.State} =
         let data = CharacterSelectState.State.get();
         PartySelection.State.put(orderedParty(data));
-        GamePhaseState.put(GamePhase.Playing);
-        scene
+        GamePhaseState.put(GamePhase.Playing)
 
-    /// 状態を `f` で更新して書き戻す。scene は素通し（view 更新は次フレームの `frameStep` が担う）。
-    def mapData(f: Data -> Data, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ CharacterSelectState.State =
-        CharacterSelectState.State.put(f(CharacterSelectState.State.get()));
-        scene
+    /// 状態を `f` で更新して書き戻す（view 更新は次フレームの `frameStep` が担う）。
+    def mapData(f: Data -> Data): Unit \ CharacterSelectState.State =
+        CharacterSelectState.State.put(f(CharacterSelectState.State.get()))
 
     // WASD と矢印キーの両方を受け付ける（キーボード配置の違いを吸収するため）。
 

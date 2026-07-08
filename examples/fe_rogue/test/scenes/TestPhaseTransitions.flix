@@ -1,11 +1,12 @@
 /// PhaseTransitions の `enter*` 関数群が「フェーズ遷移時の overlay と cursor の状態」
-/// を仕様どおりに整えるかを観測する。
+/// を仕様どおりに整えるかを観測する。`enter*` は scene 引数を取らない Unit 関数で、
+/// 範囲は `RangeOverlayState.State`、カーソル可視は `CursorState.State` が権威。
 ///
 /// 検証の枠組み:
-///   - 4 種の range ノード (MoveRange / MoveAttackRange / PlayerAttackRange / EnemyRange)
-///     と Cursor を **すべて** scene に手で挿入してから `enter*` を呼び、
-///     どれが残ってどれが消えたか、cursor が visible か、TurnPhase が何になったかを
-///     1 タプルで一気に観測する。
+///   - 4 種の range (MoveRange / MoveAttackRange / PlayerAttackRange / EnemyRange)
+///     と Cursor を **すべて** `RangeOverlayState.State.put` / `CursorState.setVisible` で
+///     仕込んでから `enter*` を呼び、どれが残ってどれが消えたか、cursor が visible か、
+///     TurnPhase が何になったかを 1 タプルで一気に観測する。
 ///   - 範囲計算（Board / WeaponRange）の正しさは別テスト（TestBoard / TestWeapon）が
 ///     担うので、ここでは「`enter*` がどの操作を呼んだか」だけを観測する。
 ///   - `enterPlayerCursorAt` は既存の `TestCursorScene.testEnterPlayerCursorAtBypassesPartyQuery`
@@ -67,16 +68,17 @@ mod TestPhaseTransitions {
         region rc {
             let result = TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
-                    TestUnitFixtures.withMockPartyQuery(Scene.empty(), () ->
+                    TestUnitFixtures.withMockPartyQuery(Nil, () ->
                         // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
                         run {
                             seedAllRangesAndCursor();
-                            let _ = PhaseTransitions.enterPlayerCursor(Scene.empty());
+                            PhaseTransitions.enterPlayerCursor();
                             observe()
                         } with TurnPhase.withState(rc)
                           with SelectedPlayer.withState(rc)
                           with CursorState.withState(rc)
                           with RangeOverlayState.withState(rc)
+                          with handler World.WorldQuery { def get(k) = k(World.empty()) }
                           with handler World.Command { def emit(_c, k) = k() })));
             Assert.assertEq(
                 expected = (false, false, false, true, true, TurnPhase.Phase.PlayerCursor),
@@ -98,7 +100,7 @@ mod TestPhaseTransitions {
         region rc {
             let result = run {
                 seedAllRangesAndCursor();
-                let _ = PhaseTransitions.enterPlayerMoving(Scene.empty());
+                PhaseTransitions.enterPlayerMoving();
                 observe()
             } with TurnPhase.withState(rc)
               with SelectedPlayer.withState(rc)
@@ -126,11 +128,11 @@ mod TestPhaseTransitions {
         region rc {
             let result = TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
-                    TestUnitFixtures.withMockPartyQuery(Scene.empty(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                    TestUnitFixtures.withMockPartyQuery(Nil, () ->
+                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
                             run {
                                 seedAllRangesAndCursor();
-                                let _ = PhaseTransitions.enterPlayerAttack(Scene.empty());
+                                PhaseTransitions.enterPlayerAttack();
                                 observe()
                             } with TurnPhase.withState(rc)
                               with SelectedPlayer.withState(rc)
@@ -157,7 +159,7 @@ mod TestPhaseTransitions {
         region rc {
             let result = run {
                 seedAllRangesAndCursor();
-                let _ = PhaseTransitions.enterGatherMove(Scene.empty());
+                PhaseTransitions.enterGatherMove();
                 observe()
             } with TurnPhase.withState(rc)
               with SelectedPlayer.withState(rc)
@@ -177,7 +179,7 @@ mod TestPhaseTransitions {
     ///   - Move / MoveAttack / PlayerAttackRange の 3 味方 range が全消去
     ///   - EnemyRange は触らない
     ///   - Cursor の visible 状態は触らない (前 phase の値を引き継ぐ。
-    ///     初期 Marker2D.make は default visible なので true)
+    ///     `seedAllRangesAndCursor` が明示的に true にしているのでここでも true のまま)
     ///   - TurnPhase は EnemyTurn
     @Test
     def testEnterEnemyTurnClearsAllPlayerRanges(): Unit \ Assert =
@@ -185,12 +187,13 @@ mod TestPhaseTransitions {
             // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
             let result = run {
                 seedAllRangesAndCursor();
-                let _ = PhaseTransitions.enterEnemyTurn(Scene.empty());
+                PhaseTransitions.enterEnemyTurn();
                 observe()
             } with TurnPhase.withState(rc)
               with CursorState.withState(rc)
               with RangeOverlayState.withState(rc)
-              with handler World.Command { def emit(_c, k) = k() };
+              with handler World.Command { def emit(_c, k) = k() }
+              with handler World.WorldQuery { def get(k) = k(World.empty()) };
             Assert.assertEq(
                 expected = (false, false, false, true, true, TurnPhase.Phase.EnemyTurn),
                 result)

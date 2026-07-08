@@ -2,13 +2,13 @@
 ///
 /// 武器・指輪・杖・消費アイテム・敵特殊行動の「特殊効果」を、戦闘コードへの
 /// ベタ書き match ではなくデータ（JSON）として宣言し、interpreter が解釈する設計の中核。
-/// このモジュールは Scene[NodeTag] / effect / Java 呼び出しに依存しない純粋ロジックだけを置く:
+/// このモジュールは World / effect / Java 呼び出しに依存しない純粋ロジックだけを置く:
 ///   - 効果量の解決      `resolveAmount` / `baseFor`
 ///   - 述語（ガード条件） `evalPredicate` / `evalAtom`
 ///   - 数値レンジ検証      `validateChance` / `validateMul` / `validateTurns` / ...
 ///                       （= 構文的には通るが何もしない「論理死」効果を弾く）
 ///
-/// Scene 副作用（HP 書き換え・状態付与・演出）は別レイヤ（runPlan）が担い、
+/// 実際の副作用（HP 書き換え・状態付与・演出）は別レイヤ（runPlan）が担い、
 /// ここは数値・真偽だけで完結するためテストが純粋値で書ける。
 mod EffectDsl {
 

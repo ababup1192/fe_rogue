@@ -10,8 +10,8 @@
 //
 // 確定:
 //   - 「はじめから」   → GamePhase.CharacterSelect（出撃メンバー選択へ）
-//   - 「中断から再開」 → CustomEffects.ResumeRequest.resume（resumable のときだけ。実 scene 構築は
-//     Game.applyPhaseChange(Playing, from = Title) が担う）
+//   - 「中断から再開」 → CustomEffects.ResumeRequest.resume（resumable のときだけ。復元後の
+//     World 再構築は Game.applyPhaseChange(Playing, from = Title) が担う）
 //
 // ノード構造（TitleMenu.ui.json / layer=6・独立画面）:
 //   TitleMenu (none, 画面全体)
@@ -76,18 +76,15 @@ mod TitleMenuUi {
     // ========================================================================
 
     /// タイトル画面へ入るたびに呼ぶ。中断データを 1 回読んで再開可否を確定し、カーソルを先頭へ
-    /// 戻して root を可視化する。`SceneSetup.buildTitle` から呼ばれ、scene はパイプ素通し。
-    pub def enter(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Fs.FileRead, TitleMenuState.State, UiWorldState.State} =
+    /// 戻して root を可視化する。`WorldSetup.buildTitle` から呼ばれる。
+    pub def enter(): Unit \ {Fs.FileRead, TitleMenuState.State, UiWorldState.State} =
         let saved: Option[SuspendSave.Save] = SaveManager.read(SuspendSave.slot());
         TitleMenuState.State.put({cursor = 0, resumable = Option.nonEmpty(SuspendSave.resumable(saved))});
-        UiWorldState.State.put(UiStore.setVisible(rootPath(), true, UiWorldState.State.get()));
-        scene
+        UiWorldState.State.put(UiStore.setVisible(rootPath(), true, UiWorldState.State.get()))
 
-    /// ダンジョン / 選択画面へ出るときにタイトルを隠す。scene はパイプ素通し。
-    pub def leave(scene: Scene[NodeTag]): Scene[NodeTag] \ UiWorldState.State =
-        UiWorldState.State.put(UiStore.setVisible(rootPath(), false, UiWorldState.State.get()));
-        scene
+    /// ダンジョン / 選択画面へ出るときにタイトルを隠す。
+    pub def leave(): Unit \ UiWorldState.State =
+        UiWorldState.State.put(UiStore.setVisible(rootPath(), false, UiWorldState.State.get()))
 
     // ========================================================================
     // 毎フレーム同期（選択ハイライト + disabled 淡色）
@@ -95,10 +92,9 @@ mod TitleMenuUi {
 
     /// gameLoop が 1 回呼ぶ frame-paced System。root が可視（タイトル画面中）のときだけ、選択行を
     /// 塗り箱ハイライトで示し、再開不可なら「中断から再開」を淡色にする。可視でなければ no-op。
-    pub def frameStep(_dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
-            \ {TitleMenuState.State, UiWorldState.State} =
+    pub def frameStep(_dt: Duration.Duration): Unit \ {TitleMenuState.State, UiWorldState.State} =
         let ui0 = UiWorldState.State.get();
-        if (not isActive(ui0)) scene
+        if (not isActive(ui0)) ()
         else {
             let data = TitleMenuState.State.get();
             // 再開不可のときはカーソルが「中断から再開」に乗らないよう先頭へ寄せる。
@@ -108,8 +104,7 @@ mod TitleMenuUi {
             UiWorldState.State.put(ui0
                 |> UiMenu.applyItemTints(menuPath(), tintOf)
                 |> UiMenu.applyHighlight({listPath = menuPath(), highlightPath = highlightPath(),
-                                          sel = sel, rowPitch = rowPitch(), inset = highlightInset()}));
-            scene
+                                          sel = sel, rowPitch = rowPitch(), inset = highlightInset()}))
         }
 
     /// root が可視（タイトル画面中）か。未 spawn / 不可視なら no-op ゲート。
@@ -123,32 +118,29 @@ mod TitleMenuUi {
     // ========================================================================
 
     /// 1 押下ごとの操作。↑↓ でカーソル反転（再開可能なときだけ）、Z/Space/Enter で確定。
-    pub def onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameEngine.Audio, GamePhaseState, CustomEffects.ResumeRequest,
-                              TitleMenuState.State} =
+    pub def onKeyPressed(key: GameEngine.Key):
+            Unit \ {GameEngine.Audio, GamePhaseState, CustomEffects.ResumeRequest,
+                    TitleMenuState.State} =
         let data = TitleMenuState.State.get();
         if (isUp(key) or isDown(key)) {
             // 中断データが無い / 使用済みなら「はじめから」固定（カーソルを動かさない）。
             if (data#resumable) {
                 AudioStreamPlayer.play("cursor");
-                TitleMenuState.State.put(toggleCursor(data));
-                scene
-            } else scene
+                TitleMenuState.State.put(toggleCursor(data))
+            } else ()
         } else if (isConfirm(key))
             match confirmOutcome(data#cursor, data#resumable) {
                 case Confirm.StartNew =>
                     AudioStreamPlayer.play("confirm");
-                    GamePhaseState.put(GamePhase.CharacterSelect);
-                    scene
+                    GamePhaseState.put(GamePhase.CharacterSelect)
                 case Confirm.Resume =>
                     AudioStreamPlayer.play("confirm");
-                    CustomEffects.ResumeRequest.resume(scene)
+                    CustomEffects.ResumeRequest.resume()
                 case Confirm.Blocked =>
                     // 中断データが無い / 使用済みなら再開できない（カーソル固定で通常来ない）。
-                    AudioStreamPlayer.play("cancel");
-                    scene
+                    AudioStreamPlayer.play("cancel")
             }
-        else scene
+        else ()
 
     def isUp(key: GameEngine.Key): Bool =
         key == GameEngine.Key.Up or key == GameEngine.Key.W

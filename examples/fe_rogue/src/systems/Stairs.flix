@@ -5,19 +5,8 @@
 ///
 /// scene ノードは持たない。位置の権威は World.stairsPos（`Cmd.SetStairs`）、描画は
 /// `RenderWorld.renderStairs` が見た目定数（texture/scale/zIndex）から直描きする。
-/// `Data`/`getPos` は StaffCast の warp と golden fixture が
-/// 手組みノードで使うテスト seam。
+/// 位置の読みは `World.stairsPosOf` を使う。
 mod Stairs {
-
-    /// `gridPos`: 階段を置いたグリッド座標（placed = false のときは未使用）
-    /// `placed`: 階段が配置済みか。false の間は描画されず、`getPos` は None を返す
-    pub type alias Data = {
-        gridPos = {x = Int32, y = Int32},
-        placed  = Bool
-    }
-
-    def name(): String = "Stairs"
-    pub def stairsPath(): NodePath = name() :: Nil
 
     // ── 見た目定数（Sprite2D の texture/scale/zIndex） ──
     /// project.json の "textures" に登録された階段テクスチャ名。
@@ -35,12 +24,13 @@ mod Stairs {
     /// 階段が「通路にある」状態にならない。
     /// 候補が 1 つも無い極端なマップでは何もしない（階段は非表示のまま）。
     /// プレイヤー・敵・アイテム配置が済んだ後（= buildPlayingScene の末尾）に呼ぶ。
-    pub def placeRandom(scene: Scene[NodeTag]): Scene[NodeTag] \ {Math.Random, World.Command, World.WorldQuery} =
-        let placements = MapScene.getPlacements(scene);
-        let roomCount  = MapScene.getRoomCount(scene);
+    pub def placeRandom(): Unit \ {Math.Random, World.Command, World.WorldQuery} =
+        let world0     = World.WorldQuery.get();
+        let placements = World.placementsOf(world0);
+        let roomCount  = World.roomCountOf(world0);
         let occupied   = List.append(
-            PlayerScene.getAll(scene) |> List.map(d -> d#gridPos),
-            EnemyScene.getAll(scene)  |> List.map(d -> d#gridPos));
+            PlayerScene.getAll() |> List.map(d -> d#gridPos),
+            EnemyScene.getAll()  |> List.map(d -> d#gridPos));
         // anchor (idx=0) を除いた部屋だけを候補に（idx >= 1 かつ idx < roomCount = 部屋）
         let rooms = List.filter(p -> p#idx >= 1 and p#idx < roomCount, placements);
         let candidates = rooms
@@ -49,8 +39,8 @@ mod Stairs {
                 not isOccupied(cell, occupied)
                 and Option.isEmpty(World.groundItemAtOf(cell, World.WorldQuery.get())));
         match RandomUtil.pick(candidates) {
-            case Some(cell) => placeAt(cell, scene)
-            case None       => scene
+            case Some(cell) => placeAt(cell)
+            case None       => ()
         }
 
     def isOccupied(cell: {x = Int32, y = Int32},
@@ -59,18 +49,8 @@ mod Stairs {
 
     /// `target` セルに階段を配置する＝`Cmd.SetStairs(Some(cell))` を emit して World を更新する。
     /// scene ノードは書かない（描画は `RenderWorld.renderStairs` が World から直描き）。
-    /// scene はパイプ互換のためそのまま返す。
-    pub def placeAt(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        World.Command.emit(World.Cmd.SetStairs(Some(target)));
-        scene
-
-    /// placed = false（未配置）のときは座標として意味のある値を持たないため None を返す。
-    pub def getPos(scene: Scene[NodeTag]): Option[{x = Int32, y = Int32}] =
-        match Scene.getState(stairsPath(), scene) {
-            case Some(NodeTag.Stairs(data)) =>
-                if (data#placed) Some(data#gridPos) else None
-            case _ => None
-        }
+    pub def placeAt(target: {x = Int32, y = Int32}): Unit \ World.Command =
+        World.Command.emit(World.Cmd.SetStairs(Some(target)))
 
     // fog の lit ゲートは `RenderWorld.renderStairs` が直描き時に判定する。
 }

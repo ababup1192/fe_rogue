@@ -4,7 +4,7 @@
 /// 味方専用（`growthRates`）は `UnitCatalog`、敵専用（将来の特殊能力）は `EnemyCatalog` に置く。
 /// 依存方向は一方向: `UnitCatalog → UnitBase ← EnemyCatalog`（UnitBase は両者を知らない）。
 ///
-/// Scene[NodeTag] / effect には依存しない（spriteFrames の格子→px 解決のみ `GameEngine.Game` を使う）。
+/// effect には依存しない純粋データ型（spriteFrames の格子→px 解決のみ `GameEngine.Game` を使う）。
 mod UnitBase {
 
     use Sprite.SpriteResource

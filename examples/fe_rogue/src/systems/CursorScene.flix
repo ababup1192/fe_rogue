@@ -23,7 +23,7 @@
 ///     表現し、`CursorState.isSnagging` が true の間は方向入力を捨てる。
 ///   - 表示/非表示は `CursorState.visible` で切り替え、`renderCursor` がそれを読んで L字を出す/出さない。
 ///
-/// 入力ポーリング（`physicsProcess`）は engine の physicsProcess 巡回でなく gameLoop が明示 System として
+/// 入力ポーリング（`step`）は engine の physicsProcess 巡回でなく gameLoop が明示 System として
 /// 1 回呼ぶ（カーソルは scene ノードを持たないため）。
 mod CursorScene {
 
@@ -99,10 +99,10 @@ mod CursorScene {
     // ────────────────────────────────────────────────────────
 
     /// `CursorState` をパーティ先頭プレイヤー（id=0）のセルで初期化する。scene ノードは積まない
-    /// （視覚位置は resource の renderPos が権威で `RenderWorld.renderCursor` が直描き）。scene は素通し。
+    /// （視覚位置は resource の renderPos が権威で `RenderWorld.renderCursor` が直描き）。
     /// フロア構築時に呼ばれ、初期セル / renderPos を seed する。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ CursorState.State =
-        let initial = firstPlayerPos(scene);
+    pub def add(): Unit \ {CursorState.State, World.WorldQuery} =
+        let initial = firstPlayerPos();
         let pos = MapSnapshot.cellCenter(initial);
         CursorState.State.put({gridPos            = initial,
                                lastHoveredEnemyId = None,
@@ -111,14 +111,11 @@ mod CursorScene {
                                renderPos          = pos,
                                tweens             = Map.empty(),
                                snagRemaining      = 0.0,
-                               visible            = true});
-        scene
+                               visible            = true})
 
-    /// パーティ先頭プレイヤー（id=0）の grid 位置。`add` 初期化用。
-    /// `buildPlayingScene` で `sceneRef` 更新前に呼ばれるため、PartyQuery effect 経由ではなく
-    /// pipe で渡される scene を直接読む (PartyQuery handler は空の sceneRef を返す)。
-    def firstPlayerPos(scene: Scene[NodeTag]): {x = Int32, y = Int32} =
-        match PlayerScene.get(0, scene) {
+    /// パーティ先頭プレイヤー（id=0）の grid 位置。`add` 初期化用。World store から直接読む。
+    def firstPlayerPos(): {x = Int32, y = Int32} \ World.WorldQuery =
+        match PlayerScene.get(0) {
             case Some(d) => d#gridPos
             case None    => {x = 0, y = 0}
         }
@@ -133,69 +130,67 @@ mod CursorScene {
     ///   - `WeaponSelect`      → `stepWeaponSelectCycle` (フォーカス武器が届く敵を巡回)
     ///   - `PlayerAttack`      → `stepTargetCycle`  (射程内の敵リスト上をジャンプ)
     ///   - `TradeTargetSelect` → `stepTradeCellCycle` (緑マス間サイクル)
-    /// それ以外のフェーズ (`PlayerMoving` / `EnemyTurn` 等) では scene を返して no-op。
+    /// それ以外のフェーズ (`PlayerMoving` / `EnemyTurn` 等) では何もしない。
     /// 盤面（Map）の存在は前提とする（本番配線は `stepOnBoard` が Map 存在をゲートしてから呼ぶ。
     /// 単体テストは mock BoardQuery とともに直接呼ぶ fail-open な seam）。
-    pub def physicsProcess(_delta: Duration.Duration, scene: Scene[NodeTag]):
-                           Scene[NodeTag]
-                           \ {GameEngine.Game, BoardQuery,
-                               GameLogger.GameLogger,
-                               EnemyData.RosterQuery, TurnPhase.State,
-                               SelectedPlayer.State, CursorState.State, World.WorldQuery,
-                               UiWorldState.State, RangeOverlayState.State} =
+    pub def step(_delta: Duration.Duration):
+                Unit
+                \ {GameEngine.Game, BoardQuery,
+                    GameLogger.GameLogger,
+                    EnemyData.RosterQuery, TurnPhase.State,
+                    SelectedPlayer.State, CursorState.State, World.WorldQuery,
+                    UiWorldState.State, RangeOverlayState.State} =
         match TurnPhase.State.get() {
-            case TurnPhase.Phase.PlayerCursor       => stepFreeMovement(scene)
-            case TurnPhase.Phase.WeaponSelect       => stepWeaponSelectCycle(scene)
-            case TurnPhase.Phase.PlayerAttack       => stepTargetCycle(scene)
-            case TurnPhase.Phase.TradeTargetSelect  => stepTradeCellCycle(scene)
-            case _                                  => scene
+            case TurnPhase.Phase.PlayerCursor       => stepFreeMovement()
+            case TurnPhase.Phase.WeaponSelect       => stepWeaponSelectCycle()
+            case TurnPhase.Phase.PlayerAttack       => stepTargetCycle()
+            case TurnPhase.Phase.TradeTargetSelect  => stepTradeCellCycle()
+            case _                                  => ()
         }
 
     /// gameLoop 用の入力 polling 入口。カーソルは盤面オーバーレイなので、盤面（Map）がある画面で
-    /// のみ `physicsProcess` を回す。盤面レス画面（Title / CharacterSelect 等）は TurnPhase が
-    /// `PlayerCursor` のままでも no-op — `stepFreeMovement` が `BoardQuery` 経由で TileMapLayer を
-    /// 読むため、Map 不在のまま進むと bug! する（Minimap.step と同じ Map 存在ゲート）。
-    pub def stepOnBoard(delta: Duration.Duration, scene: Scene[NodeTag]):
-                        Scene[NodeTag]
+    /// のみ `step` を回す。盤面レス画面（Title / CharacterSelect 等）は TurnPhase が
+    /// `PlayerCursor` のままでも no-op — `stepFreeMovement` が `BoardQuery` 経由で地形を
+    /// 読むため、盤面未 seed のまま進むと bug! する（Minimap.step と同じ存在ゲート）。
+    pub def stepOnBoard(delta: Duration.Duration):
+                        Unit
                         \ {GameEngine.Game, BoardQuery,
                             GameLogger.GameLogger,
                             EnemyData.RosterQuery, TurnPhase.State,
                             SelectedPlayer.State, CursorState.State, World.WorldQuery,
                             UiWorldState.State, RangeOverlayState.State} =
-        if (MapScene.isPresent(scene)) physicsProcess(delta, scene)
-        else scene
+        if (World.hasBoard(World.WorldQuery.get())) step(delta)
+        else ()
 
     /// `WeaponSelect` フェーズの左右ターゲットサイクル。フォーカス中の武器が届く生存敵を
     /// reading order で巡回する（上下は武器リストへ回るので触らない）。入力ゲート・サイクル本体は
     /// `PlayerAttack` と同じ機構（`cycleToTargetIn`）を、対象リストだけ差し替えて使う。
-    def stepWeaponSelectCycle(scene: Scene[NodeTag]):
-                              Scene[NodeTag]
+    def stepWeaponSelectCycle():
+                              Unit
                               \ {GameEngine.Game, SelectedPlayer.State, CursorState.State,
                                  EnemyData.RosterQuery, World.WorldQuery, UiWorldState.State} =
-        if (CursorState.isSnagging()) scene
-        else if (CursorState.isTweening()) scene
+        if (CursorState.isSnagging()) ()
+        else if (CursorState.isTweening()) ()
         else {
             let data = CursorState.State.get();
             match (data#holdDir, readHeldHorizontal()) {
                 case (_, None) =>
-                    CursorState.State.put({holdDir = None, holdSteps = 0 | data});
-                    scene
+                    CursorState.State.put({holdDir = None, holdSteps = 0 | data})
                 case (Some(_), Some(dir)) =>
-                    CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
-                    scene
+                    CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data})
                 case (None, Some(dir)) =>
-                    cycleToTargetIn(weaponSelectTargets(scene), dir, data, scene)
+                    cycleToTargetIn(weaponSelectTargets(), dir, data)
             }
         }
 
     /// フォーカス中の武器が届く生存敵を reading order（y→x）で返す。
     /// 選択中味方 / フォーカス武器が取れないときは空。
-    def weaponSelectTargets(scene: Scene[NodeTag]):
+    def weaponSelectTargets():
             List[EnemyScene.Data] \ {SelectedPlayer.State, EnemyData.RosterQuery, World.WorldQuery, UiWorldState.State} =
         let opt = forM (
             pid    <- SelectedPlayer.State.get()#id;
-            // 射程判定の自位置は World 上書き Data。
-            player <- PlayerScene.getWithWorldPos(pid, scene);
+            // 位置・在庫（weapons）は World 権威＝dataFromWorld（scene 非依存）で読む。
+            player <- World.dataFromWorld(pid, World.WorldQuery.get());
             widx   <- WeaponSelectUi.hoveredWeaponIndex();
             weapon <- List.nth(widx, player#weapons)
         ) yield
@@ -219,44 +214,40 @@ mod CursorScene {
     ///   3. それ以外 → 方向キーを読み、加速度を計算して 1 マス進める
     /// 移動後のセルに駒（味方/敵）が居れば snag をセット + holdSteps をリセット
     /// （次は再加速）。敵に乗ったら EnemyRangeScene を再構築 + ログを出す。
-    def stepFreeMovement(scene: Scene[NodeTag]):
-                         Scene[NodeTag]
+    def stepFreeMovement():
+                         Unit
                          \ {GameEngine.Game, BoardQuery,
                              GameLogger.GameLogger,
-                             EnemyData.RosterQuery, CursorState.State, World.WorldQuery,
+                             EnemyData.RosterQuery, SelectedPlayer.State, CursorState.State, World.WorldQuery,
                              RangeOverlayState.State} =
-        if (CursorState.isSnagging()) scene
-        else if (CursorState.isTweening()) scene
+        if (CursorState.isSnagging()) ()
+        else if (CursorState.isTweening()) ()
         else {
             let data = CursorState.State.get();
             match readHeldDirection() {
                 case None =>
                     // キーが離れたら hold 状態をリセット（再度押したときに初速から）
-                    CursorState.State.put({holdDir = None, holdSteps = 0 | data});
-                    scene
+                    CursorState.State.put({holdDir = None, holdSteps = 0 | data})
                 case Some(dir) =>
                     let board = BoardQuery.board();
                     let nextSteps = stepCountAfter(data#holdDir, data#holdSteps, dir);
                     // マップ端で clamp したうえで、可動域（明るい部屋+半径 ∪ 既訪）外なら
                     // 据え置く。target == gridPos なら下の「端で動けない」分岐が発火する。
                     let candidate = clampToMap(Vec2i.add(data#gridPos, dir), board#map);
-                    let target = if (cursorCanEnter(candidate, scene)) candidate
+                    let target = if (cursorCanEnter(candidate)) candidate
                                  else data#gridPos;
-                    if (target#x == data#gridPos#x and target#y == data#gridPos#y) {
+                    if (target#x == data#gridPos#x and target#y == data#gridPos#y)
                         // 端で動けない。hold 状態だけ更新して入力は捨てる。
-                        CursorState.State.put({holdDir = Some(dir), holdSteps = nextSteps | data});
-                        scene
-                    }
+                        CursorState.State.put({holdDir = Some(dir), holdSteps = nextSteps | data})
                     else {
                         let slide = computeSlideDuration(nextSteps);
                         let movedData = moveStep(target, data, slide);
-                        let (hovered, updatedScene) = handleHoverChange(movedData, board, scene);
+                        let hovered = handleHoverChange(movedData, board);
                         // フォグで隠れている敵では snag させない（一瞬の引っかかりで
                         // 見えない敵の位置がバレるのを防ぐ）。可視の駒のみ引っかける。
-                        let onPiece = isVisiblyOccupied(target, board, scene);
+                        let onPiece = isVisiblyOccupied(target, board);
                         if (onPiece) playSnag() else ();
-                        CursorState.commitLogical(applyHoldUpdate(hovered, dir, nextSteps, onPiece));
-                        updatedScene
+                        CursorState.commitLogical(applyHoldUpdate(hovered, dir, nextSteps, onPiece))
                     }
             }
         }
@@ -295,26 +286,26 @@ mod CursorScene {
     /// 移動後のセルに敵が居るかを判定し、`lastHoveredEnemyId` の遷移に応じて
     /// EnemyRangeScene を出し入れ + ログを出す。返り値の Data は
     /// `lastHoveredEnemyId` を新しい値に更新済み。
-    def handleHoverChange(data: Data, board: Board,
-                           scene: Scene[NodeTag]):
-            (Data, Scene[NodeTag]) \ {GameLogger.GameLogger, EnemyData.RosterQuery, RangeOverlayState.State} =
+    def handleHoverChange(data: Data, board: Board):
+            Data \ {GameLogger.GameLogger, EnemyData.RosterQuery, SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State} =
         // フォグで隠れている敵はホバーしても情報を出さない（配置バレ防止）。
         // 見えていない敵セルは「敵が居ない」扱いに倒し、ログ・赤レンジを発火させない。
         let enemyId = enemyIdAt(data#gridPos, board)
-                        |> Option.filter(id -> EnemyScene.isVisible(id, scene));
-        if (enemyId == data#lastHoveredEnemyId) (data, scene)
-        else
-            let nextScene = match enemyId {
+                        |> Option.filter(id -> EnemyScene.isVisible(id));
+        if (enemyId == data#lastHoveredEnemyId) data
+        else {
+            match enemyId {
                 case Some(id) =>
-                    GameLogger.playerLog("${EnemyScene.displayName(id, scene)}を捕捉");
+                    GameLogger.playerLog("${EnemyScene.displayName(id)}を捕捉");
                     // 移動範囲(白)を先に組み、その reachable を読んで攻撃到達範囲(赤)を重ねる
-                    EnemyRangeScene.refreshFor(id, scene)
-                        |> EnemyAttackRangeScene.refreshFor(id)
+                    EnemyRangeScene.refreshFor(id);
+                    EnemyAttackRangeScene.refreshFor(id)
                 case None =>
-                    EnemyRangeScene.clear(scene)
-                        |> EnemyAttackRangeScene.clear
+                    EnemyRangeScene.clear();
+                    EnemyAttackRangeScene.clear()
             };
-            ({lastHoveredEnemyId = enemyId | data}, nextScene)
+            {lastHoveredEnemyId = enemyId | data}
+        }
 
     /// 押されている方向キーを Option で返す（PlayerScene と同じ優先順位で揃えることで
     /// プレイヤー操作とカーソル操作の体感を統一する）
@@ -342,14 +333,15 @@ mod CursorScene {
     /// 候補セルがカーソルの可動域（明るい部屋 +半径 ∪ 訪問済み module）に入っているか。
     /// 範囲は FogScene.cursorRangeRects（明るい部屋を半径拡張 ∪ 既訪 module 矩形）で求め、
     /// 既訪記憶は World（`MinimapScene.visitedModules`）から読む。
-    def cursorCanEnter(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Bool \ World.WorldQuery =
-        let placements = MapScene.tryGetPlacements(scene);
+    def cursorCanEnter(cell: {x = Int32, y = Int32}): Bool \ World.WorldQuery =
+        let world0     = World.WorldQuery.get();
+        let placements = World.placementsOf(world0);
         // マップ情報が無い（= 単体テスト等）なら制限しない（fail-open: カーソルを固めない）。
         if (List.isEmpty(placements)) true
         else {
-            let roomCount = MapScene.getRoomCount(scene);
+            let roomCount = World.roomCountOf(world0);
             let visited   = MinimapScene.visitedModules();
-            let rects = FogScene.cursorRangeRects(PlayerScene.getAll(scene), placements,
+            let rects = FogScene.cursorRangeRects(PlayerScene.getAll(), placements,
                                                    roomCount, visited, cursorRangeRadius());
             // 可動域がまだ算出できないフレームでも固めない（防御的）。
             List.isEmpty(rects) or FogScene.insideAny(cell, rects)
@@ -375,46 +367,41 @@ mod CursorScene {
     ///   - 押下開始フレームでのみサイクル発火。押しっぱなしの間は連続サイクルしない (誤連打防止)。
     ///   - **左 = 前の敵、右 = 次の敵** (reading order でソート)。上下は武器切り替えに回すので動かさない。
     ///   - 射程内に敵が居なければ何もしない (X キャンセル待ち)。スナップは補間で滑らかに移動。
-    def stepTargetCycle(scene: Scene[NodeTag]):
-                        Scene[NodeTag]
+    def stepTargetCycle():
+                        Unit
                         \ {GameEngine.Game, CursorState.State, EnemyData.RosterQuery,
                             RangeOverlayState.State} =
-        if (CursorState.isSnagging()) scene
-        else if (CursorState.isTweening()) scene
+        if (CursorState.isSnagging()) ()
+        else if (CursorState.isTweening()) ()
         else {
             let data = CursorState.State.get();
             // 左右だけでターゲットを選ぶ (上下は武器リストへ)。
             match (data#holdDir, readHeldHorizontal()) {
                 case (_, None) =>
-                    CursorState.State.put({holdDir = None, holdSteps = 0 | data});
-                    scene
+                    CursorState.State.put({holdDir = None, holdSteps = 0 | data})
                 case (Some(_), Some(dir)) =>
-                    CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
-                    scene
+                    CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data})
                 case (None, Some(dir)) =>
-                    cycleToTarget(dir, data, scene)
+                    cycleToTarget(dir, data)
             }
         }
 
     /// 押下開始時のターゲットサイクル本体。`PlayerAttackRangeScene.targetsInRange` で
     /// 取得した reading-order 順のリストから、方向に応じて prev / next を選ぶ。
-    def cycleToTarget(dir: {x = Int32, y = Int32}, data: Data,
-                       scene: Scene[NodeTag]):
-                      Scene[NodeTag]
+    def cycleToTarget(dir: {x = Int32, y = Int32}, data: Data):
+                      Unit
                       \ {CursorState.State, EnemyData.RosterQuery, RangeOverlayState.State} =
-        cycleToTargetIn(PlayerAttackRangeScene.targetsInRange(scene), dir, data, scene)
+        cycleToTargetIn(PlayerAttackRangeScene.targetsInRange(), dir, data)
 
     /// 与えられた敵リストの中で、現在カーソル位置から方向に応じて prev / next へジャンプする。
     /// `cycleToTarget`（PlayerAttack）と `stepWeaponSelectCycle`（WeaponSelect）が対象リストだけ
     /// 差し替えて共有する本体。敵が居なければ holdDir だけ更新して何もしない。
     def cycleToTargetIn(targets: List[EnemyScene.Data],
-                        dir: {x = Int32, y = Int32}, data: Data,
-                        scene: Scene[NodeTag]):
-                       Scene[NodeTag] \ CursorState.State =
+                        dir: {x = Int32, y = Int32}, data: Data):
+                       Unit \ CursorState.State =
         match targets {
             case Nil =>
-                CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
-                scene
+                CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data})
             case _   =>
                 let n = List.length(targets);
                 let curIdx = findCursorTargetIndex(data#gridPos, targets);
@@ -427,15 +414,13 @@ mod CursorScene {
                         Int32.modulo(curIdx + step + n, n);
                 match List.nth(nextIdx, targets) {
                     case None         =>
-                        CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
-                        scene
+                        CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data})
                     case Some(target) =>
                         let slide = computeSlideDuration(1);
                         let movedData = moveStep(target#gridPos, data, slide);
                         playSnag();
                         CursorState.commitLogical({holdDir = Some(dir), holdSteps = 1,
-                                       lastHoveredEnemyId = Some(target#id) | movedData});
-                        scene
+                                       lastHoveredEnemyId = Some(target#id) | movedData})
                 }
         }
 
@@ -460,36 +445,33 @@ mod CursorScene {
     /// ソートして、方向キー押下の瞬間に prev / next の緑マスへサイクルでスナップする。
     /// 入力ゲートは PlayerAttack と同じ (snag / 補間中は捨てる)。
     /// 緑マスが 0 個 (= 隣接味方なし) のときは何もしない (X キャンセル待ち)。
-    def stepTradeCellCycle(scene: Scene[NodeTag]):
-                            Scene[NodeTag]
+    def stepTradeCellCycle():
+                            Unit
                             \ {GameEngine.Game, CursorState.State, RangeOverlayState.State} =
-        if (CursorState.isSnagging()) scene
-        else if (CursorState.isTweening()) scene
+        if (CursorState.isSnagging()) ()
+        else if (CursorState.isTweening()) ()
         else {
             let data = CursorState.State.get();
             match (data#holdDir, readHeldDirection()) {
                 case (_, None) =>
-                    CursorState.State.put({holdDir = None, holdSteps = 0 | data});
-                    scene
+                    CursorState.State.put({holdDir = None, holdSteps = 0 | data})
                 case (Some(_), Some(dir)) =>
-                    CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
-                    scene
+                    CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data})
                 case (None, Some(dir)) =>
-                    cycleToTradeCell(dir, data, scene)
+                    cycleToTradeCell(dir, data)
             }
         }
 
     /// 緑マスの中から方向に応じて next / prev のセルへカーソルを飛ばす。
     /// `TradeRangeScene.cells` を reading order (y → x) にソートしてサイクルする。
     /// 緑マスが空ならホールド状態だけ更新して何もしない。
-    def cycleToTradeCell(dir: {x = Int32, y = Int32}, data: Data,
-                          scene: Scene[NodeTag]):
-                         Scene[NodeTag] \ {CursorState.State, RangeOverlayState.State} =
-        let sortedCells = TradeRangeScene.cells(scene)
+    def cycleToTradeCell(dir: {x = Int32, y = Int32}, data: Data):
+                         Unit \ {CursorState.State, RangeOverlayState.State} =
+        let sortedCells = TradeRangeScene.cells()
                             |> List.sortBy(c -> (c#y, c#x));
         pickNextCellInCycle(dir, data#gridPos, sortedCells)
-            |> Option.map(target -> snapCursorAndUpdateHold(target, dir, data, scene))
-            |> Option.getWithDefault(updateHoldOnly(dir, data, scene))
+            |> Option.map(target -> snapCursorAndUpdateHold(target, dir, data))
+            |> Option.getWithDefault(updateHoldOnly(dir, data))
 
     /// `sortedCells` を方向 (dir) でサイクルし、prev / next のセルを返す。
     /// 上 / 左 = 前、下 / 右 = 次。現在位置がセル外なら、方向に応じて先頭 / 末尾を返す。
@@ -513,20 +495,16 @@ mod CursorScene {
 
     /// 目標セルへ補間でスライドし、snag セット + holdDir 更新まで一気に行う。
     def snapCursorAndUpdateHold(target: {x = Int32, y = Int32},
-                                  dir: {x = Int32, y = Int32}, data: Data,
-                                  scene: Scene[NodeTag]):
-                                 Scene[NodeTag] \ CursorState.State =
+                                  dir: {x = Int32, y = Int32}, data: Data):
+                                 Unit \ CursorState.State =
         let slide = computeSlideDuration(1);
         let movedData = moveStep(target, data, slide);
         playSnag();
-        CursorState.commitLogical({holdDir = Some(dir), holdSteps = 1 | movedData});
-        scene
+        CursorState.commitLogical({holdDir = Some(dir), holdSteps = 1 | movedData})
 
-    /// セル移動できなかったとき (空 / 範囲外) の戻り値: holdDir だけ更新して scene 据え置き。
-    def updateHoldOnly(dir: {x = Int32, y = Int32}, data: Data,
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ CursorState.State =
-        CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data});
-        scene
+    /// セル移動できなかったとき (空 / 範囲外) の戻り値: holdDir だけ更新して据え置き。
+    def updateHoldOnly(dir: {x = Int32, y = Int32}, data: Data): Unit \ CursorState.State =
+        CursorState.State.put({holdDir = Some(dir), holdSteps = 1 | data})
 
     /// セルリストの中で `cell` と一致するセルの index を返す。一致しなければ -1。
     def findCursorCellIndex(cell: {x = Int32, y = Int32},
@@ -543,11 +521,11 @@ mod CursorScene {
 
     /// target セルに「見えている駒」が居るか。味方は常に可視。敵はフォグで隠れていれば
     /// 居ないものとして扱う（カーソルの snag が見えない敵の位置を漏らさないように）。
-    def isVisiblyOccupied(coord: {x = Int32, y = Int32}, board: Board,
-                           scene: Scene[NodeTag]): Bool =
+    def isVisiblyOccupied(coord: {x = Int32, y = Int32}, board: Board):
+            Bool \ {SelectedPlayer.State, World.WorldQuery} =
         if (not Board.isOccupied(coord, board)) false
         else match enemyIdAt(coord, board) {
-            case Some(id) => EnemyScene.isVisible(id, scene)
+            case Some(id) => EnemyScene.isVisible(id)
             case None     => true
         }
 
@@ -566,9 +544,8 @@ mod CursorScene {
 
     /// カーソルの可視性を切り替える。`CursorState.visible` を書き、
     /// `RenderWorld.renderCursor` がそれを読んで四隅 L字を描く/描かないを決める。
-    pub def setVisible(visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] \ CursorState.State =
-        CursorState.setVisible(visible);
-        scene
+    pub def setVisible(visible: Bool): Unit \ CursorState.State =
+        CursorState.setVisible(visible)
 
     /// フェーズごとに通常カーソルが表示されるべきかの**単一の真理点**。
     /// 下表の「ゲームプレイ復帰フェーズ」の `enter*` は
@@ -606,15 +583,15 @@ mod CursorScene {
     /// waited にした駒」を active として拾ってしまう。そうしたパス
     /// (= `commitWaitedAndAdvance`) からは `PhaseTransitions.enterPlayerCursorAt` 経由で
     /// 明示的に snap 先座標を渡し、この関数を経由しないようにする。
-    pub def snapToPlayer(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery} =
+    pub def snapToPlayer():
+            Unit \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery} =
         let target = snapTargetPos();
-        snapToCell(target, scene)
+        snapToCell(target)
 
     /// 任意のグリッドセルへ瞬時にカーソルを移動させる。補間 / snag を止めて
     /// hoveredEnemyId と hold 状態を初期化する。`snapToPlayer` の汎用版。
-    pub def snapToCell(target: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ CursorState.State =
+    pub def snapToCell(target: {x = Int32, y = Int32}):
+            Unit \ CursorState.State =
         let world = MapSnapshot.cellCenter(target);
         // 論理状態を初期化しつつ、視覚位置を瞬間 set（補間/snag も止める）。
         let d = CursorState.State.get();
@@ -624,33 +601,32 @@ mod CursorScene {
                                holdSteps          = 0,
                                renderPos          = world,
                                tweens             = Map.empty(),
-                               snagRemaining      = 0.0 | d});
-        scene
+                               snagRemaining      = 0.0 | d})
 
     /// `PlayerAttack` フェーズ突入時に、赤マス内に居る「生きている敵」が居れば最初の
     /// 敵にカーソルをスナップする。敵が居なければ選択中プレイヤーへ。
     /// 間接武器 (range > 1) の場合、自分のセルが赤マスに含まれないため
     /// `snapToPlayer` 単独では「カーソルが届かない場所に居る」状態になるのを防ぐ。
-    pub def snapToFirstTargetOrPlayer(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery,
+    pub def snapToFirstTargetOrPlayer():
+            Unit \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery,
                               EnemyData.RosterQuery, RangeOverlayState.State} =
-        match List.head(PlayerAttackRangeScene.targetsInRange(scene)) {
-            case Some(target) => snapToCell(target#gridPos, scene)
-            case None         => snapToPlayer(scene)
+        match List.head(PlayerAttackRangeScene.targetsInRange()) {
+            case Some(target) => snapToCell(target#gridPos)
+            case None         => snapToPlayer()
         }
 
     /// `TradeTargetSelect` フェーズ突入時に、緑マスの **最初の隣接味方マス**
     /// (reading order: y 昇順 → x 昇順) にカーソルをスナップする。
     /// 緑マスが空 (= 隣接味方なし) のときは選択中プレイヤー位置にフォールバックする。
-    pub def snapToFirstTradeCellOrPlayer(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery,
+    pub def snapToFirstTradeCellOrPlayer():
+            Unit \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery,
                               RangeOverlayState.State} =
-        let firstCell = TradeRangeScene.cells(scene)
+        let firstCell = TradeRangeScene.cells()
                           |> List.sortBy(c -> (c#y, c#x))
                           |> List.head;
         match firstCell {
-            case Some(cell) => snapToCell(cell, scene)
-            case None       => snapToPlayer(scene)
+            case Some(cell) => snapToCell(cell)
+            case None       => snapToPlayer()
         }
 
     /// snap 先のセルを決める:
@@ -694,8 +670,7 @@ mod CursorScene {
         CursorState.State.get()#gridPos
 
     /// gameLoop が毎フレーム 1 回呼ぶ視覚 tick。スライド補間を dt 進め renderPos を書き、snag を減らす。
-    /// カーソルの補間と引っかかりは CursorState resource が値で持つため scene は素通しする。
-    pub def stepVisual(dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag] \ CursorState.State =
-        CursorState.step(Duration.toSeconds(dt));
-        scene
+    /// カーソルの補間と引っかかりは CursorState resource が値で持つ。
+    pub def stepVisual(dt: Duration.Duration): Unit \ CursorState.State =
+        CursorState.step(Duration.toSeconds(dt))
 }

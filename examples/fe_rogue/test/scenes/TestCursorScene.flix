@@ -1,4 +1,4 @@
-/// CursorScene のシーン操作と `snapToPlayer` の動作を検証する。
+/// CursorScene の初期化・スナップ・`step`/`stepOnBoard` 入力処理を検証する。
 ///
 /// `add` の最も重要な性質は「**初期位置 = プレイヤーのグリッド位置**」と
 /// 「初期 hover 状態 = None」の 2 点。味方ターン開始時にカーソルが味方の上から
@@ -7,116 +7,26 @@
 /// `snapToPlayer` は敵ターン終了 / キャンセルのたびに呼ばれ、カーソルを味方に
 /// 引き戻す責務を持つ。ホバー状態 (lastHoveredEnemyId) もここでリセットされる。
 ///
-/// `physicsProcess` 経由のキー入力 → 移動 → ホバー検知の経路も `runPhysics` /
+/// `step` 経由のキー入力 → 移動 → ホバー検知の経路も `runPhysics` /
 /// `runPhysicsTween` / `runPhysicsThenVisual` ヘルパーが `GameEngine.Game`
 /// （キー押下） + `BoardQuery` + `GameLogger` 等の effect を mock/withState で
-/// 束ねて直接 pin する（下記「physicsProcess」節）。
+/// 束ねて直接 pin する（下記「step」節）。
+///
+/// 駒は scene ノードでなく World（`TestWorldFixtures`）で組む。カーソル論理状態は
+/// `CursorState.State` resource が権威。
 mod TestCursorScene {
+
+    use World.Cmd
+    use World.EntityRef
 
     // ════════════════════════════════════════════════════════
     // ヘルパー
     // ════════════════════════════════════════════════════════
 
-    /// CursorScene.add の {GameEngine.Game, Fs.FileRead} effect を discharge して
-    /// pure に見せる test 用ラッパ。`@Test` は `\ Assert` 限定のため unchecked_cast で
-    /// IO effect を消す (Fs.FileRead は flix test の CWD = examples/fe_rogue から
-    /// 実ファイルを読む)。
-    /// カーソル論理状態は `CursorState.State` resource に入るため、その effect は残す
-    /// （呼び出し側が put を観測できるよう Ref-backed handler を最外で巻く）。
-    def cursorAddPure(scene: Scene[NodeTag]): Scene[NodeTag] \ CursorState.State =
-        unchecked_cast(
-            (run {
-                TestUnitFixtures.withMockGame(() -> CursorScene.add(scene))
-            } with Fs.FileRead.runWithIO)
-            as _ \ CursorState.State)
-
-    /// プレイヤー id=0 1 体だけを (gridPos) に置いた scene を組む。
-    /// JSON ロードを介さず Marker2D を直接構築する（PlayerScene.playerPath は
-    /// World 配下を指すため、ここでも World Marker2D を挟む）。
-    def sceneWithPlayer(gridPos: {x = Int32, y = Int32}): Scene[NodeTag] =
-        let pos = MapSnapshot.cellCenter(gridPos);
-        let marker = Marker2D.make(pos);
-        let world = Marker2D.make(Vec2.zero())
-            |> CanvasItem.setYSortEnabled(true);
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                EngineNode.Marker2DWithState(marker,
-                    NodeTag.Player({
-                        id                = 0,
-                        classId           = "test_player",
-                        gridPos           = gridPos,
-                        moveTiles         = 5,
-                        hp                = 10,
-                        waited            = false,
-                        attackTargetId    = None,
-                        resource          = TestUnitFixtures.testResource(5, 10),
-                        weapons           = TestUnitFixtures.testWeapon() :: Nil,
-                        staves            = Nil,
-                        consumables       = Nil,
-                        selectedItem      = None,
-                        moveStepsTaken    = 0,
-                        facing            = Dir4.Down,
-                        hidden            = false,
-                        usedStairs            = false,
-                        level                     = 1,
-                        exp                       = 0,
-                        pendingLevelUp            = None,
-                        statuses                  = Nil,
-                        rings          = Nil,
-                        ringEquipped          = false,
-                        followUpUsed   = false
-                    })))
-
     /// カーソル resource の (gridPos, lastHoveredEnemyId) を 1 タプルにまとめて取り出す
     def cursorState(): (Int32, Int32, Option[Int32]) \ CursorState.State =
         let d = CursorScene.getCursorData();
         (d#gridPos#x, d#gridPos#y, d#lastHoveredEnemyId)
-
-    /// 味方を 2 体置いた scene を組む。`waited` を個別に指定できる。
-    /// commit 後の「アクティブな次の味方にカーソルがスナップ」テスト用。
-    /// 引数: p0 = (gridPos, waited), p1 = (gridPos, waited)
-    def sceneWithTwoPlayers(p0: ({x = Int32, y = Int32}, Bool),
-                              p1: ({x = Int32, y = Int32}, Bool)): Scene[NodeTag] =
-        let (p0Pos, p0Waited) = p0;
-        let (p1Pos, p1Waited) = p1;
-        let world = Marker2D.make(Vec2.zero())
-            |> CanvasItem.setYSortEnabled(true);
-        let mk = (id, pos, waited) ->
-            EngineNode.Marker2DWithState(Marker2D.make(MapSnapshot.cellCenter(pos)),
-                NodeTag.Player({
-                    id                = id,
-                    classId           = "test_player",
-                    gridPos           = pos,
-                    moveTiles         = 5,
-                    hp                = 10,
-                    waited            = waited,
-                    attackTargetId    = None,
-                    resource          = TestUnitFixtures.testResource(5, 10),
-                    weapons           = TestUnitFixtures.testWeapon() :: Nil,
-                    staves            = Nil,
-                    consumables       = Nil,
-                    selectedItem      = None,
-                    moveStepsTaken    = 0,
-                    facing            = Dir4.Down,
-                    hidden            = false,
-                    usedStairs            = false,
-                    level                     = 1,
-                    exp                       = 0,
-                    pendingLevelUp            = None,
-                    statuses                  = Nil,
-                    rings          = Nil,
-                    ringEquipped          = false,
-                    followUpUsed   = false
-                }));
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                mk(0, p0Pos, p0Waited))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(1),
-                mk(1, p1Pos, p1Waited))
 
     // ════════════════════════════════════════════════════════
     // add: 初期位置はプレイヤーと同じ、ホバー状態は空
@@ -128,11 +38,11 @@ mod TestCursorScene {
     def testAddPlacesCursorAtPlayerGrid(): Unit \ Assert =
         region rc {
             let player: {x = Int32, y = Int32} = {x = 5, y = 5};
-            let scene = sceneWithPlayer(player);
-            let result = run {
-                let _ = cursorAddPure(scene);
+            let world = TestWorldFixtures.worldOf(TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, player)));
+            let result = TestUnitFixtures.withWorldQuery(world, () -> run {
+                CursorScene.add();
                 cursorState()
-            } with CursorState.withState(rc);
+            } with CursorState.withState(rc));
             Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
         }
 
@@ -142,11 +52,11 @@ mod TestCursorScene {
     def testAddFollowsPlayerSpawnPosition(): Unit \ Assert =
         region rc {
             let player: {x = Int32, y = Int32} = {x = 3, y = 7};
-            let scene = sceneWithPlayer(player);
-            let result = run {
-                let _ = cursorAddPure(scene);
+            let world = TestWorldFixtures.worldOf(TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, player)));
+            let result = TestUnitFixtures.withWorldQuery(world, () -> run {
+                CursorScene.add();
                 cursorState()
-            } with CursorState.withState(rc);
+            } with CursorState.withState(rc));
             Assert.assertEq(expected = (3, 7, (None: Option[Int32])), result)
         }
 
@@ -161,68 +71,73 @@ mod TestCursorScene {
     def testSnapToPlayerResetsCursorAndHover(): Unit \ Assert =
         region rc {
             let player: {x = Int32, y = Int32} = {x = 4, y = 4};
-            let initial = sceneWithPlayer(player);
-            let result = TestUnitFixtures.withNoSelection(() -> TestUnitFixtures.withNoopTween(() -> TestUnitFixtures.withNoopAnim(() ->
-                TestUnitFixtures.withMockPartyQuery(initial, () ->
-                    run {
-                        let scene = cursorAddPure(initial);
-                        // カーソルを (10, 10) に移し、ホバー履歴も Some(99) に偽装
-                        CursorState.State.put({gridPos = {x = 10, y = 10},
-                                               lastHoveredEnemyId = Some(99)
-                                               | CursorState.State.get()});
-                        let _ = CursorScene.snapToPlayer(scene);
-                        cursorState()
-                    } with CursorState.withState(rc)))));
+            let world = TestWorldFixtures.worldOf(TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, player)));
+            let result = TestUnitFixtures.withNoSelection(() ->
+                TestUnitFixtures.withMockPartyQuery(TestUnitFixtures.worldPlayers(world), () ->
+                    TestUnitFixtures.withWorldQuery(world, () ->
+                        run {
+                            CursorScene.add();
+                            // カーソルを (10, 10) に移し、ホバー履歴も Some(99) に偽装
+                            CursorState.State.put({gridPos = {x = 10, y = 10},
+                                                   lastHoveredEnemyId = Some(99)
+                                                   | CursorState.State.get()});
+                            CursorScene.snapToPlayer();
+                            cursorState()
+                        } with CursorState.withState(rc))));
             Assert.assertEq(expected = (4, 4, (None: Option[Int32])), result)
         }
 
-    /// commit 後の「行動済みじゃない味方にカーソルが飛ぶ」フォールバックを検証する。
-    /// 状況: SelectedPlayer は cleared() (`commitWaitedAndAdvance` でクリア済み)、
-    /// 味方 0 が waited (たった今攻撃を確定した駒)、味方 1 が waited でない (次に動ける駒)。
-    /// 期待: snapToPlayer が味方 1 (= アクティブな最初の味方) の位置にスナップする。
-    /// 実装は `CursorScene.snapTargetPos → fallbackPos` (`CursorScene.flix:449-470`)。
+    /// snapToPlayer の「行動済みじゃない味方にカーソルが飛ぶ」フォールバックを検証する。
+    /// 状況: SelectedPlayer は cleared()、味方 0 が waited (行動済み)、味方 1 が waited でない
+    /// (次に動ける駒)。期待: snapToPlayer が味方 1 (= アクティブな最初の味方) の位置にスナップする。
+    /// 実装は `CursorScene.snapTargetPos → fallbackPos` (`CursorScene.flix:449-470` 相当)。
     @Test
     def testSnapToPlayerJumpsToActiveAllyWhenSelectedCleared(): Unit \ Assert =
         region rc {
-            let waitedPos: {x = Int32, y = Int32}  = {x = 2, y = 2};
-            let activePos: {x = Int32, y = Int32}  = {x = 5, y = 5};
-            let initial = sceneWithTwoPlayers((waitedPos, true), (activePos, false));
-            let result = TestUnitFixtures.withNoSelection(() -> TestUnitFixtures.withNoopTween(() -> TestUnitFixtures.withNoopAnim(() ->
-                TestUnitFixtures.withMockPartyQuery(initial, () ->
-                    run {
-                        let scene = cursorAddPure(initial);
-                        let _ = CursorScene.snapToPlayer(scene);
-                        cursorState()
-                    } with CursorState.withState(rc)))));
+            let waitedPos: {x = Int32, y = Int32} = {x = 2, y = 2};
+            let activePos: {x = Int32, y = Int32} = {x = 5, y = 5};
+            let world = TestWorldFixtures.worldOf(List.flatten(
+                TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, waitedPos))
+                    :: (Cmd.SetWaited(EntityRef.Player(0), true) :: Nil)
+                    :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(1, activePos))
+                    :: Nil));
+            let result = TestUnitFixtures.withNoSelection(() ->
+                TestUnitFixtures.withMockPartyQuery(TestUnitFixtures.worldPlayers(world), () ->
+                    TestUnitFixtures.withWorldQuery(world, () ->
+                        run {
+                            CursorScene.add();
+                            CursorScene.snapToPlayer();
+                            cursorState()
+                        } with CursorState.withState(rc))));
             Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
         }
 
-    /// 統合テスト: `commitWaitedAndAdvance` を **古い PartyQuery snapshot** ありの状態で呼んでも、
-    /// カーソルが「いま waited にした駒」(Player(0)) ではなく「次のアクティブ味方」(Player(1)) に飛ぶ。
-    /// 連打バグ修正後の「待機すると次のキャラにカーソルが当たる」体験を担保する回帰防止テスト。
-    /// PartyQuery は両方 active のままの snapshot を返すので、修正前なら fallback で
-    /// Player(0) を「最初の active」と判定してカーソルが (2,2) に残ったはず。
+    /// 統合テスト: `commitWaitedAndAdvance` を呼ぶと、カーソルが「いま waited にした駒」
+    /// (Player(0)) ではなく「次のアクティブ味方」(Player(1)) に飛ぶ。
+    /// `commitWaitedAndAdvance` は次のスナップ先を `PlayerScene.firstActiveExcluding` (World 直読み)
+    /// で計算してから `PhaseTransitions.enterPlayerCursorAt` に明示的に渡すため、setWaited 直後の
+    /// フレームでも正しい駒を拾う（連打すると待機した駒にカーソルが残るバグの回帰防止）。
+    /// World は単一 Ref (`withWorldAppliedSeeded`) で seed し、setWaited の書き込みが同フレーム内で
+    /// 即座に読み返せる (read-after-write) ようにする。
     @Test
     def testCommitWaitedAndAdvanceMovesCursorToNextActive(): Unit \ Assert =
         region rc {
             let p0Pos: {x = Int32, y = Int32} = {x = 2, y = 2};
             let p1Pos: {x = Int32, y = Int32} = {x = 5, y = 5};
-            let initial = sceneWithTwoPlayers((p0Pos, false), (p1Pos, false));
-            let result = TestUnitFixtures.withWorldCommand(rc, () -> run {
+            let world0 = TestWorldFixtures.worldOf(List.flatten(
+                TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, p0Pos))
+                    :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(1, p1Pos))
+                    :: Nil));
+            let (result, _) = TestUnitFixtures.withWorldAppliedSeeded(rc, world0, () -> run {
                 SelectedPlayer.State.put({
                     id     = Some(0),
                     drafts = Nil,
                     gatherActive = false
                 });
-                let scene = cursorAddPure(initial);
-                let _ = TurnFlow.commitWaitedAndAdvance(scene);
+                CursorScene.add();
+                TurnFlow.commitWaitedAndAdvance();
                 cursorState()
-            } with handler PlayerData.PartyQuery {
-                // 古い snapshot: setWaited 前の両方 active な状態を返し続ける
-                def get(id, k)           = k(PlayerScene.get(id, initial))
-                def getAll(k)            = k(PlayerScene.getAll(initial))
-            }
-              with GameLogger.withLogger(rc)
+            } with GameLogger.withLogger(rc)
               with EnemyTurn.withQueue(rc)
               with TurnPhase.withState(rc)
               with SelectedPlayer.withState(rc)
@@ -231,25 +146,24 @@ mod TestCursorScene {
             Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
         }
 
-    /// `enterPlayerCursorAt` (target 直指定版) は PartyQuery を一切経由せず、
-    /// 渡された座標にカーソルをスナップする。`commitWaitedAndAdvance` のように
-    /// フレーム内で setWaited した直後の経路で、PartyQuery (= frame 冒頭の snapshot) を
-    /// 介さずに「次のアクティブ味方の位置」を確実にカーソルに反映するための関数。
-    /// 古い snapshot を握った PartyQuery を渡しても、target が直接効くことを担保する。
+    /// `enterPlayerCursorAt` (target 直指定版) は World の駒位置を一切読まず、渡された座標に
+    /// カーソルをスナップする。世界に別の位置で存在する駒 (id=1 は (9,9)) がいても、
+    /// 引数 `target` (= (5,5)) がそのまま採用されることを担保する。フレーム内で `setWaited`
+    /// した直後の経路 (`commitWaitedAndAdvance`) が「呼び出し側が計算した次のアクティブ味方位置」を
+    /// 確実にカーソルへ反映するための性質。
     @Test
-    def testEnterPlayerCursorAtBypassesPartyQuery(): Unit \ Assert =
+    def testEnterPlayerCursorAtSnapsDirectlyToTarget(): Unit \ Assert =
         region rc {
             let p0Pos: {x = Int32, y = Int32} = {x = 2, y = 2};
-            let p1Pos: {x = Int32, y = Int32} = {x = 5, y = 5};
-            // 古い snapshot: 両方 active
-            let staleSnapshot = sceneWithTwoPlayers((p0Pos, false), (p1Pos, false));
-            // 新 scene: Player(0) が setWaited されたばかり (commitWaitedAndAdvance 内のローカル変数)
-            let freshScene = sceneWithTwoPlayers((p0Pos, true), (p1Pos, false));
-            // 呼び出し側が新 scene から計算した「次のアクティブ味方の gridPos」。
-            // showAllActive 等が view 状態 Cmd を emit するため捨て handler で吸収。
-            let result = TestUnitFixtures.withMockPartyQuery(staleSnapshot, () -> run {
-                let scene = cursorAddPure(freshScene);
-                let _ = PhaseTransitions.enterPlayerCursorAt(p1Pos, scene);
+            let otherPos: {x = Int32, y = Int32} = {x = 9, y = 9};
+            let target: {x = Int32, y = Int32} = {x = 5, y = 5};
+            let world = TestWorldFixtures.worldOf(List.flatten(
+                TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, p0Pos))
+                    :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(1, otherPos))
+                    :: Nil));
+            let result = TestUnitFixtures.withWorldQuery(world, () -> run {
+                CursorScene.add();
+                PhaseTransitions.enterPlayerCursorAt(target);
                 cursorState()
             } with TurnPhase.withState(rc)
               with CursorState.withState(rc)
@@ -259,7 +173,7 @@ mod TestCursorScene {
         }
 
     // ════════════════════════════════════════════════════════
-    // physicsProcess — PlayerCursor フェーズの方向入力 / hold / 入力捨て
+    // step — PlayerCursor フェーズの方向入力 / hold / 入力捨て
     // ════════════════════════════════════════════════════════
 
     /// カーソル論理状態の初期 Data を任意の `gridPos` / `holdDir` / `holdSteps` /
@@ -283,8 +197,8 @@ mod TestCursorScene {
         };
         {map = map, pieces = Nil}
 
-    /// 指定フェーズで `physicsProcess` を 1 フレーム回し、Cursor の Data を取り出す。
-    /// physicsProcess は phase 分岐するので、テスト側でも phase を立ててから呼ぶ。
+    /// 指定フェーズで `step` を 1 フレーム回し、Cursor の Data を取り出す。
+    /// step は phase 分岐するので、テスト側でも phase を立ててから呼ぶ。
     /// `PlayerAttack` 用テストも同じ runner を使う。カーソルは resource 権威で、
     /// 位置・hold・snag は `CursorState` に seed してから回す（ノード/パスは不要）。
     /// PlayerAttack の `targetsInRange` が範囲 resource を読むため `RangeOverlayState` も供給する。
@@ -295,14 +209,14 @@ mod TestCursorScene {
         // カーソル論理状態は resource 権威。初期 gridPos / hold / snag をここで seed する。
         CursorState.State.put(initial);
         TurnPhase.State.put(phase);
-        // physicsProcess は WeaponSelect 分岐用に SelectedPlayer.State / UiWorldState.State を
+        // step は WeaponSelect 分岐用に SelectedPlayer.State / UiWorldState.State を
         // 要求するので、ここで discharge する（PlayerCursor / PlayerAttack 分岐では未使用なので
-        // 値は任意）。physicsProcess が World 位置を読む（空 World → scene fallback で従来どおり）。
+        // 値は任意）。step が World 位置を読む（空 World なら未登録扱い）。
         region rc {
             let _ =
                 TestUnitFixtures.withSelectedPlayer(0, () ->
                     TestUnitFixtures.withRangeOverlay(rc, () ->
-                        run { CursorScene.physicsProcess(Duration.seconds(0.016), Scene.empty()) }
+                        run { CursorScene.step(Duration.seconds(0.016)) }
                             with handler World.WorldQuery { def get(k) = k(World.empty()) }
                             with handler UiWorldState.State {
                                 def get(k)      = k(UiStore.empty())
@@ -311,9 +225,9 @@ mod TestCursorScene {
             CursorScene.getCursorData()
         }
 
-    /// 盤面レス scene で `stepOnBoard` を 1 フレーム回す runner。BoardQuery は本番
-    /// （`WorldDriver.withWorld`）と同じく「要求されたとき scene から TileMapLayer を読む」
-    /// 遅延 handler にする — ゲートが無ければ Map 不在の `World.toBoard` が bug! で落ちるため、
+    /// 盤面レス World で `stepOnBoard` を 1 フレーム回す runner。BoardQuery は本番
+    /// （`WorldDriver.withWorld`）と同じく「要求されたとき地形を読む」遅延 handler にする —
+    /// ゲートが無ければ盤面未 seed の `BoardQuery.board` が bug! で落ちるため、
     /// 「board() が要求されないこと」まで含めて pin できる。
     def runStepOnBoardNoMap(initial: CursorScene.Data): CursorScene.Data
             \ {GameEngine.Game,
@@ -325,9 +239,10 @@ mod TestCursorScene {
             let _ =
                 TestUnitFixtures.withSelectedPlayer(0, () ->
                     TestUnitFixtures.withRangeOverlay(rc, () ->
-                        run { CursorScene.stepOnBoard(Duration.seconds(0.016), Scene.empty()) }
+                        run { CursorScene.stepOnBoard(Duration.seconds(0.016)) }
                             with handler BoardQuery {
-                                def board(k) = k(World.toBoard(World.empty(), Scene.empty()))
+                                def board(k) = k(({map = TestWorldFixtures.floorSnapshot({w = 13, h = 13}),
+                                                   pieces = Nil}: Board))
                             }
                             with handler World.WorldQuery { def get(k) = k(World.empty()) }
                             with handler UiWorldState.State {
@@ -337,7 +252,7 @@ mod TestCursorScene {
             CursorScene.getCursorData()
         }
 
-    /// PlayerCursor で 1 フレーム `physicsProcess` を回した直後の
+    /// PlayerCursor で 1 フレーム `step` を回した直後の
     /// (gridPos, `isTweening`) を取り出す（stepVisual は回さない）。
     /// 移動で張った補間が同フレームの論理 put で clobber されず残るかを pin する用途。
     def runPhysicsTween(initial: CursorScene.Data): (Int32, Int32, Bool)
@@ -350,7 +265,7 @@ mod TestCursorScene {
             TestUnitFixtures.withSelectedPlayer(0, () ->
                 TestUnitFixtures.withRangeOverlay(rc, () ->
                     run {
-                        let _ = CursorScene.physicsProcess(Duration.seconds(0.016), Scene.empty());
+                        CursorScene.step(Duration.seconds(0.016));
                         let d = CursorState.State.get();
                         (d#gridPos#x, d#gridPos#y, CursorState.isTweening())
                     }
@@ -375,8 +290,8 @@ mod TestCursorScene {
             TestUnitFixtures.withSelectedPlayer(0, () ->
                 TestUnitFixtures.withRangeOverlay(rc, () ->
                     run {
-                        let _ = CursorScene.physicsProcess(Duration.seconds(0.016), Scene.empty());
-                        let _ = CursorScene.stepVisual(Duration.seconds(visualDt), Scene.empty());
+                        CursorScene.step(Duration.seconds(0.016));
+                        CursorScene.stepVisual(Duration.seconds(visualDt));
                         let d = CursorState.State.get();
                         (d#gridPos#x, d#gridPos#y, CursorState.isTweening(),
                          d#renderPos#x, d#renderPos#y)
@@ -397,7 +312,7 @@ mod TestCursorScene {
             let initial = cursorDataAt({x = 5, y = 5}, None, 0, 0.0);
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
-                    TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                    TestUnitFixtures.withMockRosterQuery(Nil, () ->
                         runStepOnBoardNoMap(initial)))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
@@ -414,7 +329,7 @@ mod TestCursorScene {
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
                             runPhysics(TurnPhase.Phase.PlayerCursor, initial))))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
@@ -436,7 +351,7 @@ mod TestCursorScene {
             let (gx, gy, tweening) = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
                             runPhysicsTween(initial))))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
@@ -456,7 +371,7 @@ mod TestCursorScene {
             let (gx, gy, tweening, rpx, rpy) = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
                             runPhysicsThenVisual(initial, 1.0))))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
@@ -476,7 +391,7 @@ mod TestCursorScene {
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
                             runPhysics(TurnPhase.Phase.PlayerCursor, initial))))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
@@ -494,7 +409,7 @@ mod TestCursorScene {
             let data = run {
                 TestUnitFixtures.withMockGameKeys(_ -> false, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
                             runPhysics(TurnPhase.Phase.PlayerCursor, initial))))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
@@ -506,12 +421,11 @@ mod TestCursorScene {
         }
 
     // ════════════════════════════════════════════════════════
-    // physicsProcess (PlayerAttack フェーズ) — ターゲットサイクル
+    // step (PlayerAttack フェーズ) — ターゲットサイクル
     // ════════════════════════════════════════════════════════
 
-    /// 攻撃フェーズで PlayerAttackRange ノードが scene に居ない (= 射程内に敵候補が居ない)
-    /// 状態で Down を「押下開始」したフレーム → 内部の cycleToTarget は targets = Nil を受けて
-    /// gridPos を動かさない (X キャンセル待ち)。
+    /// 攻撃フェーズで射程内に敵候補が居ない状態で Down を「押下開始」したフレーム →
+    /// 内部の cycleToTarget は targets = Nil を受けて gridPos を動かさない (X キャンセル待ち)。
     @Test
     def testPhysicsProcessAttackNoopsWhenNoTargetsInRange(): Unit \ Assert =
         region rc {
@@ -519,7 +433,7 @@ mod TestCursorScene {
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Down, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
                             runPhysics(TurnPhase.Phase.PlayerAttack, initial))))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
@@ -536,7 +450,7 @@ mod TestCursorScene {
             let data = run {
                 TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Down, () ->
                     TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Scene.empty(), () ->
+                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
                             runPhysics(TurnPhase.Phase.PlayerAttack, initial))))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
@@ -553,60 +467,13 @@ mod TestCursorScene {
     //   - 隣接味方が 1 人だけならその人の位置にスナップする
     // ════════════════════════════════════════════════════════
 
-    /// テスト用に id と gridPos だけ意味を持つ最小限の PlayerScene.Data。
-    def makePartyMember(id: Int32, gridPos: {x = Int32, y = Int32}):
-            PlayerScene.Data = {
-        id              = id,
-        classId         = "test_player",
-        gridPos         = gridPos,
-        moveTiles       = 5,
-        hp              = 10,
-        waited          = false,
-        attackTargetId  = None,
-        resource        = TestUnitFixtures.testResource(5, 10),
-        weapons         = TestUnitFixtures.testWeapon() :: Nil,
-        staves          = Nil,
-        consumables     = Nil,
-        selectedItem    = None,
-        moveStepsTaken  = 0,
-        facing          = Dir4.Down,
-        hidden          = false,
-        usedStairs          = false,
-        level                   = 1,
-        exp                     = 0,
-        pendingLevelUp          = None,
-        statuses                = Nil,
-        rings          = Nil,
-        ringEquipped          = false,
-        followUpUsed   = false
-    }
-
-    /// World + 与えた party の Marker2D を直接組み立てた scene。
-    /// cursorAddPure を後付けで挟むと Cursor も入る (CursorScene.add は id=0 の
-    /// 位置を初期セルとして読む)。
-    def sceneWithParty(party: List[PlayerScene.Data]): Scene[NodeTag] =
-        let world = Marker2D.make(Vec2.zero())
-            |> CanvasItem.setYSortEnabled(true);
-        let withWorld = Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag));
-        List.foldLeft((acc, data) -> {
-            let marker = Marker2D.make(MapSnapshot.cellCenter(data#gridPos));
-            Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(data#id),
-                EngineNode.Marker2DWithState(marker, NodeTag.Player(data)), acc)
-        }, withWorld, party)
-
-    /// 4 effect (SelectedPlayer / PartyQuery / Tween / Anim) を一度に剥がすラッパ。
-    /// TradeRangeScene.show + snapToFirstTradeCellOrPlayer を続けて実行する用途。
-    def runWithTradeSnapMocks(scene: Scene[NodeTag], selectedId: Int32,
-                                _selectedPos: {x = Int32, y = Int32},
-                                thunk: Unit -> a \ ef):
-            a \ (ef - SelectedPlayer.State - PlayerData.PartyQuery
-                  - Tween.Scheduler - AnimationPlayer.Scheduler) =
+    /// SelectedPlayer / PartyQuery / World.WorldQuery を一度に剥がすラッパ。
+    /// `TradeRangeScene.show` + `snapToFirstTradeCellOrPlayer` を続けて実行する用途。
+    def runWithTradeSnapMocks(world: World, selectedId: Int32, thunk: Unit -> a \ ef):
+            a \ (ef - SelectedPlayer.State - PlayerData.PartyQuery - World.WorldQuery) =
         TestUnitFixtures.withSelectedPlayer(selectedId, () ->
-            TestUnitFixtures.withMockPartyQuery(scene, () ->
-                TestUnitFixtures.withNoopTween(() ->
-                    TestUnitFixtures.withNoopAnim(thunk))))
+            TestUnitFixtures.withMockPartyQuery(TestUnitFixtures.worldPlayers(world), () ->
+                TestUnitFixtures.withWorldQuery(world, thunk)))
 
     /// cursor resource の現在 gridPos を (x, y) タプルで取り出す。
     def cursorPosOf(): (Int32, Int32) \ CursorState.State =
@@ -625,21 +492,20 @@ mod TestCursorScene {
     @Test
     def testSnapToFirstTradeCellPicksNorthAmongFourNeighbors(): Unit \ Assert =
         region rc {
-            let self     = makePartyMember(0, {x = 5, y = 5});
-            let northern = makePartyMember(1, {x = 5, y = 4});
-            let western  = makePartyMember(2, {x = 4, y = 5});
-            let eastern  = makePartyMember(3, {x = 6, y = 5});
-            let southern = makePartyMember(4, {x = 5, y = 6});
-            let result = run {
-                let baseScene = cursorAddPure(
-                    sceneWithParty(self :: northern :: western :: eastern :: southern :: Nil));
-                runWithTradeSnapMocks(baseScene, 0, {x = 5, y = 5}, () -> {
-                    let withRange = TradeRangeScene.show(baseScene);
-                    let _ = CursorScene.snapToFirstTradeCellOrPlayer(withRange);
-                    cursorPosOf()
-                })
+            let world = TestWorldFixtures.worldOf(List.flatten(
+                TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, {x = 5, y = 5}))
+                    :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(1, {x = 5, y = 4}))
+                    :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(2, {x = 4, y = 5}))
+                    :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(3, {x = 6, y = 5}))
+                    :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(4, {x = 5, y = 6}))
+                    :: Nil));
+            let result = runWithTradeSnapMocks(world, 0, () -> run {
+                CursorScene.add();
+                TradeRangeScene.show();
+                CursorScene.snapToFirstTradeCellOrPlayer();
+                cursorPosOf()
             } with CursorState.withState(rc)
-              with RangeOverlayState.withState(rc);
+              with RangeOverlayState.withState(rc));
             Assert.assertEq(expected = (5, 4), result)
         }
 
@@ -648,18 +514,17 @@ mod TestCursorScene {
     @Test
     def testSnapToFirstTradeCellPicksTheOnlyAdjacentAlly(): Unit \ Assert =
         region rc {
-            let self    = makePartyMember(0, {x = 5, y = 5});
-            let eastern = makePartyMember(1, {x = 6, y = 5});
-            let result = run {
-                let baseScene = cursorAddPure(
-                    sceneWithParty(self :: eastern :: Nil));
-                runWithTradeSnapMocks(baseScene, 0, {x = 5, y = 5}, () -> {
-                    let withRange = TradeRangeScene.show(baseScene);
-                    let _ = CursorScene.snapToFirstTradeCellOrPlayer(withRange);
-                    cursorPosOf()
-                })
+            let world = TestWorldFixtures.worldOf(List.flatten(
+                TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, {x = 5, y = 5}))
+                    :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(1, {x = 6, y = 5}))
+                    :: Nil));
+            let result = runWithTradeSnapMocks(world, 0, () -> run {
+                CursorScene.add();
+                TradeRangeScene.show();
+                CursorScene.snapToFirstTradeCellOrPlayer();
+                cursorPosOf()
             } with CursorState.withState(rc)
-              with RangeOverlayState.withState(rc);
+              with RangeOverlayState.withState(rc));
             Assert.assertEq(expected = (6, 5), result)
         }
 

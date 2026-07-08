@@ -67,8 +67,8 @@ mod LogUi {
     /// drain → キューに積む → 新着があればタイマーを 0 に戻す → 寿命判定 → 5 行へ反映 → 表示/非表示。
     /// Log root は起動時に 1 回 spawn 済み。ダンジョン外（タイトル/選択画面）でも安全: drain はログ
     /// 未発行で空、renderLines/setVisible の対象不在は no-op。空キューのフレームは root を隠す。
-    pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
-                    Scene[NodeTag] \ {GameLogger.GameLogger, LogState.State, UiWorldState.State} =
+    pub def step(delta: Duration.Duration):
+                    Unit \ {GameLogger.GameLogger, LogState.State, UiWorldState.State} =
         let drained = GameLogger.drainEntries();
         let data = LogState.State.get();
         let newQueue = enqueue(toLogEntries(drained), data#queue);
@@ -78,8 +78,7 @@ mod LogUi {
         LogState.State.put({queue = finalQueue, idleSince = finalIdle});
         UiWorldState.State.put(UiWorldState.State.get()
             |> renderLines(finalQueue)
-            |> UiStore.setVisible(rootPath(), not List.isEmpty(finalQueue)));
-        scene
+            |> UiStore.setVisible(rootPath(), not List.isEmpty(finalQueue)))
 
     /// `GameLogger.Entry`(古→新)を表示用 `LogState.LogEntry` へ写す。
     def toLogEntries(entries: List[GameLogger.Entry]): List[LogState.LogEntry] =
@@ -101,9 +100,8 @@ mod LogUi {
     /// 別 HUD(ターンスキップ等)がログ帯を背景として再利用するための一時オーバーライド。
     /// ログ帯を定位置に出しつつ本文 5 行を空にする(queue は保持)。毎フレーム呼ぶ前提で、
     /// 呼ばれなくなれば次フレームの `step`(先に走る)が queue から復帰させる。
-    pub def holdForOverlay(scene: Scene[NodeTag]): Scene[NodeTag] \ UiWorldState.State =
+    pub def holdForOverlay(): Unit \ UiWorldState.State =
         let cleared = List.range(0, maxQueue())
             |> List.foldLeft((acc, i) -> UiStore.setText(linePath(i), "", acc), UiWorldState.State.get());
-        UiWorldState.State.put(UiStore.setVisible(rootPath(), true, cleared));
-        scene
+        UiWorldState.State.put(UiStore.setVisible(rootPath(), true, cleared))
 }

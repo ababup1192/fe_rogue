@@ -4,7 +4,7 @@
 /// 耐久度（`durability`）が 1 ずつ減る。0 以下になると武器は壊れ、装備者の
 /// `weapon` フィールドは `None` に切り替わる。
 ///
-/// このモジュールは Scene[NodeTag] / effect に依存せず、`Option[WeaponResource]` への
+/// このモジュールは World / effect に依存せず、`Option[WeaponResource]` への
 /// 写像として書く。テストが純粋値だけで完結する。
 mod Weapon {
 

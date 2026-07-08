@@ -5,7 +5,7 @@
 /// 同じ述語で書けるようにするための共通レイヤ。`Encounter`(Encounter.flix) が scene から
 /// `List[UnitView]` を 1 箇所で組み立て、EnemyAI / ActionMenu / BattlePanel がこれを読む。
 ///
-/// Scene[NodeTag] / effect には依存しない（テストは純粋値だけで書ける）。
+/// World / effect には依存しない（テストは純粋値だけで書ける）。
 /// 戦闘数式は `Combat`(`combat: Combat.CombatView`) に、射程判定は `Weapon.inRange` に委譲する。
 
 /// ユニットの所属。攻撃可否は「異なる faction か」で判断する。

@@ -6,9 +6,8 @@
 //
 // 駆動は PUBLIC seam（applyAttackHit / applyEnemyAttackHit / onLungeDone）。private な
 // resolveAttack/resolveEnemyAttack ではない。攻撃対象 id（attackTarget）は driver が **World.attackTarget**
-// から読む。ハーネス `withTracedWorld` は scene を `syncFromScene` で seed するため、fixture の
-// attackTargetId は World.attackTarget へ mirror され driver に届く（World 直 seed 版の等価は
-// testGoldenAttackTargetWorldSeedMatchesScene が固定）。ハーネスは ONE worldRef を
+// から読む。ハーネス `withTracedWorld` は fixture の駒を `World.Cmd` 列（`unitCmds`）で直接 seed するため、
+// attackTargetId も `Cmd.SetAttackTarget` で World.attackTarget にそのまま乗る。ハーネスは ONE worldRef を
 // Command/WorldQuery/RngDraw で共有する ref-backed 3-handler で、combatViewOf の read-after-write を壊さない。
 //
 // 凍結する 5 fixture（DoD §4）:
@@ -18,7 +17,7 @@
 //   (C)  orchestrated onLungeDone（Kill 分岐）: 追撃 roll は in-position で消費しつつ分岐 OFF→ ClrTgt。
 //   (D)  COUNTER-attack chain: 味方攻撃完了→敵反撃開始→敵の反撃が味方を撃破（multi-callback Cmd-stream）。
 //
-// 全 fixture: combatViewOf-Some pre-guard（vacuous scene-fallback を防ぐ）+ non-empty-stream guard。
+// 全 fixture: combatViewOf-Some pre-guard（未 seed による vacuous 通過を防ぐ）+ non-empty-stream guard。
 // weapon hit=200 で常時命中・weapon crit=0 で必殺なし＝outcome は seed 非依存（roll 値のみ seed 依存・
 // 凍結対象は cmdKey/world ゆえ literal は seed 非依存）。reproducibility は二度引きで担保。
 
@@ -103,10 +102,16 @@ mod TestGoldenTrace {
     def fxWeapon(effect: WeaponCatalog.WeaponEffect, effectValue: Int32): UnitCatalog.WeaponResource =
         ({hit = 200, crit = 0, effect = effect, effectValue = effectValue | testWeapon()}: UnitCatalog.WeaponResource)
 
-    /// w0=syncFromScene → resolveAttack(player0 → enemy1) を seed() の seeded PRNG で駆動し
+    /// 駒 Cmd 列（`unitCmds`）から w0 を組み、地形 read-model（floorTerrain）を seed する。resolve 系ドライバの
+    /// 初期 World は traced harness と同じく盤面あり（knockback 着地 / warp が boardOf を読む）。
+    def worldOfCmds(cmds: List[World.Cmd]): World =
+        List.foldLeft((w, c) -> World.applyCmd(c, w), World.empty(),
+            List.append(cmds, World.Cmd.SetMapSnapshot(Some(floorTerrain())) :: Nil))
+
+    /// w0=unitCmds seed → resolveAttack(player0 → enemy1) を seed() の seeded PRNG で駆動し
     /// (最終 World, event 数) を返す共通ドライバ（B4 等価テスト群の定型 thunk）。
-    def driveResolve(sc: Scene[NodeTag]): (World, Int32) =
-        let w0 = World.syncFromScene(sc, World.empty());
+    def driveResolve(cmds: List[World.Cmd]): (World, Int32) =
+        let w0 = worldOfCmds(cmds);
         region rc {
             let (w, evs) = TestUnitFixtures.withSeededRng(rc, seed(), () ->
                 CombatSystem.resolveAttack(w0, {ref = EntityRef.Player(0), level = 1}, {ref = EntityRef.Enemy(1), level = 1}));
@@ -129,7 +134,7 @@ mod TestGoldenTrace {
     def dummyResult(): LevelSystem.Result =
         ({unitName = "x", fromLevel = 1, toLevel = 2, changes = Nil}: LevelSystem.Result)
 
-    /// 13×13 の壁なし floor map（toBoard / mapSnapshotOf が map ノードを要求するため）。TestSimEvent 踏襲。
+    /// 13×13 の壁なし floor map（地形 fixture `floorTerrain` の素材）。TestSimEvent 踏襲。
     def floorMapLayer(): TileMapLayer =
         let atlas: TileSetAtlasSource = {
             textureName = "test", texWidth = 0.0, texHeight = 0.0,
@@ -142,110 +147,142 @@ mod TestGoldenTrace {
             gridSize       = ({x = 13, y = 13}: {x = Int32, y = Int32})
         })
 
-    def floorMapData(): MapScene.Data = {
-        anchorOffset = {x = 0, y = 0},
-        spawnGrid    = {x = 5, y = 5},
-        placements   = RoomLayout.singleRoom(13, 13),
-        roomCount    = 1,
-        plan         = ({modulePaths = Nil, sideConnections = Nil, roomCount = 1}: DungeonGenerator.Plan)
-    }
+    /// 13×13 の壁なし地形（World.mapSnapshot / mock board 用の値 fixture）。
+    def floorTerrain(): MapSnapshot =
+        MapSetup.snapshotOf(floorMapLayer(), Vec2.zero(), RoomLayout.singleRoom(13, 13))
 
-    /// World ノード下に player + 任意数の enemy + floor map を挿した最小 scene。
-    def sceneOf(p: PlayerScene.Data, enemies: List[EnemyScene.Data]): Scene[NodeTag] =
-        let worldM = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
-        let base = Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(worldM, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(p#id),
-                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Player(p)))
-            |> Scene.addNode("DungeonLevel0",
-                EngineNode.TileMapLayerWithState(floorMapLayer(), NodeTag.Map(floorMapData())));
-        List.foldLeft((sc, e) ->
-            Scene.addChildAt(MapScene.worldPath(), EnemyScene.enemyName(e#id),
-                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Enemy(e)), sc),
-            base, enemies)
+    /// 味方 1 体分の Data を、その値をそのまま mirror する `World.Cmd` 列へ写す
+    /// （`World.dataFromWorld` の gate 11 種 + attackTargetId/selectedItem/hidden/pendingLevelUp/statuses を全て埋める）。
+    def playerCmds(p: PlayerScene.Data): List[World.Cmd] =
+        let ref = EntityRef.Player(p#id);
+        let targetCmd = p#attackTargetId |> Option.map(t -> World.Cmd.SetAttackTarget(ref, t)) |> Option.toList;
+        List.flatten(
+            (World.Cmd.Spawn(ref)
+                :: World.Cmd.Move(ref, p#gridPos)
+                :: World.Cmd.SetHp(ref, p#hp)
+                :: World.Cmd.SetWaited(ref, p#waited)
+                :: World.Cmd.SetUsedStairs(ref, p#usedStairs)
+                :: World.Cmd.SetHidden(ref, p#hidden)
+                :: World.Cmd.SetProgress(ref, p#level, p#exp)
+                :: World.Cmd.SetWeapons(ref, p#weapons)
+                :: World.Cmd.SetWeaponView(ref, PlayerScene.equippedWeaponView(p))
+                :: World.Cmd.SetBaseStats(ref, Combat.baseStatsFrom(p#resource))
+                :: World.Cmd.SetMoveTiles(ref, p#moveTiles)
+                :: World.Cmd.SetStaves(ref, p#staves)
+                :: World.Cmd.SetConsumables(ref, p#consumables)
+                :: World.Cmd.SetRings(ref, p#rings)
+                :: World.Cmd.SetRingEquipped(ref, p#ringEquipped)
+                :: World.Cmd.SetRingBonus(ref, PlayerScene.equippedRingBonus(p))
+                :: World.Cmd.SetGrowth(p#id, {base = LevelSystem.statsOf(p#resource),
+                                              rates = p#resource#growthRates, name = p#resource#description})
+                :: World.Cmd.SetFollowUpUsed(ref, p#followUpUsed)
+                :: World.Cmd.SetClassId(p#id, p#classId)
+                :: World.Cmd.SetPlayerResource(p#id, p#resource)
+                :: World.Cmd.SetFacing(p#id, p#facing)
+                :: World.Cmd.SetMoveSteps(p#id, p#moveStepsTaken)
+                :: World.Cmd.SetSelectedItem(p#id, p#selectedItem)
+                :: World.Cmd.SetPendingLevelUp(p#id, p#pendingLevelUp)
+                :: World.Cmd.Seed(ref, p#statuses)
+                :: Nil)
+            :: targetCmd :: Nil)
+
+    /// 敵 1 体分の Data を、その値をそのまま mirror する `World.Cmd` 列へ写す
+    /// （`World.dataFromWorldEnemy` の gate 11 種 + attackTargetId/prevPos/ring/statuses を全て埋める）。
+    def enemyCmds(e: EnemyScene.Data): List[World.Cmd] =
+        let ref = EntityRef.Enemy(e#id);
+        let targetCmd = e#attackTargetId |> Option.map(t -> World.Cmd.SetAttackTarget(ref, t)) |> Option.toList;
+        let dyingCmd  = if (e#isDying) World.Cmd.SetDying(ref) :: Nil else Nil;
+        let prevCmd   = e#prevPos |> Option.map(p -> World.Cmd.SetPrevPos(ref, p)) |> Option.toList;
+        List.flatten(
+            (World.Cmd.Spawn(ref)
+                :: World.Cmd.Move(ref, e#gridPos)
+                :: World.Cmd.SetHp(ref, e#hp)
+                :: World.Cmd.SetAlerted(ref, e#alerted)
+                :: World.Cmd.SetActed(ref, e#acted)
+                :: World.Cmd.SetBottleUsed(ref, e#bottleUsed)
+                :: World.Cmd.SetFollowUpUsed(ref, e#followUpUsed)
+                :: World.Cmd.SetWeapons(ref, Option.toList(e#weapon))
+                :: World.Cmd.SetWeaponView(ref, EnemyScene.equippedWeaponView(e))
+                :: World.Cmd.SetBaseStats(ref, Combat.baseStatsFrom(e#resource))
+                :: World.Cmd.SetMoveTiles(ref, e#moveTiles)
+                :: World.Cmd.SetEffectRule(e#id, e#resource#effectRule)
+                :: World.Cmd.SetEnemyRing(e#id, e#ring)
+                :: World.Cmd.SetRingBonus(ref, EnemyScene.equippedRingBonus(e))
+                :: World.Cmd.SetEnemyProfile(e#id, {resourceId = e#resourceId, homeModuleIdx = e#homeModuleIdx})
+                :: World.Cmd.SetEnemyResource(e#id, e#resource)
+                :: World.Cmd.Seed(ref, e#statuses)
+                :: Nil)
+            :: targetCmd :: dyingCmd :: prevCmd :: Nil)
+
+    /// player + 任意数の enemy を World.Cmd 列へ写した最小 fixture（地形は別途 `floorTerrain` で seed）。
+    def unitCmds(p: PlayerScene.Data, enemies: List[EnemyScene.Data]): List[World.Cmd] =
+        List.append(playerCmds(p), List.flatMap(enemyCmds, enemies))
 
     // ── harness runners ───────────────────────────────────────────────────────
 
-    /// applyAttackHit を traced harness + 副作用モックで駆動。(後 scene, cmdKey 列, 最終 World)。
-    def runAttack(sc: Scene[NodeTag]): (Scene[NodeTag], List[(String, Int32, Int32, Int32)], World) =
+    /// applyAttackHit を traced harness + 副作用モックで駆動。(cmdKey 列, 最終 World)。
+    def runAttack(cmds: List[World.Cmd]): (List[(String, Int32, Int32, Int32)], World) =
         region rc {
-            TestUnitFixtures.withTracedWorld(rc, seed(), sc, () ->
-            TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(sc), () ->
-            TestUnitFixtures.withNoopThiefDrop(() ->
-            TestUnitFixtures.withMockGame(() ->
-            TestUnitFixtures.withMockAudio(() ->
-            TestUnitFixtures.withMockGameLogger(() ->
-            TestUnitFixtures.withNoopAnim(() ->
-            TestUnitFixtures.withNoopTween(() ->
-                CombatDriver.applyAttackHit(0, sc)))))))))
+            let (_, keys, w) =
+                TestUnitFixtures.withTracedBoardWorld(rc, seed(), floorTerrain(), cmds, () ->
+                TestUnitFixtures.withNoopThiefDrop(() ->
+                TestUnitFixtures.withMockGame(() ->
+                TestUnitFixtures.withMockAudio(() ->
+                TestUnitFixtures.withMockGameLogger(() ->
+                TestUnitFixtures.withNoopAnim(() ->
+                TestUnitFixtures.withNoopTween(() ->
+                    CombatDriver.applyAttackHit(0))))))));
+            (keys, w)
         }
 
     /// applyAttackHit を CONSTANT-RNG harness で駆動（draw を全て `rngVal` 固定にする）。
     /// roll-dependence 反証用＝seeded 版 `runAttack` と cmd-stream を比較する。
-    def runAttackConst(sc: Scene[NodeTag], rngVal: Int32): (Scene[NodeTag], List[(String, Int32, Int32, Int32)], World) =
+    def runAttackConst(cmds: List[World.Cmd], rngVal: Int32): (List[(String, Int32, Int32, Int32)], World) =
         region rc {
-            TestUnitFixtures.withConstTracedWorld(rc, rngVal, sc, () ->
-            TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(sc), () ->
+            let (_, keys, w) =
+                TestUnitFixtures.withConstTracedWorld(rc, rngVal, floorTerrain(), cmds, () ->
+                TestUnitFixtures.withNoopThiefDrop(() ->
+                TestUnitFixtures.withMockGame(() ->
+                TestUnitFixtures.withMockAudio(() ->
+                TestUnitFixtures.withMockGameLogger(() ->
+                TestUnitFixtures.withNoopAnim(() ->
+                TestUnitFixtures.withNoopTween(() ->
+                    CombatDriver.applyAttackHit(0))))))));
+            (keys, w)
+        }
+
+    /// applyEnemyAttackHit を traced harness + 副作用モックで駆動。(killed, cmdKey 列, World)。
+    def runEnemyAttack(cmds: List[World.Cmd], enemyId: Int32):
+            (List[Int32], List[(String, Int32, Int32, Int32)], World) =
+        region rc {
+            TestUnitFixtures.withTracedBoardWorld(rc, seed(), floorTerrain(), cmds, () ->
             TestUnitFixtures.withNoopThiefDrop(() ->
             TestUnitFixtures.withMockGame(() ->
             TestUnitFixtures.withMockAudio(() ->
             TestUnitFixtures.withMockGameLogger(() ->
             TestUnitFixtures.withNoopAnim(() ->
             TestUnitFixtures.withNoopTween(() ->
-                CombatDriver.applyAttackHit(0, sc)))))))))
+                CombatDriver.applyEnemyAttackHit(enemyId))))))))
         }
 
-    /// applyAttackHit を **World 直 seed** harness で駆動（scene には attackTarget を持たせず、
-    /// `seedCmds` で World.attackTarget を直接 seed する）。runAttack と同一のモック stack ＋ seed 以外は同条件。
-    /// golden ハーネス脱 scene の第一歩＝attackTarget store を scene Data でなく World store で seed する。
-    def runAttackWorldSeeded(sc: Scene[NodeTag], seedCmds: List[World.Cmd]):
-            (Scene[NodeTag], List[(String, Int32, Int32, Int32)], World) =
-        region rc {
-            TestUnitFixtures.withTracedWorldSeeded(rc, seed(), sc, seedCmds, () ->
-            TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(sc), () ->
-            TestUnitFixtures.withNoopThiefDrop(() ->
-            TestUnitFixtures.withMockGame(() ->
-            TestUnitFixtures.withMockAudio(() ->
-            TestUnitFixtures.withMockGameLogger(() ->
-            TestUnitFixtures.withNoopAnim(() ->
-            TestUnitFixtures.withNoopTween(() ->
-                CombatDriver.applyAttackHit(0, sc)))))))))
-        }
+    // combatViewOf が attacker/defender 両方で Some か（vacuous 通過の pre-guard）。
+    def viewSome(ref: EntityRef, cmds: List[World.Cmd]): Bool =
+        Option.nonEmpty(World.combatViewOf(ref, worldOfCmds(cmds)))
 
-    /// applyEnemyAttackHit を traced harness + 副作用モックで駆動。((後 scene, killed), cmdKey 列, World)。
-    def runEnemyAttack(sc: Scene[NodeTag], enemyId: Int32):
-            ((Scene[NodeTag], List[Int32]), List[(String, Int32, Int32, Int32)], World) =
-        region rc {
-            TestUnitFixtures.withTracedWorld(rc, seed(), sc, () ->
-            TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(sc), () ->
-            TestUnitFixtures.withNoopThiefDrop(() ->
-            TestUnitFixtures.withMockGame(() ->
-            TestUnitFixtures.withMockAudio(() ->
-            TestUnitFixtures.withMockGameLogger(() ->
-            TestUnitFixtures.withNoopAnim(() ->
-            TestUnitFixtures.withNoopTween(() ->
-                CombatDriver.applyEnemyAttackHit(enemyId, sc)))))))))
-        }
-
-    // combatViewOf が attacker/defender 両方で Some か（vacuous scene-fallback の pre-guard）。
-    def viewSome(ref: EntityRef, sc: Scene[NodeTag]): Bool =
-        Option.nonEmpty(World.combatViewOf(ref, World.syncFromScene(sc, World.empty())))
-
-    /// anti-vacuity 前提その①: 両駒の combatViewOf が Some＝scene が World combatView を解決できる
-    /// （scene-fallback で素通りしていない）。等価テスト・golden テスト共通の前提。
-    def assertViewsResolvable(sc: Scene[NodeTag]): Unit \ Assert =
-        Assert.assertEq(expected = true, viewSome(EntityRef.Player(0), sc) and viewSome(EntityRef.Enemy(1), sc))
+    /// anti-vacuity 前提その①: 両駒の combatViewOf が Some＝Cmd 列が World combatView を解決できる
+    /// （未 seed で素通りしていない）。等価テスト・golden テスト共通の前提。
+    def assertViewsResolvable(cmds: List[World.Cmd]): Unit \ Assert =
+        Assert.assertEq(expected = true, viewSome(EntityRef.Player(0), cmds) and viewSome(EntityRef.Enemy(1), cmds))
 
     /// 等価テストの anti-vacuity 前提（① views 解決可能 ② sim が非空 event を出した）を 1 行に集約する。
     /// これを各テスト冒頭で呼ぶと、残るアサートは「legacy と何が一致するか」だけになる。
-    def assertNonVacuous(sc: Scene[NodeTag], evCount: Int32): Unit \ Assert =
-        assertViewsResolvable(sc);
+    def assertNonVacuous(cmds: List[World.Cmd], evCount: Int32): Unit \ Assert =
+        assertViewsResolvable(cmds);
         Assert.assertEq(expected = true, evCount > 0)
 
     /// golden cmd-stream テストの前提（① views 解決可能 ② legacy seam が非空 Cmd を emit）を 1 行に集約する。
-    def assertGoldenPremise(sc: Scene[NodeTag], keys: List[(String, Int32, Int32, Int32)]): Unit \ Assert =
-        assertViewsResolvable(sc);
+    def assertGoldenPremise(cmds: List[World.Cmd], keys: List[(String, Int32, Int32, Int32)]): Unit \ Assert =
+        assertViewsResolvable(cmds);
         Assert.assertEq(expected = true, not List.isEmpty(keys))
 
     // ── (A) LEVEL-UP path ─────────────────────────────────────────────────────
@@ -258,12 +295,12 @@ mod TestGoldenTrace {
     ///   battleExp(1,1,kill)=35、99+35-100=34。growthRates=0 ゆえ現 HP 増分 0（newHp=10）。
     @Test
     def testGoldenLevelUp(): Unit \ Assert =
-        let sc = sceneOf(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, keys, w) = runAttack(sc);
-        assertGoldenPremise(sc, keys);
+        let cmds = unitCmds(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (keys, w) = runAttack(cmds);
+        assertGoldenPremise(cmds, keys);
         // golden: P6-5a で **ECS 経路（applyAttackHit=live）** の cmd-stream に再凍結（GENERATE-THEN-FREEZE）。
         // 前半 = eventToCmds（sim event の写像: 撃破 SetHp/Dying → level-up の SetHp/Progress）、
-        // 後半 = applyEcsSceneEffects/startDeathAnimation の scene 副作用 co-emit
+        // 後半 = applyEcsWorldEffects/startDeathAnimation の World 副作用 co-emit
         //（Dying は seam と death-anim の二重 emit＝冪等・SetBaseStats/SetGrowth は resource 成長の束ね）。
         let golden =
             ("SetHp", 1000001, 0, 0) ::
@@ -272,6 +309,8 @@ mod TestGoldenTrace {
             ("Progress", 0, 2, 34) ::
             ("SetHp", 1000001, 0, 0) ::
             ("Dying", 1000001, 0, 0) ::
+            ("SetPendingLevelUp", 0, 1, 0) ::   // level-up の panel trigger（pendingLevelUp store 権威化で追加）
+            ("SetPlayerResource", 0, 10, 0) ::  // 成長後 resource テンプレの store 更新（SetBaseStats/SetGrowth と同所）
             ("SetBaseStats", 0, 21, 10) ::
             ("SetGrowth", 0, 10, 0) ::
             ("SetWeapons", 0, 1, 0) ::
@@ -291,9 +330,9 @@ mod TestGoldenTrace {
     /// cmd-stream: SetHp(enemy,0) → SetHp(enemy,0)+Dying(enemy)[startDeathAnimation] → bare Progress(player, lv1, exp35)。
     @Test
     def testGoldenNoLevelUp(): Unit \ Assert =
-        let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, keys, w) = runAttack(sc);
-        assertGoldenPremise(sc, keys);
+        let cmds = unitCmds(player(0, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (keys, w) = runAttack(cmds);
+        assertGoldenPremise(cmds, keys);
         // golden: P6-5a で ECS 経路に再凍結。撃破するが閾値を跨がず→ bare Progress（SetHp(player)/growth なし）。
         let golden =
             ("SetHp", 1000001, 0, 0) ::
@@ -311,38 +350,6 @@ mod TestGoldenTrace {
              World.hpOf(EntityRef.Player(0), w),
              World.progressOf(EntityRef.Player(0), w)))
 
-    // ── S2: attackTarget の World-authority 証明（脱 scene seed 第一歩）──────────────
-    //
-    // driver（applyAttackHit）は攻撃対象 id を **World.attackTarget** から読む。ここでそれを、
-    // 「scene に attackTarget を持たせた旧 seed」と「scene には持たせず World.attackTarget を Cmd で
-    // 直 seed した新 seed」が **同一の golden cmd-stream + 最終 World** を出すことで証明する
-    // （並走 → 一致 assert）。旧経路（sceneOf の attackTargetId seed）は他 golden が使うため据え置き、
-    // ここは新旧同値の gate だけを固定する。golden literal は不変。
-
-    /// 旧 seed（scene attackTargetId=Some(1)）と 新 seed（scene=None・World.attackTarget を SetAttackTarget で
-    /// 直 seed）が、同 fixture・同 seed で bit-identical な cmd-stream と最終 World 射影を出す。
-    /// ⇒ driver は attackTarget を scene Data でなく World store から読む（S2 flip の証明）。
-    @Test
-    def testGoldenAttackTargetWorldSeedMatchesScene(): Unit \ Assert =
-        // 旧 seed: attackTargetId を SCENE に持たせる（syncFromScene が World.attackTarget へ mirror）。
-        let scScene = sceneOf(player(0, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, keysScene, wScene) = runAttack(scScene);
-        // 新 seed: scene player の attackTargetId=None・World.attackTarget を Cmd で直 seed する。
-        let scWorld = sceneOf(player(0, 10, None, 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let seedCmds = World.Cmd.SetAttackTarget(EntityRef.Player(0), 1) :: Nil;
-        let (_, keysWorld, wWorld) = runAttackWorldSeeded(scWorld, seedCmds);
-        assertGoldenPremise(scScene, keysScene);
-        // 一致①: cmd-stream が新旧 bit-identical（seed 経路に依らず同一トレース）。
-        Assert.assertEq(expected = keysScene, keysWorld);
-        // 一致②: 最終 World 射影（enemy hp / player hp / progress）も新旧一致。
-        let proj = w -> (World.hpOf(EntityRef.Enemy(1), w),
-                         World.hpOf(EntityRef.Player(0), w),
-                         World.progressOf(EntityRef.Player(0), w));
-        Assert.assertEq(expected = proj(wScene), proj(wWorld));
-        // 独立 pin: 新 seed は scene に attackTarget を持たないのに撃破まで到達（＝World seed が効いた・
-        // scene fallback で素通りした vacuous でないことを保証）。
-        Assert.assertEq(expected = Some(0), World.hpOf(EntityRef.Enemy(1), wWorld))
-
     // ── Phase C 等価: resolveCombat 本体 が legacy と final-World 等価か ───────────
 
     /// 撃破 path の最終 World 射影（enemy hp / player hp / progress）。legacy と sim の両 World に適用して比較する。
@@ -357,10 +364,10 @@ mod TestGoldenTrace {
     /// hit ロール 1 本で legacy と等価になる。これが cutover の final-World 安全網の最小単位。
     @Test
     def testResolveCombatEqualsSimNoLevelUp(): Unit \ Assert =
-        let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evCount) = driveResolve(sc);
-        assertNonVacuous(sc, evCount);
+        let cmds = unitCmds(player(0, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evCount) = driveResolve(cmds);
+        assertNonVacuous(cmds, evCount);
         // 等価: 撃破 path の (enemy hp, player hp, progress) が オラクルと一致。
         Assert.assertEq(expected = killProj(oracleW), killProj(sysW))
 
@@ -369,10 +376,10 @@ mod TestGoldenTrace {
     /// 範囲（成長が起きない）で legacy 凍結 World に一致する（その制約は CombatSystem header の ☐ に明記）。
     @Test
     def testResolveCombatEqualsSimLevelUp(): Unit \ Assert =
-        let sc = sceneOf(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evCount) = driveResolve(sc);
-        assertNonVacuous(sc, evCount);
+        let cmds = unitCmds(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evCount) = driveResolve(cmds);
+        assertNonVacuous(cmds, evCount);
         // 等価: 撃破＋level-up（Lv2/exp34/hp10）の (enemy hp, player hp, progress) が オラクルと一致。
         Assert.assertEq(expected = killProj(oracleW), killProj(sysW))
 
@@ -381,10 +388,10 @@ mod TestGoldenTrace {
     /// -1 を残し legacy の 0 と乖離してこのテストが落ちる＝clamp の divergence 防止価値を回帰固定する。
     @Test
     def testResolveCombatEqualsSimOverkill(): Unit \ Assert =
-        let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 3, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evCount) = driveResolve(sc);
-        assertNonVacuous(sc, evCount);
+        let cmds = unitCmds(player(0, 10, Some(1), 200), enemy(1, 3, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evCount) = driveResolve(cmds);
+        assertNonVacuous(cmds, evCount);
         // 等価: overkill（hp3 を dmg4）でも enemy hp が オラクルと一致。
         Assert.assertEq(expected = World.hpOf(EntityRef.Enemy(1), oracleW), World.hpOf(EntityRef.Enemy(1), sysW));
         // 独立 pin: clamp が効き strike#newHp=-1 でなく 0 に落ちる（clamp が無ければ -1 残りでここが落ちる）。
@@ -398,10 +405,10 @@ mod TestGoldenTrace {
     def testResolveCombatEqualsSimLevelUpRollSensitive(): Unit \ Assert =
         let bp = player(99, 10, Some(1), 200);
         let gp = {resource = {growthRates = {hp = 50 | UnitCatalog.zeroGrowthRates()} | bp#resource} | bp};
-        let sc = sceneOf(gp, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evCount) = driveResolve(sc);
-        assertNonVacuous(sc, evCount);
+        let cmds = unitCmds(gp, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evCount) = driveResolve(cmds);
+        assertNonVacuous(cmds, evCount);
         // 等価: roll-sensitive な成長(hp=50)でも (player hp, progress) が オラクルと一致＝growth draw が同位置で引かれる証明。
         let proj = w -> (World.hpOf(EntityRef.Player(0), w), World.progressOf(EntityRef.Player(0), w));
         Assert.assertEq(expected = proj(oracleW), proj(sysW))
@@ -411,10 +418,10 @@ mod TestGoldenTrace {
     /// false のままで legacy(true) と乖離して落ちる）。
     @Test
     def testResolveCombatEqualsSimNonKill(): Unit \ Assert =
-        let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evCount) = driveResolve(sc);
-        assertNonVacuous(sc, evCount);
+        let cmds = unitCmds(player(0, 10, Some(1), 200), enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evCount) = driveResolve(cmds);
+        assertNonVacuous(cmds, evCount);
         // 等価: 非撃破での (enemy hp, alerted, progress) が オラクルと一致。progress を含めるのが要点
         // ＝命中 EXP（B1 hit-exp 漏れ）を検出する。alerted を含めるのは SetAlerted emit を legacy にピンするため。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w),
@@ -430,10 +437,10 @@ mod TestGoldenTrace {
         let critWeapon = ({hit = 200, crit = 100 | testWeapon()}: UnitCatalog.WeaponResource);
         let bp = player(0, 10, Some(1), 200);
         let critP = {weapons = critWeapon :: Nil | bp};
-        let sc = sceneOf(critP, enemy(1, 10, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evCount) = driveResolve(sc);
-        assertNonVacuous(sc, evCount);
+        let cmds = unitCmds(critP, enemy(1, 10, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evCount) = driveResolve(cmds);
+        assertNonVacuous(cmds, evCount);
         // 等価: crit が「非撃破→撃破」「hit exp→kill exp」へ反転させた結果の (enemy hp, progress) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), World.progressOf(EntityRef.Player(0), w));
         Assert.assertEq(expected = proj(oracleW), proj(sysW));
@@ -446,11 +453,11 @@ mod TestGoldenTrace {
     def testResolveCombatEqualsSimReleasesImmobilize(): Unit \ Assert =
         let e  = {statuses = StatusSystem.immobilizeFor(3) :: Nil
                    | enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80)};
-        let sc = sceneOf(player(0, 10, Some(1), 200), e :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let w0 = World.syncFromScene(sc, World.empty());
-        let (sysW, evCount) = driveResolve(sc);
-        assertNonVacuous(sc, evCount);
+        let cmds = unitCmds(player(0, 10, Some(1), 200), e :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let w0 = worldOfCmds(cmds);
+        let (sysW, evCount) = driveResolve(cmds);
+        assertNonVacuous(cmds, evCount);
         let immobilized = w -> not List.isEmpty(World.statusEffectsOf(EntityRef.Enemy(1), w));
         // 前提: 攻撃前の enemy はかなしばり中（status 非空）。
         Assert.assertEq(expected = true, immobilized(w0));
@@ -468,10 +475,10 @@ mod TestGoldenTrace {
     /// ⇒ SEEDED と CONSTANT-50 で cmd-stream が分岐＝golden が draw 列に依存することを固定する。
     @Test
     def testGoldenRollDependentHit(): Unit \ Assert =
-        let sc = sceneOf(player(0, 10, Some(1), 33), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, seededKeys, _) = runAttack(sc);
-        let (_, constKeys, _)  = runAttackConst(sc, 50);
-        assertViewsResolvable(sc);
+        let cmds = unitCmds(player(0, 10, Some(1), 33), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (seededKeys, _) = runAttack(cmds);
+        let (constKeys, _) = runAttackConst(cmds, 50);
+        assertViewsResolvable(cmds);
         // SEEDED（hitRoll=13<30）＝命中→撃破の golden cmd-stream（A2 と同形・今回は roll 依存で命中。P6-5a: ECS 経路）。
         let golden =
             ("SetHp", 1000001, 0, 0) ::
@@ -483,7 +490,7 @@ mod TestGoldenTrace {
             ("SetWeaponView", 0, 2, 0) :: Nil;  // S2.4: 武器耐久消費に 1:1 co-emit（attack=2）
         Assert.assertEq(expected = golden, seededKeys);
         // CONSTANT-50（50<30=false ⇒ 回避）でも D3 で武器耐久は消費される（命中/回避とも毎攻撃で消費＝
-        // sim 非依存の scene 副作用）ので SetWeapons だけが出る（hp/dying/progress は不変＝撃破しない）。
+        // sim 非依存の World 副作用）ので SetWeapons だけが出る（hp/dying/progress は不変＝撃破しない）。
         Assert.assertEq(expected = ("SetWeapons", 0, 1, 0) :: ("SetWeaponView", 0, 2, 0) :: Nil, constKeys);
         // ∴ 定数生成器では golden を再現できない＝この fixture の cmd-stream は draw 列に依存する。
         Assert.assertEq(expected = true, seededKeys != constKeys)
@@ -497,11 +504,11 @@ mod TestGoldenTrace {
     @Test
     def testGoldenEnemyEffectRule(): Unit \ Assert =
         let rule = ruleJson("{\"when\":\"onHit\",\"to\":\"enemy\",\"op\":\"spdDown\",\"amount\":3,\"for\":\"turns\",\"forTurns\":3}");
-        let sc = sceneOf(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
-        let ((_, killed), keys, w) = runEnemyAttack(sc, 1);
-        assertGoldenPremise(sc, keys);
+        let cmds = unitCmds(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
+        let (killed, keys, w) = runEnemyAttack(cmds, 1);
+        assertGoldenPremise(cmds, keys);
         // golden: P6-5a で ECS 経路に再凍結。SetHp(player,6)→ClrImmob(被弾でかなしばり解除)
-        // →Add（magnitude=3・kind=1=SpdDown）→Seed×2（status の scene 権威 mirror）。
+        // →Add（magnitude=3・kind=1=SpdDown）→Seed×2（status の World 権威 mirror）。
         // 敵武器の耐久 co-emit は ECS 経路では敵側 seam が担わない（legacy 固有の emit だった）。
         let golden =
             ("SetHp", 0, 6, 0) ::
@@ -528,12 +535,11 @@ mod TestGoldenTrace {
     /// cmd-stream: ClrTgt(player)。最終 Phase=PlayerAttackHold。
     @Test
     def testGoldenOnLungeDoneKill(): Unit \ Assert =
-        let sc = sceneOf(player(0, 10, Some(1), 80), enemy(1, 4, {x = 3, y = 2}, true, None, ruleJson(""), 80) :: Nil);
+        let cmds = unitCmds(player(0, 10, Some(1), 80), enemy(1, 4, {x = 3, y = 2}, true, None, ruleJson(""), 80) :: Nil);
         region rc {
             let ((_, finalPhase), keys, _) =
-                TestUnitFixtures.withTracedWorld(rc, seed(), sc, () ->
+                TestUnitFixtures.withTracedBoardWorld(rc, seed(), floorTerrain(), cmds, () ->
                 TestUnitFixtures.withWorldPhase(SimPhase.PlayerTurn, () ->
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(sc), () ->
                 TestUnitFixtures.withNoopThiefDrop(() ->
                 TestUnitFixtures.withMockGame(() ->
                 TestUnitFixtures.withMockAudio(() ->
@@ -545,9 +551,9 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withCursor(() ->
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () ->
-                            CombatDriver.onLungeDone(Faction.Player, 0, sc))
-                    } with Pacing.withState(rc)))))))))))));
-            assertGoldenPremise(sc, keys);
+                            CombatDriver.onLungeDone(Faction.Player, 0))
+                    } with Pacing.withState(rc))))))))))));
+            assertGoldenPremise(cmds, keys);
             // golden: 追撃分岐 OFF（plain weapon）→ ClrTgt(player) のみ。
             let golden = ("ClrTgt", 0, 0, 0) :: Nil;
             Assert.assertEq(expected = golden, keys);
@@ -566,12 +572,11 @@ mod TestGoldenTrace {
     /// cmd-stream: ClrTgt(player) → AtkTgt(enemy1, player0) → SetHp(player,0) → ClrImmob(player)[releaseBind:759]。
     @Test
     def testGoldenCounterChain(): Unit \ Assert =
-        let sc = sceneOf(player(0, 4, Some(1), 80), enemy(1, 10, {x = 3, y = 2}, false, None, ruleJson(""), 200) :: Nil);
+        let cmds = unitCmds(player(0, 4, Some(1), 80), enemy(1, 10, {x = 3, y = 2}, false, None, ruleJson(""), 200) :: Nil);
         region rc {
-            let ((result, _), keys, w) =
-                TestUnitFixtures.withTracedWorld(rc, seed(), sc, () ->
+            let ((killed, _), keys, w) =
+                TestUnitFixtures.withTracedBoardWorld(rc, seed(), floorTerrain(), cmds, () ->
                 TestUnitFixtures.withWorldPhase(SimPhase.PlayerTurn, () ->
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(sc), () ->
                 TestUnitFixtures.withNoopThiefDrop(() ->
                 TestUnitFixtures.withMockGame(() ->
                 TestUnitFixtures.withMockAudio(() ->
@@ -583,12 +588,11 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withCursor(() ->
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () -> {
-                            let s1 = CombatDriver.onLungeDone(Faction.Player, 0, sc);
-                            CombatDriver.applyEnemyAttackHit(1, s1)
+                            CombatDriver.onLungeDone(Faction.Player, 0);
+                            CombatDriver.applyEnemyAttackHit(1)
                         })
-                    } with Pacing.withState(rc)))))))))))));
-            let (_, killed) = result;
-            assertGoldenPremise(sc, keys);
+                    } with Pacing.withState(rc))))))))))));
+            assertGoldenPremise(cmds, keys);
             // golden: P6-5a で ECS 経路に再凍結。ClrTgt(player)→AtkTgt(enemy1,player0)
             // →SetHp(player,0)→ClrImmob(被弾でかなしばり解除・sim event)→Seed(status mirror)。
             // 敵武器の耐久 co-emit は ECS 敵 seam では出ない（legacy 固有だった）。
@@ -610,9 +614,9 @@ mod TestGoldenTrace {
     /// 同 seed で 2 回駆動すると cmdKey 列・最終 World 射影が bit-identical（決定論）。
     @Test
     def testGoldenReproducible(): Unit \ Assert =
-        let mk = () -> sceneOf(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, k1, w1) = runAttack(mk());
-        let (_, k2, w2) = runAttack(mk());
+        let mk = () -> unitCmds(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (k1, w1) = runAttack(mk());
+        let (k2, w2) = runAttack(mk());
         let projOf = w -> (World.hpOf(EntityRef.Enemy(1), w),
                            World.hpOf(EntityRef.Player(0), w),
                            World.progressOf(EntityRef.Player(0), w));
@@ -622,15 +626,15 @@ mod TestGoldenTrace {
         Assert.assertEq(expected = projOf(w1), projOf(w2))
 
     /// 隣接攻撃は駒を動かさない＝最終 World 由来の board が、独立に凍結した piece-list literal と一致する。
-    /// P6-5c: boardMatchesScene（board-lock 契約 = scene pieces との突合）は退役（scene gridPos twin 撤去で
-    /// live に scene 側 board が存在しない）。frozen literal pin のみ残す。
+    /// board の権威は World（`World.boardOf`）単独で、比較対象になる別経路（scene 由来の board）は存在しない。
     @Test
     def testGoldenFinalBoardParity(): Unit \ Assert =
-        let sc = sceneOf(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, w) = runAttack(sc);
+        let cmds = unitCmds(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, w) = runAttack(cmds);
         // (faction, id, x, y): player(0)@{2,2}, enemy(1)@{3,2}（撃破しても pos は不変）。
         let goldenPieces = (0, 0, 2, 2) :: (1, 1, 3, 2) :: Nil;
-        Assert.assertEq(expected = goldenPieces, World.boardKey(World.toBoard(w, sc)))
+        Assert.assertEq(expected = goldenPieces,
+            World.boardKey(({map = floorTerrain(), pieces = World.boardPieces(w)}: Board)))
 
     // ── SimEvent ORACLE（frozen [SimEvent] = resolveCombat の比較対象）──────────────
     //
@@ -645,8 +649,8 @@ mod TestGoldenTrace {
     /// (A) level-up を SimEvent で表した frozen オラクル。Damaged→ViewFx(Died)→Dying→LeveledUp。
     @Test
     def testSimEventOracleLevelUp(): Unit \ Assert =
-        let sc = sceneOf(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
+        let cmds = unitCmds(player(99, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
         let events =
             World.SimEvent.Damaged(EntityRef.Enemy(1), {newHp = 0, dmg = 4}) ::
             World.SimEvent.ViewFx(World.ViewFxKind.Died(EntityRef.Enemy(1))) ::
@@ -662,7 +666,7 @@ mod TestGoldenTrace {
             ("Progress", 0, 2, 34) :: Nil;
         Assert.assertEq(expected = cmdGolden, cmdKeys);
         // (b) events を初期 World へ fold した最終射影が オラクルと一致（SimEvent オラクル ≡ legacy オラクル）。
-        let initW  = World.syncFromScene(sc, World.empty());
+        let initW  = worldOfCmds(cmds);
         let folded = List.foldLeft((w, ev) -> World.applyEventToWorld(ev, w), initW, events);
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w),
                          World.hpOf(EntityRef.Player(0), w),
@@ -677,8 +681,8 @@ mod TestGoldenTrace {
     @Test
     def testSimEventOracleEnemyEffectRule(): Unit \ Assert =
         let rule = ruleJson("{\"when\":\"onHit\",\"to\":\"enemy\",\"op\":\"spdDown\",\"amount\":3,\"for\":\"turns\",\"forTurns\":3}");
-        let sc = sceneOf(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
-        let (_, _, oracleW) = runEnemyAttack(sc, 1);
+        let cmds = unitCmds(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
+        let (_, _, oracleW) = runEnemyAttack(cmds, 1);
         let spd = ({effect = StatusSystem.StatusEffect.SpdDown, magnitude = 3, remaining = 3}: StatusSystem.Status);
         let events =
             World.SimEvent.Damaged(EntityRef.Player(0), {newHp = 6, dmg = 4}) ::
@@ -692,7 +696,7 @@ mod TestGoldenTrace {
             ("Add", 0, 1, 3) :: Nil;
         Assert.assertEq(expected = cmdGolden, cmdKeys);
         // (b) fold した最終射影が オラクルと一致（hp/status へ収束）。
-        let initW  = World.syncFromScene(sc, World.empty());
+        let initW  = worldOfCmds(cmds);
         let folded = List.foldLeft((w, ev) -> World.applyEventToWorld(ev, w), initW, events);
         let proj = w -> (World.hpOf(EntityRef.Player(0), w),
                          World.statusEffectsOf(EntityRef.Player(0), w)
@@ -716,10 +720,10 @@ mod TestGoldenTrace {
     @Test
     def testResolveCombatFinisherKillsWithRing(): Unit \ Assert =
         let fp = {rings = testRing(Ring.RingEffect.Finisher, 50) :: Nil, ringEquipped = true | player(0, 10, Some(1), 200)};
-        let sc = sceneOf(fp, finisherEnemy() :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evCount) = driveResolve(sc);
-        assertNonVacuous(sc, evCount);
+        let cmds = unitCmds(fp, finisherEnemy() :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evCount) = driveResolve(cmds);
+        assertNonVacuous(cmds, evCount);
         // 等価: finisher 確殺後の (enemy hp, progress) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), World.progressOf(EntityRef.Player(0), w));
         Assert.assertEq(expected = proj(oracleW), proj(sysW));
@@ -730,10 +734,10 @@ mod TestGoldenTrace {
     /// 「base strike でなく finisher」起因だと確定する（anti-vacuity gate）。
     @Test
     def testResolveCombatFinisherControlNoRingSurvives(): Unit \ Assert =
-        let sc = sceneOf(player(0, 10, Some(1), 200), finisherEnemy() :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evCount) = driveResolve(sc);
-        assertNonVacuous(sc, evCount);
+        let cmds = unitCmds(player(0, 10, Some(1), 200), finisherEnemy() :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evCount) = driveResolve(cmds);
+        assertNonVacuous(cmds, evCount);
         // 等価: ring 無しでは enemy hp が オラクルと一致。
         Assert.assertEq(expected = World.hpOf(EntityRef.Enemy(1), oracleW), World.hpOf(EntityRef.Enemy(1), sysW));
         // 独立 pin: base ダメージ 0 ゆえ enemy は生存（hp4 のまま）＝(A) の kill は finisher 起因。
@@ -746,10 +750,10 @@ mod TestGoldenTrace {
     def testResolveCombatEqualsSimRingLifesteal(): Unit \ Assert =
         let bp = player(0, 5, Some(1), 200);
         let lp = {rings = testRing(Ring.RingEffect.Lifesteal, 5) :: Nil, ringEquipped = true | bp};
-        let sc = sceneOf(lp, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evC) = driveResolve(sc);
-        assertNonVacuous(sc, evC);
+        let cmds = unitCmds(lp, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evC) = driveResolve(cmds);
+        assertNonVacuous(cmds, evC);
         // 等価: 撃破時 ring-lifesteal 後の (player hp, enemy hp) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Player(0), w), World.hpOf(EntityRef.Enemy(1), w));
         Assert.assertEq(expected = proj(oracleW), proj(sysW));
@@ -761,10 +765,10 @@ mod TestGoldenTrace {
     def testResolveCombatEqualsSimWeaponLifesteal(): Unit \ Assert =
         let bp = player(0, 5, Some(1), 200);
         let lp = {weapons = fxWeapon(WeaponCatalog.WeaponEffect.Lifesteal, 50) :: Nil | bp};
-        let sc = sceneOf(lp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evC) = driveResolve(sc);
-        assertNonVacuous(sc, evC);
+        let cmds = unitCmds(lp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evC) = driveResolve(cmds);
+        assertNonVacuous(cmds, evC);
         // 等価: 非撃破での毎ヒット weapon-lifesteal 後の (player hp, enemy hp, alerted) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Player(0), w), World.hpOf(EntityRef.Enemy(1), w),
                          World.alertedOf(EntityRef.Enemy(1), w));
@@ -780,10 +784,10 @@ mod TestGoldenTrace {
         let bp = player(0, 5, Some(1), 200);
         let lp = {rings = testRing(Ring.RingEffect.Lifesteal, 5) :: Nil, ringEquipped = true,
                   weapons = fxWeapon(WeaponCatalog.WeaponEffect.Lifesteal, 50) :: Nil | bp};
-        let sc = sceneOf(lp, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evC) = driveResolve(sc);
-        assertNonVacuous(sc, evC);
+        let cmds = unitCmds(lp, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evC) = driveResolve(cmds);
+        assertNonVacuous(cmds, evC);
         // 等価: ring→weapon の emit 順（両者オリジナル hp5 起点・weapon が last-write）後の player hp が オラクルと一致。
         Assert.assertEq(expected = World.hpOf(EntityRef.Player(0), oracleW), World.hpOf(EntityRef.Player(0), sysW));
         // 独立 pin: ring(hp5→10)→weapon(original hp5→7・last-write)＝最終 hp7。
@@ -797,10 +801,10 @@ mod TestGoldenTrace {
         let bp = player(99, 5, Some(1), 200);
         let gr = {resource = {growthRates = {hp = 100 | UnitCatalog.zeroGrowthRates()} | bp#resource},
                   rings = testRing(Ring.RingEffect.Lifesteal, 5) :: Nil, ringEquipped = true | bp};
-        let sc = sceneOf(gr, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evC) = driveResolve(sc);
-        assertNonVacuous(sc, evC);
+        let cmds = unitCmds(gr, enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evC) = driveResolve(cmds);
+        assertNonVacuous(cmds, evC);
         // 等価: 二相 fold（lifesteal で hp10 → level-up が post-lifesteal hp に +1 = hp11）後の (player hp, progress) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Player(0), w), World.progressOf(EntityRef.Player(0), w));
         Assert.assertEq(expected = proj(oracleW), proj(sysW));
@@ -818,12 +822,12 @@ mod TestGoldenTrace {
         let bp = player(0, 5, Some(1), 200);
         let tp = {resource = {description = "ローグ" | bp#resource},
                   weapons = fxWeapon(WeaponCatalog.WeaponEffect.ThiefDrop, 100) :: Nil | bp};
-        let sc = sceneOf(tp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evC) = driveResolve(sc);
-        assertNonVacuous(sc, evC);
+        let cmds = unitCmds(tp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evC) = driveResolve(cmds);
+        assertNonVacuous(cmds, evC);
         // P1-b: ViewFx(Thief(敵元セル{3,2})) がちょうど 1 つ emit される（drop 実体は wrapper の applyThiefDrop が引く）。
-        Assert.assertEq(expected = (3, 2) :: Nil, thiefCellsT(driveResolveEvs(sc)));
+        Assert.assertEq(expected = (3, 2) :: Nil, thiefCellsT(driveResolveEvs(cmds)));
         // 等価: thief 発火しても World 不変＝(enemy hp, player hp, alerted, progress) が全て オラクルと一致（draw 消費のみ）。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), World.hpOf(EntityRef.Player(0), w),
                          World.alertedOf(EntityRef.Enemy(1), w), World.progressOf(EntityRef.Player(0), w));
@@ -836,35 +840,34 @@ mod TestGoldenTrace {
         let bp = player(0, 5, Some(1), 200);
         let tp = {resource = {description = "せんし" | bp#resource},
                   weapons = fxWeapon(WeaponCatalog.WeaponEffect.ThiefDrop, 100) :: Nil | bp};
-        let sc = sceneOf(tp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        Assert.assertEq(expected = (Nil: List[(Int32, Int32)]), thiefCellsT(driveResolveEvs(sc)))
+        let cmds = unitCmds(tp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        Assert.assertEq(expected = (Nil: List[(Int32, Int32)]), thiefCellsT(driveResolveEvs(cmds)))
 
     /// P1-b 出荷 seam: `applyAttackHit`（常時 ECS 経路）を記録 ThiefDrop + 記録ロガーで駆動し、
     /// wrapper の `applyThiefDrop` が実際に drop を敵元セル{3,2}へ 1 回引き、『…が アイテムを落とした』
     /// ログを 1 行出すことを pin する。
     /// applyThiefDrop を外す/events フィルタを壊す退行をここで捕捉する。
-    def runEcsAttackRecThief(sc: Scene[NodeTag]): (List[(Int32, Int32)], List[String]) =
+    def runEcsAttackRecThief(cmds: List[World.Cmd]): (List[(Int32, Int32)], List[String]) =
         region rc {
             let dropRef = Ref.fresh(rc, (Nil: List[(Int32, Int32)]));
             let logRef  = Ref.fresh(rc, (Nil: List[String]));
             let _ =
-                TestUnitFixtures.withTracedWorld(rc, seed(), sc, () ->
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(sc), () ->
+                TestUnitFixtures.withTracedBoardWorld(rc, seed(), floorTerrain(), cmds, () ->
                 TestUnitFixtures.withMockGame(() ->
                 TestUnitFixtures.withMockAudio(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                     run {
-                        CombatDriver.applyAttackHit(0, sc)
+                        CombatDriver.applyAttackHit(0)
                     } with handler CustomEffects.ThiefDropRequest {
-                        def drop(cell, scene, k) = { Ref.put((cell#x, cell#y) :: Ref.get(dropRef), dropRef); k(scene) }
+                        def drop(cell, k) = { Ref.put((cell#x, cell#y) :: Ref.get(dropRef), dropRef); k() }
                     } with handler GameLogger.GameLogger {
                         def playerLog(s, k)   = { Ref.put(s :: Ref.get(logRef), logRef); k() }
                         def enemyLog(s, k)    = { Ref.put(s :: Ref.get(logRef), logRef); k() }
                         def gameOverLog(_, k) = k()
                         def endTurn(k)        = k()
                         def drainEntries(k)   = k(Nil)
-                    }))))));
+                    })))));
             (List.reverse(Ref.get(dropRef)), List.reverse(Ref.get(logRef)))
         }
 
@@ -873,8 +876,8 @@ mod TestGoldenTrace {
         let bp = player(0, 5, Some(1), 200);
         let tp = {resource = {description = "ローグ" | bp#resource},
                   weapons = fxWeapon(WeaponCatalog.WeaponEffect.ThiefDrop, 100) :: Nil | bp};
-        let sc = sceneOf(tp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (drops, logs) = runEcsAttackRecThief(sc);
+        let cmds = unitCmds(tp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (drops, logs) = runEcsAttackRecThief(cmds);
         // drop が敵元セル{3,2}へちょうど 1 回。
         Assert.assertEq(expected = (3, 2) :: Nil, drops);
         // 『…が アイテムを落とした』ログがちょうど 1 行含まれる（敵名は fixture 依存ゆえ suffix で pin）。
@@ -888,10 +891,10 @@ mod TestGoldenTrace {
     @Test
     def testResolveCombatEqualsSimKnockback(): Unit \ Assert =
         let kp = {weapons = fxWeapon(WeaponCatalog.WeaponEffect.Knockback, 2) :: Nil | player(0, 10, Some(1), 200)};
-        let sc = sceneOf(kp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evC) = driveResolve(sc);
-        assertNonVacuous(sc, evC);
+        let cmds = unitCmds(kp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evC) = driveResolve(cmds);
+        assertNonVacuous(cmds, evC);
         // 等価: 敵生存→ +x に 2 マス押された後の (enemy pos, enemy hp) が オラクルと一致。
         let proj = w -> (posT(EntityRef.Enemy(1), w), World.hpOf(EntityRef.Enemy(1), w));
         Assert.assertEq(expected = proj(oracleW), proj(sysW));
@@ -904,10 +907,10 @@ mod TestGoldenTrace {
     def testResolveCombatCritKnockback(): Unit \ Assert =
         let cw = ({hit = 200, crit = 200, effect = WeaponCatalog.WeaponEffect.Knockback, effectValue = 2 | testWeapon()}: UnitCatalog.WeaponResource);
         let kp = {weapons = cw :: Nil | player(0, 10, Some(1), 200)};
-        let sc = sceneOf(kp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let (_, _, oracleW) = runAttack(sc);
-        let (sysW, evC) = driveResolve(sc);
-        assertNonVacuous(sc, evC);
+        let cmds = unitCmds(kp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let (_, oracleW) = runAttack(cmds);
+        let (sysW, evC) = driveResolve(cmds);
+        assertNonVacuous(cmds, evC);
         // 等価: crit dmg12 で hp8 に削り→押し流す（Damaged→Alerted→Released→knockback 順）後の (enemy hp, pos, alerted) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), posT(EntityRef.Enemy(1), w),
                          World.alertedOf(EntityRef.Enemy(1), w));
@@ -915,10 +918,10 @@ mod TestGoldenTrace {
 
     // ── P2: 敵攻撃パス（敵→味方・deferred death・effectRule→Afflicted・level-up なし・KNOCKBACK-FREE）──
 
-    /// w0=syncFromScene → resolveEnemyAttack(enemy1 → player0) を seed() で駆動し (最終 World, [SimEvent]) を返す
+    /// w0=unitCmds seed → resolveEnemyAttack(enemy1 → player0) を seed() で駆動し (最終 World, [SimEvent]) を返す
     /// 共通ドライバ。敵パス等価テスト群の定型 thunk（driveResolve のプレイヤー版）。
-    def driveEnemyResolve(sc: Scene[NodeTag]): (World, List[World.SimEvent]) =
-        let w0 = World.syncFromScene(sc, World.empty());
+    def driveEnemyResolve(cmds: List[World.Cmd]): (World, List[World.SimEvent]) =
+        let w0 = worldOfCmds(cmds);
         region rc {
             TestUnitFixtures.withSeededRng(rc, seed(), () ->
                 CombatSystem.resolveEnemyAttack(w0, {ref = EntityRef.Enemy(1), level = 1}, {ref = EntityRef.Player(0), level = 1}))
@@ -935,10 +938,10 @@ mod TestGoldenTrace {
     @Test
     def testResolveEnemyCombatEqualsSimEffectRule(): Unit \ Assert =
         let rule = ruleJson("{\"when\":\"onHit\",\"to\":\"enemy\",\"op\":\"spdDown\",\"amount\":3,\"for\":\"turns\",\"forTurns\":3}");
-        let sc = sceneOf(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
-        let (_, _, oracleW) = runEnemyAttack(sc, 1);
-        let (sysW, evs) = driveEnemyResolve(sc);
-        assertNonVacuous(sc, List.length(evs));
+        let cmds = unitCmds(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
+        let (_, _, oracleW) = runEnemyAttack(cmds, 1);
+        let (sysW, evs) = driveEnemyResolve(cmds);
+        assertNonVacuous(cmds, List.length(evs));
         // 等価: 命中で味方 hp10→6・spdDown 付与後の (player hp, status) が オラクルと一致。
         let proj = w -> (World.hpOf(EntityRef.Player(0), w), statusT(EntityRef.Player(0), w));
         Assert.assertEq(expected = proj(oracleW), proj(sysW));
@@ -955,10 +958,10 @@ mod TestGoldenTrace {
     @Test
     def testResolveEnemyImmobilize(): Unit \ Assert =
         let rule = ruleJson("{\"when\":\"onHit\",\"to\":\"enemy\",\"op\":\"immobilize\",\"for\":\"turns\",\"forTurns\":2}");
-        let sc = sceneOf(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
-        let (_, _, oracleW) = runEnemyAttack(sc, 1);
-        let (sysW, evs) = driveEnemyResolve(sc);
-        assertNonVacuous(sc, List.length(evs));
+        let cmds = unitCmds(player(0, 10, None, 80), enemy(1, 10, {x = 3, y = 2}, false, Some(0), rule, 200) :: Nil);
+        let (_, _, oracleW) = runEnemyAttack(cmds, 1);
+        let (sysW, evs) = driveEnemyResolve(cmds);
+        assertNonVacuous(cmds, List.length(evs));
         // 等価: 命中で immobilize 付与後の status が オラクルと一致。
         Assert.assertEq(expected = statusT(EntityRef.Player(0), oracleW), statusT(EntityRef.Player(0), sysW));
         // 独立 pin: status は非空＝Immobilized が確かに付与された。
@@ -974,10 +977,10 @@ mod TestGoldenTrace {
         let kp = {gridPos = {x = 3, y = 2} | player(0, 10, None, 80)};       // 味方を敵の +x 隣へ
         let ke = {weapon = Some(fxWeapon(WeaponCatalog.WeaponEffect.Knockback, 2))
                   | enemy(1, 20, {x = 2, y = 2}, false, Some(0), ruleJson(""), 200)};
-        let sc = sceneOf(kp, ke :: Nil);
-        let (_, _, oracleW) = runEnemyAttack(sc, 1);
-        let (sysW, evs) = driveEnemyResolve(sc);
-        assertNonVacuous(sc, List.length(evs));
+        let cmds = unitCmds(kp, ke :: Nil);
+        let (_, _, oracleW) = runEnemyAttack(cmds, 1);
+        let (sysW, evs) = driveEnemyResolve(cmds);
+        assertNonVacuous(cmds, List.length(evs));
         // 等価: 味方生存→ +x に 2 マス押された後の (player pos, player hp) が オラクルと一致。
         let proj = w -> (posT(EntityRef.Player(0), w), World.hpOf(EntityRef.Player(0), w));
         Assert.assertEq(expected = proj(oracleW), proj(sysW));
@@ -990,11 +993,11 @@ mod TestGoldenTrace {
     @Test
     def testResolveEnemyOverkillsPlayer(): Unit \ Assert =
         let imP = {statuses = StatusSystem.immobilizeFor(3) :: Nil | player(0, 2, None, 80)};
-        let sc  = sceneOf(imP, enemy(1, 10, {x = 3, y = 2}, false, Some(0), ruleJson(""), 200) :: Nil);
-        let w0  = World.syncFromScene(sc, World.empty());
-        let (_, _, oracleW) = runEnemyAttack(sc, 1);
-        let (sysW, evs) = driveEnemyResolve(sc);
-        assertNonVacuous(sc, List.length(evs));
+        let cmds = unitCmds(imP, enemy(1, 10, {x = 3, y = 2}, false, Some(0), ruleJson(""), 200) :: Nil);
+        let w0   = worldOfCmds(cmds);
+        let (_, _, oracleW) = runEnemyAttack(cmds, 1);
+        let (sysW, evs) = driveEnemyResolve(cmds);
+        assertNonVacuous(cmds, List.length(evs));
         let cleared = w -> List.isEmpty(statusT(EntityRef.Player(0), w));
         // 前提: 攻撃前の味方はかなしばり中（status 非空）。
         Assert.assertEq(expected = false, cleared(w0));
@@ -1057,7 +1060,7 @@ mod TestGoldenTrace {
     //   (w1,evs1)=resolveAttack(Player0→Enemy1);  (w2,_)=resolveEnemyAttack(Enemy1→Player0)
     // と畳み、w2 を **新しい合成 legacy oracle**（既存 golden D ではない＝D は敵 hp=10 を pre-set しプレイヤー
     // strike を OMIT する）と final-World 等価でピン留めする。oracle は ONE withTracedWorld(seed()) の下で
-    //   s1=applyAttackHit(0,sc) → s2=onLungeDone(Player,0,s1) → applyEnemyAttackHit(1,s2)
+    //   applyAttackHit(0) → onLungeDone(Player,0) → applyEnemyAttackHit(1)
     // の 3 seam を順に駆動する（World を共有 worldRef で累積）。
     //
     // PRNG framing は STREAM alignment ではなく VALUE-INDEPENDENCE: レガシー onLungeDone は sim が決して引かない
@@ -1075,13 +1078,12 @@ mod TestGoldenTrace {
     //   - プレイヤーが counter で DIE（hpOf(Player0) sysW==oracleW・deferred death を end-to-end でピン）
     @Test
     def testResolveCounterChainEqualsSim(): Unit \ Assert =
-        let sc = sceneOf(player(0, 4, Some(1), 200), enemy(1, 10, {x = 3, y = 2}, false, None, ruleJson(""), 200) :: Nil);
+        let cmds = unitCmds(player(0, 4, Some(1), 200), enemy(1, 10, {x = 3, y = 2}, false, None, ruleJson(""), 200) :: Nil);
         // 合成 legacy oracle（3 seam を ONE withTracedWorld で累積駆動）。
         let oracleW = region rc {
             let ((_, _), _, w) =
-                TestUnitFixtures.withTracedWorld(rc, seed(), sc, () ->
+                TestUnitFixtures.withTracedBoardWorld(rc, seed(), floorTerrain(), cmds, () ->
                 TestUnitFixtures.withWorldPhase(SimPhase.PlayerTurn, () ->
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(sc), () ->
                 TestUnitFixtures.withNoopThiefDrop(() ->
                 TestUnitFixtures.withMockGame(() ->
                 TestUnitFixtures.withMockAudio(() ->
@@ -1093,15 +1095,15 @@ mod TestGoldenTrace {
                 TestUnitFixtures.withCursor(() ->
                     run {
                         TestUnitFixtures.withPhaseRef(rc, TurnPhase.Phase.PlayerAttackHold, () -> {
-                            let s1 = CombatDriver.applyAttackHit(0, sc);
-                            let s2 = CombatDriver.onLungeDone(Faction.Player, 0, s1);
-                            CombatDriver.applyEnemyAttackHit(1, s2)
+                            CombatDriver.applyAttackHit(0);
+                            CombatDriver.onLungeDone(Faction.Player, 0);
+                            CombatDriver.applyEnemyAttackHit(1)
                         })
-                    } with Pacing.withState(rc)))))))))))));
+                    } with Pacing.withState(rc))))))))))));
             w
         };
         // sim: ONE withSeededRng の下で resolveAttack THEN resolveEnemyAttack を thread。
-        let w0 = World.syncFromScene(sc, World.empty());
+        let w0 = worldOfCmds(cmds);
         let (w2, w1EnemyHp, evCount1) = region rc {
             TestUnitFixtures.withSeededRng(rc, seed(), () -> {
                 let (w1, evs1) = CombatSystem.resolveAttack(w0,
@@ -1111,7 +1113,7 @@ mod TestGoldenTrace {
                 (wEnd, World.hpOf(EntityRef.Enemy(1), w1), List.length(evs1))
             })
         };
-        assertNonVacuous(sc, evCount1);
+        assertNonVacuous(cmds, evCount1);
         // 中間ガード: プレイヤー strike 後の敵 hp を legacy にピン（敵は single strike を survive・以後 hp 不変）。
         Assert.assertEq(expected = World.hpOf(EntityRef.Enemy(1), oracleW), w1EnemyHp);
         // 等価: counter 連鎖後（敵反撃が味方を撃破）の (enemy hp, player hp, alerted, status, progress) が オラクルと一致。
@@ -1128,8 +1130,8 @@ mod TestGoldenTrace {
     // tag/scalar 射影で比較する（test 本体に直接 match を書かない＝既存方針）。
 
     /// resolveAttack(player0→enemy1) を seed() で駆動し **event 列**を返す（view-script 検証用）。
-    def driveResolveEvs(sc: Scene[NodeTag]): List[World.SimEvent] =
-        let w0 = World.syncFromScene(sc, World.empty());
+    def driveResolveEvs(cmds: List[World.Cmd]): List[World.SimEvent] =
+        let w0 = worldOfCmds(cmds);
         region rc {
             let (_, evs) = TestUnitFixtures.withSeededRng(rc, seed(), () ->
                 CombatSystem.resolveAttack(w0, {ref = EntityRef.Player(0), level = 1}, {ref = EntityRef.Enemy(1), level = 1}));
@@ -1168,22 +1170,22 @@ mod TestGoldenTrace {
     /// 通常物理命中 → 命中 SE は "damage"（必殺でなく・魔法でなく・dmg>0）。
     @Test
     def testViewScriptNormalHitSound(): Unit \ Assert =
-        let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        Assert.assertEq(expected = "damage" :: Nil, soundsOf(driveResolveEvs(sc)))
+        let cmds = unitCmds(player(0, 10, Some(1), 200), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        Assert.assertEq(expected = "damage" :: Nil, soundsOf(driveResolveEvs(cmds)))
 
     /// 必殺命中（crit=100 武器）→ 命中 SE は "critical"。
     @Test
     def testViewScriptCritHitSound(): Unit \ Assert =
         let critWeapon = ({hit = 200, crit = 100 | testWeapon()}: UnitCatalog.WeaponResource);
         let cp = {weapons = critWeapon :: Nil | player(0, 10, Some(1), 200)};
-        let sc = sceneOf(cp, enemy(1, 10, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        Assert.assertEq(expected = "critical" :: Nil, soundsOf(driveResolveEvs(sc)))
+        let cmds = unitCmds(cp, enemy(1, 10, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        Assert.assertEq(expected = "critical" :: Nil, soundsOf(driveResolveEvs(cmds)))
 
     /// 0 ダメージ命中（硬い敵・defense=8・ring なし）→ 命中 SE は "guard"。
     @Test
     def testViewScriptGuardHitSound(): Unit \ Assert =
-        let sc = sceneOf(player(0, 10, Some(1), 200), finisherEnemy() :: Nil);
-        Assert.assertEq(expected = "guard" :: Nil, soundsOf(driveResolveEvs(sc)))
+        let cmds = unitCmds(player(0, 10, Some(1), 200), finisherEnemy() :: Nil);
+        Assert.assertEq(expected = "guard" :: Nil, soundsOf(driveResolveEvs(cmds)))
 
     /// 魔法武器命中 → 詠唱者セル {2,2} から敵セル {3,2} へ炎 3 幕（ViewFx(FireShot)）。命中で発火し dmg 非依存。
     /// 従来のスプライト着弾爆発（ViewFx(Explosion)）は魔導書攻撃では出さず FireShot が置き換える。
@@ -1191,16 +1193,16 @@ mod TestGoldenTrace {
     def testViewScriptMagicHitExplosion(): Unit \ Assert =
         let magicWeapon = ({weaponType = WeaponCatalog.WeaponType.Magic, hit = 200, crit = 0 | testWeapon()}: UnitCatalog.WeaponResource);
         let mp = {weapons = magicWeapon :: Nil | player(0, 10, Some(1), 200)};
-        let sc = sceneOf(mp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let evs = driveResolveEvs(sc);
+        let cmds = unitCmds(mp, enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let evs = driveResolveEvs(cmds);
         Assert.assertEq(expected = ((2, 2), (3, 2)) :: Nil, fireShotsOf(evs));
         Assert.assertEq(expected = true, List.isEmpty(explosionCellsOf(evs)))
 
     /// 回避 → 命中 SE は鳴らず（"miss" SE のみ）＋ "miss" テキストポップアップを敵セル {3,2} に浮かす。
     @Test
     def testViewScriptMissFx(): Unit \ Assert =
-        let sc = sceneOf(player(0, 10, Some(1), 0), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        let evs = driveResolveEvs(sc);
+        let cmds = unitCmds(player(0, 10, Some(1), 0), enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        let evs = driveResolveEvs(cmds);
         Assert.assertEq(expected = "miss" :: Nil, soundsOf(evs));
         Assert.assertEq(expected = ("miss", 3, 2) :: Nil, popupsOf(evs))
 
@@ -1210,8 +1212,8 @@ mod TestGoldenTrace {
     def testViewScriptEnemyHitNoExplosion(): Unit \ Assert =
         let magicWeapon = ({weaponType = WeaponCatalog.WeaponType.Magic, hit = 200, crit = 0 | testWeapon()}: UnitCatalog.WeaponResource);
         let e  = {weapon = Some(magicWeapon) | enemy(1, 10, {x = 3, y = 2}, false, Some(0), ruleJson(""), 200)};
-        let sc = sceneOf(player(0, 10, None, 80), e :: Nil);
-        let (_, evs) = driveEnemyResolve(sc);
+        let cmds = unitCmds(player(0, 10, None, 80), e :: Nil);
+        let (_, evs) = driveEnemyResolve(cmds);
         Assert.assertEq(expected = true, List.isEmpty(fireShotsOf(evs)));
         Assert.assertEq(expected = 1, List.length(soundsOf(evs)))
 
@@ -1220,6 +1222,6 @@ mod TestGoldenTrace {
     /// 結線を end-to-end で固定（非撃破ゆえ Death なし・Alerted/Released は view なし＝plan で空に落ちる）。
     @Test
     def testViewScriptPlansToActions(): Unit \ Assert =
-        let sc = sceneOf(player(0, 10, Some(1), 200), enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
-        Assert.assertEq(expected = 3, List.length(ViewReplay.plan(driveResolveEvs(sc))))
+        let cmds = unitCmds(player(0, 10, Some(1), 200), enemy(1, 20, {x = 3, y = 2}, false, None, ruleJson(""), 80) :: Nil);
+        Assert.assertEq(expected = 3, List.length(ViewReplay.plan(driveResolveEvs(cmds))))
 }

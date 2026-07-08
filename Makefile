@@ -115,8 +115,10 @@ TEST_DIRS := $(ENGINE_CORE_DIR) $(RENDER_CORE_DIR) $(ENGINE_DIR) $(ENGINE_WORLD_
 
 test:
 	@for dir in $(TEST_DIRS); do \
-		echo "===== $$dir ====="; \
-		(cd "$$dir" && $(FLIX_TEST) test) || exit 1; \
+		if [ -f "$$dir/flix.toml" ]; then \
+			echo "===== $$dir ====="; \
+			(cd "$$dir" && $(FLIX_TEST) test) || exit 1; \
+		fi \
 	done
 
 # ── bake ──────────────────────────────────────────────────

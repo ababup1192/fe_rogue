@@ -86,18 +86,18 @@ mod BattlePanelUi {
     ///   - WeaponSelect : 武器選択中。カーソルが乗っている対象の敵 × カーソル中の武器で予報。
     ///   - PlayerAttack : 赤マスで敵を選択中。カーソル上の敵 × 装備武器で予報。
     /// それ以外のフェーズや対象が居ないときはウィンドウを隠し、足元 HP バー予測も消す。
-    pub def frameStep(delta: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def frameStep(delta: Duration.Duration): Unit
             \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery,
                BattlePanelState.State, UnitHPBarRender.ForecastState, UiWorldState.State, CameraState.State} =
         let phase  = TurnPhase.State.get();
-        let synced = syncTargetToCursor(phase, scene);
+        syncTargetToCursor(phase);
         // 「減る分」の暗⇄明点滅サイクルを進める。累積時間は resource が持つ。
         let elapsed = Duration.add(BattlePanelState.State.get(), delta);
         BattlePanelState.State.put(elapsed);
         let dark = blinkDark(elapsed);
         let ui0  = UiWorldState.State.get();
-        match buildForecast(phase, synced) {
+        match buildForecast(phase) {
             case Some(view) =>
                 let atlas = GameEngine.Game.getFontAtlas(fontName());
                 let cols  = computeColumns(atlas);
@@ -114,18 +114,16 @@ mod BattlePanelUi {
                     |> setTriPos(aTriUpPath(), aTriDownPath(), triCx, row1CenterY())
                     |> setTriPos(dTriUpPath(), dTriDownPath(), triCx, row2CenterY())
                     |> resizeBg(contentW)
-                    |> reposition(view, contentW, synced);
+                    |> reposition(view, contentW);
                 UiWorldState.State.put(shown);
                 // 足元 HP バーの「減る分」は ForecastState resource へ put し renderBars が反映する。
                 UnitHPBarRender.ForecastState.put(Some(
                     {attackerId = view#attackerId, playerHpPost = view#playerHpPost,
                      defenderId = view#defenderId, enemyHpPost = view#enemyHpPost,
-                     dark = dark}));
-                synced
+                     dark = dark}))
             case None =>
                 UnitHPBarRender.ForecastState.put(None);
-                UiWorldState.State.put(UiStore.setVisible(rootPath(), false, ui0));
-                synced
+                UiWorldState.State.put(UiStore.setVisible(rootPath(), false, ui0))
         }
 
     /// 「減る分」点滅の暗フレーム判定。周期 `blinkPeriodSec()` 秒の前半を暗（dark=true）、後半を明にする。
@@ -265,7 +263,7 @@ mod BattlePanelUi {
     /// 対象 / 攻撃側のワールド座標を camera ViewTransform で画面 px に写し、対象の
     /// 右 → 上 → 下 の順で「画面内に収まり、かつ攻撃側に被らない」最初の位置を選ぶ。
     /// カメラ未登録時（テスト等）は移動しない（前回位置を保つ）。
-    def reposition(view: ForecastView, contentW: Float64, _scene: Scene[NodeTag],
+    def reposition(view: ForecastView, contentW: Float64,
                    ui: UiStore.UiWorld): UiStore.UiWorld \ {GameEngine.Game, CameraState.State} =
         let (vt, vpW, vpH) = viewTransform();
         let st   = Camera2D.applyToWorldPos(vt, MapSnapshot.cellCenter(view#targetCell));
@@ -318,15 +316,15 @@ mod BattlePanelUi {
 
     /// PlayerAttack 中、攻撃対象をカーソル位置の敵に毎フレーム同期する。
     /// カーソルが敵に乗っていなければ対象をクリアする（予報は出ない）。
-    def syncTargetToCursor(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery} =
-        if (phase != TurnPhase.Phase.PlayerAttack) scene
+    def syncTargetToCursor(phase: TurnPhase.Phase):
+            Unit \ {SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery} =
+        if (phase != TurnPhase.Phase.PlayerAttack) ()
         else match SelectedPlayer.State.get()#id {
-            case None             => scene
+            case None             => ()
             case Some(attackerId) =>
-                match EnemyScene.findIdAt(CursorScene.getGridPos(), scene) {
-                    case Some(enemyId) => CombatDriver.setAttackTargetId(attackerId, enemyId, scene)
-                    case None          => CombatDriver.clearAttackTargetId(attackerId, scene)
+                match EnemyScene.findIdAt(CursorScene.getGridPos()) {
+                    case Some(enemyId) => CombatDriver.setAttackTargetId(attackerId, enemyId)
+                    case None          => CombatDriver.clearAttackTargetId(attackerId)
                 }
         }
 
@@ -346,40 +344,40 @@ mod BattlePanelUi {
 
     /// 攻撃中の武器選択リストでアクティブな武器（カーソル上の敵に届く選択武器）。
     /// 敵が居ない / 届く武器が無いなら None（予報は出ない）。
-    def selectedAttackWeapon(scene: Scene[NodeTag]):
+    def selectedAttackWeapon():
             Option[UnitCatalog.WeaponResource]
             \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, World.WorldQuery} =
         forM (
-            idx      <- ItemMenuUi.activeAttackWeaponIndex(scene);
+            idx      <- ItemMenuUi.activeAttackWeaponIndex();
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerData.PartyQuery.get(playerId);
             w        <- List.nth(idx, player#weapons)
         ) yield w
 
     /// フェーズに応じて予報ビューを組み立てる。揃わない / 別フェーズなら None。
-    def buildForecast(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Option[ForecastView]
+    def buildForecast(phase: TurnPhase.Phase): Option[ForecastView]
             \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
                World.WorldQuery, UiWorldState.State} =
         match phase {
-            case TurnPhase.Phase.WeaponSelect => buildWeaponSelectForecast(scene)
-            case TurnPhase.Phase.PlayerAttack => buildAttackForecast(scene)
+            case TurnPhase.Phase.WeaponSelect => buildWeaponSelectForecast()
+            case TurnPhase.Phase.PlayerAttack => buildAttackForecast()
             case _                            => None
         }
 
     /// PlayerAttack: 選択中味方 / カーソル上の敵 / 装備（活性）武器が揃ったら予報。
-    def buildAttackForecast(scene: Scene[NodeTag]): Option[ForecastView]
+    def buildAttackForecast(): Option[ForecastView]
             \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         forM (
             pid    <- SelectedPlayer.State.get()#id;
             player <- PlayerData.PartyQuery.get(pid);
             eid    <- player#attackTargetId;
             enemy  <- EnemyData.RosterQuery.get(eid);
-            weapon <- selectedAttackWeapon(scene)
+            weapon <- selectedAttackWeapon()
         ) yield computeView(pid, player, eid, enemy, weapon)
 
     /// WeaponSelect: 選択中味方 / カーソル中の武器 / カーソルが乗っている敵が揃ったら予報。
     /// カーソルは `WeaponSelectUi` が「その武器が届く最寄りの敵」へスナップ済み。
-    def buildWeaponSelectForecast(scene: Scene[NodeTag]): Option[ForecastView]
+    def buildWeaponSelectForecast(): Option[ForecastView]
             \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery, EnemyData.RosterQuery,
                World.WorldQuery, UiWorldState.State} =
         forM (
@@ -387,7 +385,7 @@ mod BattlePanelUi {
             player <- PlayerData.PartyQuery.get(pid);
             widx   <- WeaponSelectUi.hoveredWeaponIndex();
             weapon <- List.nth(widx, player#weapons);
-            eid    <- EnemyScene.findIdAt(CursorScene.getGridPos(), scene);
+            eid    <- EnemyScene.findIdAt(CursorScene.getGridPos());
             enemy  <- EnemyData.RosterQuery.get(eid)
         ) yield computeView(pid, player, eid, enemy, weapon)
 
@@ -438,35 +436,35 @@ mod BattlePanelUi {
 
     /// `PlayerAttack` + Z: 戦闘予報を確認した上で攻撃モーションを開始する。
     /// 遷移先は入力をロックする `PlayerAttackHold`（Z 連打での再起動を防ぐ）。
-    pub def confirm(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {AnimationPlayer.Scheduler, World.WorldQuery,
-                              GameLogger.GameLogger,
-                              TurnPhase.State, SelectedPlayer.State, CursorState.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command} =
+    pub def confirm():
+            Unit \ {World.WorldQuery,
+                    GameLogger.GameLogger,
+                    TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                    PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command} =
         let started = forM (
             attackerId <- SelectedPlayer.State.get()#id;
             player     <- PlayerData.PartyQuery.get(attackerId);
             defenderId <- player#attackTargetId;
             enemy      <- EnemyData.RosterQuery.get(defenderId)
         ) yield {
-            let idx      = ItemMenuUi.activeAttackWeaponIndex(scene) |> Option.getWithDefault(0);
-            let equipped = PlayerScene.equipWeapon(attackerId, idx, scene);
+            let idx = ItemMenuUi.activeAttackWeaponIndex() |> Option.getWithDefault(0);
+            PlayerScene.equipWeapon(attackerId, idx);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
-            GameLogger.playerLog("${PlayerScene.displayName(attackerId, scene)}の攻撃");
-            CombatDriver.startAttack(Faction.Player, attackerId, defenderId, enemy#gridPos, equipped)
+            GameLogger.playerLog("${PlayerScene.displayName(attackerId)}の攻撃");
+            CombatDriver.startAttack(Faction.Player, attackerId, defenderId, enemy#gridPos)
         };
-        Option.getWithDefault(scene, started)
+        Option.getWithDefault((), started)
 
     /// `PlayerAttack` + X: 攻撃をやめて行動メニュー (ActionSelect) に戻る。
     /// 待機にはせず、`attackTargetId` をクリアしてカーソルを選択中味方に戻す。
-    pub def cancel(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, CursorState.State,
-                              PlayerData.PartyQuery, World.Command} =
+    pub def cancel():
+            Unit \ {TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                    PlayerData.PartyQuery, World.Command} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
         match SelectedPlayer.State.get()#id {
-            case None             => scene
+            case None             => ()
             case Some(attackerId) =>
-                CombatDriver.clearAttackTargetId(attackerId, scene)
-                    |> CursorScene.snapToPlayer
+                CombatDriver.clearAttackTargetId(attackerId);
+                CursorScene.snapToPlayer()
         }
 }

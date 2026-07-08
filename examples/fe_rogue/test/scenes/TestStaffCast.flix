@@ -1,7 +1,7 @@
 // StaffCast の効果適用ロジックの検証。
 //
 // 杖・消費アイテムの「実際に HP を動かす」段を確認する。フル発動（applyStaffCast /
-// applyConsumableUse）は effect が多く（Tween / AnimationPlayer / TurnPhase / SelectedPlayer /
+// applyConsumableUse）は effect が多く（Tween / TurnPhase / SelectedPlayer /
 // EnemyTurn / Audio …）モックが重いため、回復の中核 2 関数を単体で確認する。
 //
 // 検証する観点:
@@ -10,76 +10,34 @@
 //
 // 方向選択の純粋ロジック（deltaToDirection / pickHealDirection）は Staff モジュールに
 // 移したので TestStaff 側で検証している。
+//
+// 駒・状態の権威は World。駒 fixture は `World.Cmd` の spawn 列で組み、効果適用関数は
+// `World.WorldQuery` / `World.Command` を通して読み書きする。
 
 mod TestStaffCast {
 
     // ════════════════════════════════════════════════════════
-    // テスト用シーン構築
+    // テスト用 World フィクスチャ
     // ════════════════════════════════════════════════════════
 
-    /// 1 体だけの味方シーンを作る。`hp` は現在 HP、最大 HP は 10 固定（resource#hp）。
-    /// `magicAttack` は回復量（魔力 + 10）を決める。HPBar ノードは持たないが、
-    /// `UnitHPBarRender.update` は対象が無ければ何もしないので回復結果には影響しない。
-    def playerScene(hp: Int32, magicAttack: Int32): Scene[NodeTag] =
-        let pos = {x = 80.0, y = 80.0};
-        let marker = Marker2D.make(pos);
-        let world = Marker2D.make(Vec2.zero())
-            |> CanvasItem.setYSortEnabled(true);
-        let data: PlayerScene.Data = {
-            id                = 0,
-            classId           = "test_player",
-            gridPos           = {x = 5, y = 5},
-            moveTiles         = 5,
-            hp                = hp,
-            waited            = false,
-            attackTargetId    = None,
-            resource          = TestUnitFixtures.testResourceMagic(5, 10, 3, 1, magicAttack, 0, 3),
-            weapons           = Nil,
-            staves            = Nil,
-            consumables       = Nil,
-            selectedItem      = None,
-            moveStepsTaken    = 0,
-            facing            = Dir4.Down,
-            hidden            = false,
-            usedStairs        = false,
-            level             = 1,
-            exp               = 0,
-            pendingLevelUp    = None,
-            statuses          = Nil,
-            rings          = Nil,
-            ringEquipped          = false,
-            followUpUsed   = false
-        };
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                EngineNode.Marker2DWithState(marker, NodeTag.Player(data)))
+    /// 味方 1 体分の spawn Cmd 列。`TestWorldFixtures.playerCmds` を土台に、現在 HP と
+    /// 魔力込みの戦闘値（moveTiles=5 / 最大HP=10 固定）を上書きする。
+    def playerCmdsMagic(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, magicAttack: Int32): List[World.Cmd] =
+        let spec = {moveTiles = 5, hp = 10 | TestWorldFixtures.unitSpec(id, pos)};
+        let res  = TestUnitFixtures.testResourceMagic(5, 10, 3, 1, magicAttack, 0, 3);
+        let ref  = World.EntityRef.Player(id);
+        List.append(TestWorldFixtures.playerCmds(spec),
+            World.Cmd.SetHp(ref, hp)
+                :: World.Cmd.SetBaseStats(ref, Combat.baseStatsFrom(res))
+                :: World.Cmd.SetPlayerResource(id, res)
+                :: Nil)
 
-    /// scene 内 Player(0) の Data を取り出す（効果適用関数に渡す caster 用）。
-    def playerData(scene: Scene[NodeTag]): PlayerScene.Data =
-        match PlayerScene.get(0, scene) {
+    /// World 内の Player(0) の Data を取り出す（効果適用関数に渡す caster 用）。
+    def playerData(): PlayerScene.Data \ World.WorldQuery =
+        match PlayerScene.get(0) {
             case Some(d) => d
-            case None    => bug!("player 0 not found in test scene")
+            case None    => bug!("player 0 not found in test world")
         }
-
-    /// 指定 id / グリッド位置の最小プレイヤー Data（swapPos など複数体テスト用）。
-    def mkData(id: Int32, gx: Int32, gy: Int32): PlayerScene.Data =
-        {id = id, classId = "test_player", gridPos = {x = gx, y = gy}, moveTiles = 5, hp = 10, waited = false,
-         attackTargetId = None, resource = TestUnitFixtures.testResourceMagic(5, 10, 3, 1, 0, 0, 3),
-         weapons = Nil, staves = Nil, consumables = Nil, selectedItem = None,
-         moveStepsTaken = 0, facing = Dir4.Down, hidden = false, usedStairs = false,
-         level = 1, exp = 0, pendingLevelUp = None, statuses = Nil, rings = Nil,
-         ringEquipped = false, followUpUsed = false}
-
-    /// 味方 2 体（id0=(5,5)・id1=(5,3)）のシーン。swapPos の入れ替えを観測する。
-    def twoPlayerScene(): Scene[NodeTag] =
-        let mk = data -> EngineNode.Marker2DWithState(Marker2D.make({x = 80.0, y = 80.0}), NodeTag.Player(data));
-        let world = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(), EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0), mk(mkData(0, 5, 5)))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(1), mk(mkData(1, 5, 3)))
 
     /// テスト用の消費アイテム（回復量を指定）。
     def healItem(healAmount: Int32): Consumable.ConsumableResource =
@@ -111,28 +69,23 @@ mod TestStaffCast {
             case None    => bug!("rule decode failed: ${json}")
         }
 
-    /// 杖 DSL 経路を 3 スケジューラ effect(Tween/AnimationPlayer/GameLogger) をスタブして発火する。
-    /// 施術者は id=0 固定。dir は knockback 用（他 op では未使用）。
+    /// 杖 DSL 経路を BoardQuery / GameLogger をスタブして発火する。盤面は 13×13 壁なし固定
+    /// （unitCmds で seed した駒を乗せて Board を組む）。施術者は id=0 固定。
+    /// dir は knockback 用（他 op では未使用）。戻り値は最終 World。
     def fireStaffDsl(staff: Staff.StaffResource, rule: EffectRule.EffectRule,
-                      hit: RayHit, dir: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
+                      hit: RayHit, dir: {x = Int32, y = Int32}, unitCmds: List[World.Cmd]): World =
         region rc {
-            // move(snapTo 等)は scene gridPos を直書きしないので、gameLoop と同様に
-            // worldRef を scene から seed → Cmd.Move を蓄積 → 最後に `syncTreeFromWorld` で gridPos を derive する。
-            let wref = Ref.fresh(rc, World.syncFromScene(scene, World.empty()));
-            let after = run {
-                // custom op(knockback等)が BoardQuery を読むので mock board を供給（fromScene と同値）。
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
-                TestUnitFixtures.withNoopTween(() ->
-                TestUnitFixtures.withNoopAnim(() ->
-                    TestUnitFixtures.withMockGameLogger(() ->
-                        StaffCast.applyStaffEffectDsl(0, staff, rule, hit, dir, scene)))))
-            } with handler World.WorldQuery {
-                // DSL 経路が World 位置を読む（read-after-write で同じ wref）。
-                def get(k) = k(Ref.get(wref))
-            } with handler World.Command {
-                def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
+            let w0 = TestWorldFixtures.worldOf(
+                List.append(TestWorldFixtures.boardCmds({w = 13, h = 13}, None), unitCmds));
+            let board = match World.boardOf(w0) {
+                case Some(b) => b
+                case None    => bug!("fireStaffDsl: board not seeded")
             };
-            World.syncTreeFromWorld(Ref.get(wref), after)
+            let (_, w) = TestUnitFixtures.withWorldAppliedSeeded(rc, w0, () ->
+                TestUnitFixtures.withMockBoard(board, () ->
+                    TestUnitFixtures.withMockGameLogger(() ->
+                        StaffCast.applyStaffEffectDsl(0, staff, rule, hit, dir))));
+            w
         }
 
     // ════════════════════════════════════════════════════════
@@ -154,58 +107,67 @@ mod TestStaffCast {
     /// （4 + 3 = 7、上限 10 には届かないのでそのまま）。
     @Test
     def testConsumableHealRestoresHp(): Unit \ Assert =
-        // 入力 hp は World 読み・結果検証も World（scene twin 退役）。
         region rc {
-            let scene = playerScene(4, 0);
-            let user = playerData(scene);
-            let (_, _, w) = TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
-                TestUnitFixtures.withMockGameLogger(() ->
-                    StaffCast.applyConsumableHeal(0, user, healItem(3), scene)));
+            let unitCmds = playerCmdsMagic(0, {x = 5, y = 5}, 4, 0);
+            let (_, _, w) = TestUnitFixtures.withTracedWorld(rc, 0i64, unitCmds, () ->
+                TestUnitFixtures.withMockGameLogger(() -> {
+                    let user = playerData();
+                    StaffCast.applyConsumableHeal(0, user, healItem(3))
+                }));
             Assert.assertEq(expected = Some(7), World.hpOf(World.EntityRef.Player(0), w))
         }
 
     // ════════════════════════════════════════════════════════
     // DSL 経路（EffectRule → planActions → runPlan）が旧経路と同じ HP を生むか
-    //   きずぐすりを「効果 JSON」として宣言し、実 Scene handler で発火しても
-    //   applyConsumableHeal と同じ結果（HP 4 → 7）になることを実 engine 関数で確認する。
-    //   ライブ gameplay コードは一切変えていない（handler はここで組む）。
+    //   きずぐすりを「効果 JSON」として宣言し、World 書込 handler で発火しても
+    //   applyConsumableHeal と同じ結果（HP 4 → 7）になることを確認する。
     // ════════════════════════════════════════════════════════
 
-    /// PlanItem を実 Scene へ落とす handler 束。heal だけ実装し、他は恒等（このテストでは未使用）。
-    /// heal は applyConsumableHeal と同じ「Combat.heal → mapPlayer → HPBar 更新」を行う（ログは省略）。
-    def dslSceneHandlers(): EffectRunner.PlanHandlers[Scene[NodeTag], {}] = {
-        heal       = (sc, id, _, amount) -> match PlayerScene.get(id, sc) {
-            case Some(p) =>
-                let r = Combat.heal(p#hp, p#resource#hp, amount);
-                sc |> PlayerScene.mapPlayer(id, d -> {hp = r#newHp | d})
-            case None    => sc
-        },
-        fullHeal   = (sc, _, _)          -> sc,
-        damage     = (sc, _, _, _)       -> sc,
-        maxHpUp    = (sc, _, _, _)       -> sc,
-        status     = (sc, _, _, _, _, _) -> sc,
-        immobilize = (sc, _, _, _)       -> sc,
-        revive     = (sc, _, _)          -> sc,
-        custom     = (sc, _, _, _)       -> sc,
-        sfx        = (sc, _)             -> sc,
-        noOp       = (sc, _)             -> sc
+    /// PlanItem を World へ落とす handler 束。heal だけ実装し、他は恒等（このテストでは未使用）。
+    /// heal は applyConsumableHeal と同じ「Combat.heal → PlayerScene.setHp」を行う（ログは省略）。
+    def dslWorldHandlers(): EffectRunner.PlanHandlers[Unit, {World.Command, World.WorldQuery}] = {
+        heal       = (_u, id, _, amount) -> checked_ecast(healPlayerHp(id, amount)),
+        fullHeal   = (u, _, _)          -> checked_ecast(u),
+        damage     = (u, _, _, _)       -> checked_ecast(u),
+        maxHpUp    = (u, _, _, _)       -> checked_ecast(u),
+        status     = (u, _, _, _, _, _) -> checked_ecast(u),
+        immobilize = (u, _, _, _)       -> checked_ecast(u),
+        revive     = (u, _, _)          -> checked_ecast(u),
+        custom     = (u, _, _, _)       -> checked_ecast(u),
+        sfx        = (u, _)             -> checked_ecast(u),
+        noOp       = (u, _)             -> checked_ecast(u)
     }
 
-    /// きずぐすりを効果 JSON として宣言 → decode → plan → runPlan で実 Scene に発火 → HP 7。
+    /// `dslWorldHandlers` の heal 分岐本体: 現在 HP を World から読み、`Combat.heal` の結果を
+    /// `PlayerScene.setHp` で書き戻す（`StaffCast.applyConsumableHeal` と同じ式）。
+    def healPlayerHp(id: Int32, amount: Int32): Unit \ {World.Command, World.WorldQuery} =
+        PlayerScene.get(id)
+            |> Option.map(p -> {
+                let cur = World.hpOf(World.EntityRef.Player(id), World.WorldQuery.get())
+                              |> Option.getWithDefault(p#hp);
+                let r = Combat.heal(cur, p#resource#hp, amount);
+                PlayerScene.setHp(id, r#newHp)
+            })
+            |> Option.getWithDefault(())
+
+    /// きずぐすりを効果 JSON として宣言 → decode → plan → runPlan で World に発火 → HP 7。
     /// 旧経路 testConsumableHealRestoresHp と同じ結果になり、DSL 化が等価であることを示す。
     @Test
     def testConsumableHealViaDsl(): Unit \ Assert =
-        let scene = playerScene(4, 0);
-        let json = "{\"when\":\"onUse\",\"do\":[{\"to\":{\"role\":\"self\"},\"op\":\"healFlat\",\"amount\":{\"flat\":3}}]}";
-        let ctx = {selfId = 0, attackerId = 0, actorIsPlayer = true, rayUnits = (Nil: List[EffectRule.RayUnit]),
-                   amount = {max = 10, dealt = 0, incoming = 0, magic = 0}};
-        let items = Util.Json.parse(json)
-                        |> Result.toOption
-                        |> Option.flatMap(EffectRuleCodec.decodeRule)
-                        |> Option.map(r -> EffectPlan.planActions(r, ctx))
-                        |> Option.getWithDefault(Nil);
-        let after = EffectRunner.runPlan(dslSceneHandlers(), items, scene);
-        Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
+        region rc {
+            let unitCmds = playerCmdsMagic(0, {x = 5, y = 5}, 4, 0);
+            let json = "{\"when\":\"onUse\",\"do\":[{\"to\":{\"role\":\"self\"},\"op\":\"healFlat\",\"amount\":{\"flat\":3}}]}";
+            let ctx = {selfId = 0, attackerId = 0, actorIsPlayer = true, rayUnits = (Nil: List[EffectRule.RayUnit]),
+                       amount = {max = 10, dealt = 0, incoming = 0, magic = 0}};
+            let items = Util.Json.parse(json)
+                            |> Result.toOption
+                            |> Option.flatMap(EffectRuleCodec.decodeRule)
+                            |> Option.map(r -> EffectPlan.planActions(r, ctx))
+                            |> Option.getWithDefault(Nil);
+            let (_, w) = TestUnitFixtures.withWorldAppliedSeeded(rc, TestWorldFixtures.worldOf(unitCmds), () ->
+                EffectRunner.runPlan(dslWorldHandlers(), items, ()));
+            Assert.assertEq(expected = Some(7), World.hpOf(World.EntityRef.Player(0), w))
+        }
 
     // ════════════════════════════════════════════════════════
     // 本番スイッチ後: applyConsumableSelfEffect が DSL 経路で旧挙動と一致する
@@ -215,39 +177,46 @@ mod TestStaffCast {
     /// きずぐすり(Heal,3): DSL 経路の applyConsumableSelfEffect で HP 4→7。
     @Test
     def testSelfEffectHealViaDslPath(): Unit \ Assert =
-        let scene = playerScene(4, 0);
-        let user = playerData(scene);
-        let after = TestUnitFixtures.dischargeWorldCommand(() ->
-            TestUnitFixtures.withMockGameLogger(() ->
-                StaffCast.applyConsumableSelfEffect(0, user, healItem(3), scene)));
-        Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
+        region rc {
+            let unitCmds = playerCmdsMagic(0, {x = 5, y = 5}, 4, 0);
+            let (_, w) = TestUnitFixtures.withWorldAppliedSeeded(rc, TestWorldFixtures.worldOf(unitCmds), () ->
+                TestUnitFixtures.withMockGameLogger(() -> {
+                    let user = playerData();
+                    StaffCast.applyConsumableSelfEffect(0, user, healItem(3))
+                }));
+            Assert.assertEq(expected = Some(7), World.hpOf(World.EntityRef.Player(0), w))
+        }
 
     /// ちから薬(AtkUp,4,3T): DSL 経路で AtkUp+4 が付与される（→ applySelfStatus）。
     @Test
     def testSelfEffectAtkUpViaDslPath(): Unit \ Assert =
-        let scene = playerScene(10, 0);
-        let user = playerData(scene);
         let item = Consumable.bottle(Consumable.ConsumableEffect.AtkUp, 4, 3, "ちから薬");
-        let after = TestUnitFixtures.dischargeWorldCommand(() ->
-            TestUnitFixtures.withMockGameLogger(() ->
-                StaffCast.applyConsumableSelfEffect(0, user, item, scene)));
-        let atk = PlayerScene.get(0, after)
-                    |> Option.map(p -> StatusSystem.sumOf(StatusSystem.StatusEffect.AtkUp, p#statuses))
-                    |> Option.getWithDefault(-1);
+        // statuses は World 権威＝emit を World に積んで最終 World を読む。
+        let w = region rc {
+            let unitCmds = playerCmdsMagic(0, {x = 5, y = 5}, 10, 0);
+            snd(TestUnitFixtures.withWorldAppliedSeeded(rc, TestWorldFixtures.worldOf(unitCmds), () ->
+                TestUnitFixtures.withMockGameLogger(() -> {
+                    let user = playerData();
+                    StaffCast.applyConsumableSelfEffect(0, user, item)
+                })))
+        };
+        let atk = StatusSystem.sumOf(StatusSystem.StatusEffect.AtkUp,
+                                     World.statusEffectsOf(World.EntityRef.Player(0), w));
         Assert.assertEq(expected = 4, atk)
 
     /// 命の草(MaxHpUp,3): DSL 経路で HP と最大HP を両方 +3（4/10 → 7/13）。
     @Test
     def testSelfEffectMaxHpUpViaDslPath(): Unit \ Assert =
-        let scene = playerScene(4, 0);
-        let user = playerData(scene);
         let item = Consumable.bottle(Consumable.ConsumableEffect.MaxHpUp, 3, 0, "命の草");
-        let after = TestUnitFixtures.dischargeWorldCommand(() ->
-            TestUnitFixtures.withMockGameLogger(() ->
-                StaffCast.applyConsumableSelfEffect(0, user, item, scene)));
-        let hpMax = PlayerScene.get(0, after)
-                    |> Option.map(p -> (p#hp, p#resource#hp))
-                    |> Option.getWithDefault((-1, -1));
+        let hpMax = region rc {
+            let unitCmds = playerCmdsMagic(0, {x = 5, y = 5}, 4, 0);
+            let (_, w) = TestUnitFixtures.withWorldAppliedSeeded(rc, TestWorldFixtures.worldOf(unitCmds), () ->
+                TestUnitFixtures.withMockGameLogger(() -> {
+                    let user = playerData();
+                    StaffCast.applyConsumableSelfEffect(0, user, item)
+                }));
+            World.dataFromWorld(0, w) |> Option.map(d -> (d#hp, d#resource#hp)) |> Option.getWithDefault((-1, -1))
+        };
         Assert.assertEq(expected = (7, 13), hpMax)
 
     // ════════════════════════════════════════════════════════
@@ -258,63 +227,68 @@ mod TestStaffCast {
     /// きずぐすりを味方#0 に投げて当てると HP 4→7（applyConsumableEffectToPlayer と同一）。
     @Test
     def testThrowHealAtAllyViaDsl(): Unit \ Assert =
-        let scene = playerScene(4, 0);
-        let after = TestUnitFixtures.dischargeWorldCommand(() ->
-            StaffCast.applyConsumableEffectDsl(healItem(3), 0, true, scene));
-        Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
+        region rc {
+            let unitCmds = playerCmdsMagic(0, {x = 5, y = 5}, 4, 0);
+            let (_, w) = TestUnitFixtures.withWorldAppliedSeeded(rc, TestWorldFixtures.worldOf(unitCmds), () ->
+                StaffCast.applyConsumableEffectDsl(healItem(3), 0, true));
+            Assert.assertEq(expected = Some(7), World.hpOf(World.EntityRef.Player(0), w))
+        }
 
     /// effectRule（IDE合成）が legacy effect を上書きしてゲームを駆動する。
     /// legacy magnitude=99 だが effectRule の amount=3 なので HP 4→7（10にならない＝effectRule優先）。
     @Test
     def testEffectRuleDrivesSelfHeal(): Unit \ Assert =
-        let scene = playerScene(4, 0);
-        let ruleJson = Util.Json.parse("{\"when\":\"onUse\",\"to\":\"self\",\"op\":\"healFlat\",\"amount\":3,\"for\":\"instant\",\"forTurns\":0,\"sfx\":\"\",\"vfx\":\"\"}")
-                        |> Result.toOption;
-        let item = {effectRule = ruleJson | healItem(99)};
-        let user = playerData(scene);
-        let after = TestUnitFixtures.dischargeWorldCommand(() ->
-            TestUnitFixtures.withMockGameLogger(() ->
-                StaffCast.applyConsumableSelfEffect(0, user, item, scene)));
-        Assert.assertEq(expected = 7, PlayerScene.getHp(0, after))
+        region rc {
+            let unitCmds = playerCmdsMagic(0, {x = 5, y = 5}, 4, 0);
+            let ruleJson = Util.Json.parse("{\"when\":\"onUse\",\"to\":\"self\",\"op\":\"healFlat\",\"amount\":3,\"for\":\"instant\",\"forTurns\":0,\"sfx\":\"\",\"vfx\":\"\"}")
+                            |> Result.toOption;
+            let item = {effectRule = ruleJson | healItem(99)};
+            let (_, w) = TestUnitFixtures.withWorldAppliedSeeded(rc, TestWorldFixtures.worldOf(unitCmds), () ->
+                TestUnitFixtures.withMockGameLogger(() -> {
+                    let user = playerData();
+                    StaffCast.applyConsumableSelfEffect(0, user, item)
+                }));
+            Assert.assertEq(expected = Some(7), World.hpOf(World.EntityRef.Player(0), w))
+        }
 
     /// ちから薬を味方#0 に投げて当てると AtkUp+4 が付与される（投擲で味方を強化できる）。
     @Test
     def testThrowAtkUpAtAllyViaDsl(): Unit \ Assert =
         let item = Consumable.bottle(Consumable.ConsumableEffect.AtkUp, 4, 3, "ちから薬");
-        let scene = playerScene(10, 0);
-        let after = TestUnitFixtures.dischargeWorldCommand(() ->
-            StaffCast.applyConsumableEffectDsl(item, 0, true, scene));
-        let atk = PlayerScene.get(0, after)
-                    |> Option.map(p -> StatusSystem.sumOf(StatusSystem.StatusEffect.AtkUp, p#statuses))
-                    |> Option.getWithDefault(-1);
+        // statuses は World 権威＝emit を World に積んで最終 World を読む。
+        let w = region rc {
+            let unitCmds = playerCmdsMagic(0, {x = 5, y = 5}, 10, 0);
+            snd(TestUnitFixtures.withWorldAppliedSeeded(rc, TestWorldFixtures.worldOf(unitCmds), () ->
+                StaffCast.applyConsumableEffectDsl(item, 0, true)))
+        };
+        let atk = StatusSystem.sumOf(StatusSystem.StatusEffect.AtkUp,
+                                     World.statusEffectsOf(World.EntityRef.Player(0), w));
         Assert.assertEq(expected = 4, atk)
 
     /// 杖の effectRule(onUse, immobilize) が当たった相手を完全停止にする。
     /// legacy enum 分岐ではなく DSL 経路（planActions → runPlan → immobilizeUnit）が bind を駆動する。
     @Test
     def testStaffEffectRuleImmobilizesTarget(): Unit \ Assert =
-        let scene = playerScene(10, 0);
         let staff = staffWithRule(None);
         let rule = ruleOf("{\"when\":\"onUse\",\"to\":\"target\",\"op\":\"immobilize\",\"amount\":0,\"for\":\"untilHit\",\"forTurns\":0,\"sfx\":\"\",\"vfx\":\"\"}");
         let hit = RayHit.HitPlayer(0, {x = 5, y = 5});
-        let after = fireStaffDsl(staff, rule, hit, {x = 0, y = 0}, scene);
-        let immob = PlayerScene.get(0, after)
-                     |> Option.map(p -> StatusSystem.isImmobilized(p#statuses))
-                     |> Option.getWithDefault(false);
+        let unitCmds = playerCmdsMagic(0, {x = 5, y = 5}, 10, 0);
+        let w = fireStaffDsl(staff, rule, hit, {x = 0, y = 0}, unitCmds);
+        // statuses は World 権威＝最終 World の statusEffects を読む。
+        let immob = StatusSystem.isImmobilized(World.statusEffectsOf(World.EntityRef.Player(0), w));
         Assert.assertEq(expected = true, immob)
 
     /// bind の停止ターン数が effectRule の forTurns で駆動される（5 固定でなく編集が効く）。
     /// forTurns=3 → 付与された Immobilized の remaining が 3。
     @Test
     def testStaffBindTurnsDrivenByEffectRule(): Unit \ Assert =
-        let scene = playerScene(10, 0);
         let staff = staffWithRule(None);
         let rule = ruleOf("{\"when\":\"onUse\",\"to\":\"target\",\"op\":\"immobilize\",\"amount\":0,\"for\":\"turns\",\"forTurns\":3,\"sfx\":\"\",\"vfx\":\"\"}");
         let hit = RayHit.HitPlayer(0, {x = 5, y = 5});
-        let after = fireStaffDsl(staff, rule, hit, {x = 0, y = 0}, scene);
-        let rem = PlayerScene.get(0, after)
-                   |> Option.map(p -> p#statuses)
-                   |> Option.getWithDefault(Nil)
+        let unitCmds = playerCmdsMagic(0, {x = 5, y = 5}, 10, 0);
+        let w = fireStaffDsl(staff, rule, hit, {x = 0, y = 0}, unitCmds);
+        // statuses は World 権威＝最終 World の statusEffects を読む。
+        let rem = World.statusEffectsOf(World.EntityRef.Player(0), w)
                    |> List.filter(s -> s#effect == StatusSystem.StatusEffect.Immobilized)
                    |> List.map(s -> s#remaining)
                    |> List.head
@@ -322,20 +296,20 @@ mod TestStaffCast {
         Assert.assertEq(expected = 3, rem)
 
     /// custom op: 杖の effectRule(onUse, swapPos) が施術者(0)と当たった相手(1)の gridPos を入れ替える。
-    /// custom ハンドラが op 文字列で applySwapWithPlayer へ振り分け、位置を scene から逆引きすることを確認。
+    /// custom ハンドラが op 文字列で applySwapWithPlayer へ振り分け、位置を World から逆引きすることを確認。
     @Test
     def testStaffEffectRuleSwapsPositions(): Unit \ Assert =
-        let scene = twoPlayerScene();
         let staff = staffWithRule(None);
         let rule = ruleOf("{\"when\":\"onUse\",\"to\":\"target\",\"op\":\"swapPos\",\"amount\":0,\"for\":\"instant\",\"forTurns\":0,\"sfx\":\"\",\"vfx\":\"\"}");
         let hit = RayHit.HitPlayer(1, {x = 5, y = 3});
-        let after = fireStaffDsl(staff, rule, hit, {x = 0, y = -1}, scene);
-        let p0 = PlayerScene.get(0, after) |> Option.map(d -> (d#gridPos#x, d#gridPos#y)) |> Option.getWithDefault((-1, -1));
-        let p1 = PlayerScene.get(1, after) |> Option.map(d -> (d#gridPos#x, d#gridPos#y)) |> Option.getWithDefault((-1, -1));
+        let unitCmds = List.append(playerCmdsMagic(0, {x = 5, y = 5}, 10, 0), playerCmdsMagic(1, {x = 5, y = 3}, 10, 0));
+        let w = fireStaffDsl(staff, rule, hit, {x = 0, y = -1}, unitCmds);
+        let p0 = TestWorldFixtures.posT(World.EntityRef.Player(0), w) |> Option.getWithDefault((-1, -1));
+        let p1 = TestWorldFixtures.posT(World.EntityRef.Player(1), w) |> Option.getWithDefault((-1, -1));
         Assert.assertEq(expected = ((5, 3), (5, 5)), (p0, p1))
         // knockback / warpToStairs は customStaffEffect の同じ match で legacy
-        // applyBlowback*/applyStopgap* へ委譲する（BoardSnapshot.fromScene が TileMapLayer を要求するため
-        // full-scene 検証はここでは省略。dispatch 機構自体は上の swapPos で実証済み）。
+        // applyBlowback*/applyStopgap* へ委譲する（full 検証はここでは省略。
+        // dispatch 機構自体は上の swapPos で実証済み）。
 
     // ════════════════════════════════════════════════════════
     // 一時しのぎのワープ先選定（warpCellFor・純粋）

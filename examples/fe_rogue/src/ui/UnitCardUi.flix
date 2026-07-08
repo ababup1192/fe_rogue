@@ -148,42 +148,45 @@ mod UnitCardUi {
     /// gameLoop が 1 回呼ぶ frame-paced System。両カードの表示対象を解決して UiStore へ流し込む。
     /// 味方カードは PlayerCursor 中=カーソル上ユニット / それ以外=選択中味方、敵カードは
     /// WeaponSelect / PlayerAttack の対象敵を出す。対象が無ければそのカードを隠す。
-    pub def frameStep(_dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def frameStep(_dt: Duration.Duration): Unit
             \ {GameEngine.Game, SelectedPlayer.State, CursorState.State, TurnPhase.State,
                PlayerData.PartyQuery, World.WorldQuery, UiWorldState.State} =
         let phase = TurnPhase.State.get();
-        let leftView = resolveLeft(phase, scene);
-        let rightView = resolveRight(phase, scene);
+        let leftView = resolveLeft(phase);
+        let rightView = resolveRight(phase);
         let atlas = GameEngine.Game.getFontAtlas("ui");
         let ui = UiWorldState.State.get()
             |> renderCard(allyRootName(), leftView, false, atlas)
             |> renderCard(enemyRootName(), rightView, true, atlas);
-        UiWorldState.State.put(ui);
-        scene
+        UiWorldState.State.put(ui)
 
     // ========================================================================
     // 表示対象の解決（旧 process / hoveredIdent / targetEnemyId の移植）
     // ========================================================================
 
     /// 味方カード（左）の表示対象。PlayerCursor 中はカーソル上ユニット、それ以外は選択中の味方。
-    def resolveLeft(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Option[CardView]
+    def resolveLeft(phase: TurnPhase.Phase): Option[CardView]
             \ {PlayerData.PartyQuery, SelectedPlayer.State, CursorState.State, World.WorldQuery} =
-        if (phase == TurnPhase.Phase.PlayerCursor) hovered(scene)
+        if (phase == TurnPhase.Phase.PlayerCursor) hovered()
         else SelectedPlayer.State.get()#id
             |> Option.flatMap(id -> PlayerData.PartyQuery.get(id))
             |> Option.map(playerView)
 
     /// カーソル上のユニット（敵優先 / フォグ隠れは除外）を CardView へ。空マスなら None。
-    /// ident（位置/hidden/フォグ）は scene 読み、味方の表示 Data だけ PartyQuery 経由。
-    def hovered(scene: Scene[NodeTag]): Option[CardView]
-            \ {PlayerData.PartyQuery, CursorState.State, World.WorldQuery} =
+    /// ident（位置/hidden/フォグ）は World 読み、味方の表示 Data だけ PartyQuery 経由。
+    def hovered(): Option[CardView]
+            \ {PlayerData.PartyQuery, SelectedPlayer.State, CursorState.State, World.WorldQuery} =
         let coord = CursorScene.getGridPos();
-        let visibleEnemy = EnemyScene.findIdAt(coord, scene)
-                            |> Option.filter(id -> EnemyScene.isVisible(id, scene));
+        let visibleEnemy = EnemyScene.findIdAt(coord)
+                            |> Option.filter(id -> EnemyScene.isVisible(id));
         match visibleEnemy {
-            case Some(id) => EnemyScene.get(id, scene) |> Option.map(enemyView)
+            // 敵の表示 Data（hp/weapon/ring/statuses）は World 権威＝dataFromWorldEnemy overlay で読む。
+            case Some(id) => EnemyScene.get(id)
+                                |> Option.map(d -> World.dataFromWorldEnemy(id, World.WorldQuery.get())
+                                                       |> Option.getWithDefault(d))
+                                |> Option.map(enemyView)
             case None     =>
-                PlayerScene.getAllWithWorldPos(scene)
+                PlayerScene.getAll()
                     |> List.filter(d -> not d#hidden and d#gridPos#x == coord#x and d#gridPos#y == coord#y)
                     |> List.head
                     |> Option.flatMap(d -> PlayerData.PartyQuery.get(d#id))
@@ -194,22 +197,24 @@ mod UnitCardUi {
     ///   - WeaponSelect : カーソル上の（フォグで隠れていない）敵
     ///   - PlayerAttack : 選択中味方の attackTargetId
     /// それ以外のフェーズや対象なしは None。
-    def resolveRight(phase: TurnPhase.Phase, scene: Scene[NodeTag]): Option[CardView]
+    def resolveRight(phase: TurnPhase.Phase): Option[CardView]
             \ {SelectedPlayer.State, CursorState.State, World.WorldQuery} =
-        targetEnemyId(phase, scene)
-            |> Option.flatMap(eid -> EnemyScene.get(eid, scene))
+        targetEnemyId(phase)
+            |> Option.flatMap(eid -> EnemyScene.get(eid)
+                                        |> Option.map(d -> World.dataFromWorldEnemy(eid, World.WorldQuery.get())
+                                                               |> Option.getWithDefault(d)))
             |> Option.map(enemyView)
 
     /// いま狙っている敵の id（左の予報ミニ窓 BattlePanel と同じ対象）。
-    def targetEnemyId(phase: TurnPhase.Phase, scene: Scene[NodeTag]):
+    def targetEnemyId(phase: TurnPhase.Phase):
             Option[Int32] \ {SelectedPlayer.State, CursorState.State, World.WorldQuery} =
         match phase {
             case TurnPhase.Phase.WeaponSelect =>
-                EnemyScene.findIdAt(CursorScene.getGridPos(), scene)
-                    |> Option.filter(id -> EnemyScene.isVisible(id, scene))
+                EnemyScene.findIdAt(CursorScene.getGridPos())
+                    |> Option.filter(id -> EnemyScene.isVisible(id))
             case TurnPhase.Phase.PlayerAttack =>
                 SelectedPlayer.State.get()#id
-                    |> Option.flatMap(pid -> PlayerScene.get(pid, scene))
+                    |> Option.flatMap(pid -> PlayerScene.get(pid))
                     |> Option.flatMap(player -> player#attackTargetId)
             case _ => None
         }

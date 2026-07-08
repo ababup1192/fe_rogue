@@ -94,8 +94,8 @@ mod TestBattlePanelUi {
                     drafts = Nil,
                     gatherActive = false
                 });
-                // confirm 経路が World 位置を読む（posOf は None→scene/引数 fallback）。
-                let _ = BattlePanelUi.confirm(Scene.empty());
+                // confirm 経路が World 位置を読む（posOf は None→World.WorldQuery fallback）。
+                BattlePanelUi.confirm();
                 TurnPhase.State.get()
             } with handler PlayerData.PartyQuery {
                 def get(id, k) =
@@ -141,7 +141,7 @@ mod TestBattlePanelUi {
                     drafts = Nil,
                     gatherActive = false
                 });
-                let _ = BattlePanelUi.cancel(Scene.empty());
+                BattlePanelUi.cancel();
                 TurnPhase.State.get()
             } with handler PlayerData.PartyQuery {
                 def get(id, k) =

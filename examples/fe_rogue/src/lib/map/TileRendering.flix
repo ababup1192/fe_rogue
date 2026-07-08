@@ -30,7 +30,7 @@ mod TileRendering {
 
     /// TileData のリストを GPU インスタンス (TileInstance) のリストに変換する。
     /// UV は texture サイズと flipH/flipV から計算する。
-    /// MapLoader / DungeonComposer / MapScene の各レンダリング経路で共有する。
+    /// MapLoader / DungeonComposer / MapSetup の各レンダリング経路で共有する。
     pub def buildTileInstances(tiles: List[TileData],
                                 tileSet: TileSet,
                                 tileSize: Float64): List[GameEngine.TileInstance] =

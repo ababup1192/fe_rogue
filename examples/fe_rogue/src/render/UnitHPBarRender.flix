@@ -74,8 +74,6 @@ mod UnitHPBarRender {
     def fillCornerRadius(): Float64 = innerHeightPx() / 2.0
     def barZIndex(): Int32 = 50
 
-    pub def childName(): String = "HPBar"
-
     /// フィル領域（枠 1px インセット）の幅・高さ。
     def innerWidthPx(): Float64 = barWidthPx() - 2.0 * borderPx()
     def innerHeightPx(): Float64 = barHeightPx() - 2.0 * borderPx()
@@ -97,54 +95,54 @@ mod UnitHPBarRender {
 
     // ─── 公開 API（直描き） ────────────────────────────
 
-    /// 全ユニットの足元 HP バーを World store から直描きする。
+    /// 全ユニットの足元 HP バーを World store から直描きする（在籍・位置とも scene を読まない）。
     ///   - HP = World.hpOf / 最大 HP = World.baseStatsOf#hp（SetHp/SetBaseStats が唯一の書込）
     ///   - 暗転 = waited（味方）/ enemyActed（敵）→ UITheme.dimmed() 乗算
-    ///   - 位置 = unit marker global + 足元オフセット（marker が移動 tween/lunge の位置権威のまま）
+    ///   - 位置 = `World.visualPosOf` + 足元オフセット（静止=セル中心／移動=renderPos 補間／
+    ///     lunge=往復導出＝本体 sprite と同じ追従）
     ///   - 攻撃予報の「減る分」= ForecastState（BattlePanel が毎フレーム put）
-    /// 退場（hidden）ユニットは描かない。ノード不在ユニット（死亡除去後）も自然にスキップ。
-    pub def renderBars(world: World, transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
+    /// 退場（hidden）ユニット・フォグで隠れた敵（`holesOpt` の lit ゲート）は描かない。
+    pub def renderBars(world: World, holesOpt: Option[List[GridRect]],
+                        transform: Camera2D.ViewTransform):
             List[GameEngine.Drawable] \ {GameEngine.Game, ForecastState} =
         let fc = ForecastState.get();
-        let players = PlayerScene.getAll(scene)
-            |> List.filter(d -> not d#hidden)
-            |> List.flatMap(d -> {
-                let ref = World.EntityRef.Player(d#id);
+        let players = World.playerIdsOf(world)
+            |> List.filter(id -> not World.playerHiddenOf(World.EntityRef.Player(id), world))
+            |> List.flatMap(id -> {
+                let ref = World.EntityRef.Player(id);
                 // 暗転は World.unitModulate store（本体/バー/アイコン共通の単一真実源。
                 // setSpriteModulate 系が Cmd.SetModulate を emit し showAllActive も同経路）。
                 let post = fc |> Option.flatMap(f ->
-                    if (f#attackerId == d#id) Some((f#playerHpPost, f#dark)) else None);
-                barDrawables(ref, PlayerScene.playerPath(d#id), Team.Player,
-                    World.modulateOf(ref, world), post, world, transform, scene)
+                    if (f#attackerId == id) Some((f#playerHpPost, f#dark)) else None);
+                barDrawables(ref, Team.Player, World.modulateOf(ref, world), post, world, transform)
             });
-        let enemies = EnemyScene.getAll(scene)
-            // フォグで隠れた敵は描かない（applyFog が marker を隠す＝isVisible が真実源。
-            // 旧実装は bar/icon が marker の子だったため祖先不可視で連動して消えていた）。
-            |> List.filter(d -> EnemyScene.isVisible(d#id, scene))
-            |> List.flatMap(d -> {
-                let ref = World.EntityRef.Enemy(d#id);
+        let enemies = World.enemyIdsOf(world)
+            // フォグで隠れた敵は描かない（明るい穴の lit ゲート＝本体 sprite と同じ判定）。
+            |> List.filter(id -> holesOpt
+                |> Option.map(holes -> EnemyScene.isLitIn(id, holes, world))
+                |> Option.getWithDefault(false))
+            |> List.flatMap(id -> {
+                let ref = World.EntityRef.Enemy(id);
                 let post = fc |> Option.flatMap(f ->
-                    if (f#defenderId == d#id) Some((f#enemyHpPost, f#dark)) else None);
-                barDrawables(ref, EnemyScene.enemyPath(d#id), Team.Enemy,
-                    World.modulateOf(ref, world), post, world, transform, scene)
+                    if (f#defenderId == id) Some((f#enemyHpPost, f#dark)) else None);
+                barDrawables(ref, Team.Enemy, World.modulateOf(ref, world), post, world, transform)
             });
         List.append(players, enemies)
 
 
     /// 1 ユニットぶんの HP バー Drawable 列（Bg トラック + Fill + 予報オーバーレイ）。
-    def barDrawables(ref: World.EntityRef, unitPath: NodePath, team: Team, modColor: Color,
+    def barDrawables(ref: World.EntityRef, team: Team, modColor: Color,
                       post: Option[(Int32, Bool)], world: World,
-                      transform: Camera2D.ViewTransform, scene: Scene[NodeTag]):
+                      transform: Camera2D.ViewTransform):
             List[GameEngine.Drawable] \ GameEngine.Game =
-        match (World.posOf(ref, world), Scene.getEngineNode(unitPath, scene)) {
-            case (Some(_), Some(_)) =>
+        match World.visualPosOf(ref, world) {
+            case Some(unitPos) =>
                 let hp    = World.hpOf(ref, world) |> Option.getWithDefault(0);
                 let maxHp = World.baseStatsOf(ref, world) |> Option.map(b -> b#maxHp) |> Option.getWithDefault(0);
                 if (maxHp <= 0) Nil
                 else {
-                    let markerG = Scene.globalPositionAt(unitPath, scene);
                     let barTopLeft: Vec2.Vec2 =
-                        {x = markerG#x - barWidthPx() / 2.0, y = markerG#y + barFeetY()};
+                        {x = unitPos#x - barWidthPx() / 2.0, y = unitPos#y + barFeetY()};
                     let bg = ColorRect.make({x = barWidthPx(), y = barHeightPx()}, mulColor(trackColor(), modColor))
                         |> ColorRect.setCornerRadius(barCornerRadius());
                     let fill = ColorRect.make(
@@ -181,7 +179,7 @@ mod UnitHPBarRender {
     def rectDrawables(rect: ColorRect, worldTopLeft: Vec2.Vec2, z: Int32,
                        transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
         let screenPos = Camera2D.applyToWorldPos(transform, worldTopLeft);
-        GameEngine.Renderable.toDrawables(EngineNode.ColorRectWithState(rect, NodeTag.NoTag), screenPos)
+        GameEngine.Renderable.toDrawables(EngineNode.ColorRectWithState(rect, ()), screenPos)
             |> Render.applyCameraScale(transform)
             |> List.map(d -> {zIndex = z | d})
 

@@ -146,18 +146,16 @@ mod TopBarUi {
     // ========================================================================
 
     /// フロア（再）構築時に呼ぶ。フロア番号・名前をセットし、状態を初期化して（未確定に戻し）
-    /// バーを可視化する。scene はパイプ素通し。
-    pub def enter(floorLabel: String, floorName: String, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TopBarState.State, UiWorldState.State} =
+    /// バーを可視化する。
+    pub def enter(floorLabel: String, floorName: String):
+            Unit \ {TopBarState.State, UiWorldState.State} =
         TopBarState.State.put({shown = None, animTarget = None, anim = Duration.zero(),
                                hold = Duration.zero(), floorLabel = floorLabel, floorName = floorName});
-        UiWorldState.State.put(UiStore.setVisible(rootPath(), true, UiWorldState.State.get()));
-        scene
+        UiWorldState.State.put(UiStore.setVisible(rootPath(), true, UiWorldState.State.get()))
 
-    /// ダンジョン外（タイトル / 選択画面）へ出るときにバーを隠す。scene はパイプ素通し。
-    pub def leave(scene: Scene[NodeTag]): Scene[NodeTag] \ UiWorldState.State =
-        UiWorldState.State.put(UiStore.setVisible(rootPath(), false, UiWorldState.State.get()));
-        scene
+    /// ダンジョン外（タイトル / 選択画面）へ出るときにバーを隠す。
+    pub def leave(): Unit \ UiWorldState.State =
+        UiWorldState.State.put(UiStore.setVisible(rootPath(), false, UiWorldState.State.get()))
 
     // ========================================================================
     // 毎フレーム System
@@ -168,12 +166,12 @@ mod TopBarUi {
     /// dual-write するため、パイプラインでは **EnemyTurnDriver.step より前**に置く
     /// （driver は当フレームの TopBar 確定値を読む）。
     /// バー不可視（タイトル / 選択画面）は presence gate で no-op。
-    pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
-                    Scene[NodeTag]
+    pub def step(delta: Duration.Duration):
+                    Unit
                     \ {TurnPhase.State, GameEngine.Audio, World.Command,
                        TopBarState.State, UiWorldState.State} =
         let ui0 = UiWorldState.State.get();
-        if (not isActive(ui0)) scene
+        if (not isActive(ui0)) ()
         else {
             let data = TopBarState.State.get();
             let phase = TurnPhase.State.get();
@@ -184,8 +182,7 @@ mod TopBarUi {
             UiWorldState.State.put(ui1);
             // 敵ターン driver が読む 2 bool を World に dual-write（確定 Data から）。
             World.Command.emit(World.Cmd.SetEnemyTurnBusy(isBusyOf(frame#data)));
-            World.Command.emit(World.Cmd.SetPhaseObservedEnemy(hasObservedEnemyOf(frame#data)));
-            scene
+            World.Command.emit(World.Cmd.SetPhaseObservedEnemy(hasObservedEnemyOf(frame#data)))
         }
 
     /// バーが可視（フロア進入済み）か。root が未 spawn / 不可視なら no-op ゲート。

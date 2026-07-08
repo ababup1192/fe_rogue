@@ -95,12 +95,12 @@ mod MinimapScene {
     /// gameLoop がパイプライン段で 1 回呼ぶ frame-paced System。今フレームに訪問した module を
     /// World へ蓄積し、M キーのエッジで表示トグルを反転する。描画そのものは行わない（見た目は
     /// `RenderWorld.renderMinimap` が同一フレームの状態を読んで直描きする）。
-    /// ダンジョン外（Map ノード不在＝タイトル/選択画面）では何もしない。
-    pub def step(scene: Scene[NodeTag]):
-                    Scene[NodeTag]
+    /// ダンジョン外（盤面未 seed＝タイトル/選択画面）では何もしない。
+    pub def step():
+                    Unit
                     \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
-                       PlayerData.PartyQuery, World.Command, MinimapState.State} =
-        if (not MapScene.isPresent(scene)) scene
+                       PlayerData.PartyQuery, World.Command, World.WorldQuery, MinimapState.State} =
+        if (not World.hasBoard(World.WorldQuery.get())) ()
         else {
             let phase = TurnPhase.State.get();
             let data  = MinimapState.State.get();
@@ -111,8 +111,9 @@ mod MinimapScene {
             let visible2 =
                 if (InputEdge.pressed(data#mPrev, mDown) and acceptsToggle) not data#visible
                 else data#visible;
-            let placements = MapScene.getPlacements(scene);
-            let roomCount  = MapScene.getRoomCount(scene);
+            let world0     = World.WorldQuery.get();
+            let placements = World.placementsOf(world0);
+            let roomCount  = World.roomCountOf(world0);
             // 部屋の記憶（visited）は fog と同じく origin 基準にする。移動ドラフト中に新しく踏み込んだ
             // 部屋は確定（drafts クリア）まで地図に出さない。
             let drafts = SelectedPlayer.State.get()#drafts;
@@ -123,8 +124,7 @@ mod MinimapScene {
             let frame  = visitedThisFrameDrafted(units, placements, roomCount);
             // 探索記憶は World 権威。今フレーム訪問分を World へ union する（描画時に読み合わせる）。
             World.Command.emit(World.Cmd.AddVisited(frame));
-            MinimapState.State.put({visible = visible2, mPrev = mDown});
-            scene
+            MinimapState.State.put({visible = visible2, mPrev = mDown})
         }
 
     // ════════════════════════════════════════════════════════
@@ -179,13 +179,6 @@ mod MinimapScene {
     // 描画に必要なデータの解決（RenderWorld.renderMinimap が呼ぶ純粋/軽効果ヘルパー）
     // ════════════════════════════════════════════════════════
 
-    /// 描画用の MapSnapshot（壁セル判定に使う）。BoardSnapshot.fromScene と同じ射影。
-    pub def mapSnapshot(scene: Scene[NodeTag]): MapSnapshot =
-        let layer     = MapScene.getMapLayer(scene);
-        let mapGlobal = Scene.globalPositionAt(MapScene.mapPath(), scene);
-        let placements = MapScene.getPlacements(scene);
-        MapScene.snapshotOf(layer, mapGlobal, placements)
-
     /// 階段が「発見済み」か。階段セルの属する module が訪問済みなら発見扱い。
     /// 階段位置は World.stairsPos から読む。
     pub def stairsDiscovered(visited: Set[Int32],
@@ -200,15 +193,15 @@ mod MinimapScene {
         }
 
     /// 表示すべきマーカー（セル + 色）一覧。プレイヤー（非 hidden、リーダーは別色）+ 発見済み
-    /// 階段 + 訪問済み部屋内のアイテム + 点灯部屋に居る敵。ユニット位置は World 権威（scene の
-    /// `getAllWithWorldPos`）、階段/アイテムは World store から読む。
+    /// 階段 + 訪問済み部屋内のアイテム + 点灯部屋に居る敵。在籍・位置とも World 権威
+    /// （`fogUnitsOf` / `enemyIdsOf`）、階段/アイテムも World store から読む（scene は読まない）。
     pub def collectMarkers(visited: Set[Int32], stairsSeen: Bool,
                            placements: List[DungeonComposer.ModulePlacement],
-                           roomCount: Int32, litRooms: Set[Int32], scene: Scene[NodeTag]):
+                           roomCount: Int32, litRooms: Set[Int32]):
                           List[{cell = {x = Int32, y = Int32}, color = Color}]
                           \ World.WorldQuery =
         let players =
-            PlayerScene.getAllWithWorldPos(scene)
+            World.fogUnitsOf(World.WorldQuery.get())
                 |> List.filter(d -> not d#hidden)
                 |> List.map(d -> {cell = d#gridPos,
                                   color = if (d#id == 0) leaderColor() else playerColor()});
@@ -226,25 +219,30 @@ mod MinimapScene {
                 |> List.filter(cell -> inVisitedRoom(cell, placements, roomCount, visited))
                 |> List.map(cell -> {cell = cell, color = itemColor()});
         // いま点灯している部屋(litRooms)に居る敵を赤丸で（アイテムより手前＝後ろに連結して上に描く）。
-        let enemiesM = enemiesSharingPlayerRoom(litRooms, placements, scene);
+        let enemiesM = enemiesSharingPlayerRoom(litRooms, placements);
         List.append(players, List.append(stairsM, List.append(itemsM, enemiesM)))
 
     /// 「いま点灯している部屋に居る敵」マーカー（赤丸）。点灯部屋集合 `litRooms`（origin 基準で
     /// 求めた room module）に居る生存敵（hp>0 かつ not isDying）を拾う。点灯している部屋＝霧で照らされ
     /// 既に見えているので別途の可視判定は省く。移動中に踏み込んだだけの暗い新規部屋は litRooms に
-    /// 含まれないため、その敵は地図にも出ない（fog と一貫）。敵位置は World 権威。
+    /// 含まれないため、その敵は地図にも出ない（fog と一貫）。在籍・位置とも World 権威。
     def enemiesSharingPlayerRoom(litRooms: Set[Int32],
-                                 placements: List[DungeonComposer.ModulePlacement],
-                                 scene: Scene[NodeTag]):
+                                 placements: List[DungeonComposer.ModulePlacement]):
                                 List[{cell = {x = Int32, y = Int32}, color = Color}]
                                 \ World.WorldQuery =
-        EnemyScene.getAllWithWorldPos(scene)
-            |> List.filter(e -> e#hp > 0 and not e#isDying)
-            |> List.filter(e -> match MapSnapshot.moduleOfCellIn(e#gridPos, placements) {
-                                    case Some(idx) => Set.memberOf(idx, litRooms)
-                                    case None      => false
-                                })
-            |> List.map(e -> {cell = e#gridPos, color = enemyColor()})
+        let world = World.WorldQuery.get();
+        World.enemyIdsOf(world)
+            |> List.filter(id -> {
+                let ref = World.EntityRef.Enemy(id);
+                (World.hpOf(ref, world) |> Option.getWithDefault(0)) > 0
+                    and not World.isDyingOf(ref, world)
+            })
+            |> List.filterMap(id -> World.posOf(World.EntityRef.Enemy(id), world))
+            |> List.filter(cell -> match MapSnapshot.moduleOfCellIn(cell, placements) {
+                                       case Some(idx) => Set.memberOf(idx, litRooms)
+                                       case None      => false
+                                   })
+            |> List.map(cell -> {cell = cell, color = enemyColor()})
 
     def inVisitedRoom(cell: {x = Int32, y = Int32},
                        placements: List[DungeonComposer.ModulePlacement],

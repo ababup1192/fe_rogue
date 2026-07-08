@@ -53,15 +53,14 @@ mod SuspendConfirmUi {
     /// gameLoop が 1 回呼ぶ frame-paced System。
     /// SuspendConfirm フェーズの間だけ root を可視化し、選択行を塗り箱ハイライトで示す。
     /// 非表示中はカーソルを先頭へ戻す（誤確定防止。次に開いたとき常に「はい」から始まる）。
-    pub def frameStep(_dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def frameStep(_dt: Duration.Duration): Unit
             \ {TurnPhase.State, UiWorldState.State} =
         let visible = TurnPhase.State.get() == TurnPhase.Phase.SuspendConfirm;
         let ui = UiWorldState.State.get();
         if (not visible) {
             UiWorldState.State.put(ui
                 |> UiStore.setVisible(rootPath(), false)
-                |> UiStore.putSelection(menuPath(), 0));
-            scene
+                |> UiStore.putSelection(menuPath(), 0))
         } else {
             // カーソルを [0, count) へ防御クランプしてから、塗り箱をその位置へ置く。
             let clamped = UiMenu.clampSelection(menuPath(), ui);
@@ -72,8 +71,7 @@ mod SuspendConfirmUi {
                 |> UiStore.setVisible(rootPath(), true)
                 |> UiMenu.applyItemTints(menuPath(), tintOf)
                 |> UiMenu.applyHighlight({listPath = menuPath(), highlightPath = highlightPath(),
-                                          sel = sel, rowPitch = rowPitch(), inset = highlightInset()}));
-            scene
+                                          sel = sel, rowPitch = rowPitch(), inset = highlightInset()}))
         }
 
     // ========================================================================
@@ -82,9 +80,8 @@ mod SuspendConfirmUi {
 
     /// 「中断」確定を受けて確認ダイアログを表示する。`SuspendConfirm` フェーズに入るだけで、
     /// 可視化・選択カーソルの初期化は次フレームの `frameStep` が担う（ActionMenuUi.openMenu と同じ設計）。
-    pub def show(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
-        TurnPhase.State.put(TurnPhase.Phase.SuspendConfirm);
-        scene
+    pub def show(): Unit \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.SuspendConfirm)
 
     /// 選択カーソルを delta（±1）動かす（端で回り込む。disabled 項目は無いのでスキップ判定は不要）。
     pub def moveSelection(delta: Int32): Unit \ UiWorldState.State =
@@ -94,31 +91,30 @@ mod SuspendConfirmUi {
         UiWorldState.State.put(UiStore.putSelection(menuPath(), next, ui))
 
     /// Z/Enter 確定。はい → 中断保存要求、いいえ → キャンセル（PlayerCursor へ）。
-    pub def confirmCurrentSelection(scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def confirmCurrentSelection(): Unit
             \ {CustomEffects.SuspendRequest, GameEngine.Audio, TurnPhase.State, UiWorldState.State} =
         let ui = UiWorldState.State.get();
         let sel = UiStore.selectionOf(menuPath(), ui);
         match UiMenu.metaAtSelection(menuPath(), sel, ui) {
-            case None    => scene
-            case Some(m) => onConfirmed(m, scene)
+            case None    => ()
+            case Some(m) => onConfirmed(m)
         }
 
-    def onConfirmed(meta: String, scene: Scene[NodeTag]): Scene[NodeTag]
+    def onConfirmed(meta: String): Unit
             \ {CustomEffects.SuspendRequest, GameEngine.Audio, TurnPhase.State} =
         if (meta == yesMeta()) {
             AudioStreamPlayer.play("confirm");
             // 保存失敗時に確認画面へ留まらないよう先に PlayerCursor へ戻す。
             // 成功時は handler が GamePhase を Title にして画面ごと作り直すので無害。
             TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-            CustomEffects.SuspendRequest.save(scene)
+            CustomEffects.SuspendRequest.save()
         } else {
             // cancel() が "cancel" 音と PlayerCursor 復帰を担う。
-            cancel(scene)
+            cancel()
         }
 
     /// 中断をやめて味方ターンのカーソルへ戻る（X / いいえ）。次フレームの frameStep が非表示にする。
-    pub def cancel(scene: Scene[NodeTag]): Scene[NodeTag] \ {GameEngine.Audio, TurnPhase.State} =
+    pub def cancel(): Unit \ {GameEngine.Audio, TurnPhase.State} =
         AudioStreamPlayer.play("cancel");
-        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
-        scene
+        TurnPhase.State.put(TurnPhase.Phase.PlayerCursor)
 }

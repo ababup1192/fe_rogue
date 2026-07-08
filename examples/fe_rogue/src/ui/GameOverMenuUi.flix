@@ -57,12 +57,11 @@ mod GameOverMenuUi {
     /// 全滅を受けて盤面をフリーズし、モーダルを表示する。
     ///   - 敵ターンキューを空にして以後の敵 step を止める
     ///   - フェーズを GameOver にして全 driver / 入力ルーティングを no-op 化
-    ///   - 進行中アニメ（攻撃 lunge / 死亡演出）を一括キャンセル
+    ///   - 進行中の戦闘演出（攻撃 lunge / 死亡点滅）は gameLoop が GameOver 中クロックを止めて凍結
     ///   - root を可視化・menu にフォーカス・選択カーソルを先頭へ
-    pub def show(): Unit \ {EnemyTurn.Queue, TurnPhase.State, AnimationPlayer.Scheduler, UiWorldState.State} =
+    pub def show(): Unit \ {EnemyTurn.Queue, TurnPhase.State, UiWorldState.State} =
         EnemyTurn.Queue.replace(Nil);
         TurnPhase.State.put(TurnPhase.Phase.GameOver);
-        AnimationPlayer.Scheduler.cancelAll();
         let ui = UiWorldState.State.get();
         UiWorldState.State.put(ui
             |> UiStore.setVisible(rootPath(), true)
@@ -78,23 +77,23 @@ mod GameOverMenuUi {
 
     /// 現在カーソル位置の選択肢を確定し、対応する復帰 op を emit する。
     /// metadata が未解決なら何もしない。
-    pub def confirmSelection(scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def confirmSelection(): Unit
             \ {CustomEffects.GameOverRequest, GameEngine.Audio, UiWorldState.State} =
         let ui = UiWorldState.State.get();
         let sel = UiStore.selectionOf(menuPath(), ui);
         match UiMenu.metaAtSelection(menuPath(), sel, ui) |> Option.flatMap(choiceOf) {
-            case None         => scene
+            case None         => ()
             case Some(choice) =>
                 AudioStreamPlayer.play("confirm");
-                emitChoice(choice, scene)
+                emitChoice(choice)
         }
 
     /// Choice を対応する GameOverRequest op へ振り分けて emit する。
-    def emitChoice(choice: Choice, scene: Scene[NodeTag]): Scene[NodeTag] \ CustomEffects.GameOverRequest =
+    def emitChoice(choice: Choice): Unit \ CustomEffects.GameOverRequest =
         match choice {
-            case Choice.ReviveInPlace    => CustomEffects.GameOverRequest.reviveInPlace(scene)
-            case Choice.RestartFloor     => CustomEffects.GameOverRequest.restartFloor(scene)
-            case Choice.RestartBeginning => CustomEffects.GameOverRequest.restartBeginning(scene)
+            case Choice.ReviveInPlace    => CustomEffects.GameOverRequest.reviveInPlace()
+            case Choice.RestartFloor     => CustomEffects.GameOverRequest.restartFloor()
+            case Choice.RestartBeginning => CustomEffects.GameOverRequest.restartBeginning()
         }
 
     // ========================================================================
@@ -103,7 +102,7 @@ mod GameOverMenuUi {
 
     /// phase==GameOver の間だけ root を可視化し、選択行を塗り箱ハイライトで示す。
     /// gameLoop のパイプ段として 1 回呼ばれる（refreshItems の per-node dispatch を置換）。
-    pub def frameStep(_dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def frameStep(_dt: Duration.Duration): Unit
             \ {UiWorldState.State, World.PhaseQuery} =
         let visible = World.PhaseQuery.phase() == SimPhase.GameOver;
         // カーソルを [0, count) へ防御クランプしてから、その位置へ塗り箱を置く。
@@ -115,6 +114,5 @@ mod GameOverMenuUi {
             |> UiStore.setVisible(rootPath(), visible)
             |> UiMenu.applyItemTints(menuPath(), tintOf)
             |> UiMenu.applyHighlight({listPath = menuPath(), highlightPath = highlightPath(),
-                                      sel = sel, rowPitch = rowPitch(), inset = highlightInset()}));
-        scene
+                                      sel = sel, rowPitch = rowPitch(), inset = highlightInset()}))
 }

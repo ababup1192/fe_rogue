@@ -10,7 +10,7 @@
 /// （World の renderPos 補間と同流儀）。カーソルは世界に 1 つなので複合キーの entity 部は定数 0 を使う。
 /// `step(dt)` を gameLoop が毎フレーム 1 回呼び、tween を進めて `renderPos` を書き、`snagRemaining` を減らす。
 ///
-/// `CursorScene.physicsProcess` の各フェーズ stepper が読み書きし、`getGridPos` を通じて
+/// `CursorScene.step` の各フェーズ stepper が読み書きし、`getGridPos` を通じて
 /// UnitCard / EnemyCard / BattlePanel / WeaponSelect / ItemMenu などが現在の指しセルを読む。
 /// TurnPhase / SelectedPlayer と同じ Ref-based handler 注入パターンに揃える。
 mod CursorState {
@@ -114,7 +114,7 @@ mod CursorState {
         State.get()#renderPos
 
     /// 毎フレーム 1 回、tween を dt(秒)進めて `renderPos` を書き、`snagRemaining` を減らす。
-    /// gameLoop が physicsProcess の後に呼ぶ（入力処理で開始した補間を同フレーム末に進める）。
+    /// gameLoop が入力 polling の後に呼ぶ（入力処理で開始した補間を同フレーム末に進める）。
     /// tween 完了フレームは `EcsTween.step` が t=1.0 スナップ値を返すので取りこぼしなく target へ確定する。
     pub def step(dt: Float64): Unit \ State =
         let d = State.get();

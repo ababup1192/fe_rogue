@@ -53,7 +53,7 @@ mod FloorCatalog {
     /// `roomMaps` / `horizontalMaps` / `verticalMaps` は「このフロアで使う部屋・通路マップの
     /// プール」を出現率（percent = 重み）付きで持つ。各 `SpawnEntry#id` はマップの stem
     /// （拡張子なしのファイル名、例 `"room_1"`）で、`mapPathOf` で `.map.json` パスに解決する。
-    /// 空リストのフロアは MapScene 側で従来のハードコード既定プールにフォールバックする。
+    /// 空リストのフロアは MapSetup 側で従来のハードコード既定プールにフォールバックする。
     pub type alias FloorResource = {
         label           = String,
         // フロアの呼び名（上部バー左に label と並べて出す。例「始まりの洞窟」）。省略可（欠落時 ""）。

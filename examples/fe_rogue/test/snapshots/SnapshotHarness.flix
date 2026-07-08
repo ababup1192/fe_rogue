@@ -6,7 +6,8 @@
 // 1 呼び出しで供給し、`thunk`（＝ frameStep 呼び出し）を回す。
 //
 // handler の素材は `TestUnitFixtures` の既存 mock を再利用する（テスト側と共通化）:
-//   noop Tween / Anim, 固定フェーズ, PartyQuery / RosterQuery（scene 読み）, WorldQuery / PhaseQuery。
+//   noop Tween / Anim, 固定フェーズ, PartyQuery / RosterQuery（World 由来の Data 一覧）,
+//   WorldQuery / PhaseQuery。
 // SelectedPlayer（gatherActive 対応）/ ItemMenuState / TradeMenuState は config 値を返す小 handler を
 // ここで巻く。GameEngine.Game と UiWorldState.State は呼び出し側（SnapshotSupport.withMockGame /
 // UiWorldState.withState）が供給し、`run` は `ef` で透過させる。
@@ -17,43 +18,42 @@ mod SnapshotHarness {
     ///   selectedId       : 選択中の味方 id（空マス / ゲームオーバー経路は None）。
     ///   gatherActive     : 集合（行軍）中か（ActionMenu の隣接メニュー分岐）。
     ///   cursor           : カーソルのグリッド座標（武器 / カード対象の解決に使う）。
-    ///   scene            : 味方 / 敵 / 地形ノードを持つ盤面（PartyQuery / RosterQuery / World の元）。
+    ///   world            : 味方 / 敵 / 盤面 / 配置物を seed 済みの World
+    ///                      （PartyQuery / RosterQuery / WorldQuery すべての供給源）。
     ///   itemCategory     : ItemMenu の現在カテゴリ（0=武器 1=消費 2=杖 3=指輪）。
     ///   itemMarks        : ItemMenu の複数選択マーク集合。
     ///   trade            : 交換セッション状態（members / focus / pick / marks）。
-    ///   worldMods        : scene から seed した World への追加変換（宝箱など scene ノードを持たない
-    ///                      World store 権威の要素を注入する。既定は恒等）。
     pub type alias Config = {
         phase        = TurnPhase.Phase,
         simPhase     = SimPhase,
         selectedId   = Option[Int32],
         gatherActive = Bool,
         cursor       = {x = Int32, y = Int32},
-        scene        = Scene[NodeTag],
+        world        = World,
         itemCategory = Int32,
         itemMarks    = Set[PlayerData.ItemKind],
-        trade        = TradeMenuUi.PanelData,
-        worldMods    = World -> World
+        trade        = TradeMenuUi.PanelData
     }
 
-    /// 既定 Config。`scene` だけ与えれば「PlayerCursor・未選択・原点カーソル・武器カテゴリ・空交換」で
+    /// 既定 Config。`world` だけ与えれば「PlayerCursor・未選択・原点カーソル・武器カテゴリ・空交換」で
     /// 始まる。各フィクスチャは必要なフィールドだけ `| base` で上書きする。
-    pub def config(scene: Scene[NodeTag]): Config = {
+    pub def config(world: World): Config = {
         phase        = TurnPhase.Phase.PlayerCursor,
         simPhase     = SimPhase.PlayerTurn,
         selectedId   = None,
         gatherActive = false,
         cursor       = {x = 0, y = 0},
-        scene        = scene,
+        world        = world,
         itemCategory = 0,
         itemMarks    = Set#{},
-        trade        = TradeMenuUi.defaultPanelData(),
-        worldMods    = w -> w
+        trade        = TradeMenuUi.defaultPanelData()
     }
 
     /// `run` が供給する read 系 effect の束。frameStep が要求する順に内側から巻く。
     /// GameEngine.Game / UiWorldState.State は外側（withMockGame / UiWorldState.withState）から
     /// `ef` で透過。SelectedPlayer / ItemMenuState / TradeMenuState は config 値を返す固定 handler。
+    /// PartyQuery / RosterQuery は config の World から再構築した Data 一覧
+    /// （TestUnitFixtures.worldPlayers / worldEnemies）を返す。
     pub def withMocks(cfg: Config, thunk: Unit -> a \ ef):
             a \ (ef - Tween.Scheduler - AnimationPlayer.Scheduler
                     - TurnPhase.State - SelectedPlayer.State - CursorState.State
@@ -65,9 +65,9 @@ mod SnapshotHarness {
         TestUnitFixtures.withFixedPhase(cfg#phase, () ->
         withSelection(cfg, () ->
         TestUnitFixtures.withCursorAt(cfg#cursor, () ->
-        TestUnitFixtures.withMockPartyQuery(cfg#scene, () ->
-        TestUnitFixtures.withMockRosterQuery(cfg#scene, () ->
-        TestUnitFixtures.withWorldQuery(cfg#worldMods(World.syncFromScene(cfg#scene, World.empty())), () ->
+        TestUnitFixtures.withMockPartyQuery(TestUnitFixtures.worldPlayers(cfg#world), () ->
+        TestUnitFixtures.withMockRosterQuery(TestUnitFixtures.worldEnemies(cfg#world), () ->
+        TestUnitFixtures.withWorldQuery(cfg#world, () ->
         TestUnitFixtures.withWorldPhase(cfg#simPhase, () ->
         withItemMenu(cfg, () ->
         withTrade(cfg, thunk)))))))))))
@@ -111,8 +111,10 @@ mod SnapshotHarness {
     //       Ref-back : EnemyTurn.Queue / ArrowCursorState / ItemPickupPopupState / ItemMenuState / TradeMenuState
     //       World    : World.Command はローカル World Ref へ畳み、World.WorldQuery が同 Ref を読む
     //                  （read-after-write。確定経路の pickup/stairs 系 Cmd も内容に矛盾なく反映される。
-    //                   ItemMenu/Weapon の可視・内容は PartyQuery=scene 直読みなので World 書込に非依存）。
-    //       Board    : fixture scene から `BoardSnapshot.fromScene` で組む。
+    //                   ItemMenu/Weapon の可視・内容は PartyQuery＝開始時 World の Data 一覧（静的）なので
+    //                   World 書込に非依存）。
+    //       Board    : fixture World の駒列（worldPlayers / worldEnemies）と 13×13 地形から
+    //                  `BoardSnapshot.fromParts` で組む。
     // GameEngine.Game / UiWorldState.State は呼び出し側（withMockGame / UiWorldState.withState）が
     // 供給し、ここは `ef` で透過させる（`withMocks` と同じ）。
     //
@@ -126,10 +128,12 @@ mod SnapshotHarness {
                     - ArrowCursorState.State - GatherResume.State - PlayerData.PartyQuery
                     - EnemyData.RosterQuery - CustomEffects.FloorAdvanceRequest - GameEngine.Audio
                     - World.Command - World.WorldQuery - BoardQuery - ItemPickupPopupState.State
-                    - ItemMenuState.State - TradeMenuState.State - RangeOverlayState.State) =
+                    - ItemMenuState.State - TradeMenuState.State - RangeOverlayState.State
+                    - StairsExitDriver.State) =
         let initialSel: SelectedPlayer.Selection =
             {id = cfg#selectedId, drafts = Nil, gatherActive = cfg#gatherActive};
-        let seededWorld = cfg#worldMods(World.syncFromScene(cfg#scene, World.empty()));
+        let board = BoardSnapshot.fromParts(TestWorldFixtures.floorSnapshot({w = 13, h = 13}),
+            TestUnitFixtures.worldPlayers(cfg#world), TestUnitFixtures.worldEnemies(cfg#world));
         region rc {
         TestUnitFixtures.withRangeOverlay(rc, () ->
         TestUnitFixtures.withNoopTween(() ->
@@ -138,18 +142,19 @@ mod SnapshotHarness {
         TestUnitFixtures.withMockAudio(() ->
         TestUnitFixtures.withNoopFloorAdvance(() ->
         TestUnitFixtures.withMockGatherResume(() ->
-        TestUnitFixtures.withMockPartyQuery(cfg#scene, () ->
-        TestUnitFixtures.withMockRosterQuery(cfg#scene, () ->
-        TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(cfg#scene), () ->
+        TestUnitFixtures.withMockPartyQuery(TestUnitFixtures.worldPlayers(cfg#world), () ->
+        TestUnitFixtures.withMockRosterQuery(TestUnitFixtures.worldEnemies(cfg#world), () ->
+        TestUnitFixtures.withMockBoard(board, () ->
         TestUnitFixtures.withCursorAt(cfg#cursor, () ->
         TestUnitFixtures.withTradeMenu(rc, () ->
         TestUnitFixtures.withSelectionRef(rc, initialSel, () ->
         EnemyTurn.withQueue(rc, () ->
+        StairsExitDriver.withState(rc, () ->
         ArrowCursorState.withState(rc, () ->
         ItemPickupPopupState.withState(rc, () ->
         ItemMenuState.withState(rc, () ->
         withPhaseState(rc, cfg#phase, () ->
-        withLocalWorld(rc, seededWorld, thunk)))))))))))))))))))
+        withLocalWorld(rc, cfg#world, thunk))))))))))))))))))))
         }
 
     /// TurnPhase.State を初期値 `initial` の可変 Ref で供給する（`put` が持続 = 確定でフェーズが変わる）。
@@ -164,7 +169,7 @@ mod SnapshotHarness {
         }
 
     /// World.Command をローカル World Ref へ畳み、World.WorldQuery が同 Ref を読む（read-after-write）。
-    /// `withWorldCommand`（TestUnitFixtures）と同型だが、seed を fixture scene 由来で渡せる版。
+    /// `withWorldCommand`（TestUnitFixtures）と同型だが、seed を fixture World で渡せる版。
     def withLocalWorld(rc: Region[r], seed: World, thunk: Unit -> a \ ef):
             a \ ((ef - World.Command) - World.WorldQuery) + r =
         let wref: Ref[World, r] = Ref.fresh(rc, seed);

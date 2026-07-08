@@ -1,6 +1,6 @@
 /// RoomLayout — 素朴な部屋 `DungeonComposer.ModulePlacement` を組む純ユーティリティ
 ///
-/// `MapScene` から切り出した、Scene / effect 非依存のダンジョン配置ヘルパー群。
+/// Scene / effect 非依存のダンジョン配置ヘルパー群。
 /// 単一部屋（`singleRoom`）/ 左右 2 部屋（`twoRoom`）の placements 構築と、
 /// 任意 placement の中心セル算出（`moduleCenter`）。production（単一床レイアウト）と
 /// テスト・map-test・診断（部屋を素早く組む共通構築点）の両方が使う。faction/sim 非依存。

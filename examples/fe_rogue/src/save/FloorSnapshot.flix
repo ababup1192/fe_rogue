@@ -2,7 +2,7 @@
 ///
 /// 全滅時の「そのフロアの最初から」復元と、将来の中断機能（JSON セーブ）が共有する土台。
 /// resource 実体・GPU ハンドル・関数を一切含まないため、そのまま JSON 化（`Saveable`）でき、
-/// `Scene.empty()` から決定論的に再構築できる（マップは `DungeonGenerator.Plan` を
+/// 空の World から決定論的に再構築できる（マップは `DungeonGenerator.Plan` を
 /// `composeFromSideConnections` に渡して乱数なしで再現）。
 ///
 /// 進入時スナップショット（リスタート用）では動的値は「進入時の値」（敵=full hp・default、

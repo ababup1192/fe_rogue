@@ -1,3 +1,8 @@
+sprite z=1 tex=stairs pos=(165.76,109.76) scale=(0.21,0.17) uvOff=(0.00,0.00) uvScale=(1.00,1.00) rgb=#ffffff a=1.00 centered=true
+box    z=2 pos=(-387.52,-443.52) size=(1123.20,499.20) rgb=#0a0d1a a=0.66 corner=0.00 border=0.00/#ffffff/0.00
+box    z=2 pos=(-387.52,55.68) size=(499.20,124.80) rgb=#0a0d1a a=0.66 corner=0.00 border=0.00/#ffffff/0.00
+box    z=2 pos=(236.48,55.68) size=(499.20,124.80) rgb=#0a0d1a a=0.66 corner=0.00 border=0.00/#ffffff/0.00
+box    z=2 pos=(-387.52,180.48) size=(1123.20,499.20) rgb=#0a0d1a a=0.66 corner=0.00 border=0.00/#ffffff/0.00
 sprite z=10 tex=character_sheet pos=(140.80,84.80) scale=(0.06,0.16) uvOff=(0.00,0.00) uvScale=(0.20,0.50) rgb=#ffffff a=1.00 centered=true
 sprite z=10 tex=character_sheet pos=(149.12,84.80) scale=(0.06,0.16) uvOff=(0.00,0.00) uvScale=(0.20,0.50) rgb=#ffffff a=1.00 centered=true
 box    z=50 pos=(137.06,87.04) size=(7.49,1.60) rgb=#141414 a=1.00 corner=2.00 border=0.00/#ffffff/0.00
@@ -16,4 +21,14 @@ poly   z=62 n=4 bbox=(145.38,81.70)-(147.74,84.06) rgb=#ffffff a=1.00
 poly   z=62 n=3 bbox=(147.46,81.41)-(148.03,81.98) rgb=#ffffff a=1.00
 poly   z=62 n=4 bbox=(145.10,83.14)-(146.30,84.34) rgb=#ffffff a=1.00
 poly   z=62 n=4 bbox=(144.96,83.84)-(145.60,84.48) rgb=#ffffff a=1.00
+box    z=70 pos=(115.20,59.20) size=(2.88,0.64) rgb=#ffffff a=1.00 corner=0.00 border=0.00/#ffffff/0.00
+box    z=70 pos=(115.20,59.20) size=(0.64,2.88) rgb=#ffffff a=1.00 corner=0.00 border=0.00/#ffffff/0.00
+box    z=70 pos=(121.92,59.20) size=(2.88,0.64) rgb=#ffffff a=1.00 corner=0.00 border=0.00/#ffffff/0.00
+box    z=70 pos=(124.16,59.20) size=(0.64,2.88) rgb=#ffffff a=1.00 corner=0.00 border=0.00/#ffffff/0.00
+box    z=70 pos=(115.20,68.16) size=(2.88,0.64) rgb=#ffffff a=1.00 corner=0.00 border=0.00/#ffffff/0.00
+box    z=70 pos=(115.20,65.92) size=(0.64,2.88) rgb=#ffffff a=1.00 corner=0.00 border=0.00/#ffffff/0.00
+box    z=70 pos=(121.92,68.16) size=(2.88,0.64) rgb=#ffffff a=1.00 corner=0.00 border=0.00/#ffffff/0.00
+box    z=70 pos=(124.16,65.92) size=(0.64,2.88) rgb=#ffffff a=1.00 corner=0.00 border=0.00/#ffffff/0.00
+poly   z=60003 n=12 bbox=(7.56,124.56)-(8.61,125.61) rgb=#f2d933 a=0.85
+poly   z=60003 n=12 bbox=(8.79,124.56)-(9.84,125.61) rgb=#eb4038 a=0.85
 

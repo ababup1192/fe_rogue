@@ -4,12 +4,12 @@
 /// スペック準拠の戦闘 4 値（攻 / 防 / 速）から 1 撃ぶんの「与: N / 命中: P% / 撃破」
 /// を導く forecast を集約する。
 ///
-/// 体当たり攻撃モーションの再生は AnimationPlayer + `attack_lunge` Animation
+/// 体当たり攻撃モーションの再生は World の lunge store（`Cmd.StartLunge` + `stepAnimClocks`）
 /// （CombatDriver.attackLungeAnimation）が担当し、HP 適用は `attack:hit` メソッド
 /// 発火時に CombatDriver.process が呼ぶ CombatDriver.onAttackHit
 /// 経由でここの関数を使う。
 ///
-/// Scene[NodeTag] / effect には依存しない。テストは数値だけで書ける。
+/// World / effect には依存しない。テストは数値だけで書ける。
 
 mod Combat {
 
@@ -306,7 +306,7 @@ mod Combat {
 ///
 /// 各矢印が「有利」方向を表す: 剣は斧に、斧は槍に、槍は剣に有利。
 /// 弓・魔法は三竦みの外で常に中立。
-/// Scene[NodeTag] / effect / 数値補正には依存しない（補正値の適用は `Combat` 側）。
+/// World / effect / 数値補正には依存しない（補正値の適用は `Combat` 側）。
 /// 戦闘計算の純粋ロジックとして Combat と同居させ、テストも数値だけで書ける。
 mod WeaponTriangle {
 

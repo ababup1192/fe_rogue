@@ -24,68 +24,43 @@ mod TestCombatRolls {
     // フィクスチャ（TestCombatDriver と同型の最小戦闘シーン）
     // ════════════════════════════════════════════════════════
 
-    /// 攻撃対象 enemy=1 を抱えた選択中味方。weaponHit/exp/speed を作り分ける。hp は大きめ（反撃で死なない）。
-    def playerData(weaponHit: Int32, exp: Int32, speed: Int32): PlayerScene.Data = {
-        id                = 0,
-        classId           = "test_player",
-        gridPos           = {x = 2, y = 2},
-        moveTiles         = 4,
-        hp                = 50,
-        waited            = false,
-        attackTargetId    = Some(1),
-        resource          = TestUnitFixtures.testResourceFull(4, 50, 3, 1, speed),
-        weapons           = ({hit = weaponHit | TestUnitFixtures.testWeapon()}: UnitCatalog.WeaponResource) :: Nil,
-        staves            = Nil,
-        consumables       = Nil,
-        selectedItem      = None,
-        moveStepsTaken    = 0,
-        facing            = Dir4.Down,
-        hidden            = false,
-        usedStairs        = false,
-        level             = 1,
-        exp               = exp,
-        pendingLevelUp    = None,
-        statuses          = Nil,
-        rings             = Nil,
-        ringEquipped      = false,
-        followUpUsed      = false
-    }
+    /// playerData 相当の spawn Cmd 列（id=0, pos=(2,2), hp=50 固定・attackTarget=enemy(1) 固定）。
+    /// weaponHit/exp/speed を作り分ける（playerData と同じ値を Cmd で上書きする）。
+    def playerUnitCmds(weaponHit: Int32, exp: Int32, speed: Int32): List[World.Cmd] =
+        let ref    = World.EntityRef.Player(0);
+        let weapon = ({hit = weaponHit | TestUnitFixtures.testWeapon()}: UnitCatalog.WeaponResource);
+        let res    = TestUnitFixtures.testResourceFull(4, 50, 3, 1, speed);
+        List.flatten(
+            TestWorldFixtures.playerCmds({hp = 50 | TestWorldFixtures.unitSpec(0, {x = 2, y = 2})})
+                :: (World.Cmd.SetWeapons(ref, weapon :: Nil)
+                    :: World.Cmd.SetWeaponView(ref, Combat.weaponView(Some(weapon), true))
+                    :: World.Cmd.SetPlayerResource(0, res)
+                    :: World.Cmd.SetBaseStats(ref, Combat.baseStatsFrom(res))
+                    :: World.Cmd.SetProgress(ref, res#level, exp)
+                    :: World.Cmd.SetAttackTarget(ref, 1)
+                    :: Nil)
+                :: Nil)
 
-    /// 隣接 (3,2) の敵。curHp/weaponHit/speed/attackTarget/effectRule を作り分ける。
-    def enemyData(curHp: Int32, weaponHit: Int32, speed: Int32,
-                   attackTarget: Option[Int32], effectRule: Option[Util.Json.Json]): EnemyScene.Data = {
-        id             = 1,
-        resourceId     = "test_enemy",
-        gridPos        = {x = 3, y = 2},
-        alerted        = false,
-        homeModuleIdx  = 0,
-        moveTiles      = 3,
-        hp             = curHp,
-        isDying        = false,
-        attackTargetId = attackTarget,
-        resource       = {speed = speed, effectRule = effectRule
-                            | TestUnitFixtures.testEnemyResource(3, 50)},
-        weapon         = Some({hit = weaponHit | TestUnitFixtures.testWeapon()}),
-        acted          = false,
-        prevPos        = None,
-        statuses       = Nil,
-        ring           = None,
-        followUpUsed   = false,
-        bottleUsed     = false
-    }
-
-    /// World 配下に Player(0)・Enemy(1) を直接挿した最小シーン（TestCombatDriver.battleScene と同型）。
-    def battleScene(p: PlayerScene.Data, e: EnemyScene.Data): Scene[NodeTag] =
-        let world = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
-        let pMarker = Marker2D.make(Vec2.zero());
-        let eMarker = Marker2D.make(Vec2.zero());
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                EngineNode.Marker2DWithState(pMarker, NodeTag.Player(p)))
-            |> Scene.addChildAt(MapScene.worldPath(), EnemyScene.enemyName(1),
-                EngineNode.Marker2DWithState(eMarker, NodeTag.Enemy(e)))
+    /// enemyData 相当の spawn Cmd 列（id=1, pos=(3,2), maxHp=50 固定）。
+    /// curHp/weaponHit/speed/attackTarget/effectRule を作り分ける（enemyData と同じ値を Cmd で上書きする）。
+    def enemyUnitCmds(curHp: Int32, weaponHit: Int32, speed: Int32,
+                       attackTarget: Option[Int32], effectRule: Option[Util.Json.Json]): List[World.Cmd] =
+        let ref     = World.EntityRef.Enemy(1);
+        let weapon  = ({hit = weaponHit | TestUnitFixtures.testWeapon()}: UnitCatalog.WeaponResource);
+        let res     = {speed = speed, effectRule = effectRule | TestUnitFixtures.testEnemyResource(3, 50)};
+        let atkCmds = attackTarget |> Option.map(t -> World.Cmd.SetAttackTarget(ref, t) :: Nil)
+                                    |> Option.getWithDefault(Nil);
+        List.flatten(
+            TestWorldFixtures.enemyCmds({hp = 50, moveTiles = 3 | TestWorldFixtures.unitSpec(1, {x = 3, y = 2})})
+                :: (World.Cmd.SetWeapons(ref, weapon :: Nil)
+                    :: World.Cmd.SetWeaponView(ref, Combat.weaponView(Some(weapon), true))
+                    :: World.Cmd.SetEnemyResource(1, res)
+                    :: World.Cmd.SetBaseStats(ref, Combat.baseStatsFrom(res))
+                    :: World.Cmd.SetEffectRule(1, effectRule)
+                    :: World.Cmd.SetHp(ref, curHp)
+                    :: Nil)
+                :: atkCmds
+                :: Nil)
 
     /// onHit で spdDown を撒く敵 effectRule（chance 省略＝既定 100＝必ず発火＝effect roll を必ず draw）。
     def onHitEffectRule(): Option[Util.Json.Json] =
@@ -102,13 +77,13 @@ mod TestCombatRolls {
     @Test
     def testPlayerAttackTwelveDrawSequence(): Unit \ Assert =
         region rc {
-            let scene = battleScene(playerData(200, 99, 3),
-                                    enemyData(1, 80, 3, None, None));
+            let cmds = List.append(playerUnitCmds(200, 99, 3),
+                                    enemyUnitCmds(1, 80, 3, None, None));
             // ONE-Ref traced world（Command+Query 同一 World）。RngDraw は内側の
             // withRecordedRolls が先に intercept する（traced の seeded RngDraw は到達しない）。
             let (out3, _keys, _w) =
-                TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
+                TestUnitFixtures.withTracedWorld(rc, 0i64, cmds, () ->
+                TestUnitFixtures.withMockBoard(BoardSnapshot.fromWorld(TestWorldFixtures.floorSnapshot({w = 13, h = 13})), () ->
                 TestUnitFixtures.withNoopThiefDrop(() ->
                 TestUnitFixtures.withMockGame(() ->
                 TestUnitFixtures.withMockAudio(() ->
@@ -116,7 +91,7 @@ mod TestCombatRolls {
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withRecordedRolls(rc, 0i64, () ->
-                    CombatDriver.applyAttackHit(0, scene))))))))));
+                    CombatDriver.applyAttackHit(0))))))))));
             let (_, rolls) = out3;
             Assert.assertEq(
                 expected = (12, prngSeq(0i64, 12)),
@@ -132,19 +107,19 @@ mod TestCombatRolls {
     @Test
     def testEnemyAttackHitCritEffectSequence(): Unit \ Assert =
         region rc {
-            let scene = battleScene(playerData(80, 0, 3),
-                                    enemyData(50, 200, 3, Some(0), onHitEffectRule()));
+            let cmds = List.append(playerUnitCmds(80, 0, 3),
+                                    enemyUnitCmds(50, 200, 3, Some(0), onHitEffectRule()));
             // ONE-Ref traced world（上と同型）。
             let (out3, _keys, _w) =
-                TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
+                TestUnitFixtures.withTracedWorld(rc, 0i64, cmds, () ->
+                TestUnitFixtures.withMockBoard(BoardSnapshot.fromWorld(TestWorldFixtures.floorSnapshot({w = 13, h = 13})), () ->
                 TestUnitFixtures.withMockGame(() ->
                 TestUnitFixtures.withMockAudio(() ->
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withRecordedRolls(rc, 0i64, () ->
-                    CombatDriver.applyEnemyAttackHit(1, scene)))))))));
+                    CombatDriver.applyEnemyAttackHit(1)))))))));
             let (_, rolls) = out3;
             Assert.assertEq(
                 expected = (3, prngSeq(0i64, 3)),
@@ -161,10 +136,10 @@ mod TestCombatRolls {
     @Test
     def testOnLungeDoneFollowUpRollInPosition(): Unit \ Assert =
         region rc {
-            let scene = battleScene(playerData(80, 0, 1),
-                                    enemyData(10, 80, 30, None, None));
+            let cmds = List.append(playerUnitCmds(80, 0, 1),
+                                    enemyUnitCmds(10, 80, 30, None, None));
             let (_, rolls) =
-                TestUnitFixtures.withWorldQuery(World.syncFromScene(scene, World.empty()), () ->
+                TestUnitFixtures.withWorldQuery(TestWorldFixtures.worldOf(cmds), () ->
                 TestUnitFixtures.withWorldPhase(SimPhase.PlayerTurn, () ->
                 TestUnitFixtures.withWorldCommand(rc, () ->
                 TestUnitFixtures.withMockGameLogger(() ->
@@ -172,7 +147,7 @@ mod TestCombatRolls {
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withRecordedRolls(rc, 0i64, () ->
                     run {
-                        let _ = CombatDriver.onLungeDone(Faction.Player, 0, scene);
+                        let _ = CombatDriver.onLungeDone(Faction.Player, 0);
                         ()
                     } with Tween.withScheduler(rc)
                       with TurnPhase.withState(rc)

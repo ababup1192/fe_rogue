@@ -6,33 +6,53 @@
 //
 // 照合方針（plan §goldenTrace）:
 //   - Heal/Blowback/Swap … World 権威 field（hp/pos/dying）の射影をオラクルと sim で assertEq ＋ 具体値リテラル pin。
-//   - Bind … orchestrator は scene #statuses 直書きで Cmd.Add を emit せずオラクル World に immobilize が載らない（World 等価不可）ため、
-//     ① sim 側 evCount==1 + cmdKey==("Add",uid,5,0) リテラルで Afflicted→eventToCmds→Cmd.Add の新コード経路を実踏、
-//     ② applyEcsStaffSceneEffects を駆動した scene #statuses をオラクル #statuses と等価比較、③ remaining=5 を tuple で pin。
+//   - Bind … sim 側 evCount==1 + cmdKey==("Add",uid,5,0) リテラルで Afflicted→eventToCmds→Cmd.Add の
+//     コード経路を実踏し、①`applyEcsStaffSceneEffects` を駆動した World #statuses をオラクル #statuses と
+//     等価比較、②remaining=5 を tuple で pin。
 //   - whiff（壁）… evCount==0 を pin（意図的 vacuity の明示）。
 // GameLogger hit-log は equivalence contract 外（sim/ViewReplay とも log を積まない）＝数値状態の等価であり log 等価ではない。
-// テスト本体に match を書かず posT/sceneStatusT の射影ヘルパー経由・期待値は具体値リテラル（self-derivation を避ける）。
+// テスト本体に match を書かず posT/worldStatusT の射影ヘルパー経由・期待値は具体値リテラル（self-derivation を避ける）。
 mod TestStaffGolden {
 
     use World.EntityRef
-    use TestUnitFixtures.{testResource, testEnemyResource}
+    use TestUnitFixtures.testResource
 
     // 固定 seed（杖は draw 0 ゆえ outcome は seed 非依存。harness の World 種に使うだけ）。
     def seed(): Int64 = 12345i64
 
-    // ── fixtures ──────────────────────────────────────────────────────────────
+    // ── fixtures（World.Cmd 列）───────────────────────────────────────────────
 
-    /// 味方フィクスチャ。`mAtk` で回復量源泉（魔力）を、`maxHp` で resource#hp（クランプ上限）を作り分ける。
-    def playerAt(id: Int32, gridPos: {x = Int32, y = Int32}, hp: Int32, maxHp: Int32, mAtk: Int32):
-            PlayerScene.Data = {
-        id                = id,
-        classId           = "test_player",
-        gridPos           = gridPos,
+    /// 味方 fixture の spawn Cmd 列。`mAtk` で回復量源泉（魔力）を、`maxHp` で resource#hp（クランプ上限）を、
+    /// `hp` で現在 hp を作り分ける（`TestWorldFixtures.playerCmds` を土台に hp/resource/baseStats を上書きする）。
+    def playerCmds(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, maxHp: Int32, mAtk: Int32): List[World.Cmd] =
+        let ref  = EntityRef.Player(id);
+        let spec = TestWorldFixtures.unitSpec(id, pos);
+        let res  = {magicAttack = mAtk | testResource(spec#moveTiles, maxHp)};
+        List.flatten(
+            TestWorldFixtures.playerCmds({hp = maxHp | spec})
+                :: (World.Cmd.SetHp(ref, hp)
+                    :: World.Cmd.SetPlayerResource(id, res)
+                    :: World.Cmd.SetBaseStats(ref, Combat.baseStatsFrom(res))
+                    :: Nil)
+                :: Nil)
+
+    /// 敵 fixture の spawn Cmd 列。`maxHp`=resource#hp・`hp`=現在 hp。
+    def enemyCmds(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, maxHp: Int32): List[World.Cmd] =
+        let ref  = EntityRef.Enemy(id);
+        let spec = TestWorldFixtures.unitSpec(id, pos);
+        List.append(TestWorldFixtures.enemyCmds({hp = maxHp | spec}), World.Cmd.SetHp(ref, hp) :: Nil)
+
+    /// `ecsResolveStaffCast` の `player` 引数は本体で未参照（駒の状態は World 権威で読む）ため、
+    /// 型を満たすだけのダミー値。値そのものはテスト結果に影響しない。
+    def dummyPlayer(): PlayerScene.Data = {
+        id                = 0,
+        classId           = "dummy",
+        gridPos           = {x = 0, y = 0},
         moveTiles         = 4,
-        hp                = hp,
+        hp                = 10,
         waited            = false,
         attackTargetId    = None,
-        resource          = {magicAttack = mAtk | testResource(4, maxHp)},
+        resource          = testResource(4, 10),
         weapons           = Nil,
         staves            = Nil,
         consumables       = Nil,
@@ -50,27 +70,6 @@ mod TestStaffGolden {
         followUpUsed      = false
     }
 
-    /// 敵フィクスチャ。`maxHp`=resource#hp。
-    def enemyAt(id: Int32, gridPos: {x = Int32, y = Int32}, hp: Int32, maxHp: Int32): EnemyScene.Data = {
-        id             = id,
-        resourceId     = "test_enemy",
-        gridPos        = gridPos,
-        alerted        = false,
-        homeModuleIdx  = 0,
-        moveTiles      = 3,
-        hp             = hp,
-        isDying        = false,
-        attackTargetId = None,
-        resource       = testEnemyResource(3, maxHp),
-        weapon         = None,
-        acted          = false,
-        prevPos        = None,
-        statuses       = Nil,
-        ring           = None,
-        followUpUsed   = false,
-        bottleUsed     = false
-    }
-
     /// テスト用の杖（effectRule 無し＝legacy/sim の 4 enum 経路を踏む）。
     def staffOf(effect: Staff.StaffEffect): Staff.StaffResource = {
         name = "test-staff", effect = effect, durability = 5, weight = 0.75,
@@ -83,79 +82,39 @@ mod TestStaffGolden {
         offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false
     }
 
-    /// 13×13 の壁なし floor map（toBoard / boardOf が map ノードを要求するため）。TestGoldenTrace 踏襲。
-    def floorMapLayer(): TileMapLayer =
-        let atlas: TileSetAtlasSource = {
-            textureName = "test", texWidth = 0.0, texHeight = 0.0,
-            tileSize = 16.0, marginX = 0.0, marginY = 0.0, spacingX = 0.0, spacingY = 0.0
-        };
-        TileMapLayer.make({
-            tileSet        = TileSet.make(atlas),
-            tiles          = Nil,
-            collisionCells = Nil,
-            gridSize       = ({x = 13, y = 13}: {x = Int32, y = Int32})
-        })
+    /// 13×13 の壁なし floor 地形（`World.mapSnapshot` / mock board 用の値 fixture）。
+    def floorTerrain(): MapSnapshot = TestWorldFixtures.floorSnapshot({w = 13, h = 13})
 
-    def floorMapData(): MapScene.Data = {
-        anchorOffset = {x = 0, y = 0},
-        spawnGrid    = {x = 5, y = 5},
-        placements   = RoomLayout.singleRoom(13, 13),
-        roomCount    = 1,
-        plan         = ({modulePaths = Nil, sideConnections = Nil, roomCount = 1}: DungeonGenerator.Plan)
-    }
-
-    /// World ノード下に player 群 + enemy 群 + floor map を挿した最小 scene。
-    def sceneOf(players: List[PlayerScene.Data], enemies: List[EnemyScene.Data]): Scene[NodeTag] =
-        let worldM = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
-        let base = Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(worldM, NodeTag.NoTag))
-            |> Scene.addNode("DungeonLevel0",
-                EngineNode.TileMapLayerWithState(floorMapLayer(), NodeTag.Map(floorMapData())));
-        let withPlayers = List.foldLeft((sc, p) ->
-            Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(p#id),
-                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Player(p)), sc),
-            base, players);
-        List.foldLeft((sc, e) ->
-            Scene.addChildAt(MapScene.worldPath(), EnemyScene.enemyName(e#id),
-                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Enemy(e)), sc),
-            withPlayers, enemies)
-
-    /// P1-a: 配置済み階段ノードを top-level（`Stairs.stairsPath()`=["Stairs"]）に足した scene。
-    /// `Stairs.add` は scene.json ロード（Fs/Game effect）を要するため、テストは placed 状態の
-    /// `NodeTag.Stairs` を直接注入する（`placeAt` が作る `{gridPos, placed=true}` と同じ payload）。
-    /// これで `Stairs.getPos` が Some を返し、sim 側 `stairsPosOf`（syncFromScene mirror）も同値になる。
-    def sceneWithStairs(players: List[PlayerScene.Data], enemies: List[EnemyScene.Data],
-                         stairs: {x = Int32, y = Int32}): Scene[NodeTag] =
-        let stairsData: Stairs.Data = {gridPos = stairs, placed = true};
-        Scene.addNode("Stairs",
-            EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Stairs(stairsData)),
-            sceneOf(players, enemies))
+    /// `cmds` から Board を組む（`withMockBoard` 供給用）。harness 内部の World と同じ Cmd 列を
+    /// 同じ地形に適用して組むので、trace ハーネスが seed する World と一致する。
+    def boardFor(cmds: List[World.Cmd]): Board =
+        let w = TestWorldFixtures.worldOf(World.Cmd.SetMapSnapshot(Some(floorTerrain())) :: cmds);
+        World.boardOf(w) |> Option.getWithDefault({map = floorTerrain(), pieces = Nil})
 
     // ── harness ───────────────────────────────────────────────────────────────
 
     /// live orchestrator（`ecsResolveStaffCast`・playerId=0 固定の caster）を traced harness + 副作用モックで駆動し、
-    /// (後 scene, 最終 World) をオラクルとして返す（cross-compare は「wrapper↔system 整合」の pin）。多引数ゆえレコード名前渡し。
-    def runStaffOracle(in: {scene = Scene[NodeTag], player = PlayerScene.Data,
-                            staff = Staff.StaffResource, dir = {x = Int32, y = Int32}, hit = RayHit}):
-            (Scene[NodeTag], World) =
+    /// 最終 World をオラクルとして返す（cross-compare は「wrapper↔system 整合」の pin）。多引数ゆえレコード名前渡し。
+    def runStaffOracle(in: {cmds = List[World.Cmd], staff = Staff.StaffResource,
+                            dir = {x = Int32, y = Int32}, hit = RayHit}): World =
         region rc {
-            let (s, _, w) =
-                TestUnitFixtures.withTracedWorld(rc, seed(), in#scene, () ->
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(in#scene), () ->
+            let (_, _, w) =
+                TestUnitFixtures.withTracedBoardWorld(rc, seed(), floorTerrain(), in#cmds, () ->
+                TestUnitFixtures.withMockBoard(boardFor(in#cmds), () ->
                 TestUnitFixtures.withMockAudio(() ->
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
-                    StaffCast.ecsResolveStaffCast(0, in#player, in#staff, in#dir, in#hit, in#scene)))))));
-            (s, w)
+                    StaffCast.ecsResolveStaffCast(0, dummyPlayer(), in#staff, in#dir, in#hit)))))));
+            w
         }
 
-    /// 純 sim 直駆動: `w0=syncFromScene` → `resolveStaffCast(caster=Player(0), ..)` → (World, [SimEvent])。
+    /// 純 sim 直駆動: `w0`（地形 + fixture Cmd 列を World.empty() に適用したもの）→
+    /// `resolveStaffCast(caster=Player(0), ..)` → (World, [SimEvent])。
     /// region/withSeededRng 不要（resolveStaffCast は no effect・決定論）。
-    def driveStaffResolve(sc: Scene[NodeTag], effect: Staff.StaffEffect,
+    def driveStaffResolve(cmds: List[World.Cmd], effect: Staff.StaffEffect,
                            dir: {x = Int32, y = Int32}, hit: RayHit): (World, List[World.SimEvent]) =
-        let w0 = World.syncFromScene(sc, World.empty());
+        let w0 = TestWorldFixtures.worldOf(World.Cmd.SetMapSnapshot(Some(floorTerrain())) :: cmds);
         StaffSystem.resolveStaffCast(w0, EntityRef.Player(0), effect, dir, hit)
 
     // ── projections（test 本体に match を書かない射影ヘルパー）─────────────────────
@@ -164,28 +123,26 @@ mod TestStaffGolden {
     def posT(ref: EntityRef, w: World): Option[(Int32, Int32)] =
         World.posOf(ref, w) |> Option.map(p -> (p#x, p#y))
 
-    /// scene の味方 statuses を Eq 可能な (effect, magnitude, remaining) 列へ射影。
-    def sceneStatusT(id: Int32, sc: Scene[NodeTag]): List[(StatusSystem.StatusEffect, Int32, Int32)] =
-        PlayerScene.get(id, sc)
-            |> Option.map(d -> d#statuses)
-            |> Option.getWithDefault(Nil)
-            |> List.map(s -> (s#effect, s#magnitude, s#remaining))
+    /// World 権威の味方 statuses を Eq 可能な (effect, magnitude, remaining) 列へ射影。
+    def worldStatusT(id: Int32, w: World): List[(StatusSystem.StatusEffect, Int32, Int32)] =
+        World.statusEffectsOf(EntityRef.Player(id), w)
+            |> List.map(st -> (st#effect, st#magnitude, st#remaining))
+
 
     // ── (Heal) World 等価 + 回復量源泉 non-vacuity ─────────────────────────────
 
     /// 回復: caster 魔力4 → target(味方 hp3/maxHp20)を 3+(4+10)=17 まで回復（クランプなし）。
-    /// legacy（applyHealToPlayer→setHp dual-write）の最終 World hp と sim（Healed→SetHp）が一致し、
+    /// orchestrator（`ecsResolveStaffCast`）の最終 World hp と sim（Healed→SetHp）が一致し、
     /// 17 を具体値で pin して magicAttack 源泉（baseStatsOf=resource verbatim）を固定する（偶然一致を排除）。
     @Test
     def testStaffHealEqualsSim(): Unit \ Assert =
-        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 4);
-        let target = playerAt(1, {x = 5, y = 2}, 3, 20, 0);
-        let sc = sceneOf(caster :: target :: Nil, Nil);
+        let cmds = List.flatten(
+            playerCmds(0, {x = 2, y = 2}, 10, 10, 4) :: playerCmds(1, {x = 5, y = 2}, 3, 20, 0) :: Nil);
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Heal);
-        let (_, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
-        let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Heal, dir, hit);
+        let oracleW = runStaffOracle({cmds = cmds, staff = staff, dir = dir, hit = hit});
+        let (sysW, evs) = driveStaffResolve(cmds, Staff.StaffEffect.Heal, dir, hit);
         Assert.assertEq(expected = true, List.length(evs) > 0);
         // 等価: 回復後の target hp が オラクルと一致。
         Assert.assertEq(expected = World.hpOf(EntityRef.Player(1), oracleW),
@@ -196,17 +153,16 @@ mod TestStaffGolden {
     // ── (Blowback) World 等価 ──────────────────────────────────────────────────
 
     /// ふきとばし × 敵(生存): 敵 hp5→4・hitCell{3,2} から右へ knockbackPath で壁手前{12,2}へ着地。
-    /// legacy（setHp+snapTo dual-write）と sim（Damaged+Moved）の (敵 hp, pos) が一致し、(4,{12,2}) を pin。
+    /// orchestrator（Damaged+Moved）と sim（Damaged+Moved）の (敵 hp, pos) が一致し、(4,{12,2}) を pin。
     @Test
     def testStaffBlowbackEnemySurvivesEqualsSim(): Unit \ Assert =
-        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
-        let target = enemyAt(1, {x = 3, y = 2}, 5, 10);
-        let sc = sceneOf(caster :: Nil, target :: Nil);
+        let cmds = List.flatten(
+            playerCmds(0, {x = 2, y = 2}, 10, 10, 0) :: enemyCmds(1, {x = 3, y = 2}, 5, 10) :: Nil);
         let hit = RayHit.HitEnemy(1, {x = 3, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Blowback);
-        let (_, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
-        let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Blowback, dir, hit);
+        let oracleW = runStaffOracle({cmds = cmds, staff = staff, dir = dir, hit = hit});
+        let (sysW, evs) = driveStaffResolve(cmds, Staff.StaffEffect.Blowback, dir, hit);
         Assert.assertEq(expected = true, List.length(evs) > 0);
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), posT(EntityRef.Enemy(1), w));
         // 等価: 1 ダメージ + 着地後の (敵 hp, pos) が オラクルと一致。
@@ -214,18 +170,17 @@ mod TestStaffGolden {
         // 独立 pin: hp5→4・{3,2}→{12,2}（壁なし 13×13・右端手前）。
         Assert.assertEq(expected = (Some(4), Some((12, 2))), proj(sysW))
 
-    /// ふきとばし × 敵(撃破): 敵 hp1→0（hard-0）+ 死亡演出。legacy（startDeathAnimation=SetHp0+SetDying）と
-    /// sim（Damaged(0)+Dying+ViewFx(Died)）の (敵 hp, dying) が一致し、(0,true) を pin。
+    /// ふきとばし × 敵(撃破): 敵 hp1→0（hard-0）+ 死亡演出。orchestrator（Damaged(0)+Dying+ViewFx(Died) 反映後の
+    /// World）と sim（同）の (敵 hp, dying) が一致し、(0,true) を pin。
     @Test
     def testStaffBlowbackEnemyKillEqualsSim(): Unit \ Assert =
-        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
-        let target = enemyAt(1, {x = 3, y = 2}, 1, 10);
-        let sc = sceneOf(caster :: Nil, target :: Nil);
+        let cmds = List.flatten(
+            playerCmds(0, {x = 2, y = 2}, 10, 10, 0) :: enemyCmds(1, {x = 3, y = 2}, 1, 10) :: Nil);
         let hit = RayHit.HitEnemy(1, {x = 3, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Blowback);
-        let (_, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
-        let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Blowback, dir, hit);
+        let oracleW = runStaffOracle({cmds = cmds, staff = staff, dir = dir, hit = hit});
+        let (sysW, evs) = driveStaffResolve(cmds, Staff.StaffEffect.Blowback, dir, hit);
         Assert.assertEq(expected = true, List.length(evs) > 0);
         let proj = w -> (World.hpOf(EntityRef.Enemy(1), w), World.isDyingOf(EntityRef.Enemy(1), w));
         // 等価: 撃破後の (敵 hp, dying) が オラクルと一致。
@@ -235,18 +190,17 @@ mod TestStaffGolden {
 
     // ── (Swap) World 等価 ──────────────────────────────────────────────────────
 
-    /// いれかえ × 敵: caster{2,2} と敵{5,2} を交換。legacy（snapTo×2 dual-write）と sim（Moved×2・順序保存）の
+    /// いれかえ × 敵: caster{2,2} と敵{5,2} を交換。orchestrator（Moved×2）と sim（Moved×2・順序保存）の
     /// (caster pos, 敵 pos) が一致し、(({5,2}),({2,2})) を pin。
     @Test
     def testStaffSwapEqualsSim(): Unit \ Assert =
-        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
-        let target = enemyAt(1, {x = 5, y = 2}, 10, 10);
-        let sc = sceneOf(caster :: Nil, target :: Nil);
+        let cmds = List.flatten(
+            playerCmds(0, {x = 2, y = 2}, 10, 10, 0) :: enemyCmds(1, {x = 5, y = 2}, 10, 10) :: Nil);
         let hit = RayHit.HitEnemy(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Swap);
-        let (_, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
-        let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Swap, dir, hit);
+        let oracleW = runStaffOracle({cmds = cmds, staff = staff, dir = dir, hit = hit});
+        let (sysW, evs) = driveStaffResolve(cmds, Staff.StaffEffect.Swap, dir, hit);
         Assert.assertEq(expected = true, List.length(evs) > 0);
         let proj = w -> (posT(EntityRef.Player(0), w), posT(EntityRef.Enemy(1), w));
         // 等価: 交換後の (caster pos, 敵 pos) が オラクルと一致。
@@ -254,75 +208,81 @@ mod TestStaffGolden {
         // 独立 pin: caster{2,2}↔敵{5,2}。
         Assert.assertEq(expected = (Some((5, 2)), Some((2, 2))), proj(sysW))
 
-    // ── (Bind) sim cmdKey + scene-statuses 等価 + remaining literal ─────────────
+    // ── (Bind) sim cmdKey + World-statuses 等価 + remaining literal ─────────────
 
-    /// かなしばり × 味方(id=1): legacy は mapPlayer 直書きで Cmd.Add を emit せず World 等価不可ゆえ 3 段で固定:
+    /// かなしばり × 味方(id=1): 3 段で固定:
     ///   ① sim 側 evCount==1 + cmdKey==("Add",1,5,0)（Immobilized 種別=5・magnitude=0・uid=toUid(Player(1))=1）で
-    ///      Afflicted→eventToCmds→Cmd.Add の新コード経路を実踏（無いと emit パスが緑のまま黙って退行しうる）、
-    ///   ② applyEcsStaffSceneEffects を駆動した scene #statuses を legacy #statuses と等価比較、
+    ///      Afflicted→eventToCmds→Cmd.Add のコード経路を実踏（無いと emit パスが緑のまま黙って退行しうる）、
+    ///   ② `applyEcsStaffSceneEffects` を駆動した World #statuses を orchestrator の #statuses と等価比較、
     ///   ③ remaining=5 を (Immobilized,0,5) tuple で pin。bindTurns を 3 へ退行させると ① cmdKey と ③ remaining が落ちる。
     @Test
     def testStaffBindSceneStatusesAndSimCmdKey(): Unit \ Assert =
-        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
-        let target = playerAt(1, {x = 5, y = 2}, 10, 10, 0);
-        let sc = sceneOf(caster :: target :: Nil, Nil);
+        let cmds = List.flatten(
+            playerCmds(0, {x = 2, y = 2}, 10, 10, 0) :: playerCmds(1, {x = 5, y = 2}, 10, 10, 0) :: Nil);
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Bind);
-        let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Bind, dir, hit);
+        let (sysW, evs) = driveStaffResolve(cmds, Staff.StaffEffect.Bind, dir, hit);
         // ① sim 側: 単一 Afflicted → Cmd.Add リテラル（新コード経路の実踏）。
         Assert.assertEq(expected = 1, List.length(evs));
         let cmdKeys = evs |> List.flatMap(World.eventToCmds) |> List.map(World.cmdKey);
         Assert.assertEq(expected = ("Add", 1, 5, 0) :: Nil, cmdKeys);
-        // ② scene-statuses: legacy #statuses == ECS（applyEcsStaffSceneEffects 駆動）#statuses。
-        let (oracleScene, _) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
-        // S3: applyEcsStaffSceneEffects は Seed emit で World.Command を持つ＝ディスチャージャで wrap。
-        let ecsScene = TestUnitFixtures.dischargeWorldCommand(() -> StaffCast.applyEcsStaffSceneEffects(evs, sc));
-        Assert.assertEq(expected = sceneStatusT(1, oracleScene), sceneStatusT(1, ecsScene));
+        // ② statuses は World 権威: orchestrator の最終 World == ECS（sim 適用後 World＋applyEcsStaffSceneEffects の
+        //    Seed 再確認）の statuses。
+        let oracleW = runStaffOracle({cmds = cmds, staff = staff, dir = dir, hit = hit});
+        let ecsW = region rc {
+            snd(TestUnitFixtures.withWorldAppliedSeeded(rc, sysW, () ->
+                StaffCast.applyEcsStaffSceneEffects(evs)))
+        };
+        Assert.assertEq(expected = worldStatusT(1, oracleW), worldStatusT(1, ecsW));
         // ③ remaining=5 を tuple リテラルで pin（immobilizeFor(5) を self-derive しない）。
-        Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, sceneStatusT(1, ecsScene));
+        Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, worldStatusT(1, ecsW));
         // sysW は ① で World へ Cmd.Add 済（read-model 側の sanity）＝immobilize が World にも載る。
         Assert.assertEq(expected = false, List.isEmpty(World.statusEffectsOf(EntityRef.Player(1), sysW)))
 
     // ── (Stopgap) bind + warp 等価（P1-a）────────────────────────────────────────
 
-    /// 一時しのぎ × 味方(id=1): 完全停止 + 階段{8,8}へワープ。legacy `applyStopgapToPlayer`
-    /// （bind→warpPlayer.snapTo dual-write）と sim `stopgapEvents`（Afflicted :: Moved）を突き合わせる:
+    /// 一時しのぎ × 味方(id=1): 完全停止 + 階段{8,8}へワープ。orchestrator（bind→warp dual-write）と
+    /// sim `stopgapEvents`（Afflicted :: Moved）を突き合わせる:
     ///   ① evCount==2 + cmdKeys==("Add",1,5,0)::("Move",1,8,8)（bind→warp の順序・新コード経路の実踏）、
     ///   ② warp 後 pos が オラクルと一致し {8,8} を pin（stairsPosOf read-model が warpCellFor に届いている証跡）、
-    ///   ③ scene #statuses が legacy と等価で (Immobilized,0,5) を pin（bind 部の parity）。
+    ///   ③ World #statuses が orchestrator と等価で (Immobilized,0,5) を pin（bind 部の parity）。
     @Test
     def testStaffStopgapWarpsToStairsEqualsSim(): Unit \ Assert =
-        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
-        let target = playerAt(1, {x = 5, y = 2}, 10, 10, 0);
-        let sc = sceneWithStairs(caster :: target :: Nil, Nil, {x = 8, y = 8});
+        let cmds = List.flatten(
+            playerCmds(0, {x = 2, y = 2}, 10, 10, 0)
+                :: playerCmds(1, {x = 5, y = 2}, 10, 10, 0)
+                :: (World.Cmd.SetStairs(Some({x = 8, y = 8})) :: Nil)
+                :: Nil);
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Stopgap);
-        let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Stopgap, dir, hit);
+        let (sysW, evs) = driveStaffResolve(cmds, Staff.StaffEffect.Stopgap, dir, hit);
         // ① bind(Afflicted→Add) → warp(Moved→Move) の順序と cmdKey リテラル。
         Assert.assertEq(expected = 2, List.length(evs));
         let cmdKeys = evs |> List.flatMap(World.eventToCmds) |> List.map(World.cmdKey);
         Assert.assertEq(expected = ("Add", 1, 5, 0) :: ("Move", 1, 8, 8) :: Nil, cmdKeys);
-        // ② pos: legacy warpPlayer.snapTo と一致 + {8,8} を pin。
-        let (oracleScene, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
+        // ② pos: orchestrator の warp と一致 + {8,8} を pin。
+        let oracleW = runStaffOracle({cmds = cmds, staff = staff, dir = dir, hit = hit});
         Assert.assertEq(expected = posT(EntityRef.Player(1), oracleW), posT(EntityRef.Player(1), sysW));
         Assert.assertEq(expected = Some((8, 8)), posT(EntityRef.Player(1), sysW));
-        // ③ scene #statuses 等価 + (Immobilized,0,5) pin。
-        let ecsScene = TestUnitFixtures.dischargeWorldCommand(() -> StaffCast.applyEcsStaffSceneEffects(evs, sc));
-        Assert.assertEq(expected = sceneStatusT(1, oracleScene), sceneStatusT(1, ecsScene));
-        Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, sceneStatusT(1, ecsScene))
+        // ③ statuses（World 権威）等価 + (Immobilized,0,5) pin。
+        let ecsW = region rc {
+            snd(TestUnitFixtures.withWorldAppliedSeeded(rc, sysW, () ->
+                StaffCast.applyEcsStaffSceneEffects(evs)))
+        };
+        Assert.assertEq(expected = worldStatusT(1, oracleW), worldStatusT(1, ecsW));
+        Assert.assertEq(expected = (StatusSystem.StatusEffect.Immobilized, 0, 5) :: Nil, worldStatusT(1, ecsW))
 
-    /// 一時しのぎ × 味方(id=1)・階段なし: warpCellFor(None)=None ゆえ warp せず bind のみ。legacy warpPlayer も
-    /// getPos=None で『ワープ先がなかった』＝停止だけ。sim は Moved を出さず evCount==1・pos 不変を pin。
+    /// 一時しのぎ × 味方(id=1)・階段なし: warpCellFor(None)=None ゆえ warp せず bind のみ。`stairsPosOf`=None
+    /// のとき『ワープ先がなかった』＝停止だけ。sim は Moved を出さず evCount==1・pos 不変を pin。
     @Test
     def testStaffStopgapNoStairsBindOnly(): Unit \ Assert =
-        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
-        let target = playerAt(1, {x = 5, y = 2}, 10, 10, 0);
-        let sc = sceneOf(caster :: target :: Nil, Nil);  // 階段ノードなし＝stairsPosOf=None
+        let cmds = List.flatten(
+            playerCmds(0, {x = 2, y = 2}, 10, 10, 0) :: playerCmds(1, {x = 5, y = 2}, 10, 10, 0) :: Nil);
         let hit = RayHit.HitPlayer(1, {x = 5, y = 2});
         let dir = {x = 1, y = 0};
-        let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Stopgap, dir, hit);
+        let (sysW, evs) = driveStaffResolve(cmds, Staff.StaffEffect.Stopgap, dir, hit);
         // Afflicted のみ（Moved なし）。
         Assert.assertEq(expected = 1, List.length(evs));
         let cmdKeys = evs |> List.flatMap(World.eventToCmds) |> List.map(World.cmdKey);
@@ -333,19 +293,18 @@ mod TestStaffGolden {
     // ── (whiff) 空振り＝意図的 vacuity ─────────────────────────────────────────
 
     /// 壁ヒット（空振り）は sim が events を 1 つも積まない＝World 不変。evCount==0 を pin（呼び出し側は
-    /// legacy へ fallback して『届かなかった』ログを温存する）。
+    /// フィードバックログを出すだけで emit/replay をしない）。
     @Test
     def testStaffWhiffEmptyEvents(): Unit \ Assert =
-        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 4);
-        let sc = sceneOf(caster :: Nil, Nil);
+        let cmds = playerCmds(0, {x = 2, y = 2}, 10, 10, 4);
         let hit = RayHit.HitWall({x = 4, y = 2});
         let dir = {x = 1, y = 0};
-        let (_, evs) = driveStaffResolve(sc, Staff.StaffEffect.Heal, dir, hit);
+        let (_, evs) = driveStaffResolve(cmds, Staff.StaffEffect.Heal, dir, hit);
         Assert.assertEq(expected = 0, List.length(evs))
 
     // ── 出荷 seam（ecsResolveStaffCast）直駆動ハーネス ────────────────────────────
     //
-    // 上の等価テストは `resolveStaffCast`（sim）と `applyEcsStaffSceneEffects`（scene）を分解して
+    // 上の等価テストは `resolveStaffCast`（sim）と `applyEcsStaffSceneEffects`（World 反映）を分解して
     // 当てるだけで、実際に出荷される cutover seam `StaffCast.ecsResolveStaffCast` の
     // emit ループ・Nil-fallback 分岐・ViewReplay 配線は未踏だった。それらを traced harness 内で
     // 駆動して固定する（emit は World.Command effect ゆえ effectful run の defer 対象外）。
@@ -364,55 +323,54 @@ mod TestStaffGolden {
         (out, List.reverse(Ref.get(ref)))
 
     /// 出荷 cutover seam `ecsResolveStaffCast`（playerId=0 固定）を traced harness + recording logger で
-    /// 駆動。(後 scene, cmdKey 列, 最終 World, log 列)。emit ループ/Nil-fallback/ViewReplay 配線を実踏する。
-    def runStaffEcs(in: {scene = Scene[NodeTag], player = PlayerScene.Data,
-                         staff = Staff.StaffResource, dir = {x = Int32, y = Int32}, hit = RayHit}):
-            (Scene[NodeTag], List[(String, Int32, Int32, Int32)], World, List[String]) =
+    /// 駆動。(cmdKey 列, 最終 World, log 列)。emit ループ/Nil-fallback/ViewReplay 配線を実踏する。
+    def runStaffEcs(in: {cmds = List[World.Cmd], staff = Staff.StaffResource,
+                         dir = {x = Int32, y = Int32}, hit = RayHit}):
+            (List[(String, Int32, Int32, Int32)], World, List[String]) =
         region rc {
-            let ((s, logs), keys, w) =
-                TestUnitFixtures.withTracedWorld(rc, seed(), in#scene, () ->
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(in#scene), () ->
+            let ((_, logs), keys, w) =
+                TestUnitFixtures.withTracedBoardWorld(rc, seed(), floorTerrain(), in#cmds, () ->
+                TestUnitFixtures.withMockBoard(boardFor(in#cmds), () ->
                 TestUnitFixtures.withMockGame(() ->
                 TestUnitFixtures.withMockAudio(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                     withRecLogger(rc, () ->
-                        StaffCast.ecsResolveStaffCast(0, in#player, in#staff, in#dir, in#hit, in#scene))))))));
-            (s, keys, w, logs)
+                        StaffCast.ecsResolveStaffCast(0, dummyPlayer(), in#staff, in#dir, in#hit))))))));
+            (keys, w, logs)
         }
 
     /// live orchestrator seam を traced harness + recording logger で駆動（whiff fallback の log/cmds オラクル）。
-    def runStaffOracleLogged(in: {scene = Scene[NodeTag], player = PlayerScene.Data,
-                                  staff = Staff.StaffResource, dir = {x = Int32, y = Int32}, hit = RayHit}):
-            (Scene[NodeTag], List[(String, Int32, Int32, Int32)], World, List[String]) =
+    def runStaffOracleLogged(in: {cmds = List[World.Cmd], staff = Staff.StaffResource,
+                                  dir = {x = Int32, y = Int32}, hit = RayHit}):
+            (List[(String, Int32, Int32, Int32)], World, List[String]) =
         region rc {
-            let ((s, logs), keys, w) =
-                TestUnitFixtures.withTracedWorld(rc, seed(), in#scene, () ->
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(in#scene), () ->
+            let ((_, logs), keys, w) =
+                TestUnitFixtures.withTracedBoardWorld(rc, seed(), floorTerrain(), in#cmds, () ->
+                TestUnitFixtures.withMockBoard(boardFor(in#cmds), () ->
                 TestUnitFixtures.withMockAudio(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                 TestUnitFixtures.withNoopTween(() ->
                     withRecLogger(rc, () ->
-                        StaffCast.ecsResolveStaffCast(0, in#player, in#staff, in#dir, in#hit, in#scene)))))));
-            (s, keys, w, logs)
+                        StaffCast.ecsResolveStaffCast(0, dummyPlayer(), in#staff, in#dir, in#hit)))))));
+            (keys, w, logs)
         }
 
-    // ── (seam-a) whiff → scene fallback の log 等価 ───────────────────────────────
+    // ── (seam-a) whiff → World fallback の log 等価 ───────────────────────────────
 
     /// 空振り（壁 hit）で `ecsResolveStaffCast` は events=Nil を見て内包した whiff 処理（『届かなかった』ログ）へ fallback する。
     /// 出荷 seam の log/cmds がオラクル harness の whiff 駆動と一致することを固定。else 分岐（empty events を replay）が
     /// 誤って走ると『届かなかった』ログが 0 行になり oracleLogs と乖離して落ちる＝Nil-fallback を非 vacuous に pin。
     @Test
     def testStaffEcsSeamWhiffFallsBackToScene(): Unit \ Assert =
-        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 4);
-        let target = playerAt(1, {x = 5, y = 2}, 3, 20, 0);
-        let sc = sceneOf(caster :: target :: Nil, Nil);
+        let cmds = List.flatten(
+            playerCmds(0, {x = 2, y = 2}, 10, 10, 4) :: playerCmds(1, {x = 5, y = 2}, 3, 20, 0) :: Nil);
         let hit = RayHit.HitWall({x = 4, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Heal);
-        let args = {scene = sc, player = caster, staff = staff, dir = dir, hit = hit};
-        let (_, ecsKeys, ecsW, ecsLogs) = runStaffEcs(args);
-        let (_, oracleKeys, _, oracleLogs) = runStaffOracleLogged(args);
+        let args = {cmds = cmds, staff = staff, dir = dir, hit = hit};
+        let (ecsKeys, ecsW, ecsLogs) = runStaffEcs(args);
+        let (oracleKeys, _, oracleLogs) = runStaffOracleLogged(args);
         // fallback 等価: ecs seam の log/cmds がオラクル harness の whiff 駆動と一致。
         Assert.assertEq(expected = oracleLogs, ecsLogs);
         Assert.assertEq(expected = oracleKeys, ecsKeys);
@@ -429,20 +387,19 @@ mod TestStaffGolden {
     /// （Damaged+Moved）。
     ///
     /// 注: seam は `Move` を 2 度積む — 明示 emit ループ（`eventToCmds`）と `ViewReplay.replay` の
-    /// `Snap`→`snapRefTo`（scene 権威 snap が World へ dual-write）の二経路から。さらに `snapTo` は engine tween
+    /// `Snap`→`snapRefTo`（World 権威 snap の dual-write）の二経路から。さらに `snapTo` は engine tween
     /// 退役後、描画位置スナップの `Cmd.SetRenderPos`（view 権威）も積む。`Cmd.Move` は絶対座標で冪等・RenderPos は
     /// 描画専用ゆえ最終 World（hp/pos）は不変。よって logical 契約は RenderPos を除いた **集合** 一致で表し
     /// （重複 Move を許容）、最終 World 等価を本丸の保証とする。raw list 長=4 も pin して emit の形を固定する。
     @Test
     def testStaffEcsSeamEmitsEventToCmds(): Unit \ Assert =
-        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
-        let target = enemyAt(1, {x = 3, y = 2}, 5, 10);
-        let sc = sceneOf(caster :: Nil, target :: Nil);
+        let cmds = List.flatten(
+            playerCmds(0, {x = 2, y = 2}, 10, 10, 0) :: enemyCmds(1, {x = 3, y = 2}, 5, 10) :: Nil);
         let hit = RayHit.HitEnemy(1, {x = 3, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Blowback);
-        let (_, ecsKeys, ecsW, _) = runStaffEcs({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
-        let (simW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Blowback, dir, hit);
+        let (ecsKeys, ecsW, _) = runStaffEcs({cmds = cmds, staff = staff, dir = dir, hit = hit});
+        let (simW, evs) = driveStaffResolve(cmds, Staff.StaffEffect.Blowback, dir, hit);
         // cross-check: 出荷 seam が積んだ cmdKey 集合 == sim events の eventToCmds 集合（emit 配線の固定）。
         let simKeys = evs |> List.flatMap(World.eventToCmds) |> List.map(World.cmdKey);
         // seam は sim の logical cmds に加え、view 権威の render snap（`snapTo` の `SetRenderPos`＝engine tween
@@ -462,18 +419,17 @@ mod TestStaffGolden {
     // ── (Blowback × 味方) ally 分岐の等価 pin（生存・撃破）─────────────────────────
 
     /// ふきとばし × 味方(生存): 味方 hp5→4・hitCell{3,2} から右へ knockbackPath で壁手前{12,2}へ着地。
-    /// legacy `applyBlowbackToPlayer`（setHp+snapTo）と sim（Damaged+Moved）の (味方 hp, pos) が一致し、
+    /// orchestrator（Damaged+Moved）と sim（Damaged+Moved）の (味方 hp, pos) が一致し、
     /// (4,{12,2}) を pin（ally 生存分岐＝Damaged raw :: Moved を踏む）。
     @Test
     def testStaffBlowbackAllySurvivesEqualsSim(): Unit \ Assert =
-        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
-        let target = playerAt(1, {x = 3, y = 2}, 5, 10, 0);
-        let sc = sceneOf(caster :: target :: Nil, Nil);
+        let cmds = List.flatten(
+            playerCmds(0, {x = 2, y = 2}, 10, 10, 0) :: playerCmds(1, {x = 3, y = 2}, 5, 10, 0) :: Nil);
         let hit = RayHit.HitPlayer(1, {x = 3, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Blowback);
-        let (_, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
-        let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Blowback, dir, hit);
+        let oracleW = runStaffOracle({cmds = cmds, staff = staff, dir = dir, hit = hit});
+        let (sysW, evs) = driveStaffResolve(cmds, Staff.StaffEffect.Blowback, dir, hit);
         Assert.assertEq(expected = true, List.length(evs) > 0);
         let proj = w -> (World.hpOf(EntityRef.Player(1), w), posT(EntityRef.Player(1), w));
         // 等価: 1 ダメージ + 着地後の (味方 hp, pos) が オラクルと一致。
@@ -483,18 +439,17 @@ mod TestStaffGolden {
 
     /// ふきとばし × 味方(撃破): 味方 hp1→0。sim の ally 撃破分岐（StaffSystem.flix:93-94 の `else if dmgRes#isDead`）は
     /// **Damaged raw のみ**＝Dying/ViewFx を出さない（敵撃破は hard-0+Dying ゆえ対称性の取り違えが起きやすい）。
-    /// legacy `applyBlowbackToPlayer`（isDead→setHp のみ・死亡演出なし）と (味方 hp, dying) が一致し、(0,false) を pin。
+    /// orchestrator（死亡演出なし）と (味方 hp, dying) が一致し、(0,false) を pin。
     /// ally に Dying を誤発火させると dying=true に転んでここが落ちる。evCount=1（Moved も無い）も pin。
     @Test
     def testStaffBlowbackAllyKillEqualsSim(): Unit \ Assert =
-        let caster = playerAt(0, {x = 2, y = 2}, 10, 10, 0);
-        let target = playerAt(1, {x = 3, y = 2}, 1, 10, 0);
-        let sc = sceneOf(caster :: target :: Nil, Nil);
+        let cmds = List.flatten(
+            playerCmds(0, {x = 2, y = 2}, 10, 10, 0) :: playerCmds(1, {x = 3, y = 2}, 1, 10, 0) :: Nil);
         let hit = RayHit.HitPlayer(1, {x = 3, y = 2});
         let dir = {x = 1, y = 0};
         let staff = staffOf(Staff.StaffEffect.Blowback);
-        let (_, oracleW) = runStaffOracle({scene = sc, player = caster, staff = staff, dir = dir, hit = hit});
-        let (sysW, evs) = driveStaffResolve(sc, Staff.StaffEffect.Blowback, dir, hit);
+        let oracleW = runStaffOracle({cmds = cmds, staff = staff, dir = dir, hit = hit});
+        let (sysW, evs) = driveStaffResolve(cmds, Staff.StaffEffect.Blowback, dir, hit);
         Assert.assertEq(expected = true, List.length(evs) > 0);
         let proj = w -> (World.hpOf(EntityRef.Player(1), w), World.isDyingOf(EntityRef.Player(1), w));
         // 等価: 味方撃破後の (hp, dying) が オラクルと一致（ally は Dying/Died を出さない）。

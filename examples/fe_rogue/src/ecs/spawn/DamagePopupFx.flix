@@ -42,16 +42,13 @@ mod DamagePopupFx {
 
     /// 指定ワールド座標にダメージ数字をスポーンする。色は呼び出し側で
     /// `damageToEnemyColor()` / `damageToPlayerColor()` を選ぶ。
-    pub def emit(worldPos: Vec2.Vec2, damage: Int32, color: Color,
-                   scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        emitText(worldPos, "${damage}", color, scene)
+    pub def emit(worldPos: Vec2.Vec2, damage: Int32, color: Color): Unit \ World.Command =
+        emitText(worldPos, "${damage}", color)
 
     /// `emit` の文字列版。ダメージ数値の代わりに任意のテキスト（例: "miss"）を
     /// 同じ float-up 演出で浮かす。命中失敗時に呼び出し側が "miss" を出すのに使う。
-    /// `Cmd.SpawnPopupFx` の emit のみ（ノード無し・scene はパイプ素通し）。
-    pub def emitText(worldPos: Vec2.Vec2, text: String, color: Color,
-                   scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+    /// `Cmd.SpawnPopupFx` の emit のみ（ノード無し）。
+    pub def emitText(worldPos: Vec2.Vec2, text: String, color: Color): Unit \ World.Command =
         World.Command.emit(World.Cmd.SpawnPopupFx(
-            {total = Duration.toSeconds(lifetime()), pos = worldPos, text = text, color = color}));
-        scene
+            {total = Duration.toSeconds(lifetime()), pos = worldPos, text = text, color = color}))
 }

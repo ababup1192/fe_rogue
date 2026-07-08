@@ -87,7 +87,7 @@ mod TestPrng {
              Prng.unitToPercent(0.999999999)))
 
     // ────────────────────────────────────────────────────────
-    // World への seeded-PRNG carry（両 sync パスを生き延びるか）
+    // World への seeded-PRNG carry（フレーム更新を生き延びるか）
     // ────────────────────────────────────────────────────────
 
     // World.drawPercent が seed 列を返し、state を world に書き戻す。
@@ -98,17 +98,18 @@ mod TestPrng {
         let (k2, _)  = World.drawPercent(w1);
         Assert.assertEq(expected = (88, 43), (k1, k2))
 
-    // multi-frame CARRY: seed → draw k1 → syncFromScene THEN refreshMirror → draw k2。
-    // k2 が同じ seed 列の続き（43）になる＝rng が両 sync パスを verbatim carry したことの証明。
-    // 直接 w1 から引いた k2direct とも一致させ、sync が PRNG を進めも巻き戻しもしないことを固定。
+    // multi-frame CARRY: seed → draw k1 → applyCmd + refreshMirror → draw k2。
+    // k2 が同じ seed 列の続き（43）になる＝rng がフレーム更新（refreshMirror）と store 書込
+    // （applyCmd）を verbatim carry したことの証明。
+    // 直接 w1 から引いた k2direct とも一致させ、更新が PRNG を進めも巻き戻しもしないことを固定。
     @Test
-    def testRngSurvivesBothSyncPaths(): Unit \ Assert =
+    def testRngSurvivesFrameUpdate(): Unit \ Assert =
         let w0 = World.seedRng(0i64, World.empty());
         let (k1, w1) = World.drawPercent(w0);
         let (k2direct, _) = World.drawPercent(w1);
-        let empty = Scene.empty();
-        let wSynced = World.refreshMirror(World.syncFromScene(empty, w1));
-        let (k2carried, _) = World.drawPercent(wSynced);
+        let wCarried = World.refreshMirror(
+            World.applyCmd(World.Cmd.SetHp(World.EntityRef.Player(0), 5), w1));
+        let (k2carried, _) = World.drawPercent(wCarried);
         Assert.assertEq(
             expected = (88, 43, 43),
             (k1, k2direct, k2carried))

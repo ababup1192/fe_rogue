@@ -110,12 +110,11 @@ mod FireShotFx {
     // ── 発生（解決点から呼ばれる emit）─────────────────────
 
     /// 詠唱者セル `caster` → 対象セル `target` の炎 3 幕を 1 つ spawn する（`Cmd.SpawnFireShot` の
-    /// emit のみ・ノード無し・scene はパイプ素通し）。seed は applyCmd が通し番号で採番する。
-    pub def emitAtCells(caster: {x = Int32, y = Int32}, target: {x = Int32, y = Int32},
-                        scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+    /// emit のみ・ノード無し）。seed は applyCmd が通し番号で採番する。
+    pub def emitAtCells(caster: {x = Int32, y = Int32}, target: {x = Int32, y = Int32}):
+            Unit \ World.Command =
         World.Command.emit(World.Cmd.SpawnFireShot({
             total  = totalDuration(),
             caster = MapSnapshot.cellCenter(caster),
-            target = MapSnapshot.cellCenter(target)}));
-        scene
+            target = MapSnapshot.cellCenter(target)}))
 }

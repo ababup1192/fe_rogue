@@ -10,93 +10,22 @@
 // を固定する。production emitter は無い DESIGN SPIKE。combat sim-subset の LEGACY Cmd-stream
 // との cross-check は golden-trace スライスが担う（ここではない）。
 //
-// fixture は TestWorld の最小 scene パターン（World ノード＋直接 addChildAt＋壁なし floor map）を踏襲。
+// fixture は `TestWorldFixtures` の Cmd 直組み（player 0 / enemy 5 + 壁なし floor map）を使う。
 
 mod TestSimEvent {
 
-    // ── fixtures ────────────────────────────────────────────────────────────
+    // ── fixtures（World.Cmd 列）───────────────────────────────────────────────
 
-    def playerData(id: Int32): PlayerScene.Data = {
-        id                = id,
-        statuses          = Nil,
-        classId           = "test_player",
-        gridPos           = {x = 2, y = 2},
-        moveTiles         = 4,
-        hp                = 10,
-        waited            = false,
-        attackTargetId    = None,
-        resource          = TestUnitFixtures.testResource(4, 10),
-        weapons           = TestUnitFixtures.testWeapon() :: Nil,
-        staves            = Nil,
-        consumables       = Nil,
-        selectedItem      = None,
-        moveStepsTaken    = 0,
-        facing            = Dir4.Down,
-        hidden            = false,
-        usedStairs        = false,
-        level             = 1,
-        exp               = 0,
-        pendingLevelUp    = None,
-        rings             = Nil,
-        ringEquipped      = false,
-        followUpUsed      = false
-    }
+    /// 13×13 の壁なし地形（World.mapSnapshot 用の値 fixture）。
+    def floorTerrain(): MapSnapshot = TestWorldFixtures.floorSnapshot({w = 13, h = 13})
 
-    def enemyData(id: Int32): EnemyScene.Data = {
-        id             = id,
-        resourceId     = "test_enemy",
-        gridPos        = {x = 3, y = 2},
-        alerted        = false,
-        homeModuleIdx  = 0,
-        moveTiles      = 3,
-        hp             = 10,
-        isDying        = false,
-        attackTargetId = None,
-        resource       = TestUnitFixtures.testEnemyResource(3, 10),
-        weapon         = Some(TestUnitFixtures.testWeapon()),
-        acted          = false,
-        prevPos        = None,
-        statuses       = Nil,
-        ring           = None,
-        followUpUsed   = false,
-        bottleUsed     = false
-    }
-
-    def floorMapLayer(): TileMapLayer =
-        let atlas: TileSetAtlasSource = {
-            textureName = "test", texWidth = 0.0, texHeight = 0.0,
-            tileSize = 16.0, marginX = 0.0, marginY = 0.0, spacingX = 0.0, spacingY = 0.0
-        };
-        TileMapLayer.make({
-            tileSet        = TileSet.make(atlas),
-            tiles          = Nil,
-            collisionCells = Nil,
-            gridSize       = ({x = 13, y = 13}: {x = Int32, y = Int32})
-        })
-
-    def floorMapData(): MapScene.Data = {
-        anchorOffset = {x = 0, y = 0},
-        spawnGrid    = {x = 5, y = 5},
-        placements   = RoomLayout.singleRoom(13, 13),
-        roomCount    = 1,
-        plan         = ({modulePaths = Nil, sideConnections = Nil, roomCount = 1}: DungeonGenerator.Plan)
-    }
-
-    /// World ノード下に player 0（{2,2}・hp10）と enemy 5（{3,2}・hp10）＋ floor map を挿した最小 scene。
-    def baseScene(): Scene[NodeTag] =
-        let worldM = Marker2D.make(Vec2.zero()) |> CanvasItem.setYSortEnabled(true);
-        let mk = () -> Marker2D.make(Vec2.zero());
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(worldM, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                EngineNode.Marker2DWithState(mk(), NodeTag.Player(playerData(0))))
-            |> Scene.addChildAt(MapScene.worldPath(), EnemyScene.enemyName(5),
-                EngineNode.Marker2DWithState(mk(), NodeTag.Enemy(enemyData(5))))
-            |> Scene.addNode("DungeonLevel0",
-                EngineNode.TileMapLayerWithState(floorMapLayer(), NodeTag.Map(floorMapData())))
-
-    def baseWorld(): World = World.syncFromScene(baseScene(), World.empty())
+    /// player 0（{2,2}・hp10）と enemy 5（{3,2}・hp10）＋ floor map を World.empty() に seed した World。
+    def baseWorld(): World =
+        TestWorldFixtures.worldOf(List.flatten(
+            TestWorldFixtures.boardCmds({w = 13, h = 13}, None)
+                :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, {x = 2, y = 2}))
+                :: TestWorldFixtures.enemyCmds(TestWorldFixtures.unitSpec(5, {x = 3, y = 2}))
+                :: Nil))
 
     def dummyResult(): LevelSystem.Result =
         ({unitName = "x", fromLevel = 1, toLevel = 3, changes = Nil}: LevelSystem.Result)
@@ -179,15 +108,14 @@ mod TestSimEvent {
     /// applyEventToWorld(Moved) と applyCmd(Cmd.Move) が同一 World（boardKey）。
     @Test
     def testAdapterMovedEquivalence(): Unit \ Assert =
-        let scene = baseScene();
-        let w     = World.syncFromScene(scene, World.empty());
+        let w     = baseWorld();
         let ev    = World.SimEvent.Moved(World.EntityRef.Enemy(5), {x = 9, y = 9});
         let viaEvent = World.applyEventToWorld(ev, w);
         let viaCmd   = World.applyCmd(World.Cmd.Move(World.EntityRef.Enemy(5), {x = 9, y = 9}), w);
         let keysEq = (World.eventToCmds(ev) |> List.map(World.cmdKey))
             == (World.cmdKey(World.Cmd.Move(World.EntityRef.Enemy(5), {x = 9, y = 9})) :: Nil);
-        let worldEq = World.boardKey(World.toBoard(viaEvent, scene))
-            == World.boardKey(World.toBoard(viaCmd, scene));
+        let worldEq = World.boardKey(({map = floorTerrain(), pieces = World.boardPieces(viaEvent)}: Board))
+            == World.boardKey(({map = floorTerrain(), pieces = World.boardPieces(viaCmd)}: Board));
         Assert.assertEq(expected = (true, true), (keysEq, worldEq))
 
     /// LeveledUp: eventToCmds は [SetHp, SetProgress] の順（legacy applyLevelUp の emit 順に一致）。
@@ -251,8 +179,7 @@ mod TestSimEvent {
     /// （新 algebra を抽象でなく EXISTING emit→replay seam に tie する）。
     @Test
     def testMoveSeamTiming(): Unit \ Assert =
-        let scene = baseScene();
-        let pre   = World.syncFromScene(scene, World.empty());
+        let pre   = baseWorld();
         region rc {
             let recRef = Ref.fresh(rc, (Nil: List[World.Cmd]));
             let wRef   = Ref.fresh(rc, pre);
@@ -269,8 +196,8 @@ mod TestSimEvent {
             let post         = Ref.get(wRef);
             let eventKeys    = World.eventToCmds(event) |> List.map(World.cmdKey);
             let appliedFromEvent = World.applyEventToWorld(event, pre);
-            let boardEq = World.boardKey(World.toBoard(appliedFromEvent, scene))
-                == World.boardKey(World.toBoard(post, scene));
+            let boardEq = World.boardKey(({map = floorTerrain(), pieces = World.boardPieces(appliedFromEvent)}: Board))
+                == World.boardKey(({map = floorTerrain(), pieces = World.boardPieces(post)}: Board));
             Assert.assertEq(expected = (true, true), (recordedKeys == eventKeys, boardEq))
         }
 
@@ -347,13 +274,12 @@ mod TestSimEvent {
     /// 全 ViewFxKind（Died 含む）は World 不変＝reducer が identity。boardKey と hp が変わらないことを確認。
     @Test
     def testViewFxIdentity(): Unit \ Assert =
-        let scene = baseScene();
         let w     = baseWorld();
-        let key0  = World.boardKey(World.toBoard(w, scene));
+        let key0  = World.boardKey(({map = floorTerrain(), pieces = World.boardPieces(w)}: Board));
         let hp0   = World.hpOf(World.EntityRef.Player(0), w);
         let unchanged = vk -> {
             let after = World.applyEventToWorld(World.SimEvent.ViewFx(vk), w);
-            World.boardKey(World.toBoard(after, scene)) == key0
+            World.boardKey(({map = floorTerrain(), pieces = World.boardPieces(after)}: Board)) == key0
                 and World.hpOf(World.EntityRef.Player(0), after) == hp0
         };
         let all =

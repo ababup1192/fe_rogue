@@ -1,8 +1,8 @@
-/// MapScene のヘルパー関数（純粋ロジック）テスト。
+/// マップの純粋ロジック（MapSnapshot / RoomLayout ヘルパー）テスト。
 ///
 /// `moduleOfCellIn`: 配置済みモジュール一覧から「セル → idx」を逆引きする関数。
 /// 部屋優先（先勝ち）と、bbox の包含判定（offset + gridSize の半開区間）を検証する。
-mod TestMapScene {
+mod TestMapSnapshot {
 
     // ModulePlacement 生成は本番の RoomLayout.placement を使う（テスト間の重複定義を廃止）。
 

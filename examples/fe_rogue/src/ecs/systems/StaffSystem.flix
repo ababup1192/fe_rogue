@@ -114,7 +114,7 @@ mod StaffSystem {
         }
 
     /// Bind: 対象を `bindTurns()`(=5) ターン完全停止＝`Afflicted(immobilizeFor(5))`（→Cmd.Add）。
-    /// statuses は scene 権威ゆえ、呼び出し側が `applyEcsStaffSceneEffects` で scene #statuses へも add する。
+    /// statuses は World 権威。呼び出し側は eventToCmds（Cmd.Add）＋ `applyEcsStaffSceneEffects` の Seed 確定 emit で反映する。
     def bindEvents(target: EntityRef): List[SimEvent] =
         SimEvent.Afflicted(target, StatusSystem.immobilizeFor(bindTurns())) :: Nil
 

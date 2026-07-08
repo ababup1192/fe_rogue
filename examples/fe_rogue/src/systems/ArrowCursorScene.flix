@@ -41,24 +41,21 @@ mod ArrowCursorScene {
         let offset = Staff.toVec2i(direction);
         {x = anchor#x + offset#x, y = anchor#y + offset#y}
 
-    /// 照準状態を初期化する。ノードは持たないため scene はそのまま返す。
+    /// 照準状態を初期化する。ノードは持たないため状態を put するだけ。
     /// add 直後は anchor/gridPos が未設定のため、StaffAim 開始前に必ず `showFor` を呼ぶこと。
-    pub def add(scene: Scene[NodeTag]): Scene[NodeTag] \ ArrowCursorState.State =
-        ArrowCursorState.State.put(ArrowCursorState.initial());
-        scene
+    pub def add(): Unit \ ArrowCursorState.State =
+        ArrowCursorState.State.put(ArrowCursorState.initial())
 
     /// `StaffAim` に入った瞬間に呼ぶ。`anchor` をプレイヤー位置に、`direction` を Up に
     /// セットし、矢印を player の上隣接マスに置く。
-    pub def showFor(playerCell: {x = Int32, y = Int32},
-                      scene: Scene[NodeTag]): Scene[NodeTag] \ ArrowCursorState.State =
-        putState(playerCell, Dir4.Up, scene)
+    pub def showFor(playerCell: {x = Int32, y = Int32}): Unit \ ArrowCursorState.State =
+        putState(playerCell, Dir4.Up)
 
     /// StaffAim 中に方向キーを受けるたびに呼ぶ。`showFor` で固定された `anchor` は変えず、
     /// `direction` と矢印の指すセルだけを更新する。
-    pub def aim(direction: Dir4.Dir4,
-                  scene: Scene[NodeTag]): Scene[NodeTag] \ ArrowCursorState.State =
+    pub def aim(direction: Dir4.Dir4): Unit \ ArrowCursorState.State =
         let anchor = ArrowCursorState.State.get()#anchor;
-        putState(anchor, direction, scene)
+        putState(anchor, direction)
 
     /// 現在指している direction を取り出す。発射確定時（Z キー押下後）に呼び出し元が方向を取得するために公開している。
     pub def getDirection(): Dir4.Dir4 \ ArrowCursorState.State =
@@ -66,9 +63,7 @@ mod ArrowCursorScene {
 
     /// resource の Data を新しい anchor / direction / gridPos で書き換える（描画はしない）。
     def putState(anchor: {x = Int32, y = Int32},
-                   direction: Dir4.Dir4,
-                   scene: Scene[NodeTag]): Scene[NodeTag] \ ArrowCursorState.State =
+                   direction: Dir4.Dir4): Unit \ ArrowCursorState.State =
         ArrowCursorState.State.put({anchor = anchor, direction = direction,
-                                    gridPos = cellOf(anchor, direction)});
-        scene
+                                    gridPos = cellOf(anchor, direction)})
 }

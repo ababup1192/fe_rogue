@@ -10,125 +10,92 @@
 /// 選択カーソルの disabled スキップは `TestUiWidget.selectionMoveSkipping` が別に pin する。
 mod TestActionMenuUi {
 
+    use World.Cmd
+    use World.EntityRef
+
     // ════════════════════════════════════════════════════════
-    // フィクスチャ
+    // フィクスチャ（World.Cmd 直組み）
     // ════════════════════════════════════════════════════════
 
-    /// id を指定して PlayerScene.Data を 1 体分作る。武器を 1 本持つアクティブな駒。
-    def makePlayerData(id: Int32, gridPos: {x = Int32, y = Int32}):
-            PlayerScene.Data = {
-        id              = id,
-        classId         = "test_player",
-        gridPos         = gridPos,
-        moveTiles       = 4,
-        hp              = 10,
-        waited          = false,
-        attackTargetId  = None,
-        resource        = TestUnitFixtures.testResource(4, 10),
-        weapons         = TestUnitFixtures.testWeapon() :: Nil,
-        staves          = Nil,
-        consumables     = Nil,
-        selectedItem    = None,
-        moveStepsTaken  = 0,
-        facing          = Dir4.Down,
-        hidden          = false,
-        usedStairs          = false,
-        level                   = 1,
-        exp                     = 0,
-        pendingLevelUp          = None,
-        statuses                = Nil,
-        rings          = Nil,
-        ringEquipped          = false,
-        followUpUsed   = false
-    }
+    /// id=0 を (1,1)、id=1 を (3,3) に置いた 2 人分の spawn Cmd 列。どちらもアクティブ。
+    def twoPlayerCmds(): List[Cmd] =
+        List.flatten(
+            TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, {x = 1, y = 1})) ::
+            TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(1, {x = 3, y = 3})) ::
+            Nil)
 
     /// World + 2 人の Player。id=0 を (1,1)、id=1 を (3,3) に置き、どちらもアクティブ。
-    def loadTwoPlayerScene(): Scene[NodeTag] =
-        let world = Marker2D.make(Vec2.zero());
-        let marker0 = Marker2D.make(Vec2.zero());
-        let marker1 = Marker2D.make(Vec2.zero());
-        let data0 = makePlayerData(0, {x = 1, y = 1});
-        let data1 = makePlayerData(1, {x = 3, y = 3});
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                EngineNode.Marker2DWithState(marker0, NodeTag.Player(data0)))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(1),
-                EngineNode.Marker2DWithState(marker1, NodeTag.Player(data1)))
+    def loadTwoPlayerWorld(): World = TestWorldFixtures.worldOf(twoPlayerCmds())
+
+    /// 「こうかん」項目の出現確認用フィクスチャ。id=0 を (1,1)、id=1 を (2,1)（隣接）に置く。
+    def loadAdjacentPartyWorld(): World =
+        TestWorldFixtures.worldOf(List.flatten(
+            TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, {x = 1, y = 1})) ::
+            TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(1, {x = 2, y = 1})) ::
+            Nil))
 
     /// 指定 id のプレイヤーの waited フラグを **World store** から取り出す。
     def waitedOf(id: Int32, world: World): Bool =
-        World.waitedOf(World.EntityRef.Player(id), world) |> Option.getWithDefault(false)
+        World.waitedOf(EntityRef.Player(id), world) |> Option.getWithDefault(false)
 
-    /// 指定 id のプレイヤーの所持武器本数を返す。居なければテストを潰す。
-    def weaponCountOf(id: Int32, scene: Scene[NodeTag]): Int32 =
-        match PlayerScene.get(id, scene) {
-            case Some(d) => List.length(d#weapons)
+    /// 指定 id のプレイヤーの所持武器本数を返す（在庫は World 権威）。未登録は 0。
+    def weaponCountOf(id: Int32, world: World): Int32 =
+        World.weaponsOf(EntityRef.Player(id), world)
+            |> Option.map(List.length)
+            |> Option.getWithDefault(0)
+
+    /// 指定 id のプレイヤー Data を World から取り出す（居なければテストを潰す）。
+    def playerDataOf(id: Int32, world: World): PlayerScene.Data =
+        match World.dataFromWorld(id, world) {
+            case Some(d) => d
             case None    => bug!("player ${id} not found")
         }
 
-    /// テスト用 floor item を 1 個だけ scene に貼り付ける（World seed 用の手組みノード seam）。
+    /// テスト用 floor item を 1 個だけ World に置く（`SpawnItem` seed 用の値組み seam）。
     def attachGroundItemAt(cell: {x = Int32, y = Int32},
                             kind: ItemData.GroundItemKind,
-                            scene: Scene[NodeTag]): Scene[NodeTag] =
-        let itemsPath = MapScene.worldName() :: "Items" :: Nil;
-        let parentMarker = Marker2D.make(Vec2.zero());
-        let withParent = match Scene.getEngineNode(itemsPath, scene) {
-            case Some(_) => scene
-            case None    =>
-                Scene.addChildAt(MapScene.worldPath(), "Items",
-                    EngineNode.Marker2DWithState(parentMarker, NodeTag.NoTag), scene)
-        };
-        let baseSprite = GroundItems.spriteOf(kind);
-        let sprite = Sprite2D.make(baseSprite#texture, Vec2.zero(), Vec2.one());
-        let data: GroundItems.Data = {
+                            world: World): World =
+        World.applyCmd(Cmd.SpawnItem({
             gridPos = cell,
             itemKey = "test-ground-item",
             item    = kind,
             elapsed = Duration.seconds(0.0)
-        };
-        Scene.addChildAt(itemsPath, "Item_0",
-            EngineNode.Sprite2DWithState(sprite, NodeTag.GroundItem(data)), withParent)
+        }), world)
 
-    /// `loadTwoPlayerScene()` に「id=0 の足下 (1,1) に床武器 1 本」を足した scene。
-    def loadSceneWithFloorWeapon(): Scene[NodeTag] =
+    /// `loadTwoPlayerWorld()` に「id=0 の足下 (1,1) に床武器 1 本」を足した World。
+    def loadWorldWithFloorWeapon(): World =
         attachGroundItemAt({x = 1, y = 1},
             ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()),
-            loadTwoPlayerScene())
+            loadTwoPlayerWorld())
 
-    /// 「こうかん」項目の出現確認用フィクスチャ。id=0 を (1,1)、id=1 を (2,1)（隣接）に置く。
-    def loadAdjacentPartyScene(): Scene[NodeTag] =
-        let world = Marker2D.make(Vec2.zero());
-        let marker0 = Marker2D.make(Vec2.zero());
-        let marker1 = Marker2D.make(Vec2.zero());
-        let data0 = makePlayerData(0, {x = 1, y = 1});
-        let data1 = makePlayerData(1, {x = 2, y = 1});
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                EngineNode.Marker2DWithState(marker0, NodeTag.Player(data0)))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(1),
-                EngineNode.Marker2DWithState(marker1, NodeTag.Player(data1)))
+    /// `loadWorldWithFloorWeapon()` の id=0 の武器一覧を丸ごと差し替えた版
+    /// （積載過多を作るための武器複数持ちフィクスチャ）。
+    def loadWorldWithFloorWeaponAndWeapons(weapons: List[UnitCatalog.WeaponResource]): World =
+        World.applyCmd(Cmd.SetWeapons(EntityRef.Player(0), weapons), loadWorldWithFloorWeapon())
 
     // ════════════════════════════════════════════════════════
     // buildItems — 文脈ごとの項目構築（旧 refreshItems の項目テストの置換）
     // ════════════════════════════════════════════════════════
 
     /// 味方選択中（selectedId）で buildItems を read mock 込みで実行し項目列を返す。
-    def buildItemsWith(selectedId: Int32, scene: Scene[NodeTag]): List[ItemEntry] =
-        TestUnitFixtures.withMenuReadMocks(TurnPhase.Phase.ActionSelect, selectedId, scene, () ->
-            ActionMenuUi.buildItems(scene))
+    def buildItemsWith(selectedId: Int32, world: World): List[ItemEntry] =
+        TestUnitFixtures.withMenuReadMocks(TurnPhase.Phase.ActionSelect, selectedId, world, () ->
+            ActionMenuUi.buildItems())
 
     /// 空マスメニュー（未選択）で buildItems を実行し項目列を返す。
-    def buildItemsNoSel(scene: Scene[NodeTag]): List[ItemEntry] =
-        TestUnitFixtures.withMenuReadMocksNoSel(TurnPhase.Phase.ActionSelect, scene, () ->
-            ActionMenuUi.buildItems(scene))
+    def buildItemsNoSel(world: World): List[ItemEntry] =
+        TestUnitFixtures.withMenuReadMocksNoSel(TurnPhase.Phase.ActionSelect, world, () ->
+            ActionMenuUi.buildItems())
+
+    /// `buildItemsNoSel` の盤面込み版。フォグの明るい穴からの敵可視導出（集合 disabled 判定）を
+    /// 成立させたい呼び出し側が、あらかじめ盤面 Cmd を含む World を渡す。
+    def buildItemsNoSelOnBoard(world: World): List[ItemEntry] =
+        TestUnitFixtures.withMenuReadMocksNoSel(TurnPhase.Phase.ActionSelect, world, () ->
+            ActionMenuUi.buildItems())
 
     /// 集合（行軍）隣接メニュー（gatherActive=true・主人公選択中）で buildItems を実行し項目列を返す。
-    def buildItemsGather(scene: Scene[NodeTag]): List[ItemEntry] =
-        TestUnitFixtures.withMenuReadMocksGather(scene, () -> ActionMenuUi.buildItems(scene))
+    def buildItemsGather(world: World): List[ItemEntry] =
+        TestUnitFixtures.withMenuReadMocksGather(world, () -> ActionMenuUi.buildItems())
 
     /// 指定 metadata の項目の disabled フラグを返す（見つからなければ None）。
     def disabledOf(meta: String, items: List[ItemEntry]): Option[Bool] =
@@ -145,129 +112,97 @@ mod TestActionMenuUi {
     def testExchangeItemEnabledWhenAdjacentAllyExists(): Unit \ Assert =
         Assert.assertEq(
             expected = Some(false),
-            disabledOf("exchange", buildItemsWith(0, loadAdjacentPartyScene())))
+            disabledOf("exchange", buildItemsWith(0, loadAdjacentPartyWorld())))
 
     /// 非隣接配置でも「こうかん」は**常に出る**が、隣接味方が居ないので disabled=true。
     @Test
     def testExchangeItemDisabledWhenNoAdjacentAlly(): Unit \ Assert =
         Assert.assertEq(
             expected = Some(true),
-            disabledOf("exchange", buildItemsWith(0, loadTwoPlayerScene())))
+            disabledOf("exchange", buildItemsWith(0, loadTwoPlayerWorld())))
 
     /// 「攻撃」は敵が射程外でも常に出る。敵が居ないので disabled=true。
     @Test
     def testAttackAlwaysShownDisabledWhenNoTarget(): Unit \ Assert =
         Assert.assertEq(
             expected = Some(true),
-            disabledOf("attack", buildItemsWith(0, loadTwoPlayerScene())))
+            disabledOf("attack", buildItemsWith(0, loadTwoPlayerWorld())))
 
     /// 空マスメニュー: 主人公が未行動 + 別の生存味方が居れば「集合」は選択可能。
     @Test
     def testGatherEnabledWhenLordActiveWithAlly(): Unit \ Assert =
         Assert.assertEq(
             expected = Some(false),
-            disabledOf("gather", buildItemsNoSel(loadTwoPlayerScene())))
+            disabledOf("gather", buildItemsNoSel(loadTwoPlayerWorld())))
 
     /// 空マスメニュー: 主人公が行動済み(waited)なら「集合」は出るが disabled。
     @Test
     def testGatherDisabledWhenLordWaited(): Unit \ Assert =
         Assert.assertEq(
             expected = Some(true),
-            disabledOf("gather", buildItemsNoSel(loadWaitedLordScene())))
+            disabledOf("gather", buildItemsNoSel(loadWaitedLordWorld())))
 
     /// 空マスメニュー: フォグで見えている敵が居る間は「集合」は出るが disabled。
+    /// 敵可視は World 導出（明るい穴×敵位置）なので、盤面（1 部屋）を seed し
+    /// 部屋の中（プレイヤーと同室＝点灯）に敵を置いて「見えている」を作る。
     @Test
     def testGatherDisabledWhenEnemyVisible(): Unit \ Assert =
         Assert.assertEq(
             expected = Some(true),
-            disabledOf("gather", buildItemsNoSel(addEnemyNode(visible = true, loadTwoPlayerScene()))))
+            disabledOf("gather", buildItemsNoSelOnBoard(
+                addEnemyNodeAt({x = 5, y = 5}, worldOnBoard()))))
 
     /// 空マスメニュー: 敵が居てもフォグで見えていなければ「集合」は選択可能。
+    /// 部屋の外（明るい穴の外）に敵を置いて「フォグで隠れている」を作る。
     @Test
     def testGatherEnabledWhenEnemyHiddenByFog(): Unit \ Assert =
         Assert.assertEq(
             expected = Some(false),
-            disabledOf("gather", buildItemsNoSel(addEnemyNode(visible = false, loadTwoPlayerScene()))))
+            disabledOf("gather", buildItemsNoSelOnBoard(
+                addEnemyNodeAt({x = 30, y = 30}, worldOnBoard()))))
 
-    /// loadTwoPlayerScene と同じだが主人公(id=0)を行動済み(waited=true)にした scene。
-    def loadWaitedLordScene(): Scene[NodeTag] =
-        let world = Marker2D.make(Vec2.zero());
-        let marker0 = Marker2D.make(Vec2.zero());
-        let marker1 = Marker2D.make(Vec2.zero());
-        let lord = { waited = true | makePlayerData(0, {x = 1, y = 1}) };
-        let ally = makePlayerData(1, {x = 3, y = 3});
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                EngineNode.Marker2DWithState(marker0, NodeTag.Player(lord)))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(1),
-                EngineNode.Marker2DWithState(marker1, NodeTag.Player(ally)))
+    /// loadTwoPlayerWorld と同じだが主人公(id=0)を行動済み(waited=true)にした World。
+    def loadWaitedLordWorld(): World =
+        World.applyCmd(Cmd.SetWaited(EntityRef.Player(0), true), loadTwoPlayerWorld())
 
-    /// World 配下に生存敵(id=9)を 1 体挿す。`visible` は marker の可視。
-    def addEnemyNode(visible: {visible = Bool}, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let marker = Marker2D.make(Vec2.zero()) |> CanvasItem.setVisible(visible#visible);
-        let data: EnemyScene.Data = {
-            id             = 9,
-            resourceId     = "test_enemy",
-            gridPos        = {x = 5, y = 5},
-            alerted        = false,
-            homeModuleIdx  = 0,
-            moveTiles      = 3,
-            hp             = 10,
-            isDying        = false,
-            attackTargetId = None,
-            resource       = TestUnitFixtures.testEnemyResource(3, 10),
-            weapon         = Some(TestUnitFixtures.testWeapon()),
-            acted          = false,
-            prevPos        = None,
-            statuses       = Nil,
-            ring           = None,
-            followUpUsed   = false,
-            bottleUsed     = false
-        };
-        Scene.addChildAt(MapScene.worldPath(), EnemyScene.enemyName(9),
-            EngineNode.Marker2DWithState(marker, NodeTag.Enemy(data)), scene)
+    /// 13×13 の壁なし盤面 + loadTwoPlayerWorld の駒配置。フォグ由来の敵可視判定を成立させる用途。
+    def worldOnBoard(): World =
+        TestWorldFixtures.worldOf(List.flatten(
+            TestWorldFixtures.boardCmds({w = 13, h = 13}, None) :: twoPlayerCmds() :: Nil))
+
+    /// World 配下に生存敵(id=9)を 1 体挿す。可視性はフォグ（明るい穴×`cell`）から導出される。
+    def addEnemyNodeAt(cell: {x = Int32, y = Int32}, world: World): World =
+        List.foldLeft((w, c) -> World.applyCmd(c, w), world,
+            TestWorldFixtures.enemyCmds({moveTiles = 3 | TestWorldFixtures.unitSpec(9, cell)}))
 
     // ════════════════════════════════════════════════════════
     // 集合（行軍）の隣接メニュー（gatherActive=true × 主人公選択中）
     // ════════════════════════════════════════════════════════
 
     /// World + 主人公(id0, (1,1)) + 味方(id1, allyPos)。
-    def loadGatherMenuScene(allyPos: {x = Int32, y = Int32}): Scene[NodeTag] =
-        let world = Marker2D.make(Vec2.zero());
-        let m0 = Marker2D.make(Vec2.zero());
-        let m1 = Marker2D.make(Vec2.zero());
-        let lord = makePlayerData(0, {x = 1, y = 1});
-        let ally = makePlayerData(1, allyPos);
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                EngineNode.Marker2DWithState(m0, NodeTag.Player(lord)))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(1),
-                EngineNode.Marker2DWithState(m1, NodeTag.Player(ally)))
+    def loadGatherMenuWorld(allyPos: {x = Int32, y = Int32}): World =
+        TestWorldFixtures.worldOf(List.flatten(
+            TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, {x = 1, y = 1})) ::
+            TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(1, allyPos)) ::
+            Nil))
 
     /// 主人公に隣接する味方((2,1)) が居れば、隣接メニューは「交換 → 全員待機」。
     @Test
     def testGatherAdjacentMenuShowsTradeWithAdjacentAlly(): Unit \ Assert =
         Assert.assertEq(
             expected = Some("gatherTrade") :: Some("waitAll") :: Nil,
-            metadataList(buildItemsGather(loadGatherMenuScene({x = 2, y = 1}))))
+            metadataList(buildItemsGather(loadGatherMenuWorld({x = 2, y = 1}))))
 
     /// 隣接する味方が居なければ((5,5))、「交換」は出さず「全員待機」だけ。
     @Test
     def testGatherAdjacentMenuHidesTradeWithoutAdjacentAlly(): Unit \ Assert =
         Assert.assertEq(
             expected = Some("waitAll") :: Nil,
-            metadataList(buildItemsGather(loadGatherMenuScene({x = 5, y = 5}))))
+            metadataList(buildItemsGather(loadGatherMenuWorld({x = 5, y = 5}))))
 
-    /// 配置済み(placed)の階段ノードを `cell` に置いたシーンを返す。
-    def withStairsAt(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
-        scene
-            |> Scene.addNode("Stairs",
-                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()),
-                    NodeTag.Stairs(({gridPos = cell, placed = true}: Stairs.Data))))
+    /// 配置済み(placed)の階段を `cell` に置いた World。
+    def withStairsAt(cell: {x = Int32, y = Int32}, world: World): World =
+        World.applyCmd(Cmd.SetStairs(Some(cell)), world)
 
     /// 主人公(1,1)の足元に床アイテムがあると、集合メニューの先頭に「拾う」が出る。
     @Test
@@ -277,7 +212,7 @@ mod TestActionMenuUi {
             metadataList(buildItemsGather(
                 attachGroundItemAt({x = 1, y = 1},
                     ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()),
-                    loadGatherMenuScene({x = 5, y = 5})))))
+                    loadGatherMenuWorld({x = 5, y = 5})))))
 
     /// 主人公(1,1)が階段マスに立っているときだけ集合メニューに「階段」が出る。
     @Test
@@ -285,7 +220,7 @@ mod TestActionMenuUi {
         Assert.assertEq(
             expected = Some("gatherStairs") :: Some("waitAll") :: Nil,
             metadataList(buildItemsGather(
-                withStairsAt({x = 1, y = 1}, loadGatherMenuScene({x = 5, y = 5})))))
+                withStairsAt({x = 1, y = 1}, loadGatherMenuWorld({x = 5, y = 5})))))
 
     /// 階段が別マス(5,5)にあっても主人公(1,1)が乗っていなければ「階段」は出さない。
     @Test
@@ -293,7 +228,7 @@ mod TestActionMenuUi {
         Assert.assertEq(
             expected = Some("waitAll") :: Nil,
             metadataList(buildItemsGather(
-                withStairsAt({x = 5, y = 5}, loadGatherMenuScene({x = 5, y = 5})))))
+                withStairsAt({x = 5, y = 5}, loadGatherMenuWorld({x = 5, y = 5})))))
 
     /// 足元アイテム + 階段上 + 隣接味方が揃うと固定順「拾う → 階段 → 交換 → 全員待機」。
     @Test
@@ -302,7 +237,7 @@ mod TestActionMenuUi {
             expected = Some("pickup") :: Some("gatherStairs") :: Some("gatherTrade")
                         :: Some("waitAll") :: Nil,
             metadataList(buildItemsGather(
-                loadGatherMenuScene({x = 2, y = 1})
+                loadGatherMenuWorld({x = 2, y = 1})
                     |> attachGroundItemAt({x = 1, y = 1},
                         ItemData.GroundItemKind.WeaponItem(TestUnitFixtures.testWeapon()))
                     |> withStairsAt({x = 1, y = 1}))))
@@ -311,29 +246,32 @@ mod TestActionMenuUi {
     // onActionConfirmed 回帰テスト（ゲーム帰結: waited / phase / 在庫）
     // ════════════════════════════════════════════════════════
 
-    /// runOnActionConfirm に渡す入力一式。
+    /// `runOnActionConfirm` に渡す入力一式。
     type alias ActionConfirmArgs = {
         initialPhase   = TurnPhase.Phase,
         selectedId     = Int32,
         selectedOrigin = {x = Int32, y = Int32},
-        scene          = Scene[NodeTag],
+        world          = World,
         entry          = ItemEntry
     }
 
-    /// `onActionConfirmed` の effect を一括でスタブして実行し、最終 scene / phase / World を返す。
-    def runOnActionConfirm(rc: Region[r], args: ActionConfirmArgs):
-            (Scene[NodeTag], TurnPhase.Phase, World) \ r =
-        let wref = Ref.fresh(rc, World.syncFromScene(args#scene, World.empty()));
-        let (after, phase) = run {
+    /// `onActionConfirmed` の effect を一括でスタブして実行し、最終 phase / World を返す。
+    /// PartyQuery / RosterQuery / 盤面は `args#world` の**開始時点の静的スナップショット**を渡す
+    /// （実行中の World.Command emit で変化する在庫は World.WorldQuery 側（wref）から読む）。
+    def runOnActionConfirm(rc: Region[r], args: ActionConfirmArgs): (TurnPhase.Phase, World) \ r =
+        let wref = Ref.fresh(rc, args#world);
+        let board = BoardSnapshot.fromParts(TestWorldFixtures.floorSnapshot({w = 13, h = 13}),
+            TestUnitFixtures.worldPlayers(args#world), TestUnitFixtures.worldEnemies(args#world));
+        let (_, phase) = run {
         ItemPickupPopupState.withState(rc, () ->
-        TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(args#scene), () ->
+        TestUnitFixtures.withMockBoard(board, () ->
         TestUnitFixtures.withPhaseRef(rc, args#initialPhase, () ->
             TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                     TestUnitFixtures.withMockGameLogger(() ->
                         TestUnitFixtures.withMockEnemyTurnQueue(() ->
-                            TestUnitFixtures.withMockPartyQuery(args#scene, () ->
-                                TestUnitFixtures.withMockRosterQuery(args#scene, () ->
+                            TestUnitFixtures.withMockPartyQuery(TestUnitFixtures.worldPlayers(args#world), () ->
+                                TestUnitFixtures.withMockRosterQuery(TestUnitFixtures.worldEnemies(args#world), () ->
                                   TestUnitFixtures.withMockAudio(() ->
                                     TestUnitFixtures.withNoopFloorAdvance(() ->
                                       TestUnitFixtures.withMockGatherResume(() ->
@@ -342,28 +280,28 @@ mod TestActionMenuUi {
                                           TestUnitFixtures.withRangeOverlay(rc, () ->
                                           TestUnitFixtures.withItemMenu(() ->
                                           TestUnitFixtures.withTradeMenu(rc, () ->
-                                          ActionMenuUi.onActionConfirmed(args#entry,
-                                                                            args#scene))))))))))))))))))
+                                          ActionMenuUi.onActionConfirmed(args#entry))))))))))))))))))
         } with handler World.WorldQuery {
             def get(k) = k(Ref.get(wref))
         }
           with handler World.Command {
             def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(wref)), wref); k() }
-        };
-        (World.syncTreeFromWorld(Ref.get(wref), after), phase, Ref.get(wref))
+        }
+          with StairsExitDriver.withState(rc);
+        (phase, Ref.get(wref))
 
     /// たいき (`wait`) を確定すると選択者(id=0)が waited、もう 1 人は据え置き、PlayerCursor へ戻る。
     @Test
     def testWaitMarksSelectedAndAdvancesToPlayerCursor(): Unit \ Assert =
         region rc {
-            let scene = loadTwoPlayerScene();
+            let world = loadTwoPlayerWorld();
             let waitEntry: ItemEntry =
                 { text = "たいき", disabled = false, metadata = Some("wait") };
-            let (_after, finalPhase, wFin) = runOnActionConfirm(rc, {
+            let (finalPhase, wFin) = runOnActionConfirm(rc, {
                 initialPhase   = TurnPhase.Phase.ActionSelect,
                 selectedId     = 0,
                 selectedOrigin = {x = 1, y = 1},
-                scene          = scene,
+                world          = world,
                 entry          = waitEntry
             });
             Assert.assertEq(
@@ -375,14 +313,14 @@ mod TestActionMenuUi {
     @Test
     def testTurnEndMarksAllAndAdvancesToEnemyTurn(): Unit \ Assert =
         region rc {
-            let scene = loadTwoPlayerScene();
+            let world = loadTwoPlayerWorld();
             let turnEndEntry: ItemEntry =
                 { text = "ターンエンド", disabled = false, metadata = Some("turnEnd") };
-            let (_after, finalPhase, wFin) = runOnActionConfirm(rc, {
+            let (finalPhase, wFin) = runOnActionConfirm(rc, {
                 initialPhase   = TurnPhase.Phase.ActionSelect,
                 selectedId     = -1,
                 selectedOrigin = {x = 0, y = 0},
-                scene          = scene,
+                world          = world,
                 entry          = turnEndEntry
             });
             Assert.assertEq(
@@ -394,14 +332,14 @@ mod TestActionMenuUi {
     @Test
     def testPickupKeepsActionSelectAndAddsItemToInventory(): Unit \ Assert =
         region rc {
-            let scene = loadSceneWithFloorWeapon();
+            let world = loadWorldWithFloorWeapon();
             let pickupEntry: ItemEntry =
                 { text = "ひろう", disabled = false, metadata = Some("pickup") };
-            let (after, finalPhase, wFin) = runOnActionConfirm(rc, {
+            let (finalPhase, wFin) = runOnActionConfirm(rc, {
                 initialPhase   = TurnPhase.Phase.ActionSelect,
                 selectedId     = 0,
                 selectedOrigin = {x = 1, y = 1},
-                scene          = scene,
+                world          = world,
                 entry          = pickupEntry
             });
             let groundItemStillThere =
@@ -411,23 +349,13 @@ mod TestActionMenuUi {
                 ( finalPhase
                 , waitedOf(0, wFin)
                 , groundItemStillThere
-                , weaponCountOf(0, after) ))
+                , weaponCountOf(0, wFin) ))
         }
 
     /// World + 主人公(id0,(1,1)) + 味方(id1,(3,3))。lordWaited で主人公の waited を切り替える。
-    def loadGatherStartScene(lordWaited: Bool): Scene[NodeTag] =
-        let world = Marker2D.make(Vec2.zero());
-        let m0 = Marker2D.make(Vec2.zero());
-        let m1 = Marker2D.make(Vec2.zero());
-        let lord = {waited = lordWaited | makePlayerData(0, {x = 1, y = 1})};
-        let ally = makePlayerData(1, {x = 3, y = 3});
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                EngineNode.Marker2DWithState(m0, NodeTag.Player(lord)))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(1),
-                EngineNode.Marker2DWithState(m1, NodeTag.Player(ally)))
+    def loadGatherStartWorld(lordWaited: Bool): World =
+        let base = loadTwoPlayerWorld();
+        if (lordWaited) World.applyCmd(Cmd.SetWaited(EntityRef.Player(0), true), base) else base
 
     /// 「集合」確定: 主人公が行動済みなら開始せず ActionSelect に留まる（リーダー行動済みガード）。
     @Test
@@ -435,11 +363,11 @@ mod TestActionMenuUi {
         region rc {
             let gatherEntry: ItemEntry =
                 { text = "集合", disabled = false, metadata = Some("gather") };
-            let (_, finalPhase, _wFin) = runOnActionConfirm(rc, {
+            let (finalPhase, _wFin) = runOnActionConfirm(rc, {
                 initialPhase   = TurnPhase.Phase.ActionSelect,
                 selectedId     = 0,
                 selectedOrigin = {x = 1, y = 1},
-                scene          = loadGatherStartScene(true),
+                world          = loadGatherStartWorld(true),
                 entry          = gatherEntry
             });
             Assert.assertEq(expected = TurnPhase.Phase.ActionSelect, finalPhase)
@@ -450,18 +378,20 @@ mod TestActionMenuUi {
     @Test
     def testPickupThenCancelSelectionRevertsPickup(): Unit \ Assert =
         region rc {
-            let scene = loadSceneWithFloorWeapon();
+            let world0 = loadWorldWithFloorWeapon();
             let pickupEntry: ItemEntry =
                 { text = "ひろう", disabled = false, metadata = Some("pickup") };
-            let (after, _keys, wFin) = TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
+            let board = BoardSnapshot.fromParts(TestWorldFixtures.floorSnapshot({w = 13, h = 13}),
+                TestUnitFixtures.worldPlayers(world0), TestUnitFixtures.worldEnemies(world0));
+            let (_after, wFin) = TestUnitFixtures.withWorldAppliedSeeded(rc, world0, () ->
                 TestUnitFixtures.withNoopPickupPopup(() ->
-                TestUnitFixtures.withMockBoard(BoardSnapshot.fromScene(scene), () ->
+                TestUnitFixtures.withMockBoard(board, () ->
                 TestUnitFixtures.withNoopTween(() ->
                 TestUnitFixtures.withNoopAnim(() ->
                     TestUnitFixtures.withMockGameLogger(() ->
                         TestUnitFixtures.withMockEnemyTurnQueue(() ->
-                            TestUnitFixtures.withMockPartyQuery(scene, () ->
-                                TestUnitFixtures.withMockRosterQuery(scene, () ->
+                            TestUnitFixtures.withMockPartyQuery(TestUnitFixtures.worldPlayers(world0), () ->
+                                TestUnitFixtures.withMockRosterQuery(TestUnitFixtures.worldEnemies(world0), () ->
                                   TestUnitFixtures.withMockAudio(() ->
                                     TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ActionSelect, () ->
                                       TestUnitFixtures.withNoopFloorAdvance(() ->
@@ -469,128 +399,113 @@ mod TestActionMenuUi {
                                           TestUnitFixtures.withSelectionRef(rc,
                                             {id = Some(0), drafts = Nil, gatherActive = false}, () ->
                                             TestUnitFixtures.withCursor(() ->
+                                            TestUnitFixtures.withRangeOverlay(rc, () ->
                                             TestUnitFixtures.withItemMenu(() ->
-                                            TestUnitFixtures.withTradeMenu(rc, () -> {
-                                                let afterPick =
-                                                    ActionMenuUi.onActionConfirmed(pickupEntry, scene);
-                                                PlayerScene.cancelSelection(afterPick)
-                                            })))))))))))))))));
+                                            TestUnitFixtures.withTradeMenu(rc, () ->
+                                            run {
+                                                ActionMenuUi.onActionConfirmed(pickupEntry);
+                                                PlayerScene.cancelSelection()
+                                            } with StairsExitDriver.withState(rc)))))))))))))))))));
             let groundItemBack =
                 Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             Assert.assertEq(
                 expected = (true, 1),
-                (groundItemBack, weaponCountOf(0, after)))
+                (groundItemBack, weaponCountOf(0, wFin)))
         }
 
     // ════════════════════════════════════════════════════════
     // 移動着地の自動取得（PlayerMovementDriver.autoPickupOrLog）
-    //   フィクスチャ（loadSceneWithFloorWeapon 他）を再利用する回帰テスト。
+    //   フィクスチャ（loadWorldWithFloorWeapon 他）を再利用する回帰テスト。
     // ════════════════════════════════════════════════════════
-
-    /// scene から id のプレイヤー Data を取り出す（居なければテストを潰す）。
-    def playerDataOf(id: Int32, scene: Scene[NodeTag]): PlayerScene.Data =
-        match PlayerScene.get(id, scene) {
-            case Some(d) => d
-            case None    => bug!("player ${id} not found")
-        }
 
     /// 着地マス (1,1) の床武器を、重量が許すので **自動で拾う**（床から消え・武器 1→2 本）。
     @Test
     def testAutoPickupPicksUpWhenWeightAllows(): Unit \ Assert =
         region rc {
-            let scene = loadSceneWithFloorWeapon();
-            let data  = playerDataOf(0, scene);
-            let (after, _keys, wFin) = TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
+            let world0 = loadWorldWithFloorWeapon();
+            let data   = playerDataOf(0, world0);
+            let (_after, wFin) = TestUnitFixtures.withWorldAppliedSeeded(rc, world0, () ->
                 TestUnitFixtures.withNoopPickupPopup(() ->
                     TestUnitFixtures.withMockGameLogger(() ->
                         TestUnitFixtures.withSelectedPlayer(0, () ->
                          TestUnitFixtures.withCursor(() ->
-                            PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}, scene))))));
+                            PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}))))));
             let floorEmpty = Option.isEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             Assert.assertEq(
                 expected = (true, 2),
-                (floorEmpty, weaponCountOf(0, after)))
+                (floorEmpty, weaponCountOf(0, wFin)))
         }
 
     /// 拾うと積載過多になるなら着地しても **拾わず床に残す**（床に残り・武器 4 本のまま）。
     @Test
     def testAutoPickupSkipsWhenWouldOverload(): Unit \ Assert =
         region rc {
-            let w    = TestUnitFixtures.testWeapon();
-            let heavy = TestUnitFixtures.dischargeWorldCommand(() ->
-                loadSceneWithFloorWeapon()
-                    |> PlayerScene.addWeapon(0, w)
-                    |> PlayerScene.addWeapon(0, w)
-                    |> PlayerScene.addWeapon(0, w));
-            let data  = playerDataOf(0, heavy);
-            let (after, _keys, wFin) = TestUnitFixtures.withTracedWorld(rc, 0i64, heavy, () ->
+            let w = TestUnitFixtures.testWeapon();
+            // 在庫は World 権威＝重い在庫(4本)を初期 World に Cmd で seed してから拾う。
+            let world0 = loadWorldWithFloorWeaponAndWeapons(w :: w :: w :: w :: Nil);
+            let data   = playerDataOf(0, world0);
+            let (_after, wFin) = TestUnitFixtures.withWorldAppliedSeeded(rc, world0, () ->
                 TestUnitFixtures.withNoopPickupPopup(() ->
                     TestUnitFixtures.withMockGameLogger(() ->
                         TestUnitFixtures.withSelectedPlayer(0, () ->
                          TestUnitFixtures.withCursor(() ->
-                            PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}, heavy))))));
+                            PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}))))));
             let floorStillThere = Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             Assert.assertEq(
                 expected = (true, 4),
-                (floorStillThere, weaponCountOf(0, after)))
+                (floorStillThere, weaponCountOf(0, wFin)))
         }
 
     /// 着地の自動取得は移動キャンセルで巻き戻せる（床に戻り・武器 2→1 本）。
     @Test
     def testAutoPickupThenCancelSelectionRevertsPickup(): Unit \ Assert =
         region rc {
-            let scene = loadSceneWithFloorWeapon();
-            let data  = playerDataOf(0, scene);
-            let (after, _keys, wFin) = TestUnitFixtures.withTracedWorld(rc, 0i64, scene, () ->
+            let world0 = loadWorldWithFloorWeapon();
+            let data   = playerDataOf(0, world0);
+            let (_after, wFin) = TestUnitFixtures.withWorldAppliedSeeded(rc, world0, () ->
                 TestUnitFixtures.withNoopPickupPopup(() ->
                     TestUnitFixtures.withNoopTween(() ->
                         TestUnitFixtures.withNoopAnim(() ->
                             TestUnitFixtures.withMockGameLogger(() ->
-                                TestUnitFixtures.withMockPartyQuery(scene, () ->
+                                TestUnitFixtures.withMockPartyQuery(TestUnitFixtures.worldPlayers(world0), () ->
                                     TestUnitFixtures.withFixedPhase(TurnPhase.Phase.PlayerMoving, () ->
                                         TestUnitFixtures.withSelectionRef(rc,
                                             {id = Some(0), drafts = Nil, gatherActive = false}, () ->
-                                            TestUnitFixtures.withCursor(() -> {
-                                                let picked =
-                                                    PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1}, scene);
-                                                PlayerScene.cancelSelection(picked)
-                                            })))))))));
+                                            TestUnitFixtures.withCursor(() ->
+                                            TestUnitFixtures.withRangeOverlay(rc, () -> {
+                                                PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1});
+                                                PlayerScene.cancelSelection()
+                                            }))))))))));
             let groundItemBack = Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             Assert.assertEq(
                 expected = (true, 1),
-                (groundItemBack, weaponCountOf(0, after)))
+                (groundItemBack, weaponCountOf(0, wFin)))
         }
 
     // ════════════════════════════════════════════════════════
     // 装備 / 捨てる の巻き戻し（移動中の仮アクションを逆順 revert）
     // ════════════════════════════════════════════════════════
 
-    /// World + 単一プレイヤー(id0) で weapons を指定した最小 scene（巻き戻し検証用）。
-    def loadPlayerWithWeapons(pos: {x = Int32, y = Int32},
-                                weapons: List[UnitCatalog.WeaponResource]): Scene[NodeTag] =
-        let world = Marker2D.make(Vec2.zero());
-        let data  = {weapons = weapons | makePlayerData(0, pos)};
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(world, NodeTag.NoTag))
-            |> Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(0),
-                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Player(data)))
+    /// World + 単一プレイヤー(id0) で weapons を指定した最小 World（巻き戻し検証用）。
+    def loadPlayerWithWeaponsWorld(pos: {x = Int32, y = Int32},
+                                    weapons: List[UnitCatalog.WeaponResource]): World =
+        World.applyCmd(Cmd.SetWeapons(EntityRef.Player(0), weapons),
+            TestWorldFixtures.worldOf(TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, pos))))
 
     /// 与えた drafts を SelectedPlayer に載せて `cancelSelection` を実行するランナー。
-    def runCancelWithDrafts(rc: Region[r], scene: Scene[NodeTag],
-                              drafts: List[MoveDraft.DraftAction]):
-            (Scene[NodeTag], World) \ r =
-        let (out, world) = TestUnitFixtures.withWorldApplied(rc, () ->
+    def runCancelWithDrafts(rc: Region[r], world0: World,
+                              drafts: List[MoveDraft.DraftAction]): World \ r =
+        let (_out, world) = TestUnitFixtures.withWorldAppliedSeeded(rc, world0, () ->
             TestUnitFixtures.withSelectionRef(rc,
                 {id = Some(0), drafts = drafts, gatherActive = false}, () ->
                     TestUnitFixtures.withNoopTween(() ->
                         TestUnitFixtures.withNoopAnim(() ->
-                            TestUnitFixtures.withMockPartyQuery(scene, () ->
+                            TestUnitFixtures.withMockPartyQuery(TestUnitFixtures.worldPlayers(world0), () ->
                                 TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ActionSelect, () ->
                                  TestUnitFixtures.withCursor(() ->
                                   TestUnitFixtures.withRangeOverlay(rc, () ->
-                                    PlayerScene.cancelSelection(scene)))))))));
-        (out, world)
+                                    PlayerScene.cancelSelection()))))))));
+        world
 
     /// 拾得 → 装備 → 選択解除キャンセルで、装備の並び替えも拾得も正しく巻き戻る。
     @Test
@@ -598,14 +513,15 @@ mod TestActionMenuUi {
         region rc {
             let wA = TestUnitFixtures.testWeaponFull(5, 10);
             let wB = TestUnitFixtures.testWeaponFull(99, 10);
-            let scene = loadPlayerWithWeapons({x = 1, y = 1}, wB :: wA :: Nil);
+            let world0 = loadPlayerWithWeaponsWorld({x = 1, y = 1}, wB :: wA :: Nil);
             let drafts =
                 MoveDraft.DraftAction.Equipped(0, 1) ::
                 MoveDraft.DraftAction.PickedUp(0, {x = 1, y = 1}, "wB",
                     ItemData.GroundItemKind.WeaponItem(wB)) ::
                 MoveDraft.DraftAction.MovedFrom(0, {x = 1, y = 1}) :: Nil;
-            let (after, wFin) = runCancelWithDrafts(rc, scene, drafts);
-            let attacks = List.map(w -> w#attack, PlayerScene.getWeapons(0, after));
+            let wFin = runCancelWithDrafts(rc, world0, drafts);
+            let attacks = TestUnitFixtures.withWorldQuery(wFin, () ->
+                List.map(w -> w#attack, PlayerScene.getWeapons(0)));
             let floorB  = Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             Assert.assertEq(expected = (5 :: Nil, true), (attacks, floorB))
         }
@@ -617,13 +533,14 @@ mod TestActionMenuUi {
             let wA = TestUnitFixtures.testWeaponFull(1, 10);
             let wB = TestUnitFixtures.testWeaponFull(2, 10);
             let wC = TestUnitFixtures.testWeaponFull(3, 10);
-            let scene = loadPlayerWithWeapons({x = 2, y = 2}, wA :: wC :: Nil);
+            let world0 = loadPlayerWithWeaponsWorld({x = 2, y = 2}, wA :: wC :: Nil);
             let drafts =
                 MoveDraft.DraftAction.Dropped(0, PlayerData.ItemKind.Weapon(1),
                     ItemData.GroundItemKind.WeaponItem(wB)) ::
                 MoveDraft.DraftAction.MovedFrom(0, {x = 2, y = 2}) :: Nil;
-            let (after, _wFin) = runCancelWithDrafts(rc, scene, drafts);
-            let attacks = List.map(w -> w#attack, PlayerScene.getWeapons(0, after));
+            let wFin = runCancelWithDrafts(rc, world0, drafts);
+            let attacks = TestUnitFixtures.withWorldQuery(wFin, () ->
+                List.map(w -> w#attack, PlayerScene.getWeapons(0)));
             Assert.assertEq(expected = 1 :: 2 :: 3 :: Nil, attacks)
         }
 
@@ -635,9 +552,9 @@ mod TestActionMenuUi {
     /// 初期カーソル可視は false（非表示から復帰することを確認）。
     @Test
     def testActionCancelFromEmptyCellRestoresCursor(): Unit \ Assert =
-        let (_after, finalPhase, visible) =
+        let (_, finalPhase, visible) =
             TestUnitFixtures.withCancelTransitionMocks(SelectedPlayer.cleared(), false, () ->
-                ActionMenuUi.onActionCancelled(Scene.empty()));
+                ActionMenuUi.onActionCancelled());
         Assert.assertEq(
             expected = (TurnPhase.Phase.PlayerCursor, true),
             (finalPhase, visible))
@@ -645,10 +562,10 @@ mod TestActionMenuUi {
     /// 駒選択中（SelectedPlayer = Some(0)）で X を押すと PlayerMoving へ戻る（カーソルは設計上非表示）。
     @Test
     def testActionCancelWithSelectionReturnsToMovingHidden(): Unit \ Assert =
-        let (_after, finalPhase, visible) =
+        let (_, finalPhase, visible) =
             TestUnitFixtures.withCancelTransitionMocks(
                 {id = Some(0), drafts = Nil, gatherActive = false}, true, () ->
-                ActionMenuUi.onActionCancelled(Scene.empty()));
+                ActionMenuUi.onActionCancelled());
         Assert.assertEq(
             expected = (TurnPhase.Phase.PlayerMoving, false),
             (finalPhase, visible))
@@ -656,10 +573,10 @@ mod TestActionMenuUi {
     /// 集合（行軍）の隣接メニュー（gatherActive=true）で X を押すと GatherMove へ戻る（カーソル非表示）。
     @Test
     def testActionCancelGatherReturnsToGatherMoveHidden(): Unit \ Assert =
-        let (_after, finalPhase, visible) =
+        let (_, finalPhase, visible) =
             TestUnitFixtures.withCancelTransitionMocks(
                 {id = Some(0), drafts = Nil, gatherActive = true}, true, () ->
-                ActionMenuUi.onActionCancelled(Scene.empty()));
+                ActionMenuUi.onActionCancelled());
         Assert.assertEq(
             expected = (TurnPhase.Phase.GatherMove, false),
             (finalPhase, visible))

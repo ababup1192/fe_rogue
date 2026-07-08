@@ -1,7 +1,7 @@
 /// ArrowCursorState — 杖・投擲の照準矢印の論理状態を保持する effect
 ///
-/// `StaffAim` / `ThrowAim` フェーズで出る方向照準矢印（`ArrowCursorScene` の Marker2D +
-/// 子 Sprite）が指す論理状態をまとめて持つ。見た目（Marker2D の位置・Sprite の回転）は
+/// `StaffAim` / `ThrowAim` フェーズで出る方向照準矢印が指す論理状態をまとめて持つ。
+/// 見た目（矢印の位置・回転）は
 /// `ArrowCursorScene` の view が描き、この resource は「どこを起点にどの方向を指しているか」
 /// の状態だけを持つ。
 ///

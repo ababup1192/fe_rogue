@@ -9,7 +9,7 @@
 ///   - `clear` を呼ぶと EnemyRange が resource から消える
 ///
 /// 敵ホバー範囲は `RangeOverlayState` resource の `enemyRange` に載る単一真実源で、
-/// `refreshFor` は `MapScene.getMapLayer` を要求する重い統合テストになるため
+/// `refreshFor` は World の地形 seed を要求する重い統合テストになるため
 /// ここでは扱わず、実機（描画あり）の確認に委ねる。
 mod TestEnemyRangeScene {
 
@@ -33,9 +33,8 @@ mod TestEnemyRangeScene {
     def testQueriesReturnEmptyWhenAbsent(): Unit \ Assert =
         region rc {
             TestUnitFixtures.withRangeOverlay(rc, () -> {
-                let scene = Scene.empty();
-                let id = EnemyRangeScene.currentEnemyId(scene);
-                let cells = EnemyRangeScene.reachable(scene);
+                let id = EnemyRangeScene.currentEnemyId();
+                let cells = EnemyRangeScene.reachable();
                 Assert.assertEq(expected = (None, 0), (id, List.length(cells)))
             })
         }
@@ -43,13 +42,13 @@ mod TestEnemyRangeScene {
     /// 何もない状態で `clear` を呼んでも例外にはならず、空を返す
     /// （カーソルが敵 → 床 → 床 と動いた場合、2 回目の床遷移でも安全に clear を呼べる）
     @Test
-    def testClearOnEmptySceneIsSafe(): Unit \ Assert =
+    def testClearOnEmptyStateIsSafe(): Unit \ Assert =
         region rc {
             TestUnitFixtures.withRangeOverlay(rc, () -> {
-                let after = EnemyRangeScene.clear(Scene.empty());
+                EnemyRangeScene.clear();
                 Assert.assertEq(expected = (None, 0),
-                    (EnemyRangeScene.currentEnemyId(after),
-                     List.length(EnemyRangeScene.reachable(after))))
+                    (EnemyRangeScene.currentEnemyId(),
+                     List.length(EnemyRangeScene.reachable())))
             })
         }
 
@@ -67,10 +66,9 @@ mod TestEnemyRangeScene {
                             :: ({x = 2, y = 1}: {x = Int32, y = Int32})
                             :: ({x = 3, y = 1}: {x = Int32, y = Int32}) :: Nil;
                 putEnemyRange(7, cells);
-                let scene = Scene.empty();
                 Assert.assertEq(expected = (Some(7), 3),
-                    (EnemyRangeScene.currentEnemyId(scene),
-                     List.length(EnemyRangeScene.reachable(scene))))
+                    (EnemyRangeScene.currentEnemyId(),
+                     List.length(EnemyRangeScene.reachable())))
             })
         }
 
@@ -82,10 +80,10 @@ mod TestEnemyRangeScene {
             TestUnitFixtures.withRangeOverlay(rc, () -> {
                 let cells = ({x = 0, y = 0}: {x = Int32, y = Int32}) :: Nil;
                 putEnemyRange(2, cells);
-                let after = EnemyRangeScene.clear(Scene.empty());
+                EnemyRangeScene.clear();
                 Assert.assertEq(expected = (None, 0),
-                    (EnemyRangeScene.currentEnemyId(after),
-                     List.length(EnemyRangeScene.reachable(after))))
+                    (EnemyRangeScene.currentEnemyId(),
+                     List.length(EnemyRangeScene.reachable())))
             })
         }
 }

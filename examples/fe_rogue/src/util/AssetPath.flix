@@ -5,8 +5,8 @@
 // そのためランチャが渡す `-DprojectPath=<絶対ルート>` を読み、全アセットパスを絶対化する。
 //
 // projectPath は JVM 起動時に固定され以後変化しないので `unsafe IO` で純粋に読み出してよい
-// (SceneLoader / MapResource が定数読み出しに使っているのと同じパターン)。これにより
-// scenePath() などの純粋関数の効果型を変えずに済む。
+// (MapResource が定数読み出しに使っているのと同じパターン)。これにより
+// resolve() などの純粋関数の効果型を変えずに済む。
 mod AssetPath {
     import java.lang.System
 

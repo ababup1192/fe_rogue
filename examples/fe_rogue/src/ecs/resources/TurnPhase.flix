@@ -18,9 +18,9 @@
 /// 「味方ターン中のどのサブフェーズか」を区別できないため、専用のフェーズ effect を持つ。
 ///
 /// 設計意図:
-///   - 入力ハンドラ・各 Scene の `physicsProcess` がフェーズで分岐するための単一情報源
+///   - 入力ハンドラ・各 System の step がフェーズで分岐するための単一情報源
 ///   - フェーズ切替は **どの handler から put してもよい**（決定キー押下の InputHandler、
-///     敵ターン終了処理など）。実体の更新は次フレーム冒頭で全 Scene が `get` で観測する
+///     敵ターン終了処理など）。実体の更新は次フレーム冒頭で全モジュールが `get` で観測する
 ///   - `EnemyTurn.Queue` と二重管理になるが、Queue は「敵 step の駆動キュー」、Phase は
 ///     「入力 / 描画 / カメラの分岐用シグナル」と責務を分離する。Phase が EnemyTurn の
 ///     間は Queue 非空が成立する不変条件は、Game.flix が両方を同時に書き換えて維持する
@@ -100,7 +100,7 @@ mod TurnPhase {
         /// 赤マス上の敵に Z でダメージ → 敵ターンへ自動遷移、X で攻撃せず敵ターンへ。
         case PlayerAttack
         /// 味方ターン・攻撃で敵を倒した直後の演出ホールド。
-        /// `attack_lunge` が完了し倒した敵が `death_blink` 中の間、カメラを瀕死の敵
+        /// lunge が完了し倒した敵が死亡点滅中の間、カメラを瀕死の敵
         /// （= カーソル位置）に留めるための過渡状態。入力は受け付けない。
         /// `Pacing.State.hold` が抜けた瞬間に GameManager が `commitWaitedAndAdvance`
         /// を呼び、PlayerCursor または EnemyTurn に遷移する。
@@ -215,7 +215,7 @@ mod TurnRules {
         case GatherCancel
     }
 
-    /// `decide` に渡すコンテキスト一式。Scene[NodeTag] / Tween / 各 effect から
+    /// `decide` に渡すコンテキスト一式。Tween / 各 effect から
     /// 「いま判断に必要な値」だけを抜き出した record。テストでは直接合成できる。
     ///
     /// フィールドの意味:
@@ -369,32 +369,31 @@ mod TurnRules {
         List.exists(value -> value == target, list)
 }
 
-/// TurnInputBridge — 入力 → 純粋判断 (TurnRules.decide) → Scene 適用 の 3 段 pipeline
+/// TurnInputBridge — 入力 → 純粋判断 (TurnRules.decide) → 適用 の 3 段 pipeline
 ///
 /// `Game.flix` の `InputHandler` instance から「PlayerCursor / PlayerMoving / PlayerAttack
 /// の Z/X 入力」が来たときに呼ばれるブリッジ。流れ:
 ///   1. `buildContext` で現フレームの状態から純粋な `TurnRules.Context` を構築
 ///   2. `TurnRules.decide` (純粋関数) で次の `Transition` を決める
-///   3. `apply` の中央 match で対応する 1 つの Scene 関数を呼ぶ
+///   3. `apply` の中央 match で対応するモジュールの関数を 1 つ呼ぶ
 ///
 /// `AttackSkip` だけは `TurnPhase.State.put` / `EnemyTurn.Queue` / `SelectedPlayer.State`
-/// の複数 effect を跨ぐため、直接 Scene 関数を呼ばず `TurnFlow.commitWaitedAndAdvance`
-/// を経由する（他の Transition は必ず単一の Scene 関数に収まる）。
+/// の複数 effect を跨ぐため、対応モジュールの関数を直接呼ばず `TurnFlow.commitWaitedAndAdvance`
+/// を経由する（他の Transition は必ず単一の関数呼び出しに収まる）。
 mod TurnInputBridge {
 
     /// 1 回のキー入力 (Confirm / Cancel) を処理する。
-    pub def handle(input: TurnRules.Input, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {RangeOverlayState.State, BoardQuery,
-                              GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
-                              PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery, TradeMenuState.State} =
+    pub def handle(input: TurnRules.Input):
+            Unit \ {RangeOverlayState.State, BoardQuery,
+                    GameLogger.GameLogger,
+                    EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                    PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery, TradeMenuState.State} =
         let context = buildContext(input, BoardQuery.board());
-        apply(TurnRules.decide(context), scene)
+        apply(TurnRules.decide(context))
 
-    /// 現フレームの scene と各 effect から `TurnRules.Context` を組み立てる。
-    /// `board` のみ呼び出し側から注入する。`FrameAef.ProcessT` に `BoardQuery`
-    /// が含まれないため、`buildContext` 自身が `BoardQuery` 効果を要求しない設計にして
-    /// process 経路からも再利用できるようにしている。
+    /// 現フレームの各 effect から `TurnRules.Context` を組み立てる。
+    /// `board` のみ呼び出し側から注入する（`buildContext` 自身は `BoardQuery` 効果を
+    /// 要求しない＝盤面を持たない呼び出し元からも再利用できる）。
     ///
     /// `TurnRules.decide` は純粋関数だが、その入力 (Context) を作るには:
     ///   - `TurnPhase.State.get()` (現フェーズ)
@@ -427,39 +426,38 @@ mod TurnInputBridge {
             playerBusy      = busy
         }
 
-    /// `decide` が返した `Transition` をシーンに適用する。
-    /// Scene 操作・effect 呼び出しをここに集約することで、`TurnRules` 側を
+    /// `decide` が返した `Transition` を適用する。
+    /// World.Command / 各 effect 呼び出しをここに集約することで、`TurnRules` 側を
     /// 純粋関数（テスト容易・effect なし）に保つ。副作用はこの関数が一手に引き受ける。
-    def apply(transition: TurnRules.Transition,
-               scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {RangeOverlayState.State,
-                              GameLogger.GameLogger,
-                              EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
-                              PlayerData.PartyQuery, World.Command, World.WorldQuery, TradeMenuState.State} =
+    def apply(transition: TurnRules.Transition):
+            Unit \ {RangeOverlayState.State,
+                    GameLogger.GameLogger,
+                    EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
+                    PlayerData.PartyQuery, World.Command, World.WorldQuery, TradeMenuState.State} =
         match transition {
-            case TurnRules.Transition.Stay                              => scene
+            case TurnRules.Transition.Stay                              => ()
             case TurnRules.Transition.CursorSelectPlayer(playerId)      =>
-                PlayerScene.beginSelection(playerId, scene)
+                PlayerScene.beginSelection(playerId)
             case TurnRules.Transition.CursorOpenGatherMenu              =>
-                ActionMenuUi.openFromCursor(scene)
+                ActionMenuUi.openFromCursor()
             case TurnRules.Transition.MovingOpenActionMenu              =>
-                ActionMenuUi.openFromMoving(scene)
+                ActionMenuUi.openFromMoving()
             case TurnRules.Transition.MovingCancel                      =>
-                PlayerScene.cancelSelection(scene)
+                PlayerScene.cancelSelection()
             case TurnRules.Transition.OpenAttackForecast(attackerId, defenderId, _defX, _defY) =>
                 // 装備中武器 (weapons.head) を自動使用するので武器選択は介さず AttackForecast 直行。
                 // attackTargetId を立てて BattlePanelUi が予報を組み立てる。
-                CombatDriver.setAttackTargetId(attackerId, defenderId, scene)
-                    |> PhaseTransitions.enterAttackForecast
+                CombatDriver.setAttackTargetId(attackerId, defenderId);
+                PhaseTransitions.enterAttackForecast()
             case TurnRules.Transition.AttackSkip                        =>
-                TurnFlow.commitWaitedAndAdvance(scene)
+                TurnFlow.commitWaitedAndAdvance()
             case TurnRules.Transition.OpenTradeInventory(partnerId)     =>
-                PhaseTransitions.enterTradeInventory(partnerId, scene)
+                PhaseTransitions.enterTradeInventory(partnerId)
             case TurnRules.Transition.TradeCancel                       =>
-                PhaseTransitions.enterActionSelectFromTrade(scene)
+                PhaseTransitions.enterActionSelectFromTrade()
             case TurnRules.Transition.GatherOpenMenu                    =>
-                ActionMenuUi.openFromGather(scene)
+                ActionMenuUi.openFromGather()
             case TurnRules.Transition.GatherCancel                      =>
-                PlayerScene.cancelSelection(scene)
+                PlayerScene.cancelSelection()
         }
 }

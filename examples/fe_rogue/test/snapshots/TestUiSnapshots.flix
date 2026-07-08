@@ -4,8 +4,8 @@
 //
 // 方針: フィクスチャは **データを宣言するだけ**で、UI の中身は本物のゲームコードが組む。各シーンは
 //   1. UiSpec.spawnRoot で ui.json の骨組みだけ立て、
-//   2. カタログ由来の実データ（味方/敵/在庫）で盤面 scene を作り、
-//   3. `SnapshotHarness.withMocks(config, () -> XxxUi.frameStep(dt, scene))` で本物の frameStep に
+//   2. カタログ由来の実データ（味方/敵/在庫）を World store へ seed し、
+//   3. `SnapshotHarness.withMocks(config, () -> XxxUi.frameStep(dt()))` で本物の frameStep に
 //      可視・スロット流し込み・幅フィット・重量色・空きスロット・カード解決を組ませる。
 // これで「敵フェイズが赤い」「満杯でないペインに空きスロットが出る」等が実ロジックの帰結になり、
 // 手塗りの嘘が golden に混じらない。TopBar だけは frameStep でなく `advance → applyFrame`
@@ -176,7 +176,7 @@ mod TestUiSnapshots {
         }
 
     // ════════════════════════════════════════════════════════
-    // カタログ由来の実データ（味方 / 敵 / 在庫）でシーンを組む
+    // カタログ由来の実データ（味方 / 敵 / 在庫）で World を組む
     // ════════════════════════════════════════════════════════
 
     /// 味方カタログ（units.json + weapons.json）をロードする。
@@ -232,48 +232,102 @@ mod TestUiSnapshots {
           weapon = Option.map(weaponRes, weaponId), acted = false, prevPos = None, statuses = Nil,
           ring = None, followUpUsed = false, bottleUsed = false}: EnemyScene.Data)
 
-    /// World ルートだけ持つ空シーン。
-    pub def worldScene(): Scene[NodeTag] =
-        Scene.empty()
-            |> Scene.addNode(MapScene.worldName(),
-                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.NoTag))
+    /// 駒も盤面も無い空の World。各フィクスチャが addPlayer / addEnemy / 配置物 seed で組み上げる。
+    pub def emptyWorld(): World = World.empty()
 
-    /// 味方 1 体を World 配下に足す。
-    pub def addPlayer(d: PlayerScene.Data, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.addChildAt(MapScene.worldPath(), PlayerScene.playerName(d#id),
-            EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.Player(d)), scene)
+    /// Cmd 列を World へ順に適用する（production と同じ applyCmd を通す）。
+    def applyAll(cmds: List[World.Cmd], w: World): World =
+        List.foldLeft((acc, c) -> World.applyCmd(c, acc), w, cmds)
 
-    /// 敵 1 体を World 配下に足す。`visible` は marker の可視（フォグ判定＝カード/攻撃対象の可否）。
-    pub def addEnemy(d: EnemyScene.Data, visible: Bool, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let marker = Marker2D.make(Vec2.zero()) |> CanvasItem.setVisible(visible);
-        Scene.addChildAt(MapScene.worldPath(), EnemyScene.enemyName(d#id),
-            EngineNode.Marker2DWithState(marker, NodeTag.Enemy(d)), scene)
+    /// 味方 1 体を World store へ seed する。PartyQuery / WorldQuery が読む全 store
+    /// （dataFromWorld の gate 16 store + selectedItem / pendingLevelUp / hidden / attackTarget）を
+    /// `d` と同値で書くので、World から再構築した Data は `d` と一致する。
+    pub def addPlayer(d: PlayerScene.Data, w: World): World =
+        let ref = World.EntityRef.Player(d#id);
+        let seeded = applyAll(
+            World.Cmd.Spawn(ref)
+                :: World.Cmd.Move(ref, d#gridPos)
+                :: World.Cmd.SetRenderPos(ref, MapSnapshot.cellCenter(d#gridPos))
+                :: World.Cmd.SetHp(ref, d#hp)
+                :: World.Cmd.SetWaited(ref, d#waited)
+                :: World.Cmd.SetUsedStairs(ref, d#usedStairs)
+                :: World.Cmd.SetFollowUpUsed(ref, d#followUpUsed)
+                :: World.Cmd.SetProgress(ref, d#level, d#exp)
+                :: World.Cmd.SetWeapons(ref, d#weapons)
+                :: World.Cmd.SetBaseStats(ref, Combat.baseStatsFrom(d#resource))
+                :: World.Cmd.SetMoveTiles(ref, d#moveTiles)
+                :: World.Cmd.SetStaves(ref, d#staves)
+                :: World.Cmd.SetConsumables(ref, d#consumables)
+                :: World.Cmd.SetRings(ref, d#rings)
+                :: World.Cmd.SetRingEquipped(ref, d#ringEquipped)
+                :: World.Cmd.SetWeaponView(ref, PlayerScene.equippedWeaponView(d))
+                :: World.Cmd.SetRingBonus(ref, PlayerScene.equippedRingBonus(d))
+                :: World.Cmd.SetGrowth(d#id, {base = LevelSystem.statsOf(d#resource),
+                                              rates = d#resource#growthRates,
+                                              name = d#resource#description})
+                :: World.Cmd.SetClassId(d#id, d#classId)
+                :: World.Cmd.SetPlayerResource(d#id, d#resource)
+                :: World.Cmd.SetFacing(d#id, d#facing)
+                :: World.Cmd.SetMoveSteps(d#id, d#moveStepsTaken)
+                :: World.Cmd.SetSelectedItem(d#id, d#selectedItem)
+                :: World.Cmd.SetPendingLevelUp(d#id, d#pendingLevelUp)
+                :: World.Cmd.SetHidden(ref, d#hidden)
+                :: Nil, w);
+        match d#attackTargetId {
+            case Some(t) => World.applyCmd(World.Cmd.SetAttackTarget(ref, t), seeded)
+            case None    => seeded
+        }
 
-    /// 床アイテム 1 個を `cell` に貼る（World seed 経由で「拾う」判定が成立する）。
-    def addGroundItem(cell: {x = Int32, y = Int32}, kind: ItemData.GroundItemKind,
-                      scene: Scene[NodeTag]): Scene[NodeTag] =
-        let itemsPath = MapScene.worldName() :: "Items" :: Nil;
-        let withParent = match Scene.getEngineNode(itemsPath, scene) {
-            case Some(_) => scene
-            case None    => Scene.addChildAt(MapScene.worldPath(), "Items",
-                                EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()), NodeTag.NoTag), scene)
-        };
-        let sprite = Sprite2D.make(GroundItems.spriteOf(kind)#texture, Vec2.zero(), Vec2.one());
-        let data: GroundItems.Data =
-            {gridPos = cell, itemKey = "snap-ground", item = kind, elapsed = Duration.zero()};
-        Scene.addChildAt(itemsPath, "Item_0",
-            EngineNode.Sprite2DWithState(sprite, NodeTag.GroundItem(data)), withParent)
+    /// 敵 1 体を World store へ seed する（addPlayer の敵版）。可視はフォグ導出なので、
+    /// 「見えている敵」を要するシーンは `boardWorld` を重ねて同室のプレイヤーで部屋を点灯させる。
+    pub def addEnemy(d: EnemyScene.Data, w: World): World =
+        let ref = World.EntityRef.Enemy(d#id);
+        let seeded = applyAll(
+            World.Cmd.Spawn(ref)
+                :: World.Cmd.Move(ref, d#gridPos)
+                :: World.Cmd.SetRenderPos(ref, MapSnapshot.cellCenter(d#gridPos))
+                :: World.Cmd.SetHp(ref, d#hp)
+                :: World.Cmd.SetAlerted(ref, d#alerted)
+                :: World.Cmd.SetActed(ref, d#acted)
+                :: World.Cmd.SetBottleUsed(ref, d#bottleUsed)
+                :: World.Cmd.SetFollowUpUsed(ref, d#followUpUsed)
+                :: World.Cmd.SetWeapons(ref, Option.toList(d#weapon))
+                :: World.Cmd.SetBaseStats(ref, Combat.baseStatsFrom(d#resource))
+                :: World.Cmd.SetMoveTiles(ref, d#moveTiles)
+                :: World.Cmd.SetWeaponView(ref, EnemyScene.equippedWeaponView(d))
+                :: World.Cmd.SetRingBonus(ref, EnemyScene.equippedRingBonus(d))
+                :: World.Cmd.SetEffectRule(d#id, d#resource#effectRule)
+                :: World.Cmd.SetEnemyRing(d#id, d#ring)
+                :: World.Cmd.SetEnemyProfile(d#id, {resourceId = d#resourceId,
+                                                    homeModuleIdx = d#homeModuleIdx})
+                :: World.Cmd.SetEnemyResource(d#id, d#resource)
+                :: Nil, w);
+        match d#attackTargetId {
+            case Some(t) => World.applyCmd(World.Cmd.SetAttackTarget(ref, t), seeded)
+            case None    => seeded
+        }
 
-    /// 配置済み階段ノードを `cell` に置く（「階段」項目が成立する）。
-    def addStairs(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]): Scene[NodeTag] =
-        Scene.addNode("Stairs",
-            EngineNode.Marker2DWithState(Marker2D.make(Vec2.zero()),
-                NodeTag.Stairs(({gridPos = cell, placed = true}: Stairs.Data))), scene)
+    /// 床アイテム 1 個を `cell` へ seed する（「拾う」判定の World 権威）。
+    def addGroundItem(cell: {x = Int32, y = Int32}, kind: ItemData.GroundItemKind, w: World): World =
+        World.applyCmd(World.Cmd.SpawnItem(
+            ({gridPos = cell, itemKey = "snap-ground", item = kind,
+              elapsed = Duration.zero()}: GroundItems.Data)), w)
 
-    /// 宝箱は World store 権威（scene ノードを持たない）なので worldMods で `cell` に注入する。
-    def chestAtWorld(cell: {x = Int32, y = Int32}, content: ItemData.GroundItemKind): World -> World =
-        w -> World.applyCmd(World.Cmd.SpawnChest(
-            ({gridPos = cell, chestKey = "wooden", contentId = "snap-chest", content = content}: Chests.Data)), w)
+    /// 配置済み階段を `cell` に置く（「階段」項目が成立する）。
+    def addStairs(cell: {x = Int32, y = Int32}, w: World): World =
+        World.applyCmd(World.Cmd.SetStairs(Some(cell)), w)
+
+    /// 宝箱を `cell` に置く（「あける」項目が成立する）。
+    def addChest(cell: {x = Int32, y = Int32}, content: ItemData.GroundItemKind, w: World): World =
+        World.applyCmd(World.Cmd.SpawnChest(
+            ({gridPos = cell, chestKey = "wooden", contentId = "snap-chest",
+              content = content}: Chests.Data)), w)
+
+    /// 盤面（13×13 の 1 部屋）を World へ seed する。敵可視はフォグの明るい穴×
+    /// 敵位置の World 導出なので、敵カード等の「見えている敵」を要する scenario はこれを重ねる
+    /// （プレイヤーと同室の敵が点灯＝可視になる）。
+    def boardWorld(w: World): World =
+        applyAll(TestWorldFixtures.boardCmds({w = 13, h = 13}, None), w)
 
     // ════════════════════════════════════════════════════════
     // spawn / selection の小道具（UiWorldState を直接いじる）
@@ -310,32 +364,31 @@ mod TestUiSnapshots {
         let lord = mkPlayer({weaponIds = "iron_sword" :: Nil | basePlayer(0, "knight", {x = 1, y = 1})});
         let ally = mkPlayer(basePlayer(1, "paladin", {x = 2, y = 1}));
         let enemy = mkEnemy(9, "fighter_t1", {x = 1, y = 2}, 12, Some("iron_sword"));
-        let scene = worldScene()
+        let world = emptyWorld()
             |> addPlayer(lord)
             |> addPlayer(ally)
-            |> addEnemy(enemy, true)
+            |> addEnemy(enemy)
             |> addGroundItem({x = 1, y = 1}, ItemData.GroundItemKind.WeaponItem(weaponRes("iron_sword")))
-            |> addStairs({x = 1, y = 1});
-        {phase = TurnPhase.Phase.ActionSelect, selectedId = Some(0),
-         worldMods = chestAtWorld({x = 1, y = 1}, ItemData.GroundItemKind.WeaponItem(weaponRes("steel_lance")))
-         | SnapshotHarness.config(scene)}
+            |> addStairs({x = 1, y = 1})
+            |> addChest({x = 1, y = 1}, ItemData.GroundItemKind.WeaponItem(weaponRes("steel_lance")));
+        {phase = TurnPhase.Phase.ActionSelect, selectedId = Some(0) | SnapshotHarness.config(world)}
 
     def driveActionMenu7(): Unit \ (Fs.FileRead + GameEngine.Game + UiWorldState.State) =
         let cfg = actionFullConfig();
         spawnUi(ActionMenuUi.specPath());
-        discard SnapshotHarness.withMocks(cfg, () -> ActionMenuUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> ActionMenuUi.frameStep(dt()))
 
     /// 空マス（未選択）メニュー: gather / turnEnd / suspend の 3 項目。
     def actionSpaceConfig(): SnapshotHarness.Config \ Fs.FileRead =
         let lord = mkPlayer(basePlayer(0, "knight", {x = 1, y = 1}));
         let ally = mkPlayer(basePlayer(1, "paladin", {x = 4, y = 4}));
-        let scene = worldScene() |> addPlayer(lord) |> addPlayer(ally);
-        {phase = TurnPhase.Phase.ActionSelect, selectedId = None | SnapshotHarness.config(scene)}
+        let world = emptyWorld() |> addPlayer(lord) |> addPlayer(ally);
+        {phase = TurnPhase.Phase.ActionSelect, selectedId = None | SnapshotHarness.config(world)}
 
     def driveActionMenu3(): Unit \ (Fs.FileRead + GameEngine.Game + UiWorldState.State) =
         let cfg = actionSpaceConfig();
         spawnUi(ActionMenuUi.specPath());
-        discard SnapshotHarness.withMocks(cfg, () -> ActionMenuUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> ActionMenuUi.frameStep(dt()))
 
     // ── WeaponSelect ──
 
@@ -344,14 +397,14 @@ mod TestUiSnapshots {
         let lord = mkPlayer({weaponIds = "iron_sword" :: "steel_lance" :: Nil
                              | basePlayer(0, "knight", {x = 1, y = 1})});
         let enemy = mkEnemy(9, "fighter_t1", {x = 1, y = 2}, 12, Some("iron_sword"));
-        let scene = worldScene() |> addPlayer(lord) |> addEnemy(enemy, true);
+        let world = emptyWorld() |> addPlayer(lord) |> addEnemy(enemy);
         {phase = TurnPhase.Phase.WeaponSelect, selectedId = Some(0), cursor = {x = 1, y = 2}
-         | SnapshotHarness.config(scene)}
+         | SnapshotHarness.config(world)}
 
     def driveWeaponSelect(): Unit \ (Fs.FileRead + UiWorldState.State) =
         let cfg = weaponSelectConfig();
         spawnUi(WeaponSelectUi.specPath());
-        discard SnapshotHarness.withMocks(cfg, () -> WeaponSelectUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> WeaponSelectUi.frameStep(dt()))
 
     // ── ItemMenu ──
 
@@ -361,27 +414,27 @@ mod TestUiSnapshots {
         let lord = mkPlayer({weaponIds = "iron_sword" :: "steel_lance" :: "silver_sword" :: Nil,
                              consumableIds = "vulnerary" :: Nil, ringIds = "power_ring" :: Nil
                              | basePlayer(0, "knight", {x = 1, y = 1})});
-        let scene = worldScene() |> addPlayer(lord);
+        let world = emptyWorld() |> addPlayer(lord);
         {phase = TurnPhase.Phase.ItemSelect, selectedId = Some(0), itemCategory = 0
-         | SnapshotHarness.config(scene)}
+         | SnapshotHarness.config(world)}
 
     def driveItemMenuSelect(): Unit \ (Fs.FileRead + UiWorldState.State) =
         let cfg = itemSelectConfig();
         spawnUi(ItemMenuUi.specPath());
-        discard SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.frameStep(dt()))
 
     /// サブメニュー（武器を選んだ後）: そうび / なげる / すてる。
     def itemActionConfig(): SnapshotHarness.Config \ Fs.FileRead =
         let lord = mkPlayer({weaponIds = "iron_sword" :: Nil,
                              selectedItem = Some(PlayerData.ItemKind.Weapon(0))
                              | basePlayer(0, "knight", {x = 1, y = 1})});
-        let scene = worldScene() |> addPlayer(lord);
-        {phase = TurnPhase.Phase.ItemActionSelect, selectedId = Some(0) | SnapshotHarness.config(scene)}
+        let world = emptyWorld() |> addPlayer(lord);
+        {phase = TurnPhase.Phase.ItemActionSelect, selectedId = Some(0) | SnapshotHarness.config(world)}
 
     def driveItemMenuAction(): Unit \ (Fs.FileRead + UiWorldState.State) =
         let cfg = itemActionConfig();
         spawnUi(ItemMenuUi.specPath());
-        discard SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.frameStep(dt()))
 
     /// 満載シーン: 武器 5 本を持たせ、窓（3 行）をスクロールさせる。`sel` は選択 index。
     def itemFullConfig(): SnapshotHarness.Config \ Fs.FileRead =
@@ -389,16 +442,16 @@ mod TestUiSnapshots {
                              weaponIds = "silver_sword" :: "killing_edge" :: "iron_sword"
                                           :: "steel_axe" :: "iron_bow" :: Nil
                              | basePlayer(0, "knight", {x = 1, y = 1})});
-        let scene = worldScene() |> addPlayer(lord);
+        let world = emptyWorld() |> addPlayer(lord);
         {phase = TurnPhase.Phase.ItemSelect, selectedId = Some(0), itemCategory = 0
-         | SnapshotHarness.config(scene)}
+         | SnapshotHarness.config(world)}
 
     def driveItemMenuFull(sel: Int32): Unit \ (Fs.FileRead + UiWorldState.State) =
         let cfg = itemFullConfig();
         spawnUi(ItemMenuUi.specPath());
         // 選択 index を先に注入してから frameStep で窓 offset・ハイライトを実ロジックで決めさせる。
         putSel("ItemMenu/panel/menu", sel);
-        discard SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.frameStep(dt()))
 
     // ── TradeMenu ──
 
@@ -408,14 +461,14 @@ mod TestUiSnapshots {
                            | basePlayer(0, "knight", {x = 1, y = 1})});
         let p1 = mkPlayer({weaponIds = "steel_lance" :: Nil, consumableIds = "great_vulnerary" :: Nil
                            | basePlayer(1, "paladin", {x = 2, y = 1})});
-        let scene = worldScene() |> addPlayer(p0) |> addPlayer(p1);
+        let world = emptyWorld() |> addPlayer(p0) |> addPlayer(p1);
         let trade = {members = 0 :: 1 :: Nil, focus = 0 | TradeMenuUi.defaultPanelData()};
-        {phase = TurnPhase.Phase.TradeInventory, trade = trade | SnapshotHarness.config(scene)}
+        {phase = TurnPhase.Phase.TradeInventory, trade = trade | SnapshotHarness.config(world)}
 
     def driveTradeMenu2(): Unit \ (Fs.FileRead + UiWorldState.State) =
         let cfg = trade2Config();
         spawnUi(TradeMenuUi.specPath());
-        discard SnapshotHarness.withMocks(cfg, () -> TradeMenuUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> TradeMenuUi.frameStep(dt()))
 
     /// 4 人交換満載。各ペインの空きスロットの出方（在庫本数ぶんだけ 1 行余す）が実 syncPane 由来。
     def trade4Config(): SnapshotHarness.Config \ Fs.FileRead =
@@ -427,26 +480,26 @@ mod TestUiSnapshots {
                            | basePlayer(2, "knight", {x = 3, y = 1})});
         let p3 = mkPlayer({consumableIds = "elixir" :: "vulnerary" :: Nil
                            | basePlayer(3, "paladin", {x = 4, y = 1})});
-        let scene = worldScene() |> addPlayer(p0) |> addPlayer(p1) |> addPlayer(p2) |> addPlayer(p3);
+        let world = emptyWorld() |> addPlayer(p0) |> addPlayer(p1) |> addPlayer(p2) |> addPlayer(p3);
         let trade = {members = 0 :: 1 :: 2 :: 3 :: Nil, focus = 0 | TradeMenuUi.defaultPanelData()};
-        {phase = TurnPhase.Phase.TradeInventory, trade = trade | SnapshotHarness.config(scene)}
+        {phase = TurnPhase.Phase.TradeInventory, trade = trade | SnapshotHarness.config(world)}
 
     def driveTradeMenu4(): Unit \ (Fs.FileRead + UiWorldState.State) =
         let cfg = trade4Config();
         spawnUi(TradeMenuUi.specPath());
-        discard SnapshotHarness.withMocks(cfg, () -> TradeMenuUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> TradeMenuUi.frameStep(dt()))
 
     // ── GameOverMenu / SuspendConfirm（モーダル：可視トグル + ハイライトだけ実ロジック）──
 
     def driveGameOverMenu(): Unit \ (Fs.FileRead + UiWorldState.State) =
-        let cfg = {simPhase = SimPhase.GameOver | SnapshotHarness.config(worldScene())};
+        let cfg = {simPhase = SimPhase.GameOver | SnapshotHarness.config(emptyWorld())};
         spawnUi(GameOverMenuUi.specPath());
-        discard SnapshotHarness.withMocks(cfg, () -> GameOverMenuUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> GameOverMenuUi.frameStep(dt()))
 
     def driveSuspendConfirm(): Unit \ (Fs.FileRead + UiWorldState.State) =
-        let cfg = {phase = TurnPhase.Phase.SuspendConfirm | SnapshotHarness.config(worldScene())};
+        let cfg = {phase = TurnPhase.Phase.SuspendConfirm | SnapshotHarness.config(emptyWorld())};
         spawnUi(SuspendConfirmUi.specPath());
-        discard SnapshotHarness.withMocks(cfg, () -> SuspendConfirmUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> SuspendConfirmUi.frameStep(dt()))
 
     // ── TitleMenu / Log（frameStep / step の実ロジックをフィクスチャ状態で駆動）──
 
@@ -457,7 +510,7 @@ mod TestUiSnapshots {
         UiWorldState.State.put(UiStore.setVisible(TitleMenuUi.rootPath(), true, UiWorldState.State.get()));
         TitleMenuState.withState(rc, () -> {
             TitleMenuState.State.put({cursor = 0, resumable = true});
-            discard TitleMenuUi.frameStep(dt(), worldScene())
+            TitleMenuUi.frameStep(dt())
         })
     }
 
@@ -474,7 +527,7 @@ mod TestUiSnapshots {
                         carouselX = CharacterSelectUi.targetCarouselX(3)
                         | CharacterSelectUi.initialState(players)};
             CharacterSelectState.State.put(data);
-            discard CharacterSelectUi.frameStep(dt(), worldScene())
+            CharacterSelectUi.frameStep(dt())
         })
     }
 
@@ -488,7 +541,7 @@ mod TestUiSnapshots {
                       idleSince = Duration.zero()};
         LogState.withState(rc, () -> {
             LogState.State.put(seeded);
-            TestUnitFixtures.withMockGameLogger(() -> discard LogUi.step(dt(), worldScene()))
+            TestUnitFixtures.withMockGameLogger(() -> LogUi.step(dt()))
         })
     }
 
@@ -518,9 +571,9 @@ mod TestUiSnapshots {
         let lord = {attackTargetId = Some(9)
                     | mkPlayer({weaponIds = "iron_sword" :: Nil | basePlayer(0, "knight", {x = 1, y = 1})})};
         let enemy = mkEnemy(9, "fighter_t1", {x = 1, y = 2}, 12, Some("iron_sword"));
-        let scene = worldScene() |> addPlayer(lord) |> addEnemy(enemy, true);
+        let world = emptyWorld() |> addPlayer(lord) |> addEnemy(enemy);
         let cfg = {phase = TurnPhase.Phase.PlayerAttack, selectedId = Some(0), cursor = {x = 1, y = 2}
-                   | SnapshotHarness.config(scene)};
+                   | SnapshotHarness.config(world)};
         spawnUi(BattlePanelUi.specPath());
         BattlePanelState.withState(rc, () ->
           UnitHPBarRender.withForecast(rc, () ->
@@ -529,7 +582,7 @@ mod TestUiSnapshots {
                 // 本番の PlayerAttack ではカメラがカーソル（攻撃対象マス）へ寄る。panel は
                 // 対象の画面近傍へ出るので、カメラをカーソルマスへスナップして本番同様の配置を撮る。
                 CameraState.snapTo(MapSnapshot.cellCenter({x = 1, y = 2}));
-                discard BattlePanelUi.frameStep(dt(), cfg#scene)
+                BattlePanelUi.frameStep(dt())
               }))))
     }
 
@@ -541,12 +594,14 @@ mod TestUiSnapshots {
         spawnUi(LevelUpPanelUi.specPath());
         let lord = {pendingLevelUp = Some(levelUpFixtureResult())
                     | mkPlayer(basePlayer(0, "knight", {x = 1, y = 1}))};
-        let scene = worldScene() |> addPlayer(lord);
+        // pendingLevelUp は World 権威＝保留結果ごと World store へ seed して渡す。
+        let world = emptyWorld() |> addPlayer(lord);
         LevelUpPanelState.withState(rc, () -> {
             LevelUpPanelState.State.put({started = true, revealed = 6, timer = Duration.millis(500)});
-            TestUnitFixtures.withFixedPhase(TurnPhase.Phase.LevelUpView, () ->
-              TestUnitFixtures.withMockAudio(() ->
-                discard LevelUpPanelUi.frameStep(dt(), scene)))
+            TestUnitFixtures.withWorldQuery(world, () ->
+              TestUnitFixtures.withFixedPhase(TurnPhase.Phase.LevelUpView, () ->
+                TestUnitFixtures.withMockAudio(() ->
+                  LevelUpPanelUi.frameStep(dt()))))
         })
     }
 
@@ -572,8 +627,8 @@ mod TestUiSnapshots {
     def unitCardConfig(): SnapshotHarness.Config \ Fs.FileRead =
         let lord = mkPlayer({weaponIds = "iron_sword" :: Nil, ringIds = "power_ring" :: Nil,
                              ringEquipped = true | basePlayer(0, "knight", {x = 1, y = 1})});
-        let scene = worldScene() |> addPlayer(lord);
-        {phase = TurnPhase.Phase.ActionSelect, selectedId = Some(0) | SnapshotHarness.config(scene)}
+        let world = emptyWorld() |> addPlayer(lord);
+        {phase = TurnPhase.Phase.ActionSelect, selectedId = Some(0) | SnapshotHarness.config(world)}
 
     /// 両カード root を spawn する（frameStep は対象なし側を隠す）。
     def spawnCards(): Unit \ (Fs.FileRead + UiWorldState.State) =
@@ -583,19 +638,22 @@ mod TestUiSnapshots {
     def driveUnitCard(): Unit \ (Fs.FileRead + GameEngine.Game + UiWorldState.State) =
         let cfg = unitCardConfig();
         spawnCards();
-        discard SnapshotHarness.withMocks(cfg, () -> UnitCardUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> UnitCardUi.frameStep(dt()))
 
     /// WeaponSelect のカーソル上の敵カードを解決させる config（味方カードは未選択で隠れる）。
+    /// 敵可視はフォグ導出なので、盤面 seed（boardWorld）＋同室のプレイヤーで部屋を点灯させる
+    /// （プレイヤーは未選択のため左カードは出ない＝golden 不変）。
     def enemyCardConfig(): SnapshotHarness.Config \ Fs.FileRead =
+        let lord = mkPlayer(basePlayer(0, "knight", {x = 1, y = 1}));
         let enemy = mkEnemy(9, "fighter_t1", {x = 3, y = 3}, 12, Some("iron_sword"));
-        let scene = worldScene() |> addEnemy(enemy, true);
+        let world = emptyWorld() |> addPlayer(lord) |> addEnemy(enemy) |> boardWorld;
         {phase = TurnPhase.Phase.WeaponSelect, selectedId = None, cursor = {x = 3, y = 3}
-         | SnapshotHarness.config(scene)}
+         | SnapshotHarness.config(world)}
 
     def driveEnemyCard(): Unit \ (Fs.FileRead + GameEngine.Game + UiWorldState.State) =
         let cfg = enemyCardConfig();
         spawnCards();
-        discard SnapshotHarness.withMocks(cfg, () -> UnitCardUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> UnitCardUi.frameStep(dt()))
 
     // ════════════════════════════════════════════════════════
     // TopBar（実ロジック駆動：advance → applyFrame は step が毎フレーム通す実経路）
@@ -640,14 +698,14 @@ mod TestUiSnapshots {
         let cfg = unitCardConfig();
         applyTopBar(frame, false);
         spawnCards();
-        discard SnapshotHarness.withMocks(cfg, () -> UnitCardUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> UnitCardUi.frameStep(dt()))
 
     /// TopBar + アクションメニュー（フル）。
     def driveHudActionMenu(): Unit \ (Fs.FileRead + GameEngine.Game + UiWorldState.State) =
         let cfg = actionFullConfig();
         applyTopBar(allyFrame(), false);
         spawnUi(ActionMenuUi.specPath());
-        discard SnapshotHarness.withMocks(cfg, () -> ActionMenuUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> ActionMenuUi.frameStep(dt()))
 
     /// 攻撃フロー最盛：WeaponSelect フェーズで TopBar + アクション + 武器選択 + 自軍/敵カードが同居。
     /// ActionMenu は WeaponSelect フェーズでも可視（随伴ウィンドウ）なので同じ config で全部が生きる。
@@ -657,17 +715,18 @@ mod TestUiSnapshots {
                              | basePlayer(0, "knight", {x = 1, y = 1})});
         let ally = mkPlayer(basePlayer(1, "paladin", {x = 2, y = 1}));
         let enemy = mkEnemy(9, "fighter_t1", {x = 1, y = 2}, 12, Some("iron_sword"));
-        let scene = worldScene() |> addPlayer(lord) |> addPlayer(ally) |> addEnemy(enemy, true);
+        // 敵カード（右）はフォグ導出の敵可視を要するため盤面を seed する（boardWorld）。
+        let world = emptyWorld() |> addPlayer(lord) |> addPlayer(ally) |> addEnemy(enemy) |> boardWorld;
         let cfg = {phase = TurnPhase.Phase.WeaponSelect, selectedId = Some(0), cursor = {x = 1, y = 2}
-                   | SnapshotHarness.config(scene)};
+                   | SnapshotHarness.config(world)};
         applyTopBar(allyFrame(), false);
         spawnUi(ActionMenuUi.specPath());
         spawnUi(WeaponSelectUi.specPath());
         spawnCards();
-        discard SnapshotHarness.withMocks(cfg, () -> {
-            discard ActionMenuUi.frameStep(dt(), cfg#scene);
-            discard WeaponSelectUi.frameStep(dt(), cfg#scene);
-            UnitCardUi.frameStep(dt(), cfg#scene)
+        SnapshotHarness.withMocks(cfg, () -> {
+            ActionMenuUi.frameStep(dt());
+            WeaponSelectUi.frameStep(dt());
+            UnitCardUi.frameStep(dt())
         })
 
     /// TopBar + 持ち物メニュー。
@@ -675,14 +734,14 @@ mod TestUiSnapshots {
         let cfg = itemSelectConfig();
         applyTopBar(allyFrame(), false);
         spawnUi(ItemMenuUi.specPath());
-        discard SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> ItemMenuUi.frameStep(dt()))
 
     /// TopBar(敵軍) + ゲームオーバーモーダル。
     def driveHudGameOver(): Unit \ (Fs.FileRead + UiWorldState.State) =
-        let cfg = {simPhase = SimPhase.GameOver | SnapshotHarness.config(worldScene())};
+        let cfg = {simPhase = SimPhase.GameOver | SnapshotHarness.config(emptyWorld())};
         applyTopBar(enemyFrame(), false);
         spawnUi(GameOverMenuUi.specPath());
-        discard SnapshotHarness.withMocks(cfg, () -> GameOverMenuUi.frameStep(dt(), cfg#scene))
+        SnapshotHarness.withMocks(cfg, () -> GameOverMenuUi.frameStep(dt()))
 
     // ════════════════════════════════════════════════════════
     // minimap（宣言フィクスチャを純粋 `minimapDrawList` に流して直描き）
@@ -691,7 +750,7 @@ mod TestUiSnapshots {
     // ミニマップは World-entity UI ではなく `RenderWorld.renderMinimap` の直描き System。実効果つきの
     // データ解決（訪問記憶 / ユニット位置 / 階段 / アイテムの読み）は live ゲーム & TestMinimapScene の
     // 純関数テストで担保し、ここでは「解決済みデータ → 幾何 → Drawable/Polygon」の中核 `minimapDrawList`
-    // だけを宣言フィクスチャで凍結する（scene / effect ハーネス不要 = 最小拡張）。
+    // だけを宣言フィクスチャで凍結する（World / effect ハーネス不要 = 最小拡張）。
     //
     // フィクスチャ地形（左下原点・y 下向き。数字=idx。#=壁 .=床）:
     //   部屋0 (0,0)-(6,5)   通路2 (6,1)-(12,3)   部屋1 (12,0)-(17,5)

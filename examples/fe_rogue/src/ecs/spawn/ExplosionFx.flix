@@ -1,9 +1,9 @@
 /// ExplosionFx — 一発再生の爆発エフェクト（火炎瓶 / 爆発瓶 / 魔法攻撃の着弾）
 ///
-/// `DamagePopupFx` と同じ「World 配下に永続の親 Marker2D を 1 つ持ち、emit で
-/// 子スプライトを連番でぶら下げ、process で寿命を減らしつつ自動消去する」流儀。
-/// 子は `explosion` テクスチャ（assets/effect/explosion.png）の **1 行目** を
-/// 寿命にわたって frame 0 → frameCount-1 まで送ることでコマ送りアニメする。
+/// `DamagePopupFx` と同じ「emit で World の store に 1 件積み、tick で寿命を減らして
+/// 期限切れを drop する」流儀（`Cmd.SpawnExplosionFx` で spawn・`stepWorld` が tick）。
+/// `explosion` テクスチャ（assets/effect/explosion.png）の **1 行目** を寿命にわたって
+/// frame 0 → frameCount-1 まで送ることでコマ送りアニメする。
 ///
 /// scene ノードは持たない。寿命・位置・scale すべて World の `explosionFx` store が持ち、
 /// 描画は `RenderWorld.renderExplosions` が Sprite2D 値を組んで直描きする（コマ送りは経過比率から導出）。
@@ -26,20 +26,16 @@ mod ExplosionFx {
     pub def zIndex(): Int32 = 90
 
     /// 指定セル中心に通常サイズの爆発を 1 つ発生させる。
-    pub def emitAtCell(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ World.Command =
-        emit(MapSnapshot.cellCenter(cell), scaleFactor(), scene)
+    pub def emitAtCell(cell: {x = Int32, y = Int32}): Unit \ World.Command =
+        emit(MapSnapshot.cellCenter(cell), scaleFactor())
 
     /// 指定セル中心に大きい爆発を 1 つ発生させる（爆発瓶用。3×3 範囲を覆う見た目）。
-    pub def emitBigAtCell(cell: {x = Int32, y = Int32}, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ World.Command =
-        emit(MapSnapshot.cellCenter(cell), bigScaleFactor(), scene)
+    pub def emitBigAtCell(cell: {x = Int32, y = Int32}): Unit \ World.Command =
+        emit(MapSnapshot.cellCenter(cell), bigScaleFactor())
 
     /// 指定ワールド座標に `scale` 倍の爆発を 1 つ発生させる。
-    /// `Cmd.SpawnExplosionFx` の emit のみ（ノード無し・scene はパイプ素通し）。
-    pub def emit(worldPos: Vec2.Vec2, scale: Float64, scene: Scene[NodeTag]):
-            Scene[NodeTag] \ World.Command =
+    /// `Cmd.SpawnExplosionFx` の emit のみ（ノード無し）。
+    pub def emit(worldPos: Vec2.Vec2, scale: Float64): Unit \ World.Command =
         World.Command.emit(World.Cmd.SpawnExplosionFx(
-            {total = Duration.toSeconds(lifetime()), pos = worldPos, scale = scale}));
-        scene
+            {total = Duration.toSeconds(lifetime()), pos = worldPos, scale = scale}))
 }

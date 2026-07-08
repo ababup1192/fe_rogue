@@ -5,7 +5,7 @@
 // smoothstep で再構成するため、16px ベイクのアトラスでも任意サイズで輪郭がくっきりする。
 //
 // 出力フォーマット:
-//   - 4096x4096 の単一チャンネルアトラス (GL_R8)。SDF は padding ぶん 1 字が大きいので拡張。
+//   - 単一チャンネルアトラス (GL_R8)。辺長は必要面積から 4096/8192 を自動選択。
 //   - Swizzle で R=1, G=1, B=1, A=red にして「白色 + 距離場を alpha」テクスチャ化
 //   - LINEAR フィルタ (距離場を滑らかに補間 → SDF のエッジが綺麗に出る)
 
@@ -23,11 +23,39 @@ mod RenderFont {
     /// U+0020..U+FFFF を cmap で走査し、グリフ index 0（.notdef）の字を除く。
     /// 「使う字を人間が登録する」方式はやめた: フォントに入っている字は全部焼けるので、
     /// 常用漢字リストにも追加登録（旧 extraKanji）にも依存しない。
-    /// 日本語フォント（PixelMplus 等）でも約 7,000〜8,000 字で、fontSize 10〜16 の
-    /// ベイクなら 4096x4096 に収まる。収まらなければベイク時に警告を出す（下記 overflow）。
+    /// アトラス辺長は下見の必要面積から自動で選ぶ（chooseAtlasSize）。
     def fontCodepoints(fontInfo: STBTTFontinfo): List[Int32] \ IO =
         List.range(0x20, 0x10000)
             |> List.filter(cp -> STBTruetype.stbtt_FindGlyphIndex(fontInfo, cp) != 0)
+
+    /// アトラス辺長の候補。R8 単チャンネルなので 8192² でも 64MB。
+    /// それ以上は CPU 側の直接バッファが巨大になるため候補に入れず、
+    /// 8192 でも収まらない場合は実ベイクの溢れ検査が起動エラーにする。
+    def atlasSizeCandidates(): List[Int32] = 4096 :: 8192 :: Nil
+
+    /// 下見: 各グリフの SDF セル寸法（bitmap box + 両側 padding + 詰めの 1px）を合計し、
+    /// シェルフパッキングの取りこぼし余裕 (+約14%) を上乗せして、収まる最小の辺長を選ぶ。
+    /// SDF 本体の生成より桁違いに軽い（矩形の計算だけでラスタライズしない）。
+    /// どの候補にも収まらない見積もりでも最大候補を返し、実ベイクの溢れ検査に委ねる。
+    def chooseAtlasSize(fontInfo: STBTTFontinfo, scale: Float32, padding: Int32, cps: List[Int32]): Int32 \ IO =
+        let cellArea = cp -> {
+            let stack = MemoryStack.stackPush();
+            let x0Buf = stack.mallocInt(1);
+            let y0Buf = stack.mallocInt(1);
+            let x1Buf = stack.mallocInt(1);
+            let y1Buf = stack.mallocInt(1);
+            STBTruetype.stbtt_GetCodepointBitmapBox(fontInfo, cp, scale, scale, x0Buf, y0Buf, x1Buf, y1Buf);
+            let w = x1Buf.get(0) - x0Buf.get(0) + 2 * padding + 1;
+            let h = y1Buf.get(0) - y0Buf.get(0) + 2 * padding + 1;
+            discard MemoryStack.stackPop();
+            w * h
+        };
+        let needed = List.foldLeft((acc, cp) -> acc + cellArea(cp), 0, cps);
+        let fits = size -> needed + needed / 7 <= size * size;
+        match List.find(fits, atlasSizeCandidates()) {
+            case Some(size) => size
+            case None       => 8192
+        }
 
     /// シェルフパッキングの進行状態。
     ///   glyphs   = 確定したグリフメトリクス (cp → GlyphMetrics)
@@ -51,10 +79,6 @@ mod RenderFont {
     /// 戻り値: (FontAtlas, TextureInfo) — TextureInfo は registry に登録する用。
     pub def bakeFontAtlas(entry: RenderAsset.FontEntry): (FontAtlas, RenderAsset.TextureInfo) \ IO =
         let f32 = RenderUtil.f32;
-        // 約 2,500 グリフ（常用漢字 + ASCII + かな + 全角）を SDF でベイクする。
-        // SDF はグリフ周囲に padding 距離場を持つぶん 1 字が大きくなるため 4096x4096 に拡張。
-        let bitmapSize  = 4096;
-        let bitmapSizeF = Int32.toFloat64(bitmapSize);
 
         // フォントファイルを ByteBuffer に読み込む
         let fis = new FileInputStream(entry#path);
@@ -96,6 +120,14 @@ mod RenderFont {
         let padding = 5;
         let onedge = 127i8;
         let pixDist = f32(127.0 / 5.0);
+
+        // ベイク対象と、それが収まる最小のアトラス辺長を決める。
+        // 日本語フルフォント × 大きめ fontSize でも自動で 8192 に広がるので、
+        // ゲーム側は fontSize を品質だけで選べばよい（容量の心配をしない）。
+        let cps = fontCodepoints(fontInfo);
+        let bitmapSize  = chooseAtlasSize(fontInfo, scale, padding, cps);
+        let bitmapSizeF = Int32.toFloat64(bitmapSize);
+        println("[RenderFont] '${entry#name}': ${List.length(cps)} グリフ → ${bitmapSize}x${bitmapSize} アトラス");
 
         // 全グリフを SDF 化してアトラスに敷き詰める（シェルフパッキング）。
         // bitmap は破壊的に書き込む。1 グリフ生成→blit→メトリクス確定をクロージャで回す。
@@ -161,13 +193,15 @@ mod RenderFont {
                 next
         };
         let initSt: PackState = { glyphs = Map.empty(), cx = 0, cy = 0, rowH = 0, overflow = 0 };
-        let finalSt = List.foldLeft(bakeGlyph, initSt, fontCodepoints(fontInfo));
-        let glyphs = finalSt#glyphs;
-        // 溢れは無音にしない: 空白文字化は「フォントが壊れた」ように見えるので、原因と対処を言う。
-        if (finalSt#overflow > 0)
-            println("[RenderFont] 警告: フォント '${entry#name}' の ${finalSt#overflow} 字が "
-                + "4096x4096 アトラスに収まらず空白になります（project.json の fontSize を下げてください）")
-        else ();
+        let finalSt = List.foldLeft(bakeGlyph, initSt, cps);
+        // 溢れは起動エラーにする: 空白文字での出荷は「フォントが壊れた」ように見え、
+        // 警告 1 行では見逃されるため（自動辺長選択後に届くのは極端な fontSize のみ）。
+        let glyphs =
+            if (finalSt#overflow > 0)
+                bug!("フォント '${entry#name}' の ${finalSt#overflow} 字が ${bitmapSize}x${bitmapSize} "
+                    + "アトラスに収まりません（project.json の fontSize を下げてください）")
+            else
+                finalSt#glyphs;
 
         fontInfo.free();
 

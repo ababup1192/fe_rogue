@@ -77,7 +77,7 @@ mod TestItemPickupPopupUi {
     def testReserveGetItemSoundReservesWithoutPopup(): Unit \ Assert =
         region rc {
             let observed = ItemPickupPopupState.withState(rc, () -> {
-                discard ItemPickupPopupUi.reserveGetItemSound(Scene.empty());
+                ItemPickupPopupUi.reserveGetItemSound();
                 let d = ItemPickupPopupState.State.get();
                 (d#soundPending, d#stage)
             });

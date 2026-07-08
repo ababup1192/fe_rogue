@@ -18,21 +18,21 @@
 ///                        attacking 中の敵 > キュー先頭の敵 > 非 alerted ならプレイヤーへフォールバック
 ///
 /// 追従先の座標は **World 権威**（`renderPosOf` の描画位置、未 seed の静止駒は `posOf` のセル中心）で読み、
-/// カーソルは `CursorState.renderPos`（スライド補間の視覚位置＝単一権威）を読む。Marker2D の
-/// globalPositionAt は読まない（駒 pixel 位置は World store が権威）。
+/// カーソルは `CursorState.renderPos`（スライド補間の視覚位置＝単一権威）を読む。
+/// 駒 pixel 位置は World store が権威（scene ノードの座標は読まない）。
 mod CameraScene {
 
     /// 毎フレーム 1 回、フェーズ別ターゲットを計算して `CameraState.advance` に渡す（frame-paced driver）。
-    /// gameLoop が Tween/AnimationPlayer で駒・カーソルの世界座標が反映された後に呼ぶ。scene は素通し
-    /// （カメラ状態は resource 権威で scene ノードを触らない）。ターゲットは World / resource 由来。
+    /// gameLoop が移動 tween・戦闘演出クロックで駒・カーソルの世界座標が反映された後に呼ぶ。
+    /// カメラ状態は resource 権威で scene ノードは触らない。ターゲットは World / resource 由来。
     /// カメラは盤面がある画面でのみ追従する（Title 等の盤面レス画面は advance を空回りさせない）。
-    pub def step(delta: Duration.Duration, scene: Scene[NodeTag]):
-                    Scene[NodeTag]
+    pub def step(delta: Duration.Duration):
+                    Unit
                     \ {GameEngine.Game, EnemyTurn.Queue,
                         TurnPhase.State, SelectedPlayer.State,
                         PlayerData.PartyQuery, EnemyData.RosterQuery,
                         CursorState.State, World.WorldQuery, CameraState.State} =
-        if (not MapScene.isPresent(scene)) scene
+        if (not World.hasBoard(World.WorldQuery.get())) ()
         else {
             let phase = TurnPhase.State.get();
             let selected = SelectedPlayer.State.get()#id;
@@ -40,12 +40,11 @@ mod CameraScene {
             let target = computeTarget(phase, selected, world);
             let vp = GameEngine.Game.getViewportRect();
             let viewport = {viewportWidth = vp#size#x, viewportHeight = vp#size#y};
-            CameraState.advance(target, isCenteredPhase(phase), delta, viewport);
-            scene
+            CameraState.advance(target, isCenteredPhase(phase), delta, viewport)
         }
 
     /// フロア構築時にカメラをパーティ先頭（id 0）へスナップする（カメラ初期位置の唯一の設定点）。
-    /// `SceneSetup.addHudAndDrivers` が PlayerScene.add（World へ位置 seed）後に 1 回呼ぶ。
+    /// `WorldSetup.setupHudAndDrivers` が PlayerScene.add（World へ位置 seed）後に 1 回呼ぶ。
     /// これで開始フレームから正しいフォーカス位置を映す（drag/smoothing の 1〜2 フレーム遅れを消す）。
     pub def snapToParty(): Unit \ {World.WorldQuery, CameraState.State} =
         CameraState.snapTo(unitWorldPos(World.EntityRef.Player(0), World.WorldQuery.get()))
@@ -110,13 +109,13 @@ mod CameraScene {
 
     /// 敵ターン中のカメラターゲットを決める。
     /// 優先順位:
-    ///   1. **attacking 中の敵** (attack_lunge アニメ中の敵) → 攻撃の見せ場を映す
+    ///   1. **attacking 中の敵** (lunge モーション中の敵) → 攻撃の見せ場を映す
     ///   2. **キュー先頭の敵** (移動中 / 次に行動する敵)
     /// その敵が `alerted` なら追従、非 alerted (Skip フェーズ) なら fallback (プレイヤー位置)。
     /// 「敵に発見されている状態では敵の動きが見える」ようにするためのロジック。
     def enemyTurnTarget(fallback: Vec2.Vec2, world: World):
             Vec2.Vec2 \ {EnemyTurn.Queue, EnemyData.RosterQuery} =
-        // 注目する敵: attack_lunge 中の敵を優先、居なければキュー先頭。内側 match は Option.map に畳む。
+        // 注目する敵: lunge 中の敵を優先、居なければキュー先頭。内側 match は Option.map に畳む。
         let activeId = match attackingEnemyId() {
             case Some(id) => Some(id)
             case None     => EnemyTurn.Queue.peekFront() |> Option.map(step -> step#id)
@@ -128,7 +127,7 @@ mod CameraScene {
         ) yield (if (d#alerted) unitWorldPos(World.EntityRef.Enemy(id), world) else fallback);
         Option.getWithDefault(fallback, target)
 
-    /// attack_lunge 中の敵 id を 1 つ返す。`stepEnemyTurn` が attacking 中は他の step を
+    /// lunge 中の敵 id を 1 つ返す。`stepEnemyTurn` が attacking 中は他の step を
     /// 進めない設計なので、複数 attacking 状態は通常起きない（防御的に head を取る）。
     def attackingEnemyId(): Option[Int32] \ EnemyData.RosterQuery =
         EnemyData.RosterQuery.getAll()
@@ -148,9 +147,9 @@ mod CameraScene {
                 }
         }
 
-    /// 指定 entity の現在ワールド座標を World store から読む（Marker2D は読まない）。
+    /// 指定 entity の現在ワールド座標を World store から読む。
     /// 移動 tween 中/移動済みは `renderPosOf`（描画位置の権威）、まだ動いていない静止駒は renderPos が
-    /// 未 seed なので `posOf` のセル中心へフォールバックする（Marker2D 初期配置 = セル中心と一致）。
+    /// 未 seed なので `posOf` のセル中心へフォールバックする（spawn 時の初期描画位置 = セル中心と一致）。
     /// 未登録 entity は原点（初期化前に呼ばれた場合の安全側）。
     def unitWorldPos(ref: World.EntityRef, world: World): Vec2.Vec2 =
         match World.renderPosOf(ref, world) {

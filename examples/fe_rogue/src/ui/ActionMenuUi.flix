@@ -151,7 +151,8 @@ mod ActionMenuUi {
     /// メニューフェーズの間だけ root を可視化し、文脈項目をスロットへ流し込む。
     /// ActionSelect ではカーソルが disabled 項目に乗っていたら選択可能項目へ寄せる（WeaponSelect
     /// 等の随伴フェーズではカーソルを固定して「攻撃」行のハイライトを保つ）。
-    pub def frameStep(_dt: Duration.Duration, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def frameStep(_dt: Duration.Duration):
+            Unit
             \ {TurnPhase.State, SelectedPlayer.State,
                PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery, UiWorldState.State,
                GameEngine.Game} =
@@ -162,10 +163,9 @@ mod ActionMenuUi {
             UiWorldState.State.put(ui
                 |> UiStore.setVisible(rootPath(), false)
                 |> fillSlots(Nil)
-                |> UiStore.putSelection(menuPath(), 0));
-            scene
+                |> UiStore.putSelection(menuPath(), 0))
         } else {
-            let items = buildItems(scene);
+            let items = buildItems();
             let ui0 = UiWorldState.State.get();
             let sel0 = UiStore.selectionOf(menuPath(), ui0);
             let itemCount = List.length(items);
@@ -188,8 +188,7 @@ mod ActionMenuUi {
                 |> UiStore.putSelection(menuPath(), sel)
                 |> applyTints(items, sel)
                 |> UiMenu.applyHighlight({listPath = menuPath(), highlightPath = highlightPath(),
-                                          sel = sel, rowPitch = rowPitch(), inset = highlightInset()}));
-            scene
+                                          sel = sel, rowPitch = rowPitch(), inset = highlightInset()}))
         }
 
     /// メニューウィンドウを表示するフェーズか（旧 applyVisibility の visible 集合と一致）。
@@ -253,21 +252,21 @@ mod ActionMenuUi {
 
     /// 選択カーソルを delta（±1）動かす（disabled をスキップ・端で回り込む）。
     /// 移動可能な項目が無ければ据え置く。移動音は onKeyPressed の isMenuCursorMove が鳴らす。
-    pub def moveSelection(delta: Int32, scene: Scene[NodeTag]): Scene[NodeTag]
+    pub def moveSelection(delta: Int32):
+            Unit
             \ {UiWorldState.State, SelectedPlayer.State,
                PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
-        let items = buildItems(scene);
+        let items = buildItems();
         let ui = UiWorldState.State.get();
         let count = List.length(items);
         let disabledAt = i -> List.nth(i, items) |> Option.map(e -> e#disabled) |> Option.getWithDefault(true);
         let next = UiWidget.selectionMoveSkipping(count, delta, UiStore.selectionOf(menuPath(), ui), disabledAt);
-        UiWorldState.State.put(UiStore.putSelection(menuPath(), next, ui));
-        scene
+        UiWorldState.State.put(UiStore.putSelection(menuPath(), next, ui))
 
     /// Z 押下から呼ばれる。現在カーソルがある項目を確定する（disabled は no-op）。
     /// 選択位置の項目はその場で buildItems を再現して index で引く（同一フレームなので一致）。
-    pub def confirmCurrentSelection(scene: Scene[NodeTag]):
-                                    Scene[NodeTag]
+    pub def confirmCurrentSelection():
+                                    Unit
             \ {RangeOverlayState.State,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
@@ -275,12 +274,13 @@ mod ActionMenuUi {
                 EnemyData.RosterQuery,
                 CustomEffects.FloorAdvanceRequest,
                 GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery,
-                ItemPickupPopupState.State, ItemMenuState.State, TradeMenuState.State, UiWorldState.State} =
+                ItemPickupPopupState.State, ItemMenuState.State, TradeMenuState.State, UiWorldState.State,
+                StairsExitDriver.State} =
         let sel = UiStore.selectionOf(menuPath(), UiWorldState.State.get());
-        match List.nth(sel, buildItems(scene)) {
+        match List.nth(sel, buildItems()) {
             // disabled 項目（例: 敵が射程外の「攻撃」）は確定しても何もしない。
-            case Some(entry) => if (entry#disabled) scene else onActionConfirmed(entry, scene)
-            case None        => scene
+            case Some(entry) => if (entry#disabled) () else onActionConfirmed(entry)
+            case None        => ()
         }
 
     /// メニューを閉じて元のフェーズに戻る（X / Escape）。戻り先の overlay / cursor 状態は
@@ -288,16 +288,16 @@ mod ActionMenuUi {
     ///   - gatherActive          → enterGatherMove   （集合・行軍へ。移動やり直し）
     ///   - SelectedPlayer = Some → enterPlayerMoving （駒操作中。カーソルは設計上非表示）
     ///   - SelectedPlayer = None → enterPlayerCursor （空マス由来。カーソル再表示＋snap）
-    pub def onActionCancelled(scene: Scene[NodeTag]):
-                              Scene[NodeTag] \ {RangeOverlayState.State,
+    pub def onActionCancelled():
+                              Unit \ {RangeOverlayState.State,
                                                 TurnPhase.State, SelectedPlayer.State, CursorState.State,
                                                 PlayerData.PartyQuery, World.Command, World.WorldQuery} =
         let sel = SelectedPlayer.State.get();
         if (sel#gatherActive)
-            PhaseTransitions.enterGatherMove(scene)
+            PhaseTransitions.enterGatherMove()
         else match sel#id {
-            case Some(_) => PhaseTransitions.enterPlayerMoving(scene)
-            case None    => PhaseTransitions.enterPlayerCursor(scene)
+            case Some(_) => PhaseTransitions.enterPlayerMoving()
+            case None    => PhaseTransitions.enterPlayerCursor()
         }
 
     // ========================================================================
@@ -306,23 +306,22 @@ mod ActionMenuUi {
 
     /// PlayerMoving + Z: 行動選択ウィンドウを開く（フェーズ = ActionSelect）。項目は frameStep が
     /// 毎フレーム再構築する。選択カーソルは非表示中に frameStep が先頭(0)へ戻してある。
-    pub def openFromMoving(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
-        openMenu(scene)
+    pub def openFromMoving(): Unit \ TurnPhase.State =
+        openMenu()
 
     /// PlayerCursor + Z（空マス）: 集合メニューを開く。SelectedPlayer は None のまま。
-    pub def openFromCursor(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
-        openMenu(scene)
+    pub def openFromCursor(): Unit \ TurnPhase.State =
+        openMenu()
 
     /// GatherMove + Z: 隣接メニュー（交換 / 全員待機）を開く。gatherActive は true のまま。
-    pub def openFromGather(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
-        openMenu(scene)
+    pub def openFromGather(): Unit \ TurnPhase.State =
+        openMenu()
 
     /// ActionSelect フェーズへ入る（共通実装）。3 経路は呼び出し元フェーズをコールサイトで
     /// 明示するために分けている（挙動同一）。選択カーソルは非表示中に frameStep が 0 に戻すので、
     /// 開いた最初のフレームは先頭（disabled なら firstEnabled）に乗る。
-    def openMenu(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
-        TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
-        scene
+    def openMenu(): Unit \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.ActionSelect)
 
     // ========================================================================
     // 項目の構築（旧 ActionMenuScene.buildItems・文脈依存）
@@ -332,12 +331,12 @@ mod ActionMenuUi {
     /// gatherActive=true のときは集合（行軍）の隣接メニュー、SelectedPlayer が None のときは
     /// 空マスメニュー、Some のときはその味方の行動メニュー。
     /// pub: 文脈分岐（項目の text/disabled/meta）をテストが直接 pin するため。
-    pub def buildItems(scene: Scene[NodeTag]): List[ItemEntry]
+    pub def buildItems(): List[ItemEntry]
             \ {SelectedPlayer.State, PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         let sel = SelectedPlayer.State.get();
         match (sel#gatherActive, sel#id) {
             case (true, _)         => gatherAdjacentMenuItems()
-            case (false, None)     => gatherMenuItems(scene)
+            case (false, None)     => gatherMenuItems()
             case (false, Some(id)) =>
                 PlayerData.PartyQuery.get(id)
                     |> Option.map(player -> selectedPlayerMenuItems(player))
@@ -434,13 +433,13 @@ mod ActionMenuUi {
 
     /// 「集合（行軍）」を開始できるか。生存味方が他に居て、主人公が未行動で、かつフォグで
     /// 見えている敵が 1 体もいないとき。空マスメニューの「集合」disabled 判定と C キー可否で共有。
-    pub def gatherEnabled(scene: Scene[NodeTag]): Bool \ PlayerData.PartyQuery =
-        gatherAvailable() and not lordWaited() and not EnemyScene.anyVisible(scene)
+    pub def gatherEnabled(): Bool \ {PlayerData.PartyQuery, SelectedPlayer.State, World.WorldQuery} =
+        gatherAvailable() and not lordWaited() and not EnemyScene.anyVisible()
 
     /// 通常の空マスメニュー項目。「集合」（開始不可時は disabled）と「ターンエンド」「中断」。
-    def gatherMenuItems(scene: Scene[NodeTag]): List[ItemEntry] \ PlayerData.PartyQuery =
+    def gatherMenuItems(): List[ItemEntry] \ {PlayerData.PartyQuery, SelectedPlayer.State, World.WorldQuery} =
         let gather =
-            ({text = "集合", disabled = not gatherEnabled(scene),
+            ({text = "集合", disabled = not gatherEnabled(),
               metadata = Some(gatherMeta())}: ItemEntry) :: Nil;
         let turnEnd =
             ({text = "ターンエンド", disabled = false,
@@ -451,18 +450,18 @@ mod ActionMenuUi {
         List.flatten(gather :: turnEnd :: suspend :: Nil)
 
     /// C キー / ゲームパッド Y のショートカット: メニューを開かず「集合」を直接確定する。
-    pub def gatherShortcut(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                              SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery,
+    pub def gatherShortcut():
+            Unit \ {GameLogger.GameLogger, TurnPhase.State,
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery, World.Command,
                               RangeOverlayState.State, CursorState.State} =
-        applyGather(scene)
+        applyGather()
 
     /// Shift 長押しゲージ満了時のショートカット: メニューを開かず「全員待機」と同じ。
-    pub def turnEndShortcut(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
+    pub def turnEndShortcut():
+            Unit \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                               World.Command, World.WorldQuery, RangeOverlayState.State} =
-        applyTurnEnd(scene)
+        applyTurnEnd()
 
     /// インベントリのいずれかの武器の射程内に生きている敵が居るか。
     def canAttackFrom(player: PlayerScene.Data): Bool \ EnemyData.RosterQuery =
@@ -500,49 +499,52 @@ mod ActionMenuUi {
     def actionIntentOf(metadata: String): Option[ActionIntent] =
         if (metadata == waitMeta()) Some(ActionIntent.Wait) else None
 
-    /// 適用: `ActionIntent` を scene へ適用する単一 dispatcher。
-    def applyActionIntent(intent: ActionIntent, scene: Scene[NodeTag]): Scene[NodeTag]
+    /// 適用: `ActionIntent` を World へ適用する単一 dispatcher。
+    def applyActionIntent(intent: ActionIntent):
+            Unit
             \ {RangeOverlayState.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                World.Command, World.WorldQuery} =
         match intent {
-            case ActionIntent.Wait => TurnFlow.commitWaitedAndAdvance(scene)
+            case ActionIntent.Wait => TurnFlow.commitWaitedAndAdvance()
         }
 
     /// 確定された項目の metadata を分岐して、それぞれの帰結を適用する。
     /// pub: confirm 経路のゲームロジック（wait/pickup/gather/turnEnd 等）をテストが pin するため。
-    pub def onActionConfirmed(entry: ItemEntry, scene: Scene[NodeTag]):
-                              Scene[NodeTag]
+    pub def onActionConfirmed(entry: ItemEntry):
+                              Unit
             \ {RangeOverlayState.State,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                 CursorState.State, GatherResume.State, PlayerData.PartyQuery,
                 CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, World.WorldQuery, BoardQuery,
-                ItemPickupPopupState.State, ItemMenuState.State, TradeMenuState.State} =
+                ItemPickupPopupState.State, ItemMenuState.State, TradeMenuState.State,
+                StairsExitDriver.State} =
         match entry#metadata {
-            case None    => scene
+            case None    => ()
             case Some(m) =>
                 match actionIntentOf(m) {
-                    case Some(intent) => applyActionIntent(intent, scene)
+                    case Some(intent) => applyActionIntent(intent)
                     case None         =>
-                if (m == attackMeta())        enterWeaponSelect(scene)
-                else if (m == exchangeMeta()) PhaseTransitions.enterTradeTargetSelect(scene)
-                else if (m == itemMeta())     openItemMenu(scene)
-                else if (m == pickupMeta())   applyPickup(scene)
-                else if (m == openMeta())     applyOpenChest(scene)
-                else if (m == gatherMeta())   applyGather(scene)
-                else if (m == turnEndMeta())  applyTurnEnd(scene)
-                else if (m == waitAllMeta())  applyTurnEnd(scene)
-                else if (m == suspendMeta())  SuspendConfirmUi.show(scene)
-                else if (m == stairsMeta())   applyStairs(scene)
-                else if (m == gatherTradeMeta()) openGatherTrade(scene)
-                else if (m == gatherStairsMeta()) StairsExitDriver.begin(scene)
-                else                          scene
+                if (m == attackMeta())        enterWeaponSelect()
+                else if (m == exchangeMeta()) PhaseTransitions.enterTradeTargetSelect()
+                else if (m == itemMeta())     openItemMenu()
+                else if (m == pickupMeta())   applyPickup()
+                else if (m == openMeta())     applyOpenChest()
+                else if (m == gatherMeta())   applyGather()
+                else if (m == turnEndMeta())  applyTurnEnd()
+                else if (m == waitAllMeta())  applyTurnEnd()
+                else if (m == suspendMeta())  SuspendConfirmUi.show()
+                else if (m == stairsMeta())   applyStairs()
+                else if (m == gatherTradeMeta()) openGatherTrade()
+                else if (m == gatherStairsMeta()) StairsExitDriver.begin()
+                else                          ()
                 }
         }
 
     /// 「かいだん」確定。選択中の味方を階段で退場させる。
-    def applyStairs(scene: Scene[NodeTag]): Scene[NodeTag]
+    def applyStairs():
+            Unit
             \ {RangeOverlayState.State,
                 GameLogger.GameLogger,
                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
@@ -552,38 +554,38 @@ mod ActionMenuUi {
         GameLogger.playerLog("階段を降りた");
         match SelectedPlayer.State.get()#id {
             case Some(id) =>
-                let exited = PlayerScene.useStairs(id, scene);
-                if (PlayerScene.allLivingUsedStairs(exited))
-                    CustomEffects.FloorAdvanceRequest.advance(exited)
+                PlayerScene.useStairs(id);
+                if (PlayerScene.allLivingUsedStairs())
+                    CustomEffects.FloorAdvanceRequest.advance()
                 else
-                    TurnFlow.commitWaitedAndAdvance(exited)
+                    TurnFlow.commitWaitedAndAdvance()
             case None =>
-                CustomEffects.FloorAdvanceRequest.advance(scene)
+                CustomEffects.FloorAdvanceRequest.advance()
         }
 
     /// 「アイテム」確定で ItemMenuUi を開く。
-    def openItemMenu(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery, RangeOverlayState.State, CursorState.State} =
+    def openItemMenu():
+            Unit \ {TurnPhase.State, SelectedPlayer.State, ItemMenuState.State, PlayerData.PartyQuery, RangeOverlayState.State, CursorState.State} =
         match SelectedPlayer.State.get()#id {
-            case None           => scene
-            case Some(playerId) => ItemMenuUi.openFor(playerId, scene)
+            case None           => ()
+            case Some(playerId) => ItemMenuUi.openFor(playerId)
         }
 
     /// 「交換」確定（集合の隣接メニュー）: 主人公＋隣接味方の N 人持ち物交換画面を開く。
-    def openGatherTrade(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {TurnPhase.State, PlayerData.PartyQuery, TradeMenuState.State, CursorState.State} =
-        PhaseTransitions.enterGatherTrade(gatherTradeMembers(), scene)
+    def openGatherTrade():
+            Unit \ {TurnPhase.State, PlayerData.PartyQuery, TradeMenuState.State, CursorState.State} =
+        PhaseTransitions.enterGatherTrade(gatherTradeMembers())
 
     /// 「集合」確定: 集合（行軍）モードを開始する（GatherMove フェーズへ）。
-    def applyGather(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, TurnPhase.State,
-                              SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery,
+    def applyGather():
+            Unit \ {GameLogger.GameLogger, TurnPhase.State,
+                              SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery, World.Command,
                               RangeOverlayState.State, CursorState.State} =
         if (leaderWaited())
-            { GameLogger.playerLog("リーダーは既に行動済みです。"); scene }
+            GameLogger.playerLog("リーダーは既に行動済みです。")
         else {
             GameLogger.playerLog("集合");
-            PlayerScene.beginGather(scene)
+            PlayerScene.beginGather()
         }
 
     /// 主人公(リーダー)が既に行動済み(waited)か。集合確定のガードに使う。
@@ -593,25 +595,26 @@ mod ActionMenuUi {
             |> Option.getWithDefault(false)
 
     /// 「ターンエンド」／集合の「全員待機」確定。`TurnFlow.commitAllWaitedAndAdvance` に委譲する。
-    def applyTurnEnd(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger, EnemyTurn.Queue,
+    def applyTurnEnd():
+            Unit \ {GameLogger.GameLogger, EnemyTurn.Queue,
                               TurnPhase.State, SelectedPlayer.State, GatherResume.State,
                               World.Command, World.WorldQuery, RangeOverlayState.State} =
-        TurnFlow.commitAllWaitedAndAdvance(true, scene)
+        TurnFlow.commitAllWaitedAndAdvance(true)
 
     /// 「ひろう」確定の本体。床アイテムを取得してインベントリに加える（ターン消費しない）。
-    def applyPickup(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger,
+    def applyPickup():
+            Unit \ {GameLogger.GameLogger,
                               SelectedPlayer.State, PlayerData.PartyQuery, World.Command, World.WorldQuery,
                               ItemPickupPopupState.State} =
         match pickupTarget() {
-            case None       => scene
+            case None       => ()
             case Some(info) =>
                 if (wouldPickupOverload(info))
-                    ItemPickupPopupUi.showFull(scene)
-                else
-                    PlayerScene.pickupFloorItem(info#playerId, info#gridPos, scene)
-                        |> ItemPickupPopupUi.reserveGetItemSound
+                    ItemPickupPopupUi.showFull()
+                else {
+                    PlayerScene.pickupFloorItem(info#playerId, info#gridPos);
+                    ItemPickupPopupUi.reserveGetItemSound()
+                }
         }
 
     /// 拾う主体が足元の床アイテムを拾うと重量過多になるか。
@@ -625,21 +628,22 @@ mod ActionMenuUi {
         }
 
     /// 「あける」確定。宝箱に乗った駒で開錠を試みる。
-    def applyOpenChest(scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {GameLogger.GameLogger,
+    def applyOpenChest():
+            Unit \ {GameLogger.GameLogger,
                               SelectedPlayer.State, PlayerData.PartyQuery, World.Command, World.WorldQuery,
                               ItemPickupPopupState.State} =
         match openTarget() {
-            case None                      => scene
+            case None                      => ()
             case Some((info, player, chest)) =>
                 if (not PlayerScene.canOpenChests(player))
-                    ItemPickupPopupUi.showMessage("開けることができない", scene)
+                    ItemPickupPopupUi.showMessage("開けることができない")
                 else if (PlayerScene.wouldOverloadByPicking(player, chest#content))
-                    ItemPickupPopupUi.showFull(scene)
-                else
-                    PlayerScene.addPickedItem(info#playerId, chest#content, scene)
-                        |> Chests.takeAt(info#gridPos)
-                        |> ItemPickupPopupUi.reserveGetItemSound
+                    ItemPickupPopupUi.showFull()
+                else {
+                    PlayerScene.addPickedItem(info#playerId, chest#content);
+                    Chests.takeAt(info#gridPos);
+                    ItemPickupPopupUi.reserveGetItemSound()
+                }
         }
 
     /// 開錠対象を 1 本の Option 連鎖で解決する。
@@ -669,7 +673,6 @@ mod ActionMenuUi {
         ) yield {playerId = playerId, gridPos = player#gridPos}
 
     /// 「こうげき」確定時の遷移: 武器選択ウィンドウ (WeaponSelect) を開く。
-    def enterWeaponSelect(scene: Scene[NodeTag]): Scene[NodeTag] \ TurnPhase.State =
-        TurnPhase.State.put(TurnPhase.Phase.WeaponSelect);
-        scene
+    def enterWeaponSelect(): Unit \ TurnPhase.State =
+        TurnPhase.State.put(TurnPhase.Phase.WeaponSelect)
 }

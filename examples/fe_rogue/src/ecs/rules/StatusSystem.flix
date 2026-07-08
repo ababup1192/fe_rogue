@@ -10,7 +10,7 @@
 ///   - ちから薬   → `AtkUp`（攻+N）を自分に付与
 ///   - すばやさ薬 → `SpdUp`（速+N＝回避アップ）を自分に付与
 ///
-/// このモジュールは Scene[NodeTag] / effect / Java 呼び出しに依存しない。
+/// このモジュールは World / effect / Java 呼び出しに依存しない。
 /// 効果値を戦闘へ反映するのは `PlayerScene.combatView` / `EnemyScene.combatView`
 /// （`StatusSystem.sumOf` を攻撃力・速さ・命中補正に足し込む）、
 /// 毎ターンの減算は `PlayerScene.clearAllWaited` / `EnemyScene.clearActedAll`

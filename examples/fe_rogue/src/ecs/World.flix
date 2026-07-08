@@ -46,23 +46,41 @@ pub type alias ExplosionFx = { remaining = Float64, total = Float64, pos = Vec2.
 /// 攻撃ごとの通し番号（撃つたびの表情替え。同じ値なら同じ絵）。
 pub type alias FireShot = { remaining = Float64, total = Float64, caster = Vec2.Vec2, target = Vec2.Vec2, seed = Int32 }
 
+/// 体当たり攻撃（lunge）の store エントリ（秒・実時間）。攻撃側が origin → target → origin と
+/// 往復する。位置は `lungeRenderPos` が `elapsed` から純関数導出する（FireShot と同じ「値＋導出」lane）。
+/// `hitAt`（中点＝target に重なる瞬間）で AttackHit、`total`（終端）で LungeDone を
+/// `stepAnimClocks` が signal として発火する。`hitFired` は中点発火の一回性フラグ。
+/// クロックは `stepAnimClocks`（入力処理の後・戦闘 signal 解決の前）だけが進める（stepWorld は触らない）。
+pub type alias LungeAnim = { origin = Vec2.Vec2, target = Vec2.Vec2, elapsed = Float64,
+                             hitAt = Float64, total = Float64, hitFired = Bool }
+
 /// ユニットの再生中アニメ（AnimatedSprite2D の脱ノード化）。frame/frameProgress は保存せず、
 /// `elapsed`（再生開始からの実時間秒・stepWorld が加算）から描画時に純関数で導出する
 /// （ループ/コマ毎 duration 倍率込み＝engine advanceFrame と同値）。`Cmd.SetAnim` は
 /// AnimatedSprite2D.play の意味論（同名=継続/別名=リセット）を再現する。
 pub type alias UnitAnim = { name = String, elapsed = Float64 }
 
-/// 1 フレームで移動（Position tween）した entity の marker 駆動情報（EntityRef＋補間 pixel）。
-/// `stepWorld` が active∪done を返し、`RenderWorld.syncMarkers` が実 scene の marker を pos へ置く。
+/// 1 フレームで移動（Position tween）した entity の補間結果（EntityRef＋補間 pixel）。
+/// `stepWorld` が active∪done を返す（テストの補間観測用。描画は renderPos store を
+/// `visualPosOf` で直接導出するため、production の読者はいない）。
 /// 同型 Vec2 の誤順を防ぐ名前渡し＋faction を EntityRef に閉じ込め（uid は plumbing 内で decode）。
 pub type alias MarkerMove = { ref = World.EntityRef, pos = Vec2.Vec2 }
 
 /// GPU タイルレイヤーの軽量描画ハンドル（静的・per-cell TileData 非保持）。scene の TileMapLayer ノード
 /// から rebuild 時に bake し、毎フレーム camera 適用して engine `TileMapRenderCmd` に組む。フィールドは engine の
-/// `TileMapRenderCmd`/`TileMapLayer` に一致（`tileVaoId`/`tileCount`）。`worldPos` は globalPositionAt（camera parity）。
+/// `TileMapRenderCmd`/`TileMapLayer` に一致（`tileVaoId`/`tileCount`）。`worldPos` はレイヤーの world 座標（camera parity）。
 pub type alias TileLayerHandle = {
     textureName = String, tileSize = Float64, worldPos = Vec2.Vec2,
     color = Color, zIndex = Int32, tileVaoId = Int32, tileCount = Int32
+}
+
+/// フロアのマップ生成 Plan と安全スポーン地点（build choke が `Cmd.SetMapLayout` で書く）。
+/// `plan` は中断/全滅復元で同一マップを乱数なしに再構築する保存対象（FloorSnapshot が読む）、
+/// `spawnGrid` は anchor 部屋内の床が保証されたセルで PlayerScene の初期配置起点。
+/// 部屋数は `plan#roomCount`（placements は `mapSnapshot#placements`）から読む。
+pub type alias MapLayout = {
+    plan = DungeonGenerator.Plan,
+    spawnGrid = {x = Int32, y = Int32}
 }
 
 pub enum World {
@@ -78,16 +96,13 @@ pub enum World {
                  // hp の read-model（query/セーブ/決定論テスト用）。
                  // hp は単一 store（player uid=id / enemy uid=id+base）。
                  hp = Map[EntityId, Int32],
-                 // weapons の command-derive store（hp 同型・preserve+prune）。player は weapons(List)
-                 // をそのまま、enemy は単数 weapon(Option) を 0/1 要素 List に射影。reader flip はしない
-                 // （combatView/unitView は scene #weapons を読む）＝挙動不変。全 weapon 書込が `Cmd.SetWeapons`
-                 // を dual-write し `[WEAPONS DIFF]` で完備性を検証可能にする。
+                 // weapons の store（hp 同型・単独権威）。player は weapons(List) をそのまま、
+                 // enemy は単数 weapon(Option) を 0/1 要素 List に射影。全 weapon 書込は `Cmd.SetWeapons`
+                 // のみ（scene の在庫 twin は spawn 時値の視覚残余）。読み手は weaponsOf / dataFromWorld。
                  weapons = Map[EntityId, List[UnitCatalog.WeaponResource]],
-                 // staves/consumables/rings の command-derive store（weapons 同型・player-only・preserve+prune）。
+                 // staves/consumables/rings の store（weapons 同型・player-only・単独権威）。
                  // 敵は杖/薬/指輪インベントリを持たない（EnemyData に該当 field なし）ので store も player id keyed。
-                 // reader flip はしない（各メニューは scene #staves/#consumables/#rings を読む）＝挙動不変。
-                 // 全 staves/consumables/rings 書込が `Cmd.SetStaves/SetConsumables/SetRings` を dual-write し
-                 // `[STAVES/CONSUMABLES/RINGS DIFF]` で完備性を検証可能にする。
+                 // 書込は `Cmd.SetStaves/SetConsumables/SetRings` のみ・読み手は各 accessor / dataFromWorld。
                  staves = Map[EntityId, List[Staff.StaffResource]],
                  consumables = Map[EntityId, List[Consumable.ConsumableResource]],
                  rings = Map[EntityId, List[Ring.RingResource]],
@@ -112,6 +127,9 @@ pub enum World {
                  unitFlipH = Map[EntityId, Bool],
                  unitModulate = Map[EntityId, Color],
                  dyingElapsed = Map[EntityId, Float64],
+                 // 進行中の体当たり攻撃（lunge）。`Cmd.StartLunge` が seed し、`stepAnimClocks` が
+                 // クロックを進めて中点 Hit / 完了 Done を signal 化・完了で除去する。位置は導出（lungeRenderPos）。
+                 lunges = Map[EntityId, LungeAnim],
                  // 盤面除外（集合・階段退場）中の味方 id。Board.pieces は hidden 味方を除くので fromWorld に必要。
                  playerHidden = Set[EntityId],
                  // 敵の検知フラグ（dormant→chase）。
@@ -157,10 +175,32 @@ pub enum World {
                  // level-up 成長に要る resource 由来データ（基準 Stats + 成長率）。
                  // player-only・SetGrowth が書く command-derive。resolveCombat の level-up を World 完結に。
                  growth = Map[EntityId, Growth],
+                 // 味方テンプレート（クラス id / UnitResource 本体）。spawn で seed し、resource を
+                 // 書き換えるサイト（level-up の成長反映・最大 HP 変化・carry/復元）が SetPlayerResource で
+                 // 更新する。`dataFromWorld`（scene 非依存の Data 再構築）と保存 capture が読む。
+                 playerClassId = Map[EntityId, String],
+                 playerResource = Map[EntityId, UnitCatalog.UnitResource],
+                 // ItemMenu の選択中アイテム（非在=未選択）。player-only・SetSelectedItem が書く。
+                 playerSelectedItem = Map[EntityId, PlayerData.ItemKind],
+                 // 味方の向き（walk アニメの向き・保存 capture が読む）。player-only・SetFacing が書く。
+                 playerFacing = Map[EntityId, Dir4.Dir4],
+                 // 直近レベルアップ結果（非在=なし）。LevelUpPanel の modal trigger が読み、
+                 // 演出消化で SetPendingLevelUp(None) が下ろす。player-only。
+                 playerPendingLevelUp = Map[EntityId, LevelSystem.Result],
+                 // AutoMove の当ターン進行済みマス数（0..moveTiles）。player-only・SetMoveSteps が書く。
+                 playerMoveSteps = Map[EntityId, Int32],
+                 // 敵テンプレート（EnemyResource 本体 / catalog id / スポーン部屋 idx）。spawn で seed し、
+                 // resource は最大 HP 変化サイトが SetEnemyResource で更新する。`dataFromWorldEnemy` と保存 capture が読む。
+                 enemyResource = Map[EntityId, EnemyCatalog.EnemyResource],
+                 enemyResourceId = Map[EntityId, String],
+                 enemyHomeModule = Map[EntityId, Int32],
                  // 静的地形スナップショット（プレーンな type-alias＝storable）。
                  // ノックバックの着地計算が要する `boardOf` の地形ソース。empty()=None（シーン未確定）。
-                 // floor build choke の `Cmd.SetMapSnapshot` が書く（`BoardSnapshot.mapSnapshotOf(scene)` 由来・toBoard と同源）。
+                 // floor build choke の `Cmd.SetMapSnapshot` が書く（`MapSetup` が compose 結果から組む・boardOf の地形源）。
                  mapSnapshot = Option[MapSnapshot],
+                 // マップ生成 Plan＋スポーン起点（None=盤面レス画面）。build choke の `Cmd.SetMapLayout` が書き、
+                 // spawn 系（Player 初期配置）と FloorSnapshot 保存（plan）が読む。roomCount も plan から導く。
+                 mapLayout = Option[MapLayout],
                  // 階段セル座標の read-model（None=未配置）。`Stairs.getPos(scene)`
                  // 由来を `Cmd.SetStairs` が書く（mapSnapshot と同型）。warp 先計算（`warpCellFor`）が読む。
                  stairsPos = Option[{x = Int32, y = Int32}],
@@ -188,12 +228,9 @@ pub enum World {
                  // 魔導書攻撃の炎 3 幕 fx。spawn は `Cmd.SpawnFireShot`（applyCmd が nextSeq を seed に採番し +1）、
                  // 老化と cull は stepWorld の tickFxMap（explosionFx と同 lane）。~1.1s の transient ゆえ prune 不要。
                  fireShots = Map[Int32, FireShot], fireShotsNextSeq = Int32,
-                 // 背景 map タイルの描画ハンドル（floor+walls 層・静的）。rebuild イベント（tileGen 変化）で
-                 // bake し、render System が camera 適用して instanced 描画。scene TileMapLayer ノードは衝突用に存続。
+                 // 背景 map タイルの描画ハンドル（floor+walls 層・静的）。build choke の
+                 // `Cmd.SetTileLayers` が seed し、render System が camera 適用して instanced 描画。
                  tileLayers = List[TileLayerHandle],
-                 // マップ再構築の世代カウンタ。build choke（buildPlayingScene/rebuildFloorFromSnapshot）が
-                 // `Cmd.BumpTileGen` で +1。gameLoop は world1 と incoming world の gen を比べ、変化時のみ tileLayers を bake。
-                 tileGen = Int32,
                  // 敵特殊能力 effectRule の生 Json read-model（unified-id・敵のみ）。
                  // 内側 Option=ルールなし。enemy `#resource#effectRule`（Option[Json]）由来＝weaponView と同じ
                  // Option-store パターン（accessor が flatten）。`Cmd.SetEffectRule` が書く。敵パスの sim 発火判定が読む。
@@ -222,6 +259,7 @@ mod World {
                      renderPos = Map.empty(), tweens = Map.empty(),
                      unitAnim = Map.empty(), unitFlipH = Map.empty(),
                      unitModulate = Map.empty(), dyingElapsed = Map.empty(),
+                     lunges = Map.empty(),
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(), enemyActed = Map.empty(),
                      enemyDying = Set.empty(),
                      enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
@@ -234,7 +272,13 @@ mod World {
                      moveTiles = Map.empty(),
                      equippedRing = Map.empty(),
                      growth = Map.empty(),
+                     playerClassId = Map.empty(), playerResource = Map.empty(),
+                     playerSelectedItem = Map.empty(), playerFacing = Map.empty(),
+                     playerPendingLevelUp = Map.empty(), playerMoveSteps = Map.empty(),
+                     enemyResource = Map.empty(), enemyResourceId = Map.empty(),
+                     enemyHomeModule = Map.empty(),
                      mapSnapshot = None,
+                     mapLayout = None,
                      stairsPos = None,
                      visited = Set.empty(),
                      chests = Map.empty(),
@@ -242,7 +286,7 @@ mod World {
                      popupFx = Map.empty(), popupFxNextSeq = 0,
                      explosionFx = Map.empty(), explosionFxNextSeq = 0,
                      fireShots = Map.empty(), fireShotsNextSeq = 0,
-                     tileLayers = Nil, tileGen = 0,
+                     tileLayers = Nil,
                      effectRule = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false,
                      rng = Prng.seed(0i64)})
@@ -255,119 +299,10 @@ mod World {
     pub def mirrorTurnPhase(phase: SimPhase, world: World): World =
         let World.World(w) = world; World.World({turnPhase = phase | w})
 
-    /// scene→World の一方向 sync（純粋・読み取りのみ）。tick を 1 進め、id 集合と statuses を scene から写す。
-    /// PlayerScene.getAll / EnemyScene.getAll（既存・純粋）を再利用（新規走査は書かない）。
-    /// attackTargetId(Option) を持つ unit list を `Map[id, target]`（None は非在）に畳む。
-    /// row-poly で Player/Enemy Data 両対応。
-    def attackTargetMap(uidOf: Int32 -> EntityId, units: List[{id = Int32, attackTargetId = Option[Int32] | r}]): Map[EntityId, Int32] =
-        List.foldLeft((m, d) -> match d#attackTargetId {
-            case Some(t) => Map.insert(uidOf(d#id), t, m)
-            case None    => m
-        }, Map.empty(), units)
-
-    /// scene に Map ノードがあれば地形 snapshot を取り、無ければ None（`BoardSnapshot.mapSnapshotOf` /
-    /// `MapScene.getMapLayer` は Map 不在で `bug!` する＝map-less な最小 scene でも安全に sync するためのガード）。
-    def mapSnapshotOpt(scene: Scene[NodeTag]): Option[MapSnapshot] =
-        match Scene.getEngineNode(MapScene.mapPath(), scene) {
-            case Some(_) => Some(BoardSnapshot.mapSnapshotOf(scene))
-            case None    => None
-        }
-
-    pub def syncFromScene(scene: Scene[NodeTag], world: World): World =
-        let World.World(w) = world;
-        let players = PlayerScene.getAll(scene);
-        let enemies = EnemyScene.getAll(scene);
-        World.World({
-            tick           = w#tick + 1,
-            turnPhase      = w#turnPhase,   // mirror は gameLoop が行う・ここは保持
-            playerIds      = Query.tagOf(d -> d#id, players),
-            enemyIds       = Query.tagOf(d -> d#id, enemies),
-            team           = teamTags(players, enemies),
-            statusEffects = Map.union(Query.indexBy(d -> d#id, d -> d#statuses, players),
-                                      Query.indexBy(d -> enemyUid(d#id), d -> d#statuses, enemies)),
-            hp = Map.union(Query.indexBy(d -> d#id, d -> d#hp, players),
-                           Query.indexBy(d -> d#id + enemyUidBase(), d -> d#hp, enemies)),
-            // weapons は frame-1 初期 world のみ scene から mirror（以後は command 由来を保持）。
-            // player は weapons(List) をそのまま、enemy は単数 weapon(Option) を Option.toList で 0/1 List に射影。
-            weapons = Map.union(Query.indexBy(d -> d#id, d -> d#weapons, players),
-                                Query.indexBy(d -> enemyUid(d#id), d -> Option.toList(d#weapon), enemies)),
-            // staves/consumables/rings/ringEquipped は frame-1 初期 world のみ scene から mirror（player-only）。
-            staves      = Query.indexBy(d -> d#id, d -> d#staves, players),
-            consumables = Query.indexBy(d -> d#id, d -> d#consumables, players),
-            rings       = Query.indexBy(d -> d#id, d -> d#rings, players),
-            ringEquipped = Query.indexBy(d -> d#id, d -> d#ringEquipped, players),
-            pos = Map.union(Query.indexBy(d -> d#id, d -> d#gridPos, players),
-                            Query.indexBy(d -> enemyUid(d#id), d -> d#gridPos, enemies)),
-            renderPos = Map.empty(), tweens = Map.empty(),  // World-native（spawn の SetRenderPos で seed）
-            // 描画 view store は command/step 由来＝preserve（spawn emit が seed）。
-            unitAnim = w#unitAnim, unitFlipH = w#unitFlipH,
-            unitModulate = w#unitModulate, dyingElapsed = w#dyingElapsed,
-            playerHidden   = Query.tagOf(d -> d#id, List.filter(d -> d#hidden, players)),
-            enemyDying     = Query.tagOf(d -> enemyUid(d#id), List.filter(d -> d#isDying, enemies)),
-            enemyAlerted   = Query.indexBy(d -> enemyUid(d#id), d -> d#alerted, enemies),
-            enemyActed     = Query.indexBy(d -> enemyUid(d#id), d -> d#acted, enemies),
-            enemyBottleUsed = Query.indexBy(d -> enemyUid(d#id), d -> d#bottleUsed, enemies),
-            enemyPrevPos   = List.foldLeft((m, d) -> match d#prevPos {
-                                 case Some(p) => Map.insert(enemyUid(d#id), p, m)
-                                 case None    => m
-                             }, Map.empty(), enemies),
-            followUpUsed = Map.union(Query.indexBy(d -> d#id, d -> d#followUpUsed, players),
-                                     Query.indexBy(d -> enemyUid(d#id), d -> d#followUpUsed, enemies)),
-            playerWaited   = Query.indexBy(d -> d#id, d -> d#waited, players),
-            playerUsedStairs = Query.indexBy(d -> d#id, d -> d#usedStairs, players),
-            playerLevel    = Query.indexBy(d -> d#id, d -> d#level, players),
-            playerExp      = Query.indexBy(d -> d#id, d -> d#exp, players),
-            baseStats = Map.union(Query.indexBy(d -> d#id, d -> Combat.baseStatsFrom(d#resource), players),
-                                  Query.indexBy(d -> enemyUid(d#id), d -> Combat.baseStatsFrom(d#resource), enemies)),
-            weaponView = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedWeaponView(d), players),
-                                   Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedWeaponView(d), enemies)),
-            ringBonus = Map.union(Query.indexBy(d -> d#id, d -> PlayerScene.equippedRingBonus(d), players),
-                                  Query.indexBy(d -> enemyUid(d#id), d -> EnemyScene.equippedRingBonus(d), enemies)),
-            // moveTiles も scene Data から frame-1 seed（base のみ・両 faction）。
-            moveTiles = Map.union(Query.indexBy(d -> d#id, d -> d#moveTiles, players),
-                                  Query.indexBy(d -> enemyUid(d#id), d -> d#moveTiles, enemies)),
-            // equippedRing も装備指輪由来の read-model（内側 Option=未装備）＝ringBonus と同源で seed。
-            equippedRing = Map.union(Query.indexBy(d -> d#id, d -> PlayerData.equippedRing(d), players),
-                                     Query.indexBy(d -> enemyUid(d#id), d -> d#ring, enemies)),
-            // growth は player-only・resource 由来 read-model（frame-1 seed）。
-            growth = Query.indexBy(d -> d#id,
-                        d -> ({base = LevelSystem.statsOf(d#resource), rates = d#resource#growthRates, name = d#resource#description}: Growth), players),
-            // mapSnapshot は scene 静的地形（toBoard が借りるのと同源）を seed。
-            mapSnapshot = mapSnapshotOpt(scene),
-            // stairsPos は frame-1 seed だけ scene の Stairs ノードから読む（hp と同型）。以後は
-            // `Cmd.SetStairs`（placeAt）由来を保持＝World 権威。
-            stairsPos = Stairs.getPos(scene),
-            // 探索記憶は command 由来（AddVisited/ClearVisited）＝sync パスでも preserve。
-            visited = w#visited,
-            // chests は純 command 由来（SpawnChest/RemoveChest/ClearChests）＝
-            // sync パスでも preserve（seed は build choke の Spawn emit が担う）。
-            chests = w#chests,
-            // production はノードを積まないため常に空＝実質 preserve と同義。手組み
-            // GroundItem ノードで World を seed するテスト seam（stairs の getPos seed と同型）として残置。
-            groundItems = itemsFromScene(scene),
-            // fx は command/step 由来＝preserve（scene mirror 元なし・transient）。
-            popupFx = w#popupFx, popupFxNextSeq = w#popupFxNextSeq,
-            explosionFx = w#explosionFx, explosionFxNextSeq = w#explosionFxNextSeq,
-            fireShots = w#fireShots, fireShotsNextSeq = w#fireShotsNextSeq,
-            // tileLayers/tileGen は command-derive（BumpTileGen/setTileLayers）＝preserve（frame-1 は空/0 を carry）。
-            tileLayers = w#tileLayers, tileGen = w#tileGen,
-            // effectRule は敵 resource 由来の read-model（敵のみ・内側 Option=ルールなし）＝frame-1 seed。
-            effectRule = Query.indexBy(d -> enemyUid(d#id), d -> d#resource#effectRule, enemies),
-            attackTarget = Map.union(attackTargetMap(id -> id, players),
-                                     attackTargetMap(enemyUid, enemies)),
-            // scene に mirror 元がない scalar bool は前 world の値を保持（command 由来）。
-            enemyTurnBusy      = w#enemyTurnBusy,
-            phaseObservedEnemy = w#phaseObservedEnemy,
-            // PRNG 状態は scene mirror 元なし＝前 world を verbatim carry
-            // （さもないと毎フレーム seed が silently reset される）。
-            rng                = w#rng
-        })
-
     /// per-frame の World 更新。**縮退版**: 全 store が command 権威（spawn/despawn/build choke の Cmd が
     /// 唯一の書込・prune は `Cmd.Despawn`/`Cmd.ClearUnits` が担う）なので、scene からの derive/prune は無い。
     /// 残る仕事は frame カウンタを 1 進めるだけ（scene 引数も持たない）。
     /// 初期 seed と床移動/復活/中断再開の reseed は spawn funnel（addOnePlayer/addOneEnemy）の Cmd emit が担う。
-    /// `syncFromScene`（gridPos を読む版）は frame-1 初期 world（Game.start）専用。
     pub def refreshMirror(world: World): World =
         let World.World(w) = world;
         World.World({tick = w#tick + 1 | w})
@@ -440,6 +375,58 @@ mod World {
             case _ => bug!("EcsTween: impossible (channel, out) combo")
         }
 
+    /// 戦闘演出クロックの発火 signal。`stepAnimClocks` が返し、`CombatDriver.stepEntities` が
+    /// 自 entity 宛だけを拾って解決する（AttackHit=ダメージ適用 / LungeDone=反撃・確定 /
+    /// DeathBlinkDone=撃破 SE＋ノード除去）。
+    pub enum AnimSignal {
+        case AttackHit(EntityRef)
+        case LungeDone(EntityRef)
+        case DeathBlinkDone(EntityRef)
+    }
+
+    /// 戦闘演出クロックを 1 フレームぶん進め、発火した signal を返す。
+    /// gameLoop が入力処理の後・戦闘 signal 解決（`CombatDriver.stepEntities`）の前に 1 回呼ぶ。
+    ///   - lunge: elapsed += dt の後、中点（hitAt <= elapsed・未発火）で AttackHit、
+    ///     終端（elapsed/total >= 1.0）で LungeDone を発火し store から除去する。
+    ///     入力処理で始まった lunge はそのフレームから進む（開始と同フレームに 1 tick）。
+    ///   - 死亡点滅: dyingElapsed（stepWorld が加算・描画 alpha と同じクロック）が全長
+    ///     blinkTotal に達した敵に DeathBlinkDone を発火する。consumer（completeDeath）の
+    ///     Despawn が dying store を除去するため二重発火しない。
+    /// GameOver 中は呼ばない約束（盤面フリーズ＝進行も発火も止まる）。
+    pub def stepAnimClocks(dt: Float64, blinkTotal: Float64, world: World): (World, List[AnimSignal]) =
+        let World.World(w) = world;
+        let (lunges1, lungeSigs) = Map.foldLeftWithKey((acc, uid, l) -> {
+            let (m, sigs) = acc;
+            let e2 = l#elapsed + dt;
+            let hitNow  = (not l#hitFired) and l#hitAt <= e2;
+            let doneNow = l#total <= 0.0 or e2 / l#total >= 1.0;
+            let sigs1 = if (hitNow)  AnimSignal.AttackHit(uidToRef(uid)) :: sigs  else sigs;
+            let sigs2 = if (doneNow) AnimSignal.LungeDone(uidToRef(uid)) :: sigs1 else sigs1;
+            let m1 = if (doneNow) m
+                     else Map.insert(uid, {elapsed = e2, hitFired = l#hitFired or hitNow | l}, m);
+            (m1, sigs2)
+        }, (Map.empty(), (Nil: List[AnimSignal])), w#lunges);
+        let blinkSigs = Set.foldLeft((sigs, uid) ->
+            match Map.get(uid, w#dyingElapsed) {
+                case Some(e) => if (e >= blinkTotal) AnimSignal.DeathBlinkDone(uidToRef(uid)) :: sigs else sigs
+                case None    => sigs
+            }, (Nil: List[AnimSignal]), w#enemyDying);
+        (World.World({lunges = lunges1 | w}), List.append(List.reverse(lungeSigs), List.reverse(blinkSigs)))
+
+    /// lunge 中ユニットの描画位置（None=非 lunge）。renderUnits / HP バー / 武器アイコンが
+    /// marker 位置の代わりに読む（lunge 中だけ World 導出で上書き）。
+    pub def lungePosOf(ref: EntityRef, world: World): Option[Vec2.Vec2] =
+        let World.World(w) = world;
+        Map.get(toUid(ref), w#lunges) |> Option.map(lungeRenderPos)
+
+    /// LungeAnim の現在位置を elapsed から純関数導出する。進度 t（0..1 クランプ）で
+    /// 前半（t<0.5）origin→target、後半 target→origin の線形補間、終端は origin。
+    pub def lungeRenderPos(l: LungeAnim): Vec2.Vec2 =
+        let t = if (l#total <= 0.0) 1.0 else Float64.min(1.0, l#elapsed / l#total);
+        if (t < 0.5) Vec2.lerp(l#origin, l#target, t / 0.5)
+        else if (t >= 1.0) l#origin
+        else Vec2.lerp(l#target, l#origin, (t - 0.5) / 0.5)
+
     // ════════════════════════════════════════════════════════════════════
     // statusEffects（時限ステータス効果＝バフ/デバフ）を World 権威にする ECS 層
     // Bevy 正対: Command 書き込み / Query 読み込み。System ロジックは StatusSystem を再利用（再実装ゼロ）。
@@ -457,7 +444,7 @@ mod World {
 
     /// entity の参照（faction タグ付き）。Board.Piece と同型。statusEffects アクセスのキー抽象＝
     /// 単一 store の unified-id キーを呼び出し側に見せずに触れる seam。
-    pub enum EntityRef with ToString {
+    pub enum EntityRef with Eq, ToString {
         case Player(EntityId)
         case Enemy(EntityId)
     }
@@ -490,12 +477,6 @@ mod World {
     /// store プラミング用の純粋 faction 述語（uid のキー域から判定）。
     pub def uidIsPlayer(uid: EntityId): Bool = uid < enemyUidBase()
     pub def uidIsEnemy(uid: EntityId): Bool = uid >= enemyUidBase()
-
-    /// player/enemy の unit list から `Map[uid, Faction]` を組む。
-    /// player uid=id→Player, enemy uid=id+base→Enemy。syncFromScene の frame-1 seed で組み、以後は `Cmd.Spawn` が書く。
-    def teamTags(players: List[{id = Int32 | p}], enemies: List[{id = Int32 | e}]): Map[EntityId, Faction] =
-        let ps = List.foldLeft((m, d) -> Map.insert(d#id, Faction.Player, m), Map.empty(), players);
-        List.foldLeft((m, d) -> Map.insert(d#id + enemyUidBase(), Faction.Enemy, m), ps, enemies)
 
     /// statusEffects への変更命令（Bevy の Commands 相当）。深い scene コードが emit し、
     /// Game.start の handler が worldRef へ即時適用する（純粋 applier 経由）。
@@ -536,7 +517,6 @@ mod World {
         case SetProgress(EntityRef, Int32, Int32) // 味方の (level, exp) write（撃破/レベルアップ/復元で）
         case SetEnemyTurnBusy(Bool)            // 敵ターン intro hold 中 bool write（TopBar dual-write）
         case SetPhaseObservedEnemy(Bool)       // バーが敵ターン観測済み bool write（TopBar dual-write）
-        case BumpTileGen                       // マップ再構築の世代 +1（build choke が emit・gameLoop の tile bake トリガ）
         case SetStairs(Option[{x = Int32, y = Int32}])  // 階段セル write（配置=Some/未配置=None・floor 単位で 1 回）。stairsPos を World 権威化
         case AddVisited(Set[Int32])        // 探索記憶に今フレームの訪問 module idx を union（Minimap step が emit）
         case ClearVisited                  // フロア再構築時に探索記憶を一掃（ClearChests と同型）
@@ -552,7 +532,17 @@ mod World {
         case SetHidden(EntityRef, Bool)        // 階段退場フラグ（playerHidden）
         case SetEnemyRing(Int32, Option[Ring.RingResource])   // 敵の装備指輪（spawn/復元/指輪変化で emit）
         case SetGrowth(Int32, Growth)          // 成長 read-model（resource 変化サイト=SetBaseStats と同所で emit）
+        case SetClassId(Int32, String)                            // 味方クラス id（spawn で 1 回・以後不変）
+        case SetPlayerResource(Int32, UnitCatalog.UnitResource)   // 味方 resource テンプレ（spawn/成長/最大HP変化サイトで emit）
+        case SetSelectedItem(Int32, Option[PlayerData.ItemKind])  // ItemMenu 選択（None=解除）
+        case SetFacing(Int32, Dir4.Dir4)                          // 味方の向き（移動 view/復元が書く）
+        case SetPendingLevelUp(Int32, Option[LevelSystem.Result]) // レベルアップ演出待ち（None=消化済み）
+        case SetMoveSteps(Int32, Int32)                           // AutoMove 進行歩数
+        case SetEnemyResource(Int32, EnemyCatalog.EnemyResource)  // 敵 resource テンプレ（spawn/最大HP変化サイトで emit）
+        case SetEnemyProfile(Int32, {resourceId = String, homeModuleIdx = Int32})  // 敵 catalog id＋出身部屋（spawn で 1 回）
         case SetMapSnapshot(Option[MapSnapshot])               // 地形 read-model（floor build choke で emit・Title は None）
+        case SetMapLayout(Option[MapLayout])                   // マップ Plan＋スポーン起点（floor build choke で emit・Title は None）
+        case SetTileLayers(List[TileLayerHandle])              // 背景タイルの描画ハンドル（floor build choke で emit・Title は Nil）
         case SetEffectRule(Int32, Option[Util.Json.Json])      // 敵 effectRule（spawn で emit・以後不変）
         case SetAnim(EntityRef, String)        // 再生アニメ切替（play 意味論=同名継続/別名リセット）
         case SetFlipH(EntityRef, Bool)         // 左右反転（移動 view 再生が書く）
@@ -560,6 +550,7 @@ mod World {
         case SpawnPopupFx({total = Float64, pos = Vec2.Vec2, text = String, color = Color})  // ダメージ数字 fx を spawn（remaining=total で開始・見た目も store 持ち）
         case SpawnExplosionFx({total = Float64, pos = Vec2.Vec2, scale = Float64})            // 爆発 fx を spawn
         case SpawnFireShot({total = Float64, caster = Vec2.Vec2, target = Vec2.Vec2})          // 魔導書の炎 3 幕 fx を spawn（seed=通し番号を採番）
+        case StartLunge(EntityRef, {origin = Vec2.Vec2, target = Vec2.Vec2, hitAt = Float64, total = Float64})  // 体当たり攻撃の往復演出を開始（view-lane・golden trace の記録対象外）
     }
 
     /// System が出力する sim-event。
@@ -717,6 +708,7 @@ mod World {
             unitFlipH = Map.remove(uid, w#unitFlipH),
             unitModulate = Map.remove(uid, w#unitModulate),
             dyingElapsed = Map.remove(uid, w#dyingElapsed),
+            lunges = Map.remove(uid, w#lunges),
             playerHidden = Set.remove(uid, w#playerHidden),
             enemyDying = Set.remove(uid, w#enemyDying),
             enemyAlerted = Map.remove(uid, w#enemyAlerted),
@@ -734,6 +726,15 @@ mod World {
             moveTiles = Map.remove(uid, w#moveTiles),
             equippedRing = Map.remove(uid, w#equippedRing),
             growth = Map.remove(uid, w#growth),
+            playerClassId = Map.remove(uid, w#playerClassId),
+            playerResource = Map.remove(uid, w#playerResource),
+            playerSelectedItem = Map.remove(uid, w#playerSelectedItem),
+            playerFacing = Map.remove(uid, w#playerFacing),
+            playerPendingLevelUp = Map.remove(uid, w#playerPendingLevelUp),
+            playerMoveSteps = Map.remove(uid, w#playerMoveSteps),
+            enemyResource = Map.remove(uid, w#enemyResource),
+            enemyResourceId = Map.remove(uid, w#enemyResourceId),
+            enemyHomeModule = Map.remove(uid, w#enemyHomeModule),
             effectRule = Map.remove(uid, w#effectRule),
             attackTarget = Map.remove(uid, w#attackTarget)
             | w})
@@ -896,10 +897,6 @@ mod World {
                 let World.World(w) = world; World.World({enemyTurnBusy = b | w})
             case Cmd.SetPhaseObservedEnemy(b) =>
                 let World.World(w) = world; World.World({phaseObservedEnemy = b | w})
-            case Cmd.BumpTileGen =>
-                // マップ再構築の世代 +1。build choke（buildPlayingScene/rebuildFloorFromSnapshot）が emit し、
-                // gameLoop が world1 と incoming world の gen 差でタイル bake を判定する。
-                let World.World(w) = world; World.World({tileGen = w#tileGen + 1 | w})
             case Cmd.SetStairs(cell) =>
                 // 階段セルを World 権威に write（placeAt が emit）。floor 単位で 1 回・未配置は None。
                 let World.World(w) = world; World.World({stairsPos = cell | w})
@@ -953,6 +950,7 @@ mod World {
                              ringEquipped = Map.empty(), pos = Map.empty(), renderPos = Map.empty(),
                              tweens = Map.empty(), unitAnim = Map.empty(), unitFlipH = Map.empty(),
                              unitModulate = Map.empty(), dyingElapsed = Map.empty(),
+                             lunges = Map.empty(),
                              playerHidden = Set.empty(), enemyDying = Set.empty(),
                              enemyAlerted = Map.empty(), enemyActed = Map.empty(),
                              enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
@@ -960,7 +958,13 @@ mod World {
                              playerUsedStairs = Map.empty(), playerLevel = Map.empty(),
                              playerExp = Map.empty(), baseStats = Map.empty(), weaponView = Map.empty(),
                              ringBonus = Map.empty(), moveTiles = Map.empty(), equippedRing = Map.empty(),
-                             growth = Map.empty(), effectRule = Map.empty(), attackTarget = Map.empty() | w})
+                             growth = Map.empty(),
+                             playerClassId = Map.empty(), playerResource = Map.empty(),
+                             playerSelectedItem = Map.empty(), playerFacing = Map.empty(),
+                             playerPendingLevelUp = Map.empty(), playerMoveSteps = Map.empty(),
+                             enemyResource = Map.empty(), enemyResourceId = Map.empty(),
+                             enemyHomeModule = Map.empty(),
+                             effectRule = Map.empty(), attackTarget = Map.empty() | w})
             case Cmd.SetHidden(ref, b) =>
                 let World.World(w) = world;
                 match ref {
@@ -975,9 +979,50 @@ mod World {
             case Cmd.SetGrowth(id, g) =>
                 let World.World(w) = world;
                 World.World({growth = Map.insert(id, g, w#growth) | w})
+            case Cmd.SetClassId(id, c) =>
+                let World.World(w) = world;
+                World.World({playerClassId = Map.insert(id, c, w#playerClassId) | w})
+            case Cmd.SetPlayerResource(id, r) =>
+                let World.World(w) = world;
+                World.World({playerResource = Map.insert(id, r, w#playerResource) | w})
+            case Cmd.SetSelectedItem(id, opt) =>
+                // 未選択(None)は Map 非在で表現（attackTarget と同型）。
+                let World.World(w) = world;
+                let next = match opt {
+                    case Some(k) => Map.insert(id, k, w#playerSelectedItem)
+                    case None    => Map.remove(id, w#playerSelectedItem)
+                };
+                World.World({playerSelectedItem = next | w})
+            case Cmd.SetFacing(id, dir) =>
+                let World.World(w) = world;
+                World.World({playerFacing = Map.insert(id, dir, w#playerFacing) | w})
+            case Cmd.SetPendingLevelUp(id, opt) =>
+                // なし(None)は Map 非在で表現（selectedItem と同型）。
+                let World.World(w) = world;
+                let next = match opt {
+                    case Some(r) => Map.insert(id, r, w#playerPendingLevelUp)
+                    case None    => Map.remove(id, w#playerPendingLevelUp)
+                };
+                World.World({playerPendingLevelUp = next | w})
+            case Cmd.SetMoveSteps(id, n) =>
+                let World.World(w) = world;
+                World.World({playerMoveSteps = Map.insert(id, n, w#playerMoveSteps) | w})
+            case Cmd.SetEnemyResource(id, r) =>
+                let World.World(w) = world;
+                World.World({enemyResource = Map.insert(enemyUid(id), r, w#enemyResource) | w})
+            case Cmd.SetEnemyProfile(id, p) =>
+                let World.World(w) = world;
+                World.World({enemyResourceId = Map.insert(enemyUid(id), p#resourceId, w#enemyResourceId),
+                             enemyHomeModule = Map.insert(enemyUid(id), p#homeModuleIdx, w#enemyHomeModule) | w})
             case Cmd.SetMapSnapshot(mOpt) =>
                 let World.World(w) = world;
                 World.World({mapSnapshot = mOpt | w})
+            case Cmd.SetMapLayout(lOpt) =>
+                let World.World(w) = world;
+                World.World({mapLayout = lOpt | w})
+            case Cmd.SetTileLayers(handles) =>
+                let World.World(w) = world;
+                World.World({tileLayers = handles | w})
             case Cmd.SetEffectRule(id, rule) =>
                 let World.World(w) = world;
                 World.World({effectRule = Map.insert(enemyUid(id), rule, w#effectRule) | w})
@@ -1022,6 +1067,14 @@ mod World {
                                   target = d#target, seed = seq},
                                  w#fireShots),
                              fireShotsNextSeq = seq + 1 | w})
+            case Cmd.StartLunge(ref, d) =>
+                // 体当たり往復の開始（同 entity の再スタートは置換＝旧再生の破棄）。
+                // クロック（elapsed）は stepAnimClocks が進め、完了時に自分で除去する。
+                let World.World(w) = world;
+                World.World({lunges = Map.insert(toUid(ref),
+                                 {origin = d#origin, target = d#target, elapsed = 0.0,
+                                  hitAt = d#hitAt, total = d#total, hitFired = false},
+                                 w#lunges) | w})
         }
 
     // ── SimEvent reducer / adapter / cmdKey ────────────────
@@ -1113,6 +1166,23 @@ mod World {
         case SimPhase.GameOver   => 2
     }
 
+    /// Dir4 の ordinal（cmdKey の SetFacing 用）。
+    def dirToInt(d: Dir4.Dir4): Int32 = match d {
+        case Dir4.Up    => 0
+        case Dir4.Down  => 1
+        case Dir4.Left  => 2
+        case Dir4.Right => 3
+    }
+
+    /// ItemKind の (種別 ordinal, index)（cmdKey の SetSelectedItem 用）。None は (-1, -1)。
+    def itemKindKey(o: Option[PlayerData.ItemKind]): (Int32, Int32) = match o {
+        case None                                  => (-1, -1)
+        case Some(PlayerData.ItemKind.Weapon(i))     => (0, i)
+        case Some(PlayerData.ItemKind.Staff(i))      => (1, i)
+        case Some(PlayerData.ItemKind.Consumable(i)) => (2, i)
+        case Some(PlayerData.ItemKind.Ring(i))       => (3, i)
+    }
+
     /// TOTAL な Cmd → 比較キー (tag, uid, a, b)。`Cmd` に Eq が無いため golden-trace/simevent-algebra の
     /// 唯一の比較通貨。全 19 variant 上で網羅（exhaustiveness は `flix check` が強制）。
     /// faction 非依存に `toUid` で uid 化。control/lifecycle と payload-less は tag のみで discriminating。
@@ -1159,7 +1229,6 @@ mod World {
             case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)
             case Cmd.SetPhaseObservedEnemy(b) => ("PhObs", bool01(b), 0, 0)
-            case Cmd.BumpTileGen              => ("BumpTileGen", 0, 0, 0)
             case Cmd.SetStairs(cell)          =>
                 let (x, y) = Option.map(p -> (p#x, p#y), cell) |> Option.getWithDefault((-1, -1));
                 ("SetStairs", x, y, 0)
@@ -1177,7 +1246,20 @@ mod World {
             case Cmd.SetHidden(ref, b)        => ("SetHidden", toUid(ref), if (b) 1 else 0, 0)
             case Cmd.SetEnemyRing(id, r)      => ("SetEnemyRing", enemyUid(id), if (Option.isEmpty(r)) 0 else 1, 0)
             case Cmd.SetGrowth(id, g)         => ("SetGrowth", id, g#base#hp, 0)
+            case Cmd.SetClassId(id, _)        => ("SetClassId", id, 0, 0)
+            // resource は Eq 非自動ゆえ hp（最大 HP）を代表 digest に載せる（SetGrowth と同流儀）。
+            case Cmd.SetPlayerResource(id, r) => ("SetPlayerResource", id, r#hp, 0)
+            case Cmd.SetSelectedItem(id, o)   =>
+                let (kind, idx) = itemKindKey(o);
+                ("SetSelectedItem", id, kind, idx)
+            case Cmd.SetFacing(id, d)         => ("SetFacing", id, dirToInt(d), 0)
+            case Cmd.SetPendingLevelUp(id, o) => ("SetPendingLevelUp", id, if (Option.isEmpty(o)) 0 else 1, 0)
+            case Cmd.SetMoveSteps(id, n)      => ("SetMoveSteps", id, n, 0)
+            case Cmd.SetEnemyResource(id, r)  => ("SetEnemyResource", enemyUid(id), r#hp, 0)
+            case Cmd.SetEnemyProfile(id, p)   => ("SetEnemyProfile", enemyUid(id), p#homeModuleIdx, 0)
             case Cmd.SetMapSnapshot(m)        => ("SetMapSnapshot", if (Option.isEmpty(m)) 0 else 1, 0, 0)
+            case Cmd.SetMapLayout(l)          => ("SetMapLayout", if (Option.isEmpty(l)) 0 else 1, 0, 0)
+            case Cmd.SetTileLayers(hs)        => ("SetTileLayers", List.length(hs), 0, 0)
             case Cmd.SetEffectRule(id, r)     => ("SetEffectRule", enemyUid(id), if (Option.isEmpty(r)) 0 else 1, 0)
             case Cmd.SetAnim(ref, name)       => ("SetAnim(${name})", toUid(ref), 0, 0)
             case Cmd.SetFlipH(ref, b)         => ("SetFlipH", toUid(ref), if (b) 1 else 0, 0)
@@ -1186,6 +1268,7 @@ mod World {
             case Cmd.SpawnPopupFx(d)          => ("SpawnPopupFx", Float64.truncateToInt32(d#pos#x), Float64.truncateToInt32(d#pos#y), 0)
             case Cmd.SpawnExplosionFx(d)      => ("SpawnExplosionFx", Float64.truncateToInt32(d#pos#x), Float64.truncateToInt32(d#pos#y), 0)
             case Cmd.SpawnFireShot(d)         => ("SpawnFireShot", Float64.truncateToInt32(d#target#x), Float64.truncateToInt32(d#target#y), 0)
+            case Cmd.StartLunge(ref, d)       => ("StartLunge", toUid(ref), Float64.truncateToInt32(d#target#x), Float64.truncateToInt32(d#target#y))
         }
 
     /// 敵の alerted を World から読む（hpOf 同型）。Player は常に None。
@@ -1229,6 +1312,40 @@ mod World {
     pub def renderPosOf(ref: EntityRef, world: World): Option[{x = Float64, y = Float64}] =
         let World.World(w) = world; Map.get(toUid(ref), w#renderPos)
 
+    /// 駒の描画 pixel 位置の単一導出（World が唯一の権威）。優先順:
+    ///   lunge 中 = 往復補間（`lungeRenderPos`）／移動 tween 中・移動済み = renderPos／
+    ///   未移動の静止駒 = セル中心（renderPos 未 seed）。未 spawn（pos 不在）は None。
+    /// renderUnits / HP バー / 武器アイコンが読む（World store が唯一の読み口）。
+    pub def visualPosOf(ref: EntityRef, world: World): Option[Vec2.Vec2] =
+        match (lungePosOf(ref, world), renderPosOf(ref, world)) {
+            case (Some(p), _)    => Some(p)
+            case (None, Some(p)) => Some(p)
+            case (None, None)    => posOf(ref, world) |> Option.map(MapSnapshot.cellCenter)
+        }
+
+    /// 移動 tween の始点用の描画位置（lunge を含まない）。tween 中は renderPos、静止駒はセル中心。
+    /// `moveUnit` の start に渡す（lunge 中に移動が始まっても往復途中の座標を始点にしない）。
+    pub def tweenStartPosOf(ref: EntityRef, world: World): Option[Vec2.Vec2] =
+        match renderPosOf(ref, world) {
+            case Some(p) => Some(p)
+            case None    => posOf(ref, world) |> Option.map(MapSnapshot.cellCenter)
+        }
+
+    /// 盤上の全味方 id（昇順）。scene を介さない World 単独列挙（render / フォグ入力用）。
+    pub def playerIdsOf(world: World): List[Int32] =
+        let World.World(w) = world; Set.toList(w#playerIds)
+
+    /// 盤上の全敵 id（昇順）。scene を介さない World 単独列挙（render / フォグ入力用）。
+    pub def enemyIdsOf(world: World): List[Int32] =
+        let World.World(w) = world; Set.toList(w#enemyIds)
+
+    /// フォグ穴計算の入力（非導出の生値: 味方の live 位置と hidden）。World 単独導出（昇順）。
+    /// origin（移動ドラフト）は view 側（`FogScene`）が重ねる。
+    pub def fogUnitsOf(world: World): List[{id = Int32, gridPos = {x = Int32, y = Int32}, hidden = Bool}] =
+        playerIdsOf(world) |> List.filterMap(id ->
+            posOf(EntityRef.Player(id), world) |> Option.map(p ->
+                {id = id, gridPos = p, hidden = playerHiddenOf(EntityRef.Player(id), world)}))
+
     /// 当該 entity が移動（Position）tween 中か（isMoving の World 版・input gate 用）。
     pub def isAnimating(ref: EntityRef, world: World): Bool =
         let World.World(w) = world; EcsTween.isActive((toUid(ref), Channel.Position), w#tweens)
@@ -1240,15 +1357,11 @@ mod World {
     pub def moveUnit(ref: EntityRef, span: EcsTween.VecLerp, sec: Float64): Unit \ Command =
         Command.emit(Cmd.StartTween(ref, Channel.Position, EcsTween.Track.Vec(span), sec, EcsTween.Easing.Linear, false))
 
-    /// マップ再構築の世代（gameLoop の tile bake トリガ比較用）。
-    pub def tileGenOf(world: World): Int32 =
-        let World.World(w) = world; w#tileGen
-
     /// 背景 map タイルの描画ハンドル（render System が読む）。
     pub def tileLayersOf(world: World): List[TileLayerHandle] =
         let World.World(w) = world; w#tileLayers
 
-    /// bake したタイルハンドルを World にセット（rebuild〔tileGen 変化〕時に gameLoop が呼ぶ）。
+    /// タイルハンドルを World にセット（`Cmd.SetTileLayers` の適用本体・テスト seed 用）。
     pub def setTileLayers(handles: List[TileLayerHandle], world: World): World =
         let World.World(w) = world; World.World({tileLayers = handles | w})
 
@@ -1315,23 +1428,23 @@ mod World {
 
     /// 在庫リストの代表射影: (長さ, 先頭要素の key)。多相 HOF（各 call site で a,b を fresh instantiate）。
     /// row には触れず引数の monomorphic keyFn 内でのみ field access する＝E7574-safe（attackTargetMap 前例）。
-    /// fst が常に length＝weaponsMismatches 等の (ref, worldLen, sceneLen) 診断 payload の load-bearing 要素。
+    /// 在庫 scene copy の退役で production 消費者は無くなり、テストの射影 seam として残す。
     pub def headKey(xs: List[a], keyFn: a -> b \ ef): (Int32, Option[b]) \ ef =
         (List.length(xs), List.head(xs) |> Option.map(keyFn))
 
-    /// 在庫武器の代表キー (name, durability)。weaponsMismatches / playerDataKey で共有＝drift 不能。
+    /// 在庫武器の代表キー (name, durability)。在庫比較テストの正準射影（drift 防止の単一源泉）。
     /// 元 lambda: w -> (w#name, w#durability)
     pub def weaponKey(w: UnitCatalog.WeaponResource): (String, Int32) = (w#name, w#durability)
 
-    /// 杖の代表キー (name, durability)。stavesMismatches / playerDataKey で共有。
+    /// 杖の代表キー (name, durability)。在庫比較テストの正準射影。
     /// 元 lambda: s -> (s#name, s#durability)
     pub def staffKey(s: Staff.StaffResource): (String, Int32) = (s#name, s#durability)
 
-    /// 消耗品の代表キー (name, durability)。consumablesMismatches / playerDataKey で共有。
+    /// 消耗品の代表キー (name, durability)。在庫比較テストの正準射影。
     /// 元 lambda: c -> (c#name, c#durability)
     pub def consumableKey(c: Consumable.ConsumableResource): (String, Int32) = (c#name, c#durability)
 
-    /// 在庫指輪の代表キー (name, power)。ringsMismatches / playerDataKey で共有。
+    /// 在庫指輪の代表キー (name, power)。在庫比較テストの正準射影。
     /// ★equippedRingKey(name,effect,power) とは別物（在庫=power 代表 / 装備=RingEffect 必須）。
     /// 元 lambda: r -> (r#name, r#power)
     pub def ringKey(r: Ring.RingResource): (String, Int32) = (r#name, r#power)
@@ -1341,7 +1454,7 @@ mod World {
     pub def baseStatsKey(bs: Combat.BaseStats): (Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32) =
         (bs#attack, bs#magicAttack, bs#defense, bs#magicDefense, bs#skill, bs#speed, bs#luck, bs#maxHp)
 
-    /// status list の順序込みキー [(effect, magnitude, remaining)]（statusEffectsMismatches / playerDataKey 共有）。
+    /// status list の順序込みキー [(effect, magnitude, remaining)]。statuses 比較テストの正準射影。
     /// 元 lambda: xs -> List.map(s -> (s#effect, s#magnitude, s#remaining), xs)
     pub def statusListKey(xs: List[StatusSystem.Status]): List[(StatusSystem.StatusEffect, Int32, Int32)] =
         List.map(s -> (s#effect, s#magnitude, s#remaining), xs)
@@ -1411,115 +1524,47 @@ mod World {
         (r#moveTiles, r#level, r#hp, r#attack, r#defense, r#magicAttack,
          r#magicDefense, r#speed, r#skill, r#luck, r#constitution)
 
-    /// pendingLevelUp の Option キー (unitName, fromLevel, toLevel, 変化数)（playerDataKey 内包・pluProj）。
+    /// pendingLevelUp の Option キー (unitName, fromLevel, toLevel, 変化数)。比較テストの正準射影。
     /// 元 lambda: Option.map(r -> (r#unitName, r#fromLevel, r#toLevel, List.length(r#changes)))
     pub def pendingLevelUpKey(o: Option[LevelSystem.Result]): Option[(String, Int32, Int32, Int32)] =
         Option.map(r -> (r#unitName, r#fromLevel, r#toLevel, List.length(r#changes)), o)
 
-    /// ★PlayerData.Data の field キー（playerDataMismatches）。flat でなく 2段ネスト ((11),(8))
-    /// （tuple arity/Eq 上限回避・§1.3）。sub-key（posKey/resourceStatKey/headKey/statusListKey/
-    /// pendingLevelUpKey）を再利用＝leaf drift 不能を継承。ネスト境界は逐語複製。
+    /// ★PlayerData.Data の field キー（playerDataMismatches）。scene が今も併記する field だけを
+    /// 比較する（World 単独権威へ移した field は対象外）。sub-key（resourceStatKey）を再利用。
     pub def playerDataKey(d: PlayerData.Data):
-            ((Int32, String, Int32, Option[Int32],
-              (Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32),
-              (Int32, Option[(String, Int32)]),
-              (Int32, Option[(String, Int32)]),
-              (Int32, Option[(String, Int32)]),
-              (Int32, Option[(String, Int32)]),
-              Bool),
-             (Option[PlayerData.ItemKind], Int32, Dir4.Dir4, Bool, Bool,
-              Option[(String, Int32, Int32, Int32)],
-              List[(StatusSystem.StatusEffect, Int32, Int32)])) =
+            (Int32, String, Int32, Option[Int32],
+             (Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32),
+             Bool) =
         // 注: followUpUsed は含めない。scene copy は退役し World 権威ゆえ DIFF 対象外
         //     （World 権威は dataFromWorld None-gate＋専用テストが保証）。
         // 注: hp / waited / level / exp も含めない。scene twin は退役（ECS 経路は World のみ書く）ゆえ
         //     scene 値は stale が正＝DIFF 対象外。World 権威は overlay（dataFromWorld）と World 直読みの
         //     読み手 ＋ 専用テストが保証。
         // 注: gridPos も含めない（scene twin 退役・読み手は World.posOf/overlay を読む）。
-        ((d#id, d#classId, d#moveTiles,
-          d#attackTargetId, resourceStatKey(d#resource),
-          headKey(d#weapons, weaponKey),
-          headKey(d#staves, staffKey),
-          headKey(d#consumables, consumableKey),
-          headKey(d#rings, ringKey),
-          d#ringEquipped),
-         (d#selectedItem, d#moveStepsTaken, d#facing, d#hidden, d#usedStairs,
-          pendingLevelUpKey(d#pendingLevelUp),
-          statusListKey(d#statuses)))
+        // 注: selectedItem / moveStepsTaken / facing / usedStairs / pendingLevelUp /
+        //     weapons / staves / consumables / rings / ringEquipped / statuses も含めない
+        //     （scene twin 退役・World store が単独権威。読み手は accessor/overlay）。
+        // 残る比較対象は「scene が今も併記する field」= id / classId / moveTiles(base) /
+        // attackTargetId / resource（数値 stat 群で代表）/ hidden。
+        (d#id, d#classId, d#moveTiles,
+         d#attackTargetId, resourceStatKey(d#resource),
+         d#hidden)
 
-    /// ★EnemyData.Data の field キー（enemyDataMismatches）。playerDataKey と同流儀の 2段ネスト
-    /// ((8),(8))（tuple arity/Eq 上限回避・§1.3）。sub-key（posKey/weaponKey/equippedRingKey/statusListKey）を
-    /// 既存正準キーから再利用＝leaf drift 不能を継承（S2.4/S4.4 級の重複射影 drift バグを再導入しない）。
-    /// resource(R 残置)は両辺 scene 由来＝恒等一致ゆえ resourceId(String) を代表値とする。
+    /// ★EnemyData.Data の field キー（enemyDataMismatches）。playerDataKey と同流儀で、
+    /// scene が今も併記する field だけを比較する（World 単独権威へ移した field は対象外）。
     pub def enemyDataKey(d: EnemyData.Data):
-            ((Int32, String, Bool, Int32, Int32, Bool, Option[Int32]),
-             (String, Option[(String, Int32)], Bool,
-              List[(StatusSystem.StatusEffect, Int32, Int32)],
-              Option[(String, Ring.RingEffect, Int32)])) =
+            (Int32, String, Bool, Int32, Int32, Bool, Option[Int32]) =
         // 注: bottleUsed / followUpUsed / prevPos は含めない。scene copy は退役し World 権威
         //     ゆえ scene 値は stale＝再構築(World)と必然的に食い違う。scene 読み手が World 経由ゆえ DIFF 対象外が正。
         // 注: hp も含めない（ECS 撃破は SetHp(0) のみで scene hp を書かず＝stale が正）。
         //     alerted/isDying は writer が scene 併記（dual-write）ゆえ残す。
         // 注: gridPos も含めない（playerDataKey と同じ理由）。
-        ((d#id, d#resourceId, d#alerted, d#homeModuleIdx,
-          d#moveTiles, d#isDying, d#attackTargetId),
-         (d#resourceId, Option.map(weaponKey, d#weapon), d#acted,
-          statusListKey(d#statuses), Option.map(equippedRingKey, d#ring)))
-
-    /// 地形 snapshot キー (tileSize, wallCells)（mapSnapshotMatchesScene）。
-    /// 元 lambda: m -> (m#tileSize, m#wallCells)
-    pub def mapSnapshotKey(m: MapSnapshot): (Float64, Set[(Int32, Int32)]) =
-        (m#tileSize, m#wallCells)
-
-    /// 安全網: World baseStats（command 由来）と scene resource 由来 baseStats が食い違う entity を列挙する（両 faction）。
-    /// BaseStats は Eq 非自動ゆえ全 8 数値 field を tuple へ射影して比較（combatViewMismatches 同型）。
-    /// frame-end では常に一致するはずで、食い違いは dual-write の漏れ（[BASESTATS DIFF]）を意味する。
-    pub def baseStatsMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(baseStatsKey, baseStatsOf(EntityRef.Player(d#id), world)) != Some(baseStatsKey(Combat.baseStatsFrom(d#resource))))
-                Some(EntityRef.Player(d#id)) else None);
-        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(baseStatsKey, baseStatsOf(EntityRef.Enemy(d#id), world)) != Some(baseStatsKey(Combat.baseStatsFrom(d#resource))))
-                Some(EntityRef.Enemy(d#id)) else None);
-        List.append(pms, ems)
+        // 注: acted / weapon / ring / statuses も含めない（scene twin 退役・World store が単独権威）。
+        (d#id, d#resourceId, d#alerted, d#homeModuleIdx,
+         d#moveTiles, d#isDying, d#attackTargetId)
 
     pub def moveTilesOf(ref: EntityRef, world: World): Option[Int32] =
         let World.World(w) = world; Map.get(toUid(ref), w#moveTiles)
-
-    /// 安全網: World moveTiles（command 由来）と scene Data の base moveTiles が食い違う entity を列挙する（両 faction）。
-    /// Int32 は Eq 自動ゆえ直接比較。spawn 後不変だが dual-write 漏れ（[MOVETILES DIFF]）を検出する。
-    pub def moveTilesMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (moveTilesOf(EntityRef.Player(d#id), world) != Some(d#moveTiles))
-                Some(EntityRef.Player(d#id)) else None);
-        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (moveTilesOf(EntityRef.Enemy(d#id), world) != Some(d#moveTiles))
-                Some(EntityRef.Enemy(d#id)) else None);
-        List.append(pms, ems)
-
-    /// 安全網: World weaponView（command 由来）と scene の装備武器投影が食い違う entity を列挙する（両 faction）。
-    /// WeaponView は Eq 非自動・Option ゆえ全 8 field tuple を Option へ射影して比較（equippedRingMismatches 同型）。
-    /// frame-end では常に一致するはずで、食い違いは dual-write の漏れ（[WEAPONVIEW DIFF]）を意味する。
-    pub def weaponViewMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(weaponViewKey, weaponViewOf(EntityRef.Player(d#id), world)) != Option.map(weaponViewKey, PlayerScene.equippedWeaponView(d)))
-                Some(EntityRef.Player(d#id)) else None);
-        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(weaponViewKey, weaponViewOf(EntityRef.Enemy(d#id), world)) != Option.map(weaponViewKey, EnemyScene.equippedWeaponView(d)))
-                Some(EntityRef.Enemy(d#id)) else None);
-        List.append(pms, ems)
-
-    /// 安全網: World ringBonus（command 由来）と scene の装備指輪ボーナスが食い違う entity を列挙する（両 faction）。
-    /// Bonuses は Eq 非自動ゆえ 5 数値 field tuple へ射影して比較（baseStatsMismatches 同型）。
-    /// 食い違いは dual-write の漏れ（[RINGBONUS DIFF]）を意味する。
-    pub def ringBonusMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(ringBonusKey, ringBonusOf(EntityRef.Player(d#id), world)) != Some(ringBonusKey(PlayerScene.equippedRingBonus(d))))
-                Some(EntityRef.Player(d#id)) else None);
-        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(ringBonusKey, ringBonusOf(EntityRef.Enemy(d#id), world)) != Some(ringBonusKey(EnemyScene.equippedRingBonus(d))))
-                Some(EntityRef.Enemy(d#id)) else None);
-        List.append(pms, ems)
 
     /// level-up 成長に要る基準 Stats + 成長率を World から読む（player-only。Enemy は常に None）。
     /// resolveCombat の level-up が resource を threading せず World 完結で成長を解くための seam。
@@ -1528,6 +1573,96 @@ mod World {
         match ref {
             case EntityRef.Player(id) => Map.get(id, w#growth)
             case EntityRef.Enemy(_)   => None
+        }
+
+    /// 味方クラス id（UnitCatalog の逆引き key・spawn 静的）。Enemy は常に None。
+    pub def classIdOf(ref: EntityRef, world: World): Option[String] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#playerClassId)
+            case EntityRef.Enemy(_)   => None
+        }
+
+    /// 味方 resource テンプレート本体（スプライト/ステータス源）。Enemy は常に None。
+    pub def playerResourceOf(ref: EntityRef, world: World): Option[UnitCatalog.UnitResource] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#playerResource)
+            case EntityRef.Enemy(_)   => None
+        }
+
+    /// 敵 resource テンプレート本体。Player は常に None。
+    pub def enemyResourceOf(ref: EntityRef, world: World): Option[EnemyCatalog.EnemyResource] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(_)  => None
+            case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyResource)
+        }
+
+    /// 敵 catalog id（spawn 静的）。Player は常に None。
+    pub def enemyResourceIdOf(ref: EntityRef, world: World): Option[String] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(_)  => None
+            case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyResourceId)
+        }
+
+    /// 敵のスポーン部屋 idx（検知判定の補助・spawn 静的）。Player は常に None。
+    pub def homeModuleIdxOf(ref: EntityRef, world: World): Option[Int32] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(_)  => None
+            case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyHomeModule)
+        }
+
+    /// ItemMenu の選択中アイテム（None=未選択）。Enemy は常に None。
+    pub def selectedItemOf(ref: EntityRef, world: World): Option[PlayerData.ItemKind] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#playerSelectedItem)
+            case EntityRef.Enemy(_)   => None
+        }
+
+    /// 味方の向き。Enemy は常に None（敵は flipH のみで向きを持たない）。
+    pub def facingOf(ref: EntityRef, world: World): Option[Dir4.Dir4] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#playerFacing)
+            case EntityRef.Enemy(_)   => None
+        }
+
+    /// 直近レベルアップ結果（None=なし）。Enemy は常に None。
+    pub def pendingLevelUpOf(ref: EntityRef, world: World): Option[LevelSystem.Result] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#playerPendingLevelUp)
+            case EntityRef.Enemy(_)   => None
+        }
+
+    /// レベルアップ表示待ちの味方が 1 人でも居るか（LevelUpPanel の modal-gate が読む）。
+    pub def anyPendingLevelUp(world: World): Bool =
+        let World.World(w) = world;
+        not Map.isEmpty(w#playerPendingLevelUp)
+
+    /// レベルアップ表示待ちの味方 id（最小 id）。演出パネルが順に消化する。
+    pub def firstPendingLevelUpId(world: World): Option[Int32] =
+        let World.World(w) = world;
+        Map.minimumKey(w#playerPendingLevelUp) |> Option.map(fst)
+
+    /// AutoMove の当ターン進行済みマス数。Enemy は常に None。
+    pub def moveStepsOf(ref: EntityRef, world: World): Option[Int32] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(id) => Map.get(id, w#playerMoveSteps)
+            case EntityRef.Enemy(_)   => None
+        }
+
+    /// 敵の行動済みフラグを World から読む。Player は常に None。
+    pub def actedOf(ref: EntityRef, world: World): Option[Bool] =
+        let World.World(w) = world;
+        match ref {
+            case EntityRef.Player(_)  => None
+            case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyActed)
         }
 
     /// 対象がローグ職か（盗人の剣の発動条件）。`growthOf#name`（=`resource#description`）を
@@ -1583,21 +1718,6 @@ mod World {
             case _ => None
         }
 
-    /// 安全網: `combatViewOf`（World 再構築）と scene の `combatView` が食い違う entity を列挙する。
-    /// parallel-run DIFF（hp 等と同型）。read-model ゆえ frame-end では常に一致するはずで、
-    /// 食い違いは「combatView と combatViewOf の合成式 drift」を意味する（回帰検出）。
-    /// record/enum は Eq 非自動ゆえ全数値 + 武器投影を tuple 射影して比較する。
-    pub def combatViewMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(combatViewKey, combatViewOf(EntityRef.Player(d#id), world))
-                != Some(combatViewKey(PlayerScene.combatView(d))))
-                Some(EntityRef.Player(d#id)) else None);
-        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(combatViewKey, combatViewOf(EntityRef.Enemy(d#id), world))
-                != Some(combatViewKey(EnemyScene.combatView(d))))
-                Some(EntityRef.Enemy(d#id)) else None);
-        List.append(pms, ems)
-
     /// いずれかの味方が潜伏中か（World の `playerHidden` set 由来）。Enemy は常に false。
     /// scene `unitView` の `hidden = data#hidden` と一致（playerHidden は `d#hidden` の味方を集めた set）。
     pub def playerHiddenOf(ref: EntityRef, world: World): Bool =
@@ -1608,12 +1728,12 @@ mod World {
         }
 
     /// scene の `PlayerScene.unitView` / `EnemyScene.unitView` と **bit 一致**する `UnitView` を
-    /// **World 由来**で再構築する（消費者 flip の土台）。pos/hp/moveTiles/weaponRange/combat/isDying/hidden は
-    /// World store から、`aiType`（+ player の load 容量に要る constitution/attack）だけ resource 由来ゆえ
-    /// scene Data から読む（hybrid-A 批准の resource 残置）。`combatViewOf` が None（base/hp/ring 未登録）なら全体 None。
+    /// **World 単独**（scene 非依存）で再構築する。pos/hp/moveTiles/weaponRange/combat/isDying/hidden は
+    /// 各 store から、`aiType`（+ player の load 容量に要る constitution/attack）は resource store
+    /// （playerResource/enemyResource）から読む。`combatViewOf` が None（base/hp/ring 未登録）なら全体 None。
     /// 味方の `moveTiles` は scene と同じく `Encumbrance.effectiveMoveTiles(base, load)`（load は **World 在庫**の重量合計）、
     /// 敵は base そのまま。`weaponRange` は先頭武器の range（player=weapons 先頭・enemy=0/1 List 射影の先頭）。
-    pub def unitViewFromWorld(ref: EntityRef, world: World, scene: Scene[NodeTag]): Option[UnitView] =
+    pub def unitViewFromWorld(ref: EntityRef, world: World): Option[UnitView] =
         match (posOf(ref, world), hpOf(ref, world), combatViewOf(ref, world), moveTilesOf(ref, world)) {
             case (Some(pos), Some(hp), Some(combat), Some(base)) =>
                 let weaponRange = weaponsOf(ref, world)
@@ -1622,12 +1742,12 @@ mod World {
                     case EntityRef.Player(id) =>
                         // 味方の実効移動力: 素の moveTiles に積載ペナルティ（load）を掛けた値。
                         // load の重量合計は World 在庫（weapons/staves/consumables/rings）から、
-                        // 容量に要る constitution/attack は resource 由来ゆえ scene Data から（aiType と同じ残置）。
-                        match PlayerScene.get(id, scene) {
+                        // 容量に要る constitution/attack は playerResource store から。
+                        match playerResourceOf(ref, world) {
                             case None    => None
-                            case Some(d) =>
+                            case Some(res) =>
                                 // 在庫レコードは関数引数位置（カンマ後）に直接書く＝record リテラル明確化（先頭 `let = {` は block 誤認される）。
-                                let load = Encumbrance.loadOf(d#resource#constitution, d#resource#attack,
+                                let load = Encumbrance.loadOf(res#constitution, res#attack,
                                     {weapons     = Option.getWithDefault(Nil, weaponsOf(ref, world)),
                                      staves      = Option.getWithDefault(Nil, stavesOf(ref, world)),
                                      consumables = Option.getWithDefault(Nil, consumablesOf(ref, world)),
@@ -1639,111 +1759,88 @@ mod World {
                                       aiType = EnemyAI.AiType.Aggressive})
                         }
                     case EntityRef.Enemy(id) =>
-                        match EnemyScene.get(id, scene) {
+                        match enemyResourceOf(ref, world) {
                             case None    => None
-                            case Some(d) =>
+                            case Some(res) =>
                                 Some({id = id, faction = Faction.Enemy, pos = pos, hp = hp,
                                       moveTiles = base, weaponRange = weaponRange, combat = combat,
                                       isDying = isDyingOf(ref, world), hidden = false,
-                                      aiType = d#resource#aiType})
+                                      aiType = res#aiType})
                         }
                 }
             case _ => None
         }
 
-    pub def unitViewMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        let pms = PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(unitViewKey, unitViewFromWorld(EntityRef.Player(d#id), world, scene))
-                != Some(unitViewKey(PlayerScene.unitView(d))))
-                Some(EntityRef.Player(d#id)) else None);
-        let ems = EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(unitViewKey, unitViewFromWorld(EntityRef.Enemy(d#id), world, scene))
-                != Some(unitViewKey(EnemyScene.unitView(d))))
-                Some(EntityRef.Enemy(d#id)) else None);
-        List.append(pms, ems)
-
-    /// scene の `PlayerScene.get` Data と **bit 一致**する `PlayerData.Data` を **World 由来**で再構築する。
-    /// 23 field の供給源（PlayerData.flix:80-89 の分類）:
-    ///   W ストア由来 14 accessor（15 field）: gridPos=posOf／hp=hpOf／waited=waitedOf／moveTiles=moveTilesOf／
-    ///     attackTargetId=attackTargetOf／weapons=weaponsOf／staves=stavesOf／consumables=consumablesOf／rings=ringsOf／
-    ///     ringEquipped=ringEquippedOf／followUpUsed=followUpUsedOf／(level,exp)=progressOf（タプル分解）／
-    ///     hidden=playerHiddenOf／statuses=statusEffectsOf。
-    ///   R 残置 5（scene Data から）: classId／resource／selectedItem／facing／pendingLevelUp（hybrid-A resource 系残置）。
-    ///   scene Data から 2（World にまだ store 無し）: moveStepsTaken／usedStairs。
+    /// `PlayerData.Data` を **World 単独**（scene 非依存）で再構築する。全 23 field が World store 由来:
+    ///   gate 対象 16: gridPos=posOf／hp=hpOf／waited=waitedOf／moveTiles=moveTilesOf／weapons=weaponsOf／
+    ///     staves=stavesOf／consumables=consumablesOf／rings=ringsOf／ringEquipped=ringEquippedOf／
+    ///     followUpUsed=followUpUsedOf／(level,exp)=progressOf／classId=classIdOf／resource=playerResourceOf／
+    ///     facing=facingOf／moveStepsTaken=moveStepsOf／usedStairs=usedStairsOf。
+    ///   default 供給 5: attackTargetId・selectedItem・pendingLevelUp（Option 直・非在=None）／
+    ///     hidden=playerHiddenOf（集合）／statuses=statusEffectsOf（default-Nil）。
     ///   id = 引数。
-    /// core な W field（posOf/hpOf/moveTiles/在庫/progress 等）が一つでも None なら全体 None（unitViewFromWorld と同じ gate 流儀）。
-    pub def dataFromWorld(id: Int32, world: World, scene: Scene[NodeTag]): Option[PlayerData.Data] =
+    /// gate field が一つでも None（未 spawn/despawn 済み）なら全体 None。
+    pub def dataFromWorld(id: Int32, world: World): Option[PlayerData.Data] =
         let ref = EntityRef.Player(id);
-        match (posOf(ref, world), hpOf(ref, world), waitedOf(ref, world), moveTilesOf(ref, world),
-               weaponsOf(ref, world), stavesOf(ref, world), consumablesOf(ref, world), ringsOf(ref, world),
-               ringEquippedOf(ref, world), followUpUsedOf(ref, world), progressOf(ref, world),
-               PlayerScene.get(id, scene)) {
-            case (Some(pos), Some(hp), Some(waited), Some(moveTiles),
-                  Some(weapons), Some(staves), Some(consumables), Some(rings),
-                  Some(ringEquipped), Some(followUpUsed), Some((level, exp)),
-                  Some(d)) =>
-                // record リテラルは `Some(` 直後（`(` の後）に置く＝block/named-tuple 誤パース回避（パーサ gotcha）。
-                Some({id = id, classId = d#classId, gridPos = pos, moveTiles = moveTiles, hp = hp,
-                      waited = waited, attackTargetId = attackTargetOf(ref, world),
-                      resource = d#resource, weapons = weapons, staves = staves,
-                      consumables = consumables, rings = rings, ringEquipped = ringEquipped,
-                      selectedItem = d#selectedItem, moveStepsTaken = d#moveStepsTaken,
-                      facing = d#facing, hidden = playerHiddenOf(ref, world), usedStairs = d#usedStairs,
-                      level = level, exp = exp, pendingLevelUp = d#pendingLevelUp,
-                      statuses = statusEffectsOf(ref, world), followUpUsed = followUpUsed})
-            case _ => None
+        forM (
+            pos          <- posOf(ref, world);
+            hp           <- hpOf(ref, world);
+            waited       <- waitedOf(ref, world);
+            moveTiles    <- moveTilesOf(ref, world);
+            weapons      <- weaponsOf(ref, world);
+            staves       <- stavesOf(ref, world);
+            consumables  <- consumablesOf(ref, world);
+            rings        <- ringsOf(ref, world);
+            ringEquipped <- ringEquippedOf(ref, world);
+            followUpUsed <- followUpUsedOf(ref, world);
+            progress     <- progressOf(ref, world);
+            classId      <- classIdOf(ref, world);
+            resource     <- playerResourceOf(ref, world);
+            facing       <- facingOf(ref, world);
+            moveSteps    <- moveStepsOf(ref, world);
+            usedStairs   <- usedStairsOf(ref, world)
+        ) yield {
+            let (level, exp) = progress;
+            ({id = id, classId = classId, gridPos = pos, moveTiles = moveTiles, hp = hp,
+              waited = waited, attackTargetId = attackTargetOf(ref, world),
+              resource = resource, weapons = weapons, staves = staves,
+              consumables = consumables, rings = rings, ringEquipped = ringEquipped,
+              selectedItem = selectedItemOf(ref, world), moveStepsTaken = moveSteps,
+              facing = facing, hidden = playerHiddenOf(ref, world), usedStairs = usedStairs,
+              level = level, exp = exp, pendingLevelUp = pendingLevelUpOf(ref, world),
+              statuses = statusEffectsOf(ref, world), followUpUsed = followUpUsed}: PlayerData.Data)
         }
-
-    /// 安全網: World 由来 `dataFromWorld` と scene `PlayerScene.get` Data が食い違う味方を列挙する（[PLAYERDATA DIFF]）。
-    /// Data は Eq 非自動ゆえ **全 23 field を tuple へ射影**して比較する。射影が 1 field でも漏れると、その field が
-    /// ズレても DIFF が鳴らず「parity 成立」と誤認する（S2.4 の length+head 見逃しの拡大版）ため **全 field 完備が命**。
-    /// ネスト射影: gridPos={x,y}／weapons/staves/consumables/rings は (長さ, 先頭の name)／resource は数値 stat 群で代表／
-    /// statuses は (effect,magnitude,remaining) list／selectedItem(ItemKind Eq)／facing(Dir4 Eq)／
-    /// pendingLevelUp は Option を (unitName,fromLevel,toLevel,変化数) へ射影／他スカラはそのまま。
-    pub def playerDataMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        // 全 23 field の射影は playerDataKey へ集約（2段ネスト ((13),(10))・在庫は weaponsMismatches 等と
-        // 同一 weaponKey/staffKey/consumableKey/ringKey を共有＝S4.4 級 drift 不能）。
-        PlayerScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(playerDataKey, dataFromWorld(d#id, world, scene)) != Some(playerDataKey(d)))
-                Some(EntityRef.Player(d#id)) else None)
 
     /// scene の `EnemyScene.get` Data と **bit 一致**する `EnemyData.Data` を **World 由来**で再構築する
-    /// （dataFromWorld〔player版〕の enemy 版）。17 field の供給源（EnemyData.flix:21-49 の分類）:
-    ///   W ストア由来 12 accessor: gridPos=posOf／alerted=alertedOf／moveTiles=moveTilesOf／hp=hpOf／
-    ///     isDying=isDyingOf／attackTargetId=attackTargetOf／weapon=weaponsOf(Enemy id) の head／prevPos=prevPosOf／
-    ///     statuses=statusEffectsOf／ring=equippedRingOf（敵 ring は equippedRing store・both faction）／
-    ///     followUpUsed=followUpUsedOf／bottleUsed=bottleUsedOf。
-    ///   R 残置 3（scene Data から）: resourceId／resource／homeModuleIdx。
-    ///   scene Data から 1（World にまだ store 無し）: acted。
+    /// （dataFromWorld〔player版〕の enemy 版）。`EnemyData.Data` を **World 単独**で再構築する。
+    ///   gate 対象 11: gridPos=posOf／alerted=alertedOf／moveTiles=moveTilesOf／hp=hpOf／
+    ///     weapon=weaponsOf(0/1 List) の head／followUpUsed=followUpUsedOf／bottleUsed=bottleUsedOf／
+    ///     resourceId=enemyResourceIdOf／resource=enemyResourceOf／homeModuleIdx=homeModuleIdxOf／acted=actedOf。
+    ///   default 供給: isDying は Bool 直 / attackTargetId・prevPos・ring は Option 直 / statuses は default-Nil。
     ///   id = 引数。
-    /// core な W field（posOf/hpOf/moveTiles/alerted/weapons/followUpUsed/bottleUsed）が一つでも None なら全体 None
-    /// （dataFromWorld と同じ gate 流儀）。isDying は Bool 直 / attackTargetId・prevPos・ring は Option 直 / statuses は default-Nil。
-    pub def dataFromWorldEnemy(id: Int32, world: World, scene: Scene[NodeTag]): Option[EnemyData.Data] =
+    /// gate field が一つでも None（未 spawn/despawn 済み）なら全体 None（dataFromWorld と同じ gate 流儀）。
+    pub def dataFromWorldEnemy(id: Int32, world: World): Option[EnemyData.Data] =
         let ref = EntityRef.Enemy(id);
-        match (posOf(ref, world), alertedOf(ref, world), moveTilesOf(ref, world), hpOf(ref, world),
-               weaponsOf(ref, world), followUpUsedOf(ref, world), bottleUsedOf(ref, world),
-               EnemyScene.get(id, scene)) {
-            case (Some(pos), Some(alerted), Some(moveTiles), Some(hp),
-                  Some(weapons), Some(followUpUsed), Some(bottleUsed),
-                  Some(d)) =>
-                // record リテラルは `Some(` 直後（`(` の後）に置く＝block/named-tuple 誤パース回避（パーサ gotcha）。
-                Some({id = id, resourceId = d#resourceId, gridPos = pos, alerted = alerted,
-                      homeModuleIdx = d#homeModuleIdx, moveTiles = moveTiles, hp = hp,
-                      isDying = isDyingOf(ref, world), attackTargetId = attackTargetOf(ref, world),
-                      resource = d#resource, weapon = List.head(weapons), acted = d#acted,
-                      prevPos = prevPosOf(ref, world), statuses = statusEffectsOf(ref, world),
-                      ring = equippedRingOf(ref, world), followUpUsed = followUpUsed,
-                      bottleUsed = bottleUsed})
-            case _ => None
-        }
-
-    /// 安全網: World 由来 `dataFromWorldEnemy` と scene `EnemyScene.get` Data が食い違う敵を列挙する（[ENEMYDATA DIFF]）。
-    /// 全 17 field の射影は enemyDataKey へ集約（2段ネスト ((9),(8))・weapon/ring/statuses/pos は weaponKey/
-    /// equippedRingKey/statusListKey/posKey を共有＝S4.4 級 drift 不能）。1 field でも漏れると検出穴になるため全 field 完備が命。
-    pub def enemyDataMismatches(world: World, scene: Scene[NodeTag]): List[EntityRef] =
-        EnemyScene.getAll(scene) |> List.filterMap(d ->
-            if (Option.map(enemyDataKey, dataFromWorldEnemy(d#id, world, scene)) != Some(enemyDataKey(d)))
-                Some(EntityRef.Enemy(d#id)) else None)
+        forM (
+            pos           <- posOf(ref, world);
+            alerted       <- alertedOf(ref, world);
+            moveTiles     <- moveTilesOf(ref, world);
+            hp            <- hpOf(ref, world);
+            weapons       <- weaponsOf(ref, world);
+            followUpUsed  <- followUpUsedOf(ref, world);
+            bottleUsed    <- bottleUsedOf(ref, world);
+            resourceId    <- enemyResourceIdOf(ref, world);
+            resource      <- enemyResourceOf(ref, world);
+            homeModuleIdx <- homeModuleIdxOf(ref, world);
+            acted         <- actedOf(ref, world)
+        ) yield
+            ({id = id, resourceId = resourceId, gridPos = pos, alerted = alerted,
+              homeModuleIdx = homeModuleIdx, moveTiles = moveTiles, hp = hp,
+              isDying = isDyingOf(ref, world), attackTargetId = attackTargetOf(ref, world),
+              resource = resource, weapon = List.head(weapons), acted = acted,
+              prevPos = prevPosOf(ref, world), statuses = statusEffectsOf(ref, world),
+              ring = equippedRingOf(ref, world), followUpUsed = followUpUsed,
+              bottleUsed = bottleUsed}: EnemyData.Data)
 
     /// 味方の (level, exp) を World から読む。未登録は None。Enemy は常に None。
     pub def progressOf(ref: EntityRef, world: World): Option[(Int32, Int32)] =
@@ -1763,18 +1860,6 @@ mod World {
     pub def phaseObservedEnemyOf(world: World): Bool =
         let World.World(w) = world; w#phaseObservedEnemy
 
-    /// 検証器: attackTargetId の World/scene 不一致（両 faction）。
-    pub def attackTargetMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Int32], Option[Int32])] =
-        let ps = PlayerScene.getAll(scene) |> List.filterMap(d -> {
-            let wt = attackTargetOf(EntityRef.Player(d#id), world);
-            if (wt != d#attackTargetId) Some((EntityRef.Player(d#id), wt, d#attackTargetId)) else None
-        });
-        let es = EnemyScene.getAll(scene) |> List.filterMap(d -> {
-            let wt = attackTargetOf(EntityRef.Enemy(d#id), world);
-            if (wt != d#attackTargetId) Some((EntityRef.Enemy(d#id), wt, d#attackTargetId)) else None
-        });
-        List.append(ps, es)
-
     /// hp を World から読む（read-model アクセサ）。検証器の供給元。
     /// 単一 store＋toUid。
     pub def hpOf(ref: EntityRef, world: World): Option[Int32] =
@@ -1784,21 +1869,6 @@ mod World {
     /// 内側 List は player の weapons / enemy の 0/1 List 射影。
     pub def weaponsOf(ref: EntityRef, world: World): Option[List[UnitCatalog.WeaponResource]] =
         let World.World(w) = world; Map.get(toUid(ref), w#weapons)
-
-    /// 検証器（hpMismatches 同型）: World weapons（command 由来）と scene #weapons の不一致を返す。
-    /// WeaponResource は Eq 非自動ゆえ **長さ＋先頭武器の (name, durability)** へ射影して比較する
-    /// （[WEAPONS DIFF]）。enemy は単数 #weapon を Option.toList で 0/1 List 化して突合。
-    /// 全 weapon 書込が `Cmd.SetWeapons` を dual-write していれば空。書き漏れがあると `(ref, worldLen, sceneLen)` が出る。
-    pub def weaponsMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Int32, Int32)] =
-        let mism = (ref, sceneWs) -> {
-            let wWs = weaponsOf(ref, world) |> Option.map(ws -> headKey(ws, weaponKey));
-            if (wWs != Some(headKey(sceneWs, weaponKey)))
-                Some((ref, Option.getWithDefault(-1, Option.map(p -> fst(p), wWs)), List.length(sceneWs)))
-            else None
-        };
-        let ps = PlayerScene.getAll(scene) |> List.filterMap(d -> mism(EntityRef.Player(d#id), d#weapons));
-        let es = EnemyScene.getAll(scene)  |> List.filterMap(d -> mism(EntityRef.Enemy(d#id), Option.toList(d#weapon)));
-        List.append(ps, es)
 
     /// staves を World から読む（read-model アクセサ・player-only・waitedOf 流儀）。Enemy は常に None。
     pub def stavesOf(ref: EntityRef, world: World): Option[List[Staff.StaffResource]] =
@@ -1832,41 +1902,6 @@ mod World {
             case EntityRef.Enemy(_)   => None
         }
 
-    /// 検証器（weaponsMismatches 同型・players のみ）: World staves と scene #staves の不一致。
-    /// StaffResource は Eq 非自動ゆえ **長さ＋先頭 (name, durability)** へ射影して比較する（[STAVES DIFF]）。
-    pub def stavesMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Int32, Int32)] =
-        PlayerScene.getAll(scene) |> List.filterMap(d -> {
-            let ww = stavesOf(EntityRef.Player(d#id), world) |> Option.map(xs -> headKey(xs, staffKey));
-            if (ww != Some(headKey(d#staves, staffKey)))
-                Some((EntityRef.Player(d#id), Option.getWithDefault(-1, Option.map(p -> fst(p), ww)), List.length(d#staves)))
-            else None
-        })
-
-    /// 検証器: World consumables と scene #consumables の不一致（先頭 (name, durability) 射影）。
-    pub def consumablesMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Int32, Int32)] =
-        PlayerScene.getAll(scene) |> List.filterMap(d -> {
-            let ww = consumablesOf(EntityRef.Player(d#id), world) |> Option.map(xs -> headKey(xs, consumableKey));
-            if (ww != Some(headKey(d#consumables, consumableKey)))
-                Some((EntityRef.Player(d#id), Option.getWithDefault(-1, Option.map(p -> fst(p), ww)), List.length(d#consumables)))
-            else None
-        })
-
-    /// 検証器: World rings と scene #rings の不一致。RingResource に durability が無いので先頭 (name, power) 射影。
-    pub def ringsMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Int32, Int32)] =
-        PlayerScene.getAll(scene) |> List.filterMap(d -> {
-            let ww = ringsOf(EntityRef.Player(d#id), world) |> Option.map(xs -> headKey(xs, ringKey));
-            if (ww != Some(headKey(d#rings, ringKey)))
-                Some((EntityRef.Player(d#id), Option.getWithDefault(-1, Option.map(p -> fst(p), ww)), List.length(d#rings)))
-            else None
-        })
-
-    /// 検証器: World ringEquipped と scene #ringEquipped の不一致（Bool 直接比較・alertedMismatches 同型）。
-    pub def ringEquippedMismatches(world: World, scene: Scene[NodeTag]): List[(EntityRef, Option[Bool], Bool)] =
-        PlayerScene.getAll(scene) |> List.filterMap(d -> {
-            let ww = ringEquippedOf(EntityRef.Player(d#id), world);
-            if (ww != Some(d#ringEquipped)) Some((EntityRef.Player(d#id), ww, d#ringEquipped)) else None
-        })
-
     /// unified-id の faction を **enum タグ component** から読む。
     /// 「player/enemy を id で判断」せず、この明示タグで faction を得る（Bevy Team component 相当）。
     pub def teamOf(uid: EntityId, world: World): Option[Faction] =
@@ -1892,58 +1927,55 @@ mod World {
             case _ => ()
         })
 
-    /// hp を変える PlanItem（heal/fullHeal/damage/maxHpUp/revive）について、**runPlan 適用後の scene**
-    /// から各対象の hp を読み戻して `Cmd.SetHp` を境界で emit する。これで effect-runner 経由の hp も
-    /// World に dual-write されつつ、PlanHandlers は **pure のまま**（pure-handler-widen 不可の壁を回避）。
-    /// `emitStatusAdds` と同じ責務分離（pure handler / 境界 emit）。runPlan の **後**に渡す（適用後 hp を読むため）。
-    pub def emitHpSets(items: List[EffectPlan.PlanItem], scene: Scene[NodeTag]): Unit \ Command =
+    /// hp を変える PlanItem（heal/fullHeal/damage/maxHpUp/revive）について、**runPlan 適用後の World**
+    /// から各対象の hp を読み戻して `Cmd.SetHp` を境界で emit する。heal/fullHeal は handler が
+    /// 適用時に emit 済みなので、ここは同値の再 emit（冪等）。MaxHpUpAt だけは適用の実体を
+    /// ここが担う（handler は no-op）: 現在の resource#hp / hp に +inc して
+    /// SetHp / SetBaseStats / SetResource を emit する（read-after-write で連鎖も合成される）。
+    /// `emitStatusAdds` と同じ責務分離（handler / 境界 emit）。runPlan の **後**に渡す。
+    pub def emitHpSets(items: List[EffectPlan.PlanItem]): Unit \ {Command, WorldQuery} =
         items |> List.forEach(item -> match item {
-            case EffectPlan.PlanItem.HealAt(id, ally, _)    => emitHpAt(id, ally, scene)
-            case EffectPlan.PlanItem.FullHealAt(id, ally)   => emitHpAt(id, ally, scene)
-            case EffectPlan.PlanItem.DamageAt(id, ally, _)  => emitHpAt(id, ally, scene)
-            case EffectPlan.PlanItem.MaxHpUpAt(id, ally, _) =>
-                emitHpAt(id, ally, scene);
-                // 命の草で resource#hp（=baseStats#maxHp）が変わる＝唯一 baseStats を動かす effect-plan。
-                // hp と同 funnel で SetBaseStats を境界 dual-write（StaffCast の maxHpUpUnit/applyMaxHpUp の World 側）。
-                emitBaseStatsAt(id, ally, scene)
-            case EffectPlan.PlanItem.ReviveAt(id, ally)     => emitHpAt(id, ally, scene)
+            case EffectPlan.PlanItem.HealAt(id, ally, _)    => emitHpAt(id, ally)
+            case EffectPlan.PlanItem.FullHealAt(id, ally)   => emitHpAt(id, ally)
+            case EffectPlan.PlanItem.DamageAt(id, ally, _)  => emitHpAt(id, ally)
+            case EffectPlan.PlanItem.MaxHpUpAt(id, ally, n) => emitMaxHpUpAt(id, ally, n)
+            case EffectPlan.PlanItem.ReviveAt(id, ally)     => emitHpAt(id, ally)
             case _ => ()
         })
 
-    /// 対象の現 hp を scene から読み（居なければ no-op）、`Cmd.SetHp` を emit する内部ヘルパー。
-    def emitHpAt(id: EntityId, ally: Bool, scene: Scene[NodeTag]): Unit \ Command =
-        let hpOpt = if (ally) PlayerScene.get(id, scene) |> Option.map(d -> d#hp)
-                    else EnemyScene.get(id, scene) |> Option.map(d -> d#hp);
-        match hpOpt {
+    /// 対象の現 hp を World から読み（居なければ no-op）、`Cmd.SetHp` を emit する内部ヘルパー。
+    def emitHpAt(id: EntityId, ally: Bool): Unit \ {Command, WorldQuery} =
+        match hpOf(refOf(ally, id), WorldQuery.get()) {
             case Some(hp) => Command.emit(Cmd.SetHp(refOf(ally, id), hp))
             case None     => ()
         }
 
-    /// 対象の現 resource から baseStats を導いて `Cmd.SetBaseStats` を emit する内部ヘルパー（emitHpAt 同型）。
-    /// maxHp 変更 effect で baseStats#maxHp が動くため runPlan 後の scene を読んで境界 dual-write する。
-    def emitBaseStatsAt(id: EntityId, ally: Bool, scene: Scene[NodeTag]): Unit \ Command =
-        let bsOpt = if (ally) PlayerScene.get(id, scene) |> Option.map(d -> Combat.baseStatsFrom(d#resource))
-                    else EnemyScene.get(id, scene) |> Option.map(d -> Combat.baseStatsFrom(d#resource));
-        match bsOpt {
-            case Some(bs) => Command.emit(Cmd.SetBaseStats(refOf(ally, id), bs))
-            case None     => ()
-        }
-
-    /// World（位置の read-model mirror）から Board を組み立てる経路（World クエリ＝ecs/ 層）。
-    /// pieces は World の pos-store（`Cmd.Move` 権威・hidden 味方除外）、map は scene の静的地形
-    /// （`BoardSnapshot.mapSnapshotOf` を借用）。すなわち「駒は World・地形は scene」の合成。
-    /// 通常フレームでは dual-write により `BoardSnapshot.fromScene` と `boardKey` 上で一致する
-    /// （`boardMatchesScene` が凍結契約としてこれを pin する）。
-    /// flip 時は call-point 単位で `BoardSnapshot.fromScene(scene)` をこれに差し替える。
-    pub def toBoard(world: World, scene: Scene[NodeTag]): Board =
-        {
-            map    = BoardSnapshot.mapSnapshotOf(scene),
-            pieces = boardPieces(world)
-        }
+    /// 最大HP上昇（命の草）の適用本体。現在の resource / hp に +inc して
+    /// SetHp → SetBaseStats → SetResource の順で emit する（居なければ no-op）。
+    def emitMaxHpUpAt(id: EntityId, ally: Bool, inc: Int32): Unit \ {Command, WorldQuery} =
+        let w = WorldQuery.get();
+        if (ally)
+            match (hpOf(EntityRef.Player(id), w), playerResourceOf(EntityRef.Player(id), w)) {
+                case (Some(hp), Some(res)) =>
+                    let updated = {hp = res#hp + inc | res};
+                    Command.emit(Cmd.SetHp(EntityRef.Player(id), hp + inc));
+                    Command.emit(Cmd.SetBaseStats(EntityRef.Player(id), Combat.baseStatsFrom(updated)));
+                    Command.emit(Cmd.SetPlayerResource(id, updated))
+                case _ => ()
+            }
+        else
+            match (hpOf(EntityRef.Enemy(id), w), enemyResourceOf(EntityRef.Enemy(id), w)) {
+                case (Some(hp), Some(res)) =>
+                    let updated = {hp = res#hp + inc | res};
+                    Command.emit(Cmd.SetHp(EntityRef.Enemy(id), hp + inc));
+                    Command.emit(Cmd.SetBaseStats(EntityRef.Enemy(id), Combat.baseStatsFrom(updated)));
+                    Command.emit(Cmd.SetEnemyResource(id, updated))
+                case _ => ()
+            }
 
     /// World だけから Board を組む（scene 非依存）。地形は store した `mapSnapshot`（未確定なら None）、
-    /// 駒は既存の pure-World `boardPieces`（`Cmd.Move` 権威・hidden 除外）を VERBATIM 再利用＝`toBoard` の
-    /// scene 地形を World store に差し替えた版。ノックバックの sim 着地計算が読む。
+    /// 駒は pure-World `boardPieces`（`Cmd.Move` 権威・hidden 除外）。`BoardQuery` handler・
+    /// 敵ターンの盤面構築・ノックバックの sim 着地計算が読む唯一の Board 構築口。
     pub def boardOf(world: World): Option[Board] =
         let World.World(w) = world;
         Option.map(m -> ({map = m, pieces = boardPieces(world)}: Board), w#mapSnapshot)
@@ -1952,6 +1984,52 @@ mod World {
     /// scene の `Stairs.getPos` を mirror した read-model（`boardOf` と同じく scene 非依存 sim を可能にする seam）。
     pub def stairsPosOf(world: World): Option[{x = Int32, y = Int32}] =
         let World.World(w) = world; w#stairsPos
+
+    /// 静的地形（MapSnapshot）を World から読む（None=盤面レス画面）。
+    /// 「盤面がある画面でのみ動く」ドライバ / 描画の存在ゲートと placements 読みの共通窓口。
+    pub def terrainOf(world: World): Option[MapSnapshot] =
+        let World.World(w) = world; w#mapSnapshot
+
+    /// 地形を「必ず在る」前提で読む版（spawn 系 / 範囲計算など盤面のある画面専用）。
+    /// 盤面レス画面での呼び出しは配線ミスとして即落とす（fail-open が欲しい読み手は `terrainOf`）。
+    pub def terrainOrBug(world: World): MapSnapshot =
+        match terrainOf(world) {
+            case Some(m) => m
+            case None    => bug!("World.terrainOrBug: terrain not seeded (board-less screen)")
+        }
+
+    /// 盤面（ダンジョンマップ）が World に seed 済みか。Title / CharacterSelect など盤面レス画面では偽。
+    /// カーソル移動・カメラ追従・ミニマップなどの Map 存在ゲートが共通で使う唯一の判定点（`boardOf` と同源）。
+    pub def hasBoard(world: World): Bool =
+        not Option.isEmpty(terrainOf(world))
+
+    /// マップ生成 Plan＋スポーン起点を World から読む（None=盤面レス画面）。
+    pub def mapLayoutOf(world: World): Option[MapLayout] =
+        let World.World(w) = world; w#mapLayout
+
+    /// 配置済み全モジュールのワールド bbox（idx 順）。盤面レス画面は Nil。
+    /// 敵 / アイテム / 宝箱のスポーン候補列挙・フォグ・ミニマップが読む。
+    pub def placementsOf(world: World): List[DungeonComposer.ModulePlacement] =
+        terrainOf(world) |> Option.map(m -> m#placements) |> Option.getWithDefault(Nil)
+
+    /// 部屋数。`idx < roomCount` なら部屋、それ以外は通路と判定できる。盤面レス画面は 0。
+    pub def roomCountOf(world: World): Int32 =
+        mapLayoutOf(world) |> Option.map(l -> l#plan#roomCount) |> Option.getWithDefault(0)
+
+    /// anchor 部屋内の床が保証されたスポーン起点（Player 初期配置）。盤面確定後の build 中にのみ
+    /// 読む前提で、未 seed の呼び出しは配線ミスとして即落とす。
+    pub def spawnGridOf(world: World): {x = Int32, y = Int32} =
+        match mapLayoutOf(world) {
+            case Some(l) => l#spawnGrid
+            case None    => bug!("World.spawnGridOf: mapLayout not seeded")
+        }
+
+    /// このフロアを生成した Plan（FloorSnapshot 保存が読む）。未 seed の呼び出しは配線ミスとして即落とす。
+    pub def mapPlanOf(world: World): DungeonGenerator.Plan =
+        match mapLayoutOf(world) {
+            case Some(l) => l#plan
+            case None    => bug!("World.mapPlanOf: mapLayout not seeded")
+        }
 
     /// フロア全域の探索記憶（訪問済み module idx）を World から読む。ミニマップ描画と
     /// カーソル可動域判定が読む read-model。`Cmd.AddVisited` が union・`Cmd.ClearVisited` が一掃。
@@ -1972,17 +2050,6 @@ mod World {
     /// 指定セルの宝箱を World から読む（`Chests.findAt` の World 版）。
     pub def chestAtOf(cell: {x = Int32, y = Int32}, world: World): Option[Chests.Data] =
         let World.World(w) = world; Map.get(cellKey(cell), w#chests)
-
-    /// 手組み GroundItem ノード（テスト fixture）を cell key → Data の Map に射影する seed seam。
-    /// production はノードを積まないので常に空。
-    def itemsFromScene(scene: Scene[NodeTag]): Map[Int32, GroundItems.Data] =
-        Scene.getChildrenAt(MapScene.worldName() :: "Items" :: Nil, scene)
-            |> List.filterMap(name ->
-                match Scene.getState(MapScene.worldName() :: "Items" :: name :: Nil, scene) {
-                    case Some(NodeTag.GroundItem(d)) => Some(d)
-                    case _                            => None
-                })
-            |> List.foldLeft((m, d) -> Map.insert(cellKey(d#gridPos), d, m), Map.empty())
 
     /// 床アイテム store を World から読む（cell key → Data）。
     pub def groundItemsOf(world: World): Map[Int32, GroundItems.Data] =
@@ -2027,12 +2094,6 @@ mod World {
     pub def dyingElapsedOf(ref: EntityRef, world: World): Option[Float64] =
         let World.World(w) = world; Map.get(toUid(ref), w#dyingElapsed)
 
-    /// 安全網: store した mapSnapshot（地形）が scene 由来と食い違うか（boardKey は駒のみ見るため別建て）。
-    /// MapSnapshot は Eq 非自動ゆえ (tileSize, wallCells) へ射影して比較（壁レイアウトの drift 検出）。
-    pub def mapSnapshotMatchesScene(world: World, scene: Scene[NodeTag]): Bool =
-        let World.World(w) = world;
-        Option.map(mapSnapshotKey, w#mapSnapshot) == Some(mapSnapshotKey(BoardSnapshot.mapSnapshotOf(scene)))
-
     /// Board の駒を**順序非依存**で突合する正規形（(faction, id, x, y) 昇順）。
     /// `Board` は型エイリアスで Eq derive 不可・pieces 順が World(id昇順) と fromScene(preorder) で違うため、
     /// 検証器（World 由来盤面 vs scene 由来盤面の mid-frame 突合）はこのキーで比較する。
@@ -2063,30 +2124,4 @@ mod World {
             }
         })
 
-    /// World→scene の逆向き write-back。World が持つ statuses を scene の Data#statuses へ書き戻す。
-    /// 既存の純粋 writer `PlayerScene.mapPlayer` / `EnemyScene.mapEnemy` を再利用（走査・書込を再実装しない）。
-    /// scene に居ない id は mapPlayer/mapEnemy が no-op で読み飛ばす。この sync が World を唯一の真とする seam になる。
-    pub def syncStatusesToScene(world: World, scene: Scene[NodeTag]): Scene[NodeTag] =
-        let World.World(w) = world;
-        // 単一 statusEffects を uidToRef で faction 分けし、original id で mapPlayer/mapEnemy。
-        Map.foldLeftWithKey((sc, uid, statuses) ->
-            match uidToRef(uid) {
-                case EntityRef.Player(pid) => PlayerScene.mapPlayer(pid, d -> {statuses = statuses | d}, sc)
-                case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, d -> {statuses = statuses | d}, sc)
-            }, scene, w#statusEffects)
-
-    /// **本番からは退役（テスト seam）**。gameLoop はもう呼ばない（gridPos の読み手は
-    /// World.posOf / overlay / getXxxWithWorldPos へ全 flip 済み）。golden/DSL テストが「World の位置を
-    /// scene Data へ投影して比較する」用途にのみ残す。
-    pub def syncTreeFromWorld(world: World, scene: Scene[NodeTag]): Scene[NodeTag] =
-        // 単一 `pos` store を team タグで faction 分けし、original id で mapPlayer/mapEnemy。
-        let World.World(w) = world;
-        // 位置（gridPos）を投影する。store に居る entity だけ derive＝spawn-transient（store 未登録）は scene を保持。
-        // hp/waited/isDying/alerted/level/exp は投影しない: これらは World 権威で、live 読み手は overlay か
-        // World 直読みを使い、isDying/alerted は writer が scene へ dual-write するため scene は fresh のまま。
-        Map.foldLeftWithKey((sc, uid, pos) ->
-            match uidToRef(uid) {
-                case EntityRef.Player(pid) => PlayerScene.mapPlayer(pid, d -> {gridPos = pos | d}, sc)
-                case EntityRef.Enemy(eid)  => EnemyScene.mapEnemy(eid, d -> {gridPos = pos | d}, sc)
-            }, scene, w#pos)
 }

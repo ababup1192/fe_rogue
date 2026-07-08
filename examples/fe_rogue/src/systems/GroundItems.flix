@@ -12,10 +12,8 @@
 /// 設計メモ:
 ///   - 1 セルに 1 アイテムまで（同セル重複は事前フィルタで弾く）
 ///   - 敵/味方のスポーンセルは避ける
-///   - アイテムノードを Sprite2D で表示。武器の `sprite` を使う
+///   - 描画は `RenderWorld.renderItems` が武器の `sprite` を使って直描きする
 mod GroundItems {
-
-    use JsonCompat.PathTag.Root
 
     // ─── 状態 ─────────────────────────────────────────────────
 
@@ -89,22 +87,20 @@ mod GroundItems {
                  staffCatalog: Staff.StaffCatalog,
                  consumableCatalog: Consumable.ConsumableCatalog,
                  ringCatalog: Ring.RingCatalog,
-                 floor: FloorCatalog.FloorResource,
-                 scene: Scene[NodeTag]):
-            Scene[NodeTag] \ {Math.Random, World.Command} =
+                 floor: FloorCatalog.FloorResource):
+            Unit \ {Math.Random, World.Command, World.WorldQuery} =
         let items = floor#items;
-        if (List.isEmpty(items)) scene
+        if (List.isEmpty(items)) ()
         else {
-            let layer       = MapScene.getMapLayer(scene);
-            let placements  = MapScene.getPlacements(scene);
-            let roomCount   = MapScene.getRoomCount(scene);
-            // 既存のユニットセルを taken に入れて避ける。
-            // 構築時 (buildPlayingScene) は sceneRef が更新前なので PartyQuery/RosterQuery では
-            // なく scene 引数を直接読む。
+            let world0      = World.WorldQuery.get();
+            let terrain     = World.terrainOrBug(world0);
+            let placements  = World.placementsOf(world0);
+            let roomCount   = World.roomCountOf(world0);
+            // 既存のユニットセルを taken に入れて避ける（World 権威で読む）。
             let occupied =
                 List.append(
-                    PlayerScene.getAll(scene) |> List.map(d -> d#gridPos),
-                    EnemyScene.getAll(scene) |> List.map(d -> d#gridPos));
+                    PlayerScene.getAll() |> List.map(d -> d#gridPos),
+                    EnemyScene.getAll() |> List.map(d -> d#gridPos));
             // anchor (idx=0) を除いた部屋だけを対象にする
             let rooms = List.filter(p ->
                 p#idx >= 1 and p#idx < roomCount, placements);
@@ -114,15 +110,15 @@ mod GroundItems {
                 (0, occupied, Nil);
             let range = floor#itemsPerRoom;
             let (_, _, accDrops) = List.foldLeft(state -> p ->
-                dropsInRoom(layer, p, FloorCatalog.randomCountInRange(range),
+                dropsInRoom(terrain, p, FloorCatalog.randomCountInRange(range),
                              items, catalog, staffCatalog, consumableCatalog, ringCatalog, state),
                 initial, rooms);
             let drops = List.reverse(accDrops);
             // ノードは積まない＝Cmd spawn のみ（点滅の初期位相 stagger は id で付与）。
-            List.foldLeft((acc, drop) -> {
+            List.forEach(drop -> {
                 let (id, cell, key, kind) = drop;
-                addOneItem(id, cell, key, kind, acc)
-            }, scene, drops)
+                addOneItem(id, cell, key, kind)
+            }, drops)
         }
 
     /// id を weapons catalog → staves catalog → consumables catalog の順で引いて、
@@ -150,20 +146,18 @@ mod GroundItems {
     /// scene ノードは書かない（描画は `RenderWorld.renderItems` が World から直描き）。
     /// `idx` は点滅の初期位相 stagger（同時点滅回避）にだけ使う。
     def addOneItem(idx: Int32, cell: {x = Int32, y = Int32},
-                    itemKey: String, item: ItemData.GroundItemKind,
-                    scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
+                    itemKey: String, item: ItemData.GroundItemKind): Unit \ World.Command =
         let initElapsed = Duration.seconds(0.4 * Int32.toFloat64(idx));
         let data: Data = {
             gridPos = cell, itemKey = itemKey, item = item,
             elapsed = initElapsed
         };
-        World.Command.emit(World.Cmd.SpawnItem(data));
-        scene
+        World.Command.emit(World.Cmd.SpawnItem(data))
 
     /// 部屋 1 つから count 個のドロップセルを選び state に積む。
     /// 各セルにつき floor の `items` (percent 配列) から重み付き抽選した id を
     /// weapons → staves → consumables の順で解決して配置する。
-    def dropsInRoom(layer: TileMapLayer,
+    def dropsInRoom(terrain: MapSnapshot,
                      p: DungeonComposer.ModulePlacement,
                      count: Int32,
                      items: List[FloorCatalog.SpawnEntry],
@@ -179,7 +173,7 @@ mod GroundItems {
         if (count <= 0) state
         else {
             let (nextId, taken, list) = state;
-            let candidates = floorCellsInRoom(layer, p)
+            let candidates = floorCellsInRoom(terrain, p)
                               |> List.filter(c -> not isTaken(c, taken));
             match RandomUtil.pick(candidates) {
                 case None       => state
@@ -189,7 +183,7 @@ mod GroundItems {
                         case Some(id) =>
                             let kind = lookupItem(id, catalog, staffCatalog, consumableCatalog, ringCatalog);
                             let entry = (nextId, cell, id, kind);
-                            dropsInRoom(layer, p, count - 1, items, catalog,
+                            dropsInRoom(terrain, p, count - 1, items, catalog,
                                          staffCatalog, consumableCatalog, ringCatalog,
                                          (nextId + 1, cell :: taken, entry :: list))
                     }
@@ -216,10 +210,10 @@ mod GroundItems {
 
     /// 部屋の bbox（offset + floorBounds）に含まれる床セルを列挙する（EnemyScene と同じロジック）。
     /// n-format で通路の床がアイテム候補に混ざらないよう floorBounds で絞る。
-    /// 純粋コア `floorCellsInBounds` に床述語（TileMapLayer 床判定）を注入する薄いシェル。
-    def floorCellsInRoom(layer: TileMapLayer,
+    /// 純粋コア `floorCellsInBounds` に床述語（MapSnapshot 床判定）を注入する薄いシェル。
+    def floorCellsInRoom(terrain: MapSnapshot,
                           p: DungeonComposer.ModulePlacement): List[{x = Int32, y = Int32}] =
-        floorCellsInBounds(c -> TileMapLayer.isFloor(c, layer),
+        floorCellsInBounds(c -> MapSnapshot.isFloor(c, terrain),
                             p#offset, p#floorBoundsMin, p#floorBoundsMaxEx)
 
     /// セル `c` が既取得リスト `taken` に含まれるか（同セル二重ドロップ防止）。
@@ -230,22 +224,21 @@ mod GroundItems {
     // 読みは World.groundItemAtOf / groundItemsOf が唯一の経路。
 
     /// 指定セルのアイテムを除去してアイテム実体を返す＝`Cmd.RemoveItem` を emit。
-    /// World store に居るときだけ emit。scene は素通し。
-    pub def takeAt(coord: {x = Int32, y = Int32},
-                    scene: Scene[NodeTag]):
-            (Scene[NodeTag], Option[ItemData.GroundItemKind]) \ {World.Command, World.WorldQuery} =
+    /// World store に居るときだけ emit。
+    pub def takeAt(coord: {x = Int32, y = Int32}):
+            Option[ItemData.GroundItemKind] \ {World.Command, World.WorldQuery} =
         match World.groundItemAtOf(coord, World.WorldQuery.get()) {
-            case None    => (scene, None)
+            case None    => None
             case Some(d) =>
                 World.Command.emit(World.Cmd.RemoveItem(coord));
-                (scene, Some(d#item))
+                Some(d#item)
         }
 
     /// 現在の床アイテムを `ItemSnap` 列（セル座標 ＋ 種別 id）に射影する（スナップショット保存用）。
     /// 床アイテムは `itemKey`（id）を持つので逆引き不要。
     /// 射影元は **World の groundItems store**（存在の権威）。並び順は cellKey 昇順で決定論的、
     /// セーブ形式とも整合（復元は位置キーで意味論同一）。
-    pub def captureSnaps(_scene: Scene[NodeTag]): List[FloorSnapshot.ItemSnap] \ World.WorldQuery =
+    pub def captureSnaps(): List[FloorSnapshot.ItemSnap] \ World.WorldQuery =
         World.groundItemsOf(World.WorldQuery.get())
             |> Map.valuesOf
             |> List.map(d -> ({gridPos = d#gridPos, itemKey = d#itemKey}: FloorSnapshot.ItemSnap))
@@ -256,18 +249,17 @@ mod GroundItems {
                           catalog: UnitCatalog.UnitCatalog,
                           staffCatalog: Staff.StaffCatalog,
                           consumableCatalog: Consumable.ConsumableCatalog,
-                          ringCatalog: Ring.RingCatalog,
-                          scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        List.foldLeft((acc, snap) -> {
+                          ringCatalog: Ring.RingCatalog): Unit \ World.Command =
+        List.forEach(snap -> {
             let kind = lookupItem(snap#itemKey, catalog, staffCatalog, consumableCatalog, ringCatalog);
-            respawn(snap#gridPos, snap#itemKey, kind, acc)
-        }, scene, snaps)
+            respawn(snap#gridPos, snap#itemKey, kind)
+        }, snaps)
 
     /// `takeAt` の逆操作として、アイテムを `cell` に再配置する＝`Cmd.SpawnItem` を emit。
     /// 点滅位相は 0 から（idx 由来 stagger は spawn 経路のみ）。
     pub def respawn(cell: {x = Int32, y = Int32}, itemKey: String,
-                     kind: ItemData.GroundItemKind, scene: Scene[NodeTag]): Scene[NodeTag] \ World.Command =
-        addOneItem(0, cell, itemKey, kind, scene)
+                     kind: ItemData.GroundItemKind): Unit \ World.Command =
+        addOneItem(0, cell, itemKey, kind)
 
     // lit ゲートと縁取り alpha は `RenderWorld.renderItems` が描画時に判定し、
     // elapsed は `World.stepWorld` が tick する。
