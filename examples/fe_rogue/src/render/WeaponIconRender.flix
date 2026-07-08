@@ -69,7 +69,7 @@ mod WeaponIconRender {
 
     /// 囲い（枠＋プレート背景）の Drawable 列（drawables チャンネル）。
     pub def renderPlates(world: World, holesOpt: Option[List[GridRect]],
-                          transform: Camera2D.ViewTransform):
+                          transform: CameraProjection.Projection):
             List[GameEngine.Drawable] \ GameEngine.Game =
         iconInputs(world, holesOpt) |> List.flatMap(inp -> {
             let half = boxSize() / 2.0;
@@ -91,7 +91,7 @@ mod WeaponIconRender {
     /// WeaponGlyph の各ピース（Polygon2D/Arc2D 値・アイコン中心基準のローカル位置）を
     /// world 座標へ動かして cmd 化する。暗転は cmd color への乗算で再現。
     pub def renderGlyphs(world: World, holesOpt: Option[List[GridRect]],
-                          transform: Camera2D.ViewTransform):
+                          transform: CameraProjection.Projection):
             List[GameEngine.PolygonRenderCmd] =
         iconInputs(world, holesOpt) |> List.flatMap(inp -> {
             let modColor = inp#modColor;
@@ -103,25 +103,25 @@ mod WeaponIconRender {
 
     /// グリフ 1 ピース（Polygon2D/Arc2D の EngineNode 値）→ PolygonRenderCmd 列。
     def pieceCmds(node: EngineNode[Unit], center: Vec2.Vec2, modColor: Color,
-                   transform: Camera2D.ViewTransform): List[GameEngine.PolygonRenderCmd] =
+                   transform: CameraProjection.Projection): List[GameEngine.PolygonRenderCmd] =
         let withMod = (cmd: GameEngine.PolygonRenderCmd) ->
             ({color = mulColor(cmd#color, modColor), zIndex = iconZIndex() + 2 | cmd}: GameEngine.PolygonRenderCmd);
         match node {
             case EngineNode.Polygon2DWithState(poly, _) =>
                 let p = Node2D.getPosition(poly);
-                let screenPos = Camera2D.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
+                let screenPos = CameraProjection.worldToViewport(transform, {x = center#x + p#x, y = center#y + p#y});
                 withMod(Polygon2D.toRenderCmd(screenPos, transform#scale, poly)) :: Nil
             case EngineNode.Arc2DWithState(arc, _) =>
                 let p = Node2D.getPosition(arc);
-                let screenPos = Camera2D.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
+                let screenPos = CameraProjection.worldToViewport(transform, {x = center#x + p#x, y = center#y + p#y});
                 Arc2D.toRenderCmds(screenPos, transform#scale, arc) |> List.map(withMod)
             case _ => Nil
         }
 
     /// ColorRect 値 1 枚を world 左上座標へ Drawable 化する（UnitHPBarRender と同型）。
     def rectDrawables(rect: ColorRect, worldTopLeft: Vec2.Vec2, z: Int32,
-                       transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
-        let screenPos = Camera2D.applyToWorldPos(transform, worldTopLeft);
+                       transform: CameraProjection.Projection): List[GameEngine.Drawable] \ GameEngine.Game =
+        let screenPos = CameraProjection.worldToViewport(transform, worldTopLeft);
         GameEngine.Renderable.toDrawables(EngineNode.ColorRectWithState(rect, ()), screenPos)
             |> Render.applyCameraScale(transform)
             |> List.map(d -> {zIndex = z | d})

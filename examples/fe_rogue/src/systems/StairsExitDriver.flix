@@ -147,7 +147,8 @@ mod StairsExitDriver {
                     \ {GameEngine.Game, Pacing.State, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                        GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery,
-                       World.WorldQuery, RangeOverlayState.State, CameraState.State, State} =
+                       World.WorldQuery, PlayerData.PartyQuery, EnemyData.RosterQuery, CursorState.State,
+               RangeOverlayState.State, State} =
         match TurnPhase.State.get() {
             case TurnPhase.Phase.StairsExit => stepOnce(State.get())
             case _                          => ()
@@ -158,7 +159,8 @@ mod StairsExitDriver {
             \ {GameEngine.Game, Pacing.State, GameLogger.GameLogger,
                EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery,
-               World.WorldQuery, RangeOverlayState.State, CameraState.State, State} =
+               World.WorldQuery, PlayerData.PartyQuery, EnemyData.RosterQuery, CursorState.State,
+               RangeOverlayState.State, State} =
         if (Pacing.State.isHolding()) ()
         else if (not CameraScene.isSettled()) ()
         else if (World.anyEnemyAttacking(World.WorldQuery.get())) ()

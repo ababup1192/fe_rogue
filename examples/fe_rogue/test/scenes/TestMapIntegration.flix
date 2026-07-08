@@ -281,7 +281,7 @@ mod TestMapIntegration {
     //
     //   これらをコードロジック（Board + PlayerScene + Tween）で再現できるか。
     //   再現できなければ、バグは入力 handler（GameEngine.Game.isKeyPressed）または
-    //   レンダリング層（Camera2D / TileMapLayer 描画）にある。
+    //   レンダリング層（追従カメラ投影 / TileMapLayer 描画）にある。
     // ========================================================================
 
     /// 連続入力シミュレータ: `start` に置いた Player(0) を、dir 方向への moveToById で

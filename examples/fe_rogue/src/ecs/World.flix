@@ -240,6 +240,11 @@ pub enum World {
                  //   phaseObservedEnemy — 上部バーが「敵ターン」を観測済み（0 体ターンの取りこぼし防止）。
                  // どちらも view-timing 由来だが driver の順序非依存化のため World 経由で読む（生アニメ Data は TopBar 残置）。
                  enemyTurnBusy = Bool, phaseObservedEnemy = Bool,
+                 // 追従カメラが実際に映している点（world 座標）。**カメラの唯一の状態**（view-lane・golden sim-trace の対象外）。
+                 // 狙う点（target）と追従設定（zoom/smoothSpeed/deadZone）は保存せず、`CameraScene` が
+                 // 毎フレーム再計算して `CameraFollow.step` に渡し、その結果をここへ書き戻す（view 由来の蓄積子）。
+                 // 描画変換（`CameraView.projectionOf`）と追従完了ゲート（`CameraScene.isSettled`）が読む。
+                 cameraSmoothPos = Vec2.Vec2,
                  // 決定論的 PRNG 状態。live パスでは DORMANT（live ハンドラは
                  // Math.Random に delegate し w#rng を進めない）。両 sync パスで verbatim carry し、
                  // seeded PRNG を行使するのは test / trace ハーネスのみ。
@@ -289,6 +294,7 @@ mod World {
                      tileLayers = Nil,
                      effectRule = Map.empty(),
                      enemyTurnBusy = false, phaseObservedEnemy = false,
+                     cameraSmoothPos = Vec2.zero(),
                      rng = Prng.seed(0i64)})
 
     /// World の turnPhase を読む（read-model アクセサ）。
@@ -517,6 +523,7 @@ mod World {
         case SetProgress(EntityRef, Int32, Int32) // 味方の (level, exp) write（撃破/レベルアップ/復元で）
         case SetEnemyTurnBusy(Bool)            // 敵ターン intro hold 中 bool write（TopBar dual-write）
         case SetPhaseObservedEnemy(Bool)       // バーが敵ターン観測済み bool write（TopBar dual-write）
+        case SetCameraSmoothPos(Vec2.Vec2)     // 追従カメラの smoothPos write（view-lane・golden trace の記録対象外）
         case SetStairs(Option[{x = Int32, y = Int32}])  // 階段セル write（配置=Some/未配置=None・floor 単位で 1 回）。stairsPos を World 権威化
         case AddVisited(Set[Int32])        // 探索記憶に今フレームの訪問 module idx を union（Minimap step が emit）
         case ClearVisited                  // フロア再構築時に探索記憶を一掃（ClearChests と同型）
@@ -897,6 +904,8 @@ mod World {
                 let World.World(w) = world; World.World({enemyTurnBusy = b | w})
             case Cmd.SetPhaseObservedEnemy(b) =>
                 let World.World(w) = world; World.World({phaseObservedEnemy = b | w})
+            case Cmd.SetCameraSmoothPos(p) =>
+                let World.World(w) = world; World.World({cameraSmoothPos = p | w})
             case Cmd.SetStairs(cell) =>
                 // 階段セルを World 権威に write（placeAt が emit）。floor 単位で 1 回・未配置は None。
                 let World.World(w) = world; World.World({stairsPos = cell | w})
@@ -1229,6 +1238,8 @@ mod World {
             case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)
             case Cmd.SetPhaseObservedEnemy(b) => ("PhObs", bool01(b), 0, 0)
+            case Cmd.SetCameraSmoothPos(p)    => ("SetCameraSmoothPos",
+                                                  Float64.truncateToInt32(p#x), Float64.truncateToInt32(p#y), 0)
             case Cmd.SetStairs(cell)          =>
                 let (x, y) = Option.map(p -> (p#x, p#y), cell) |> Option.getWithDefault((-1, -1));
                 ("SetStairs", x, y, 0)
@@ -1859,6 +1870,11 @@ mod World {
     /// バーが敵ターン観測済みか（`TopBarUi.hasObservedEnemyOf` の World 版・順序非依存）。
     pub def phaseObservedEnemyOf(world: World): Bool =
         let World.World(w) = world; w#phaseObservedEnemy
+
+    /// 追従カメラが実際に映している点（world 座標）。カメラの唯一の状態。
+    /// `CameraView.projectionOf`（描画変換）と `CameraScene`（追従の更新・到達判定）が読む。
+    pub def cameraSmoothPosOf(world: World): Vec2.Vec2 =
+        let World.World(w) = world; w#cameraSmoothPos
 
     /// hp を World から読む（read-model アクセサ）。検証器の供給元。
     /// 単一 store＋toUid。

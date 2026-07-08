@@ -5,7 +5,7 @@
 /// 見た目（本体 sprite / HP バー / 武器アイコン）は World store から直描きし、
 /// 描画位置も World（renderPos / lunge）から導出する。
 ///
-/// Camera は `CameraState` resource が視点の権威で、`CameraScene.step` が
+/// Camera の状態は World の cameraSmoothPos が視点の権威で、`CameraScene.step` が
 /// フェーズ別の追従先（選択中プレイヤー等の World 座標）を毎フレーム選ぶ（PlayerScene 自身は Camera を持たない）。
 ///
 /// ターン進行:

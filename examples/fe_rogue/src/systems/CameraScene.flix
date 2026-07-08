@@ -2,16 +2,15 @@
 ///
 /// FE 風 SRPG では「カーソルにカメラを付ける／キャラ移動中はカメラを止める／
 /// キャラが画面外に行ったらカメラを動かす／敵ターンはキャラを映す」という複合追従を
-/// 実装する。単独 Camera2D をキャラの子にすると 1 体にしか追従できないため、カメラ状態は
-/// `CameraState` resource（scene ノードを持たない視点の単一権威）に置き、毎フレーム `step` で
-/// 「フェーズ → どの World 座標を見るか」だけを決めて `CameraState.advance` に渡す。
-/// 滑らか追従・画面端マージン・limit clamp は engine `Camera2D` の純粋計算が担う。
+/// 実装する。カメラの状態は World の `cameraSmoothPos`（実際に映している点）ただ 1 つで、
+/// 毎フレーム `step` が「フェーズ → どの World 座標を見るか」だけを決めて `CameraFollow.step` に渡し、
+/// 進んだ smoothPos を World へ書き戻す。滑らか追従・画面端の余白（deadZone）は `CameraFollow` の純粋計算が担う。
 ///
 /// 追従ルール（`TurnPhase.State.get` で分岐）:
 ///   - PlayerCursor    → カーソルのワールド座標
 ///   - PlayerMoving    → 選択中味方のワールド座標。**移動モード中はキャラを画面中央に固定**
-///                        したいので drag margin を切り（`isCenteredPhase`）、smoothing だけで
-///                        キャラ中心へ寄せる（drag 有効だと「画面内なら据え置き」になり中央に来ない）
+///                        したいので余白を切り（`isCenteredPhase`）、smoothing だけで
+///                        キャラ中心へ寄せる（余白ありだと「画面内なら据え置き」になり中央に来ない）
 ///   - PlayerAttack    → カーソルのワールド座標（赤マスを動くカーソルに追従）
 ///   - GatherMove      → 主人公(id 0)のワールド座標（隊列を率いて動く主人公に追従）
 ///   - EnemyTurn       → **alerted な敵が行動中ならその敵を映す**（`enemyTurnTarget`）。
@@ -22,42 +21,63 @@
 /// 駒 pixel 位置は World store が権威（scene ノードの座標は読まない）。
 mod CameraScene {
 
-    /// 毎フレーム 1 回、フェーズ別ターゲットを計算して `CameraState.advance` に渡す（frame-paced driver）。
+    /// 毎フレーム 1 回、フェーズ別ターゲットを計算して `CameraFollow.step` で 1 ステップ進め、
+    /// 進んだ smoothPos を `Cmd.SetCameraSmoothPos` で World へ書き戻す（frame-paced driver）。
     /// gameLoop が移動 tween・戦闘演出クロックで駒・カーソルの世界座標が反映された後に呼ぶ。
-    /// カメラ状態は resource 権威で scene ノードは触らない。ターゲットは World / resource 由来。
-    /// カメラは盤面がある画面でのみ追従する（Title 等の盤面レス画面は advance を空回りさせない）。
+    /// カメラの唯一の状態は World の cameraSmoothPos。ターゲットは World / 各 query 由来で毎フレーム再計算する。
+    /// カメラは盤面がある画面でのみ追従する（Title 等の盤面レス画面は空回りさせない）。
     pub def step(delta: Duration.Duration):
                     Unit
                     \ {GameEngine.Game, EnemyTurn.Queue,
-                        TurnPhase.State, SelectedPlayer.State,
+                        SelectedPlayer.State,
                         PlayerData.PartyQuery, EnemyData.RosterQuery,
-                        CursorState.State, World.WorldQuery, CameraState.State} =
-        if (not World.hasBoard(World.WorldQuery.get())) ()
+                        CursorState.State, World.WorldQuery, World.Command, TurnPhase.State} =
+        let world = World.WorldQuery.get();
+        if (not World.hasBoard(world)) ()
         else {
             let phase = TurnPhase.State.get();
             let selected = SelectedPlayer.State.get()#id;
-            let world = World.WorldQuery.get();
             let target = computeTarget(phase, selected, world);
             let vp = GameEngine.Game.getViewportRect();
-            let viewport = {viewportWidth = vp#size#x, viewportHeight = vp#size#y};
-            CameraState.advance(target, isCenteredPhase(phase), delta, viewport)
+            let viewport = {width = vp#size#x, height = vp#size#y};
+            // 追従を 1 ステップ進め、映している点を World へ書き戻す（他 driver と同じく emit を明示する）。
+            let smoothPos = Camera.chase(World.cameraSmoothPosOf(world), target,
+                                         isCenteredPhase(phase), CameraView.config(), delta, viewport);
+            World.Command.emit(World.Cmd.SetCameraSmoothPos(smoothPos))
         }
 
     /// フロア構築時にカメラをパーティ先頭（id 0）へスナップする（カメラ初期位置の唯一の設定点）。
     /// `WorldSetup.setupHudAndDrivers` が PlayerScene.add（World へ位置 seed）後に 1 回呼ぶ。
-    /// これで開始フレームから正しいフォーカス位置を映す（drag/smoothing の 1〜2 フレーム遅れを消す）。
-    pub def snapToParty(): Unit \ {World.WorldQuery, CameraState.State} =
-        CameraState.snapTo(unitWorldPos(World.EntityRef.Player(0), World.WorldQuery.get()))
+    /// これで開始フレームから正しいフォーカス位置を映す（smoothing の 1〜2 フレーム遅れを消す）。
+    pub def snapToParty(): Unit \ {World.WorldQuery, World.Command} =
+        let world = World.WorldQuery.get();
+        World.Command.emit(World.Cmd.SetCameraSmoothPos(
+            unitWorldPos(World.EntityRef.Player(0), world)))
 
-    /// カメラがターゲットの drag dead zone 内に収まったか。
+    /// カメラがターゲットの余白（deadZone）内に収まったか。
     /// 敵ターン中、カメラが新しい敵に切り替わったあと「カメラが到達するまで敵の行動を待つ」
     /// gating に使う（`stepEnemyTurn` の冒頭で `not isSettled()` なら処理スキップ）。
-    pub def isSettled(): Bool \ {GameEngine.Game, CameraState.State} =
+    /// ターゲットを保存せず `computeTarget` で毎フレーム再導出するのは、`step` と必ず同じ
+    /// ターゲットで判定するための parity 上の選択（driver ローカルにターゲットを組むと
+    /// `enemyTurnTarget` の選択規則とズレる）。そのぶん query effect が要るが、gameLoop が
+    /// `step` 経由で既に保持しているため上流への波及はない。
+    /// 呼び出し文脈（敵ターン / 階段退場）はどちらも非 centered ＝余白ありで判定される。
+    pub def isSettled(): Bool
+            \ {GameEngine.Game, EnemyTurn.Queue,
+                SelectedPlayer.State,
+                PlayerData.PartyQuery, EnemyData.RosterQuery,
+                CursorState.State, World.WorldQuery, TurnPhase.State} =
+        let world = World.WorldQuery.get();
+        let phase = TurnPhase.State.get();
+        let selected = SelectedPlayer.State.get()#id;
+        let target = computeTarget(phase, selected, world);
         let vp = GameEngine.Game.getViewportRect();
-        CameraState.isSettled({viewportWidth = vp#size#x, viewportHeight = vp#size#y})
+        let viewport = {width = vp#size#x, height = vp#size#y};
+        Camera.settled(World.cameraSmoothPosOf(world), target,
+                       isCenteredPhase(phase), CameraView.config(), viewport)
 
     /// 「キャラを画面中央に固定する」フェーズか。移動モード (PlayerMoving) のみ true。
-    /// true の間は drag margin を切ってキャラ中心に寄せる（`CameraState.advance`）。
+    /// true の間は余白（deadZone）を切ってキャラ中心に寄せる（`CameraFollow.step`）。
     def isCenteredPhase(phase: TurnPhase.Phase): Bool =
         match phase {
             case TurnPhase.Phase.PlayerMoving => true
@@ -65,8 +85,8 @@ mod CameraScene {
         }
 
     /// `selected` が None のときはパーティの代表（id=0、または最初のアクティブ）の位置に向く。
-    /// PlayerMoving は「選択中味方の位置」を返すだけ（中央固定の drag 制御は `step` 側の
-    /// `isCenteredPhase` → `CameraState.advance` が担当する）。
+    /// PlayerMoving は「選択中味方の位置」を返すだけ（中央固定の余白制御は `step` 側の
+    /// `isCenteredPhase` → `CameraFollow.step` が担当する）。
     /// EnemyTurn は `enemyTurnTarget` で「alerted な敵の動きを映す」分岐に入る。
     def computeTarget(phase: TurnPhase.Phase,
                       selected: Option[Int32],

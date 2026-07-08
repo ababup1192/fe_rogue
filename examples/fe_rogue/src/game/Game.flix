@@ -514,7 +514,7 @@ def staffAimCancel(): Unit \ TurnPhase.State =
 mod Game {
 
     /// デザイン解像度。プレイヤーをズームインで見せるため、マップ全体（208×208）より
-    /// 小さく切り出す。Camera2D 追従でビューが動く。横は左右余白も使うため 240 に拡張
+    /// 小さく切り出す。追従カメラでビューが動く。横は左右余白も使うため 240 に拡張
     /// （行動メニュー＋武器ウィンドウを左に並べても、カメラ中心の戦闘キャラに被らないだけの幅）。
     /// この値はカメラのビューポートと投影行列の基準で、ウィンドウサイズに合わせて
     /// 引き伸ばし表示される（Godot の Stretch Mode = canvas_items 相当）。
@@ -781,7 +781,6 @@ mod Game {
               }
               with SelectedPlayer.withState(rc)   // 操作中プレイヤー id の保持
               with CursorState.withState(rc)      // 選択カーソルの論理状態（指しセル/加速/ホバー/描画位置/tween）を resource 化
-              with CameraState.withState(rc)      // 追従カメラの視点状態（ターゲット/smoothPosition/追従パラメータ）を resource 化
               with RangeOverlayState.withState(rc) // 範囲オーバーレイ 7 種のセル集合（Option 在/不在=表示トグル）を resource 化
               with ArrowCursorState.withState(rc) // 杖/投擲の照準矢印の論理状態（anchor/direction/gridPos）を resource 化
               with StairsExitDriver.withState(rc) // 集合「階段」の順次退場キュー（queue/idleRounds）を resource 化
@@ -808,7 +807,7 @@ mod Game {
             \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Math.Random,
                 SelectedPlayer.State, CursorState.State, ArrowCursorState.State, InitialSpawns.State, FloorProgress.State,
                 PartySelection.State, CharacterSelectState.State, GameLogger.GameLogger, FloorSnapshot.State, World.Command,
-                World.WorldQuery, TitleMenuState.State, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
+                World.WorldQuery, TitleMenuState.State, TopBarState.State, UiWorldState.State, RangeOverlayState.State} =
         match phase {
             case GamePhase.Title           => WorldSetup.buildTitle()
             case GamePhase.CharacterSelect => WorldSetup.buildCharacterSelect(catalogs)
@@ -847,7 +846,7 @@ mod Game {
                          TopBarState.State, TitleMenuState.State, UnitHPBarRender.ForecastState,
                          Math.Random, FloorSnapshot.State,
                          World.Command, World.StatusQuery, World.PhaseQuery, World.WorldQuery,
-                         World.RngDraw, UiWorldState.State, MinimapState.State, RangeOverlayState.State, CameraState.State,
+                         World.RngDraw, UiWorldState.State, MinimapState.State, RangeOverlayState.State,
                          StairsExitDriver.State, r} =
         // Escape ではアプリ終了しない。ウィンドウの閉じる操作（shouldClose）だけで終了する。
         if (GameEngine.Game.shouldClose()) ()
@@ -955,17 +954,17 @@ mod Game {
 /// production 経路（gameLoop）からは呼ばれない。
 pub def renderFrameForCapture(catalogs: GameLifecycle.Catalogs, world: World):
         Unit \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarRender.ForecastState,
-                UiWorldState.State, TurnPhase.State, ArrowCursorState.State, MinimapState.State,
-                RangeOverlayState.State, CursorState.State, CameraState.State} =
+                UiWorldState.State, ArrowCursorState.State, MinimapState.State,
+                RangeOverlayState.State, CursorState.State, TurnPhase.State} =
     renderFrame(catalogs, world)
 
 /// フレーム描画（render-from-World の合流点）。gameLoop のサイズ削減のため関数分離。
 /// fog・range・配置物・fx・minimap・HUD/menu はすべて World render System（各 render*）で描く。
-/// camera ViewTransform はフレーム 1 回だけ計算して共有。
+/// camera 投影はフレーム 1 回だけ計算して共有。
 def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World):
         Unit \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarRender.ForecastState,
-                UiWorldState.State, TurnPhase.State, ArrowCursorState.State, MinimapState.State,
-                RangeOverlayState.State, CursorState.State, CameraState.State} =
+                UiWorldState.State, ArrowCursorState.State, MinimapState.State,
+                RangeOverlayState.State, CursorState.State, TurnPhase.State} =
     let transform = RenderWorld.viewTransform();
     // ミニマップは Drawable（矩形）と Polygon（マーカー円）の 2 チャンネルを 1 度に組む（画面固定）。
     let minimap = RenderWorld.renderMinimap();

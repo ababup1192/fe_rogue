@@ -42,7 +42,6 @@ mod TestRenderGolden {
                 } with TurnPhase.withState(rc)
                   with SelectedPlayer.withState(rc)
                   with CursorState.withState(rc)
-                  with CameraState.withState(rc)
                   with ArrowCursorState.withState(rc)
                   with MinimapState.withState(rc)
                   with RangeOverlayState.withState(rc)

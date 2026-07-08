@@ -680,7 +680,8 @@ mod TestUnitFixtures {
                         // golden trace は sim Cmd 列の比較通貨なので記録から除外する（apply はする）。
                         let key = World.cmdKey(c);
                         let (name, _, _, _) = key;
-                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx" and name != "StartLunge")
+                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx" and name != "StartLunge"
+                                and name != "SetCameraSmoothPos")
                             Ref.put(key :: Ref.get(recRef), recRef)
                         else ();
                         Ref.put(World.applyCmd(c, Ref.get(wref)), wref);
@@ -715,7 +716,8 @@ mod TestUnitFixtures {
                     def emit(c, k) = {
                         let key = World.cmdKey(c);
                         let (name, _, _, _) = key;
-                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx" and name != "StartLunge")
+                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx" and name != "StartLunge"
+                                and name != "SetCameraSmoothPos")
                             Ref.put(key :: Ref.get(recRef), recRef)
                         else ();
                         Ref.put(World.applyCmd(c, Ref.get(wref)), wref);
@@ -751,7 +753,8 @@ mod TestUnitFixtures {
                         // golden trace は sim Cmd 列の比較通貨なので記録から除外する（apply はする）。
                         let key = World.cmdKey(c);
                         let (name, _, _, _) = key;
-                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx" and name != "StartLunge")
+                        if (name != "SpawnPopupFx" and name != "SpawnExplosionFx" and name != "StartLunge"
+                                and name != "SetCameraSmoothPos")
                             Ref.put(key :: Ref.get(recRef), recRef)
                         else ();
                         Ref.put(World.applyCmd(c, Ref.get(wref)), wref);

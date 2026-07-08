@@ -40,7 +40,7 @@ mod EnemyTurnDriver {
                         CustomEffects.RingTransformRequest,
                         CustomEffects.GameOverRequest,
                         CustomEffects.FloorAdvanceRequest, GameEngine.Audio,
-                        World.Command, BoardQuery, World.WorldQuery, CameraState.State} =
+                        World.Command, BoardQuery, World.WorldQuery, EnemyData.RosterQuery} =
         match TurnPhase.State.get() {
             case TurnPhase.Phase.EnemyTurn        => stepOnce()
             case TurnPhase.Phase.PlayerAttackHold =>
@@ -156,7 +156,7 @@ mod EnemyTurnDriver {
                 CustomEffects.WandererSpawnRequest,
                 CustomEffects.RingTransformRequest,
                 CustomEffects.GameOverRequest,
-                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery, CameraState.State} =
+                CustomEffects.FloorAdvanceRequest, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery, EnemyData.RosterQuery} =
         // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
         if (World.enemyTurnBusyOf(World.WorldQuery.get())) ()
         else if (Pacing.State.isHolding()) ()

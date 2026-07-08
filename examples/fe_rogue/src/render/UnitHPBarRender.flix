@@ -103,7 +103,7 @@ mod UnitHPBarRender {
     ///   - 攻撃予報の「減る分」= ForecastState（BattlePanel が毎フレーム put）
     /// 退場（hidden）ユニット・フォグで隠れた敵（`holesOpt` の lit ゲート）は描かない。
     pub def renderBars(world: World, holesOpt: Option[List[GridRect]],
-                        transform: Camera2D.ViewTransform):
+                        transform: CameraProjection.Projection):
             List[GameEngine.Drawable] \ {GameEngine.Game, ForecastState} =
         let fc = ForecastState.get();
         let players = World.playerIdsOf(world)
@@ -133,7 +133,7 @@ mod UnitHPBarRender {
     /// 1 ユニットぶんの HP バー Drawable 列（Bg トラック + Fill + 予報オーバーレイ）。
     def barDrawables(ref: World.EntityRef, team: Team, modColor: Color,
                       post: Option[(Int32, Bool)], world: World,
-                      transform: Camera2D.ViewTransform):
+                      transform: CameraProjection.Projection):
             List[GameEngine.Drawable] \ GameEngine.Game =
         match World.visualPosOf(ref, world) {
             case Some(unitPos) =>
@@ -177,8 +177,8 @@ mod UnitHPBarRender {
 
     /// ColorRect 値 1 枚を world 左上座標へ Drawable 化する（tree に積まない）。
     def rectDrawables(rect: ColorRect, worldTopLeft: Vec2.Vec2, z: Int32,
-                       transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
-        let screenPos = Camera2D.applyToWorldPos(transform, worldTopLeft);
+                       transform: CameraProjection.Projection): List[GameEngine.Drawable] \ GameEngine.Game =
+        let screenPos = CameraProjection.worldToViewport(transform, worldTopLeft);
         GameEngine.Renderable.toDrawables(EngineNode.ColorRectWithState(rect, ()), screenPos)
             |> Render.applyCameraScale(transform)
             |> List.map(d -> {zIndex = z | d})

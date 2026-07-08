@@ -7,7 +7,7 @@
 //
 // **画面固定 HUD（layer=3・camera 免除）** に置く。World 空間に置くと camera zoom 下でテキストの
 // 字送りがズームせず枠から溢れるため。「攻撃側・対象に被らない」配置は、対象ユニットのワールド座標を
-// アクティブ Camera2D の ViewTransform で画面座標へ写し、対象から見て攻撃側と反対側へ panel を毎フレーム
+// 追従カメラの投影で画面座標へ写し、対象から見て攻撃側と反対側へ panel を毎フレーム
 // 移動して実現する（盤面追従だが描画は画面固定）。
 //
 // 各行は「命中/必殺ラベル・数値・%」を別 text に分けて、ラベル/% は小さく薄く、数値は大きく、必殺系は
@@ -87,9 +87,9 @@ mod BattlePanelUi {
     ///   - PlayerAttack : 赤マスで敵を選択中。カーソル上の敵 × 装備武器で予報。
     /// それ以外のフェーズや対象が居ないときはウィンドウを隠し、足元 HP バー予測も消す。
     pub def frameStep(delta: Duration.Duration): Unit
-            \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State, CursorState.State,
+            \ {GameEngine.Game, SelectedPlayer.State, CursorState.State,
                PlayerData.PartyQuery, EnemyData.RosterQuery, World.Command, World.WorldQuery,
-               BattlePanelState.State, UnitHPBarRender.ForecastState, UiWorldState.State, CameraState.State} =
+               BattlePanelState.State, UnitHPBarRender.ForecastState, UiWorldState.State, TurnPhase.State} =
         let phase  = TurnPhase.State.get();
         syncTargetToCursor(phase);
         // 「減る分」の暗⇄明点滅サイクルを進める。累積時間は resource が持つ。
@@ -264,18 +264,18 @@ mod BattlePanelUi {
     /// 右 → 上 → 下 の順で「画面内に収まり、かつ攻撃側に被らない」最初の位置を選ぶ。
     /// カメラ未登録時（テスト等）は移動しない（前回位置を保つ）。
     def reposition(view: ForecastView, contentW: Float64,
-                   ui: UiStore.UiWorld): UiStore.UiWorld \ {GameEngine.Game, CameraState.State} =
+                   ui: UiStore.UiWorld): UiStore.UiWorld \ {GameEngine.Game, World.WorldQuery} =
         let (vt, vpW, vpH) = viewTransform();
-        let st   = Camera2D.applyToWorldPos(vt, MapSnapshot.cellCenter(view#targetCell));
-        let sa   = Camera2D.applyToWorldPos(vt, MapSnapshot.cellCenter(view#attackerCell));
+        let st   = CameraProjection.worldToViewport(vt, MapSnapshot.cellCenter(view#targetCell));
+        let sa   = CameraProjection.worldToViewport(vt, MapSnapshot.cellCenter(view#attackerCell));
         let half = MapSnapshot.tileSize() / 2.0 * vt#scale#x;  // 半タイルを画面 px に換算
         let pos  = anchorPos(st, sa, half, contentW, vpW, vpH);
         UiStore.setAbs(panelPath(), pos, ui)
 
-    /// カメラの ViewTransform と viewport(design px) を取る。視点は `CameraState` resource が権威。
-    def viewTransform(): (Camera2D.ViewTransform, Float64, Float64) \ {GameEngine.Game, CameraState.State} =
+    /// カメラの投影と viewport(design px) を取る。視点は World の cameraSmoothPos（`CameraView.projectionOf`）が権威。
+    def viewTransform(): (CameraProjection.Projection, Float64, Float64) \ {GameEngine.Game, World.WorldQuery} =
         let vp = GameEngine.Game.getViewportRect();
-        let vt = CameraState.viewTransform({viewportWidth = vp#size#x, viewportHeight = vp#size#y});
+        let vt = CameraView.projectionOf(World.WorldQuery.get(), {width = vp#size#x, height = vp#size#y});
         (vt, vp#size#x, vp#size#y)
 
     /// panel の左上画面座標を決める。対象 `st` の 右 → 上 → 下 を候補にし、
