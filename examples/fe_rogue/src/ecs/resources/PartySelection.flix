@@ -24,19 +24,17 @@ mod PartySelection {
         def clear(): Unit
     }
 
-    /// Ref を closure に閉じ込めた handler 注入パターン。
-    /// 内部 `selRef` は closure に閉じ込められ、外からは見えない。初期値は `None`。
-    pub def withState(rc: Region[r]):
+    /// World の `party` field（単一権威）へ委譲する facade handler。`worldRef` を共有窓口として受け取り、
+    /// get/put/clear とも World 経由で読み書きする（初期値 `None` は `World.empty` が持つ）。
+    pub def withState(worldRef: Ref[World, r]):
             (Unit -> a \ ef) -> a \ (ef - State) + r =
         thunk -> {
-            let selRef: Ref[Option[List[(String, UnitCatalog.PlayerResource)]], r] =
-                Ref.fresh(rc, None);
             run {
                 thunk()
             } with handler State {
-                def get(k)      = k(Ref.get(selRef))
-                def put(sel, k) = { Ref.put(Some(sel), selRef); k() }
-                def clear(k)    = { Ref.put(None, selRef); k() }
+                def get(k)      = k(World.partyOf(Ref.get(worldRef)))
+                def put(sel, k) = { Ref.put(World.applyCmd(World.Cmd.SetParty(Some(sel)), Ref.get(worldRef)), worldRef); k() }
+                def clear(k)    = { Ref.put(World.applyCmd(World.Cmd.SetParty(None), Ref.get(worldRef)), worldRef); k() }
             }
         }
 }

@@ -25,18 +25,17 @@ mod InitialSpawns {
         def put(snapshot: Snapshot): Unit
     }
 
-    /// handler injection パターン。`snapshotRef` を closure に閉じ込め、呼び出し元には effect 境界だけを見せる。
-    pub def withState(rc: Region[r]):
+    /// World の `initialSpawns` field（単一権威）へ委譲する facade handler。`worldRef` を共有窓口として
+    /// 受け取り、get/put とも World 経由で読み書きする（初期値 `{enemies=Nil, players=Nil}` は `World.empty` が持つ）。
+    pub def withState(worldRef: Ref[World, r]):
             (Unit -> a \ ef) -> a \ (ef - State) + r =
         thunk -> {
-            let snapshotRef: Ref[Snapshot, r] =
-                Ref.fresh(rc, {enemies = Nil, players = Nil});
             run {
                 thunk()
             } with handler State {
-                def get(k) = k(Ref.get(snapshotRef))
+                def get(k) = k(World.initialSpawnsOf(Ref.get(worldRef)))
                 def put(snapshot, k) = {
-                    Ref.put(snapshot, snapshotRef);
+                    Ref.put(World.applyCmd(World.Cmd.SetInitialSpawns(snapshot), Ref.get(worldRef)), worldRef);
                     k()
                 }
             }

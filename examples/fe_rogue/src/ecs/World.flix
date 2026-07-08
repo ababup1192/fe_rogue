@@ -101,6 +101,16 @@ pub enum World {
                  turnPhase = TurnPhase.Phase,
                  // ゲーム全体の進行画面（Title/CharacterSelect/Playing）。World 単一権威（`GamePhaseState` は facade）。
                  screen = GamePhase,
+                 // 出撃メンバー（ロード+抽選分・(classId, PlayerResource)）。None=未抽選（次 build で抽選）。
+                 // フロア間で維持し、ゲーム開始/全滅/全クリア周回でのみ clear。World 単一権威（`PartySelection` は facade）。
+                 party = Option[List[(String, UnitCatalog.PlayerResource)]],
+                 // ゲームオーバー復活用の初回 spawn 一覧（初期配置・初期HPで敵味方を復元）。World 単一権威（`InitialSpawns` は facade）。
+                 initialSpawns = InitialSpawns.Snapshot,
+                 // 中断セーブ / 全滅リスタート用のフロア進入時スナップショット。None=未保存。World 単一権威（`FloorSnapshot` は facade）。
+                 floorSnapshot = Option[FloorSnapshot.T],
+                 // 現在いるフロア id（floors.json の sub-entry キー、例 "f01"）。""=未 seed（build choke の put が seed）。
+                 // World 単一権威（`FloorProgress` は facade）。
+                 floorId = String,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
                  // unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
                  // でなく **この enum タグ `teamOf` で読む**（Bevy の Team component 相当）。
@@ -263,7 +273,8 @@ pub enum World {
 mod World {
 
     pub def empty(): World =
-        World.World({tick = 0, turnPhase = TurnPhase.Phase.PlayerCursor, screen = GamePhase.Title,
+        World.World({tick = 0, turnPhase = TurnPhase.Phase.PlayerCursor, screen = GamePhase.Title, party = None,
+                     initialSpawns = {enemies = Nil, players = Nil}, floorSnapshot = None, floorId = "",
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      statusEffects = Map.empty(),
                      hp = Map.empty(), weapons = Map.empty(), team = Map.empty(),
@@ -313,6 +324,22 @@ mod World {
     /// World の screen（進行画面・単一権威）を読む（read-model アクセサ）。`GamePhaseState` facade が使う。
     pub def screenOf(world: World): GamePhase =
         let World.World(w) = world; w#screen
+
+    /// World の party（出撃メンバー・単一権威）を読む（read-model アクセサ）。`PartySelection` facade が使う。
+    pub def partyOf(world: World): Option[List[(String, UnitCatalog.PlayerResource)]] =
+        let World.World(w) = world; w#party
+
+    /// World の initialSpawns（初回 spawn 一覧・単一権威）を読む（read-model アクセサ）。`InitialSpawns` facade が使う。
+    pub def initialSpawnsOf(world: World): InitialSpawns.Snapshot =
+        let World.World(w) = world; w#initialSpawns
+
+    /// World の floorSnapshot（進入時スナップショット・単一権威）を読む（read-model アクセサ）。`FloorSnapshot` facade が使う。
+    pub def floorSnapshotOf(world: World): Option[FloorSnapshot.T] =
+        let World.World(w) = world; w#floorSnapshot
+
+    /// World の floorId（現在フロア・単一権威）を読む（read-model アクセサ）。`FloorProgress` facade が使う。
+    pub def floorIdOf(world: World): String =
+        let World.World(w) = world; w#floorId
 
     /// per-frame の World 更新。**縮退版**: 全 store が command 権威（spawn/despawn/build choke の Cmd が
     /// 唯一の書込・prune は `Cmd.Despawn`/`Cmd.ClearUnits` が担う）なので、scene からの derive/prune は無い。
@@ -508,6 +535,10 @@ mod World {
         case Move(EntityRef, {x = Int32, y = Int32})  // 位置 write（mid-frame currency）
         case SetPhase(TurnPhase.Phase)      // turn phase write（19-case・TurnPhase.State facade が World 権威へ書く）
         case SetScreen(GamePhase)           // 進行画面 write（Title/CharacterSelect/Playing・GamePhaseState facade が書く）
+        case SetParty(Option[List[(String, UnitCatalog.PlayerResource)]])  // 出撃メンバー write（PartySelection facade・None=リセット）
+        case SetInitialSpawns(InitialSpawns.Snapshot)  // 初回 spawn 一覧 write（InitialSpawns facade・GameOver 復活用）
+        case SetFloorSnapshot(Option[FloorSnapshot.T])  // フロア進入時スナップショット write（FloorSnapshot facade・None=未保存）
+        case SetFloorId(String)             // 現在フロア id write（FloorProgress facade・階段/全滅/周回で遷移）
         case SetHp(EntityRef, Int32)        // hp write（dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
         case SetBaseStats(EntityRef, Combat.BaseStats)  // base 戦闘値 write（hp/weapons 同型・両 faction・resource 書換ごとに dual-write）
@@ -783,6 +814,14 @@ mod World {
                 let World.World(w) = world; World.World({turnPhase = phase | w})
             case Cmd.SetScreen(s) =>
                 let World.World(w) = world; World.World({screen = s | w})
+            case Cmd.SetParty(sel) =>
+                let World.World(w) = world; World.World({party = sel | w})
+            case Cmd.SetInitialSpawns(snap) =>
+                let World.World(w) = world; World.World({initialSpawns = snap | w})
+            case Cmd.SetFloorSnapshot(snap) =>
+                let World.World(w) = world; World.World({floorSnapshot = snap | w})
+            case Cmd.SetFloorId(id) =>
+                let World.World(w) = world; World.World({floorId = id | w})
             case Cmd.SetHp(ref, hpVal) =>
                 // 単一 store＋toUid。
                 let World.World(w) = world;
@@ -1267,6 +1306,10 @@ mod World {
             case Cmd.Seed(ref, _)             => ("Seed", toUid(ref), 0, 0)
             case Cmd.SetPhase(p)              => ("Phase", turnPhaseToInt(p), 0, 0)
             case Cmd.SetScreen(s)            => ("Screen", gamePhaseToInt(s), 0, 0)
+            case Cmd.SetParty(sel)           => ("SetParty", if (Option.isEmpty(sel)) 0 else 1, 0, 0)
+            case Cmd.SetInitialSpawns(_)     => ("SetInitialSpawns", 0, 0, 0)
+            case Cmd.SetFloorSnapshot(snap)  => ("SetFloorSnapshot", if (Option.isEmpty(snap)) 0 else 1, 0, 0)
+            case Cmd.SetFloorId(_)           => ("SetFloorId", 0, 0, 0)
             case Cmd.TickPlayers(_)           => ("TickP", 0, 0, 0)
             case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)

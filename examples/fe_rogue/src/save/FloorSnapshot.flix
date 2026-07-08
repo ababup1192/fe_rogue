@@ -81,16 +81,16 @@ mod FloorSnapshot {
         def put(snapshot: T): Unit
     }
 
-    /// Ref を closure に閉じ込めた handler 注入。`Game.start` で 1 度巻く。
-    pub def withState(rc: Region[r]):
+    /// World の `floorSnapshot` field（単一権威）へ委譲する facade handler。`worldRef` を共有窓口として
+    /// 受け取り、get/put とも World 経由で読み書きする（初期値 `None` は `World.empty` が持つ）。
+    pub def withState(worldRef: Ref[World, r]):
             (Unit -> a \ ef) -> a \ (ef - State) + r =
         thunk -> {
-            let snapshotRef: Ref[Option[T], r] = Ref.fresh(rc, None);
             run {
                 thunk()
             } with handler State {
-                def get(k)           = k(Ref.get(snapshotRef))
-                def put(snapshot, k) = { Ref.put(Some(snapshot), snapshotRef); k() }
+                def get(k)           = k(World.floorSnapshotOf(Ref.get(worldRef)))
+                def put(snapshot, k) = { Ref.put(World.applyCmd(World.Cmd.SetFloorSnapshot(Some(snapshot)), Ref.get(worldRef)), worldRef); k() }
             }
         }
 }

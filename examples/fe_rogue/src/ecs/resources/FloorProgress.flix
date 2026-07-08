@@ -15,19 +15,18 @@ mod FloorProgress {
         def put(id: String): Unit
     }
 
-    /// `withState` を巻かずに `State` 操作を呼ぶと effect が未解決のままコンパイルエラーになる。
-    /// 内部 `floorRef` は closure に閉じ込められ、外からは見えない。
-    /// `firstId` は起動時の初期フロア（通常は `FloorCatalog.firstFloorId`）。
-    pub def withState(rc: Region[r], firstId: String):
+    /// World の `floorId` field（単一権威）へ委譲する facade handler。`worldRef` を共有窓口として受け取り、
+    /// get/put とも World 経由で読み書きする。初期フロアは他 store と同様 build choke の `put` が seed する
+    /// （`World.empty` の初期値は ""）。
+    pub def withState(worldRef: Ref[World, r]):
             (Unit -> a \ ef) -> a \ (ef - State) + r =
         thunk -> {
-            let floorRef: Ref[String, r] = Ref.fresh(rc, firstId);
             run {
                 thunk()
             } with handler State {
-                def get(k) = k(Ref.get(floorRef))
+                def get(k) = k(World.floorIdOf(Ref.get(worldRef)))
                 def put(id, k) = {
-                    Ref.put(id, floorRef);
+                    Ref.put(World.applyCmd(World.Cmd.SetFloorId(id), Ref.get(worldRef)), worldRef);
                     k()
                 }
             }

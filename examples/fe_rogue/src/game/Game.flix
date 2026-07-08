@@ -654,9 +654,13 @@ mod Game {
                 // （applyPhaseChange が snapshot から再構築）と遷移する。buildTitle は TitleMenuUi.enter で
                 // Title root を可視化するため、spawn 後に呼ぶ必要がある（spawn 前だと不可視の no-op になる）。
                 applyPhaseChange(GamePhase.Title, GamePhase.Title, catalogs);
-                // 初回 world は空で開始（タイトル画面はユニット/地形が無く、以降の全 store は
-                // spawn/build choke の Cmd が seed する）。
-                gameLoop(catalogs, worldRef, GamePhase.Title, World.empty(), Set.empty())
+                // 初回 world はほぼ空で開始（タイトル画面はユニット/地形が無く、以降の全 store は
+                // spawn/build choke の Cmd が seed する）。ただし floorId だけは先頭フロアで初期化する:
+                // フロア build（`WorldSetup.buildCurrentFloor`）が floorId を読むのは新規ゲームの put より
+                // 前になり得るため（""だと「unknown floor id」で落ちる）。
+                let initialWorld =
+                    World.applyCmd(World.Cmd.SetFloorId(FloorCatalog.firstFloorId(floors)), World.empty());
+                gameLoop(catalogs, worldRef, GamePhase.Title, initialWorld, Set.empty())
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
             // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /
             // `TurnPhase.State` / `SelectedPlayer.State` / `InitialSpawns.State` 等を
@@ -769,10 +773,10 @@ mod Game {
               with ArrowCursorState.withState(rc) // 杖/投擲の照準矢印の論理状態（anchor/direction/gridPos）を resource 化
               with StairsExitDriver.withState(rc) // 集合「階段」の順次退場キュー（queue/idleRounds）を resource 化
               with GatherResume.withState(rc)     // 集合モードのターン跨ぎ自動継続フラグ
-              with InitialSpawns.withState(rc)    // ゲームオーバー時に同じ敵 / 味方配置を復元
-              with FloorSnapshot.withState(rc)    // 進入時フロアスナップショット（全滅時の「フロア最初から」用）
-              with FloorProgress.withState(rc, FloorCatalog.firstFloorId(floors))  // 現在フロア id
-              with PartySelection.withState(rc)   // 出撃メンバー（開始時に1回抽選、フロア間で維持）
+              with InitialSpawns.withState(worldRef)    // ゲームオーバー時に同じ敵 / 味方配置を復元 World.initialSpawns 単一権威
+              with FloorSnapshot.withState(worldRef)    // 進入時フロアスナップショット（全滅時の「フロア最初から」用）World.floorSnapshot 単一権威
+              with FloorProgress.withState(worldRef)  // 現在フロア id World.floorId 単一権威
+              with PartySelection.withState(worldRef)   // 出撃メンバー（開始時に1回抽選、フロア間で維持）World.party 単一権威
               with CharacterSelectState.withState(rc) // 出撃メンバー選択画面の選択状態（注目/選択/サブモード/カルーセル）を resource 化
               with ItemMenuState.withState(rc)    // アイテム窓の選択状態（カテゴリ index / 一括選択マーク）を resource 化
               with TradeMenuState.withState(rc)   // 物交換窓のセッション状態（members/focus/pick/origin/marks）を resource 化
