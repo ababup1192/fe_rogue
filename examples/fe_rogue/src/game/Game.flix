@@ -55,11 +55,10 @@ def onKeyPressed(key: GameEngine.Key):
         case GamePhase.Playing         => onPlayingKeyPressed(key)
     }
 
-/// 入力のエッジ検出。現在押されているキー集合と `prevKeys`（前フレームの押下集合）の差分から
-/// 「このフレームで新たに押されたキー」を求め、各キーを `onKeyPressed` ルータへ流す。
-/// 戻り値は次フレームの prevKeys になる現在集合。
-def handleInput(prevKeys: Set[GameEngine.Key]):
-                 Set[GameEngine.Key]
+/// 入力のエッジ検出。gameLoop が焼いた `Frame` の `justPressed`（このフレームで新たに押されたキー）
+/// を各キー `onKeyPressed` ルータへ流す。前フレームとの差分計算・キー集合の持ち回りは gameLoop が担う。
+def handleInput(frame: App.Frame):
+                 Unit
                  \ {GameEngine.Game, GameEngine.Audio, BoardQuery,
                     GameLogger.GameLogger,
                     EnemyTurn.Queue, TurnPhase.State,
@@ -74,10 +73,7 @@ def handleInput(prevKeys: Set[GameEngine.Key]):
                     Fs.FileRead, UiWorldState.State,
                     LevelUpPanelState.State, ItemPickupPopupState.State, TitleMenuState.State, ItemMenuState.State, TradeMenuState.State, RangeOverlayState.State,
                     StairsExitDriver.State} =
-    let currentK = InputEvent.currentKeys();
-    let keysPressed = Set.difference(currentK, prevKeys);
-    Set.foldLeft((_acc, key) -> onKeyPressed(key), (), keysPressed);
-    currentK
+    Set.foldLeft((_acc, key) -> onKeyPressed(key), (), frame#justPressed)
 
 /// Playing フェーズのキー処理。GamePhase 分岐を onKeyPressed から分離し推論複雑度を下げる。
 def onPlayingKeyPressed(key: GameEngine.Key):
@@ -847,15 +843,20 @@ mod Game {
             // フレーム頭で進めるので「前フレーム末で hold した値を今フレームの判定で使う」
             // 形になる。
             Pacing.State.tick(dt);
-            // 入力のエッジ検出（prevKeys との差分 → onKeyPressed ルータ）。currentKeys は
+            // このフレームの入力を Frame 値に焼く（down=いま押下・justPressed=新規押下・dt）。
+            // 生キー読みは currentKeys の 1 回だけ。以降の入力読み（edge 検出・方向 polling）は
+            // すべてこの Frame 値から純粋に読む（App 家族の入力モデル）。
+            let currentKeys = InputEvent.currentKeys();
+            let frame = App.frameOf({prev = prevKeys}, {current = currentKeys}, Duration.toSeconds(dt));
+            // 入力のエッジ検出（frame#justPressed → onKeyPressed ルータ）。currentKeys は
             // 次フレームの prevKeys として持ち回る。
-            let currentKeys = handleInput(prevKeys);
+            handleInput(frame);
             // 手動移動の入力ポーリングを明示 System として 1 回呼ぶ
             // （PlayerMoving=選択中の味方 / GatherMove=主人公。phase 判定は step 内部）。
-            PlayerMovementDriver.step();
+            PlayerMovementDriver.step(frame);
             // カーソルの入力ポーリングも明示 System として 1 回呼ぶ（盤面がある画面のみ —
             // stepOnBoard が Map 存在をゲートする）。
-            CursorScene.stepOnBoard(dt);
+            CursorScene.stepOnBoard(frame, dt);
             // 戦闘演出クロック（lunge の往復・死亡点滅の完了）を dt 進め、中点 Hit / 完了 Done の
             // signal を取り出して worldRef へ確定する。入力処理の後・stepEntities の前＝
             // 入力で始まった lunge は同フレームから進む。GameOver 中は進めない（盤面フリーズ）。
@@ -880,7 +881,7 @@ mod Game {
             ItemPickupPopupUi.frameStep(dt);
             CharacterSelectUi.frameStep(dt);
             LogUi.step(dt);
-            TurnEndHoldUi.frameStep(dt);
+            TurnEndHoldUi.frameStep(frame, dt);
             CameraScene.step(dt);
             // ターン進行 LOGIC driver は frame-paced System としてパイプライン段で 1 回呼ぶ（gameLoop が駆動）。
             // 戦闘シグナル解決と TopBar 更新が確定した後に置く（前後依存は World 経由で順序非依存）。
@@ -889,7 +890,7 @@ mod Game {
             // view driver（Minimap の訪問記憶蓄積/M トグル）は明示 step 化のまま。フォグは
             // step を持たず、敵可視・暗幕・lit ゲートは描画時に `FogScene.holesNow` から導出する。
             // 照準矢印も step を持たず、描画（RenderWorld.renderArrowCursor）が phase から可視を決める。
-            MinimapScene.step();
+            MinimapScene.step(frame);
             // 全滅モーダル UI の可視/選択ハイライトを phase から同期。
             GameOverMenuUi.frameStep(dt);
             // 行動選択ウィンドウの可視/項目流し込み/選択ハイライトを phase から同期。

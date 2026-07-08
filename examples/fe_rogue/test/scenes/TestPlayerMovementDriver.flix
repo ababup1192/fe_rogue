@@ -67,9 +67,12 @@ mod TestPlayerMovementDriver {
                         reachable: List[{x = Int32, y = Int32}]): List[(Int32, Int32)] =
         let world = moveWorld();
         let board = ({map = tenByFive(), pieces = (Piece.Player(0), {x = 4, y = 2}) :: Nil}: Board);
+        // 押下キーは Frame 値で渡す（本番 gameLoop と同じ入力モデル）。移動 polling は down のみ読む。
+        let dirKeys = GameEngine.Key.W :: GameEngine.Key.Up :: GameEngine.Key.S :: GameEngine.Key.Down ::
+                      GameEngine.Key.A :: GameEngine.Key.Left :: GameEngine.Key.D :: GameEngine.Key.Right :: Nil;
+        let frame = ({down = List.toSet(List.filter(pressed, dirKeys)), justPressed = Set.empty(), dt = 0.0}: App.Frame);
         region rc {
             let (_, moves) = TestUnitFixtures.withRecordedMoves(() ->
-                TestUnitFixtures.withMockGameKeys(pressed, () ->
                 TestUnitFixtures.withMockBoard(board, () ->
                 TestUnitFixtures.withMockGameLogger(() ->
                 TestUnitFixtures.withRangeOverlay(rc, () ->
@@ -83,8 +86,8 @@ mod TestPlayerMovementDriver {
                     TestUnitFixtures.withNoopPickupPopup(() -> {
                         // 移動範囲 resource を仕込んでから physicsStep（clamp 述語が読む）。
                         seedMoveRange(reachable);
-                        PlayerMovementDriver.physicsStep(0)
-                    }))))))));
+                        PlayerMovementDriver.physicsStep(0, frame)
+                    })))))));
             moves |> List.map(c -> (c#x, c#y))
         }
 

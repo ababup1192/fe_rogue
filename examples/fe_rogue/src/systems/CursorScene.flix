@@ -133,18 +133,18 @@ mod CursorScene {
     /// それ以外のフェーズ (`PlayerMoving` / `EnemyTurn` 等) では何もしない。
     /// 盤面（Map）の存在は前提とする（本番配線は `stepOnBoard` が Map 存在をゲートしてから呼ぶ。
     /// 単体テストは mock BoardQuery とともに直接呼ぶ fail-open な seam）。
-    pub def step(_delta: Duration.Duration):
+    pub def step(frame: App.Frame, _delta: Duration.Duration):
                 Unit
-                \ {GameEngine.Game, BoardQuery,
+                \ {BoardQuery,
                     GameLogger.GameLogger,
                     EnemyData.RosterQuery, TurnPhase.State,
                     SelectedPlayer.State, CursorState.State, World.WorldQuery,
                     UiWorldState.State, RangeOverlayState.State} =
         match TurnPhase.State.get() {
-            case TurnPhase.Phase.PlayerCursor       => stepFreeMovement()
-            case TurnPhase.Phase.WeaponSelect       => stepWeaponSelectCycle()
-            case TurnPhase.Phase.PlayerAttack       => stepTargetCycle()
-            case TurnPhase.Phase.TradeTargetSelect  => stepTradeCellCycle()
+            case TurnPhase.Phase.PlayerCursor       => stepFreeMovement(frame)
+            case TurnPhase.Phase.WeaponSelect       => stepWeaponSelectCycle(frame)
+            case TurnPhase.Phase.PlayerAttack       => stepTargetCycle(frame)
+            case TurnPhase.Phase.TradeTargetSelect  => stepTradeCellCycle(frame)
             case _                                  => ()
         }
 
@@ -152,28 +152,28 @@ mod CursorScene {
     /// のみ `step` を回す。盤面レス画面（Title / CharacterSelect 等）は TurnPhase が
     /// `PlayerCursor` のままでも no-op — `stepFreeMovement` が `BoardQuery` 経由で地形を
     /// 読むため、盤面未 seed のまま進むと bug! する（Minimap.step と同じ存在ゲート）。
-    pub def stepOnBoard(delta: Duration.Duration):
+    pub def stepOnBoard(frame: App.Frame, delta: Duration.Duration):
                         Unit
-                        \ {GameEngine.Game, BoardQuery,
+                        \ {BoardQuery,
                             GameLogger.GameLogger,
                             EnemyData.RosterQuery, TurnPhase.State,
                             SelectedPlayer.State, CursorState.State, World.WorldQuery,
                             UiWorldState.State, RangeOverlayState.State} =
-        if (World.hasBoard(World.WorldQuery.get())) step(delta)
+        if (World.hasBoard(World.WorldQuery.get())) step(frame, delta)
         else ()
 
     /// `WeaponSelect` フェーズの左右ターゲットサイクル。フォーカス中の武器が届く生存敵を
     /// reading order で巡回する（上下は武器リストへ回るので触らない）。入力ゲート・サイクル本体は
     /// `PlayerAttack` と同じ機構（`cycleToTargetIn`）を、対象リストだけ差し替えて使う。
-    def stepWeaponSelectCycle():
+    def stepWeaponSelectCycle(frame: App.Frame):
                               Unit
-                              \ {GameEngine.Game, SelectedPlayer.State, CursorState.State,
+                              \ {SelectedPlayer.State, CursorState.State,
                                  EnemyData.RosterQuery, World.WorldQuery, UiWorldState.State} =
         if (CursorState.isSnagging()) ()
         else if (CursorState.isTweening()) ()
         else {
             let data = CursorState.State.get();
-            match (data#holdDir, readHeldHorizontal()) {
+            match (data#holdDir, readHeldHorizontal(frame)) {
                 case (_, None) =>
                     CursorState.State.put({holdDir = None, holdSteps = 0 | data})
                 case (Some(_), Some(dir)) =>
@@ -214,9 +214,9 @@ mod CursorScene {
     ///   3. それ以外 → 方向キーを読み、加速度を計算して 1 マス進める
     /// 移動後のセルに駒（味方/敵）が居れば snag をセット + holdSteps をリセット
     /// （次は再加速）。敵に乗ったら EnemyRangeScene を再構築 + ログを出す。
-    def stepFreeMovement():
+    def stepFreeMovement(frame: App.Frame):
                          Unit
-                         \ {GameEngine.Game, BoardQuery,
+                         \ {BoardQuery,
                              GameLogger.GameLogger,
                              EnemyData.RosterQuery, SelectedPlayer.State, CursorState.State, World.WorldQuery,
                              RangeOverlayState.State} =
@@ -224,7 +224,7 @@ mod CursorScene {
         else if (CursorState.isTweening()) ()
         else {
             let data = CursorState.State.get();
-            match readHeldDirection() {
+            match readHeldDirection(frame) {
                 case None =>
                     // キーが離れたら hold 状態をリセット（再度押したときに初速から）
                     CursorState.State.put({holdDir = None, holdSteps = 0 | data})
@@ -309,8 +309,8 @@ mod CursorScene {
 
     /// 押されている方向キーを Option で返す（PlayerScene と同じ優先順位で揃えることで
     /// プレイヤー操作とカーソル操作の体感を統一する）
-    def readHeldDirection(): Option[{x = Int32, y = Int32}] \ GameEngine.Game =
-        let isDown = key -> GameEngine.Game.isKeyPressed(key);
+    def readHeldDirection(frame: App.Frame): Option[{x = Int32, y = Int32}] =
+        let isDown = key -> App.isDown(key, frame);
         if      (isDown(GameEngine.Key.W) or isDown(GameEngine.Key.Up))    Some(Vec2i.up())
         else if (isDown(GameEngine.Key.S) or isDown(GameEngine.Key.Down))  Some(Vec2i.down())
         else if (isDown(GameEngine.Key.A) or isDown(GameEngine.Key.Left))  Some(Vec2i.left())
@@ -319,8 +319,8 @@ mod CursorScene {
 
     /// 押されている **左右** 方向キーだけを返す (PlayerAttack のターゲットサイクル用)。
     /// 上下は武器リスト (ItemMenu の focused ItemList ナビ) に回すため無視する。
-    def readHeldHorizontal(): Option[{x = Int32, y = Int32}] \ GameEngine.Game =
-        let isDown = key -> GameEngine.Game.isKeyPressed(key);
+    def readHeldHorizontal(frame: App.Frame): Option[{x = Int32, y = Int32}] =
+        let isDown = key -> App.isDown(key, frame);
         if      (isDown(GameEngine.Key.A) or isDown(GameEngine.Key.Left))  Some(Vec2i.left())
         else if (isDown(GameEngine.Key.D) or isDown(GameEngine.Key.Right)) Some(Vec2i.right())
         else None
@@ -367,16 +367,16 @@ mod CursorScene {
     ///   - 押下開始フレームでのみサイクル発火。押しっぱなしの間は連続サイクルしない (誤連打防止)。
     ///   - **左 = 前の敵、右 = 次の敵** (reading order でソート)。上下は武器切り替えに回すので動かさない。
     ///   - 射程内に敵が居なければ何もしない (X キャンセル待ち)。スナップは補間で滑らかに移動。
-    def stepTargetCycle():
+    def stepTargetCycle(frame: App.Frame):
                         Unit
-                        \ {GameEngine.Game, CursorState.State, EnemyData.RosterQuery,
+                        \ {CursorState.State, EnemyData.RosterQuery,
                             RangeOverlayState.State} =
         if (CursorState.isSnagging()) ()
         else if (CursorState.isTweening()) ()
         else {
             let data = CursorState.State.get();
             // 左右だけでターゲットを選ぶ (上下は武器リストへ)。
-            match (data#holdDir, readHeldHorizontal()) {
+            match (data#holdDir, readHeldHorizontal(frame)) {
                 case (_, None) =>
                     CursorState.State.put({holdDir = None, holdSteps = 0 | data})
                 case (Some(_), Some(dir)) =>
@@ -445,14 +445,14 @@ mod CursorScene {
     /// ソートして、方向キー押下の瞬間に prev / next の緑マスへサイクルでスナップする。
     /// 入力ゲートは PlayerAttack と同じ (snag / 補間中は捨てる)。
     /// 緑マスが 0 個 (= 隣接味方なし) のときは何もしない (X キャンセル待ち)。
-    def stepTradeCellCycle():
+    def stepTradeCellCycle(frame: App.Frame):
                             Unit
-                            \ {GameEngine.Game, CursorState.State, RangeOverlayState.State} =
+                            \ {CursorState.State, RangeOverlayState.State} =
         if (CursorState.isSnagging()) ()
         else if (CursorState.isTweening()) ()
         else {
             let data = CursorState.State.get();
-            match (data#holdDir, readHeldDirection()) {
+            match (data#holdDir, readHeldDirection(frame)) {
                 case (_, None) =>
                     CursorState.State.put({holdDir = None, holdSteps = 0 | data})
                 case (Some(_), Some(dir)) =>

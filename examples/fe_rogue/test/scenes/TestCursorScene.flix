@@ -202,10 +202,12 @@ mod TestCursorScene {
     /// `PlayerAttack` 用テストも同じ runner を使う。カーソルは resource 権威で、
     /// 位置・hold・snag は `CursorState` に seed してから回す（ノード/パスは不要）。
     /// PlayerAttack の `targetsInRange` が範囲 resource を読むため `RangeOverlayState` も供給する。
-    def runPhysics(phase: TurnPhase.Phase, initial: CursorScene.Data): CursorScene.Data
-            \ {GameEngine.Game, BoardQuery,
+    def runPhysics(phase: TurnPhase.Phase, initial: CursorScene.Data, held: Set[GameEngine.Key]): CursorScene.Data
+            \ {BoardQuery,
                 GameLogger.GameLogger,
                 EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
+        // 押下キーは Frame 値で渡す（本番 gameLoop と同じ入力モデル）。カーソル polling は down のみ読む。
+        let frame = ({down = held, justPressed = Set.empty(), dt = 0.016}: App.Frame);
         // カーソル論理状態は resource 権威。初期 gridPos / hold / snag をここで seed する。
         CursorState.State.put(initial);
         TurnPhase.State.put(phase);
@@ -216,7 +218,7 @@ mod TestCursorScene {
             let _ =
                 TestUnitFixtures.withSelectedPlayer(0, () ->
                     TestUnitFixtures.withRangeOverlay(rc, () ->
-                        run { CursorScene.step(Duration.seconds(0.016)) }
+                        run { CursorScene.step(frame, Duration.seconds(0.016)) }
                             with handler World.WorldQuery { def get(k) = k(World.empty()) }
                             with handler UiWorldState.State {
                                 def get(k)      = k(UiStore.empty())
@@ -229,17 +231,17 @@ mod TestCursorScene {
     /// （`WorldDriver.withWorld`）と同じく「要求されたとき地形を読む」遅延 handler にする —
     /// ゲートが無ければ盤面未 seed の `BoardQuery.board` が bug! で落ちるため、
     /// 「board() が要求されないこと」まで含めて pin できる。
-    def runStepOnBoardNoMap(initial: CursorScene.Data): CursorScene.Data
-            \ {GameEngine.Game,
-                GameLogger.GameLogger,
+    def runStepOnBoardNoMap(initial: CursorScene.Data, held: Set[GameEngine.Key]): CursorScene.Data
+            \ {GameLogger.GameLogger,
                 EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
+        let frame = ({down = held, justPressed = Set.empty(), dt = 0.016}: App.Frame);
         CursorState.State.put(initial);
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         region rc {
             let _ =
                 TestUnitFixtures.withSelectedPlayer(0, () ->
                     TestUnitFixtures.withRangeOverlay(rc, () ->
-                        run { CursorScene.stepOnBoard(Duration.seconds(0.016)) }
+                        run { CursorScene.stepOnBoard(frame, Duration.seconds(0.016)) }
                             with handler BoardQuery {
                                 def board(k) = k(({map = TestWorldFixtures.floorSnapshot({w = 13, h = 13}),
                                                    pieces = Nil}: Board))
@@ -255,17 +257,18 @@ mod TestCursorScene {
     /// PlayerCursor で 1 フレーム `step` を回した直後の
     /// (gridPos, `isTweening`) を取り出す（stepVisual は回さない）。
     /// 移動で張った補間が同フレームの論理 put で clobber されず残るかを pin する用途。
-    def runPhysicsTween(initial: CursorScene.Data): (Int32, Int32, Bool)
-            \ {GameEngine.Game, BoardQuery,
+    def runPhysicsTween(initial: CursorScene.Data, held: Set[GameEngine.Key]): (Int32, Int32, Bool)
+            \ {BoardQuery,
                 GameLogger.GameLogger,
                 EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
+        let frame = ({down = held, justPressed = Set.empty(), dt = 0.016}: App.Frame);
         CursorState.State.put(initial);
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         region rc {
             TestUnitFixtures.withSelectedPlayer(0, () ->
                 TestUnitFixtures.withRangeOverlay(rc, () ->
                     run {
-                        CursorScene.step(Duration.seconds(0.016));
+                        CursorScene.step(frame, Duration.seconds(0.016));
                         let d = CursorState.State.get();
                         (d#gridPos#x, d#gridPos#y, CursorState.isTweening())
                     }
@@ -279,18 +282,19 @@ mod TestCursorScene {
     /// PlayerCursor で 1 マス移動 → `stepVisual(visualDt)` を 1 回回し、
     /// (gridPos, `isTweening`, renderPos) を取り出す。補間完了後の視覚追従と
     /// 入力凍結解除を pin する用途。
-    def runPhysicsThenVisual(initial: CursorScene.Data, visualDt: Float64):
+    def runPhysicsThenVisual(initial: CursorScene.Data, visualDt: Float64, held: Set[GameEngine.Key]):
             (Int32, Int32, Bool, Float64, Float64)
-            \ {GameEngine.Game, BoardQuery,
+            \ {BoardQuery,
                 GameLogger.GameLogger,
                 EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
+        let frame = ({down = held, justPressed = Set.empty(), dt = 0.016}: App.Frame);
         CursorState.State.put(initial);
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         region rc {
             TestUnitFixtures.withSelectedPlayer(0, () ->
                 TestUnitFixtures.withRangeOverlay(rc, () ->
                     run {
-                        CursorScene.step(Duration.seconds(0.016));
+                        CursorScene.step(frame, Duration.seconds(0.016));
                         CursorScene.stepVisual(Duration.seconds(visualDt));
                         let d = CursorState.State.get();
                         (d#gridPos#x, d#gridPos#y, CursorState.isTweening(),
@@ -311,9 +315,8 @@ mod TestCursorScene {
         region rc {
             let initial = cursorDataAt({x = 5, y = 5}, None, 0, 0.0);
             let data = run {
-                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
-                    TestUnitFixtures.withMockRosterQuery(Nil, () ->
-                        runStepOnBoardNoMap(initial)))
+                TestUnitFixtures.withMockRosterQuery(Nil, () ->
+                    runStepOnBoardNoMap(initial, Set#{GameEngine.Key.Up}))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);
@@ -327,10 +330,9 @@ mod TestCursorScene {
         region rc {
             let initial = cursorDataAt({x = 5, y = 5}, None, 0, 0.0);
             let data = run {
-                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
-                    TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
-                            runPhysics(TurnPhase.Phase.PlayerCursor, initial))))
+                TestUnitFixtures.withMockBoard(testBoard(), () ->
+                    TestUnitFixtures.withMockRosterQuery(Nil, () ->
+                        runPhysics(TurnPhase.Phase.PlayerCursor, initial, Set#{GameEngine.Key.Up})))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);
@@ -349,10 +351,9 @@ mod TestCursorScene {
         region rc {
             let initial = cursorDataAt({x = 5, y = 5}, None, 0, 0.0);
             let (gx, gy, tweening) = run {
-                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
-                    TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
-                            runPhysicsTween(initial))))
+                TestUnitFixtures.withMockBoard(testBoard(), () ->
+                    TestUnitFixtures.withMockRosterQuery(Nil, () ->
+                        runPhysicsTween(initial, Set#{GameEngine.Key.Up})))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);
@@ -369,10 +370,9 @@ mod TestCursorScene {
         region rc {
             let initial = cursorDataAt({x = 5, y = 5}, None, 0, 0.0);
             let (gx, gy, tweening, rpx, rpy) = run {
-                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
-                    TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
-                            runPhysicsThenVisual(initial, 1.0))))
+                TestUnitFixtures.withMockBoard(testBoard(), () ->
+                    TestUnitFixtures.withMockRosterQuery(Nil, () ->
+                        runPhysicsThenVisual(initial, 1.0, Set#{GameEngine.Key.Up})))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);
@@ -389,10 +389,9 @@ mod TestCursorScene {
         region rc {
             let initial = cursorDataAt({x = 5, y = 5}, None, 0, 1.0);
             let data = run {
-                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Up, () ->
-                    TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
-                            runPhysics(TurnPhase.Phase.PlayerCursor, initial))))
+                TestUnitFixtures.withMockBoard(testBoard(), () ->
+                    TestUnitFixtures.withMockRosterQuery(Nil, () ->
+                        runPhysics(TurnPhase.Phase.PlayerCursor, initial, Set#{GameEngine.Key.Up})))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);
@@ -407,10 +406,9 @@ mod TestCursorScene {
         region rc {
             let initial = cursorDataAt({x = 5, y = 5}, Some(Vec2i.up()), 3, 0.0);
             let data = run {
-                TestUnitFixtures.withMockGameKeys(_ -> false, () ->
-                    TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
-                            runPhysics(TurnPhase.Phase.PlayerCursor, initial))))
+                TestUnitFixtures.withMockBoard(testBoard(), () ->
+                    TestUnitFixtures.withMockRosterQuery(Nil, () ->
+                        runPhysics(TurnPhase.Phase.PlayerCursor, initial, Set.empty())))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);
@@ -431,10 +429,9 @@ mod TestCursorScene {
         region rc {
             let initial = cursorDataAt({x = 3, y = 3}, None, 0, 0.0);
             let data = run {
-                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Down, () ->
-                    TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
-                            runPhysics(TurnPhase.Phase.PlayerAttack, initial))))
+                TestUnitFixtures.withMockBoard(testBoard(), () ->
+                    TestUnitFixtures.withMockRosterQuery(Nil, () ->
+                        runPhysics(TurnPhase.Phase.PlayerAttack, initial, Set#{GameEngine.Key.Down})))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);
@@ -448,10 +445,9 @@ mod TestCursorScene {
         region rc {
             let initial = cursorDataAt({x = 3, y = 3}, None, 0, 1.0);
             let data = run {
-                TestUnitFixtures.withMockGameKeys(k -> k == GameEngine.Key.Down, () ->
-                    TestUnitFixtures.withMockBoard(testBoard(), () ->
-                        TestUnitFixtures.withMockRosterQuery(Nil, () ->
-                            runPhysics(TurnPhase.Phase.PlayerAttack, initial))))
+                TestUnitFixtures.withMockBoard(testBoard(), () ->
+                    TestUnitFixtures.withMockRosterQuery(Nil, () ->
+                        runPhysics(TurnPhase.Phase.PlayerAttack, initial, Set#{GameEngine.Key.Down})))
             } with GameLogger.withLogger(rc)
               with TurnPhase.withState(rc)
               with CursorState.withState(rc);

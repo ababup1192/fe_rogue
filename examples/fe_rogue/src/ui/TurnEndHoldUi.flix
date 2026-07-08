@@ -159,9 +159,9 @@ mod TurnEndHoldUi {
     /// 反映し、満タン到達フレームでターンエンドを発火する。ダンジョン外（タイトル/選択画面）は
     /// 盤面未 seed で no-op（対象フェーズが PlayerCursor でも誤発火しない）。
     /// gameLoop のパイプラインでは LogUi.step より後に置く（ログ帯を上書きするため）。
-    pub def frameStep(delta: Duration.Duration):
+    pub def frameStep(frame: App.Frame, delta: Duration.Duration):
                     Unit
-                    \ {GameEngine.Game, GameEngine.Audio, GameLogger.GameLogger,
+                    \ {GameEngine.Audio, GameLogger.GameLogger,
                        EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State,
                        GatherResume.State, World.Command, World.WorldQuery, TurnEndHoldState.State,
                        RangeOverlayState.State,
@@ -174,7 +174,7 @@ mod TurnEndHoldUi {
             // 対象は素のカーソル中と集合移動中のみ。
             let active = phase == TurnPhase.Phase.PlayerCursor
                             or phase == TurnPhase.Phase.GatherMove;
-            let held = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
+            let held = App.isDown(GameEngine.Key.LeftShift, frame);
             let result = step(data, active, held, delta);
             TurnEndHoldState.State.put(result#data);
             applyAppearance(result#ratio, result#visible);

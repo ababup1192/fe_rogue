@@ -307,26 +307,6 @@ mod TestUnitFixtures {
             def anyAttacking(k)    = k(List.exists(d -> Option.nonEmpty(d#attackTargetId), enemies))
         }
 
-    /// `withMockGame` のキー押下を指定述語に切り替えるバリエーション。
-    /// 例: `withMockGameKeys(k -> k == GameEngine.Key.Up, () -> ...)` で「Up キーだけ押下中」を再現。
-    /// 他の Game メソッドは `withMockGame` と同じデフォルト挙動。
-    pub def withMockGameKeys(pressed: GameEngine.Key -> Bool,
-                              thunk: Unit -> a \ ef): a \ (ef - GameEngine.Game) =
-        run { thunk() } with handler GameEngine.Game {
-            def renderCommands(_, _, _, k)     = k(())
-            def initTileBuffer(_, k)        = k((0i32, 0i32))
-            def shouldClose(k)              = k(false)
-            def getDeltaTime(k)             = k(Duration.seconds(0.016))
-            def isKeyPressed(key, k)        = k(pressed(key))
-            def getMousePosition(k)         = k({x = 0.0, y = 0.0})
-            def isMouseButtonPressed(_, k)  = k(false)
-            def consumeScrollDelta(k)       = k(0.0)
-            def getFontAtlas(_, k)          = k(testFontAtlas())
-            def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 128.0, y = 128.0}})
-            def getTextureInfo(_, k)        = k(None)
-            def setCursor(_, k)             = k(())
-        }
-
     /// BoardQuery のスタブ。指定 `board` を毎回返す。
     /// テストで盤面を 1 つ用意して、その盤面の上での挙動を検証する用途。
     pub def withMockBoard(board: Board, thunk: Unit -> a \ ef): a \ (ef - BoardQuery) =

@@ -96,15 +96,15 @@ mod MinimapScene {
     /// World へ蓄積し、M キーのエッジで表示トグルを反転する。描画そのものは行わない（見た目は
     /// `RenderWorld.renderMinimap` が同一フレームの状態を読んで直描きする）。
     /// ダンジョン外（盤面未 seed＝タイトル/選択画面）では何もしない。
-    pub def step():
+    pub def step(input: App.Frame):
                     Unit
-                    \ {GameEngine.Game, TurnPhase.State, SelectedPlayer.State,
+                    \ {TurnPhase.State, SelectedPlayer.State,
                        PlayerData.PartyQuery, World.Command, World.WorldQuery, MinimapState.State} =
         if (not World.hasBoard(World.WorldQuery.get())) ()
         else {
             let phase = TurnPhase.State.get();
             let data  = MinimapState.State.get();
-            let mDown = GameEngine.Game.isKeyPressed(GameEngine.Key.M);
+            let mDown = App.isDown(GameEngine.Key.M, input);
             // 敵ターン中は M を受け付けない（トグル自体を無視するので、押しても敵ターン明けに
             // 開いたりしない）。
             let acceptsToggle = phase != TurnPhase.Phase.EnemyTurn;

@@ -15,37 +15,37 @@ mod PlayerMovementDriver {
     ///   - `PlayerMoving` … 選択中の味方 1 体だけが方向キーを polling する。
     ///   - `GatherMove`   … 主人公(id 0)が移動範囲内で動き、味方が追従する。
     ///   - それ以外のフェーズは no-op。
-    pub def step(): Unit
-            \ {GameEngine.Game, BoardQuery, GameLogger.GameLogger,
+    pub def step(frame: App.Frame): Unit
+            \ {BoardQuery, GameLogger.GameLogger,
                TurnPhase.State, SelectedPlayer.State, World.Command, World.WorldQuery,
                ItemPickupPopupState.State, RangeOverlayState.State} =
         let phase = TurnPhase.State.get();
         if (phase == TurnPhase.Phase.PlayerMoving)
             match SelectedPlayer.State.get()#id {
-                case Some(id) => physicsStep(id)
+                case Some(id) => physicsStep(id, frame)
                 case None     => ()
             }
         else if (phase == TurnPhase.Phase.GatherMove)
-            gatherStep()
+            gatherStep(frame)
         else ()
 
     /// PlayerMoving: 選択中プレイヤーを **移動力(MoveRange)範囲内・低速** で 1 歩動かす。
     /// 着地マスの床アイテムは重量が許す限り自動取得する（`stepFor` の着地フックが担う）ため
     /// `SelectedPlayer.State`（取得の巻き戻しドラフト）も要求する。
-    pub def physicsStep(id: Int32): Unit
-                        \ {GameEngine.Game, BoardQuery, GameLogger.GameLogger,
+    pub def physicsStep(id: Int32, frame: App.Frame): Unit
+                        \ {BoardQuery, GameLogger.GameLogger,
                            SelectedPlayer.State, World.Command, World.WorldQuery,
                            ItemPickupPopupState.State, RangeOverlayState.State} =
         stepFor(selectAllowedPred(TurnPhase.Phase.PlayerMoving),
-                PlayerScene.selectedSlideDuration(), id)
+                PlayerScene.selectedSlideDuration(), id, frame)
 
     /// GatherMove: 主人公(id 0)を移動範囲内・低速で 1 歩動かし、**主人公が動いたフレームだけ**
     /// 各味方を主人公の「移動前マス」へ最短 1 歩で追従させる（行軍）。
     /// `stepFor` は無改修で再利用し、移動成立は「移動前後の主人公グリッド座標が変わったか」で判定する
     /// （`stepFor` が着地マスを返さなくても、World を読み直せば差分で分かる）。
     /// 主人公の Tween 完了待ち (`stepFor` 内の isMoving ガード) が 1 フレーム 1 歩のリズムを保つ。
-    pub def gatherStep(): Unit
-                       \ {GameEngine.Game, BoardQuery, GameLogger.GameLogger,
+    pub def gatherStep(frame: App.Frame): Unit
+                       \ {BoardQuery, GameLogger.GameLogger,
                           SelectedPlayer.State, World.Command, World.WorldQuery,
                           ItemPickupPopupState.State, RangeOverlayState.State} =
         let lord = PlayerScene.lordId();
@@ -53,7 +53,7 @@ mod PlayerMovementDriver {
         let prev = World.posOf(World.EntityRef.Player(lord), World.WorldQuery.get())
                        |> Option.getWithDefault({x = 0, y = 0});
         stepFor(selectAllowedPred(TurnPhase.Phase.GatherMove),
-                PlayerScene.selectedSlideDuration(), lord);
+                PlayerScene.selectedSlideDuration(), lord, frame);
         // 移動後の主人公位置は **World 由来の board**（`Cmd.Move` 反映済み）から読む。
         let now = Board.playerPositions(BoardQuery.board())
             |> List.find(p -> { let (pid, _) = p; pid == lord })
@@ -148,9 +148,9 @@ mod PlayerMovementDriver {
 
     /// 手動移動の共通本体。`isMoving` ガード → 入力 → Board 判定 → 駒へ `moveToById` で適用。
     def stepFor(allowedPred: {x = Int32, y = Int32} -> Bool,
-                 slide: Duration.Duration, id: Int32):
+                 slide: Duration.Duration, id: Int32, frame: App.Frame):
                 Unit
-                \ {GameEngine.Game, BoardQuery, World.WorldQuery, GameLogger.GameLogger,
+                \ {BoardQuery, World.WorldQuery, GameLogger.GameLogger,
                    SelectedPlayer.State, World.Command, ItemPickupPopupState.State} =
         match PlayerScene.get(id) {
             case Some(data) =>
@@ -170,7 +170,7 @@ mod PlayerMovementDriver {
                     let origin = World.posOf(World.EntityRef.Player(data#id), World.WorldQuery.get())
                                      |> Option.getWithDefault(data#gridPos);
                     let outcome = forM (
-                        dir   <- readHeldDirection();
+                        dir   <- readHeldDirection(frame);
                         event <- stepPlayerMove(data#id, origin, dir, board, allowedPred)
                     ) yield event;
                     match outcome {
@@ -232,8 +232,8 @@ mod PlayerMovementDriver {
     /// 押されている方向キーを Option で返す（複数同時押しは上 > 下 > 左 > 右）。
     /// 優先順序は特定のゲームデザイン意図によるものではなく、コード記述順による任意の一貫した順序。
     /// 入力ポーリングは打ち手の責務。ここ 1 箇所に集約し PlayerScene からは削除した。
-    def readHeldDirection(): Option[{x = Int32, y = Int32}] \ GameEngine.Game =
-        let isDown = key -> GameEngine.Game.isKeyPressed(key);
+    def readHeldDirection(frame: App.Frame): Option[{x = Int32, y = Int32}] =
+        let isDown = key -> App.isDown(key, frame);
         if      (isDown(GameEngine.Key.W) or isDown(GameEngine.Key.Up))    Some(Vec2i.up())
         else if (isDown(GameEngine.Key.S) or isDown(GameEngine.Key.Down))  Some(Vec2i.down())
         else if (isDown(GameEngine.Key.A) or isDown(GameEngine.Key.Left))  Some(Vec2i.left())
