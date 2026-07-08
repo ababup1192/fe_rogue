@@ -1,17 +1,6 @@
-/// ゲーム全体の進行状態。戦闘ターンのサブフェーズ（TurnPhase）とは別レイヤーで、
-/// 「今どの画面か」を表す。
-///   CharacterSelect — 起動直後の出撃メンバー / リーダー選択画面。
-///   Playing         — ダンジョン本編。
-pub enum GamePhase with Eq {
-    /// 起動時のタイトル画面（はじめから / 中断から再開）。
-    case Title
-    case CharacterSelect
-    case Playing
-}
-
-/// GamePhase の読み書き effect。どの handler からでも `put` で遷移を要求でき、
-/// 実体（region の Ref）は `Game.start` で注入する。gameLoop が前フレームとの差分を見て
-/// `applyPhaseChange` で画面を組み替える。
+/// GamePhase（進行画面・型は `World.GamePhase` に定義）の読み書き effect。どの handler からでも
+/// `put` で遷移を要求でき、World の `screen` field（単一権威）へ facade が書く。gameLoop が
+/// 前フレームとの差分を見て `applyPhaseChange` で画面を組み替える。
 pub eff GamePhaseState {
     def get(): GamePhase
     def put(target: GamePhase): Unit
@@ -549,8 +538,6 @@ mod Game {
             // BoardQuery handler が読む World の窓口（毎フレーム頭で gameLoop が更新）。World は
             // 各 store の単一権威。
             let worldRef = Ref.fresh(rc, World.empty());
-            // ゲーム全体の進行状態（画面）。起動直後はタイトル画面（はじめから / 中断から再開）から始める。
-            let phaseRef = Ref.fresh(rc, GamePhase.Title);
             // 試練型の部屋湧きクロック。WandererSpawnRequest が来るたび +1 し、
             // EnemyScene が周期判定（tick mod N）に使う。modulo 判定ゆえフロア跨ぎのリセット不要。
             let wanderClockRef = Ref.fresh(rc, 0);
@@ -753,9 +740,9 @@ mod Game {
                   def anyAttacking(k)      = k(World.anyEnemyAttacking(Ref.get(worldRef)))
               }
               with handler GamePhaseState {
-                  // 画面（CharacterSelect / Playing）の現在値を region の Ref で保持する。
-                  def get(k)         = k(Ref.get(phaseRef))
-                  def put(target, k) = { Ref.put(target, phaseRef); k() }
+                  // 進行画面の単一権威は World.screen。get/put とも facade で World 経由（呼び出し側 4+4 は無改修）。
+                  def get(k)         = k(World.screenOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetScreen(target), Ref.get(worldRef)), worldRef); k() }
               }
                 with Pacing.withState(rc)           // 演出の溜め (hold)
               with LogState.withState(rc)         // ログ HUD の状態（queue/idleSince）を resource 化

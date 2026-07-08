@@ -15,6 +15,18 @@ pub enum SimPhase with Eq, ToString {
     case GameOver     // 全滅モーダル
 }
 
+/// ゲーム全体の進行状態（「今どの画面か」）。戦闘ターンのサブフェーズ（TurnPhase）とは別レイヤー。
+/// World の `screen` field が単一権威で、`GamePhaseState` facade が読み書きし、gameLoop が
+/// 前フレームとの差分を見て `applyPhaseChange` で画面を組み替える。
+pub enum GamePhase with Eq {
+    /// 起動時のタイトル画面（はじめから / 中断から再開）。
+    case Title
+    /// 起動直後の出撃メンバー / リーダー選択画面。
+    case CharacterSelect
+    /// ダンジョン本編。
+    case Playing
+}
+
 // combatView の base 戦闘値型 `BaseStats` と組立 `assembleView` は `Combat`（ecs/rules）に集約。
 // World はそれを read-model として格納し（`baseStats`）、`combatViewOf` で `Combat.assembleView` を呼ぶ。
 
@@ -85,8 +97,10 @@ pub type alias MapLayout = {
 
 pub enum World {
     case World({ tick = Int32,
-                 // turn FSM の World mirror（dual・read-model）。権威は当面 TurnPhase.State。
+                 // turn FSM の 19-case phase。World 単一権威（`TurnPhase.State` は facade）。
                  turnPhase = TurnPhase.Phase,
+                 // ゲーム全体の進行画面（Title/CharacterSelect/Playing）。World 単一権威（`GamePhaseState` は facade）。
+                 screen = GamePhase,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
                  // unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
                  // でなく **この enum タグ `teamOf` で読む**（Bevy の Team component 相当）。
@@ -249,7 +263,7 @@ pub enum World {
 mod World {
 
     pub def empty(): World =
-        World.World({tick = 0, turnPhase = TurnPhase.Phase.PlayerCursor,
+        World.World({tick = 0, turnPhase = TurnPhase.Phase.PlayerCursor, screen = GamePhase.Title,
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      statusEffects = Map.empty(),
                      hp = Map.empty(), weapons = Map.empty(), team = Map.empty(),
@@ -295,6 +309,10 @@ mod World {
     /// 3-case sim-phase が要る所は `WorldDriver.simPhaseOf(turnPhaseOf(world))` で導出する。
     pub def turnPhaseOf(world: World): TurnPhase.Phase =
         let World.World(w) = world; w#turnPhase
+
+    /// World の screen（進行画面・単一権威）を読む（read-model アクセサ）。`GamePhaseState` facade が使う。
+    pub def screenOf(world: World): GamePhase =
+        let World.World(w) = world; w#screen
 
     /// per-frame の World 更新。**縮退版**: 全 store が command 権威（spawn/despawn/build choke の Cmd が
     /// 唯一の書込・prune は `Cmd.Despawn`/`Cmd.ClearUnits` が担う）なので、scene からの derive/prune は無い。
@@ -489,6 +507,7 @@ mod World {
         case TickEnemies                    // 敵ターン開始（全敵）
         case Move(EntityRef, {x = Int32, y = Int32})  // 位置 write（mid-frame currency）
         case SetPhase(TurnPhase.Phase)      // turn phase write（19-case・TurnPhase.State facade が World 権威へ書く）
+        case SetScreen(GamePhase)           // 進行画面 write（Title/CharacterSelect/Playing・GamePhaseState facade が書く）
         case SetHp(EntityRef, Int32)        // hp write（dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
         case SetBaseStats(EntityRef, Combat.BaseStats)  // base 戦闘値 write（hp/weapons 同型・両 faction・resource 書換ごとに dual-write）
@@ -762,6 +781,8 @@ mod World {
                              enemyPrevPos = prevs | w})
             case Cmd.SetPhase(phase) =>
                 let World.World(w) = world; World.World({turnPhase = phase | w})
+            case Cmd.SetScreen(s) =>
+                let World.World(w) = world; World.World({screen = s | w})
             case Cmd.SetHp(ref, hpVal) =>
                 // 単一 store＋toUid。
                 let World.World(w) = world;
@@ -1179,6 +1200,13 @@ mod World {
         case TurnPhase.Phase.SuspendConfirm    => 18
     }
 
+    /// GamePhase の ordinal（cmdKey の SetScreen 用）。
+    def gamePhaseToInt(p: GamePhase): Int32 = match p {
+        case GamePhase.Title           => 0
+        case GamePhase.CharacterSelect => 1
+        case GamePhase.Playing         => 2
+    }
+
     /// Dir4 の ordinal（cmdKey の SetFacing 用）。
     def dirToInt(d: Dir4.Dir4): Int32 = match d {
         case Dir4.Up    => 0
@@ -1238,6 +1266,7 @@ mod World {
             case Cmd.Add(ref, s)              => ("Add", toUid(ref), statusKindToInt(s#effect), s#magnitude)
             case Cmd.Seed(ref, _)             => ("Seed", toUid(ref), 0, 0)
             case Cmd.SetPhase(p)              => ("Phase", turnPhaseToInt(p), 0, 0)
+            case Cmd.SetScreen(s)            => ("Screen", gamePhaseToInt(s), 0, 0)
             case Cmd.TickPlayers(_)           => ("TickP", 0, 0, 0)
             case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)
