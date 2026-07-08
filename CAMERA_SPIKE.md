@@ -134,3 +134,12 @@ World record に `phase = TurnPhase.Phase`（19-case）field 追加＋`empty()` 
 - メモリ: `project-camera-bevy-style`（~/.claude/.../memory/project_camera_bevy_style.md）に同内容
 - プラン: `~/.claude/plans/woolly-jingling-lantern.md`
 - Before/After Artifact: https://claude.ai/code/artifact/50f579c8-6428-409a-8c58-f2582db6d3b4
+
+## ⚠️ B2 未解決点（2026-07-08 中断・再開時に最初に確認）
+B2 後のテストが **1123 pass / 2 fail**（`TestUiSnapshots.testUiSnapshots` golden・`TestCursorScene.testPhysicsProcessAttackNoopsWhenNoTargetsInRange` 位置 (3,3)vs(3,4)）。サブエージェントは「既存失敗」と主張。だが **B1 まで私が独立検証したベースラインは 0 fail**＝B2 が壊した疑いを排除できない。effect 注釈は本来ピクセル/座標を変えないはずなので要調査。
+再開 TODO: (1) get 置換 `TurnPhase.State.get()`→`World.phaseOf(World.WorldQuery.get())` が本当に値同型・挙動不変か。特に **World.phase が turnPhaseRef と常に同期か**（dual-write put のタイミング／フレーム頭の worldRef リセットで stale 化しないか）。(2) 2 fail が本当に既存か履歴で確認。(3) injection 対策で必ず自分の grep/実ファイルで裏取り（本セッション中、偽の "green" ログが複数回混入した）。
+
+## 現在の worktree 状態サマリ（再開の起点）
+- B1+B2 実装済み・**未コミット**（worktree agent-a6f645e2bace17df5）。CAMERA_SPIKE.md のみ main にコミット済(c6e5306 系)。
+- get=World 経由化済み / put=まだ TurnPhase.State.put（dual-write で SetPhaseFull を World へ）/ Cmd.SetPhase と SetPhaseFull 併存 / World.simPhaseOf と WorldDriver.simPhaseOf 重複 / parity(WorldDriver:94-95) 温存 / turnPhaseToInt 追加済 / cmdKey に SetPhaseFull case 追加済。
+- 残: B3(put→emit(SetPhaseFull))→B4(TurnPhase.State 全撤去)。ただし上の 2 fail を先に解決すること。
