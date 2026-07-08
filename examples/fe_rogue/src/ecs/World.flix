@@ -132,6 +132,21 @@ pub enum World {
                  // World-entity UI の状態（全滅モーダル等の UI ノード store）。見た目は UiExtract/render が導出。
                  // World 単一権威（production は inline facade・test は `UiWorldState.withState` Ref）。型は engine_world の UiStore.UiWorld。
                  uiWorld = UiStore.UiWorld,
+                 // 集合モードのターン跨ぎ自動継続フラグ。敵ターンを跨いで次の味方ターン開始まで運ぶ。
+                 // World 単一権威（production は inline facade・test は `GatherResume.withState` Ref）。
+                 gatherResume = Bool,
+                 // 敵ターンの「1 マス=1 step」キュー。gameLoop が毎フレ先頭 step を 1 つ処理する。空=プレイヤーターン。
+                 // World 単一権威（production は inline facade・test は `EnemyTurn.withQueue` Ref）。
+                 enemyTurnQueue = List[EnemyTurn.Step],
+                 // タイトル画面の 2 択カーソルと再開可否。見た目は UiWorldState から描画。World 単一権威（prod=inline facade・test=withState Ref）。
+                 titleMenu = TitleMenuState.Data,
+                 // 出撃メンバー選択画面の選択状態（注目/選択/サブモード/カルーセル）。World 単一権威（prod=inline facade・test=withState Ref）。
+                 characterSelect = CharacterSelectUi.Data,
+                 // ミニマップ表示トグル（M）+ エッジ検出用前フレーム状態。World 単一権威（prod=inline facade・test=withState Ref）。
+                 minimap = MinimapState.Data,
+                 // 集合「階段」の順次退場ドライバ状態（退場キュー/停滞カウンタ）。EnemyTurn と同型の driver 進行。
+                 // World 単一権威（prod=inline facade・test=withState Ref）。
+                 stairsExit = StairsExitDriver.Data,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
                  // unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
                  // でなく **この enum タグ `teamOf` で読む**（Bevy の Team component 相当）。
@@ -302,6 +317,12 @@ mod World {
                      itemMenu = ItemMenuState.initial(),
                      tradeMenu = TradeMenuUi.defaultPanelData(),
                      uiWorld = UiStore.empty(),
+                     gatherResume = false,
+                     enemyTurnQueue = Nil,
+                     titleMenu = TitleMenuState.initial(),
+                     characterSelect = CharacterSelectUi.emptyState(),
+                     minimap = MinimapState.initial(),
+                     stairsExit = {queue = Nil, idleRounds = 0},
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      statusEffects = Map.empty(),
                      hp = Map.empty(), weapons = Map.empty(), team = Map.empty(),
@@ -395,6 +416,30 @@ mod World {
     /// World の uiWorld（World-entity UI の状態・単一権威）を読む（read-model アクセサ）。`UiWorldState` facade が使う。
     pub def uiWorldOf(world: World): UiStore.UiWorld =
         let World.World(w) = world; w#uiWorld
+
+    /// World の gatherResume（集合モードのターン跨ぎ継続フラグ・単一権威）を読む（read-model アクセサ）。`GatherResume` facade が使う。
+    pub def gatherResumeOf(world: World): Bool =
+        let World.World(w) = world; w#gatherResume
+
+    /// World の enemyTurnQueue（敵ターン step キュー・単一権威）を読む（read-model アクセサ）。`EnemyTurn` facade が使う。
+    pub def enemyTurnQueueOf(world: World): List[EnemyTurn.Step] =
+        let World.World(w) = world; w#enemyTurnQueue
+
+    /// World の titleMenu（タイトル画面状態・単一権威）を読む（read-model アクセサ）。`TitleMenuState` facade が使う。
+    pub def titleMenuOf(world: World): TitleMenuState.Data =
+        let World.World(w) = world; w#titleMenu
+
+    /// World の characterSelect（出撃選択状態・単一権威）を読む（read-model アクセサ）。`CharacterSelectState` facade が使う。
+    pub def characterSelectOf(world: World): CharacterSelectUi.Data =
+        let World.World(w) = world; w#characterSelect
+
+    /// World の minimap（ミニマップ表示状態・単一権威）を読む（read-model アクセサ）。`MinimapState` facade が使う。
+    pub def minimapOf(world: World): MinimapState.Data =
+        let World.World(w) = world; w#minimap
+
+    /// World の stairsExit（階段順次退場ドライバ状態・単一権威）を読む（read-model アクセサ）。`StairsExitDriver` facade が使う。
+    pub def stairsExitOf(world: World): StairsExitDriver.Data =
+        let World.World(w) = world; w#stairsExit
 
     /// per-frame の World 更新。**縮退版**: 全 store が command 権威（spawn/despawn/build choke の Cmd が
     /// 唯一の書込・prune は `Cmd.Despawn`/`Cmd.ClearUnits` が担う）なので、scene からの derive/prune は無い。
@@ -601,6 +646,12 @@ mod World {
         case SetItemMenu(ItemMenuState.Data)         // アイテム窓の選択状態 write（ItemMenuState facade）
         case SetTradeMenu(TradeMenuUi.PanelData)      // 物交換セッション状態 write（TradeMenuState facade）
         case SetUiWorld(UiStore.UiWorld)              // World-entity UI 状態 write（UiWorldState facade）
+        case SetGatherResume(Bool)                    // 集合ターン跨ぎ継続フラグ write（GatherResume facade）
+        case SetEnemyTurnQueue(List[EnemyTurn.Step])  // 敵ターン step キュー write（EnemyTurn facade）
+        case SetTitleMenu(TitleMenuState.Data)        // タイトル画面状態 write（TitleMenuState facade）
+        case SetCharacterSelect(CharacterSelectUi.Data) // 出撃選択状態 write（CharacterSelectState facade）
+        case SetMinimap(MinimapState.Data)            // ミニマップ状態 write（MinimapState facade）
+        case SetStairsExit(StairsExitDriver.Data)     // 階段退場ドライバ状態 write（StairsExitDriver facade）
         case SetHp(EntityRef, Int32)        // hp write（dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
         case SetBaseStats(EntityRef, Combat.BaseStats)  // base 戦闘値 write（hp/weapons 同型・両 faction・resource 書換ごとに dual-write）
@@ -898,6 +949,18 @@ mod World {
                 let World.World(w) = world; World.World({tradeMenu = tm | w})
             case Cmd.SetUiWorld(ui) =>
                 let World.World(w) = world; World.World({uiWorld = ui | w})
+            case Cmd.SetGatherResume(v) =>
+                let World.World(w) = world; World.World({gatherResume = v | w})
+            case Cmd.SetEnemyTurnQueue(q) =>
+                let World.World(w) = world; World.World({enemyTurnQueue = q | w})
+            case Cmd.SetTitleMenu(tm) =>
+                let World.World(w) = world; World.World({titleMenu = tm | w})
+            case Cmd.SetCharacterSelect(cs) =>
+                let World.World(w) = world; World.World({characterSelect = cs | w})
+            case Cmd.SetMinimap(mm) =>
+                let World.World(w) = world; World.World({minimap = mm | w})
+            case Cmd.SetStairsExit(se) =>
+                let World.World(w) = world; World.World({stairsExit = se | w})
             case Cmd.SetHp(ref, hpVal) =>
                 // 単一 store＋toUid。
                 let World.World(w) = world;
@@ -1393,6 +1456,12 @@ mod World {
             case Cmd.SetItemMenu(_)          => ("SetItemMenu", 0, 0, 0)
             case Cmd.SetTradeMenu(_)         => ("SetTradeMenu", 0, 0, 0)
             case Cmd.SetUiWorld(_)           => ("SetUiWorld", 0, 0, 0)
+            case Cmd.SetGatherResume(_)      => ("SetGatherResume", 0, 0, 0)
+            case Cmd.SetEnemyTurnQueue(_)    => ("SetEnemyTurnQueue", 0, 0, 0)
+            case Cmd.SetTitleMenu(_)         => ("SetTitleMenu", 0, 0, 0)
+            case Cmd.SetCharacterSelect(_)   => ("SetCharacterSelect", 0, 0, 0)
+            case Cmd.SetMinimap(_)           => ("SetMinimap", 0, 0, 0)
+            case Cmd.SetStairsExit(_)        => ("SetStairsExit", 0, 0, 0)
             case Cmd.TickPlayers(_)           => ("TickP", 0, 0, 0)
             case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)

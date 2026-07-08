@@ -757,11 +757,39 @@ mod Game {
               with TurnEndHoldState.withState(rc) // ターンスキップ長押しゲージの状態を resource 化
               with LevelUpPanelState.withState(rc) // レベルアップ演出パネルの状態を resource 化
               with TopBarState.withState(rc) // 上部バーの状態を resource 化
-              with TitleMenuState.withState(rc) // タイトル画面の状態を resource 化
+              with handler TitleMenuState.State {
+                  // タイトル画面状態（2択カーソル/再開可否）の単一権威は World.titleMenu。
+                  def get(k)         = k(World.titleMenuOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetTitleMenu(target), Ref.get(worldRef)), worldRef); k() }
+              }
               with UnitHPBarRender.withForecast(rc) // 攻撃予報（減る分点滅）の view 状態
               with ItemPickupPopupState.withState(rc) // 中央アイテム取得ポップアップの状態を resource 化
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
-              with EnemyTurn.withQueue(rc)        // 敵ターンキュー（1 step / 1 frame 駆動）
+              with handler EnemyTurn.Queue {
+                  // 敵ターン step キューの単一権威は World.enemyTurnQueue。各 op を worldRef+applyCmd で実装
+                  // （呼び出し側 TurnFlow/EnemyTurnDriver/CameraScene は無改修・test は withQueue の Ref）。
+                  def popFront(k) =
+                      match World.enemyTurnQueueOf(Ref.get(worldRef)) {
+                          case Nil    => k(None)
+                          case h :: t =>
+                              Ref.put(World.applyCmd(World.Cmd.SetEnemyTurnQueue(t), Ref.get(worldRef)), worldRef);
+                              k(Some(h))
+                      }
+                  def pushFront(step, k) = {
+                      Ref.put(World.applyCmd(World.Cmd.SetEnemyTurnQueue(step :: World.enemyTurnQueueOf(Ref.get(worldRef))), Ref.get(worldRef)), worldRef);
+                      k()
+                  }
+                  def replace(steps, k) = {
+                      Ref.put(World.applyCmd(World.Cmd.SetEnemyTurnQueue(steps), Ref.get(worldRef)), worldRef);
+                      k()
+                  }
+                  def peekFront(k) =
+                      match World.enemyTurnQueueOf(Ref.get(worldRef)) {
+                          case Nil    => k(None)
+                          case h :: _ => k(Some(h))
+                      }
+                  def isEmpty(k) = k(List.isEmpty(World.enemyTurnQueueOf(Ref.get(worldRef))))
+              }
               with handler TurnPhase.State {       // World 単一権威への facade（get/put とも World.turnPhase 経由・呼び出し側 38+31 は無改修）
                   def get(k) = k(World.turnPhaseOf(Ref.get(worldRef)))
                   def put(target, k) = {
@@ -810,13 +838,26 @@ mod Game {
                   def get(k)         = k(World.arrowCursorOf(Ref.get(worldRef)))
                   def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetArrowCursor(target), Ref.get(worldRef)), worldRef); k() }
               }
-              with StairsExitDriver.withState(rc) // 集合「階段」の順次退場キュー（queue/idleRounds）を resource 化
-              with GatherResume.withState(rc)     // 集合モードのターン跨ぎ自動継続フラグ
+              with handler StairsExitDriver.State {
+                  // 集合「階段」の順次退場ドライバ状態（退場キュー/停滞カウンタ）の単一権威は World.stairsExit。
+                  def get(k)         = k(World.stairsExitOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetStairsExit(target), Ref.get(worldRef)), worldRef); k() }
+              }
+              with handler GatherResume.State {
+                  // 集合モードのターン跨ぎ自動継続フラグの単一権威は World.gatherResume。
+                  // get/put とも facade で World 経由（呼び出し側 TurnFlow/EnemyTurnDriver は無改修・test は withState の Ref）。
+                  def get(k)         = k(World.gatherResumeOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetGatherResume(target), Ref.get(worldRef)), worldRef); k() }
+              }
               with InitialSpawns.withState(worldRef)    // ゲームオーバー時に同じ敵 / 味方配置を復元 World.initialSpawns 単一権威
               with FloorSnapshot.withState(worldRef)    // 進入時フロアスナップショット（全滅時の「フロア最初から」用）World.floorSnapshot 単一権威
               with FloorProgress.withState(worldRef)  // 現在フロア id World.floorId 単一権威
               with PartySelection.withState(worldRef)   // 出撃メンバー（開始時に1回抽選、フロア間で維持）World.party 単一権威
-              with CharacterSelectState.withState(rc) // 出撃メンバー選択画面の選択状態（注目/選択/サブモード/カルーセル）を resource 化
+              with handler CharacterSelectState.State {
+                  // 出撃メンバー選択画面の選択状態の単一権威は World.characterSelect。
+                  def get(k)         = k(World.characterSelectOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetCharacterSelect(target), Ref.get(worldRef)), worldRef); k() }
+              }
               with handler ItemMenuState.State {
                   // アイテム窓の選択状態（カテゴリ index / 一括選択マーク）の単一権威は World.itemMenu。
                   // get/put とも facade で World 経由（呼び出し側 3 ファイルは無改修・test は withState の Ref）。
@@ -835,7 +876,11 @@ mod Game {
                   def get(k)         = k(World.uiWorldOf(Ref.get(worldRef)))
                   def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetUiWorld(target), Ref.get(worldRef)), worldRef); k() }
               }
-              with MinimapState.withState(rc)     // ミニマップの表示トグル（M）状態を resource 化
+              with handler MinimapState.State {
+                  // ミニマップ表示トグル（M）状態の単一権威は World.minimap。
+                  def get(k)         = k(World.minimapOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetMinimap(target), Ref.get(worldRef)), worldRef); k() }
+              }
         }
 
     /// GamePhase に応じて画面を組み立てる。**配線役** に徹し、各画面の構築は
