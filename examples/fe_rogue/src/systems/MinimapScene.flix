@@ -169,7 +169,7 @@ mod MinimapScene {
         let pos: Vec2 = {x = c#x + half, y = c#y + half};
         let d = markerDiameter(t#scale);
         let poly = Polygon.circle(0.5, color)
-            |> Node2D.setScale({x = d, y = d})
+            |> Polygon.mapTransform(Transform.setScale({x = d, y = d}))
             |> Polygon.setAlpha(markerAlpha());
         let cmd = Polygon.toRenderCmd(pos, {x = 1.0, y = 1.0}, poly);
         {zIndex = markerZIndex() + minimapLayerOffset() | cmd}

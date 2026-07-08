@@ -1,15 +1,10 @@
-// Tests for Node2D default methods
-//
-// Sprite を具象型として使い、Node2D trait の
-// デフォルト実装メソッドをテストする。
-// getter/setter 自体のテストは除外し、
-// 計算ロジックを持つメソッドのみ検証する。
+// Transform（位置・回転・スケール・せん断の値部品）の派生操作テスト。
+// getter/setter そのものは除外し、計算ロジックを持つメソッドのみ検証する。
 
-mod TestNode2D {
+mod TestTransform {
 
-    /// テスト用ヘルパー: 原点に配置したデフォルト Sprite を作る
-    def mkSprite(): Sprite =
-        Sprite.make("", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0})
+    /// テスト用ヘルパー: 初期 Transform（原点・無回転・等倍）
+    def mkT(): Transform = Transform.identity()
 
     /// Float64 の近似比較（許容誤差 0.001）
     def approx(a: Float64, b: Float64): Bool =
@@ -27,8 +22,8 @@ mod TestNode2D {
     ///
     @Test
     def testTranslate(): Unit \ Assert =
-        let s = mkSprite() |> Node2D.translate({x = 3.0, y = 4.0});
-        let pos = Node2D.getPosition(s);
+        let t = mkT() |> Transform.translate({x = 3.0, y = 4.0});
+        let pos = Transform.getPosition(t);
         Assert.assertTrue(approx(pos#x, 3.0) and approx(pos#y, 4.0))
 
     /// translate を連続で呼ぶと加算が累積する
@@ -37,10 +32,10 @@ mod TestNode2D {
     ///
     @Test
     def testTranslateAccumulates(): Unit \ Assert =
-        let s = mkSprite()
-            |> Node2D.translate({x = 1.0, y = 2.0})
-            |> Node2D.translate({x = 3.0, y = 4.0});
-        let pos = Node2D.getPosition(s);
+        let t = mkT()
+            |> Transform.translate({x = 1.0, y = 2.0})
+            |> Transform.translate({x = 3.0, y = 4.0});
+        let pos = Transform.getPosition(t);
         Assert.assertTrue(approx(pos#x, 4.0) and approx(pos#y, 6.0))
 
     // ========================================================================
@@ -50,8 +45,8 @@ mod TestNode2D {
     /// rotate は現在の回転にラジアンを加算する
     @Test
     def testRotate(): Unit \ Assert =
-        let s = mkSprite() |> Node2D.rotate(1.5);
-        Assert.assertTrue(approx(Node2D.getRotation(s), 1.5))
+        let t = mkT() |> Transform.rotate(1.5);
+        Assert.assertTrue(approx(Transform.getRotation(t), 1.5))
 
     /// rotate を連続で呼ぶと加算が累積する
     ///
@@ -59,10 +54,10 @@ mod TestNode2D {
     ///
     @Test
     def testRotateAccumulates(): Unit \ Assert =
-        let s = mkSprite()
-            |> Node2D.rotate(1.0)
-            |> Node2D.rotate(0.5);
-        Assert.assertTrue(approx(Node2D.getRotation(s), 1.5))
+        let t = mkT()
+            |> Transform.rotate(1.0)
+            |> Transform.rotate(0.5);
+        Assert.assertTrue(approx(Transform.getRotation(t), 1.5))
 
     // ========================================================================
     // applyScale
@@ -74,19 +69,19 @@ mod TestNode2D {
     ///
     @Test
     def testApplyScale(): Unit \ Assert =
-        let s = mkSprite()
-            |> Node2D.setScale({x = 2.0, y = 3.0})
-            |> Node2D.applyScale({x = 0.5, y = 2.0});
-        let sc = Node2D.getScale(s);
+        let t = mkT()
+            |> Transform.setScale({x = 2.0, y = 3.0})
+            |> Transform.applyScale({x = 0.5, y = 2.0});
+        let sc = Transform.getScale(t);
         Assert.assertTrue(approx(sc#x, 1.0) and approx(sc#y, 6.0))
 
     /// applyScale に (1,1) を渡すとスケールは変化しない
     @Test
     def testApplyScaleIdentity(): Unit \ Assert =
-        let s = mkSprite()
-            |> Node2D.setScale({x = 3.0, y = 5.0})
-            |> Node2D.applyScale({x = 1.0, y = 1.0});
-        let sc = Node2D.getScale(s);
+        let t = mkT()
+            |> Transform.setScale({x = 3.0, y = 5.0})
+            |> Transform.applyScale({x = 1.0, y = 1.0});
+        let sc = Transform.getScale(t);
         Assert.assertTrue(approx(sc#x, 3.0) and approx(sc#y, 5.0))
 
     // ========================================================================
@@ -99,7 +94,7 @@ mod TestNode2D {
     ///
     @Test
     def testGetAngleToRight(): Unit \ Assert =
-        let angle = Node2D.getAngleTo({x = 1.0, y = 0.0}, mkSprite());
+        let angle = Transform.getAngleTo({x = 1.0, y = 0.0}, mkT());
         Assert.assertTrue(approx(angle, 0.0))
 
     /// 原点から +Y 方向 (0,1) への角度は PI/2
@@ -111,17 +106,17 @@ mod TestNode2D {
     @Test
     def testGetAngleToUp(): Unit \ Assert =
         let pi = 3.14159265;
-        let angle = Node2D.getAngleTo({x = 0.0, y = 1.0}, mkSprite());
+        let angle = Transform.getAngleTo({x = 0.0, y = 1.0}, mkT());
         Assert.assertTrue(approx(angle, pi / 2.0))
 
-    /// ノードが原点以外にいる場合、差分ベクトルで角度を計算する
+    /// 原点以外を起点にする場合、差分ベクトルで角度を計算する
     ///
     ///   node(1,1) -------> (2,1)   angle = 0  （差分 = (1,0)）
     ///
     @Test
     def testGetAngleToFromOffset(): Unit \ Assert =
-        let s = mkSprite() |> Node2D.setPosition({x = 1.0, y = 1.0});
-        let angle = Node2D.getAngleTo({x = 2.0, y = 1.0}, s);
+        let t = mkT() |> Transform.setPosition({x = 1.0, y = 1.0});
+        let angle = Transform.getAngleTo({x = 2.0, y = 1.0}, t);
         Assert.assertTrue(approx(angle, 0.0))
 
     // ========================================================================
@@ -138,6 +133,6 @@ mod TestNode2D {
     @Test
     def testLookAt(): Unit \ Assert =
         let pi = 3.14159265;
-        let s = mkSprite() |> Node2D.lookAt({x = 0.0, y = 1.0});
-        Assert.assertTrue(approx(Node2D.getRotation(s), pi / 2.0))
+        let t = mkT() |> Transform.lookAt({x = 0.0, y = 1.0});
+        Assert.assertTrue(approx(Transform.getRotation(t), pi / 2.0))
 }

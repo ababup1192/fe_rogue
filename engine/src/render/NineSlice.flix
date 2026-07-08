@@ -9,18 +9,13 @@
 /// 子ノードのレイアウトは持たない（必要なら親 Control + Layout.Anchor で配置する）。
 ///
 ///   NineSlice
-///     +-- CanvasItem: visible, zIndex, modulate
-///     +-- Node2D: position, rotation, scale, skew
+///     +-- visual: visible, zIndex, modulate
+///     +-- transform: position, rotation, scale, skew
 ///     +-- size, backgroundColor, backgroundAlpha, borderColor, borderAlpha, borderWidth
 pub enum NineSlice {
     case NineSlice({
-        position = Vec2.Vec2,
-        rotation = Float64,
-        scale = Vec2.Vec2,
-        skew = Float64,
-        visible = Bool,
-        zIndex = Int32,
-        modulate = Color,
+        transform = Transform,
+        visual = Visual,
         size = Vec2.Vec2,
         backgroundColor = Color,
         backgroundAlpha = Float32,
@@ -43,13 +38,8 @@ mod NineSlice {
     /// 背景色のみ、枠線なしの最小コンストラクタ。
     pub def make(size: Vec2.Vec2, backgroundColor: Color): NineSlice =
         NineSlice.NineSlice({
-            position = Vec2.zero(),
-            rotation = 0.0,
-            scale = {x = 1.0, y = 1.0},
-            skew = 0.0,
-            visible = true,
-            zIndex = 0,
-            modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+            transform = { position = {x = 0.0, y = 0.0}, rotation = 0.0, scale = {x = 1.0, y = 1.0}, skew = 0.0 },
+            visual = Visual.default(),
             size = size,
             backgroundColor = backgroundColor,
             backgroundAlpha = 1.0f32,
@@ -62,6 +52,26 @@ mod NineSlice {
             stripeWidth = 0.0,
             stripePeriod = 0.0
         })
+
+    /// 埋め込んだ Transform 部品を取り出す
+    pub def transform(panel: NineSlice): Transform =
+        let NineSlice.NineSlice(r) = panel;
+        r#transform
+
+    /// Transform 部品に関数を適用して差し替える
+    pub def mapTransform(f: Transform -> Transform \ ef, panel: NineSlice): NineSlice \ ef =
+        let NineSlice.NineSlice(r) = panel;
+        NineSlice.NineSlice({transform = f(r#transform) | r})
+
+    /// 埋め込んだ Visual 部品を取り出す
+    pub def visual(panel: NineSlice): Visual =
+        let NineSlice.NineSlice(r) = panel;
+        r#visual
+
+    /// Visual 部品に関数を適用して差し替える
+    pub def mapVisual(f: Visual -> Visual \ ef, panel: NineSlice): NineSlice \ ef =
+        let NineSlice.NineSlice(r) = panel;
+        NineSlice.NineSlice({visual = f(r#visual) | r})
 
     pub def getSize(panel: NineSlice): Vec2.Vec2 =
         let NineSlice.NineSlice(r) = panel;
@@ -163,7 +173,7 @@ mod NineSlice {
         let w = r#size#x;
         let h = r#size#y;
         // 背景 Drawable は全分岐で共有（角丸/ハッチ時は style を載せ替えるだけ＝重複リテラルを持たない）。
-        let bg = makeRectDrawable(globalPos, r#size, r#backgroundColor, r#backgroundAlpha, r#zIndex);
+        let bg = makeRectDrawable(globalPos, r#size, r#backgroundColor, r#backgroundAlpha, r#visual#zIndex);
         // 角丸 or 斜線ハッチがあれば styled パス（1 枚で塗り＋枠＋角丸＋ハッチ＋AA を排他描画）。
         let styled = r#cornerRadius > 0.0 or (r#stripeWidth > 0.0 and r#stripeAlpha > 0.0f32);
         if (styled)
@@ -181,7 +191,7 @@ mod NineSlice {
             let bw = r#borderWidth;
             let bc = r#borderColor;
             let ba = r#borderAlpha;
-            let zi = r#zIndex;
+            let zi = r#visual#zIndex;
             // 上辺 / 下辺 / 左辺 / 右辺（背景の上に同 z で重ねる）。
             let top = makeRectDrawable(globalPos, {x = w, y = bw}, bc, ba, zi);
             let bot = makeRectDrawable(
@@ -194,56 +204,4 @@ mod NineSlice {
             bg :: top :: bot :: lft :: rgt :: Nil
         }
 
-}
-
-// ── CanvasItem 実装 ──
-
-instance CanvasItem[NineSlice] {
-    pub def isVisible(panel: NineSlice): Bool =
-        let NineSlice.NineSlice(r) = panel;
-        r#visible
-    pub def setVisible(visible: Bool, panel: NineSlice): NineSlice =
-        let NineSlice.NineSlice(r) = panel;
-        NineSlice.NineSlice({visible = visible | r})
-    pub def getModulate(panel: NineSlice): Color =
-        let NineSlice.NineSlice(r) = panel;
-        r#modulate
-    pub def setModulate(color: Color, panel: NineSlice): NineSlice =
-        let NineSlice.NineSlice(r) = panel;
-        NineSlice.NineSlice({modulate = color | r})
-    pub def getZIndex(panel: NineSlice): Int32 =
-        let NineSlice.NineSlice(r) = panel;
-        r#zIndex
-    pub def setZIndex(zIndex: Int32, panel: NineSlice): NineSlice =
-        let NineSlice.NineSlice(r) = panel;
-        NineSlice.NineSlice({zIndex = zIndex | r})
-}
-
-// ── Node2D 実装 ──
-
-instance Node2D[NineSlice] {
-    pub def getPosition(panel: NineSlice): Vec2.Vec2 =
-        let NineSlice.NineSlice(r) = panel;
-        r#position
-    pub def setPosition(position: Vec2.Vec2, panel: NineSlice): NineSlice =
-        let NineSlice.NineSlice(r) = panel;
-        NineSlice.NineSlice({position = position | r})
-    pub def getRotation(panel: NineSlice): Float64 =
-        let NineSlice.NineSlice(r) = panel;
-        r#rotation
-    pub def setRotation(rotation: Float64, panel: NineSlice): NineSlice =
-        let NineSlice.NineSlice(r) = panel;
-        NineSlice.NineSlice({rotation = rotation | r})
-    pub def getScale(panel: NineSlice): Vec2.Vec2 =
-        let NineSlice.NineSlice(r) = panel;
-        r#scale
-    pub def setScale(scale: Vec2.Vec2, panel: NineSlice): NineSlice =
-        let NineSlice.NineSlice(r) = panel;
-        NineSlice.NineSlice({scale = scale | r})
-    pub def getSkew(panel: NineSlice): Float64 =
-        let NineSlice.NineSlice(r) = panel;
-        r#skew
-    pub def setSkew(skew: Float64, panel: NineSlice): NineSlice =
-        let NineSlice.NineSlice(r) = panel;
-        NineSlice.NineSlice({skew = skew | r})
 }

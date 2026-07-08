@@ -8,17 +8,12 @@
 ///       各セグメントを 1 つの PolygonRenderCmd として出す。
 ///
 ///   Arc
-///     +-- CanvasItem: visible, zIndex, modulate, alpha
-///     +-- Node2D: position, rotation, scale, skew
+///     +-- visual: modulate, visible, zIndex, alpha
+///     +-- transform: position, rotation, scale, skew
 pub enum Arc {
     case Arc({
-        position = Vec2.Vec2,
-        rotation = Float64,
-        scale = Vec2.Vec2,
-        skew = Float64,
-        visible = Bool,
-        zIndex = Int32,
-        modulate = Color,
+        transform = Transform,     // 位置・回転・スケール・せん断
+        visual = Visual,           // 色変調・可視性・描画順
         alpha = Float32,
         radius = Float64,      // 外周半径（px）
         width = Float64,       // リングの太さ（px）。内半径 = radius - width（0 未満は中心まで塗る扇形）
@@ -40,13 +35,8 @@ mod Arc {
     pub def make(radius: Float64, width: Float64,
                  startAngle: Float64, endAngle: Float64, color: Color): Arc =
         Arc.Arc({
-            position = {x = 0.0, y = 0.0},
-            rotation = 0.0,
-            scale = {x = 1.0, y = 1.0},
-            skew = 0.0,
-            visible = true,
-            zIndex = 0,
-            modulate = color,
+            transform = { position = {x = 0.0, y = 0.0}, rotation = 0.0, scale = {x = 1.0, y = 1.0}, skew = 0.0 },
+            visual = Visual.setModulate(color, Visual.default()),
             alpha = 1.0f32,
             radius = radius,
             width = width,
@@ -58,6 +48,26 @@ mod Arc {
     /// 全周リング（startAngle=0, endAngle=2π）を生成するショートカット。背景の輪などに使う。
     pub def ring(radius: Float64, width: Float64, color: Color): Arc =
         make(radius, width, 0.0, tau(), color)
+
+    /// 埋め込んだ Transform 部品を取り出す
+    pub def transform(arc: Arc): Transform =
+        let Arc.Arc(r) = arc;
+        r#transform
+
+    /// Transform 部品に関数を適用して差し替える
+    pub def mapTransform(f: Transform -> Transform \ ef, arc: Arc): Arc \ ef =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({transform = f(r#transform) | r})
+
+    /// 埋め込んだ Visual 部品を取り出す
+    pub def visual(arc: Arc): Visual =
+        let Arc.Arc(r) = arc;
+        r#visual
+
+    /// Visual 部品に関数を適用して差し替える
+    pub def mapVisual(f: Visual -> Visual \ ef, arc: Arc): Arc \ ef =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({visual = f(r#visual) | r})
 
     pub def getRadius(arc: Arc): Float64 =
         let Arc.Arc(r) = arc; r#radius
@@ -113,8 +123,8 @@ mod Arc {
         let sweep = r#endAngle - r#startAngle;
         if (sweep <= 0.0 or r#width <= 0.0) Nil
         else {
-            let sx = scaleVec#x * r#scale#x;
-            let sy = scaleVec#y * r#scale#y;
+            let sx = scaleVec#x * r#transform#scale#x;
+            let sy = scaleVec#y * r#transform#scale#y;
             let outerR = r#radius;
             let innerR = Float64.max(0.0, r#radius - r#width);
             let n = Int32.max(1, r#segments);
@@ -128,53 +138,8 @@ mod Arc {
                 let verts =
                     mkPt(a0, outerR) :: mkPt(a1, outerR) ::
                     mkPt(a1, innerR) :: mkPt(a0, innerR) :: Nil;
-                ({vertices = verts, color = r#modulate, alpha = r#alpha,
-                  zIndex = r#zIndex}: GameEngine.PolygonRenderCmd)
+                ({vertices = verts, color = r#visual#modulate, alpha = r#alpha,
+                  zIndex = r#visual#zIndex}: GameEngine.PolygonRenderCmd)
             })
         }
-}
-
-// -- CanvasItem 実装 --
-
-instance CanvasItem[Arc] {
-    pub def isVisible(arc: Arc): Bool =
-        let Arc.Arc(r) = arc; r#visible
-    pub def setVisible(visible: Bool, arc: Arc): Arc =
-        let Arc.Arc(r) = arc;
-        Arc.Arc({visible = visible | r})
-    pub def getModulate(arc: Arc): Color =
-        let Arc.Arc(r) = arc; r#modulate
-    pub def setModulate(color: Color, arc: Arc): Arc =
-        let Arc.Arc(r) = arc;
-        Arc.Arc({modulate = color | r})
-    pub def getZIndex(arc: Arc): Int32 =
-        let Arc.Arc(r) = arc; r#zIndex
-    pub def setZIndex(zIndex: Int32, arc: Arc): Arc =
-        let Arc.Arc(r) = arc;
-        Arc.Arc({zIndex = zIndex | r})
-}
-
-// -- Node2D 実装 --
-
-instance Node2D[Arc] {
-    pub def getPosition(arc: Arc): Vec2.Vec2 =
-        let Arc.Arc(r) = arc; r#position
-    pub def setPosition(position: Vec2.Vec2, arc: Arc): Arc =
-        let Arc.Arc(r) = arc;
-        Arc.Arc({position = position | r})
-    pub def getRotation(arc: Arc): Float64 =
-        let Arc.Arc(r) = arc; r#rotation
-    pub def setRotation(rotation: Float64, arc: Arc): Arc =
-        let Arc.Arc(r) = arc;
-        Arc.Arc({rotation = rotation | r})
-    pub def getScale(arc: Arc): Vec2.Vec2 =
-        let Arc.Arc(r) = arc; r#scale
-    pub def setScale(scale: Vec2.Vec2, arc: Arc): Arc =
-        let Arc.Arc(r) = arc;
-        Arc.Arc({scale = scale | r})
-    pub def getSkew(arc: Arc): Float64 =
-        let Arc.Arc(r) = arc; r#skew
-    pub def setSkew(skew: Float64, arc: Arc): Arc =
-        let Arc.Arc(r) = arc;
-        Arc.Arc({skew = skew | r})
 }

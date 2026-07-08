@@ -1,12 +1,12 @@
 /// 2D スプライトノード — テクスチャを表示する最小の描画ノード。
 ///
-/// テクスチャを 1 枚表示するだけの軽いノードで、可視性・描画順（CanvasItem）と座標変換（Node2D）を持つ。
+/// テクスチャを 1 枚表示するだけの軽いノードで、見た目（visual）と座標変換（transform）を持つ。
 /// これがあれば絵をとりあえず画面に出せるので、キャラや背景の基本パーツになる。
 /// 利用例: キャラ 1 体を配置する / スプライトシートの 1 コマを切り出して表示する。
 ///
 ///   Sprite
-///     ├─ CanvasItem: visible, zIndex, modulate
-///     └─ Node2D: position, rotation, scale, skew
+///     ├─ visual: visible, zIndex, modulate
+///     └─ transform: position, rotation, scale, skew
 ///
 /// テクスチャの切り出しは 2 つの機構で表現する:
 ///   - region: テクスチャ内のサブ矩形（ピクセル単位）。None ならテクスチャ全体を使う。
@@ -16,13 +16,8 @@
 /// スプライトシート分割、両方指定すれば region 内をさらに格子分割となる。
 pub enum Sprite {
     case Sprite({
-        position = Vec2.Vec2,           // 位置
-        rotation = Float64,              // 回転（ラジアン）
-        scale = Vec2.Vec2,              // スケール
-        skew = Float64,                  // スキュー（ラジアン）
-        visible = Bool,                  // 表示フラグ
-        zIndex = Int32,                  // 描画順
-        modulate = Color,                // 色変調（{r, g, b}、不透明度は alpha フィールドで指定）
+        transform = Transform,           // 位置・回転・スケール・せん断
+        visual = Visual,                 // 色変調・可視性・描画順
         alpha = Float32,                 // 不透明度 0.0–1.0。Color にアルファが無いため別フィールド
         texture = String,                // テクスチャパス
         centered = Bool,                 // 中心を原点にするか
@@ -32,8 +27,7 @@ pub enum Sprite {
         regionRect = Option[Rect2.Rect2], // テクスチャ内の切り出し矩形（ピクセル単位）。None ならテクスチャ全体
         hframes = Int32,                 // 格子分割の列数（デフォルト 1）
         vframes = Int32,                 // 格子分割の行数（デフォルト 1）
-        frame = Int32,                   // 表示セル index = row * hframes + col（デフォルト 0）
-        ySortEnabled = Bool              // CanvasItem: 子を global_y で並べる
+        frame = Int32                    // 表示セル index = row * hframes + col（デフォルト 0）
     })
 }
 
@@ -41,13 +35,8 @@ mod Sprite {
     /// デフォルト値で Sprite を生成する（テクスチャ全体を表示）
     pub def make(texture: String, position: Vec2.Vec2, scale: Vec2.Vec2): Sprite =
         Sprite.Sprite({
-            position = position,
-            rotation = 0.0,
-            scale = scale,
-            skew = 0.0,
-            visible = true,
-            zIndex = 0,
-            modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+            transform = { position = position, rotation = 0.0, scale = scale, skew = 0.0 },
+            visual = Visual.default(),
             alpha = 1.0f32,
             texture = texture,
             centered = true,
@@ -57,9 +46,28 @@ mod Sprite {
             regionRect = None,
             hframes = 1,
             vframes = 1,
-            frame = 0,
-            ySortEnabled = false
+            frame = 0
         })
+
+    /// 埋め込んだ Transform 部品を取り出す
+    pub def transform(sprite: Sprite): Transform =
+        let Sprite.Sprite(r) = sprite;
+        r#transform
+
+    /// Transform 部品に関数を適用して差し替える
+    pub def mapTransform(f: Transform -> Transform \ ef, sprite: Sprite): Sprite \ ef =
+        let Sprite.Sprite(r) = sprite;
+        Sprite.Sprite({transform = f(r#transform) | r})
+
+    /// 埋め込んだ Visual 部品を取り出す
+    pub def visual(sprite: Sprite): Visual =
+        let Sprite.Sprite(r) = sprite;
+        r#visual
+
+    /// Visual 部品に関数を適用して差し替える
+    pub def mapVisual(f: Visual -> Visual \ ef, sprite: Sprite): Sprite \ ef =
+        let Sprite.Sprite(r) = sprite;
+        Sprite.Sprite({visual = f(r#visual) | r})
 
     /// 不透明度を設定する（0.0 = 完全透明、1.0 = 不透明）
     pub def setAlpha(alpha: Float32, sprite: Sprite): Sprite =
@@ -136,15 +144,15 @@ mod Sprite {
         let isFullTexture = Option.isEmpty(r#regionRect) and r#hframes == 1
                             and r#vframes == 1 and r#frame == 0;
         let uvSc: Vec2.Vec2 =
-            if (isFullTexture and not r#centered) r#scale
+            if (isFullTexture and not r#centered) r#transform#scale
             else uv#uvScale;
         // セル分割／領域指定が有効なときは描画矩形をセルサイズに合わせる必要がある。
         // レンダラは `displayW = texInfo#width * drawable#scale#x` で矩形を決めるため、
         // scale に uvScale を掛けて (texSize * scale * uvScale = cellSize * scale) にする
         let drawScale: Vec2.Vec2 =
-            if (isFullTexture) r#scale
-            else {x = r#scale#x * uv#uvScale#x,
-                  y = r#scale#y * uv#uvScale#y};
+            if (isFullTexture) r#transform#scale
+            else {x = r#transform#scale#x * uv#uvScale#x,
+                  y = r#transform#scale#y * uv#uvScale#y};
         // flipH / flipV は scale を負にすることで model 行列で反転させる
         let flippedScale: Vec2.Vec2 = {
             x = if (r#flipH) -1.0 * drawScale#x else drawScale#x,
@@ -154,13 +162,13 @@ mod Sprite {
             texture = r#texture,
             position = globalPos,
             scale = flippedScale,
-            rotation = r#rotation,
-            color = r#modulate,
+            rotation = r#transform#rotation,
+            color = r#visual#modulate,
             alpha = r#alpha,
             centered = r#centered,
             uvOffset = uv#uvOffset,
             uvScale = uvSc,
-            zIndex = r#zIndex,
+            zIndex = r#visual#zIndex,
             style = None
         }
 
@@ -195,60 +203,3 @@ instance GameEngine.Renderable[Sprite] {
         Sprite.toDrawable(sprite, globalPos) :: Nil
 }
 
-// ── CanvasItem 実装 ──
-
-instance CanvasItem[Sprite] {
-    pub def isVisible(sprite: Sprite): Bool =
-        let Sprite.Sprite(r) = sprite;
-        r#visible
-    pub def setVisible(visible: Bool, sprite: Sprite): Sprite =
-        let Sprite.Sprite(r) = sprite;
-        Sprite.Sprite({ visible = visible | r })
-    pub def getModulate(sprite: Sprite): Color =
-        let Sprite.Sprite(r) = sprite;
-        r#modulate
-    pub def setModulate(color: Color, sprite: Sprite): Sprite =
-        let Sprite.Sprite(r) = sprite;
-        Sprite.Sprite({ modulate = color | r })
-    pub def getZIndex(sprite: Sprite): Int32 =
-        let Sprite.Sprite(r) = sprite;
-        r#zIndex
-    pub def setZIndex(zIndex: Int32, sprite: Sprite): Sprite =
-        let Sprite.Sprite(r) = sprite;
-        Sprite.Sprite({ zIndex = zIndex | r })
-    redef isYSortEnabled(sprite: Sprite): Bool =
-        let Sprite.Sprite(r) = sprite;
-        r#ySortEnabled
-    redef setYSortEnabled(v: Bool, sprite: Sprite): Sprite =
-        let Sprite.Sprite(r) = sprite;
-        Sprite.Sprite({ ySortEnabled = v | r })
-}
-
-// ── Node2D 実装 ──
-
-instance Node2D[Sprite] {
-    pub def getPosition(sprite: Sprite): Vec2.Vec2 =
-        let Sprite.Sprite(r) = sprite;
-        r#position
-    pub def setPosition(position: Vec2.Vec2, sprite: Sprite): Sprite =
-        let Sprite.Sprite(r) = sprite;
-        Sprite.Sprite({ position = position | r })
-    pub def getRotation(sprite: Sprite): Float64 =
-        let Sprite.Sprite(r) = sprite;
-        r#rotation
-    pub def setRotation(rotation: Float64, sprite: Sprite): Sprite =
-        let Sprite.Sprite(r) = sprite;
-        Sprite.Sprite({ rotation = rotation | r })
-    pub def getScale(sprite: Sprite): Vec2.Vec2 =
-        let Sprite.Sprite(r) = sprite;
-        r#scale
-    pub def setScale(scale: Vec2.Vec2, sprite: Sprite): Sprite =
-        let Sprite.Sprite(r) = sprite;
-        Sprite.Sprite({ scale = scale | r })
-    pub def getSkew(sprite: Sprite): Float64 =
-        let Sprite.Sprite(r) = sprite;
-        r#skew
-    pub def setSkew(skew: Float64, sprite: Sprite): Sprite =
-        let Sprite.Sprite(r) = sprite;
-        Sprite.Sprite({ skew = skew | r })
-}

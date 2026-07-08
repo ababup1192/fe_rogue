@@ -4,17 +4,12 @@
 /// 注意: テクスチャ・穴あき・UV は未対応（凸多角形を三角形ファンで塗る最小実装）。円は `circle` で 12 角形として生成する。
 ///
 ///   Polygon
-///     +-- CanvasItem: visible, zIndex, modulate, alpha
-///     +-- Node2D: position, rotation, scale, skew
+///     +-- visual: modulate, visible, zIndex, alpha
+///     +-- transform: position, rotation, scale, skew
 pub enum Polygon {
     case Polygon({
-        position = Vec2.Vec2,
-        rotation = Float64,
-        scale = Vec2.Vec2,
-        skew = Float64,
-        visible = Bool,
-        zIndex = Int32,
-        modulate = Color,
+        transform = Transform,     // 位置・回転・スケール・せん断
+        visual = Visual,           // 色変調・可視性・描画順
         alpha = Float32,
         points = List[Vec2.Vec2]   // 局所座標の頂点列（凸・順序付き）
     })
@@ -25,13 +20,8 @@ mod Polygon {
     /// 任意の頂点列から Polygon を生成する（alpha=1.0 不透明）。
     pub def make(points: List[Vec2.Vec2], color: Color): Polygon =
         Polygon.Polygon({
-            position = {x = 0.0, y = 0.0},
-            rotation = 0.0,
-            scale = {x = 1.0, y = 1.0},
-            skew = 0.0,
-            visible = true,
-            zIndex = 0,
-            modulate = color,
+            transform = { position = {x = 0.0, y = 0.0}, rotation = 0.0, scale = {x = 1.0, y = 1.0}, skew = 0.0 },
+            visual = Visual.setModulate(color, Visual.default()),
             alpha = 1.0f32,
             points = points
         })
@@ -58,6 +48,26 @@ mod Polygon {
         ({x = half,       y = 0.0 - h}: Vec2.Vec2) ::
         ({x = h,          y = 0.0 - half}: Vec2.Vec2) :: Nil
 
+    /// 埋め込んだ Transform 部品を取り出す
+    pub def transform(poly: Polygon): Transform =
+        let Polygon.Polygon(r) = poly;
+        r#transform
+
+    /// Transform 部品に関数を適用して差し替える
+    pub def mapTransform(f: Transform -> Transform \ ef, poly: Polygon): Polygon \ ef =
+        let Polygon.Polygon(r) = poly;
+        Polygon.Polygon({transform = f(r#transform) | r})
+
+    /// 埋め込んだ Visual 部品を取り出す
+    pub def visual(poly: Polygon): Visual =
+        let Polygon.Polygon(r) = poly;
+        r#visual
+
+    /// Visual 部品に関数を適用して差し替える
+    pub def mapVisual(f: Visual -> Visual \ ef, poly: Polygon): Polygon \ ef =
+        let Polygon.Polygon(r) = poly;
+        Polygon.Polygon({visual = f(r#visual) | r})
+
     pub def getPoints(poly: Polygon): List[Vec2.Vec2] =
         let Polygon.Polygon(r) = poly;
         r#points
@@ -76,54 +86,9 @@ mod Polygon {
     pub def toRenderCmd(screenPos: Vec2.Vec2, scaleVec: Vec2.Vec2,
                          poly: Polygon): GameEngine.PolygonRenderCmd =
         let Polygon.Polygon(r) = poly;
-        let sx = scaleVec#x * r#scale#x;
-        let sy = scaleVec#y * r#scale#y;
+        let sx = scaleVec#x * r#transform#scale#x;
+        let sy = scaleVec#y * r#transform#scale#y;
         let verts = r#points |> List.map(p ->
             ({x = screenPos#x + p#x * sx, y = screenPos#y + p#y * sy}: Vec2.Vec2));
-        {vertices = verts, color = r#modulate, alpha = r#alpha, zIndex = r#zIndex}
-}
-
-// -- CanvasItem 実装 --
-
-instance CanvasItem[Polygon] {
-    pub def isVisible(poly: Polygon): Bool =
-        let Polygon.Polygon(r) = poly; r#visible
-    pub def setVisible(visible: Bool, poly: Polygon): Polygon =
-        let Polygon.Polygon(r) = poly;
-        Polygon.Polygon({visible = visible | r})
-    pub def getModulate(poly: Polygon): Color =
-        let Polygon.Polygon(r) = poly; r#modulate
-    pub def setModulate(color: Color, poly: Polygon): Polygon =
-        let Polygon.Polygon(r) = poly;
-        Polygon.Polygon({modulate = color | r})
-    pub def getZIndex(poly: Polygon): Int32 =
-        let Polygon.Polygon(r) = poly; r#zIndex
-    pub def setZIndex(zIndex: Int32, poly: Polygon): Polygon =
-        let Polygon.Polygon(r) = poly;
-        Polygon.Polygon({zIndex = zIndex | r})
-}
-
-// -- Node2D 実装 --
-
-instance Node2D[Polygon] {
-    pub def getPosition(poly: Polygon): Vec2.Vec2 =
-        let Polygon.Polygon(r) = poly; r#position
-    pub def setPosition(position: Vec2.Vec2, poly: Polygon): Polygon =
-        let Polygon.Polygon(r) = poly;
-        Polygon.Polygon({position = position | r})
-    pub def getRotation(poly: Polygon): Float64 =
-        let Polygon.Polygon(r) = poly; r#rotation
-    pub def setRotation(rotation: Float64, poly: Polygon): Polygon =
-        let Polygon.Polygon(r) = poly;
-        Polygon.Polygon({rotation = rotation | r})
-    pub def getScale(poly: Polygon): Vec2.Vec2 =
-        let Polygon.Polygon(r) = poly; r#scale
-    pub def setScale(scale: Vec2.Vec2, poly: Polygon): Polygon =
-        let Polygon.Polygon(r) = poly;
-        Polygon.Polygon({scale = scale | r})
-    pub def getSkew(poly: Polygon): Float64 =
-        let Polygon.Polygon(r) = poly; r#skew
-    pub def setSkew(skew: Float64, poly: Polygon): Polygon =
-        let Polygon.Polygon(r) = poly;
-        Polygon.Polygon({skew = skew | r})
+        {vertices = verts, color = r#visual#modulate, alpha = r#alpha, zIndex = r#visual#zIndex}
 }

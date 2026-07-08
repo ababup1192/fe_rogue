@@ -4,8 +4,8 @@
 /// 利用例: プレイヤーを画面中央に保つ / マップ端でスクロールを止める。
 ///
 ///   Camera
-///     ├─ CanvasItem: visible, zIndex, modulate
-///     └─ Node2D: position, rotation, scale, skew
+///     ├─ visual: visible, zIndex, modulate
+///     └─ transform: position, rotation, scale, skew
 
 /// カメラのアンカーモード。
 ///
@@ -27,13 +27,8 @@ pub enum Camera2DProcessCallback with Eq, Order, ToString {
 
 pub enum Camera {
     case Camera({
-        position = Vec2.Vec2,
-        rotation = Float64,
-        scale = Vec2.Vec2,
-        skew = Float64,
-        visible = Bool,
-        zIndex = Int32,
-        modulate = Color,
+        transform = Transform,
+        visual = Visual,
         offset = Vec2.Vec2,
         zoom = Vec2.Vec2,
         enabled = Bool,
@@ -76,13 +71,8 @@ mod Camera {
     ///   anchorMode = DragCenter, limit = ±10_000_000
     pub def make(position: Vec2.Vec2): Camera =
         Camera.Camera({
-            position = position,
-            rotation = 0.0,
-            scale = {x = 1.0, y = 1.0},
-            skew = 0.0,
-            visible = true,
-            zIndex = 0,
-            modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+            transform = { position = position, rotation = 0.0, scale = {x = 1.0, y = 1.0}, skew = 0.0 },
+            visual = Visual.default(),
             offset = {x = 0.0, y = 0.0},
             zoom = {x = 1.0, y = 1.0},
             enabled = true,
@@ -111,6 +101,26 @@ mod Camera {
     /// offset 付きで Camera を生成する
     pub def makeWithOffset(position: Vec2.Vec2, offset: Vec2.Vec2): Camera =
         make(position) |> setOffset(offset)
+
+    /// 埋め込んだ Transform 部品を取り出す
+    pub def transform(camera: Camera): Transform =
+        let Camera.Camera(r) = camera;
+        r#transform
+
+    /// Transform 部品に関数を適用して差し替える
+    pub def mapTransform(f: Transform -> Transform \ ef, camera: Camera): Camera \ ef =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({transform = f(r#transform) | r})
+
+    /// 埋め込んだ Visual 部品を取り出す
+    pub def visual(camera: Camera): Visual =
+        let Camera.Camera(r) = camera;
+        r#visual
+
+    /// Visual 部品に関数を適用して差し替える
+    pub def mapVisual(f: Visual -> Visual \ ef, camera: Camera): Camera \ ef =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({visual = f(r#visual) | r})
 
     // ========================================================================
     // Camera 固有プロパティ — getter / setter
@@ -359,7 +369,7 @@ mod Camera {
     pub def isWithinDragDeadZone(camera: Camera,
             viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): Bool =
         let Camera.Camera(r) = camera;
-        let target = r#position;
+        let target = r#transform#position;
         let smooth = r#smoothPosition;
         let zx = if (r#zoom#x == 0.0) 1.0 else r#zoom#x;
         let zy = if (r#zoom#y == 0.0) 1.0 else r#zoom#y;
@@ -404,7 +414,7 @@ mod Camera {
                     viewportSize: {viewportWidth = Float64, viewportHeight = Float64},
                     camera: Camera): Camera =
         let Camera.Camera(r) = camera;
-        let target = r#position;
+        let target = r#transform#position;
         let smooth = r#smoothPosition;
         // zoom が 0 の軸は 1 として扱う（落とし穴防止、getViewTransform の流儀に合わせる）
         let zx = if (r#zoom#x == 0.0) 1.0 else r#zoom#x;
@@ -487,7 +497,7 @@ mod Camera {
     /// スムージング適用前のターゲット座標（= position）を返す。
     pub def getTargetPosition(camera: Camera): Vec2.Vec2 =
         let Camera.Camera(r) = camera;
-        r#position
+        r#transform#position
 
     /// このカメラを現在のカメラに設定する。
     pub def makeCurrent(camera: Camera): Camera =
@@ -580,8 +590,7 @@ mod Camera {
     /// `getScreenCenterPosition` の汎用化（base を引数化）。
     /// getViewTransform が smoothPosition / globalPos のいずれを起点にするかを切替可能にする。
     def clampedScreenCenter(base: Vec2.Vec2,
-                             r: {position = Vec2.Vec2, rotation = Float64, scale = Vec2.Vec2,
-                                 skew = Float64, visible = Bool, zIndex = Int32, modulate = Color,
+                             r: {transform = Transform, visual = Visual,
                                  offset = Vec2.Vec2, zoom = Vec2.Vec2, enabled = Bool,
                                  anchorMode = Camera2DAnchorMode,
                                  processCallback = Camera2DProcessCallback,
@@ -606,54 +615,3 @@ mod Camera {
         {x = clampedX, y = clampedY}
 }
 
-// ── CanvasItem 実装 ──
-
-instance CanvasItem[Camera] {
-    pub def isVisible(camera: Camera): Bool =
-        let Camera.Camera(r) = camera;
-        r#visible
-    pub def setVisible(visible: Bool, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({ visible = visible | r })
-    pub def getModulate(camera: Camera): Color =
-        let Camera.Camera(r) = camera;
-        r#modulate
-    pub def setModulate(color: Color, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({ modulate = color | r })
-    pub def getZIndex(camera: Camera): Int32 =
-        let Camera.Camera(r) = camera;
-        r#zIndex
-    pub def setZIndex(zIndex: Int32, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({ zIndex = zIndex | r })
-}
-
-// ── Node2D 実装 ──
-
-instance Node2D[Camera] {
-    pub def getPosition(camera: Camera): Vec2.Vec2 =
-        let Camera.Camera(r) = camera;
-        r#position
-    pub def setPosition(position: Vec2.Vec2, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({ position = position | r })
-    pub def getRotation(camera: Camera): Float64 =
-        let Camera.Camera(r) = camera;
-        r#rotation
-    pub def setRotation(rotation: Float64, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({ rotation = rotation | r })
-    pub def getScale(camera: Camera): Vec2.Vec2 =
-        let Camera.Camera(r) = camera;
-        r#scale
-    pub def setScale(scale: Vec2.Vec2, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({ scale = scale | r })
-    pub def getSkew(camera: Camera): Float64 =
-        let Camera.Camera(r) = camera;
-        r#skew
-    pub def setSkew(skew: Float64, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({ skew = skew | r })
-}

@@ -108,11 +108,11 @@ mod WeaponIconRender {
             ({color = mulColor(cmd#color, modColor), zIndex = iconZIndex() + 2 | cmd}: GameEngine.PolygonRenderCmd);
         match piece {
             case WeaponGlyph.GlyphPiece.Poly(poly) =>
-                let p = Node2D.getPosition(poly);
+                let p = Transform.getPosition(Polygon.transform(poly));
                 let screenPos = Camera.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
                 withMod(Polygon.toRenderCmd(screenPos, transform#scale, poly)) :: Nil
             case WeaponGlyph.GlyphPiece.Arc(arc) =>
-                let p = Node2D.getPosition(arc);
+                let p = Transform.getPosition(Arc.transform(arc));
                 let screenPos = Camera.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
                 Arc.toRenderCmds(screenPos, transform#scale, arc) |> List.map(withMod)
         }

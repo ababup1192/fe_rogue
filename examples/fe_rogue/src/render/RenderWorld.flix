@@ -110,7 +110,7 @@ mod RenderWorld {
                 };
                 let node = base
                     |> Sprite.setFlipH(flipH)
-                    |> CanvasItem.setModulate(modColor)
+                    |> Sprite.mapVisual(Visual.setModulate(modColor))
                     |> Sprite.setAlpha(alpha);
                 standaloneSprite(node, worldPos, PlayerScene.spriteZIndex(), transform)
         }
@@ -262,7 +262,7 @@ mod RenderWorld {
                                 let opos: Vec2.Vec2 = {x = pos#x + delta#x, y = pos#y + delta#y};
                                 let node = makeFramed()
                                     |> Sprite.setAlpha(alpha)
-                                    |> CanvasItem.setModulate(GroundItems.outlineColor());
+                                    |> Sprite.mapVisual(Visual.setModulate(GroundItems.outlineColor()));
                                 standaloneSprite(node, opos, GroundItems.outlineZIndex(), transform)
                             }, GroundItems.outlineDeltas());
                             List.append(outlines,
@@ -287,7 +287,7 @@ mod RenderWorld {
                         let label = Text.make(d#text, atlas, DamagePopupFx.fontSize())
                             |> Text.setHorizontalAlignment(HorizontalAlignment.Center)
                             |> Text.setVerticalAlignment(VerticalAlignment.Bottom)
-                            |> CanvasItem.setModulate(d#color);
+                            |> Text.mapVisual(Visual.setModulate(d#color));
                         let screenPos = Camera.applyToWorldPos(transform, pos);
                         GameEngine.Renderable.toDrawables(label, screenPos)
                             |> Render.applyCameraScale(transform)
@@ -390,7 +390,7 @@ mod RenderWorld {
         else {
             let data = ArrowCursorState.State.get();
             let sprite = Sprite.make(ArrowCursorScene.texture(), Vec2.zero(), ArrowCursorScene.spriteScale())
-                |> Node2D.setRotation(ArrowCursorScene.rotationOf(data#direction));
+                |> Sprite.mapTransform(Transform.setRotation(ArrowCursorScene.rotationOf(data#direction)));
             standaloneSprite(sprite, MapSnapshot.cellCenter(data#gridPos), ArrowCursorScene.spriteZIndex(), transform)
         }
 

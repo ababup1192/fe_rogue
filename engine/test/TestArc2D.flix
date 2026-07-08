@@ -1,6 +1,6 @@
 /// Arc ノード（円弧/リング、Godot draw_arc 相当）の挙動テスト。
 /// toRenderCmds のセグメント数・非描画条件・頂点座標、setter/getter のラウンドトリップ、
-/// CanvasItem / Node2D instance を検証する。
+/// visual / transform 部品を検証する。
 mod TestArc2D {
 
     def cyan(): Color = {r = 0.2f32, g = 0.8f32, b = 1.0f32}
@@ -84,24 +84,24 @@ mod TestArc2D {
         Assert.assertEq(expected = 16.0, Arc.getRadius(arc));
         Assert.assertEq(expected = 3.0, Arc.getWidth(arc))
 
-    /// CanvasItem: modulate round-trip
+    /// Visual: modulate round-trip
     @Test
     def testModulateRoundtrip(): Unit \ Assert =
         let arc = Arc.ring(10.0, 2.0, cyan())
-            |> CanvasItem.setModulate(white());
-        Assert.assertEq(expected = 1.0f32, CanvasItem.getModulate(arc)#r)
+            |> Arc.mapVisual(Visual.setModulate(white()));
+        Assert.assertEq(expected = 1.0f32, Visual.getModulate(Arc.visual(arc))#r)
 
-    /// CanvasItem: visible round-trip
+    /// Visual: visible round-trip
     @Test
     def testVisibleRoundtrip(): Unit \ Assert =
-        let arc = Arc.ring(10.0, 2.0, cyan()) |> CanvasItem.setVisible(false);
-        Assert.assertEq(expected = false, CanvasItem.isVisible(arc))
+        let arc = Arc.ring(10.0, 2.0, cyan()) |> Arc.mapVisual(Visual.setVisible(false));
+        Assert.assertEq(expected = false, Visual.getVisible(Arc.visual(arc)))
 
-    /// Node2D: position round-trip（描画原点ずらしに使う）
+    /// Transform: position round-trip（描画原点ずらしに使う）
     @Test
     def testPositionRoundtrip(): Unit \ Assert =
         let arc = Arc.ring(10.0, 2.0, cyan())
-            |> Node2D.setPosition({x = 85.0, y = 64.0});
-        Assert.assertEq(expected = 85.0, Node2D.getPosition(arc)#x);
-        Assert.assertEq(expected = 64.0, Node2D.getPosition(arc)#y)
+            |> Arc.mapTransform(Transform.setPosition({x = 85.0, y = 64.0}));
+        Assert.assertEq(expected = 85.0, Transform.getPosition(Arc.transform(arc))#x);
+        Assert.assertEq(expected = 64.0, Transform.getPosition(Arc.transform(arc))#y)
 }

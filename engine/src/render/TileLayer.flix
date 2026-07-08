@@ -9,20 +9,14 @@
 /// 初期値 0 = 未初期化（GPU リソース未アップロード）。
 pub enum TileLayer {
     case TileLayer({
-        position = Vec2.Vec2,        // Node2D: 位置
-        rotation = Float64,           // Node2D: 回転（ラジアン）
-        scale = Vec2.Vec2,           // Node2D: スケール
-        skew = Float64,               // Node2D: スキュー
-        visible = Bool,               // CanvasItem: 表示フラグ
-        zIndex = Int32,               // CanvasItem: 描画順
-        modulate = Color,             // CanvasItem: 色変調
+        transform = Transform,        // 位置・回転・スケール・せん断
+        visual = Visual,              // 色変調・可視性・描画順
         tileSet = Tileset,            // タイルセット
         tiles = List[TileData],       // タイル一覧
         collisionCells = List[Vec2.Vec2], // 衝突グリッドセル
         gridSize = {x = Int32, y = Int32},        // マップのグリッド寸法（__cWid, __cHei）
         tileVaoId = Int32,            // GPU VAO ID（0 = 未初期化）
-        tileCount = Int32,            // インスタンス数
-        ySortEnabled = Bool           // CanvasItem: 子を global_y で並べる
+        tileCount = Int32             // インスタンス数
     })
 }
 
@@ -49,8 +43,8 @@ mod TileLayer {
           tileSize    = atlas#tileSize,
           position    = layerScreenPos,
           tileScale   = tileScale,
-          color       = r#modulate,
-          zIndex      = r#zIndex,
+          color       = r#visual#modulate,
+          zIndex      = r#visual#zIndex,
           tileVaoId   = r#tileVaoId,
           tileCount   = r#tileCount }
 
@@ -60,21 +54,35 @@ mod TileLayer {
                             collisionCells = List[Vec2.Vec2],
                             gridSize = {x = Int32, y = Int32} }): TileLayer =
         TileLayer.TileLayer({
-            position       = Vec2.zero(),
-            rotation       = 0.0,
-            scale          = {x = 1.0, y = 1.0},
-            skew           = 0.0,
-            visible        = true,
-            zIndex         = 0,
-            modulate       = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
+            transform      = Transform.identity(),
+            visual         = Visual.default(),
             tileSet        = config#tileSet,
             tiles          = config#tiles,
             collisionCells = config#collisionCells,
             gridSize       = config#gridSize,
             tileVaoId      = 0,
-            tileCount      = 0,
-            ySortEnabled   = false
+            tileCount      = 0
         })
+
+    /// 埋め込んだ Transform 部品を取り出す
+    pub def transform(tileMap: TileLayer): Transform =
+        let TileLayer.TileLayer(r) = tileMap;
+        r#transform
+
+    /// Transform 部品に関数を適用して差し替える
+    pub def mapTransform(f: Transform -> Transform \ ef, tileMap: TileLayer): TileLayer \ ef =
+        let TileLayer.TileLayer(r) = tileMap;
+        TileLayer.TileLayer({transform = f(r#transform) | r})
+
+    /// 埋め込んだ Visual 部品を取り出す
+    pub def visual(tileMap: TileLayer): Visual =
+        let TileLayer.TileLayer(r) = tileMap;
+        r#visual
+
+    /// Visual 部品に関数を適用して差し替える
+    pub def mapVisual(f: Visual -> Visual \ ef, tileMap: TileLayer): TileLayer \ ef =
+        let TileLayer.TileLayer(r) = tileMap;
+        TileLayer.TileLayer({visual = f(r#visual) | r})
 
     // ────────────────────────────────────────────────────────
     // タイル座標のクエリ API
@@ -143,52 +151,3 @@ mod TileLayer {
         TileLayer.TileLayer({ tileVaoId = tileVaoId, tileCount = tileCount | r })
 }
 
-// ── CanvasItem 実装 ──
-
-instance CanvasItem[TileLayer] {
-    pub def isVisible(node: TileLayer): Bool =
-        let TileLayer.TileLayer(r) = node; r#visible
-    pub def setVisible(visible: Bool, node: TileLayer): TileLayer =
-        let TileLayer.TileLayer(r) = node;
-        TileLayer.TileLayer({ visible = visible | r })
-    pub def getModulate(node: TileLayer): Color =
-        let TileLayer.TileLayer(r) = node; r#modulate
-    pub def setModulate(color: Color, node: TileLayer): TileLayer =
-        let TileLayer.TileLayer(r) = node;
-        TileLayer.TileLayer({ modulate = color | r })
-    pub def getZIndex(node: TileLayer): Int32 =
-        let TileLayer.TileLayer(r) = node; r#zIndex
-    pub def setZIndex(zIndex: Int32, node: TileLayer): TileLayer =
-        let TileLayer.TileLayer(r) = node;
-        TileLayer.TileLayer({ zIndex = zIndex | r })
-    redef isYSortEnabled(node: TileLayer): Bool =
-        let TileLayer.TileLayer(r) = node; r#ySortEnabled
-    redef setYSortEnabled(v: Bool, node: TileLayer): TileLayer =
-        let TileLayer.TileLayer(r) = node;
-        TileLayer.TileLayer({ ySortEnabled = v | r })
-}
-
-// ── Node2D 実装 ──
-
-instance Node2D[TileLayer] {
-    pub def getPosition(node: TileLayer): Vec2.Vec2 =
-        let TileLayer.TileLayer(r) = node; r#position
-    pub def setPosition(position: Vec2.Vec2, node: TileLayer): TileLayer =
-        let TileLayer.TileLayer(r) = node;
-        TileLayer.TileLayer({ position = position | r })
-    pub def getRotation(node: TileLayer): Float64 =
-        let TileLayer.TileLayer(r) = node; r#rotation
-    pub def setRotation(rotation: Float64, node: TileLayer): TileLayer =
-        let TileLayer.TileLayer(r) = node;
-        TileLayer.TileLayer({ rotation = rotation | r })
-    pub def getScale(node: TileLayer): Vec2.Vec2 =
-        let TileLayer.TileLayer(r) = node; r#scale
-    pub def setScale(scale: Vec2.Vec2, node: TileLayer): TileLayer =
-        let TileLayer.TileLayer(r) = node;
-        TileLayer.TileLayer({ scale = scale | r })
-    pub def getSkew(node: TileLayer): Float64 =
-        let TileLayer.TileLayer(r) = node; r#skew
-    pub def setSkew(skew: Float64, node: TileLayer): TileLayer =
-        let TileLayer.TileLayer(r) = node;
-        TileLayer.TileLayer({ skew = skew | r })
-}

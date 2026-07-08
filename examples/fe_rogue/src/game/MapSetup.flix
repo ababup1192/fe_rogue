@@ -43,7 +43,7 @@ mod MapSetup {
                                                                  plan#modulePaths,
                                                                  plan#sideConnections);
         // Floor 層は Walls の下（zIndex = -1）に重ねる。
-        let floorLayer = CanvasItem.setZIndex(-1, result#floorLayer);
+        let floorLayer = TileLayer.mapVisual(Visual.setZIndex(-1), result#floorLayer);
         {
             terrain = snapshotOfLayer(result#layer, result#placements),
             layout  = ({plan = plan, spawnGrid = result#spawnGrid}: MapLayout),
@@ -80,7 +80,7 @@ mod MapSetup {
         }) |> TileLayer.withGpuResources(tileVaoId, tileCount);
         // Floor 装飾層 (decorTiles): Walls と同テクスチャ、Walls の下 (zIndex=-1) に重ねる
         let floorLayer = MapLoader.loadDecorLayer(levelPath, textureName())
-            |> CanvasItem.setZIndex(-1);
+            |> TileLayer.mapVisual(Visual.setZIndex(-1));
         let gs = raw#gridSize;
         // 簡易 spawn: (3, 3) が床であることが多い。床でなければ最初の床セルを使う。
         let safe = findFirstFloor(raw#collisionCells, gs, ({x = 3, y = 3}: {x = Int32, y = Int32}));
@@ -94,25 +94,25 @@ mod MapSetup {
             handles = handleOf(floorLayer) :: handleOf(wallsLayer) :: Nil
         }
 
-    /// TileLayer 値 → 軽量描画ハンドル。`worldPos` はレイヤーの Node2D 位置
+    /// TileLayer 値 → 軽量描画ハンドル。`worldPos` はレイヤーの transform 位置
     /// （マップは常に原点に置く＝camera 適用は描画側）。color / zIndex はレイヤー生値。
     def handleOf(layer: TileLayer): TileLayerHandle =
         let TileLayer.TileLayer(r) = layer;
         { textureName = r#tileSet#atlasSource#textureName,
           tileSize    = r#tileSet#atlasSource#tileSize,
-          worldPos    = r#position,
-          color       = r#modulate,
-          zIndex      = r#zIndex,
+          worldPos    = r#transform#position,
+          color       = r#visual#modulate,
+          zIndex      = r#visual#zIndex,
           tileVaoId   = r#tileVaoId,
           tileCount   = r#tileCount }
 
     /// Walls 層の TileLayer 値と placements → MapSnapshot（純粋データ地形）への射影。
     /// engine 内部表現（collisionCells が Float64 グリッド座標）への依存はここに閉じる。
-    /// mapGlobal はレイヤーの Node2D 位置（マップは常に原点）。
+    /// mapGlobal はレイヤーの transform 位置（マップは常に原点）。
     def snapshotOfLayer(walls: TileLayer,
                         placements: List[DungeonComposer.ModulePlacement]): MapSnapshot =
         let TileLayer.TileLayer(r) = walls;
-        snapshotOf(walls, r#position, placements)
+        snapshotOf(walls, r#transform#position, placements)
 
     /// TileLayer 値 / Map global / placements → MapSnapshot へ射影する唯一の変換点。
     /// pub: テストが実 TileLayer 値から地形 fixture を組むのに使う。

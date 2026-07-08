@@ -43,7 +43,7 @@ mod CameraState {
     /// フロア構築時の初期化＝開始フレームのスナップ違和感を消す（position/smoothPosition の唯一の初期化点）。
     pub def snapTo(pos: Vec2.Vec2): Unit \ State =
         let c = State.get();
-        State.put(c |> Node2D.setPosition(pos) |> Camera.setSmoothPosition(pos))
+        State.put(c |> Camera.mapTransform(Transform.setPosition(pos)) |> Camera.setSmoothPosition(pos))
 
     /// 毎フレーム 1 回、ターゲットへ 1 ステップ追従する。
     /// `centered = true`（移動モード）なら drag margin を切って smoothing がターゲット中心へ直接寄り、
@@ -53,7 +53,7 @@ mod CameraState {
                     delta: Duration.Duration, viewport: Viewport): Unit \ State =
         let dragOn = not centered;
         let c = State.get()
-            |> Node2D.setPosition(target)
+            |> Camera.mapTransform(Transform.setPosition(target))
             |> Camera.setDragHorizontalEnabled(dragOn)
             |> Camera.setDragVerticalEnabled(dragOn)
             |> Camera.process(delta, viewport);

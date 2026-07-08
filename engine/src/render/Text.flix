@@ -4,8 +4,8 @@
 /// 注意: アライメントの Fill は Left/Top と同じ扱い（両端揃えは未対応）。
 ///
 ///   Text
-///     +-- CanvasItem: visible, zIndex, modulate
-///     +-- Node2D: position, rotation, scale, skew
+///     +-- visual: visible, zIndex, modulate
+///     +-- transform: position, rotation, scale, skew
 
 /// 横方向アライメント
 pub enum HorizontalAlignment with Eq, Order, ToString {
@@ -30,13 +30,8 @@ pub enum Text {
         fontSize = Float64,
         horizontalAlignment = HorizontalAlignment,
         verticalAlignment = VerticalAlignment,
-        position = Vec2.Vec2,
-        rotation = Float64,
-        scale = Vec2.Vec2,
-        skew = Float64,
-        visible = Bool,
-        zIndex = Int32,
-        modulate = Color
+        transform = Transform,
+        visual = Visual
     })
 }
 
@@ -50,14 +45,29 @@ mod Text {
             fontSize = fontSize,
             horizontalAlignment = HorizontalAlignment.Left,
             verticalAlignment = VerticalAlignment.Top,
-            position = Vec2.zero(),
-            rotation = 0.0,
-            scale = {x = 1.0, y = 1.0},
-            skew = 0.0,
-            visible = true,
-            zIndex = 0,
-            modulate = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
+            transform = Transform.identity(),
+            visual = Visual.default()
         })
+
+    /// 埋め込んだ Transform 部品を取り出す
+    pub def transform(label: Text): Transform =
+        let Text.Text(r) = label;
+        r#transform
+
+    /// Transform 部品に関数を適用して差し替える
+    pub def mapTransform(f: Transform -> Transform \ ef, label: Text): Text \ ef =
+        let Text.Text(r) = label;
+        Text.Text({transform = f(r#transform) | r})
+
+    /// 埋め込んだ Visual 部品を取り出す
+    pub def visual(label: Text): Visual =
+        let Text.Text(r) = label;
+        r#visual
+
+    /// Visual 部品に関数を適用して差し替える
+    pub def mapVisual(f: Visual -> Visual \ ef, label: Text): Text \ ef =
+        let Text.Text(r) = label;
+        Text.Text({visual = f(r#visual) | r})
 
     /// テキストを設定する
     pub def setText(text: String, label: Text): Text =
@@ -188,12 +198,12 @@ mod Text {
                             position = {x = qb#x0, y = qb#y0},
                             scale = {x = w / atlas#textureSize, y = h / atlas#textureSize},
                             rotation = 0.0,
-                            color = r#modulate,
+                            color = r#visual#modulate,
                             alpha = 1.0f32,
                             centered = false,
                             uvOffset = {x = gm#s0, y = gm#t0},
                             uvScale = {x = gm#s1 - gm#s0, y = gm#t1 - gm#t0},
-                            zIndex = r#zIndex,
+                            zIndex = r#visual#zIndex,
                             style = None
                         })
                     case None => None
@@ -214,54 +224,3 @@ instance GameEngine.Renderable[Text] {
         checked_ecast(Text.toDrawables(label, globalPos))
 }
 
-// -- CanvasItem 実装 --
-
-instance CanvasItem[Text] {
-    pub def isVisible(label: Text): Bool =
-        let Text.Text(r) = label;
-        r#visible
-    pub def setVisible(visible: Bool, label: Text): Text =
-        let Text.Text(r) = label;
-        Text.Text({ visible = visible | r })
-    pub def getModulate(label: Text): Color =
-        let Text.Text(r) = label;
-        r#modulate
-    pub def setModulate(color: Color, label: Text): Text =
-        let Text.Text(r) = label;
-        Text.Text({ modulate = color | r })
-    pub def getZIndex(label: Text): Int32 =
-        let Text.Text(r) = label;
-        r#zIndex
-    pub def setZIndex(zIndex: Int32, label: Text): Text =
-        let Text.Text(r) = label;
-        Text.Text({ zIndex = zIndex | r })
-}
-
-// -- Node2D 実装 --
-
-instance Node2D[Text] {
-    pub def getPosition(label: Text): Vec2.Vec2 =
-        let Text.Text(r) = label;
-        r#position
-    pub def setPosition(position: Vec2.Vec2, label: Text): Text =
-        let Text.Text(r) = label;
-        Text.Text({ position = position | r })
-    pub def getRotation(label: Text): Float64 =
-        let Text.Text(r) = label;
-        r#rotation
-    pub def setRotation(rotation: Float64, label: Text): Text =
-        let Text.Text(r) = label;
-        Text.Text({ rotation = rotation | r })
-    pub def getScale(label: Text): Vec2.Vec2 =
-        let Text.Text(r) = label;
-        r#scale
-    pub def setScale(scale: Vec2.Vec2, label: Text): Text =
-        let Text.Text(r) = label;
-        Text.Text({ scale = scale | r })
-    pub def getSkew(label: Text): Float64 =
-        let Text.Text(r) = label;
-        r#skew
-    pub def setSkew(skew: Float64, label: Text): Text =
-        let Text.Text(r) = label;
-        Text.Text({ skew = skew | r })
-}

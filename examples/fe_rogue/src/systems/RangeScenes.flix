@@ -45,7 +45,7 @@ mod RangeOverlay {
             |> NineSlice.setBorderWidth(0.5)
             |> NineSlice.setCornerRadius(2.0)
             |> NineSlice.setStripe(lighten(color, 0.5f32), alpha * 0.65f32, stripeWidth(), stripePeriod())
-            |> CanvasItem.setZIndex(tileZIndex())
+            |> NineSlice.mapVisual(Visual.setZIndex(tileZIndex()))
 
     /// セル中心を基準に NineSlice を置く左上座標（世界座標）。`tileDrawables` が使う。
     def tileTopLeft(cell: {x = Int32, y = Int32}): Vec2.Vec2 =

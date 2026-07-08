@@ -31,7 +31,7 @@ mod TestCamera2D {
     /// position をターゲットにセットしたカメラを作る（zoom=1, 各種フラグはテスト側で個別設定）
     def cameraAt(target: Vec2.Vec2): Camera =
         Camera.make({x = 0.0, y = 0.0})
-            |> Node2D.setPosition(target)
+            |> Camera.mapTransform(Transform.setPosition(target))
 
     // ════════════════════════════════════════════════════════
     // smoothing: speed × delta が dt 0.05・speed 10 で 0.5 lerp になる

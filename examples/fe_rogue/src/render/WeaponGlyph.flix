@@ -20,7 +20,7 @@ mod WeaponGlyph {
     use WeaponGlyph.GlyphPiece.{Poly, Arc}
 
     /// グリフ 1 ピース。塗り凸多角形（Polygon）か弧（Arc）のどちらか。
-    /// engine の描画プリミティブ値をそのまま保持し、位置は各値の Node2D 位置に持たせる。
+    /// engine の描画プリミティブ値をそのまま保持し、位置は各値の transform 位置に持たせる。
     pub enum GlyphPiece {
         case Poly(Polygon)
         case Arc(Arc)
@@ -53,13 +53,13 @@ mod WeaponGlyph {
         let scaleV: Vec2.Vec2 = {x = scale, y = scale};
         match piece {
             case Poly(p) =>
-                let pos = Node2D.getPosition(p);
-                Poly(p |> Node2D.setPosition({x = pos#x * scale, y = pos#y * scale})
-                       |> Node2D.setScale(scaleV))
+                let pos = Transform.getPosition(Polygon.transform(p));
+                Poly(p |> Polygon.mapTransform(Transform.setPosition({x = pos#x * scale, y = pos#y * scale}))
+                       |> Polygon.mapTransform(Transform.setScale(scaleV)))
             case Arc(a) =>
-                let pos = Node2D.getPosition(a);
-                Arc(a |> Node2D.setPosition({x = pos#x * scale, y = pos#y * scale})
-                      |> Node2D.setScale(scaleV))
+                let pos = Transform.getPosition(Arc.transform(a));
+                Arc(a |> Arc.mapTransform(Transform.setPosition({x = pos#x * scale, y = pos#y * scale}))
+                      |> Arc.mapTransform(Transform.setScale(scaleV)))
         }
 
     /// 武器系統 → 凸サブポリゴン列（各サブポリは頂点列・グリフ中心を原点とする design px）。
@@ -76,9 +76,9 @@ mod WeaponGlyph {
         let unit = ({x = 1.0, y = 1.0}: Vec2.Vec2);
         match piece {
             case Poly(poly) =>
-                Polygon.toRenderCmd(Node2D.getPosition(poly), unit, poly)#vertices :: Nil
+                Polygon.toRenderCmd(Transform.getPosition(Polygon.transform(poly)), unit, poly)#vertices :: Nil
             case Arc(arc) =>
-                Arc.toRenderCmds(Node2D.getPosition(arc), unit, arc) |> List.map(cmd -> cmd#vertices)
+                Arc.toRenderCmds(Transform.getPosition(Arc.transform(arc)), unit, arc) |> List.map(cmd -> cmd#vertices)
         }
 
     // ─── 系統ごとのピース合成（すべて凸・向き付き直書き） ───────────────────
@@ -166,14 +166,14 @@ mod WeaponGlyph {
 
     /// 中心 (cx,cy)・半径 radius の塗り潰し円ピース（12 角形）。刃と柄をつなぐハブ等に使う。
     def circlePiece(radius: Float64, cx: Float64, cy: Float64, color: Color): GlyphPiece =
-        GlyphPiece.Poly(Polygon.circle(radius, color) |> Node2D.setPosition(v(cx, cy)))
+        GlyphPiece.Poly(Polygon.circle(radius, color) |> Polygon.mapTransform(Transform.setPosition(v(cx, cy))))
 
     /// 弧ピース（弓用）。center は WeaponIcon 原点からのオフセット。segments は小サイズ向けに抑える。
     def arc(radius: Float64, width: Float64, startAngle: Float64, endAngle: Float64,
             color: Color, center: Vec2.Vec2): GlyphPiece =
         GlyphPiece.Arc(Arc.make(radius, width, startAngle, endAngle, color)
             |> Arc.setSegments(12)
-            |> Node2D.setPosition(center))
+            |> Arc.mapTransform(Transform.setPosition(center)))
 
     /// ピース列に安定名 "G0","G1",… と base+i の zIndex を与える。後勝ち（大きい i が手前）。
     def named(pieceList: List[GlyphPiece]): List[(String, GlyphPiece)] =
@@ -184,14 +184,14 @@ mod WeaponGlyph {
     /// ピースの zIndex を設定する（内部の描画値へ委譲）。
     def setPieceZIndex(z: Int32, piece: GlyphPiece): GlyphPiece =
         match piece {
-            case Poly(p) => Poly(CanvasItem.setZIndex(z, p))
-            case Arc(a)  => Arc(CanvasItem.setZIndex(z, a))
+            case Poly(p) => Poly(Polygon.mapVisual(Visual.setZIndex(z), p))
+            case Arc(a)  => Arc(Arc.mapVisual(Visual.setZIndex(z), a))
         }
 
     /// ピースの zIndex を取得する（内部の描画値から読む）。テストの描画順検証で使う。
     pub def pieceZIndex(piece: GlyphPiece): Int32 =
         match piece {
-            case Poly(p) => CanvasItem.getZIndex(p)
-            case Arc(a)  => CanvasItem.getZIndex(a)
+            case Poly(p) => Visual.getZIndex(Polygon.visual(p))
+            case Arc(a)  => Visual.getZIndex(Arc.visual(a))
         }
 }

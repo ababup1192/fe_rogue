@@ -4,17 +4,12 @@
 /// 利用例: 画面の背景色 / 全画面を覆う半透明のオーバーレイ。
 ///
 ///   Rect
-///     +-- CanvasItem: visible, zIndex, modulate
-///     +-- Node2D: position, rotation, scale, skew
+///     +-- visual: visible, zIndex, modulate
+///     +-- transform: position, rotation, scale, skew
 pub enum Rect {
     case Rect({
-        position = Vec2.Vec2,
-        rotation = Float64,
-        scale = Vec2.Vec2,
-        skew = Float64,
-        visible = Bool,
-        zIndex = Int32,
-        modulate = Color,
+        transform = Transform,
+        visual = Visual,
         alpha = Float32,
         size = Vec2.Vec2,
         // 角丸半径（px、design 解像度）。0 で従来どおりの矩形、>0 で BoxStyle 経由の角丸描画。
@@ -31,13 +26,8 @@ mod Rect {
     /// デフォルト値で Rect を生成する（alpha は 1.0 = 不透明）
     pub def make(size: Vec2.Vec2, color: Color): Rect =
         Rect.Rect({
-            position = {x = 0.0, y = 0.0},
-            rotation = 0.0,
-            scale = {x = 1.0, y = 1.0},
-            skew = 0.0,
-            visible = true,
-            zIndex = 0,
-            modulate = color,
+            transform = { position = {x = 0.0, y = 0.0}, rotation = 0.0, scale = {x = 1.0, y = 1.0}, skew = 0.0 },
+            visual = Visual.setModulate(color, Visual.default()),
             alpha = 1.0f32,
             size = size,
             cornerRadius = 0.0,
@@ -46,6 +36,26 @@ mod Rect {
             stripeWidth = 0.0,
             stripePeriod = 0.0
         })
+
+    /// 埋め込んだ Transform 部品を取り出す
+    pub def transform(rect: Rect): Transform =
+        let Rect.Rect(r) = rect;
+        r#transform
+
+    /// Transform 部品に関数を適用して差し替える
+    pub def mapTransform(f: Transform -> Transform \ ef, rect: Rect): Rect \ ef =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({transform = f(r#transform) | r})
+
+    /// 埋め込んだ Visual 部品を取り出す
+    pub def visual(rect: Rect): Visual =
+        let Rect.Rect(r) = rect;
+        r#visual
+
+    /// Visual 部品に関数を適用して差し替える
+    pub def mapVisual(f: Visual -> Visual \ ef, rect: Rect): Rect \ ef =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({visual = f(r#visual) | r})
 
     /// alpha を設定する
     pub def setAlpha(alpha: Float32, rect: Rect): Rect =
@@ -93,65 +103,13 @@ mod Rect {
             texture = "",
             position = globalPos,
             scale = r#size,
-            rotation = r#rotation,
-            color = r#modulate,
+            rotation = r#transform#rotation,
+            color = r#visual#modulate,
             alpha = r#alpha,
             centered = false,
             uvOffset = {x = 0.0, y = 0.0},
             uvScale = {x = 1.0, y = 1.0},
-            zIndex = r#zIndex,
+            zIndex = r#visual#zIndex,
             style = if (styled) Some(boxStyleOf(r)) else None
         }
-}
-
-// -- CanvasItem 実装 --
-
-instance CanvasItem[Rect] {
-    pub def isVisible(rect: Rect): Bool =
-        let Rect.Rect(r) = rect;
-        r#visible
-    pub def setVisible(visible: Bool, rect: Rect): Rect =
-        let Rect.Rect(r) = rect;
-        Rect.Rect({ visible = visible | r })
-    pub def getModulate(rect: Rect): Color =
-        let Rect.Rect(r) = rect;
-        r#modulate
-    pub def setModulate(color: Color, rect: Rect): Rect =
-        let Rect.Rect(r) = rect;
-        Rect.Rect({ modulate = color | r })
-    pub def getZIndex(rect: Rect): Int32 =
-        let Rect.Rect(r) = rect;
-        r#zIndex
-    pub def setZIndex(zIndex: Int32, rect: Rect): Rect =
-        let Rect.Rect(r) = rect;
-        Rect.Rect({ zIndex = zIndex | r })
-}
-
-// -- Node2D 実装 --
-
-instance Node2D[Rect] {
-    pub def getPosition(rect: Rect): Vec2.Vec2 =
-        let Rect.Rect(r) = rect;
-        r#position
-    pub def setPosition(position: Vec2.Vec2, rect: Rect): Rect =
-        let Rect.Rect(r) = rect;
-        Rect.Rect({ position = position | r })
-    pub def getRotation(rect: Rect): Float64 =
-        let Rect.Rect(r) = rect;
-        r#rotation
-    pub def setRotation(rotation: Float64, rect: Rect): Rect =
-        let Rect.Rect(r) = rect;
-        Rect.Rect({ rotation = rotation | r })
-    pub def getScale(rect: Rect): Vec2.Vec2 =
-        let Rect.Rect(r) = rect;
-        r#scale
-    pub def setScale(scale: Vec2.Vec2, rect: Rect): Rect =
-        let Rect.Rect(r) = rect;
-        Rect.Rect({ scale = scale | r })
-    pub def getSkew(rect: Rect): Float64 =
-        let Rect.Rect(r) = rect;
-        r#skew
-    pub def setSkew(skew: Float64, rect: Rect): Rect =
-        let Rect.Rect(r) = rect;
-        Rect.Rect({ skew = skew | r })
 }
