@@ -8,7 +8,7 @@
 /// 位置の読みは `World.stairsPosOf` を使う。
 mod Stairs {
 
-    // ── 見た目定数（Sprite2D の texture/scale/zIndex） ──
+    // ── 見た目定数（Sprite の texture/scale/zIndex） ──
     /// project.json の "textures" に登録された階段テクスチャ名。
     pub def texture(): String = "stairs"
     /// タイル 16px に合わせた表示スケール。

@@ -21,7 +21,7 @@ mod UiWidget {
     /// `scale`: 拡大率。`flipH`/`flipV`: 反転。`tint`: 着色。`zIndex`: 重なり順。
     /// `hframes`/`vframes`: スプライトシートの格子分割（列数/行数、既定 1/1）。
     /// `frame`: 表示セル index = row * hframes + col（既定 0）。regionRect=None かつ
-    /// hframes*vframes>1 のとき extract が frame からセル矩形を導く（engine Sprite2D と同じ規則）。
+    /// hframes*vframes>1 のとき extract が frame からセル矩形を導く（engine Sprite と同じ規則）。
     pub type alias SpriteComp = { texture = String, regionRect = Option[Rect2.Rect2],
                                   scale = Vec2.Vec2, flipH = Bool, flipV = Bool, tint = Color, zIndex = Int32,
                                   hframes = Int32, vframes = Int32, frame = Int32 }

@@ -1,17 +1,17 @@
 /// DamagePopupFx — 攻撃ヒット時にユニット頭上で数字を浮かす HUD
 ///
 /// 攻撃 / 反撃が当たった瞬間に被弾側のグリッド位置から `5` のようなダメージ量を
-/// Label2D で出し、上方向に少し移動しながら寿命満了で消える。LogScene の文字列
+/// Text で出し、上方向に少し移動しながら寿命満了で消える。LogScene の文字列
 /// 「P1 → 敵2 に 5ダメージ」と冗長になるが、戦場上で直感的にダメージ量を見せる
 /// のが目的。
 ///
 /// scene ノードは持たない。寿命・テキスト・色・位置すべて World の `popupFx` store が持ち
 /// （`Cmd.SpawnPopupFx` で spawn・`stepWorld` が tick して期限切れ drop）、描画は
-/// `RenderWorld.renderPopups` が Label2D **値**を組んで直描きする（tree に積まない）。
+/// `RenderWorld.renderPopups` が Text **値**を組んで直描きする（tree に積まない）。
 ///
 /// engine の Tween.tickAll に乗せない理由:
-///   - Tween.tweenAlpha は Sprite2D 専用（engine/src/scene/Tween.flix）
-///   - Label2D の modulate は {r,g,b} のみで alpha 成分を持たない（Color は engine_core）
+///   - Tween.tweenAlpha は Sprite 専用（engine/src/scene/Tween.flix）
+///   - Text の modulate は {r,g,b} のみで alpha 成分を持たない（Color は engine_core）
 ///   フェード表現は省き、上方向に float させてから瞬時に消すスタイルにする。
 ///   寿命を 700ms 程度にすれば違和感は最小。
 mod DamagePopupFx {
@@ -27,7 +27,7 @@ mod DamagePopupFx {
     /// ポップアップが寿命中に上方向へ移動する総ピクセル数（論理 px）
     pub def floatDistancePx(): Float64 = 12.0
 
-    /// Label2D の表示フォントサイズ。LDTK タイル 16px に対して読める粒度。
+    /// Text の表示フォントサイズ。LDTK タイル 16px に対して読める粒度。
     pub def fontSize(): Float64 = 8.0
 
     /// 描画 zIndex。ゲームオブジェクト（スプライト・マップ）よりも前面に重ね、

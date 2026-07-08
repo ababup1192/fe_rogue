@@ -8,7 +8,7 @@
 // を行う。グリフ画像そのものは焼かない — SoftRaster はアトラス PNG をサンプルせず、
 // 出力解像度の Font で `drawString` を直接呼ぶ（SoftRaster.flix 参照）ため、実ラスタは不要で
 // メトリクスと codepoint↔セル座標の対応表だけが要る。焼き込みサイズ・アトラス寸法・グリフ配置は
-// Label2D.toDrawables が期待するメトリクス規約（yOff = -ascent でセル上端が行トップに一致）に
+// Text.toDrawables が期待するメトリクス規約（yOff = -ascent でセル上端が行トップに一致）に
 // 合わせてある。
 mod HeadlessFont {
     import java.awt.image.BufferedImage
@@ -24,12 +24,12 @@ mod HeadlessFont {
     pub def ensureHeadless(): Unit \ IO =
         discard System.setProperty("java.awt.headless", "true")
 
-    /// 焼き込みピクセル高さ。表示は Label2D 側で fontSize/atlas#fontSize 倍に縮小されるので、
+    /// 焼き込みピクセル高さ。表示は Text 側で fontSize/atlas#fontSize 倍に縮小されるので、
     /// 実機の 16px より大きめに焼いて縮小時のディテールを残す。
     def bakeSize(): Float32 = 32.0f32
 
     /// 仮想アトラスの一辺（正方）。実画像は焼かないが、s0/t0/s1/t1（0..1 正規化 UV）の分母として
-    /// Label2D 側の displaySize 計算（texInfo#width == textureSize 前提）と揃える必要がある。
+    /// Text 側の displaySize 計算（texInfo#width == textureSize 前提）と揃える必要がある。
     /// フォントが持つ全 BMP グリフ（日本語フォントで ~8,000 字）が収まる大きさ。
     def atlasDim(): Int32 = 4096
 
@@ -45,7 +45,7 @@ mod HeadlessFont {
     /// 冒頭コメント参照）。焼き込む文字は**そのフォントが持つ BMP の全グリフ**（実機の
     /// RenderFont と同じ思想 — 使う字の登録リストは無い）。第 2 引数はかつての常用漢字ファイル
     /// パスで、いまは読まない（呼び出し側の互換のため残してある）。
-    /// 返す FontAtlas は Label2D.measure / toDrawables がそのまま使えるメトリクスを持つ
+    /// 返す FontAtlas は Text.measure / toDrawables がそのまま使えるメトリクスを持つ
     /// （textureName = "font_ui"、textureSize = 仮想アトラス一辺）。
     pub def buildUiAtlas(ttfPath: String, _joyoPath: String): FontAtlas \ IO =
         ensureHeadless();

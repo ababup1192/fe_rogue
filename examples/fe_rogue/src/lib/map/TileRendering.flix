@@ -11,7 +11,7 @@ mod TileRendering {
     /// シェーダーへはそのまま渡せる。
     pub type alias TileLayerRaw = {
         tiles    = List[TileData],
-        tileSet  = TileSet,
+        tileSet  = Tileset,
         gridSize = {x = Int32, y = Int32},
         tileSize = Float64
     }
@@ -23,7 +23,7 @@ mod TileRendering {
         tiles          = List[TileData],
         collisionCells = List[Vec2.Vec2],
         doors          = List[{x = Int32, y = Int32}],
-        tileSet        = TileSet,
+        tileSet        = Tileset,
         gridSize       = {x = Int32, y = Int32},
         tileSize       = Float64
     }
@@ -32,7 +32,7 @@ mod TileRendering {
     /// UV は texture サイズと flipH/flipV から計算する。
     /// MapLoader / DungeonComposer / MapSetup の各レンダリング経路で共有する。
     pub def buildTileInstances(tiles: List[TileData],
-                                tileSet: TileSet,
+                                tileSet: Tileset,
                                 tileSize: Float64): List[GameEngine.TileInstance] =
         let texWidth  = tileSet#atlasSource#texWidth;
         let texHeight = tileSet#atlasSource#texHeight;

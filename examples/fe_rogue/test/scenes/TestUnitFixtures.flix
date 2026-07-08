@@ -213,7 +213,7 @@ mod TestUnitFixtures {
     }
 
     /// テスト用の sprite。テクスチャ名やフレームは戦闘ロジックに影響しないのでダミー値。
-    def testSprite(): Sprite.SpriteResource = {
+    def testSprite(): SpriteRes.SpriteResource = {
         texture = "test-texture",
         hframes = 1,
         vframes = 1,
@@ -223,7 +223,7 @@ mod TestUnitFixtures {
         flipForFacing = false
     }
 
-    /// テスト用 FontAtlas。`loadScene` が実際に getFontAtlas を呼び出すのは Label2D 系の
+    /// テスト用 FontAtlas。`loadScene` が実際に getFontAtlas を呼び出すのは Text 系の
     /// ノードを含むシーンだけだが、`withMockGame` が必ず返す必要があるためダミー値を用意する。
     pub def testFontAtlas(): FontAtlas = {
         textureName = "font_test",

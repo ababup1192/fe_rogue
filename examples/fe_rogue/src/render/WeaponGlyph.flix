@@ -1,12 +1,12 @@
 /// WeaponGlyph — 武器系統（剣/斧/槍/弓/魔法）を engine の塗りプリミティブで直接描く白の塗りシルエット。
 ///
 /// なぜスプライトでなくノード直描きか:
-///   ビットマップは拡大で甘くなり、盤上の小さなサイズだと系統の区別が付きづらい。`Polygon2D`
-///   （凸塗り）と `Arc2D`（弧）の合成なら、どの zoom でも輪郭がくっきり出る。全系統とも白で統一し、
+///   ビットマップは拡大で甘くなり、盤上の小さなサイズだと系統の区別が付きづらい。`Polygon`
+///   （凸塗り）と `Arc`（弧）の合成なら、どの zoom でも輪郭がくっきり出る。全系統とも白で統一し、
 ///   形は FE3H のマップ武器アイコン（斜めの刀身/穂先、斧、弓、魔道書）に寄せる。
 ///
 /// 設計上の制約（描画系から決まる、変更不可の前提）:
-///   - **回転は描画時に無視される**（`Polygon2D.toRenderCmd` / `Arc2D.toRenderCmds` は position+scale のみ）。
+///   - **回転は描画時に無視される**（`Polygon.toRenderCmd` / `Arc.toRenderCmds` は position+scale のみ）。
 ///     よって斜めの刃などは頂点を「最終的な向き」のまま局所座標で直書きする（`setRotation` は使わない）。
 ///     斜めバーは `bar`（中心・軸・半長・半厚）で、対角基底 `diagD`(=cos45=sin45) を使って組む。
 ///   - **塗りは凸のみ**（GL_TRIANGLE_FAN）。本/斧刃など凹形状は複数の凸ピースに分割して重ねる。
@@ -19,11 +19,11 @@
 mod WeaponGlyph {
     use WeaponGlyph.GlyphPiece.{Poly, Arc}
 
-    /// グリフ 1 ピース。塗り凸多角形（Polygon2D）か弧（Arc2D）のどちらか。
+    /// グリフ 1 ピース。塗り凸多角形（Polygon）か弧（Arc）のどちらか。
     /// engine の描画プリミティブ値をそのまま保持し、位置は各値の Node2D 位置に持たせる。
     pub enum GlyphPiece {
-        case Poly(Polygon2D)
-        case Arc(Arc2D)
+        case Poly(Polygon)
+        case Arc(Arc)
     }
 
     /// 各ピースの基準 zIndex（WeaponIconRender の Bg=61 より手前）。ピースは base+i で重ねる。
@@ -70,15 +70,15 @@ mod WeaponGlyph {
             |> List.flatMap(nodePolys)
             |> List.map(sub -> sub |> List.map(p -> ({x = p#x * scale, y = p#y * scale}: Vec2.Vec2)))
 
-    /// 1 ピースを凸サブポリゴンの頂点列へ射影する。Polygon2D は 1 サブポリ、Arc2D は
+    /// 1 ピースを凸サブポリゴンの頂点列へ射影する。Polygon は 1 サブポリ、Arc は
     /// 自身の分割（`toRenderCmds`）ぶんのクアッド列。頂点はピース位置を足したグリフ局所座標。
     def nodePolys(piece: GlyphPiece): List[List[Vec2.Vec2]] =
         let unit = ({x = 1.0, y = 1.0}: Vec2.Vec2);
         match piece {
             case Poly(poly) =>
-                Polygon2D.toRenderCmd(Node2D.getPosition(poly), unit, poly)#vertices :: Nil
+                Polygon.toRenderCmd(Node2D.getPosition(poly), unit, poly)#vertices :: Nil
             case Arc(arc) =>
-                Arc2D.toRenderCmds(Node2D.getPosition(arc), unit, arc) |> List.map(cmd -> cmd#vertices)
+                Arc.toRenderCmds(Node2D.getPosition(arc), unit, arc) |> List.map(cmd -> cmd#vertices)
         }
 
     // ─── 系統ごとのピース合成（すべて凸・向き付き直書き） ───────────────────
@@ -102,18 +102,18 @@ mod WeaponGlyph {
                 :: poly(v(4.03, -0.77) :: v(2.75, -2.75) :: v(0.77, -4.03) :: v(2.05, -2.05) :: Nil, color)  // 返し（左右対称の刃）
                 :: Nil
             // 斧（ラブリュス＝両刃の対称斧）: 中央の柄 + 中央ハブ + 左右対称の刃 2 枚（上左・下右へ
-            // 反対方向に広がる三日月状）。各刃はリング状の扇形（Arc2D, 内半径 1.0）で、刃元が点に
+            // 反対方向に広がる三日月状）。各刃はリング状の扇形（Arc, 内半径 1.0）で、刃元が点に
             // 尖らず幅を持って柄(ハブ)に付く。刃先は外周の丸い弧。頭はやや上(上右)寄り。
             case WeaponCatalog.WeaponType.Axe =>
                 poly(bar(0.0, 0.0, 4.9, 0.4, d, 0.0 - d), color)                                            // 中央の柄
                 :: circlePiece(1.7, 1.0, 0.0 - 1.0, color)                                                  // 刃と柄をつなぐ中央ハブ（太め）
-                :: arc(4.2, 2.6, Arc2D.tau() * 185.0 / 360.0, Arc2D.tau() * 265.0 / 360.0, color, v(1.0, 0.0 - 1.0))  // 上左の刃（刃元を太く＝内半径1.6）
-                :: arc(4.2, 2.6, Arc2D.tau() * 5.0 / 360.0, Arc2D.tau() * 85.0 / 360.0, color, v(1.0, 0.0 - 1.0))     // 下右の刃
+                :: arc(4.2, 2.6, Arc.tau() * 185.0 / 360.0, Arc.tau() * 265.0 / 360.0, color, v(1.0, 0.0 - 1.0))  // 上左の刃（刃元を太く＝内半径1.6）
+                :: arc(4.2, 2.6, Arc.tau() * 5.0 / 360.0, Arc.tau() * 85.0 / 360.0, color, v(1.0, 0.0 - 1.0))     // 下右の刃
                 :: Nil
             // 弓: 斜めの細い半円弧（弓幹、上左へ膨らむ）+ 細い斜めの弦 + つがえた矢。
             // 矢は弦に直交（上左向き）で、先端に矢尻の三角、末尾に矢羽根の三角を付ける。
             case WeaponCatalog.WeaponType.Bow =>
-                arc(4.4, 1.2, 3.0 * Arc2D.tau() / 8.0, 7.0 * Arc2D.tau() / 8.0, color, v(0.9, 0.9))  // 弓幹
+                arc(4.4, 1.2, 3.0 * Arc.tau() / 8.0, 7.0 * Arc.tau() / 8.0, color, v(0.9, 0.9))  // 弓幹
                 :: poly(bar(0.9, 0.9, 4.4, 0.28, d, 0.0 - d), color)                                 // 弦（細い）
                 :: poly(bar(0.0, 0.0, 3.6, 0.2, d, d), color)                                        // 矢柄
                 :: poly(tri(0.0 - 3.6, 0.0 - 3.6, 0.0 - 1.94, 0.0 - 2.86, 0.0 - 2.86, 0.0 - 1.94), color)  // 矢尻（上左＝先端の尖り）
@@ -162,17 +162,17 @@ mod WeaponGlyph {
 
     /// 凸塗りピースを組む（位置は原点・z は後で named で確定）。
     def poly(points: List[Vec2.Vec2], color: Color): GlyphPiece =
-        GlyphPiece.Poly(Polygon2D.make(points, color))
+        GlyphPiece.Poly(Polygon.make(points, color))
 
     /// 中心 (cx,cy)・半径 radius の塗り潰し円ピース（12 角形）。刃と柄をつなぐハブ等に使う。
     def circlePiece(radius: Float64, cx: Float64, cy: Float64, color: Color): GlyphPiece =
-        GlyphPiece.Poly(Polygon2D.circle(radius, color) |> Node2D.setPosition(v(cx, cy)))
+        GlyphPiece.Poly(Polygon.circle(radius, color) |> Node2D.setPosition(v(cx, cy)))
 
     /// 弧ピース（弓用）。center は WeaponIcon 原点からのオフセット。segments は小サイズ向けに抑える。
     def arc(radius: Float64, width: Float64, startAngle: Float64, endAngle: Float64,
             color: Color, center: Vec2.Vec2): GlyphPiece =
-        GlyphPiece.Arc(Arc2D.make(radius, width, startAngle, endAngle, color)
-            |> Arc2D.setSegments(12)
+        GlyphPiece.Arc(Arc.make(radius, width, startAngle, endAngle, color)
+            |> Arc.setSegments(12)
             |> Node2D.setPosition(center))
 
     /// ピース列に安定名 "G0","G1",… と base+i の zIndex を与える。後勝ち（大きい i が手前）。

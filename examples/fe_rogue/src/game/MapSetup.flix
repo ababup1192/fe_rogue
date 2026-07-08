@@ -4,7 +4,7 @@
 /// scene にはマップのノードを積まない。地形（壁・placements）は `World.terrainOf`、Plan と
 /// スポーン起点は `World.mapLayoutOf`、背景タイルの描画は `World.tileLayersOf` を各読み手が読む。
 /// GPU タイル bake（`initTileBuffer`）は DungeonComposer / MapLoader が行い、ここではその結果の
-/// TileMapLayer 値を軽量ハンドル（TileLayerHandle）へ射影するだけ。
+/// TileLayer 値を軽量ハンドル（TileLayerHandle）へ射影するだけ。
 ///
 /// 経路は 2 本:
 ///   - `build(floor)`     — DungeonGenerator で Plan を乱数生成して組む（通常のフロア進入）。
@@ -72,12 +72,12 @@ mod MapSetup {
         let raw = MapLoader.loadLevelRaw(levelPath, textureName());
         let instances = TileRendering.buildTileInstances(raw#tiles, raw#tileSet, raw#tileSize);
         let (tileVaoId, tileCount) = GameEngine.Game.initTileBuffer(instances);
-        let wallsLayer = TileMapLayer.make({
+        let wallsLayer = TileLayer.make({
             tileSet        = raw#tileSet,
             tiles          = raw#tiles,
             collisionCells = raw#collisionCells,
             gridSize       = raw#gridSize
-        }) |> TileMapLayer.withGpuResources(tileVaoId, tileCount);
+        }) |> TileLayer.withGpuResources(tileVaoId, tileCount);
         // Floor 装飾層 (decorTiles): Walls と同テクスチャ、Walls の下 (zIndex=-1) に重ねる
         let floorLayer = MapLoader.loadDecorLayer(levelPath, textureName())
             |> CanvasItem.setZIndex(-1);
@@ -94,10 +94,10 @@ mod MapSetup {
             handles = handleOf(floorLayer) :: handleOf(wallsLayer) :: Nil
         }
 
-    /// TileMapLayer 値 → 軽量描画ハンドル。`worldPos` はレイヤーの Node2D 位置
+    /// TileLayer 値 → 軽量描画ハンドル。`worldPos` はレイヤーの Node2D 位置
     /// （マップは常に原点に置く＝camera 適用は描画側）。color / zIndex はレイヤー生値。
-    def handleOf(layer: TileMapLayer): TileLayerHandle =
-        let TileMapLayer.TileMapLayer(r) = layer;
+    def handleOf(layer: TileLayer): TileLayerHandle =
+        let TileLayer.TileLayer(r) = layer;
         { textureName = r#tileSet#atlasSource#textureName,
           tileSize    = r#tileSet#atlasSource#tileSize,
           worldPos    = r#position,
@@ -106,23 +106,23 @@ mod MapSetup {
           tileVaoId   = r#tileVaoId,
           tileCount   = r#tileCount }
 
-    /// Walls 層の TileMapLayer 値と placements → MapSnapshot（純粋データ地形）への射影。
+    /// Walls 層の TileLayer 値と placements → MapSnapshot（純粋データ地形）への射影。
     /// engine 内部表現（collisionCells が Float64 グリッド座標）への依存はここに閉じる。
     /// mapGlobal はレイヤーの Node2D 位置（マップは常に原点）。
-    def snapshotOfLayer(walls: TileMapLayer,
+    def snapshotOfLayer(walls: TileLayer,
                         placements: List[DungeonComposer.ModulePlacement]): MapSnapshot =
-        let TileMapLayer.TileMapLayer(r) = walls;
+        let TileLayer.TileLayer(r) = walls;
         snapshotOf(walls, r#position, placements)
 
-    /// TileMapLayer 値 / Map global / placements → MapSnapshot へ射影する唯一の変換点。
-    /// pub: テストが実 TileMapLayer 値から地形 fixture を組むのに使う。
-    pub def snapshotOf(layer: TileMapLayer,
+    /// TileLayer 値 / Map global / placements → MapSnapshot へ射影する唯一の変換点。
+    /// pub: テストが実 TileLayer 値から地形 fixture を組むのに使う。
+    pub def snapshotOf(layer: TileLayer,
                        mapGlobal: {x = Float64, y = Float64},
                        placements: List[DungeonComposer.ModulePlacement]): MapSnapshot =
-        let TileMapLayer.TileMapLayer(r) = layer;
+        let TileLayer.TileLayer(r) = layer;
         {
-            tileSize   = TileMapLayer.tileSize(layer),
-            usedRect   = TileMapLayer.getUsedRect(layer),
+            tileSize   = TileLayer.tileSize(layer),
+            usedRect   = TileLayer.getUsedRect(layer),
             wallCells  = r#collisionCells |> List.map(toGridCell) |> List.toSet,
             mapGlobal  = mapGlobal,
             placements = placements

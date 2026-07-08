@@ -86,7 +86,7 @@ mod GameEngine {
         style = Option[BoxStyle]
     }
 
-    /// TileMapLayer のインスタンス描画コマンド（1 draw call）。
+    /// TileLayer のインスタンス描画コマンド（1 draw call）。
     /// `tileScale` はカメラの zoom を反映するスクリーン倍率で、シェーダ側で
     /// (instPos + vertex * tileSize) に乗算する。zoom 未指定時は (1, 1)
     pub type alias TileMapRenderCmd = {
@@ -100,7 +100,7 @@ mod GameEngine {
         tileCount   = Int32
     }
 
-    /// Polygon2D の塗り潰し描画コマンド。vertices は変換済みのスクリーン px 凸多角形頂点列。
+    /// Polygon の塗り潰し描画コマンド。vertices は変換済みのスクリーン px 凸多角形頂点列。
     /// render_core の RenderType.PolygonCmd と構造一致（そのまま渡せる）。
     pub type alias PolygonRenderCmd = {
         vertices = List[Vec2.Vec2],
@@ -120,8 +120,8 @@ mod GameEngine {
     }
 
     /// ノードを Drawable のリストに変換する能力を表す trait
-    /// Label2D 等、1 ノードから複数 Drawable を生成するケースに対応。
-    /// Sprite2D の region/hframes/vframes/frame から UV を計算するためにテクスチャ
+    /// Text 等、1 ノードから複数 Drawable を生成するケースに対応。
+    /// Sprite の region/hframes/vframes/frame から UV を計算するためにテクスチャ
     /// サイズを参照する必要があり、Game eff を要求する。
     pub trait Renderable[n] {
         pub def toDrawables(node: n, globalPos: Vec2.Vec2): List[Drawable] \ Game

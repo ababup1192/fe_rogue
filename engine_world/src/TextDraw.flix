@@ -13,13 +13,13 @@ mod TextDraw {
     /// 与えた atlas 上で `text` を `size` で描いたときの横幅（ピクセル）。プロポーショナル
     /// フォントも字ごとの送り幅で正しく測る。描画までは要らず幅だけ欲しい配置計算に使う。
     pub def width(text: String, atlas: FontAtlas, size: Float64): Float64 =
-        Label2D.measure(Label2D.make(text, atlas, size))#x
+        Text.measure(Text.make(text, atlas, size))#x
 
     /// 与えた atlas 上で `text` を `size` で描いたときの幅と高さ（ピクセル、Vec2）。
     /// `width` が横だけ返すのに対し、縦の位置合わせ（中央そろえ・下端そろえ）に要る高さも
     /// まとめて返す。描画までは要らず寸法だけ欲しい配置計算に使う。
     pub def size(text: String, atlas: FontAtlas, size: Float64): Vec2.Vec2 =
-        Label2D.measure(Label2D.make(text, atlas, size))
+        Text.measure(Text.make(text, atlas, size))
 
     /// `text` を `centerX` に水平中央で揃えたときの左端 x。中央寄せは「幅の半分だけ左へ
     /// ずらす」だけなので、それを名付けて返す。描画アイテムを作らず座標だけ欲しい宣言 UI

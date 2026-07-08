@@ -29,7 +29,7 @@ mod GroundItems {
     }
 
     /// アイテム種別から sprite を取り出すヘルパー（表示・縁取り構築で共通利用）。
-    pub def spriteOf(kind: ItemData.GroundItemKind): Sprite.SpriteResource = match kind {
+    pub def spriteOf(kind: ItemData.GroundItemKind): SpriteRes.SpriteResource = match kind {
         case ItemData.GroundItemKind.WeaponItem(weapon)   => weapon#sprite
         case ItemData.GroundItemKind.StaffItem(staff)     => staff#sprite
         case ItemData.GroundItemKind.ConsumableItem(item) => item#sprite
@@ -191,7 +191,7 @@ mod GroundItems {
         }
 
     /// 「offset + 半開 bbox(boundsMin..boundsMaxEx)」内で床述語 `isFloorAt` を満たすセルを列挙する
-    /// 純粋関数。床判定の供給元（`TileMapLayer` 等）に依存しないので単体テストできる。
+    /// 純粋関数。床判定の供給元（`TileLayer` 等）に依存しないので単体テストできる。
     /// `floorCellsInRoom` の純粋コア（engine 非依存）。
     pub def floorCellsInBounds(isFloorAt: {x = Int32, y = Int32} -> Bool,
                                 offset: {x = Int32, y = Int32},

@@ -20,7 +20,7 @@
 /// Board を 1 つ受け取れば「次の手」を計算できる。World には依存しない。
 ///
 /// `BoardQuery` は「現フレームの盤面」を effect 経由で取り回すための窓口。
-/// Game.start の handler が現フレームの Scene と TileMapLayer から構築してクロージャに
+/// Game.start の handler が現フレームの Scene と TileLayer から構築してクロージャに
 /// 包み、フレーム内で固定して返す。
 pub enum Piece with Eq {
     case Player(Int32)   // id 付き（パーティ 3 人を区別する）

@@ -3,7 +3,7 @@
 /// 地形は純粋データ（wallCells / placements / mapGlobal）で持ち、床判定・座標変換・モジュール
 /// 逆引きはここの純関数（isWall/isFloor/mapToLocal/gridToWorld/moduleOfCell）で計算する。
 /// scene を一切読まないため、game 層（Board / EnemyAI 等）がここに依存できる（盤面ロジック→View の逆流を防ぐ）。
-/// 本物の TileMapLayer 値からの射影（snapshotOf）は build 側の `MapSetup` に置く。
+/// 本物の TileLayer 値からの射影（snapshotOf）は build 側の `MapSetup` に置く。
 ///
 /// モジュール内に入れると `MapSnapshot.MapSnapshot` と修飾が必要になるため、型エイリアスは root に定義する。
 pub type alias MapSnapshot = {
@@ -45,7 +45,7 @@ mod MapSnapshot {
     pub def isFloor(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
         inBounds(c, m) and not isWall(c, m)
 
-    /// usedRect 内か。Godot TileMapLayer の getUsedRect は常に position=(0,0) を返すため、
+    /// usedRect 内か。Godot TileLayer の getUsedRect は常に position=(0,0) を返すため、
     /// 判定は size のみで十分（position を加算しても 0 なので省略できる）。
     def inBounds(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
         let sz = m#usedRect#size;

@@ -3,11 +3,11 @@
 /// 角丸や 45° の斜線ハッチも指定できる。
 /// 利用例: 画面の背景色 / 全画面を覆う半透明のオーバーレイ。
 ///
-///   ColorRect
+///   Rect
 ///     +-- CanvasItem: visible, zIndex, modulate
 ///     +-- Node2D: position, rotation, scale, skew
-pub enum ColorRect {
-    case ColorRect({
+pub enum Rect {
+    case Rect({
         position = Vec2.Vec2,
         rotation = Float64,
         scale = Vec2.Vec2,
@@ -27,10 +27,10 @@ pub enum ColorRect {
     })
 }
 
-mod ColorRect {
-    /// デフォルト値で ColorRect を生成する（alpha は 1.0 = 不透明）
-    pub def make(size: Vec2.Vec2, color: Color): ColorRect =
-        ColorRect.ColorRect({
+mod Rect {
+    /// デフォルト値で Rect を生成する（alpha は 1.0 = 不透明）
+    pub def make(size: Vec2.Vec2, color: Color): Rect =
+        Rect.Rect({
             position = {x = 0.0, y = 0.0},
             rotation = 0.0,
             scale = {x = 1.0, y = 1.0},
@@ -48,34 +48,34 @@ mod ColorRect {
         })
 
     /// alpha を設定する
-    pub def setAlpha(alpha: Float32, rect: ColorRect): ColorRect =
-        let ColorRect.ColorRect(r) = rect;
-        ColorRect.ColorRect({ alpha = alpha | r })
+    pub def setAlpha(alpha: Float32, rect: Rect): Rect =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({ alpha = alpha | r })
 
     /// 角丸半径（px）を設定する。0 で矩形、>0 で角丸（BoxStyle 経由）。
-    pub def setCornerRadius(radius: Float64, rect: ColorRect): ColorRect =
-        let ColorRect.ColorRect(r) = rect;
-        ColorRect.ColorRect({ cornerRadius = Float64.max(0.0, radius) | r })
+    pub def setCornerRadius(radius: Float64, rect: Rect): Rect =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({ cornerRadius = Float64.max(0.0, radius) | r })
 
-    /// 45° 斜線ハッチを設定する（赤マスの `Panel.setStripe` と同じ）。
+    /// 45° 斜線ハッチを設定する（赤マスの `NineSlice.setStripe` と同じ）。
     /// width<=0 または alpha<=0 で無効。塗りの上に stripeColor の縞を over 合成する。
     pub def setStripe(color: Color, alpha: Float32, width: Float64, period: Float64,
-                      rect: ColorRect): ColorRect =
-        let ColorRect.ColorRect(r) = rect;
-        ColorRect.ColorRect({ stripeColor = color, stripeAlpha = alpha,
+                      rect: Rect): Rect =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({ stripeColor = color, stripeAlpha = alpha,
                               stripeWidth = Float64.max(0.0, width),
                               stripePeriod = Float64.max(0.0, period) | r })
 
     /// 表示サイズ（描画矩形の幅・高さ）を取得する
-    pub def getSize(rect: ColorRect): Vec2.Vec2 =
-        let ColorRect.ColorRect(r) = rect;
+    pub def getSize(rect: Rect): Vec2.Vec2 =
+        let Rect.Rect(r) = rect;
         r#size
 
     /// 表示サイズを設定する。リサイズ編集の主たる更新先で、`scale` ではなく
     /// この `size` フィールドが描画 (`toDrawable`) の幅・高さに使われる
-    pub def setSize(size: Vec2.Vec2, rect: ColorRect): ColorRect =
-        let ColorRect.ColorRect(r) = rect;
-        ColorRect.ColorRect({ size = size | r })
+    pub def setSize(size: Vec2.Vec2, rect: Rect): Rect =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({ size = size | r })
 
     /// 角丸＋斜線ハッチの BoxStyle（枠なし）。cornerRadius / stripe を反映する。
     def boxStyleOf(r: {cornerRadius = Float64, stripeColor = Color, stripeAlpha = Float32,
@@ -86,8 +86,8 @@ mod ColorRect {
          stripeWidth = r#stripeWidth, stripePeriod = r#stripePeriod}
 
     /// Drawable に変換する（texture="" でテクスチャなしを示す）
-    pub def toDrawable(rect: ColorRect, globalPos: Vec2.Vec2): GameEngine.Drawable =
-        let ColorRect.ColorRect(r) = rect;
+    pub def toDrawable(rect: Rect, globalPos: Vec2.Vec2): GameEngine.Drawable =
+        let Rect.Rect(r) = rect;
         let styled = r#cornerRadius > 0.0 or (r#stripeWidth > 0.0 and r#stripeAlpha > 0.0f32);
         {
             texture = "",
@@ -106,52 +106,52 @@ mod ColorRect {
 
 // -- CanvasItem 実装 --
 
-instance CanvasItem[ColorRect] {
-    pub def isVisible(rect: ColorRect): Bool =
-        let ColorRect.ColorRect(r) = rect;
+instance CanvasItem[Rect] {
+    pub def isVisible(rect: Rect): Bool =
+        let Rect.Rect(r) = rect;
         r#visible
-    pub def setVisible(visible: Bool, rect: ColorRect): ColorRect =
-        let ColorRect.ColorRect(r) = rect;
-        ColorRect.ColorRect({ visible = visible | r })
-    pub def getModulate(rect: ColorRect): Color =
-        let ColorRect.ColorRect(r) = rect;
+    pub def setVisible(visible: Bool, rect: Rect): Rect =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({ visible = visible | r })
+    pub def getModulate(rect: Rect): Color =
+        let Rect.Rect(r) = rect;
         r#modulate
-    pub def setModulate(color: Color, rect: ColorRect): ColorRect =
-        let ColorRect.ColorRect(r) = rect;
-        ColorRect.ColorRect({ modulate = color | r })
-    pub def getZIndex(rect: ColorRect): Int32 =
-        let ColorRect.ColorRect(r) = rect;
+    pub def setModulate(color: Color, rect: Rect): Rect =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({ modulate = color | r })
+    pub def getZIndex(rect: Rect): Int32 =
+        let Rect.Rect(r) = rect;
         r#zIndex
-    pub def setZIndex(zIndex: Int32, rect: ColorRect): ColorRect =
-        let ColorRect.ColorRect(r) = rect;
-        ColorRect.ColorRect({ zIndex = zIndex | r })
+    pub def setZIndex(zIndex: Int32, rect: Rect): Rect =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({ zIndex = zIndex | r })
 }
 
 // -- Node2D 実装 --
 
-instance Node2D[ColorRect] {
-    pub def getPosition(rect: ColorRect): Vec2.Vec2 =
-        let ColorRect.ColorRect(r) = rect;
+instance Node2D[Rect] {
+    pub def getPosition(rect: Rect): Vec2.Vec2 =
+        let Rect.Rect(r) = rect;
         r#position
-    pub def setPosition(position: Vec2.Vec2, rect: ColorRect): ColorRect =
-        let ColorRect.ColorRect(r) = rect;
-        ColorRect.ColorRect({ position = position | r })
-    pub def getRotation(rect: ColorRect): Float64 =
-        let ColorRect.ColorRect(r) = rect;
+    pub def setPosition(position: Vec2.Vec2, rect: Rect): Rect =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({ position = position | r })
+    pub def getRotation(rect: Rect): Float64 =
+        let Rect.Rect(r) = rect;
         r#rotation
-    pub def setRotation(rotation: Float64, rect: ColorRect): ColorRect =
-        let ColorRect.ColorRect(r) = rect;
-        ColorRect.ColorRect({ rotation = rotation | r })
-    pub def getScale(rect: ColorRect): Vec2.Vec2 =
-        let ColorRect.ColorRect(r) = rect;
+    pub def setRotation(rotation: Float64, rect: Rect): Rect =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({ rotation = rotation | r })
+    pub def getScale(rect: Rect): Vec2.Vec2 =
+        let Rect.Rect(r) = rect;
         r#scale
-    pub def setScale(scale: Vec2.Vec2, rect: ColorRect): ColorRect =
-        let ColorRect.ColorRect(r) = rect;
-        ColorRect.ColorRect({ scale = scale | r })
-    pub def getSkew(rect: ColorRect): Float64 =
-        let ColorRect.ColorRect(r) = rect;
+    pub def setScale(scale: Vec2.Vec2, rect: Rect): Rect =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({ scale = scale | r })
+    pub def getSkew(rect: Rect): Float64 =
+        let Rect.Rect(r) = rect;
         r#skew
-    pub def setSkew(skew: Float64, rect: ColorRect): ColorRect =
-        let ColorRect.ColorRect(r) = rect;
-        ColorRect.ColorRect({ skew = skew | r })
+    pub def setSkew(skew: Float64, rect: Rect): Rect =
+        let Rect.Rect(r) = rect;
+        Rect.Rect({ skew = skew | r })
 }

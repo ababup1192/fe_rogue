@@ -1,4 +1,4 @@
-/// Sprite2D ノードにアタッチする単一フレーム表示設定の共通型。
+/// Sprite ノードにアタッチする単一フレーム表示設定の共通型。
 ///
 /// Unit / Weapon / Staff の各 catalog が ItemMenu アイコンや HUD / popup の
 /// 単一フレーム表示に使う。Unit/Weapon/Staff → Sprite の依存方向を一方向に保つため
@@ -9,10 +9,10 @@
 ///   視覚的中央寄せ補正に使う。デフォルトは {0, 0}。
 ///   `scale` は board 表示時の拡大倍率。既定 {1, 1} = 画像ピクセル等倍。
 ///   `flipForFacing` は「左向きの絵しか無い」スプライト用のフラグ。true の駒は
-///   右方向へ移動したとき Sprite2D を水平反転 (flipH) して右向きに見せる。
+///   右方向へ移動したとき Sprite を水平反転 (flipH) して右向きに見せる。
 ///   既定 false（既存の前向き character_sheet 等は反転しない）。反転の実適用は
 ///   PlayerScene / EnemyScene の移動処理が担う。
-mod Sprite {
+mod SpriteRes {
     pub type alias SpriteResource = {
         texture = String,
         hframes = Int32,

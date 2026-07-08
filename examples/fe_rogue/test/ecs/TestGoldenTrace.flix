@@ -87,7 +87,7 @@ mod TestGoldenTrace {
         Util.Json.parse(s) |> Result.toOption
 
     /// ダミー sprite（指輪/武器の戦闘ロジックに無関係）。
-    def fxSprite(): Sprite.SpriteResource = {
+    def fxSprite(): SpriteRes.SpriteResource = {
         texture = "test-texture", hframes = 1, vframes = 1, frame = 0,
         offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false
     }
@@ -135,13 +135,13 @@ mod TestGoldenTrace {
         ({unitName = "x", fromLevel = 1, toLevel = 2, changes = Nil}: LevelSystem.Result)
 
     /// 13×13 の壁なし floor map（地形 fixture `floorTerrain` の素材）。TestSimEvent 踏襲。
-    def floorMapLayer(): TileMapLayer =
+    def floorMapLayer(): TileLayer =
         let atlas: TileSetAtlasSource = {
             textureName = "test", texWidth = 0.0, texHeight = 0.0,
             tileSize = 16.0, marginX = 0.0, marginY = 0.0, spacingX = 0.0, spacingY = 0.0
         };
-        TileMapLayer.make({
-            tileSet        = TileSet.make(atlas),
+        TileLayer.make({
+            tileSet        = Tileset.make(atlas),
             tiles          = Nil,
             collisionCells = Nil,
             gridSize       = ({x = 13, y = 13}: {x = Int32, y = Int32})

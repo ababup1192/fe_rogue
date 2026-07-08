@@ -15,7 +15,7 @@ mod SpriteFrames {
     /// 1.0 = 通常、2.0 = 2 倍長く表示。
     /// `regionRect` はテクスチャ内の切り出し矩形（ピクセル単位）。None ならテクスチャ全体
     /// を表示する。スプライトシートを 1 枚のテクスチャに収めて各フレームを切り出すとき
-    /// に使う。`region` は Flix 予約語なので Sprite2D に合わせて `regionRect` 命名。
+    /// に使う。`region` は Flix 予約語なので Sprite に合わせて `regionRect` 命名。
     pub type alias Frame = {
         texture = String,                      // 表示するテクスチャ名
         regionRect = Option[Rect2.Rect2],      // 切り出し矩形（None ならテクスチャ全体）

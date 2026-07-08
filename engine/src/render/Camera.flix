@@ -3,7 +3,7 @@
 /// 画面が滑らかに付いていくので、追従ロジックを毎フレーム書かずに済む（offset で微調整）。
 /// 利用例: プレイヤーを画面中央に保つ / マップ端でスクロールを止める。
 ///
-///   Camera2D
+///   Camera
 ///     ├─ CanvasItem: visible, zIndex, modulate
 ///     └─ Node2D: position, rotation, scale, skew
 
@@ -25,8 +25,8 @@ pub enum Camera2DProcessCallback with Eq, Order, ToString {
     case IdleProcess
 }
 
-pub enum Camera2D {
-    case Camera2D({
+pub enum Camera {
+    case Camera({
         position = Vec2.Vec2,
         rotation = Float64,
         scale = Vec2.Vec2,
@@ -63,19 +63,19 @@ pub enum Camera2D {
     })
 }
 
-mod Camera2D {
+mod Camera {
 
     // ========================================================================
     // コンストラクタ
     // ========================================================================
 
-    /// デフォルト値で Camera2D を生成する
+    /// デフォルト値で Camera を生成する
     ///
     /// デフォルト値:
     ///   offset = (0, 0), zoom = (1, 1), enabled = true,
     ///   anchorMode = DragCenter, limit = ±10_000_000
-    pub def make(position: Vec2.Vec2): Camera2D =
-        Camera2D.Camera2D({
+    pub def make(position: Vec2.Vec2): Camera =
+        Camera.Camera({
             position = position,
             rotation = 0.0,
             scale = {x = 1.0, y = 1.0},
@@ -108,247 +108,247 @@ mod Camera2D {
             smoothPosition = position
         })
 
-    /// offset 付きで Camera2D を生成する
-    pub def makeWithOffset(position: Vec2.Vec2, offset: Vec2.Vec2): Camera2D =
+    /// offset 付きで Camera を生成する
+    pub def makeWithOffset(position: Vec2.Vec2, offset: Vec2.Vec2): Camera =
         make(position) |> setOffset(offset)
 
     // ========================================================================
-    // Camera2D 固有プロパティ — getter / setter
+    // Camera 固有プロパティ — getter / setter
     // ========================================================================
 
     /// ビューポートオフセットを取得する
-    pub def getOffset(camera: Camera2D): Vec2.Vec2 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getOffset(camera: Camera): Vec2.Vec2 =
+        let Camera.Camera(r) = camera;
         r#offset
 
     /// ビューポートオフセットを設定する
-    pub def setOffset(offset: Vec2.Vec2, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({offset = offset | r})
+    pub def setOffset(offset: Vec2.Vec2, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({offset = offset | r})
 
     /// ズーム倍率を取得する
-    pub def getZoom(camera: Camera2D): Vec2.Vec2 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getZoom(camera: Camera): Vec2.Vec2 =
+        let Camera.Camera(r) = camera;
         r#zoom
 
     /// ズーム倍率を設定する
-    pub def setZoom(zoom: Vec2.Vec2, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({zoom = zoom | r})
+    pub def setZoom(zoom: Vec2.Vec2, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({zoom = zoom | r})
 
     /// カメラが有効（current）かどうかを返す
-    pub def isEnabled(camera: Camera2D): Bool =
-        let Camera2D.Camera2D(r) = camera;
+    pub def isEnabled(camera: Camera): Bool =
+        let Camera.Camera(r) = camera;
         r#enabled
 
     /// カメラの有効状態（current かどうか）を設定する
-    pub def setEnabled(enabled: Bool, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({enabled = enabled | r})
+    pub def setEnabled(enabled: Bool, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({enabled = enabled | r})
 
     /// アンカーモードを取得する
-    pub def getAnchorMode(camera: Camera2D): Camera2DAnchorMode =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getAnchorMode(camera: Camera): Camera2DAnchorMode =
+        let Camera.Camera(r) = camera;
         r#anchorMode
 
     /// アンカーモードを設定する
-    pub def setAnchorMode(anchorMode: Camera2DAnchorMode, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({anchorMode = anchorMode | r})
+    pub def setAnchorMode(anchorMode: Camera2DAnchorMode, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({anchorMode = anchorMode | r})
 
     /// プロセスコールバックモードを取得する
-    pub def getProcessCallback(camera: Camera2D): Camera2DProcessCallback =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getProcessCallback(camera: Camera): Camera2DProcessCallback =
+        let Camera.Camera(r) = camera;
         r#processCallback
 
     /// プロセスコールバックモードを設定する
-    pub def setProcessCallback(processCallback: Camera2DProcessCallback, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({processCallback = processCallback | r})
+    pub def setProcessCallback(processCallback: Camera2DProcessCallback, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({processCallback = processCallback | r})
 
     /// 回転無視フラグを取得する
-    pub def isIgnoreRotation(camera: Camera2D): Bool =
-        let Camera2D.Camera2D(r) = camera;
+    pub def isIgnoreRotation(camera: Camera): Bool =
+        let Camera.Camera(r) = camera;
         r#ignoreRotation
 
     /// 回転無視フラグを設定する
-    pub def setIgnoreRotation(ignoreRotation: Bool, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({ignoreRotation = ignoreRotation | r})
+    pub def setIgnoreRotation(ignoreRotation: Bool, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({ignoreRotation = ignoreRotation | r})
 
     // ========================================================================
     // スクロール制限
     // ========================================================================
 
     /// スクロール制限（左端）を取得する
-    pub def getLimitLeft(camera: Camera2D): Int32 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getLimitLeft(camera: Camera): Int32 =
+        let Camera.Camera(r) = camera;
         r#limitLeft
 
     /// スクロール制限（左端）を設定する
-    pub def setLimitLeft(limitLeft: Int32, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({limitLeft = limitLeft | r})
+    pub def setLimitLeft(limitLeft: Int32, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({limitLeft = limitLeft | r})
 
     /// スクロール制限（上端）を取得する
-    pub def getLimitTop(camera: Camera2D): Int32 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getLimitTop(camera: Camera): Int32 =
+        let Camera.Camera(r) = camera;
         r#limitTop
 
     /// スクロール制限（上端）を設定する
-    pub def setLimitTop(limitTop: Int32, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({limitTop = limitTop | r})
+    pub def setLimitTop(limitTop: Int32, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({limitTop = limitTop | r})
 
     /// スクロール制限（右端）を取得する
-    pub def getLimitRight(camera: Camera2D): Int32 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getLimitRight(camera: Camera): Int32 =
+        let Camera.Camera(r) = camera;
         r#limitRight
 
     /// スクロール制限（右端）を設定する
-    pub def setLimitRight(limitRight: Int32, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({limitRight = limitRight | r})
+    pub def setLimitRight(limitRight: Int32, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({limitRight = limitRight | r})
 
     /// スクロール制限（下端）を取得する
-    pub def getLimitBottom(camera: Camera2D): Int32 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getLimitBottom(camera: Camera): Int32 =
+        let Camera.Camera(r) = camera;
         r#limitBottom
 
     /// スクロール制限（下端）を設定する
-    pub def setLimitBottom(limitBottom: Int32, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({limitBottom = limitBottom | r})
+    pub def setLimitBottom(limitBottom: Int32, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({limitBottom = limitBottom | r})
 
     /// 制限スムージングの有効状態を取得する
-    pub def isLimitSmoothed(camera: Camera2D): Bool =
-        let Camera2D.Camera2D(r) = camera;
+    pub def isLimitSmoothed(camera: Camera): Bool =
+        let Camera.Camera(r) = camera;
         r#limitSmoothed
 
     /// 制限スムージングの有効状態を設定する
-    pub def setLimitSmoothed(limitSmoothed: Bool, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({limitSmoothed = limitSmoothed | r})
+    pub def setLimitSmoothed(limitSmoothed: Bool, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({limitSmoothed = limitSmoothed | r})
 
     // ========================================================================
     // 位置スムージング
     // ========================================================================
 
     /// 位置スムージングの有効状態を取得する
-    pub def isPositionSmoothingEnabled(camera: Camera2D): Bool =
-        let Camera2D.Camera2D(r) = camera;
+    pub def isPositionSmoothingEnabled(camera: Camera): Bool =
+        let Camera.Camera(r) = camera;
         r#positionSmoothingEnabled
 
     /// 位置スムージングの有効状態を設定する
-    pub def setPositionSmoothingEnabled(positionSmoothingEnabled: Bool, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({positionSmoothingEnabled = positionSmoothingEnabled | r})
+    pub def setPositionSmoothingEnabled(positionSmoothingEnabled: Bool, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({positionSmoothingEnabled = positionSmoothingEnabled | r})
 
     /// 位置スムージングの速度を取得する
-    pub def getPositionSmoothingSpeed(camera: Camera2D): Float64 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getPositionSmoothingSpeed(camera: Camera): Float64 =
+        let Camera.Camera(r) = camera;
         r#positionSmoothingSpeed
 
     /// 位置スムージングの速度を設定する
-    pub def setPositionSmoothingSpeed(positionSmoothingSpeed: Float64, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({positionSmoothingSpeed = positionSmoothingSpeed | r})
+    pub def setPositionSmoothingSpeed(positionSmoothingSpeed: Float64, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({positionSmoothingSpeed = positionSmoothingSpeed | r})
 
     // ========================================================================
     // 回転スムージング
     // ========================================================================
 
     /// 回転スムージングの有効状態を取得する
-    pub def isRotationSmoothingEnabled(camera: Camera2D): Bool =
-        let Camera2D.Camera2D(r) = camera;
+    pub def isRotationSmoothingEnabled(camera: Camera): Bool =
+        let Camera.Camera(r) = camera;
         r#rotationSmoothingEnabled
 
     /// 回転スムージングの有効状態を設定する
-    pub def setRotationSmoothingEnabled(rotationSmoothingEnabled: Bool, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({rotationSmoothingEnabled = rotationSmoothingEnabled | r})
+    pub def setRotationSmoothingEnabled(rotationSmoothingEnabled: Bool, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({rotationSmoothingEnabled = rotationSmoothingEnabled | r})
 
     /// 回転スムージングの速度を取得する
-    pub def getRotationSmoothingSpeed(camera: Camera2D): Float64 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getRotationSmoothingSpeed(camera: Camera): Float64 =
+        let Camera.Camera(r) = camera;
         r#rotationSmoothingSpeed
 
     /// 回転スムージングの速度を設定する
-    pub def setRotationSmoothingSpeed(rotationSmoothingSpeed: Float64, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({rotationSmoothingSpeed = rotationSmoothingSpeed | r})
+    pub def setRotationSmoothingSpeed(rotationSmoothingSpeed: Float64, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({rotationSmoothingSpeed = rotationSmoothingSpeed | r})
 
     // ========================================================================
     // ドラッグマージン
     // ========================================================================
 
     /// 水平ドラッグマージンの有効状態を取得する
-    pub def isDragHorizontalEnabled(camera: Camera2D): Bool =
-        let Camera2D.Camera2D(r) = camera;
+    pub def isDragHorizontalEnabled(camera: Camera): Bool =
+        let Camera.Camera(r) = camera;
         r#dragHorizontalEnabled
 
     /// 水平ドラッグマージンの有効状態を設定する
-    pub def setDragHorizontalEnabled(dragHorizontalEnabled: Bool, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({dragHorizontalEnabled = dragHorizontalEnabled | r})
+    pub def setDragHorizontalEnabled(dragHorizontalEnabled: Bool, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({dragHorizontalEnabled = dragHorizontalEnabled | r})
 
     /// 垂直ドラッグマージンの有効状態を取得する
-    pub def isDragVerticalEnabled(camera: Camera2D): Bool =
-        let Camera2D.Camera2D(r) = camera;
+    pub def isDragVerticalEnabled(camera: Camera): Bool =
+        let Camera.Camera(r) = camera;
         r#dragVerticalEnabled
 
     /// 垂直ドラッグマージンの有効状態を設定する
-    pub def setDragVerticalEnabled(dragVerticalEnabled: Bool, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({dragVerticalEnabled = dragVerticalEnabled | r})
+    pub def setDragVerticalEnabled(dragVerticalEnabled: Bool, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({dragVerticalEnabled = dragVerticalEnabled | r})
 
     /// 左ドラッグマージンを取得する
-    pub def getDragLeftMargin(camera: Camera2D): Float64 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getDragLeftMargin(camera: Camera): Float64 =
+        let Camera.Camera(r) = camera;
         r#dragLeftMargin
 
     /// 左ドラッグマージンを設定する（0.0〜1.0）
-    pub def setDragLeftMargin(dragLeftMargin: Float64, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({dragLeftMargin = dragLeftMargin | r})
+    pub def setDragLeftMargin(dragLeftMargin: Float64, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({dragLeftMargin = dragLeftMargin | r})
 
     /// 右ドラッグマージンを取得する
-    pub def getDragRightMargin(camera: Camera2D): Float64 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getDragRightMargin(camera: Camera): Float64 =
+        let Camera.Camera(r) = camera;
         r#dragRightMargin
 
     /// 右ドラッグマージンを設定する（0.0〜1.0）
-    pub def setDragRightMargin(dragRightMargin: Float64, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({dragRightMargin = dragRightMargin | r})
+    pub def setDragRightMargin(dragRightMargin: Float64, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({dragRightMargin = dragRightMargin | r})
 
     /// 上ドラッグマージンを取得する
-    pub def getDragTopMargin(camera: Camera2D): Float64 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getDragTopMargin(camera: Camera): Float64 =
+        let Camera.Camera(r) = camera;
         r#dragTopMargin
 
     /// 上ドラッグマージンを設定する（0.0〜1.0）
-    pub def setDragTopMargin(dragTopMargin: Float64, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({dragTopMargin = dragTopMargin | r})
+    pub def setDragTopMargin(dragTopMargin: Float64, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({dragTopMargin = dragTopMargin | r})
 
     /// 下ドラッグマージンを取得する
-    pub def getDragBottomMargin(camera: Camera2D): Float64 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getDragBottomMargin(camera: Camera): Float64 =
+        let Camera.Camera(r) = camera;
         r#dragBottomMargin
 
     /// 下ドラッグマージンを設定する（0.0〜1.0）
-    pub def setDragBottomMargin(dragBottomMargin: Float64, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({dragBottomMargin = dragBottomMargin | r})
+    pub def setDragBottomMargin(dragBottomMargin: Float64, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({dragBottomMargin = dragBottomMargin | r})
 
     // ========================================================================
     // メソッド
     // ========================================================================
 
     /// `smoothPosition` を取得する（描画用の実視点位置。`process` で更新される）
-    pub def getSmoothPosition(camera: Camera2D): Vec2.Vec2 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getSmoothPosition(camera: Camera): Vec2.Vec2 =
+        let Camera.Camera(r) = camera;
         r#smoothPosition
 
     /// target (`position`) が「smoothPosition 中心の drag dead zone 矩形」内に居るか。
@@ -356,9 +356,9 @@ mod Camera2D {
     /// 4 px epsilon を threshold にする（後方互換）。
     /// 「カメラが target に追いついた」判定に使う（ゲーム側のための判定で、標準的な相当 API は無い）。
     /// 純関数（viewport を引数で取り、scene/effect に依存しない）なので engine 単独テスト可能。
-    pub def isWithinDragDeadZone(camera: Camera2D,
+    pub def isWithinDragDeadZone(camera: Camera,
             viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): Bool =
-        let Camera2D.Camera2D(r) = camera;
+        let Camera.Camera(r) = camera;
         let target = r#position;
         let smooth = r#smoothPosition;
         let zx = if (r#zoom#x == 0.0) 1.0 else r#zoom#x;
@@ -377,15 +377,15 @@ mod Camera2D {
 
     /// `smoothPosition` を直接設定する（カメラを瞬間移動させたい場合の保険）。
     /// 通常は `process` 経由で smoothing/drag を介して更新される。
-    pub def setSmoothPosition(smoothPosition: Vec2.Vec2, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({smoothPosition = smoothPosition | r})
+    pub def setSmoothPosition(smoothPosition: Vec2.Vec2, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({smoothPosition = smoothPosition | r})
 
     /// smoothing / drag のいずれかが有効か。`getViewTransform` が
     /// `smoothPosition` を使うか `position` を使うかの分岐に用いる。
     /// すべて無効なら従来挙動（position 直読み）を保つ — 後方互換のための判定。
-    pub def isFollowingActive(camera: Camera2D): Bool =
-        let Camera2D.Camera2D(r) = camera;
+    pub def isFollowingActive(camera: Camera): Bool =
+        let Camera.Camera(r) = camera;
         r#positionSmoothingEnabled
             or r#dragHorizontalEnabled
             or r#dragVerticalEnabled
@@ -402,8 +402,8 @@ mod Camera2D {
     ///   - limit は hard clamp（`limitSmoothed = true` モードは未対応）
     pub def process(delta: Duration.Duration,
                     viewportSize: {viewportWidth = Float64, viewportHeight = Float64},
-                    camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
+                    camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
         let target = r#position;
         let smooth = r#smoothPosition;
         // zoom が 0 の軸は 1 として扱う（落とし穴防止、getViewTransform の流儀に合わせる）
@@ -454,7 +454,7 @@ mod Camera2D {
         let clampedY = nextY
             |> Float64.max(Int32.toFloat64(r#limitTop))
             |> Float64.min(Int32.toFloat64(r#limitBottom));
-        Camera2D.Camera2D({smoothPosition = {x = clampedX, y = clampedY} | r})
+        Camera.Camera({smoothPosition = {x = clampedX, y = clampedY} | r})
 
     /// 画面中央のワールド座標を返す。
     ///
@@ -470,8 +470,8 @@ mod Camera2D {
     ///     +---------------------------+
     /// `globalPos` はシーンツリーから求めた Camera ノードのワールド座標。
     /// Camera が他ノードの子のときも親の変換を反映できるよう、呼び出し側が渡す。
-    pub def getScreenCenterPosition(camera: Camera2D, globalPos: Vec2.Vec2): Vec2.Vec2 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getScreenCenterPosition(camera: Camera, globalPos: Vec2.Vec2): Vec2.Vec2 =
+        let Camera.Camera(r) = camera;
         let rawX = globalPos#x + r#offset#x;
         let rawY = globalPos#y + r#offset#y;
         let clampedX = rawX
@@ -485,16 +485,16 @@ mod Camera2D {
     /// カメラのターゲット位置を返す。
     ///
     /// スムージング適用前のターゲット座標（= position）を返す。
-    pub def getTargetPosition(camera: Camera2D): Vec2.Vec2 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def getTargetPosition(camera: Camera): Vec2.Vec2 =
+        let Camera.Camera(r) = camera;
         r#position
 
     /// このカメラを現在のカメラに設定する。
-    pub def makeCurrent(camera: Camera2D): Camera2D =
+    pub def makeCurrent(camera: Camera): Camera =
         setEnabled(true, camera)
 
     /// カメラが現在のカメラかどうかを返す。
-    pub def isCurrent(camera: Camera2D): Bool =
+    pub def isCurrent(camera: Camera): Bool =
         isEnabled(camera)
 
     /// カメラのビュー変換（screenPos = worldPos * scale - offset）。
@@ -550,11 +550,11 @@ mod Camera2D {
     /// smoothing / drag のいずれかが有効なら、view 中心は `position` ではなく
     /// `smoothPosition`（process が更新する補間後の値）を起点に計算する。
     /// すべて無効なら従来通り `globalPos`（= 親変換込みの position）を起点にする — 後方互換。
-    pub def getViewTransform(camera: Camera2D, globalPos: Vec2.Vec2,
+    pub def getViewTransform(camera: Camera, globalPos: Vec2.Vec2,
                               viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): ViewTransform =
-        let Camera2D.Camera2D(r) = camera;
+        let Camera.Camera(r) = camera;
         let zoom = r#zoom;
-        // 追従が有効なら smoothPosition を使う。Camera2D が scene root に居る前提で
+        // 追従が有効なら smoothPosition を使う。Camera が scene root に居る前提で
         // smoothPosition はワールド座標扱い（CameraScene が常に root に置く）。
         let viewBase = if (isFollowingActive(camera)) r#smoothPosition else globalPos;
         match r#anchorMode {
@@ -608,52 +608,52 @@ mod Camera2D {
 
 // ── CanvasItem 実装 ──
 
-instance CanvasItem[Camera2D] {
-    pub def isVisible(camera: Camera2D): Bool =
-        let Camera2D.Camera2D(r) = camera;
+instance CanvasItem[Camera] {
+    pub def isVisible(camera: Camera): Bool =
+        let Camera.Camera(r) = camera;
         r#visible
-    pub def setVisible(visible: Bool, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({ visible = visible | r })
-    pub def getModulate(camera: Camera2D): Color =
-        let Camera2D.Camera2D(r) = camera;
+    pub def setVisible(visible: Bool, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({ visible = visible | r })
+    pub def getModulate(camera: Camera): Color =
+        let Camera.Camera(r) = camera;
         r#modulate
-    pub def setModulate(color: Color, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({ modulate = color | r })
-    pub def getZIndex(camera: Camera2D): Int32 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def setModulate(color: Color, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({ modulate = color | r })
+    pub def getZIndex(camera: Camera): Int32 =
+        let Camera.Camera(r) = camera;
         r#zIndex
-    pub def setZIndex(zIndex: Int32, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({ zIndex = zIndex | r })
+    pub def setZIndex(zIndex: Int32, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({ zIndex = zIndex | r })
 }
 
 // ── Node2D 実装 ──
 
-instance Node2D[Camera2D] {
-    pub def getPosition(camera: Camera2D): Vec2.Vec2 =
-        let Camera2D.Camera2D(r) = camera;
+instance Node2D[Camera] {
+    pub def getPosition(camera: Camera): Vec2.Vec2 =
+        let Camera.Camera(r) = camera;
         r#position
-    pub def setPosition(position: Vec2.Vec2, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({ position = position | r })
-    pub def getRotation(camera: Camera2D): Float64 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def setPosition(position: Vec2.Vec2, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({ position = position | r })
+    pub def getRotation(camera: Camera): Float64 =
+        let Camera.Camera(r) = camera;
         r#rotation
-    pub def setRotation(rotation: Float64, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({ rotation = rotation | r })
-    pub def getScale(camera: Camera2D): Vec2.Vec2 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def setRotation(rotation: Float64, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({ rotation = rotation | r })
+    pub def getScale(camera: Camera): Vec2.Vec2 =
+        let Camera.Camera(r) = camera;
         r#scale
-    pub def setScale(scale: Vec2.Vec2, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({ scale = scale | r })
-    pub def getSkew(camera: Camera2D): Float64 =
-        let Camera2D.Camera2D(r) = camera;
+    pub def setScale(scale: Vec2.Vec2, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({ scale = scale | r })
+    pub def getSkew(camera: Camera): Float64 =
+        let Camera.Camera(r) = camera;
         r#skew
-    pub def setSkew(skew: Float64, camera: Camera2D): Camera2D =
-        let Camera2D.Camera2D(r) = camera;
-        Camera2D.Camera2D({ skew = skew | r })
+    pub def setSkew(skew: Float64, camera: Camera): Camera =
+        let Camera.Camera(r) = camera;
+        Camera.Camera({ skew = skew | r })
 }

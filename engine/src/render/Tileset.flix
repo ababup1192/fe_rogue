@@ -13,13 +13,13 @@ pub type alias TileSetAtlasSource = {
 }
 
 /// タイルセット — マップが使うタイル画像一式。
-pub type alias TileSet = { atlasSource = TileSetAtlasSource }
+pub type alias Tileset = { atlasSource = TileSetAtlasSource }
 
-mod TileSet {
-    pub def make(source: TileSetAtlasSource): TileSet = { atlasSource = source }
+mod Tileset {
+    pub def make(source: TileSetAtlasSource): Tileset = { atlasSource = source }
 
     /// タイル 1 マスの一辺（ピクセル）。本プロジェクトはタイル正方形なので Float64 単一値
-    pub def tileSize(tileSet: TileSet): Float64 =
+    pub def tileSize(tileSet: Tileset): Float64 =
         tileSet#atlasSource#tileSize
 }
 

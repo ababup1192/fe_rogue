@@ -37,7 +37,7 @@ mod Render {
     pub def text(content: String, fontAtlas: FontAtlas, fontSize: Float64, zIndex: Int32): RenderItem =
         RenderItem.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = white(), zIndex = zIndex })
 
-    /// B0b: 着色テキスト（Label2D.setModulate を適用）。menu の disabled グレー / cursor 色 / ヘッダ accent 等に必要。
+    /// B0b: 着色テキスト（Text.setModulate を適用）。menu の disabled グレー / cursor 色 / ヘッダ accent 等に必要。
     pub def textTinted(content: String, fontAtlas: FontAtlas, fontSize: Float64, tint: Color, zIndex: Int32): RenderItem =
         RenderItem.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = tint, zIndex = zIndex })
 
@@ -165,11 +165,11 @@ mod Render {
         { vertices = List.map(v -> Vec2.add(v, pos), p#vertices),
           color = p#color, alpha = p#alpha, zIndex = p#zIndex }
 
-    /// World 由来 Drawable 群に camera のズーム倍率を適用する（位置は `Camera2D.applyToWorldPos` で
+    /// World 由来 Drawable 群に camera のズーム倍率を適用する（位置は `Camera.applyToWorldPos` で
     /// screenPos を出した後の共通後処理）。render-from-World の各オーバーレイ（ユニット / 背景 / 範囲表示 /
     /// フォグ等）が共有する camera 適用 spine。Drawable の scale は sprite の拡大率・box の px サイズを表し、
     /// どちらも zoom で乗算するのが正しい camera 適用。
-    pub def applyCameraScale(transform: Camera2D.ViewTransform,
+    pub def applyCameraScale(transform: Camera.ViewTransform,
                              ds: List[GameEngine.Drawable]): List[GameEngine.Drawable] =
         List.map(d -> {scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y} | d}, ds)
 
@@ -188,7 +188,7 @@ mod Render {
         }
 
     /// B0b: region atlas 対応の射影。textureSize を引いて UV を計算する
-    /// （Sprite2D.computeUv 相当の正規化: uvOffset = regionPos/texSize, uvScale = regionSize/texSize）。
+    /// （Sprite.computeUv 相当の正規化: uvOffset = regionPos/texSize, uvScale = regionSize/texSize）。
     /// 非 region スプライト・text・box は pure 経路と同一。fe_rogue 等の atlas 主体ゲームの render-from-World に必要。
     /// テクスチャ寸法の引き方は `textureInfoOf` で注入する。ゲーム実行時は Game registry 版を渡し、
     /// 画面なしのテストやプレビューでは `_ -> None` などの純粋関数を渡せる（region を使わなければ結果は同じ）。
@@ -247,7 +247,7 @@ mod Render {
                       tint: Color, zIndex: Int32, pos: Vec2.Vec2): List[GameEngine.Drawable] =
         // engine の public 純粋射影に委譲。B0b: Drawable の color を tint で上書き＝文字色
         // （SDF 描画では color が modulate＝文字色。ItemList の per-item 色相当）。
-        Label2D.toDrawables(Label2D.make(content, fontAtlas, fontSize), pos)
+        Text.toDrawables(Text.make(content, fontAtlas, fontSize), pos)
             |> List.map(d -> {color = tint, zIndex = zIndex | d})
 
     def boxDrawable(size: Vec2.Vec2, color: Color, alpha: Float32,

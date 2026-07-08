@@ -51,7 +51,7 @@ mod MinimapScene {
 
     /// マーカー（丸）の直径は「セル幅(scale)に比例」させ、隣接セルの円どうしが重ならないよう
     /// セル幅未満に保つ。同時に最大値 `markerMaxPx` で頭打ちにして大きくなりすぎないようにする。
-    /// （アイテム・キャラ等は矩形でなく丸 = Polygon2D の 12 角形で表す。）
+    /// （アイテム・キャラ等は矩形でなく丸 = Polygon の 12 角形で表す。）
     def markerCellFraction(): Float64 = 0.85
     def markerMaxPx(): Float64 = 3.9
     /// セル幅 `scale` からマーカー直径（px）を求める。
@@ -157,8 +157,8 @@ mod MinimapScene {
     /// レイヤ半透明、zIndex は旧 CanvasLayer 相当のオフセット込み。
     def boxDrawableOf(pr: {pos = Vec2, size = Vec2}, color: Color, z: Int32, alpha: Float32):
             GameEngine.Drawable =
-        let rect = ColorRect.make(pr#size, color) |> ColorRect.setAlpha(alpha);
-        let drawable = ColorRect.toDrawable(rect, pr#pos);
+        let rect = Rect.make(pr#size, color) |> Rect.setAlpha(alpha);
+        let drawable = Rect.toDrawable(rect, pr#pos);
         {zIndex = z + minimapLayerOffset() | drawable}
 
     /// セル + 色 → マーカー円の PolygonRenderCmd（画面固定・原点中心の 12 角形）。直径はセル幅に比例。
@@ -168,10 +168,10 @@ mod MinimapScene {
         // 円は原点中心なので位置はセル中心。直径はセル幅に比例（隣接円が重ならない）。
         let pos: Vec2 = {x = c#x + half, y = c#y + half};
         let d = markerDiameter(t#scale);
-        let poly = Polygon2D.circle(0.5, color)
+        let poly = Polygon.circle(0.5, color)
             |> Node2D.setScale({x = d, y = d})
-            |> Polygon2D.setAlpha(markerAlpha());
-        let cmd = Polygon2D.toRenderCmd(pos, {x = 1.0, y = 1.0}, poly);
+            |> Polygon.setAlpha(markerAlpha());
+        let cmd = Polygon.toRenderCmd(pos, {x = 1.0, y = 1.0}, poly);
         {zIndex = markerZIndex() + minimapLayerOffset() | cmd}
 
     // ════════════════════════════════════════════════════════

@@ -7,7 +7,7 @@
 /// effect には依存しない純粋データ型（spriteFrames の格子→px 解決のみ `GameEngine.Game` を使う）。
 mod UnitBase {
 
-    use Sprite.SpriteResource
+    use SpriteRes.SpriteResource
 
 
     /// 持ち物アイテムの種別。`weapons.json` / `staves.json` / `consumables.json` の
@@ -53,7 +53,7 @@ mod UnitBaseCodec {
     use Util.Json.Json.{JObject, JString, JNumber, JArray, JBool}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, expectBool, floatToBd, intToBd}
     use UnitBase.{UnitBase, ItemKind, InventoryEntry}
-    use Sprite.SpriteResource
+    use SpriteRes.SpriteResource
 
     /// 共有戦闘ステータスを JSON オブジェクトの Map に書き出す。呼び出し側が
     /// `growthRates`（味方）や将来の特殊能力（敵）を追加できるよう Map を返す。

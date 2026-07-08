@@ -34,7 +34,7 @@ mod EnemyCatalog {
         speed            = Int32,
         skill            = Int32,
         luck             = Int32,
-        sprite           = Sprite.SpriteResource,
+        sprite           = SpriteRes.SpriteResource,
         initialInventory = List[UnitBase.InventoryEntry],
         description      = String,
         spriteFrames     = Option[SpriteFrames],

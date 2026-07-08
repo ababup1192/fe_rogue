@@ -1,4 +1,4 @@
-/// `.map.json` (MapResource.Level) を読み TileMapLayer を構築する loader。
+/// `.map.json` (MapResource.Level) を読み TileLayer を構築する loader。
 ///
 /// 役割:
 ///   - `wallMask` から TRBL を計算し `Material.wallMap` で AutoLayerWalls タイルに展開
@@ -14,19 +14,19 @@
 /// そのまま流用できる (将来 DungeonComposer に loader 注入で接続する計画)。
 mod MapLoader {
 
-    /// `.map.json` から TileMapLayer を 1 枚構築する。
+    /// `.map.json` から TileLayer を 1 枚構築する。
     /// GPU upload まで完了した状態で返す。
-    pub def loadLevel(mapPath: String, textureName: String): TileMapLayer
+    pub def loadLevel(mapPath: String, textureName: String): TileLayer
             \ { GameEngine.Game, Fs.FileRead } =
         let raw = loadLevelRaw(mapPath, textureName);
         let instances = TileRendering.buildTileInstances(raw#tiles, raw#tileSet, raw#tileSize);
         let (tileVaoId, tileCount) = GameEngine.Game.initTileBuffer(instances);
-        TileMapLayer.make({
+        TileLayer.make({
             tileSet        = raw#tileSet,
             tiles          = raw#tiles,
             collisionCells = raw#collisionCells,
             gridSize       = raw#gridSize
-        }) |> TileMapLayer.withGpuResources(tileVaoId, tileCount)
+        }) |> TileLayer.withGpuResources(tileVaoId, tileCount)
 
     /// GPU upload 前の生データを返す。複数モジュールを合成する場合 (DungeonComposer 系) に使う。
     pub def loadLevelRaw(mapPath: String, textureName: String): TileRendering.TileLevelRaw
@@ -101,7 +101,7 @@ mod MapLoader {
             |> List.filter(e -> e#identifier == "Door")
             |> List.map(e -> ({x = e#x, y = e#y}: {x = Int32, y = Int32}));
 
-        // TileSet 構築 (textureName 経由で texture info 取得)
+        // Tileset 構築 (textureName 経由で texture info 取得)
         let texInfo = match GameEngine.Game.getTextureInfo(textureName) {
             case Some(info) => info
             case None       => bug!("MapLoader: texture '${textureName}' not registered")
@@ -119,7 +119,7 @@ mod MapLoader {
             tileSize  = tileSize
             | atlas
         };
-        let tileSet = TileSet.make(atlasFilled);
+        let tileSet = Tileset.make(atlasFilled);
 
         ({
             tiles          = tiles,
@@ -130,10 +130,10 @@ mod MapLoader {
             tileSize       = tileSize
         }: TileRendering.TileLevelRaw)
 
-    /// 装飾レイヤー (Floor 等) を別 tileset で描画するための TileMapLayer を構築する。
-    /// `decorTiles` を読み、衝突無しの TileMapLayer を返す。
+    /// 装飾レイヤー (Floor 等) を別 tileset で描画するための TileLayer を構築する。
+    /// `decorTiles` を読み、衝突無しの TileLayer を返す。
     /// Walls 層と異なる texture で重ねるための関数。
-    pub def loadDecorLayer(mapPath: String, textureName: String): TileMapLayer
+    pub def loadDecorLayer(mapPath: String, textureName: String): TileLayer
             \ { GameEngine.Game, Fs.FileRead } =
         let level = match Persistence.load(mapPath) {
             case Some(l) => l
@@ -172,15 +172,15 @@ mod MapLoader {
             tileSize  = tileSize
             | atlas
         };
-        let tileSet = TileSet.make(atlasFilled);
+        let tileSet = Tileset.make(atlasFilled);
         let instances = TileRendering.buildTileInstances(tiles, tileSet, tileSize);
         let (vao, count) = GameEngine.Game.initTileBuffer(instances);
-        TileMapLayer.make({
+        TileLayer.make({
             tileSet        = tileSet,
             tiles          = tiles,
             collisionCells = Nil,   // 装飾レイヤーは衝突を持たない
             gridSize       = ({x = d#width, y = d#height}: {x = Int32, y = Int32})
-        }) |> TileMapLayer.withGpuResources(vao, count)
+        }) |> TileLayer.withGpuResources(vao, count)
 
     /// 装飾レイヤー (decorTiles) の生データを返す。
     /// DungeonComposer.composeDecorationLayer の dispatch ターゲットとして使う。
@@ -221,7 +221,7 @@ mod MapLoader {
             tileSize  = tileSize
             | atlas
         };
-        let tileSet = TileSet.make(atlasFilled);
+        let tileSet = Tileset.make(atlasFilled);
         ({
             tiles    = tiles,
             tileSet  = tileSet,

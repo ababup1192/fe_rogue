@@ -50,7 +50,7 @@ mod TestStaffCast {
          weight     = 0.5,
          sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                          offset = {x = 0.0, y = 0.0},
-                         scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+                         scale = {x = 1.0, y = 1.0}, flipForFacing = false}: SpriteRes.SpriteResource),
          description = "", effectRule = None}
 
     /// effectRule を差し込めるテスト用の杖（effect 種別は DSL 経路では使われないのでダミー）。
@@ -58,7 +58,7 @@ mod TestStaffCast {
         {name = "テスト杖", effect = Staff.StaffEffect.Bind, durability = 3, weight = 0.75,
          sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                      offset = {x = 0.0, y = 0.0},
-                     scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+                     scale = {x = 1.0, y = 1.0}, flipForFacing = false}: SpriteRes.SpriteResource),
          description = "", effectRule = ruleJson}
 
     /// JSON(簡易合成形式) を EffectRule へ decode するフィクスチャ。decode 失敗は即 bug。

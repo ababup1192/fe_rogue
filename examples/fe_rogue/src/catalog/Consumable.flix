@@ -21,7 +21,7 @@ mod Consumable {
 
     use Util.Json.Json
     use Util.Json.Json.{JObject, JString, JNumber}
-    use Sprite.SpriteResource
+    use SpriteRes.SpriteResource
 
     /// 消費アイテムの効果の種類（杖の `Staff.StaffEffect` を手本にした enum）。
     /// `magnitude` / `duration` の意味は種類ごとに異なる（下記コメント参照）。
@@ -264,7 +264,7 @@ mod ConsumableCatalogCodec {
     use Util.Json.Json.{JObject, JString, JNumber}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use Consumable.ConsumableResource
-    use Sprite.SpriteResource
+    use SpriteRes.SpriteResource
 
     pub def encodeConsumable(item: ConsumableResource): Json =
         let base = Map#{

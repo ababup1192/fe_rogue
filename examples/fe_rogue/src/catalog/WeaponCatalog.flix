@@ -13,7 +13,7 @@
 ///   }
 ///
 /// **設計メモ**:
-///   - `WeaponSpriteResource` は中立な `Sprite.SpriteResource` の alias。
+///   - `WeaponSpriteResource` は中立な `SpriteRes.SpriteResource` の alias。
 ///     sprite 型は `Sprite` mod に集約済みで、Unit/Weapon/Staff が共有する (逆向き依存なし)
 ///   - encode は `Saveable[WeaponCatalog]` 経由で pure シグネチャ
 ///     (内部の `JsonCodec.floatToBd` / `intToBd` が `unsafe IO` を隠蔽)
@@ -138,9 +138,9 @@ mod WeaponCatalog {
         max = Int32
     }
 
-    /// 武器カタログの sprite メタ情報。中立な `Sprite.SpriteResource` の alias として共有する。
+    /// 武器カタログの sprite メタ情報。中立な `SpriteRes.SpriteResource` の alias として共有する。
     /// UnitCatalog への逆依存を避けるため `Sprite` mod に集約している。
-    pub type alias WeaponSpriteResource = Sprite.SpriteResource
+    pub type alias WeaponSpriteResource = SpriteRes.SpriteResource
 
     /// 武器 1 種類ぶんのデータ。
     /// `name` は表示用の和名。`attack` は武器の攻撃力ボーナス、`durability` は耐久度。

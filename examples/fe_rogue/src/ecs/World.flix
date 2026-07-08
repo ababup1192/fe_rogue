@@ -78,9 +78,9 @@ pub type alias UnitAnim = { name = String, elapsed = Float64 }
 /// 同型 Vec2 の誤順を防ぐ名前渡し＋faction を EntityRef に閉じ込め（uid は plumbing 内で decode）。
 pub type alias MarkerMove = { ref = World.EntityRef, pos = Vec2.Vec2 }
 
-/// GPU タイルレイヤーの軽量描画ハンドル（静的・per-cell TileData 非保持）。scene の TileMapLayer ノード
+/// GPU タイルレイヤーの軽量描画ハンドル（静的・per-cell TileData 非保持）。scene の TileLayer ノード
 /// から rebuild 時に bake し、毎フレーム camera 適用して engine `TileMapRenderCmd` に組む。フィールドは engine の
-/// `TileMapRenderCmd`/`TileMapLayer` に一致（`tileVaoId`/`tileCount`）。`worldPos` はレイヤーの world 座標（camera parity）。
+/// `TileMapRenderCmd`/`TileLayer` に一致（`tileVaoId`/`tileCount`）。`worldPos` はレイヤーの world 座標（camera parity）。
 pub type alias TileLayerHandle = {
     textureName = String, tileSize = Float64, worldPos = Vec2.Vec2,
     color = Color, zIndex = Int32, tileVaoId = Int32, tileCount = Int32
@@ -279,7 +279,7 @@ pub enum World {
                  groundItems = Map[Int32, GroundItems.Data],
                  // fx の寿命 store。spawn は `Cmd.SpawnPopupFx/SpawnExplosionFx`
                  // （applyCmd が nextSeq で採番し +1）、寿命 tick と期限切れ drop は stepWorld（EcsTween と同じ
-                 // 「stepWorld が World を直接進める」前例）。scene の子 Label2D/Sprite2D は描画 view で、
+                 // 「stepWorld が World を直接進める」前例）。scene の子 Text/Sprite は描画 view で、
                  // gameLoop が `DamagePopupFx.syncView`/`ExplosionFx.syncView` で store から派生する。
                  // 3-builder は command/step 由来ゆえ preserve（scene mirror 元なし・~0.7s 寿命の transient なので
                  // floor 遷移で残っても自然 expire＝prune 不要）。
@@ -2296,7 +2296,7 @@ mod World {
     pub def groundItemAtOf(cell: {x = Int32, y = Int32}, world: World): Option[GroundItems.Data] =
         let World.World(w) = world; Map.get(cellKey(cell), w#groundItems)
 
-    /// ダメージ数字 fx store（seq → 寿命）。syncView が読み scene 子 Label2D を派生する。
+    /// ダメージ数字 fx store（seq → 寿命）。syncView が読み scene 子 Text を派生する。
     pub def popupFxOf(world: World): Map[Int32, PopupFx] =
         let World.World(w) = world; w#popupFx
 

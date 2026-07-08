@@ -9,9 +9,9 @@
 /// EnemyRange / DangerZone のセル計算は地形（`World.terrainOrBug`）を World から読む。
 
 /// 範囲表示が共有する描画プリミティブ。セル計算 / 色・α は呼び出し側（各 range mod）の責任で、
-/// この mod は「セル群を 45° 斜線ハッチ Panel の box Drawable に落とす」ことだけを担う。
+/// この mod は「セル群を 45° 斜線ハッチ NineSlice の box Drawable に落とす」ことだけを担う。
 ///
-/// 各セルは塗り（半透明）＋45° 斜線ハッチ＋枠線＋角丸の Panel で描く
+/// 各セルは塗り（半透明）＋45° 斜線ハッチ＋枠線＋角丸の NineSlice で描く
 /// （Godot StyleBoxFlat + 斜線シェーダ相当。画像テクスチャは使わない）。
 /// 呼び出し側は「色相 color」と「強調度 alpha」だけ渡し、塗り/縞/枠の
 /// 不透明度と縞色/枠色は本 mod が color から派生させる（CSS の
@@ -34,34 +34,34 @@ mod RangeOverlay {
          g = c#g + (1.0f32 - c#g) * t,
          b = c#b + (1.0f32 - c#b) * t}
 
-    /// 1 セル分のハッチ Panel（サイズ＋塗り/縞/枠、位置なし）。塗りは淡く床を見せ、色は斜線と枠で表現する
+    /// 1 セル分のハッチ NineSlice（サイズ＋塗り/縞/枠、位置なし）。塗りは淡く床を見せ、色は斜線と枠で表現する
     /// （CSS の重み付けを踏襲）。World 描画（`tileDrawables`）が 1 セルの見た目を組むために使う。
-    pub def tilePanel(color: Color, alpha: Float32): Panel =
+    pub def tilePanel(color: Color, alpha: Float32): NineSlice =
         let side = MapSnapshot.tileSize() - inset() * 2.0;
-        Panel.make(({x = side, y = side}: Vec2.Vec2), color)
-            |> Panel.setBackgroundAlpha(alpha * 0.08f32)
-            |> Panel.setBorderColor(lighten(color, 0.2f32))
-            |> Panel.setBorderAlpha(alpha)
-            |> Panel.setBorderWidth(0.5)
-            |> Panel.setCornerRadius(2.0)
-            |> Panel.setStripe(lighten(color, 0.5f32), alpha * 0.65f32, stripeWidth(), stripePeriod())
+        NineSlice.make(({x = side, y = side}: Vec2.Vec2), color)
+            |> NineSlice.setBackgroundAlpha(alpha * 0.08f32)
+            |> NineSlice.setBorderColor(lighten(color, 0.2f32))
+            |> NineSlice.setBorderAlpha(alpha)
+            |> NineSlice.setBorderWidth(0.5)
+            |> NineSlice.setCornerRadius(2.0)
+            |> NineSlice.setStripe(lighten(color, 0.5f32), alpha * 0.65f32, stripeWidth(), stripePeriod())
             |> CanvasItem.setZIndex(tileZIndex())
 
-    /// セル中心を基準に Panel を置く左上座標（世界座標）。`tileDrawables` が使う。
+    /// セル中心を基準に NineSlice を置く左上座標（世界座標）。`tileDrawables` が使う。
     def tileTopLeft(cell: {x = Int32, y = Int32}): Vec2.Vec2 =
         let half = (MapSnapshot.tileSize() - inset() * 2.0) / 2.0;
         let center = MapSnapshot.cellCenter(cell);
         {x = center#x - half, y = center#y - half}
 
-    /// `cells` を camera 適用済みのハッチ box Drawable にする（World render System 用）。`Panel.toDrawables`
-    /// で `tilePanel` と同一 styling を Drawable 化し、位置は `tileTopLeft` を camera 変換、scale（=Panel サイズ）を
+    /// `cells` を camera 適用済みのハッチ box Drawable にする（World render System 用）。`NineSlice.toDrawables`
+    /// で `tilePanel` と同一 styling を Drawable 化し、位置は `tileTopLeft` を camera 変換、scale（=NineSlice サイズ）を
     /// zoom 倍する（`RenderWorld.unitDraw` のスケール処理と対称）。
     pub def tileDrawables(cells: List[{x = Int32, y = Int32}], color: Color, alpha: Float32,
-                          transform: Camera2D.ViewTransform): List[GameEngine.Drawable] =
+                          transform: Camera.ViewTransform): List[GameEngine.Drawable] =
         let panel = tilePanel(color, alpha);
         List.flatMap(cell -> {
-            let screenTopLeft = Camera2D.applyToWorldPos(transform, tileTopLeft(cell));
-            Panel.toDrawables(panel, screenTopLeft)
+            let screenTopLeft = Camera.applyToWorldPos(transform, tileTopLeft(cell));
+            NineSlice.toDrawables(panel, screenTopLeft)
                 |> Render.applyCameraScale(transform)
         }, cells)
 

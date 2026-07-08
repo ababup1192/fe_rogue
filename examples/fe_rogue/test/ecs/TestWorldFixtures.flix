@@ -108,7 +108,7 @@ mod TestWorldFixtures {
     // 盤面（地形 read-model + 階段）
     // ════════════════════════════════════════════════════════
 
-    /// 壁なし w×h・1 部屋の地形 read-model。scene の TileMapLayer を経由せず MapSnapshot を直組みする
+    /// 壁なし w×h・1 部屋の地形 read-model。scene の TileLayer を経由せず MapSnapshot を直組みする
     /// （`Cmd.SetMapSnapshot` に渡す値）。
     pub def floorSnapshot(size: {w = Int32, h = Int32}): MapSnapshot =
         {tileSize   = MapSnapshot.tileSize(),

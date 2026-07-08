@@ -9,7 +9,7 @@ mod UiExtract {
     /// atlasOf は font 名→FontAtlas（呼び側が Game.getFontAtlas 等で組む）。
     /// atlasOf が副作用を持つ場合はその effect が伝播する。
     pub def measureTexts(texts: Map[EntityId, UiWidget.TextComp], atlasOf: String -> FontAtlas \ ef): Map[EntityId, Vec2.Vec2] \ ef =
-        texts |> Map.map(comp -> Label2D.measure(Label2D.make(comp#text, atlasOf(comp#font), comp#fontSize)))
+        texts |> Map.map(comp -> Text.measure(Text.make(comp#text, atlasOf(comp#font), comp#fontSize)))
 
     /// UI entity を (位置, RenderItem) 列へ射影する。可視 entity のみ・矩形が確定したもののみ。
     /// 並びは (zIndex, 階層深さ, order, id) で安定ソートする（背面から前面へ）。
@@ -109,7 +109,7 @@ mod UiExtract {
         }
 
     /// 表示セルの切り出し矩形を求める。regionRect が明示されていればそれを使う。
-    /// 無く格子分割がある場合はテクスチャ寸法を引き、frame をセルへ写す（engine Sprite2D.computeUv と
+    /// 無く格子分割がある場合はテクスチャ寸法を引き、frame をセルへ写す（engine Sprite.computeUv と
     /// 同じ規則: cellW=texW/hframes, cellH=texH/vframes, col=frame mod hframes, row=frame/hframes）。
     /// テクスチャ未登録・分割なしのときはテクスチャ全体（None）。
     def resolveRegion(sprite: UiWidget.SpriteComp,

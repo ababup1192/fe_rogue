@@ -19,7 +19,7 @@
 mod ChestCatalog {
 
     use Util.Json.Json
-    use Sprite.SpriteResource
+    use SpriteRes.SpriteResource
 
     /// 宝箱カタログ全体。`CatalogContainer[ChestResource]` を wrap し、`Saveable` で
     /// chests.json への round-trip 保存（IDE Resources タブ編集）を可能にする。
@@ -88,7 +88,7 @@ mod ChestCatalogCodec {
     use JsonCodec.{expectObject, expectString, expectInt, intToBd, encodeList, decodeList}
     use ChestCatalog.ChestResource
     use FloorCatalog.SpawnEntry
-    use Sprite.SpriteResource
+    use SpriteRes.SpriteResource
 
     pub def encodeChest(chest: ChestResource): Json =
         JObject(Map#{

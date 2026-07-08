@@ -1,15 +1,15 @@
 // Tests for Node2D default methods
 //
-// Sprite2D を具象型として使い、Node2D trait の
+// Sprite を具象型として使い、Node2D trait の
 // デフォルト実装メソッドをテストする。
 // getter/setter 自体のテストは除外し、
 // 計算ロジックを持つメソッドのみ検証する。
 
 mod TestNode2D {
 
-    /// テスト用ヘルパー: 原点に配置したデフォルト Sprite2D を作る
-    def mkSprite(): Sprite2D =
-        Sprite2D.make("", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0})
+    /// テスト用ヘルパー: 原点に配置したデフォルト Sprite を作る
+    def mkSprite(): Sprite =
+        Sprite.make("", {x = 0.0, y = 0.0}, {x = 1.0, y = 1.0})
 
     /// Float64 の近似比較（許容誤差 0.001）
     def approx(a: Float64, b: Float64): Bool =

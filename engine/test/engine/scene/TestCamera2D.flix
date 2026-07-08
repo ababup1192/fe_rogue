@@ -1,4 +1,4 @@
-/// Camera2D の追従処理 (`process`) のテスト
+/// Camera の追従処理 (`process`) のテスト
 ///
 /// 検証する観点:
 ///   - smoothing 単純 lerp が `speed * delta` を t として position へ補間する
@@ -29,8 +29,8 @@ mod TestCamera2D {
         {viewportWidth = 200.0, viewportHeight = 100.0}
 
     /// position をターゲットにセットしたカメラを作る（zoom=1, 各種フラグはテスト側で個別設定）
-    def cameraAt(target: Vec2.Vec2): Camera2D =
-        Camera2D.make({x = 0.0, y = 0.0})
+    def cameraAt(target: Vec2.Vec2): Camera =
+        Camera.make({x = 0.0, y = 0.0})
             |> Node2D.setPosition(target)
 
     // ════════════════════════════════════════════════════════
@@ -42,20 +42,20 @@ mod TestCamera2D {
     @Test
     def testSmoothingHalfwayWithSpeedTimesDelta(): Unit \ Assert =
         let cam = cameraAt({x = 10.0, y = 0.0})
-            |> Camera2D.setPositionSmoothingEnabled(true)
-            |> Camera2D.setPositionSmoothingSpeed(10.0);
-        let processed = Camera2D.process(0.05 |> Duration.seconds, vp200x100(), cam);
-        let s = Camera2D.getSmoothPosition(processed);
+            |> Camera.setPositionSmoothingEnabled(true)
+            |> Camera.setPositionSmoothingSpeed(10.0);
+        let processed = Camera.process(0.05 |> Duration.seconds, vp200x100(), cam);
+        let s = Camera.getSmoothPosition(processed);
         Assert.assertEq(expected = true, approx(s#x, 5.0) and approx(s#y, 0.0))
 
     /// dt が大きすぎても overshoot しない（夾着クランプ）。speed=100, dt=1.0 で t は 1.0 にクランプ
     @Test
     def testSmoothingClampsAtOne(): Unit \ Assert =
         let cam = cameraAt({x = 10.0, y = 0.0})
-            |> Camera2D.setPositionSmoothingEnabled(true)
-            |> Camera2D.setPositionSmoothingSpeed(100.0);
-        let processed = Camera2D.process(1.0 |> Duration.seconds, vp200x100(), cam);
-        let s = Camera2D.getSmoothPosition(processed);
+            |> Camera.setPositionSmoothingEnabled(true)
+            |> Camera.setPositionSmoothingSpeed(100.0);
+        let processed = Camera.process(1.0 |> Duration.seconds, vp200x100(), cam);
+        let s = Camera.getSmoothPosition(processed);
         // t=1 で完全追従 → smoothPosition = target
         Assert.assertEq(expected = true, approx(s#x, 10.0) and approx(s#y, 0.0))
 
@@ -64,8 +64,8 @@ mod TestCamera2D {
     def testSmoothingDisabledSnaps(): Unit \ Assert =
         let cam = cameraAt({x = 42.0, y = 7.0});
         // 全フラグ無効。smoothPosition は target 即一致になる
-        let processed = Camera2D.process(0.016 |> Duration.seconds, vp200x100(), cam);
-        let s = Camera2D.getSmoothPosition(processed);
+        let processed = Camera.process(0.016 |> Duration.seconds, vp200x100(), cam);
+        let s = Camera.getSmoothPosition(processed);
         Assert.assertEq(expected = true, approx(s#x, 42.0) and approx(s#y, 7.0))
 
     // ════════════════════════════════════════════════════════
@@ -78,11 +78,11 @@ mod TestCamera2D {
     @Test
     def testDragMarginInsideKeepsCamera(): Unit \ Assert =
         let cam = cameraAt({x = 40.0, y = 0.0})
-            |> Camera2D.setDragHorizontalEnabled(true)
-            |> Camera2D.setDragLeftMargin(0.5)
-            |> Camera2D.setDragRightMargin(0.5);
-        let processed = Camera2D.process(1.0 |> Duration.seconds, vp200x100(), cam);
-        let s = Camera2D.getSmoothPosition(processed);
+            |> Camera.setDragHorizontalEnabled(true)
+            |> Camera.setDragLeftMargin(0.5)
+            |> Camera.setDragRightMargin(0.5);
+        let processed = Camera.process(1.0 |> Duration.seconds, vp200x100(), cam);
+        let s = Camera.getSmoothPosition(processed);
         Assert.assertEq(expected = true, approx(s#x, 0.0))
 
     /// drag horizontal、target が margin を超える → margin 境界まで追従。
@@ -91,11 +91,11 @@ mod TestCamera2D {
     @Test
     def testDragMarginOutsideFollowsToBoundary(): Unit \ Assert =
         let cam = cameraAt({x = 80.0, y = 0.0})
-            |> Camera2D.setDragHorizontalEnabled(true)
-            |> Camera2D.setDragLeftMargin(0.5)
-            |> Camera2D.setDragRightMargin(0.5);
-        let processed = Camera2D.process(1.0 |> Duration.seconds, vp200x100(), cam);
-        let s = Camera2D.getSmoothPosition(processed);
+            |> Camera.setDragHorizontalEnabled(true)
+            |> Camera.setDragLeftMargin(0.5)
+            |> Camera.setDragRightMargin(0.5);
+        let processed = Camera.process(1.0 |> Duration.seconds, vp200x100(), cam);
+        let s = Camera.getSmoothPosition(processed);
         // smoothing 無効なので drag margin 適用後の logical = 30 がそのまま smoothPosition に
         Assert.assertEq(expected = true, approx(s#x, 30.0))
 
@@ -104,11 +104,11 @@ mod TestCamera2D {
     @Test
     def testDragMarginVerticalAxis(): Unit \ Assert =
         let cam = cameraAt({x = 0.0, y = 50.0})
-            |> Camera2D.setDragVerticalEnabled(true)
-            |> Camera2D.setDragTopMargin(0.4)
-            |> Camera2D.setDragBottomMargin(0.4);
-        let processed = Camera2D.process(1.0 |> Duration.seconds, vp200x100(), cam);
-        let s = Camera2D.getSmoothPosition(processed);
+            |> Camera.setDragVerticalEnabled(true)
+            |> Camera.setDragTopMargin(0.4)
+            |> Camera.setDragBottomMargin(0.4);
+        let processed = Camera.process(1.0 |> Duration.seconds, vp200x100(), cam);
+        let s = Camera.getSmoothPosition(processed);
         Assert.assertEq(expected = true, approx(s#y, 30.0))
 
     // ════════════════════════════════════════════════════════
@@ -119,18 +119,18 @@ mod TestCamera2D {
     @Test
     def testLimitClampsRight(): Unit \ Assert =
         let cam = cameraAt({x = 200.0, y = 0.0})
-            |> Camera2D.setLimitRight(100);
-        let processed = Camera2D.process(0.016 |> Duration.seconds, vp200x100(), cam);
-        let s = Camera2D.getSmoothPosition(processed);
+            |> Camera.setLimitRight(100);
+        let processed = Camera.process(0.016 |> Duration.seconds, vp200x100(), cam);
+        let s = Camera.getSmoothPosition(processed);
         Assert.assertEq(expected = true, approx(s#x, 100.0))
 
     /// limitLeft=-50、target=(-200,0) でも smoothPosition.x は -50 を下回らない
     @Test
     def testLimitClampsLeft(): Unit \ Assert =
         let cam = cameraAt({x = -200.0, y = 0.0})
-            |> Camera2D.setLimitLeft(-50);
-        let processed = Camera2D.process(0.016 |> Duration.seconds, vp200x100(), cam);
-        let s = Camera2D.getSmoothPosition(processed);
+            |> Camera.setLimitLeft(-50);
+        let processed = Camera.process(0.016 |> Duration.seconds, vp200x100(), cam);
+        let s = Camera.getSmoothPosition(processed);
         Assert.assertEq(expected = true, approx(s#x, -50.0))
 
     // ════════════════════════════════════════════════════════
@@ -141,20 +141,20 @@ mod TestCamera2D {
     /// 引数の globalPos に基づいて計算する（process が走っていない or 走った後でも）
     @Test
     def testGetViewTransformUsesGlobalPosWhenAllFlagsOff(): Unit \ Assert =
-        let cam = Camera2D.make({x = 99.0, y = 99.0});  // smoothPos = (99,99)
+        let cam = Camera.make({x = 99.0, y = 99.0});  // smoothPos = (99,99)
         // globalPos は (0,0) として渡す（呼び出し側 = render が scene tree から取る値）
-        let t = Camera2D.getViewTransform(cam, {x = 0.0, y = 0.0}, vp200x100());
+        let t = Camera.getViewTransform(cam, {x = 0.0, y = 0.0}, vp200x100());
         // DragCenter で globalPos=(0,0), zoom=(1,1) → screenCenter=(0,0), offset=(0-100, 0-50)
         Assert.assertEq(expected = true, approx(t#offset#x, -100.0) and approx(t#offset#y, -50.0))
 
     /// smoothing 有効時は smoothPosition を起点にする（globalPos は無視）
     @Test
     def testGetViewTransformUsesSmoothPosWhenFollowingActive(): Unit \ Assert =
-        let cam = Camera2D.make({x = 0.0, y = 0.0})
-            |> Camera2D.setSmoothPosition({x = 50.0, y = 25.0})
-            |> Camera2D.setPositionSmoothingEnabled(true);
+        let cam = Camera.make({x = 0.0, y = 0.0})
+            |> Camera.setSmoothPosition({x = 50.0, y = 25.0})
+            |> Camera.setPositionSmoothingEnabled(true);
         // globalPos=(0,0) を渡しても smoothPosition (50,25) で計算される
-        let t = Camera2D.getViewTransform(cam, {x = 0.0, y = 0.0}, vp200x100());
+        let t = Camera.getViewTransform(cam, {x = 0.0, y = 0.0}, vp200x100());
         // screenCenter=(50,25), offset=(50-100, 25-50) = (-50, -25)
         Assert.assertEq(expected = true, approx(t#offset#x, -50.0) and approx(t#offset#y, -25.0))
 
@@ -165,56 +165,56 @@ mod TestCamera2D {
     /// drag 無効時は 4 px 以内が settled。target=smooth=(0,0) → 0 px 差で true
     @Test
     def testDeadZoneWithoutDragIsTinyEpsilon(): Unit \ Assert =
-        let cam = Camera2D.make({x = 0.0, y = 0.0});
+        let cam = Camera.make({x = 0.0, y = 0.0});
         // smoothPosition も初期化で position と同値 → 距離 0
         Assert.assertEq(expected = true,
-            Camera2D.isWithinDragDeadZone(cam, vp200x100()))
+            Camera.isWithinDragDeadZone(cam, vp200x100()))
 
     /// drag 無効、target が smooth から 5 px 離れている → 4 px 超えで false
     @Test
     def testDeadZoneWithoutDragRejectsBeyondEpsilon(): Unit \ Assert =
-        let cam = Camera2D.make({x = 5.0, y = 0.0})
-            |> Camera2D.setSmoothPosition({x = 0.0, y = 0.0});
+        let cam = Camera.make({x = 5.0, y = 0.0})
+            |> Camera.setSmoothPosition({x = 0.0, y = 0.0});
         Assert.assertEq(expected = false,
-            Camera2D.isWithinDragDeadZone(cam, vp200x100()))
+            Camera.isWithinDragDeadZone(cam, vp200x100()))
 
     /// drag horizontal 有効。viewport 200, zoom 1, dragRightMargin 0.3 → world dead zone half
     /// = 200/2 * 0.3 = 30. target が smooth から 28 px 離れていても dead zone 内 → true
     @Test
     def testDeadZoneWithDragMarginAcceptsWithinMargin(): Unit \ Assert =
-        let cam = Camera2D.make({x = 28.0, y = 0.0})
-            |> Camera2D.setSmoothPosition({x = 0.0, y = 0.0})
-            |> Camera2D.setDragHorizontalEnabled(true)
-            |> Camera2D.setDragLeftMargin(0.3)
-            |> Camera2D.setDragRightMargin(0.3);
+        let cam = Camera.make({x = 28.0, y = 0.0})
+            |> Camera.setSmoothPosition({x = 0.0, y = 0.0})
+            |> Camera.setDragHorizontalEnabled(true)
+            |> Camera.setDragLeftMargin(0.3)
+            |> Camera.setDragRightMargin(0.3);
         Assert.assertEq(expected = true,
-            Camera2D.isWithinDragDeadZone(cam, vp200x100()))
+            Camera.isWithinDragDeadZone(cam, vp200x100()))
 
     /// drag margin 30、target が smooth から 50 px 離れている → dead zone (30+2=32) 超え → false
     @Test
     def testDeadZoneWithDragMarginRejectsBeyondMargin(): Unit \ Assert =
-        let cam = Camera2D.make({x = 50.0, y = 0.0})
-            |> Camera2D.setSmoothPosition({x = 0.0, y = 0.0})
-            |> Camera2D.setDragHorizontalEnabled(true)
-            |> Camera2D.setDragLeftMargin(0.3)
-            |> Camera2D.setDragRightMargin(0.3);
+        let cam = Camera.make({x = 50.0, y = 0.0})
+            |> Camera.setSmoothPosition({x = 0.0, y = 0.0})
+            |> Camera.setDragHorizontalEnabled(true)
+            |> Camera.setDragLeftMargin(0.3)
+            |> Camera.setDragRightMargin(0.3);
         Assert.assertEq(expected = false,
-            Camera2D.isWithinDragDeadZone(cam, vp200x100()))
+            Camera.isWithinDragDeadZone(cam, vp200x100()))
 
     /// drag margin で大移動 → process を回せば smooth が dead zone 内に収束する
     /// （フリーズ修正の核となる挙動の pin）
     @Test
     def testDeadZoneReachedAfterProcessConvergence(): Unit \ Assert =
-        let cam = Camera2D.make({x = 100.0, y = 0.0})    // target は遠く
-            |> Camera2D.setSmoothPosition({x = 0.0, y = 0.0})
-            |> Camera2D.setPositionSmoothingEnabled(true)
-            |> Camera2D.setPositionSmoothingSpeed(5.0)
-            |> Camera2D.setDragHorizontalEnabled(true)
-            |> Camera2D.setDragLeftMargin(0.3)
-            |> Camera2D.setDragRightMargin(0.3);
+        let cam = Camera.make({x = 100.0, y = 0.0})    // target は遠く
+            |> Camera.setSmoothPosition({x = 0.0, y = 0.0})
+            |> Camera.setPositionSmoothingEnabled(true)
+            |> Camera.setPositionSmoothingSpeed(5.0)
+            |> Camera.setDragHorizontalEnabled(true)
+            |> Camera.setDragLeftMargin(0.3)
+            |> Camera.setDragRightMargin(0.3);
         // 1.0 秒進めて収束させる
-        let processed = Camera2D.process(1.0 |> Duration.seconds, vp200x100(), cam);
+        let processed = Camera.process(1.0 |> Duration.seconds, vp200x100(), cam);
         // 収束後、target が dead zone 内に居る
         Assert.assertEq(expected = true,
-            Camera2D.isWithinDragDeadZone(processed, vp200x100()))
+            Camera.isWithinDragDeadZone(processed, vp200x100()))
 }

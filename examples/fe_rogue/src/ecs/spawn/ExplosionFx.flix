@@ -6,7 +6,7 @@
 /// frame 0 → frameCount-1 まで送ることでコマ送りアニメする。
 ///
 /// scene ノードは持たない。寿命・位置・scale すべて World の `explosionFx` store が持ち、
-/// 描画は `RenderWorld.renderExplosions` が Sprite2D 値を組んで直描きする（コマ送りは経過比率から導出）。
+/// 描画は `RenderWorld.renderExplosions` が Sprite 値を組んで直描きする（コマ送りは経過比率から導出）。
 mod ExplosionFx {
 
     /// explosion.png は 896x576。64px グリッドで 14 列 x 9 行。**1 行目（frame 0..13）が爆発**。

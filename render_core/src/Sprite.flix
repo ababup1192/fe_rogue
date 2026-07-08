@@ -121,7 +121,7 @@ mod RenderSprite {
         GL30.glBindVertexArray(0)
 
     // ========================================================================
-    // Polygon (Polygon2D) Rendering — sprite シェーダを useTexture=0 で流用
+    // Polygon (Polygon) Rendering — sprite シェーダを useTexture=0 で流用
     // ========================================================================
 
     /// 多角形描画用の VAO と動的 VBO を生成する。
@@ -218,7 +218,7 @@ mod RenderSprite {
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         vbo
 
-    /// TileMapLayer 専用 VAO を構築する。
+    /// TileLayer 専用 VAO を構築する。
     /// loc 0: 共有 quad VBO (vertex.xy = 局所座標, vertex.zw = UV)
     /// loc 1-4: per-instance VBO (divisor=1)
     pub def buildTileMapVAO(quadVBO: Int32, instanceVBO: Int32): Int32 \ IO =
@@ -246,7 +246,7 @@ mod RenderSprite {
         GL30.glBindVertexArray(0);
         vao
 
-    /// 1 draw call で TileMapLayer のすべてのタイルを描画する。
+    /// 1 draw call で TileLayer のすべてのタイルを描画する。
     pub def drawTileMapInstanced(tileShader: Int32, texId: Int32, tileVao: Int32,
                                   layerPos: Vec2.Vec2, tileSize: Float64,
                                   tileScale: Vec2.Vec2,

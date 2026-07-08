@@ -1,13 +1,13 @@
 /// WeaponIconRender — キャラ左上に常時表示する「装備武器の系統シンボル」アイコン
 ///
 /// scene ノードは持たない。装備武器の系統は World store（weaponView）から導出し、
-/// `renderPlates`（囲い ColorRect×2 = drawables チャンネル）と `renderGlyphs`
-/// （WeaponGlyph の Polygon2D/Arc2D 値 = polygon チャンネル）が毎フレーム直描きする。
+/// `renderPlates`（囲い Rect×2 = drawables チャンネル）と `renderGlyphs`
+/// （WeaponGlyph の Polygon/Arc 値 = polygon チャンネル）が毎フレーム直描きする。
 /// 待機/行動済みの暗転は waited/enemyActed store からの乗算合成で再現する。
 ///
 /// 仕様:
 ///   - 表示する絵は「実際の装備武器そのもの」ではなく、武器系統（剣/斧/槍/弓/魔法）を
-///     象徴する塗りシルエット。スプライトではなく engine の Polygon2D / Arc2D で直接描く
+///     象徴する塗りシルエット。スプライトではなく engine の Polygon / Arc で直接描く
 ///     （`WeaponGlyph` が系統 → 凸ピース列へ写像）。ビットマップと違いどの zoom でも輪郭がくっきり出る。
 ///   - 武器だけだと盤面に埋もれて見えづらいので、濃紺のプレート背景を明るい枠で囲って浮かせる。
 ///   - 武器なし（素手）ユニットでは描かない（weaponView が内側 None）。
@@ -19,7 +19,7 @@ mod WeaponIconRender {
     /// キャラ中心（スプライトは centered）から、囲みの中心までのオフセット（px・左上）。要微調整。
     def iconOffset(): Vec2.Vec2 = {x = -9.0, y = -5.0}
 
-    /// 囲み（枠 ColorRect）の一辺（px）。アイコン実寸 12px（16px セル × scale 0.75）+ 余白。
+    /// 囲み（枠 Rect）の一辺（px）。アイコン実寸 12px（16px セル × scale 0.75）+ 余白。
     def boxSize(): Float64 = 13.0
 
     /// 枠の太さ（px）。この分だけ背景を内側にインセットして枠線に見せる。
@@ -34,7 +34,7 @@ mod WeaponIconRender {
     /// 枠色（明るいスレート。暗いプレートの輪郭を締めて視認性を上げる）。
     def borderColor(): Color = {r = 0.50f32, g = 0.55f32, b = 0.70f32}
     /// 囲み（枠・背景）の不透明度。下げるほど下のキャラ/床が透けて見える。
-    /// グリフ本体（Polygon2D / Arc2D）は不透明のまま残し、囲みだけ薄くする。
+    /// グリフ本体（Polygon / Arc）は不透明のまま残し、囲みだけ薄くする。
     def boxAlpha(): Float32 = 0.6f32
 
     // ─── 公開 API（直描き） ────────────────────────────
@@ -69,16 +69,16 @@ mod WeaponIconRender {
 
     /// 囲い（枠＋プレート背景）の Drawable 列（drawables チャンネル）。
     pub def renderPlates(world: World, holesOpt: Option[List[GridRect]],
-                          transform: Camera2D.ViewTransform):
+                          transform: Camera.ViewTransform):
             List[GameEngine.Drawable] \ GameEngine.Game =
         iconInputs(world, holesOpt) |> List.flatMap(inp -> {
             let half = boxSize() / 2.0;
             let inner = boxSize() - 2.0 * borderPx();
             let modColor = inp#modColor;
-            let border = ColorRect.make({x = boxSize(), y = boxSize()}, mulColor(borderColor(), modColor))
-                |> ColorRect.setAlpha(boxAlpha());
-            let bg = ColorRect.make({x = inner, y = inner}, mulColor(plateColor(), modColor))
-                |> ColorRect.setAlpha(boxAlpha());
+            let border = Rect.make({x = boxSize(), y = boxSize()}, mulColor(borderColor(), modColor))
+                |> Rect.setAlpha(boxAlpha());
+            let bg = Rect.make({x = inner, y = inner}, mulColor(plateColor(), modColor))
+                |> Rect.setAlpha(boxAlpha());
             let borderDs = rectDrawables(border,
                 {x = inp#center#x - half, y = inp#center#y - half}, iconZIndex(), transform);
             let bgDs = rectDrawables(bg,
@@ -88,10 +88,10 @@ mod WeaponIconRender {
         })
 
     /// 武器系統グリフの PolygonRenderCmd 列（polygon チャンネル）。
-    /// WeaponGlyph の各ピース（Polygon2D/Arc2D 値・アイコン中心基準のローカル位置）を
+    /// WeaponGlyph の各ピース（Polygon/Arc 値・アイコン中心基準のローカル位置）を
     /// world 座標へ動かして cmd 化する。暗転は cmd color への乗算で再現。
     pub def renderGlyphs(world: World, holesOpt: Option[List[GridRect]],
-                          transform: Camera2D.ViewTransform):
+                          transform: Camera.ViewTransform):
             List[GameEngine.PolygonRenderCmd] =
         iconInputs(world, holesOpt) |> List.flatMap(inp -> {
             let modColor = inp#modColor;
@@ -101,29 +101,29 @@ mod WeaponIconRender {
             })
         })
 
-    /// グリフ 1 ピース（Polygon2D/Arc2D の GlyphPiece 値）→ PolygonRenderCmd 列。
+    /// グリフ 1 ピース（Polygon/Arc の GlyphPiece 値）→ PolygonRenderCmd 列。
     def pieceCmds(piece: WeaponGlyph.GlyphPiece, center: Vec2.Vec2, modColor: Color,
-                   transform: Camera2D.ViewTransform): List[GameEngine.PolygonRenderCmd] =
+                   transform: Camera.ViewTransform): List[GameEngine.PolygonRenderCmd] =
         let withMod = (cmd: GameEngine.PolygonRenderCmd) ->
             ({color = mulColor(cmd#color, modColor), zIndex = iconZIndex() + 2 | cmd}: GameEngine.PolygonRenderCmd);
         match piece {
             case WeaponGlyph.GlyphPiece.Poly(poly) =>
                 let p = Node2D.getPosition(poly);
-                let screenPos = Camera2D.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
-                withMod(Polygon2D.toRenderCmd(screenPos, transform#scale, poly)) :: Nil
+                let screenPos = Camera.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
+                withMod(Polygon.toRenderCmd(screenPos, transform#scale, poly)) :: Nil
             case WeaponGlyph.GlyphPiece.Arc(arc) =>
                 let p = Node2D.getPosition(arc);
-                let screenPos = Camera2D.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
-                Arc2D.toRenderCmds(screenPos, transform#scale, arc) |> List.map(withMod)
+                let screenPos = Camera.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
+                Arc.toRenderCmds(screenPos, transform#scale, arc) |> List.map(withMod)
         }
 
-    /// ColorRect 値 1 枚を world 左上座標へ Drawable 化する（UnitHPBarRender と同型）。
-    def rectDrawables(rect: ColorRect, worldTopLeft: Vec2.Vec2, z: Int32,
-                       transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
-        let screenPos = Camera2D.applyToWorldPos(transform, worldTopLeft);
-        // ColorRect.toDrawable は純粋。呼び側の Game eff 連鎖を保つため checked_ecast で持ち上げる。
+    /// Rect 値 1 枚を world 左上座標へ Drawable 化する（UnitHPBarRender と同型）。
+    def rectDrawables(rect: Rect, worldTopLeft: Vec2.Vec2, z: Int32,
+                       transform: Camera.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
+        let screenPos = Camera.applyToWorldPos(transform, worldTopLeft);
+        // Rect.toDrawable は純粋。呼び側の Game eff 連鎖を保つため checked_ecast で持ち上げる。
         checked_ecast(
-            (ColorRect.toDrawable(rect, screenPos) :: Nil)
+            (Rect.toDrawable(rect, screenPos) :: Nil)
                 |> Render.applyCameraScale(transform)
                 |> List.map(d -> {zIndex = z | d}))
 

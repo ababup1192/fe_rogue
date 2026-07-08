@@ -21,7 +21,7 @@
 //     ├─ ringFg  (poly, 12 時起点に時計回りで満ちる充填弧)  ← サブポリを毎フレーム setPolyPolys で塗り替え
 //     └─ textRow (none) → label (text "ターンスキップ")
 //
-// リングは engine の Arc2D と同じアヌラス（中空円）分割の幾何を作る。UI の poly widget は 1 サブポリ =
+// リングは engine の Arc と同じアヌラス（中空円）分割の幾何を作る。UI の poly widget は 1 サブポリ =
 // 1 PolygonRenderCmd（レンダラは GL_TRIANGLE_FAN で凸多角形しか塗れない）なので、外周 2 点＋内周 2 点の
 // 凸クアッドをセグメントぶん並べた凸サブポリ列としてリングを組む（凹多角形は実機で中空にならない）。
 
@@ -52,7 +52,7 @@ mod TurnEndHoldUi {
     /// この秒数を超えてからゲージを表示する（短いタップでチラ見えさせない）。
     def showDelaySeconds(): Float64 = 0.15
 
-    /// 全周 = 2π。比率→角度の換算に使う（engine `Arc2D.tau` と同値）。
+    /// 全周 = 2π。比率→角度の換算に使う（engine `Arc.tau` と同値）。
     def tau(): Float64 = 6.283185307179586
     /// 12 時方向（-π/2）を起点に、充填率に応じて時計回り（角度増加方向）へ伸ばす。
     def ringStartAngle(): Float64 = -1.5707963267948966
@@ -60,7 +60,7 @@ mod TurnEndHoldUi {
     def ringOuterRadius(): Float64 = 3.0
     def ringWidth(): Float64 = 1.2
     def ringInnerRadius(): Float64 = ringOuterRadius() - ringWidth()
-    /// 弧の分割数（engine Arc2D の既定と同じ。多いほど滑らか）。
+    /// 弧の分割数（engine Arc の既定と同じ。多いほど滑らか）。
     def ringSegments(): Int32 = 32
     /// poly ノードのレイアウト矩形（6×6）左上を原点にしたときのリング中心（外周半径ぶん内側）。
     def ringLocalCenter(): Vec2.Vec2 = {x = ringOuterRadius(), y = ringOuterRadius()}
@@ -127,7 +127,7 @@ mod TurnEndHoldUi {
 
     /// 開始角 `ringStartAngle()` から `sweep` ラジアンぶんの中空扇形（アヌラス）を、`ringSegments()` 個の
     /// 凸クアッド（外周 2 点＋内周 2 点の 4 角形）へ分割する。レンダラは GL_TRIANGLE_FAN（凸前提）で
-    /// 凹多角形を塗れないため、外周弧＋内周逆順の 1 本の凹多角形にはせず、engine `Arc2D.toRenderCmds` と
+    /// 凹多角形を塗れないため、外周弧＋内周逆順の 1 本の凹多角形にはせず、engine `Arc.toRenderCmds` と
     /// 同じ角度刻み・中心・半径・頂点順（外周 a0, 外周 a1, 内周 a1, 内周 a0）でセグメントごとの凸クアッドに
     /// 割る（実機の塗り潰しと見た目一致のため）。sweep<=0 は空（非描画）。
     def ringSectorPolys(sweep: Float64): List[List[Vec2.Vec2]] =

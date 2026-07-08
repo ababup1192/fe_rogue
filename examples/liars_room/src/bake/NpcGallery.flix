@@ -48,7 +48,7 @@ mod NpcGallery {
     def label(atlas: FontAtlas, col: Int32): Render.Placed =
         let text = nameAt(col);
         let size = 20.0;
-        let w = Label2D.measure(Label2D.make(text, atlas, size))#x;
+        let w = Text.measure(Text.make(text, atlas, size))#x;
         let cx = Int32.toFloat64(col) * cellW() + cellW() / 2.0;
         ({x = cx - w / 2.0, y = 4.0 * rowH() + 8.0}, Render.textTinted(text, atlas, size, labelTint(), 10))
 

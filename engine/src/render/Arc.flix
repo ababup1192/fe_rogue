@@ -7,11 +7,11 @@
 /// 注意: 塗りは凸ポリゴンだけなので、リングは中空円として `segments` 個の台形に分割し、
 ///       各セグメントを 1 つの PolygonRenderCmd として出す。
 ///
-///   Arc2D
+///   Arc
 ///     +-- CanvasItem: visible, zIndex, modulate, alpha
 ///     +-- Node2D: position, rotation, scale, skew
-pub enum Arc2D {
-    case Arc2D({
+pub enum Arc {
+    case Arc({
         position = Vec2.Vec2,
         rotation = Float64,
         scale = Vec2.Vec2,
@@ -28,7 +28,7 @@ pub enum Arc2D {
     })
 }
 
-mod Arc2D {
+mod Arc {
 
     /// 全周（2π）の既定分割数。小さなインジケータには十分滑らか。
     def defaultSegments(): Int32 = 32
@@ -38,8 +38,8 @@ mod Arc2D {
 
     /// 半径・太さ・開始/終了角を指定して円弧を生成する（alpha=1.0 不透明、segments 既定）。
     pub def make(radius: Float64, width: Float64,
-                 startAngle: Float64, endAngle: Float64, color: Color): Arc2D =
-        Arc2D.Arc2D({
+                 startAngle: Float64, endAngle: Float64, color: Color): Arc =
+        Arc.Arc({
             position = {x = 0.0, y = 0.0},
             rotation = 0.0,
             scale = {x = 1.0, y = 1.0},
@@ -56,60 +56,60 @@ mod Arc2D {
         })
 
     /// 全周リング（startAngle=0, endAngle=2π）を生成するショートカット。背景の輪などに使う。
-    pub def ring(radius: Float64, width: Float64, color: Color): Arc2D =
+    pub def ring(radius: Float64, width: Float64, color: Color): Arc =
         make(radius, width, 0.0, tau(), color)
 
-    pub def getRadius(arc: Arc2D): Float64 =
-        let Arc2D.Arc2D(r) = arc; r#radius
+    pub def getRadius(arc: Arc): Float64 =
+        let Arc.Arc(r) = arc; r#radius
 
-    pub def setRadius(radius: Float64, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({radius = radius | r})
+    pub def setRadius(radius: Float64, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({radius = radius | r})
 
-    pub def getWidth(arc: Arc2D): Float64 =
-        let Arc2D.Arc2D(r) = arc; r#width
+    pub def getWidth(arc: Arc): Float64 =
+        let Arc.Arc(r) = arc; r#width
 
-    pub def setWidth(width: Float64, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({width = width | r})
+    pub def setWidth(width: Float64, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({width = width | r})
 
-    pub def getStartAngle(arc: Arc2D): Float64 =
-        let Arc2D.Arc2D(r) = arc; r#startAngle
+    pub def getStartAngle(arc: Arc): Float64 =
+        let Arc.Arc(r) = arc; r#startAngle
 
-    pub def setStartAngle(startAngle: Float64, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({startAngle = startAngle | r})
+    pub def setStartAngle(startAngle: Float64, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({startAngle = startAngle | r})
 
-    pub def getEndAngle(arc: Arc2D): Float64 =
-        let Arc2D.Arc2D(r) = arc; r#endAngle
+    pub def getEndAngle(arc: Arc): Float64 =
+        let Arc.Arc(r) = arc; r#endAngle
 
     /// 円弧の終了角を更新する。クールダウンは `setEndAngle(start + 2π*ratio)` を毎フレーム呼ぶ。
-    pub def setEndAngle(endAngle: Float64, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({endAngle = endAngle | r})
+    pub def setEndAngle(endAngle: Float64, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({endAngle = endAngle | r})
 
-    pub def getSegments(arc: Arc2D): Int32 =
-        let Arc2D.Arc2D(r) = arc; r#segments
+    pub def getSegments(arc: Arc): Int32 =
+        let Arc.Arc(r) = arc; r#segments
 
     /// 分割数を設定する。1 未満は 1 にクランプ（state と描画を一致させる）。
-    pub def setSegments(segments: Int32, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({segments = Int32.max(1, segments) | r})
+    pub def setSegments(segments: Int32, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({segments = Int32.max(1, segments) | r})
 
-    pub def getAlpha(arc: Arc2D): Float32 =
-        let Arc2D.Arc2D(r) = arc; r#alpha
+    pub def getAlpha(arc: Arc): Float32 =
+        let Arc.Arc(r) = arc; r#alpha
 
-    pub def setAlpha(alpha: Float32, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({alpha = alpha | r})
+    pub def setAlpha(alpha: Float32, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({alpha = alpha | r})
 
     /// スクリーン px の塗り潰しコマンド列に変換する。`screenPos` はノードの描画原点
     /// （カメラ/CanvasLayer 適用後）、`scaleVec` はワールドの zoom 倍率（CanvasLayer 下は (1,1)）。
     /// 各クアッドの頂点 = screenPos + (cosθ, sinθ) * 半径 * scaleVec * ノード scale。回転/skew は未適用。
     /// 太さ 0 以下、または endAngle <= startAngle のときは空（非描画）。
     pub def toRenderCmds(screenPos: Vec2.Vec2, scaleVec: Vec2.Vec2,
-                         arc: Arc2D): List[GameEngine.PolygonRenderCmd] =
-        let Arc2D.Arc2D(r) = arc;
+                         arc: Arc): List[GameEngine.PolygonRenderCmd] =
+        let Arc.Arc(r) = arc;
         let sweep = r#endAngle - r#startAngle;
         if (sweep <= 0.0 or r#width <= 0.0) Nil
         else {
@@ -136,45 +136,45 @@ mod Arc2D {
 
 // -- CanvasItem 実装 --
 
-instance CanvasItem[Arc2D] {
-    pub def isVisible(arc: Arc2D): Bool =
-        let Arc2D.Arc2D(r) = arc; r#visible
-    pub def setVisible(visible: Bool, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({visible = visible | r})
-    pub def getModulate(arc: Arc2D): Color =
-        let Arc2D.Arc2D(r) = arc; r#modulate
-    pub def setModulate(color: Color, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({modulate = color | r})
-    pub def getZIndex(arc: Arc2D): Int32 =
-        let Arc2D.Arc2D(r) = arc; r#zIndex
-    pub def setZIndex(zIndex: Int32, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({zIndex = zIndex | r})
+instance CanvasItem[Arc] {
+    pub def isVisible(arc: Arc): Bool =
+        let Arc.Arc(r) = arc; r#visible
+    pub def setVisible(visible: Bool, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({visible = visible | r})
+    pub def getModulate(arc: Arc): Color =
+        let Arc.Arc(r) = arc; r#modulate
+    pub def setModulate(color: Color, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({modulate = color | r})
+    pub def getZIndex(arc: Arc): Int32 =
+        let Arc.Arc(r) = arc; r#zIndex
+    pub def setZIndex(zIndex: Int32, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({zIndex = zIndex | r})
 }
 
 // -- Node2D 実装 --
 
-instance Node2D[Arc2D] {
-    pub def getPosition(arc: Arc2D): Vec2.Vec2 =
-        let Arc2D.Arc2D(r) = arc; r#position
-    pub def setPosition(position: Vec2.Vec2, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({position = position | r})
-    pub def getRotation(arc: Arc2D): Float64 =
-        let Arc2D.Arc2D(r) = arc; r#rotation
-    pub def setRotation(rotation: Float64, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({rotation = rotation | r})
-    pub def getScale(arc: Arc2D): Vec2.Vec2 =
-        let Arc2D.Arc2D(r) = arc; r#scale
-    pub def setScale(scale: Vec2.Vec2, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({scale = scale | r})
-    pub def getSkew(arc: Arc2D): Float64 =
-        let Arc2D.Arc2D(r) = arc; r#skew
-    pub def setSkew(skew: Float64, arc: Arc2D): Arc2D =
-        let Arc2D.Arc2D(r) = arc;
-        Arc2D.Arc2D({skew = skew | r})
+instance Node2D[Arc] {
+    pub def getPosition(arc: Arc): Vec2.Vec2 =
+        let Arc.Arc(r) = arc; r#position
+    pub def setPosition(position: Vec2.Vec2, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({position = position | r})
+    pub def getRotation(arc: Arc): Float64 =
+        let Arc.Arc(r) = arc; r#rotation
+    pub def setRotation(rotation: Float64, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({rotation = rotation | r})
+    pub def getScale(arc: Arc): Vec2.Vec2 =
+        let Arc.Arc(r) = arc; r#scale
+    pub def setScale(scale: Vec2.Vec2, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({scale = scale | r})
+    pub def getSkew(arc: Arc): Float64 =
+        let Arc.Arc(r) = arc; r#skew
+    pub def setSkew(skew: Float64, arc: Arc): Arc =
+        let Arc.Arc(r) = arc;
+        Arc.Arc({skew = skew | r})
 }

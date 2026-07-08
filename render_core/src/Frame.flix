@@ -78,7 +78,7 @@ mod RenderFrame {
             // tileMaps: zIndex 昇順で 1 draw call ずつ描画。
             // 同一 zIndex 内では入力順を保つため stable sort（zipWithIndex + (zIndex, drawIndex)）。
             // 単純な `List.sortBy(_#zIndex, _)` は unstable で、Scene.toDrawables 側で確立した
-            // 描画順を壊し、特定の Drawable（例: bg ColorRect と同 z の Label2D の最後の文字）が
+            // 描画順を壊し、特定の Drawable（例: bg Rect と同 z の Text の最後の文字）が
             // 入れ替わって上書き消失する事故が起きる。
             let sortedTiles = tileMaps
                 |> List.zipWithIndex
@@ -96,7 +96,7 @@ mod RenderFrame {
             // （武器グリフ等）が手前のポップアップを貫通してしまう。両者を同じ z 空間で
             // 並べることで、重なり順が zIndex の指定どおりになる。
             // 同一 zIndex 内は入力順（sprites → polygons）を保つため stable sort（zipWithIndex）。
-            // Ok = Drawable（スプライト/ColorRect）、Err = PolygonCmd（Polygon2D/Arc2D）。
+            // Ok = Drawable（スプライト/Rect）、Err = PolygonCmd（Polygon/Arc）。
             let merged: List[Result[RenderType.PolygonCmd, RenderType.Drawable]] =
                 List.append(
                     sprites  |> List.map(d  -> Result.Ok(d)),

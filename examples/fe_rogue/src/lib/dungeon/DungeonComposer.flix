@@ -8,7 +8,7 @@
 ///   - door A と door B を「同じ合成座標で重ねる」ことで、room の出っ張り floor と
 ///     pathway の空 door セルが同一セルになり、シームレスに繋がる。
 ///
-/// 出力は Walls 層と Floor 層を別々の TileMapLayer として返す。
+/// 出力は Walls 層と Floor 層を別々の TileLayer として返す。
 /// テクスチャは全モジュール共通（呼び出し側が 1 つの textureName を指定）。
 ///
 /// **API**
@@ -69,8 +69,8 @@ mod DungeonComposer {
     /// - `floorLayer` は Floor 層（decorTiles + door 出っ張り床、collisionCells なし）
     ///   呼び出し側が `zIndex = -1` を設定して Walls 層の下に重ねる。
     pub type alias ComposeResult = {
-        layer        = TileMapLayer,
-        floorLayer   = TileMapLayer,
+        layer        = TileLayer,
+        floorLayer   = TileLayer,
         anchorOffset = {x = Int32, y = Int32},
         spawnGrid    = {x = Int32, y = Int32},
         moduleSpecs  = List[ModuleSpec],
@@ -168,7 +168,7 @@ mod DungeonComposer {
             |> List.filter(t -> not List.exists(c -> c#x == t#x and c#y == t#y, openingCells));
         // 9. 合成 grid 寸法
         let mergedGridSize = boundingBoxGridSize(loaded, offsets);
-        // 10. TileSet（テクスチャ共通）
+        // 10. Tileset（テクスチャ共通）
         let tileSet = buildTileSet(textureName, tileSize);
         // 11. Floor / Walls 層構築
         let floorLayer = buildFloorLayer(mergedFloor, mergedGridSize, tileSet, tileSize);
@@ -337,8 +337,8 @@ mod DungeonComposer {
     // Layer 構築
     // ────────────────────────────────────────────────────────
 
-    /// 共通 TileSet を構築する（全モジュール同一テクスチャ前提）。
-    def buildTileSet(textureName: String, tileSize: Float64): TileSet \ GameEngine.Game =
+    /// 共通 Tileset を構築する（全モジュール同一テクスチャ前提）。
+    def buildTileSet(textureName: String, tileSize: Float64): Tileset \ GameEngine.Game =
         let texInfo = match GameEngine.Game.getTextureInfo(textureName) {
             case Some(info) => info
             case None       => bug!("DungeonComposer: texture '${textureName}' not registered")
@@ -356,13 +356,13 @@ mod DungeonComposer {
             tileSize  = tileSize
             | atlas
         };
-        TileSet.make(atlasFilled)
+        Tileset.make(atlasFilled)
 
     /// Floor 層を構築する。decorTiles + door 出っ張り床を描画、衝突なし。
     def buildFloorLayer(mergedFloor: List[MapResource.ManualTile],
                          gridSize: {x = Int32, y = Int32},
-                         tileSet: TileSet,
-                         tileSize: Float64): TileMapLayer \ GameEngine.Game =
+                         tileSet: Tileset,
+                         tileSize: Float64): TileLayer \ GameEngine.Game =
         let tiles: List[TileData] = List.map(t -> ({
             px    = ({x = Int32.toFloat64(t#x) * tileSize,
                       y = Int32.toFloat64(t#y) * tileSize}: Vec2.Vec2),
@@ -374,12 +374,12 @@ mod DungeonComposer {
         }: TileData), mergedFloor);
         let instances = TileRendering.buildTileInstances(tiles, tileSet, tileSize);
         let (vao, count) = GameEngine.Game.initTileBuffer(instances);
-        TileMapLayer.make({
+        TileLayer.make({
             tileSet        = tileSet,
             tiles          = tiles,
             collisionCells = (Nil: List[Vec2.Vec2]),
             gridSize       = gridSize
-        }) |> TileMapLayer.withGpuResources(vao, count)
+        }) |> TileLayer.withGpuResources(vao, count)
 
     /// Walls 層を構築する。
     /// 1. mergedFloor から floorMask を計算
@@ -393,9 +393,9 @@ mod DungeonComposer {
                          mergedManual: List[MapResource.ManualTile],
                          gridSize: {x = Int32, y = Int32},
                          material: MapResource.Material,
-                         tileSet: TileSet,
+                         tileSet: Tileset,
                          tileSize: Float64,
-                         tileSizeI: Int32): TileMapLayer \ GameEngine.Game =
+                         tileSizeI: Int32): TileLayer \ GameEngine.Game =
         let md = MapResource.materialData(material);
         let floorMask: Set[(Int32, Int32)] =
             mergedFloor |> List.map(t -> (t#x, t#y)) |> List.toSet;
@@ -445,12 +445,12 @@ mod DungeonComposer {
             });
         let instances = TileRendering.buildTileInstances(tiles, tileSet, tileSize);
         let (vao, count) = GameEngine.Game.initTileBuffer(instances);
-        TileMapLayer.make({
+        TileLayer.make({
             tileSet        = tileSet,
             tiles          = tiles,
             collisionCells = collisionCells,
             gridSize       = gridSize
-        }) |> TileMapLayer.withGpuResources(vao, count)
+        }) |> TileLayer.withGpuResources(vao, count)
 
     // ────────────────────────────────────────────────────────
     // Spawn / Placements / Offsets

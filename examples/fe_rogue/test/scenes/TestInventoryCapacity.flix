@@ -28,7 +28,7 @@ mod TestInventoryCapacity {
     }
 
     /// 容量カウントに影響しないダミー sprite。
-    def testSprite(): Sprite.SpriteResource = {
+    def testSprite(): SpriteRes.SpriteResource = {
         texture = "t", hframes = 1, vframes = 1, frame = 0,
         offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false
     }

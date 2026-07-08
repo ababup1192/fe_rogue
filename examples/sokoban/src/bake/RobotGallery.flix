@@ -150,7 +150,7 @@ mod RobotGallery {
     def label(atlas: FontAtlas, i: Int32): (Vec2.Vec2, Render.RenderItem) =
         let text = "${i + 1}";
         let size = 22.0;
-        let w = Label2D.measure(Label2D.make(text, atlas, size))#x;
+        let w = Text.measure(Text.make(text, atlas, size))#x;
         let cx = Int32.toFloat64(i) * cellW() + cellW() / 2.0;
         ({x = cx - w / 2.0, y = labelY()}, Render.textTinted(text, atlas, size, pale(), 10))
 
@@ -189,7 +189,7 @@ mod RobotGallery {
 
     def labelAt(atlas: FontAtlas, i: Int32, text: String): (Vec2.Vec2, Render.RenderItem) =
         let size = 22.0;
-        let w = Label2D.measure(Label2D.make(text, atlas, size))#x;
+        let w = Text.measure(Text.make(text, atlas, size))#x;
         let cx = Int32.toFloat64(i) * cellW() + cellW() / 2.0;
         ({x = cx - w / 2.0, y = labelY()}, Render.textTinted(text, atlas, size, pale(), 10))
 

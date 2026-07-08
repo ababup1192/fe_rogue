@@ -1,7 +1,7 @@
 /// UnitHPBarRender — キャラ足元に常時表示する連続フィル HP ゲージ
 ///
 /// scene ノードは持たない。HP/最大 HP は World store（hp/baseStats）、待機/行動済みの暗転は
-/// World store（waited/enemyActed）から導出し、`renderBars` が ColorRect **値**を組んで毎フレーム
+/// World store（waited/enemyActed）から導出し、`renderBars` が Rect **値**を組んで毎フレーム
 /// 直描きする（update/setModulate 等の押し込み API は不要になった＝SetHp 等の Cmd が唯一の書込）。
 /// 攻撃予報の「減る分」点滅だけは BattlePanel が毎フレーム計算する view 状態なので、
 /// `ForecastState` resource 経由で受け取る。
@@ -103,7 +103,7 @@ mod UnitHPBarRender {
     ///   - 攻撃予報の「減る分」= ForecastState（BattlePanel が毎フレーム put）
     /// 退場（hidden）ユニット・フォグで隠れた敵（`holesOpt` の lit ゲート）は描かない。
     pub def renderBars(world: World, holesOpt: Option[List[GridRect]],
-                        transform: Camera2D.ViewTransform):
+                        transform: Camera.ViewTransform):
             List[GameEngine.Drawable] \ {GameEngine.Game, ForecastState} =
         let fc = ForecastState.get();
         let players = World.playerIdsOf(world)
@@ -133,7 +133,7 @@ mod UnitHPBarRender {
     /// 1 ユニットぶんの HP バー Drawable 列（Bg トラック + Fill + 予報オーバーレイ）。
     def barDrawables(ref: World.EntityRef, team: Team, modColor: Color,
                       post: Option[(Int32, Bool)], world: World,
-                      transform: Camera2D.ViewTransform):
+                      transform: Camera.ViewTransform):
             List[GameEngine.Drawable] \ GameEngine.Game =
         match World.visualPosOf(ref, world) {
             case Some(unitPos) =>
@@ -143,12 +143,12 @@ mod UnitHPBarRender {
                 else {
                     let barTopLeft: Vec2.Vec2 =
                         {x = unitPos#x - barWidthPx() / 2.0, y = unitPos#y + barFeetY()};
-                    let bg = ColorRect.make({x = barWidthPx(), y = barHeightPx()}, mulColor(trackColor(), modColor))
-                        |> ColorRect.setCornerRadius(barCornerRadius());
-                    let fill = ColorRect.make(
+                    let bg = Rect.make({x = barWidthPx(), y = barHeightPx()}, mulColor(trackColor(), modColor))
+                        |> Rect.setCornerRadius(barCornerRadius());
+                    let fill = Rect.make(
                             {x = fillWidth(hp, maxHp, innerWidthPx()), y = innerHeightPx()},
                             mulColor(fillColorFor(team), modColor))
-                        |> ColorRect.setCornerRadius(fillCornerRadius());
+                        |> Rect.setCornerRadius(fillCornerRadius());
                     let bgDs = rectDrawables(bg, barTopLeft, barZIndex(), transform);
                     let fillDs = rectDrawables(fill,
                         {x = barTopLeft#x + borderPx(), y = barTopLeft#y + borderPx()},
@@ -160,9 +160,9 @@ mod UnitHPBarRender {
                                 let xStart = borderPx() + fillWidth(postHp, maxHp, innerWidthPx());
                                 let w = fillWidth(hp, maxHp, innerWidthPx()) - fillWidth(postHp, maxHp, innerWidthPx());
                                 let blink = if (dark) dmgDarkModulate() else dmgNormalModulate();
-                                let prev = ColorRect.make({x = w, y = innerHeightPx()},
+                                let prev = Rect.make({x = w, y = innerHeightPx()},
                                         mulColor(mulColor(fillColorFor(team), blink), modColor))
-                                    |> ColorRect.setStripe(dmgStripeColor(), dmgStripeAlpha(),
+                                    |> Rect.setStripe(dmgStripeColor(), dmgStripeAlpha(),
                                                            dmgStripeWidth(), dmgStripePeriod());
                                 rectDrawables(prev,
                                     {x = barTopLeft#x + xStart, y = barTopLeft#y + borderPx()},
@@ -175,13 +175,13 @@ mod UnitHPBarRender {
             case _ => Nil
         }
 
-    /// ColorRect 値 1 枚を world 左上座標へ Drawable 化する（tree に積まない）。
-    def rectDrawables(rect: ColorRect, worldTopLeft: Vec2.Vec2, z: Int32,
-                       transform: Camera2D.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
-        let screenPos = Camera2D.applyToWorldPos(transform, worldTopLeft);
-        // ColorRect.toDrawable は純粋。呼び側の Game eff 連鎖を保つため checked_ecast で持ち上げる。
+    /// Rect 値 1 枚を world 左上座標へ Drawable 化する（tree に積まない）。
+    def rectDrawables(rect: Rect, worldTopLeft: Vec2.Vec2, z: Int32,
+                       transform: Camera.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
+        let screenPos = Camera.applyToWorldPos(transform, worldTopLeft);
+        // Rect.toDrawable は純粋。呼び側の Game eff 連鎖を保つため checked_ecast で持ち上げる。
         checked_ecast(
-            (ColorRect.toDrawable(rect, screenPos) :: Nil)
+            (Rect.toDrawable(rect, screenPos) :: Nil)
                 |> Render.applyCameraScale(transform)
                 |> List.map(d -> {zIndex = z | d}))
 

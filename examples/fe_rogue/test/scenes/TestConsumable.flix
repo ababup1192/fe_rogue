@@ -90,7 +90,7 @@ mod TestConsumable {
          weight = 0.5,
          sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                      offset = {x = 0.0, y = 0.0},
-                     scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+                     scale = {x = 1.0, y = 1.0}, flipForFacing = false}: SpriteRes.SpriteResource),
          description = "", effectRule = None}
 
     /// 効果と耐久を指定して最小限の消費アイテムを作る。
@@ -105,7 +105,7 @@ mod TestConsumable {
          weight = 0.5,
          sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0,
                      offset = {x = 0.0, y = 0.0},
-                     scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+                     scale = {x = 1.0, y = 1.0}, flipForFacing = false}: SpriteRes.SpriteResource),
          description = "", effectRule = None}
 
     // ════════════════════════════════════════════════════════

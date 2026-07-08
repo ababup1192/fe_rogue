@@ -7,8 +7,8 @@
 ///
 /// tileVaoId / tileCount は tilemap loader が initTileBuffer() で設定する。
 /// 初期値 0 = 未初期化（GPU リソース未アップロード）。
-pub enum TileMapLayer {
-    case TileMapLayer({
+pub enum TileLayer {
+    case TileLayer({
         position = Vec2.Vec2,        // Node2D: 位置
         rotation = Float64,           // Node2D: 回転（ラジアン）
         scale = Vec2.Vec2,           // Node2D: スケール
@@ -16,7 +16,7 @@ pub enum TileMapLayer {
         visible = Bool,               // CanvasItem: 表示フラグ
         zIndex = Int32,               // CanvasItem: 描画順
         modulate = Color,             // CanvasItem: 色変調
-        tileSet = TileSet,            // タイルセット
+        tileSet = Tileset,            // タイルセット
         tiles = List[TileData],       // タイル一覧
         collisionCells = List[Vec2.Vec2], // 衝突グリッドセル
         gridSize = {x = Int32, y = Int32},        // マップのグリッド寸法（__cWid, __cHei）
@@ -36,14 +36,14 @@ pub type alias TileData = {
     alpha = Float32
 }
 
-mod TileMapLayer {
+mod TileLayer {
 
-    /// TileMapLayer を TileMapRenderCmd に変換する（GameEngine.render 内で使用）。
+    /// TileLayer を TileMapRenderCmd に変換する（GameEngine.render 内で使用）。
     /// `position` は既にカメラ ViewTransform を適用したスクリーン座標、
     /// `tileScale` は ViewTransform.scale（zoom）。シェーダ側でタイル本体に乗算する
     pub def toRenderCmd(layerScreenPos: Vec2.Vec2, tileScale: Vec2.Vec2,
-                         tileMap: TileMapLayer): GameEngine.TileMapRenderCmd =
-        let TileMapLayer.TileMapLayer(r) = tileMap;
+                         tileMap: TileLayer): GameEngine.TileMapRenderCmd =
+        let TileLayer.TileLayer(r) = tileMap;
         let atlas = r#tileSet#atlasSource;
         { textureName = atlas#textureName,
           tileSize    = atlas#tileSize,
@@ -54,12 +54,12 @@ mod TileMapLayer {
           tileVaoId   = r#tileVaoId,
           tileCount   = r#tileCount }
 
-    /// デフォルト値で TileMapLayer を構築するビルドヘルパー
-    pub def make(config: { tileSet = TileSet,
+    /// デフォルト値で TileLayer を構築するビルドヘルパー
+    pub def make(config: { tileSet = Tileset,
                             tiles = List[TileData],
                             collisionCells = List[Vec2.Vec2],
-                            gridSize = {x = Int32, y = Int32} }): TileMapLayer =
-        TileMapLayer.TileMapLayer({
+                            gridSize = {x = Int32, y = Int32} }): TileLayer =
+        TileLayer.TileLayer({
             position       = Vec2.zero(),
             rotation       = 0.0,
             scale          = {x = 1.0, y = 1.0},
@@ -81,20 +81,20 @@ mod TileMapLayer {
     // ────────────────────────────────────────────────────────
 
     /// タイル 1 マスの一辺（ピクセル）のショートカット（タイル正方形）
-    pub def tileSize(tileMap: TileMapLayer): Float64 =
-        let TileMapLayer.TileMapLayer(r) = tileMap;
-        TileSet.tileSize(r#tileSet)
+    pub def tileSize(tileMap: TileLayer): Float64 =
+        let TileLayer.TileLayer(r) = tileMap;
+        Tileset.tileSize(r#tileSet)
 
     /// 使用中のマス範囲を矩形で返す。
     /// position は (0,0) 固定（LDTK は座標オフセット無し）、size は gridSize
-    pub def getUsedRect(tileMap: TileMapLayer):
+    pub def getUsedRect(tileMap: TileLayer):
             { position = {x = Int32, y = Int32}, size = {x = Int32, y = Int32} } =
-        let TileMapLayer.TileMapLayer(r) = tileMap;
+        let TileLayer.TileLayer(r) = tileMap;
         { position = Vec2i.zero(), size = r#gridSize }
 
     /// グリッド座標 → セル中心のローカルピクセル座標に変換する。
     /// world 座標が必要な場合は呼び出し側でレイヤーの原点を足し合わせる。
-    pub def mapToLocal(coords: {x = Int32, y = Int32}, tileMap: TileMapLayer): Vec2.Vec2 =
+    pub def mapToLocal(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Vec2.Vec2 =
         let s = tileSize(tileMap);
         let v = Vec2i.toVec2(coords);
         { x = v#x * s + s / 2.0,
@@ -103,15 +103,15 @@ mod TileMapLayer {
     /// ローカルピクセル座標 → グリッド座標に変換する。範囲外でも値を返す（負値あり得る）。
     /// floor 切り捨てを使い、負値でも正しい結果になる
     /// （truncate だと -0.5 → 0、floor なら -1 が正解）。
-    pub def localToMap(localPos: Vec2.Vec2, tileMap: TileMapLayer): {x = Int32, y = Int32} =
+    pub def localToMap(localPos: Vec2.Vec2, tileMap: TileLayer): {x = Int32, y = Int32} =
         let s = tileSize(tileMap);
         Vec2i.fromVec2Floor(Vec2.div(localPos, s))
 
     /// 指定マスのソース ID を返す。
     /// 空セル（範囲外含む）: -1
     /// 壁セル: 0（本プロジェクトは intGrid 二値構造、source は 1 種類のみ）
-    pub def getCellSourceId(coords: {x = Int32, y = Int32}, tileMap: TileMapLayer): Int32 =
-        let TileMapLayer.TileMapLayer(r) = tileMap;
+    pub def getCellSourceId(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Int32 =
+        let TileLayer.TileLayer(r) = tileMap;
         if (not isInBounds(coords, tileMap)) -1
         else
             let target = Vec2i.toVec2(coords);
@@ -123,72 +123,72 @@ mod TileMapLayer {
     // ── 本プロジェクト固有の便宜 API ──
 
     /// 範囲チェック: getUsedRect 内に収まるか
-    pub def isInBounds(coords: {x = Int32, y = Int32}, tileMap: TileMapLayer): Bool =
-        let TileMapLayer.TileMapLayer(r) = tileMap;
+    pub def isInBounds(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Bool =
+        let TileLayer.TileLayer(r) = tileMap;
         coords#x >= 0 and coords#x < r#gridSize#x and
         coords#y >= 0 and coords#y < r#gridSize#y
 
     /// 衝突セルか（getCellSourceId(coords, layer) != -1 の薄いラッパ）
-    pub def isWall(coords: {x = Int32, y = Int32}, tileMap: TileMapLayer): Bool =
+    pub def isWall(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Bool =
         getCellSourceId(coords, tileMap) != -1
 
     /// 範囲内 かつ 壁でない ⇒ 床
-    pub def isFloor(coords: {x = Int32, y = Int32}, tileMap: TileMapLayer): Bool =
+    pub def isFloor(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Bool =
         isInBounds(coords, tileMap) and not isWall(coords, tileMap)
 
     /// GPU リソース ID を設定する（tilemap loader が initTileBuffer の結果を書き込む）
     pub def withGpuResources(tileVaoId: Int32, tileCount: Int32,
-                              tileMap: TileMapLayer): TileMapLayer =
-        let TileMapLayer.TileMapLayer(r) = tileMap;
-        TileMapLayer.TileMapLayer({ tileVaoId = tileVaoId, tileCount = tileCount | r })
+                              tileMap: TileLayer): TileLayer =
+        let TileLayer.TileLayer(r) = tileMap;
+        TileLayer.TileLayer({ tileVaoId = tileVaoId, tileCount = tileCount | r })
 }
 
 // ── CanvasItem 実装 ──
 
-instance CanvasItem[TileMapLayer] {
-    pub def isVisible(node: TileMapLayer): Bool =
-        let TileMapLayer.TileMapLayer(r) = node; r#visible
-    pub def setVisible(visible: Bool, node: TileMapLayer): TileMapLayer =
-        let TileMapLayer.TileMapLayer(r) = node;
-        TileMapLayer.TileMapLayer({ visible = visible | r })
-    pub def getModulate(node: TileMapLayer): Color =
-        let TileMapLayer.TileMapLayer(r) = node; r#modulate
-    pub def setModulate(color: Color, node: TileMapLayer): TileMapLayer =
-        let TileMapLayer.TileMapLayer(r) = node;
-        TileMapLayer.TileMapLayer({ modulate = color | r })
-    pub def getZIndex(node: TileMapLayer): Int32 =
-        let TileMapLayer.TileMapLayer(r) = node; r#zIndex
-    pub def setZIndex(zIndex: Int32, node: TileMapLayer): TileMapLayer =
-        let TileMapLayer.TileMapLayer(r) = node;
-        TileMapLayer.TileMapLayer({ zIndex = zIndex | r })
-    redef isYSortEnabled(node: TileMapLayer): Bool =
-        let TileMapLayer.TileMapLayer(r) = node; r#ySortEnabled
-    redef setYSortEnabled(v: Bool, node: TileMapLayer): TileMapLayer =
-        let TileMapLayer.TileMapLayer(r) = node;
-        TileMapLayer.TileMapLayer({ ySortEnabled = v | r })
+instance CanvasItem[TileLayer] {
+    pub def isVisible(node: TileLayer): Bool =
+        let TileLayer.TileLayer(r) = node; r#visible
+    pub def setVisible(visible: Bool, node: TileLayer): TileLayer =
+        let TileLayer.TileLayer(r) = node;
+        TileLayer.TileLayer({ visible = visible | r })
+    pub def getModulate(node: TileLayer): Color =
+        let TileLayer.TileLayer(r) = node; r#modulate
+    pub def setModulate(color: Color, node: TileLayer): TileLayer =
+        let TileLayer.TileLayer(r) = node;
+        TileLayer.TileLayer({ modulate = color | r })
+    pub def getZIndex(node: TileLayer): Int32 =
+        let TileLayer.TileLayer(r) = node; r#zIndex
+    pub def setZIndex(zIndex: Int32, node: TileLayer): TileLayer =
+        let TileLayer.TileLayer(r) = node;
+        TileLayer.TileLayer({ zIndex = zIndex | r })
+    redef isYSortEnabled(node: TileLayer): Bool =
+        let TileLayer.TileLayer(r) = node; r#ySortEnabled
+    redef setYSortEnabled(v: Bool, node: TileLayer): TileLayer =
+        let TileLayer.TileLayer(r) = node;
+        TileLayer.TileLayer({ ySortEnabled = v | r })
 }
 
 // ── Node2D 実装 ──
 
-instance Node2D[TileMapLayer] {
-    pub def getPosition(node: TileMapLayer): Vec2.Vec2 =
-        let TileMapLayer.TileMapLayer(r) = node; r#position
-    pub def setPosition(position: Vec2.Vec2, node: TileMapLayer): TileMapLayer =
-        let TileMapLayer.TileMapLayer(r) = node;
-        TileMapLayer.TileMapLayer({ position = position | r })
-    pub def getRotation(node: TileMapLayer): Float64 =
-        let TileMapLayer.TileMapLayer(r) = node; r#rotation
-    pub def setRotation(rotation: Float64, node: TileMapLayer): TileMapLayer =
-        let TileMapLayer.TileMapLayer(r) = node;
-        TileMapLayer.TileMapLayer({ rotation = rotation | r })
-    pub def getScale(node: TileMapLayer): Vec2.Vec2 =
-        let TileMapLayer.TileMapLayer(r) = node; r#scale
-    pub def setScale(scale: Vec2.Vec2, node: TileMapLayer): TileMapLayer =
-        let TileMapLayer.TileMapLayer(r) = node;
-        TileMapLayer.TileMapLayer({ scale = scale | r })
-    pub def getSkew(node: TileMapLayer): Float64 =
-        let TileMapLayer.TileMapLayer(r) = node; r#skew
-    pub def setSkew(skew: Float64, node: TileMapLayer): TileMapLayer =
-        let TileMapLayer.TileMapLayer(r) = node;
-        TileMapLayer.TileMapLayer({ skew = skew | r })
+instance Node2D[TileLayer] {
+    pub def getPosition(node: TileLayer): Vec2.Vec2 =
+        let TileLayer.TileLayer(r) = node; r#position
+    pub def setPosition(position: Vec2.Vec2, node: TileLayer): TileLayer =
+        let TileLayer.TileLayer(r) = node;
+        TileLayer.TileLayer({ position = position | r })
+    pub def getRotation(node: TileLayer): Float64 =
+        let TileLayer.TileLayer(r) = node; r#rotation
+    pub def setRotation(rotation: Float64, node: TileLayer): TileLayer =
+        let TileLayer.TileLayer(r) = node;
+        TileLayer.TileLayer({ rotation = rotation | r })
+    pub def getScale(node: TileLayer): Vec2.Vec2 =
+        let TileLayer.TileLayer(r) = node; r#scale
+    pub def setScale(scale: Vec2.Vec2, node: TileLayer): TileLayer =
+        let TileLayer.TileLayer(r) = node;
+        TileLayer.TileLayer({ scale = scale | r })
+    pub def getSkew(node: TileLayer): Float64 =
+        let TileLayer.TileLayer(r) = node; r#skew
+    pub def setSkew(skew: Float64, node: TileLayer): TileLayer =
+        let TileLayer.TileLayer(r) = node;
+        TileLayer.TileLayer({ skew = skew | r })
 }

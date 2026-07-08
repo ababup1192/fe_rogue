@@ -1,4 +1,4 @@
-// Tests for Label2D module
+// Tests for Text module
 
 mod TestLabel2D {
 
@@ -33,16 +33,16 @@ mod TestLabel2D {
     /// 単一行 "ABC" は advance(10) * 3 = 30、高さは lineHeight = ascent+descent+lineGap = 10
     @Test
     def testMeasureSingleLine(): Unit \ Assert =
-        let label = Label2D.make("ABC", sampleAtlas(), 16.0);
-        let sz = Label2D.measure(label);
+        let label = Text.make("ABC", sampleAtlas(), 16.0);
+        let sz = Text.measure(label);
         Assert.assertTrue(approx(sz#x, 30.0));
         Assert.assertTrue(approx(sz#y, 10.0))
 
     /// 空文字列でも高さ 1 行分は確保される
     @Test
     def testMeasureEmptyString(): Unit \ Assert =
-        let label = Label2D.make("", sampleAtlas(), 16.0);
-        let sz = Label2D.measure(label);
+        let label = Text.make("", sampleAtlas(), 16.0);
+        let sz = Text.measure(label);
         Assert.assertTrue(approx(sz#x, 0.0));
         Assert.assertTrue(approx(sz#y, 10.0))
 
@@ -53,16 +53,16 @@ mod TestLabel2D {
     /// 2 行 "AB\nC" は max(2,1)*10=20、高さは 2*10=20
     @Test
     def testMeasureTwoLines(): Unit \ Assert =
-        let label = Label2D.make("AB\nC", sampleAtlas(), 16.0);
-        let sz = Label2D.measure(label);
+        let label = Text.make("AB\nC", sampleAtlas(), 16.0);
+        let sz = Text.measure(label);
         Assert.assertTrue(approx(sz#x, 20.0));
         Assert.assertTrue(approx(sz#y, 20.0))
 
     /// 3 行 "A\nBC\nA" は max=20、高さは 3*10=30
     @Test
     def testMeasureThreeLines(): Unit \ Assert =
-        let label = Label2D.make("A\nBC\nA", sampleAtlas(), 16.0);
-        let sz = Label2D.measure(label);
+        let label = Text.make("A\nBC\nA", sampleAtlas(), 16.0);
+        let sz = Text.measure(label);
         Assert.assertTrue(approx(sz#x, 20.0));
         Assert.assertTrue(approx(sz#y, 30.0))
 
@@ -73,8 +73,8 @@ mod TestLabel2D {
     /// fontSize = atlas#fontSize の 2 倍 (32.0) なら、scale = 2.0 で全体が倍
     @Test
     def testMeasureScaledFontSize(): Unit \ Assert =
-        let label = Label2D.make("AB", sampleAtlas(), 32.0);
-        let sz = Label2D.measure(label);
+        let label = Text.make("AB", sampleAtlas(), 32.0);
+        let sz = Text.measure(label);
         // advance(10)*2 chars * scale(2) = 40、高さ 10 * 2 = 20
         Assert.assertTrue(approx(sz#x, 40.0));
         Assert.assertTrue(approx(sz#y, 20.0))
@@ -82,8 +82,8 @@ mod TestLabel2D {
     /// 半分の fontSize なら半分のサイズ
     @Test
     def testMeasureHalfFontSize(): Unit \ Assert =
-        let label = Label2D.make("ABC", sampleAtlas(), 8.0);
-        let sz = Label2D.measure(label);
+        let label = Text.make("ABC", sampleAtlas(), 8.0);
+        let sz = Text.measure(label);
         // advance(10)*3 chars * scale(0.5) = 15、高さ 10 * 0.5 = 5
         Assert.assertTrue(approx(sz#x, 15.0));
         Assert.assertTrue(approx(sz#y, 5.0))
@@ -95,8 +95,8 @@ mod TestLabel2D {
     /// アトラスに無い文字は advance 0 として扱う
     @Test
     def testMeasureUnknownGlyph(): Unit \ Assert =
-        let label = Label2D.make("AXC", sampleAtlas(), 16.0);
-        let sz = Label2D.measure(label);
+        let label = Text.make("AXC", sampleAtlas(), 16.0);
+        let sz = Text.measure(label);
         // 'A'(10) + 'X'(0) + 'C'(10) = 20
         Assert.assertTrue(approx(sz#x, 20.0));
         Assert.assertTrue(approx(sz#y, 10.0))

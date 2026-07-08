@@ -23,7 +23,7 @@ mod UnitCardUi {
     type alias CardView = {
         borderColor = Color,
         barColor    = Color,
-        sprite      = Sprite.SpriteResource,
+        sprite      = SpriteRes.SpriteResource,
         description = String,
         maxHp       = Int32,
         hp          = Int32,
@@ -264,7 +264,7 @@ mod UnitCardUi {
                             maxW = ringMaxW(), atlas = atlas, equipOpt = view#ring |> Option.map(ringEquipView)})
 
     /// ユニットアイコン（中央基準・元の約 1/3）。texture 実寸から半セルぶん左上へ寄せて中心合わせする。
-    def setPortrait(root: String, sprite: Sprite.SpriteResource, ui: UiStore.UiWorld): UiStore.UiWorld \ GameEngine.Game =
+    def setPortrait(root: String, sprite: SpriteRes.SpriteResource, ui: UiStore.UiWorld): UiStore.UiWorld \ GameEngine.Game =
         let path = childPath(root, "Icon");
         ui
             |> UiStore.setSprite({path = path, texture = sprite#texture, hframes = sprite#hframes,
@@ -272,7 +272,7 @@ mod UnitCardUi {
             |> UiStore.setAbs(path, portraitAbs(sprite))
 
     /// アイコンの左上（top-left）。中心 iconCenter に offset を足し、半セル（texW/hframes × scale）ぶん戻す。
-    def portraitAbs(sprite: Sprite.SpriteResource): Vec2.Vec2 \ GameEngine.Game =
+    def portraitAbs(sprite: SpriteRes.SpriteResource): Vec2.Vec2 \ GameEngine.Game =
         let scale = iconScale();
         let center = {x = iconCenter()#x + sprite#offset#x * scale#x,
                       y = iconCenter()#y + sprite#offset#y * scale#y};

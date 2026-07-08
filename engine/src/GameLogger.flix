@@ -20,7 +20,7 @@ mod GameLogger {
         def drainEntries(): List[Entry]
     }
 
-    /// 1 行のログエントリ。色は modulate で Label2D に乗算する。
+    /// 1 行のログエントリ。色は modulate で Text に乗算する。
     pub type alias Entry = { text = String, color = Color }
 
     /// player 行のデフォルト色（白）

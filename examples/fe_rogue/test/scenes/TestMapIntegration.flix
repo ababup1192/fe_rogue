@@ -8,12 +8,12 @@
 //
 //   実装は変更せず、World_Level_0 の Walls intGridCsv を Python で抽出した
 //   壁セル List[Vec2.Vec2] を Flix リテラルで埋め込み、その壁配置で
-//   TileMapLayer / MapSnapshot / Board を構築して各種クエリを実機データで
+//   TileLayer / MapSnapshot / Board を構築して各種クエリを実機データで
 //   検証する。テストが pass すればコードは正しく動いている = ユーザの認識
 //   との齟齬。fail すれば fail 内容から修正対象が特定できる。
 //
 // 検証する観点:
-//   - TileMapLayer.isFloor / isWall が ASCII マップの真値と一致
+//   - TileLayer.isFloor / isWall が ASCII マップの真値と一致
 //   - Board.tryMove が初期 (5,5) からの 4 方向で期待値を返す
 //     （特に Down は壁で None — 「壁がないのにとまる」の真相確認）
 //   - PlayerScene.moveToById の targetWorld がタイル中心ピクセル座標に一致
@@ -75,12 +75,12 @@ mod TestMapIntegration {
         {x = 11.0, y = 12.0} :: {x = 12.0, y = 12.0} :: Nil
 
     // ========================================================================
-    // 構築ヘルパー — TileMapLayer / MapSnapshot / Board
+    // 構築ヘルパー — TileLayer / MapSnapshot / Board
     // ========================================================================
 
-    /// 実 LDTK と同じ collisionCells を持つ TileMapLayer を構築する。
+    /// 実 LDTK と同じ collisionCells を持つ TileLayer を構築する。
     /// テクスチャ・タイル描画は使わないので tiles は空、texWidth/texHeight も 0。
-    def realTileMapLayer(): TileMapLayer =
+    def realTileMapLayer(): TileLayer =
         let atlas: TileSetAtlasSource = {
             textureName = "test",
             texWidth    = 0.0,
@@ -91,14 +91,14 @@ mod TestMapIntegration {
             spacingX    = 0.0,
             spacingY    = 0.0
         };
-        TileMapLayer.make({
-            tileSet        = TileSet.make(atlas),
+        TileLayer.make({
+            tileSet        = Tileset.make(atlas),
             tiles          = Nil,
             collisionCells = realWallCells(),
             gridSize       = realGridSize()
         })
 
-    /// 実 TileMapLayer をラップした MapSnapshot。
+    /// 実 TileLayer をラップした MapSnapshot。
     /// Map ノードのワールド原点は (0,0) と仮定（gridToWorld == mapToLocal）。
     def realMapSnapshot(): MapSnapshot =
         MapSetup.snapshotOf(realTileMapLayer(), Vec2.zero(), Nil)
@@ -119,7 +119,7 @@ mod TestMapIntegration {
         }
 
     // ========================================================================
-    // (1) TileMapLayer の壁/床判定が ASCII マップと一致するか
+    // (1) TileLayer の壁/床判定が ASCII マップと一致するか
     // ========================================================================
 
     /// Player 初期位置 (5,5) は床、その真下 (5,6) は壁、左右と真上は床。
@@ -128,11 +128,11 @@ mod TestMapIntegration {
     def testFloorWallAroundInitial(): Unit \ Assert =
         let layer = realTileMapLayer();
         let result = (
-            TileMapLayer.isFloor(({x = 5, y = 5}: {x = Int32, y = Int32}), layer),  // 自分（床）
-            TileMapLayer.isFloor(({x = 5, y = 4}: {x = Int32, y = Int32}), layer),  // up   （床）
-            TileMapLayer.isFloor(({x = 5, y = 6}: {x = Int32, y = Int32}), layer),  // down （壁！）
-            TileMapLayer.isFloor(({x = 4, y = 5}: {x = Int32, y = Int32}), layer),  // left （床）
-            TileMapLayer.isFloor(({x = 6, y = 5}: {x = Int32, y = Int32}), layer)   // right（床）
+            TileLayer.isFloor(({x = 5, y = 5}: {x = Int32, y = Int32}), layer),  // 自分（床）
+            TileLayer.isFloor(({x = 5, y = 4}: {x = Int32, y = Int32}), layer),  // up   （床）
+            TileLayer.isFloor(({x = 5, y = 6}: {x = Int32, y = Int32}), layer),  // down （壁！）
+            TileLayer.isFloor(({x = 4, y = 5}: {x = Int32, y = Int32}), layer),  // left （床）
+            TileLayer.isFloor(({x = 6, y = 5}: {x = Int32, y = Int32}), layer)   // right（床）
         );
         Assert.assertEq(
             expected = (true, true, false, true, true),
@@ -143,12 +143,12 @@ mod TestMapIntegration {
     def testCornersAndOutOfBoundsAreWall(): Unit \ Assert =
         let layer = realTileMapLayer();
         let result = (
-            TileMapLayer.isWall(({x =  0, y =  0}: {x = Int32, y = Int32}), layer),  // 左上
-            TileMapLayer.isWall(({x = 12, y =  0}: {x = Int32, y = Int32}), layer),  // 右上
-            TileMapLayer.isWall(({x =  0, y = 12}: {x = Int32, y = Int32}), layer),  // 左下
-            TileMapLayer.isWall(({x = 12, y = 12}: {x = Int32, y = Int32}), layer),  // 右下
-            TileMapLayer.isFloor(({x = -1, y = 5}: {x = Int32, y = Int32}), layer),  // 範囲外左
-            TileMapLayer.isFloor(({x = 13, y = 5}: {x = Int32, y = Int32}), layer)   // 範囲外右
+            TileLayer.isWall(({x =  0, y =  0}: {x = Int32, y = Int32}), layer),  // 左上
+            TileLayer.isWall(({x = 12, y =  0}: {x = Int32, y = Int32}), layer),  // 右上
+            TileLayer.isWall(({x =  0, y = 12}: {x = Int32, y = Int32}), layer),  // 左下
+            TileLayer.isWall(({x = 12, y = 12}: {x = Int32, y = Int32}), layer),  // 右下
+            TileLayer.isFloor(({x = -1, y = 5}: {x = Int32, y = Int32}), layer),  // 範囲外左
+            TileLayer.isFloor(({x = 13, y = 5}: {x = Int32, y = Int32}), layer)   // 範囲外右
         );
         Assert.assertEq(
             expected = (true, true, true, true, false, false),
@@ -204,10 +204,10 @@ mod TestMapIntegration {
     @Test
     def testMapToLocalAroundInitial(): Unit \ Assert =
         let layer = realTileMapLayer();
-        let center = TileMapLayer.mapToLocal(({x = 5, y = 5}: {x = Int32, y = Int32}), layer);
-        let right  = TileMapLayer.mapToLocal(({x = 6, y = 5}: {x = Int32, y = Int32}), layer);
-        let up     = TileMapLayer.mapToLocal(({x = 5, y = 4}: {x = Int32, y = Int32}), layer);
-        let down   = TileMapLayer.mapToLocal(({x = 5, y = 6}: {x = Int32, y = Int32}), layer);
+        let center = TileLayer.mapToLocal(({x = 5, y = 5}: {x = Int32, y = Int32}), layer);
+        let right  = TileLayer.mapToLocal(({x = 6, y = 5}: {x = Int32, y = Int32}), layer);
+        let up     = TileLayer.mapToLocal(({x = 5, y = 4}: {x = Int32, y = Int32}), layer);
+        let down   = TileLayer.mapToLocal(({x = 5, y = 6}: {x = Int32, y = Int32}), layer);
         Assert.assertEq(
             expected = ( 88.0,  88.0,
                         104.0,  88.0,
@@ -281,7 +281,7 @@ mod TestMapIntegration {
     //
     //   これらをコードロジック（Board + PlayerScene + Tween）で再現できるか。
     //   再現できなければ、バグは入力 handler（GameEngine.Game.isKeyPressed）または
-    //   レンダリング層（Camera2D / TileMapLayer 描画）にある。
+    //   レンダリング層（Camera / TileLayer 描画）にある。
     // ========================================================================
 
     /// 連続入力シミュレータ: `start` に置いた Player(0) を、dir 方向への moveToById で

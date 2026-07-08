@@ -208,7 +208,7 @@ mod ItemMenuUi {
         items    = List[ItemEntry],
         sublines = Map[Int32, String],
         badges   = Map[Int32, String],
-        sprites  = List[Sprite.SpriteResource],
+        sprites  = List[SpriteRes.SpriteResource],
         multi    = Bool
     }
 
@@ -246,14 +246,14 @@ mod ItemMenuUi {
     type alias RowBuilders[a] = {
         nameOf    = a -> String,
         sublineOf = a -> String,
-        spriteOf  = a -> Sprite.SpriteResource,
+        spriteOf  = a -> SpriteRes.SpriteResource,
         equipHead = Bool
     }
 
     /// 1 カテゴリの行を汎用に組む。metadata は `"${prefix}:${idx}"` 形式で、確定・装備・捨て・
     /// マークの解決に使う。
     def buildRows(prefix: String, xs: List[a], builders: RowBuilders[a]):
-            (List[ItemEntry], Map[Int32, String], Map[Int32, String], List[Sprite.SpriteResource]) =
+            (List[ItemEntry], Map[Int32, String], Map[Int32, String], List[SpriteRes.SpriteResource]) =
         let indexed = List.zipWithIndex(xs);
         let items = List.map(p -> {
             let (idx, x) = p;
@@ -269,7 +269,7 @@ mod ItemMenuUi {
 
     /// 現在カテゴリの (items, sublines, badges, sprites) を組む。サブラインは種別ごとに出し分ける。
     def categoryRows(cat: Int32, player: PlayerScene.Data):
-            (List[ItemEntry], Map[Int32, String], Map[Int32, String], List[Sprite.SpriteResource]) =
+            (List[ItemEntry], Map[Int32, String], Map[Int32, String], List[SpriteRes.SpriteResource]) =
         if (cat == catWeapon())
             buildRows("w", player#weapons,
                 {nameOf = w -> w#name, sublineOf = w -> WeaponSelectUi.weaponSubline(w), spriteOf = w -> w#sprite, equipHead = true})
@@ -480,7 +480,7 @@ mod ItemMenuUi {
         items      = List[ItemEntry],
         sublines   = Map[Int32, String],
         badges     = Map[Int32, String],
-        sprites    = List[Sprite.SpriteResource],
+        sprites    = List[SpriteRes.SpriteResource],
         marks      = Set[PlayerData.ItemKind],
         offset     = Int32,
         showChrome = Bool

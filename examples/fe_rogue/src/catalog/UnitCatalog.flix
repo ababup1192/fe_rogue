@@ -40,7 +40,7 @@ mod UnitCatalog {
         // 体格。最大積載量（Encumbrance.capacityOf）の主軸。レベルアップで成長する。
         // 味方専用ステータスなので PlayerResource にのみ持たせる（敵は積載概念を持たない）。
         constitution     = Int32,
-        sprite           = Sprite.SpriteResource,
+        sprite           = SpriteRes.SpriteResource,
         initialInventory = List[InventoryEntry],
         description      = String,
         spriteFrames     = Option[SpriteFrames],

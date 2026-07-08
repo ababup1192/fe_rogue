@@ -305,7 +305,7 @@ mod UiSpec {
 
     /// sprite ノードの SpriteComp。texture は必須。regionRect 既定 None、scale 既定 [1,1]、
     /// flipH/flipV 既定 false、tint 既定 白、zIndex 既定 0。
-    /// hframes/vframes/frame 既定 1/1/0（engine Sprite2D と同じスプライトシート格子分割）。
+    /// hframes/vframes/frame 既定 1/1/0（engine Sprite と同じスプライトシート格子分割）。
     def parseSprite(widget: Widget, map: Map[String, Json]): Result[JsonError, Option[UiWidget.SpriteComp]] =
         match widget {
             case Widget.SpriteW => forM (

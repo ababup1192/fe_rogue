@@ -1,9 +1,9 @@
-/// Label2D — テキストを 1 文字ずつグリフに分けて描画するノード。
+/// Text — テキストを 1 文字ずつグリフに分けて描画するノード。
 /// 文字描画を一箇所にまとめるので、HUD やメニューのどこでも同じ字体で文字を出せる。
 /// 利用例: スコア表示、セリフ、メニューの項目名。
 /// 注意: アライメントの Fill は Left/Top と同じ扱い（両端揃えは未対応）。
 ///
-///   Label2D
+///   Text
 ///     +-- CanvasItem: visible, zIndex, modulate
 ///     +-- Node2D: position, rotation, scale, skew
 
@@ -23,8 +23,8 @@ pub enum VerticalAlignment with Eq, Order, ToString {
     case Fill
 }
 
-pub enum Label2D {
-    case Label2D({
+pub enum Text {
+    case Text({
         text = String,
         fontAtlas = FontAtlas,
         fontSize = Float64,
@@ -40,11 +40,11 @@ pub enum Label2D {
     })
 }
 
-mod Label2D {
-    /// テキストとフォントアトラスから Label2D を生成する。
+mod Text {
+    /// テキストとフォントアトラスから Text を生成する。
     /// 既定は horizontalAlignment = Left, verticalAlignment = Top。
-    pub def make(text: String, fontAtlas: FontAtlas, fontSize: Float64): Label2D =
-        Label2D.Label2D({
+    pub def make(text: String, fontAtlas: FontAtlas, fontSize: Float64): Text =
+        Text.Text({
             text = text,
             fontAtlas = fontAtlas,
             fontSize = fontSize,
@@ -60,52 +60,52 @@ mod Label2D {
         })
 
     /// テキストを設定する
-    pub def setText(text: String, label: Label2D): Label2D =
-        let Label2D.Label2D(r) = label;
-        Label2D.Label2D({ text = text | r })
+    pub def setText(text: String, label: Text): Text =
+        let Text.Text(r) = label;
+        Text.Text({ text = text | r })
 
     /// フォントサイズ（display 単位 px）を取得する
-    pub def getFontSize(label: Label2D): Float64 =
-        let Label2D.Label2D(r) = label;
+    pub def getFontSize(label: Text): Float64 =
+        let Text.Text(r) = label;
         r#fontSize
 
-    /// フォントサイズを設定する。Label2D の表示サイズはこの値で決まる
+    /// フォントサイズを設定する。Text の表示サイズはこの値で決まる
     /// （`scale` フィールドは無視される）。リサイズ編集の更新先
-    pub def setFontSize(fontSize: Float64, label: Label2D): Label2D =
-        let Label2D.Label2D(r) = label;
-        Label2D.Label2D({ fontSize = fontSize | r })
+    pub def setFontSize(fontSize: Float64, label: Text): Text =
+        let Text.Text(r) = label;
+        Text.Text({ fontSize = fontSize | r })
 
     /// テキストを取得する
-    pub def getText(label: Label2D): String =
-        let Label2D.Label2D(r) = label;
+    pub def getText(label: Text): String =
+        let Text.Text(r) = label;
         r#text
 
     /// 横方向アライメントを設定する
-    pub def setHorizontalAlignment(alignment: HorizontalAlignment, label: Label2D): Label2D =
-        let Label2D.Label2D(r) = label;
-        Label2D.Label2D({ horizontalAlignment = alignment | r })
+    pub def setHorizontalAlignment(alignment: HorizontalAlignment, label: Text): Text =
+        let Text.Text(r) = label;
+        Text.Text({ horizontalAlignment = alignment | r })
 
     /// 横方向アライメントを取得する
-    pub def getHorizontalAlignment(label: Label2D): HorizontalAlignment =
-        let Label2D.Label2D(r) = label;
+    pub def getHorizontalAlignment(label: Text): HorizontalAlignment =
+        let Text.Text(r) = label;
         r#horizontalAlignment
 
     /// 縦方向アライメントを設定する
-    pub def setVerticalAlignment(alignment: VerticalAlignment, label: Label2D): Label2D =
-        let Label2D.Label2D(r) = label;
-        Label2D.Label2D({ verticalAlignment = alignment | r })
+    pub def setVerticalAlignment(alignment: VerticalAlignment, label: Text): Text =
+        let Text.Text(r) = label;
+        Text.Text({ verticalAlignment = alignment | r })
 
     /// 縦方向アライメントを取得する
-    pub def getVerticalAlignment(label: Label2D): VerticalAlignment =
-        let Label2D.Label2D(r) = label;
+    pub def getVerticalAlignment(label: Text): VerticalAlignment =
+        let Text.Text(r) = label;
         r#verticalAlignment
 
     /// テキストを描画したときに占める表示サイズを返す。
     /// width  = 行の中で最も幅広い行の advance 合計 (× scale)
     /// height = 行数 × lineHeight (= (ascent + descent + lineGap) × scale)
     /// Layout モジュールがノードの自然サイズを問い合わせるために使う。
-    pub def measure(label: Label2D): Vec2.Vec2 =
-        let Label2D.Label2D(r) = label;
+    pub def measure(label: Text): Vec2.Vec2 =
+        let Text.Text(r) = label;
         let atlas = r#fontAtlas;
         let scale = r#fontSize / atlas#fontSize;
         let lineHeight = (atlas#ascent + atlas#descent + atlas#lineGap) * scale;
@@ -147,8 +147,8 @@ mod Label2D {
     /// テキストから Drawable のリストを生成する。
     /// 各グリフに対して 1 つの Drawable を生成する。テキスト中の改行 (\n) で複数行に分割される。
     /// horizontalAlignment は行ごとに、verticalAlignment はテキストブロック全体に適用される。
-    pub def toDrawables(label: Label2D, globalPos: Vec2.Vec2): List[GameEngine.Drawable] =
-        let Label2D.Label2D(r) = label;
+    pub def toDrawables(label: Text, globalPos: Vec2.Vec2): List[GameEngine.Drawable] =
+        let Text.Text(r) = label;
         let atlas = r#fontAtlas;
         let scale = r#fontSize / atlas#fontSize;
         let lineHeight = (atlas#ascent + atlas#descent + atlas#lineGap) * scale;
@@ -207,61 +207,61 @@ mod Label2D {
 
 // -- Renderable 実装 --
 
-instance GameEngine.Renderable[Label2D] {
-    pub def toDrawables(label: Label2D, globalPos: Vec2.Vec2):
+instance GameEngine.Renderable[Text] {
+    pub def toDrawables(label: Text, globalPos: Vec2.Vec2):
                          List[GameEngine.Drawable] \ GameEngine.Game =
         // 本体は純粋だが trait 側が Game eff を要求するため checked_ecast で持ち上げる。
-        checked_ecast(Label2D.toDrawables(label, globalPos))
+        checked_ecast(Text.toDrawables(label, globalPos))
 }
 
 // -- CanvasItem 実装 --
 
-instance CanvasItem[Label2D] {
-    pub def isVisible(label: Label2D): Bool =
-        let Label2D.Label2D(r) = label;
+instance CanvasItem[Text] {
+    pub def isVisible(label: Text): Bool =
+        let Text.Text(r) = label;
         r#visible
-    pub def setVisible(visible: Bool, label: Label2D): Label2D =
-        let Label2D.Label2D(r) = label;
-        Label2D.Label2D({ visible = visible | r })
-    pub def getModulate(label: Label2D): Color =
-        let Label2D.Label2D(r) = label;
+    pub def setVisible(visible: Bool, label: Text): Text =
+        let Text.Text(r) = label;
+        Text.Text({ visible = visible | r })
+    pub def getModulate(label: Text): Color =
+        let Text.Text(r) = label;
         r#modulate
-    pub def setModulate(color: Color, label: Label2D): Label2D =
-        let Label2D.Label2D(r) = label;
-        Label2D.Label2D({ modulate = color | r })
-    pub def getZIndex(label: Label2D): Int32 =
-        let Label2D.Label2D(r) = label;
+    pub def setModulate(color: Color, label: Text): Text =
+        let Text.Text(r) = label;
+        Text.Text({ modulate = color | r })
+    pub def getZIndex(label: Text): Int32 =
+        let Text.Text(r) = label;
         r#zIndex
-    pub def setZIndex(zIndex: Int32, label: Label2D): Label2D =
-        let Label2D.Label2D(r) = label;
-        Label2D.Label2D({ zIndex = zIndex | r })
+    pub def setZIndex(zIndex: Int32, label: Text): Text =
+        let Text.Text(r) = label;
+        Text.Text({ zIndex = zIndex | r })
 }
 
 // -- Node2D 実装 --
 
-instance Node2D[Label2D] {
-    pub def getPosition(label: Label2D): Vec2.Vec2 =
-        let Label2D.Label2D(r) = label;
+instance Node2D[Text] {
+    pub def getPosition(label: Text): Vec2.Vec2 =
+        let Text.Text(r) = label;
         r#position
-    pub def setPosition(position: Vec2.Vec2, label: Label2D): Label2D =
-        let Label2D.Label2D(r) = label;
-        Label2D.Label2D({ position = position | r })
-    pub def getRotation(label: Label2D): Float64 =
-        let Label2D.Label2D(r) = label;
+    pub def setPosition(position: Vec2.Vec2, label: Text): Text =
+        let Text.Text(r) = label;
+        Text.Text({ position = position | r })
+    pub def getRotation(label: Text): Float64 =
+        let Text.Text(r) = label;
         r#rotation
-    pub def setRotation(rotation: Float64, label: Label2D): Label2D =
-        let Label2D.Label2D(r) = label;
-        Label2D.Label2D({ rotation = rotation | r })
-    pub def getScale(label: Label2D): Vec2.Vec2 =
-        let Label2D.Label2D(r) = label;
+    pub def setRotation(rotation: Float64, label: Text): Text =
+        let Text.Text(r) = label;
+        Text.Text({ rotation = rotation | r })
+    pub def getScale(label: Text): Vec2.Vec2 =
+        let Text.Text(r) = label;
         r#scale
-    pub def setScale(scale: Vec2.Vec2, label: Label2D): Label2D =
-        let Label2D.Label2D(r) = label;
-        Label2D.Label2D({ scale = scale | r })
-    pub def getSkew(label: Label2D): Float64 =
-        let Label2D.Label2D(r) = label;
+    pub def setScale(scale: Vec2.Vec2, label: Text): Text =
+        let Text.Text(r) = label;
+        Text.Text({ scale = scale | r })
+    pub def getSkew(label: Text): Float64 =
+        let Text.Text(r) = label;
         r#skew
-    pub def setSkew(skew: Float64, label: Label2D): Label2D =
-        let Label2D.Label2D(r) = label;
-        Label2D.Label2D({ skew = skew | r })
+    pub def setSkew(skew: Float64, label: Text): Text =
+        let Text.Text(r) = label;
+        Text.Text({ skew = skew | r })
 }

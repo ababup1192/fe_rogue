@@ -409,7 +409,7 @@ mod TradeMenuUi {
         data     = PanelData,
         entries  = List[ItemEntry],
         sublines = Map[Int32, String],
-        sprites  = Map[Int32, Sprite.SpriteResource],
+        sprites  = Map[Int32, SpriteRes.SpriteResource],
         offset   = Int32
     }
 
@@ -464,7 +464,7 @@ mod TradeMenuUi {
     /// 各ペインの各行（武器→杖→消費→指輪の順）に対応する「2 行目サブライン」と「行頭スプライト」を、
     /// 表示行 index をキーにした Map で返す。末尾の空スロット行はどちらの Map にも入れない。
     /// サブライン文字列は武器/アイテムメニューと同じ pub ヘルパーを再利用して表記を揃える。
-    def paneDecor(playerId: Int32): (Map[Int32, String], Map[Int32, Sprite.SpriteResource])
+    def paneDecor(playerId: Int32): (Map[Int32, String], Map[Int32, SpriteRes.SpriteResource])
             \ PlayerData.PartyQuery =
         let wD = List.map(w -> (WeaponSelectUi.weaponSubline(w), w#sprite), weaponsOf(playerId));
         let sD = List.map(s -> (ItemMenuUi.staffSubline(s),      s#sprite), stavesOf(playerId));
@@ -477,7 +477,7 @@ mod TradeMenuUi {
             (Map.empty(): Map[Int32, String]), indexed);
         let sprites = List.foldLeft((acc, pair) ->
             let (idx, tuple) = pair; let (_, spr) = tuple; Map.insert(idx, spr, acc),
-            (Map.empty(): Map[Int32, Sprite.SpriteResource]), indexed);
+            (Map.empty(): Map[Int32, SpriteRes.SpriteResource]), indexed);
         (sublines, sprites)
 
     /// 見出し「兵種名 重量/最大」と積載段階の色。名前は兵種名（`resource#description`）、重量は

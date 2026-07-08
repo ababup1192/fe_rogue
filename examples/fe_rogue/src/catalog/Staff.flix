@@ -23,7 +23,7 @@ mod Staff {
 
     use Util.Json.Json
     use Util.Json.Json.{JObject, JString, JNumber}
-    use Sprite.SpriteResource
+    use SpriteRes.SpriteResource
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
@@ -228,7 +228,7 @@ mod StaffCatalogCodec {
     use Util.Json.Json.{JObject, JString, JNumber}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use Staff.{StaffResource, StaffEffect}
-    use Sprite.SpriteResource
+    use SpriteRes.SpriteResource
 
     pub def encodeStaff(staff: StaffResource): Json =
         let base = Map#{

@@ -690,20 +690,20 @@ mod TestWorld {
     def d4Staff(): Staff.StaffResource = {
         name       = "テスト杖", effect = Staff.StaffEffect.Heal, durability = 3, weight = 0.75,
         sprite     = ({texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0},
-                        scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+                        scale = {x = 1.0, y = 1.0}, flipForFacing = false}: SpriteRes.SpriteResource),
         description = "", effectRule = None
     }
     def d4Consumable(): Consumable.ConsumableResource = {
         name = "きずぐすり", effect = Consumable.ConsumableEffect.Heal, magnitude = 10, duration = 0,
         healAmount = 10, durability = 5, weight = 0.5,
         sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0},
-                    scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+                    scale = {x = 1.0, y = 1.0}, flipForFacing = false}: SpriteRes.SpriteResource),
         description = "", effectRule = None
     }
     def d4Ring(): Ring.RingResource = {
         name = "ちからの指輪", effect = Ring.RingEffect.Power, power = 3, weight = 0.4,
         sprite = ({texture = "t", hframes = 1, vframes = 1, frame = 0, offset = {x = 0.0, y = 0.0},
-                    scale = {x = 1.0, y = 1.0}, flipForFacing = false}: Sprite.SpriteResource),
+                    scale = {x = 1.0, y = 1.0}, flipForFacing = false}: SpriteRes.SpriteResource),
         description = "", effectRule = None
     }
 

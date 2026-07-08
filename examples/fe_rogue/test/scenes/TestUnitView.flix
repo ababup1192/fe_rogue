@@ -67,7 +67,7 @@ mod TestUnitView {
 
     // ════════════════════════════════════════════════════════
     // projection: PlayerScene.unitView / EnemyScene.unitView の結線
-    //   scene を介す `Encounter.fromScene` は TileMapLayer 構築が要る統合テストになるため
+    //   scene を介す `Encounter.fromScene` は TileLayer 構築が要る統合テストになるため
     //   （TestEnemyRangeScene の注記と同様、実機側に委ねる）、ここでは join の核である
     //   Data → UnitView の projection を直接検証する: faction / weaponRange / combat 結線 /
     //   hidden / isDying フラグ。

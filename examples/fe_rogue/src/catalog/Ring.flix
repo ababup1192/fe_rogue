@@ -21,7 +21,7 @@ mod Ring {
 
     use Util.Json.Json
     use Util.Json.Json.{JObject, JString, JNumber}
-    use Sprite.SpriteResource
+    use SpriteRes.SpriteResource
 
     /// 指輪の効果の種類。
     ///   - `Pursuit`  : 速さが相手より 3 以上高いと 15% で追撃（2 回攻撃）。`power` 不使用
@@ -240,7 +240,7 @@ mod RingCatalogCodec {
     use Util.Json.Json.{JObject, JString, JNumber}
     use JsonCodec.{expectObject, expectString, expectInt, expectFloat, floatToBd, intToBd}
     use Ring.RingResource
-    use Sprite.SpriteResource
+    use SpriteRes.SpriteResource
 
     pub def encodeRing(ring: RingResource): Json =
         let base = Map#{
