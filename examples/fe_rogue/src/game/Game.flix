@@ -656,12 +656,13 @@ mod Game {
                 // （applyPhaseChange が snapshot から再構築）と遷移する。buildTitle は TitleMenuUi.enter で
                 // Title root を可視化するため、spawn 後に呼ぶ必要がある（spawn 前だと不可視の no-op になる）。
                 applyPhaseChange(GamePhase.Title, GamePhase.Title, catalogs);
-                // 初回 world はほぼ空で開始（タイトル画面はユニット/地形が無く、以降の全 store は
-                // spawn/build choke の Cmd が seed する）。ただし floorId だけは先頭フロアで初期化する:
-                // フロア build（`WorldSetup.buildCurrentFloor`）が floorId を読むのは新規ゲームの put より
-                // 前になり得るため（""だと「unknown floor id」で落ちる）。
+                // 初回 world は setup 後の worldRef を引き継ぐ: 起動時に spawn した World-entity UI と
+                // screen=Title を含む（これらは worldRef 上に組まれるので、フレーム頭の Ref.put で消えないよう
+                // 引き継ぐ）。ユニット/地形はまだ無く、以降の全 store は spawn/build choke の Cmd が seed する。
+                // floorId だけは先頭フロアで初期化する: フロア build（`WorldSetup.buildCurrentFloor`）が floorId を
+                // 読むのは新規ゲームの put より前になり得るため（""だと「unknown floor id」で落ちる）。
                 let initialWorld =
-                    World.applyCmd(World.Cmd.SetFloorId(FloorCatalog.firstFloorId(floors)), World.empty());
+                    World.applyCmd(World.Cmd.SetFloorId(FloorCatalog.firstFloorId(floors)), Ref.get(worldRef));
                 gameLoop(catalogs, worldRef, GamePhase.Title, initialWorld, Set.empty())
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
             // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /
@@ -828,7 +829,12 @@ mod Game {
                   def get(k)         = k(World.tradeMenuOf(Ref.get(worldRef)))
                   def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetTradeMenu(target), Ref.get(worldRef)), worldRef); k() }
               }
-              with UiWorldState.withState(rc)     // World-entity UI（全滅モーダル）の状態を resource 化
+              with handler UiWorldState.State {
+                  // World-entity UI（全滅モーダル等）の状態の単一権威は World.uiWorld。
+                  // get/put とも facade で World 経由（呼び出し側 20 ファイルは無改修・test は withState の Ref）。
+                  def get(k)         = k(World.uiWorldOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetUiWorld(target), Ref.get(worldRef)), worldRef); k() }
+              }
               with MinimapState.withState(rc)     // ミニマップの表示トグル（M）状態を resource 化
         }
 

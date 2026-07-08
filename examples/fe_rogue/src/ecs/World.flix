@@ -129,6 +129,9 @@ pub enum World {
                  // 物交換窓のセッション状態（members/focus/pick/origin/marks/markPane）。行カーソルは World-entity UI selection。
                  // World 単一権威（production は inline facade・test は `TradeMenuState.withState` Ref）。型は session データ TradeMenuUi.PanelData。
                  tradeMenu = TradeMenuUi.PanelData,
+                 // World-entity UI の状態（全滅モーダル等の UI ノード store）。見た目は UiExtract/render が導出。
+                 // World 単一権威（production は inline facade・test は `UiWorldState.withState` Ref）。型は engine_world の UiStore.UiWorld。
+                 uiWorld = UiStore.UiWorld,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
                  // unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
                  // でなく **この enum タグ `teamOf` で読む**（Bevy の Team component 相当）。
@@ -298,6 +301,7 @@ mod World {
                      rangeOverlay = RangeOverlayState.empty(),
                      itemMenu = ItemMenuState.initial(),
                      tradeMenu = TradeMenuUi.defaultPanelData(),
+                     uiWorld = UiStore.empty(),
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      statusEffects = Map.empty(),
                      hp = Map.empty(), weapons = Map.empty(), team = Map.empty(),
@@ -387,6 +391,10 @@ mod World {
     /// World の tradeMenu（物交換セッション状態・単一権威）を読む（read-model アクセサ）。`TradeMenuState` facade が使う。
     pub def tradeMenuOf(world: World): TradeMenuUi.PanelData =
         let World.World(w) = world; w#tradeMenu
+
+    /// World の uiWorld（World-entity UI の状態・単一権威）を読む（read-model アクセサ）。`UiWorldState` facade が使う。
+    pub def uiWorldOf(world: World): UiStore.UiWorld =
+        let World.World(w) = world; w#uiWorld
 
     /// per-frame の World 更新。**縮退版**: 全 store が command 権威（spawn/despawn/build choke の Cmd が
     /// 唯一の書込・prune は `Cmd.Despawn`/`Cmd.ClearUnits` が担う）なので、scene からの derive/prune は無い。
@@ -592,6 +600,7 @@ mod World {
         case SetRangeOverlay(RangeOverlayState.Data)  // 範囲オーバーレイ 7 種 write（RangeOverlayState facade）
         case SetItemMenu(ItemMenuState.Data)         // アイテム窓の選択状態 write（ItemMenuState facade）
         case SetTradeMenu(TradeMenuUi.PanelData)      // 物交換セッション状態 write（TradeMenuState facade）
+        case SetUiWorld(UiStore.UiWorld)              // World-entity UI 状態 write（UiWorldState facade）
         case SetHp(EntityRef, Int32)        // hp write（dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
         case SetBaseStats(EntityRef, Combat.BaseStats)  // base 戦闘値 write（hp/weapons 同型・両 faction・resource 書換ごとに dual-write）
@@ -887,6 +896,8 @@ mod World {
                 let World.World(w) = world; World.World({itemMenu = im | w})
             case Cmd.SetTradeMenu(tm) =>
                 let World.World(w) = world; World.World({tradeMenu = tm | w})
+            case Cmd.SetUiWorld(ui) =>
+                let World.World(w) = world; World.World({uiWorld = ui | w})
             case Cmd.SetHp(ref, hpVal) =>
                 // 単一 store＋toUid。
                 let World.World(w) = world;
@@ -1381,6 +1392,7 @@ mod World {
             case Cmd.SetRangeOverlay(_)      => ("SetRangeOverlay", 0, 0, 0)
             case Cmd.SetItemMenu(_)          => ("SetItemMenu", 0, 0, 0)
             case Cmd.SetTradeMenu(_)         => ("SetTradeMenu", 0, 0, 0)
+            case Cmd.SetUiWorld(_)           => ("SetUiWorld", 0, 0, 0)
             case Cmd.TickPlayers(_)           => ("TickP", 0, 0, 0)
             case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)
