@@ -120,6 +120,15 @@ pub enum World {
                  // 選択カーソルの論理部（指しセル/直前ホバー敵/加速の hold）。視覚（描画位置/tween）は shell 残置。
                  // World 単一権威（production は `Game.start` の inline facade・test は `CursorState.withState` Ref）。
                  cursorLogical = CursorState.Logical,
+                 // 範囲オーバーレイ 7 種のセル集合（Option 在/不在=表示トグル）。フェーズ限定の view 状態だが
+                 // 入力/遷移が書き render が読む論理値。World 単一権威（production は inline facade・test は `RangeOverlayState.withState` Ref）。
+                 rangeOverlay = RangeOverlayState.Data,
+                 // アイテム窓の選択状態（カテゴリ index / 一括選択マーク）。行カーソルは Godot ItemList 自前所有。
+                 // World 単一権威（production は inline facade・test は `ItemMenuState.withState` Ref）。
+                 itemMenu = ItemMenuState.Data,
+                 // 物交換窓のセッション状態（members/focus/pick/origin/marks/markPane）。行カーソルは World-entity UI selection。
+                 // World 単一権威（production は inline facade・test は `TradeMenuState.withState` Ref）。型は session データ TradeMenuUi.PanelData。
+                 tradeMenu = TradeMenuUi.PanelData,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
                  // unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
                  // でなく **この enum タグ `teamOf` で読む**（Bevy の Team component 相当）。
@@ -286,6 +295,9 @@ mod World {
                      initialSpawns = {enemies = Nil, players = Nil}, floorSnapshot = None, floorId = "",
                      arrowCursor = ArrowCursorState.initial(), selection = SelectedPlayer.cleared(),
                      cursorLogical = {gridPos = {x = 0, y = 0}, lastHoveredEnemyId = None, holdDir = None, holdSteps = 0},
+                     rangeOverlay = RangeOverlayState.empty(),
+                     itemMenu = ItemMenuState.initial(),
+                     tradeMenu = TradeMenuUi.defaultPanelData(),
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      statusEffects = Map.empty(),
                      hp = Map.empty(), weapons = Map.empty(), team = Map.empty(),
@@ -363,6 +375,18 @@ mod World {
     /// World の cursorLogical（選択カーソルの論理部・単一権威）を読む（read-model アクセサ）。`CursorState` facade が使う。
     pub def cursorLogicalOf(world: World): CursorState.Logical =
         let World.World(w) = world; w#cursorLogical
+
+    /// World の rangeOverlay（範囲オーバーレイ 7 種・単一権威）を読む（read-model アクセサ）。`RangeOverlayState` facade が使う。
+    pub def rangeOverlayOf(world: World): RangeOverlayState.Data =
+        let World.World(w) = world; w#rangeOverlay
+
+    /// World の itemMenu（アイテム窓の選択状態・単一権威）を読む（read-model アクセサ）。`ItemMenuState` facade が使う。
+    pub def itemMenuOf(world: World): ItemMenuState.Data =
+        let World.World(w) = world; w#itemMenu
+
+    /// World の tradeMenu（物交換セッション状態・単一権威）を読む（read-model アクセサ）。`TradeMenuState` facade が使う。
+    pub def tradeMenuOf(world: World): TradeMenuUi.PanelData =
+        let World.World(w) = world; w#tradeMenu
 
     /// per-frame の World 更新。**縮退版**: 全 store が command 権威（spawn/despawn/build choke の Cmd が
     /// 唯一の書込・prune は `Cmd.Despawn`/`Cmd.ClearUnits` が担う）なので、scene からの derive/prune は無い。
@@ -565,6 +589,9 @@ mod World {
         case SetArrowCursor(ArrowCursorState.Data)  // 照準矢印の論理状態 write（ArrowCursorState facade）
         case SetSelection(SelectedPlayer.Selection)  // 操作中プレイヤー選択状態 write（SelectedPlayer facade）
         case SetCursorLogical(CursorState.Logical)   // 選択カーソルの論理部 write（CursorState facade）
+        case SetRangeOverlay(RangeOverlayState.Data)  // 範囲オーバーレイ 7 種 write（RangeOverlayState facade）
+        case SetItemMenu(ItemMenuState.Data)         // アイテム窓の選択状態 write（ItemMenuState facade）
+        case SetTradeMenu(TradeMenuUi.PanelData)      // 物交換セッション状態 write（TradeMenuState facade）
         case SetHp(EntityRef, Int32)        // hp write（dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
         case SetBaseStats(EntityRef, Combat.BaseStats)  // base 戦闘値 write（hp/weapons 同型・両 faction・resource 書換ごとに dual-write）
@@ -854,6 +881,12 @@ mod World {
                 let World.World(w) = world; World.World({selection = s | w})
             case Cmd.SetCursorLogical(lg) =>
                 let World.World(w) = world; World.World({cursorLogical = lg | w})
+            case Cmd.SetRangeOverlay(ro) =>
+                let World.World(w) = world; World.World({rangeOverlay = ro | w})
+            case Cmd.SetItemMenu(im) =>
+                let World.World(w) = world; World.World({itemMenu = im | w})
+            case Cmd.SetTradeMenu(tm) =>
+                let World.World(w) = world; World.World({tradeMenu = tm | w})
             case Cmd.SetHp(ref, hpVal) =>
                 // 単一 store＋toUid。
                 let World.World(w) = world;
@@ -1345,6 +1378,9 @@ mod World {
             case Cmd.SetArrowCursor(_)       => ("SetArrowCursor", 0, 0, 0)
             case Cmd.SetSelection(_)         => ("SetSelection", 0, 0, 0)
             case Cmd.SetCursorLogical(_)     => ("SetCursorLogical", 0, 0, 0)
+            case Cmd.SetRangeOverlay(_)      => ("SetRangeOverlay", 0, 0, 0)
+            case Cmd.SetItemMenu(_)          => ("SetItemMenu", 0, 0, 0)
+            case Cmd.SetTradeMenu(_)         => ("SetTradeMenu", 0, 0, 0)
             case Cmd.TickPlayers(_)           => ("TickP", 0, 0, 0)
             case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)

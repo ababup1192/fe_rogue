@@ -797,7 +797,12 @@ mod Game {
                   }
               }
               with CameraState.withState(rc)      // 追従カメラの視点状態（ターゲット/smoothPosition/追従パラメータ）を resource 化
-              with RangeOverlayState.withState(rc) // 範囲オーバーレイ 7 種のセル集合（Option 在/不在=表示トグル）を resource 化
+              with handler RangeOverlayState.State {
+                  // 範囲オーバーレイ 7 種のセル集合（Option 在/不在=表示トグル）の単一権威は World.rangeOverlay。
+                  // get/put とも facade で World 経由（呼び出し側 20 ファイルは無改修・test は withState の Ref）。
+                  def get(k)         = k(World.rangeOverlayOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetRangeOverlay(target), Ref.get(worldRef)), worldRef); k() }
+              }
               with handler ArrowCursorState.State {
                   // 照準矢印の論理状態（anchor/direction/gridPos）の単一権威は World.arrowCursor。
                   // get/put とも facade で World 経由（呼び出し側 get3/put2 は無改修・test は withState の Ref）。
@@ -811,8 +816,18 @@ mod Game {
               with FloorProgress.withState(worldRef)  // 現在フロア id World.floorId 単一権威
               with PartySelection.withState(worldRef)   // 出撃メンバー（開始時に1回抽選、フロア間で維持）World.party 単一権威
               with CharacterSelectState.withState(rc) // 出撃メンバー選択画面の選択状態（注目/選択/サブモード/カルーセル）を resource 化
-              with ItemMenuState.withState(rc)    // アイテム窓の選択状態（カテゴリ index / 一括選択マーク）を resource 化
-              with TradeMenuState.withState(rc)   // 物交換窓のセッション状態（members/focus/pick/origin/marks）を resource 化
+              with handler ItemMenuState.State {
+                  // アイテム窓の選択状態（カテゴリ index / 一括選択マーク）の単一権威は World.itemMenu。
+                  // get/put とも facade で World 経由（呼び出し側 3 ファイルは無改修・test は withState の Ref）。
+                  def get(k)         = k(World.itemMenuOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetItemMenu(target), Ref.get(worldRef)), worldRef); k() }
+              }
+              with handler TradeMenuState.State {
+                  // 物交換窓のセッション状態（members/focus/pick/origin/marks/markPane）の単一権威は World.tradeMenu。
+                  // get/put とも facade で World 経由（呼び出し側 5 ファイルは無改修・test は withState の Ref）。
+                  def get(k)         = k(World.tradeMenuOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetTradeMenu(target), Ref.get(worldRef)), worldRef); k() }
+              }
               with UiWorldState.withState(rc)     // World-entity UI（全滅モーダル）の状態を resource 化
               with MinimapState.withState(rc)     // ミニマップの表示トグル（M）状態を resource 化
         }
