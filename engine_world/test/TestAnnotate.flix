@@ -240,6 +240,38 @@ mod TestAnnotate {
             case _ => bug!("円 1 個は描画命令 1 件になるはず")
         }
 
+    /// 生の描画命令（Drawable）からの列挙: 中心置き・2 倍のスプライト（元 10×20 → 外形 20×40、
+    /// 左上 (90,80)）は矩形に重なり、種類 "sprite" とテクスチャ名で報告される。
+    /// （view を持たず生チャンネルを登録するゲーム = fe_rogue 向けの経路）
+    @Test
+    def testHitsFromDrawablesFindsSprite(): Unit \ Assert =
+        let white = { r = 1.0f32, g = 1.0f32, b = 1.0f32 };
+        let drawable = { texture = "unit", position = { x = 100.0, y = 100.0 },
+                         scale = { x = 2.0, y = 2.0 }, rotation = 0.0, color = white,
+                         alpha = 1.0f32, centered = true, uvOffset = { x = 0.0, y = 0.0 },
+                         uvScale = { x = 1.0, y = 1.0 }, zIndex = 5, style = None };
+        let sizeOf = _ -> Some({ id = 0, width = 10.0, height = 20.0 });
+        let rect = { position = { x = 95.0, y = 95.0 }, size = { x = 10.0, y = 10.0 } };
+        match Annotate.hitsFromDrawables(sizeOf, rect, drawable :: Nil) {
+            case hit :: Nil => Assert.assertEq(expected = ("sprite", "unit", 90.0, 80.0),
+                (hit#kind, hit#name, hit#aabb#position#x, hit#aabb#position#y))
+            case _ => bug!("矩形に重なる描画命令は 1 件だけのはず")
+        }
+
+    /// タイルマップへの見え方の適用: 2 倍ズームで置き場所は中央焦点で写り、タイル倍率も 2 倍になる。
+    /// （デザイン 200×100・中央 (100,50)。位置 (50,25) → (50-100)*2+100 = 0, (25-50)*2+50 = 0）
+    @Test
+    def testApplyInspectTilesScalesPositionAndTiles(): Unit \ Assert =
+        let view = { zoom = 2.0, pan = Vec2.zero(), design = design() };
+        let tile = { textureName = "floor", tileSize = 16.0, position = { x = 50.0, y = 25.0 },
+                     tileScale = { x = 1.0, y = 1.0 }, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
+                     zIndex = 0, tileVaoId = 1, tileCount = 10 };
+        match Annotate.applyInspectTiles(view, tile :: Nil) {
+            case t :: Nil => Assert.assertEq(expected = (0.0, 0.0, 2.0, 2.0),
+                (t#position#x, t#position#y, t#tileScale#x, t#tileScale#y))
+            case _ => bug!("タイルマップ命令は 1 件のまま返るはず")
+        }
+
     // ========================================================================
     // 書き出す本文
     // ========================================================================

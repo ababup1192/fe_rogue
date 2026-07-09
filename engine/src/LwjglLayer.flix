@@ -573,7 +573,7 @@ mod LwjglLayer {
                         spriteShader = spriteShader, tileShader = tileShader, vao = vao,
                         registry = registry, clearColor = config#clearColor,
                         designW = screenW, designH = screenH, fbW = fbW, fbH = fbH,
-                        sprites = req#sprites, tileMaps = (Nil: List[GameEngine.TileMapRenderCmd]),
+                        sprites = req#sprites, tileMaps = req#tileMaps,
                         polygons = req#polygons, polyVao = polyVao, polyVbo = polyVbo});
                     let image = framebufferImage(fbW, fbH);
                     writePngFile(image, "${dirPath}/screenshot.png");

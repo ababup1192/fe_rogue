@@ -265,6 +265,31 @@ mod Annotate {
                 { position = Vec2.add(pos, lo), size = Vec2.sub(hi, lo) }
         }
 
+    /// 描画命令（Drawable）の列から矩形に重なる物を列挙する。view を持たず生の描画チャンネルを
+    /// 登録するゲーム（fe_rogue 等）向け。texture が空の Drawable は単色の箱（scale が px サイズ）、
+    /// それ以外はスプライト（scale は倍率・region 表示ぶんは uvScale で縮む）として外形を出す。
+    pub def hitsFromDrawables(sizeOf: String -> Option[GameEngine.TextureInfo] \ ef,
+                              rect: Rect2.Rect2, ds: List[GameEngine.Drawable]): List[Hit] \ ef =
+        ds |> List.filterMap(d -> {
+            let aabb = drawableAabb(sizeOf, d);
+            if (rectIntersects(rect, aabb))
+                Some({ kind = if (d#texture == "") "box" else "sprite",
+                       name = d#texture, position = d#position, zIndex = d#zIndex, aabb = aabb })
+            else None
+        })
+
+    /// Drawable 1 件を覆う矩形（デザイン座標）。回転は無視した外形の近似。
+    def drawableAabb(sizeOf: String -> Option[GameEngine.TextureInfo] \ ef,
+                     d: GameEngine.Drawable): Rect2.Rect2 \ ef =
+        let base = if (d#texture == "") { x = 1.0, y = 1.0 }
+                   else match sizeOf(d#texture) {
+                       case Some(info) => { x = info#width * d#uvScale#x, y = info#height * d#uvScale#y }
+                       case None       => Vec2.zero()
+                   };
+        let size = { x = base#x * Float64.abs(d#scale#x), y = base#y * Float64.abs(d#scale#y) };
+        let topLeft = if (d#centered) Vec2.sub(d#position, Vec2.div(size, 2.0)) else d#position;
+        { position = topLeft, size = size }
+
     /// 描画物 1 件を Hit の形へ。
     def hitOf(placed: Render.Placed, aabb: Rect2.Rect2): Hit =
         let (pos, item) = placed;
@@ -366,6 +391,12 @@ mod Annotate {
     pub def applyInspectPoly(view: View, ps: List[GameEngine.PolygonRenderCmd]): List[GameEngine.PolygonRenderCmd] =
         if (isIdentity(view)) ps
         else ps |> List.map(p -> { vertices = List.map(v -> toScreen(view, v), p#vertices) | p })
+
+    /// タイルマップの描画命令へ見え方を適用する（置き場所は toScreen、タイル倍率は zoom 倍）。
+    pub def applyInspectTiles(view: View, ts: List[GameEngine.TileMapRenderCmd]): List[GameEngine.TileMapRenderCmd] =
+        if (isIdentity(view)) ts
+        else ts |> List.map(t -> { position = toScreen(view, t#position),
+                                   tileScale = Vec2.mul(t#tileScale, view#zoom) | t })
 
     /// 等倍・ずらし無し（変換しても何も変わらない）か。
     def isIdentity(view: View): Bool =

@@ -111,7 +111,7 @@ mod GameEngine {
 
     /// 注釈 1 件の書き出し依頼。ゲーム画面の気になる場所を矩形で囲んだとき、
     /// その情報一式をファイルに残すために `saveAnnotation` へ渡す。
-    /// sprites / polygons は等倍・オーバーレイ無しの 1 フレームぶんの描画命令で、
+    /// sprites / tileMaps / polygons は等倍・オーバーレイ無しの 1 フレームぶんの描画命令で、
     /// ハンドラがこれを描き直してスクリーンショットを撮る。
     /// json / readmeBody は呼び側が組み立て済みの本文をそのまま渡す（ハンドラは書くだけ）。
     pub type alias AnnotationRequest = {
@@ -120,6 +120,7 @@ mod GameEngine {
         json = String,          // annotation.json の本文
         readmeBody = String,    // README.md の中ほどに挟む要約（見出しやコメント欄はハンドラが付ける）
         sprites = List[Drawable],
+        tileMaps = List[TileMapRenderCmd],
         polygons = List[PolygonRenderCmd]
     }
 

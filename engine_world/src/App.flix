@@ -44,7 +44,10 @@ mod App {
         view = Option[(FontAtlas, w) -> List[Render.Placed] \ ef],
         audio = { before = w, after = w } -> List[String] \ ef,    // 1 フレームの前後から鳴らす音名を導く
         quit = (Frame, w) -> Bool \ ef,                            // 終了判定（既定 = Escape のエッジ）
-        debug = Bool                                               // デバッグ機能（F8 の時間停止・注釈・巻き戻し）を有効にするか
+        debug = Bool,                                              // デバッグ機能（F8 の時間停止・注釈・巻き戻し）を有効にするか
+        // view = None のゲームがデバッグ機能を使うための生投影（フォントアトラス名と、World →
+        // 描画チャンネル 3 本）。描画はせずチャンネルを返すだけの関数を繋ぐ。
+        debugView = Option[(String, w -> (List[GameEngine.Drawable], List[GameEngine.TileMapRenderCmd], List[GameEngine.PolygonRenderCmd]) \ ef)]
     }
 
     /// 初期 World だけを持つ空の App。絵はまだ無い（withView で繋ぐまで何も描かない）。
@@ -58,7 +61,8 @@ mod App {
           view = None,
           audio = _worlds -> checked_ecast(Nil),
           quit = (frame, _world) -> checked_ecast(justPressed(GameEngine.Key.Escape, frame)),
-          debug = false }
+          debug = false,
+          debugView = None }
 
     /// 起動時に 1 回だけ走るシステムを末尾へ繋ぐ（追加順に適用される）。
     pub def addStartup(sys: w -> w \ ef, app: App[w, ef]): App[w, ef] =
@@ -99,6 +103,14 @@ mod App {
     pub def debugFromEnv(): Bool \ IO =
         let value = System.getenv("DEBUG");
         not Object.isNull(value) and value != ""
+
+    /// 自前描画（view = None）のゲームがデバッグ機能（F8）を使えるようにする生投影を繋ぐ。
+    /// f は World を描画チャンネル（drawable / tileMap / polygon）へ投影する（描画はしない）。
+    /// font は一時停止中のメッセージ表示に使うフォントアトラス名（そのゲームが持つ物を指定）。
+    pub def withDebugView(font: {font = String},
+                          f: w -> (List[GameEngine.Drawable], List[GameEngine.TileMapRenderCmd], List[GameEngine.PolygonRenderCmd]) \ ef,
+                          app: App[w, ef]): App[w, ef] =
+        { debugView = Some((font#font, f)) | app }
 
     // ── 純粋な芯（テストはここを直接叩く）──
 
@@ -147,7 +159,7 @@ mod App {
         let wantsQuit = app#quit;
         if (GameEngine.Game.shouldClose() or wantsQuit(frame, world)) ()
         else {
-            let toggled = justPressed(GameEngine.Key.F8, frame) and app#debug and Option.nonEmpty(app#view);
+            let toggled = justPressed(GameEngine.Key.F8, frame) and canDebug(app);
             let pausedNow = if (toggled) not anno#paused else anno#paused;
             // デバッグモードの出入りをウィンドウタイトルとカーソル形状で示す
             // （停止中は正確に囲うための十字カーソル）
@@ -174,7 +186,7 @@ mod App {
                 playSounds(app, reloaded, advanced);
                 renderFrame(app, advanced);
                 // 時間スクラブ用の履歴（debug が無効なら一切持たない = 本番ビルドは無負荷）
-                let nextHistory = if (app#debug and Option.nonEmpty(app#view))
+                let nextHistory = if (canDebug(app))
                                       List.take(historyLimit(), advanced :: history)
                                   else Nil;
                 loop(app, advanced, currentKeys, { frame = anno#frame + 1i64 | anno }, nextHistory)
@@ -185,81 +197,122 @@ mod App {
     def worldAt(history: List[w], back: Int32, fallback: w): w =
         history |> List.drop(back) |> List.head |> Option.getWithDefault(fallback)
 
+    /// デバッグ機能が使える構成か（debug 有効 かつ 凍結画面を描く手段 = view か debugView がある）。
+    def canDebug(app: App[w, ef]): Bool =
+        app#debug and (Option.nonEmpty(app#view) or Option.nonEmpty(app#debugView))
+
+    /// 一時停止中に扱う 1 フレームぶんの描画チャンネル（エンジンへそのまま渡せる形）。
+    type alias DebugChannels = {
+        drawables = List[GameEngine.Drawable],
+        tileMaps = List[GameEngine.TileMapRenderCmd],
+        polygons = List[GameEngine.PolygonRenderCmd]
+    }
+
     /// 一時停止中の 1 フレーム。← → の時間スクラブで表示する瞬間を選び、マウスを読んで
     /// ズーム・パン・ドラッグを進め、矩形が確定したら「表示中の瞬間」の注釈一式を書き出し、
     /// その World の絵に見え方とドラッグ中の矩形を重ねて描く。
     /// World には一切触れない（凍結中の絵は選んだ World から毎フレーム投影し直す）。
+    /// 絵の出どころは view（Placed 投影）か debugView（生チャンネル投影）のどちらか。
     def pausedStep(app: App[w, ef], world: w, history: List[w], frame: Frame,
                    anno: Annotate.State): Annotate.State \ (ef + GameEngine.Game) =
+        let design = GameEngine.Game.getViewportRect()#size;
+        let historyLen = Int32.max(1, List.length(history));
+        let scrubbed = Annotate.scrubStep(
+            { back = isDown(GameEngine.Key.Left, frame),
+              backEdge = justPressed(GameEngine.Key.Left, frame),
+              fwd = isDown(GameEngine.Key.Right, frame),
+              fwdEdge = justPressed(GameEngine.Key.Right, frame) },
+            historyLen, anno);
+        let displayed = worldAt(history, scrubbed#scrub, world);
+        let input = { cursor = GameEngine.Game.getMousePosition(),
+                      leftDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left),
+                      middleDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Middle),
+                      spaceDown = isDown(GameEngine.Key.Space, frame),
+                      scroll = GameEngine.Game.consumeScrollDelta(),
+                      design = design };
+        let (next, emitted) = Annotate.step(input, scrubbed);
+        // 注釈のフレーム番号は「表示中の瞬間」のもの（スクラブぶんを引く）
+        let shownFrame = next#frame - Int32.toInt64(next#scrub);
         match app#view {
-            case None => anno
             case Some(toItems) =>
-                let design = GameEngine.Game.getViewportRect()#size;
-                let historyLen = Int32.max(1, List.length(history));
-                let scrubbed = Annotate.scrubStep(
-                    { back = isDown(GameEngine.Key.Left, frame),
-                      backEdge = justPressed(GameEngine.Key.Left, frame),
-                      fwd = isDown(GameEngine.Key.Right, frame),
-                      fwdEdge = justPressed(GameEngine.Key.Right, frame) },
-                    historyLen, anno);
-                let displayed = worldAt(history, scrubbed#scrub, world);
-                let input = { cursor = GameEngine.Game.getMousePosition(),
-                              leftDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left),
-                              middleDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Middle),
-                              spaceDown = isDown(GameEngine.Key.Space, frame),
-                              scroll = GameEngine.Game.consumeScrollDelta(),
-                              design = design };
-                let (next, emitted) = Annotate.step(input, scrubbed);
                 let atlas = GameEngine.Game.getFontAtlas("default");
                 let items = toItems(atlas, displayed);
-                // 注釈のフレーム番号は「表示中の瞬間」のもの（スクラブぶんを引く）
-                let shownFrame = next#frame - Int32.toInt64(next#scrub);
-                let shown = match emitted {
-                    case Some(rect) => match writeAnnotation(design, rect, shownFrame, items) {
-                        case Some(path) => Annotate.showToast("Saved debug file\n${path}", next)
-                        case None       => next
-                    }
-                    case None => Annotate.tickToast(next)
+                let (sprites, polygons) = Render.draw(items);
+                let hitList = match emitted {
+                    case Some(rect) => Annotate.hits(name -> GameEngine.Game.getTextureInfo(name), rect, items)
+                    case None       => Nil
                 };
-                renderPaused(design, input#cursor, atlas, historyLen, shown, items);
-                shown
+                finishPaused({ design = design, cursor = input#cursor, atlas = atlas,
+                               historyLen = historyLen, shownFrame = shownFrame },
+                             next, emitted,
+                             { drawables = sprites, tileMaps = Nil, polygons = polygons }, hitList)
+            case None => match app#debugView {
+                case Some((fontName, toChannels)) =>
+                    let atlas = GameEngine.Game.getFontAtlas(fontName);
+                    let (drawables, tileMaps, polygons) = toChannels(displayed);
+                    let hitList = match emitted {
+                        case Some(rect) =>
+                            Annotate.hitsFromDrawables(name -> GameEngine.Game.getTextureInfo(name), rect, drawables)
+                        case None => Nil
+                    };
+                    finishPaused({ design = design, cursor = input#cursor, atlas = atlas,
+                                   historyLen = historyLen, shownFrame = shownFrame },
+                                 next, emitted,
+                                 { drawables = drawables, tileMaps = tileMaps, polygons = polygons }, hitList)
+                case None => next
+            }
         }
+
+    /// 一時停止フレームの締め: 矩形が確定していれば注釈を書き出してトーストを出し、凍結画面を描く。
+    def finishPaused(ctx: { design = Vec2.Vec2, cursor = Vec2.Vec2, atlas = FontAtlas,
+                            historyLen = Int32, shownFrame = Int64 },
+                     anno: Annotate.State, emitted: Option[Rect2.Rect2],
+                     channels: DebugChannels, hitList: List[Annotate.Hit]): Annotate.State \ GameEngine.Game =
+        let shown = match emitted {
+            case Some(rect) => match writeAnnotation(ctx#design, rect, ctx#shownFrame, channels, hitList) {
+                case Some(path) => Annotate.showToast("Saved debug file\n${path}", anno)
+                case None       => anno
+            }
+            case None => Annotate.tickToast(anno)
+        };
+        renderPaused(ctx, shown, channels);
+        shown
 
     /// 確定した矩形の注釈一式（JSON・README の要約・等倍の描画命令）を組んでエンジンへ渡す。
     /// ファイルへの書き出しとスクリーンショット撮影・シャッター音はエンジンの saveAnnotation が
     /// 引き受ける。戻り値は保存先のディレクトリパス（失敗時 None）。
     def writeAnnotation(design: Vec2.Vec2, rect: Rect2.Rect2, frameNo: Int64,
-                        items: List[Render.Placed]): Option[String] \ GameEngine.Game =
-        let hitList = Annotate.hits(name -> GameEngine.Game.getTextureInfo(name), rect, items);
-        let (sprites, polygons) = Render.draw(items);
+                        channels: DebugChannels, hitList: List[Annotate.Hit]): Option[String] \ GameEngine.Game =
         GameEngine.Game.saveAnnotation({
             frame = frameNo, rect = rect,
             json = Annotate.annotationJson({ frame = frameNo, design = design, rect = rect }, hitList),
             readmeBody = Annotate.readmeBody({ frame = frameNo, rect = rect }, hitList),
-            sprites = sprites, polygons = polygons })
+            sprites = channels#drawables, tileMaps = channels#tileMaps, polygons = channels#polygons })
 
     /// 凍結中の絵を描く: ドラッグ中の矩形を重ね、ズーム・パンを適用して描画命令にする。
     /// 保存完了メッセージとスクラブ位置は見え方の適用後に重ねるので、ズーム中も画面に固定される。
     /// 等倍・ずらし無し・表示物無しのときは通常描画と同じ命令列になる。
-    def renderPaused(design: Vec2.Vec2, cursor: Vec2.Vec2, atlas: FontAtlas, historyLen: Int32,
-                     anno: Annotate.State, items: List[Render.Placed]): Unit \ GameEngine.Game =
-        let view = Annotate.viewOf(design, anno);
+    def renderPaused(ctx: { design = Vec2.Vec2, cursor = Vec2.Vec2, atlas = FontAtlas,
+                            historyLen = Int32, shownFrame = Int64 },
+                     anno: Annotate.State, channels: DebugChannels): Unit \ GameEngine.Game =
+        let view = Annotate.viewOf(ctx#design, anno);
         let overlay = match anno#dragStart {
-            case Some(start) => Annotate.overlayItems(start, Annotate.toDesign(view, cursor))
+            case Some(start) => Annotate.overlayItems(start, Annotate.toDesign(view, ctx#cursor))
             case None        => Nil
         };
-        let (sprites, polygons) = Render.draw(List.append(items, overlay));
+        let (overlaySprites, overlayPolygons) = Render.draw(overlay);
         let toastPlaced = match anno#toast {
-            case Some(t) => Annotate.toastItems(atlas, t#message)
+            case Some(t) => Annotate.toastItems(ctx#atlas, t#message)
             case None    => Nil
         };
         let scrubPlaced = if (anno#scrub > 0 and anno#scrubShow > 0)
-                              Annotate.scrubIndicatorItems(atlas, design, anno#scrub, historyLen)
+                              Annotate.scrubIndicatorItems(ctx#atlas, ctx#design, anno#scrub, ctx#historyLen)
                           else Nil;
         let (fixedSprites, fixedPolygons) = Render.draw(List.append(toastPlaced, scrubPlaced));
         GameEngine.Game.renderCommands(
-            List.append(Annotate.applyInspect(view, sprites), fixedSprites), Nil,
-            List.append(Annotate.applyInspectPoly(view, polygons), fixedPolygons))
+            List.append(Annotate.applyInspect(view, List.append(channels#drawables, overlaySprites)), fixedSprites),
+            Annotate.applyInspectTiles(view, channels#tileMaps),
+            List.append(Annotate.applyInspectPoly(view, List.append(channels#polygons, overlayPolygons)), fixedPolygons))
 
     /// reloadOn で繋いだキーが押された瞬間だけ、リロード関数で World を作り直す。
     def applyReload(app: App[w, ef], frame: Frame, world: w): w \ {Fs.FileRead} =

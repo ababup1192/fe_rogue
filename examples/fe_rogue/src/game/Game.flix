@@ -771,9 +771,19 @@ mod Game {
                                world2
                            }))
                         |> App.quitWhen((_frame, _world) -> checked_ecast(false))
-                        // デバッグ機能の有効化（DEBUG 環境変数）。ただし fe_rogue は view = None
-                        // （自前描画）のため、F8 注釈が実際に効くのは view 供給へ対応してから。
-                        |> App.withDebug(App.debugFromEnv());
+                        // デバッグ機能（F8 の時間停止・注釈・巻き戻し）。DEBUG 環境変数で有効化し、
+                        // view = None（自前描画）なので凍結画面は buildFrame の生チャンネルで供給する。
+                        // 注意: カメラ等の World 外の状態は「停止した瞬間」のまま過去フレームを描く。
+                        |> App.withDebug(App.debugFromEnv())
+                        |> App.withDebugView(font = "ui",
+                               world -> checked_ecast({
+                                   // facade（State effect）経由の読み（World-entity UI・ミニマップ・
+                                   // カーソル等）も「表示中の瞬間」を向くよう、権威 Ref を表示 World に
+                                   // 合わせてから投影する。再開時はフレーム頭の System が App スレッド値で
+                                   // put し直すので、ここで書き換えても時間の整合は崩れない。
+                                   Ref.put(world, worldRef);
+                                   buildFrame(catalogs, world)
+                               }));
                 App.launch(app)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
             // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /
@@ -910,6 +920,16 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World):
         Unit \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarRender.ForecastState,
                 UiWorldState.State, TurnPhase.State, ArrowCursorState.State, MinimapState.State,
                 RangeOverlayState.State, CursorState.State, CameraState.State} =
+    let (worldDrawables, tileMaps, polygons) = buildFrame(catalogs, world2);
+    GameEngine.Game.renderCommands(worldDrawables, tileMaps, polygons)
+
+/// 1 フレームぶんの描画チャンネル（drawable / tileMap / polygon）を World から組み立てる。
+/// renderFrame（通常描画）と App のデバッグ機能（F8 の凍結表示・注釈スクリーンショット）が共用する。
+pub def buildFrame(catalogs: GameLifecycle.Catalogs, world2: World):
+        (List[GameEngine.Drawable], List[GameEngine.TileMapRenderCmd], List[GameEngine.PolygonRenderCmd])
+        \ {GameEngine.Game, SelectedPlayer.State, World.WorldQuery, UnitHPBarRender.ForecastState,
+           UiWorldState.State, TurnPhase.State, ArrowCursorState.State, MinimapState.State,
+           RangeOverlayState.State, CursorState.State, CameraState.State} =
     let transform = RenderWorld.viewTransform();
     // ミニマップは Drawable（矩形）と Polygon（マーカー円）の 2 チャンネルを 1 度に組む（画面固定）。
     let minimap = RenderWorld.renderMinimap();
@@ -938,9 +958,9 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World):
         |> List.append(uiRendered#drawables);
     // polygon チャンネルは minimap のマーカー円 ＋ per-unit 武器グリフに、World-entity UI 由来 polygon
     //   （TopBar の集合中▶ / TurnEndHold の充填リング / BattlePanel の相性三角）を合流。
-    GameEngine.Game.renderCommands(worldDrawables,
-        RenderWorld.renderTileMaps(world2, transform),
-        List.append(RenderWorld.renderFireShots(world2, transform),
-            List.append(minimap#polygons,
-                List.append(WeaponIconRender.renderGlyphs(world2, holesOpt, transform),
-                            uiRendered#polygons))))
+    (worldDrawables,
+     RenderWorld.renderTileMaps(world2, transform),
+     List.append(RenderWorld.renderFireShots(world2, transform),
+         List.append(minimap#polygons,
+             List.append(WeaponIconRender.renderGlyphs(world2, holesOpt, transform),
+                         uiRendered#polygons))))
