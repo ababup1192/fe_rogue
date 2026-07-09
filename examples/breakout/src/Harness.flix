@@ -11,6 +11,5 @@ mod Harness {
     /// ウィンドウなしで焼き込んだフォント（AWT ヘッドレスの計測値のみ）。漢字ファイルは
     /// 渡さない（存在しないパス）ので ASCII＋かなだけが載る —— breakout の文字はすべて ASCII。
     pub def atlas(): FontAtlas \ IO =
-        HeadlessFont.ensureHeadless();
         HeadlessFont.buildUiAtlas(ttfPath(), "assets/none.txt")
 }

@@ -5,7 +5,6 @@
 // ボットには十分な語彙になる。このファイルはサウンドデザインだけを保持し、合成
 // と WAV エンコードは engine_tools にある。
 mod SfxBake {
-    import java.io.File
 
     /// 22050Hz モノラル: 小さいファイルで、この程度のブリップには十分。
     def cfg(): SfxSynth.Config = { sampleRate = 22050 }
@@ -33,14 +32,9 @@ mod SfxBake {
             SfxSynth.fade(SfxSynth.tone(cfg(), 783.99, 0.2, 90)) ::
             SfxSynth.fade(SfxSynth.tone(cfg(), 1046.5, 0.22, 240)) :: Nil)
 
-    def bake(path: String, samples: List[Float64]): Unit \ IO =
-        SfxSynth.writeBytes(path, SfxSynth.wavBytes(cfg(), samples))
-
     /// 4 音すべてを assets/sfx/ へ書き出す（Bake.all から呼ぶ）。
     pub def bakeAll(): Unit \ IO =
-        discard (new File("assets/sfx")).mkdirs();
-        bake("assets/sfx/move.wav", moveBlip());
-        bake("assets/sfx/push.wav", pushThud());
-        bake("assets/sfx/undo.wav", undoTick());
-        bake("assets/sfx/clear.wav", clearFanfare())
+        SfxSynth.bakeSet(cfg(), "assets/sfx",
+            ("move", moveBlip()) :: ("push", pushThud()) ::
+            ("undo", undoTick()) :: ("clear", clearFanfare()) :: Nil)
 }

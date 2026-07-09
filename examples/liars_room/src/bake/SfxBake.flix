@@ -3,7 +3,6 @@
 // 起動時に読み込む。サンプルも録音も無し — SfxSynth の矩形波・ノイズ・フェードだけ。
 // このファイルはサウンドデザインだけを持ち、合成と WAV エンコードは engine_tools にある。
 mod SfxBake {
-    import java.io.File
 
     /// 22050Hz モノラル: この程度のブリップには十分。
     def cfg(): SfxSynth.Config = { sampleRate = 22050 }
@@ -73,19 +72,10 @@ mod SfxBake {
     def silence(ms: Int32): List[Float64] =
         SfxSynth.tone(cfg(), 100.0, 0.0, ms)
 
-    def bake(path: String, samples: List[Float64]): Unit \ IO =
-        SfxSynth.writeBytes(path, SfxSynth.wavBytes(cfg(), samples))
-
     /// 6 音すべてを assets/sfx/ へ書き出す（Bake.all から呼ぶ）。
     pub def bakeAll(): Unit \ IO =
-        discard (new File("assets/sfx")).mkdirs();
-        bake("assets/sfx/move.wav", moveStep());
-        bake("assets/sfx/talk_mid.wav", talkPop(1.0));
-        bake("assets/sfx/talk_high.wav", talkPop(1.4));
-        bake("assets/sfx/talk_low.wav", talkPop(0.72));
-        bake("assets/sfx/confirm.wav", confirmTick());
-        bake("assets/sfx/wrong.wav", wrongBuzz());
-        bake("assets/sfx/clear.wav", clearFanfare());
-        bake("assets/sfx/memo.wav", memoScratch());
-        bake("assets/sfx/bgm_tick.wav", clockTickLoop())
+        SfxSynth.bakeSet(cfg(), "assets/sfx",
+            ("move", moveStep()) :: ("talk_mid", talkPop(1.0)) :: ("talk_high", talkPop(1.4)) ::
+            ("talk_low", talkPop(0.72)) :: ("confirm", confirmTick()) :: ("wrong", wrongBuzz()) ::
+            ("clear", clearFanfare()) :: ("memo", memoScratch()) :: ("bgm_tick", clockTickLoop()) :: Nil)
 }

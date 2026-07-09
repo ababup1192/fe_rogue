@@ -62,10 +62,7 @@ mod Gallery {
         let sampled = every(stride, film);
         let images = List.map(w ->
             SoftRaster.renderToImage(reqOfWorld(atlas, w, annotate(w), gifPathOf(name))), sampled);
-        GifEncoder.encode(images, gifDelayMs(), gifPathOf(name));
-        // コマ送りビューア用のコマ別 PNG。横連結シートはブラウザが幅 65,535px 超を描けず
-        // 真っ黒に落ちるので、全コマをコマ別に焼いてビューアが canvas でめくる。
-        discard Filmstrip.bakeFrames(images, "${outDir()}/frames/${name}");
+        GifEncoder.encodeWithFrames(images, gifDelayMs(), gifPathOf(name), "${outDir()}/frames/${name}");
         { strip = "frames/${name}/", frameCount = List.length(images),
           frameW = frameW(), frameH = frameH(), fps = gifFps() }
 

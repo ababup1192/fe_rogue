@@ -23,6 +23,13 @@ mod GifEncoder {
     import javax.imageio.stream.FileImageOutputStream
     import org.w3c.dom.Node
 
+    /// アニメ GIF とコマ送りビューア用のコマ別 PNG（`Filmstrip.bakeFrames`）をペアで焼く。
+    /// ギャラリーの定石（GIF は流し見・コマ別 PNG は 1 コマずつ精査）を 1 呼び出しにする。
+    pub def encodeWithFrames(frames: List[BufferedImage], delayMs: Int32,
+                             gifPath: String, framesDir: String): Unit \ IO =
+        encode(frames, delayMs, gifPath);
+        discard Filmstrip.bakeFrames(frames, framesDir)
+
     /// アニメ GIF を `outPath` へ書き出す。`frames` は同寸の BufferedImage 列、`delayMs` は各フレームの
     /// 表示時間（ms）。無限ループ再生に設定する。frames が空なら何もしない（呼び側の sanity 用）。
     pub def encode(frames: List[BufferedImage], delayMs: Int32, outPath: String): Unit \ IO =

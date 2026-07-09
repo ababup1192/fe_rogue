@@ -12,7 +12,6 @@ mod Harness {
 
     /// ウィンドウなしで焼き込まれたフォント（AWT ヘッドレスの計測値のみ）。
     pub def atlas(): FontAtlas \ IO =
-        HeadlessFont.ensureHeadless();
         HeadlessFont.buildUiAtlas(ttfPath(), "assets/joyo.txt")
 
     /// 両方のページ Spec を1つの UiWorld へ生成する、ランチャーと同じように。

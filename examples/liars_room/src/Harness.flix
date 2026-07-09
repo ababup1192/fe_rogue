@@ -8,7 +8,6 @@ mod Harness {
     /// ウィンドウなしで焼き込まれたフォント（AWT ヘッドレスの計測値のみ）。
     /// フォントが持つ全グリフが載る（第 2 引数は旧・常用漢字ファイルの名残で、いまは読まれない）。
     pub def atlas(): FontAtlas \ IO =
-        HeadlessFont.ensureHeadless();
         HeadlessFont.buildUiAtlas(ttfPath(), "")
 
     /// 全ページの Spec を 1 つの UiWorld へ生成する、ランチャーと同じように。

@@ -8,6 +8,7 @@
 
 mod SfxSynth {
     import java.io.BufferedOutputStream
+    import java.io.File
     import java.io.FileOutputStream
 
     /// 合成の共通設定。`sampleRate` = 1 秒あたりのサンプル数。
@@ -99,4 +100,13 @@ mod SfxSynth {
         let out = new BufferedOutputStream(new FileOutputStream(path));
         List.forEach(b -> out.write(b), bytes);
         out.close()
+
+    /// 音のセットをまとめて `dir` へ焼く。`(名前, サンプル列)` ごとに `dir/名前.wav` を書き出す
+    /// （ディレクトリは無ければ作る）。ゲームの bake 入口はデザイン（音の中身）だけ持てばよい。
+    pub def bakeSet(cfg: Config, dir: String, sounds: List[(String, List[Float64])]): Unit \ IO =
+        discard (new File(dir)).mkdirs();
+        List.forEach(sound -> {
+            let (name, samples) = sound;
+            writeBytes("${dir}/${name}.wav", wavBytes(cfg, samples))
+        }, sounds)
 }

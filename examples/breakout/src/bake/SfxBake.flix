@@ -4,7 +4,6 @@
 // 矩形波・ノイズバースト・フェードだけで、ボールと煉瓦の語彙になる。
 // このファイルはサウンドデザインだけを保持し、合成と WAV エンコードは engine_tools に住む。
 mod SfxBake {
-    import java.io.File
 
     /// 22050Hz モノラル: 小さいファイルで、この程度のブリップには十分。
     def cfg(): SfxSynth.Config = { sampleRate = 22050 }
@@ -56,18 +55,10 @@ mod SfxBake {
             SfxSynth.fade(SfxSynth.tone(cfg(), 311.13, 0.18, 80)) ::
             SfxSynth.fade(SfxSynth.tone(cfg(), 261.63, 0.3, 160)) :: Nil)
 
-    def bake(path: String, samples: List[Float64]): Unit \ IO =
-        SfxSynth.writeBytes(path, SfxSynth.wavBytes(cfg(), samples))
-
     /// 8 音すべてを assets/sfx/ へ書き出す（Bake.all から呼ぶ）。
     pub def bakeAll(): Unit \ IO =
-        discard (new File("assets/sfx")).mkdirs();
-        bake("assets/sfx/paddle.wav", paddleBlip());
-        bake("assets/sfx/wall.wav", wallTick());
-        bake("assets/sfx/chip.wav", chipClang());
-        bake("assets/sfx/break.wav", breakPop());
-        bake("assets/sfx/serve.wav", serveRise());
-        bake("assets/sfx/miss.wav", missFall());
-        bake("assets/sfx/clear.wav", clearFanfare());
-        bake("assets/sfx/gameover.wav", gameOverFall())
+        SfxSynth.bakeSet(cfg(), "assets/sfx",
+            ("paddle", paddleBlip()) :: ("wall", wallTick()) :: ("chip", chipClang()) ::
+            ("break", breakPop()) :: ("serve", serveRise()) :: ("miss", missFall()) ::
+            ("clear", clearFanfare()) :: ("gameover", gameOverFall()) :: Nil)
 }

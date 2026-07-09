@@ -102,8 +102,7 @@ mod GameGallery {
         let film = Replay.timeline(Sokoban.tick, Trace.dt(), cues, start);
         let frames = List.map(l -> SoftRaster.renderToImage(rasterReq(atlas, scene(atlas, ui, l), path)),
                               every(gifSampleStride(), 0, film));
-        GifEncoder.encode(frames, gifFrameDelayMs(), path);
-        discard Filmstrip.bakeFrames(frames, "gallery/frames/${name}");
+        GifEncoder.encodeWithFrames(frames, gifFrameDelayMs(), path, "gallery/frames/${name}");
         (name, { strip = "frames/${name}/", frameCount = List.length(frames),
                  frameW = gifFrameW(), frameH = gifFrameH(), fps = gifFps() })
 
