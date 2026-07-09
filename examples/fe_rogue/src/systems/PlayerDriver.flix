@@ -424,20 +424,23 @@ mod PlayerDriver {
     pub def replayMoveView(id: Int32, target: {x = Int32, y = Int32},
                         map: MapSnapshot, slide: Duration.Duration):
             Unit \ {World.Command, World.WorldQuery} =
+        // `Cmd.Move` は emit 済み＝posOf/getGridPos は既に着地 target を返す。移動前セルは
+        // prevPos（Move が旧位置を自動記録）から読む。未記録（初移動が無い spawn 過渡）のみ
+        // target へフォールバック（敵 `replayEnemyMoveView` と対称）。
+        let w0   = World.WorldQuery.get();
+        let prev = World.prevPosOf(World.EntityRef.Player(id), w0)
+                       |> Option.getWithDefault(getGridPos(id));
         // 始点は World の描画位置（tween 中=renderPos）。renderPos 未 seed（一度も滑走していない駒）は
-        // 現在セル中心へフォールバック（＝spawn 時の初期描画位置と同値）。
-        let w0 = World.WorldQuery.get();
+        // 移動前セルの中心へフォールバック。着地セル中心に落とすと起点=終点の tween になり、
+        // フロア再構築直後の最初の 1 歩が瞬間移動して見える。
         let startWorld  = World.renderPosOf(World.EntityRef.Player(id), w0)
-            |> Option.getWithDefault(MapSnapshot.cellCenter(getGridPos(id)));
+            |> Option.getWithDefault(MapSnapshot.cellCenter(prev));
         let targetWorld = MapSnapshot.gridToWorld(target, map);
         // 描画位置 tween は World（renderPos）が唯一の権威（読者は `World.visualPosOf` で導出。
         // 敵 `replayEnemyMoveView` と対称）。
         World.moveUnit(World.EntityRef.Player(id), {start = startWorld, target = targetWorld}, Duration.toSeconds(slide));
         // 直前のグリッド座標から target への 1 マス差で方向を決める。
         // 0 ベクトル (= 同じセル) の場合は既存の facing を保つ。
-        // 移動前位置は World.prevPosOf（applyCmd の Move が旧位置を自動記録）。
-        let prev      = World.prevPosOf(World.EntityRef.Player(id), World.WorldQuery.get())
-                            |> Option.getWithDefault(getGridPos(id));
         let dirOpt    = directionOfStep(prev, target);
         // facing は World 権威（Cmd.SetFacing が唯一の writer）。
         // 方向が決まらない (= 同セル移動) ときは現状維持＝emit しない。

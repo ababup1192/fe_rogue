@@ -579,7 +579,7 @@ mod TestWorld {
         let toT = op -> Option.map(p -> (p#x, p#y), op);
         Assert.assertEq(
             expected = (Some((7, 1)), Some((7, 1))),
-            (toT(World.prevPosOf(World.EntityRef.Enemy(5), moved)), toT(Map.get(5 + World.enemyUidBase(), w#enemyPrevPos))))
+            (toT(World.prevPosOf(World.EntityRef.Enemy(5), moved)), toT(Map.get(5 + World.enemyUidBase(), w#prevPos))))
 
     /// `Cmd.SetBottleUsed` が World を更新し `bottleUsedOf` で読める＋preserve。
     @Test

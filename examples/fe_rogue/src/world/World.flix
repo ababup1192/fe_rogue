@@ -205,8 +205,9 @@ pub enum World {
                  enemyDying = Set[EntityId],
                  // 敵の瓶使用済みフラグ（1ターン1投の sticky）。
                  enemyBottleUsed = Map[EntityId, Bool],
-                 // 敵の直前位置（wander の戻り防止）。None=未移動はマップ非在で表現。
-                 enemyPrevPos = Map[EntityId, {x = Int32, y = Int32}],
+                 // 駒の直前位置（Cmd.Move が両 faction とも自動記録）。敵 wander の戻り防止と、
+                 // 移動 tween 起点（renderPos 未 seed 時の移動前セル）に使う。未移動はマップ非在で表現。
+                 prevPos = Map[EntityId, {x = Int32, y = Int32}],
                  // followUp 使用済み（1 攻撃 1 追撃の per-turn transient）。両 faction。
                  // followUpUsed は単一 store（unified-id）。
                  followUpUsed = Map[EntityId, Bool],
@@ -340,7 +341,7 @@ mod World {
                      lunges = Map.empty(),
                      playerHidden = Set.empty(), enemyAlerted = Map.empty(), enemyActed = Map.empty(),
                      enemyDying = Set.empty(),
-                     enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
+                     enemyBottleUsed = Map.empty(), prevPos = Map.empty(),
                      followUpUsed = Map.empty(),
                      playerWaited = Map.empty(),
                      playerUsedStairs = Map.empty(),
@@ -884,7 +885,7 @@ mod World {
             enemyAlerted = Map.remove(uid, w#enemyAlerted),
             enemyActed = Map.remove(uid, w#enemyActed),
             enemyBottleUsed = Map.remove(uid, w#enemyBottleUsed),
-            enemyPrevPos = Map.remove(uid, w#enemyPrevPos),
+            prevPos = Map.remove(uid, w#prevPos),
             followUpUsed = Map.remove(uid, w#followUpUsed),
             playerWaited = Map.remove(uid, w#playerWaited),
             playerUsedStairs = Map.remove(uid, w#playerUsedStairs),
@@ -928,11 +929,11 @@ mod World {
                 // 増やさない）。初回 Move（spawn seed）は旧位置が無いので記録しない。
                 let World.World(w) = world;
                 let prevs = match Map.get(toUid(ref), w#pos) {
-                    case Some(old) => Map.insert(toUid(ref), old, w#enemyPrevPos)
-                    case None      => w#enemyPrevPos
+                    case Some(old) => Map.insert(toUid(ref), old, w#prevPos)
+                    case None      => w#prevPos
                 };
                 World.World({pos = Map.insert(toUid(ref), pos, w#pos),
-                             enemyPrevPos = prevs | w})
+                             prevPos = prevs | w})
             case Cmd.SetPhase(phase) =>
                 let World.World(w) = world; World.World({turnPhase = phase | w})
             case Cmd.SetScreen(s) =>
@@ -1052,7 +1053,7 @@ mod World {
                 let World.World(w) = world;
                 match ref {
                     case EntityRef.Player(_)  => world
-                    case EntityRef.Enemy(id)  => World.World({enemyPrevPos = Map.insert(enemyUid(id), p, w#enemyPrevPos) | w})
+                    case EntityRef.Enemy(id)  => World.World({prevPos = Map.insert(enemyUid(id), p, w#prevPos) | w})
                 }
             case Cmd.SetFollowUpUsed(ref, f) =>
                 // 単一 store＋toUid。
@@ -1161,7 +1162,7 @@ mod World {
                              lunges = Map.empty(),
                              playerHidden = Set.empty(), enemyDying = Set.empty(),
                              enemyAlerted = Map.empty(), enemyActed = Map.empty(),
-                             enemyBottleUsed = Map.empty(), enemyPrevPos = Map.empty(),
+                             enemyBottleUsed = Map.empty(), prevPos = Map.empty(),
                              followUpUsed = Map.empty(), playerWaited = Map.empty(),
                              playerUsedStairs = Map.empty(), playerLevel = Map.empty(),
                              playerExp = Map.empty(), baseStats = Map.empty(), weaponView = Map.empty(),
@@ -1545,13 +1546,12 @@ mod World {
             case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyBottleUsed)
         }
 
-    /// 敵の prevPos を World から読む（None=未移動＝マップ非在）。Player は常に None。
+    /// 駒の直前位置を World から読む（None=未移動＝マップ非在）。両 faction 対応
+    /// （`Cmd.Move` が旧位置を自動記録）。敵 wander の戻り防止と、移動 tween 起点
+    /// （renderPos 未 seed 時の移動前セル）が読む。
     pub def prevPosOf(ref: EntityRef, world: World): Option[{x = Int32, y = Int32}] =
         let World.World(w) = world;
-        match ref {
-            case EntityRef.Player(_)  => None
-            case EntityRef.Enemy(id)  => Map.get(enemyUid(id), w#enemyPrevPos)
-        }
+        Map.get(toUid(ref), w#prevPos)
 
     /// 現在位置を World の pos-store（`Cmd.Move` 権威）から読む（両 faction・unified-id）。
     /// `prevPosOf`（敵直前位置）とは別物＝現在セル。ノックバック着地計算が攻撃側/防御側セルを引くのに要る。

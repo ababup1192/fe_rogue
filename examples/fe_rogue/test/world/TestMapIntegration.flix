@@ -268,6 +268,40 @@ mod TestMapIntegration {
                          72.0, 88.0),   // left
             (posR#x, posR#y, posU#x, posU#y, posL#x, posL#y))
 
+    /// フロア再構築直後（ゲーム開始・階段降下・中断明け）の「最初の 1 歩」が滑走 tween に
+    /// なることを pin する。本番 spawn は renderPos を seed しないため、fixture の
+    /// `playerCmds`（SetRenderPos 込み）は使わず Spawn + Move だけの最小 seed で再現する。
+    ///
+    ///   (5,5) ──右へ 1 歩──▶ (6,5)
+    ///   ↑ tween 起点 = 移動前セル (5,5) の中心であるべき。renderPos 未 seed の静止駒は
+    ///     `World.visualPosOf` がグローバル tileSize()=26 の `MapSnapshot.cellCenter` で
+    ///     描かれるため、起点も同じ (5×26+13, 5×26+13) = (143,143) で一致する。
+    ///     着地セル中心 (169,143) になっていたら起点=終点＝瞬間移動して見えるバグ。
+    ///
+    /// 観測窓: `Cmd.StartTween` は起点を即 renderPos にスナップするので、
+    /// moveToById 直後（stepWorld 前）の renderPos が tween 起点そのもの。
+    @Test
+    def testFirstMoveAfterRebuildTweensFromPreMoveCell(): Unit \ Assert =
+        region rc {
+            let bare = TestWorldFixtures.worldOf(
+                World.Cmd.Spawn(World.EntityRef.Player(0))
+                    :: World.Cmd.Move(World.EntityRef.Player(0), initialGrid()) :: Nil);
+            let (_, world1) = TestUnitFixtures.withWorldAppliedSeeded(rc, bare, () ->
+                PlayerDriver.moveToById(0, {x = 6, y = 5}, realMapSnapshot(),
+                                        Duration.frames(count = 16, fps = 120)));
+            let start = World.renderPosOf(World.EntityRef.Player(0), world1)
+                |> Option.getWithDefault(Vec2.zero());
+            Assert.assertEq(expected = (143.0, 143.0), (start#x, start#y))
+        }
+
+    /// 1 歩移動の view 再生が facing を進行方向へ更新することを pin する（右へ 1 歩 → Right）。
+    /// 移動前セルは `Cmd.Move` が自動記録する prevPos から導く＝World 再構築直後でも正しく向く。
+    @Test
+    def testMoveReplayUpdatesFacing(): Unit \ Assert =
+        let moved = (applyMove(worldWithPlayerAt(initialGrid()), realMapSnapshot(), {x = 6, y = 5}))#world;
+        Assert.assertEq(expected = Some(Dir4.Right),
+                        World.facingOf(World.EntityRef.Player(0), moved))
+
     // ========================================================================
     // (5) ユーザ報告の症状再現テスト
     //
