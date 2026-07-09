@@ -8,7 +8,7 @@
 ///
 /// 配置基準: `src/systems/` は「World と各 resource を橋渡しする driver / orchestrator」
 /// （step()・シグナル配信の層）、純 `World→World` System は
-/// `src/ecs/systems/`（CombatSystem / StaffSystem）に置く分界。
+/// `src/world/systems/`（CombatSystem / StaffSystem）に置く分界。
 /// 純 sim の戦闘解決は `CombatSystem.resolveCombat` が担い、ここは
 /// signal 駆動の攻撃演出とターン進行の orchestration を受け持つ。
 ///

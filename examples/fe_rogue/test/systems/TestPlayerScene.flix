@@ -1,6 +1,6 @@
 // PlayerScene のテスト（multi-player 版）
 //
-// 駒の状態は World（examples/fe_rogue/src/ecs/World.flix）の store 群が唯一の権威。
+// 駒の状態は World（examples/fe_rogue/src/world/World.flix）の store 群が唯一の権威。
 // 位置（gridPos）は `World.Cmd.Move` で即更新され、見た目の描画位置（renderPos）は
 // World の tween（`World.moveUnit` / `World.Cmd.StartTween`）が別途 stepWorld で進める。
 // 壁判定は Board の責務なので PlayerScene 自身は考えない。
