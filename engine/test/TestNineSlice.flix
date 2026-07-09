@@ -1,6 +1,6 @@
-/// NineSlice ノード（Godot NineSlice + StyleBoxFlat 相当）の挙動テスト。
+/// NineSlice（背景色＋枠線の矩形）の挙動テスト。
 /// 背景のみ、枠線つき、setter/getter のラウンドトリップ、toDrawables の枚数を検証する。
-mod TestPanel {
+mod TestNineSlice {
 
     def black(): Color = {r = 0.0f32, g = 0.0f32, b = 0.0f32}
     def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}

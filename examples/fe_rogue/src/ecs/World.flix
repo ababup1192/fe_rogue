@@ -66,10 +66,10 @@ pub type alias FireShot = { remaining = Float64, total = Float64, caster = Vec2.
 pub type alias LungeAnim = { origin = Vec2.Vec2, target = Vec2.Vec2, elapsed = Float64,
                              hitAt = Float64, total = Float64, hitFired = Bool }
 
-/// ユニットの再生中アニメ（AnimatedSprite2D の脱ノード化）。frame/frameProgress は保存せず、
+/// ユニットの再生中アニメ。frame/frameProgress は保存せず、
 /// `elapsed`（再生開始からの実時間秒・stepWorld が加算）から描画時に純関数で導出する
-/// （ループ/コマ毎 duration 倍率込み＝engine advanceFrame と同値）。`Cmd.SetAnim` は
-/// AnimatedSprite2D.play の意味論（同名=継続/別名=リセット）を再現する。
+/// （ループ/コマ毎 duration 倍率込み）。`Cmd.SetAnim` は
+/// アニメ再生の意味論（同名=継続/別名=リセット）に従う。
 pub type alias UnitAnim = { name = String, elapsed = Float64 }
 
 /// 1 フレームで移動（Position tween）した entity の補間結果（EntityRef＋補間 pixel）。
@@ -179,7 +179,7 @@ pub enum World {
                  //   同じ dt で進む＝lockstep 同期・fps 非依存）。1 entity が複数チャンネルを同時に持てる。
                  tweens = EcsTween.Tweens[EntityId, Channel],
                  // 描画 view 状態の store（全て command/step 由来・
-                 // preserve＋validUids prune）。unitAnim=再生アニメ（player の AnimatedSprite2D 個体のみ・
+                 // preserve＋validUids prune）。unitAnim=再生アニメ（アニメ付きの player 個体のみ・
                  // elapsed は stepWorld が加算）、unitFlipH=左右反転（移動 view 再生が書く）、
                  // unitModulate=待機/行動済み暗転（本体/HP バー/武器アイコンの 3 読者の単一真実源）、
                  // dyingElapsed=死亡点滅の経過秒（SetDying で 0 seed・alpha は描画時に曲線導出）。
@@ -1223,7 +1223,7 @@ mod World {
                 let World.World(w) = world;
                 World.World({effectRule = Map.insert(enemyUid(id), rule, w#effectRule) | w})
             case Cmd.SetAnim(ref, name) =>
-                // AnimatedSprite2D.play 意味論＝同名なら elapsed 継続、別名なら 0 リセット。
+                // アニメ再生の意味論＝同名なら elapsed 継続、別名なら 0 リセット。
                 let World.World(w) = world;
                 let uid = toUid(ref);
                 let next = match Map.get(uid, w#unitAnim) {
@@ -2313,7 +2313,7 @@ mod World {
     pub def fireShotsOf(world: World): Map[Int32, FireShot] =
         let World.World(w) = world; w#fireShots
 
-    /// 再生中アニメ（AnimatedSprite2D 個体のみ登録）。未登録は None。
+    /// 再生中アニメ（アニメ付きの個体のみ登録）。未登録は None。
     pub def unitAnimOf(ref: EntityRef, world: World): Option[UnitAnim] =
         let World.World(w) = world; Map.get(toUid(ref), w#unitAnim)
 

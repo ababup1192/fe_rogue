@@ -1,4 +1,4 @@
-/// Polygon — 局所座標の凸多角形 `points` を単色（modulate + alpha）で塗り潰すノード。
+/// Polygon — 局所座標の凸多角形 `points` を単色（modulate + alpha）で塗り潰す描画物。
 /// 三角形や円などの簡単な図形を画像なしで出せるので、マーカーや図形エフェクトに手軽。
 /// 利用例: 円形マーカー、簡易的な図形の演出。
 /// 注意: テクスチャ・穴あき・UV は未対応（凸多角形を三角形ファンで塗る最小実装）。円は `circle` で 12 角形として生成する。
@@ -72,9 +72,9 @@ mod Polygon {
         let Polygon.Polygon(r) = poly;
         Polygon.Polygon({alpha = alpha | r})
 
-    /// スクリーン px の塗り潰しコマンドに変換する。`screenPos` はノードの描画原点
+    /// スクリーン px の塗り潰しコマンドに変換する。`screenPos` は描画原点
     /// （カメラ/CanvasLayer 適用後）、`scaleVec` はワールドの zoom 倍率（CanvasLayer 下は (1,1)）。
-    /// 頂点 = screenPos + 局所点 * scaleVec * ノード scale。回転/skew は未適用。
+    /// 頂点 = screenPos + 局所点 * scaleVec * 描画物の scale。回転/skew は未適用。
     pub def toRenderCmd(screenPos: Vec2.Vec2, scaleVec: Vec2.Vec2,
                          poly: Polygon): GameEngine.PolygonRenderCmd =
         let Polygon.Polygon(r) = poly;

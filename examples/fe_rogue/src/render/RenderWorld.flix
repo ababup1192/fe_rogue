@@ -49,8 +49,8 @@ mod RenderWorld {
         World.visualPosOf(ref, world)
             |> Option.map(p -> {ref = ref, pos = p, sprite = spriteRes, frames = frames})
 
-    /// アニメ定義と再生経過秒から現在コマを導出する（engine `AnimatedSprite2D.advanceFrame` と同値の
-    /// 純関数版）。コマ毎 duration 倍率・loop/非 loop（末尾で停止）対応。
+    /// アニメ定義と再生経過秒から現在コマを導出する純関数。
+    /// コマ毎 duration 倍率・loop/非 loop（末尾で停止）対応。
     def frameFromElapsed(anim: SpriteFrames.Animation, elapsed: Float64): Int32 =
         let base = 1.0 / anim#speed;
         let durs = anim#frames |> List.map(f -> base * f#duration);

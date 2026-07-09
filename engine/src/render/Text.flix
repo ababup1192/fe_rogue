@@ -1,4 +1,4 @@
-/// Text — テキストを 1 文字ずつグリフに分けて描画するノード。
+/// Text — テキストを 1 文字ずつグリフに分けて描画する描画物。
 /// 文字描画を一箇所にまとめるので、HUD やメニューのどこでも同じ字体で文字を出せる。
 /// 利用例: スコア表示、セリフ、メニューの項目名。
 /// 注意: アライメントの Fill は Left/Top と同じ扱い（両端揃えは未対応）。
@@ -87,7 +87,7 @@ mod Text {
     /// テキストを描画したときに占める表示サイズを返す。
     /// width  = 行の中で最も幅広い行の advance 合計 (× scale)
     /// height = 行数 × lineHeight (= (ascent + descent + lineGap) × scale)
-    /// Layout モジュールがノードの自然サイズを問い合わせるために使う。
+    /// Layout モジュールが描画物の自然サイズを問い合わせるために使う。
     pub def measure(label: Text): Vec2.Vec2 =
         let Text.Text(r) = label;
         let atlas = r#fontAtlas;

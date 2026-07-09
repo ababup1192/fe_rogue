@@ -6,7 +6,7 @@
 /// scene ノードを持たず（`ArrowCursorState` と同流儀）、`RenderWorld.renderCursor` がこの resource から
 /// 直描きし、`CameraScene` が `renderPos` を追従読みする。
 ///
-/// 補間は engine の `Tween`（NodePath バインド）ではなく lib `EcsTween`（純粋・値の補間だけ）を使う
+/// 補間は lib `EcsTween`（純粋・値の補間だけ）を使う
 /// （World の renderPos 補間と同流儀）。カーソルは世界に 1 つなので複合キーの entity 部は定数 0 を使う。
 /// `step(dt)` を gameLoop が毎フレーム 1 回呼び、tween を進めて `renderPos` を書き、`snagRemaining` を減らす。
 ///

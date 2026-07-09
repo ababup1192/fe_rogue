@@ -10,7 +10,7 @@ mod TestUnitCardUi {
     // ════════════════════════════════════════════════════════
 
     /// 等幅 advance=10 のサンプルアトラス（'A' のみ登録・fontSize=16）。
-    /// 未登録グリフ（"…" 含む）は advance=0 として測られる。TestLabel2D の sampleAtlas と同流儀。
+    /// 未登録グリフ（"…" 含む）は advance=0 として測られる。TestText の sampleAtlas と同流儀。
     def monoAtlas(): FontAtlas =
         let metrics: TextLayout.GlyphMetrics = {
             xOff = 0.0, yOff = 0.0, glyphW = 10.0, glyphH = 10.0,

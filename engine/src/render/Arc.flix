@@ -1,4 +1,4 @@
-/// 円弧・リングを描くノード。中心（ノード位置）から半径 `radius`（外周）・太さ `width` の
+/// 円弧・リングを描く描画物。中心（描画原点）から半径 `radius`（外周）・太さ `width` の
 /// リングを、`startAngle` から `endAngle` まで単色で塗る。角度はラジアンで、時計回りに
 /// 増える（画面の +y は下向き）。
 /// `endAngle` を毎フレーム動かすだけで扇形を伸縮できるので、クールダウンやタイマーの
@@ -106,9 +106,9 @@ mod Arc {
         let Arc.Arc(r) = arc;
         Arc.Arc({alpha = alpha | r})
 
-    /// スクリーン px の塗り潰しコマンド列に変換する。`screenPos` はノードの描画原点
+    /// スクリーン px の塗り潰しコマンド列に変換する。`screenPos` は描画原点
     /// （カメラ/CanvasLayer 適用後）、`scaleVec` はワールドの zoom 倍率（CanvasLayer 下は (1,1)）。
-    /// 各クアッドの頂点 = screenPos + (cosθ, sinθ) * 半径 * scaleVec * ノード scale。回転/skew は未適用。
+    /// 各クアッドの頂点 = screenPos + (cosθ, sinθ) * 半径 * scaleVec * 描画物の scale。回転/skew は未適用。
     /// 太さ 0 以下、または endAngle <= startAngle のときは空（非描画）。
     pub def toRenderCmds(screenPos: Vec2.Vec2, scaleVec: Vec2.Vec2,
                          arc: Arc): List[GameEngine.PolygonRenderCmd] =

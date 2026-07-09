@@ -1,6 +1,6 @@
 // Tests for Text module
 
-mod TestLabel2D {
+mod TestText {
 
     def approx(a: Float64, b: Float64): Bool =
         Float64.abs(a - b) < 0.001

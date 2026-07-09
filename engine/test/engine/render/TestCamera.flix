@@ -6,14 +6,14 @@
 ///   - drag margin 内に target が居るあいだは smoothPosition が動かない
 ///   - drag margin を target が超えたら margin 境界まで追従する
 ///   - limit clamp が smoothPosition を矩形にハードクランプする
-///   - smoothing/drag 全無効時は `getViewTransform` が `globalPos`（= position）を使う（後方互換）
+///   - smoothing/drag 全無効時は `getViewTransform` が `globalPos`（= position）を使う
 ///
-/// 数式の Godot 互換性:
+/// 数式の仕様:
 ///   - smoothing: `next = curr + (target - curr) * min(1, speed * delta)` （単純 lerp + 夾着クランプ）
 ///   - drag margin: 0.0..1.0 を viewport 半幅×倍率として world 単位で適用
 ///   - limit: hard clamp（`limitSmoothed = false` 相当）
 
-mod TestCamera2D {
+mod TestCamera {
 
     // ════════════════════════════════════════════════════════
     // ヘルパー
@@ -134,7 +134,7 @@ mod TestCamera2D {
         Assert.assertEq(expected = true, approx(s#x, -50.0))
 
     // ════════════════════════════════════════════════════════
-    // 後方互換: smoothing/drag 全無効時は getViewTransform が globalPos を使う
+    // smoothing/drag 全無効時は getViewTransform が globalPos を使う
     // ════════════════════════════════════════════════════════
 
     /// 全フラグ無効のカメラ。getViewTransform は smoothPosition ではなく
@@ -142,7 +142,7 @@ mod TestCamera2D {
     @Test
     def testGetViewTransformUsesGlobalPosWhenAllFlagsOff(): Unit \ Assert =
         let cam = Camera.make({x = 99.0, y = 99.0});  // smoothPos = (99,99)
-        // globalPos は (0,0) として渡す（呼び出し側 = render が scene tree から取る値）
+        // globalPos は (0,0) として渡す（呼び出し側 = render が渡すワールド座標）
         let t = Camera.getViewTransform(cam, {x = 0.0, y = 0.0}, vp200x100());
         // DragCenter で globalPos=(0,0), zoom=(1,1) → screenCenter=(0,0), offset=(0-100, 0-50)
         Assert.assertEq(expected = true, approx(t#offset#x, -100.0) and approx(t#offset#y, -50.0))

@@ -1,7 +1,7 @@
-/// Arc ノード（円弧/リング、Godot draw_arc 相当）の挙動テスト。
+/// Arc（円弧/リング）の挙動テスト。
 /// toRenderCmds のセグメント数・非描画条件・頂点座標、setter/getter のラウンドトリップ、
 /// visual / transform 部品を検証する。
-mod TestArc2D {
+mod TestArc {
 
     def cyan(): Color = {r = 0.2f32, g = 0.8f32, b = 1.0f32}
     def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}

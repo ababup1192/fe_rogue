@@ -153,7 +153,7 @@ mod PlayerScene {
     /// `waited = false` 時の sprite modulate（白 = 元色）。
     def activeColor(): Color = UITheme.white()
 
-    /// AnimatedSprite2D 相当の「待機」アニメ名。spriteFrames には必ずこれが定義されている前提。
+    /// 「待機」アニメ名。spriteFrames には必ずこれが定義されている前提。
     def idleAnimName(): String = "idle"
 
     /// `walk_<direction>` アニメ名。spriteFrames に方向別 4 アニメを設定する前提。
@@ -364,7 +364,7 @@ mod PlayerScene {
         // data 構築後に emit（equippedWeaponView/equippedRingBonus は full Data を要する）。ringEquipped=false ゆえ ringBonus=zeroBonuses。
         World.Command.emit(World.Cmd.SetWeaponView(World.refOf(true, sp#id), equippedWeaponView(data)));
         World.Command.emit(World.Cmd.SetRingBonus(World.refOf(true, sp#id), equippedRingBonus(data)));
-        // AnimatedSprite2D 相当の個体は初期アニメ（idle）を unitAnim store へ
+        // アニメ付きの個体は初期アニメ（idle）を unitAnim store へ
         // seed し（コマ送りは stepWorld の elapsed 加算＋描画時の frame 導出）、静止画の個体は
         // resource の定数 frame を描画時に読むだけ＝store 不要。描画は RenderWorld.renderUnits が
         // resource + unitAnim/unitFlipH/unitModulate store から描画値を直組みする。
@@ -445,7 +445,7 @@ mod PlayerScene {
             case Some(dir) => World.Command.emit(World.Cmd.SetFacing(id, dir))
             case None      => ()
         };
-        // AnimatedSprite2D 相当の unit なら walk_<dir> アニメに切り替える。
+        // アニメ付きの unit なら walk_<dir> アニメに切り替える。
         // 方向が決まらなければ (= 同セル移動) 切り替えなし。
         match dirOpt {
             case None    => ()
@@ -825,7 +825,7 @@ mod PlayerScene {
         }
 
     /// プレイヤーを「行動済み」にして sprite を灰色 modulate にする。
-    /// AnimatedSprite2D 相当の unit はここで idle アニメに戻す (= 待機モーション表示)。
+    /// アニメ付きの unit はここで idle アニメに戻す (= 待機モーション表示)。
     /// PlayerAttack 確定 / スキップ時に呼ばれる。
     pub def setWaited(id: Int32): Unit \ World.Command =
         // waited は World 権威（Cmd.SetWaited が唯一の source）。
@@ -848,7 +848,7 @@ mod PlayerScene {
         updateStatuses(id, StatusSystem.clearImmobilized)
 
     /// 全プレイヤーの waited をクリアし、sprite を白に戻す。
-    /// ターン開始時に呼ばれ、AnimatedSprite2D 相当の unit は idle アニメに戻す
+    /// ターン開始時に呼ばれ、アニメ付きの unit は idle アニメに戻す
     /// (= 新ターン開始時の待機モーション)。
     /// 敵ターン終了後に呼ぶ（次の味方ターン開始）。
     pub def clearAllWaited(): Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery, PlayerData.PartyQuery} =

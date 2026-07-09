@@ -34,7 +34,7 @@ mod GameEngine {
     ///   ピクセルアートゲームでは小さく固定し、ウィンドウサイズに引き伸ばす運用が定番。
     /// windowWidth / windowHeight:
     ///   起動時の OS ウィンドウサイズ（ピクセル）。design とは独立して指定でき、
-    ///   `Stretch Mode = canvas_items` 風に design 側がウィンドウいっぱいに描画される。
+    ///   design 側がウィンドウいっぱいに引き伸ばして描画される。
     ///   project.json に任意キー `windowScale`(>0) があると、ProjectLoader が
     ///   window = design × scale を計算してこの値を上書きする（アスペクト維持で拡大）。
     /// maxDeltaTime:
@@ -119,12 +119,12 @@ mod GameEngine {
         alpha = Float32
     }
 
-    /// ノードを Drawable のリストに変換する能力を表す trait
-    /// Text 等、1 ノードから複数 Drawable を生成するケースに対応。
+    /// 描画物を Drawable のリストに変換する能力を表す trait
+    /// Text 等、1 つの描画物から複数 Drawable を生成するケースに対応。
     /// Sprite の region/hframes/vframes/frame から UV を計算するためにテクスチャ
     /// サイズを参照する必要があり、Game eff を要求する。
     pub trait Renderable[n] {
-        pub def toDrawables(node: n, globalPos: Vec2.Vec2): List[Drawable] \ Game
+        pub def toDrawables(item: n, globalPos: Vec2.Vec2): List[Drawable] \ Game
     }
 
     /// キーボードキー

@@ -45,7 +45,7 @@ mod MapSnapshot {
     pub def isFloor(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
         inBounds(c, m) and not isWall(c, m)
 
-    /// usedRect 内か。Godot TileLayer の getUsedRect は常に position=(0,0) を返すため、
+    /// usedRect 内か。usedRect は position=(0,0) 基準で size のみ持つため、
     /// 判定は size のみで十分（position を加算しても 0 なので省略できる）。
     def inBounds(c: {x = Int32, y = Int32}, m: MapSnapshot): Bool =
         let sz = m#usedRect#size;

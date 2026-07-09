@@ -5,7 +5,7 @@
 /// position … 位置
 /// rotation … 回転（ラジアン）
 /// scale    … 拡大率
-/// skew     … せん断（ラジアン）。ノードを平行四辺形のように歪ませる
+/// skew     … せん断（ラジアン）。対象を平行四辺形のように歪ませる
 pub type alias Transform = {
     position = Vec2.Vec2,
     rotation = Float64,

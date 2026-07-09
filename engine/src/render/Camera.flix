@@ -1,11 +1,8 @@
-/// ビューポートの中心を特定のノードに追従させる 2D カメラ。
+/// ビューポートの中心を特定の対象（ターゲット座標）に追従させる 2D カメラ。
 /// position にターゲットの座標を入れておけば、スムージングや制限枠・ドラッグ余白を通して
 /// 画面が滑らかに付いていくので、追従ロジックを毎フレーム書かずに済む（offset で微調整）。
 /// 利用例: プレイヤーを画面中央に保つ / マップ端でスクロールを止める。
-///
-///   Camera
-///     ├─ visual: visible, zIndex, modulate
-///     └─ transform: position, rotation, scale, skew
+/// 見た目は visual（visible / zIndex / modulate）、座標変換は transform（position / rotation / scale / skew）で持つ。
 
 /// カメラのアンカーモード。
 ///
@@ -16,15 +13,6 @@ pub enum CameraAnchorMode with Eq, Order, ToString {
     case FixedTopLeft
 }
 
-/// カメラの更新タイミング（プロセスコールバック）モード。
-///
-///   - PhysicsProcess: physicsProcess で更新する
-///   - IdleProcess: process（毎フレーム）で更新する（デフォルト）
-pub enum CameraProcessCallback with Eq, Order, ToString {
-    case PhysicsProcess
-    case IdleProcess
-}
-
 pub enum Camera {
     case Camera({
         transform = Transform,
@@ -33,7 +21,6 @@ pub enum Camera {
         zoom = Vec2.Vec2,
         enabled = Bool,
         anchorMode = CameraAnchorMode,
-        processCallback = CameraProcessCallback,
         ignoreRotation = Bool,
         limitLeft = Int32,
         limitTop = Int32,
@@ -77,7 +64,6 @@ mod Camera {
             zoom = {x = 1.0, y = 1.0},
             enabled = true,
             anchorMode = CameraAnchorMode.DragCenter,
-            processCallback = CameraProcessCallback.IdleProcess,
             ignoreRotation = false,
             limitLeft = -10_000_000,
             limitTop = -10_000_000,
@@ -225,9 +211,9 @@ mod Camera {
 
     /// target (`position`) が「smoothPosition 中心の drag dead zone 矩形」内に居るか。
     /// drag margin が有効な軸では「収束した = target が dead zone 内」、無効な軸では
-    /// 4 px epsilon を threshold にする（後方互換）。
+    /// 4 px epsilon を threshold にする。
     /// 「カメラが target に追いついた」判定に使う（ゲーム側のための判定で、標準的な相当 API は無い）。
-    /// 純関数（viewport を引数で取り、scene/effect に依存しない）なので engine 単独テスト可能。
+    /// 純関数（viewport を引数で取り、描画・effect に依存しない）なので engine 単独テスト可能。
     pub def isWithinDragDeadZone(camera: Camera,
             viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): Bool =
         let Camera.Camera(r) = camera;
@@ -255,7 +241,7 @@ mod Camera {
 
     /// smoothing / drag のいずれかが有効か。`getViewTransform` が
     /// `smoothPosition` を使うか `position` を使うかの分岐に用いる。
-    /// すべて無効なら従来挙動（position 直読み）を保つ — 後方互換のための判定。
+    /// すべて無効なら position を直接読む。
     pub def isFollowingActive(camera: Camera): Bool =
         let Camera.Camera(r) = camera;
         r#positionSmoothingEnabled
@@ -340,8 +326,7 @@ mod Camera {
     ///     |         = screen center   |
     ///     |                           |
     ///     +---------------------------+
-    /// `globalPos` はシーンツリーから求めた Camera ノードのワールド座標。
-    /// Camera が他ノードの子のときも親の変換を反映できるよう、呼び出し側が渡す。
+    /// `globalPos` は呼び出し側が渡す Camera のワールド座標（親の変換を含んだ最終位置）。
     pub def getScreenCenterPosition(camera: Camera, globalPos: Vec2.Vec2): Vec2.Vec2 =
         let Camera.Camera(r) = camera;
         let rawX = globalPos#x + r#offset#x;
@@ -356,24 +341,22 @@ mod Camera {
 
     /// カメラから ViewTransform を計算する。
     ///
-    /// シーンの描画時に各ノードの worldPos を `applyToWorldPos` に通すことで
-    /// カメラの視点での screen 座標に変換できる。CanvasLayer 配下のノードには
+    /// 描画時に各描画物の worldPos を `applyToWorldPos` に通すと
+    /// カメラ視点の screen 座標へ変換できる。CanvasLayer（画面固定レイヤ）に置いた描画物には
     /// この transform を適用しない。
     ///
     /// アンカーモードによって計算が異なる:
     ///   - DragCenter: position+offset がビューポート中心。zoom はその中心まわりに作用
     ///   - FixedTopLeft: position+offset がビューポート左上。zoom は左上原点で作用
-    /// `globalPos` はシーンツリーから求めた Camera ノードのワールド座標。
-    /// Camera を他ノードの子にしたときも親の変換を反映できる。
+    /// `globalPos` は呼び出し側が渡す Camera のワールド座標（親の変換を含む）。
     /// smoothing / drag のいずれかが有効なら、view 中心は `position` ではなく
     /// `smoothPosition`（process が更新する補間後の値）を起点に計算する。
-    /// すべて無効なら従来通り `globalPos`（= 親変換込みの position）を起点にする — 後方互換。
+    /// すべて無効なら `globalPos`（親変換込みの position）を起点にする。
     pub def getViewTransform(camera: Camera, globalPos: Vec2.Vec2,
                               viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): Projection.ViewTransform =
         let Camera.Camera(r) = camera;
         let zoom = r#zoom;
-        // 追従が有効なら smoothPosition を使う。Camera が scene root に居る前提で
-        // smoothPosition はワールド座標扱い（CameraScene が常に root に置く）。
+        // 追従が有効なら smoothPosition を使う（smoothPosition はワールド座標として扱う）。
         let viewBase = if (isFollowingActive(camera)) r#smoothPosition else globalPos;
         match r#anchorMode {
             case CameraAnchorMode.DragCenter =>
@@ -401,7 +384,6 @@ mod Camera {
                              r: {transform = Transform, visual = Visual,
                                  offset = Vec2.Vec2, zoom = Vec2.Vec2, enabled = Bool,
                                  anchorMode = CameraAnchorMode,
-                                 processCallback = CameraProcessCallback,
                                  ignoreRotation = Bool,
                                  limitLeft = Int32, limitTop = Int32,
                                  limitRight = Int32, limitBottom = Int32,

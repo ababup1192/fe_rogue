@@ -1,5 +1,5 @@
 /// world → screen のビュー変換。カメラ状態に依存しない純粋な投影数式だけを持つ。
-/// カメラは getViewTransform でこの ViewTransform を作り、描画側が各ノードの
+/// カメラは getViewTransform でこの ViewTransform を作り、描画側が各描画物の
 /// worldPos を applyToWorldPos に通して screen 座標へ移す。
 mod Projection {
 
