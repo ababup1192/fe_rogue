@@ -1,87 +1,25 @@
-/// ビューポートの中心を特定の対象（ターゲット座標）に追従させる 2D カメラ。
-/// position にターゲットの座標を入れておけば、スムージングや制限枠・ドラッグ余白を通して
-/// 画面が滑らかに付いていくので、追従ロジックを毎フレーム書かずに済む（offset で微調整）。
-/// 利用例: プレイヤーを画面中央に保つ / マップ端でスクロールを止める。
-/// 見た目は visual（visible / zIndex / color）、座標変換は transform（position / rotation / scale / skew）で持つ。
-
-/// カメラのアンカーモード。
+/// 描画をどの位置・どのズームで画面に映すかを決める 2D カメラ。
+/// `transform` の position が「画面中央に映すワールド座標」、`zoom` が寄り引きの倍率。
+/// これ 1 つで world → screen のビュー変換（`getViewTransform`）を作れるので、
+/// 描画側はカメラ視点の座標に描ける。
+/// 利用例: プレイヤーを画面中央に置く / マップを 0.32 倍に引いて広く見せる。
 ///
-///   - DragCenter: カメラの中心がターゲットに追従する（デフォルト）
-///   - FixedTopLeft: ビューポートの左上をターゲットに固定する
-pub enum CameraAnchorMode with Eq, Order, ToString {
-    case DragCenter
-    case FixedTopLeft
-}
-
+/// 追従（スムージング・ドラッグ余白・スクロール制限）はカメラ自身の責務ではなく、
+/// position を毎フレーム動かす利用側の処理が担う（Bevy の follow system と同じ分担）。
 pub enum Camera {
     case Camera({
-        transform = Transform,
-        visual = Visual,
-        offset = Vec2.Vec2,
-        zoom = Vec2.Vec2,
-        enabled = Bool,
-        anchorMode = CameraAnchorMode,
-        ignoreRotation = Bool,
-        limitLeft = Int32,
-        limitTop = Int32,
-        limitRight = Int32,
-        limitBottom = Int32,
-        limitSmoothed = Bool,
-        positionSmoothingEnabled = Bool,
-        positionSmoothingSpeed = Float64,
-        rotationSmoothingEnabled = Bool,
-        rotationSmoothingSpeed = Float64,
-        dragHorizontalEnabled = Bool,
-        dragVerticalEnabled = Bool,
-        dragLeftMargin = Float64,
-        dragRightMargin = Float64,
-        dragTopMargin = Float64,
-        dragBottomMargin = Float64,
-        // 内部状態: 前フレームまでに到達した「実際に view が中心としている位置」。
-        // `position` はゲームロジックがセットしたターゲット。`process` が delta ごとに
-        // smoothPosition を position へ向けて補間する（drag margin を経て smoothing で滑らかに）。
-        // smoothing/drag/limit のいずれも無効なら、getViewTransform は position をそのまま使う。
-        smoothPosition = Vec2.Vec2
+        transform = Transform,   // position = 画面中央に映すワールド座標。回転・スケール・せん断
+        zoom = Vec2.Vec2         // 寄り引き倍率。大きいほど寄る（0.32 で引き）
     })
 }
 
 mod Camera {
 
-    // ========================================================================
-    // コンストラクタ
-    // ========================================================================
-
-    /// デフォルト値で Camera を生成する
-    ///
-    /// デフォルト値:
-    ///   offset = (0, 0), zoom = (1, 1), enabled = true,
-    ///   anchorMode = DragCenter, limit = ±10_000_000
+    /// 指定位置を画面中央に映すカメラを作る（zoom = (1, 1) 等倍）。
     pub def make(position: Vec2.Vec2): Camera =
         Camera.Camera({
             transform = { position = position, rotation = 0.0, scale = {x = 1.0, y = 1.0}, skew = 0.0 },
-            visual = Visual.default(),
-            offset = {x = 0.0, y = 0.0},
-            zoom = {x = 1.0, y = 1.0},
-            enabled = true,
-            anchorMode = CameraAnchorMode.DragCenter,
-            ignoreRotation = false,
-            limitLeft = -10_000_000,
-            limitTop = -10_000_000,
-            limitRight = 10_000_000,
-            limitBottom = 10_000_000,
-            limitSmoothed = false,
-            positionSmoothingEnabled = false,
-            positionSmoothingSpeed = 5.0,
-            rotationSmoothingEnabled = false,
-            rotationSmoothingSpeed = 5.0,
-            dragHorizontalEnabled = false,
-            dragVerticalEnabled = false,
-            dragLeftMargin = 0.2,
-            dragRightMargin = 0.2,
-            dragTopMargin = 0.2,
-            dragBottomMargin = 0.2,
-            // 初期は position と同値（`process` が走るまでは即座にカメラがそこを映す）
-            smoothPosition = position
+            zoom = {x = 1.0, y = 1.0}
         })
 
     /// 埋め込んだ Transform 部品を取り出す
@@ -94,314 +32,21 @@ mod Camera {
         let Camera.Camera(r) = camera;
         Camera.Camera({transform = f(r#transform) | r})
 
-    /// 埋め込んだ Visual 部品を取り出す
-    pub def visual(camera: Camera): Visual =
+    /// ズーム倍率を取得する
+    pub def getZoom(camera: Camera): Vec2.Vec2 =
         let Camera.Camera(r) = camera;
-        r#visual
-
-    /// Visual 部品に関数を適用して差し替える
-    pub def mapVisual(f: Visual -> Visual \ ef, camera: Camera): Camera \ ef =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({visual = f(r#visual) | r})
-
-    // ========================================================================
-    // Camera 固有プロパティ — getter / setter
-    // ========================================================================
-
-    /// ビューポートオフセットを設定する
-    pub def setOffset(offset: Vec2.Vec2, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({offset = offset | r})
+        r#zoom
 
     /// ズーム倍率を設定する
     pub def setZoom(zoom: Vec2.Vec2, camera: Camera): Camera =
         let Camera.Camera(r) = camera;
         Camera.Camera({zoom = zoom | r})
 
-    /// カメラが有効（current）かどうかを返す
-    pub def isEnabled(camera: Camera): Bool =
+    /// カメラから ViewTransform（world → screen 変換）を作る。
+    /// `center` を画面中央に映す。描画時に各描画物の worldPos を `Projection.applyToWorldPos`
+    /// に通すとカメラ視点の screen 座標へ移せる。画面固定レイヤの描画物には適用しない。
+    pub def getViewTransform(camera: Camera, center: Vec2.Vec2,
+                              viewport: {viewportWidth = Float64, viewportHeight = Float64}): Projection.ViewTransform =
         let Camera.Camera(r) = camera;
-        r#enabled
-
-    /// カメラの有効状態（current かどうか）を設定する
-    pub def setEnabled(enabled: Bool, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({enabled = enabled | r})
-
-    // ========================================================================
-    // スクロール制限
-    // ========================================================================
-
-    /// スクロール制限（左端）を設定する
-    pub def setLimitLeft(limitLeft: Int32, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({limitLeft = limitLeft | r})
-
-    /// スクロール制限（上端）を設定する
-    pub def setLimitTop(limitTop: Int32, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({limitTop = limitTop | r})
-
-    /// スクロール制限（右端）を設定する
-    pub def setLimitRight(limitRight: Int32, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({limitRight = limitRight | r})
-
-    /// スクロール制限（下端）を設定する
-    pub def setLimitBottom(limitBottom: Int32, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({limitBottom = limitBottom | r})
-
-    // ========================================================================
-    // 位置スムージング
-    // ========================================================================
-
-    /// 位置スムージングの有効状態を設定する
-    pub def setPositionSmoothingEnabled(positionSmoothingEnabled: Bool, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({positionSmoothingEnabled = positionSmoothingEnabled | r})
-
-    /// 位置スムージングの速度を設定する
-    pub def setPositionSmoothingSpeed(positionSmoothingSpeed: Float64, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({positionSmoothingSpeed = positionSmoothingSpeed | r})
-
-    // ========================================================================
-    // ドラッグマージン
-    // ========================================================================
-
-    /// 水平ドラッグマージンの有効状態を設定する
-    pub def setDragHorizontalEnabled(dragHorizontalEnabled: Bool, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({dragHorizontalEnabled = dragHorizontalEnabled | r})
-
-    /// 垂直ドラッグマージンの有効状態を設定する
-    pub def setDragVerticalEnabled(dragVerticalEnabled: Bool, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({dragVerticalEnabled = dragVerticalEnabled | r})
-
-    /// 左ドラッグマージンを設定する（0.0〜1.0）
-    pub def setDragLeftMargin(dragLeftMargin: Float64, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({dragLeftMargin = dragLeftMargin | r})
-
-    /// 右ドラッグマージンを設定する（0.0〜1.0）
-    pub def setDragRightMargin(dragRightMargin: Float64, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({dragRightMargin = dragRightMargin | r})
-
-    /// 上ドラッグマージンを設定する（0.0〜1.0）
-    pub def setDragTopMargin(dragTopMargin: Float64, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({dragTopMargin = dragTopMargin | r})
-
-    /// 下ドラッグマージンを設定する（0.0〜1.0）
-    pub def setDragBottomMargin(dragBottomMargin: Float64, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({dragBottomMargin = dragBottomMargin | r})
-
-    // ========================================================================
-    // メソッド
-    // ========================================================================
-
-    /// `smoothPosition` を取得する（描画用の実視点位置。`process` で更新される）
-    pub def getSmoothPosition(camera: Camera): Vec2.Vec2 =
-        let Camera.Camera(r) = camera;
-        r#smoothPosition
-
-    /// target (`position`) が「smoothPosition 中心の drag dead zone 矩形」内に居るか。
-    /// drag margin が有効な軸では「収束した = target が dead zone 内」、無効な軸では
-    /// 4 px epsilon を threshold にする。
-    /// 「カメラが target に追いついた」判定に使う（ゲーム側のための判定で、標準的な相当 API は無い）。
-    /// 純関数（viewport を引数で取り、描画・effect に依存しない）なので engine 単独テスト可能。
-    pub def isWithinDragDeadZone(camera: Camera,
-            viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): Bool =
-        let Camera.Camera(r) = camera;
-        let target = r#transform#position;
-        let smooth = r#smoothPosition;
-        let zx = if (r#zoom#x == 0.0) 1.0 else r#zoom#x;
-        let zy = if (r#zoom#y == 0.0) 1.0 else r#zoom#y;
-        let worldHalfW = viewportSize#viewportWidth / 2.0 / zx;
-        let worldHalfH = viewportSize#viewportHeight / 2.0 / zy;
-        // drag margin の収束 threshold + asymptotic 接近のための 2 px buffer
-        let thresholdX = if (r#dragHorizontalEnabled)
-                worldHalfW * Float64.max(r#dragLeftMargin, r#dragRightMargin) + 2.0
-            else 4.0;
-        let thresholdY = if (r#dragVerticalEnabled)
-                worldHalfH * Float64.max(r#dragTopMargin, r#dragBottomMargin) + 2.0
-            else 4.0;
-        Float64.abs(target#x - smooth#x) <= thresholdX
-            and Float64.abs(target#y - smooth#y) <= thresholdY
-
-    /// `smoothPosition` を直接設定する（カメラを瞬間移動させたい場合の保険）。
-    /// 通常は `process` 経由で smoothing/drag を介して更新される。
-    pub def setSmoothPosition(smoothPosition: Vec2.Vec2, camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        Camera.Camera({smoothPosition = smoothPosition | r})
-
-    /// smoothing / drag のいずれかが有効か。`getViewTransform` が
-    /// `smoothPosition` を使うか `position` を使うかの分岐に用いる。
-    /// すべて無効なら position を直接読む。
-    pub def isFollowingActive(camera: Camera): Bool =
-        let Camera.Camera(r) = camera;
-        r#positionSmoothingEnabled
-            or r#dragHorizontalEnabled
-            or r#dragVerticalEnabled
-
-    /// カメラの毎フレーム追従処理（毎フレーム 1 回呼ぶ更新関数）。
-    /// `position` を「ターゲット」、`smoothPosition` を「実際に映している点」として、
-    /// drag margin → smoothing lerp → limit clamp の順で `smoothPosition` を更新する。
-    /// 純粋関数（カメラの新インスタンスを返す）。`viewportSize` はビューポート px サイズで、
-    /// 内部で zoom を反映した world 単位の半幅・半高に変換する。
-    ///
-    /// 挙動:
-    ///   - drag margin は world 単位で `viewport / 2 / zoom × dragXMargin` の矩形
-    ///   - smoothing は単純 lerp (`speed * delta` を t、夾着クランプ)
-    ///   - limit は hard clamp（`limitSmoothed = true` モードは未対応）
-    pub def process(delta: Duration.Duration,
-                    viewportSize: {viewportWidth = Float64, viewportHeight = Float64},
-                    camera: Camera): Camera =
-        let Camera.Camera(r) = camera;
-        let target = r#transform#position;
-        let smooth = r#smoothPosition;
-        // zoom が 0 の軸は 1 として扱う（落とし穴防止、getViewTransform の流儀に合わせる）
-        let zx = if (r#zoom#x == 0.0) 1.0 else r#zoom#x;
-        let zy = if (r#zoom#y == 0.0) 1.0 else r#zoom#y;
-        let worldHalfW = viewportSize#viewportWidth / 2.0 / zx;
-        let worldHalfH = viewportSize#viewportHeight / 2.0 / zy;
-        // 1. drag margin: target が `smooth` 周りの margin 矩形を超えたら logical を引っ張る。
-        //    内部に居るなら logical = smooth で据え置き（カメラは止まる）。
-        let logicalX =
-            if (r#dragHorizontalEnabled) {
-                let rightBound = smooth#x + worldHalfW * r#dragRightMargin;
-                let leftBound  = smooth#x - worldHalfW * r#dragLeftMargin;
-                if (target#x > rightBound) target#x - worldHalfW * r#dragRightMargin
-                else if (target#x < leftBound) target#x + worldHalfW * r#dragLeftMargin
-                else smooth#x
-            }
-            else target#x;
-        let logicalY =
-            if (r#dragVerticalEnabled) {
-                let bottomBound = smooth#y + worldHalfH * r#dragBottomMargin;
-                let topBound    = smooth#y - worldHalfH * r#dragTopMargin;
-                if (target#y > bottomBound) target#y - worldHalfH * r#dragBottomMargin
-                else if (target#y < topBound) target#y + worldHalfH * r#dragTopMargin
-                else smooth#y
-            }
-            else target#y;
-        // 2. smoothing: smoothPosition が logical へ単純 lerp で近づく。
-        //    `speed * delta > 1` のとき夾着クランプして overshoot を防ぐ。
-        let nextX =
-            if (r#positionSmoothingEnabled) {
-                let t = Float64.min(1.0,
-                    r#positionSmoothingSpeed * Duration.toSeconds(delta));
-                smooth#x + (logicalX - smooth#x) * t
-            }
-            else logicalX;
-        let nextY =
-            if (r#positionSmoothingEnabled) {
-                let t = Float64.min(1.0,
-                    r#positionSmoothingSpeed * Duration.toSeconds(delta));
-                smooth#y + (logicalY - smooth#y) * t
-            }
-            else logicalY;
-        // 3. limit hard clamp: smoothPosition がマップ外を映さないように矩形に押し込む
-        let clampedX = nextX
-            |> Float64.max(Int32.toFloat64(r#limitLeft))
-            |> Float64.min(Int32.toFloat64(r#limitRight));
-        let clampedY = nextY
-            |> Float64.max(Int32.toFloat64(r#limitTop))
-            |> Float64.min(Int32.toFloat64(r#limitBottom));
-        Camera.Camera({smoothPosition = {x = clampedX, y = clampedY} | r})
-
-    /// 画面中央のワールド座標を返す。
-    ///
-    /// position + offset がスクロール制限でクランプされた座標を返す。
-    ///
-    ///   ワールド空間:
-    ///     +---------------------------+
-    ///     |                           |
-    ///     |     [camera.position]     |
-    ///     |         + offset          |
-    ///     |         = screen center   |
-    ///     |                           |
-    ///     +---------------------------+
-    /// `globalPos` は呼び出し側が渡す Camera のワールド座標（親の変換を含んだ最終位置）。
-    pub def getScreenCenterPosition(camera: Camera, globalPos: Vec2.Vec2): Vec2.Vec2 =
-        let Camera.Camera(r) = camera;
-        let rawX = globalPos#x + r#offset#x;
-        let rawY = globalPos#y + r#offset#y;
-        let clampedX = rawX
-            |> Float64.max(Int32.toFloat64(r#limitLeft))
-            |> Float64.min(Int32.toFloat64(r#limitRight));
-        let clampedY = rawY
-            |> Float64.max(Int32.toFloat64(r#limitTop))
-            |> Float64.min(Int32.toFloat64(r#limitBottom));
-        {x = clampedX, y = clampedY}
-
-    /// カメラから ViewTransform を計算する。
-    ///
-    /// 描画時に各描画物の worldPos を `applyToWorldPos` に通すと
-    /// カメラ視点の screen 座標へ変換できる。CanvasLayer（画面固定レイヤ）に置いた描画物には
-    /// この transform を適用しない。
-    ///
-    /// アンカーモードによって計算が異なる:
-    ///   - DragCenter: position+offset がビューポート中心。zoom はその中心まわりに作用
-    ///   - FixedTopLeft: position+offset がビューポート左上。zoom は左上原点で作用
-    /// `globalPos` は呼び出し側が渡す Camera のワールド座標（親の変換を含む）。
-    /// smoothing / drag のいずれかが有効なら、view 中心は `position` ではなく
-    /// `smoothPosition`（process が更新する補間後の値）を起点に計算する。
-    /// すべて無効なら `globalPos`（親変換込みの position）を起点にする。
-    pub def getViewTransform(camera: Camera, globalPos: Vec2.Vec2,
-                              viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): Projection.ViewTransform =
-        let Camera.Camera(r) = camera;
-        let zoom = r#zoom;
-        // 追従が有効なら smoothPosition を使う（smoothPosition はワールド座標として扱う）。
-        let viewBase = if (isFollowingActive(camera)) r#smoothPosition else globalPos;
-        match r#anchorMode {
-            case CameraAnchorMode.DragCenter =>
-                // screen = (world - screenCenter) * zoom + halfScreen
-                //        = world * zoom - (screenCenter * zoom - halfScreen)
-                let screenCenter = clampedScreenCenter(viewBase, r);
-                let halfW = viewportSize#viewportWidth / 2.0;
-                let halfH = viewportSize#viewportHeight / 2.0;
-                { scale = zoom,
-                  offset = {x = screenCenter#x * zoom#x - halfW,
-                            y = screenCenter#y * zoom#y - halfH} }
-            case CameraAnchorMode.FixedTopLeft =>
-                // screen = (world - (viewBase + offset)) * zoom
-                //        = world * zoom - (viewBase + offset) * zoom
-                let rawX = viewBase#x + r#offset#x;
-                let rawY = viewBase#y + r#offset#y;
-                { scale = zoom,
-                  offset = {x = rawX * zoom#x, y = rawY * zoom#y} }
-        }
-
-    /// 任意の base ワールド座標に offset を加え、limit 矩形でクランプして screen center を返す。
-    /// `getScreenCenterPosition` の汎用化（base を引数化）。
-    /// getViewTransform が smoothPosition / globalPos のいずれを起点にするかを切替可能にする。
-    def clampedScreenCenter(base: Vec2.Vec2,
-                             r: {transform = Transform, visual = Visual,
-                                 offset = Vec2.Vec2, zoom = Vec2.Vec2, enabled = Bool,
-                                 anchorMode = CameraAnchorMode,
-                                 ignoreRotation = Bool,
-                                 limitLeft = Int32, limitTop = Int32,
-                                 limitRight = Int32, limitBottom = Int32,
-                                 limitSmoothed = Bool,
-                                 positionSmoothingEnabled = Bool, positionSmoothingSpeed = Float64,
-                                 rotationSmoothingEnabled = Bool, rotationSmoothingSpeed = Float64,
-                                 dragHorizontalEnabled = Bool, dragVerticalEnabled = Bool,
-                                 dragLeftMargin = Float64, dragRightMargin = Float64,
-                                 dragTopMargin = Float64, dragBottomMargin = Float64,
-                                 smoothPosition = Vec2.Vec2}): Vec2.Vec2 =
-        let rawX = base#x + r#offset#x;
-        let rawY = base#y + r#offset#y;
-        let clampedX = rawX
-            |> Float64.max(Int32.toFloat64(r#limitLeft))
-            |> Float64.min(Int32.toFloat64(r#limitRight));
-        let clampedY = rawY
-            |> Float64.max(Int32.toFloat64(r#limitTop))
-            |> Float64.min(Int32.toFloat64(r#limitBottom));
-        {x = clampedX, y = clampedY}
+        Projection.viewTransform(r#zoom, center, viewport)
 }
-
