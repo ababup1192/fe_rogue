@@ -1,8 +1,10 @@
 # Flix Game Engine
 
-A Godot-style scene-tree 2D game engine written in [Flix](https://flix.dev/).
-Rendering, input, and audio are a from-scratch implementation on top of LWJGL
-(OpenGL 3.3 Core / GLFW / OpenAL) — no Godot dependency.
+A 2D game engine written in [Flix](https://flix.dev/). Games are built around
+a single immutable `World` value: systems are pure functions run each frame by
+a Bevy-style `App`, and every frame is rendered from the `World`. Rendering,
+input, and audio are a from-scratch implementation on top of LWJGL
+(OpenGL 3.3 Core / GLFW / OpenAL).
 
 The engine ships as a reusable library, with real games living under `examples/`,
 in a monorepo layout. The recommended one is **fe_rogue** (a Fire Emblem-style
@@ -30,13 +32,14 @@ Then set up the toolchain and build the engine packages:
 
 ```bash
 devbox shell        # fetch JDK 21 + make, and add bin/ to PATH
-make sync            # build-pkg engine_core / render_core / engine and distribute (via symlink) to examples & ide
+make sync            # build-pkg all engine packages and distribute (via symlink) to examples & ide
 ```
 
 Run `make sync` **once on first setup**. Each example resolves the engine through
 a relative symlink under `lib/github/ababup1192/.../0.1.0/`, so without it the
-dependency cannot be resolved. After editing the engine, re-run `make sync`
-(or `make sync-engine`) to reflect changes immediately.
+dependency cannot be resolved. After editing an engine package, re-run `make sync`
+(or the per-package `sync-*` targets; note that `engine_world` / `engine_tools`
+build on `engine`, so re-sync them too after editing `engine`).
 
 ```bash
 make help            # list other targets (sync-engine, etc.)
@@ -99,15 +102,18 @@ flix test            # test
 ## Project layout (monorepo)
 
 ```
-engine_core/   foundation package: pure types and computation (math, color, assets)
-render_core/   OpenGL/OpenAL wrapper layer (depends on engine_core)
-engine/        reusable library bundling scene tree, physics, input, audio (depends on render_core)
-ide/           Swing + AWTGLCanvas scene editor (depends on engine)
-examples/      individual games (depend on engine)
+engine_core/   foundation package: pure types and computation (math, color, text layout, project loading)
+render_core/   OpenGL/OpenAL wrapper layer: shaders, textures, SDF fonts, audio (depends on engine_core)
+engine/        runtime shell: main loop, LWJGL window/input/audio handlers, asset loading, save data (depends on render_core)
+engine_world/  value-based game framework: Bevy-style App, ECS queries, physics, UI widgets, camera rig, Worldline undo/replay (depends on engine)
+engine_tools/  dev & test tooling: headless software rasterizer, filmstrip/GIF baking, snapshot viewer, render lint, SFX synth (depends on engine)
+ide/           Swing + AWTGLCanvas editor (depends on engine)
+examples/      individual games (depend on engine, engine_world, engine_tools)
 bin/           flix.jar and the flix wrapper script
 ```
 
-Dependency chain: `engine_core → render_core → engine → (ide / examples)`.
+Dependency chain: `engine_core → render_core → engine → (engine_world / engine_tools) → examples`,
+with `ide` sitting on `engine`.
 `make sync` runs `build-pkg` on each package and distributes it to dependents via
 relative symlinks (symlink, not cp — so rebuilding the engine is reflected instantly).
 
@@ -117,6 +123,8 @@ relative symlinks (symlink, not cp — so rebuilding the engine is reflected ins
 make sync-engine-core    # build-pkg & distribute engine_core only
 make sync-render-core    # build-pkg & distribute render_core only
 make sync-engine         # build-pkg & distribute engine only
+make sync-engine-world   # build-pkg & distribute engine_world only
+make sync-engine-tools   # build-pkg & distribute engine_tools only
 make clean-locks         # remove stale *.lock left in the Maven cache by an interrupted flix check
 make clean-example-builds # delete examples/*/build/ (speeds up IDE scene loading)
 ```
@@ -136,8 +144,9 @@ make clean-example-builds # delete examples/*/build/ (speeds up IDE scene loadin
 
 # Flix Game Engine (日本語)
 
-[Flix](https://flix.dev/) で書く Godot 風シーンツリーの 2D ゲームエンジン。
-描画・入力・音声は LWJGL（OpenGL 3.3 Core / GLFW / OpenAL）を直接叩く自前実装で、Godot には依存しない。
+[Flix](https://flix.dev/) で書く 2D ゲームエンジン。ゲームは不変の `World` 値を中心に組み立てる:
+システムは Bevy 風 `App` が毎フレーム実行する純粋関数で、各フレームは `World` から描画を導出する。
+描画・入力・音声は LWJGL（OpenGL 3.3 Core / GLFW / OpenAL）を直接叩く自前実装。
 
 エンジンを再利用ライブラリとして提供し、`examples/` 配下に実際のゲームが並ぶ monorepo 構成。
 おすすめは **fe_rogue**（ファイアーエムブレム風 SRPG + ローグライク）。
@@ -162,12 +171,13 @@ curl -L -o bin/flix.jar https://github.com/flix/flix/releases/download/v0.75.0/f
 
 ```bash
 devbox shell        # JDK 21 + make を取得し、bin/ を PATH に追加
-make sync            # engine_core / render_core / engine を build-pkg し、examples・ide へ symlink 配布
+make sync            # 全エンジンパッケージを build-pkg し、examples・ide へ symlink 配布
 ```
 
 `make sync` は **初回に必ず一度実行する**。各 example はエンジンを
 `lib/github/ababup1192/.../0.1.0/` への相対 symlink 経由で解決するため、これが無いと依存を解決できない。
-エンジンを編集したら `make sync`（または `make sync-engine`）で即反映される。
+エンジンパッケージを編集したら `make sync`（またはパッケージ別の `sync-*` ターゲット。
+`engine_world` / `engine_tools` は `engine` の上に載るので、`engine` 編集後はそれらも再 sync する）で反映する。
 
 ```bash
 make help            # 他ターゲット（sync-engine など）を一覧表示
@@ -230,15 +240,18 @@ flix test            # テスト
 ## プロジェクト構成（monorepo）
 
 ```
-engine_core/   数学・色・アセットなど純粋な型と計算の土台パッケージ
-render_core/   engine_core に依存する OpenGL/OpenAL ラッパレイヤ
-engine/        シーンツリー・物理・入力・音声をまとめた再利用ライブラリ（render_core 依存）
-ide/           Swing + AWTGLCanvas ベースのシーンエディタ（engine 依存）
-examples/      各ゲーム（engine 依存）
+engine_core/   数学・色・テキストレイアウト・プロジェクト読み込みなど純粋な型と計算の土台パッケージ
+render_core/   OpenGL/OpenAL ラッパレイヤ: シェーダ・テクスチャ・SDF フォント・音声（engine_core 依存）
+engine/        ランタイムの殻: メインループ・LWJGL の窓/入力/音声ハンドラ・アセット読み込み・セーブデータ（render_core 依存）
+engine_world/  値ベースのゲームフレームワーク: Bevy 風 App・ECS クエリ・物理・UI 部品・カメラリグ・Worldline undo/リプレイ（engine 依存）
+engine_tools/  開発・テスト用ツール: headless ソフトラスタライザ・コマ撮り/GIF bake・スナップショットビューア・RenderLint・効果音合成（engine 依存）
+ide/           Swing + AWTGLCanvas ベースのエディタ（engine 依存）
+examples/      各ゲーム（engine・engine_world・engine_tools 依存）
 bin/           flix.jar と flix ラッパスクリプト
 ```
 
-依存チェーンは `engine_core → render_core → engine →（ide / examples）`。
+依存チェーンは `engine_core → render_core → engine →（engine_world / engine_tools）→ examples`、
+`ide` は `engine` の上に載る。
 `make sync` が各パッケージを `build-pkg` し、依存先へ相対 symlink で配布する
 （cp ではなく symlink なので、エンジンを再ビルドすれば即座に反映される）。
 
@@ -248,6 +261,8 @@ bin/           flix.jar と flix ラッパスクリプト
 make sync-engine-core    # engine_core だけ build-pkg & 配布
 make sync-render-core    # render_core だけ build-pkg & 配布
 make sync-engine         # engine だけ build-pkg & 配布
+make sync-engine-world   # engine_world だけ build-pkg & 配布
+make sync-engine-tools   # engine_tools だけ build-pkg & 配布
 make clean-locks         # flix check 中断で残った Maven cache の *.lock を削除
 make clean-example-builds # examples/*/build/ を削除（IDE のシーン読み込み高速化用）
 ```
