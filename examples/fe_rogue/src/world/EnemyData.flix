@@ -69,4 +69,22 @@ mod EnemyData {
         def findIdAt(coord: {x = Int32, y = Int32}): Option[Int32]
         def anyAttacking(): Bool
     }
+
+    /// World（各 store の単一権威）から `dataFromWorldEnemy` で再構築して読む facade handler
+    /// （`PlayerData.withWorld` と同流儀）。findIdAt/anyAttacking は World の pos/attackTarget を直読み。
+    pub def withWorld(worldRef: Ref[World, r]):
+            (Unit -> a \ ef) -> a \ (ef - RosterQuery) + r =
+        thunk -> {
+            run {
+                thunk()
+            } with handler RosterQuery {
+                def get(id, k) = k(World.dataFromWorldEnemy(id, Ref.get(worldRef)))
+                def getAll(k)  = {
+                    let world = Ref.get(worldRef);
+                    k(World.enemyIdsOf(world) |> List.filterMap(id -> World.dataFromWorldEnemy(id, world)))
+                }
+                def findIdAt(coord, k) = k(World.enemyIdAt(coord, Ref.get(worldRef)))
+                def anyAttacking(k)    = k(World.anyEnemyAttacking(Ref.get(worldRef)))
+            }
+        }
 }

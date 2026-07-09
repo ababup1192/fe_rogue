@@ -78,11 +78,11 @@ mod ActionMenuUi {
         UiStore.widthPxOf(panelPath(), UiWorldState.State.get())
             |> Option.getWithDefault(panelWidth())
 
-    // ── 文字色（通常 / disabled=淡色。旧 scene.json の textColor / disabledColor 由来）──
+    // ── 文字色（通常 / disabled=淡色。真理点は UITheme）──
     // 選択は塗り箱ハイライトで示すため選択行も通常色のまま（旧 ItemList は白文字 + 選択塗り箱で、
     // 文字色は選択非選択で変えない。塗り箱 + 色替えの二重強調を避ける）。
-    def normalColor(): Color = {r = 0.933f32, g = 0.945f32, b = 0.969f32}
-    def disabledColor(): Color = {r = 0.36f32, g = 0.40f32, b = 0.47f32}
+    def normalColor(): Color = UITheme.labelText()
+    def disabledColor(): Color = UITheme.rowDisabled()
 
     // ========================================================================
     // metadata の値（onActionConfirmed で再現するためのアクション識別子）

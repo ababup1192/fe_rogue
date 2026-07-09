@@ -59,31 +59,22 @@ mod TestWorldJourney {
     // ハーネス（Game.start を台本で headless 駆動する）
     // ════════════════════════════════════════════════════════
 
-    /// 中断セーブのスロットファイル。台本が万一「中断」を確定しても実データを壊さないよう、
-    /// runJourney が実行前に内容を退避し、実行後に書き戻す。
+    /// 中断セーブのスロットファイル。テスト中の `saves/` 読み書きは in-memory の模擬に
+    /// 差し替える（下の Fs handler）ため、実ディスクの saves/ には一切触れない。
     def saveSlotPath(): String = SaveManager.slotPath(SuspendSave.slot())
 
-    /// スロットの現内容（無ければ None）。
-    def readSaveSlot(): Option[String] \ Fs.FileRead =
-        let result = run { Fs.ReadFile.read(saveSlotPath()) } with Fs.ReadFile.runWithFileRead;
-        Result.toOption(result)
-
-    /// スロットへ内容を書き戻す（退避が None = 元々無ければ何もしない）。
-    def restoreSaveSlot(saved: Option[String]): Unit \ Fs.FileWrite =
-        match saved {
-            case Some(content) =>
-                run { discard Fs.WriteFile.write({str = content}, saveSlotPath()) }
-                    with Fs.WriteFile.runWithFileWrite
-            case None => ()
-        }
+    /// `saves/` 配下のパスか（このパスだけ in-memory の模擬 saves/ に振り向ける）。
+    def isSavePath(path: String): Bool =
+        String.startsWith({prefix = "saves/"}, path)
 
     /// 本番 `Game.start()` を台本で駆動する。フレームの進みは gameLoop 先頭の shouldClose 呼び出しに
     /// 同期させる（台本を 1 コマ消費して false、尽きたら true = 正常終了）。テクスチャ実寸表は
     /// 実 PNG から読む（sprite 描画がテクスチャ登録を要求するため）。
-    /// 中断セーブのスロットは実行前に退避し、実行後に書き戻す（実データ保護）。
-    def runJourney(seed: Int64, script: List[List[FrameKeys]]): Journey \ {IO, Fs.FileRead, Fs.FileWrite} =
+    /// `saves/` 配下の読み書きは in-memory の模擬に閉じる（実ディスクの saves/ は読みも書きもしない）。
+    /// 模擬は毎回空で始まるため、開発者の実セーブや前回テストの残骸に挙動が左右されない。
+    def runJourney(seed: Int64, script: List[List[FrameKeys]]): Journey \ {IO, Fs.FileRead} =
         region rc {
-            let savedSlot = readSaveSlot();
+            let mockSavesRef: Ref[Map[String, String], rc] = Ref.fresh(rc, Map.empty());
             let scriptRef: Ref[List[FrameKeys], rc] = Ref.fresh(rc, List.flatten(script));
             let keysRef: Ref[FrameKeys, rc]         = Ref.fresh(rc, Nil);
             let framesRef: Ref[Int32, rc]           = Ref.fresh(rc, 0);
@@ -144,11 +135,43 @@ mod TestWorldJourney {
             } with handler Math.Random {
                 def randomFloat64(k) = k(rng.nextDouble())
                 def randomInt64(k)   = k(rng.nextLong())
+            } with handler Fs.FileRead {
+                // saves/ だけ模擬から読む（無ければ NotFound = 実機の「セーブ不在」と同じ見え方）。
+                // それ以外（catalog / ui.json 等のアセット）は実ファイルへ素通し。
+                def read(f, k) =
+                    if (isSavePath(f))
+                        k(match Map.get(f, Ref.get(mockSavesRef)) {
+                            case Some(content) => Ok(content)
+                            case None          => Err(IoError.IoError(IoError.ErrorKind.NotFound, "mock saves: '${f}' does not exist"))
+                        })
+                    else
+                        k(Fs.FileRead.read(f))
+                def readLines(f, k) = k(Fs.FileRead.readLines(f))
+                def readBytes(f, k) = k(Fs.FileRead.readBytes(f))
+            } with handler Fs.FileWrite {
+                // ゲームがディスクに書くのは中断セーブだけ、という前提を handler で明文化する。
+                // saves/ 以外への書き込み系 op が来たら前提が崩れた合図なので bug! で即座に落とす。
+                def write(data, f, k) =
+                    if (isSavePath(f)) {
+                        Ref.put(Map.insert(f, data#str, Ref.get(mockSavesRef)), mockSavesRef);
+                        k(Ok(()))
+                    } else
+                        bug!("mock saves: unexpected write to '${f}'")
+                def writeLines(_, f, _k)    = bug!("mock saves: unexpected writeLines to '${f}'")
+                def writeBytes(_, f, _k)    = bug!("mock saves: unexpected writeBytes to '${f}'")
+                def append(_, f, _k)        = bug!("mock saves: unexpected append to '${f}'")
+                def appendLines(_, f, _k)   = bug!("mock saves: unexpected appendLines to '${f}'")
+                def appendBytes(_, f, _k)   = bug!("mock saves: unexpected appendBytes to '${f}'")
+                def truncate(f, _k)         = bug!("mock saves: unexpected truncate of '${f}'")
+                def copyWith(_, dst, _, _k) = bug!("mock saves: unexpected copy to '${dst}'")
+                def moveWith(_, dst, _, _k) = bug!("mock saves: unexpected move to '${dst}'")
+                def delete(f, _k)           = bug!("mock saves: unexpected delete of '${f}'")
+                def mkDir(d, _k)            = bug!("mock saves: unexpected mkDir '${d}'")
+                def mkDirs(d, _k)           = bug!("mock saves: unexpected mkDirs '${d}'")
+                def mkTempDir(p, _k)        = bug!("mock saves: unexpected mkTempDir '${p}'")
             };
-            // 台本が中断セーブを書いた場合の内容（実行後・復元前に読む。退避時と同一なら「書かれていない」）。
-            let after = readSaveSlot();
-            let slotAfter = if (after != savedSlot) after else None;
-            restoreSaveSlot(savedSlot);
+            // 台本が中断セーブを書いた場合の内容（模擬は空で始まるので、有る = 台本が書いた）。
+            let slotAfter = Map.get(saveSlotPath(), Ref.get(mockSavesRef));
             let (mnx, mny) = Ref.get(tileMinRef);
             let (mxx, mxy) = Ref.get(tileMaxRef);
             {frames        = Ref.get(framesRef),
@@ -175,7 +198,7 @@ mod TestWorldJourney {
     /// 安全に走ることを pin する。タイルは 1 フレームも描かれず（盤面が無い画面でタイル描画ゼロ）、
     /// 画面には描画物がある（タイトル UI が出ている）。
     @Test
-    def testTitleFramesRunSafely(): Unit \ {Assert, IO, Fs.FileRead, Fs.FileWrite} =
+    def testTitleFramesRunSafely(): Unit \ {Assert, IO, Fs.FileRead} =
         let j = runJourney(2026i64, idle(10) :: Nil);
         Assert.assertEq(
             expected = (10, 0, true),
@@ -230,7 +253,7 @@ mod TestWorldJourney {
             :: turnSkipRounds(4)
             // 締め: X で集合を解除（集合中なら開始位置へ巻き戻して個別行動へ・素のカーソル中なら無反応）
             // → カーソルを空マスへ → 空マスメニュー → ↑ で末尾「ちゅうだん」→ 確認モーダル「はい」で
-            // 中断セーブ（SuspendSave 経路の完走）。スロットの実ファイルは runJourney が退避・復元する。
+            // 中断セーブ（SuspendSave 経路の完走）。セーブは runJourney の in-memory 模擬 saves/ に書かれる。
             :: press(GameEngine.Key.X)
             :: idle(10)
             :: hold(GameEngine.Key.Right, 25)
@@ -261,7 +284,7 @@ mod TestWorldJourney {
     /// タイルが描かれ、メニュー確定音が鳴り、行軍で敵の部屋へ踏み込んだ後のどこかのターンで
     /// 戦闘 SE が鳴り、最後に中断セーブ（SuspendSave 経路）が書ける。
     @Test
-    def testJourneyTitleToCombatCompletes(): Unit \ {Assert, IO, Fs.FileRead, Fs.FileWrite} =
+    def testJourneyTitleToCombatCompletes(): Unit \ {Assert, IO, Fs.FileRead} =
         let script = journeyScript();
         let total = List.length(List.flatten(script));
         let j = runJourney(2026i64, script);

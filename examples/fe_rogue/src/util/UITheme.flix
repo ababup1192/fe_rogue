@@ -55,6 +55,13 @@ mod UITheme {
     /// NOTE: ItemList に subtextColor getter が無いため test pin は未（値は scene.json に再掲）。
     pub def faint(): Color = {r = 0.490f32, g = 0.541f32, b = 0.639f32}
 
+    /// メニュー行の disabled 淡色（くすんだ青灰）。届かない武器・使えない項目の文字色。
+    /// ActionMenu / WeaponSelect / ItemMenu が同じ淡色を共有する真理点。
+    pub def rowDisabled(): Color = {r = 0.36f32, g = 0.40f32, b = 0.47f32}
+
+    /// メニュー行の複数選択マーク / 受け渡しピックの強調黄。ItemMenu / Trade が共有する真理点。
+    pub def rowMarked(): Color = {r = 1.0f32, g = 0.85f32, b = 0.2f32}
+
     // ── 重量（積載段階）の警告色 ──────────────────────────────────────
     // 重くなるほど黄→橙→赤で警告する。アイテム窓の重量ゲージと交換窓のヘッダで共用する。
 

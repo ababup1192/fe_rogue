@@ -81,4 +81,36 @@ mod EnemyTurn {
                 def isEmpty(k) = k(List.isEmpty(Ref.get(queueRef)))
             }
         }
+
+    /// World の `enemyTurnQueue` field（単一権威）へ委譲する facade handler。`worldRef` を共有窓口
+    /// として受け取り、各 op を World 経由で読み書きする（本番 `Game.start` 用。test は `withQueue`）。
+    pub def withWorld(worldRef: Ref[World, r]):
+            (Unit -> a \ ef) -> a \ (ef - Queue) + r =
+        thunk -> {
+            run {
+                thunk()
+            } with handler Queue {
+                def popFront(k) =
+                    match World.enemyTurnQueueOf(Ref.get(worldRef)) {
+                        case Nil    => k(None)
+                        case h :: t =>
+                            Ref.put(World.applyCmd(World.Cmd.SetEnemyTurnQueue(t), Ref.get(worldRef)), worldRef);
+                            k(Some(h))
+                    }
+                def pushFront(step, k) = {
+                    Ref.put(World.applyCmd(World.Cmd.SetEnemyTurnQueue(step :: World.enemyTurnQueueOf(Ref.get(worldRef))), Ref.get(worldRef)), worldRef);
+                    k()
+                }
+                def replace(steps, k) = {
+                    Ref.put(World.applyCmd(World.Cmd.SetEnemyTurnQueue(steps), Ref.get(worldRef)), worldRef);
+                    k()
+                }
+                def peekFront(k) =
+                    match World.enemyTurnQueueOf(Ref.get(worldRef)) {
+                        case Nil    => k(None)
+                        case h :: _ => k(Some(h))
+                    }
+                def isEmpty(k) = k(List.isEmpty(World.enemyTurnQueueOf(Ref.get(worldRef))))
+            }
+        }
 }

@@ -40,6 +40,19 @@ mod StairsExitDriver {
             }
         }
 
+    /// World の `stairsExit` field（単一権威）へ委譲する facade handler。`worldRef` を共有窓口として
+    /// 受け取り、get/put とも World 経由で読み書きする（本番 `Game.start` 用。test は `withState`）。
+    pub def withWorld(worldRef: Ref[World, r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            run {
+                thunk()
+            } with handler State {
+                def get(k)         = k(World.stairsExitOf(Ref.get(worldRef)))
+                def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetStairsExit(target), Ref.get(worldRef)), worldRef); k() }
+            }
+        }
+
     /// 先頭 1 体の次手（純粋判定・テスト対象）。座標は Eq 導出のため Int32 ペアで持つ。
     pub enum StepDecision with Eq, ToString {
         case Finalize              // キュー空 → 後始末へ

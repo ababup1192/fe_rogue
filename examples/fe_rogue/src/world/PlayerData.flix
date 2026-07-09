@@ -155,4 +155,20 @@ mod PlayerData {
         def get(id: Int32): Option[Data]
         def getAll(): List[Data]
     }
+
+    /// World（各 store の単一権威）から `dataFromWorld` で再構築して読む facade handler。
+    /// `worldRef` は emit で mid-frame 先行（即時 `Cmd` 適用）＝BoardQuery と同じ mid-frame 権威。
+    pub def withWorld(worldRef: Ref[World, r]):
+            (Unit -> a \ ef) -> a \ (ef - PartyQuery) + r =
+        thunk -> {
+            run {
+                thunk()
+            } with handler PartyQuery {
+                def get(id, k) = k(World.dataFromWorld(id, Ref.get(worldRef)))
+                def getAll(k)  = {
+                    let world = Ref.get(worldRef);
+                    k(World.playerIdsOf(world) |> List.filterMap(id -> World.dataFromWorld(id, world)))
+                }
+            }
+        }
 }

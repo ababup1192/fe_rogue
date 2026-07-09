@@ -54,6 +54,19 @@ mod CursorState {
         holdSteps          = Int32
     }
 
+    /// カーソルの視覚部（shell の Ref に残す 4 field）。描画位置 / スライド補間 / 引っかかり / 可視。
+    /// dt 駆動の view 状態なので World には載せない。`withWorld` が論理部と合成して whole `Data` を見せる。
+    pub type alias Visual = {
+        renderPos     = Vec2.Vec2,
+        tweens        = EcsTween.Tweens[Int32, Channel],
+        snagRemaining = Float64,
+        visible       = Bool
+    }
+
+    /// 視覚部の初期値（原点・補間なし・引っかかりなし・可視）。`Game.start` が shell Ref の種に使う。
+    pub def initialVisual(): Visual =
+        {renderPos = Vec2.zero(), tweens = Map.empty(), snagRemaining = 0.0, visible = true}
+
     /// 初期状態（原点・ホバーなし・hold なし・補間なし・可視）。`add` の初期セルは `CursorDriver` が put で上書きする。
     pub def initial(): Data =
         {gridPos = {x = 0, y = 0}, lastHoveredEnemyId = None, holdDir = None, holdSteps = 0,
@@ -149,6 +162,36 @@ mod CursorState {
                 def get(k) = k(Ref.get(cursorRef))
                 def put(target, k) = {
                     Ref.put(target, cursorRef);
+                    k()
+                }
+            }
+        }
+
+    /// 論理部（指しセル/ホバー/加速の hold）の単一権威 World.cursorLogical と、視覚部（描画位置/
+    /// tween/引っかかり/可視）の shell `visualRef` を合成/分割する facade handler。get は両者を
+    /// 合成した whole `Data` を返し、put は論理→World・視覚→Ref に分けて書く
+    /// （本番 `Game.start` 用。test は `withState` の Ref）。
+    pub def withWorld(worldRef: Ref[World, r], visualRef: Ref[Visual, r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            run {
+                thunk()
+            } with handler State {
+                def get(k) = {
+                    let lg = World.cursorLogicalOf(Ref.get(worldRef));
+                    let vs = Ref.get(visualRef);
+                    k({gridPos = lg#gridPos, lastHoveredEnemyId = lg#lastHoveredEnemyId,
+                       holdDir = lg#holdDir, holdSteps = lg#holdSteps,
+                       renderPos = vs#renderPos, tweens = vs#tweens,
+                       snagRemaining = vs#snagRemaining, visible = vs#visible})
+                }
+                def put(target, k) = {
+                    Ref.put(World.applyCmd(World.Cmd.SetCursorLogical(
+                        {gridPos = target#gridPos, lastHoveredEnemyId = target#lastHoveredEnemyId,
+                         holdDir = target#holdDir, holdSteps = target#holdSteps}),
+                        Ref.get(worldRef)), worldRef);
+                    Ref.put({renderPos = target#renderPos, tweens = target#tweens,
+                             snagRemaining = target#snagRemaining, visible = target#visible}, visualRef);
                     k()
                 }
             }

@@ -71,10 +71,10 @@ mod WeaponSelectUi {
     /// 不得意（苦手）な武器の行に出すバッジ文字（ui.json の badge テキストと一致）。
     def weakBadge(): String = "不得意"
 
-    // ── 文字色（通常 / disabled=淡色。ActionMenu と同じ方式・配色）──
+    // ── 文字色（通常 / disabled=淡色。ActionMenu と同じ方式・配色。真理点は UITheme）──
     // 選択は塗り箱ハイライトで示すため選択行も通常色のまま（旧 ItemList は白文字 + 選択塗り箱）。
-    def normalColor(): Color = {r = 0.933f32, g = 0.945f32, b = 0.969f32}
-    def disabledColor(): Color = {r = 0.36f32, g = 0.40f32, b = 0.47f32}
+    def normalColor(): Color = UITheme.labelText()
+    def disabledColor(): Color = UITheme.rowDisabled()
 
     // ========================================================================
     // 行データの組み立て（選択中味方の武器一覧 → 表示行）
@@ -231,27 +231,20 @@ mod WeaponSelectUi {
         let newX = ActionMenuUi.panelDesignRight() - panelOverlapPx();
         UiStore.setAbs(panelPath(), {x = newX, y = panelY()}, ui)
 
-    /// view を行 0..N へ流し込む。武器のある行は名前/性能/バッジ/meta を設定して可視化、
-    /// 余った行は meta を消して不可視にする（display:none で窓が縮む＋選択対象から外れる）。
+    /// view を行 0..N へ流し込む。武器のある行は名前/性能/バッジを書き、meta/可視は
+    /// UiRowFill 共通規約（余った行は meta を消して不可視）が引き受ける。
     /// アイコン（sprite）は `fillIcons` が別途、同じ items 並びで流し込む。
     def fillRows(view: WeaponListView, ui: UiStore.UiWorld): UiStore.UiWorld =
         if (List.length(view#items) > maxSlots())
             bug!("WeaponSelect rows (${List.length(view#items)}) exceed slots (${maxSlots()})")
         else
-        List.range(0, maxSlots()) |> List.foldLeft((acc, i) ->
-            match List.nth(i, view#items) {
-                case Some(entry) =>
-                    let hasBadge = Option.nonEmpty(Map.get(i, view#badges));
-                    acc
-                        |> UiStore.setText(namePath(i), entry#text)
-                        |> UiStore.setText(sublinePath(i), Option.getWithDefault("", Map.get(i, view#sublines)))
-                        |> UiStore.setVisible(badgePath(i), hasBadge)
-                        |> UiStore.setMeta(rowPath(i), Option.getWithDefault("", entry#metadata))
-                        |> UiStore.setVisible(rowPath(i), true)
-                case None =>
-                    acc
-                        |> UiStore.clearMeta(rowPath(i))
-                        |> UiStore.setVisible(rowPath(i), false)
+        UiRowFill.fill({rowPath = i -> rowPath(i), maxSlots = maxSlots(), offset = 0},
+            view#items, (i, entry, acc) -> {
+                let hasBadge = Option.nonEmpty(Map.get(i, view#badges));
+                acc
+                    |> UiStore.setText(namePath(i), entry#text)
+                    |> UiStore.setText(sublinePath(i), Option.getWithDefault("", Map.get(i, view#sublines)))
+                    |> UiStore.setVisible(badgePath(i), hasBadge)
             }, ui)
 
     /// 行 index → 武器 sprite を icon スロットへ設定する。`view#weapons`（items と同順）で呼ぶこと。

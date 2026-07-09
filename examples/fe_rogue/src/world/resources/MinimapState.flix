@@ -42,4 +42,17 @@ mod MinimapState {
                 }
             }
         }
+
+    /// World の `minimap` field（単一権威）へ委譲する facade handler。`worldRef` を共有窓口として
+    /// 受け取り、get/put とも World 経由で読み書きする（本番 `Game.start` 用。test は `withState`）。
+    pub def withWorld(worldRef: Ref[World, r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            run {
+                thunk()
+            } with handler State {
+                def get(k)         = k(World.minimapOf(Ref.get(worldRef)))
+                def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetMinimap(target), Ref.get(worldRef)), worldRef); k() }
+            }
+        }
 }

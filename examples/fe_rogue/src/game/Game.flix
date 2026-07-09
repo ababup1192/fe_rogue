@@ -6,6 +6,19 @@ pub eff GamePhaseState {
     def put(target: GamePhase): Unit
 }
 
+/// World の `screen` field（単一権威）へ委譲する facade handler。`worldRef` を共有窓口として
+/// 受け取り、get/put とも World 経由で読み書きする（他 resource の `withWorld` と同流儀）。
+pub def withGamePhase(worldRef: Ref[World, r]):
+        (Unit -> a \ ef) -> a \ (ef - GamePhaseState) + r =
+    thunk -> {
+        run {
+            thunk()
+        } with handler GamePhaseState {
+            def get(k)         = k(World.screenOf(Ref.get(worldRef)))
+            def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetScreen(target), Ref.get(worldRef)), worldRef); k() }
+        }
+    }
+
 // 手動移動の入力ポーリングは `PlayerMovementDriver.step`（明示 System）が担う。
 // `PlayerMoving` 中は **選択中の味方 1 体だけ** が方向キーを polling し、`GatherMove` 中は
 // 主人公(id 0)が動く。カーソルの入力ポーリングは gameLoop が `CursorDriver.stepOnBoard` を
@@ -541,11 +554,11 @@ mod Game {
             // 「その場復活」で参照する。id でキーするので過去フロアの残骸は復活対象 id にだけ読まれ無害。
             let deathMarksRef = Ref.fresh(rc, (Map.empty(): Map[Int32, {x = Int32, y = Int32}]));
             // 選択カーソルの視覚部（描画位置/tween/引っかかり/可視）の shell 保持。論理部（指しセル等）は
-            // World.cursorLogical が単一権威で、下の CursorState facade が両者を合成/分割する。
-            let cursorVisualRef = Ref.fresh(rc,
-                {renderPos = Vec2.zero(),
-                 tweens = (Map.empty(): EcsTween.Tweens[Int32, CursorState.Channel]),
-                 snagRemaining = 0.0, visible = true});
+            // World.cursorLogical が単一権威で、CursorState.withWorld が両者を合成/分割する。
+            let cursorVisualRef = Ref.fresh(rc, CursorState.initialVisual());
+            // フレーム頭の画面（GamePhase）。先頭 System が毎フレーム書き、末尾 System が
+            // 「このフレームで画面が変わったか」の比較に読む（フレーム内の配線・状態ではない）。
+            let prevScreenRef = Ref.fresh(rc, GamePhase.Title);
             // ユニットカタログをロード + schema 整合性検査（不正データを起動直後に検出して即終了する）。
             // 各 load() 内で失敗内容を panic に出して原因を即可視化する。
             // units.json の spriteFrames は格子インデックス形式で書かれているため、
@@ -663,13 +676,100 @@ mod Game {
                 // 読むのは新規ゲームの put より前になり得るため（""だと「unknown floor id」で落ちる）。
                 let initialWorld =
                     World.applyCmd(World.Cmd.SetFloorId(FloorCatalog.firstFloorId(floors)), Ref.get(worldRef));
-                // App 家族の宣言で走らせる: 出発点 World に「1 フレーム = frameStep」を繋ぎ、App.drive が
-                // ウィンドウ・時計・入力(Frame)・終了判定・末尾再帰を担う。描画は frameStep 内で 3 チャンネル
+                // App 家族の宣言で走らせる: 1 フレーム = 下の System 列を追加順に実行（固定パイプライン・
+                // phase で分岐しない。各 System が「自分が今動くべきか」を phase で判断する）。App.launch が
+                // ウィンドウ・時計・入力(Frame)・終了判定・末尾再帰を担う。描画は末尾 System が 3 チャンネル
                 // （drawable/tile/polygon）を直接組むため view は None（App には描かせない）。終了は
                 // ウィンドウの閉じる操作（shouldClose）だけ＝Escape ではアプリ終了しないので quit は常に false。
+                //
+                // mid-frame の権威は worldRef（emit の即時適用先）。先頭 System が App スレッド値を
+                // worldRef へ同期し、各 System は末尾で worldRef を返してスレッド値と一致させ続ける。
                 let app =
                     App.make(initialWorld)
-                        |> App.addSystem((frame, world) -> frameStep(catalogs, worldRef, frame, world))
+                        // 1. フレーム頭 — worldRef 同期・フレーム頭の画面記録・Pacing tick・入力エッジ
+                        //    （キー → onKeyPressed ルータ。エッジ検出の prevKeys 持ち回りは App が担う）。
+                        |> App.addSystem((frame, world) -> checked_ecast({
+                               Ref.put(world, worldRef);
+                               Ref.put(World.screenOf(world), prevScreenRef);
+                               Pacing.State.tick(Duration.seconds(frame#dt));
+                               handleInput(frame);
+                               Ref.get(worldRef)
+                           }))
+                        // 2. 盤上入力 polling — 手動移動（PlayerMoving=選択中の味方 / GatherMove=主人公）と
+                        //    カーソル（盤面がある画面のみ）。phase 判定・盤面ゲートは各 step 内部。
+                        |> App.addSystem((frame, _world) -> checked_ecast({
+                               PlayerMovementDriver.step(frame);
+                               CursorDriver.stepOnBoard(frame, Duration.seconds(frame#dt));
+                               Ref.get(worldRef)
+                           }))
+                        // 3. 戦闘演出 — lunge/死亡点滅クロックを dt 進めて Hit/Done signal を取り出し
+                        //    （GameOver 中は盤面フリーズで進めない）、カーソルのスライド補間を進め、
+                        //    signal を Player/Enemy の戦闘解決へ流す。入力の後＝入力で始まった lunge は同フレームから進む。
+                        |> App.addSystem((frame, _world) -> checked_ecast({
+                               let dt = Duration.seconds(frame#dt);
+                               let animSignals =
+                                   if (TurnPhase.State.get() == TurnPhase.Phase.GameOver) Nil
+                                   else {
+                                       let (wA, sigs) = World.stepAnimClocks(Duration.toSeconds(dt),
+                                                            EnemyDriver.deathBlinkTotalSeconds(), Ref.get(worldRef));
+                                       Ref.put(wA, worldRef);
+                                       sigs
+                                   };
+                               CursorDriver.stepVisual(dt);
+                               CombatDriver.stepEntities(animSignals);
+                               Ref.get(worldRef)
+                           }))
+                        // 4. HUD とカメラ — 順序制約: TopBar は EnemyTurnDriver（System 5）が World 経由で読む
+                        //    2 bool の dual-write 元なので driver step より前。TurnEndHold はログ帯を上書きするため
+                        //    LogUi の後。カメラは追従読み（カーソル/駒の renderPos）を最新化してから置く。
+                        |> App.addSystem((frame, _world) -> checked_ecast({
+                               let dt = Duration.seconds(frame#dt);
+                               TopBarUi.step(dt);
+                               ItemPickupPopupUi.frameStep(dt);
+                               CharacterSelectUi.frameStep(dt);
+                               LogUi.step(dt);
+                               TurnEndHoldUi.frameStep(frame, dt);
+                               CameraDriver.step(dt);
+                               Ref.get(worldRef)
+                           }))
+                        // 5. ターン進行 driver — 敵ターンキュー消化・集合「階段」の順次退場・ミニマップ
+                        //    （訪問記憶蓄積/M トグル）。戦闘シグナル解決と TopBar 更新が確定した後に置く。
+                        |> App.addSystem((frame, _world) -> checked_ecast({
+                               EnemyTurnDriver.step();
+                               StairsExitDriver.step();
+                               MinimapDriver.step(frame);
+                               Ref.get(worldRef)
+                           }))
+                        // 6. メニュー/パネル UI の phase 同期 — 各 frameStep が可視・項目流し込み・選択ハイライトを
+                        //    phase から導出する。BattlePanel はカーソルスナップ（WeaponSelect）とカメラ配置
+                        //    （System 4）の後に置き、対象の敵・画面座標を最新で読む。
+                        |> App.addSystem((frame, _world) -> checked_ecast({
+                               let dt = Duration.seconds(frame#dt);
+                               GameOverMenuUi.frameStep(dt);
+                               ActionMenuUi.frameStep(dt);
+                               WeaponSelectUi.frameStep(dt);
+                               ItemMenuUi.frameStep(dt);
+                               TradeMenuUi.frameStep(dt);
+                               SuspendConfirmUi.frameStep(dt);
+                               TitleMenuUi.frameStep(dt);
+                               UnitCardUi.frameStep(dt);
+                               BattlePanelUi.frameStep(dt);
+                               LevelUpPanelUi.frameStep(dt);
+                               Ref.get(worldRef)
+                           }))
+                        // 7. 画面組み替えと World step と描画 — 画面（GamePhase）が変わったフレームだけ
+                        //    新しい画面を組み直し、World System パイプライン（WorldDriver.stepFrame）を回し、
+                        //    render-from-World で 1 回の renderCommands に描く。返した World を App が
+                        //    次フレームへスレッドする。
+                        |> App.addSystem((frame, _world) -> checked_ecast({
+                               let previousPhase = Ref.get(prevScreenRef);
+                               if (currentPhaseChanged(previousPhase))
+                                   applyPhaseChange(GamePhaseState.get(), previousPhase, catalogs)
+                               else ();
+                               let world2 = WorldDriver.stepFrame(Ref.get(worldRef), Duration.seconds(frame#dt));
+                               renderFrame(catalogs, world2);
+                               world2
+                           }))
                         |> App.quitWhen((_frame, _world) -> checked_ecast(false));
                 App.launch(app)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
@@ -734,166 +834,38 @@ mod Game {
               // PhaseQuery / WorldQuery / RngDraw）は WorldDriver.withWorld に集約。CustomEffects
               // handler（深部の emit 元）より外側・PartyQuery/RosterQuery より内側に置く。
               with WorldDriver.withWorld(worldRef)
-              with handler PlayerData.PartyQuery {
-                  // 全 field・在籍列挙とも権威は World。`dataFromWorld`（store 群からの再構築）で読む。
-                  // ★意味論: worldRef は emit で mid-frame 先行（即時 `Cmd` 適用）＝BoardQuery と同じ mid-frame 権威。
-                  def get(id, k)           = k(World.dataFromWorld(id, Ref.get(worldRef)))
-                  def getAll(k)            = {
-                      let world = Ref.get(worldRef);
-                      k(World.playerIdsOf(world) |> List.filterMap(id -> World.dataFromWorld(id, world)))
-                  }
-              }
-              with handler EnemyData.RosterQuery {
-                  // PartyQuery と同流儀で全 field・在籍列挙とも権威は World（`dataFromWorldEnemy`）。
-                  // findIdAt/anyAttacking は World の pos/attackTarget を直読み。
-                  def get(id, k)           = k(World.dataFromWorldEnemy(id, Ref.get(worldRef)))
-                  def getAll(k)            = {
-                      let world = Ref.get(worldRef);
-                      k(World.enemyIdsOf(world) |> List.filterMap(id -> World.dataFromWorldEnemy(id, world)))
-                  }
-                  def findIdAt(coord, k)   = k(World.enemyIdAt(coord, Ref.get(worldRef)))
-                  def anyAttacking(k)      = k(World.anyEnemyAttacking(Ref.get(worldRef)))
-              }
-              with handler GamePhaseState {
-                  // 進行画面の単一権威は World.screen。get/put とも facade で World 経由（呼び出し側 4+4 は無改修）。
-                  def get(k)         = k(World.screenOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetScreen(target), Ref.get(worldRef)), worldRef); k() }
-              }
+              with PlayerData.withWorld(worldRef)   // 味方の read seam（World store 群から再構築・mid-frame 権威）
+              with EnemyData.withWorld(worldRef)    // 敵の read seam（PartyQuery と同流儀）
+              with withGamePhase(worldRef)          // 進行画面 World.screen 単一権威
                 with Pacing.withState(rc)           // 演出の溜め (hold)
               with LogState.withState(rc)         // ログ HUD の状態（queue/idleSince）を resource 化
               with BattlePanelState.withState(rc) // 戦闘予報パネルの点滅タイマーを resource 化
               with TurnEndHoldState.withState(rc) // ターンスキップ長押しゲージの状態を resource 化
               with LevelUpPanelState.withState(rc) // レベルアップ演出パネルの状態を resource 化
               with TopBarState.withState(rc) // 上部バーの状態を resource 化
-              with handler TitleMenuState.State {
-                  // タイトル画面状態（2択カーソル/再開可否）の単一権威は World.titleMenu。
-                  def get(k)         = k(World.titleMenuOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetTitleMenu(target), Ref.get(worldRef)), worldRef); k() }
-              }
+              with TitleMenuState.withWorld(worldRef) // タイトル画面状態（2択カーソル/再開可否）World.titleMenu 単一権威
               with UnitHPBarRender.withForecast(rc) // 攻撃予報（減る分点滅）の view 状態
               with ItemPickupPopupState.withState(rc) // 中央アイテム取得ポップアップの状態を resource 化
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
-              with handler EnemyTurn.Queue {
-                  // 敵ターン step キューの単一権威は World.enemyTurnQueue。各 op を worldRef+applyCmd で実装
-                  // （呼び出し側 TurnFlow/EnemyTurnDriver/CameraDriver は無改修・test は withQueue の Ref）。
-                  def popFront(k) =
-                      match World.enemyTurnQueueOf(Ref.get(worldRef)) {
-                          case Nil    => k(None)
-                          case h :: t =>
-                              Ref.put(World.applyCmd(World.Cmd.SetEnemyTurnQueue(t), Ref.get(worldRef)), worldRef);
-                              k(Some(h))
-                      }
-                  def pushFront(step, k) = {
-                      Ref.put(World.applyCmd(World.Cmd.SetEnemyTurnQueue(step :: World.enemyTurnQueueOf(Ref.get(worldRef))), Ref.get(worldRef)), worldRef);
-                      k()
-                  }
-                  def replace(steps, k) = {
-                      Ref.put(World.applyCmd(World.Cmd.SetEnemyTurnQueue(steps), Ref.get(worldRef)), worldRef);
-                      k()
-                  }
-                  def peekFront(k) =
-                      match World.enemyTurnQueueOf(Ref.get(worldRef)) {
-                          case Nil    => k(None)
-                          case h :: _ => k(Some(h))
-                      }
-                  def isEmpty(k) = k(List.isEmpty(World.enemyTurnQueueOf(Ref.get(worldRef))))
-              }
-              with handler TurnPhase.State {       // World 単一権威への facade（get/put とも World.turnPhase 経由・呼び出し側 38+31 は無改修）
-                  def get(k) = k(World.turnPhaseOf(Ref.get(worldRef)))
-                  def put(target, k) = {
-                      Ref.put(World.applyCmd(World.Cmd.SetPhase(target), Ref.get(worldRef)), worldRef);
-                      k()
-                  }
-              }
-              with handler SelectedPlayer.State {
-                  // 操作中プレイヤーの選択状態（id / 移動ドラフト / 集合モード）の単一権威は World.selection。
-                  // get/put とも facade で World 経由（呼び出し側 get51/put9 は無改修・test は各 SelectedPlayer handler）。
-                  def get(k)         = k(World.selectionOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetSelection(target), Ref.get(worldRef)), worldRef); k() }
-              }
-              with handler CursorState.State {
-                  // 論理部（指しセル/ホバー/加速の hold）の単一権威は World.cursorLogical。視覚部（描画位置/
-                  // tween/引っかかり/可視）は shell の cursorVisualRef 残置。get は両者を合成し、put は
-                  // 論理→World・視覚→Ref に分けて書く（呼び出し側は whole Data のまま無改修・test は CursorState.withState の Ref）。
-                  def get(k) = {
-                      let lg = World.cursorLogicalOf(Ref.get(worldRef));
-                      let vs = Ref.get(cursorVisualRef);
-                      k({gridPos = lg#gridPos, lastHoveredEnemyId = lg#lastHoveredEnemyId,
-                         holdDir = lg#holdDir, holdSteps = lg#holdSteps,
-                         renderPos = vs#renderPos, tweens = vs#tweens,
-                         snagRemaining = vs#snagRemaining, visible = vs#visible})
-                  }
-                  def put(target, k) = {
-                      Ref.put(World.applyCmd(World.Cmd.SetCursorLogical(
-                          {gridPos = target#gridPos, lastHoveredEnemyId = target#lastHoveredEnemyId,
-                           holdDir = target#holdDir, holdSteps = target#holdSteps}),
-                          Ref.get(worldRef)), worldRef);
-                      Ref.put({renderPos = target#renderPos, tweens = target#tweens,
-                               snagRemaining = target#snagRemaining, visible = target#visible}, cursorVisualRef);
-                      k()
-                  }
-              }
-              with handler CameraState.State {
-                  // 追従カメラの状態（カメラ・ターゲット・ドラッグ有効）の単一権威は World.cameraRig。
-                  // get/put とも facade で World 経由（呼び出し側は無改修・test は withState の Ref）。
-                  def get(k)         = k(World.cameraRigOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetCameraRig(target), Ref.get(worldRef)), worldRef); k() }
-              }
-              with handler RangeOverlayState.State {
-                  // 範囲オーバーレイ 7 種のセル集合（Option 在/不在=表示トグル）の単一権威は World.rangeOverlay。
-                  // get/put とも facade で World 経由（呼び出し側 20 ファイルは無改修・test は withState の Ref）。
-                  def get(k)         = k(World.rangeOverlayOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetRangeOverlay(target), Ref.get(worldRef)), worldRef); k() }
-              }
-              with handler ArrowCursorState.State {
-                  // 照準矢印の論理状態（anchor/direction/gridPos）の単一権威は World.arrowCursor。
-                  // get/put とも facade で World 経由（呼び出し側 get3/put2 は無改修・test は withState の Ref）。
-                  def get(k)         = k(World.arrowCursorOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetArrowCursor(target), Ref.get(worldRef)), worldRef); k() }
-              }
-              with handler StairsExitDriver.State {
-                  // 集合「階段」の順次退場ドライバ状態（退場キュー/停滞カウンタ）の単一権威は World.stairsExit。
-                  def get(k)         = k(World.stairsExitOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetStairsExit(target), Ref.get(worldRef)), worldRef); k() }
-              }
-              with handler GatherResume.State {
-                  // 集合モードのターン跨ぎ自動継続フラグの単一権威は World.gatherResume。
-                  // get/put とも facade で World 経由（呼び出し側 TurnFlow/EnemyTurnDriver は無改修・test は withState の Ref）。
-                  def get(k)         = k(World.gatherResumeOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetGatherResume(target), Ref.get(worldRef)), worldRef); k() }
-              }
+              with EnemyTurn.withWorld(worldRef)      // 敵ターン step キュー World.enemyTurnQueue 単一権威
+              with TurnPhase.withWorld(worldRef)      // ターンフェーズ World.turnPhase 単一権威
+              with SelectedPlayer.withWorld(worldRef) // 操作中プレイヤーの選択状態 World.selection 単一権威
+              // カーソルは論理部=World.cursorLogical / 視覚部=shell の cursorVisualRef を合成/分割する
+              with CursorState.withWorld(worldRef, cursorVisualRef)
+              with CameraState.withWorld(worldRef)      // 追従カメラ World.cameraRig 単一権威
+              with RangeOverlayState.withWorld(worldRef) // 範囲オーバーレイ 7 種 World.rangeOverlay 単一権威
+              with ArrowCursorState.withWorld(worldRef)  // 照準矢印の論理状態 World.arrowCursor 単一権威
+              with StairsExitDriver.withWorld(worldRef)  // 集合「階段」退場ドライバ World.stairsExit 単一権威
+              with GatherResume.withWorld(worldRef)      // 集合のターン跨ぎ自動継続フラグ World.gatherResume 単一権威
               with InitialSpawns.withState(worldRef)    // ゲームオーバー時に同じ敵 / 味方配置を復元 World.initialSpawns 単一権威
               with FloorSnapshot.withState(worldRef)    // 進入時フロアスナップショット（全滅時の「フロア最初から」用）World.floorSnapshot 単一権威
               with FloorProgress.withState(worldRef)  // 現在フロア id World.floorId 単一権威
               with PartySelection.withState(worldRef)   // 出撃メンバー（開始時に1回抽選、フロア間で維持）World.party 単一権威
-              with handler CharacterSelectState.State {
-                  // 出撃メンバー選択画面の選択状態の単一権威は World.characterSelect。
-                  def get(k)         = k(World.characterSelectOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetCharacterSelect(target), Ref.get(worldRef)), worldRef); k() }
-              }
-              with handler ItemMenuState.State {
-                  // アイテム窓の選択状態（カテゴリ index / 一括選択マーク）の単一権威は World.itemMenu。
-                  // get/put とも facade で World 経由（呼び出し側 3 ファイルは無改修・test は withState の Ref）。
-                  def get(k)         = k(World.itemMenuOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetItemMenu(target), Ref.get(worldRef)), worldRef); k() }
-              }
-              with handler TradeMenuState.State {
-                  // 物交換窓のセッション状態（members/focus/pick/origin/marks/markPane）の単一権威は World.tradeMenu。
-                  // get/put とも facade で World 経由（呼び出し側 5 ファイルは無改修・test は withState の Ref）。
-                  def get(k)         = k(World.tradeMenuOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetTradeMenu(target), Ref.get(worldRef)), worldRef); k() }
-              }
-              with handler UiWorldState.State {
-                  // World-entity UI（全滅モーダル等）の状態の単一権威は World.uiWorld。
-                  // get/put とも facade で World 経由（呼び出し側 20 ファイルは無改修・test は withState の Ref）。
-                  def get(k)         = k(World.uiWorldOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetUiWorld(target), Ref.get(worldRef)), worldRef); k() }
-              }
-              with handler MinimapState.State {
-                  // ミニマップ表示トグル（M）状態の単一権威は World.minimap。
-                  def get(k)         = k(World.minimapOf(Ref.get(worldRef)))
-                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetMinimap(target), Ref.get(worldRef)), worldRef); k() }
-              }
+              with CharacterSelectState.withWorld(worldRef) // 出撃メンバー選択画面の選択状態 World.characterSelect 単一権威
+              with ItemMenuState.withWorld(worldRef)  // アイテム窓の選択状態 World.itemMenu 単一権威
+              with TradeMenuState.withWorld(worldRef) // 物交換窓のセッション状態 World.tradeMenu 単一権威
+              with UiWorldState.withWorld(worldRef)   // World-entity UI の状態 World.uiWorld 単一権威
+              with MinimapState.withWorld(worldRef)   // ミニマップ表示トグル World.minimap 単一権威
         }
 
     /// GamePhase に応じて画面を組み立てる。**配線役** に徹し、各画面の構築は
@@ -912,135 +884,6 @@ mod Game {
             case GamePhase.Title           => WorldSetup.buildTitle()
             case GamePhase.CharacterSelect => WorldSetup.buildCharacterSelect(catalogs)
             case GamePhase.Playing         => WorldSetup.buildPlaying(catalogs, prevPhase)
-        }
-
-    /// メインループ。phase で分岐せず、**固定パイプライン** を毎フレーム回す:
-    ///   handleInput → 移動/カーソル polling → 戦闘シグナル解決 → 各 UI frameStep → World step → 描画
-    /// 各 System 内で「自分が今動くべきか」を phase で判断する。
-    /// 例: `EnemyTurnDriver.step` は phase=EnemyTurn / PlayerAttackHold で動作、
-    ///     `PlayerMovementDriver.step` は phase=GatherMove で主人公(id 0)を動かす。
-    /// ゲームオーバー時のフルリビルドは `CustomEffects.GameOverRequest` handler が
-    /// catalog をクロージャに閉じ込めて実行するため、ここで catalog を引き回す必要はない。
-    def frameStep(catalogs: GameLifecycle.Catalogs,
-                  worldRef: Ref[World, r],   // BoardQuery handler が読む World の窓口（フレーム頭で更新）。
-                  frame: App.Frame,          // App が焼いたこのフレームの入力（down / justPressed / dt）。
-                  world: World):             // 前フレーム末の権威 World（App がスレッド）。screen から前フレーム画面を導く。
-                 World \ {GameEngine.Game, GameEngine.Audio,
-                         Fs.FileRead, IO,
-                         BoardQuery,
-                         PlayerData.PartyQuery, EnemyData.RosterQuery,
-                         GameLogger.GameLogger,
-                         EnemyTurn.Queue, TurnPhase.State,
-                         SelectedPlayer.State, CursorState.State, ArrowCursorState.State, GatherResume.State,
-                         CustomEffects.GameOverRequest,
-                         CustomEffects.FloorAdvanceRequest,
-                         CustomEffects.WandererSpawnRequest,
-                         CustomEffects.RingTransformRequest,
-                         CustomEffects.ThiefDropRequest,
-                         CustomEffects.SuspendRequest, CustomEffects.ResumeRequest,
-                         FloorProgress.State, InitialSpawns.State,
-                         GamePhaseState, PartySelection.State, CharacterSelectState.State,
-                         Pacing.State, LogState.State, BattlePanelState.State, TurnEndHoldState.State,
-                         LevelUpPanelState.State, ItemPickupPopupState.State, ItemMenuState.State, TradeMenuState.State,
-                         TopBarState.State, TitleMenuState.State, UnitHPBarRender.ForecastState,
-                         Math.Random, FloorSnapshot.State,
-                         World.Command, World.PhaseQuery, World.WorldQuery,
-                         World.RngDraw, UiWorldState.State, MinimapState.State, RangeOverlayState.State, CameraState.State,
-                         StairsExitDriver.State, r} = {
-            // BoardQuery handler が読む窓口を最新の world に更新する。
-            // world は前フレーム末の権威 World（world2）＝各 store の単一権威。
-            Ref.put(world, worldRef);
-            // 前フレームの画面は incoming world の screen（World 権威）から導く（App がスレッドした world）。
-            let previousPhase = World.screenOf(world);
-            // dt は App が焼いた frame#dt（秒）から Duration へ戻す。getDeltaTime はフレーム内で状態を
-            // 進めるため二度読みせず、App が読んだ 1 回ぶんの値（frame#dt）を使う。
-            let dt = Duration.seconds(frame#dt);
-            // Pacing カウンタを 1 フレーム進める (各 System が gating で参照する)。
-            // フレーム頭で進めるので「前フレーム末で hold した値を今フレームの判定で使う」
-            // 形になる。
-            Pacing.State.tick(dt);
-            // 入力のエッジ検出（frame#justPressed → onKeyPressed ルータ）。frame は App が焼いて渡す
-            // （生キー読み・prevKeys 持ち回りは App.drive が担う＝App 家族の入力モデル）。
-            handleInput(frame);
-            // 手動移動の入力ポーリングを明示 System として 1 回呼ぶ
-            // （PlayerMoving=選択中の味方 / GatherMove=主人公。phase 判定は step 内部）。
-            PlayerMovementDriver.step(frame);
-            // カーソルの入力ポーリングも明示 System として 1 回呼ぶ（盤面がある画面のみ —
-            // stepOnBoard が Map 存在をゲートする）。
-            CursorDriver.stepOnBoard(frame, dt);
-            // 戦闘演出クロック（lunge の往復・死亡点滅の完了）を dt 進め、中点 Hit / 完了 Done の
-            // signal を取り出して worldRef へ確定する。入力処理の後・stepEntities の前＝
-            // 入力で始まった lunge は同フレームから進む。GameOver 中は進めない（盤面フリーズ）。
-            let animSignals =
-                if (TurnPhase.State.get() == TurnPhase.Phase.GameOver) Nil
-                else {
-                    let (wA, sigs) = World.stepAnimClocks(Duration.toSeconds(dt),
-                                         EnemyDriver.deathBlinkTotalSeconds(), Ref.get(worldRef));
-                    Ref.put(wA, worldRef);
-                    sigs
-                };
-            // カーソルのスライド補間・snag タイマーを dt 進めて renderPos を書く
-            // （カーソルは engine Tween を使わずここで直接進める。CameraDriver.step より前）。
-            CursorDriver.stepVisual(dt);
-            // Player / Enemy の戦闘シグナル解決を明示 System として回す。
-            CombatDriver.stepEntities(animSignals);
-            // 表示系は明示 step で駆動する。
-            // 順序制約: TopBar は EnemyTurnDriver が World 経由で読む 2 bool の dual-write 元なので
-            // driver step より前に置く。TurnEndHold はログ帯を上書きするため LogUi.step より後に置く。
-            // 他は独立。
-            TopBarUi.step(dt);
-            ItemPickupPopupUi.frameStep(dt);
-            CharacterSelectUi.frameStep(dt);
-            LogUi.step(dt);
-            TurnEndHoldUi.frameStep(frame, dt);
-            CameraDriver.step(dt);
-            // ターン進行 LOGIC driver は frame-paced System としてパイプライン段で 1 回呼ぶ（gameLoop が駆動）。
-            // 戦闘シグナル解決と TopBar 更新が確定した後に置く（前後依存は World 経由で順序非依存）。
-            EnemyTurnDriver.step();
-            StairsExitDriver.step();
-            // view driver（Minimap の訪問記憶蓄積/M トグル）は明示 step 化のまま。フォグは
-            // step を持たず、敵可視・暗幕・lit ゲートは描画時に `Fog.holesNow` から導出する。
-            // 照準矢印も step を持たず、描画（RenderWorld.renderArrowCursor）が phase から可視を決める。
-            MinimapDriver.step(frame);
-            // 全滅モーダル UI の可視/選択ハイライトを phase から同期。
-            GameOverMenuUi.frameStep(dt);
-            // 行動選択ウィンドウの可視/項目流し込み/選択ハイライトを phase から同期。
-            ActionMenuUi.frameStep(dt);
-            // 武器選択ウィンドウの可視/行流し込み/選択ハイライト/カーソルスナップを phase から同期。
-            WeaponSelectUi.frameStep(dt);
-            // アイテム選択ウィンドウ（ItemSelect/ItemActionSelect）の可視/窓流し込み/選択ハイライトを phase から同期。
-            ItemMenuUi.frameStep(dt);
-            // 物交換ウィンドウ（TradeInventory）の可視/中央寄せ/各ペインの窓流し込み/フォーカス表現を phase から同期。
-            TradeMenuUi.frameStep(dt);
-            // 中断確認モーダルの可視/選択ハイライトを phase から同期。
-            SuspendConfirmUi.frameStep(dt);
-            // タイトル画面の選択ハイライト/再開不可の淡色を毎フレーム同期（root 可視時のみ）。
-            TitleMenuUi.frameStep(dt);
-            // ユニット簡易カード（味方左 / 敵右）の表示対象を解決して流し込む。
-            UnitCardUi.frameStep(dt);
-            // 攻撃前の戦闘予報ミニウィンドウの可視/数値/相性矢印/対象近傍への追従を phase から同期。
-            // カーソルスナップ（WeaponSelectUi.frameStep）とカメラ配置（CameraDriver.step）の後に置き、
-            // 対象の敵・画面座標を最新で読む。
-            BattlePanelUi.frameStep(dt);
-            // レベルアップ演出パネルの可視/本文の段階表示を phase から同期。
-            LevelUpPanelUi.frameStep(dt);
-            // 画面（GamePhase）が変わったフレームだけ、新しい画面を組み立て直す。
-            // 例: 選択画面でリーダー確定 → Playing に切り替わり、ここでダンジョンが組まれる。
-            // 押下キー集合（currentKeys）はループ引数で持ち回るため、画面を組み替えても失われない
-            // ＝遷移を起こしたキー（例: 中断確定の Z）が新画面で「押し直し」と誤検知されて
-            // 即確定されることはない。
-            if (currentPhaseChanged(previousPhase))
-                applyPhaseChange(GamePhaseState.get(), previousPhase, catalogs)
-            else ();
-            // 毎フレームの World System パイプライン（refreshMirror → stepWorld → phase parity 検査）は
-            // `WorldDriver.stepFrame` に集約。current は mid-frame 権威（worldRef 値）。
-            let world2 = WorldDriver.stepFrame(Ref.get(worldRef), dt);
-            // render-from-World。全チャンネル（drawable/tile/polygon）を World 由来で組み、
-            // 1 回の renderCommands で描く。描画セクションは `renderFrame` へ抽出（メソッドサイズ上限対策）。
-            renderFrame(catalogs, world2);
-            // このフレームの権威 World を App へ返す（App が次フレームへスレッドし、終了判定・
-            // prevKeys 持ち回り・末尾再帰を担う）。
-            world2
         }
 
     /// 画面（GamePhase）がこのフレームで変わったか。

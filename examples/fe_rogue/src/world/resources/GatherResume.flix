@@ -35,4 +35,17 @@ mod GatherResume {
                 def put(v, k) = { Ref.put(v, flag); k() }
             }
         }
+
+    /// World の `gatherResume` field（単一権威）へ委譲する facade handler。`worldRef` を共有窓口として
+    /// 受け取り、get/put とも World 経由で読み書きする（本番 `Game.start` 用。test は `withState`）。
+    pub def withWorld(worldRef: Ref[World, r]):
+            (Unit -> a \ ef) -> a \ (ef - State) + r =
+        thunk -> {
+            run {
+                thunk()
+            } with handler State {
+                def get(k)    = k(World.gatherResumeOf(Ref.get(worldRef)))
+                def put(v, k) = { Ref.put(World.applyCmd(World.Cmd.SetGatherResume(v), Ref.get(worldRef)), worldRef); k() }
+            }
+        }
 }

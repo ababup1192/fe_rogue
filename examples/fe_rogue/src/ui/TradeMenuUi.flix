@@ -163,10 +163,10 @@ mod TradeMenuUi {
     /// panel の内側余白（ui.json の panel pad と一致）。左右で 2 回効く。
     def panelPad(): Float64 = 2.0
 
-    // ── 文字色（通常 / pick・印の強調＝黄）──
-    def normalColor(): Color = {r = 0.933f32, g = 0.945f32, b = 0.969f32}
+    // ── 文字色（通常 / pick・印の強調＝黄。真理点は UITheme）──
+    def normalColor(): Color = UITheme.labelText()
     /// pick 中 / まとめ渡し印のアイテムの強調色（黄系）。
-    def markColor(): Color = {r = 1.0f32, g = 0.85f32, b = 0.2f32}
+    def markColor(): Color = UITheme.rowMarked()
 
     // 選択ハイライト箱の配色（青枠）は TradeMenu.ui.json の highlight ノードで固定宣言する。
     // ハイライトは focus ペインだけに出す（非 focus ペインは箱を隠す）ので、ここで塗り分けはしない。
@@ -413,41 +413,33 @@ mod TradeMenuUi {
         offset   = Int32
     }
 
-    /// entries[offset..offset+slots) を行 0..slots-1 へ流し込む。窓外の行は meta を消して不可視にする。
+    /// entries[offset..offset+slots) を行 0..slots-1 へ流し込む（窓外の行の扱いは UiRowFill 共通規約）。
     /// 実体アイテムはアイコンチップ + 名前 + サブライン。空スロットはチップの代わりに不可視スペーサで
     /// icon 列（幅 7）を占位し、サブラインを畳んで名前 1 行を行内で縦中央に置く（旧 ItemList 準拠：
     /// アイコン列を予約したまま名前をアイテム行と同じ x へ揃え、縦中央に描く）。
     /// pick / 印の付いた行は名前を強調色（黄）で描く。
     def fillPaneRows(input: PaneRowsInput, ui: UiStore.UiWorld): UiStore.UiWorld =
         // 在庫が窓（maxSlots）を超えるのは windowOffset のスクロールで正常なので上限チェックはしない。
-        List.range(0, maxSlots()) |> List.foldLeft((acc, r) -> {
-            let idx = input#offset + r;
-            match List.nth(idx, input#entries) {
-                case Some(entry) =>
-                    let hasIcon = Option.nonEmpty(Map.get(idx, input#sprites));
-                    let hasSubline = Option.nonEmpty(Map.get(idx, input#sublines));
-                    let withIcon = match Map.get(idx, input#sprites) {
-                        case Some(spr) => UiStore.setSprite({path = iconPath(input#i, r), texture = spr#texture,
-                                              hframes = spr#hframes, vframes = spr#vframes, frame = spr#frame}, acc)
-                        case None      => acc
-                    };
-                    withIcon
-                        |> UiStore.setVisible(iconBgPath(input#i, r), hasIcon)
-                        // チップの無い行（空スロット）は icon 列を不可視スペーサで占位して名前 x を揃える。
-                        |> UiStore.setVisible(iconSpacerPath(input#i, r), not hasIcon)
-                        |> UiStore.setText(namePath(input#i, r), entry#text)
-                        |> UiStore.setTextTint(namePath(input#i, r), rowTintFor(entry, input#i, input#data))
-                        |> UiStore.setText(sublinePath(input#i, r), Option.getWithDefault("", Map.get(idx, input#sublines)))
-                        // サブラインの無い行（空スロット）はサブラインを畳んで名前 1 行を縦中央に置く。
-                        |> UiStore.setVisible(sublinePath(input#i, r), hasSubline)
-                        |> UiStore.setMeta(rowPath(input#i, r), Option.getWithDefault("", entry#metadata))
-                        |> UiStore.setVisible(rowPath(input#i, r), true)
-                case None =>
-                    acc
-                        |> UiStore.clearMeta(rowPath(input#i, r))
-                        |> UiStore.setVisible(rowPath(input#i, r), false)
-            }
-        }, ui)
+        UiRowFill.fill({rowPath = r -> rowPath(input#i, r), maxSlots = maxSlots(), offset = input#offset},
+            input#entries, (r, entry, acc) -> {
+                let idx = input#offset + r;
+                let hasIcon = Option.nonEmpty(Map.get(idx, input#sprites));
+                let hasSubline = Option.nonEmpty(Map.get(idx, input#sublines));
+                let withIcon = match Map.get(idx, input#sprites) {
+                    case Some(spr) => UiStore.setSprite({path = iconPath(input#i, r), texture = spr#texture,
+                                          hframes = spr#hframes, vframes = spr#vframes, frame = spr#frame}, acc)
+                    case None      => acc
+                };
+                withIcon
+                    |> UiStore.setVisible(iconBgPath(input#i, r), hasIcon)
+                    // チップの無い行（空スロット）は icon 列を不可視スペーサで占位して名前 x を揃える。
+                    |> UiStore.setVisible(iconSpacerPath(input#i, r), not hasIcon)
+                    |> UiStore.setText(namePath(input#i, r), entry#text)
+                    |> UiStore.setTextTint(namePath(input#i, r), rowTintFor(entry, input#i, input#data))
+                    |> UiStore.setText(sublinePath(input#i, r), Option.getWithDefault("", Map.get(idx, input#sublines)))
+                    // サブラインの無い行（空スロット）はサブラインを畳んで名前 1 行を縦中央に置く。
+                    |> UiStore.setVisible(sublinePath(input#i, r), hasSubline)
+            }, ui)
 
     /// 行の name text tint。pick 中の行・まとめ渡し印の行は強調色（黄）、それ以外（選択含む）は通常色
     /// （選択は塗り箱ハイライトで示すため文字色は変えない）。

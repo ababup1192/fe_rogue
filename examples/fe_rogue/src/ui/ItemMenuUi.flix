@@ -71,12 +71,12 @@ mod ItemMenuUi {
     /// 装備中（武器/指輪の先頭）に出すバッジ文字（ui.json の badge テキストと一致）。
     def equippedBadge(): String = "装備"
 
-    // ── 文字色（通常 / disabled=淡色 / 複数選択マーク=黄）──
+    // ── 文字色（通常 / disabled=淡色 / 複数選択マーク=黄。真理点は UITheme）──
     // 選択は塗り箱ハイライトで示すため選択行も通常色のまま（旧 ItemList は白文字 + 選択塗り箱）。
-    def normalColor(): Color = {r = 0.933f32, g = 0.945f32, b = 0.969f32}
-    def disabledColor(): Color = {r = 0.36f32, g = 0.40f32, b = 0.47f32}
+    def normalColor(): Color = UITheme.labelText()
+    def disabledColor(): Color = UITheme.rowDisabled()
     /// 複数選択した行の強調色（黄系）。交換メニューの pick 色と見た目を揃える。
-    def markColor(): Color = {r = 1.0f32, g = 0.85f32, b = 0.2f32}
+    def markColor(): Color = UITheme.rowMarked()
 
     // ========================================================================
     // カテゴリ（左右で切替。順序 = 武器 → 消費 → 杖 → 指輪）
@@ -486,47 +486,41 @@ mod ItemMenuUi {
         showChrome = Bool
     }
 
-    /// items[offset..offset+slots) を行 0..slots-1 へ流し込む。窓外の行は meta を消して不可視にする。
+    /// 行スロットの配置規約（UiRowFill へ渡す窓・行パス）。
+    def rowSpec(offset: Int32): UiRowFill.Spec =
+        {rowPath = i -> rowPath(i), maxSlots = maxSlots(), offset = offset}
+
+    /// items[offset..offset+slots) を行 0..slots-1 へ流し込む（窓外の行の扱いは UiRowFill 共通規約）。
     /// `showChrome` が true（ItemSelect）ならアイコン/サブライン/装備バッジ/マーク色を出す。
     /// false（ItemActionSelect）ならテキストのみ（アイコン/サブライン/バッジは隠す・マークなし）。
     def fillWindow(fill: WindowFill, ui: UiStore.UiWorld): UiStore.UiWorld =
-        List.range(0, maxSlots()) |> List.foldLeft((acc, i) -> {
+        UiRowFill.fill(rowSpec(fill#offset), fill#items, (i, entry, acc) -> {
             let itemIdx = fill#offset + i;
-            match List.nth(itemIdx, fill#items) {
-                case Some(entry) =>
-                    let hasIcon = fill#showChrome and Option.nonEmpty(List.nth(itemIdx, fill#sprites));
-                    let base = UiStore.setVisible(iconBgPath(i), hasIcon, acc);
-                    let withIcon =
-                        match (if (hasIcon) List.nth(itemIdx, fill#sprites) else None) {
-                            case Some(spr) => UiStore.setSprite({path = iconPath(i), texture = spr#texture,
-                                                  hframes = spr#hframes, vframes = spr#vframes, frame = spr#frame}, base)
-                            case None      => base
-                        };
-                    let hasBadge = fill#showChrome and Option.nonEmpty(Map.get(itemIdx, fill#badges));
-                    let subText  = if (fill#showChrome) Option.getWithDefault("", Map.get(itemIdx, fill#sublines)) else "";
-                    let hasSubline = not String.isEmpty(subText);
-                    withIcon
-                        // チップの無い行（サブメニュー）は icon 列を不可視スペーサで占位し名前 x を揃える。
-                        |> UiStore.setVisible(iconSpacerPath(i), not hasIcon)
-                        |> UiStore.setText(namePath(i), entry#text)
-                        |> UiStore.setTextTint(namePath(i), rowTint(entry, fill#marks))
-                        |> UiStore.setText(sublinePath(i), subText)
-                        |> UiStore.setVisible(badgePath(i), hasBadge)
-                        // サブラインの無い行（サブメニュー）はサブラインを畳んで名前 1 行を行内で縦中央に置く。
-                        |> UiStore.setVisible(sublinePath(i), hasSubline)
-                        |> UiStore.setMeta(rowPath(i), Option.getWithDefault("", entry#metadata))
-                        |> UiStore.setVisible(rowPath(i), true)
-                case None =>
-                    acc
-                        |> UiStore.clearMeta(rowPath(i))
-                        |> UiStore.setVisible(rowPath(i), false)
-            }
+            let hasIcon = fill#showChrome and Option.nonEmpty(List.nth(itemIdx, fill#sprites));
+            let base = UiStore.setVisible(iconBgPath(i), hasIcon, acc);
+            let withIcon =
+                match (if (hasIcon) List.nth(itemIdx, fill#sprites) else None) {
+                    case Some(spr) => UiStore.setSprite({path = iconPath(i), texture = spr#texture,
+                                          hframes = spr#hframes, vframes = spr#vframes, frame = spr#frame}, base)
+                    case None      => base
+                };
+            let hasBadge = fill#showChrome and Option.nonEmpty(Map.get(itemIdx, fill#badges));
+            let subText  = if (fill#showChrome) Option.getWithDefault("", Map.get(itemIdx, fill#sublines)) else "";
+            let hasSubline = not String.isEmpty(subText);
+            withIcon
+                // チップの無い行（サブメニュー）は icon 列を不可視スペーサで占位し名前 x を揃える。
+                |> UiStore.setVisible(iconSpacerPath(i), not hasIcon)
+                |> UiStore.setText(namePath(i), entry#text)
+                |> UiStore.setTextTint(namePath(i), rowTint(entry, fill#marks))
+                |> UiStore.setText(sublinePath(i), subText)
+                |> UiStore.setVisible(badgePath(i), hasBadge)
+                // サブラインの無い行（サブメニュー）はサブラインを畳んで名前 1 行を行内で縦中央に置く。
+                |> UiStore.setVisible(sublinePath(i), hasSubline)
         }, ui)
 
     /// 全行を隠して meta も消す（非表示フェーズ用）。
     def hideAllRows(ui: UiStore.UiWorld): UiStore.UiWorld =
-        List.range(0, maxSlots()) |> List.foldLeft((acc, i) ->
-            acc |> UiStore.clearMeta(rowPath(i)) |> UiStore.setVisible(rowPath(i), false), ui)
+        UiRowFill.hideAll(rowSpec(0), ui)
 
     /// 行の name text tint。disabled=淡色、複数選択マーク付き=黄、それ以外（選択含む）=通常色
     /// （選択は塗り箱ハイライトで示すため文字色は変えない）。マークは entry の metadata（種別+index）で判定する。
