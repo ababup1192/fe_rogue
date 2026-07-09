@@ -1,14 +1,14 @@
-/// CameraState — 追従カメラの状態（映しているカメラ・追従ターゲット・ドラッグ有効フラグ）を保持する resource
+/// CameraState — 追従カメラの状態（映しているカメラ・追従ターゲット・ドラッグ有効フラグ）の型・数式・State 面
 ///
-/// カメラは scene ノードを持たず（`CursorState` と同流儀）、この resource が視点の単一権威。
+/// 視点の単一権威は `World.cameraRig`（prod は Game.start の inline facade が World を読み書きし、
+/// test は本 mod の `withState` が local Ref で同じ State 面を提供する）。
 /// engine の `Camera` は「どこを画面中央に、どのズームで映すか」だけを持つ純投影の値で、
-/// スムージング・ドラッグ余白・スクロール制限といった追従の数式はこの resource が持つ
+/// スムージング・ドラッグ余白・スクロール制限といった追従の数式はこの mod が持つ
 /// （Bevy の follow system が Camera の Transform を毎フレーム動かすのと同じ分担）。
 ///
 /// `camera.transform.position` が実際に映している位置、`target` がゲームがセットした追従先。
 /// `advance` が毎フレーム前者を後者へ寄せ、`viewTransform` が描画変換を、`isSettled` が
-/// 追従完了ゲート（敵ターン/階段退場ドライバ用）を返す。TurnPhase / CursorState と同じ
-/// Ref-based handler 注入パターンに揃える。
+/// 追従完了ゲート（敵ターン/階段退場ドライバ用）を返す。
 mod CameraState {
 
     /// viewport の px サイズ（追従の数式が world 単位半幅へ換算するのに要る）。
@@ -140,6 +140,7 @@ mod CameraState {
         Float64.abs(target#x - current#x) <= thresholdX
             and Float64.abs(target#y - current#y) <= thresholdY
 
+    /// test harness 用 handler（prod は Game.start の facade が World.cameraRig を読み書きする）。
     /// 内部 `stateRef` は closure に閉じ込め、読み書きを `State.get` / `State.put` 経由に強制する。
     pub def withState(rc: Region[r]):
             (Unit -> a \ ef) -> a \ (ef - State) + r =

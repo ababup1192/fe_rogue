@@ -147,6 +147,10 @@ pub enum World {
                  // 集合「階段」の順次退場ドライバ状態（退場キュー/停滞カウンタ）。EnemyTurn と同型の driver 進行。
                  // World 単一権威（prod=inline facade・test=withState Ref）。
                  stairsExit = StairsExitDriver.Data,
+                 // 追従カメラの状態（実視点カメラ・追従ターゲット・ドラッグ有効）。位置は連続補間
+                 // （renderPos と同種）で、isSettled ゲート経由で敵ターン/階段退場の進行が読む。
+                 // World 単一権威（prod=inline facade・test=withState Ref）。
+                 cameraRig = CameraState.RigState,
                  playerIds = Set[EntityId], enemyIds  = Set[EntityId],
                  // unified-id → `Faction` enum。faction 判定は id 演算（uid>=base）
                  // でなく **この enum タグ `teamOf` で読む**（Bevy の Team component 相当）。
@@ -323,6 +327,7 @@ mod World {
                      characterSelect = CharacterSelectUi.emptyState(),
                      minimap = MinimapState.initial(),
                      stairsExit = {queue = Nil, idleRounds = 0},
+                     cameraRig = CameraState.initial(),
                      playerIds = Set.empty(), enemyIds = Set.empty(),
                      statusEffects = Map.empty(),
                      hp = Map.empty(), weapons = Map.empty(), team = Map.empty(),
@@ -440,6 +445,10 @@ mod World {
     /// World の stairsExit（階段順次退場ドライバ状態・単一権威）を読む（read-model アクセサ）。`StairsExitDriver` facade が使う。
     pub def stairsExitOf(world: World): StairsExitDriver.Data =
         let World.World(w) = world; w#stairsExit
+
+    /// World の cameraRig（追従カメラ状態・単一権威）を読む（read-model アクセサ）。`CameraState` facade が使う。
+    pub def cameraRigOf(world: World): CameraState.RigState =
+        let World.World(w) = world; w#cameraRig
 
     /// per-frame の World 更新。**縮退版**: 全 store が command 権威（spawn/despawn/build choke の Cmd が
     /// 唯一の書込・prune は `Cmd.Despawn`/`Cmd.ClearUnits` が担う）なので、scene からの derive/prune は無い。
@@ -652,6 +661,7 @@ mod World {
         case SetCharacterSelect(CharacterSelectUi.Data) // 出撃選択状態 write（CharacterSelectState facade）
         case SetMinimap(MinimapState.Data)            // ミニマップ状態 write（MinimapState facade）
         case SetStairsExit(StairsExitDriver.Data)     // 階段退場ドライバ状態 write（StairsExitDriver facade）
+        case SetCameraRig(CameraState.RigState)       // 追従カメラ状態 write（CameraState facade）
         case SetHp(EntityRef, Int32)        // hp write（dual-write seam。mid-frame で敵ターン System が逐次反映する前提）
         case SetWeapons(EntityRef, List[UnitCatalog.WeaponResource])  // weapons write（dual-write seam。player は List・enemy は 0/1 List 射影）
         case SetBaseStats(EntityRef, Combat.BaseStats)  // base 戦闘値 write（hp/weapons 同型・両 faction・resource 書換ごとに dual-write）
@@ -961,6 +971,8 @@ mod World {
                 let World.World(w) = world; World.World({minimap = mm | w})
             case Cmd.SetStairsExit(se) =>
                 let World.World(w) = world; World.World({stairsExit = se | w})
+            case Cmd.SetCameraRig(s) =>
+                let World.World(w) = world; World.World({cameraRig = s | w})
             case Cmd.SetHp(ref, hpVal) =>
                 // 単一 store＋toUid。
                 let World.World(w) = world;
@@ -1462,6 +1474,7 @@ mod World {
             case Cmd.SetCharacterSelect(_)   => ("SetCharacterSelect", 0, 0, 0)
             case Cmd.SetMinimap(_)           => ("SetMinimap", 0, 0, 0)
             case Cmd.SetStairsExit(_)        => ("SetStairsExit", 0, 0, 0)
+            case Cmd.SetCameraRig(_)         => ("SetCameraRig", 0, 0, 0)
             case Cmd.TickPlayers(_)           => ("TickP", 0, 0, 0)
             case Cmd.TickEnemies              => ("TickE", 0, 0, 0)
             case Cmd.SetEnemyTurnBusy(b)      => ("ETBusy", bool01(b), 0, 0)

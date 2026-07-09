@@ -833,7 +833,12 @@ mod Game {
                       k()
                   }
               }
-              with CameraState.withState(rc)      // 追従カメラの視点状態（カメラ・ターゲット・ドラッグ有効）を resource 化
+              with handler CameraState.State {
+                  // 追従カメラの状態（カメラ・ターゲット・ドラッグ有効）の単一権威は World.cameraRig。
+                  // get/put とも facade で World 経由（呼び出し側は無改修・test は withState の Ref）。
+                  def get(k)         = k(World.cameraRigOf(Ref.get(worldRef)))
+                  def put(target, k) = { Ref.put(World.applyCmd(World.Cmd.SetCameraRig(target), Ref.get(worldRef)), worldRef); k() }
+              }
               with handler RangeOverlayState.State {
                   // 範囲オーバーレイ 7 種のセル集合（Option 在/不在=表示トグル）の単一権威は World.rangeOverlay。
                   // get/put とも facade で World 経由（呼び出し側 20 ファイルは無改修・test は withState の Ref）。
