@@ -1,0 +1,24 @@
+[package]
+name        = "flix_game_engine_monorepo"
+description = "CI build of all engine packages (engine_core / render_core / engine / engine_world / engine_tools) as one source tree"
+version     = "0.1.0"
+flix        = "0.75.1"
+authors     = ["ababup1192 <ababup1192@gmail.com>"]
+repository  = "github:ababup1192/flix_game_engine"
+
+# ルート src/ は各エンジンパッケージの src/ への symlink 集で、実体は一切持たない。
+# Flix の依存解決 (make sync の fpkg 配布) を経由せず、全パッケージを 1 ソースツリーとして
+# コンパイルする。examples が 5 パッケージを同時依存して成立している以上、union も成立する。
+# Flix コミュニティビルドはこのマニフェストでルートから `flix build` を実行する。
+
+[dependencies]
+
+# コンパイルに必要な LWJGL の Java API のみ宣言する。
+# ネイティブ jar は実行時専用なので、ビルド検証しかしないルートでは持たない
+# (実行・配布は各パッケージ / examples 側の flix.toml が担う)。
+[mvn-dependencies]
+"org.lwjgl:lwjgl"        = "3.4.1"
+"org.lwjgl:lwjgl-opengl" = "3.4.1"
+"org.lwjgl:lwjgl-stb"    = "3.4.1"
+"org.lwjgl:lwjgl-openal" = "3.4.1"
+"org.lwjgl:lwjgl-glfw"   = "3.4.1"

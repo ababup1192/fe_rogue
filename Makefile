@@ -72,7 +72,7 @@ ENGINE_TOOLS_TOML_NAME := flix_engine_tools-0.1.0.toml
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine-core sync-render-core sync-engine sync-engine-world sync-engine-tools clean-locks clean-example-builds test bake
+.PHONY: help sync sync-engine-core sync-render-core sync-engine sync-engine-world sync-engine-tools sync-root-src clean-locks clean-example-builds test bake
 
 help:
 	@echo "Targets:"
@@ -85,6 +85,7 @@ help:
 	@echo "  make sync-engine          engine だけ build-pkg & 配布 (engine_world / ide / examples へ)"
 	@echo "  make sync-engine-world      engine_world だけ build-pkg & 配布 (examples へ)"
 	@echo "  make sync-engine-tools    engine_tools だけ build-pkg & 配布 (examples へ)"
+	@echo "  make sync-root-src        コミュニティビルド用にルート src/ の symlink 集を再生成"
 	@echo "  make clean-locks          flix check 中断で残った Maven cache の *.lock を削除"
 	@echo "  make clean-example-builds examples/*/build/ を全削除 (IDE の scene.json glob 高速化用)"
 
@@ -141,7 +142,30 @@ test-%:
 		cd "$*" && $(FLIX_TEST) test; \
 	fi
 
-sync: clean-locks sync-engine-core sync-render-core sync-engine sync-engine-world sync-engine-tools
+sync: clean-locks sync-engine-core sync-render-core sync-engine sync-engine-world sync-engine-tools sync-root-src
+
+# ── コミュニティビルド用ルート src/ ──────────────────────
+# Flix 公式の community build (flix/flix の community-build.yaml) は、このリポジトリを
+# checkout してルートで `flix build` を実行するだけで、make sync の fpkg 配布は走らない。
+# そこでルート src/ に全エンジンパッケージの .flix をファイル単位の symlink で並べ、
+# 5 パッケージを 1 ソースツリーとしてビルドできるようにする (ルートの flix.toml が対応)。
+# ディレクトリ symlink は Flix のソース走査に追従されないため、必ずファイル単位で張る。
+# エンジンに .flix を追加/削除/改名したら再実行して symlink 集を更新し、コミットする。
+ROOT_SRC_PKGS := $(ENGINE_CORE_DIR) $(RENDER_CORE_DIR) $(ENGINE_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR)
+
+sync-root-src:
+	@for pkg in $(ROOT_SRC_PKGS); do rm -rf "src/$$pkg"; done; \
+	for pkg in $(ROOT_SRC_PKGS); do \
+		(cd "$$pkg/src" && find . -name '*.flix') | sed 's|^\./||' | while read -r f; do \
+			d=$$(dirname "$$f"); \
+			if [ "$$d" = "." ]; then dir="src/$$pkg"; else dir="src/$$pkg/$$d"; fi; \
+			mkdir -p "$$dir"; \
+			depth=$$(printf '%s' "$$dir" | tr -cd '/' | wc -c | tr -d ' '); \
+			up=$$(printf '../%.0s' $$(seq 0 "$$depth")); \
+			ln -sfn "$$up$$pkg/src/$$f" "$$dir/$$(basename "$$f")"; \
+		done; \
+	done; \
+	find src -type l | awk 'END { print "[sync-root-src] " NR " symlink(s)" }'
 
 # engine_core は engine / render_core / ide / examples すべてが（直接または推移的に）依存する。
 # 最も土台のパッケージなので sync チェーンの先頭に置く。

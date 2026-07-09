@@ -2,7 +2,7 @@
 name        = "flix_engine_world"
 description = "Reusable immutable-World modules (EntityId, Query combinators, Collision broadphase) and a pure UI toolkit (flex layout, widget store, spec/binding, menus, extract) for games built on flix_game_engine"
 version     = "0.1.0"
-flix        = "0.75.0"
+flix        = "0.75.1"
 authors     = ["ababup1192 <ababup1192@gmail.com>"]
 repository  = "github:ababup1192/flix_engine_world"
 

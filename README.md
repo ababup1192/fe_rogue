@@ -18,14 +18,14 @@ SRPG + roguelike).
 - **JDK 21**
 - **GNU make**
 - Supported OS: macOS (Apple Silicon / Intel) / Windows x86_64
-- Flix **0.75.0** compiler (`bin/flix.jar`) — download it yourself (see below)
+- Flix **0.75.1** compiler (`bin/flix.jar`) — download it yourself (see below)
 
 ## Setup
 
-First, download the Flix 0.75.0 compiler and place it at `bin/flix.jar`:
+First, download the Flix 0.75.1 compiler and place it at `bin/flix.jar`:
 
 ```bash
-curl -L -o bin/flix.jar https://github.com/flix/flix/releases/download/v0.75.0/flix.jar
+curl -L -o bin/flix.jar https://github.com/flix/flix/releases/download/v0.75.1/flix.jar
 ```
 
 Then set up the toolchain and build the engine packages:
@@ -110,6 +110,9 @@ engine_tools/  dev & test tooling: headless software rasterizer, filmstrip/GIF b
 ide/           Swing + AWTGLCanvas editor (depends on engine)
 examples/      individual games (depend on engine, engine_world, engine_tools)
 bin/           flix.jar and the flix wrapper script
+flix.toml
+src/           root project for the Flix community build: per-file symlinks bundling
+               all engine packages into one source tree (regenerate with make sync-root-src)
 ```
 
 Dependency chain: `engine_core → render_core → engine → (engine_world / engine_tools) → examples`,
@@ -125,13 +128,14 @@ make sync-render-core    # build-pkg & distribute render_core only
 make sync-engine         # build-pkg & distribute engine only
 make sync-engine-world   # build-pkg & distribute engine_world only
 make sync-engine-tools   # build-pkg & distribute engine_tools only
+make sync-root-src       # regenerate the root src/ symlinks for the Flix community build
 make clean-locks         # remove stale *.lock left in the Maven cache by an interrupted flix check
 make clean-example-builds # delete examples/*/build/ (speeds up IDE scene loading)
 ```
 
 ## Tech stack
 
-- **Flix 0.75.0** — functional programming language
+- **Flix 0.75.1** — functional programming language
 - **LWJGL** — OpenGL / GLFW / STB / OpenAL bindings
 - **OpenGL 3.3 Core Profile** — shader-based 2D rendering
 - **OpenAL** — sound effects and BGM playback
@@ -157,14 +161,14 @@ make clean-example-builds # delete examples/*/build/ (speeds up IDE scene loadin
 - **JDK 21**
 - **GNU make**
 - 対応 OS: macOS（Apple Silicon / Intel）/ Windows x86_64
-- Flix **0.75.0** コンパイラ（`bin/flix.jar`）— 各自でダウンロードして配置する（下記参照）
+- Flix **0.75.1** コンパイラ（`bin/flix.jar`）— 各自でダウンロードして配置する（下記参照）
 
 ## セットアップ
 
-まず Flix 0.75.0 コンパイラをダウンロードして `bin/flix.jar` に配置する:
+まず Flix 0.75.1 コンパイラをダウンロードして `bin/flix.jar` に配置する:
 
 ```bash
-curl -L -o bin/flix.jar https://github.com/flix/flix/releases/download/v0.75.0/flix.jar
+curl -L -o bin/flix.jar https://github.com/flix/flix/releases/download/v0.75.1/flix.jar
 ```
 
 次にツールチェーンを用意し、エンジンパッケージをビルドする:
@@ -248,6 +252,9 @@ engine_tools/  開発・テスト用ツール: headless ソフトラスタライ
 ide/           Swing + AWTGLCanvas ベースのエディタ（engine 依存）
 examples/      各ゲーム（engine・engine_world・engine_tools 依存）
 bin/           flix.jar と flix ラッパスクリプト
+flix.toml
+src/           Flix コミュニティビルド用のルートプロジェクト: 全エンジンパッケージを
+               1 ソースツリーに束ねるファイル単位 symlink 集（make sync-root-src で再生成）
 ```
 
 依存チェーンは `engine_core → render_core → engine →（engine_world / engine_tools）→ examples`、
@@ -263,13 +270,14 @@ make sync-render-core    # render_core だけ build-pkg & 配布
 make sync-engine         # engine だけ build-pkg & 配布
 make sync-engine-world   # engine_world だけ build-pkg & 配布
 make sync-engine-tools   # engine_tools だけ build-pkg & 配布
+make sync-root-src       # コミュニティビルド用ルート src/ symlink 集を再生成
 make clean-locks         # flix check 中断で残った Maven cache の *.lock を削除
 make clean-example-builds # examples/*/build/ を削除（IDE のシーン読み込み高速化用）
 ```
 
 ## 技術スタック
 
-- **Flix 0.75.0** — 関数型プログラミング言語
+- **Flix 0.75.1** — 関数型プログラミング言語
 - **LWJGL** — OpenGL / GLFW / STB / OpenAL バインディング
 - **OpenGL 3.3 Core Profile** — シェーダーベースの 2D レンダリング
 - **OpenAL** — 効果音・BGM 再生
