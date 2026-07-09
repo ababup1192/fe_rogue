@@ -20,7 +20,7 @@ mod TestPlayerMovementDriver {
         let board: Board = {map = tenByFive(), pieces = (Piece.Player(0), {x = 4, y = 2}) :: Nil};
         let (evOpt, moves) = TestUnitFixtures.withRecordedMoves(() ->
             PlayerMovementDriver.stepPlayerMove(0, {x = 4, y = 2}, Vec2i.right(), board, _ -> true));
-        let target  = evOpt |> Option.map(PlayerScene.movedTarget) |> Option.map(t -> (t#x, t#y));
+        let target  = evOpt |> Option.map(PlayerDriver.movedTarget) |> Option.map(t -> (t#x, t#y));
         let emitted = moves |> List.map(t -> (t#x, t#y));
         Assert.assertEq(expected = (Some((5, 2)), (5, 2) :: Nil), (target, emitted))
 
@@ -31,7 +31,7 @@ mod TestPlayerMovementDriver {
             pieces = (Piece.Player(0), {x = 4, y = 2}) :: (Piece.Enemy(0), {x = 5, y = 2}) :: Nil};
         let (evOpt, moves) = TestUnitFixtures.withRecordedMoves(() ->
             PlayerMovementDriver.stepPlayerMove(0, {x = 4, y = 2}, Vec2i.right(), board, _ -> true));
-        let target = evOpt |> Option.map(PlayerScene.movedTarget) |> Option.map(t -> (t#x, t#y));
+        let target = evOpt |> Option.map(PlayerDriver.movedTarget) |> Option.map(t -> (t#x, t#y));
         Assert.assertEq(expected = (None, 0), (target, List.length(moves)))
 
     /// MoveRange 述語が false（範囲外）: None を返し emit しない。
@@ -40,7 +40,7 @@ mod TestPlayerMovementDriver {
         let board: Board = {map = tenByFive(), pieces = (Piece.Player(0), {x = 4, y = 2}) :: Nil};
         let (evOpt, moves) = TestUnitFixtures.withRecordedMoves(() ->
             PlayerMovementDriver.stepPlayerMove(0, {x = 4, y = 2}, Vec2i.right(), board, _ -> false));
-        let target = evOpt |> Option.map(PlayerScene.movedTarget) |> Option.map(t -> (t#x, t#y));
+        let target = evOpt |> Option.map(PlayerDriver.movedTarget) |> Option.map(t -> (t#x, t#y));
         Assert.assertEq(expected = (None, 0), (target, List.length(moves)))
 
     // ════════════════════════════════════════════════════════

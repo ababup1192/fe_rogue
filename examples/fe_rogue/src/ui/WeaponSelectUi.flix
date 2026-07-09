@@ -109,7 +109,7 @@ mod WeaponSelectUi {
         }
 
     /// 選択中味方の Data（PartyQuery 経由）。未選択 / 見つからなければ None。
-    def selectedPlayer(): Option[PlayerScene.Data]
+    def selectedPlayer(): Option[PlayerDriver.Data]
             \ {SelectedPlayer.State, PlayerData.PartyQuery} =
         forM (
             id     <- SelectedPlayer.State.get()#id;
@@ -156,9 +156,9 @@ mod WeaponSelectUi {
     /// ActionMenuUi.canAttackFrom と同じ判定（攻撃可否＝届く武器があるか、を行単位に分解）。
     pub def weaponReachesAnyEnemy(pos: {x = Int32, y = Int32},
                                weapon: UnitCatalog.WeaponResource,
-                               enemies: List[EnemyScene.Data]): Bool =
+                               enemies: List[EnemyDriver.Data]): Bool =
         List.exists(e -> {
-            let ev = EnemyScene.unitView(e);
+            let ev = EnemyDriver.unitView(e);
             ev#hp > 0 and not ev#isDying
                 and Weapon.inRange(Weapon.manhattan(pos, ev#pos), weapon#range)
         }, enemies)
@@ -289,7 +289,7 @@ mod WeaponSelectUi {
         UiWorldState.State.put(UiStore.putSelection(menuPath(), next, ui))
 
     /// カーソルがある武器の weapons 内 index。選択行の meta `"w:<idx>"` を選択位置から読む
-    /// （`CursorScene`/`BattlePanelUi` が対象敵の解決に使う）。未登録 / 無選択なら None。
+    /// （`CursorDriver`/`BattlePanelUi` が対象敵の解決に使う）。未登録 / 無選択なら None。
     pub def hoveredWeaponIndex(): Option[Int32] \ UiWorldState.State =
         let ui = UiWorldState.State.get();
         let sel = UiStore.selectionOf(menuPath(), ui);
@@ -318,12 +318,12 @@ mod WeaponSelectUi {
         let started = forM (
             pid   <- SelectedPlayer.State.get()#id;
             idx   <- entry#metadata |> Option.flatMap(parseWeaponIndex);
-            eid   <- EnemyScene.findIdAt(CursorScene.getGridPos());
+            eid   <- EnemyDriver.findIdAt(CursorDriver.getGridPos());
             enemy <- EnemyData.RosterQuery.get(eid)
         ) yield {
-            PlayerScene.equipWeapon(pid, idx);
+            PlayerDriver.equipWeapon(pid, idx);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
-            GameLogger.playerLog("${PlayerScene.displayName(pid)}の攻撃");
+            GameLogger.playerLog("${PlayerDriver.displayName(pid)}の攻撃");
             CombatDriver.startAttack(Faction.Player, pid, eid, enemy#gridPos)
         };
         Option.getWithDefault((), started)
@@ -333,14 +333,14 @@ mod WeaponSelectUi {
     /// いたカーソルは隠す（ActionSelect / PlayerMoving はカーソル非表示が既定）。
     pub def onCancelled(): Unit \ {TurnPhase.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
-        CursorScene.setVisible(false)
+        CursorDriver.setVisible(false)
 
     // ========================================================================
     // カーソルの対象敵スナップ（フォーカス武器が届く敵の上へカーソルを置く）
     // ========================================================================
 
     /// WeaponSelect 中、カーソルを「フォーカス武器が届く敵」の上に置いてカーソルを表示する。
-    /// 既に届く敵に乗っているならその位置を保つ（左右での敵選択を維持。`CursorScene` が巡回する）。
+    /// 既に届く敵に乗っているならその位置を保つ（左右での敵選択を維持。`CursorDriver` が巡回する）。
     /// 乗っていない（初回 / 武器を切り替えて今の対象が届かなくなった）ときだけ最寄りの敵へスナップ。
     /// 届く敵が居なければカーソルは触らない。戦闘予報はこのカーソル上の敵で出る。
     def snapCursorToTarget(): Unit
@@ -349,16 +349,16 @@ mod WeaponSelectUi {
         match focusedPlayerWeapon() {
             case None                   => ()
             case Some((player, weapon)) =>
-                if (isReachableEnemyCell(CursorScene.getGridPos(), player#gridPos, weapon))
-                    CursorScene.setVisible(true)   // 既に対象上 → 位置は保持（左右選択を維持）
+                if (isReachableEnemyCell(CursorDriver.getGridPos(), player#gridPos, weapon))
+                    CursorDriver.setVisible(true)   // 既に対象上 → 位置は保持（左右選択を維持）
                 else match nearestReachableEnemy(player#gridPos, weapon) {
-                    case Some(e) => CursorScene.setVisible(true); CursorScene.snapToCell(e#gridPos)
+                    case Some(e) => CursorDriver.setVisible(true); CursorDriver.snapToCell(e#gridPos)
                     case None    => ()
                 }
         }
 
     /// 選択中味方とフォーカス中の武器。揃わなければ None。
-    def focusedPlayerWeapon(): Option[(PlayerScene.Data, UnitCatalog.WeaponResource)]
+    def focusedPlayerWeapon(): Option[(PlayerDriver.Data, UnitCatalog.WeaponResource)]
             \ {SelectedPlayer.State, PlayerData.PartyQuery, UiWorldState.State} =
         forM (
             player <- selectedPlayer();
@@ -371,10 +371,10 @@ mod WeaponSelectUi {
                              weapon: UnitCatalog.WeaponResource):
             Bool \ {EnemyData.RosterQuery, World.WorldQuery} =
         // 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む。
-        EnemyScene.findIdAt(cell)
+        EnemyDriver.findIdAt(cell)
             |> Option.flatMap(id -> EnemyData.RosterQuery.get(id))
             |> Option.map(e -> {
-                let ev = EnemyScene.unitView(e);
+                let ev = EnemyDriver.unitView(e);
                 ev#hp > 0 and not ev#isDying
                     and Weapon.inRange(Weapon.manhattan(pos, ev#pos), weapon#range)
             })
@@ -384,10 +384,10 @@ mod WeaponSelectUi {
     /// 届く敵が居なければ None。`weaponReachesAnyEnemy` と同じ到達判定で個体を選ぶ版。
     def nearestReachableEnemy(pos: {x = Int32, y = Int32},
                               weapon: UnitCatalog.WeaponResource):
-            Option[EnemyScene.Data] \ EnemyData.RosterQuery =
+            Option[EnemyDriver.Data] \ EnemyData.RosterQuery =
         EnemyData.RosterQuery.getAll()
             |> List.filter(e -> {
-                let ev = EnemyScene.unitView(e);
+                let ev = EnemyDriver.unitView(e);
                 ev#hp > 0 and not ev#isDying
                     and Weapon.inRange(Weapon.manhattan(pos, ev#pos), weapon#range)
             })

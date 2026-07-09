@@ -327,7 +327,7 @@ mod TestTurnRules {
 
     /// 味方 2 人 (id=0, id=1) の盤面で、id=0 が selected、カーソルが id=1 の上に
     /// 居て Z → OpenTradeInventory(1)。隣接判定 (manhattan=1) は ActionMenu の
-    /// 表示制御と CursorScene の緑マス制限でかかっているので、ここでは
+    /// 表示制御と CursorDriver の緑マス制限でかかっているので、ここでは
     /// 「カーソル位置に居る他味方を partner として返す」だけを検証する。
     @Test
     def testTradeConfirmOnPartnerCellOpensInventory(): Unit \ Assert =

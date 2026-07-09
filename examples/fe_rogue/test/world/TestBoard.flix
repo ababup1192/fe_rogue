@@ -319,7 +319,7 @@ mod TestBoard {
             Option.isEmpty(Board.stepDownhill(field, src(0, 0), _ -> true)))
 
     // ========================================================================
-    // (F) 射程プリミティブ — manhattanOffsets / computeThreatCells（RangeScenes が委譲）
+    // (F) 射程プリミティブ — manhattanOffsets / computeThreatCells（RangeOverlays が委譲）
     //   {x,y} record は Eq 無しなので件数 + Board.containsCell で検証する。
     // ========================================================================
 

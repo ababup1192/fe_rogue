@@ -11,9 +11,9 @@
 ///   - すばやさ薬 → `SpdUp`（速+N＝回避アップ）を自分に付与
 ///
 /// このモジュールは World / effect / Java 呼び出しに依存しない。
-/// 効果値を戦闘へ反映するのは `PlayerScene.combatView` / `EnemyScene.combatView`
+/// 効果値を戦闘へ反映するのは `PlayerDriver.combatView` / `EnemyDriver.combatView`
 /// （`StatusSystem.sumOf` を攻撃力・速さ・命中補正に足し込む）、
-/// 毎ターンの減算は `PlayerScene.clearAllWaited` / `EnemyScene.clearActedAll`
+/// 毎ターンの減算は `PlayerDriver.clearAllWaited` / `EnemyDriver.clearActedAll`
 /// （`StatusSystem.tick` を畳む）が担う。テストは数値だけで完結する。
 mod StatusSystem {
 
@@ -86,8 +86,8 @@ mod StatusSystem {
             |> List.map(s -> s#magnitude)
             |> List.sum
 
-    /// 戦闘ビューへ反映する補正をまとめて返す。`PlayerScene.combatView` /
-    /// `EnemyScene.combatView` が `resource` 値にこれを足し込む。
+    /// 戦闘ビューへ反映する補正をまとめて返す。`PlayerDriver.combatView` /
+    /// `EnemyDriver.combatView` が `resource` 値にこれを足し込む。
     ///   - `atkBonus` : 攻撃力への加算（`AtkUp`）
     ///   - `spdDelta` : 速さへの増減（`SpdUp` − `SpdDown`）。回避 = 速さ×2+幸運 に効く
     ///   - `hitMod`   : 自身の命中率への補正（`HitDown` ぶん負値。目潰し）

@@ -16,7 +16,7 @@
 // 入力フロー:
 //   1. ←→ で focus ペインを移動（両端でラップ）。
 //   2. focus ペインのスロットを Z 選択 → `pick = Some({paneIndex, kind})`。
-//   3. 別ペインに移動してスロットを Z → `PlayerScene.swapItem` で交換実行 → pick クリア、
+//   3. 別ペインに移動してスロットを Z → `PlayerDriver.swapItem` で交換実行 → pick クリア、
 //      focus は place したペインに留まる（連続交換可能）。空スロットへの place は片方向 transfer。
 //   4. pick=Some で X → pick 解除（focus 据置）。
 //   5. pick=None で X → origin に応じてメニューを閉じる（FromTurn / FromGather → ActionSelect）。
@@ -320,7 +320,7 @@ mod TradeMenuUi {
     /// 指定 player の持ち物が上限に達しているか。居なければ false。
     def isFull(playerId: Int32): Bool \ PlayerData.PartyQuery =
         match PlayerData.PartyQuery.get(playerId) {
-            case Some(d) => PlayerScene.isInventoryFull(d)
+            case Some(d) => PlayerDriver.isInventoryFull(d)
             case None    => false
         }
 
@@ -485,7 +485,7 @@ mod TradeMenuUi {
     def paneHeader(playerId: Int32): (String, Color) \ PlayerData.PartyQuery =
         match PlayerData.PartyQuery.get(playerId) {
             case Some(d) =>
-                let load = PlayerScene.loadOf(d);
+                let load = PlayerDriver.loadOf(d);
                 ("${d#resource#description} ${Encumbrance.weightText(load#total)}/${Encumbrance.weightText(load#capacity)}",
                  UITheme.encumbranceTierColor(load#tier))
             case None    => ("", UITheme.headerText())
@@ -566,7 +566,7 @@ mod TradeMenuUi {
                     setPanelData(d2)
                 case ConfirmOutcome.DoReorder(d2, plan) =>
                     checked_ecast({
-                        PlayerScene.reorderItem(plan#playerId, plan#kindA, plan#kindB);
+                        PlayerDriver.reorderItem(plan#playerId, plan#kindA, plan#kindB);
                         setPanelData(d2)
                     })
             }
@@ -633,16 +633,16 @@ mod TradeMenuUi {
             case (None, None) =>
                 ()
             case (Some(pickerKind), receiverOpt) =>
-                GameLogger.playerLog("${PlayerScene.displayName(plan#pickerId)} と ${PlayerScene.displayName(plan#receiverId)} がアイテム交換");
+                GameLogger.playerLog("${PlayerDriver.displayName(plan#pickerId)} と ${PlayerDriver.displayName(plan#receiverId)} がアイテム交換");
                 recordIfTurn(origin, {selfId = plan#pickerId, selfKind = pickerKind,
                                       partnerId = plan#receiverId, partnerKindOpt = receiverOpt});
-                PlayerScene.swapItem({selfId      = plan#pickerId,   selfKind    = pickerKind,
+                PlayerDriver.swapItem({selfId      = plan#pickerId,   selfKind    = pickerKind,
                                        partnerId   = plan#receiverId, partnerKind = receiverOpt})
             case (None, Some(receiverKind)) =>
-                GameLogger.playerLog("${PlayerScene.displayName(plan#pickerId)} と ${PlayerScene.displayName(plan#receiverId)} がアイテム交換");
+                GameLogger.playerLog("${PlayerDriver.displayName(plan#pickerId)} と ${PlayerDriver.displayName(plan#receiverId)} がアイテム交換");
                 recordIfTurn(origin, {selfId = plan#receiverId, selfKind = receiverKind,
                                       partnerId = plan#pickerId, partnerKindOpt = None});
-                PlayerScene.swapItem({selfId      = plan#receiverId, selfKind    = receiverKind,
+                PlayerDriver.swapItem({selfId      = plan#receiverId, selfKind    = receiverKind,
                                        partnerId   = plan#pickerId,   partnerKind = None})
         }
 
@@ -666,11 +666,11 @@ mod TradeMenuUi {
     /// swap 実行前に、巻き戻し用 `Traded` ドラフトを SelectedPlayer に積む。
     /// self 側に実体が無い（swap が no-op になる）場合は積まない。
     def recordTradeDraft(parties: TradeParties): Unit \ {SelectedPlayer.State, World.WorldQuery} =
-        match PlayerScene.getInventoryItem(parties#selfId, parties#selfKind) {
+        match PlayerDriver.getInventoryItem(parties#selfId, parties#selfKind) {
             case None           => ()
             case Some(selfItem) =>
                 let partnerItemOpt = parties#partnerKindOpt
-                    |> Option.flatMap(pk -> PlayerScene.getInventoryItem(parties#partnerId, pk));
+                    |> Option.flatMap(pk -> PlayerDriver.getInventoryItem(parties#partnerId, pk));
                 SelectedPlayer.pushDraft(MoveDraft.DraftAction.Traded({
                     selfId      = parties#selfId,      selfKind    = parties#selfKind,
                     selfItem    = selfItem,
@@ -729,7 +729,7 @@ mod TradeMenuUi {
         else ()
 
     /// 受け取り側がこの 1 個を受け取っても重量過多(110%+ ＝ 移動不可)にならないか。
-    /// 拾得ゲート（`PlayerScene.wouldOverloadByPicking`）と同じ基準で、まとめ渡しが受け手を
+    /// 拾得ゲート（`PlayerDriver.wouldOverloadByPicking`）と同じ基準で、まとめ渡しが受け手を
     /// 移動不可まで積み込むのを防ぐ（アイテム単位で判定し、超える 1 個目の手前で止める）。
     /// まとめ渡しの fold 内で 1 個渡すごとに最新の積載を見る read-during-mutation。在庫は
     /// World 権威で、Cmd emit は worldRef へ即時適用される（read-after-write）ため、WorldQuery の
@@ -739,9 +739,9 @@ mod TradeMenuUi {
         let w = World.WorldQuery.get();
         match (World.dataFromWorld(giverId, w), World.dataFromWorld(receiverId, w)) {
             case (Some(giver), Some(receiver)) =>
-                match PlayerScene.heldItemWeight(giver, kind) {
+                match PlayerDriver.heldItemWeight(giver, kind) {
                     case Some(weight) =>
-                        not Encumbrance.wouldExceedImmobile(PlayerScene.loadOf(receiver), weight)
+                        not Encumbrance.wouldExceedImmobile(PlayerDriver.loadOf(receiver), weight)
                     case None => false
                 }
             case _ => false

@@ -343,7 +343,7 @@ mod EffectRule {
     //   faction を明示したときだけ陣営で絞る（火炎瓶=enemy / かなしばり=ally）。
     // ════════════════════════════════════════════════════════
 
-    /// ray 上の候補ユニット 1 体。`ally` は **PlayerScene 側のユニットか（＝is-player）**、
+    /// ray 上の候補ユニット 1 体。`ally` は **PlayerDriver 側のユニットか（＝is-player）**、
     /// `immobilized` は完全停止中か、`alive` は HP>0 か。実 Scene が PlayerData/EnemyData から
     /// 組んで渡す（ここは純粋判定のみ）。陣営（味方/敵）は actor の is-player と突き合わせて判定する
     /// （factionOk）ので、この `ally` 単体は「使用者と同陣営か」ではなく「player 側か」を表す。
@@ -355,7 +355,7 @@ mod EffectRule {
     }
 
     /// 陣営フィルタ。FactionAny は常に true（rayFirst・陣営無視＝既定）。
-    /// `isPlayerUnit` は対象が PlayerScene 側か、`actorIsPlayer` は使用者が player 側か。
+    /// `isPlayerUnit` は対象が PlayerDriver 側か、`actorIsPlayer` は使用者が player 側か。
     /// 味方（Ally）＝両者の is-player が一致、敵（Enemy）＝不一致。これにより敵 actor 視点でも
     /// 「敵から見た enemy＝player 駒」が正しく解決される（player actor では従来挙動と一致）。
     pub def factionOk(want: Faction, isPlayerUnit: Bool, actorIsPlayer: Bool): Bool = match want {
@@ -371,7 +371,7 @@ mod EffectRule {
         case TargetState.StateAlive          => u#alive
     }
 
-    /// 解決済みの対象。`id` に加え `ally`（**PlayerScene 側か＝is-player**）を持つ。
+    /// 解決済みの対象。`id` に加え `ally`（**PlayerDriver 側か＝is-player**）を持つ。
     /// player/enemy のノード名前空間が別（id は衝突しうる）ため、runPlan が
     /// player へ作用するか enemy へ作用するかを `ally` で出し分ける。
     pub type alias UnitRef = {
@@ -389,7 +389,7 @@ mod EffectRule {
             |> Option.map(u -> {id = u#id, ally = u#ally})
 
     /// 役割に応じて対象を解決する。self / attacker は使用者自身なので ally は使用者の is-player
-    /// （`actorIsPlayer`）。これにより敵 actor の自己回復（吸血）が EnemyScene 側へ正しく流れる。
+    /// （`actorIsPlayer`）。これにより敵 actor の自己回復（吸血）が EnemyDriver 側へ正しく流れる。
     /// Area は単一 id ではない（runPlan が Board.cellsWithin で展開）。
     pub def resolveTarget(t: Target, selfId: Int32, attackerId: Int32,
                           rayUnits: List[RayUnit], actorIsPlayer: Bool): Option[UnitRef] = match t#role {

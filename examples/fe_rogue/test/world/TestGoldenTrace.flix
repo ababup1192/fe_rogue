@@ -34,7 +34,7 @@ mod TestGoldenTrace {
     /// 攻撃中の味方（id=0・{2,2}）。`exp` で level-up 跨ぎを作り分け、`weaponHit` で命中を固定する。
     /// 攻撃力 素3+武器2=5、敵防御1 ゆえ命中ダメージ4。growthRates=0（testResource 既定）で
     /// level-up 時の現在 HP 増分は 0（newHp=10）＝予測可能。
-    def player(exp: Int32, hp: Int32, atkTarget: Option[Int32], weaponHit: Int32): PlayerScene.Data = {
+    def player(exp: Int32, hp: Int32, atkTarget: Option[Int32], weaponHit: Int32): PlayerDriver.Data = {
         id                = 0,
         classId           = "test_player",
         gridPos           = {x = 2, y = 2},
@@ -62,7 +62,7 @@ mod TestGoldenTrace {
 
     /// 敵フィクスチャ。`rule` で effectRule（生 Json）を差し込み、`weaponHit` で命中を固定する。
     def enemy(id: Int32, hp: Int32, gridPos: {x = Int32, y = Int32}, isDying: Bool,
-              atkTarget: Option[Int32], rule: Option[Util.Json.Json], weaponHit: Int32): EnemyScene.Data = {
+              atkTarget: Option[Int32], rule: Option[Util.Json.Json], weaponHit: Int32): EnemyDriver.Data = {
         id             = id,
         resourceId     = "test_enemy",
         gridPos        = gridPos,
@@ -153,7 +153,7 @@ mod TestGoldenTrace {
 
     /// 味方 1 体分の Data を、その値をそのまま mirror する `World.Cmd` 列へ写す
     /// （`World.dataFromWorld` の gate 11 種 + attackTargetId/selectedItem/hidden/pendingLevelUp/statuses を全て埋める）。
-    def playerCmds(p: PlayerScene.Data): List[World.Cmd] =
+    def playerCmds(p: PlayerDriver.Data): List[World.Cmd] =
         let ref = EntityRef.Player(p#id);
         let targetCmd = p#attackTargetId |> Option.map(t -> World.Cmd.SetAttackTarget(ref, t)) |> Option.toList;
         List.flatten(
@@ -165,14 +165,14 @@ mod TestGoldenTrace {
                 :: World.Cmd.SetHidden(ref, p#hidden)
                 :: World.Cmd.SetProgress(ref, p#level, p#exp)
                 :: World.Cmd.SetWeapons(ref, p#weapons)
-                :: World.Cmd.SetWeaponView(ref, PlayerScene.equippedWeaponView(p))
+                :: World.Cmd.SetWeaponView(ref, PlayerDriver.equippedWeaponView(p))
                 :: World.Cmd.SetBaseStats(ref, Combat.baseStatsFrom(p#resource))
                 :: World.Cmd.SetMoveTiles(ref, p#moveTiles)
                 :: World.Cmd.SetStaves(ref, p#staves)
                 :: World.Cmd.SetConsumables(ref, p#consumables)
                 :: World.Cmd.SetRings(ref, p#rings)
                 :: World.Cmd.SetRingEquipped(ref, p#ringEquipped)
-                :: World.Cmd.SetRingBonus(ref, PlayerScene.equippedRingBonus(p))
+                :: World.Cmd.SetRingBonus(ref, PlayerDriver.equippedRingBonus(p))
                 :: World.Cmd.SetGrowth(p#id, {base = LevelSystem.statsOf(p#resource),
                                               rates = p#resource#growthRates, name = p#resource#description})
                 :: World.Cmd.SetFollowUpUsed(ref, p#followUpUsed)
@@ -188,7 +188,7 @@ mod TestGoldenTrace {
 
     /// 敵 1 体分の Data を、その値をそのまま mirror する `World.Cmd` 列へ写す
     /// （`World.dataFromWorldEnemy` の gate 11 種 + attackTargetId/prevPos/ring/statuses を全て埋める）。
-    def enemyCmds(e: EnemyScene.Data): List[World.Cmd] =
+    def enemyCmds(e: EnemyDriver.Data): List[World.Cmd] =
         let ref = EntityRef.Enemy(e#id);
         let targetCmd = e#attackTargetId |> Option.map(t -> World.Cmd.SetAttackTarget(ref, t)) |> Option.toList;
         let dyingCmd  = if (e#isDying) World.Cmd.SetDying(ref) :: Nil else Nil;
@@ -202,12 +202,12 @@ mod TestGoldenTrace {
                 :: World.Cmd.SetBottleUsed(ref, e#bottleUsed)
                 :: World.Cmd.SetFollowUpUsed(ref, e#followUpUsed)
                 :: World.Cmd.SetWeapons(ref, Option.toList(e#weapon))
-                :: World.Cmd.SetWeaponView(ref, EnemyScene.equippedWeaponView(e))
+                :: World.Cmd.SetWeaponView(ref, EnemyDriver.equippedWeaponView(e))
                 :: World.Cmd.SetBaseStats(ref, Combat.baseStatsFrom(e#resource))
                 :: World.Cmd.SetMoveTiles(ref, e#moveTiles)
                 :: World.Cmd.SetEffectRule(e#id, e#resource#effectRule)
                 :: World.Cmd.SetEnemyRing(e#id, e#ring)
-                :: World.Cmd.SetRingBonus(ref, EnemyScene.equippedRingBonus(e))
+                :: World.Cmd.SetRingBonus(ref, EnemyDriver.equippedRingBonus(e))
                 :: World.Cmd.SetEnemyProfile(e#id, {resourceId = e#resourceId, homeModuleIdx = e#homeModuleIdx})
                 :: World.Cmd.SetEnemyResource(e#id, e#resource)
                 :: World.Cmd.Seed(ref, e#statuses)
@@ -215,7 +215,7 @@ mod TestGoldenTrace {
             :: targetCmd :: dyingCmd :: prevCmd :: Nil)
 
     /// player + 任意数の enemy を World.Cmd 列へ写した最小 fixture（地形は別途 `floorTerrain` で seed）。
-    def unitCmds(p: PlayerScene.Data, enemies: List[EnemyScene.Data]): List[World.Cmd] =
+    def unitCmds(p: PlayerDriver.Data, enemies: List[EnemyDriver.Data]): List[World.Cmd] =
         List.append(playerCmds(p), List.flatMap(enemyCmds, enemies))
 
     // ── harness runners ───────────────────────────────────────────────────────
@@ -712,7 +712,7 @@ mod TestGoldenTrace {
     // ring 有り（確殺）と ring 無し（生存）の 2 テストに分けて証明する。
 
     /// defense=8 の硬い敵（base ダメージ 0 ＝ base では撃破不能）・hp4/maxHp10（瀕死 40%）。finisher fixture 共通敵。
-    def finisherEnemy(): EnemyScene.Data =
+    def finisherEnemy(): EnemyDriver.Data =
         let e0 = enemy(1, 4, {x = 3, y = 2}, false, None, ruleJson(""), 80);
         {resource = {defense = 8 | e0#resource} | e0}
 

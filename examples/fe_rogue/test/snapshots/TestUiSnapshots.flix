@@ -114,7 +114,7 @@ mod TestUiSnapshots {
     /// drive を record 越しに持ち回すと効果多相が効かないので名前で `driveByName` に分岐する。
     def renderAndLint(rc: Region[r], ctx: SnapshotSupport.Ctx, entry: SnapshotCatalog.Entry):
             (String, Option[String], List[RenderLint.Finding]) \ (IO + Fs.FileRead + Fs.FileWrite + r) =
-        // ミニマップは renderUi 経路でなく `MinimapScene.minimapDrawList`（純粋）を宣言フィクスチャで
+        // ミニマップは renderUi 経路でなく `MinimapDriver.minimapDrawList`（純粋）を宣言フィクスチャで
         // 直接ラスタライズする。UiWorld も lint も持たない（幾何は minimapDrawList 内で確定）。
         if (isMinimapEntry(entry#name)) {
             let goldenFail = SnapshotSupport.snapshot(ctx, entry#name, minimapRendered(entry#name));
@@ -206,8 +206,8 @@ mod TestUiSnapshots {
         ringEquipped = false, selectedItem = None
     }
 
-    /// 味方宣言 → 実カタログ由来の `PlayerScene.Data`（本物の frameStep が読む在庫まで詰める）。
-    pub def mkPlayer(s: PlayerSpec): PlayerScene.Data \ Fs.FileRead =
+    /// 味方宣言 → 実カタログ由来の `PlayerDriver.Data`（本物の frameStep が読む在庫まで詰める）。
+    pub def mkPlayer(s: PlayerSpec): PlayerDriver.Data \ Fs.FileRead =
         let res = UnitCatalog.lookupUnit(s#classId, unitCatalog());
         ({id = s#id, classId = s#classId, gridPos = s#gridPos, moveTiles = res#moveTiles,
           hp = s#hp, waited = s#waited, attackTargetId = None, resource = res,
@@ -218,11 +218,11 @@ mod TestUiSnapshots {
           ringEquipped = s#ringEquipped, selectedItem = s#selectedItem,
           moveStepsTaken = 0, facing = Dir4.Down, hidden = false, usedStairs = false,
           level = s#level, exp = s#exp, pendingLevelUp = None, statuses = Nil,
-          followUpUsed = false}: PlayerScene.Data)
+          followUpUsed = false}: PlayerDriver.Data)
 
-    /// 敵 1 体を実カタログ由来の `EnemyScene.Data` に組む。`weaponId` は装備武器（None＝素手表示）。
+    /// 敵 1 体を実カタログ由来の `EnemyDriver.Data` に組む。`weaponId` は装備武器（None＝素手表示）。
     pub def mkEnemy(id: Int32, resourceId: String, gridPos: {x = Int32, y = Int32}, hp: Int32,
-                weaponId: Option[String]): EnemyScene.Data \ Fs.FileRead =
+                weaponId: Option[String]): EnemyDriver.Data \ Fs.FileRead =
         let res = match EnemyCatalog.get(resourceId, EnemyCatalog.load()) {
             case Some(e) => e
             case None    => bug!("snapshot: enemy '${resourceId}' not in catalog")
@@ -230,7 +230,7 @@ mod TestUiSnapshots {
         ({id = id, resourceId = resourceId, gridPos = gridPos, alerted = false, homeModuleIdx = 0,
           moveTiles = res#moveTiles, hp = hp, isDying = false, attackTargetId = None, resource = res,
           weapon = Option.map(weaponRes, weaponId), acted = false, prevPos = None, statuses = Nil,
-          ring = None, followUpUsed = false, bottleUsed = false}: EnemyScene.Data)
+          ring = None, followUpUsed = false, bottleUsed = false}: EnemyDriver.Data)
 
     /// 駒も盤面も無い空の World。各フィクスチャが addPlayer / addEnemy / 配置物 seed で組み上げる。
     pub def emptyWorld(): World = World.empty()
@@ -242,7 +242,7 @@ mod TestUiSnapshots {
     /// 味方 1 体を World store へ seed する。PartyQuery / WorldQuery が読む全 store
     /// （dataFromWorld の gate 16 store + selectedItem / pendingLevelUp / hidden / attackTarget）を
     /// `d` と同値で書くので、World から再構築した Data は `d` と一致する。
-    pub def addPlayer(d: PlayerScene.Data, w: World): World =
+    pub def addPlayer(d: PlayerDriver.Data, w: World): World =
         let ref = World.EntityRef.Player(d#id);
         let seeded = applyAll(
             World.Cmd.Spawn(ref)
@@ -260,8 +260,8 @@ mod TestUiSnapshots {
                 :: World.Cmd.SetConsumables(ref, d#consumables)
                 :: World.Cmd.SetRings(ref, d#rings)
                 :: World.Cmd.SetRingEquipped(ref, d#ringEquipped)
-                :: World.Cmd.SetWeaponView(ref, PlayerScene.equippedWeaponView(d))
-                :: World.Cmd.SetRingBonus(ref, PlayerScene.equippedRingBonus(d))
+                :: World.Cmd.SetWeaponView(ref, PlayerDriver.equippedWeaponView(d))
+                :: World.Cmd.SetRingBonus(ref, PlayerDriver.equippedRingBonus(d))
                 :: World.Cmd.SetGrowth(d#id, {base = LevelSystem.statsOf(d#resource),
                                               rates = d#resource#growthRates,
                                               name = d#resource#description})
@@ -280,7 +280,7 @@ mod TestUiSnapshots {
 
     /// 敵 1 体を World store へ seed する（addPlayer の敵版）。可視はフォグ導出なので、
     /// 「見えている敵」を要するシーンは `boardWorld` を重ねて同室のプレイヤーで部屋を点灯させる。
-    pub def addEnemy(d: EnemyScene.Data, w: World): World =
+    pub def addEnemy(d: EnemyDriver.Data, w: World): World =
         let ref = World.EntityRef.Enemy(d#id);
         let seeded = applyAll(
             World.Cmd.Spawn(ref)
@@ -294,8 +294,8 @@ mod TestUiSnapshots {
                 :: World.Cmd.SetWeapons(ref, Option.toList(d#weapon))
                 :: World.Cmd.SetBaseStats(ref, Combat.baseStatsFrom(d#resource))
                 :: World.Cmd.SetMoveTiles(ref, d#moveTiles)
-                :: World.Cmd.SetWeaponView(ref, EnemyScene.equippedWeaponView(d))
-                :: World.Cmd.SetRingBonus(ref, EnemyScene.equippedRingBonus(d))
+                :: World.Cmd.SetWeaponView(ref, EnemyDriver.equippedWeaponView(d))
+                :: World.Cmd.SetRingBonus(ref, EnemyDriver.equippedRingBonus(d))
                 :: World.Cmd.SetEffectRule(d#id, d#resource#effectRule)
                 :: World.Cmd.SetEnemyRing(d#id, d#ring)
                 :: World.Cmd.SetEnemyProfile(d#id, {resourceId = d#resourceId,
@@ -748,7 +748,7 @@ mod TestUiSnapshots {
     // ════════════════════════════════════════════════════════
     //
     // ミニマップは World-entity UI ではなく `RenderWorld.renderMinimap` の直描き System。実効果つきの
-    // データ解決（訪問記憶 / ユニット位置 / 階段 / アイテムの読み）は live ゲーム & TestMinimapScene の
+    // データ解決（訪問記憶 / ユニット位置 / 階段 / アイテムの読み）は live ゲーム & TestMinimapDriver の
     // 純関数テストで担保し、ここでは「解決済みデータ → 幾何 → Drawable/Polygon」の中核 `minimapDrawList`
     // だけを宣言フィクスチャで凍結する（World / effect ハーネス不要 = 最小拡張）。
     //
@@ -794,7 +794,7 @@ mod TestUiSnapshots {
     def minimapVisited(name: String): Set[Int32] =
         if (name == "minimap_explored") Set#{0, 1, 2} else Set#{0, 2}
 
-    /// 宣言マーカー（セル + 色）。色は `MinimapScene` の意味色（リーダー黄 / 味方青 / アイテム橙 /
+    /// 宣言マーカー（セル + 色）。色は `MinimapDriver` の意味色（リーダー黄 / 味方青 / アイテム橙 /
     /// 敵赤 / 階段紫）に対応させた固定値。全探索では部屋1 に階段マーカーを足す。
     def minimapMarkers(name: String): List[{cell = {x = Int32, y = Int32}, color = Color}] =
         let leaderCol = ({r = 0.95f32, g = 0.85f32, b = 0.20f32}: Color);
@@ -814,7 +814,7 @@ mod TestUiSnapshots {
     /// 宣言フィクスチャ → 純粋な描画リスト（矩形 Drawable + マーカー Polygon）。
     def minimapRendered(name: String):
             {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]} =
-        MinimapScene.minimapDrawList(({visited = minimapVisited(name), placements = minimapPlacements(),
+        MinimapDriver.minimapDrawList(({visited = minimapVisited(name), placements = minimapPlacements(),
             roomCount = minimapRoomCount(), snapshot = minimapSnapshot(),
-            markers = minimapMarkers(name)}: MinimapScene.RenderInput))
+            markers = minimapMarkers(name)}: MinimapDriver.RenderInput))
 }

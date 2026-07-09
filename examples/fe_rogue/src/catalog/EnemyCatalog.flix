@@ -46,7 +46,7 @@ mod EnemyCatalog {
         effectRule       = Option[Util.Json.Json]
     }
 
-    /// 全 id を列挙・イテレートしたいとき（EnemyScene のロスター構築など）に使う。
+    /// 全 id を列挙・イテレートしたいとき（EnemyDriver のロスター構築など）に使う。
     /// 個別取得は `get` を使い、この関数でフィルタするのは避ける。
     pub def enemiesOf(catalog: EnemyCatalog): Map[String, EnemyResource] =
         let EnemyCatalog.EnemyCatalog(container) = catalog;

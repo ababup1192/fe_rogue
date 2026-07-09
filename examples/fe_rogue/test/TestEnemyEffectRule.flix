@@ -29,7 +29,7 @@ mod TestEnemyEffectRule {
     // ════════════════════════════════════════════════════════
 
     /// 鈍足付与の敵: onHit で to:enemy（敵から見た相手＝player）に SpdDown 3 を 3T。
-    /// player 駒は is-player ⇒ ally=true で返り、PlayerScene 側へ作用する。
+    /// player 駒は is-player ⇒ ally=true で返り、PlayerDriver 側へ作用する。
     @Test
     def testEnemySpdDownHitsPlayer(): Unit \ Assert =
         let json = "{\"when\":\"onHit\",\"to\":\"enemy\",\"op\":\"spdDown\",\"amount\":3,\"for\":\"turns\",\"forTurns\":3}";

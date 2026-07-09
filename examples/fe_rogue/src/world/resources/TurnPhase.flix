@@ -77,7 +77,7 @@ mod TurnPhase {
         case ThrowAim
         /// 味方ターン・物交換の相手選択フェーズ。
         /// ActionMenu の「こうかん」確定で入り、選択中味方の上下左右 1 マスの
-        /// 他味方マスが緑マスで描かれる (`TradeRangeScene`)。カーソルは緑マス上
+        /// 他味方マスが緑マスで描かれる (`TradeRange`)。カーソルは緑マス上
         /// のみ移動可。Z で交換相手を確定 → `TradeInventory` フェーズへ。
         /// X/Escape で交換をキャンセルし `ActionSelect` に戻る
         /// (行動継続: ActionMenu に戻る)。
@@ -222,7 +222,7 @@ mod TurnRules {
     ///   - `phase`: 現在のフェーズ（TurnPhase.State.get の値）
     ///   - `input`: 押されたキーの分類（Confirm / Cancel）
     ///   - `board`: 盤面スナップショット（BoardQuery.board の値）
-    ///   - `cursor`: カーソルのグリッド位置（CursorScene.getGridPos の値）
+    ///   - `cursor`: カーソルのグリッド位置（CursorDriver.getGridPos の値）
     ///   - `selected`: 選択中味方 id（SelectedPlayer.State.get の値）
     ///   - `waitedPlayerIds`: 既に行動済みの味方 id（findActiveIdAt で除外する用）
     ///   - `dyingEnemyIds`: 死亡演出中の敵 id（findIdAt で除外する用）
@@ -296,7 +296,7 @@ mod TurnRules {
                 Transition.AttackSkip
             case (TurnPhase.Phase.TradeTargetSelect, Input.Confirm) =>
                 // カーソル位置に隣接味方が居れば OpenTradeInventory を発火。
-                // カーソル制限は CursorScene 側で緑マスに絞っているので、ここに
+                // カーソル制限は CursorDriver 側で緑マスに絞っているので、ここに
                 // 来る時点で味方マスに乗っている想定だが、防御的に確認する。
                 match adjacentAllyAtCursor(context) {
                     case Some(partnerId) => Transition.OpenTradeInventory(partnerId)
@@ -322,7 +322,7 @@ mod TurnRules {
         }
 
     /// cursor 位置にアクティブ（waited でない）な味方の id を返す。居なければ None。
-    /// PlayerScene.findActiveIdAt の純粋版（Board と waitedPlayerIds から復元）。
+    /// PlayerDriver.findActiveIdAt の純粋版（Board と waitedPlayerIds から復元）。
     /// TurnRules はテスト可能な純粋関数モジュールであるため Scene effect を直接呼べない。
     /// そのため盤面データを Context に持ち込み、effect なしで同等のルックアップを再現する。
     def activePlayerAt(context: Context): Option[Int32] =
@@ -336,7 +336,7 @@ mod TurnRules {
             })
 
     /// cursor 位置に居る「選択中味方以外の味方」の id を返す (= 交換相手候補)。
-    /// 居なければ None。waited フィルタは ActionMenuScene の項目フィルタ側でかかっており、
+    /// 居なければ None。waited フィルタは ActionMenuUi の項目フィルタ側でかかっており、
     /// ここでは行わない (交換相手として選んだ味方が waited でも構わない仕様)。
     def adjacentAllyAtCursor(context: Context): Option[Int32] =
         Board.playerPositions(context#board)
@@ -349,7 +349,7 @@ mod TurnRules {
             })
 
     /// cursor 位置に「生きている」敵の id を返す。居なければ None。
-    /// EnemyScene.findIdAt の純粋版（Board と dyingEnemyIds から復元）。
+    /// EnemyDriver.findIdAt の純粋版（Board と dyingEnemyIds から復元）。
     /// `activePlayerAt` と同様、TurnRules が Scene effect を呼べないため、
     /// 盤面データを Context に持ち込んで effect なしで同等のルックアップを再現する。
     def aliveEnemyAt(context: Context): Option[Int32] =
@@ -398,8 +398,8 @@ mod TurnInputBridge {
     /// `TurnRules.decide` は純粋関数だが、その入力 (Context) を作るには:
     ///   - `TurnPhase.State.get()` (現フェーズ)
     ///   - `SelectedPlayer.State.get()` (選択中味方 id)
-    ///   - `CursorScene.getGridPos()` (カーソル位置)
-    ///   - `PlayerScene.getAll` / `EnemyScene.getAll` (waited / dying の id 集合)
+    ///   - `CursorDriver.getGridPos()` (カーソル位置)
+    ///   - `PlayerDriver.getAll` / `EnemyDriver.getAll` (waited / dying の id 集合)
     ///   - `World.isAnimating(...)` (選択中味方が移動中か)
     /// と複数の窓口を引く必要がある。これを 1 関数に集約する。
     pub def buildContext(input: TurnRules.Input, board: Board):
@@ -419,7 +419,7 @@ mod TurnInputBridge {
             phase           = TurnPhase.State.get(),
             input           = input,
             board           = board,
-            cursor          = CursorScene.getGridPos(),
+            cursor          = CursorDriver.getGridPos(),
             selected        = selected,
             waitedPlayerIds = waitedIds,
             dyingEnemyIds   = dyingIds,
@@ -437,13 +437,13 @@ mod TurnInputBridge {
         match transition {
             case TurnRules.Transition.Stay                              => ()
             case TurnRules.Transition.CursorSelectPlayer(playerId)      =>
-                PlayerScene.beginSelection(playerId)
+                PlayerDriver.beginSelection(playerId)
             case TurnRules.Transition.CursorOpenGatherMenu              =>
                 ActionMenuUi.openFromCursor()
             case TurnRules.Transition.MovingOpenActionMenu              =>
                 ActionMenuUi.openFromMoving()
             case TurnRules.Transition.MovingCancel                      =>
-                PlayerScene.cancelSelection()
+                PlayerDriver.cancelSelection()
             case TurnRules.Transition.OpenAttackForecast(attackerId, defenderId, _defX, _defY) =>
                 // 装備中武器 (weapons.head) を自動使用するので武器選択は介さず AttackForecast 直行。
                 // attackTargetId を立てて BattlePanelUi が予報を組み立てる。
@@ -458,6 +458,6 @@ mod TurnInputBridge {
             case TurnRules.Transition.GatherOpenMenu                    =>
                 ActionMenuUi.openFromGather()
             case TurnRules.Transition.GatherCancel                      =>
-                PlayerScene.cancelSelection()
+                PlayerDriver.cancelSelection()
         }
 }

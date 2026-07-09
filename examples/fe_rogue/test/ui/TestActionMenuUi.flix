@@ -45,7 +45,7 @@ mod TestActionMenuUi {
             |> Option.getWithDefault(0)
 
     /// 指定 id のプレイヤー Data を World から取り出す（居なければテストを潰す）。
-    def playerDataOf(id: Int32, world: World): PlayerScene.Data =
+    def playerDataOf(id: Int32, world: World): PlayerDriver.Data =
         match World.dataFromWorld(id, world) {
             case Some(d) => d
             case None    => bug!("player ${id} not found")
@@ -404,7 +404,7 @@ mod TestActionMenuUi {
                                             TestUnitFixtures.withTradeMenu(rc, () ->
                                             run {
                                                 ActionMenuUi.onActionConfirmed(pickupEntry);
-                                                PlayerScene.cancelSelection()
+                                                PlayerDriver.cancelSelection()
                                             } with StairsExitDriver.withState(rc)))))))))))))))))));
             let groundItemBack =
                 Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
@@ -474,7 +474,7 @@ mod TestActionMenuUi {
                                             TestUnitFixtures.withCursor(() ->
                                             TestUnitFixtures.withRangeOverlay(rc, () -> {
                                                 PlayerMovementDriver.autoPickupOrLog(data, {x = 1, y = 1});
-                                                PlayerScene.cancelSelection()
+                                                PlayerDriver.cancelSelection()
                                             }))))))))));
             let groundItemBack = Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             Assert.assertEq(
@@ -504,7 +504,7 @@ mod TestActionMenuUi {
                                 TestUnitFixtures.withFixedPhase(TurnPhase.Phase.ActionSelect, () ->
                                  TestUnitFixtures.withCursor(() ->
                                   TestUnitFixtures.withRangeOverlay(rc, () ->
-                                    PlayerScene.cancelSelection()))))))));
+                                    PlayerDriver.cancelSelection()))))))));
         world
 
     /// 拾得 → 装備 → 選択解除キャンセルで、装備の並び替えも拾得も正しく巻き戻る。
@@ -521,7 +521,7 @@ mod TestActionMenuUi {
                 MoveDraft.DraftAction.MovedFrom(0, {x = 1, y = 1}) :: Nil;
             let wFin = runCancelWithDrafts(rc, world0, drafts);
             let attacks = TestUnitFixtures.withWorldQuery(wFin, () ->
-                List.map(w -> w#attack, PlayerScene.getWeapons(0)));
+                List.map(w -> w#attack, PlayerDriver.getWeapons(0)));
             let floorB  = Option.nonEmpty(World.groundItemAtOf({x = 1, y = 1}, wFin));
             Assert.assertEq(expected = (5 :: Nil, true), (attacks, floorB))
         }
@@ -540,7 +540,7 @@ mod TestActionMenuUi {
                 MoveDraft.DraftAction.MovedFrom(0, {x = 2, y = 2}) :: Nil;
             let wFin = runCancelWithDrafts(rc, world0, drafts);
             let attacks = TestUnitFixtures.withWorldQuery(wFin, () ->
-                List.map(w -> w#attack, PlayerScene.getWeapons(0)));
+                List.map(w -> w#attack, PlayerDriver.getWeapons(0)));
             Assert.assertEq(expected = 1 :: 2 :: 3 :: Nil, attacks)
         }
 

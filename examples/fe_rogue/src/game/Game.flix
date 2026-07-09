@@ -8,8 +8,8 @@ pub eff GamePhaseState {
 
 // 手動移動の入力ポーリングは `PlayerMovementDriver.step`（明示 System）が担う。
 // `PlayerMoving` 中は **選択中の味方 1 体だけ** が方向キーを polling し、`GatherMove` 中は
-// 主人公(id 0)が動く。カーソルの入力ポーリングは gameLoop が `CursorScene.stepOnBoard` を
-// 明示 System として 1 回呼ぶ（phase 判定は CursorScene 内部）。
+// 主人公(id 0)が動く。カーソルの入力ポーリングは gameLoop が `CursorDriver.stepOnBoard` を
+// 明示 System として 1 回呼ぶ（phase 判定は CursorDriver 内部）。
 
 // 決定キー（Z / Space / Enter）/ キャンセルキー（X）の意味はフェーズで変わる。
 // 判断ロジックは `TurnRules.decide` に集約してあり、ここでは
@@ -104,10 +104,10 @@ def onPlayingKeyPressed(key: GameEngine.Key):
             match phase {
                 case TurnPhase.Phase.PlayerCursor =>
                     AudioStreamPlayer.play("confirm");
-                    DangerZoneScene.toggle()
+                    DangerZone.toggle()
                 case TurnPhase.Phase.PlayerMoving =>
                     AudioStreamPlayer.play("confirm");
-                    DangerZoneScene.toggle()
+                    DangerZone.toggle()
                 case TurnPhase.Phase.ItemSelect =>
                     AudioStreamPlayer.play("confirm");
                     ItemMenuUi.toggleMarkAtCursor()
@@ -125,11 +125,11 @@ def onPlayingKeyPressed(key: GameEngine.Key):
             if (phase == TurnPhase.Phase.PlayerCursor and ActionMenuUi.gatherEnabled()) {
                 AudioStreamPlayer.play("confirm");
                 ActionMenuUi.gatherShortcut()
-            } else if (phase == TurnPhase.Phase.GatherMove and PlayerScene.gatherNotMovedYet()) {
+            } else if (phase == TurnPhase.Phase.GatherMove and PlayerDriver.gatherNotMovedYet()) {
                 // 何も動いていないので cancelSelection の巻き戻しは実質 no-op。gatherActive を
                 // 解いてカーソル選択（個別行動）へ復帰する。
                 AudioStreamPlayer.play("cancel");
-                PlayerScene.cancelSelection()
+                PlayerDriver.cancelSelection()
             } else ()
         else {
             // プレイヤー操作のフィードバック効果音（決定 / キャンセル / メニューカーソル移動）。
@@ -162,12 +162,12 @@ def keyToStaffDirection(key: GameEngine.Key): Option[Dir4.Dir4] = match key {
     case _                     => None
 }
 
-/// StaffAim フェーズで方向キーが押されたら `ArrowCursorScene.aim` で矢印の向きだけ更新する。
+/// StaffAim フェーズで方向キーが押されたら `ArrowCursorDriver.aim` で矢印の向きだけ更新する。
 /// 発射は別キー (Z) で確定する。方向以外のキーは無視。
 def staffAimDirection(key: GameEngine.Key): Unit \ ArrowCursorState.State =
     match keyToStaffDirection(key) {
         case None      => ()
-        case Some(dir) => ArrowCursorScene.aim(dir)
+        case Some(dir) => ArrowCursorDriver.aim(dir)
     }
 
 /// StaffAim フェーズで Z が押されたら、矢印が指している方向で applyStaffCast を呼ぶ。
@@ -176,7 +176,7 @@ def staffAimConfirm(): Unit \ {RangeOverlayState.State,
                                 EnemyTurn.Queue, TurnPhase.State, SelectedPlayer.State, CursorState.State,
                                 ArrowCursorState.State,
                                 GameEngine.Audio, World.Command, World.WorldQuery} =
-        let dir = ArrowCursorScene.getDirection();
+        let dir = ArrowCursorDriver.getDirection();
     // 選択中プレイヤー → selectedItem（World store）を forM で 1 本に畳み、
     // 杖(Staff)を選んでいるときだけ発射する（3 段の match ネストを解消）。
     let selected = forM (
@@ -200,7 +200,7 @@ def throwAimConfirm(): Unit \ {RangeOverlayState.State,
                                 ArrowCursorState.State,
                                 GameEngine.Audio, Math.Random,
                                 CustomEffects.GameOverRequest, World.Command, World.WorldQuery} =
-        let dir = ArrowCursorScene.getDirection();
+        let dir = ArrowCursorDriver.getDirection();
     let selected = forM (
         playerId <- SelectedPlayer.State.get()#id;
         item     <- World.selectedItemOf(World.EntityRef.Player(playerId), World.WorldQuery.get())
@@ -386,7 +386,7 @@ def dispatchNonMenuKey(phase: TurnPhase.Phase, input: Option[TurnRules.Input],
         case (TurnPhase.Phase.SuspendConfirm, None)
                                               => suspendConfirmDirection(key)
         // 武器選択ウィンドウの ↑↓（W/S）で武器カーソルを動かす（disabled はスキップ。
-        // ←→ の対象敵サイクルは CursorScene.step が別途 polling する）。
+        // ←→ の対象敵サイクルは CursorDriver.step が別途 polling する）。
         case (TurnPhase.Phase.WeaponSelect,   None)
                                               => checked_ecast(weaponSelectDirection(key))
         // 全滅モーダルの ↑↓（W/S）で選択カーソルを動かす（World-entity UI）。
@@ -535,7 +535,7 @@ mod Game {
             // 各 store の単一権威。
             let worldRef = Ref.fresh(rc, World.empty());
             // 試練型の部屋湧きクロック。WandererSpawnRequest が来るたび +1 し、
-            // EnemyScene が周期判定（tick mod N）に使う。modulo 判定ゆえフロア跨ぎのリセット不要。
+            // EnemyDriver が周期判定（tick mod N）に使う。modulo 判定ゆえフロア跨ぎのリセット不要。
             let wanderClockRef = Ref.fresh(rc, 0);
             // 味方の死亡位置（id → セル）。GameOverRequest.markDeaths が除去前に蓄積し、女神の加護の
             // 「その場復活」で参照する。id でキーするので過去フロアの残骸は復活対象 id にだけ読まれ無害。
@@ -708,7 +708,7 @@ mod Game {
               }
               with handler CustomEffects.WandererSpawnRequest {
                   // 試練型の部屋湧き。呼ばれるたびクロックを +1 し、その tick を渡して
-                  // 現在フロアを解決し EnemyScene に委ねる（周期・上限・湧くかの判断は EnemyScene 側）。
+                  // 現在フロアを解決し EnemyDriver に委ねる（周期・上限・湧くかの判断は EnemyDriver 側）。
                   // catalog とクロック Ref をクロージャに閉じ込めて使う。
                   def maybeSpawn(k) = {
                       let tick = Ref.get(wanderClockRef) + 1;
@@ -775,7 +775,7 @@ mod Game {
               with GameLogger.withLogger(rc)      // ログエントリは内部に隠蔽
               with handler EnemyTurn.Queue {
                   // 敵ターン step キューの単一権威は World.enemyTurnQueue。各 op を worldRef+applyCmd で実装
-                  // （呼び出し側 TurnFlow/EnemyTurnDriver/CameraScene は無改修・test は withQueue の Ref）。
+                  // （呼び出し側 TurnFlow/EnemyTurnDriver/CameraDriver は無改修・test は withQueue の Ref）。
                   def popFront(k) =
                       match World.enemyTurnQueueOf(Ref.get(worldRef)) {
                           case Nil    => k(None)
@@ -967,7 +967,7 @@ mod Game {
             PlayerMovementDriver.step(frame);
             // カーソルの入力ポーリングも明示 System として 1 回呼ぶ（盤面がある画面のみ —
             // stepOnBoard が Map 存在をゲートする）。
-            CursorScene.stepOnBoard(frame, dt);
+            CursorDriver.stepOnBoard(frame, dt);
             // 戦闘演出クロック（lunge の往復・死亡点滅の完了）を dt 進め、中点 Hit / 完了 Done の
             // signal を取り出して worldRef へ確定する。入力処理の後・stepEntities の前＝
             // 入力で始まった lunge は同フレームから進む。GameOver 中は進めない（盤面フリーズ）。
@@ -975,13 +975,13 @@ mod Game {
                 if (TurnPhase.State.get() == TurnPhase.Phase.GameOver) Nil
                 else {
                     let (wA, sigs) = World.stepAnimClocks(Duration.toSeconds(dt),
-                                         EnemyScene.deathBlinkTotalSeconds(), Ref.get(worldRef));
+                                         EnemyDriver.deathBlinkTotalSeconds(), Ref.get(worldRef));
                     Ref.put(wA, worldRef);
                     sigs
                 };
             // カーソルのスライド補間・snag タイマーを dt 進めて renderPos を書く
-            // （カーソルは engine Tween を使わずここで直接進める。CameraScene.step より前）。
-            CursorScene.stepVisual(dt);
+            // （カーソルは engine Tween を使わずここで直接進める。CameraDriver.step より前）。
+            CursorDriver.stepVisual(dt);
             // Player / Enemy の戦闘シグナル解決を明示 System として回す。
             CombatDriver.stepEntities(animSignals);
             // 表示系は明示 step で駆動する。
@@ -993,15 +993,15 @@ mod Game {
             CharacterSelectUi.frameStep(dt);
             LogUi.step(dt);
             TurnEndHoldUi.frameStep(frame, dt);
-            CameraScene.step(dt);
+            CameraDriver.step(dt);
             // ターン進行 LOGIC driver は frame-paced System としてパイプライン段で 1 回呼ぶ（gameLoop が駆動）。
             // 戦闘シグナル解決と TopBar 更新が確定した後に置く（前後依存は World 経由で順序非依存）。
             EnemyTurnDriver.step();
             StairsExitDriver.step();
             // view driver（Minimap の訪問記憶蓄積/M トグル）は明示 step 化のまま。フォグは
-            // step を持たず、敵可視・暗幕・lit ゲートは描画時に `FogScene.holesNow` から導出する。
+            // step を持たず、敵可視・暗幕・lit ゲートは描画時に `Fog.holesNow` から導出する。
             // 照準矢印も step を持たず、描画（RenderWorld.renderArrowCursor）が phase から可視を決める。
-            MinimapScene.step(frame);
+            MinimapDriver.step(frame);
             // 全滅モーダル UI の可視/選択ハイライトを phase から同期。
             GameOverMenuUi.frameStep(dt);
             // 行動選択ウィンドウの可視/項目流し込み/選択ハイライトを phase から同期。
@@ -1019,7 +1019,7 @@ mod Game {
             // ユニット簡易カード（味方左 / 敵右）の表示対象を解決して流し込む。
             UnitCardUi.frameStep(dt);
             // 攻撃前の戦闘予報ミニウィンドウの可視/数値/相性矢印/対象近傍への追従を phase から同期。
-            // カーソルスナップ（WeaponSelectUi.frameStep）とカメラ配置（CameraScene.step）の後に置き、
+            // カーソルスナップ（WeaponSelectUi.frameStep）とカメラ配置（CameraDriver.step）の後に置き、
             // 対象の敵・画面座標を最新で読む。
             BattlePanelUi.frameStep(dt);
             // レベルアップ演出パネルの可視/本文の段階表示を phase から同期。
@@ -1069,7 +1069,7 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World):
     let minimap = RenderWorld.renderMinimap();
     // fog の明るい穴を frame に 1 回計算し、ユニット/HP バー/武器アイコンの敵可視ゲートと
     // 配置物直描きの lit ゲートで共有。
-    let holesOpt = FogScene.holesNow();
+    let holesOpt = Fog.holesNow();
     // World-entity UI を 1 度のレイアウト解決で sprite（drawables）と polygon の 2 チャンネルへ射影。
     let uiRendered = UiHud.renderUi();
     let worldDrawables = RenderWorld.renderUnits(world2, holesOpt, transform)

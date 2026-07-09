@@ -9,7 +9,7 @@
 ///     TurnPhase が何になったかを 1 タプルで一気に観測する。
 ///   - 範囲計算（Board / WeaponRange）の正しさは別テスト（TestBoard / TestWeapon）が
 ///     担うので、ここでは「`enter*` がどの操作を呼んだか」だけを観測する。
-///   - `enterPlayerCursorAt` は既存の `TestCursorScene.testEnterPlayerCursorAtBypassesPartyQuery`
+///   - `enterPlayerCursorAt` は既存の `TestCursorDriver.testEnterPlayerCursorAtBypassesPartyQuery`
 ///     でカバー済みなのでここでは扱わない。
 mod TestPhaseTransitions {
 
@@ -27,10 +27,10 @@ mod TestPhaseTransitions {
     /// 全 range は手で Some にする (refresh/show を呼ばずに観測対象の初期状態を作る)。
     /// カーソルは可視で始める（`CursorState.initial()` の既定 + 明示 setVisible(true)）。
     def seedAllRangesAndCursor(): Unit \ {RangeOverlayState.State, CursorState.State} =
-        let moveData: MoveRangeScene.Data                 = {reachable = dummyCells(), drawCells = dummyCells()};
-        let moveAttackData: MoveAttackRangeScene.Data     = {cells = dummyCells()};
-        let playerAttackData: PlayerAttackRangeScene.Data = {cells = dummyCells()};
-        let enemyData: EnemyRangeScene.Data               = {enemyId = 0, reachable = dummyCells()};
+        let moveData: MoveRange.Data                 = {reachable = dummyCells(), drawCells = dummyCells()};
+        let moveAttackData: MoveAttackRange.Data     = {cells = dummyCells()};
+        let playerAttackData: PlayerAttackRange.Data = {cells = dummyCells()};
+        let enemyData: EnemyRange.Data               = {enemyId = 0, reachable = dummyCells()};
         RangeOverlayState.State.put({
             moveRange         = Some(moveData),
             moveAttackRange   = Some(moveAttackData),

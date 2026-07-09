@@ -1,7 +1,7 @@
 // TestWorldFixtures — World.Cmd 直組みの World フィクスチャ。
 //
 // 既存 TestUnitFixtures の scene 手組み（Marker2D + syncFromScene）に対し、こちらは
-// spawn funnel（PlayerScene.addOnePlayer / EnemyScene.addOneEnemy）が emit するのと
+// spawn funnel（PlayerDriver.addOnePlayer / EnemyDriver.addOneEnemy）が emit するのと
 // 同じ形の Cmd 列を World.empty() に適用して、scene 無しで「味方 / 敵 / 盤面」入りの
 // World を組む。UnitResource / WeaponResource は TestUnitFixtures の物を再利用する。
 //
@@ -42,7 +42,7 @@ mod TestWorldFixtures {
     // 味方 / 敵 の spawn Cmd 列
     // ════════════════════════════════════════════════════════
 
-    /// 味方 1 体分の spawn Cmd 列。`PlayerScene.addOnePlayer` が emit する store 集合と同じものを
+    /// 味方 1 体分の spawn Cmd 列。`PlayerDriver.addOnePlayer` が emit する store 集合と同じものを
     /// 埋める（位置 / HP / 各フラグ / 進行度 / 武器 / 戦闘値 / 在庫 / 成長 / 武器投影 / 指輪ボーナス）。
     /// 描画位置（renderPos）もセル中心で seed するので、render 系のテストにもそのまま使える。
     pub def playerCmds(spec: UnitSpec): List[Cmd] =
@@ -77,7 +77,7 @@ mod TestWorldFixtures {
             :: Cmd.SetMoveSteps(spec#id, 0)
             :: Nil
 
-    /// 敵 1 体分の spawn Cmd 列。`EnemyScene.addOneEnemy` が emit する store 集合と同じものを埋める
+    /// 敵 1 体分の spawn Cmd 列。`EnemyDriver.addOneEnemy` が emit する store 集合と同じものを埋める
     /// （位置 / HP / 敵フラグ / 武器 / 戦闘値 / effectRule / 指輪 / 武器投影 / 指輪ボーナス）。
     pub def enemyCmds(spec: UnitSpec): List[Cmd] =
         let res    = TestUnitFixtures.testEnemyResource(spec#moveTiles, spec#hp);

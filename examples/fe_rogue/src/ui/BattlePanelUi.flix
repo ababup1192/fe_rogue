@@ -322,7 +322,7 @@ mod BattlePanelUi {
         else match SelectedPlayer.State.get()#id {
             case None             => ()
             case Some(attackerId) =>
-                match EnemyScene.findIdAt(CursorScene.getGridPos()) {
+                match EnemyDriver.findIdAt(CursorDriver.getGridPos()) {
                     case Some(enemyId) => CombatDriver.setAttackTargetId(attackerId, enemyId)
                     case None          => CombatDriver.clearAttackTargetId(attackerId)
                 }
@@ -385,19 +385,19 @@ mod BattlePanelUi {
             player <- PlayerData.PartyQuery.get(pid);
             widx   <- WeaponSelectUi.hoveredWeaponIndex();
             weapon <- List.nth(widx, player#weapons);
-            eid    <- EnemyScene.findIdAt(CursorScene.getGridPos());
+            eid    <- EnemyDriver.findIdAt(CursorDriver.getGridPos());
             enemy  <- EnemyData.RosterQuery.get(eid)
         ) yield computeView(pid, player, eid, enemy, weapon)
 
     /// 予報ビューを純計算で組み立てる。命中 / 必殺は `Combat.estimate`、すくみは
     /// `WeaponTriangle.relationOpt`。HP は攻撃 / 反撃ダメージから戦闘後 HP を逆算する。
-    def computeView(pid: Int32, player: PlayerScene.Data,
-                    eid: Int32, enemy: EnemyScene.Data,
+    def computeView(pid: Int32, player: PlayerDriver.Data,
+                    eid: Int32, enemy: EnemyDriver.Data,
                     weapon: UnitCatalog.WeaponResource): ForecastView =
         let aRel = WeaponTriangle.relationOpt(weapon#weaponType,
                        enemy#weapon |> Option.map(w -> w#weaponType));
-        let aForecast = Combat.estimate(PlayerScene.combatViewWith(player, weapon),
-                                        EnemyScene.combatView(enemy));
+        let aForecast = Combat.estimate(PlayerDriver.combatViewWith(player, weapon),
+                                        EnemyDriver.combatView(enemy));
         let counter = formatCounter(player, weapon, enemy);
         let enemyHpPost  = Int32.max(0, enemy#hp - aForecast#damage);
         let playerHpPost = Int32.max(0, player#hp - counter#damage);
@@ -410,8 +410,8 @@ mod BattlePanelUi {
 
     /// 反撃側（敵 → 味方）の命中 / 必殺 / 相性 / 反撃ダメージ。
     /// 武器なし or 射程外なら反撃不可（canCounter=false、数値 0）。相性は射程に依らず武器で決まる。
-    def formatCounter(player: PlayerScene.Data, weapon: UnitCatalog.WeaponResource,
-                      enemy: EnemyScene.Data):
+    def formatCounter(player: PlayerDriver.Data, weapon: UnitCatalog.WeaponResource,
+                      enemy: EnemyDriver.Data):
             {canCounter = Bool, hit = Int32, crit = Int32,
              rel = WeaponTriangle.Relation, damage = Int32} =
         match enemy#weapon {
@@ -424,8 +424,8 @@ mod BattlePanelUi {
                 if (not Weapon.canReach(d, ew))
                     {canCounter = false, hit = 0, crit = 0, rel = rel, damage = 0}
                 else {
-                    let ef = Combat.estimate(EnemyScene.combatView(enemy),
-                                             PlayerScene.combatViewWith(player, weapon));
+                    let ef = Combat.estimate(EnemyDriver.combatView(enemy),
+                                             PlayerDriver.combatViewWith(player, weapon));
                     {canCounter = true, hit = ef#hit, crit = ef#crit, rel = rel, damage = ef#damage}
                 }
         }
@@ -448,9 +448,9 @@ mod BattlePanelUi {
             enemy      <- EnemyData.RosterQuery.get(defenderId)
         ) yield {
             let idx = ItemMenuUi.activeAttackWeaponIndex() |> Option.getWithDefault(0);
-            PlayerScene.equipWeapon(attackerId, idx);
+            PlayerDriver.equipWeapon(attackerId, idx);
             TurnPhase.State.put(TurnPhase.Phase.PlayerAttackHold);
-            GameLogger.playerLog("${PlayerScene.displayName(attackerId)}の攻撃");
+            GameLogger.playerLog("${PlayerDriver.displayName(attackerId)}の攻撃");
             CombatDriver.startAttack(Faction.Player, attackerId, defenderId, enemy#gridPos)
         };
         Option.getWithDefault((), started)
@@ -465,6 +465,6 @@ mod BattlePanelUi {
             case None             => ()
             case Some(attackerId) =>
                 CombatDriver.clearAttackTargetId(attackerId);
-                CursorScene.snapToPlayer()
+                CursorDriver.snapToPlayer()
         }
 }

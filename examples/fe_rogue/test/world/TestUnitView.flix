@@ -66,16 +66,16 @@ mod TestUnitView {
         Assert.assertEq(expected = 5, UnitView.estDamage(attacker, defender))
 
     // ════════════════════════════════════════════════════════
-    // projection: PlayerScene.unitView / EnemyScene.unitView の結線
+    // projection: PlayerDriver.unitView / EnemyDriver.unitView の結線
     //   scene を介す `Encounter.fromScene` は TileLayer 構築が要る統合テストになるため
-    //   （TestEnemyRangeScene の注記と同様、実機側に委ねる）、ここでは join の核である
+    //   （TestEnemyRange の注記と同様、実機側に委ねる）、ここでは join の核である
     //   Data → UnitView の projection を直接検証する: faction / weaponRange / combat 結線 /
     //   hidden / isDying フラグ。
     // ════════════════════════════════════════════════════════
 
     /// 武器を持つ味方 Data。装備武器は `weapons` の先頭（剣・射程1-1・攻2）、防御 1（testResource）。
     def playerData(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, hidden: Bool,
-                   weapons: List[UnitCatalog.WeaponResource]): PlayerScene.Data =
+                   weapons: List[UnitCatalog.WeaponResource]): PlayerDriver.Data =
         {id = id, classId = "test_player", gridPos = pos, moveTiles = 4, hp = hp, waited = false,
          attackTargetId = None, resource = TestUnitFixtures.testResource(4, hp),
          weapons = weapons, staves = Nil, consumables = Nil, selectedItem = None,
@@ -84,7 +84,7 @@ mod TestUnitView {
 
     /// 敵 Data。装備武器は `weapon`（攻2・剣）、攻撃 3（testEnemyResource）。
     def enemyData(id: Int32, pos: {x = Int32, y = Int32}, hp: Int32, isDying: Bool,
-                  weapon: Option[UnitCatalog.WeaponResource]): EnemyScene.Data =
+                  weapon: Option[UnitCatalog.WeaponResource]): EnemyDriver.Data =
         {id = id, resourceId = "test_enemy", gridPos = pos, alerted = false, homeModuleIdx = 0, moveTiles = 4,
          hp = hp, isDying = isDying, attackTargetId = None,
          resource = TestUnitFixtures.testEnemyResource(4, hp), weapon = weapon, acted = false, prevPos = None, statuses = Nil, ring = None, followUpUsed = false, bottleUsed = false}
@@ -92,7 +92,7 @@ mod TestUnitView {
     /// 味方 projection: faction = Player、weaponRange = 装備武器(先頭)の射程、hidden を引き継ぐ。
     @Test
     def testPlayerUnitViewWiring(): Unit \ Assert =
-        let v = PlayerScene.unitView(playerData(2, at(3, 4), 7, true,
+        let v = PlayerDriver.unitView(playerData(2, at(3, 4), 7, true,
                                                 TestUnitFixtures.testWeapon() :: Nil));
         let rangeTuple = match v#weaponRange {
             case Some(r) => (true, r#min, r#max)
@@ -105,7 +105,7 @@ mod TestUnitView {
     /// 武器なしの味方 projection: weaponRange = None（攻撃不能）。
     @Test
     def testPlayerUnitViewNoWeaponHasNoRange(): Unit \ Assert =
-        let v = PlayerScene.unitView(playerData(0, at(0, 0), 10, false, Nil));
+        let v = PlayerDriver.unitView(playerData(0, at(0, 0), 10, false, Nil));
         let hasRange = match v#weaponRange {
             case Some(_) => true
             case None    => false
@@ -116,7 +116,7 @@ mod TestUnitView {
     /// 敵 projection: faction = Enemy、weaponRange = 装備武器の射程、isDying を引き継ぐ。
     @Test
     def testEnemyUnitViewWiring(): Unit \ Assert =
-        let v = EnemyScene.unitView(enemyData(9, at(5, 6), 3, true,
+        let v = EnemyDriver.unitView(enemyData(9, at(5, 6), 3, true,
                                               Some(TestUnitFixtures.testWeapon())));
         let rangeTuple = match v#weaponRange {
             case Some(r) => (true, r#min, r#max)
@@ -130,9 +130,9 @@ mod TestUnitView {
     /// projection が `combatView` を正しく埋めていることを estDamage 経由で確認する。
     @Test
     def testUnitViewCombatWiredThroughProjection(): Unit \ Assert =
-        let enemyV  = EnemyScene.unitView(enemyData(9, at(0, 0), 5, false,
+        let enemyV  = EnemyDriver.unitView(enemyData(9, at(0, 0), 5, false,
                                                     Some(TestUnitFixtures.testWeapon())));
-        let playerV = PlayerScene.unitView(playerData(0, at(1, 0), 10, false,
+        let playerV = PlayerDriver.unitView(playerData(0, at(1, 0), 10, false,
                                                       TestUnitFixtures.testWeapon() :: Nil));
         Assert.assertEq(expected = 4, UnitView.estDamage(enemyV, playerV))
 }

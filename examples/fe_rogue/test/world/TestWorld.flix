@@ -4,9 +4,9 @@
 
 mod TestWorld {
 
-    def playerData(id: Int32): PlayerScene.Data = playerDataS(id, Nil)
+    def playerData(id: Int32): PlayerDriver.Data = playerDataS(id, Nil)
 
-    def playerDataS(id: Int32, statuses: List[StatusSystem.Status]): PlayerScene.Data = {
+    def playerDataS(id: Int32, statuses: List[StatusSystem.Status]): PlayerDriver.Data = {
         id                = id,
         statuses          = statuses,
         classId           = "test_player",
@@ -32,7 +32,7 @@ mod TestWorld {
         followUpUsed      = false
     }
 
-    def enemyData(id: Int32): EnemyScene.Data = {
+    def enemyData(id: Int32): EnemyDriver.Data = {
         id             = id,
         resourceId     = "test_enemy",
         gridPos        = {x = 3, y = 2},
@@ -230,11 +230,11 @@ mod TestWorld {
     def testAddOnePlayerSeedsPositionToWorld(): Unit \ Assert =
         let sp = ({id = 7, classId = "test_player", gridPos = {x = 3, y = 4},
                     resource = TestUnitFixtures.testResource(4, 10),
-                    weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerScene.Spawn);
+                    weapons = Nil, staves = Nil, consumables = Nil, rings = Nil}: PlayerDriver.Spawn);
         let world = region rc {
             let ref = Ref.fresh(rc, World.empty());
             run {
-                PlayerScene.addOnePlayer(sp)
+                PlayerDriver.addOnePlayer(sp)
             } with handler World.Command {
                 def emit(c, k) = { Ref.put(World.applyCmd(c, Ref.get(ref)), ref); k() }
             };
@@ -777,7 +777,7 @@ mod TestWorld {
 
     /// combatViewOf が `Combat.assembleView` と同一の組立を通ることを、状態異常 active な駒で確認する
     /// （SpdDown を 1 件付けて `StatusSystem.combatMods` の spdDelta が乗ることを pin）。
-    /// `PlayerScene.combatView(pdata)` は Data レコード直渡しの純粋関数（scene 非依存）。
+    /// `PlayerDriver.combatView(pdata)` は Data レコード直渡しの純粋関数（scene 非依存）。
     @Test
     def testCombatViewOfParityWithStatus(): Unit \ Assert =
         let status = ({effect = StatusSystem.StatusEffect.SpdDown, magnitude = 2,
@@ -791,7 +791,7 @@ mod TestWorld {
                             cv#speed, cv#luck, cv#hp, cv#maxHp, cv#hitMod,
                             Option.map(wvProj, cv#weapon));
         Assert.assertEq(
-            expected = Some(cvProj(PlayerScene.combatView(pdata))),
+            expected = Some(cvProj(PlayerDriver.combatView(pdata))),
             Option.map(cvProj, World.combatViewOf(World.EntityRef.Player(0), w)))
 
     // ── growth（level-up 用 base Stats + 成長率 + 名前）の read-model（player-only） ──
@@ -919,7 +919,7 @@ mod TestWorld {
     /// （weaponRangeKey の (min,max) ネスト）・combat（combatViewKey 内包）の sub-key 落ちまで検出する。
     @Test
     def testUnitViewKeyCoversAllFields(): Unit \ Assert =
-        let uv = PlayerScene.unitView(playerData(0));
+        let uv = PlayerDriver.unitView(playerData(0));
         Assert.assertEq(
             expected = (true, true, true, true, true, true, true, true, true, true),
             (World.unitViewKey({id = 99 | uv})                             != World.unitViewKey(uv),

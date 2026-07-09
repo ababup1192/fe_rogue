@@ -5,7 +5,7 @@
 /// World 権威（`World.visitedModulesOf`）が持ち、ここには含めない。見た目（部屋矩形・マーカー円）は
 /// `RenderWorld.renderMinimap` が World / Map から直接描く。
 ///
-/// `MinimapScene.step` が M のエッジ検出で `visible` を反転して書き、`RenderWorld.renderMinimap` が
+/// `MinimapDriver.step` が M のエッジ検出で `visible` を反転して書き、`RenderWorld.renderMinimap` が
 /// `visible` を読んで描画するかを決める。TurnPhase / SelectedPlayer と同じ Ref-based handler 注入に揃える。
 mod MinimapState {
 

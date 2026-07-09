@@ -7,7 +7,7 @@ mod RenderWorld {
     /// ユニット本体を **sprite ノード無し**で直描きする。在籍・見た目・位置の全てが World 由来
     /// （scene を読まない）: 在籍=playerIds/enemyIds、見た目=resource store（playerResource/enemyResource）、
     /// アニメ frame=unitAnim store（elapsed→frame を純関数導出）、flipH/暗転=unitFlipH/unitModulate
-    /// store、死亡点滅 alpha=dyingElapsed→`EnemyScene.deathBlinkAlpha`。
+    /// store、死亡点滅 alpha=dyingElapsed→`EnemyDriver.deathBlinkAlpha`。
     /// 位置は `World.visualPosOf`（静止=セル中心／移動=renderPos 補間／lunge=往復導出）。
     /// 可視ゲート: 味方 hidden=playerHidden store、敵=明るい穴 `holesOpt`（fog 由来の共有 lit ゲート）。
     /// 重なり順は「画面下（y 大）ほど手前」＝描画位置 y の昇順に並べて描く
@@ -23,7 +23,7 @@ mod RenderWorld {
                     |> Option.toList);
         let enemies = World.enemyIdsOf(world)
             |> List.filter(id -> {
-                let lit = holesOpt |> Option.map(holes -> EnemyScene.isLitIn(id, holes, world));
+                let lit = holesOpt |> Option.map(holes -> EnemyDriver.isLitIn(id, holes, world));
                 lit |> Option.getWithDefault(false)
             })
             |> List.flatMap(id ->
@@ -83,7 +83,7 @@ mod RenderWorld {
                 let flipH = World.flipHOf(ref, world);
                 let modColor = World.modulateOf(ref, world);
                 let alpha = World.dyingElapsedOf(ref, world)
-                    |> Option.map(EnemyScene.deathBlinkAlpha)
+                    |> Option.map(EnemyDriver.deathBlinkAlpha)
                     |> Option.getWithDefault(1.0f32);
                 // アニメ個体は unitAnim store の (name, elapsed) から現在コマの texture/region を導出、
                 // 静止個体は resource の hframes/vframes/定数 frame をそのまま使う。
@@ -112,7 +112,7 @@ mod RenderWorld {
                     |> Sprite.setFlipH(flipH)
                     |> Sprite.mapVisual(Visual.setColor(modColor))
                     |> Sprite.setAlpha(alpha);
-                standaloneSprite(node, worldPos, PlayerScene.spriteZIndex(), transform)
+                standaloneSprite(node, worldPos, PlayerDriver.spriteZIndex(), transform)
         }
 
     /// ミニマップ（探索済みマップ）を World render System で直描きする。scene にノードを積まず、
@@ -120,7 +120,7 @@ mod RenderWorld {
     /// 部屋/床の矩形（Drawable）とプレイヤー/階段/アイテム/敵のマーカー円（Polygon）を組む。画面固定 HUD
     /// なので camera 変換は掛けない（座標は既に screen px）。表示可否は `MinimapState`（M トグル）と
     /// フェーズ（LevelUpView / EnemyTurn は強制非表示）で決める。ダンジョン外（Map 不在）は空。
-    /// 訪問記憶の蓄積・M トグルの反転は `MinimapScene.step` が同一フレームで済ませ、ここは描画のみ。
+    /// 訪問記憶の蓄積・M トグルの反転は `MinimapDriver.step` が同一フレームで済ませ、ここは描画のみ。
     pub def renderMinimap():
             {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]}
             \ {SelectedPlayer.State, World.WorldQuery, TurnPhase.State, MinimapState.State} =
@@ -143,12 +143,12 @@ mod RenderWorld {
                     let units      = World.fogUnitsOf(world)
                         |> List.map(d -> {+origin = MoveDraft.originOf(d#id, drafts)
                                                         |> Option.getWithDefault(d#gridPos) | d});
-                    let litRooms   = MinimapScene.litRoomsDrafted(units, placements, roomCount);
-                    let stairsSeen = MinimapScene.stairsDiscovered(visited, placements);
-                    let markers    = MinimapScene.collectMarkers(visited, stairsSeen, placements, roomCount, litRooms);
-                    MinimapScene.minimapDrawList(({visited = visited, placements = placements,
+                    let litRooms   = MinimapDriver.litRoomsDrafted(units, placements, roomCount);
+                    let stairsSeen = MinimapDriver.stairsDiscovered(visited, placements);
+                    let markers    = MinimapDriver.collectMarkers(visited, stairsSeen, placements, roomCount, litRooms);
+                    MinimapDriver.minimapDrawList(({visited = visited, placements = placements,
                         roomCount = roomCount, snapshot = terrain,
-                        markers = markers}: MinimapScene.RenderInput))
+                        markers = markers}: MinimapDriver.RenderInput))
                 }
         }
 
@@ -176,7 +176,7 @@ mod RenderWorld {
         }
 
     /// fog の暗幕（haze）を World render System で描く。frame 共有の「明るい穴」`holesOpt`
-    /// （`FogScene.holesNow`）から補集合の矩形（mapRegion/bandDecompose）を組み、solidBox の
+    /// （`Fog.holesNow`）から補集合の矩形（mapRegion/bandDecompose）を組み、solidBox の
     /// Drawable にする。この直描きが唯一の暗幕経路。穴 None（盤面レス画面）は暗幕なし。
     pub def renderFog(holesOpt: Option[List[GridRect]],
                        transform: Projection.ViewTransform): List[GameEngine.Drawable] \ World.WorldQuery =
@@ -184,7 +184,7 @@ mod RenderWorld {
             case None        => Nil
             case Some(holes) =>
                 let placements = World.placementsOf(World.WorldQuery.get());
-                let hazeRects  = FogScene.bandDecompose(FogScene.mapRegion(placements), holes);
+                let hazeRects  = Fog.bandDecompose(Fog.mapRegion(placements), holes);
                 List.flatMap(r -> fogRectDrawables(r, transform), hazeRects)
         }
 
@@ -204,7 +204,7 @@ mod RenderWorld {
                           transform: Projection.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
         match (holesOpt, World.stairsPosOf(world)) {
             case (Some(holes), Some(cell)) =>
-                if (not FogScene.insideAny(cell, holes)) Nil
+                if (not Fog.insideAny(cell, holes)) Nil
                 else standaloneSprite(
                     Sprite.make(Stairs.texture(), Vec2.zero(), Stairs.spriteScale()),
                     MapSnapshot.cellCenter(cell), Stairs.spriteZIndex(), transform)
@@ -222,7 +222,7 @@ mod RenderWorld {
                 World.chestsOf(world)
                     |> Map.valuesOf
                     |> List.flatMap(d ->
-                        if (not FogScene.insideAny(d#gridPos, holes)) Nil
+                        if (not Fog.insideAny(d#gridPos, holes)) Nil
                         else {
                             let sprite = ChestCatalog.lookup(d#chestKey, chestCatalog)#sprite;
                             let center = MapSnapshot.cellCenter(d#gridPos);
@@ -246,7 +246,7 @@ mod RenderWorld {
                 World.groundItemsOf(world)
                     |> Map.valuesOf
                     |> List.flatMap(d ->
-                        if (not FogScene.insideAny(d#gridPos, holes)) Nil
+                        if (not Fog.insideAny(d#gridPos, holes)) Nil
                         else {
                             let sprite0 = GroundItems.spriteOf(d#item);
                             let center = MapSnapshot.cellCenter(d#gridPos);
@@ -345,20 +345,20 @@ mod RenderWorld {
     pub def renderRangeOverlays(transform: Projection.ViewTransform): List[GameEngine.Drawable] \ RangeOverlayState.State =
         let tiles = (cells, color, alpha) -> RangeOverlay.tileDrawables(cells, color, alpha, transform);
         List.flatten(
-            tiles(MoveRangeScene.drawCells(),     MoveRangeScene.color(),         MoveRangeScene.alpha()) ::
-            tiles(MoveAttackRangeScene.cells(),    MoveAttackRangeScene.color(),   MoveAttackRangeScene.alpha()) ::
-            tiles(EnemyRangeScene.reachable(),     EnemyRangeScene.color(),        EnemyRangeScene.alpha()) ::
-            tiles(EnemyAttackRangeScene.cells(),   EnemyAttackRangeScene.color(),  EnemyAttackRangeScene.alpha()) ::
-            tiles(PlayerAttackRangeScene.cells(),  PlayerAttackRangeScene.color(), PlayerAttackRangeScene.alpha()) ::
-            tiles(TradeRangeScene.cells(),         TradeRangeScene.color(),        TradeRangeScene.alpha()) ::
-            tiles(DangerZoneScene.cells(),         DangerZoneScene.color(),        DangerZoneScene.alpha()) ::
+            tiles(MoveRange.drawCells(),     MoveRange.color(),         MoveRange.alpha()) ::
+            tiles(MoveAttackRange.cells(),    MoveAttackRange.color(),   MoveAttackRange.alpha()) ::
+            tiles(EnemyRange.reachable(),     EnemyRange.color(),        EnemyRange.alpha()) ::
+            tiles(EnemyAttackRange.cells(),   EnemyAttackRange.color(),  EnemyAttackRange.alpha()) ::
+            tiles(PlayerAttackRange.cells(),  PlayerAttackRange.color(), PlayerAttackRange.alpha()) ::
+            tiles(TradeRange.cells(),         TradeRange.color(),        TradeRange.alpha()) ::
+            tiles(DangerZone.cells(),         DangerZone.color(),        DangerZone.alpha()) ::
             Nil)
 
     // range の Tile は描画物として積まない（renderRangeOverlays が cells から直描きする）。
 
     /// 選択カーソルの四隅 L字を World render System で直描きする。位置は `CursorState.renderPos`
-    /// （スライド補間の視覚位置＝単一権威）、可視は `CursorState.visible`（`CursorScene.setVisible` が
-    /// 書く真実源）。L字の並び・色・zIndex は `CursorScene` の定数。非表示のフレームは Nil。
+    /// （スライド補間の視覚位置＝単一権威）、可視は `CursorState.visible`（`CursorDriver.setVisible` が
+    /// 書く真実源）。L字の並び・色・zIndex は `CursorDriver` の定数。非表示のフレームは Nil。
     /// 盤面（Map）が無い画面（Title 等）も Nil — CursorState は常在 resource のため、
     /// visible フラグだけでは盤面レス画面を弾けない（Minimap と同じ Map 存在ゲート）。
     pub def renderCursor(world: World, transform: Projection.ViewTransform):
@@ -368,7 +368,7 @@ mod RenderWorld {
         else {
             let center = CursorState.renderPos();
             List.flatMap(box -> cursorCornerDrawables(center, box, transform),
-                         CursorScene.cornerBoxes())
+                         CursorDriver.cornerBoxes())
         }
 
     /// 1 枚の四隅ボックス → box Drawable（camera 適用）。box#offset はセル中心からの
@@ -377,11 +377,11 @@ mod RenderWorld {
                                transform: Projection.ViewTransform): List[GameEngine.Drawable] =
         let worldTopLeft: Vec2 = {x = center#x + box#offset#x, y = center#y + box#offset#y};
         let screenPos = Projection.applyToWorldPos(transform, worldTopLeft);
-        Render.toDrawables(Render.solidBox(box#size, CursorScene.cornerColor(), CursorScene.cornerZIndex()), screenPos)
+        Render.toDrawables(Render.solidBox(box#size, CursorDriver.cornerColor(), CursorDriver.cornerZIndex()), screenPos)
             |> Render.applyCameraScale(transform)
 
     /// 杖・投擲の照準矢印を World render System で直描きする。表示は `StaffAim` / `ThrowAim` フェーズの間だけ。
-    /// 位置＝`ArrowCursorState.gridPos` のセル中心、回転＝`ArrowCursorScene.rotationOf(direction)`。
+    /// 位置＝`ArrowCursorState.gridPos` のセル中心、回転＝`ArrowCursorDriver.rotationOf(direction)`。
     /// それ以外のフェーズは Nil。
     pub def renderArrowCursor(transform: Projection.ViewTransform):
             List[GameEngine.Drawable] \ {GameEngine.Game, TurnPhase.State, ArrowCursorState.State} =
@@ -389,9 +389,9 @@ mod RenderWorld {
         if (phase != TurnPhase.Phase.StaffAim and phase != TurnPhase.Phase.ThrowAim) Nil
         else {
             let data = ArrowCursorState.State.get();
-            let sprite = Sprite.make(ArrowCursorScene.texture(), Vec2.zero(), ArrowCursorScene.spriteScale())
-                |> Sprite.mapTransform(Transform.setRotation(ArrowCursorScene.rotationOf(data#direction)));
-            standaloneSprite(sprite, MapSnapshot.cellCenter(data#gridPos), ArrowCursorScene.spriteZIndex(), transform)
+            let sprite = Sprite.make(ArrowCursorDriver.texture(), Vec2.zero(), ArrowCursorDriver.spriteScale())
+                |> Sprite.mapTransform(Transform.setRotation(ArrowCursorDriver.rotationOf(data#direction)));
+            standaloneSprite(sprite, MapSnapshot.cellCenter(data#gridPos), ArrowCursorDriver.spriteZIndex(), transform)
         }
 
     /// 1 つの暗幕グリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は grid × tileSize。
@@ -404,8 +404,8 @@ mod RenderWorld {
         let worldPos: Vec2.Vec2 = {x = posV#x * s, y = posV#y * s};
         let sizePx:   Vec2.Vec2 = {x = sizeV#x * s, y = sizeV#y * s};
         let screenPos = Projection.applyToWorldPos(transform, worldPos);
-        Render.toDrawables(Render.solidBox(sizePx, FogScene.fogColor(), FogScene.fogZIndex()), screenPos)
+        Render.toDrawables(Render.solidBox(sizePx, Fog.fogColor(), Fog.fogZIndex()), screenPos)
             |> Render.applyCameraScale(transform)
-            |> List.map(d -> {alpha = FogScene.fogAlpha() | d})
+            |> List.map(d -> {alpha = Fog.fogAlpha() | d})
 
 }

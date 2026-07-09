@@ -3,7 +3,7 @@
 // SimEvent の CLOSED / EXPLICITLY-PARTITIONED な event set に対する
 //   (1) per-variant reducer（applyEventToWorld）
 //   (2) adapter（eventToCmds）の順序 + Cmd 等価（cmdKey 経由）
-//   (3) 既出荷 move seam（EnemyScene.stepEnemyMove / Moved 返却）上での emit→replay TIMING 等価
+//   (3) 既出荷 move seam（EnemyDriver.stepEnemyMove / Moved 返却）上での emit→replay TIMING 等価
 //   (4) TOTAL な cmdKey（全 19 Cmd variant）
 //   (5) eventEntity の exhaustiveness（コンパイル）
 //   (6) ViewFx の World-identity（全 ViewFxKind・Died 含む）
@@ -173,7 +173,7 @@ mod TestSimEvent {
 
     // ── (3) MOVE-SEAM TIMING ──────────────────────────────────────────────────
 
-    /// PUBLIC EnemyScene.stepEnemyMove を、emit された Cmd を記録＆worldRef へ適用する handler で駆動。
+    /// PUBLIC EnemyDriver.stepEnemyMove を、emit された Cmd を記録＆worldRef へ適用する handler で駆動。
     /// recorded Cmd の cmdKey == eventToCmds(返却 Moved).map(cmdKey)（emit と返却 event の adapter が一致）、
     /// かつ boardKey(applyEventToWorld(返却 Moved, pre)) == boardKey(post-step worldRef)
     /// （新 algebra を抽象でなく EXISTING emit→replay seam に tie する）。
@@ -184,7 +184,7 @@ mod TestSimEvent {
             let recRef = Ref.fresh(rc, (Nil: List[World.Cmd]));
             let wRef   = Ref.fresh(rc, pre);
             let event  = run {
-                EnemyScene.stepEnemyMove(5, {x = 9, y = 9})
+                EnemyDriver.stepEnemyMove(5, {x = 9, y = 9})
             } with handler World.Command {
                 def emit(c, k) = {
                     Ref.put(c :: Ref.get(recRef), recRef);

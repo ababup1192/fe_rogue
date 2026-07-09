@@ -1,4 +1,4 @@
-/// RangeScenes — マップ上のタイル群を半透明で可視化する範囲オーバーレイ群
+/// RangeOverlays — マップ上のタイル群を半透明で可視化する範囲オーバーレイ群
 ///
 /// 7 種の範囲（移動 / 移動攻撃 / 敵移動 / 敵攻撃 / 味方攻撃 / 交換 / 危険）のセル集合は
 /// `RangeOverlayState` resource が権威で保持する。各 range mod は「セル計算」と「色・α 定数」と
@@ -67,7 +67,7 @@ mod RangeOverlay {
 
 }
 
-/// MoveRangeScene — プレイヤーの「今ターン移動可能なマス」を青で可視化する
+/// MoveRange — プレイヤーの「今ターン移動可能なマス」を青で可視化する
 ///
 /// FE 風のターン制移動を提供する。選択中プレイヤーの位置から `Board.reachableForUnit`
 /// で範囲を求め、`Board.stoppableForUnit` で味方マスを除いた青マスを描画する。
@@ -76,9 +76,9 @@ mod RangeOverlay {
 ///   - `add` を初回・リロード時に 1 回呼んで現在位置から範囲を構築する。
 ///   - `Game.flix` の InputHandler が決定キー (Z / Space / Enter) のエッジを拾い、
 ///     `refresh` を呼ぶと 範囲を消して新しい原点で再構築する。
-///   - 範囲は `MoveRangeScene.isInRange` 経由で `PlayerMovementDriver` から
+///   - 範囲は `MoveRange.isInRange` 経由で `PlayerMovementDriver` から
 ///     参照され、移動先の許可判定に使われる (範囲外のマスへは踏み込めない)。
-mod MoveRangeScene {
+mod MoveRange {
 
     /// 範囲データ。
     /// `reachable` は BFS で到達可能と判定されたセル一覧 (origin を含む)＝`isInRange` 用。
@@ -103,7 +103,7 @@ mod MoveRangeScene {
         match SelectedPlayer.State.get()#id {
             case None     => ()
             case Some(id) =>
-                match PlayerScene.get(id) {
+                match PlayerDriver.get(id) {
                     case None    => ()
                     case Some(_) => buildFor(id)
                 }
@@ -129,13 +129,13 @@ mod MoveRangeScene {
         let w0        = World.WorldQuery.get();
         let board     = match World.boardOf(w0) {
             case Some(b) => b
-            case None    => bug!("MoveRangeScene.buildFor: terrain not seeded")
+            case None    => bug!("MoveRange.buildFor: terrain not seeded")
         };
         let drafts    = SelectedPlayer.State.get()#drafts;
         let origin    = chooseMoveOrigin(id,
             World.posOf(World.EntityRef.Player(id), w0)
-                |> Option.getWithDefault(PlayerScene.getGridPos(id)), drafts);
-        let steps     = PlayerScene.getMoveTiles(id);
+                |> Option.getWithDefault(PlayerDriver.getGridPos(id)), drafts);
+        let steps     = PlayerDriver.getMoveTiles(id);
         let cells     = Board.reachableForUnit(board, origin, steps);
         let drawCells = Board.stoppableForUnit(board, origin, steps);
         RangeOverlayState.State.put(
@@ -147,7 +147,7 @@ mod MoveRangeScene {
         clear(); add()
 
     /// 表示中の MoveRange があれば消す。PlayerAttack フェーズ移行時など、青マスを一時的に
-    /// 消したいときに使う (`EnemyRangeScene.clear` と対称)。
+    /// 消したいときに使う (`EnemyRange.clear` と対称)。
     pub def clear(): Unit \ RangeOverlayState.State =
         RangeOverlayState.State.put({moveRange = None | RangeOverlayState.State.get()})
 
@@ -160,7 +160,7 @@ mod MoveRangeScene {
             case None => false
         }
 
-    /// 現在範囲のセル一覧 (テスト・デバッグ用 + MoveAttackRangeScene が読む)。未登録なら空リスト。
+    /// 現在範囲のセル一覧 (テスト・デバッグ用 + MoveAttackRange が読む)。未登録なら空リスト。
     pub def reachable(): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
         match RangeOverlayState.State.get()#moveRange {
             case Some(data) => data#reachable
@@ -176,7 +176,7 @@ mod MoveRangeScene {
 }
 
 
-/// MoveAttackRangeScene — 「移動先のいずれかから攻撃が届くセル」を赤マスで可視化する
+/// MoveAttackRange — 「移動先のいずれかから攻撃が届くセル」を赤マスで可視化する
 ///
 /// 目的: 移動先を決める前に「ここに動けばあそこの敵を攻撃できる」「ここに動くと
 /// この敵の射程に入る」が一目で分かるようにする。Fire Emblem 風の脅威範囲表示。
@@ -190,24 +190,24 @@ mod MoveRangeScene {
 ///   - 地形フィルタはかけない (壁・床問わず射程を一貫表示)
 ///
 /// **ライフサイクル**:
-///   - `MoveRangeScene.refresh` の直後に `MoveAttackRangeScene.refresh` を呼ぶ
+///   - `MoveRange.refresh` の直後に `MoveAttackRange.refresh` を呼ぶ
 ///     (reachable に依存するので、青マスを組み立てた後でないとデータが取れない)
-///   - `MoveRangeScene.clear` の直後に `MoveAttackRangeScene.clear` を呼ぶ
-mod MoveAttackRangeScene {
+///   - `MoveRange.clear` の直後に `MoveAttackRange.clear` を呼ぶ
+mod MoveAttackRange {
 
     /// reachable と重複しない「赤マスだけ」のセル一覧。
     pub type alias Data = {
         cells = List[{x = Int32, y = Int32}]
     }
 
-    /// PlayerAttackRangeScene / EnemyRangeScene と同じ赤系 color。World 描画も同値を使うため pub。
+    /// PlayerAttackRange / EnemyRange と同じ赤系 color。World 描画も同値を使うため pub。
     pub def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
 
     /// 青マス (MoveRange = 1.0) より透かすことで、移動範囲より外側の脅威範囲を
     /// 視覚的に奥の層として見せ、「動けるマス」と「そこから攻撃が届くマス」を階層化する。
     pub def alpha(): Float32 = 0.5f32
 
-    /// 既存を消して再構築する。`MoveRangeScene` の青マスが既に build 済みの
+    /// 既存を消して再構築する。`MoveRange` の青マスが既に build 済みの
     /// 前提で、その reachable を resource から読んで差集合を作る。
     pub def refresh():
             Unit \ {SelectedPlayer.State, RangeOverlayState.State, World.WorldQuery} =
@@ -215,7 +215,7 @@ mod MoveAttackRangeScene {
         match SelectedPlayer.State.get()#id {
             case None     => ()
             case Some(id) =>
-                match PlayerScene.get(id) |> Option.map(p ->
+                match PlayerDriver.get(id) |> Option.map(p ->
                           World.dataFromWorld(id, World.WorldQuery.get()) |> Option.getWithDefault(p)) {
                     case None         => ()
                     case Some(player) =>
@@ -223,7 +223,7 @@ mod MoveAttackRangeScene {
                         match PlayerData.equippedWeapon(player#weapons) {
                             case None    => ()
                             case Some(w) =>
-                                let reachable = MoveRangeScene.reachable();
+                                let reachable = MoveRange.reachable();
                                 let lo = Int32.max(1, w#range#min);
                                 let hi = w#range#max;
                                 let cells = Board.computeThreatCells(reachable, lo, hi);
@@ -248,9 +248,9 @@ mod MoveAttackRangeScene {
 }
 
 
-/// EnemyRangeScene — カーソルが敵に乗っているとき、その敵の移動範囲を白色で可視化する
+/// EnemyRange — カーソルが敵に乗っているとき、その敵の移動範囲を白色で可視化する
 ///
-/// `MoveRangeScene` のミラー実装で、起点が「Player」ではなく「ホバー中の敵」になり、
+/// `MoveRange` のミラー実装で、起点が「Player」ではなく「ホバー中の敵」になり、
 /// 色が「青」ではなく「白」になる。FE 風の「敵情報を見ながらターン計画を立てる」フローを
 /// 提供するための情報表示専用。
 ///
@@ -259,7 +259,7 @@ mod MoveAttackRangeScene {
 ///     消して新規構築する
 ///   - Cursor が敵以外に移ったとき、`clear()` で消す
 ///   - 敵ターン開始時 / フェーズ切替で見せたくない場面でも `clear` を呼んで消す
-mod EnemyRangeScene {
+mod EnemyRange {
 
     /// `enemyId` は今表示している対象敵。`reachable` は BFS で到達可能と判定された
     /// セル一覧 (origin = 敵セルを含む)。
@@ -301,7 +301,7 @@ mod EnemyRangeScene {
     pub def currentEnemyId(): Option[Int32] \ RangeOverlayState.State =
         RangeOverlayState.State.get()#enemyRange |> Option.map(data -> data#enemyId)
 
-    /// 現在の reachable セル一覧 (テスト・デバッグ用 + EnemyAttackRangeScene が読む)。未登録なら空リスト。
+    /// 現在の reachable セル一覧 (テスト・デバッグ用 + EnemyAttackRange が読む)。未登録なら空リスト。
     pub def reachable(): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
         match RangeOverlayState.State.get()#enemyRange {
             case Some(data) => data#reachable
@@ -310,18 +310,18 @@ mod EnemyRangeScene {
 }
 
 
-/// EnemyAttackRangeScene — カーソルが敵に乗っているとき、その敵の「攻撃到達範囲（脅威範囲）」を
-/// 赤色で可視化する。`MoveAttackRangeScene`(プレイヤーの脅威範囲) の敵版ミラー。
+/// EnemyAttackRange — カーソルが敵に乗っているとき、その敵の「攻撃到達範囲（脅威範囲）」を
+/// 赤色で可視化する。`MoveAttackRange`(プレイヤーの脅威範囲) の敵版ミラー。
 ///
 /// 脅威範囲 = ⋃ {敵の移動到達セル c から武器射程 (min..max マンハッタン) で届くセル} − 移動到達セル。
-/// 移動到達セル自身は `EnemyRangeScene`(白) が描くので、ここでは「移動の外側で攻撃が届くセル」だけを
+/// 移動到達セル自身は `EnemyRange`(白) が描くので、ここでは「移動の外側で攻撃が届くセル」だけを
 /// 赤で出す。
 ///
 /// **ライフサイクル**:
-///   - `EnemyRangeScene.refreshFor` の直後に `refreshFor` を呼ぶ
-///     (敵移動到達セルを `EnemyRangeScene.reachable` から読むため、白マス構築後でないとデータが無い)
+///   - `EnemyRange.refreshFor` の直後に `refreshFor` を呼ぶ
+///     (敵移動到達セルを `EnemyRange.reachable` から読むため、白マス構築後でないとデータが無い)
 ///   - 敵から離れたとき / 該当フェーズを抜けるときは `clear`
-mod EnemyAttackRangeScene {
+mod EnemyAttackRange {
 
     /// `enemyId` は今表示している対象敵。`cells` は移動到達セルと重複しない「赤マスだけ」。
     pub type alias Data = {
@@ -336,7 +336,7 @@ mod EnemyAttackRangeScene {
     pub def alpha(): Float32 = 0.5f32
 
     /// 既存を消し、`enemyId` の敵の脅威範囲で構築し直す。
-    /// `EnemyRangeScene` が直前に build した敵移動到達セルを resource から読み、武器射程で広げて差集合を作る。
+    /// `EnemyRange` が直前に build した敵移動到達セルを resource から読み、武器射程で広げて差集合を作る。
     /// 敵が居ない / 武器なし / 脅威セルが空なら何も描かない。
     /// 「敵が居て武器を持つ」の 2 段の Option は forM で 1 段に畳み、空セル判定は
     /// `renderThreat` に寄せてネストを浅く保つ。
@@ -349,9 +349,9 @@ mod EnemyAttackRangeScene {
         ) yield renderThreat(enemyId, threatCells(w));
         Option.getWithDefault((), built)
 
-    /// 敵移動到達セル (EnemyRangeScene.reachable) を武器射程で広げた脅威セル。
+    /// 敵移動到達セル (EnemyRange.reachable) を武器射程で広げた脅威セル。
     def threatCells(weapon: UnitCatalog.WeaponResource): List[{x = Int32, y = Int32}] \ RangeOverlayState.State =
-        let reachable = EnemyRangeScene.reachable();
+        let reachable = EnemyRange.reachable();
         Board.computeThreatCells(reachable, Int32.max(1, weapon#range#min), weapon#range#max)
 
     /// 脅威セルが空でなければ EnemyAttackRange を resource に敷く。空なら何もしない。
@@ -374,9 +374,9 @@ mod EnemyAttackRangeScene {
 }
 
 
-/// PlayerAttackRangeScene — 攻撃フェーズ中に味方の射程を赤色で可視化する
+/// PlayerAttackRange — 攻撃フェーズ中に味方の射程を赤色で可視化する
 ///
-/// `EnemyRangeScene` のミラー実装で、起点が「ホバー中の敵」ではなく「味方」になる。
+/// `EnemyRange` のミラー実装で、起点が「ホバー中の敵」ではなく「味方」になる。
 /// 射程は装備中武器の `WeaponResource#range` から取る。range = 1 なら隣接 4 マス、
 /// range = 2 なら十字に 2 マスずつ伸びる (くんれんゆみ等の間接攻撃)。
 ///
@@ -384,7 +384,7 @@ mod EnemyAttackRangeScene {
 ///   - `PlayerMoving + Z` で `PlayerAttack` フェーズに入るとき `show()` を呼んで
 ///     味方の現在位置を origin に赤マスを描く
 ///   - `PlayerAttack` を抜ける (敵ターンへ移行) ときは `clear()` で消す
-mod PlayerAttackRangeScene {
+mod PlayerAttackRange {
 
     /// `cells` は赤く描画されている射程内セル一覧 (origin = 味方セルは含まない)。
     /// `targetsInRange` の判定に使う。
@@ -392,10 +392,10 @@ mod PlayerAttackRangeScene {
         cells = List[{x = Int32, y = Int32}]
     }
 
-    /// 赤系 color。EnemyRangeScene / MoveAttackRangeScene と同色。
+    /// 赤系 color。EnemyRange / MoveAttackRange と同色。
     pub def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
 
-    /// EnemyRangeScene と同じく少し透かして駒や床を見やすくする。
+    /// EnemyRange と同じく少し透かして駒や床を見やすくする。
     pub def alpha(): Float32 = 0.7f32
 
     /// 既存を消し、**選択中プレイヤー** の現在位置 origin に対して **インベントリ全武器の射程の和集合** で
@@ -411,7 +411,7 @@ mod PlayerAttackRangeScene {
         match SelectedPlayer.State.get()#id {
             case None     => ()
             case Some(id) =>
-                match PlayerScene.get(id) |> Option.map(p ->
+                match PlayerDriver.get(id) |> Option.map(p ->
                           World.dataFromWorld(id, World.WorldQuery.get()) |> Option.getWithDefault(p)) {
                     case None    => ()
                     case Some(d) =>
@@ -467,7 +467,7 @@ mod PlayerAttackRangeScene {
     /// で返す。`PlayerAttack` フェーズでカーソルを敵間でサイクルさせる用。
     /// 死亡演出中 (`isDying`) と HP 0 以下の敵は除外する。
     pub def targetsInRange():
-            List[EnemyScene.Data] \ {EnemyData.RosterQuery, RangeOverlayState.State} =
+            List[EnemyDriver.Data] \ {EnemyData.RosterQuery, RangeOverlayState.State} =
         let inRangeCells = cells();
         EnemyData.RosterQuery.getAll()
             |> List.filter(d ->
@@ -480,19 +480,19 @@ mod PlayerAttackRangeScene {
 }
 
 
-/// TradeRangeScene — 物交換の相手候補 (隣接味方マス) を緑色で可視化する
+/// TradeRange — 物交換の相手候補 (隣接味方マス) を緑色で可視化する
 ///
 /// 「こうかん」確定で `TradeTargetSelect` フェーズに入ると、選択中プレイヤーの
 /// 上下左右 1 マス内に居る他味方のマスを緑色で敷く。プレイヤーは赤マスと同じく
 /// 緑マス上のみ移動できるカーソルで交換相手を選ぶ。
 ///
 /// `cells` API は他の Range と同じく「現在敷かれているセル一覧」を返す。
-/// CursorScene の移動制限述語と TurnRules の Confirm 判定で使う。
+/// CursorDriver の移動制限述語と TurnRules の Confirm 判定で使う。
 ///
 /// **ライフサイクル**:
 ///   - `PhaseTransitions.enterTradeTargetSelect` で `show()` を呼んで描く
 ///   - 別フェーズに抜けるとき (PhaseTransitions の他の enter* / 完了時) は `clear` を呼ぶ
-mod TradeRangeScene {
+mod TradeRange {
 
     /// `cells` は交換可能な相手候補のグリッド位置一覧 (= 選択中味方の上下左右に居る他味方)。
     /// カーソル移動制限と Confirm 時の相手判定に使う。
@@ -529,7 +529,7 @@ mod TradeRangeScene {
         forM (
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerData.PartyQuery.get(playerId)
-        ) yield PlayerScene.adjacentAllies(player) |> List.map(d -> d#gridPos)
+        ) yield PlayerDriver.adjacentAllies(player) |> List.map(d -> d#gridPos)
 
     /// 指定セル群を resource の tradeRange に書く純粋部分。
     def paintCells(allyCells: List[{x = Int32, y = Int32}]): Unit \ RangeOverlayState.State =
@@ -549,7 +549,7 @@ mod TradeRangeScene {
 }
 
 
-/// DangerZoneScene — Shift トグルで「全(可視)敵に攻撃される可能性があるマス」を紫で可視化する。
+/// DangerZone — Shift トグルで「全(可視)敵に攻撃される可能性があるマス」を紫で可視化する。
 ///
 /// 各敵について「移動到達セル ∪ そこから武器射程で届くセル」を求め、全敵ぶんを統合した
 /// 危険範囲（= どこかの敵に攻撃されうるマス）を紫マスで描く。FE の敵射程一括表示(危険範囲)相当。
@@ -558,7 +558,7 @@ mod TradeRangeScene {
 /// **ライフサイクル**:
 ///   - `Game.flix` の onKeyPressed が LeftShift のエッジで `toggle` を呼ぶ（PlayerCursor / PlayerMoving）。
 ///   - 敵が動くと内容が古くなるので、`PhaseTransitions.enterEnemyTurn` で `clear` する。
-mod DangerZoneScene {
+mod DangerZone {
 
     /// 統合済みの危険マス一覧。
     pub type alias Data = {
@@ -580,7 +580,7 @@ mod DangerZoneScene {
         if (isShown()) clear() else show()
 
     /// 全可視敵の危険マス（移動到達 ∪ 攻撃到達）を統合して紫で描く。空なら何もしない。
-    /// `EnemyScene.getAll` は World store を読むだけで外部 effect を発火しないため、
+    /// `EnemyDriver.getAll` は World store を読むだけで外部 effect を発火しないため、
     /// `EnemyData.RosterQuery` を使わずに呼び出せる。
     def show(): Unit \ {SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State} =
         clear();
@@ -598,8 +598,8 @@ mod DangerZoneScene {
             }
         };
         // 位置は World 権威 Data。
-        let cells = EnemyScene.getAll()
-            |> List.filter(e -> EnemyScene.isVisible(e#id))
+        let cells = EnemyDriver.getAll()
+            |> List.filter(e -> EnemyDriver.isVisible(e#id))
             |> List.foldLeft((acc, e) -> List.append(acc, dangerOf(e)), Nil)
             |> Board.dedupCells;
         if (List.isEmpty(cells)) ()

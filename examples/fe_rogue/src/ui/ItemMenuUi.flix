@@ -204,7 +204,7 @@ mod ItemMenuUi {
     /// sprites は items と同順（アイコンの sprite 解決に使う）。
     type alias CategoryView = {
         cat      = Int32,
-        player   = PlayerScene.Data,
+        player   = PlayerDriver.Data,
         items    = List[ItemEntry],
         sublines = Map[Int32, String],
         badges   = Map[Int32, String],
@@ -213,7 +213,7 @@ mod ItemMenuUi {
     }
 
     /// 指定カテゴリの所持数。
-    def categoryCount(cat: Int32, player: PlayerScene.Data): Int32 =
+    def categoryCount(cat: Int32, player: PlayerDriver.Data): Int32 =
         if (cat == catWeapon()) List.length(player#weapons)
         else if (cat == catConsumable()) List.length(player#consumables)
         else if (cat == catStaff()) List.length(player#staves)
@@ -268,7 +268,7 @@ mod ItemMenuUi {
         (items, sublines, badges, sprites)
 
     /// 現在カテゴリの (items, sublines, badges, sprites) を組む。サブラインは種別ごとに出し分ける。
-    def categoryRows(cat: Int32, player: PlayerScene.Data):
+    def categoryRows(cat: Int32, player: PlayerDriver.Data):
             (List[ItemEntry], Map[Int32, String], Map[Int32, String], List[SpriteRes.SpriteResource]) =
         if (cat == catWeapon())
             buildRows("w", player#weapons,
@@ -341,7 +341,7 @@ mod ItemMenuUi {
         else base
 
     /// 選択中アイテムが「持つだけ」系（浮雲など装備も使用もできず捨てるのみ）か。現状は指輪の Levitate のみ。
-    def isSelectedPassiveHold(player: PlayerScene.Data): Bool =
+    def isSelectedPassiveHold(player: PlayerDriver.Data): Bool =
         match player#selectedItem {
             case Some(PlayerData.ItemKind.Ring(idx)) =>
                 List.nth(idx, player#rings)
@@ -455,8 +455,8 @@ mod ItemMenuUi {
 
     /// ヘッダ左を「重 X.X/Y.Y」の重量ゲージにし、積載段階で色を変える
     /// （通常=ヘッダ色 / 80%+=黄 / 100%+=橙 / 110%+=赤）。
-    def setWeightHeader(player: PlayerScene.Data, ui: UiStore.UiWorld): UiStore.UiWorld =
-        let load = PlayerScene.loadOf(player);
+    def setWeightHeader(player: PlayerDriver.Data, ui: UiStore.UiWorld): UiStore.UiWorld =
+        let load = PlayerDriver.loadOf(player);
         ui
             |> UiStore.setText(weightPath(),
                 "重 ${Encumbrance.weightText(load#total)}/${Encumbrance.weightText(load#capacity)}")
@@ -673,7 +673,7 @@ mod ItemMenuUi {
             kind     <- entry#metadata |> Option.flatMap(parseItemKind);
             playerId <- SelectedPlayer.State.get()#id
         ) yield {
-            PlayerScene.setSelectedItem(playerId, kind);
+            PlayerDriver.setSelectedItem(playerId, kind);
             TurnPhase.State.put(TurnPhase.Phase.ItemActionSelect);
             UiWorldState.State.put(UiStore.putSelection(menuPath(), 0, UiWorldState.State.get()))
         };
@@ -691,7 +691,7 @@ mod ItemMenuUi {
     pub def onActionCancelled(): Unit
             \ {TurnPhase.State, SelectedPlayer.State, World.Command} =
         match SelectedPlayer.State.get()#id {
-            case Some(playerId) => PlayerScene.clearSelectedItem(playerId)
+            case Some(playerId) => PlayerDriver.clearSelectedItem(playerId)
             case None           => ()
         };
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect)
@@ -738,7 +738,7 @@ mod ItemMenuUi {
     def applyThrowAction(playerId: Int32): Unit
             \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State, GameLogger.GameLogger,
                CursorState.State, World.WorldQuery} =
-        GameLogger.playerLog("${PlayerScene.displayName(playerId)} は 投げる方向を選び Z で投げる (X で中止)");
+        GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は 投げる方向を選び Z で投げる (X で中止)");
         PhaseTransitions.enterThrowAim()
 
     /// 「そうび」: 武器/指輪を先頭へ移動して装備し、`ItemSelect` フェーズに戻る（ターン消費なし）。
@@ -752,27 +752,27 @@ mod ItemMenuUi {
                 if (idx >= 1 and idx < n)
                     SelectedPlayer.pushDraft(MoveDraft.DraftAction.Equipped(playerId, idx))
                 else ();
-                PlayerScene.equipWeapon(playerId, idx)
+                PlayerDriver.equipWeapon(playerId, idx)
             case PlayerData.ItemKind.Staff(_)      => ()
             case PlayerData.ItemKind.Consumable(_) => ()
-            case PlayerData.ItemKind.Ring(idx)     => PlayerScene.equipRing(playerId, idx)
+            case PlayerData.ItemKind.Ring(idx)     => PlayerDriver.equipRing(playerId, idx)
         };
-        PlayerScene.clearSelectedItem(playerId);
+        PlayerDriver.clearSelectedItem(playerId);
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect)
 
     /// 「はずす」: 装備中の指輪を外す（所持は維持・効果だけ止める）。ターン消費なし。`ItemSelect` に戻る。
     def applyUnequip(playerId: Int32): Unit
             \ {TurnPhase.State, GameLogger.GameLogger, World.Command, World.WorldQuery} =
-        GameLogger.playerLog("${PlayerScene.displayName(playerId)} は 指輪を外した");
-        PlayerScene.unequipRing(playerId);
-        PlayerScene.clearSelectedItem(playerId);
+        GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は 指輪を外した");
+        PlayerDriver.unequipRing(playerId);
+        PlayerDriver.clearSelectedItem(playerId);
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect)
 
     /// 対応する削除処理（`dropXxx`）は呼び出し側で実行済み。ここはログと巻き戻しドラフトの記録のみ行う。
     def dropResolved(playerId: Int32, kind: PlayerData.ItemKind, name: String,
                      ground: ItemData.GroundItemKind): Unit
             \ {GameLogger.GameLogger, SelectedPlayer.State, World.WorldQuery} =
-        GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${name} をすてた");
+        GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は ${name} をすてた");
         SelectedPlayer.pushDraft(MoveDraft.DraftAction.Dropped(playerId, kind, ground))
 
     /// 「すてる」: 種別に応じて削除し、ターン消費せず ItemSelect に戻る（連続して捨てられる）。
@@ -784,32 +784,32 @@ mod ItemMenuUi {
                 Option.getWithDefault((),
                     forM (w <- List.nth(idx, weaponsOf(playerId)))
                         yield {
-                            PlayerScene.dropWeapon(playerId, idx);
+                            PlayerDriver.dropWeapon(playerId, idx);
                             dropResolved(playerId, kind, w#name, ItemData.GroundItemKind.WeaponItem(w))
                         })
             case PlayerData.ItemKind.Staff(idx) =>
                 Option.getWithDefault((),
                     forM (s <- List.nth(idx, stavesOf(playerId)))
                         yield {
-                            PlayerScene.dropStaff(playerId, idx);
+                            PlayerDriver.dropStaff(playerId, idx);
                             dropResolved(playerId, kind, s#name, ItemData.GroundItemKind.StaffItem(s))
                         })
             case PlayerData.ItemKind.Consumable(idx) =>
                 Option.getWithDefault((),
                     forM (c <- List.nth(idx, consumablesOf(playerId)))
                         yield {
-                            PlayerScene.dropConsumable(playerId, idx);
+                            PlayerDriver.dropConsumable(playerId, idx);
                             dropResolved(playerId, kind, c#name, ItemData.GroundItemKind.ConsumableItem(c))
                         })
             case PlayerData.ItemKind.Ring(idx) =>
                 Option.getWithDefault((),
                     forM (r <- List.nth(idx, ringsOf(playerId)))
                         yield {
-                            PlayerScene.dropRing(playerId, idx);
+                            PlayerDriver.dropRing(playerId, idx);
                             dropResolved(playerId, kind, r#name, ItemData.GroundItemKind.RingItem(r))
                         })
         };
-        PlayerScene.clearSelectedItem(playerId);
+        PlayerDriver.clearSelectedItem(playerId);
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect)
 
     /// 印の付いた複数アイテムをまとめて捨てる。index の大きい順に 1 個ずつ `applyDrop` へ流す
@@ -830,7 +830,7 @@ mod ItemMenuUi {
         match kind {
             case PlayerData.ItemKind.Staff(idx) =>
                 let name = staffNameOf(playerId, idx);
-                GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${name} の方向を選び Z で発射 (X で中止)");
+                GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は ${name} の方向を選び Z で発射 (X で中止)");
                 PhaseTransitions.enterStaffAim()
             case PlayerData.ItemKind.Consumable(idx) =>
                 applyConsumableByDelivery(playerId, idx)
@@ -849,7 +849,7 @@ mod ItemMenuUi {
                 StaffCast.applyConsumableUse(playerId, idx)
             case Consumable.Delivery.Directional =>
                 let name = consumableNameOf(playerId, idx);
-                GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${name} を投げる方向を選び Z で発射 (X で中止)");
+                GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は ${name} を投げる方向を選び Z で発射 (X で中止)");
                 PhaseTransitions.enterStaffAim()
             case Consumable.Delivery.AutoOnDeath =>
                 ()
@@ -905,15 +905,15 @@ mod ItemMenuUi {
             playerId <- SelectedPlayer.State.get()#id;
             player   <- PlayerData.PartyQuery.get(playerId);
             d        <- cursorTargetDistance(playerId);
-            idx      <- PlayerScene.firstWeaponIdxReaching(player, d)
+            idx      <- PlayerDriver.firstWeaponIdxReaching(player, d)
         ) yield idx
 
     /// カーソルが乗っている敵と選択中味方とのマンハッタン距離。敵が居なければ None。
     def cursorTargetDistance(playerId: Int32):
             Option[Int32] \ {World.WorldQuery, CursorState.State} =
         forM (
-            player <- PlayerScene.get(playerId);
-            eid    <- EnemyScene.findIdAt(CursorScene.getGridPos());
-            enemy  <- EnemyScene.get(eid)
+            player <- PlayerDriver.get(playerId);
+            eid    <- EnemyDriver.findIdAt(CursorDriver.getGridPos());
+            enemy  <- EnemyDriver.get(eid)
         ) yield Weapon.manhattan(player#gridPos, enemy#gridPos)
 }

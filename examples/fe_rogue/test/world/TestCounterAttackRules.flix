@@ -19,7 +19,7 @@ mod TestCounterAttackRules {
     /// 任意 id / 位置 / 武器 / 瀕死状態の Enemy.Data。`killedTargetEnemyId` テストで使用。
     def enemyAt(id: Int32, x: Int32, y: Int32,
                  weapon: Option[UnitCatalog.WeaponResource],
-                 isDying: Bool): EnemyScene.Data = {
+                 isDying: Bool): EnemyDriver.Data = {
         id             = id,
         resourceId     = "test_enemy",
         gridPos        = {x = x, y = y},

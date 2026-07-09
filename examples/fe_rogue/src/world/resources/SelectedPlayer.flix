@@ -13,7 +13,7 @@
 /// 解除・確定で両方 None）。そのため 1 つの record `Selection` にまとめて、
 /// `get` / `put` のペアだけで読み書きする。
 ///
-/// `Camera` / `MoveRangeScene` / `PlayerAttackRangeScene` / `CursorScene.snapToPlayer`
+/// `Camera` / `MoveRange` / `PlayerAttackRange` / `CursorDriver.snapToPlayer`
 /// など複数のシーンが「いまの選択駒」を読みたいので、TurnPhase と同じ Ref-based
 /// handler 注入パターンに揃える。
 mod SelectedPlayer {

@@ -1,4 +1,4 @@
-/// PlayerScene の持ち物制限ロジック（重量制）を固定する。
+/// PlayerDriver の持ち物制限ロジック（重量制）を固定する。
 ///
 /// 個数上限は撤廃され、唯一の制約は重量（最大積載量 = 体格×1.0 + 力×0.2 + 2.0）。
 ///   1. 軽い持ち物なら「いっぱい」ではない（まだ拾える）
@@ -33,11 +33,11 @@ mod TestInventoryCapacity {
         offset = {x = 0.0, y = 0.0}, scale = {x = 1.0, y = 1.0}, flipForFacing = false
     }
 
-    /// 指定 resource と武器の所持数から PlayerScene.Data を 1 体組む。
+    /// 指定 resource と武器の所持数から PlayerDriver.Data を 1 体組む。
     /// 重量判定に効くのは resource（体格・力）と各リストの中身だけなので、
     /// それ以外は意味を持たないデフォルト値で埋める。
     def makeData(resource: UnitCatalog.UnitResource, weaponCount: Int32):
-            PlayerScene.Data = {
+            PlayerDriver.Data = {
         id              = 0,
         classId         = "test_player",
         gridPos         = {x = 1, y = 1},
@@ -75,8 +75,8 @@ mod TestInventoryCapacity {
         let fiveWeapons = makeData(TestUnitFixtures.testResource(4, 10), 5);
         Assert.assertEq(
             expected = (false, true),
-            (PlayerScene.isInventoryFull(fourWeapons),
-             PlayerScene.isInventoryFull(fiveWeapons)))
+            (PlayerDriver.isInventoryFull(fourWeapons),
+             PlayerDriver.isInventoryFull(fiveWeapons)))
 
     // ════════════════════════════════════════════════════════
     // wouldOverloadByPicking: 拾うと過多になるか（詰み防止ゲート）
@@ -93,6 +93,6 @@ mod TestInventoryCapacity {
         let lightPotion = ItemData.GroundItemKind.ConsumableItem(testConsumable());
         Assert.assertEq(
             expected = (true, false),
-            (PlayerScene.wouldOverloadByPicking(player, heavyAxe),
-             PlayerScene.wouldOverloadByPicking(player, lightPotion)))
+            (PlayerDriver.wouldOverloadByPicking(player, heavyAxe),
+             PlayerDriver.wouldOverloadByPicking(player, lightPotion)))
 }

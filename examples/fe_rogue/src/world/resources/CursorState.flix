@@ -4,13 +4,13 @@
 /// **視覚位置の単一権威**（`renderPos`・pixel）と進行中の**スライド補間**（`tweens`）・駒に乗った時の
 /// **引っかかりタイマー**（`snagRemaining`）・四隅 L字の**可視フラグ**（`visible`）も持つ。カーソルは
 /// scene ノードを持たず（`ArrowCursorState` と同流儀）、`RenderWorld.renderCursor` がこの resource から
-/// 直描きし、`CameraScene` が `renderPos` を追従読みする。
+/// 直描きし、`CameraDriver` が `renderPos` を追従読みする。
 ///
 /// 補間は lib `EcsTween`（純粋・値の補間だけ）を使う
 /// （World の renderPos 補間と同流儀）。カーソルは世界に 1 つなので複合キーの entity 部は定数 0 を使う。
 /// `step(dt)` を gameLoop が毎フレーム 1 回呼び、tween を進めて `renderPos` を書き、`snagRemaining` を減らす。
 ///
-/// `CursorScene.step` の各フェーズ stepper が読み書きし、`getGridPos` を通じて
+/// `CursorDriver.step` の各フェーズ stepper が読み書きし、`getGridPos` を通じて
 /// UnitCard / EnemyCard / BattlePanel / WeaponSelect / ItemMenu などが現在の指しセルを読む。
 /// TurnPhase / SelectedPlayer と同じ Ref-based handler 注入パターンに揃える。
 mod CursorState {
@@ -29,7 +29,7 @@ mod CursorState {
     /// `holdSteps`: 同方向に連続で進んだマス数。`computeSlideDuration` で 1 マス分のスライド時間を
     ///   初速 → 最高速に補間するのに使う。
     /// `renderPos`: 連続的な描画位置（pixel・tween 込み）。`RenderWorld.renderCursor` と
-    ///   `CameraScene` が読む視覚位置の単一権威。静止時は最後のセル中心 pixel を保持。
+    ///   `CameraDriver` が読む視覚位置の単一権威。静止時は最後のセル中心 pixel を保持。
     /// `tweens`: 進行中のスライド補間（entity 部は定数 0）。`step` が毎フレ実時間 dt(秒) 進め、
     ///   Position 出力を `renderPos` へ書く。完了で除去（`isTweening` の入力ゲートの意味を保つ）。
     /// `snagRemaining`: 駒に乗った後に入力を捨てる残り秒。`step` が dt ずつ減らし 0 で解除。
@@ -54,7 +54,7 @@ mod CursorState {
         holdSteps          = Int32
     }
 
-    /// 初期状態（原点・ホバーなし・hold なし・補間なし・可視）。`add` の初期セルは `CursorScene` が put で上書きする。
+    /// 初期状態（原点・ホバーなし・hold なし・補間なし・可視）。`add` の初期セルは `CursorDriver` が put で上書きする。
     pub def initial(): Data =
         {gridPos = {x = 0, y = 0}, lastHoveredEnemyId = None, holdDir = None, holdSteps = 0,
          renderPos = Vec2.zero(), tweens = Map.empty(), snagRemaining = 0.0, visible = true}
@@ -118,7 +118,7 @@ mod CursorState {
     pub def isVisible(): Bool \ State =
         State.get()#visible
 
-    /// 視覚位置（pixel）。`RenderWorld.renderCursor` と `CameraScene` が読む。
+    /// 視覚位置（pixel）。`RenderWorld.renderCursor` と `CameraDriver` が読む。
     pub def renderPos(): Vec2.Vec2 \ State =
         State.get()#renderPos
 

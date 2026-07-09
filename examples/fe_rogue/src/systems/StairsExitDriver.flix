@@ -4,7 +4,7 @@
 /// 階段へ歩かせる。残り移動で階段に届く味方は階段に乗って `useStairs` で退場し、届かない味方も
 /// 残り移動の範囲で**階段にできるだけ近づいて**止まる（その場に残る）。
 /// 全員退場できたら次フロアへ（`FloorAdvanceRequest`）、届かず残った味方が居ればターンエンド
-/// （`ActionMenuScene.turnEndShortcut` = 敵ターンへ）。
+/// （`ActionMenuUi.turnEndShortcut` = 敵ターンへ）。
 ///
 /// 自走モデルは `EnemyTurnDriver` と同型: gameLoop のフレームパイプラインが `step` を毎フレーム
 /// 1 回呼び、phase==StairsExit のとき `stepOnce` を回す。
@@ -108,10 +108,10 @@ mod StairsExitDriver {
     /// 生存・非 hidden の味方を (id, 現在マス, 残り移動) で集める。
     /// 残り移動は積載ペナルティ込みの実効移動力で計算する（青マス表示と階段到達判定を揃える）。
     def livingUnits(): List[(Int32, {x = Int32, y = Int32}, Int32)] \ World.WorldQuery =
-        PlayerScene.getAll()
+        PlayerDriver.getAll()
             |> List.filter(d -> d#hp > 0 and not d#hidden)
             |> List.map(d -> (d#id, d#gridPos,
-                              PlayerScene.effectiveMoveTilesOf(d) - d#moveStepsTaken))
+                              PlayerDriver.effectiveMoveTilesOf(d) - d#moveStepsTaken))
 
     /// 「階段」確定。降りられる味方が 1 人以上居れば、全味方を退場キューに積み StairsExit フェーズへ。
     /// 届かない味方も含めてキューに入れる（近づけるところまで近づいて止まる）。
@@ -160,13 +160,13 @@ mod StairsExitDriver {
                GatherResume.State, CustomEffects.FloorAdvanceRequest, World.Command, BoardQuery,
                World.WorldQuery, RangeOverlayState.State, CameraState.State, State} =
         if (Pacing.State.isHolding()) ()
-        else if (not CameraScene.isSettled()) ()
+        else if (not CameraDriver.isSettled()) ()
         else if (World.anyEnemyAttacking(World.WorldQuery.get())) ()
         else if (World.anyPlayerAttacking(World.WorldQuery.get())) ()
         else match data#queue {
             case Nil         => finalize()
             case (u, _) :: _ =>
-                if (PlayerScene.isMoving(u)) ()
+                if (PlayerDriver.isMoving(u)) ()
                 else match World.stairsPosOf(World.WorldQuery.get()) {   // World 権威
                     case None         => finalize()   // 階段消失(通常来ない)→後始末
                     case Some(stairs) => advanceFront(data, stairs)
@@ -194,14 +194,14 @@ mod StairsExitDriver {
                     case StepDecision.Finalize         => finalize()
                     case StepDecision.Exit(id)         =>
                         // 階段に到着 → 退場。先頭を外し idleRounds リセット。
-                        PlayerScene.useStairs(id);
+                        PlayerDriver.useStairs(id);
                         State.put({queue = rest, idleRounds = 0})
                     case StepDecision.Stop(_)          =>
                         // 移動力を使い切った → その場に残す（先頭を外す）。
                         State.put({queue = rest, idleRounds = 0})
                     case StepDecision.StepTo(id, x, y) =>
-                        PlayerScene.moveToById(id, {x = x, y = y}, board#map,
-                                               PlayerScene.selectedSlideDuration());
+                        PlayerDriver.moveToById(id, {x = x, y = y}, board#map,
+                                               PlayerDriver.selectedSlideDuration());
                         Pacing.State.hold(180 |> Duration.millis);
                         // 残り移動を 1 減らして先頭継続。
                         State.put({queue = (id, rem - 1) :: rest, idleRounds = 0})
@@ -220,7 +220,7 @@ mod StairsExitDriver {
                SelectedPlayer.State, GatherResume.State, CustomEffects.FloorAdvanceRequest,
                World.Command, World.WorldQuery, RangeOverlayState.State, State} =
         State.put(initialData());
-        if (PlayerScene.allLivingUsedStairs())
+        if (PlayerDriver.allLivingUsedStairs())
             CustomEffects.FloorAdvanceRequest.advance()
         else
             ActionMenuUi.turnEndShortcut()

@@ -250,7 +250,7 @@ mod TestUnitFixtures {
 
     /// GameEngine.Game のスタブ。renderCommands / 入力系は何もせず、`getFontAtlas` は
     /// `testFontAtlas()` を返す。`getViewportRect` は design 解像度 (128×128) を返す。
-    /// SceneLoader.loadSceneWithFont を経由する `XxxScene.add` のテストで使う。
+    /// フォント atlas / viewport を要する UI・描画系テストで使う。
     pub def withMockGame(thunk: Unit -> a \ ef): a \ (ef - GameEngine.Game) =
         run { thunk() } with handler GameEngine.Game {
             def renderCommands(_, _, _, k)     = k(())
@@ -419,7 +419,7 @@ mod TestUnitFixtures {
         }
 
     /// `CursorState.State` をカーソル位置 `coord` で固定するスタブ。put は捨てる。
-    /// メニュー確定・戦闘系テストが `CursorScene.getGridPos` を読むために供給する。
+    /// メニュー確定・戦闘系テストが `CursorDriver.getGridPos` を読むために供給する。
     /// ホバー対象や holdDir を要するテストは専用の handler を組む。
     pub def withCursorAt(coord: {x = Int32, y = Int32}, thunk: Unit -> a \ ef):
             a \ (ef - CursorState.State) =
@@ -791,7 +791,7 @@ mod TestUnitFixtures {
                     withMockRosterQuery(worldEnemies(world), () ->
                         withWorldQuery(world, thunk)))))
 
-    /// `ActionMenuScene.onActionCancelled` の遷移テスト用に、必要な 5 effect
+    /// `ActionMenuUi.onActionCancelled` の遷移テスト用に、必要な 5 effect
     /// (Tween / Anim / PartyQuery / TurnPhase / SelectedPlayer) を **1 呼び出し**で剥がす束ね。
     /// `withMenuReadMocks` と同じ発想で、深いネストを 1 段に畳む。
     /// TurnPhase は Ref-backed (`withPhaseRef`) で観測し `(thunk の結果, 最終フェーズ)` を返す。

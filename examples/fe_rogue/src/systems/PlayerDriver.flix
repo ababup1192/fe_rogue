@@ -1,12 +1,12 @@
-/// PlayerScene — 味方パーティ（3 人）の spawn・移動・在庫・ターン状態の操作の集まり
+/// PlayerDriver — 味方パーティ（3 人）の spawn・移動・在庫・ターン状態の操作の集まり
 ///
 /// FE 風 SRPG の「3 人パーティ」を表現する。駒の状態は World の各 store が唯一の権威で、
 /// 読みは `World.dataFromWorld`（store 群からの `Data` 再構築）、書きは `World.Cmd` の emit に統一する。
 /// 見た目（本体 sprite / HP バー / 武器アイコン）は World store から直描きし、
 /// 描画位置も World（renderPos / lunge）から導出する。
 ///
-/// Camera は `CameraState` resource が視点の権威で、`CameraScene.step` が
-/// フェーズ別の追従先（選択中プレイヤー等の World 座標）を毎フレーム選ぶ（PlayerScene 自身は Camera を持たない）。
+/// Camera は `CameraState` resource が視点の権威で、`CameraDriver.step` が
+/// フェーズ別の追従先（選択中プレイヤー等の World 座標）を毎フレーム選ぶ（PlayerDriver 自身は Camera を持たない）。
 ///
 /// ターン進行:
 ///   - PlayerCursor で Z 押下 → カーソル位置の **アクティブな** プレイヤーを選択
@@ -21,14 +21,14 @@
 ///
 /// 移動は moveToById(id, target) で論理位置（World の pos）を即更新し、
 /// 見た目は World の renderPos tween に委ねる。**壁・他駒の判定は
-/// 呼び出し側（Board / MoveRangeScene）が moveToById を呼ぶ前に済ませている前提**。
-mod PlayerScene {
+/// 呼び出し側（Board / MoveRange）が moveToById を呼ぶ前に済ませている前提**。
+mod PlayerDriver {
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
     // ────────────────────────────────────────────────────────
 
-    // Data / Spawn は PlayerData の型エイリアス。既存の呼び出し元は PlayerScene.Data / PlayerScene.Spawn
+    // Data / Spawn は PlayerData の型エイリアス。既存の呼び出し元は PlayerDriver.Data / PlayerDriver.Spawn
     // のまま参照できる（PlayerData.ItemKind は enum のため型エイリアスで再 export できない点に注意）。
     pub type alias Data = PlayerData.Data
     pub type alias Spawn = PlayerData.Spawn
@@ -137,7 +137,7 @@ mod PlayerScene {
     pub def wouldOverloadByPicking(data: Data, item: ItemData.GroundItemKind): Bool =
         Encumbrance.wouldExceedImmobile(loadOf(data), Encumbrance.groundItemWeight(item))
 
-    /// プレイヤー Sprite の zIndex（Player は前面に立つ）。EnemyScene と同じ 10。
+    /// プレイヤー Sprite の zIndex（Player は前面に立つ）。EnemyDriver と同じ 10。
     pub def spriteZIndex(): Int32 = 10  // renderUnits が使うため pub
 
     /// 手動移動（PlayerMoving）・集合の主人公移動と味方追従（GatherMove）の 1 マス時間（≈ 0.167 秒）。
@@ -202,7 +202,7 @@ mod PlayerScene {
             |> List.mapWithIndex(id -> c ->
                 let (classId, res) = match List.nth(id, selected) {
                     case Some(pair) => pair
-                    case None       => bug!("PlayerScene.add: party index ${id} out of range")
+                    case None       => bug!("PlayerDriver.add: party index ${id} out of range")
                 };
                 let split = splitInventory(res#initialInventory, catalog,
                                             staffCatalog, consumableCatalog);
@@ -384,7 +384,7 @@ mod PlayerScene {
         World.isAnimating(World.EntityRef.Player(id), World.WorldQuery.get())
 
     /// 指定 id のプレイヤーを `target` グリッドへ移動させる。
-    /// `EnemyScene.moveTo` と同じインターフェース。**歩行可否は呼び出し側が確認済み前提**。
+    /// `EnemyDriver.moveTo` と同じインターフェース。**歩行可否は呼び出し側が確認済み前提**。
     pub def moveToById(id: Int32, target: {x = Int32, y = Int32},
                         map: MapSnapshot, slide: Duration.Duration):
             Unit \ {World.Command, World.WorldQuery} =
@@ -406,7 +406,7 @@ mod PlayerScene {
             case World.SimEvent.Moved(World.EntityRef.Enemy(_), _) => ()
             // simevent-algebra: 拡張された非 Moved variant は move seam に来ない（production emitter 無し）。
             // 黙って no-op せず、move seam 専用 invariant 違反として loud に落とす。
-            case _ => bug!("PlayerScene.replayMovedEvent: non-Moved event on move seam")
+            case _ => bug!("PlayerDriver.replayMovedEvent: non-Moved event on move seam")
         }
 
     /// `SimEvent.Moved` の着地マス。着地時の自動取得など view 側が座標を要する箇所で使う。
@@ -416,7 +416,7 @@ mod PlayerScene {
             case World.SimEvent.Moved(_, target) => target
             // move-seam only invariant: 非 Moved は到達不能。原点 {0,0} を捏造すると
             // (0,0) で誤って自動取得が走るため、座標を作らず loud に落とす。
-            case _                               => bug!("PlayerScene.movedTarget: non-Moved event on move seam")
+            case _                               => bug!("PlayerDriver.movedTarget: non-Moved event on move seam")
         }
 
     /// 1 歩移動の **view 再生**（Tween 滑走 + facing + walk アニメ + 左右反転）。
@@ -1256,22 +1256,22 @@ mod PlayerScene {
     pub def getGridPos(id: Int32): {x = Int32, y = Int32} \ World.WorldQuery =
         match World.posOf(World.EntityRef.Player(id), World.WorldQuery.get()) {
             case Some(p) => p
-            case None    => bug!("PlayerScene: player ${id} not found")
+            case None    => bug!("PlayerDriver: player ${id} not found")
         }
 
     /// 指定 id のプレイヤーの移動力（マス数）を返す。未登録なら panic。
-    /// 積載ペナルティ込みの実効値を返す（MoveRangeScene の青マスもこの値で縮む）。
+    /// 積載ペナルティ込みの実効値を返す（MoveRange の青マスもこの値で縮む）。
     pub def getMoveTiles(id: Int32): Int32 \ World.WorldQuery =
         match (get(id) |> Option.map(effectiveMoveTilesOf)) {
             case Some(n) => n
-            case None    => bug!("PlayerScene: player ${id} not found")
+            case None    => bug!("PlayerDriver: player ${id} not found")
         }
 
     /// 指定 id のプレイヤーの現在 HP を返す。未登録なら panic。
     pub def getHp(id: Int32): Int32 \ World.WorldQuery =
         match get(id) {
             case Some(d) => d#hp
-            case None    => bug!("PlayerScene: player ${id} not found")
+            case None    => bug!("PlayerDriver: player ${id} not found")
         }
 
     /// 指定 id のプレイヤーの武器インベントリを返す。武器が 1 つも無ければ Nil。

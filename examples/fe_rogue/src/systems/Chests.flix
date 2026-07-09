@@ -6,7 +6,7 @@
 /// 設計の要:
 ///   - **中身は配置時(`add`)に確定**して `Data#content` に格納する。`add` は `Math.Random` と
 ///     catalogs を持つのでここで `pickWeighted` + `GroundItems.lookupItem` を済ませる。これにより
-///     開錠側(`ActionMenuScene.applyOpenChest`)は Math.Random も catalogs も要さず決定論的に振る舞える。
+///     開錠側(`ActionMenuUi.applyOpenChest`)は Math.Random も catalogs も要さず決定論的に振る舞える。
 ///   - 配置は駒(味方/敵)・床アイテム・階段・既配置の宝箱と重ならないセルにのみ行う。
 ///   - 開錠で World から削除する(`takeAt`)。開封済み状態は持たず、同セルを再度踏んでも宝箱は出ない。
 mod Chests {
@@ -82,8 +82,8 @@ mod Chests {
     /// read-after-write で見える）。
     def occupiedCells(): List[{x = Int32, y = Int32}] \ World.WorldQuery =
         let units = List.append(
-            PlayerScene.getAll() |> List.map(d -> d#gridPos),
-            EnemyScene.getAll()  |> List.map(d -> d#gridPos));
+            PlayerDriver.getAll() |> List.map(d -> d#gridPos),
+            EnemyDriver.getAll()  |> List.map(d -> d#gridPos));
         let items = World.groundItemsOf(World.WorldQuery.get()) |> Map.valuesOf |> List.map(d -> d#gridPos);
         let stairs = Option.toList(World.stairsPosOf(World.WorldQuery.get()));
         List.append(units, List.append(items, stairs))

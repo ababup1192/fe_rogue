@@ -1,4 +1,4 @@
-/// MoveRangeScene の移動範囲が **ターン開始位置（origin）に固定**されることを検証する。
+/// MoveRange の移動範囲が **ターン開始位置（origin）に固定**されることを検証する。
 ///
 /// 無限移動バグの回帰テスト: ユニットを動かしてからメニューをキャンセルすると
 /// `refresh`（= clear + add + buildFor）が走るが、範囲は現在位置でなく `MovedFrom`
@@ -8,7 +8,7 @@
 ///   を実行し、`isInRange` が origin 基準か（current 基準でないか）を区別できるセルで pin する。
 /// - 純粋テスト(B): origin 選択ロジック `chooseMoveOrigin` の分岐。`originOf` 自体は
 ///   `TestMoveDraft` で網羅済みなので、ここは「移動後でも MovedFrom を返す」核と fallback だけ。
-mod TestMoveRangeScene {
+mod TestMoveRange {
 
     // ════════════════════════════════════════════════════════
     // ヘルパー
@@ -44,11 +44,11 @@ mod TestMoveRangeScene {
             TestUnitFixtures.withRangeOverlay(rc, () ->
             TestUnitFixtures.withSelectionRef(rc, sel, () ->
             TestUnitFixtures.withWorldQuery(world, () -> {
-                MoveRangeScene.refresh();
+                MoveRange.refresh();
                 Assert.assertEq(
                     expected = (true, false),
-                    (MoveRangeScene.isInRange(cell(1, 5)),
-                     MoveRangeScene.isInRange(cell(11, 5))))
+                    (MoveRange.isInRange(cell(1, 5)),
+                     MoveRange.isInRange(cell(11, 5))))
             })))
         }
 
@@ -61,12 +61,12 @@ mod TestMoveRangeScene {
     def testChooseOriginUsesMovedFromWhenPresent(): Unit \ Assert =
         let drafts = MoveDraft.DraftAction.MovedFrom(2, cell(3, 4)) :: Nil;
         Assert.assertEq(expected = (3, 4),
-            cellT(MoveRangeScene.chooseMoveOrigin(2, cell(9, 9), drafts)))
+            cellT(MoveRange.chooseMoveOrigin(2, cell(9, 9), drafts)))
 
     /// id の MovedFrom が無ければ現在位置を使う（初回構築・選択前のフォールバック）。
     @Test
     def testChooseOriginFallsBackToCurrentWhenNoDraft(): Unit \ Assert =
         let drafts: List[MoveDraft.DraftAction] = Nil;
         Assert.assertEq(expected = (9, 9),
-            cellT(MoveRangeScene.chooseMoveOrigin(2, cell(9, 9), drafts)))
+            cellT(MoveRange.chooseMoveOrigin(2, cell(9, 9), drafts)))
 }

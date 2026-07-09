@@ -6,11 +6,11 @@
 // 設計方針:
 //   - 本体 (`TradeMenuUi.weaponEntry` / `staffEntry` / `emptySlotEntry`) が並べているのと
 //     同じ `ItemEntry` を `confirmAt` に渡す (テスト固有の entry コンストラクタを置かない)
-//   - フィクスチャは本体経路: `UnitCatalog.load` / `Staff.load` + `PlayerScene.addOnePlayer`
+//   - フィクスチャは本体経路: `UnitCatalog.load` / `Staff.load` + `PlayerDriver.addOnePlayer`
 //   - DSL はアクション (`pressZOnPane` 等) のみ。assertion はテスト末尾の 1 回だけ
 //   - **検証は「交換後の各メンバーのインベントリ」または「cancel 後の phase」のみ**
 //
-// 純粋な swap ロジックは TestPlayerScene の swapItem テストで網羅済。
+// 純粋な swap ロジックは TestPlayerDriver の swapItem テストで網羅済。
 // 純粋な状態遷移 (decideConfirm / moveFocus) はこのファイル末尾で別途単体テストする。
 
 mod TestTradeMenuUi {
@@ -55,11 +55,11 @@ mod TestTradeMenuUi {
               weapons = List.map(wId -> UnitCatalog.lookupWeapon(wId, catalog), spec#weapons),
               staves  = List.map(sId -> Staff.lookup(sId, staffCatalog), spec#staves),
               consumables = Nil, rings = Nil}:
-                PlayerScene.Spawn);
+                PlayerDriver.Spawn);
         // addOnePlayer は World.Command を emit する。ここで一括適用して初期 World を組む
         // （World-entity UI 版はウィンドウノードを scene に積まない＝交換する味方だけ居ればよい）。
         let (_, world) = TestUnitFixtures.withWorldApplied(rc, () ->
-            List.forEach(spec -> PlayerScene.addOnePlayer(mkSpawn(spec)), specs));
+            List.forEach(spec -> PlayerDriver.addOnePlayer(mkSpawn(spec)), specs));
         let members = List.map(s -> s#id, specs);
         // PanelData は resource へ直接書かず scenario に載せ、`runScenario` が seed する
         // （`TradeMenuState.State` handler の外で書けないため）。
@@ -149,11 +149,11 @@ mod TestTradeMenuUi {
     /// `itemName` を該当プレイヤーのインベントリから探し、本体の `weaponEntry` / `staffEntry`
     /// を使って ItemEntry を組む。見つからなければテストを潰す (= 入力ミス検知)。
     def entryForInventoryItem(itemName: String, playerId: Int32): ItemEntry \ World.WorldQuery =
-        let weapons = PlayerScene.getWeapons(playerId);
+        let weapons = PlayerDriver.getWeapons(playerId);
         match findIndexed(w -> w#name == itemName, weapons) {
             case Some((idx, weapon)) => TradeMenuUi.weaponEntry(idx, weapon)
             case None                =>
-                let staves = PlayerScene.getStaves(playerId);
+                let staves = PlayerDriver.getStaves(playerId);
                 match findIndexed(s -> s#name == itemName, staves) {
                     case Some((idx, staff)) => TradeMenuUi.staffEntry(idx, staff)
                     case None               =>
@@ -167,7 +167,7 @@ mod TestTradeMenuUi {
 
     /// 指定 player の武器名リスト (assertion 用・在庫は World 権威)。
     def weaponNames(playerId: Int32): List[String] \ World.WorldQuery =
-        PlayerScene.getWeapons(playerId) |> List.map(w -> w#name)
+        PlayerDriver.getWeapons(playerId) |> List.map(w -> w#name)
 
     // ────────────────────────────────────────────────────────
     // (E) effect handlers

@@ -10,14 +10,14 @@
 /// 各 spawn は **順序が意味を持つ**:
 ///   - マップは build 冒頭で `MapSetup` が値として確定し World へ seed する。
 ///     以降の spawn 系は World（terrainOf / placementsOf / spawnGridOf）を読む
-///   - PlayerScene / EnemyScene は World の placements に従ってスポーン
-///   - MoveRangeScene は SelectedPlayer 状態を読むが起動時は未選択なので no-op
+///   - PlayerDriver / EnemyDriver は World の placements に従ってスポーン
+///   - MoveRange は SelectedPlayer 状態を読むが起動時は未選択なので no-op
 ///   - カメラは `CameraState` resource が視点の権威。`setupHudAndDrivers` が駒 spawn 後に
-///     `CameraScene.snapToParty` でパーティ先頭へスナップする
+///     `CameraDriver.snapToParty` でパーティ先頭へスナップする
 ///   - 階段は全ユニット・アイテム配置後（避けるため最後）、宝箱は階段確定後
 ///
 /// カタログ束 (`GameLifecycle.Catalogs`) は `Game.start` でロード済みのユニット / 敵 / フロア
-/// 定義。PlayerScene と EnemyScene にプール定義 (`party` / `enemyTier1`) を辿らせる。
+/// 定義。PlayerDriver と EnemyDriver にプール定義 (`party` / `enemyTier1`) を辿らせる。
 mod WorldSetup {
 
     /// プレイ用フロアを 1 回で組み立てる。`MapSetup.build` が `IO` を要求するため
@@ -35,8 +35,8 @@ mod WorldSetup {
         // マップを値として確定して World へ seed する。以降の spawn 系（Player / Enemy /
         // アイテム / 宝箱 / 階段）とフォグは World の地形 / placements / spawnGrid を読む。
         MapSetup.seed(MapSetup.build(floor));
-        PlayerScene.add(catalogs#players, catalogs#staves, catalogs#consumables);
-        EnemyScene.add(catalogs#enemies, catalogs#weapons, catalogs#rings, floor);
+        PlayerDriver.add(catalogs#players, catalogs#staves, catalogs#consumables);
+        EnemyDriver.add(catalogs#enemies, catalogs#weapons, catalogs#rings, floor);
         // 部屋の床に武器/杖/消耗品/指輪をランダムドロップ
         GroundItems.add(catalogs#players, catalogs#staves, catalogs#consumables, catalogs#rings, floor);
         // 駒非依存の HUD / メニュー群（rebuild と共有）
@@ -58,11 +58,11 @@ mod WorldSetup {
         // 範囲オーバーレイ resource を空へ（前フロアの残存を一掃してから MoveRange を組み直す）。
         RangeOverlayState.State.put(RangeOverlayState.empty());
         // カメラをパーティ先頭へスナップする（カメラ状態は CameraState resource が権威）。
-        // PlayerScene.add が World へ位置を seed した後なので、パーティ先頭の位置を World から読める。
-        CameraScene.snapToParty();
-        MoveRangeScene.add();       // SelectedPlayer 未設定なら no-op
-        CursorScene.add();
-        ArrowCursorScene.add();     // 杖発射方向の矢印カーソル (初期は非表示)
+        // PlayerDriver.add が World へ位置を seed した後なので、パーティ先頭の位置を World から読める。
+        CameraDriver.snapToParty();
+        MoveRange.add();       // SelectedPlayer 未設定なら no-op
+        CursorDriver.add();
+        ArrowCursorDriver.add();     // 杖発射方向の矢印カーソル (初期は非表示)
         // 敵ターン進行（EnemyTurnDriver）と集合「階段で離脱」（StairsExitDriver）は
         // gameLoop が明示 System として毎フレーム step を呼ぶ。
         // ユニット簡易カード・行動選択ウィンドウ・武器選択ウィンドウ・アイテム選択ウィンドウ・
@@ -82,8 +82,8 @@ mod WorldSetup {
                 World.WorldQuery, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         buildPlayingFloor(catalogs, floor);
         InitialSpawns.State.put({
-            enemies = EnemyScene.snapshotSpawns(),
-            players = PlayerScene.snapshotSpawns()
+            enemies = EnemyDriver.snapshotSpawns(),
+            players = PlayerDriver.snapshotSpawns()
         });
         attachBgm()
 
@@ -115,9 +115,9 @@ mod WorldSetup {
         ({floorId = FloorProgress.State.get(),
           // マップの Plan は World.mapLayout（build choke の SetMapLayout 由来）から読む。
           mapPlan  = World.mapPlanOf(World.WorldQuery.get()),
-          players  = PlayerScene.captureSnaps(catalogs#weapons, catalogs#staves,
+          players  = PlayerDriver.captureSnaps(catalogs#weapons, catalogs#staves,
                                                catalogs#consumables, catalogs#rings),
-          enemies  = EnemyScene.captureSnaps(catalogs#weapons, catalogs#rings),
+          enemies  = EnemyDriver.captureSnaps(catalogs#weapons, catalogs#rings),
           items    = GroundItems.captureSnaps(),
           chests   = Chests.captureSnaps(),
           // 階段セルは World.stairsPos（World 権威）から読む。
@@ -141,9 +141,9 @@ mod WorldSetup {
         WorldDriver.clearFloorStores();
         // 保存済み Plan からマップを乱数なしで確定して World へ seed する（buildPlayingFloor と同じ choke）。
         MapSetup.seed(MapSetup.buildFromPlan(snap#mapPlan));
-        PlayerScene.addFromSnaps(snap#players, catalogs#players, catalogs#staves,
+        PlayerDriver.addFromSnaps(snap#players, catalogs#players, catalogs#staves,
                                   catalogs#consumables, catalogs#rings);
-        EnemyScene.addFromSnaps(snap#enemies, catalogs#enemies, catalogs#weapons, catalogs#rings);
+        EnemyDriver.addFromSnaps(snap#enemies, catalogs#enemies, catalogs#weapons, catalogs#rings);
         GroundItems.addFromSnaps(snap#items, catalogs#players, catalogs#staves,
                                  catalogs#consumables, catalogs#rings);
         setupHudAndDrivers(floor#label, floor#name);  // buildPlayingFloor と同じ HUD 群を共有

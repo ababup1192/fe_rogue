@@ -22,7 +22,7 @@ mod TestCombatDriver {
     /// 攻撃対象 enemy=1 を抱えた選択中味方。`weaponHit` で命中率を作り分ける。
     /// 攻撃力は素 3 + 武器 2 = 5、敵防御 1 なので命中時ダメージは 4。
     /// attackForecast は純粋関数（World 不使用）なので、この Data 直書きのままでよい。
-    def player(weaponHit: Int32): PlayerScene.Data = {
+    def player(weaponHit: Int32): PlayerDriver.Data = {
         id                = 0,
         classId           = "test_player",
         gridPos           = {x = 2, y = 2},
@@ -49,7 +49,7 @@ mod TestCombatDriver {
     }
 
     /// 隣接 (3,2) の生存中の敵。HP 10・剣持ち（相性は中立）。
-    def enemy(): EnemyScene.Data = {
+    def enemy(): EnemyDriver.Data = {
         id             = 1,
         resourceId     = "test_enemy",
         gridPos        = {x = 3, y = 2},
@@ -166,9 +166,9 @@ mod TestCombatDriver {
         region rc {
             let cmds = battleCmds(80);
             let w0 = TestWorldFixtures.worldOf(cmds);
-            let attacking = TestUnitFixtures.withWorldQuery(w0, () -> PlayerScene.anyAttacking());
+            let attacking = TestUnitFixtures.withWorldQuery(w0, () -> PlayerDriver.anyAttacking());
             let (_, w1) = TestUnitFixtures.withWorldAppliedSeeded(rc, w0, () -> CombatDriver.clearAttackTargetId(0));
-            let idle = TestUnitFixtures.withWorldQuery(w1, () -> PlayerScene.anyAttacking());
+            let idle = TestUnitFixtures.withWorldQuery(w1, () -> PlayerDriver.anyAttacking());
             Assert.assertEq(
                 expected = (true, false),
                 (attacking, idle))

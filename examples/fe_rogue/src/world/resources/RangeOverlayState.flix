@@ -24,13 +24,13 @@ mod RangeOverlayState {
     /// 全 7 範囲のセル集合を 1 つに束ねた状態。各フィールドは Option で、None=非表示 / Some=表示。
     /// 形は各 range mod の `Data` alias に一致させる（reachable/drawCells/enemyId を温存）。
     pub type alias Data = {
-        moveRange         = Option[MoveRangeScene.Data],
-        moveAttackRange   = Option[MoveAttackRangeScene.Data],
-        enemyRange        = Option[EnemyRangeScene.Data],
-        enemyAttackRange  = Option[EnemyAttackRangeScene.Data],
-        playerAttackRange = Option[PlayerAttackRangeScene.Data],
-        tradeRange        = Option[TradeRangeScene.Data],
-        dangerZone        = Option[DangerZoneScene.Data]
+        moveRange         = Option[MoveRange.Data],
+        moveAttackRange   = Option[MoveAttackRange.Data],
+        enemyRange        = Option[EnemyRange.Data],
+        enemyAttackRange  = Option[EnemyAttackRange.Data],
+        playerAttackRange = Option[PlayerAttackRange.Data],
+        tradeRange        = Option[TradeRange.Data],
+        dangerZone        = Option[DangerZone.Data]
     }
 
     /// 初期状態（全範囲非表示）。フロア構築（`WorldSetup.setupHudAndDrivers`）で put し直して

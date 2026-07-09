@@ -17,7 +17,7 @@ mod TestBattlePanelUi {
 
     /// 武器を装備し攻撃対象を抱えた選択中味方（= AttackForecast に入っている状態）。
     /// 装備中武器は `weapons.head` を自動使用するため、selectedItem は None でよい。
-    def fixturePlayer(): PlayerScene.Data = {
+    def fixturePlayer(): PlayerDriver.Data = {
         id                = 0,
         classId           = "test_player",
         gridPos           = {x = 2, y = 2},
@@ -44,7 +44,7 @@ mod TestBattlePanelUi {
     }
 
     /// 隣接マス (3,2) に立つ生存中の敵。武器持ち（反撃可）。
-    def fixtureEnemy(): EnemyScene.Data = {
+    def fixtureEnemy(): EnemyDriver.Data = {
         id             = 1,
         resourceId     = "test_enemy",
         gridPos        = {x = 3, y = 2},

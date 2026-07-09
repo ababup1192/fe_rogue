@@ -1,4 +1,4 @@
-/// ArrowCursorScene — 杖・投擲の照準矢印の状態書き込み口
+/// ArrowCursorDriver — 杖・投擲の照準矢印の状態書き込み口
 ///
 /// `StaffAim` / `ThrowAim` フェーズで、選択中プレイヤーの隣接 4 セルのいずれか
 /// （現在指している `direction` 側）を指す照準矢印を出す。方向キーで向きが切り替わり、
@@ -8,7 +8,7 @@
 /// `ArrowCursorState.State` resource に書くだけの入口。矢印スプライトの描画は
 /// `RenderWorld.renderArrowCursor` が resource の gridPos（セル中心）と direction（回転）から
 /// 直描きし、表示条件（`StaffAim` / `ThrowAim` のときだけ出す）も render 側が phase で判定する。
-mod ArrowCursorScene {
+mod ArrowCursorDriver {
 
     /// 矢印カーソルの論理状態。resource 側の型に委譲する。
     pub type alias Data = ArrowCursorState.Data

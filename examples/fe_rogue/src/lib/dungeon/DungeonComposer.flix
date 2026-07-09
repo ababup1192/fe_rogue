@@ -457,7 +457,7 @@ mod DungeonComposer {
     // ────────────────────────────────────────────────────────
 
     /// anchor の decorTiles で「中央に最も近い床セル」を選び、worldOffset 加算して返す。
-    /// PlayerScene のスポーン地点に使う。decorTile が空なら bug!。
+    /// PlayerDriver のスポーン地点に使う。decorTile が空なら bug!。
     /// manualTiles（衝突する手置きの壁）のセルは候補から除外し、プレイヤーが
     /// 壁に埋まってスタートするのを防ぐ。
     def findSpawnInAnchor(anchor: LoadedModule,

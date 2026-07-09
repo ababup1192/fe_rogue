@@ -1,8 +1,8 @@
 /// StaffCast — 杖の発動と消費アイテムの使用（効果の適用層）
 ///
-/// `PlayerScene` から「杖を撃つ / 消費アイテムを使う」という、盤面・敵・アニメ・ターン進行に
+/// `PlayerDriver` から「杖を撃つ / 消費アイテムを使う」という、盤面・敵・アニメ・ターン進行に
 /// またがる適用ロジックを切り出した層（`src/systems/` の配置分界は
-/// CombatDriver.flix 冒頭を参照）。`PlayerScene` 本体は味方の状態所有と
+/// CombatDriver.flix 冒頭を参照）。`PlayerDriver` 本体は味方の状態所有と
 /// 移動・選択・戦闘に専念し、ここは「選択中の杖/アイテムを実際に効かせる」段だけを担う。
 /// 駒の状態は World が権威を持つ。読みは `World.WorldQuery`、書きは `World.Command.emit` を通す。
 ///
@@ -14,8 +14,8 @@
 ///   5. 選択中アイテムをクリア → `commitWaitedAndAdvance` で waited 確定し次ターンへ
 /// 杖は CounterAttackRules を経由しない（反撃なし）。
 ///
-/// `PlayerScene` と `EnemyScene` は `Data` / `get` / `snapTo` を**両方が**持つため、
-/// このモジュールでは味方側を必ず `PlayerScene.`、敵側を `EnemyScene.` で完全修飾する。
+/// `PlayerDriver` と `EnemyDriver` は `Data` / `get` / `snapTo` を**両方が**持つため、
+/// このモジュールでは味方側を必ず `PlayerDriver.`、敵側を `EnemyDriver.` で完全修飾する。
 /// 方向選択の純粋計算（`deltaToDirection` / `pickHealDirection`）は `Staff` モジュールに置く。
 mod StaffCast {
 
@@ -42,7 +42,7 @@ mod StaffCast {
 
     /// プレイヤーと杖が解決できたときの本体: レイキャスト → 命中音 → 効果適用 →
     /// 耐久消費 → 選択クリア → ターン進行。
-    def fireStaff(playerId: Int32, staffIdx: Int32, player: PlayerScene.Data,
+    def fireStaff(playerId: Int32, staffIdx: Int32, player: PlayerDriver.Data,
                    staff: Staff.StaffResource, direction: Dir4.Dir4):
             Unit
             \ {RangeOverlayState.State,
@@ -57,7 +57,7 @@ mod StaffCast {
         playHitSound(staff#effect, hit);
         applyStaffEffect(playerId, player, staff, dir, hit);
         consumeStaff(playerId, staffIdx, staff);
-        PlayerScene.clearSelectedItem(playerId);
+        PlayerDriver.clearSelectedItem(playerId);
         TurnFlow.commitWaitedAndAdvance();
         ()
 
@@ -91,7 +91,7 @@ mod StaffCast {
         ) yield dir
 
     /// 選択中アイテムが杖ならその staves index、それ以外は None。
-    def selectedStaffIndex(player: PlayerScene.Data): Option[Int32] =
+    def selectedStaffIndex(player: PlayerDriver.Data): Option[Int32] =
         match player#selectedItem {
             case Some(PlayerData.ItemKind.Staff(idx)) => Some(idx)
             case _                                      => None
@@ -99,7 +99,7 @@ mod StaffCast {
 
     /// 回復杖なら負傷味方への方向、それ以外（攻撃杖等）は None。
     /// 負傷味方の位置だけを `Staff.pickHealDirection` に渡す（純粋計算へ委譲）。
-    def healDirectionFor(player: PlayerScene.Data, playerId: Int32,
+    def healDirectionFor(player: PlayerDriver.Data, playerId: Int32,
                           staff: Staff.StaffResource): Option[Dir4.Dir4] \ World.WorldQuery =
         if (staff#effect == Staff.StaffEffect.Heal)
             Staff.pickHealDirection(player#gridPos,
@@ -110,18 +110,18 @@ mod StaffCast {
     /// 自己を除外するのは、自己回復はメニューの「つかう → きずぐすり」で行う別フローだから。
     /// HP < maxHp を「負傷」と定義しており、最大 HP ちょうどの味方は照準候補に含めない。
     def injuredAlliesExcept(playerId: Int32):
-            List[PlayerScene.Data] \ World.WorldQuery =
+            List[PlayerDriver.Data] \ World.WorldQuery =
         // 位置（照準方向計算に使う）は World 権威の Data で。hp は World.hpOf で判定する
         // （overlay 化済みの読み手が大半だがここは負傷判定のみ）。
         let w = World.WorldQuery.get();
-        PlayerScene.getAll()
+        PlayerDriver.getAll()
             |> List.filter(a -> a#id != playerId
                 and (World.hpOf(World.EntityRef.Player(a#id), w) |> Option.getWithDefault(a#hp)) < a#resource#hp)
 
     /// 杖の効果適用。IDE 合成エディタの effectRule（onUse）があれば **DSL 経路**（runPlan）で
     /// 効かせ、無ければ従来の `staff#effect × hit` legacy 分岐へ落とす。
     /// DSL 経路は当たったユニット（味方/敵）へ rayFirst で効かせる（消費アイテムの投げ経路と同形）。
-    def applyStaffEffect(playerId: Int32, player: PlayerScene.Data,
+    def applyStaffEffect(playerId: Int32, player: PlayerDriver.Data,
                           staff: Staff.StaffResource,
                           dir: {x = Int32, y = Int32},
                           hit: RayHit):
@@ -141,7 +141,7 @@ mod StaffCast {
     /// 演出進行（耐久消費/選択クリア/turn 進行）は `fireStaff` 後段が担う。
     /// この seam そのものを traced harness で踏むため pub（`TestStaffGolden`:
     /// whiff の log／hit 時 emit ループが eventToCmds と一致 を固定）。
-    pub def ecsResolveStaffCast(playerId: Int32, _player: PlayerScene.Data,
+    pub def ecsResolveStaffCast(playerId: Int32, _player: PlayerDriver.Data,
                              staff: Staff.StaffResource,
                              dir: {x = Int32, y = Int32}, hit: RayHit):
             Unit \ {GameLogger.GameLogger, World.Command,
@@ -153,8 +153,8 @@ mod StaffCast {
             // 空振り（壁/盤外）: フィードバックログのみで emit/replay はしない
             //（Swap だけ文言が違う=『消えた』、他 4 effect は『届かなかった』）。
             let msg = match staff#effect {
-                case Staff.StaffEffect.Swap => "${PlayerScene.displayName(playerId)} の ${staff#name} は消えた"
-                case _                      => "${PlayerScene.displayName(playerId)} の ${staff#name} は届かなかった"
+                case Staff.StaffEffect.Swap => "${PlayerDriver.displayName(playerId)} の ${staff#name} は消えた"
+                case _                      => "${PlayerDriver.displayName(playerId)} の ${staff#name} は届かなかった"
             };
             GameLogger.playerLog(msg)
         } else {
@@ -172,13 +172,13 @@ mod StaffCast {
     pub def applyEcsStaffSceneEffects(events: List[World.SimEvent]): Unit \ {World.Command, World.WorldQuery} =
         List.forEach(ev -> match ev {
             case World.SimEvent.Afflicted(World.EntityRef.Player(id), _) =>
-                PlayerScene.updateStatuses(id, xs -> xs)
+                PlayerDriver.updateStatuses(id, xs -> xs)
             case World.SimEvent.Afflicted(World.EntityRef.Enemy(id), _) =>
-                EnemyScene.updateStatuses(id, xs -> xs)
+                EnemyDriver.updateStatuses(id, xs -> xs)
             case World.SimEvent.Released(World.EntityRef.Player(id)) =>
-                PlayerScene.updateStatuses(id, xs -> xs)
+                PlayerDriver.updateStatuses(id, xs -> xs)
             case World.SimEvent.Released(World.EntityRef.Enemy(id)) =>
-                EnemyScene.updateStatuses(id, xs -> xs)
+                EnemyDriver.updateStatuses(id, xs -> xs)
             case _ => ()
         }, events)
 
@@ -217,7 +217,7 @@ mod StaffCast {
                 EffectRunner.runPlan(staffEffectHandlers(playerId, dir), plan, ());
                 World.emitHpSets(plan)  // hp も境界で World へ emit（maxHpUp はここで baseStats/resource も dual-write）
             case None =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId)} の ${staff#name} は届かなかった")
+                GameLogger.playerLog("${PlayerDriver.displayName(playerId)} の ${staff#name} は届かなかった")
         }
 
     /// DSL 杖ハンドラ。当たったユニット(ally)へ op を適用する。
@@ -246,7 +246,7 @@ mod StaffCast {
     /// （ログ込みで同一）。turns は effectRule の for:turns から来る（被弾解除は Immobilized 型に内在）。
     def immobilizeUnit(srcId: Int32, id: Int32, ally: Bool, turns: Int32):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
-        let srcLabel = PlayerScene.displayName(srcId);
+        let srcLabel = PlayerDriver.displayName(srcId);
         if (ally) applyBindToPlayer(srcLabel, id, turns)
         else      applyBindToEnemy(srcLabel, id, turns)
 
@@ -261,7 +261,7 @@ mod StaffCast {
     def customStaffEffect(srcId: Int32, dir: {x = Int32, y = Int32},
                            op: String, id: Int32, ally: Bool):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery, BoardQuery} =
-        let srcLabel = PlayerScene.displayName(srcId);
+        let srcLabel = PlayerDriver.displayName(srcId);
         match op {
             case "knockback" =>
                 match gridOf(id, ally) {
@@ -290,17 +290,17 @@ mod StaffCast {
                                 hitCell: {x = Int32, y = Int32},
                                 dir: {x = Int32, y = Int32}):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery, BoardQuery} =
-        match PlayerScene.get(targetId) {
+        match PlayerDriver.get(targetId) {
             case None         => ()
             case Some(target) =>
                 let curHp = World.hpOf(World.EntityRef.Player(targetId), World.WorldQuery.get())
                                 |> Option.getWithDefault(target#hp);
                 let dmgResult = Combat.damage(hp = curHp, amount = 1);
-                PlayerScene.setHp(targetId, dmgResult#newHp);
+                PlayerDriver.setHp(targetId, dmgResult#newHp);
                 GameLogger.playerLog(
-                    "${PlayerScene.displayName(srcId)} ▶ ${PlayerScene.displayName(targetId)} を ふきとばし (1ダメージ)");
+                    "${PlayerDriver.displayName(srcId)} ▶ ${PlayerDriver.displayName(targetId)} を ふきとばし (1ダメージ)");
                 if (dmgResult#isDead) ()
-                else applyBlowbackMove({hit = hitCell, dir = dir}, cell -> PlayerScene.snapTo(targetId, cell))
+                else applyBlowbackMove({hit = hitCell, dir = dir}, cell -> PlayerDriver.snapTo(targetId, cell))
         }
 
     /// ふきとばし × 敵: 1 ダメ → 死亡なら startDeathAnimation、生存なら最終位置に snapTo。
@@ -308,20 +308,20 @@ mod StaffCast {
                                hitCell: {x = Int32, y = Int32},
                                dir: {x = Int32, y = Int32}):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery, BoardQuery} =
-        match EnemyScene.get(enemyId) {
+        match EnemyDriver.get(enemyId) {
             case None        => ()
             case Some(enemy) =>
                 let curHp = World.hpOf(World.EntityRef.Enemy(enemyId), World.WorldQuery.get())
                                 |> Option.getWithDefault(enemy#hp);
                 let dmgResult = Combat.damage(hp = curHp, amount = 1);
                 if (dmgResult#isDead) {
-                    GameLogger.playerLog("${PlayerScene.displayName(srcId)} ▶ ${EnemyScene.displayName(enemyId)} を ふきとばし撃破");
-                    EnemyScene.startDeathAnimation(enemyId)
+                    GameLogger.playerLog("${PlayerDriver.displayName(srcId)} ▶ ${EnemyDriver.displayName(enemyId)} を ふきとばし撃破");
+                    EnemyDriver.startDeathAnimation(enemyId)
                 } else {
-                    EnemyScene.setHp(enemyId, dmgResult#newHp);
+                    EnemyDriver.setHp(enemyId, dmgResult#newHp);
                     GameLogger.playerLog(
-                        "${PlayerScene.displayName(srcId)} ▶ ${EnemyScene.displayName(enemyId)} を ふきとばし (1ダメージ)");
-                    applyBlowbackMove({hit = hitCell, dir = dir}, cell -> EnemyScene.snapTo(enemyId, cell))
+                        "${PlayerDriver.displayName(srcId)} ▶ ${EnemyDriver.displayName(enemyId)} を ふきとばし (1ダメージ)");
+                    applyBlowbackMove({hit = hitCell, dir = dir}, cell -> EnemyDriver.snapTo(enemyId, cell))
                 }
         }
 
@@ -345,17 +345,17 @@ mod StaffCast {
 
     def applySwapWithPlayer(src: UnitCell, other: UnitCell):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
-        GameLogger.playerLog("${PlayerScene.displayName(src#id)} と ${PlayerScene.displayName(other#id)} がいれかわった");
-        PlayerScene.snapTo(src#id, other#cell);
-        PlayerScene.snapTo(other#id, src#cell)
+        GameLogger.playerLog("${PlayerDriver.displayName(src#id)} と ${PlayerDriver.displayName(other#id)} がいれかわった");
+        PlayerDriver.snapTo(src#id, other#cell);
+        PlayerDriver.snapTo(other#id, src#cell)
 
     /// いれかえ × 敵: 自分（Player）と敵を交換する。
     /// 将来: sequence engine が揃えば交差するアニメーションに置換できる（現在は瞬間移動）。
     def applySwapWithEnemy(src: UnitCell, enemy: UnitCell):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
-        GameLogger.playerLog("${PlayerScene.displayName(src#id)} と ${EnemyScene.displayName(enemy#id)} がいれかわった");
-        PlayerScene.snapTo(src#id, enemy#cell);
-        EnemyScene.snapTo(enemy#id, src#cell)
+        GameLogger.playerLog("${PlayerDriver.displayName(src#id)} と ${EnemyDriver.displayName(enemy#id)} がいれかわった");
+        PlayerDriver.snapTo(src#id, enemy#cell);
+        EnemyDriver.snapTo(enemy#id, src#cell)
 
     // ── かなしばり / 一時しのぎ（完全停止 / 停止 + ワープ）──────────────
 
@@ -367,20 +367,20 @@ mod StaffCast {
     /// 敵→味方 Bind の hit ログ。legacy `applyBindToPlayer` と ECS 経路 `ecsResolveEnemyStaff` で
     /// 文字列を一元化し hit-log parity を保全する（`applyEcsStaffSceneEffects` は状態のみ・log 非配線）。
     def bindPlayerLog(srcLabel: String, targetId: Int32): Unit \ {GameLogger.GameLogger, World.WorldQuery} =
-        GameLogger.playerLog("${srcLabel} は ${PlayerScene.displayName(targetId)} を かなしばりにした")
+        GameLogger.playerLog("${srcLabel} は ${PlayerDriver.displayName(targetId)} を かなしばりにした")
 
     /// かなしばり × 味方: 対象を `turns` ターン完全停止にする。`srcLabel` は撃った側の表示名（敵詠唱でも使う）。
     def applyBindToPlayer(srcLabel: String, targetId: Int32, turns: Int32):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         bindPlayerLog(srcLabel, targetId);
         // statuses は World 権威＝現在値に bind を適用して Seed（全置換）で書く。
-        PlayerScene.updateStatuses(targetId, xs -> StaffRules.bindStatuses(turns, xs))
+        PlayerDriver.updateStatuses(targetId, xs -> StaffRules.bindStatuses(turns, xs))
 
     /// かなしばり × 敵: 対象を `turns` ターン完全停止にする。
     def applyBindToEnemy(srcLabel: String, enemyId: Int32, turns: Int32):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
-        GameLogger.playerLog("${srcLabel} は ${EnemyScene.displayName(enemyId)} を かなしばりにした");
-        EnemyScene.updateStatuses(enemyId, xs -> StaffRules.bindStatuses(turns, xs))
+        GameLogger.playerLog("${srcLabel} は ${EnemyDriver.displayName(enemyId)} を かなしばりにした");
+        EnemyDriver.updateStatuses(enemyId, xs -> StaffRules.bindStatuses(turns, xs))
 
     /// 一時しのぎ × 味方: 完全停止にしたうえで階段（埋まっていれば隣接の空き）へワープさせる。
     def applyStopgapToPlayer(srcLabel: String, targetId: Int32):
@@ -401,8 +401,8 @@ mod StaffCast {
         let board = BoardQuery.board();
         match StaffRules.warpCellFor(World.stairsPosOf(World.WorldQuery.get()), board) {
             case Some(cell) =>
-                GameLogger.playerLog("${PlayerScene.displayName(targetId)} は 階段の方へ とばされた");
-                PlayerScene.snapTo(targetId, cell)
+                GameLogger.playerLog("${PlayerDriver.displayName(targetId)} は 階段の方へ とばされた");
+                PlayerDriver.snapTo(targetId, cell)
             case None       =>
                 GameLogger.playerLog("ワープ先がなかった")
         }
@@ -414,8 +414,8 @@ mod StaffCast {
         let board = BoardQuery.board();
         match StaffRules.warpCellFor(World.stairsPosOf(World.WorldQuery.get()), board) {
             case Some(cell) =>
-                GameLogger.playerLog("${EnemyScene.displayName(enemyId)} は 階段の方へ とばされた");
-                EnemyScene.snapTo(enemyId, cell)
+                GameLogger.playerLog("${EnemyDriver.displayName(enemyId)} は 階段の方へ とばされた");
+                EnemyDriver.snapTo(enemyId, cell)
             case None       =>
                 GameLogger.playerLog("ワープ先がなかった")
         }
@@ -427,11 +427,11 @@ mod StaffCast {
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         let consumed = Staff.consume(staff);
         // 在庫は World 権威＝現在値を読んで耐久消費後の並びを Cmd で書く。
-        let newStaves = replaceOrDropAt(staffIdx, consumed, PlayerScene.stavesW(playerId));
+        let newStaves = replaceOrDropAt(staffIdx, consumed, PlayerDriver.stavesW(playerId));
         if (Option.isEmpty(consumed))
-            GameLogger.playerLog("${PlayerScene.displayName(playerId)} の ${staff#name} がこわれた")
+            GameLogger.playerLog("${PlayerDriver.displayName(playerId)} の ${staff#name} がこわれた")
         else ();
-        PlayerScene.putStaves(playerId, newStaves)
+        PlayerDriver.putStaves(playerId, newStaves)
 
     // ────────────────────────────────────────────────────────
     // 消費アイテム（きずぐすり等）の使用
@@ -457,7 +457,7 @@ mod StaffCast {
 
     /// プレイヤーと消費アイテムが解決できたときの本体: 使用音 → 回復 → 耐久消費 →
     /// 選択クリア → ターン進行。
-    def useConsumable(playerId: Int32, idx: Int32, player: PlayerScene.Data,
+    def useConsumable(playerId: Int32, idx: Int32, player: PlayerDriver.Data,
                        item: Consumable.ConsumableResource):
             Unit
             \ {RangeOverlayState.State, GameLogger.GameLogger,
@@ -467,7 +467,7 @@ mod StaffCast {
         ViewReplay.sound("cure");
         applyConsumableSelfEffect(playerId, player, item);
         consumeConsumable(playerId, idx, item);
-        PlayerScene.clearSelectedItem(playerId);
+        PlayerDriver.clearSelectedItem(playerId);
         TurnFlow.commitWaitedAndAdvance();
         ()
 
@@ -477,7 +477,7 @@ mod StaffCast {
     /// （applyConsumableHeal / applyFullHeal / applySelfStatus）へ振り分ける。maxHpUp は境界の
     /// `World.emitHpSets` が処理する。HP/状態変更・ログは primitive をそのまま呼ぶので **旧経路と挙動同一**。
     /// 投擲（Directional）・自動（AutoOnDeath）が万一来たら従来どおり防御ログ。
-    pub def applyConsumableSelfEffect(playerId: Int32, player: PlayerScene.Data,
+    pub def applyConsumableSelfEffect(playerId: Int32, player: PlayerDriver.Data,
                                    item: Consumable.ConsumableResource):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         match dslUseRule(item) {
@@ -503,7 +503,7 @@ mod StaffCast {
                     EffectRunner.runPlan(selfEffectHandlers(item), plan, ());
                     World.emitHpSets(plan)  // hp も境界で World へ emit
                 } else {
-                    GameLogger.playerLog("${PlayerScene.displayName(playerId)} の ${item#name} は ここでは使えなかった")
+                    GameLogger.playerLog("${PlayerDriver.displayName(playerId)} の ${item#name} は ここでは使えなかった")
                 }
         }
 
@@ -548,8 +548,8 @@ mod StaffCast {
     }
 
     /// id のプレイヤーが居れば f を適用、居なければ no-op（防御）。
-    def withPlayer(id: Int32, f: PlayerScene.Data -> Unit \ ef): Unit \ {ef, World.WorldQuery} =
-        match PlayerScene.get(id) {
+    def withPlayer(id: Int32, f: PlayerDriver.Data -> Unit \ ef): Unit \ {ef, World.WorldQuery} =
+        match PlayerDriver.get(id) {
             case Some(p) => f(p)
             case None    => ()
         }
@@ -557,7 +557,7 @@ mod StaffCast {
     /// 消費アイテムで使用者自身の HP を `magnitude` 回復、ログ。
     /// `applyConsumableSelfEffect` から呼ばれる内部処理だが、回復量を単体検証できるように
     /// pub にしている（`TestStaffCast` 参照）。
-    pub def applyConsumableHeal(playerId: Int32, player: PlayerScene.Data,
+    pub def applyConsumableHeal(playerId: Int32, player: PlayerDriver.Data,
                              item: Consumable.ConsumableResource):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         // 現在 hp は World 読み。
@@ -565,12 +565,12 @@ mod StaffCast {
                         |> Option.getWithDefault(player#hp);
         let result = Combat.heal(curHp, player#resource#hp, item#magnitude);
         let healed = result#newHp - curHp;
-        GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${item#name} で ${healed}回復");
+        GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は ${item#name} で ${healed}回復");
         // 書き込みは setHp funnel（SetHp emit 併記＝World 即時反映）。
-        PlayerScene.setHp(playerId, result#newHp)
+        PlayerDriver.setHp(playerId, result#newHp)
 
     /// 全快薬: HP を最大まで戻す。`magnitude` は不使用。
-    pub def applyFullHeal(playerId: Int32, player: PlayerScene.Data,
+    pub def applyFullHeal(playerId: Int32, player: PlayerDriver.Data,
                            item: Consumable.ConsumableResource):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         // 現在 hp は World 読み・書き込みは setHp funnel（SetHp emit 併記）。
@@ -578,14 +578,14 @@ mod StaffCast {
         let curHp  = World.hpOf(World.EntityRef.Player(playerId), World.WorldQuery.get())
                          |> Option.getWithDefault(player#hp);
         let healed = maxHp - curHp;
-        GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${item#name} で ${healed}回復");
-        PlayerScene.setHp(playerId, maxHp)
+        GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は ${item#name} で ${healed}回復");
+        PlayerDriver.setHp(playerId, maxHp)
 
     /// 命の草: 最大 HP を `magnitude` 永続上昇させ、現在 HP も同量上げる（その場で増えた分が回復）。
     /// 本番経路（DSL/legacy handler）では `World.emitHpSets` の MaxHpUpAt 分岐が
     /// SetHp/SetBaseStats/SetPlayerResource を境界 emit するため呼ばれない。回復量ロジックを
     /// 単体検証できるよう pub の test seam として残し、resource テンプレも自前で emit する。
-    pub def applyMaxHpUp(playerId: Int32, player: PlayerScene.Data,
+    pub def applyMaxHpUp(playerId: Int32, player: PlayerDriver.Data,
                           item: Consumable.ConsumableResource):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         let inc       = item#magnitude;
@@ -593,10 +593,10 @@ mod StaffCast {
         let newHp     = (World.hpOf(World.EntityRef.Player(playerId), World.WorldQuery.get())
                             |> Option.getWithDefault(player#hp)) + inc;
         let newResource = {hp = newMax | player#resource};
-        GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${item#name} で 最大HP+${inc}");
+        GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は ${item#name} で 最大HP+${inc}");
         World.Command.emit(World.Cmd.SetPlayerResource(playerId, newResource));
         World.Command.emit(World.Cmd.SetBaseStats(World.EntityRef.Player(playerId), Combat.baseStatsFrom(newResource)));
-        PlayerScene.setHp(playerId, newHp)
+        PlayerDriver.setHp(playerId, newHp)
 
     /// ちから薬 / すばやさ薬: 使用者へ時限バフ（`magnitude` を `duration` ターン）を付与する。
     /// `kind` は付与する `StatusEffect`（AtkUp / SpdUp）。効果は次の戦闘予測・実戦闘に反映される。
@@ -604,9 +604,9 @@ mod StaffCast {
                          kind: StatusSystem.StatusEffect):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         let status = {effect = kind, magnitude = item#magnitude, remaining = item#duration};
-        GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${item#name} を使った (${item#duration}ターン)");
+        GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は ${item#name} を使った (${item#duration}ターン)");
         // statuses は World 権威＝現在値に add を適用して Seed（全置換）で書く。
-        PlayerScene.updateStatuses(playerId, xs -> StatusSystem.add(status, xs))
+        PlayerDriver.updateStatuses(playerId, xs -> StatusSystem.add(status, xs))
 
     /// 消費アイテムの耐久（使用回数）を 1 減らし、0 なら consumables から除去 + 使い切りログ。
     /// `consumeStaff` と構造は同じだが、型が `Consumable.ConsumableResource` のため共通化できない。
@@ -615,11 +615,11 @@ mod StaffCast {
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         let consumed = Consumable.consume(item);
         // 在庫は World 権威＝現在値を読んで耐久消費後の並びを Cmd で書く。
-        let newConsumables = replaceOrDropAt(idx, consumed, PlayerScene.consumablesW(playerId));
+        let newConsumables = replaceOrDropAt(idx, consumed, PlayerDriver.consumablesW(playerId));
         if (Option.isEmpty(consumed))
-            GameLogger.playerLog("${PlayerScene.displayName(playerId)} の ${item#name} を使い切った")
+            GameLogger.playerLog("${PlayerDriver.displayName(playerId)} の ${item#name} を使い切った")
         else ();
-        PlayerScene.putConsumables(playerId, newConsumables)
+        PlayerDriver.putConsumables(playerId, newConsumables)
 
     // ────────────────────────────────────────────────────────
     // 投擲系（Directional）消費アイテム — 目潰し薬 / 鈍足薬
@@ -645,7 +645,7 @@ mod StaffCast {
 
     /// 投擲系の本体: レイキャスト → 当たり対象へデバフ付与 → 耐久消費 → 選択クリア → ターン進行。
     /// 杖の `fireStaff` と同構造（方向投擲を間借りする）。
-    def fireConsumable(playerId: Int32, idx: Int32, player: PlayerScene.Data,
+    def fireConsumable(playerId: Int32, idx: Int32, player: PlayerDriver.Data,
                         item: Consumable.ConsumableResource, direction: Dir4.Dir4):
             Unit
             \ {RangeOverlayState.State,
@@ -657,7 +657,7 @@ mod StaffCast {
         let hit   = Board.rayCast(player#gridPos, dir, staffMaxRange(), board);
         applyDirectionalEffect(playerId, item, hit);
         consumeConsumable(playerId, idx, item);
-        PlayerScene.clearSelectedItem(playerId);
+        PlayerDriver.clearSelectedItem(playerId);
         TurnFlow.commitWaitedAndAdvance();
         ()
 
@@ -671,16 +671,16 @@ mod StaffCast {
         // 統一 DSL 経路（applyConsumableEffectDsl）へ寄せる（当たった敵/味方を ally で出し分け）。
         match (StaffRules.directionalStatus(item), hit) {
             case (Some(_), RayHit.HitEnemy(enemyId, _))   =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${EnemyScene.displayName(enemyId)} に ${item#name} を当てた");
+                GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は ${EnemyDriver.displayName(enemyId)} に ${item#name} を当てた");
                 applyConsumableEffectDsl(item, enemyId, false)
             case (Some(_), RayHit.HitPlayer(targetId, _)) =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${PlayerScene.displayName(targetId)} に ${item#name} を当てた");
+                GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は ${PlayerDriver.displayName(targetId)} に ${item#name} を当てた");
                 applyConsumableEffectDsl(item, targetId, true)
             // 効果が投擲系でない（None）→ 不発。投擲系だが壁/盤外に消えた → 届かなかった。
             case (None, _)                                     =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId)} の ${item#name} は不発に終わった")
+                GameLogger.playerLog("${PlayerDriver.displayName(playerId)} の ${item#name} は不発に終わった")
             case (Some(_), _)                                  =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId)} の ${item#name} は届かなかった")
+                GameLogger.playerLog("${PlayerDriver.displayName(playerId)} の ${item#name} は届かなかった")
         }
 
     // 投擲デバフ Status 生成 directionalStatus は純 leaf として StaffRules.flix へ移動（A6）。
@@ -709,7 +709,7 @@ mod StaffCast {
         Option.getWithDefault((), cast)
 
     /// 投擲本体: レイキャスト → 命中ロール込みで効果適用 → 投擲アイテム消費 → 選択クリア → ターン進行。
-    def fireThrow(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
+    def fireThrow(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerDriver.Data,
                    direction: Dir4.Dir4):
             Unit
             \ {RangeOverlayState.State, BoardQuery, GameLogger.GameLogger,
@@ -720,12 +720,12 @@ mod StaffCast {
         let hit   = Board.rayCast(player#gridPos, dir, staffMaxRange(), board);
         applyThrowHit(playerId, kind, player, dir, hit);
         consumeThrownItem(playerId, kind);
-        PlayerScene.clearSelectedItem(playerId);
+        PlayerDriver.clearSelectedItem(playerId);
         TurnFlow.commitWaitedAndAdvance();
         ()
 
     /// 当たり対象（キャラ）が居れば命中ロールへ、壁・盤外なら空振りログのみ。1 段マッチ。
-    def applyThrowHit(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
+    def applyThrowHit(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerDriver.Data,
                        dir: {x = Int32, y = Int32}, hit: RayHit):
             Unit
             \ {GameLogger.GameLogger,
@@ -735,11 +735,11 @@ mod StaffCast {
             case RayHit.HitEnemy(_, _)  => rolledThrow(playerId, kind, player, dir, hit)
             case RayHit.HitPlayer(_, _) => rolledThrow(playerId, kind, player, dir, hit)
             case _                      =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId)} の 投げ は届かなかった")
+                GameLogger.playerLog("${PlayerDriver.displayName(playerId)} の 投げ は届かなかった")
         }
 
     /// 命中ロール（60% / レンジャー・ローグは 80%）を引き、当たれば種別ごとに効果を適用する。
-    def rolledThrow(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
+    def rolledThrow(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerDriver.Data,
                      dir: {x = Int32, y = Int32}, hit: RayHit):
             Unit
             \ {GameLogger.GameLogger,
@@ -748,7 +748,7 @@ mod StaffCast {
         let roll = throwRoll();
         let threshold = Combat.throwHitRate(isAccurateThrower(player));
         if (not Combat.isHit(threshold, roll)) {
-            GameLogger.playerLog("${PlayerScene.displayName(playerId)} の 投げ は外れた")
+            GameLogger.playerLog("${PlayerDriver.displayName(playerId)} の 投げ は外れた")
         } else
             dispatchThrowEffect(playerId, kind, player, dir, hit)
 
@@ -757,13 +757,13 @@ mod StaffCast {
         Float64.truncateToInt32(Float64.floor(Math.Random.randomFloat64() * 100.0))
 
     /// 投げ手が命中の高い職（レンジャー / ローグ）か。`resource#description` を職名として判定する。
-    def isAccurateThrower(player: PlayerScene.Data): Bool =
+    def isAccurateThrower(player: PlayerDriver.Data): Bool =
         let cls = player#resource#description;
         cls == "レンジャー" or cls == "ローグ"
 
     /// 当たったキャラへ種別ごとの効果を適用する。各アイテム取得は forM、効果適用は別関数へ委譲し
     /// match のネストを避ける。
-    def dispatchThrowEffect(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerScene.Data,
+    def dispatchThrowEffect(playerId: Int32, kind: PlayerData.ItemKind, player: PlayerDriver.Data,
                              dir: {x = Int32, y = Int32}, hit: RayHit):
             Unit
             \ {GameLogger.GameLogger,
@@ -783,11 +783,11 @@ mod StaffCast {
                     forM (s <- List.nth(idx, player#staves))
                         yield applyStaffEffect(playerId, player, s, dir, hit))
             case PlayerData.ItemKind.Ring(_) =>
-                GameLogger.playerLog("${PlayerScene.displayName(playerId)} の 指輪 を投げたが 効果はなかった")
+                GameLogger.playerLog("${PlayerDriver.displayName(playerId)} の 指輪 を投げたが 効果はなかった")
         }
 
     /// 武器投げの解決。攻撃力の 8 割（防御無視・最低 1）を当たったキャラへ与える。1 段マッチ。
-    def throwWeaponResolved(playerId: Int32, player: PlayerScene.Data,
+    def throwWeaponResolved(playerId: Int32, player: PlayerDriver.Data,
                              weapon: UnitCatalog.WeaponResource, hit: RayHit):
             Unit
             \ {GameLogger.GameLogger,
@@ -797,9 +797,9 @@ mod StaffCast {
         let dmg = Combat.thrownWeaponDamage(atkPower);
         match hit {
             case RayHit.HitEnemy(enemyId, _)   =>
-                throwDamageToEnemy("${PlayerScene.displayName(playerId)}", enemyId, dmg, weapon#name)
+                throwDamageToEnemy("${PlayerDriver.displayName(playerId)}", enemyId, dmg, weapon#name)
             case RayHit.HitPlayer(targetId, _) =>
-                throwDamageToPlayer("${PlayerScene.displayName(playerId)}", targetId, dmg, weapon#name)
+                throwDamageToPlayer("${PlayerDriver.displayName(playerId)}", targetId, dmg, weapon#name)
             case _                             => ()
         }
 
@@ -809,19 +809,19 @@ mod StaffCast {
             Unit
             \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         Option.getWithDefault((),
-            forM (enemy <- EnemyScene.get(enemyId)) yield {
+            forM (enemy <- EnemyDriver.get(enemyId)) yield {
                 // 現在 hp は World 読み。
                 let curHp = World.hpOf(World.EntityRef.Enemy(enemyId), World.WorldQuery.get())
                                 |> Option.getWithDefault(enemy#hp);
                 let dmgResult = Combat.damage(hp = curHp, amount = dmg);
                 if (dmgResult#isDead) {
-                    GameLogger.playerLog("${srcLabel} は ${name} を投げて ${EnemyScene.displayName(enemyId)} を撃破 (${dmg}ダメージ)");
-                    EnemyScene.startDeathAnimation(enemyId)
+                    GameLogger.playerLog("${srcLabel} は ${name} を投げて ${EnemyDriver.displayName(enemyId)} を撃破 (${dmg}ダメージ)");
+                    EnemyDriver.startDeathAnimation(enemyId)
                 } else {
-                    GameLogger.playerLog("${srcLabel} は ${name} を投げて ${EnemyScene.displayName(enemyId)} に ${dmg}ダメージ");
+                    GameLogger.playerLog("${srcLabel} は ${name} を投げて ${EnemyDriver.displayName(enemyId)} に ${dmg}ダメージ");
                     // アイテムをぶつけられたので、かなしばり中なら完全停止を解除する。
-                    EnemyScene.setHp(enemyId, dmgResult#newHp);
-                    EnemyScene.releaseBind(enemyId)
+                    EnemyDriver.setHp(enemyId, dmgResult#newHp);
+                    EnemyDriver.releaseBind(enemyId)
                 }
             })
 
@@ -830,17 +830,17 @@ mod StaffCast {
             Unit \ {GameLogger.GameLogger, CustomEffects.GameOverRequest,
                                SelectedPlayer.State, World.Command, World.WorldQuery} =
         Option.getWithDefault((),
-            forM (target <- PlayerScene.get(targetId)) yield {
+            forM (target <- PlayerDriver.get(targetId)) yield {
                 // 現在 hp は World 読み。
                 let curHp = World.hpOf(World.EntityRef.Player(targetId), World.WorldQuery.get())
                                 |> Option.getWithDefault(target#hp);
                 let dmgResult = Combat.damage(hp = curHp, amount = dmg);
-                GameLogger.playerLog("${srcLabel} の ${name} が ${PlayerScene.displayName(targetId)} に当たった (${dmg}ダメージ)");
+                GameLogger.playerLog("${srcLabel} の ${name} が ${PlayerDriver.displayName(targetId)} に当たった (${dmg}ダメージ)");
                 // アイテムをぶつけられたので、かなしばり中なら完全停止を解除する。
-                PlayerScene.setHp(targetId, dmgResult#newHp);
-                PlayerScene.releaseBind(targetId);
+                PlayerDriver.setHp(targetId, dmgResult#newHp);
+                PlayerDriver.releaseBind(targetId);
                 if (dmgResult#isDead)
-                    PlayerScene.removeDeadAndCheckGameOver(targetId :: Nil)
+                    PlayerDriver.removeDeadAndCheckGameOver(targetId :: Nil)
                 else ()
             })
 
@@ -853,8 +853,8 @@ mod StaffCast {
                 CustomEffects.GameOverRequest, SelectedPlayer.State, GameEngine.Audio,
                 World.Command, World.WorldQuery} =
         match item#effect {
-            case Consumable.ConsumableEffect.FireBottle  => throwBottleSingle("${PlayerScene.displayName(playerId)}", item, hit)
-            case Consumable.ConsumableEffect.BlastBottle => throwBottleBlast("${PlayerScene.displayName(playerId)}", item, hit)
+            case Consumable.ConsumableEffect.FireBottle  => throwBottleSingle("${PlayerDriver.displayName(playerId)}", item, hit)
+            case Consumable.ConsumableEffect.BlastBottle => throwBottleBlast("${PlayerDriver.displayName(playerId)}", item, hit)
             case _                                       =>
                 // 効果の良し悪しで効果音を出し分ける: 回復・バフ系は "cure"、デバフ系は "damage"。
                 ViewReplay.sound(consumableHitSound(item#effect));
@@ -927,7 +927,7 @@ mod StaffCast {
     def blastDamageEnemies(srcLabel: String, dmg: Int32, name: String,
                             center: {x = Int32, y = Int32}):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
-        let ids = EnemyScene.getAll()
+        let ids = EnemyDriver.getAll()
                     |> List.filter(e -> chebyshev(e#gridPos, center) <= 1)
                     |> List.map(e -> e#id);
         List.forEach(id -> throwDamageToEnemy(srcLabel, id, dmg, name), ids)
@@ -937,7 +937,7 @@ mod StaffCast {
                             center: {x = Int32, y = Int32}):
             Unit \ {GameLogger.GameLogger, CustomEffects.GameOverRequest,
                                SelectedPlayer.State, World.Command, World.WorldQuery} =
-        let ids = PlayerScene.getAll()
+        let ids = PlayerDriver.getAll()
                     |> List.filter(p -> chebyshev(p#gridPos, center) <= 1)
                     |> List.map(p -> p#id);
         List.forEach(id -> throwDamageToPlayer(srcLabel, id, dmg, name), ids)
@@ -986,8 +986,8 @@ mod StaffCast {
             case None      => false
             case Some(dir) =>
                 let hit = Board.rayCast(origin, Staff.toVec2i(dir), staffMaxRange(), board);
-                GameLogger.enemyLog("${EnemyScene.displayName(enemyId)} が ${item#name} を投げた");
-                enemyApplyBottle("${EnemyScene.displayName(enemyId)}", item, hit);
+                GameLogger.enemyLog("${EnemyDriver.displayName(enemyId)} が ${item#name} を投げた");
+                enemyApplyBottle("${EnemyDriver.displayName(enemyId)}", item, hit);
                 true
         }
 
@@ -1079,7 +1079,7 @@ mod StaffCast {
             // 反映・log 非配線ゆえここで補う）。warp の位置は `Moved`→eventToCmds→World 反映で描画されるため replay 不要。
             // 不変条件: enemyStaffFor ∩ ecsHandlesStaff = {Bind, Stopgap}。敵杖カタログに新 ECS 効果を足すときは、
             // この log 分岐も同時拡張しないと hit-log が黙って落ちる。
-            let srcLabel = EnemyScene.displayName(enemyId);
+            let srcLabel = EnemyDriver.displayName(enemyId);
             match effect {
                 case Staff.StaffEffect.Bind    => bindPlayerLog(srcLabel, hitTargetId(hit))
                 case Staff.StaffEffect.Stopgap =>
@@ -1100,7 +1100,7 @@ mod StaffCast {
             case _                                                   => false
         }, events);
         if (warped)
-            GameLogger.playerLog("${PlayerScene.displayName(targetId)} は 階段の方へ とばされた")
+            GameLogger.playerLog("${PlayerDriver.displayName(targetId)} は 階段の方へ とばされた")
         else
             GameLogger.playerLog("ワープ先がなかった")
 
@@ -1139,9 +1139,9 @@ mod StaffCast {
         // （add→clearImmobilized を合成して 1 回の Seed で書く＝従来の releaseBind 経由と同じ 1 Seed）。
         match (statusOpt, hit) {
             case (Some(status), RayHit.HitEnemy(id, _))  =>
-                EnemyScene.updateStatuses(id, xs -> StatusSystem.clearImmobilized(StatusSystem.add(status, xs)))
+                EnemyDriver.updateStatuses(id, xs -> StatusSystem.clearImmobilized(StatusSystem.add(status, xs)))
             case (Some(status), RayHit.HitPlayer(id, _)) =>
-                PlayerScene.updateStatuses(id, xs -> StatusSystem.clearImmobilized(StatusSystem.add(status, xs)))
+                PlayerDriver.updateStatuses(id, xs -> StatusSystem.clearImmobilized(StatusSystem.add(status, xs)))
             case _                                       => ()
         }
 
@@ -1160,8 +1160,8 @@ mod StaffCast {
                                 enemyId: Int32):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         Option.getWithDefault((),
-            forM (enemy <- EnemyScene.get(enemyId)) yield {
-                GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${EnemyScene.displayName(enemyId)} に ${item#name} を当てた");
+            forM (enemy <- EnemyDriver.get(enemyId)) yield {
+                GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は ${EnemyDriver.displayName(enemyId)} に ${item#name} を当てた");
                 applyConsumableEffectToEnemy(item, enemy, enemyId)
             })
 
@@ -1201,19 +1201,19 @@ mod StaffCast {
         // read-after-write（worldRef 即時適用）で成立する。境界の emitHpSets は同値の再 emit＝冪等。
         let w = World.WorldQuery.get();
         if (ally)
-            match PlayerScene.get(id) {
+            match PlayerDriver.get(id) {
                 case Some(p) =>
                     let cur = World.hpOf(World.EntityRef.Player(id), w) |> Option.getWithDefault(p#hp);
                     let r = Combat.heal(cur, p#resource#hp, n);
-                    PlayerScene.setHp(id, r#newHp)
+                    PlayerDriver.setHp(id, r#newHp)
                 case None => ()
             }
         else
-            match EnemyScene.get(id) {
+            match EnemyDriver.get(id) {
                 case Some(e) =>
                     let cur = World.hpOf(World.EntityRef.Enemy(id), w) |> Option.getWithDefault(e#hp);
                     let r = Combat.heal(cur, e#resource#hp, n);
-                    EnemyScene.setHp(id, r#newHp)
+                    EnemyDriver.setHp(id, r#newHp)
                 case None => ()
             }
 
@@ -1221,13 +1221,13 @@ mod StaffCast {
     def fullHealUnit(id: Int32, ally: Bool): Unit \ {World.Command, World.WorldQuery} =
         // 書き込みは setHp funnel（SetHp emit 併記）。全回復は入力 hp 不要。
         if (ally)
-            match PlayerScene.get(id) {
-                case Some(p) => PlayerScene.setHp(id, p#resource#hp)
+            match PlayerDriver.get(id) {
+                case Some(p) => PlayerDriver.setHp(id, p#resource#hp)
                 case None => ()
             }
         else
-            match EnemyScene.get(id) {
-                case Some(e) => EnemyScene.setHp(id, e#resource#hp)
+            match EnemyDriver.get(id) {
+                case Some(e) => EnemyDriver.setHp(id, e#resource#hp)
                 case None => ()
             }
 
@@ -1237,13 +1237,13 @@ mod StaffCast {
         let status = {effect = kind, magnitude = mag, remaining = turns};
         // statuses は World 権威＝現在値に add を適用して Seed（全置換）で書く。
         if (ally)
-            PlayerScene.updateStatuses(id, xs -> StatusSystem.add(status, xs))
+            PlayerDriver.updateStatuses(id, xs -> StatusSystem.add(status, xs))
         else
-            EnemyScene.updateStatuses(id, xs -> StatusSystem.add(status, xs))
+            EnemyDriver.updateStatuses(id, xs -> StatusSystem.add(status, xs))
 
     /// 敵 1 体への薬効果適用 → DSL 経路へ委譲（数値・挙動は同一、ally=false）。
     def applyConsumableEffectToEnemy(item: Consumable.ConsumableResource,
-                                      _enemy: EnemyScene.Data, enemyId: Int32):
+                                      _enemy: EnemyDriver.Data, enemyId: Int32):
             Unit \ {World.Command, World.WorldQuery} =
         applyConsumableEffectDsl(item, enemyId, false)
 
@@ -1252,14 +1252,14 @@ mod StaffCast {
                                  targetId: Int32):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         Option.getWithDefault((),
-            forM (target <- PlayerScene.get(targetId)) yield {
-                GameLogger.playerLog("${PlayerScene.displayName(playerId)} は ${PlayerScene.displayName(targetId)} に ${item#name} を当てた");
+            forM (target <- PlayerDriver.get(targetId)) yield {
+                GameLogger.playerLog("${PlayerDriver.displayName(playerId)} は ${PlayerDriver.displayName(targetId)} に ${item#name} を当てた");
                 applyConsumableEffectToPlayer(item, target, targetId)
             })
 
     /// 味方 1 体への薬効果適用 → DSL 経路へ委譲（数値・挙動は同一、ally=true）。
     def applyConsumableEffectToPlayer(item: Consumable.ConsumableResource,
-                                       _target: PlayerScene.Data, targetId: Int32):
+                                       _target: PlayerDriver.Data, targetId: Int32):
             Unit \ {World.Command, World.WorldQuery} =
         applyConsumableEffectDsl(item, targetId, true)
 
@@ -1269,15 +1269,15 @@ mod StaffCast {
         match kind {
             case PlayerData.ItemKind.Consumable(idx) =>
                 Option.getWithDefault((),
-                    forM (c <- List.nth(idx, PlayerScene.getConsumables(playerId)))
+                    forM (c <- List.nth(idx, PlayerDriver.getConsumables(playerId)))
                         yield consumeConsumable(playerId, idx, c))
             case PlayerData.ItemKind.Weapon(idx) =>
-                PlayerScene.dropWeapon(playerId, idx)
+                PlayerDriver.dropWeapon(playerId, idx)
             case PlayerData.ItemKind.Staff(idx) =>
                 // 投げた杖は残り回数に関わらず消失する（武器投げ＝dropWeapon と対称）。
                 // 詠唱(consumeStaff)は耐久 -1 だが、投擲は物理的に手放すので完全除去。
                 // dropStaff が staves を World へ dual-write する（[STAVES DIFF] 無音維持）。
-                PlayerScene.dropStaff(playerId, idx)
+                PlayerDriver.dropStaff(playerId, idx)
             case PlayerData.ItemKind.Ring(_) => ()
         }
 

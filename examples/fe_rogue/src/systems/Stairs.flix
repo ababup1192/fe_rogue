@@ -29,8 +29,8 @@ mod Stairs {
         let placements = World.placementsOf(world0);
         let roomCount  = World.roomCountOf(world0);
         let occupied   = List.append(
-            PlayerScene.getAll() |> List.map(d -> d#gridPos),
-            EnemyScene.getAll()  |> List.map(d -> d#gridPos));
+            PlayerDriver.getAll() |> List.map(d -> d#gridPos),
+            EnemyDriver.getAll()  |> List.map(d -> d#gridPos));
         // anchor (idx=0) を除いた部屋だけを候補に（idx >= 1 かつ idx < roomCount = 部屋）
         let rooms = List.filter(p -> p#idx >= 1 and p#idx < roomCount, placements);
         let candidates = rooms

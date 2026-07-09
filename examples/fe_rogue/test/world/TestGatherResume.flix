@@ -4,7 +4,7 @@
 ///   - 3 条件すべて成立（前ターン集合の自発全員待機 ∧ 主人公健在 ∧ 敵が画面内にいない）でのみ復帰する
 ///   - いずれか 1 つでも欠ければ復帰しない
 ///
-/// 主人公健在判定 `PlayerScene.lordReadyToGather`（scene 依存）/ 敵可視判定 `EnemyScene.anyVisible`
+/// 主人公健在判定 `PlayerDriver.lordReadyToGather`（scene 依存）/ 敵可視判定 `EnemyDriver.anyVisible`
 /// （World＋フォグ導出）は effect を要するので、判定の核は純粋な `shouldResumeGather` に
 /// 切り出してある（ここをテストする）。
 mod TestGatherResume {

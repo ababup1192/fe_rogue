@@ -16,7 +16,7 @@
 //   - TileLayer.isFloor / isWall が ASCII マップの真値と一致
 //   - Board.tryMove が初期 (5,5) からの 4 方向で期待値を返す
 //     （特に Down は壁で None — 「壁がないのにとまる」の真相確認）
-//   - PlayerScene.moveToById の targetWorld がタイル中心ピクセル座標に一致
+//   - PlayerDriver.moveToById の targetWorld がタイル中心ピクセル座標に一致
 //     （「矢印と違う方向」の Vec2 マッピング検証）
 
 mod TestMapIntegration {
@@ -219,10 +219,10 @@ mod TestMapIntegration {
              down#x,   down#y))
 
     // ========================================================================
-    // (4) PlayerScene.moveToById end-to-end — 単発入力で正しい方向にtweenが向くか
+    // (4) PlayerDriver.moveToById end-to-end — 単発入力で正しい方向にtweenが向くか
     // ========================================================================
 
-    /// テスト用初期グリッド（PlayerScene.add の経由を回避）。
+    /// テスト用初期グリッド（PlayerDriver.add の経由を回避）。
     def initialGrid(): {x = Int32, y = Int32} = {x = 5, y = 5}
 
     /// Player(0) を `pos` に置いた World を組む（moveTiles=5・hp=10 は本テスト群の実機値に揃える）。
@@ -238,7 +238,7 @@ mod TestMapIntegration {
             {world = World, landed = Vec2.Vec2} =
         region rc {
             let (_, world1) = TestUnitFixtures.withWorldAppliedSeeded(rc, world, () ->
-                PlayerScene.moveToById(0, target, map, Duration.frames(count = 16, fps = 120)));
+                PlayerDriver.moveToById(0, target, map, Duration.frames(count = 16, fps = 120)));
             // slide ≈ 16/120 秒ゆえ 1 秒進めれば tween は必ず完了し renderPos=着地セル中心。
             let (world2, _moved) = World.stepWorld(world1, 1.0);
             let landed = World.renderPosOf(World.EntityRef.Player(0), world2)
@@ -279,7 +279,7 @@ mod TestMapIntegration {
     //     c) 「一番左 (1,5) から上を押すと斜め右上に進む」
     //          → 期待: (1,5)→(1,4) のみ。x 座標は変わらない
     //
-    //   これらをコードロジック（Board + PlayerScene + Tween）で再現できるか。
+    //   これらをコードロジック（Board + PlayerDriver + Tween）で再現できるか。
     //   再現できなければ、バグは入力 handler（GameEngine.Game.isKeyPressed）または
     //   レンダリング層（Camera / TileLayer 描画）にある。
     // ========================================================================

@@ -284,7 +284,7 @@ mod ActionMenuUi {
         }
 
     /// メニューを閉じて元のフェーズに戻る（X / Escape）。戻り先の overlay / cursor 状態は
-    /// `PhaseTransitions.enter*` に委譲して確立する（bare put 禁止・旧 ActionMenuScene と同じ不変条件）。
+    /// `PhaseTransitions.enter*` に委譲して確立する（bare put 禁止）。
     ///   - gatherActive          → enterGatherMove   （集合・行軍へ。移動やり直し）
     ///   - SelectedPlayer = Some → enterPlayerMoving （駒操作中。カーソルは設計上非表示）
     ///   - SelectedPlayer = None → enterPlayerCursor （空マス由来。カーソル再表示＋snap）
@@ -301,7 +301,7 @@ mod ActionMenuUi {
         }
 
     // ========================================================================
-    // 開くフェーズ遷移（旧 ActionMenuScene.openFrom* と同一）
+    // 開くフェーズ遷移
     // ========================================================================
 
     /// PlayerMoving + Z: 行動選択ウィンドウを開く（フェーズ = ActionSelect）。項目は frameStep が
@@ -324,7 +324,7 @@ mod ActionMenuUi {
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect)
 
     // ========================================================================
-    // 項目の構築（旧 ActionMenuScene.buildItems・文脈依存）
+    // 項目の構築（文脈依存）
     // ========================================================================
 
     /// 選択中プレイヤーの状況から成立する項目だけ返す。
@@ -346,7 +346,7 @@ mod ActionMenuUi {
     /// 移動を終えた味方の行動メニュー項目。成立するものだけ固定順
     /// 「ひろう → あける → 階段 → こうげき → アイテム → こうかん → たいき」で返す。
     /// かなしばり中は「待機」だけ出してターンを閉じられるようにする。
-    def selectedPlayerMenuItems(player: PlayerScene.Data): List[ItemEntry]
+    def selectedPlayerMenuItems(player: PlayerDriver.Data): List[ItemEntry]
             \ {PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery} =
         if (StatusSystem.isImmobilized(player#statuses)) boundMenuItems()
         else {
@@ -354,7 +354,7 @@ mod ActionMenuUi {
                 ({text = "攻撃", disabled = not canAttackFrom(player),
                   metadata = Some(attackMeta())}: ItemEntry) :: Nil;
             let exchangeItem =
-                ({text = "交換", disabled = List.isEmpty(PlayerScene.adjacentAllies(player)),
+                ({text = "交換", disabled = List.isEmpty(PlayerDriver.adjacentAllies(player)),
                   metadata = Some(exchangeMeta())}: ItemEntry) :: Nil;
             let itemItem =
                 if (not (List.isEmpty(player#weapons) and List.isEmpty(player#staves)))
@@ -388,15 +388,15 @@ mod ActionMenuUi {
     /// 集合（行軍）の交換に参加するメンバーの player id（主人公を含む連結した生存味方の塊）。
     def gatherTradeMembers(): List[Int32] \ PlayerData.PartyQuery =
         let living = PlayerData.PartyQuery.getAll() |> List.filter(d -> d#hp > 0);
-        PlayerScene.tradeComponent(PlayerScene.lordId(), living)
+        PlayerDriver.tradeComponent(PlayerDriver.lordId(), living)
 
     /// 集合（行軍）の隣接メニュー項目。固定順「拾う → 階段 → 交換 → 全員待機」で成立分だけ返す
     /// （全員待機は常に表示）。判定はすべて主人公（リーダー id=0）基準。
     def gatherAdjacentMenuItems(): List[ItemEntry] \ {PlayerData.PartyQuery, World.WorldQuery} =
-        let lordItems = match PlayerData.PartyQuery.get(PlayerScene.lordId()) {
+        let lordItems = match PlayerData.PartyQuery.get(PlayerDriver.lordId()) {
             case None       => Nil
             case Some(lord) =>
-                let adj = PlayerScene.adjacentAllies(lord) |> List.filter(d -> d#hp > 0);
+                let adj = PlayerDriver.adjacentAllies(lord) |> List.filter(d -> d#hp > 0);
                 let pickup =
                     if (Option.nonEmpty(World.groundItemAtOf(lord#gridPos, World.WorldQuery.get())))
                         ({text = "拾う", disabled = false,
@@ -423,18 +423,18 @@ mod ActionMenuUi {
     /// 「集合」が選べる状況か（主人公以外に生存味方が居る）。
     pub def gatherAvailable(): Bool \ PlayerData.PartyQuery =
         PlayerData.PartyQuery.getAll()
-            |> List.exists(d -> d#id != PlayerScene.lordId() and d#hp > 0)
+            |> List.exists(d -> d#id != PlayerDriver.lordId() and d#hp > 0)
 
     /// 主人公（リーダー）が行動済み(waited)か。
     def lordWaited(): Bool \ PlayerData.PartyQuery =
-        PlayerData.PartyQuery.get(PlayerScene.lordId())
+        PlayerData.PartyQuery.get(PlayerDriver.lordId())
             |> Option.map(d -> d#waited)
             |> Option.getWithDefault(false)
 
     /// 「集合（行軍）」を開始できるか。生存味方が他に居て、主人公が未行動で、かつフォグで
     /// 見えている敵が 1 体もいないとき。空マスメニューの「集合」disabled 判定と C キー可否で共有。
     pub def gatherEnabled(): Bool \ {PlayerData.PartyQuery, SelectedPlayer.State, World.WorldQuery} =
-        gatherAvailable() and not lordWaited() and not EnemyScene.anyVisible()
+        gatherAvailable() and not lordWaited() and not EnemyDriver.anyVisible()
 
     /// 通常の空マスメニュー項目。「集合」（開始不可時は disabled）と「ターンエンド」「中断」。
     def gatherMenuItems(): List[ItemEntry] \ {PlayerData.PartyQuery, SelectedPlayer.State, World.WorldQuery} =
@@ -464,22 +464,22 @@ mod ActionMenuUi {
         applyTurnEnd()
 
     /// インベントリのいずれかの武器の射程内に生きている敵が居るか。
-    def canAttackFrom(player: PlayerScene.Data): Bool \ EnemyData.RosterQuery =
+    def canAttackFrom(player: PlayerDriver.Data): Bool \ EnemyData.RosterQuery =
         let enemies = EnemyData.RosterQuery.getAll();
         List.exists(w -> weaponReachesAnyEnemy(player#gridPos, w, enemies), player#weapons)
 
     /// 指定位置から `weapon` の射程内に生きている敵（hp > 0 かつ not isDying）が居るか。
     def weaponReachesAnyEnemy(pos: {x = Int32, y = Int32},
                                weapon: UnitCatalog.WeaponResource,
-                               enemies: List[EnemyScene.Data]): Bool =
+                               enemies: List[EnemyDriver.Data]): Bool =
         List.exists(e -> {
-            let ev = EnemyScene.unitView(e);
+            let ev = EnemyDriver.unitView(e);
             ev#hp > 0 and not ev#isDying
                 and Weapon.inRange(Weapon.manhattan(pos, ev#pos), weapon#range)
         }, enemies)
 
     /// 自分の現在セルに「自分以外の味方」が居なければたいき可。
-    def canWaitOn(player: PlayerScene.Data): Bool \ PlayerData.PartyQuery =
+    def canWaitOn(player: PlayerDriver.Data): Bool \ PlayerData.PartyQuery =
         not List.exists(d ->
             d#id != player#id
             and d#gridPos#x == player#gridPos#x
@@ -487,7 +487,7 @@ mod ActionMenuUi {
             PlayerData.PartyQuery.getAll())
 
     // ========================================================================
-    // 確定アクションの適用（旧 ActionMenuScene のゲームロジックを移植・挙動不変）
+    // 確定アクションの適用
     // ========================================================================
 
     /// メニュー確定アクションを「決定(data)」と「適用(effect)」に分離する seam。現状 "wait" のみ intent 化。
@@ -554,8 +554,8 @@ mod ActionMenuUi {
         GameLogger.playerLog("階段を降りた");
         match SelectedPlayer.State.get()#id {
             case Some(id) =>
-                PlayerScene.useStairs(id);
-                if (PlayerScene.allLivingUsedStairs())
+                PlayerDriver.useStairs(id);
+                if (PlayerDriver.allLivingUsedStairs())
                     CustomEffects.FloorAdvanceRequest.advance()
                 else
                     TurnFlow.commitWaitedAndAdvance()
@@ -585,12 +585,12 @@ mod ActionMenuUi {
             GameLogger.playerLog("リーダーは既に行動済みです。")
         else {
             GameLogger.playerLog("集合");
-            PlayerScene.beginGather()
+            PlayerDriver.beginGather()
         }
 
     /// 主人公(リーダー)が既に行動済み(waited)か。集合確定のガードに使う。
     def leaderWaited(): Bool \ PlayerData.PartyQuery =
-        PlayerData.PartyQuery.get(PlayerScene.lordId())
+        PlayerData.PartyQuery.get(PlayerDriver.lordId())
             |> Option.map(d -> d#waited)
             |> Option.getWithDefault(false)
 
@@ -612,7 +612,7 @@ mod ActionMenuUi {
                 if (wouldPickupOverload(info))
                     ItemPickupPopupUi.showFull()
                 else {
-                    PlayerScene.pickupFloorItem(info#playerId, info#gridPos);
+                    PlayerDriver.pickupFloorItem(info#playerId, info#gridPos);
                     ItemPickupPopupUi.reserveGetItemSound()
                 }
         }
@@ -623,7 +623,7 @@ mod ActionMenuUi {
         match (PlayerData.PartyQuery.get(info#playerId),
                World.groundItemAtOf(info#gridPos, World.WorldQuery.get())) {
             case (Some(player), Some(floor)) =>
-                PlayerScene.wouldOverloadByPicking(player, floor#item)
+                PlayerDriver.wouldOverloadByPicking(player, floor#item)
             case _ => false
         }
 
@@ -635,12 +635,12 @@ mod ActionMenuUi {
         match openTarget() {
             case None                      => ()
             case Some((info, player, chest)) =>
-                if (not PlayerScene.canOpenChests(player))
+                if (not PlayerDriver.canOpenChests(player))
                     ItemPickupPopupUi.showMessage("開けることができない")
-                else if (PlayerScene.wouldOverloadByPicking(player, chest#content))
+                else if (PlayerDriver.wouldOverloadByPicking(player, chest#content))
                     ItemPickupPopupUi.showFull()
                 else {
-                    PlayerScene.addPickedItem(info#playerId, chest#content);
+                    PlayerDriver.addPickedItem(info#playerId, chest#content);
                     Chests.takeAt(info#gridPos);
                     ItemPickupPopupUi.reserveGetItemSound()
                 }
@@ -649,7 +649,7 @@ mod ActionMenuUi {
     /// 開錠対象を 1 本の Option 連鎖で解決する。
     def openTarget():
             Option[({playerId = Int32, gridPos = {x = Int32, y = Int32}},
-                    PlayerScene.Data, Chests.Data)]
+                    PlayerDriver.Data, Chests.Data)]
             \ {SelectedPlayer.State, PlayerData.PartyQuery, World.WorldQuery} =
         forM (
             info   <- pickupTarget();

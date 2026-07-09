@@ -1,19 +1,19 @@
-/// TradeRangeScene — 「こうかん」確定後の緑マス overlay の振る舞いを pin する
+/// TradeRange — 「こうかん」確定後の緑マス overlay の振る舞いを pin する
 ///
 /// 検証する観点:
 ///   - `show` 直後の `cells` が選択中味方の隣接味方マスを返す (斜めや self は除く)
 ///   - 隣接味方が居ないときは `show` を呼んでも `cells` は空
 ///   - `clear` 後は `cells` が空に戻る
-mod TestTradeRangeScene {
+mod TestTradeRange {
 
     // ════════════════════════════════════════════════════════
     // ヘルパー
     // ════════════════════════════════════════════════════════
 
-    /// テスト用に最小限のフィールドだけ意味を持たせた PlayerScene.Data。
+    /// テスト用に最小限のフィールドだけ意味を持たせた PlayerDriver.Data。
     /// id と gridPos が役割で、他は中庸な固定値。
     def buildPartyMember(id: Int32, gridPos: {x = Int32, y = Int32}):
-            PlayerScene.Data = {
+            PlayerDriver.Data = {
         id              = id,
         classId         = "test_player",
         gridPos         = gridPos,
@@ -39,11 +39,11 @@ mod TestTradeRangeScene {
         followUpUsed   = false
     }
 
-    /// `TradeRangeScene.cells` の戻りを (x, y) タプルに整形する。
+    /// `TradeRange.cells` の戻りを (x, y) タプルに整形する。
     /// レコードフィールドの直接比較を避け、assertEq で 1 行で比べやすくする。
     /// 緑マスは範囲 resource が権威なので `RangeOverlayState.State` を読む。
     def cellTuples(): List[(Int32, Int32)] \ RangeOverlayState.State =
-        List.map(c -> (c#x, c#y), TradeRangeScene.cells())
+        List.map(c -> (c#x, c#y), TradeRange.cells())
 
     // ════════════════════════════════════════════════════════
     // show — 選択中味方の隣接マスだけを緑で敷く
@@ -71,7 +71,7 @@ mod TestTradeRangeScene {
                             eastern :: southern :: diagSE :: Nil;
                 TestUnitFixtures.withSelectedPlayer(0, () ->
                     TestUnitFixtures.withMockPartyQuery(party, () ->
-                        TradeRangeScene.show()));
+                        TradeRange.show()));
                 Assert.assertEq(
                     expected = (5, 4) :: (4, 5) :: (6, 5) :: (5, 6) :: Nil,
                     cellTuples())
@@ -89,7 +89,7 @@ mod TestTradeRangeScene {
                 let party  = self :: diagSE :: Nil;
                 TestUnitFixtures.withSelectedPlayer(0, () ->
                     TestUnitFixtures.withMockPartyQuery(party, () ->
-                        TradeRangeScene.show()));
+                        TradeRange.show()));
                 Assert.assertEq(expected = Nil, cellTuples())
             })
         }
@@ -109,10 +109,10 @@ mod TestTradeRangeScene {
                 let party    = self :: northern :: Nil;
                 TestUnitFixtures.withSelectedPlayer(0, () ->
                     TestUnitFixtures.withMockPartyQuery(party, () ->
-                        TradeRangeScene.show()));
+                        TradeRange.show()));
                 // show 後は 1 セル。clear は resource を空へ戻すので、その後の cells は 0 セル。
                 let shownCount = List.length(cellTuples());
-                TradeRangeScene.clear();
+                TradeRange.clear();
                 Assert.assertEq(
                     expected = (1, 0),
                     (shownCount, List.length(cellTuples())))

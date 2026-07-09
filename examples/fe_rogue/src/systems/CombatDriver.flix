@@ -1,10 +1,10 @@
 /// CombatDriver — 攻守両対応の戦闘解決（攻撃モーション・命中判定・ダメージ・反撃・経験値）
 ///
-/// `PlayerScene` / `EnemyScene` から戦闘解決ロジックを切り出した補助モジュール。
+/// `PlayerDriver` / `EnemyDriver` から戦闘解決ロジックを切り出した補助モジュール。
 /// 両モジュールは状態所有（構築・移動・死亡演出・Query effect）に専念し、
 /// ここは「攻撃モーション → 命中判定 → ダメージ → 反撃判定 → 経験値」だけを担う。
 /// 攻撃側の陣営は `Faction`（UnitView.flix）で渡し、内部の match で
-/// `PlayerScene.*` / `EnemyScene.*` に振り分ける。
+/// `PlayerDriver.*` / `EnemyDriver.*` に振り分ける。
 ///
 /// 配置基準: `src/systems/` は「World と各 resource を橋渡しする driver / orchestrator」
 /// （step()・シグナル配信の層）、純 `World→World` System は
@@ -27,8 +27,8 @@
 ///   | Enemy  | EnemyTurn        | 敵主攻撃完了   | decidePlayerCounter → 味方反撃 startAttack      |
 ///   | Enemy  | PlayerAttackHold | 敵反撃完了     | clear + commitWaitedAndAdvance                  |
 ///
-/// `PlayerScene` と `EnemyScene` は `Data`/`get` を**両方が**持つため、
-/// 味方側は `PlayerScene.`、敵側は `EnemyScene.` で完全修飾する（`use` は開かない）。
+/// `PlayerDriver` と `EnemyDriver` は `Data`/`get` を**両方が**持つため、
+/// 味方側は `PlayerDriver.`、敵側は `EnemyDriver.` で完全修飾する（`use` は開かない）。
 ///
 /// 注意（意図的な責務越境）: `onLungeDone` は「攻撃完了 → 次ターン進行判断」の orchestrator
 /// で、`TurnFlow.commitWaitedAndAdvance`（汎用ターン進行）/ `PhaseTransitions` を跨ぐ。
@@ -77,14 +77,14 @@ mod CombatDriver {
     /// 中点で AttackHit、終端で LungeDone signal が届き（`World.stepAnimClocks`）、それぞれ
     /// `onAttackHit` / `onLungeDone` が解決する。
     /// 武器を持たないユニットは攻撃に到達してはいけない設計で、防御的に no-op する
-    /// （味方: PlayerAttackRangeScene/TurnRules、敵: EnemyAI が禁止する）。
+    /// （味方: PlayerAttackRange/TurnRules、敵: EnemyAI が禁止する）。
     /// 攻撃開始（faction-blind）。武器なし（`weaponRange = None`）は filter で弾いて no-op。
     /// faction dispatch は **`World.refOfSide`** に閉じ込め、ここは faction-blind。
     pub def startAttack(side: Faction, attackerId: Int32, defenderId: Int32,
                          targetGrid: {x = Int32, y = Int32}):
             Unit \ {World.Command, World.WorldQuery} =
         let attacker = World.refOfSide(side, attackerId);
-        match (EntityScene.unitView(attacker) |> Option.filter(u -> Option.nonEmpty(u#weaponRange))) {
+        match (EntityAccess.unitView(attacker) |> Option.filter(u -> Option.nonEmpty(u#weaponRange))) {
             case Some(uv) =>
                 World.Command.emit(World.Cmd.StartLunge(attacker, lungeSpec(uv#pos, targetGrid)));
                 World.Command.emit(World.Cmd.SetAttackTarget(attacker, defenderId))
@@ -93,7 +93,7 @@ mod CombatDriver {
 
     /// lunge 中点の AttackHit signal 受信時の処理（攻守共通の入口）。
     /// - Player: `applyAttackHit` で敵への攻撃を解決（命中ロール → ダメージ/EXP → レベルアップ）。
-    /// - Enemy: `applyEnemyAttackHit` の killed リストを `PlayerScene.removeDeadAndCheckGameOver`
+    /// - Enemy: `applyEnemyAttackHit` の killed リストを `PlayerDriver.removeDeadAndCheckGameOver`
     ///   に流し、全滅時は `CustomEffects.GameOverRequest` でフルリビルドさせる。
     pub def onAttackHit(side: Faction, id: Int32):
             Unit \ {GameEngine.Audio,
@@ -105,7 +105,7 @@ mod CombatDriver {
             case Faction.Player => applyAttackHit(id)
             case Faction.Enemy  =>
                 let killed = applyEnemyAttackHit(id);
-                PlayerScene.removeDeadAndCheckGameOver(killed)
+                PlayerDriver.removeDeadAndCheckGameOver(killed)
         }
 
     /// 味方の AttackHit のダメージ適用。
@@ -118,7 +118,7 @@ mod CombatDriver {
                     CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery} =
         let world = World.WorldQuery.get();
         let resolved = forM (
-            d       <- PlayerScene.get(playerId);
+            d       <- PlayerDriver.get(playerId);
             enemyId <- attackTargetFor(World.EntityRef.Player(playerId), world)
         ) yield applyDamageToEnemy(playerId, d, enemyId);
         Option.getWithDefault((), resolved)
@@ -132,7 +132,7 @@ mod CombatDriver {
              World.Command, World.WorldQuery} =
         let world = World.WorldQuery.get();
         let resolved = forM (
-            d              <- EnemyScene.get(enemyId);
+            d              <- EnemyDriver.get(enemyId);
             targetPlayerId <- attackTargetFor(World.EntityRef.Enemy(enemyId), world)
         ) yield applyDamageToPlayer(enemyId, d, targetPlayerId);
         Option.getWithDefault(Nil, resolved)
@@ -166,7 +166,7 @@ mod CombatDriver {
             // 敵ターン中の味方反撃が完了した。反撃でレベルアップしていれば、その場で
             // （反撃ごとに）ステータス変化パネルへ割り込む。閉じると敵ターンに戻って続行する。
             clearAttackTargetId(playerId);
-            if (PlayerScene.anyPendingLevelUp())
+            if (PlayerDriver.anyPendingLevelUp())
                 PhaseTransitions.enterLevelUpView()
             else
                 ()
@@ -198,10 +198,10 @@ mod CombatDriver {
                 // 速度判定は World の combatViewOf 由来（followUpUsed と同じ read）。
                 let atkSpd = World.combatViewOf(World.EntityRef.Player(playerId), world)
                                  |> Option.map(cv -> cv#speed)
-                                 |> Option.getWithDefault(PlayerScene.combatView(p)#speed);
+                                 |> Option.getWithDefault(PlayerDriver.combatView(p)#speed);
                 let defSpd = World.combatViewOf(World.EntityRef.Enemy(e#id), world)
                                  |> Option.map(cv -> cv#speed)
-                                 |> Option.getWithDefault(EnemyScene.combatView(e)#speed);
+                                 |> Option.getWithDefault(EnemyDriver.combatView(e)#speed);
                 // 追撃判定を DSL の flow 層（EffectFlow.followUpDecision）へ寄せる。brave/pursuit の
                 // どちらかが成立すれば追撃（ロジックは shouldFollowUp/braveFollowUp と同一・テスト済）。
                 let fctx = {atkSpd = atkSpd, defSpd = defSpd, roll = roll,
@@ -221,7 +221,7 @@ mod CombatDriver {
             Unit \ {RangeOverlayState.State,
                     GameLogger.GameLogger, EnemyTurn.Queue, TurnPhase.State,
                     SelectedPlayer.State, CursorState.State, Pacing.State, World.Command, World.WorldQuery} =
-        match EnemyScene.get(enemyId) {
+        match EnemyDriver.get(enemyId) {
             case Some(e) =>
                 GameLogger.playerLog("追撃！");
                 startAttack(Faction.Player, playerId, enemyId, e#gridPos)
@@ -238,10 +238,10 @@ mod CombatDriver {
         // view は World 由来（unitViewFromWorld）。ECS 戦闘は hp を World にしか書かないため
         // 直前の攻撃結果（Kill/Counter 分岐の hp）が正しく読める。
         let w0 = World.WorldQuery.get();
-        let outcome = PlayerScene.get(playerId)
+        let outcome = PlayerDriver.get(playerId)
             |> Option.map(player -> CounterAttackRules.decideView(
                    World.unitViewFromWorld(World.EntityRef.Player(playerId), w0)
-                       |> Option.getWithDefault(PlayerScene.unitView(player)),
+                       |> Option.getWithDefault(PlayerDriver.unitView(player)),
                    attackTargetFor(World.EntityRef.Player(playerId), w0)
                        |> Option.flatMap(eid -> World.unitViewFromWorld(World.EntityRef.Enemy(eid), w0))));
         match outcome {
@@ -265,9 +265,9 @@ mod CombatDriver {
                     GameLogger.GameLogger,
                     EnemyTurn.Queue, TurnPhase.State,
                     SelectedPlayer.State, CursorState.State, World.Command, World.WorldQuery} =
-        match PlayerScene.get(playerId) {
+        match PlayerDriver.get(playerId) {
             case Some(p) =>
-                GameLogger.enemyLog("${EnemyScene.displayName(enemyId)}の反撃");
+                GameLogger.enemyLog("${EnemyDriver.displayName(enemyId)}の反撃");
                 startAttack(Faction.Enemy, enemyId, playerId, p#gridPos)
             case None =>
                 TurnFlow.commitWaitedAndAdvance()
@@ -314,10 +314,10 @@ mod CombatDriver {
                 // 速度判定は World の combatViewOf 由来（followUpUsed と同じ read・fallback 安全）。
                 let atkSpd = World.combatViewOf(World.EntityRef.Enemy(enemyId), world)
                                  |> Option.map(cv -> cv#speed)
-                                 |> Option.getWithDefault(EnemyScene.combatView(e)#speed);
+                                 |> Option.getWithDefault(EnemyDriver.combatView(e)#speed);
                 let defSpd = World.combatViewOf(World.EntityRef.Player(p#id), world)
                                  |> Option.map(cv -> cv#speed)
-                                 |> Option.getWithDefault(PlayerScene.combatView(p)#speed);
+                                 |> Option.getWithDefault(PlayerDriver.combatView(p)#speed);
                 let fctx = {atkSpd = atkSpd, defSpd = defSpd, roll = roll,
                             followUpUsed = World.followUpUsedOf(World.EntityRef.Enemy(enemyId), world)
                                               |> Option.getWithDefault(false),  // World 権威・未登録=未使用
@@ -333,7 +333,7 @@ mod CombatDriver {
     /// 敵の追撃モーションを開始する（同じ味方へ再突進）。味方が消えていれば反撃判定に落とす。
     def startEnemyFollowUp(enemyId: Int32, playerId: Int32):
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
-        match PlayerScene.get(playerId) {
+        match PlayerDriver.get(playerId) {
             case Some(p) =>
                 GameLogger.enemyLog("追撃！");
                 startAttack(Faction.Enemy, enemyId, playerId, p#gridPos)
@@ -348,16 +348,16 @@ mod CombatDriver {
         // view は World 由来（resolvePlayerMainAttack と同じ理由＝直前ダメージの hp を正しく読む）。
         let w0 = World.WorldQuery.get();
         let decision = forM (
-            e <- EnemyScene.get(enemyId)
+            e <- EnemyDriver.get(enemyId)
         ) yield (e, CounterAttackRules.decideView(
                      World.unitViewFromWorld(World.EntityRef.Enemy(enemyId), w0)
-                         |> Option.getWithDefault(EnemyScene.unitView(e)),
+                         |> Option.getWithDefault(EnemyDriver.unitView(e)),
                      attackTargetFor(World.EntityRef.Enemy(enemyId), w0)
                          |> Option.flatMap(pid -> World.unitViewFromWorld(World.EntityRef.Player(pid), w0))));
         match decision {
             case Some((e, CounterAttackRules.Outcome.Counter(playerId))) =>
                 clearEnemyAttackTarget(enemyId);
-                GameLogger.playerLog("${PlayerScene.displayName(playerId)}の反撃");
+                GameLogger.playerLog("${PlayerDriver.displayName(playerId)}の反撃");
                 startAttack(Faction.Player, playerId, enemyId, e#gridPos)
             case _ => clearEnemyAttackTarget(enemyId)
         }
@@ -367,7 +367,7 @@ mod CombatDriver {
     /// AttackHit (中点) / LungeDone (完了) / DeathBlinkDone (敵のみ、完了) に反応する。
     /// `stepEntities` が在籍 id を辿り (per-entity) ここへ渡す。
     /// EntityRef 完全一致なので他ユニットの signal は取りこぼさない。
-    /// 死亡演出 (DeathBlinkDone) は敵のライフサイクルなので `EnemyScene.onDeathBlinkDone` に委譲。
+    /// 死亡演出 (DeathBlinkDone) は敵のライフサイクルなので `EnemyDriver.onDeathBlinkDone` に委譲。
     /// GameOver 中は全 signal を無視する（全滅モーダルの盤面フリーズ。GameOver を引き起こした
     /// dispatch より後の entity から即座に効く）。
     /// 待機モーションへの復帰は Tween 完了をトリガーにせず、
@@ -392,7 +392,7 @@ mod CombatDriver {
                 case (World.AnimSignal.LungeDone(r), _) =>
                     if (r == ownerRef) onLungeDone(side, id) else ()
                 case (World.AnimSignal.DeathBlinkDone(r), Faction.Enemy) =>
-                    if (r == ownerRef) EnemyScene.onDeathBlinkDone(id) else ()
+                    if (r == ownerRef) EnemyDriver.onDeathBlinkDone(id) else ()
                 case _ => ()
             }, signals)
         }
@@ -452,22 +452,22 @@ mod CombatDriver {
         {hitRate = strike#hit, dmg = strike#dmg, newHp = strike#newHp, killed = strike#killed,
          exp = Combat.battleExp(defLevel, atkLevel, strike#killed), crit = strike#crit}
 
-    pub def attackForecast(player: PlayerScene.Data, weapon: UnitCatalog.WeaponResource,
-                            enemy: EnemyScene.Data): AttackForecast =
-        forecastFromViews(PlayerScene.combatViewWith(player, weapon), EnemyScene.combatView(enemy),
+    pub def attackForecast(player: PlayerDriver.Data, weapon: UnitCatalog.WeaponResource,
+                            enemy: EnemyDriver.Data): AttackForecast =
+        forecastFromViews(PlayerDriver.combatViewWith(player, weapon), EnemyDriver.combatView(enemy),
                           player#level, enemy#resource#level)
 
     /// 敵 id にダメージを与える（装備武器 `weapons.head` と敵が揃っていなければ no-op）。
     /// `CombatSystem.resolveAttack` で sim を解き、events→Cmds で World へ反映し、`ViewReplay.replay` で演出を再生する。
     /// level-up モーダルは `applyEcsWorldEffects` の pendingLevelUp で発火、thief drop は `applyThiefDrop`。
     /// 前提（武器あり・敵あり）の解決だけを担い、ネストを避けるため Option を `forM` で短絡的に畳む。
-    def applyDamageToEnemy(playerId: Int32, player: PlayerScene.Data, enemyId: Int32):
+    def applyDamageToEnemy(playerId: Int32, player: PlayerDriver.Data, enemyId: Int32):
             Unit \ {GameEngine.Audio,
                     GameLogger.GameLogger, World.RngDraw,
                     CustomEffects.ThiefDropRequest, World.Command, World.WorldQuery} =
         let resolved = forM (
             weapon <- PlayerData.equippedWeapon(player#weapons);
-            enemy  <- EnemyScene.get(enemyId)
+            enemy  <- EnemyDriver.get(enemyId)
         ) yield ecsResolvePlayerAttack(playerId, player, weapon, enemyId, enemy);
         Option.getWithDefault((), resolved)
 
@@ -480,13 +480,13 @@ mod CombatDriver {
     def applyEcsWorldEffects(events: List[World.SimEvent]): Unit \ {World.Command, World.WorldQuery} =
         List.forEach(ev -> match ev {
             case World.SimEvent.Afflicted(World.EntityRef.Player(id), _) =>
-                PlayerScene.updateStatuses(id, xs -> xs)
+                PlayerDriver.updateStatuses(id, xs -> xs)
             case World.SimEvent.Afflicted(World.EntityRef.Enemy(id), _) =>
-                EnemyScene.updateStatuses(id, xs -> xs)
+                EnemyDriver.updateStatuses(id, xs -> xs)
             case World.SimEvent.Released(World.EntityRef.Player(id)) =>
-                PlayerScene.updateStatuses(id, xs -> xs)
+                PlayerDriver.updateStatuses(id, xs -> xs)
             case World.SimEvent.Released(World.EntityRef.Enemy(id)) =>
-                EnemyScene.updateStatuses(id, xs -> xs)
+                EnemyDriver.updateStatuses(id, xs -> xs)
             case World.SimEvent.LeveledUp(p) =>
                 // pendingLevelUp（panel trigger・World 権威）＋ resource の成長後 stat 反映。
                 // level/exp/hp は eventToCmds→World→derive 済み。resource テンプレ（playerResource store）を
@@ -500,7 +500,7 @@ mod CombatDriver {
                         };
                         // level-up で resource が成長＝baseStats の source が変わる。command-derive store へ
                         // read-after-mutate で emit（適用後 resource を読む）。
-                        PlayerScene.emitBaseStatsFromWorld(id)
+                        PlayerDriver.emitBaseStatsFromWorld(id)
                     case World.EntityRef.Enemy(_)   => ()
                 }
             case _ => ()
@@ -517,7 +517,7 @@ mod CombatDriver {
             case _                                                   => None
         });
         List.forEach(cell -> {
-            GameLogger.playerLog("${EnemyScene.displayName(enemyId)}が アイテムを落とした");
+            GameLogger.playerLog("${EnemyDriver.displayName(enemyId)}が アイテムを落とした");
             CustomEffects.ThiefDropRequest.drop(cell)
         }, thiefCells)
 
@@ -527,9 +527,9 @@ mod CombatDriver {
     /// `applyThiefDrop` で盗人の剣のフロア落下（knockback 後・武器耐久前の順）、最後に `consumeEquippedWeapon` で
     /// 武器耐久を消費（命中/回避とも毎攻撃で消費）。
     /// 演出進行（lunge/counter/follow-up）は signal が引く。
-    def ecsResolvePlayerAttack(playerId: Int32, player: PlayerScene.Data,
+    def ecsResolvePlayerAttack(playerId: Int32, player: PlayerDriver.Data,
                                 weapon: UnitCatalog.WeaponResource, enemyId: Int32,
-                                enemy: EnemyScene.Data):
+                                enemy: EnemyDriver.Data):
             Unit \ {GameEngine.Audio,
                     GameLogger.GameLogger, World.RngDraw, World.Command,
                     World.WorldQuery, CustomEffects.ThiefDropRequest} =
@@ -552,12 +552,12 @@ mod CombatDriver {
             Unit \ {GameLogger.GameLogger, World.Command, World.WorldQuery} =
         let consumed = Weapon.consume(weapon);
         if (Option.isEmpty(consumed))
-            GameLogger.playerLog("${PlayerScene.displayName(playerId)}の ${weapon#name}がこわれた")
+            GameLogger.playerLog("${PlayerDriver.displayName(playerId)}の ${weapon#name}がこわれた")
         else ();
         // 在庫は World 権威＝現在値を読んで耐久消費後の並びを Cmd で書く。
         // 装備武器（先頭）が変わり得る＝putWeapons が weaponView も 1:1 co-emit する。
-        let newWeapons = CombatRules.replaceOrDropHead(consumed, PlayerScene.weaponsW(playerId));
-        PlayerScene.putWeapons(playerId, newWeapons)
+        let newWeapons = CombatRules.replaceOrDropHead(consumed, PlayerDriver.weaponsW(playerId));
+        PlayerDriver.putWeapons(playerId, newWeapons)
 
     // 武器リスト先頭差し替え replaceOrDropHead は純 leaf として CombatRules.flix にある。
 
@@ -568,22 +568,22 @@ mod CombatDriver {
     /// ログはスペック準拠で「敵{N} → P{M} に Xダメージ」、撃破時「敵{N} → P{M} を撃破」。
     /// HP=0 なら killedIds に追加して返す（呼び出し側が死亡処理を発火する）。
     /// 武器なし（None）でここに到達した場合は防御的に何もしない。
-    def applyDamageToPlayer(enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32):
+    def applyDamageToPlayer(enemyId: Int32, enemy: EnemyDriver.Data, targetId: Int32):
             List[Int32] \
             {GameEngine.Audio, World.RngDraw,
              World.Command, World.WorldQuery} =
         // 前提（武器あり・対象あり）の解決だけを担う。実体は ECS 経路のみ。
         let resolved = forM (
             _weapon <- enemy#weapon;
-            player  <- PlayerScene.get(targetId)
+            player  <- PlayerDriver.get(targetId)
         ) yield ecsResolveEnemyAttack(enemyId, enemy, targetId, player);
         Option.getWithDefault(Nil, resolved)
 
     /// ECS 経路（敵攻撃）: `CombatSystem.resolveEnemyAttack` で 1 撃を解き events→Cmds で World 反映・
     /// `ViewReplay.replay` で演出。味方死亡は **deferred**（`ViewFx(Died(Player))`）ゆえ killedIds をそこから導出して
     /// 返す（呼び出し側の `removeDeadAndCheckGameOver` ＝ game-over 経路へ）。
-    def ecsResolveEnemyAttack(enemyId: Int32, enemy: EnemyScene.Data, targetId: Int32,
-                               player: PlayerScene.Data):
+    def ecsResolveEnemyAttack(enemyId: Int32, enemy: EnemyDriver.Data, targetId: Int32,
+                               player: PlayerDriver.Data):
             List[Int32] \ {GameEngine.Audio,
                            World.RngDraw, World.Command, World.WorldQuery} =
         let world = World.WorldQuery.get();

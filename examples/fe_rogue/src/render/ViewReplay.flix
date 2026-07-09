@@ -104,14 +104,14 @@ mod ViewReplay {
 
     /// ノックバック着地（faction で snapTo を振り分け）。
     def snapRefTo(ref: EntityRef, cell: {x = Int32, y = Int32}): Unit \ World.Command = match ref {
-        case EntityRef.Enemy(i)  => EnemyScene.snapTo(i, cell)
-        case EntityRef.Player(i) => PlayerScene.snapTo(i, cell)
+        case EntityRef.Enemy(i)  => EnemyDriver.snapTo(i, cell)
+        case EntityRef.Player(i) => PlayerDriver.snapTo(i, cell)
     }
 
     /// 死亡演出。enemy は death_blink。player 死亡は game-over 経路（`CombatDriver` が ViewFx(Died(player)) を
     /// filter して `GameOverRequest` を引く）が担うので純 view 層では no-op。
     def deathAnim(ref: EntityRef): Unit \ World.Command = match ref {
-        case EntityRef.Enemy(i)  => EnemyScene.startDeathAnimation(i)
+        case EntityRef.Enemy(i)  => EnemyDriver.startDeathAnimation(i)
         case EntityRef.Player(_) => ()
     }
 }

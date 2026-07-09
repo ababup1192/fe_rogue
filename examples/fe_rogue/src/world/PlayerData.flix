@@ -72,7 +72,7 @@ mod PlayerData {
     /// `usedStairs` は階段退場フラグ。
     /// `level` は現レベル（フロア跨ぎで継承）。
     /// `exp` は経験値（0..99）。
-    /// `pendingLevelUp` は直近レベルアップ結果。LevelUpScene が演出を終えた後に None へ戻す責務を持つ。
+    /// `pendingLevelUp` は直近レベルアップ結果。LevelUpPanelUi が演出を終えた後に None へ戻す責務を持つ。
     /// ── Phase D field×source 分類（D1 design pin・2026-06-29・後段 slice を gate する先決成果物）─────
     /// **昇格基準**: (W)World-store 権威 = System が authoritative I/O に要る／既昇格と対称な sim turn-state／
     /// sim 解決を駆動する mutable state。(R)scene-backed 残置 = pure view/render/modal-trigger/UI-cursor/
@@ -150,7 +150,7 @@ mod PlayerData {
 
     /// 味方パーティの現フレーム状態を副作用なく読み取る effect。
     /// 非 driver Scene (HUD/Camera/Menu/Overlay) はこの effect 経由で味方データを得ることで、
-    /// PlayerScene への直接型参照を持たずに済む（一方向依存の維持）。
+    /// PlayerDriver への直接型参照を持たずに済む（一方向依存の維持）。
     pub eff PartyQuery {
         def get(id: Int32): Option[Data]
         def getAll(): List[Data]

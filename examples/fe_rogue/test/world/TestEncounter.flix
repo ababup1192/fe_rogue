@@ -1,7 +1,7 @@
 /// Encounter のテスト — units に対するクエリ helper
 ///
 /// `fromScene`（scene → Encounter の join）は scene 構築が要るため scene ベースの
-/// 既存テスト（TestEnemyAI / TestActionMenuScene）が間接的にカバーする。ここでは
+/// 既存テスト（TestEnemyAI / TestActionMenuUi）が間接的にカバーする。ここでは
 /// 手組みの units に対する `enemiesOf` / `alliesOf` / `unitAt` / `sameCellAlly` を純粋値で検証する。
 mod TestEncounter {
 

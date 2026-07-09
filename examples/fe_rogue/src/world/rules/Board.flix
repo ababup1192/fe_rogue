@@ -16,7 +16,7 @@
 ///   (F) 射程計算: manhattanOffsets / computeThreatCells
 ///   (G) 直線射出: rayCast / knockbackPath / dedupCells / padCells
 ///
-/// EnemyAI / AutoMove / MoveRangeScene / EnemyRangeScene / PlayerScene などはこの
+/// EnemyAI / AutoMove / MoveRange / EnemyRange / PlayerDriver などはこの
 /// Board を 1 つ受け取れば「次の手」を計算できる。World には依存しない。
 ///
 /// `BoardQuery` は「現フレームの盤面」を effect 経由で取り回すための窓口。
@@ -59,7 +59,7 @@ mod Board {
     // ════════════════════════════════════════════════════════
 
     /// 盤面上のプレイヤー駒一覧（id, gridPos）。pieces 順を保つ。
-    /// id の連続性（0/1/2）は呼び出し側（PlayerScene）が保証する前提。
+    /// id の連続性（0/1/2）は呼び出し側（PlayerDriver）が保証する前提。
     pub def playerPositions(board: Board): List[(Int32, {x = Int32, y = Int32})] =
         List.filterMap(entry -> match entry {
             case (Piece.Player(id), pos) => Some((id, pos))
@@ -165,7 +165,7 @@ mod Board {
         tryMoveWithRange(board, source, dir, _ -> true)
 
     /// `tryMove` に「移動可能セル」述語による追加制約を加える版。
-    /// 範囲表示（move_tile）の外には踏み込めないようにする用途で `MoveRangeScene.isInRange`
+    /// 範囲表示（move_tile）の外には踏み込めないようにする用途で `MoveRange.isInRange`
     /// 等を渡す。`allowed` が常に true なら `tryMove` と同じ挙動。
     /// **味方駒は通過可能**（`isEnemyAt` で敵だけブロックする）。
     pub def tryMoveWithRange(board: Board, source: {x = Int32, y = Int32},
@@ -391,12 +391,12 @@ mod Board {
 
     // ════════════════════════════════════════════════════════
     // (E) 駒視点ヘルパー — 「壁・敵だけ通行不可、味方マスは通過可。停止は味方マス NG」
-    //     という動きモデルを公開する。MoveRangeScene の青マス表示はこのレイヤ
+    //     という動きモデルを公開する。MoveRange の青マス表示はこのレイヤ
     //     経由で計算する。AutoMove は同じモデルを `bfsPathSkipAllies` 直叩きで使う。
     // ════════════════════════════════════════════════════════
 
     /// 味方マスを通過可、敵 / 壁は不可で `origin` から `maxSteps` 以内に到達できるセル一覧。
-    /// `origin` 自身も含む（距離 0）。MoveRangeScene の到達範囲のベース。
+    /// `origin` 自身も含む（距離 0）。MoveRange の到達範囲のベース。
     pub def reachableForUnit(board: Board, origin: {x = Int32, y = Int32},
                               maxSteps: Int32): List[{x = Int32, y = Int32}] =
         let enemyCells = enemyPositions(board)
@@ -406,7 +406,7 @@ mod Board {
         reachableCells(isPassable, origin, maxSteps)
 
     /// `reachableForUnit` から「味方マス（自分 + 他味方）」を除いた、
-    /// 「移動を完了して停止できる」マスの一覧。MoveRangeScene の青マスに使う。
+    /// 「移動を完了して停止できる」マスの一覧。MoveRange の青マスに使う。
     pub def stoppableForUnit(board: Board, origin: {x = Int32, y = Int32},
                               maxSteps: Int32): List[{x = Int32, y = Int32}] =
         let playerCells = playerPositions(board)
@@ -416,7 +416,7 @@ mod Board {
 
     // ════════════════════════════════════════════════════════
     // (F) 射程計算 — 武器の `min..max` マンハッタン距離に基づくセル列挙
-    //     RangeScenes の Player/MoveAttack/EnemyRange 表示はここを再利用する。
+    //     RangeOverlays の Player/MoveAttack/EnemyRange 表示はここを再利用する。
     //     Scene 非依存・engine API 非依存の純粋関数。
     // ════════════════════════════════════════════════════════
 

@@ -24,7 +24,7 @@ mod FloorSnapshot {
         level        = Int32,
         exp          = Int32,
         // 成長後の 9 ステータス（最大 HP 含む）。レベルアップは成長率乱数なので level から再計算できず、
-        // 値を保存する（`PlayerScene.CarryData#stats` と同じ役割）。復元時 base resource に上書きする。
+        // 値を保存する（`PlayerDriver.CarryData#stats` と同じ役割）。復元時 base resource に上書きする。
         stats        = LevelSystem.Stats,
         facing       = Dir4.Dir4,
         statuses     = List[StatusSystem.Status],

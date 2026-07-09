@@ -2,7 +2,7 @@
 ///
 /// PlayerAttack / WeaponSelect / ActionMenu「たいき」/ 杖・アイテム使用 / 反撃完了など、
 /// 「行動が確定した」すべての経路がここを通って次フェーズを判定する。
-/// 状態所有側（PlayerScene / EnemyScene）からターン進行のオーケストレーションを
+/// 状態所有側（PlayerDriver / EnemyDriver）からターン進行のオーケストレーションを
 /// 分離したモジュールで、process を持たないため Game.flix の dispatch 表に登録せず
 /// `src/game/` に置く（dispatch 表に載るとフレーム毎に呼ばれる Scene として扱われる）。
 ///
@@ -27,21 +27,21 @@ mod TurnFlow {
         // パネルを閉じると LevelUpPanelUi.confirm が pendingLevelUp を消して再度ここを呼ぶので、
         // そのとき保留が無くなって通常の確定・前進に進む。Kill / Counter / Commit の 3 経路すべてが
         // 最後にここを通るため、自分の攻撃で得たレベルアップ表示の割り込みは 1 箇所で足りる。
-        if (PlayerScene.anyPendingLevelUp())
+        if (PlayerDriver.anyPendingLevelUp())
             PhaseTransitions.enterLevelUpView()
         else {
             let waitedId = SelectedPlayer.State.get()#id;  // このフレームで waited 化する駒
             match waitedId {
-                case Some(id) => PlayerScene.setWaited(id)
+                case Some(id) => PlayerDriver.setWaited(id)
                 case None     => ()   // 防御的: 選択なしで Attack に入ることは UI フロー上起こらないが、
                                        // waited 化する駒が存在しないだけなので何もしなくても安全
             };
             SelectedPlayer.State.put(SelectedPlayer.cleared());
             // 次の active 味方の gridPos を拾って渡す。waited は World 直読みなので、
             // 直前の setWaited は `firstActiveExcluding` の結果に既に反映されている
-            // （`excludeId` 引数は防御的な二重ガードとして残す。PlayerScene.firstActiveExcluding
+            // （`excludeId` 引数は防御的な二重ガードとして残す。PlayerDriver.firstActiveExcluding
             // のコメント参照）。スナップ先セルは World.posOf（位置は World 権威）。
-            match PlayerScene.firstActiveExcluding(waitedId) {
+            match PlayerDriver.firstActiveExcluding(waitedId) {
                 case Some(next) =>
                     PhaseTransitions.enterPlayerCursorAt(
                         World.posOf(World.EntityRef.Player(next#id), World.WorldQuery.get())
@@ -54,7 +54,7 @@ mod TurnFlow {
     /// 「ターンエンド」／集合の「全員待機」確定: 全アクティブ味方を行動済みにして即敵ターンへ進む。
     /// `SelectedPlayer.cleared()` で選択を解除する。集合確定なので `drafts`（集合中に積んだ
     /// MovedFrom / GatherWaited）は **巻き戻さず破棄** する（移動・非アクティブ化を確定させる）。
-    /// `ActionMenuScene` の「ターンエンド／全員待機」と、`EnemyTurnDriver` の集合移動中の
+    /// `ActionMenuUi` の「ターンエンド／全員待機」と、`EnemyTurnDriver` の集合移動中の
     /// 強制全員待機（敵に見つかったとき）の共通入口。`commitWaitedAndAdvance` と違い `anyPendingLevelUp`
     /// 割り込みは持たない（全員待機が走る局面では戦闘起因のレベルアップ保留が存在しないため。
     /// 個別経路 `commitWaitedAndAdvance` は割り込みを保持する非対称だが、いずれも実害なし＝意図的）。
@@ -69,11 +69,11 @@ mod TurnFlow {
         let resume = allowResume and SelectedPlayer.State.get()#gatherActive;
         // waited は World 直読み。
         let w0 = World.WorldQuery.get();
-        let ids = PlayerScene.getAll()
+        let ids = PlayerDriver.getAll()
                     |> List.filter(d -> not (World.waitedOf(World.EntityRef.Player(d#id), w0)
                                                 |> Option.getWithDefault(false)))
                     |> List.map(d -> d#id);
-        List.forEach(id -> PlayerScene.setWaited(id), ids);
+        List.forEach(id -> PlayerDriver.setWaited(id), ids);
         GatherResume.State.put(resume);
         SelectedPlayer.State.put(SelectedPlayer.cleared());
         EnemyTurnDriver.beginTurn()

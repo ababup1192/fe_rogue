@@ -20,7 +20,7 @@
 ///   - キューが空 = プレイヤーターン
 mod EnemyTurn {
 
-    /// 1 マスぶんの行動権。`id` は `EnemyScene.Data` の `id` フィールド（連番で割り当てられ、
+    /// 1 マスぶんの行動権。`id` は `EnemyDriver.Data` の `id` フィールド（連番で割り当てられ、
     /// 同一ターン中に同じ id が複数の step に現れることはない前提。同セル 2 体は想定外）。
     /// remaining は「残り移動マス数」。処理時に 1 マス進み remaining - 1 を pushFront する。
     /// remaining = 0 の step が先頭に来たら移動を終了し捨てる。

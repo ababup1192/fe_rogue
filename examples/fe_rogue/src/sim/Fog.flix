@@ -1,4 +1,4 @@
-/// FogScene — フォグ・オブ・ウォー（画面全体モヤ＋現在部屋を矩形で切り抜き）
+/// Fog — フォグ・オブ・ウォー（画面全体モヤ＋現在部屋を矩形で切り抜き）
 ///
 /// 画面全体を薄暗いモヤで覆い、明るい穴を矩形で切り抜く。点灯ルールは部屋と通路で異なる:
 ///   - 部屋(room module): origin(ターン開始位置)基準で部屋全体を点灯。キャラがいない部屋は
@@ -14,7 +14,7 @@
 /// グリッド座標の矩形（半開区間 [x0,x1) × [y0,y1)）。
 pub type alias GridRect = {x0 = Int32, y0 = Int32, x1 = Int32, y1 = Int32}
 
-mod FogScene {
+mod Fog {
 
     /// モヤの色（暗い青灰）と不透明度。地形がうっすら見える程度に薄暗くする。
     /// 視認性とパフォーマンスのトレードオフ調整点。B: render-from-World の `renderFog` も同値を使うため pub。
@@ -36,7 +36,7 @@ mod FogScene {
     /// ターン開始位置(origin)基準に固定し、コミットで drafts が消えれば origin==live に戻る
     /// （＝待機/接敵まで新規部屋を暗いまま）。通路は常に周囲1マス(松明)。
     /// Map 不在（タイトル/選択画面などの盤面レス）は None＝読者は「何も照らさない」に倒す。
-    /// 敵可視（`EnemyScene.isVisible`）・配置物の lit ゲート（renderStairs/renderItems 等）が共有する。
+    /// 敵可視（`EnemyDriver.isVisible`）・配置物の lit ゲート（renderStairs/renderItems 等）が共有する。
     pub def holesNow(): Option[List[GridRect]] \ {SelectedPlayer.State, World.WorldQuery} =
         let world = World.WorldQuery.get();
         match World.terrainOf(world) {
@@ -52,8 +52,8 @@ mod FogScene {
 
     /// 非 hidden プレイヤーごとの「明るい穴」矩形リスト（純粋・テスト対象）。
     /// 部屋なら部屋全体、通路は torchCorridors のとき周囲1マスだけ。
-    /// 行多相シグネチャにより PlayerScene.Data 以外（CursorScene 等）からも呼べる汎用 API。
-    /// 各ユニットの origin=live としてライブ挙動になる（移動デファー無し）。CursorScene の
+    /// 行多相シグネチャにより PlayerDriver.Data 以外（CursorDriver 等）からも呼べる汎用 API。
+    /// 各ユニットの origin=live としてライブ挙動になる（移動デファー無し）。CursorDriver の
     /// 可動域計算など「いまどの部屋が明るいか」をライブで欲しい用途はこちらを使う。
     pub def holesFor(units: List[{gridPos = {x = Int32, y = Int32}, hidden = Bool | r}],
                       placements: List[DungeonComposer.ModulePlacement],
@@ -64,7 +64,7 @@ mod FogScene {
 
     /// `holesFor` の draft 対応版。部屋(room module)点灯は origin（ターン開始位置）基準で、
     /// 通路・松明はライブ位置。移動中に新しく踏み込んだ部屋を確定まで暗いままにするために
-    /// FogScene の per-frame 経路から使う。
+    /// Fog の per-frame 経路から使う。
     pub def holesForDraft(units: List[{gridPos = {x = Int32, y = Int32},
                                        origin = {x = Int32, y = Int32}, hidden = Bool | r}],
                            placements: List[DungeonComposer.ModulePlacement],
@@ -102,7 +102,7 @@ mod FogScene {
           x1 = cell#x + rad + 1, y1 = cell#y + rad + 1}: GridRect)
 
     /// セルがいずれかの矩形の内側か（半開区間 [x0,x1) × [y0,y1)）。
-    /// フォグの穴判定と CursorScene の移動可動域判定で共用するため pub に公開する。
+    /// フォグの穴判定と CursorDriver の移動可動域判定で共用するため pub に公開する。
     pub def insideAny(cell: {x = Int32, y = Int32}, holes: List[GridRect]): Bool =
         List.exists(h ->
             cell#x >= h#x0 and cell#x < h#x1 and cell#y >= h#y0 and cell#y < h#y1, holes)
@@ -114,7 +114,7 @@ mod FogScene {
     /// カーソルが動ける範囲の矩形群。
     ///   - いま明るい部屋（holesFor, torch=false）を radius タイル四方に拡張したもの
     ///   - すでに訪れた module（visited）の矩形（moduleRect, 壁リング込み）
-    /// の和。CursorScene が候補セルの可否判定（insideAny）に使う。純粋（テスト対象）。
+    /// の和。CursorDriver が候補セルの可否判定（insideAny）に使う。純粋（テスト対象）。
     /// PlayerCursor フェーズは torchCorridors=false なので holesFor は各非 hidden
     /// プレイヤーの module 矩形を返す。明るい部屋は visited にも含まれるが、litExpanded が
     /// +radius の余白を足す（visited 矩形は余白なし＝「行った部屋まで」）。

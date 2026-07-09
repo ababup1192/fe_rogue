@@ -3,7 +3,7 @@
 /// `EffectPlan.planActions` が確定した「何が・誰に・いくつ」を、実際の作用へ落とす唯一の出口。
 /// runPlan は**アキュムレータ `s`（実行時は `Unit`。副作用は handler が `World.Command.emit` で
 /// 行う。テストでは記録リスト）を handler に通して畳む**。
-/// 副作用そのものは `PlanHandlers` に逃がしてあり、実行時は Combat.heal / PlayerScene.setHp /
+/// 副作用そのものは `PlanHandlers` に逃がしてあり、実行時は Combat.heal / PlayerDriver.setHp /
 /// AudioStreamPlayer.play を包んだ handler を、テストは呼び出しを記録する handler を渡す。
 /// これにより「runPlan が PlanItem をどの handler へ・どの順で振り分けるか」を World 抜きで固定できる。
 mod EffectRunner {

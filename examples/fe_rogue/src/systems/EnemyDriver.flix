@@ -1,4 +1,4 @@
-/// EnemyScene — 敵キャラクターの spawn・移動・死亡演出・ターン状態の操作の集まり
+/// EnemyDriver — 敵キャラクターの spawn・移動・死亡演出・ターン状態の操作の集まり
 ///
 /// FE 風のターン制で味方を追跡してくる敵駒を表現する。敵の状態は World の各 store が唯一の
 /// 権威で、読みは `World.dataFromWorldEnemy`（store 群からの `Data` 再構築）、書きは
@@ -10,7 +10,7 @@
 ///   - anchor 部屋（idx 0、プレイヤー初期位置）は除外。起動直後に敵に隣接しないよう保証する。
 ///   - 通路（idx >= roomCount）は対象外。プレイヤーが通り抜けるだけの空間にする。
 ///   - 各敵は部屋の床セルから 1 つを選ぶ（プレイヤー位置・既存敵セルを避ける）。
-mod EnemyScene {
+mod EnemyDriver {
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
@@ -64,7 +64,7 @@ mod EnemyScene {
     // (C) 構築
     // ────────────────────────────────────────────────────────
 
-    /// マップ（World の terrain / placements）が seed 済みで PlayerScene 登録済みの World に敵を追加する。
+    /// マップ（World の terrain / placements）が seed 済みで PlayerDriver 登録済みの World に敵を追加する。
     /// 各部屋について 0..`floor#monstersPerRoom` 体のスポーン位置を決め、
     /// それぞれに `floor#monsters` から percent 重みでランダム抽選した unit id を引いて
     /// UnitResource を割り当て、`initialInventory` の先頭武器を装備させる
@@ -79,7 +79,7 @@ mod EnemyScene {
         let placements  = World.placementsOf(world0);
         let roomCount   = World.roomCountOf(world0);
         // パーティ全員のセルを taken に入れて避ける（敵が味方の上にスポーンしないように）。
-        let playerCells = PlayerScene.getAll() |> List.map(d -> d#gridPos);
+        let playerCells = PlayerDriver.getAll() |> List.map(d -> d#gridPos);
         // anchor (idx = 0) を除いた部屋だけを対象にする
         let rooms = List.filter(p ->
             p#idx >= 1 and p#idx < roomCount, placements);
@@ -105,7 +105,7 @@ mod EnemyScene {
         match List.find(e -> e#kind == UnitBase.ItemKind.Weapon, res#initialInventory) {
             case Some(e) => WeaponCatalog.lookup(e#id, weapons)
             case None    =>
-                bug!("EnemyScene.lookupFirstWeapon: unit has no weapon in initialInventory")
+                bug!("EnemyDriver.lookupFirstWeapon: unit has no weapon in initialInventory")
         }
 
     /// 一部の敵職はスポーン時に一定確率（`specialWeaponChance`）で専用武器に持ち替える。
@@ -153,7 +153,7 @@ mod EnemyScene {
                             let res = match EnemyCatalog.get(id, enemies) {
                                 case Some(u) => u
                                 case None    =>
-                                    bug!("EnemyScene.spawnInRoom: enemy id '${id}' not in catalog")
+                                    bug!("EnemyDriver.spawnInRoom: enemy id '${id}' not in catalog")
                             };
                             let weapon = maybeSwapSpecialWeapon(res, lookupFirstWeapon(res, weapons), weapons);
                             let entry: Spawn = {
@@ -278,8 +278,8 @@ mod EnemyScene {
         let placements = World.placementsOf(world0);
         let roomCount  = World.roomCountOf(world0);
         // 空きセル・可視判定は World 位置。
-        let holes      = FogScene.holesFor(PlayerScene.getAll(), placements, roomCount, false);
-        let playerCells = PlayerScene.getAll() |> List.map(d -> d#gridPos);
+        let holes      = Fog.holesFor(PlayerDriver.getAll(), placements, roomCount, false);
+        let playerCells = PlayerDriver.getAll() |> List.map(d -> d#gridPos);
         let enemyCells  = current |> List.map(d -> d#gridPos);
         // アンカー除外の部屋 (idx in [1, roomCount)) の床セルを (idx, cell) 付きで集め、
         // 空き + 視界外（プレイヤーが居ない部屋）のみ残す。初期配置と同じ部屋集合。
@@ -290,7 +290,7 @@ mod EnemyScene {
                 let (_, c) = pair;
                 not isTaken(c, playerCells)
                     and not isTaken(c, enemyCells)
-                    and not FogScene.insideAny(c, holes)
+                    and not Fog.insideAny(c, holes)
             });
         // 「湧ける部屋セル」「Wanderer タイプの抽選」「敵リソース解決」の 3 つの Option を
         // forM で畳む（ネスト match を回避）。どれかが None なら湧かさない。
@@ -334,7 +334,7 @@ mod EnemyScene {
     pub def get(id: Int32): Option[Data] \ World.WorldQuery =
         World.dataFromWorldEnemy(id, World.WorldQuery.get())
 
-    /// statusEffects 書込 funnel（`PlayerScene.updateStatuses` の Enemy 版）。World の現在 statuses に
+    /// statusEffects 書込 funnel（`PlayerDriver.updateStatuses` の Enemy 版）。World の現在 statuses に
     /// 純粋変換 `f` を適用し、`Cmd.Seed`（全置換 replace 意味論）で書く。
     /// statuses を書く全サイト（add/clearImmobilized/bind）が使う。pub（StaffCast/CombatDriver 起点から）。
     pub def updateStatuses(id: Int32,
@@ -427,32 +427,32 @@ mod EnemyScene {
         List.forEach(id -> setSpriteModulate(id, activeColor()), ids)
 
     /// 敵 id が指定の「明るい穴」で照らされているか（World 位置×穴の純関数）。
-    /// フレーム 1 回計算した穴（`FogScene.holesNow` / render の共有 holesOpt）を渡して使う。
+    /// フレーム 1 回計算した穴（`Fog.holesNow` / render の共有 holesOpt）を渡して使う。
     /// 未 spawn（pos 不在）は false（居ない＝見えない扱い）。
     /// 隠れていても AI は継続するため、フォグで隠れた敵も行動する点に注意。
     pub def isLitIn(id: Int32, holes: List[GridRect], world: World): Bool =
         World.posOf(World.EntityRef.Enemy(id), world)
-            |> Option.map(p -> FogScene.insideAny(p, holes))
+            |> Option.map(p -> Fog.insideAny(p, holes))
             |> Option.getWithDefault(false)
 
     /// 敵 id がいまフォグで隠れず見えているか（現在の明るい穴からの導出）。
-    /// CursorScene のホバー情報抑制・UnitCard の表示対象判定などの単発読みに使う。
+    /// CursorDriver のホバー情報抑制・UnitCard の表示対象判定などの単発読みに使う。
     /// 盤面レス（穴 None）は false。
     pub def isVisible(id: Int32): Bool \ {SelectedPlayer.State, World.WorldQuery} =
-        match FogScene.holesNow() {
+        match Fog.holesNow() {
             case None        => false
             case Some(holes) => isLitIn(id, holes, World.WorldQuery.get())
         }
 
     /// 敵 id を `target` に移動させる。論理位置（World の pos）は即時更新し、
-    /// 見た目の補間は renderPos tween に委ねる（PlayerScene.moveToById と同じ機構）。
+    /// 見た目の補間は renderPos tween に委ねる（PlayerDriver.moveToById と同じ機構）。
     /// 呼び出しごとに 1 マス分（隣接セル）の Tween を登録する前提。複数マス分の
     /// 移動は `EnemyTurn.Queue` に step を積み、1 フレームに 1 step ずつ呼ぶことで実現する。
     /// **歩行可否（壁・他駒）の判定は呼び出し側（EnemyAI）が済ませている前提**で、
-    /// EnemyScene 自身は衝突判定を持たない。
+    /// EnemyDriver 自身は衝突判定を持たない。
     pub def moveTo(id: Int32, target: {x = Int32, y = Int32},
                     map: MapSnapshot): Unit \ {World.Command, World.WorldQuery} =
-        // プレイヤー移動（PlayerScene）と同じ `SimEvent.Moved` seam に統一。
+        // プレイヤー移動（PlayerDriver）と同じ `SimEvent.Moved` seam に統一。
         //   moveTo = SYSTEM(stepEnemyMove: Cmd.Move emit + Moved 返却) → VIEW(replayMovedEvent 再生)。
         //   歩行可否は呼び出し側（EnemyAI.decideAction）が済ませている前提＝System は判定せず書くだけ。
         // INVARIANT: replayMovedEvent は move-seam 専用＝Moved 以外は bug! で落ちる（no-op ではない）。
@@ -468,7 +468,7 @@ mod EnemyScene {
         World.SimEvent.Moved(World.EntityRef.Enemy(id), target)
 
     /// VIEW(replay): `SimEvent.Moved` の敵分を再生する。プレイヤー分は対象外
-    /// （`PlayerScene.replayMovedEvent` が担当）＝faction ごとに自分の event を再生。
+    /// （`PlayerDriver.replayMovedEvent` が担当）＝faction ごとに自分の event を再生。
     /// faction 分岐は 1 段の match に留め、敵の見た目再生は `replayEnemyMoveView` に委譲（ネスト回避）。
     pub def replayMovedEvent(event: World.SimEvent, map: MapSnapshot):
             Unit \ {World.Command, World.WorldQuery} =
@@ -477,7 +477,7 @@ mod EnemyScene {
             case World.SimEvent.Moved(World.EntityRef.Player(_), _)        => ()
             // simevent-algebra: 拡張された非 Moved variant は move seam に来ない（production emitter 無し）。
             // 黙って no-op せず、move seam 専用 invariant 違反として loud に落とす。
-            case _ => bug!("EnemyScene.replayMovedEvent: non-Moved event on move seam")
+            case _ => bug!("EnemyDriver.replayMovedEvent: non-Moved event on move seam")
         }
 
     /// 敵 1 体の move 見た目再生（Tween 滑走 + 左右反転 + prevPos 記録）。
@@ -520,7 +520,7 @@ mod EnemyScene {
 
     /// 敵 id を `target` に **瞬間移動** で戻す（杖の「いれかえ」用）。
     /// 進行中の Tween があればキャンセルし、描画位置（renderPos）と論理位置（pos）を
-    /// 同時に target に揃える。`PlayerScene.snapTo` と同じ流儀。
+    /// 同時に target に揃える。`PlayerDriver.snapTo` と同じ流儀。
     pub def snapTo(id: Int32, target: {x = Int32, y = Int32}): Unit \ World.Command =
         let world = MapSnapshot.cellCenter(target);
         // SetRenderPos が進行中の World 描画 tween を破棄しつつ renderPos を
@@ -570,7 +570,7 @@ mod EnemyScene {
             |> List.map(d ->
                 let weapon = match d#weapon {
                     case Some(w) => w
-                    case None    => bug!("EnemyScene.snapshotSpawns: weapon is None for 敵${d#id} (snapshot taken after weapon broke?)")
+                    case None    => bug!("EnemyDriver.snapshotSpawns: weapon is None for 敵${d#id} (snapshot taken after weapon broke?)")
                 };
                 ({id = d#id, resourceId = d#resourceId, gridPos = d#gridPos, moduleIdx = d#homeModuleIdx, resource = d#resource, weapon = weapon}: Spawn))
 
@@ -620,7 +620,7 @@ mod EnemyScene {
                      weaponCatalog: WeaponCatalog.WeaponCatalog): Spawn =
         let resource = match EnemyCatalog.get(snap#resourceId, enemyCatalog) {
             case Some(r) => r
-            case None    => bug!("EnemyScene.addFromSnaps: enemy '${snap#resourceId}' not in catalog")
+            case None    => bug!("EnemyDriver.addFromSnaps: enemy '${snap#resourceId}' not in catalog")
         };
         let weapon = match snap#weapon {
             case Some(ref) => {durability = ref#durability | WeaponCatalog.lookup(ref#id, weaponCatalog)}
@@ -655,7 +655,7 @@ mod EnemyScene {
     /// フォグで見えている生存敵が 1 体以上いれば true（死亡演出中 `isDying` は除外）。
     /// 在籍・可視とも World＋現在の明るい穴からの導出（集合自動継続の「画面内に敵がいるか」判定に使う）。
     pub def anyVisible(): Bool \ {SelectedPlayer.State, World.WorldQuery} =
-        match FogScene.holesNow() {
+        match Fog.holesNow() {
             case None        => false
             case Some(holes) =>
                 let world = World.WorldQuery.get();

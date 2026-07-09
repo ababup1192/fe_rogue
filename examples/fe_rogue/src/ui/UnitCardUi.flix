@@ -176,17 +176,17 @@ mod UnitCardUi {
     /// ident（位置/hidden/フォグ）は World 読み、味方の表示 Data だけ PartyQuery 経由。
     def hovered(): Option[CardView]
             \ {PlayerData.PartyQuery, SelectedPlayer.State, CursorState.State, World.WorldQuery} =
-        let coord = CursorScene.getGridPos();
-        let visibleEnemy = EnemyScene.findIdAt(coord)
-                            |> Option.filter(id -> EnemyScene.isVisible(id));
+        let coord = CursorDriver.getGridPos();
+        let visibleEnemy = EnemyDriver.findIdAt(coord)
+                            |> Option.filter(id -> EnemyDriver.isVisible(id));
         match visibleEnemy {
             // 敵の表示 Data（hp/weapon/ring/statuses）は World 権威＝dataFromWorldEnemy overlay で読む。
-            case Some(id) => EnemyScene.get(id)
+            case Some(id) => EnemyDriver.get(id)
                                 |> Option.map(d -> World.dataFromWorldEnemy(id, World.WorldQuery.get())
                                                        |> Option.getWithDefault(d))
                                 |> Option.map(enemyView)
             case None     =>
-                PlayerScene.getAll()
+                PlayerDriver.getAll()
                     |> List.filter(d -> not d#hidden and d#gridPos#x == coord#x and d#gridPos#y == coord#y)
                     |> List.head
                     |> Option.flatMap(d -> PlayerData.PartyQuery.get(d#id))
@@ -200,7 +200,7 @@ mod UnitCardUi {
     def resolveRight(phase: TurnPhase.Phase): Option[CardView]
             \ {SelectedPlayer.State, CursorState.State, World.WorldQuery} =
         targetEnemyId(phase)
-            |> Option.flatMap(eid -> EnemyScene.get(eid)
+            |> Option.flatMap(eid -> EnemyDriver.get(eid)
                                         |> Option.map(d -> World.dataFromWorldEnemy(eid, World.WorldQuery.get())
                                                                |> Option.getWithDefault(d)))
             |> Option.map(enemyView)
@@ -210,17 +210,17 @@ mod UnitCardUi {
             Option[Int32] \ {SelectedPlayer.State, CursorState.State, World.WorldQuery} =
         match phase {
             case TurnPhase.Phase.WeaponSelect =>
-                EnemyScene.findIdAt(CursorScene.getGridPos())
-                    |> Option.filter(id -> EnemyScene.isVisible(id))
+                EnemyDriver.findIdAt(CursorDriver.getGridPos())
+                    |> Option.filter(id -> EnemyDriver.isVisible(id))
             case TurnPhase.Phase.PlayerAttack =>
                 SelectedPlayer.State.get()#id
-                    |> Option.flatMap(pid -> PlayerScene.get(pid))
+                    |> Option.flatMap(pid -> PlayerDriver.get(pid))
                     |> Option.flatMap(player -> player#attackTargetId)
             case _ => None
         }
 
     /// 味方 Data → CardView（青・Lv+EXP あり）。装備は「先頭が装備中」規約で解決。
-    def playerView(d: PlayerScene.Data): CardView =
+    def playerView(d: PlayerDriver.Data): CardView =
         {borderColor = allyBorderColor(), barColor = allyBarColor(),
          sprite = d#resource#sprite, description = d#resource#description,
          maxHp = d#resource#hp, hp = d#hp,
@@ -228,7 +228,7 @@ mod UnitCardUi {
          levelInfo = Some({level = d#level, exp = d#exp})}
 
     /// 敵 Data → CardView（赤・Lv+EXP なし）。
-    def enemyView(d: EnemyScene.Data): CardView =
+    def enemyView(d: EnemyDriver.Data): CardView =
         {borderColor = enemyBorderColor(), barColor = enemyBarColor(),
          sprite = d#resource#sprite, description = d#resource#description,
          maxHp = d#resource#hp, hp = d#hp,

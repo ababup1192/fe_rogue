@@ -229,6 +229,6 @@ color / text / tint など毎フレーム同期される見た目は、リロー
   `LevelUpPanelUi` / `UnitCardUi`（味方左 / 敵右の 2 root 共有）。
 
 - **残った `scene/`（Scene ノード）は盤面・シム系のみ** — Player / Enemy / Map / Camera / Cursor（入力）/
-  ArrowCursor / Fog / Minimap / RangeScenes / Bgm / Entity。UI 窓の `NodeTag` は全滅し、残る `NodeTag` は
+  ArrowCursor / Fog / Minimap / RangeOverlays / Bgm / Entity。UI 窓の `NodeTag` は全滅し、残る `NodeTag` は
   駒・overlay・driver だけ（`Player` / `Enemy` / `Map` / `*Range` / `Cursor` / `Stairs` / `Chest` /
   `EnemyTurnDriver` / `FogDriver` / `Camera` 等）。

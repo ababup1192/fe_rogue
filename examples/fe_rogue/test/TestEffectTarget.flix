@@ -86,21 +86,21 @@ mod TestEffectTarget {
     // actorIsPlayer（敵 actor 視点）— 自己回復が player に漏れない / 敵が player を狙える
     // ════════════════════════════════════════════════════════
 
-    /// 敵 actor（actorIsPlayer=false）の RoleSelf は EnemyScene 側（ally=false）を指す。
+    /// 敵 actor（actorIsPlayer=false）の RoleSelf は EnemyDriver 側（ally=false）を指す。
     /// これが true に漏れると敵の吸血が player を回復してしまう（致命バグの回帰検知）。
     @Test
     def testEnemyActorSelfIsEnemySide(): Unit \ Assert =
         let t = tgt(Role.RoleSelf, Faction.FactionAny, TargetState.StateAny);
         Assert.assertEq(expected = Some((1, false)), resolveAs(t, Nil, false))
 
-    /// 敵 actor（actorIsPlayer=false）の RoleAttacker も EnemyScene 側（ally=false）。
+    /// 敵 actor（actorIsPlayer=false）の RoleAttacker も EnemyDriver 側（ally=false）。
     @Test
     def testEnemyActorAttackerIsEnemySide(): Unit \ Assert =
         let t = tgt(Role.RoleAttacker, Faction.FactionAny, TargetState.StateAny);
         Assert.assertEq(expected = Some((9, false)), resolveAs(t, Nil, false))
 
     /// 敵 actor が faction=enemy で狙うと ray 上の player 駒（is-player=true）に当たり、ally=true で返る
-    /// （→ runPlan が PlayerScene 側へ作用＝毒/鈍足が player に付く）。
+    /// （→ runPlan が PlayerDriver 側へ作用＝毒/鈍足が player に付く）。
     @Test
     def testEnemyActorHitsPlayer(): Unit \ Assert =
         let ray = unit(7, true, false, true) :: Nil;   // player#7（is-player）

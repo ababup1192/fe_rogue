@@ -37,7 +37,7 @@ mod CameraState {
     def limitMax(): Int32 = 999999
 
     /// 初期カメラ（原点・ズーム 0.32・ドラッグ有効）。position と target は原点で同値。
-    /// フロア構築時に `CameraScene.snapToParty` がパーティ先頭へ上書きする。
+    /// フロア構築時に `CameraDriver.snapToParty` がパーティ先頭へ上書きする。
     pub def initial(): RigState =
         { camera = Camera.make(Vec2.zero()) |> Camera.setZoom(zoom()),
           target = Vec2.zero(),

@@ -6,7 +6,7 @@
 // 毎フレームの配線を持つ。演出状態（stage / elapsed / soundPending / text）は ItemPickupPopupState resource が権威。
 //
 // 床のアイテムを拾った瞬間に、画面中央の窓へ「○○を手に入れた」を出し、フェードイン → 少し表示 →
-// フェードアウトで消す。あわせて取得音を鳴らす。取得処理（PlayerScene.addPickedItem）の effect 行を
+// フェードアウトで消す。あわせて取得音を鳴らす。取得処理（PlayerDriver.addPickedItem）の effect 行を
 // 増やさずに済むよう、`show` 系は純粋（音は `frameStep` が鳴らす）で状態だけを書く。
 //
 // 文字のフェードについて:

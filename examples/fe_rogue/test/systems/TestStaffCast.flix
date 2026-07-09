@@ -33,8 +33,8 @@ mod TestStaffCast {
                 :: Nil)
 
     /// World 内の Player(0) の Data を取り出す（効果適用関数に渡す caster 用）。
-    def playerData(): PlayerScene.Data \ World.WorldQuery =
-        match PlayerScene.get(0) {
+    def playerData(): PlayerDriver.Data \ World.WorldQuery =
+        match PlayerDriver.get(0) {
             case Some(d) => d
             case None    => bug!("player 0 not found in test world")
         }
@@ -124,7 +124,7 @@ mod TestStaffCast {
     // ════════════════════════════════════════════════════════
 
     /// PlanItem を World へ落とす handler 束。heal だけ実装し、他は恒等（このテストでは未使用）。
-    /// heal は applyConsumableHeal と同じ「Combat.heal → PlayerScene.setHp」を行う（ログは省略）。
+    /// heal は applyConsumableHeal と同じ「Combat.heal → PlayerDriver.setHp」を行う（ログは省略）。
     def dslWorldHandlers(): EffectRunner.PlanHandlers[Unit, {World.Command, World.WorldQuery}] = {
         heal       = (_u, id, _, amount) -> checked_ecast(healPlayerHp(id, amount)),
         fullHeal   = (u, _, _)          -> checked_ecast(u),
@@ -139,14 +139,14 @@ mod TestStaffCast {
     }
 
     /// `dslWorldHandlers` の heal 分岐本体: 現在 HP を World から読み、`Combat.heal` の結果を
-    /// `PlayerScene.setHp` で書き戻す（`StaffCast.applyConsumableHeal` と同じ式）。
+    /// `PlayerDriver.setHp` で書き戻す（`StaffCast.applyConsumableHeal` と同じ式）。
     def healPlayerHp(id: Int32, amount: Int32): Unit \ {World.Command, World.WorldQuery} =
-        PlayerScene.get(id)
+        PlayerDriver.get(id)
             |> Option.map(p -> {
                 let cur = World.hpOf(World.EntityRef.Player(id), World.WorldQuery.get())
                               |> Option.getWithDefault(p#hp);
                 let r = Combat.heal(cur, p#resource#hp, amount);
-                PlayerScene.setHp(id, r#newHp)
+                PlayerDriver.setHp(id, r#newHp)
             })
             |> Option.getWithDefault(())
 

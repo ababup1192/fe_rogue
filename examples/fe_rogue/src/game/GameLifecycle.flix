@@ -77,7 +77,7 @@ mod GameLifecycle {
 
     /// 中断セーブから出撃メンバー（`PartySelection`）を復元する。snap の味方（id 昇順 = lord 先頭）の
     /// `classId` を `UnitCatalog.lookupUnit` で resource に解決し直して `PartySelection.State.put` する。
-    /// 再開後の次フロア進行（`advanceFloor` → `PlayerScene.add`）が PartySelection を読むため必須。
+    /// 再開後の次フロア進行（`advanceFloor` → `PlayerDriver.add`）が PartySelection を読むため必須。
     pub def restorePartySelection(snap: FloorSnapshot.T, catalogs: Catalogs): Unit
             \ PartySelection.State =
         let party = snap#players
@@ -150,26 +150,26 @@ mod GameLifecycle {
                 GameLogger.playerLog("女神の加護！ 敵を払い、全員が復活した");
                 // リーダーの再配置中心。倒れた位置（marks）優先、無ければ進入時セル。
                 let leaderFallback = snap#players
-                    |> List.find(p -> p#id == PlayerScene.lordId())
+                    |> List.find(p -> p#id == PlayerDriver.lordId())
                     |> Option.map(p -> p#gridPos)
                     |> Option.getWithDefault(({x = 0, y = 0}: {x = Int32, y = Int32}));
-                let leaderPos = Map.get(PlayerScene.lordId(), marks)
+                let leaderPos = Map.get(PlayerDriver.lordId(), marks)
                     |> Option.getWithDefault(leaderFallback);
-                EnemyScene.removeAll();
-                PlayerScene.reviveAroundLeader(snap#players, catalogs#players, catalogs#staves,
+                EnemyDriver.removeAll();
+                PlayerDriver.reviveAroundLeader(snap#players, catalogs#players, catalogs#staves,
                                                catalogs#consumables, catalogs#rings, leaderPos)
             case None =>
                 resetForGameOver(catalogs)
         }
 
     /// `CustomEffects.WandererSpawnRequest` handler の本体。
-    /// 現在フロアを解決して、試練型の部屋湧き（Wanderer タイプ）を `EnemyScene` 側に委ねる。
+    /// 現在フロアを解決して、試練型の部屋湧き（Wanderer タイプ）を `EnemyDriver` 側に委ねる。
     /// `tick` は handler が採番する湧きクロック。実際に湧くかの判断
-    /// （周期 + フロア上限 + 視界外部屋セルの有無）は EnemyScene が行う。
+    /// （周期 + フロア上限 + 視界外部屋セルの有無）は EnemyDriver が行う。
     pub def maybeSpawnWanderer(catalogs: Catalogs, tick: Int32): Unit
             \ {Math.Random, FloorProgress.State, World.Command, World.WorldQuery} =
         let floor = FloorCatalog.get(FloorProgress.State.get(), catalogs#floors);
-        EnemyScene.maybeSpawnWandererInRoom(catalogs#enemies, catalogs#weapons, catalogs#rings, floor, tick)
+        EnemyDriver.maybeSpawnWandererInRoom(catalogs#enemies, catalogs#weapons, catalogs#rings, floor, tick)
 
     /// `CustomEffects.ThiefDropRequest` handler の本体。盗人の剣で敵がアイテムを落とす。
     /// 現在フロアの `items` ドロップ表から重み付き抽選し、解決したアイテムを `cell` に落とす。
@@ -191,13 +191,13 @@ mod GameLifecycle {
     /// 変化先の指輪解決に `Ring.lookup` が要るため、catalog を持つ handler からのみ呼ばれる。
     pub def applyRingTransform(catalogs: Catalogs, enemyName: String, targetId: Int32): Unit
             \ {Math.Random, GameLogger.GameLogger, World.Command, World.WorldQuery, PlayerData.PartyQuery} =
-        match RandomUtil.pick(PlayerScene.transformableItems(targetId)) {
+        match RandomUtil.pick(PlayerDriver.transformableItems(targetId)) {
             case None               => ()
             case Some((kind, name)) =>
                 let ring = Ring.lookup(pickTransformRingId(catalogs#rings), catalogs#rings);
                 GameLogger.enemyLog(
-                    "${enemyName} は ${PlayerScene.displayName(targetId)} の ${name} を ${ring#name} に変えた");
-                PlayerScene.replaceItemWithRing(targetId, kind, ring)
+                    "${enemyName} は ${PlayerDriver.displayName(targetId)} の ${name} を ${ring#name} に変えた");
+                PlayerDriver.replaceItemWithRing(targetId, kind, ring)
         }
 
     /// 変化先の指輪 id を確率で選ぶ。7割 plain_ring・1割 rusty_ring・2割 その他（plain/rusty 以外）。
@@ -240,7 +240,7 @@ mod GameLifecycle {
                 InitialSpawns.State, FloorProgress.State, PartySelection.State,
                 FloorSnapshot.State, World.Command, World.WorldQuery, TopBarState.State, UiWorldState.State, RangeOverlayState.State, CameraState.State} =
         // 引き継ぐステータスを「現フロア退場前」に確保しておく。
-        let carry = PlayerScene.snapshotCarry();
+        let carry = PlayerDriver.snapshotCarry();
         match FloorCatalog.nextFloorId(FloorProgress.State.get(), catalogs#floors) {
             case Some(nextId) =>
                 FloorProgress.State.put(nextId);
@@ -250,7 +250,7 @@ mod GameLifecycle {
                 WorldSetup.buildAndRecord(catalogs, nextFloor);
                 // 構築直後の party に前フロアの HP / 武器 / 持ち物を反映（待機状態はリセット済み）。
                 // 反映後の「進入時状態」をスナップショットに記録（全滅時の「そのフロアの最初から」用）。
-                PlayerScene.reconcileWithCarry(carry);
+                PlayerDriver.reconcileWithCarry(carry);
                 WorldSetup.recordFloorEntry(catalogs)
             case None =>
                 // 最終フロアクリア → クリアログ → 1F へループ（フレッシュな party で再開）

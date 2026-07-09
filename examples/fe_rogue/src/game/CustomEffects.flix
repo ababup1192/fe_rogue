@@ -8,7 +8,7 @@
 mod CustomEffects {
 
     /// ゲームオーバー時のフルリビルドを要求する。
-    /// emit 元 (PlayerScene.removeDeadAndCheckGameOver) は「全員脱落」を検知したら
+    /// emit 元 (PlayerDriver.removeDeadAndCheckGameOver) は「全員脱落」を検知したら
     /// `request()` を呼ぶ。
     /// handler は `WorldSetup.buildCurrentFloor` 系で起動時と同じ
     /// フルリビルドを行い、state 4 種 (EnemyTurn.Queue / TurnPhase / SelectedPlayer /
@@ -44,7 +44,7 @@ mod CustomEffects {
     /// 敵ターン終端でシレン型の通路湧き（Wanderer タイプ）を試みることを要求する。
     /// emit 元 (EnemyTurnDriver.endTurn) は「敵ターンが 1 巡終わった」タイミングで
     /// `maybeSpawn()` を呼ぶ。実際に湧くかは低確率 + フロア上限 + 視界外通路セルの有無で
-    /// handler 側（実体は EnemyScene）が判断する（条件を満たさなければ何もしない）。
+    /// handler 側（実体は EnemyDriver）が判断する（条件を満たさなければ何もしない）。
     /// 現在フロアを `FloorProgress` で解決し `Math.Random` で抽選するため、catalog を
     /// クロージャに閉じ込められる `Game.start` でしか handler 注入できない。
     pub eff WandererSpawnRequest {

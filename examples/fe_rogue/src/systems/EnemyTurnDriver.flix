@@ -71,13 +71,13 @@ mod EnemyTurnDriver {
     /// 選択中の味方が移動（1マス滑走）中か。移動の着地を待ってから検出判定するためのガード。
     def selectedSliding(): Bool \ {World.WorldQuery, SelectedPlayer.State} =
         match SelectedPlayer.State.get()#id {
-            case Some(id) => PlayerScene.isMoving(id)
+            case Some(id) => PlayerDriver.isMoving(id)
             case None     => false
         }
 
     /// いずれかの味方が移動中か（集合移動の着地待ちガード）。
     def anyPlayerSliding(): Bool \ World.WorldQuery =
-        PlayerScene.getAll() |> List.exists(d -> PlayerScene.isMoving(d#id))
+        PlayerDriver.getAll() |> List.exists(d -> PlayerDriver.isMoving(d#id))
 
     /// 「この移動ドラフトで誰かが origin から動いた」かつ「未起動の生存敵が、いま暗い新規部屋に
     /// 居てプレイヤーに隣接(接敵)している」瞬間だけ true。`anyMovedFromOrigin` ガードがターン頭
@@ -87,7 +87,7 @@ mod EnemyTurnDriver {
     /// では再発火しない。
     def bumpedDarkRoomEnemy(): Bool \ {SelectedPlayer.State, BoardQuery, World.WorldQuery} =
         let drafts  = SelectedPlayer.State.get()#drafts;
-        let players = PlayerScene.getAll();  // 位置は World 権威
+        let players = PlayerDriver.getAll();  // 位置は World 権威
         if (not MoveDraft.anyMovedFromOrigin(players, drafts)) false
         else {
             let world0     = World.WorldQuery.get();
@@ -99,13 +99,13 @@ mod EnemyTurnDriver {
                 |> List.map(d -> {gridPos = d#gridPos, hidden = d#hidden,
                                   origin = MoveDraft.originOf(d#id, drafts)
                                            |> Option.getWithDefault(d#gridPos)});
-            let litRooms = MinimapScene.litRoomsDrafted(units, placements, roomCount);
+            let litRooms = MinimapDriver.litRoomsDrafted(units, placements, roomCount);
             // 接敵判定の board は World 由来。
             let enc = EncounterBuilder.fromBoardQuery();
-            EnemyScene.getAll()
+            EnemyDriver.getAll()
                 |> List.filter(e -> not e#isDying and not e#alerted)
                 |> List.exists(e ->
-                    EnemyAI.adjacentInDarkRoom(enc#board, EnemyScene.unitView(e), litRooms, roomCount))
+                    EnemyAI.adjacentInDarkRoom(enc#board, EnemyDriver.unitView(e), litRooms, roomCount))
         }
 
     /// 敵ターンの行動順を決める（**純粋**）。プレイヤー始点の距離場（壁のみ）で「経路最寄り」の敵から
@@ -113,7 +113,7 @@ mod EnemyTurnDriver {
     /// 減らす）。到達不能（∞）は id 順で末尾側へ。`boardOpt = None`（placements 空＝マップ未構築の
     /// テスト/初期化過渡）は盤面を組めないので **id 順フォールバック**。各 Step の remaining は moveTiles。
     pub def orderedSteps(boardOpt: Option[Board],
-                          actives: List[EnemyScene.Data]): List[EnemyTurn.Step] =
+                          actives: List[EnemyDriver.Data]): List[EnemyTurn.Step] =
         let ordered = match boardOpt {
             case None        => List.sortBy(e -> e#id, actives)
             case Some(board) =>
@@ -128,7 +128,7 @@ mod EnemyTurnDriver {
     /// 流れから呼ばれる「敵ターン入口」。
     pub def beginTurn(): Unit \ {RangeOverlayState.State, GameLogger.GameLogger, EnemyTurn.Queue,
                                   TurnPhase.State, World.Command, World.WorldQuery} =
-        let actives = EnemyScene.getAll()
+        let actives = EnemyDriver.getAll()
             |> List.filter(e -> not e#isDying and Option.isEmpty(e#attackTargetId));
         // 行動順は純粋関数 `orderedSteps` で決める（下記）。board を組めるときだけ Some で渡す。
         // board は World 由来（World.boardOf）。盤面未 seed（テスト/初期化過渡）は None
@@ -136,7 +136,7 @@ mod EnemyTurnDriver {
         let boardOpt = World.boardOf(World.WorldQuery.get());
         let steps = orderedSteps(boardOpt, actives);
         // 敵ターン開始時に全敵の「行動済み」暗転を解除（プレイヤーの clearAllWaited と対称）。
-        EnemyScene.clearActedAll();
+        EnemyDriver.clearActedAll();
         EnemyTurn.Queue.replace(steps);
         GameLogger.enemyLog("敵のターン");
         PhaseTransitions.enterEnemyTurn()
@@ -160,7 +160,7 @@ mod EnemyTurnDriver {
         // 敵ターン開始の「間」(TopBar の hold) 中は敵を動かさない（フェイズ切替が読めてから行動開始）。
         if (World.enemyTurnBusyOf(World.WorldQuery.get())) ()
         else if (Pacing.State.isHolding()) ()
-        else if (not CameraScene.isSettled()) ()
+        else if (not CameraDriver.isSettled()) ()
         else if (World.anyEnemyAttacking(World.WorldQuery.get())) ()
         else if (World.anyPlayerAttacking(World.WorldQuery.get())) ()
         else match EnemyTurn.Queue.peekFront() {
@@ -194,7 +194,7 @@ mod EnemyTurnDriver {
                 SelectedPlayer.State, GameEngine.Audio, World.Command, BoardQuery, World.WorldQuery,
                 PlayerData.PartyQuery} =
         // 敵 Data は World 単独再構築（dataFromWorldEnemy）で読む。
-        match EnemyScene.get(step#id) {
+        match EnemyDriver.get(step#id) {
             case None       => ()   // 既に除外済み (死亡演出完了など)
             case Some(data) => applyStepForEnemy(step, data)
         }
@@ -205,7 +205,7 @@ mod EnemyTurnDriver {
     ///   ③ 未使用の瓶（ローグ_T3=爆発瓶 / クレリック_T3=火炎瓶）で直線上に味方が居れば投げる
     ///   ④ それ以外は通常 AI（Move / Attack / Wait / Skip / Wander）
     /// ネストした match を避けるため、各分岐は単一 match の小関数に切り出す。
-    def applyStepForEnemy(step: EnemyTurn.Step, data: EnemyScene.Data): Unit
+    def applyStepForEnemy(step: EnemyTurn.Step, data: EnemyDriver.Data): Unit
             \ {EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
@@ -219,19 +219,19 @@ mod EnemyTurnDriver {
             tryThrowOrNormal(step, data)
 
     /// かなしばり中の敵: 移動も攻撃も詠唱もせず行動済みにする。
-    def bindSkip(step: EnemyTurn.Step, data: EnemyScene.Data):
+    def bindSkip(step: EnemyTurn.Step, data: EnemyDriver.Data):
             Unit \ {GameLogger.GameLogger, World.Command} =
         GameLogger.enemyLog("${data#resource#description}は かなしばりで動けない");
-        EnemyScene.setActed(step#id)
+        EnemyDriver.setActed(step#id)
 
     /// 詠唱が成立した敵: 軽く溜めて行動済みにする（詠唱がその敵の行動）。
     def castDone(step: EnemyTurn.Step):
             Unit \ {Pacing.State, World.Command} =
         Pacing.State.hold(450 |> Duration.millis);
-        EnemyScene.setActed(step#id)
+        EnemyDriver.setActed(step#id)
 
     /// 詠唱しなかった敵: 未使用の瓶を投げられれば投げ、でなければ通常 AI。
-    def tryThrowOrNormal(step: EnemyTurn.Step, data: EnemyScene.Data): Unit
+    def tryThrowOrNormal(step: EnemyTurn.Step, data: EnemyDriver.Data): Unit
             \ {EnemyTurn.Queue,
                 Pacing.State, Math.Random, GameLogger.GameLogger,
                 CustomEffects.GameOverRequest, CustomEffects.RingTransformRequest,
@@ -247,11 +247,11 @@ mod EnemyTurnDriver {
             Pacing.State.hold(450 |> Duration.millis);
             // bottleUsed は World 権威。
             World.Command.emit(World.Cmd.SetBottleUsed(World.EntityRef.Enemy(step#id), true));
-            EnemyScene.setActed(step#id)
+            EnemyDriver.setActed(step#id)
         } else applyNormalStep(step, data)
 
     /// 通常 AI の 1 step 適用。Move / Attack / Wait / Skip / Wander。
-    def applyNormalStep(step: EnemyTurn.Step, data: EnemyScene.Data): Unit
+    def applyNormalStep(step: EnemyTurn.Step, data: EnemyDriver.Data): Unit
             \ {EnemyTurn.Queue,
                 Pacing.State, Math.Random, CustomEffects.RingTransformRequest, World.Command, BoardQuery,
                 World.WorldQuery, PlayerData.PartyQuery} =
@@ -261,7 +261,7 @@ mod EnemyTurnDriver {
                 // alerted / self view を **World 由来**で読む。
                 let w0 = World.WorldQuery.get();
                 let self = World.unitViewFromWorld(World.EntityRef.Enemy(step#id), w0)
-                    |> Option.getWithDefault(EnemyScene.unitView(data));
+                    |> Option.getWithDefault(EnemyDriver.unitView(data));
                 let curAlerted = World.alertedOf(World.EntityRef.Enemy(step#id), w0)
                                     |> Option.getWithDefault(data#alerted);
                 let (action, updated) = EnemyAI.decideAction(enc, self, curAlerted);
@@ -272,9 +272,9 @@ mod EnemyTurnDriver {
                         if (step#remaining <= 0)
                             // 移動予算を使い切ったうえで隣接できなかった
                             // (decideAction が Move を返す = 非隣接) → 攻撃せず終了。行動済み暗転。
-                            EnemyScene.setActed(id)
+                            EnemyDriver.setActed(id)
                         else {
-                            EnemyScene.moveTo(id, target, board#map);
+                            EnemyDriver.moveTo(id, target, board#map);
                             // 残り step を 1 減らして継続。0 になっても 1 度だけ積むことで、
                             // 「移動しきって隣接 → 次 step で攻撃」を可能にする
                             // (次 step は隣接なら Attack、非隣接なら上の <=0 分岐で終了)。
@@ -291,37 +291,37 @@ mod EnemyTurnDriver {
                         // attack_lunge の中点 signal 発火時に CombatDriver が行う。
                         // 攻撃前後の溜め: lunge (~160ms) より長い hold で「攻撃終了の余韻」を作る
                         // Attack はその敵の最終行動 → 行動済み暗転。hold は差し替え/通常攻撃の両方の手前。
-                        match PlayerScene.get(targetId) {
-                            case None    => EnemyScene.setActed(enemyId)
+                        match PlayerDriver.get(targetId) {
+                            case None    => EnemyDriver.setActed(enemyId)
                             case Some(p) =>
                                 Pacing.State.hold(450 |> Duration.millis);
                                 resolveEnemyAttack(enemyId, data, targetId, p);
-                                EnemyScene.setActed(enemyId)
+                                EnemyDriver.setActed(enemyId)
                         }
                     case EnemyAI.EnemyAction.Wait(_) =>
                         // Wait も「動こうとして詰まった」演出の一部なので軽く溜める。行動済み暗転。
                         Pacing.State.hold(150 |> Duration.millis);
-                        EnemyScene.setActed(step#id)
-                    case EnemyAI.EnemyAction.Skip(_) => EnemyScene.setActed(step#id)
+                        EnemyDriver.setActed(step#id)
+                    case EnemyAI.EnemyAction.Skip(_) => EnemyDriver.setActed(step#id)
                     case EnemyAI.EnemyAction.Wander(id) =>
                         // 未起動の徘徊型: 同モジュール内の歩ける 1 マスへ乱数で動く（1 ターン 1 マス）。
                         // 行先選択にだけ乱数が要るため decideAction でなくここで選ぶ（decideAction は pure）。
                         // 候補なし（袋小路・包囲）なら静止。徘徊しても remaining は使わず即行動済み。
                         // prevPos を World 由来で読む（w0 は applyNormalStep 冒頭の WorldQuery snapshot）。
                         match RandomUtil.pick(EnemyAI.wanderCandidates(board, data#gridPos, World.prevPosOf(World.EntityRef.Enemy(step#id), w0))) {
-                            case None         => EnemyScene.setActed(id)
+                            case None         => EnemyDriver.setActed(id)
                             case Some(target) =>
-                                EnemyScene.moveTo(id, target, board#map);
+                                EnemyDriver.moveTo(id, target, board#map);
                                 Pacing.State.hold(150 |> Duration.millis);
-                                EnemyScene.setActed(id)
+                                EnemyDriver.setActed(id)
                         }
                 }
 
     /// 敵ターンの攻撃解決。aiType ではなく effectRule で判定する：
     /// 敵が onEnemyTurn + flow:replaceAttack の effectRule を持てば差し替え行動（指輪化など）を、
     /// 持たなければ通常攻撃を取る。リング職人は enemies.json の effectRule で駆動される。
-    def resolveEnemyAttack(enemyId: Int32, data: EnemyScene.Data, targetId: Int32,
-                           p: PlayerScene.Data): Unit
+    def resolveEnemyAttack(enemyId: Int32, data: EnemyDriver.Data, targetId: Int32,
+                           p: PlayerDriver.Data): Unit
             \ {Math.Random, CustomEffects.RingTransformRequest, World.Command,
                 World.WorldQuery, PlayerData.PartyQuery} =
         match enemyTurnRule(data) {
@@ -331,7 +331,7 @@ mod EnemyTurnDriver {
 
     /// 敵が持つ onEnemyTurn の effectRule を decode（無し/trigger 不一致/不正は None）。
     /// ここでは RNG を引かない（短絡で乱数列を保つ＝effectRule を持たない敵は従来挙動）。
-    def enemyTurnRule(data: EnemyScene.Data): Option[EffectRule.EffectRule] =
+    def enemyTurnRule(data: EnemyDriver.Data): Option[EffectRule.EffectRule] =
         (forM (
             j    <- data#resource#effectRule;
             rule <- EffectBridge.fromComposer(j)
@@ -345,8 +345,8 @@ mod EnemyTurnDriver {
     /// 確率は flow 内の chance（applyReplace の roll<chance）のみで判定し、rule#chance（top-level）は
     /// 使わない: replaceForm が top-level chance を出さない＝常時 100＝「ルール自体は常時発火、差し替えだけ
     /// 確率」という設計のため。隣接限定は仕様（replaceForm が if:"adjacent" を暗黙付与。RingMan は近接前提）。
-    def runEnemyTurnFlow(rule: EffectRule.EffectRule, enemyId: Int32, data: EnemyScene.Data,
-                         targetId: Int32, p: PlayerScene.Data): Unit
+    def runEnemyTurnFlow(rule: EffectRule.EffectRule, enemyId: Int32, data: EnemyDriver.Data,
+                         targetId: Int32, p: PlayerDriver.Data): Unit
             \ {Math.Random, CustomEffects.RingTransformRequest, World.Command,
                 World.WorldQuery, PlayerData.PartyQuery} =
         match replaceFlowOf(rule) {
@@ -384,7 +384,7 @@ mod EnemyTurnDriver {
     /// 通常攻撃へ戻す（棒立ち回避 + roll 不消費で乱数列維持）。ringify 以外は常に可。
     def replaceFeasible(flow: EffectRule.Flow, targetId: Int32): Bool \ PlayerData.PartyQuery =
         if (replaceHasRingify(flow))
-            not List.isEmpty(PlayerScene.transformableItems(targetId))
+            not List.isEmpty(PlayerDriver.transformableItems(targetId))
         else
             true
 
@@ -396,7 +396,7 @@ mod EnemyTurnDriver {
     /// applyReplace の結果を解釈。RequestReplace なら差し替え action を runPlan で撒く（通常攻撃せず）、
     /// NoFlow（確率不発）なら通常攻撃へ。
     def applyReplaceResult(effects: List[EffectFlow.FlowEffect], enemyId: Int32,
-                           data: EnemyScene.Data, targetId: Int32, p: PlayerScene.Data): Unit
+                           data: EnemyDriver.Data, targetId: Int32, p: PlayerDriver.Data): Unit
             \ {CustomEffects.RingTransformRequest, World.Command, World.WorldQuery} =
         match List.head(effects) {
             case Some(EffectFlow.FlowEffect.RequestReplace(actions)) =>
@@ -408,7 +408,7 @@ mod EnemyTurnDriver {
         }
 
     /// 体当たり攻撃モーションを開始する（敵側）。
-    def normalEnemyAttack(enemyId: Int32, targetId: Int32, p: PlayerScene.Data):
+    def normalEnemyAttack(enemyId: Int32, targetId: Int32, p: PlayerDriver.Data):
             Unit \ {World.Command, World.WorldQuery} =
         CombatDriver.startAttack(Faction.Enemy, enemyId, targetId, p#gridPos)
 
@@ -418,7 +418,7 @@ mod EnemyTurnDriver {
 
     /// 敵 actor 視点の PlanCtx。`to:enemy`(FactionEnemy)+actorIsPlayer=false で対象は player 駒
     /// (is-player ⇒ ally=true) に解決される。ringify は amount を使わないので dealt=0。
-    def replacePlanCtx(enemyId: Int32, targetId: Int32, p: PlayerScene.Data): EffectPlan.PlanCtx =
+    def replacePlanCtx(enemyId: Int32, targetId: Int32, p: PlayerDriver.Data): EffectPlan.PlanCtx =
         {selfId = enemyId, attackerId = enemyId, actorIsPlayer = false,
          rayUnits = ({id = targetId, ally = true, immobilized = false, alive = true}: EffectRule.RayUnit) :: Nil,
          amount = {max = p#resource#hp, dealt = 0, incoming = 0, magic = 0}}
@@ -426,7 +426,7 @@ mod EnemyTurnDriver {
     /// 敵ターン effectRule 用 PlanHandlers。custom の "ringify" だけ RingTransformRequest へ結線し、
     /// 他は no-op（敵ターンの差し替えで使う op は現状 ringify のみ）。CombatDriver 系 handler とは
     /// effect row が違う（こちらは RingTransformRequest を持つ）ため別関数。
-    def enemyTurnEffectHandlers(data: EnemyScene.Data):
+    def enemyTurnEffectHandlers(data: EnemyDriver.Data):
             EffectRunner.PlanHandlers[Unit, {CustomEffects.RingTransformRequest}] = {
         custom     = (u, op, id, _) -> ringifyCustom(data, op, id, u),
         heal       = (u, _, _, _)       -> checked_ecast(u),
@@ -441,7 +441,7 @@ mod EnemyTurnDriver {
     }
 
     /// custom op の "ringify" を RingTransformRequest へ結線（他 op は防御 no-op）。
-    def ringifyCustom(data: EnemyScene.Data, op: String, id: Int32,
+    def ringifyCustom(data: EnemyDriver.Data, op: String, id: Int32,
                       u: Unit): Unit \ CustomEffects.RingTransformRequest =
         if (op == "ringify")
             CustomEffects.RingTransformRequest.transform(data#resource#description, id)
@@ -461,24 +461,24 @@ mod EnemyTurnDriver {
                 CustomEffects.FloorAdvanceRequest, World.Command} =
         GameLogger.endTurn();
         // 敵ターンが 1 巡終わった節目に湧きクロックを進める（試練型の部屋湧きを試みる）。
-        // 発生判断（周期 tick mod N・フロア上限・視界外の空き部屋セルの有無）は handler / EnemyScene 側。
+        // 発生判断（周期 tick mod N・フロア上限・視界外の空き部屋セルの有無）は handler / EnemyDriver 側。
         CustomEffects.WandererSpawnRequest.maybeSpawn();
-        PlayerScene.clearAllWaited();        // 全員アクティブに戻す
-        PlayerScene.resetAllMoveStepsTaken();
+        PlayerDriver.clearAllWaited();        // 全員アクティブに戻す
+        PlayerDriver.resetAllMoveStepsTaken();
         GameLogger.playerLog("味方のターン");
         // 集合モードのターン跨ぎ自動継続: 前ターンに集合中の全員待機で閉じ(resume)、主人公が
         // 率いられる状態で、フォグで見えている敵が 1 体もいなければ、カーソルを出さず集合へ自動再突入する。
-        // 敵可視は現在の World 位置×明るい穴からの導出（`EnemyScene.anyVisible`）＝
+        // 敵可視は現在の World 位置×明るい穴からの導出（`EnemyDriver.anyVisible`）＝
         // 湧き(maybeSpawn)・敵移動を反映した最新値で判定する。resume は必ず消費（毎ターン再評価）。
         let resume = GatherResume.State.get();
         GatherResume.State.put(false);
-        if (shouldResumeGather(resume, PlayerScene.lordReadyToGather(), EnemyScene.anyVisible()))
-            PlayerScene.beginGather()
+        if (shouldResumeGather(resume, PlayerDriver.lordReadyToGather(), EnemyDriver.anyVisible()))
+            PlayerDriver.beginGather()
         else {
             // カーソル/カメラの初期スナップ先は clearAllWaited 後の在籍から直接求める。
             // リーダーが階段で退場(usedStairs=hidden)済みだと毎ターン階段にカーソルが飛ぶので、
             // フロアに残るアクティブな駒(`firstActive`)へ明示スナップする。
-            match PlayerScene.firstActive() {
+            match PlayerDriver.firstActive() {
                 // スナップ先セルは World の位置。
                 case Some(next) => PhaseTransitions.enterPlayerCursorAt(next#gridPos)
                 case None       =>
@@ -486,7 +486,7 @@ mod EnemyTurnDriver {
                     // (usedStairs=hidden) だけになると操作できる駒が 0 になり詰む。
                     // この場合は allLivingUsedStairs が true（= フロア終了条件）なので、
                     // ロストした味方を置いて通常の階段退場と同じく次フロアへ進む。
-                    if (PlayerScene.allLivingUsedStairs())
+                    if (PlayerDriver.allLivingUsedStairs())
                         CustomEffects.FloorAdvanceRequest.advance()
                     else
                         PhaseTransitions.enterPlayerCursor()

@@ -11,7 +11,7 @@
 ///   `flipForFacing` は「左向きの絵しか無い」スプライト用のフラグ。true の駒は
 ///   右方向へ移動したとき Sprite を水平反転 (flipH) して右向きに見せる。
 ///   既定 false（既存の前向き character_sheet 等は反転しない）。反転の実適用は
-///   PlayerScene / EnemyScene の移動処理が担う。
+///   PlayerDriver / EnemyDriver の移動処理が担う。
 mod SpriteRes {
     pub type alias SpriteResource = {
         texture = String,

@@ -2,10 +2,10 @@
 ///
 /// `StaffAim` / `ThrowAim` フェーズで出る方向照準矢印が指す論理状態をまとめて持つ。
 /// 見た目（矢印の位置・回転）は
-/// `ArrowCursorScene` の view が描き、この resource は「どこを起点にどの方向を指しているか」
+/// `ArrowCursorDriver` の view が描き、この resource は「どこを起点にどの方向を指しているか」
 /// の状態だけを持つ。
 ///
-/// `ArrowCursorScene.showFor` / `aim` が書き、`getDirection`（発射確定時の方向読み）が読む。
+/// `ArrowCursorDriver.showFor` / `aim` が書き、`getDirection`（発射確定時の方向読み）が読む。
 /// TurnPhase / SelectedPlayer / CursorState と同じ Ref-based handler 注入パターンに揃える。
 mod ArrowCursorState {
 

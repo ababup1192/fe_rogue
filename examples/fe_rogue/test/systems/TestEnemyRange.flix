@@ -1,4 +1,4 @@
-/// EnemyRangeScene のクエリ（足し引き）が一貫していることを検証する。
+/// EnemyRange のクエリ（足し引き）が一貫していることを検証する。
 ///
 /// 範囲内セル列挙の正しさ自体は `Board.reachableCells` が担っており、
 /// `TestBoard` が網羅しているので、ここでは「範囲 resource に入る／出る」
@@ -11,7 +11,7 @@
 /// 敵ホバー範囲は `RangeOverlayState` resource の `enemyRange` に載る単一真実源で、
 /// `refreshFor` は World の地形 seed を要求する重い統合テストになるため
 /// ここでは扱わず、実機（描画あり）の確認に委ねる。
-mod TestEnemyRangeScene {
+mod TestEnemyRange {
 
     // ════════════════════════════════════════════════════════
     // ヘルパー
@@ -20,7 +20,7 @@ mod TestEnemyRangeScene {
     /// EnemyRange を範囲 resource へ直接差し込む（refreshFor を使わずテスト用に組む）。
     def putEnemyRange(enemyId: Int32,
                        reachable: List[{x = Int32, y = Int32}]): Unit \ RangeOverlayState.State =
-        let data: EnemyRangeScene.Data = { enemyId = enemyId, reachable = reachable };
+        let data: EnemyRange.Data = { enemyId = enemyId, reachable = reachable };
         RangeOverlayState.State.put({enemyRange = Some(data) | RangeOverlayState.State.get()})
 
     // ════════════════════════════════════════════════════════
@@ -33,8 +33,8 @@ mod TestEnemyRangeScene {
     def testQueriesReturnEmptyWhenAbsent(): Unit \ Assert =
         region rc {
             TestUnitFixtures.withRangeOverlay(rc, () -> {
-                let id = EnemyRangeScene.currentEnemyId();
-                let cells = EnemyRangeScene.reachable();
+                let id = EnemyRange.currentEnemyId();
+                let cells = EnemyRange.reachable();
                 Assert.assertEq(expected = (None, 0), (id, List.length(cells)))
             })
         }
@@ -45,10 +45,10 @@ mod TestEnemyRangeScene {
     def testClearOnEmptyStateIsSafe(): Unit \ Assert =
         region rc {
             TestUnitFixtures.withRangeOverlay(rc, () -> {
-                EnemyRangeScene.clear();
+                EnemyRange.clear();
                 Assert.assertEq(expected = (None, 0),
-                    (EnemyRangeScene.currentEnemyId(),
-                     List.length(EnemyRangeScene.reachable())))
+                    (EnemyRange.currentEnemyId(),
+                     List.length(EnemyRange.reachable())))
             })
         }
 
@@ -67,8 +67,8 @@ mod TestEnemyRangeScene {
                             :: ({x = 3, y = 1}: {x = Int32, y = Int32}) :: Nil;
                 putEnemyRange(7, cells);
                 Assert.assertEq(expected = (Some(7), 3),
-                    (EnemyRangeScene.currentEnemyId(),
-                     List.length(EnemyRangeScene.reachable())))
+                    (EnemyRange.currentEnemyId(),
+                     List.length(EnemyRange.reachable())))
             })
         }
 
@@ -80,10 +80,10 @@ mod TestEnemyRangeScene {
             TestUnitFixtures.withRangeOverlay(rc, () -> {
                 let cells = ({x = 0, y = 0}: {x = Int32, y = Int32}) :: Nil;
                 putEnemyRange(2, cells);
-                EnemyRangeScene.clear();
+                EnemyRange.clear();
                 Assert.assertEq(expected = (None, 0),
-                    (EnemyRangeScene.currentEnemyId(),
-                     List.length(EnemyRangeScene.reachable())))
+                    (EnemyRange.currentEnemyId(),
+                     List.length(EnemyRange.reachable())))
             })
         }
 }

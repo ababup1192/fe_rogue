@@ -294,7 +294,7 @@ mod LevelUpPanelUi {
             case Some(id) =>
                 // 今表示中（先頭= 最小 id）の味方の保留を 1 件だけ消す（World 権威・emit は即時反映）。
                 World.Command.emit(World.Cmd.SetPendingLevelUp(id, None));
-                if (PlayerScene.anyPendingLevelUp()) {
+                if (PlayerDriver.anyPendingLevelUp()) {
                     // まだ他に居る → 演出 state を初期化し、次の味方を最初（bonus）から表示。
                     LevelUpPanelState.State.put(LevelUpPanelState.initialState());
                     PhaseTransitions.enterLevelUpView()

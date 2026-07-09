@@ -1,6 +1,6 @@
-/// MinimapScene — 探索済みマップ（ミニマップ）。M キーで表示/非表示を切り替える。
+/// MinimapDriver — 探索済みマップ（ミニマップ）。M キーで表示/非表示を切り替える。
 ///
-/// `FogScene`（霧）は「現在いる部屋だけを毎フレーム明るくする・非永続」だが、ミニマップは
+/// `Fog`（霧）は「現在いる部屋だけを毎フレーム明るくする・非永続」だが、ミニマップは
 /// 逆に **一度でも訪れた部屋/通路(module)を覚え続ける**（探索が進むほど書き足される）。
 /// 訪問記憶（`Set[Int32]` の訪問 module idx）は World 権威で持つ（`World.visitedModulesOf`）。
 /// `step` が今フレーム分を `Cmd.AddVisited` で union し、フロア再構築時は `Cmd.ClearVisited` が一掃する。
@@ -8,12 +8,12 @@
 /// 見た目は scene ノードを持たず、`RenderWorld.renderMinimap` が World / Map から Drawable（部屋/床
 /// 矩形）とポリゴン（プレイヤー/階段/アイテム/敵のマーカー円）を直接組む。探索マップ全体が画面左下の
 /// 固定ボックスに収まるよう一様スケールして描く。表示トグル（`visible`）と押しっぱなし防止の前フレーム
-/// キー状態（`mPrev`）は `MinimapState` resource が持つ。M のエッジ検出は `CursorScene` の方向キー検出と
+/// キー状態（`mPrev`）は `MinimapState` resource が持つ。M のエッジ検出は `CursorDriver` の方向キー検出と
 /// 同じ作法。
 ///
 /// このモジュールは訪問記憶の蓄積（`step`）と、描画に必要な純粋な幾何計算（矩形分割・スケール・マーカー
 /// 収集・Drawable 化）を担う。実効果つきの描画エントリは `RenderWorld.renderMinimap`。
-mod MinimapScene {
+mod MinimapDriver {
 
     use Vec2.Vec2
 
@@ -86,7 +86,7 @@ mod MinimapScene {
     def markerAlpha(): Float32 = 0.85f32
 
     /// 訪問済み module idx を World 権威から返す。カーソルの移動可能範囲（既訪エリア）の
-    /// 算出に CursorScene が使う。記憶の蓄積は step の `Cmd.AddVisited`、リセットは
+    /// 算出に CursorDriver が使う。記憶の蓄積は step の `Cmd.AddVisited`、リセットは
     /// `Cmd.ClearVisited`（フロア再構築時）が担う。
     pub def visitedModules(): Set[Int32] \ World.WorldQuery =
         World.visitedModulesOf(World.WorldQuery.get())
@@ -291,7 +291,7 @@ mod MinimapScene {
     // ════════════════════════════════════════════════════════
 
     /// 今フレームに非 hidden ユニットが居る module idx の集合（module 外セルは無視）。
-    /// 引数は開いた行多相なので `PlayerScene.Data`（gridPos/hidden を含む）をそのまま渡せる。
+    /// 引数は開いた行多相なので `PlayerDriver.Data`（gridPos/hidden を含む）をそのまま渡せる。
     pub def visitedThisFrame(units: List[{gridPos = {x = Int32, y = Int32}, hidden = Bool | r}],
                               placements: List[DungeonComposer.ModulePlacement]): Set[Int32] =
         units
@@ -340,10 +340,10 @@ mod MinimapScene {
     pub def accumulate(prev: Set[Int32], frame: Set[Int32]): Set[Int32] =
         Set.union(prev, frame)
 
-    /// margin なしの探索マップ bbox（`FogScene.mapRegion` の画面外マージン抜き版）。
-    /// 各 module の `FogScene.moduleRect`（壁リング込み）の union。
+    /// margin なしの探索マップ bbox（`Fog.mapRegion` の画面外マージン抜き版）。
+    /// 各 module の `Fog.moduleRect`（壁リング込み）の union。
     pub def tightRegion(placements: List[DungeonComposer.ModulePlacement]): GridRect =
-        match List.map(FogScene.moduleRect, placements) {
+        match List.map(Fog.moduleRect, placements) {
             case Nil           => ({x0 = 0, y0 = 0, x1 = 0, y1 = 0}: GridRect)
             case first :: rest =>
                 List.foldLeft((a, r) -> ({
@@ -410,7 +410,7 @@ mod MinimapScene {
         placements
             |> List.filter(p -> Set.memberOf(p#idx, visited))
             |> List.map(p -> {idx = p#idx, isRoom = p#idx < roomCount,
-                              rect = FogScene.moduleRect(p)})
+                              rect = Fog.moduleRect(p)})
 
     /// 訪問済み module に隣接する「未訪問の通路」idx の集合（出口ヒント）。
     /// 通路が描かれることで「その先にまだ部屋＝行けるエリアがある」ことをプレイヤーに示す。
@@ -446,7 +446,7 @@ mod MinimapScene {
         aMinX < bMaxX and aMaxX > bMinX and aMinY < bMaxY and aMaxY > bMinY
 
     /// 描画対象 module（訪問済み ＋ 出口ヒント通路）の moduleRect リスト（壁リング込み）。
-    /// 青ベタ塗りは壁リング込みの bbox（`FogScene.moduleRect`）を使う。床だけの bbox では
+    /// 青ベタ塗りは壁リング込みの bbox（`Fog.moduleRect`）を使う。床だけの bbox では
     /// 通路（1 幅の床）に脇壁が無く全部黒く抜けてしまうため、壁リングまで青で覆ってから
     /// 歩ける床セルを黒くくり抜く（通路にも青い脇壁が残る）。
     pub def displayedModuleRects(visited: Set[Int32],
@@ -455,10 +455,10 @@ mod MinimapScene {
         let display = Set.union(visited, corridorHints(visited, placements, roomCount));
         placements
             |> List.filter(p -> Set.memberOf(p#idx, display))
-            |> List.map(FogScene.moduleRect)
+            |> List.map(Fog.moduleRect)
 
     /// 矩形群の union を「互いに重ならない矩形群」に分割する（横バンド分割）。
-    /// `FogScene.bandDecompose` が補集合を返すのに対し、こちらは union（被覆部）を返す。
+    /// `Fog.bandDecompose` が補集合を返すのに対し、こちらは union（被覆部）を返す。
     /// 半透明描画でも重なりによる濃淡ムラが出ないよう、部屋・通路を一体化するのに使う。
     pub def unionBands(rects: List[GridRect]): List[GridRect] =
         let ys = sortedDistinct(rects |> List.flatMap(r -> r#y0 :: r#y1 :: Nil));
@@ -476,7 +476,7 @@ mod MinimapScene {
             })
         })
 
-    // FogScene のバンド分割は「霧として覆う補集合」を返すため流用できない。
+    // Fog のバンド分割は「霧として覆う補集合」を返すため流用できない。
     // ミニマップは被覆部（union）が必要なので、同一アルゴリズムをここで再実装している。
 
     def sortedDistinct(xs: List[Int32]): List[Int32] = dedupSorted(List.sort(xs))

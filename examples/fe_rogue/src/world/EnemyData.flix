@@ -1,13 +1,13 @@
 /// EnemyData — 敵駒(Piece)のドメインデータ型（Data / Spawn）。
 ///
-/// scenes/EnemyScene は再export しつつ scene ノードを管理する view 層になり、
+/// scenes/EnemyDriver は再export しつつ scene ノードを管理する view 層になり、
 /// game/ 純ロジックはこの game/ 定義に依存できる（game→scenes の型逆流を防ぐ）。
 mod EnemyData {
 
     /// 1 ターン内で `acted` と `isDying` が排他的に敵の行動可否を制御する。
     /// `acted` は EnemyTurn キュー消化時に true にセットされ、ターン終端でリセットされる（二重行動防止の不変条件）。
     /// `isDying = true` の敵は EnemyTurn.Queue / `findIdAt` などから除外され、以降一切行動しない。
-    /// `id`/`gridPos` はスポーン時に確定し、以降 EnemyScene の配置管理キーとして不変。
+    /// `id`/`gridPos` はスポーン時に確定し、以降 EnemyDriver の配置管理キーとして不変。
     /// `alerted` はプレイヤーと同モジュールに入った瞬間 true になり、以降永続（一方向フラグ）。
     /// `homeModuleIdx` はスポーン時の部屋 idx（検知判定の補助情報）。
     /// `moveTiles` は 1 ターンに進めるマス数（FE の「移動力」相当、`resource` から初期値継承）。

@@ -3,7 +3,7 @@
 /// `buildPlayingScene` の流れで `add` を呼ぶと、各部屋の床セルからランダムに `dropsPerRoom`
 /// 個まで選んで、`weapons` カタログからランダム抽選した武器をそのセルに落とす。
 /// プレイヤーが同じセルに乗ると（重量が許せば自動で）、または ActionMenu で「ひろう」を選ぶと
-/// `PlayerScene.pickupFloorItem` で取り出してインベントリに加える。
+/// `PlayerDriver.pickupFloorItem` で取り出してインベントリに加える。
 ///
 /// scene ノードは持たない。存在/中身/点滅位相の権威は World.groundItems
 /// （`Cmd.SpawnItem/RemoveItem/ClearItems`・elapsed は stepWorld が tick）、描画は
@@ -99,8 +99,8 @@ mod GroundItems {
             // 既存のユニットセルを taken に入れて避ける（World 権威で読む）。
             let occupied =
                 List.append(
-                    PlayerScene.getAll() |> List.map(d -> d#gridPos),
-                    EnemyScene.getAll() |> List.map(d -> d#gridPos));
+                    PlayerDriver.getAll() |> List.map(d -> d#gridPos),
+                    EnemyDriver.getAll() |> List.map(d -> d#gridPos));
             // anchor (idx=0) を除いた部屋だけを対象にする
             let rooms = List.filter(p ->
                 p#idx >= 1 and p#idx < roomCount, placements);
@@ -208,7 +208,7 @@ mod GroundItems {
                 List.map(x -> ({x = x, y = y}: {x = Int32, y = Int32}), xs)),
             ys)
 
-    /// 部屋の bbox（offset + floorBounds）に含まれる床セルを列挙する（EnemyScene と同じロジック）。
+    /// 部屋の bbox（offset + floorBounds）に含まれる床セルを列挙する（EnemyDriver と同じロジック）。
     /// n-format で通路の床がアイテム候補に混ざらないよう floorBounds で絞る。
     /// 純粋コア `floorCellsInBounds` に床述語（MapSnapshot 床判定）を注入する薄いシェル。
     def floorCellsInRoom(terrain: MapSnapshot,

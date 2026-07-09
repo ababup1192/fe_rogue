@@ -12,17 +12,17 @@ mod EncounterBuilder {
     /// EnemyAI 入力の Encounter を **board・units とも World 由来**で組む。
     /// board は `BoardQuery`、units は `World.unitViewFromWorld`。
     /// aiType だけ resource 残置(hybrid-A)。
-    /// **唯一の Encounter 構築口**。hidden（階段退場）の味方は `PlayerScene.getAll()` の
+    /// **唯一の Encounter 構築口**。hidden（階段退場）の味方は `PlayerDriver.getAll()` の
     /// `d#hidden` で除外し units からも外す。駒順は players → enemies（`Board.nearestPlayer`
     /// の id 小タイブレーク用）。
     /// `unitViewFromWorld` は Option（core W field 欠落で None）ゆえ filterMap で落とす（live は常に Some）。
     pub def fromBoardQuery(): Encounter \ {BoardQuery, World.WorldQuery} =
         let board   = BoardQuery.board();
         let world   = World.WorldQuery.get();
-        let players = PlayerScene.getAll()
+        let players = PlayerDriver.getAll()
             |> List.filter(d -> not d#hidden)
             |> List.filterMap(d -> World.unitViewFromWorld(World.EntityRef.Player(d#id), world));
-        let enemies = EnemyScene.getAll()
+        let enemies = EnemyDriver.getAll()
             |> List.filterMap(d -> World.unitViewFromWorld(World.EntityRef.Enemy(d#id), world));
         {board = board, units = List.append(players, enemies)}
 }

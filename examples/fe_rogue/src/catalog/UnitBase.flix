@@ -28,7 +28,7 @@ mod UnitBase {
 
     /// 味方・敵で共通の戦闘ステータス一式。味方は別途 `growthRates` を、
     /// 敵は将来別途「特殊能力」を足す。`attack` は素の「力」、`magicAttack` は魔力。
-    /// `level` は JSON に記録された基準レベル（味方の現在レベルは PlayerScene が動的に管理し、
+    /// `level` は JSON に記録された基準レベル（味方の現在レベルは PlayerDriver が動的に管理し、
     /// 敵はこの値がそのまま戦闘相手の Lv として使われる）。
     pub type alias UnitBase = {
         moveTiles        = Int32,

@@ -45,7 +45,7 @@ mod Combat {
 
     /// 装備武器の `isPhysical` に応じて、攻撃側の素ステ + 武器ボーナスの「総合攻撃力」を返す。
     /// 物理: `attack + weaponAttack`、魔法: `magicAttack + weaponAttack`。
-    /// 呼び出し側 (PlayerScene / EnemyScene / BattlePanelUi) で同じ分岐を書かないように
+    /// 呼び出し側 (PlayerDriver / EnemyDriver / BattlePanelUi) で同じ分岐を書かないように
     /// 1 箇所に集約する。`forecast` / `attackDamage` の入力として使う。
     /// Flix のレコード型は exact なので row polymorphism を避けてスカラー引数で受ける。
     pub def attackStatFor(attack: Int32, magicAttack: Int32,
@@ -230,7 +230,7 @@ mod Combat {
              effect = w#effect, effectValue = w#effectValue})
 
     /// 武器タイプ習熟による補正。得意なら据え置き、苦手なら威力・命中を 80%（整数 ×4/5、切り捨て）に。
-    /// 戦闘予報（`estimate`）と実ダメージ（PlayerScene の直接計算）の両方から呼んで一貫させる。
+    /// 戦闘予報（`estimate`）と実ダメージ（PlayerDriver の直接計算）の両方から呼んで一貫させる。
     pub def proficiencyAdjust(attack: Int32, hit: Int32, proficient: Bool): (Int32, Int32) =
         if (proficient) (attack, hit)
         else ((attack * 4) / 5, (hit * 4) / 5)

@@ -1,4 +1,4 @@
-/// CursorScene の初期化・スナップ・`step`/`stepOnBoard` 入力処理を検証する。
+/// CursorDriver の初期化・スナップ・`step`/`stepOnBoard` 入力処理を検証する。
 ///
 /// `add` の最も重要な性質は「**初期位置 = プレイヤーのグリッド位置**」と
 /// 「初期 hover 状態 = None」の 2 点。味方ターン開始時にカーソルが味方の上から
@@ -14,7 +14,7 @@
 ///
 /// 駒は scene ノードでなく World（`TestWorldFixtures`）で組む。カーソル論理状態は
 /// `CursorState.State` resource が権威。
-mod TestCursorScene {
+mod TestCursorDriver {
 
     use World.Cmd
     use World.EntityRef
@@ -25,7 +25,7 @@ mod TestCursorScene {
 
     /// カーソル resource の (gridPos, lastHoveredEnemyId) を 1 タプルにまとめて取り出す
     def cursorState(): (Int32, Int32, Option[Int32]) \ CursorState.State =
-        let d = CursorScene.getCursorData();
+        let d = CursorDriver.getCursorData();
         (d#gridPos#x, d#gridPos#y, d#lastHoveredEnemyId)
 
     // ════════════════════════════════════════════════════════
@@ -40,7 +40,7 @@ mod TestCursorScene {
             let player: {x = Int32, y = Int32} = {x = 5, y = 5};
             let world = TestWorldFixtures.worldOf(TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, player)));
             let result = TestUnitFixtures.withWorldQuery(world, () -> run {
-                CursorScene.add();
+                CursorDriver.add();
                 cursorState()
             } with CursorState.withState(rc));
             Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
@@ -54,7 +54,7 @@ mod TestCursorScene {
             let player: {x = Int32, y = Int32} = {x = 3, y = 7};
             let world = TestWorldFixtures.worldOf(TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(0, player)));
             let result = TestUnitFixtures.withWorldQuery(world, () -> run {
-                CursorScene.add();
+                CursorDriver.add();
                 cursorState()
             } with CursorState.withState(rc));
             Assert.assertEq(expected = (3, 7, (None: Option[Int32])), result)
@@ -76,12 +76,12 @@ mod TestCursorScene {
                 TestUnitFixtures.withMockPartyQuery(TestUnitFixtures.worldPlayers(world), () ->
                     TestUnitFixtures.withWorldQuery(world, () ->
                         run {
-                            CursorScene.add();
+                            CursorDriver.add();
                             // カーソルを (10, 10) に移し、ホバー履歴も Some(99) に偽装
                             CursorState.State.put({gridPos = {x = 10, y = 10},
                                                    lastHoveredEnemyId = Some(99)
                                                    | CursorState.State.get()});
-                            CursorScene.snapToPlayer();
+                            CursorDriver.snapToPlayer();
                             cursorState()
                         } with CursorState.withState(rc))));
             Assert.assertEq(expected = (4, 4, (None: Option[Int32])), result)
@@ -90,7 +90,7 @@ mod TestCursorScene {
     /// snapToPlayer の「行動済みじゃない味方にカーソルが飛ぶ」フォールバックを検証する。
     /// 状況: SelectedPlayer は cleared()、味方 0 が waited (行動済み)、味方 1 が waited でない
     /// (次に動ける駒)。期待: snapToPlayer が味方 1 (= アクティブな最初の味方) の位置にスナップする。
-    /// 実装は `CursorScene.snapTargetPos → fallbackPos` (`CursorScene.flix:449-470` 相当)。
+    /// 実装は `CursorDriver.snapTargetPos → fallbackPos` (`CursorDriver.flix:449-470` 相当)。
     @Test
     def testSnapToPlayerJumpsToActiveAllyWhenSelectedCleared(): Unit \ Assert =
         region rc {
@@ -105,8 +105,8 @@ mod TestCursorScene {
                 TestUnitFixtures.withMockPartyQuery(TestUnitFixtures.worldPlayers(world), () ->
                     TestUnitFixtures.withWorldQuery(world, () ->
                         run {
-                            CursorScene.add();
-                            CursorScene.snapToPlayer();
+                            CursorDriver.add();
+                            CursorDriver.snapToPlayer();
                             cursorState()
                         } with CursorState.withState(rc))));
             Assert.assertEq(expected = (5, 5, (None: Option[Int32])), result)
@@ -114,7 +114,7 @@ mod TestCursorScene {
 
     /// 統合テスト: `commitWaitedAndAdvance` を呼ぶと、カーソルが「いま waited にした駒」
     /// (Player(0)) ではなく「次のアクティブ味方」(Player(1)) に飛ぶ。
-    /// `commitWaitedAndAdvance` は次のスナップ先を `PlayerScene.firstActiveExcluding` (World 直読み)
+    /// `commitWaitedAndAdvance` は次のスナップ先を `PlayerDriver.firstActiveExcluding` (World 直読み)
     /// で計算してから `PhaseTransitions.enterPlayerCursorAt` に明示的に渡すため、setWaited 直後の
     /// フレームでも正しい駒を拾う（連打すると待機した駒にカーソルが残るバグの回帰防止）。
     /// World は単一 Ref (`withWorldAppliedSeeded`) で seed し、setWaited の書き込みが同フレーム内で
@@ -134,7 +134,7 @@ mod TestCursorScene {
                     drafts = Nil,
                     gatherActive = false
                 });
-                CursorScene.add();
+                CursorDriver.add();
                 TurnFlow.commitWaitedAndAdvance();
                 cursorState()
             } with GameLogger.withLogger(rc)
@@ -162,7 +162,7 @@ mod TestCursorScene {
                     :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(1, otherPos))
                     :: Nil));
             let result = TestUnitFixtures.withWorldQuery(world, () -> run {
-                CursorScene.add();
+                CursorDriver.add();
                 PhaseTransitions.enterPlayerCursorAt(target);
                 cursorState()
             } with TurnPhase.withState(rc)
@@ -182,7 +182,7 @@ mod TestCursorScene {
     /// `snagRemaining > 0` は「駒に乗った直後の入力捨て」区間（`isSnagging`）を表す。
     def cursorDataAt(gridPos: {x = Int32, y = Int32},
                       holdDir: Option[{x = Int32, y = Int32}],
-                      holdSteps: Int32, snagRemaining: Float64): CursorScene.Data =
+                      holdSteps: Int32, snagRemaining: Float64): CursorDriver.Data =
         {gridPos = gridPos, holdDir = holdDir, holdSteps = holdSteps,
          snagRemaining = snagRemaining | CursorState.initial()}
 
@@ -202,7 +202,7 @@ mod TestCursorScene {
     /// `PlayerAttack` 用テストも同じ runner を使う。カーソルは resource 権威で、
     /// 位置・hold・snag は `CursorState` に seed してから回す（ノード/パスは不要）。
     /// PlayerAttack の `targetsInRange` が範囲 resource を読むため `RangeOverlayState` も供給する。
-    def runPhysics(phase: TurnPhase.Phase, initial: CursorScene.Data, held: Set[GameEngine.Key]): CursorScene.Data
+    def runPhysics(phase: TurnPhase.Phase, initial: CursorDriver.Data, held: Set[GameEngine.Key]): CursorDriver.Data
             \ {BoardQuery,
                 GameLogger.GameLogger,
                 EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
@@ -218,20 +218,20 @@ mod TestCursorScene {
             let _ =
                 TestUnitFixtures.withSelectedPlayer(0, () ->
                     TestUnitFixtures.withRangeOverlay(rc, () ->
-                        run { CursorScene.step(frame, Duration.seconds(0.016)) }
+                        run { CursorDriver.step(frame, Duration.seconds(0.016)) }
                             with handler World.WorldQuery { def get(k) = k(World.empty()) }
                             with handler UiWorldState.State {
                                 def get(k)      = k(UiStore.empty())
                                 def put(_ui, k) = k()
                             }));
-            CursorScene.getCursorData()
+            CursorDriver.getCursorData()
         }
 
     /// 盤面レス World で `stepOnBoard` を 1 フレーム回す runner。BoardQuery は本番
     /// （`WorldDriver.withWorld`）と同じく「要求されたとき地形を読む」遅延 handler にする —
     /// ゲートが無ければ盤面未 seed の `BoardQuery.board` が bug! で落ちるため、
     /// 「board() が要求されないこと」まで含めて pin できる。
-    def runStepOnBoardNoMap(initial: CursorScene.Data, held: Set[GameEngine.Key]): CursorScene.Data
+    def runStepOnBoardNoMap(initial: CursorDriver.Data, held: Set[GameEngine.Key]): CursorDriver.Data
             \ {GameLogger.GameLogger,
                 EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
         let frame = ({down = held, justPressed = Set.empty(), dt = 0.016}: App.Frame);
@@ -241,7 +241,7 @@ mod TestCursorScene {
             let _ =
                 TestUnitFixtures.withSelectedPlayer(0, () ->
                     TestUnitFixtures.withRangeOverlay(rc, () ->
-                        run { CursorScene.stepOnBoard(frame, Duration.seconds(0.016)) }
+                        run { CursorDriver.stepOnBoard(frame, Duration.seconds(0.016)) }
                             with handler BoardQuery {
                                 def board(k) = k(({map = TestWorldFixtures.floorSnapshot({w = 13, h = 13}),
                                                    pieces = Nil}: Board))
@@ -251,13 +251,13 @@ mod TestCursorScene {
                                 def get(k)      = k(UiStore.empty())
                                 def put(_ui, k) = k()
                             }));
-            CursorScene.getCursorData()
+            CursorDriver.getCursorData()
         }
 
     /// PlayerCursor で 1 フレーム `step` を回した直後の
     /// (gridPos, `isTweening`) を取り出す（stepVisual は回さない）。
     /// 移動で張った補間が同フレームの論理 put で clobber されず残るかを pin する用途。
-    def runPhysicsTween(initial: CursorScene.Data, held: Set[GameEngine.Key]): (Int32, Int32, Bool)
+    def runPhysicsTween(initial: CursorDriver.Data, held: Set[GameEngine.Key]): (Int32, Int32, Bool)
             \ {BoardQuery,
                 GameLogger.GameLogger,
                 EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
@@ -268,7 +268,7 @@ mod TestCursorScene {
             TestUnitFixtures.withSelectedPlayer(0, () ->
                 TestUnitFixtures.withRangeOverlay(rc, () ->
                     run {
-                        CursorScene.step(frame, Duration.seconds(0.016));
+                        CursorDriver.step(frame, Duration.seconds(0.016));
                         let d = CursorState.State.get();
                         (d#gridPos#x, d#gridPos#y, CursorState.isTweening())
                     }
@@ -282,7 +282,7 @@ mod TestCursorScene {
     /// PlayerCursor で 1 マス移動 → `stepVisual(visualDt)` を 1 回回し、
     /// (gridPos, `isTweening`, renderPos) を取り出す。補間完了後の視覚追従と
     /// 入力凍結解除を pin する用途。
-    def runPhysicsThenVisual(initial: CursorScene.Data, visualDt: Float64, held: Set[GameEngine.Key]):
+    def runPhysicsThenVisual(initial: CursorDriver.Data, visualDt: Float64, held: Set[GameEngine.Key]):
             (Int32, Int32, Bool, Float64, Float64)
             \ {BoardQuery,
                 GameLogger.GameLogger,
@@ -294,8 +294,8 @@ mod TestCursorScene {
             TestUnitFixtures.withSelectedPlayer(0, () ->
                 TestUnitFixtures.withRangeOverlay(rc, () ->
                     run {
-                        CursorScene.step(frame, Duration.seconds(0.016));
-                        CursorScene.stepVisual(Duration.seconds(visualDt));
+                        CursorDriver.step(frame, Duration.seconds(0.016));
+                        CursorDriver.stepVisual(Duration.seconds(visualDt));
                         let d = CursorState.State.get();
                         (d#gridPos#x, d#gridPos#y, CursorState.isTweening(),
                          d#renderPos#x, d#renderPos#y)
@@ -464,7 +464,7 @@ mod TestCursorScene {
     // ════════════════════════════════════════════════════════
 
     /// SelectedPlayer / PartyQuery / World.WorldQuery を一度に剥がすラッパ。
-    /// `TradeRangeScene.show` + `snapToFirstTradeCellOrPlayer` を続けて実行する用途。
+    /// `TradeRange.show` + `snapToFirstTradeCellOrPlayer` を続けて実行する用途。
     def runWithTradeSnapMocks(world: World, selectedId: Int32, thunk: Unit -> a \ ef):
             a \ (ef - SelectedPlayer.State - PlayerData.PartyQuery - World.WorldQuery) =
         TestUnitFixtures.withSelectedPlayer(selectedId, () ->
@@ -473,7 +473,7 @@ mod TestCursorScene {
 
     /// cursor resource の現在 gridPos を (x, y) タプルで取り出す。
     def cursorPosOf(): (Int32, Int32) \ CursorState.State =
-        let d = CursorScene.getCursorData();
+        let d = CursorDriver.getCursorData();
         (d#gridPos#x, d#gridPos#y)
 
     /// 配置 (id=0 self at (5,5)):
@@ -496,9 +496,9 @@ mod TestCursorScene {
                     :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(4, {x = 5, y = 6}))
                     :: Nil));
             let result = runWithTradeSnapMocks(world, 0, () -> run {
-                CursorScene.add();
-                TradeRangeScene.show();
-                CursorScene.snapToFirstTradeCellOrPlayer();
+                CursorDriver.add();
+                TradeRange.show();
+                CursorDriver.snapToFirstTradeCellOrPlayer();
                 cursorPosOf()
             } with CursorState.withState(rc)
               with RangeOverlayState.withState(rc));
@@ -515,9 +515,9 @@ mod TestCursorScene {
                     :: TestWorldFixtures.playerCmds(TestWorldFixtures.unitSpec(1, {x = 6, y = 5}))
                     :: Nil));
             let result = runWithTradeSnapMocks(world, 0, () -> run {
-                CursorScene.add();
-                TradeRangeScene.show();
-                CursorScene.snapToFirstTradeCellOrPlayer();
+                CursorDriver.add();
+                TradeRange.show();
+                CursorDriver.snapToFirstTradeCellOrPlayer();
                 cursorPosOf()
             } with CursorState.withState(rc)
               with RangeOverlayState.withState(rc));
@@ -538,11 +538,11 @@ mod TestCursorScene {
     def testCursorVisibleForPhaseMatrix(): Unit \ Assert =
         Assert.assertEq(
             expected = (true, true, false, false, false, false, false),
-            (CursorScene.cursorVisibleForPhase(TurnPhase.Phase.PlayerCursor),
-             CursorScene.cursorVisibleForPhase(TurnPhase.Phase.PlayerAttack),
-             CursorScene.cursorVisibleForPhase(TurnPhase.Phase.PlayerMoving),
-             CursorScene.cursorVisibleForPhase(TurnPhase.Phase.GatherMove),
-             CursorScene.cursorVisibleForPhase(TurnPhase.Phase.ItemSelect),
-             CursorScene.cursorVisibleForPhase(TurnPhase.Phase.LevelUpView),
-             CursorScene.cursorVisibleForPhase(TurnPhase.Phase.StairsExit)))
+            (CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.PlayerCursor),
+             CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.PlayerAttack),
+             CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.PlayerMoving),
+             CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.GatherMove),
+             CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.ItemSelect),
+             CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.LevelUpView),
+             CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.StairsExit)))
 }

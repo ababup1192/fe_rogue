@@ -26,7 +26,7 @@
 ///   - Refresh — 既存 overlay を取り除いてから選択中味方を起点に再構築 (`SelectedPlayer.State` 必要)
 ///   - Show    — PlayerAttackRange 専用。武器射程で再構築 (`SelectedPlayer.State` 必要)
 ///   - Keep    — そのオーバーレイには触れない (前 phase の表示状態を温存)
-///   - SnapPlayer / SnapCell / SnapTarget — `CursorScene.snap*` をそれぞれ呼ぶ
+///   - SnapPlayer / SnapCell / SnapTarget — `CursorDriver.snap*` をそれぞれ呼ぶ
 ///
 /// 新しいフェーズを追加するときはこの表に行を追加し、対応する `enter<Phase>` 関数と
 /// `TestPhaseTransitions` の @Test を追加すること。
@@ -36,23 +36,23 @@
 ///   - ターン進行の遷移関数 (`TurnFlow.commitWaitedAndAdvance` 等) → enter* を呼ぶ
 ///   - 駆動側 (`EnemyTurnDriver.beginTurn`) → enter* を呼ぶ
 ///
-/// 各データ所有側 (PlayerScene 等) は「自分のデータ更新」のみ責任を持ち、overlay/cursor は
-/// この module に全部任せる。これで PlayerScene → 各 overlay の直接依存が消える。
+/// 各データ所有側 (PlayerDriver 等) は「自分のデータ更新」のみ責任を持ち、overlay/cursor は
+/// この module に全部任せる。これで PlayerDriver → 各 overlay の直接依存が消える。
 mod PhaseTransitions {
 
     /// 味方系 4 range (Move / MoveAttack / PlayerAttack / TradeRange) を全消し。
     /// PlayerCursor / PlayerCursorAt / EnemyTurn が共通で使う「味方の範囲表示を全部閉じる」操作。
     def clearAllPlayerRanges(): Unit \ RangeOverlayState.State =
-        MoveRangeScene.clear();
-        MoveAttackRangeScene.clear();
-        PlayerAttackRangeScene.clear();
-        TradeRangeScene.clear()
+        MoveRange.clear();
+        MoveAttackRange.clear();
+        PlayerAttackRange.clear();
+        TradeRange.clear()
 
     /// 移動系 2 range (Move / MoveAttack) を消す。PlayerAttackRange は呼び出し側 (`show`) が
     /// 引き継いで再構築するので、ここでは触らない。PlayerAttack 進入で使う。
     def clearMoveOnlyRanges(): Unit \ RangeOverlayState.State =
-        MoveRangeScene.clear();
-        MoveAttackRangeScene.clear()
+        MoveRange.clear();
+        MoveAttackRange.clear()
 
     /// PlayerCursor フェーズに入る。
     /// `cancelSelection` の「移動キャンセルで戻す」分岐や、集合のキャンセルなどから呼ぶ。
@@ -66,9 +66,9 @@ mod PhaseTransitions {
                     PlayerData.PartyQuery, World.Command, World.WorldQuery, RangeOverlayState.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         clearAllPlayerRanges();
-        EnemyScene.showAllActive();        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
-        CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.PlayerCursor));
-        CursorScene.snapToPlayer()
+        EnemyDriver.showAllActive();        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
+        CursorDriver.setVisible(CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.PlayerCursor));
+        CursorDriver.snapToPlayer()
 
     /// PlayerCursor フェーズに入り、カーソルを **明示的に指定された座標** にスナップする。
     /// 呼び出し側がフレーム内で計算した「次にアクティブな味方の gridPos」を渡す想定。
@@ -78,9 +78,9 @@ mod PhaseTransitions {
             Unit \ {TurnPhase.State, CursorState.State, World.Command, World.WorldQuery, RangeOverlayState.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         clearAllPlayerRanges();
-        EnemyScene.showAllActive();        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
-        CursorScene.setVisible(true);
-        CursorScene.snapToCell(target)
+        EnemyDriver.showAllActive();        // 味方フェーズ中は敵を通常色(アクティブ)で見せる
+        CursorDriver.setVisible(true);
+        CursorDriver.snapToCell(target)
 
     /// LevelUpView フェーズに入る (攻撃解決でレベルアップを検出したとき)。
     /// ステータス変化パネルを出して入力待ちにするフェーズ。味方の範囲表示を全消しし、
@@ -90,21 +90,21 @@ mod PhaseTransitions {
             Unit \ {TurnPhase.State, RangeOverlayState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.LevelUpView);
         clearAllPlayerRanges();
-        CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.LevelUpView))
+        CursorDriver.setVisible(CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.LevelUpView))
 
     /// PlayerMoving フェーズに入る (味方マスで Z 押下時)。
     /// EnemyRange を先に消してから Move/MoveAttack を refresh する順序を守る必要がある。
-    /// `MoveRangeScene.refresh` は `SelectedPlayer.State` から選択駒 id を読むため、
+    /// `MoveRange.refresh` は `SelectedPlayer.State` から選択駒 id を読むため、
     /// この関数を呼ぶ **前** に `SelectedPlayer.State` に id をセットしておくこと。
     /// 逆順 (先に refresh) にすると敵の危険範囲と移動範囲が重複表示される。
     pub def enterPlayerMoving():
             Unit \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerMoving);
-        EnemyRangeScene.clear();
-        EnemyAttackRangeScene.clear();
-        MoveRangeScene.refresh();
-        MoveAttackRangeScene.refresh();
-        CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.PlayerMoving))
+        EnemyRange.clear();
+        EnemyAttackRange.clear();
+        MoveRange.refresh();
+        MoveAttackRange.refresh();
+        CursorDriver.setVisible(CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.PlayerMoving))
 
     /// PlayerAttack フェーズに入る (ActionMenu「こうげき」確定時)。
     /// 動作 (表 4 行目): Move/MoveAttack 消去 → 武器射程の赤マスを show → カーソル表示し、
@@ -114,24 +114,24 @@ mod PhaseTransitions {
                     PlayerData.PartyQuery, EnemyData.RosterQuery, World.WorldQuery, RangeOverlayState.State} =
         TurnPhase.State.put(TurnPhase.Phase.PlayerAttack);
         clearMoveOnlyRanges();
-        PlayerAttackRangeScene.show();
-        CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.PlayerAttack));
-        CursorScene.snapToFirstTargetOrPlayer()
+        PlayerAttackRange.show();
+        CursorDriver.setVisible(CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.PlayerAttack));
+        CursorDriver.snapToFirstTargetOrPlayer()
 
     /// GatherMove フェーズに入る（「集合」確定直後 = 主人公が隊列を率いて動き始める）。
     /// 主人公(id 0)の移動範囲(青マス)を 1 回だけ敷く。以降は refresh しないことで
     /// 「集合開始位置を原点とした moveTiles 範囲」を主人公が動いても固定して残す。
     /// 敵系 range は消し、カーソルは隠す（主人公は PlayerMovementDriver.step で動く）。
     /// 呼ぶ前に `SelectedPlayer.State` に主人公 id(0) をセットしておくこと
-    /// （`MoveRangeScene.refresh` が選択駒 id を読むため。enterPlayerMoving と同じ契約）。
+    /// （`MoveRange.refresh` が選択駒 id を読むため。enterPlayerMoving と同じ契約）。
     pub def enterGatherMove():
             Unit \ {TurnPhase.State, SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.GatherMove);
-        EnemyRangeScene.clear();
-        EnemyAttackRangeScene.clear();
-        MoveAttackRangeScene.clear();
-        MoveRangeScene.refresh();
-        CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.GatherMove))
+        EnemyRange.clear();
+        EnemyAttackRange.clear();
+        MoveAttackRange.clear();
+        MoveRange.refresh();
+        CursorDriver.setVisible(CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.GatherMove))
 
     /// EnemyTurn フェーズに入る (全味方 waited または 敵ターン遷移時)。
     /// 動作 (表 6 行目): 味方系 3 range 全消し (敵ターン中は赤/青マス不要)。
@@ -142,8 +142,8 @@ mod PhaseTransitions {
         TurnPhase.State.put(TurnPhase.Phase.EnemyTurn);
         clearAllPlayerRanges();
         // Shift の危険範囲(紫)は敵が動くと古くなるので敵ターン開始で消す（トグルは OFF に戻る）
-        DangerZoneScene.clear();
-        PlayerScene.showAllActive()        // 敵フェーズ中は味方を通常色(アクティブ)で見せる
+        DangerZone.clear();
+        PlayerDriver.showAllActive()        // 敵フェーズ中は味方を通常色(アクティブ)で見せる
 
     /// StairsExit フェーズに入る (集合「階段で離脱」確定時)。
     /// 味方系 range を片付け、危険範囲(紫)も消し、カーソルを隠す（自動進行＝入力なし）。
@@ -151,8 +151,8 @@ mod PhaseTransitions {
             Unit \ {TurnPhase.State, RangeOverlayState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.StairsExit);
         clearAllPlayerRanges();
-        DangerZoneScene.clear();
-        CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.StairsExit))
+        DangerZone.clear();
+        CursorDriver.setVisible(CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.StairsExit))
 
     /// ItemSelect フェーズに入る (ActionMenu「アイテム」確定時)。
     /// 動作: 味方系の青/赤マスを片付けて、カーソルを隠す（メニュー操作専用画面のため）。
@@ -161,7 +161,7 @@ mod PhaseTransitions {
             Unit \ {TurnPhase.State, RangeOverlayState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ItemSelect);
         clearAllPlayerRanges();
-        CursorScene.setVisible(CursorScene.cursorVisibleForPhase(TurnPhase.Phase.ItemSelect))
+        CursorDriver.setVisible(CursorDriver.cursorVisibleForPhase(TurnPhase.Phase.ItemSelect))
 
     /// StaffAim フェーズに入る (杖「使う」確定時)。
     /// 動作: メニュー / overlay は触らず、通常カーソルを隠し、選択中プレイヤーの
@@ -171,18 +171,18 @@ mod PhaseTransitions {
             Unit \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State,
                     World.WorldQuery, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.StaffAim);
-        CursorScene.setVisible(false);
+        CursorDriver.setVisible(false);
         match SelectedPlayer.State.get()#id {
             case None           => ()
             case Some(playerId) =>
-                match PlayerScene.get(playerId) {
+                match PlayerDriver.get(playerId) {
                     case None         => ()
                     case Some(player) =>
-                        ArrowCursorScene.showFor(player#gridPos);
+                        ArrowCursorDriver.showFor(player#gridPos);
                         // 回復の杖なら HP が減っている味方の方向に初期照準を向ける。
                         // 負傷味方が居ない / 回復杖でないならデフォルト(Up)のまま。
                         match StaffCast.staffAimInitialDirection(playerId) {
-                            case Some(dir) => ArrowCursorScene.aim(dir)
+                            case Some(dir) => ArrowCursorDriver.aim(dir)
                             case None      => ()
                         }
                 }
@@ -195,13 +195,13 @@ mod PhaseTransitions {
             Unit \ {TurnPhase.State, SelectedPlayer.State, ArrowCursorState.State,
                     World.WorldQuery, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ThrowAim);
-        CursorScene.setVisible(false);
+        CursorDriver.setVisible(false);
         match SelectedPlayer.State.get()#id {
             case None           => ()
             case Some(playerId) =>
-                match PlayerScene.get(playerId) {
+                match PlayerDriver.get(playerId) {
                     case None         => ()
-                    case Some(player) => ArrowCursorScene.showFor(player#gridPos)
+                    case Some(player) => ArrowCursorDriver.showFor(player#gridPos)
                 }
         }
 
@@ -218,7 +218,7 @@ mod PhaseTransitions {
     pub def enterActionSelectFromTrade():
             Unit \ {TurnPhase.State, TradeMenuState.State, RangeOverlayState.State} =
         TurnPhase.State.put(TurnPhase.Phase.ActionSelect);
-        TradeRangeScene.clear();
+        TradeRange.clear();
         TradeMenuUi.mapPanelData(_ -> TradeMenuUi.defaultPanelData())
 
     /// TradeInventory フェーズに入る (TradeTargetSelect で Z 押下時の隣接 2 人交換)。
@@ -230,8 +230,8 @@ mod PhaseTransitions {
             Unit \ {TurnPhase.State, SelectedPlayer.State, TradeMenuState.State, RangeOverlayState.State, CursorState.State} =
         TurnPhase.State.put(TurnPhase.Phase.TradeInventory);
         let selfId = SelectedPlayer.State.get()#id |> Option.getWithDefault(0);
-        TradeRangeScene.clear();
-        CursorScene.setVisible(false);
+        TradeRange.clear();
+        CursorDriver.setVisible(false);
         TradeMenuUi.mapPanelData(_ ->
             ({members  = selfId :: partnerId :: Nil,
               focus    = 0,
@@ -243,14 +243,14 @@ mod PhaseTransitions {
     /// TradeInventory フェーズに入る (集合（行軍）の隣接メニュー「交換」確定時の N 人交換)。
     /// `members` は主人公 + 主人公に隣接する生存味方の player id (最大 4 人)。
     /// `origin = FromGather` なので、交換を抜けると集合の隣接メニュー(ActionSelect) に戻る。
-    /// `members` の構築は ActionMenuScene 側で行うが、隣接 0 人で 1 人になる端ケースを
+    /// `members` の構築は ActionMenuUi 側で行うが、隣接 0 人で 1 人になる端ケースを
     /// その場で排除しきれないため、ここで 2 人未満ガードを入れる (防御)。
     pub def enterGatherTrade(members: List[Int32]):
             Unit \ {TurnPhase.State, TradeMenuState.State, CursorState.State} =
         if (List.length(members) < 2) ()
         else {
             TurnPhase.State.put(TurnPhase.Phase.TradeInventory);
-            CursorScene.setVisible(false);
+            CursorDriver.setVisible(false);
             TradeMenuUi.mapPanelData(_ ->
                 ({members  = members,
                   focus    = 0,
@@ -272,10 +272,10 @@ mod PhaseTransitions {
                     PlayerData.PartyQuery, RangeOverlayState.State} =
         TurnPhase.State.put(TurnPhase.Phase.TradeTargetSelect);
         clearMoveOnlyRanges();
-        PlayerAttackRangeScene.clear();
-        EnemyRangeScene.clear();
-        EnemyAttackRangeScene.clear();
-        TradeRangeScene.show();
-        CursorScene.setVisible(true);
-        CursorScene.snapToFirstTradeCellOrPlayer()
+        PlayerAttackRange.clear();
+        EnemyRange.clear();
+        EnemyAttackRange.clear();
+        TradeRange.show();
+        CursorDriver.setVisible(true);
+        CursorDriver.snapToFirstTradeCellOrPlayer()
 }

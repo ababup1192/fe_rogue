@@ -23,7 +23,7 @@ mod TestWeaponSelectUi {
 
     /// (x,y) に居るテスト用 Enemy.Data。`isDying=true` で hp=0（瀕死）扱い。
     /// 射程到達判定 (weaponReachesAnyEnemy) の検証用に位置と生死だけ意味を持たせる。
-    def enemyAt(id: Int32, x: Int32, y: Int32, isDying: Bool): EnemyScene.Data = {
+    def enemyAt(id: Int32, x: Int32, y: Int32, isDying: Bool): EnemyDriver.Data = {
         id             = id,
         resourceId     = "test_enemy",
         gridPos        = {x = x, y = y},

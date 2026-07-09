@@ -1,17 +1,17 @@
-/// CursorScene — 味方ターン中の選択カーソル（入力ポーリング＋論理・視覚状態の駆動）
+/// CursorDriver — 味方ターン中の選択カーソル（入力ポーリング＋論理・視覚状態の駆動）
 ///
 /// FE 風 SRPG の「カーソルでマスを選んでから操作」フローを担う。
 /// 味方ターンの開始時はこのカーソルが画面上で動き、味方マス上で Z を押せば
 /// 選択 → 移動フェーズに切り替わる（カーソルは非表示・Player の WASD 移動に
 /// バトンタッチ）。敵マス上ではカーソルは止まらず、ホバー中だけ赤い移動範囲を
-/// 表示する（実体は EnemyRangeScene が担当）。
+/// 表示する（実体は EnemyRange が担当）。
 ///
 /// 状態と描画の分担:
 ///   - カーソルは scene ノードを持たない。論理状態（gridPos / hover / hold）も視覚位置
 ///     （renderPos / スライド補間 / snag タイマー / 可視）も `CursorState.State` resource が権威。
 ///   - 四隅の角カッコ L字（白）は `RenderWorld.renderCursor` が `CursorState.renderPos` と
 ///     `cornerBoxes` から直描きする（camera 適用）。見た目定数 `cornerColor` / `cornerZIndex` /
-///     `cornerBoxes` はこの module が持つ唯一の真実源。カメラ追従（`CameraScene`）も renderPos を読む。
+///     `cornerBoxes` はこの module が持つ唯一の真実源。カメラ追従（`CameraDriver`）も renderPos を読む。
 ///
 /// 設計意図:
 ///   - `gridPos` は moveStep のたびに即更新し、見た目の補間は `CursorState` の EcsTween に委ねる。
@@ -25,7 +25,7 @@
 ///
 /// 入力ポーリング（`step`）は engine の physicsProcess 巡回でなく gameLoop が明示 System として
 /// 1 回呼ぶ（カーソルは scene ノードを持たないため）。
-mod CursorScene {
+mod CursorDriver {
 
     // ────────────────────────────────────────────────────────
     // (A) 型定義
@@ -115,7 +115,7 @@ mod CursorScene {
 
     /// パーティ先頭プレイヤー（id=0）の grid 位置。`add` 初期化用。World store から直接読む。
     def firstPlayerPos(): {x = Int32, y = Int32} \ World.WorldQuery =
-        match PlayerScene.get(0) {
+        match PlayerDriver.get(0) {
             case Some(d) => d#gridPos
             case None    => {x = 0, y = 0}
         }
@@ -186,7 +186,7 @@ mod CursorScene {
     /// フォーカス中の武器が届く生存敵を reading order（y→x）で返す。
     /// 選択中味方 / フォーカス武器が取れないときは空。
     def weaponSelectTargets():
-            List[EnemyScene.Data] \ {SelectedPlayer.State, EnemyData.RosterQuery, World.WorldQuery, UiWorldState.State} =
+            List[EnemyDriver.Data] \ {SelectedPlayer.State, EnemyData.RosterQuery, World.WorldQuery, UiWorldState.State} =
         let opt = forM (
             pid    <- SelectedPlayer.State.get()#id;
             // 位置・在庫（weapons）は World 権威＝dataFromWorld（scene 非依存）で読む。
@@ -197,7 +197,7 @@ mod CursorScene {
             // 敵 Data は RosterQuery overlay（World-fresh の hp/isDying）で読む（scene 直読みは stale）。
             EnemyData.RosterQuery.getAll()
                 |> List.filter(e -> {
-                    let ev = EnemyScene.unitView(e);
+                    let ev = EnemyDriver.unitView(e);
                     ev#hp > 0 and not ev#isDying
                         and Weapon.inRange(Weapon.manhattan(player#gridPos, ev#pos), weapon#range)
                 })
@@ -213,7 +213,7 @@ mod CursorScene {
     ///   2. 補間中 → 入力捨てる
     ///   3. それ以外 → 方向キーを読み、加速度を計算して 1 マス進める
     /// 移動後のセルに駒（味方/敵）が居れば snag をセット + holdSteps をリセット
-    /// （次は再加速）。敵に乗ったら EnemyRangeScene を再構築 + ログを出す。
+    /// （次は再加速）。敵に乗ったら EnemyRange を再構築 + ログを出す。
     def stepFreeMovement(frame: App.Frame):
                          Unit
                          \ {BoardQuery,
@@ -284,30 +284,30 @@ mod CursorScene {
         {gridPos = target | data}
 
     /// 移動後のセルに敵が居るかを判定し、`lastHoveredEnemyId` の遷移に応じて
-    /// EnemyRangeScene を出し入れ + ログを出す。返り値の Data は
+    /// EnemyRange を出し入れ + ログを出す。返り値の Data は
     /// `lastHoveredEnemyId` を新しい値に更新済み。
     def handleHoverChange(data: Data, board: Board):
             Data \ {GameLogger.GameLogger, EnemyData.RosterQuery, SelectedPlayer.State, World.WorldQuery, RangeOverlayState.State} =
         // フォグで隠れている敵はホバーしても情報を出さない（配置バレ防止）。
         // 見えていない敵セルは「敵が居ない」扱いに倒し、ログ・赤レンジを発火させない。
         let enemyId = enemyIdAt(data#gridPos, board)
-                        |> Option.filter(id -> EnemyScene.isVisible(id));
+                        |> Option.filter(id -> EnemyDriver.isVisible(id));
         if (enemyId == data#lastHoveredEnemyId) data
         else {
             match enemyId {
                 case Some(id) =>
-                    GameLogger.playerLog("${EnemyScene.displayName(id)}を捕捉");
+                    GameLogger.playerLog("${EnemyDriver.displayName(id)}を捕捉");
                     // 移動範囲(白)を先に組み、その reachable を読んで攻撃到達範囲(赤)を重ねる
-                    EnemyRangeScene.refreshFor(id);
-                    EnemyAttackRangeScene.refreshFor(id)
+                    EnemyRange.refreshFor(id);
+                    EnemyAttackRange.refreshFor(id)
                 case None =>
-                    EnemyRangeScene.clear();
-                    EnemyAttackRangeScene.clear()
+                    EnemyRange.clear();
+                    EnemyAttackRange.clear()
             };
             {lastHoveredEnemyId = enemyId | data}
         }
 
-    /// 押されている方向キーを Option で返す（PlayerScene と同じ優先順位で揃えることで
+    /// 押されている方向キーを Option で返す（PlayerDriver と同じ優先順位で揃えることで
     /// プレイヤー操作とカーソル操作の体感を統一する）
     def readHeldDirection(frame: App.Frame): Option[{x = Int32, y = Int32}] =
         let isDown = key -> App.isDown(key, frame);
@@ -331,8 +331,8 @@ mod CursorScene {
     def cursorRangeRadius(): Int32 = 1
 
     /// 候補セルがカーソルの可動域（明るい部屋 +半径 ∪ 訪問済み module）に入っているか。
-    /// 範囲は FogScene.cursorRangeRects（明るい部屋を半径拡張 ∪ 既訪 module 矩形）で求め、
-    /// 既訪記憶は World（`MinimapScene.visitedModules`）から読む。
+    /// 範囲は Fog.cursorRangeRects（明るい部屋を半径拡張 ∪ 既訪 module 矩形）で求め、
+    /// 既訪記憶は World（`MinimapDriver.visitedModules`）から読む。
     def cursorCanEnter(cell: {x = Int32, y = Int32}): Bool \ World.WorldQuery =
         let world0     = World.WorldQuery.get();
         let placements = World.placementsOf(world0);
@@ -340,11 +340,11 @@ mod CursorScene {
         if (List.isEmpty(placements)) true
         else {
             let roomCount = World.roomCountOf(world0);
-            let visited   = MinimapScene.visitedModules();
-            let rects = FogScene.cursorRangeRects(PlayerScene.getAll(), placements,
+            let visited   = MinimapDriver.visitedModules();
+            let rects = Fog.cursorRangeRects(PlayerDriver.getAll(), placements,
                                                    roomCount, visited, cursorRangeRadius());
             // 可動域がまだ算出できないフレームでも固めない（防御的）。
-            List.isEmpty(rects) or FogScene.insideAny(cell, rects)
+            List.isEmpty(rects) or Fog.insideAny(cell, rects)
         }
 
     /// 候補セルをマップの usedRect 内にクランプする。FE と同じく壁・敵・味方マスは
@@ -386,17 +386,17 @@ mod CursorScene {
             }
         }
 
-    /// 押下開始時のターゲットサイクル本体。`PlayerAttackRangeScene.targetsInRange` で
+    /// 押下開始時のターゲットサイクル本体。`PlayerAttackRange.targetsInRange` で
     /// 取得した reading-order 順のリストから、方向に応じて prev / next を選ぶ。
     def cycleToTarget(dir: {x = Int32, y = Int32}, data: Data):
                       Unit
                       \ {CursorState.State, EnemyData.RosterQuery, RangeOverlayState.State} =
-        cycleToTargetIn(PlayerAttackRangeScene.targetsInRange(), dir, data)
+        cycleToTargetIn(PlayerAttackRange.targetsInRange(), dir, data)
 
     /// 与えられた敵リストの中で、現在カーソル位置から方向に応じて prev / next へジャンプする。
     /// `cycleToTarget`（PlayerAttack）と `stepWeaponSelectCycle`（WeaponSelect）が対象リストだけ
     /// 差し替えて共有する本体。敵が居なければ holdDir だけ更新して何もしない。
-    def cycleToTargetIn(targets: List[EnemyScene.Data],
+    def cycleToTargetIn(targets: List[EnemyDriver.Data],
                         dir: {x = Int32, y = Int32}, data: Data):
                        Unit \ CursorState.State =
         match targets {
@@ -427,7 +427,7 @@ mod CursorScene {
     /// targets リストの中で `cell` と一致する敵の index を返す。一致しなければ -1。
     /// 戻り値 -1 は呼び出し元で `curIdx < 0` として扱われ、方向に応じて先頭/末尾を選ぶ分岐に入る。
     def findCursorTargetIndex(cell: {x = Int32, y = Int32},
-                                targets: List[EnemyScene.Data]): Int32 =
+                                targets: List[EnemyDriver.Data]): Int32 =
         let indexed = List.zipWithIndex(targets);
         match List.find(p -> {
             let (_, d) = p;
@@ -441,7 +441,7 @@ mod CursorScene {
     // (D-3) TradeTargetSelect フェーズの 1 マス進行 (緑マス間サイクル)
     // ────────────────────────────────────────────────────────
 
-    /// `TradeTargetSelect` フェーズの本体。緑マス (TradeRangeScene の隣接味方マス) を reading order で
+    /// `TradeTargetSelect` フェーズの本体。緑マス (TradeRange の隣接味方マス) を reading order で
     /// ソートして、方向キー押下の瞬間に prev / next の緑マスへサイクルでスナップする。
     /// 入力ゲートは PlayerAttack と同じ (snag / 補間中は捨てる)。
     /// 緑マスが 0 個 (= 隣接味方なし) のときは何もしない (X キャンセル待ち)。
@@ -463,11 +463,11 @@ mod CursorScene {
         }
 
     /// 緑マスの中から方向に応じて next / prev のセルへカーソルを飛ばす。
-    /// `TradeRangeScene.cells` を reading order (y → x) にソートしてサイクルする。
+    /// `TradeRange.cells` を reading order (y → x) にソートしてサイクルする。
     /// 緑マスが空ならホールド状態だけ更新して何もしない。
     def cycleToTradeCell(dir: {x = Int32, y = Int32}, data: Data):
                          Unit \ {CursorState.State, RangeOverlayState.State} =
-        let sortedCells = TradeRangeScene.cells()
+        let sortedCells = TradeRange.cells()
                             |> List.sortBy(c -> (c#y, c#x));
         pickNextCellInCycle(dir, data#gridPos, sortedCells)
             |> Option.map(target -> snapCursorAndUpdateHold(target, dir, data))
@@ -525,7 +525,7 @@ mod CursorScene {
             Bool \ {SelectedPlayer.State, World.WorldQuery} =
         if (not Board.isOccupied(coord, board)) false
         else match enemyIdAt(coord, board) {
-            case Some(id) => EnemyScene.isVisible(id)
+            case Some(id) => EnemyDriver.isVisible(id)
             case None     => true
         }
 
@@ -610,7 +610,7 @@ mod CursorScene {
     pub def snapToFirstTargetOrPlayer():
             Unit \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery,
                               EnemyData.RosterQuery, RangeOverlayState.State} =
-        match List.head(PlayerAttackRangeScene.targetsInRange()) {
+        match List.head(PlayerAttackRange.targetsInRange()) {
             case Some(target) => snapToCell(target#gridPos)
             case None         => snapToPlayer()
         }
@@ -621,7 +621,7 @@ mod CursorScene {
     pub def snapToFirstTradeCellOrPlayer():
             Unit \ {SelectedPlayer.State, CursorState.State, PlayerData.PartyQuery,
                               RangeOverlayState.State} =
-        let firstCell = TradeRangeScene.cells()
+        let firstCell = TradeRange.cells()
                           |> List.sortBy(c -> (c#y, c#x))
                           |> List.head;
         match firstCell {

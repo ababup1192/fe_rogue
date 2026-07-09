@@ -114,7 +114,7 @@ mod TestWeapon {
     // ════════════════════════════════════════════════════════
 
     /// 魔力 8 + 武器 2 - 魔防 3 = 7 ダメージ（魔法武器ルート）
-    /// PlayerScene / EnemyScene の attackStatFor + defenseStatFor + attackDamage の流れを再現
+    /// PlayerDriver / EnemyDriver の attackStatFor + defenseStatFor + attackDamage の流れを再現
     @Test
     def testMagicWeaponDamageUsesMagicStats(): Unit \ Assert =
         let unit   = TestUnitFixtures.testResourceMagic(4, 14, 2, 1, 8, 4, 3);

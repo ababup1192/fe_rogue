@@ -1,7 +1,7 @@
 /// InitialSpawns — ゲーム開始時の敵 / プレイヤー spawn 情報を保持する effect
 ///
 /// プレイヤー HP=0 のゲームオーバー時、同じマップで「初期配置・初期 HP・waited=false」
-/// で敵とプレイヤーをまとめて復活させたい。`EnemyScene.add` は `Math.Random` でランダムに
+/// で敵とプレイヤーをまとめて復活させたい。`EnemyDriver.add` は `Math.Random` でランダムに
 /// 敵を配置するため、再呼び出しでは同じ配置が再現できない。そこで `Game.start` で
 /// 初回 build 直後の spawn 一覧をこの effect の Ref に保存しておき、
 /// ゲームオーバー時のフロア再構築でこの snapshot から同じ配置を復元する。

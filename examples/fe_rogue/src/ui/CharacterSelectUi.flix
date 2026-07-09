@@ -8,7 +8,7 @@
 // カード列から出撃メンバーを 3 人選び、そのあとリーダー（集合したときに仲間が合流する先＝ロード）を
 // 1 人選ぶ。選び終えると `PartySelection.State` にリーダーを先頭にした並びで保存し、GamePhase を
 // Playing に切り替える。ダンジョン構築（`WorldSetup.buildPlaying`）は Playing 突入時に走り、
-// `PlayerScene.add` が保存済みの並びをそのまま使う（先頭がロードになる）。
+// `PlayerDriver.add` が保存済みの並びをそのまま使う（先頭がロードになる）。
 //
 // 操作（キーボード）:
 //   - メンバー選び（PickingMembers）

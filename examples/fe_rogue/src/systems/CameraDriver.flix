@@ -1,4 +1,4 @@
-/// CameraScene — フェーズに応じてカメラの追従先（World 座標）を選ぶ driver
+/// CameraDriver — フェーズに応じてカメラの追従先（World 座標）を選ぶ driver
 ///
 /// FE 風 SRPG では「カーソルにカメラを付ける／キャラ移動中はカメラを止める／
 /// キャラが画面外に行ったらカメラを動かす／敵ターンはキャラを映す」という複合追従を
@@ -20,7 +20,7 @@
 /// 追従先の座標は **World 権威**（`renderPosOf` の描画位置、未 seed の静止駒は `posOf` のセル中心）で読み、
 /// カーソルは `CursorState.renderPos`（スライド補間の視覚位置＝単一権威）を読む。
 /// 駒 pixel 位置は World store が権威（scene ノードの座標は読まない）。
-mod CameraScene {
+mod CameraDriver {
 
     /// 毎フレーム 1 回、フェーズ別ターゲットを計算して `CameraState.advance` に渡す（frame-paced driver）。
     /// gameLoop が移動 tween・戦闘演出クロックで駒・カーソルの世界座標が反映された後に呼ぶ。
@@ -44,7 +44,7 @@ mod CameraScene {
         }
 
     /// フロア構築時にカメラをパーティ先頭（id 0）へスナップする（カメラ初期位置の唯一の設定点）。
-    /// `WorldSetup.setupHudAndDrivers` が PlayerScene.add（World へ位置 seed）後に 1 回呼ぶ。
+    /// `WorldSetup.setupHudAndDrivers` が PlayerDriver.add（World へ位置 seed）後に 1 回呼ぶ。
     /// これで開始フレームから正しいフォーカス位置を映す（drag/smoothing の 1〜2 フレーム遅れを消す）。
     pub def snapToParty(): Unit \ {World.WorldQuery, CameraState.State} =
         CameraState.snapTo(unitWorldPos(World.EntityRef.Player(0), World.WorldQuery.get()))

@@ -44,7 +44,7 @@ mod TestStaffGolden {
 
     /// `ecsResolveStaffCast` の `player` 引数は本体で未参照（駒の状態は World 権威で読む）ため、
     /// 型を満たすだけのダミー値。値そのものはテスト結果に影響しない。
-    def dummyPlayer(): PlayerScene.Data = {
+    def dummyPlayer(): PlayerDriver.Data = {
         id                = 0,
         classId           = "dummy",
         gridPos           = {x = 0, y = 0},

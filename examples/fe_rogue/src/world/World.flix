@@ -88,7 +88,7 @@ pub type alias TileLayerHandle = {
 
 /// フロアのマップ生成 Plan と安全スポーン地点（build choke が `Cmd.SetMapLayout` で書く）。
 /// `plan` は中断/全滅復元で同一マップを乱数なしに再構築する保存対象（FloorSnapshot が読む）、
-/// `spawnGrid` は anchor 部屋内の床が保証されたセルで PlayerScene の初期配置起点。
+/// `spawnGrid` は anchor 部屋内の床が保証されたセルで PlayerDriver の初期配置起点。
 /// 部屋数は `plan#roomCount`（placements は `mapSnapshot#placements`）から読む。
 pub type alias MapLayout = {
     plan = DungeonGenerator.Plan,
@@ -224,7 +224,7 @@ pub enum World {
                  // command-derive（SetBaseStats が dual-write）。combatView flip 用。
                  baseStats = Map[EntityId, Combat.BaseStats],
                  // 装備武器の戦闘投影 read-model（unified-id・両 faction）。内側 Option=武器なし。
-                 // PlayerScene/EnemyScene.equippedWeaponView 由来の command-derive（SetWeaponView が dual-write）。combatView flip 用。
+                 // PlayerDriver/EnemyDriver.equippedWeaponView 由来の command-derive（SetWeaponView が dual-write）。combatView flip 用。
                  weaponView = Map[EntityId, Option[Combat.WeaponView]],
                  // 装備指輪ボーナス read-model（unified-id・両 faction）。未装備は zeroBonuses。
                  // equippedRingBonus 由来の command-derive（SetRingBonus が dual-write）。combatView flip 用。
@@ -586,7 +586,7 @@ mod World {
     // 単一 unified-id 空間（enemy id は enemyUidBase offset で写す）＋ faction を component に:
     //   `statusEffects: Map[EntityId, StatusEffects]` 1 本 ＋ `team: Map[EntityId, Faction]`。
     //   「敵らしさ」は Faction component で表す（味方型/敵型の継承を作らない）。
-    //   scene-tree は PlayerScene/EnemyScene の **2 つの id 名前空間**（味方 id 0 と敵 id 0 が衝突）と
+    //   scene-tree は PlayerDriver/EnemyDriver の **2 つの id 名前空間**（味方 id 0 と敵 id 0 が衝突）と
     //   別レコード型（PlayerData/EnemyData）を持つが、World は enemyUid 写像で単一 store に統合している。
     // seam: read = `StatusQuery.statusEffects(EntityRef)`、write の単体操作 = `Cmd.Add/ClearImmobilized/Seed(EntityRef, …)`
     //   はいずれも **EntityRef キーで faction 非依存**。faction 一括操作は `Cmd.TickPlayers/TickEnemies`
@@ -1590,7 +1590,7 @@ mod World {
         let World.World(w) = world; Set.toList(w#enemyIds)
 
     /// フォグ穴計算の入力（非導出の生値: 味方の live 位置と hidden）。World 単独導出（昇順）。
-    /// origin（移動ドラフト）は view 側（`FogScene`）が重ねる。
+    /// origin（移動ドラフト）は view 側（`Fog`）が重ねる。
     pub def fogUnitsOf(world: World): List[{id = Int32, gridPos = {x = Int32, y = Int32}, hidden = Bool}] =
         playerIdsOf(world) |> List.filterMap(id ->
             posOf(EntityRef.Player(id), world) |> Option.map(p ->
@@ -1601,8 +1601,8 @@ mod World {
         let World.World(w) = world; EcsTween.isActive((toUid(ref), Channel.Position), w#tweens)
 
     /// faction-blind な「移動」の唯一の発行口（smart constructor）。Position チャンネルへ span(start→target)
-    /// の Vec tween を sec 秒・Linear で開始する Cmd を emit。味方 `PlayerScene.moveTo` と敵
-    /// `EnemyScene.replayEnemyMoveView` が**共にこれを呼ぶ**（個別実装を畳む）。同型 Vec2 の誤順を防ぐため
+    /// の Vec tween を sec 秒・Linear で開始する Cmd を emit。味方 `PlayerDriver.moveTo` と敵
+    /// `EnemyDriver.replayEnemyMoveView` が**共にこれを呼ぶ**（個別実装を畳む）。同型 Vec2 の誤順を防ぐため
     /// span は `VecLerp`（Track.Vec の payload）で名前渡し。不整合な (Channel, Track) を構築させない seam。
     pub def moveUnit(ref: EntityRef, span: EcsTween.VecLerp, sec: Float64): Unit \ Command =
         Command.emit(Cmd.StartTween(ref, Channel.Position, EcsTween.Track.Vec(span), sec, EcsTween.Easing.Linear, false))
@@ -1649,7 +1649,7 @@ mod World {
         let World.World(w) = world;
         Map.exists((uid, _) -> uidIsEnemy(uid), w#attackTarget)
 
-    /// coord 上の「瀕死でない」敵 id を World から引く（`EnemyScene.findIdAt` の World 版）。
+    /// coord 上の「瀕死でない」敵 id を World から引く（`EnemyDriver.findIdAt` の World 版）。
     /// pos（uid キー・位置権威＝World）を昇順 uid で走査し最初の一致を返す。dying は `enemyDying` set で
     /// 除外（scene の `not isDying` と等価）。★順序不変条件: scene 版は `getAll`（Scene preorder＝id 昇順ではない）
     /// + findMap、本関数は uid 昇順走査＝両者の走査順は違うが、**1 セル 1 敵の不変条件**（敵は排他マス占有）
@@ -1952,7 +1952,7 @@ mod World {
         let World.World(w) = world; Map.get(toUid(ref), w#effectRule) |> Option.flatten
 
     /// `combatView` を **World だけから再構築**する（faction 非依存）。base 戦闘値 + 指輪 + status mods
-    /// + hp + 装備武器投影を合成し、`PlayerScene.combatView` / `EnemyScene.combatView` と同一の `Combat.CombatView`
+    /// + hp + 装備武器投影を合成し、`PlayerDriver.combatView` / `EnemyDriver.combatView` と同一の `Combat.CombatView`
     /// を返す。式は両 scene の combatView と一致（status/ring 補正の載せ方を含む）。baseStats/hp/ringBonus が
     /// 揃わない（未登録）entity は None。これで scene-authority な combatView の reader を World へ flip できる。
     pub def combatViewOf(ref: EntityRef, world: World): Option[Combat.CombatView] =
@@ -1977,7 +1977,7 @@ mod World {
             case EntityRef.Enemy(_)   => false
         }
 
-    /// scene の `PlayerScene.unitView` / `EnemyScene.unitView` と **bit 一致**する `UnitView` を
+    /// scene の `PlayerDriver.unitView` / `EnemyDriver.unitView` と **bit 一致**する `UnitView` を
     /// **World 単独**（scene 非依存）で再構築する。pos/hp/moveTiles/weaponRange/combat/isDying/hidden は
     /// 各 store から、`aiType`（+ player の load 容量に要る constitution/attack）は resource store
     /// （playerResource/enemyResource）から読む。`combatViewOf` が None（base/hp/ring 未登録）なら全体 None。
@@ -2061,7 +2061,7 @@ mod World {
               statuses = statusEffectsOf(ref, world), followUpUsed = followUpUsed}: PlayerData.Data)
         }
 
-    /// scene の `EnemyScene.get` Data と **bit 一致**する `EnemyData.Data` を **World 由来**で再構築する
+    /// scene の `EnemyDriver.get` Data と **bit 一致**する `EnemyData.Data` を **World 由来**で再構築する
     /// （dataFromWorld〔player版〕の enemy 版）。`EnemyData.Data` を **World 単独**で再構築する。
     ///   gate 対象 11: gridPos=posOf／alerted=alertedOf／moveTiles=moveTilesOf／hp=hpOf／
     ///     weapon=weaponsOf(0/1 List) の head／followUpUsed=followUpUsedOf／bottleUsed=bottleUsedOf／

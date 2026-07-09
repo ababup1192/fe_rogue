@@ -119,7 +119,7 @@ mod UnitHPBarRender {
         let enemies = World.enemyIdsOf(world)
             // フォグで隠れた敵は描かない（明るい穴の lit ゲート＝本体 sprite と同じ判定）。
             |> List.filter(id -> holesOpt
-                |> Option.map(holes -> EnemyScene.isLitIn(id, holes, world))
+                |> Option.map(holes -> EnemyDriver.isLitIn(id, holes, world))
                 |> Option.getWithDefault(false))
             |> List.flatMap(id -> {
                 let ref = World.EntityRef.Enemy(id);

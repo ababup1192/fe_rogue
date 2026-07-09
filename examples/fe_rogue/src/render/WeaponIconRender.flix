@@ -61,7 +61,7 @@ mod WeaponIconRender {
         // フォグで隠れた敵は描かない（明るい穴の lit ゲート＝本体 sprite と同じ判定）。
         let enemies = World.enemyIdsOf(world)
             |> List.filter(id -> holesOpt
-                |> Option.map(holes -> EnemyScene.isLitIn(id, holes, world))
+                |> Option.map(holes -> EnemyDriver.isLitIn(id, holes, world))
                 |> Option.getWithDefault(false))
             |> List.flatMap(id -> ofUnit(World.EntityRef.Enemy(id),
                 World.modulateOf(World.EntityRef.Enemy(id), world)));
