@@ -61,7 +61,7 @@ mod CameraState {
 
     /// 現在の視点の ViewTransform（world → screen 変換）。追従が有効なので `smoothPosition` 起点。
     /// `RenderWorld.viewTransform` と `BattlePanelUi` が読む描画変換の単一権威。
-    pub def viewTransform(viewport: Viewport): Camera.ViewTransform \ State =
+    pub def viewTransform(viewport: Viewport): Projection.ViewTransform \ State =
         let c = State.get();
         Camera.getViewTransform(c, Camera.getSmoothPosition(c), viewport)
 

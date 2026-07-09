@@ -165,11 +165,11 @@ mod Render {
         { vertices = List.map(v -> Vec2.add(v, pos), p#vertices),
           color = p#color, alpha = p#alpha, zIndex = p#zIndex }
 
-    /// World 由来 Drawable 群に camera のズーム倍率を適用する（位置は `Camera.applyToWorldPos` で
+    /// World 由来 Drawable 群に camera のズーム倍率を適用する（位置は `Projection.applyToWorldPos` で
     /// screenPos を出した後の共通後処理）。render-from-World の各オーバーレイ（ユニット / 背景 / 範囲表示 /
     /// フォグ等）が共有する camera 適用 spine。Drawable の scale は sprite の拡大率・box の px サイズを表し、
     /// どちらも zoom で乗算するのが正しい camera 適用。
-    pub def applyCameraScale(transform: Camera.ViewTransform,
+    pub def applyCameraScale(transform: Projection.ViewTransform,
                              ds: List[GameEngine.Drawable]): List[GameEngine.Drawable] =
         List.map(d -> {scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y} | d}, ds)
 

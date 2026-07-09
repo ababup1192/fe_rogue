@@ -266,14 +266,14 @@ mod BattlePanelUi {
     def reposition(view: ForecastView, contentW: Float64,
                    ui: UiStore.UiWorld): UiStore.UiWorld \ {GameEngine.Game, CameraState.State} =
         let (vt, vpW, vpH) = viewTransform();
-        let st   = Camera.applyToWorldPos(vt, MapSnapshot.cellCenter(view#targetCell));
-        let sa   = Camera.applyToWorldPos(vt, MapSnapshot.cellCenter(view#attackerCell));
+        let st   = Projection.applyToWorldPos(vt, MapSnapshot.cellCenter(view#targetCell));
+        let sa   = Projection.applyToWorldPos(vt, MapSnapshot.cellCenter(view#attackerCell));
         let half = MapSnapshot.tileSize() / 2.0 * vt#scale#x;  // 半タイルを画面 px に換算
         let pos  = anchorPos(st, sa, half, contentW, vpW, vpH);
         UiStore.setAbs(panelPath(), pos, ui)
 
     /// カメラの ViewTransform と viewport(design px) を取る。視点は `CameraState` resource が権威。
-    def viewTransform(): (Camera.ViewTransform, Float64, Float64) \ {GameEngine.Game, CameraState.State} =
+    def viewTransform(): (Projection.ViewTransform, Float64, Float64) \ {GameEngine.Game, CameraState.State} =
         let vp = GameEngine.Game.getViewportRect();
         let vt = CameraState.viewTransform({viewportWidth = vp#size#x, viewportHeight = vp#size#y});
         (vt, vp#size#x, vp#size#y)

@@ -69,7 +69,7 @@ mod WeaponIconRender {
 
     /// 囲い（枠＋プレート背景）の Drawable 列（drawables チャンネル）。
     pub def renderPlates(world: World, holesOpt: Option[List[GridRect]],
-                          transform: Camera.ViewTransform):
+                          transform: Projection.ViewTransform):
             List[GameEngine.Drawable] \ GameEngine.Game =
         iconInputs(world, holesOpt) |> List.flatMap(inp -> {
             let half = boxSize() / 2.0;
@@ -91,7 +91,7 @@ mod WeaponIconRender {
     /// WeaponGlyph の各ピース（Polygon/Arc 値・アイコン中心基準のローカル位置）を
     /// world 座標へ動かして cmd 化する。暗転は cmd color への乗算で再現。
     pub def renderGlyphs(world: World, holesOpt: Option[List[GridRect]],
-                          transform: Camera.ViewTransform):
+                          transform: Projection.ViewTransform):
             List[GameEngine.PolygonRenderCmd] =
         iconInputs(world, holesOpt) |> List.flatMap(inp -> {
             let modColor = inp#modColor;
@@ -103,24 +103,24 @@ mod WeaponIconRender {
 
     /// グリフ 1 ピース（Polygon/Arc の GlyphPiece 値）→ PolygonRenderCmd 列。
     def pieceCmds(piece: WeaponGlyph.GlyphPiece, center: Vec2.Vec2, modColor: Color,
-                   transform: Camera.ViewTransform): List[GameEngine.PolygonRenderCmd] =
+                   transform: Projection.ViewTransform): List[GameEngine.PolygonRenderCmd] =
         let withMod = (cmd: GameEngine.PolygonRenderCmd) ->
             ({color = mulColor(cmd#color, modColor), zIndex = iconZIndex() + 2 | cmd}: GameEngine.PolygonRenderCmd);
         match piece {
             case WeaponGlyph.GlyphPiece.Poly(poly) =>
                 let p = Transform.getPosition(Polygon.transform(poly));
-                let screenPos = Camera.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
+                let screenPos = Projection.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
                 withMod(Polygon.toRenderCmd(screenPos, transform#scale, poly)) :: Nil
             case WeaponGlyph.GlyphPiece.Arc(arc) =>
                 let p = Transform.getPosition(Arc.transform(arc));
-                let screenPos = Camera.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
+                let screenPos = Projection.applyToWorldPos(transform, {x = center#x + p#x, y = center#y + p#y});
                 Arc.toRenderCmds(screenPos, transform#scale, arc) |> List.map(withMod)
         }
 
     /// Rect 値 1 枚を world 左上座標へ Drawable 化する（UnitHPBarRender と同型）。
     def rectDrawables(rect: Rect, worldTopLeft: Vec2.Vec2, z: Int32,
-                       transform: Camera.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
-        let screenPos = Camera.applyToWorldPos(transform, worldTopLeft);
+                       transform: Projection.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
+        let screenPos = Projection.applyToWorldPos(transform, worldTopLeft);
         // Rect.toDrawable は純粋。呼び側の Game eff 連鎖を保つため checked_ecast で持ち上げる。
         checked_ecast(
             (Rect.toDrawable(rect, screenPos) :: Nil)

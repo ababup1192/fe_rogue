@@ -354,18 +354,6 @@ mod Camera {
             |> Float64.min(Int32.toFloat64(r#limitBottom));
         {x = clampedX, y = clampedY}
 
-    /// カメラのビュー変換（screenPos = worldPos * scale - offset）。
-    ///
-    /// zoom はビューポートに見えるサイズの倍率で、
-    /// `zoom > 1` で寄り、`zoom < 1` で引きになる。CanvasLayer 配下のノードには
-    /// 適用しない（HUD はカメラと無関係なため）
-    pub type alias ViewTransform = { offset = Vec2.Vec2, scale = Vec2.Vec2 }
-
-    /// world 座標を screen 座標に変換する: `screen = world * scale - offset`
-    pub def applyToWorldPos(transform: ViewTransform, worldPos: Vec2.Vec2): Vec2.Vec2 =
-        {x = worldPos#x * transform#scale#x - transform#offset#x,
-         y = worldPos#y * transform#scale#y - transform#offset#y}
-
     /// カメラから ViewTransform を計算する。
     ///
     /// シーンの描画時に各ノードの worldPos を `applyToWorldPos` に通すことで
@@ -381,7 +369,7 @@ mod Camera {
     /// `smoothPosition`（process が更新する補間後の値）を起点に計算する。
     /// すべて無効なら従来通り `globalPos`（= 親変換込みの position）を起点にする — 後方互換。
     pub def getViewTransform(camera: Camera, globalPos: Vec2.Vec2,
-                              viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): ViewTransform =
+                              viewportSize: {viewportWidth = Float64, viewportHeight = Float64}): Projection.ViewTransform =
         let Camera.Camera(r) = camera;
         let zoom = r#zoom;
         // 追従が有効なら smoothPosition を使う。Camera が scene root に居る前提で

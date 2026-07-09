@@ -57,10 +57,10 @@ mod RangeOverlay {
     /// で `tilePanel` と同一 styling を Drawable 化し、位置は `tileTopLeft` を camera 変換、scale（=NineSlice サイズ）を
     /// zoom 倍する（`RenderWorld.unitDraw` のスケール処理と対称）。
     pub def tileDrawables(cells: List[{x = Int32, y = Int32}], color: Color, alpha: Float32,
-                          transform: Camera.ViewTransform): List[GameEngine.Drawable] =
+                          transform: Projection.ViewTransform): List[GameEngine.Drawable] =
         let panel = tilePanel(color, alpha);
         List.flatMap(cell -> {
-            let screenTopLeft = Camera.applyToWorldPos(transform, tileTopLeft(cell));
+            let screenTopLeft = Projection.applyToWorldPos(transform, tileTopLeft(cell));
             NineSlice.toDrawables(panel, screenTopLeft)
                 |> Render.applyCameraScale(transform)
         }, cells)
