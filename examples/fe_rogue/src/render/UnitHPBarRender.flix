@@ -2,7 +2,7 @@
 ///
 /// scene ノードは持たない。HP/最大 HP は World store（hp/baseStats）、待機/行動済みの暗転は
 /// World store（waited/enemyActed）から導出し、`renderBars` が Rect **値**を組んで毎フレーム
-/// 直描きする（update/setModulate 等の押し込み API は不要になった＝SetHp 等の Cmd が唯一の書込）。
+/// 直描きする（update/setColor 等の押し込み API は不要になった＝SetHp 等の Cmd が唯一の書込）。
 /// 攻撃予報の「減る分」点滅だけは BattlePanel が毎フレーム計算する view 状態なので、
 /// `ForecastState` resource 経由で受け取る。
 mod UnitHPBarRender {
@@ -48,9 +48,9 @@ mod UnitHPBarRender {
     /// 残量トラック（暗背景・枠兼用）。
     def trackColor(): Color = {r = 0.08f32, g = 0.08f32, b = 0.08f32}
 
-    /// 点滅の「暗」側 modulate（フィル色を暗く落とす乗算色）。減少分が暗く沈んで見える。
+    /// 点滅の「暗」側 color（フィル色を暗く落とす乗算色）。減少分が暗く沈んで見える。
     def dmgDarkModulate(): Color = {r = 0.3f32, g = 0.3f32, b = 0.3f32}
-    /// 点滅の「明」側 modulate（通常色 = フィルと同色に見え、満タンに戻って見える）。
+    /// 点滅の「明」側 color（通常色 = フィルと同色に見え、満タンに戻って見える）。
     def dmgNormalModulate(): Color = UITheme.white()
     /// 「減る分」オーバーレイの 45° 斜線（赤マスと同じハッチ）。バーが小さいので細かめに。
     def dmgStripeColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
@@ -185,7 +185,7 @@ mod UnitHPBarRender {
                 |> Render.applyCameraScale(transform)
                 |> List.map(d -> {zIndex = z | d}))
 
-    /// 乗算合成（engine の祖先 modulate 伝播の代替）。
+    /// 乗算合成（engine の祖先 color 伝播の代替）。
     def mulColor(a: Color, b: Color): Color =
         {r = a#r * b#r, g = a#g * b#g, b = a#b * b#b}
 }

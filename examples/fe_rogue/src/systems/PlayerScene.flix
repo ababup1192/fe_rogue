@@ -16,7 +16,7 @@
 ///   - 全員 waited なら敵ターン、まだ残っていれば PlayerCursor で次セレクトへ
 ///
 /// `waited = true` のプレイヤーは:
-///   - 灰色 modulate で表示される
+///   - 灰色 color で表示される
 ///   - PlayerCursor で選択不可（Z で反応しない）
 ///
 /// 移動は moveToById(id, target) で論理位置（World の pos）を即更新し、
@@ -146,11 +146,11 @@ mod PlayerScene {
     pub def selectedSlideDuration(): Duration.Duration =
         Duration.frames(count = 20, fps = 120)
 
-    /// `waited = true` 時の sprite modulate（薄い灰色）。
+    /// `waited = true` 時の sprite color（薄い灰色）。
     /// unitModulate store 経由で sprite の RGB を乗算する。
     def waitedColor(): Color = UITheme.dimmed()
 
-    /// `waited = false` 時の sprite modulate（白 = 元色）。
+    /// `waited = false` 時の sprite color（白 = 元色）。
     def activeColor(): Color = UITheme.white()
 
     /// 「待機」アニメ名。spriteFrames には必ずこれが定義されている前提。
@@ -824,7 +824,7 @@ mod PlayerScene {
                 putConsumables(id, newConsumables)
         }
 
-    /// プレイヤーを「行動済み」にして sprite を灰色 modulate にする。
+    /// プレイヤーを「行動済み」にして sprite を灰色 color にする。
     /// アニメ付きの unit はここで idle アニメに戻す (= 待機モーション表示)。
     /// PlayerAttack 確定 / スキップ時に呼ばれる。
     pub def setWaited(id: Int32): Unit \ World.Command =

@@ -101,7 +101,7 @@ mod MapSetup {
         { textureName = r#tileSet#atlasSource#textureName,
           tileSize    = r#tileSet#atlasSource#tileSize,
           worldPos    = r#transform#position,
-          color       = r#visual#modulate,
+          color       = r#visual#color,
           zIndex      = r#visual#zIndex,
           tileVaoId   = r#tileVaoId,
           tileCount   = r#tileCount }

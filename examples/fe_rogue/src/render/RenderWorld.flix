@@ -110,7 +110,7 @@ mod RenderWorld {
                 };
                 let node = base
                     |> Sprite.setFlipH(flipH)
-                    |> Sprite.mapVisual(Visual.setModulate(modColor))
+                    |> Sprite.mapVisual(Visual.setColor(modColor))
                     |> Sprite.setAlpha(alpha);
                 standaloneSprite(node, worldPos, PlayerScene.spriteZIndex(), transform)
         }
@@ -262,7 +262,7 @@ mod RenderWorld {
                                 let opos: Vec2.Vec2 = {x = pos#x + delta#x, y = pos#y + delta#y};
                                 let node = makeFramed()
                                     |> Sprite.setAlpha(alpha)
-                                    |> Sprite.mapVisual(Visual.setModulate(GroundItems.outlineColor()));
+                                    |> Sprite.mapVisual(Visual.setColor(GroundItems.outlineColor()));
                                 standaloneSprite(node, opos, GroundItems.outlineZIndex(), transform)
                             }, GroundItems.outlineDeltas());
                             List.append(outlines,
@@ -287,7 +287,7 @@ mod RenderWorld {
                         let label = Text.make(d#text, atlas, DamagePopupFx.fontSize())
                             |> Text.setHorizontalAlignment(HorizontalAlignment.Center)
                             |> Text.setVerticalAlignment(VerticalAlignment.Bottom)
-                            |> Text.mapVisual(Visual.setModulate(d#color));
+                            |> Text.mapVisual(Visual.setColor(d#color));
                         let screenPos = Projection.applyToWorldPos(transform, pos);
                         GameEngine.Renderable.toDrawables(label, screenPos)
                             |> Render.applyCameraScale(transform)

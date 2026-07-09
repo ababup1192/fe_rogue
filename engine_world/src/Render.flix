@@ -37,7 +37,7 @@ mod Render {
     pub def text(content: String, fontAtlas: FontAtlas, fontSize: Float64, zIndex: Int32): RenderItem =
         RenderItem.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = white(), zIndex = zIndex })
 
-    /// B0b: 着色テキスト（Text.setModulate を適用）。menu の disabled グレー / cursor 色 / ヘッダ accent 等に必要。
+    /// B0b: 着色テキスト（Text.setColor を適用）。menu の disabled グレー / cursor 色 / ヘッダ accent 等に必要。
     pub def textTinted(content: String, fontAtlas: FontAtlas, fontSize: Float64, tint: Color, zIndex: Int32): RenderItem =
         RenderItem.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = tint, zIndex = zIndex })
 
@@ -246,7 +246,7 @@ mod Render {
     def textDrawables(content: String, fontAtlas: FontAtlas, fontSize: Float64,
                       tint: Color, zIndex: Int32, pos: Vec2.Vec2): List[GameEngine.Drawable] =
         // engine の public 純粋射影に委譲。B0b: Drawable の color を tint で上書き＝文字色
-        // （SDF 描画では color が modulate＝文字色。ItemList の per-item 色相当）。
+        // （SDF 描画では color が color＝文字色。ItemList の per-item 色相当）。
         Text.toDrawables(Text.make(content, fontAtlas, fontSize), pos)
             |> List.map(d -> {color = tint, zIndex = zIndex | d})
 

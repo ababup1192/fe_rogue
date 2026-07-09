@@ -127,7 +127,7 @@ mod WeaponIconRender {
                 |> Render.applyCameraScale(transform)
                 |> List.map(d -> {zIndex = z | d}))
 
-    /// 乗算合成（engine の祖先 modulate 伝播の代替）。
+    /// 乗算合成（engine の祖先 color 伝播の代替）。
     def mulColor(a: Color, b: Color): Color =
         {r = a#r * b#r, g = a#g * b#g, b = a#b * b#b}
 }

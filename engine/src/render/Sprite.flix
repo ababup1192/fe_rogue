@@ -4,10 +4,6 @@
 /// これがあれば絵をとりあえず画面に出せるので、キャラや背景の基本パーツになる。
 /// 利用例: キャラ 1 体を配置する / スプライトシートの 1 コマを切り出して表示する。
 ///
-///   Sprite
-///     ├─ visual: visible, zIndex, modulate
-///     └─ transform: position, rotation, scale, skew
-///
 /// テクスチャの切り出しは 2 つの機構で表現する:
 ///   - region: テクスチャ内のサブ矩形（ピクセル単位）。None ならテクスチャ全体を使う。
 ///   - hframes / vframes / frame: region をさらに格子分割し、表示するセル index を指定。
@@ -143,7 +139,7 @@ mod Sprite {
             position = globalPos,
             scale = flippedScale,
             rotation = r#transform#rotation,
-            color = r#visual#modulate,
+            color = r#visual#color,
             alpha = r#alpha,
             centered = r#centered,
             uvOffset = uv#uvOffset,

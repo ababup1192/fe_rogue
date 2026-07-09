@@ -88,7 +88,7 @@ mod MoveRangeScene {
         drawCells = List[{x = Int32, y = Int32}]
     }
 
-    /// 移動範囲を識別する青系 modulate。Floor 装飾レイヤーの上で
+    /// 移動範囲を識別する青系 color。Floor 装飾レイヤーの上で
     /// 移動可能マスとして識別しやすいように青寄りに着色する。World 描画も同値を使うため pub。
     pub def color(): Color = {r = 0.3f32, g = 0.5f32, b = 1.0f32}
 
@@ -200,7 +200,7 @@ mod MoveAttackRangeScene {
         cells = List[{x = Int32, y = Int32}]
     }
 
-    /// PlayerAttackRangeScene / EnemyRangeScene と同じ赤系 modulate。World 描画も同値を使うため pub。
+    /// PlayerAttackRangeScene / EnemyRangeScene と同じ赤系 color。World 描画も同値を使うため pub。
     pub def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
 
     /// 青マス (MoveRange = 1.0) より透かすことで、移動範囲より外側の脅威範囲を
@@ -268,7 +268,7 @@ mod EnemyRangeScene {
         reachable = List[{x = Int32, y = Int32}]
     }
 
-    /// 白系 modulate。敵の「移動範囲」を表す。攻撃到達範囲(EnemyAttackRange=赤)と
+    /// 白系 color。敵の「移動範囲」を表す。攻撃到達範囲(EnemyAttackRange=赤)と
     /// 色で区別するため移動範囲は白にしている。
     pub def color(): Color = UITheme.white()
 
@@ -329,7 +329,7 @@ mod EnemyAttackRangeScene {
         cells   = List[{x = Int32, y = Int32}]
     }
 
-    /// 赤系 modulate。EnemyRange(移動範囲=白) と区別する「攻撃到達」の色。
+    /// 赤系 color。EnemyRange(移動範囲=白) と区別する「攻撃到達」の色。
     pub def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
 
     /// 移動範囲(白, alpha=0.7) と区別するため少し透かす。
@@ -392,7 +392,7 @@ mod PlayerAttackRangeScene {
         cells = List[{x = Int32, y = Int32}]
     }
 
-    /// 赤系 modulate。EnemyRangeScene / MoveAttackRangeScene と同色。
+    /// 赤系 color。EnemyRangeScene / MoveAttackRangeScene と同色。
     pub def color(): Color = {r = 1.0f32, g = 0.3f32, b = 0.3f32}
 
     /// EnemyRangeScene と同じく少し透かして駒や床を見やすくする。
@@ -500,7 +500,7 @@ mod TradeRangeScene {
         cells = List[{x = Int32, y = Int32}]
     }
 
-    /// 緑系 modulate。MoveRange (青) / PlayerAttackRange (赤) と区別する。
+    /// 緑系 color。MoveRange (青) / PlayerAttackRange (赤) と区別する。
     pub def color(): Color = {r = 0.3f32, g = 1.0f32, b = 0.3f32}
 
     /// 他の情報表示 Range (EnemyRange / PlayerAttackRange) と透過度を揃えることで
@@ -565,7 +565,7 @@ mod DangerZoneScene {
         cells = List[{x = Int32, y = Int32}]
     }
 
-    /// 紫系 modulate。移動(青/白)・攻撃(赤)・交換(緑)と区別する危険範囲色。
+    /// 紫系 color。移動(青/白)・攻撃(赤)・交換(緑)と区別する危険範囲色。
     pub def color(): Color = {r = 0.6f32, g = 0.3f32, b = 0.9f32}
 
     /// 下のマップ・駒が見える程度に透かす。

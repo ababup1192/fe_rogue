@@ -356,9 +356,9 @@ mod EnemyScene {
 
     // 行動済み時に sprite / HP ゲージを暗転し、プレイヤーの waitedColor と外観を揃えるグループ。
 
-    /// 行動済みの sprite / HP ゲージ modulate（薄い灰色）。プレイヤーの waitedColor と揃える。
+    /// 行動済みの sprite / HP ゲージ color（薄い灰色）。プレイヤーの waitedColor と揃える。
     def actedColor(): Color = UITheme.dimmed()
-    /// 通常時の modulate（白 = 元色）。
+    /// 通常時の color（白 = 元色）。
     def activeColor(): Color = UITheme.white()
 
     /// 暗転色を World store（unitModulate）へ emit する

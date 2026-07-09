@@ -7,11 +7,6 @@
 ///   2-5. 上/下/左/右 の枠線（borderWidth > 0 のときのみ）
 ///
 /// 子要素のレイアウトは持たない（必要なら外側で Layout.Anchor を使って配置する）。
-///
-///   NineSlice
-///     +-- visual: visible, zIndex, modulate
-///     +-- transform: position, rotation, scale, skew
-///     +-- size, backgroundColor, backgroundAlpha, borderColor, borderAlpha, borderWidth
 pub enum NineSlice {
     case NineSlice({
         transform = Transform,

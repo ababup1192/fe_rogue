@@ -84,12 +84,12 @@ mod TestArc {
         Assert.assertEq(expected = 16.0, Arc.getRadius(arc));
         Assert.assertEq(expected = 3.0, Arc.getWidth(arc))
 
-    /// Visual: modulate round-trip
+    /// Visual: color round-trip
     @Test
     def testModulateRoundtrip(): Unit \ Assert =
         let arc = Arc.ring(10.0, 2.0, cyan())
-            |> Arc.mapVisual(Visual.setModulate(white()));
-        Assert.assertEq(expected = 1.0f32, Visual.getModulate(Arc.visual(arc))#r)
+            |> Arc.mapVisual(Visual.setColor(white()));
+        Assert.assertEq(expected = 1.0f32, Visual.getColor(Arc.visual(arc))#r)
 
     /// Visual: visible round-trip
     @Test

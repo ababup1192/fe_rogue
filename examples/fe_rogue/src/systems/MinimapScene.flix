@@ -153,7 +153,7 @@ mod MinimapScene {
             input#markers |> List.map(marker -> markerCmdOf(marker#cell, marker#color, t));
         {drawables = List.append(roomDrawables, floorDrawables), polygons = markerCmds}
 
-    /// minimap ピクセル矩形 → box Drawable（画面固定。camera 変換なし）。色は modulate、alpha は
+    /// minimap ピクセル矩形 → box Drawable（画面固定。camera 変換なし）。色は color、alpha は
     /// レイヤ半透明、zIndex は旧 CanvasLayer 相当のオフセット込み。
     def boxDrawableOf(pr: {pos = Vec2, size = Vec2}, color: Color, z: Int32, alpha: Float32):
             GameEngine.Drawable =

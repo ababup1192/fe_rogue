@@ -43,7 +43,7 @@ mod TileLayer {
           tileSize    = atlas#tileSize,
           position    = layerScreenPos,
           tileScale   = tileScale,
-          color       = r#visual#modulate,
+          color       = r#visual#color,
           zIndex      = r#visual#zIndex,
           tileVaoId   = r#tileVaoId,
           tileCount   = r#tileCount }

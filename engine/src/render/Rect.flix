@@ -2,10 +2,6 @@
 /// 画像を用意せず色とサイズだけで塗れるので、背景や覆いを手軽に置ける。
 /// 角丸や 45° の斜線ハッチも指定できる。
 /// 利用例: 画面の背景色 / 全画面を覆う半透明のオーバーレイ。
-///
-///   Rect
-///     +-- visual: visible, zIndex, modulate
-///     +-- transform: position, rotation, scale, skew
 pub enum Rect {
     case Rect({
         transform = Transform,
@@ -27,7 +23,7 @@ mod Rect {
     pub def make(size: Vec2.Vec2, color: Color): Rect =
         Rect.Rect({
             transform = { position = {x = 0.0, y = 0.0}, rotation = 0.0, scale = {x = 1.0, y = 1.0}, skew = 0.0 },
-            visual = Visual.setModulate(color, Visual.default()),
+            visual = Visual.setColor(color, Visual.default()),
             alpha = 1.0f32,
             size = size,
             cornerRadius = 0.0,
@@ -104,7 +100,7 @@ mod Rect {
             position = globalPos,
             scale = r#size,
             rotation = r#transform#rotation,
-            color = r#visual#modulate,
+            color = r#visual#color,
             alpha = r#alpha,
             centered = false,
             uvOffset = {x = 0.0, y = 0.0},

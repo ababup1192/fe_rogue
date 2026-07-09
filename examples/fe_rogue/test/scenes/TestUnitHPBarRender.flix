@@ -3,7 +3,7 @@
 /// - `fillWidth`: 残量比 → Fill 幅。満タン/半分/0/最大超え/負値/maxHp<=0 をクランプ。
 /// - `teamFillColor`: 味方=青 / 敵=赤 の出し分け。
 ///
-/// attach / update / setModulate の scene 変換は LDTK/LWJGL を要するため統合/手動確認に委ねる。
+/// attach / update / setColor の scene 変換は LDTK/LWJGL を要するため統合/手動確認に委ねる。
 mod TestUnitHPBarRender {
 
     use UnitHPBarRender.Team

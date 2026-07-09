@@ -6,10 +6,6 @@
 /// 利用例: スキルのクールダウンを残り時間ぶんの扇形で見せる / 背景の輪を描く。
 /// 注意: 塗りは凸ポリゴンだけなので、リングは中空円として `segments` 個の台形に分割し、
 ///       各セグメントを 1 つの PolygonRenderCmd として出す。
-///
-///   Arc
-///     +-- visual: modulate, visible, zIndex, alpha
-///     +-- transform: position, rotation, scale, skew
 pub enum Arc {
     case Arc({
         transform = Transform,     // 位置・回転・スケール・せん断
@@ -36,7 +32,7 @@ mod Arc {
                  startAngle: Float64, endAngle: Float64, color: Color): Arc =
         Arc.Arc({
             transform = { position = {x = 0.0, y = 0.0}, rotation = 0.0, scale = {x = 1.0, y = 1.0}, skew = 0.0 },
-            visual = Visual.setModulate(color, Visual.default()),
+            visual = Visual.setColor(color, Visual.default()),
             alpha = 1.0f32,
             radius = radius,
             width = width,
@@ -131,7 +127,7 @@ mod Arc {
                 let verts =
                     mkPt(a0, outerR) :: mkPt(a1, outerR) ::
                     mkPt(a1, innerR) :: mkPt(a0, innerR) :: Nil;
-                ({vertices = verts, color = r#visual#modulate, alpha = r#alpha,
+                ({vertices = verts, color = r#visual#color, alpha = r#alpha,
                   zIndex = r#visual#zIndex}: GameEngine.PolygonRenderCmd)
             })
         }

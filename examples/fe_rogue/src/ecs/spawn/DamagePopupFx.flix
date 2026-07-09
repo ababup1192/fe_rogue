@@ -11,7 +11,7 @@
 ///
 /// engine の Tween.tickAll に乗せない理由:
 ///   - Tween.tweenAlpha は Sprite 専用（engine/src/scene/Tween.flix）
-///   - Text の modulate は {r,g,b} のみで alpha 成分を持たない（Color は engine_core）
+///   - Text の color は {r,g,b} のみで alpha 成分を持たない（Color は engine_core）
 ///   フェード表現は省き、上方向に float させてから瞬時に消すスタイルにする。
 ///   寿命を 700ms 程度にすれば違和感は最小。
 mod DamagePopupFx {

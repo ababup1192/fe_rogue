@@ -2,7 +2,7 @@
 /// position にターゲットの座標を入れておけば、スムージングや制限枠・ドラッグ余白を通して
 /// 画面が滑らかに付いていくので、追従ロジックを毎フレーム書かずに済む（offset で微調整）。
 /// 利用例: プレイヤーを画面中央に保つ / マップ端でスクロールを止める。
-/// 見た目は visual（visible / zIndex / modulate）、座標変換は transform（position / rotation / scale / skew）で持つ。
+/// 見た目は visual（visible / zIndex / color）、座標変換は transform（position / rotation / scale / skew）で持つ。
 
 /// カメラのアンカーモード。
 ///

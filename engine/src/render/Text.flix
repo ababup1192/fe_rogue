@@ -2,10 +2,6 @@
 /// 文字描画を一箇所にまとめるので、HUD やメニューのどこでも同じ字体で文字を出せる。
 /// 利用例: スコア表示、セリフ、メニューの項目名。
 /// 注意: アライメントの Fill は Left/Top と同じ扱い（両端揃えは未対応）。
-///
-///   Text
-///     +-- visual: visible, zIndex, modulate
-///     +-- transform: position, rotation, scale, skew
 
 /// 横方向アライメント
 pub enum HorizontalAlignment with Eq, Order, ToString {
@@ -172,7 +168,7 @@ mod Text {
                             position = {x = qb#x0, y = qb#y0},
                             scale = {x = w / atlas#textureSize, y = h / atlas#textureSize},
                             rotation = 0.0,
-                            color = r#visual#modulate,
+                            color = r#visual#color,
                             alpha = 1.0f32,
                             centered = false,
                             uvOffset = {x = gm#s0, y = gm#t0},

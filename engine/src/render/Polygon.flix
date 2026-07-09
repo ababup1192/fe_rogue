@@ -1,11 +1,7 @@
-/// Polygon — 局所座標の凸多角形 `points` を単色（modulate + alpha）で塗り潰す描画物。
+/// Polygon — 局所座標の凸多角形 `points` を単色（color + alpha）で塗り潰す描画物。
 /// 三角形や円などの簡単な図形を画像なしで出せるので、マーカーや図形エフェクトに手軽。
 /// 利用例: 円形マーカー、簡易的な図形の演出。
 /// 注意: テクスチャ・穴あき・UV は未対応（凸多角形を三角形ファンで塗る最小実装）。円は `circle` で 12 角形として生成する。
-///
-///   Polygon
-///     +-- visual: modulate, visible, zIndex, alpha
-///     +-- transform: position, rotation, scale, skew
 pub enum Polygon {
     case Polygon({
         transform = Transform,     // 位置・回転・スケール・せん断
@@ -21,7 +17,7 @@ mod Polygon {
     pub def make(points: List[Vec2.Vec2], color: Color): Polygon =
         Polygon.Polygon({
             transform = { position = {x = 0.0, y = 0.0}, rotation = 0.0, scale = {x = 1.0, y = 1.0}, skew = 0.0 },
-            visual = Visual.setModulate(color, Visual.default()),
+            visual = Visual.setColor(color, Visual.default()),
             alpha = 1.0f32,
             points = points
         })
@@ -82,5 +78,5 @@ mod Polygon {
         let sy = scaleVec#y * r#transform#scale#y;
         let verts = r#points |> List.map(p ->
             ({x = screenPos#x + p#x * sx, y = screenPos#y + p#y * sy}: Vec2.Vec2));
-        {vertices = verts, color = r#visual#modulate, alpha = r#alpha, zIndex = r#visual#zIndex}
+        {vertices = verts, color = r#visual#color, alpha = r#alpha, zIndex = r#visual#zIndex}
 }

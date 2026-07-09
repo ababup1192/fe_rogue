@@ -26,7 +26,7 @@ mod Curve {
     /// 周期 `period` で 0→1→0 を往復する三角波。前半で 0 から 1 へ直線で昇り、後半で
     /// 1 から 0 へ直線で降りる。sine より角ばった、行きも帰りも一定速の脈動に使う
     /// （フェード往復・点滅・ピストン運動など）。値は常に [0, 1]。
-    /// 注意: t は Float64。結果を Float32（modulate や alpha）へ落とすのは呼び側の責務。
+    /// 注意: t は Float64。結果を Float32（color や alpha）へ落とすのは呼び側の責務。
     pub def tri(period: Float64, t: Float64): Float64 =
         if (period <= 0.0) 0.0
         else {

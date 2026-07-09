@@ -9,11 +9,11 @@
 /// selectedColor / hpBarFillColor / windowBgColor 等）は各 Scene にローカルのまま残す（過剰集約を避ける）。
 mod UITheme {
 
-    /// 標準の白。UI テキスト・枠・フォーカス枠・アクティブ駒 modulate・ダメージ数字・
+    /// 標準の白。UI テキスト・枠・フォーカス枠・アクティブ駒 color・ダメージ数字・
     /// 危険域タイルなど、多数の Scene が共通で使う基本色。
     pub def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 
-    /// 行動済み（待機 / acted）の駒を薄く見せる modulate 用グレー。
+    /// 行動済み（待機 / acted）の駒を薄く見せる color 用グレー。
     /// アクティブ駒は `white()`、行動済みは `dimmed()` という対のセマンティクスで使う。
     pub def dimmed(): Color = {r = 0.5f32, g = 0.5f32, b = 0.5f32}
 
@@ -28,7 +28,7 @@ mod UITheme {
     pub def panelBorder(): Color = {r = 0.165f32, g = 0.204f32, b = 0.271f32}
 
     /// 見出し（● コマンド）の淡い青。headerText #9cc0ff。
-    /// scene.json の header `modulate` と同期（test で pin）。
+    /// scene.json の header `color` と同期（test で pin）。
     pub def headerText(): Color = {r = 0.612f32, g = 0.753f32, b = 1.0f32}
 
     /// 項目本文の白に近いオフホワイト。labelText #eef1f7。menu `textColor` の真理点。
