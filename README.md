@@ -1,5 +1,7 @@
 # Flix Game Engine
 
+![sokoban rewind demo](examples/sokoban/gallery/rewind_demo.gif)
+
 A 2D game engine written in [Flix](https://flix.dev/). Games are built around
 a single immutable `World` value: systems are pure functions run each frame by
 a Bevy-style `App`, and every frame is rendered from the `World`. Rendering,
