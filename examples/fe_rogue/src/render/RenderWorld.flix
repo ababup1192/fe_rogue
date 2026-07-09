@@ -354,7 +354,7 @@ mod RenderWorld {
             tiles(DangerZoneScene.cells(),         DangerZoneScene.color(),        DangerZoneScene.alpha()) ::
             Nil)
 
-    // range の Tile NineSlice ノードは積まない（renderRangeOverlays が cells から直描きする）。
+    // range の Tile は描画物として積まない（renderRangeOverlays が cells から直描きする）。
 
     /// 選択カーソルの四隅 L字を World render System で直描きする。位置は `CursorState.renderPos`
     /// （スライド補間の視覚位置＝単一権威）、可視は `CursorState.visible`（`CursorScene.setVisible` が
