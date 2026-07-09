@@ -15,6 +15,7 @@ def main(): Unit \ IO =
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadParams)
                 |> App.withView(View.frame)
                 |> App.withAudio(Sfx.events)
+                |> App.withDebug(App.debugFromEnv())
                 |> App.launch
         } with LwjglLayer.withProject(".")
           with Fs.FileRead.runWithIO

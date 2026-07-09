@@ -265,6 +265,8 @@ mod TestUnitFixtures {
             def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 128.0, y = 128.0}})
             def getTextureInfo(_, k)        = k(None)
             def setCursor(_, k)             = k(())
+            def saveAnnotation(_, k)        = k(None)
+            def setDebugBadge(_, k)         = k(())
         }
 
     /// PlayerData.PartyQuery のスタブ。クロージャに閉じ込めた Data リストをそのまま返す。

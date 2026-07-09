@@ -109,6 +109,20 @@ mod GameEngine {
         zIndex   = Int32
     }
 
+    /// 注釈 1 件の書き出し依頼。ゲーム画面の気になる場所を矩形で囲んだとき、
+    /// その情報一式をファイルに残すために `saveAnnotation` へ渡す。
+    /// sprites / polygons は等倍・オーバーレイ無しの 1 フレームぶんの描画命令で、
+    /// ハンドラがこれを描き直してスクリーンショットを撮る。
+    /// json / readmeBody は呼び側が組み立て済みの本文をそのまま渡す（ハンドラは書くだけ）。
+    pub type alias AnnotationRequest = {
+        frame = Int64,          // 凍結中のフレーム番号
+        rect = Rect2.Rect2,     // 注釈の矩形（デザイン座標系・ズーム非依存）
+        json = String,          // annotation.json の本文
+        readmeBody = String,    // README.md の中ほどに挟む要約（見出しやコメント欄はハンドラが付ける）
+        sprites = List[Drawable],
+        polygons = List[PolygonRenderCmd]
+    }
+
     /// GPU インスタンスバッファ 1 タイル分のデータ
     /// tilemap loader (fe_rogue 側 `TileRendering.buildTileInstances` 等) が生成し、
     /// `initTileBuffer` で GPU にアップロードする。
@@ -146,6 +160,7 @@ mod GameEngine {
         case Space
         case Escape
         case F1
+        case F8
         case LeftShift
         case LeftCtrl
         case LeftSuper
@@ -156,7 +171,7 @@ mod GameEngine {
     pub def allKeys(): List[Key] =
         Key.W :: Key.A :: Key.S :: Key.D :: Key.Z :: Key.X :: Key.C :: Key.M :: Key.H ::
         Key.Up :: Key.Down :: Key.Left :: Key.Right ::
-        Key.Enter :: Key.Space :: Key.Escape :: Key.F1 ::
+        Key.Enter :: Key.Space :: Key.Escape :: Key.F1 :: Key.F8 ::
         Key.LeftShift :: Key.LeftCtrl :: Key.LeftSuper :: Nil
 
     /// マウスボタン
@@ -179,6 +194,8 @@ mod GameEngine {
     pub enum Cursor with Eq, ToString {
         /// 通常の矢印カーソル（エディタ非操作中・ハンドル外）
         case Default
+        /// 十字カーソル ＋（ゲーム内アノテーションの矩形指定など、正確に狙う操作）
+        case Crosshair
         /// 横方向の伸縮カーソル ←→（左右辺ハンドル）
         case HResize
         /// 縦方向の伸縮カーソル ↕（上下辺ハンドル）
@@ -223,6 +240,13 @@ mod GameEngine {
         def getTextureInfo(name: String): Option[TextureInfo]
         /// マウスカーソル形状を切り替える。連続して同じ Cursor を渡しても問題ない（冪等）
         def setCursor(cursor: Cursor): Unit
+        /// 注釈一式（screenshot.png / highlighted.png / annotation.json / README.md）を
+        /// debug/annotations/ 配下の新しいディレクトリへ書き出し、そのパスを返す。失敗時 None。
+        /// 保存に成功するとシャッター風の効果音を鳴らす。
+        def saveAnnotation(req: AnnotationRequest): Option[String]
+        /// デバッグモード中であることをウィンドウタイトルで示す。
+        /// true でタイトル末尾に「 (Debug)」を付け、false で元のタイトルへ戻す。
+        def setDebugBadge(enabled: Bool): Unit
     }
 
     /// オーディオエフェクト: サウンドの再生・停止・音量・ループ

@@ -22,6 +22,16 @@ mod LwjglLayer {
     import org.lwjgl.system.MemoryStack
     import org.lwjgl.system.MemoryUtil
     import java.lang.System
+    import java.lang.Exception
+    import java.lang.Math
+    import java.awt.BasicStroke
+    import java.awt.{Color => AwtColor}
+    import java.awt.image.BufferedImage
+    import java.io.File
+    import java.io.FileWriter
+    import java.time.LocalDateTime
+    import java.time.format.DateTimeFormatter
+    import javax.imageio.ImageIO
 
     // ========================================================================
     // GLFW Code Mapping (engine の論理キー → GLFW 数値コード)
@@ -45,6 +55,7 @@ mod LwjglLayer {
         case GameEngine.Key.Space     => 32
         case GameEngine.Key.Escape    => 256
         case GameEngine.Key.F1        => 290
+        case GameEngine.Key.F8        => 297
         case GameEngine.Key.LeftShift => 340
         case GameEngine.Key.LeftCtrl  => 341
         case GameEngine.Key.LeftSuper => 343
@@ -61,6 +72,7 @@ mod LwjglLayer {
     /// NW + SE → GLFW_RESIZE_NWSE_CURSOR、NE + SW → GLFW_RESIZE_NESW_CURSOR にエイリアス。
     def cursorShapeToGlfw(cursor: GameEngine.Cursor): Int32 = match cursor {
         case GameEngine.Cursor.Default    => 0x36001  // GLFW_ARROW_CURSOR
+        case GameEngine.Cursor.Crosshair  => 0x36003  // GLFW_CROSSHAIR_CURSOR
         case GameEngine.Cursor.HResize    => 0x36005  // GLFW_HRESIZE_CURSOR
         case GameEngine.Cursor.VResize    => 0x36006  // GLFW_VRESIZE_CURSOR
         case GameEngine.Cursor.AllResize  => 0x36009  // GLFW_RESIZE_ALL_CURSOR
@@ -70,6 +82,118 @@ mod LwjglLayer {
         case GameEngine.Cursor.NEResize   => 0x36008  // GLFW_RESIZE_NESW_CURSOR
         case GameEngine.Cursor.SWResize   => 0x36008  // GLFW_RESIZE_NESW_CURSOR
     }
+
+    // ========================================================================
+    // 注釈の書き出し（saveAnnotation ハンドラの下請け）
+    // ========================================================================
+
+    /// タイトルをディレクトリ名に使える形へ整える（英数字以外は "_" に置換）。
+    def sanitizeName(name: String): String =
+        name |> String.map(c -> if (Char.isLetter(c) or Char.isDigit(c)) c else '_')
+
+    /// 四捨五入で Int32 へ（非負前提。注釈矩形の px 変換用）。
+    def roundToInt(v: Float64): Int32 =
+        Float64.tryToInt32(v + 0.5) |> Option.getWithDefault(0)
+
+    /// 現在のフレームバッファを読み出して画像にする。GL は左下原点なので
+    /// 上下を反転しながら RGBA → RGB へ詰め替える。
+    def framebufferImage(fbW: Int32, fbH: Int32): BufferedImage \ IO =
+        region rc {
+            let buf = MemoryUtil.memAlloc(fbW * fbH * 4);
+            GL11.glReadPixels(0, 0, fbW, fbH, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buf);
+            let image = new BufferedImage(fbW, fbH, 1i32);
+            let pixels: Array[Int32, rc] = Array.empty(rc, fbW * fbH);
+            let xs = List.range(0, fbW);
+            List.forEach(y -> {
+                let srcRowStart = (fbH - 1 - y) * fbW;
+                List.forEach(x -> {
+                    let src = (srcRowStart + x) * 4;
+                    let r = Int32.bitwiseAnd(Int8.toInt32(buf.get(src)), 255);
+                    let g = Int32.bitwiseAnd(Int8.toInt32(buf.get(src + 1)), 255);
+                    let b = Int32.bitwiseAnd(Int8.toInt32(buf.get(src + 2)), 255);
+                    Array.put(r * 65536 + g * 256 + b, y * fbW + x, pixels)
+                }, xs)
+            }, List.range(0, fbH));
+            MemoryUtil.memFree(buf);
+            image.setRGB(0, 0, fbW, fbH, pixels, 0, fbW);
+            image
+        }
+
+    /// デザイン座標の矩形を、書き出し画像（左上原点）上の px 矩形へ変換する。
+    /// 黒帯（レターボックス / ピラーボックス）ぶんのオフセットも織り込む。
+    def designRectToImage(rect: Rect2.Rect2, fbW: Int32, fbH: Int32,
+                          designW: Float64, designH: Float64): {x = Int32, y = Int32, w = Int32, h = Int32} =
+        let (vpX, vpY, vpW, vpH) = RenderFrame.calcViewport(fbW, fbH, designW, designH);
+        let sx = Int32.toFloat64(vpW) / designW;
+        let sy = Int32.toFloat64(vpH) / designH;
+        // glViewport の vpY は下端基準。上下反転済みの画像では上端 = fbH - vpY - vpH
+        let topOffset = fbH - vpY - vpH;
+        { x = vpX + roundToInt(rect#position#x * sx),
+          y = topOffset + roundToInt(rect#position#y * sy),
+          w = roundToInt(rect#size#x * sx),
+          h = roundToInt(rect#size#y * sy) }
+
+    /// 画像に注釈矩形の赤枠を焼き込む（人間が見てすぐ分かる用。書き込み先は上書き）。
+    def burnHighlight(image: BufferedImage, rectPx: {x = Int32, y = Int32, w = Int32, h = Int32}): Unit \ IO =
+        let g = image.createGraphics();
+        g.setColor(new AwtColor(255, 32, 32));
+        g.setStroke(new BasicStroke(3.0f32));
+        g.drawRect(rectPx#x, rectPx#y, rectPx#w, rectPx#h);
+        g.dispose()
+
+    /// 画像を PNG として書く（親ディレクトリは呼び側が作成済み）。
+    def writePngFile(image: BufferedImage, path: String): Unit \ IO =
+        discard ImageIO.write(image, "png", new File(path))
+
+    /// テキストをファイルに書く。
+    def writeTextFile(path: String, content: String): Unit \ IO =
+        let writer = new FileWriter(path);
+        writer.write(content);
+        writer.close()
+
+    /// カメラのシャッター風の短い効果音を合成して OpenAL のソースにする。
+    /// 音の形: 硬い立ち上がりのノイズがすぐ減衰（幕が走る）→ 少し遅れて小さな
+    /// ノイズがもう 1 発（幕が戻る）。注釈の保存が成功したときに鳴らす。
+    def buildShutterSource(): Int32 \ IO =
+        let rate = 44100;
+        let sampleCount = rate * 15 / 100;  // 0.15 秒
+        let buf = MemoryUtil.memAlloc(sampleCount * 2);
+        def fill(i: Int32, seed: Int32): Unit \ IO = {
+            if (i >= sampleCount) ()
+            else {
+                // 線形合同法の白色ノイズ（-1.0〜1.0）
+                let nextSeed = seed * 1103515245 + 12345;
+                let noise = Int32.toFloat64(Int32.remainder(nextSeed, 10000)) / 10000.0;
+                let t = Int32.toFloat64(i) / Int32.toFloat64(rate);
+                // 1 発目: 0 秒から 12ms で減衰 / 2 発目: 70ms から 20ms で減衰・小さめ
+                let env1 = Math.exp(0.0 - t / 0.012);
+                let env2 = if (t > 0.07) Math.exp(0.0 - (t - 0.07) / 0.02) * 0.55 else 0.0;
+                let sample = noise * (env1 + env2) * 0.5;
+                let s16 = Float64.tryToInt32(sample * 32000.0)
+                    |> Option.getWithDefault(0)
+                    |> Int32.tryToInt16
+                    |> Option.getWithDefault(0i16);
+                buf.putShort(i * 2, s16);
+                fill(i + 1, nextSeed)
+            }
+        };
+        fill(0, 20260710);
+        let alBuffer = AL10.alGenBuffers();
+        AL10.alBufferData(alBuffer, AL10.AL_FORMAT_MONO16, buf, rate);
+        MemoryUtil.memFree(buf);
+        let source = AL10.alGenSources();
+        AL10.alSourcei(source, AL10.AL_BUFFER, alBuffer);
+        source
+
+    /// README.md の全文（見出し・画像埋め込み・要約・リンク・コメント欄）を組み立てる。
+    def readmeText(args: {title = String, stamp = String, frame = Int64, body = String}): String =
+        "# 注釈: ${args#title} — frame ${args#frame}（${args#stamp}）\n\n"
+        + "![highlighted](highlighted.png)\n\n"
+        + "${args#body}\n\n"
+        + "- 機械可読データ: [annotation.json](annotation.json)\n"
+        + "- 素のフレーム: [screenshot.png](screenshot.png)\n\n"
+        + "## コメント\n\n"
+        + "（ここに修正指示を書いてください）\n"
 
     // ========================================================================
     // LWJGL Handler for GameEngine.Game / GameEngine.Audio effects
@@ -87,6 +211,10 @@ mod LwjglLayer {
         }
 
     pub def withLwjgl(config: GameEngine.EngineConfig, f: Unit -> a \ ef): a \ ef - GameEngine.Game - GameEngine.Audio + IO =
+        // GLFW と AWT は macOS で同じメインスレッド・GL を取り合って固まるため、
+        // この窓（GLFW）のプロセスでは AWT を headless に固定する。注釈のスクリーンショット
+        // 保存（BufferedImage / Graphics2D / ImageIO）はオフスクリーン描画なので headless でも動く。
+        discard System.setProperty("java.awt.headless", "true");
         if (not GLFW.glfwInit()) {
             println("GLFW init failed");
             bug!("GLFW failed")
@@ -164,6 +292,8 @@ mod LwjglLayer {
 
         println("  Loading sounds...");
         let audioRegistry = RenderAudio.loadAudioRegistry(config#soundManifest);
+        // 注釈保存時のシャッター音（合成なのでゲーム側の音声マニフェストに依存しない）
+        let shutterSource = buildShutterSource();
         println("  Audio ready");
 
         let timeHolder = Array#{System.nanoTime()} @ Static;
@@ -176,6 +306,7 @@ mod LwjglLayer {
         // 6 種のスタンダードカーソルを起動時に作成して再利用する。
         // setCursor 呼び出しの度に都度作成 / 破棄すると重く、リーク源にもなる
         let arrowCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.Default));
+        let crosshairCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.Crosshair));
         let hResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.HResize));
         let vResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.VResize));
         let allResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.AllResize));
@@ -189,6 +320,7 @@ mod LwjglLayer {
         let lastCursorHolder = Array#{(GameEngine.Cursor.Default: GameEngine.Cursor)} @ Static;
         let cursorOf = cursor -> match cursor {
             case GameEngine.Cursor.Default    => arrowCursor
+            case GameEngine.Cursor.Crosshair  => crosshairCursor
             case GameEngine.Cursor.HResize    => hResizeCursor
             case GameEngine.Cursor.VResize    => vResizeCursor
             case GameEngine.Cursor.AllResize  => allResizeCursor
@@ -421,10 +553,57 @@ mod LwjglLayer {
                 } else ();
                 k(())
             }
+            def saveAnnotation(req, k) = {
+                let saved = try {
+                    let now = LocalDateTime.now();
+                    let dirStamp = now.format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+                    let readableStamp = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+                    let dirPath = "debug/annotations/${dirStamp}_${sanitizeName(config#title)}_f${req#frame}";
+                    discard (new File(dirPath)).mkdirs();
+                    // 等倍のフレームを back buffer に描き直して読む。swap しないので画面には
+                    // 映らず、次のフレーム描画がそのまま上書きする。
+                    let stack = MemoryStack.stackPush();
+                    let wBuf = stack.mallocInt(1);
+                    let hBuf = stack.mallocInt(1);
+                    GLFW.glfwGetFramebufferSize(window, wBuf, hBuf);
+                    let fbW = wBuf.get(0);
+                    let fbH = hBuf.get(0);
+                    discard MemoryStack.stackPop();
+                    RenderFrame.renderFrameMixed({
+                        spriteShader = spriteShader, tileShader = tileShader, vao = vao,
+                        registry = registry, clearColor = config#clearColor,
+                        designW = screenW, designH = screenH, fbW = fbW, fbH = fbH,
+                        sprites = req#sprites, tileMaps = (Nil: List[GameEngine.TileMapRenderCmd]),
+                        polygons = req#polygons, polyVao = polyVao, polyVbo = polyVbo});
+                    let image = framebufferImage(fbW, fbH);
+                    writePngFile(image, "${dirPath}/screenshot.png");
+                    burnHighlight(image, designRectToImage(req#rect, fbW, fbH, screenW, screenH));
+                    writePngFile(image, "${dirPath}/highlighted.png");
+                    writeTextFile("${dirPath}/annotation.json", req#json);
+                    writeTextFile("${dirPath}/README.md",
+                        readmeText({title = config#title, stamp = readableStamp,
+                                    frame = req#frame, body = req#readmeBody}));
+                    println("annotation saved: ${dirPath}");
+                    AL10.alSourceStop(shutterSource);
+                    AL10.alSourcePlay(shutterSource);
+                    Some(dirPath)
+                } catch {
+                    case ex: Exception =>
+                        println("annotation save failed: ${ex.getMessage()}");
+                        None
+                };
+                k(saved)
+            }
+            def setDebugBadge(enabled, k) = {
+                let title = if (enabled) "${config#title} (Debug)" else config#title;
+                GLFW.glfwSetWindowTitle(window, title);
+                k(())
+            }
         };
 
         // セッション終了時にカーソルハンドルを開放
         GLFW.glfwDestroyCursor(arrowCursor);
+        GLFW.glfwDestroyCursor(crosshairCursor);
         GLFW.glfwDestroyCursor(hResizeCursor);
         GLFW.glfwDestroyCursor(vResizeCursor);
         GLFW.glfwDestroyCursor(allResizeCursor);
@@ -432,6 +611,7 @@ mod LwjglLayer {
         GLFW.glfwDestroyCursor(neswResizeCursor);
 
         // OpenAL cleanup
+        AL10.alDeleteSources(shutterSource);
         Map.forEach((_, src) -> AL10.alDeleteSources(src), audioRegistry);
         ALC10.alcDestroyContext(alContext);
         discard ALC10.alcCloseDevice(alDevice);

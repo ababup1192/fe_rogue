@@ -47,6 +47,8 @@ mod SnapshotSupport {
             def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 240.0, y = 128.0}})
             def getTextureInfo(name, k)     = k(Map.get(name, texInfo))
             def setCursor(_, k)             = k(())
+            def saveAnnotation(_, k)        = k(None)
+            def setDebugBadge(_, k)         = k(())
         }
 
     // ════════════════════════════════════════════════════════

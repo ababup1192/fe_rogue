@@ -14,3 +14,5 @@ lib/
 !**/src/lib/**
 crash_report_*.txt
 hs_err_pid*.log
+# ゲーム内アノテーション（F8 → 矩形ドラッグ）の書き出し先
+debug/

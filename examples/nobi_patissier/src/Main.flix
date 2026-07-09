@@ -7,6 +7,7 @@ def main(): Unit \ IO =
     else {
         run {
             App.make({ stub = 0 })
+                |> App.withDebug(App.debugFromEnv())
                 |> App.launch
         } with LwjglLayer.withProject(".")
           with Fs.FileRead.runWithIO

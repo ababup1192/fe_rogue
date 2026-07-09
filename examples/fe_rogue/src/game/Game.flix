@@ -770,7 +770,10 @@ mod Game {
                                renderFrame(catalogs, world2);
                                world2
                            }))
-                        |> App.quitWhen((_frame, _world) -> checked_ecast(false));
+                        |> App.quitWhen((_frame, _world) -> checked_ecast(false))
+                        // デバッグ機能の有効化（DEBUG 環境変数）。ただし fe_rogue は view = None
+                        // （自前描画）のため、F8 注釈が実際に効くのは view 供給へ対応してから。
+                        |> App.withDebug(App.debugFromEnv());
                 App.launch(app)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
             // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /
