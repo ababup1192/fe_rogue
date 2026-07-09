@@ -25,7 +25,7 @@ mod TestMapIntegration {
     // 実マップ定義 — World_Level_0.ldtkl の Walls レイヤ
     // ========================================================================
 
-    // ASCII map (# = wall, . = floor, Y は下方向に増加・LDTK / Godot 準拠)
+    // ASCII map (# = wall, . = floor, Y は下方向に増加)
     //  y= 0: #############
     //  y= 1: ##.......#..#
     //  y= 2: #..#####.#..#

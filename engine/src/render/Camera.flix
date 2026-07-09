@@ -11,7 +11,7 @@
 ///
 ///   - DragCenter: カメラの中心がターゲットに追従する（デフォルト）
 ///   - FixedTopLeft: ビューポートの左上をターゲットに固定する
-pub enum Camera2DAnchorMode with Eq, Order, ToString {
+pub enum CameraAnchorMode with Eq, Order, ToString {
     case DragCenter
     case FixedTopLeft
 }
@@ -20,7 +20,7 @@ pub enum Camera2DAnchorMode with Eq, Order, ToString {
 ///
 ///   - PhysicsProcess: physicsProcess で更新する
 ///   - IdleProcess: process（毎フレーム）で更新する（デフォルト）
-pub enum Camera2DProcessCallback with Eq, Order, ToString {
+pub enum CameraProcessCallback with Eq, Order, ToString {
     case PhysicsProcess
     case IdleProcess
 }
@@ -32,8 +32,8 @@ pub enum Camera {
         offset = Vec2.Vec2,
         zoom = Vec2.Vec2,
         enabled = Bool,
-        anchorMode = Camera2DAnchorMode,
-        processCallback = Camera2DProcessCallback,
+        anchorMode = CameraAnchorMode,
+        processCallback = CameraProcessCallback,
         ignoreRotation = Bool,
         limitLeft = Int32,
         limitTop = Int32,
@@ -76,8 +76,8 @@ mod Camera {
             offset = {x = 0.0, y = 0.0},
             zoom = {x = 1.0, y = 1.0},
             enabled = true,
-            anchorMode = Camera2DAnchorMode.DragCenter,
-            processCallback = Camera2DProcessCallback.IdleProcess,
+            anchorMode = CameraAnchorMode.DragCenter,
+            processCallback = CameraProcessCallback.IdleProcess,
             ignoreRotation = false,
             limitLeft = -10_000_000,
             limitTop = -10_000_000,
@@ -376,7 +376,7 @@ mod Camera {
         // smoothPosition はワールド座標扱い（CameraScene が常に root に置く）。
         let viewBase = if (isFollowingActive(camera)) r#smoothPosition else globalPos;
         match r#anchorMode {
-            case Camera2DAnchorMode.DragCenter =>
+            case CameraAnchorMode.DragCenter =>
                 // screen = (world - screenCenter) * zoom + halfScreen
                 //        = world * zoom - (screenCenter * zoom - halfScreen)
                 let screenCenter = clampedScreenCenter(viewBase, r);
@@ -385,7 +385,7 @@ mod Camera {
                 { scale = zoom,
                   offset = {x = screenCenter#x * zoom#x - halfW,
                             y = screenCenter#y * zoom#y - halfH} }
-            case Camera2DAnchorMode.FixedTopLeft =>
+            case CameraAnchorMode.FixedTopLeft =>
                 // screen = (world - (viewBase + offset)) * zoom
                 //        = world * zoom - (viewBase + offset) * zoom
                 let rawX = viewBase#x + r#offset#x;
@@ -400,8 +400,8 @@ mod Camera {
     def clampedScreenCenter(base: Vec2.Vec2,
                              r: {transform = Transform, visual = Visual,
                                  offset = Vec2.Vec2, zoom = Vec2.Vec2, enabled = Bool,
-                                 anchorMode = Camera2DAnchorMode,
-                                 processCallback = Camera2DProcessCallback,
+                                 anchorMode = CameraAnchorMode,
+                                 processCallback = CameraProcessCallback,
                                  ignoreRotation = Bool,
                                  limitLeft = Int32, limitTop = Int32,
                                  limitRight = Int32, limitBottom = Int32,

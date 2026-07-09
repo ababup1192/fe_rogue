@@ -10,7 +10,7 @@ mod RenderWorld {
     /// store、死亡点滅 alpha=dyingElapsed→`EnemyScene.deathBlinkAlpha`。
     /// 位置は `World.visualPosOf`（静止=セル中心／移動=renderPos 補間／lunge=往復導出）。
     /// 可視ゲート: 味方 hidden=playerHidden store、敵=明るい穴 `holesOpt`（fog 由来の共有 lit ゲート）。
-    /// 重なり順は Godot の Y-sort 準拠「画面下（y 大）ほど手前」＝描画位置 y の昇順に並べて描く
+    /// 重なり順は「画面下（y 大）ほど手前」＝描画位置 y の昇順に並べて描く
     /// （zIndex は共通の spriteZIndex・同 z 内は列順が描画順。同 y は味方→敵の安定順）。
     pub def renderUnits(world: World, holesOpt: Option[List[GridRect]],
                          transform: Projection.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =

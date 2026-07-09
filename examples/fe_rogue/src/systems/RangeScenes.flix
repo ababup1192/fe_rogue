@@ -12,7 +12,7 @@
 /// この mod は「セル群を 45° 斜線ハッチ NineSlice の box Drawable に落とす」ことだけを担う。
 ///
 /// 各セルは塗り（半透明）＋45° 斜線ハッチ＋枠線＋角丸の NineSlice で描く
-/// （Godot StyleBoxFlat + 斜線シェーダ相当。画像テクスチャは使わない）。
+/// （塗り矩形と斜線シェーダで描く。画像テクスチャは使わない）。
 /// 呼び出し側は「色相 color」と「強調度 alpha」だけ渡し、塗り/縞/枠の
 /// 不透明度と縞色/枠色は本 mod が color から派生させる（CSS の
 /// repeating-linear-gradient + border デザインを 26px タイルへ縮小したもの）。

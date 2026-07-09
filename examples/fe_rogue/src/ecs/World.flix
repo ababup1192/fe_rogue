@@ -123,7 +123,7 @@ pub enum World {
                  // 範囲オーバーレイ 7 種のセル集合（Option 在/不在=表示トグル）。フェーズ限定の view 状態だが
                  // 入力/遷移が書き render が読む論理値。World 単一権威（production は inline facade・test は `RangeOverlayState.withState` Ref）。
                  rangeOverlay = RangeOverlayState.Data,
-                 // アイテム窓の選択状態（カテゴリ index / 一括選択マーク）。行カーソルは Godot ItemList 自前所有。
+                 // アイテム窓の選択状態（カテゴリ index / 一括選択マーク）。行カーソルは UI のリスト表示側が持つ。
                  // World 単一権威（production は inline facade・test は `ItemMenuState.withState` Ref）。
                  itemMenu = ItemMenuState.Data,
                  // 物交換窓のセッション状態（members/focus/pick/origin/marks/markPane）。行カーソルは World-entity UI selection。

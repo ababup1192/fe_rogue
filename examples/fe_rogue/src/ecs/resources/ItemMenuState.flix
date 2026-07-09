@@ -2,7 +2,7 @@
 ///
 /// `ItemMenuUi`（`ItemSelect` / `ItemActionSelect` フェーズのインベントリ窓）が持つ
 /// 「いま見ているカテゴリ index」と「一括操作の複数選択マーク」をまとめて持つ。
-/// 行カーソル（selectedIndex）は Godot 標準の `ItemList` ノードが自前で所有するのでここには持たない。
+/// 行カーソル（selectedIndex）はリスト UI 側が持つのでここには持たない。
 /// 見た目（行・アイコン・バッジ・ヒント）は `ItemMenuUi` の view が毎フレーム World の在庫から
 /// 組み直して描き、この resource は選択状態だけを持つ。
 ///
