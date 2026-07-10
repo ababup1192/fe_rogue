@@ -258,4 +258,100 @@ mod TestMapLoader {
                                                  (Set#{}: Set[(Int32, Int32)]), 26);
         Assert.assertEq(expected = true, List.isEmpty(tiles))
 
+    // ── autoRules「帯フック直下の縦細壁」: 天井帯が縦へ折れた直下の幅 1 壁 ──
+    //
+    // 天井帯の端がフックで縦へ折れ、その直下を幅 1 の壁が「左=通路床・右=部屋の壁面」の
+    // 間で 2 セル降りて足元の正面壁へ届く構成（f591 注釈の再現）。1 段目のキー "EEWW" は
+    // wallMap では細い縦線 (7,1) に落ちてほぼ見えず、2 段目は「上出口凸右」の └ が
+    // 誤発火して柱が途切れて見えた。専用ルールで上から (0,2)/(11,1) を重ねて繋ぐ。
+    //
+    //        col: 0   1   2   3   4
+    //   row 2:    W   W  [A]  ,   ,      A=1段目 (0,2)。右上の空きは帯フックの位置
+    //   row 3:   [.] [.] [B]  W   W      B=2段目 (11,1)。左=通路床・右=部屋の壁面
+    //   row 4:    W  [.]  W  [.]  W      col3 = 部屋の床
+    //
+    // 左空版はこの左右鏡像（チップは両版とも同じ）。
+    // 実データ（room_*.material.json 先頭 4 本・先頭挿入運用）と同じ AutoRule 値で pin する。
+
+    /// 帯フック直下ミニ盤面の床マスク（上の図の [.] セル + 下へ続く通路/部屋の床）。
+    def hookThinWallFloorMask(): Set[(Int32, Int32)] =
+        Set#{(0, 3), (1, 3), (1, 4), (1, 5), (1, 6), (2, 6), (3, 6), (3, 4), (3, 5)}
+
+    /// room_*.material.json 先頭の「帯フック直下の縦細壁」4 ルールと同じ値。
+    def hookThinWallRules(): List[MapResource.AutoRule] =
+        let a = MapResource.PatternCell.Unspecified;
+        let w = MapResource.PatternCell.Value(2);
+        let f = MapResource.PatternCell.Value(1);
+        let e = MapResource.PatternCell.Nothing;
+        let rule = (name, pattern, srcX, srcY) ->
+            ({name = name, size = 5, pattern = pattern, srcX = srcX, srcY = srcY}: MapResource.AutoRule);
+        // 1 段目: 上とその隣=空（帯フック側）・横並びの帯=壁・下へ壁が続く → (0,2)=(0,52)
+           rule("帯フック直下の縦細壁(右空)", Vector#{a, a, a, a, a,
+                                                      a, e, e, a, a,
+                                                      a, w, w, e, a,
+                                                      a, f, w, w, a,
+                                                      a, a, w, a, a}, 0, 52)
+        :: rule("帯フック直下の縦細壁(左空)", Vector#{a, a, a, a, a,
+                                                      a, a, e, e, a,
+                                                      a, e, w, w, a,
+                                                      a, w, w, f, a,
+                                                      a, a, w, a, a}, 0, 52)
+        // 2 段目: 上=1段目・片側=通路床/逆側=部屋の壁・その下は左右とも床の背骨 → (11,1)=(286,26)
+        :: rule("帯フック下二段目の縦細壁(右壁)", Vector#{a, a, e, a, a,
+                                                          a, w, w, e, a,
+                                                          a, f, w, w, a,
+                                                          a, f, w, f, a,
+                                                          a, a, w, a, a}, 286, 26)
+        :: rule("帯フック下二段目の縦細壁(左壁)", Vector#{a, a, e, a, a,
+                                                          a, e, w, w, a,
+                                                          a, w, w, f, a,
+                                                          a, f, w, f, a,
+                                                          a, a, w, a, a}, 286, 26)
+        :: Nil
+
+    /// 帯フック直下の 2 セル（col2 = px 52・y=52/78）にだけ発火し、
+    /// 出力チップが上から (0,2)/(11,1) になる。
+    @Test
+    def testHookThinWallRulesFireBelowHookOnly(): Unit \ Assert =
+        let floorMask = hookThinWallFloorMask();
+        let wallCells = MapLoader.computeWallCells(floorMask, 7, 7);
+        let grid = MapLoader.buildIntGrid(floorMask, wallCells, 7, 7);
+        let tiles = MapLoader.buildAutoRuleTiles(grid, 7, 7, hookThinWallRules(),
+                                                 (Set#{}: Set[(Int32, Int32)]), 26);
+        Assert.assertEq(
+            expected = (52.0, 52.0, 0.0, 52.0) :: (52.0, 78.0, 286.0, 26.0) :: Nil,
+            tiles |> List.map(t -> (t#px#x, t#px#y, t#srcX, t#srcY)) |> List.sort)
+
+    /// 左右鏡像の盤面では鏡像版 2 ルールが同じチップで発火する（鏡像セットの pin）。
+    @Test
+    def testHookThinWallMirrorRulesFireOnMirroredBoard(): Unit \ Assert =
+        let mirrored = hookThinWallFloorMask()
+            |> Set.map(cell -> {let (col, row) = cell; (6 - col, row)});
+        let wallCells = MapLoader.computeWallCells(mirrored, 7, 7);
+        let grid = MapLoader.buildIntGrid(mirrored, wallCells, 7, 7);
+        let tiles = MapLoader.buildAutoRuleTiles(grid, 7, 7, hookThinWallRules(),
+                                                 (Set#{}: Set[(Int32, Int32)]), 26);
+        Assert.assertEq(
+            expected = (104.0, 52.0, 0.0, 52.0) :: (104.0, 78.0, 286.0, 26.0) :: Nil,
+            tiles |> List.map(t -> (t#px#x, t#px#y, t#srcX, t#srcY)) |> List.sort)
+
+    /// 背骨壁盤面（縦細壁ルールの担当）と部屋だけの盤面では 1 本も発火しない
+    /// （先頭挿入なので、既存の縦細壁ルールからセルを奪わないことの pin）。
+    @Test
+    def testHookThinWallRulesSilentElsewhere(): Unit \ Assert =
+        let spineWalls = MapLoader.computeWallCells(thinSpineFloorMask(), 5, 8);
+        let spineGrid = MapLoader.buildIntGrid(thinSpineFloorMask(), spineWalls, 5, 8);
+        let spineTiles = MapLoader.buildAutoRuleTiles(spineGrid, 5, 8, hookThinWallRules(),
+                                                      (Set#{}: Set[(Int32, Int32)]), 26);
+        let roomOnly = List.range(5, 8)
+            |> List.flatMap(col -> List.range(4, 7) |> List.map(row -> (col, row)))
+            |> List.toSet;
+        let roomWalls = MapLoader.computeWallCells(roomOnly, 9, 8);
+        let roomGrid = MapLoader.buildIntGrid(roomOnly, roomWalls, 9, 8);
+        let roomTiles = MapLoader.buildAutoRuleTiles(roomGrid, 9, 8, hookThinWallRules(),
+                                                     (Set#{}: Set[(Int32, Int32)]), 26);
+        Assert.assertEq(
+            expected = (true, true),
+            (List.isEmpty(spineTiles), List.isEmpty(roomTiles)))
+
 }

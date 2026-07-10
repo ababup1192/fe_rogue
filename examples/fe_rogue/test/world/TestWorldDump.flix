@@ -90,6 +90,46 @@ def testWorldDumpMapRowsVoidGlyph(): Unit \ Assert =
                {materialId = "room_1", floorCells = Set#{(2, 1), (0, 2)}})));
     Assert.assertEq(expected = "+#," :: ",,." :: ".#," :: Nil, WorldDump.mapRows(Nil, world))
 
+/// 水路入りの 3×3 盤面。壁は (1,0)(1,2)(0,2) だが (1,0) は床セル集合にも入る
+/// （水路 = 通行不可なのに床として描かれるセル）。(0,2) はどの描画床の 8 近傍でもない。
+///
+///   . ~ .      ~ = 水路（壁かつ描画床） / それ以外の壁 = W
+///   . . F      F = 床セル集合 {(1,0), (2,1)}
+///   W W .
+def worldDumpTroughTerrainFixture(): MapSnapshot =
+    { tileSize = 26.0,
+      usedRect = { position = {x = 0, y = 0}, size = {x = 3, y = 3} },
+      wallCells = Set#{(1, 0), (1, 2), (0, 2)},
+      mapGlobal = {x = 0.0, y = 0.0},
+      placements = Nil }
+
+/// 通行不可でも床セル集合に入るセル（水路）は地図で `~` になり、純粋な壁 `#` と区別される。
+/// タイルベイクは水路を床として数えるので、再現器が地図から床マスクを正しく復元できる。
+///
+///   +~,      1 行目: カーソル・水路・void
+///   ,,.      2 行目: void・void・床
+///   ##,      3 行目: 壁・壁・void
+@Test
+def testWorldDumpMapRowsTroughGlyph(): Unit \ Assert =
+    let world = World.empty()
+        |> World.applyCmd(World.Cmd.SetMapSnapshot(Some(worldDumpTroughTerrainFixture())))
+        |> World.applyCmd(World.Cmd.SetMapFloorInfo(Some(
+               {materialId = "room_2", floorCells = Set#{(1, 0), (2, 1)}})));
+    Assert.assertEq(expected = "+~," :: ",,." :: "##," :: Nil, WorldDump.mapRows(Nil, world))
+
+/// 床セル集合ありの壁キーはタイルベイクと同じ基準: W=壁リング（描画床の 8 近傍）所属・
+/// F=床セル集合所属・E=それ以外。(1,1) は上の水路 (1,0) が F・下 (1,2) と左 (0,1) が
+/// リングで W → "FFWW"。(0,1) の下 (0,2) は通行不可でもリング外なので E → "WWEE"
+/// （地形基準だと W と出て、実際に焼かれるチップとずれる）。
+@Test
+def testWorldDumpWallTritKeyUsesBakeRing(): Unit \ Assert =
+    let terrain = worldDumpTroughTerrainFixture();
+    let floorCells = Some(Set#{(1, 0), (2, 1)});
+    Assert.assertEq(
+        expected = ("FFWW", "WWEE"),
+        (WorldDump.wallTritKey({x = 1, y = 1}, floorCells, terrain),
+         WorldDump.wallTritKey({x = 0, y = 1}, floorCells, terrain)))
+
 /// MapFloorInfo store の round-trip: seed した materialId / 床セル集合が読め、
 /// 未 seed（World.empty）は None。
 @Test

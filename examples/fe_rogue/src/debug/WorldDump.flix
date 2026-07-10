@@ -26,7 +26,7 @@ mod WorldDump {
             "players"     => JArray(playerViews |> List.map(unitJson) |> List.toVector),
             "enemies"     => JArray(enemyViews |> List.map(unitJson) |> List.toVector),
             "map"         => mapJson(allViews, world),
-            "mapLegend"   => JString("# = 壁, . = 床, , = 盤内の空(void), 空白 = 範囲外, P = 味方, E = 敵, + = カーソル, C = 宝箱, i = 床アイテム"),
+            "mapLegend"   => JString("# = 壁, ~ = 描画床(通行不可・水路等), . = 床, , = 盤内の空(void), 空白 = 範囲外, P = 味方, E = 敵, + = カーソル, C = 宝箱, i = 床アイテム"),
             "cellsInRect" => JArray(cellsUnder(rect, world)
                                     |> List.map(cell -> cellDetailJson(cell, allViews, world))
                                     |> List.toVector)
@@ -101,6 +101,8 @@ mod WorldDump {
     /// セル 1 個ぶんの地図記号。重なったときは 駒 > カーソル > 宝箱・床アイテム > 地形 の順に勝つ
     /// （調査で最も見たいものを上に出す）。床セル集合があれば「範囲内だが床が無い空間（void）」を
     /// `,` として床と区別する（タイル選択は床/void で違うチップを選ぶため、地図もその粒度で出す）。
+    /// 通行不可なのに床セル集合に入っているセル（水路など、床として描かれる装飾）は `~`。
+    /// タイル選択はこのセルを床として数えるので、`#` と混ぜると再現器のキー計算が全部ずれる。
     def mapGlyph(cell: Grid.Cell, allViews: List[UnitView], world: World, terrain: MapSnapshot): String =
         match List.find(unit -> unit#pos#x == cell#x and unit#pos#y == cell#y, allViews) {
             case Some(unit) => match unit#faction {
@@ -112,6 +114,7 @@ mod WorldDump {
                 if (cursor#x == cell#x and cursor#y == cell#y) "+"
                 else if (Option.nonEmpty(World.chestAtOf(cell, world))) "C"
                 else if (Option.nonEmpty(World.groundItemAtOf(cell, world))) "i"
+                else if (MapSnapshot.isWall(cell, terrain) and isFloorCell(cell, world, terrain)) "~"
                 else if (MapSnapshot.isWall(cell, terrain)) "#"
                 else if (isFloorCell(cell, world, terrain)) "."
                 else if (MapSnapshot.isFloor(cell, terrain)) ","
@@ -152,19 +155,27 @@ mod WorldDump {
         { x = (screenPos#x + center#x * zoom#x - halfW) / zoom#x,
           y = (screenPos#y + center#y * zoom#y - halfH) / zoom#y }
 
-    /// セル 1 個の真実: 地形（Wall/Floor/Void）・壁なら TRBL キー・居る駒・宝箱・床アイテム。
+    /// セル 1 個の真実: 地形（Wall/Floor/Void）・TRBL キー・居る駒・宝箱・床アイテム。
     /// Void は「床でも壁でもない」で、盤面の範囲内（部屋の外の暗がり）と範囲外の両方を含む
     /// （タイル選択の trit キーもこの 2 つを同じ E として扱う）。
+    /// terrain は通行可否（ゲームプレイ）、wallKey はタイル選択（描画）の真実で、基準が違う:
+    /// wallKey は壁リング（描画床の 8 近傍）のセルに出す。地形が Void でもリングに入って
+    /// いれば壁チップが焼かれるので出し、逆に水路などの描画床セルには出さない。
     def cellDetailJson(cell: Grid.Cell, allViews: List[UnitView], world: World): Json =
         let terrain = World.terrainOrBug(world);
         let floorCells = World.mapFloorInfoOf(world) |> Option.map(info -> info#floorCells);
+        let ringOpt = ringCellsOf(floorCells, terrain);
         let isWall = MapSnapshot.isWall(cell, terrain);
+        let bakesWallChip = match ringOpt {
+            case Some(ring) => Set.memberOf((cell#x, cell#y), ring)
+            case None       => isWall
+        };
         JObject(Map#{
             "pos"     => cellJson(cell),
             "terrain" => JString(if (isWall) "Wall"
                                  else if (isFloorCell(cell, world, terrain)) "Floor"
                                  else "Void"),
-            "wallKey" => if (isWall) JString(wallTritKey(cell, floorCells, terrain)) else JNull,
+            "wallKey" => if (bakesWallChip) JString(wallTritKey(cell, floorCells, terrain)) else JNull,
             "chips"   => JArray(World.tileChipsAtOf(cell, world)
                                 |> List.map(cellJson) |> List.toVector),
             "units"   => JArray(allViews
@@ -179,25 +190,38 @@ mod WorldDump {
         })
 
     /// 壁セルの TRBL 4 文字キー（上右下左、W=壁 F=床 E=どちらでもない）。material の wallMap を
-    /// 引くキーと同じ読み方（MapLoader.trblTritKeyAt と同義）。`floorCells`（合成後の床セル集合）が
-    /// あればレンダラと同一基準で F/E を区別する。None なら「範囲内かつ非壁 = F」に落ちるため、
-    /// 盤内 void が F と出る（旧挙動。正確なキーが要る調査では床セル集合を必ず渡す）。
+    /// 引くキーと同じ読み方・同じ基準（MapLoader.trblTritKeyAt と同義）。`floorCells`（合成後の
+    /// 床セル集合）があれば W=壁リング所属 / F=床セル集合所属 / E=それ以外 で判定するため、
+    /// 通行不可でも床として描かれるセル（水路等）は F、リング外の通行不可セルは E になる。
+    /// None なら地形基準（壁=W・範囲内かつ非壁=F）に落ちるため、盤内 void が F と出る
+    /// （正確なキーが要る調査では床セル集合を必ず渡す）。
     /// キー欠落・キー衝突による黒い穴を、スクショと突き合わせて特定するための値。
     pub def wallTritKey(cell: Grid.Cell, floorCells: Option[Set[(Int32, Int32)]], terrain: MapSnapshot): String =
-        tritOf({x = cell#x, y = cell#y - 1}, floorCells, terrain)
-        + tritOf({x = cell#x + 1, y = cell#y}, floorCells, terrain)
-        + tritOf({x = cell#x, y = cell#y + 1}, floorCells, terrain)
-        + tritOf({x = cell#x - 1, y = cell#y}, floorCells, terrain)
+        let ringOpt = ringCellsOf(floorCells, terrain);
+        tritOf({x = cell#x, y = cell#y - 1}, floorCells, ringOpt, terrain)
+        + tritOf({x = cell#x + 1, y = cell#y}, floorCells, ringOpt, terrain)
+        + tritOf({x = cell#x, y = cell#y + 1}, floorCells, ringOpt, terrain)
+        + tritOf({x = cell#x - 1, y = cell#y}, floorCells, ringOpt, terrain)
+
+    /// タイルベイクと同じ壁リング（描画床の 8 近傍で床でないセル）。
+    /// 床セル集合が無い画面では None（地形基準の判定に落ちる）。
+    def ringCellsOf(floorCells: Option[Set[(Int32, Int32)]], terrain: MapSnapshot): Option[Set[(Int32, Int32)]] =
+        floorCells |> Option.map(cells ->
+            MapLoader.computeWallCells(cells, terrain#usedRect#size#x, terrain#usedRect#size#y))
 
     /// 隣セル 1 方向ぶんの 3 値: 壁 W / 床 F / どちらでもない E。
-    def tritOf(cell: Grid.Cell, floorCells: Option[Set[(Int32, Int32)]], terrain: MapSnapshot): String =
-        if (MapSnapshot.isWall(cell, terrain)) "W"
-        else {
-            let isFloor = match floorCells {
-                case Some(cells) => Set.memberOf((cell#x, cell#y), cells)
-                case None        => MapSnapshot.isFloor(cell, terrain)
-            };
-            if (isFloor) "F" else "E"
+    /// リングがあればリング所属 → 床セル集合所属 → E の順（MapLoader.tritAt と同じ）。
+    def tritOf(cell: Grid.Cell, floorCells: Option[Set[(Int32, Int32)]],
+               ringOpt: Option[Set[(Int32, Int32)]], terrain: MapSnapshot): String =
+        match (ringOpt, floorCells) {
+            case (Some(ring), Some(cells)) =>
+                if (Set.memberOf((cell#x, cell#y), ring)) "W"
+                else if (Set.memberOf((cell#x, cell#y), cells)) "F"
+                else "E"
+            case _ =>
+                if (MapSnapshot.isWall(cell, terrain)) "W"
+                else if (MapSnapshot.isFloor(cell, terrain)) "F"
+                else "E"
         }
 
     /// グリッド座標を {x, y} の JSON へ。

@@ -31,7 +31,10 @@ F8 注釈チケット（`examples/fe_rogue/debug/annotations/<チケット>/`）
 ### 1. チケットを読む
 
 world.json の `cellsInRect`（pos / chips / wallKey / terrain）で対象セルと現状チップが分かる。
-`map`（`.`=床 `,`=盤内void 空白=範囲外）と `materialId` が再現の入力。
+`map`（`.`=床 `~`=描画床(通行不可・水路等) `,`=盤内void 空白=範囲外）と `materialId` が再現の入力。
+`~` はタイル選択では床として数える（terrain は Wall でも、床マスク＝描画床基準）。
+wallKey もベイクと同じリング基準（W=壁リング所属 / F=描画床 / E=それ以外）で、
+terrain（通行可否）とは基準が違うことに注意。
 highlighted.png は「どう見えているか」の確認用。
 
 world.json に `materialId` が無い旧形式なら、新しい注釈を取り直してもらう。
@@ -112,4 +115,6 @@ ID は `gallery/tileset_green_chip_ids.png` の「(列,行)」。ユーザーと
   `--cell` でルール名を確認し、新ルールは漏れているケースだけを埋める（例: 「長い L」は既存
   「上出口凸左/右」担当、「短い L（縦壁が角の直上で終わる）」だけ新ルール）。
 - manual タイルのセルは autoRules 抑止 + dump の chips に余分として現れる（再現器は写せない）。
+- **material を更新すると旧チケットの校正は MISMATCH になる**（ダンプは撮影時のベイク、
+  再現器は現在の material を読むため）。校正の合否は新しく撮ったチケットでだけ判断する。
 - 左右対称の地形は**鏡像ルールもセットで**足す（片方だけ直すと逆側のチケットがすぐ来る）。
