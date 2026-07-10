@@ -8,6 +8,7 @@
   "maxFallSpeed": 900.0,
   "maxRunSpeed": 160.0,
   "dashMult": 1.75,
+  "dashAccel": 80.0,
   "groundAccel": 900.0,
   "groundDecel": 1200.0,
   "airAccel": 500.0,

@@ -28,6 +28,10 @@ mod Trace {
     pub def holdRight(frames: Int32): List[Replay.Cue[Field.Input]] =
         hold({ right = true | idle() }, frames) :: Nil
 
+    /// 左キーを n フレーム押しっぱなしにする。
+    pub def holdLeft(frames: Int32): List[Replay.Cue[Field.Input]] =
+        hold({ left = true | idle() }, frames) :: Nil
+
     /// 右へ走りながらジャンプを n フレーム押す（1 フレーム目だけ押下エッジ）。
     pub def rightJump(frames: Int32): List[Replay.Cue[Field.Input]] =
         hold({ right = true, jumpDown = true, jumpPressed = true | idle() }, 1) ::
@@ -49,32 +53,94 @@ mod Trace {
     pub def restingPlayer(x: Float64): Field.Player =
         { pos = { x = x, y = Field.groundTop() - Field.playerRadius() },
           vel = Vec2.zero(), grounded = true,
-          coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0 }
+          coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
+          ridingId = None, dropLeft = 0.0 }
+
+    /// シナリオ World の共通枠（プレイヤーと地形だけ違う・敵は要る場面で足す）。
+    /// classic の寸法は 320×240（Field.classicW/H・design 480×360 より小さい）なので
+    /// カメラ 2 軸ともクランプで 0 に張り付き、goal はレベル外（届かない）でクリアは
+    /// 起きない。spawn は旧レベルの 'P' と同じ (56,104) に固定する — 死亡リスポーンを
+    /// 含む classic シナリオ（GIF・pin）のバイト一致を守るための実測値。
+    def worldOf(player: Field.Player, platforms: List[Field.Platform]): Field.World =
+        { player = player, platforms = platforms, enemies = Nil,
+          params = GameParameters.defaults(), events = Nil, eventLog = Nil, bursts = Nil,
+          deaths = 0, camX = 0.0, camY = 0.0,
+          levelW = Field.classicW(), levelH = Field.classicH(),
+          spawnPos = { x = 56.0, y = 104.0 }, respawnPos = { x = 56.0, y = 104.0 },
+          checkpointPos = { x = Field.classicW() + 1000.0, y = 104.0 },
+          goalX = Field.classicW() + 1000.0,
+          clearedAt = None, time = 0.0 }
 
     /// 地面だけの世界（浮き床・壁なし）。ジャンプ曲線と走りを邪魔なしで測る。
     pub def flatWorld(): Field.World =
-        { player = restingPlayer(160.0),
-          platforms = Field.fullGround() :: Nil,
-          params = GameParameters.defaults(), events = Nil, eventLog = Nil, deaths = 0, time = 0.0 }
+        worldOf(restingPlayer(160.0), Field.fullGround() :: Nil)
 
-    /// 製品と同じ地形（地面 + 浮き床 3 枚 + 左右の壁）。
-    pub def platformWorld(): Field.World = Field.initialWorld()
+    /// 長い平地の世界（幅 1280 の地面・levelW は classic の 320 のままなのでカメラは動かない）。
+    /// P スピードは 160→280 に約 330px の助走が要る — 1 画面の地面では足りない計測に使う。
+    pub def longFlatWorld(): Field.World =
+        let ground = Field.rigid(100, { x = 640.0, y = Field.groundTop() + 20.0 }, { x = 1280.0, y = 40.0 });
+        worldOf(restingPlayer(100.0), ground :: Nil)
 
-    /// 浮き床走破の出発点: 製品の地形で、左端（x=20）に接地静止。
+    /// classic 地形（1 画面・地面 3 分割 + 浮き床 3 枚 + 左右の壁）の世界。
+    /// プレイヤーは左寄りの空中（x=60, y=100）から落ちて始まる。既存のシナリオと pin の舞台。
+    pub def classicWorld(): Field.World =
+        let player = { pos = { x = 60.0, y = 100.0 }, vel = Vec2.zero(), grounded = false,
+                       coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
+                       ridingId = None, dropLeft = 0.0 };
+        worldOf(player, Field.classicPlatforms())
+
+    /// 浮き床走破の出発点: classic 地形で、左端（x=20）に接地静止。
     pub def runAcrossWorld(): Field.World =
-        { player = restingPlayer(20.0) | Field.initialWorld() }
+        { player = restingPlayer(20.0) | classicWorld() }
 
-    /// 広い穴の手前（地面 B の左寄り x=155）に接地静止。ダッシュ崖越えと崖死亡の出発点。
-    pub def gapWorld(): Field.World =
-        { player = restingPlayer(155.0) | Field.initialWorld() }
+    /// 広い穴の手前（地面 B の左寄り x=155）に、P スピード済み（vx=280 preset）で接地。
+    /// ダッシュ崖越えの出発点。P スピードは 160→280 に約 330px の助走が要るが、classic の
+    /// 助走路（54px）では足りないので、シナリオは到達済みの速度を前提に置く
+    /// （本番レベルの長い助走路が提供する状態の再現）。崖越えゲートの検証はここから。
+    pub def dashGapWorld(): Field.World =
+        { player = { vel = { x = 280.0, y = 0.0 } | restingPlayer(155.0) } | classicWorld() }
 
-    /// ダッシュ崖越えの台本: dash 助走 10f → 低ホップ 6f → 浮き床 B の下をくぐって浮き床 C に着地。
+    /// 崖死亡の出発点: 地面 B の右端ぎりぎり（x=190）に接地静止。1 歩で広い穴に落ちる。
+    pub def gapDeathWorld(): Field.World =
+        { player = restingPlayer(190.0) | classicWorld() }
+
+    /// ダッシュ崖越えの台本（dashGapWorld = vx 280 preset から）: 縁まで 10f 走り →
+    /// 低ホップ 6f → 浮き床 B の下をくぐって広い穴を渡り、浮き床 C に着地して壁で止まる。
     pub def dashGapCues(): List[Replay.Cue[Field.Input]] =
         List.flatten(holdRightDash(10) :: rightDashJump(6) :: holdRightDash(40) :: Nil)
 
-    /// 崖死亡の台本: 広い穴へ歩き出て落ち、死亡 → 出発点へ戻って着地するまで。
+    /// 崖死亡の台本: gapDeathWorld（x=190）から広い穴へ歩き出て落ち、
+    /// 死亡 → 出発点へ戻って着地するまで。
     pub def gapDeathCues(): List[Replay.Cue[Field.Input]] =
         List.flatten(holdRight(10) :: flight(45) :: Nil)
+
+    /// レベル走破（スタート → ゴール・1127 フレーム・probe で振り付けた実測値）。
+    /// 疾走感の台本: 出発から B ダッシュを離さず、止まらずにゴールまで走り切る。
+    ///   f0    落下しながらダッシュ開始 → 助走路で P スピード 280 を作る
+    ///   f129  低い段差を 10f ホップで越え、下り際に歩く敵（x648）を踏む（f160 stomp）—
+    ///         バウンドがそのまま穴 1（688-720）を丸ごと越える（踏み連鎖 A）
+    ///   f193  着地と同時に 4f ホップで 2 体目の歩く敵（x840）を飛び越え、緩い坂に着地
+    ///   f270  台地から 5f ホップで 45° 坂と高台をまとめて越える（上空のパタパタは位相調整で高い）
+    ///   f307  高台の縁から下りの坂へ — 下りの滑りで 357px/s まで伸びる（P スピード帯の overspeed）
+    ///   f403  トゲ（x1608）を 6f ホップで越え、着地の直後に中間地点の旗（x1688・f435）が発動
+    ///   f573  P スピードゲートの大穴（128px）を満タンジャンプで渡り、下り際に
+    ///         歩く敵（x2488・f615 stomp）→ バウンド → 歩く敵（x2616・f644 stomp）→ バウンド、
+    ///         と 2 連鎖で敵地帯を頭伝いに通過（踏み連鎖 C・パタパタ 2 体は位相調整で上空へ退く）
+    ///   f693  そのままフェリー（phase 調整済み・穴の左端で待ち受ける）に走り込み、デッキを
+    ///         駆けて f703 に跳ぶ（デッキの水平速度 +48px/s を継承）→ 階段 2 段目へ
+    ///   f735  階段を 10f ホップ × 2 で 3 段目・4 段目へ（壁に当てて刻む）
+    ///   f797  4 段目から満タンジャンプで最上段を飛び越し、一方通行の棚（行13・y196）へ着地 —
+    ///         カメラが camY≈132 まで上がり、空の高ルートを走る（f830-853）
+    ///   f854  棚の右端から 220px の大落下 → 着地してゴールの旗（x3272）を f886 に通過（クリア）
+    ///   以後  右壁（x3316）で止まって花火 10 発（0.6 秒のタメ → 0.2 秒間隔）を見届ける
+    pub def levelRunCues(): List[Replay.Cue[Field.Input]] =
+        List.flatten(holdRightDash(129) :: rightDashJump(10) :: holdRightDash(54) ::
+                     rightDashJump(4) :: holdRightDash(73) :: rightDashJump(5) :: holdRightDash(128) ::
+                     rightDashJump(6) :: holdRightDash(164) ::
+                     rightDashJump(24) :: holdRightDash(106) ::
+                     rightDashJump(8) :: holdRightDash(24) ::
+                     rightDashJump(10) :: holdRightDash(21) :: rightDashJump(10) :: holdRightDash(21) ::
+                     rightDashJump(20) :: holdRightDash(110) :: flight(200) :: Nil)
 
     /// 浮き床走破の台本（リモートデバッグの lockstep で振り付けた実測値・143 フレーム）:
     /// 助走 3f → ジャンプ 12f で床 A（y=156）へ → 2f おいて 14f ジャンプで床 B（y=120）へ →
@@ -85,19 +151,24 @@ mod Trace {
             holdRight(2) :: rightJump(14) :: holdRight(22) ::
             holdRight(32) :: holdRight(20) :: flight(12) :: Nil)
 
+    /// 本番レベル（initialWorld）の地面の上に接地静止しているプレイヤー（上面 416 → 中心 404）。
+    /// レベル内の任意の地点から始めるテスト・シナリオ用（restingPlayer の Level 版）。
+    pub def levelRestingPlayer(x: Float64): Field.Player =
+        { pos = { x = x, y = 404.0 }, vel = Vec2.zero(), grounded = true,
+          coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
+          ridingId = None, dropLeft = 0.0 }
+
     /// 崖のある世界: 幅 80 の床の右端ぎりぎりに接地している。右へ 1 歩で床を離れる。
     pub def ledgeWorld(): Field.World =
-        let ledge = { id = 100, pos = { x = 80.0, y = 150.0 }, size = { x = 80.0, y = 20.0 } };
-        { player = { pos = { x = 116.0, y = 140.0 - Field.playerRadius() } | restingPlayer(116.0) },
-          platforms = ledge :: Nil,
-          params = GameParameters.defaults(), events = Nil, eventLog = Nil, deaths = 0, time = 0.0 }
+        let ledge = Field.rigid(100, { x = 80.0, y = 150.0 }, { x = 80.0, y = 20.0 });
+        worldOf(
+            { pos = { x = 116.0, y = 140.0 - Field.playerRadius() } | restingPlayer(116.0) },
+            ledge :: Nil)
 
     /// 頭上の低い天井: 接地位置の 60px 上に床がある。ジャンプすると頭をぶつける。
     pub def ceilingWorld(): Field.World =
-        let ceiling = { id = 101, pos = { x = 160.0, y = Field.groundTop() - 60.0 }, size = { x = 80.0, y = 14.0 } };
-        { player = restingPlayer(160.0),
-          platforms = Field.fullGround() :: ceiling :: Nil,
-          params = GameParameters.defaults(), events = Nil, eventLog = Nil, deaths = 0, time = 0.0 }
+        let ceiling = Field.rigid(101, { x = 160.0, y = Field.groundTop() - 60.0 }, { x = 80.0, y = 14.0 });
+        worldOf(restingPlayer(160.0), Field.fullGround() :: ceiling :: Nil)
 
     /// コヨーテ猶予が残ったまま空中にいる世界: 崖を離れて数フレーム後の状態を直接組む
     /// （歩き出しのフレーム数に依存せず、猶予内のジャンプ成立だけを見る）。
@@ -105,13 +176,23 @@ mod Trace {
         let base = fallingWorld(60.0);
         { player = { coyoteLeft = coyoteLeft | base#player } | base }
 
+    /// 空中を横速度つきで飛んでいる世界（空中ベクトル変更 = DI の検証用）: 長い平地の
+    /// はるか上空（x=600, y=60）に、横速度 preset・上昇 vy=-200 で置く。
+    /// 20 フレーム程度では着地も壁当ても起きない — 空中の加速の帯だけを観測できる。
+    pub def airborneWorld(vx: Float64): Field.World =
+        let player = { pos = { x = 600.0, y = 60.0 }, vel = { x = vx, y = -200.0 },
+                       grounded = false,
+                       coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
+                       ridingId = None, dropLeft = 0.0 };
+        { player = player | longFlatWorld() }
+
     /// 空中から落下し始める世界: プレイヤーを地面の上方 height px の空中に置く（速度ゼロ）。
     pub def fallingWorld(height: Float64): Field.World =
-        { player = { pos = { x = 160.0, y = Field.groundTop() - Field.playerRadius() - height },
-                     vel = Vec2.zero(), grounded = false,
-                     coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0 },
-          platforms = Field.fullGround() :: Nil,
-          params = GameParameters.defaults(), events = Nil, eventLog = Nil, deaths = 0, time = 0.0 }
+        let player = { pos = { x = 160.0, y = Field.groundTop() - Field.playerRadius() - height },
+                       vel = Vec2.zero(), grounded = false,
+                       coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
+                       ridingId = None, dropLeft = 0.0 };
+        worldOf(player, Field.fullGround() :: Nil)
 
     // ── 読み取り（テストが World から値を取り出す薄いアクセサ）──
 
@@ -129,4 +210,121 @@ mod Trace {
         worlds |> List.map(world -> world#player#pos#y)
                |> List.minimum
                |> Option.getWithDefault(0.0)
+
+    // ── 動く床・一方通行のシナリオ World ──
+
+    /// 縦リフトの世界: 地面なし・動く床 1 枚だけ。プレイヤーはリフトの上に接地済みで始まる
+    /// （ridingId も設定済み — carry が最初のフレームから効く）。
+    /// amp 32 / period 4 秒 → 速さ 32px/s = 0.5px/frame ちょうど（pin が厳密）。
+    pub def liftWorld(): Field.World =
+        let mover = Field.movingAt(400, { x = 160.0, y = 150.0 }, { x = 48.0, y = 14.0 },
+            { axis = { x = 0.0, y = -1.0 }, amplitude = 32.0, period = 4.0, phase = 0.0 });
+        let player = { pos = { x = 160.0, y = 131.0 }, vel = Vec2.zero(), grounded = true,
+                       coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
+                       ridingId = Some(400), dropLeft = 0.0 };
+        worldOf(player, mover :: Nil)
+
+    /// 横フェリーの世界: 下は奈落（地面なし）・横に動く床 1 枚。乗って始まる。
+    /// amp 48 / period 4 秒 → 速さ 48px/s = 0.75px/frame ちょうど。
+    pub def ferryWorld(): Field.World =
+        let mover = Field.movingAt(401, { x = 160.0, y = 150.0 }, { x = 48.0, y = 14.0 },
+            { axis = { x = 1.0, y = 0.0 }, amplitude = 48.0, period = 4.0, phase = 0.0 });
+        let player = { pos = { x = 160.0, y = 131.0 }, vel = Vec2.zero(), grounded = true,
+                       coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
+                       ridingId = Some(401), dropLeft = 0.0 };
+        worldOf(player, mover :: Nil)
+
+    /// 一方通行の床の世界: 地面 + その 60px 上に一方通行の薄板。
+    pub def oneWayWorld(): Field.World =
+        let plank = Field.oneWayAt(300, { x = 160.0, y = Field.groundTop() - 60.0 }, { x = 100.0, y = 12.0 });
+        worldOf(restingPlayer(160.0), Field.fullGround() :: plank :: Nil)
+
+    /// 一方通行の上に立っている世界（下+ジャンプの降下テスト用）。下に地面がある。
+    pub def onOneWayWorld(): Field.World =
+        let plank = Field.oneWayAt(300, { x = 160.0, y = Field.groundTop() - 60.0 }, { x = 100.0, y = 12.0 });
+        let player = { pos = { x = 160.0, y = 122.0 }, vel = Vec2.zero(), grounded = true,
+                       coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
+                       ridingId = Some(300), dropLeft = 0.0 };
+        worldOf(player, Field.fullGround() :: plank :: Nil)
+
+    /// 下+ジャンプを 1 フレーム押す（すり抜け降下の開始）。
+    pub def pressDownJump(): List[Replay.Cue[Field.Input]] =
+        hold({ down = true, jumpDown = true, jumpPressed = true | idle() }, 1) :: Nil
+
+    // ── 敵のシナリオ World ──
+
+    /// 歩く敵の世界: 幅いっぱいの地面 + 歩く敵 1 体（x 190..270 を 40px/s で往復・
+    /// y=190 = 地面の上面 − 敵半径）。プレイヤーは左の平地（x=160）に接地静止。
+    pub def walkerWorld(): Field.World =
+        { enemies = Field.walkerAt(600, { x = 230.0, y = Field.groundTop() - Field.enemyRadius() }, 40.0, 4.0) :: Nil
+        | flatWorld() }
+
+    /// パタパタの世界: 地面の上空でパタパタが上下する（基準 (240,150)・振れ幅 24・周期 2 秒
+    /// → y 126..174 を 48px/s で往復）。プレイヤーは左の平地（x=160）に接地静止。
+    pub def flyerWorld(): Field.World =
+        { enemies = Field.flyerAt(601, { x = 240.0, y = 150.0 }, 24.0, 2.0) :: Nil
+        | flatWorld() }
+
+    /// トゲの世界: 地面の上（x=240・y=190）にトゲが据わっている。プレイヤーは x=160 に接地静止。
+    pub def spikyWorld(): Field.World =
+        { enemies = Field.spikyAt(602, { x = 240.0, y = Field.groundTop() - Field.enemyRadius() }) :: Nil
+        | flatWorld() }
+
+    /// 敵ショーケースの世界: walker 2 体。手前の walker A（x 142..158 をゆっくり往復）は
+    /// 踏んで倒せる高さ・位置に、奥の walker B（x 256..304）は走り込むと横から触れる。
+    pub def stompPatrolWorld(): Field.World =
+        { player = restingPlayer(40.0),
+          enemies = Field.walkerAt(610, { x = 150.0, y = Field.groundTop() - Field.enemyRadius() }, 8.0, 2.0) ::
+                    Field.walkerAt(611, { x = 280.0, y = Field.groundTop() - Field.enemyRadius() }, 24.0, 4.0) :: Nil
+        | flatWorld() }
+
+    /// 敵ショーケースの台本（probe で振り付けた実測値・141 フレーム）: 助走 14f → ジャンプ 12f の
+    /// 降下で walker A を踏んで倒し（f48・バウンド）、走り続けて walker B に横から触れて死に（f97）、
+    /// 出発点へ戻って着地する。
+    pub def stompPatrolCues(): List[Replay.Cue[Field.Input]] =
+        List.flatten(holdRight(14) :: rightJump(12) :: holdRight(70) :: flight(45) :: Nil)
+
+    /// パタパタ踏みの台本（probe で振り付けた実測値・100 フレーム）: flyerWorld で
+    /// 走って敵の直下（x=240 付近）へ寄り（20f）、少し待って敵が下降し始めるのを見計らい（8f）、
+    /// ジャンプ（12f）→ 下降中に重なって f53 で stomp（バウンド + puff）→ 出発点へは戻らず着地。
+    /// 踏みは「前フレームの足元が敵の頭より上 ∧ 下向きに落下中」でしか成立しない
+    /// （上昇中に横から重なると致命接触になる）ので、待ち時間で下降フェーズに合わせてある。
+    pub def flyerBobCues(): List[Replay.Cue[Field.Input]] =
+        List.flatten(holdRight(20) :: flight(8) :: rightJump(12) :: flight(60) :: Nil)
+
+    /// トゲ落とし穴の台本（probe で振り付けた実測値・111 フレーム）: spikyWorld で
+    /// 走って（25f）ジャンプ（16f）で着地しつつ突っ込み、トゲは踏めないので f88 で death →
+    /// 出発点（Level.spawnOf の x=56）へ戻り、f108 で着地するまで見せる。
+    pub def spikyTrapCues(): List[Replay.Cue[Field.Input]] =
+        List.flatten(holdRight(25) :: rightJump(16) :: holdRight(30) :: flight(40) :: Nil)
+
+    /// 指定 id の敵の生死（見つからなければ None）。
+    pub def enemyAliveOf(id: EntityId, world: Field.World): Option[Bool] =
+        world#enemies |> List.findLeft(e -> e#id == id) |> Option.map(e -> e#alive)
+
+    /// 生きている敵の数。
+    pub def aliveEnemiesOf(world: Field.World): Int32 =
+        world#enemies |> List.filter(e -> e#alive) |> List.length
+
+    // ── 坂のシナリオ World ──
+
+    /// 45° 坂の世界: 幅いっぱいの地面 + その上に載る右上がりの坂（底辺 64・高さ 64）。
+    /// 坂の外接箱は x 168..232 / y 136..200（底面 = 地面の上面 200 にぴったり）。
+    /// プレイヤーは坂の左の平地（x=120）に接地静止。
+    pub def slopeWorld(): Field.World =
+        worldOf(restingPlayer(120.0),
+            Field.fullGround() :: Field.slopeAt(140, { x = 200.0, y = 168.0 }, { x = 64.0, y = 64.0 }, true) :: Nil)
+
+    /// 緩い坂（底辺 64・高さ 32 ≈ 26.6°）の世界。外接箱は x 168..232 / y 168..200。
+    pub def gentleSlopeWorld(): Field.World =
+        worldOf(restingPlayer(120.0),
+            Field.fullGround() :: Field.slopeAt(141, { x = 200.0, y = 184.0 }, { x = 64.0, y = 32.0 }, true) :: Nil)
+
+    /// 45° 坂の斜辺の上、頂上寄りに接地静止しているプレイヤーの世界（下りと静止摩擦の出発点）。
+    /// 位置は probe の実測値: x=220 で坂に立たせて静止させた分離後の座標。
+    /// ridingId は坂（140）を設定済み — 静止摩擦が最初のフレームから効く（liftWorld と同じ流儀）。
+    pub def onSlopeWorld(): Field.World =
+        { player = { pos = { x = 220.0, y = 131.0294 }, grounded = true, ridingId = Some(140)
+                   | restingPlayer(220.0) }
+        | slopeWorld() }
 }

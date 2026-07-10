@@ -23,20 +23,23 @@ mod TestWorldDump {
              String.contains({substr = "\"eventLog\""}, text),
              String.contains({substr = "\"coyoteLeft\""}, text)))
 
-    // 画面全体の矩形なら地形 8 枚（地面3+浮き床3+壁2）が全部 rect に掛かり、プレイヤーも中に居る。
+    // 画面 1 枚ぶんの矩形（0..480×0..360・カメラ引き後の design）: Track F のレベルは地面が
+    // y=416 なので、この空の領域に掛かるのは左の境界壁 198（x=0 に接する・全高）だけ。
+    // スポーン（56,392）のプレイヤーは矩形の外。
     @Test
     def testFullRectSeesEverything(): Unit \ Assert =
         let text = dumpOf(fullRect());
         Assert.assertEq(expected = (true, true),
-            (String.contains({substr = "\"platformsInRect\":[100,104,105,101,102,103,110,111]"}, text),
-             String.contains({substr = "\"playerInRect\":true"}, text)))
+            (String.contains({substr = "\"platformsInRect\":[198]"}, text),
+             String.contains({substr = "\"playerInRect\":false"}, text)))
 
-    // 右上の小さな矩形（浮き床 2 だけの場所）なら、その 1 枚だけが載りプレイヤーは外。
+    // セクション 2 の一方通行の棚（行22・列47-50・id 305）だけを囲う小さな矩形なら、
+    // その 1 枚だけが載りプレイヤーは外。
     @Test
     def testSmallRectFiltersPlatforms(): Unit \ Assert =
-        let rect = { position = { x = 190.0, y = 110.0 }, size = { x = 30.0, y = 15.0 } };
+        let rect = { position = { x = 760.0, y = 354.0 }, size = { x = 20.0, y = 8.0 } };
         let text = dumpOf(rect);
         Assert.assertEq(expected = (true, true),
-            (String.contains({substr = "\"platformsInRect\":[102]"}, text),
+            (String.contains({substr = "\"platformsInRect\":[305]"}, text),
              String.contains({substr = "\"playerInRect\":false"}, text)))
 }

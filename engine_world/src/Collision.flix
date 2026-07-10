@@ -46,6 +46,7 @@ mod Collision {
             case CollisionShape2D.CircleShape2D(s)  => s#radius
             case CollisionShape2D.RectShape2D(s)    => Vec2.length({x = s#width / 2.0, y = s#height / 2.0})
             case CollisionShape2D.CapsuleShape2D(s) => s#height / 2.0
+            case CollisionShape2D.SlopeShape2D(s)   => Vec2.length({x = s#width / 2.0, y = s#height / 2.0})
         }
 
     def buildGrid(cs: Float64, bodies: Map[EntityId, (Vec2.Vec2, Collider)]):

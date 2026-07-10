@@ -1,7 +1,7 @@
-// Motion — 位置と速度を持つ物を、速度のぶんだけ位置へ進める（等速移動）。
-// 「位置 += 速度 × 経過時間」を毎回書かずに済み、たくさんの物をまとめて一様に動かせる。
-// 利用例: 弾をまっすぐ飛ばす / 敵を一定の向きへ流す / 落下物を下へ送る。
-// 注意: 等速移動だけ。重力や衝突のはね返りは持たない（必要なら別の処理で）。
+// Motion — 物の動かし方の小さな道具箱（等速移動と往復運動）。
+// 「位置 += 速度 × 経過時間」や「基準 ± 三角波のずれ」を毎回書かずに済む。
+// 利用例: 弾をまっすぐ飛ばす / 動く床・上下する敵を時刻から導く。
+// 注意: 重力や衝突のはね返りは持たない（必要なら別の処理で）。
 
 mod Motion {
 
@@ -9,4 +9,13 @@ mod Motion {
     pub def integrate(positions: Map[EntityId, Vec2.Vec2],
                       velocities: Map[EntityId, Vec2.Vec2], dt: Float64): Map[EntityId, Vec2.Vec2] =
         Query.updateWith2(positions, velocities, (p, v) -> Vec2.add(p, Vec2.mul(v, dt)))
+
+    /// 往復運動の仕様。基準位置からのずれを時刻の純関数で導く（状態を持たない）。
+    /// axis は動く方向・amplitude は振れ幅・period は往復 1 周期の秒数・phase は位相（0..1）。
+    /// 利用例: 動く床や上下する敵の「実位置 = 基準 + oscillationOffset」。
+    pub type alias Oscillation = { axis = Vec2.Vec2, amplitude = Float64, period = Float64, phase = Float64 }
+
+    /// 時刻 t での基準位置からのずれ。三角波なので速さは一定（4×amplitude/period）。
+    pub def oscillationOffset(osc: Oscillation, t: Float64): Vec2.Vec2 =
+        Vec2.mul(osc#axis, osc#amplitude * Curve.pingPong(t / osc#period + osc#phase))
 }

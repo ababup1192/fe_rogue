@@ -16,6 +16,25 @@ mod CameraRig {
     pub def apply(cam: Camera, items: List[Render.Placed]): List[Render.Placed] =
         List.map(entry -> { let (pos, item) = entry; (Vec2.add(pos, cam#offset), item) }, items)
 
+    // ── 追従（不感帯 + 寄せ率 + クランプ）──
+
+    /// 追従の仕様: 不感帯の幅と寄せ率（1 秒あたり）。
+    pub type alias Follow = { deadzone = Float64, k = Float64 }
+
+    /// target が current±deadzone の帯を出たぶん × min(1, k×dt) の移動量。
+    /// current は「いま画面が見ている中心」— 呼び手が自分の座標系で計算して渡し、返る移動量を自分で足す。
+    pub def followDelta(spec: Follow, dt: Float64, target: Float64, current: Float64): Float64 =
+        let offset = target - current;
+        let over =
+            if (offset > spec#deadzone) offset - spec#deadzone
+            else if (offset < -spec#deadzone) offset + spec#deadzone
+            else 0.0;
+        over * Float64.min(1.0, spec#k * dt)
+
+    /// lo..hi へ収める（hi < lo なら lo）。カメラをレベルの内側に留めるのに使う。
+    pub def clampAxis(lo: Float64, hi: Float64, x: Float64): Float64 =
+        Float64.max(lo, Float64.min(x, hi))
+
     // ── 画面シェイク（trauma 方式）──
 
     /// シェイクの調整値。maxOffset は trauma 満タン（1.0）のときの揺れ幅（px）、

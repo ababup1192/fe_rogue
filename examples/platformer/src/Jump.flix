@@ -25,6 +25,7 @@ mod Jump {
     pub def maxFallSpeed(): Float64 = 900.0         // 落下の終端速度 px/s
     pub def maxRunSpeed(): Float64 = 160.0          // 走りの最高速 px/s
     pub def dashMult(): Float64 = 1.75              // B ダッシュ中の最高速倍率（160 → 280）
+    pub def dashAccel(): Float64 = 80.0             // P スピード帯（|vx| > 160）の加速 px/s²
     pub def groundAccel(): Float64 = 900.0          // 地上の加速 px/s²
     pub def groundDecel(): Float64 = 1200.0         // 地上の減速（摩擦）px/s²
     pub def airAccel(): Float64 = 500.0             // 空中の加速（空中制御の強さ）px/s²
@@ -60,11 +61,31 @@ mod Jump {
     /// 横速度を 1 フレームぶん進める。dir ∈ {-1,0,1}。
     /// 入力ありは目標速度 dir×maxRunSpeed（B ダッシュ中は dashMult 倍）へ加速で寄せ、
     /// 入力なしは 0 へ減速で寄せる。加速・減速とも地上/空中で別の値を使う
-    /// （空中は減速が小さい = 慣性が残る）。ダッシュを離しても即減速はせず、
-    /// 目標が下がるだけなので勢いは decel の速さでしか失われない。
+    /// （空中は減速が小さい = 慣性が残る）。
+    ///
+    /// P スピード（マリオの P メーター相当）: 加速は 2 帯構成で、|vx| が maxRunSpeed（160）
+    /// までは今までどおりキビキビ、160 を超える帯は dashAccel（80px/s²）でじわじわ伸びる
+    /// —— 160→280 に 1.5 秒（約 330px の助走）かかる。ダッシュを離したときの
+    /// 目標 160 への戻りも同じ式が使われる: 帯の中は dashAccel で緩やかに落ちる。
+    /// これも「勢いがなかなか死なない」P スピードらしい挙動（意図した仕様）。
+    ///
+    /// 空中だけ P 帯の適用が非対称（スマブラの DI 風のベクトル変更）:
+    /// 進行方向と逆への入力（切り返し）は帯に関係なく常に airAccel（500px/s²）で強く効き、
+    /// ダッシュジャンプ中でも空中で舵が切れる。進行方向への上積みだけが P 帯（dashAccel）
+    /// —— 助走は地上でしか作れず、空中で速度は盛れない。
     pub def horizontalStep(p: Params, dt: Float64, running: Run): Float64 =
         if (running#dir != 0.0) {
-            let accel = if (running#grounded) p#groundAccel else p#airAccel;
+            let accel =
+                if (running#grounded)
+                    (if (Float64.abs(running#vx) > p#maxRunSpeed) p#dashAccel else p#groundAccel)
+                else {
+                    // 空中: 切り返し（進行方向と逆への入力）は常に airAccel で強く効く（ベクトル変更）。
+                    // 進行方向への上積みだけ P スピード帯（dashAccel）= 空中で速度は盛れない。
+                    let steering = running#dir * running#vx < 0.0;
+                    if (steering) p#airAccel
+                    else if (Float64.abs(running#vx) > p#maxRunSpeed) p#dashAccel
+                    else p#airAccel
+                };
             let top = p#maxRunSpeed * (if (running#dash) p#dashMult else 1.0);
             approach(running#dir * top, accel * dt, running#vx)
         } else {

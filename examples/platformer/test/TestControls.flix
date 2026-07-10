@@ -37,4 +37,10 @@ mod TestControls {
         let input = Controls.inputOf(frameOf(Set.empty(), Set.empty()));
         Assert.assertEq(expected = (false, false, false, false),
             (input#left, input#right, input#jumpDown, input#jumpPressed))
+
+    // 下キーは押しっぱなしで効く（すり抜け降下の構え）。
+    @Test
+    def testDownIsHeld(): Unit \ Assert =
+        let input = Controls.inputOf(frameOf(Set#{Key.Down}, Set.empty()));
+        Assert.assertEq(expected = true, input#down)
 }

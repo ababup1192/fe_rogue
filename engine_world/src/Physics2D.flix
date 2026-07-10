@@ -13,7 +13,8 @@
 // 注意: 反射後どうするか（耐久を減らす・音を鳴らす・角度を上書きする）は contacts を読んで
 //   呼び側が決める政策で、ここは機構だけを担う。検出は 1 回きりの離散判定なので、1 フレームの
 //   移動量が相手の厚みを大きく超える極端な速さではすり抜けうる（呼び側は dt を十分小さく保つか、
-//   合成を数回に分ける）。narrowphase は円・矩形のみ解決し、カプセルは分離ベクトルを返さない。
+//   合成を数回に分ける）。narrowphase は円・矩形・カプセル・坂を解決する。ただし矩形と坂・
+//   坂同士のペアは分離ベクトルを返さない（静的地形同士は分離しないため）。
 
 mod Physics2D {
 
@@ -47,6 +48,24 @@ mod Physics2D {
         if (contact#a == id) Some(contact#b)
         else if (contact#b == id) Some(contact#a)
         else None
+
+    /// contact の法線を「id を押し出す向き」に揃える（a 側ならそのまま・b 側なら反転）。
+    pub def normalToward(id: EntityId, contact: Contact): Vec2.Vec2 =
+        if (contact#a == id) contact#normal else Vec2.neg(contact#normal)
+
+    /// 面に近づく速度の法線成分だけを消す（跳ねずに滑る）。検出順に畳む。bounce の対。
+    /// 離れる向きの接触（かすめた直後など）は触らない。
+    pub def slide(id: EntityId, contacts: List[Contact], vel: Vec2.Vec2): Vec2.Vec2 =
+        List.foldLeft((v, contact) -> {
+            let normal = normalToward(id, contact);
+            let approach = Vec2.dot(v, normal);
+            if (approach < 0.0) Vec2.sub(v, Vec2.mul(normal, approach)) else v
+        }, vel, contacts)
+
+    /// normalToward が dir と minDot より強く揃う接触だけ残す
+    /// （dir=(0,-1),0.6 で接地・(0,1),0.7 で頭上）。しきい値ちょうどは含まない（>）。
+    pub def contactsAlong(id: EntityId, dir: Vec2.Vec2, minDot: Float64, contacts: List[Contact]): List[Contact] =
+        List.filter(contact -> Vec2.dot(normalToward(id, contact), dir) > minDot, contacts)
 
     // ── integrate: 速度を持つものだけ位置を進める ──
 
@@ -157,5 +176,8 @@ mod Physics2D {
             case CollisionShape2D.RectShape2D(rect)       =>
                 Float64.abs(normal#x) * rect#width / 2.0 + Float64.abs(normal#y) * rect#height / 2.0
             case CollisionShape2D.CapsuleShape2D(capsule) => capsule#radius
+            case CollisionShape2D.SlopeShape2D(slope)     =>
+                // 外接箱で見積もる（矩形と同じ保守的な近似）
+                Float64.abs(normal#x) * slope#width / 2.0 + Float64.abs(normal#y) * slope#height / 2.0
         }
 }

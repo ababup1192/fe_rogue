@@ -366,3 +366,152 @@ def testCheckOverlapCapsuleCapsule(): Unit \ Assert =
     let shapeB = CollisionShape2D.CapsuleShape2D({radius = 2.0, height = 10.0, vertical = true});
     Assert.assertEq(expected = true,
         CollisionShape2D.checkOverlap({x = 0.0, y = 0.0}, shapeA, {x = 3.0, y = 0.0}, shapeB))
+
+// ========================================================================
+// SlopeShape2D — 円・カプセルと坂の判定と MTV
+// ========================================================================
+
+/// MTV の成分を小数 4 桁へ丸める（斜辺法線は無理数成分を持つため）
+def slopeTestRound4(x: Float64): Float64 = Float64.floor(x * 10000.0 + 0.5) / 10000.0
+
+/// Option[Vec2] の MTV を丸めたタプルへ変換する
+def mtvRound4(mtv: Option[Vec2.Vec2]): Option[(Float64, Float64)] =
+    Option.map(v -> (slopeTestRound4(v#x), slopeTestRound4(v#y)), mtv)
+
+/// 45° 坂（右登り）の斜辺に重なる円は checkOverlap で検出される
+@Test
+def testCheckOverlapCircleSlope(): Unit \ Assert =
+    let circle = CollisionShape2D.CircleShape2D({radius = 8.0});
+    let slopeShape = CollisionShape2D.SlopeShape2D({width = 32.0, height = 32.0, riseRight = true});
+    let n = Vec2.normalized({x = -1.0, y = -1.0});
+    Assert.assertEq(expected = true,
+        CollisionShape2D.checkOverlap(Vec2.mul(n, 6.0), circle, {x = 0.0, y = 0.0}, slopeShape))
+
+/// 45° 坂（右登り）の斜辺にめり込んだ円の MTV。
+/// 斜辺中点 (0,0) の法線方向へ 6 の位置に半径 8 の円 → めり込み 2 を法線 (-1,-1)/√2 へ押し出す。
+///
+///        (C)
+///       / |
+///   ○  /  |     ○ = 円（斜辺の左上側）
+///    (A)---(B)
+///
+@Test
+def testCircleSlopeHypotenuseMtv(): Unit \ Assert =
+    let n = Vec2.normalized({x = -1.0, y = -1.0});
+    let mtv = CollisionShape2D.resolveCircleSlope(
+        Vec2.mul(n, 6.0), 8.0, {x = 0.0, y = 0.0}, {x = 32.0, y = 32.0}, true);
+    Assert.assertEq(expected = Some((-1.4142, -1.4142)), mtvRound4(mtv))
+
+/// 坂から遠い円は重ならず MTV も無い
+@Test
+def testCircleSlopeFarApart(): Unit \ Assert =
+    let circle = CollisionShape2D.CircleShape2D({radius = 2.0});
+    let slopeShape = CollisionShape2D.SlopeShape2D({width = 32.0, height = 32.0, riseRight = true});
+    let overlap = CollisionShape2D.checkOverlap({x = 100.0, y = 100.0}, circle, {x = 0.0, y = 0.0}, slopeShape);
+    let mtv = CollisionShape2D.resolveOverlap({x = 100.0, y = 100.0}, circle, {x = 0.0, y = 0.0}, slopeShape);
+    Assert.assertEq(expected = (false, None), (overlap, mtvRound4(mtv)))
+
+/// 円が坂の垂直面（右登りの右側面 x=16）にめり込む → 真横 +x へ押し出す
+@Test
+def testCircleSlopeVerticalFaceMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCircleSlope(
+        {x = 22.0, y = 0.0}, 8.0, {x = 0.0, y = 0.0}, {x = 32.0, y = 32.0}, true);
+    Assert.assertEq(expected = Some((2.0, 0.0)), mtvRound4(mtv))
+
+/// 円が坂の底面（y=16）にめり込む → 真下 +y へ押し出す
+@Test
+def testCircleSlopeBottomFaceMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCircleSlope(
+        {x = 0.0, y = 22.0}, 8.0, {x = 0.0, y = 0.0}, {x = 32.0, y = 32.0}, true);
+    Assert.assertEq(expected = Some((0.0, 2.0)), mtvRound4(mtv))
+
+/// 左登り坂（riseRight=false）の斜辺 → 鏡像の法線 (+1,-1)/√2 へ押し出す
+@Test
+def testCircleSlopeRiseLeftMtv(): Unit \ Assert =
+    let n = Vec2.normalized({x = 1.0, y = -1.0});
+    let mtv = CollisionShape2D.resolveCircleSlope(
+        Vec2.mul(n, 6.0), 8.0, {x = 0.0, y = 0.0}, {x = 32.0, y = 32.0}, false);
+    Assert.assertEq(expected = Some((1.4142, -1.4142)), mtvRound4(mtv))
+
+/// 円の中心が坂の内部 → 最も浅い辺（この配置では底面）へ、辺までの距離＋半径ぶん押し出す
+@Test
+def testCircleSlopeCenterInsideMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCircleSlope(
+        {x = 10.0, y = 12.0}, 2.0, {x = 0.0, y = 0.0}, {x = 32.0, y = 32.0}, true);
+    Assert.assertEq(expected = Some((0.0, 6.0)), mtvRound4(mtv))
+
+/// resolveOverlap: 坂が A 側のときは円側 MTV の符号反転になる
+@Test
+def testResolveSlopeCircleNegated(): Unit \ Assert =
+    let n = Vec2.normalized({x = -1.0, y = -1.0});
+    let slopeShape = CollisionShape2D.SlopeShape2D({width = 32.0, height = 32.0, riseRight = true});
+    let circle = CollisionShape2D.CircleShape2D({radius = 8.0});
+    let mtv = CollisionShape2D.resolveOverlap({x = 0.0, y = 0.0}, slopeShape, Vec2.mul(n, 6.0), circle);
+    Assert.assertEq(expected = Some((1.4142, 1.4142)), mtvRound4(mtv))
+
+/// 矩形と坂は MTV を返さない（静的地形同士は分離しない）
+@Test
+def testResolveRectSlopeReturnsNone(): Unit \ Assert =
+    let rect = CollisionShape2D.RectShape2D({width = 8.0, height = 8.0});
+    let slopeShape = CollisionShape2D.SlopeShape2D({width = 32.0, height = 32.0, riseRight = true});
+    let mtv = CollisionShape2D.resolveOverlap({x = 10.0, y = 10.0}, rect, {x = 0.0, y = 0.0}, slopeShape);
+    Assert.assertEq(expected = None, mtvRound4(mtv))
+
+/// 坂同士の重なりは外接箱で近似判定する（MTV は返さない）
+@Test
+def testCheckOverlapSlopeSlope(): Unit \ Assert =
+    let slopeShape = CollisionShape2D.SlopeShape2D({width = 32.0, height = 32.0, riseRight = true});
+    let near = CollisionShape2D.checkOverlap({x = 0.0, y = 0.0}, slopeShape, {x = 30.0, y = 0.0}, slopeShape);
+    let far = CollisionShape2D.checkOverlap({x = 0.0, y = 0.0}, slopeShape, {x = 100.0, y = 0.0}, slopeShape);
+    let mtv = CollisionShape2D.resolveOverlap({x = 0.0, y = 0.0}, slopeShape, {x = 30.0, y = 0.0}, slopeShape);
+    Assert.assertEq(expected = (true, false, None), (near, far, mtvRound4(mtv)))
+
+/// checkOverlap: 坂を含むペアは引数の順序を入れ替えても同じ結果になる
+@Test
+def testCheckOverlapSlopeDispatchSymmetry(): Unit \ Assert =
+    let slopeShape = CollisionShape2D.SlopeShape2D({width = 32.0, height = 32.0, riseRight = true});
+    let circle = CollisionShape2D.CircleShape2D({radius = 8.0});
+    let rect = CollisionShape2D.RectShape2D({width = 8.0, height = 8.0});
+    let capsule = CollisionShape2D.CapsuleShape2D({radius = 2.0, height = 10.0, vertical = true});
+    let slopePos = {x = 0.0, y = 0.0};
+    let otherPos = {x = 14.0, y = 10.0};
+    let forward = (CollisionShape2D.checkOverlap(otherPos, circle, slopePos, slopeShape),
+                   CollisionShape2D.checkOverlap(otherPos, rect, slopePos, slopeShape),
+                   CollisionShape2D.checkOverlap(otherPos, capsule, slopePos, slopeShape));
+    let backward = (CollisionShape2D.checkOverlap(slopePos, slopeShape, otherPos, circle),
+                    CollisionShape2D.checkOverlap(slopePos, slopeShape, otherPos, rect),
+                    CollisionShape2D.checkOverlap(slopePos, slopeShape, otherPos, capsule));
+    Assert.assertEq(expected = ((true, true, true), (true, true, true)), (forward, backward))
+
+// ========================================================================
+// カプセルの MTV
+// ========================================================================
+
+/// 縦カプセルが矩形の左辺にめり込む → 真横 -x へ 1 押し出す
+@Test
+def testCapsuleRectSideMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCapsuleRect(
+        {x = 0.0, y = 0.0}, 2.0, 10.0, true, {x = 5.0, y = 0.0}, {x = 8.0, y = 8.0});
+    Assert.assertEq(expected = Some((-1.0, 0.0)), mtvRound4(mtv))
+
+/// 縦カプセルと円 → 軸線分上の最近接点から円の反対向きへ押し出す
+@Test
+def testCapsuleCircleMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCapsuleCircle(
+        {x = 0.0, y = 0.0}, 2.0, 10.0, true, {x = 3.0, y = 0.0}, 2.0);
+    Assert.assertEq(expected = Some((-1.0, 0.0)), mtvRound4(mtv))
+
+/// 平行な縦カプセル同士 → 半径和 4 に対し軸間距離 3 → 不足 1 を -x へ押し出す
+@Test
+def testCapsuleCapsuleParallelMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCapsuleCapsule(
+        {x = 0.0, y = 0.0}, 2.0, 10.0, true, {x = 3.0, y = 0.0}, 2.0, 10.0, true);
+    Assert.assertEq(expected = Some((-1.0, 0.0)), mtvRound4(mtv))
+
+/// 縦カプセルの下端が 45° 坂の斜辺にめり込む → 斜辺法線 (-1,-1)/√2 へ押し出す。
+/// 下端 (-2,-2) から斜辺までの距離は 2√2 → めり込み 4-2√2 ≈ 1.1716。
+@Test
+def testCapsuleSlopeHypotenuseMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCapsuleSlope(
+        {x = -2.0, y = -5.0}, 4.0, 14.0, true, {x = 0.0, y = 0.0}, {x = 32.0, y = 32.0}, true);
+    Assert.assertEq(expected = Some((-0.8284, -0.8284)), mtvRound4(mtv))

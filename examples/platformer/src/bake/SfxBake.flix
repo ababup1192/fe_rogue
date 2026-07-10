@@ -30,9 +30,36 @@ mod SfxBake {
             SfxSynth.fade(SfxSynth.tone(cfg(), 261.63, 0.12, 60)) ::
             SfxSynth.fade(SfxSynth.tone(cfg(), 174.61, 0.2, 70)) :: Nil)
 
-    /// 4 音すべてを assets/sfx/ へ書き出す（Bake.all から呼ぶ）。
+    /// 踏みつけ: 高→低の短い 2 音。ぷちっと潰した手応え。
+    def stompSquish(): List[Float64] =
+        SfxSynth.sequence(
+            SfxSynth.fade(SfxSynth.tone(cfg(), 660.0, 0.04, 50)) ::
+            SfxSynth.fade(SfxSynth.tone(cfg(), 330.0, 0.07, 55)) :: Nil)
+
+    /// クリア: 上昇する 4 音の短いファンファーレ（C-E-G-C）。ゴール到達の一瞬。
+    def clearFanfare(): List[Float64] =
+        SfxSynth.sequence(
+            SfxSynth.fade(SfxSynth.tone(cfg(), 523.25, 0.09, 55)) ::
+            SfxSynth.fade(SfxSynth.tone(cfg(), 659.25, 0.09, 55)) ::
+            SfxSynth.fade(SfxSynth.tone(cfg(), 783.99, 0.09, 55)) ::
+            SfxSynth.fade(SfxSynth.tone(cfg(), 1046.5, 0.22, 60)) :: Nil)
+
+    /// 中間地点: 上昇する 2 音の短いジングル。「ここまで来た」の刻印。
+    def checkpointChime(): List[Float64] =
+        SfxSynth.sequence(
+            SfxSynth.fade(SfxSynth.tone(cfg(), 587.33, 0.07, 50)) ::
+            SfxSynth.fade(SfxSynth.tone(cfg(), 880.0, 0.12, 55)) :: Nil)
+
+    /// 花火: 短いノイズの破裂 + 低いドン。クリア後の夜空に 10 発鳴る。
+    def fireworkPop(): List[Float64] =
+        SfxSynth.blend(
+            SfxSynth.fade(SfxSynth.noise(cfg(), 0.08, 55)),
+            SfxSynth.fade(SfxSynth.tone(cfg(), 98.0, 0.15, 60)))
+
+    /// 8 音すべてを assets/sfx/ へ書き出す（Bake.all から呼ぶ）。
     pub def bakeAll(): Unit \ IO =
         SfxSynth.bakeSet(cfg(), "assets/sfx",
             ("jump", jumpRise()) :: ("land", landThud()) :: ("bump", bumpTick()) ::
-            ("death", deathFall()) :: Nil)
+            ("death", deathFall()) :: ("stomp", stompSquish()) :: ("clear", clearFanfare()) ::
+            ("checkpoint", checkpointChime()) :: ("firework", fireworkPop()) :: Nil)
 }

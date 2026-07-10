@@ -16,6 +16,7 @@ mod WorldDump {
             "player"          => playerJson(world#player),
             "params"          => paramsJson(world#params),
             "platforms"       => JArray(world#platforms |> List.map(platformJson) |> List.toVector),
+            "enemies"         => JArray(world#enemies |> List.map(enemyJson(world#time)) |> List.toVector),
             "rect"            => rectJson(rect),
             "platformsInRect" => JArray(world#platforms
                                      |> List.filter(platform -> intersects(rect, platform))
@@ -24,6 +25,13 @@ mod WorldDump {
             "playerInRect"    => JBool(Rect2.hasPoint(world#player#pos, rect)),
             "eventLog"        => JArray(world#eventLog |> List.map(logJson) |> List.toVector),
             "deaths"          => JNumber(JsonCodec.intToBd(world#deaths)),
+            "camX"            => num(world#camX),
+            "camY"            => num(world#camY),
+            "levelH"          => num(world#levelH),
+            "goalX"           => num(world#goalX),
+            "respawnX"        => num(world#respawnPos#x),
+            "checkpointX"     => num(world#checkpointPos#x),
+            "cleared"         => JBool(not Option.isEmpty(world#clearedAt)),
             "time"            => num(world#time)
         });
         Util.Json.toPrettyString(2, obj)
@@ -36,7 +44,9 @@ mod WorldDump {
             "grounded"   => JBool(player#grounded),
             "coyoteLeft" => num(player#coyoteLeft),
             "bufferLeft" => num(player#bufferLeft),
-            "jumpHeld"   => JBool(player#jumpHeld)
+            "jumpHeld"   => JBool(player#jumpHeld),
+            "dropLeft"   => num(player#dropLeft),
+            "riding"     => JNumber(JsonCodec.intToBd(player#ridingId |> Option.getWithDefault(-1)))
         })
 
     /// いま効いているパラメータ全値（F1 で差し替え中でもチケットに正確に残る）。
@@ -50,6 +60,8 @@ mod WorldDump {
             "cutMult"         => num(p#cutMult),
             "maxFallSpeed"    => num(p#maxFallSpeed),
             "maxRunSpeed"     => num(p#maxRunSpeed),
+            "dashMult"        => num(p#dashMult),
+            "dashAccel"       => num(p#dashAccel),
             "groundAccel"     => num(p#groundAccel),
             "groundDecel"     => num(p#groundDecel),
             "airAccel"        => num(p#airAccel),
@@ -60,12 +72,30 @@ mod WorldDump {
 
     def platformJson(platform: Field.Platform): Json =
         JObject(Map#{
-            "id"   => JNumber(JsonCodec.intToBd(platform#id)),
-            "x"    => num(platform#pos#x),
-            "y"    => num(platform#pos#y),
-            "w"    => num(platform#size#x),
-            "h"    => num(platform#size#y),
-            "top"  => num(platform#pos#y - platform#size#y / 2.0)
+            "id"     => JNumber(JsonCodec.intToBd(platform#id)),
+            "x"      => num(platform#pos#x),
+            "y"      => num(platform#pos#y),
+            "w"      => num(platform#size#x),
+            "h"      => num(platform#size#y),
+            "top"    => num(platform#pos#y - platform#size#y / 2.0),
+            "oneWay" => JBool(platform#oneWay),
+            "moving" => JBool(not Option.isEmpty(platform#motion)),
+            "slope"  => JString(match platform#slope {
+                case Some(true)  => "right"
+                case Some(false) => "left"
+                case None        => "none"
+            })
+        })
+
+    /// 敵 1 体。x/y は表示中の時刻の実位置（チケットの絵と突き合わせられるように）。
+    def enemyJson(time: Float64, enemy: Field.Enemy): Json =
+        let pos = Field.enemyPosAt(time, enemy);
+        JObject(Map#{
+            "id"    => JNumber(JsonCodec.intToBd(enemy#id)),
+            "kind"  => JString(Field.enemyKindName(enemy#kind)),
+            "x"     => num(pos#x),
+            "y"     => num(pos#y),
+            "alive" => JBool(enemy#alive)
         })
 
     def logJson(entry: (Float64, String)): Json =

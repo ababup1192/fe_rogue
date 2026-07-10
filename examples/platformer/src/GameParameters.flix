@@ -23,6 +23,7 @@ mod GameParameters {
         maxFallSpeed = Float64,     // 落下の終端速度 px/s
         maxRunSpeed = Float64,      // 走りの最高速 px/s
         dashMult = Float64,         // B ダッシュ中の最高速倍率
+        dashAccel = Float64,        // P スピード帯（|vx| > maxRunSpeed）の加速 px/s²
         groundAccel = Float64,      // 地上の加速 px/s²
         groundDecel = Float64,      // 地上の減速 px/s²
         airAccel = Float64,         // 空中の加速 px/s²
@@ -42,6 +43,7 @@ mod GameParameters {
         maxFallSpeed = Jump.maxFallSpeed(),
         maxRunSpeed = Jump.maxRunSpeed(),
         dashMult = Jump.dashMult(),
+        dashAccel = Jump.dashAccel(),
         groundAccel = Jump.groundAccel(),
         groundDecel = Jump.groundDecel(),
         airAccel = Jump.airAccel(),
@@ -78,6 +80,7 @@ mod GameParameters {
               maxFallSpeed = num("maxFallSpeed", base#maxFallSpeed, map),
               maxRunSpeed = num("maxRunSpeed", base#maxRunSpeed, map),
               dashMult = num("dashMult", base#dashMult, map),
+              dashAccel = num("dashAccel", base#dashAccel, map),
               groundAccel = num("groundAccel", base#groundAccel, map),
               groundDecel = num("groundDecel", base#groundDecel, map),
               airAccel = num("airAccel", base#airAccel, map),

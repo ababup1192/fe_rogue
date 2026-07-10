@@ -198,63 +198,92 @@ mod TestPlatformer {
     // B ダッシュ
     // ========================================================================
 
-    // 30 フレーム走ると、素は最高速 160 で頭打ち、B ダッシュは 1.75 倍の 280 まで伸びる。厳密値。
+    // P スピード（D2）: 加速は 160 まで 900px/s²（11f で 154.69 → 12f 目で 168.75）、
+    // 160 を超える帯は 80px/s²（1.25/frame）。30 フレームでは素は 160 で頭打ち、
+    // ダッシュは 168.75 + 18×1.25 = 191.25 まで — 280 にはまだ遠い。厳密値。
     @Test
     def testDashRaisesTopSpeed(): Unit \ Assert =
         let walk = play(Trace.holdRight(30), Trace.flatWorld());
         let dash = play(Trace.holdRightDash(30), Trace.flatWorld());
-        Assert.assertEq(expected = (160.0, 280.0),
+        Assert.assertEq(expected = (160.0, 191.25),
             (Trace.velOf(walk)#x, Trace.velOf(dash)#x))
 
-    // ダッシュを離しても急停止しない: 目標が 160 に下がるだけで、寄せる速さは加速と同じ
-    // 14.0625/frame。280 から 160 へは 9 フレーム目に到達する。
+    // P スピードの完成: 長い助走（実測 101 フレーム・約 330px）で最高速 280.0 にちょうど届く。
+    // flatWorld（幅 320）では走り切れないので長い平地（longFlatWorld）で測る。
+    @Test
+    def testDashReachesTopSpeedWithLongRunup(): Unit \ Assert =
+        let final = play(Trace.holdRightDash(128), Trace.longFlatWorld());
+        Assert.assertEq(expected = 280.0, Trace.velOf(final)#x)
+
+    // ダッシュを離しても急停止しない — P スピードでは帯の中の減衰も dashAccel（1.25/frame）:
+    // 8 フレームで 280 → 270、160 へ戻り切るには 96 フレーム（1.5 秒）かかる。
+    // 「勢いがなかなか死なない」を狙った仕様（Jump.horizontalStep の doc 参照）。
     @Test
     def testDashReleaseKeepsMomentum(): Unit \ Assert =
-        let final = play(List.append(Trace.holdRightDash(30), Trace.holdRight(9)), Trace.flatWorld());
-        Assert.assertEq(expected = 160.0, Trace.velOf(final)#x)
+        let mid = play(List.append(Trace.holdRightDash(128), Trace.holdRight(8)), Trace.longFlatWorld());
+        let final = play(List.append(Trace.holdRightDash(128), Trace.holdRight(96)), Trace.longFlatWorld());
+        Assert.assertEq(expected = (270.0, 160.0),
+            (Trace.velOf(mid)#x, Trace.velOf(final)#x))
+
+    // 空中ベクトル変更（スマブラの DI 風）: ダッシュジャンプ中でも切り返し（進行方向と
+    // 逆への入力）は P 帯の dashAccel でなく airAccel（500px/s² = 7.8125/frame）で効く。
+    // vx=280 の空中で左を 20f 押すと 280 − 20×7.8125 = 123.75（厳密値）。
+    // 旧仕様（P 帯が空中の切り返しにも適用）では 280 − 20×1.25 = 255 までしか落ちず、
+    // ダッシュジャンプ中の舵がほぼ利かなかった（その回帰の修正を pin する）。
+    @Test
+    def testAirSteeringUsesAirAccel(): Unit \ Assert =
+        let final = play(Trace.holdLeft(20), Trace.airborneWorld(280.0));
+        Assert.assertEq(expected = 123.75, Trace.velOf(final)#x)
+
+    // 進行方向への上積みは空中でも P 帯のまま: vx=200 の空中で右ダッシュを 20f 押しても
+    // dashAccel（1.25/frame）でしか伸びない — 200 + 20×1.25 = 225.0（空中で速度は盛れない）。
+    @Test
+    def testAirForwardPushStaysInPBand(): Unit \ Assert =
+        let final = play(Trace.holdRightDash(20), Trace.airborneWorld(200.0));
+        Assert.assertEq(expected = 225.0, Trace.velOf(final)#x)
 
     // ========================================================================
     // 崖と崖死亡
     // ========================================================================
 
-    // 地面 B の右端から広い穴（96px）へ歩き出ると落ちて死ぬ: death が鳴り、
-    // 出発点（スポーン位置）へ戻り、deaths が 1 になる。
+    // 地面 B の右端から広い穴（96px）へ歩き出ると落ちて死ぬ: death が鳴り、deaths が 1 になる。
+    // リスポーンはレベルのスポーン（Level.spawnOf = x 56）へ — classic 地形のシナリオでも同じ。
     @Test
     def testFallIntoGapDies(): Unit \ Assert =
-        let world = { player = Trace.restingPlayer(190.0) | Field.initialWorld() };
+        let world = { player = Trace.restingPlayer(190.0) | Trace.classicWorld() };
         let cues = List.append(Trace.holdRight(10), Trace.flight(40));
         let worlds = timeline(cues, world);
         let final = play(cues, world);
-        Assert.assertEq(expected = (true, 1, 60.0),
+        Assert.assertEq(expected = (true, 1, 56.0),
             (eventHappened("death", worlds), Trace.deathsOf(final), Trace.posOf(final)#x))
 
     // 狭い穴（50px）は素の走りジャンプで渡れる: 地面 A（x=60）から 12f ジャンプで
     // 穴と浮き床 A を越えて地面 B（y=188）に降り、死なない。
     @Test
     def testNormalJumpClearsNarrowGap(): Unit \ Assert =
-        let world = { player = Trace.restingPlayer(60.0) | Field.initialWorld() };
+        let world = { player = Trace.restingPlayer(60.0) | Trace.classicWorld() };
         let cues = List.flatten(Trace.rightJump(12) :: Trace.holdRight(45) :: Trace.flight(10) :: Nil);
         let worlds = timeline(cues, world);
         let final = play(cues, world);
         Assert.assertEq(expected = (false, true, 188.0),
             (eventHappened("death", worlds), Trace.groundedOf(final), Trace.posOf(final)#y))
 
-    // 広い穴（80px）は B ダッシュ + 低ホップ（6f）で浮き床 B の下をくぐって渡れる:
-    // 渡った先の浮き床 C（y=149）に乗り、死なない。
+    // 広い穴（80px）は P スピード + 低ホップ（6f）で浮き床 B の下をくぐって渡れる:
+    // 渡った先の浮き床 C（y=149）に乗り、死なない。classic の助走路（54px）では 280 に
+    // 届かない（P スピードは約 330px 必要 — 助走路は本番レベルが提供）ので、
+    // dashGapWorld は vx=280 preset で「P スピード済み」から始めて崖越えゲートだけを見る。
     @Test
     def testDashLowHopClearsWideGap(): Unit \ Assert =
-        let world = { player = Trace.restingPlayer(155.0) | Field.initialWorld() };
-        let cues = List.flatten(
-            Trace.holdRightDash(10) :: Trace.rightDashJump(6) :: Trace.holdRightDash(40) :: Nil);
-        let worlds = timeline(cues, world);
-        let final = play(cues, world);
+        let worlds = timeline(Trace.dashGapCues(), Trace.dashGapWorld());
+        let final = play(Trace.dashGapCues(), Trace.dashGapWorld());
         Assert.assertEq(expected = (false, true, 149.0),
             (eventHappened("death", worlds), Trace.groundedOf(final), Trace.posOf(final)#y))
 
-    // 同じ低ホップでもダッシュなしでは届かず、穴に落ちて死ぬ（= B ダッシュのゲート）。
+    // 同じ低ホップでも素の走り（160 止まり・立ち上がりから）では届かず、穴に落ちて死ぬ
+    // （= P スピードのゲート。走りの加速は 160 以下の帯なので D2 でも挙動は変わらない）。
     @Test
     def testWalkLowHopFallsIntoWideGap(): Unit \ Assert =
-        let world = { player = Trace.restingPlayer(155.0) | Field.initialWorld() };
+        let world = { player = Trace.restingPlayer(155.0) | Trace.classicWorld() };
         let cues = List.flatten(
             Trace.holdRight(10) :: Trace.rightJump(6) :: Trace.holdRight(60) :: Nil);
         let worlds = timeline(cues, world);
