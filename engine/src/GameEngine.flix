@@ -119,6 +119,7 @@ mod GameEngine {
         rect = Rect2.Rect2,     // 注釈の矩形（デザイン座標系・ズーム非依存）
         json = String,          // annotation.json の本文
         readmeBody = String,    // README.md の中ほどに挟む要約（見出しやコメント欄はハンドラが付ける）
+        worldDump = String,     // world.json の本文（ゲームが組んだシム状態のダンプ。"" = 同梱しない）
         sprites = List[Drawable],
         tileMaps = List[TileMapRenderCmd],
         polygons = List[PolygonRenderCmd]

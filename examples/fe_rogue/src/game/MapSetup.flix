@@ -15,11 +15,12 @@ mod MapSetup {
     import java.lang.{System => JSystem}
 
     /// マップ確定の成果物。terrain（壁・placements・座標系）/ layout（Plan＋スポーン起点）/
-    /// handles（背景タイルの描画ハンドル・floor 層が先）。
+    /// handles（背景タイルの描画ハンドル・floor 層が先）/ chips（セル → 描かれているチップ列）。
     pub type alias Built = {
         terrain = MapSnapshot,
         layout  = MapLayout,
-        handles = List[TileLayerHandle]
+        handles = List[TileLayerHandle],
+        chips   = TileChips
     }
 
     /// Walls / Floor 共通テクスチャ名（n-format は両層で同一タイルセットを使う）。
@@ -47,7 +48,8 @@ mod MapSetup {
         {
             terrain = snapshotOfLayer(result#layer, result#placements),
             layout  = ({plan = plan, spawnGrid = result#spawnGrid}: MapLayout),
-            handles = handleOf(floorLayer) :: handleOf(result#layer) :: Nil
+            handles = handleOf(floorLayer) :: handleOf(result#layer) :: Nil,
+            chips   = chipsOfLayers(floorLayer :: result#layer :: Nil)
         }
 
     /// 確定済みマップを World へ seed する（build choke 専用）。spawn 系（Player / Enemy /
@@ -55,14 +57,16 @@ mod MapSetup {
     pub def seed(built: Built): Unit \ World.Command =
         World.Command.emit(World.Cmd.SetMapSnapshot(Some(built#terrain)));
         World.Command.emit(World.Cmd.SetMapLayout(Some(built#layout)));
-        World.Command.emit(World.Cmd.SetTileLayers(built#handles))
+        World.Command.emit(World.Cmd.SetTileLayers(built#handles));
+        World.Command.emit(World.Cmd.SetTileChips(built#chips))
 
     /// ダンジョン退場（Title / CharacterSelect へ抜ける）時のマップ store 掃除。
     /// 地形 / Plan を None に、タイルハンドルを空にする（存在ゲートが盤面レスと判定する源）。
     pub def clear(): Unit \ World.Command =
         World.Command.emit(World.Cmd.SetMapSnapshot(None));
         World.Command.emit(World.Cmd.SetMapLayout(None));
-        World.Command.emit(World.Cmd.SetTileLayers(Nil))
+        World.Command.emit(World.Cmd.SetTileLayers(Nil));
+        World.Command.emit(World.Cmd.SetTileChips(Map.empty()))
 
     /// 視覚一致確認用ルート: 単一 .map.json を MapLoader 経由で確定する。
     /// DungeonComposer を通さないためタイル自動結合ルールが再評価されない。
@@ -91,7 +95,8 @@ mod MapSetup {
         {
             terrain = snapshotOfLayer(wallsLayer, RoomLayout.singleRoom(gs#x, gs#y)),
             layout  = ({plan = plan, spawnGrid = safe}: MapLayout),
-            handles = handleOf(floorLayer) :: handleOf(wallsLayer) :: Nil
+            handles = handleOf(floorLayer) :: handleOf(wallsLayer) :: Nil,
+            chips   = chipsOfLayers(floorLayer :: wallsLayer :: Nil)
         }
 
     /// TileLayer 値 → 軽量描画ハンドル。`worldPos` はレイヤーの transform 位置
@@ -127,6 +132,24 @@ mod MapSetup {
             mapGlobal  = mapGlobal,
             placements = placements
         }
+
+    /// レイヤー列（下 → 上の順）から「セル → 描かれているチップ列」を組む。
+    /// タイルの px はピクセル位置、src はタイルセット内ピクセル位置なので、
+    /// どちらもレイヤーの tileSize で割ってグリッド座標へ落とす。
+    def chipsOfLayers(layers: List[TileLayer]): TileChips =
+        layers |> List.foldLeft((acc, layer) -> {
+            let TileLayer.TileLayer(r) = layer;
+            chipsOfTiles(TileLayer.tileSize(layer), r#tiles, acc)
+        }, Map.empty())
+
+    /// タイル 1 枚ごとに、置かれたセルのチップ列の末尾（= 上）へチップ座標を足し込む。
+    /// pub: テストが TileData 値から直接検証するための入口。
+    pub def chipsOfTiles(tileSize: Float64, tiles: List[TileData], seedChips: TileChips): TileChips =
+        tiles |> List.foldLeft((acc, tile) -> {
+            let chip = Grid.cellAt(tileSize, {x = tile#srcX, y = tile#srcY});
+            Map.insertWith((added, existing) -> List.append(existing, added),
+                           Grid.cellOf(tileSize, tile#px), chip :: Nil, acc)
+        }, seedChips)
 
     /// 壁セルの Float64 座標を整数グリッドへ。collisionCells はタイルグリッド由来で整数 Float64 が
     /// 保証される（engine getCellSourceId/getUsedRect が整数前提）。非整数が来たら盤面衝突が静かに

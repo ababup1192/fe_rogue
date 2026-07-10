@@ -783,7 +783,9 @@ mod Game {
                                    // put し直すので、ここで書き換えても時間の整合は崩れない。
                                    Ref.put(world, worldRef);
                                    buildFrame(catalogs, world)
-                               }));
+                               }))
+                        // 注釈の書き出しに「囲った瞬間の World」の要約（world.json）を同梱する。
+                        |> App.withWorldDump((rect, world) -> checked_ecast(WorldDump.dump(rect, world)));
                 App.launch(app)
             // handler の並び順 = effect 消費順 (構文上で後の `with` ほど **外側**)。
             // `GameOverRequest` の handler 本体は `GameLogger` / `EnemyTurn.Queue` /

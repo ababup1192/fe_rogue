@@ -95,6 +95,11 @@ pub type alias MapLayout = {
     spawnGrid = {x = Int32, y = Int32}
 }
 
+/// セル → そのセルに描かれているマップチップ（タイルセット内のグリッド座標）の列。
+/// 列は描画の重ね順（床層 → 壁層、下 → 上）。デバッグ注釈の world.json が
+/// 「このセルにどのチップが出ているか」をシム側の事実として残すための read-model。
+pub type alias TileChips = Map[(Int32, Int32), List[{x = Int32, y = Int32}]]
+
 pub enum World {
     case World({ tick = Int32,
                  // turn FSM の 19-case phase。World 単一権威（`TurnPhase.State` は facade）。
@@ -296,6 +301,9 @@ pub enum World {
                  // 背景 map タイルの描画ハンドル（floor+walls 層・静的）。build choke の
                  // `Cmd.SetTileLayers` が seed し、render System が camera 適用して instanced 描画。
                  tileLayers = List[TileLayerHandle],
+                 // セル → 描かれているマップチップの列（build choke の `Cmd.SetTileChips` が seed・
+                 // Title は空）。デバッグ注釈の world.json 専用の read-model。
+                 tileChips = TileChips,
                  // 敵特殊能力 effectRule の生 Json read-model（unified-id・敵のみ）。
                  // 内側 Option=ルールなし。enemy `#resource#effectRule`（Option[Json]）由来＝weaponView と同じ
                  // Option-store パターン（accessor が flatten）。`Cmd.SetEffectRule` が書く。敵パスの sim 発火判定が読む。
@@ -358,6 +366,7 @@ mod World {
                      enemyHomeModule = Map.empty(),
                      mapSnapshot = None,
                      mapLayout = None,
+                     tileChips = Map.empty(),
                      stairsPos = None,
                      visited = Set.empty(),
                      chests = Map.empty(),
@@ -714,6 +723,7 @@ mod World {
         case SetMapSnapshot(Option[MapSnapshot])               // 地形 read-model（floor build choke で emit・Title は None）
         case SetMapLayout(Option[MapLayout])                   // マップ Plan＋スポーン起点（floor build choke で emit・Title は None）
         case SetTileLayers(List[TileLayerHandle])              // 背景タイルの描画ハンドル（floor build choke で emit・Title は Nil）
+        case SetTileChips(TileChips)                           // セル → 描かれているチップ列（floor build choke で emit・Title は空）
         case SetEffectRule(Int32, Option[Util.Json.Json])      // 敵 effectRule（spawn で emit・以後不変）
         case SetAnim(EntityRef, String)        // 再生アニメ切替（play 意味論=同名継続/別名リセット）
         case SetFlipH(EntityRef, Bool)         // 左右反転（移動 view 再生が書く）
@@ -1232,6 +1242,9 @@ mod World {
             case Cmd.SetTileLayers(handles) =>
                 let World.World(w) = world;
                 World.World({tileLayers = handles | w})
+            case Cmd.SetTileChips(chips) =>
+                let World.World(w) = world;
+                World.World({tileChips = chips | w})
             case Cmd.SetEffectRule(id, rule) =>
                 let World.World(w) = world;
                 World.World({effectRule = Map.insert(enemyUid(id), rule, w#effectRule) | w})
@@ -1511,6 +1524,7 @@ mod World {
             case Cmd.SetMapSnapshot(m)        => ("SetMapSnapshot", if (Option.isEmpty(m)) 0 else 1, 0, 0)
             case Cmd.SetMapLayout(l)          => ("SetMapLayout", if (Option.isEmpty(l)) 0 else 1, 0, 0)
             case Cmd.SetTileLayers(hs)        => ("SetTileLayers", List.length(hs), 0, 0)
+            case Cmd.SetTileChips(chips)      => ("SetTileChips", Map.size(chips), 0, 0)
             case Cmd.SetEffectRule(id, r)     => ("SetEffectRule", enemyUid(id), if (Option.isEmpty(r)) 0 else 1, 0)
             case Cmd.SetAnim(ref, name)       => ("SetAnim(${name})", toUid(ref), 0, 0)
             case Cmd.SetFlipH(ref, b)         => ("SetFlipH", toUid(ref), if (b) 1 else 0, 0)
@@ -2239,6 +2253,12 @@ mod World {
     /// 「盤面がある画面でのみ動く」ドライバ / 描画の存在ゲートと placements 読みの共通窓口。
     pub def terrainOf(world: World): Option[MapSnapshot] =
         let World.World(w) = world; w#mapSnapshot
+
+    /// セルに描かれているマップチップ（タイルセット内グリッド座標）の列を読む（下 → 上）。
+    /// 何も描かれていないセル・盤面レス画面は空。デバッグ注釈の world.json が読む。
+    pub def tileChipsAtOf(cell: {x = Int32, y = Int32}, world: World): List[{x = Int32, y = Int32}] =
+        let World.World(w) = world;
+        Map.get((cell#x, cell#y), w#tileChips) |> Option.getWithDefault(Nil)
 
     /// 地形を「必ず在る」前提で読む版（spawn 系 / 範囲計算など盤面のある画面専用）。
     /// 盤面レス画面での呼び出しは配線ミスとして即落とす（fail-open が欲しい読み手は `terrainOf`）。

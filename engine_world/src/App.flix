@@ -47,7 +47,10 @@ mod App {
         debug = Bool,                                              // デバッグ機能（F8 の時間停止・注釈・巻き戻し）を有効にするか
         // view = None のゲームがデバッグ機能を使うための生投影（フォントアトラス名と、World →
         // 描画チャンネル 3 本）。描画はせずチャンネルを返すだけの関数を繋ぐ。
-        debugView = Option[(String, w -> (List[GameEngine.Drawable], List[GameEngine.TileMapRenderCmd], List[GameEngine.PolygonRenderCmd]) \ ef)]
+        debugView = Option[(String, w -> (List[GameEngine.Drawable], List[GameEngine.TileMapRenderCmd], List[GameEngine.PolygonRenderCmd]) \ ef)],
+        // 注釈の矩形（デザイン座標）と表示中の瞬間の World からテキストを組む。
+        // 注釈チケットに world.json として同梱される（None のゲームは何も出ない）。
+        worldDump = Option[(Rect2.Rect2, w) -> String \ ef]
     }
 
     /// 初期 World だけを持つ空の App。絵はまだ無い（withView で繋ぐまで何も描かない）。
@@ -62,7 +65,8 @@ mod App {
           audio = _worlds -> checked_ecast(Nil),
           quit = (frame, _world) -> checked_ecast(justPressed(GameEngine.Key.Escape, frame)),
           debug = false,
-          debugView = None }
+          debugView = None,
+          worldDump = None }
 
     /// 起動時に 1 回だけ走るシステムを末尾へ繋ぐ（追加順に適用される）。
     pub def addStartup(sys: w -> w \ ef, app: App[w, ef]): App[w, ef] =
@@ -111,6 +115,14 @@ mod App {
                           f: w -> (List[GameEngine.Drawable], List[GameEngine.TileMapRenderCmd], List[GameEngine.PolygonRenderCmd]) \ ef,
                           app: App[w, ef]): App[w, ef] =
         { debugView = Some((font#font, f)) | app }
+
+    /// 注釈（F8 の矩形）を書き出すとき「囲った瞬間の World」をテキストにしてチケットへ
+    /// world.json として同梱する関数を繋ぐ。絵の情報（annotation.json）とシムの中身を
+    /// 突き合わせられるので、見た目と状態の食い違いを注釈だけで特定できるようになる。
+    /// f が受け取る矩形はデザイン座標。何をどこまで書くかはゲームが決める
+    /// （全フィールドでなく、調査に効く要約でよい）。
+    pub def withWorldDump(f: (Rect2.Rect2, w) -> String \ ef, app: App[w, ef]): App[w, ef] =
+        { worldDump = Some(f) | app }
 
     // ── 純粋な芯（テストはここを直接叩く）──
 
@@ -233,6 +245,12 @@ mod App {
         let (next, emitted) = Annotate.step(input, scrubbed);
         // 注釈のフレーム番号は「表示中の瞬間」のもの（スクラブぶんを引く）
         let shownFrame = next#frame - Int32.toInt64(next#scrub);
+        // 矩形が確定した瞬間だけ、表示中の World をゲームのダンプ関数でテキスト化する
+        // （world.json としてチケットに同梱。繋がれていなければ空 = 同梱しない）
+        let dumpText = match (emitted, app#worldDump) {
+            case (Some(rect), Some(f)) => f(rect, displayed)
+            case _                     => ""
+        };
         match app#view {
             case Some(toItems) =>
                 let atlas = GameEngine.Game.getFontAtlas("default");
@@ -244,7 +262,7 @@ mod App {
                 };
                 finishPaused({ design = design, cursor = input#cursor, atlas = atlas,
                                historyLen = historyLen, shownFrame = shownFrame },
-                             next, emitted,
+                             next, emitted, dumpText,
                              { drawables = sprites, tileMaps = Nil, polygons = polygons }, hitList)
             case None => match app#debugView {
                 case Some((fontName, toChannels)) =>
@@ -257,7 +275,7 @@ mod App {
                     };
                     finishPaused({ design = design, cursor = input#cursor, atlas = atlas,
                                    historyLen = historyLen, shownFrame = shownFrame },
-                                 next, emitted,
+                                 next, emitted, dumpText,
                                  { drawables = drawables, tileMaps = tileMaps, polygons = polygons }, hitList)
                 case None => next
             }
@@ -266,10 +284,10 @@ mod App {
     /// 一時停止フレームの締め: 矩形が確定していれば注釈を書き出してトーストを出し、凍結画面を描く。
     def finishPaused(ctx: { design = Vec2.Vec2, cursor = Vec2.Vec2, atlas = FontAtlas,
                             historyLen = Int32, shownFrame = Int64 },
-                     anno: Annotate.State, emitted: Option[Rect2.Rect2],
+                     anno: Annotate.State, emitted: Option[Rect2.Rect2], dumpText: String,
                      channels: DebugChannels, hitList: List[Annotate.Hit]): Annotate.State \ GameEngine.Game =
         let shown = match emitted {
-            case Some(rect) => match writeAnnotation(ctx#design, rect, ctx#shownFrame, channels, hitList) {
+            case Some(rect) => match writeAnnotation(ctx#design, rect, ctx#shownFrame, dumpText, channels, hitList) {
                 case Some(path) => Annotate.showToast("Saved debug file\n${path}", anno)
                 case None       => anno
             }
@@ -281,12 +299,14 @@ mod App {
     /// 確定した矩形の注釈一式（JSON・README の要約・等倍の描画命令）を組んでエンジンへ渡す。
     /// ファイルへの書き出しとスクリーンショット撮影・シャッター音はエンジンの saveAnnotation が
     /// 引き受ける。戻り値は保存先のディレクトリパス（失敗時 None）。
-    def writeAnnotation(design: Vec2.Vec2, rect: Rect2.Rect2, frameNo: Int64,
+    def writeAnnotation(design: Vec2.Vec2, rect: Rect2.Rect2, frameNo: Int64, dumpText: String,
                         channels: DebugChannels, hitList: List[Annotate.Hit]): Option[String] \ GameEngine.Game =
+        let body = Annotate.readmeBody({ frame = frameNo, rect = rect }, hitList);
         GameEngine.Game.saveAnnotation({
             frame = frameNo, rect = rect,
             json = Annotate.annotationJson({ frame = frameNo, design = design, rect = rect }, hitList),
-            readmeBody = Annotate.readmeBody({ frame = frameNo, rect = rect }, hitList),
+            readmeBody = if (dumpText == "") body else body + "\n- シム状態のダンプ: world.json",
+            worldDump = dumpText,
             sprites = channels#drawables, tileMaps = channels#tileMaps, polygons = channels#polygons })
 
     /// 凍結中の絵を描く: ドラッグ中の矩形を重ね、ズーム・パンを適用して描画命令にする。

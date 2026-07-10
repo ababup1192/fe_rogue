@@ -580,6 +580,9 @@ mod LwjglLayer {
                     burnHighlight(image, designRectToImage(req#rect, fbW, fbH, screenW, screenH));
                     writePngFile(image, "${dirPath}/highlighted.png");
                     writeTextFile("${dirPath}/annotation.json", req#json);
+                    if (req#worldDump != "")
+                        writeTextFile("${dirPath}/world.json", req#worldDump)
+                    else ();
                     writeTextFile("${dirPath}/README.md",
                         readmeText({title = config#title, stamp = readableStamp,
                                     frame = req#frame, body = req#readmeBody}));
