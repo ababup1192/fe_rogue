@@ -179,13 +179,13 @@ mod TestPlatformer {
     // 走り: 慣性・空中制御・摩擦
     // ========================================================================
 
-    // 同じ 10 フレームの右入力でも、地上（900px/s²）は 140.625 まで乗り、
-    // 空中（500px/s²）は 78.125 まで —— 空中制御は効くが地上より弱い。厳密値。
+    // 同じ 10 フレームの右入力で、地上も空中も 900px/s² で 140.625 まで乗る —— 空中は
+    // 地上と同じ（マリオ式・F1 の airAccel で戻せる）。厳密値。
     @Test
-    def testAirControlWeakerThanGround(): Unit \ Assert =
+    def testAirControlEqualsGround(): Unit \ Assert =
         let ground = play(Trace.holdRight(10), Trace.flatWorld());
         let air = play(Trace.holdRight(10), Trace.fallingWorld(150.0));
-        Assert.assertEq(expected = (140.625, 78.125),
+        Assert.assertEq(expected = (140.625, 140.625),
             (Trace.velOf(ground)#x, Trace.velOf(air)#x))
 
     // キーを離すと地上摩擦（1200px/s²）が 8 フレームで 140.625 → 0 に止める（行き過ぎない）。
@@ -225,15 +225,40 @@ mod TestPlatformer {
         Assert.assertEq(expected = (270.0, 160.0),
             (Trace.velOf(mid)#x, Trace.velOf(final)#x))
 
+    // ========================================================================
+    // 速度依存ジャンプ（走ると高く飛べる・SMB1 式）
+    // ========================================================================
+
+    // 初速の単体 pin: 立ち（vx=0）は素の -2h/t = -512.0 のまま（既存の平地ジャンプ曲線の
+    // pin が全部生きている根拠）。最高速（vx=280 = dashMax）は +12% の -573.44。
+    // 帯の外（|vx| > dashMax）は 280 で頭打ち — 下り坂の overspeed でも盛りすぎない。
+    @Test
+    def testJumpVelocitySpeedBonus(): Unit \ Assert =
+        Assert.assertEq(expected = (-512.0, -573.44, -573.44),
+            (Jump.jumpVelocity(params(), 0.0),
+             round4(Jump.jumpVelocity(params(), 280.0)),
+             round4(Jump.jumpVelocity(params(), 321.0))))
+
+    // ダッシュジャンプの頂点: 長い助走で 280 に乗ってから満タンジャンプすると、
+    // 頂点は y=72.692（round4・実測 pin）— 立ちジャンプの 95.8333 より約 23px 高い
+    // （初速 ×1.12 → 連続式なら高さ ×1.2544 ≈ +24px。離散積分と頂点帯のふわりで
+    //  1px 弱目減りする。約 1.5 マスぶん「走ると高く飛べる」）。
+    @Test
+    def testDashJumpApexHigher(): Unit \ Assert =
+        let cues = List.flatten(
+            Trace.holdRightDash(128) :: Trace.rightDashJump(24) :: Trace.flight(60) :: Nil);
+        let worlds = timeline(cues, Trace.longFlatWorld());
+        Assert.assertEq(expected = 72.692, round4(Trace.apexOf(worlds)))
+
     // 空中ベクトル変更（スマブラの DI 風）: ダッシュジャンプ中でも切り返し（進行方向と
-    // 逆への入力）は P 帯の dashAccel でなく airAccel（500px/s² = 7.8125/frame）で効く。
-    // vx=280 の空中で左を 20f 押すと 280 − 20×7.8125 = 123.75（厳密値）。
+    // 逆への入力）は P 帯の dashAccel でなく airAccel（900px/s² = 14.0625/frame）で効く。
+    // vx=280 の空中で左を 20f 押すと 280 − 20×14.0625 = −1.25（厳密値・目標 −160 には未到達）。
     // 旧仕様（P 帯が空中の切り返しにも適用）では 280 − 20×1.25 = 255 までしか落ちず、
     // ダッシュジャンプ中の舵がほぼ利かなかった（その回帰の修正を pin する）。
     @Test
     def testAirSteeringUsesAirAccel(): Unit \ Assert =
         let final = play(Trace.holdLeft(20), Trace.airborneWorld(280.0));
-        Assert.assertEq(expected = 123.75, Trace.velOf(final)#x)
+        Assert.assertEq(expected = -1.25, Trace.velOf(final)#x)
 
     // 進行方向への上積みは空中でも P 帯のまま: vx=200 の空中で右ダッシュを 20f 押しても
     // dashAccel（1.25/frame）でしか伸びない — 200 + 20×1.25 = 225.0（空中で速度は盛れない）。
@@ -241,6 +266,58 @@ mod TestPlatformer {
     def testAirForwardPushStaysInPBand(): Unit \ Assert =
         let final = play(Trace.holdRightDash(20), Trace.airborneWorld(200.0));
         Assert.assertEq(expected = 225.0, Trace.velOf(final)#x)
+
+    // ========================================================================
+    // スキッド（地上の切り返し）
+    // ========================================================================
+
+    /// P スピード済み（vx=280）で長い平地に接地している世界（スキッドの出発点）。
+    def skidWorld(): Field.World =
+        { player = { vel = { x = 280.0, y = 0.0 } | Trace.restingPlayer(600.0) }
+        | Trace.longFlatWorld() }
+
+    // 地上の切り返し（スキッド）は 3 段: vx=280 で左を押すと skidDecel（1800px/s² =
+    // 28.125/frame）で急減速する。
+    //   f1..f9  スキッド帯: dir×vx < 0 が続き、f9 で 280 − 9×28.125 = 26.875
+    //   f10     ゼロ跨ぎ: approach の目標は dir×160 = −160 なのでクランプされず
+    //           26.875 − 28.125 = −1.25 —— スキッドのステップの途中で符号が反転する
+    //   f11..f20 反転後は dir×vx > 0 = skidding が偽 → 通常の groundAccel（14.0625/frame）で
+    //           反対方向へ: −1.25 − 10×14.0625 = −141.875（境界で振動しない）
+    // 旧仕様は P 帯の dashAccel（1.25/frame）が逆入力にも適用され、反転に 1.5 秒かかっていた。
+    @Test
+    def testSkidTurnaroundThreePhases(): Unit \ Assert =
+        let after10 = play(Trace.holdLeft(10), skidWorld());
+        let after20 = play(Trace.holdLeft(20), skidWorld());
+        Assert.assertEq(expected = (-1.25, -141.875),
+            (Trace.velOf(after10)#x, Trace.velOf(after20)#x))
+
+    // 「離すより踏み替えの方が速い」（スキッドの存在理由）: vx=280 から |vx| ≤ 5 に落ちるまで、
+    // 逆入力（スキッド 1800）は 10 フレーム、離すだけ（摩擦 1200）は 15 フレーム。
+    // skidDecel > groundDecel がこの順序を保証する — 旧仕様は逆入力が dashAccel に食われ、
+    // 離す方が速い逆転が起きていた（その回帰を両方の実測で pin する）。
+    @Test
+    def testSkidStopsFasterThanFriction(): Unit \ Assert =
+        let framesToSlow = cues ->
+            timeline(cues, skidWorld())
+            |> List.zipWithIndex
+            |> List.findLeft(pair -> { let (_i, w) = pair; Float64.abs(Trace.velOf(w)#x) <= 5.0 })
+            |> Option.map(pair -> { let (i, _w) = pair; i + 1 })
+            |> Option.getWithDefault(-1);
+        Assert.assertEq(expected = (10, 15),
+            (framesToSlow(Trace.holdLeft(20)), framesToSlow(Trace.flight(20))))
+
+    // スキッドの土埃はブレーキ痕 = 進行方向（+x）へ流れる: vx=280 で左を 10f 押すと、
+    // 固定 16 回/秒の floor 跨ぎ（4 フレームごと）で f4（vx=167.5 > 80）に 1 発立つ。
+    // f8 の跨ぎは |vx| = 55 ≤ 80 で出ない。走り土埃（後方 dir=−sign(vx)）とは dir×vx の
+    // 符号で排他なので同フレームの二重発生はない（前進ダッシュの cadence 9 が不変なことは
+    // TestFx.testDashDustCadenceOverOneSecond が pin している）。
+    @Test
+    def testSkidSpawnsForwardDust(): Unit \ Assert =
+        let worlds = timeline(Trace.holdLeft(10), skidWorld());
+        let spawns = worlds |> List.flatMap(w -> w#bursts
+            |> List.filter(b -> b#kind == Field.FxKind.DustKind and b#elapsed == 0.0));
+        Assert.assertEq(expected = (1, 1.0 :: Nil),
+            (List.length(spawns), spawns |> List.map(b -> b#dir#x)))
 
     // ========================================================================
     // 崖と崖死亡
@@ -313,6 +390,44 @@ mod TestPlatformer {
         let final = play(cues, Trace.ceilingWorld());
         Assert.assertEq(expected = (true, true),
             (eventHappened("bump", worlds), Trace.groundedOf(final)))
+
+    // ========================================================================
+    // 角の救済（corner correction）
+    // ========================================================================
+
+    // 端から 4px のかすり: bump は鳴らず、上昇は殺されない（頂点は平地の満タンと同じ
+    // 95.8333 = 天井の帯 130.5..144.5 を通り抜けた証拠）。体は自由な側（左）へ
+    // めり込み + 0.01 = 4.01px ずれる（160 → 155.99・救済の実測 pin）。
+    @Test
+    def testCornerGrazeRescued(): Unit \ Assert =
+        let cues = List.append(Trace.holdJump(30), Trace.flight(70));
+        let worlds = timeline(cues, Trace.cornerCeilingWorld(4.0));
+        let final = play(cues, Trace.cornerCeilingWorld(4.0));
+        Assert.assertEq(expected = (false, 95.8333, 155.99, true),
+            (eventHappened("bump", worlds), round4(Trace.apexOf(worlds)),
+             round4(Trace.posOf(final)#x), Trace.groundedOf(final)))
+
+    // 端から 10px（しきい値 6px より深い）: 従来どおり bump が鳴って上昇が止まり
+    // （頂点は接触の高さ 153 付近まで・天井は抜けない）、落ちて接地に戻る。
+    @Test
+    def testCornerDeepHitStillBumps(): Unit \ Assert =
+        let cues = List.append(Trace.holdJump(30), Trace.flight(70));
+        let worlds = timeline(cues, Trace.cornerCeilingWorld(10.0));
+        let final = play(cues, Trace.cornerCeilingWorld(10.0));
+        Assert.assertEq(expected = (true, true, true),
+            (eventHappened("bump", worlds), Trace.apexOf(worlds) > 145.0,
+             Trace.groundedOf(final)))
+
+    // 2 天井の谷間: 両方の角が 4px のかすりでも、逃げる向きが左右に割れるので救済しない
+    // — 従来どおり bump で止まる（頭が挟まったまますり抜ける穴を作らない）。
+    @Test
+    def testCornerValleyIsNotRescued(): Unit \ Assert =
+        let cues = List.append(Trace.holdJump(30), Trace.flight(70));
+        let worlds = timeline(cues, Trace.ceilingValleyWorld());
+        let final = play(cues, Trace.ceilingValleyWorld());
+        Assert.assertEq(expected = (true, true, true),
+            (eventHappened("bump", worlds), Trace.apexOf(worlds) > 145.0,
+             Trace.groundedOf(final)))
 
     // ========================================================================
     // パラメータの F1 リロード（fail-open の芯）

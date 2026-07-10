@@ -54,7 +54,7 @@ mod Trace {
         { pos = { x = x, y = Field.groundTop() - Field.playerRadius() },
           vel = Vec2.zero(), grounded = true,
           coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-          ridingId = None, dropLeft = 0.0 }
+          facing = 1.0, ridingId = None, dropLeft = 0.0 }
 
     /// シナリオ World の共通枠（プレイヤーと地形だけ違う・敵は要る場面で足す）。
     /// classic の寸法は 320×240（Field.classicW/H・design 480×360 より小さい）なので
@@ -69,7 +69,7 @@ mod Trace {
           spawnPos = { x = 56.0, y = 104.0 }, respawnPos = { x = 56.0, y = 104.0 },
           checkpointPos = { x = Field.classicW() + 1000.0, y = 104.0 },
           goalX = Field.classicW() + 1000.0,
-          clearedAt = None, time = 0.0 }
+          clearedAt = None, freezeLeft = 0.0, time = 0.0 }
 
     /// 地面だけの世界（浮き床・壁なし）。ジャンプ曲線と走りを邪魔なしで測る。
     pub def flatWorld(): Field.World =
@@ -86,7 +86,7 @@ mod Trace {
     pub def classicWorld(): Field.World =
         let player = { pos = { x = 60.0, y = 100.0 }, vel = Vec2.zero(), grounded = false,
                        coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                       ridingId = None, dropLeft = 0.0 };
+                       facing = 1.0, ridingId = None, dropLeft = 0.0 };
         worldOf(player, Field.classicPlatforms())
 
     /// 浮き床走破の出発点: classic 地形で、左端（x=20）に接地静止。
@@ -114,32 +114,39 @@ mod Trace {
     pub def gapDeathCues(): List[Replay.Cue[Field.Input]] =
         List.flatten(holdRight(10) :: flight(45) :: Nil)
 
-    /// レベル走破（スタート → ゴール・1127 フレーム・probe で振り付けた実測値）。
+    /// レベル走破（スタート → ゴール・1143 フレーム・probe で振り付けた実測値）。
     /// 疾走感の台本: 出発から B ダッシュを離さず、止まらずにゴールまで走り切る。
+    /// 速度依存ジャンプ（280 で跳ぶと初速 +12%）で弧が上がったぶん、走りながらの
+    /// ホップは旧台本より短い押し（10f→6f・24f→20f）で同じ高さの弧を描く。
+    /// 踏みのヒットストップ（3 コマ × 3 回）は入力を黙って食うので、踏みを含む
+    /// holdRightDash の区間に同じ数だけ延ばしぶんを織り込んで以降の振り付けを合わせてある
+    /// （凍結明けの世界は凍結が無かったときと同一 = 位置は変わらない）。
     ///   f0    落下しながらダッシュ開始 → 助走路で P スピード 280 を作る
-    ///   f129  低い段差を 10f ホップで越え、下り際に歩く敵（x648）を踏む（f160 stomp）—
+    ///   f130  低い段差を 6f ホップで越え、下り際に歩く敵（x648）を踏む（f159 stomp）—
     ///         バウンドがそのまま穴 1（688-720）を丸ごと越える（踏み連鎖 A）
-    ///   f193  着地と同時に 4f ホップで 2 体目の歩く敵（x840）を飛び越え、緩い坂に着地
-    ///   f270  台地から 5f ホップで 45° 坂と高台をまとめて越える（上空のパタパタは位相調整で高い）
-    ///   f307  高台の縁から下りの坂へ — 下りの滑りで 357px/s まで伸びる（P スピード帯の overspeed）
-    ///   f403  トゲ（x1608）を 6f ホップで越え、着地の直後に中間地点の旗（x1688・f435）が発動
-    ///   f573  P スピードゲートの大穴（128px）を満タンジャンプで渡り、下り際に
-    ///         歩く敵（x2488・f615 stomp）→ バウンド → 歩く敵（x2616・f644 stomp）→ バウンド、
-    ///         と 2 連鎖で敵地帯を頭伝いに通過（踏み連鎖 C・パタパタ 2 体は位相調整で上空へ退く）
-    ///   f693  そのままフェリー（phase 調整済み・穴の左端で待ち受ける）に走り込み、デッキを
-    ///         駆けて f703 に跳ぶ（デッキの水平速度 +48px/s を継承）→ 階段 2 段目へ
-    ///   f735  階段を 10f ホップ × 2 で 3 段目・4 段目へ（壁に当てて刻む）
-    ///   f797  4 段目から満タンジャンプで最上段を飛び越し、一方通行の棚（行13・y196）へ着地 —
-    ///         カメラが camY≈132 まで上がり、空の高ルートを走る（f830-853）
-    ///   f854  棚の右端から 220px の大落下 → 着地してゴールの旗（x3272）を f886 に通過（クリア）
-    ///   以後  右壁（x3316）で止まって花火 10 発（0.6 秒のタメ → 0.2 秒間隔）を見届ける
+    ///   f197  着地と同時に 4f ホップで 2 体目の歩く敵（x840）を飛び越え、緩い坂に着地
+    ///   f274  坂の途中から 5f ホップで 45° 坂と高台をまとめて越える（上空のパタパタは位相調整で高い）
+    ///   f320  高台の縁から下りの坂へ — 下りの滑りで 331px/s まで伸びる（P スピード帯の overspeed）
+    ///   f407  トゲ（x1608）を 6f ホップで越え、着地の直後に中間地点の旗（x1688・f449）が発動
+    ///   f584  P スピードゲートの大穴（128px）を 20f ジャンプで渡り（速度ボーナスつきなので
+    ///         旧満タン相当の弧）、下り際に歩く敵（x2488・f628 stomp）→ バウンド →
+    ///         歩く敵（x2616・f660 stomp）→ バウンド、と 2 連鎖で敵地帯を頭伝いに通過
+    ///         （踏み連鎖 C・パタパタ 2 体は位相調整で上空へ退く）
+    ///   f695  着地してそのままフェリー（phase 調整済み・穴の左端で待ち受ける）に走り込み、
+    ///         デッキを駆けて f720 に跳ぶ（デッキの水平速度 +45px/s を継承）→ 階段 2 段目へ
+    ///   f752  階段を 5f ホップ × 2 で 3 段目・4 段目へ（壁に当てて刻む — 壁で vx が 0 に
+    ///         なるので速度ボーナスは乗らず、旧台本と同じ低いホップになる）
+    ///   f814  4 段目から 20f ジャンプで最上段を飛び越し、一方通行の棚（行13・y196）へ
+    ///         着地（f845）— カメラが上がり、空の高ルートを走る（f845-863）
+    ///   f864  棚の右端から 220px の大落下 → 着地してゴールの旗（x3272）を f896 に通過（クリア）
+    ///   以後  右壁（x3316）で止まって花火 10 発（0.6 秒のタメ → 0.2 秒間隔・f935-1050）を見届ける
     pub def levelRunCues(): List[Replay.Cue[Field.Input]] =
-        List.flatten(holdRightDash(129) :: rightDashJump(10) :: holdRightDash(54) ::
+        List.flatten(holdRightDash(129) :: rightDashJump(6) :: holdRightDash(61) ::
                      rightDashJump(4) :: holdRightDash(73) :: rightDashJump(5) :: holdRightDash(128) ::
-                     rightDashJump(6) :: holdRightDash(164) ::
-                     rightDashJump(24) :: holdRightDash(106) ::
+                     rightDashJump(6) :: holdRightDash(171) ::
+                     rightDashJump(20) :: holdRightDash(116) ::
                      rightDashJump(8) :: holdRightDash(24) ::
-                     rightDashJump(10) :: holdRightDash(21) :: rightDashJump(10) :: holdRightDash(21) ::
+                     rightDashJump(5) :: holdRightDash(26) :: rightDashJump(5) :: holdRightDash(26) ::
                      rightDashJump(20) :: holdRightDash(110) :: flight(200) :: Nil)
 
     /// 浮き床走破の台本（リモートデバッグの lockstep で振り付けた実測値・143 フレーム）:
@@ -156,7 +163,7 @@ mod Trace {
     pub def levelRestingPlayer(x: Float64): Field.Player =
         { pos = { x = x, y = 404.0 }, vel = Vec2.zero(), grounded = true,
           coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-          ridingId = None, dropLeft = 0.0 }
+          facing = 1.0, ridingId = None, dropLeft = 0.0 }
 
     /// 崖のある世界: 幅 80 の床の右端ぎりぎりに接地している。右へ 1 歩で床を離れる。
     pub def ledgeWorld(): Field.World =
@@ -169,6 +176,22 @@ mod Trace {
     pub def ceilingWorld(): Field.World =
         let ceiling = Field.rigid(101, { x = 160.0, y = Field.groundTop() - 60.0 }, { x = 80.0, y = 14.0 });
         worldOf(restingPlayer(160.0), Field.fullGround() :: ceiling :: Nil)
+
+    /// 角の救済のシナリオ: ceilingWorld の変形で、天井の「左端」を playerRight − overlap に
+    /// 合わせて置く — x=160 で真上にジャンプすると、床の端から overlap px だけ頭がかすめる。
+    /// 天井の中心 y=137.5（下面 144.5）は、上昇 5 フレーム目（中心 y=153.0）の角の接触が
+    /// 「頭ぶつけ」（normal.y > 0.7）として検出される実測の高さ。
+    pub def cornerCeilingWorld(overlap: Float64): Field.World =
+        let left = 160.0 + Field.playerRadius() - overlap;
+        let ceiling = Field.rigid(101, { x = left + 40.0, y = 137.5 }, { x = 80.0, y = 14.0 });
+        worldOf(restingPlayer(160.0), Field.fullGround() :: ceiling :: Nil)
+
+    /// 2 天井の谷間: 左の天井の右端と右の天井の左端が、どちらも 4px のかすり —
+    /// 逃げる向きが左右に割れるので角の救済は発動せず、従来どおり bump で止まる。
+    pub def ceilingValleyWorld(): Field.World =
+        let leftC  = Field.rigid(101, { x = 112.0, y = 137.5 }, { x = 80.0, y = 14.0 });
+        let rightC = Field.rigid(102, { x = 208.0, y = 137.5 }, { x = 80.0, y = 14.0 });
+        worldOf(restingPlayer(160.0), Field.fullGround() :: leftC :: rightC :: Nil)
 
     /// コヨーテ猶予が残ったまま空中にいる世界: 崖を離れて数フレーム後の状態を直接組む
     /// （歩き出しのフレーム数に依存せず、猶予内のジャンプ成立だけを見る）。
@@ -183,7 +206,7 @@ mod Trace {
         let player = { pos = { x = 600.0, y = 60.0 }, vel = { x = vx, y = -200.0 },
                        grounded = false,
                        coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                       ridingId = None, dropLeft = 0.0 };
+                       facing = 1.0, ridingId = None, dropLeft = 0.0 };
         { player = player | longFlatWorld() }
 
     /// 空中から落下し始める世界: プレイヤーを地面の上方 height px の空中に置く（速度ゼロ）。
@@ -191,7 +214,7 @@ mod Trace {
         let player = { pos = { x = 160.0, y = Field.groundTop() - Field.playerRadius() - height },
                        vel = Vec2.zero(), grounded = false,
                        coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                       ridingId = None, dropLeft = 0.0 };
+                       facing = 1.0, ridingId = None, dropLeft = 0.0 };
         worldOf(player, Field.fullGround() :: Nil)
 
     // ── 読み取り（テストが World から値を取り出す薄いアクセサ）──
@@ -201,6 +224,7 @@ mod Trace {
     pub def groundedOf(world: Field.World): Bool = world#player#grounded
     pub def coyoteOf(world: Field.World): Float64 = world#player#coyoteLeft
     pub def bufferOf(world: Field.World): Float64 = world#player#bufferLeft
+    pub def facingOf(world: Field.World): Float64 = world#player#facing
     pub def eventsOf(world: Field.World): List[String] =
         world#events |> List.map(Field.eventName)
     pub def deathsOf(world: Field.World): Int32 = world#deaths
@@ -221,7 +245,7 @@ mod Trace {
             { axis = { x = 0.0, y = -1.0 }, amplitude = 32.0, period = 4.0, phase = 0.0 });
         let player = { pos = { x = 160.0, y = 131.0 }, vel = Vec2.zero(), grounded = true,
                        coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                       ridingId = Some(400), dropLeft = 0.0 };
+                       facing = 1.0, ridingId = Some(400), dropLeft = 0.0 };
         worldOf(player, mover :: Nil)
 
     /// 横フェリーの世界: 下は奈落（地面なし）・横に動く床 1 枚。乗って始まる。
@@ -231,7 +255,7 @@ mod Trace {
             { axis = { x = 1.0, y = 0.0 }, amplitude = 48.0, period = 4.0, phase = 0.0 });
         let player = { pos = { x = 160.0, y = 131.0 }, vel = Vec2.zero(), grounded = true,
                        coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                       ridingId = Some(401), dropLeft = 0.0 };
+                       facing = 1.0, ridingId = Some(401), dropLeft = 0.0 };
         worldOf(player, mover :: Nil)
 
     /// 一方通行の床の世界: 地面 + その 60px 上に一方通行の薄板。
@@ -244,7 +268,7 @@ mod Trace {
         let plank = Field.oneWayAt(300, { x = 160.0, y = Field.groundTop() - 60.0 }, { x = 100.0, y = 12.0 });
         let player = { pos = { x = 160.0, y = 122.0 }, vel = Vec2.zero(), grounded = true,
                        coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                       ridingId = Some(300), dropLeft = 0.0 };
+                       facing = 1.0, ridingId = Some(300), dropLeft = 0.0 };
         worldOf(player, Field.fullGround() :: plank :: Nil)
 
     /// 下+ジャンプを 1 フレーム押す（すり抜け降下の開始）。
@@ -279,18 +303,20 @@ mod Trace {
         | flatWorld() }
 
     /// 敵ショーケースの台本（probe で振り付けた実測値・141 フレーム）: 助走 14f → ジャンプ 12f の
-    /// 降下で walker A を踏んで倒し（f48・バウンド）、走り続けて walker B に横から触れて死に（f97）、
-    /// 出発点へ戻って着地する。
+    /// 降下で walker A を踏んで倒し（f48・バウンド + 凍結 3 コマ）、走り続けて walker B に
+    /// 横から触れて死に（f102）、出発点へ戻って着地する。
     pub def stompPatrolCues(): List[Replay.Cue[Field.Input]] =
         List.flatten(holdRight(14) :: rightJump(12) :: holdRight(70) :: flight(45) :: Nil)
 
-    /// パタパタ踏みの台本（probe で振り付けた実測値・100 フレーム）: flyerWorld で
-    /// 走って敵の直下（x=240 付近）へ寄り（20f）、少し待って敵が下降し始めるのを見計らい（8f）、
-    /// ジャンプ（12f）→ 下降中に重なって f53 で stomp（バウンド + puff）→ 出発点へは戻らず着地。
+    /// パタパタ踏みの台本（probe で振り付けた実測値・112 フレーム）: flyerWorld で
+    /// 敵の左手前（x≈208・触れない横距離）まで走り（20f）、8f おいて真上に満タンジャンプ（24f）
+    /// — 上昇中は横に動かないので、高く戻ってきた敵に触れない。頂点から右へ舵を切り（12f・
+    /// 空中の加速は地上と同じ 900）、下降しながら敵の真上へ滑り込んで f66 で stomp
+    /// （バウンド + 凍結 3 コマ）→ そのまま右へ流れて着地する。
     /// 踏みは「前フレームの足元が敵の頭より上 ∧ 下向きに落下中」でしか成立しない
-    /// （上昇中に横から重なると致命接触になる）ので、待ち時間で下降フェーズに合わせてある。
+    /// （上昇中に横から重なると致命接触になる）ので、舵を切るのは頂点から。
     pub def flyerBobCues(): List[Replay.Cue[Field.Input]] =
-        List.flatten(holdRight(20) :: flight(8) :: rightJump(12) :: flight(60) :: Nil)
+        List.flatten(holdRight(20) :: flight(8) :: holdJump(24) :: holdRight(12) :: flight(48) :: Nil)
 
     /// トゲ落とし穴の台本（probe で振り付けた実測値・111 フレーム）: spikyWorld で
     /// 走って（25f）ジャンプ（16f）で着地しつつ突っ込み、トゲは踏めないので f88 で death →

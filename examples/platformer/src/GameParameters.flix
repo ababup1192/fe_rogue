@@ -26,10 +26,14 @@ mod GameParameters {
         dashAccel = Float64,        // P スピード帯（|vx| > maxRunSpeed）の加速 px/s²
         groundAccel = Float64,      // 地上の加速 px/s²
         groundDecel = Float64,      // 地上の減速 px/s²
+        skidDecel = Float64,        // 地上の切り返し（スキッド）の急ブレーキ px/s²
         airAccel = Float64,         // 空中の加速 px/s²
         airDecel = Float64,         // 空中の減速 px/s²
         coyoteTime = Float64,       // コヨーテタイム 秒
-        bufferTime = Float64        // ジャンプバッファ 秒
+        bufferTime = Float64,       // ジャンプバッファ 秒
+        jumpSpeedBonus = Float64,   // 速度依存ジャンプ: 最高速で跳んだときの初速の上乗せ率
+        stompBounce = Float64,      // 通常の踏みバウンド px/s
+        stompBounceHold = Float64   // ジャンプを押しながら踏んだときの大バウンド px/s
     }
 
     /// コード内定数そのままの既定パラメータ。initialWorld・Replay・ギャラリーはこれ、F1 だけが差し替える。
@@ -46,10 +50,14 @@ mod GameParameters {
         dashAccel = Jump.dashAccel(),
         groundAccel = Jump.groundAccel(),
         groundDecel = Jump.groundDecel(),
+        skidDecel = Jump.skidDecel(),
         airAccel = Jump.airAccel(),
         airDecel = Jump.airDecel(),
         coyoteTime = Jump.coyoteTime(),
-        bufferTime = Jump.bufferTime() }
+        bufferTime = Jump.bufferTime(),
+        jumpSpeedBonus = Jump.jumpSpeedBonus(),
+        stompBounce = Jump.stompBounce(),
+        stompBounceHold = Jump.stompBounceHold() }
 
     /// パラメータファイルの置き場所。
     pub def path(): String = "assets/parameters.json"
@@ -83,10 +91,14 @@ mod GameParameters {
               dashAccel = num("dashAccel", base#dashAccel, map),
               groundAccel = num("groundAccel", base#groundAccel, map),
               groundDecel = num("groundDecel", base#groundDecel, map),
+              skidDecel = num("skidDecel", base#skidDecel, map),
               airAccel = num("airAccel", base#airAccel, map),
               airDecel = num("airDecel", base#airDecel, map),
               coyoteTime = num("coyoteTime", base#coyoteTime, map),
-              bufferTime = num("bufferTime", base#bufferTime, map) }
+              bufferTime = num("bufferTime", base#bufferTime, map),
+              jumpSpeedBonus = num("jumpSpeedBonus", base#jumpSpeedBonus, map),
+              stompBounce = num("stompBounce", base#stompBounce, map),
+              stompBounceHold = num("stompBounceHold", base#stompBounceHold, map) }
         case _ => defaults()
     }
 

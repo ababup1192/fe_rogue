@@ -17,6 +17,7 @@ mod Field {
         bufferLeft = Float64,   // 秒。ジャンプ押下で bufferTime へ充填、着地までに残っていれば飛ぶ
         jumpHeld = Bool,        // 上昇カットを離した瞬間の 1 回に限るための印
         squashLeft = Float64,   // 着地スカッシュ演出の残り秒（View 用）
+        facing = Float64,       // 向いている向き（+1 右 / -1 左）。最後の非ゼロ入力を保持（カメラ先読み用）
         ridingId = Option[EntityId], // 乗っている床の id（分離後の支持接触から毎フレーム導出・空中は None）
         dropLeft = Float64      // すり抜け降下の残り秒（この間は一方通行を無視する）
     }
@@ -129,8 +130,9 @@ mod Field {
     /// 敵の当たり判定（円・半径 10）。
     pub def enemyRadius(): Float64 = 10.0
 
-    /// 踏んだ瞬間に与える上向き速度（半ジャンプ程度のバウンド）。
-    pub def stompBounceVy(): Float64 = -320.0
+    /// 踏んだ瞬間だけ世界を止める「手応え」の秒数（ヒットストップ・ちょうど 3 コマ）。
+    /// 1/64 の倍数なので凍結は常に 3 フレームぴったり = テストの pin が厳密になる。
+    pub def stompFreeze(): Float64 = 3.0 / 64.0
 
     // ── このフレームの出来事（Sfx と WorldDump が読む）──
 
@@ -192,6 +194,7 @@ mod Field {
         checkpointPos = Vec2.Vec2,           // 中間地点（x が発動線・無いレベルは届かない値）
         goalX = Float64,                     // ゴールの x。越えたらクリア（無いレベルは届かない値）
         clearedAt = Option[Float64],         // クリアした時刻（None = 未クリア）。花火の発射台本の基点
+        freezeLeft = Float64,                // ヒットストップの残り秒（>0 の間は時間も物理も丸ごと止まる・踏みで充填）
         time = Float64                       // 通し秒
     }
 
@@ -272,6 +275,10 @@ mod Field {
     /// 0.7 だと坂の上でぎりぎり非接地になる。0.6 まで下げて 45° 坂を接地に含める。
     pub def groundedNormalY(): Float64 = -0.6
 
+    /// 角の救済のしきい値 px: 上昇中の頭ぶつけが床の端からこの水平めり込み以内なら、
+    /// 止めずに横へずらして通す「プレイヤーは悪くない」救済（bump も出さない）。
+    pub def cornerNudge(): Float64 = 6.0
+
     // ── classic 地形の組み立て ──
     // 本番のレベルは Level（208×30 のテキストグリッド・3328×480px）が正。ここの 1 画面地形は
     // テストとギャラリーのシナリオ用（Trace.classicWorld が使う）に残している。
@@ -316,7 +323,7 @@ mod Field {
     pub def freshPlayerAt(startAt: Vec2.Vec2): Player =
         { pos = startAt, vel = Vec2.zero(), grounded = false,
           coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-          ridingId = None, dropLeft = 0.0 }
+          facing = 1.0, ridingId = None, dropLeft = 0.0 }
 
     /// 本番の初期 World: Level のワイドレベル（3328×480px）にスポーンのプレイヤーと敵。
     /// camY は最初からスポーンへスナップしておく（起動直後に画面が縦にパンしない）。
@@ -330,7 +337,7 @@ mod Field {
           camY = FollowCam.snapCamY(Level.levelHeight(), startAt#y),
           levelW = Level.levelWidth(), levelH = Level.levelHeight(),
           spawnPos = startAt, respawnPos = startAt, checkpointPos = Level.checkpointPos(),
-          goalX = Level.goalX(), clearedAt = None, time = 0.0 }
+          goalX = Level.goalX(), clearedAt = None, freezeLeft = 0.0, time = 0.0 }
 
     // ── リモートデバッグ（view=status）用の 1 行サマリ ──
 

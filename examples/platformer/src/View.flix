@@ -249,18 +249,30 @@ mod View {
     // ── プレイヤー（球体・着地の瞬間だけ潰れる）──
 
     /// squashLeft が残っている間は横に広く縦に低い全角丸ボックス（= 楕円の近似）を、
-    /// それ以外は真円を描く。潰れても足元（下端）は地面に着けたまま。
-    /// 段階演出はすべて |vx| から導く（新しい状態は持たない）:
-    /// 色 3 段階 + 転がりの点 2 個（回転）+ 最高速の残像 2 枚。
+    /// 空中で速く上昇している間は縦長（ジャンプ伸びストレッチ = 着地スカッシュの対）を、
+    /// それ以外は真円を描く。潰れても足元（下端）は地面に着けたまま。伸びは飛行中なので
+    /// 中心基準で上下へ伸ばす。段階演出はすべて |vx| から導く（新しい状態は持たない）:
+    /// 色 3 段階 + 転がりの点 3 個（回転）+ 最高速の残像 2 枚。
     def playerItems(player: Field.Player): List[Render.Placed] =
         let r = Field.playerRadius();
         let ratio = if (Field.squashTime() > 0.0) player#squashLeft / Field.squashTime() else 0.0;
-        let w = r * 2.0 * (1.0 + 0.35 * ratio);
-        let h = r * 2.0 * (1.0 - 0.35 * ratio);
-        let topLeft = { x = player#pos#x - w / 2.0, y = player#pos#y + r - h };
+        let stretch = stretchAmount(player);
+        let w = r * 2.0 * (1.0 + 0.35 * ratio - 0.10 * stretch);
+        let h = r * 2.0 * (1.0 - 0.35 * ratio + 0.18 * stretch);
+        let topLeft =
+            if (stretch > 0.0) { x = player#pos#x - w / 2.0, y = player#pos#y - h / 2.0 }
+            else { x = player#pos#x - w / 2.0, y = player#pos#y + r - h };
         let ball = (topLeft, Render.box({ x = w, y = h }, playerColor(player#vel#x), zPlayer())
-            |> Render.rounded(h / 2.0));
+            |> Render.rounded(Float64.min(w, h) / 2.0));
         List.append(ghostItems(player), ball :: spinDots(player))
+
+    /// ジャンプ伸びの量（0..1）: 空中で vy が −200 を超えて上昇しているほど縦長に描く。
+    /// 分母 312 は「立ちジャンプの初速 512 で最大」の実測合わせ（512 − 200）。
+    /// 着地スカッシュが残っている間はそちらを優先する（同時には成立させない）。
+    /// 接地中・ゆっくりの上昇（vy ≥ −200）では厳密に 0 = 従来の絵とバイト一致。
+    def stretchAmount(player: Field.Player): Float64 =
+        if (player#grounded or player#squashLeft > 0.0) 0.0
+        else Float64.max(0.0, Float64.min(1.0, (-(player#vel#y) - 200.0) / 312.0))
 
     /// 最高速域の |vx| のしきい値。approach は 280.0 ちょうどに達するが、離した直後の
     /// 減衰帯（279.x）でも白がちらつかないよう 0.5 だけ手前に取る。
@@ -291,9 +303,10 @@ mod View {
     /// 転がりの点 3 個（120° 間隔・ソニック風の回転）: 転がり角 θ = x / 半径 から
     /// θ, θ+2π/3, θ+4π/3 の 3 方向に 0.55r 離して濃い点を置く。走るほど速く回って見える。
     /// 2 個（対角 180°）だと敵の目玉に似て自機が顔に見えてしまうため、3 個にして
-    /// 「顔」に読めないようにする（E2-1e）。潰れ演出中は形が崩れるので省略する。
+    /// 「顔」に読めないようにする（E2-1e）。潰れ・伸び演出中は形が崩れるので省略する
+    /// （伸びた楕円の中に点が残ると回転に見えず汚い）。
     def spinDots(player: Field.Player): List[Render.Placed] =
-        if (player#squashLeft > 0.0) Nil
+        if (player#squashLeft > 0.0 or stretchAmount(player) > 0.0) Nil
         else {
             let r = Field.playerRadius();
             let theta = player#pos#x / r;

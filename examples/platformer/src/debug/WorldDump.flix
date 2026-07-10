@@ -32,6 +32,7 @@ mod WorldDump {
             "respawnX"        => num(world#respawnPos#x),
             "checkpointX"     => num(world#checkpointPos#x),
             "cleared"         => JBool(not Option.isEmpty(world#clearedAt)),
+            "freezeLeft"      => num(world#freezeLeft),
             "time"            => num(world#time)
         });
         Util.Json.toPrettyString(2, obj)
@@ -64,10 +65,14 @@ mod WorldDump {
             "dashAccel"       => num(p#dashAccel),
             "groundAccel"     => num(p#groundAccel),
             "groundDecel"     => num(p#groundDecel),
+            "skidDecel"       => num(p#skidDecel),
             "airAccel"        => num(p#airAccel),
             "airDecel"        => num(p#airDecel),
             "coyoteTime"      => num(p#coyoteTime),
-            "bufferTime"      => num(p#bufferTime)
+            "bufferTime"      => num(p#bufferTime),
+            "jumpSpeedBonus"  => num(p#jumpSpeedBonus),
+            "stompBounce"     => num(p#stompBounce),
+            "stompBounceHold" => num(p#stompBounceHold)
         })
 
     def platformJson(platform: Field.Platform): Json =

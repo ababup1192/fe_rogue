@@ -2,6 +2,8 @@
 // 離脱時に床の水平速度を継承）→ 走りと重力 → carry（乗っている床の移動ぶんを物理の前に運ぶ）→
 // 積分・検出 → 一方通行フィルタ → 分離 → 速度の解決 → 接地の再導出 → 下り坂の吸着 →
 // 乗り床の再導出 → 敵との接触（床の物理の後・死亡判定の前）→ 出来事の記録、の順で進む。
+// この全部の手前にヒットストップのゲートが 1 つ: 踏みで freezeLeft が充填されている間は
+// 世界を丸ごと止めて返す（update の doc を参照）。
 //
 // 順序が手触りを決める:
 //   ジャンプ判定は「前フレームの接地」を見る（1 フレームの遅れはコヨーテタイムが吸収する）。
@@ -36,8 +38,18 @@ mod Step {
     def seedAt(t: Float64, dt: Float64): Int32 =
         RenderUtil.floatToInt32(Float64.floor(t / dt + 0.5))
 
-    /// 1 フレーム進める。入力 → タイマー → ジャンプ → 走り → carry → 物理 → 接地 → 出来事。
+    /// 1 フレーム進める。ヒットストップ中（freezeLeft > 0）は世界を丸ごと止める:
+    /// 時間・物理・カメラ・タイマー・敵・入力のすべてが進まず、freezeLeft だけが減る。
+    /// events も空にする（踏みの音は踏んだフレームで鳴り済み — 凍結中に繰り返さない。
+    /// eventLog には履歴が残る）。凍結の長さは dt 駆動なので決定論はそのまま。
     pub def update(input: Field.Input, dt: Float64, world: Field.World): Field.World =
+        if (world#freezeLeft > 0.0)
+            { freezeLeft = Jump.tickTimer(dt, world#freezeLeft), events = Nil | world }
+        else
+            advance(input, dt, world)
+
+    /// 通常の 1 フレーム。入力 → タイマー → ジャンプ → 走り → carry → 物理 → 接地 → 出来事。
+    def advance(input: Field.Input, dt: Float64, world: Field.World): Field.World =
         let p = world#params;
         let player0 = world#player;
         let t0 = world#time;
@@ -65,9 +77,10 @@ mod Step {
                       else Jump.tickTimer(dt, player0#bufferLeft);
         let coyote0 = if (player0#grounded) p#coyoteTime else Jump.tickTimer(dt, player0#coyoteLeft);
 
-        // ── ジャンプの成立（前フレームの接地で判定）──
+        // ── ジャンプの成立（前フレームの接地で判定）。初速は跳ぶ瞬間の走り速度で
+        //    盛られる（速度依存ジャンプ = 走るほど高く飛べる・立ちジャンプは従来値）──
         let jumps = Jump.canJump(player0#grounded, coyote0, buffer0);
-        let vyJumped = if (jumps) Jump.jumpVelocity(p) else player0#vel#y;
+        let vyJumped = if (jumps) Jump.jumpVelocity(p, player0#vel#x) else player0#vel#y;
         let buffer1 = if (jumps) 0.0 else buffer0;
         let coyote1 = if (jumps) 0.0 else coyote0;
         let held1 = if (jumps) true else player0#jumpHeld;
@@ -79,6 +92,8 @@ mod Step {
 
         // ── 走り + ジャンプ離脱時だけ床の水平速度を 1 回継承（垂直は継承しない）──
         let dir = (if (input#left) -1.0 else 0.0) + (if (input#right) 1.0 else 0.0);
+        // 向き: 最後の非ゼロ入力を保持（入力なしでは変わらない）。カメラ先読みが読む。
+        let facing1 = if (dir != 0.0) dir else player0#facing;
         let vxRun = Jump.horizontalStep(p, dt,
             { grounded = player0#grounded, dash = input#dash, dir = dir, vx = player0#vel#x });
         let vx = vxRun + (if (jumps) platformVx(dt, t0, t1, ridingPf) else 0.0);
@@ -104,13 +119,22 @@ mod Step {
 
         // ── 一方通行フィルタ: 上向きに押される接触で、かつ前フレーム（carry 後）の足元が床上面より上のときだけ残す ──
         let prevBottom = posCarried#y + Field.playerRadius();
-        let kept = oneWayFilter(prevBottom, dropLeft1, platformsNow, contactsRaw);
+        let keptRaw = oneWayFilter(prevBottom, dropLeft1, platformsNow, contactsRaw);
+
+        // ── 角の救済（corner correction）: 上昇中の頭ぶつけのうち、床の端からの水平
+        //    めり込みが cornerNudge px 以内のかすりは、接触を捨てて自由な側へ横に
+        //    ずらして通す（vy は殺さず bump も出さない）。順序はここ = 一方通行
+        //    フィルタの後・分離の前: 以降の分離・速度解決・接地の再導出は、減った
+        //    接触リストとずらした位置をそのまま見る（他は何も再計算しない）。──
+        let posIntegrated = Map.get(Field.playerId(), integrated) |> Option.getWithDefault(posCarried);
+        let (kept, posEntering) = cornerRescue(platformsNow, posIntegrated, vel, keptRaw);
+        let integrated1 = Map.insert(Field.playerId(), posEntering, integrated);
 
         // ── 分離と速度解決（残した接触だけを見る）──
         // 着地は vy が消えて vx が残り（慣性）、頭ぶつけは上昇が消え、壁は vx が消える。
         let velocities = Map.singleton(Field.playerId(), vel);
-        let separated = Physics2D.separate(kept, velocities, integrated);
-        let posResolved = Map.get(Field.playerId(), separated) |> Option.getWithDefault(posCarried);
+        let separated = Physics2D.separate(kept, velocities, integrated1);
+        let posResolved = Map.get(Field.playerId(), separated) |> Option.getWithDefault(posEntering);
         let velResolved = Physics2D.slide(Field.playerId(), kept, vel);
 
         // ── 接地の再計算（分離後の接触が正）──
@@ -154,9 +178,15 @@ mod Step {
                 world#enemies |> List.map(enemy ->
                     if (List.memberOf(enemy#id, stompedIds)) { alive = false | enemy } else enemy)
             else world#enemies;
-        // 踏んだ瞬間は半ジャンプのバウンド。jumpHeld は立てない（離しても上昇カットさせない）。
-        let velStomped = if (stomping) { y = Field.stompBounceVy() | velFinal } else velFinal;
-        let heldFinal = if (stomping) false else held2;
+        // 踏んだ瞬間のバウンド: ジャンプを押していれば大バウンド（stompBounceHold）+
+        // jumpHeld を立てる — あとで離すと上昇カットが効く（可変バウンド高・ジャンプと同じ経路）。
+        // 押していなければ従来の半ジャンプ（stompBounce）で、jumpHeld は立てない。
+        // 押しっぱなしはバッファに入らない（buffer は jumpPressed のエッジだけが充填する）ので、
+        // 踏みがジャンプの成立を横取り・消費することはない。
+        let velStomped = if (stomping)
+                { y = (if (input#jumpDown) p#stompBounceHold else p#stompBounce) | velFinal }
+            else velFinal;
+        let heldFinal = if (stomping) input#jumpDown else held2;
 
         // ── 出来事 ──
         let bumped = List.exists(contact -> playerNormal(contact)#y > 0.7, kept);
@@ -202,7 +232,10 @@ mod Step {
               dir = { x = 0.0, y = 1.0 }, power = 1.0, elapsed = 0.0 };
         let bursts2 = if (jumps) jetBurst :: bursts1 else bursts1;
         // 土埃は速いほど頻繁に・強く（cadence と power を同じ dashBand で段階づける）。
-        let dashing = groundedFinal and Float64.abs(velFinal#x) > Jump.maxRunSpeed();
+        // dir×vx < 0（スキッド中）はブレーキ土埃に譲る — dir×vx の符号で二重発生しない
+        // （入力なし dir=0 は積 0 でこちら側 = 従来どおり出る）。
+        let dashing = groundedFinal and Float64.abs(velFinal#x) > Jump.maxRunSpeed()
+            and dir * velFinal#x >= 0.0;
         let dustPower = dashBand(velFinal#x);
         let cadenceTicked = Float64.floor(t1 * dustRate(velFinal#x)) != Float64.floor(t0 * dustRate(velFinal#x));
         let dustBurst: Field.Burst =
@@ -211,6 +244,19 @@ mod Step {
                       y = posFinal#y + Field.playerRadius() - 2.0 },
               dir = { x = -sign(velFinal#x), y = -0.2 }, power = dustPower, elapsed = 0.0 };
         let bursts3 = if (dashing and cadenceTicked) dustBurst :: bursts2 else bursts2;
+        // スキッドのブレーキ土埃: 地上で逆入力の急減速中（|vx| > 80）、進行方向へ流れる砂煙
+        // = ブレーキ痕の記号（走り土埃と逆向き）。cadence は floor 跨ぎ方式のまま固定 16 回/秒
+        // （スキッドは 10 数フレームで終わるので速さ連動にしない）、power は勢い |vx|/280 から。
+        let skidding = groundedFinal and dir * velFinal#x < 0.0
+            and Float64.abs(velFinal#x) > 80.0;
+        let skidPower = Float64.min(1.0, Float64.abs(velFinal#x) / (Jump.maxRunSpeed() * Jump.dashMult()));
+        let skidTicked = Float64.floor(t1 * 16.0) != Float64.floor(t0 * 16.0);
+        let skidBurst: Field.Burst =
+            { kind = Field.FxKind.DustKind, seed = seed,
+              pos = { x = posFinal#x + sign(velFinal#x) * Field.playerRadius(),
+                      y = posFinal#y + Field.playerRadius() - 2.0 },
+              dir = { x = sign(velFinal#x), y = -0.2 }, power = skidPower, elapsed = 0.0 };
+        let bursts3s = if (skidding and skidTicked) skidBurst :: bursts3 else bursts3;
         // 着地の瞬間は足元から左右へ土煙（power は落下の速さから: 高い落下ほど大きく舞う）。
         let puffPower = Float64.max(0.0, Float64.min(1.0,
             (vy - Field.landEventSpeed()) / 400.0));
@@ -219,7 +265,7 @@ mod Step {
               pos = { x = posFinal#x, y = posFinal#y + Field.playerRadius() - 2.0 },
               dir = { x = dirX, y = -0.3 }, power = puffPower, elapsed = 0.0 }
         };
-        let bursts4 = if (landed) puffAt(1.0) :: puffAt(-1.0) :: bursts3 else bursts3;
+        let bursts4 = if (landed) puffAt(1.0) :: puffAt(-1.0) :: bursts3s else bursts3s;
         // 踏んだ敵の位置にもジェットを 1 発ずつ（倒した手応え）。
         let stompBursts = overlaps
             |> List.filter(enemy -> List.memberOf(enemy#id, stompedIds))
@@ -235,13 +281,16 @@ mod Step {
             pos = posFinal, vel = velStomped, grounded = groundedFinal,
             coyoteLeft = coyote1, bufferLeft = buffer1, jumpHeld = heldFinal,
             squashLeft = if (landed) Field.squashTime() else Jump.tickTimer(dt, player0#squashLeft),
-            ridingId = ridingId1, dropLeft = dropLeft1 };
+            facing = facing1, ridingId = ridingId1, dropLeft = dropLeft1 };
 
-        // ── カメラ: 不感帯つき追従（横・縦）。死亡時はリスポーン地点（出発点か中間地点）へ
-        //    スナップ（レベル横断のパンをしない）──
+        // ── カメラ: 不感帯つき追従（横・縦）。横のターゲットは進行方向へ先読みぶんずらす
+        //    （facing × lookAhead・縦はずらさない）。死亡時はリスポーン地点（出発点か中間地点）へ
+        //    先読みなしでスナップ（レベル横断のパンをしない・先読みは次フレームからの追従で
+        //    ゆっくり掛かり直す）──
         let camX1 =
             if (died) FollowCam.snapCam(world#levelW, respawnPos1#x)
-            else FollowCam.stepCam(dt, world#levelW, posFinal#x, world#camX);
+            else FollowCam.stepCam(dt, world#levelW,
+                                   posFinal#x + facing1 * FollowCam.lookAhead(), world#camX);
         let camY1 =
             if (died) FollowCam.snapCamY(world#levelH, respawnPos1#y)
             else FollowCam.stepCamY(dt, world#levelH, posFinal#y, world#camY);
@@ -257,6 +306,8 @@ mod Step {
           camY = camY1,
           respawnPos = respawnPos1,
           clearedAt = clearedAt1,
+          // ヒットストップの充填: 踏んだフレームの次から stompFreeze 秒（3 コマ）世界が止まる。
+          freezeLeft = if (stomping) Field.stompFreeze() else world#freezeLeft,
           time = time | world }
 
     /// 花火 1 発の種。ゴール上空の空（画面に入る帯 y 250..350）へ、i から決めた散らばりで置く。
@@ -422,6 +473,47 @@ mod Step {
                         and prevBottom <= (pf#pos#y - pf#size#y / 2.0) + 0.01
             }
         })
+
+    // ── 角の救済（corner correction）──
+    // 天井の端すれすれに頭が引っかかったとき、上昇を殺して止めるのは理不尽に感じる
+    // （マリオの ceiling-corner 救済と同じ発想）。頭ぶつけ接触の水平めり込みが
+    // Field.cornerNudge() px 以内なら、その接触を無かったことにして体を横へ逃がす。
+
+    /// この頭ぶつけ接触が「床の端からのかすり」なら、逃がす向きの x 移動量
+    /// （負 = 左へ・|めり込み| + 0.01 で確実に外れる）。深い正面衝突は None。
+    /// めり込みは箱近似で測る: 円の左右端と、その床の時刻 t1 の実スパンの重なり。
+    def nudgePlan(platforms: List[Field.Platform], pos: Vec2.Vec2,
+                  contact: Physics2D.Contact): Option[Float64] =
+        let other = if (contact#a == Field.playerId()) contact#b else contact#a;
+        List.findLeft(pf -> pf#id == other, platforms) |> Option.flatMap(pf -> {
+            let overlapLeft = (pos#x + Field.playerRadius()) - (pf#pos#x - pf#size#x / 2.0);
+            let overlapRight = (pf#pos#x + pf#size#x / 2.0) - (pos#x - Field.playerRadius());
+            if (Float64.min(overlapLeft, overlapRight) > Field.cornerNudge()) None
+            else if (overlapLeft <= overlapRight) Some(-(overlapLeft + 0.01))
+            else Some(overlapRight + 0.01)
+        })
+
+    /// 角の救済の本体。上昇中（vy < 0）の頭ぶつけ接触（normal.y > 0.7）が「全部」
+    /// 同じ向きへ逃がせるかすりのときだけ、頭接触を捨てて位置を横へずらして返す。
+    /// ずらし幅は一番深いかすりのぶん（それで全部の頭接触が外れる）。向きが割れる
+    /// （2 天井の谷間）・1 つでも深い、なら何もしない = 従来どおり止まって bump。
+    def cornerRescue(platforms: List[Field.Platform], pos: Vec2.Vec2, vel: Vec2.Vec2,
+                     contacts: List[Physics2D.Contact]):
+                     (List[Physics2D.Contact], Vec2.Vec2) =
+        let isHead = contact -> playerNormal(contact)#y > 0.7;
+        let heads = List.filter(isHead, contacts);
+        if (vel#y >= 0.0 or List.isEmpty(heads)) (contacts, pos)
+        else {
+            let dxs = heads |> List.filterMap(nudgePlan(platforms, pos));
+            let allRescuable = List.length(dxs) == List.length(heads);
+            let sameDir = List.forAll(dx -> dx > 0.0, dxs) or List.forAll(dx -> dx < 0.0, dxs);
+            if (allRescuable and sameDir) {
+                let dx = dxs |> List.foldLeft((best, d) ->
+                    if (Float64.abs(d) > Float64.abs(best)) d else best, 0.0);
+                (List.filter(contact -> not isHead(contact), contacts), { x = pos#x + dx | pos })
+            } else
+                (contacts, pos)
+        }
 
     /// 支持接触の相手 id: 最も強く上へ押す接触（-normal.y 最大）。同点は小さい id。
     def supportingId(contacts: List[Physics2D.Contact]): Option[EntityId] =

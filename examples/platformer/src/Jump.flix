@@ -28,16 +28,29 @@ mod Jump {
     pub def dashAccel(): Float64 = 80.0             // P スピード帯（|vx| > 160）の加速 px/s²
     pub def groundAccel(): Float64 = 900.0          // 地上の加速 px/s²
     pub def groundDecel(): Float64 = 1200.0         // 地上の減速（摩擦）px/s²
-    pub def airAccel(): Float64 = 500.0             // 空中の加速（空中制御の強さ）px/s²
+    pub def skidDecel(): Float64 = 1800.0           // 地上で進行方向と逆を入力した瞬間の急ブレーキ px/s²。摩擦（1200）より強い =「離すより踏み替えの方が速い」を保証
+    pub def airAccel(): Float64 = 900.0             // 空中の加速（空中制御の強さ）— マリオ式に地上と同じ。切り返し（air-DI）にもこの値が効く px/s²
     pub def airDecel(): Float64 = 100.0             // 空中の減速（慣性がよく残る）px/s²
     pub def coyoteTime(): Float64 = 6.0 / 64.0      // 離床後もジャンプできる猶予 秒
     pub def bufferTime(): Float64 = 8.0 / 64.0      // 着地前の押下を拾う猶予 秒
+    pub def jumpSpeedBonus(): Float64 = 0.12        // 速度依存ジャンプ: 最高速（280）で跳ぶと初速 +12% ≒ 頂点 +25%・約 1 ブロック（SMB1 の「走ると高く飛べる」）
+
+    // 踏みバウンド: 敵を踏んだ瞬間の上向き速度。踏みの瞬間にジャンプを押していると
+    // stompBounceHold で大きく跳ね上がる — 通常踏み（-320）との使い分けが
+    // 「敵を踏み台にする」の芯（押しながら踏めば次の段へ、素で踏めば小ジャンプ）。
+    pub def stompBounce(): Float64 = -320.0         // 通常の踏みバウンド（半ジャンプ程度）px/s
+    pub def stompBounceHold(): Float64 = -480.0     // ジャンプを押しながら踏んだときの大バウンド px/s
 
     // ── 重力（縦）──
 
     /// ジャンプの初速（負 = 上向き）。頂点の高さと時間から導く: -2h/t。
-    pub def jumpVelocity(p: Params): Float64 =
-        -2.0 * p#jumpHeight / p#timeToApex
+    /// 走ると高く飛べる（速度依存ジャンプ・SMB1 式）: 跳んだ瞬間の |vx| に比例して
+    /// 最大 jumpSpeedBonus（+12%）を初速に盛る — 最高速 280 で跳ぶと頂点が約 25%
+    /// （≈1 ブロック）高い。立ちジャンプ（vx=0）は従来どおり素の -2h/t。
+    pub def jumpVelocity(p: Params, vx: Float64): Float64 =
+        let dashMax = p#maxRunSpeed * p#dashMult;
+        let bonus = p#jumpSpeedBonus * Float64.min(Float64.abs(vx), dashMax) / dashMax;
+        -2.0 * p#jumpHeight / p#timeToApex * (1.0 + bonus)
 
     /// 上昇の重力加速度: 2h/t²。下降・頂点帯は gravityScale が倍率を掛ける。
     pub def riseGravity(p: Params): Float64 =
@@ -69,15 +82,26 @@ mod Jump {
     /// 目標 160 への戻りも同じ式が使われる: 帯の中は dashAccel で緩やかに落ちる。
     /// これも「勢いがなかなか死なない」P スピードらしい挙動（意図した仕様）。
     ///
+    /// 地上の切り返しだけは帯の外の別枠（スキッド）: 進行方向と逆を入力した瞬間は
+    /// skidDecel（1800px/s²）で急ブレーキ —— 摩擦 < 加速 < スキッド の 3 段（マリオの
+    /// 「キュッと反転」）。P 帯で逆入力が dashAccel（80）に食われて「離す方が速い」逆転が
+    /// 起きないための専用減速。0 を跨いだ次のフレームは dir×vx が正に転じてスキッドが
+    /// 自然に終わり、通常の加速で反対方向へ立ち上がる（境界で振動しない）。
+    ///
     /// 空中だけ P 帯の適用が非対称（スマブラの DI 風のベクトル変更）:
-    /// 進行方向と逆への入力（切り返し）は帯に関係なく常に airAccel（500px/s²）で強く効き、
-    /// ダッシュジャンプ中でも空中で舵が切れる。進行方向への上積みだけが P 帯（dashAccel）
-    /// —— 助走は地上でしか作れず、空中で速度は盛れない。
+    /// 進行方向と逆への入力（切り返し）は帯に関係なく常に airAccel（900px/s² = 地上と同じ）で
+    /// 強く効き、ダッシュジャンプ中でも空中で舵が切れる。進行方向への上積みだけが P 帯
+    /// （dashAccel）—— 助走は地上でしか作れず、空中で速度は盛れない。
     pub def horizontalStep(p: Params, dt: Float64, running: Run): Float64 =
         if (running#dir != 0.0) {
             let accel =
-                if (running#grounded)
-                    (if (Float64.abs(running#vx) > p#maxRunSpeed) p#dashAccel else p#groundAccel)
+                if (running#grounded) {
+                    // 地上: 逆入力（スキッド）は帯に関係なく急ブレーキ。進行方向は 2 帯のまま。
+                    let skidding = running#dir * running#vx < 0.0;
+                    if (skidding) p#skidDecel
+                    else if (Float64.abs(running#vx) > p#maxRunSpeed) p#dashAccel
+                    else p#groundAccel
+                }
                 else {
                     // 空中: 切り返し（進行方向と逆への入力）は常に airAccel で強く効く（ベクトル変更）。
                     // 進行方向への上積みだけ P スピード帯（dashAccel）= 空中で速度は盛れない。

@@ -83,7 +83,7 @@ mod TestMoving {
     def testLandOnOneWayFromAbove(): Unit \ Assert =
         let above = { player = { pos = { x = 160.0, y = 101.0 }, vel = Vec2.zero(), grounded = false,
                                   coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                                  ridingId = None, dropLeft = 0.0 } | Trace.oneWayWorld() };
+                                  facing = 1.0, ridingId = None, dropLeft = 0.0 } | Trace.oneWayWorld() };
         let worlds = timeline(Trace.flight(40), above);
         let final = play(Trace.flight(40), above);
         Assert.assertEq(expected = (true, true, 122.0),

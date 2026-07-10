@@ -93,6 +93,8 @@ mod TestCamera {
     // 正の値まで進む。結末は round4 で pin する。舞台は longFlatWorld（地面幅 1280）—
     // design 480 の視界では中央 240 + 不感帯 40 を越えるまでに 180px 走る必要があり、
     // classic の 320 地面（flatWorld）では走り切る前に届かないため。
+    // pin の 129.5088 は先読み（ターゲット +40）込みの実測値: 先読みなしの追従なら
+    // 89.5597（+39.9491 ≈ +40・追従の transient がほぼ減衰した後なので、ずれ幅がそのまま乗る）。
     @Test
     def testRunRightPansCameraMonotonically(): Unit \ Assert =
         let wide = { levelW = 1280.0 | Trace.longFlatWorld() };
@@ -101,8 +103,41 @@ mod TestCamera {
         let monotonic = List.zip(camXs, List.drop(1, camXs))
             |> List.forAll(pair -> { let (a, b) = pair; a <= b });
         let final = play(Trace.holdRight(120), wide);
-        Assert.assertEq(expected = (true, true, 89.5597),
+        Assert.assertEq(expected = (true, true, 129.5088),
             (monotonic, final#camX > 0.0, round4(final#camX)))
+
+    // ========================================================================
+    // カメラ先読み（追従ターゲットを facing × lookAhead = 40px だけ進行方向へ寄せる）
+    // ========================================================================
+
+    // facing は最後の非ゼロ入力の向きを保持する: 右へ走って離しても +1 のまま、
+    // 左を 1 フレーム叩けば −1 に変わる（カメラ先読みの向きの権威・初期値は +1）。
+    @Test
+    def testFacingKeepsLastDirection(): Unit \ Assert =
+        let ranRight = play(List.append(Trace.holdRight(10), Trace.flight(10)), Trace.flatWorld());
+        let tappedLeft = play(Trace.holdLeft(1), ranRight);
+        Assert.assertEq(expected = (1.0, -1.0),
+            (Trace.facingOf(ranRight), Trace.facingOf(tappedLeft)))
+
+    // 先読みの定常値: 広い平地を右へ 240 フレーム走ると、追従は定常状態
+    // （毎フレーム 2.5px = 走りと同速）へ収束し、camX の遅れは x−257.5 —
+    // 先読みなしの定常（x−297.5）よりちょうど 40 前へ出る。実測 pin
+    // （429.502 = 687.002 − 257.5・先読みなしなら 389.502 だった）。
+    @Test
+    def testLookAheadPansAheadOfRun(): Unit \ Assert =
+        let wide = { levelW = 1280.0 | Trace.longFlatWorld() };
+        let final = play(Trace.holdRight(240), wide);
+        Assert.assertEq(expected = (687.002, 429.502),
+            (round4(Trace.posOf(final)#x), round4(final#camX)))
+
+    // classic（levelW=320 < designW 480）では先読みでターゲットが +40 ずれても
+    // クランプが受け、camX は全フレーム 0 のまま — classic シナリオのカメラは不変。
+    @Test
+    def testLookAheadClassicStaysZero(): Unit \ Assert =
+        let cues = List.flatten(
+            Trace.holdRight(30) :: Trace.rightJump(12) :: Trace.holdRight(30) :: Nil);
+        let worlds = timeline(cues, Trace.runAcrossWorld());
+        Assert.assertEq(expected = true, worlds |> List.forAll(w -> w#camX == 0.0))
 
     // ========================================================================
     // ワイドレベル（Field.initialWorld = Level の 3328×480px）のスモーク
@@ -143,7 +178,7 @@ mod TestCamera {
         Assert.assertEq(expected = (true, 76.0098),
             (monotonic, round4(final#camY)))
 
-    // レベル走破の台本（levelRunCues・実測振り付け・1087 フレーム）: スタートから
+    // レベル走破の台本（levelRunCues・実測振り付け・1124 フレーム）: スタートから
     // 止まらずに走り切り、死なずにゴール（x=3272）を越えてクリアする。踏みで敵を 3 体
     // 倒し（生存 8→5）、中間地点も発動する（respawnPos が旗へ移る）。結末は右壁
     // （x=3316）で静止・camX はレベル右端クランプ（3328−480=2848）・camY は地面ビュー
