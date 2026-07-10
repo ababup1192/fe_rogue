@@ -16,6 +16,8 @@ def main(): Unit \ IO =
                 |> App.withAudio(Sfx.events)
                 |> App.quitWhen(Controls.wantsQuit)
                 |> App.withDebug(App.debugFromEnv())
+                |> App.withStatusLine(WorldDump.statusLine)
+                |> App.withWorldDump(WorldDump.dump)
                 |> App.launch
         } with LwjglLayer.withProject(".")
           with Fs.FileRead.runWithIO

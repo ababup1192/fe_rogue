@@ -271,4 +271,22 @@ mod Field {
 
     /// 壊せるブロックが 0 になったらクリア（壊れないブロックは残ってよい）。盤 GameCore から判定する。
     pub def won(core: GameCore): Bool = Map.isEmpty(core#durabilities)
+
+    /// リモートデバッグ（view=status）用の 1 行サマリ。フェーズと、調査に効く値だけを短く並べる。
+    pub def statusLine(world: World): String =
+        match world#phase {
+            case Phase.Title => "phase=Title"
+            case Phase.Playing(core, BallState.Waiting) =>
+                "phase=Playing state=Waiting ${coreStatus(core)}"
+            case Phase.Playing(core, BallState.Moving(moving)) =>
+                "phase=Playing state=Moving vel=(${RemoteDebug.fmt1(moving#vel#x)},${RemoteDebug.fmt1(moving#vel#y)}) ${coreStatus(core)}"
+            case Phase.Cleared(core)  => "phase=Cleared ${coreStatus(core)}"
+            case Phase.GameOver(core) => "phase=GameOver ${coreStatus(core)}"
+        }
+
+    /// 盤のサマリ（ボール・パドル・残機・スコア・残りブロック数）。座標は 1 桁小数へ丸める。
+    def coreStatus(core: GameCore): String =
+        "ball=(${RemoteDebug.fmt1(core#ballPos#x)},${RemoteDebug.fmt1(core#ballPos#y)})"
+        + " paddle=${RemoteDebug.fmt1(core#paddle#x)} lives=${core#lives} score=${core#score}"
+        + " level=${core#level} blocks=${Map.size(core#blocks)}"
 }

@@ -33,6 +33,16 @@ mod WorldDump {
         });
         Util.Json.toPrettyString(2, obj)
 
+    /// リモートデバッグ（view=status）用の 1 行サマリ。画面・ターン・フロア・
+    /// カーソル位置・両陣営の生存数だけを短く並べる（詳細は view=full = dump が担う）。
+    pub def statusLine(world: World): String =
+        let cursor = World.cursorLogicalOf(world)#gridPos;
+        let players = unitViews(World.playerIdsOf(world) |> List.map(World.EntityRef.Player), world);
+        let enemies = unitViews(World.enemyIdsOf(world) |> List.map(World.EntityRef.Enemy), world);
+        "screen=${screenName(World.screenOf(world))} turnPhase=${World.turnPhaseOf(world)}"
+        + " floor=${World.floorIdOf(world)} cursor=(${cursor#x},${cursor#y})"
+        + " players=${List.length(players)} enemies=${List.length(enemies)}"
+
     /// 駒参照の列を UnitView の列へ（倒れて store から消えた駒は自然に落ちる）。
     def unitViews(refs: List[World.EntityRef], world: World): List[UnitView] =
         refs |> List.filterMap(ref -> World.unitViewFromWorld(ref, world))
