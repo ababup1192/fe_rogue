@@ -63,4 +63,39 @@ mod TestGameLifecycle {
                             false),
                 result)
         }
+
+    // ════════════════════════════════════════════════════════
+    // startNewRun — 「はじめから」でフロア進行と前回 party がリセットされる
+    // ════════════════════════════════════════════════════════
+
+    /// **想定状況**: 3F で中断してタイトルへ戻り「はじめから」を選ぶ（2026-07-10 注釈チケット
+    /// f15755 の再現）。中断でタイトルへ戻っても FloorProgress は中断時の "f03" のまま・
+    /// party も前回 run の構成が残っている。`startNewRun` 1 回で
+    /// (フロア, party が未抽選に戻ったか) が (先頭フロア "f01", true) になる。
+    @Test
+    def testStartNewRunResetsFloorAndParty(): Unit \ {Assert, Fs.FileRead} =
+        region rc {
+            let weapons = WeaponCatalog.load();
+            let catalogs: GameLifecycle.Catalogs =
+                {weapons     = weapons,
+                 players     = UnitCatalog.load(AssetPath.resolve("resources/units.json"), weapons),
+                 enemies     = EnemyCatalog.load(),
+                 floors      = FloorCatalog.load(),
+                 staves      = Staff.load(),
+                 consumables = Consumable.load(),
+                 chests      = ChestCatalog.load(),
+                 rings       = Ring.load()};
+            let worldRef = Ref.fresh(rc, World.empty());
+            let result = run {
+                // 1) 中断直後のタイトル画面を作る（フロア進行 = 3F・前回 run の party 残り）
+                FloorProgress.State.put("f03");
+                PartySelection.State.put(("test_player", TestUnitFixtures.testResource(5, 18)) :: Nil);
+                // 2) 「はじめから」の新規ラン準備を 1 呼び出しで実行
+                GameLifecycle.startNewRun(catalogs);
+                // 3) (フロア, party が未抽選 None に戻ったか) を 1 タプルで観測
+                (FloorProgress.State.get(), Option.isEmpty(PartySelection.State.get()))
+            } with FloorProgress.withState(worldRef)
+              with PartySelection.withState(worldRef);
+            Assert.assertEq(expected = ("f01", true), result)
+        }
 }

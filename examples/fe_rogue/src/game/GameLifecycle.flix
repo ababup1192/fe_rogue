@@ -131,6 +131,15 @@ mod GameLifecycle {
                 GamePhaseState.put(GamePhase.Playing)
         }
 
+    /// 「はじめから」（タイトル → 出撃メンバー選択）の新規ラン準備。
+    /// フロア進行を 1F へ戻し、前回 run の party 構成をクリアする（全滅リスタート /
+    /// 周回と同じ new-run 扱い）。中断でタイトルへ戻ると FloorProgress が中断時の階の
+    /// ままなので、ここで戻さないと新規ランがその階から始まってしまう。
+    /// `WorldSetup.buildCharacterSelect`（出撃メンバー選択画面の進入）が呼ぶ。
+    pub def startNewRun(catalogs: Catalogs): Unit \ {FloorProgress.State, PartySelection.State} =
+        FloorProgress.State.put(FloorCatalog.firstFloorId(catalogs#floors));
+        PartySelection.State.clear()
+
     /// 「女神の加護（完全復活）」。**現フロアの敵を全て一掃**し、進入時編成の全員をリーダーの周りに
     /// 全快で再配置して味方ターンへ戻す（無敵は付与しない／マップ・アイテムは現在のまま）。
     /// リーダーは倒れたその場（`marks` の死亡位置、無ければ進入時セル）に置き、仲間はその周囲へ。

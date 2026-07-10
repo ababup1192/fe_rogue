@@ -173,11 +173,15 @@ mod WorldSetup {
         TopBarUi.leave()       // ダンジョン外では上部バーを隠す
 
     /// 出撃メンバー選択画面を組む。タイトルと同じくダンジョン外なので World を掃除する。
-    /// 見た目は World-entity UI（CharacterSelectUi）が持ち、進入処理（候補の
-    /// 初期化 + 可視化 + 初期描画）を `CharacterSelectUi.enter` に任せる。
+    /// この画面に入る＝新規ランの開始なので、フロア進行と前回 party のリセット
+    /// （`GameLifecycle.startNewRun`）もここで行う（中断後の「はじめから」が中断時の階から
+    /// 始まらないように）。見た目は World-entity UI（CharacterSelectUi）が持ち、進入処理
+    /// （候補の初期化 + 可視化 + 初期描画）を `CharacterSelectUi.enter` に任せる。
     pub def buildCharacterSelect(catalogs: GameLifecycle.Catalogs): Unit
-            \ {GameEngine.Game, World.Command, CharacterSelectState.State, UiWorldState.State} =
+            \ {GameEngine.Game, World.Command, CharacterSelectState.State, UiWorldState.State,
+                FloorProgress.State, PartySelection.State} =
         WorldDriver.exitDungeon();
+        GameLifecycle.startNewRun(catalogs);
         CharacterSelectUi.enter(UnitCatalog.pool("players", catalogs#players));  // 選択画面（候補 put + 可視化 + 初期描画）
         TopBarUi.leave();      // ダンジョン外では上部バーを隠す
         TitleMenuUi.leave()    // タイトル画面（World-entity UI）を隠す
