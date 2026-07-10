@@ -166,4 +166,96 @@ mod TestMapLoader {
                                                  (Set#{}: Set[(Int32, Int32)]), 26);
         Assert.assertEq(expected = true, List.isEmpty(tiles))
 
+    // ── autoRules「縦細壁」系: 幅 1 の縦壁を上から順に別チップで描く ──
+    //
+    // 縦通路が横帯に刺さり、その下に「左右とも床」の幅 1 壁（背骨壁）が続いて
+    // 床に突き当たる構成（f11029 注釈の再現）。各セルは役割ごとに別チップ:
+    //
+    //        col: 0   1   2   3   4
+    //   row 0:    ,   ,   W  [.]  W      col3 = 縦通路の床
+    //   row 1:    ,   ,   W  [.]  W
+    //   row 2:    ,   ,  T1  [.] [.]     T1=付け根(2,2)。通路が右へ曲がる
+    //   row 3:    W   W  T2   W   W      T2=交差(11,1)。横帯(下に床)と縦壁が交わる
+    //   row 4:   [.] [.] T3  [.] [.]     T3=本体(11,1)。左右とも床
+    //   row 5:   [.] [.] T4  [.]  W      T4=本体・最下段(11,2)。下の下が床
+    //   row 6:   [.] [.]  W  [.]         (2,6)=正面末端(下が床)= wallMap 担当・ルール沈黙
+    //   row 7:   [.] [.] [.] [.]
+    //
+    // 実データ（room_*.material.json 先頭 5 本）と同じ AutoRule 値で発火位置と出力を pin する。
+
+    /// 背骨壁ミニ盤面の床マスク（上の図の [.] セル）。
+    def thinSpineFloorMask(): Set[(Int32, Int32)] =
+        Set#{(3, 0), (3, 1), (3, 2), (4, 2),
+             (0, 4), (1, 4), (3, 4), (4, 4),
+             (0, 5), (1, 5), (3, 5),
+             (0, 6), (1, 6), (3, 6),
+             (0, 7), (1, 7), (2, 7), (3, 7)}
+
+    /// room_*.material.json 先頭の「縦細壁」5 ルールと同じ値。
+    /// 先頭挿入（既存ルールより先に評価）で運用するため、このリスト単体で発火位置が決まる。
+    def thinSpineRules(): List[MapResource.AutoRule] =
+        let a = MapResource.PatternCell.Unspecified;
+        let w = MapResource.PatternCell.Value(2);
+        let f = MapResource.PatternCell.Value(1);
+        let e = MapResource.PatternCell.Nothing;
+        let rule = (name, pattern, srcX, srcY) ->
+            ({name = name, size = 5, pattern = pattern, srcX = srcX, srcY = srcY}: MapResource.AutoRule);
+        // 付け根: 上=壁・中央=壁・片側=床/逆側=空・下と左下右下=壁 → (2,2)=(52,52)
+           rule("縦細壁の付け根(左空)", Vector#{a, a, a, a, a,
+                                                a, a, w, a, a,
+                                                a, e, w, f, a,
+                                                a, w, w, w, a,
+                                                a, a, a, a, a}, 52, 52)
+        :: rule("縦細壁の付け根(右空)", Vector#{a, a, a, a, a,
+                                                a, a, w, a, a,
+                                                a, f, w, e, a,
+                                                a, w, w, w, a,
+                                                a, a, a, a, a}, 52, 52)
+        // 交差: 上下左右=壁・左下と右下=床 → (11,1)=(286,26)
+        :: rule("横帯と縦細壁の交差", Vector#{a, a, a, a, a,
+                                              a, a, w, a, a,
+                                              a, w, w, w, a,
+                                              a, f, w, f, a,
+                                              a, a, a, a, a}, 286, 26)
+        // 本体: 左右=床・上下=壁・下の下=壁 → (11,1)
+        :: rule("縦細壁の本体", Vector#{a, a, a, a, a,
+                                        a, a, w, a, a,
+                                        a, f, w, f, a,
+                                        a, a, w, a, a,
+                                        a, a, w, a, a}, 286, 26)
+        // 本体・最下段: 左右=床・上下=壁・下の下=床（下は正面末端）→ (11,2)=(286,52)
+        :: rule("縦細壁の本体・最下段", Vector#{a, a, a, a, a,
+                                                a, a, w, a, a,
+                                                a, f, w, f, a,
+                                                a, a, w, a, a,
+                                                a, a, f, a, a}, 286, 52)
+        :: Nil
+
+    /// 背骨壁の 4 セル（col2 = px 52・上から y=52/78/104/130）にだけ発火し、
+    /// 出力チップが上から (2,2)/(11,1)/(11,1)/(11,2) になる
+    /// （正面末端 (2,6) と通路壁ではルールが沈黙する）。
+    @Test
+    def testThinSpineRulesFireTopToBottom(): Unit \ Assert =
+        let floorMask = thinSpineFloorMask();
+        let wallCells = MapLoader.computeWallCells(floorMask, 5, 8);
+        let grid = MapLoader.buildIntGrid(floorMask, wallCells, 5, 8);
+        let tiles = MapLoader.buildAutoRuleTiles(grid, 5, 8, thinSpineRules(),
+                                                 (Set#{}: Set[(Int32, Int32)]), 26);
+        Assert.assertEq(
+            expected = (52.0,  52.0, 52.0,  52.0) :: (52.0,  78.0, 286.0, 26.0)
+                    :: (52.0, 104.0, 286.0, 26.0) :: (52.0, 130.0, 286.0, 52.0) :: Nil,
+            tiles |> List.map(t -> (t#px#x, t#px#y, t#srcX, t#srcY)) |> List.sort)
+
+    /// 通路の無い部屋だけの盤面では縦細壁ルールは 1 本も発火しない（誤発火防止の pin）。
+    @Test
+    def testThinSpineRulesSilentOnPlainRoom(): Unit \ Assert =
+        let roomOnly = List.range(5, 8)
+            |> List.flatMap(col -> List.range(4, 7) |> List.map(row -> (col, row)))
+            |> List.toSet;
+        let wallCells = MapLoader.computeWallCells(roomOnly, 9, 8);
+        let grid = MapLoader.buildIntGrid(roomOnly, wallCells, 9, 8);
+        let tiles = MapLoader.buildAutoRuleTiles(grid, 9, 8, thinSpineRules(),
+                                                 (Set#{}: Set[(Int32, Int32)]), 26);
+        Assert.assertEq(expected = true, List.isEmpty(tiles))
+
 }

@@ -14,6 +14,7 @@
 
   python3 debug/replay_tiles.py <world.json> --rules 候補.json --diff
       ルール案（material の autoRules と同形式のリスト）を末尾に足した場合の全セル差分。
+      --prepend を付けると先頭挿入（既存ルールより先に評価。既存が先勝ちするセルを奪う案のとき）。
 
   python3 debug/replay_tiles.py <world.json> --rules 候補.json --render out.png
       差分セル周辺の before/after を実タイルセットで並べて描画（差分セルに枠）。
@@ -197,7 +198,7 @@ class Repro:
 
 def parse_args(argv):
     opts = {"world": None, "rules": None, "without": [], "diff": False,
-            "render": None, "cell": None, "pad": 4}
+            "render": None, "cell": None, "pad": 4, "prepend": False}
     it = iter(argv)
     for arg in it:
         if arg == "--rules": opts["rules"] = next(it)
@@ -206,6 +207,7 @@ def parse_args(argv):
         elif arg == "--render": opts["render"] = next(it)
         elif arg == "--cell": opts["cell"] = tuple(int(v) for v in next(it).split(","))
         elif arg == "--pad": opts["pad"] = int(next(it))
+        elif arg == "--prepend": opts["prepend"] = True
         elif opts["world"] is None: opts["world"] = arg
         else: sys.exit(f"不明な引数: {arg}")
     if opts["world"] is None:
@@ -217,10 +219,12 @@ def main():
     opts = parse_args(sys.argv[1:])
     repro = Repro(opts["world"])
 
-    # 変更後ルール列を組む: --without-rules で名前除去 → --rules で候補を末尾に追加
+    # 変更後ルール列を組む: --without-rules で名前除去 → --rules で候補を追加
+    # （既定は末尾 = 既存先勝ち。--prepend で先頭 = 候補が先勝ち）
     after_rules = [r for r in repro.rules if r["name"] not in opts["without"]]
     if opts["rules"]:
-        after_rules = after_rules + json.load(open(opts["rules"]))
+        candidates = json.load(open(opts["rules"]))
+        after_rules = candidates + after_rules if opts["prepend"] else after_rules + candidates
     if opts["without"]:
         # before/after を入れ替える: 「外した状態」が before、現行 material が after
         repro.rules, after_rules = after_rules, repro.rules

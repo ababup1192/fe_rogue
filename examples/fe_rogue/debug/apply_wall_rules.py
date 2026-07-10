@@ -6,9 +6,10 @@
 pathway_* はアンカーになれないので対象外。
 
 使い方（examples/fe_rogue で実行）:
-  python3 debug/apply_wall_rules.py add 候補.json     # 末尾に追加（同名があれば skip = 冪等）
-  python3 debug/apply_wall_rules.py remove ルール名    # 名前で全ファイルから除去
-  python3 debug/apply_wall_rules.py list              # ルール構成をファイルのグループごとに表示
+  python3 debug/apply_wall_rules.py add 候補.json            # 末尾に追加（同名があれば skip = 冪等）
+  python3 debug/apply_wall_rules.py add 候補.json --prepend  # 先頭に挿入（既存ルールより先に評価）
+  python3 debug/apply_wall_rules.py remove ルール名           # 名前で全ファイルから除去
+  python3 debug/apply_wall_rules.py list                     # ルール構成をファイルのグループごとに表示
 
 候補.json は material の autoRules と同形式のリスト:
   [{"name": "...", "pattern": [25個の int], "size": 5, "srcX": 104, "srcY": 26, "v": 2}, ...]
@@ -39,7 +40,7 @@ def save(path, data):
     open(path, "w").write(json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
 
 
-def add(rules_path):
+def add(rules_path, prepend):
     new_rules = json.load(open(rules_path))
     for rule in new_rules:
         assert len(rule["pattern"]) == 25 and rule["size"] == 5, f"pattern 形式不正: {rule['name']}"
@@ -47,9 +48,13 @@ def add(rules_path):
         data = json.load(open(path))
         names = {r["name"] for r in data["autoRules"]}
         added = [r for r in new_rules if r["name"] not in names]
-        data["autoRules"].extend(added)
+        if prepend:
+            data["autoRules"] = added + data["autoRules"]
+        else:
+            data["autoRules"].extend(added)
         save(path, data)
-        print(f"{os.path.basename(path)} -> {len(data['autoRules'])} rules (+{len(added)})")
+        where = "head" if prepend else "tail"
+        print(f"{os.path.basename(path)} -> {len(data['autoRules'])} rules (+{len(added)} at {where})")
 
 
 def remove(name):
@@ -78,7 +83,7 @@ def main():
         sys.exit(__doc__)
     mode = sys.argv[1]
     if mode == "add":
-        add(sys.argv[2])
+        add(sys.argv[2], "--prepend" in sys.argv[3:])
     elif mode == "remove":
         remove(sys.argv[2])
     elif mode == "list":
