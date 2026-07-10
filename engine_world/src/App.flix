@@ -49,8 +49,10 @@ mod App {
         // 描画チャンネル 3 本）。描画はせずチャンネルを返すだけの関数を繋ぐ。
         debugView = Option[(String, w -> (List[GameEngine.Drawable], List[GameEngine.TileMapRenderCmd], List[GameEngine.PolygonRenderCmd]) \ ef)],
         // 注釈の矩形（デザイン座標）と表示中の瞬間の World からテキストを組む。
-        // 注釈チケットに world.json として同梱される（None のゲームは何も出ない）。
-        worldDump = Option[(Rect2.Rect2, w) -> String \ ef]
+        // 注釈チケットに world.json として同梱され、リモートデバッグの view=full にもなる。
+        worldDump = Option[(Rect2.Rect2, w) -> String \ ef],
+        // World の 1 行サマリ。リモートデバッグ（HTTP）の view=status と trace の源。
+        statusLine = Option[w -> String \ ef]
     }
 
     /// 初期 World だけを持つ空の App。絵はまだ無い（withView で繋ぐまで何も描かない）。
@@ -66,7 +68,8 @@ mod App {
           quit = (frame, _world) -> checked_ecast(justPressed(GameEngine.Key.Escape, frame)),
           debug = false,
           debugView = None,
-          worldDump = None }
+          worldDump = None,
+          statusLine = None }
 
     /// 起動時に 1 回だけ走るシステムを末尾へ繋ぐ（追加順に適用される）。
     pub def addStartup(sys: w -> w \ ef, app: App[w, ef]): App[w, ef] =
@@ -124,6 +127,12 @@ mod App {
     pub def withWorldDump(f: (Rect2.Rect2, w) -> String \ ef, app: App[w, ef]): App[w, ef] =
         { worldDump = Some(f) | app }
 
+    /// World の 1 行サマリ（例: "phase=Playing ball=(163.2,207.9) lives=3"）を繋ぐ。
+    /// リモートデバッグ（HTTP）の view=status の本文と、/step の trace の行になる。
+    /// 調査に効く値だけを短く。長い一覧は withWorldDump（view=full）側に任せる。
+    pub def withStatusLine(f: w -> String \ ef, app: App[w, ef]): App[w, ef] =
+        { statusLine = Some(f) | app }
+
     // ── 純粋な芯（テストはここを直接叩く）──
 
     /// 前フレームと今フレームのキー集合から Frame を組む。justPressed は差分
@@ -147,16 +156,22 @@ mod App {
     /// Main が `with` で明示的に張る（effect-oriented の素直な形）。効果多相なので純粋なゲーム（ef = {}）も
     /// effect で状態を持つゲームも同じ launch を使う。前者は Main で LwjglLayer + Fs を張り、後者は加えて
     /// 自分の effect ハンドラ束を張った内側で呼ぶ。
-    pub def launch(app: App[w, ef]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead) =
+    /// デバッグ有効（withDebug）かつ環境変数 DEBUG_HTTP_PORT があれば、リモートデバッグの
+    /// HTTP 口も一緒に立ち上がる（例: `DEBUG=1 DEBUG_HTTP_PORT=7777 flix run`）。
+    pub def launch(app: App[w, ef]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
         let world0 = List.foldLeft((acc, sys) -> sys(acc), app#init, app#startupSystems);
-        loop(app, world0, InputEvent.currentKeys(), Annotate.initial(), Nil)
+        let bridge = if (canDebug(app)) Option.map(RemoteDebug.start, RemoteDebug.portFromEnv())
+                     else None;
+        loop(app, world0, InputEvent.currentKeys(), Annotate.initial(), Nil, bridge, false);
+        Option.forEach(RemoteDebug.shutdown, bridge)
 
     /// 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
     /// World は不変値なので、保持しているのは共有構造への参照だけで軽い。
     def historyLimit(): Int32 = 300
 
-    /// 毎フレーム: キーを読み Frame に焼く → 終了判定 → リロード → システム → 音 → 描画 → 末尾再帰。
-    /// 前フレームのキー集合・アノテーション状態・直近の World 履歴は引数で次のフレームへ渡し続ける。
+    /// 毎フレーム: キーを読み Frame に焼く → 終了判定 → リモートコマンド → リロード →
+    /// システム → 音 → 描画 → 末尾再帰。前フレームのキー集合・アノテーション状態・
+    /// 直近の World 履歴は引数で次のフレームへ渡し続ける。
     ///
     /// F8 で時間停止をトグルできる（view を繋いだゲームのみ）。停止中は World に触れず、
     /// 凍結した絵の上でズーム・パン・矩形ドラッグ（注釈の書き出し）と、← → での時間スクラブ
@@ -164,46 +179,68 @@ mod App {
     /// World から再開するので、狙った瞬間へ巻き戻してやり直せる。
     /// 停止中もキーと dt は毎フレーム読み続けるので、解除時に押しっぱなしキーの
     /// 誤エッジや巨大な dt は発生しない。
+    ///
+    /// bridge はリモートデバッグの HTTP 口（無効なら None）。remoteHold が真の間は
+    /// HTTP 側が停止の主導権を持つので、F8 での解除は効かない（/resume で戻す）。
     def loop(app: App[w, ef], world: w, prevKeys: Set[GameEngine.Key],
-             anno: Annotate.State, history: List[w]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead) =
+             anno: Annotate.State, history: List[w],
+             bridge: Option[RemoteDebug.Bridge], remoteHold: Bool): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
         let currentKeys = InputEvent.currentKeys();
         let frame = frameOf(prev = prevKeys, current = currentKeys, readDt());
         let wantsQuit = app#quit;
         if (GameEngine.Game.shouldClose() or wantsQuit(frame, world)) ()
         else {
-            let toggled = justPressed(GameEngine.Key.F8, frame) and canDebug(app);
-            let pausedNow = if (toggled) not anno#paused else anno#paused;
-            // デバッグモードの出入りをウィンドウタイトルとカーソル形状で示す
-            // （停止中は正確に囲うための十字カーソル）
-            if (toggled) {
-                GameEngine.Game.setDebugBadge(pausedNow);
-                GameEngine.Game.setCursor(
-                    if (pausedNow) GameEngine.Cursor.Crosshair else GameEngine.Cursor.Default)
-            } else ();
-            if (pausedNow) {
-                let nextAnno = pausedStep(app, world, history, frame, { paused = true | anno });
-                loop(app, world, currentKeys, nextAnno, history)
-            } else if (anno#paused) {
-                // 一時停止を抜けるフレーム: スクラブ位置の World から再開する。
-                // 巻き戻したぶんの履歴とフレーム番号も、そこを現在として数え直す。
-                let resumed = worldAt(history, anno#scrub, world);
-                let resumedHistory = List.drop(anno#scrub, history);
-                let resumedFrame = anno#frame - Int32.toInt64(anno#scrub);
-                renderFrame(app, resumed);
-                loop(app, resumed, currentKeys,
-                     { frame = resumedFrame | Annotate.resetView(anno) }, resumedHistory)
-            } else {
-                let reloaded = applyReload(app, frame, world);
-                let advanced = applySystems(frame, app#updateSystems, reloaded);
-                playSounds(app, reloaded, advanced);
-                renderFrame(app, advanced);
-                // 時間スクラブ用の履歴（debug が無効なら一切持たない = 本番ビルドは無負荷）
-                let nextHistory = if (canDebug(app))
-                                      List.take(historyLimit(), advanced :: history)
-                                  else Nil;
-                loop(app, advanced, currentKeys, { frame = anno#frame + 1i64 | anno }, nextHistory)
+            let remoteRaw = match bridge {
+                case Some(b) => RemoteDebug.pollRequest(b)
+                case None    => None
+            };
+            match (remoteRaw, bridge) {
+                case (Some(raw), Some(b)) =>
+                    // リモートコマンドを処理した実フレームは通常の進行を休む
+                    // （停止中は元々進まないし、実行中でも 1 フレームの息継ぎに過ぎない）。
+                    let next = handleRemote(app, b, raw,
+                        { world = world, anno = anno, history = history, hold = remoteHold });
+                    loop(app, next#world, currentKeys, next#anno, next#history, bridge, next#hold)
+                case _ => {
+                    let toggled = justPressed(GameEngine.Key.F8, frame) and canDebug(app) and not remoteHold;
+                    let pausedNow = if (toggled) not anno#paused else anno#paused;
+                    // デバッグモードの出入りをウィンドウタイトルとカーソル形状で示す
+                    // （停止中は正確に囲うための十字カーソル）
+                    if (toggled) {
+                        GameEngine.Game.setDebugBadge(pausedNow);
+                        GameEngine.Game.setCursor(
+                            if (pausedNow) GameEngine.Cursor.Crosshair else GameEngine.Cursor.Default)
+                    } else ();
+                    if (pausedNow) {
+                        let nextAnno = pausedStep(app, world, history, frame, { paused = true | anno });
+                        loop(app, world, currentKeys, nextAnno, history, bridge, remoteHold)
+                    } else if (anno#paused) {
+                        // 一時停止を抜けるフレーム: スクラブ位置の World から再開する。
+                        // 巻き戻したぶんの履歴とフレーム番号も、そこを現在として数え直す。
+                        let resumed = resumePoint(anno, history, world);
+                        renderFrame(app, resumed#world);
+                        loop(app, resumed#world, currentKeys, resumed#anno, resumed#history, bridge, remoteHold)
+                    } else {
+                        let reloaded = applyReload(app, frame, world);
+                        let advanced = applySystems(frame, app#updateSystems, reloaded);
+                        playSounds(app, reloaded, advanced);
+                        renderFrame(app, advanced);
+                        // 時間スクラブ用の履歴（debug が無効なら一切持たない = 本番ビルドは無負荷）
+                        let nextHistory = if (canDebug(app))
+                                              List.take(historyLimit(), advanced :: history)
+                                          else Nil;
+                        loop(app, advanced, currentKeys, { frame = anno#frame + 1i64 | anno }, nextHistory, bridge, remoteHold)
+                    }
+                }
             }
         }
+
+    /// 一時停止を抜ける地点: スクラブで表示していた瞬間の World を現在とし、
+    /// 履歴とフレーム番号もそこを基準に数え直す（未来側の履歴は捨てる）。
+    def resumePoint(anno: Annotate.State, history: List[w], world: w): { world = w, anno = Annotate.State, history = List[w] } =
+        { world = worldAt(history, anno#scrub, world),
+          history = List.drop(anno#scrub, history),
+          anno = { frame = anno#frame - Int32.toInt64(anno#scrub) | Annotate.resetView(anno) } }
 
     /// 履歴の back フレーム前の World（範囲外なら fallback）。先頭が「停止した瞬間」。
     def worldAt(history: List[w], back: Int32, fallback: w): w =
@@ -359,5 +396,272 @@ mod App {
                 let atlas = GameEngine.Game.getFontAtlas("default");
                 let (sprites, polygons) = Render.draw(toItems(atlas, world));
                 GameEngine.Game.renderCommands(sprites, Nil, polygons)
+        }
+
+    // ── リモートデバッグ（HTTP）: コマンド処理 ──
+    //
+    // 外部プロセス（AI エージェント等）が curl で送るコマンドをゲームループ側で処理する。
+    // 主役は /step: ゲームを止めたまま「キー入力の台本」を 1 コマ = 1 フレームで実行し、
+    // 進んだ結果（鳴った音・状態サマリ）を 1 応答で返す。実時間を追いかけられない相手でも、
+    // ゲーム側が待つことでフレーム精度の操作と観測ができる。
+
+    /// リモートコマンド処理が次の実フレームへ持ち回す状態。
+    type alias RemoteNext[w] = {
+        world = w,               // 現在の World（/step で進み得る）
+        anno = Annotate.State,   // 停止・スクラブ等の状態（/halt /step で paused になる）
+        history = List[w],       // スクラブ用の履歴（/step の合成フレームも積む）
+        hold = Bool              // HTTP 側が停止の主導権を持っているか（真の間 F8 は無効）
+    }
+
+    /// リクエスト 1 件を捌き、応答をブリッジへ書いてから次の状態を返す。
+    /// どの経路でも必ず 1 回 respond する（しないと HTTP 側が 10 秒待って 503 になる）。
+    def handleRemote(app: App[w, ef], bridge: RemoteDebug.Bridge, raw: String,
+                     ctx: RemoteNext[w]): RemoteNext[w] \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
+        let request = RemoteDebug.parseRequest(raw);
+        match (request#method, request#path) {
+            case ("GET", "/help")    => answer(RemoteDebug.helpText(), bridge, ctx)
+            case ("POST", "/halt")   => remoteHalt(app, bridge, ctx)
+            case ("POST", "/resume") => remoteResume(bridge, ctx)
+            case ("GET", "/state")   => remoteState(app, bridge, request, ctx)
+            case ("POST", "/step")   => remoteStepCommand(app, bridge, request, ctx)
+            case (m, p)              => answer("error: no route for ${m} ${p} (see GET /help)\n", bridge, ctx)
+        }
+
+    /// 応答を書いてから next を返すだけの小さな合流点。
+    def answer(text: String, bridge: RemoteDebug.Bridge, next: RemoteNext[w]): RemoteNext[w] \ IO =
+        RemoteDebug.respond(text, bridge);
+        next
+
+    /// 停止に入る見た目（ウィンドウタイトルのバッジと十字カーソル）。F8 と同じ絵柄。
+    def enterHaltMarkers(): Unit \ GameEngine.Game =
+        GameEngine.Game.setDebugBadge(true);
+        GameEngine.Game.setCursor(GameEngine.Cursor.Crosshair)
+
+    /// 停止を抜ける見た目（バッジを外して通常カーソルへ）。
+    def exitHaltMarkers(): Unit \ GameEngine.Game =
+        GameEngine.Game.setDebugBadge(false);
+        GameEngine.Game.setCursor(GameEngine.Cursor.Default)
+
+    /// POST /halt: 時間を止めて lockstep モードへ入る。既に停止中でも安全（冪等）。
+    def remoteHalt(app: App[w, ef], bridge: RemoteDebug.Bridge,
+                   ctx: RemoteNext[w]): RemoteNext[w] \ (ef + GameEngine.Game + IO) =
+        if (not ctx#anno#paused) enterHaltMarkers() else ();
+        let shownFrame = ctx#anno#frame - Int32.toInt64(ctx#anno#scrub);
+        let displayed = worldAt(ctx#history, ctx#anno#scrub, ctx#world);
+        answer("ok mode=halted frame=${shownFrame}\n[status]\n${statusText(app, displayed)}\n",
+               bridge, { anno = { paused = true | ctx#anno }, hold = true | ctx })
+
+    /// POST /resume: 実時間の進行へ戻す。スクラブで過去を見ていたらそこから再開する。
+    def remoteResume(bridge: RemoteDebug.Bridge,
+                     ctx: RemoteNext[w]): RemoteNext[w] \ (GameEngine.Game + IO) =
+        if (not ctx#anno#paused)
+            answer("ok mode=running frame=${ctx#anno#frame}\n", bridge, { hold = false | ctx })
+        else {
+            exitHaltMarkers();
+            let resumed = resumePoint(ctx#anno, ctx#history, ctx#world);
+            answer("ok mode=running frame=${resumed#anno#frame}\n", bridge,
+                   { world = resumed#world, anno = resumed#anno, history = resumed#history, hold = false })
+        }
+
+    /// GET /state: 進めずに観測だけ返す。停止中はスクラブで表示中の瞬間を見る。
+    def remoteState(app: App[w, ef], bridge: RemoteDebug.Bridge, request: RemoteDebug.Request,
+                    ctx: RemoteNext[w]): RemoteNext[w] \ (ef + GameEngine.Game + IO) =
+        match RemoteDebug.parseParams(request#params) {
+            case Err(message) => answer(message + "\n", bridge, ctx)
+            case Ok(stepParams) =>
+                let displayed = worldAt(ctx#history, ctx#anno#scrub, ctx#world);
+                let modeName = if (ctx#anno#paused) "halted" else "running";
+                let shownFrame = ctx#anno#frame - Int32.toInt64(ctx#anno#scrub);
+                answer("ok frame=${shownFrame} mode=${modeName}\n" + viewBlock(app, stepParams, displayed),
+                       bridge, ctx)
+        }
+
+    /// POST /step: 台本を 1 コマ = 1 フレームで実行し、結果を 1 応答に束ねて返す。
+    /// 実行中に来たら自動で停止してから進める。スクラブで過去を見ていたら
+    /// 「表示中の瞬間から再開して進める」（F8 解除と同じ意味論。未来側の履歴は捨てる）。
+    def remoteStepCommand(app: App[w, ef], bridge: RemoteDebug.Bridge, request: RemoteDebug.Request,
+                          ctx: RemoteNext[w]): RemoteNext[w] \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
+        match (RemoteDebug.parseParams(request#params), RemoteDebug.parseScript(request#body)) {
+            case (Err(message), _) => answer(message + "\n", bridge, ctx)
+            case (_, Err(message)) => answer(message + "\n", bridge, ctx)
+            case (Ok(stepParams), Ok(script)) =>
+                if (List.isEmpty(script))
+                    answer("error: empty script (body needs idle/press/hold lines; see GET /help)\n", bridge, ctx)
+                else {
+                    if (not ctx#anno#paused) enterHaltMarkers() else ();
+                    let base = resumePoint(ctx#anno, ctx#history, ctx#world);
+                    let outcome = remoteStep(app, base#world, base#anno#frame, script, stepParams);
+                    let annoAfter = { paused = true,
+                                      frame = base#anno#frame + Int32.toInt64(outcome#framesRun) | base#anno };
+                    let historyAfter = List.take(historyLimit(),
+                                                 List.append(outcome#newHistory, base#history));
+                    let total = Int32.min(List.length(script), stepParams#maxFrames);
+                    let text = RemoteDebug.stepHeader({ stepped = outcome#framesRun, total = total,
+                                                        frame = annoAfter#frame,
+                                                        stoppedBy = outcome#stoppedBy, quit = outcome#quit })
+                             + RemoteDebug.eventsBlock(outcome#sounds)
+                             + RemoteDebug.traceBlock(outcome#traceLines)
+                             + viewBlock(app, stepParams, outcome#world);
+                    answer(text, bridge,
+                           { world = outcome#world, anno = annoAfter, history = historyAfter, hold = true })
+                }
+        }
+
+    /// 応答に載せる観測本文（[status] / [full] / [scene] のブロック）。
+    def viewBlock(app: App[w, ef], stepParams: RemoteDebug.StepParams, world: w): String \ (ef + GameEngine.Game) =
+        match stepParams#view {
+            case RemoteDebug.View.Silent  => ""
+            case RemoteDebug.View.Status  => "[status]\n" + statusText(app, world) + "\n"
+            case RemoteDebug.View.Summary => "[status]\n" + statusText(app, world) + "\n"
+            case RemoteDebug.View.Full    =>
+                let rect = Option.getWithDefault(GameEngine.Game.getViewportRect(), stepParams#rect);
+                match app#worldDump {
+                    case Some(dump) => "[full]\n" + RemoteDebug.capBody(dump(rect, world)) + "\n"
+                    case None       => "[full]\n(no worldDump wired; try view=scene)\n"
+                }
+            case RemoteDebug.View.Scene   =>
+                let rect = Option.getWithDefault(GameEngine.Game.getViewportRect(), stepParams#rect);
+                sceneText(app, rect, world) + "\n"
+        }
+
+    /// view=status の本文。ゲームが withStatusLine を繋いでいなければその旨を返す。
+    def statusText(app: App[w, ef], world: w): String \ ef =
+        match app#statusLine {
+            case Some(toLine) => toLine(world)
+            case None         => "(no statusLine wired; use view=scene or wire App.withStatusLine)"
+        }
+
+    /// view=scene の本文。view（Placed 投影）か debugView（生チャンネル投影）から、
+    /// 矩形に重なる描画物を列挙する。どちらも無いゲームは観測手段が無い旨を返す。
+    def sceneText(app: App[w, ef], rect: Rect2.Rect2, world: w): String \ (ef + GameEngine.Game) =
+        match (app#view, app#debugView) {
+            case (Some(toItems), _) =>
+                let atlas = GameEngine.Game.getFontAtlas("default");
+                let hitList = Annotate.hits(name -> GameEngine.Game.getTextureInfo(name), rect,
+                                            toItems(atlas, world));
+                RemoteDebug.sceneBlock(rect, hitList)
+            case (None, Some((_, toChannels))) =>
+                let (drawables, _, _) = toChannels(world);
+                let hitList = Annotate.hitsFromDrawables(name -> GameEngine.Game.getTextureInfo(name),
+                                                         rect, drawables);
+                RemoteDebug.sceneBlock(rect, hitList)
+            case (None, None) => "[scene]\n(no view/debugView wired)"
+        }
+
+    // ── リモートデバッグ（HTTP）: /step の実行器 ──
+
+    /// /step 1 回ぶんの実行結果。
+    type alias StepOutcome[w] = {
+        world = w,                       // 実行後の World
+        newHistory = List[w],            // 実行中に積んだ World（新しい順・上限つき）
+        framesRun = Int32,               // 実際に進んだコマ数
+        sounds = List[(Int64, String)],  // (絶対フレーム番号, 音名) の時系列
+        stoppedBy = String,              // "script" / "until:sfx" / "until:quiet" / "quit" / "max"
+        quit = Bool,                     // 終了条件（ウィンドウ閉 / quitWhen）に触れて止まったか
+        traceLines = List[String]        // trace=status:K で集めた行（時系列）
+    }
+
+    /// /step の台本実行中に持ち回る折り畳みの状態。
+    type alias StepFold[w] = {
+        world = w,                        // いまの World
+        prev = Set[GameEngine.Key],       // 前のコマのキー集合（エッジ判定用）
+        done = Int32,                     // 進んだコマ数
+        quietRun = Int32,                 // 無音が続いているコマ数（until=quiet 用）
+        acc = List[w],                    // 積んだ World（新しい順）
+        stopped = String,                 // 停止理由（"" = 続行）
+        quit = Bool,                      // 終了条件に触れたか
+        trace = List[String]              // trace の行（新しい順）
+    }
+
+    /// 台本をコマ送りで実行する芯。TestWorldJourney の headless 駆動と同じ発想で、
+    /// Game / Audio をプロキシハンドラで包んで本番のシステム列をそのまま回す:
+    ///   - dt は実時計でなく固定値（既定 1/60 秒）→ 何度やっても同じ結果になる
+    ///   - キーは台本のコマから返す（Frame 経由でも直読みでも台本に従う）
+    ///   - 描画は捨てる（vsync 待ちが無くなるので数百コマが一瞬で回る）
+    ///   - 音は鳴らさず (フレーム番号, 音名) で記録して観測データにする
+    /// それ以外の操作（GLFW のイベント処理を含む shouldClose 等）は実ハンドラへ素通しする。
+    def remoteStep(app: App[w, ef], world0: w, frame0: Int64, script: RemoteDebug.Script,
+                   stepParams: RemoteDebug.StepParams): StepOutcome[w] \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead) =
+        region rc {
+            let soundsRef: Ref[List[(Int64, String)], rc] = Ref.fresh(rc, Nil);
+            let frameNoRef: Ref[Int64, rc] = Ref.fresh(rc, frame0);
+            let keysRef: Ref[Set[GameEngine.Key], rc] = Ref.fresh(rc, Set.empty());
+            let effective = List.take(stepParams#maxFrames, script);
+            let truncated = List.length(script) > List.length(effective);
+            let start: StepFold[w] = { world = world0, prev = Set.empty(), done = 0, quietRun = 0,
+                                       acc = Nil, stopped = "", quit = false, trace = Nil };
+            let final = run {
+                List.foldLeft((state, frameKeys) -> {
+                    if (state#stopped != "") state
+                    else {
+                        Ref.put(frameKeys, keysRef);
+                        let frameNo = Ref.get(frameNoRef) + 1i64;
+                        Ref.put(frameNo, frameNoRef);
+                        // 実ハンドラへ素通し = glfwPollEvents が回り、窓が固まらない・閉じられる
+                        let closing = GameEngine.Game.shouldClose();
+                        let frame = frameOf(prev = state#prev, current = frameKeys, stepParams#dtSeconds);
+                        let wantsQuit = app#quit;
+                        if (closing or wantsQuit(frame, state#world))
+                            { stopped = "quit", quit = true | state }
+                        else {
+                            let capturedBefore = List.length(Ref.get(soundsRef));
+                            let reloaded = applyReload(app, frame, state#world);
+                            let advanced = applySystems(frame, app#updateSystems, reloaded);
+                            // 音の 2 経路: システムが直接鳴らした分はプロキシが記録済み、
+                            // withAudio 由来はここで導出して記録する。
+                            let derive = app#audio;
+                            derive({ before = reloaded, after = advanced })
+                                |> List.forEach(name ->
+                                       Ref.put((frameNo, name) :: Ref.get(soundsRef), soundsRef));
+                            let soundsNow = Ref.get(soundsRef)
+                                |> List.take(List.length(Ref.get(soundsRef)) - capturedBefore)
+                                |> List.map(snd);
+                            let (stoppedNow, quietNow) =
+                                RemoteDebug.stopCheck(stepParams#stopWhen, soundsNow, state#quietRun);
+                            let traceNow = match stepParams#traceEvery {
+                                case Some(every) =>
+                                    if (Int32.modulo(state#done + 1, every) == 0)
+                                        "f=${frameNo} ${statusText(app, advanced)}" :: state#trace
+                                    else state#trace
+                                case None => state#trace
+                            };
+                            { world = advanced, prev = frameKeys, done = state#done + 1,
+                              quietRun = quietNow, acc = advanced :: state#acc,
+                              stopped = stoppedNow, quit = false, trace = traceNow }
+                        }
+                    }
+                }, start, effective)
+            } with handler GameEngine.Game {
+                def getDeltaTime(k)             = k(Duration.seconds(stepParams#dtSeconds))
+                def isKeyPressed(key, k)        = k(Set.memberOf(key, Ref.get(keysRef)))
+                def renderCommands(_s, _t, _p, k) = k(())
+                def shouldClose(k)              = k(GameEngine.Game.shouldClose())
+                def initTileBuffer(instances, k) = k(GameEngine.Game.initTileBuffer(instances))
+                def getMousePosition(k)         = k(GameEngine.Game.getMousePosition())
+                def isMouseButtonPressed(b, k)  = k(GameEngine.Game.isMouseButtonPressed(b))
+                def consumeScrollDelta(k)       = k(GameEngine.Game.consumeScrollDelta())
+                def getFontAtlas(name, k)       = k(GameEngine.Game.getFontAtlas(name))
+                def getViewportRect(k)          = k(GameEngine.Game.getViewportRect())
+                def getTextureInfo(name, k)     = k(GameEngine.Game.getTextureInfo(name))
+                def setCursor(cursor, k)        = k(GameEngine.Game.setCursor(cursor))
+                def saveAnnotation(req, k)      = k(GameEngine.Game.saveAnnotation(req))
+                def setDebugBadge(enabled, k)   = k(GameEngine.Game.setDebugBadge(enabled))
+            } with handler GameEngine.Audio {
+                def playAudio(name, k)  = {
+                    Ref.put((Ref.get(frameNoRef), name) :: Ref.get(soundsRef), soundsRef);
+                    k()
+                }
+                def stopAudio(name, k)          = k(GameEngine.Audio.stopAudio(name))
+                def setVolume(name, volume, k)  = k(GameEngine.Audio.setVolume(name, volume))
+                def setLooping(name, looping, k) = k(GameEngine.Audio.setLooping(name, looping))
+            };
+            { world = final#world,
+              newHistory = List.take(historyLimit(), final#acc),
+              framesRun = final#done,
+              sounds = List.reverse(Ref.get(soundsRef)),
+              stoppedBy = if (final#stopped != "") final#stopped
+                          else if (truncated) "max" else "script",
+              quit = final#quit,
+              traceLines = List.reverse(final#trace) }
         }
 }

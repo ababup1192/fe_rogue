@@ -14,5 +14,9 @@ lib/
 !**/src/lib/**
 crash_report_*.txt
 hs_err_pid*.log
-# ゲーム内アノテーション（F8 → 矩形ドラッグ）の書き出し先
+# ゲーム内アノテーション（F8 → 矩形ドラッグ）の書き出し先。
+# ただし src/debug/ は実ソース(WorldDump 等)なので追跡対象に戻す
+# （この救済が無いと src/debug/ の新規ファイルが黙って未追跡のまま取り残される）。
 debug/
+!**/src/debug/
+!**/src/debug/**
