@@ -14,5 +14,8 @@ lib/
 !**/src/lib/**
 crash_report_*.txt
 hs_err_pid*.log
-# ゲーム内アノテーション（F8 → 矩形ドラッグ）の書き出し先
-debug/
+# ゲーム内アノテーション（F8 → 矩形ドラッグ）の書き出し先。
+# チケット（スクショ PNG / world.json）だけを無視する。debug/ 丸ごとにすると
+# src/debug/（WorldDump 等の実ソース）や debug/ 直下の検証ツール
+# (replay_tiles.py ほか) まで管理外になるので annotations/ に絞る。
+**/debug/annotations/
