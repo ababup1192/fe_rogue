@@ -335,6 +335,113 @@ mod TestMapLoader {
             expected = (104.0, 52.0, 0.0, 52.0) :: (104.0, 78.0, 286.0, 26.0) :: Nil,
             tiles |> List.map(t -> (t#px#x, t#px#y, t#srcX, t#srcY)) |> List.sort)
 
+    // ── autoRules「水路下の通路口」系: 水路の下にドア（通路）が接続する時だけ口を開ける ──
+    //
+    // 部屋の南壁帯の上段に水路（描画床・IntGrid では床=1）が乗り、その下へ通路が
+    // 接続する構成（f2316 注釈）。通路口セルは wallMap の正面 (0,5) が出て閉じて見え、
+    // 右隣は暗い壁 (6,2) のままで帯の折れ目が無い。ルールで口に床 (5,6) を重ね、
+    // 隣に ┌(3,0) を重ねる。**通路が無い配置（f18010）では発火せず壁で封のまま**が要件
+    // （module の manualTiles による無条件の見た目指定はこの理由で撤回済み）。
+    //
+    //        col: 0   1   2   3   4   5
+    //   row 1:    W  [.] [.] [.] [.]  W      部屋の床
+    //   row 2:    W  [.] [~] [~] [~]  W      [~]=水路（IntGrid は床 1）・col1=ドア列
+    //   row 3:    W  [.] [M] [C]  W   W      M=通路口(5,6) / C=┌(3,0)
+    //   row 4:    W  [.] [.]  W   ,   ,      通路（幅 2）が下へ続く
+    //   row 5:    W  [.] [.]  W   ,   ,
+    //
+    // 鏡像（通路が水路の右端下に付く）は左右反転で ┐(4,0)。
+
+    /// 通路口ミニ盤面の床マスク（部屋+水路+ドア列+幅 2 の通路）。
+    def troughMouthFloorMask(): Set[(Int32, Int32)] =
+        Set#{(1, 1), (2, 1), (3, 1), (4, 1),
+             (1, 2), (2, 2), (3, 2), (4, 2),
+             (1, 3),
+             (1, 4), (2, 4),
+             (1, 5), (2, 5)}
+
+    /// 水路はあるが下が void で封じられている盤面（f18010 の形・通路なし）。
+    def troughSealedFloorMask(): Set[(Int32, Int32)] =
+        Set#{(1, 1), (2, 1), (3, 1), (4, 1),
+             (1, 2), (2, 2), (3, 2), (4, 2)}
+
+    /// room_*.material.json 末尾の「水路下の通路口/帯折れ」4 ルールと同じ値。
+    def troughMouthRules(): List[MapResource.AutoRule] =
+        let a = MapResource.PatternCell.Unspecified;
+        let w = MapResource.PatternCell.Value(2);
+        let f = MapResource.PatternCell.Value(1);
+        let e = MapResource.PatternCell.Nothing;
+        let rule = (name, pattern, srcX, srcY) ->
+            ({name = name, size = 5, pattern = pattern, srcX = srcX, srcY = srcY}: MapResource.AutoRule);
+        // 通路口: 上=水路(床)・下=通路床・片側=ドア列の床・逆側=帯の壁が 2 セル下まで続く → (5,6)
+           rule("水路下の通路口(右壁)", Vector#{a, a, f, a, a,
+                                                a, f, f, f, a,
+                                                a, f, w, w, a,
+                                                a, f, f, w, a,
+                                                a, a, a, w, a}, 130, 156)
+        :: rule("水路下の通路口(左壁)", Vector#{a, a, f, a, a,
+                                                a, f, f, f, a,
+                                                a, w, w, f, a,
+                                                a, w, f, f, a,
+                                                a, w, a, a, a}, 130, 156)
+        // 帯折れ: 水路下の帯が通路口の隣で下（通路の壁列）へ折れる → ┌(3,0) / ┐(4,0)
+        :: rule("水路下の帯折れ┌", Vector#{a, a, a, a, a,
+                                            f, f, f, f, a,
+                                            f, w, w, w, a,
+                                            f, f, w, e, a,
+                                            a, a, w, a, a}, 78, 0)
+        :: rule("水路下の帯折れ┐", Vector#{a, a, a, a, a,
+                                            a, f, f, f, f,
+                                            a, w, w, w, f,
+                                            a, e, w, f, f,
+                                            a, a, w, a, a}, 104, 0)
+        :: Nil
+
+    /// 通路が接続する盤面では通路口 (2,3) に床 (5,6)・隣 (3,3) に ┌(3,0) だけが発火する。
+    @Test
+    def testTroughMouthRulesFireAtMouthOnly(): Unit \ Assert =
+        let floorMask = troughMouthFloorMask();
+        let wallCells = MapLoader.computeWallCells(floorMask, 7, 7);
+        let grid = MapLoader.buildIntGrid(floorMask, wallCells, 7, 7);
+        let tiles = MapLoader.buildAutoRuleTiles(grid, 7, 7, troughMouthRules(),
+                                                 (Set#{}: Set[(Int32, Int32)]), 26);
+        Assert.assertEq(
+            expected = (52.0, 78.0, 130.0, 156.0) :: (78.0, 78.0, 78.0, 0.0) :: Nil,
+            tiles |> List.map(t -> (t#px#x, t#px#y, t#srcX, t#srcY)) |> List.sort)
+
+    /// 左右鏡像の盤面では鏡像版 2 ルール（口=同じ床・角=┐）が発火する（鏡像セットの pin）。
+    @Test
+    def testTroughMouthMirrorRulesFireOnMirroredBoard(): Unit \ Assert =
+        let mirrored = troughMouthFloorMask()
+            |> Set.map(cell -> {let (col, row) = cell; (6 - col, row)});
+        let wallCells = MapLoader.computeWallCells(mirrored, 7, 7);
+        let grid = MapLoader.buildIntGrid(mirrored, wallCells, 7, 7);
+        let tiles = MapLoader.buildAutoRuleTiles(grid, 7, 7, troughMouthRules(),
+                                                 (Set#{}: Set[(Int32, Int32)]), 26);
+        Assert.assertEq(
+            expected = (78.0, 78.0, 104.0, 0.0) :: (104.0, 78.0, 130.0, 156.0) :: Nil,
+            tiles |> List.map(t -> (t#px#x, t#px#y, t#srcX, t#srcY)) |> List.sort)
+
+    /// 下が void で封じられた盤面（通路なし）と部屋だけの盤面では 1 本も発火しない
+    /// （「通路が無いときは壁で封」の要件そのものの pin）。
+    @Test
+    def testTroughMouthRulesSilentWhenSealed(): Unit \ Assert =
+        let sealedMask = troughSealedFloorMask();
+        let sealedWalls = MapLoader.computeWallCells(sealedMask, 7, 7);
+        let sealedGrid = MapLoader.buildIntGrid(sealedMask, sealedWalls, 7, 7);
+        let sealedTiles = MapLoader.buildAutoRuleTiles(sealedGrid, 7, 7, troughMouthRules(),
+                                                       (Set#{}: Set[(Int32, Int32)]), 26);
+        let roomOnly = List.range(5, 8)
+            |> List.flatMap(col -> List.range(4, 7) |> List.map(row -> (col, row)))
+            |> List.toSet;
+        let roomWalls = MapLoader.computeWallCells(roomOnly, 9, 8);
+        let roomGrid = MapLoader.buildIntGrid(roomOnly, roomWalls, 9, 8);
+        let roomTiles = MapLoader.buildAutoRuleTiles(roomGrid, 9, 8, troughMouthRules(),
+                                                     (Set#{}: Set[(Int32, Int32)]), 26);
+        Assert.assertEq(
+            expected = (true, true),
+            (List.isEmpty(sealedTiles), List.isEmpty(roomTiles)))
+
     /// 背骨壁盤面（縦細壁ルールの担当）と部屋だけの盤面では 1 本も発火しない
     /// （先頭挿入なので、既存の縦細壁ルールからセルを奪わないことの pin）。
     @Test

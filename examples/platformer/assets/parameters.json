@@ -1,0 +1,16 @@
+{
+  "jumpHeight": 96.0,
+  "timeToApex": 0.375,
+  "fallGravityMult": 1.8,
+  "apexBand": 40.0,
+  "apexGravityMult": 0.5,
+  "cutMult": 0.4,
+  "maxFallSpeed": 900.0,
+  "maxRunSpeed": 160.0,
+  "groundAccel": 900.0,
+  "groundDecel": 1200.0,
+  "airAccel": 500.0,
+  "airDecel": 100.0,
+  "coyoteTime": 0.09375,
+  "bufferTime": 0.125
+}
