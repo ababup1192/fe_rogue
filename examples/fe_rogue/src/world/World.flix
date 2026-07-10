@@ -100,6 +100,13 @@ pub type alias MapLayout = {
 /// 「このセルにどのチップが出ているか」をシム側の事実として残すための read-model。
 pub type alias TileChips = Map[(Int32, Int32), List[{x = Int32, y = Int32}]]
 
+/// フロア床の正解データ（デバッグ注釈の world.json 専用 read-model）。
+/// `floorCells` は合成後の床セル集合（decorTiles 由来・door 出っ張り込み）で、
+/// 「盤面の範囲内だが床も壁も無い空間（void）」を床と区別する唯一の情報源
+/// （タイル選択の TRBL キーと IntGrid は床/void を区別するため、dump もこれで揃える）。
+/// `materialId` はアンカー部屋の material 名（フロア全体の wallMap / autoRules の出典）。
+pub type alias MapFloorInfo = {materialId = String, floorCells = Set[(Int32, Int32)]}
+
 pub enum World {
     case World({ tick = Int32,
                  // turn FSM の 19-case phase。World 単一権威（`TurnPhase.State` は facade）。
@@ -304,6 +311,9 @@ pub enum World {
                  // セル → 描かれているマップチップの列（build choke の `Cmd.SetTileChips` が seed・
                  // Title は空）。デバッグ注釈の world.json 専用の read-model。
                  tileChips = TileChips,
+                 // フロア床の正解データ（build choke の `Cmd.SetMapFloorInfo` が seed・Title は None）。
+                 // デバッグ注釈の world.json 専用の read-model。
+                 mapFloorInfo = Option[MapFloorInfo],
                  // 敵特殊能力 effectRule の生 Json read-model（unified-id・敵のみ）。
                  // 内側 Option=ルールなし。enemy `#resource#effectRule`（Option[Json]）由来＝weaponView と同じ
                  // Option-store パターン（accessor が flatten）。`Cmd.SetEffectRule` が書く。敵パスの sim 発火判定が読む。
@@ -367,6 +377,7 @@ mod World {
                      mapSnapshot = None,
                      mapLayout = None,
                      tileChips = Map.empty(),
+                     mapFloorInfo = None,
                      stairsPos = None,
                      visited = Set.empty(),
                      chests = Map.empty(),
@@ -724,6 +735,7 @@ mod World {
         case SetMapLayout(Option[MapLayout])                   // マップ Plan＋スポーン起点（floor build choke で emit・Title は None）
         case SetTileLayers(List[TileLayerHandle])              // 背景タイルの描画ハンドル（floor build choke で emit・Title は Nil）
         case SetTileChips(TileChips)                           // セル → 描かれているチップ列（floor build choke で emit・Title は空）
+        case SetMapFloorInfo(Option[MapFloorInfo])             // 床セル集合＋アンカー materialId（floor build choke で emit・Title は None）
         case SetEffectRule(Int32, Option[Util.Json.Json])      // 敵 effectRule（spawn で emit・以後不変）
         case SetAnim(EntityRef, String)        // 再生アニメ切替（play 意味論=同名継続/別名リセット）
         case SetFlipH(EntityRef, Bool)         // 左右反転（移動 view 再生が書く）
@@ -1245,6 +1257,9 @@ mod World {
             case Cmd.SetTileChips(chips) =>
                 let World.World(w) = world;
                 World.World({tileChips = chips | w})
+            case Cmd.SetMapFloorInfo(fOpt) =>
+                let World.World(w) = world;
+                World.World({mapFloorInfo = fOpt | w})
             case Cmd.SetEffectRule(id, rule) =>
                 let World.World(w) = world;
                 World.World({effectRule = Map.insert(enemyUid(id), rule, w#effectRule) | w})
@@ -1525,6 +1540,7 @@ mod World {
             case Cmd.SetMapLayout(l)          => ("SetMapLayout", if (Option.isEmpty(l)) 0 else 1, 0, 0)
             case Cmd.SetTileLayers(hs)        => ("SetTileLayers", List.length(hs), 0, 0)
             case Cmd.SetTileChips(chips)      => ("SetTileChips", Map.size(chips), 0, 0)
+            case Cmd.SetMapFloorInfo(f)       => ("SetMapFloorInfo", if (Option.isEmpty(f)) 0 else 1, 0, 0)
             case Cmd.SetEffectRule(id, r)     => ("SetEffectRule", enemyUid(id), if (Option.isEmpty(r)) 0 else 1, 0)
             case Cmd.SetAnim(ref, name)       => ("SetAnim(${name})", toUid(ref), 0, 0)
             case Cmd.SetFlipH(ref, b)         => ("SetFlipH", toUid(ref), if (b) 1 else 0, 0)
@@ -2259,6 +2275,12 @@ mod World {
     pub def tileChipsAtOf(cell: {x = Int32, y = Int32}, world: World): List[{x = Int32, y = Int32}] =
         let World.World(w) = world;
         Map.get((cell#x, cell#y), w#tileChips) |> Option.getWithDefault(Nil)
+
+    /// フロア床の正解データ（床セル集合＋アンカー materialId）を読む（None = 盤面レス画面 or 未 seed）。
+    /// デバッグ注釈の world.json が床/void の区別と material の出典表示に使う。
+    pub def mapFloorInfoOf(world: World): Option[MapFloorInfo] =
+        let World.World(w) = world;
+        w#mapFloorInfo
 
     /// 地形を「必ず在る」前提で読む版（spawn 系 / 範囲計算など盤面のある画面専用）。
     /// 盤面レス画面での呼び出しは配線ミスとして即落とす（fail-open が欲しい読み手は `terrainOf`）。

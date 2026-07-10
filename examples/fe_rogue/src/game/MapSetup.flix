@@ -15,12 +15,14 @@ mod MapSetup {
     import java.lang.{System => JSystem}
 
     /// マップ確定の成果物。terrain（壁・placements・座標系）/ layout（Plan＋スポーン起点）/
-    /// handles（背景タイルの描画ハンドル・floor 層が先）/ chips（セル → 描かれているチップ列）。
+    /// handles（背景タイルの描画ハンドル・floor 層が先）/ chips（セル → 描かれているチップ列）/
+    /// floorInfo（床セル集合＋アンカー materialId。デバッグ注釈の world.json が床/void を区別する源）。
     pub type alias Built = {
-        terrain = MapSnapshot,
-        layout  = MapLayout,
-        handles = List[TileLayerHandle],
-        chips   = TileChips
+        terrain   = MapSnapshot,
+        layout    = MapLayout,
+        handles   = List[TileLayerHandle],
+        chips     = TileChips,
+        floorInfo = MapFloorInfo
     }
 
     /// Walls / Floor 共通テクスチャ名（n-format は両層で同一タイルセットを使う）。
@@ -45,11 +47,17 @@ mod MapSetup {
                                                                  plan#sideConnections);
         // Floor 層は Walls の下（zIndex = -1）に重ねる。
         let floorLayer = TileLayer.mapVisual(Visual.setZIndex(-1), result#floorLayer);
+        // アンカー = modulePaths 先頭（部屋が先に並ぶ約束）。material はフロア全体に適用される。
+        let anchorPath = match List.head(plan#modulePaths) {
+            case Some(path) => path
+            case None       => bug!("MapSetup.buildFromPlan: empty modulePaths")
+        };
         {
-            terrain = snapshotOfLayer(result#layer, result#placements),
-            layout  = ({plan = plan, spawnGrid = result#spawnGrid}: MapLayout),
-            handles = handleOf(floorLayer) :: handleOf(result#layer) :: Nil,
-            chips   = chipsOfLayers(floorLayer :: result#layer :: Nil)
+            terrain   = snapshotOfLayer(result#layer, result#placements),
+            layout    = ({plan = plan, spawnGrid = result#spawnGrid}: MapLayout),
+            handles   = handleOf(floorLayer) :: handleOf(result#layer) :: Nil,
+            chips     = chipsOfLayers(floorLayer :: result#layer :: Nil),
+            floorInfo = {materialId = materialIdOf(anchorPath), floorCells = floorCellsOf(floorLayer)}
         }
 
     /// 確定済みマップを World へ seed する（build choke 専用）。spawn 系（Player / Enemy /
@@ -58,7 +66,8 @@ mod MapSetup {
         World.Command.emit(World.Cmd.SetMapSnapshot(Some(built#terrain)));
         World.Command.emit(World.Cmd.SetMapLayout(Some(built#layout)));
         World.Command.emit(World.Cmd.SetTileLayers(built#handles));
-        World.Command.emit(World.Cmd.SetTileChips(built#chips))
+        World.Command.emit(World.Cmd.SetTileChips(built#chips));
+        World.Command.emit(World.Cmd.SetMapFloorInfo(Some(built#floorInfo)))
 
     /// ダンジョン退場（Title / CharacterSelect へ抜ける）時のマップ store 掃除。
     /// 地形 / Plan を None に、タイルハンドルを空にする（存在ゲートが盤面レスと判定する源）。
@@ -66,7 +75,8 @@ mod MapSetup {
         World.Command.emit(World.Cmd.SetMapSnapshot(None));
         World.Command.emit(World.Cmd.SetMapLayout(None));
         World.Command.emit(World.Cmd.SetTileLayers(Nil));
-        World.Command.emit(World.Cmd.SetTileChips(Map.empty()))
+        World.Command.emit(World.Cmd.SetTileChips(Map.empty()));
+        World.Command.emit(World.Cmd.SetMapFloorInfo(None))
 
     /// 視覚一致確認用ルート: 単一 .map.json を MapLoader 経由で確定する。
     /// DungeonComposer を通さないためタイル自動結合ルールが再評価されない。
@@ -93,10 +103,11 @@ mod MapSetup {
         let plan: DungeonGenerator.Plan =
             {modulePaths = levelPath :: Nil, sideConnections = Nil, roomCount = 1};
         {
-            terrain = snapshotOfLayer(wallsLayer, RoomLayout.singleRoom(gs#x, gs#y)),
-            layout  = ({plan = plan, spawnGrid = safe}: MapLayout),
-            handles = handleOf(floorLayer) :: handleOf(wallsLayer) :: Nil,
-            chips   = chipsOfLayers(floorLayer :: wallsLayer :: Nil)
+            terrain   = snapshotOfLayer(wallsLayer, RoomLayout.singleRoom(gs#x, gs#y)),
+            layout    = ({plan = plan, spawnGrid = safe}: MapLayout),
+            handles   = handleOf(floorLayer) :: handleOf(wallsLayer) :: Nil,
+            chips     = chipsOfLayers(floorLayer :: wallsLayer :: Nil),
+            floorInfo = {materialId = materialIdOf(levelPath), floorCells = floorCellsOf(floorLayer)}
         }
 
     /// TileLayer 値 → 軽量描画ハンドル。`worldPos` はレイヤーの transform 位置
@@ -141,6 +152,19 @@ mod MapSetup {
             let TileLayer.TileLayer(r) = layer;
             chipsOfTiles(TileLayer.tileSize(layer), r#tiles, acc)
         }, Map.empty())
+
+    /// 床レイヤーの各タイルが置かれたセルの集合（合成後 mergedFloor の正解。door 出っ張り込み）。
+    /// タイルの px はピクセル位置なので tileSize で割ってグリッド座標へ落とす。
+    def floorCellsOf(layer: TileLayer): Set[(Int32, Int32)] =
+        let TileLayer.TileLayer(r) = layer;
+        r#tiles |> List.map(tile -> Grid.cellOf(TileLayer.tileSize(layer), tile#px)) |> List.toSet
+
+    /// マップ .map.json から materialId を読む（アンカー部屋の material がフロア全体に適用される）。
+    def materialIdOf(levelPath: String): String \ Fs.FileRead =
+        match Persistence.load(levelPath) {
+            case Some(level) => MapResource.levelData(level)#materialId
+            case None        => bug!("MapSetup.materialIdOf: failed to load ${levelPath}")
+        }
 
     /// タイル 1 枚ごとに、置かれたセルのチップ列の末尾（= 上）へチップ座標を足し込む。
     /// pub: テストが TileData 値から直接検証するための入口。

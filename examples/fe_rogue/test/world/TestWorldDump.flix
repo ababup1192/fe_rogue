@@ -15,7 +15,8 @@ def worldDumpTerrainFixture(): MapSnapshot =
       mapGlobal = {x = 0.0, y = 0.0},
       placements = Nil }
 
-/// 壁キーは上右下左の順に W(壁)/F(床)/E(範囲外) を並べた 4 文字。
+/// 壁キーは上右下左の順に W(壁)/F(床)/E(どちらでもない) を並べた 4 文字。
+/// 床セル集合なし（None）では「範囲内かつ非壁 = F」に落ちる旧挙動:
 /// 中央セル (1,1) は上下が壁・左右が床で "WFWF"、
 /// 左上角 (0,0) は上と左が範囲外・右が壁・下が床で "EWFE"。
 @Test
@@ -23,8 +24,19 @@ def testWorldDumpWallTritKey(): Unit \ Assert =
     let terrain = worldDumpTerrainFixture();
     Assert.assertEq(
         expected = ("WFWF", "EWFE"),
-        (WorldDump.wallTritKey({x = 1, y = 1}, terrain),
-         WorldDump.wallTritKey({x = 0, y = 0}, terrain)))
+        (WorldDump.wallTritKey({x = 1, y = 1}, None, terrain),
+         WorldDump.wallTritKey({x = 0, y = 0}, None, terrain)))
+
+/// 床セル集合を渡すと「範囲内だが床が無い空間（void）」が E になる。
+/// fixture の床を右列 (2,1) だけに絞ると、中央セル (1,1) の左 (0,1) は
+/// 範囲内・非壁のまま床でなくなり、キーは "WFWF" → "WFWE" に変わる
+/// （レンダラの trit キーと同じ基準。None 挙動との差分を pin）。
+@Test
+def testWorldDumpWallTritKeyDistinguishesVoidFromFloor(): Unit \ Assert =
+    let terrain = worldDumpTerrainFixture();
+    Assert.assertEq(
+        expected = "WFWE",
+        WorldDump.wallTritKey({x = 1, y = 1}, Some(Set#{(2, 1)}), terrain))
 
 /// screenToWorld はカメラ投影の逆変換。画面中央（デザイン 240×128 の (120, 64)）は
 /// ズームによらず「カメラが中央に映しているワールド座標」そのものへ戻る。
@@ -63,6 +75,31 @@ def testWorldDumpCellsUnderCoversZoomedCells(): Unit \ Assert =
 def testWorldDumpMapRowsAscii(): Unit \ Assert =
     let world = World.applyCmd(World.Cmd.SetMapSnapshot(Some(worldDumpTerrainFixture())), World.empty());
     Assert.assertEq(expected = "+#." :: "..." :: ".#." :: Nil, WorldDump.mapRows(Nil, world))
+
+/// 床セル集合（MapFloorInfo）を seed すると、範囲内・非壁でも床でないセルは `,`（盤内 void）になる。
+/// fixture の床を (2,1) と (0,2) だけに絞った地図:
+///
+///   +#,      1 行目: カーソル・壁・void
+///   ,,.      2 行目: void・void・床
+///   .#,      3 行目: 床・壁・void
+@Test
+def testWorldDumpMapRowsVoidGlyph(): Unit \ Assert =
+    let world = World.empty()
+        |> World.applyCmd(World.Cmd.SetMapSnapshot(Some(worldDumpTerrainFixture())))
+        |> World.applyCmd(World.Cmd.SetMapFloorInfo(Some(
+               {materialId = "room_1", floorCells = Set#{(2, 1), (0, 2)}})));
+    Assert.assertEq(expected = "+#," :: ",,." :: ".#," :: Nil, WorldDump.mapRows(Nil, world))
+
+/// MapFloorInfo store の round-trip: seed した materialId / 床セル集合が読め、
+/// 未 seed（World.empty）は None。
+@Test
+def testWorldDumpMapFloorInfoStoreRoundTrip(): Unit \ Assert =
+    let world = World.applyCmd(World.Cmd.SetMapFloorInfo(Some(
+        {materialId = "room_3", floorCells = Set#{(1, 1)}})), World.empty());
+    Assert.assertEq(
+        expected = (Some(("room_3", 1)), None),
+        (World.mapFloorInfoOf(world) |> Option.map(info -> (info#materialId, Set.size(info#floorCells))),
+         World.mapFloorInfoOf(World.empty()) |> Option.map(info -> info#materialId)))
 
 /// タイル列 → セルごとのチップ列。同じセル (1,0) に床チップ (0,2) と壁チップ (3,1) を
 /// この順で置くと、チップ列も下 → 上の同じ順で並ぶ（px / src はピクセル値で、
