@@ -23,12 +23,12 @@ mod TestWorldDump {
              String.contains({substr = "\"eventLog\""}, text),
              String.contains({substr = "\"coyoteLeft\""}, text)))
 
-    // 画面全体の矩形なら地形 6 枚（地面+浮き床3+壁2）が全部 rect に掛かり、プレイヤーも中に居る。
+    // 画面全体の矩形なら地形 8 枚（地面3+浮き床3+壁2）が全部 rect に掛かり、プレイヤーも中に居る。
     @Test
     def testFullRectSeesEverything(): Unit \ Assert =
         let text = dumpOf(fullRect());
         Assert.assertEq(expected = (true, true),
-            (String.contains({substr = "\"platformsInRect\":[100,101,102,103,110,111]"}, text),
+            (String.contains({substr = "\"platformsInRect\":[100,104,105,101,102,103,110,111]"}, text),
              String.contains({substr = "\"playerInRect\":true"}, text)))
 
     // 右上の小さな矩形（浮き床 2 だけの場所）なら、その 1 枚だけが載りプレイヤーは外。

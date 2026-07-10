@@ -23,6 +23,7 @@ mod WorldDump {
                                      |> List.toVector),
             "playerInRect"    => JBool(Rect2.hasPoint(world#player#pos, rect)),
             "eventLog"        => JArray(world#eventLog |> List.map(logJson) |> List.toVector),
+            "deaths"          => JNumber(JsonCodec.intToBd(world#deaths)),
             "time"            => num(world#time)
         });
         Util.Json.toPrettyString(2, obj)

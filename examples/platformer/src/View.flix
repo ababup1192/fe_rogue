@@ -32,11 +32,11 @@ mod View {
 
     def platformColor(platform: Field.Platform): Color =
         if (platform#size#y > platform#size#x) Palette.wall()
-        else if (platform#size#x >= Field.designW()) Palette.ground()
+        else if (platform#size#y >= 30.0) Palette.ground()   // 分厚い = 地面（崖で分割されても同色）
         else Palette.platform()
 
     def zOf(platform: Field.Platform): Int32 =
-        if (platform#size#x >= Field.designW()) zGround() else zPlatform()
+        if (platform#size#y >= 30.0) zGround() else zPlatform()
 
     // ── プレイヤー（球体・着地の瞬間だけ潰れる）──
 
@@ -59,11 +59,12 @@ mod View {
             "v=(${fmt(player#vel#x)},${fmt(player#vel#y)})"
             + " grd=${if (player#grounded) "T" else "F"}"
             + " coy=${fmt(player#coyoteLeft * 1000.0)}"
-            + " buf=${fmt(player#bufferLeft * 1000.0)}";
+            + " buf=${fmt(player#bufferLeft * 1000.0)}"
+            + " deaths=${world#deaths}";
         ({ x = 6.0, y = 4.0 },
          Render.textTinted(status, atlas, 8.0, Palette.hudText(), zText())) ::
         ({ x = 6.0, y = Field.designH() - 12.0 },
-         Render.textTinted("ARROWS move / SPACE jump / F1 reload", atlas, 8.0,
+         Render.textTinted("ARROWS move / Z dash / SPACE jump / F1 reload", atlas, 8.0,
                            Palette.hintText(), zText())) :: Nil
 
     /// HUD 用に 1 桁小数へ丸める（RemoteDebug の書式を共用）。

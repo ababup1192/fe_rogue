@@ -30,9 +30,10 @@ mod Step {
         let vyCut = if (cutting) Jump.cutJump(p, vyJumped) else vyJumped;
         let held2 = if (cutting) false else held1;
 
-        // ── 走り（慣性と空中制御）と重力 ──
+        // ── 走り（慣性・空中制御・B ダッシュ）と重力 ──
         let dir = (if (input#left) -1.0 else 0.0) + (if (input#right) 1.0 else 0.0);
-        let vx = Jump.horizontalStep(p, dt, player0#grounded, dir, player0#vel#x);
+        let vx = Jump.horizontalStep(p, dt,
+            { grounded = player0#grounded, dash = input#dash, dir = dir, vx = player0#vel#x });
         let vy = Jump.applyGravity(p, dt, vyCut);
         let vel = { x = vx, y = vy };
 
@@ -47,10 +48,12 @@ mod Step {
         let grounded1 = List.exists(contact -> playerNormal(contact)#y < -0.7, contacts);
         let bumped = List.exists(contact -> playerNormal(contact)#y > 0.7, contacts);
         let landed = not player0#grounded and grounded1 and vy >= Field.landEventSpeed();
+        let died = posResolved#y > Field.deathY();
         let events = List.filterMap(identity,
             (if (jumps) Some(Field.Event.JumpEvent) else None) ::
             (if (landed) Some(Field.Event.LandEvent) else None) ::
-            (if (bumped) Some(Field.Event.BumpEvent) else None) :: Nil);
+            (if (bumped) Some(Field.Event.BumpEvent) else None) ::
+            (if (died) Some(Field.Event.DeathEvent) else None) :: Nil);
 
         let time = world#time + dt;
         let player1 = {
@@ -58,9 +61,11 @@ mod Step {
             coyoteLeft = coyote1, bufferLeft = buffer1, jumpHeld = held2,
             squashLeft = if (landed) Field.squashTime() else Jump.tickTimer(dt, player0#squashLeft) };
 
-        { player = respawnIfFallen(player1),
+        // 崖死亡: deathY を割ったら出発点へ（タイマー・速度も初期化）。死んだ回数を数える。
+        { player = if (died) Field.freshPlayer() else player1,
           events = events,
           eventLog = appendLog(time, events, world#eventLog),
+          deaths = world#deaths + (if (died) 1 else 0),
           time = time | world }
 
     // ── 物理の 1 ステップ ──
@@ -96,14 +101,10 @@ mod Step {
         let approach = Vec2.dot(vel, normal);
         if (approach < 0.0) Vec2.sub(vel, Vec2.mul(normal, approach)) else vel
 
-    // ── 出来事とリスポーン ──
+    // ── 出来事 ──
 
     def appendLog(time: Float64, events: List[Field.Event],
                   log: List[(Float64, String)]): List[(Float64, String)] =
         let entries = List.map(event -> (time, Field.eventName(event)), events);
         List.append(entries, log) |> List.take(Field.maxEventLog())
-
-    /// 画面のずっと下まで落ちたら出発点へ（壁があるので通常は起きない保険）。
-    def respawnIfFallen(player: Field.Player): Field.Player =
-        if (player#pos#y > Field.designH() + 60.0) Field.freshPlayer() else player
 }

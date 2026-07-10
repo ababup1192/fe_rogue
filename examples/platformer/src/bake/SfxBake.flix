@@ -23,8 +23,16 @@ mod SfxBake {
     def bumpTick(): List[Float64] =
         SfxSynth.fade(SfxSynth.tone(cfg(), 260.0, 0.05, 45))
 
-    /// 3 音すべてを assets/sfx/ へ書き出す（Bake.all から呼ぶ）。
+    /// 崖死亡: 下降する 3 音。穴へ消えた。
+    def deathFall(): List[Float64] =
+        SfxSynth.sequence(
+            SfxSynth.fade(SfxSynth.tone(cfg(), 392.0, 0.1, 60)) ::
+            SfxSynth.fade(SfxSynth.tone(cfg(), 261.63, 0.12, 60)) ::
+            SfxSynth.fade(SfxSynth.tone(cfg(), 174.61, 0.2, 70)) :: Nil)
+
+    /// 4 音すべてを assets/sfx/ へ書き出す（Bake.all から呼ぶ）。
     pub def bakeAll(): Unit \ IO =
         SfxSynth.bakeSet(cfg(), "assets/sfx",
-            ("jump", jumpRise()) :: ("land", landThud()) :: ("bump", bumpTick()) :: Nil)
+            ("jump", jumpRise()) :: ("land", landThud()) :: ("bump", bumpTick()) ::
+            ("death", deathFall()) :: Nil)
 }

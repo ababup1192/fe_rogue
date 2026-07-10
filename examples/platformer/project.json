@@ -14,6 +14,7 @@
   "sounds": [
     {"name": "jump", "path": "assets/sfx/jump.wav", "looping": false},
     {"name": "land", "path": "assets/sfx/land.wav", "looping": false},
-    {"name": "bump", "path": "assets/sfx/bump.wav", "looping": false}
+    {"name": "bump", "path": "assets/sfx/bump.wav", "looping": false},
+    {"name": "death", "path": "assets/sfx/death.wav", "looping": false}
   ]
 }

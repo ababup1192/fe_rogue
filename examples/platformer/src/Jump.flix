@@ -24,6 +24,7 @@ mod Jump {
     pub def cutMult(): Float64 = 0.4                // 離した瞬間の上昇速度倍率
     pub def maxFallSpeed(): Float64 = 900.0         // 落下の終端速度 px/s
     pub def maxRunSpeed(): Float64 = 160.0          // 走りの最高速 px/s
+    pub def dashMult(): Float64 = 1.75              // B ダッシュ中の最高速倍率（160 → 280）
     pub def groundAccel(): Float64 = 900.0          // 地上の加速 px/s²
     pub def groundDecel(): Float64 = 1200.0         // 地上の減速（摩擦）px/s²
     pub def airAccel(): Float64 = 500.0             // 空中の加速（空中制御の強さ）px/s²
@@ -53,16 +54,22 @@ mod Jump {
 
     // ── 走り（横）──
 
+    /// horizontalStep へ渡す走りの状況（同型の引数が並ぶので名前渡し）。
+    pub type alias Run = { grounded = Bool, dash = Bool, dir = Float64, vx = Float64 }
+
     /// 横速度を 1 フレームぶん進める。dir ∈ {-1,0,1}。
-    /// 入力ありは目標速度 dir×maxRunSpeed へ加速で寄せ、入力なしは 0 へ減速で寄せる。
-    /// 加速・減速とも地上/空中で別の値を使う（空中は減速が小さい = 慣性が残る）。
-    pub def horizontalStep(p: Params, dt: Float64, grounded: Bool, dir: Float64, vx: Float64): Float64 =
-        if (dir != 0.0) {
-            let accel = if (grounded) p#groundAccel else p#airAccel;
-            approach(dir * p#maxRunSpeed, accel * dt, vx)
+    /// 入力ありは目標速度 dir×maxRunSpeed（B ダッシュ中は dashMult 倍）へ加速で寄せ、
+    /// 入力なしは 0 へ減速で寄せる。加速・減速とも地上/空中で別の値を使う
+    /// （空中は減速が小さい = 慣性が残る）。ダッシュを離しても即減速はせず、
+    /// 目標が下がるだけなので勢いは decel の速さでしか失われない。
+    pub def horizontalStep(p: Params, dt: Float64, running: Run): Float64 =
+        if (running#dir != 0.0) {
+            let accel = if (running#grounded) p#groundAccel else p#airAccel;
+            let top = p#maxRunSpeed * (if (running#dash) p#dashMult else 1.0);
+            approach(running#dir * top, accel * dt, running#vx)
         } else {
-            let decel = if (grounded) p#groundDecel else p#airDecel;
-            approach(0.0, decel * dt, vx)
+            let decel = if (running#grounded) p#groundDecel else p#airDecel;
+            approach(0.0, decel * dt, running#vx)
         }
 
     /// current を target へ最大 step だけ寄せる（行き過ぎない）。

@@ -76,11 +76,18 @@ mod Gallery {
         // 見せ場 3: 浮き床走破 — 助走ジャンプ×2 と走り落ち（台本は Trace の実測値）。
         let acrossFilm = bakeGif(atlas, Trace.runAcrossWorld(), Trace.runAcrossCues(), 2, "run_across");
 
+        // 見せ場 4: B ダッシュ崖越え — 低ホップで浮き床の下をくぐって広い穴を渡る。
+        let dashFilm = bakeGif(atlas, Trace.gapWorld(), Trace.dashGapCues(), 2, "dash_gap");
+
+        // 見せ場 5: 崖死亡 — 歩いて落ちると死に、出発点へ戻される。
+        let deathFilm = bakeGif(atlas, Trace.gapWorld(), Trace.gapDeathCues(), 2, "gap_death");
+
         // サイト生成。
         run {
             SnapshotSite.generate(
                 { outDir = outDir(), title = "Platformer Gallery", cssScale = 2 },
-                catalog({ full = fullFilm, tap = tapFilm, across = acrossFilm }))
+                catalog({ full = fullFilm, tap = tapFilm, across = acrossFilm,
+                          dash = dashFilm, death = deathFilm }))
         } with Fs.FileWrite.runWithIO
 
     // ── カタログ（ページとカードの宣言）──
@@ -89,14 +96,18 @@ mod Gallery {
     type alias Films = {
         full = SnapshotSite.Filmstrip,
         tap = SnapshotSite.Filmstrip,
-        across = SnapshotSite.Filmstrip
+        across = SnapshotSite.Filmstrip,
+        dash = SnapshotSite.Filmstrip,
+        death = SnapshotSite.Filmstrip
     }
 
     def catalog(films: Films): List[SnapshotSite.Item] =
-        png("screen_field", "地形の全景: 平地 + 浮き床 3 枚 + 左右の壁。球体がプレイヤー", "Screens") ::
+        png("screen_field", "地形の全景: 崖 2 本で 3 分割の地面 + 浮き床 3 枚 + 左右の壁。球体がプレイヤー", "Screens") ::
         gif("full_jump", "満タンジャンプ: 24 フレームで頂点 96px、頂点付近はふわり（0.5 倍重力）、下降は 1.8 倍で速い", "Jump", films#full) ::
         gif("short_hop", "短押しタップ（4f）: 離した瞬間に上昇が 0.4 倍へカットされ低く飛ぶ（可変ジャンプ高）", "Jump", films#tap) ::
-        gif("run_across", "浮き床走破: 助走つきジャンプで A→B と渡り、走り落ちて C へ。慣性が残ったまま壁で止まる", "Run", films#across) :: Nil
+        gif("run_across", "浮き床走破: 助走つきジャンプで A→B と渡り、走り落ちて C へ。慣性が残ったまま壁で止まる", "Run", films#across) ::
+        gif("dash_gap", "B ダッシュ崖越え: 低ホップ（6f）で浮き床 B の下をくぐり、広い穴（80px）を渡って浮き床 C へ。素の走りでは届かない", "Gap", films#dash) ::
+        gif("gap_death", "崖死亡: 歩いて穴へ出ると落ちて死に、出発点へ戻される（deaths が増える）", "Gap", films#death) :: Nil
 
     def png(name: String, desc: String, scenario: String): SnapshotSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = "png",

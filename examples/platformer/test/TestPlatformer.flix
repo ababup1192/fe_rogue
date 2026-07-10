@@ -195,6 +195,72 @@ mod TestPlatformer {
         Assert.assertEq(expected = 0.0, Trace.velOf(final)#x)
 
     // ========================================================================
+    // B ダッシュ
+    // ========================================================================
+
+    // 30 フレーム走ると、素は最高速 160 で頭打ち、B ダッシュは 1.75 倍の 280 まで伸びる。厳密値。
+    @Test
+    def testDashRaisesTopSpeed(): Unit \ Assert =
+        let walk = play(Trace.holdRight(30), Trace.flatWorld());
+        let dash = play(Trace.holdRightDash(30), Trace.flatWorld());
+        Assert.assertEq(expected = (160.0, 280.0),
+            (Trace.velOf(walk)#x, Trace.velOf(dash)#x))
+
+    // ダッシュを離しても急停止しない: 目標が 160 に下がるだけで、寄せる速さは加速と同じ
+    // 14.0625/frame。280 から 160 へは 9 フレーム目に到達する。
+    @Test
+    def testDashReleaseKeepsMomentum(): Unit \ Assert =
+        let final = play(List.append(Trace.holdRightDash(30), Trace.holdRight(9)), Trace.flatWorld());
+        Assert.assertEq(expected = 160.0, Trace.velOf(final)#x)
+
+    // ========================================================================
+    // 崖と崖死亡
+    // ========================================================================
+
+    // 地面 B の右端から広い穴（96px）へ歩き出ると落ちて死ぬ: death が鳴り、
+    // 出発点（スポーン位置）へ戻り、deaths が 1 になる。
+    @Test
+    def testFallIntoGapDies(): Unit \ Assert =
+        let world = { player = Trace.restingPlayer(190.0) | Field.initialWorld() };
+        let cues = List.append(Trace.holdRight(10), Trace.flight(40));
+        let worlds = timeline(cues, world);
+        let final = play(cues, world);
+        Assert.assertEq(expected = (true, 1, 60.0),
+            (eventHappened("death", worlds), Trace.deathsOf(final), Trace.posOf(final)#x))
+
+    // 狭い穴（50px）は素の走りジャンプで渡れる: 地面 A（x=60）から 12f ジャンプで
+    // 穴と浮き床 A を越えて地面 B（y=188）に降り、死なない。
+    @Test
+    def testNormalJumpClearsNarrowGap(): Unit \ Assert =
+        let world = { player = Trace.restingPlayer(60.0) | Field.initialWorld() };
+        let cues = List.flatten(Trace.rightJump(12) :: Trace.holdRight(45) :: Trace.flight(10) :: Nil);
+        let worlds = timeline(cues, world);
+        let final = play(cues, world);
+        Assert.assertEq(expected = (false, true, 188.0),
+            (eventHappened("death", worlds), Trace.groundedOf(final), Trace.posOf(final)#y))
+
+    // 広い穴（80px）は B ダッシュ + 低ホップ（6f）で浮き床 B の下をくぐって渡れる:
+    // 渡った先の浮き床 C（y=149）に乗り、死なない。
+    @Test
+    def testDashLowHopClearsWideGap(): Unit \ Assert =
+        let world = { player = Trace.restingPlayer(155.0) | Field.initialWorld() };
+        let cues = List.flatten(
+            Trace.holdRightDash(10) :: Trace.rightDashJump(6) :: Trace.holdRightDash(40) :: Nil);
+        let worlds = timeline(cues, world);
+        let final = play(cues, world);
+        Assert.assertEq(expected = (false, true, 149.0),
+            (eventHappened("death", worlds), Trace.groundedOf(final), Trace.posOf(final)#y))
+
+    // 同じ低ホップでもダッシュなしでは届かず、穴に落ちて死ぬ（= B ダッシュのゲート）。
+    @Test
+    def testWalkLowHopFallsIntoWideGap(): Unit \ Assert =
+        let world = { player = Trace.restingPlayer(155.0) | Field.initialWorld() };
+        let cues = List.flatten(
+            Trace.holdRight(10) :: Trace.rightJump(6) :: Trace.holdRight(60) :: Nil);
+        let worlds = timeline(cues, world);
+        Assert.assertEq(expected = true, eventHappened("death", worlds))
+
+    // ========================================================================
     // 重力の倍率（非対称の単体 pin）
     // ========================================================================
 

@@ -6,10 +6,12 @@ mod Controls {
     use GameEngine.Key
 
     /// このフレームのキーをゲームの意味（Input）へ写す。left/right は走りなので押しっぱなしを見る。
+    /// B ダッシュは Z か左 Shift の押しっぱなし。
     /// ジャンプは両方要る: jumpDown（押しっぱなし = 高く飛ぶ）と jumpPressed（押した瞬間 = バッファ充填）。
     pub def inputOf(frame: App.Frame): Field.Input =
         { left        = App.isDown(Key.Left, frame),
           right       = App.isDown(Key.Right, frame),
+          dash        = App.isDown(Key.Z, frame) or App.isDown(Key.LeftShift, frame),
           jumpDown    = App.isDown(Key.Space, frame),
           jumpPressed = App.justPressed(Key.Space, frame) }
 

@@ -33,6 +33,15 @@ mod Trace {
         hold({ right = true, jumpDown = true, jumpPressed = true | idle() }, 1) ::
         hold({ right = true, jumpDown = true | idle() }, frames - 1) :: Nil
 
+    /// B ダッシュで右へ n フレーム走る。
+    pub def holdRightDash(frames: Int32): List[Replay.Cue[Field.Input]] =
+        hold({ right = true, dash = true | idle() }, frames) :: Nil
+
+    /// B ダッシュで右へ走りながらジャンプを n フレーム押す。
+    pub def rightDashJump(frames: Int32): List[Replay.Cue[Field.Input]] =
+        hold({ right = true, dash = true, jumpDown = true, jumpPressed = true | idle() }, 1) ::
+        hold({ right = true, dash = true, jumpDown = true | idle() }, frames - 1) :: Nil
+
     // ── シナリオの World ──
 
     /// 地面の上に接地静止しているプレイヤー（x は指定・接地フラグとコヨーテは充填済み）。
@@ -45,8 +54,8 @@ mod Trace {
     /// 地面だけの世界（浮き床・壁なし）。ジャンプ曲線と走りを邪魔なしで測る。
     pub def flatWorld(): Field.World =
         { player = restingPlayer(160.0),
-          platforms = Field.groundPlatform() :: Nil,
-          params = GameParameters.defaults(), events = Nil, eventLog = Nil, time = 0.0 }
+          platforms = Field.fullGround() :: Nil,
+          params = GameParameters.defaults(), events = Nil, eventLog = Nil, deaths = 0, time = 0.0 }
 
     /// 製品と同じ地形（地面 + 浮き床 3 枚 + 左右の壁）。
     pub def platformWorld(): Field.World = Field.initialWorld()
@@ -54,6 +63,18 @@ mod Trace {
     /// 浮き床走破の出発点: 製品の地形で、左端（x=20）に接地静止。
     pub def runAcrossWorld(): Field.World =
         { player = restingPlayer(20.0) | Field.initialWorld() }
+
+    /// 広い穴の手前（地面 B の左寄り x=155）に接地静止。ダッシュ崖越えと崖死亡の出発点。
+    pub def gapWorld(): Field.World =
+        { player = restingPlayer(155.0) | Field.initialWorld() }
+
+    /// ダッシュ崖越えの台本: dash 助走 10f → 低ホップ 6f → 浮き床 B の下をくぐって浮き床 C に着地。
+    pub def dashGapCues(): List[Replay.Cue[Field.Input]] =
+        List.flatten(holdRightDash(10) :: rightDashJump(6) :: holdRightDash(40) :: Nil)
+
+    /// 崖死亡の台本: 広い穴へ歩き出て落ち、死亡 → 出発点へ戻って着地するまで。
+    pub def gapDeathCues(): List[Replay.Cue[Field.Input]] =
+        List.flatten(holdRight(10) :: flight(45) :: Nil)
 
     /// 浮き床走破の台本（リモートデバッグの lockstep で振り付けた実測値・143 フレーム）:
     /// 助走 3f → ジャンプ 12f で床 A（y=156）へ → 2f おいて 14f ジャンプで床 B（y=120）へ →
@@ -69,14 +90,14 @@ mod Trace {
         let ledge = { id = 100, pos = { x = 80.0, y = 150.0 }, size = { x = 80.0, y = 20.0 } };
         { player = { pos = { x = 116.0, y = 140.0 - Field.playerRadius() } | restingPlayer(116.0) },
           platforms = ledge :: Nil,
-          params = GameParameters.defaults(), events = Nil, eventLog = Nil, time = 0.0 }
+          params = GameParameters.defaults(), events = Nil, eventLog = Nil, deaths = 0, time = 0.0 }
 
     /// 頭上の低い天井: 接地位置の 60px 上に床がある。ジャンプすると頭をぶつける。
     pub def ceilingWorld(): Field.World =
         let ceiling = { id = 101, pos = { x = 160.0, y = Field.groundTop() - 60.0 }, size = { x = 80.0, y = 14.0 } };
         { player = restingPlayer(160.0),
-          platforms = Field.groundPlatform() :: ceiling :: Nil,
-          params = GameParameters.defaults(), events = Nil, eventLog = Nil, time = 0.0 }
+          platforms = Field.fullGround() :: ceiling :: Nil,
+          params = GameParameters.defaults(), events = Nil, eventLog = Nil, deaths = 0, time = 0.0 }
 
     /// コヨーテ猶予が残ったまま空中にいる世界: 崖を離れて数フレーム後の状態を直接組む
     /// （歩き出しのフレーム数に依存せず、猶予内のジャンプ成立だけを見る）。
@@ -89,8 +110,8 @@ mod Trace {
         { player = { pos = { x = 160.0, y = Field.groundTop() - Field.playerRadius() - height },
                      vel = Vec2.zero(), grounded = false,
                      coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0 },
-          platforms = Field.groundPlatform() :: Nil,
-          params = GameParameters.defaults(), events = Nil, eventLog = Nil, time = 0.0 }
+          platforms = Field.fullGround() :: Nil,
+          params = GameParameters.defaults(), events = Nil, eventLog = Nil, deaths = 0, time = 0.0 }
 
     // ── 読み取り（テストが World から値を取り出す薄いアクセサ）──
 
@@ -101,6 +122,7 @@ mod Trace {
     pub def bufferOf(world: Field.World): Float64 = world#player#bufferLeft
     pub def eventsOf(world: Field.World): List[String] =
         world#events |> List.map(Field.eventName)
+    pub def deathsOf(world: Field.World): Int32 = world#deaths
 
     /// 一連の World（Replay.timeline の結果）から最高到達点（最小の y）を取り出す。
     pub def apexOf(worlds: List[Field.World]): Float64 =

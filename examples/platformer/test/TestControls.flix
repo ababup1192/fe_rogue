@@ -24,6 +24,13 @@ mod TestControls {
         let input = Controls.inputOf(frameOf(Set#{Key.Left, Key.Right}, Set.empty()));
         Assert.assertEq(expected = (true, true), (input#left, input#right))
 
+    // B ダッシュは Z でも左 Shift でも効く（押しっぱなし）。
+    @Test
+    def testDashKeys(): Unit \ Assert =
+        let zInput = Controls.inputOf(frameOf(Set#{Key.Z}, Set.empty()));
+        let shiftInput = Controls.inputOf(frameOf(Set#{Key.LeftShift}, Set.empty()));
+        Assert.assertEq(expected = (true, true), (zInput#dash, shiftInput#dash))
+
     // 何も押していなければ全て偽。
     @Test
     def testNoKeys(): Unit \ Assert =
