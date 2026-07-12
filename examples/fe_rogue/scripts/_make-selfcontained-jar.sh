@@ -12,12 +12,12 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"   # examples/fe_rogue
 ROOT="$(cd "$HERE/../.." && pwd)"
-FLIX="$ROOT/bin/flix.jar"
+FLIX="$ROOT/bin/flix"   # ラッパーが devbox(nix)/手動 jar の解決と JVM フラグ付与を担う
 OUT="${1:-$HERE/artifact/fe_rogue-all.jar}"
 WORK="$HERE/build/selfcontained"
 
 echo "==> build-fatjar"
-( cd "$HERE" && java -XstartOnFirstThread -jar "$FLIX" build-fatjar )
+( cd "$HERE" && "$FLIX" build-fatjar )
 
 echo "==> merging natives into one jar"
 rm -rf "$WORK"; mkdir -p "$WORK"

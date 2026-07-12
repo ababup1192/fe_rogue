@@ -16,24 +16,19 @@ SRPG + roguelike).
 
 ## Requirements
 
-- **devbox** (recommended — fetches JDK 21 + GNU make automatically)
-- **JDK 21**
-- **GNU make**
+- **devbox** (required — fetches JDK 21, GNU make, and the Flix 0.75.1 compiler automatically)
 - Supported OS: macOS (Apple Silicon / Intel) / Windows x86_64
-- Flix **0.75.1** compiler (`bin/flix.jar`) — download it yourself (see below)
+
+The Flix **0.75.1** compiler is provided via [Cj-bc/flix.nix](https://github.com/Cj-bc/flix.nix)
+(pinned in `devbox.json`), so no manual jar download is needed. The `bin/flix` wrapper runs that
+jar with devbox's JDK 21 (adding `-XstartOnFirstThread` / headless flags as needed).
 
 ## Setup
 
-First, download the Flix 0.75.1 compiler and place it at `bin/flix.jar`:
+Set up the toolchain and build the engine packages:
 
 ```bash
-curl -L -o bin/flix.jar https://github.com/flix/flix/releases/download/v0.75.1/flix.jar
-```
-
-Then set up the toolchain and build the engine packages:
-
-```bash
-devbox shell        # fetch JDK 21 + make, and add bin/ to PATH
+devbox shell        # fetch JDK 21 + make + Flix compiler, and add bin/ to PATH
 make sync            # build-pkg all engine packages and distribute (via symlink) to examples & ide
 ```
 
@@ -111,7 +106,7 @@ engine_world/  value-based game framework: Bevy-style App, ECS queries, physics,
 engine_tools/  dev & test tooling: headless software rasterizer, filmstrip/GIF baking, snapshot viewer, render lint, SFX synth (depends on engine)
 ide/           Swing + AWTGLCanvas editor (depends on engine)
 examples/      individual games (depend on engine, engine_world, engine_tools)
-bin/           flix.jar and the flix wrapper script
+bin/           the flix wrapper script (the compiler jar comes from devbox/nix)
 flix.toml
 src/           root project for the Flix community build: per-file symlinks bundling
                all engine packages into one source tree (regenerate with make sync-root-src)
@@ -159,24 +154,19 @@ make clean-example-builds # delete examples/*/build/ (speeds up IDE scene loadin
 
 ## 必要環境
 
-- **devbox**（推奨。JDK 21 + GNU make を自動取得）
-- **JDK 21**
-- **GNU make**
+- **devbox**（必須。JDK 21 + GNU make + Flix 0.75.1 コンパイラを自動取得）
 - 対応 OS: macOS（Apple Silicon / Intel）/ Windows x86_64
-- Flix **0.75.1** コンパイラ（`bin/flix.jar`）— 各自でダウンロードして配置する（下記参照）
+
+Flix **0.75.1** コンパイラは [Cj-bc/flix.nix](https://github.com/Cj-bc/flix.nix) 経由で提供され
+（`devbox.json` に固定）、jar の手動ダウンロードは不要。`bin/flix` ラッパがその jar を
+devbox の JDK 21 で実行する（必要に応じて `-XstartOnFirstThread`・headless フラグを付与）。
 
 ## セットアップ
 
-まず Flix 0.75.1 コンパイラをダウンロードして `bin/flix.jar` に配置する:
+ツールチェーンを用意し、エンジンパッケージをビルドする:
 
 ```bash
-curl -L -o bin/flix.jar https://github.com/flix/flix/releases/download/v0.75.1/flix.jar
-```
-
-次にツールチェーンを用意し、エンジンパッケージをビルドする:
-
-```bash
-devbox shell        # JDK 21 + make を取得し、bin/ を PATH に追加
+devbox shell        # JDK 21 + make + Flix コンパイラを取得し、bin/ を PATH に追加
 make sync            # 全エンジンパッケージを build-pkg し、examples・ide へ symlink 配布
 ```
 
@@ -253,7 +243,7 @@ engine_world/  値ベースのゲームフレームワーク: Bevy 風 App・ECS
 engine_tools/  開発・テスト用ツール: headless ソフトラスタライザ・コマ撮り/GIF bake・スナップショットビューア・RenderLint・効果音合成（engine 依存）
 ide/           Swing + AWTGLCanvas ベースのエディタ（engine 依存）
 examples/      各ゲーム（engine・engine_world・engine_tools 依存）
-bin/           flix.jar と flix ラッパスクリプト
+bin/           flix ラッパスクリプト（コンパイラ jar は devbox/nix が供給）
 flix.toml
 src/           Flix コミュニティビルド用のルートプロジェクト: 全エンジンパッケージを
                1 ソースツリーに束ねるファイル単位 symlink 集（make sync-root-src で再生成）

@@ -14,9 +14,46 @@ case "$PWD" in
         if [ "$1" = "run" ]; then
             make -C "$PROJECT_ROOT" clean-example-builds >&2
         fi
-        exec java -jar "$SCRIPT_DIR/flix.jar" "$@"
+        FLAGS=""
         ;;
     *)
-        exec java -XstartOnFirstThread -jar "$SCRIPT_DIR/flix.jar" "$@"
+        # test と bake (run --entrypoint Bake.*) はヘッドレス処理 (実ウィンドウを開かない) なので
+        # java.awt.headless=true を明示する。-XstartOnFirstThread 下でワーカースレッドが
+        # AWT を初期化 (HeadlessFont → BufferedImage) すると AppKit 待ちで永久ハングし得るため。
+        # ゲーム実機起動 (通常の run) には付けない。
+        FLAGS="-XstartOnFirstThread"
+        case "$1 $*" in
+            test\ *|test) FLAGS="$FLAGS -Djava.awt.headless=true" ;;
+            *"--entrypoint Bake"*) FLAGS="$FLAGS -Djava.awt.headless=true" ;;
+        esac
         ;;
 esac
+
+# コンパイラ jar の入手は devbox (flix.nix) に任せ、実行は手元の java で行う。
+# flix.nix の flix コマンドを直に exec しないのは、それが自分専用の JRE を同梱していて
+# こちらの jdk (devbox の jdk@21) と別マイナー版になり、フォント計測がわずかにズレて
+# 描画スナップショットの golden が崩れるため。jar だけ nix store から借り、JRE は固定する。
+# 見つけ方: PATH 上の flix コマンドのうち /nix/store 実体に解決されるものを取り、
+# その隣の share/java/flix/flix.jar を使う (nixpkgs の flix パッケージの配置)。
+FLIX_JAR=""
+while IFS= read -r candidate; do
+    real="$(readlink -f "$candidate" 2>/dev/null)"
+    case "$real" in
+        /nix/store/*)
+            jar="$(dirname "$(dirname "$real")")/share/java/flix/flix.jar"
+            if [ -f "$jar" ]; then FLIX_JAR="$jar"; break; fi
+            ;;
+    esac
+done < <(type -aP flix)
+
+# nix が無ければ手動配置の bin/flix.jar にフォールバック。
+if [ -z "$FLIX_JAR" ] && [ -f "$SCRIPT_DIR/flix.jar" ]; then
+    FLIX_JAR="$SCRIPT_DIR/flix.jar"
+fi
+
+if [ -z "$FLIX_JAR" ]; then
+    echo "flix.jar が見つかりません。devbox shell に入るか、bin/flix.jar を配置してください。" >&2
+    exit 127
+fi
+
+exec java $FLAGS -jar "$FLIX_JAR" "$@"

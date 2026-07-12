@@ -20,15 +20,12 @@
 ##                    examples/<name>/lib/github/.../0.1.0/ → 7 階層上 (../ x7)
 ##                  ループ内で $$dir のスラッシュ数 + 5 (ENGINE_SUBPATH 階層) として計算する。
 
-FLIX_JAR := $(CURDIR)/bin/flix.jar
-FLIX     := java -XstartOnFirstThread -jar $(FLIX_JAR)
-
-# テスト専用の起動形。macOS では -XstartOnFirstThread (LWJGL 必須) と AWT の
-# 初期化が競合し、フォントアトラス焼き (HeadlessFont → BufferedImage) が
-# ネイティブ内で永久ハングすることがある。テストは全てヘッドレス設計
-# (実ウィンドウを開かない) なので headless を明示して AWT を安全な初期化に固定する。
-# 実機起動 (flix run) や IDE には付けないこと (IDE は JavaFX なので起動不能になる)。
-FLIX_TEST := java -XstartOnFirstThread -Djava.awt.headless=true -jar $(FLIX_JAR)
+# Flix コンパイラは bin/flix ラッパー経由で呼ぶ。ラッパーが devbox (flix.nix) の
+# flix コマンドと手動配置 bin/flix.jar のどちらを使うかを解決し、JVM フラグ
+# (-XstartOnFirstThread、`test` サブコマンド時の -Djava.awt.headless=true) も
+# サブコマンドに応じて自動で付ける。フラグの理由は bin/flix 内のコメント参照。
+FLIX      := $(CURDIR)/bin/flix
+FLIX_TEST := $(CURDIR)/bin/flix
 
 ENGINE_CORE_DIR       := engine_core
 ENGINE_CORE_FPKG_SRC  := $(ENGINE_CORE_DIR)/artifact/engine_core.fpkg

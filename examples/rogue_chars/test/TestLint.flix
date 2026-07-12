@@ -106,6 +106,20 @@ mod TestLint {
             });
         Assert.assertEq(expected = (Nil: List[(String, Int32, Int32)]), offenders)
 
+    // 接地の徹底: 全クリップ・全コマで足元が地面（y=29 付近）にある。IdleDown f0 だけ見ると
+    // 他コマがまるごと浮いていても気づけない（実際にそういう取りこぼしがあった）ので、
+    // ここは総当たりで maxY < 27 のコマ（3px 以上宙に浮いた作画）を弾く。
+    @Test
+    def testFeetGrounded(): Unit \ Assert =
+        let offenders = allDrawn()
+            |> List.filterMap(t -> {
+                let (name, clip, f, cv) = t;
+                let maxY = Map.keysOf(cv) |> Set.toList |> List.map(snd)
+                    |> List.maximum |> Option.getWithDefault(-1);
+                if (maxY >= 27) None else Some((name, clip, f, maxY))
+            });
+        Assert.assertEq(expected = (Nil: List[(String, String, Int32, Int32)]), offenders)
+
     // ── 共通白骨（Skeleton）の検査 ──
 
     // 白骨 2 コマが非空で、全ピクセルが枠内かつ white/paleBlue の 2 色のみ。

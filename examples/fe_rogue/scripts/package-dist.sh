@@ -10,11 +10,11 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"   # examples/fe_rogue
 ROOT="$(cd "$HERE/../.." && pwd)"          # repo root
-FLIX="$ROOT/bin/flix.jar"
+FLIX="$ROOT/bin/flix"   # ラッパーが devbox(nix)/手動 jar の解決と JVM フラグ付与を担う
 OUT="$HERE/dist/fe_rogue"
 
 echo "==> build-fatjar"
-( cd "$HERE" && java -XstartOnFirstThread -jar "$FLIX" build-fatjar )
+( cd "$HERE" && "$FLIX" build-fatjar )
 
 echo "==> assembling $OUT"
 rm -rf "$OUT"
@@ -44,9 +44,8 @@ if errorlevel 1 pause
 BAT
 
 # macOS 動作確認用ランチャ（配布前のローカルスモークテスト）。
-# macOS は GLFW を main スレッドで動かす必要があるため -XstartOnFirstThread を付け、
-# bin/flix.jar 経由の自動再起動 (ensureMainThread) は配布物に bin/flix.jar が無いので
-# -Dgame.relaunched=true で抑止する。
+# macOS は GLFW を main スレッドで動かす必要があるため -XstartOnFirstThread を付ける。
+# 自動再起動 (ensureMainThread) は配布物では成立しないため -Dgame.relaunched=true で抑止する。
 cat > "$OUT/run-macos.sh" <<'SH'
 #!/usr/bin/env bash
 cd "$(dirname "$0")"

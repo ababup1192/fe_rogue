@@ -19,5 +19,25 @@ mod Roster {
         ({ classId = "barbarian", variant = "a", displayName = BarbarianA.name() },
          (clip, frame) -> BarbarianA.draw(clip, frame)) ::
         ({ classId = "barbarian", variant = "b", displayName = BarbarianB.name() },
-         (clip, frame) -> BarbarianB.draw(clip, frame)) :: Nil
+         (clip, frame) -> BarbarianB.draw(clip, frame)) ::
+        ({ classId = "barbarian", variant = "c", displayName = BarbarianC.name() },
+         (clip, frame) -> BarbarianC.draw(clip, frame)) ::
+        ({ classId = "fighter", variant = "a", displayName = FighterA.name() },
+         (clip, frame) -> FighterA.draw(clip, frame)) ::
+        ({ classId = "fighter", variant = "b", displayName = FighterB.name() },
+         (clip, frame) -> FighterB.draw(clip, frame)) ::
+        ({ classId = "fighter", variant = "c", displayName = FighterC.name() },
+         (clip, frame) -> FighterC.draw(clip, frame)) ::
+        ({ classId = "ranger", variant = "a", displayName = RangerA.name() },
+         (clip, frame) -> RangerA.draw(clip, frame)) ::
+        ({ classId = "ranger", variant = "b", displayName = RangerB.name() },
+         (clip, frame) -> RangerB.draw(clip, frame)) ::
+        ({ classId = "ranger", variant = "c", displayName = RangerC.name() },
+         (clip, frame) -> RangerC.draw(clip, frame)) ::
+        ({ classId = "rogue", variant = "a", displayName = RogueA.name() },
+         (clip, frame) -> RogueA.draw(clip, frame)) ::
+        ({ classId = "rogue", variant = "b", displayName = RogueB.name() },
+         (clip, frame) -> RogueB.draw(clip, frame)) ::
+        ({ classId = "rogue", variant = "c", displayName = RogueC.name() },
+         (clip, frame) -> RogueC.draw(clip, frame)) :: Nil
 }

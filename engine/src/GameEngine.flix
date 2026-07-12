@@ -5,6 +5,7 @@
 
 mod GameEngine {
     import java.lang.ProcessBuilder
+    import java.lang.ProcessHandle
     import java.lang.System
     import java.util.ArrayList
 
@@ -269,12 +270,15 @@ mod GameEngine {
     // ========================================================================
 
     /// macOS では -XstartOnFirstThread 付きでプロセスを再起動する。
-    /// 再起動した場合 true を返す（呼び出し元は終了すべき）。
+    /// すでに -XstartOnFirstThread 付きで動いている場合は何もせず false を返す。
+    /// 再起動した場合は true を返す（呼び出し元は終了すべき）。
     pub def ensureMainThread(): Bool \ IO =
         let osName = System.getProperty("os.name");
         if (Object.isNull(osName) or not String.contains({substr = "Mac"}, osName))
             false
         else if (not Object.isNull(System.getProperty("game.relaunched")))
+            false
+        else if (isStartedOnFirstThread())
             false
         else {
             println("Relaunching with -XstartOnFirstThread...");
@@ -289,7 +293,7 @@ mod GameEngine {
                 discard args.add("-DprojectPath=${projectPath}")
             else ();
             discard args.add("-jar");
-            discard args.add("bin/flix.jar");
+            discard args.add(System.getProperty("java.class.path"));
             discard args.add("run");
             let pb = new ProcessBuilder(args);
             discard pb.inheritIO();
@@ -298,4 +302,15 @@ mod GameEngine {
             System.exit(code);
             true
         }
+
+    /// 今のプロセスがすでに -XstartOnFirstThread 付きで起動しているかを調べる。
+    /// java ランチャはそのフラグ付き起動時、環境変数
+    /// `JAVA_STARTED_ON_FIRST_THREAD_<pid>` を "1" にセットする
+    /// （LWJGL/GLFW が「thread0 で動いているか」の判定に使うのと同じ変数）。
+    /// これを見れば、game.relaunched が付いていない起動（bin/flix ラッパー経由の
+    /// 通常起動など）でも二重に再起動せずに済む。
+    def isStartedOnFirstThread(): Bool \ IO =
+        let pid = ProcessHandle.current().pid();
+        let value = System.getenv("JAVA_STARTED_ON_FIRST_THREAD_${pid}");
+        not Object.isNull(value) and value == "1"
 }
