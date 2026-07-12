@@ -22,14 +22,14 @@ mod TestMotion {
     /// 往復のずれ: 横軸・振幅 8・周期 4 は t=1（1/4 周期）で +8、t=2 で 0、t=3 で -8。
     /// 三角波なので丸めの出ない値で厳密に固定できる。
     @Test
-    def testOscillationOffsetQuarterPeriods(): Unit \ Assert =
+    def testSwingOffsetQuarterPeriods(): Unit \ Assert =
         let osc = { axis = {x = 1.0, y = 0.0}, amplitude = 8.0, period = 4.0, phase = 0.0 };
-        let at = t -> Motion.oscillationOffset(osc, t)#x;
+        let at = t -> Motion.swingOffset(osc, t)#x;
         Assert.assertEq(expected = (0.0, 8.0, 0.0, -8.0), (at(0.0), at(1.0), at(2.0), at(3.0)))
 
     /// 位相 0.25 は 1/4 周期先から始まる（t=0 で振幅の頂点）。
     @Test
-    def testOscillationOffsetPhaseShifts(): Unit \ Assert =
+    def testSwingOffsetPhaseShifts(): Unit \ Assert =
         let osc = { axis = {x = 0.0, y = -1.0}, amplitude = 6.0, period = 2.0, phase = 0.25 };
-        Assert.assertEq(expected = -6.0, Motion.oscillationOffset(osc, 0.0)#y)
+        Assert.assertEq(expected = -6.0, Motion.swingOffset(osc, 0.0)#y)
 }

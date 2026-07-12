@@ -19,6 +19,8 @@
     {"name": "stomp", "path": "assets/sfx/stomp.wav", "looping": false},
     {"name": "clear", "path": "assets/sfx/clear.wav", "looping": false},
     {"name": "checkpoint", "path": "assets/sfx/checkpoint.wav", "looping": false},
-    {"name": "firework", "path": "assets/sfx/firework.wav", "looping": false}
+    {"name": "firework", "path": "assets/sfx/firework.wav", "looping": false},
+    {"name": "switch", "path": "assets/sfx/switch.wav", "looping": false},
+    {"name": "guard", "path": "assets/sfx/guard.wav", "looping": false}
   ]
 }

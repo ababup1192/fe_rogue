@@ -38,7 +38,8 @@ mod TestEnemy {
     def fallingAt(x: Float64, y: Float64, world: Field.World): Field.World =
         { player = { pos = { x = x, y = y }, vel = Vec2.zero(), grounded = false,
                      coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                     facing = 1.0, ridingId = None, dropLeft = 0.0 } | world }
+                     facing = 1.0, ridingId = None, dropLeft = 0.0,
+                     viewMode = CharStage.Mode.IdleMode, viewModeT = 0.0, guardLeft = 0, invulnLeft = 0.0 } | world }
 
     // ========================================================================
     // 歩く敵: 触れたら死・踏んだら倒せる
@@ -76,7 +77,7 @@ mod TestEnemy {
     // パタパタ: 上下の閉形式と踏み
     // ========================================================================
 
-    // パタパタの位置は時刻の純関数: t=0 は基準 (240,150)、t=0.5（1/4 周期）は pingPong=1.0 で
+    // パタパタの位置は時刻の純関数: t=0 は基準 (240,150)、t=0.5（1/4 周期）は triWave=1.0 で
     // 頂点 y=126（基準 − 振れ幅 24・厳密値）。
     @Test
     def testFlyerBobsClosedForm(): Unit \ Assert =

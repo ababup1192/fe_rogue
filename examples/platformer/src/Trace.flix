@@ -54,7 +54,8 @@ mod Trace {
         { pos = { x = x, y = Field.groundTop() - Field.playerRadius() },
           vel = Vec2.zero(), grounded = true,
           coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-          facing = 1.0, ridingId = None, dropLeft = 0.0 }
+          facing = 1.0, ridingId = None, dropLeft = 0.0,
+          viewMode = CharStage.Mode.IdleMode, viewModeT = 0.0, guardLeft = 0, invulnLeft = 0.0 }
 
     /// シナリオ World の共通枠（プレイヤーと地形だけ違う・敵は要る場面で足す）。
     /// classic の寸法は 320×240（Field.classicW/H・design 480×360 より小さい）なので
@@ -69,7 +70,7 @@ mod Trace {
           spawnPos = { x = 56.0, y = 104.0 }, respawnPos = { x = 56.0, y = 104.0 },
           checkpointPos = { x = Field.classicW() + 1000.0, y = 104.0 },
           goalX = Field.classicW() + 1000.0,
-          clearedAt = None, freezeLeft = 0.0, time = 0.0 }
+          clearedAt = None, freezeLeft = 0.0, charIndex = 1, time = 0.0 }
 
     /// 地面だけの世界（浮き床・壁なし）。ジャンプ曲線と走りを邪魔なしで測る。
     pub def flatWorld(): Field.World =
@@ -86,7 +87,8 @@ mod Trace {
     pub def classicWorld(): Field.World =
         let player = { pos = { x = 60.0, y = 100.0 }, vel = Vec2.zero(), grounded = false,
                        coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                       facing = 1.0, ridingId = None, dropLeft = 0.0 };
+                       facing = 1.0, ridingId = None, dropLeft = 0.0,
+          viewMode = CharStage.Mode.IdleMode, viewModeT = 0.0, guardLeft = 0, invulnLeft = 0.0 };
         worldOf(player, Field.classicPlatforms())
 
     /// 浮き床走破の出発点: classic 地形で、左端（x=20）に接地静止。
@@ -163,7 +165,8 @@ mod Trace {
     pub def levelRestingPlayer(x: Float64): Field.Player =
         { pos = { x = x, y = 404.0 }, vel = Vec2.zero(), grounded = true,
           coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-          facing = 1.0, ridingId = None, dropLeft = 0.0 }
+          facing = 1.0, ridingId = None, dropLeft = 0.0,
+          viewMode = CharStage.Mode.IdleMode, viewModeT = 0.0, guardLeft = 0, invulnLeft = 0.0 }
 
     /// 崖のある世界: 幅 80 の床の右端ぎりぎりに接地している。右へ 1 歩で床を離れる。
     pub def ledgeWorld(): Field.World =
@@ -206,7 +209,8 @@ mod Trace {
         let player = { pos = { x = 600.0, y = 60.0 }, vel = { x = vx, y = -200.0 },
                        grounded = false,
                        coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                       facing = 1.0, ridingId = None, dropLeft = 0.0 };
+                       facing = 1.0, ridingId = None, dropLeft = 0.0,
+          viewMode = CharStage.Mode.IdleMode, viewModeT = 0.0, guardLeft = 0, invulnLeft = 0.0 };
         { player = player | longFlatWorld() }
 
     /// 空中から落下し始める世界: プレイヤーを地面の上方 height px の空中に置く（速度ゼロ）。
@@ -214,7 +218,8 @@ mod Trace {
         let player = { pos = { x = 160.0, y = Field.groundTop() - Field.playerRadius() - height },
                        vel = Vec2.zero(), grounded = false,
                        coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                       facing = 1.0, ridingId = None, dropLeft = 0.0 };
+                       facing = 1.0, ridingId = None, dropLeft = 0.0,
+          viewMode = CharStage.Mode.IdleMode, viewModeT = 0.0, guardLeft = 0, invulnLeft = 0.0 };
         worldOf(player, Field.fullGround() :: Nil)
 
     // ── 読み取り（テストが World から値を取り出す薄いアクセサ）──
@@ -245,7 +250,8 @@ mod Trace {
             { axis = { x = 0.0, y = -1.0 }, amplitude = 32.0, period = 4.0, phase = 0.0 });
         let player = { pos = { x = 160.0, y = 131.0 }, vel = Vec2.zero(), grounded = true,
                        coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                       facing = 1.0, ridingId = Some(400), dropLeft = 0.0 };
+                       facing = 1.0, ridingId = Some(400), dropLeft = 0.0,
+                       viewMode = CharStage.Mode.IdleMode, viewModeT = 0.0, guardLeft = 0, invulnLeft = 0.0 };
         worldOf(player, mover :: Nil)
 
     /// 横フェリーの世界: 下は奈落（地面なし）・横に動く床 1 枚。乗って始まる。
@@ -255,7 +261,8 @@ mod Trace {
             { axis = { x = 1.0, y = 0.0 }, amplitude = 48.0, period = 4.0, phase = 0.0 });
         let player = { pos = { x = 160.0, y = 131.0 }, vel = Vec2.zero(), grounded = true,
                        coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                       facing = 1.0, ridingId = Some(401), dropLeft = 0.0 };
+                       facing = 1.0, ridingId = Some(401), dropLeft = 0.0,
+                       viewMode = CharStage.Mode.IdleMode, viewModeT = 0.0, guardLeft = 0, invulnLeft = 0.0 };
         worldOf(player, mover :: Nil)
 
     /// 一方通行の床の世界: 地面 + その 60px 上に一方通行の薄板。
@@ -268,12 +275,17 @@ mod Trace {
         let plank = Field.oneWayAt(300, { x = 160.0, y = Field.groundTop() - 60.0 }, { x = 100.0, y = 12.0 });
         let player = { pos = { x = 160.0, y = 122.0 }, vel = Vec2.zero(), grounded = true,
                        coyoteLeft = Jump.coyoteTime(), bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                       facing = 1.0, ridingId = Some(300), dropLeft = 0.0 };
+                       facing = 1.0, ridingId = Some(300), dropLeft = 0.0,
+                       viewMode = CharStage.Mode.IdleMode, viewModeT = 0.0, guardLeft = 0, invulnLeft = 0.0 };
         worldOf(player, Field.fullGround() :: plank :: Nil)
 
     /// 下+ジャンプを 1 フレーム押す（すり抜け降下の開始）。
     pub def pressDownJump(): List[Replay.Cue[Field.Input]] =
         hold({ down = true, jumpDown = true, jumpPressed = true | idle() }, 1) :: Nil
+
+    /// キャラ切り替え（左 Shift）を 1 フレーム押す。
+    pub def switchChar(): List[Replay.Cue[Field.Input]] =
+        hold({ switchPressed = true | idle() }, 1) :: Nil
 
     // ── 敵のシナリオ World ──
 

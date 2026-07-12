@@ -10,12 +10,12 @@ mod Motion {
                       velocities: Map[EntityId, Vec2.Vec2], dt: Float64): Map[EntityId, Vec2.Vec2] =
         Query.updateWith2(positions, velocities, (p, v) -> Vec2.add(p, Vec2.mul(v, dt)))
 
-    /// 往復運動の仕様。基準位置からのずれを時刻の純関数で導く（状態を持たない）。
+    /// 物の往復運動の仕様。基準位置からのずれを時刻の純関数で導く（状態を持たない・振り子）。
     /// axis は動く方向・amplitude は振れ幅・period は往復 1 周期の秒数・phase は位相（0..1）。
-    /// 利用例: 動く床や上下する敵の「実位置 = 基準 + oscillationOffset」。
-    pub type alias Oscillation = { axis = Vec2.Vec2, amplitude = Float64, period = Float64, phase = Float64 }
+    /// 利用例: 動く床や上下する敵の「実位置 = 基準 + swingOffset」。
+    pub type alias Swing = { axis = Vec2.Vec2, amplitude = Float64, period = Float64, phase = Float64 }
 
-    /// 時刻 t での基準位置からのずれ。三角波なので速さは一定（4×amplitude/period）。
-    pub def oscillationOffset(osc: Oscillation, t: Float64): Vec2.Vec2 =
-        Vec2.mul(osc#axis, osc#amplitude * Curve.pingPong(t / osc#period + osc#phase))
+    /// 時刻 t での基準位置からのずれ。triWave で駆動するので速さは一定（4×amplitude/period）。
+    pub def swingOffset(osc: Swing, t: Float64): Vec2.Vec2 =
+        Vec2.mul(osc#axis, osc#amplitude * Curve.triWave(t / osc#period + osc#phase))
 }

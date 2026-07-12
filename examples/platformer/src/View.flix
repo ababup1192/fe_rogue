@@ -1,8 +1,9 @@
 // View — World から「(置き場所, 見せたい物) のリスト」への投影。
 // ここに状態は無い: 地形もプレイヤーも HUD も、渡された World の純粋な関数である。
-// 背景は作らない（clearColor の一色）。地形は色分けしたボックス、プレイヤーは球体（円）。
-// 着地の瞬間だけ、squashLeft の残り時間から潰れた楕円（横長の全角丸ボックス）を導いて描く —
-// タイマー 1 本だけが状態で、形は毎フレーム計算する。
+// 背景は作らない（clearColor の一色）。地形は色分けしたボックス、プレイヤーは
+// 15 キャラの名簿（Roster）から charIndex で引いた draw に、World から組んだ
+// 演技の舞台情報（CharStage.Stage — 足元中心・速度・向き・演技区分 viewMode）を
+// 渡すだけ。描き方はすべて各 Char モジュールが持つ（ラボと本編で同じ絵になる）。
 // HUD は運動学の生値を常時表示する: 手触り調整中に「いま何が起きているか」を目で読むため。
 
 mod View {
@@ -25,7 +26,7 @@ mod View {
             platformBoxes(Field.platformsAt(world#time, world#platforms)) ::
             goalItems(world) ::
             enemyItems(world#time, world#enemies) ::
-            playerItems(world#player) ::
+            playerItems(world) ::
             burstItems(world#bursts) :: Nil);
         let screenItems = hudTexts(atlas, world);
         List.append(CameraRig.apply(worldCam, worldItems),
@@ -133,7 +134,7 @@ mod View {
         pole :: pennant :: Nil
 
     // ── 敵（生きているものだけ・時刻の実位置で描く）──
-    // 球体の自機と混線しないよう、敵は「まんじゅう型」（平らな底 + 丸い上）にする。
+    // 縦長のヒーロー自機と混線しないよう、敵は「まんじゅう型」（平らな底 + 丸い上）にする。
     // 当たり判定は従来どおり半径 10 の円のまま（enemyRadius）— 見た目だけがドームに変わる。
 
     /// 敵は全種ともドーム型が本体。歩く敵は足（歩きの上下）付き、パタパタは同じドーム＋羽
@@ -174,19 +175,19 @@ mod View {
         body :: square :: Nil
 
     /// 歩く敵の足 2 本（4×3 の小箱・ドーム底のすぐ下・本体より暗い色 = plankShadow 流用）。
-    /// pingPong(t×2) の符号で左右交互に ±1px だけ前後にずれ、歩く揺れを表す（状態は持たない）。
+    /// triWave(t×2) の符号で左右交互に ±1px だけ前後にずれ、歩く揺れを表す（状態は持たない）。
     def feet(t: Float64, pos: Vec2.Vec2): List[Render.Placed] =
         let bottom = pos#y + Field.enemyRadius();
-        let wobble = Field.pingPong(t * 2.0) - 0.5; // -0.5..0.5 の揺れ幅
+        let wobble = Field.triWave(t * 2.0) - 0.5; // -0.5..0.5 の揺れ幅
         let footSize = { x = 4.0, y = 3.0 };
         ({ x = pos#x - 6.0 + wobble, y = bottom }, Render.box(footSize, Palette.plankShadow(), zEnemy())) ::
         ({ x = pos#x + 2.0 - wobble, y = bottom }, Render.box(footSize, Palette.plankShadow(), zEnemy())) :: Nil
 
     /// パタパタの羽 2 枚（6×3 の小箱・ドームの左右側面）。上下 ±2px の羽ばたきは
-    /// pingPong(t×2) から毎フレーム導く — 位置は保存しない（閉形式）。
+    /// triWave(t×2) から毎フレーム導く — 位置は保存しない（閉形式）。
     def wings(t: Float64, pos: Vec2.Vec2): List[Render.Placed] =
         let r = Field.enemyRadius();
-        let flap = Field.pingPong(t * 2.0) * 2.0;
+        let flap = Field.triWave(t * 2.0) * 2.0;
         let size = { x = 6.0, y = 3.0 };
         ({ x = pos#x - r - 5.0, y = pos#y - 2.0 + flap }, Render.box(size, Palette.flyerWing(), zEnemy())) ::
         ({ x = pos#x + r - 1.0, y = pos#y - 2.0 + flap }, Render.box(size, Palette.flyerWing(), zEnemy())) :: Nil
@@ -234,7 +235,8 @@ mod View {
         })
 
     /// 目玉 2 個（本体中心から ±4, -3px・白目 r=eyeR + 黒目 r=eyeR×0.5 を中心に重ねる）。
-    /// プレイヤーの回転ドットと混線しないよう、白目は大きめの円 + はっきりした瞳にする。
+    /// 自機と見分けるのはシルエット（敵 = ずんぐりドーム / 自機 = 縦長）が担い、
+    /// 目玉の文法（白目 + 瞳）は自機と共通でよい。
     def eyes(pos: Vec2.Vec2, eyeR: Float64): List[Render.Placed] =
         let leftCenter = { x = pos#x - 4.0, y = pos#y - 3.0 };
         let rightCenter = { x = pos#x + 4.0, y = pos#y - 3.0 };
@@ -246,87 +248,77 @@ mod View {
         ({ x = center#x - eyeR, y = center#y - eyeR }, Render.circle(eyeR, Palette.eyeWhite(), zEnemy() + 1)) ::
         ({ x = center#x - pupilR, y = center#y - pupilR }, Render.circle(pupilR, Palette.eyePupil(), zEnemy() + 2)) :: Nil
 
-    // ── プレイヤー（球体・着地の瞬間だけ潰れる）──
+    // ── プレイヤー（15 キャラの名簿 Roster 経由・演技情報はラボと同じ Stage）──
 
-    /// squashLeft が残っている間は横に広く縦に低い全角丸ボックス（= 楕円の近似）を、
-    /// 空中で速く上昇している間は縦長（ジャンプ伸びストレッチ = 着地スカッシュの対）を、
-    /// それ以外は真円を描く。潰れても足元（下端）は地面に着けたまま。伸びは飛行中なので
-    /// 中心基準で上下へ伸ばす。段階演出はすべて |vx| から導く（新しい状態は持たない）:
-    /// 色 3 段階 + 転がりの点 3 個（回転）+ 最高速の残像 2 枚。
-    def playerItems(player: Field.Player): List[Render.Placed] =
-        let r = Field.playerRadius();
-        let ratio = if (Field.squashTime() > 0.0) player#squashLeft / Field.squashTime() else 0.0;
-        let stretch = stretchAmount(player);
-        let w = r * 2.0 * (1.0 + 0.35 * ratio - 0.10 * stretch);
-        let h = r * 2.0 * (1.0 - 0.35 * ratio + 0.18 * stretch);
-        let topLeft =
-            if (stretch > 0.0) { x = player#pos#x - w / 2.0, y = player#pos#y - h / 2.0 }
-            else { x = player#pos#x - w / 2.0, y = player#pos#y + r - h };
-        let ball = (topLeft, Render.box({ x = w, y = h }, playerColor(player#vel#x), zPlayer())
-            |> Render.rounded(Float64.min(w, h) / 2.0));
-        List.append(ghostItems(player), ball :: spinDots(player))
+    /// キャラ本体 + 最高速の残像 + ガードの盾 + 無敵の点滅。描き方は Char01..15 が持ち、
+    /// ここは Stage を World から組んで渡す。座標の取り決めはラボ（CharGallery）と同じ:
+    /// キャラは「地面ローカル」（足元 y=0）で描き、縦位置はここで出力を平行移動して与える
+    /// （キャラ側は pos#y を出力に足さない前提で書かれている — 試着室では常に 0 だった）。
+    /// 無敵中（ガード直後）は floor(t×16) の偶奇で本体を描いたり消したりする（決定的な点滅）。
+    def playerItems(world: Field.World): List[Render.Placed] =
+        let player = world#player;
+        let feetY = player#pos#y + Field.playerRadius();
+        let stage = stageOf(world#time, player);
+        let drawFn = Roster.drawOf(world#charIndex);
+        let blinkHidden = player#invulnLeft > 0.0
+            and Int32.modulo(RenderUtil.floatToInt32(Float64.floor(world#time * 16.0)), 2) == 1;
+        let body = if (blinkHidden) Nil else drawFn(stage) |> List.map(shiftY(feetY));
+        List.flatten(guardRing(world#time, player) :: ghostItems(drawFn, stage, feetY, player) :: body :: Nil)
 
-    /// ジャンプ伸びの量（0..1）: 空中で vy が −200 を超えて上昇しているほど縦長に描く。
-    /// 分母 312 は「立ちジャンプの初速 512 で最大」の実測合わせ（512 − 200）。
-    /// 着地スカッシュが残っている間はそちらを優先する（同時には成立させない）。
-    /// 接地中・ゆっくりの上昇（vy ≥ −200）では厳密に 0 = 従来の絵とバイト一致。
-    def stretchAmount(player: Field.Player): Float64 =
-        if (player#grounded or player#squashLeft > 0.0) 0.0
-        else Float64.max(0.0, Float64.min(1.0, (-(player#vel#y) - 200.0) / 312.0))
+    /// 描画物の縦位置を平行移動する（ラボの laneItems と同じ役目）。
+    def shiftY(dy: Float64, placed: Render.Placed): Render.Placed =
+        let (pos, item) = placed;
+        ({ x = pos#x, y = pos#y + dy }, item)
+
+    /// World の状態を演技の舞台情報（CharStage.Stage）へ写す。pos#x は世界座標
+    /// （キャラは走りの歩幅位相を pos#x の移動距離から導く）、pos#y は常に 0
+    /// （ラボの接地時と同じ「地面ローカル」— 縦位置は playerItems が出力を平行移動して与える）。
+    def stageOf(t: Float64, player: Field.Player): CharStage.Stage =
+        { t = t,
+          pos = { x = player#pos#x, y = 0.0 },
+          vx = player#vel#x,
+          facing = player#facing,
+          mode = player#viewMode,
+          modeT = player#viewModeT }
 
     /// 最高速域の |vx| のしきい値。approach は 280.0 ちょうどに達するが、離した直後の
-    /// 減衰帯（279.x）でも白がちらつかないよう 0.5 だけ手前に取る。
+    /// 減衰帯（279.x）でも残像がちらつかないよう 0.5 だけ手前に取る。
     def maxBandSpeed(): Float64 = Jump.maxRunSpeed() * Jump.dashMult() - 0.5
 
-    /// 走り速度から球体の色を選ぶ: 通常（≤160 黄）→ P スピード帯（>160 橙）→
-    /// 最高速域（≥279.5 白）の 3 段階。
-    def playerColor(vx: Float64): Color =
-        let speed = Float64.abs(vx);
-        if (speed >= maxBandSpeed()) Palette.playerMax()
-        else if (speed > Jump.maxRunSpeed()) Palette.playerDash()
-        else Palette.player()
-
     /// 最高速域だけの残像: 3 フレーム前・6 フレーム前の位置（pos − vel×n×dt）に
-    /// 薄い球体を 2 枚置く（z はプレイヤーの 1 つ下）。位置は速度から導くので状態は増えない。
-    def ghostItems(player: Field.Player): List[Render.Placed] =
+    /// 同じ演技のキャラを薄く 2 体置く。位置は速度から導くので状態は増えない。
+    /// 縦は本体と同じく「出力の平行移動」で与える（stage#pos#y は地面ローカルの 0 のまま）。
+    def ghostItems(drawFn: CharStage.Stage -> List[Render.Placed],
+                   stage: CharStage.Stage, feetY: Float64, player: Field.Player): List[Render.Placed] =
         if (Float64.abs(player#vel#x) < maxBandSpeed()) Nil
         else {
             let dt = 1.0 / 64.0;
             let ghost = (framesBack: Float64, alpha: Float32) -> {
-                let pos = { x = player#pos#x - player#vel#x * framesBack * dt,
-                            y = player#pos#y - player#vel#y * framesBack * dt };
-                ballAt(pos, playerColor(player#vel#x), zPlayer() - 1) |> fadePlaced(alpha)
+                let pos = { x = stage#pos#x - player#vel#x * framesBack * dt, y = 0.0 };
+                let ghostFeetY = feetY - player#vel#y * framesBack * dt;
+                drawFn({ pos = pos | stage })
+                    |> List.map(shiftY(ghostFeetY))
+                    |> List.map(fadePlaced(alpha))
             };
-            ghost(3.0, 0.35f32) :: ghost(6.0, 0.18f32) :: Nil
+            List.append(ghost(3.0, 0.35f32), ghost(6.0, 0.18f32))
         }
 
-    /// 転がりの点 3 個（120° 間隔・ソニック風の回転）: 転がり角 θ = x / 半径 から
-    /// θ, θ+2π/3, θ+4π/3 の 3 方向に 0.55r 離して濃い点を置く。走るほど速く回って見える。
-    /// 2 個（対角 180°）だと敵の目玉に似て自機が顔に見えてしまうため、3 個にして
-    /// 「顔」に読めないようにする（E2-1e）。潰れ・伸び演出中は形が崩れるので省略する
-    /// （伸びた楕円の中に点が残ると回転に見えず汚い）。
-    def spinDots(player: Field.Player): List[Render.Placed] =
-        if (player#squashLeft > 0.0 or stretchAmount(player) > 0.0) Nil
+    /// ガードが残っているキャラの盾: 体の周りをゆっくり周回する小さな光点 6 個
+    /// （「1 回耐えられる」の視覚記号・ガードを使うと消える）。
+    /// 塗り円で体を覆うと暗色のキャラが見えなくなるため、点の輪で「囲うが隠さない」。
+    def guardRing(t: Float64, player: Field.Player): List[Render.Placed] =
+        if (player#guardLeft <= 0) Nil
         else {
-            let r = Field.playerRadius();
-            let theta = player#pos#x / r;
-            let twoThirdsPi = 2.0943951023931953; // 2π/3
-            let dotArm = (angle: Float64) -> {
-                let arm = { x = Vec2.cos(angle) * 0.55 * r, y = Vec2.sin(angle) * 0.55 * r };
-                dotAt(Vec2.add(player#pos, arm))
-            };
-            dotArm(theta) :: dotArm(theta + twoThirdsPi) :: dotArm(theta + 2.0 * twoThirdsPi) :: Nil
+            let orbitR = Field.playerRadius() + 7.0;
+            let dotR = 2.5;
+            List.range(0, 6) |> List.map(i -> {
+                let angle = t * 1.2 + Int32.toFloat64(i) * 1.0471975511965976;  // 60° 刻みで周回
+                let cx = player#pos#x + orbitR * Vec2.cos(angle);
+                let cy = player#pos#y - 2.0 + orbitR * 0.55 * Vec2.sin(angle);  // 楕円軌道(奥行き感)
+                ({ x = cx - dotR, y = cy - dotR },
+                 Render.circle(dotR, Palette.eyeWhite(), zPlayer() - 5) |> Render.fade(0.7f32))
+            })
         }
-
-    /// 転がりの点 1 個（半径 2.5px・z はプレイヤーの 1 つ上）。
-    def dotAt(pos: Vec2.Vec2): Render.Placed =
-        let dotR = 2.5;
-        ({ x = pos#x - dotR, y = pos#y - dotR }, Render.circle(dotR, Palette.ballSpin(), zPlayer() + 1))
-
-    /// 指定の中心に等身大の球体を置く（残像用）。
-    def ballAt(pos: Vec2.Vec2, color: Color, z: Int32): Render.Placed =
-        let r = Field.playerRadius();
-        ({ x = pos#x - r, y = pos#y - r }, Render.circle(r, color, z))
 
     /// Placed の中身だけ半透明にする（置き場所は保つ）。
     def fadePlaced(alpha: Float32, placed: Render.Placed): Render.Placed =
@@ -363,8 +355,10 @@ mod View {
             + " deaths=${world#deaths}";
         ({ x = 6.0, y = 4.0 },
          Render.textTinted(status, atlas, 8.0, Palette.hudText(), zText())) ::
+        ({ x = Field.designW() - 150.0, y = 4.0 },
+         Render.textTinted(Roster.nameOf(world#charIndex), atlas, 8.0, Palette.hudText(), zText())) ::
         ({ x = 6.0, y = Field.designH() - 12.0 },
-         Render.textTinted("ARROWS move / Z dash / SPACE jump / F1 reload", atlas, 8.0,
+         Render.textTinted("ARROWS move / Z dash / X jump / SHIFT char / F1 reload", atlas, 8.0,
                            Palette.hintText(), zText())) ::
         clearBanner(atlas, world)
 

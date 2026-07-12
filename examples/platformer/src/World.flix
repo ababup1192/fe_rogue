@@ -19,15 +19,19 @@ mod Field {
         squashLeft = Float64,   // 着地スカッシュ演出の残り秒（View 用）
         facing = Float64,       // 向いている向き（+1 右 / -1 左）。最後の非ゼロ入力を保持（カメラ先読み用）
         ridingId = Option[EntityId], // 乗っている床の id（分離後の支持接触から毎フレーム導出・空中は None）
-        dropLeft = Float64      // すり抜け降下の残り秒（この間は一方通行を無視する）
+        dropLeft = Float64,     // すり抜け降下の残り秒（この間は一方通行を無視する）
+        viewMode = CharStage.Mode,  // 見た目の演技区分（View がキャラ描画に使う・sim には影響しない）
+        viewModeT = Float64,    // いまの viewMode に入ってからの経過秒（ポーズのコマ送り用）
+        guardLeft = Int32,      // ガードの残り回数（敵の致命接触に 1 回だけ耐える・キャラ個性）
+        invulnLeft = Float64    // ガード直後の無敵の残り秒（>0 の間は致命接触を無視・View は点滅）
     }
 
     // ── 地形 ──
 
     /// 動く床の運動仕様（時刻の純関数で位置を導く・状態を持たない）。本体は engine_world の
-    /// Motion.Oscillation。三角波(pingPong)なので sin と違い機種依存が無く、速さが一定
+    /// Motion.Swing。三角波(triWave)なので sin と違い機種依存が無く、速さが一定
     /// (4×amplitude/period px/s) — period を 2 の冪秒にすればテストの pin が厳密になる。
-    pub type alias Motion = Motion.Oscillation
+    pub type alias Motion = Motion.Swing
 
     pub type alias Platform = {
         id = EntityId,
@@ -55,14 +59,14 @@ mod Field {
         { id = id, pos = pos, size = size, motion = None, oneWay = false, slope = Some(riseRight) }
 
     /// [-1,1] の三角波。0 から立ち上がり、1/4 周期で +1、1/2 で 0、3/4 で -1、1 周期で 0 に戻る。
-    /// 本体は engine_world の Curve.pingPong（昇格済み・ここは委譲）。
-    pub def pingPong(u: Float64): Float64 = Curve.pingPong(u)
+    /// 本体は engine_world の Curve.triWave（昇格済み・ここは委譲）。
+    pub def triWave(u: Float64): Float64 = Curve.triWave(u)
 
     /// 時刻 t での床の実位置。動かない床は基準位置そのまま。
     pub def platformPosAt(t: Float64, platform: Platform): Vec2.Vec2 =
         match platform#motion {
             case None       => platform#pos
-            case Some(m)    => Vec2.add(platform#pos, Motion.oscillationOffset(m, t))
+            case Some(m)    => Vec2.add(platform#pos, Motion.swingOffset(m, t))
         }
 
     /// 全部の床を時刻 t の実位置に置き直したリスト。
@@ -90,7 +94,7 @@ mod Field {
         id = EntityId,             // 600 番台
         kind = EnemyKind,
         base = Vec2.Vec2,          // 基準位置
-        motion = Option[Motion],   // Walker=横 pingPong / Flyer=縦 pingPong / None=固定
+        motion = Option[Motion],   // Walker=横 triWave / Flyer=縦 triWave / None=固定
         alive = Bool
     }
 
@@ -98,10 +102,10 @@ mod Field {
     pub def enemyPosAt(t: Float64, enemy: Enemy): Vec2.Vec2 =
         match enemy#motion {
             case None    => enemy#base
-            case Some(m) => Vec2.add(enemy#base, Motion.oscillationOffset(m, t))
+            case Some(m) => Vec2.add(enemy#base, Motion.swingOffset(m, t))
         }
 
-    /// 歩く敵: base から横に range だけ pingPong で往復する。
+    /// 歩く敵: base から横に range だけ triWave で往復する。
     pub def walkerAt(id: EntityId, base: Vec2.Vec2, range: Float64, period: Float64): Enemy =
         walkerAtPhase(id, base, range, period, 0.0)
 
@@ -112,7 +116,7 @@ mod Field {
           motion = Some({ axis = { x = 1.0, y = 0.0 }, amplitude = range, period = period, phase = phase }),
           alive = true }
 
-    /// パタパタ: base から縦に range だけ pingPong で上下する（正の pingPong で上へ）。
+    /// パタパタ: base から縦に range だけ triWave で上下する（正の triWave で上へ）。
     pub def flyerAt(id: EntityId, base: Vec2.Vec2, range: Float64, period: Float64): Enemy =
         flyerAtPhase(id, base, range, period, 0.0)
 
@@ -144,7 +148,9 @@ mod Field {
         case DeathEvent,
         case CheckpointEvent,
         case ClearEvent,
-        case FireworkEvent
+        case FireworkEvent,
+        case SwitchEvent,
+        case GuardEvent
     }
 
     /// 出来事の名前（音名・ログ表記に共用）。
@@ -157,6 +163,8 @@ mod Field {
         case Event.CheckpointEvent => "checkpoint"
         case Event.ClearEvent => "clear"
         case Event.FireworkEvent => "firework"
+        case Event.SwitchEvent => "switch"
+        case Event.GuardEvent => "guard"
     }
 
     // ── 演出の粒（ダッシュの土埃・ジャンプの噴射）──
@@ -195,14 +203,17 @@ mod Field {
         goalX = Float64,                     // ゴールの x。越えたらクリア（無いレベルは届かない値）
         clearedAt = Option[Float64],         // クリアした時刻（None = 未クリア）。花火の発射台本の基点
         freezeLeft = Float64,                // ヒットストップの残り秒（>0 の間は時間も物理も丸ごと止まる・踏みで充填）
+        charIndex = Int32,                   // 操作中のキャラ（1..15・左 Shift で巡回・死んでも引き継ぐ）
         time = Float64                       // 通し秒
     }
 
     pub type alias Input = { left = Bool, right = Bool, dash = Bool,
-                             jumpDown = Bool, jumpPressed = Bool, down = Bool }
+                             jumpDown = Bool, jumpPressed = Bool, down = Bool,
+                             switchPressed = Bool }
 
     pub def noInput(): Input = { left = false, right = false, dash = false,
-                                 jumpDown = false, jumpPressed = false, down = false }
+                                 jumpDown = false, jumpPressed = false, down = false,
+                                 switchPressed = false }
 
     // ── レイアウト定数 ──
 
@@ -323,7 +334,9 @@ mod Field {
     pub def freshPlayerAt(startAt: Vec2.Vec2): Player =
         { pos = startAt, vel = Vec2.zero(), grounded = false,
           coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-          facing = 1.0, ridingId = None, dropLeft = 0.0 }
+          facing = 1.0, ridingId = None, dropLeft = 0.0,
+          viewMode = CharStage.Mode.IdleMode, viewModeT = 0.0,
+          guardLeft = 0, invulnLeft = 0.0 }
 
     /// 本番の初期 World: Level のワイドレベル（3328×480px）にスポーンのプレイヤーと敵。
     /// camY は最初からスポーンへスナップしておく（起動直後に画面が縦にパンしない）。
@@ -337,7 +350,7 @@ mod Field {
           camY = FollowCam.snapCamY(Level.levelHeight(), startAt#y),
           levelW = Level.levelWidth(), levelH = Level.levelHeight(),
           spawnPos = startAt, respawnPos = startAt, checkpointPos = Level.checkpointPos(),
-          goalX = Level.goalX(), clearedAt = None, freezeLeft = 0.0, time = 0.0 }
+          goalX = Level.goalX(), clearedAt = None, freezeLeft = 0.0, charIndex = 1, time = 0.0 }
 
     // ── リモートデバッグ（view=status）用の 1 行サマリ ──
 
@@ -353,5 +366,6 @@ mod Field {
         + " deaths=${world#deaths}"
         + " cam=${RemoteDebug.fmt1(world#camX)}"
         + " foes=${world#enemies |> List.filter(e -> e#alive) |> List.length}"
+        + " char=${world#charIndex}"
         + " ev=${world#events |> List.map(eventName) |> String.intercalate(",")}"
 }

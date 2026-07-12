@@ -56,10 +56,23 @@ mod SfxBake {
             SfxSynth.fade(SfxSynth.noise(cfg(), 0.08, 55)),
             SfxSynth.fade(SfxSynth.tone(cfg(), 98.0, 0.15, 60)))
 
-    /// 8 音すべてを assets/sfx/ へ書き出す（Bake.all から呼ぶ）。
+    /// キャラ切り替え: 上がる短い 2 音のブリップ。「乗り換えのポン」。
+    def switchBlip(): List[Float64] =
+        SfxSynth.sequence(
+            SfxSynth.fade(SfxSynth.tone(cfg(), 523.25, 0.04, 45)) ::
+            SfxSynth.fade(SfxSynth.tone(cfg(), 784.0, 0.06, 50)) :: Nil)
+
+    /// ガード: 高い 2 音を重ねた金属的なチン。「弾いた」手応え。
+    def guardTink(): List[Float64] =
+        SfxSynth.blend(
+            SfxSynth.fade(SfxSynth.tone(cfg(), 1318.5, 0.06, 40)),
+            SfxSynth.fade(SfxSynth.tone(cfg(), 1975.5, 0.05, 30)))
+
+    /// 10 音すべてを assets/sfx/ へ書き出す（Bake.all から呼ぶ）。
     pub def bakeAll(): Unit \ IO =
         SfxSynth.bakeSet(cfg(), "assets/sfx",
             ("jump", jumpRise()) :: ("land", landThud()) :: ("bump", bumpTick()) ::
             ("death", deathFall()) :: ("stomp", stompSquish()) :: ("clear", clearFanfare()) ::
-            ("checkpoint", checkpointChime()) :: ("firework", fireworkPop()) :: Nil)
+            ("checkpoint", checkpointChime()) :: ("firework", fireworkPop()) ::
+            ("switch", switchBlip()) :: ("guard", guardTink()) :: Nil)
 }

@@ -245,7 +245,7 @@ mod Level {
     // 時刻に、デッキが穴の左半分に居て「待たずに乗れる」よう合わせた実測値。
     // トンネリング境界（速さ 64px/秒 以下）: 4 × 24 / 2.0 = 48 px/秒 ✓
 
-    /// フェリーの phase（0..1・pingPong の位相）。levelRunCues の実測で調整した値。
+    /// フェリーの phase（0..1・triWave の位相）。levelRunCues の実測で調整した値。
     pub def ferryPhase(): Float64 = 0.32
 
     /// フィナーレの穴のフェリー（id 400）。

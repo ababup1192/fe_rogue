@@ -60,16 +60,16 @@ mod TestCurve {
     def testTriNonPositivePeriod(): Unit \ Assert =
         Assert.assertEq(expected = (0.0, 0.0), (Curve.tri(0.0, 1.0), Curve.tri(-2.0, 1.0)))
 
-    /// pingPong: 符号つき三角波 [-1,1]。四半期点 0 → +1 → 0 → -1 → 0（すべて丸めの出ない値）。
+    /// triWave: 符号つき三角波 [-1,1]。四半期点 0 → +1 → 0 → -1 → 0（すべて丸めの出ない値）。
     @Test
-    def testPingPongQuarterPoints(): Unit \ Assert =
+    def testTriWaveQuarterPoints(): Unit \ Assert =
         Assert.assertEq(expected = (0.0, 1.0, 0.0, -1.0, 0.0),
-            (Curve.pingPong(0.0), Curve.pingPong(0.25), Curve.pingPong(0.5),
-             Curve.pingPong(0.75), Curve.pingPong(1.0)))
+            (Curve.triWave(0.0), Curve.triWave(0.25), Curve.triWave(0.5),
+             Curve.triWave(0.75), Curve.triWave(1.0)))
 
-    /// pingPong: 1 周期で折り返し、負の入力も floor で同じ周期に畳む（-0.75 は 0.25 と同じ +1）。
+    /// triWave: 1 周期で折り返し、負の入力も floor で同じ周期に畳む（-0.75 は 0.25 と同じ +1）。
     @Test
-    def testPingPongWrapsAndHandlesNegative(): Unit \ Assert =
+    def testTriWaveWrapsAndHandlesNegative(): Unit \ Assert =
         Assert.assertEq(expected = (1.0, 1.0),
-            (Curve.pingPong(2.25), Curve.pingPong(-0.75)))
+            (Curve.triWave(2.25), Curve.triWave(-0.75)))
 }

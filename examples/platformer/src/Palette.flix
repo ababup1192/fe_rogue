@@ -23,11 +23,11 @@ mod Palette {
     pub def slopeGrass(): Color = {r = 0.415686f32, g = 0.745098f32, b = 0.188235f32}  // #6abe30
     pub def goalFlag(): Color = {r = 0.600000f32, g = 0.898039f32, b = 0.313725f32}    // #99e550
 
-    // ── プレイヤー（球体）──
+    // ── プレイヤー（ヒーロー）──
     pub def player(): Color = {r = 0.984314f32, g = 0.949020f32, b = 0.211765f32}    // #fbf236
     pub def playerDash(): Color = {r = 0.874510f32, g = 0.443137f32, b = 0.149020f32} // #df7126
     pub def playerMax(): Color = {r = 1.000000f32, g = 1.000000f32, b = 1.000000f32}  // #ffffff
-    pub def ballSpin(): Color = {r = 0.541176f32, g = 0.435294f32, b = 0.188235f32}   // #8a6f30
+    pub def heroLeg(): Color = {r = 0.541176f32, g = 0.435294f32, b = 0.188235f32}    // #8a6f30
 
     // ── 敵 ──
     pub def walkerBody(): Color = {r = 0.674510f32, g = 0.196078f32, b = 0.196078f32}  // #ac3232

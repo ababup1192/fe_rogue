@@ -48,10 +48,19 @@ mod Step {
         else
             advance(input, dt, world)
 
-    /// 通常の 1 フレーム。入力 → タイマー → ジャンプ → 走り → carry → 物理 → 接地 → 出来事。
+    /// 通常の 1 フレーム。キャラ切り替え → 入力 → タイマー → ジャンプ → 走り → carry →
+    /// 物理 → 接地 → 敵 → 出来事。パラメータは切り替え後のキャラの個性（倍率）を掛けた
+    /// 実効値 — 番号 1 は全倍率 1.0 なので既定パラメータと厳密に一致する。
     def advance(input: Field.Input, dt: Float64, world: Field.World): Field.World =
-        let p = world#params;
-        let player0 = world#player;
+        // ── キャラ切り替え（左 Shift の押した瞬間）: 番号を巡回し、ガードを新キャラの
+        //    個性で張り直す（無敵は持ち越さない）。物理は切り替え後の個性で丸ごと進む。──
+        let switching = input#switchPressed;
+        let charIndex1 = if (switching) Roster.nextIndex(world#charIndex) else world#charIndex;
+        let traits = Roster.traitsOf(charIndex1);
+        let p = Roster.applyTraits(traits, world#params);
+        let player0 = if (switching)
+                { guardLeft = traits#guard, invulnLeft = 0.0 | world#player }
+            else world#player;
         let t0 = world#time;
         let t1 = t0 + dt;
         // 動く床は時刻の純関数: このフレームの実位置で当たる。
@@ -168,8 +177,17 @@ mod Step {
         // 1 つでもあれば、そのフレームの踏みは成立させない（敵も倒れない）。
         let overlaps = world#enemies
             |> List.filter(enemy -> enemy#alive and overlapsPlayer(t1, posFinal, enemy));
-        let diedByEnemy = overlaps |> List.exists(enemy -> not isStomp(t1, prevBottom, velFinal#y, enemy));
-        let stompedIds = if (diedByEnemy) Nil
+        // 致命の接触は 3 段の受け皿: 無敵中（ガード直後）は素通し → ガードが残っていれば
+        // 1 消費して耐える（敵は生きたまま・小さく跳ね上がる）→ どちらも無ければ死亡。
+        let lethalTouch = overlaps |> List.exists(enemy -> not isStomp(t1, prevBottom, velFinal#y, enemy));
+        let invulnerable = player0#invulnLeft > 0.0;
+        let guarding = lethalTouch and not invulnerable and player0#guardLeft > 0;
+        let diedByEnemy = lethalTouch and not invulnerable and player0#guardLeft <= 0;
+        let guardLeft1 = if (guarding) player0#guardLeft - 1 else player0#guardLeft;
+        let invulnLeft1 = if (guarding) 1.0 else Jump.tickTimer(dt, player0#invulnLeft);
+        // 同フレームで踏みと致命の接触が同時なら踏みは成立しない（安全側・ガードで耐えた
+        // フレームも同じ扱い）。無敵中は致命側が消えるので、踏みは普通に成立する。
+        let stompedIds = if (diedByEnemy or guarding) Nil
             else overlaps
                 |> List.filter(enemy -> isStomp(t1, prevBottom, velFinal#y, enemy))
                 |> List.map(enemy -> enemy#id);
@@ -185,6 +203,9 @@ mod Step {
         // 踏みがジャンプの成立を横取り・消費することはない。
         let velStomped = if (stomping)
                 { y = (if (input#jumpDown) p#stompBounceHold else p#stompBounce) | velFinal }
+            else if (guarding)
+                // ガードで耐えた瞬間の小さなノックバック（半分の半ジャンプ・「弾いた」手応え）。
+                { y = -200.0 | velFinal }
             else velFinal;
         let heldFinal = if (stomping) input#jumpDown else held2;
 
@@ -218,7 +239,9 @@ mod Step {
             (if (died) Some(Field.Event.DeathEvent) else None) ::
             (if (checkpointing) Some(Field.Event.CheckpointEvent) else None) ::
             (if (clearing) Some(Field.Event.ClearEvent) else None) ::
-            (if (fireworking) Some(Field.Event.FireworkEvent) else None) :: Nil);
+            (if (fireworking) Some(Field.Event.FireworkEvent) else None) ::
+            (if (switching) Some(Field.Event.SwitchEvent) else None) ::
+            (if (guarding) Some(Field.Event.GuardEvent) else None) :: Nil);
 
         // ── 乗っている床の再導出: 支持接触（最も上向きに押すもの・同点は小さい id）──
         let ridingId1 = if (groundedFinal) supportingId(supports) else None;
@@ -231,6 +254,8 @@ mod Step {
               pos = { x = posFinal#x, y = posFinal#y + Field.playerRadius() },
               dir = { x = 0.0, y = 1.0 }, power = 1.0, elapsed = 0.0 };
         let bursts2 = if (jumps) jetBurst :: bursts1 else bursts1;
+        // キャラ切り替えの「ポン」: 乗り換えた瞬間、足元にジェットを 1 発（音は switch が鳴る）。
+        let bursts2s = if (switching) jetBurst :: bursts2 else bursts2;
         // 土埃は速いほど頻繁に・強く（cadence と power を同じ dashBand で段階づける）。
         // dir×vx < 0（スキッド中）はブレーキ土埃に譲る — dir×vx の符号で二重発生しない
         // （入力なし dir=0 は積 0 でこちら側 = 従来どおり出る）。
@@ -243,7 +268,7 @@ mod Step {
               pos = { x = posFinal#x - sign(velFinal#x) * Field.playerRadius(),
                       y = posFinal#y + Field.playerRadius() - 2.0 },
               dir = { x = -sign(velFinal#x), y = -0.2 }, power = dustPower, elapsed = 0.0 };
-        let bursts3 = if (dashing and cadenceTicked) dustBurst :: bursts2 else bursts2;
+        let bursts3 = if (dashing and cadenceTicked) dustBurst :: bursts2s else bursts2s;
         // スキッドのブレーキ土埃: 地上で逆入力の急減速中（|vx| > 80）、進行方向へ流れる砂煙
         // = ブレーキ痕の記号（走り土埃と逆向き）。cadence は floor 跨ぎ方式のまま固定 16 回/秒
         // （スキッドは 10 数フレームで終わるので速さ連動にしない）、power は勢い |vx|/280 から。
@@ -277,11 +302,19 @@ mod Step {
         let burstsFinal = List.append(fireworkBursts, List.append(stompBursts, bursts4));
 
         let time = t1;
+        let squashLeft1 = if (landed) Field.squashTime() else Jump.tickTimer(dt, player0#squashLeft);
+        // ── 見た目の演技区分（View 専用・sim には影響しない）: 物理が確定した値から導く。
+        //    優先順: 着地（スカッシュ中）> スキッド（逆入力の急減速）> ダッシュ（P 帯）>
+        //    走り > 待機 > 上昇 > 落下。modeT は同じ区分に留まる間だけ積む（コマ送りの時計）。──
+        let mode1 = deriveMode(p, dir, velStomped, groundedFinal, squashLeft1);
+        let modeT1 = if (mode1 == player0#viewMode) player0#viewModeT + dt else 0.0;
         let player1 = {
             pos = posFinal, vel = velStomped, grounded = groundedFinal,
             coyoteLeft = coyote1, bufferLeft = buffer1, jumpHeld = heldFinal,
-            squashLeft = if (landed) Field.squashTime() else Jump.tickTimer(dt, player0#squashLeft),
-            facing = facing1, ridingId = ridingId1, dropLeft = dropLeft1 };
+            squashLeft = squashLeft1,
+            facing = facing1, ridingId = ridingId1, dropLeft = dropLeft1,
+            viewMode = mode1, viewModeT = modeT1,
+            guardLeft = guardLeft1, invulnLeft = invulnLeft1 };
 
         // ── カメラ: 不感帯つき追従（横・縦）。横のターゲットは進行方向へ先読みぶんずらす
         //    （facing × lookAhead・縦はずらさない）。死亡時はリスポーン地点（出発点か中間地点）へ
@@ -296,8 +329,10 @@ mod Step {
             else FollowCam.stepCamY(dt, world#levelH, posFinal#y, world#camY);
 
         // 死亡（崖・敵とも同じ扱い）: リスポーン地点へ（タイマー・速度も初期化）。死んだ回数を数える。
-        { player = if (died) Field.freshPlayerAt(respawnPos1) else player1,
+        // キャラは死んでも引き継ぎ、ガードは個性ぶんへ張り直す（無敵は消える）。
+        { player = if (died) { guardLeft = traits#guard | Field.freshPlayerAt(respawnPos1) } else player1,
           enemies = enemies1,
+          charIndex = charIndex1,
           events = events,
           eventLog = appendLog(time, events, world#eventLog),
           bursts = burstsFinal,
@@ -309,6 +344,21 @@ mod Step {
           // ヒットストップの充填: 踏んだフレームの次から stompFreeze 秒（3 コマ）世界が止まる。
           freezeLeft = if (stomping) Field.stompFreeze() else world#freezeLeft,
           time = time | world }
+
+    /// 見た目の演技区分（CharStage.Mode）を物理の確定値から選ぶ。sim には影響しない —
+    /// View がキャラのポーズ選択に使うだけ。しきい値はダッシュ帯（maxRunSpeed 超）・
+    /// スキッド砂煙（|vx| > 80）・走り（|vx| > 10）と同じ値を使い、絵と粒の言い分を揃える。
+    def deriveMode(p: GameParameters.Params, dir: Float64, vel: Vec2.Vec2,
+                   grounded: Bool, squashLeft: Float64): CharStage.Mode =
+        if (grounded) {
+            if (squashLeft > 0.0) CharStage.Mode.LandMode
+            else if (dir * vel#x < 0.0 and Float64.abs(vel#x) > 80.0) CharStage.Mode.SkidMode
+            else if (Float64.abs(vel#x) > p#maxRunSpeed) CharStage.Mode.DashMode
+            else if (Float64.abs(vel#x) > 10.0) CharStage.Mode.RunMode
+            else CharStage.Mode.IdleMode
+        } else {
+            if (vel#y < 0.0) CharStage.Mode.JumpMode else CharStage.Mode.FallMode
+        }
 
     /// 花火 1 発の種。ゴール上空の空（画面に入る帯 y 250..350）へ、i から決めた散らばりで置く。
     /// x/y とも i の剰余で決める（決定的・保存しない）。seed = i なので粒の散り方も発ごとに違う。

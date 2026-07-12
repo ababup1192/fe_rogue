@@ -122,6 +122,9 @@ mod Gallery {
         // 見せ場 12: トゲ落とし穴 — 走ってトゲへ跳び込むと踏めずに死に、出発点へ戻って着地する。
         let spikyTrapFilm = bakeGif(atlas, Trace.spikyWorld(), Trace.spikyTrapCues(), 2, "spiky_trap");
 
+        // キャラクターラボ: 候補キャラが同じ演技を横並びで踊る比較舞台（1800×260・CharGallery）。
+        let paradeFilm = CharGallery.bake(atlas);
+
         // サイト生成。
         run {
             SnapshotSite.generate(
@@ -130,7 +133,8 @@ mod Gallery {
                 catalog({ full = fullFilm, tap = tapFilm, across = acrossFilm,
                           dash = dashFilm, death = deathFilm, lift = liftFilm, drop = dropFilm,
                           clearRun = clearRunFilm, slope = slopeFilm, stomp = stompFilm,
-                          flyerBob = flyerBobFilm, spikyTrap = spikyTrapFilm }))
+                          flyerBob = flyerBobFilm, spikyTrap = spikyTrapFilm,
+                          parade = paradeFilm }))
         } with Fs.FileWrite.runWithIO
 
     // ── カタログ（ページとカードの宣言）──
@@ -148,7 +152,8 @@ mod Gallery {
         slope = SnapshotSite.Filmstrip,
         stomp = SnapshotSite.Filmstrip,
         flyerBob = SnapshotSite.Filmstrip,
-        spikyTrap = SnapshotSite.Filmstrip
+        spikyTrap = SnapshotSite.Filmstrip,
+        parade = SnapshotSite.Filmstrip
     }
 
     def catalog(films: Films): List[SnapshotSite.Item] =
@@ -165,7 +170,9 @@ mod Gallery {
         gif("slope_walk", "45° の坂を登る: 速度が斜面に沿い接地は途切れない（下りは 6px の吸着）。離すと静止摩擦でその場に停まる", "Slope", films#slope) ::
         gif("stomp_patrol", "敵: 手前の歩く敵を踏んで倒し（半ジャンプのバウンド）、次の敵に横から触れて死ぬ — 出発点へ戻される", "Enemy", films#stomp) ::
         gif("flyer_bob", "パタパタは空中で踏める: 敵の下で待ち、下降中に重なるとバウンドして倒せる", "Enemy", films#flyerBob) ::
-        gif("spiky_trap", "トゲは踏んでも死ぬ→出発点へ: 走って跳び込むと踏めずに死に、出発点へ戻って着地する", "Enemy", films#spikyTrap) :: Nil
+        gif("spiky_trap", "トゲは踏んでも死ぬ→出発点へ: 走って跳び込むと踏めずに死に、出発点へ戻って着地する", "Enemy", films#spikyTrap) ::
+        gifAt("charparade", "キャラクターラボ: 候補 15 体が同じ 6 秒の演技（走り→Bダッシュ→スキッド→折り返し→ジャンプ→着地→待機）を横並びで踊る", "Characters", 1800, films#parade) ::
+        pngAt("charlineup", "キャラクターラボの整列写真: t=5.0 の待機（呼吸）で全 15 体をラベル付きで並べた 1 枚", "Characters", 1800) :: Nil
 
     def png(name: String, desc: String, scenario: String): SnapshotSite.Item =
         pngAt(name, desc, scenario, pxWidth())
@@ -176,7 +183,11 @@ mod Gallery {
           lint = SnapshotSite.noLint(), filmstrip = SnapshotSite.noFilmstrip() }
 
     def gif(name: String, desc: String, scenario: String, filmstrip: SnapshotSite.Filmstrip): SnapshotSite.Item =
+        gifAt(name, desc, scenario, pxWidth(), filmstrip)
+
+    def gifAt(name: String, desc: String, scenario: String, px: Int32,
+              filmstrip: SnapshotSite.Filmstrip): SnapshotSite.Item =
         { name = name, desc = desc, scenario = scenario, tags = Nil, ext = "gif",
-          pxWidth = pxWidth(), generateHint = Some("run `make bake` to generate"),
+          pxWidth = px, generateHint = Some("run `make bake` to generate"),
           lint = SnapshotSite.noLint(), filmstrip = Some(filmstrip) }
 }

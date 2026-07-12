@@ -1,5 +1,5 @@
 // TestMoving — 動く床（縦リフト・横フェリー）と一方通行の薄板を固定する（Wave A3）。
-// 動く床は時刻 t の純関数（三角波 pingPong）なので、往復も途中経過も pin は厳密値で比べられる。
+// 動く床は時刻 t の純関数（三角波 triWave）なので、往復も途中経過も pin は厳密値で比べられる。
 // dt = 1/64・period は 2 の冪秒（4 秒）を選んであるので speed×frame の位置も割り切れる。
 // 重力の積分だけは循環小数（1365.33… px/s²）を含むので round4 で比べる（TestPlatformer と同じ流儀）。
 
@@ -83,7 +83,8 @@ mod TestMoving {
     def testLandOnOneWayFromAbove(): Unit \ Assert =
         let above = { player = { pos = { x = 160.0, y = 101.0 }, vel = Vec2.zero(), grounded = false,
                                   coyoteLeft = 0.0, bufferLeft = 0.0, jumpHeld = false, squashLeft = 0.0,
-                                  facing = 1.0, ridingId = None, dropLeft = 0.0 } | Trace.oneWayWorld() };
+                                  facing = 1.0, ridingId = None, dropLeft = 0.0,
+                     viewMode = CharStage.Mode.IdleMode, viewModeT = 0.0, guardLeft = 0, invulnLeft = 0.0 } | Trace.oneWayWorld() };
         let worlds = timeline(Trace.flight(40), above);
         let final = play(Trace.flight(40), above);
         Assert.assertEq(expected = (true, true, 122.0),
@@ -125,8 +126,8 @@ mod TestMoving {
     // ========================================================================
 
     // liftWorld の mover（基準 (160,150)・振れ幅 32・周期 4 秒・軸は上向き）:
-    // t=0 は基準そのまま、t=1（1/4 周期）は pingPong=1.0 で頂点 (160,118)、
-    // t=2（1/2 周期）は pingPong=0.0 で基準へ戻る。
+    // t=0 は基準そのまま、t=1（1/4 周期）は triWave=1.0 で頂点 (160,118)、
+    // t=2（1/2 周期）は triWave=0.0 で基準へ戻る。
     @Test
     def testPlatformPosAtTrianglePoints(): Unit \ Assert =
         let mover = Field.movingAt(400, { x = 160.0, y = 150.0 }, { x = 48.0, y = 14.0 },
