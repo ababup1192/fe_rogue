@@ -16,7 +16,7 @@
 | Stmt | 発言の AST（Say / Not）・正規化（否定の偶奇潰し）・日本語文言・直接評価 holds |
 | Rules | ★Datalog ルールパック = 発言の意味論の唯一の置き場（consistent / propagate / reachable） |
 | Solver | 総当たり（solutions / uniqueSolution）と仮置きの深さ（probeDepth）— 独立 2 実装の相互 oracle |
-| Prng | splitmix64（fe_rogue から移植）+ nextIntRange / pick |
+| Random | 乱数。第一級の Generator[a]（Seed/initialSeed/step/map/andThen/int/list/uniform/oneOf）と、種を書かない Rng エフェクト（sample/withSeed）+ 相互変換 toGen を一枚岩で同居。splitmix64 は private |
 | Gen | 難易度 → 発言セットの組み立て（build = 実行時・無検証、validated = 探索とテスト用） |
 | Stage | 10 ステージの難易度表 + 出題プール（各 6 シード）。**ステージを足すならここ + SeedSearch** |
 | Human | 人間シルエットの手続き描画（ピクトグラム風・4 方向・歩行 / 立ち・探偵帽） |
