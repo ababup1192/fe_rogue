@@ -10,9 +10,12 @@ mod TestApp {
     def frameTuple(frame: App.Frame): (Set[GameEngine.Key], Set[GameEngine.Key], Float64) =
         (frame#down, frame#justPressed, frame#dt)
 
+    /// テスト用の design サイズ。ここのテストは viewport を見ないので値は任意。
+    def testViewport(): Vec2.Vec2 = { x = 320.0, y = 240.0 }
+
     /// キー無し・dt 0 の Frame。
     def emptyFrame(): App.Frame =
-        App.frameOf(prev = Set#{}, current = Set#{}, 0.0)
+        App.frameOf(prev = Set#{}, current = Set#{}, 0.0, testViewport())
 
     // ========================================================================
     // frameOf: エッジ判定
@@ -21,21 +24,21 @@ mod TestApp {
     // 新規押下: 前に無く今ある Left は down にも justPressed にも立つ。dt は素通し。
     @Test
     def testFrameOfNewPressIsEdge(): Unit \ Assert =
-        let actual = App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Left}, 0.016);
+        let actual = App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Left}, 0.016, testViewport());
         Assert.assertEq(expected = (Set#{GameEngine.Key.Left}, Set#{GameEngine.Key.Left}, 0.016),
             frameTuple(actual))
 
     // 押しっぱなし: 前も今もある Left は down のまま、justPressed には立たない。
     @Test
     def testFrameOfHeldKeyIsNotEdge(): Unit \ Assert =
-        let actual = App.frameOf(prev = Set#{GameEngine.Key.Left}, current = Set#{GameEngine.Key.Left}, 0.016);
+        let actual = App.frameOf(prev = Set#{GameEngine.Key.Left}, current = Set#{GameEngine.Key.Left}, 0.016, testViewport());
         Assert.assertEq(expected = (Set#{GameEngine.Key.Left}, Set#{}, 0.016),
             frameTuple(actual))
 
     // 離し: 前にあって今無い Left はどちらにも立たない（離しエッジは追わない）。
     @Test
     def testFrameOfReleaseIsSilent(): Unit \ Assert =
-        let actual = App.frameOf(prev = Set#{GameEngine.Key.Left}, current = Set#{}, 0.016);
+        let actual = App.frameOf(prev = Set#{GameEngine.Key.Left}, current = Set#{}, 0.016, testViewport());
         Assert.assertEq(expected = (Set#{}, Set#{}, 0.016),
             frameTuple(actual))
 
@@ -44,7 +47,7 @@ mod TestApp {
     def testFrameOfMixedKeysSplitEdges(): Unit \ Assert =
         let actual = App.frameOf(
             prev = Set#{GameEngine.Key.Left},
-            current = Set#{GameEngine.Key.Left, GameEngine.Key.Space}, 0.016);
+            current = Set#{GameEngine.Key.Left, GameEngine.Key.Space}, 0.016, testViewport());
         Assert.assertEq(
             expected = (Set#{GameEngine.Key.Left, GameEngine.Key.Space}, Set#{GameEngine.Key.Space}, 0.016),
             frameTuple(actual))
@@ -65,13 +68,31 @@ mod TestApp {
         Assert.assertEq(expected = 7, App.applySystems(emptyFrame(), Nil, 7))
 
     // ========================================================================
+    // makeWith: 初期 World は design サイズから組める
+    // ========================================================================
+
+    // makeWith の init は design サイズを受け取る（launch が画面サイズを渡して呼ぶ）。
+    // 320 の半分 = 160 が出れば、画面中央のような導出をゲーム側がベタ書きせずに書ける。
+    @Test
+    def testMakeWithBuildsInitFromViewport(): Unit \ Assert =
+        let app = App.makeWith(design -> design#x / 2.0);
+        let init = app#init;
+        Assert.assertEq(expected = 160.0, init(testViewport()))
+
+    // make(値) は design サイズに依らず同じ初期 World を返す（既存ゲームの入口は不変）。
+    @Test
+    def testMakeIgnoresViewport(): Unit \ Assert =
+        let init = App.make(42)#init;
+        Assert.assertEq(expected = 42, init(testViewport()))
+
+    // ========================================================================
     // quit: 既定は Escape のエッジ・quitWhen で差し替え
     // ========================================================================
 
     // 既定の quit は Escape の新規押下で true。
     @Test
     def testQuitDefaultFiresOnEscapeEdge(): Unit \ Assert =
-        let frame = App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Escape}, 0.016);
+        let frame = App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Escape}, 0.016, testViewport());
         let wantsQuit = App.make(0)#quit;
         Assert.assertEq(expected = true, wantsQuit(frame, 0))
 
@@ -79,7 +100,7 @@ mod TestApp {
     @Test
     def testQuitDefaultIgnoresHeldEscape(): Unit \ Assert =
         let frame = App.frameOf(
-            prev = Set#{GameEngine.Key.Escape}, current = Set#{GameEngine.Key.Escape}, 0.016);
+            prev = Set#{GameEngine.Key.Escape}, current = Set#{GameEngine.Key.Escape}, 0.016, testViewport());
         let wantsQuit = App.make(0)#quit;
         Assert.assertEq(expected = false, wantsQuit(frame, 0))
 

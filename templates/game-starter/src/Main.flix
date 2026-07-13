@@ -11,7 +11,9 @@ def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()
     else {
         run {
-            App.make(World.initial())
+            // makeWith: App が画面サイズ（project.json の designWidth/Height）を読んで
+            // World.initial に渡してくれる。ゲーム側で画面サイズをベタ書きしない。
+            App.makeWith(World.initial)
                 |> App.addSystem(Controls.step)
                 |> App.withView(View.frame)
                 |> App.launch

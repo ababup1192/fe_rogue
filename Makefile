@@ -29,7 +29,7 @@ FLIX_TEST := $(CURDIR)/bin/flix
 
 # 全パッケージ共通のバージョン (lockstep)。sync 先ディレクトリ名や release の
 # asset 名に使う。make bump FROM=x TO=y で各 flix.toml と一緒に上げる。
-VERSION := 0.1.0
+VERSION := 0.1.1
 
 RENDER_GL_DIR       := render_gl
 RENDER_GL_FPKG_SRC  := $(RENDER_GL_DIR)/artifact/render_gl.fpkg
@@ -170,7 +170,7 @@ sync-engine-full:
 	done; \
 	find $(ENGINE_FULL_DIR)/src -type l | awk 'END { print "[sync-engine-full] " NR " source symlink(s)" }'
 	cd $(ENGINE_FULL_DIR) && $(FLIX) build-pkg
-	@for dir in examples/*/; do \
+	@for dir in examples/*/ templates/*/; do \
 		toml="$$dir/flix.toml"; \
 		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_game_engine"' "$$toml"; then \
 			target="$${dir}$(ENGINE_FULL_SUBPATH)"; \
@@ -202,12 +202,12 @@ release: sync test
 bump:
 	@test -n "$(FROM)" && test -n "$(TO)" || { echo "usage: make bump FROM=0.1.0 TO=0.1.1"; exit 1; }
 	@for f in $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR) $(ENGINE_FULL_DIR); do \
-		sed -i '' -E 's/^(version[[:space:]]*=[[:space:]]*)"$(FROM)"/\1"$(TO)"/' "$$f/flix.toml"; \
+		sed -i -E 's/^(version[[:space:]]*=[[:space:]]*)"$(FROM)"/\1"$(TO)"/' "$$f/flix.toml"; \
 	done
-	@for f in $(ENGINE_DIR)/flix.toml $(RENDER_GL_DIR)/flix.toml $(ENGINE_WORLD_DIR)/flix.toml $(ENGINE_TOOLS_DIR)/flix.toml $(ENGINE_FULL_DIR)/flix.toml examples/*/flix.toml; do \
-		[ -f "$$f" ] && sed -i '' -E 's|(ababup1192/flix_[a-z_]*"[^"]*version = )"$(FROM)"|\1"$(TO)"|g' "$$f" || true; \
+	@for f in $(ENGINE_DIR)/flix.toml $(RENDER_GL_DIR)/flix.toml $(ENGINE_WORLD_DIR)/flix.toml $(ENGINE_TOOLS_DIR)/flix.toml $(ENGINE_FULL_DIR)/flix.toml examples/*/flix.toml templates/*/flix.toml; do \
+		[ -f "$$f" ] && sed -i -E 's|(ababup1192/flix_[a-z_]*"[^"]*version = )"$(FROM)"|\1"$(TO)"|g' "$$f" || true; \
 	done
-	@sed -i '' -E 's/^(VERSION := ).*/\1$(TO)/' Makefile
+	@sed -i -E 's/^(VERSION := ).*/\1$(TO)/' Makefile
 	@echo "[bump] $(FROM) -> $(TO) 完了 (flix-random と flix コンパイラ版は据え置き)。"
 
 # ── コミュニティビルド用ルート src/ ──────────────────────

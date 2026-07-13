@@ -16,8 +16,8 @@ mod World {
     /// 1秒あたりの移動速度（design 座標 px/秒）。
     pub def speed(): Float64 = 120.0
 
-    /// ゲーム開始時の状態。画面の真ん中に置く。
-    pub def initial(): World = { x = 160.0, y = 120.0 }
+    /// ゲーム開始時の状態。画面の真ん中に置く（design サイズは project.json の designWidth/Height 由来）。
+    pub def initial(design: Vec2.Vec2): World = { x = design#x / 2.0, y = design#y / 2.0 }
 
     /// 入力と経過時間から次の状態を作る（純粋）。
     /// 端で止めないのは、まず「動く」ことだけを見せたいから。壁で止めたくなったらここに clamp を足す。

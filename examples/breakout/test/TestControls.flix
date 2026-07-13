@@ -5,9 +5,12 @@
 
 mod TestControls {
 
+    /// テスト用の design サイズ。ここのテストは viewport を見ないので値は任意。
+    def testViewport(): Vec2.Vec2 = { x = 320.0, y = 240.0 }
+
     /// キー無し・dt 0 の Frame。
     def emptyFrame(): App.Frame =
-        App.frameOf(prev = Set#{}, current = Set#{}, 0.0)
+        App.frameOf(prev = Set#{}, current = Set#{}, 0.0, testViewport())
 
     /// Input を比較できるタプル (left, right, launch, enter) へ射影する。
     def inputTuple(input: Field.Input): (Bool, Bool, Bool, Bool) =
@@ -17,7 +20,7 @@ mod TestControls {
     @Test
     def testInputOfHeldKeys(): Unit \ Assert =
         let held = Set#{GameEngine.Key.Left, GameEngine.Key.Space, GameEngine.Key.Enter};
-        let frame = App.frameOf(prev = held, current = held, 0.016);
+        let frame = App.frameOf(prev = held, current = held, 0.016, testViewport());
         Assert.assertEq(expected = (true, false, false, false), inputTuple(Controls.inputOf(frame)))
 
     // 新規押下の Right/Space/Enter: 全部このフレームで意味を持つ（right は連続・launch/enter はエッジ）。
@@ -25,7 +28,7 @@ mod TestControls {
     def testInputOfFreshKeys(): Unit \ Assert =
         let frame = App.frameOf(
             prev = Set#{},
-            current = Set#{GameEngine.Key.Right, GameEngine.Key.Space, GameEngine.Key.Enter}, 0.016);
+            current = Set#{GameEngine.Key.Right, GameEngine.Key.Space, GameEngine.Key.Enter}, 0.016, testViewport());
         Assert.assertEq(expected = (false, true, true, true), inputTuple(Controls.inputOf(frame)))
 
     // 何も押されていなければ noInput と同じ。

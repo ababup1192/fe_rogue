@@ -16,7 +16,8 @@ mod App {
     pub type alias Frame = {
         down = Set[GameEngine.Key],        // いま押されているキー
         justPressed = Set[GameEngine.Key], // このフレームで新しく押されたキー（エッジ）
-        dt = Float64                       // 前フレームからの経過秒（エンジンがクランプ済み）
+        dt = Float64,                      // 前フレームからの経過秒（エンジンがクランプ済み）
+        viewport = Vec2.Vec2               // design 解像度の幅・高さ（project.json の designWidth/Height）
     }
 
     /// key がいま押されているか（押しっぱなしも true）。移動などの連続入力に。
@@ -35,7 +36,7 @@ mod App {
     /// 純粋なゲームは ef = {}（Pure）、effect で状態を持つゲームは自分の効果行を ef に載せて
     /// 同じ App に乗せる（効果多相）。
     pub type alias App[w: Type, ef: Eff] = {
-        init = w,                                                  // 出発点の World
+        init = Vec2.Vec2 -> w \ ef,                                // design 解像度 → 出発点の World（launch が画面サイズを渡して呼ぶ）
         startupSystems = List[w -> w \ ef],                        // 起動時に 1 回だけ・追加順
         updateSystems = List[(Frame, w) -> w \ ef],                // 毎フレーム・追加順
         reload = Option[(GameEngine.Key, w -> w \ {Fs.FileRead})], // ホットリロード（キーと、ファイル読みの副作用）
@@ -56,10 +57,16 @@ mod App {
     }
 
     /// 初期 World だけを持つ空の App。絵はまだ無い（withView で繋ぐまで何も描かない）。
+    /// 初期値を画面サイズから組みたいゲームは makeWith を使う。
     pub def make(init: w): App[w, ef] =
+        makeWith(_ -> checked_ecast(init))
+
+    /// 初期 World を design 解像度（project.json の designWidth/Height）から組む入口。
+    /// launch が画面サイズを読んで f へ渡すので、ゲーム側はエンジン API に触れない。
+    pub def makeWith(f: Vec2.Vec2 -> w \ ef): App[w, ef] =
         // 既定の hook は純粋だが、フィールド型は効果多相 ef。Pure は任意の ef に安全に広げられるので
         // 本体を checked_ecast で ef へ widen して型を合わせる（呼び出し側が ef を絞る）。
-        { init = init,
+        { init = f,
           startupSystems = Nil,
           updateSystems = Nil,
           reload = None,
@@ -138,10 +145,12 @@ mod App {
     /// 前フレームと今フレームのキー集合から Frame を組む。justPressed は差分
     /// （今あって前に無いキー）なので、押しっぱなしはエッジにならない。
     pub def frameOf(prev: {prev = Set[GameEngine.Key]},
-                    current: {current = Set[GameEngine.Key]}, dt: Float64): Frame =
+                    current: {current = Set[GameEngine.Key]}, dt: Float64,
+                    viewport: Vec2.Vec2): Frame =
         { down = current#current,
           justPressed = Set.difference(current#current, prev#prev),
-          dt = dt }
+          dt = dt,
+          viewport = viewport }
 
     /// システムの列を追加順（左から右）に World へ畳み込む。
     pub def applySystems(frame: Frame, systems: List[(Frame, w) -> w \ ef], world: w): w \ ef =
@@ -159,7 +168,8 @@ mod App {
     /// デバッグ有効（withDebug）かつ環境変数 DEBUG_HTTP_PORT があれば、リモートデバッグの
     /// HTTP 口も一緒に立ち上がる（例: `DEBUG=1 DEBUG_HTTP_PORT=7777 flix run`）。
     pub def launch(app: App[w, ef]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
-        let world0 = List.foldLeft((acc, sys) -> sys(acc), app#init, app#startupSystems);
+        let init = app#init;
+        let world0 = List.foldLeft((acc, sys) -> sys(acc), init(GameEngine.Game.getViewportRect()#size), app#startupSystems);
         let bridge = if (canDebug(app)) Option.map(RemoteDebug.start, RemoteDebug.portFromEnv())
                      else None;
         loop(app, world0, InputEvent.currentKeys(), Annotate.initial(), Nil, bridge, false);
@@ -186,7 +196,7 @@ mod App {
              anno: Annotate.State, history: List[w],
              bridge: Option[RemoteDebug.Bridge], remoteHold: Bool): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
         let currentKeys = InputEvent.currentKeys();
-        let frame = frameOf(prev = prevKeys, current = currentKeys, readDt());
+        let frame = frameOf(prev = prevKeys, current = currentKeys, readDt(), GameEngine.Game.getViewportRect()#size);
         let wantsQuit = app#quit;
         if (GameEngine.Game.shouldClose() or wantsQuit(frame, world)) ()
         else {
@@ -599,7 +609,7 @@ mod App {
                         Ref.put(frameNo, frameNoRef);
                         // 実ハンドラへ素通し = glfwPollEvents が回り、窓が固まらない・閉じられる
                         let closing = GameEngine.Game.shouldClose();
-                        let frame = frameOf(prev = state#prev, current = frameKeys, stepParams#dtSeconds);
+                        let frame = frameOf(prev = state#prev, current = frameKeys, stepParams#dtSeconds, GameEngine.Game.getViewportRect()#size);
                         let wantsQuit = app#quit;
                         if (closing or wantsQuit(frame, state#world))
                             { stopped = "quit", quit = true | state }
