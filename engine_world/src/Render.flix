@@ -118,7 +118,7 @@ mod Render {
 
     // ── extract / 射影（lib が Drawable を1回だけ組む）──
 
-    /// draw list 全体を描画命令へ（zIndex 順は render_core が stable sort する）。
+    /// draw list 全体を描画命令へ（zIndex 順は render_gl が stable sort する）。
     /// Sprite / Text / Box は Drawable、Poly は置き場所を頂点に織り込んだ PolygonRenderCmd になる —
     /// 呼び側は 1 本のリストを組むだけで、2 系統への振り分けはここで終わる。
     pub def draw(items: List[Placed]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =

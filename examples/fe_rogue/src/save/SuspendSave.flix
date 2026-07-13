@@ -1,6 +1,6 @@
 /// SuspendSave — 中断セーブのディスク表現（`FloorSnapshot.T` ＋ 使用済みフラグ）。
 ///
-/// 中断セーブは「再開すると消える」（save-scum 防止）。`Fs`（flix_render_core 由来）に
+/// 中断セーブは「再開すると消える」（save-scum 防止）。`Fs`（flix_render_gl 由来）に
 /// ファイル削除 API が無いため、**削除の代わりに `consumed = true` で上書き**する。
 ///   - 保存時:  `make(false, 現在のフロア)`
 ///   - 再開時:  snapshot を使って復元したあと `make(true, snapshot)` で上書き

@@ -1,7 +1,7 @@
 // RenderUtil — 描画に使う数値変換ヘルパー。
 //
 // GL の uniform やシェーダに渡す前の Float32 変換・丸め・三角関数をまとめる。
-// engine_core に置くことで、フロント・各バックエンド・ゲームが共有して使える。
+// engine（契約層）に置くことで、フロント・各バックエンド・ゲームが共有して使える。
 
 mod RenderUtil {
     import java.lang.Math

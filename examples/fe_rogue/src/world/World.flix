@@ -184,7 +184,7 @@ pub enum World {
                  rings = Map[EntityId, List[Ring.RingResource]],
                  // ringEquipped の command-derive Bool store（waited 同型・player-only）。装備指輪の効果発動フラグ。
                  ringEquipped = Map[EntityId, Bool],
-                 // 位置 store。型は Vec2i の structural record（engine_core.Vec2i の演算 API 対象）。
+                 // 位置 store。型は Vec2i の structural record（engine の Vec2i の演算 API 対象）。
                  // pos は単一 store（unified-id・`Cmd.Move` 権威）。
                  pos = Map[EntityId, {x = Int32, y = Int32}],
                  // 連続的な描画位置（pixel・tween 込み）。render System(renderUnits)が読む。command-derive。

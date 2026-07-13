@@ -1,8 +1,7 @@
 // ProjectLoader — project.json を読み込んで engine 起動用の設定 + scene ファイル列挙を提供する。
 //
-// project.json は engine / IDE / examples が共通で読む唯一の真実 (single source of truth)。
-// engine_core 層に置くことで render_core / engine / editor / ide / examples いずれからも
-// import できる。
+// project.json は engine / examples が共通で読む唯一の真実 (single source of truth)。
+// engine（契約層）に置くことで、バックエンド（render_gl）やゲームのどこからも import できる。
 //
 // スキーマ (engine の `GameEngine.EngineConfig` と完全一致):
 //

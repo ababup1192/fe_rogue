@@ -2,7 +2,7 @@
 // ソフトウェアラスタライザ。GL を使わないので GL コンテキストの無い場所（スナップショット
 // テスト、将来の IDE ビューポートのプレビュー）で描画結果を目視確認できる。
 //
-// 描画規約は render_core/Frame.drawSprite と一致させてある:
+// 描画規約は render_gl/Frame.drawSprite と一致させてある:
 //   - box（texture==""）      : scale がそのまま design px サイズ。角丸＋枠を描く。
 //   - textured（texture!=""）  : displaySize = texInfo × scale。centered なら中心原点。
 //                               uvOffset/uvScale が元テクスチャの部分矩形を選ぶ。

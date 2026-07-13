@@ -3,7 +3,8 @@
 // 細部を知らずに済む。
 // 利用例: `withLwjgl(config, ...)` でウィンドウを開き、ゲームループを回す。
 // 注意: GL / OpenAL / シェーダ / テクスチャ / フォントベイク / フレーム描画 / 音声デコードは
-//   `render_core` (RenderCore.*) 側にあり、このファイルは GLFW 外周だけを持って各 effect の本体から呼ぶ。
+//   同じ render_gl 内の各 mod（Render / Shader / Texture / Font / Frame / Audio 等）にあり、
+//   このファイルは GLFW 外周だけを持って各 effect の本体から呼ぶ。
 //   `withLwjgl` の第1引数 EngineConfig と戻り値の effect 制約は公開 API として固定（ゲーム側を変えずに済む）。
 
 mod LwjglLayer {
@@ -251,7 +252,7 @@ mod LwjglLayer {
         let screenW = Int32.toFloat64(config#designWidth);
         let screenH = Int32.toFloat64(config#designHeight);
 
-        // GL リソース構築は render_core に委譲
+        // GL リソース構築は各描画 mod（RenderShader 等）に委譲
         let spriteShader = RenderShader.createShaderProgram(
             RenderShader.vertexShaderSource(),
             RenderShader.fragmentShaderSource());

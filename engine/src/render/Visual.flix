@@ -1,4 +1,4 @@
-// Color 型は engine_core/src/Color.flix にある。Visual はその `Color` を構造的に使う。
+// Color 型は engine/src/core/Color.flix にある。Visual はその `Color` を構造的に使う。
 
 /// 描画の見た目（色変調・可視性・重なり順）をまとめた値部品。
 /// 描画型はこれを埋め込んで見た目の属性を共有するので、型ごとに同じフィールドを書かずに済む。
