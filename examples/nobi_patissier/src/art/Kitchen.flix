@@ -140,8 +140,7 @@ mod Kitchen {
 
     /// z を持ち上げる（品物アイコンをカウンター天板より手前に出す）。
     def raiseZ(delta: Int32, placed: Render.Placed): Render.Placed =
-        let (pos, item) = placed;
-        (pos, Render.raiseZ(delta, item))
+        { item = Render.raiseZ(delta, placed#item) | placed }
 
     /// 下向き（up=true）または上向きの半円の輪郭。
     def halfDisc(cx: Float64, cy: Float64, r: Float64, downward: Bool): List[Vec2.Vec2] =
@@ -234,5 +233,5 @@ mod Kitchen {
             glow))
 
     def at(x: Float64, y: Float64, item: Render.RenderItem): Render.Placed =
-        ({x = x, y = y}, item)
+        { at = {x = x, y = y}, item = item }
 }

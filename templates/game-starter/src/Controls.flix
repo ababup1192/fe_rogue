@@ -4,12 +4,11 @@
 mod Controls {
     use GameEngine.Key
 
-    /// このフレームのキーを World.Input へ写す。移動は押しっぱなしで効いてほしいので isDown を使う。
+    /// このフレームのキーを World.Input へ写す。App.axis が左右・上下の押し下げを
+    /// -1 / 0 / +1 の軸値に畳む（両押しは 0・押しっぱなしも効く）。
     pub def inputOf(frame: App.Frame): World.Input =
-        { left  = App.isDown(Key.Left, frame),
-          right = App.isDown(Key.Right, frame),
-          up    = App.isDown(Key.Up, frame),
-          down  = App.isDown(Key.Down, frame) }
+        { x = App.axis(negative = Key.Left, positive = Key.Right, frame),
+          y = App.axis(negative = Key.Up,   positive = Key.Down,  frame) }
 
     /// 毎フレームのシステム: キーを Input へ写し、World を1歩進める。
     pub def step(frame: App.Frame, world: World.World): World.World =

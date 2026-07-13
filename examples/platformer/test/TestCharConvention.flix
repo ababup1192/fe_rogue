@@ -14,8 +14,8 @@ mod TestCharConvention {
 
     /// パーツ 1 個が占める範囲 (xLo, xHi, yLo, yHi)。置き場所 + 形の広がり。
     def partBounds(placed: Render.Placed): (Float64, Float64, Float64, Float64) =
-        let (pos, item) = placed;
-        match item {
+        let pos = placed#at;
+        match placed#item {
             case Render.RenderItem.Poly(p) =>
                 let xs = p#vertices |> List.map(v -> pos#x + v#x);
                 let ys = p#vertices |> List.map(v -> pos#y + v#y);

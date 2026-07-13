@@ -16,5 +16,5 @@ mod View {
         // Box は左上原点なので、中心座標から半分ずらして左上を出す。
         let topLeft = { x = world#x - s / 2.0, y = world#y - s / 2.0 };
         let square = Render.solidBox({ x = s, y = s }, playerColor(), zPlayer());
-        (topLeft, square) :: Nil
+        { at = topLeft, item = square } :: Nil
 }

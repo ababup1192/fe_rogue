@@ -52,16 +52,16 @@ mod Char05 {
         let headX = centerX + spec#lean;
         let torsoTop = spec#bottom - spec#size#y;
         let headTop = torsoTop - 6.0;
-        ({x = torsoX - spec#size#x / 2.0, y = torsoTop},
-         Render.box(spec#size, steelBody(), 10) |> Render.rounded(1.5)) ::
-        ({x = headX - 4.0, y = headTop},
-         Render.box({x = 8.0, y = 6.0}, steelDark(), 11) |> Render.rounded(1.0)) ::
-        ({x = headX - 2.5 + facing * 1.5, y = headTop + 2.0},
-         Render.box({x = 5.0, y = 2.0}, eyeAmber(), 12) |> Render.fade(spec#eyeGlow)) ::
-        ({x = torsoX - spec#size#x / 2.0 + 1.5, y = torsoTop + 2.0},
-         Render.box({x = 1.0, y = 1.0}, pistonSilver(), 11)) ::
-        ({x = torsoX + spec#size#x / 2.0 - 2.5, y = torsoTop + 2.0},
-         Render.box({x = 1.0, y = 1.0}, pistonSilver(), 11)) :: Nil
+        { at = {x = torsoX - spec#size#x / 2.0, y = torsoTop},
+          item = Render.box(spec#size, steelBody(), 10) |> Render.rounded(1.5) } ::
+        { at = {x = headX - 4.0, y = headTop},
+          item = Render.box({x = 8.0, y = 6.0}, steelDark(), 11) |> Render.rounded(1.0) } ::
+        { at = {x = headX - 2.5 + facing * 1.5, y = headTop + 2.0},
+          item = Render.box({x = 5.0, y = 2.0}, eyeAmber(), 12) |> Render.fade(spec#eyeGlow) } ::
+        { at = {x = torsoX - spec#size#x / 2.0 + 1.5, y = torsoTop + 2.0},
+          item = Render.box({x = 1.0, y = 1.0}, pistonSilver(), 11) } ::
+        { at = {x = torsoX + spec#size#x / 2.0 - 2.5, y = torsoTop + 2.0},
+          item = Render.box({x = 1.0, y = 1.0}, pistonSilver(), 11) } :: Nil
 
     /// ピストン脚 1 本の置き方。footX = 足の中心 x / baseY = 足の基準面（接地時は 0・空中は pos の y）/
     /// footLift = 足の持ち上げ量 / hullBottom = 胴体下端の y。
@@ -71,12 +71,12 @@ mod Char05 {
     def pistonLeg(spec: LegSpec): List[Render.Placed] =
         let rodTop = spec#hullBottom + 4.0;
         let padTop = spec#baseY - spec#footLift - 2.0;
-        ({x = spec#footX - 2.0, y = spec#hullBottom},
-         Render.box({x = 4.0, y = 4.0}, steelDark(), 9)) ::
-        ({x = spec#footX - 1.0, y = rodTop},
-         Render.box({x = 2.0, y = Float64.max(1.0, padTop - rodTop)}, pistonSilver(), 9)) ::
-        ({x = spec#footX - 3.0, y = padTop},
-         Render.box({x = 6.0, y = 2.0}, steelDark(), 10)) :: Nil
+        { at = {x = spec#footX - 2.0, y = spec#hullBottom},
+          item = Render.box({x = 4.0, y = 4.0}, steelDark(), 9) } ::
+        { at = {x = spec#footX - 1.0, y = rodTop},
+          item = Render.box({x = 2.0, y = Float64.max(1.0, padTop - rodTop)}, pistonSilver(), 9) } ::
+        { at = {x = spec#footX - 3.0, y = padTop},
+          item = Render.box({x = 6.0, y = 2.0}, steelDark(), 10) } :: Nil
 
     // ── ポーズ ──
 
@@ -106,12 +106,12 @@ mod Char05 {
     def flameAt(stage: CharStage.Stage, band: Float64, backX: Float64, ventY: Float64): List[Render.Placed] =
         let len = 6.0 + 9.0 * band + 1.5 * Curve.triWave(stage#t * 13.0 + ventY * 0.2);
         let tipY = 0.9 * Curve.triWave(stage#t * 9.0 + ventY);
-        ({x = backX, y = ventY},
-         Render.polygon({x = 0.0, y = -1.6} :: {x = 0.0, y = 1.6} ::
-                        {x = 0.0 - len * stage#facing, y = tipY} :: Nil, flameOrange(), 9)) ::
-        ({x = backX, y = ventY},
-         Render.polygon({x = 0.0, y = -0.9} :: {x = 0.0, y = 0.9} ::
-                        {x = 0.0 - len * 0.55 * stage#facing, y = tipY * 0.6} :: Nil, eyeAmber(), 9)) :: Nil
+        { at = {x = backX, y = ventY},
+          item = Render.polygon({x = 0.0, y = -1.6} :: {x = 0.0, y = 1.6} ::
+                         {x = 0.0 - len * stage#facing, y = tipY} :: Nil, flameOrange(), 9) } ::
+        { at = {x = backX, y = ventY},
+          item = Render.polygon({x = 0.0, y = -0.9} :: {x = 0.0, y = 0.9} ::
+                         {x = 0.0 - len * 0.55 * stage#facing, y = tipY * 0.6} :: Nil, eyeAmber(), 9) } :: Nil
 
     /// ダッシュの演出その 2: 足元から後ろへ散る接地火花。速度帯が高いほど濃く見える。
     def dashSparks(stage: CharStage.Stage): List[Render.Placed] =
@@ -119,9 +119,9 @@ mod Char05 {
         List.map(i -> {
             let seed = Int32.toFloat64(i);
             let jitter = Curve.triWave(stage#t * (17.0 + 4.0 * seed) + 0.31 * seed);
-            ({x = stage#pos#x - (5.0 + 4.0 * seed + 3.0 * jitter) * stage#facing,
-              y = stage#pos#y - 1.0 - 1.5 * Float64.abs(jitter)},
-             Render.box({x = 1.5, y = 1.5}, eyeAmber(), 12) |> Render.fade(RenderUtil.f32(band)))
+            { at = {x = stage#pos#x - (5.0 + 4.0 * seed + 3.0 * jitter) * stage#facing,
+                    y = stage#pos#y - 1.0 - 1.5 * Float64.abs(jitter)},
+              item = Render.box({x = 1.5, y = 1.5}, eyeAmber(), 12) |> Render.fade(RenderUtil.f32(band)) }
         }, List.range(0, 3))
 
     /// スキッド = 前脚アンカー。胴体を深くのけぞらせ、斜め前に突き出したストラットで地面を掴む。
@@ -130,22 +130,22 @@ mod Char05 {
         let facing = stage#facing;
         let heat = clamp01(Float64.abs(stage#vx) / 200.0);
         let strut =
-            ({x = stage#pos#x, y = 0.0},
-             Render.polygon({x = 1.0 * facing, y = -9.0} :: {x = 4.0 * facing, y = -9.0} ::
-                            {x = 8.0 * facing, y = -1.0} :: {x = 5.0 * facing, y = -1.0} :: Nil,
-                            pistonSilver(), 9)) ::
-            ({x = stage#pos#x + 6.0 * facing - 3.0, y = -2.0},
-             Render.box({x = 6.0, y = 2.0}, steelDark(), 10)) :: Nil;
+            { at = {x = stage#pos#x, y = 0.0},
+              item = Render.polygon({x = 1.0 * facing, y = -9.0} :: {x = 4.0 * facing, y = -9.0} ::
+                             {x = 8.0 * facing, y = -1.0} :: {x = 5.0 * facing, y = -1.0} :: Nil,
+                             pistonSilver(), 9) } ::
+            { at = {x = stage#pos#x + 6.0 * facing - 3.0, y = -2.0},
+              item = Render.box({x = 6.0, y = 2.0}, steelDark(), 10) } :: Nil;
         let sparks = List.map(i -> {
             let seed = Int32.toFloat64(i);
             let jitter = Curve.triWave(stage#t * (15.0 + 3.0 * seed) + 0.27 * seed);
-            ({x = stage#pos#x + (8.0 + 3.0 * jitter) * facing, y = -1.5 - 2.0 * Float64.abs(jitter)},
-             Render.box({x = 1.5, y = 1.5}, if (i == 1) flameOrange() else eyeAmber(), 12)
-             |> Render.fade(RenderUtil.f32(heat)))
+            { at = {x = stage#pos#x + (8.0 + 3.0 * jitter) * facing, y = -1.5 - 2.0 * Float64.abs(jitter)},
+              item = Render.box({x = 1.5, y = 1.5}, if (i == 1) flameOrange() else eyeAmber(), 12)
+              |> Render.fade(RenderUtil.f32(heat)) }
         }, List.range(0, 3));
         let brakeSteam =
-            ({x = stage#pos#x - 9.0 * facing - 2.0, y = -20.0},
-             Render.circle(2.0, steamWhite(), 12) |> Render.fade(RenderUtil.f32(heat * 0.5)));
+            { at = {x = stage#pos#x - 9.0 * facing - 2.0, y = -20.0},
+              item = Render.circle(2.0, steamWhite(), 12) |> Render.fade(RenderUtil.f32(heat * 0.5)) };
         List.flatten(
             hull(stage#pos#x, facing,
                  {bottom = -10.0, lean = 0.0 - 5.0 * facing, size = {x = 14.0, y = 10.0}, eyeGlow = 1.0f32}) ::
@@ -157,18 +157,18 @@ mod Char05 {
     def tuckPose(stage: CharStage.Stage): List[Render.Placed] =
         let baseY = stage#pos#y;
         let coreFlick = 0.6 * Curve.triWave(stage#t * 10.0);
-        ({x = stage#pos#x - 6.0, y = baseY - 12.0},
-         Render.box({x = 12.0, y = 9.0}, steelBody(), 10) |> Render.rounded(2.0)) ::
-        ({x = stage#pos#x - 4.5, y = baseY - 2.5}, Render.box({x = 4.0, y = 2.0}, steelDark(), 9)) ::
-        ({x = stage#pos#x + 0.5, y = baseY - 2.5}, Render.box({x = 4.0, y = 2.0}, steelDark(), 9)) ::
-        ({x = stage#pos#x - 3.0, y = baseY - 11.0}, Render.box({x = 6.0, y = 6.0}, hatchNavy(), 11)) ::
-        ({x = stage#pos#x - 4.0, y = baseY - 17.0},
-         Render.box({x = 8.0, y = 5.0}, steelDark(), 11) |> Render.rounded(1.0)) ::
-        ({x = stage#pos#x - 2.5 + stage#facing * 1.5, y = baseY - 15.5},
-         Render.box({x = 5.0, y = 2.0}, eyeAmber(), 12)) ::
-        ({x = stage#pos#x - 2.2, y = baseY - 10.2}, Render.circle(2.2, coreCyan(), 12)) ::
-        ({x = stage#pos#x - (4.0 + coreFlick), y = baseY - 12.0 - coreFlick},
-         Render.circle(4.0 + coreFlick, coreCyan(), 11) |> Render.fade(0.3f32)) :: Nil
+        { at = {x = stage#pos#x - 6.0, y = baseY - 12.0},
+          item = Render.box({x = 12.0, y = 9.0}, steelBody(), 10) |> Render.rounded(2.0) } ::
+        { at = {x = stage#pos#x - 4.5, y = baseY - 2.5}, item = Render.box({x = 4.0, y = 2.0}, steelDark(), 9) } ::
+        { at = {x = stage#pos#x + 0.5, y = baseY - 2.5}, item = Render.box({x = 4.0, y = 2.0}, steelDark(), 9) } ::
+        { at = {x = stage#pos#x - 3.0, y = baseY - 11.0}, item = Render.box({x = 6.0, y = 6.0}, hatchNavy(), 11) } ::
+        { at = {x = stage#pos#x - 4.0, y = baseY - 17.0},
+          item = Render.box({x = 8.0, y = 5.0}, steelDark(), 11) |> Render.rounded(1.0) } ::
+        { at = {x = stage#pos#x - 2.5 + stage#facing * 1.5, y = baseY - 15.5},
+          item = Render.box({x = 5.0, y = 2.0}, eyeAmber(), 12) } ::
+        { at = {x = stage#pos#x - 2.2, y = baseY - 10.2}, item = Render.circle(2.2, coreCyan(), 12) } ::
+        { at = {x = stage#pos#x - (4.0 + coreFlick), y = baseY - 12.0 - coreFlick},
+          item = Render.circle(4.0 + coreFlick, coreCyan(), 11) |> Render.fade(0.3f32) } :: Nil
 
     /// 落下 = 着陸脚の展開。胴を高く保ってロッドを全伸ばしし、足を左右に開いて接地に備える。
     def gearDownPose(stage: CharStage.Stage): List[Render.Placed] =
@@ -185,13 +185,13 @@ mod Char05 {
         let ease = 1.0 - progress;
         let jetR = 2.0 + 1.5 * progress;
         let jets = List.map(side ->
-            ({x = stage#pos#x + side * (9.0 + 6.0 * progress) - jetR, y = -6.0 - jetR},
-             Render.circle(jetR, steamWhite(), 12) |> Render.fade(RenderUtil.f32(ease * 0.7))),
+            { at = {x = stage#pos#x + side * (9.0 + 6.0 * progress) - jetR, y = -6.0 - jetR},
+              item = Render.circle(jetR, steamWhite(), 12) |> Render.fade(RenderUtil.f32(ease * 0.7)) },
             -1.0 :: 1.0 :: Nil);
         let shock =
-            ({x = stage#pos#x - (10.0 + 5.0 * progress), y = -1.5},
-             Render.box({x = 20.0 + 10.0 * progress, y = 1.5}, steamWhite(), 8)
-             |> Render.rounded(0.75) |> Render.fade(RenderUtil.f32(ease * 0.5)));
+            { at = {x = stage#pos#x - (10.0 + 5.0 * progress), y = -1.5},
+              item = Render.box({x = 20.0 + 10.0 * progress, y = 1.5}, steamWhite(), 8)
+              |> Render.rounded(0.75) |> Render.fade(RenderUtil.f32(ease * 0.5)) };
         List.flatten(
             hull(stage#pos#x, stage#facing,
                  {bottom = -9.0, lean = 0.0, size = {x = 18.0, y = 7.0}, eyeGlow = 0.8f32}) ::
@@ -207,10 +207,10 @@ mod Char05 {
         let puffCycle = cycleAt(stage#modeT / 1.1);
         let puffR = 1.5 + 2.0 * puffCycle;
         let puff =
-            ({x = stage#pos#x - 5.0 * stage#facing - puffR,
-              y = hullBottom - 12.0 - 7.0 * puffCycle - puffR},
-             Render.circle(puffR, steamWhite(), 12)
-             |> Render.fade(RenderUtil.f32((1.0 - puffCycle) * 0.55)));
+            { at = {x = stage#pos#x - 5.0 * stage#facing - puffR,
+                    y = hullBottom - 12.0 - 7.0 * puffCycle - puffR},
+              item = Render.circle(puffR, steamWhite(), 12)
+              |> Render.fade(RenderUtil.f32((1.0 - puffCycle) * 0.55)) };
         List.flatten(
             hull(stage#pos#x, stage#facing,
                  {bottom = hullBottom, lean = 0.0, size = {x = 14.0, y = 10.0}, eyeGlow = glow}) ::

@@ -69,9 +69,10 @@ mod RichText {
                     let (x3, y3) = if (x2 + w > p#maxWidth and x2 > 0.0)
                         (0.0, y2 + p#size + p#lineGap) else (x2, y2);
                     let at = { x = p#pos#x + x3, y = p#pos#y + y3 };
-                    let glyph = (at, Render.textTinted(text, p#atlas, p#size, tint, p#z));
+                    let glyph = { at = at, item = Render.textTinted(text, p#atlas, p#size, tint, p#z) };
                     let emboldened = if (span#bold)
-                        ({ x = at#x + 0.5, y = at#y }, Render.textTinted(text, p#atlas, p#size, tint, p#z)) :: Nil
+                        { at = { x = at#x + 0.5, y = at#y },
+                          item = Render.textTinted(text, p#atlas, p#size, tint, p#z) } :: Nil
                     else
                         Nil;
                     (List.append(done2, glyph :: emboldened), x3 + w, y3)

@@ -37,7 +37,7 @@ mod TestTextDraw {
     def testCenteredUsesCenterLeftAndWidth(): Unit \ Assert =
         let a = { text = "AB", atlas = atlas(), size = 2.0,
                   color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}, z = 0, centerX = 100.0, y = 5.0 };
-        let (pos, _item) = TextDraw.centered(a);
+        let pos = TextDraw.centered(a)#at;
         Assert.assertEq(
             expected = (TextDraw.centerLeft("AB", atlas(), 2.0, 100.0), 5.0),
             (pos#x, pos#y))

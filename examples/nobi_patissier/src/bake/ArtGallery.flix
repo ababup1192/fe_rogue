@@ -46,15 +46,15 @@ mod ArtGallery {
                 let cx = cellPad() + Int32.toFloat64(col) * (cellPx() + cellPad()) + cellPx() / 2.0;
                 Nobi.parts({x = cx, y = cy}, cellPx(), tweak(baseStyle(design)))
             });
-            let label = ({x = cellPad(), y = cy + cellPx() / 2.0 + 4.0},
-                Render.textTinted(designName, atlas, 16.0, labelTint(), 50));
+            let label = { at = {x = cellPad(), y = cy + cellPx() / 2.0 + 4.0},
+                item = Render.textTinted(designName, atlas, 16.0, labelTint(), 50) };
             label :: cells
         });
         let headers = columns() |> List.zipWithIndex |> List.map(colEntry -> {
             let (col, colPair) = colEntry;
             let (colName, _) = colPair;
             let cx = cellPad() + Int32.toFloat64(col) * (cellPx() + cellPad());
-            ({x = cx + 8.0, y = 6.0}, Render.textTinted(colName, atlas, 14.0, labelTint(), 50))
+            { at = {x = cx + 8.0, y = 6.0}, item = Render.textTinted(colName, atlas, 14.0, labelTint(), 50) }
         });
         List.append(headers, rows)
 
@@ -99,7 +99,7 @@ mod ArtGallery {
         rows |> List.flatMap(row -> {
             let (y, label, props) = row;
             List.flatten(
-                (({x = 10.0, y = y - 24.0}, Render.textTinted(label, atlas, 12.0, labelTint(), 50)) :: Nil) ::
+                ({ at = {x = 10.0, y = y - 24.0}, item = Render.textTinted(label, atlas, 12.0, labelTint(), 50) } :: Nil) ::
                 Kitchen.counter(tone, 14.0, y + 20.0, props, Kitchen.Station.Bowl, atlas) ::
                 Kitchen.counter(tone, 120.0, y + 20.0, props, Kitchen.Station.Cutter, atlas) ::
                 Kitchen.oven(240.0, y - 4.0, props, atlas) :: Nil)
@@ -117,8 +117,8 @@ mod ArtGallery {
             let row = i / 6;
             let cx = 50.0 + Int32.toFloat64(col) * 100.0;
             let cy = 60.0 + Int32.toFloat64(row) * 120.0;
-            let label = ({x = cx - 44.0, y = cy + 46.0},
-                Render.textTinted(Items.nameOf(kind), atlas, 12.0, labelTint(), 50));
+            let label = { at = {x = cx - 44.0, y = cy + 46.0},
+                item = Render.textTinted(Items.nameOf(kind), atlas, 12.0, labelTint(), 50) };
             label :: Items.icon(kind, {x = cx, y = cy}, 80.0, atlas)
         })
 
@@ -133,8 +133,7 @@ mod ArtGallery {
             |> List.map(raise(20))
 
     def raise(delta: Int32, placed: Render.Placed): Render.Placed =
-        let (pos, item) = placed;
-        (pos, Render.raiseZ(delta, item))
+        { item = Render.raiseZ(delta, placed#item) | placed }
 
     def mockNobiStyle(): Nobi.Style =
         { design = Nobi.Design.P1, skin = Palette.nobiBright(), look = Nobi.Look.Side,
@@ -156,16 +155,16 @@ mod ArtGallery {
     /// カードは暗色 + ふち、方向記号も小さな暗色バッジに載せる。
     def slotCard(atlas: FontAtlas, pos: Vec2.Vec2, arrow: String,
                  kind: Items.Kind): List[Render.Placed] =
-        ((({x = pos#x - 14.0, y = pos#y - 14.0},
-            Render.solidBox({x = 28.0, y = 28.0}, Palette.slotBg(), 30)
+        ({ at = {x = pos#x - 14.0, y = pos#y - 14.0},
+            item = Render.solidBox({x = 28.0, y = 28.0}, Palette.slotBg(), 30)
                 |> Render.rounded(5.0) |> Render.fade(0.92f32)
-                |> Render.outline(Palette.slotEdge(), 1.5))) ::
-         (({x = pos#x - 7.0, y = pos#y - 28.5},
-            Render.solidBox({x = 14.0, y = 12.0}, Palette.hudBg(), 31)
+                |> Render.outline(Palette.slotEdge(), 1.5) } ::
+         { at = {x = pos#x - 7.0, y = pos#y - 28.5},
+            item = Render.solidBox({x = 14.0, y = 12.0}, Palette.hudBg(), 31)
                 |> Render.rounded(4.0) |> Render.fade(0.92f32)
-                |> Render.outline(Palette.slotEdge(), 1.0))) ::
-         (({x = pos#x - 4.0, y = pos#y - 26.5},
-            Render.textTinted(arrow, atlas, 9.0, Palette.uiAccent(), 32))) :: Nil)
+                |> Render.outline(Palette.slotEdge(), 1.0) } ::
+         { at = {x = pos#x - 4.0, y = pos#y - 26.5},
+            item = Render.textTinted(arrow, atlas, 9.0, Palette.uiAccent(), 32) } :: Nil)
             |> List.append(Items.icon(kind, pos, 22.0, atlas) |> List.map(raise(31)))
 
     /// 下カード型: 画面下に 4 枚並べる。
@@ -182,27 +181,27 @@ mod ArtGallery {
 
     /// 上バー型 HUD。
     def hudBar(atlas: FontAtlas): List[Render.Placed] =
-        ({x = 0.0, y = 0.0}, Render.solidBox({x = 320.0, y = 18.0}, Palette.hudBg(), 40)
-            |> Render.fade(0.88f32)) ::
-        ({x = 8.0, y = 5.0}, Render.textTinted("のこり", atlas, 9.0, Palette.uiText(), 42)) ::
-        ({x = 40.0, y = 5.5}, Render.solidBox({x = 90.0, y = 7.0}, Palette.ovenDark(), 41)
-            |> Render.rounded(3.0)) ::
-        ({x = 41.0, y = 6.5}, Render.solidBox({x = 62.0, y = 5.0}, Palette.timeGauge(), 42)
-            |> Render.rounded(2.5)) ::
-        ({x = 150.0, y = 3.0}, Render.textTinted("クッキー ×7", atlas, 10.0, Palette.uiAccent(), 42)) ::
-        ({x = 240.0, y = 4.0}, Render.textTinted("ベスト 12", atlas, 9.0, Palette.uiText(), 42)) :: Nil
+        { at = {x = 0.0, y = 0.0}, item = Render.solidBox({x = 320.0, y = 18.0}, Palette.hudBg(), 40)
+            |> Render.fade(0.88f32) } ::
+        { at = {x = 8.0, y = 5.0}, item = Render.textTinted("のこり", atlas, 9.0, Palette.uiText(), 42) } ::
+        { at = {x = 40.0, y = 5.5}, item = Render.solidBox({x = 90.0, y = 7.0}, Palette.ovenDark(), 41)
+            |> Render.rounded(3.0) } ::
+        { at = {x = 41.0, y = 6.5}, item = Render.solidBox({x = 62.0, y = 5.0}, Palette.timeGauge(), 42)
+            |> Render.rounded(2.5) } ::
+        { at = {x = 150.0, y = 3.0}, item = Render.textTinted("クッキー ×7", atlas, 10.0, Palette.uiAccent(), 42) } ::
+        { at = {x = 240.0, y = 4.0}, item = Render.textTinted("ベスト 12", atlas, 9.0, Palette.uiText(), 42) } :: Nil
 
     /// 四隅型 HUD。
     def hudCorners(atlas: FontAtlas): List[Render.Placed] =
-        ({x = 6.0, y = 4.0}, Render.solidBox({x = 96.0, y = 16.0}, Palette.hudBg(), 40)
-            |> Render.rounded(4.0) |> Render.fade(0.88f32)) ::
-        ({x = 11.0, y = 8.5}, Render.solidBox({x = 86.0, y = 7.0}, Palette.ovenDark(), 41)
-            |> Render.rounded(3.0)) ::
-        ({x = 12.0, y = 9.5}, Render.solidBox({x = 58.0, y = 5.0}, Palette.timeLow(), 42)
-            |> Render.rounded(2.5)) ::
-        ({x = 234.0, y = 4.0}, Render.solidBox({x = 80.0, y = 16.0}, Palette.hudBg(), 40)
-            |> Render.rounded(4.0) |> Render.fade(0.88f32)) ::
-        ({x = 240.0, y = 6.0}, Render.textTinted("×7  ベスト12", atlas, 9.0, Palette.uiAccent(), 42)) :: Nil
+        { at = {x = 6.0, y = 4.0}, item = Render.solidBox({x = 96.0, y = 16.0}, Palette.hudBg(), 40)
+            |> Render.rounded(4.0) |> Render.fade(0.88f32) } ::
+        { at = {x = 11.0, y = 8.5}, item = Render.solidBox({x = 86.0, y = 7.0}, Palette.ovenDark(), 41)
+            |> Render.rounded(3.0) } ::
+        { at = {x = 12.0, y = 9.5}, item = Render.solidBox({x = 58.0, y = 5.0}, Palette.timeLow(), 42)
+            |> Render.rounded(2.5) } ::
+        { at = {x = 234.0, y = 4.0}, item = Render.solidBox({x = 80.0, y = 16.0}, Palette.hudBg(), 40)
+            |> Render.rounded(4.0) |> Render.fade(0.88f32) } ::
+        { at = {x = 240.0, y = 6.0}, item = Render.textTinted("×7  ベスト12", atlas, 9.0, Palette.uiAccent(), 42) } :: Nil
 
     def mockItems(atlas: FontAtlas, ring: Bool): List[Render.Placed] =
         let spot = Kitchen.stationSpot(Kitchen.Layout.TriangleUp, Kitchen.Station.Bowl);

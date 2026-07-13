@@ -102,7 +102,7 @@ mod View {
                 { x = 0.0, y = size#y } :: { x = size#x, y = size#y } :: { x = size#x, y = 0.0 } :: Nil
             else
                 { x = 0.0, y = size#y } :: { x = size#x, y = size#y } :: { x = 0.0, y = 0.0 } :: Nil;
-        (topLeft, Render.polygon(verts, Palette.slopeGrass(), zOf(platform)))
+        { at = topLeft, item = Render.polygon(verts, Palette.slopeGrass(), zOf(platform)) }
 
     def zOf(platform: Field.Platform): Int32 =
         if (platform#size#y >= 30.0) zGround() else zPlatform()
@@ -129,8 +129,8 @@ mod View {
                            { x = poleW, y = poleH }, Palette.stoneWall(), zPlatform());
         let pennantVerts =
             { x = 0.0, y = 0.0 } :: { x = 14.0, y = 5.0 } :: { x = 0.0, y = 10.0 } :: Nil;
-        let pennant = ({ x = x + poleW / 2.0, y = baseY - poleH },
-                       Render.polygon(pennantVerts, color, zPlatform() + 1));
+        let pennant = { at = { x = x + poleW / 2.0, y = baseY - poleH },
+                        item = Render.polygon(pennantVerts, color, zPlatform() + 1) };
         pole :: pennant :: Nil
 
     // ── 敵（生きているものだけ・時刻の実位置で描く）──
@@ -168,10 +168,10 @@ mod View {
     def domeAt(pos: Vec2.Vec2, color: Color, size: Vec2.Vec2, radius: Float64): List[Render.Placed] =
         let bottom = pos#y + Field.enemyRadius();
         let bodyTopLeft = { x = pos#x - size#x / 2.0, y = bottom - size#y };
-        let body = (bodyTopLeft, Render.box(size, color, zEnemy()) |> Render.rounded(radius));
+        let body = { at = bodyTopLeft, item = Render.box(size, color, zEnemy()) |> Render.rounded(radius) };
         let squareH = 6.0;
         let squarePos = { x = pos#x - size#x / 2.0, y = bottom - squareH };
-        let square = (squarePos, Render.box({ x = size#x, y = squareH }, color, zEnemy()));
+        let square = { at = squarePos, item = Render.box({ x = size#x, y = squareH }, color, zEnemy()) };
         body :: square :: Nil
 
     /// 歩く敵の足 2 本（4×3 の小箱・ドーム底のすぐ下・本体より暗い色 = plankShadow 流用）。
@@ -180,8 +180,8 @@ mod View {
         let bottom = pos#y + Field.enemyRadius();
         let wobble = Field.triWave(t * 2.0) - 0.5; // -0.5..0.5 の揺れ幅
         let footSize = { x = 4.0, y = 3.0 };
-        ({ x = pos#x - 6.0 + wobble, y = bottom }, Render.box(footSize, Palette.plankShadow(), zEnemy())) ::
-        ({ x = pos#x + 2.0 - wobble, y = bottom }, Render.box(footSize, Palette.plankShadow(), zEnemy())) :: Nil
+        { at = { x = pos#x - 6.0 + wobble, y = bottom }, item = Render.box(footSize, Palette.plankShadow(), zEnemy()) } ::
+        { at = { x = pos#x + 2.0 - wobble, y = bottom }, item = Render.box(footSize, Palette.plankShadow(), zEnemy()) } :: Nil
 
     /// パタパタの羽 2 枚（6×3 の小箱・ドームの左右側面）。上下 ±2px の羽ばたきは
     /// triWave(t×2) から毎フレーム導く — 位置は保存しない（閉形式）。
@@ -189,8 +189,8 @@ mod View {
         let r = Field.enemyRadius();
         let flap = Field.triWave(t * 2.0) * 2.0;
         let size = { x = 6.0, y = 3.0 };
-        ({ x = pos#x - r - 5.0, y = pos#y - 2.0 + flap }, Render.box(size, Palette.flyerWing(), zEnemy())) ::
-        ({ x = pos#x + r - 1.0, y = pos#y - 2.0 + flap }, Render.box(size, Palette.flyerWing(), zEnemy())) :: Nil
+        { at = { x = pos#x - r - 5.0, y = pos#y - 2.0 + flap }, item = Render.box(size, Palette.flyerWing(), zEnemy()) } ::
+        { at = { x = pos#x + r - 1.0, y = pos#y - 2.0 + flap }, item = Render.box(size, Palette.flyerWing(), zEnemy()) } :: Nil
 
     /// ドーム上部の弧に沿って並ぶ、上向きの大きい棘 7 本（「踏むな」の記号）。
     /// -60°〜+60° を 7 等分した角度（ラジアンでなく単位ベクトルの定数表）で、
@@ -213,7 +213,7 @@ mod View {
                           y = reach + dir#y * (r - 2.0) + perp#y * 3.0 };
             let baseB = { x = reach + dir#x * (r - 2.0) - perp#x * 3.0,
                           y = reach + dir#y * (r - 2.0) - perp#y * 3.0 };
-            (topLeft, Render.polygon(baseA :: baseB :: tip :: Nil, Palette.spikeTip(), zEnemy()))
+            { at = topLeft, item = Render.polygon(baseA :: baseB :: tip :: Nil, Palette.spikeTip(), zEnemy()) }
         })
 
     /// 側面の小さい棘 2 本（左右に 1 本ずつ・見分けの飾り）。
@@ -231,7 +231,7 @@ mod View {
                           y = reach + dir#y * (r - 2.0) + perp#y * 2.5 };
             let baseB = { x = reach + dir#x * (r - 2.0) - perp#x * 2.5,
                           y = reach + dir#y * (r - 2.0) - perp#y * 2.5 };
-            (topLeft, Render.polygon(baseA :: baseB :: tip :: Nil, Palette.spikeTip(), zEnemy()))
+            { at = topLeft, item = Render.polygon(baseA :: baseB :: tip :: Nil, Palette.spikeTip(), zEnemy()) }
         })
 
     /// 目玉 2 個（本体中心から ±4, -3px・白目 r=eyeR + 黒目 r=eyeR×0.5 を中心に重ねる）。
@@ -245,8 +245,8 @@ mod View {
     /// 目玉 1 個 = 白目（円・zEnemy+1）+ 黒い瞳（円・zEnemy+2・白目より小さく前面）。
     def eyeAt(center: Vec2.Vec2, eyeR: Float64): List[Render.Placed] =
         let pupilR = eyeR * 0.5;
-        ({ x = center#x - eyeR, y = center#y - eyeR }, Render.circle(eyeR, Palette.eyeWhite(), zEnemy() + 1)) ::
-        ({ x = center#x - pupilR, y = center#y - pupilR }, Render.circle(pupilR, Palette.eyePupil(), zEnemy() + 2)) :: Nil
+        { at = { x = center#x - eyeR, y = center#y - eyeR }, item = Render.circle(eyeR, Palette.eyeWhite(), zEnemy() + 1) } ::
+        { at = { x = center#x - pupilR, y = center#y - pupilR }, item = Render.circle(pupilR, Palette.eyePupil(), zEnemy() + 2) } :: Nil
 
     // ── プレイヤー（15 キャラの名簿 Roster 経由・演技情報はラボと同じ Stage）──
 
@@ -267,8 +267,7 @@ mod View {
 
     /// 描画物の縦位置を平行移動する（ラボの laneItems と同じ役目）。
     def shiftY(dy: Float64, placed: Render.Placed): Render.Placed =
-        let (pos, item) = placed;
-        ({ x = pos#x, y = pos#y + dy }, item)
+        { at = { x = placed#at#x, y = placed#at#y + dy }, item = placed#item }
 
     /// World の状態を演技の舞台情報（CharStage.Stage）へ写す。pos#x は世界座標
     /// （キャラは走りの歩幅位相を pos#x の移動距離から導く）、pos#y は常に 0
@@ -315,15 +314,14 @@ mod View {
                 let angle = t * 1.2 + Int32.toFloat64(i) * 1.0471975511965976;  // 60° 刻みで周回
                 let cx = player#pos#x + orbitR * Vec2.cos(angle);
                 let cy = player#pos#y - 2.0 + orbitR * 0.55 * Vec2.sin(angle);  // 楕円軌道(奥行き感)
-                ({ x = cx - dotR, y = cy - dotR },
-                 Render.circle(dotR, Palette.eyeWhite(), zPlayer() - 5) |> Render.fade(0.7f32))
+                { at = { x = cx - dotR, y = cy - dotR },
+                  item = Render.circle(dotR, Palette.eyeWhite(), zPlayer() - 5) |> Render.fade(0.7f32) }
             })
         }
 
     /// Placed の中身だけ半透明にする（置き場所は保つ）。
     def fadePlaced(alpha: Float32, placed: Render.Placed): Render.Placed =
-        let (pos, item) = placed;
-        (pos, Render.fade(alpha, item))
+        { item = Render.fade(alpha, placed#item) | placed }
 
     // ── 演出の粒（土埃・ジャンプ噴射）──
 
@@ -332,8 +330,8 @@ mod View {
         bursts |> List.flatMap(burst ->
             GameFx.particles(burst) |> List.map(triple -> {
                 let (pos, radius, alpha) = triple;
-                ({ x = pos#x - radius, y = pos#y - radius },
-                 Render.circle(radius, burstColor(burst), zBurst()) |> Render.fade(alpha))
+                { at = { x = pos#x - radius, y = pos#y - radius },
+                  item = Render.circle(radius, burstColor(burst), zBurst()) |> Render.fade(alpha) }
             }))
 
     /// 粒の色。花火だけは発番号（seed）で 4 色を巡回する。
@@ -353,20 +351,20 @@ mod View {
             + " coy=${fmt(player#coyoteLeft * 1000.0)}"
             + " buf=${fmt(player#bufferLeft * 1000.0)}"
             + " deaths=${world#deaths}";
-        ({ x = 6.0, y = 4.0 },
-         Render.textTinted(status, atlas, 8.0, Palette.hudText(), zText())) ::
-        ({ x = Field.designW() - 150.0, y = 4.0 },
-         Render.textTinted(Roster.nameOf(world#charIndex), atlas, 8.0, Palette.hudText(), zText())) ::
-        ({ x = 6.0, y = Field.designH() - 12.0 },
-         Render.textTinted("ARROWS move / Z dash / X jump / SHIFT char / F1 reload", atlas, 8.0,
-                           Palette.hintText(), zText())) ::
+        { at = { x = 6.0, y = 4.0 },
+          item = Render.textTinted(status, atlas, 8.0, Palette.hudText(), zText()) } ::
+        { at = { x = Field.designW() - 150.0, y = 4.0 },
+          item = Render.textTinted(Roster.nameOf(world#charIndex), atlas, 8.0, Palette.hudText(), zText()) } ::
+        { at = { x = 6.0, y = Field.designH() - 12.0 },
+          item = Render.textTinted("ARROWS move / Z dash / X jump / SHIFT char / F1 reload", atlas, 8.0,
+                            Palette.hintText(), zText()) } ::
         clearBanner(atlas, world)
 
     /// クリア後は画面中央に「CLEAR!」を出し続ける（ゲームは止めない・検証台なので）。
     def clearBanner(atlas: FontAtlas, world: Field.World): List[Render.Placed] =
         if (Option.isEmpty(world#clearedAt)) Nil
-        else ({ x = Field.designW() / 2.0 - 30.0, y = 80.0 },
-              Render.textTinted("CLEAR!", atlas, 16.0, Palette.hudText(), zText())) :: Nil
+        else { at = { x = Field.designW() / 2.0 - 30.0, y = 80.0 },
+               item = Render.textTinted("CLEAR!", atlas, 16.0, Palette.hudText(), zText()) } :: Nil
 
     /// HUD 用に 1 桁小数へ丸める（RemoteDebug の書式を共用）。
     def fmt(v: Float64): String = RemoteDebug.fmt1(v)
@@ -375,6 +373,6 @@ mod View {
 
     /// 中心座標とサイズから左上原点の Box を置く（Render.box は左上原点）。
     def flatBox(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): Render.Placed =
-        ({ x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
-         Render.box(size, color, z))
+        { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
+          item = Render.box(size, color, z) }
 }

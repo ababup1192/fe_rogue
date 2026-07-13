@@ -68,6 +68,20 @@ mod TestApp {
         Assert.assertEq(expected = 7, App.applySystems(emptyFrame(), Nil, 7))
 
     // ========================================================================
+    // axis: 負・正キーの押し下げ → -1 / 0 / +1
+    // ========================================================================
+
+    // 正キーだけ +1・負キーだけ -1・無押下 0・両押しは打ち消して 0。押しっぱなしも効く（down 判定）。
+    @Test
+    def testAxisFoldsKeysToScalar(): Unit \ Assert =
+        let frameWith = keys -> App.frameOf(prev = keys, current = keys, 0.016, testViewport());
+        let pos = App.axis(negative = GameEngine.Key.Left, positive = GameEngine.Key.Right, frameWith(Set#{GameEngine.Key.Right}));
+        let neg = App.axis(negative = GameEngine.Key.Left, positive = GameEngine.Key.Right, frameWith(Set#{GameEngine.Key.Left}));
+        let idle = App.axis(negative = GameEngine.Key.Left, positive = GameEngine.Key.Right, frameWith(Set#{}));
+        let both = App.axis(negative = GameEngine.Key.Left, positive = GameEngine.Key.Right, frameWith(Set#{GameEngine.Key.Left, GameEngine.Key.Right}));
+        Assert.assertEq(expected = (1.0, -1.0, 0.0, 0.0), (pos, neg, idle, both))
+
+    // ========================================================================
     // makeWith: 初期 World は design サイズから組める
     // ========================================================================
 

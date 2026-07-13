@@ -132,5 +132,5 @@ mod Bezier {
 
     /// 凸ピース 1 枚（頂点は絶対座標で渡し、置き場所は原点にする）。
     def quadPiece(vertices: List[Vec2.Vec2], color: Color, z: Int32): Render.Placed =
-        (Vec2.zero(), Render.polygon(vertices, color, z))
+        { at = Vec2.zero(), item = Render.polygon(vertices, color, z) }
 }

@@ -142,6 +142,6 @@ mod PixelCanvas {
         Map.foldLeftWithKey((acc, k, c) -> {
             let (x, y) = k;
             let pos = { x = Int32.toFloat64(originX + x), y = Int32.toFloat64(originY + y) };
-            (pos, Render.box({ x = 1.0, y = 1.0 }, c, 10)) :: acc
+            { at = pos, item = Render.box({ x = 1.0, y = 1.0 }, c, 10) } :: acc
         }, Nil, cv)
 }

@@ -153,22 +153,22 @@ mod TestAnnotate {
             scale = { x = 2.0, y = 2.0 }, rotation = 0.0, centered = true,
             flipH = false, flipV = false, regionRect = None, zIndex = 0 });
         let sizeOf = _ -> Some({ id = GpuHandle.wrapTextureId(0), width = 10.0, height = 20.0 });
-        let aabb = Annotate.itemAabb(sizeOf, ({ x = 100.0, y = 100.0 }, sprite));
+        let aabb = Annotate.itemAabb(sizeOf, { at = { x = 100.0, y = 100.0 }, item = sprite });
         Assert.assertEq(expected = (90.0, 80.0, 20.0, 40.0), rectTuple(aabb))
 
     /// 寸法の分からないテクスチャのスプライトは、置き場所だけの点（サイズ 0）として扱う。
     @Test
     def testItemAabbUnknownTextureIsPoint(): Unit \ Assert =
         let sprite = Render.sprite("unknown", 0, false, false);
-        let aabb = Annotate.itemAabb(_ -> None, ({ x = 30.0, y = 40.0 }, sprite));
+        let aabb = Annotate.itemAabb(_ -> None, { at = { x = 30.0, y = 40.0 }, item = sprite });
         Assert.assertEq(expected = (30.0, 40.0, 0.0, 0.0), rectTuple(aabb))
 
     /// 矩形 (5,5)-(15,15) は原点の箱 10×10 とは重なるが、(50,50) の箱とは重ならない。
     @Test
     def testHitsFiltersByRect(): Unit \ Assert =
         let gray = { r = 0.5f32, g = 0.5f32, b = 0.5f32 };
-        let near = ({ x = 0.0, y = 0.0 }, Render.box({ x = 10.0, y = 10.0 }, gray, 1));
-        let far = ({ x = 50.0, y = 50.0 }, Render.box({ x = 10.0, y = 10.0 }, gray, 2));
+        let near = { at = { x = 0.0, y = 0.0 }, item = Render.box({ x = 10.0, y = 10.0 }, gray, 1) };
+        let far = { at = { x = 50.0, y = 50.0 }, item = Render.box({ x = 10.0, y = 10.0 }, gray, 2) };
         let rect = { position = { x = 5.0, y = 5.0 }, size = { x = 10.0, y = 10.0 } };
         match Annotate.hits(_ -> None, rect, near :: far :: Nil) {
             case hit :: Nil => Assert.assertEq(expected = ("box", "", 0.0, 0.0), hitTuple(hit))
@@ -228,7 +228,7 @@ mod TestAnnotate {
     def testApplyInspectKeepsCircleRound(): Unit \ Assert =
         let view = { zoom = 2.0, pan = Vec2.zero(), design = design() };
         let yellow = { r = 1.0f32, g = 1.0f32, b = 0.0f32 };
-        let (drawables, _) = Render.draw(({ x = 0.0, y = 0.0 }, Render.circle(5.0, yellow, 0)) :: Nil);
+        let (drawables, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = Render.circle(5.0, yellow, 0) } :: Nil);
         match Annotate.applyInspect(view, drawables) {
             case d :: Nil =>
                 match d#style {

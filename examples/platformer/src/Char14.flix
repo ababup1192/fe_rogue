@@ -35,21 +35,21 @@ mod Char14 {
     def boxC(stage: CharStage.Stage, dx: Float64, dy: Float64,
              w: Float64, h: Float64, c: Color, z: Int32): Render.Placed =
         let p = at(stage, dx, dy);
-        ({ x = p#x - w / 2.0, y = p#y - h / 2.0 }, Render.box({ x = w, y = h }, c, z))
+        { at = { x = p#x - w / 2.0, y = p#y - h / 2.0 }, item = Render.box({ x = w, y = h }, c, z) }
 
     /// 中心 (dx, dy) の円。
     def circC(stage: CharStage.Stage, dx: Float64, dy: Float64,
               r: Float64, c: Color, z: Int32): Render.Placed =
         let p = at(stage, dx, dy);
-        ({ x = p#x - r, y = p#y - r }, Render.circle(r, c, z))
+        { at = { x = p#x - r, y = p#y - r }, item = Render.circle(r, c, z) }
 
     /// (dx, dy) 起点の相対頂点ポリゴン。
     def polyC(stage: CharStage.Stage, dx: Float64, dy: Float64,
               verts: List[Vec2.Vec2], c: Color, z: Int32): Render.Placed =
         let p = at(stage, dx, dy);
         let f = stage#facing;
-        ({ x = p#x, y = p#y },
-         Render.polygon(List.map(v -> { x = f * v#x, y = v#y }, verts), c, z))
+        { at = { x = p#x, y = p#y },
+          item = Render.polygon(List.map(v -> { x = f * v#x, y = v#y }, verts), c, z) }
 
     /// 2 点を結ぶ太さ th の棒（腕や柄を斜めに描く）。
     def strut(stage: CharStage.Stage, ax: Float64, ay: Float64,
@@ -68,12 +68,10 @@ mod Char14 {
     def clamp01(x: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, x))
 
     def fadeP(a: Float64, pl: Render.Placed): Render.Placed =
-        let (p, item) = pl;
-        (p, Render.fade(RenderUtil.f32(clamp01(a)), item))
+        { item = Render.fade(RenderUtil.f32(clamp01(a)), pl#item) | pl }
 
     def roundP(r: Float64, pl: Render.Placed): Render.Placed =
-        let (p, item) = pl;
-        (p, Render.rounded(r, item))
+        { item = Render.rounded(r, pl#item) | pl }
 
     // ── 体の部品（dip = 沈み込み・lean = 前傾・sq/wd = 縦横のつぶし）──
 

@@ -1,5 +1,5 @@
 // Render — 「何をどう見せたいか」だけ書いた RenderItem を、描画部が食べられる形に変換する。
-// スプライトもテキストも箱も円も多角形も、同じ (置き場所, RenderItem) の語彙で並べられる。
+// スプライトもテキストも箱も円も多角形も、同じ { at = 置き場所, item = RenderItem } の語彙で並べられる。
 // 利用例: 弾や敵を絵として並べる / HUD の数字やラベルを出す / 破片や紙吹雪を polygon で撒く。
 // 形は box / circle / polygon で作り、稀な属性（角丸・半透明・枠・縞）はパイプ修飾で重ねる。
 // 注意: 置き場所（位置）は持たず呼び側が渡す。テキストの実寸計算は engine の純粋関数を使う。
@@ -22,7 +22,7 @@ mod Render {
     }
 
     /// 置き場所つきの描画物。View はこの列を組み、draw が描画命令へ変換する。
-    pub type alias Placed = (Vec2.Vec2, RenderItem)
+    pub type alias Placed = { at = Vec2.Vec2, item = RenderItem }
 
     // ── smart constructor（Drawable/BoxStyle をゲームから隠す）──
 
@@ -122,20 +122,16 @@ mod Render {
     /// Sprite / Text / Box は Drawable、Poly は置き場所を頂点に織り込んだ PolygonRenderCmd になる —
     /// 呼び側は 1 本のリストを組むだけで、2 系統への振り分けはここで終わる。
     pub def draw(items: List[Placed]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
-        let drawables = items |> List.flatMap(pair -> {
-            let (pos, item) = pair;
-            match item {
+        let drawables = items |> List.flatMap(placed ->
+            match placed#item {
                 case RenderItem.Poly(_) => Nil
-                case other              => toDrawables(other, pos)
-            }
-        });
-        let polygons = items |> List.filterMap(pair -> {
-            let (pos, item) = pair;
-            match item {
-                case RenderItem.Poly(p) => Some(polyCmd(pos, p))
+                case other              => toDrawables(other, placed#at)
+            });
+        let polygons = items |> List.filterMap(placed ->
+            match placed#item {
+                case RenderItem.Poly(p) => Some(polyCmd(placed#at, p))
                 case _                  => None
-            }
-        });
+            });
         (drawables, polygons)
 
     /// `draw` の atlas 注入版。Sprite の region UV を textureInfoOf で解決しつつ、
@@ -143,20 +139,16 @@ mod Render {
     /// region 付き sprite と Poly が同じ列に混ざる UI（UiRender）の描画口。
     pub def drawWith(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
                      items: List[Placed]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) \ ef =
-        let drawables = items |> List.flatMap(pair -> {
-            let (pos, item) = pair;
-            match item {
+        let drawables = items |> List.flatMap(placed ->
+            match placed#item {
                 case RenderItem.Poly(_) => (Nil: List[GameEngine.Drawable])
-                case other              => toDrawablesAtlas(textureInfoOf, other, pos)
-            }
-        });
-        let polygons = items |> List.filterMap(pair -> {
-            let (pos, item) = pair;
-            match item {
-                case RenderItem.Poly(p) => Some(polyCmd(pos, p))
+                case other              => toDrawablesAtlas(textureInfoOf, other, placed#at)
+            });
+        let polygons = items |> List.filterMap(placed ->
+            match placed#item {
+                case RenderItem.Poly(p) => Some(polyCmd(placed#at, p))
                 case _                  => None
-            }
-        });
+            });
         (drawables, polygons)
 
     /// Poly を置き場所 pos の描画命令へ（全頂点に pos を加算）。
@@ -194,7 +186,7 @@ mod Render {
     /// 画面なしのテストやプレビューでは `_ -> None` などの純粋関数を渡せる（region を使わなければ結果は同じ）。
     pub def drawAtlasWith(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
                           items: List[Placed]): List[GameEngine.Drawable] \ ef =
-        List.flatMap(pair -> let (pos, item) = pair; toDrawablesAtlas(textureInfoOf, item, pos), items)
+        List.flatMap(placed -> toDrawablesAtlas(textureInfoOf, placed#item, placed#at), items)
 
     /// `drawAtlasWith` の Game registry 版（`GameEngine.Game.getTextureInfo` で寸法を引く）。
     /// region スプライトを含む本番描画の既定口。

@@ -141,10 +141,10 @@ mod View {
                        rivetRadius() * 2.0, Palette.rivet(), zBlock() + 2)
         }, (-1.0, -1.0) :: (1.0, -1.0) :: (1.0, 1.0) :: (-1.0, 1.0) :: Nil);
         List.append(
-            (topLeft, Render.solidBox(size, Palette.metalFace(), zBlock())) ::
-            (topLeft, Render.solidBox({ x = size#x, y = bevel }, Palette.metalTop(), zBlock() + 1)) ::
-            ({ x = topLeft#x, y = topLeft#y + size#y - bevel },
-             Render.solidBox({ x = size#x, y = bevel }, Palette.metalShade(), zBlock() + 1)) :: Nil,
+            { at = topLeft, item = Render.solidBox(size, Palette.metalFace(), zBlock()) } ::
+            { at = topLeft, item = Render.solidBox({ x = size#x, y = bevel }, Palette.metalTop(), zBlock() + 1) } ::
+            { at = { x = topLeft#x, y = topLeft#y + size#y - bevel },
+              item = Render.solidBox({ x = size#x, y = bevel }, Palette.metalShade(), zBlock() + 1) } :: Nil,
             rivets)
 
     // ── パドル（面シェーディング＋反射角ゾーンの帯）──
@@ -207,8 +207,8 @@ mod View {
     def trailDot(pos: Vec2.Vec2, age: Float64, ratio: Float64): Render.Placed =
         let diameter = trailHeadDiameter() * (1.0 - (1.0 - trailTailScale()) * age);
         let alpha = RenderUtil.f32(trailBaseAlpha() * (1.0 - age));
-        ({ x = pos#x - diameter / 2.0, y = pos#y - diameter / 2.0 },
-         Render.circle(diameter / 2.0, Palette.trailColor(ratio), zTrail()) |> Render.fade(alpha))
+        { at = { x = pos#x - diameter / 2.0, y = pos#y - diameter / 2.0 },
+          item = Render.circle(diameter / 2.0, Palette.trailColor(ratio), zTrail()) |> Render.fade(alpha) }
 
     /// 飛行中のボールの残像。速度 vel は色ランプ（冷→温→熱）に、位置リング trail は点の並びになる。
     def trailBoxes(params: GameParameters.Params, vel: Vec2.Vec2,
@@ -250,21 +250,21 @@ mod View {
         let spin = Curve.spin((fragSpinMin() + fragSpinSpan() * rand(3)) * spinDir, t);
         let progress = t / Field.burstLifetime();
         let half = fragHalf() * (1.0 - progress);
-        (center, Render.polygon(Quad.rotated(Vec2.zero(), half, half, spin), Palette.fragment(i), zBurst())
-                     |> Render.fade(RenderUtil.f32(1.0 - progress)))
+        { at = center, item = Render.polygon(Quad.rotated(Vec2.zero(), half, half, spin), Palette.fragment(i), zBurst())
+                     |> Render.fade(RenderUtil.f32(1.0 - progress)) }
 
     // ── テキスト（HUD と各フェーズのオーバーレイ）──
 
     def hudTexts(atlas: FontAtlas, core: Field.GameCore): List[Render.Placed] =
-        ({ x = 8.0, y = 13.0 },
-         Render.textTinted("SCORE ${core#score}", atlas, 10.0, Palette.scoreText(), zText())) ::
+        { at = { x = 8.0, y = 13.0 },
+          item = Render.textTinted("SCORE ${core#score}", atlas, 10.0, Palette.scoreText(), zText()) } ::
         centeredText("LV ${core#level}", atlas, 10.0, Palette.scoreText(), 13.0) ::
         rightText("LIVES ${core#lives}", atlas, 10.0, Palette.scoreText(), Field.designW() - 8.0, 13.0) :: Nil
 
     def rightText(text: String, atlas: FontAtlas, size: Float64, color: Color,
                   rightX: Float64, y: Float64): Render.Placed =
-        ({ x = rightX - TextDraw.width(text, atlas, size), y = y },
-         Render.textTinted(text, atlas, size, color, zText()))
+        { at = { x = rightX - TextDraw.width(text, atlas, size), y = y },
+          item = Render.textTinted(text, atlas, size, color, zText()) }
 
     /// タイトル画面のオーバーレイ: 題字と案内だけ（盤・HUD は出さない）。
     def titleTexts(atlas: FontAtlas): List[Render.Placed] =
@@ -302,15 +302,15 @@ mod View {
 
     /// 中心指定の単色ボックス。
     def flatBox(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): Render.Placed =
-        ({ x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
-         Render.box(size, color, z))
+        { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
+          item = Render.box(size, color, z) }
 
     /// 左上指定・高さの半分まで角を丸めたボックス（パドルの丸端の帯）。
     def roundedBox(topLeft: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): Render.Placed =
-        (topLeft, Render.box(size, color, z) |> Render.rounded(Float64.min(size#x, size#y) / 2.0))
+        { at = topLeft, item = Render.box(size, color, z) |> Render.rounded(Float64.min(size#x, size#y) / 2.0) }
 
     /// center を中心とする直径 d の塗りつぶし円。
     def circleItem(center: Vec2.Vec2, d: Float64, color: Color, z: Int32): Render.Placed =
-        ({ x = center#x - d / 2.0, y = center#y - d / 2.0 },
-         Render.circle(d / 2.0, color, z))
+        { at = { x = center#x - d / 2.0, y = center#y - d / 2.0 },
+          item = Render.circle(d / 2.0, color, z) }
 }

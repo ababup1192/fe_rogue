@@ -43,8 +43,8 @@ mod Gallery {
           fontTtf = ttfPath(), fontAtlas = atlas, outPath = path }
 
     def label(atlas: FontAtlas, text: String, x: Int32, y: Int32): Render.Placed =
-        ({ x = Int32.toFloat64(x), y = Int32.toFloat64(y) },
-         Render.textTinted(text, atlas, 7.0, labelColor(), 50))
+        { at = { x = Int32.toFloat64(x), y = Int32.toFloat64(y) },
+          item = Render.textTinted(text, atlas, 7.0, labelColor(), 50) }
 
     // ── 全部を焼く（Bake.all から呼ぶ）──
 
@@ -127,13 +127,13 @@ mod Gallery {
     def laneItems(atlas: FontAtlas, idx: Int32, tickFrame: Option[Option[Reel.Tick]]): List[Render.Placed] =
         let left = idx * laneW();
         let sep = if (idx == 0) Nil else
-            ({ x = Int32.toFloat64(left), y = 0.0 },
-             Render.box({ x = 1.0, y = Int32.toFloat64(soloH()) }, frameColor(), 1)) :: Nil;
+            { at = { x = Int32.toFloat64(left), y = 0.0 },
+              item = Render.box({ x = 1.0, y = Int32.toFloat64(soloH()) }, frameColor(), 1) } :: Nil;
         let body = match tickFrame {
             case Some(Some(tick)) => tickPlaced(left + 8, 16, tick)
             case _              =>
-                ({ x = Int32.toFloat64(left + 21), y = 26.0 },
-                 Render.textTinted("?", atlas, 10.0, frameColor(), 10)) :: Nil
+                { at = { x = Int32.toFloat64(left + 21), y = 26.0 },
+                  item = Render.textTinted("?", atlas, 10.0, frameColor(), 10) } :: Nil
         };
         List.append(sep, body)
 
@@ -176,9 +176,9 @@ mod Gallery {
         let x0 = col * cellW();
         let y0 = headerH() + rowIdx * cellH();
         let frame =
-            ({ x = Int32.toFloat64(x0 + 1), y = Int32.toFloat64(y0 + 1) },
-             Render.box({ x = Int32.toFloat64(cellW() - 2), y = Int32.toFloat64(cellH() - 2) },
-                        frameColor(), 0)) :: Nil;
+            { at = { x = Int32.toFloat64(x0 + 1), y = Int32.toFloat64(y0 + 1) },
+              item = Render.box({ x = Int32.toFloat64(cellW() - 2), y = Int32.toFloat64(cellH() - 2) },
+                        frameColor(), 0) } :: Nil;
         let body = drawOf(classId, variant)
             |> Option.map(drawFn -> PixelCanvas.toPlaced(x0 + (cellW() - PixelCanvas.size()) / 2, y0 + 8, drawFn(RogueStage.Clip.IdleDown, 0)))
             |> Option.getWithDefault(Nil);
@@ -202,8 +202,8 @@ mod Gallery {
         let swatches = List.zipWithIndex(floors) |> List.flatMap(pair -> {
             let (i, c) = pair;
             let x0 = i * sw;
-            ({ x = Int32.toFloat64(x0), y = 12.0 },
-             Render.box({ x = Int32.toFloat64(sw), y = 44.0 }, c, 0)) ::
+            { at = { x = Int32.toFloat64(x0), y = 12.0 },
+              item = Render.box({ x = Int32.toFloat64(sw), y = 44.0 }, c, 0) } ::
             PixelCanvas.toPlaced(x0 + 6, 20, idle0)
         });
         let items = label(atlas, "FLOOR CONTRAST", 4, 3) :: swatches;

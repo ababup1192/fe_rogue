@@ -50,7 +50,7 @@ mod NpcGallery {
         let size = 20.0;
         let w = Text.measure(Text.make(text, atlas, size))#x;
         let cx = Int32.toFloat64(col) * cellW() + cellW() / 2.0;
-        ({x = cx - w / 2.0, y = 4.0 * rowH() + 8.0}, Render.textTinted(text, atlas, size, labelTint(), 10))
+        { at = {x = cx - w / 2.0, y = 4.0 * rowH() + 8.0}, item = Render.textTinted(text, atlas, size, labelTint(), 10) }
 
     def req(atlas: FontAtlas, phase: Float64, path: String): SoftRaster.RasterReq =
         let (drawables, polygons) = Render.draw(frameItems(atlas, phase));

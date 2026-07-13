@@ -10,9 +10,9 @@ mod TestRender {
     @Test
     def testDrawSplitsAndOffsetsPoly(): Unit \ Assert =
         let items =
-            ({ x = 1.0, y = 2.0 }, Render.box({ x = 10.0, y = 5.0 }, red(), 3)) ::
-            ({ x = 100.0, y = 200.0 },
-             Render.polygon({ x = 0.0, y = 0.0 } :: { x = 4.0, y = 0.0 } :: { x = 0.0, y = 3.0 } :: Nil, red(), 7)) :: Nil;
+            { at = { x = 1.0, y = 2.0 }, item = Render.box({ x = 10.0, y = 5.0 }, red(), 3) } ::
+            { at = { x = 100.0, y = 200.0 },
+              item = Render.polygon({ x = 0.0, y = 0.0 } :: { x = 4.0, y = 0.0 } :: { x = 0.0, y = 3.0 } :: Nil, red(), 7) } :: Nil;
         let (drawables, polygons) = Render.draw(items);
         let firstVertex = polygons |> List.head |> Option.flatMap(p -> List.head(p#vertices)) |> Option.map(v -> (v#x, v#y));
         Assert.assertEq(expected = (1, 1, Some((100.0, 200.0)), Some(7)),
@@ -22,7 +22,7 @@ mod TestRender {
     // circle は直径サイズの全角丸 Box（Drawable の scale = 直径、cornerRadius = 半径）。
     @Test
     def testCircleIsFullyRoundedBox(): Unit \ Assert =
-        let (drawables, _polys) = Render.draw(({ x = 0.0, y = 0.0 }, Render.circle(3.0, red(), 5)) :: Nil);
+        let (drawables, _polys) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = Render.circle(3.0, red(), 5) } :: Nil);
         let d = List.head(drawables);
         Assert.assertEq(expected = (Some((6.0, 6.0)), Some(Some(3.0))),
             (d |> Option.map(x -> (x#scale#x, x#scale#y)),
@@ -32,9 +32,9 @@ mod TestRender {
     @Test
     def testModifiersApplyAndPassThrough(): Unit \ Assert =
         let faded = Render.box({ x = 1.0, y = 1.0 }, red(), 0) |> Render.fade(0.5f32);
-        let (ds, _) = Render.draw(({ x = 0.0, y = 0.0 }, faded) :: Nil);
+        let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = faded } :: Nil);
         let untouched = Render.polygon({ x = 0.0, y = 0.0 } :: Nil, red(), 0) |> Render.rounded(4.0);
-        let (_, ps) = Render.draw(({ x = 9.0, y = 9.0 }, untouched) :: Nil);
+        let (_, ps) = Render.draw({ at = { x = 9.0, y = 9.0 }, item = untouched } :: Nil);
         Assert.assertEq(expected = (Some(0.5f32), 1),
             (ds |> List.head |> Option.map(d -> d#alpha), List.length(ps)))
 
@@ -44,7 +44,7 @@ mod TestRender {
         let item = Render.box({ x = 2.0, y = 2.0 }, red(), 0)
             |> Render.outline(red(), 1.5)
             |> Render.striped({ color = red(), alpha = 0.25f32, width = 2.0, period = 6.0 });
-        let (ds, _) = Render.draw(({ x = 0.0, y = 0.0 }, item) :: Nil);
+        let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
         let style = ds |> List.head |> Option.flatMap(d -> d#style);
         Assert.assertEq(expected = (Some(1.5), Some(0.25f32), Some(6.0)),
             (style |> Option.map(s -> s#borderWidth),

@@ -266,10 +266,10 @@ mod View {
                 let reach = (clockDiameter() - clockRimThickness()) / 2.0 - needleTipInset();
                 let tail = Vec2.sub(c, Vec2.mul(dir, needleTailReach()));
                 let tip = Vec2.add(c, Vec2.mul(dir, reach));
-                (Vec2.zero(),
-                 Render.polygon(Quad.strip(tail, tip, -needleHalfWidth(), needleHalfWidth()),
+                { at = Vec2.zero(),
+                  item = Render.polygon(Quad.strip(tail, tip, -needleHalfWidth(), needleHalfWidth()),
                                 Palette.clockRim(), zClock() + 2)
-                    |> Render.fade(clockAlpha(f))) :: Nil
+                    |> Render.fade(clockAlpha(f)) } :: Nil
         }
 
     // ── 紙吹雪: パーティクルシステムなしの雨 ──
@@ -315,9 +315,9 @@ mod View {
         let x = confettiSpreadWidth() * rand(6) + Curve.sine(sway, confettiSwayRate(), phase, t);
         let y = Curve.loop(fallSpeed, fallSpan, t + fallSpan * rand(7) / fallSpeed) - confettiSpawnAbove();
         let angle = Curve.spin(spinRate, t) + phase;
-        (Vec2.zero(),
-         Render.polygon(Quad.rotated({ x = x, y = y }, confettiPieceHalfWidth(), confettiPieceHalfHeight(), angle),
-                        Palette.confetti(i), zConfetti()))
+        { at = Vec2.zero(),
+          item = Render.polygon(Quad.rotated({ x = x, y = y }, confettiPieceHalfWidth(), confettiPieceHalfHeight(), angle),
+                        Palette.confetti(i), zConfetti()) }
 
     /// 雨全体: パーティの時計が動いている間、インデックスごとに1つのクアッド。
     pub def confettiQuads(b: Board.Board): List[Render.Placed] =
@@ -337,20 +337,20 @@ mod View {
     /// 塗りつぶし矩形: 左上 (x, y)、サイズ (w, h)、レイヤー z。
     def boxAt(rect: { x = Float64, y = Float64, w = Float64, h = Float64 },
               c: Color, z: Int32): Render.Placed =
-        ({ x = rect#x, y = rect#y }, Render.solidBox({ x = rect#w, y = rect#h }, c, z))
+        { at = { x = rect#x, y = rect#y }, item = Render.solidBox({ x = rect#w, y = rect#h }, c, z) }
 
     /// c を中心とする直径 d の塗りつぶし円。
     def circleAt(c: Vec2.Vec2, d: Float64, color: Color, z: Int32): Render.Placed =
-        ({x = c#x - d / 2.0, y = c#y - d / 2.0}, Render.circle(d / 2.0, color, z))
+        { at = {x = c#x - d / 2.0, y = c#y - d / 2.0}, item = Render.circle(d / 2.0, color, z) }
 
     /// 半透明の塗りつぶしボックス（時計のパーツは alpha でフェードする）。
     def fxBox(pos: Vec2.Vec2, size: Vec2.Vec2, c: Color, a: Float32,
               z: Int32): Render.Placed =
-        (pos, Render.solidBox(size, c, z) |> Render.fade(a))
+        { at = pos, item = Render.solidBox(size, c, z) |> Render.fade(a) }
 
     /// 直径 d の半透明の塗りつぶし円（時計の縁と面）。
     def fxCircle(center: Vec2.Vec2, d: Float64, c: Color, a: Float32,
                  z: Int32): Render.Placed =
-        ({x = center#x - d / 2.0, y = center#y - d / 2.0},
-         Render.circle(d / 2.0, c, z) |> Render.fade(a))
+        { at = {x = center#x - d / 2.0, y = center#y - d / 2.0},
+          item = Render.circle(d / 2.0, c, z) |> Render.fade(a) }
 }

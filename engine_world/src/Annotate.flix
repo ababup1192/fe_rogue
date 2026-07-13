@@ -94,11 +94,11 @@ mod Annotate {
         let pad = 3.0;
         let size = Text.measure(Text.make(message, fontAtlas, fontSize));
         let top = design#y - size#y - pad * 2.0 - 4.0;
-        ({ x = 4.0, y = top },
-         Render.box({ x = size#x + pad * 2.0, y = size#y + pad * 2.0 },
-                    { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, 1000001) |> Render.fade(0.7f32))
-        :: ({ x = 4.0 + pad, y = top + pad },
-            Render.text(message, fontAtlas, fontSize, 1000002))
+        { at = { x = 4.0, y = top },
+          item = Render.box({ x = size#x + pad * 2.0, y = size#y + pad * 2.0 },
+                            { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, 1000001) |> Render.fade(0.7f32) }
+        :: { at = { x = 4.0 + pad, y = top + pad },
+             item = Render.text(message, fontAtlas, fontSize, 1000002) }
         :: Nil
 
     // ── 保存完了メッセージ（トースト）──
@@ -118,11 +118,11 @@ mod Annotate {
         let fontSize = 8.0;
         let pad = 3.0;
         let size = Text.measure(Text.make(message, fontAtlas, fontSize));
-        ({ x = 4.0, y = 4.0 },
-         Render.box({ x = size#x + pad * 2.0, y = size#y + pad * 2.0 },
-                    { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, 1000001) |> Render.fade(0.7f32))
-        :: ({ x = 4.0 + pad, y = 4.0 + pad },
-            Render.text(message, fontAtlas, fontSize, 1000002))
+        { at = { x = 4.0, y = 4.0 },
+          item = Render.box({ x = size#x + pad * 2.0, y = size#y + pad * 2.0 },
+                            { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, 1000001) |> Render.fade(0.7f32) }
+        :: { at = { x = 4.0 + pad, y = 4.0 + pad },
+             item = Render.text(message, fontAtlas, fontSize, 1000002) }
         :: Nil
 
     // ── 座標変換（不変条件: toDesign(view, toScreen(view, p)) == p）──
@@ -233,8 +233,8 @@ mod Annotate {
     /// 寸法の分からない Sprite は置き場所だけの点（サイズ 0）として扱う。
     pub def itemAabb(sizeOf: String -> Option[GameEngine.TextureInfo] \ ef,
                      placed: Render.Placed): Rect2.Rect2 \ ef =
-        let (pos, item) = placed;
-        match item {
+        let pos = placed#at;
+        match placed#item {
             case Render.RenderItem.Sprite(s) =>
                 let base = match s#regionRect {
                     case Some(r) => r#size
@@ -292,8 +292,8 @@ mod Annotate {
 
     /// 描画物 1 件を Hit の形へ。
     def hitOf(placed: Render.Placed, aabb: Rect2.Rect2): Hit =
-        let (pos, item) = placed;
-        match item {
+        let pos = placed#at;
+        match placed#item {
             case Render.RenderItem.Sprite(s) =>
                 { kind = "sprite", name = s#texture, position = pos, zIndex = s#zIndex, aabb = aabb }
             case Render.RenderItem.Text(t) =>
@@ -366,10 +366,10 @@ mod Annotate {
     pub def overlayItems(dragStart: Vec2.Vec2, cursorDesign: Vec2.Vec2): List[Render.Placed] =
         let rect = normRect(dragStart, cursorDesign);
         let red = { r = 1.0f32, g = 0.25f32, b = 0.25f32 };
-        (rect#position,
-         Render.box(rect#size, red, 1000000)
-             |> Render.fade(0.25f32)
-             |> Render.outline(red, 1.0)) :: Nil
+        { at = rect#position,
+          item = Render.box(rect#size, red, 1000000)
+              |> Render.fade(0.25f32)
+              |> Render.outline(red, 1.0) } :: Nil
 
     /// 描画命令の列へ見え方（ズーム・パン）を適用する。位置は toScreen、大きさは zoom 倍。
     /// 角丸・枠線幅など px 単位の飾り（BoxStyle）も一緒に zoom 倍する —— これを忘れると

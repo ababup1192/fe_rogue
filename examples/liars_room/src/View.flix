@@ -57,8 +57,7 @@ mod View {
         }
 
     def shift(offset: Vec2.Vec2, placed: Render.Placed): Render.Placed =
-        let (pos, item) = placed;
-        (Vec2.add(pos, offset), item)
+        { at = Vec2.add(placed#at, offset) | placed }
 
     // ── frame: World を「描くべきものリスト」へ投影する ──
 
@@ -103,15 +102,15 @@ mod View {
             |> List.map(p -> {
                 let (x, y) = p;
                 let color = if (Int32.modulo(x + y, 2) == 0) Palette.floorA() else Palette.floorB();
-                (cellTopLeft(state, p), Render.solidBox({x = tile(), y = tile()}, color, 0))
+                { at = cellTopLeft(state, p), item = Render.solidBox({x = tile(), y = tile()}, color, 0) }
             })
 
     /// 壁セル: 本体 + 上縁のハイライトで立体に見せる。
     def wallTiles(state: Room.State): List[Render.Placed] =
         state#walls |> Set.toList |> List.flatMap(p -> {
             let tl = cellTopLeft(state, p);
-            (tl, Render.solidBox({x = tile(), y = tile()}, Palette.wall(), 1)) ::
-            (tl, Render.solidBox({x = tile(), y = tile() * 0.25}, Palette.wallTop(), 2)) :: Nil
+            { at = tl, item = Render.solidBox({x = tile(), y = tile()}, Palette.wall(), 1) } ::
+            { at = tl, item = Render.solidBox({x = tile(), y = tile() * 0.25}, Palette.wallTop(), 2) } :: Nil
         })
 
     // ── 人 ──
@@ -144,8 +143,7 @@ mod View {
         { x = a#x + (z#x - a#x) * t, y = a#y + (z#y - a#y) * t }
 
     def raise(delta: Int32, placed: Render.Placed): Render.Placed =
-        let (pos, item) = placed;
-        (pos, Render.raiseZ(delta, item))
+        { item = Render.raiseZ(delta, placed#item) | placed }
 
     // ── 頭上の印 ──
 
@@ -166,23 +164,23 @@ mod View {
     def crossMark(center: Vec2.Vec2): List[Render.Placed] =
         let arm = 4.0;
         let thick = 1.4;
-        (center, Render.polygon(
+        { at = center, item = Render.polygon(
             { x = -arm, y = -arm + thick } :: { x = -arm + thick, y = -arm } ::
             { x = arm, y = arm - thick } :: { x = arm - thick, y = arm } :: Nil,
-            Palette.markLiar(), zMark())) ::
-        (center, Render.polygon(
+            Palette.markLiar(), zMark()) } ::
+        { at = center, item = Render.polygon(
             { x = arm - thick, y = -arm } :: { x = arm, y = -arm + thick } ::
             { x = -arm + thick, y = arm } :: { x = -arm, y = arm - thick } :: Nil,
-            Palette.markLiar(), zMark())) :: Nil
+            Palette.markLiar(), zMark()) } :: Nil
 
     /// 緑の輪（塗りなしの丸い箱 = 枠線だけの円）。
     def ringMark(center: Vec2.Vec2): List[Render.Placed] =
         let d = 9.0;
-        (Vec2.add(center, { x = -d / 2.0, y = -d / 2.0 }),
-         Render.solidBox({x = d, y = d}, Palette.markHonest(), zMark())
+        { at = Vec2.add(center, { x = -d / 2.0, y = -d / 2.0 }),
+          item = Render.solidBox({x = d, y = d}, Palette.markHonest(), zMark())
             |> Render.rounded(d / 2.0)
             |> Render.fade(0.0f32)
-            |> Render.outline(Palette.markHonest(), 1.6)) :: Nil
+            |> Render.outline(Palette.markHonest(), 1.6) } :: Nil
 
     /// 正面の NPC に話しかけられるとき、その頭上に上下に揺れる「▼」を出す。
     def talkIndicator(atlas: FontAtlas, state: Room.State): List[Render.Placed] =
@@ -195,6 +193,6 @@ mod View {
                     let bobY = RenderUtil.sinF(state#idlePhase * 6.283185307179586) * 1.5;
                     let pos = Vec2.add(cellCenter(state, npc#cell),
                         { x = -4.0, y = -(tile() * 1.15) + bobY });
-                    (pos, Render.textTinted("▼", atlas, 8.0, Palette.talkIndicator(), zIndicator())) :: Nil
+                    { at = pos, item = Render.textTinted("▼", atlas, 8.0, Palette.talkIndicator(), zIndicator()) } :: Nil
             }
 }

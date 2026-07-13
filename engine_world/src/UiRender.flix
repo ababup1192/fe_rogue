@@ -33,7 +33,7 @@ mod UiRender {
             Render.drawWith(textureInfoOf, itemsWith(atlasOf, textureInfoOf, ui, design));
         {drawables = drawables, polygons = polygons}
 
-    /// UI 全体を (置き場所, 見せたい物) の列のまま返す。ゲーム側の絵（View の Placed 列）と
+    /// UI 全体を Placed（置き場所つきの描画物）の列のまま返す。ゲーム側の絵（View の Placed 列）と
     /// 1 本のリストへ合成してから描きたいとき（App の view など）はこちらを使い、
     /// 描画命令まで一気に欲しいときは renderUi / renderUiWith を使う。
     /// `design` は画面固定 HUD の rootRect（原点 0,0・design サイズ）を成す。root ごとに
@@ -61,17 +61,15 @@ mod UiRender {
         let vis = UiHierarchy.resolveInherited(ui#visible, ui#parents, root, ui#order);
         let items = UiExtract.extract(ui, rects, vis, atlasOf, textureInfoOf);
         let offset = layerOffset(ui, root);
-        let raised = items |> List.map(pair -> {
-            let (pos, item) = pair;
-            (pos, Render.raiseZ(offset, item))
-        });
+        let raised = items |> List.map(placed ->
+            { item = Render.raiseZ(offset, placed#item) | placed });
         let polyItems = UiExtract.extractPolys(ui, rects, vis)
             |> List.flatMap(entry -> {
                 let (_id, _pos, poly) = entry;
                 // 1 サブポリ = 1 Poly item（レンダラは凸多角形しか塗れない）。
                 poly#polys |> List.map(sub ->
-                    (Vec2.zero(),
-                     Render.polygon(sub, poly#color, poly#zIndex + offset) |> Render.fade(poly#alpha)))
+                    { at = Vec2.zero(),
+                      item = Render.polygon(sub, poly#color, poly#zIndex + offset) |> Render.fade(poly#alpha) })
             });
         List.append(raised, polyItems)
 

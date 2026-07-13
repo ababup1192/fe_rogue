@@ -31,6 +31,6 @@ mod TextDraw {
     /// アイテム。左上の描画位置と tint 済みテキストアイテムの組を返し、そのまま描画
     /// リストへ追加できる。左端 x は `centerLeft`、幅は `width` に一致する。
     pub def centered(a: Centered): Render.Placed =
-        ({ x = centerLeft(a#text, a#atlas, a#size, a#centerX), y = a#y },
-         Render.textTinted(a#text, a#atlas, a#size, a#color, a#z))
+        { at = { x = centerLeft(a#text, a#atlas, a#size, a#centerX), y = a#y },
+          item = Render.textTinted(a#text, a#atlas, a#size, a#color, a#z) }
 }

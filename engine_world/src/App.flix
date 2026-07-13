@@ -28,6 +28,13 @@ mod App {
     pub def justPressed(key: GameEngine.Key, frame: Frame): Bool =
         Set.memberOf(key, frame#justPressed)
 
+    /// 負方向・正方向のキーの押し下げを -1 / 0 / +1 に畳む（両押しは打ち消して 0）。
+    /// 左右移動などの軸入力に。同型のキー 2 つは順序を取り違えやすいので名前で渡す。
+    pub def axis(negative: {negative = GameEngine.Key},
+                 positive: {positive = GameEngine.Key}, frame: Frame): Float64 =
+        (if (isDown(positive#positive, frame)) 1.0 else 0.0) -
+        (if (isDown(negative#negative, frame)) 1.0 else 0.0)
+
     // ── App: 宣言の入れ物 ──
 
     /// ゲーム 1 本の宣言。make で空を作り、addStartup / addSystem / reloadOn / withView /

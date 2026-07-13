@@ -11,14 +11,14 @@ mod UiExtract {
     pub def measureTexts(texts: Map[EntityId, UiWidget.TextComp], atlasOf: String -> FontAtlas \ ef): Map[EntityId, Vec2.Vec2] \ ef =
         texts |> Map.map(comp -> Text.measure(Text.make(comp#text, atlasOf(comp#font), comp#fontSize)))
 
-    /// UI entity を (位置, RenderItem) 列へ射影する。可視 entity のみ・矩形が確定したもののみ。
+    /// UI entity を Placed（置き場所つきの描画物）列へ射影する。可視 entity のみ・矩形が確定したもののみ。
     /// 並びは (zIndex, 階層深さ, order, id) で安定ソートする（背面から前面へ）。
     /// box → 単色塗り（alpha 反映）、text → 着色テキスト、sprite → スプライト。
     /// 文字実寸は `atlasOf`、sprite のセル分割（frame→regionRect）のテクスチャ寸法は `textureInfoOf`
     /// で引く。どちらも呼び側が注入するので、画面なしのテストでは純粋関数を渡せる。
     pub def extract(ui: UiStore.UiWorld, rects: Map[EntityId, Rect2.Rect2],
                     vis: Map[EntityId, Bool], atlasOf: String -> FontAtlas \ ef,
-                    textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): List[(Vec2.Vec2, Render.RenderItem)] \ ef =
+                    textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): List[Render.Placed] \ ef =
         let boxEntries = ui#boxes |> Map.foldLeftWithKey((acc, id, box) ->
             match Map.get(id, rects) {
                 case None       => acc
@@ -36,7 +36,7 @@ mod UiExtract {
                 Map.get(id, rects) |> Option.map(rect -> (id, z, rect#position, item))
             })
             |> List.sortBy(entry -> {let (id, z, _pos, _item) = entry; (z, depthOf(id, ui#parents), orderOf(id, ui), id)})
-            |> List.map(entry -> {let (_id, _z, pos, item) = entry; (pos, item)})
+            |> List.map(entry -> {let (_id, _z, pos, item) = entry; { at = pos, item = item }})
 
     /// poly entity を (id, rect 左上, ワールド座標へ移した PolyComp) 列へ射影する。可視かつ rect 確定のみ。
     /// PolyComp#polys の各サブポリ頂点はレイアウト矩形左上を原点とするローカル design px。ここで rect

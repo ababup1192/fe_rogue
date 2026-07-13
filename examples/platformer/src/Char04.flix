@@ -91,19 +91,19 @@ mod Char04 {
         List.flatten(
             dashTrail(stage, flight)
             // 提灯の光暈: ゆっくり明滅する呼吸の光（ダッシュ中は速く脈打つ）。
-            :: (({ x = lantern#x - (4.5 + 1.5 * pulse), y = lantern#y - (4.5 + 1.5 * pulse) },
-                 Render.circle(4.5 + 1.5 * pulse, glowColor(), 9)
-                    |> Render.fade(RenderUtil.f32(0.16 + 0.24 * pulse))) :: Nil)
+            :: ({ at = { x = lantern#x - (4.5 + 1.5 * pulse), y = lantern#y - (4.5 + 1.5 * pulse) },
+                  item = Render.circle(4.5 + 1.5 * pulse, glowColor(), 9)
+                     |> Render.fade(RenderUtil.f32(0.16 + 0.24 * pulse)) } :: Nil)
             :: legItems(stage, flight, seat, false)
             :: farWing(stage, seat)
-            :: (({ x = abdomen#x - abdomenW / 2.0, y = abdomen#y - abdomenH / 2.0 },
-                 Render.box({ x = abdomenW, y = abdomenH }, abdomenColor(), 10)
-                    |> Render.rounded(3.5)) :: Nil)
-            :: (({ x = lantern#x - 2.5, y = lantern#y - 1.5 },
-                 Render.box({ x = 5.0, y = 3.0 }, glowColor(), 11) |> Render.rounded(1.5)) :: Nil)
+            :: ({ at = { x = abdomen#x - abdomenW / 2.0, y = abdomen#y - abdomenH / 2.0 },
+                  item = Render.box({ x = abdomenW, y = abdomenH }, abdomenColor(), 10)
+                     |> Render.rounded(3.5) } :: Nil)
+            :: ({ at = { x = lantern#x - 2.5, y = lantern#y - 1.5 },
+                  item = Render.box({ x = 5.0, y = 3.0 }, glowColor(), 11) |> Render.rounded(1.5) } :: Nil)
             :: elytraItems(flight, seat)
-            :: (({ x = seat(1.0, -1.5)#x - 3.0, y = seat(1.0, -1.5)#y - 3.0 },
-                 Render.circle(3.0, collarColor(), 11)) :: Nil)
+            :: ({ at = { x = seat(1.0, -1.5)#x - 3.0, y = seat(1.0, -1.5)#y - 3.0 },
+                  item = Render.circle(3.0, collarColor(), 11) } :: Nil)
             :: legItems(stage, flight, seat, true)
             :: headItems(stage, flight, seat)
             :: nearWing(stage, flight, seat)
@@ -121,13 +121,13 @@ mod Char04 {
         // しずく形では触角の先を後ろへ流す。
         let tipA = blendV(seat(7.6, -5.2 + sway), seat(1.8, -6.0), flight#tuck);
         let tipB = blendV(seat(8.4, -3.6 + sway2), seat(2.6, -5.0), flight#tuck);
-        ({ x = head#x - 2.4, y = head#y - 2.4 }, Render.circle(2.4, darkColor(), 12))
+        { at = { x = head#x - 2.4, y = head#y - 2.4 }, item = Render.circle(2.4, darkColor(), 12) }
         :: rod(seat(5.0, -2.6), tipA, 0.6, darkColor(), 12)
         :: rod(seat(5.4, -1.8), tipB, 0.6, darkColor(), 12)
-        :: ({ x = head#x + face * 1.0 - 1.0, y = head#y - 0.6 - 1.0 },
-            Render.circle(1.0, eyeWhite(), 13))
-        :: ({ x = head#x + face * 1.4 - 0.5, y = head#y - 0.6 - 0.5 },
-            Render.circle(0.5, eyeDark(), 13))
+        :: { at = { x = head#x + face * 1.0 - 1.0, y = head#y - 0.6 - 1.0 },
+             item = Render.circle(1.0, eyeWhite(), 13) }
+        :: { at = { x = head#x + face * 1.4 - 0.5, y = head#y - 0.6 - 0.5 },
+             item = Render.circle(0.5, eyeDark(), 13) }
         :: Nil
 
     // ── 鞘翅（羽の覆い）: 飛ぶと持ち上がって開く ──
@@ -141,13 +141,13 @@ mod Char04 {
         let b = seat(-6.5, -2.6 + lift * 1.4);
         let c = seat(-7.5, -0.2 + lift * 0.8);
         let d = seat(-3.0, 0.6);
-        ({ x = anchor#x, y = anchor#y },
-         Render.polygon({ x = 0.0, y = 0.0 }
-                        :: { x = a#x - anchor#x, y = a#y - anchor#y }
-                        :: { x = b#x - anchor#x, y = b#y - anchor#y }
-                        :: { x = c#x - anchor#x, y = c#y - anchor#y }
-                        :: { x = d#x - anchor#x, y = d#y - anchor#y } :: Nil,
-                        elytraColor(), 11)) :: Nil
+        { at = { x = anchor#x, y = anchor#y },
+          item = Render.polygon({ x = 0.0, y = 0.0 }
+                         :: { x = a#x - anchor#x, y = a#y - anchor#y }
+                         :: { x = b#x - anchor#x, y = b#y - anchor#y }
+                         :: { x = c#x - anchor#x, y = c#y - anchor#y }
+                         :: { x = d#x - anchor#x, y = d#y - anchor#y } :: Nil,
+                         elytraColor(), 11) } :: Nil
 
     // ── 羽（半透明のブレ・区分ごとに形を変える）──
 
@@ -212,11 +212,11 @@ mod Char04 {
     /// 羽 1 枚: 肩を原点に相対頂点（x は向きで反転）で張る半透明の三角形。
     def wingPoly(shoulder: Vec2.Vec2, face: Float64, tips: List[(Float64, Float64)],
                  alpha: Float32, layer: Int32): List[Render.Placed] =
-        ({ x = shoulder#x, y = shoulder#y },
-         Render.polygon({ x = 0.0, y = 0.0 }
-                        :: (tips |> List.map(tip -> { let (tx, ty) = tip; { x = face * tx, y = ty } })),
-                        wingColor(), layer)
-            |> Render.fade(alpha)) :: Nil
+        { at = { x = shoulder#x, y = shoulder#y },
+          item = Render.polygon({ x = 0.0, y = 0.0 }
+                         :: (tips |> List.map(tip -> { let (tx, ty) = tip; { x = face * tx, y = ty } })),
+                         wingColor(), layer)
+             |> Render.fade(alpha) } :: Nil
 
     // ── 六肢（見えるのは近側 3 本 + 奥側 2 本）──
 
@@ -258,9 +258,9 @@ mod Char04 {
                     let backY = stage#pos#y - flight#alt + 2.8
                                 + 1.6 * Curve.triWave(backX * 0.07);
                     let radius = 2.4 - 0.22 * fk;
-                    ({ x = backX - radius, y = backY - radius },
-                     Render.circle(radius, glowColor(), 8)
-                        |> Render.fade(RenderUtil.f32(0.5 * (1.0 - fk / 6.0) * ramp)))
+                    { at = { x = backX - radius, y = backY - radius },
+                      item = Render.circle(radius, glowColor(), 8)
+                         |> Render.fade(RenderUtil.f32(0.5 * (1.0 - fk / 6.0) * ramp)) }
                 })
             case _ => Nil
         }
@@ -273,12 +273,12 @@ mod Char04 {
         let dy = b#y - a#y;
         let len = Float64.max(0.001, Vec2.sqrt(dx * dx + dy * dy));
         let half = width * 0.5;
-        ({ x = a#x, y = a#y },
-         Render.polygon({ x = -dy / len * half, y = dx / len * half }
-                        :: { x = dx - dy / len * half, y = dy + dx / len * half }
-                        :: { x = dx + dy / len * half, y = dy - dx / len * half }
-                        :: { x = dy / len * half, y = -dx / len * half } :: Nil,
-                        color, layer))
+        { at = { x = a#x, y = a#y },
+          item = Render.polygon({ x = -dy / len * half, y = dx / len * half }
+                         :: { x = dx - dy / len * half, y = dy + dx / len * half }
+                         :: { x = dx + dy / len * half, y = dy - dx / len * half }
+                         :: { x = dy / len * half, y = -dx / len * half } :: Nil,
+                         color, layer) }
 
     /// 位置の線形補間（k は 0..1）。
     def blendV(a: Vec2.Vec2, b: Vec2.Vec2, k: Float64): Vec2.Vec2 =

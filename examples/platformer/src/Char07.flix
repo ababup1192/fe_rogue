@@ -25,7 +25,7 @@ mod Char07 {
 
     /// 足元中心 base からのオフセットで置く。
     def at(base: Vec2.Vec2, dx: Float64, dy: Float64, item: Render.RenderItem): Render.Placed =
-        ({ x = base#x + dx, y = base#y + dy }, item)
+        { at = { x = base#x + dx, y = base#y + dy }, item = item }
 
     /// コア本体。cy = コア中心の高さ / tilt = 上頂点の前後ずれ（前傾・後傾）/
     /// splitK = 上下分離量（空中の変形・0 で密着）/ wS,hS = スカッシュ比。
@@ -80,9 +80,9 @@ mod Char07 {
             at(base, 0.0 - w / 2.0, cy,
                Render.box({ x = w, y = 0.0 - cy }, beam(), 8)
                |> Render.rounded(w / 2.0) |> Render.fade(aF)) ::
-            (({ x = base#x - w * 1.4, y = -2.0 },
-              Render.box({ x = w * 2.8, y = 2.0 }, beam(), 8)
-              |> Render.rounded(1.0) |> Render.fade(aF))) :: Nil
+            ({ at = { x = base#x - w * 1.4, y = -2.0 },
+               item = Render.box({ x = w * 2.8, y = 2.0 }, beam(), 8)
+               |> Render.rounded(1.0) |> Render.fade(aF) }) :: Nil
         }
 
     /// ダッシュ中、後方へ流れて消える光のゲート（縦の光帯）。phase で 2 枚をずらす。
@@ -178,9 +178,9 @@ mod Char07 {
                     at(base, f * 8.4 - 0.9, cy + 1.1,
                        Render.circle(0.9, spark(), 13) |> Render.fade(RenderUtil.f32(0.2 + 0.5 * k))) :: Nil;
                 let drag =
-                    (({ x = base#x - 5.0, y = -2.0 },
-                      Render.box({ x = 10.0, y = 2.0 }, beam(), 8)
-                      |> Render.rounded(1.0) |> Render.fade(RenderUtil.f32(0.35 * k)))) :: Nil;
+                    ({ at = { x = base#x - 5.0, y = -2.0 },
+                       item = Render.box({ x = 10.0, y = 2.0 }, beam(), 8)
+                       |> Render.rounded(1.0) |> Render.fade(RenderUtil.f32(0.35 * k)) }) :: Nil;
                 List.flatten(
                     wall :: drag ::
                     core(base, f, t, cx, cy, 0.0 - f * 4.5, 1.0, 1.0, 0.0) ::
@@ -220,9 +220,9 @@ mod Char07 {
                 let hS = 1.0 - 0.3 * (1.0 - k);
                 let ringW = 6.0 + 16.0 * k;
                 let ring =
-                    (({ x = base#x - ringW / 2.0, y = -2.4 },
-                      Render.box({ x = ringW, y = 2.0 }, beam(), 9)
-                      |> Render.rounded(1.0) |> Render.fade(RenderUtil.f32(0.5 * (1.0 - k))))) :: Nil;
+                    ({ at = { x = base#x - ringW / 2.0, y = -2.4 },
+                       item = Render.box({ x = ringW, y = 2.0 }, beam(), 9)
+                       |> Render.rounded(1.0) |> Render.fade(RenderUtil.f32(0.5 * (1.0 - k))) }) :: Nil;
                 let dustA = RenderUtil.f32((1.0 - k) * 0.4);
                 let dust =
                     at(base, 4.0 + 5.0 * k, -2.6, Render.circle(1.0, rune(), 9) |> Render.fade(dustA)) ::

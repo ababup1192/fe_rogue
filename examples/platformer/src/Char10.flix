@@ -32,8 +32,8 @@ mod Char10 {
         let off = motePos(stage, i);
         let r = if (i == 0) 2.2 else 1.2 + 0.9 * hashA(i);
         let layer = if (i == 0) 11 else 10;
-        ({x = stage#pos#x + off#x - r, y = stage#pos#y + off#y - r},
-         Render.circle(r, moteColor(i), layer))
+        { at = {x = stage#pos#x + off#x - r, y = stage#pos#y + off#y - r},
+          item = Render.circle(r, moteColor(i), layer) }
 
     /// 粒の色: 5 粒に 1 粒を淡色・深色に混ぜて、群れに奥行きを出す。
     def moteColor(i: Int32): Color =
@@ -138,7 +138,7 @@ mod Char10 {
                 let fj = Int32.toFloat64(j);
                 let len = (7.0 + 9.0 * band) * (1.0 - fj * 0.18);
                 let cx = stage#pos#x - stage#facing * (8.0 + fj * 6.0);
-                ({x = cx - len * 0.5, y = -14.5 + fj * 3.2},
-                 Render.box({x = len, y = 1.2}, sparkPale(), 8)
-                     |> Render.fade(RenderUtil.f32((0.5 - 0.13 * fj) * band))))
+                { at = {x = cx - len * 0.5, y = -14.5 + fj * 3.2},
+                  item = Render.box({x = len, y = 1.2}, sparkPale(), 8)
+                      |> Render.fade(RenderUtil.f32((0.5 - 0.13 * fj) * band)) })
 }

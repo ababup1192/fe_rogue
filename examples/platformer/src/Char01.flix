@@ -21,7 +21,7 @@ mod Char01 {
             let topLeft = { x = stage#pos#x + p#cx - p#w / 2.0,
                             y = stage#pos#y - p#cy - p#h / 2.0 };
             let box = Render.box({ x = p#w, y = p#h }, p#color, zChar() + p#z);
-            if (p#r <= 0.0) (topLeft, box) else (topLeft, box |> Render.rounded(p#r))
+            if (p#r <= 0.0) { at = topLeft, item = box } else { at = topLeft, item = box |> Render.rounded(p#r) }
         })
 
     /// キャラの z 帯（レーンの地面より前・ラベルより後ろ）。

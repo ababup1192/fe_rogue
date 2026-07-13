@@ -61,14 +61,13 @@ mod CharGallery {
                   stage: CharStage.Stage): List[Render.Placed] =
         let left = Int32.toFloat64(idx) * laneW();
         let originX = left + laneW() / 2.0;
-        let label = ({ x = left + 6.0, y = 8.0 },
-                     Render.textTinted(name, atlas, 8.0, Palette.hudText(), zLabel()));
+        let label = { at = { x = left + 6.0, y = 8.0 },
+                      item = Render.textTinted(name, atlas, 8.0, Palette.hudText(), zLabel()) };
         let sep = if (idx == 0) Nil else
-            ({ x = left, y = 0.0 },
-             Render.box({ x = 1.0, y = Int32.toFloat64(stageH()) }, Palette.wall(), 1)) :: Nil;
+            { at = { x = left, y = 0.0 },
+              item = Render.box({ x = 1.0, y = Int32.toFloat64(stageH()) }, Palette.wall(), 1) } :: Nil;
         let body = drawFn(stage) |> List.map(placed -> {
-            let (pos, item) = placed;
-            ({ x = pos#x + originX, y = pos#y + groundY() }, item)
+            { at = { x = placed#at#x + originX, y = placed#at#y + groundY() }, item = placed#item }
         });
         label :: List.append(sep, body)
 
@@ -76,8 +75,8 @@ mod CharGallery {
     def groundItems(): List[Render.Placed] =
         let w = Int32.toFloat64(stageW());
         let dirtH = Int32.toFloat64(stageH()) - groundY() - 4.0;
-        ({ x = 0.0, y = groundY() }, Render.box({ x = w, y = 4.0 }, Palette.grassTop(), 0)) ::
-        ({ x = 0.0, y = groundY() + 4.0 }, Render.box({ x = w, y = dirtH }, Palette.dirtBody(), 0)) :: Nil
+        { at = { x = 0.0, y = groundY() }, item = Render.box({ x = w, y = 4.0 }, Palette.grassTop(), 0) } ::
+        { at = { x = 0.0, y = groundY() + 4.0 }, item = Render.box({ x = w, y = dirtH }, Palette.dirtBody(), 0) } :: Nil
 
     // ── 焼き込み ──
 

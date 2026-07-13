@@ -113,8 +113,8 @@ mod Char03 {
             let center = spinePoint(stage, shape, along);
             let radius = (4.2 - 1.0 * along)
                          * (1.0 + shape#breath * 0.07 * Curve.tri(2.2, stage#t));
-            ({ x = center#x - radius, y = center#y - radius },
-             Render.circle(radius, backColor(), 10))
+            { at = { x = center#x - radius, y = center#y - radius },
+              item = Render.circle(radius, backColor(), 10) }
         })
 
     /// 腹の若草色: 胴の下側に小さな玉を沿わせる。
@@ -123,8 +123,8 @@ mod Char03 {
             let along = 0.33 + Int32.toFloat64(i) * 0.17;
             let center = spinePoint(stage, shape, along);
             let radius = 2.0 * (1.0 + shape#breath * 0.09 * Curve.tri(2.2, stage#t));
-            ({ x = center#x - radius, y = center#y + 1.7 - radius },
-             Render.circle(radius, paleColor(), 11))
+            { at = { x = center#x - radius, y = center#y + 1.7 - radius },
+              item = Render.circle(radius, paleColor(), 11) }
         })
 
     // ── 頭 ──
@@ -143,18 +143,18 @@ mod Char03 {
                 // 待機の途中で一度だけ舌を出し入れする（0.35 秒の山なり）。
                 if (stage#modeT >= 0.5 and stage#modeT <= 0.85) {
                     let out = 5.0 * Curve.tri(0.35, stage#modeT - 0.5);
-                    ({ x = head#x + face * 3.5, y = head#y + 0.6 },
-                     Render.polygon({ x = 0.0, y = -0.5 } :: { x = face * out, y = -0.2 }
-                                    :: { x = 0.0, y = 0.5 } :: Nil, tongueColor(), 13)) :: Nil
+                    { at = { x = head#x + face * 3.5, y = head#y + 0.6 },
+                      item = Render.polygon({ x = 0.0, y = -0.5 } :: { x = face * out, y = -0.2 }
+                                     :: { x = 0.0, y = 0.5 } :: Nil, tongueColor(), 13) } :: Nil
                 } else Nil
             case _ => Nil
         };
         List.append(
-            ({ x = head#x - 4.3, y = head#y - 4.3 }, Render.circle(4.3, backColor(), 12))
-            :: ({ x = head#x + face * 1.4 - 1.7, y = head#y - 1.6 - 1.7 },
-                Render.circle(1.7, irisColor(), 13))
-            :: ({ x = head#x + face * 1.7 - 0.4, y = head#y - 1.7 - 1.2 },
-                Render.box({ x = 0.8, y = 2.4 }, slitColor(), 13) |> Render.rounded(0.4))
+            { at = { x = head#x - 4.3, y = head#y - 4.3 }, item = Render.circle(4.3, backColor(), 12) }
+            :: { at = { x = head#x + face * 1.4 - 1.7, y = head#y - 1.6 - 1.7 },
+                 item = Render.circle(1.7, irisColor(), 13) }
+            :: { at = { x = head#x + face * 1.7 - 0.4, y = head#y - 1.7 - 1.2 },
+                 item = Render.box({ x = 0.8, y = 2.4 }, slitColor(), 13) |> Render.rounded(0.4) }
             :: Nil,
             tongue)
 
@@ -186,8 +186,8 @@ mod Char03 {
             let inBall = 1.0 - 0.4 * shape#ball;
             let radius = 2.2 - 1.7 * along;
             let center = { x = hip#x + face * sel#x * inBall, y = hip#y + sel#y * inBall };
-            ({ x = center#x - radius, y = center#y - radius },
-             Render.circle(radius, backColor(), 9))
+            { at = { x = center#x - radius, y = center#y - radius },
+              item = Render.circle(radius, backColor(), 9) }
         })
 
     /// 巻き尻尾の x（腰からの相対・折れ線）。
@@ -226,10 +226,10 @@ mod Char03 {
             let foot = vMix(vMix(vMix(onGround, braced, shape#brace), splayed, shape#splay),
                             tucked, shape#ball);
             // がに股の脚: 付け根から足先へ細る三角形 + 指先の吸盤。
-            ({ x = 0.0, y = 0.0 },
-             Render.polygon({ x = anchor#x, y = anchor#y - 1.4 } :: { x = anchor#x, y = anchor#y + 1.4 }
-                            :: { x = foot#x, y = foot#y } :: Nil, color, layer))
-            :: ({ x = foot#x - 1.2, y = foot#y - 1.2 }, Render.circle(1.2, color, layer))
+            { at = { x = 0.0, y = 0.0 },
+              item = Render.polygon({ x = anchor#x, y = anchor#y - 1.4 } :: { x = anchor#x, y = anchor#y + 1.4 }
+                             :: { x = foot#x, y = foot#y } :: Nil, color, layer) }
+            :: { at = { x = foot#x - 1.2, y = foot#y - 1.2 }, item = Render.circle(1.2, color, layer) }
             :: Nil
         })
 
@@ -247,8 +247,8 @@ mod Char03 {
                     let age = (shift + 9.0 * fk) / 27.0;
                     let printX = px - face * (5.0 + shift + 9.0 * fk);
                     let alpha = RenderUtil.f32(Float64.max(0.0, 0.6 * (1.0 - age)));
-                    ({ x = printX - 1.7, y = stage#pos#y - 1.2 - 1.7 },
-                     Render.circle(1.7, paleColor(), 8) |> Render.fade(alpha))
+                    { at = { x = printX - 1.7, y = stage#pos#y - 1.2 - 1.7 },
+                      item = Render.circle(1.7, paleColor(), 8) |> Render.fade(alpha) }
                 })
             case _ => Nil
         }
@@ -261,11 +261,11 @@ mod Char03 {
             Nil
         else {
             let face = stage#facing;
-            let sheet = ({ x = stage#pos#x, y = stage#pos#y - 4.0 },
-                         Render.polygon({ x = face * 9.0, y = -1.0 } :: { x = -face * 8.5, y = -1.0 }
-                                        :: { x = -face * 6.5, y = 3.0 } :: { x = face * 7.5, y = 3.0 } :: Nil,
-                                        paleColor(), 9)
-                            |> Render.fade(RenderUtil.f32(0.35 * shape#splay)));
+            let sheet = { at = { x = stage#pos#x, y = stage#pos#y - 4.0 },
+                          item = Render.polygon({ x = face * 9.0, y = -1.0 } :: { x = -face * 8.5, y = -1.0 }
+                                         :: { x = -face * 6.5, y = 3.0 } :: { x = face * 7.5, y = 3.0 } :: Nil,
+                                         paleColor(), 9)
+                             |> Render.fade(RenderUtil.f32(0.35 * shape#splay)) };
             sheet :: Nil
         }
 

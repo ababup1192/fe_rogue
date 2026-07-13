@@ -37,19 +37,19 @@ mod RobotGallery {
     // ── パーツのヘルパー（座標はタイル単位、ロボットのセル原点からの相対値）──
 
     def box(o: Vec2.Vec2, x: Float64, y: Float64, w: Float64, h: Float64,
-            c: Color): (Vec2.Vec2, Render.RenderItem) =
-        ({x = o#x + x * u(), y = o#y + y * u()},
-         Render.solidBox({x = w * u(), y = h * u()}, c, 0))
+            c: Color): Render.Placed =
+        { at = {x = o#x + x * u(), y = o#y + y * u()},
+          item = Render.solidBox({x = w * u(), y = h * u()}, c, 0) }
 
     /// 角丸ボックス（cornerRadius はタイル単位）。候補4と候補6の車輪で使う。
     def rbox(o: Vec2.Vec2, x: Float64, y: Float64, w: Float64, h: Float64,
-             r: Float64, c: Color): (Vec2.Vec2, Render.RenderItem) =
+             r: Float64, c: Color): Render.Placed =
         let style = { cornerRadius = r * u(), borderWidth = 0.0, borderColor = c,
                       borderAlpha = 0.0f32, stripeColor = c, stripeAlpha = 0.0f32,
                       stripeWidth = 0.0, stripePeriod = 0.0 };
-        ({x = o#x + x * u(), y = o#y + y * u()},
-         Render.RenderItem.Box({ size = {x = w * u(), y = h * u()}, color = c,
-                                 alpha = 1.0f32, style = Some(style), zIndex = 1 }))
+        { at = {x = o#x + x * u(), y = o#y + y * u()},
+          item = Render.RenderItem.Box({ size = {x = w * u(), y = h * u()}, color = c,
+                                 alpha = 1.0f32, style = Some(style), zIndex = 1 }) }
 
     /// タイル単位の凸クアッド（候補5の台形の胴体）。z -1 でボックス群の下に置
     /// き、z 0 で描かれる腕や胸のディテールが胴体の上に見えるようにする。
@@ -61,7 +61,7 @@ mod RobotGallery {
 
     /// 1. クラシック: ずんぐりした四角い体、2つの目、1本のアンテナ。無難な万人
     /// 受け。
-    def robot1(o: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def robot1(o: Vec2.Vec2): List[Render.Placed] =
         box(o, 7.6, 1.6, 0.8, 2.6, light()) ::          // アンテナの軸
         box(o, 6.8, 0.2, 2.4, 2.0, accent()) ::         // アンテナの先端
         box(o, 3.0, 4.0, 10.0, 9.0, body()) ::          // 体
@@ -76,7 +76,7 @@ mod RobotGallery {
 
     /// 2. サイクロプス: 大きな目が1つの、背の高いスラブ状の体。16pxでも十分読め
     /// る。
-    def robot2(o: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def robot2(o: Vec2.Vec2): List[Render.Placed] =
         box(o, 4.5, 2.0, 7.0, 12.0, body()) ::          // 背の高い体
         box(o, 4.5, 2.0, 7.0, 1.0, light()) ::          // 上部のハイライト
         box(o, 6.0, 4.0, 4.0, 4.0, pale()) ::           // 目の輪
@@ -90,7 +90,7 @@ mod RobotGallery {
         box(o, 8.5, 14.0, 2.5, 1.5, light()) :: Nil     // 右足
 
     /// 3. 2ピース構成: 頭と胴体が分かれ、脚は短い。最も「押す者」らしい体型。
-    def robot3(o: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def robot3(o: Vec2.Vec2): List[Render.Placed] =
         box(o, 4.5, 1.5, 7.0, 4.5, body()) ::           // 頭
         box(o, 6.0, 3.0, 1.5, 1.5, accent()) ::         // 左目
         box(o, 8.5, 3.0, 1.5, 1.5, accent()) ::         // 右目
@@ -104,7 +104,7 @@ mod RobotGallery {
         box(o, 8.6, 14.6, 2.8, 0.9, dark()) :: Nil      // 右足パッド
 
     /// 4. 丸型: cornerRadius の柔らかい体に、単眼のバイザー。
-    def robot4(o: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def robot4(o: Vec2.Vec2): List[Render.Placed] =
         rbox(o, 3.5, 3.0, 9.0, 11.0, 2.5, body()) ::    // 丸みを帯びた体
         rbox(o, 4.5, 5.2, 7.0, 2.8, 1.4, dark()) ::     // バイザーの筐体
         rbox(o, 5.0, 5.8, 6.0, 1.6, 0.8, accent()) ::   // バイザー（目そのもの）
@@ -116,7 +116,7 @@ mod RobotGallery {
 
     /// 5. ヘビー級: 台形の胴体（凸クアッド）の上に小さな頭 —— 幅広で安定した立ち
     /// 姿勢。
-    def robot5Boxes(o: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def robot5Boxes(o: Vec2.Vec2): List[Render.Placed] =
         box(o, 5.5, 1.5, 5.0, 3.5, body()) ::           // 頭
         box(o, 6.5, 2.6, 1.2, 1.2, accent()) ::         // 左目
         box(o, 8.3, 2.6, 1.2, 1.2, accent()) ::         // 右目
@@ -131,7 +131,7 @@ mod RobotGallery {
         quad(o, (5.5, 6.0) :: (10.5, 6.0) :: (12.5, 13.5) :: (3.5, 13.5) :: Nil, body()) :: Nil
 
     /// 6. CRT: 画面上にドット状の目を持つモニターの顔で、車輪付きの台に乗る。
-    def robot6(o: Vec2.Vec2): List[(Vec2.Vec2, Render.RenderItem)] =
+    def robot6(o: Vec2.Vec2): List[Render.Placed] =
         box(o, 3.0, 2.5, 10.0, 8.0, body()) ::          // モニターの筐体
         box(o, 4.2, 3.7, 7.6, 5.6, pale()) ::           // 画面
         box(o, 6.2, 5.6, 1.2, 1.2, dark()) ::           // 左のドットの目
@@ -147,15 +147,15 @@ mod RobotGallery {
     def cellOrigin(i: Int32): Vec2.Vec2 =
         {x = Int32.toFloat64(i) * cellW() + 1.0 * u(), y = robotTop()}
 
-    def label(atlas: FontAtlas, i: Int32): (Vec2.Vec2, Render.RenderItem) =
+    def label(atlas: FontAtlas, i: Int32): Render.Placed =
         let text = "${i + 1}";
         let size = 22.0;
         let w = Text.measure(Text.make(text, atlas, size))#x;
         let cx = Int32.toFloat64(i) * cellW() + cellW() / 2.0;
-        ({x = cx - w / 2.0, y = labelY()}, Render.textTinted(text, atlas, size, pale(), 10))
+        { at = {x = cx - w / 2.0, y = labelY()}, item = Render.textTinted(text, atlas, size, pale(), 10) }
 
     def galleryItems(atlas: FontAtlas):
-            (List[(Vec2.Vec2, Render.RenderItem)], List[GameEngine.PolygonRenderCmd]) =
+            (List[Render.Placed], List[GameEngine.PolygonRenderCmd]) =
         let robots = robot1(cellOrigin(0)) :: robot2(cellOrigin(1)) :: robot3(cellOrigin(2)) ::
                      robot4(cellOrigin(3)) :: robot5Boxes(cellOrigin(4)) :: robot6(cellOrigin(5)) :: Nil;
         let labels = List.map(i -> label(atlas, i), 0 :: 1 :: 2 :: 3 :: 4 :: 5 :: Nil);
@@ -187,14 +187,14 @@ mod RobotGallery {
     def robotCenter(i: Int32): Vec2.Vec2 =
         {x = Int32.toFloat64(i) * cellW() + cellW() / 2.0, y = robotTop() + 8.0 * u()}
 
-    def labelAt(atlas: FontAtlas, i: Int32, text: String): (Vec2.Vec2, Render.RenderItem) =
+    def labelAt(atlas: FontAtlas, i: Int32, text: String): Render.Placed =
         let size = 22.0;
         let w = Text.measure(Text.make(text, atlas, size))#x;
         let cx = Int32.toFloat64(i) * cellW() + cellW() / 2.0;
-        ({x = cx - w / 2.0, y = labelY()}, Render.textTinted(text, atlas, size, pale(), 10))
+        { at = {x = cx - w / 2.0, y = labelY()}, item = Render.textTinted(text, atlas, size, pale(), 10) }
 
     /// 歩行位相 `phase`（0.0 = 静止ポーズ）における、4方向並びの1フレーム。
-    def directionItems(atlas: FontAtlas, phase: Float64): List[(Vec2.Vec2, Render.RenderItem)] =
+    def directionItems(atlas: FontAtlas, phase: Float64): List[Render.Placed] =
         let one = i -> dir -> name ->
             List.append(Robot.parts(robotCenter(i), 16.0 * u(), dir, phase),
                         labelAt(atlas, i, name) :: Nil);

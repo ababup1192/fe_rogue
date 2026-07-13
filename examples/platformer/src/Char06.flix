@@ -24,14 +24,14 @@ mod Char06 {
 
     /// 足元中心 base からのオフセットで置く。
     def at(base: Vec2.Vec2, dx: Float64, dy: Float64, item: Render.RenderItem): Render.Placed =
-        ({ x = base#x + dx, y = base#y + dy }, item)
+        { at = { x = base#x + dx, y = base#y + dy }, item = item }
 
     /// 足元の照り返し（浮遊している証拠の光だまり）。空中では高さに応じて薄くなる。
     def groundGlow(base: Vec2.Vec2, strength: Float64): List[Render.Placed] =
         let lift = clamp01((0.0 - base#y) / 60.0);
         let a = RenderUtil.f32(Float64.max(0.0, strength * (1.0 - lift)));
-        (({ x = base#x - 9.0, y = -2.0 },
-          Render.box({ x = 18.0, y = 3.0 }, glassGlow(), 8) |> Render.rounded(1.5) |> Render.fade(a))) :: Nil
+        ({ at = { x = base#x - 9.0, y = -2.0 },
+           item = Render.box({ x = 18.0, y = 3.0 }, glassGlow(), 8) |> Render.rounded(1.5) |> Render.fade(a) }) :: Nil
 
     /// ランタン本体（鉄枠+ガラス+吊り具）。hover = 底板の高さ / capShift = 笠のシアー量
     /// （前傾・後傾を上部のずれで表す）/ ringSway = 吊りリングの揺れ / wS,hS = スカッシュ比 /
