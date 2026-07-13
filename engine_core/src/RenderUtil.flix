@@ -1,6 +1,7 @@
-// RenderUtil — 数値変換ヘルパー (GL uniform / shader 用)
+// RenderUtil — 描画に使う数値変換ヘルパー。
 //
-// LwjglLayer.flix の f32 / floatToInt32 / sinF / cosF を移植。
+// GL の uniform やシェーダに渡す前の Float32 変換・丸め・三角関数をまとめる。
+// engine_core に置くことで、フロント・各バックエンド・ゲームが共有して使える。
 
 mod RenderUtil {
     import java.lang.Math

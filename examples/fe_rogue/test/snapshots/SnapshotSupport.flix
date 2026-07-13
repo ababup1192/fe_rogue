@@ -36,7 +36,7 @@ mod SnapshotSupport {
                          f: Unit -> a \ ef + GameEngine.Game): a \ ef =
         run f() with handler GameEngine.Game {
             def renderCommands(_, _, _, k)  = k(())
-            def initTileBuffer(_, k)        = k((0i32, 0i32))
+            def initTileBuffer(_, k)        = k((GpuHandle.wrapTileVao(0i32), 0i32))
             def shouldClose(k)              = k(false)
             def getDeltaTime(k)             = k(Duration.seconds(0.1))
             def isKeyPressed(_, k)          = k(false)
@@ -90,10 +90,10 @@ mod SnapshotSupport {
     pub def buildTextureInfo(paths: Map[String, String], atlasDim: Float64): Map[String, GameEngine.TextureInfo] \ IO =
         Map.foldLeftWithKey((acc, name, path) ->
             if (name == "font_ui")
-                Map.insert(name, ({id = 0i32, width = atlasDim, height = atlasDim}: GameEngine.TextureInfo), acc)
+                Map.insert(name, ({id = GpuHandle.wrapTextureId(0i32), width = atlasDim, height = atlasDim}: GameEngine.TextureInfo), acc)
             else match readDims(path) {
                 case None            => acc
-                case Some((wf, hf)) => Map.insert(name, ({id = 0i32, width = wf, height = hf}: GameEngine.TextureInfo), acc)
+                case Some((wf, hf)) => Map.insert(name, ({id = GpuHandle.wrapTextureId(0i32), width = wf, height = hf}: GameEngine.TextureInfo), acc)
             }, (Map.empty(): Map[String, GameEngine.TextureInfo]), paths)
 
     /// PNG の寸法を読む。存在しない・読めないときは None。

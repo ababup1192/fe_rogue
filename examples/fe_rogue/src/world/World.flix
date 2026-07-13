@@ -83,7 +83,7 @@ pub type alias MarkerMove = { ref = World.EntityRef, pos = Vec2.Vec2 }
 /// `TileMapRenderCmd`/`TileLayer` に一致（`tileVaoId`/`tileCount`）。`worldPos` はレイヤーの world 座標（camera parity）。
 pub type alias TileLayerHandle = {
     textureName = String, tileSize = Float64, worldPos = Vec2.Vec2,
-    color = Color, zIndex = Int32, tileVaoId = Int32, tileCount = Int32
+    color = Color, zIndex = Int32, tileVaoId = GpuHandle.TileVao, tileCount = Int32
 }
 
 /// フロアのマップ生成 Plan と安全スポーン地点（build choke が `Cmd.SetMapLayout` で書く）。

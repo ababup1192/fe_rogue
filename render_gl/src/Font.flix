@@ -220,7 +220,7 @@ mod RenderFont {
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL33.GL_TEXTURE_SWIZZLE_A, GL11.GL_RED);
 
         let texName = "font_${entry#name}";
-        let texInfo: RenderAsset.TextureInfo = { id = texId, width = bitmapSizeF, height = bitmapSizeF };
+        let texInfo: RenderAsset.TextureInfo = { id = GpuHandle.wrapTextureId(texId), width = bitmapSizeF, height = bitmapSizeF };
         let atlas: FontAtlas = {
             textureName = texName,
             fontSize = entry#fontSize,

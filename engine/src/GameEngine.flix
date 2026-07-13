@@ -22,8 +22,8 @@ mod GameEngine {
     /// サウンドの論理名 → OpenAL ソース ID
     pub type alias AudioRegistry = Map[String, Int32]
 
-    /// テクスチャ情報: GPU ハンドル ID + 元画像サイズ
-    pub type alias TextureInfo = { id = Int32, width = Float64, height = Float64 }
+    /// テクスチャ情報: GPU ハンドル + 元画像サイズ
+    pub type alias TextureInfo = { id = GpuHandle.TextureId, width = Float64, height = Float64 }
 
     /// テクスチャの論理名 → TextureInfo
     pub type alias TextureRegistry = Map[String, TextureInfo]
@@ -55,60 +55,17 @@ mod GameEngine {
         maxDeltaTime = Float64
     }
 
-    /// 角丸＋枠線スタイル。`Drawable.style = Some(..)` ＆ texture="" のとき
-    /// 単色矩形を「塗り＋枠＋角丸＋AA」で 1 フラグメント描画する。render_core の `RenderType.BoxStyle` と一致。
-    ///
-    /// stripe* は塗り領域に重ねる 45° 斜線ハッチ（CSS の repeating-linear-gradient 相当）。
-    /// `stripeWidth <= 0` または `stripeAlpha <= 0` でハッチ無効＝従来の塗りのみ。
-    /// stripePeriod は縞の周期 px、stripeWidth は縞 1 本の幅 px（どちらもデザイン解像度 px）。
-    pub type alias BoxStyle = {
-        cornerRadius = Float64,
-        borderWidth  = Float64,
-        borderColor  = Color,
-        borderAlpha  = Float32,
-        stripeColor  = Color,
-        stripeAlpha  = Float32,
-        stripeWidth  = Float64,
-        stripePeriod = Float64
-    }
+    /// 角丸＋枠線スタイル。共有の描画命令型 `DrawCmd.BoxStyle`。
+    pub type alias BoxStyle = DrawCmd.BoxStyle
 
-    /// 描画用データ: renderCommands ハンドラに渡す
-    pub type alias Drawable = {
-        texture = String,
-        position = Vec2.Vec2,
-        scale = Vec2.Vec2,
-        rotation = Float64,
-        color = Color,
-        alpha = Float32,
-        centered = Bool,
-        uvOffset = Vec2.Vec2,
-        uvScale = Vec2.Vec2,
-        zIndex = Int32,
-        style = Option[BoxStyle]
-    }
+    /// スプライト 1 つ分の描画命令。renderCommands ハンドラに渡す共有型 `DrawCmd.Drawable`。
+    pub type alias Drawable = DrawCmd.Drawable
 
-    /// TileLayer のインスタンス描画コマンド（1 draw call）。
-    /// `tileScale` はカメラの zoom を反映するスクリーン倍率で、シェーダ側で
-    /// (instPos + vertex * tileSize) に乗算する。zoom 未指定時は (1, 1)
-    pub type alias TileMapRenderCmd = {
-        textureName = String,
-        tileSize    = Float64,
-        position    = Vec2.Vec2,
-        tileScale   = Vec2.Vec2,
-        color       = Color,
-        zIndex      = Int32,
-        tileVaoId   = Int32,
-        tileCount   = Int32
-    }
+    /// タイルマップのインスタンス描画命令。共有型 `DrawCmd.TileMapRenderCmd`。
+    pub type alias TileMapRenderCmd = DrawCmd.TileMapRenderCmd
 
-    /// Polygon の塗り潰し描画コマンド。vertices は変換済みのスクリーン px 凸多角形頂点列。
-    /// render_core の RenderType.PolygonCmd と構造一致（そのまま渡せる）。
-    pub type alias PolygonRenderCmd = {
-        vertices = List[Vec2.Vec2],
-        color    = Color,
-        alpha    = Float32,
-        zIndex   = Int32
-    }
+    /// 凸多角形の塗り潰し命令。共有型 `DrawCmd.PolygonRenderCmd`。
+    pub type alias PolygonRenderCmd = DrawCmd.PolygonRenderCmd
 
     /// 注釈 1 件の書き出し依頼。ゲーム画面の気になる場所を矩形で囲んだとき、
     /// その情報一式をファイルに残すために `saveAnnotation` へ渡す。
@@ -126,15 +83,10 @@ mod GameEngine {
         polygons = List[PolygonRenderCmd]
     }
 
-    /// GPU インスタンスバッファ 1 タイル分のデータ
+    /// タイルマップ 1 タイル分のインスタンスデータ。共有型 `DrawCmd.TileInstance`。
     /// tilemap loader (fe_rogue 側 `TileRendering.buildTileInstances` 等) が生成し、
     /// `initTileBuffer` で GPU にアップロードする。
-    pub type alias TileInstance = {
-        px    = Vec2.Vec2,
-        uvOff = Vec2.Vec2,
-        uvSc  = Vec2.Vec2,
-        alpha = Float32
-    }
+    pub type alias TileInstance = DrawCmd.TileInstance
 
     /// 描画物を Drawable のリストに変換する能力を表す trait
     /// Text 等、1 つの描画物から複数 Drawable を生成するケースに対応。
@@ -224,8 +176,8 @@ mod GameEngine {
         /// zIndex 混合で sprites と tileMaps を 1 フレーム描画し、最後に polygons を塗る
         def renderCommands(sprites: List[Drawable], tileMaps: List[TileMapRenderCmd],
                            polygons: List[PolygonRenderCmd]): Unit
-        /// タイルインスタンスデータを GPU VBO にアップロードし (vaoId, count) を返す
-        def initTileBuffer(instances: List[TileInstance]): (Int32, Int32)
+        /// タイルインスタンスデータを GPU VBO にアップロードし (vaoハンドル, count) を返す
+        def initTileBuffer(instances: List[TileInstance]): (GpuHandle.TileVao, Int32)
         def shouldClose(): Bool
         /// 前フレームからの経過時間。EngineConfig#maxDeltaTime で上限クランプ済み
         def getDeltaTime(): Duration.Duration

@@ -33,7 +33,7 @@ mod RenderTexture {
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
             STBImage.stbi_image_free(data);
             discard MemoryStack.stackPop();
-            { id = textureID, width = Int32.toFloat64(texWidth), height = Int32.toFloat64(texHeight) }
+            { id = GpuHandle.wrapTextureId(textureID), width = Int32.toFloat64(texWidth), height = Int32.toFloat64(texHeight) }
         }
 
     /// テクスチャマニフェストから全テクスチャを読み込み、論理名 → TextureInfo の

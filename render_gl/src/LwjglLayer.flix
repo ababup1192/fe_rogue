@@ -468,7 +468,7 @@ mod LwjglLayer {
             def initTileBuffer(instances, k) = {
                 let instanceVBO = RenderSprite.buildTileInstanceVBO(instances);
                 let tileVao = RenderSprite.buildTileMapVAO(quadVBO, instanceVBO);
-                k((tileVao, List.length(instances)))
+                k((GpuHandle.wrapTileVao(tileVao), List.length(instances)))
             }
             def shouldClose(k) = {
                 // glfwPollEvents の **直前** に PRESS フラグをリセット。

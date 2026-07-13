@@ -86,7 +86,7 @@ mod RenderFrame {
                 |> List.map(idxT -> let (_, tm) = idxT; tm);
             List.forEach(tm -> match Map.get(tm#textureName, registry) {
                 case Some(texInfo) =>
-                    RenderSprite.drawTileMapInstanced(tileShader, texInfo#id, tm#tileVaoId,
+                    RenderSprite.drawTileMapInstanced(tileShader, GpuHandle.textureIdInt(texInfo#id), GpuHandle.tileVaoInt(tm#tileVaoId),
                                          tm#position, tm#tileSize, tm#tileScale,
                                          tm#color, tm#tileCount)
                 case None => ()
@@ -132,7 +132,7 @@ mod RenderFrame {
                                 // フォントアトラス (font_*) は SDF テキストとして描く。
                                 let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
                                 RenderSprite.drawSprite(spriteShader, vao, {
-                                    texture = texInfo#id, position = pos, scale = displaySize,
+                                    texture = GpuHandle.textureIdInt(texInfo#id), position = pos, scale = displaySize,
                                     color = drawable#color, alpha = drawable#alpha,
                                     uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
                                     rotation = drawable#rotation, useTexture = true,

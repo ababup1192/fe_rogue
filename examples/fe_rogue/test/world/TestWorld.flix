@@ -438,10 +438,10 @@ mod TestWorld {
     def testTileLayersPreservedThroughStep(): Unit \ Assert =
         let handle = ({textureName = "atlas", tileSize = 26.0, worldPos = {x = 0.0, y = 0.0},
                        color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}, zIndex = -1,
-                       tileVaoId = 7, tileCount = 42}: TileLayerHandle);
+                       tileVaoId = GpuHandle.wrapTileVao(7), tileCount = 42}: TileLayerHandle);
         let (stepped, _moved) = World.stepWorld(World.setTileLayers(handle :: Nil, World.empty()), 0.0);
         match World.tileLayersOf(stepped) {
-            case h :: Nil => Assert.assertEq(expected = (7, 42), (h#tileVaoId, h#tileCount))
+            case h :: Nil => Assert.assertEq(expected = (7, 42), (GpuHandle.tileVaoInt(h#tileVaoId), h#tileCount))
             case _        => bug!("expected exactly 1 tile layer preserved")
         }
 
@@ -450,7 +450,7 @@ mod TestWorld {
     def testSetTileLayersCmdReplacesStore(): Unit \ Assert =
         let handle: TileLayerHandle = {textureName = "t", tileSize = 16.0,
             worldPos = {x = 0.0, y = 0.0}, color = {r = 1.0f32, g = 1.0f32, b = 1.0f32},
-            zIndex = 0, tileVaoId = 7, tileCount = 3};
+            zIndex = 0, tileVaoId = GpuHandle.wrapTileVao(7), tileCount = 3};
         let w1 = World.applyCmd(World.Cmd.SetTileLayers(handle :: Nil), World.empty());
         let w2 = World.applyCmd(World.Cmd.SetTileLayers(Nil), w1);
         Assert.assertEq(expected = (1, 0),

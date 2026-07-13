@@ -152,7 +152,7 @@ mod TestAnnotate {
             texture = "ball", tint = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, alpha = 1.0f32,
             scale = { x = 2.0, y = 2.0 }, rotation = 0.0, centered = true,
             flipH = false, flipV = false, regionRect = None, zIndex = 0 });
-        let sizeOf = _ -> Some({ id = 0, width = 10.0, height = 20.0 });
+        let sizeOf = _ -> Some({ id = GpuHandle.wrapTextureId(0), width = 10.0, height = 20.0 });
         let aabb = Annotate.itemAabb(sizeOf, ({ x = 100.0, y = 100.0 }, sprite));
         Assert.assertEq(expected = (90.0, 80.0, 20.0, 40.0), rectTuple(aabb))
 
@@ -250,7 +250,7 @@ mod TestAnnotate {
                          scale = { x = 2.0, y = 2.0 }, rotation = 0.0, color = white,
                          alpha = 1.0f32, centered = true, uvOffset = { x = 0.0, y = 0.0 },
                          uvScale = { x = 1.0, y = 1.0 }, zIndex = 5, style = None };
-        let sizeOf = _ -> Some({ id = 0, width = 10.0, height = 20.0 });
+        let sizeOf = _ -> Some({ id = GpuHandle.wrapTextureId(0), width = 10.0, height = 20.0 });
         let rect = { position = { x = 95.0, y = 95.0 }, size = { x = 10.0, y = 10.0 } };
         match Annotate.hitsFromDrawables(sizeOf, rect, drawable :: Nil) {
             case hit :: Nil => Assert.assertEq(expected = ("sprite", "unit", 90.0, 80.0),
@@ -265,7 +265,7 @@ mod TestAnnotate {
         let view = { zoom = 2.0, pan = Vec2.zero(), design = design() };
         let tile = { textureName = "floor", tileSize = 16.0, position = { x = 50.0, y = 25.0 },
                      tileScale = { x = 1.0, y = 1.0 }, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
-                     zIndex = 0, tileVaoId = 1, tileCount = 10 };
+                     zIndex = 0, tileVaoId = GpuHandle.wrapTileVao(1), tileCount = 10 };
         match Annotate.applyInspectTiles(view, tile :: Nil) {
             case t :: Nil => Assert.assertEq(expected = (0.0, 0.0, 2.0, 2.0),
                 (t#position#x, t#position#y, t#tileScale#x, t#tileScale#y))

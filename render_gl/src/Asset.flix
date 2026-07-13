@@ -9,7 +9,7 @@ mod RenderAsset {
     pub type alias TextureEntry = { name = String, path = String, hasAlpha = Bool }
 
     /// テクスチャ情報: GPU ハンドル ID + 元画像サイズ (Float64)
-    pub type alias TextureInfo = { id = Int32, width = Float64, height = Float64 }
+    pub type alias TextureInfo = { id = GpuHandle.TextureId, width = Float64, height = Float64 }
 
     /// 論理名 → TextureInfo
     pub type alias TextureRegistry = Map[String, TextureInfo]

@@ -15,7 +15,7 @@ pub enum TileLayer {
         tiles = List[TileData],       // タイル一覧
         collisionCells = List[Vec2.Vec2], // 衝突グリッドセル
         gridSize = {x = Int32, y = Int32},        // マップのグリッド寸法（__cWid, __cHei）
-        tileVaoId = Int32,            // GPU VAO ID（0 = 未初期化）
+        tileVaoId = GpuHandle.TileVao,    // GPU VAO ハンドル
         tileCount = Int32             // インスタンス数
     })
 }
@@ -60,7 +60,7 @@ mod TileLayer {
             tiles          = config#tiles,
             collisionCells = config#collisionCells,
             gridSize       = config#gridSize,
-            tileVaoId      = 0,
+            tileVaoId      = GpuHandle.wrapTileVao(0),
             tileCount      = 0
         })
 
@@ -137,8 +137,8 @@ mod TileLayer {
     pub def isFloor(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Bool =
         isInBounds(coords, tileMap) and not isWall(coords, tileMap)
 
-    /// GPU リソース ID を設定する（tilemap loader が initTileBuffer の結果を書き込む）
-    pub def withGpuResources(tileVaoId: Int32, tileCount: Int32,
+    /// GPU リソースハンドルを設定する（tilemap loader が initTileBuffer の結果を書き込む）
+    pub def withGpuResources(tileVaoId: GpuHandle.TileVao, tileCount: Int32,
                               tileMap: TileLayer): TileLayer =
         let TileLayer.TileLayer(r) = tileMap;
         TileLayer.TileLayer({ tileVaoId = tileVaoId, tileCount = tileCount | r })
