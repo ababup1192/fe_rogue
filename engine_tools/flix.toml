@@ -1,15 +1,15 @@
 [package]
 name        = "flix_engine_tools"
-description = "Headless rendering & snapshot tooling (software rasterizer, GIF encoder, headless font metrics, render lint, replay scripts, HTML site generator) for games built on flix_game_engine"
+description = "Headless generation & snapshot tooling (software rasterizer, GIF encoder, headless font metrics, audio/SFX synthesis, geometry render-lint, replay scripts, HTML site generator) for games built on flix_game_engine"
 version     = "0.1.0"
 flix        = "0.75.1"
 authors     = ["ababup1192 <ababup1192@gmail.com>"]
 repository  = "github:ababup1192/flix_engine_tools"
 
-# GL コンテキストの無い場所（スナップショットテスト・CI・IDE プレビュー）で描画結果を検査するための
-# 汎用ツール箱。GameEngine.Drawable / PolygonRenderCmd を Java2D で PNG/GIF に焼き、幾何破綻を
-# リンタで検出し、操作リプレイを宣言データから再生する。ゲーム固有の型は一切知らず、engine の
-# 純粋パーツ（Drawable・Vec2・FontAtlas・TextLayout）だけに依存する（→ flix_game_engine）。
+# GL コンテキストの無い場所（スナップショットテスト・CI・IDE プレビュー）で成果物を生成・検査する
+# ための汎用ツール箱。GameEngine.Drawable / PolygonRenderCmd を Java2D で PNG/GIF に焼き、幾何破綻を
+# リンタで検出し、操作リプレイを宣言データから再生し、効果音（SfxSynth）を合成する。ゲーム固有の型は
+# 一切知らず、engine の純粋パーツ（Drawable・Vec2・FontAtlas・TextLayout）だけに依存する（→ flix_game_engine）。
 
 [dependencies]
 "github:ababup1192/flix_game_engine" = { version = "0.1.0", security = "unrestricted" }

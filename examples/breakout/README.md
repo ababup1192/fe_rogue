@@ -94,8 +94,8 @@ Step / View / Sfx は純粋関数なので、テストとギャラリーが同�
 
 | 名前 | 住んでいる場所 | 何か |
 |---|---|---|
-| `EntityId` / `CollisionShape2D` / `GameEngine.*` / `FontAtlas` | `engine/` `engine_core/` | エンジンの基本型（id・当たり判定の形・キー・描画命令・フォント） |
-| `Physics2D`（integrate/detect/separate/bounce） | `engine_world/` | 物理の 4 つの純関数。積分 → 衝突検出 → めり込み解消 → 反射 |
+| `CollisionShape2D` / `GameEngine.*` / `FontAtlas` | `engine/` | エンジンの契約と基本型（当たり判定の形・キー・描画命令・フォント） |
+| `EntityId` / `Physics2D`（integrate/detect/separate/bounce） | `engine_world/` | 物のidと、物理の 4 つの純関数。積分 → 衝突検出 → めり込み解消 → 反射 |
 | `CameraRig` | `engine_world/` | カメラ（オフセット）と trauma 式シェイクの式 |
 | `Render` / `Placed` | `engine_world/` | 「(置き場所, 見せたい物)」の語彙と描画命令への変換 |
 | `Fx` / `Quad` / `Curve` / `Hash01` | `engine_world/` | 破片・四角形・補間・ノイズの純粋な計算 |

@@ -1,14 +1,14 @@
 ## fe_rogue モノレポの workspace コマンド
 ##
 ## 構成:
-##   engine_core/ ─ engine の中で純粋な計算寄りを切り出した土台パッケージ
+##   engine/      ─ 契約層（Game/Audio effect・共有描画型・土台型・シーングラフ描画語彙）
 ##   render_gl/    ─ engine（フロント契約）を実装する GL バックエンドパッケージ
 ##   engine/      ─ 再利用ライブラリ。engine 自身の build / test / check は
 ##                   `cd engine && flix ...` で直接行う
 ##   examples/    ─ 各 example も `cd examples/<name> && flix ...` で直接
 ##
 ## Makefile に集約するのは workspace 横断の配布作業だけ:
-##   `make sync` … engine_core / engine / render_gl / engine_world / engine_tools を build-pkg し、それぞれを
+##   `make sync` … engine / render_gl / engine_world / engine_tools を build-pkg し、それぞれを
 ##                  依存しているディレクトリの lib/github/ababup1192/<pkg>/<version>/ に
 ##                  相対 symlink を張る (cp ではなく ln -sf)。
 ##                  symlink にすることで engine を rebuild すれば即座に反映され、
@@ -25,13 +25,6 @@
 # サブコマンドに応じて自動で付ける。フラグの理由は bin/flix 内のコメント参照。
 FLIX      := $(CURDIR)/bin/flix
 FLIX_TEST := $(CURDIR)/bin/flix
-
-ENGINE_CORE_DIR       := engine_core
-ENGINE_CORE_FPKG_SRC  := $(ENGINE_CORE_DIR)/artifact/engine_core.fpkg
-ENGINE_CORE_TOML_SRC  := $(ENGINE_CORE_DIR)/flix.toml
-ENGINE_CORE_SUBPATH   := lib/github/ababup1192/flix_engine_core/0.1.0
-ENGINE_CORE_FPKG_NAME := flix_engine_core-0.1.0.fpkg
-ENGINE_CORE_TOML_NAME := flix_engine_core-0.1.0.toml
 
 RENDER_GL_DIR       := render_gl
 RENDER_GL_FPKG_SRC  := $(RENDER_GL_DIR)/artifact/render_gl.fpkg
@@ -55,7 +48,7 @@ ENGINE_WORLD_SUBPATH   := lib/github/ababup1192/flix_engine_world/0.1.0
 ENGINE_WORLD_FPKG_NAME := flix_engine_world-0.1.0.fpkg
 ENGINE_WORLD_TOML_NAME := flix_engine_world-0.1.0.toml
 
-# engine_tools は engine (+ engine_core) に依存するヘッドレス描画/スナップショット工具箱 lib。examples が利用する。
+# engine_tools は engine に依存するヘッドレス描画/スナップショット工具箱 lib。examples が利用する。
 ENGINE_TOOLS_DIR       := engine_tools
 ENGINE_TOOLS_FPKG_SRC  := $(ENGINE_TOOLS_DIR)/artifact/engine_tools.fpkg
 ENGINE_TOOLS_TOML_SRC  := $(ENGINE_TOOLS_DIR)/flix.toml
@@ -68,15 +61,14 @@ ENGINE_TOOLS_TOML_NAME := flix_engine_tools-0.1.0.toml
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine-core sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-root-src clean-locks clean-example-builds test bake
+.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-root-src clean-locks clean-example-builds test bake
 
 help:
 	@echo "Targets:"
 	@echo "  make test                 全パッケージ (engine系 + examples) のテストを headless で実行"
 	@echo "  make test-<name>          1 つだけテスト (例: make test-fe_rogue / make test-engine)"
 	@echo "  make bake                 bake ターゲットを持つ全 example の生成物を焼き直す"
-	@echo "  make sync                 engine_core / engine / render_gl / engine_world / engine_tools を build-pkg し、各依存先に配布"
-	@echo "  make sync-engine-core     engine_core だけ build-pkg & 配布 (engine / render_gl / engine_world / examples へ)"
+	@echo "  make sync                 engine / render_gl / engine_world / engine_tools を build-pkg し、各依存先に配布"
 	@echo "  make sync-render-gl       render_gl だけ build-pkg & 配布 (examples へ)"
 	@echo "  make sync-engine          engine だけ build-pkg & 配布 (render_gl / engine_world / engine_tools / examples へ)"
 	@echo "  make sync-engine-world      engine_world だけ build-pkg & 配布 (examples へ)"
@@ -108,7 +100,7 @@ clean-example-builds:
 
 # ── テスト ────────────────────────────────────────────────
 # 全パッケージのテストを順に回す。1 つでも赤ならそこで止まり exit 1。
-TEST_DIRS := $(ENGINE_CORE_DIR) $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR) $(wildcard examples/*)
+TEST_DIRS := $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR) $(wildcard examples/*)
 
 test:
 	@for dir in $(TEST_DIRS); do \
@@ -138,7 +130,7 @@ test-%:
 		cd "$*" && $(FLIX_TEST) test; \
 	fi
 
-sync: clean-locks sync-engine-core sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-root-src
+sync: clean-locks sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-root-src
 
 # ── コミュニティビルド用ルート src/ ──────────────────────
 # Flix 公式の community build (flix/flix の community-build.yaml) は、このリポジトリを
@@ -147,7 +139,7 @@ sync: clean-locks sync-engine-core sync-engine sync-render-gl sync-engine-world 
 # 5 パッケージを 1 ソースツリーとしてビルドできるようにする (ルートの flix.toml が対応)。
 # ディレクトリ symlink は Flix のソース走査に追従されないため、必ずファイル単位で張る。
 # エンジンに .flix を追加/削除/改名したら再実行して symlink 集を更新し、コミットする。
-ROOT_SRC_PKGS := $(ENGINE_CORE_DIR) $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR)
+ROOT_SRC_PKGS := $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR)
 
 sync-root-src:
 	@for pkg in $(ROOT_SRC_PKGS); do rm -rf "src/$$pkg"; done; \
@@ -162,24 +154,6 @@ sync-root-src:
 		done; \
 	done; \
 	find src -type l | awk 'END { print "[sync-root-src] " NR " symlink(s)" }'
-
-# engine_core は engine / render_gl / examples すべてが（直接または推移的に）依存する。
-# 最も土台のパッケージなので sync チェーンの先頭に置く。
-sync-engine-core:
-	cd $(ENGINE_CORE_DIR) && $(FLIX) build-pkg
-	@for dir in $(ENGINE_DIR)/ $(RENDER_GL_DIR)/ $(ENGINE_WORLD_DIR)/ $(ENGINE_TOOLS_DIR)/ examples/*/; do \
-		toml="$$dir/flix.toml"; \
-		if [ -f "$$toml" ] && grep -qE "ababup1192/(flix_engine_core|flix_game_engine|flix_render_gl|flix_engine_world|flix_engine_tools)" "$$toml"; then \
-			target="$${dir}$(ENGINE_CORE_SUBPATH)"; \
-			mkdir -p "$$target"; \
-			depth=$$(printf '%s' "$$dir" | tr -cd '/' | wc -c | tr -d ' '); \
-			upcnt=$$((depth + $(SUBPATH_DEPTH))); \
-			rel=$$(printf '../%.0s' $$(seq 1 $$upcnt)); \
-			ln -sfn "$${rel}$(ENGINE_CORE_FPKG_SRC)" "$$target/$(ENGINE_CORE_FPKG_NAME)"; \
-			ln -sfn "$${rel}$(ENGINE_CORE_TOML_SRC)" "$$target/$(ENGINE_CORE_TOML_NAME)"; \
-			echo "[sync-engine-core] $$target"; \
-		fi \
-	done
 
 # render_gl は engine（フロント契約）を実装する GL バックエンド。examples が直接依存にする。
 # engine に依存するので sync チェーンでは sync-engine の後に置く（lib に engine fpkg が要る）。

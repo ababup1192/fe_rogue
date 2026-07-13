@@ -1,11 +1,10 @@
 [package]
 name        = "flix_game_engine"
-description = "Reusable 2D game engine"
+description = "2D game engine contract layer: the GameEngine.Game/Audio effect contract, shared render types (Drawable/PolygonRenderCmd), foundational types (Vec2/Color/DrawCmd/GpuHandle/FontAtlas), and the scene-graph draw vocabulary — GL-free with no native deps. Backends (render_gl, ...) implement the contract; the App runtime (flix_engine_world) consumes it."
 version     = "0.1.0"
 flix        = "0.75.1"
 authors     = ["ababup1192 <ababup1192@gmail.com>"]
 
 [dependencies]
-# engine は GL 非依存のフロント（Game/Audio 契約・シーングラフ・Resource）。
-# ネイティブは持たず、描画の実体はバックエンド（render_gl など）が実装する。
-"github:ababup1192/flix_engine_core" = { version = "0.1.0", security = "unrestricted" }
+# engine は GL 非依存の「契約層」: Game/Audio effect 契約・共有描画型・土台型・シーングラフ描画語彙。
+# ネイティブも外部依存も持たず（stdlib のみ）、描画の実体はバックエンド（render_gl など）が実装する。

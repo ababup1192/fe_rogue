@@ -99,30 +99,27 @@ flix test            # test
 ## Project layout (monorepo)
 
 ```
-engine_core/   foundation package: pure types and computation (math, color, text layout, project loading)
-render_core/   OpenGL/OpenAL wrapper layer: shaders, textures, SDF fonts, audio (depends on engine_core)
-engine/        runtime shell: main loop, LWJGL window/input/audio handlers, asset loading, save data (depends on render_core)
-engine_world/  value-based game framework: Bevy-style App, ECS queries, physics, UI widgets, camera rig, Worldline undo/replay (depends on engine)
+engine/        contract layer (GL-free, no native deps): the GameEngine.Game/Audio effect contract, shared render types, foundational types (math, color, text layout, project loading), scene-graph draw vocabulary
+render_gl/     OpenGL/OpenAL backend implementing engine's contract: LWJGL window/input/audio, shaders, textures, SDF fonts (depends on engine)
+engine_world/  value-based game framework: Bevy-style App run-loop, ECS queries, physics, UI widgets, camera rig, Worldline undo/replay, and frontend services (asset loading, save data, JSON, logging) (depends on engine)
 engine_tools/  dev & test tooling: headless software rasterizer, filmstrip/GIF baking, snapshot viewer, render lint, SFX synth (depends on engine)
-ide/           Swing + AWTGLCanvas editor (depends on engine)
-examples/      individual games (depend on engine, engine_world, engine_tools)
+examples/      individual games (depend on engine, render_gl, engine_world, engine_tools)
 bin/           the flix wrapper script (the compiler jar comes from devbox/nix)
 flix.toml
 src/           root project for the Flix community build: per-file symlinks bundling
                all engine packages into one source tree (regenerate with make sync-root-src)
 ```
 
-Dependency chain: `engine_core → render_core → engine → (engine_world / engine_tools) → examples`,
-with `ide` sitting on `engine`.
+Dependency chain: `engine` is the foundation (no deps); `render_gl`, `engine_world`, and
+`engine_tools` each depend on it; `examples` depend on all four.
 `make sync` runs `build-pkg` on each package and distributes it to dependents via
 relative symlinks (symlink, not cp — so rebuilding the engine is reflected instantly).
 
 ## Development tips
 
 ```bash
-make sync-engine-core    # build-pkg & distribute engine_core only
-make sync-render-core    # build-pkg & distribute render_core only
 make sync-engine         # build-pkg & distribute engine only
+make sync-render-gl      # build-pkg & distribute render_gl only
 make sync-engine-world   # build-pkg & distribute engine_world only
 make sync-engine-tools   # build-pkg & distribute engine_tools only
 make sync-root-src       # regenerate the root src/ symlinks for the Flix community build
@@ -236,30 +233,27 @@ flix test            # テスト
 ## プロジェクト構成（monorepo）
 
 ```
-engine_core/   数学・色・テキストレイアウト・プロジェクト読み込みなど純粋な型と計算の土台パッケージ
-render_core/   OpenGL/OpenAL ラッパレイヤ: シェーダ・テクスチャ・SDF フォント・音声（engine_core 依存）
-engine/        ランタイムの殻: メインループ・LWJGL の窓/入力/音声ハンドラ・アセット読み込み・セーブデータ（render_core 依存）
-engine_world/  値ベースのゲームフレームワーク: Bevy 風 App・ECS クエリ・物理・UI 部品・カメラリグ・Worldline undo/リプレイ（engine 依存）
+engine/        契約層（GL 非依存・ネイティブ無し）: GameEngine.Game/Audio effect 契約・共有描画型・土台型（数学・色・テキストレイアウト・プロジェクト読み込み）・シーングラフ描画語彙
+render_gl/     engine の契約を実装する OpenGL/OpenAL バックエンド: LWJGL の窓/入力/音声・シェーダ・テクスチャ・SDF フォント（engine 依存）
+engine_world/  値ベースのゲームフレームワーク: Bevy 風 App ループ・ECS クエリ・物理・UI 部品・カメラリグ・Worldline undo/リプレイ・frontend サービス（アセット読み込み・セーブ・JSON・ログ）（engine 依存）
 engine_tools/  開発・テスト用ツール: headless ソフトラスタライザ・コマ撮り/GIF bake・スナップショットビューア・RenderLint・効果音合成（engine 依存）
-ide/           Swing + AWTGLCanvas ベースのエディタ（engine 依存）
-examples/      各ゲーム（engine・engine_world・engine_tools 依存）
+examples/      各ゲーム（engine・render_gl・engine_world・engine_tools 依存）
 bin/           flix ラッパスクリプト（コンパイラ jar は devbox/nix が供給）
 flix.toml
 src/           Flix コミュニティビルド用のルートプロジェクト: 全エンジンパッケージを
                1 ソースツリーに束ねるファイル単位 symlink 集（make sync-root-src で再生成）
 ```
 
-依存チェーンは `engine_core → render_core → engine →（engine_world / engine_tools）→ examples`、
-`ide` は `engine` の上に載る。
+依存関係は `engine` が土台（依存ゼロ）で、`render_gl`・`engine_world`・`engine_tools` が
+それぞれ engine に依存し、`examples` はその 4 つすべてに依存する。
 `make sync` が各パッケージを `build-pkg` し、依存先へ相対 symlink で配布する
 （cp ではなく symlink なので、エンジンを再ビルドすれば即座に反映される）。
 
 ## 開発 Tips
 
 ```bash
-make sync-engine-core    # engine_core だけ build-pkg & 配布
-make sync-render-core    # render_core だけ build-pkg & 配布
 make sync-engine         # engine だけ build-pkg & 配布
+make sync-render-gl      # render_gl だけ build-pkg & 配布
 make sync-engine-world   # engine_world だけ build-pkg & 配布
 make sync-engine-tools   # engine_tools だけ build-pkg & 配布
 make sync-root-src       # コミュニティビルド用ルート src/ symlink 集を再生成
