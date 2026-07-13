@@ -58,18 +58,22 @@ mod ArtGallery {
         });
         List.append(headers, rows)
 
-    def rasterReq(atlas: FontAtlas, items: List[Render.Placed], design: Vec2.Vec2,
-                  scale: Int32, path: String): SoftRaster.RasterReq =
-        let (drawables, polygons) = Render.draw(items);
-        { drawables = drawables, polygons = polygons,
-          design = design, scale = scale, background = Palette.galleryBg(),
+    /// Bakery に渡す焼き込み設定。シートごとに解像度と拡大率が違うので design/scale は引数で渡す
+    /// （静止画だけなので frame/gif 系は使わない）。
+    def config(atlas: FontAtlas, design: Vec2.Vec2, scale: Int32): Bakery.BakeConfig =
+        { design = design, scale = scale, background = Palette.galleryBg(),
           texturePath = Map.empty(), fontTtf = ttfPath(), fontAtlas = atlas,
-          outPath = path }
+          outDir = "gallery", frameW = 0, frameH = 0, gifDelayMs = 0, gifFps = 0 }
+
+    /// 描画アイテム列を 1 枚の PNG に焼く（配管は Bakery が担う）。
+    def shotScene(atlas: FontAtlas, items: List[Render.Placed], design: Vec2.Vec2,
+                  scale: Int32, name: String): Unit \ IO =
+        let (drawables, polygons) = Render.draw(items);
+        Bakery.renderPng(config(atlas, design, scale), drawables, polygons, name)
 
     /// のび候補シートを焼く。
     def bakeNobi(atlas: FontAtlas): Unit \ IO =
-        SoftRaster.render(rasterReq(atlas, nobiSheetItems(atlas), nobiSheetSize(), 1,
-            "gallery/nobi_candidates.png"))
+        shotScene(atlas, nobiSheetItems(atlas), nobiSheetSize(), 1, "nobi_candidates")
 
     // ── キッチン 3 案（320×240 まるごと・2 倍で出力）──
 
@@ -81,8 +85,8 @@ mod ArtGallery {
     def bakeKitchens(atlas: FontAtlas): Unit \ IO =
         kitchens() |> List.forEach(entry -> {
             let (name, tone, layout, props) = entry;
-            SoftRaster.render(rasterReq(atlas, Kitchen.scene(tone, layout, props, atlas),
-                {x = 320.0, y = 240.0}, 2, "gallery/${name}.png"))
+            shotScene(atlas, Kitchen.scene(tone, layout, props, atlas),
+                {x = 320.0, y = 240.0}, 2, name)
         })
 
     // ── 持ち場の小物 2 案の比較シート ──
@@ -102,8 +106,7 @@ mod ArtGallery {
         })
 
     def bakeStations(atlas: FontAtlas): Unit \ IO =
-        SoftRaster.render(rasterReq(atlas, stationsSheetItems(atlas),
-            {x = 320.0, y = 250.0}, 2, "gallery/stations.png"))
+        shotScene(atlas, stationsSheetItems(atlas), {x = 320.0, y = 250.0}, 2, "stations")
 
     // ── 品物アイコン一覧 ──
 
@@ -120,8 +123,7 @@ mod ArtGallery {
         })
 
     def bakeItems(atlas: FontAtlas): Unit \ IO =
-        SoftRaster.render(rasterReq(atlas, itemsSheetItems(atlas),
-            {x = 620.0, y = 250.0}, 1, "gallery/items.png"))
+        shotScene(atlas, itemsSheetItems(atlas), {x = 620.0, y = 250.0}, 1, "items")
 
     // ── UI モック 2 案（キッチン + のび + 品物 + HUD を仮合成）──
 
@@ -211,10 +213,8 @@ mod ArtGallery {
             (if (ring) hudBar(atlas) else hudCorners(atlas)) :: Nil)
 
     def bakeMocks(atlas: FontAtlas): Unit \ IO =
-        SoftRaster.render(rasterReq(atlas, mockItems(atlas, true),
-            {x = 320.0, y = 240.0}, 2, "gallery/mock_ring.png"));
-        SoftRaster.render(rasterReq(atlas, mockItems(atlas, false),
-            {x = 320.0, y = 240.0}, 2, "gallery/mock_cards.png"))
+        shotScene(atlas, mockItems(atlas, true), {x = 320.0, y = 240.0}, 2, "mock_ring");
+        shotScene(atlas, mockItems(atlas, false), {x = 320.0, y = 240.0}, 2, "mock_cards")
 
     // ── ダッシュボード ──
 

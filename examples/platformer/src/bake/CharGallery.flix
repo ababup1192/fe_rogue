@@ -81,27 +81,29 @@ mod CharGallery {
 
     // ── 焼き込み ──
 
-    def reqOf(atlas: FontAtlas, items: List[Render.Placed], path: String): SoftRaster.RasterReq =
-        let (drawables, polygons) = Render.draw(items);
-        { drawables = drawables, polygons = polygons,
-          design = { x = Int32.toFloat64(stageW()), y = Int32.toFloat64(stageH()) }, scale = 1,
+    /// Bakery に渡す焼き込み設定（舞台は 1800×260・等倍・GIF は 47ms ≒ 実 21fps）。
+    def config(atlas: FontAtlas): Bakery.BakeConfig =
+        { design = { x = Int32.toFloat64(stageW()), y = Int32.toFloat64(stageH()) }, scale = 1,
           background = Palette.clearColor(), texturePath = Map.empty(),
-          fontTtf = ttfPath(), fontAtlas = atlas, outPath = path }
+          fontTtf = ttfPath(), fontAtlas = atlas, outDir = outDir(),
+          frameW = stageW(), frameH = stageH(), gifDelayMs = 47, gifFps = 21 }
+
+    /// 時刻 t のコマを engine の描画コマンドへ投影する。
+    def frameCmds(atlas: FontAtlas, t: Float64):
+            (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+        Render.draw(frameItems(atlas, t))
 
     /// charparade（GIF + コマ別 PNG）と charlineup（PNG 1 枚）を焼き、GIF の
-    /// フィルムストリップ情報を返す。6 秒 × 64fps = 384 コマを stride 3 で 128 コマに
-    /// 間引く（コマ間 3/64 秒 ≈ 47ms・実時間再生 ≈ 21fps）。
+    /// フィルムストリップ情報を返す。6 秒 × 64fps = 384 コマを 3 コマおきに 128 コマへ
+    /// 間引く（コマ間 3/64 秒 ≈ 47ms・実時間再生 ≈ 21fps）。時刻を事前に間引くので stride=1。
     pub def bake(atlas: FontAtlas): SnapshotSite.Filmstrip \ IO =
         let dt = 1.0 / 64.0;
         let ts = List.range(0, 384)
             |> List.filter(i -> Int32.modulo(i, 3) == 0)
             |> List.map(i -> Int32.toFloat64(i) * dt);
-        let gifPath = "${outDir()}/charparade.gif";
-        let images = ts |> List.map(t ->
-            SoftRaster.renderToImage(reqOf(atlas, frameItems(atlas, t), gifPath)));
-        GifEncoder.encodeWithFrames(images, 47, gifPath, "${outDir()}/frames/charparade");
+        let film = Bakery.bakeGif(config(atlas), ts, 1, t -> frameCmds(atlas, t), "charparade");
         // 整列写真: t=5.0（待機の呼吸）で全員を並べた 1 枚。
-        SoftRaster.render(reqOf(atlas, frameItems(atlas, 5.0), "${outDir()}/charlineup.png"));
-        { strip = "frames/charparade/", frameCount = List.length(images),
-          frameW = stageW(), frameH = stageH(), fps = 21 }
+        let (drawables, polygons) = frameCmds(atlas, 5.0);
+        Bakery.renderPng(config(atlas), drawables, polygons, "charlineup");
+        film
 }

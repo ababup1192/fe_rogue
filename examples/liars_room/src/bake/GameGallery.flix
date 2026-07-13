@@ -35,16 +35,16 @@ mod GameGallery {
         let (drawables, polygons) = Render.draw(View.compose(atlas, { ui = ui1, world = w }));
         { drawables = drawables, polygons = polygons }
 
-    def rasterReq(atlas: FontAtlas,
-                  sc: {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]},
-                  path: String): SoftRaster.RasterReq =
-        { drawables = sc#drawables, polygons = sc#polygons,
-          design = design(), scale = scale(), background = Palette.clearColor(),
+    /// Bakery に渡す焼き込み設定（背景は clearColor・テクスチャなし）。
+    def config(atlas: FontAtlas): Bakery.BakeConfig =
+        { design = design(), scale = scale(), background = Palette.clearColor(),
           texturePath = Map.empty(), fontTtf = ttfPath(), fontAtlas = atlas,
-          outPath = path }
+          outDir = "gallery", frameW = gifFrameW(), frameH = gifFrameH(),
+          gifDelayMs = gifFrameDelayMs(), gifFps = gifFps() }
 
-    def shot(atlas: FontAtlas, ui: UiStore.UiWorld, w: Room.World, path: String): Unit \ IO =
-        SoftRaster.render(rasterReq(atlas, scene(atlas, ui, w), path))
+    def shot(atlas: FontAtlas, ui: UiStore.UiWorld, w: Room.World, name: String): Unit \ IO =
+        let sc = scene(atlas, ui, w);
+        Bakery.renderPng(config(atlas), sc#drawables, sc#polygons, name)
 
     // ── 見せたい瞬間の World たち（TestViewGuards と同じ作り方）──
 
@@ -82,15 +82,15 @@ mod GameGallery {
         stage1() |> Trace.step(Trace.hintTap())
 
     def bakeScreens(atlas: FontAtlas, ui: UiStore.UiWorld): Unit \ IO =
-        shot(atlas, ui, Room.titleWorld(), "gallery/screen_title.png");
-        shot(atlas, ui, stage1(), "gallery/screen_room.png");
-        shot(atlas, ui, talking(), "gallery/screen_talk.png");
+        shot(atlas, ui, Room.titleWorld(), "screen_title");
+        shot(atlas, ui, stage1(), "screen_room");
+        shot(atlas, ui, talking(), "screen_talk");
         shot(atlas, ui, stage1() |> Trace.step(Trace.memoTap()) |> Trace.step(Trace.talkTap()),
-             "gallery/screen_memo.png");
-        shot(atlas, ui, hintShot(), "gallery/screen_hint.png");
-        shot(atlas, ui, answerShot(), "gallery/screen_answer.png");
-        shot(atlas, ui, wrongShot(), "gallery/screen_wrong.png");
-        shot(atlas, ui, clearedShot(), "gallery/screen_clear.png")
+             "screen_memo");
+        shot(atlas, ui, hintShot(), "screen_hint");
+        shot(atlas, ui, answerShot(), "screen_answer");
+        shot(atlas, ui, wrongShot(), "screen_wrong");
+        shot(atlas, ui, clearedShot(), "screen_clear")
 
     // ── 入力の台本 ──
 
@@ -189,22 +189,14 @@ mod GameGallery {
         }, (start :: Nil, start));
         List.reverse(frames)
 
-    def everyNth(n: Int32, xs: List[a]): List[a] =
-        xs |> List.zipWithIndex |> List.filterMap(pair -> {
-            let (i, x) = pair;
-            if (Int32.modulo(i, n) == 0) Some(x) else None
-        })
-
-    /// GIF 1 本とコマ送りビューア用のコマ別 PNG を焼き、ビューアのメタデータを返す。
+    /// 台本を tick に流し、GIF＋コマ送りビューア用のコマ別 PNG を焼く（配管は Bakery が担う）。
+    /// 返り値はカタログに差し込む (名前, フィルムストリップ情報)。
     def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, script: List[Room.Input],
                 name: String): (String, SnapshotSite.Filmstrip) \ IO =
-        let path = "gallery/${name}.gif";
-        let frames = worldsOf(script, stage1())
-            |> everyNth(gifSampleStride())
-            |> List.map(w -> SoftRaster.renderToImage(rasterReq(atlas, scene(atlas, ui, w), path)));
-        GifEncoder.encodeWithFrames(frames, gifFrameDelayMs(), path, "gallery/frames/${name}");
-        (name, { strip = "frames/${name}/", frameCount = List.length(frames),
-                 frameW = gifFrameW(), frameH = gifFrameH(), fps = gifFps() })
+        let frames = worldsOf(script, stage1());
+        let fs = Bakery.bakeGif(config(atlas), frames, gifSampleStride(),
+                                w -> { let sc = scene(atlas, ui, w); (sc#drawables, sc#polygons) }, name);
+        (name, fs)
 
     // ── ダッシュボード ──
 

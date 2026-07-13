@@ -25,33 +25,29 @@ mod Gallery {
     def gifDelayMs(): Int32 = 33
     def gifFps(): Int32 = 30
 
-    // ── RasterReq 組み立て ──
+    /// Bakery に渡す焼き込み設定（背景は clearColor・テクスチャなし）。
+    def config(atlas: FontAtlas): Bakery.BakeConfig =
+        { design = design(), scale = scale(), background = Palette.clearColor(),
+          texturePath = Map.empty(), fontTtf = ttfPath(), fontAtlas = atlas,
+          outDir = outDir(), frameW = frameW(), frameH = frameH(),
+          gifDelayMs = gifDelayMs(), gifFps = gifFps() }
 
-    def reqOfScene(atlas: FontAtlas, drawables: List[GameEngine.Drawable],
-                   polygons: List[GameEngine.PolygonRenderCmd], path: String): SoftRaster.RasterReq =
-        { drawables = drawables, polygons = polygons,
-          design = design(), scale = scale(), background = Palette.clearColor(),
-          texturePath = Map.empty(), fontTtf = ttfPath(), fontAtlas = atlas, outPath = path }
+    /// World の絵に注釈（extra）を重ねて engine の描画コマンドへ投影する。
+    def worldCmds(atlas: FontAtlas, world: Field.World,
+                  extra: List[Render.Placed]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+        Render.draw(List.append(View.frame(atlas, world), extra))
 
-    /// World の絵に注釈（extra）を重ねた 1 枚の焼き込み要求。
-    def reqOfWorld(atlas: FontAtlas, world: Field.World,
-                   extra: List[Render.Placed], path: String): SoftRaster.RasterReq =
-        let (drawables, polygons) = Render.draw(List.append(View.frame(atlas, world), extra));
-        reqOfScene(atlas, drawables, polygons, path)
-
-    def pathOf(name: String): String = "${outDir()}/${name}.png"
-    def gifPathOf(name: String): String = "${outDir()}/${name}.gif"
-
-    // ── PNG / GIF を焼く ──
+    // ── PNG / GIF を焼く（配管は Bakery が担う）──
 
     /// 1 枚の World を PNG に焼く。
     def shotWorld(atlas: FontAtlas, world: Field.World, name: String): Unit \ IO =
-        SoftRaster.render(reqOfWorld(atlas, world, Nil, pathOf(name)))
+        let (drawables, polygons) = worldCmds(atlas, world, Nil);
+        Bakery.renderPng(config(atlas), drawables, polygons, name)
 
     /// 直接組んだ場面（World を介さない扇形など）を PNG に焼く。
     def shotScene(atlas: FontAtlas, drawables: List[GameEngine.Drawable],
                   polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO =
-        SoftRaster.render(reqOfScene(atlas, drawables, polygons, name |> pathOf))
+        Bakery.renderPng(config(atlas), drawables, polygons, name)
 
     /// シナリオを Replay.timeline で駆動し、stride 枚ごとに 1 枚描いて GIF＋コマ別 PNG に焼く。
     /// annotate は各フレームの World から重ねる注釈（SPEED の読みなど。不要なら _ -> Nil）。
@@ -59,17 +55,7 @@ mod Gallery {
     def bakeGif(atlas: FontAtlas, world: Field.World, frames: Int32, stride: Int32,
                 name: String, annotate: Field.World -> List[Render.Placed]): SnapshotSite.Filmstrip \ IO =
         let film = Replay.timeline(Step.update, Trace.dt(), Trace.flight(frames), world);
-        let sampled = every(stride, film);
-        let images = List.map(w ->
-            SoftRaster.renderToImage(reqOfWorld(atlas, w, annotate(w), gifPathOf(name))), sampled);
-        GifEncoder.encodeWithFrames(images, gifDelayMs(), gifPathOf(name), "${outDir()}/frames/${name}");
-        { strip = "frames/${name}/", frameCount = List.length(images),
-          frameW = frameW(), frameH = frameH(), fps = gifFps() }
-
-    /// stride 枚ごとに 1 枚を残す（0 番から）。
-    def every(stride: Int32, xs: List[a]): List[a] =
-        List.zipWithIndex(xs)
-            |> List.filterMap(pair -> { let (i, x) = pair; if (Int32.modulo(i, stride) == 0) Some(x) else None })
+        Bakery.bakeGif(config(atlas), film, stride, w -> worldCmds(atlas, w, annotate(w)), name)
 
     // ── 見せ場 1: パドル反射の扇形（当たり位置で変わる角度差を 1 枚に並べる）──
     // update を介さず Bounce 規則から直接描く: 5 つの当たり位置それぞれの反射方向へ点線を伸ばす。

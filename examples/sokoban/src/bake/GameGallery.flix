@@ -46,17 +46,17 @@ mod GameGallery {
         let (drawables, polygons) = Render.draw(View.compose(atlas, { ui = ui1, line = line }));
         { drawables = drawables, polygons = polygons }
 
-    def rasterReq(atlas: FontAtlas,
-                  sc: {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]},
-                  path: String): SoftRaster.RasterReq =
-        { drawables = sc#drawables, polygons = sc#polygons,
-          design = design(), scale = scale(), background = Palette.clearColor(),
+    /// Bakery に渡す焼き込み設定（背景は clearColor・テクスチャなし）。
+    def config(atlas: FontAtlas): Bakery.BakeConfig =
+        { design = design(), scale = scale(), background = Palette.clearColor(),
           texturePath = Map.empty(), fontTtf = ttfPath(), fontAtlas = atlas,
-          outPath = path }
+          outDir = "gallery", frameW = gifFrameW(), frameH = gifFrameH(),
+          gifDelayMs = gifFrameDelayMs(), gifFps = gifFps() }
 
     def shot(atlas: FontAtlas, ui: UiStore.UiWorld, line: Worldline[Board.World],
-             path: String): Unit \ IO =
-        SoftRaster.render(rasterReq(atlas, scene(atlas, ui, line), path))
+             name: String): Unit \ IO =
+        let sc = scene(atlas, ui, line);
+        Bakery.renderPng(config(atlas), sc#drawables, sc#polygons, name)
 
     // ── 4枚の画面 ──
 
@@ -77,34 +77,21 @@ mod GameGallery {
         Replay.play(Sokoban.tick, Trace.dt(), cues, fresh(Board.playingWorld(1)))
 
     def bakeScreens(atlas: FontAtlas, ui: UiStore.UiWorld): Unit \ IO =
-        shot(atlas, ui, fresh(Board.titleWorld()), "gallery/screen_title.png");
-        shot(atlas, ui, fresh(Board.playingWorld(1)), "gallery/screen_level1.png");
-        shot(atlas, ui, midPush(), "gallery/screen_push.png");
-        shot(atlas, ui, clearedAndRaining(), "gallery/screen_clear.png")
+        shot(atlas, ui, fresh(Board.titleWorld()), "screen_title");
+        shot(atlas, ui, fresh(Board.playingWorld(1)), "screen_level1");
+        shot(atlas, ui, midPush(), "screen_push");
+        shot(atlas, ui, clearedAndRaining(), "screen_clear")
 
     // ── 2本のフィルム ──
 
-    /// stride 個おきのフレームだけを残す（フィルムは 64Hz で撮影され、GIF は
-    /// 約32Hz で見せる）。
-    def every(stride: Int32, i: Int32, xs: List[a]): List[a] = match xs {
-        case Nil     => Nil
-        case x :: rest =>
-            if (Int32.modulo(i, stride) == 0) x :: every(stride, i + 1, rest)
-            else every(stride, i + 1, rest)
-    }
-
-    /// GIF 1 本とコマ送りビューア用のコマ別 PNG を焼き、ビューアのメタデータを返す。
-    /// 横連結シート（1 枚 PNG）はブラウザが幅 65,535px 超を描けず真っ黒に落ちるので、
-    /// 全コマを gallery/frames/<name>/ にコマ別に焼き、ビューアが canvas でめくる。
+    /// シナリオを Replay.timeline で駆動し、GIF＋コマ送りビューア用のコマ別 PNG を焼く
+    /// （配管は Bakery が担う）。返り値はカタログに差し込む (名前, フィルムストリップ情報)。
     def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, cues: List[Replay.Cue[Board.Input]],
                 start: Worldline[Board.World], name: String): (String, SnapshotSite.Filmstrip) \ IO =
-        let path = "gallery/${name}.gif";
         let film = Replay.timeline(Sokoban.tick, Trace.dt(), cues, start);
-        let frames = List.map(l -> SoftRaster.renderToImage(rasterReq(atlas, scene(atlas, ui, l), path)),
-                              every(gifSampleStride(), 0, film));
-        GifEncoder.encodeWithFrames(frames, gifFrameDelayMs(), path, "gallery/frames/${name}");
-        (name, { strip = "frames/${name}/", frameCount = List.length(frames),
-                 frameW = gifFrameW(), frameH = gifFrameH(), fps = gifFps() })
+        let fs = Bakery.bakeGif(config(atlas), film, gifSampleStride(),
+                                l -> { let sc = scene(atlas, ui, l); (sc#drawables, sc#polygons) }, name);
+        (name, fs)
 
     // ── フィルムストリップのメタデータ ──
 
