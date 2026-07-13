@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # flix ラッパ。CWD が ide/ 配下のときは AWT/Swing 用に -XstartOnFirstThread を付けない。
-# それ以外 (engine, editor, examples の GLFW ベース) では macOS の AppKit 要件のため付ける。
+# それ以外 (engine, editor, examples の GLFW ベース) では macOS のときだけ AppKit 要件のため付ける
+# (Linux/CI の JVM は -XstartOnFirstThread を拒否するので付けない)。
 #
 # IDE モードかつ `run` サブコマンドのときに限り、起動前に
 # `make -C <project_root> clean-example-builds` を呼ぶ。
@@ -17,11 +18,17 @@ case "$PWD" in
         FLAGS=""
         ;;
     *)
+        # -XstartOnFirstThread は macOS の GLFW/AppKit がメインスレッドを要求するための専用フラグ。
+        # Linux/CI の JVM はこのオプションを知らず「Could not create the Java VM」で起動失敗するので、
+        # Darwin のときだけ付ける (build-pkg/check だけを回す CI では不要でもある)。
+        FLAGS=""
+        if [ "$(uname)" = "Darwin" ]; then
+            FLAGS="-XstartOnFirstThread"
+        fi
         # test と bake (run --entrypoint Bake.*) はヘッドレス処理 (実ウィンドウを開かない) なので
         # java.awt.headless=true を明示する。-XstartOnFirstThread 下でワーカースレッドが
         # AWT を初期化 (HeadlessFont → BufferedImage) すると AppKit 待ちで永久ハングし得るため。
         # ゲーム実機起動 (通常の run) には付けない。
-        FLAGS="-XstartOnFirstThread"
         case "$1 $*" in
             test\ *|test) FLAGS="$FLAGS -Djava.awt.headless=true" ;;
             *"--entrypoint Bake"*) FLAGS="$FLAGS -Djava.awt.headless=true" ;;
