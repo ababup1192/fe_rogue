@@ -12,4 +12,4 @@ repository  = "github:ababup1192/flix_engine_world"
 # 契約の純粋パーツ（GameEngine・シーングラフ・土台型）を再利用するため flix_game_engine に依存する。
 
 [dependencies]
-"github:ababup1192/flix_game_engine" = { version = "0.1.0", security = "unrestricted" }
+"github:ababup1192/flix_engine_core" = { version = "0.1.0", security = "unrestricted" }
