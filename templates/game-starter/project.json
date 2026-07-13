@@ -1,0 +1,15 @@
+{
+  "title": "My Flix Game",
+  "designWidth": 320,
+  "designHeight": 240,
+  "windowWidth": 960,
+  "windowHeight": 720,
+  "windowScale": 3,
+  "clearColor": {"r": 0.133333, "g": 0.125490, "b": 0.203922},
+  "maxDeltaTime": 0.05,
+  "textures": [],
+  "fonts": [
+    {"name": "default", "path": "assets/Xolonium-Regular.ttf", "fontSize": 60.0}
+  ],
+  "sounds": []
+}

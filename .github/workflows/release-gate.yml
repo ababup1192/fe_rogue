@@ -1,0 +1,25 @@
+name: Release Gate
+
+# tag (v*) を push したとき、エンジン全パッケージがコンパイルできることを確認する門番。
+# fe_rogue の描画スナップショット golden は OS/JRE のフォント計測差でズレるため CI では回さない。
+# golden を含む全テストは開発機ローカルの `make test` に任せ、CI は「ビルドが通るか」だけを見る。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # devbox が nix 経由で JDK21 / Flix コンパイラ / make を用意する（ローカルと同じ環境）。
+      - name: Install devbox
+        uses: jetify-com/devbox-install-action@v0.13.0
+
+      # make sync は5パッケージすべてを build-pkg する = 全パッケージのコンパイル検証になる。
+      - name: Build all packages
+        run: devbox run -- make sync
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

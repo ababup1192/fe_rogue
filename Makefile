@@ -1,4 +1,4 @@
-## fe_rogue モノレポの workspace コマンド
+## Flix ゲームエンジン モノレポの workspace コマンド
 ##
 ## 構成:
 ##   engine/      ─ 契約層（Game/Audio effect・共有描画型・土台型・シーングラフ描画語彙）
@@ -26,42 +26,56 @@
 FLIX      := $(CURDIR)/bin/flix
 FLIX_TEST := $(CURDIR)/bin/flix
 
+# 全パッケージ共通のバージョン (lockstep)。sync 先ディレクトリ名や release の
+# asset 名に使う。make bump FROM=x TO=y で各 flix.toml と一緒に上げる。
+VERSION := 0.1.0
+
 RENDER_GL_DIR       := render_gl
 RENDER_GL_FPKG_SRC  := $(RENDER_GL_DIR)/artifact/render_gl.fpkg
 RENDER_GL_TOML_SRC  := $(RENDER_GL_DIR)/flix.toml
-RENDER_GL_SUBPATH   := lib/github/ababup1192/flix_render_gl/0.1.0
-RENDER_GL_FPKG_NAME := flix_render_gl-0.1.0.fpkg
-RENDER_GL_TOML_NAME := flix_render_gl-0.1.0.toml
+RENDER_GL_SUBPATH   := lib/github/ababup1192/flix_render_gl/$(VERSION)
+RENDER_GL_FPKG_NAME := flix_render_gl-$(VERSION).fpkg
+RENDER_GL_TOML_NAME := flix_render_gl-$(VERSION).toml
 
 ENGINE_DIR       := engine
 ENGINE_FPKG_SRC  := $(ENGINE_DIR)/artifact/engine.fpkg
 ENGINE_TOML_SRC  := $(ENGINE_DIR)/flix.toml
-ENGINE_SUBPATH   := lib/github/ababup1192/flix_game_engine/0.1.0
-ENGINE_FPKG_NAME := flix_game_engine-0.1.0.fpkg
-ENGINE_TOML_NAME := flix_game_engine-0.1.0.toml
+ENGINE_SUBPATH   := lib/github/ababup1192/flix_game_engine/$(VERSION)
+ENGINE_FPKG_NAME := flix_game_engine-$(VERSION).fpkg
+ENGINE_TOML_NAME := flix_game_engine-$(VERSION).toml
 
 # engine_world は engine に依存する再利用 ECS lib。examples が利用する。
 ENGINE_WORLD_DIR       := engine_world
 ENGINE_WORLD_FPKG_SRC  := $(ENGINE_WORLD_DIR)/artifact/engine_world.fpkg
 ENGINE_WORLD_TOML_SRC  := $(ENGINE_WORLD_DIR)/flix.toml
-ENGINE_WORLD_SUBPATH   := lib/github/ababup1192/flix_engine_world/0.1.0
-ENGINE_WORLD_FPKG_NAME := flix_engine_world-0.1.0.fpkg
-ENGINE_WORLD_TOML_NAME := flix_engine_world-0.1.0.toml
+ENGINE_WORLD_SUBPATH   := lib/github/ababup1192/flix_engine_world/$(VERSION)
+ENGINE_WORLD_FPKG_NAME := flix_engine_world-$(VERSION).fpkg
+ENGINE_WORLD_TOML_NAME := flix_engine_world-$(VERSION).toml
 
 # engine_tools は engine に依存するヘッドレス描画/スナップショット工具箱 lib。examples が利用する。
 ENGINE_TOOLS_DIR       := engine_tools
 ENGINE_TOOLS_FPKG_SRC  := $(ENGINE_TOOLS_DIR)/artifact/engine_tools.fpkg
 ENGINE_TOOLS_TOML_SRC  := $(ENGINE_TOOLS_DIR)/flix.toml
-ENGINE_TOOLS_SUBPATH   := lib/github/ababup1192/flix_engine_tools/0.1.0
-ENGINE_TOOLS_FPKG_NAME := flix_engine_tools-0.1.0.fpkg
-ENGINE_TOOLS_TOML_NAME := flix_engine_tools-0.1.0.toml
+ENGINE_TOOLS_SUBPATH   := lib/github/ababup1192/flix_engine_tools/$(VERSION)
+ENGINE_TOOLS_FPKG_NAME := flix_engine_tools-$(VERSION).fpkg
+ENGINE_TOOLS_TOML_NAME := flix_engine_tools-$(VERSION).toml
 
-# lib/github/ababup1192/<pkg>/0.1.0 サブパスの階層数 (= 5)。
-# `$$dir` のスラッシュ数 (render_gl/ なら 1、examples/<name>/ なら 2) と足して
+# engine_full は engine / render_gl / engine_world / engine_tools を束ねる全部入りメタパッケージ。
+# examples はこれ1つを依存にでき、Flix が推移的に4つ (＋LWJGL ネイティブ) を引く。
+# engine_full 自身のビルドにも4つの fpkg が要るので、各 sync-<pkg> は engine_full/ にも配る。
+ENGINE_FULL_DIR       := engine_full
+ENGINE_FULL_FPKG_SRC  := $(ENGINE_FULL_DIR)/artifact/engine_full.fpkg
+ENGINE_FULL_TOML_SRC  := $(ENGINE_FULL_DIR)/flix.toml
+ENGINE_FULL_SUBPATH   := lib/github/ababup1192/flix_game_engine_full/$(VERSION)
+ENGINE_FULL_FPKG_NAME := flix_game_engine_full-$(VERSION).fpkg
+ENGINE_FULL_TOML_NAME := flix_game_engine_full-$(VERSION).toml
+
+# lib/github/ababup1192/<pkg>/<version> サブパスの階層数 (= 5)。
+# `$$dir` のスラッシュ数 (render_gl/ や engine_full/ なら 1、examples/<name>/ なら 2) と足して
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-root-src clean-locks clean-example-builds test bake
+.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test bake release bump
 
 help:
 	@echo "Targets:"
@@ -76,6 +90,9 @@ help:
 	@echo "  make sync-root-src        コミュニティビルド用にルート src/ の symlink 集を再生成"
 	@echo "  make clean-locks          flix check 中断で残った Maven cache の *.lock を削除"
 	@echo "  make clean-example-builds examples/*/build/ を全削除 (IDE の scene.json glob 高速化用)"
+	@echo "  make sync-engine-full     engine_full だけ build-pkg & 配布 (examples へ)"
+	@echo "  make release VERSION=x    全パッケージを build-pkg し GitHub Release に公開"
+	@echo "  make bump FROM=x TO=y     全 flix.toml の version を一括更新 (lockstep)"
 
 # flix check を Ctrl-C で中断すると lib/cache/.../*.lock が残り、
 # 次回 Maven リゾルバが「他プロセスが取得中」と誤認して無限待ちになる。
@@ -130,7 +147,79 @@ test-%:
 		cd "$*" && $(FLIX_TEST) test; \
 	fi
 
-sync: clean-locks sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-root-src
+sync: clean-locks sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src
+
+# engine_full は engine / render_gl / engine_world / engine_tools を束ねる全部入りメタパッケージ。
+# examples はこれ1つを依存にでき、Flix が推移的に4つ (＋LWJGL ネイティブ) を引く。
+# engine_full 自身のビルドにも4つの fpkg が要るので、まず engine_full/lib に4つ symlink してから
+# build-pkg し、最後に full を使う examples へ engine_full の fpkg を配る。
+# 4つの実体が要るので sync チェーンでは engine/render_gl/world/tools の後に置く。
+sync-engine-full:
+	@rel=$$(printf '../%.0s' $$(seq 1 $$((1 + $(SUBPATH_DEPTH))))); \
+	for spec in \
+	  "$(ENGINE_SUBPATH):$(ENGINE_FPKG_SRC):$(ENGINE_FPKG_NAME):$(ENGINE_TOML_SRC):$(ENGINE_TOML_NAME)" \
+	  "$(RENDER_GL_SUBPATH):$(RENDER_GL_FPKG_SRC):$(RENDER_GL_FPKG_NAME):$(RENDER_GL_TOML_SRC):$(RENDER_GL_TOML_NAME)" \
+	  "$(ENGINE_WORLD_SUBPATH):$(ENGINE_WORLD_FPKG_SRC):$(ENGINE_WORLD_FPKG_NAME):$(ENGINE_WORLD_TOML_SRC):$(ENGINE_WORLD_TOML_NAME)" \
+	  "$(ENGINE_TOOLS_SUBPATH):$(ENGINE_TOOLS_FPKG_SRC):$(ENGINE_TOOLS_FPKG_NAME):$(ENGINE_TOOLS_TOML_SRC):$(ENGINE_TOOLS_TOML_NAME)"; do \
+	  sub=$$(printf '%s' "$$spec" | cut -d: -f1); \
+	  fsrc=$$(printf '%s' "$$spec" | cut -d: -f2); fname=$$(printf '%s' "$$spec" | cut -d: -f3); \
+	  tsrc=$$(printf '%s' "$$spec" | cut -d: -f4); tname=$$(printf '%s' "$$spec" | cut -d: -f5); \
+	  mkdir -p "$(ENGINE_FULL_DIR)/$$sub"; \
+	  ln -sfn "$${rel}$$fsrc" "$(ENGINE_FULL_DIR)/$$sub/$$fname"; \
+	  ln -sfn "$${rel}$$tsrc" "$(ENGINE_FULL_DIR)/$$sub/$$tname"; \
+	done
+	cd $(ENGINE_FULL_DIR) && $(FLIX) build-pkg
+	@for dir in examples/*/; do \
+		toml="$$dir/flix.toml"; \
+		if [ -f "$$toml" ] && grep -q "ababup1192/flix_game_engine_full" "$$toml"; then \
+			target="$${dir}$(ENGINE_FULL_SUBPATH)"; \
+			mkdir -p "$$target"; \
+			depth=$$(printf '%s' "$$dir" | tr -cd '/' | wc -c | tr -d ' '); \
+			upcnt=$$((depth + $(SUBPATH_DEPTH))); \
+			rel=$$(printf '../%.0s' $$(seq 1 $$upcnt)); \
+			ln -sfn "$${rel}$(ENGINE_FULL_FPKG_SRC)" "$$target/$(ENGINE_FULL_FPKG_NAME)"; \
+			ln -sfn "$${rel}$(ENGINE_FULL_TOML_SRC)" "$$target/$(ENGINE_FULL_TOML_NAME)"; \
+			echo "[sync-engine-full] $$target"; \
+		fi \
+	done
+
+# ── リリース ──────────────────────────────────────────────
+# 全パッケージ (engine系4つ + engine_full) を build-pkg し、GitHub Release に
+# fpkg と flix.toml を添付する。他プロジェクトは github: 依存でこの版を取得できる。
+# 事前に make bump で version を上げ、sync + test 緑を確認してから実行する。
+RELEASE_PKGS := $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR) $(ENGINE_FULL_DIR)
+
+release: sync test
+	@for p in $(RELEASE_PKGS); do \
+		echo "===== build-pkg $$p ====="; \
+		(cd "$$p" && $(FLIX) build-pkg) || exit 1; \
+	done
+	gh release create v$(VERSION) --title "v$(VERSION)" --generate-notes \
+	  "$(ENGINE_FPKG_SRC)#$(ENGINE_FPKG_NAME)" \
+	  "$(ENGINE_TOML_SRC)#$(ENGINE_TOML_NAME)" \
+	  "$(RENDER_GL_FPKG_SRC)#$(RENDER_GL_FPKG_NAME)" \
+	  "$(RENDER_GL_TOML_SRC)#$(RENDER_GL_TOML_NAME)" \
+	  "$(ENGINE_WORLD_FPKG_SRC)#$(ENGINE_WORLD_FPKG_NAME)" \
+	  "$(ENGINE_WORLD_TOML_SRC)#$(ENGINE_WORLD_TOML_NAME)" \
+	  "$(ENGINE_TOOLS_FPKG_SRC)#$(ENGINE_TOOLS_FPKG_NAME)" \
+	  "$(ENGINE_TOOLS_TOML_SRC)#$(ENGINE_TOOLS_TOML_NAME)" \
+	  "$(ENGINE_FULL_FPKG_SRC)#$(ENGINE_FULL_FPKG_NAME)" \
+	  "$(ENGINE_FULL_TOML_SRC)#$(ENGINE_FULL_TOML_NAME)"
+
+# ── バージョン更新 (lockstep) ─────────────────────────────
+# 5パッケージの flix.toml の [package] version と、パッケージ間・examples の
+# 自パッケージ依存参照の version を一括で上げる。flix コンパイラ版 (flix = "...") と
+# flix-random など他リポ依存は触らない。使い方: make bump FROM=0.1.0 TO=0.1.1
+bump:
+	@test -n "$(FROM)" && test -n "$(TO)" || { echo "usage: make bump FROM=0.1.0 TO=0.1.1"; exit 1; }
+	@for f in $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR) $(ENGINE_FULL_DIR); do \
+		sed -i '' -E 's/^(version[[:space:]]*=[[:space:]]*)"$(FROM)"/\1"$(TO)"/' "$$f/flix.toml"; \
+	done
+	@for f in $(ENGINE_DIR)/flix.toml $(RENDER_GL_DIR)/flix.toml $(ENGINE_WORLD_DIR)/flix.toml $(ENGINE_TOOLS_DIR)/flix.toml $(ENGINE_FULL_DIR)/flix.toml examples/*/flix.toml; do \
+		[ -f "$$f" ] && sed -i '' -E 's|(ababup1192/flix_[a-z_]*"[^"]*version = )"$(FROM)"|\1"$(TO)"|g' "$$f" || true; \
+	done
+	@sed -i '' -E 's/^(VERSION := ).*/\1$(TO)/' Makefile
+	@echo "[bump] $(FROM) -> $(TO) 完了 (flix-random と flix コンパイラ版は据え置き)。"
 
 # ── コミュニティビルド用ルート src/ ──────────────────────
 # Flix 公式の community build (flix/flix の community-build.yaml) は、このリポジトリを
@@ -161,7 +250,7 @@ sync-render-gl:
 	cd $(RENDER_GL_DIR) && $(FLIX) build-pkg
 	@for dir in examples/*/; do \
 		toml="$$dir/flix.toml"; \
-		if [ -f "$$toml" ] && grep -q "ababup1192/flix_render_gl" "$$toml"; then \
+		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_render_gl"' "$$toml"; then \
 			target="$${dir}$(RENDER_GL_SUBPATH)"; \
 			mkdir -p "$$target"; \
 			depth=$$(printf '%s' "$$dir" | tr -cd '/' | wc -c | tr -d ' '); \
@@ -180,7 +269,7 @@ sync-engine:
 	cd $(ENGINE_DIR) && $(FLIX) build-pkg
 	@for dir in $(RENDER_GL_DIR)/ $(ENGINE_WORLD_DIR)/ $(ENGINE_TOOLS_DIR)/ examples/*/; do \
 		toml="$$dir/flix.toml"; \
-		if [ -f "$$toml" ] && grep -q "ababup1192/flix_game_engine" "$$toml"; then \
+		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_game_engine"' "$$toml"; then \
 			target="$${dir}$(ENGINE_SUBPATH)"; \
 			mkdir -p "$$target"; \
 			depth=$$(printf '%s' "$$dir" | tr -cd '/' | wc -c | tr -d ' '); \
@@ -198,7 +287,7 @@ sync-engine-world:
 	cd $(ENGINE_WORLD_DIR) && $(FLIX) build-pkg
 	@for dir in examples/*/; do \
 		toml="$$dir/flix.toml"; \
-		if [ -f "$$toml" ] && grep -q "ababup1192/flix_engine_world" "$$toml"; then \
+		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_engine_world"' "$$toml"; then \
 			target="$${dir}$(ENGINE_WORLD_SUBPATH)"; \
 			mkdir -p "$$target"; \
 			depth=$$(printf '%s' "$$dir" | tr -cd '/' | wc -c | tr -d ' '); \
@@ -216,7 +305,7 @@ sync-engine-tools:
 	cd $(ENGINE_TOOLS_DIR) && $(FLIX) build-pkg
 	@for dir in examples/*/; do \
 		toml="$$dir/flix.toml"; \
-		if [ -f "$$toml" ] && grep -q "ababup1192/flix_engine_tools" "$$toml"; then \
+		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_engine_tools"' "$$toml"; then \
 			target="$${dir}$(ENGINE_TOOLS_SUBPATH)"; \
 			mkdir -p "$$target"; \
 			depth=$$(printf '%s' "$$dir" | tr -cd '/' | wc -c | tr -d ' '); \
