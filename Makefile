@@ -220,7 +220,7 @@ sync-engine-full:
 	done; \
 	find $(ENGINE_FULL_DIR)/src -type l | awk 'END { print "[sync-engine-full] " NR " source symlink(s)" }'
 	cd $(ENGINE_FULL_DIR) && $(FLIX) build-pkg
-	@for dir in examples/*/ templates/*/; do \
+	@for dir in examples/*/ templates/*/ bench/*/; do \
 		toml="$$dir/flix.toml"; \
 		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_game_engine"' "$$toml"; then \
 			target="$${dir}$(ENGINE_FULL_SUBPATH)"; \

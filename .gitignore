@@ -7,6 +7,10 @@ build/
 dist/
 dist-win/
 lib/
+# `lib/`(末尾スラッシュ)はディレクトリにしか効かず、worktree 運用で作る
+# 「lib という名前の symlink」がすり抜けてコミットされる事故が起きた。
+# スラッシュ無しの lib も併記して symlink ごと無視する。
+lib
 # 依存解決で生成されるパッケージ直下の lib/ は無視するが、
 # src/lib/ 配下は実ソース(DungeonComposer/DungeonGenerator/MapLoader/TileRendering 等)
 # なので追跡対象に戻す。
