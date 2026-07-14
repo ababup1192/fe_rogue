@@ -1,3 +1,6 @@
+/// ※ 旧世代 API: App の宣言的カメラ（withCamera / withZoom + CameraRig）に置き換え済み。
+/// 新規コードでは使わないこと（非等方 zoom = Vec2 が要る特殊用途のみ残置。0.2 系で削除予定）。
+///
 /// 描画をどの位置・どのズームで画面に映すかを決める 2D カメラ。
 /// `transform` の position が「画面中央に映すワールド座標」、`zoom` が寄り引きの倍率。
 /// これ 1 つで world → screen のビュー変換（`getViewTransform`）を作れるので、

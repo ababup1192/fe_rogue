@@ -135,6 +135,9 @@ mod App {
     /// World から寄り引き倍率（大きいほど寄る）を導く関数を繋ぐ。絵のずらしと大きさの
     /// 伸縮は App が引き受ける。ズームの補間（なめらかな寄り引き）はゲーム側システムで
     /// World に持たせ、ここでは読むだけにする（withCamera の追従と同じ分担）。
+    /// withCamera を繋がずにこれだけ繋ぐと、画面中央（design/2 の world 点）を軸に寄り引きする。
+    /// 範囲外の倍率（0 以下・NaN・Infinity）は CameraRig.safeZoom が minZoom〜maxZoom へ
+    /// 丸めるので画面は壊れない。
     pub def withZoom(f: w -> Float64 \ ef, app: App[w, ef]): App[w, ef] =
         { zoom = Some(f) | app }
 
@@ -219,13 +222,24 @@ mod App {
 
     /// composeScene の zoom つき版: world の絵を center 中心に zoom 倍（大きいほど寄る）して
     /// 画面中央へ映す。hud には掛けない。zoom = 1.0 は composeScene と同じ。
+    /// center = None でも zoom ≠ 1.0 なら画面中央（design/2 の world 点）を軸に寄り引きする
+    /// （withZoom だけ繋いだゲームと同じ規則）。
     pub def composeSceneZoomed(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2,
                                items: { world = List[Render.PlacedItem], hud = List[Render.PlacedItem] }): List[Render.PlacedItem] =
-        let shifted = match center {
+        let shifted = match zoomedCenter(center, zoom, design) {
             case None    => items#world
             case Some(c) => CameraRig.centerOnZoomed(c, zoom = zoom, design = design, items#world)
         };
         List.append(shifted, items#hud)
+
+    /// camera 無しでも zoom があれば「画面中央の world 点 = design/2」を軸に据える正規化。
+    /// composeSceneZoomed と visibleOfZoomed が同じ規則を共有するための1点
+    /// （NaN も 1.0 と等しくないので Some 側へ落ち、下流の safeZoom が丸める）。
+    def zoomedCenter(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2): Option[Vec2.Vec2] =
+        match center {
+            case Some(c) => Some(c)
+            case None    => if (zoom != 1.0) Some(Vec2.div(design, 2.0)) else None
+        }
 
     /// camera 中心（無ければカメラなし = design 全体）から、画面に見えている world の矩形を出す。
     /// view へ渡す ViewCtx の visible の源。composeScene のずらしと同じ center を使うので、
@@ -234,9 +248,10 @@ mod App {
         visibleOfZoomed(center, 1.0, design)
 
     /// visibleOf の zoom つき版: 寄るほど見えている範囲は狭くなる（大きさ design/zoom）。
-    /// zoom = 1.0 は visibleOf と同じ。
+    /// zoom = 1.0 は visibleOf と同じ。center = None でも zoom ≠ 1.0 なら画面中央を軸にする
+    /// （composeSceneZoomed と同じ規則なので、culling と絵は必ず一致する）。
     pub def visibleOfZoomed(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2): Rect2.Rect2 =
-        match center {
+        match zoomedCenter(center, zoom, design) {
             case Some(c) => CameraRig.visibleRectZoomed(c, zoom = zoom, design = design)
             case None    => { position = Vec2.zero(), size = design }
         }
@@ -501,10 +516,11 @@ mod App {
             case None    => 1.0
             case Some(f) => f(world)
         };
+        // camera 無しで zoom だけのゲームの扱いは zoomedCenter（composeSceneZoomed /
+        // visibleOfZoomed の内側）が一手に引き受けるので、ここは読むだけ。
         let center = match app#camera {
             case Some(f) => Some(f(world))
-            // camera 無しで zoom だけのゲームは画面中央に寄る（等倍なら従来どおり素通し）。
-            case None    => if (z != 1.0) Some(Vec2.div(design, 2.0)) else None
+            case None    => None
         };
         let hud = match app#hudView {
             case None    => Nil

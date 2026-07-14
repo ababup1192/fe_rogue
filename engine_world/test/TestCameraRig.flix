@@ -1,5 +1,51 @@
-// CameraRig の単体テスト: 揺れ幅の二乗則・滑らかノイズの格子点一致・恒等カメラを具体値で固定する。
+// CameraRig の単体テスト: 揺れ幅の二乗則・滑らかノイズの格子点一致・恒等カメラ・
+// zoom の防波堤（safeZoom）と順逆変換の往復（centerOnZoomed ⇄ toWorldPosZoomed）を具体値で固定する。
 mod TestCameraRig {
+
+    /// テスト用の design サイズ。
+    def rigDesign(): Vec2.Vec2 = { x = 320.0, y = 240.0 }
+
+    // safeZoom: 正常値は素通し、0・負・NaN は minZoom へ、Infinity・過大値は maxZoom へ丸まる
+    // （0 除算・鏡映・Infinity×0 の NaN 化の防波堤）。
+    @Test
+    def testSafeZoomClampsBadValues(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (2.0, 1.0, CameraRig.minZoom(), CameraRig.minZoom(), CameraRig.minZoom(),
+                        CameraRig.maxZoom(), CameraRig.maxZoom()),
+            (CameraRig.safeZoom(2.0), CameraRig.safeZoom(1.0),
+             CameraRig.safeZoom(0.0), CameraRig.safeZoom(-3.0),
+             CameraRig.safeZoom(0.0 / 0.0),
+             CameraRig.safeZoom(1.0 / 0.0), CameraRig.safeZoom(99999.0)))
+
+    // zoom 0 でも可視範囲が Infinity に化けない: minZoom（0.01）に丸まり、
+    // design/0.01 = 32000×24000 の有限の矩形が center を中心に出る（丸め誤差は ±0.5 で吸収）。
+    @Test
+    def testVisibleRectZoomedSurvivesZeroZoom(): Unit \ Assert =
+        let seen = CameraRig.visibleRectZoomed({ x = 0.0, y = 0.0 }, zoom = 0.0, design = rigDesign());
+        Assert.assertEq(expected = (32000.0, 24000.0, -16000.0, -12000.0),
+            (Float64.floor(seen#size#x + 0.5), Float64.floor(seen#size#y + 0.5),
+             Float64.floor(seen#position#x + 0.5), Float64.floor(seen#position#y + 0.5)))
+
+    // 往復不変条件: world → (centerOnZoomed の式) → screen → toWorldPosZoomed → 元の world。
+    // 数値は TestApp.testComposeSceneZoomedScalesOffsets と同じ（center から +10 の点が z=2 で +20 へ）。
+    @Test
+    def testToWorldPosZoomedInvertsCenterOnZoomed(): Unit \ Assert =
+        let center = { x = 100.0, y = 50.0 };
+        let world = { x = 110.0, y = 50.0 };
+        let placed = { at = world, item = Render.box({ x = 1.0, y = 1.0 }, { r = 1.0f32, g = 0.0f32, b = 0.0f32 }, 0) };
+        let screen = CameraRig.centerOnZoomed(center, zoom = 2.0, design = rigDesign(), placed :: Nil)
+            |> List.head |> Option.map(p -> p#at) |> Option.getWithDefault(Vec2.zero());
+        let back = CameraRig.toWorldPosZoomed(center, zoom = 2.0, design = rigDesign(), screen = screen);
+        Assert.assertEq(expected = ((180.0, 120.0), (110.0, 50.0)),
+            ((screen#x, screen#y), (back#x, back#y)))
+
+    // 等倍の toWorldPos を委譲「前」の歴史的な期待値で固定する（委譲の実装を変えても
+    // 挙動が変わっていないことの回帰。zoomed 側と比べるとトートロジーになるので定数で釘打つ）。
+    @Test
+    def testToWorldPosMatchesZoomedAtOne(): Unit \ Assert =
+        let center = { x = 100.0, y = 50.0 };
+        let p = CameraRig.toWorldPos(center, design = rigDesign(), screen = { x = 180.0, y = 120.0 });
+        Assert.assertEq(expected = (120.0, 50.0), (p#x, p#y))
 
     // trauma は二乗で効く: 満タン 1.0 で maxOffset、半分 0.5 で 1/4、ゼロは揺れない。
     @Test
