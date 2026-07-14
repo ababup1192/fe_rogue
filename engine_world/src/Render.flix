@@ -129,6 +129,10 @@ mod Render {
     /// 大きさ系の属性を factor 倍する（全種類の item に効く）。camera の zoom 適用の芯:
     /// Box は size と style の太さ（角丸・枠・縞）、Sprite は scale、Text は fontSize、
     /// Poly は頂点を、それぞれ一様に伸縮する。置き場所（at）は持たないので呼び側が伸縮する。
+    /// 注意: これ単体では「置き場所はそのまま・中身だけ伸びる」= Box は左上を軸に右下へ育つ。
+    /// circleAt / boxAt が済ませた中心→左上の換算も崩れる（中心がずれて見える）。
+    /// 物を大きく見せたいときはこれではなく、boxAt のサイズや sprite の scale を変えること。
+    /// これが正しく見えるのは、at にも同じ倍率の変換を掛ける camera 経路（CameraRig.centerOnZoomed）だけ。
     pub def scaled(factor: Float64, item: Item): Item =
         match item {
             case Item.Sprite(s) => Item.Sprite({ scale = { x = s#scale#x * factor, y = s#scale#y * factor } | s })

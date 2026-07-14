@@ -28,11 +28,12 @@ mod CameraRig {
                      items: List[Render.PlacedItem]): List[Render.PlacedItem] =
         apply({ offset = centerOffset(center, design) }, items)
 
-    /// 画面座標 → world 座標（centerOn の逆変換）。マウスや注釈矩形を world で解釈するときに。
+    /// 画面座標 → world 座標（centerOn の逆変換。等倍専用 — zoom 中は toWorldPosZoomed を使う）。
+    /// マウスや注釈矩形を world で解釈するときに。
     /// center と画面座標は同型なので、画面座標側を名前渡しにして取り違えを防ぐ。
     pub def toWorldPos(center: Vec2.Vec2, design: {design = Vec2.Vec2},
                        screen: {screen = Vec2.Vec2}): Vec2.Vec2 =
-        Vec2.sub(screen#screen, centerOffset(center, design))
+        toWorldPosZoomed(center, zoom = 1.0, design = design#design, screen = screen#screen)
 
     /// center を中央に映したとき画面に見える world 範囲。背景タイルの敷き詰めなど
     /// 「見える分だけ組む」計算に。
@@ -41,22 +42,47 @@ mod CameraRig {
 
     // ── zoom（寄り引き。大きいほど寄る）──
 
+    /// zoom の下限。これ未満（0・負・NaN 含む）は safeZoom がここへ丸める。
+    pub def minZoom(): Float64 = 0.01
+
+    /// zoom の上限。これ超過（Infinity 含む）は safeZoom がここへ丸める。
+    pub def maxZoom(): Float64 = 1000.0
+
+    /// zoom の防波堤: minZoom〜maxZoom の外（0 以下・NaN・Infinity・過大値）を範囲内へ丸める。
+    /// 0 除算（visibleRectZoomed の design/zoom）・負値の鏡映・Infinity×0 の NaN 化を入口でまとめて防ぐ。
+    /// zoom を受けるこのモジュールの関数はすべて内側でこれを通すので、呼び側の事前検査は不要。
+    pub def safeZoom(z: Float64): Float64 =
+        if (z >= minZoom() and z <= maxZoom()) z
+        else if (z > maxZoom()) maxZoom()
+        else minZoom()
+
     /// zoom つきで center を画面中央に映す: screen = (world − center) × zoom + design/2。
     /// 置き場所だけでなく各 item の大きさも zoom 倍する（Render.scaled）ので、
-    /// 寄れば大きく・引けば小さく見える。zoom = 1.0 は centerOn と同じ。
+    /// 寄れば大きく・引けば小さく見える。zoom = 1.0 は centerOn と同じ
+    /// （範囲外の倍率は safeZoom が丸める）。
     pub def centerOnZoomed(center: Vec2.Vec2, zoom: {zoom = Float64}, design: {design = Vec2.Vec2},
                            items: List[Render.PlacedItem]): List[Render.PlacedItem] =
-        let z = zoom#zoom;
+        let z = safeZoom(zoom#zoom);
         let half = Vec2.div(design#design, 2.0);
         List.map(placed ->
             { at = Vec2.add(Vec2.mul(Vec2.sub(placed#at, center), z), half),
               item = Render.scaled(z, placed#item) }, items)
 
     /// zoom つきの可視範囲: center を中心に design/zoom の大きさが見えている
-    /// （寄るほど狭く・引くほど広く）。zoom = 1.0 は visibleRect と同じ。
+    /// （寄るほど狭く・引くほど広く）。zoom = 1.0 は visibleRect と同じ
+    /// （範囲外の倍率は safeZoom が丸める）。
     pub def visibleRectZoomed(center: Vec2.Vec2, zoom: {zoom = Float64}, design: {design = Vec2.Vec2}): Rect2.Rect2 =
-        let seen = Vec2.div(design#design, zoom#zoom);
+        let seen = Vec2.div(design#design, safeZoom(zoom#zoom));
         { position = Vec2.sub(center, Vec2.div(seen, 2.0)), size = seen }
+
+    /// 画面座標 → world 座標（centerOnZoomed の逆変換）: world = (screen − design/2) / zoom + center。
+    /// ズーム中にマウスで world の物を選ぶときはこちら（等倍なら toWorldPos と同じ）。
+    /// 往復不変条件: centerOnZoomed で screen へ移した点をこれに通すと元の world 座標へ戻る
+    /// （浮動小数の丸め内で）。
+    pub def toWorldPosZoomed(center: Vec2.Vec2, zoom: {zoom = Float64}, design: {design = Vec2.Vec2},
+                             screen: {screen = Vec2.Vec2}): Vec2.Vec2 =
+        let z = safeZoom(zoom#zoom);
+        Vec2.add(Vec2.div(Vec2.sub(screen#screen, Vec2.div(design#design, 2.0)), z), center)
 
     // ── 追従（不感帯 + 寄せ率 + クランプ）──
 

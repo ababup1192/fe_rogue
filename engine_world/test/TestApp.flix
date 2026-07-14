@@ -174,6 +174,26 @@ mod TestApp {
             { world = offCenter :: Nil, hud = Nil });
         Assert.assertEq(expected = Some((180.0, 120.0)), atOf(composed))
 
+    // camera 無し（center = None）でも zoom ≠ 1 なら画面中央 design/2 を軸に寄る:
+    // 中央 (160,120) に置いた item は動かず、Box の大きさだけ 2 倍になる（zoom の黙殺はしない）。
+    @Test
+    def testComposeSceneZoomedWithoutCameraZoomsAroundScreenCenter(): Unit \ Assert =
+        let onMiddle = { at = { x = 160.0, y = 120.0 } | boxAtOrigin() };
+        let composed = App.composeSceneZoomed(None, 2.0, sceneDesign(),
+            { world = onMiddle :: Nil, hud = Nil });
+        let size = match List.head(composed) |> Option.map(p -> p#item) {
+            case Some(Render.Item.Box(b)) => Some((b#size#x, b#size#y))
+            case _                        => None
+        };
+        Assert.assertEq(expected = (Some((160.0, 120.0)), Some((2.0, 2.0))), (atOf(composed), size))
+
+    // 同じ規則が可視範囲にも効く: camera 無し + zoom 2 は design/2 中心の 160×120。
+    @Test
+    def testVisibleOfZoomedWithoutCameraCentersOnScreen(): Unit \ Assert =
+        let visible = App.visibleOfZoomed(None, 2.0, sceneDesign());
+        Assert.assertEq(expected = ((80.0, 60.0), (160.0, 120.0)),
+            ((visible#position#x, visible#position#y), (visible#size#x, visible#size#y)))
+
     // zoom 2 倍の可視範囲: 大きさは design の半分（160×120）で、center を中心に据える。
     @Test
     def testVisibleOfZoomedShrinksSeenRect(): Unit \ Assert =
