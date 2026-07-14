@@ -236,27 +236,21 @@ mod App {
     pub def applySystems(frame: Frame, systems: List[(Frame, w) -> w \ ef], world: w): w \ ef =
         List.foldLeft((acc, sys) -> sys(frame, acc), world, systems)
 
-    /// view 由来の絵（world）に camera（あれば）を掛け、hud の絵を後ろに繋ぐ。hud には掛けない。
+    /// view 由来の絵（world）に camera（center と zoom。等倍は 1.0）を掛け、hud の絵を
+    /// 後ろに繋ぐ。hud には掛けない。center = None でも zoom ≠ 1.0 なら画面中央
+    /// （design/2 の world 点）を軸に寄り引きする（withZoom だけ繋いだゲームと同じ規則）。
     /// 2 つの絵は同型のリストなので record で名前渡しにして取り違えを防ぐ。
     /// 重なり順はこの並びでなく zIndex が決める（Render.draw が安定ソート・同 z は後勝ち = hud）。
-    pub def composeScene(center: Option[Vec2.Vec2], design: Vec2.Vec2,
+    pub def composeScene(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2,
                          items: { world = List[Render.PlacedItem], hud = List[Render.PlacedItem] }): List[Render.PlacedItem] =
-        composeSceneZoomed(center, 1.0, design, items)
-
-    /// composeScene の zoom つき版: world の絵を center 中心に zoom 倍（大きいほど寄る）して
-    /// 画面中央へ映す。hud には掛けない。zoom = 1.0 は composeScene と同じ。
-    /// center = None でも zoom ≠ 1.0 なら画面中央（design/2 の world 点）を軸に寄り引きする
-    /// （withZoom だけ繋いだゲームと同じ規則）。
-    pub def composeSceneZoomed(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2,
-                               items: { world = List[Render.PlacedItem], hud = List[Render.PlacedItem] }): List[Render.PlacedItem] =
         let shifted = match zoomedCenter(center, zoom, design) {
             case None    => items#world
-            case Some(c) => CameraRig.centerOnZoomed(c, zoom = zoom, design = design, items#world)
+            case Some(c) => CameraRig.centerOn(c, zoom = zoom, design = design, items#world)
         };
         List.append(shifted, items#hud)
 
     /// camera 無しでも zoom があれば「画面中央の world 点 = design/2」を軸に据える正規化。
-    /// composeSceneZoomed と visibleOfZoomed が同じ規則を共有するための1点
+    /// composeScene と visibleOf が同じ規則を共有するための1点
     /// （NaN も 1.0 と等しくないので Some 側へ落ち、下流の safeZoom が丸める）。
     def zoomedCenter(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2): Option[Vec2.Vec2] =
         match center {
@@ -264,18 +258,12 @@ mod App {
             case None    => if (zoom != 1.0) Some(Vec2.div(design, 2.0)) else None
         }
 
-    /// camera 中心（無ければカメラなし = design 全体）から、画面に見えている world の矩形を出す。
-    /// view へ渡す ViewCtx の visible の源。composeScene のずらしと同じ center を使うので、
-    /// visible で組んだ絵とカメラのずらしは必ず一致する。
-    pub def visibleOf(center: Option[Vec2.Vec2], design: Vec2.Vec2): Rect2.Rect2 =
-        visibleOfZoomed(center, 1.0, design)
-
-    /// visibleOf の zoom つき版: 寄るほど見えている範囲は狭くなる（大きさ design/zoom）。
-    /// zoom = 1.0 は visibleOf と同じ。center = None でも zoom ≠ 1.0 なら画面中央を軸にする
-    /// （composeSceneZoomed と同じ規則なので、culling と絵は必ず一致する）。
-    pub def visibleOfZoomed(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2): Rect2.Rect2 =
+    /// camera 中心と zoom から、画面に見えている world の矩形を出す（大きさ design/zoom。
+    /// center = None かつ等倍なら design 全体）。view へ渡す ViewCtx の visible の源。
+    /// composeScene と同じ正規化（zoomedCenter）を通るので、culling と絵は必ず一致する。
+    pub def visibleOf(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2): Rect2.Rect2 =
         match zoomedCenter(center, zoom, design) {
-            case Some(c) => CameraRig.visibleRectZoomed(c, zoom = zoom, design = design)
+            case Some(c) => CameraRig.visibleRect(c, zoom = zoom, design = design)
             case None    => { position = Vec2.zero(), size = design }
         }
 
@@ -554,17 +542,17 @@ mod App {
         let hud = match app#hudView {
             case None    => Nil
             // HUD は画面固定なので、見えている矩形は常に design 全体（原点起点）で zoom も掛けない。
-            case Some(h) => h({ atlas = atlas, visible = visibleOf(None, design) }, world)
+            case Some(h) => h({ atlas = atlas, visible = visibleOf(None, 1.0, design) }, world)
         };
         // 視差レイヤ: 見かけの center（parallaxCenter）で culling も合成も行う。hud は混ぜない。
         let layers = app#parallaxLayers |> List.flatMap(fl -> {
             let (factor, lview) = fl;
             let lcenter = Option.map(c -> CameraRig.parallaxCenter(factor, c, design = design), center);
-            let lctx = { atlas = atlas, visible = visibleOfZoomed(lcenter, z, design) };
-            composeSceneZoomed(lcenter, z, design, { world = lview(lctx, world), hud = Nil })
+            let lctx = { atlas = atlas, visible = visibleOf(lcenter, z, design) };
+            composeScene(lcenter, z, design, { world = lview(lctx, world), hud = Nil })
         });
-        let ctx = { atlas = atlas, visible = visibleOfZoomed(center, z, design) };
-        List.append(layers, composeSceneZoomed(center, z, design, { world = toItems(ctx, world), hud = hud }))
+        let ctx = { atlas = atlas, visible = visibleOf(center, z, design) };
+        List.append(layers, composeScene(center, z, design, { world = toItems(ctx, world), hud = hud }))
 
     /// view の投影した絵を描画命令にしてエンジンへ渡す（タイルマップは使わないので空の列を添える）。
     /// view = None のゲームは App では描かない（自分のシステム内で renderCommands を呼ぶ。

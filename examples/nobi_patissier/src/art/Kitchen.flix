@@ -127,7 +127,7 @@ mod Kitchen {
         let bowl = Bezier.convexFill(halfDisc(cx, rimY, 12.0, true), bowlColor, 6);
         let mound = Bezier.convexFill(halfDisc(cx, rimY, 8.8, false)
             |> List.map(p -> ({x = p#x, y = rimY - (rimY - p#y) * 0.55}: Vec2.Vec2)), Palette.dough(), 7);
-        let rim = Bezier.line({x = cx - 12.0, y = rimY}, {x = cx + 12.0, y = rimY},
+        let rim = Bezier.polyline({x = cx - 12.0, y = rimY} :: {x = cx + 12.0, y = rimY} :: Nil,
             width = 2.2, rimColor, 8);
         List.flatten(
             bowl :: mound :: rim :: steam(cx, rimY - 8.0) ::

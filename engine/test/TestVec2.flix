@@ -186,3 +186,13 @@ def testVec2LimitLengthNoOp(): Unit \ Assert =
     Assert.assertEq(expected = 1.0, r#x);
     Assert.assertEq(expected = 0.0, r#y)
 
+
+// onEllipse: t=0 は真上（0, -ry）・t=0.25 は右（rx, 0）— 「1周=1.0・真上開始・時計回り」の
+// 規約そのものを釘打つ（図形の語彙すべてがこの向きに乗る）。丸めは小数4桁。
+@Test
+def testVec2OnEllipseCardinalPoints(): Unit \ Assert =
+    let round4 = x -> Float64.floor(x * 10000.0 + 0.5) / 10000.0;
+    let top = Vec2.onEllipse({x = 26.0, y = 16.0}, 0.0);
+    let right = Vec2.onEllipse({x = 26.0, y = 16.0}, 0.25);
+    Assert.assertEq(expected = ((0.0, -16.0), (26.0, 0.0)),
+        ((round4(top#x), round4(top#y)), (round4(right#x), round4(right#y))))

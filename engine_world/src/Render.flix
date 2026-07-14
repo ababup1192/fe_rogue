@@ -160,10 +160,9 @@ mod Render {
                 { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 }, item = other }
         }
 
-    /// 円周（楕円周）上の点。t = 0 が真上に来るよう -1/4 回転してある。
+    /// 円周（楕円周）上の点（Vec2.onEllipse の近道 — 半径 2 つを個別に受ける内部形）。
     def onCircle(rx: Float64, ry: Float64, t: Float64): Vec2.Vec2 =
-        let tau = 6.283185307179586;
-        { x = rx * Vec2.cos(tau * (t - 0.25)), y = ry * Vec2.sin(tau * (t - 0.25)) }
+        Vec2.onEllipse({ x = rx, y = ry }, t)
 
     /// fromT..toT の弧を 24 分割した点列（端点含む）。
     def arcPoints(radius: Float64, sweep: {fromT = Float64, toT = Float64}): List[Vec2.Vec2] =
@@ -209,9 +208,8 @@ mod Render {
     /// 回転の軸は「頂点をどこを原点に組むか」で決める（他エンジンの pivot と同じ考え方）:
     /// 原点中心の形なら中心回転、lineQuad の根元を原点に置けば時計の針になる。
     pub def rotated(t: Float64, vertices: List[Vec2.Vec2]): List[Vec2.Vec2] =
-        let tau = 6.283185307179586;
-        let c = Vec2.cos(tau * t);
-        let s = Vec2.sin(tau * t);
+        let c = Vec2.cos(Vec2.tau() * t);
+        let s = Vec2.sin(Vec2.tau() * t);
         List.map(v -> { x = v#x * c - v#y * s, y = v#x * s + v#y * c }, vertices)
 
     /// 任意の点 pivot 周りに回す（蝶番・ドア用の近道。pivot へ寄せて回して戻すのと同じ）。
@@ -247,7 +245,7 @@ mod Render {
     /// 注意: これ単体では「置き場所はそのまま・中身だけ伸びる」= Box は左上を軸に右下へ育つ。
     /// circleAt / boxAt が済ませた中心→左上の換算も崩れる（中心がずれて見える）。
     /// 物を大きく見せたいときはこれではなく、boxAt のサイズや sprite の scale を変えること。
-    /// これが正しく見えるのは、at にも同じ倍率の変換を掛ける camera 経路（CameraRig.centerOnZoomed）だけ。
+    /// これが正しく見えるのは、at にも同じ倍率の変換を掛ける camera 経路（CameraRig.centerOn）だけ。
     pub def scaled(factor: Float64, item: Item): Item =
         match item {
             case Item.Sprite(s) => Item.Sprite({ scale = { x = s#scale#x * factor, y = s#scale#y * factor } | s })

@@ -44,7 +44,7 @@ mod GameGallery {
         let w = Worldline.current(line);
         let ui1 = GameUi.projectUi(Worldline.pastLength(line), w, ui);
         // App が組むのと同じ ViewCtx（カメラなし = design 全体が見えている）。
-        let ctx = { atlas = atlas, visible = App.visibleOf(None, design()) };
+        let ctx = { atlas = atlas, visible = App.visibleOf(None, 1.0, design()) };
         let (drawables, polygons) = Render.draw(View.compose(ctx, { ui = ui1, line = line }));
         { drawables = drawables, polygons = polygons }
 

@@ -20,6 +20,9 @@ mod Vec2 {
     /// 円周率
     pub def pi(): Float64 = 3.14159265358979
 
+/// 1 周ぶんの角（2π）。円周に点を置く計算の共通の源（リテラルの散在を防ぐ）。
+pub def tau(): Float64 = 6.283185307179586
+
     /// sin（pure キャスト）
     pub def sin(x: Float64): Float64 =
         unchecked_cast(Math.sin(x) as _ \ {})
@@ -199,4 +202,11 @@ mod Vec2 {
 
     pub def slide(v: Vec2, n: Vec2): Vec2 =
         sub(v, mul(n, dot(v, n)))
+
+    /// 楕円周上の点（radii は x/y の半径。t は 1 周 = 1.0・t = 0 が真上・時計回り =
+    /// y 下向きの画面の見た目どおり）。円は radii の x = y で渡す。
+    /// 新規コードの「円周に点を置く」計算はこれを使う（既存の自前 cos/sin は bake の
+    /// バイト一致を守るため据え置き — 移行は bake 差分を許容するリリースで行う）。
+    pub def onEllipse(radii: Vec2, t: Float64): Vec2 =
+        { x = radii#x * cos(tau() * (t - 0.25)), y = radii#y * sin(tau() * (t - 0.25)) }
 }

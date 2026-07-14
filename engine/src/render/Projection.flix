@@ -1,5 +1,6 @@
-/// ※ 旧世代 API: App の宣言的カメラ（withCamera / withZoom + CameraRig）に置き換え済み。
-/// 新規コードでは使わないこと（Camera.flix と同じく 0.2 系で削除予定）。
+/// ※ これは Drawable 経路（view = None で renderCommands を自前で組むゲーム。fe_rogue が実例）
+/// の投影部品。PlacedItem 経路（withView のゲーム）は App.withCamera / withZoom + CameraRig が
+/// 同じ役割を担うので、そちらでは使わない。
 ///
 /// world → screen のビュー変換と、その投影数式を持つ。カメラ位置に依存しない純関数だけを置く。
 /// カメラは viewTransform でこの ViewTransform を作り、描画側が各描画物の

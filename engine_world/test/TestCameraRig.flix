@@ -1,5 +1,5 @@
-// CameraRig の単体テスト: 揺れ幅の二乗則・滑らかノイズの格子点一致・恒等カメラ・
-// zoom の防波堤（safeZoom）と順逆変換の往復（centerOnZoomed ⇄ toWorldPosZoomed）を具体値で固定する。
+// CameraRig の単体テスト: 揺れ幅の二乗則・滑らかノイズの格子点一致・
+// zoom の防波堤（safeZoom）と順逆変換の往復（centerOn ⇄ toWorldPos）を具体値で固定する。
 mod TestCameraRig {
 
     /// テスト用の design サイズ。
@@ -20,32 +20,24 @@ mod TestCameraRig {
     // zoom 0 でも可視範囲が Infinity に化けない: minZoom（0.01）に丸まり、
     // design/0.01 = 32000×24000 の有限の矩形が center を中心に出る（丸め誤差は ±0.5 で吸収）。
     @Test
-    def testVisibleRectZoomedSurvivesZeroZoom(): Unit \ Assert =
-        let seen = CameraRig.visibleRectZoomed({ x = 0.0, y = 0.0 }, zoom = 0.0, design = rigDesign());
+    def testVisibleRectSurvivesZeroZoom(): Unit \ Assert =
+        let seen = CameraRig.visibleRect({ x = 0.0, y = 0.0 }, zoom = 0.0, design = rigDesign());
         Assert.assertEq(expected = (32000.0, 24000.0, -16000.0, -12000.0),
             (Float64.floor(seen#size#x + 0.5), Float64.floor(seen#size#y + 0.5),
              Float64.floor(seen#position#x + 0.5), Float64.floor(seen#position#y + 0.5)))
 
-    // 往復不変条件: world → (centerOnZoomed の式) → screen → toWorldPosZoomed → 元の world。
-    // 数値は TestApp.testComposeSceneZoomedScalesOffsets と同じ（center から +10 の点が z=2 で +20 へ）。
+    // 往復不変条件: world → (centerOn の式) → screen → toWorldPos → 元の world。
+    // 数値は TestApp.testComposeSceneAtZoomTwoScalesOffsets と同じ（center から +10 の点が z=2 で +20 へ）。
     @Test
-    def testToWorldPosZoomedInvertsCenterOnZoomed(): Unit \ Assert =
+    def testToWorldPosInvertsCenterOn(): Unit \ Assert =
         let center = { x = 100.0, y = 50.0 };
         let world = { x = 110.0, y = 50.0 };
         let placed = { at = world, item = Render.box({ x = 1.0, y = 1.0 }, { r = 1.0f32, g = 0.0f32, b = 0.0f32 }, 0) };
-        let screen = CameraRig.centerOnZoomed(center, zoom = 2.0, design = rigDesign(), placed :: Nil)
+        let screen = CameraRig.centerOn(center, zoom = 2.0, design = rigDesign(), placed :: Nil)
             |> List.head |> Option.map(p -> p#at) |> Option.getWithDefault(Vec2.zero());
-        let back = CameraRig.toWorldPosZoomed(center, zoom = 2.0, design = rigDesign(), screen = screen);
+        let back = CameraRig.toWorldPos(center, zoom = 2.0, design = rigDesign(), screen = screen);
         Assert.assertEq(expected = ((180.0, 120.0), (110.0, 50.0)),
             ((screen#x, screen#y), (back#x, back#y)))
-
-    // 等倍の toWorldPos を委譲「前」の歴史的な期待値で固定する（委譲の実装を変えても
-    // 挙動が変わっていないことの回帰。zoomed 側と比べるとトートロジーになるので定数で釘打つ）。
-    @Test
-    def testToWorldPosMatchesZoomedAtOne(): Unit \ Assert =
-        let center = { x = 100.0, y = 50.0 };
-        let p = CameraRig.toWorldPos(center, design = rigDesign(), screen = { x = 180.0, y = 120.0 });
-        Assert.assertEq(expected = (120.0, 50.0), (p#x, p#y))
 
     // trauma は二乗で効く: 満タン 1.0 で maxOffset、半分 0.5 で 1/4、ゼロは揺れない。
     @Test
@@ -71,13 +63,11 @@ mod TestCameraRig {
     /// 小数 4 桁に丸める（2 進で表せない加算の比較用）。
     def round4(x: Float64): Float64 = Float64.floor(x * 10000.0 + 0.5) / 10000.0
 
-    // 恒等カメラは動かず、trauma 0 のシェイクは揺れない。
+    // trauma 0 のシェイクは揺れない（時計が進んでいてもゼロのまま）。
     @Test
-    def testFixedCameraAndZeroTraumaAreStill(): Unit \ Assert =
-        let fixedCam = CameraRig.fixed();
+    def testZeroTraumaShakeIsStill(): Unit \ Assert =
         let still = CameraRig.shakeOffset(spec(), { trauma = 0.0, fxClock = 5.0 });
-        Assert.assertEq(expected = (0.0, 0.0, 0.0, 0.0),
-            (fixedCam#offset#x, fixedCam#offset#y, still#x, still#y))
+        Assert.assertEq(expected = (0.0, 0.0), (still#x, still#y))
 
     // trauma 満タンのオフセットは揺れ幅（maxOffset）の中に収まる。
     @Test
@@ -134,36 +124,30 @@ mod TestCameraRig {
              CameraRig.clampAxis(0.0, -160.0, 100.0)))
 
     // ========================================================================
-    // 中央映し: centerOffset / centerOn / toWorldPos / visibleRect
+    // 中央映し: centerOn / toWorldPos / visibleRect
     // ========================================================================
-
-    // center (100,50) を 320×240 の中央に映すずらし量は (60, 70)。
-    @Test
-    def testCenterOffsetMovesCenterToMiddle(): Unit \ Assert =
-        let off = CameraRig.centerOffset({ x = 100.0, y = 50.0 }, design = { x = 320.0, y = 240.0 });
-        Assert.assertEq(expected = (60.0, 70.0), (off#x, off#y))
 
     // centerOn: center に置いた item は画面中央 (design/2) に着地する。
     @Test
     def testCenterOnLandsCenterAtMiddle(): Unit \ Assert =
         let center = { x = 100.0, y = 50.0 };
         let item = { at = center, item = Render.box({ x = 1.0, y = 1.0 }, red(), 0) };
-        let moved = CameraRig.centerOn(center, design = { x = 320.0, y = 240.0 }, item :: Nil);
+        let moved = CameraRig.centerOn(center, zoom = 1.0, design = { x = 320.0, y = 240.0 }, item :: Nil);
         Assert.assertEq(expected = Some((160.0, 120.0)),
             List.head(moved) |> Option.map(p -> (p#at#x, p#at#y)))
 
-    // toWorldPos は centerOn と互いに逆: 画面中央を world に戻すと center そのもの。
+    // toWorldPos は centerOn と互いに逆（等倍）: 画面中央を world に戻すと center そのもの。
     @Test
-    def testToWorldPosInvertsCenterOn(): Unit \ Assert =
+    def testToWorldPosMiddleIsCenterAtUnitZoom(): Unit \ Assert =
         let center = { x = 100.0, y = 50.0 };
-        let back = CameraRig.toWorldPos(center, design = { x = 320.0, y = 240.0 },
+        let back = CameraRig.toWorldPos(center, zoom = 1.0, design = { x = 320.0, y = 240.0 },
                                         screen = { x = 160.0, y = 120.0 });
         Assert.assertEq(expected = (100.0, 50.0), (back#x, back#y))
 
     // visibleRect は center を中央にした design サイズの矩形（左上 = center - design/2）。
     @Test
     def testVisibleRectSurroundsCenter(): Unit \ Assert =
-        let r = CameraRig.visibleRect({ x = 100.0, y = 50.0 }, design = { x = 320.0, y = 240.0 });
+        let r = CameraRig.visibleRect({ x = 100.0, y = 50.0 }, zoom = 1.0, design = { x = 320.0, y = 240.0 });
         Assert.assertEq(expected = (-60.0, -70.0, 320.0, 240.0),
             (r#position#x, r#position#y, r#size#x, r#size#y))
 

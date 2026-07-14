@@ -127,14 +127,14 @@ mod TestApp {
     // camera なし: world の絵は恒等・hud が後ろに繋がる（順序も本数もそのまま）。
     @Test
     def testComposeSceneWithoutCameraIsIdentityAppend(): Unit \ Assert =
-        let composed = App.composeScene(None, sceneDesign(),
+        let composed = App.composeScene(None, 1.0, sceneDesign(),
             { world = boxAtOrigin() :: Nil, hud = boxAtOrigin() :: Nil });
         Assert.assertEq(expected = (2, Some((0.0, 0.0))), (List.length(composed), atOf(composed)))
 
     // camera あり: world の絵だけがずれ（原点は design/2 - center へ）、hud は不動のまま。
     @Test
     def testComposeSceneShiftsWorldButNotHud(): Unit \ Assert =
-        let composed = App.composeScene(Some({ x = 100.0, y = 50.0 }), sceneDesign(),
+        let composed = App.composeScene(Some({ x = 100.0, y = 50.0 }), 1.0, sceneDesign(),
             { world = boxAtOrigin() :: Nil, hud = boxAtOrigin() :: Nil });
         let hudAt = List.head(List.drop(1, composed)) |> Option.map(p -> (p#at#x, p#at#y));
         Assert.assertEq(expected = (Some((60.0, 70.0)), Some((0.0, 0.0))), (atOf(composed), hudAt))
@@ -144,60 +144,60 @@ mod TestApp {
     def testComposeSceneLandsCenterAtMiddle(): Unit \ Assert =
         let center = { x = 100.0, y = 50.0 };
         let onCenter = { at = center | boxAtOrigin() };
-        let composed = App.composeScene(Some(center), sceneDesign(),
+        let composed = App.composeScene(Some(center), 1.0, sceneDesign(),
             { world = onCenter :: Nil, hud = Nil });
         Assert.assertEq(expected = Some((160.0, 120.0)), atOf(composed))
 
     // ========================================================================
-    // composeSceneZoomed / visibleOfZoomed: 寄り引きの合成
+    // composeScene / visibleOf: 寄り引き（zoom ≠ 1）の合成
     // ========================================================================
 
     // zoom 2 倍: center に置いた item は画面中央に着地したまま、Box の大きさは 2 倍になる。
     @Test
-    def testComposeSceneZoomedScalesAroundCenter(): Unit \ Assert =
+    def testComposeSceneAtZoomTwoScalesAroundCenter(): Unit \ Assert =
         let center = { x = 100.0, y = 50.0 };
         let onCenter = { at = center | boxAtOrigin() };
-        let composed = App.composeSceneZoomed(Some(center), 2.0, sceneDesign(),
+        let composed = App.composeScene(Some(center), 2.0, sceneDesign(),
             { world = onCenter :: Nil, hud = Nil });
         let size = match List.head(composed) |> Option.map(p -> p#item) {
-            case Some(Render.Item.Box(b)) => Some((b#size#x, b#size#y))
-            case _                        => None
+            case Some(Render.Item.Box(b)) => (b#size#x, b#size#y)
+            case _                        => bug!("composeScene の先頭は Box のはず")
         };
-        Assert.assertEq(expected = (Some((160.0, 120.0)), Some((2.0, 2.0))), (atOf(composed), size))
+        Assert.assertEq(expected = (Some((160.0, 120.0)), (2.0, 2.0)), (atOf(composed), size))
 
     // zoom 2 倍: center から (10, 0) 離れた item は画面中央から (20, 0) 離れて着地する。
     @Test
-    def testComposeSceneZoomedScalesOffsets(): Unit \ Assert =
+    def testComposeSceneAtZoomTwoScalesOffsets(): Unit \ Assert =
         let center = { x = 100.0, y = 50.0 };
         let offCenter = { at = { x = 110.0, y = 50.0 } | boxAtOrigin() };
-        let composed = App.composeSceneZoomed(Some(center), 2.0, sceneDesign(),
+        let composed = App.composeScene(Some(center), 2.0, sceneDesign(),
             { world = offCenter :: Nil, hud = Nil });
         Assert.assertEq(expected = Some((180.0, 120.0)), atOf(composed))
 
     // camera 無し（center = None）でも zoom ≠ 1 なら画面中央 design/2 を軸に寄る:
     // 中央 (160,120) に置いた item は動かず、Box の大きさだけ 2 倍になる（zoom の黙殺はしない）。
     @Test
-    def testComposeSceneZoomedWithoutCameraZoomsAroundScreenCenter(): Unit \ Assert =
+    def testComposeSceneAtZoomTwoWithoutCameraZoomsAroundScreenCenter(): Unit \ Assert =
         let onMiddle = { at = { x = 160.0, y = 120.0 } | boxAtOrigin() };
-        let composed = App.composeSceneZoomed(None, 2.0, sceneDesign(),
+        let composed = App.composeScene(None, 2.0, sceneDesign(),
             { world = onMiddle :: Nil, hud = Nil });
         let size = match List.head(composed) |> Option.map(p -> p#item) {
-            case Some(Render.Item.Box(b)) => Some((b#size#x, b#size#y))
-            case _                        => None
+            case Some(Render.Item.Box(b)) => (b#size#x, b#size#y)
+            case _                        => bug!("composeScene の先頭は Box のはず")
         };
-        Assert.assertEq(expected = (Some((160.0, 120.0)), Some((2.0, 2.0))), (atOf(composed), size))
+        Assert.assertEq(expected = (Some((160.0, 120.0)), (2.0, 2.0)), (atOf(composed), size))
 
     // 同じ規則が可視範囲にも効く: camera 無し + zoom 2 は design/2 中心の 160×120。
     @Test
-    def testVisibleOfZoomedWithoutCameraCentersOnScreen(): Unit \ Assert =
-        let visible = App.visibleOfZoomed(None, 2.0, sceneDesign());
+    def testVisibleOfAtZoomTwoWithoutCameraCentersOnScreen(): Unit \ Assert =
+        let visible = App.visibleOf(None, 2.0, sceneDesign());
         Assert.assertEq(expected = ((80.0, 60.0), (160.0, 120.0)),
             ((visible#position#x, visible#position#y), (visible#size#x, visible#size#y)))
 
     // zoom 2 倍の可視範囲: 大きさは design の半分（160×120）で、center を中心に据える。
     @Test
-    def testVisibleOfZoomedShrinksSeenRect(): Unit \ Assert =
-        let visible = App.visibleOfZoomed(Some({ x = 100.0, y = 50.0 }), 2.0, sceneDesign());
+    def testVisibleOfAtZoomTwoShrinksSeenRect(): Unit \ Assert =
+        let visible = App.visibleOf(Some({ x = 100.0, y = 50.0 }), 2.0, sceneDesign());
         Assert.assertEq(expected = ((20.0, -10.0), (160.0, 120.0)),
             ((visible#position#x, visible#position#y), (visible#size#x, visible#size#y)))
 
@@ -208,7 +208,7 @@ mod TestApp {
     // camera なし: 原点起点の design 全体が見えている。
     @Test
     def testVisibleOfWithoutCameraIsDesignRect(): Unit \ Assert =
-        let visible = App.visibleOf(None, sceneDesign());
+        let visible = App.visibleOf(None, 1.0, sceneDesign());
         Assert.assertEq(expected = ((0.0, 0.0), (320.0, 240.0)),
             ((visible#position#x, visible#position#y), (visible#size#x, visible#size#y)))
 
@@ -216,7 +216,7 @@ mod TestApp {
     // composeScene のずらし（testComposeSceneShiftsWorldButNotHud と同じ center）と表裏一体。
     @Test
     def testVisibleOfWithCameraCentersRect(): Unit \ Assert =
-        let visible = App.visibleOf(Some({ x = 100.0, y = 50.0 }), sceneDesign());
+        let visible = App.visibleOf(Some({ x = 100.0, y = 50.0 }), 1.0, sceneDesign());
         Assert.assertEq(expected = ((-60.0, -70.0), (320.0, 240.0)),
             ((visible#position#x, visible#position#y), (visible#size#x, visible#size#y)))
 

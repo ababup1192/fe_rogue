@@ -1,5 +1,6 @@
-/// ※ 旧世代 API: App の宣言的カメラ（withCamera / withZoom + CameraRig）に置き換え済み。
-/// 新規コードでは使わないこと（非等方 zoom = Vec2 が要る特殊用途のみ残置。0.2 系で削除予定）。
+/// ※ これは Drawable 経路（view = None で renderCommands を自前で組むゲーム。fe_rogue が実例）
+/// のカメラ部品。PlacedItem 経路（withView のゲーム）は App.withCamera / withZoom + CameraRig が
+/// 同じ役割を担うので、そちらでは使わない。
 ///
 /// 描画をどの位置・どのズームで画面に映すかを決める 2D カメラ。
 /// `transform` の position が「画面中央に映すワールド座標」、`zoom` が寄り引きの倍率。
