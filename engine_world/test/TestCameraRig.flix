@@ -168,4 +168,43 @@ mod TestCameraRig {
             (r#position#x, r#position#y, r#size#x, r#size#y))
 
     def red(): Color = { r = 1.0f32, g = 0.0f32, b = 0.0f32 }
+
+    // ── clampCenter / parallaxCenter ──
+
+    /// テスト用のレベル矩形（(0,0) 起点の 960×720）。
+    def stage(): Rect2.Rect2 = { position = { x = 0.0, y = 0.0 }, size = { x = 960.0, y = 720.0 } }
+
+    // clampCenter: 内側は素通し・端では「視界の縁が bounds に触れる」位置 (160,120)/(800,600) で
+    // 止まる・bounds が視界より狭い軸は bounds 中央に固定。
+    @Test
+    def testClampCenterPinsAtEdges(): Unit \ Assert =
+        let seen = rigDesign();
+        let inside = CameraRig.clampCenter(bounds = stage(), seen = seen, { x = 480.0, y = 360.0 });
+        let low    = CameraRig.clampCenter(bounds = stage(), seen = seen, { x = -500.0, y = -500.0 });
+        let high   = CameraRig.clampCenter(bounds = stage(), seen = seen, { x = 5000.0, y = 5000.0 });
+        let narrow = CameraRig.clampCenter(
+            bounds = { position = { x = 0.0, y = 0.0 }, size = { x = 100.0, y = 720.0 } },
+            seen = seen, { x = 90.0, y = 360.0 });
+        Assert.assertEq(
+            expected = ((480.0, 360.0), (160.0, 120.0), (800.0, 600.0), (50.0, 360.0)),
+            ((inside#x, inside#y), (low#x, low#y), (high#x, high#y), (narrow#x, narrow#y)))
+
+    // clampCenter は zoom で広がった視界（seen = design/zoom）でも成立する:
+    // 引き（z=0.5 → seen 640×480）では止まる位置が内側（320,240）へ寄る。
+    @Test
+    def testClampCenterRespectsZoomedSeen(): Unit \ Assert =
+        let seen = { x = 640.0, y = 480.0 };
+        let low = CameraRig.clampCenter(bounds = stage(), seen = seen, { x = 0.0, y = 0.0 });
+        Assert.assertEq(expected = (320.0, 240.0), (low#x, low#y))
+
+    // parallaxCenter: factor 1 で本来の center・0 で画面中央（design/2）・0.5 で中点。
+    @Test
+    def testParallaxCenterLerpsFromScreenMiddle(): Unit \ Assert =
+        let center = { x = 480.0, y = 360.0 };
+        let full = CameraRig.parallaxCenter(1.0, center, design = rigDesign());
+        let none = CameraRig.parallaxCenter(0.0, center, design = rigDesign());
+        let half = CameraRig.parallaxCenter(0.5, center, design = rigDesign());
+        Assert.assertEq(
+            expected = ((480.0, 360.0), (160.0, 120.0), (320.0, 240.0)),
+            ((full#x, full#y), (none#x, none#y), (half#x, half#y)))
 }

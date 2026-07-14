@@ -84,6 +84,27 @@ mod CameraRig {
         let z = safeZoom(zoom#zoom);
         Vec2.add(Vec2.div(Vec2.sub(screen#screen, Vec2.div(design#design, 2.0)), z), center)
 
+    /// camera の center を「見えている範囲（seen = design/zoom）が bounds の内側に収まる」位置へ
+    /// 収める（Godot の Camera2D limits 相当）。軸ごとに bounds が seen より狭ければ
+    /// bounds の中央に固定する。App.withCameraBounds がこれを毎フレーム適用する。
+    pub def clampCenter(bounds: {bounds = Rect2.Rect2}, seen: {seen = Vec2.Vec2},
+                        center: Vec2.Vec2): Vec2.Vec2 =
+        { x = clampCenterAxis(bounds#bounds#position#x, bounds#bounds#size#x, seen#seen#x, center#x),
+          y = clampCenterAxis(bounds#bounds#position#y, bounds#bounds#size#y, seen#seen#y, center#y) }
+
+    /// 1軸ぶんの clampCenter: 視界が bounds より広ければ中央固定、収まるなら
+    /// 「視界の端が bounds を出ない」範囲へ center を収める。
+    def clampCenterAxis(lo: Float64, size: Float64, seen: Float64, c: Float64): Float64 =
+        if (seen >= size) lo + size / 2.0
+        else clampAxis(lo + seen / 2.0, lo + size - seen / 2.0, c)
+
+    /// 視差レイヤの見かけの camera 中心: 画面中央と本来の center を factor で混ぜる。
+    /// factor = 1.0 で主レイヤと同速（同じ景色）、0.0 で画面に貼り付く（無限遠）。
+    /// 遠景 0.2〜0.5・近景 1.5 のように使う。zoom は全レイヤ共通に掛かる。
+    pub def parallaxCenter(factor: Float64, center: Vec2.Vec2, design: {design = Vec2.Vec2}): Vec2.Vec2 =
+        let mid = Vec2.div(design#design, 2.0);
+        Vec2.add(mid, Vec2.mul(Vec2.sub(center, mid), factor))
+
     // ── 追従（不感帯 + 寄せ率 + クランプ）──
 
     /// 追従の仕様: 不感帯の幅と寄せ率（1 秒あたり）。

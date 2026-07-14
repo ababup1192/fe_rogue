@@ -66,6 +66,12 @@ mod App {
         // World から寄り引き倍率を導く（大きいほど寄る）。None = 等倍。camera と別フィールドの
         // 合成: camera だけ・zoom だけ・両方、どの組み合わせでも効く（zoom だけなら画面中央に寄る）。
         zoom = Option[w -> Float64 \ ef],
+        // camera が映してよい world の矩形（レベルの端で止める）。None = 制限なし。
+        // 見えている範囲（design/zoom）がこの矩形を出ないよう center が収められる。
+        cameraBounds = Option[w -> Rect2.Rect2 \ ef],
+        // 視差レイヤ（factor, view）の列・追加順。camera の動きに factor を掛けた速さで流れる
+        // world 空間の絵（factor 0.3 の遠景など）。主 view より先に並ぶが、重なりは zIndex が決める。
+        parallaxLayers = List[(Float64, (ViewCtx, w) -> List[Render.PlacedItem] \ ef)],
         // カメラを掛けずに描く絵（スコア等の HUD）。view の絵と合流して1本のリストになるので、
         // 重なり順は従来どおり zIndex が決める（Render.draw が安定ソート・同 z は後勝ち = hud）。
         hudView = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef],
@@ -99,6 +105,8 @@ mod App {
           view = None,
           camera = None,
           zoom = None,
+          cameraBounds = None,
+          parallaxLayers = Nil,
           hudView = None,
           audio = _worlds -> checked_ecast(Nil),
           quit = (frame, _world) -> checked_ecast(justPressed(GameEngine.Key.Escape, frame)),
@@ -140,6 +148,21 @@ mod App {
     /// 丸めるので画面は壊れない。
     pub def withZoom(f: w -> Float64 \ ef, app: App[w, ef]): App[w, ef] =
         { zoom = Some(f) | app }
+
+    /// camera が映してよい world の矩形（レベルの端）を導く関数を繋ぐ。見えている範囲
+    /// （design/zoom）がこの矩形の外に出ないよう center を収める — 端の外の虚空が映らない。
+    /// zoom と併用しても正しく効く（引くほど収まる位置が内側になる）。矩形が視界より
+    /// 狭い軸は矩形の中央に固定する。withCamera（または withZoom）と併用して効く。
+    pub def withCameraBounds(f: w -> Rect2.Rect2 \ ef, app: App[w, ef]): App[w, ef] =
+        { cameraBounds = Some(f) | app }
+
+    /// 視差レイヤを末尾へ繋ぐ（addSystem と同じ「列に足す」様式）。view と同じ
+    /// (ViewCtx, w) -> 絵 の関数だが、camera の動きに factor を掛けた速さで流れる:
+    /// factor 1.0 = 主レイヤと同速、0.3 = 遠景、0.0 = 画面固定。ViewCtx の visible は
+    /// そのレイヤの見かけの camera で計算されるので、culling もそのまま書ける。
+    pub def addParallaxLayer(factor: Float64, v: (ViewCtx, w) -> List[Render.PlacedItem] \ ef,
+                             app: App[w, ef]): App[w, ef] =
+        { parallaxLayers = List.append(app#parallaxLayers, (factor, v) :: Nil) | app }
 
     /// カメラを掛けない絵（スコア等の HUD）を繋ぐ。重なり順は zIndex が決める
     /// （view の絵より手前に出したければ大きい zIndex を使う）。
@@ -516,19 +539,32 @@ mod App {
             case None    => 1.0
             case Some(f) => f(world)
         };
-        // camera 無しで zoom だけのゲームの扱いは zoomedCenter（composeSceneZoomed /
-        // visibleOfZoomed の内側）が一手に引き受けるので、ここは読むだけ。
-        let center = match app#camera {
+        // 確定した camera 中心を1回だけ導く: zoom-only の正規化（zoomedCenter）→ bounds クランプ。
+        // 視差レイヤと主レイヤがこの同じ値から派生するので、レイヤ間の視点がずれない。
+        let center0 = match app#camera {
             case Some(f) => Some(f(world))
             case None    => None
+        };
+        let center = match (zoomedCenter(center0, z, design), app#cameraBounds) {
+            case (Some(c), Some(fb)) =>
+                let seen = Vec2.div(design, CameraRig.safeZoom(z));
+                Some(CameraRig.clampCenter(bounds = fb(world), seen = seen, c))
+            case (c, _) => c
         };
         let hud = match app#hudView {
             case None    => Nil
             // HUD は画面固定なので、見えている矩形は常に design 全体（原点起点）で zoom も掛けない。
             case Some(h) => h({ atlas = atlas, visible = visibleOf(None, design) }, world)
         };
+        // 視差レイヤ: 見かけの center（parallaxCenter）で culling も合成も行う。hud は混ぜない。
+        let layers = app#parallaxLayers |> List.flatMap(fl -> {
+            let (factor, lview) = fl;
+            let lcenter = Option.map(c -> CameraRig.parallaxCenter(factor, c, design = design), center);
+            let lctx = { atlas = atlas, visible = visibleOfZoomed(lcenter, z, design) };
+            composeSceneZoomed(lcenter, z, design, { world = lview(lctx, world), hud = Nil })
+        });
         let ctx = { atlas = atlas, visible = visibleOfZoomed(center, z, design) };
-        composeSceneZoomed(center, z, design, { world = toItems(ctx, world), hud = hud })
+        List.append(layers, composeSceneZoomed(center, z, design, { world = toItems(ctx, world), hud = hud }))
 
     /// view の投影した絵を描画命令にしてエンジンへ渡す（タイルマップは使わないので空の列を添える）。
     /// view = None のゲームは App では描かない（自分のシステム内で renderCommands を呼ぶ。
