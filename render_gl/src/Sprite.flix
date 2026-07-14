@@ -247,9 +247,12 @@ mod RenderSprite {
 
     /// instanced sprite 用の VAO と instance VBO を構築する（起動時に 1 回）。
     /// loc 0: 共有 quad VBO (vertex.xy = 局所座標, vertex.zw = UV)
-    /// loc 1-5: per-instance VBO (divisor=1)。1 instance = 16 floats / 64 bytes:
+    /// loc 1-9: per-instance VBO (divisor=1)。1 instance = 32 floats / 128 bytes:
     ///   loc1 vec4 = ワールド変換 2x2 / loc2 vec2 = 平行移動 /
-    ///   loc3 vec4 = uvOffset+uvScale / loc4 vec4 = color+alpha / loc5 vec2 = フラグ
+    ///   loc3 vec4 = uvOffset+uvScale / loc4 vec4 = color+alpha /
+    ///   loc5 vec4 = フラグ (useTexture, sdf, styleEnabled, hatchEnabled) /
+    ///   loc6 vec4 = rectSize+cornerRadius+borderWidth / loc7 vec4 = 枠色+枠alpha /
+    ///   loc8 vec4 = ハッチ色+alpha / loc9 vec2 = ハッチ幅+周期
     /// 戻り値: (vao, instanceVbo)
     pub def initSpriteInstancedRenderer(quadVBO: Int32): (Int32, Int32) \ IO =
         let vao = GL30.glGenVertexArrays();
@@ -259,29 +262,41 @@ mod RenderSprite {
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, quadVBO);
         GL20.glEnableVertexAttribArray(0);
         GL20.glVertexAttribPointer(0, 4, GL11.GL_FLOAT, false, 16, 0i64);
-        // インスタンス VBO (loc 1-5, divisor=1, stride 64 bytes)
+        // インスタンス VBO (loc 1-9, divisor=1, stride 128 bytes)
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, instanceVbo);
         GL20.glEnableVertexAttribArray(1);
-        GL20.glVertexAttribPointer(1, 4, GL11.GL_FLOAT, false, 64, 0i64);
+        GL20.glVertexAttribPointer(1, 4, GL11.GL_FLOAT, false, 128, 0i64);
         GL33.glVertexAttribDivisor(1, 1);
         GL20.glEnableVertexAttribArray(2);
-        GL20.glVertexAttribPointer(2, 2, GL11.GL_FLOAT, false, 64, 16i64);
+        GL20.glVertexAttribPointer(2, 2, GL11.GL_FLOAT, false, 128, 16i64);
         GL33.glVertexAttribDivisor(2, 1);
         GL20.glEnableVertexAttribArray(3);
-        GL20.glVertexAttribPointer(3, 4, GL11.GL_FLOAT, false, 64, 24i64);
+        GL20.glVertexAttribPointer(3, 4, GL11.GL_FLOAT, false, 128, 24i64);
         GL33.glVertexAttribDivisor(3, 1);
         GL20.glEnableVertexAttribArray(4);
-        GL20.glVertexAttribPointer(4, 4, GL11.GL_FLOAT, false, 64, 40i64);
+        GL20.glVertexAttribPointer(4, 4, GL11.GL_FLOAT, false, 128, 40i64);
         GL33.glVertexAttribDivisor(4, 1);
         GL20.glEnableVertexAttribArray(5);
-        GL20.glVertexAttribPointer(5, 2, GL11.GL_FLOAT, false, 64, 56i64);
+        GL20.glVertexAttribPointer(5, 4, GL11.GL_FLOAT, false, 128, 56i64);
         GL33.glVertexAttribDivisor(5, 1);
+        GL20.glEnableVertexAttribArray(6);
+        GL20.glVertexAttribPointer(6, 4, GL11.GL_FLOAT, false, 128, 72i64);
+        GL33.glVertexAttribDivisor(6, 1);
+        GL20.glEnableVertexAttribArray(7);
+        GL20.glVertexAttribPointer(7, 4, GL11.GL_FLOAT, false, 128, 88i64);
+        GL33.glVertexAttribDivisor(7, 1);
+        GL20.glEnableVertexAttribArray(8);
+        GL20.glVertexAttribPointer(8, 4, GL11.GL_FLOAT, false, 128, 104i64);
+        GL33.glVertexAttribDivisor(8, 1);
+        GL20.glEnableVertexAttribArray(9);
+        GL20.glVertexAttribPointer(9, 2, GL11.GL_FLOAT, false, 128, 120i64);
+        GL33.glVertexAttribDivisor(9, 1);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
         (vao, instanceVbo)
 
     /// 同じテクスチャのスプライト count 体を 1 回の instanced draw で描画する。
-    /// data は 1 体 16 floats を列順に並べた instance データ（RenderFrame が組む）。
+    /// data は 1 体 32 floats を列順に並べた instance データ（RenderFrame が組む）。
     /// 毎フレーム glBufferData で丸ごと差し替える（orphaning。drawPolygon と同方式）。
     /// texId = 0 は単色矩形の run で、シェーダはテクスチャを読まないので bind しない。
     pub def drawSpriteInstanced(shader: Int32, vao: Int32, instanceVbo: Int32, texId: Int32,

@@ -70,46 +70,22 @@ mod RenderFrame {
         tileUniforms = RenderShader.TileUniforms
     }
 
-    /// instanced sprite 1 体分の値 (16 floats / 64 bytes)。
-    /// 並びはシェーダの instance 属性 (loc1-5) と同じ:
-    /// 2x2 変換(4) + 平行移動(2) + UV(4) + 色+アルファ(4) + フラグ(2)。
-    type alias SpriteInstance = {
-        m00 = Float32, m01 = Float32, m10 = Float32, m11 = Float32,
-        tx  = Float32, ty  = Float32,
-        u0  = Float32, v0  = Float32, uw = Float32, vh = Float32,
-        r   = Float32, g   = Float32, b  = Float32, a  = Float32,
-        useTex = Float32, sdf = Float32
-    }
-
-    /// 溜めた run（同じテクスチャ・style なしの連続スプライト列）を
-    /// 1 回の instanced draw で吐き出す。itemsRev は cons で積んだ逆順を
-    /// 受け取り、ここで列順に戻して詰める（instance 順 = 列順を守る）。
+    /// 溜めた run（同じテクスチャの連続スプライト列）を 1 回の instanced draw で
+    /// 吐き出す。1 体 = 32 floats の Float32 配列で受け取る。record にしないのは、
+    /// record の `#` 読みが実行時のフィールド探索で、数千体の詰め直しでは
+    /// その探索だけでフレーム時間に現れるため（スレッドダンプ実測）。
+    /// itemsRev は cons で積んだ逆順。末尾位置から前へ詰め戻すことで
+    /// List.reverse なしに instance 順 = 列順を守る。
     def flushSpriteRun(instShader: Int32, instVao: Int32, instVbo: Int32,
-                        texId: Int32, itemsRev: List[SpriteInstance]): Unit \ IO =
-        let count = List.length(itemsRev);
+                        texId: Int32, count: Int32,
+                        itemsRev: List[Array[Float32, Static]]): Unit \ IO =
         if (count == 0) () else {
-            let items = List.reverse(itemsRev);
-            let data = Array.empty(Static, count * 16);
-            let _ = List.foldLeft((i, inst) -> {
-                let base = i * 16;
-                Array.put(inst#m00,    base + 0,  data);
-                Array.put(inst#m01,    base + 1,  data);
-                Array.put(inst#m10,    base + 2,  data);
-                Array.put(inst#m11,    base + 3,  data);
-                Array.put(inst#tx,     base + 4,  data);
-                Array.put(inst#ty,     base + 5,  data);
-                Array.put(inst#u0,     base + 6,  data);
-                Array.put(inst#v0,     base + 7,  data);
-                Array.put(inst#uw,     base + 8,  data);
-                Array.put(inst#vh,     base + 9,  data);
-                Array.put(inst#r,      base + 10, data);
-                Array.put(inst#g,      base + 11, data);
-                Array.put(inst#b,      base + 12, data);
-                Array.put(inst#a,      base + 13, data);
-                Array.put(inst#useTex, base + 14, data);
-                Array.put(inst#sdf,    base + 15, data);
-                i + 1
-            }, 0, items);
+            let data = Array.empty(Static, count * 32);
+            let _ = List.foldLeft((endIdx, inst) -> {
+                let base = (endIdx - 1) * 32;
+                Array.forEachWithIndex((j, v) -> Array.put(v, base + j, data), inst);
+                endIdx - 1
+            }, count, itemsRev);
             RenderSprite.drawSpriteInstanced(instShader, instVao, instVbo, texId, data, count)
         }
 
@@ -118,7 +94,6 @@ mod RenderFrame {
     pub def renderFrameMixed(args: FrameArgs): Unit \ IO =
         let spriteShader = args#spriteShader;
         let tileShader   = args#tileShader;
-        let vao          = args#vao;
         let registry     = args#registry;
         let clearColor   = args#clearColor;
         let designW      = args#designW;
@@ -171,8 +146,9 @@ mod RenderFrame {
                 case Result.Err(pc) => pc#zIndex
             };
             let sortedMerged = stableByZ(zOf, merged);
-            // 連続する「同じテクスチャ・style なし」のスプライトを 1 回の instanced draw に
-            // 畳む（run 収集 → flush）。1 要素 1 draw call だと呼び出しの固定費が積み上がり、
+            // 連続する「同じテクスチャ」のスプライトを 1 回の instanced draw に
+            // 畳む（run 収集 → flush）。run を切るのはテクスチャ変化と polygon だけ。
+            // 1 要素 1 draw call だと呼び出しの固定費が積み上がり、
             // 数千体で描画時間のほとんどを占めてしまうため。
             //
             // 【順序の不変条件・変更禁止】sortedMerged の列順は一切入れ替えない。
@@ -184,7 +160,11 @@ mod RenderFrame {
             let cosF = RenderUtil.cosF;
             let sinF = RenderUtil.sinF;
             // drawSprite が uniform に詰める model 行列と同じ式を CPU 側で計算して
-            // instance 属性に落とす（絵が per-draw 経路と一致することを式の同一性で保証）。
+            // instance 属性 (32 floats・シェーダ loc1-9 と同並び) に落とす
+            // （絵が per-draw 経路と一致することを式の同一性で保証）。
+            // style も per-instance 属性に載せる: 単色矩形は常に style 付きで届く
+            // (Render.box が solidStyle を持たせる) ため、style をバッチ分割条件に
+            // すると矩形が全部 1 枚ずつ描かれて一括化が骨抜きになる（実測で発覚）。
             let makeInst = (pos: Vec2.Vec2, size: Vec2.Vec2, drawable: RenderType.Drawable,
                              useTex: Bool, sdf: Bool) -> {
                 let c = cosF(drawable#rotation);
@@ -193,74 +173,55 @@ mod RenderFrame {
                 let sy = size#y;
                 let tx = pos#x + sx / 2.0 - c * sx / 2.0 + s * sy / 2.0;
                 let ty = pos#y + sy / 2.0 - s * sx / 2.0 - c * sy / 2.0;
-                { m00 = f32(c * sx), m01 = f32(s * sx), m10 = f32(-1.0 * s * sy), m11 = f32(c * sy),
-                  tx = f32(tx), ty = f32(ty),
-                  u0 = f32(drawable#uvOffset#x), v0 = f32(drawable#uvOffset#y),
-                  uw = f32(drawable#uvScale#x), vh = f32(drawable#uvScale#y),
-                  r = drawable#color#r, g = drawable#color#g, b = drawable#color#b,
-                  a = drawable#alpha,
-                  useTex = if (useTex) 1.0f32 else 0.0f32,
-                  sdf = if (sdf) 1.0f32 else 0.0f32 }
+                let color = drawable#color;
+                let uvo = drawable#uvOffset;
+                let uvs = drawable#uvScale;
+                let (styleOn, hatchOn, cr, bw, bc, ba, hc, ha, hw, hp) = match drawable#style {
+                    case None =>
+                        let zero: Color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 };
+                        (0.0f32, 0.0f32, 0.0f32, 0.0f32, zero, 0.0f32,
+                         zero, 0.0f32, 0.0f32, 0.0f32)
+                    case Some(st) =>
+                        // hatch の有効判定は drawSprite の hatchOn と同式。
+                        let hatch = if (st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32) 1.0f32 else 0.0f32;
+                        (1.0f32, hatch, f32(st#cornerRadius), f32(st#borderWidth),
+                         st#borderColor, st#borderAlpha,
+                         st#stripeColor, st#stripeAlpha, f32(st#stripeWidth), f32(st#stripePeriod))
+                };
+                Array#{
+                    f32(c * sx), f32(s * sx), f32(-1.0 * s * sy), f32(c * sy),
+                    f32(tx), f32(ty),
+                    f32(uvo#x), f32(uvo#y), f32(uvs#x), f32(uvs#y),
+                    color#r, color#g, color#b, drawable#alpha,
+                    (if (useTex) 1.0f32 else 0.0f32), (if (sdf) 1.0f32 else 0.0f32), styleOn, hatchOn,
+                    f32(sx), f32(sy), cr, bw,
+                    bc#r, bc#g, bc#b, ba,
+                    hc#r, hc#g, hc#b, ha,
+                    hw, hp
+                } @ Static
             };
-            // style 付き矩形はスタイル用 uniform を伴う従来経路でしか描けないので、
-            // per-draw の drawSprite を残して 1 枚ずつ描く。
-            let drawOne = (drawable: RenderType.Drawable) -> {
-                if (String.isEmpty(drawable#texture)) {
-                    let displaySize: Vec2.Vec2 = drawable#scale;
-                    RenderSprite.drawSprite(spriteShader, vao, spriteUniforms, {
-                        texture = 0, position = drawable#position, scale = displaySize,
-                        color = drawable#color, alpha = drawable#alpha,
-                        uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
-                        rotation = drawable#rotation, useTexture = false,
-                        style = drawable#style, sdf = false})
-                } else {
-                    match Map.get(drawable#texture, registry) {
-                        case Some(texInfo) =>
-                            let displayW = texInfo#width * drawable#scale#x;
-                            let displayH = texInfo#height * drawable#scale#y;
-                            let displaySize: Vec2.Vec2 = {x = displayW, y = displayH};
-                            let pos: Vec2.Vec2 = if (drawable#centered)
-                                {x = drawable#position#x - displayW / 2.0,
-                                 y = drawable#position#y - displayH / 2.0}
-                            else drawable#position;
-                            // フォントアトラス (font_*) は SDF テキストとして描く。
-                            let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
-                            RenderSprite.drawSprite(spriteShader, vao, spriteUniforms, {
-                                texture = GpuHandle.textureIdInt(texInfo#id), position = pos, scale = displaySize,
-                                color = drawable#color, alpha = drawable#alpha,
-                                uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
-                                rotation = drawable#rotation, useTexture = true,
-                                style = drawable#style, sdf = isFont})
-                        case None => ()
-                    }
-                }
+            // run = (テクスチャ id, 体数, 積んだ instance の逆順リスト)。texId=0 は単色矩形の run。
+            let emptyRun: (Int32, Int32, List[Array[Float32, Static]]) = (0, 0, Nil);
+            let flush = (acc: (Int32, Int32, List[Array[Float32, Static]])) -> {
+                let (accTex, accCount, accRev) = acc;
+                flushSpriteRun(instShader, instVao, instVbo, accTex, accCount, accRev)
             };
-            // run = (テクスチャ id, 積んだ instance の逆順リスト)。texId=0 は単色矩形の run。
-            let emptyRun: (Int32, List[SpriteInstance]) = (0, Nil);
-            let flush = (acc: (Int32, List[SpriteInstance])) -> {
-                let (accTex, accRev) = acc;
-                flushSpriteRun(instShader, instVao, instVbo, accTex, accRev)
-            };
-            let push = (acc: (Int32, List[SpriteInstance]), texId: Int32, inst: SpriteInstance) -> {
-                let (accTex, accRev) = acc;
-                if (List.isEmpty(accRev))
-                    (texId, inst :: Nil)
+            let push = (acc: (Int32, Int32, List[Array[Float32, Static]]), texId: Int32,
+                         inst: Array[Float32, Static]) -> {
+                let (accTex, accCount, accRev) = acc;
+                if (accCount == 0)
+                    (texId, 1, inst :: Nil)
                 else if (accTex == texId)
-                    (accTex, inst :: accRev)
+                    (accTex, accCount + 1, inst :: accRev)
                 else {
                     // テクスチャが変わったら現 run を吐いてから新しい run を始める。
                     flush(acc);
-                    (texId, inst :: Nil)
+                    (texId, 1, inst :: Nil)
                 }
             };
             let lastRun = List.foldLeft((acc, item) -> match item {
                 case Result.Ok(drawable) =>
-                    if (not Option.isEmpty(drawable#style)) {
-                        // style 付き矩形が来たら run を吐き、この 1 枚は従来経路で描く。
-                        flush(acc);
-                        drawOne(drawable);
-                        emptyRun
-                    } else if (String.isEmpty(drawable#texture)) {
+                    if (String.isEmpty(drawable#texture)) {
                         push(acc, 0, makeInst(drawable#position, drawable#scale, drawable, false, false))
                     } else {
                         match Map.get(drawable#texture, registry) {

@@ -133,9 +133,12 @@ mod RenderShader {
         "    if (color.a < 0.01) discard;\n" +
         "}\n"
 
-    /// instanced sprite 用の頂点シェーダ。1 体分の変換・UV・色をすべて
-    /// instance 属性 (loc1-5) で受け取るので、uniform の設定なしに
-    /// 1 回の draw call で何千体でも描ける。
+    /// instanced sprite 用の頂点シェーダ。1 体分の変換・UV・色・スタイル
+    /// (角丸・枠・ハッチ) をすべて instance 属性 (loc1-9) で受け取るので、
+    /// uniform の設定なしに 1 回の draw call で何千体でも描ける。
+    /// スタイルまで属性に載せるのは、単色矩形が常に style 付きで届く
+    /// (Render.box が solidStyle を持たせる) ため、style をバッチ分割条件に
+    /// すると矩形が全部 1 枚ずつ描かれて一括化の意味が消えるから。
     /// mat2(inst1.xy, inst1.zw) + inst2 は drawSprite の model 行列
     /// （回転×スケール＋平行移動）と同じ変換。
     pub def spriteInstancedVertexShaderSource(): String =
@@ -145,10 +148,18 @@ mod RenderShader {
         "layout (location = 2) in vec2 inst2;\n" +   // 平行移動 (tx, ty)
         "layout (location = 3) in vec4 inst3;\n" +   // uvOffset.xy + uvScale.zw
         "layout (location = 4) in vec4 inst4;\n" +   // color.rgb + alpha
-        "layout (location = 5) in vec2 inst5;\n" +   // useTexture, sdfText (0.0/1.0)
+        "layout (location = 5) in vec4 inst5;\n" +   // useTexture, sdfText, styleEnabled, hatchEnabled
+        "layout (location = 6) in vec4 inst6;\n" +   // rectSize.xy, cornerRadius, borderWidth
+        "layout (location = 7) in vec4 inst7;\n" +   // borderColor.rgb + borderAlpha
+        "layout (location = 8) in vec4 inst8;\n" +   // hatchColor.rgb + hatchAlpha
+        "layout (location = 9) in vec2 inst9;\n" +   // hatchWidth, hatchPeriod
         "out vec2 TexCoords;\n" +
         "out vec4 InstColor;\n" +
-        "out vec2 InstFlags;\n" +
+        "out vec4 InstFlags;\n" +
+        "out vec4 InstRect;\n" +
+        "out vec4 InstBorder;\n" +
+        "out vec4 InstHatch;\n" +
+        "out vec2 InstHatchDim;\n" +
         "uniform mat4 projection;\n" +
         "void main() {\n" +
         "    vec2 world = mat2(inst1.xy, inst1.zw) * vertex.xy + inst2;\n" +
@@ -156,20 +167,31 @@ mod RenderShader {
         "    TexCoords = vertex.zw * inst3.zw + inst3.xy;\n" +
         "    InstColor = inst4;\n" +
         "    InstFlags = inst5;\n" +
+        "    InstRect = inst6;\n" +
+        "    InstBorder = inst7;\n" +
+        "    InstHatch = inst8;\n" +
+        "    InstHatchDim = inst9;\n" +
         "}\n"
 
     /// instanced sprite 用のフラグメントシェーダ。
-    /// スタイル (角丸・枠・ハッチ) は持たない: style 付き矩形は従来の
-    /// sprite シェーダで 1 枚ずつ描く（バッチに積む前に弾かれる）。
-    /// 同じバッチ内の全 instance は useTexture/sdfText が揃う
-    /// （テクスチャが同じなら font_ 判定も同じ）ので、分岐は実質一様。
+    /// 分岐・数式は uniform 版 (fragmentShaderSource) の逐語移植で、
+    /// uniform を instance 由来の varying に置き換えただけ。式を同一に
+    /// 保つことで per-draw 経路と 1 ピクセルも違わないことを保証する。
     pub def spriteInstancedFragmentShaderSource(): String =
         "#version 330 core\n" +
         "in vec2 TexCoords;\n" +
         "in vec4 InstColor;\n" +
-        "in vec2 InstFlags;\n" +
+        "in vec4 InstFlags;\n" +
+        "in vec4 InstRect;\n" +
+        "in vec4 InstBorder;\n" +
+        "in vec4 InstHatch;\n" +
+        "in vec2 InstHatchDim;\n" +
         "out vec4 color;\n" +
         "uniform sampler2D image;\n" +
+        "float roundedBox(vec2 p, vec2 hsz, float r) {\n" +
+        "    vec2 q = abs(p) - hsz + r;\n" +
+        "    return min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - r;\n" +
+        "}\n" +
         "void main() {\n" +
         "    if (InstFlags.x > 0.5) {\n" +
         "        if (InstFlags.y > 0.5) {\n" +
@@ -181,6 +203,34 @@ mod RenderShader {
         "        } else {\n" +
         "            color = InstColor * texture(image, TexCoords);\n" +
         "        }\n" +
+        "    } else if (InstFlags.z > 0.5) {\n" +
+        "        vec2 hsz = InstRect.xy * 0.5;\n" +
+        "        vec2 p = TexCoords * InstRect.xy - hsz;\n" +
+        "        float cr = clamp(InstRect.z, 0.0, min(hsz.x, hsz.y));\n" +
+        "        float dOuter = roundedBox(p, hsz, cr);\n" +
+        "        float aaO = max(fwidth(dOuter), 0.0001);\n" +
+        "        float outerCov = 1.0 - smoothstep(0.0, aaO, dOuter);\n" +
+        "        float ri = max(cr - InstRect.w, 0.0);\n" +
+        "        vec2 hi = max(hsz - vec2(InstRect.w), vec2(0.0));\n" +
+        "        float dInner = roundedBox(p, hi, ri);\n" +
+        "        float aaI = max(fwidth(dInner), 0.0001);\n" +
+        "        float fillCov = 1.0 - smoothstep(0.0, aaI, dInner);\n" +
+        "        vec3 fillRgb = InstColor.rgb;\n" +
+        "        float fillA = InstColor.a;\n" +
+        "        if (InstFlags.w > 0.5) {\n" +
+        "            float hv = p.x - p.y;\n" +
+        "            float m = mod(hv, InstHatchDim.y);\n" +
+        "            float haa = max(fwidth(hv), 0.0001);\n" +
+        "            float sOn = smoothstep(0.0, haa, m) - smoothstep(InstHatchDim.x, InstHatchDim.x + haa, m);\n" +
+        "            float sa = InstHatch.a * clamp(sOn, 0.0, 1.0);\n" +
+        "            float outA = sa + fillA * (1.0 - sa);\n" +
+        "            fillRgb = (outA > 0.0001) ? (InstHatch.rgb * sa + fillRgb * fillA * (1.0 - sa)) / outA : fillRgb;\n" +
+        "            fillA = outA;\n" +
+        "        }\n" +
+        "        vec3 rgb = mix(InstBorder.rgb, fillRgb, fillCov);\n" +
+        "        float a = mix(InstBorder.a, fillA, fillCov) * outerCov;\n" +
+        "        if (a < 0.004) discard;\n" +
+        "        color = vec4(rgb, a);\n" +
         "    } else {\n" +
         "        color = InstColor;\n" +
         "    }\n" +
