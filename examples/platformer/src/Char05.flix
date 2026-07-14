@@ -28,7 +28,7 @@ mod Char05 {
     // ── 本体: 状態区分ごとにポーズを選ぶ ──
 
     /// 演技の状態区分からポーズを組み立てる。ダッシュは走りの体にバーナー炎と火花を重ねる。
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         match stage#mode {
             case CharStage.Mode.IdleMode => idlePose(stage)
             case CharStage.Mode.RunMode  => stompPose(stage)
@@ -47,7 +47,7 @@ mod Char05 {
     type alias HullSpec = { bottom = Float64, lean = Float64, size = Vec2.Vec2, eyeGlow = Float32 }
 
     /// 胴体 + 頭 + 単眼スリット + リベット 2 個。lean は頭ほど大きく効かせて前後の傾きを出す。
-    def hull(centerX: Float64, facing: Float64, spec: HullSpec): List[Render.Placed] =
+    def hull(centerX: Float64, facing: Float64, spec: HullSpec): List[Render.PlacedItem] =
         let torsoX = centerX + spec#lean * 0.4;
         let headX = centerX + spec#lean;
         let torsoTop = spec#bottom - spec#size#y;
@@ -68,7 +68,7 @@ mod Char05 {
     type alias LegSpec = { footX = Float64, baseY = Float64, footLift = Float64, hullBottom = Float64 }
 
     /// ピストン脚 1 本 = 付け根スリーブ + 伸縮ロッド + 足パッド。ロッドの長さが歩きの伸縮そのもの。
-    def pistonLeg(spec: LegSpec): List[Render.Placed] =
+    def pistonLeg(spec: LegSpec): List[Render.PlacedItem] =
         let rodTop = spec#hullBottom + 4.0;
         let padTop = spec#baseY - spec#footLift - 2.0;
         { at = {x = spec#footX - 2.0, y = spec#hullBottom},
@@ -82,7 +82,7 @@ mod Char05 {
 
     /// 走り = ピストンのストンプ。歩調は移動距離から取る（足が滑らない）。胴体は倍周期で弾み、
     /// 前後の脚が半周期ずれて交互に持ち上がる。
-    def stompPose(stage: CharStage.Stage): List[Render.Placed] =
+    def stompPose(stage: CharStage.Stage): List[Render.PlacedItem] =
         let gait = stage#pos#x * 0.14;
         let hullBottom = stage#pos#y - 13.0 + Curve.triWave(gait * 2.0);
         let liftFront = Float64.max(0.0, Curve.triWave(gait)) * 3.0;
@@ -95,7 +95,7 @@ mod Char05 {
 
     /// ダッシュの演出その 1: 背面ブースターの排気炎（上下 2 本）。長さは vx の帯（160→280）で
     /// 伸び、先端は別位相で揺らめく。体の色は変えない — 火が速さの信号。
-    def burnerFlames(stage: CharStage.Stage): List[Render.Placed] =
+    def burnerFlames(stage: CharStage.Stage): List[Render.PlacedItem] =
         let band = clamp01((Float64.abs(stage#vx) - 160.0) / 120.0);
         let hullBottom = stage#pos#y - 13.0 + Curve.triWave(stage#pos#x * 0.14 * 2.0);
         let backX = stage#pos#x - 7.0 * stage#facing;
@@ -103,7 +103,7 @@ mod Char05 {
                      (hullBottom - 7.5) :: (hullBottom - 3.0) :: Nil)
 
     /// 排気炎 1 本 = 橙の外炎 + 琥珀の芯。ventY を位相に混ぜて 2 本が同じ揺れにならないようにする。
-    def flameAt(stage: CharStage.Stage, band: Float64, backX: Float64, ventY: Float64): List[Render.Placed] =
+    def flameAt(stage: CharStage.Stage, band: Float64, backX: Float64, ventY: Float64): List[Render.PlacedItem] =
         let len = 6.0 + 9.0 * band + 1.5 * Curve.triWave(stage#t * 13.0 + ventY * 0.2);
         let tipY = 0.9 * Curve.triWave(stage#t * 9.0 + ventY);
         { at = {x = backX, y = ventY},
@@ -114,7 +114,7 @@ mod Char05 {
                          {x = 0.0 - len * 0.55 * stage#facing, y = tipY * 0.6} :: Nil, eyeAmber(), 9) } :: Nil
 
     /// ダッシュの演出その 2: 足元から後ろへ散る接地火花。速度帯が高いほど濃く見える。
-    def dashSparks(stage: CharStage.Stage): List[Render.Placed] =
+    def dashSparks(stage: CharStage.Stage): List[Render.PlacedItem] =
         let band = clamp01((Float64.abs(stage#vx) - 160.0) / 120.0);
         List.map(i -> {
             let seed = Int32.toFloat64(i);
@@ -126,7 +126,7 @@ mod Char05 {
 
     /// スキッド = 前脚アンカー。胴体を深くのけぞらせ、斜め前に突き出したストラットで地面を掴む。
     /// 接地点から火花が散り、肩の弁から制動蒸気がひと吹き。勢い（|vx|）が抜けるほど演出も薄まる。
-    def anchorPose(stage: CharStage.Stage): List[Render.Placed] =
+    def anchorPose(stage: CharStage.Stage): List[Render.PlacedItem] =
         let facing = stage#facing;
         let heat = clamp01(Float64.abs(stage#vx) / 200.0);
         let strut =
@@ -154,7 +154,7 @@ mod Char05 {
 
     /// 上昇 = 脚の格納。全ピストンを胴へ引き込んでコンパクトな箱形態になり、
     /// 開いたハッチから青い炉心が覗いて明滅する。
-    def tuckPose(stage: CharStage.Stage): List[Render.Placed] =
+    def tuckPose(stage: CharStage.Stage): List[Render.PlacedItem] =
         let baseY = stage#pos#y;
         let coreFlick = 0.6 * Curve.triWave(stage#t * 10.0);
         { at = {x = stage#pos#x - 6.0, y = baseY - 12.0},
@@ -171,7 +171,7 @@ mod Char05 {
           item = Render.circle(4.0 + coreFlick, coreCyan(), 11) |> Render.fade(0.3f32) } :: Nil
 
     /// 落下 = 着陸脚の展開。胴を高く保ってロッドを全伸ばしし、足を左右に開いて接地に備える。
-    def gearDownPose(stage: CharStage.Stage): List[Render.Placed] =
+    def gearDownPose(stage: CharStage.Stage): List[Render.PlacedItem] =
         let hullBottom = stage#pos#y - 14.0;
         List.flatten(
             hull(stage#pos#x, stage#facing,
@@ -180,7 +180,7 @@ mod Char05 {
             pistonLeg({footX = stage#pos#x - 5.0, baseY = stage#pos#y, footLift = 0.0, hullBottom = hullBottom}) :: Nil)
 
     /// 着地 = 全圧縮スラム。胴が横に潰れ、肩の弁から蒸気が左右へ抜け、地面に衝撃線が走る。
-    def slamPose(stage: CharStage.Stage): List[Render.Placed] =
+    def slamPose(stage: CharStage.Stage): List[Render.PlacedItem] =
         let progress = clamp01(stage#modeT / 0.2);
         let ease = 1.0 - progress;
         let jetR = 2.0 + 1.5 * progress;
@@ -201,7 +201,7 @@ mod Char05 {
 
     /// 待機 = ボイラーの呼吸。胴がゆっくり上下し、肩の弁から蒸気がひと吹きずつ立ちのぼり、
     /// 単眼がとろとろ明滅する。
-    def idlePose(stage: CharStage.Stage): List[Render.Placed] =
+    def idlePose(stage: CharStage.Stage): List[Render.PlacedItem] =
         let hullBottom = -13.0 + 0.6 * Curve.triWave(stage#t * 0.7);
         let glow = RenderUtil.f32(0.7 + 0.3 * Curve.tri(1.6, stage#t));
         let puffCycle = cycleAt(stage#modeT / 1.1);

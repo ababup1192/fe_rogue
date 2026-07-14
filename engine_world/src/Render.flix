@@ -1,5 +1,5 @@
-// Render — 「何をどう見せたいか」だけ書いた RenderItem を、描画部が食べられる形に変換する。
-// スプライトもテキストも箱も円も多角形も、同じ { at = 置き場所, item = RenderItem } の語彙で並べられる。
+// Render — 「何をどう見せたいか」だけ書いた Item を、描画部が食べられる形に変換する。
+// スプライトもテキストも箱も円も多角形も、同じ { at = 置き場所, item = Item } の語彙で並べられる。
 // 利用例: 弾や敵を絵として並べる / HUD の数字やラベルを出す / 破片や紙吹雪を polygon で撒く。
 // 形は box / circle / polygon で作り、稀な属性（角丸・半透明・枠・縞）はパイプ修飾で重ねる。
 // 注意: 置き場所（位置）は持たず呼び側が渡す。テキストの実寸計算は engine の純粋関数を使う。
@@ -8,7 +8,7 @@ mod Render {
 
     // ── render component（位置を持たない・ノードでない）──
 
-    pub enum RenderItem {
+    pub enum Item {
         /// texture は handle 相当（String）。regionRect=None で全テクスチャ。UV は射影が計算。
         /// （`region` は Flix 予約語なので engine と同じ `regionRect`）
         case Sprite({ texture = String, tint = Color, alpha = Float32,
@@ -22,42 +22,56 @@ mod Render {
     }
 
     /// 置き場所つきの描画物。View はこの列を組み、draw が描画命令へ変換する。
-    pub type alias Placed = { at = Vec2.Vec2, item = RenderItem }
+    pub type alias PlacedItem = { at = Vec2.Vec2, item = Item }
 
     // ── smart constructor（Drawable/BoxStyle をゲームから隠す）──
 
     def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 
-    /// 全テクスチャ・等倍・中心原点のスプライト（最頻ケース）。
-    pub def sprite(texture: String, zIndex: Int32, flipH: Bool, flipV: Bool): RenderItem =
-        RenderItem.Sprite({ texture = texture, tint = white(), alpha = 1.0f32,
+    /// 全テクスチャ・等倍・中心原点のスプライト（最頻ケース）。反転が要るときは spriteFlipped。
+    pub def sprite(texture: String, zIndex: Int32): Item =
+        Item.Sprite({ texture = texture, tint = white(), alpha = 1.0f32,
                             scale = {x = 1.0, y = 1.0}, rotation = 0.0, centered = true,
-                            flipH = flipH, flipV = flipV, regionRect = None, zIndex = zIndex })
+                            flipH = false, flipV = false, regionRect = None, zIndex = zIndex })
 
-    pub def text(content: String, fontAtlas: FontAtlas, fontSize: Float64, zIndex: Int32): RenderItem =
-        RenderItem.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = white(), zIndex = zIndex })
+    /// 反転付きスプライト。同型の Bool 2 つは取り違えやすいので名前で渡す。
+    pub def spriteFlipped(texture: String, zIndex: Int32,
+                          flip: { flipH = Bool, flipV = Bool }): Item =
+        Item.Sprite({ texture = texture, tint = white(), alpha = 1.0f32,
+                            scale = {x = 1.0, y = 1.0}, rotation = 0.0, centered = true,
+                            flipH = flip#flipH, flipV = flip#flipV, regionRect = None, zIndex = zIndex })
+
+    pub def text(content: String, fontAtlas: FontAtlas, fontSize: Float64, zIndex: Int32): Item =
+        Item.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = white(), zIndex = zIndex })
 
     /// B0b: 着色テキスト（Text.setColor を適用）。menu の disabled グレー / cursor 色 / ヘッダ accent 等に必要。
-    pub def textTinted(content: String, fontAtlas: FontAtlas, fontSize: Float64, tint: Color, zIndex: Int32): RenderItem =
-        RenderItem.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = tint, zIndex = zIndex })
+    pub def textTinted(content: String, fontAtlas: FontAtlas, fontSize: Float64, tint: Color, zIndex: Int32): Item =
+        Item.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = tint, zIndex = zIndex })
 
     /// 単色塗りの矩形（左上原点・サイズ指定）。
-    pub def box(size: Vec2.Vec2, color: Color, zIndex: Int32): RenderItem =
-        RenderItem.Box({ size = size, color = color, alpha = 1.0f32,
+    pub def box(size: Vec2.Vec2, color: Color, zIndex: Int32): Item =
+        Item.Box({ size = size, color = color, alpha = 1.0f32,
                          style = Some(solidStyle()), zIndex = zIndex })
 
-    /// box の別名（左上原点・サイズ指定の単色矩形）。
-    pub def solidBox(size: Vec2.Vec2, color: Color, zIndex: Int32): RenderItem =
-        box(size, color, zIndex)
-
     /// 単色塗りの円（直径 radius×2 の全角丸 Box）。置き場所は外接正方形の左上。
-    pub def circle(radius: Float64, color: Color, zIndex: Int32): RenderItem =
+    /// 中心で置きたいときは circleAt を使う。
+    pub def circle(radius: Float64, color: Color, zIndex: Int32): Item =
         box({ x = radius * 2.0, y = radius * 2.0 }, color, zIndex) |> rounded(radius)
 
+    /// 中心 center に置いた単色の円（PlacedItem）。外接正方形の左上への換算はここが済ませる。
+    pub def circleAt(center: Vec2.Vec2, radius: Float64, color: Color, zIndex: Int32): PlacedItem =
+        { at = { x = center#x - radius, y = center#y - radius },
+          item = circle(radius, color, zIndex) }
+
+    /// 中心 center に置いた単色の矩形（PlacedItem）。左上で置きたいときは box を使う。
+    pub def boxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32): PlacedItem =
+        { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
+          item = box(size, color, zIndex) }
+
     /// 単色塗りの多角形。頂点は置き場所からの相対座標で渡す（絶対座標で組みたいときは
-    /// 置き場所を Vec2.zero() にする）。
-    pub def polygon(vertices: List[Vec2.Vec2], color: Color, zIndex: Int32): RenderItem =
-        RenderItem.Poly({ vertices = vertices, color = color, alpha = 1.0f32, zIndex = zIndex })
+    /// 置き場所を Vec2.zero() にする）。左右反転した形が欲しいときは頂点を flipH に通してから渡す。
+    pub def polygon(vertices: List[Vec2.Vec2], color: Color, zIndex: Int32): Item =
+        Item.Poly({ vertices = vertices, color = color, alpha = 1.0f32, zIndex = zIndex })
 
     def solidStyle(): GameEngine.BoxStyle =
         { cornerRadius = 0.0, borderWidth = 0.0, borderColor = white(), borderAlpha = 0.0f32,
@@ -66,37 +80,47 @@ mod Render {
     // ── 修飾（稀な属性はパイプで重ねる。効かない種類の item は素通し）──
 
     /// 角を丸める（Box に効く）。
-    pub def rounded(radius: Float64, item: RenderItem): RenderItem =
+    pub def rounded(radius: Float64, item: Item): Item =
         match item {
-            case RenderItem.Box(b) =>
-                RenderItem.Box({ style = Some({ cornerRadius = radius | styleOf(b#style) }) | b })
+            case Item.Box(b) =>
+                Item.Box({ style = Some({ cornerRadius = radius | styleOf(b#style) }) | b })
             case other => other
         }
 
-    /// 半透明にする（Sprite / Box / Poly に効く。Text は tint が濃度を兼ねる）。
-    pub def fade(alpha: Float32, item: RenderItem): RenderItem =
+    /// 透明度（alpha）を指定した値にする（Sprite / Box / Poly に効く。Text は tint が濃度を兼ねる）。
+    pub def fade(alpha: Float32, item: Item): Item =
         match item {
-            case RenderItem.Sprite(s) => RenderItem.Sprite({ alpha = alpha | s })
-            case RenderItem.Box(b)    => RenderItem.Box({ alpha = alpha | b })
-            case RenderItem.Poly(p)   => RenderItem.Poly({ alpha = alpha | p })
+            case Item.Sprite(s) => Item.Sprite({ alpha = alpha | s })
+            case Item.Box(b)    => Item.Box({ alpha = alpha | b })
+            case Item.Poly(p)   => Item.Poly({ alpha = alpha | p })
             case other                => other
         }
 
+    /// 頂点列を左右に鏡映する（縦軸で x を反転・2 回で元に戻る）。polygon や Bezier の
+    /// 輪郭・背骨に渡す前に使う。鏡映は頂点の上でだけ提供する（Text のような
+    /// 鏡映できない物に flip を書くと型が合わない = 落ちる代わりにコンパイルで止まる）。
+    pub def flipH(vertices: List[Vec2.Vec2]): List[Vec2.Vec2] =
+        List.map(v -> { x = -1.0 * v#x, y = v#y }, vertices)
+
+    /// 頂点列を上下に鏡映する（横軸で y を反転・2 回で元に戻る）。使い方は flipH と同じ。
+    pub def flipV(vertices: List[Vec2.Vec2]): List[Vec2.Vec2] =
+        List.map(v -> { x = v#x, y = -1.0 * v#y }, vertices)
+
     /// 枠線を付ける（Box に効く）。
-    pub def outline(color: Color, width: Float64, item: RenderItem): RenderItem =
+    pub def outline(color: Color, width: Float64, item: Item): Item =
         match item {
-            case RenderItem.Box(b) =>
-                RenderItem.Box({ style = Some({ borderColor = color, borderWidth = width,
+            case Item.Box(b) =>
+                Item.Box({ style = Some({ borderColor = color, borderWidth = width,
                                                 borderAlpha = 1.0f32 | styleOf(b#style) }) | b })
             case other => other
         }
 
     /// 縞模様を敷く（Box に効く）。
     pub def striped(stripe: { color = Color, alpha = Float32, width = Float64, period = Float64 },
-                    item: RenderItem): RenderItem =
+                    item: Item): Item =
         match item {
-            case RenderItem.Box(b) =>
-                RenderItem.Box({ style = Some({ stripeColor = stripe#color, stripeAlpha = stripe#alpha,
+            case Item.Box(b) =>
+                Item.Box({ style = Some({ stripeColor = stripe#color, stripeAlpha = stripe#alpha,
                                                 stripeWidth = stripe#width, stripePeriod = stripe#period
                                                 | styleOf(b#style) }) | b })
             case other => other
@@ -104,12 +128,12 @@ mod Render {
 
     /// zIndex を delta だけ持ち上げる（全種類の item に効く）。組み上がった item の列を
     /// まとめて別の z 帯へ移すとき（UI レイヤーの合流など）に使う。
-    pub def raiseZ(delta: Int32, item: RenderItem): RenderItem =
+    pub def raiseZ(delta: Int32, item: Item): Item =
         match item {
-            case RenderItem.Sprite(s) => RenderItem.Sprite({ zIndex = s#zIndex + delta | s })
-            case RenderItem.Text(t)   => RenderItem.Text({ zIndex = t#zIndex + delta | t })
-            case RenderItem.Box(b)    => RenderItem.Box({ zIndex = b#zIndex + delta | b })
-            case RenderItem.Poly(p)   => RenderItem.Poly({ zIndex = p#zIndex + delta | p })
+            case Item.Sprite(s) => Item.Sprite({ zIndex = s#zIndex + delta | s })
+            case Item.Text(t)   => Item.Text({ zIndex = t#zIndex + delta | t })
+            case Item.Box(b)    => Item.Box({ zIndex = b#zIndex + delta | b })
+            case Item.Poly(p)   => Item.Poly({ zIndex = p#zIndex + delta | p })
         }
 
     /// 修飾の土台になる style（無ければ solid）。
@@ -121,15 +145,15 @@ mod Render {
     /// draw list 全体を描画命令へ（zIndex 順は render_gl が stable sort する）。
     /// Sprite / Text / Box は Drawable、Poly は置き場所を頂点に織り込んだ PolygonRenderCmd になる —
     /// 呼び側は 1 本のリストを組むだけで、2 系統への振り分けはここで終わる。
-    pub def draw(items: List[Placed]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+    pub def draw(items: List[PlacedItem]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
         let drawables = items |> List.flatMap(placed ->
             match placed#item {
-                case RenderItem.Poly(_) => Nil
+                case Item.Poly(_) => Nil
                 case other              => toDrawables(other, placed#at)
             });
         let polygons = items |> List.filterMap(placed ->
             match placed#item {
-                case RenderItem.Poly(p) => Some(polyCmd(placed#at, p))
+                case Item.Poly(p) => Some(polyCmd(placed#at, p))
                 case _                  => None
             });
         (drawables, polygons)
@@ -138,15 +162,15 @@ mod Render {
     /// Poly も PolygonRenderCmd へ振り分ける（draw と同じ 2 列を返す）。
     /// region 付き sprite と Poly が同じ列に混ざる UI（UiRender）の描画口。
     pub def drawWith(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
-                     items: List[Placed]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) \ ef =
+                     items: List[PlacedItem]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) \ ef =
         let drawables = items |> List.flatMap(placed ->
             match placed#item {
-                case RenderItem.Poly(_) => (Nil: List[GameEngine.Drawable])
+                case Item.Poly(_) => (Nil: List[GameEngine.Drawable])
                 case other              => toDrawablesAtlas(textureInfoOf, other, placed#at)
             });
         let polygons = items |> List.filterMap(placed ->
             match placed#item {
-                case RenderItem.Poly(p) => Some(polyCmd(placed#at, p))
+                case Item.Poly(p) => Some(polyCmd(placed#at, p))
                 case _                  => None
             });
         (drawables, polygons)
@@ -166,37 +190,26 @@ mod Render {
         List.map(d -> {scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y} | d}, ds)
 
     /// 1 アイテム → 複数 Drawable（ボタン等は呼び側で複数アイテムにする）。
-    pub def toDrawables(item: RenderItem, pos: Vec2.Vec2): List[GameEngine.Drawable] =
+    pub def toDrawables(item: Item, pos: Vec2.Vec2): List[GameEngine.Drawable] =
         match item {
-            case RenderItem.Sprite(s) =>
+            case Item.Sprite(s) =>
                 spriteDrawable(s#texture, s#tint, s#alpha, s#scale, s#rotation,
                                s#centered, s#flipH, s#flipV, s#regionRect, s#zIndex, pos) :: Nil
-            case RenderItem.Text(t) =>
+            case Item.Text(t) =>
                 textDrawables(t#text, t#fontAtlas, t#fontSize, t#tint, t#zIndex, pos)
-            case RenderItem.Box(b) =>
+            case Item.Box(b) =>
                 boxDrawable(b#size, b#color, b#alpha, b#style, b#zIndex, pos) :: Nil
-            case RenderItem.Poly(_) =>
+            case Item.Poly(_) =>
                 bug!("Render.toDrawables: Poly は Drawable にならない（draw が PolygonRenderCmd へ振り分ける）")
         }
 
-    /// B0b: region atlas 対応の射影。textureSize を引いて UV を計算する
-    /// （Sprite.computeUv 相当の正規化: uvOffset = regionPos/texSize, uvScale = regionSize/texSize）。
-    /// 非 region スプライト・text・box は pure 経路と同一。fe_rogue 等の atlas 主体ゲームの render-from-World に必要。
-    /// テクスチャ寸法の引き方は `textureInfoOf` で注入する。ゲーム実行時は Game registry 版を渡し、
-    /// 画面なしのテストやプレビューでは `_ -> None` などの純粋関数を渡せる（region を使わなければ結果は同じ）。
-    pub def drawAtlasWith(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
-                          items: List[Placed]): List[GameEngine.Drawable] \ ef =
-        List.flatMap(placed -> toDrawablesAtlas(textureInfoOf, placed#item, placed#at), items)
-
-    /// `drawAtlasWith` の Game registry 版（`GameEngine.Game.getTextureInfo` で寸法を引く）。
-    /// region スプライトを含む本番描画の既定口。
-    pub def drawAtlas(items: List[Placed]): List[GameEngine.Drawable] \ GameEngine.Game =
-        drawAtlasWith(name -> GameEngine.Game.getTextureInfo(name), items)
-
+    /// region atlas 対応の射影（drawWith が使う）。textureSize を引いて UV を計算する
+    /// （uvOffset = regionPos/texSize, uvScale = regionSize/texSize）。
+    /// 非 region スプライト・text・box は pure 経路と同一。
     def toDrawablesAtlas(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
-                         item: RenderItem, pos: Vec2.Vec2): List[GameEngine.Drawable] \ ef =
+                         item: Item, pos: Vec2.Vec2): List[GameEngine.Drawable] \ ef =
         match item {
-            case RenderItem.Sprite(s) =>
+            case Item.Sprite(s) =>
                 let (uvOff, uvScl) = match s#regionRect {
                     case None       => ({x = 0.0, y = 0.0}, {x = 1.0, y = 1.0})
                     case Some(rect) => match textureInfoOf(s#texture) {

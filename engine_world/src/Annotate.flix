@@ -88,7 +88,7 @@ mod Annotate {
     /// スクラブ位置の表示（「<< 42/300」= 300 フレームの履歴のうち 42 フレーム前を見ている）。
     /// 画面左下に固定で置く。呼び側は見え方の適用後に重ねる。
     pub def scrubIndicatorItems(fontAtlas: FontAtlas, design: Vec2.Vec2,
-                                scrub: Int32, historyLen: Int32): List[Render.Placed] =
+                                scrub: Int32, historyLen: Int32): List[Render.PlacedItem] =
         let message = "<< ${scrub}/${historyLen - 1}";
         let fontSize = 8.0;
         let pad = 3.0;
@@ -114,7 +114,7 @@ mod Annotate {
 
     /// 保存完了メッセージの絵（黒地の帯 + 白文字）。画面左上に固定で置く。
     /// ズーム・パンの影響を受けないよう、呼び側は見え方の適用後にこれを重ねる。
-    pub def toastItems(fontAtlas: FontAtlas, message: String): List[Render.Placed] =
+    pub def toastItems(fontAtlas: FontAtlas, message: String): List[Render.PlacedItem] =
         let fontSize = 8.0;
         let pad = 3.0;
         let size = Text.measure(Text.make(message, fontAtlas, fontSize));
@@ -223,7 +223,7 @@ mod Annotate {
     /// 注釈矩形に重なる描画物を列挙する。テクスチャの寸法は sizeOf で引く
     /// （実行時は Game.getTextureInfo、テストでは固定の表を渡せる）。
     pub def hits(sizeOf: String -> Option[GameEngine.TextureInfo] \ ef,
-                 rect: Rect2.Rect2, items: List[Render.Placed]): List[Hit] \ ef =
+                 rect: Rect2.Rect2, items: List[Render.PlacedItem]): List[Hit] \ ef =
         items |> List.filterMap(placed -> {
             let aabb = itemAabb(sizeOf, placed);
             if (rectIntersects(rect, aabb)) Some(hitOf(placed, aabb)) else None
@@ -232,10 +232,10 @@ mod Annotate {
     /// 描画物 1 件を覆う矩形（デザイン座標）。回転は無視した外形の近似。
     /// 寸法の分からない Sprite は置き場所だけの点（サイズ 0）として扱う。
     pub def itemAabb(sizeOf: String -> Option[GameEngine.TextureInfo] \ ef,
-                     placed: Render.Placed): Rect2.Rect2 \ ef =
+                     placed: Render.PlacedItem): Rect2.Rect2 \ ef =
         let pos = placed#at;
         match placed#item {
-            case Render.RenderItem.Sprite(s) =>
+            case Render.Item.Sprite(s) =>
                 let base = match s#regionRect {
                     case Some(r) => r#size
                     case None    => match sizeOf(s#texture) {
@@ -247,11 +247,11 @@ mod Annotate {
                 // centered な sprite は置き場所が中心なので、左上へ半分ずらす
                 let topLeft = if (s#centered) Vec2.sub(pos, Vec2.div(size, 2.0)) else pos;
                 { position = topLeft, size = size }
-            case Render.RenderItem.Text(t) =>
+            case Render.Item.Text(t) =>
                 { position = pos, size = Text.measure(Text.make(t#text, t#fontAtlas, t#fontSize)) }
-            case Render.RenderItem.Box(b) =>
+            case Render.Item.Box(b) =>
                 { position = pos, size = b#size }
-            case Render.RenderItem.Poly(p) =>
+            case Render.Item.Poly(p) =>
                 vertexAabb(pos, p#vertices)
         }
 
@@ -291,16 +291,16 @@ mod Annotate {
         { position = topLeft, size = size }
 
     /// 描画物 1 件を Hit の形へ。
-    def hitOf(placed: Render.Placed, aabb: Rect2.Rect2): Hit =
+    def hitOf(placed: Render.PlacedItem, aabb: Rect2.Rect2): Hit =
         let pos = placed#at;
         match placed#item {
-            case Render.RenderItem.Sprite(s) =>
+            case Render.Item.Sprite(s) =>
                 { kind = "sprite", name = s#texture, position = pos, zIndex = s#zIndex, aabb = aabb }
-            case Render.RenderItem.Text(t) =>
+            case Render.Item.Text(t) =>
                 { kind = "text", name = t#text, position = pos, zIndex = t#zIndex, aabb = aabb }
-            case Render.RenderItem.Box(b) =>
+            case Render.Item.Box(b) =>
                 { kind = "box", name = "", position = pos, zIndex = b#zIndex, aabb = aabb }
-            case Render.RenderItem.Poly(p) =>
+            case Render.Item.Poly(p) =>
                 { kind = "poly", name = "", position = pos, zIndex = p#zIndex, aabb = aabb }
         }
 
@@ -363,7 +363,7 @@ mod Annotate {
 
     /// ドラッグ中の矩形オーバーレイ（薄い塗り + 枠線）。デザイン座標の列に混ぜて描く。
     /// zIndex はゲームのどの絵よりも手前になる大きな値。
-    pub def overlayItems(dragStart: Vec2.Vec2, cursorDesign: Vec2.Vec2): List[Render.Placed] =
+    pub def overlayItems(dragStart: Vec2.Vec2, cursorDesign: Vec2.Vec2): List[Render.PlacedItem] =
         let rect = normRect(dragStart, cursorDesign);
         let red = { r = 1.0f32, g = 0.25f32, b = 0.25f32 };
         { at = rect#position,

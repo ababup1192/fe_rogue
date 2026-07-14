@@ -148,7 +148,7 @@ mod TestAnnotate {
     /// 中心にした 20×40 の矩形（左上 = (90, 80)）になる。
     @Test
     def testItemAabbCenteredScaledSprite(): Unit \ Assert =
-        let sprite = Render.RenderItem.Sprite({
+        let sprite = Render.Item.Sprite({
             texture = "ball", tint = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, alpha = 1.0f32,
             scale = { x = 2.0, y = 2.0 }, rotation = 0.0, centered = true,
             flipH = false, flipV = false, regionRect = None, zIndex = 0 });
@@ -159,7 +159,7 @@ mod TestAnnotate {
     /// 寸法の分からないテクスチャのスプライトは、置き場所だけの点（サイズ 0）として扱う。
     @Test
     def testItemAabbUnknownTextureIsPoint(): Unit \ Assert =
-        let sprite = Render.sprite("unknown", 0, false, false);
+        let sprite = Render.sprite("unknown", 0);
         let aabb = Annotate.itemAabb(_ -> None, { at = { x = 30.0, y = 40.0 }, item = sprite });
         Assert.assertEq(expected = (30.0, 40.0, 0.0, 0.0), rectTuple(aabb))
 

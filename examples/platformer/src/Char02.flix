@@ -71,7 +71,7 @@ mod Char02 {
         }
 
     /// 舞台状態から 1 コマ分の描画列を導く（閉形式・状態なし）。
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         let face = stage#facing;
         let px = stage#pos#x;
         let py = stage#pos#y;
@@ -130,7 +130,7 @@ mod Char02 {
             :: Nil)
 
     /// 頭まわり: 頭・くちばし・とさか・目。とさかはダッシュで寝て、待機で立つ。
-    def headItems(head: Vec2.Vec2, face: Float64, pose: Pose): List[Render.Placed] =
+    def headItems(head: Vec2.Vec2, face: Float64, pose: Pose): List[Render.PlacedItem] =
         { at = { x = head#x - 3.2, y = head#y - 3.2 }, item = Render.circle(3.2, bodyColor(), 12) }
         :: { at = { x = head#x, y = head#y },
              item = Render.polygon({ x = face * 2.4, y = -1.2 } :: { x = face * 5.0, y = 0.0 }
@@ -145,7 +145,7 @@ mod Char02 {
 
     /// 尾羽 3 枚の扇。スキッドで全開になり、走りの速さに応じてはためく。
     def tailFeathers(stage: CharStage.Stage, bodyCx: Float64, bodyCy: Float64,
-                     face: Float64, pose: Pose): List[Render.Placed] =
+                     face: Float64, pose: Pose): List[Render.PlacedItem] =
         let flutterAmp = Float64.min(1.0, Float64.abs(stage#vx) / 280.0);
         List.range(0, 3) |> List.map(k -> {
             let fk = Int32.toFloat64(k);
@@ -161,7 +161,7 @@ mod Char02 {
 
     /// 羽: ふだんは畳んだ茶の風切羽、落下と着地では広げてはためかせる（空中の変形）。
     def wingItems(stage: CharStage.Stage, bodyCx: Float64, bodyCy: Float64,
-                  face: Float64, pose: Pose): List[Render.Placed] =
+                  face: Float64, pose: Pose): List[Render.PlacedItem] =
         if (pose#wing < 0.01)
             { at = { x = bodyCx - face * 1.0 - 3.25, y = bodyCy - 3.5 },
               item = Render.box({ x = 6.5, y = 4.0 }, legColor(), 11) |> Render.rounded(2.0) } :: Nil
@@ -182,7 +182,7 @@ mod Char02 {
         }
 
     /// ダッシュ演出: 走りの勢いでむしれた羽毛が後ろへ舞い散る（体色は変えない）。
-    def dashPlumes(stage: CharStage.Stage): List[Render.Placed] =
+    def dashPlumes(stage: CharStage.Stage): List[Render.PlacedItem] =
         match stage#mode {
             case Mode.DashMode =>
                 List.range(0, 4) |> List.map(k -> {
@@ -202,7 +202,7 @@ mod Char02 {
     // ── 小さな数学（このキャラ専用）──
 
     /// 2 点を幅 width で結ぶ四角形。脚の節と首に使う。置き場所は原点に固定し頂点を絶対座標で渡す。
-    def strut(a: Vec2.Vec2, b: Vec2.Vec2, width: Float64, color: Color, layer: Int32): Render.Placed =
+    def strut(a: Vec2.Vec2, b: Vec2.Vec2, width: Float64, color: Color, layer: Int32): Render.PlacedItem =
         let dx = b#x - a#x;
         let dy = b#y - a#y;
         let len = Float64.max(0.001, Vec2.sqrt(dx * dx + dy * dy));

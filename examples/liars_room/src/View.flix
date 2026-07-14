@@ -24,7 +24,7 @@ mod View {
     /// Session 全体を「(置き場所, 見せたい物) のリスト」へ投影する。
     /// 盤面はシェイク中だけ揺れ、UI ページは揺れない。会話の本文（色付き名前・太字入りの
     /// スパン列）は 1 色テキストの UI ノードでは表せないので、ここで直接描く。
-    pub def compose(atlas: FontAtlas, s: LiarsRoom.Session): List[Render.Placed] =
+    pub def compose(atlas: FontAtlas, s: LiarsRoom.Session): List[Render.PlacedItem] =
         let Room.World.World(state) = s#world;
         List.append(
             frame(atlas, state) |> List.map(shift(shakeOffset(state))),
@@ -40,7 +40,7 @@ mod View {
     def zDialogBody(): Int32 = 2 * CanvasLayer.layerStride() + 124
 
     /// 会話本文のスパン列を、文字送りの見えているぶんだけ折返し付きで描く。
-    def dialogBody(atlas: FontAtlas, state: Room.State): List[Render.Placed] =
+    def dialogBody(atlas: FontAtlas, state: Room.State): List[Render.PlacedItem] =
         RichText.place(
             { atlas = atlas, size = 10.0, baseTint = Palette.dialogText(), z = zDialogBody(),
               pos = dialogBodyPos(), maxWidth = 288.0, lineGap = 3.0 },
@@ -56,13 +56,13 @@ mod View {
               y = RenderUtil.cosF(state#shakeT * shakeFreq() * 0.7) * shakeAmp() * 0.5 * strength }
         }
 
-    def shift(offset: Vec2.Vec2, placed: Render.Placed): Render.Placed =
+    def shift(offset: Vec2.Vec2, placed: Render.PlacedItem): Render.PlacedItem =
         { at = Vec2.add(placed#at, offset) | placed }
 
     // ── frame: World を「描くべきものリスト」へ投影する ──
 
     /// タイトルとエンディングは UI ページだけの画面なので、盤面は描かない。
-    pub def frame(atlas: FontAtlas, state: Room.State): List[Render.Placed] =
+    pub def frame(atlas: FontAtlas, state: Room.State): List[Render.PlacedItem] =
         if (state#phase == Room.Phase.Title or state#phase == Room.Phase.Ending)
             Nil
         else
@@ -96,34 +96,34 @@ mod View {
     // ── 床と壁 ──
 
     /// 壁以外のセルを市松 2 色で敷く。
-    def floorTiles(state: Room.State): List[Render.Placed] =
+    def floorTiles(state: Room.State): List[Render.PlacedItem] =
         cells(state)
             |> List.filter(p -> not Set.memberOf(p, state#walls))
             |> List.map(p -> {
                 let (x, y) = p;
                 let color = if (Int32.modulo(x + y, 2) == 0) Palette.floorA() else Palette.floorB();
-                { at = cellTopLeft(state, p), item = Render.solidBox({x = tile(), y = tile()}, color, 0) }
+                { at = cellTopLeft(state, p), item = Render.box({x = tile(), y = tile()}, color, 0) }
             })
 
     /// 壁セル: 本体 + 上縁のハイライトで立体に見せる。
-    def wallTiles(state: Room.State): List[Render.Placed] =
+    def wallTiles(state: Room.State): List[Render.PlacedItem] =
         state#walls |> Set.toList |> List.flatMap(p -> {
             let tl = cellTopLeft(state, p);
-            { at = tl, item = Render.solidBox({x = tile(), y = tile()}, Palette.wall(), 1) } ::
-            { at = tl, item = Render.solidBox({x = tile(), y = tile() * 0.25}, Palette.wallTop(), 2) } :: Nil
+            { at = tl, item = Render.box({x = tile(), y = tile()}, Palette.wall(), 1) } ::
+            { at = tl, item = Render.box({x = tile(), y = tile() * 0.25}, Palette.wallTop(), 2) } :: Nil
         })
 
     // ── 人 ──
 
     /// NPC は立ち姿 + 呼吸のボブ（id で位相をずらして一斉に沈まないようにする）。
-    def npcBodies(state: Room.State): List[Render.Placed] =
+    def npcBodies(state: Room.State): List[Render.PlacedItem] =
         state#npcs |> List.flatMap(npc ->
             Human.standing(cellCenter(state, npc#cell), tile(), Palette.npcSkin(npc#id),
                            npc#facing, state#idlePhase + Int32.toFloat64(npc#id) * 0.37)
                 |> List.map(raise(zChar())))
 
     /// プレイヤー。スライド中は前のセルから今のセルへ向かう途中の位置に描く。
-    def playerParts(state: Room.State): List[Render.Placed] =
+    def playerParts(state: Room.State): List[Render.PlacedItem] =
         let center = match state#slide {
             case Some(slide) =>
                 lerp(cellCenter(state, slide#fromCell), cellCenter(state, state#player), slide#t)
@@ -142,13 +142,13 @@ mod View {
     def lerp(a: Vec2.Vec2, z: Vec2.Vec2, t: Float64): Vec2.Vec2 =
         { x = a#x + (z#x - a#x) * t, y = a#y + (z#y - a#y) * t }
 
-    def raise(delta: Int32, placed: Render.Placed): Render.Placed =
+    def raise(delta: Int32, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.raiseZ(delta, placed#item) | placed }
 
     // ── 頭上の印 ──
 
     /// メモのマークを NPC の頭上に描く。嘘つき = 赤い斜め十字、本物 = 緑の輪。
-    def headMarks(state: Room.State): List[Render.Placed] =
+    def headMarks(state: Room.State): List[Render.PlacedItem] =
         state#npcs |> List.flatMap(npc ->
             match Map.get(npc#id, state#memo) |> Option.getWithDefault(Room.Mark.Unknown) {
                 case Room.Mark.Unknown    => Nil
@@ -161,7 +161,7 @@ mod View {
         Vec2.add(cellCenter(state, npc#cell), { x = 0.0, y = -(tile() * 0.72) })
 
     /// 赤い斜め十字（細い平行四辺形 2 枚）。
-    def crossMark(center: Vec2.Vec2): List[Render.Placed] =
+    def crossMark(center: Vec2.Vec2): List[Render.PlacedItem] =
         let arm = 4.0;
         let thick = 1.4;
         { at = center, item = Render.polygon(
@@ -174,16 +174,16 @@ mod View {
             Palette.markLiar(), zMark()) } :: Nil
 
     /// 緑の輪（塗りなしの丸い箱 = 枠線だけの円）。
-    def ringMark(center: Vec2.Vec2): List[Render.Placed] =
+    def ringMark(center: Vec2.Vec2): List[Render.PlacedItem] =
         let d = 9.0;
         { at = Vec2.add(center, { x = -d / 2.0, y = -d / 2.0 }),
-          item = Render.solidBox({x = d, y = d}, Palette.markHonest(), zMark())
+          item = Render.box({x = d, y = d}, Palette.markHonest(), zMark())
             |> Render.rounded(d / 2.0)
             |> Render.fade(0.0f32)
             |> Render.outline(Palette.markHonest(), 1.6) } :: Nil
 
     /// 正面の NPC に話しかけられるとき、その頭上に上下に揺れる「▼」を出す。
-    def talkIndicator(atlas: FontAtlas, state: Room.State): List[Render.Placed] =
+    def talkIndicator(atlas: FontAtlas, state: Room.State): List[Render.PlacedItem] =
         if (state#phase != Room.Phase.Exploring or state#memoOpen or not Option.isEmpty(state#slide))
             Nil
         else

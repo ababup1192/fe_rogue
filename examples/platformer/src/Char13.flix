@@ -29,7 +29,7 @@ mod Char13 {
         hoodUp = Float64      // フードのはためき（+で浮き上がる）
     }
 
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         match stage#mode {
             case CharStage.Mode.IdleMode => body(stage, idlePose(stage))
             case CharStage.Mode.RunMode  => body(stage, runPose(stage))
@@ -104,7 +104,7 @@ mod Char13 {
 
     // ── 体の組み立て ──
 
-    def body(st: CharStage.Stage, p: Pose): List[Render.Placed] =
+    def body(st: CharStage.Stage, p: Pose): List[Render.PlacedItem] =
         let hipY = -6.0 + p#sink;
         let shX = p#lean * 0.6;
         let shY = hipY - 5.3 + p#sink * 0.15;
@@ -129,7 +129,7 @@ mod Char13 {
             Nil)
 
     /// 脚: 腰→膝→足の 2 節 + 黄色いスニーカー（白ソール付きのじまん）。
-    def leg(st: CharStage.Stage, hipY: Float64, foot: Vec2.Vec2, z: Int32): List[Render.Placed] =
+    def leg(st: CharStage.Stage, hipY: Float64, foot: Vec2.Vec2, z: Int32): List[Render.PlacedItem] =
         let kneeX = foot#x * 0.5 + 1.4;
         let kneeY = (hipY + foot#y) * 0.5 - 0.3;
         limb(st, 0.0, hipY, kneeX, kneeY, 2.5, pantsC(), z) ::
@@ -138,7 +138,7 @@ mod Char13 {
         boxAt(st, foot#x + 0.7, foot#y - 0.25, 3.2, 0.6, whiteC(), z) :: Nil
 
     /// 腕: 肘を後ろ上に張った 90 度の畳み。袖はパーカー色・拳だけ肌。
-    def arm(st: CharStage.Stage, shX: Float64, shY: Float64, hand: Vec2.Vec2, z: Int32): List[Render.Placed] =
+    def arm(st: CharStage.Stage, shX: Float64, shY: Float64, hand: Vec2.Vec2, z: Int32): List[Render.PlacedItem] =
         let elX = shX + (hand#x - shX) * 0.35 - 0.8;
         let elY = shY + 1.4;
         limb(st, shX, shY, elX, elY, 2.0, hoodieC(), z) ::
@@ -148,7 +148,7 @@ mod Char13 {
     // ── 演出 ──
 
     /// ダッシュ演出: 残像分身 2 体（体色そのまま薄く）+ 白い風の筋。速いほど濃い。
-    def ghostsAndStreaks(st: CharStage.Stage): List[Render.Placed] =
+    def ghostsAndStreaks(st: CharStage.Stage): List[Render.PlacedItem] =
         let b = band(st);
         let ghost = (back: Float64, a: Float32) ->
             fadePlaced(a, circleAt(st, -1.0 - back, -13.5, 4.2, hoodC(), 8)) ::
@@ -163,7 +163,7 @@ mod Char13 {
             Nil)
 
     /// スキッドの手擦り: 地面を擦る後ろ手から土埃、前足の下に白い滑り筋。
-    def skidFx(st: CharStage.Stage): List[Render.Placed] =
+    def skidFx(st: CharStage.Stage): List[Render.PlacedItem] =
         let u = clamp01(st#modeT / 0.35);
         let a = RenderUtil.f32(0.5 * (1.0 - u));
         fadePlaced(a, circleAt(st, -6.5 - u * 2.0, -1.5 - u * 1.5, 1.6, dustC(), 12)) ::
@@ -171,7 +171,7 @@ mod Char13 {
         fadePlaced(a, boxAt(st, 6.0, -0.5, 6.0, 0.9, whiteC(), 8)) :: Nil
 
     /// 三点着地の土煙: ついた手の周りと左右へひと吹き。
-    def landDust(st: CharStage.Stage): List[Render.Placed] =
+    def landDust(st: CharStage.Stage): List[Render.PlacedItem] =
         let u = clamp01(st#modeT / 0.14);
         if (u >= 1.0) Nil
         else {
@@ -184,25 +184,25 @@ mod Char13 {
 
     /// 中心 (cx, cy)・寸法 (w, h) の箱。
     def boxAt(st: CharStage.Stage, cx: Float64, cy: Float64, w: Float64, h: Float64,
-              color: Color, z: Int32): Render.Placed =
+              color: Color, z: Int32): Render.PlacedItem =
         { at = { x = st#pos#x + st#facing * cx - w / 2.0, y = st#pos#y + cy - h / 2.0 },
           item = Render.box({ x = w, y = h }, color, z) }
 
     /// 中心 (cx, cy)・半径 r の円。
     def circleAt(st: CharStage.Stage, cx: Float64, cy: Float64, r: Float64,
-                 color: Color, z: Int32): Render.Placed =
+                 color: Color, z: Int32): Render.PlacedItem =
         { at = { x = st#pos#x + st#facing * cx - r, y = st#pos#y + cy - r },
           item = Render.circle(r, color, z) }
 
     /// 相対頂点列を facing で鏡映して置く（凸多角形・反転時は巻き順も戻す）。
-    def polyAt(st: CharStage.Stage, verts: List[Vec2.Vec2], color: Color, z: Int32): Render.Placed =
+    def polyAt(st: CharStage.Stage, verts: List[Vec2.Vec2], color: Color, z: Int32): Render.PlacedItem =
         let vs = List.map(v -> { x = st#facing * v#x, y = v#y }, verts);
         let ordered = if (st#facing >= 0.0) vs else List.reverse(vs);
         { at = { x = st#pos#x, y = st#pos#y }, item = Render.polygon(ordered, color, z) }
 
     /// (x0,y0)→(x1,y1) を結ぶ太さ w の棒。手足のひと節。
     def limb(st: CharStage.Stage, x0: Float64, y0: Float64, x1: Float64, y1: Float64,
-             w: Float64, color: Color, z: Int32): Render.Placed =
+             w: Float64, color: Color, z: Int32): Render.PlacedItem =
         let dx = x1 - x0;
         let dy = y1 - y0;
         let len = Float64.max(0.001, Vec2.sqrt(dx * dx + dy * dy));
@@ -214,7 +214,7 @@ mod Char13 {
 
     // ── 小物ヘルパ ──
 
-    def fadePlaced(a: Float32, placed: Render.Placed): Render.Placed =
+    def fadePlaced(a: Float32, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.fade(a, placed#item) | placed }
 
     def clamp01(v: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, v))

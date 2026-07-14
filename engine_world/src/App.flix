@@ -49,7 +49,7 @@ mod App {
         reload = Option[(GameEngine.Key, w -> w \ {Fs.FileRead})], // ホットリロード（キーと、ファイル読みの副作用）
         // World を (置き場所, 見せたい物) の列へ投影する。None のゲームは App に描画させず自分の
         // システム内で描く（タイルマップ等の複数チャンネルを直接組むゲーム向け）。
-        view = Option[(FontAtlas, w) -> List[Render.Placed] \ ef],
+        view = Option[(FontAtlas, w) -> List[Render.PlacedItem] \ ef],
         audio = { before = w, after = w } -> List[String] \ ef,    // 1 フレームの前後から鳴らす音名を導く
         quit = (Frame, w) -> Bool \ ef,                            // 終了判定（既定 = Escape のエッジ）
         debug = Bool,                                              // デバッグ機能（F8 の時間停止・注釈・巻き戻し）を有効にするか
@@ -99,7 +99,7 @@ mod App {
         { reload = Some((key, f)) | app }
 
     /// World を絵（(置き場所, 見せたい物) の列）へ投影する関数を繋ぐ。
-    pub def withView(v: (FontAtlas, w) -> List[Render.Placed] \ ef,
+    pub def withView(v: (FontAtlas, w) -> List[Render.PlacedItem] \ ef,
                      app: App[w, ef]): App[w, ef] =
         { view = Some(v) | app }
 
@@ -278,7 +278,7 @@ mod App {
     /// ズーム・パン・ドラッグを進め、矩形が確定したら「表示中の瞬間」の注釈一式を書き出し、
     /// その World の絵に見え方とドラッグ中の矩形を重ねて描く。
     /// World には一切触れない（凍結中の絵は選んだ World から毎フレーム投影し直す）。
-    /// 絵の出どころは view（Placed 投影）か debugView（生チャンネル投影）のどちらか。
+    /// 絵の出どころは view（PlacedItem 投影）か debugView（生チャンネル投影）のどちらか。
     def pausedStep(app: App[w, ef], world: w, history: List[w], frame: Frame,
                    anno: Annotate.State): Annotate.State \ (ef + GameEngine.Game) =
         let design = GameEngine.Game.getViewportRect()#size;
@@ -548,7 +548,7 @@ mod App {
             case None         => "(no statusLine wired; use view=scene or wire App.withStatusLine)"
         }
 
-    /// view=scene の本文。view（Placed 投影）か debugView（生チャンネル投影）から、
+    /// view=scene の本文。view（PlacedItem 投影）か debugView（生チャンネル投影）から、
     /// 矩形に重なる描画物を列挙する。どちらも無いゲームは観測手段が無い旨を返す。
     def sceneText(app: App[w, ef], rect: Rect2.Rect2, world: w): String \ (ef + GameEngine.Game) =
         match (app#view, app#debugView) {

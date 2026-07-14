@@ -92,7 +92,7 @@ mod Nobi {
     }
 
     /// `center` を中心に `size` px の正方タイルへ、のび一体ぶんの描画アイテムを返す。
-    pub def parts(center: Vec2.Vec2, size: Float64, style: Style): List[Render.Placed] =
+    pub def parts(center: Vec2.Vec2, size: Float64, style: Style): List[Render.PlacedItem] =
         let b = buildOf(style#design);
         let skin = style#skin;
         let s = size / 32.0;
@@ -138,7 +138,7 @@ mod Nobi {
 
     /// 体: 後ろ下がりに少し傾いた楕円ブロブ。
     def bodyBlob(b: Build, skin: Palette.NobiSkin, gp: ((Float64, Float64)) -> Vec2.Vec2,
-                 s: Float64, cx: Float64, cy: Float64): List[Render.Placed] =
+                 s: Float64, cx: Float64, cy: Float64): List[Render.PlacedItem] =
         Bezier.convexFill(
             Bezier.ellipseRot(gp((cx, cy)), b#bodyW / 2.0 * s, b#bodyH / 2.0 * s, b#tilt, 22),
             skin#body, 2)
@@ -147,7 +147,7 @@ mod Nobi {
     /// Detail で数・位置・大きさ・沈み（内側に浮かす）・後ろ倒し（しずく風）を動かせる。
     def backStripes(b: Build, d: Detail, skin: Palette.NobiSkin,
                     gp: ((Float64, Float64)) -> Vec2.Vec2,
-                    cx: Float64, cy: Float64): List[Render.Placed] =
+                    cx: Float64, cy: Float64): List[Render.PlacedItem] =
         // 等間隔: 並びの中心 stripeCenter から stripeGap 刻み。x で刻んで背の輪郭の高さに乗せる。
         let half = Int32.toFloat64(d#stripeCount - 1) / 2.0;
         List.range(0, d#stripeCount) |> List.flatMap(i -> {
@@ -186,7 +186,7 @@ mod Nobi {
     /// 首の付け根の後ろの斑（Detail.neckSpot が真のときだけ）。
     def neckSpotFill(b: Build, d: Detail, skin: Palette.NobiSkin,
                      gp: ((Float64, Float64)) -> Vec2.Vec2, s: Float64,
-                     neckBaseX: Float64, neckBaseY: Float64, neckTopY: Float64): List[Render.Placed] =
+                     neckBaseX: Float64, neckBaseY: Float64, neckTopY: Float64): List[Render.PlacedItem] =
         if (not d#neckSpot)
             Nil
         else {
@@ -200,7 +200,7 @@ mod Nobi {
     /// 顎の白の大きさは Detail.jawR（0 なら無し）。
     def muzzleBand(b: Build, d: Detail, skin: Palette.NobiSkin,
                    gp: ((Float64, Float64)) -> Vec2.Vec2,
-                   s: Float64, look: Look, neckTopX: Float64, neckTopY: Float64): List[Render.Placed] =
+                   s: Float64, look: Look, neckTopX: Float64, neckTopY: Float64): List[Render.PlacedItem] =
         match look {
             case Look.Front =>
                 // 正面（傾き顔）の下 1/3 の白。境界の高さは口のあったラインに合わせる。
@@ -231,7 +231,7 @@ mod Nobi {
 
     /// 顔の下 1/3 の白（平らな上辺 = ちょうど口があったはずのライン）。ry<=0 なら描かない。
     def jawWhite(skin: Palette.NobiSkin, gp: ((Float64, Float64)) -> Vec2.Vec2,
-                 cx: Float64, topY: Float64, rx: Float64, ry: Float64): List[Render.Placed] =
+                 cx: Float64, topY: Float64, rx: Float64, ry: Float64): List[Render.PlacedItem] =
         if (ry <= 0.0)
             Nil
         else {
@@ -246,7 +246,7 @@ mod Nobi {
     /// 大きさは Detail.bellyW/bellyH（bellyW<=0 なら無し — 下面白と使い分ける）。
     def bellyBlob(b: Build, d: Detail, skin: Palette.NobiSkin,
                   gp: ((Float64, Float64)) -> Vec2.Vec2,
-                  s: Float64, bodyCx: Float64, bodyBottom: Float64): List[Render.Placed] =
+                  s: Float64, bodyCx: Float64, bodyBottom: Float64): List[Render.PlacedItem] =
         if (d#bellyW <= 0.0)
             Nil
         else
@@ -256,7 +256,7 @@ mod Nobi {
     /// 首: 先細りのベジエ帯（前傾の弧）+ 首の前側だけ細く白いすじ（喉から胸の白）。
     def neckBand(b: Build, skin: Palette.NobiSkin, gp: ((Float64, Float64)) -> Vec2.Vec2,
                  s: Float64, neckBaseX: Float64, neckBaseY: Float64, neckTopX: Float64,
-                 neckTopY: Float64): List[Render.Placed] =
+                 neckTopY: Float64): List[Render.PlacedItem] =
         let spine = Bezier.quadratic(
             gp((neckBaseX, neckBaseY + 1.4)),
             gp((neckBaseX + b#bow, neckTopY + b#neckLen * 0.38)),
@@ -271,7 +271,7 @@ mod Nobi {
                    gp: ((Float64, Float64)) -> Vec2.Vec2,
                    s: Float64, neckBaseX: Float64, neckBaseY: Float64, neckTopX: Float64,
                    neckTopY: Float64, bodyLeft: Float64, bodyBottom: Float64,
-                   bodyCx: Float64, bodyRight: Float64): List[Render.Placed] =
+                   bodyCx: Float64, bodyRight: Float64): List[Render.PlacedItem] =
         let spine = Bezier.quadratic(
             gp((neckBaseX, neckBaseY + 1.4)),
             gp((neckBaseX + b#bow, neckTopY + b#neckLen * 0.38)),
@@ -302,7 +302,7 @@ mod Nobi {
     /// 完全についたまま横たわり、先端が丸く終わる。
     def tailBand(b: Build, skin: Palette.NobiSkin, gp: ((Float64, Float64)) -> Vec2.Vec2,
                  s: Float64, bodyRight: Float64, bodyTop: Float64,
-                 groundY: Float64, bodyCx: Float64, bodyCy: Float64): List[Render.Placed] =
+                 groundY: Float64, bodyCx: Float64, bodyCy: Float64): List[Render.PlacedItem] =
         let dragLen = b#bodyW / 3.0;
         let tipX = bodyRight + b#tailLen - 0.3;
         let touchX = tipX - dragLen;
@@ -413,11 +413,11 @@ mod Nobi {
     def circle(cx: Float64, cy: Float64, r: Float64, c: Color, z: Int32): Part =
         { x = cx - r, y = cy - r, w = r * 2.0, h = r * 2.0, r = r, color = c, z = z }
 
-    def toItem(tl: Vec2.Vec2, s: Float64, p: Part): Render.Placed =
+    def toItem(tl: Vec2.Vec2, s: Float64, p: Part): Render.PlacedItem =
         let pos = {x = tl#x + p#x * s, y = tl#y + p#y * s};
         let dim = {x = p#w * s, y = p#h * s};
         if (p#r <= 0.0)
-            { at = pos, item = Render.solidBox(dim, p#color, p#z) }
+            { at = pos, item = Render.box(dim, p#color, p#z) }
         else
-            { at = pos, item = Render.solidBox(dim, p#color, p#z) |> Render.rounded(p#r * s) }
+            { at = pos, item = Render.box(dim, p#color, p#z) |> Render.rounded(p#r * s) }
 }

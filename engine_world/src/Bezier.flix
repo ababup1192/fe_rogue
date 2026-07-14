@@ -31,7 +31,7 @@ mod Bezier {
     /// 背骨に太さを付けた帯。widthOf は背骨上の位置 t（0=始点..1=終点）→ その場所の太さで、
     /// 先細り・先太りが自由に作れる。帯は凸クアッド列 + 節ごとの丸い継ぎ目隠しで返す
     /// （クアッドの境界にアンチエイリアスの筋が出ないように、内側の点に円盤を重ねる）。
-    pub def stroke(s: Stroke, widthOf: Float64 -> Float64): List[Render.Placed] =
+    pub def stroke(s: Stroke, widthOf: Float64 -> Float64): List[Render.PlacedItem] =
         let pts = List.toVector(s#spine);
         let n = Vector.length(pts);
         if (n < 2)
@@ -58,7 +58,7 @@ mod Bezier {
 
     /// 凸な輪郭を 1 枚の多角形として塗る（楕円・カプセルなど。扇分割の継ぎ目が出ない）。
     /// へこみのある形（星など）には fill を使うこと。
-    pub def convexFill(outline: List[Vec2.Vec2], color: Color, z: Int32): List[Render.Placed] =
+    pub def convexFill(outline: List[Vec2.Vec2], color: Color, z: Int32): List[Render.PlacedItem] =
         if (List.length(outline) < 3)
             Nil
         else
@@ -66,7 +66,7 @@ mod Bezier {
 
     /// 閉じた輪郭を重心からの扇で塗る（重心から全頂点が見える形 — 楕円・しずく・
     /// まめ型などのブロブ向け。深くえぐれた形には使わない）。
-    pub def fill(outline: List[Vec2.Vec2], color: Color, z: Int32): List[Render.Placed] =
+    pub def fill(outline: List[Vec2.Vec2], color: Color, z: Int32): List[Render.PlacedItem] =
         let n = List.length(outline);
         if (n < 3)
             Nil
@@ -84,7 +84,7 @@ mod Bezier {
 
     /// まっすぐな太い線（一定幅のストロークの近道）。
     pub def line(p0: Vec2.Vec2, p1: Vec2.Vec2, width: {width = Float64},
-                 color: Color, z: Int32): List[Render.Placed] =
+                 color: Color, z: Int32): List[Render.PlacedItem] =
         stroke({ spine = p0 :: p1 :: Nil, color = color, z = z }, _ -> width#width)
 
     /// 5 芒星の輪郭（上向き。fill に渡す — 星はへこみがあるので convexFill は不可）。
@@ -131,6 +131,6 @@ mod Bezier {
         if (len <= 0.000001) { x = 1.0, y = 0.0 } else { x = dx / len, y = dy / len }
 
     /// 凸ピース 1 枚（頂点は絶対座標で渡し、置き場所は原点にする）。
-    def quadPiece(vertices: List[Vec2.Vec2], color: Color, z: Int32): Render.Placed =
+    def quadPiece(vertices: List[Vec2.Vec2], color: Color, z: Int32): Render.PlacedItem =
         { at = Vec2.zero(), item = Render.polygon(vertices, color, z) }
 }

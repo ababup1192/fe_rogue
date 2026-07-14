@@ -46,7 +46,7 @@ mod Robot {
     /// `center` を中心に、`size` px のタイル上で、歩行位相 `phase`（0..1、0が
     /// 静止ポーズ）で `dir` を向くロボットの全パーツ。
     pub def parts(center: Vec2.Vec2, size: Float64, dir: Dir4.Dir4,
-                  phase: Float64): List[Render.Placed] =
+                  phase: Float64): List[Render.PlacedItem] =
         let pose = poseOf(phase);
         let ps = match dir {
             case Dir4.Down  => front(pose)
@@ -139,14 +139,14 @@ mod Robot {
     def mirrorX(p: Part): Part =
         { x = 16.0 - p#x - p#w | p }
 
-    def toItem(center: Vec2.Vec2, size: Float64, p: Part): Render.Placed =
+    def toItem(center: Vec2.Vec2, size: Float64, p: Part): Render.PlacedItem =
         let s = size / 16.0;
         let tlx = center#x - size / 2.0;
         let tly = center#y - size / 2.0;
         let pos = {x = tlx + p#x * s, y = tly + p#y * s};
         let dim = {x = p#w * s, y = p#h * s};
         if (p#r <= 0.0)
-            { at = pos, item = Render.solidBox(dim, p#color, p#z) }
+            { at = pos, item = Render.box(dim, p#color, p#z) }
         else
-            { at = pos, item = Render.solidBox(dim, p#color, p#z) |> Render.rounded(p#r * s) }
+            { at = pos, item = Render.box(dim, p#color, p#z) |> Render.rounded(p#r * s) }
 }

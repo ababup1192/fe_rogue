@@ -33,19 +33,19 @@ mod Char14 {
 
     /// 中心 (dx, dy) の矩形。
     def boxC(stage: CharStage.Stage, dx: Float64, dy: Float64,
-             w: Float64, h: Float64, c: Color, z: Int32): Render.Placed =
+             w: Float64, h: Float64, c: Color, z: Int32): Render.PlacedItem =
         let p = at(stage, dx, dy);
         { at = { x = p#x - w / 2.0, y = p#y - h / 2.0 }, item = Render.box({ x = w, y = h }, c, z) }
 
     /// 中心 (dx, dy) の円。
     def circC(stage: CharStage.Stage, dx: Float64, dy: Float64,
-              r: Float64, c: Color, z: Int32): Render.Placed =
+              r: Float64, c: Color, z: Int32): Render.PlacedItem =
         let p = at(stage, dx, dy);
         { at = { x = p#x - r, y = p#y - r }, item = Render.circle(r, c, z) }
 
     /// (dx, dy) 起点の相対頂点ポリゴン。
     def polyC(stage: CharStage.Stage, dx: Float64, dy: Float64,
-              verts: List[Vec2.Vec2], c: Color, z: Int32): Render.Placed =
+              verts: List[Vec2.Vec2], c: Color, z: Int32): Render.PlacedItem =
         let p = at(stage, dx, dy);
         let f = stage#facing;
         { at = { x = p#x, y = p#y },
@@ -53,7 +53,7 @@ mod Char14 {
 
     /// 2 点を結ぶ太さ th の棒（腕や柄を斜めに描く）。
     def strut(stage: CharStage.Stage, ax: Float64, ay: Float64,
-              bx: Float64, by: Float64, th: Float64, c: Color, z: Int32): Render.Placed =
+              bx: Float64, by: Float64, th: Float64, c: Color, z: Int32): Render.PlacedItem =
         let ddx = bx - ax;
         let ddy = by - ay;
         let len0 = RenderUtil.sqrtF(ddx * ddx + ddy * ddy);
@@ -67,10 +67,10 @@ mod Char14 {
 
     def clamp01(x: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, x))
 
-    def fadeP(a: Float64, pl: Render.Placed): Render.Placed =
+    def fadeP(a: Float64, pl: Render.PlacedItem): Render.PlacedItem =
         { item = Render.fade(RenderUtil.f32(clamp01(a)), pl#item) | pl }
 
-    def roundP(r: Float64, pl: Render.Placed): Render.Placed =
+    def roundP(r: Float64, pl: Render.PlacedItem): Render.PlacedItem =
         { item = Render.rounded(r, pl#item) | pl }
 
     // ── 体の部品（dip = 沈み込み・lean = 前傾・sq/wd = 縦横のつぶし）──
@@ -80,7 +80,7 @@ mod Char14 {
                   legF = (Float64, Float64), legFh = Float64,
                   legB = (Float64, Float64), legBh = Float64,
                   handF = (Float64, Float64), handB = (Float64, Float64),
-                  pupilDy = Float64 }): List[Render.Placed] =
+                  pupilDy = Float64 }): List[Render.PlacedItem] =
         let (lfx, lfy) = p#legF;
         let (lbx, lby) = p#legB;
         let (hfx, hfy) = p#handF;
@@ -124,14 +124,14 @@ mod Char14 {
 
     /// 大鎚: 握り (gx,gy) から鎚頭の中心 (hx,hy) へ柄を渡し、鋼の頭を載せる。
     def hammerAt(stage: CharStage.Stage, gx: Float64, gy: Float64,
-                 hx: Float64, hy: Float64, z: Int32): List[Render.Placed] =
+                 hx: Float64, hy: Float64, z: Int32): List[Render.PlacedItem] =
         strut(stage, gx, gy, hx, hy, 2.0, wood(), z) ::
         roundP(1.0, boxC(stage, hx, hy, 9.0, 6.0, steel(), z)) ::
         boxC(stage, hx, hy - 1.8, 9.0, 1.5, steelHi(), z + 1) :: Nil
 
     // ── モードごとの演技 ──
 
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         match stage#mode {
             case CharStage.Mode.IdleMode => idle(stage)
             case CharStage.Mode.RunMode  => runPose(stage)
@@ -143,7 +143,7 @@ mod Char14 {
         }
 
     /// 待機: 立てた大鎚に手を預けて呼吸し、後腕で額の汗を拭う。汗の粒がこぼれる。
-    def idle(stage: CharStage.Stage): List[Render.Placed] =
+    def idle(stage: CharStage.Stage): List[Render.PlacedItem] =
         let b = Curve.tri(1.3, stage#t) * 0.8;
         let m = stage#modeT;
         let wiping = m >= 0.35 and m <= 0.95;
@@ -162,7 +162,7 @@ mod Char14 {
 
     /// 走り: 重い足取り。歩幅は距離駆動で、足が交差する瞬間に体が沈み、
     /// 肩に担いだ大鎚が上下に跳ねる。足音の位置に土埃が立つ。
-    def runPose(stage: CharStage.Stage): List[Render.Placed] =
+    def runPose(stage: CharStage.Stage): List[Render.PlacedItem] =
         let sw = Curve.triWave(stage#pos#x * 0.055);
         let dip = (1.0 - Float64.abs(sw)) * 1.8;
         let hop = sw * 1.2;
@@ -181,7 +181,7 @@ mod Char14 {
         List.flatten(core :: ham :: puff :: Nil)
 
     /// ダッシュ: 大鎚を脇に抱えて槍のように構え、背後にふいごの蒸気と炉の火の粉が流れる。
-    def dash(stage: CharStage.Stage): List[Render.Placed] =
+    def dash(stage: CharStage.Stage): List[Render.PlacedItem] =
         let bandV = clamp01((Float64.abs(stage#vx) - 160.0) / 120.0);
         let sw = Curve.triWave(stage#pos#x * 0.055);
         let dip = (1.0 - Float64.abs(sw)) * 1.2;
@@ -210,7 +210,7 @@ mod Char14 {
 
     /// スキッド: 大鎚を背後の地面へ突き立てて錨にする。鎚頭が地面を削って
     /// 火花が散り、後ろへ研削の土埃が流れる。強さは残っている速度に比例。
-    def skid(stage: CharStage.Stage): List[Render.Placed] =
+    def skid(stage: CharStage.Stage): List[Render.PlacedItem] =
         let sI = clamp01(Float64.abs(stage#vx) / 280.0);
         let core = body(stage, { dip = 0.5, lean = -2.0, sq = 1.0, wd = 1.0,
                                  legF = (5.0, -4.0), legFh = 8.0,
@@ -231,7 +231,7 @@ mod Char14 {
         List.flatten(core :: ham :: sparks :: grind :: Nil)
 
     /// ジャンプ: 大鎚を両手で頭上に振りかぶり、体は縦に伸びる。
-    def jump(stage: CharStage.Stage): List[Render.Placed] =
+    def jump(stage: CharStage.Stage): List[Render.PlacedItem] =
         let core = body(stage, { dip = 0.0, lean = 0.5, sq = 1.06, wd = 0.96,
                                  legF = (2.5, -5.0), legFh = 6.5,
                                  legB = (-2.5, -5.5), legBh = 6.0,
@@ -241,7 +241,7 @@ mod Char14 {
         List.flatten(core :: ham :: Nil)
 
     /// 落下: 振りかぶった大鎚を前下方へ振り下ろしながら体を縮め、打ち下ろしに備える。
-    def fall(stage: CharStage.Stage): List[Render.Placed] =
+    def fall(stage: CharStage.Stage): List[Render.PlacedItem] =
         let core = body(stage, { dip = 0.0, lean = 1.0, sq = 0.96, wd = 1.04,
                                  legF = (2.5, -5.5), legFh = 5.5,
                                  legB = (-2.5, -5.0), legBh = 6.0,
@@ -252,7 +252,7 @@ mod Char14 {
 
     /// 着地: 鎚頭が地面を打ち、体は深くつぶれる。前方の地面にひびが走り、
     /// 左右へ土煙が広がって小石が跳ねる（地響きの誇張）。
-    def land(stage: CharStage.Stage): List[Render.Placed] =
+    def land(stage: CharStage.Stage): List[Render.PlacedItem] =
         let k = 1.0 - clamp01(stage#modeT / 0.2);
         let sq = 1.0 - 0.3 * k;
         let wd = 1.0 + 0.35 * k;

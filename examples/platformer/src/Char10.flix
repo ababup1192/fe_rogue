@@ -18,7 +18,7 @@ mod Char10 {
     def moteCount(): Int32 = 12
 
     /// 舞台状態から 1 コマ分の描画リストを組む。粒 12 個 + ダッシュ時のみ光条を足す。
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         let motes = List.range(0, moteCount()) |> List.map(i -> mote(stage, i));
         match stage#mode {
             case CharStage.Mode.DashMode => List.append(streaks(stage), motes)
@@ -28,7 +28,7 @@ mod Char10 {
     // ── 粒 1 個の描画 ──
 
     /// i 番目の粒。大きさと色は番号から決まる固有値（先頭の 1 粒だけ大きく、群れの芯になる）。
-    def mote(stage: CharStage.Stage, i: Int32): Render.Placed =
+    def mote(stage: CharStage.Stage, i: Int32): Render.PlacedItem =
         let off = motePos(stage, i);
         let r = if (i == 0) 2.2 else 1.2 + 0.9 * hashA(i);
         let layer = if (i == 0) 11 else 10;
@@ -130,7 +130,7 @@ mod Char10 {
         Float64.min(1.0, Float64.max(0.0, (Float64.abs(stage#vx) - 160.0) / 120.0))
 
     /// ダッシュの合図: 鏃の後方にたなびく細い光条 3 本。速いほど長く濃い。
-    def streaks(stage: CharStage.Stage): List[Render.Placed] =
+    def streaks(stage: CharStage.Stage): List[Render.PlacedItem] =
         let band = dashBand(stage);
         if (band < 0.05) Nil
         else

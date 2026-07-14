@@ -20,7 +20,7 @@ mod View {
     /// レイヤーは 2 枚: 地形・プレイヤー・粒はワールド空間（camX/camY ぶんずらす）、
     /// HUD はスクリーン空間（固定カメラ）。動く床は時刻の実位置で描く
     /// （静的な床は platformsAt が恒等なので絵は変わらない）。
-    pub def frame(atlas: FontAtlas, world: Field.World): List[Render.Placed] =
+    pub def frame(atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
         let worldCam = { offset = { x = -world#camX, y = -world#camY } };
         let worldItems = List.flatten(
             platformBoxes(Field.platformsAt(world#time, world#platforms)) ::
@@ -38,7 +38,7 @@ mod View {
     /// 坂 → 一方通行 → 動く床 → 縦長（壁）→ それ以外（普通の床）の優先順。
     /// 一方通行は薄い板 + 影線、普通の床は土＋草の 2 枚重ね（flatMap になる理由）。
     /// 動く床は厚い一枚板のまま: 「薄い＝すり抜ける・厚い＝硬い」の記号を守る。
-    def platformBoxes(platforms: List[Field.Platform]): List[Render.Placed] =
+    def platformBoxes(platforms: List[Field.Platform]): List[Render.PlacedItem] =
         platforms |> List.flatMap(platform ->
             match platform#slope {
                 case Some(riseRight) => slopeTriangle(platform, riseRight) :: Nil
@@ -56,7 +56,7 @@ mod View {
     /// 一方通行は「薄い・下が透ける」= すり抜けの定番記号で描く: 当たり判定の箱
     /// （12〜16px）はそのままに、上端 6px の板 + 直下 1px の影線だけを見せる。
     /// 判定の上面 = 見た目の上面なので、プレイヤーは板の上にぴったり立つ。
-    def oneWayShelf(platform: Field.Platform): List[Render.Placed] =
+    def oneWayShelf(platform: Field.Platform): List[Render.PlacedItem] =
         let top = platform#pos#y - platform#size#y / 2.0;
         let plankH = 6.0;
         let plank = flatBox({ x = platform#pos#x, y = top + plankH / 2.0 },
@@ -83,7 +83,7 @@ mod View {
     /// 普通の床（地面）は土の本体 + 上面の草の 2 枚重ね。草は上面 4px を覆う薄いキャップ。
     /// ただし真上に別の硬い床が積まれている段は空が見えない = 草は生えない（全部土で描く）。
     /// これで 2 行積みの地面が縞にならず、露出した上面だけが緑になる。
-    def groundBoxes(covered: Bool, platform: Field.Platform): List[Render.Placed] =
+    def groundBoxes(covered: Bool, platform: Field.Platform): List[Render.PlacedItem] =
         let dirt = flatBox(platform#pos, platform#size, Palette.dirtBody(), zOf(platform));
         if (covered) dirt :: Nil
         else {
@@ -94,7 +94,7 @@ mod View {
         }
 
     /// 坂 = 直角三角形の polygon。置き場所は外接箱の左上、頂点はそこからの相対座標。
-    def slopeTriangle(platform: Field.Platform, riseRight: Bool): Render.Placed =
+    def slopeTriangle(platform: Field.Platform, riseRight: Bool): Render.PlacedItem =
         let size = platform#size;
         let topLeft = { x = platform#pos#x - size#x / 2.0, y = platform#pos#y - size#y / 2.0 };
         let verts =
@@ -112,7 +112,7 @@ mod View {
     /// 旗竿は細い石柱（4×96px）+ 竿先の三角ペナント。台座はレベルの地面の上面
     /// （下 4 行が地面なので levelH − 64）。クリア判定は Step が goalX で行い、
     /// ここは目印を描くだけ。
-    def goalItems(world: Field.World): List[Render.Placed] =
+    def goalItems(world: Field.World): List[Render.PlacedItem] =
         let checkpointColor =
             if (world#respawnPos#x >= world#checkpointPos#x) Palette.goalFlag()
             else Palette.eyeWhite();
@@ -122,7 +122,7 @@ mod View {
 
     /// 旗 1 本 = 細い石柱 + 竿先の三角ペナント。台座はレベルの地面の上面
     /// （下 4 行が地面なので levelH − 64）。中間地点の旗は低く、発動すると白 → 緑に変わる。
-    def flagAt(x: Float64, poleH: Float64, color: Color, world: Field.World): List[Render.Placed] =
+    def flagAt(x: Float64, poleH: Float64, color: Color, world: Field.World): List[Render.PlacedItem] =
         let poleW = 4.0;
         let baseY = world#levelH - 64.0;
         let pole = flatBox({ x = x, y = baseY - poleH / 2.0 },
@@ -140,7 +140,7 @@ mod View {
     /// 敵は全種ともドーム型が本体。歩く敵は足（歩きの上下）付き、パタパタは同じドーム＋羽
     /// （足なし・浮いている）、トゲはドームの上側だけに大きい棘が並ぶ。目玉は種ごとに大小。
     /// 死んだ敵は描かない（骸は残さない）。
-    def enemyItems(t: Float64, enemies: List[Field.Enemy]): List[Render.Placed] =
+    def enemyItems(t: Float64, enemies: List[Field.Enemy]): List[Render.PlacedItem] =
         enemies |> List.filter(e -> e#alive) |> List.flatMap(enemy -> {
             let pos = Field.enemyPosAt(t, enemy);
             match enemy#kind {
@@ -156,16 +156,16 @@ mod View {
     /// まんじゅう型の本体: 角丸ボックス {22,16} の上に、下半分を覆う平らなボックスを
     /// 同色で重ねて底を四角に均す（rounded は全角を丸めるので、底だけ角丸を打ち消す）。
     /// 中心は当たり判定の円と同じ pos、下端は円の下端（pos#y + enemyRadius）に揃える。
-    def dome(pos: Vec2.Vec2, color: Color): List[Render.Placed] =
+    def dome(pos: Vec2.Vec2, color: Color): List[Render.PlacedItem] =
         domeAt(pos, color, { x = 22.0, y = 16.0 }, 7.0)
 
     /// トゲの本体は少し低く座った寸法（squat）。
-    def spikyDome(pos: Vec2.Vec2): List[Render.Placed] =
+    def spikyDome(pos: Vec2.Vec2): List[Render.PlacedItem] =
         domeAt(pos, Palette.spikyBody(), { x = 22.0, y = 14.0 }, 6.0)
 
     /// ドーム 1 個の共通形: 角丸ボックス + 底を均す平らな帯。底辺は enemyRadius の位置で揃える
     /// （size#y の半分より浅い帯なら、底だけ角丸の丸みを覆い隠せる）。
-    def domeAt(pos: Vec2.Vec2, color: Color, size: Vec2.Vec2, radius: Float64): List[Render.Placed] =
+    def domeAt(pos: Vec2.Vec2, color: Color, size: Vec2.Vec2, radius: Float64): List[Render.PlacedItem] =
         let bottom = pos#y + Field.enemyRadius();
         let bodyTopLeft = { x = pos#x - size#x / 2.0, y = bottom - size#y };
         let body = { at = bodyTopLeft, item = Render.box(size, color, zEnemy()) |> Render.rounded(radius) };
@@ -176,7 +176,7 @@ mod View {
 
     /// 歩く敵の足 2 本（4×3 の小箱・ドーム底のすぐ下・本体より暗い色 = plankShadow 流用）。
     /// triWave(t×2) の符号で左右交互に ±1px だけ前後にずれ、歩く揺れを表す（状態は持たない）。
-    def feet(t: Float64, pos: Vec2.Vec2): List[Render.Placed] =
+    def feet(t: Float64, pos: Vec2.Vec2): List[Render.PlacedItem] =
         let bottom = pos#y + Field.enemyRadius();
         let wobble = Field.triWave(t * 2.0) - 0.5; // -0.5..0.5 の揺れ幅
         let footSize = { x = 4.0, y = 3.0 };
@@ -185,7 +185,7 @@ mod View {
 
     /// パタパタの羽 2 枚（6×3 の小箱・ドームの左右側面）。上下 ±2px の羽ばたきは
     /// triWave(t×2) から毎フレーム導く — 位置は保存しない（閉形式）。
-    def wings(t: Float64, pos: Vec2.Vec2): List[Render.Placed] =
+    def wings(t: Float64, pos: Vec2.Vec2): List[Render.PlacedItem] =
         let r = Field.enemyRadius();
         let flap = Field.triWave(t * 2.0) * 2.0;
         let size = { x = 6.0, y = 3.0 };
@@ -202,7 +202,7 @@ mod View {
 
     /// トゲ 1 本 = 本体の縁から上方向へ 7px 突き出る三角形。polygon の頂点は置き場所
     /// （外接箱の左上）からの相対座標で組む。
-    def topSpikes(pos: Vec2.Vec2): List[Render.Placed] =
+    def topSpikes(pos: Vec2.Vec2): List[Render.PlacedItem] =
         let r = Field.enemyRadius();
         let reach = r + 7.0;
         let topLeft = { x = pos#x - reach, y = pos#y - reach };
@@ -220,7 +220,7 @@ mod View {
     def sideSpikeDirs(): List[Vec2.Vec2] =
         { x = -1.0, y = 0.0 } :: { x = 1.0, y = 0.0 } :: Nil
 
-    def sideSpikes(pos: Vec2.Vec2): List[Render.Placed] =
+    def sideSpikes(pos: Vec2.Vec2): List[Render.PlacedItem] =
         let r = Field.enemyRadius();
         let reach = r + 4.0;
         let topLeft = { x = pos#x - reach, y = pos#y - reach };
@@ -237,13 +237,13 @@ mod View {
     /// 目玉 2 個（本体中心から ±4, -3px・白目 r=eyeR + 黒目 r=eyeR×0.5 を中心に重ねる）。
     /// 自機と見分けるのはシルエット（敵 = ずんぐりドーム / 自機 = 縦長）が担い、
     /// 目玉の文法（白目 + 瞳）は自機と共通でよい。
-    def eyes(pos: Vec2.Vec2, eyeR: Float64): List[Render.Placed] =
+    def eyes(pos: Vec2.Vec2, eyeR: Float64): List[Render.PlacedItem] =
         let leftCenter = { x = pos#x - 4.0, y = pos#y - 3.0 };
         let rightCenter = { x = pos#x + 4.0, y = pos#y - 3.0 };
         List.flatten(eyeAt(leftCenter, eyeR) :: eyeAt(rightCenter, eyeR) :: Nil)
 
     /// 目玉 1 個 = 白目（円・zEnemy+1）+ 黒い瞳（円・zEnemy+2・白目より小さく前面）。
-    def eyeAt(center: Vec2.Vec2, eyeR: Float64): List[Render.Placed] =
+    def eyeAt(center: Vec2.Vec2, eyeR: Float64): List[Render.PlacedItem] =
         let pupilR = eyeR * 0.5;
         { at = { x = center#x - eyeR, y = center#y - eyeR }, item = Render.circle(eyeR, Palette.eyeWhite(), zEnemy() + 1) } ::
         { at = { x = center#x - pupilR, y = center#y - pupilR }, item = Render.circle(pupilR, Palette.eyePupil(), zEnemy() + 2) } :: Nil
@@ -255,7 +255,7 @@ mod View {
     /// キャラは「地面ローカル」（足元 y=0）で描き、縦位置はここで出力を平行移動して与える
     /// （キャラ側は pos#y を出力に足さない前提で書かれている — 試着室では常に 0 だった）。
     /// 無敵中（ガード直後）は floor(t×16) の偶奇で本体を描いたり消したりする（決定的な点滅）。
-    def playerItems(world: Field.World): List[Render.Placed] =
+    def playerItems(world: Field.World): List[Render.PlacedItem] =
         let player = world#player;
         let feetY = player#pos#y + Field.playerRadius();
         let stage = stageOf(world#time, player);
@@ -266,7 +266,7 @@ mod View {
         List.flatten(guardRing(world#time, player) :: ghostItems(drawFn, stage, feetY, player) :: body :: Nil)
 
     /// 描画物の縦位置を平行移動する（ラボの laneItems と同じ役目）。
-    def shiftY(dy: Float64, placed: Render.Placed): Render.Placed =
+    def shiftY(dy: Float64, placed: Render.PlacedItem): Render.PlacedItem =
         { at = { x = placed#at#x, y = placed#at#y + dy }, item = placed#item }
 
     /// World の状態を演技の舞台情報（CharStage.Stage）へ写す。pos#x は世界座標
@@ -287,8 +287,8 @@ mod View {
     /// 最高速域だけの残像: 3 フレーム前・6 フレーム前の位置（pos − vel×n×dt）に
     /// 同じ演技のキャラを薄く 2 体置く。位置は速度から導くので状態は増えない。
     /// 縦は本体と同じく「出力の平行移動」で与える（stage#pos#y は地面ローカルの 0 のまま）。
-    def ghostItems(drawFn: CharStage.Stage -> List[Render.Placed],
-                   stage: CharStage.Stage, feetY: Float64, player: Field.Player): List[Render.Placed] =
+    def ghostItems(drawFn: CharStage.Stage -> List[Render.PlacedItem],
+                   stage: CharStage.Stage, feetY: Float64, player: Field.Player): List[Render.PlacedItem] =
         if (Float64.abs(player#vel#x) < maxBandSpeed()) Nil
         else {
             let dt = 1.0 / 64.0;
@@ -305,7 +305,7 @@ mod View {
     /// ガードが残っているキャラの盾: 体の周りをゆっくり周回する小さな光点 6 個
     /// （「1 回耐えられる」の視覚記号・ガードを使うと消える）。
     /// 塗り円で体を覆うと暗色のキャラが見えなくなるため、点の輪で「囲うが隠さない」。
-    def guardRing(t: Float64, player: Field.Player): List[Render.Placed] =
+    def guardRing(t: Float64, player: Field.Player): List[Render.PlacedItem] =
         if (player#guardLeft <= 0) Nil
         else {
             let orbitR = Field.playerRadius() + 7.0;
@@ -319,14 +319,14 @@ mod View {
             })
         }
 
-    /// Placed の中身だけ半透明にする（置き場所は保つ）。
-    def fadePlaced(alpha: Float32, placed: Render.Placed): Render.Placed =
+    /// PlacedItem の中身だけ半透明にする（置き場所は保つ）。
+    def fadePlaced(alpha: Float32, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.fade(alpha, placed#item) | placed }
 
     // ── 演出の粒（土埃・ジャンプ噴射）──
 
     /// World の bursts から、いまの粒を毎フレーム閉形式で導いて描く。状態は持たない。
-    def burstItems(bursts: List[Field.Burst]): List[Render.Placed] =
+    def burstItems(bursts: List[Field.Burst]): List[Render.PlacedItem] =
         bursts |> List.flatMap(burst ->
             GameFx.particles(burst) |> List.map(triple -> {
                 let (pos, radius, alpha) = triple;
@@ -343,7 +343,7 @@ mod View {
 
     // ── HUD（運動学の生値と操作の案内）──
 
-    def hudTexts(atlas: FontAtlas, world: Field.World): List[Render.Placed] =
+    def hudTexts(atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
         let player = world#player;
         let status =
             "v=(${fmt(player#vel#x)},${fmt(player#vel#y)})"
@@ -361,7 +361,7 @@ mod View {
         clearBanner(atlas, world)
 
     /// クリア後は画面中央に「CLEAR!」を出し続ける（ゲームは止めない・検証台なので）。
-    def clearBanner(atlas: FontAtlas, world: Field.World): List[Render.Placed] =
+    def clearBanner(atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
         if (Option.isEmpty(world#clearedAt)) Nil
         else { at = { x = Field.designW() / 2.0 - 30.0, y = 80.0 },
                item = Render.textTinted("CLEAR!", atlas, 16.0, Palette.hudText(), zText()) } :: Nil
@@ -371,8 +371,7 @@ mod View {
 
     // ── 形の補助 ──
 
-    /// 中心座標とサイズから左上原点の Box を置く（Render.box は左上原点）。
-    def flatBox(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): Render.Placed =
-        { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
-          item = Render.box(size, color, z) }
+    /// 中心座標とサイズから中心指定の Box を置く（Render.boxAt に委譲）。
+    def flatBox(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): Render.PlacedItem =
+        Render.boxAt(center, size, color, z)
 }

@@ -28,7 +28,7 @@ mod Char08 {
     }
 
     /// 舞台状態から 1 コマ分の描画リストを組む（モードごとに変形と付随エフェクトを選ぶ）。
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         match stage#mode {
             case CharStage.Mode.IdleMode => body(stage, idlePose(stage))
             case CharStage.Mode.RunMode  => body(stage, runPose(stage))
@@ -88,7 +88,7 @@ mod Char08 {
     // ── 体の描画（スライス積層 + 目 + 照り）──
 
     /// 変形パラメータから体一式（スライス 7 枚・照り・目）を組む。
-    def body(stage: CharStage.Stage, pose: Pose): List[Render.Placed] =
+    def body(stage: CharStage.Stage, pose: Pose): List[Render.PlacedItem] =
         List.flatten(List#{
             List.range(0, 7) |> List.map(i -> slice(stage, pose, i)),
             shine(stage, pose),
@@ -97,7 +97,7 @@ mod Char08 {
 
     /// i 枚目（0=底）の水平スライス。円弧のプロフィールで山なりの幅にし、
     /// 表面波と前傾ずれを足すと「輪郭が流れる液体」に見える。
-    def slice(stage: CharStage.Stage, pose: Pose, i: Int32): Render.Placed =
+    def slice(stage: CharStage.Stage, pose: Pose, i: Int32): Render.PlacedItem =
         let fi = Int32.toFloat64(i);
         let u = (fi + 0.5) / 7.0;
         let halfW = 11.0 * Vec2.sqrt(Float64.max(0.03, 1.0 - u * u * pose#taper)) * pose#wFac;
@@ -111,13 +111,13 @@ mod Char08 {
           item = Render.box({x = halfW * 2.0, y = h}, tone, 10) |> Render.rounded(Float64.min(h * 0.5, halfW)) }
 
     /// ゲル表面の照り（後頭部側の白い点）。変形に追従して上下する。
-    def shine(stage: CharStage.Stage, pose: Pose): List[Render.Placed] =
+    def shine(stage: CharStage.Stage, pose: Pose): List[Render.PlacedItem] =
         let gx = stage#pos#x - stage#facing * 4.0 + pose#lean * 0.3;
         let gy = stage#pos#y - 16.0 * pose#hFac;
         List#{{ at = {x = gx - 1.7, y = gy - 1.7}, item = Render.circle(1.7, gelGlint(), 11) |> Render.fade(0.5f32) }}
 
     /// ゲルに浮かぶ 2 つの目。体の変形（hFac・lean・うねり）にわずかに遅れて漂う。
-    def eyes(stage: CharStage.Stage, pose: Pose): List[Render.Placed] =
+    def eyes(stage: CharStage.Stage, pose: Pose): List[Render.PlacedItem] =
         let ey = stage#pos#y - 13.0 * pose#hFac + 0.4 * Curve.triWave(pose#wavePhase);
         let frontX = stage#pos#x + stage#facing * 5.2 + pose#lean * 0.6;
         let backX = stage#pos#x + stage#facing * 1.4 + pose#lean * 0.6;
@@ -133,7 +133,7 @@ mod Char08 {
         Float64.min(1.0, Float64.max(0.0, (Float64.abs(stage#vx) - 160.0) / 120.0))
 
     /// ダッシュの「濡れた轍」: 通った路面に残る、後ろほど細い水たまり 3 枚。
-    def dashWake(stage: CharStage.Stage): List[Render.Placed] =
+    def dashWake(stage: CharStage.Stage): List[Render.PlacedItem] =
         let band = dashBand(stage);
         if (band < 0.05) Nil
         else
@@ -147,7 +147,7 @@ mod Char08 {
                       |> Render.fade(RenderUtil.f32((0.55 - fj * 0.15) * band)) })
 
     /// スキッドの飛沫: 前方へ弧を描いて飛ぶしずく 4 粒。残速度が強いほど濃い。
-    def skidSplash(stage: CharStage.Stage): List[Render.Placed] =
+    def skidSplash(stage: CharStage.Stage): List[Render.PlacedItem] =
         let grip = Float64.min(1.0, Float64.abs(stage#vx) / 280.0);
         let tt = stage#modeT;
         List.range(0, 4) |> List.map(d ->
@@ -160,7 +160,7 @@ mod Char08 {
                   |> Render.fade(RenderUtil.f32(Float64.max(0.0, (0.9 - tt * 2.2) * (0.4 + 0.6 * grip)))) })
 
     /// 上昇中に足元へ残す雫の尾（高度が出てから現れる）。
-    def riseBeads(stage: CharStage.Stage): List[Render.Placed] =
+    def riseBeads(stage: CharStage.Stage): List[Render.PlacedItem] =
         let e = Float64.min(1.0, stage#modeT * 4.0);
         let high = Float64.min(1.0, Float64.max(0.0, (0.0 - stage#pos#y - 8.0) / 12.0));
         List#{
@@ -171,7 +171,7 @@ mod Char08 {
         }
 
     /// 落下中に頭上へ置いていく雫（相対的に上へ「こぼれる」）。着地前に消える。
-    def fallBeads(stage: CharStage.Stage): List[Render.Placed] =
+    def fallBeads(stage: CharStage.Stage): List[Render.PlacedItem] =
         let high = Float64.min(1.0, Float64.max(0.0, (0.0 - stage#pos#y - 6.0) / 10.0));
         List#{
             { at = {x = stage#pos#x - stage#facing * 2.0 - 1.2, y = stage#pos#y - 23.0 - 1.2},
@@ -181,7 +181,7 @@ mod Char08 {
         }
 
     /// 着地の飛沫: 左右へ低く跳ねるしずく。窓の後半で薄れて消える。
-    def landSplash(stage: CharStage.Stage): List[Render.Placed] =
+    def landSplash(stage: CharStage.Stage): List[Render.PlacedItem] =
         let recover = stage#modeT / 0.2;
         List#{-1.0, 1.0} |> List.map(side ->
             let dx = side * (7.0 + 16.0 * stage#modeT);

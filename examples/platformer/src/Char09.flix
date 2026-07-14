@@ -31,7 +31,7 @@ mod Char09 {
         -(apothem() + (bodyR() - apothem()) * Float64.abs(Vec2.cos(2.5 * theta)))
 
     /// 舞台状態から 1 コマ分の描画リストを組む（体はモードごとに頂点列そのものを変える）。
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         match stage#mode {
             case CharStage.Mode.IdleMode => idleBody(stage)
             case CharStage.Mode.RunMode  => rollBody(stage)
@@ -68,7 +68,7 @@ mod Char09 {
             {x = r * Vec2.cos(a), y = r * Vec2.sin(a)})
 
     /// 中心の核（目）。体がどれだけ回っても傾かず、視線だけ進行方向へ寄る。
-    def nucleus(cx: Float64, cy: Float64, facing: Float64): List[Render.Placed] =
+    def nucleus(cx: Float64, cy: Float64, facing: Float64): List[Render.PlacedItem] =
         let nx = cx + facing * 1.5;
         List#{
             { at = {x = nx - 2.6, y = cy - 2.6}, item = Render.circle(2.6, nucleusInk(), 11) },
@@ -78,7 +78,7 @@ mod Char09 {
     // ── モードごとの体 ──
 
     /// 待機: その場でわずかに揺りかご運動しつつ、外周が呼吸で脈打つ。
-    def idleBody(stage: CharStage.Stage): List[Render.Placed] =
+    def idleBody(stage: CharStage.Stage): List[Render.PlacedItem] =
         let rot = rollAngle(stage) + 0.13 * Curve.triWave(stage#modeT * 0.45);
         let pulse = 1.0 + 0.05 * Curve.triWave(stage#modeT * 0.8);
         let cy = groundCenterY(rollAngle(stage)) * pulse;
@@ -86,14 +86,14 @@ mod Char09 {
             :: nucleus(stage#pos#x, cy, stage#facing)
 
     /// 走り・ダッシュ共通の転がる体。中心は辺と角の高低差でゴトゴト上下する。
-    def rollBody(stage: CharStage.Stage): List[Render.Placed] =
+    def rollBody(stage: CharStage.Stage): List[Render.PlacedItem] =
         let rot = rollAngle(stage);
         let cy = groundCenterY(rot);
         { at = {x = stage#pos#x, y = cy}, item = Render.polygon(pentaVerts(rot, 0.0, 1.0, 1.0), bodyCrys(), 10) }
             :: nucleus(stage#pos#x, cy, stage#facing)
 
     /// スキッド: 逆回転ぎみに角を立てて地面へ食い込み、残像 2 枚と研削の火花破片を散らす。
-    def skidBody(stage: CharStage.Stage): List[Render.Placed] =
+    def skidBody(stage: CharStage.Stage): List[Render.PlacedItem] =
         let grip = Float64.min(1.0, Float64.abs(stage#vx) / 280.0);
         let rot = rollAngle(stage) - stage#facing * 0.55 * grip;
         let cy = groundCenterY(rollAngle(stage));
@@ -107,7 +107,7 @@ mod Char09 {
         List.flatten(List#{ghosts, core :: Nil, grindChips(stage, grip), nucleus(stage#pos#x, cy, stage#facing)})
 
     /// 上昇: 回転をほどいて真上へ整列しながら、頂点 0 が伸びる「欠片」へ絞られる。
-    def shardBody(stage: CharStage.Stage): List[Render.Placed] =
+    def shardBody(stage: CharStage.Stage): List[Render.PlacedItem] =
         let e = Float64.min(1.0, stage#modeT * 4.5);
         let rot = rollAngle(stage) * (1.0 - e);
         let cy = stage#pos#y - bodyR();
@@ -115,14 +115,14 @@ mod Char09 {
             :: nucleus(stage#pos#x, cy, stage#facing)
 
     /// 落下: 8 枚刃の星に開き、回転しながら落ちる（頂点数ごと切り替わる「割れ」の瞬間が頂点）。
-    def sawBody(stage: CharStage.Stage): List[Render.Placed] =
+    def sawBody(stage: CharStage.Stage): List[Render.PlacedItem] =
         let spin = rollAngle(stage) + stage#modeT * 13.0;
         let cy = stage#pos#y - bodyR() - 0.5;
         { at = {x = stage#pos#x, y = cy}, item = Render.polygon(starVerts(spin), bodyCrys(), 10) }
             :: nucleus(stage#pos#x, cy, stage#facing)
 
     /// 着地: 低い台形状に潰れ、左右へ破片が跳ねる。窓の終わりで元の五角形へ戻る。
-    def crashBody(stage: CharStage.Stage): List[Render.Placed] =
+    def crashBody(stage: CharStage.Stage): List[Render.PlacedItem] =
         let squash = 1.0 - stage#modeT / 0.2;
         let cy = groundCenterY(rollAngle(stage)) * (1.0 - 0.45 * squash);
         let core = { at = {x = stage#pos#x, y = cy},
@@ -133,7 +133,7 @@ mod Char09 {
 
     /// ダッシュの合図: 体の周りを楕円軌道で周回する光の欠片 3 枚。速いほど速く濃く回り、
     /// 手前を通るときは体の前、奥では体の後ろに描かれて立体感が出る。体色は変えない。
-    def satellites(stage: CharStage.Stage): List[Render.Placed] =
+    def satellites(stage: CharStage.Stage): List[Render.PlacedItem] =
         let band = Float64.min(1.0, Float64.max(0.0, (Float64.abs(stage#vx) - 160.0) / 120.0));
         if (band < 0.05) Nil
         else
@@ -147,7 +147,7 @@ mod Char09 {
                       |> Render.fade(RenderUtil.f32(0.85 * band)) })
 
     /// スキッドの研削破片: 進行方向の足元へ低く跳ねる小さな三角形 3 枚。
-    def grindChips(stage: CharStage.Stage, grip: Float64): List[Render.Placed] =
+    def grindChips(stage: CharStage.Stage, grip: Float64): List[Render.PlacedItem] =
         let e = Float64.min(1.0, stage#modeT * 5.0);
         List.range(0, 3) |> List.map(c ->
             let fc = Int32.toFloat64(c);
@@ -159,7 +159,7 @@ mod Char09 {
                   |> Render.fade(RenderUtil.f32(Float64.max(0.0, (1.0 - e) * grip))) })
 
     /// 着地の破片: 左右へ弾け飛ぶ三角形。上がって落ちる小さな山なりで消える。
-    def popChips(stage: CharStage.Stage): List[Render.Placed] =
+    def popChips(stage: CharStage.Stage): List[Render.PlacedItem] =
         let q = stage#modeT / 0.2;
         let hop = 4.0 * q * (1.0 - q);
         List#{-1.0, 1.0} |> List.map(side ->

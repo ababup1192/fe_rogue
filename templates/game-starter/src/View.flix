@@ -11,10 +11,10 @@ mod View {
     def playerColor(): Color = { r = 0.388235f32, g = 0.607843f32, b = 1.000000f32 }
 
     /// World を描画コマンドの列へ写す。atlas は文字を描くとき使うが、今は使わない。
-    pub def frame(_atlas: FontAtlas, world: World.World): List[Render.Placed] =
+    pub def frame(_atlas: FontAtlas, world: World.World): List[Render.PlacedItem] =
         let s = World.size();
         // Box は左上原点なので、中心座標から半分ずらして左上を出す。
         let topLeft = { x = world#x - s / 2.0, y = world#y - s / 2.0 };
-        let square = Render.solidBox({ x = s, y = s }, playerColor(), zPlayer());
+        let square = Render.box({ x = s, y = s }, playerColor(), zPlayer());
         { at = topLeft, item = square } :: Nil
 }

@@ -25,12 +25,12 @@ mod Human {
 
     /// `center` を中心に、`size` px のタイル上で、歩行位相 `phase`（0..1）で `dir` を向く人。
     pub def walking(center: Vec2.Vec2, size: Float64, skin: Skin,
-                    dir: Dir4.Dir4, phase: Float64): List[Render.Placed] =
+                    dir: Dir4.Dir4, phase: Float64): List[Render.PlacedItem] =
         partsOf(center, size, skin, dir, poseOf(phase))
 
     /// 立ち姿（NPC 用）。bob は 0..1 の呼吸で、0.5 を境に体がわずかに沈む 2 コマ。
     pub def standing(center: Vec2.Vec2, size: Float64, skin: Skin,
-                     dir: Dir4.Dir4, bob: Float64): List[Render.Placed] =
+                     dir: Dir4.Dir4, bob: Float64): List[Render.PlacedItem] =
         let settle = if (bob - Float64.floor(bob) < 0.5) 0.0 else 0.5;
         partsOf(center, size, skin, dir,
             { bob = settle, liftL = 0.0, liftR = 0.0, stride = 0.0, swing = 0.0 })
@@ -43,7 +43,7 @@ mod Human {
         else               { bob = 1.0, liftL = 0.0, liftR = 1.2, stride = 1.0, swing = 1.0 }
 
     def partsOf(center: Vec2.Vec2, size: Float64, skin: Skin,
-                dir: Dir4.Dir4, pose: Pose): List[Render.Placed] =
+                dir: Dir4.Dir4, pose: Pose): List[Render.PlacedItem] =
         let ps = match dir {
             case Dir4.Down  => front(skin, pose)
             case Dir4.Up    => back(skin, pose)
@@ -123,14 +123,14 @@ mod Human {
     def mirrorX(p: Part): Part =
         { x = 16.0 - p#x - p#w | p }
 
-    def toItem(center: Vec2.Vec2, size: Float64, p: Part): Render.Placed =
+    def toItem(center: Vec2.Vec2, size: Float64, p: Part): Render.PlacedItem =
         let s = size / 16.0;
         let tlx = center#x - size / 2.0;
         let tly = center#y - size / 2.0;
         let pos = {x = tlx + p#x * s, y = tly + p#y * s};
         let dim = {x = p#w * s, y = p#h * s};
         if (p#r <= 0.0)
-            { at = pos, item = Render.solidBox(dim, p#color, p#z) }
+            { at = pos, item = Render.box(dim, p#color, p#z) }
         else
-            { at = pos, item = Render.solidBox(dim, p#color, p#z) |> Render.rounded(p#r * s) }
+            { at = pos, item = Render.box(dim, p#color, p#z) |> Render.rounded(p#r * s) }
 }

@@ -1,12 +1,12 @@
 // Roster — 15 キャラの名簿。番号（World.charIndex 1..15）から「描き方」と「個性」を引く。
-// 描き方はキャラクターラボの Char01..15（Stage → Placed 列）をそのまま本編ビューへ繋ぐ。
+// 描き方はキャラクターラボの Char01..15（Stage → PlacedItem 列）をそのまま本編ビューへ繋ぐ。
 // 個性はパラメータへの純粋な倍率 + ガード（敵に 1 回耐える）: 各キャラ 1〜2 個だけ変えて、
 // 全体のバランスは公平に保つ。番号 1（HERO）は全部 1.0 の基準 — 既存の物理 pin が全て生きる。
 
 mod Roster {
 
     /// 番号 → キャラの draw（Stage → 足元中心ローカルの描画パーツ列）。範囲外は基準の 01。
-    pub def drawOf(index: Int32): CharStage.Stage -> List[Render.Placed] = match index {
+    pub def drawOf(index: Int32): CharStage.Stage -> List[Render.PlacedItem] = match index {
         case 2  => stage -> Char02.draw(stage)
         case 3  => stage -> Char03.draw(stage)
         case 4  => stage -> Char04.draw(stage)

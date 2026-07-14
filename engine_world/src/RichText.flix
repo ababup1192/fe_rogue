@@ -1,6 +1,6 @@
 // RichText — 一部だけ色や太さの違う文章を「スパンの列」として持ち、描画アイテムへ組む。
 // 会話文の中で名前だけ色を変える・強調語だけ太くする、が UI の種類を問わずできる。
-// 利用例: spans を組み、place に左上位置と最大幅を渡すと折返し済みの Placed 列が返る。
+// 利用例: spans を組み、place に左上位置と最大幅を渡すと折返し済みの PlacedItem 列が返る。
 // 文字送り（タイプライター）とは take で繋がる: 先頭 n 文字だけ残して place に渡す。
 mod RichText {
 
@@ -55,7 +55,7 @@ mod RichText {
     /// スパン列を左上 pos から 1 文字ずつ置いていく。maxWidth を超える字は次の行へ折り返す
     /// （字単位の折返し — 日本語向き。'\n' でも改行する）。太字スパンは半ピクセル右に
     /// ずらしてもう一度描くことで線を太らせる。
-    pub def place(p: Placement, spans: List[Span]): List[Render.Placed] =
+    pub def place(p: Placement, spans: List[Span]): List[Render.PlacedItem] =
         let (items, _, _) = spans |> List.foldLeft((acc, span) -> {
             let (done, x, y) = acc;
             let tint = Option.getWithDefault(p#baseTint, span#tint);

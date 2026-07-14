@@ -138,7 +138,7 @@ mod PixelCanvas {
     /// ギャラリー用の出口: 1 ピクセルを 1×1 の Render.box にして design 座標
     /// (originX+x, originY+y) へ置く。整数座標なので SoftRaster の scale=4 でも
     /// にじまずクリスプに拡大される。
-    pub def toPlaced(originX: Int32, originY: Int32, cv: Canvas): List[Render.Placed] =
+    pub def toPlaced(originX: Int32, originY: Int32, cv: Canvas): List[Render.PlacedItem] =
         Map.foldLeftWithKey((acc, k, c) -> {
             let (x, y) = k;
             let pos = { x = Int32.toFloat64(originX + x), y = Int32.toFloat64(originY + y) };

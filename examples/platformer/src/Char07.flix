@@ -24,14 +24,14 @@ mod Char07 {
     def fract(v: Float64): Float64 = v - Float64.floor(v)
 
     /// 足元中心 base からのオフセットで置く。
-    def at(base: Vec2.Vec2, dx: Float64, dy: Float64, item: Render.RenderItem): Render.Placed =
+    def at(base: Vec2.Vec2, dx: Float64, dy: Float64, item: Render.Item): Render.PlacedItem =
         { at = { x = base#x + dx, y = base#y + dy }, item = item }
 
     /// コア本体。cy = コア中心の高さ / tilt = 上頂点の前後ずれ（前傾・後傾）/
     /// splitK = 上下分離量（空中の変形・0 で密着）/ wS,hS = スカッシュ比。
     /// 密着中はルーンのひし形が脈動し、分離中は内部の魔力光が露出する。
     def core(base: Vec2.Vec2, f: Float64, t: Float64, cx: Float64, cy: Float64,
-             tilt: Float64, wS: Float64, hS: Float64, splitK: Float64): List[Render.Placed] =
+             tilt: Float64, wS: Float64, hS: Float64, splitK: Float64): List[Render.PlacedItem] =
         let upper =
             at(base, cx, cy - splitK,
                Render.polygon({ x = tilt, y = -7.0 * hS } :: { x = 6.0 * wS, y = 0.0 } ::
@@ -66,14 +66,14 @@ mod Char07 {
         List.flatten((upper :: upperHi :: lower :: Nil) :: inner :: halo :: Nil)
 
     /// ルーン衛星 1 基（小さなひし形 + 芯の光）。z は周回の前後で呼び手が決める。
-    def shard(base: Vec2.Vec2, dx: Float64, dy: Float64, z: Int32): List[Render.Placed] =
+    def shard(base: Vec2.Vec2, dx: Float64, dy: Float64, z: Int32): List[Render.PlacedItem] =
         at(base, dx, dy,
            Render.polygon({ x = 0.0, y = -3.0 } :: { x = 2.2, y = 0.0 } ::
                           { x = 0.0, y = 3.0 } :: { x = -2.2, y = 0.0 } :: Nil, rune(), z)) ::
         at(base, dx - 0.8, dy - 0.8, Render.circle(0.8, beam(), z + 1)) :: Nil
 
     /// 光柱ブリンク: 足元からコア中心まで立つ光の柱と、地面の照り。a が小さければ描かない。
-    def pillar(base: Vec2.Vec2, w: Float64, cy: Float64, a: Float64): List[Render.Placed] =
+    def pillar(base: Vec2.Vec2, w: Float64, cy: Float64, a: Float64): List[Render.PlacedItem] =
         if (a <= 0.02) Nil
         else {
             let aF = RenderUtil.f32(a);
@@ -87,7 +87,7 @@ mod Char07 {
 
     /// ダッシュ中、後方へ流れて消える光のゲート（縦の光帯）。phase で 2 枚をずらす。
     def gate(base: Vec2.Vec2, f: Float64, cy: Float64, dashK: Float64, t: Float64,
-             phase: Float64): List[Render.Placed] =
+             phase: Float64): List[Render.PlacedItem] =
         let g = fract(t * 2.6 + phase);
         let a = (1.0 - g) * 0.45 * dashK;
         if (a <= 0.02) Nil
@@ -97,7 +97,7 @@ mod Char07 {
                |> Render.rounded(0.8) |> Render.fade(RenderUtil.f32(a))) :: Nil
 
     /// 光壁の面に浮かぶ小さなルーン刻印。
-    def wallRune(base: Vec2.Vec2, f: Float64, dy: Float64, k: Float64): Render.Placed =
+    def wallRune(base: Vec2.Vec2, f: Float64, dy: Float64, k: Float64): Render.PlacedItem =
         at(base, f * 10.0, dy,
            Render.polygon({ x = 0.0, y = -2.0 } :: { x = 1.5, y = 0.0 } ::
                           { x = 0.0, y = 2.0 } :: { x = -1.5, y = 0.0 } :: Nil, runeDeep(), 10)
@@ -105,7 +105,7 @@ mod Char07 {
 
     // ── 本体 ──
 
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         let base = stage#pos;
         let f = stage#facing;
         let t = stage#t;

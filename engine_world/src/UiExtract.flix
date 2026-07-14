@@ -11,14 +11,14 @@ mod UiExtract {
     pub def measureTexts(texts: Map[EntityId, UiWidget.TextComp], atlasOf: String -> FontAtlas \ ef): Map[EntityId, Vec2.Vec2] \ ef =
         texts |> Map.map(comp -> Text.measure(Text.make(comp#text, atlasOf(comp#font), comp#fontSize)))
 
-    /// UI entity を Placed（置き場所つきの描画物）列へ射影する。可視 entity のみ・矩形が確定したもののみ。
+    /// UI entity を PlacedItem（置き場所つきの描画物）列へ射影する。可視 entity のみ・矩形が確定したもののみ。
     /// 並びは (zIndex, 階層深さ, order, id) で安定ソートする（背面から前面へ）。
     /// box → 単色塗り（alpha 反映）、text → 着色テキスト、sprite → スプライト。
     /// 文字実寸は `atlasOf`、sprite のセル分割（frame→regionRect）のテクスチャ寸法は `textureInfoOf`
     /// で引く。どちらも呼び側が注入するので、画面なしのテストでは純粋関数を渡せる。
     pub def extract(ui: UiStore.UiWorld, rects: Map[EntityId, Rect2.Rect2],
                     vis: Map[EntityId, Bool], atlasOf: String -> FontAtlas \ ef,
-                    textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): List[Render.Placed] \ ef =
+                    textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): List[Render.PlacedItem] \ ef =
         let boxEntries = ui#boxes |> Map.foldLeftWithKey((acc, id, box) ->
             match Map.get(id, rects) {
                 case None       => acc
@@ -28,7 +28,7 @@ mod UiExtract {
             (id, sprite#zIndex, spriteItem(sprite, textureInfoOf)) :: acc, Nil);
         let textEntries = Map.foldLeftWithKey((acc, id, comp) ->
             (id, comp#zIndex, textItem(comp, atlasOf)) :: acc,
-            (Nil : List[(EntityId, Int32, Render.RenderItem)]), ui#texts);
+            (Nil : List[(EntityId, Int32, Render.Item)]), ui#texts);
         List.append(boxEntries, List.append(spriteEntries, textEntries))
             |> List.filter(entry -> {let (id, _z, _item) = entry; Option.getWithDefault(true, Map.get(id, vis))})
             |> List.filterMap(entry -> {
@@ -61,9 +61,9 @@ mod UiExtract {
         {polys = poly#polys |> List.map(sub ->
             sub |> List.map(p -> ({x = p#x + origin#x, y = p#y + origin#y}: Vec2.Vec2))) | poly}
 
-    /// box の RenderItem。BoxComp の枠・角丸を BoxStyle へ写す（stripe 系は UI では未使用）。
+    /// box の Item。BoxComp の枠・角丸を BoxStyle へ写す（stripe 系は UI では未使用）。
     /// borderWidth>0 のときだけ borderAlpha=1.0 にして枠を有効化する。
-    def boxItem(box: UiWidget.BoxComp, size: Vec2.Vec2): Render.RenderItem =
+    def boxItem(box: UiWidget.BoxComp, size: Vec2.Vec2): Render.Item =
         let style = ({
             cornerRadius = box#cornerRadius,
             borderWidth  = box#borderWidth,
@@ -74,26 +74,26 @@ mod UiExtract {
             stripeWidth  = 0.0,
             stripePeriod = 0.0
         }: GameEngine.BoxStyle);
-        Render.RenderItem.Box({size = size, color = box#color, alpha = box#alpha, style = Some(style), zIndex = box#zIndex})
+        Render.Item.Box({size = size, color = box#color, alpha = box#alpha, style = Some(style), zIndex = box#zIndex})
 
-    /// text の RenderItem。atlasOf で font 名から FontAtlas を引く。
-    def textItem(comp: UiWidget.TextComp, atlasOf: String -> FontAtlas \ ef): Render.RenderItem \ ef =
+    /// text の Item。atlasOf で font 名から FontAtlas を引く。
+    def textItem(comp: UiWidget.TextComp, atlasOf: String -> FontAtlas \ ef): Render.Item \ ef =
         Render.textTinted(comp#text, atlasOf(comp#font), comp#fontSize, comp#tint, comp#zIndex)
 
-    /// sprite の RenderItem。左上原点（centered=false）でレイアウト矩形の位置に合わせる。
+    /// sprite の Item。左上原点（centered=false）でレイアウト矩形の位置に合わせる。
     /// regionRect を持たず格子分割（hframes*vframes>1）があるときは frame からセル矩形を導く
     /// （テクスチャ寸法は `textureInfoOf` で引く）。
     def spriteItem(sprite: UiWidget.SpriteComp,
-                   textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): Render.RenderItem \ ef =
+                   textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): Render.Item \ ef =
         let regionOpt = resolveRegion(sprite, textureInfoOf);
-        Render.RenderItem.Sprite({texture = sprite#texture, tint = sprite#tint, alpha = 1.0f32,
+        Render.Item.Sprite({texture = sprite#texture, tint = sprite#tint, alpha = 1.0f32,
                                   scale = regionAdjustedScale(sprite, regionOpt, textureInfoOf), rotation = 0.0, centered = false,
                                   flipH = sprite#flipH, flipV = sprite#flipV,
                                   regionRect = regionOpt, zIndex = sprite#zIndex})
 
     /// region 使用時の描画 scale 補正。レンダラは quad を「テクスチャ全体サイズ × scale」で張るため、
     /// region（セル）描画では scale に regionSize/texSize を掛けて quad をセルサイズ × scale にする
-    /// （engine `spriteToDrawable` の drawScale と同じ補正。`Render.drawAtlas` は UV のみ計算し
+    /// （engine `spriteToDrawable` の drawScale と同じ補正。`Render.drawWith` は UV のみ計算し
     /// scale を素通しするので、ここで織り込まないとアトラス全体サイズで巨大描画される）。
     /// region なし・テクスチャ未登録のときは無補正。
     def regionAdjustedScale(sprite: UiWidget.SpriteComp, regionOpt: Option[Rect2.Rect2],

@@ -34,7 +34,7 @@ mod Gallery {
 
     // ── RasterReq 組み立て ──
 
-    def reqOf(atlas: FontAtlas, items: List[Render.Placed], w: Int32, h: Int32,
+    def reqOf(atlas: FontAtlas, items: List[Render.PlacedItem], w: Int32, h: Int32,
               path: String): SoftRaster.RasterReq =
         let (drawables, polygons) = Render.draw(items);
         { drawables = drawables, polygons = polygons,
@@ -42,7 +42,7 @@ mod Gallery {
           background = bgColor(), texturePath = Map.empty(),
           fontTtf = ttfPath(), fontAtlas = atlas, outPath = path }
 
-    def label(atlas: FontAtlas, text: String, x: Int32, y: Int32): Render.Placed =
+    def label(atlas: FontAtlas, text: String, x: Int32, y: Int32): Render.PlacedItem =
         { at = { x = Int32.toFloat64(x), y = Int32.toFloat64(y) },
           item = Render.textTinted(text, atlas, 7.0, labelColor(), 50) }
 
@@ -77,7 +77,7 @@ mod Gallery {
 
     /// リールの 1 tick を置く。フェード段つき（白骨の消滅）はギャラリー専用の見せ方として、
     /// 各ピクセルを背景色へ段階ブレンドして描く（シートには焼かない・lint 対象外）。
-    def tickPlaced(ox: Int32, oy: Int32, tick: Reel.Tick): List[Render.Placed] =
+    def tickPlaced(ox: Int32, oy: Int32, tick: Reel.Tick): List[Render.PlacedItem] =
         match tick#fade {
             case None        => PixelCanvas.toPlaced(ox, oy, tick#canvas)
             case Some(stage) => PixelCanvas.toPlaced(ox, oy, fadedCanvas(stage, tick#canvas))
@@ -124,7 +124,7 @@ mod Gallery {
             })
 
     /// レーン 1 本: 仕切り線 + キャラ（または空レーンの "?"）。
-    def laneItems(atlas: FontAtlas, idx: Int32, tickFrame: Option[Option[Reel.Tick]]): List[Render.Placed] =
+    def laneItems(atlas: FontAtlas, idx: Int32, tickFrame: Option[Option[Reel.Tick]]): List[Render.PlacedItem] =
         let left = idx * laneW();
         let sep = if (idx == 0) Nil else
             { at = { x = Int32.toFloat64(left), y = 0.0 },
@@ -172,7 +172,7 @@ mod Gallery {
         SoftRaster.render(reqOf(atlas, List.append(headers, cells), w, h, path))
 
     /// 一覧の 1 マス: 枠 + IdleDown frame0（未登録は枠だけ）。
-    def cellItems(classId: String, variant: String, col: Int32, rowIdx: Int32): List[Render.Placed] =
+    def cellItems(classId: String, variant: String, col: Int32, rowIdx: Int32): List[Render.PlacedItem] =
         let x0 = col * cellW();
         let y0 = headerH() + rowIdx * cellH();
         let frame =

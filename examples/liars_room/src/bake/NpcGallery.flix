@@ -36,7 +36,7 @@ mod NpcGallery {
         Dir4.Down :: Dir4.Left :: Dir4.Right :: Dir4.Up :: Nil
 
     /// 歩行位相 `phase`（0.0 = 静止ポーズ）における全員 × 4 方向の 1 フレーム。
-    pub def frameItems(atlas: FontAtlas, phase: Float64): List[Render.Placed] =
+    pub def frameItems(atlas: FontAtlas, phase: Float64): List[Render.PlacedItem] =
         let people = List.range(0, colCount()) |> List.flatMap(col ->
             dirs() |> List.zipWithIndex |> List.flatMap(rowDir -> {
                 let (row, dir) = rowDir;
@@ -45,7 +45,7 @@ mod NpcGallery {
         let labels = List.range(0, colCount()) |> List.map(col -> label(atlas, col));
         List.append(people, labels)
 
-    def label(atlas: FontAtlas, col: Int32): Render.Placed =
+    def label(atlas: FontAtlas, col: Int32): Render.PlacedItem =
         let text = nameAt(col);
         let size = 20.0;
         let w = Text.measure(Text.make(text, atlas, size))#x;

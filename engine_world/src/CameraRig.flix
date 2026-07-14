@@ -11,9 +11,9 @@ mod CameraRig {
     /// 動かないカメラ（HUD などスクリーン空間のレイヤー用）。
     pub def fixed(): Camera = { offset = Vec2.zero() }
 
-    /// カメラを描画物の列（Render.Placed）に適用する。多角形（Poly）も置き場所ごと
+    /// カメラを描画物の列（Render.PlacedItem）に適用する。多角形（Poly）も置き場所ごと
     /// 動くので、種類を問わずこの 1 本で足りる。
-    pub def apply(cam: Camera, items: List[Render.Placed]): List[Render.Placed] =
+    pub def apply(cam: Camera, items: List[Render.PlacedItem]): List[Render.PlacedItem] =
         List.map(placed -> { at = Vec2.add(placed#at, cam#offset) | placed }, items)
 
     // ── 追従（不感帯 + 寄せ率 + クランプ）──

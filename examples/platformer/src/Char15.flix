@@ -35,19 +35,19 @@ mod Char15 {
 
     /// 中心 (dx, dy) の矩形。
     def boxC(stage: CharStage.Stage, dx: Float64, dy: Float64,
-             w: Float64, h: Float64, c: Color, z: Int32): Render.Placed =
+             w: Float64, h: Float64, c: Color, z: Int32): Render.PlacedItem =
         let p = at(stage, dx, dy);
         { at = { x = p#x - w / 2.0, y = p#y - h / 2.0 }, item = Render.box({ x = w, y = h }, c, z) }
 
     /// 中心 (dx, dy) の円。
     def circC(stage: CharStage.Stage, dx: Float64, dy: Float64,
-              r: Float64, c: Color, z: Int32): Render.Placed =
+              r: Float64, c: Color, z: Int32): Render.PlacedItem =
         let p = at(stage, dx, dy);
         { at = { x = p#x - r, y = p#y - r }, item = Render.circle(r, c, z) }
 
     /// 2 点を結ぶ太さ th の棒（腕・杖・肩ひもを斜めに描く）。
     def strut(stage: CharStage.Stage, ax: Float64, ay: Float64,
-              bx: Float64, by: Float64, th: Float64, c: Color, z: Int32): Render.Placed =
+              bx: Float64, by: Float64, th: Float64, c: Color, z: Int32): Render.PlacedItem =
         let ddx = bx - ax;
         let ddy = by - ay;
         let len0 = RenderUtil.sqrtF(ddx * ddx + ddy * ddy);
@@ -63,10 +63,10 @@ mod Char15 {
 
     def clamp01(x: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, x))
 
-    def fadeP(a: Float64, pl: Render.Placed): Render.Placed =
+    def fadeP(a: Float64, pl: Render.PlacedItem): Render.PlacedItem =
         { item = Render.fade(RenderUtil.f32(clamp01(a)), pl#item) | pl }
 
-    def roundP(r: Float64, pl: Render.Placed): Render.Placed =
+    def roundP(r: Float64, pl: Render.PlacedItem): Render.PlacedItem =
         { item = Render.rounded(r, pl#item) | pl }
 
     // ── 本人（bob = 上下動・lean = 前かがみの深さ・sq = 縦つぶし）──
@@ -76,7 +76,7 @@ mod Char15 {
                     legF = (Float64, Float64), legFh = Float64,
                     legB = (Float64, Float64), legBh = Float64,
                     handF = (Float64, Float64), handB = (Float64, Float64),
-                    eyeWide = Bool }): List[Render.Placed] =
+                    eyeWide = Bool }): List[Render.PlacedItem] =
         let (lfx, lfy) = p#legF;
         let (lbx, lby) = p#legB;
         let (hfx, hfy) = p#handF;
@@ -121,7 +121,7 @@ mod Char15 {
     /// 荷物のずれ（荷の傾きの誇張）、lanSway/lanDy = 提灯の揺れ。
     def pack(stage: CharStage.Stage,
              p: { packDx = Float64, packDy = Float64, itemsDx = Float64, itemsDy = Float64,
-                  lanSway = Float64, lanDy = Float64 }): List[Render.Placed] =
+                  lanSway = Float64, lanDy = Float64 }): List[Render.PlacedItem] =
         let pdx = p#packDx;
         let pdy = p#packDy;
         let idx = p#itemsDx;
@@ -153,13 +153,13 @@ mod Char15 {
 
     /// 旅の杖: 手元 (hx,hy) から先端 (tx,ty) へ。手元に握りこぶを添える。
     def stickAt(stage: CharStage.Stage, hx: Float64, hy: Float64,
-                tx: Float64, ty: Float64): List[Render.Placed] =
+                tx: Float64, ty: Float64): List[Render.PlacedItem] =
         strut(stage, hx, hy, tx, ty, 1.3, stickC(), 12) ::
         circC(stage, hx, hy - 0.9, 0.9, stickC(), 12) :: Nil
 
     // ── モードごとの演技 ──
 
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         match stage#mode {
             case CharStage.Mode.IdleMode => idle(stage)
             case CharStage.Mode.RunMode  => runPose(stage)
@@ -172,7 +172,7 @@ mod Char15 {
 
     /// 待機: 杖に体重を預けて一息。後手で肩ひもを締め直して荷がひょいと持ち上がり、
     /// 続けて荷をぽんぽんと労う。提灯はゆっくり揺れる。
-    def idle(stage: CharStage.Stage): List[Render.Placed] =
+    def idle(stage: CharStage.Stage): List[Render.PlacedItem] =
         let b = Curve.tri(1.4, stage#t) * 0.5;
         let m = stage#modeT;
         let sway = Curve.triWave(stage#t * 0.45) * 0.9;
@@ -195,7 +195,7 @@ mod Char15 {
 
     /// 走り: 距離駆動の速足の刻み。一歩ごとに杖の先で地面をつつき、
     /// 荷は半分の周期で左右に遅れて揺れ、提灯が反対へ振れる。
-    def runPose(stage: CharStage.Stage): List[Render.Placed] =
+    def runPose(stage: CharStage.Stage): List[Render.PlacedItem] =
         let ph = stage#pos#x * 0.16;
         let sw = Curve.triWave(ph);
         let bob = 0.0 - Float64.abs(sw) * 0.7;
@@ -223,7 +223,7 @@ mod Char15 {
 
     /// ダッシュ: ほぼ水平まで前のめり。行李の荷物がガタガタと跳ね、鍋の残像が
     /// 後ろへ尾を引き、足元から土煙が巻き上がる。杖は浮かせて構える。
-    def dash(stage: CharStage.Stage): List[Render.Placed] =
+    def dash(stage: CharStage.Stage): List[Render.PlacedItem] =
         let bandV = clamp01((Float64.abs(stage#vx) - 160.0) / 120.0);
         let sw = Curve.triWave(stage#pos#x * 0.16);
         let bob = 0.0 - Float64.abs(sw) * 0.5;
@@ -251,7 +251,7 @@ mod Char15 {
 
     /// スキッド: 杖を前方の地面へ突き立てて両手で踏ん張る。荷は勢いで頭上へ
     /// ずり上がって前へ傾き、杖の先に土埃と小石が跳ねる。強さは残速度に比例。
-    def skid(stage: CharStage.Stage): List[Render.Placed] =
+    def skid(stage: CharStage.Stage): List[Render.PlacedItem] =
         let sI = clamp01(Float64.abs(stage#vx) / 280.0);
         let lurch = 6.0 * sI;
         let core = granny(stage, { bob = 0.2, lean = -0.8, sq = 1.0,
@@ -272,7 +272,7 @@ mod Char15 {
 
     /// ジャンプ: 体を丸めて膝を抱え、荷が背中からふわりと浮く（肩ひもが伸びる）。
     /// 提灯も遅れて浮き上がり、杖は斜め上へ掲げる。
-    def jump(stage: CharStage.Stage): List[Render.Placed] =
+    def jump(stage: CharStage.Stage): List[Render.PlacedItem] =
         let core = granny(stage, { bob = 0.0, lean = 0.6, sq = 1.0,
                                    legF = (1.8, -3.2), legFh = 3.2,
                                    legB = (-1.0, -3.4), legBh = 3.0,
@@ -286,7 +286,7 @@ mod Char15 {
 
     /// 落下: 浮いていた荷が背中へのしかかり、体が押しつぶされ気味に縮む。
     /// 目を丸くして杖の先を地面へ向け、着地に備える。
-    def fall(stage: CharStage.Stage): List[Render.Placed] =
+    def fall(stage: CharStage.Stage): List[Render.PlacedItem] =
         let core = granny(stage, { bob = 0.3, lean = 0.8, sq = 0.94,
                                    legF = (1.6, -2.2), legFh = 4.4,
                                    legB = (-1.2, -2.4), legBh = 4.6,
@@ -300,7 +300,7 @@ mod Char15 {
 
     /// 着地: 荷がどすんと沈んで婆を押しつぶし、上の荷物と提灯が一拍遅れて跳ねる。
     /// 左右へ土煙が広がり、杖にすがって耐える。
-    def land(stage: CharStage.Stage): List[Render.Placed] =
+    def land(stage: CharStage.Stage): List[Render.PlacedItem] =
         let k = 1.0 - clamp01(stage#modeT / 0.2);
         let sq = 1.0 - 0.35 * k;
         let bounce = Curve.tri(0.2, stage#modeT);

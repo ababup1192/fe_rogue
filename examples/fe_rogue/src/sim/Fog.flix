@@ -129,7 +129,7 @@ mod Fog {
                             |> List.map(moduleRect);
         List.append(litExpanded, visitedRects)
 
-    // 暗幕は `RenderWorld.renderFog` が bandDecompose の矩形を solidBox で直描きする唯一の経路。
+    // 暗幕は `RenderWorld.renderFog` が bandDecompose の矩形を box で直描きする唯一の経路。
 
     /// module の floorBounds(±edgePad で壁リングまで拡張) を world grid 矩形にする。
     pub def moduleRect(p: DungeonComposer.ModulePlacement): GridRect =

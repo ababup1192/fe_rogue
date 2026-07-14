@@ -19,3 +19,4 @@ hs_err_pid*.log
 # src/debug/（WorldDump 等の実ソース）や debug/ 直下の検証ツール
 # (replay_tiles.py ほか) まで管理外になるので annotations/ に絞る。
 **/debug/annotations/
+.test-logs/

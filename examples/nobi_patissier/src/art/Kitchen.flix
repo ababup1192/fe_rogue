@@ -41,7 +41,7 @@ mod Kitchen {
 
     /// 背景 + 持ち場一式（320×240 まるごと）。
     pub def scene(tone: Palette.KitchenTone, layout: Layout, props: PropSet,
-                  atlas: FontAtlas): List[Render.Placed] =
+                  atlas: FontAtlas): List[Render.PlacedItem] =
         List.flatten(
             wall(tone) ::
             floor(tone) ::
@@ -51,43 +51,43 @@ mod Kitchen {
 
     def wallH(): Float64 = 56.0
 
-    def wall(tone: Palette.KitchenTone): List[Render.Placed] =
-        let base = at(0.0, 0.0, Render.solidBox({x = 320.0, y = wallH()}, tone#wall, 0));
+    def wall(tone: Palette.KitchenTone): List[Render.PlacedItem] =
+        let base = at(0.0, 0.0, Render.box({x = 320.0, y = wallH()}, tone#wall, 0));
         // タイルの目地（縦線 + 中段の横線）と巾木。
         let verticals = List.range(0, 20) |> List.map(i ->
             at(Int32.toFloat64(i) * 16.0, 0.0,
-               Render.solidBox({x = 1.0, y = wallH() - 4.0}, tone#wallLine, 1)));
-        let horizontal = at(0.0, 26.0, Render.solidBox({x = 320.0, y = 1.0}, tone#wallLine, 1));
-        let skirting = at(0.0, wallH() - 4.0, Render.solidBox({x = 320.0, y = 4.0}, tone#trim, 2));
+               Render.box({x = 1.0, y = wallH() - 4.0}, tone#wallLine, 1)));
+        let horizontal = at(0.0, 26.0, Render.box({x = 320.0, y = 1.0}, tone#wallLine, 1));
+        let skirting = at(0.0, wallH() - 4.0, Render.box({x = 320.0, y = 4.0}, tone#trim, 2));
         // 窓（そら色 + 桟）。
         let window =
-            at(22.0, 8.0, Render.solidBox({x = 52.0, y = 36.0}, tone#trim, 2)) ::
-            at(25.0, 11.0, Render.solidBox({x = 46.0, y = 30.0}, skyColor(), 3)) ::
-            at(47.0, 11.0, Render.solidBox({x = 2.0, y = 30.0}, tone#trim, 4)) ::
-            at(25.0, 25.0, Render.solidBox({x = 46.0, y = 2.0}, tone#trim, 4)) :: Nil;
+            at(22.0, 8.0, Render.box({x = 52.0, y = 36.0}, tone#trim, 2)) ::
+            at(25.0, 11.0, Render.box({x = 46.0, y = 30.0}, skyColor(), 3)) ::
+            at(47.0, 11.0, Render.box({x = 2.0, y = 30.0}, tone#trim, 4)) ::
+            at(25.0, 25.0, Render.box({x = 46.0, y = 2.0}, tone#trim, 4)) :: Nil;
         // 右の棚（板 + ジャム瓶 2 つ）。
         let shelf =
-            at(248.0, 16.0, Render.solidBox({x = 52.0, y = 4.0}, tone#trim, 2)) ::
-            at(256.0, 6.0, Render.solidBox({x = 8.0, y = 10.0}, Palette.heart(), 3) |> Render.rounded(2.0)) ::
-            at(272.0, 4.0, Render.solidBox({x = 8.0, y = 12.0}, Palette.star(), 3) |> Render.rounded(2.0)) :: Nil;
+            at(248.0, 16.0, Render.box({x = 52.0, y = 4.0}, tone#trim, 2)) ::
+            at(256.0, 6.0, Render.box({x = 8.0, y = 10.0}, Palette.heart(), 3) |> Render.rounded(2.0)) ::
+            at(272.0, 4.0, Render.box({x = 8.0, y = 12.0}, Palette.star(), 3) |> Render.rounded(2.0)) :: Nil;
         List.flatten((base :: horizontal :: skirting :: Nil) :: verticals :: window :: shelf :: Nil)
 
     def skyColor(): Color = {r = 0.372549f32, g = 0.803922f32, b = 0.894118f32} // #5fcde4
 
-    def floor(tone: Palette.KitchenTone): List[Render.Placed] =
+    def floor(tone: Palette.KitchenTone): List[Render.PlacedItem] =
         let tile = 20.0;
         List.range(0, 16) |> List.flatMap(ix ->
             List.range(0, 10) |> List.map(iy -> {
                 let x = Int32.toFloat64(ix) * tile;
                 let y = wallH() + Int32.toFloat64(iy) * tile;
                 let color = if (Int32.modulo(ix + iy, 2) == 0) tone#floorA else tone#floorB;
-                at(x, y, Render.solidBox({x = tile, y = tile}, color, 0))
+                at(x, y, Render.box({x = tile, y = tile}, color, 0))
             }))
 
     // ── 持ち場の家具 ──
 
     def furniture(tone: Palette.KitchenTone, layout: Layout, props: PropSet,
-                  atlas: FontAtlas): List[Render.Placed] =
+                  atlas: FontAtlas): List[Render.PlacedItem] =
         match layout {
             case Layout.TriangleUp =>
                 List.flatten(
@@ -103,12 +103,12 @@ mod Kitchen {
 
     /// カウンター（幅 68）: 天板 + 前面 + 脚元の影。上に持ち場の小物が載る。
     pub def counter(tone: Palette.KitchenTone, x: Float64, y: Float64,
-                props: PropSet, station: Station, atlas: FontAtlas): List[Render.Placed] =
+                props: PropSet, station: Station, atlas: FontAtlas): List[Render.PlacedItem] =
         let w = 68.0;
         let body =
-            at(x, y + 8.0, Render.solidBox({x = w, y = 26.0}, tone#counter, 4) |> Render.rounded(3.0)) ::
-            at(x, y, Render.solidBox({x = w, y = 10.0}, tone#counterTop, 5) |> Render.rounded(3.0)) ::
-            at(x + 2.0, y + 34.0, Render.solidBox({x = w - 4.0, y = 3.0}, tone#trim, 3)) :: Nil;
+            at(x, y + 8.0, Render.box({x = w, y = 26.0}, tone#counter, 4) |> Render.rounded(3.0)) ::
+            at(x, y, Render.box({x = w, y = 10.0}, tone#counterTop, 5) |> Render.rounded(3.0)) ::
+            at(x + 2.0, y + 34.0, Render.box({x = w - 4.0, y = 3.0}, tone#trim, 3)) :: Nil;
         let stuff = match station {
             case Station.Bowl   => bowlProp(atlas, x, y + 2.0, props)
             case Station.Cutter => cutterProp(tone, atlas, x, y + 2.0, props)
@@ -119,7 +119,7 @@ mod Kitchen {
     /// ボールの小物: ボール（生地入り・湯気つき）+ この持ち場の正解の品物
     /// （小麦粉・たまご・牛乳）を並べて、何を渡す場所か一目でわかるようにする。
     /// Classic = 金属ボール、Cozy = ガラスボール。
-    def bowlProp(atlas: FontAtlas, x: Float64, topY: Float64, props: PropSet): List[Render.Placed] =
+    def bowlProp(atlas: FontAtlas, x: Float64, topY: Float64, props: PropSet): List[Render.PlacedItem] =
         let cx = x + 38.0;
         let rimY = topY - 11.0;
         let bowlColor = match props { case PropSet.Classic => Palette.metal()  case PropSet.Cozy => Palette.sugar() };
@@ -139,7 +139,7 @@ mod Kitchen {
                 |> List.map(raiseZ(7))) :: Nil)
 
     /// z を持ち上げる（品物アイコンをカウンター天板より手前に出す）。
-    def raiseZ(delta: Int32, placed: Render.Placed): Render.Placed =
+    def raiseZ(delta: Int32, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.raiseZ(delta, placed#item) | placed }
 
     /// 下向き（up=true）または上向きの半円の輪郭。
@@ -151,7 +151,7 @@ mod Kitchen {
         })
 
     /// ふわりと立ちのぼる湯気 2 本（細いベジエ帯）。
-    def steam(cx: Float64, topY: Float64): List[Render.Placed] =
+    def steam(cx: Float64, topY: Float64): List[Render.PlacedItem] =
         List.append(
             Bezier.stroke({ spine = Bezier.quadratic(
                 {x = cx - 4.0, y = topY}, {x = cx - 8.0, y = topY - 7.0},
@@ -165,10 +165,10 @@ mod Kitchen {
     /// 型抜き台: 生地シート（抜いた星型の穴あき）+ 抜かれた生地のクッキー + 正解の品物
     /// （星・ハートの抜き型）。Classic = シート広め、Cozy = 抜き済み多め。
     def cutterProp(tone: Palette.KitchenTone, atlas: FontAtlas, x: Float64, topY: Float64,
-                   props: PropSet): List[Render.Placed] =
+                   props: PropSet): List[Render.PlacedItem] =
         let cx = x + 30.0;
         let sheet =
-            at(cx - 15.0, topY - 7.0, Render.solidBox({x = 30.0, y = 9.0}, Palette.paper(), 6)
+            at(cx - 15.0, topY - 7.0, Render.box({x = 30.0, y = 9.0}, Palette.paper(), 6)
                 |> Render.rounded(2.0) |> Render.outline(Palette.cookie(), 1.2)) :: Nil;
         // 抜いた跡の穴（天板と同じ色で塗る = 穴に見える）。
         let holes = List.append(
@@ -196,21 +196,21 @@ mod Kitchen {
                 |> List.map(raiseZ(7))) :: Nil)
 
     /// オーブン（幅 48）: 本体 + 扉窓（火/光）+ 取っ手 + 脚 + 脇に正解の品物（天板・ミトン）。
-    pub def oven(x: Float64, y: Float64, props: PropSet, atlas: FontAtlas): List[Render.Placed] =
+    pub def oven(x: Float64, y: Float64, props: PropSet, atlas: FontAtlas): List[Render.PlacedItem] =
         let w = 48.0;
         let h = 46.0;
         let glow = match props {
             case PropSet.Classic =>
-                at(x + 12.0, y + 26.0, Render.solidBox({x = 10.0, y = 8.0}, Palette.fire(), 8)
+                at(x + 12.0, y + 26.0, Render.box({x = 10.0, y = 8.0}, Palette.fire(), 8)
                     |> Render.rounded(3.0)) ::
-                at(x + 24.0, y + 28.0, Render.solidBox({x = 8.0, y = 6.0}, Palette.fireHot(), 8)
+                at(x + 24.0, y + 28.0, Render.box({x = 8.0, y = 6.0}, Palette.fireHot(), 8)
                     |> Render.rounded(3.0)) :: Nil
             case PropSet.Cozy =>
-                at(x + 10.0, y + 22.0, Render.solidBox({x = 28.0, y = 14.0}, Palette.fireHot(), 8)
+                at(x + 10.0, y + 22.0, Render.box({x = 28.0, y = 14.0}, Palette.fireHot(), 8)
                     |> Render.rounded(4.0) |> Render.fade(0.55f32)) ::
-                at(x + 15.0, y + 30.0, Render.solidBox({x = 8.0, y = 5.0}, Palette.cookie(), 9)
+                at(x + 15.0, y + 30.0, Render.box({x = 8.0, y = 5.0}, Palette.cookie(), 9)
                     |> Render.rounded(2.5)) ::
-                at(x + 26.0, y + 30.0, Render.solidBox({x = 8.0, y = 5.0}, Palette.cookie(), 9)
+                at(x + 26.0, y + 30.0, Render.box({x = 8.0, y = 5.0}, Palette.cookie(), 9)
                     |> Render.rounded(2.5)) :: Nil
         };
         let sideItems = List.append(
@@ -220,18 +220,18 @@ mod Kitchen {
                 |> List.map(raiseZ(6))));
         List.append(sideItems,
         List.append(
-            at(x, y, Render.solidBox({x = w, y = h}, Palette.ovenBody(), 5) |> Render.rounded(4.0)) ::
-            at(x + 4.0, y + 4.0, Render.solidBox({x = w - 8.0, y = 6.0}, Palette.ovenDark(), 6)
+            at(x, y, Render.box({x = w, y = h}, Palette.ovenBody(), 5) |> Render.rounded(4.0)) ::
+            at(x + 4.0, y + 4.0, Render.box({x = w - 8.0, y = 6.0}, Palette.ovenDark(), 6)
                 |> Render.rounded(2.0)) ::
-            at(x + 6.0, y + 18.0, Render.solidBox({x = w - 12.0, y = 22.0}, Palette.ovenDark(), 6)
+            at(x + 6.0, y + 18.0, Render.box({x = w - 12.0, y = 22.0}, Palette.ovenDark(), 6)
                 |> Render.rounded(3.0)) ::
-            at(x + 8.0, y + 20.0, Render.solidBox({x = w - 16.0, y = 18.0}, Palette.ovenWindow(), 7)
+            at(x + 8.0, y + 20.0, Render.box({x = w - 16.0, y = 18.0}, Palette.ovenWindow(), 7)
                 |> Render.rounded(2.0)) ::
-            at(x + 4.0, y + 13.0, Render.solidBox({x = w - 8.0, y = 2.5}, Palette.metal(), 6)) ::
-            at(x + 4.0, y + h, Render.solidBox({x = 5.0, y = 4.0}, Palette.ovenDark(), 5)) ::
-            at(x + w - 9.0, y + h, Render.solidBox({x = 5.0, y = 4.0}, Palette.ovenDark(), 5)) :: Nil,
+            at(x + 4.0, y + 13.0, Render.box({x = w - 8.0, y = 2.5}, Palette.metal(), 6)) ::
+            at(x + 4.0, y + h, Render.box({x = 5.0, y = 4.0}, Palette.ovenDark(), 5)) ::
+            at(x + w - 9.0, y + h, Render.box({x = 5.0, y = 4.0}, Palette.ovenDark(), 5)) :: Nil,
             glow))
 
-    def at(x: Float64, y: Float64, item: Render.RenderItem): Render.Placed =
+    def at(x: Float64, y: Float64, item: Render.Item): Render.PlacedItem =
         { at = {x = x, y = y}, item = item }
 }

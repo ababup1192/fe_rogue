@@ -29,7 +29,7 @@ FLIX_TEST := $(CURDIR)/bin/flix
 
 # 全パッケージ共通のバージョン (lockstep)。sync 先ディレクトリ名や release の
 # asset 名に使う。make bump FROM=x TO=y で各 flix.toml と一緒に上げる。
-VERSION := 0.1.2
+VERSION := 0.1.3
 
 RENDER_GL_DIR       := render_gl
 RENDER_GL_FPKG_SRC  := $(RENDER_GL_DIR)/artifact/render_gl.fpkg
@@ -77,13 +77,15 @@ ENGINE_FULL_TOML_NAME := flix_game_engine-$(VERSION).toml
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test bake release bump
+.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par release bump
 
 help:
 	@echo "Targets:"
 	@echo "  make test                 全パッケージ (engine系 + examples) のテストを headless で実行"
+	@echo "  make test-par             同上を並列実行 (壁時計 ≈ fe_rogue 1本分。ログは .test-logs/)"
 	@echo "  make test-<name>          1 つだけテスト (例: make test-fe_rogue / make test-engine)"
 	@echo "  make bake                 bake ターゲットを持つ全 example の生成物を焼き直す"
+	@echo "  make bake-par             同上を並列実行"
 	@echo "  make sync                 engine / render_gl / engine_world / engine_tools を build-pkg し、各依存先に配布"
 	@echo "  make sync-render-gl       render_gl だけ build-pkg & 配布 (examples へ)"
 	@echo "  make sync-engine          engine だけ build-pkg & 配布 (render_gl / engine_world / engine_tools / examples へ)"
@@ -129,6 +131,27 @@ test:
 		fi \
 	done
 
+# 並列テスト。各パッケージは独立 (別ディレクトリ・別 JVM) なので同時に回せて、
+# 壁時計は最遅パッケージ (fe_rogue) 1本分まで縮む。ログは .test-logs/ にパッケージ別で残し、
+# 赤があれば最後にそのログ末尾を表示して exit 1。並列数は TEST_PAR_JOBS で変えられる。
+TEST_PAR_JOBS ?= 6
+test-par:
+	@mkdir -p .test-logs; rm -f .test-logs/*.log .test-logs/*.fail; \
+	printf '%s\n' $(TEST_DIRS) | xargs -P $(TEST_PAR_JOBS) -I{} sh -c ' \
+		dir="{}"; [ -f "$$dir/flix.toml" ] || exit 0; \
+		name=$$(printf "%s" "$$dir" | tr / _); \
+		if (cd "$$dir" && $(FLIX_TEST) test) > ".test-logs/$$name.log" 2>&1; then \
+			echo "[test-par] PASS $$dir"; \
+		else \
+			echo "[test-par] FAIL $$dir"; touch ".test-logs/$$name.fail"; \
+		fi'; \
+	if ls .test-logs/*.fail > /dev/null 2>&1; then \
+		echo "===== 失敗したパッケージのログ末尾 ====="; \
+		for f in .test-logs/*.fail; do base=$${f%.fail}; echo "--- $$base"; tail -40 "$$base.log"; done; \
+		exit 1; \
+	fi; \
+	echo "[test-par] all green"
+
 # ── bake ──────────────────────────────────────────────────
 # 各 example のギャラリー・効果音などの生成物を一括で焼き直す。
 # 対象は「Makefile に bake ターゲットを持つ example」だけ
@@ -140,6 +163,26 @@ bake:
 			(cd "$$dir" && make bake) || exit 1; \
 		fi \
 	done
+
+# 並列 bake。example 同士は生成物が交わらないので同時に焼ける。ログ・失敗の扱いは test-par と同じ。
+BAKE_PAR_JOBS ?= 4
+bake-par:
+	@mkdir -p .test-logs; rm -f .test-logs/bake-*.log .test-logs/bake-*.fail; \
+	for dir in examples/*/; do \
+		if [ -f "$$dir/Makefile" ] && grep -q "^bake:" "$$dir/Makefile"; then echo "$$dir"; fi; \
+	done | xargs -P $(BAKE_PAR_JOBS) -I{} sh -c ' \
+		dir="{}"; name=$$(basename "$$dir"); \
+		if (cd "$$dir" && make bake) > ".test-logs/bake-$$name.log" 2>&1; then \
+			echo "[bake-par] DONE $$dir"; \
+		else \
+			echo "[bake-par] FAIL $$dir"; touch ".test-logs/bake-$$name.fail"; \
+		fi'; \
+	if ls .test-logs/bake-*.fail > /dev/null 2>&1; then \
+		echo "===== 失敗した bake のログ末尾 ====="; \
+		for f in .test-logs/bake-*.fail; do base=$${f%.fail}; echo "--- $$base"; tail -40 "$$base.log"; done; \
+		exit 1; \
+	fi; \
+	echo "[bake-par] all done"
 
 # 個別テスト: make test-fe_rogue (examples/ を先に探し、無ければルート直下のパッケージ名)
 test-%:
@@ -196,18 +239,19 @@ release: sync test
 	  "$(ENGINE_FULL_TOML_SRC)#$(ENGINE_FULL_TOML_NAME)"
 
 # ── バージョン更新 (lockstep) ─────────────────────────────
-# 5パッケージの flix.toml の [package] version と、パッケージ間・examples の
+# 5パッケージの flix.toml の [package] version と、パッケージ間・examples/templates の
 # 自パッケージ依存参照の version を一括で上げる。flix コンパイラ版 (flix = "...") と
 # flix-random など他リポ依存は触らない。使い方: make bump FROM=0.1.0 TO=0.1.1
+# sed でなく perl なのは BSD/GNU の -i の非互換を踏まないため (toml は ASCII なので byte 処理で安全)。
 bump:
 	@test -n "$(FROM)" && test -n "$(TO)" || { echo "usage: make bump FROM=0.1.0 TO=0.1.1"; exit 1; }
 	@for f in $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR) $(ENGINE_FULL_DIR); do \
-		sed -i -E 's/^(version[[:space:]]*=[[:space:]]*)"$(FROM)"/\1"$(TO)"/' "$$f/flix.toml"; \
+		perl -pi -e 's/^(version\s*=\s*)"\Q$(FROM)\E"/$${1}"$(TO)"/' "$$f/flix.toml"; \
 	done
 	@for f in $(ENGINE_DIR)/flix.toml $(RENDER_GL_DIR)/flix.toml $(ENGINE_WORLD_DIR)/flix.toml $(ENGINE_TOOLS_DIR)/flix.toml $(ENGINE_FULL_DIR)/flix.toml examples/*/flix.toml templates/*/flix.toml; do \
-		[ -f "$$f" ] && sed -i -E 's|(ababup1192/flix_[a-z_]*"[^"]*version = )"$(FROM)"|\1"$(TO)"|g' "$$f" || true; \
+		[ -f "$$f" ] && perl -pi -e 's|(ababup1192/flix_[a-z_]*"[^"]*version = )"\Q$(FROM)\E"|$${1}"$(TO)"|g' "$$f" || true; \
 	done
-	@sed -i -E 's/^(VERSION := ).*/\1$(TO)/' Makefile
+	@perl -pi -e 's/^(VERSION := ).*/$${1}$(TO)/' Makefile
 	@echo "[bump] $(FROM) -> $(TO) 完了 (flix-random と flix コンパイラ版は据え置き)。"
 
 # ── コミュニティビルド用ルート src/ ──────────────────────

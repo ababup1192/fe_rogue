@@ -65,7 +65,7 @@ mod Char03 {
         }
 
     /// 舞台状態から 1 コマ分の描画列を導く（閉形式・状態なし）。
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         let shape = shapeOf(stage);
         let head = headCenter(stage, shape);
         List.flatten(
@@ -107,7 +107,7 @@ mod Char03 {
                            :: (0.67, -4.2) :: (0.83, -1.2) :: (1.0, 2.4) :: Nil, along) }
 
     /// 背骨 7 玉。頭側が太く腰へ細る。待機は胴がふくらむ呼吸つき。
-    def spineItems(stage: CharStage.Stage, shape: Shape): List[Render.Placed] =
+    def spineItems(stage: CharStage.Stage, shape: Shape): List[Render.PlacedItem] =
         List.range(0, 7) |> List.map(i -> {
             let along = Int32.toFloat64(i) / 6.0;
             let center = spinePoint(stage, shape, along);
@@ -118,7 +118,7 @@ mod Char03 {
         })
 
     /// 腹の若草色: 胴の下側に小さな玉を沿わせる。
-    def bellyItems(stage: CharStage.Stage, shape: Shape): List[Render.Placed] =
+    def bellyItems(stage: CharStage.Stage, shape: Shape): List[Render.PlacedItem] =
         List.range(0, 3) |> List.map(i -> {
             let along = 0.33 + Int32.toFloat64(i) * 0.17;
             let center = spinePoint(stage, shape, along);
@@ -136,7 +136,7 @@ mod Char03 {
           y = front#y - 0.8 - 3.5 * shape#arch }
 
     /// 頭・黄色い目・縦スリットの瞳・待機の舌チロチロ。
-    def headItems(stage: CharStage.Stage, head: Vec2.Vec2): List[Render.Placed] =
+    def headItems(stage: CharStage.Stage, head: Vec2.Vec2): List[Render.PlacedItem] =
         let face = stage#facing;
         let tongue = match stage#mode {
             case Mode.IdleMode =>
@@ -161,7 +161,7 @@ mod Char03 {
     // ── 尻尾（背中の上に巻く・ダッシュで流れ・スキッドで頭上へ振り上がる）──
 
     /// 尻尾 6 玉。腰の玉から相対オフセットの列を体形で選んで混ぜる。
-    def tailItems(stage: CharStage.Stage, shape: Shape): List[Render.Placed] =
+    def tailItems(stage: CharStage.Stage, shape: Shape): List[Render.PlacedItem] =
         let face = stage#facing;
         let hip = spinePoint(stage, shape, 1.0);
         let dashK = match stage#mode {
@@ -203,7 +203,7 @@ mod Char03 {
     // ── 四肢（近側 2 本 + 奥側 2 本のがに股）──
 
     /// 脚 4 本のうち近側か奥側かを描く。足は距離駆動のトロット（前後で対角の位相）。
-    def legItems(stage: CharStage.Stage, shape: Shape, near: Bool): List[Render.Placed] =
+    def legItems(stage: CharStage.Stage, shape: Shape, near: Bool): List[Render.PlacedItem] =
         let face = stage#facing;
         let strideAmp = Float64.min(1.0, Float64.abs(stage#vx) / 160.0);
         let gait = stage#pos#x * 0.13;
@@ -236,7 +236,7 @@ mod Char03 {
     // ── ダッシュ演出: ぺたぺた光る足跡（地面に貼り付いて後ろへ流れる）──
 
     /// 足跡は地面座標に量子化してあるので、走っても地面に貼り付いたまま薄れて消える。
-    def dashPrints(stage: CharStage.Stage): List[Render.Placed] =
+    def dashPrints(stage: CharStage.Stage): List[Render.PlacedItem] =
         match stage#mode {
             case Mode.DashMode =>
                 let face = stage#facing;
@@ -256,7 +256,7 @@ mod Char03 {
     // ── 滑空の膜（落下だけ・薄く張る）──
 
     /// ムササビ様の皮膜。落下で体の下に薄く張り、他の区分では描かない。
-    def membraneItems(stage: CharStage.Stage, shape: Shape): List[Render.Placed] =
+    def membraneItems(stage: CharStage.Stage, shape: Shape): List[Render.PlacedItem] =
         if (shape#splay < 0.01)
             Nil
         else {

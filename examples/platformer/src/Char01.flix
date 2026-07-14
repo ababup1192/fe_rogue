@@ -9,7 +9,7 @@ mod Char01 {
     pub def name(): String = "01 HERO"
 
     /// キャラクターラボの唯一のインターフェイス: Stage → 足元中心ローカルの描画パーツ列。
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         let pose = poseOf(stage#mode);
         let look = { pose = pose,
                      frame = frameOf(pose, stage),

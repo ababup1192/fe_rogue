@@ -30,7 +30,7 @@ mod Char12 {
         tailDir = Float64    // 髪とスカーフの流れ（-1=後方 / +1=前方）
     }
 
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         match stage#mode {
             case CharStage.Mode.IdleMode => body(stage, idlePose(stage))
             case CharStage.Mode.RunMode  => body(stage, runPose(stage))
@@ -102,7 +102,7 @@ mod Char12 {
 
     // ── 体の組み立て ──
 
-    def body(st: CharStage.Stage, p: Pose): List[Render.Placed] =
+    def body(st: CharStage.Stage, p: Pose): List[Render.PlacedItem] =
         let hipY = -9.0 + p#bob + p#sink;
         let shX = 0.4;                       // 胸を張って前傾しないのが踊り子の芯
         let shY = hipY - 6.5;
@@ -130,12 +130,12 @@ mod Char12 {
             Nil)
 
     /// 脚: 腰から足先まで 1 本の真っ直ぐな線 + 舞踏靴。foot#y を上げるとつま先が伸びる。
-    def legLine(st: CharStage.Stage, hipY: Float64, foot: Vec2.Vec2, w: Float64, z: Int32): List[Render.Placed] =
+    def legLine(st: CharStage.Stage, hipY: Float64, foot: Vec2.Vec2, w: Float64, z: Int32): List[Render.PlacedItem] =
         limb(st, 0.0, hipY, foot#x, foot#y - 0.5, w, skinC(), z) ::
         boxAt(st, foot#x + 0.8, foot#y - 0.5, 2.4, 1.1, underC(), z) :: Nil
 
     /// 腕: 肘を持ち上げた弧を描く 2 節（バレエのポール・ド・ブラ）。
-    def arm(st: CharStage.Stage, shX: Float64, shY: Float64, hand: Vec2.Vec2, z: Int32): List[Render.Placed] =
+    def arm(st: CharStage.Stage, shX: Float64, shY: Float64, hand: Vec2.Vec2, z: Int32): List[Render.PlacedItem] =
         let elX = shX + (hand#x - shX) * 0.5;
         let elY = shY + (hand#y - shY) * 0.5 - 1.6;
         limb(st, shX, shY, elX, elY, 1.6, skinC(), z) ::
@@ -144,7 +144,7 @@ mod Char12 {
 
     /// スカート 2 枚重ね: 表（桃）+ 下履き（白・裾から 1px 覗く）。
     /// flare で広がり・sweep で流れ・hemLift でめくれ上がりを閉形式に受ける。
-    def skirt(st: CharStage.Stage, hipY: Float64, p: Pose): List[Render.Placed] =
+    def skirt(st: CharStage.Stage, hipY: Float64, p: Pose): List[Render.PlacedItem] =
         let waistY = hipY - 0.5;
         let hemY = -3.5 + p#bob + p#sink * 0.5 - p#hemLift;
         let half = 5.2 + p#flare;
@@ -157,7 +157,7 @@ mod Char12 {
                underC(), 9) :: Nil
 
     /// ポニーテール: 先細りの珠 3 つが速さに応じた振幅で波打つ。tailDir で前後に流れる。
-    def ponytail(st: CharStage.Stage, bx: Float64, by: Float64, dir: Float64): List[Render.Placed] =
+    def ponytail(st: CharStage.Stage, bx: Float64, by: Float64, dir: Float64): List[Render.PlacedItem] =
         let amp = 1.0 + Float64.abs(st#vx) * 0.006;
         (0.0 :: 1.0 :: 2.0 :: Nil) |> List.map(i -> {
             let wv = Curve.triWave(st#t * 2.6 + i * 0.22) * amp;
@@ -165,7 +165,7 @@ mod Char12 {
         })
 
     /// 肩のスカーフ 2 節。髪と同じ向きに、少し遅れた位相で流れる。
-    def scarf(st: CharStage.Stage, bx: Float64, by: Float64, dir: Float64): List[Render.Placed] =
+    def scarf(st: CharStage.Stage, bx: Float64, by: Float64, dir: Float64): List[Render.PlacedItem] =
         let amp = 1.2 + Float64.abs(st#vx) * 0.008;
         let w1 = Curve.triWave(st#t * 3.4) * amp;
         let w2 = Curve.triWave(st#t * 3.4 + 0.3) * amp * 1.5;
@@ -175,7 +175,7 @@ mod Char12 {
     // ── 演出 ──
 
     /// ダッシュ演出: 背後に波打つ風のリボン 3 節。スカーフの残り香が空に描かれる。
-    def windRibbon(st: CharStage.Stage): List[Render.Placed] =
+    def windRibbon(st: CharStage.Stage): List[Render.PlacedItem] =
         let baseA = 0.2 + band(st) * 0.4;
         (1.0 :: 2.0 :: 3.0 :: Nil) |> List.map(kf -> {
             let w0 = Curve.triWave(st#t * 4.2 - kf * 0.33) * 3.0;
@@ -186,7 +186,7 @@ mod Char12 {
         })
 
     /// スキッドの滑り筋: つま先の下に白い擦過線が 2 本伸びる（砂埃は立てない主義）。
-    def slideStreaks(st: CharStage.Stage): List[Render.Placed] =
+    def slideStreaks(st: CharStage.Stage): List[Render.PlacedItem] =
         let u = clamp01(st#modeT / 0.35);
         let a = RenderUtil.f32(0.5 * (1.0 - u));
         fadePlaced(a, boxAt(st, 4.0, -0.5, 8.0, 0.8, whiteC(), 8)) ::
@@ -194,7 +194,7 @@ mod Char12 {
         fadePlaced(a, circleAt(st, 8.8, -1.8, 1.4, whiteC(), 12)) :: Nil
 
     /// 着地の風の輪: 足元に細い白線がふわっと広がって消える。
-    def landRing(st: CharStage.Stage): List[Render.Placed] =
+    def landRing(st: CharStage.Stage): List[Render.PlacedItem] =
         let u = clamp01(st#modeT / 0.14);
         if (u >= 1.0) Nil
         else {
@@ -206,25 +206,25 @@ mod Char12 {
 
     /// 中心 (cx, cy)・寸法 (w, h) の箱。
     def boxAt(st: CharStage.Stage, cx: Float64, cy: Float64, w: Float64, h: Float64,
-              color: Color, z: Int32): Render.Placed =
+              color: Color, z: Int32): Render.PlacedItem =
         { at = { x = st#pos#x + st#facing * cx - w / 2.0, y = st#pos#y + cy - h / 2.0 },
           item = Render.box({ x = w, y = h }, color, z) }
 
     /// 中心 (cx, cy)・半径 r の円。
     def circleAt(st: CharStage.Stage, cx: Float64, cy: Float64, r: Float64,
-                 color: Color, z: Int32): Render.Placed =
+                 color: Color, z: Int32): Render.PlacedItem =
         { at = { x = st#pos#x + st#facing * cx - r, y = st#pos#y + cy - r },
           item = Render.circle(r, color, z) }
 
     /// 相対頂点列を facing で鏡映して置く（凸多角形・反転時は巻き順も戻す）。
-    def polyAt(st: CharStage.Stage, verts: List[Vec2.Vec2], color: Color, z: Int32): Render.Placed =
+    def polyAt(st: CharStage.Stage, verts: List[Vec2.Vec2], color: Color, z: Int32): Render.PlacedItem =
         let vs = List.map(v -> { x = st#facing * v#x, y = v#y }, verts);
         let ordered = if (st#facing >= 0.0) vs else List.reverse(vs);
         { at = { x = st#pos#x, y = st#pos#y }, item = Render.polygon(ordered, color, z) }
 
     /// (x0,y0)→(x1,y1) を結ぶ太さ w の棒。手足・布のひと節。
     def limb(st: CharStage.Stage, x0: Float64, y0: Float64, x1: Float64, y1: Float64,
-             w: Float64, color: Color, z: Int32): Render.Placed =
+             w: Float64, color: Color, z: Int32): Render.PlacedItem =
         let dx = x1 - x0;
         let dy = y1 - y0;
         let len = Float64.max(0.001, Vec2.sqrt(dx * dx + dy * dy));
@@ -236,7 +236,7 @@ mod Char12 {
 
     // ── 小物ヘルパ ──
 
-    def fadePlaced(a: Float32, placed: Render.Placed): Render.Placed =
+    def fadePlaced(a: Float32, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.fade(a, placed#item) | placed }
 
     def clamp01(v: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, v))

@@ -29,7 +29,7 @@ mod Char11 {
         boxSwing = Float64   // 文箱の慣性振れ（-で後ろへ遅れ / +で前へ飛び出す）
     }
 
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         match stage#mode {
             case CharStage.Mode.IdleMode => List.append(body(stage, idlePose(stage)), uchiwa(stage))
             case CharStage.Mode.RunMode  => body(stage, runPose(stage))
@@ -99,7 +99,7 @@ mod Char11 {
 
     // ── 体の組み立て ──
 
-    def body(st: CharStage.Stage, p: Pose): List[Render.Placed] =
+    def body(st: CharStage.Stage, p: Pose): List[Render.PlacedItem] =
         let hipY = -11.0 + p#sink;
         let shX = p#lean;
         let shY = hipY - 9.0 + p#sink * 0.3;
@@ -126,7 +126,7 @@ mod Char11 {
             Nil)
 
     /// 脚: 腰→膝→足の 2 節。膝は常に進行方向へ曲がる。脛は白の脚絆・足は草鞋。
-    def leg(st: CharStage.Stage, hipY: Float64, foot: Vec2.Vec2, z: Int32): List[Render.Placed] =
+    def leg(st: CharStage.Stage, hipY: Float64, foot: Vec2.Vec2, z: Int32): List[Render.PlacedItem] =
         let kneeX = foot#x * 0.5 + 1.8;
         let kneeY = (hipY + foot#y) * 0.5 - 0.4;
         limb(st, 0.0, hipY, kneeX, kneeY, 2.6, skinC(), z) ::
@@ -134,7 +134,7 @@ mod Char11 {
         boxAt(st, foot#x + 0.9, foot#y - 0.7, 3.2, 1.4, strawC(), z) :: Nil
 
     /// 腕: 袖（半纏色）→前腕（肌）→拳。肘はやや下がる労働者の振り。
-    def arm(st: CharStage.Stage, shX: Float64, shY: Float64, hand: Vec2.Vec2, z: Int32): List[Render.Placed] =
+    def arm(st: CharStage.Stage, shX: Float64, shY: Float64, hand: Vec2.Vec2, z: Int32): List[Render.PlacedItem] =
         let elX = shX + (hand#x - shX) * 0.45;
         let elY = shY + (hand#y - shY) * 0.5 + 1.6;
         limb(st, shX, shY, elX, elY, 2.2, coatC(), z) ::
@@ -142,7 +142,7 @@ mod Char11 {
         circleAt(st, hand#x, hand#y, 1.2, skinC(), z) :: Nil
 
     /// 鉢巻の尾 2 節。走りでは後方へ、スキッドでは慣性で前方へ流れる。
-    def hachimakiTails(st: CharStage.Stage, bx: Float64, by: Float64, dir: Float64, flap: Float64): List[Render.Placed] =
+    def hachimakiTails(st: CharStage.Stage, bx: Float64, by: Float64, dir: Float64, flap: Float64): List[Render.PlacedItem] =
         let w1 = Curve.triWave(st#t * 3.1) * 1.4 * flap;
         let w2 = Curve.triWave(st#t * 3.1 + 0.35) * 2.2 * flap;
         limb(st, bx, by, bx + dir * 4.2, by - 1.0 + w1, 1.3, redC(), 9) ::
@@ -150,7 +150,7 @@ mod Char11 {
 
     /// 天秤棒と文箱。前手で握り、後端の吊り紐から御用の封つき文箱が下がる。
     /// swing が文箱の慣性 — 走ると遅れ、スキッドで前へ振り出す。
-    def poleAndBox(st: CharStage.Stage, shX: Float64, shY: Float64, swing: Float64): List[Render.Placed] =
+    def poleAndBox(st: CharStage.Stage, shX: Float64, shY: Float64, swing: Float64): List[Render.PlacedItem] =
         let gripX = shX + 4.6;
         let gripY = shY + 0.6;
         let tipX = shX - 8.5;
@@ -167,7 +167,7 @@ mod Char11 {
     // ── 演出 ──
 
     /// ダッシュ演出: 背後に巻き上がる砂塵の壁。遠いほど大きく薄い（速さで濃くなる）。
-    def sandWall(st: CharStage.Stage): List[Render.Placed] =
+    def sandWall(st: CharStage.Stage): List[Render.PlacedItem] =
         let strength = 0.25 + band(st) * 0.45;
         (1.0 :: 2.0 :: 3.0 :: 4.0 :: Nil) |> List.map(kf -> {
             let a = RenderUtil.f32(Float64.max(0.05, strength * (1.0 - kf * 0.18)));
@@ -175,7 +175,7 @@ mod Char11 {
         })
 
     /// スキッドの土蹴り: 前足の先へ砂粒が飛び、足元に白い擦過線が残る。
-    def skidDirt(st: CharStage.Stage): List[Render.Placed] =
+    def skidDirt(st: CharStage.Stage): List[Render.PlacedItem] =
         let u = clamp01(st#modeT / 0.35);
         let a = RenderUtil.f32(0.5 * (1.0 - u));
         fadePlaced(a, circleAt(st, 8.0 + u * 1.0, -2.0 - u * 3.0, 2.0, dustC(), 12)) ::
@@ -183,7 +183,7 @@ mod Char11 {
         fadePlaced(a, boxAt(st, 3.0, -0.6, 7.0, 0.9, wrapC(), 8)) :: Nil
 
     /// 着地の土煙: 左右へひと吹き（0.14 秒で消える）。
-    def landDust(st: CharStage.Stage): List[Render.Placed] =
+    def landDust(st: CharStage.Stage): List[Render.PlacedItem] =
         let u = clamp01(st#modeT / 0.14);
         if (u >= 1.0) Nil
         else {
@@ -193,7 +193,7 @@ mod Char11 {
         }
 
     /// 待機の団扇（空き手の位置に追従してぱたぱた動く）。
-    def uchiwa(st: CharStage.Stage): List[Render.Placed] =
+    def uchiwa(st: CharStage.Stage): List[Render.PlacedItem] =
         let hand = idleHand(st);
         boxAt(st, hand#x + 1.2, hand#y - 2.2 + 0.6, 3.0, 2.4, wrapC(), 12) :: Nil
 
@@ -201,25 +201,25 @@ mod Char11 {
 
     /// 中心 (cx, cy)・寸法 (w, h) の箱。
     def boxAt(st: CharStage.Stage, cx: Float64, cy: Float64, w: Float64, h: Float64,
-              color: Color, z: Int32): Render.Placed =
+              color: Color, z: Int32): Render.PlacedItem =
         { at = { x = st#pos#x + st#facing * cx - w / 2.0, y = st#pos#y + cy - h / 2.0 },
           item = Render.box({ x = w, y = h }, color, z) }
 
     /// 中心 (cx, cy)・半径 r の円。
     def circleAt(st: CharStage.Stage, cx: Float64, cy: Float64, r: Float64,
-                 color: Color, z: Int32): Render.Placed =
+                 color: Color, z: Int32): Render.PlacedItem =
         { at = { x = st#pos#x + st#facing * cx - r, y = st#pos#y + cy - r },
           item = Render.circle(r, color, z) }
 
     /// 相対頂点列を facing で鏡映して置く（凸多角形・反転時は巻き順も戻す）。
-    def polyAt(st: CharStage.Stage, verts: List[Vec2.Vec2], color: Color, z: Int32): Render.Placed =
+    def polyAt(st: CharStage.Stage, verts: List[Vec2.Vec2], color: Color, z: Int32): Render.PlacedItem =
         let vs = List.map(v -> { x = st#facing * v#x, y = v#y }, verts);
         let ordered = if (st#facing >= 0.0) vs else List.reverse(vs);
         { at = { x = st#pos#x, y = st#pos#y }, item = Render.polygon(ordered, color, z) }
 
     /// (x0,y0)→(x1,y1) を結ぶ太さ w の棒。手足・棒・布のひと節。
     def limb(st: CharStage.Stage, x0: Float64, y0: Float64, x1: Float64, y1: Float64,
-             w: Float64, color: Color, z: Int32): Render.Placed =
+             w: Float64, color: Color, z: Int32): Render.PlacedItem =
         let dx = x1 - x0;
         let dy = y1 - y0;
         let len = Float64.max(0.001, Vec2.sqrt(dx * dx + dy * dy));
@@ -231,7 +231,7 @@ mod Char11 {
 
     // ── 小物ヘルパ ──
 
-    def fadePlaced(a: Float32, placed: Render.Placed): Render.Placed =
+    def fadePlaced(a: Float32, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.fade(a, placed#item) | placed }
 
     def clamp01(v: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, v))

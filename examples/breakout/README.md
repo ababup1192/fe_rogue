@@ -97,7 +97,7 @@ Step / View / Sfx は純粋関数なので、テストとギャラリーが同�
 | `CollisionShape2D` / `GameEngine.*` / `FontAtlas` | `engine/` | エンジンの契約と基本型（当たり判定の形・キー・描画命令・フォント） |
 | `EntityId` / `Physics2D`（integrate/detect/separate/bounce） | `engine_world/` | 物のidと、物理の 4 つの純関数。積分 → 衝突検出 → めり込み解消 → 反射 |
 | `CameraRig` | `engine_world/` | カメラ（オフセット）と trauma 式シェイクの式 |
-| `Render` / `Placed` | `engine_world/` | 「(置き場所, 見せたい物)」の語彙と描画命令への変換 |
+| `Render` / `PlacedItem` | `engine_world/` | 「(置き場所, 見せたい物)」の語彙と描画命令への変換 |
 | `Fx` / `Quad` / `Curve` / `Hash01` | `engine_world/` | 破片・四角形・補間・ノイズの純粋な計算 |
 | `Replay` | `engine_world/` | 入力の列で update を最後まで流す（テストと GIF の共通駆動） |
 | `SfxSynth` / `SoftRaster` / `GifEncoder` | `engine_tools/` | 音の合成・画面なし描画・GIF 書き出し |
@@ -134,7 +134,7 @@ Effects and Handlers を参照してください。
 ボールだけ飾るにはヘルパーをほどいて item 側に修飾を繋ぐ:
 
 ```flix
-def ballBoxes(core: Field.GameCore): List[Render.Placed] =
+def ballBoxes(core: Field.GameCore): List[Render.PlacedItem] =
     let r = Field.ballRadius();
     ({ x = core#ballPos#x - r, y = core#ballPos#y - r },
      Render.circle(r, Palette.ball(), zBall()) |> Render.outline(Palette.titleText(), 0.7)) :: Nil

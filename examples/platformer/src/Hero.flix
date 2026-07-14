@@ -121,9 +121,9 @@ mod Hero {
             { cx = p#cx * look#facing * sx, cy = p#cy * sy, w = w, h = h, r = r | p }
         })
 
-    /// パーツをワールド座標の Placed へ。zBase はプレイヤー層（残像は低い層を渡して
+    /// パーツをワールド座標の PlacedItem へ。zBase はプレイヤー層（残像は低い層を渡して
     /// 本体の下に重ねる）。足元線 = 当たり判定の円の下端に全パーツを吊るす。
-    pub def draw(zBase: Int32, pos: Vec2.Vec2, look: Look): List[Render.Placed] =
+    pub def draw(zBase: Int32, pos: Vec2.Vec2, look: Look): List[Render.PlacedItem] =
         let feetY = pos#y + Field.playerRadius();
         parts(look) |> List.map(p -> {
             let topLeft = { x = pos#x + p#cx - p#w / 2.0, y = feetY - p#cy - p#h / 2.0 };

@@ -40,7 +40,7 @@ mod Items {
     }
 
     /// `center` を中心に `size` px でアイコン一式を返す（角丸ボックス + 曲線 + 文字の混成）。
-    pub def icon(kind: Kind, center: Vec2.Vec2, size: Float64, atlas: FontAtlas): List[Render.Placed] =
+    pub def icon(kind: Kind, center: Vec2.Vec2, size: Float64, atlas: FontAtlas): List[Render.PlacedItem] =
         let s = size / 16.0;
         let tl = { x = center#x - size / 2.0, y = center#y - size / 2.0 };
         let gp = p -> ({ x = tl#x + fst(p) * s, y = tl#y + snd(p) * s }: Vec2.Vec2);
@@ -51,7 +51,7 @@ mod Items {
 
     /// 文字で意味を補強する品物（牛乳パックの MILK ロゴ）。
     def letters(kind: Kind, gp: ((Float64, Float64)) -> Vec2.Vec2, s: Float64,
-                atlas: FontAtlas): List[Render.Placed] =
+                atlas: FontAtlas): List[Render.PlacedItem] =
         match kind {
             case Kind.Milk =>
                 { at = gp((4.8, 7.8)), item = Render.textTinted("MILK", atlas, 3.1 * s, Palette.milkCap(), 3) } :: Nil
@@ -59,7 +59,7 @@ mod Items {
         }
 
     /// 曲線でしか描けないぶん（卵の楕円・魚の尾・ハートと星の本体）。
-    def curves(kind: Kind, gp: ((Float64, Float64)) -> Vec2.Vec2, s: Float64): List[Render.Placed] =
+    def curves(kind: Kind, gp: ((Float64, Float64)) -> Vec2.Vec2, s: Float64): List[Render.PlacedItem] =
         match kind {
             case Kind.Egg =>
                 List.append(
@@ -120,7 +120,7 @@ mod Items {
 
     /// 泡 1 つ（白い丸 + 左上のハイライト）。
     def bubble(gp: ((Float64, Float64)) -> Vec2.Vec2, s: Float64,
-               cx: Float64, cy: Float64, r: Float64): List[Render.Placed] =
+               cx: Float64, cy: Float64, r: Float64): List[Render.PlacedItem] =
         List.append(
             Bezier.convexFill(Bezier.ellipse(gp((cx, cy)), r * s, r * s, 12), Palette.paper(), 2),
             Bezier.convexFill(Bezier.ellipse(gp((cx - r * 0.35, cy - r * 0.35)), r * 0.28 * s,
@@ -128,7 +128,7 @@ mod Items {
 
     /// 星のリング（外側の星の各辺と、中心へ shrink 倍で縮めた内側の星を結ぶクアッド 10 枚）。
     def starRing(center: Vec2.Vec2, rOut: Float64, rIn: Float64, shrink: Float64,
-                 color: Color, z: Int32): List[Render.Placed] =
+                 color: Color, z: Int32): List[Render.PlacedItem] =
         let outer = List.toVector(Bezier.star(center, rOut = rOut, rIn = rIn));
         let inner = outer |> Vector.map(p ->
             ({ x = center#x + (p#x - center#x) * shrink,
@@ -142,7 +142,7 @@ mod Items {
 
     /// 閉じた輪郭をぐるりとなぞる一定幅のリング（クッキーの抜き型用）。
     def strokeLoop(points: List[Vec2.Vec2], width: Float64, color: Color,
-                   z: Int32): List[Render.Placed] =
+                   z: Int32): List[Render.PlacedItem] =
         Bezier.stroke({ spine = List.append(points, List.take(2, points)), color = color, z = z },
             _ -> width)
 
@@ -213,14 +213,14 @@ mod Items {
            c: Color, z: Int32): Part =
         { x = x, y = y, w = w, h = h, r = Float64.min(r, Float64.min(w, h) / 2.0), color = c, z = z }
 
-    def toItem(center: Vec2.Vec2, size: Float64, p: Part): Render.Placed =
+    def toItem(center: Vec2.Vec2, size: Float64, p: Part): Render.PlacedItem =
         let s = size / 16.0;
         let tlx = center#x - size / 2.0;
         let tly = center#y - size / 2.0;
         let pos = {x = tlx + p#x * s, y = tly + p#y * s};
         let dim = {x = p#w * s, y = p#h * s};
         if (p#r <= 0.0)
-            { at = pos, item = Render.solidBox(dim, p#color, p#z) }
+            { at = pos, item = Render.box(dim, p#color, p#z) }
         else
-            { at = pos, item = Render.solidBox(dim, p#color, p#z) |> Render.rounded(p#r * s) }
+            { at = pos, item = Render.box(dim, p#color, p#z) |> Render.rounded(p#r * s) }
 }

@@ -1,7 +1,7 @@
 // RenderWorld — fe_rogue の render-from-World（dodge RenderWorld 相当）。
 // World → render component の draw list → Drawable（共有 lib Render に委譲）。scene-tree を介さない。
 mod RenderWorld {
-    use Render.RenderItem
+    use Render.Item
     use Vec2.Vec2
 
     /// ユニット本体を **sprite ノード無し**で直描きする。在籍・見た目・位置の全てが World 由来
@@ -176,7 +176,7 @@ mod RenderWorld {
         }
 
     /// fog の暗幕（haze）を World render System で描く。frame 共有の「明るい穴」`holesOpt`
-    /// （`Fog.holesNow`）から補集合の矩形（mapRegion/bandDecompose）を組み、solidBox の
+    /// （`Fog.holesNow`）から補集合の矩形（mapRegion/bandDecompose）を組み、box の
     /// Drawable にする。この直描きが唯一の暗幕経路。穴 None（盤面レス画面）は暗幕なし。
     pub def renderFog(holesOpt: Option[List[GridRect]],
                        transform: Projection.ViewTransform): List[GameEngine.Drawable] \ World.WorldQuery =
@@ -377,7 +377,7 @@ mod RenderWorld {
                                transform: Projection.ViewTransform): List[GameEngine.Drawable] =
         let worldTopLeft: Vec2 = {x = center#x + box#offset#x, y = center#y + box#offset#y};
         let screenPos = Projection.applyToWorldPos(transform, worldTopLeft);
-        Render.toDrawables(Render.solidBox(box#size, CursorDriver.cornerColor(), CursorDriver.cornerZIndex()), screenPos)
+        Render.toDrawables(Render.box(box#size, CursorDriver.cornerColor(), CursorDriver.cornerZIndex()), screenPos)
             |> Render.applyCameraScale(transform)
 
     /// 杖・投擲の照準矢印を World render System で直描きする。表示は `StaffAim` / `ThrowAim` フェーズの間だけ。
@@ -395,7 +395,7 @@ mod RenderWorld {
         }
 
     /// 1 つの暗幕グリッド矩形 → box Drawable（camera 適用）。位置・サイズ変換は grid × tileSize。
-    /// solidBox は alpha=1.0 ゆえ fog 用 alpha に上書きし、scale（=ピクセルサイズ）を
+    /// box は alpha=1.0 ゆえ fog 用 alpha に上書きし、scale（=ピクセルサイズ）を
     /// zoom 倍する（unitDraw のスケール処理と対称）。
     def fogRectDrawables(r: GridRect, transform: Projection.ViewTransform): List[GameEngine.Drawable] =
         let s = MapSnapshot.tileSize();
@@ -404,7 +404,7 @@ mod RenderWorld {
         let worldPos: Vec2.Vec2 = {x = posV#x * s, y = posV#y * s};
         let sizePx:   Vec2.Vec2 = {x = sizeV#x * s, y = sizeV#y * s};
         let screenPos = Projection.applyToWorldPos(transform, worldPos);
-        Render.toDrawables(Render.solidBox(sizePx, Fog.fogColor(), Fog.fogZIndex()), screenPos)
+        Render.toDrawables(Render.box(sizePx, Fog.fogColor(), Fog.fogZIndex()), screenPos)
             |> Render.applyCameraScale(transform)
             |> List.map(d -> {alpha = Fog.fogAlpha() | d})
 

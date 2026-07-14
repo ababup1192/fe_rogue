@@ -21,11 +21,11 @@ mod CharGallery {
     /// z 帯: 地面 0 / レーン仕切り 1 / キャラ 10..(各キャラが自分で指定) / ラベル 50。
     def zLabel(): Int32 = 50
 
-    // ── スロット登録（キャラ = Stage → Placed 列の関数 1 本。共通の型は作らない）──
+    // ── スロット登録（キャラ = Stage → PlacedItem 列の関数 1 本。共通の型は作らない）──
 
     /// スロット一覧: (ラベル, draw)。ラベルはレーン上部に描くのでアトラスに載る ASCII で書く
     /// （Xolonium は漢字を持たない）。全 10 枠が実キャラ（候補の設計コンセプトは各 Char モジュール冒頭）。
-    pub def slots(_atlas: FontAtlas): List[(String, CharStage.Stage -> List[Render.Placed])] =
+    pub def slots(_atlas: FontAtlas): List[(String, CharStage.Stage -> List[Render.PlacedItem])] =
         ("01 HERO (CURRENT)", stage -> Char01.draw(stage)) ::
         (Char02.name(), stage -> Char02.draw(stage)) ::
         (Char03.name(), stage -> Char03.draw(stage)) ::
@@ -46,7 +46,7 @@ mod CharGallery {
 
     /// 時刻 t の全レーン。地面は 1 本の帯（全レーン共通）、キャラは各レーン中央の
     /// 足元原点に置く — 全員が同じ stageAt(t) を受け取る。
-    def frameItems(atlas: FontAtlas, t: Float64): List[Render.Placed] =
+    def frameItems(atlas: FontAtlas, t: Float64): List[Render.PlacedItem] =
         let stage = CharStage.stageAt(t);
         let lanes = List.zipWithIndex(slots(atlas)) |> List.flatMap(pair -> {
             let (i, slot) = pair;
@@ -57,8 +57,8 @@ mod CharGallery {
 
     /// レーン 1 本: ラベル + 仕切り線（左端レーン以外）+ キャラ本体（ローカル → レーン座標へ平行移動）。
     def laneItems(atlas: FontAtlas, idx: Int32, name: String,
-                  drawFn: CharStage.Stage -> List[Render.Placed],
-                  stage: CharStage.Stage): List[Render.Placed] =
+                  drawFn: CharStage.Stage -> List[Render.PlacedItem],
+                  stage: CharStage.Stage): List[Render.PlacedItem] =
         let left = Int32.toFloat64(idx) * laneW();
         let originX = left + laneW() / 2.0;
         let label = { at = { x = left + 6.0, y = 8.0 },
@@ -72,7 +72,7 @@ mod CharGallery {
         label :: List.append(sep, body)
 
     /// 地面: 露出上面の草キャップ 4px + 下は土（本編の地形語彙と同じ配色）。
-    def groundItems(): List[Render.Placed] =
+    def groundItems(): List[Render.PlacedItem] =
         let w = Int32.toFloat64(stageW());
         let dirtH = Int32.toFloat64(stageH()) - groundY() - 4.0;
         { at = { x = 0.0, y = groundY() }, item = Render.box({ x = w, y = 4.0 }, Palette.grassTop(), 0) } ::

@@ -70,7 +70,7 @@ mod Char04 {
         }
 
     /// 舞台状態から 1 コマ分の描画列を導く（閉形式・状態なし）。
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         let flight = flightOf(stage);
         let face = stage#facing;
         let bodyCx = stage#pos#x;
@@ -113,7 +113,7 @@ mod Char04 {
 
     /// 頭・複眼・触角 2 本。触角は待機でゆらゆら、しずく形では後ろへなびく。
     def headItems(stage: CharStage.Stage, flight: Flight,
-                  seat: (Float64, Float64) -> Vec2.Vec2): List[Render.Placed] =
+                  seat: (Float64, Float64) -> Vec2.Vec2): List[Render.PlacedItem] =
         let face = stage#facing;
         let head = seat(4.2, -1.0);
         let sway = 0.8 * Curve.triWave(stage#t * 0.6);
@@ -134,7 +134,7 @@ mod Char04 {
 
     /// 腹の上に被さる硬い羽覆い。飛行中は付け根から持ち上がる。
     def elytraItems(flight: Flight,
-                    seat: (Float64, Float64) -> Vec2.Vec2): List[Render.Placed] =
+                    seat: (Float64, Float64) -> Vec2.Vec2): List[Render.PlacedItem] =
         let lift = -1.8 * flight#air - 1.2 * flight#squash;
         let anchor = seat(2.5, -2.0);
         let a = seat(0.5, -3.6 + lift);
@@ -154,7 +154,7 @@ mod Char04 {
     /// 手前の羽。走りは高速ブレ 2 枚重ね、スキッドは前へ突き出す空気ブレーキ、
     /// 落下は傘のようにゆっくり、上昇はたたんで消える、着地は反動でバサッと開く。
     def nearWing(stage: CharStage.Stage, flight: Flight,
-                 seat: (Float64, Float64) -> Vec2.Vec2): List[Render.Placed] =
+                 seat: (Float64, Float64) -> Vec2.Vec2): List[Render.PlacedItem] =
         let shoulder = seat(0.0, -3.0);
         match stage#mode {
             case Mode.JumpMode => Nil
@@ -188,7 +188,7 @@ mod Char04 {
 
     /// 奥の羽。手前より小さく薄く、半拍ずれて羽ばたく。
     def farWing(stage: CharStage.Stage,
-                seat: (Float64, Float64) -> Vec2.Vec2): List[Render.Placed] =
+                seat: (Float64, Float64) -> Vec2.Vec2): List[Render.PlacedItem] =
         let shoulder = seat(0.8, -2.6);
         match stage#mode {
             case Mode.JumpMode => Nil
@@ -211,7 +211,7 @@ mod Char04 {
 
     /// 羽 1 枚: 肩を原点に相対頂点（x は向きで反転）で張る半透明の三角形。
     def wingPoly(shoulder: Vec2.Vec2, face: Float64, tips: List[(Float64, Float64)],
-                 alpha: Float32, layer: Int32): List[Render.Placed] =
+                 alpha: Float32, layer: Int32): List[Render.PlacedItem] =
         { at = { x = shoulder#x, y = shoulder#y },
           item = Render.polygon({ x = 0.0, y = 0.0 }
                          :: (tips |> List.map(tip -> { let (tx, ty) = tip; { x = face * tx, y = ty } })),
@@ -222,7 +222,7 @@ mod Char04 {
 
     /// 脚。地上は踏ん張って立ち、飛行中は後ろへぶら下がり、しずく形では畳む。
     def legItems(stage: CharStage.Stage, flight: Flight,
-                 seat: (Float64, Float64) -> Vec2.Vec2, near: Bool): List[Render.Placed] =
+                 seat: (Float64, Float64) -> Vec2.Vec2, near: Bool): List[Render.PlacedItem] =
         let face = stage#facing;
         let dragK = Float64.min(1.0, Float64.abs(stage#vx) / 280.0);
         let color = darkColor();
@@ -246,7 +246,7 @@ mod Char04 {
     // ── ダッシュ演出: 提灯が曳く光の残跡（体色は変えない）──
 
     /// 少し前の浮き位置をなぞる光の点列。後ろほど小さく薄い。
-    def dashTrail(stage: CharStage.Stage, flight: Flight): List[Render.Placed] =
+    def dashTrail(stage: CharStage.Stage, flight: Flight): List[Render.PlacedItem] =
         match stage#mode {
             case Mode.DashMode =>
                 let face = stage#facing;
@@ -268,7 +268,7 @@ mod Char04 {
     // ── 小さな数学（このキャラ専用）──
 
     /// 細い節: 2 点を幅 width で結ぶ（脚・触角）。
-    def rod(a: Vec2.Vec2, b: Vec2.Vec2, width: Float64, color: Color, layer: Int32): Render.Placed =
+    def rod(a: Vec2.Vec2, b: Vec2.Vec2, width: Float64, color: Color, layer: Int32): Render.PlacedItem =
         let dx = b#x - a#x;
         let dy = b#y - a#y;
         let len = Float64.max(0.001, Vec2.sqrt(dx * dx + dy * dy));

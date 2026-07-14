@@ -23,11 +23,11 @@ mod Char06 {
     def clamp01(v: Float64): Float64 = Float64.min(1.0, Float64.max(0.0, v))
 
     /// 足元中心 base からのオフセットで置く。
-    def at(base: Vec2.Vec2, dx: Float64, dy: Float64, item: Render.RenderItem): Render.Placed =
+    def at(base: Vec2.Vec2, dx: Float64, dy: Float64, item: Render.Item): Render.PlacedItem =
         { at = { x = base#x + dx, y = base#y + dy }, item = item }
 
     /// 足元の照り返し（浮遊している証拠の光だまり）。空中では高さに応じて薄くなる。
-    def groundGlow(base: Vec2.Vec2, strength: Float64): List[Render.Placed] =
+    def groundGlow(base: Vec2.Vec2, strength: Float64): List[Render.PlacedItem] =
         let lift = clamp01((0.0 - base#y) / 60.0);
         let a = RenderUtil.f32(Float64.max(0.0, strength * (1.0 - lift)));
         ({ at = { x = base#x - 9.0, y = -2.0 },
@@ -37,7 +37,7 @@ mod Char06 {
     /// （前傾・後傾を上部のずれで表す）/ ringSway = 吊りリングの揺れ / wS,hS = スカッシュ比 /
     /// panelOpen = ガラス展開量（0 = 閉・空中で開く）。
     def lantern(base: Vec2.Vec2, hover: Float64, capShift: Float64, ringSway: Float64,
-                wS: Float64, hS: Float64, panelOpen: Float64): List[Render.Placed] =
+                wS: Float64, hS: Float64, panelOpen: Float64): List[Render.PlacedItem] =
         let h = hover;
         let capY = 0.0 - h - 14.0 * hS - 2.5 * Float64.min(panelOpen, 1.0);
         let glass =
@@ -77,7 +77,7 @@ mod Char06 {
 
     /// 鬼火本体（芯 + 中身 + 後方へたなびく尾）。tipDx = 尾の先端の相対 x（0 なら尾なし）。
     def wisp(base: Vec2.Vec2, cx: Float64, cy: Float64, coreR: Float64, midR: Float64,
-             tipDx: Float64): List[Render.Placed] =
+             tipDx: Float64): List[Render.PlacedItem] =
         let tail =
             if (Float64.abs(tipDx) <= 0.3) Nil
             else at(base, cx, cy,
@@ -90,7 +90,7 @@ mod Char06 {
         List.flatten(tail :: body :: Nil)
 
     /// 走り・ダッシュで後方へこぼれる火の粉。t と番号だけから位置を導く（閉形式）。
-    def ember(base: Vec2.Vec2, f: Float64, hover: Float64, t: Float64, i: Int32): Render.Placed =
+    def ember(base: Vec2.Vec2, f: Float64, hover: Float64, t: Float64, i: Int32): Render.PlacedItem =
         let fi = Int32.toFloat64(i);
         let dx = 0.0 - f * (2.5 + 3.2 * fi + 1.2 * Curve.triWave(t * 2.3 + fi * 0.37));
         let dy = 0.0 - hover - 7.0 + 2.2 * Curve.triWave(t * 3.1 + fi * 0.71);
@@ -99,7 +99,7 @@ mod Char06 {
 
     // ── 本体 ──
 
-    pub def draw(stage: CharStage.Stage): List[Render.Placed] =
+    pub def draw(stage: CharStage.Stage): List[Render.PlacedItem] =
         let base = stage#pos;
         let f = stage#facing;
         let t = stage#t;

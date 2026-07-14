@@ -1,5 +1,5 @@
 // TestCharConvention — キャラ描画の座標規約 pin: 全キャラの draw は
-// 「足元中心・地面 y = 0 のローカル座標」で Placed を返す（CharStage のヘッダ参照）。
+// 「足元中心・地面 y = 0 のローカル座標」で PlacedItem を返す（CharStage のヘッダ参照）。
 // 呼ぶ側（ラボの laneItems / 本編の View.playerItems）が世界座標へ平行移動する。
 // pos#y に世界座標を足し込むキャラが混ざると本編で画面外へ消えるので、
 // 「pos = (100, 0) で描いた全パーツが足元近傍の帯に収まる」ことを 15 体まとめて検査する。
@@ -13,17 +13,17 @@ mod TestCharConvention {
           mode = mode, modeT = 0.25 }
 
     /// パーツ 1 個が占める範囲 (xLo, xHi, yLo, yHi)。置き場所 + 形の広がり。
-    def partBounds(placed: Render.Placed): (Float64, Float64, Float64, Float64) =
+    def partBounds(placed: Render.PlacedItem): (Float64, Float64, Float64, Float64) =
         let pos = placed#at;
         match placed#item {
-            case Render.RenderItem.Poly(p) =>
+            case Render.Item.Poly(p) =>
                 let xs = p#vertices |> List.map(v -> pos#x + v#x);
                 let ys = p#vertices |> List.map(v -> pos#y + v#y);
                 (Option.getWithDefault(pos#x, List.minimum(xs)),
                  Option.getWithDefault(pos#x, List.maximum(xs)),
                  Option.getWithDefault(pos#y, List.minimum(ys)),
                  Option.getWithDefault(pos#y, List.maximum(ys)))
-            case Render.RenderItem.Box(b) =>
+            case Render.Item.Box(b) =>
                 (pos#x, pos#x + b#size#x, pos#y, pos#y + b#size#y)
             case _ =>
                 (pos#x, pos#x, pos#y, pos#y)

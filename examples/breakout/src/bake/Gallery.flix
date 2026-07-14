@@ -34,7 +34,7 @@ mod Gallery {
 
     /// World の絵に注釈（extra）を重ねて engine の描画コマンドへ投影する。
     def worldCmds(atlas: FontAtlas, world: Field.World,
-                  extra: List[Render.Placed]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+                  extra: List[Render.PlacedItem]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
         Render.draw(List.append(View.frame(atlas, world), extra))
 
     // ── PNG / GIF を焼く（配管は Bakery が担う）──
@@ -53,7 +53,7 @@ mod Gallery {
     /// annotate は各フレームの World から重ねる注釈（SPEED の読みなど。不要なら _ -> Nil）。
     /// 返り値は SnapshotSite 用のフィルムストリップ情報（駒送りビューア）。
     def bakeGif(atlas: FontAtlas, world: Field.World, frames: Int32, stride: Int32,
-                name: String, annotate: Field.World -> List[Render.Placed]): SnapshotSite.Filmstrip \ IO =
+                name: String, annotate: Field.World -> List[Render.PlacedItem]): SnapshotSite.Filmstrip \ IO =
         let film = Replay.timeline(Step.update, Trace.dt(), Trace.flight(frames), world);
         Bakery.bakeGif(config(atlas), film, stride, w -> worldCmds(atlas, w, annotate(w)), name)
 
@@ -84,7 +84,7 @@ mod Gallery {
 
     /// 当たり位置から反射方向 direction（速さ 1）へ、点を等間隔に並べた点線。
     def fanRay(startX: Float64, startY: Float64, direction: Vec2.Vec2,
-               color: Color): List[Render.Placed] =
+               color: Color): List[Render.PlacedItem] =
         List.map(k -> {
             let distance = Int32.toFloat64(k) * 9.0;
             dot({ x = startX + direction#x * distance, y = startY + direction#y * distance }, 2.0, color, 12)
@@ -93,7 +93,7 @@ mod Gallery {
     // ── 見せ場 6 の注釈: ボールの速さの読み ──
 
     /// このフレームのボールの速さを「SPEED nnn」で盤の上部に重ねる（ラリー室の空きスペース）。
-    def speedNote(atlas: FontAtlas, world: Field.World): List[Render.Placed] =
+    def speedNote(atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
         let speed = Trace.ballVelOf(world) |> Option.map(v -> Vec2.length(v)) |> Option.getWithDefault(0.0);
         let reading = Float64.floor(speed + 0.5) |> Float64.tryToInt32 |> Option.getWithDefault(0);
         TextDraw.centered({ text = "SPEED ${reading}", atlas = atlas, size = 14.0,
@@ -102,7 +102,7 @@ mod Gallery {
 
     // ── 描画プリミティブ ──
 
-    def dot(center: Vec2.Vec2, radius: Float64, color: Color, z: Int32): Render.Placed =
+    def dot(center: Vec2.Vec2, radius: Float64, color: Color, z: Int32): Render.PlacedItem =
         { at = { x = center#x - radius, y = center#y - radius }, item = Render.circle(radius, color, z) }
 
     // ── 全部を焼いてサイトを生成する（Bake.all から呼ぶ）──

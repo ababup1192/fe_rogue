@@ -17,6 +17,22 @@
 
 特にコードコメントは、WhyNotを重視し、How, Whatを書かないように。また、実装の由来や旧実装などの歴史背景は、記述しなくて良い。
 
+## 検証・リリースの流儀
+
+テストは絞って速く回す。全量の検証はリリース直前の 1 回だけにする。
+
+- **変更の検証（作業中のループ）**: 変更が波及したパッケージだけ `make test-<name>`、
+  それ以外は `flix check`（コンパイル通過）で足りる。テストを持たないパッケージ
+  （nobi_patissier / templates 等）は常に check のみ。
+- **リリース前の全量ゲート（1回だけ）**: `make test-par`（全パッケージ並列・壁時計 ≈ fe_rogue 1本分・
+  ログは `.test-logs/`）。並列版に不審な挙動があれば逐次の `make test` へフォールバックする。
+- **bake のバイト一致比較は「挙動を変えていない」と主張するリファクタの時だけ**:
+  `make bake-par`（不審なら `make bake`）のあと `git status` で gallery / assets/sfx の差分ゼロを確認する。
+  機能追加リリースでは不要。
+- **リリース手順**: `make bump FROM=x TO=y` → 個別 sync（`make sync` の clean-locks は全 worktree 走査で
+  ハングし得るため、sync-engine 等を個別に）→ 全量ゲート → コミット/push → `gh release create` →
+  lib/ を消したコピーで外部 fetch 検証。
+
 ## スキル一覧
 
 以下、スキルを適宜参照してください。

@@ -29,7 +29,7 @@ mod View {
     // ── frame: フェーズを描画コマンドへ投影する ──
     // タイトルは文字だけ（盤・HUD を出さない）。盤を持つフェーズは盤・ボール・HUD を描き、飛行中だけ
     // 残像を、サーブ待ち/クリア/ゲームオーバーはそれぞれの案内文を重ねる（case は網羅）。
-    pub def frame(atlas: FontAtlas, world: Field.World): List[Render.Placed] =
+    pub def frame(atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
         match world#phase {
             case Field.Phase.Title =>
                 titleTexts(atlas)
@@ -48,8 +48,8 @@ mod View {
     /// 描画物はレイヤーごとに束ね、それぞれのカメラ（cameraOf）を一括適用する: 盤・破片は
     /// World に住むので揺れ、HUD と案内文は Screen に住むので動かない。
     def boardFrame(atlas: FontAtlas, params: GameParameters.Params, core: Field.GameCore,
-                   trail: List[Vec2.Vec2], vel: Vec2.Vec2, overlay: List[Render.Placed]):
-                   List[Render.Placed] =
+                   trail: List[Vec2.Vec2], vel: Vec2.Vec2, overlay: List[Render.PlacedItem]):
+                   List[Render.PlacedItem] =
         let worldCam = cameraOf(Layer.World, core);
         let screenCam = cameraOf(Layer.Screen, core);
         let worldItems = List.flatten(
@@ -88,7 +88,7 @@ mod View {
 
     // ── 壁 ──
 
-    def wallBoxes(core: Field.GameCore): List[Render.Placed] =
+    def wallBoxes(core: Field.GameCore): List[Render.PlacedItem] =
         Field.wallIds() |> List.flatMap(id ->
             match (Map.get(id, core#positions), Map.get(id, core#shapes)) {
                 case (Some(pos), Some(shape)) => rectItems(pos, shape, Palette.wallFace(), zWall())
@@ -97,7 +97,7 @@ mod View {
 
     // ── ブロック（見た目は durabilities から導く）──
 
-    def blockBoxes(core: Field.GameCore): List[Render.Placed] =
+    def blockBoxes(core: Field.GameCore): List[Render.PlacedItem] =
         Map.toList(core#blocks) |> List.flatMap(entry -> {
             let (id, row) = entry;
             match (Map.get(id, core#positions), Map.get(id, core#shapes)) {
@@ -112,7 +112,7 @@ mod View {
     /// durabilities に載っていない = 壊れない金属 / 耐久 2 以上 = 明るい鋼 / 残り 1 のハード = くすんだ鋼 /
     /// 通常（1発）= 行の色。
     def blockItems(center: Vec2.Vec2, size: Vec2.Vec2, row: Int32,
-                   durability: Option[Field.Durability]): List[Render.Placed] =
+                   durability: Option[Field.Durability]): List[Render.PlacedItem] =
         match durability {
             case None    => metalItems(center, size)
             case Some(d) =>
@@ -131,7 +131,7 @@ mod View {
 
     /// 壊れないブロック: 面シェーディング（上端=明・地=中・下端=影）＋四隅のリベット。
     /// 据え付けられた金属が「ここは崩れない」と一目で語る。
-    def metalItems(center: Vec2.Vec2, size: Vec2.Vec2): List[Render.Placed] =
+    def metalItems(center: Vec2.Vec2, size: Vec2.Vec2): List[Render.PlacedItem] =
         let bevel = metalBevel();
         let topLeft = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 };
         let rivets = List.map(corner -> {
@@ -141,10 +141,10 @@ mod View {
                        rivetRadius() * 2.0, Palette.rivet(), zBlock() + 2)
         }, (-1.0, -1.0) :: (1.0, -1.0) :: (1.0, 1.0) :: (-1.0, 1.0) :: Nil);
         List.append(
-            { at = topLeft, item = Render.solidBox(size, Palette.metalFace(), zBlock()) } ::
-            { at = topLeft, item = Render.solidBox({ x = size#x, y = bevel }, Palette.metalTop(), zBlock() + 1) } ::
+            { at = topLeft, item = Render.box(size, Palette.metalFace(), zBlock()) } ::
+            { at = topLeft, item = Render.box({ x = size#x, y = bevel }, Palette.metalTop(), zBlock() + 1) } ::
             { at = { x = topLeft#x, y = topLeft#y + size#y - bevel },
-              item = Render.solidBox({ x = size#x, y = bevel }, Palette.metalShade(), zBlock() + 1) } :: Nil,
+              item = Render.box({ x = size#x, y = bevel }, Palette.metalShade(), zBlock() + 1) } :: Nil,
             rivets)
 
     // ── パドル（面シェーディング＋反射角ゾーンの帯）──
@@ -157,11 +157,11 @@ mod View {
     /// 両端のアクセントゾーンの幅（px）。ここで受けると鋭角＋追加加速。
     def paddleEdgeZoneWidth(): Float64 = 7.0
 
-    def paddleBoxes(core: Field.GameCore): List[Render.Placed] =
+    def paddleBoxes(core: Field.GameCore): List[Render.PlacedItem] =
         paddleItemsAt(Field.paddlePos(core#paddle#x))
 
     /// パドルの絵ひとそろい（中心座標指定）。ゲーム本編とギャラリーの扇形図が共有する。
-    pub def paddleItemsAt(center: Vec2.Vec2): List[Render.Placed] =
+    pub def paddleItemsAt(center: Vec2.Vec2): List[Render.PlacedItem] =
         let halfW = Field.paddleHalfWidth();
         let halfH = Field.paddleHalfHeight();
         let width = halfW * 2.0;
@@ -189,7 +189,7 @@ mod View {
 
     // ── ボール（位置は core#ballPos、形は Field の定数）──
 
-    def ballBoxes(core: Field.GameCore): List[Render.Placed] =
+    def ballBoxes(core: Field.GameCore): List[Render.PlacedItem] =
         circleItem(core#ballPos, Field.ballRadius() * 2.0, Palette.ball(), zBall()) :: Nil
 
     // ── ボールの残像（飛行中の速度と位置リングからの導出）──
@@ -204,7 +204,7 @@ mod View {
     def trailBaseAlpha(): Float64 = 0.7
 
     /// 残像の点ひとつの見た目: age（0=最新 … 1=最古）で縮み・薄まり、色は加速ランプから。
-    def trailDot(pos: Vec2.Vec2, age: Float64, ratio: Float64): Render.Placed =
+    def trailDot(pos: Vec2.Vec2, age: Float64, ratio: Float64): Render.PlacedItem =
         let diameter = trailHeadDiameter() * (1.0 - (1.0 - trailTailScale()) * age);
         let alpha = RenderUtil.f32(trailBaseAlpha() * (1.0 - age));
         { at = { x = pos#x - diameter / 2.0, y = pos#y - diameter / 2.0 },
@@ -212,7 +212,7 @@ mod View {
 
     /// 飛行中のボールの残像。速度 vel は色ランプ（冷→温→熱）に、位置リング trail は点の並びになる。
     def trailBoxes(params: GameParameters.Params, vel: Vec2.Vec2,
-                   trail: List[Vec2.Vec2]): List[Render.Placed] =
+                   trail: List[Vec2.Vec2]): List[Render.PlacedItem] =
         let ratio = Bounce.speedRatioWith({ maxFactor = params#maxSpeedFactor,
                                             speed = Vec2.length(vel), base = Field.ballSpeed() });
         let count = Int32.max(1, params#trailLength);
@@ -230,16 +230,16 @@ mod View {
     def fragSpinMin(): Float64 = 3.0
     def fragSpinSpan(): Float64 = 5.0
 
-    def burstItems(core: Field.GameCore): List[Render.Placed] =
+    def burstItems(core: Field.GameCore): List[Render.PlacedItem] =
         List.flatMap(burstQuads, core#bursts)
 
-    def burstQuads(burst: Field.Burst): List[Render.Placed] =
+    def burstQuads(burst: Field.Burst): List[Render.PlacedItem] =
         Fx.deriveSeeded({ seed = burst#seed, count = fragCount() }, burst#elapsed,
                         (i, rand, t) -> fragmentPiece(burst, i, rand, t))
 
     /// 破片 i、破壊から t 秒目: 自分の方向・速さで飛び散り、少し落ち、回りながら縮んで消える。
     /// 形（原点まわりの回転四角）と置き場所（飛散先の中心）を分けて返す。
-    def fragmentPiece(burst: Field.Burst, i: Int32, rand: Int32 -> Float64, t: Float64): Render.Placed =
+    def fragmentPiece(burst: Field.Burst, i: Int32, rand: Int32 -> Float64, t: Float64): Render.PlacedItem =
         let angle = tau() * rand(0);
         let speed = fragSpeedMin() + fragSpeedSpan() * rand(1);
         let dist = speed * t;
@@ -255,45 +255,45 @@ mod View {
 
     // ── テキスト（HUD と各フェーズのオーバーレイ）──
 
-    def hudTexts(atlas: FontAtlas, core: Field.GameCore): List[Render.Placed] =
+    def hudTexts(atlas: FontAtlas, core: Field.GameCore): List[Render.PlacedItem] =
         { at = { x = 8.0, y = 13.0 },
           item = Render.textTinted("SCORE ${core#score}", atlas, 10.0, Palette.scoreText(), zText()) } ::
         centeredText("LV ${core#level}", atlas, 10.0, Palette.scoreText(), 13.0) ::
         rightText("LIVES ${core#lives}", atlas, 10.0, Palette.scoreText(), Field.designW() - 8.0, 13.0) :: Nil
 
     def rightText(text: String, atlas: FontAtlas, size: Float64, color: Color,
-                  rightX: Float64, y: Float64): Render.Placed =
+                  rightX: Float64, y: Float64): Render.PlacedItem =
         { at = { x = rightX - TextDraw.width(text, atlas, size), y = y },
           item = Render.textTinted(text, atlas, size, color, zText()) }
 
     /// タイトル画面のオーバーレイ: 題字と案内だけ（盤・HUD は出さない）。
-    def titleTexts(atlas: FontAtlas): List[Render.Placed] =
+    def titleTexts(atlas: FontAtlas): List[Render.PlacedItem] =
         centeredText("BREAKOUT", atlas, 32.0, Palette.titleText(), 92.0) ::
         centeredText("PRESS ENTER", atlas, 12.0, Palette.scoreText(), 138.0) :: Nil
 
     /// サーブ待ちの案内。
-    def waitingOverlay(atlas: FontAtlas): List[Render.Placed] =
+    def waitingOverlay(atlas: FontAtlas): List[Render.PlacedItem] =
         centeredText("PRESS SPACE TO LAUNCH", atlas, 11.0, Palette.scoreText(), 160.0) :: Nil
 
     /// クリアのオーバーレイ。
-    def clearedOverlay(atlas: FontAtlas): List[Render.Placed] =
+    def clearedOverlay(atlas: FontAtlas): List[Render.PlacedItem] =
         centeredText("CLEAR!", atlas, 30.0, Palette.clearText(), 104.0) ::
         centeredText("PRESS ENTER", atlas, 12.0, Palette.scoreText(), 146.0) :: Nil
 
     /// ゲームオーバーのオーバーレイ。
-    def gameOverOverlay(atlas: FontAtlas): List[Render.Placed] =
+    def gameOverOverlay(atlas: FontAtlas): List[Render.PlacedItem] =
         centeredText("GAME OVER", atlas, 26.0, Palette.overText(), 104.0) ::
         centeredText("PRESS ENTER", atlas, 12.0, Palette.scoreText(), 146.0) :: Nil
 
     def centeredText(text: String, atlas: FontAtlas, size: Float64, color: Color,
-                     y: Float64): Render.Placed =
+                     y: Float64): Render.PlacedItem =
         TextDraw.centered({ text = text, atlas = atlas, size = size, color = color,
                             z = zText(), centerX = Field.designW() / 2.0, y = y })
 
     // ── 描画プリミティブ ──
 
     /// 中心 center・矩形 shape を塗りつぶすボックス（左上原点へ変換）。円・カプセルは無視。
-    def rectItems(center: Vec2.Vec2, shape: CollisionShape2D, color: Color, z: Int32): List[Render.Placed] =
+    def rectItems(center: Vec2.Vec2, shape: CollisionShape2D, color: Color, z: Int32): List[Render.PlacedItem] =
         match shape {
             case CollisionShape2D.RectShape2D(rect) =>
                 flatBox(center, { x = rect#width, y = rect#height }, color, z) :: Nil
@@ -301,16 +301,14 @@ mod View {
         }
 
     /// 中心指定の単色ボックス。
-    def flatBox(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): Render.Placed =
-        { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
-          item = Render.box(size, color, z) }
+    def flatBox(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): Render.PlacedItem =
+        Render.boxAt(center, size, color, z)
 
     /// 左上指定・高さの半分まで角を丸めたボックス（パドルの丸端の帯）。
-    def roundedBox(topLeft: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): Render.Placed =
+    def roundedBox(topLeft: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): Render.PlacedItem =
         { at = topLeft, item = Render.box(size, color, z) |> Render.rounded(Float64.min(size#x, size#y) / 2.0) }
 
     /// center を中心とする直径 d の塗りつぶし円。
-    def circleItem(center: Vec2.Vec2, d: Float64, color: Color, z: Int32): Render.Placed =
-        { at = { x = center#x - d / 2.0, y = center#y - d / 2.0 },
-          item = Render.circle(d / 2.0, color, z) }
+    def circleItem(center: Vec2.Vec2, d: Float64, color: Color, z: Int32): Render.PlacedItem =
+        Render.circleAt(center, d / 2.0, color, z)
 }

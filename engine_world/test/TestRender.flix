@@ -28,6 +28,43 @@ mod TestRender {
             (d |> Option.map(x -> (x#scale#x, x#scale#y)),
              d |> Option.map(x -> Option.map(s -> s#cornerRadius, x#style))))
 
+    // circleAt: 中心 (10,10)・半径 3 の円は、外接正方形の左上 (7,7) に置かれる。
+    @Test
+    def testCircleAtPlacesByCenter(): Unit \ Assert =
+        let placed = Render.circleAt({ x = 10.0, y = 10.0 }, 3.0, red(), 5);
+        Assert.assertEq(expected = (7.0, 7.0), (placed#at#x, placed#at#y))
+
+    // boxAt: 中心 (10,10)・サイズ 4×6 の矩形は、左上 (8,7) に置かれる。
+    @Test
+    def testBoxAtPlacesByCenter(): Unit \ Assert =
+        let placed = Render.boxAt({ x = 10.0, y = 10.0 }, { x = 4.0, y = 6.0 }, red(), 5);
+        Assert.assertEq(expected = (8.0, 7.0), (placed#at#x, placed#at#y))
+
+    // flipH: 頂点の x が符号反転し（y 不変）、2 回で元に戻る。
+    @Test
+    def testFlipHMirrorsVerticesAndIsInvolutive(): Unit \ Assert =
+        let verts = { x = 4.0, y = 0.0 } :: { x = 0.0, y = 3.0 } :: Nil;
+        let once = Render.flipH(verts);
+        let twice = Render.flipH(once);
+        let headOf = vs -> List.head(vs) |> Option.map(v -> (v#x, v#y));
+        Assert.assertEq(expected = (Some((-4.0, 0.0)), Some((4.0, 0.0))), (headOf(once), headOf(twice)))
+
+    // flipV: 頂点の y が符号反転する（x 不変）。
+    @Test
+    def testFlipVMirrorsVerticesVertically(): Unit \ Assert =
+        let verts = { x = 4.0, y = 3.0 } :: Nil;
+        Assert.assertEq(expected = Some((4.0, -3.0)),
+            List.head(Render.flipV(verts)) |> Option.map(v -> (v#x, v#y)))
+
+    // spriteFlipped: 名前渡しの flip がそのまま Sprite のフィールドに立つ。
+    @Test
+    def testSpriteFlippedSetsFlags(): Unit \ Assert =
+        let flags = match Render.spriteFlipped("hero", 5, { flipH = true, flipV = false }) {
+            case Render.Item.Sprite(s) => Some((s#flipH, s#flipV, s#centered))
+            case _                           => None
+        };
+        Assert.assertEq(expected = Some((true, false, true)), flags)
+
     // 修飾: fade は Box の α を差し替え、rounded は Poly には効かず素通し（Poly は Poly のまま出る）。
     @Test
     def testModifiersApplyAndPassThrough(): Unit \ Assert =
