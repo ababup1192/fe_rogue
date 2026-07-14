@@ -1,6 +1,6 @@
 // Bezier — ベジエ曲線の平坦化と、曲線から作る描画部品（太さ付きの帯・塗りつぶし）。
-// 角丸ボックスだけでは描けない「先細りの首」「しっぽのカーブ」「有機的なブロブ」を、
-// 小さな凸多角形の列（GL の凸制限でもヘッドレスでも安全）として組み立てられる。
+// 角丸ボックスだけでは描けない「先細りの首」「しっぽのカーブ」「有機的なブロブ」を
+// 多角形として組み立てられる（塗りは描画側が耳切りで三角形化するので、凹んだ輪郭もよい）。
 // 利用例: spine = quadratic(付け根, 制御点, 先端, 12);
 //         stroke({ spine = spine, color = 緑, z = 2 }, t -> 5.0 - 3.0 * t)
 mod Bezier {
@@ -56,38 +56,26 @@ mod Bezier {
             List.append(quads, joints)
         }
 
-    /// 凸な輪郭を 1 枚の多角形として塗る（楕円・カプセルなど。扇分割の継ぎ目が出ない）。
-    /// へこみのある形（星など）には fill を使うこと。
+    /// 互換のため残した fill の旧名。新規コードは fill を使う。
     pub def convexFill(outline: List[Vec2.Vec2], color: Color, z: Int32): List[Render.PlacedItem] =
+        fill(outline, color, z)
+
+    /// 閉じた輪郭を 1 枚の多角形として塗る。自己交差しない単純多角形なら深くえぐれた形
+    /// でもよい — 描画側が耳切りで三角形化するので、分割の継ぎ目も出ない。
+    pub def fill(outline: List[Vec2.Vec2], color: Color, z: Int32): List[Render.PlacedItem] =
         if (List.length(outline) < 3)
             Nil
         else
             quadPiece(outline, color, z) :: Nil
 
-    /// 閉じた輪郭を重心からの扇で塗る（重心から全頂点が見える形 — 楕円・しずく・
-    /// まめ型などのブロブ向け。深くえぐれた形には使わない）。
-    pub def fill(outline: List[Vec2.Vec2], color: Color, z: Int32): List[Render.PlacedItem] =
-        let n = List.length(outline);
-        if (n < 3)
-            Nil
-        else {
-            let cx = (outline |> List.foldLeft((acc, p) -> acc + p#x, 0.0)) / Int32.toFloat64(n);
-            let cy = (outline |> List.foldLeft((acc, p) -> acc + p#y, 0.0)) / Int32.toFloat64(n);
-            let center = { x = cx, y = cy };
-            let pts = List.toVector(outline);
-            List.range(0, n) |> List.map(i -> {
-                let a = pointAt(pts, i);
-                let b = pointAt(pts, Int32.modulo(i + 1, n));
-                quadPiece(center :: a :: b :: Nil, color, z)
-            })
-        }
-
     /// まっすぐな太い線（一定幅のストロークの近道）。
+    /// 新規コードは Render.lineSeg を推奨（0.2 で図形の語彙を Render 側へ一本化予定）。
     pub def line(p0: Vec2.Vec2, p1: Vec2.Vec2, width: {width = Float64},
                  color: Color, z: Int32): List[Render.PlacedItem] =
         stroke({ spine = p0 :: p1 :: Nil, color = color, z = z }, _ -> width#width)
 
-    /// 5 芒星の輪郭（上向き。fill に渡す — 星はへこみがあるので convexFill は不可）。
+    /// 5 芒星の輪郭（上向き。fill に渡す）。
+    /// 新規コードは Render.starAt を推奨（0.2 で図形の語彙を Render 側へ一本化予定）。
     pub def star(center: Vec2.Vec2, rOut: {rOut = Float64}, rIn: {rIn = Float64}): List[Vec2.Vec2] =
         List.range(0, 10) |> List.map(i -> {
             let a = -1.5707963267948966 + 3.141592653589793 * Int32.toFloat64(i) / 5.0;
@@ -96,6 +84,7 @@ mod Bezier {
         })
 
     /// 楕円の輪郭（fill に渡す既製の形。segments は 16〜24 で十分丸い）。
+    /// 新規コードは Render.ellipseAt を推奨（0.2 で図形の語彙を Render 側へ一本化予定）。
     pub def ellipse(center: Vec2.Vec2, rx: Float64, ry: Float64,
                     segments: Int32): List[Vec2.Vec2] =
         ellipseRot(center, rx, ry, 0.0, segments)
@@ -130,7 +119,7 @@ mod Bezier {
         let len = Vec2.sqrt(dx * dx + dy * dy);
         if (len <= 0.000001) { x = 1.0, y = 0.0 } else { x = dx / len, y = dy / len }
 
-    /// 凸ピース 1 枚（頂点は絶対座標で渡し、置き場所は原点にする）。
+    /// 輪郭 1 枚ぶんの Poly（頂点は絶対座標で渡し、置き場所は原点にする）。
     def quadPiece(vertices: List[Vec2.Vec2], color: Color, z: Int32): Render.PlacedItem =
         { at = Vec2.zero(), item = Render.polygon(vertices, color, z) }
 }

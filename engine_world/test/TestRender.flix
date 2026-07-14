@@ -129,16 +129,54 @@ mod TestRender {
         let s = Render.starAt(Vec2.zero(), 5, { outer = 21.0, inner = 9.0 }, red(), 0);
         Assert.assertEq(expected = 10, List.length(vertsOf(s)))
 
-    // lineSeg: 4 頂点の quad で、線に直交する辺の長さ = width。
+    // lineQuad: 4 頂点で、両端の幅辺（始点側 v0-v3・終点側 v1-v2）がどちらも width
+    // （斜めの線でも太さが崩れない）。
     @Test
-    def testLineSegQuadWidth(): Unit \ Assert =
-        let l = Render.lineSeg({ x = 0.0, y = 0.0 }, { x = 10.0, y = 0.0 }, 4.0, red(), 0);
-        let vs = vertsOf(l);
-        let width = match (List.head(vs), List.head(List.drop(3, vs))) {
-            case (Some(v0), Some(v3)) => Vec2.length(Vec2.sub(v0, v3))
-            case _                    => -1.0
-        };
-        Assert.assertEq(expected = (4, 4.0), (List.length(vs), round4(width)))
+    def testLineQuadWidthIsPerpendicular(): Unit \ Assert =
+        let quad = Render.lineQuad({ x = 0.0, y = 0.0 }, { x = 10.0, y = 10.0 }, 4.0);
+        let widths = List.zip(quad, List.reverse(quad))
+            |> List.take(2)
+            |> List.map(pair -> { let (p, q) = pair; round4(Vec2.length(Vec2.sub(p, q))) });
+        Assert.assertEq(expected = (4, 4.0 :: 4.0 :: Nil), (List.length(quad), widths))
+
+    // atCenter は「左上原点の item」の中心置き — 同じ box なら boxAt と同じ場所に着地する
+    // （2 つの公開 API の整合。Poly を渡す誤用は bug! で loud に落ちる設計なのでテストしない）。
+    @Test
+    def testAtCenterAgreesWithBoxAt(): Unit \ Assert =
+        let viaAtCenter = Render.box({ x = 40.0, y = 30.0 }, red(), 0)
+            |> Render.atCenter({ x = 100.0, y = 50.0 }, { x = 40.0, y = 30.0 });
+        let viaBoxAt = Render.boxAt({ x = 100.0, y = 50.0 }, { x = 40.0, y = 30.0 }, red(), 0);
+        Assert.assertEq(expected = (viaBoxAt#at#x, viaBoxAt#at#y),
+            (viaAtCenter#at#x, viaAtCenter#at#y))
+
+    // ── rotated / rotatedAround / 半周超の扇形 ──
+
+    // 1/4 回転（時計回り）: 真上 (0,-10) は右 (10,0) へ。1 周でちょうど元へ戻る。
+    @Test
+    def testRotatedQuarterTurnMovesTopToRight(): Unit \ Assert =
+        let top = { x = 0.0, y = -10.0 } :: Nil;
+        let quarter = Render.rotated(0.25, top) |> List.map(v -> (round4(v#x), round4(v#y)));
+        let full = Render.rotated(1.0, top) |> List.map(v -> (round4(v#x), round4(v#y)));
+        Assert.assertEq(expected = ((10.0, 0.0) :: Nil, (0.0, -10.0) :: Nil), (quarter, full))
+
+    // 蝶番回転: 根元を pivot にした針は、半回転しても根元が動かず先端だけ反対側へ移る。
+    @Test
+    def testRotatedAroundKeepsPivotStill(): Unit \ Assert =
+        let hand = { x = 5.0, y = 5.0 } :: { x = 5.0, y = -15.0 } :: Nil;
+        let swung = Render.rotatedAround(0.5, { x = 5.0, y = 5.0 }, hand)
+            |> List.map(v -> (round4(v#x), round4(v#y)));
+        Assert.assertEq(expected = (5.0, 5.0) :: (5.0, 25.0) :: Nil, swung)
+
+    // 半周を超える扇形（パックマン）でも耳切りで面積が保存される（凹の実戦形の回帰）。
+    // 期待値は頂点列そのものの靴ひも面積 — 分割で欠けても余っても一致しない。
+    @Test
+    def testReflexSectorPreservesAreaUnderTriangulation(): Unit \ Assert =
+        let vs = vertsOf(Render.sectorAt(Vec2.zero(), 20.0, { fromT = 0.10, toT = 0.90 }, red(), 0));
+        let area = List.foldLeft((s, t) -> {
+            let (a, b, c) = t;
+            s + Float64.abs((b#x - a#x) * (c#y - a#y) - (b#y - a#y) * (c#x - a#x)) / 2.0
+        }, 0.0, Triangulate.triangles(vs));
+        Assert.assertEq(expected = round4(Float64.abs(Triangulate.signedArea(vs))), round4(area))
 
     /// 小数4桁へ丸める（円周上の点の浮動小数比較用）。
     def round4(x: Float64): Float64 = Float64.floor(x * 10000.0 + 0.5) / 10000.0

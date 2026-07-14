@@ -17,11 +17,12 @@ mod TestBezier {
         Assert.assertEq(expected = (15, 1), (List.length(band), List.length(one)))
 
     @Test
-    def testFillFansFromCentroid(): Unit \ Assert =
-        // 16 分割楕円の塗り = 16 枚の三角形ピース。
-        let outline = Bezier.ellipse({x = 0.0, y = 0.0}, 10.0, 6.0, 16);
-        Assert.assertEq(expected = (16, 16),
-            (List.length(outline), List.length(Bezier.fill(outline, white(), 1))))
+    def testFillIsOnePieceEvenWhenConcave(): Unit \ Assert =
+        // fill は形によらず 1 枚の多角形（三角形化は描画側の耳切りの仕事）。
+        // 凸の楕円でも深くえぐれた星でも、描画コマンド数が形に比例して増えない。
+        let ellipseFill = Bezier.fill(Bezier.ellipse({x = 0.0, y = 0.0}, 10.0, 6.0, 16), white(), 1);
+        let starFill = Bezier.fill(Bezier.star({x = 0.0, y = 0.0}, rOut = 21.0, rIn = 9.0), white(), 1);
+        Assert.assertEq(expected = (1, 1), (List.length(ellipseFill), List.length(starFill)))
 
     def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 }
