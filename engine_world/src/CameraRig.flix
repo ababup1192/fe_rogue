@@ -39,6 +39,25 @@ mod CameraRig {
     pub def visibleRect(center: Vec2.Vec2, design: {design = Vec2.Vec2}): Rect2.Rect2 =
         { position = Vec2.sub(center, Vec2.div(design#design, 2.0)), size = design#design }
 
+    // ── zoom（寄り引き。大きいほど寄る）──
+
+    /// zoom つきで center を画面中央に映す: screen = (world − center) × zoom + design/2。
+    /// 置き場所だけでなく各 item の大きさも zoom 倍する（Render.scaled）ので、
+    /// 寄れば大きく・引けば小さく見える。zoom = 1.0 は centerOn と同じ。
+    pub def centerOnZoomed(center: Vec2.Vec2, zoom: {zoom = Float64}, design: {design = Vec2.Vec2},
+                           items: List[Render.PlacedItem]): List[Render.PlacedItem] =
+        let z = zoom#zoom;
+        let half = Vec2.div(design#design, 2.0);
+        List.map(placed ->
+            { at = Vec2.add(Vec2.mul(Vec2.sub(placed#at, center), z), half),
+              item = Render.scaled(z, placed#item) }, items)
+
+    /// zoom つきの可視範囲: center を中心に design/zoom の大きさが見えている
+    /// （寄るほど狭く・引くほど広く）。zoom = 1.0 は visibleRect と同じ。
+    pub def visibleRectZoomed(center: Vec2.Vec2, zoom: {zoom = Float64}, design: {design = Vec2.Vec2}): Rect2.Rect2 =
+        let seen = Vec2.div(design#design, zoom#zoom);
+        { position = Vec2.sub(center, Vec2.div(seen, 2.0)), size = seen }
+
     // ── 追従（不感帯 + 寄せ率 + クランプ）──
 
     /// 追従の仕様: 不感帯の幅と寄せ率（1 秒あたり）。

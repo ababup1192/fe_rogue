@@ -6,7 +6,8 @@ mod TestControls {
 
     def frameOf(down: Set[Key], justPressed: Set[Key]): App.Frame =
         // viewport はここのテストの対象外（キー割り当てだけ見る）。値は design と同じにしておく。
-        { down = down, justPressed = justPressed, dt = 1.0 / 64.0, viewport = { x = 480.0, y = 360.0 } }
+        { down = down, justPressed = justPressed, dt = 1.0 / 64.0, viewport = { x = 480.0, y = 360.0 },
+          cursor = Vec2.zero(), mouseDown = false, mouseClicked = false }
 
     // 押した瞬間の X は jumpDown と jumpPressed の両方に立つ。
     @Test

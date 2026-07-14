@@ -13,9 +13,12 @@ mod TestApp {
     /// テスト用の design サイズ。ここのテストは viewport を見ないので値は任意。
     def testViewport(): Vec2.Vec2 = { x = 320.0, y = 240.0 }
 
+    /// マウス無し（ボタン未押下）。キーだけを見るテストの frameOf に渡す。
+    def noMouse(): { prevDown = Bool, down = Bool } = { prevDown = false, down = false }
+
     /// キー無し・dt 0 の Frame。
     def emptyFrame(): App.Frame =
-        App.frameOf(prev = Set#{}, current = Set#{}, 0.0, testViewport())
+        App.frameOf(prev = Set#{}, current = Set#{}, 0.0, testViewport(), Vec2.zero(), noMouse())
 
     // ========================================================================
     // frameOf: エッジ判定
@@ -24,21 +27,21 @@ mod TestApp {
     // 新規押下: 前に無く今ある Left は down にも justPressed にも立つ。dt は素通し。
     @Test
     def testFrameOfNewPressIsEdge(): Unit \ Assert =
-        let actual = App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Left}, 0.016, testViewport());
+        let actual = App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Left}, 0.016, testViewport(), Vec2.zero(), noMouse());
         Assert.assertEq(expected = (Set#{GameEngine.Key.Left}, Set#{GameEngine.Key.Left}, 0.016),
             frameTuple(actual))
 
     // 押しっぱなし: 前も今もある Left は down のまま、justPressed には立たない。
     @Test
     def testFrameOfHeldKeyIsNotEdge(): Unit \ Assert =
-        let actual = App.frameOf(prev = Set#{GameEngine.Key.Left}, current = Set#{GameEngine.Key.Left}, 0.016, testViewport());
+        let actual = App.frameOf(prev = Set#{GameEngine.Key.Left}, current = Set#{GameEngine.Key.Left}, 0.016, testViewport(), Vec2.zero(), noMouse());
         Assert.assertEq(expected = (Set#{GameEngine.Key.Left}, Set#{}, 0.016),
             frameTuple(actual))
 
     // 離し: 前にあって今無い Left はどちらにも立たない（離しエッジは追わない）。
     @Test
     def testFrameOfReleaseIsSilent(): Unit \ Assert =
-        let actual = App.frameOf(prev = Set#{GameEngine.Key.Left}, current = Set#{}, 0.016, testViewport());
+        let actual = App.frameOf(prev = Set#{GameEngine.Key.Left}, current = Set#{}, 0.016, testViewport(), Vec2.zero(), noMouse());
         Assert.assertEq(expected = (Set#{}, Set#{}, 0.016),
             frameTuple(actual))
 
@@ -47,10 +50,37 @@ mod TestApp {
     def testFrameOfMixedKeysSplitEdges(): Unit \ Assert =
         let actual = App.frameOf(
             prev = Set#{GameEngine.Key.Left},
-            current = Set#{GameEngine.Key.Left, GameEngine.Key.Space}, 0.016, testViewport());
+            current = Set#{GameEngine.Key.Left, GameEngine.Key.Space}, 0.016, testViewport(), Vec2.zero(), noMouse());
         Assert.assertEq(
             expected = (Set#{GameEngine.Key.Left, GameEngine.Key.Space}, Set#{GameEngine.Key.Space}, 0.016),
             frameTuple(actual))
+
+    // ========================================================================
+    // frameOf: マウスのエッジ判定（キーと同じ考え方）
+    // ========================================================================
+
+    // 新規押下: 前に離れていて今押されていれば mouseDown と mouseClicked の両方が立つ。
+    // cursor は素通し。
+    @Test
+    def testFrameOfMousePressIsEdge(): Unit \ Assert =
+        let actual = App.frameOf(prev = Set#{}, current = Set#{}, 0.016, testViewport(),
+            { x = 10.0, y = 20.0 }, { prevDown = false, down = true });
+        Assert.assertEq(expected = (true, true, (10.0, 20.0)),
+            (actual#mouseDown, actual#mouseClicked, (actual#cursor#x, actual#cursor#y)))
+
+    // 押しっぱなし: 前も今も押されていれば mouseDown のみ（クリックのエッジは立たない）。
+    @Test
+    def testFrameOfHeldMouseIsNotEdge(): Unit \ Assert =
+        let actual = App.frameOf(prev = Set#{}, current = Set#{}, 0.016, testViewport(),
+            Vec2.zero(), { prevDown = true, down = true });
+        Assert.assertEq(expected = (true, false), (actual#mouseDown, actual#mouseClicked))
+
+    // 離し: どちらも立たない。
+    @Test
+    def testFrameOfMouseReleaseIsSilent(): Unit \ Assert =
+        let actual = App.frameOf(prev = Set#{}, current = Set#{}, 0.016, testViewport(),
+            Vec2.zero(), { prevDown = true, down = false });
+        Assert.assertEq(expected = (false, false), (actual#mouseDown, actual#mouseClicked))
 
     // ========================================================================
     // applySystems: 追加順 = 適用順
@@ -74,7 +104,7 @@ mod TestApp {
     // 正キーだけ +1・負キーだけ -1・無押下 0・両押しは打ち消して 0。押しっぱなしも効く（down 判定）。
     @Test
     def testAxisFoldsKeysToScalar(): Unit \ Assert =
-        let frameWith = keys -> App.frameOf(prev = keys, current = keys, 0.016, testViewport());
+        let frameWith = keys -> App.frameOf(prev = keys, current = keys, 0.016, testViewport(), Vec2.zero(), noMouse());
         let pos = App.axis(negative = GameEngine.Key.Left, positive = GameEngine.Key.Right, frameWith(Set#{GameEngine.Key.Right}));
         let neg = App.axis(negative = GameEngine.Key.Left, positive = GameEngine.Key.Right, frameWith(Set#{GameEngine.Key.Left}));
         let idle = App.axis(negative = GameEngine.Key.Left, positive = GameEngine.Key.Right, frameWith(Set#{}));
@@ -117,6 +147,39 @@ mod TestApp {
         let composed = App.composeScene(Some(center), sceneDesign(),
             { world = onCenter :: Nil, hud = Nil });
         Assert.assertEq(expected = Some((160.0, 120.0)), atOf(composed))
+
+    // ========================================================================
+    // composeSceneZoomed / visibleOfZoomed: 寄り引きの合成
+    // ========================================================================
+
+    // zoom 2 倍: center に置いた item は画面中央に着地したまま、Box の大きさは 2 倍になる。
+    @Test
+    def testComposeSceneZoomedScalesAroundCenter(): Unit \ Assert =
+        let center = { x = 100.0, y = 50.0 };
+        let onCenter = { at = center | boxAtOrigin() };
+        let composed = App.composeSceneZoomed(Some(center), 2.0, sceneDesign(),
+            { world = onCenter :: Nil, hud = Nil });
+        let size = match List.head(composed) |> Option.map(p -> p#item) {
+            case Some(Render.Item.Box(b)) => Some((b#size#x, b#size#y))
+            case _                        => None
+        };
+        Assert.assertEq(expected = (Some((160.0, 120.0)), Some((2.0, 2.0))), (atOf(composed), size))
+
+    // zoom 2 倍: center から (10, 0) 離れた item は画面中央から (20, 0) 離れて着地する。
+    @Test
+    def testComposeSceneZoomedScalesOffsets(): Unit \ Assert =
+        let center = { x = 100.0, y = 50.0 };
+        let offCenter = { at = { x = 110.0, y = 50.0 } | boxAtOrigin() };
+        let composed = App.composeSceneZoomed(Some(center), 2.0, sceneDesign(),
+            { world = offCenter :: Nil, hud = Nil });
+        Assert.assertEq(expected = Some((180.0, 120.0)), atOf(composed))
+
+    // zoom 2 倍の可視範囲: 大きさは design の半分（160×120）で、center を中心に据える。
+    @Test
+    def testVisibleOfZoomedShrinksSeenRect(): Unit \ Assert =
+        let visible = App.visibleOfZoomed(Some({ x = 100.0, y = 50.0 }), 2.0, sceneDesign());
+        Assert.assertEq(expected = ((20.0, -10.0), (160.0, 120.0)),
+            ((visible#position#x, visible#position#y), (visible#size#x, visible#size#y)))
 
     // ========================================================================
     // visibleOf: ViewCtx の visible（見えている world 矩形）の源
@@ -162,7 +225,7 @@ mod TestApp {
     // 既定の quit は Escape の新規押下で true。
     @Test
     def testQuitDefaultFiresOnEscapeEdge(): Unit \ Assert =
-        let frame = App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Escape}, 0.016, testViewport());
+        let frame = App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Escape}, 0.016, testViewport(), Vec2.zero(), noMouse());
         let wantsQuit = App.make(0)#quit;
         Assert.assertEq(expected = true, wantsQuit(frame, 0))
 
@@ -170,7 +233,7 @@ mod TestApp {
     @Test
     def testQuitDefaultIgnoresHeldEscape(): Unit \ Assert =
         let frame = App.frameOf(
-            prev = Set#{GameEngine.Key.Escape}, current = Set#{GameEngine.Key.Escape}, 0.016, testViewport());
+            prev = Set#{GameEngine.Key.Escape}, current = Set#{GameEngine.Key.Escape}, 0.016, testViewport(), Vec2.zero(), noMouse());
         let wantsQuit = App.make(0)#quit;
         Assert.assertEq(expected = false, wantsQuit(frame, 0))
 

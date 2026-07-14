@@ -17,7 +17,10 @@ mod App {
         down = Set[GameEngine.Key],        // いま押されているキー
         justPressed = Set[GameEngine.Key], // このフレームで新しく押されたキー（エッジ）
         dt = Float64,                      // 前フレームからの経過秒（エンジンがクランプ済み）
-        viewport = Vec2.Vec2               // design 解像度の幅・高さ（project.json の designWidth/Height）
+        viewport = Vec2.Vec2,              // design 解像度の幅・高さ（project.json の designWidth/Height）
+        cursor = Vec2.Vec2,                // マウス位置（design 座標。バックエンドが窓→design に変換済み）
+        mouseDown = Bool,                  // 左ボタンがいま押されているか
+        mouseClicked = Bool                // 左ボタンがこのフレームで新しく押されたか（エッジ）
     }
 
     /// key がいま押されているか（押しっぱなしも true）。移動などの連続入力に。
@@ -58,8 +61,11 @@ mod App {
         view = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef],
         // World から「画面中央に映したい world 座標」を導く。None = カメラなし（view の座標が
         // そのまま画面座標）。view = None のゲームでは効かない。追従・クランプ・シェイクは
-        // ゲーム側システムの責務（導いた値をここで返すだけ）。zoom は将来、別フィールドの合成で足す。
+        // ゲーム側システムの責務（導いた値をここで返すだけ）。
         camera = Option[w -> Vec2.Vec2 \ ef],
+        // World から寄り引き倍率を導く（大きいほど寄る）。None = 等倍。camera と別フィールドの
+        // 合成: camera だけ・zoom だけ・両方、どの組み合わせでも効く（zoom だけなら画面中央に寄る）。
+        zoom = Option[w -> Float64 \ ef],
         // カメラを掛けずに描く絵（スコア等の HUD）。view の絵と合流して1本のリストになるので、
         // 重なり順は従来どおり zIndex が決める（Render.draw が安定ソート・同 z は後勝ち = hud）。
         hudView = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef],
@@ -92,6 +98,7 @@ mod App {
           reload = None,
           view = None,
           camera = None,
+          zoom = None,
           hudView = None,
           audio = _worlds -> checked_ecast(Nil),
           quit = (frame, _world) -> checked_ecast(justPressed(GameEngine.Key.Escape, frame)),
@@ -124,6 +131,12 @@ mod App {
     /// カメラが効く）。追従やシェイクはゲーム側システムで World に持たせ、ここでは読むだけにする。
     pub def withCamera(f: w -> Vec2.Vec2 \ ef, app: App[w, ef]): App[w, ef] =
         { camera = Some(f) | app }
+
+    /// World から寄り引き倍率（大きいほど寄る）を導く関数を繋ぐ。絵のずらしと大きさの
+    /// 伸縮は App が引き受ける。ズームの補間（なめらかな寄り引き）はゲーム側システムで
+    /// World に持たせ、ここでは読むだけにする（withCamera の追従と同じ分担）。
+    pub def withZoom(f: w -> Float64 \ ef, app: App[w, ef]): App[w, ef] =
+        { zoom = Some(f) | app }
 
     /// カメラを掛けない絵（スコア等の HUD）を繋ぐ。重なり順は zIndex が決める
     /// （view の絵より手前に出したければ大きい zIndex を使う）。
@@ -180,13 +193,18 @@ mod App {
 
     /// 前フレームと今フレームのキー集合から Frame を組む。justPressed は差分
     /// （今あって前に無いキー）なので、押しっぱなしはエッジにならない。
+    /// マウスも同じ考え方: mouseClicked は「今押されていて前は押されていない」エッジ。
     pub def frameOf(prev: {prev = Set[GameEngine.Key]},
                     current: {current = Set[GameEngine.Key]}, dt: Float64,
-                    viewport: Vec2.Vec2): Frame =
+                    viewport: Vec2.Vec2, cursor: Vec2.Vec2,
+                    mouse: {prevDown = Bool, down = Bool}): Frame =
         { down = current#current,
           justPressed = Set.difference(current#current, prev#prev),
           dt = dt,
-          viewport = viewport }
+          viewport = viewport,
+          cursor = cursor,
+          mouseDown = mouse#down,
+          mouseClicked = mouse#down and not mouse#prevDown }
 
     /// システムの列を追加順（左から右）に World へ畳み込む。
     pub def applySystems(frame: Frame, systems: List[(Frame, w) -> w \ ef], world: w): w \ ef =
@@ -197,9 +215,15 @@ mod App {
     /// 重なり順はこの並びでなく zIndex が決める（Render.draw が安定ソート・同 z は後勝ち = hud）。
     pub def composeScene(center: Option[Vec2.Vec2], design: Vec2.Vec2,
                          items: { world = List[Render.PlacedItem], hud = List[Render.PlacedItem] }): List[Render.PlacedItem] =
+        composeSceneZoomed(center, 1.0, design, items)
+
+    /// composeScene の zoom つき版: world の絵を center 中心に zoom 倍（大きいほど寄る）して
+    /// 画面中央へ映す。hud には掛けない。zoom = 1.0 は composeScene と同じ。
+    pub def composeSceneZoomed(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2,
+                               items: { world = List[Render.PlacedItem], hud = List[Render.PlacedItem] }): List[Render.PlacedItem] =
         let shifted = match center {
             case None    => items#world
-            case Some(c) => CameraRig.centerOn(c, design = design, items#world)
+            case Some(c) => CameraRig.centerOnZoomed(c, zoom = zoom, design = design, items#world)
         };
         List.append(shifted, items#hud)
 
@@ -207,8 +231,13 @@ mod App {
     /// view へ渡す ViewCtx の visible の源。composeScene のずらしと同じ center を使うので、
     /// visible で組んだ絵とカメラのずらしは必ず一致する。
     pub def visibleOf(center: Option[Vec2.Vec2], design: Vec2.Vec2): Rect2.Rect2 =
+        visibleOfZoomed(center, 1.0, design)
+
+    /// visibleOf の zoom つき版: 寄るほど見えている範囲は狭くなる（大きさ design/zoom）。
+    /// zoom = 1.0 は visibleOf と同じ。
+    pub def visibleOfZoomed(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2): Rect2.Rect2 =
         match center {
-            case Some(c) => CameraRig.visibleRect(c, design = design)
+            case Some(c) => CameraRig.visibleRectZoomed(c, zoom = zoom, design = design)
             case None    => { position = Vec2.zero(), size = design }
         }
 
@@ -228,7 +257,10 @@ mod App {
         let world0 = List.foldLeft((acc, sys) -> sys(acc), init(GameEngine.Game.getViewportRect()#size), app#startupSystems);
         let bridge = if (canDebug(app)) Option.map(RemoteDebug.start, RemoteDebug.portFromEnv())
                      else None;
-        loop(app, world0, InputEvent.currentKeys(), Annotate.initial(), Nil, bridge, false);
+        // キーと同じく、起動時にすでに押されているボタンは一度離すまでエッジにならない。
+        loop(app, world0, InputEvent.currentKeys(),
+             GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left),
+             Annotate.initial(), Nil, bridge, false);
         Option.forEach(RemoteDebug.shutdown, bridge)
 
     /// 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
@@ -248,11 +280,15 @@ mod App {
     ///
     /// bridge はリモートデバッグの HTTP 口（無効なら None）。remoteHold が真の間は
     /// HTTP 側が停止の主導権を持つので、F8 での解除は効かない（/resume で戻す）。
-    def loop(app: App[w, ef], world: w, prevKeys: Set[GameEngine.Key],
+    def loop(app: App[w, ef], world: w, prevKeys: Set[GameEngine.Key], prevMouseDown: Bool,
              anno: Annotate.State, history: List[w],
              bridge: Option[RemoteDebug.Bridge], remoteHold: Bool): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
         let currentKeys = InputEvent.currentKeys();
-        let frame = frameOf(prev = prevKeys, current = currentKeys, readDt(), GameEngine.Game.getViewportRect()#size);
+        let mouseDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
+        let frame = frameOf(prev = prevKeys, current = currentKeys, readDt(),
+                            GameEngine.Game.getViewportRect()#size,
+                            GameEngine.Game.getMousePosition(),
+                            { prevDown = prevMouseDown, down = mouseDown });
         let wantsQuit = app#quit;
         if (GameEngine.Game.shouldClose() or wantsQuit(frame, world)) ()
         else {
@@ -266,7 +302,7 @@ mod App {
                     // （停止中は元々進まないし、実行中でも 1 フレームの息継ぎに過ぎない）。
                     let next = handleRemote(app, b, raw,
                         { world = world, anno = anno, history = history, hold = remoteHold });
-                    loop(app, next#world, currentKeys, next#anno, next#history, bridge, next#hold)
+                    loop(app, next#world, currentKeys, mouseDown, next#anno, next#history, bridge, next#hold)
                 case _ => {
                     let toggled = justPressed(GameEngine.Key.F8, frame) and canDebug(app) and not remoteHold;
                     let pausedNow = if (toggled) not anno#paused else anno#paused;
@@ -279,13 +315,13 @@ mod App {
                     } else ();
                     if (pausedNow) {
                         let nextAnno = pausedStep(app, world, history, frame, { paused = true | anno });
-                        loop(app, world, currentKeys, nextAnno, history, bridge, remoteHold)
+                        loop(app, world, currentKeys, mouseDown, nextAnno, history, bridge, remoteHold)
                     } else if (anno#paused) {
                         // 一時停止を抜けるフレーム: スクラブ位置の World から再開する。
                         // 巻き戻したぶんの履歴とフレーム番号も、そこを現在として数え直す。
                         let resumed = resumePoint(anno, history, world);
                         renderFrame(app, resumed#world);
-                        loop(app, resumed#world, currentKeys, resumed#anno, resumed#history, bridge, remoteHold)
+                        loop(app, resumed#world, currentKeys, mouseDown, resumed#anno, resumed#history, bridge, remoteHold)
                     } else {
                         let reloaded = applyReload(app, frame, world);
                         let advanced = applySystems(frame, app#updateSystems, reloaded);
@@ -295,7 +331,7 @@ mod App {
                         let nextHistory = if (canDebug(app))
                                               List.take(historyLimit(), advanced :: history)
                                           else Nil;
-                        loop(app, advanced, currentKeys, { frame = anno#frame + 1i64 | anno }, nextHistory, bridge, remoteHold)
+                        loop(app, advanced, currentKeys, mouseDown, { frame = anno#frame + 1i64 | anno }, nextHistory, bridge, remoteHold)
                     }
                 }
             }
@@ -461,17 +497,22 @@ mod App {
                    toItems: (ViewCtx, w) -> List[Render.PlacedItem] \ ef):
             List[Render.PlacedItem] \ (ef + GameEngine.Game) =
         let design = GameEngine.Game.getViewportRect()#size;
+        let z = match app#zoom {
+            case None    => 1.0
+            case Some(f) => f(world)
+        };
         let center = match app#camera {
-            case None    => None
             case Some(f) => Some(f(world))
+            // camera 無しで zoom だけのゲームは画面中央に寄る（等倍なら従来どおり素通し）。
+            case None    => if (z != 1.0) Some(Vec2.div(design, 2.0)) else None
         };
         let hud = match app#hudView {
             case None    => Nil
-            // HUD は画面固定なので、見えている矩形は常に design 全体（原点起点）。
+            // HUD は画面固定なので、見えている矩形は常に design 全体（原点起点）で zoom も掛けない。
             case Some(h) => h({ atlas = atlas, visible = visibleOf(None, design) }, world)
         };
-        let ctx = { atlas = atlas, visible = visibleOf(center, design) };
-        composeScene(center, design, { world = toItems(ctx, world), hud = hud })
+        let ctx = { atlas = atlas, visible = visibleOfZoomed(center, z, design) };
+        composeSceneZoomed(center, z, design, { world = toItems(ctx, world), hud = hud })
 
     /// view の投影した絵を描画命令にしてエンジンへ渡す（タイルマップは使わないので空の列を添える）。
     /// view = None のゲームは App では描かない（自分のシステム内で renderCommands を呼ぶ。
@@ -687,7 +728,10 @@ mod App {
                         Ref.put(frameNo, frameNoRef);
                         // 実ハンドラへ素通し = glfwPollEvents が回り、窓が固まらない・閉じられる
                         let closing = GameEngine.Game.shouldClose();
-                        let frame = frameOf(prev = state#prev, current = frameKeys, stepParams#dtSeconds, GameEngine.Game.getViewportRect()#size);
+                        // /step の台本はキーのみ（マウスは台本に無いので常に「押されていない」）。
+                        let frame = frameOf(prev = state#prev, current = frameKeys, stepParams#dtSeconds,
+                                            GameEngine.Game.getViewportRect()#size, Vec2.zero(),
+                                            { prevDown = false, down = false });
                         let wantsQuit = app#quit;
                         if (closing or wantsQuit(frame, state#world))
                             { stopped = "quit", quit = true | state }

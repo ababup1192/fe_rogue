@@ -70,7 +70,7 @@ mod TestPlayerMovementDriver {
         // 押下キーは Frame 値で渡す（本番 gameLoop と同じ入力モデル）。移動 polling は down のみ読む。
         let dirKeys = GameEngine.Key.W :: GameEngine.Key.Up :: GameEngine.Key.S :: GameEngine.Key.Down ::
                       GameEngine.Key.A :: GameEngine.Key.Left :: GameEngine.Key.D :: GameEngine.Key.Right :: Nil;
-        let frame = ({down = List.toSet(List.filter(pressed, dirKeys)), justPressed = Set.empty(), dt = 0.0, viewport = {x = 240.0, y = 128.0}}: App.Frame);
+        let frame = ({down = List.toSet(List.filter(pressed, dirKeys)), justPressed = Set.empty(), dt = 0.0, viewport = {x = 240.0, y = 128.0}, cursor = Vec2.zero(), mouseDown = false, mouseClicked = false}: App.Frame);
         region rc {
             let (_, moves) = TestUnitFixtures.withRecordedMoves(() ->
                 TestUnitFixtures.withMockBoard(board, () ->

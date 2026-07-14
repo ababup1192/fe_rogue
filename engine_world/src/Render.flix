@@ -126,6 +126,21 @@ mod Render {
             case other => other
         }
 
+    /// 大きさ系の属性を factor 倍する（全種類の item に効く）。camera の zoom 適用の芯:
+    /// Box は size と style の太さ（角丸・枠・縞）、Sprite は scale、Text は fontSize、
+    /// Poly は頂点を、それぞれ一様に伸縮する。置き場所（at）は持たないので呼び側が伸縮する。
+    pub def scaled(factor: Float64, item: Item): Item =
+        match item {
+            case Item.Sprite(s) => Item.Sprite({ scale = { x = s#scale#x * factor, y = s#scale#y * factor } | s })
+            case Item.Text(t)   => Item.Text({ fontSize = t#fontSize * factor | t })
+            case Item.Box(b)    =>
+                let style1 = b#style |> Option.map(s ->
+                    { cornerRadius = s#cornerRadius * factor, borderWidth = s#borderWidth * factor,
+                      stripeWidth = s#stripeWidth * factor, stripePeriod = s#stripePeriod * factor | s });
+                Item.Box({ size = { x = b#size#x * factor, y = b#size#y * factor }, style = style1 | b })
+            case Item.Poly(p)   => Item.Poly({ vertices = List.map(v -> Vec2.mul(v, factor), p#vertices) | p })
+        }
+
     /// zIndex を delta だけ持ち上げる（全種類の item に効く）。組み上がった item の列を
     /// まとめて別の z 帯へ移すとき（UI レイヤーの合流など）に使う。
     pub def raiseZ(delta: Int32, item: Item): Item =
