@@ -263,8 +263,19 @@ mod LwjglLayer {
             RenderShader.tileFragmentShaderSource());
         RenderShader.setProjectionMatrix(tileShader, screenW, screenH);
 
+        // 連続する同テクスチャのスプライトを 1 draw call に畳む instanced 描画用。
+        let instShader = RenderShader.createShaderProgram(
+            RenderShader.spriteInstancedVertexShaderSource(),
+            RenderShader.spriteInstancedFragmentShaderSource());
+        RenderShader.setProjectionMatrix(instShader, screenW, screenH);
+
+        // location はリンク後に不変なので起動時に 1 回だけ引く（RenderShader.spriteUniformsOf 参照）。
+        let spriteUniforms = RenderShader.spriteUniformsOf(spriteShader);
+        let tileUniforms = RenderShader.tileUniformsOf(tileShader);
+
         let (vao, quadVBO) = RenderSprite.initSpriteRenderer();
         let (polyVao, polyVbo) = RenderSprite.initPolygonRenderer();
+        let (instVao, instVbo) = RenderSprite.initSpriteInstancedRenderer(quadVBO);
 
         println("Loading textures...");
         let registry0 = RenderTexture.loadTextureRegistry(config#textureManifest);
@@ -299,10 +310,31 @@ mod LwjglLayer {
 
         let timeHolder = Array#{System.nanoTime()} @ Static;
 
+        // フレームバッファサイズ。毎フレーム MemoryStack で問い合わせると呼び出しコストが積み上がるため、
+        // 起動時に実測した値を持ち回り、変化はリサイズ callback だけが更新する。
+        let framebufferSizeHolder = Array#{(fbWidth, fbHeight)} @ Static;
+
         // リサイズ中の再描画用に最後のフレームの描画コマンドを保持する (sprites + tileMaps + polygons)
         let renderStateHolder = Array#{((Nil: List[GameEngine.Drawable]),
                                          (Nil: List[GameEngine.TileMapRenderCmd]),
                                          (Nil: List[GameEngine.PolygonRenderCmd]))} @ Static;
+
+        // renderFrameMixed への FrameArgs 組み立ては呼び出し箇所ごとに同じ固定値
+        // （シェーダ・VAO・registry・uniforms 等）が並ぶので、可変な部分だけを引数にした
+        // 1 箇所へ集約する。
+        let renderFrame = (fbW: Int32, fbH: Int32,
+                            sprites: List[GameEngine.Drawable],
+                            tileMaps: List[GameEngine.TileMapRenderCmd],
+                            polygons: List[GameEngine.PolygonRenderCmd]) -> {
+            RenderFrame.renderFrameMixed({
+                spriteShader = spriteShader, tileShader = tileShader, vao = vao,
+                registry = registry, clearColor = config#clearColor,
+                designW = screenW, designH = screenH, fbW = fbW, fbH = fbH,
+                sprites = sprites, tileMaps = tileMaps, polygons = polygons,
+                polyVao = polyVao, polyVbo = polyVbo,
+                instShader = instShader, instVao = instVao, instVbo = instVbo,
+                spriteUniforms = spriteUniforms, tileUniforms = tileUniforms})
+        };
 
         // 6 種のスタンダードカーソルを起動時に作成して再利用する。
         // setCursor 呼び出しの度に都度作成 / 破棄すると重く、リーク源にもなる
@@ -403,13 +435,9 @@ mod LwjglLayer {
         // フレームバッファサイズ変更コールバックで再描画を行う
         discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
             def invoke(_this: GLFWFramebufferSizeCallbackI, cbWindow: Int64, width: Int32, height: Int32): Unit \ IO = {
+                Array.put((width, height), 0, framebufferSizeHolder);
                 let (sprites, tileMaps, polygons) = Array.get(0, renderStateHolder);
-                RenderFrame.renderFrameMixed({
-                    spriteShader = spriteShader, tileShader = tileShader, vao = vao,
-                    registry = registry, clearColor = config#clearColor,
-                    designW = screenW, designH = screenH, fbW = width, fbH = height,
-                    sprites = sprites, tileMaps = tileMaps, polygons = polygons,
-                    polyVao = polyVao, polyVbo = polyVbo});
+                renderFrame(width, height, sprites, tileMaps, polygons);
                 GLFW.glfwSwapBuffers(cbWindow)
             }
         });
@@ -450,19 +478,8 @@ mod LwjglLayer {
         } with handler GameEngine.Game {
             def renderCommands(sprites, tileMaps, polygons, k) = {
                 Array.put((sprites, tileMaps, polygons), 0, renderStateHolder);
-                let stack = MemoryStack.stackPush();
-                let wBuf = stack.mallocInt(1);
-                let hBuf = stack.mallocInt(1);
-                GLFW.glfwGetFramebufferSize(window, wBuf, hBuf);
-                let fbW = wBuf.get(0);
-                let fbH = hBuf.get(0);
-                discard MemoryStack.stackPop();
-                RenderFrame.renderFrameMixed({
-                    spriteShader = spriteShader, tileShader = tileShader, vao = vao,
-                    registry = registry, clearColor = config#clearColor,
-                    designW = screenW, designH = screenH, fbW = fbW, fbH = fbH,
-                    sprites = sprites, tileMaps = tileMaps, polygons = polygons,
-                    polyVao = polyVao, polyVbo = polyVbo});
+                let (fbW, fbH) = Array.get(0, framebufferSizeHolder);
+                renderFrame(fbW, fbH, sprites, tileMaps, polygons);
                 GLFW.glfwSwapBuffers(window);
                 k(())
             }
@@ -570,12 +587,7 @@ mod LwjglLayer {
                     let fbW = wBuf.get(0);
                     let fbH = hBuf.get(0);
                     discard MemoryStack.stackPop();
-                    RenderFrame.renderFrameMixed({
-                        spriteShader = spriteShader, tileShader = tileShader, vao = vao,
-                        registry = registry, clearColor = config#clearColor,
-                        designW = screenW, designH = screenH, fbW = fbW, fbH = fbH,
-                        sprites = req#sprites, tileMaps = req#tileMaps,
-                        polygons = req#polygons, polyVao = polyVao, polyVbo = polyVbo});
+                    renderFrame(fbW, fbH, req#sprites, req#tileMaps, req#polygons);
                     let image = framebufferImage(fbW, fbH);
                     writePngFile(image, "${dirPath}/screenshot.png");
                     burnHighlight(image, designRectToImage(req#rect, fbW, fbH, screenW, screenH));

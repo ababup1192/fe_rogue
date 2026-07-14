@@ -133,6 +133,59 @@ mod RenderShader {
         "    if (color.a < 0.01) discard;\n" +
         "}\n"
 
+    /// instanced sprite 用の頂点シェーダ。1 体分の変換・UV・色をすべて
+    /// instance 属性 (loc1-5) で受け取るので、uniform の設定なしに
+    /// 1 回の draw call で何千体でも描ける。
+    /// mat2(inst1.xy, inst1.zw) + inst2 は drawSprite の model 行列
+    /// （回転×スケール＋平行移動）と同じ変換。
+    pub def spriteInstancedVertexShaderSource(): String =
+        "#version 330 core\n" +
+        "layout (location = 0) in vec4 vertex;\n" +
+        "layout (location = 1) in vec4 inst1;\n" +   // ワールド変換 2x2: (c*sx, s*sx, -s*sy, c*sy)
+        "layout (location = 2) in vec2 inst2;\n" +   // 平行移動 (tx, ty)
+        "layout (location = 3) in vec4 inst3;\n" +   // uvOffset.xy + uvScale.zw
+        "layout (location = 4) in vec4 inst4;\n" +   // color.rgb + alpha
+        "layout (location = 5) in vec2 inst5;\n" +   // useTexture, sdfText (0.0/1.0)
+        "out vec2 TexCoords;\n" +
+        "out vec4 InstColor;\n" +
+        "out vec2 InstFlags;\n" +
+        "uniform mat4 projection;\n" +
+        "void main() {\n" +
+        "    vec2 world = mat2(inst1.xy, inst1.zw) * vertex.xy + inst2;\n" +
+        "    gl_Position = projection * vec4(world, 0.0, 1.0);\n" +
+        "    TexCoords = vertex.zw * inst3.zw + inst3.xy;\n" +
+        "    InstColor = inst4;\n" +
+        "    InstFlags = inst5;\n" +
+        "}\n"
+
+    /// instanced sprite 用のフラグメントシェーダ。
+    /// スタイル (角丸・枠・ハッチ) は持たない: style 付き矩形は従来の
+    /// sprite シェーダで 1 枚ずつ描く（バッチに積む前に弾かれる）。
+    /// 同じバッチ内の全 instance は useTexture/sdfText が揃う
+    /// （テクスチャが同じなら font_ 判定も同じ）ので、分岐は実質一様。
+    pub def spriteInstancedFragmentShaderSource(): String =
+        "#version 330 core\n" +
+        "in vec2 TexCoords;\n" +
+        "in vec4 InstColor;\n" +
+        "in vec2 InstFlags;\n" +
+        "out vec4 color;\n" +
+        "uniform sampler2D image;\n" +
+        "void main() {\n" +
+        "    if (InstFlags.x > 0.5) {\n" +
+        "        if (InstFlags.y > 0.5) {\n" +
+        "            float d = texture(image, TexCoords).a;\n" +          // 距離場 (swizzle で R=alpha)
+        "            float aa = fwidth(d);\n" +                            // 画面 px 基準の AA 幅
+        "            float a = smoothstep(0.5 - aa, 0.5 + aa, d);\n" +
+        "            if (a < 0.004) discard;\n" +
+        "            color = vec4(InstColor.rgb, InstColor.a * a);\n" +
+        "        } else {\n" +
+        "            color = InstColor * texture(image, TexCoords);\n" +
+        "        }\n" +
+        "    } else {\n" +
+        "        color = InstColor;\n" +
+        "    }\n" +
+        "}\n"
+
     // ========================================================================
     // Shader Compilation
     // ========================================================================
@@ -165,6 +218,72 @@ mod RenderShader {
         GL20.glDeleteShader(vs);
         GL20.glDeleteShader(fs);
         program
+
+    // ========================================================================
+    // Uniform Locations
+    // ========================================================================
+
+    /// sprite シェーダの uniform location 一式。
+    /// location はリンク後に不変。毎フレーム文字列で問い合わせると描画数×十数回の
+    /// JNI 呼び出しになるため、起動時に 1 回だけ引いてレコードに詰めて持ち回る。
+    pub type alias SpriteUniforms = {
+        model = Int32,
+        spriteColor = Int32,
+        spriteAlpha = Int32,
+        uvOffset = Int32,
+        uvScale = Int32,
+        useTexture = Int32,
+        sdfText = Int32,
+        styleEnabled = Int32,
+        rectSize = Int32,
+        cornerRadius = Int32,
+        borderWidth = Int32,
+        borderColor = Int32,
+        borderAlpha = Int32,
+        hatchEnabled = Int32,
+        hatchColor = Int32,
+        hatchAlpha = Int32,
+        hatchWidth = Int32,
+        hatchPeriod = Int32
+    }
+
+    /// tile シェーダの uniform location 一式。理由は `SpriteUniforms` と同じ。
+    pub type alias TileUniforms = {
+        layerPos = Int32,
+        tileSize = Int32,
+        tileScale = Int32,
+        layerColor = Int32
+    }
+
+    pub def spriteUniformsOf(shader: Int32): SpriteUniforms \ IO =
+        {
+            model = GL20.glGetUniformLocation(shader, "model"),
+            spriteColor = GL20.glGetUniformLocation(shader, "spriteColor"),
+            spriteAlpha = GL20.glGetUniformLocation(shader, "spriteAlpha"),
+            uvOffset = GL20.glGetUniformLocation(shader, "uvOffset"),
+            uvScale = GL20.glGetUniformLocation(shader, "uvScale"),
+            useTexture = GL20.glGetUniformLocation(shader, "useTexture"),
+            sdfText = GL20.glGetUniformLocation(shader, "sdfText"),
+            styleEnabled = GL20.glGetUniformLocation(shader, "styleEnabled"),
+            rectSize = GL20.glGetUniformLocation(shader, "rectSize"),
+            cornerRadius = GL20.glGetUniformLocation(shader, "cornerRadius"),
+            borderWidth = GL20.glGetUniformLocation(shader, "borderWidth"),
+            borderColor = GL20.glGetUniformLocation(shader, "borderColor"),
+            borderAlpha = GL20.glGetUniformLocation(shader, "borderAlpha"),
+            hatchEnabled = GL20.glGetUniformLocation(shader, "hatchEnabled"),
+            hatchColor = GL20.glGetUniformLocation(shader, "hatchColor"),
+            hatchAlpha = GL20.glGetUniformLocation(shader, "hatchAlpha"),
+            hatchWidth = GL20.glGetUniformLocation(shader, "hatchWidth"),
+            hatchPeriod = GL20.glGetUniformLocation(shader, "hatchPeriod")
+        }
+
+    pub def tileUniformsOf(shader: Int32): TileUniforms \ IO =
+        {
+            layerPos = GL20.glGetUniformLocation(shader, "layerPos"),
+            tileSize = GL20.glGetUniformLocation(shader, "tileSize"),
+            tileScale = GL20.glGetUniformLocation(shader, "tileScale"),
+            layerColor = GL20.glGetUniformLocation(shader, "layerColor")
+        }
 
     // ========================================================================
     // Projection Matrix
