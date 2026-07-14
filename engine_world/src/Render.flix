@@ -17,7 +17,8 @@ mod Render {
         case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color, zIndex = Int32 })
         case Box({ size = Vec2.Vec2, color = Color, alpha = Float32,
                    style = Option[GameEngine.BoxStyle], zIndex = Int32 })
-        /// 単色の凸多角形。頂点は置き場所からの相対座標（draw が置き場所を全頂点に加算する）。
+        /// 単色の単純多角形（自己交差しなければ凹でもよい。塗りは描画側が耳切りで三角形化）。
+        /// 頂点は置き場所からの相対座標（draw が置き場所を全頂点に加算する）。
         case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32 })
     }
 
@@ -72,6 +73,66 @@ mod Render {
     /// 置き場所を Vec2.zero() にする）。左右反転した形が欲しいときは頂点を flipH に通してから渡す。
     pub def polygon(vertices: List[Vec2.Vec2], color: Color, zIndex: Int32): Item =
         Item.Poly({ vertices = vertices, color = color, alpha = 1.0f32, zIndex = zIndex })
+
+    // ── 図形の語彙（polygon の上に組んだ形。凹も可 — 描画側の耳切りが三角形化する）──
+    // 角度はぜんぶ「1 周 = 1.0 の回転量 t」で渡す（t = 0 が真上・時計回り = 画面の見た目どおり）。
+
+    /// 中心 center に置いた正 n 角形（外接半径 radius・頂点が真上）。三角形・ひし形・六角形はこれ。
+    pub def ngonAt(center: Vec2.Vec2, n: Int32, radius: Float64, color: Color, zIndex: Int32): PlacedItem =
+        let vs = List.range(0, n) |> List.map(i ->
+            onCircle(radius, radius, Int32.toFloat64(i) / Int32.toFloat64(n)));
+        { at = center, item = polygon(vs, color, zIndex) }
+
+    /// 中心 center に置いた楕円（radii は x/y の半径。32 角形の近似）。
+    /// 同型の Float64 2 つは取り違えやすいので Vec2 で渡す。
+    pub def ellipseAt(center: Vec2.Vec2, radii: Vec2.Vec2, color: Color, zIndex: Int32): PlacedItem =
+        let segs = 32;
+        let vs = List.range(0, segs) |> List.map(i ->
+            onCircle(radii#x, radii#y, Int32.toFloat64(i) / Int32.toFloat64(segs)));
+        { at = center, item = polygon(vs, color, zIndex) }
+
+    /// 中心 center に置いた扇形（パイ）。sweep が半周（0.5）以下なら見た目どおり。
+    pub def sectorAt(center: Vec2.Vec2, radius: Float64, sweep: {fromT = Float64, toT = Float64},
+                     color: Color, zIndex: Int32): PlacedItem =
+        { at = center, item = polygon(Vec2.zero() :: arcPoints(radius, sweep), color, zIndex) }
+
+    /// 中心 center の円を弦で切った弓形（弧 + 弦。多角形は自動で閉じる）。
+    pub def circleSegmentAt(center: Vec2.Vec2, radius: Float64, sweep: {fromT = Float64, toT = Float64},
+                            color: Color, zIndex: Int32): PlacedItem =
+        { at = center, item = polygon(arcPoints(radius, sweep), color, zIndex) }
+
+    /// 中心 center に置いた星（points 尖り・外径と内径の交互）。凹多角形の代表
+    /// （0.1.9 の耳切り分割から正式対応）。
+    pub def starAt(center: Vec2.Vec2, points: Int32, radii: {outer = Float64, inner = Float64},
+                   color: Color, zIndex: Int32): PlacedItem =
+        let vs = List.range(0, points * 2) |> List.map(i -> {
+            let r = if (Int32.modulo(i, 2) == 0) radii#outer else radii#inner;
+            onCircle(r, r, Int32.toFloat64(i) / Int32.toFloat64(points * 2))
+        });
+        { at = center, item = polygon(vs, color, zIndex) }
+
+    /// 線分 a→b を太さ width の四角形で描く（任意角度の線の代用）。
+    /// a, b は絶対座標で渡す（置き場所は組み込み済み）。
+    pub def lineSeg(a: Vec2.Vec2, b: Vec2.Vec2, width: Float64, color: Color, zIndex: Int32): PlacedItem =
+        let d = Vec2.sub(b, a);
+        let len = Vec2.length(d);
+        let nrm = if (len < 0.0001) Vec2.zero()
+                  else Vec2.mul({ x = 0.0 - d#y / len, y = d#x / len }, width / 2.0);
+        { at = Vec2.zero(),
+          item = polygon(Vec2.add(a, nrm) :: Vec2.add(b, nrm) :: Vec2.sub(b, nrm) :: Vec2.sub(a, nrm) :: Nil,
+                         color, zIndex) }
+
+    /// 円周（楕円周）上の点。t = 0 が真上に来るよう -1/4 回転してある。
+    def onCircle(rx: Float64, ry: Float64, t: Float64): Vec2.Vec2 =
+        let tau = 6.283185307179586;
+        { x = rx * Vec2.cos(tau * (t - 0.25)), y = ry * Vec2.sin(tau * (t - 0.25)) }
+
+    /// fromT..toT の弧を 24 分割した点列（端点含む）。
+    def arcPoints(radius: Float64, sweep: {fromT = Float64, toT = Float64}): List[Vec2.Vec2] =
+        let segs = 24;
+        List.range(0, segs + 1) |> List.map(i ->
+            onCircle(radius, radius,
+                sweep#fromT + (sweep#toT - sweep#fromT) * Int32.toFloat64(i) / Int32.toFloat64(segs)))
 
     def solidStyle(): GameEngine.BoxStyle =
         { cornerRadius = 0.0, borderWidth = 0.0, borderColor = white(), borderAlpha = 0.0f32,

@@ -121,14 +121,18 @@ mod RenderSprite {
         GL30.glBindVertexArray(0);
         (vao, vbo)
 
-    /// 凸多角形を単色で塗り潰す（GL_TRIANGLE_FAN）。頂点は既にスクリーン px。
+    /// 単純多角形（凹あり可）を単色で塗り潰す。頂点は既にスクリーン px。
+    /// 耳切り（Triangulate.triangles）で三角形化して GL_TRIANGLES で描くので、星のような
+    /// 凹多角形も SoftRaster（スキャンライン塗り）と同じ絵になる。凸は従来と同じ見た目。
     /// sprite シェーダを model=identity / useTexture=0 で流用する。
     /// uniforms は起動時に 1 回だけ引いた location 一式（RenderShader.spriteUniformsOf）。
     pub def drawPolygon(spriteShader: Int32, polyVao: Int32, polyVbo: Int32,
                          uniforms: RenderShader.SpriteUniforms,
                          verts: List[Vec2.Vec2], color: Color, alpha: Float32): Unit \ IO =
         let f32 = RenderUtil.f32;
-        let n = List.length(verts);
+        let flat = Triangulate.triangles(verts)
+            |> List.flatMap(tri -> { let (a, b, c) = tri; a :: b :: c :: Nil });
+        let n = List.length(flat);
         if (n < 3) () else {
             GL20.glUseProgram(spriteShader);
             let model = Array#{
@@ -155,11 +159,11 @@ mod RenderSprite {
                 Array.put(0.0f32,   base + 2, data);
                 Array.put(0.0f32,   base + 3, data);
                 i + 1
-            }, 0, verts);
+            }, 0, flat);
             GL30.glBindVertexArray(polyVao);
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, polyVbo);
             GL15.glBufferData(GL15.GL_ARRAY_BUFFER, data, GL15.GL_DYNAMIC_DRAW);
-            GL11.glDrawArrays(GL11.GL_TRIANGLE_FAN, 0, n);
+            GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, n);
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
             GL30.glBindVertexArray(0)
         }

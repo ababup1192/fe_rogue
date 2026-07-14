@@ -87,4 +87,59 @@ mod TestRender {
             (style |> Option.map(s -> s#borderWidth),
              style |> Option.map(s -> s#stripeAlpha),
              style |> Option.map(s -> s#stripePeriod)))
+
+    // ── 図形の語彙（ngonAt / ellipseAt / sectorAt / circleSegmentAt / starAt / lineSeg）──
+
+    /// PlacedItem から Poly の頂点列を取り出す（図形テストの共通口）。
+    def vertsOf(placed: Render.PlacedItem): List[Vec2.Vec2] =
+        match placed#item {
+            case Render.Item.Poly(p) => p#vertices
+            case _                   => Nil
+        }
+
+    // ngonAt: 頂点数 = n・最初の頂点は真上（y = −radius）・置き場所は中心そのもの。
+    @Test
+    def testNgonAtPointsUpWithNVertices(): Unit \ Assert =
+        let hex = Render.ngonAt({ x = 7.0, y = 9.0 }, 6, 10.0, red(), 0);
+        let first = List.head(vertsOf(hex)) |> Option.map(v -> (round4(v#x), round4(v#y)));
+        Assert.assertEq(expected = (6, Some((0.0, -10.0)), (7.0, 9.0)),
+            (List.length(vertsOf(hex)), first, (hex#at#x, hex#at#y)))
+
+    // ellipseAt: 32 頂点で、x 半径・y 半径がそれぞれ radii どおりに届く。
+    @Test
+    def testEllipseAtSpansRadii(): Unit \ Assert =
+        let e = Render.ellipseAt(Vec2.zero(), { x = 26.0, y = 16.0 }, red(), 0);
+        let vs = vertsOf(e);
+        let maxX = List.foldLeft((m, v) -> Float64.max(m, v#x), 0.0, vs);
+        let maxY = List.foldLeft((m, v) -> Float64.max(m, v#y), 0.0, vs);
+        Assert.assertEq(expected = (32, 26.0, 16.0), (List.length(vs), round4(maxX), round4(maxY)))
+
+    // sectorAt は中心点から始まり（パイの要）、circleSegmentAt は弧だけ（弦は自動で閉じる）。
+    @Test
+    def testSectorHasApexAndSegmentDoesNot(): Unit \ Assert =
+        let sec = Render.sectorAt(Vec2.zero(), 22.0, { fromT = 0.05, toT = 0.45 }, red(), 0);
+        let seg = Render.circleSegmentAt(Vec2.zero(), 22.0, { fromT = 0.05, toT = 0.45 }, red(), 0);
+        let apex = List.head(vertsOf(sec)) |> Option.map(v -> (v#x, v#y));
+        Assert.assertEq(expected = (Some((0.0, 0.0)), 26, 25),
+            (apex, List.length(vertsOf(sec)), List.length(vertsOf(seg))))
+
+    // starAt: 頂点数 = 尖り × 2（外径と内径の交互）。
+    @Test
+    def testStarAtAlternatesRadii(): Unit \ Assert =
+        let s = Render.starAt(Vec2.zero(), 5, { outer = 21.0, inner = 9.0 }, red(), 0);
+        Assert.assertEq(expected = 10, List.length(vertsOf(s)))
+
+    // lineSeg: 4 頂点の quad で、線に直交する辺の長さ = width。
+    @Test
+    def testLineSegQuadWidth(): Unit \ Assert =
+        let l = Render.lineSeg({ x = 0.0, y = 0.0 }, { x = 10.0, y = 0.0 }, 4.0, red(), 0);
+        let vs = vertsOf(l);
+        let width = match (List.head(vs), List.head(List.drop(3, vs))) {
+            case (Some(v0), Some(v3)) => Vec2.length(Vec2.sub(v0, v3))
+            case _                    => -1.0
+        };
+        Assert.assertEq(expected = (4, 4.0), (List.length(vs), round4(width)))
+
+    /// 小数4桁へ丸める（円周上の点の浮動小数比較用）。
+    def round4(x: Float64): Float64 = Float64.floor(x * 10000.0 + 0.5) / 10000.0
 }
