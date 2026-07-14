@@ -7,9 +7,9 @@
 //
 // ブロックの見た目は durabilities から導く: 載っていない = 壊れない（金属の面シェーディング＋
 // リベット）、耐久 2 = 明るい鋼、残り 1 のハード = くすんだ鋼、通常 = 行の色。
-// 描画物は住む空間（Layer）を宣言する: World（盤の空間）と Screen（画面の空間）。レイヤーごとの
-// カメラは cameraOf が毎フレーム純粋に導出する —— World はシェイク（trauma² × ノイズから
-// 毎フレーム計算する揺れ）で揺れ、Screen（HUD・案内文）は動かない。カメラは状態を持たないので、
+// カメラは App に宣言する二層構成: frame（盤の空間 = シェイクで揺れる）は App.withCamera が
+// cameraCenter から一括でずらし、hud（画面の空間 = HUD・案内文）は App.withHudView で
+// カメラを掛けずに合流する。カメラは状態を持たず毎フレーム trauma から純粋に導出するので、
 // 「元の位置を保存して毎フレーム復元する」類の儀式は要らない。
 // 破片も同じく、破壊ごとの (種＋原点＋経過秒) から Fx.derive で毎フレーム計算する（状態を持たない）演出。
 
@@ -26,57 +26,63 @@ mod View {
 
     def tau(): Float64 = 6.283185307179586
 
-    // ── frame: フェーズを描画コマンドへ投影する ──
-    // タイトルは文字だけ（盤・HUD を出さない）。盤を持つフェーズは盤・ボール・HUD を描き、飛行中だけ
-    // 残像を、サーブ待ち/クリア/ゲームオーバーはそれぞれの案内文を重ねる（case は網羅）。
-    pub def frame(atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
+    // ── frame: フェーズを盤の空間の絵へ投影する（カメラ適用は App が引き受ける）──
+    // タイトルは盤を出さない（文字は hud 側）。盤を持つフェーズは盤・ボール・破片を描き、
+    // 飛行中だけ残像を出す（case は網羅）。
+    pub def frame(_atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
+        match world#phase {
+            case Field.Phase.Title =>
+                Nil
+            case Field.Phase.Playing(core, Field.BallState.Waiting) =>
+                boardItems(world#params, core, Nil, Vec2.zero())
+            case Field.Phase.Playing(core, Field.BallState.Moving(mv)) =>
+                boardItems(world#params, core, mv#trail, mv#vel)
+            case Field.Phase.Cleared(core) =>
+                boardItems(world#params, core, Nil, Vec2.zero())
+            case Field.Phase.GameOver(core) =>
+                boardItems(world#params, core, Nil, Vec2.zero())
+        }
+
+    // ── hud: フェーズを画面の空間の絵へ投影する（カメラを掛けない = 揺れない）──
+    // タイトル文字・HUD・案内文はここ。frame と同じフェーズ分岐で組む。
+    pub def hud(atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
         match world#phase {
             case Field.Phase.Title =>
                 titleTexts(atlas)
             case Field.Phase.Playing(core, Field.BallState.Waiting) =>
-                boardFrame(atlas, world#params, core, Nil, Vec2.zero(), waitingOverlay(atlas))
-            case Field.Phase.Playing(core, Field.BallState.Moving(mv)) =>
-                boardFrame(atlas, world#params, core, mv#trail, mv#vel, Nil)
+                List.append(hudTexts(atlas, core), waitingOverlay(atlas))
+            case Field.Phase.Playing(core, Field.BallState.Moving(_)) =>
+                hudTexts(atlas, core)
             case Field.Phase.Cleared(core) =>
-                boardFrame(atlas, world#params, core, Nil, Vec2.zero(), clearedOverlay(atlas))
+                List.append(hudTexts(atlas, core), clearedOverlay(atlas))
             case Field.Phase.GameOver(core) =>
-                boardFrame(atlas, world#params, core, Nil, Vec2.zero(), gameOverOverlay(atlas))
+                List.append(hudTexts(atlas, core), gameOverOverlay(atlas))
         }
 
-    /// 盤ひとそろいを描く。trail と vel は飛行中だけ中身があり、待機・クリア・ゲームオーバーでは
-    /// 空（残像は出ない）。overlay はそのフェーズの案内文。
-    /// 描画物はレイヤーごとに束ね、それぞれのカメラ（cameraOf）を一括適用する: 盤・破片は
-    /// World に住むので揺れ、HUD と案内文は Screen に住むので動かない。
-    def boardFrame(atlas: FontAtlas, params: GameParameters.Params, core: Field.GameCore,
-                   trail: List[Vec2.Vec2], vel: Vec2.Vec2, overlay: List[Render.PlacedItem]):
-                   List[Render.PlacedItem] =
-        let worldCam = cameraOf(Layer.World, core);
-        let screenCam = cameraOf(Layer.Screen, core);
-        let worldItems = List.flatten(
+    /// 盤ひとそろい（盤の空間）。trail と vel は飛行中だけ中身があり、
+    /// 待機・クリア・ゲームオーバーでは空（残像は出ない）。
+    def boardItems(params: GameParameters.Params, core: Field.GameCore,
+                   trail: List[Vec2.Vec2], vel: Vec2.Vec2): List[Render.PlacedItem] =
+        List.flatten(
             wallBoxes(core) ::
             blockBoxes(core) ::
             paddleBoxes(core) ::
             trailBoxes(params, vel, trail) ::
             ballBoxes(core) ::
-            burstItems(core) :: Nil);
-        let screenItems = List.append(hudTexts(atlas, core), overlay);
-        List.append(CameraRig.apply(worldCam, worldItems), CameraRig.apply(screenCam, screenItems))
+            burstItems(core) :: Nil)
 
-    // ── レイヤーとカメラ（描画物が住む空間と、その空間の見方）──
+    // ── カメラ（App.withCamera に渡す。状態を持たず毎フレーム trauma から純粋に導出する）──
 
-    /// 描画物が住む空間。World は盤の空間（カメラが乗る = シェイクで揺れる）、
-    /// Screen は画面の空間（HUD・案内文。カメラは恒等）。空間を足す日はここに case を足す。
-    pub enum Layer {
-        case World
-        case Screen
-    }
-
-    /// レイヤーごとのカメラを盤から導く（状態を持たず、毎フレーム trauma から純粋に導出する。
-    /// だから「元の transform を保存して毎フレーム復元する」類の儀式が要らない）。
-    pub def cameraOf(layer: Layer, core: Field.GameCore): CameraRig.Camera =
-        match layer {
-            case Layer.World  => { offset = shakeOffsetOf(core) }
-            case Layer.Screen => CameraRig.fixed()
+    /// 画面中央に映したい world 座標。盤は動かないので基準は design の中央で、
+    /// シェイクのぶんだけ逆向きにずらす（絵が +shake に動く = 従来の揺れと同じ向き）。
+    /// 盤の無いタイトルは中央固定（カメラなしと同じ見え方）。
+    pub def cameraCenter(world: Field.World): Vec2.Vec2 =
+        let base = { x = Field.designW() / 2.0, y = Field.designH() / 2.0 };
+        match world#phase {
+            case Field.Phase.Title                => base
+            case Field.Phase.Playing(core, _)     => Vec2.sub(base, shakeOffsetOf(core))
+            case Field.Phase.Cleared(core)        => Vec2.sub(base, shakeOffsetOf(core))
+            case Field.Phase.GameOver(core)       => Vec2.sub(base, shakeOffsetOf(core))
         }
 
     // ── カメラシェイク（trauma からその場で計算する。式と適用は CameraRig が持つ）──

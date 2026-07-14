@@ -16,6 +16,29 @@ mod CameraRig {
     pub def apply(cam: Camera, items: List[Render.PlacedItem]): List[Render.PlacedItem] =
         List.map(placed -> { at = Vec2.add(placed#at, cam#offset) | placed }, items)
 
+    // ── 中央映し（world 座標 ⇄ 画面座標の平行移動・等倍前提）──
+
+    /// center（画面中央に映したい world 座標）を映すための画面ずらし量。
+    /// toWorldPos と互いに逆向きの平行移動。design は同型 Vec2 の取り違え防止で名前渡し。
+    pub def centerOffset(center: Vec2.Vec2, design: {design = Vec2.Vec2}): Vec2.Vec2 =
+        Vec2.sub(Vec2.div(design#design, 2.0), center)
+
+    /// center が画面中央に来るよう items を一括でずらす（HUD 等の画面固定物には掛けない）。
+    pub def centerOn(center: Vec2.Vec2, design: {design = Vec2.Vec2},
+                     items: List[Render.PlacedItem]): List[Render.PlacedItem] =
+        apply({ offset = centerOffset(center, design) }, items)
+
+    /// 画面座標 → world 座標（centerOn の逆変換）。マウスや注釈矩形を world で解釈するときに。
+    /// center と画面座標は同型なので、画面座標側を名前渡しにして取り違えを防ぐ。
+    pub def toWorldPos(center: Vec2.Vec2, design: {design = Vec2.Vec2},
+                       screen: {screen = Vec2.Vec2}): Vec2.Vec2 =
+        Vec2.sub(screen#screen, centerOffset(center, design))
+
+    /// center を中央に映したとき画面に見える world 範囲。背景タイルの敷き詰めなど
+    /// 「見える分だけ組む」計算に。
+    pub def visibleRect(center: Vec2.Vec2, design: {design = Vec2.Vec2}): Rect2.Rect2 =
+        { position = Vec2.sub(center, Vec2.div(design#design, 2.0)), size = design#design }
+
     // ── 追従（不感帯 + 寄せ率 + クランプ）──
 
     /// 追従の仕様: 不感帯の幅と寄せ率（1 秒あたり）。

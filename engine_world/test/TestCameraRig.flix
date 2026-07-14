@@ -86,4 +86,40 @@ mod TestCameraRig {
              CameraRig.clampAxis(0.0, 960.0, 1000.0),
              CameraRig.clampAxis(0.0, 960.0, 5.0),
              CameraRig.clampAxis(0.0, -160.0, 100.0)))
+
+    // ========================================================================
+    // 中央映し: centerOffset / centerOn / toWorldPos / visibleRect
+    // ========================================================================
+
+    // center (100,50) を 320×240 の中央に映すずらし量は (60, 70)。
+    @Test
+    def testCenterOffsetMovesCenterToMiddle(): Unit \ Assert =
+        let off = CameraRig.centerOffset({ x = 100.0, y = 50.0 }, design = { x = 320.0, y = 240.0 });
+        Assert.assertEq(expected = (60.0, 70.0), (off#x, off#y))
+
+    // centerOn: center に置いた item は画面中央 (design/2) に着地する。
+    @Test
+    def testCenterOnLandsCenterAtMiddle(): Unit \ Assert =
+        let center = { x = 100.0, y = 50.0 };
+        let item = { at = center, item = Render.box({ x = 1.0, y = 1.0 }, red(), 0) };
+        let moved = CameraRig.centerOn(center, design = { x = 320.0, y = 240.0 }, item :: Nil);
+        Assert.assertEq(expected = Some((160.0, 120.0)),
+            List.head(moved) |> Option.map(p -> (p#at#x, p#at#y)))
+
+    // toWorldPos は centerOn と互いに逆: 画面中央を world に戻すと center そのもの。
+    @Test
+    def testToWorldPosInvertsCenterOn(): Unit \ Assert =
+        let center = { x = 100.0, y = 50.0 };
+        let back = CameraRig.toWorldPos(center, design = { x = 320.0, y = 240.0 },
+                                        screen = { x = 160.0, y = 120.0 });
+        Assert.assertEq(expected = (100.0, 50.0), (back#x, back#y))
+
+    // visibleRect は center を中央にした design サイズの矩形（左上 = center - design/2）。
+    @Test
+    def testVisibleRectSurroundsCenter(): Unit \ Assert =
+        let r = CameraRig.visibleRect({ x = 100.0, y = 50.0 }, design = { x = 320.0, y = 240.0 });
+        Assert.assertEq(expected = (-60.0, -70.0, 320.0, 240.0),
+            (r#position#x, r#position#y, r#size#x, r#size#y))
+
+    def red(): Color = { r = 1.0f32, g = 0.0f32, b = 0.0f32 }
 }

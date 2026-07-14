@@ -14,6 +14,8 @@ def main(): Unit \ IO =
                 |> App.addSystem(Controls.step)
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadParams)
                 |> App.withView(View.frame)
+                |> App.withCamera(View.cameraCenter)
+                |> App.withHudView(View.hud)
                 |> App.withAudio(Sfx.events)
                 |> App.withStatusLine(Field.statusLine)
                 |> App.withDebug(App.debugFromEnv())

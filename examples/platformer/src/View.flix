@@ -16,21 +16,27 @@ mod View {
     def zBurst(): Int32 = 20
     def zText(): Int32 = 100
 
-    /// World を絵へ。地形 → 旗（ゴール・中間地点） → プレイヤー → 演出の粒 → HUD の順で重ねる。
-    /// レイヤーは 2 枚: 地形・プレイヤー・粒はワールド空間（camX/camY ぶんずらす）、
-    /// HUD はスクリーン空間（固定カメラ）。動く床は時刻の実位置で描く
-    /// （静的な床は platformsAt が恒等なので絵は変わらない）。
-    pub def frame(atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
-        let worldCam = { offset = { x = -world#camX, y = -world#camY } };
-        let worldItems = List.flatten(
+    /// World をワールド空間の絵へ。地形 → 旗（ゴール・中間地点） → 敵 → プレイヤー → 演出の粒。
+    /// カメラのずらしは App.withCamera（cameraCenter）が引き受けるので、ここは world 座標のまま組む。
+    /// 動く床は時刻の実位置で描く（静的な床は platformsAt が恒等なので絵は変わらない）。
+    pub def frame(_atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
+        List.flatten(
             platformBoxes(Field.platformsAt(world#time, world#platforms)) ::
             goalItems(world) ::
             enemyItems(world#time, world#enemies) ::
             playerItems(world) ::
-            burstItems(world#bursts) :: Nil);
-        let screenItems = hudTexts(atlas, world);
-        List.append(CameraRig.apply(worldCam, worldItems),
-                    CameraRig.apply(CameraRig.fixed(), screenItems))
+            burstItems(world#bursts) :: Nil)
+
+    /// スクリーン空間の絵（HUD。カメラを掛けない = スクロールしても動かない）。
+    pub def hud(atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
+        hudTexts(atlas, world)
+
+    /// 画面中央に映したい world 座標（App.withCamera に渡す）。World の camX/camY は
+    /// カメラの左上なので、design の半分を足して中央にする。追従・クランプ・先読みは
+    /// FollowCam のシステムが World を進めた結果で、ここは読むだけ。
+    pub def cameraCenter(world: Field.World): Vec2.Vec2 =
+        { x = world#camX + Field.designW() / 2.0,
+          y = world#camY + Field.designH() / 2.0 }
 
     // ── 地形 ──
 

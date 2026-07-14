@@ -50,6 +50,13 @@ mod App {
         // World を (置き場所, 見せたい物) の列へ投影する。None のゲームは App に描画させず自分の
         // システム内で描く（タイルマップ等の複数チャンネルを直接組むゲーム向け）。
         view = Option[(FontAtlas, w) -> List[Render.PlacedItem] \ ef],
+        // World から「画面中央に映したい world 座標」を導く。None = カメラなし（view の座標が
+        // そのまま画面座標）。view = None のゲームでは効かない。追従・クランプ・シェイクは
+        // ゲーム側システムの責務（導いた値をここで返すだけ）。zoom は将来、別フィールドの合成で足す。
+        camera = Option[w -> Vec2.Vec2 \ ef],
+        // カメラを掛けずに描く絵（スコア等の HUD）。view の絵と合流して1本のリストになるので、
+        // 重なり順は従来どおり zIndex が決める（Render.draw が安定ソート・同 z は後勝ち = hud）。
+        hudView = Option[(FontAtlas, w) -> List[Render.PlacedItem] \ ef],
         audio = { before = w, after = w } -> List[String] \ ef,    // 1 フレームの前後から鳴らす音名を導く
         quit = (Frame, w) -> Bool \ ef,                            // 終了判定（既定 = Escape のエッジ）
         debug = Bool,                                              // デバッグ機能（F8 の時間停止・注釈・巻き戻し）を有効にするか
@@ -78,6 +85,8 @@ mod App {
           updateSystems = Nil,
           reload = None,
           view = None,
+          camera = None,
+          hudView = None,
           audio = _worlds -> checked_ecast(Nil),
           quit = (frame, _world) -> checked_ecast(justPressed(GameEngine.Key.Escape, frame)),
           debug = false,
@@ -102,6 +111,18 @@ mod App {
     pub def withView(v: (FontAtlas, w) -> List[Render.PlacedItem] \ ef,
                      app: App[w, ef]): App[w, ef] =
         { view = Some(v) | app }
+
+    /// World から「画面中央に映したい world 座標」を導く関数を繋ぐ。view は world 座標のまま
+    /// 書けばよく、画面へのずらしは App が引き受ける（F8 の凍結画面やリモートの注釈にも同じ
+    /// カメラが効く）。追従やシェイクはゲーム側システムで World に持たせ、ここでは読むだけにする。
+    pub def withCamera(f: w -> Vec2.Vec2 \ ef, app: App[w, ef]): App[w, ef] =
+        { camera = Some(f) | app }
+
+    /// カメラを掛けない絵（スコア等の HUD）を繋ぐ。重なり順は zIndex が決める
+    /// （view の絵より手前に出したければ大きい zIndex を使う）。
+    pub def withHudView(v: (FontAtlas, w) -> List[Render.PlacedItem] \ ef,
+                        app: App[w, ef]): App[w, ef] =
+        { hudView = Some(v) | app }
 
     /// 1 フレームの前後の World（{before, after}）から鳴らす音名を導く関数を繋ぐ
     /// （再生は App が引き受ける）。
@@ -162,6 +183,17 @@ mod App {
     /// システムの列を追加順（左から右）に World へ畳み込む。
     pub def applySystems(frame: Frame, systems: List[(Frame, w) -> w \ ef], world: w): w \ ef =
         List.foldLeft((acc, sys) -> sys(frame, acc), world, systems)
+
+    /// view 由来の絵（world）に camera（あれば）を掛け、hud の絵を後ろに繋ぐ。hud には掛けない。
+    /// 2 つの絵は同型のリストなので record で名前渡しにして取り違えを防ぐ。
+    /// 重なり順はこの並びでなく zIndex が決める（Render.draw が安定ソート・同 z は後勝ち = hud）。
+    pub def composeScene(center: Option[Vec2.Vec2], design: Vec2.Vec2,
+                         items: { world = List[Render.PlacedItem], hud = List[Render.PlacedItem] }): List[Render.PlacedItem] =
+        let shifted = match center {
+            case None    => items#world
+            case Some(c) => CameraRig.centerOn(c, design = design, items#world)
+        };
+        List.append(shifted, items#hud)
 
     // ── ランナー: 起動して、閉じるまで回す ──
 
@@ -308,7 +340,8 @@ mod App {
         match app#view {
             case Some(toItems) =>
                 let atlas = GameEngine.Game.getFontAtlas("default");
-                let items = toItems(atlas, displayed);
+                // displayed（スクラブで表示中の瞬間）から絵もカメラも導く — 注釈の hits も同じ items を使う
+                let items = sceneItems(app, atlas, displayed, toItems);
                 let (sprites, polygons) = Render.draw(items);
                 let hitList = match emitted {
                     case Some(rect) => Annotate.hits(name -> GameEngine.Game.getTextureInfo(name), rect, items)
@@ -404,14 +437,32 @@ mod App {
     def readDt(): Float64 \ GameEngine.Game =
         Duration.toSeconds(GameEngine.Game.getDeltaTime())
 
+    /// world から画面に出す絵一式を組む: view の絵に camera を掛け、hud を合流する（純粋な芯は
+    /// composeScene）。F8 スクラブ中は「表示中の瞬間」の World を渡すこと — 現在の world を
+    /// 渡すと絵は過去・カメラは現在のズレた画面になり、注釈の当たり判定も全部ずれる。
+    def sceneItems(app: App[w, ef], atlas: FontAtlas, world: w,
+                   toItems: (FontAtlas, w) -> List[Render.PlacedItem] \ ef):
+            List[Render.PlacedItem] \ (ef + GameEngine.Game) =
+        let design = GameEngine.Game.getViewportRect()#size;
+        let center = match app#camera {
+            case None    => None
+            case Some(f) => Some(f(world))
+        };
+        let hud = match app#hudView {
+            case None    => Nil
+            case Some(h) => h(atlas, world)
+        };
+        composeScene(center, design, { world = toItems(atlas, world), hud = hud })
+
     /// view の投影した絵を描画命令にしてエンジンへ渡す（タイルマップは使わないので空の列を添える）。
-    /// view = None のゲームは App では描かない（自分のシステム内で renderCommands を呼ぶ）。
+    /// view = None のゲームは App では描かない（自分のシステム内で renderCommands を呼ぶ。
+    /// camera / hudView もこの場合は効かない）。
     def renderFrame(app: App[w, ef], world: w): Unit \ (ef + GameEngine.Game) =
         match app#view {
             case None          => ()
             case Some(toItems) =>
                 let atlas = GameEngine.Game.getFontAtlas("default");
-                let (sprites, polygons) = Render.draw(toItems(atlas, world));
+                let (sprites, polygons) = Render.draw(sceneItems(app, atlas, world, toItems));
                 GameEngine.Game.renderCommands(sprites, Nil, polygons)
         }
 
@@ -554,8 +605,9 @@ mod App {
         match (app#view, app#debugView) {
             case (Some(toItems), _) =>
                 let atlas = GameEngine.Game.getFontAtlas("default");
+                // 画面座標の矩形と突き合わせるので、カメラ適用後（=画面に出ている）items を使う
                 let hitList = Annotate.hits(name -> GameEngine.Game.getTextureInfo(name), rect,
-                                            toItems(atlas, world));
+                                            sceneItems(app, atlas, world, toItems));
                 RemoteDebug.sceneBlock(rect, hitList)
             case (None, Some((_, toChannels))) =>
                 let (drawables, _, _) = toChannels(world);

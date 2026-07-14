@@ -143,25 +143,20 @@ mod TestBreakout {
     // ========================================================================
 
     // シェイクの式（二乗則・滑らかノイズ）の pin は engine_world の TestCameraRig が持つ。
-    // ここではゲーム固有の配線 —— レイヤーとカメラの対応 —— だけを固定する。
+    // ここではゲーム固有の配線 —— カメラ中心の導出 —— だけを固定する。
 
-    // レイヤー別カメラ: trauma が積まれた盤でも Screen（HUD の空間）のカメラは動かず、
-    // World のカメラはシェイクのオフセットそのものになる。
+    // カメラ中心: trauma が積まれた盤では design 中央からシェイクの逆向きにずれる
+    // （App.composeScene を通すと絵が +shake に動く = 揺れの向きは従来どおり）。
     @Test
-    def testCameraPerLayer(): Unit \ Assert =
+    def testCameraCenterCountersShake(): Unit \ Assert =
         let shaken = Step.update(Trace.idle(), Trace.dt(), overlapWorld(Some({ hp = 2, maxHp = 2 })));
-        let core = Trace.coreOf(shaken);
-        let screenCam = core |> Option.map(c -> {
-            let cam = View.cameraOf(View.Layer.Screen, c);
-            (cam#offset#x, cam#offset#y)
-        });
-        let worldMatchesShake = core |> Option.map(c -> {
-            let cam = View.cameraOf(View.Layer.World, c);
+        let matchesShake = Trace.coreOf(shaken) |> Option.map(c -> {
+            let center = View.cameraCenter(shaken);
             let shake = View.shakeOffsetOf(c);
-            (cam#offset#x == shake#x, cam#offset#y == shake#y)
+            (center#x == Field.designW() / 2.0 - shake#x,
+             center#y == Field.designH() / 2.0 - shake#y)
         });
-        Assert.assertEq(expected = (Some((0.0, 0.0)), Some((true, true))),
-            (screenCam, worldMatchesShake))
+        Assert.assertEq(expected = Some((true, true)), matchesShake)
 
     // ========================================================================
     // ブロックの耐久・破壊・スコア・シェイク

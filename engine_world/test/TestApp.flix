@@ -82,6 +82,43 @@ mod TestApp {
         Assert.assertEq(expected = (1.0, -1.0, 0.0, 0.0), (pos, neg, idle, both))
 
     // ========================================================================
+    // composeScene: camera は world の絵だけに掛かり、hud には掛からない
+    // ========================================================================
+
+    def sceneDesign(): Vec2.Vec2 = { x = 320.0, y = 240.0 }
+
+    def boxAtOrigin(): Render.PlacedItem =
+        { at = { x = 0.0, y = 0.0 },
+          item = Render.box({ x = 1.0, y = 1.0 }, { r = 1.0f32, g = 0.0f32, b = 0.0f32 }, 0) }
+
+    def atOf(items: List[Render.PlacedItem]): Option[(Float64, Float64)] =
+        List.head(items) |> Option.map(p -> (p#at#x, p#at#y))
+
+    // camera なし: world の絵は恒等・hud が後ろに繋がる（順序も本数もそのまま）。
+    @Test
+    def testComposeSceneWithoutCameraIsIdentityAppend(): Unit \ Assert =
+        let composed = App.composeScene(None, sceneDesign(),
+            { world = boxAtOrigin() :: Nil, hud = boxAtOrigin() :: Nil });
+        Assert.assertEq(expected = (2, Some((0.0, 0.0))), (List.length(composed), atOf(composed)))
+
+    // camera あり: world の絵だけがずれ（原点は design/2 - center へ）、hud は不動のまま。
+    @Test
+    def testComposeSceneShiftsWorldButNotHud(): Unit \ Assert =
+        let composed = App.composeScene(Some({ x = 100.0, y = 50.0 }), sceneDesign(),
+            { world = boxAtOrigin() :: Nil, hud = boxAtOrigin() :: Nil });
+        let hudAt = List.head(List.drop(1, composed)) |> Option.map(p -> (p#at#x, p#at#y));
+        Assert.assertEq(expected = (Some((60.0, 70.0)), Some((0.0, 0.0))), (atOf(composed), hudAt))
+
+    // center に置いた item は画面中央 design/2 に着地する（round-trip）。
+    @Test
+    def testComposeSceneLandsCenterAtMiddle(): Unit \ Assert =
+        let center = { x = 100.0, y = 50.0 };
+        let onCenter = { at = center | boxAtOrigin() };
+        let composed = App.composeScene(Some(center), sceneDesign(),
+            { world = onCenter :: Nil, hud = Nil });
+        Assert.assertEq(expected = Some((160.0, 120.0)), atOf(composed))
+
+    // ========================================================================
     // makeWith: 初期 World は design サイズから組める
     // ========================================================================
 

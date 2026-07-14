@@ -32,10 +32,15 @@ mod Gallery {
           outDir = outDir(), frameW = frameW(), frameH = frameH(),
           gifDelayMs = gifDelayMs(), gifFps = gifFps() }
 
-    /// World の絵に注釈（extra）を重ねて engine の描画コマンドへ投影する。
+    /// World の絵（カメラ適用 + hud 合流 = 本番と同じ合成）に注釈（extra）を重ねて
+    /// engine の描画コマンドへ投影する。
     def worldCmds(atlas: FontAtlas, world: Field.World,
                   extra: List[Render.PlacedItem]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
-        Render.draw(List.append(View.frame(atlas, world), extra))
+        let composed = App.composeScene(
+            Some(View.cameraCenter(world)),
+            { x = Field.designW(), y = Field.designH() },
+            { world = View.frame(atlas, world), hud = View.hud(atlas, world) });
+        Render.draw(List.append(composed, extra))
 
     // ── PNG / GIF を焼く（配管は Bakery が担う）──
 
