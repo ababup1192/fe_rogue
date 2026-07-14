@@ -29,7 +29,7 @@ FLIX_TEST := $(CURDIR)/bin/flix
 
 # 全パッケージ共通のバージョン (lockstep)。sync 先ディレクトリ名や release の
 # asset 名に使う。make bump FROM=x TO=y で各 flix.toml と一緒に上げる。
-VERSION := 0.1.3
+VERSION := 0.1.4
 
 RENDER_GL_DIR       := render_gl
 RENDER_GL_FPKG_SRC  := $(RENDER_GL_DIR)/artifact/render_gl.fpkg
@@ -134,23 +134,28 @@ test:
 # 並列テスト。各パッケージは独立 (別ディレクトリ・別 JVM) なので同時に回せて、
 # 壁時計は最遅パッケージ (fe_rogue) 1本分まで縮む。ログは .test-logs/ にパッケージ別で残し、
 # 赤があれば最後にそのログ末尾を表示して exit 1。並列数は TEST_PAR_JOBS で変えられる。
+# xargs は -I でなく -n1 + $$0 渡し (BSD xargs の -I は置換後の引数が 255 バイト制限で、
+# スクリプトに埋めると「command line cannot be assembled」で 1 本も走らない)。
+# 「1 本も走っていないのに green」の偽陽性は実行数ガードで落とす。
 TEST_PAR_JOBS ?= 6
 test-par:
 	@mkdir -p .test-logs; rm -f .test-logs/*.log .test-logs/*.fail; \
-	printf '%s\n' $(TEST_DIRS) | xargs -P $(TEST_PAR_JOBS) -I{} sh -c ' \
-		dir="{}"; [ -f "$$dir/flix.toml" ] || exit 0; \
+	printf '%s\n' $(TEST_DIRS) | xargs -P $(TEST_PAR_JOBS) -n 1 sh -c ' \
+		dir="$$0"; [ -f "$$dir/flix.toml" ] || exit 0; \
 		name=$$(printf "%s" "$$dir" | tr / _); \
 		if (cd "$$dir" && $(FLIX_TEST) test) > ".test-logs/$$name.log" 2>&1; then \
 			echo "[test-par] PASS $$dir"; \
 		else \
 			echo "[test-par] FAIL $$dir"; touch ".test-logs/$$name.fail"; \
 		fi'; \
+	ran=$$(ls .test-logs/*.log 2>/dev/null | wc -l | tr -d ' '); \
+	if [ "$$ran" -eq 0 ]; then echo "[test-par] 1 本も実行されていない (xargs 失敗の疑い)"; exit 1; fi; \
 	if ls .test-logs/*.fail > /dev/null 2>&1; then \
 		echo "===== 失敗したパッケージのログ末尾 ====="; \
 		for f in .test-logs/*.fail; do base=$${f%.fail}; echo "--- $$base"; tail -40 "$$base.log"; done; \
 		exit 1; \
 	fi; \
-	echo "[test-par] all green"
+	echo "[test-par] all green ($$ran packages)"
 
 # ── bake ──────────────────────────────────────────────────
 # 各 example のギャラリー・効果音などの生成物を一括で焼き直す。
@@ -170,19 +175,21 @@ bake-par:
 	@mkdir -p .test-logs; rm -f .test-logs/bake-*.log .test-logs/bake-*.fail; \
 	for dir in examples/*/; do \
 		if [ -f "$$dir/Makefile" ] && grep -q "^bake:" "$$dir/Makefile"; then echo "$$dir"; fi; \
-	done | xargs -P $(BAKE_PAR_JOBS) -I{} sh -c ' \
-		dir="{}"; name=$$(basename "$$dir"); \
+	done | xargs -P $(BAKE_PAR_JOBS) -n 1 sh -c ' \
+		dir="$$0"; name=$$(basename "$$dir"); \
 		if (cd "$$dir" && make bake) > ".test-logs/bake-$$name.log" 2>&1; then \
 			echo "[bake-par] DONE $$dir"; \
 		else \
 			echo "[bake-par] FAIL $$dir"; touch ".test-logs/bake-$$name.fail"; \
 		fi'; \
+	ran=$$(ls .test-logs/bake-*.log 2>/dev/null | wc -l | tr -d ' '); \
+	if [ "$$ran" -eq 0 ]; then echo "[bake-par] 1 本も実行されていない (xargs 失敗の疑い)"; exit 1; fi; \
 	if ls .test-logs/bake-*.fail > /dev/null 2>&1; then \
 		echo "===== 失敗した bake のログ末尾 ====="; \
 		for f in .test-logs/bake-*.fail; do base=$${f%.fail}; echo "--- $$base"; tail -40 "$$base.log"; done; \
 		exit 1; \
 	fi; \
-	echo "[bake-par] all done"
+	echo "[bake-par] all done ($$ran examples)"
 
 # 個別テスト: make test-fe_rogue (examples/ を先に探し、無ければルート直下のパッケージ名)
 test-%:
