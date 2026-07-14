@@ -32,7 +32,9 @@ mod GameGallery {
     def scene(atlas: FontAtlas, ui: UiStore.UiWorld, w: Room.World):
             {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]} =
         let ui1 = GameUi.projectUi(w, ui);
-        let (drawables, polygons) = Render.draw(View.compose(atlas, { ui = ui1, world = w }));
+        // App が組むのと同じ ViewCtx（カメラなし = design 全体が見えている）。
+        let ctx = { atlas = atlas, visible = App.visibleOf(None, design()) };
+        let (drawables, polygons) = Render.draw(View.compose(ctx, { ui = ui1, world = w }));
         { drawables = drawables, polygons = polygons }
 
     /// Bakery に渡す焼き込み設定（背景は clearColor・テクスチャなし）。

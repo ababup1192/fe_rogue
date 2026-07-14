@@ -10,8 +10,9 @@ mod View {
     /// プレイヤーの色（明るい青）。
     def playerColor(): Color = { r = 0.388235f32, g = 0.607843f32, b = 1.000000f32 }
 
-    /// World を描画コマンドの列へ写す。atlas は文字を描くとき使うが、今は使わない。
-    pub def frame(_atlas: FontAtlas, world: World.World): List[Render.PlacedItem] =
+    /// World を描画コマンドの列へ写す。ctx から文字用フォント（atlas）や
+    /// 見えている範囲（visible）が取れるが、今は使わない。
+    pub def frame(_ctx: App.ViewCtx, world: World.World): List[Render.PlacedItem] =
         let s = World.size();
         // Box は左上原点なので、中心座標から半分ずらして左上を出す。
         let topLeft = { x = world#x - s / 2.0, y = world#y - s / 2.0 };

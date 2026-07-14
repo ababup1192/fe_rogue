@@ -29,7 +29,7 @@ mod View {
     // ── frame: フェーズを盤の空間の絵へ投影する（カメラ適用は App が引き受ける）──
     // タイトルは盤を出さない（文字は hud 側）。盤を持つフェーズは盤・ボール・破片を描き、
     // 飛行中だけ残像を出す（case は網羅）。
-    pub def frame(_atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
+    pub def frame(_ctx: App.ViewCtx, world: Field.World): List[Render.PlacedItem] =
         match world#phase {
             case Field.Phase.Title =>
                 Nil
@@ -45,7 +45,8 @@ mod View {
 
     // ── hud: フェーズを画面の空間の絵へ投影する（カメラを掛けない = 揺れない）──
     // タイトル文字・HUD・案内文はここ。frame と同じフェーズ分岐で組む。
-    pub def hud(atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
+    pub def hud(ctx: App.ViewCtx, world: Field.World): List[Render.PlacedItem] =
+        let atlas = ctx#atlas;
         match world#phase {
             case Field.Phase.Title =>
                 titleTexts(atlas)

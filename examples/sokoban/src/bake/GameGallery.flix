@@ -43,7 +43,9 @@ mod GameGallery {
             {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]} =
         let w = Worldline.current(line);
         let ui1 = GameUi.projectUi(Worldline.pastLength(line), w, ui);
-        let (drawables, polygons) = Render.draw(View.compose(atlas, { ui = ui1, line = line }));
+        // App が組むのと同じ ViewCtx（カメラなし = design 全体が見えている）。
+        let ctx = { atlas = atlas, visible = App.visibleOf(None, design()) };
+        let (drawables, polygons) = Render.draw(View.compose(ctx, { ui = ui1, line = line }));
         { drawables = drawables, polygons = polygons }
 
     /// Bakery に渡す焼き込み設定（背景は clearColor・テクスチャなし）。

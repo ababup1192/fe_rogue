@@ -24,7 +24,8 @@ mod View {
     /// Session 全体を「(置き場所, 見せたい物) のリスト」へ投影する。
     /// 盤面はシェイク中だけ揺れ、UI ページは揺れない。会話の本文（色付き名前・太字入りの
     /// スパン列）は 1 色テキストの UI ノードでは表せないので、ここで直接描く。
-    pub def compose(atlas: FontAtlas, s: LiarsRoom.Session): List[Render.PlacedItem] =
+    pub def compose(ctx: App.ViewCtx, s: LiarsRoom.Session): List[Render.PlacedItem] =
+        let atlas = ctx#atlas;
         let Room.World.World(state) = s#world;
         List.append(
             frame(atlas, state) |> List.map(shift(shakeOffset(state))),

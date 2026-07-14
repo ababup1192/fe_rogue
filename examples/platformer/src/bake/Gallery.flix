@@ -36,10 +36,14 @@ mod Gallery {
     /// World を engine の描画コマンドへ投影する（カメラ適用 + HUD 合流 = 本番と同じ合成）。
     def worldCmds(atlas: FontAtlas, world: Field.World):
             (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+        let center = View.cameraCenter(world);
+        let design = { x = Field.designW(), y = Field.designH() };
+        // App が組むのと同じ ViewCtx（world 側はカメラの見える範囲・hud 側は画面全体）。
+        let ctx = { atlas = atlas, visible = App.visibleOf(Some(center), design) };
+        let hudCtx = { atlas = atlas, visible = App.visibleOf(None, design) };
         let composed = App.composeScene(
-            Some(View.cameraCenter(world)),
-            { x = Field.designW(), y = Field.designH() },
-            { world = View.frame(atlas, world), hud = View.hud(atlas, world) });
+            Some(center), design,
+            { world = View.frame(ctx, world), hud = View.hud(hudCtx, world) });
         Render.draw(composed)
 
     // ── PNG / GIF を焼く（配管は Bakery が担う）──

@@ -19,7 +19,7 @@ mod View {
     /// World をワールド空間の絵へ。地形 → 旗（ゴール・中間地点） → 敵 → プレイヤー → 演出の粒。
     /// カメラのずらしは App.withCamera（cameraCenter）が引き受けるので、ここは world 座標のまま組む。
     /// 動く床は時刻の実位置で描く（静的な床は platformsAt が恒等なので絵は変わらない）。
-    pub def frame(_atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
+    pub def frame(_ctx: App.ViewCtx, world: Field.World): List[Render.PlacedItem] =
         List.flatten(
             platformBoxes(Field.platformsAt(world#time, world#platforms)) ::
             goalItems(world) ::
@@ -28,8 +28,8 @@ mod View {
             burstItems(world#bursts) :: Nil)
 
     /// スクリーン空間の絵（HUD。カメラを掛けない = スクロールしても動かない）。
-    pub def hud(atlas: FontAtlas, world: Field.World): List[Render.PlacedItem] =
-        hudTexts(atlas, world)
+    pub def hud(ctx: App.ViewCtx, world: Field.World): List[Render.PlacedItem] =
+        hudTexts(ctx#atlas, world)
 
     /// 画面中央に映したい world 座標（App.withCamera に渡す）。World の camX/camY は
     /// カメラの左上なので、design の半分を足して中央にする。追従・クランプ・先読みは

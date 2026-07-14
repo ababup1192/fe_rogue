@@ -119,6 +119,25 @@ mod TestApp {
         Assert.assertEq(expected = Some((160.0, 120.0)), atOf(composed))
 
     // ========================================================================
+    // visibleOf: ViewCtx の visible（見えている world 矩形）の源
+    // ========================================================================
+
+    // camera なし: 原点起点の design 全体が見えている。
+    @Test
+    def testVisibleOfWithoutCameraIsDesignRect(): Unit \ Assert =
+        let visible = App.visibleOf(None, sceneDesign());
+        Assert.assertEq(expected = ((0.0, 0.0), (320.0, 240.0)),
+            ((visible#position#x, visible#position#y), (visible#size#x, visible#size#y)))
+
+    // camera あり: center − design/2 を左上とする design 大の矩形。
+    // composeScene のずらし（testComposeSceneShiftsWorldButNotHud と同じ center）と表裏一体。
+    @Test
+    def testVisibleOfWithCameraCentersRect(): Unit \ Assert =
+        let visible = App.visibleOf(Some({ x = 100.0, y = 50.0 }), sceneDesign());
+        Assert.assertEq(expected = ((-60.0, -70.0), (320.0, 240.0)),
+            ((visible#position#x, visible#position#y), (visible#size#x, visible#size#y)))
+
+    // ========================================================================
     // makeWith: 初期 World は design サイズから組める
     // ========================================================================
 

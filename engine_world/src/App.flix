@@ -41,6 +41,12 @@ mod App {
     /// withAudio / quitWhen で部品を繋ぎ、launch へ渡す。w はゲームが持ち込む World の型。
     /// ef はゲームのシステム・絵・音・終了判定が帯びる効果（外の世界に触れる処理）の行。
     /// 純粋なゲームは ef = {}（Pure）、effect で状態を持つゲームは自分の効果行を ef に載せて
+    /// view / hudView が受け取る「この 1 フレームの見え方」。atlas は文字描画用の既定フォント、
+    /// visible は camera を通して画面に見えている world の矩形（camera なしなら design 全体）。
+    /// 背景タイルの敷き詰めなど「見える分だけ組む」計算は visible から出す — ゲームが
+    /// 画面サイズを World に持ち込む必要はない。HUD（画面固定）には常に design 全体が渡る。
+    pub type alias ViewCtx = { atlas = FontAtlas, visible = Rect2.Rect2 }
+
     /// 同じ App に乗せる（効果多相）。
     pub type alias App[w: Type, ef: Eff] = {
         init = Vec2.Vec2 -> w \ ef,                                // design 解像度 → 出発点の World（launch が画面サイズを渡して呼ぶ）
@@ -49,14 +55,14 @@ mod App {
         reload = Option[(GameEngine.Key, w -> w \ {Fs.FileRead})], // ホットリロード（キーと、ファイル読みの副作用）
         // World を (置き場所, 見せたい物) の列へ投影する。None のゲームは App に描画させず自分の
         // システム内で描く（タイルマップ等の複数チャンネルを直接組むゲーム向け）。
-        view = Option[(FontAtlas, w) -> List[Render.PlacedItem] \ ef],
+        view = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef],
         // World から「画面中央に映したい world 座標」を導く。None = カメラなし（view の座標が
         // そのまま画面座標）。view = None のゲームでは効かない。追従・クランプ・シェイクは
         // ゲーム側システムの責務（導いた値をここで返すだけ）。zoom は将来、別フィールドの合成で足す。
         camera = Option[w -> Vec2.Vec2 \ ef],
         // カメラを掛けずに描く絵（スコア等の HUD）。view の絵と合流して1本のリストになるので、
         // 重なり順は従来どおり zIndex が決める（Render.draw が安定ソート・同 z は後勝ち = hud）。
-        hudView = Option[(FontAtlas, w) -> List[Render.PlacedItem] \ ef],
+        hudView = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef],
         audio = { before = w, after = w } -> List[String] \ ef,    // 1 フレームの前後から鳴らす音名を導く
         quit = (Frame, w) -> Bool \ ef,                            // 終了判定（既定 = Escape のエッジ）
         debug = Bool,                                              // デバッグ機能（F8 の時間停止・注釈・巻き戻し）を有効にするか
@@ -108,7 +114,8 @@ mod App {
         { reload = Some((key, f)) | app }
 
     /// World を絵（(置き場所, 見せたい物) の列）へ投影する関数を繋ぐ。
-    pub def withView(v: (FontAtlas, w) -> List[Render.PlacedItem] \ ef,
+    /// 第 1 引数の ViewCtx から既定フォント（atlas）と見えている world 矩形（visible）が取れる。
+    pub def withView(v: (ViewCtx, w) -> List[Render.PlacedItem] \ ef,
                      app: App[w, ef]): App[w, ef] =
         { view = Some(v) | app }
 
@@ -120,7 +127,8 @@ mod App {
 
     /// カメラを掛けない絵（スコア等の HUD）を繋ぐ。重なり順は zIndex が決める
     /// （view の絵より手前に出したければ大きい zIndex を使う）。
-    pub def withHudView(v: (FontAtlas, w) -> List[Render.PlacedItem] \ ef,
+    /// ViewCtx の visible は常に画面全体（position = 原点, size = design）。
+    pub def withHudView(v: (ViewCtx, w) -> List[Render.PlacedItem] \ ef,
                         app: App[w, ef]): App[w, ef] =
         { hudView = Some(v) | app }
 
@@ -194,6 +202,15 @@ mod App {
             case Some(c) => CameraRig.centerOn(c, design = design, items#world)
         };
         List.append(shifted, items#hud)
+
+    /// camera 中心（無ければカメラなし = design 全体）から、画面に見えている world の矩形を出す。
+    /// view へ渡す ViewCtx の visible の源。composeScene のずらしと同じ center を使うので、
+    /// visible で組んだ絵とカメラのずらしは必ず一致する。
+    pub def visibleOf(center: Option[Vec2.Vec2], design: Vec2.Vec2): Rect2.Rect2 =
+        match center {
+            case Some(c) => CameraRig.visibleRect(c, design = design)
+            case None    => { position = Vec2.zero(), size = design }
+        }
 
     // ── ランナー: 起動して、閉じるまで回す ──
 
@@ -441,7 +458,7 @@ mod App {
     /// composeScene）。F8 スクラブ中は「表示中の瞬間」の World を渡すこと — 現在の world を
     /// 渡すと絵は過去・カメラは現在のズレた画面になり、注釈の当たり判定も全部ずれる。
     def sceneItems(app: App[w, ef], atlas: FontAtlas, world: w,
-                   toItems: (FontAtlas, w) -> List[Render.PlacedItem] \ ef):
+                   toItems: (ViewCtx, w) -> List[Render.PlacedItem] \ ef):
             List[Render.PlacedItem] \ (ef + GameEngine.Game) =
         let design = GameEngine.Game.getViewportRect()#size;
         let center = match app#camera {
@@ -450,9 +467,11 @@ mod App {
         };
         let hud = match app#hudView {
             case None    => Nil
-            case Some(h) => h(atlas, world)
+            // HUD は画面固定なので、見えている矩形は常に design 全体（原点起点）。
+            case Some(h) => h({ atlas = atlas, visible = visibleOf(None, design) }, world)
         };
-        composeScene(center, design, { world = toItems(atlas, world), hud = hud })
+        let ctx = { atlas = atlas, visible = visibleOf(center, design) };
+        composeScene(center, design, { world = toItems(ctx, world), hud = hud })
 
     /// view の投影した絵を描画命令にしてエンジンへ渡す（タイルマップは使わないので空の列を添える）。
     /// view = None のゲームは App では描かない（自分のシステム内で renderCommands を呼ぶ。

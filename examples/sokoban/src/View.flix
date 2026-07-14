@@ -32,7 +32,8 @@ mod View {
     /// Session 全体を「(置き場所, 見せたい物) のリスト」へ投影する。盤面の絵
     /// （frame）と UI ページ（Title / Clear パネル）を 1 本のリストに合成して
     /// 返すだけで、描画命令への変換は App が引き受ける。
-    pub def compose(atlas: FontAtlas, s: Sokoban.Session): List[Render.PlacedItem] =
+    pub def compose(ctx: App.ViewCtx, s: Sokoban.Session): List[Render.PlacedItem] =
+        let atlas = ctx#atlas;
         List.append(
             frame(atlas, Worldline.current(s#line)),
             UiRender.itemsWith(_ -> atlas, _ -> None, s#ui, GameUi.designSize()))
