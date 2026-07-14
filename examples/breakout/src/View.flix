@@ -24,8 +24,6 @@ mod View {
     def zBurst(): Int32 = 20
     def zText(): Int32 = 100
 
-    def tau(): Float64 = 6.283185307179586
-
     // ── frame: フェーズを盤の空間の絵へ投影する（カメラ適用は App が引き受ける）──
     // タイトルは盤を出さない（文字は hud 側）。盤を持つフェーズは盤・ボール・破片を描き、
     // 飛行中だけ残像を出す（case は網羅）。
@@ -247,7 +245,7 @@ mod View {
     /// 破片 i、破壊から t 秒目: 自分の方向・速さで飛び散り、少し落ち、回りながら縮んで消える。
     /// 形（原点まわりの回転四角）と置き場所（飛散先の中心）を分けて返す。
     def fragmentPiece(burst: Field.Burst, i: Int32, rand: Int32 -> Float64, t: Float64): Render.PlacedItem =
-        let angle = tau() * rand(0);
+        let angle = Vec2.tau() * rand(0);
         let speed = fragSpeedMin() + fragSpeedSpan() * rand(1);
         let dist = speed * t;
         let fall = fragGravity() * t * t;

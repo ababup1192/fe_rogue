@@ -26,25 +26,25 @@ mod Trace {
 
     /// 右キーを n フレーム押しっぱなしにする。
     pub def holdRight(frames: Int32): List[Replay.Cue[Field.Input]] =
-        hold({ right = true | idle() }, frames) :: Nil
+        hold({ moveX = 1.0 | idle() }, frames) :: Nil
 
     /// 左キーを n フレーム押しっぱなしにする。
     pub def holdLeft(frames: Int32): List[Replay.Cue[Field.Input]] =
-        hold({ left = true | idle() }, frames) :: Nil
+        hold({ moveX = -1.0 | idle() }, frames) :: Nil
 
     /// 右へ走りながらジャンプを n フレーム押す（1 フレーム目だけ押下エッジ）。
     pub def rightJump(frames: Int32): List[Replay.Cue[Field.Input]] =
-        hold({ right = true, jumpDown = true, jumpPressed = true | idle() }, 1) ::
-        hold({ right = true, jumpDown = true | idle() }, frames - 1) :: Nil
+        hold({ moveX = 1.0, jumpDown = true, jumpPressed = true | idle() }, 1) ::
+        hold({ moveX = 1.0, jumpDown = true | idle() }, frames - 1) :: Nil
 
     /// B ダッシュで右へ n フレーム走る。
     pub def holdRightDash(frames: Int32): List[Replay.Cue[Field.Input]] =
-        hold({ right = true, dash = true | idle() }, frames) :: Nil
+        hold({ moveX = 1.0, dash = true | idle() }, frames) :: Nil
 
     /// B ダッシュで右へ走りながらジャンプを n フレーム押す。
     pub def rightDashJump(frames: Int32): List[Replay.Cue[Field.Input]] =
-        hold({ right = true, dash = true, jumpDown = true, jumpPressed = true | idle() }, 1) ::
-        hold({ right = true, dash = true, jumpDown = true | idle() }, frames - 1) :: Nil
+        hold({ moveX = 1.0, dash = true, jumpDown = true, jumpPressed = true | idle() }, 1) ::
+        hold({ moveX = 1.0, dash = true, jumpDown = true | idle() }, frames - 1) :: Nil
 
     // ── シナリオの World ──
 

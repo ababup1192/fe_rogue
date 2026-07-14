@@ -56,7 +56,7 @@ mod GameFx {
     def fireworkParticleAt(burst: Field.Burst, life: Float64, speed: Float64, r0: Float64,
                            count: Int32, i: Int32, rand: Int32 -> Float64, t: Float64):
                            (Vec2.Vec2, Float64, Float32) =
-        let angle = 6.283185307179586 * Int32.toFloat64(i) / Int32.toFloat64(count);
+        let angle = Vec2.tau() * Int32.toFloat64(i) / Int32.toFloat64(count);
         let v = speed * (0.8 + 0.4 * rand(0));
         let pos = { x = burst#pos#x + Vec2.cos(angle) * v * t,
                     y = burst#pos#y + Vec2.sin(angle) * v * t + 40.0 * t * t };

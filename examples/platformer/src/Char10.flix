@@ -51,24 +51,20 @@ mod Char10 {
 
     def fract(x: Float64): Float64 = x - Float64.floor(x)
 
-    /// 2 点の線形補間。群れが型から型へ「流れて」移るのはこの補間の仕事。
-    def lerpV(a: Vec2.Vec2, b: Vec2.Vec2, e: Float64): Vec2.Vec2 =
-        {x = a#x + (b#x - a#x) * e, y = a#y + (b#y - a#y) * e}
-
     // ── 粒の位置（モード → 型の選択と組み直しの補間）──
 
     /// i 番目の粒の足元基準オフセット。モードごとの型へ、雲を経由して組み直す。
     def motePos(stage: CharStage.Stage, i: Int32): Vec2.Vec2 =
         match stage#mode {
             case CharStage.Mode.IdleMode => cloud(stage, i)
-            case CharStage.Mode.RunMode  => lerpV(cloud(stage, i), comet(stage, i), reform(stage, 6.0))
-            case CharStage.Mode.DashMode => lerpV(cloud(stage, i), dart(stage, i), reform(stage, 6.0))
+            case CharStage.Mode.RunMode  => Vec2.lerp(cloud(stage, i), comet(stage, i), reform(stage, 6.0))
+            case CharStage.Mode.DashMode => Vec2.lerp(cloud(stage, i), dart(stage, i), reform(stage, 6.0))
             case CharStage.Mode.SkidMode => scatter(stage, i)
-            case CharStage.Mode.JumpMode => lerpV(cloud(stage, i), column(stage, i), reform(stage, 5.0))
-            case CharStage.Mode.FallMode => lerpV(cloud(stage, i), ring(stage, i), reform(stage, 6.0))
+            case CharStage.Mode.JumpMode => Vec2.lerp(cloud(stage, i), column(stage, i), reform(stage, 5.0))
+            case CharStage.Mode.FallMode => Vec2.lerp(cloud(stage, i), ring(stage, i), reform(stage, 6.0))
             case CharStage.Mode.LandMode =>
                 let q = stage#modeT / 0.2;
-                lerpV(groundLine(i, q), cloud(stage, i), q * q)
+                Vec2.lerp(groundLine(i, q), cloud(stage, i), q * q)
         }
 
     /// 型への組み直し係数 0→1。モードに入った直後は雲寄り＝「一瞬ほどけて集まり直す」。

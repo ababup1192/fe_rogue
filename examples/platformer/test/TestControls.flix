@@ -1,4 +1,4 @@
-// TestControls — キー割り当ての pin: 押しっぱなし（走り・ジャンプ長押し）とエッジ
+// TestControls — キー割り当ての pin: 押しっぱなし（走りの軸値・ジャンプ長押し）とエッジ
 // （バッファ充填・キャラ切り替え）の区別。Z = ダッシュ / X = ジャンプ / 左 Shift = 切り替え。
 
 mod TestControls {
@@ -21,11 +21,13 @@ mod TestControls {
         let input = Controls.inputOf(frameOf(Set#{Key.X}, Set.empty()));
         Assert.assertEq(expected = (true, false), (input#jumpDown, input#jumpPressed))
 
-    // 矢印は押しっぱなしで効く（走りは連続入力）。
+    // 矢印は押しっぱなしで効く（走りは連続入力の軸値）。左右同時押しは打ち消して 0.0。
     @Test
     def testArrowsAreHeld(): Unit \ Assert =
-        let input = Controls.inputOf(frameOf(Set#{Key.Left, Key.Right}, Set.empty()));
-        Assert.assertEq(expected = (true, true), (input#left, input#right))
+        let left = Controls.inputOf(frameOf(Set#{Key.Left}, Set.empty()));
+        let right = Controls.inputOf(frameOf(Set#{Key.Right}, Set.empty()));
+        let both = Controls.inputOf(frameOf(Set#{Key.Left, Key.Right}, Set.empty()));
+        Assert.assertEq(expected = (-1.0, 1.0, 0.0), (left#moveX, right#moveX, both#moveX))
 
     // B ダッシュは Z だけ。左 Shift はダッシュに効かない（キャラ切り替え専用へ移った）。
     @Test
@@ -48,12 +50,12 @@ mod TestControls {
         Assert.assertEq(expected = (false, false, false, false),
             (input#jumpDown, input#jumpPressed, input#dash, input#switchPressed))
 
-    // 何も押していなければ全て偽。
+    // 何も押していなければ軸は 0.0、他は全て偽。
     @Test
     def testNoKeys(): Unit \ Assert =
         let input = Controls.inputOf(frameOf(Set.empty(), Set.empty()));
-        Assert.assertEq(expected = (false, false, false, false, false),
-            (input#left, input#right, input#jumpDown, input#jumpPressed, input#switchPressed))
+        Assert.assertEq(expected = (0.0, false, false, false),
+            (input#moveX, input#jumpDown, input#jumpPressed, input#switchPressed))
 
     // 下キーは押しっぱなしで効く（すり抜け降下の構え）。
     @Test

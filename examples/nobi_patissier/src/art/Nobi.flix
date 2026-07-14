@@ -130,16 +130,13 @@ mod Nobi {
 
     /// 点 (x, y) を (cx, cy) まわりに theta（ラジアン・後ろ下がり）だけ回す（グリッド座標）。
     def tiltP(theta: Float64, cx: Float64, cy: Float64, x: Float64, y: Float64): (Float64, Float64) =
-        let ca = RenderUtil.cosF(theta);
-        let sa = RenderUtil.sinF(theta);
-        let dx = x - cx;
-        let dy = y - cy;
-        (cx + dx * ca - dy * sa, cy + dx * sa + dy * ca)
+        let p = Vec2.rotated({ x = x - cx, y = y - cy }, theta);
+        (cx + p#x, cy + p#y)
 
     /// 体: 後ろ下がりに少し傾いた楕円ブロブ。
     def bodyBlob(b: Build, skin: Palette.NobiSkin, gp: ((Float64, Float64)) -> Vec2.Vec2,
                  s: Float64, cx: Float64, cy: Float64): List[Render.PlacedItem] =
-        Bezier.convexFill(
+        Bezier.fill(
             Bezier.ellipseRot(gp((cx, cy)), b#bodyW / 2.0 * s, b#bodyH / 2.0 * s, b#tilt, 22),
             skin#body, 2)
 
@@ -180,7 +177,7 @@ mod Nobi {
                 let inward = d#stripeD * grow * RenderUtil.sinF(t);
                 gp((px + vx * along + ux * inward, py + vy * along + uy * inward))
             });
-            Bezier.convexFill(outline, skin#deep, 3)
+            Bezier.fill(outline, skin#deep, 3)
         })
 
     /// 首の付け根の後ろの斑（Detail.neckSpot が真のときだけ）。
@@ -192,7 +189,7 @@ mod Nobi {
         else {
             let spotX = neckBaseX + b#bow * 0.55 + b#neckW * 0.18;
             let spotY = neckBaseY - (neckBaseY - neckTopY) * 0.30;
-            Bezier.convexFill(
+            Bezier.fill(
                 Bezier.ellipseRot(gp((spotX, spotY)), 0.7 * s, 1.1 * s, -0.35, 10), skin#deep, 3)
         }
 
@@ -221,7 +218,7 @@ mod Nobi {
                 let band = Bezier.stroke({ spine = spine, color = skin#body, z = 4 },
                     t -> (b#headH * 1.02 - b#headH * 0.42 * t) * s);
                 let capR = b#headH * 0.29;
-                let cap = Bezier.convexFill(
+                let cap = Bezier.fill(
                     Bezier.ellipse(tip, capR * s, capR * s, 10), skin#body, 4);
                 let _ = d;
                 List.flatten(band :: cap ::
@@ -239,7 +236,7 @@ mod Nobi {
                 let t = 3.14159265 * Int32.toFloat64(i) / 10.0;
                 gp((cx + rx * RenderUtil.cosF(t), topY + ry * RenderUtil.sinF(t)))
             });
-            Bezier.convexFill(outline, skin#belly, 5)
+            Bezier.fill(outline, skin#belly, 5)
         }
 
     /// おなか: 体のいちばん下にうっすら見えるだけの白（脚は緑の部分から生える）。
@@ -250,7 +247,7 @@ mod Nobi {
         if (d#bellyW <= 0.0)
             Nil
         else
-            Bezier.convexFill(Bezier.ellipse(gp((bodyCx - b#bodyW * 0.08, bodyBottom - b#bodyH * 0.16)),
+            Bezier.fill(Bezier.ellipse(gp((bodyCx - b#bodyW * 0.08, bodyBottom - b#bodyH * 0.16)),
                 b#bodyW * d#bellyW * s, b#bodyH * d#bellyH * s, 16), skin#belly, 3)
 
     /// 首: 先細りのベジエ帯（前傾の弧）+ 首の前側だけ細く白いすじ（喉から胸の白）。
@@ -320,7 +317,7 @@ mod Nobi {
         let spine = List.append(descend, drag);
         let band = Bezier.stroke({ spine = spine, color = skin#body, z = 1 },
             t -> (b#bodyH * 0.62 * (1.0 - t) + 1.8 * t) * s);
-        let cap = Bezier.convexFill(Bezier.ellipse(gp((tipX, restY)), 0.9 * s, 0.9 * s, 8), skin#body, 1);
+        let cap = Bezier.fill(Bezier.ellipse(gp((tipX, restY)), 0.9 * s, 0.9 * s, 8), skin#body, 1);
         List.append(band, cap)
 
     // ── ボックス/円パーツ（脚・頭・顔・帽子）──

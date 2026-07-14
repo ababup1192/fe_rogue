@@ -207,11 +207,12 @@ mod Field {
         time = Float64                       // 通し秒
     }
 
-    pub type alias Input = { left = Bool, right = Bool, dash = Bool,
+    // moveX は走りの軸値。左右キーの押し下げを -1.0（左） 〜 0.0 〜 +1.0（右）に畳んだもの。
+    pub type alias Input = { moveX = Float64, dash = Bool,
                              jumpDown = Bool, jumpPressed = Bool, down = Bool,
                              switchPressed = Bool }
 
-    pub def noInput(): Input = { left = false, right = false, dash = false,
+    pub def noInput(): Input = { moveX = 0.0, dash = false,
                                  jumpDown = false, jumpPressed = false, down = false,
                                  switchPressed = false }
 

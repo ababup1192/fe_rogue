@@ -124,8 +124,8 @@ mod Kitchen {
         let rimY = topY - 11.0;
         let bowlColor = match props { case PropSet.Classic => Palette.metal()  case PropSet.Cozy => Palette.sugar() };
         let rimColor = match props { case PropSet.Classic => Palette.metalDark() case PropSet.Cozy => Palette.paper() };
-        let bowl = Bezier.convexFill(halfDisc(cx, rimY, 12.0, true), bowlColor, 6);
-        let mound = Bezier.convexFill(halfDisc(cx, rimY, 8.8, false)
+        let bowl = Bezier.fill(halfDisc(cx, rimY, 12.0, true), bowlColor, 6);
+        let mound = Bezier.fill(halfDisc(cx, rimY, 8.8, false)
             |> List.map(p -> ({x = p#x, y = rimY - (rimY - p#y) * 0.55}: Vec2.Vec2)), Palette.dough(), 7);
         let rim = Bezier.polyline({x = cx - 12.0, y = rimY} :: {x = cx + 12.0, y = rimY} :: Nil,
             width = 2.2, rimColor, 8);
@@ -142,12 +142,13 @@ mod Kitchen {
     def raiseZ(delta: Int32, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.raiseZ(delta, placed#item) | placed }
 
-    /// 下向き（up=true）または上向きの半円の輪郭。
+    /// 下向き（downward=true）または上向きの半円の輪郭。左端から右端へ半周
+    /// （onEllipse は t=0 が真上・時計回りなので、左端 = t 0.75 を起点に取る）。
     def halfDisc(cx: Float64, cy: Float64, r: Float64, downward: Bool): List[Vec2.Vec2] =
         List.range(0, 13) |> List.map(i -> {
-            let a = 3.14159265 * Int32.toFloat64(i) / 12.0;
-            let dy = r * RenderUtil.sinF(a);
-            { x = cx - r * RenderUtil.cosF(a), y = if (downward) cy + dy else cy - dy }
+            let t = Int32.toFloat64(i) / 24.0;
+            let p = Vec2.onEllipse({ x = r, y = r }, if (downward) 0.75 - t else 0.75 + t);
+            { x = cx + p#x, y = cy + p#y }
         })
 
     /// ふわりと立ちのぼる湯気 2 本（細いベジエ帯）。

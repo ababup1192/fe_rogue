@@ -135,7 +135,7 @@ mod Step {
 
     def movePaddle(input: Field.Input, dt: Float64, params: GameParameters.Params,
                    core: Field.GameCore): Field.GameCore =
-        let dir = (if (input#left) -1.0 else 0.0) + (if (input#right) 1.0 else 0.0);
+        let dir = input#moveX;
         let newX = Float64.max(Field.paddleMinX(),
                                Float64.min(Field.paddleMaxX(),
                                            core#paddle#x + dir * params#paddleSpeed * dt));

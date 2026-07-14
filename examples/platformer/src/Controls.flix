@@ -5,13 +5,13 @@
 mod Controls {
     use GameEngine.Key
 
-    /// このフレームのキーをゲームの意味（Input）へ写す。left/right は走りなので押しっぱなしを見る。
-    /// B ダッシュは Z の押しっぱなし。down は下+ジャンプ=すり抜け降下用で押しっぱなしを見る。
+    /// このフレームのキーをゲームの意味（Input）へ写す。moveX は走りの軸値
+    /// （左右キーの押し下げを畳んだもの）。B ダッシュは Z の押しっぱなし。
+    /// down は下+ジャンプ=すり抜け降下用で押しっぱなしを見る。
     /// ジャンプ（X）は両方要る: jumpDown（押しっぱなし = 高く飛ぶ）と jumpPressed（押した瞬間 = バッファ充填）。
     /// 左 Shift はキャラ切り替え（押した瞬間だけ = 押しっぱなしで連打にならない）。
     pub def inputOf(frame: App.Frame): Field.Input =
-        { left          = App.isDown(Key.Left, frame),
-          right         = App.isDown(Key.Right, frame),
+        { moveX         = App.axis(negative = Key.Left, positive = Key.Right, frame),
           dash          = App.isDown(Key.Z, frame),
           jumpDown      = App.isDown(Key.X, frame),
           jumpPressed   = App.justPressed(Key.X, frame),

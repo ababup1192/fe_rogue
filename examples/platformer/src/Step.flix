@@ -100,7 +100,7 @@ mod Step {
         let held2 = if (cutting) false else held1;
 
         // ── 走り + ジャンプ離脱時だけ床の水平速度を 1 回継承（垂直は継承しない）──
-        let dir = (if (input#left) -1.0 else 0.0) + (if (input#right) 1.0 else 0.0);
+        let dir = input#moveX;
         // 向き: 最後の非ゼロ入力を保持（入力なしでは変わらない）。カメラ先読みが読む。
         let facing1 = if (dir != 0.0) dir else player0#facing;
         let vxRun = Jump.horizontalStep(p, dt,

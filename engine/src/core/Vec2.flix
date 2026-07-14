@@ -17,11 +17,11 @@ mod Vec2 {
     pub def sqrt(v: Float64): Float64 =
         unchecked_cast(Math.sqrt(v) as _ \ {})
 
-    /// 円周率
-    pub def pi(): Float64 = 3.14159265358979
+    /// 円周率（値の源は tau に一本化 — 2 で割るのは倍精度で正確）。
+    pub def pi(): Float64 = tau() / 2.0
 
-/// 1 周ぶんの角（2π）。円周に点を置く計算の共通の源（リテラルの散在を防ぐ）。
-pub def tau(): Float64 = 6.283185307179586
+    /// 1 周ぶんの角（2π）。円周に点を置く計算の共通の源（リテラルの散在を防ぐ）。
+    pub def tau(): Float64 = 6.283185307179586
 
     /// sin（pure キャスト）
     pub def sin(x: Float64): Float64 =

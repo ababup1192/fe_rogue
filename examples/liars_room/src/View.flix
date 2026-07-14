@@ -127,7 +127,7 @@ mod View {
     def playerParts(state: Room.State): List[Render.PlacedItem] =
         let center = match state#slide {
             case Some(slide) =>
-                lerp(cellCenter(state, slide#fromCell), cellCenter(state, state#player), slide#t)
+                Vec2.lerp(cellCenter(state, slide#fromCell), cellCenter(state, state#player), slide#t)
             case None => cellCenter(state, state#player)
         };
         Human.walking(center, tile(), Palette.playerSkin(), state#facing, drawnWalkPhase(state))
@@ -139,9 +139,6 @@ mod View {
             case Some(_) => state#walkPhase
             case None    => 0.0
         }
-
-    def lerp(a: Vec2.Vec2, z: Vec2.Vec2, t: Float64): Vec2.Vec2 =
-        { x = a#x + (z#x - a#x) * t, y = a#y + (z#y - a#y) * t }
 
     def raise(delta: Int32, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.raiseZ(delta, placed#item) | placed }
@@ -191,7 +188,7 @@ mod View {
             match Room.facingNpc(state) {
                 case None      => Nil
                 case Some(npc) =>
-                    let bobY = RenderUtil.sinF(state#idlePhase * 6.283185307179586) * 1.5;
+                    let bobY = RenderUtil.sinF(state#idlePhase * Vec2.tau()) * 1.5;
                     let pos = Vec2.add(cellCenter(state, npc#cell),
                         { x = -4.0, y = -(tile() * 1.15) + bobY });
                     { at = pos, item = Render.textTinted("▼", atlas, 8.0, Palette.talkIndicator(), zIndicator()) } :: Nil

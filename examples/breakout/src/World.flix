@@ -48,12 +48,12 @@ mod Field {
     }
 
     // ── このフレームの入力（素のデータ）──
-    // left/right はパドル移動なので押しっぱなしを見る。launch/enter は 1 回きり効けばよい
-    // 判定（エッジ）で、押された瞬間だけ true になって届く。
-    pub type alias Input = { left = Bool, right = Bool, launch = Bool, enter = Bool }
+    // moveX はパドル移動の軸値。左右キーの押し下げを -1.0（左） 〜 0.0 〜 +1.0（右）に畳んだもの。
+    // launch/enter は 1 回きり効けばよい判定（エッジ）で、押された瞬間だけ true になって届く。
+    pub type alias Input = { moveX = Float64, launch = Bool, enter = Bool }
 
     /// 何も押されていない入力。
-    pub def noInput(): Input = { left = false, right = false, launch = false, enter = false }
+    pub def noInput(): Input = { moveX = 0.0, launch = false, enter = false }
 
     // ── フェーズ（Phase）: ゲームのデータはフェーズの case が所有する ──
     // タグを作るなら、そのタグが真にするデータを case が所有し、他のフェーズで無意味なデータは

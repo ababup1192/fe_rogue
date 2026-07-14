@@ -5,11 +5,10 @@
 mod Controls {
     use GameEngine.Key
 
-    /// このフレームのキーを breakout の意味（Input）へ写す。left/right はパドル移動なので
-    /// 押しっぱなしを見て、launch/enter は 1 回きり効けばよいのでエッジを見る。
+    /// このフレームのキーを breakout の意味（Input）へ写す。moveX はパドル移動の軸値
+    /// （左右キーの押し下げを畳んだもの）、launch/enter は 1 回きり効けばよいのでエッジを見る。
     pub def inputOf(frame: App.Frame): Field.Input =
-        { left   = App.isDown(Key.Left, frame),
-          right  = App.isDown(Key.Right, frame),
+        { moveX  = App.axis(negative = Key.Left, positive = Key.Right, frame),
           launch = App.justPressed(Key.Space, frame),
           enter  = App.justPressed(Key.Enter, frame) }
 

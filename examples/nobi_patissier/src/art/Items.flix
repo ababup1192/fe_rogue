@@ -63,29 +63,29 @@ mod Items {
         match kind {
             case Kind.Egg =>
                 List.append(
-                    Bezier.convexFill(Bezier.ellipse(gp((8.0, 8.0)), 4.2 * s, 5.4 * s, 18),
+                    Bezier.fill(Bezier.ellipse(gp((8.0, 8.0)), 4.2 * s, 5.4 * s, 18),
                         Palette.eggShell(), 1),
-                    Bezier.convexFill(Bezier.ellipse(gp((6.6, 5.8)), 1.2 * s, 1.6 * s, 10),
+                    Bezier.fill(Bezier.ellipse(gp((6.6, 5.8)), 1.2 * s, 1.6 * s, 10),
                         Palette.paperShade(), 2))
             case Kind.Fish =>
                 // 定番の魚アイコン: 横長の楕円の体 + 二叉の尾 + 小さな背びれ +
                 // 体の中の胸びれ + 点の目と小さな口。
                 List.flatten(
-                    Bezier.convexFill(Bezier.ellipse(gp((7.0, 8.5)), 4.3 * s, 2.6 * s, 18),
+                    Bezier.fill(Bezier.ellipse(gp((7.0, 8.5)), 4.3 * s, 2.6 * s, 18),
                         Palette.fish(), 1) ::
-                    Bezier.convexFill(gp((10.9, 8.5)) :: gp((14.0, 6.6)) :: gp((13.5, 8.5)) :: Nil,
+                    Bezier.fill(gp((10.9, 8.5)) :: gp((14.0, 6.6)) :: gp((13.5, 8.5)) :: Nil,
                         Palette.fish(), 1) ::
-                    Bezier.convexFill(gp((10.9, 8.5)) :: gp((14.0, 10.4)) :: gp((13.5, 8.5)) :: Nil,
+                    Bezier.fill(gp((10.9, 8.5)) :: gp((14.0, 10.4)) :: gp((13.5, 8.5)) :: Nil,
                         Palette.fish(), 1) ::
-                    Bezier.convexFill(gp((6.0, 6.3)) :: gp((7.5, 4.7)) :: gp((8.9, 6.4)) :: Nil,
+                    Bezier.fill(gp((6.0, 6.3)) :: gp((7.5, 4.7)) :: gp((8.9, 6.4)) :: Nil,
                         Palette.fish(), 1) ::
-                    Bezier.convexFill(gp((6.4, 8.7)) :: gp((7.9, 9.7)) :: gp((8.1, 8.5)) :: Nil,
+                    Bezier.fill(gp((6.4, 8.7)) :: gp((7.9, 9.7)) :: gp((8.1, 8.5)) :: Nil,
                         Palette.fishTail(), 2) ::
-                    Bezier.convexFill(Bezier.ellipse(gp((4.5, 7.9)), 0.55 * s, 0.55 * s, 8),
+                    Bezier.fill(Bezier.ellipse(gp((4.5, 7.9)), 0.55 * s, 0.55 * s, 8),
                         Palette.hudBg(), 2) ::
-                    Bezier.convexFill(Bezier.ellipse(gp((4.35, 7.75)), 0.18 * s, 0.18 * s, 6),
+                    Bezier.fill(Bezier.ellipse(gp((4.35, 7.75)), 0.18 * s, 0.18 * s, 6),
                         Palette.paper(), 3) ::
-                    Bezier.convexFill(Bezier.ellipse(gp((2.9, 9.1)), 0.32 * s, 0.32 * s, 6),
+                    Bezier.fill(Bezier.ellipse(gp((2.9, 9.1)), 0.32 * s, 0.32 * s, 6),
                         Palette.fishTail(), 2) :: Nil)
             case Kind.HeartCutter =>
                 // 抜き型 = 真ん中が空洞のリング。ハート曲線を閉ループのストロークでなぞる。
@@ -97,20 +97,20 @@ mod Items {
             case Kind.Sugar =>
                 // フタを開けた瓶から砂糖の山が見える + こぼれた粒。
                 List.flatten(
-                    Bezier.convexFill(sugarMound(gp, 8.0, 5.2, 3.2), Palette.paper(), 2) ::
-                    Bezier.convexFill(Bezier.ellipse(gp((4.6, 3.6)), 0.5 * s, 0.5 * s, 8),
+                    Bezier.fill(sugarMound(gp, 8.0, 5.2, 3.2), Palette.paper(), 2) ::
+                    Bezier.fill(Bezier.ellipse(gp((4.6, 3.6)), 0.5 * s, 0.5 * s, 8),
                         Palette.paper(), 2) ::
-                    Bezier.convexFill(Bezier.ellipse(gp((11.6, 3.2)), 0.45 * s, 0.45 * s, 8),
+                    Bezier.fill(Bezier.ellipse(gp((11.6, 3.2)), 0.45 * s, 0.45 * s, 8),
                         Palette.paper(), 2) ::
-                    Bezier.convexFill(Bezier.ellipse(gp((12.6, 5.4)), 0.4 * s, 0.4 * s, 8),
+                    Bezier.fill(Bezier.ellipse(gp((12.6, 5.4)), 0.4 * s, 0.4 * s, 8),
                         Palette.paper(), 2) :: Nil)
             case Kind.Soap =>
                 // 定番の石鹸: 角丸のバー + 面取りのラベル楕円 + 上に浮かぶ泡 3 つ
                 //（それぞれ左上にハイライトの点）。
                 List.flatten(
-                    Bezier.convexFill(Bezier.ellipse(gp((8.0, 10.2)), 5.4 * s, 2.6 * s, 18),
+                    Bezier.fill(Bezier.ellipse(gp((8.0, 10.2)), 5.4 * s, 2.6 * s, 18),
                         Palette.soap(), 1) ::
-                    Bezier.convexFill(Bezier.ellipse(gp((8.0, 10.2)), 3.4 * s, 1.4 * s, 14),
+                    Bezier.fill(Bezier.ellipse(gp((8.0, 10.2)), 3.4 * s, 1.4 * s, 14),
                         Palette.dough(), 2) ::
                     bubble(gp, s, 10.6, 4.6, 1.9) ::
                     bubble(gp, s, 7.2, 3.0, 1.3) ::
@@ -122,8 +122,8 @@ mod Items {
     def bubble(gp: ((Float64, Float64)) -> Vec2.Vec2, s: Float64,
                cx: Float64, cy: Float64, r: Float64): List[Render.PlacedItem] =
         List.append(
-            Bezier.convexFill(Bezier.ellipse(gp((cx, cy)), r * s, r * s, 12), Palette.paper(), 2),
-            Bezier.convexFill(Bezier.ellipse(gp((cx - r * 0.35, cy - r * 0.35)), r * 0.28 * s,
+            Bezier.fill(Bezier.ellipse(gp((cx, cy)), r * s, r * s, 12), Palette.paper(), 2),
+            Bezier.fill(Bezier.ellipse(gp((cx - r * 0.35, cy - r * 0.35)), r * 0.28 * s,
                 r * 0.28 * s, 8), Palette.milkCap(), 3))
 
     /// 星のリング（外側の星の各辺と、中心へ shrink 倍で縮めた内側の星を結ぶクアッド 10 枚）。
@@ -135,7 +135,7 @@ mod Items {
                y = center#y + (p#y - center#y) * shrink }: Vec2.Vec2));
         List.range(0, 10) |> List.flatMap(i -> {
             let j = Int32.modulo(i + 1, 10);
-            Bezier.convexFill(
+            Bezier.fill(
                 Vector.get(i, outer) :: Vector.get(j, outer) ::
                 Vector.get(j, inner) :: Vector.get(i, inner) :: Nil, color, z)
         })
@@ -150,7 +150,7 @@ mod Items {
     def heartOutline(gp: ((Float64, Float64)) -> Vec2.Vec2, cx: Float64, cy: Float64,
                      k: Float64): List[Vec2.Vec2] =
         List.range(0, 24) |> List.map(i -> {
-            let t = 6.283185307179586 * Int32.toFloat64(i) / 24.0;
+            let t = Vec2.tau() * Int32.toFloat64(i) / 24.0;
             let sx = RenderUtil.sinF(t);
             let hx = 16.0 * sx * sx * sx * k;
             let hy = -1.0 * (13.0 * RenderUtil.cosF(t) - 5.0 * RenderUtil.cosF(2.0 * t)
@@ -158,12 +158,12 @@ mod Items {
             gp((cx + hx, cy + hy))
         })
 
-    /// 瓶の口からのぞく砂糖の山（上向きの半円）。
+    /// 瓶の口からのぞく砂糖の山（上向きに潰した半楕円）。左端 = t 0.75 から上回りで半周。
     def sugarMound(gp: ((Float64, Float64)) -> Vec2.Vec2, cx: Float64, cy: Float64,
                    r: Float64): List[Vec2.Vec2] =
         List.range(0, 13) |> List.map(i -> {
-            let a = 3.14159265 * Int32.toFloat64(i) / 12.0;
-            gp((cx - r * RenderUtil.cosF(a), cy - r * 0.62 * RenderUtil.sinF(a)))
+            let p = Vec2.onEllipse({ x = r, y = r * 0.62 }, 0.75 + Int32.toFloat64(i) / 24.0);
+            gp((cx + p#x, cy + p#y))
         })
 
     type alias Part = {

@@ -23,10 +23,6 @@ mod View {
     def zConfetti(): Int32 = 95
     def zTitle(): Int32 = 100
 
-    /// 1回転、およびその半分、ラジアン単位。
-    def tau(): Float64 = 6.283185307179586
-    def pi(): Float64 = 3.141592653589793
-
     // ── compose: App の view スロット —— 盤面と UI ページを 1 本のリストへ ──
 
     /// Session 全体を「(置き場所, 見せたい物) のリスト」へ投影する。盤面の絵
@@ -74,9 +70,6 @@ mod View {
 
     def cells(b: Board.Board): List[(Int32, Int32)] =
         List.flatMap(y -> List.map(x -> (x, y), List.range(0, b#cols)), List.range(0, b#rows))
-
-    def lerp(a: Vec2.Vec2, z: Vec2.Vec2, t: Float64): Vec2.Vec2 =
-        { x = a#x + (z#x - a#x) * t, y = a#y + (z#y - a#y) * t }
 
     // ── タイル: 床、壁、ゴールの印 ──
 
@@ -129,7 +122,7 @@ mod View {
     def robotCenter(b: Board.Board): Vec2.Vec2 =
         match b#slide {
             case None    => cellCenter(b, b#robot)
-            case Some(s) => lerp(cellCenter(b, s#fromCell), cellCenter(b, b#robot), s#t)
+            case Some(s) => Vec2.lerp(cellCenter(b, s#fromCell), cellCenter(b, b#robot), s#t)
         }
 
     /// ロボットは自分の作業に体重をかける: 前方への押しが滑っている間、絵全体が
@@ -179,9 +172,9 @@ mod View {
         match b#slide {
             case Some(s) =>
                 if (s#pushing and not s#reverse and p == slidingCrate(b, s))
-                    lerp(cellCenter(b, b#robot), cellCenter(b, p), settle(s#t))
+                    Vec2.lerp(cellCenter(b, b#robot), cellCenter(b, p), settle(s#t))
                 else if (s#pushing and s#reverse and p == s#fromCell)
-                    lerp(cellCenter(b, crateReturnStart(b, s)), cellCenter(b, p), s#t)
+                    Vec2.lerp(cellCenter(b, crateReturnStart(b, s)), cellCenter(b, p), s#t)
                 else cellCenter(b, p)
             case None => cellCenter(b, p)
         }
@@ -194,7 +187,7 @@ mod View {
     pub def settle(t: Float64): Float64 =
         let start = settleOvershootStart();
         if (t < start) t
-        else t + settleOvershootHeight() * RenderUtil.sinF(pi() * (t - start) / (1.0 - start))
+        else t + settleOvershootHeight() * RenderUtil.sinF((Vec2.tau() / 2.0) * (t - start) / (1.0 - start))
 
     def crateBoxes(b: Board.Board): List[Render.PlacedItem] =
         List.flatMap(p -> Crate.boxes(crateCenter(b, p), tile()), Set.toList(b#crates))
@@ -252,7 +245,7 @@ mod View {
 
     /// 与えられた spin に対する針の角度（ラジアン）—— 純粋な導出: 巻き戻された
     /// 1手につき反時計回りに1回転。
-    pub def needleAngle(spin: Float64): Float64 = spin * tau()
+    pub def needleAngle(spin: Float64): Float64 = spin * Vec2.tau()
 
     /// 針: 中心のすぐ後ろから文字盤の縁まで伸びる細いクアッド。（反時計回りに回
     /// る）針の角度に沿って向く。頂点は画面の絶対座標なので、置き場所は原点。
@@ -268,7 +261,7 @@ mod View {
                 let tail = Vec2.sub(c, Vec2.mul(dir, needleTailReach()));
                 let tip = Vec2.add(c, Vec2.mul(dir, reach));
                 { at = Vec2.zero(),
-                  item = Render.polygon(Quad.strip(tail, tip, -needleHalfWidth(), needleHalfWidth()),
+                  item = Render.polygon(Render.lineQuad(tail, tip, needleHalfWidth() * 2.0),
                                 Palette.clockRim(), zClock() + 2)
                     |> Render.fade(clockAlpha(f)) } :: Nil
         }
@@ -311,7 +304,7 @@ mod View {
         let fallSpan = confettiFallSpan();
         let fallSpeed = confettiFallSpeedMin() + confettiFallSpeedSpan() * rand(1);
         let sway = confettiSwayMin() + confettiSwaySpan() * rand(2);
-        let phase = tau() * rand(3);
+        let phase = Vec2.tau() * rand(3);
         let spinRate = (confettiSpinMin() + confettiSpinSpan() * rand(4)) * (if (rand(5) < 0.5) -1.0 else 1.0);
         let x = confettiSpreadWidth() * rand(6) + Curve.sine(sway, confettiSwayRate(), phase, t);
         let y = Curve.loop(fallSpeed, fallSpan, t + fallSpan * rand(7) / fallSpeed) - confettiSpawnAbove();
