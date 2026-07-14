@@ -36,7 +36,9 @@ mod RenderSprite {
 
     /// 1 スプライトを描画する。
     /// rotation は center 周りのラジアン回転。useTex = false で純色矩形。
-    pub def drawSprite(shader: Int32, vao: Int32, params: RenderType.DrawSpriteParams): Unit \ IO =
+    /// uniforms は起動時に 1 回だけ引いた location 一式（RenderShader.spriteUniformsOf）。
+    pub def drawSprite(shader: Int32, vao: Int32, uniforms: RenderShader.SpriteUniforms,
+                        params: RenderType.DrawSpriteParams): Unit \ IO =
         // 1 レコードからローカルへ束ね直す（以降の描画ロジックは従来どおり）。
         let texture = params#texture;
         let pos     = params#position;
@@ -65,52 +67,33 @@ mod RenderSprite {
             0.0f32, 0.0f32, 1.0f32, 0.0f32,
             f32(tx), f32(ty), 0.0f32, 1.0f32
         } @ Static;
-        let modelLoc = GL20.glGetUniformLocation(shader, "model");
-        GL20.glUniformMatrix4fv(modelLoc, false, model);
-        let colorLoc = GL20.glGetUniformLocation(shader, "spriteColor");
-        GL20.glUniform3f(colorLoc, color#r, color#g, color#b);
-        let alphaLoc = GL20.glGetUniformLocation(shader, "spriteAlpha");
-        GL20.glUniform1f(alphaLoc, alpha);
-        let uvOffsetLoc = GL20.glGetUniformLocation(shader, "uvOffset");
-        GL20.glUniform2f(uvOffsetLoc, f32(uvOff#x), f32(uvOff#y));
-        let uvScaleLoc = GL20.glGetUniformLocation(shader, "uvScale");
-        GL20.glUniform2f(uvScaleLoc, f32(uvSc#x), f32(uvSc#y));
-        let useTexLoc = GL20.glGetUniformLocation(shader, "useTexture");
-        GL20.glUniform1i(useTexLoc, if (useTex) 1 else 0);
+        GL20.glUniformMatrix4fv(uniforms#model, false, model);
+        GL20.glUniform3f(uniforms#spriteColor, color#r, color#g, color#b);
+        GL20.glUniform1f(uniforms#spriteAlpha, alpha);
+        GL20.glUniform2f(uniforms#uvOffset, f32(uvOff#x), f32(uvOff#y));
+        GL20.glUniform2f(uniforms#uvScale, f32(uvSc#x), f32(uvSc#y));
+        GL20.glUniform1i(uniforms#useTexture, if (useTex) 1 else 0);
         // SDF テキスト uniform。テキスト以外は 0 にして GL state 持ち越しを防ぐ。
-        let sdfLoc = GL20.glGetUniformLocation(shader, "sdfText");
-        GL20.glUniform1i(sdfLoc, if (sdf) 1 else 0);
+        GL20.glUniform1i(uniforms#sdfText, if (sdf) 1 else 0);
         // 角丸＋枠スタイル uniform。Some のとき styleEnabled=1（単色矩形のみシェーダ側で適用）。
-        let styleLoc = GL20.glGetUniformLocation(shader, "styleEnabled");
         match style {
             case Some(st) =>
-                GL20.glUniform1i(styleLoc, 1);
-                let rectSizeLoc = GL20.glGetUniformLocation(shader, "rectSize");
-                GL20.glUniform2f(rectSizeLoc, f32(size#x), f32(size#y));
-                let crLoc = GL20.glGetUniformLocation(shader, "cornerRadius");
-                GL20.glUniform1f(crLoc, f32(st#cornerRadius));
-                let bwLoc = GL20.glGetUniformLocation(shader, "borderWidth");
-                GL20.glUniform1f(bwLoc, f32(st#borderWidth));
-                let bcLoc = GL20.glGetUniformLocation(shader, "borderColor");
-                GL20.glUniform3f(bcLoc, st#borderColor#r, st#borderColor#g, st#borderColor#b);
-                let baLoc = GL20.glGetUniformLocation(shader, "borderAlpha");
-                GL20.glUniform1f(baLoc, st#borderAlpha);
+                GL20.glUniform1i(uniforms#styleEnabled, 1);
+                GL20.glUniform2f(uniforms#rectSize, f32(size#x), f32(size#y));
+                GL20.glUniform1f(uniforms#cornerRadius, f32(st#cornerRadius));
+                GL20.glUniform1f(uniforms#borderWidth, f32(st#borderWidth));
+                GL20.glUniform3f(uniforms#borderColor, st#borderColor#r, st#borderColor#g, st#borderColor#b);
+                GL20.glUniform1f(uniforms#borderAlpha, st#borderAlpha);
                 // 斜線ハッチ uniform。stripeWidth/stripeAlpha が正のときのみ有効化。
-                let hatchLoc = GL20.glGetUniformLocation(shader, "hatchEnabled");
                 let hatchOn = st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32;
-                GL20.glUniform1i(hatchLoc, if (hatchOn) 1 else 0);
-                let hcLoc = GL20.glGetUniformLocation(shader, "hatchColor");
-                GL20.glUniform3f(hcLoc, st#stripeColor#r, st#stripeColor#g, st#stripeColor#b);
-                let haLoc = GL20.glGetUniformLocation(shader, "hatchAlpha");
-                GL20.glUniform1f(haLoc, st#stripeAlpha);
-                let hwLoc = GL20.glGetUniformLocation(shader, "hatchWidth");
-                GL20.glUniform1f(hwLoc, f32(st#stripeWidth));
-                let hpLoc = GL20.glGetUniformLocation(shader, "hatchPeriod");
-                GL20.glUniform1f(hpLoc, f32(st#stripePeriod))
+                GL20.glUniform1i(uniforms#hatchEnabled, if (hatchOn) 1 else 0);
+                GL20.glUniform3f(uniforms#hatchColor, st#stripeColor#r, st#stripeColor#g, st#stripeColor#b);
+                GL20.glUniform1f(uniforms#hatchAlpha, st#stripeAlpha);
+                GL20.glUniform1f(uniforms#hatchWidth, f32(st#stripeWidth));
+                GL20.glUniform1f(uniforms#hatchPeriod, f32(st#stripePeriod))
             case None =>
-                GL20.glUniform1i(styleLoc, 0);
-                let hatchLoc = GL20.glGetUniformLocation(shader, "hatchEnabled");
-                GL20.glUniform1i(hatchLoc, 0)
+                GL20.glUniform1i(uniforms#styleEnabled, 0);
+                GL20.glUniform1i(uniforms#hatchEnabled, 0)
         };
         if (useTex) {
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -140,7 +123,9 @@ mod RenderSprite {
 
     /// 凸多角形を単色で塗り潰す（GL_TRIANGLE_FAN）。頂点は既にスクリーン px。
     /// sprite シェーダを model=identity / useTexture=0 で流用する。
+    /// uniforms は起動時に 1 回だけ引いた location 一式（RenderShader.spriteUniformsOf）。
     pub def drawPolygon(spriteShader: Int32, polyVao: Int32, polyVbo: Int32,
+                         uniforms: RenderShader.SpriteUniforms,
                          verts: List[Vec2.Vec2], color: Color, alpha: Float32): Unit \ IO =
         let f32 = RenderUtil.f32;
         let n = List.length(verts);
@@ -152,25 +137,16 @@ mod RenderSprite {
                 0.0f32, 0.0f32, 1.0f32, 0.0f32,
                 0.0f32, 0.0f32, 0.0f32, 1.0f32
             } @ Static;
-            let modelLoc = GL20.glGetUniformLocation(spriteShader, "model");
-            GL20.glUniformMatrix4fv(modelLoc, false, model);
-            let colorLoc = GL20.glGetUniformLocation(spriteShader, "spriteColor");
-            GL20.glUniform3f(colorLoc, color#r, color#g, color#b);
-            let alphaLoc = GL20.glGetUniformLocation(spriteShader, "spriteAlpha");
-            GL20.glUniform1f(alphaLoc, alpha);
-            let uvOffsetLoc = GL20.glGetUniformLocation(spriteShader, "uvOffset");
-            GL20.glUniform2f(uvOffsetLoc, 0.0f32, 0.0f32);
-            let uvScaleLoc = GL20.glGetUniformLocation(spriteShader, "uvScale");
-            GL20.glUniform2f(uvScaleLoc, 1.0f32, 1.0f32);
-            let useTexLoc = GL20.glGetUniformLocation(spriteShader, "useTexture");
-            GL20.glUniform1i(useTexLoc, 0);
+            GL20.glUniformMatrix4fv(uniforms#model, false, model);
+            GL20.glUniform3f(uniforms#spriteColor, color#r, color#g, color#b);
+            GL20.glUniform1f(uniforms#spriteAlpha, alpha);
+            GL20.glUniform2f(uniforms#uvOffset, 0.0f32, 0.0f32);
+            GL20.glUniform2f(uniforms#uvScale, 1.0f32, 1.0f32);
+            GL20.glUniform1i(uniforms#useTexture, 0);
             // sprite シェーダ共有のため styleEnabled / hatchEnabled を明示 0 にして GL state 持ち越しを防ぐ。
-            let styleLoc = GL20.glGetUniformLocation(spriteShader, "styleEnabled");
-            GL20.glUniform1i(styleLoc, 0);
-            let hatchLoc = GL20.glGetUniformLocation(spriteShader, "hatchEnabled");
-            GL20.glUniform1i(hatchLoc, 0);
-            let sdfLoc = GL20.glGetUniformLocation(spriteShader, "sdfText");
-            GL20.glUniform1i(sdfLoc, 0);
+            GL20.glUniform1i(uniforms#styleEnabled, 0);
+            GL20.glUniform1i(uniforms#hatchEnabled, 0);
+            GL20.glUniform1i(uniforms#sdfText, 0);
             let data = Array.empty(Static, n * 4);
             let _ = List.foldLeft((i, v) -> {
                 let base = i * 4;
@@ -247,24 +223,94 @@ mod RenderSprite {
         vao
 
     /// 1 draw call で TileLayer のすべてのタイルを描画する。
+    /// uniforms は起動時に 1 回だけ引いた location 一式（RenderShader.tileUniformsOf）。
     pub def drawTileMapInstanced(tileShader: Int32, texId: Int32, tileVao: Int32,
+                                  uniforms: RenderShader.TileUniforms,
                                   layerPos: Vec2.Vec2, tileSize: Float64,
                                   tileScale: Vec2.Vec2,
                                   color: Color, tileCount: Int32): Unit \ IO =
         let f32 = RenderUtil.f32;
         GL20.glUseProgram(tileShader);
-        let layerPosLoc = GL20.glGetUniformLocation(tileShader, "layerPos");
-        GL20.glUniform2f(layerPosLoc, f32(layerPos#x), f32(layerPos#y));
-        let tileSizeLoc = GL20.glGetUniformLocation(tileShader, "tileSize");
-        GL20.glUniform1f(tileSizeLoc, f32(tileSize));
-        let tileScaleLoc = GL20.glGetUniformLocation(tileShader, "tileScale");
-        GL20.glUniform2f(tileScaleLoc, f32(tileScale#x), f32(tileScale#y));
-        let colorLoc = GL20.glGetUniformLocation(tileShader, "layerColor");
-        GL20.glUniform3f(colorLoc, color#r, color#g, color#b);
+        GL20.glUniform2f(uniforms#layerPos, f32(layerPos#x), f32(layerPos#y));
+        GL20.glUniform1f(uniforms#tileSize, f32(tileSize));
+        GL20.glUniform2f(uniforms#tileScale, f32(tileScale#x), f32(tileScale#y));
+        GL20.glUniform3f(uniforms#layerColor, color#r, color#g, color#b);
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
         GL30.glBindVertexArray(tileVao);
         GL31.glDrawArraysInstanced(GL11.GL_TRIANGLES, 0, 6, tileCount);
+        GL30.glBindVertexArray(0)
+
+    // ========================================================================
+    // Sprite Instanced Rendering — 連続する同テクスチャのスプライトを 1 draw call で
+    // ========================================================================
+
+    /// instanced sprite 用の VAO と instance VBO を構築する（起動時に 1 回）。
+    /// loc 0: 共有 quad VBO (vertex.xy = 局所座標, vertex.zw = UV)
+    /// loc 1-9: per-instance VBO (divisor=1)。1 instance = 32 floats / 128 bytes:
+    ///   loc1 vec4 = ワールド変換 2x2 / loc2 vec2 = 平行移動 /
+    ///   loc3 vec4 = uvOffset+uvScale / loc4 vec4 = color+alpha /
+    ///   loc5 vec4 = フラグ (useTexture, sdf, styleEnabled, hatchEnabled) /
+    ///   loc6 vec4 = rectSize+cornerRadius+borderWidth / loc7 vec4 = 枠色+枠alpha /
+    ///   loc8 vec4 = ハッチ色+alpha / loc9 vec2 = ハッチ幅+周期
+    /// 戻り値: (vao, instanceVbo)
+    pub def initSpriteInstancedRenderer(quadVBO: Int32): (Int32, Int32) \ IO =
+        let vao = GL30.glGenVertexArrays();
+        let instanceVbo = GL15.glGenBuffers();
+        GL30.glBindVertexArray(vao);
+        // 共有 quad VBO (loc 0)
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, quadVBO);
+        GL20.glEnableVertexAttribArray(0);
+        GL20.glVertexAttribPointer(0, 4, GL11.GL_FLOAT, false, 16, 0i64);
+        // インスタンス VBO (loc 1-9, divisor=1, stride 128 bytes)
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, instanceVbo);
+        GL20.glEnableVertexAttribArray(1);
+        GL20.glVertexAttribPointer(1, 4, GL11.GL_FLOAT, false, 128, 0i64);
+        GL33.glVertexAttribDivisor(1, 1);
+        GL20.glEnableVertexAttribArray(2);
+        GL20.glVertexAttribPointer(2, 2, GL11.GL_FLOAT, false, 128, 16i64);
+        GL33.glVertexAttribDivisor(2, 1);
+        GL20.glEnableVertexAttribArray(3);
+        GL20.glVertexAttribPointer(3, 4, GL11.GL_FLOAT, false, 128, 24i64);
+        GL33.glVertexAttribDivisor(3, 1);
+        GL20.glEnableVertexAttribArray(4);
+        GL20.glVertexAttribPointer(4, 4, GL11.GL_FLOAT, false, 128, 40i64);
+        GL33.glVertexAttribDivisor(4, 1);
+        GL20.glEnableVertexAttribArray(5);
+        GL20.glVertexAttribPointer(5, 4, GL11.GL_FLOAT, false, 128, 56i64);
+        GL33.glVertexAttribDivisor(5, 1);
+        GL20.glEnableVertexAttribArray(6);
+        GL20.glVertexAttribPointer(6, 4, GL11.GL_FLOAT, false, 128, 72i64);
+        GL33.glVertexAttribDivisor(6, 1);
+        GL20.glEnableVertexAttribArray(7);
+        GL20.glVertexAttribPointer(7, 4, GL11.GL_FLOAT, false, 128, 88i64);
+        GL33.glVertexAttribDivisor(7, 1);
+        GL20.glEnableVertexAttribArray(8);
+        GL20.glVertexAttribPointer(8, 4, GL11.GL_FLOAT, false, 128, 104i64);
+        GL33.glVertexAttribDivisor(8, 1);
+        GL20.glEnableVertexAttribArray(9);
+        GL20.glVertexAttribPointer(9, 2, GL11.GL_FLOAT, false, 128, 120i64);
+        GL33.glVertexAttribDivisor(9, 1);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        (vao, instanceVbo)
+
+    /// 同じテクスチャのスプライト count 体を 1 回の instanced draw で描画する。
+    /// data は 1 体 32 floats を列順に並べた instance データ（RenderFrame が組む）。
+    /// 毎フレーム glBufferData で丸ごと差し替える（orphaning。drawPolygon と同方式）。
+    /// texId = 0 は単色矩形の run で、シェーダはテクスチャを読まないので bind しない。
+    pub def drawSpriteInstanced(shader: Int32, vao: Int32, instanceVbo: Int32, texId: Int32,
+                                 data: Array[Float32, Static], count: Int32): Unit \ IO =
+        GL20.glUseProgram(shader);
+        if (texId != 0) {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId)
+        } else ();
+        GL30.glBindVertexArray(vao);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, instanceVbo);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, data, GL15.GL_DYNAMIC_DRAW);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GL31.glDrawArraysInstanced(GL11.GL_TRIANGLES, 0, 6, count);
         GL30.glBindVertexArray(0)
 
 }

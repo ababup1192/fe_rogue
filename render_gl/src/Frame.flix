@@ -26,6 +26,24 @@ mod RenderFrame {
             (0, vpY, vpW, vpH)
         }
 
+    /// zIndex 昇順・同 z 内は入力順のまま、に並べ替える。
+    /// 比較ソートにしないのは、1 比較ごとにキー関数の呼び出しと多相比較が走り、
+    /// 物量シーン（数千件）でフレーム時間の大半を占めるため（スレッドダンプ実測）。
+    /// z ごとのバケツへ 1 パスで振り分けてキー昇順に繋ぎ直せば、比較は z の
+    /// 種類数ぶんの Map 操作だけで済み、同 z 内の順序も構造的に崩れない。
+    /// 同 z の入れ替わりは実害がある（bg Rect と同 z のテキスト最後の文字が
+    /// 上書き消失した事故が過去にある）ため、安定性はこの関数の必須条件。
+    def stableByZ(zOf: a -> Int32, items: List[a]): List[a] =
+        // バケツは先頭挿入で溜める（= 逆順）。foldRight が z の大きい側から
+        // 前置し直すので、全体は z 昇順・バケツ内は入力順に戻る。
+        let buckets = List.foldLeft((m, x) -> {
+            let z = zOf(x);
+            let bucket = Map.get(z, m) |> Option.getWithDefault(Nil);
+            Map.insert(z, x :: bucket, m)
+        }, Map.empty(), items);
+        Map.foldRight((bucket, acc) ->
+            List.foldLeft((rest, x) -> x :: rest, acc, bucket), Nil, buckets)
+
     /// 1 フレーム描画に必要な材料をひとまとめにした名前付き引数。
     /// 同じ Int32（シェーダ・VAO・VBO のハンドル）が何個も並ぶので、位置引数だと
     /// 順番を取り違えても気づけない。名前で渡せば取り違いが起きない。
@@ -44,15 +62,38 @@ mod RenderFrame {
         tileMaps = List[RenderType.TileMapRenderCmd],
         polygons = List[RenderType.PolygonCmd],
         polyVao = Int32,
-        polyVbo = Int32
+        polyVbo = Int32,
+        instShader = Int32,
+        instVao = Int32,
+        instVbo = Int32,
+        spriteUniforms = RenderShader.SpriteUniforms,
+        tileUniforms = RenderShader.TileUniforms
     }
+
+    /// 溜めた run（同じテクスチャの連続スプライト列）を 1 回の instanced draw で
+    /// 吐き出す。1 体 = 32 floats の Float32 配列で受け取る。record にしないのは、
+    /// record の `#` 読みが実行時のフィールド探索で、数千体の詰め直しでは
+    /// その探索だけでフレーム時間に現れるため（スレッドダンプ実測）。
+    /// itemsRev は cons で積んだ逆順。末尾位置から前へ詰め戻すことで
+    /// List.reverse なしに instance 順 = 列順を守る。
+    def flushSpriteRun(instShader: Int32, instVao: Int32, instVbo: Int32,
+                        texId: Int32, count: Int32,
+                        itemsRev: List[Array[Float32, Static]]): Unit \ IO =
+        if (count == 0) () else {
+            let data = Array.empty(Static, count * 32);
+            let _ = List.foldLeft((endIdx, inst) -> {
+                let base = (endIdx - 1) * 32;
+                Array.forEachWithIndex((j, v) -> Array.put(v, base + j, data), inst);
+                endIdx - 1
+            }, count, itemsRev);
+            RenderSprite.drawSpriteInstanced(instShader, instVao, instVbo, texId, data, count)
+        }
 
     /// 1 フレーム描画: tileMaps を先に zIndex 順で描き、続いて sprites を zIndex 順で描く。
     /// 黒帯部分は scissor で clear する。
     pub def renderFrameMixed(args: FrameArgs): Unit \ IO =
         let spriteShader = args#spriteShader;
         let tileShader   = args#tileShader;
-        let vao          = args#vao;
         let registry     = args#registry;
         let clearColor   = args#clearColor;
         let designW      = args#designW;
@@ -64,6 +105,11 @@ mod RenderFrame {
         let polygons     = args#polygons;
         let polyVao      = args#polyVao;
         let polyVbo      = args#polyVbo;
+        let instShader   = args#instShader;
+        let instVao      = args#instVao;
+        let instVbo      = args#instVbo;
+        let spriteUniforms = args#spriteUniforms;
+        let tileUniforms = args#tileUniforms;
         if (fbW > 0 and fbH > 0) {
             let (vpX, vpY, vpW, vpH) = calcViewport(fbW, fbH, designW, designH);
             GL11.glViewport(0, 0, fbW, fbH);
@@ -75,18 +121,12 @@ mod RenderFrame {
             GL11.glClearColor(clearColor#r, clearColor#g, clearColor#b, 1.0f32);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
             GL11.glDisable(GL11.GL_SCISSOR_TEST);
-            // tileMaps: zIndex 昇順で 1 draw call ずつ描画。
-            // 同一 zIndex 内では入力順を保つため stable sort（zipWithIndex + (zIndex, drawIndex)）。
-            // 単純な `List.sortBy(_#zIndex, _)` は unstable で、Scene.toDrawables 側で確立した
-            // 描画順を壊し、特定の Drawable（例: bg Rect と同 z の Text の最後の文字）が
-            // 入れ替わって上書き消失する事故が起きる。
-            let sortedTiles = tileMaps
-                |> List.zipWithIndex
-                |> List.sortBy(idxT -> let (idx, tm) = idxT; (tm#zIndex, idx))
-                |> List.map(idxT -> let (_, tm) = idxT; tm);
+            // tileMaps: zIndex 昇順で 1 draw call ずつ描画。並べ替えは stableByZ（下記）。
+            let sortedTiles = stableByZ(tm -> tm#zIndex, tileMaps);
             List.forEach(tm -> match Map.get(tm#textureName, registry) {
                 case Some(texInfo) =>
                     RenderSprite.drawTileMapInstanced(tileShader, GpuHandle.textureIdInt(texInfo#id), GpuHandle.tileVaoInt(tm#tileVaoId),
+                                         tileUniforms,
                                          tm#position, tm#tileSize, tm#tileScale,
                                          tm#color, tm#tileCount)
                 case None => ()
@@ -95,7 +135,7 @@ mod RenderFrame {
             // sprite だけ z 順にし polygon を最後へまとめて描くと、ワールド配置のポリゴン
             // （武器グリフ等）が手前のポップアップを貫通してしまう。両者を同じ z 空間で
             // 並べることで、重なり順が zIndex の指定どおりになる。
-            // 同一 zIndex 内は入力順（sprites → polygons）を保つため stable sort（zipWithIndex）。
+            // 同一 zIndex 内は入力順（sprites → polygons）を保つ（stableByZ が構造的に保証）。
             // Ok = Drawable（スプライト/Rect）、Err = PolygonCmd（Polygon/Arc）。
             let merged: List[Result[RenderType.PolygonCmd, RenderType.Drawable]] =
                 List.append(
@@ -105,20 +145,84 @@ mod RenderFrame {
                 case Result.Ok(d)   => d#zIndex
                 case Result.Err(pc) => pc#zIndex
             };
-            let sortedMerged = merged
-                |> List.zipWithIndex
-                |> List.sortBy(ix -> let (idx, item) = ix; (zOf(item), idx))
-                |> List.map(ix -> let (_, item) = ix; item);
-            List.forEach(item -> match item {
+            let sortedMerged = stableByZ(zOf, merged);
+            // 連続する「同じテクスチャ」のスプライトを 1 回の instanced draw に
+            // 畳む（run 収集 → flush）。run を切るのはテクスチャ変化と polygon だけ。
+            // 1 要素 1 draw call だと呼び出しの固定費が積み上がり、
+            // 数千体で描画時間のほとんどを占めてしまうため。
+            //
+            // 【順序の不変条件・変更禁止】sortedMerged の列順は一切入れ替えない。
+            // 畳んでよいのは「先頭から連続する同状態の部分列」だけで、バッチ内の
+            // instance 順 = 列順。run をまたいでテクスチャごとに再グループ化するのは禁止:
+            // アルファブレンドは描画順に依存するので、同 zIndex の bg 矩形とテキスト最後の
+            // 文字が入れ替わって文字が消える実バグが過去に起きた。
+            let f32 = RenderUtil.f32;
+            let cosF = RenderUtil.cosF;
+            let sinF = RenderUtil.sinF;
+            // drawSprite が uniform に詰める model 行列と同じ式を CPU 側で計算して
+            // instance 属性 (32 floats・シェーダ loc1-9 と同並び) に落とす
+            // （絵が per-draw 経路と一致することを式の同一性で保証）。
+            // style も per-instance 属性に載せる: 単色矩形は常に style 付きで届く
+            // (Render.box が solidStyle を持たせる) ため、style をバッチ分割条件に
+            // すると矩形が全部 1 枚ずつ描かれて一括化が骨抜きになる（実測で発覚）。
+            let makeInst = (pos: Vec2.Vec2, size: Vec2.Vec2, drawable: RenderType.Drawable,
+                             useTex: Bool, sdf: Bool) -> {
+                let c = cosF(drawable#rotation);
+                let s = sinF(drawable#rotation);
+                let sx = size#x;
+                let sy = size#y;
+                let tx = pos#x + sx / 2.0 - c * sx / 2.0 + s * sy / 2.0;
+                let ty = pos#y + sy / 2.0 - s * sx / 2.0 - c * sy / 2.0;
+                let color = drawable#color;
+                let uvo = drawable#uvOffset;
+                let uvs = drawable#uvScale;
+                let (styleOn, hatchOn, cr, bw, bc, ba, hc, ha, hw, hp) = match drawable#style {
+                    case None =>
+                        let zero: Color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 };
+                        (0.0f32, 0.0f32, 0.0f32, 0.0f32, zero, 0.0f32,
+                         zero, 0.0f32, 0.0f32, 0.0f32)
+                    case Some(st) =>
+                        // hatch の有効判定は drawSprite の hatchOn と同式。
+                        let hatch = if (st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32) 1.0f32 else 0.0f32;
+                        (1.0f32, hatch, f32(st#cornerRadius), f32(st#borderWidth),
+                         st#borderColor, st#borderAlpha,
+                         st#stripeColor, st#stripeAlpha, f32(st#stripeWidth), f32(st#stripePeriod))
+                };
+                Array#{
+                    f32(c * sx), f32(s * sx), f32(-1.0 * s * sy), f32(c * sy),
+                    f32(tx), f32(ty),
+                    f32(uvo#x), f32(uvo#y), f32(uvs#x), f32(uvs#y),
+                    color#r, color#g, color#b, drawable#alpha,
+                    (if (useTex) 1.0f32 else 0.0f32), (if (sdf) 1.0f32 else 0.0f32), styleOn, hatchOn,
+                    f32(sx), f32(sy), cr, bw,
+                    bc#r, bc#g, bc#b, ba,
+                    hc#r, hc#g, hc#b, ha,
+                    hw, hp
+                } @ Static
+            };
+            // run = (テクスチャ id, 体数, 積んだ instance の逆順リスト)。texId=0 は単色矩形の run。
+            let emptyRun: (Int32, Int32, List[Array[Float32, Static]]) = (0, 0, Nil);
+            let flush = (acc: (Int32, Int32, List[Array[Float32, Static]])) -> {
+                let (accTex, accCount, accRev) = acc;
+                flushSpriteRun(instShader, instVao, instVbo, accTex, accCount, accRev)
+            };
+            let push = (acc: (Int32, Int32, List[Array[Float32, Static]]), texId: Int32,
+                         inst: Array[Float32, Static]) -> {
+                let (accTex, accCount, accRev) = acc;
+                if (accCount == 0)
+                    (texId, 1, inst :: Nil)
+                else if (accTex == texId)
+                    (accTex, accCount + 1, inst :: accRev)
+                else {
+                    // テクスチャが変わったら現 run を吐いてから新しい run を始める。
+                    flush(acc);
+                    (texId, 1, inst :: Nil)
+                }
+            };
+            let lastRun = List.foldLeft((acc, item) -> match item {
                 case Result.Ok(drawable) =>
                     if (String.isEmpty(drawable#texture)) {
-                        let displaySize: Vec2.Vec2 = drawable#scale;
-                        RenderSprite.drawSprite(spriteShader, vao, {
-                            texture = 0, position = drawable#position, scale = displaySize,
-                            color = drawable#color, alpha = drawable#alpha,
-                            uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
-                            rotation = drawable#rotation, useTexture = false,
-                            style = drawable#style, sdf = false})
+                        push(acc, 0, makeInst(drawable#position, drawable#scale, drawable, false, false))
                     } else {
                         match Map.get(drawable#texture, registry) {
                             case Some(texInfo) =>
@@ -131,19 +235,20 @@ mod RenderFrame {
                                 else drawable#position;
                                 // フォントアトラス (font_*) は SDF テキストとして描く。
                                 let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
-                                RenderSprite.drawSprite(spriteShader, vao, {
-                                    texture = GpuHandle.textureIdInt(texInfo#id), position = pos, scale = displaySize,
-                                    color = drawable#color, alpha = drawable#alpha,
-                                    uvOffset = drawable#uvOffset, uvScale = drawable#uvScale,
-                                    rotation = drawable#rotation, useTexture = true,
-                                    style = drawable#style, sdf = isFont})
-                            case None => ()
+                                push(acc, GpuHandle.textureIdInt(texInfo#id),
+                                     makeInst(pos, displaySize, drawable, true, isFont))
+                            // texture 未登録は従来どおり描かない。描かないだけなので run は途切れさせない。
+                            case None => acc
                         }
                     }
                 case Result.Err(pc) =>
-                    RenderSprite.drawPolygon(spriteShader, polyVao, polyVbo,
-                                              pc#vertices, pc#color, pc#alpha)
-            }, sortedMerged)
+                    // polygon が来たら run を吐いてから polygon を描く（列順を守る）。
+                    flush(acc);
+                    RenderSprite.drawPolygon(spriteShader, polyVao, polyVbo, spriteUniforms,
+                                              pc#vertices, pc#color, pc#alpha);
+                    emptyRun
+            }, emptyRun, sortedMerged);
+            flush(lastRun)
         } else ()
 
 }
