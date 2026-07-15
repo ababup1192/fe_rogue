@@ -110,17 +110,9 @@ mod UiSpec {
     // load（ファイル読み）
     // ========================================================================
 
-    /// ui.json を読み込んで parse する（SceneLoader と同じ読み方）。
-    /// 読み込み失敗・JSON パース失敗・スキーマ不正はいずれも Err。
+    /// ui.json を読み込んで Spec にする。instance の参照先も UiDoc.load が読み集める。
     pub def load(path: String): Result[JsonError, Spec] \ Fs.FileRead =
-        let content = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;
-        match content {
-            case Err(readError) => Err(JsonCompat.jsonError(Root, Set#{"failed to read: ${readError}"}))
-            case Ok(text)       => match JsonCompat.parse(String.trim(text)) {
-                case None       => Err(JsonCompat.jsonError(Root, Set#{"JSON parse failed: ${path}"}))
-                case Some(json) => parse(json)
-            }
-        }
+        UiDoc.load(path) |> Result.flatMap(spec -> toSpec(spec))
 
     // ========================================================================
     // spawn / respawn

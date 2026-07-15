@@ -14,6 +14,8 @@
 //   poly: rotation（1 周 = 1.0）。pivot 未指定なら rect 中心を原点に Render.rotated で回す
 //     （時計の針は「根元 = rect 中心」に頂点を組めば蝶番になる）。pivot=[x,y]（左上相対）指定時は
 //     Render.rotatedAround。※この拡張は Flex 経路のみ — UiStore 経路（UiSpec）は loud に断る。
+//   instance: "instance": "assets/button.ui.json" で別ドキュメントの root をそのノードとして合成。
+//     ノード自身のフィールドが root に勝ち、"override": { "相対名パス": {...} } で子孫も上書きできる。
 //   トップレベル: "version"（省略時 1。1 以外は Err）。"$schema"・"//" キーは無視（コメント可）。
 //
 // エラーはノードの名前パス付き（例: `at gallery/row1/box: 'color' is required`）— 手書き
@@ -63,18 +65,43 @@ mod UiDoc {
     // parse（純粋）
     // ========================================================================
 
-    /// ドキュメント（version + templates + root）を Spec へ畳む。
+    /// パース全体で引き回す環境。
+    type alias ParseEnv = {
+        templates = Map[String, Map[String, Json]],  // いま効いているテンプレート（use の参照先）
+        defaultFont = String,                        // font 未指定の text が使うフォント名
+        resolver = Map[String, Json],                // instance のパス → 読み込み済み JSON
+        stack = List[String]                         // 解決中の instance パスの連なり（循環検出用）
+    }
+
+    /// ドキュメント（version + templates + root）を Spec へ畳む。instance を含むときは load を使う。
     pub def parse(json: Json): Result[JsonError, Spec] =
+        parseWith(Map.empty(), json)
+
+    /// parse と同じ。加えて resolver（パス → JSON）で instance 参照を解決できる。
+    pub def parseWith(resolver: Map[String, Json], json: Json): Result[JsonError, Spec] =
+        parseTop(resolver, Nil, json)
+
+    def parseTop(resolver: Map[String, Json], stack: List[String], json: Json): Result[JsonError, Spec] =
         match json {
             case JObject(topMap) => forM (
-                _v          <- checkVersion(topMap);
-                templates   <- parseTemplates(topMap);
-                defaultFont <- parseDefaultFont(topMap);
-                rootMap     <- (JsonCompat.getAtKey(Root, "root", topMap): Result[JsonError, Map[String, Json]]);
-                spec        <- parseNode(templates, defaultFont, "", 0, rootMap)
+                top  <- parseTopLevel(topMap);
+                spec <- parseNode({ templates = top#templates, defaultFont = top#defaultFont,
+                                    resolver = resolver, stack = stack }, "", 0, top#rootMap)
             ) yield spec
             case _ => Err(JsonCompat.jsonError(Root, Set#{"UiDoc must be a JSON object with a 'root'"}))
         }
+
+    /// トップレベル（version / templates / defaultFont / root）をまとめて取り出す。
+    /// ドキュメントの入口（parseTop）と instance の参照先（resolveInstance）が同じ形を読むための共通部。
+    def parseTopLevel(topMap: Map[String, Json]):
+            Result[JsonError, { templates = Map[String, Map[String, Json]], defaultFont = String,
+                                rootMap = Map[String, Json] }] =
+        forM (
+            _v          <- checkVersion(topMap);
+            templates   <- parseTemplates(topMap);
+            defaultFont <- parseDefaultFont(topMap);
+            rootMap     <- (JsonCompat.getAtKey(Root, "root", topMap): Result[JsonError, Map[String, Json]])
+        ) yield { templates = templates, defaultFont = defaultFont, rootMap = rootMap }
 
     /// "version"（省略時 1）。この実装が知らない版は loud に断る（黙って誤読しない）。
     def checkVersion(topMap: Map[String, Json]): Result[JsonError, Unit] =
@@ -100,19 +127,29 @@ mod UiDoc {
                 ) yield Map.insert(tname, tmap, sofar), Ok(Map.empty()), m)
         }
 
-    /// 1 ノードを Spec へ。`use` のテンプレ値の上にノード値を重ねる（ノード勝ち）。
+    /// 1 ノードを Spec へ（"instance" があれば参照先ドキュメントを合成してから）。
+    /// ordinal は兄弟内の位置で、name 確定前のエラーを `parent[ordinal]` で指すのに使う。
+    def parseNode(env: ParseEnv, parentPath: String, ordinal: Int32,
+                  nodeMap: Map[String, Json]): Result[JsonError, Spec] =
+        match (JsonCompat.getAtKeyOpt(Root, "instance", nodeMap): Result[JsonError, Option[String]]) {
+            case Err(e)             => Err(e)
+            case Ok(Some(instPath)) =>
+                JsonCompat.atNode(siteTag(parentPath, ordinal),
+                    resolveInstance(env, parentPath, ordinal, instPath, nodeMap))
+            case Ok(None)           => parsePlainNode(env, parentPath, ordinal, nodeMap)
+        }
+
+    /// use のテンプレ値の上にノード値を重ね（ノード勝ち）、属性と子を畳む。
     /// エラーはこのノードの名前パスでタグする（子は子が自分でタグ済み）。
-    /// `ordinal` は兄弟内の位置 — name が確定する前に失敗したとき、どの子かを
-    /// `parent[ordinal]` の形で指せるようにする。
-    def parseNode(templates: Map[String, Map[String, Json]], defaultFont: String,
-                  parentPath: String, ordinal: Int32, nodeMap: Map[String, Json]): Result[JsonError, Spec] =
-        match nodeIdentity(templates, parentPath, ordinal, nodeMap) {
+    def parsePlainNode(env: ParseEnv, parentPath: String, ordinal: Int32,
+                       nodeMap: Map[String, Json]): Result[JsonError, Spec] =
+        match nodeIdentity(env, parentPath, ordinal, nodeMap) {
             case Err(e) => Err(e)
             case Ok((name, merged)) =>
                 let path = if (parentPath == "") name else "${parentPath}/${name}";
                 forM (
-                    own      <- JsonCompat.atNode(path, parseOwnFields(defaultFont, merged));
-                    children <- parseChildren(templates, defaultFont, path, merged);
+                    own      <- JsonCompat.atNode(path, parseOwnFields(env#defaultFont, merged));
+                    children <- parseChildren(env, path, merged);
                     _uniq    <- JsonCompat.atNode(path, ensureUniqueNames(children))
                 ) yield Spec.Spec({
                     name = name, widget = own#widget, style = own#style,
@@ -121,15 +158,121 @@ mod UiDoc {
                 })
         }
 
-    /// use 解決と name の取り出し。自分の name が確定する前に失敗し得るので、
-    /// `親パス[兄弟内位置]` の形でタグする（root は "(root)"）。
-    def nodeIdentity(templates: Map[String, Map[String, Json]], parentPath: String,
-                     ordinal: Int32, nodeMap: Map[String, Json]): Result[JsonError, (String, Map[String, Json])] =
-        JsonCompat.atNode(if (parentPath == "") "(root)" else "${parentPath}[${ordinal}]", forM (
-            merged <- resolveTemplate(templates, nodeMap);
+    /// エラータグ用のノード位置（name 確定前は「親パス[兄弟内位置]」、root は "(root)"）。
+    def siteTag(parentPath: String, ordinal: Int32): String =
+        if (parentPath == "") "(root)" else "${parentPath}[${ordinal}]"
+
+    /// use 解決と name の取り出し。name 確定前の失敗は siteTag でタグする。
+    def nodeIdentity(env: ParseEnv, parentPath: String, ordinal: Int32,
+                     nodeMap: Map[String, Json]): Result[JsonError, (String, Map[String, Json])] =
+        JsonCompat.atNode(siteTag(parentPath, ordinal), forM (
+            merged <- resolveTemplate(env#templates, nodeMap);
             name   <- (JsonCompat.getAtKey(Root, "name", merged): Result[JsonError, String]);
             _valid <- validateName(name)
         ) yield (name, merged))
+
+    // ── instance（別ドキュメントの合成）──
+
+    /// instance ノードの解決: 参照先の root にノード自身のフィールドを重ね、override の
+    /// パッチを当ててから通常のパースへ流す。テンプレと defaultFont は参照先のものが効く。
+    def resolveInstance(env: ParseEnv, parentPath: String, ordinal: Int32,
+                        instPath: String, nodeMap: Map[String, Json]): Result[JsonError, Spec] =
+        forM (
+            _noCycle  <- if (List.memberOf(instPath, env#stack))
+                             Err(JsonCompat.jsonError(Root, Set#{
+                                 "instance cycle: ${String.intercalate(" -> ", List.reverse(instPath :: env#stack))}"}))
+                         else Ok(());
+            docJson   <- Map.get(instPath, env#resolver) |> Option.toOk(unloadedErr(instPath));
+            topMap    <- asObject("instance '${instPath}'", docJson);
+            top       <- parseTopLevel(topMap);
+            own       <- instanceOwnFields(nodeMap);
+            overrides <- parseOverrides(nodeMap);
+            patched   <- applyOverrides(overrides, mergeNode(top#rootMap, own));
+            spec      <- parseNode({ templates = top#templates, defaultFont = top#defaultFont,
+                                     resolver = env#resolver, stack = instPath :: env#stack },
+                                   parentPath, ordinal, patched)
+        ) yield spec
+
+    /// instance ノード自身のフィールド（参照先 root にノード勝ちで重ねる分）。
+    /// children の丸ごと差し替えと use の併用は意味が曖昧なので断る。
+    def instanceOwnFields(nodeMap: Map[String, Json]): Result[JsonError, Map[String, Json]] =
+        if (Map.memberOf("children", nodeMap))
+            Err(JsonCompat.jsonError(Root, Set#{"an instance node cannot have 'children' — use \"override\" to patch descendants"}))
+        else if (Map.memberOf("use", nodeMap))
+            Err(JsonCompat.jsonError(Root, Set#{"'use' and 'instance' cannot be combined"}))
+        else Ok(nodeMap |> Map.remove("instance") |> Map.remove("override"))
+
+    /// "override": { "相対名パス": { 部分フィールド } } を読む。patch には葉のフィールドだけ許す。
+    def parseOverrides(nodeMap: Map[String, Json]): Result[JsonError, List[(String, Map[String, Json])]] =
+        match (JsonCompat.getAtKeyOpt(Root, "override", nodeMap): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)      => Err(e)
+            case Ok(None)    => Ok(Nil)
+            case Ok(Some(m)) => m |> Map.toList |> Result.traverse(entry -> {
+                let (relPath, json) = entry;
+                forM (
+                    patch <- asObject("override '${relPath}'", json);
+                    _ok   <- validatePatch(relPath, patch)
+                ) yield (relPath, patch)
+            })
+        }
+
+    def validatePatch(relPath: String, patch: Map[String, Json]): Result[JsonError, Unit] =
+        let keys = "children" :: "instance" :: "override" :: Nil;
+        let banned = List.filter(k -> Map.memberOf(k, patch), keys);
+        if (List.isEmpty(banned)) Ok(())
+        else Err(JsonCompat.jsonError(Root, Set#{
+            "override '${relPath}' cannot contain ${String.intercalate(", ", banned)} — patch leaf fields only"}))
+
+    def applyOverrides(overrides: List[(String, Map[String, Json])],
+                       rootMap: Map[String, Json]): Result[JsonError, Map[String, Json]] =
+        List.foldLeft((acc, entry) -> acc |> Result.flatMap(m -> {
+            let (relPath, patch) = entry;
+            patchAt(String.splitOn(substr = "/", relPath), patch, relPath, m)
+        }), Ok(rootMap), overrides)
+
+    /// 相対名パスの先のノードに patch を重ねる。各段は children の name で辿る
+    /// （name をテンプレ任せにした子は辿れない — ノード側に name を書くこと）。
+    def patchAt(segments: List[String], patch: Map[String, Json], fullPath: String,
+                nodeMap: Map[String, Json]): Result[JsonError, Map[String, Json]] =
+        match segments {
+            case Nil => Ok(mergeNode(nodeMap, patch))
+            case seg :: rest => match Map.get("children", nodeMap) {
+                case Some(JArray(arr)) => forM (
+                    patchedChildren <- patchChild(seg, rest, patch, fullPath, Vector.toList(arr))
+                ) yield Map.insert("children", JArray(List.toVector(patchedChildren)), nodeMap)
+                case _ => Err(JsonCompat.jsonError(Root, Set#{"override path '${fullPath}' not found: node has no children"}))
+            }
+        }
+
+    def patchChild(seg: String, rest: List[String], patch: Map[String, Json], fullPath: String,
+                   children: List[Json]): Result[JsonError, List[Json]] =
+        match children {
+            case Nil => Err(JsonCompat.jsonError(Root, Set#{"override path '${fullPath}' not found: no child named '${seg}'"}))
+            case child :: tail => match namedObject(seg, child) {
+                case Some(m) =>
+                    let patchedM = if (List.isEmpty(rest)) Ok(mergeNode(m, patch))
+                                   else patchAt(rest, patch, fullPath, m);
+                    patchedM |> Result.map(m2 -> JObject(m2) :: tail)
+                case None =>
+                    patchChild(seg, rest, patch, fullPath, tail) |> Result.map(r -> child :: r)
+            }
+        }
+
+    /// child が「name = seg の JSON Object」ならその map。
+    def namedObject(seg: String, child: Json): Option[Map[String, Json]] =
+        match child {
+            case JObject(m) => if (nameIs(seg, m)) Some(m) else None
+            case _          => None
+        }
+
+    def nameIs(seg: String, m: Map[String, Json]): Bool =
+        match Map.get("name", m) {
+            case Some(JString(n)) => n == seg
+            case _                => false
+        }
+
+    def unloadedErr(path: String): JsonError =
+        JsonCompat.jsonError(Root, Set#{"instance '${path}' is not loaded (use UiDoc.load)"})
 
     /// ノード自身の属性（widget・style・visible・bind/meta/hover/layer）。
     def parseOwnFields(defaultFont: String, merged: Map[String, Json]):
@@ -181,8 +324,7 @@ mod UiDoc {
     def mergeNode(base: Map[String, Json], over: Map[String, Json]): Map[String, Json] =
         Map.foldLeftWithKey((acc, key, value) -> Map.insert(key, value, acc), base, over)
 
-    def parseChildren(templates: Map[String, Map[String, Json]], defaultFont: String,
-                      path: String, map: Map[String, Json]): Result[JsonError, List[Spec]] =
+    def parseChildren(env: ParseEnv, path: String, map: Map[String, Json]): Result[JsonError, List[Spec]] =
         match Map.get("children", map) {
             case None              => Ok(Nil)
             case Some(JArray(arr)) =>
@@ -190,7 +332,7 @@ mod UiDoc {
                     let (i, child) = entry;
                     forM (
                         m    <- JsonCompat.atNode("${path}[${i}]", asObject("child", child));
-                        spec <- parseNode(templates, defaultFont, path, i, m)
+                        spec <- parseNode(env, path, i, m)
                     ) yield spec
                 }, List.zipWithIndex(Vector.toList(arr)))
             case Some(_)           => Err(JsonCompat.jsonError(Root, Set#{"children must be an array"}))
@@ -727,14 +869,50 @@ mod UiDoc {
     // load（ファイル読み — parse は純粋なまま、IO はここだけ）
     // ========================================================================
 
+    /// path とそこから instance 参照される全ドキュメントを読み、合成して Spec にする。
     pub def load(path: String): Result[JsonError, Spec] \ Fs.FileRead =
+        collectDocs(path :: Nil, Map.empty()) |> Result.flatMap(resolver ->
+            Map.get(path, resolver) |> Option.toOk(unloadedErr(path))
+                |> Result.flatMap(json -> parseWith(resolver, json)))
+
+    /// frontier のドキュメントを読み、instance 参照を辿って全部集める（訪問済みは読まない —
+    /// 循環していても読み込みはここで止まり、循環自体は parse が Err にする）。
+    def collectDocs(frontier: List[String], acc: Map[String, Json]): Result[JsonError, Map[String, Json]] \ Fs.FileRead =
+        match frontier {
+            case Nil => Ok(acc)
+            case path :: rest =>
+                if (Map.memberOf(path, acc)) collectDocs(rest, acc)
+                else match readDoc(path) {
+                    case Err(e)   => Err(e)
+                    case Ok(json) =>
+                        let refs = instanceRefs(json) |> List.filter(p -> not Map.memberOf(p, acc));
+                        collectDocs(List.append(refs, rest), Map.insert(path, json, acc))
+                }
+        }
+
+    /// 1 ファイルを読んで JSON にする。
+    def readDoc(path: String): Result[JsonError, Json] \ Fs.FileRead =
         let content = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;
-        match content {
-            case Err(readError) => Err(JsonCompat.jsonError(Root, Set#{"failed to read: ${readError}"}))
-            case Ok(text)       => match JsonCompat.parse(String.trim(text)) {
-                case None       => Err(JsonCompat.jsonError(Root, Set#{"JSON parse failed: ${path}"}))
-                case Some(json) => parse(json)
-            }
+        content
+            |> Result.mapErr(readError -> JsonCompat.jsonError(Root, Set#{"failed to read: ${readError}"}))
+            |> Result.flatMap(text -> JsonCompat.parse(String.trim(text))
+                |> Option.toOk(JsonCompat.jsonError(Root, Set#{"JSON parse failed: ${path}"})))
+
+    /// JSON 木から "instance" 参照のパスを全部拾う。
+    def instanceRefs(json: Json): List[String] =
+        match json {
+            case JObject(m) =>
+                let own = instancePathOf(m) |> Option.toList;
+                let nested = Map.valuesOf(m) |> List.flatMap(v -> instanceRefs(v));
+                List.append(own, nested)
+            case JArray(vs) => Vector.toList(vs) |> List.flatMap(v -> instanceRefs(v))
+            case _          => Nil
+        }
+
+    def instancePathOf(m: Map[String, Json]): Option[String] =
+        match Map.get("instance", m) {
+            case Some(JString(p)) => Some(p)
+            case _                => None
         }
 
     /// 起動時ロード用の近道。失敗はドキュメントの書き損じなので即死してエラーを見せる。

@@ -56,7 +56,15 @@
       "type": "object",
       "properties": {
         "name": { "type": "string", "description": "兄弟内で一意。'/' 不可。" },
-        "use": { "type": "string", "description": "templates のテンプレ名。ノードの値が勝つ。" },
+        "use": { "type": "string", "description": "templates のテンプレ名。ノードの値が勝つ。instance とは併用不可。" },
+        "instance": { "type": "string",
+                      "description": "別 ui.json のパス(プロジェクトルート相対)。その root をこのノードとして合成する。ノード自身のフィールドが勝つ。use / children とは併用不可。" },
+        "override": {
+          "type": "object",
+          "description": "instance の子孫への部分上書き。キーは参照先 root からの相対名パス(例 \"bg\"、\"menu/slot0\")、値は上書きするフィールド(children/instance/override は不可)。",
+          "additionalProperties": { "type": "object" },
+          "patternProperties": { "^//": {} }
+        },
         "widget": { "$ref": "#/$defs/widgetName" },
         "visible": { "type": "boolean" },
         "bind": { "type": "string", "description": "text 流し込み先の bind key (UiStore 経路)" },

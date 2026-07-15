@@ -361,6 +361,111 @@ mod TestUiDoc {
         UiStore.rootsOf(ui) |> List.foldLeft((acc, root) -> Map.union(
             UiHierarchy.resolveInherited(ui#visible, ui#parents, root, ui#order), acc), Map.empty())
 
+    // ── instance / override ──
+
+    /// (パス, JSON 文字列) の組から resolver を組む。
+    def docsResolver(docs: List[(String, String)]): Map[String, Util.Json.Json] =
+        docs |> List.filterMap(entry -> {
+            let (p, text) = entry;
+            JsonCompat.parse(text) |> Option.map(json -> (p, json))
+        }) |> List.toMap
+
+    /// (パス, JSON 文字列) の組を resolver にして root をパースする。
+    def parseWithDocs(docs: List[(String, String)], root: String): Option[UiDoc.Spec] =
+        JsonCompat.parse(root) |> Option.flatMap(json ->
+            UiDoc.parseWith(docsResolver(docs), json) |> Result.toOption)
+
+    /// parseWithDocs のエラー文言（成功時は目印文字列）。
+    def errTextWithDocs(docs: List[(String, String)], root: String): String =
+        JsonCompat.parse(root)
+            |> Option.map(json -> match UiDoc.parseWith(docsResolver(docs), json) {
+                case Ok(_)  => "no error"
+                case Err(e) => JsonCompat.describe(e)
+            })
+            |> Option.getWithDefault("no json")
+
+    def buttonDoc(): (String, String) =
+        ("btn.ui.json",
+         "{\"root\": {\"name\":\"button\",\"widget\":\"box\",\"color\":\"#000000\",\"width\":10,\"height\":10,"
+         + "\"children\":[{\"name\":\"label\",\"widget\":\"text\",\"text\":\"?\",\"fontSize\":8.0}]}}")
+
+    @Test
+    def testInstanceComposesAndOverrides(): Unit \ Assert =
+        // 参照先の root がノードとして合成され、name はノード勝ち・override が子に効く。
+        let main = "{\"root\": {\"name\":\"g\",\"children\":["
+                 + "{\"name\":\"b1\",\"instance\":\"btn.ui.json\","
+                 + "\"override\": {\"label\": {\"text\":\"+\"}}}]}}";
+        let got = parseWithDocs(buttonDoc() :: Nil, main)
+            |> Option.flatMap(firstChild)
+            |> Option.flatMap(b1 -> firstChild(b1) |> Option.flatMap(label ->
+                match widgetOf(label) {
+                    case UiDoc.Widget.TextW(t) => Some((UiDoc.nameOf(b1), t#text))
+                    case _                     => None
+                }));
+        Assert.assertEq(expected = Some(("b1", "+")), got)
+
+    @Test
+    def testInstanceNodeFieldsWinOverRoot(): Unit \ Assert =
+        // インスタンスノード自身のフィールド（width）が参照先 root の値に勝つ。
+        let main = "{\"root\": {\"name\":\"g\",\"children\":["
+                 + "{\"name\":\"b1\",\"instance\":\"btn.ui.json\",\"width\":20}]}}";
+        let got = parseWithDocs(buttonDoc() :: Nil, main)
+            |> Option.flatMap(firstChild)
+            |> Option.map(b1 -> sizeSpec2(styleOf(b1)#width));
+        Assert.assertEq(expected = Some(("px", 20.0)), got)
+
+    @Test
+    def testInstanceDeepOverride(): Unit \ Assert =
+        // 2 段の相対名パス("menu/slot0")で子孫を上書きできる。
+        let menuDoc = ("menu.ui.json",
+            "{\"root\": {\"name\":\"panel\",\"children\":[{\"name\":\"menu\",\"children\":["
+            + "{\"name\":\"slot0\",\"widget\":\"text\",\"text\":\"?\",\"fontSize\":8.0}]}]}}");
+        let main = "{\"root\": {\"name\":\"g\",\"children\":["
+                 + "{\"name\":\"m\",\"instance\":\"menu.ui.json\","
+                 + "\"override\": {\"menu/slot0\": {\"meta\":\"m0\"}}}]}}";
+        let got = parseWithDocs(menuDoc :: Nil, main)
+            |> Option.flatMap(firstChild)      // m (panel)
+            |> Option.flatMap(firstChild)      // menu
+            |> Option.flatMap(firstChild)      // slot0
+            |> Option.map(slot -> match slot { case UiDoc.Spec.Spec(node) => node#meta });
+        Assert.assertEq(expected = Some(Some("m0")), got)
+
+    @Test
+    def testInstanceErrorCases(): Unit \ Assert =
+        let btn = buttonDoc();
+        let badPath   = errTextWithDocs(btn :: Nil,
+            "{\"root\": {\"name\":\"g\",\"instance\":\"btn.ui.json\",\"override\":{\"nope\":{\"text\":\"x\"}}}}");
+        let children  = errTextWithDocs(btn :: Nil,
+            "{\"root\": {\"name\":\"g\",\"instance\":\"btn.ui.json\",\"children\":[]}}");
+        let withUse   = errTextWithDocs(btn :: Nil,
+            "{\"root\": {\"name\":\"g\",\"use\":\"t\",\"instance\":\"btn.ui.json\"}}");
+        let badPatch  = errTextWithDocs(btn :: Nil,
+            "{\"root\": {\"name\":\"g\",\"instance\":\"btn.ui.json\",\"override\":{\"label\":{\"children\":[]}}}}");
+        let unloaded  = errTextWithDocs(Nil,
+            "{\"root\": {\"name\":\"g\",\"instance\":\"btn.ui.json\"}}");
+        Assert.assertEq(
+            expected = (true, true, true, true, true),
+            (String.contains(substr = "not found", badPath),
+             String.contains(substr = "children", children),
+             String.contains(substr = "cannot be combined", withUse),
+             String.contains(substr = "leaf fields only", badPatch),
+             String.contains(substr = "not loaded", unloaded)))
+
+    @Test
+    def testInstanceCycleIsError(): Unit \ Assert =
+        let a = ("a.ui.json", "{\"root\": {\"name\":\"a\",\"instance\":\"b.ui.json\"}}");
+        let b = ("b.ui.json", "{\"root\": {\"name\":\"b\",\"instance\":\"a.ui.json\"}}");
+        let msg = errTextWithDocs(a :: b :: Nil,
+            "{\"root\": {\"name\":\"g\",\"instance\":\"a.ui.json\"}}");
+        Assert.assertEq(expected = true, String.contains(substr = "instance cycle", msg))
+
+    @Test
+    def testLoadMissingInstanceFileIsError(): Unit \ {Assert, IO} =
+        let got = run { UiDoc.load("no/such/file.ui.json") } with Fs.FileRead.runWithIO;
+        Assert.assertEq(
+            expected = true,
+            match got { case Err(e) => String.contains(substr = "failed to read", JsonCompat.describe(e)) case Ok(_) => false })
+
     // ── intrinsicSize ──
 
     @Test
