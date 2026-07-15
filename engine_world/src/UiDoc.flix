@@ -36,6 +36,7 @@ mod UiDoc {
     pub enum Spec {
         case Spec({ name = String, widget = Widget, style = UiLayout.Style,
                     visible = Bool, binding = Option[String], meta = Option[String],
+                    hover = Option[UiWidget.HoverStyle],
                     layer = Int32, children = List[Spec] })
     }
 
@@ -115,7 +116,7 @@ mod UiDoc {
                 ) yield Spec.Spec({
                     name = name, widget = own#widget, style = own#style,
                     visible = own#visible, binding = own#binding, meta = own#meta,
-                    layer = own#layer, children = children
+                    hover = own#hover, layer = own#layer, children = children
                 })
         }
 
@@ -129,10 +130,11 @@ mod UiDoc {
             _valid <- validateName(name)
         ) yield (name, merged))
 
-    /// ノード自身の属性（widget・style・visible・bind/meta/layer）。
+    /// ノード自身の属性（widget・style・visible・bind/meta/hover/layer）。
     def parseOwnFields(defaultFont: String, merged: Map[String, Json]):
             Result[JsonError, { widget = Widget, style = UiLayout.Style, visible = Bool,
-                                binding = Option[String], meta = Option[String], layer = Int32 }] =
+                                binding = Option[String], meta = Option[String],
+                                hover = Option[UiWidget.HoverStyle], layer = Int32 }] =
         forM (
             widgetOpt  <- (JsonCompat.getAtKeyOpt(Root, "widget", merged): Result[JsonError, Option[String]]);
             widget     <- parseWidget(widgetOpt, defaultFont, merged);
@@ -140,12 +142,28 @@ mod UiDoc {
             visibleOpt <- (JsonCompat.getAtKeyOpt(Root, "visible", merged): Result[JsonError, Option[Bool]]);
             bindingOpt <- (JsonCompat.getAtKeyOpt(Root, "bind", merged): Result[JsonError, Option[String]]);
             metaOpt    <- (JsonCompat.getAtKeyOpt(Root, "meta", merged): Result[JsonError, Option[String]]);
+            hover      <- parseHoverOpt(merged);
             layerOpt   <- (JsonCompat.getAtKeyOpt(Root, "layer", merged): Result[JsonError, Option[Int32]])
         ) yield {
             widget = widget, style = applyIntrinsic(widget, style),
             visible = Option.getWithDefault(true, visibleOpt),
-            binding = bindingOpt, meta = metaOpt,
+            binding = bindingOpt, meta = metaOpt, hover = hover,
             layer = Option.getWithDefault(0, layerOpt)
+        }
+
+    /// "hover": { color / borderColor / tint / alpha } — hover 時の部分上書き。
+    /// 効くのは UiStore 経路（extract）のみで、Flex 経路は静的なので持たない。
+    def parseHoverOpt(map: Map[String, Json]): Result[JsonError, Option[UiWidget.HoverStyle]] =
+        match (JsonCompat.getAtKeyOpt(Root, "hover", map): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)      => Err(e)
+            case Ok(None)    => Ok(None)
+            case Ok(Some(m)) => forM (
+                color       <- parseColorOpt("color", m);
+                borderColor <- parseColorOpt("borderColor", m);
+                tint        <- parseColorOpt("tint", m);
+                alphaOpt    <- (JsonCompat.getAtKeyOpt(Root, "alpha", m): Result[JsonError, Option[Float64]])
+            ) yield Some({ color = color, borderColor = borderColor, tint = tint,
+                           alpha = Option.map(a -> Float64.truncateToFloat32(a), alphaOpt) })
         }
 
     def resolveTemplate(templates: Map[String, Map[String, Json]],

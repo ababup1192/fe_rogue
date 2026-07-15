@@ -26,6 +26,15 @@ mod UiWidget {
                                   scale = Vec2.Vec2, flipH = Bool, flipV = Bool, tint = Color, zIndex = Int32,
                                   hframes = Int32, vframes = Int32, frame = Int32 }
 
+    /// hover 時の部分上書き（宣言 UI の ":hover" 相当）。全フィールド任意 — Some の
+    /// フィールドだけを基の見た目に重ねる。box（color/borderColor/alpha）・text（tint）・
+    /// 図形（color/borderColor/alpha）に効く。適用は UiExtract（UiStore 経路）のみ —
+    /// Flex 経路は静的で hover 状態を持たない。
+    pub type alias HoverStyle = {
+        color = Option[Color], borderColor = Option[Color],
+        tint = Option[Color], alpha = Option[Float32]
+    }
+
     /// 塗り潰し凸多角形（の集合）の描画属性。サイズは layout が決め、頂点はその矩形内へ置く。
     /// `polys`: 凸サブポリゴンの列。各サブポリは頂点列（ノードのレイアウト矩形左上を原点とする
     ///   ローカル design px・3 点以上・凸）で、1 サブポリ = 1 PolygonRenderCmd として塗る。

@@ -46,6 +46,7 @@ mod UiSpec {
             sprite   = Option[UiWidget.SpriteComp],
             poly     = Option[UiWidget.PolyComp],
             shape    = Option[UiShape.ShapeComp],
+            hover    = Option[UiWidget.HoverStyle],
             visible  = Bool,
             binding  = Option[String],
             meta     = Option[String],
@@ -72,7 +73,7 @@ mod UiSpec {
             ) yield Spec.Spec({
                 name = node#name, widget = comps#widget, style = node#style,
                 box = comps#box, text = comps#text, sprite = comps#sprite,
-                poly = comps#poly, shape = comps#shape,
+                poly = comps#poly, shape = comps#shape, hover = node#hover,
                 visible = node#visible, binding = node#binding, meta = node#meta,
                 layer = node#layer, children = children
             })
@@ -193,6 +194,7 @@ mod UiSpec {
         let sprites1  = insertOpt(id, fields#sprite, ui1#sprites);
         let polys1    = insertOpt(id, fields#poly, ui1#polys);
         let shapes1   = insertOpt(id, fields#shape, ui1#shapes);
+        let hovers1   = insertOpt(id, fields#hover, ui1#hovers);
         let bindings1 = insertOpt(id, fields#binding, ui1#bindings);
         let metas1    = insertOpt(id, fields#meta, ui1#metas);
         let layers1   = match parent { case None => Map.insert(id, fields#layer, ui1#layers), case Some(_) => ui1#layers };
@@ -206,6 +208,7 @@ mod UiSpec {
             sprites  = sprites1,
             polys    = polys1,
             shapes   = shapes1,
+            hovers   = hovers1,
             visible  = Map.insert(id, fields#visible, ui1#visible),
             bindings = bindings1,
             metas    = metas1,

@@ -19,15 +19,16 @@ mod UiExtract {
     pub def extract(ui: UiStore.UiWorld, rects: Map[EntityId, Rect2.Rect2],
                     vis: Map[EntityId, Bool], atlasOf: String -> FontAtlas \ ef,
                     textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): List[Render.PlacedItem] \ ef =
+        let hoveredId = hoveredIdOf(ui);
         let boxEntries = ui#boxes |> Map.foldLeftWithKey((acc, id, box) ->
             match Map.get(id, rects) {
                 case None       => acc
-                case Some(rect) => (id, box#zIndex, boxItem(box, rect#size)) :: acc
+                case Some(rect) => (id, box#zIndex, boxItem(hoverBox(hoverFor(ui, hoveredId, id), box), rect#size)) :: acc
             }, Nil);
         let spriteEntries = ui#sprites |> Map.foldLeftWithKey((acc, id, sprite) ->
             (id, sprite#zIndex, spriteItem(sprite, textureInfoOf)) :: acc, Nil);
         let textEntries = Map.foldLeftWithKey((acc, id, comp) ->
-            (id, comp#zIndex, textItem(comp, atlasOf)) :: acc,
+            (id, comp#zIndex, textItem(hoverText(hoverFor(ui, hoveredId, id), comp), atlasOf)) :: acc,
             (Nil : List[(EntityId, Int32, Render.Item)]), ui#texts);
         List.append(boxEntries, List.append(spriteEntries, textEntries))
             |> List.filter(entry -> {let (id, _z, _item) = entry; Option.getWithDefault(true, Map.get(id, vis))})
@@ -35,8 +36,41 @@ mod UiExtract {
                 let (id, z, item) = entry;
                 Map.get(id, rects) |> Option.map(rect -> (id, z, rect#position, item))
             })
-            |> List.sortBy(entry -> {let (id, z, _pos, _item) = entry; (z, depthOf(id, ui#parents), orderOf(id, ui), id)})
+            |> List.sortBy(entry -> {let (id, z, _pos, _item) = entry; (z, UiHierarchy.depthOf(id, ui#parents), orderOf(id, ui), id)})
             |> List.map(entry -> {let (_id, _z, pos, item) = entry; { at = pos, item = item }})
+
+    /// hovered 名前パスに対応する entity（未設定・パス消滅は None）。
+    def hoveredIdOf(ui: UiStore.UiWorld): Option[EntityId] =
+        ui#hovered |> Option.flatMap(path -> UiStore.idOf(path, ui))
+
+    /// id が hover 中なら宣言された上書き（hovers）を返す。hover 宣言の無い entity は None。
+    def hoverFor(ui: UiStore.UiWorld, hoveredId: Option[EntityId], id: EntityId): Option[UiWidget.HoverStyle] =
+        if (hoveredId == Some(id)) Map.get(id, ui#hovers) else None
+
+    def hoverBox(h: Option[UiWidget.HoverStyle], comp: UiWidget.BoxComp): UiWidget.BoxComp =
+        match h {
+            case None     => comp
+            case Some(hs) => { color = Option.getWithDefault(comp#color, hs#color),
+                               borderColor = Option.getWithDefault(comp#borderColor, hs#borderColor),
+                               alpha = Option.getWithDefault(comp#alpha, hs#alpha) | comp }
+        }
+
+    def hoverText(h: Option[UiWidget.HoverStyle], comp: UiWidget.TextComp): UiWidget.TextComp =
+        match h {
+            case None     => comp
+            case Some(hs) => { tint = Option.getWithDefault(comp#tint, hs#tint) | comp }
+        }
+
+    def hoverShape(h: Option[UiWidget.HoverStyle], comp: UiShape.ShapeComp): UiShape.ShapeComp =
+        match h {
+            case None     => comp
+            case Some(hs) => { color = Option.getWithDefault(comp#color, hs#color),
+                               borderColor = match hs#borderColor {
+                                   case Some(c) => Some(c)
+                                   case None    => comp#borderColor
+                               },
+                               alpha = Option.getWithDefault(comp#alpha, hs#alpha) | comp }
+        }
 
     /// poly entity を (id, rect 左上, ワールド座標へ移した PolyComp) 列へ射影する。可視かつ rect 確定のみ。
     /// PolyComp#polys の各サブポリ頂点はレイアウト矩形左上を原点とするローカル design px。ここで rect
@@ -53,13 +87,14 @@ mod UiExtract {
                 let (id, poly) = entry;
                 Map.get(id, rects) |> Option.map(rect -> (id, rect#position, offsetPoly(poly, rect#position)))
             })
-            |> List.sortBy(entry -> {let (id, _pos, poly) = entry; (poly#zIndex, depthOf(id, ui#parents), orderOf(id, ui), id)})
+            |> List.sortBy(entry -> {let (id, _pos, poly) = entry; (poly#zIndex, UiHierarchy.depthOf(id, ui#parents), orderOf(id, ui), id)})
 
     /// shape entity を PlacedItem 列へ射影する。可視かつ rect 確定のみ。
     /// 並びは extract と同じ (zIndex, 階層深さ, order, id)。幾何は UiShape.placedItems に委譲する
     /// （UiDoc の Flex 経路と同じ関数 — 同じ JSON の図形が経路によらず同じ絵になる）。
     pub def extractShapes(ui: UiStore.UiWorld, rects: Map[EntityId, Rect2.Rect2],
                           vis: Map[EntityId, Bool]): List[Render.PlacedItem] =
+        let hoveredId = hoveredIdOf(ui);
         ui#shapes
             |> Map.toList
             |> List.filter(entry -> {let (id, _s) = entry; Option.getWithDefault(true, Map.get(id, vis))})
@@ -67,8 +102,8 @@ mod UiExtract {
                 let (id, s) = entry;
                 Map.get(id, rects) |> Option.map(rect -> (id, s, rect))
             })
-            |> List.sortBy(entry -> {let (id, s, _rect) = entry; (s#zIndex, depthOf(id, ui#parents), orderOf(id, ui), id)})
-            |> List.flatMap(entry -> {let (_id, s, rect) = entry; UiShape.placedItems(s, rect)})
+            |> List.sortBy(entry -> {let (id, s, _rect) = entry; (s#zIndex, UiHierarchy.depthOf(id, ui#parents), orderOf(id, ui), id)})
+            |> List.flatMap(entry -> {let (id, s, rect) = entry; UiShape.placedItems(hoverShape(hoverFor(ui, hoveredId, id), s), rect)})
 
     /// PolyComp の全サブポリの各頂点にレイアウト矩形左上 origin を足し、ローカル座標を design 空間の
     /// 絶対座標へ移す。
@@ -146,13 +181,6 @@ mod UiExtract {
         let row = frame / hframes;
         {position = {x = Int32.toFloat64(col) * cellWidth, y = Int32.toFloat64(row) * cellHeight},
          size = {x = cellWidth, y = cellHeight}}
-
-    /// entity の階層深さ（root=0）。parents をたどった段数。
-    def depthOf(id: EntityId, parents: Map[EntityId, EntityId]): Int32 =
-        match Map.get(id, parents) {
-            case None    => 0
-            case Some(p) => 1 + depthOf(p, parents)
-        }
 
     /// entity の兄弟内並び順（未登録は 0）。
     def orderOf(id: EntityId, ui: UiStore.UiWorld): Int32 =

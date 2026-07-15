@@ -12,6 +12,7 @@ mod UiStore {
     /// `styles`: レイアウト属性。`boxes`/`texts`/`sprites`/`polys`: 描画コンポーネント。
     /// `visible`: ユーザー設定の可視（継承前）。`bindings`: text 流し込み先の bind key。
     /// `metas`: メニュー項目等の識別 metadata。`names`: 完全名パス→entity。
+    /// `hovers`: hover 時の部分上書き（宣言由来）。`hovered`: いま hover 中の名前パス。
     /// `selection`: リスト選択カーソル（key=リスト所有 entity の名前パス）。
     /// `focus`: 入力フォーカス scope（モーダル占有。key=名前パス）。
     /// `layers`: root の描画レイヤ（CanvasLayer.layerStride 倍して zIndex に加算する）。
@@ -27,12 +28,14 @@ mod UiStore {
         sprites   = Map[EntityId, UiWidget.SpriteComp],
         polys     = Map[EntityId, UiWidget.PolyComp],
         shapes    = Map[EntityId, UiShape.ShapeComp],
+        hovers    = Map[EntityId, UiWidget.HoverStyle],
         visible   = Map[EntityId, Bool],
         bindings  = Map[EntityId, String],
         metas     = Map[EntityId, String],
         names     = Map[String, EntityId],
         selection = Map[String, Int32],
         focus     = Option[String],
+        hovered   = Option[String],
         layers    = Map[EntityId, Int32],
         sources   = Map[String, String]
     }
@@ -42,10 +45,10 @@ mod UiStore {
         {nextId = 1,
          parents = Map.empty(), order = Map.empty(), styles = Map.empty(),
          boxes = Map.empty(), texts = Map.empty(), sprites = Map.empty(), polys = Map.empty(),
-         shapes = Map.empty(),
+         shapes = Map.empty(), hovers = Map.empty(),
          visible = Map.empty(), bindings = Map.empty(), metas = Map.empty(),
          names = Map.empty(),
-         selection = Map.empty(), focus = None,
+         selection = Map.empty(), focus = None, hovered = None,
          layers = Map.empty(), sources = Map.empty()}
 
     /// 次の entity id を採番して返す（nextId を進めた新 UiWorld と組で返す）。
@@ -160,6 +163,25 @@ mod UiStore {
         match updated {
             case None             => ui
             case Some((id, comp)) => {boxes = Map.insert(id, comp, ui#boxes) | ui}
+        }
+
+    /// 名前パスの図形コンポーネントの色を差し替える。図形を持たなければ no-op。
+    pub def setShapeColor(path: String, c: Color, ui: UiWorld): UiWorld =
+        let updated = idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, ui#shapes) |> Option.map(comp -> (id, {color = c | comp})));
+        match updated {
+            case None             => ui
+            case Some((id, comp)) => {shapes = Map.insert(id, comp, ui#shapes) | ui}
+        }
+
+    /// 名前パスの図形コンポーネントの枠線色を差し替える。図形を持たなければ no-op
+    /// （枠が効くのは円のみ — UiShape 参照）。
+    pub def setShapeBorderColor(path: String, c: Color, ui: UiWorld): UiWorld =
+        let updated = idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, ui#shapes) |> Option.map(comp -> (id, {borderColor = Some(c) | comp})));
+        match updated {
+            case None             => ui
+            case Some((id, comp)) => {shapes = Map.insert(id, comp, ui#shapes) | ui}
         }
 
     /// 名前パスの box コンポーネントの枠線色を差し替える。box を持たなければ no-op。
@@ -315,12 +337,14 @@ mod UiStore {
                  sprites   = removeKeys(dead, ui#sprites),
                  polys     = removeKeys(dead, ui#polys),
                  shapes    = removeKeys(dead, ui#shapes),
+                 hovers    = removeKeys(dead, ui#hovers),
                  visible   = removeKeys(dead, ui#visible),
                  bindings  = removeKeys(dead, ui#bindings),
                  metas     = removeKeys(dead, ui#metas),
                  names     = ui#names |> Map.filter(entity -> not Set.memberOf(entity, dead)),
                  selection = ui#selection,
                  focus     = ui#focus,
+                 hovered   = ui#hovered,
                  layers    = removeKeys(dead, ui#layers),
                  sources   = ui#sources}
         }
@@ -330,8 +354,19 @@ mod UiStore {
         m |> Map.filterWithKey((k, _v) -> not Set.memberOf(k, dead))
 
     // ========================================================================
-    // 動的 store（selection / focus）
+    // 動的 store（selection / focus / hovered）
     // ========================================================================
+
+    /// hover 中の entity の名前パスを設定する（None = どれも hover していない）。
+    /// selection / focus と同じく String キーなのでリロード（respawn）を生き延びる。
+    /// 見た目への反映は UiExtract が hovers（宣言由来の上書き）を重ねて行う。
+    pub def setHovered(path: Option[String], ui: UiWorld): UiWorld =
+        {hovered = path | ui}
+
+    /// 親を持たない entity（= 各サブツリーの root）を列挙する。
+    /// レイアウト・ヒットテストが「全 root を解く」ときの入口。
+    pub def rootsOf(ui: UiWorld): List[EntityId] =
+        Map.valuesOf(ui#names) |> List.filter(id -> Option.isEmpty(Map.get(id, ui#parents)))
 
     /// 名前パスのリスト選択カーソル値。未登録は 0。
     pub def selectionOf(path: String, ui: UiWorld): Int32 =

@@ -42,7 +42,7 @@ mod UiRender {
                       textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
                       ui: UiStore.UiWorld, design: Vec2.Vec2): List[Render.PlacedItem] \ ef =
         let measures = UiExtract.measureTexts(ui#texts, atlasOf);
-        let roots = rootsOf(ui);
+        let roots = UiStore.rootsOf(ui);
         let rootRect: Rect2.Rect2 =
             {position = {x = 0.0, y = 0.0},
              size = {x = design#x, y = design#y}};
@@ -78,8 +78,4 @@ mod UiRender {
     /// root の layer を layers store から引き、CanvasLayer.layerStride 倍した zIndex 加算量を返す。未登録は 0。
     def layerOffset(ui: UiStore.UiWorld, root: EntityId): Int32 =
         Option.getWithDefault(0, Map.get(root, ui#layers)) * CanvasLayer.layerStride()
-
-    /// 親を持たない entity（＝各サブツリーの root）を列挙する。
-    def rootsOf(ui: UiStore.UiWorld): List[EntityId] =
-        Map.valuesOf(ui#names) |> List.filter(id -> Option.isEmpty(Map.get(id, ui#parents)))
 }

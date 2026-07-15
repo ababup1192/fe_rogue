@@ -80,6 +80,17 @@
         "cornerRadius": { "type": "number" },
         "borderWidth": { "type": "number" },
         "borderColor": { "$ref": "#/$defs/color" },
+        "hover": {
+          "type": "object",
+          "description": "hover 時の部分上書き (box: color/borderColor/alpha、text: tint、図形: color/borderColor/alpha)。UiStore 経路でのみ効く。",
+          "properties": {
+            "color": { "$ref": "#/$defs/color" },
+            "borderColor": { "$ref": "#/$defs/color" },
+            "tint": { "$ref": "#/$defs/color" },
+            "alpha": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "patternProperties": { "^//": {} }
+        },
 
         "text": { "type": "string" },
         "font": { "type": "string" },

@@ -12,6 +12,13 @@ mod UiHierarchy {
             |> Map.foldLeftWithKey((acc, id, p) -> if (p == parent) id :: acc else acc, Nil)
             |> List.sortBy(id -> Option.getWithDefault(0, Map.get(id, order)))
 
+    /// entity の階層深さ（root=0）。parents をたどった段数。
+    pub def depthOf(id: EntityId, parents: Map[EntityId, EntityId]): Int32 =
+        match Map.get(id, parents) {
+            case None    => 0
+            case Some(p) => 1 + depthOf(p, parents)
+        }
+
     /// root とその全子孫を集めた集合（root 自身を含む）。
     pub def descendants(root: EntityId, parents: Map[EntityId, EntityId]): Set[EntityId] =
         descendantsRec(root :: Nil, parents, Set#{})

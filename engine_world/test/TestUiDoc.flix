@@ -229,6 +229,102 @@ mod TestUiDoc {
         });
         Assert.assertEq(expected = Some((7, Some("score"), Some("item0"))), got)
 
+    // ── hover（宣言 → spawn → extract 適用 → hitTestUi）──
+
+    @Test
+    def testHoverParsesPartialOverride(): Unit \ Assert =
+        // hover は部分上書き — 書いたフィールドだけ Some になる。
+        let doc = "{\"root\": {\"name\":\"g\",\"widget\":\"box\",\"color\":\"#000000\",\"width\":10,\"height\":10,"
+                + "\"hover\": {\"color\":\"#ff0000\"}}}";
+        let got = parseDoc(doc) |> Option.flatMap(spec -> match spec {
+            case UiDoc.Spec.Spec(node) => node#hover |> Option.map(h ->
+                (Option.map(colorTuple, h#color), Option.isEmpty(h#tint), Option.isEmpty(h#alpha)))
+        });
+        Assert.assertEq(expected = Some((Some((1.0f32, 0.0f32, 0.0f32)), true, true)), got)
+
+    @Test
+    def testHoverAppliesOnExtractOnlyWhenHovered(): Unit \ Assert =
+        // setHovered された entity だけ、宣言された hover 上書きが extract で効く。
+        let doc = "{\"root\": {\"name\":\"g\",\"widget\":\"box\",\"color\":\"#000000\",\"width\":10,\"height\":10,"
+                + "\"hover\": {\"color\":\"#ff0000\"}}}";
+        let boxColorAt = ui -> {
+            let rects = layoutOf(ui);
+            let vis = visOf(ui);
+            UiExtract.extract(ui, rects, vis, _ -> dummyAtlas(), _ -> None)
+                |> List.head
+                |> Option.flatMap(placed -> match placed#item {
+                    case Render.Item.Box(b) => Some(colorTuple(b#color))
+                    case _                  => None
+                })
+        };
+        let got = spawnDoc(doc) |> Option.map(ui ->
+            (boxColorAt(ui), boxColorAt(UiStore.setHovered(Some("g"), ui))));
+        Assert.assertEq(
+            expected = Some((Some((0.0f32, 0.0f32, 0.0f32)), Some((1.0f32, 0.0f32, 0.0f32)))),
+            got)
+
+    @Test
+    def testHitTestUiFindsButtonsByRect(): Unit \ Assert =
+        // 縦に並んだ 2 ボタン(10×10)を hitTestUi で引き分ける。ボタン外は root(全面)に当たる。
+        let doc = "{\"root\": {\"name\":\"g\",\"children\":["
+                + "{\"name\":\"b1\",\"widget\":\"box\",\"color\":\"#000000\",\"width\":10,\"height\":10,\"zIndex\":5},"
+                + "{\"name\":\"b2\",\"widget\":\"box\",\"color\":\"#000000\",\"width\":10,\"height\":10,\"zIndex\":5}]}}";
+        let design = { x = 100.0, y = 100.0 };
+        let pathAt = (ui, p) -> UiFocus.hitTestUi(ui, design, p)
+            |> Option.flatMap(id -> UiStore.pathOf(id, ui));
+        let got = spawnDoc(doc) |> Option.map(ui ->
+            (pathAt(ui, { x = 5.0, y = 5.0 }),
+             pathAt(ui, { x = 5.0, y = 15.0 }),
+             pathAt(ui, { x = 50.0, y = 50.0 })));
+        Assert.assertEq(
+            expected = Some((Some("g/b1"), Some("g/b2"), Some("g"))),
+            got)
+
+    @Test
+    def testHitTestUiSkipsInvisible(): Unit \ Assert =
+        let doc = "{\"root\": {\"name\":\"g\",\"children\":["
+                + "{\"name\":\"b1\",\"widget\":\"box\",\"color\":\"#000000\",\"width\":10,\"height\":10,"
+                + "\"zIndex\":5,\"visible\":false}]}}";
+        let got = spawnDoc(doc) |> Option.map(ui ->
+            UiFocus.hitTestUi(ui, { x = 100.0, y = 100.0 }, { x = 5.0, y = 5.0 })
+                |> Option.flatMap(id -> UiStore.pathOf(id, ui)));
+        // 不可視ボタンには当たらず、背後の root に落ちる。
+        Assert.assertEq(expected = Some(Some("g")), got)
+
+    @Test
+    def testSetShapeColorChangesExtractedShape(): Unit \ Assert =
+        let doc = "{\"root\": {\"name\":\"g\",\"widget\":\"circle\",\"radius\":5.0,\"color\":\"#000000\"}}";
+        let red = { r = 1.0f32, g = 0.0f32, b = 0.0f32 };
+        let shapeColorAt = ui -> {
+            UiExtract.extractShapes(ui, layoutOf(ui), visOf(ui))
+                |> List.head
+                |> Option.flatMap(placed -> match placed#item {
+                    case Render.Item.Box(b) => Some(colorTuple(b#color))
+                    case _                  => None
+                })
+        };
+        let got = spawnDoc(doc) |> Option.map(ui ->
+            shapeColorAt(UiStore.setShapeColor("g", red, ui)));
+        Assert.assertEq(expected = Some(Some((1.0f32, 0.0f32, 0.0f32))), got)
+
+    /// doc を parse → UiSpec 射影 → spawn した UiWorld（テスト用の定型）。
+    def spawnDoc(doc: String): Option[UiStore.UiWorld] =
+        JsonCompat.parse(doc)
+            |> Option.flatMap(json -> UiSpec.parse(json) |> Result.toOption)
+            |> Option.map(spec -> { let (_, ui) = UiSpec.spawnRoot(spec, UiStore.empty()); ui })
+
+    /// 全 root を 100×100 の design で解いた rect 表（テスト用）。
+    def layoutOf(ui: UiStore.UiWorld): Map[EntityId, Rect2.Rect2] =
+        UiStore.rootsOf(ui) |> List.foldLeft((acc, root) -> Map.union(
+            UiLayout.computeLayout(
+                {styles = ui#styles, parents = ui#parents, order = ui#order,
+                 measures = Map.empty(), visible = ui#visible},
+                root, {position = {x = 0.0, y = 0.0}, size = {x = 100.0, y = 100.0}}), acc), Map.empty())
+
+    def visOf(ui: UiStore.UiWorld): Map[EntityId, Bool] =
+        UiStore.rootsOf(ui) |> List.foldLeft((acc, root) -> Map.union(
+            UiHierarchy.resolveInherited(ui#visible, ui#parents, root, ui#order), acc), Map.empty())
+
     // ── intrinsicSize ──
 
     @Test
