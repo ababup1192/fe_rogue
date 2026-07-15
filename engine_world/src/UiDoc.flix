@@ -17,6 +17,7 @@
 //   instance: "instance": "assets/button.ui.json" で別ドキュメントの root をそのノードとして合成。
 //     ノード自身のフィールドが root に勝ち、"override": { "相対名パス": {...} } で子孫も上書きできる。
 //   トップレベル: "version"（省略時 1。1 以外は Err）。"$schema"・"//" キーは無視（コメント可）。
+//   "paletteFile": パス（load 経路のみ。外部ファイルのパレットを inline "palette" と合成。同名は inline 勝ち）。
 //
 // エラーはノードの名前パス付き（例: `at gallery/row1/box: 'color' is required`）— 手書き
 // ドキュメントの編集箇所へ誘導する。
@@ -99,7 +100,7 @@ mod UiDoc {
             Result[JsonError, { templates = Map[String, Map[String, Json]], defaultFont = String,
                                 palette = Map[String, Color], rootMap = Map[String, Json] }] =
         forM (
-            _v          <- checkVersion(topMap);
+            _v          <- JsonCompat.checkVersion("ui document", topMap);
             templates   <- parseTemplates(topMap);
             defaultFont <- parseDefaultFont(topMap);
             palette     <- parsePalette(topMap);
@@ -119,15 +120,6 @@ mod UiDoc {
                 }) |> Result.map(List.toMap)
         }
 
-    /// "version"（省略時 1）。この実装が知らない版は loud に断る（黙って誤読しない）。
-    def checkVersion(topMap: Map[String, Json]): Result[JsonError, Unit] =
-        match (JsonCompat.getAtKeyOpt(Root, "version", topMap): Result[JsonError, Option[Int32]]) {
-            case Err(e)      => Err(e)
-            case Ok(None)    => Ok(())
-            case Ok(Some(1)) => Ok(())
-            case Ok(Some(v)) => Err(JsonCompat.jsonError(Root, Set#{"unsupported ui document version ${v} (supported: 1)"}))
-        }
-
     def parseDefaultFont(topMap: Map[String, Json]): Result[JsonError, String] =
         (JsonCompat.getAtKeyOpt(Root, "defaultFont", topMap): Result[JsonError, Option[String]])
             |> Result.map(Option.getWithDefault("ui"))
@@ -139,7 +131,7 @@ mod UiDoc {
             case Ok(Some(m)) =>
                 Map.foldLeftWithKey((acc, tname, json) -> forM (
                     sofar <- acc;
-                    tmap  <- asObject("template '${tname}'", json)
+                    tmap  <- JsonCompat.asObject("template '${tname}'", json)
                 ) yield Map.insert(tname, tmap, sofar), Ok(Map.empty()), m)
         }
 
@@ -199,7 +191,7 @@ mod UiDoc {
                                  "instance cycle: ${String.intercalate(" -> ", List.reverse(instPath :: env#stack))}"}))
                          else Ok(());
             docJson   <- Map.get(instPath, env#resolver) |> Option.toOk(unloadedErr(instPath));
-            topMap    <- asObject("instance '${instPath}'", docJson);
+            topMap    <- JsonCompat.asObject("instance '${instPath}'", docJson);
             top       <- parseTopLevel(topMap);
             own       <- instanceOwnFields(nodeMap);
             overrides <- parseOverrides(nodeMap);
@@ -227,7 +219,7 @@ mod UiDoc {
             case Ok(Some(m)) => m |> Map.toList |> Result.traverse(entry -> {
                 let (relPath, json) = entry;
                 forM (
-                    patch <- asObject("override '${relPath}'", json);
+                    patch <- JsonCompat.asObject("override '${relPath}'", json);
                     _ok   <- validatePatch(relPath, patch)
                 ) yield (relPath, patch)
             })
@@ -348,7 +340,7 @@ mod UiDoc {
                 Result.traverse(entry -> {
                     let (i, child) = entry;
                     forM (
-                        m    <- JsonCompat.atNode("${path}[${i}]", asObject("child", child));
+                        m    <- JsonCompat.atNode("${path}[${i}]", JsonCompat.asObject("child", child));
                         spec <- parseNode(env, path, i, m)
                     ) yield spec
                 }, List.zipWithIndex(Vector.toList(arr)))
@@ -815,12 +807,6 @@ mod UiDoc {
 
     def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 
-    def asObject(label: String, json: Json): Result[JsonError, Map[String, Json]] =
-        match json {
-            case JObject(m) => Ok(m)
-            case _          => Err(JsonCompat.jsonError(Root, Set#{"${label} must be a JSON object"}))
-        }
-
     def bigDecToF64(bd: BigDecimal): Float64 =
         bd.doubleValue()
 
@@ -914,10 +900,52 @@ mod UiDoc {
     // ========================================================================
 
     /// path とそこから instance 参照される全ドキュメントを読み、合成して Spec にする。
+    /// トップに "paletteFile" があれば外部パレットもここで読んで合成する（リロードでも再読され、
+    /// instance で参照される側のドキュメントにも効く — 合成は collectDocs の読み口で行う）。
     pub def load(path: String): Result[JsonError, Spec] \ Fs.FileRead =
         collectDocs(path :: Nil, Map.empty()) |> Result.flatMap(resolver ->
             Map.get(path, resolver) |> Option.toOk(unloadedErr(path))
                 |> Result.flatMap(json -> parseWith(resolver, json)))
+
+    /// ドキュメント 1 枚を読み、トップに "paletteFile" があれば外部パレットを合成して返す
+    /// （同名は inline 勝ち）。parse は純粋なまま — 外部参照はこの load 層で畳む。
+    def readDocMerged(path: String): Result[JsonError, Json] \ Fs.FileRead =
+        JsonCompat.readJson(path) |> Result.flatMap(json -> mergePaletteFile(json))
+
+    /// トップが object なら paletteFile の合成を試みる（object でなければそのまま）。
+    def mergePaletteFile(json: Json): Result[JsonError, Json] \ Fs.FileRead =
+        match json {
+            case JObject(top) => mergePaletteInto(top)
+            case _            => Ok(json)
+        }
+
+    /// "paletteFile" が無ければそのまま。パス文字列なら読んで "palette" キーを合成し直す。
+    def mergePaletteInto(top: Map[String, Json]): Result[JsonError, Json] \ Fs.FileRead =
+        match Map.get("paletteFile", top) {
+            case None                  => Ok(JObject(top))
+            case Some(JString(pfPath)) => forM (
+                filePalette <- readPaletteFile(pfPath);
+                merged      <- overlayInlinePalette(filePalette, top)
+            ) yield JObject(Map.insert("palette", JObject(merged), top))
+            case Some(_)               => Err(JsonCompat.jsonError(Root, Set#{"paletteFile must be a string path"}))
+        }
+
+    /// paletteFile を読んでパレットの Map にする。読めない・形が違うときは loud に Err（黙って無視しない）。
+    def readPaletteFile(path: String): Result[JsonError, Map[String, Json]] \ Fs.FileRead =
+        JsonCompat.readJson(path)
+            |> Result.mapErr(e -> JsonCompat.jsonError(Root, Set#{"paletteFile: ${JsonCompat.describe(e)}"}))
+            |> Result.flatMap(json -> match json {
+                case JObject(m) => Ok(m)
+                case _          => Err(JsonCompat.jsonError(Root, Set#{"paletteFile must be an object"}))
+            })
+
+    /// inline "palette" を外部パレットの上に重ねる（同名は inline 勝ち）。inline が無ければ外部のまま。
+    def overlayInlinePalette(filePalette: Map[String, Json], top: Map[String, Json]): Result[JsonError, Map[String, Json]] =
+        match Map.get("palette", top) {
+            case None    => Ok(filePalette)
+            case Some(j) => JsonCompat.asObject("palette", j)
+                |> Result.map(inline -> Map.foldLeftWithKey((acc, k, v) -> Map.insert(k, v, acc), filePalette, inline))
+        }
 
     /// frontier のドキュメントを読み、instance 参照を辿って全部集める（訪問済みは読まない —
     /// 循環していても読み込みはここで止まり、循環自体は parse が Err にする）。
@@ -926,21 +954,13 @@ mod UiDoc {
             case Nil => Ok(acc)
             case path :: rest =>
                 if (Map.memberOf(path, acc)) collectDocs(rest, acc)
-                else match readDoc(path) {
+                else match readDocMerged(path) {
                     case Err(e)   => Err(e)
                     case Ok(json) =>
                         let refs = instanceRefs(json) |> List.filter(p -> not Map.memberOf(p, acc));
                         collectDocs(List.append(refs, rest), Map.insert(path, json, acc))
                 }
         }
-
-    /// 1 ファイルを読んで JSON にする。
-    def readDoc(path: String): Result[JsonError, Json] \ Fs.FileRead =
-        let content = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;
-        content
-            |> Result.mapErr(readError -> JsonCompat.jsonError(Root, Set#{"failed to read: ${readError}"}))
-            |> Result.flatMap(text -> JsonCompat.parse(String.trim(text))
-                |> Option.toOk(JsonCompat.jsonError(Root, Set#{"JSON parse failed: ${path}"})))
 
     /// JSON 木から "instance" 参照のパスを全部拾う。
     def instanceRefs(json: Json): List[String] =

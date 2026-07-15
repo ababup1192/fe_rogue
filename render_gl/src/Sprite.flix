@@ -84,16 +84,22 @@ mod RenderSprite {
                 GL20.glUniform1f(uniforms#borderWidth, f32(st#borderWidth));
                 GL20.glUniform3f(uniforms#borderColor, st#borderColor#r, st#borderColor#g, st#borderColor#b);
                 GL20.glUniform1f(uniforms#borderAlpha, st#borderAlpha);
-                // 斜線ハッチ uniform。stripeWidth/stripeAlpha が正のときのみ有効化。
-                let hatchOn = st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32;
+                // 斜線ハッチ uniform。幅・濃さ・周期がすべて正のときのみ有効化(SoftRaster と同じ判定)。
+                let hatchOn = st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32 and st#stripePeriod > 0.0;
                 GL20.glUniform1i(uniforms#hatchEnabled, if (hatchOn) 1 else 0);
                 GL20.glUniform3f(uniforms#hatchColor, st#stripeColor#r, st#stripeColor#g, st#stripeColor#b);
                 GL20.glUniform1f(uniforms#hatchAlpha, st#stripeAlpha);
                 GL20.glUniform1f(uniforms#hatchWidth, f32(st#stripeWidth));
-                GL20.glUniform1f(uniforms#hatchPeriod, f32(st#stripePeriod))
+                GL20.glUniform1f(uniforms#hatchPeriod, f32(st#stripePeriod));
+                GL20.glUniform1i(uniforms#hatchDir, st#stripeDir);
+                // 市松 uniform。有効判定 (cell>0 かつ alpha>0) はシェーダ側で行う。
+                GL20.glUniform3f(uniforms#checkerColor, st#checkerColor#r, st#checkerColor#g, st#checkerColor#b);
+                GL20.glUniform1f(uniforms#checkerAlpha, st#checkerAlpha);
+                GL20.glUniform1f(uniforms#checkerCell, f32(st#checkerCell))
             case None =>
                 GL20.glUniform1i(uniforms#styleEnabled, 0);
-                GL20.glUniform1i(uniforms#hatchEnabled, 0)
+                GL20.glUniform1i(uniforms#hatchEnabled, 0);
+                GL20.glUniform1f(uniforms#checkerCell, 0.0f32)
         };
         if (useTex) {
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -147,9 +153,10 @@ mod RenderSprite {
             GL20.glUniform2f(uniforms#uvOffset, 0.0f32, 0.0f32);
             GL20.glUniform2f(uniforms#uvScale, 1.0f32, 1.0f32);
             GL20.glUniform1i(uniforms#useTexture, 0);
-            // sprite シェーダ共有のため styleEnabled / hatchEnabled を明示 0 にして GL state 持ち越しを防ぐ。
+            // sprite シェーダ共有のため styleEnabled / hatchEnabled / checkerCell を明示 0 にして GL state 持ち越しを防ぐ。
             GL20.glUniform1i(uniforms#styleEnabled, 0);
             GL20.glUniform1i(uniforms#hatchEnabled, 0);
+            GL20.glUniform1f(uniforms#checkerCell, 0.0f32);
             GL20.glUniform1i(uniforms#sdfText, 0);
             let data = Array.empty(Static, n * 4);
             let _ = List.foldLeft((i, v) -> {
@@ -251,12 +258,13 @@ mod RenderSprite {
 
     /// instanced sprite 用の VAO と instance VBO を構築する（起動時に 1 回）。
     /// loc 0: 共有 quad VBO (vertex.xy = 局所座標, vertex.zw = UV)
-    /// loc 1-9: per-instance VBO (divisor=1)。1 instance = 32 floats / 128 bytes:
+    /// loc 1-10: per-instance VBO (divisor=1)。1 instance = 38 floats / 152 bytes:
     ///   loc1 vec4 = ワールド変換 2x2 / loc2 vec2 = 平行移動 /
     ///   loc3 vec4 = uvOffset+uvScale / loc4 vec4 = color+alpha /
     ///   loc5 vec4 = フラグ (useTexture, sdf, styleEnabled, hatchEnabled) /
     ///   loc6 vec4 = rectSize+cornerRadius+borderWidth / loc7 vec4 = 枠色+枠alpha /
-    ///   loc8 vec4 = ハッチ色+alpha / loc9 vec2 = ハッチ幅+周期
+    ///   loc8 vec4 = ハッチ色+alpha / loc9 vec4 = ハッチ幅+周期+向き+市松セル /
+    ///   loc10 vec4 = 市松色+alpha
     /// 戻り値: (vao, instanceVbo)
     pub def initSpriteInstancedRenderer(quadVBO: Int32): (Int32, Int32) \ IO =
         let vao = GL30.glGenVertexArrays();
@@ -266,41 +274,44 @@ mod RenderSprite {
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, quadVBO);
         GL20.glEnableVertexAttribArray(0);
         GL20.glVertexAttribPointer(0, 4, GL11.GL_FLOAT, false, 16, 0i64);
-        // インスタンス VBO (loc 1-9, divisor=1, stride 128 bytes)
+        // インスタンス VBO (loc 1-10, divisor=1, stride 152 bytes)
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, instanceVbo);
         GL20.glEnableVertexAttribArray(1);
-        GL20.glVertexAttribPointer(1, 4, GL11.GL_FLOAT, false, 128, 0i64);
+        GL20.glVertexAttribPointer(1, 4, GL11.GL_FLOAT, false, 152, 0i64);
         GL33.glVertexAttribDivisor(1, 1);
         GL20.glEnableVertexAttribArray(2);
-        GL20.glVertexAttribPointer(2, 2, GL11.GL_FLOAT, false, 128, 16i64);
+        GL20.glVertexAttribPointer(2, 2, GL11.GL_FLOAT, false, 152, 16i64);
         GL33.glVertexAttribDivisor(2, 1);
         GL20.glEnableVertexAttribArray(3);
-        GL20.glVertexAttribPointer(3, 4, GL11.GL_FLOAT, false, 128, 24i64);
+        GL20.glVertexAttribPointer(3, 4, GL11.GL_FLOAT, false, 152, 24i64);
         GL33.glVertexAttribDivisor(3, 1);
         GL20.glEnableVertexAttribArray(4);
-        GL20.glVertexAttribPointer(4, 4, GL11.GL_FLOAT, false, 128, 40i64);
+        GL20.glVertexAttribPointer(4, 4, GL11.GL_FLOAT, false, 152, 40i64);
         GL33.glVertexAttribDivisor(4, 1);
         GL20.glEnableVertexAttribArray(5);
-        GL20.glVertexAttribPointer(5, 4, GL11.GL_FLOAT, false, 128, 56i64);
+        GL20.glVertexAttribPointer(5, 4, GL11.GL_FLOAT, false, 152, 56i64);
         GL33.glVertexAttribDivisor(5, 1);
         GL20.glEnableVertexAttribArray(6);
-        GL20.glVertexAttribPointer(6, 4, GL11.GL_FLOAT, false, 128, 72i64);
+        GL20.glVertexAttribPointer(6, 4, GL11.GL_FLOAT, false, 152, 72i64);
         GL33.glVertexAttribDivisor(6, 1);
         GL20.glEnableVertexAttribArray(7);
-        GL20.glVertexAttribPointer(7, 4, GL11.GL_FLOAT, false, 128, 88i64);
+        GL20.glVertexAttribPointer(7, 4, GL11.GL_FLOAT, false, 152, 88i64);
         GL33.glVertexAttribDivisor(7, 1);
         GL20.glEnableVertexAttribArray(8);
-        GL20.glVertexAttribPointer(8, 4, GL11.GL_FLOAT, false, 128, 104i64);
+        GL20.glVertexAttribPointer(8, 4, GL11.GL_FLOAT, false, 152, 104i64);
         GL33.glVertexAttribDivisor(8, 1);
         GL20.glEnableVertexAttribArray(9);
-        GL20.glVertexAttribPointer(9, 2, GL11.GL_FLOAT, false, 128, 120i64);
+        GL20.glVertexAttribPointer(9, 4, GL11.GL_FLOAT, false, 152, 120i64);
         GL33.glVertexAttribDivisor(9, 1);
+        GL20.glEnableVertexAttribArray(10);
+        GL20.glVertexAttribPointer(10, 4, GL11.GL_FLOAT, false, 152, 136i64);
+        GL33.glVertexAttribDivisor(10, 1);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
         (vao, instanceVbo)
 
     /// 同じテクスチャのスプライト count 体を 1 回の instanced draw で描画する。
-    /// data は 1 体 32 floats を列順に並べた instance データ（RenderFrame が組む）。
+    /// data は 1 体 38 floats を列順に並べた instance データ（RenderFrame が組む）。
     /// 毎フレーム glBufferData で丸ごと差し替える（orphaning。drawPolygon と同方式）。
     /// texId = 0 は単色矩形の run で、シェーダはテクスチャを読まないので bind しない。
     pub def drawSpriteInstanced(shader: Int32, vao: Int32, instanceVbo: Int32, texId: Int32,

@@ -124,6 +124,26 @@ mod TestFlex {
             expected = (0.0, 0.0, 30.0, 10.0) :: (0.0, 10.0, 30.0, 10.0) :: Nil,
             rects(root, 20.0, 50.0))
 
+    // ── abs（フロー外）──
+
+    @Test
+    def testAbsChildIsOutOfFlow(): Unit \ Assert =
+        // column 親（pad 左2/上3）の下に abs=(10,20) の子 + フローの子 2 つ。
+        // abs 子は親コンテンツ原点 + (10,20) に内在サイズで置かれ、フローの子 2 つは
+        // abs 子を無視して縦に積まれる。親の自動高さにも abs 子は影響しない —
+        // 後続の marker が y = 親高(3+10+10) から始まることで固定する。
+        let absChild = Flex.box({ abs = Some({ x = 10.0, y = 20.0 }) | Flex.columnStyle() },
+                                dot(5.0, 5.0) :: Nil);
+        let parent = Flex.box({ padLeft = 2.0, padTop = 3.0 | Flex.columnStyle() },
+                              absChild :: dot(30.0, 10.0) :: dot(30.0, 10.0) :: Nil);
+        let root = Flex.box(Flex.columnStyle(), parent :: dot(30.0, 10.0) :: Nil);
+        Assert.assertEq(
+            expected = (12.0, 23.0, 5.0, 5.0)                       // abs 子（コンテンツ原点 (2,3) + (10,20)）
+                    :: (2.0, 3.0, 30.0, 10.0) :: (2.0, 13.0, 30.0, 10.0)  // フローの子（abs 子を無視して縦積み）
+                    :: (0.0, 23.0, 30.0, 10.0)                      // marker（親の自動高さに abs 子が入らない）
+                    :: Nil,
+            rects(root, 100.0, 100.0))
+
     // ── place: 確定 rect が draw に届いて連結される ──
 
     @Test

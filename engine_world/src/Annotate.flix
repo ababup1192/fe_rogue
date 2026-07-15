@@ -380,12 +380,9 @@ mod Annotate {
                                    scale = Vec2.mul(d#scale, view#zoom),
                                    style = Option.map(st -> scaleStyle(view#zoom, st), d#style) | d })
 
-    /// BoxStyle の px 単位フィールド（角丸半径・枠線幅・縞の幅と周期）を zoom 倍する。
+    /// BoxStyle の px 単位フィールドを zoom 倍する（対象フィールドの表は DrawCmd.scalePx が持つ）。
     def scaleStyle(zoom: Float64, style: GameEngine.BoxStyle): GameEngine.BoxStyle =
-        { cornerRadius = style#cornerRadius * zoom,
-          borderWidth  = style#borderWidth * zoom,
-          stripeWidth  = style#stripeWidth * zoom,
-          stripePeriod = style#stripePeriod * zoom | style }
+        DrawCmd.scalePx(zoom, style)
 
     /// 多角形の描画命令へ見え方を適用する（頂点は画面 px の絶対座標なので各頂点を写す）。
     pub def applyInspectPoly(view: View, ps: List[GameEngine.PolygonRenderCmd]): List[GameEngine.PolygonRenderCmd] =

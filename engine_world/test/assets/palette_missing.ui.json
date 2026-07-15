@@ -1,0 +1,4 @@
+{
+  "paletteFile": "test/assets/no_such_palette.json",
+  "root": { "name": "g" }
+}

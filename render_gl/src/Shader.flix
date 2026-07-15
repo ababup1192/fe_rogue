@@ -41,12 +41,18 @@ mod RenderShader {
         "uniform float borderWidth;\n" +
         "uniform vec3 borderColor;\n" +
         "uniform float borderAlpha;\n" +
-        // 塗り領域に重ねる 45° 斜線ハッチ (CSS repeating-linear-gradient 相当)。hatchEnabled=false で従来の塗り。
+        // 塗り領域に重ねる斜線ハッチ (CSS repeating-linear-gradient 相当)。hatchEnabled=false で従来の塗り。
         "uniform bool hatchEnabled;\n" +
         "uniform vec3 hatchColor;\n" +
         "uniform float hatchAlpha;\n" +
         "uniform float hatchWidth;\n" +
         "uniform float hatchPeriod;\n" +
+        // 縞の向き。0 = 斜め 45° / 1 = 横縞 / 2 = 縦縞。
+        "uniform int hatchDir;\n" +
+        // 塗り領域に重ねる市松のタイル。checkerCell<=0 または checkerAlpha<=0 で無効。
+        "uniform vec3 checkerColor;\n" +
+        "uniform float checkerAlpha;\n" +
+        "uniform float checkerCell;\n" +
         // 角丸矩形 SDF (RenderSdf.roundedBox と同式)。p=中心からのオフセット, hsz=半サイズ, r=角半径。
         "float roundedBox(vec2 p, vec2 hsz, float r) {\n" +
         "    vec2 q = abs(p) - hsz + r;\n" +
@@ -78,17 +84,27 @@ mod RenderShader {
         "        float dInner = roundedBox(p, hi, ri);\n" +
         "        float aaI = max(fwidth(dInner), 0.0001);\n" +
         "        float fillCov = 1.0 - smoothstep(0.0, aaI, dInner);\n" +    // 塗り領域=1 / 枠+外=0
-        // 塗りベース。hatchEnabled なら 45° 斜線を塗りの上に over 合成してから枠と混ぜる。
+        // 塗りベース。hatchEnabled なら斜線を塗りの上に over 合成してから枠と混ぜる。
         "        vec3 fillRgb = spriteColor;\n" +
         "        float fillA = spriteAlpha;\n" +
         "        if (hatchEnabled) {\n" +
-        "            float hv = p.x - p.y;\n" +
-        "            float m = mod(hv, hatchPeriod);\n" +                    // 縞の位相 (x-y で 45°)
-        "            float haa = max(fwidth(hv), 0.0001);\n" +               // 画面 px 基準の縞 AA
+        // hatchDir で縞の向きを切替 (0: x-y で 45° / 1: y で横縞 / 2: x で縦縞)。
+        "            float hv = (hatchDir == 1) ? p.y : ((hatchDir == 2) ? p.x : (p.x - p.y));\n" +
+        "            float m = mod(hv, hatchPeriod);\n" +                    // 縞の位相
+        // 軸に沿った縞 (dir 1/2) はピクセル整列なので AA を掛けずくっきり出す (走査線用)。45° だけ AA。
+        "            float haa = (hatchDir == 0) ? max(fwidth(hv), 0.0001) : 0.0001;\n" +
         "            float sOn = smoothstep(0.0, haa, m) - smoothstep(hatchWidth, hatchWidth + haa, m);\n" +
         "            float sa = hatchAlpha * clamp(sOn, 0.0, 1.0);\n" +
         "            float outA = sa + fillA * (1.0 - sa);\n" +
         "            fillRgb = (outA > 0.0001) ? (hatchColor * sa + fillRgb * fillA * (1.0 - sa)) / outA : fillRgb;\n" +
+        "            fillA = outA;\n" +
+        "        }\n" +
+        // 市松タイル。on のセルだけ checkerColor を over 合成 (縞 → 市松 → 枠の順)。
+        "        if (checkerCell > 0.0 && checkerAlpha > 0.0) {\n" +
+        "            bool on = mod(floor(p.x / checkerCell) + floor(p.y / checkerCell), 2.0) < 0.5;\n" +
+        "            float ca = on ? checkerAlpha : 0.0;\n" +
+        "            float outA = ca + fillA * (1.0 - ca);\n" +
+        "            fillRgb = (outA > 0.0001) ? (checkerColor * ca + fillRgb * fillA * (1.0 - ca)) / outA : fillRgb;\n" +
         "            fillA = outA;\n" +
         "        }\n" +
         "        vec3 rgb = mix(borderColor, fillRgb, fillCov);\n" +
@@ -134,7 +150,7 @@ mod RenderShader {
         "}\n"
 
     /// instanced sprite 用の頂点シェーダ。1 体分の変換・UV・色・スタイル
-    /// (角丸・枠・ハッチ) をすべて instance 属性 (loc1-9) で受け取るので、
+    /// (角丸・枠・ハッチ・市松) をすべて instance 属性 (loc1-10) で受け取るので、
     /// uniform の設定なしに 1 回の draw call で何千体でも描ける。
     /// スタイルまで属性に載せるのは、単色矩形が常に style 付きで届く
     /// (Render.box が solidStyle を持たせる) ため、style をバッチ分割条件に
@@ -152,14 +168,16 @@ mod RenderShader {
         "layout (location = 6) in vec4 inst6;\n" +   // rectSize.xy, cornerRadius, borderWidth
         "layout (location = 7) in vec4 inst7;\n" +   // borderColor.rgb + borderAlpha
         "layout (location = 8) in vec4 inst8;\n" +   // hatchColor.rgb + hatchAlpha
-        "layout (location = 9) in vec2 inst9;\n" +   // hatchWidth, hatchPeriod
+        "layout (location = 9) in vec4 inst9;\n" +   // hatchWidth, hatchPeriod, hatchDir, checkerCell
+        "layout (location = 10) in vec4 inst10;\n" + // checkerColor.rgb + checkerAlpha
         "out vec2 TexCoords;\n" +
         "out vec4 InstColor;\n" +
         "out vec4 InstFlags;\n" +
         "out vec4 InstRect;\n" +
         "out vec4 InstBorder;\n" +
         "out vec4 InstHatch;\n" +
-        "out vec2 InstHatchDim;\n" +
+        "out vec4 InstHatchDim;\n" +
+        "out vec4 InstChecker;\n" +
         "uniform mat4 projection;\n" +
         "void main() {\n" +
         "    vec2 world = mat2(inst1.xy, inst1.zw) * vertex.xy + inst2;\n" +
@@ -171,6 +189,7 @@ mod RenderShader {
         "    InstBorder = inst7;\n" +
         "    InstHatch = inst8;\n" +
         "    InstHatchDim = inst9;\n" +
+        "    InstChecker = inst10;\n" +
         "}\n"
 
     /// instanced sprite 用のフラグメントシェーダ。
@@ -185,7 +204,8 @@ mod RenderShader {
         "in vec4 InstRect;\n" +
         "in vec4 InstBorder;\n" +
         "in vec4 InstHatch;\n" +
-        "in vec2 InstHatchDim;\n" +
+        "in vec4 InstHatchDim;\n" +
+        "in vec4 InstChecker;\n" +
         "out vec4 color;\n" +
         "uniform sampler2D image;\n" +
         "float roundedBox(vec2 p, vec2 hsz, float r) {\n" +
@@ -218,13 +238,21 @@ mod RenderShader {
         "        vec3 fillRgb = InstColor.rgb;\n" +
         "        float fillA = InstColor.a;\n" +
         "        if (InstFlags.w > 0.5) {\n" +
-        "            float hv = p.x - p.y;\n" +
+        "            float hv = (InstHatchDim.z > 1.5) ? p.x : ((InstHatchDim.z > 0.5) ? p.y : (p.x - p.y));\n" +
         "            float m = mod(hv, InstHatchDim.y);\n" +
-        "            float haa = max(fwidth(hv), 0.0001);\n" +
+        // 軸に沿った縞 (dir 1/2) はピクセル整列なので AA を掛けずくっきり出す (uniform 版と同じ規約)。
+        "            float haa = (InstHatchDim.z > 0.5) ? 0.0001 : max(fwidth(hv), 0.0001);\n" +
         "            float sOn = smoothstep(0.0, haa, m) - smoothstep(InstHatchDim.x, InstHatchDim.x + haa, m);\n" +
         "            float sa = InstHatch.a * clamp(sOn, 0.0, 1.0);\n" +
         "            float outA = sa + fillA * (1.0 - sa);\n" +
         "            fillRgb = (outA > 0.0001) ? (InstHatch.rgb * sa + fillRgb * fillA * (1.0 - sa)) / outA : fillRgb;\n" +
+        "            fillA = outA;\n" +
+        "        }\n" +
+        "        if (InstHatchDim.w > 0.0 && InstChecker.a > 0.0) {\n" +
+        "            bool on = mod(floor(p.x / InstHatchDim.w) + floor(p.y / InstHatchDim.w), 2.0) < 0.5;\n" +
+        "            float ca = on ? InstChecker.a : 0.0;\n" +
+        "            float outA = ca + fillA * (1.0 - ca);\n" +
+        "            fillRgb = (outA > 0.0001) ? (InstChecker.rgb * ca + fillRgb * fillA * (1.0 - ca)) / outA : fillRgb;\n" +
         "            fillA = outA;\n" +
         "        }\n" +
         "        vec3 rgb = mix(InstBorder.rgb, fillRgb, fillCov);\n" +
@@ -294,7 +322,11 @@ mod RenderShader {
         hatchColor = Int32,
         hatchAlpha = Int32,
         hatchWidth = Int32,
-        hatchPeriod = Int32
+        hatchPeriod = Int32,
+        hatchDir = Int32,
+        checkerColor = Int32,
+        checkerAlpha = Int32,
+        checkerCell = Int32
     }
 
     /// tile シェーダの uniform location 一式。理由は `SpriteUniforms` と同じ。
@@ -324,7 +356,11 @@ mod RenderShader {
             hatchColor = GL20.glGetUniformLocation(shader, "hatchColor"),
             hatchAlpha = GL20.glGetUniformLocation(shader, "hatchAlpha"),
             hatchWidth = GL20.glGetUniformLocation(shader, "hatchWidth"),
-            hatchPeriod = GL20.glGetUniformLocation(shader, "hatchPeriod")
+            hatchPeriod = GL20.glGetUniformLocation(shader, "hatchPeriod"),
+            hatchDir = GL20.glGetUniformLocation(shader, "hatchDir"),
+            checkerColor = GL20.glGetUniformLocation(shader, "checkerColor"),
+            checkerAlpha = GL20.glGetUniformLocation(shader, "checkerAlpha"),
+            checkerCell = GL20.glGetUniformLocation(shader, "checkerCell")
         }
 
     pub def tileUniformsOf(shader: Int32): TileUniforms \ IO =

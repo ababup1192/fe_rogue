@@ -16,9 +16,13 @@ mod TestApp {
     /// マウス無し（ボタン未押下）。キーだけを見るテストの frameOf に渡す。
     def noMouse(): { prevDown = Bool, down = Bool } = { prevDown = false, down = false }
 
+    /// カーソル無し（原点のまま・前の位置も無し）。キーだけを見るテストの frameOf に渡す。
+    def noCursor(): { prevCursor = Option[Vec2.Vec2], cursor = Vec2.Vec2 } =
+        { prevCursor = None, cursor = Vec2.zero() }
+
     /// キー無し・dt 0 の Frame。
     def emptyFrame(): App.Frame =
-        App.frameOf(prev = Set#{}, current = Set#{}, 0.0, testViewport(), Vec2.zero(), noMouse())
+        App.frameOf(prev = Set#{}, current = Set#{}, 0.0, testViewport(), noCursor(), noMouse())
 
     // ========================================================================
     // frameOf: エッジ判定
@@ -27,21 +31,21 @@ mod TestApp {
     // 新規押下: 前に無く今ある Left は down にも justPressed にも立つ。dt は素通し。
     @Test
     def testFrameOfNewPressIsEdge(): Unit \ Assert =
-        let actual = App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Left}, 0.016, testViewport(), Vec2.zero(), noMouse());
+        let actual = App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Left}, 0.016, testViewport(), noCursor(), noMouse());
         Assert.assertEq(expected = (Set#{GameEngine.Key.Left}, Set#{GameEngine.Key.Left}, 0.016),
             frameTuple(actual))
 
     // 押しっぱなし: 前も今もある Left は down のまま、justPressed には立たない。
     @Test
     def testFrameOfHeldKeyIsNotEdge(): Unit \ Assert =
-        let actual = App.frameOf(prev = Set#{GameEngine.Key.Left}, current = Set#{GameEngine.Key.Left}, 0.016, testViewport(), Vec2.zero(), noMouse());
+        let actual = App.frameOf(prev = Set#{GameEngine.Key.Left}, current = Set#{GameEngine.Key.Left}, 0.016, testViewport(), noCursor(), noMouse());
         Assert.assertEq(expected = (Set#{GameEngine.Key.Left}, Set#{}, 0.016),
             frameTuple(actual))
 
     // 離し: 前にあって今無い Left はどちらにも立たない（離しエッジは追わない）。
     @Test
     def testFrameOfReleaseIsSilent(): Unit \ Assert =
-        let actual = App.frameOf(prev = Set#{GameEngine.Key.Left}, current = Set#{}, 0.016, testViewport(), Vec2.zero(), noMouse());
+        let actual = App.frameOf(prev = Set#{GameEngine.Key.Left}, current = Set#{}, 0.016, testViewport(), noCursor(), noMouse());
         Assert.assertEq(expected = (Set#{}, Set#{}, 0.016),
             frameTuple(actual))
 
@@ -50,7 +54,7 @@ mod TestApp {
     def testFrameOfMixedKeysSplitEdges(): Unit \ Assert =
         let actual = App.frameOf(
             prev = Set#{GameEngine.Key.Left},
-            current = Set#{GameEngine.Key.Left, GameEngine.Key.Space}, 0.016, testViewport(), Vec2.zero(), noMouse());
+            current = Set#{GameEngine.Key.Left, GameEngine.Key.Space}, 0.016, testViewport(), noCursor(), noMouse());
         Assert.assertEq(
             expected = (Set#{GameEngine.Key.Left, GameEngine.Key.Space}, Set#{GameEngine.Key.Space}, 0.016),
             frameTuple(actual))
@@ -64,7 +68,7 @@ mod TestApp {
     @Test
     def testFrameOfMousePressIsEdge(): Unit \ Assert =
         let actual = App.frameOf(prev = Set#{}, current = Set#{}, 0.016, testViewport(),
-            { x = 10.0, y = 20.0 }, { prevDown = false, down = true });
+            { prevCursor = None, cursor = { x = 10.0, y = 20.0 } }, { prevDown = false, down = true });
         Assert.assertEq(expected = (true, true, (10.0, 20.0)),
             (actual#mouseDown, actual#mouseClicked, (actual#cursor#x, actual#cursor#y)))
 
@@ -72,15 +76,42 @@ mod TestApp {
     @Test
     def testFrameOfHeldMouseIsNotEdge(): Unit \ Assert =
         let actual = App.frameOf(prev = Set#{}, current = Set#{}, 0.016, testViewport(),
-            Vec2.zero(), { prevDown = true, down = true });
+            noCursor(), { prevDown = true, down = true });
         Assert.assertEq(expected = (true, false), (actual#mouseDown, actual#mouseClicked))
 
     // 離し: どちらも立たない。
     @Test
     def testFrameOfMouseReleaseIsSilent(): Unit \ Assert =
         let actual = App.frameOf(prev = Set#{}, current = Set#{}, 0.016, testViewport(),
-            Vec2.zero(), { prevDown = true, down = false });
+            noCursor(), { prevDown = true, down = false });
         Assert.assertEq(expected = (false, false), (actual#mouseDown, actual#mouseClicked))
+
+    // ========================================================================
+    // frameOf: マウス移動（前フレームとの座標比較）
+    // ========================================================================
+
+    /// カーソルの前後だけ違う frameOf 呼び出し（キー・ボタンは無し）。
+    def frameWithCursor(prevCursor: Option[Vec2.Vec2], cursor: Vec2.Vec2): App.Frame =
+        App.frameOf(prev = Set#{}, current = Set#{}, 0.016, testViewport(),
+            { prevCursor = prevCursor, cursor = cursor }, noMouse())
+
+    // 座標が前フレームと違えば mouseMoved が立つ。
+    @Test
+    def testFrameOfCursorMoveIsDetected(): Unit \ Assert =
+        let actual = frameWithCursor(Some({ x = 10.0, y = 20.0 }), { x = 11.0, y = 20.0 });
+        Assert.assertEq(expected = true, actual#mouseMoved)
+
+    // 同じ座標のままなら立たない。
+    @Test
+    def testFrameOfStillCursorIsSilent(): Unit \ Assert =
+        let actual = frameWithCursor(Some({ x = 10.0, y = 20.0 }), { x = 10.0, y = 20.0 });
+        Assert.assertEq(expected = false, actual#mouseMoved)
+
+    // 最初のフレーム（前の位置が無い）は動いた扱いにしない。
+    @Test
+    def testFrameOfFirstFrameCursorIsSilent(): Unit \ Assert =
+        let actual = frameWithCursor(None, { x = 10.0, y = 20.0 });
+        Assert.assertEq(expected = false, actual#mouseMoved)
 
     // ========================================================================
     // applySystems: 追加順 = 適用順
@@ -104,7 +135,7 @@ mod TestApp {
     // 正キーだけ +1・負キーだけ -1・無押下 0・両押しは打ち消して 0。押しっぱなしも効く（down 判定）。
     @Test
     def testAxisFoldsKeysToScalar(): Unit \ Assert =
-        let frameWith = keys -> App.frameOf(prev = keys, current = keys, 0.016, testViewport(), Vec2.zero(), noMouse());
+        let frameWith = keys -> App.frameOf(prev = keys, current = keys, 0.016, testViewport(), noCursor(), noMouse());
         let pos = App.axis(negative = GameEngine.Key.Left, positive = GameEngine.Key.Right, frameWith(Set#{GameEngine.Key.Right}));
         let neg = App.axis(negative = GameEngine.Key.Left, positive = GameEngine.Key.Right, frameWith(Set#{GameEngine.Key.Left}));
         let idle = App.axis(negative = GameEngine.Key.Left, positive = GameEngine.Key.Right, frameWith(Set#{}));
@@ -245,7 +276,7 @@ mod TestApp {
     // 既定の quit は Escape の新規押下で true。
     @Test
     def testQuitDefaultFiresOnEscapeEdge(): Unit \ Assert =
-        let frame = App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Escape}, 0.016, testViewport(), Vec2.zero(), noMouse());
+        let frame = App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Escape}, 0.016, testViewport(), noCursor(), noMouse());
         let wantsQuit = App.make(0)#quit;
         Assert.assertEq(expected = true, wantsQuit(frame, 0))
 
@@ -253,7 +284,7 @@ mod TestApp {
     @Test
     def testQuitDefaultIgnoresHeldEscape(): Unit \ Assert =
         let frame = App.frameOf(
-            prev = Set#{GameEngine.Key.Escape}, current = Set#{GameEngine.Key.Escape}, 0.016, testViewport(), Vec2.zero(), noMouse());
+            prev = Set#{GameEngine.Key.Escape}, current = Set#{GameEngine.Key.Escape}, 0.016, testViewport(), noCursor(), noMouse());
         let wantsQuit = App.make(0)#quit;
         Assert.assertEq(expected = false, wantsQuit(frame, 0))
 

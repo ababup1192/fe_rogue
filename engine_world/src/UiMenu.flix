@@ -135,4 +135,36 @@ mod UiMenu {
         let sel = UiStore.selectionOf(listPath, ui);
         let clamped = clampIndex(count(listPath, ui), sel);
         if (clamped == sel) ui else UiStore.putSelection(listPath, clamped, ui)
+
+    // ========================================================================
+    // カーソル移動とマウス同期（呼び側が Int32 のカーソルを持つ方式）
+    // 既存の selection 系（metaAtSelection / clampSelection）は UiStore が選択位置を持つ方式。
+    // 1 つのメニューではどちらか片方だけを使う（両方使うと位置が 2 箇所に分かれてずれる）。
+    // ========================================================================
+
+    /// カーソルを delta ぶん動かす（端で反対側へ回り込む）。count<=0 なら cursor のまま。
+    pub def moveCursor(delta: Int32, count: Int32, cursor: Int32): Int32 =
+        if (count <= 0) cursor
+        else Int32.modulo(cursor + delta + count, count)
+
+    /// マウス hit の entity が項目列の何番目か（項目列に無ければ None）。
+    pub def hitIndexIn(listPath: String, hit: Option[EntityId], ui: UiStore.UiWorld): Option[Int32] =
+        hit |> Option.flatMap(id ->
+            itemIds(listPath, ui)
+                |> List.zipWithIndex
+                |> List.findMap(pair -> { let (i, itemId) = pair; if (itemId == id) Some(i) else None }))
+
+    /// カーソル位置の項目の名前パス（項目 0 個や範囲外は None）。ホバー強調の行き先に使う。
+    pub def cursorPath(listPath: String, cursor: Int32, ui: UiStore.UiWorld): Option[String] =
+        List.nth(cursor, itemIds(listPath, ui))
+            |> Option.flatMap(id -> UiStore.pathOf(id, ui))
+
+    /// キーボードとマウスの両方で選ぶメニューの共通規約。キーボードのカーソルを基準にし、
+    /// マウスは動いたフレームに項目へ乗っているときだけカーソルをそこへ吸着させる。
+    pub def syncCursor(listPath: String, input: { mouseMoved = Bool, hit = Option[EntityId] },
+                       cursor: Int32, ui: UiStore.UiWorld): { cursor = Int32, hoverPath = Option[String] } =
+        let next = if (input#mouseMoved)
+                       hitIndexIn(listPath, input#hit, ui) |> Option.getWithDefault(cursor)
+                   else cursor;
+        { cursor = next, hoverPath = cursorPath(listPath, next, ui) }
 }

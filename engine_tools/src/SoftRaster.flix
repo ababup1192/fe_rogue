@@ -19,6 +19,10 @@ mod SoftRaster {
     import java.awt.RenderingHints
     import java.awt.BasicStroke
     import java.awt.Font
+    import java.awt.Shape
+    import java.awt.geom.{RoundRectangle2D$Double => RoundRect}
+    import java.awt.geom.{Line2D$Double => Line2D}
+    import java.awt.geom.{Rectangle2D$Double => Rect2D}
     import java.io.File
     import java.io.FileInputStream
     import java.lang.{Character => JChar}
@@ -178,6 +182,7 @@ mod SoftRaster {
         }
 
     /// 単色矩形（角丸＋枠）。scale が design px サイズ、position が左上。
+    /// 重ねる順は GL シェーダと同じ 塗り → 縞 → 市松 → 枠。
     def drawBox(g: Graphics2D, sf: Float64, d: GameEngine.Drawable): Unit \ IO =
         let x = ri(d#position#x * sf);
         let y = ri(d#position#y * sf);
@@ -190,11 +195,97 @@ mod SoftRaster {
         let arc = ri(corner * 2.0 * sf);
         g.setColor(awtColor(d#color, d#alpha));
         g.fillRoundRect(x, y, bw, bh, arc, arc);
+        match d#style {
+            case Some(st) => drawBoxOverlays(g, sf, d, st)
+            case None     => ()
+        };
         if (borderW > 0.0 and borderA > 0.0f32) {
             g.setStroke(new BasicStroke(f32(borderW * sf)));
             g.setColor(awtColor(borderCol, borderA));
             g.drawRoundRect(x, y, bw, bh, arc, arc)
         } else ()
+
+    /// 塗りの上に縞と市松を重ねる。box の角丸矩形にクリップして描き、終わったら解除する。
+    def drawBoxOverlays(g: Graphics2D, sf: Float64, d: GameEngine.Drawable,
+                        st: GameEngine.BoxStyle): Unit \ IO =
+        let hasStripe = st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32 and st#stripePeriod > 0.0;
+        let hasChecker = st#checkerCell > 0.0 and st#checkerAlpha > 0.0f32;
+        if (hasStripe or hasChecker) {
+            // fillRoundRect と同じ丸め済みの値でクリップ形を作り、塗りとぴったり重ねる。
+            let x = ri(d#position#x * sf);
+            let y = ri(d#position#y * sf);
+            let bw = ri(d#scale#x * sf);
+            let bh = ri(d#scale#y * sf);
+            let arc = ri(st#cornerRadius * 2.0 * sf);
+            let clip = new RoundRect(Int32.toFloat64(x), Int32.toFloat64(y),
+                                     Int32.toFloat64(bw), Int32.toFloat64(bh),
+                                     Int32.toFloat64(arc), Int32.toFloat64(arc));
+            g.setClip(clip);
+            if (hasStripe) drawStripes(g, sf, d, st) else ();
+            if (hasChecker) drawChecker(g, sf, d, st) else ();
+            g.setClip(unchecked_cast(null as Shape))
+        } else ()
+
+    /// 縞を描く。GL シェーダと同じ box 中心原点のローカル座標 p を使い、
+    /// mod(hv, period) が [0, width] に入る帯を線分で塗る（dir 0: p.x−p.y / 1: p.y / 2: p.x）。
+    def drawStripes(g: Graphics2D, sf: Float64, d: GameEngine.Drawable,
+                    st: GameEngine.BoxStyle): Unit \ IO =
+        let bw = d#scale#x * sf;
+        let bh = d#scale#y * sf;
+        let cx = d#position#x * sf + bw / 2.0;
+        let cy = d#position#y * sf + bh / 2.0;
+        let period = st#stripePeriod * sf;
+        let width = st#stripeWidth * sf;
+        g.setColor(awtColor(st#stripeColor, st#stripeAlpha));
+        if (st#stripeDir == 1) {
+            // 横縞: 帯 [hv-width/2, hv+width/2] を塗り矩形で(AA が掛からずくっきり — 走査線用)。
+            forEachStripe(period, bh / 2.0, width, hv ->
+                g.fill(new Rect2D(cx - bw, cy + hv - width / 2.0, bw * 2.0, width)))
+        } else if (st#stripeDir == 2) {
+            // 縦縞: 同じく塗り矩形でくっきり。
+            forEachStripe(period, bw / 2.0, width, hv ->
+                g.fill(new Rect2D(cx + hv - width / 2.0, cy - bh, width, bh * 2.0)))
+        } else {
+            // 斜め 45°: hv = p.x − p.y。hv 空間の幅 width は幾何学的には width/√2。
+            g.setStroke(new BasicStroke(f32(width / Vec2.sqrt(2.0))));
+            let l = bw + bh;
+            forEachStripe(period, (bw + bh) / 2.0, width, hv ->
+                g.draw(new Line2D(cx + hv - l, cy - l, cx + hv + l, cy + l)))
+        }
+
+    /// mod(hv, period) が [0, width] の帯の中心 hv を、[-halfRange, halfRange] に
+    /// かかる分だけ列挙して f を呼ぶ（k*period + width/2 の等差列）。
+    def forEachStripe(period: Float64, halfRange: Float64, width: Float64,
+                      f: Float64 -> Unit \ ef): Unit \ ef =
+        let kMin = floorI((-1.0 * halfRange - width) / period);
+        let kMax = floorI(halfRange / period);
+        List.range(kMin, kMax + 1) |> List.forEach(k ->
+            f(Int32.toFloat64(k) * period + width / 2.0))
+
+    /// 市松を描く。GL シェーダと同じ box 中心原点でセルを刻み、
+    /// floor(p.x/cell) + floor(p.y/cell) が偶数のセルだけ塗る。
+    def drawChecker(g: Graphics2D, sf: Float64, d: GameEngine.Drawable,
+                    st: GameEngine.BoxStyle): Unit \ IO =
+        let bw = d#scale#x * sf;
+        let bh = d#scale#y * sf;
+        let cx = d#position#x * sf + bw / 2.0;
+        let cy = d#position#y * sf + bh / 2.0;
+        let cell = st#checkerCell * sf;
+        g.setColor(awtColor(st#checkerColor, st#checkerAlpha));
+        let iMin = floorI(-1.0 * bw / 2.0 / cell);
+        let iMax = floorI(bw / 2.0 / cell);
+        let jMin = floorI(-1.0 * bh / 2.0 / cell);
+        let jMax = floorI(bh / 2.0 / cell);
+        List.range(iMin, iMax + 1) |> List.forEach(i ->
+            List.range(jMin, jMax + 1) |> List.forEach(j ->
+                if (Int32.modulo(i + j, 2) == 0)
+                    g.fill(new Rect2D(cx + Int32.toFloat64(i) * cell,
+                                      cy + Int32.toFloat64(j) * cell, cell, cell))
+                else ()))
+
+    /// Float64 の床を Int32 に（縞・市松の格子番号用。負値も床側へ丸める）。
+    def floorI(x: Float64): Int32 =
+        Float64.tryToInt32(Float64.floor(x)) |> Option.getWithDefault(0i32)
 
     /// 画像 Drawable。元テクスチャの uv 部分矩形を切り出し、color で tint・alpha を乗算して
     /// design px の表示矩形へ拡大転写する。font_ アトラス（白グリフ）もこの経路で色が付く。

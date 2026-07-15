@@ -114,10 +114,12 @@ mod Rect {
     def boxStyleOf(r: {cornerRadius = Float64, borderColor = Color, borderAlpha = Float32,
                        borderWidth = Float64, stripeColor = Color, stripeAlpha = Float32,
                        stripeWidth = Float64, stripePeriod = Float64 | s}): GameEngine.BoxStyle =
+        // Rect が持たない縞の向き・市松は defaultStyle の既定値のまま。
         {cornerRadius = r#cornerRadius, borderWidth = r#borderWidth,
          borderColor = r#borderColor, borderAlpha = r#borderAlpha,
          stripeColor = r#stripeColor, stripeAlpha = r#stripeAlpha,
-         stripeWidth = r#stripeWidth, stripePeriod = r#stripePeriod}
+         stripeWidth = r#stripeWidth, stripePeriod = r#stripePeriod
+         | DrawCmd.defaultStyle(r#borderColor)}
 
     /// Drawable に変換する（texture="" でテクスチャなしを示す）
     pub def toDrawable(rect: Rect, globalPos: Vec2.Vec2): GameEngine.Drawable =

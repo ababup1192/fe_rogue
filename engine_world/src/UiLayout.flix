@@ -36,6 +36,7 @@ mod UiLayout {
     /// `mainAlign`/`crossAlign`: 子の主軸・交差軸の寄せ方。
     /// `wrap`: 主軸に収まらない子を次の行へ折り返す（Row のみ。幅と高さは明示が必要）。
     /// `abs`: Some のときフロー外（親コンテンツ原点からの絶対オフセットに置く。HUD の右上ピン等）。
+    ///   flex の子でも out-of-flow で効く — 兄弟の並びにも親の自動サイズにも参加しない。
     pub type alias Style = {
         dir = Dir, gap = Float64,
         padLeft = Float64, padTop = Float64, padRight = Float64, padBottom = Float64,

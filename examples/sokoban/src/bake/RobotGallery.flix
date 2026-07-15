@@ -44,9 +44,7 @@ mod RobotGallery {
     /// 角丸ボックス（cornerRadius はタイル単位）。候補4と候補6の車輪で使う。
     def rbox(o: Vec2.Vec2, x: Float64, y: Float64, w: Float64, h: Float64,
              r: Float64, c: Color): Render.PlacedItem =
-        let style = { cornerRadius = r * u(), borderWidth = 0.0, borderColor = c,
-                      borderAlpha = 0.0f32, stripeColor = c, stripeAlpha = 0.0f32,
-                      stripeWidth = 0.0, stripePeriod = 0.0 };
+        let style = { cornerRadius = r * u() | DrawCmd.defaultStyle(c) };
         { at = {x = o#x + x * u(), y = o#y + y * u()},
           item = Render.Item.Box({ size = {x = w * u(), y = h * u()}, color = c,
                                  alpha = 1.0f32, style = Some(style), zIndex = 1 }) }

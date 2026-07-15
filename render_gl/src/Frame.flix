@@ -71,7 +71,7 @@ mod RenderFrame {
     }
 
     /// 溜めた run（同じテクスチャの連続スプライト列）を 1 回の instanced draw で
-    /// 吐き出す。1 体 = 32 floats の Float32 配列で受け取る。record にしないのは、
+    /// 吐き出す。1 体 = 38 floats の Float32 配列で受け取る。record にしないのは、
     /// record の `#` 読みが実行時のフィールド探索で、数千体の詰め直しでは
     /// その探索だけでフレーム時間に現れるため（スレッドダンプ実測）。
     /// itemsRev は cons で積んだ逆順。末尾位置から前へ詰め戻すことで
@@ -80,9 +80,9 @@ mod RenderFrame {
                         texId: Int32, count: Int32,
                         itemsRev: List[Array[Float32, Static]]): Unit \ IO =
         if (count == 0) () else {
-            let data = Array.empty(Static, count * 32);
+            let data = Array.empty(Static, count * 38);
             let _ = List.foldLeft((endIdx, inst) -> {
-                let base = (endIdx - 1) * 32;
+                let base = (endIdx - 1) * 38;
                 Array.forEachWithIndex((j, v) -> Array.put(v, base + j, data), inst);
                 endIdx - 1
             }, count, itemsRev);
@@ -160,7 +160,7 @@ mod RenderFrame {
             let cosF = RenderUtil.cosF;
             let sinF = RenderUtil.sinF;
             // drawSprite が uniform に詰める model 行列と同じ式を CPU 側で計算して
-            // instance 属性 (32 floats・シェーダ loc1-9 と同並び) に落とす
+            // instance 属性 (38 floats・シェーダ loc1-10 と同並び) に落とす
             // （絵が per-draw 経路と一致することを式の同一性で保証）。
             // style も per-instance 属性に載せる: 単色矩形は常に style 付きで届く
             // (Render.box が solidStyle を持たせる) ため、style をバッチ分割条件に
@@ -176,17 +176,19 @@ mod RenderFrame {
                 let color = drawable#color;
                 let uvo = drawable#uvOffset;
                 let uvs = drawable#uvScale;
-                let (styleOn, hatchOn, cr, bw, bc, ba, hc, ha, hw, hp) = match drawable#style {
+                let (styleOn, hatchOn, cr, bw, bc, ba, hc, ha, hw, hp, hd, cc, ca, cl) = match drawable#style {
                     case None =>
                         let zero: Color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 };
                         (0.0f32, 0.0f32, 0.0f32, 0.0f32, zero, 0.0f32,
-                         zero, 0.0f32, 0.0f32, 0.0f32)
+                         zero, 0.0f32, 0.0f32, 0.0f32, 0.0f32, zero, 0.0f32, 0.0f32)
                     case Some(st) =>
-                        // hatch の有効判定は drawSprite の hatchOn と同式。
-                        let hatch = if (st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32) 1.0f32 else 0.0f32;
+                        // hatch の有効判定は drawSprite の hatchOn と同式(period<=0 は GLSL の mod が未定義なので無効扱い)。
+                        let hatch = if (st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32 and st#stripePeriod > 0.0) 1.0f32 else 0.0f32;
                         (1.0f32, hatch, f32(st#cornerRadius), f32(st#borderWidth),
                          st#borderColor, st#borderAlpha,
-                         st#stripeColor, st#stripeAlpha, f32(st#stripeWidth), f32(st#stripePeriod))
+                         st#stripeColor, st#stripeAlpha, f32(st#stripeWidth), f32(st#stripePeriod),
+                         Int32.toFloat32(st#stripeDir),
+                         st#checkerColor, st#checkerAlpha, f32(st#checkerCell))
                 };
                 Array#{
                     f32(c * sx), f32(s * sx), f32(-1.0 * s * sy), f32(c * sy),
@@ -197,7 +199,8 @@ mod RenderFrame {
                     f32(sx), f32(sy), cr, bw,
                     bc#r, bc#g, bc#b, ba,
                     hc#r, hc#g, hc#b, ha,
-                    hw, hp
+                    hw, hp, hd, cl,
+                    cc#r, cc#g, cc#b, ca
                 } @ Static
             };
             // run = (テクスチャ id, 体数, 積んだ instance の逆順リスト)。texId=0 は単色矩形の run。

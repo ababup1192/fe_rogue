@@ -137,11 +137,8 @@ mod UiExtract {
             cornerRadius = box#cornerRadius,
             borderWidth  = box#borderWidth,
             borderColor  = box#borderColor,
-            borderAlpha  = if (box#borderWidth > 0.0) 1.0f32 else 0.0f32,
-            stripeColor  = box#borderColor,
-            stripeAlpha  = 0.0f32,
-            stripeWidth  = 0.0,
-            stripePeriod = 0.0
+            borderAlpha  = if (box#borderWidth > 0.0) 1.0f32 else 0.0f32
+            | DrawCmd.defaultStyle(box#borderColor)
         }: GameEngine.BoxStyle);
         Render.Item.Box({size = size, color = box#color, alpha = box#alpha, style = Some(style), zIndex = box#zIndex})
 

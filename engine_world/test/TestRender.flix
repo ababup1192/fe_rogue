@@ -80,13 +80,35 @@ mod TestRender {
     def testOutlineAndStripedStack(): Unit \ Assert =
         let item = Render.box({ x = 2.0, y = 2.0 }, red(), 0)
             |> Render.outline(red(), 1.5)
-            |> Render.striped({ color = red(), alpha = 0.25f32, width = 2.0, period = 6.0 });
+            |> Render.striped({ color = red(), alpha = 0.25f32, width = 2.0, period = 6.0, dir = 0 });
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
         let style = ds |> List.head |> Option.flatMap(d -> d#style);
         Assert.assertEq(expected = (Some(1.5), Some(0.25f32), Some(6.0)),
             (style |> Option.map(s -> s#borderWidth),
              style |> Option.map(s -> s#stripeAlpha),
              style |> Option.map(s -> s#stripePeriod)))
+
+    // striped の dir（0 = 斜め / 1 = 横 / 2 = 縦）がそのまま style の stripeDir に載る。
+    @Test
+    def testStripedDirVariants(): Unit \ Assert =
+        let dirOf = dir -> {
+            let item = Render.box({ x = 2.0, y = 2.0 }, red(), 0)
+                |> Render.striped({ color = red(), alpha = 0.25f32, width = 2.0, period = 6.0, dir = dir });
+            let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
+            ds |> List.head |> Option.flatMap(d -> d#style) |> Option.map(s -> s#stripeDir)
+        };
+        Assert.assertEq(expected = (Some(0), Some(1), Some(2)), (dirOf(0), dirOf(1), dirOf(2)))
+
+    // checker は Box の style に市松（色・濃度・セル辺）を書き込む。
+    @Test
+    def testCheckerSetsStyle(): Unit \ Assert =
+        let item = Render.box({ x = 8.0, y = 8.0 }, red(), 0)
+            |> Render.checker({ color = red(), alpha = 0.5f32, cell = 4.0 });
+        let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
+        let style = ds |> List.head |> Option.flatMap(d -> d#style);
+        Assert.assertEq(expected = (Some(0.5f32), Some(4.0)),
+            (style |> Option.map(s -> s#checkerAlpha),
+             style |> Option.map(s -> s#checkerCell)))
 
     // ── 図形の語彙（ngonAt / ellipseAt / sectorAt / circleSegmentAt / starAt / lineSeg）──
 

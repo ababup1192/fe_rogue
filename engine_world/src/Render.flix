@@ -172,8 +172,7 @@ mod Render {
                 sweep#fromT + (sweep#toT - sweep#fromT) * Int32.toFloat64(i) / Int32.toFloat64(segs)))
 
     def solidStyle(): GameEngine.BoxStyle =
-        { cornerRadius = 0.0, borderWidth = 0.0, borderColor = white(), borderAlpha = 0.0f32,
-          stripeColor = white(), stripeAlpha = 0.0f32, stripeWidth = 0.0, stripePeriod = 0.0 }
+        DrawCmd.defaultStyle(white())
 
     // ── 修飾（稀な属性はパイプで重ねる。効かない種類の item は素通し）──
 
@@ -228,19 +227,30 @@ mod Render {
             case other => other
         }
 
-    /// 縞模様を敷く（Box に効く）。
-    pub def striped(stripe: { color = Color, alpha = Float32, width = Float64, period = Float64 },
+    /// 縞模様を敷く（Box に効く）。dir は 0 = 斜め 45° / 1 = 横縞 / 2 = 縦縞。
+    pub def striped(stripe: { color = Color, alpha = Float32, width = Float64, period = Float64, dir = Int32 },
                     item: Item): Item =
         match item {
             case Item.Box(b) =>
                 Item.Box({ style = Some({ stripeColor = stripe#color, stripeAlpha = stripe#alpha,
-                                                stripeWidth = stripe#width, stripePeriod = stripe#period
+                                                stripeWidth = stripe#width, stripePeriod = stripe#period,
+                                                stripeDir = stripe#dir
+                                                | styleOf(b#style) }) | b })
+            case other => other
+        }
+
+    /// 市松のタイルを重ねる（Box に効く）。PC-98 の網ディザ風。
+    pub def checker(c: { color = Color, alpha = Float32, cell = Float64 }, item: Item): Item =
+        match item {
+            case Item.Box(b) =>
+                Item.Box({ style = Some({ checkerColor = c#color, checkerAlpha = c#alpha,
+                                                checkerCell = c#cell
                                                 | styleOf(b#style) }) | b })
             case other => other
         }
 
     /// 大きさ系の属性を factor 倍する（全種類の item に効く）。camera の zoom 適用の芯:
-    /// Box は size と style の太さ（角丸・枠・縞）、Sprite は scale、Text は fontSize、
+    /// Box は size と style の太さ（角丸・枠・縞・市松）、Sprite は scale、Text は fontSize、
     /// Poly は頂点を、それぞれ一様に伸縮する。置き場所（at）は持たないので呼び側が伸縮する。
     /// 注意: これ単体では「置き場所はそのまま・中身だけ伸びる」= Box は左上を軸に右下へ育つ。
     /// circleAt / boxAt が済ませた中心→左上の換算も崩れる（中心がずれて見える）。
@@ -251,9 +261,7 @@ mod Render {
             case Item.Sprite(s) => Item.Sprite({ scale = { x = s#scale#x * factor, y = s#scale#y * factor } | s })
             case Item.Text(t)   => Item.Text({ fontSize = t#fontSize * factor | t })
             case Item.Box(b)    =>
-                let style1 = b#style |> Option.map(s ->
-                    { cornerRadius = s#cornerRadius * factor, borderWidth = s#borderWidth * factor,
-                      stripeWidth = s#stripeWidth * factor, stripePeriod = s#stripePeriod * factor | s });
+                let style1 = b#style |> Option.map(s -> DrawCmd.scalePx(factor, s));
                 Item.Box({ size = { x = b#size#x * factor, y = b#size#y * factor }, style = style1 | b })
             case Item.Poly(p)   => Item.Poly({ vertices = List.map(v -> Vec2.mul(v, factor), p#vertices) | p })
         }

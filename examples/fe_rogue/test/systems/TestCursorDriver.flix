@@ -207,7 +207,7 @@ mod TestCursorDriver {
                 GameLogger.GameLogger,
                 EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
         // 押下キーは Frame 値で渡す（本番 gameLoop と同じ入力モデル）。カーソル polling は down のみ読む。
-        let frame = ({down = held, justPressed = Set.empty(), dt = 0.016, viewport = {x = 240.0, y = 128.0}, cursor = Vec2.zero(), mouseDown = false, mouseClicked = false}: App.Frame);
+        let frame = ({down = held, justPressed = Set.empty(), dt = 0.016, viewport = {x = 240.0, y = 128.0}, cursor = Vec2.zero(), mouseDown = false, mouseClicked = false, mouseMoved = false}: App.Frame);
         // カーソル論理状態は resource 権威。初期 gridPos / hold / snag をここで seed する。
         CursorState.State.put(initial);
         TurnPhase.State.put(phase);
@@ -234,7 +234,7 @@ mod TestCursorDriver {
     def runStepOnBoardNoMap(initial: CursorDriver.Data, held: Set[GameEngine.Key]): CursorDriver.Data
             \ {GameLogger.GameLogger,
                 EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
-        let frame = ({down = held, justPressed = Set.empty(), dt = 0.016, viewport = {x = 240.0, y = 128.0}, cursor = Vec2.zero(), mouseDown = false, mouseClicked = false}: App.Frame);
+        let frame = ({down = held, justPressed = Set.empty(), dt = 0.016, viewport = {x = 240.0, y = 128.0}, cursor = Vec2.zero(), mouseDown = false, mouseClicked = false, mouseMoved = false}: App.Frame);
         CursorState.State.put(initial);
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         region rc {
@@ -261,7 +261,7 @@ mod TestCursorDriver {
             \ {BoardQuery,
                 GameLogger.GameLogger,
                 EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
-        let frame = ({down = held, justPressed = Set.empty(), dt = 0.016, viewport = {x = 240.0, y = 128.0}, cursor = Vec2.zero(), mouseDown = false, mouseClicked = false}: App.Frame);
+        let frame = ({down = held, justPressed = Set.empty(), dt = 0.016, viewport = {x = 240.0, y = 128.0}, cursor = Vec2.zero(), mouseDown = false, mouseClicked = false, mouseMoved = false}: App.Frame);
         CursorState.State.put(initial);
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         region rc {
@@ -287,7 +287,7 @@ mod TestCursorDriver {
             \ {BoardQuery,
                 GameLogger.GameLogger,
                 EnemyData.RosterQuery, TurnPhase.State, CursorState.State} =
-        let frame = ({down = held, justPressed = Set.empty(), dt = 0.016, viewport = {x = 240.0, y = 128.0}, cursor = Vec2.zero(), mouseDown = false, mouseClicked = false}: App.Frame);
+        let frame = ({down = held, justPressed = Set.empty(), dt = 0.016, viewport = {x = 240.0, y = 128.0}, cursor = Vec2.zero(), mouseDown = false, mouseClicked = false, mouseMoved = false}: App.Frame);
         CursorState.State.put(initial);
         TurnPhase.State.put(TurnPhase.Phase.PlayerCursor);
         region rc {

@@ -19,6 +19,7 @@
       "additionalProperties": { "$ref": "#/$defs/color" },
       "patternProperties": { "^//": {} }
     },
+    "paletteFile": { "type": "string", "description": "外部パレット JSON のパス(形は palette と同じ)。inline の palette が同名に勝つ" },
     "root": { "$ref": "#/$defs/node" }
   },
   "required": ["root"],

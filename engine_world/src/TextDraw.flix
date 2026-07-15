@@ -45,4 +45,25 @@ mod TextDraw {
         let s = size(a#text, a#atlas, a#size);
         { at = { x = a#center#x - s#x / 2.0, y = a#center#y - s#y / 2.0 },
           item = Render.textTinted(a#text, a#atlas, a#size, a#color, a#z) }
+
+    /// リロード失敗などのエラー文を画面左上に赤字で出す（None なら何も出さない）。
+    /// 長文は 64 字で折り返し、4 行を超えた分は末尾を "..." に丸める。
+    pub def errorBanner(atlas: FontAtlas, error: Option[String]): List[Render.PlacedItem] =
+        match error {
+            case None      => Nil
+            case Some(msg) =>
+                wrapChunks(msg, 64, 4) |> List.zipWithIndex |> List.map(pair -> {
+                    let (i, line) = pair;
+                    { at = { x = 8.0, y = 8.0 + Int32.toFloat64(i) * 11.0 },
+                      item = Render.textTinted(line, atlas, 8.0,
+                                               { r = 1.0f32, g = 0.4f32, b = 0.4f32 }, 200) }
+                })
+        }
+
+    /// 文字数 width ごとに切り、maxLines 行に収まらない分は末尾を "..." に丸める。
+    def wrapChunks(s: String, width: Int32, maxLines: Int32): List[String] =
+        if (maxLines <= 0 or s == "") Nil
+        else if (String.length(s) <= width) s :: Nil
+        else if (maxLines == 1) "${String.take(Int32.max(1, width - 3), s)}..." :: Nil
+        else String.take(width, s) :: wrapChunks(String.drop(width, s), width, maxLines - 1)
 }

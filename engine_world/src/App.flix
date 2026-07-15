@@ -20,7 +20,8 @@ mod App {
         viewport = Vec2.Vec2,              // design 解像度の幅・高さ（project.json の designWidth/Height）
         cursor = Vec2.Vec2,                // マウス位置（design 座標。バックエンドが窓→design に変換済み）
         mouseDown = Bool,                  // 左ボタンがいま押されているか
-        mouseClicked = Bool                // 左ボタンがこのフレームで新しく押されたか（エッジ）
+        mouseClicked = Bool,               // 左ボタンがこのフレームで新しく押されたか（エッジ）
+        mouseMoved = Bool                  // このフレームでマウスが動いたか（前フレームとの座標比較）
     }
 
     /// key がいま押されているか（押しっぱなしも true）。移動などの連続入力に。
@@ -219,18 +220,21 @@ mod App {
 
     /// 前フレームと今フレームのキー集合から Frame を組む。justPressed は差分
     /// （今あって前に無いキー）なので、押しっぱなしはエッジにならない。
-    /// マウスも同じ考え方: mouseClicked は「今押されていて前は押されていない」エッジ。
+    /// マウスも同じ考え方: mouseClicked は「今押されていて前は押されていない」エッジ、
+    /// mouseMoved は前フレームとの座標比較（最初のフレームは prevCursor = None で false）。
     pub def frameOf(prev: {prev = Set[GameEngine.Key]},
                     current: {current = Set[GameEngine.Key]}, dt: Float64,
-                    viewport: Vec2.Vec2, cursor: Vec2.Vec2,
+                    viewport: Vec2.Vec2,
+                    cursor: {prevCursor = Option[Vec2.Vec2], cursor = Vec2.Vec2},
                     mouse: {prevDown = Bool, down = Bool}): Frame =
         { down = current#current,
           justPressed = Set.difference(current#current, prev#prev),
           dt = dt,
           viewport = viewport,
-          cursor = cursor,
+          cursor = cursor#cursor,
           mouseDown = mouse#down,
-          mouseClicked = mouse#down and not mouse#prevDown }
+          mouseClicked = mouse#down and not mouse#prevDown,
+          mouseMoved = Option.exists(p -> p#x != cursor#cursor#x or p#y != cursor#cursor#y, cursor#prevCursor) }
 
     /// システムの列を追加順（左から右）に World へ畳み込む。
     pub def applySystems(frame: Frame, systems: List[(Frame, w) -> w \ ef], world: w): w \ ef =
@@ -284,8 +288,9 @@ mod App {
         let bridge = if (canDebug(app)) Option.map(RemoteDebug.start, RemoteDebug.portFromEnv())
                      else None;
         // キーと同じく、起動時にすでに押されているボタンは一度離すまでエッジにならない。
+        // カーソルの「前の位置」はまだ無い（None）ので、最初のフレームの mouseMoved は false。
         loop(app, world0, InputEvent.currentKeys(),
-             GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left),
+             GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left), None,
              Annotate.initial(), Nil, bridge, false);
         Option.forEach(RemoteDebug.shutdown, bridge)
 
@@ -307,13 +312,14 @@ mod App {
     /// bridge はリモートデバッグの HTTP 口（無効なら None）。remoteHold が真の間は
     /// HTTP 側が停止の主導権を持つので、F8 での解除は効かない（/resume で戻す）。
     def loop(app: App[w, ef], world: w, prevKeys: Set[GameEngine.Key], prevMouseDown: Bool,
-             anno: Annotate.State, history: List[w],
+             prevCursor: Option[Vec2.Vec2], anno: Annotate.State, history: List[w],
              bridge: Option[RemoteDebug.Bridge], remoteHold: Bool): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
         let currentKeys = InputEvent.currentKeys();
         let mouseDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
+        let cursorNow = GameEngine.Game.getMousePosition();
         let frame = frameOf(prev = prevKeys, current = currentKeys, readDt(),
                             GameEngine.Game.getViewportRect()#size,
-                            GameEngine.Game.getMousePosition(),
+                            { prevCursor = prevCursor, cursor = cursorNow },
                             { prevDown = prevMouseDown, down = mouseDown });
         let wantsQuit = app#quit;
         if (GameEngine.Game.shouldClose() or wantsQuit(frame, world)) ()
@@ -328,7 +334,7 @@ mod App {
                     // （停止中は元々進まないし、実行中でも 1 フレームの息継ぎに過ぎない）。
                     let next = handleRemote(app, b, raw,
                         { world = world, anno = anno, history = history, hold = remoteHold });
-                    loop(app, next#world, currentKeys, mouseDown, next#anno, next#history, bridge, next#hold)
+                    loop(app, next#world, currentKeys, mouseDown, Some(cursorNow), next#anno, next#history, bridge, next#hold)
                 case _ => {
                     let toggled = justPressed(GameEngine.Key.F8, frame) and canDebug(app) and not remoteHold;
                     let pausedNow = if (toggled) not anno#paused else anno#paused;
@@ -341,13 +347,13 @@ mod App {
                     } else ();
                     if (pausedNow) {
                         let nextAnno = pausedStep(app, world, history, frame, { paused = true | anno });
-                        loop(app, world, currentKeys, mouseDown, nextAnno, history, bridge, remoteHold)
+                        loop(app, world, currentKeys, mouseDown, Some(cursorNow), nextAnno, history, bridge, remoteHold)
                     } else if (anno#paused) {
                         // 一時停止を抜けるフレーム: スクラブ位置の World から再開する。
                         // 巻き戻したぶんの履歴とフレーム番号も、そこを現在として数え直す。
                         let resumed = resumePoint(anno, history, world);
                         renderFrame(app, resumed#world);
-                        loop(app, resumed#world, currentKeys, mouseDown, resumed#anno, resumed#history, bridge, remoteHold)
+                        loop(app, resumed#world, currentKeys, mouseDown, Some(cursorNow), resumed#anno, resumed#history, bridge, remoteHold)
                     } else {
                         let reloaded = applyReload(app, frame, world);
                         let advanced = applySystems(frame, app#updateSystems, reloaded);
@@ -357,7 +363,7 @@ mod App {
                         let nextHistory = if (canDebug(app))
                                               List.take(historyLimit(), advanced :: history)
                                           else Nil;
-                        loop(app, advanced, currentKeys, mouseDown, { frame = anno#frame + 1i64 | anno }, nextHistory, bridge, remoteHold)
+                        loop(app, advanced, currentKeys, mouseDown, Some(cursorNow), { frame = anno#frame + 1i64 | anno }, nextHistory, bridge, remoteHold)
                     }
                 }
             }
@@ -768,9 +774,10 @@ mod App {
                         Ref.put(frameNo, frameNoRef);
                         // 実ハンドラへ素通し = glfwPollEvents が回り、窓が固まらない・閉じられる
                         let closing = GameEngine.Game.shouldClose();
-                        // /step の台本はキーのみ（マウスは台本に無いので常に「押されていない」）。
+                        // /step の台本はキーのみ（マウスは台本に無いので常に「押されず・動かず」）。
                         let frame = frameOf(prev = state#prev, current = frameKeys, stepParams#dtSeconds,
-                                            GameEngine.Game.getViewportRect()#size, Vec2.zero(),
+                                            GameEngine.Game.getViewportRect()#size,
+                                            { prevCursor = None, cursor = Vec2.zero() },
                                             { prevDown = false, down = false });
                         let wantsQuit = app#quit;
                         if (closing or wantsQuit(frame, state#world))

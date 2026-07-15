@@ -521,6 +521,42 @@ mod TestUiDoc {
             expected = true,
             match got { case Err(e) => String.contains(substr = "failed to read", JsonCompat.describe(e)) case Ok(_) => false })
 
+    // ── paletteFile（外部パレットの load 層合成）──
+
+    @Test
+    def testPaletteFileMergesAndInlineWins(): Unit \ {Assert, IO} =
+        // 外部パレットの base が引け、同名の accent は inline が勝つ。
+        let got = run { UiSpec.load("test/assets/palette_main.ui.json") } with Fs.FileRead.runWithIO;
+        let colors = got |> Result.toOption |> Option.flatMap(firstTwoBoxColors);
+        Assert.assertEq(
+            expected = Some(((1.0f32, 0.0f32, 0.0f32), (0.0f32, 0.0f32, 1.0f32))),
+            colors)
+
+    /// root 直下の子 2 つの box 色を取り出す(paletteFile テスト用)。
+    def firstTwoBoxColors(spec: UiSpec.Spec): Option[((Float32, Float32, Float32), (Float32, Float32, Float32))] =
+        match spec {
+            case UiSpec.Spec.Spec(root) => twoBoxColors(root#children)
+        }
+
+    def twoBoxColors(children: List[UiSpec.Spec]): Option[((Float32, Float32, Float32), (Float32, Float32, Float32))] =
+        match children {
+            case UiSpec.Spec.Spec(a) :: UiSpec.Spec.Spec(b) :: Nil =>
+                a#box |> Option.flatMap(ab -> b#box |> Option.map(bb ->
+                    (colorTuple(ab#color), colorTuple(bb#color))))
+            case _ => None
+        }
+
+    @Test
+    def testPaletteFileMissingIsLoudError(): Unit \ {Assert, IO} =
+        // paletteFile が読めないときは黙って無視せず Err（文言に paletteFile が入る）。
+        let got = run { UiDoc.load("test/assets/palette_missing.ui.json") } with Fs.FileRead.runWithIO;
+        Assert.assertEq(
+            expected = true,
+            match got {
+                case Err(e) => String.contains(substr = "paletteFile: failed to read", JsonCompat.describe(e))
+                case Ok(_)  => false
+            })
+
     // ── intrinsicSize ──
 
     @Test
