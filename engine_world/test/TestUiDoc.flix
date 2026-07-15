@@ -177,6 +177,61 @@ mod TestUiDoc {
             (String.contains(substr = "at g: 'color' is required", msg),
              String.contains(substr = "type mismatch", msg)))
 
+    // ── parse: palette（"@名前" の色参照）──
+
+    @Test
+    def testPaletteRefResolvesAtParse(): Unit \ Assert =
+        let doc = "{\"palette\": {\"accent\": \"#ff0000\"},"
+                + "\"root\": {\"name\":\"g\",\"children\":["
+                + "{\"name\":\"c\",\"widget\":\"circle\",\"radius\":10.0,\"color\":\"@accent\","
+                + "\"hover\":{\"borderColor\":\"@accent\"}}]}}";
+        let got = parseDoc(doc) |> Option.flatMap(firstChild) |> Option.flatMap(child ->
+            match widgetOf(child) {
+                case UiDoc.Widget.ShapeW(s) => match child {
+                    case UiDoc.Spec.Spec(node) =>
+                        Some((colorTuple(s#color),
+                              node#hover |> Option.flatMap(h -> Option.map(colorTuple, h#borderColor))))
+                }
+                case _ => None
+            });
+        Assert.assertEq(
+            expected = Some(((1.0f32, 0.0f32, 0.0f32), Some((1.0f32, 0.0f32, 0.0f32)))),
+            got)
+
+    @Test
+    def testUnknownPaletteNameIsError(): Unit \ Assert =
+        let doc = "{\"palette\": {\"accent\": \"#ff0000\"},"
+                + "\"root\": {\"name\":\"g\",\"widget\":\"box\",\"color\":\"@typo\",\"width\":10,\"height\":10}}";
+        Assert.assertEq(expected = true,
+            String.contains(substr = "unknown palette color '@typo'", errTextOf(doc)))
+
+    @Test
+    def testInstancePaletteIsPerDocument(): Unit \ Assert =
+        // 参照先は自分の palette で解決する（使う側の accent は漏れない）。
+        let btn = ("btn.ui.json",
+            "{\"palette\": {\"accent\": \"#00ff00\"},"
+            + "\"root\": {\"name\":\"button\",\"widget\":\"box\",\"color\":\"@accent\",\"width\":10,\"height\":10}}");
+        let main = "{\"palette\": {\"accent\": \"#ff0000\"},"
+                 + "\"root\": {\"name\":\"g\",\"children\":["
+                 + "{\"name\":\"b\",\"instance\":\"btn.ui.json\"}]}}";
+        let got = parseWithDocs(btn :: Nil, main)
+            |> Option.flatMap(firstChild)
+            |> Option.flatMap(b -> match widgetOf(b) {
+                case UiDoc.Widget.BoxW(box) => Some(colorTuple(box#color))
+                case _ => None
+            });
+        Assert.assertEq(expected = Some((0.0f32, 1.0f32, 0.0f32)), got)
+
+    @Test
+    def testWrapValidation(): Unit \ Assert =
+        // wrap は Row + 幅高さ明示のみ。column や auto 寸法は loud に Err。
+        let ok       = "{\"root\": {\"name\":\"g\",\"dir\":\"row\",\"wrap\":true,\"width\":100,\"height\":50}}";
+        let column   = "{\"root\": {\"name\":\"g\",\"wrap\":true,\"width\":100,\"height\":50}}";
+        let autoW    = "{\"root\": {\"name\":\"g\",\"dir\":\"row\",\"wrap\":true,\"height\":50}}";
+        Assert.assertEq(
+            expected = (true, false, false),
+            (parses(ok), parses(column), parses(autoW)))
+
     // ── parse: version / $schema / "//" ──
 
     @Test

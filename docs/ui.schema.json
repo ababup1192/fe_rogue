@@ -13,6 +13,12 @@
       "description": "テンプレート名 → 部分ノード。ノード側の use で参照し、ノードの値が勝つ。",
       "additionalProperties": { "$ref": "#/$defs/nodePartial" }
     },
+    "palette": {
+      "type": "object",
+      "description": "色の名前表。ノードの色値から \"@名前\" で参照する(このドキュメント内のみ。instance 参照先は自分の palette を使う)。値に \"@...\" は書けない。",
+      "additionalProperties": { "$ref": "#/$defs/color" },
+      "patternProperties": { "^//": {} }
+    },
     "root": { "$ref": "#/$defs/node" }
   },
   "required": ["root"],
@@ -32,6 +38,7 @@
     "color": {
       "oneOf": [
         { "type": "string", "pattern": "^#?[0-9a-fA-F]{6}$", "description": "\"#rrggbb\"" },
+        { "type": "string", "pattern": "^@.+$", "description": "\"@名前\" — トップレベル palette の参照" },
         { "type": "object", "properties": { "hsv": { "$ref": "#/$defs/vec3" } },
           "required": ["hsv"], "additionalProperties": false,
           "description": "{\"hsv\":[h,s,v]} — h は 1 周 = 1.0" },
@@ -80,6 +87,8 @@
         "height": { "$ref": "#/$defs/size" },
         "mainAlign": { "type": "string", "enum": ["start", "center", "end", "spaceBetween"] },
         "crossAlign": { "type": "string", "enum": ["start", "center", "end", "stretch"] },
+        "wrap": { "type": "boolean",
+                  "description": "主軸に収まらない子を次の行へ折り返す。dir: \"row\" かつ width/height 明示(px か \"grow\")が必要。行内は左詰め(mainAlign/crossAlign/Grow は効かない)。" },
         "abs": { "$ref": "#/$defs/vec2", "description": "フロー外配置 (親コンテンツ原点相対)" },
 
         "color": { "$ref": "#/$defs/color" },

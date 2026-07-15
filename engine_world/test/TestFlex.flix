@@ -88,6 +88,42 @@ mod TestFlex {
                     :: Nil,
             rects(root, 480.0, 530.0))
 
+    // ── wrap（折り返し）──
+
+    @Test
+    def testWrapBreaksRowsAtWidth(): Unit \ Assert =
+        // 幅 100 に 30×10 を gap5 で 5 個 → 1 行目 3 個(30+5+30+5+30=100)、2 行目 2 個。
+        // 2 行目の y = 行高 10 + gap 5 = 15。
+        let root = Flex.box({ width = UiLayout.SizeSpec.Px(100.0), height = UiLayout.SizeSpec.Px(50.0),
+                              wrap = true, gap = 5.0 | Flex.rowStyle() },
+               dot(30.0, 10.0) :: dot(30.0, 10.0) :: dot(30.0, 10.0)
+            :: dot(30.0, 10.0) :: dot(30.0, 10.0) :: Nil);
+        Assert.assertEq(
+            expected = (0.0, 0.0, 30.0, 10.0) :: (35.0, 0.0, 30.0, 10.0) :: (70.0, 0.0, 30.0, 10.0)
+                    :: (0.0, 15.0, 30.0, 10.0) :: (35.0, 15.0, 30.0, 10.0) :: Nil,
+            rects(root, 100.0, 50.0))
+
+    @Test
+    def testWrapRowHeightIsTallestChild(): Unit \ Assert =
+        // 1 行目に高さ 10 と 20 が混在 → 2 行目は y = 20 から始まる(gap 0)。
+        let root = Flex.box({ width = UiLayout.SizeSpec.Px(60.0), height = UiLayout.SizeSpec.Px(50.0),
+                              wrap = true | Flex.rowStyle() },
+               dot(30.0, 10.0) :: dot(30.0, 20.0) :: dot(30.0, 10.0) :: Nil);
+        Assert.assertEq(
+            expected = (0.0, 0.0, 30.0, 10.0) :: (30.0, 0.0, 30.0, 20.0)
+                    :: (0.0, 20.0, 30.0, 10.0) :: Nil,
+            rects(root, 60.0, 50.0))
+
+    @Test
+    def testWrapPlacesOversizeChildOnePerRow(): Unit \ Assert =
+        // 1 個も入らない幅でも各行に 1 個は置く(行が空のまま無限に増えない)。
+        let root = Flex.box({ width = UiLayout.SizeSpec.Px(20.0), height = UiLayout.SizeSpec.Px(50.0),
+                              wrap = true | Flex.rowStyle() },
+               dot(30.0, 10.0) :: dot(30.0, 10.0) :: Nil);
+        Assert.assertEq(
+            expected = (0.0, 0.0, 30.0, 10.0) :: (0.0, 10.0, 30.0, 10.0) :: Nil,
+            rects(root, 20.0, 50.0))
+
     // ── place: 確定 rect が draw に届いて連結される ──
 
     @Test

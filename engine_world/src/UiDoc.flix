@@ -69,6 +69,7 @@ mod UiDoc {
     type alias ParseEnv = {
         templates = Map[String, Map[String, Json]],  // いま効いているテンプレート（use の参照先）
         defaultFont = String,                        // font 未指定の text が使うフォント名
+        palette = Map[String, Color],                // "@name" 色参照の解決表（ドキュメントごと）
         resolver = Map[String, Json],                // instance のパス → 読み込み済み JSON
         stack = List[String]                         // 解決中の instance パスの連なり（循環検出用）
     }
@@ -86,22 +87,37 @@ mod UiDoc {
             case JObject(topMap) => forM (
                 top  <- parseTopLevel(topMap);
                 spec <- parseNode({ templates = top#templates, defaultFont = top#defaultFont,
+                                    palette = top#palette,
                                     resolver = resolver, stack = stack }, "", 0, top#rootMap)
             ) yield spec
             case _ => Err(JsonCompat.jsonError(Root, Set#{"UiDoc must be a JSON object with a 'root'"}))
         }
 
-    /// トップレベル（version / templates / defaultFont / root）をまとめて取り出す。
+    /// トップレベル（version / templates / defaultFont / palette / root）をまとめて取り出す。
     /// ドキュメントの入口（parseTop）と instance の参照先（resolveInstance）が同じ形を読むための共通部。
     def parseTopLevel(topMap: Map[String, Json]):
             Result[JsonError, { templates = Map[String, Map[String, Json]], defaultFont = String,
-                                rootMap = Map[String, Json] }] =
+                                palette = Map[String, Color], rootMap = Map[String, Json] }] =
         forM (
             _v          <- checkVersion(topMap);
             templates   <- parseTemplates(topMap);
             defaultFont <- parseDefaultFont(topMap);
+            palette     <- parsePalette(topMap);
             rootMap     <- (JsonCompat.getAtKey(Root, "root", topMap): Result[JsonError, Map[String, Json]])
-        ) yield { templates = templates, defaultFont = defaultFont, rootMap = rootMap }
+        ) yield { templates = templates, defaultFont = defaultFont, palette = palette, rootMap = rootMap }
+
+    /// "palette": { "名前": <色> }。ノードの色値から "@名前" で参照する。
+    /// パレットの値自体に "@..." は書けない（自己参照を作らない）。
+    def parsePalette(topMap: Map[String, Json]): Result[JsonError, Map[String, Color]] =
+        match (JsonCompat.getAtKeyOpt(Root, "palette", topMap): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)      => Err(e)
+            case Ok(None)    => Ok(Map.empty())
+            case Ok(Some(m)) =>
+                m |> Map.toList |> Result.traverse(entry -> {
+                    let (name, json) = entry;
+                    colorOf(Map.empty(), "palette '${name}'", json) |> Result.map(c -> (name, c))
+                }) |> Result.map(List.toMap)
+        }
 
     /// "version"（省略時 1）。この実装が知らない版は loud に断る（黙って誤読しない）。
     def checkVersion(topMap: Map[String, Json]): Result[JsonError, Unit] =
@@ -148,7 +164,7 @@ mod UiDoc {
             case Ok((name, merged)) =>
                 let path = if (parentPath == "") name else "${parentPath}/${name}";
                 forM (
-                    own      <- JsonCompat.atNode(path, parseOwnFields(env#defaultFont, merged));
+                    own      <- JsonCompat.atNode(path, parseOwnFields(env, merged));
                     children <- parseChildren(env, path, merged);
                     _uniq    <- JsonCompat.atNode(path, ensureUniqueNames(children))
                 ) yield Spec.Spec({
@@ -189,6 +205,7 @@ mod UiDoc {
             overrides <- parseOverrides(nodeMap);
             patched   <- applyOverrides(overrides, mergeNode(top#rootMap, own));
             spec      <- parseNode({ templates = top#templates, defaultFont = top#defaultFont,
+                                     palette = top#palette,
                                      resolver = env#resolver, stack = instPath :: env#stack },
                                    parentPath, ordinal, patched)
         ) yield spec
@@ -275,18 +292,18 @@ mod UiDoc {
         JsonCompat.jsonError(Root, Set#{"instance '${path}' is not loaded (use UiDoc.load)"})
 
     /// ノード自身の属性（widget・style・visible・bind/meta/hover/layer）。
-    def parseOwnFields(defaultFont: String, merged: Map[String, Json]):
+    def parseOwnFields(env: ParseEnv, merged: Map[String, Json]):
             Result[JsonError, { widget = Widget, style = UiLayout.Style, visible = Bool,
                                 binding = Option[String], meta = Option[String],
                                 hover = Option[UiWidget.HoverStyle], layer = Int32 }] =
         forM (
             widgetOpt  <- (JsonCompat.getAtKeyOpt(Root, "widget", merged): Result[JsonError, Option[String]]);
-            widget     <- parseWidget(widgetOpt, defaultFont, merged);
+            widget     <- parseWidget(widgetOpt, env, merged);
             style      <- parseStyle(merged);
             visibleOpt <- (JsonCompat.getAtKeyOpt(Root, "visible", merged): Result[JsonError, Option[Bool]]);
             bindingOpt <- (JsonCompat.getAtKeyOpt(Root, "bind", merged): Result[JsonError, Option[String]]);
             metaOpt    <- (JsonCompat.getAtKeyOpt(Root, "meta", merged): Result[JsonError, Option[String]]);
-            hover      <- parseHoverOpt(merged);
+            hover      <- parseHoverOpt(env#palette, merged);
             layerOpt   <- (JsonCompat.getAtKeyOpt(Root, "layer", merged): Result[JsonError, Option[Int32]])
         ) yield {
             widget = widget, style = applyIntrinsic(widget, style),
@@ -297,14 +314,14 @@ mod UiDoc {
 
     /// "hover": { color / borderColor / tint / alpha } — hover 時の部分上書き。
     /// 効くのは UiStore 経路（extract）のみで、Flex 経路は静的なので持たない。
-    def parseHoverOpt(map: Map[String, Json]): Result[JsonError, Option[UiWidget.HoverStyle]] =
+    def parseHoverOpt(palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, Option[UiWidget.HoverStyle]] =
         match (JsonCompat.getAtKeyOpt(Root, "hover", map): Result[JsonError, Option[Map[String, Json]]]) {
             case Err(e)      => Err(e)
             case Ok(None)    => Ok(None)
             case Ok(Some(m)) => forM (
-                color       <- parseColorOpt("color", m);
-                borderColor <- parseColorOpt("borderColor", m);
-                tint        <- parseColorOpt("tint", m);
+                color       <- parseColorOpt(palette, "color", m);
+                borderColor <- parseColorOpt(palette, "borderColor", m);
+                tint        <- parseColorOpt(palette, "tint", m);
                 alphaOpt    <- (JsonCompat.getAtKeyOpt(Root, "alpha", m): Result[JsonError, Option[Float64]])
             ) yield Some({ color = color, borderColor = borderColor, tint = tint,
                            alpha = Option.map(a -> Float64.truncateToFloat32(a), alphaOpt) })
@@ -371,35 +388,36 @@ mod UiDoc {
     // widget 解析
     // ========================================================================
 
-    def parseWidget(opt: Option[String], defaultFont: String,
+    def parseWidget(opt: Option[String], env: ParseEnv,
                     map: Map[String, Json]): Result[JsonError, Widget] =
+        let palette = env#palette;
         match opt {
             case None             => Ok(Widget.NoneW)
             case Some("none")     => Ok(Widget.NoneW)
-            case Some("box")      => parseBox(map)               |> Result.map(b -> Widget.BoxW(b))
-            case Some("text")     => parseText(defaultFont, map) |> Result.map(t -> Widget.TextW(t))
-            case Some("sprite")   => parseSprite(map)            |> Result.map(sp -> Widget.SpriteW(sp))
-            case Some("poly")     => parsePoly(map)              |> Result.map(p -> Widget.PolyW(p))
-            case Some("circle")   => shapeWidget(map, parseCircle(map))
-            case Some("ngon")     => shapeWidget(map, parseNgon(map))
-            case Some("star")     => shapeWidget(map, parseStar(map))
-            case Some("ellipse")  => shapeWidget(map, parseEllipse(map))
-            case Some("sector")   => shapeWidget(map, parseSweep(map, true))
-            case Some("segment")  => shapeWidget(map, parseSweep(map, false))
-            case Some("line")     => shapeWidget(map, parseLine(map))
-            case Some("polyline") => shapeWidget(map, parsePolyline(map))
-            case Some("bezier")   => shapeWidget(map, parseBezier(map))
+            case Some("box")      => parseBox(palette, map)                      |> Result.map(b -> Widget.BoxW(b))
+            case Some("text")     => parseText(env#defaultFont, palette, map)    |> Result.map(t -> Widget.TextW(t))
+            case Some("sprite")   => parseSprite(palette, map)                   |> Result.map(sp -> Widget.SpriteW(sp))
+            case Some("poly")     => parsePoly(palette, map)                     |> Result.map(p -> Widget.PolyW(p))
+            case Some("circle")   => shapeWidget(palette, map, parseCircle(map))
+            case Some("ngon")     => shapeWidget(palette, map, parseNgon(map))
+            case Some("star")     => shapeWidget(palette, map, parseStar(map))
+            case Some("ellipse")  => shapeWidget(palette, map, parseEllipse(map))
+            case Some("sector")   => shapeWidget(palette, map, parseSweep(map, true))
+            case Some("segment")  => shapeWidget(palette, map, parseSweep(map, false))
+            case Some("line")     => shapeWidget(palette, map, parseLine(map))
+            case Some("polyline") => shapeWidget(palette, map, parsePolyline(map))
+            case Some("bezier")   => shapeWidget(palette, map, parseBezier(map))
             case Some(unknown)    => Err(JsonCompat.jsonError(Root, Set#{"unknown widget (got: ${unknown})"}))
         }
 
-    def parseBox(map: Map[String, Json]): Result[JsonError, UiWidget.BoxComp] =
+    def parseBox(palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, UiWidget.BoxComp] =
         forM (
-            color           <- parseColor("color", map);
+            color           <- parseColor(palette, "color", map);
             alphaOpt        <- (JsonCompat.getAtKeyOpt(Root, "alpha", map): Result[JsonError, Option[Float64]]);
             zIndexOpt       <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
             cornerRadiusOpt <- (JsonCompat.getAtKeyOpt(Root, "cornerRadius", map): Result[JsonError, Option[Float64]]);
             borderWidthOpt  <- (JsonCompat.getAtKeyOpt(Root, "borderWidth", map): Result[JsonError, Option[Float64]]);
-            borderColorOpt  <- parseColorOpt("borderColor", map)
+            borderColorOpt  <- parseColorOpt(palette, "borderColor", map)
         ) yield ({
             color = color,
             alpha = Float64.truncateToFloat32(Option.getWithDefault(1.0, alphaOpt)),
@@ -409,12 +427,12 @@ mod UiDoc {
             borderColor = Option.getWithDefault(white(), borderColorOpt)
         }: UiWidget.BoxComp)
 
-    def parseText(defaultFont: String, map: Map[String, Json]): Result[JsonError, UiWidget.TextComp] =
+    def parseText(defaultFont: String, palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, UiWidget.TextComp] =
         forM (
             textOpt     <- (JsonCompat.getAtKeyOpt(Root, "text", map): Result[JsonError, Option[String]]);
             fontOpt     <- (JsonCompat.getAtKeyOpt(Root, "font", map): Result[JsonError, Option[String]]);
             fontSizeOpt <- (JsonCompat.getAtKeyOpt(Root, "fontSize", map): Result[JsonError, Option[Float64]]);
-            tintOpt     <- parseColorOpt("tint", map);
+            tintOpt     <- parseColorOpt(palette, "tint", map);
             zIndexOpt   <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]])
         ) yield ({
             text = Option.getWithDefault("", textOpt),
@@ -425,14 +443,14 @@ mod UiDoc {
         }: UiWidget.TextComp)
 
     /// sprite（既存 ui.json と同義。tint は色 3 表記の上位互換）。
-    def parseSprite(map: Map[String, Json]): Result[JsonError, UiWidget.SpriteComp] =
+    def parseSprite(palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, UiWidget.SpriteComp] =
         forM (
             texture    <- (JsonCompat.getAtKey(Root, "texture", map): Result[JsonError, String]);
             regionRect <- parseRegionRectOpt(map);
             scale      <- parseVec2Or("scale", {x = 1.0, y = 1.0}, map);
             flipHOpt   <- (JsonCompat.getAtKeyOpt(Root, "flipH", map): Result[JsonError, Option[Bool]]);
             flipVOpt   <- (JsonCompat.getAtKeyOpt(Root, "flipV", map): Result[JsonError, Option[Bool]]);
-            tintOpt    <- parseColorOpt("tint", map);
+            tintOpt    <- parseColorOpt(palette, "tint", map);
             zIndexOpt  <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
             hframesOpt <- (JsonCompat.getAtKeyOpt(Root, "hframes", map): Result[JsonError, Option[Int32]]);
             vframesOpt <- (JsonCompat.getAtKeyOpt(Root, "vframes", map): Result[JsonError, Option[Int32]]);
@@ -448,12 +466,12 @@ mod UiDoc {
             frame = Option.getWithDefault(0, frameOpt)
         }: UiWidget.SpriteComp)
 
-    def parsePoly(map: Map[String, Json]): Result[JsonError, PolySpec] =
+    def parsePoly(palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, PolySpec] =
         forM (
             points      <- parsePointList(map);
             _enough     <- if (List.length(points) >= 3) Ok(())
                            else Err(JsonCompat.jsonError(Root, Set#{"poly points must have >= 3 entries (got: ${List.length(points)})"}));
-            color       <- parseColor("color", map);
+            color       <- parseColor(palette, "color", map);
             alphaOpt    <- (JsonCompat.getAtKeyOpt(Root, "alpha", map): Result[JsonError, Option[Float64]]);
             zIndexOpt   <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
             rotationOpt <- (JsonCompat.getAtKeyOpt(Root, "rotation", map): Result[JsonError, Option[Float64]]);
@@ -468,14 +486,14 @@ mod UiDoc {
 
     // ── 図形 widget の共通フィールドと各パラメータ ──
 
-    def shapeWidget(map: Map[String, Json], shapeRes: Result[JsonError, UiShape.Shape]): Result[JsonError, Widget] =
+    def shapeWidget(palette: Map[String, Color], map: Map[String, Json], shapeRes: Result[JsonError, UiShape.Shape]): Result[JsonError, Widget] =
         forM (
             shape          <- shapeRes;
-            color          <- parseColor("color", map);
+            color          <- parseColor(palette, "color", map);
             alphaOpt       <- (JsonCompat.getAtKeyOpt(Root, "alpha", map): Result[JsonError, Option[Float64]]);
             zIndexOpt      <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
             borderWidthOpt <- (JsonCompat.getAtKeyOpt(Root, "borderWidth", map): Result[JsonError, Option[Float64]]);
-            borderColorOpt <- parseColorOpt("borderColor", map)
+            borderColorOpt <- parseColorOpt(palette, "borderColor", map)
         ) yield Widget.ShapeW({
             shape = shape, color = color,
             alpha = Float64.truncateToFloat32(Option.getWithDefault(1.0, alphaOpt)),
@@ -589,14 +607,31 @@ mod UiDoc {
             main     <- parseMainAlign(mainOpt);
             crossOpt <- (JsonCompat.getAtKeyOpt(Root, "crossAlign", map): Result[JsonError, Option[String]]);
             cross    <- parseCrossAlign(crossOpt);
-            abs      <- parseVec2Opt("abs", map)
+            wrapOpt  <- (JsonCompat.getAtKeyOpt(Root, "wrap", map): Result[JsonError, Option[Bool]]);
+            abs      <- parseVec2Opt("abs", map);
+            wrap     <- validateWrap(Option.getWithDefault(false, wrapOpt), dir, width, height)
         ) yield ({
             dir = dir, gap = Option.getWithDefault(0.0, gapOpt),
             padLeft = pad#l, padTop = pad#t, padRight = pad#r, padBottom = pad#b,
             width = width, height = height,
             mainAlign = main, crossAlign = cross,
+            wrap = wrap,
             abs = abs
         }: UiLayout.Style)
+
+    /// wrap の前提を検査する。折り返し位置は幅から、全体の高さは折り返し結果から決まるので、
+    /// 幅と高さの両方を書いた Row でだけ使える（黙って変な形に潰さない）。
+    def validateWrap(wrap: Bool, dir: UiLayout.Dir, width: UiLayout.SizeSpec,
+                     height: UiLayout.SizeSpec): Result[JsonError, Bool] =
+        if (not wrap) Ok(false)
+        else if (dir != UiLayout.Dir.Row)
+            Err(JsonCompat.jsonError(Root, Set#{"wrap is only supported with dir: \"row\""}))
+        else if (isAuto(width) or isAuto(height))
+            Err(JsonCompat.jsonError(Root, Set#{"wrap requires explicit width and height (px or \"grow\") — auto cannot be solved"}))
+        else Ok(true)
+
+    def isAuto(spec: UiLayout.SizeSpec): Bool =
+        match spec { case UiLayout.SizeSpec.Auto => true case _ => false }
 
     def parseDir(opt: Option[String]): Result[JsonError, UiLayout.Dir] =
         match opt {
@@ -697,22 +732,26 @@ mod UiDoc {
         }
 
     /// 色（必須）: "#rrggbb" | {"hsv":[h,s,v]} | {"rgb":[r,g,b]}。
-    def parseColor(key: String, map: Map[String, Json]): Result[JsonError, Color] =
+    def parseColor(palette: Map[String, Color], key: String, map: Map[String, Json]): Result[JsonError, Color] =
         match Map.get(key, map) {
             case None       => Err(JsonCompat.jsonError(Root, Set#{"'${key}' is required"}))
-            case Some(json) => colorOf(key, json)
+            case Some(json) => colorOf(palette, key, json)
         }
 
     /// 色。キー欠落は None。
-    def parseColorOpt(key: String, map: Map[String, Json]): Result[JsonError, Option[Color]] =
+    def parseColorOpt(palette: Map[String, Color], key: String, map: Map[String, Json]): Result[JsonError, Option[Color]] =
         match Map.get(key, map) {
             case None       => Ok(None)
-            case Some(json) => colorOf(key, json) |> Result.map(color -> Some(color))
+            case Some(json) => colorOf(palette, key, json) |> Result.map(color -> Some(color))
         }
 
-    def colorOf(key: String, json: Json): Result[JsonError, Color] =
+    def colorOf(palette: Map[String, Color], key: String, json: Json): Result[JsonError, Color] =
         match json {
-            case JString(hex) => hexToColor(hex)
+            case JString(s) =>
+                if (String.startsWith(prefix = "@", s))
+                    Map.get(String.drop(1, s), palette) |> Option.toOk(JsonCompat.jsonError(Root,
+                        Set#{"${key}: unknown palette color '${s}' (defined: ${definedNames(palette)})"}))
+                else hexToColor(s)
             case JObject(m)   => match (Map.get("hsv", m), Map.get("rgb", m)) {
                 case (Some(hsvJson), None) =>
                     floats3(key, hsvJson) |> Result.map(t -> {
@@ -730,6 +769,11 @@ mod UiDoc {
             }
             case _ => Err(colorFormatError(key))
         }
+
+    /// パレット定義名の一覧を読みやすい形にする(空なら "none")。
+    def definedNames(palette: Map[String, Color]): String =
+        let names = Map.keysOf(palette) |> Set.toList;
+        if (List.isEmpty(names)) "none" else String.intercalate(", ", names)
 
     def colorFormatError(key: String): JsonError =
         JsonCompat.jsonError(Root, Set#{"${key} must be \"#rrggbb\", {\"hsv\":[h,s,v]}, or {\"rgb\":[r,g,b]}"})

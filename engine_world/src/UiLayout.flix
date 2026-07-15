@@ -34,21 +34,24 @@ mod UiLayout {
     /// `padLeft`/`padTop`/`padRight`/`padBottom`: 内側パディング。
     /// `width`/`height`: 自分の幅・高さの決め方。
     /// `mainAlign`/`crossAlign`: 子の主軸・交差軸の寄せ方。
+    /// `wrap`: 主軸に収まらない子を次の行へ折り返す（Row のみ。幅と高さは明示が必要）。
     /// `abs`: Some のときフロー外（親コンテンツ原点からの絶対オフセットに置く。HUD の右上ピン等）。
     pub type alias Style = {
         dir = Dir, gap = Float64,
         padLeft = Float64, padTop = Float64, padRight = Float64, padBottom = Float64,
         width = SizeSpec, height = SizeSpec,
         mainAlign = MainAlign, crossAlign = CrossAlign,
+        wrap = Bool,
         abs = Option[Vec2.Vec2]
     }
 
-    /// 既定スタイル。縦並び・gap0・pad0・Auto×Auto・Start/Start・フロー内。
+    /// 既定スタイル。縦並び・gap0・pad0・Auto×Auto・Start/Start・折り返しなし・フロー内。
     pub def defaultStyle(): Style =
         {dir = Dir.Column, gap = 0.0,
          padLeft = 0.0, padTop = 0.0, padRight = 0.0, padBottom = 0.0,
          width = SizeSpec.Auto, height = SizeSpec.Auto,
          mainAlign = MainAlign.Start, crossAlign = CrossAlign.Start,
+         wrap = false,
          abs = None}
 
     /// レイアウト解決アルゴリズム全体が引き回す入力の束。パス1・パス2の内部ヘルパーが
@@ -137,7 +140,10 @@ mod UiLayout {
                            y = rect#size#y - style#padTop - style#padBottom};
         // フロー内 / フロー外（abs）に分ける
         let (flowChildren, absChildren) = List.partition(child -> Option.isEmpty(styleOf(child, input#styles)#abs), children);
-        let acc2 = layoutFlow(style, contentPos, contentSize, flowChildren, input, acc1);
+        let acc2 = if (style#wrap and style#dir == Dir.Row)
+                       layoutWrap(style, contentPos, contentSize, flowChildren, input, acc1)
+                   else
+                       layoutFlow(style, contentPos, contentSize, flowChildren, input, acc1);
         List.foldLeft((a, child) -> layoutAbs(child, contentPos, input, a), acc2, absChildren)
 
     /// フロー内の子を主軸に沿って配置する。
@@ -171,6 +177,46 @@ mod UiLayout {
             {pen = st#pen + mainSize + effectiveGap, acc = newAcc}
         }, {pen = startOffset, acc = acc}, childList);
         result#acc
+
+    /// 折り返し配置（Row + wrap）。子を内在サイズで左から詰め、幅に収まらなくなったら
+    /// 次の行へ。行の高さはその行の子の最大。行内は左詰め（mainAlign / crossAlign は効かない）。
+    /// Grow も使わない（幅が確定している前提）。
+    def layoutWrap(style: Style, contentPos: Vec2.Vec2, contentSize: Vec2.Vec2, flowChildren: List[EntityId],
+                   input: LayoutInput, acc: Map[EntityId, Rect2.Rect2]): Map[EntityId, Rect2.Rect2] =
+        let sized = List.map(child -> (child, intrinsicSizeOf(child, input)), flowChildren);
+        let rows = splitRows(style#gap, contentSize#x, sized);
+        let result = List.foldLeft((st, row) -> {
+            let rowHeight = row |> List.foldLeft((h, entry) -> {
+                let (_, size) = entry;
+                Float64.max(h, size#y)
+            }, 0.0);
+            let rowAcc = List.foldLeft((rs, entry) -> {
+                let (child, size) = entry;
+                let childRect: Rect2.Rect2 = {
+                    position = { x = contentPos#x + rs#pen, y = contentPos#y + st#top },
+                    size = size };
+                { pen = rs#pen + size#x + style#gap,
+                  acc = assignRect(child, childRect, input, rs#acc) }
+            }, {pen = 0.0, acc = st#acc}, row);
+            { top = st#top + rowHeight + style#gap, acc = rowAcc#acc }
+        }, {top = 0.0, acc = acc}, rows);
+        result#acc
+
+    /// (子, 内在サイズ) の列を「幅に収まるだけ」の行に切る。
+    /// 1 個も入らない幅でも行に 1 個は入れる（無限行を防ぐ）。
+    def splitRows(gap: Float64, maxWidth: Float64,
+                  sized: List[(EntityId, Vec2.Vec2)]): List[List[(EntityId, Vec2.Vec2)]] =
+        let folded = List.foldLeft((st, entry) -> {
+            let (_, size) = entry;
+            let nextPen = if (List.isEmpty(st#row)) size#x else st#pen + gap + size#x;
+            if (nextPen > maxWidth and not List.isEmpty(st#row))
+                { rows = List.reverse(st#row) :: st#rows, row = entry :: Nil, pen = size#x }
+            else
+                { rows = st#rows, row = entry :: st#row, pen = nextPen }
+        }, {rows = Nil, row = Nil, pen = 0.0}, sized);
+        let lastRows = if (List.isEmpty(folded#row)) folded#rows
+                       else List.reverse(folded#row) :: folded#rows;
+        List.reverse(lastRows)
 
     /// フロー外（abs）の子を親コンテンツ原点 + オフセットに内在サイズで配置する。
     def layoutAbs(child: EntityId, contentPos: Vec2.Vec2, input: LayoutInput,
