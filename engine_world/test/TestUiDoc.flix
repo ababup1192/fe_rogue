@@ -158,6 +158,37 @@ mod TestUiDoc {
         };
         Assert.assertEq(expected = true, String.contains(substr = "g/row1/box", msg))
 
+    @Test
+    def testErrorCarriesChildIndexWhenNameMissing(): Unit \ Assert =
+        // name の無い子は名前で指せないので「親パス[兄弟内位置]」で指す。
+        let doc = "{\"root\": {\"name\":\"g\",\"children\":["
+                + "{\"name\":\"a\"},{\"widget\":\"box\",\"color\":\"#000000\"}]}}";
+        let msg = match JsonCompat.parse(doc) {
+            case None       => "no json"
+            case Some(json) => match UiDoc.parse(json) {
+                case Ok(_)  => "no error"
+                case Err(e) => "${e}"
+            }
+        };
+        Assert.assertEq(expected = true, String.contains(substr = "g[1]", msg))
+
+    @Test
+    def testErrorMessageHasNoDecoderNoise(): Unit \ Assert =
+        // describe を通した文言に器の定型句("type mismatch: expected")が残らない —
+        // 編集者は「どこで・何が要るか」だけを読む。
+        let doc = "{\"root\": {\"name\":\"g\",\"widget\":\"circle\",\"radius\":1.0}}";
+        let msg = match JsonCompat.parse(doc) {
+            case None       => "no json"
+            case Some(json) => match UiDoc.parse(json) {
+                case Ok(_)  => "no error"
+                case Err(e) => JsonCompat.describe(e)
+            }
+        };
+        Assert.assertEq(
+            expected = (true, false),
+            (String.contains(substr = "at g: 'color' is required", msg),
+             String.contains(substr = "type mismatch", msg)))
+
     // ── parse: version / $schema / "//" ──
 
     @Test

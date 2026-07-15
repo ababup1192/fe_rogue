@@ -69,7 +69,7 @@ mod UiDoc {
                 templates   <- parseTemplates(topMap);
                 defaultFont <- parseDefaultFont(topMap);
                 rootMap     <- (JsonCompat.getAtKey(Root, "root", topMap): Result[JsonError, Map[String, Json]]);
-                spec        <- parseNode(templates, defaultFont, "", rootMap)
+                spec        <- parseNode(templates, defaultFont, "", 0, rootMap)
             ) yield spec
             case _ => Err(JsonCompat.jsonError(Root, Set#{"UiDoc must be a JSON object with a 'root'"}))
         }
@@ -100,9 +100,11 @@ mod UiDoc {
 
     /// 1 ノードを Spec へ。`use` のテンプレ値の上にノード値を重ねる（ノード勝ち）。
     /// エラーはこのノードの名前パスでタグする（子は子が自分でタグ済み）。
+    /// `ordinal` は兄弟内の位置 — name が確定する前に失敗したとき、どの子かを
+    /// `parent[ordinal]` の形で指せるようにする。
     def parseNode(templates: Map[String, Map[String, Json]], defaultFont: String,
-                  parentPath: String, nodeMap: Map[String, Json]): Result[JsonError, Spec] =
-        match nodeIdentity(templates, parentPath, nodeMap) {
+                  parentPath: String, ordinal: Int32, nodeMap: Map[String, Json]): Result[JsonError, Spec] =
+        match nodeIdentity(templates, parentPath, ordinal, nodeMap) {
             case Err(e) => Err(e)
             case Ok((name, merged)) =>
                 let path = if (parentPath == "") name else "${parentPath}/${name}";
@@ -117,10 +119,11 @@ mod UiDoc {
                 })
         }
 
-    /// use 解決と name の取り出し。自分のパスが確定する前に失敗し得るので親パスでタグする。
+    /// use 解決と name の取り出し。自分の name が確定する前に失敗し得るので、
+    /// `親パス[兄弟内位置]` の形でタグする（root は "(root)"）。
     def nodeIdentity(templates: Map[String, Map[String, Json]], parentPath: String,
-                     nodeMap: Map[String, Json]): Result[JsonError, (String, Map[String, Json])] =
-        JsonCompat.atNode(if (parentPath == "") "(root)" else parentPath, forM (
+                     ordinal: Int32, nodeMap: Map[String, Json]): Result[JsonError, (String, Map[String, Json])] =
+        JsonCompat.atNode(if (parentPath == "") "(root)" else "${parentPath}[${ordinal}]", forM (
             merged <- resolveTemplate(templates, nodeMap);
             name   <- (JsonCompat.getAtKey(Root, "name", merged): Result[JsonError, String]);
             _valid <- validateName(name)
@@ -164,10 +167,13 @@ mod UiDoc {
         match Map.get("children", map) {
             case None              => Ok(Nil)
             case Some(JArray(arr)) =>
-                Result.traverse(child -> forM (
-                    m    <- JsonCompat.atNode(path, asObject("child", child));
-                    spec <- parseNode(templates, defaultFont, path, m)
-                ) yield spec, Vector.toList(arr))
+                Result.traverse(entry -> {
+                    let (i, child) = entry;
+                    forM (
+                        m    <- JsonCompat.atNode("${path}[${i}]", asObject("child", child));
+                        spec <- parseNode(templates, defaultFont, path, i, m)
+                    ) yield spec
+                }, List.zipWithIndex(Vector.toList(arr)))
             case Some(_)           => Err(JsonCompat.jsonError(Root, Set#{"children must be an array"}))
         }
 
@@ -673,13 +679,10 @@ mod UiDoc {
                     item = Render.textTinted(t#text, atlas, t#fontSize, t#tint, t#zIndex) }) :: Nil,
             childNodes)
 
-    /// box: rect を塗る（cornerRadius → rounded、alpha → fade、border → outline の順で修飾）。
+    /// box: rect を塗る。BoxComp→Item 変換は UiExtract.boxItem が唯一の実装
+    /// （経路で絵が変わる二実装を作らない）。
     def drawBox(b: UiWidget.BoxComp, r: Rect2.Rect2): List[Render.PlacedItem] =
-        let base = Render.box(r#size, b#color, b#zIndex);
-        let it1 = if (b#cornerRadius > 0.0) Render.rounded(b#cornerRadius, base) else base;
-        let it2 = UiShape.fadeIf(b#alpha, it1);
-        let it3 = if (b#borderWidth > 0.0) Render.outline(b#borderColor, b#borderWidth, it2) else it2;
-        ({ at = r#position, item = it3 }) :: Nil
+        ({ at = r#position, item = UiExtract.boxItem(b, r#size) }) :: Nil
 
     /// poly: 頂点は rect 左上相対（UiSpec 互換）。rotation は pivot 未指定なら
     /// 「rect 中心を原点」に Render.rotated（頂点をどこ原点で組むかが軸、の流儀そのまま）。
@@ -717,6 +720,6 @@ mod UiDoc {
     pub def loadOrBug(path: String): Spec \ Fs.FileRead =
         match load(path) {
             case Ok(spec) => spec
-            case Err(e)   => bug!("UiDoc.load(${path}): ${e}")
+            case Err(e)   => bug!("UiDoc.load(${path}): ${JsonCompat.describe(e)}")
         }
 }

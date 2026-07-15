@@ -78,7 +78,8 @@ mod UiExtract {
 
     /// box の Item。BoxComp の枠・角丸を BoxStyle へ写す（stripe 系は UI では未使用）。
     /// borderWidth>0 のときだけ borderAlpha=1.0 にして枠を有効化する。
-    def boxItem(box: UiWidget.BoxComp, size: Vec2.Vec2): Render.Item =
+    /// pub なのは UiDoc（Flex 経路）が同じ box 意味論で描くため — BoxComp→Item 変換の唯一の実装。
+    pub def boxItem(box: UiWidget.BoxComp, size: Vec2.Vec2): Render.Item =
         let style = ({
             cornerRadius = box#cornerRadius,
             borderWidth  = box#borderWidth,

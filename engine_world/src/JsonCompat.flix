@@ -45,5 +45,16 @@ mod JsonCompat {
     /// 「どのノードで失敗したか」を編集者へ伝える口。子のエラーは子が既にタグ済みなので、
     /// 呼び側はノード自身のフィールド解析だけを包むこと（二重前置を避ける）。
     pub def atNode(path: String, r: Result[JsonError, a]): Result[JsonError, a] =
-        Result.mapErr(e -> Decode(JsonPath.empty(), TypeMismatch("at ${path}: ${e}")), r)
+        Result.mapErr(e -> Decode(JsonPath.empty(), TypeMismatch("at ${path}: ${describe(e)}")), r)
+
+    /// エラーを編集者向けの一文にする。jsonError / atNode が詰めた文章は `TypeMismatch` の器を
+    /// 借りているだけなので、器の定型句（"type mismatch: expected"）を剥がして中身だけ返す。
+    /// Util.Json 由来の本物の型不一致（メッセージが "Float64" 等の型名 1 語）まで裸にすると
+    /// 文脈が消えるので、空白を含む文章のときだけ剥がす。
+    pub def describe(e: JsonError): String =
+        match e {
+            case Decode(_, TypeMismatch(msg)) =>
+                if (String.contains(substr = " ", msg)) msg else "${e}"
+            case other => "${other}"
+        }
 }
