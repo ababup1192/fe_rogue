@@ -33,4 +33,16 @@ mod TextDraw {
     pub def centered(a: Centered): Render.PlacedItem =
         { at = { x = centerLeft(a#text, a#atlas, a#size, a#centerX), y = a#y },
           item = Render.textTinted(a#text, a#atlas, a#size, a#color, a#z) }
+
+    /// `centeredAt` の引数一式。`Centered` の centerX/y の代わりに、縦横とも
+    /// 中央に置きたい 1 点 `center` を渡す。
+    pub type alias CenteredAt = { text = String, atlas = FontAtlas, size = Float64,
+                                  color = Color, z = Int32, center = Vec2.Vec2 }
+
+    /// 一行を点 `center` のまわりのど真ん中に置いたテキスト描画アイテム。画面中央の
+    /// 見出しやアイコン上のラベルが1呼びで済む。寸法を測って center から半分ずらすだけ。
+    pub def centeredAt(a: CenteredAt): Render.PlacedItem =
+        let s = size(a#text, a#atlas, a#size);
+        { at = { x = a#center#x - s#x / 2.0, y = a#center#y - s#y / 2.0 },
+          item = Render.textTinted(a#text, a#atlas, a#size, a#color, a#z) }
 }

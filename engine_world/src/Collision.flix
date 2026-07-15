@@ -3,6 +3,8 @@
 // 重なりペアが得られる。全組み合わせを総当りせず空間を格子で区切って調べるので、物体が増えても速い。
 // 利用例: 弾と敵の衝突を集める / プレイヤーが踏んだ床を探す / 押し合う物体の対を列挙する。
 // 注意: 重なりの形状判定と layer/mask のビット照合は engine の純粋関数をそのまま使う。
+// 注意: 巨大な 1 枚の多角形は格子のセル幅を押し広げて broadphase を退化させる
+// （セル幅は最大の形状から決まるため）。地形の多角形は 1〜2 画面幅・〜64 頂点のチャンクに分けること。
 
 mod Collision {
 
@@ -47,6 +49,8 @@ mod Collision {
             case CollisionShape2D.RectShape2D(s)    => Vec2.length({x = s#width / 2.0, y = s#height / 2.0})
             case CollisionShape2D.CapsuleShape2D(s) => s#height / 2.0
             case CollisionShape2D.SlopeShape2D(s)   => Vec2.length({x = s#width / 2.0, y = s#height / 2.0})
+            case CollisionShape2D.PolygonShape2D(s) =>
+                List.foldLeft((acc, p) -> Float64.max(acc, Vec2.length(p)), 0.0, s#points)
         }
 
     def buildGrid(cs: Float64, bodies: Map[EntityId, (Vec2.Vec2, Collider)]):

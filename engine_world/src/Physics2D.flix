@@ -13,8 +13,8 @@
 // 注意: 反射後どうするか（耐久を減らす・音を鳴らす・角度を上書きする）は contacts を読んで
 //   呼び側が決める政策で、ここは機構だけを担う。検出は 1 回きりの離散判定なので、1 フレームの
 //   移動量が相手の厚みを大きく超える極端な速さではすり抜けうる（呼び側は dt を十分小さく保つか、
-//   合成を数回に分ける）。narrowphase は円・矩形・カプセル・坂を解決する。ただし矩形と坂・
-//   坂同士のペアは分離ベクトルを返さない（静的地形同士は分離しないため）。
+//   合成を数回に分ける）。narrowphase は円・矩形・カプセル・坂・多角形を解決する。ただし
+//   静的地形同士（矩形・坂・多角形の組）は分離ベクトルを返さない（静的地形同士は分離しないため）。
 
 mod Physics2D {
 
@@ -179,5 +179,8 @@ mod Physics2D {
             case CollisionShape2D.SlopeShape2D(slope)     =>
                 // 外接箱で見積もる（矩形と同じ保守的な近似）
                 Float64.abs(normal#x) * slope#width / 2.0 + Float64.abs(normal#y) * slope#height / 2.0
+            case CollisionShape2D.PolygonShape2D(poly)    =>
+                // 支持関数: -normal 方向へ最も張り出した頂点までの距離（近似でなく厳密に取れる）
+                List.foldLeft((acc, p) -> Float64.max(acc, Vec2.dot(p, Vec2.neg(normal))), 0.0, poly#points)
         }
 }

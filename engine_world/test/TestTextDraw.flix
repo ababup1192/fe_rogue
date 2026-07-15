@@ -41,4 +41,17 @@ mod TestTextDraw {
         Assert.assertEq(
             expected = (TextDraw.centerLeft("AB", atlas(), 2.0, 100.0), 5.0),
             (pos#x, pos#y))
+
+    /// centeredAt の左上は center から寸法の半分だけ引いた点（縦横とも中央そろえ）：
+    /// center=(100,50)・size="AB"(40,2) → 左上 (80, 49)。size() との整合で pin。
+    @Test
+    def testCenteredAtSubtractsHalfSize(): Unit \ Assert =
+        let a = { text = "AB", atlas = atlas(), size = 2.0,
+                  color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}, z = 0,
+                  center = {x = 100.0, y = 50.0} };
+        let pos = TextDraw.centeredAt(a)#at;
+        let s = TextDraw.size("AB", atlas(), 2.0);
+        Assert.assertEq(
+            expected = (100.0 - s#x / 2.0, 50.0 - s#y / 2.0),
+            (pos#x, pos#y))
 }

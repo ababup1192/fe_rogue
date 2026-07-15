@@ -156,4 +156,25 @@ mod JsonCodec {
                 case None        => {x = defaultValue, y = defaultValue}
             }
         }
+
+    // ════════════════════════════════════════════════════════
+    // fail-open ヘルパ: キーが無い・型が違うときは黙って fallback
+    // 設定ファイルの読み込みで、書き手のミスがゲームを止めないようにする
+    // ════════════════════════════════════════════════════════
+
+    /// object から `key` を Float64 として読む。無い・数値でなければ `fallback`。
+    pub def floatOr(key: String, fallback: Float64, obj: Map[String, Json]): Float64 =
+        Map.get(key, obj) |> Option.flatMap(expectFloat) |> Option.getWithDefault(fallback)
+
+    /// object から `key` を Int32 として読む。無い・整数でなければ `fallback`。
+    pub def intOr(key: String, fallback: Int32, obj: Map[String, Json]): Int32 =
+        Map.get(key, obj) |> Option.flatMap(expectInt) |> Option.getWithDefault(fallback)
+
+    /// object から `key` を String として読む。無い・文字列でなければ `fallback`。
+    pub def stringOr(key: String, fallback: String, obj: Map[String, Json]): String =
+        Map.get(key, obj) |> Option.flatMap(expectString) |> Option.getWithDefault(fallback)
+
+    /// object から `key` を Bool として読む。無い・真偽値でなければ `fallback`。
+    pub def boolOr(key: String, fallback: Bool, obj: Map[String, Json]): Bool =
+        Map.get(key, obj) |> Option.flatMap(expectBool) |> Option.getWithDefault(fallback)
 }

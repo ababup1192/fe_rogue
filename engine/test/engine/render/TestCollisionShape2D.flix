@@ -515,3 +515,264 @@ def testCapsuleSlopeHypotenuseMtv(): Unit \ Assert =
     let mtv = CollisionShape2D.resolveCapsuleSlope(
         {x = -2.0, y = -5.0}, 4.0, 14.0, true, {x = 0.0, y = 0.0}, {x = 32.0, y = 32.0}, true);
     Assert.assertEq(expected = Some((-0.8284, -0.8284)), mtvRound4(mtv))
+
+// ========================================================================
+// PolygonShape2D — 多角形テスト用の頂点列
+// ========================================================================
+
+/// ローカル原点を中心とする 4×4 の正方形（凸の代表）
+def polygonSquarePoints(): List[Vec2.Vec2] =
+    {x = -2.0, y = -2.0} :: {x = 2.0, y = -2.0} :: {x = 2.0, y = 2.0} :: {x = -2.0, y = 2.0} :: Nil
+
+/// 上面が V 字に窪んだ谷ブロック（凹の代表・y は下向き正）
+///
+///   (-6,-4)          (6,-4)
+///      |\    空隙    /|
+///      | \          / |
+///      |  \ (0,2)  /  |
+///      |   \  V   /   |
+///   (-6,4)----------(6,4)
+///
+def polygonValleyPoints(): List[Vec2.Vec2] =
+    {x = -6.0, y = -4.0} :: {x = 0.0, y = 2.0} :: {x = 6.0, y = -4.0} ::
+    {x = 6.0, y = 4.0} :: {x = -6.0, y = 4.0} :: Nil
+
+// ========================================================================
+// pointInPolygon
+// ========================================================================
+
+/// 凹形状の内外: V 字の空隙 (0,0) は外、右のブロック部 (4,0) は中
+@Test
+def testPointInPolygonConcaveInOut(): Unit \ Assert =
+    let gap = CollisionShape2D.pointInPolygon({x = 0.0, y = 0.0}, {x = 0.0, y = 0.0}, polygonValleyPoints());
+    let solid = CollisionShape2D.pointInPolygon({x = 4.0, y = 0.0}, {x = 0.0, y = 0.0}, polygonValleyPoints());
+    Assert.assertEq(expected = (false, true), (gap, solid))
+
+/// 境界上の点（上辺の中点）は外扱い
+@Test
+def testPointInPolygonBoundaryOutside(): Unit \ Assert =
+    Assert.assertEq(expected = false,
+        CollisionShape2D.pointInPolygon({x = 0.0, y = -2.0}, {x = 0.0, y = 0.0}, polygonSquarePoints()))
+
+// ========================================================================
+// polygonBounds
+// ========================================================================
+
+/// 谷ブロックの外接箱: 左上 (-6,-4)・サイズ 12×8
+@Test
+def testPolygonBoundsValley(): Unit \ Assert =
+    let bounds = CollisionShape2D.polygonBounds(polygonValleyPoints());
+    Assert.assertEq(expected = (-6.0, -4.0, 12.0, 8.0),
+        (bounds#position#x, bounds#position#y, bounds#size#x, bounds#size#y))
+
+// ========================================================================
+// checkCirclePolygon
+// ========================================================================
+
+/// 円が正方形多角形の上辺（ワールド y=3）に重なる
+@Test
+def testCirclePolygonOverlapping(): Unit \ Assert =
+    Assert.assertEq(expected = true,
+        CollisionShape2D.checkCirclePolygon({x = 10.0, y = 2.2}, 1.0, {x = 10.0, y = 5.0}, polygonSquarePoints()))
+
+/// 円が多角形から離れている
+@Test
+def testCirclePolygonNotOverlapping(): Unit \ Assert =
+    Assert.assertEq(expected = false,
+        CollisionShape2D.checkCirclePolygon({x = 10.0, y = 1.0}, 1.0, {x = 10.0, y = 5.0}, polygonSquarePoints()))
+
+/// 辺に接触ちょうど（距離 = 半径）は重ならない
+@Test
+def testCirclePolygonTouching(): Unit \ Assert =
+    Assert.assertEq(expected = false,
+        CollisionShape2D.checkCirclePolygon({x = 10.0, y = 2.0}, 1.0, {x = 10.0, y = 5.0}, polygonSquarePoints()))
+
+/// 円の中心が多角形の内部にある（包含）
+@Test
+def testCirclePolygonCenterInside(): Unit \ Assert =
+    Assert.assertEq(expected = true,
+        CollisionShape2D.checkCirclePolygon({x = 10.0, y = 5.0}, 1.0, {x = 10.0, y = 5.0}, polygonSquarePoints()))
+
+/// 凹の pin: V 字の空隙に浮く円は重ならない（凸包近似ならここで true になってしまう）
+@Test
+def testCirclePolygonValleyNotchFloat(): Unit \ Assert =
+    Assert.assertEq(expected = false,
+        CollisionShape2D.checkCirclePolygon({x = 0.0, y = -1.0}, 1.0, {x = 0.0, y = 0.0}, polygonValleyPoints()))
+
+/// 凹の pin: 谷底 (0,2) に届く大きさの円は重なる
+@Test
+def testCirclePolygonValleyBottomTouch(): Unit \ Assert =
+    Assert.assertEq(expected = true,
+        CollisionShape2D.checkCirclePolygon({x = 0.0, y = 0.0}, 3.0, {x = 0.0, y = 0.0}, polygonValleyPoints()))
+
+// ========================================================================
+// checkCapsulePolygon
+// ========================================================================
+
+/// 縦カプセルの下端が谷の左斜面に接地する
+/// （下端 (-3,-1.8) から斜面までの距離 0.4√2 ≈ 0.566 < 半径 1）
+@Test
+def testCapsulePolygonFloorContact(): Unit \ Assert =
+    Assert.assertEq(expected = true,
+        CollisionShape2D.checkCapsulePolygon(
+            {x = -3.0, y = -3.8}, 1.0, 6.0, true, {x = 0.0, y = 0.0}, polygonValleyPoints()))
+
+/// 縦カプセルの上端が谷ブロックの底面（y=4）に頭をぶつける
+@Test
+def testCapsulePolygonCeilingContact(): Unit \ Assert =
+    Assert.assertEq(expected = true,
+        CollisionShape2D.checkCapsulePolygon(
+            {x = 0.0, y = 6.4}, 1.0, 6.0, true, {x = 0.0, y = 0.0}, polygonValleyPoints()))
+
+/// 縦カプセルが多角形から離れている
+@Test
+def testCapsulePolygonApart(): Unit \ Assert =
+    Assert.assertEq(expected = false,
+        CollisionShape2D.checkCapsulePolygon(
+            {x = 0.0, y = 9.0}, 1.0, 6.0, true, {x = 0.0, y = 0.0}, polygonValleyPoints()))
+
+// ========================================================================
+// resolveCirclePolygon
+// ========================================================================
+
+/// 外から上辺（y=-2）へ浅くめり込み → 真上 -y へ不足ぶん 0.5 押し出す
+@Test
+def testResolveCirclePolygonShallowMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCirclePolygon(
+        {x = 0.0, y = -3.0}, 1.5, {x = 0.0, y = 0.0}, polygonSquarePoints());
+    Assert.assertEq(expected = Some((0.0, -0.5)), mtvRound4(mtv))
+
+/// 中心が内部 → 最短の境界（上辺・距離 1）へ、距離＋半径 = 2.5 押し出す
+@Test
+def testResolveCirclePolygonInsideMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCirclePolygon(
+        {x = 0.0, y = -1.0}, 1.5, {x = 0.0, y = 0.0}, polygonSquarePoints());
+    Assert.assertEq(expected = Some((0.0, -2.5)), mtvRound4(mtv))
+
+/// 凹の pin: V 字の空隙で左斜面にめり込んだ円は、斜面から離れる向き（左上）へ押される。
+/// 窪みの奥（谷底方向）へ向かない。斜面最近接点 (-2.5,-0.5)・距離 0.5√2 → 不足 (√2-1)/2 ずつ。
+@Test
+def testResolveCirclePolygonNotchMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCirclePolygon(
+        {x = -2.0, y = -1.0}, 1.0, {x = 0.0, y = 0.0}, polygonValleyPoints());
+    Assert.assertEq(expected = Some((0.2071, -0.2071)), mtvRound4(mtv))
+
+/// 時計回りで渡しても反時計回りと同じ結果（巻き順正規化の pin）
+@Test
+def testResolveCirclePolygonClockwiseMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCirclePolygon(
+        {x = -2.0, y = -1.0}, 1.0, {x = 0.0, y = 0.0}, List.reverse(polygonValleyPoints()));
+    Assert.assertEq(expected = Some((0.2071, -0.2071)), mtvRound4(mtv))
+
+/// 3 頂点未満は潰れていて押し出す向きを決められない → None
+@Test
+def testResolveCirclePolygonTooFewPoints(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCirclePolygon(
+        {x = 1.0, y = 0.0}, 2.0, {x = 0.0, y = 0.0}, {x = 0.0, y = 0.0} :: {x = 4.0, y = 0.0} :: Nil);
+    Assert.assertEq(expected = None, mtvRound4(mtv))
+
+// ========================================================================
+// resolveCapsulePolygon
+// ========================================================================
+
+/// 谷の左斜面に接地した縦カプセル → 斜面の外向き（左上 45°）へ押し出す
+@Test
+def testResolveCapsulePolygonFloorMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCapsulePolygon(
+        {x = -3.0, y = -3.8}, 1.0, 6.0, true, {x = 0.0, y = 0.0}, polygonValleyPoints());
+    Assert.assertEq(expected = Some((0.3071, -0.3071)), mtvRound4(mtv))
+
+/// 谷ブロックの底面（y=4）に頭をぶつけた縦カプセル → 真下 +y へ 0.6 押し出す
+@Test
+def testResolveCapsulePolygonCeilingMtv(): Unit \ Assert =
+    let mtv = CollisionShape2D.resolveCapsulePolygon(
+        {x = 0.0, y = 6.4}, 1.0, 6.0, true, {x = 0.0, y = 0.0}, polygonValleyPoints());
+    Assert.assertEq(expected = Some((0.0, 0.6)), mtvRound4(mtv))
+
+// ========================================================================
+// checkOverlap / resolveOverlap: 多角形のディスパッチ
+// ========================================================================
+
+/// Circle×Polygon は両順とも厳密判定で true
+@Test
+def testCheckOverlapCirclePolygonBothOrders(): Unit \ Assert =
+    let circle = CollisionShape2D.CircleShape2D({radius = 1.0});
+    let poly = CollisionShape2D.PolygonShape2D({points = polygonSquarePoints()});
+    let forward = CollisionShape2D.checkOverlap({x = 10.0, y = 2.2}, circle, {x = 10.0, y = 5.0}, poly);
+    let backward = CollisionShape2D.checkOverlap({x = 10.0, y = 5.0}, poly, {x = 10.0, y = 2.2}, circle);
+    Assert.assertEq(expected = (true, true), (forward, backward))
+
+/// Capsule×Polygon は両順とも厳密判定で true
+@Test
+def testCheckOverlapCapsulePolygonBothOrders(): Unit \ Assert =
+    let capsule = CollisionShape2D.CapsuleShape2D({radius = 1.0, height = 6.0, vertical = true});
+    let poly = CollisionShape2D.PolygonShape2D({points = polygonValleyPoints()});
+    let forward = CollisionShape2D.checkOverlap({x = -3.0, y = -3.8}, capsule, {x = 0.0, y = 0.0}, poly);
+    let backward = CollisionShape2D.checkOverlap({x = 0.0, y = 0.0}, poly, {x = -3.0, y = -3.8}, capsule);
+    Assert.assertEq(expected = (true, true), (forward, backward))
+
+/// 政策の pin: Rect×Polygon は外接箱近似なので V 字の空隙の矩形も check は true、
+/// ただし静的地形同士なので resolve は None
+@Test
+def testRectPolygonApproxCheckAndNoResolve(): Unit \ Assert =
+    let rect = CollisionShape2D.RectShape2D({width = 2.0, height = 2.0});
+    let poly = CollisionShape2D.PolygonShape2D({points = polygonValleyPoints()});
+    let overlap = CollisionShape2D.checkOverlap({x = 0.0, y = -3.0}, rect, {x = 0.0, y = 0.0}, poly);
+    let mtv = CollisionShape2D.resolveOverlap({x = 0.0, y = -3.0}, rect, {x = 0.0, y = 0.0}, poly);
+    Assert.assertEq(expected = (true, None), (overlap, mtvRound4(mtv)))
+
+/// resolveOverlap: 多角形が A 側のときは円側 MTV の符号反転になる
+@Test
+def testResolveOverlapCirclePolygonNegated(): Unit \ Assert =
+    let circle = CollisionShape2D.CircleShape2D({radius = 1.5});
+    let poly = CollisionShape2D.PolygonShape2D({points = polygonSquarePoints()});
+    let forward = CollisionShape2D.resolveOverlap({x = 0.0, y = -3.0}, circle, {x = 0.0, y = 0.0}, poly);
+    let backward = CollisionShape2D.resolveOverlap({x = 0.0, y = 0.0}, poly, {x = 0.0, y = -3.0}, circle);
+    Assert.assertEq(expected = (Some((0.0, -0.5)), Some((0.0, 0.5))),
+        (mtvRound4(forward), mtvRound4(backward)))
+
+/// 多角形同士は外接箱で近似判定する（MTV は返さない）
+@Test
+def testCheckOverlapPolygonPolygonApprox(): Unit \ Assert =
+    let poly = CollisionShape2D.PolygonShape2D({points = polygonSquarePoints()});
+    let near = CollisionShape2D.checkOverlap({x = 0.0, y = 0.0}, poly, {x = 3.0, y = 0.0}, poly);
+    let far = CollisionShape2D.checkOverlap({x = 0.0, y = 0.0}, poly, {x = 100.0, y = 0.0}, poly);
+    let mtv = CollisionShape2D.resolveOverlap({x = 0.0, y = 0.0}, poly, {x = 3.0, y = 0.0}, poly);
+    Assert.assertEq(expected = (true, false, None), (near, far, mtvRound4(mtv)))
+
+/// 坂と多角形も外接箱近似で、両順とも check は true・resolve は None
+@Test
+def testCheckOverlapSlopePolygonApprox(): Unit \ Assert =
+    let slopeShape = CollisionShape2D.SlopeShape2D({width = 32.0, height = 32.0, riseRight = true});
+    let poly = CollisionShape2D.PolygonShape2D({points = polygonSquarePoints()});
+    let forward = CollisionShape2D.checkOverlap({x = 0.0, y = 0.0}, slopeShape, {x = 10.0, y = 0.0}, poly);
+    let backward = CollisionShape2D.checkOverlap({x = 10.0, y = 0.0}, poly, {x = 0.0, y = 0.0}, slopeShape);
+    let mtv = CollisionShape2D.resolveOverlap({x = 0.0, y = 0.0}, slopeShape, {x = 10.0, y = 0.0}, poly);
+    Assert.assertEq(expected = (true, true, None), (forward, backward, mtvRound4(mtv)))
+
+// ========================================================================
+// validatePolygonPoints
+// ========================================================================
+
+/// 頂点 2 個は多角形にならない
+@Test
+def testValidatePolygonTooFewPoints(): Unit \ Assert =
+    let points = {x = 0.0, y = 0.0} :: {x = 4.0, y = 0.0} :: Nil;
+    Assert.assertEq(expected = true, Result.isErr(CollisionShape2D.validatePolygonPoints(points)))
+
+/// 一直線に並んだ 3 頂点は面積ゼロ
+@Test
+def testValidatePolygonZeroArea(): Unit \ Assert =
+    let points = {x = 0.0, y = 0.0} :: {x = 2.0, y = 2.0} :: {x = 4.0, y = 4.0} :: Nil;
+    Assert.assertEq(expected = true, Result.isErr(CollisionShape2D.validatePolygonPoints(points)))
+
+/// 蝶ネクタイ（辺が交差する自己交差形）は弾く
+@Test
+def testValidatePolygonSelfIntersection(): Unit \ Assert =
+    let points = {x = 0.0, y = 0.0} :: {x = 4.0, y = 4.0} :: {x = 4.0, y = 0.0} :: {x = 0.0, y = 2.0} :: Nil;
+    Assert.assertEq(expected = true, Result.isErr(CollisionShape2D.validatePolygonPoints(points)))
+
+/// 正常な多角形は Ok
+@Test
+def testValidatePolygonOk(): Unit \ Assert =
+    Assert.assertEq(expected = Ok(()), CollisionShape2D.validatePolygonPoints(polygonSquarePoints()))

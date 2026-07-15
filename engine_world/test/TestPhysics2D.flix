@@ -220,6 +220,19 @@ mod TestPhysics2D {
                               Physics2D.detect(positions, shapes));
         Assert.assertEq(expected = (ball(), wall(), (-1.0, 0.0), 1.0) :: Nil, actual)
 
+    def polygonSquare(): CollisionShape2D =
+        CollisionShape2D.PolygonShape2D({ points =
+            vec(-2.0, -2.0) :: vec(2.0, -2.0) :: vec(2.0, 2.0) :: vec(-2.0, 2.0) :: Nil })
+
+    // 多角形地形（4×4 の正方形）に円がめり込む。左辺（ワールド x=3）まで距離 1・半径 2
+    // → 法線 (-1,0)・めり込み 1 の接触を報告する（broadphase の extent 計算も多角形を通る）。
+    @Test
+    def testDetectCirclePolygonTerrainContact(): Unit \ Assert =
+        let positions = store((ball(), vec(2.0, 0.0)) :: (wall(), vec(5.0, 0.0)) :: Nil);
+        let shapes    = store((ball(), circle(2.0)) :: (wall(), polygonSquare()) :: Nil);
+        let actual = List.map(c -> (c#a, c#b, xy(c#normal), c#penetration), Physics2D.detect(positions, shapes));
+        Assert.assertEq(expected = (ball(), wall(), (-1.0, 0.0), 1.0) :: Nil, actual)
+
     // ========================================================================
     // normalToward / slide / contactsAlong — 接触の読み取り補助
     // ========================================================================

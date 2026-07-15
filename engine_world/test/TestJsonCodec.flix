@@ -134,4 +134,68 @@ mod TestJsonCodec {
     def testDecodeVec2OrDefaultReturnsDefaultForNone(): Unit \ Assert =
         let result = JsonCodec.decodeVec2OrDefault(None, 1.0);
         Assert.assertEq(expected = (1.0, 1.0), (result#x, result#y))
+
+    // ════════════════════════════════════════════════════════
+    // fail-open ヘルパ: キーが無い・型が違えば黙って fallback
+    // ════════════════════════════════════════════════════════
+
+    /// floatOr: キーがあり数値なら中身、無ければ fallback、型違いでも fallback。
+    @Test
+    def testFloatOrReadsPresentKey(): Unit \ Assert =
+        let obj = Map#{"speed" => JNumber(JsonCodec.floatToBd(2.5))};
+        Assert.assertEq(expected = 2.5, JsonCodec.floatOr("speed", 9.0, obj))
+
+    @Test
+    def testFloatOrFallsBackWhenKeyMissing(): Unit \ Assert =
+        Assert.assertEq(expected = 9.0, JsonCodec.floatOr("speed", 9.0, Map.empty()))
+
+    @Test
+    def testFloatOrFallsBackWhenTypeMismatches(): Unit \ Assert =
+        let obj = Map#{"speed" => JString("fast")};
+        Assert.assertEq(expected = 9.0, JsonCodec.floatOr("speed", 9.0, obj))
+
+    /// intOr: キーがあり整数なら中身、無ければ fallback、型違いでも fallback。
+    @Test
+    def testIntOrReadsPresentKey(): Unit \ Assert =
+        let obj = Map#{"count" => JNumber(JsonCodec.intToBd(3))};
+        Assert.assertEq(expected = 3, JsonCodec.intOr("count", 7, obj))
+
+    @Test
+    def testIntOrFallsBackWhenKeyMissing(): Unit \ Assert =
+        Assert.assertEq(expected = 7, JsonCodec.intOr("count", 7, Map.empty()))
+
+    @Test
+    def testIntOrFallsBackWhenTypeMismatches(): Unit \ Assert =
+        let obj = Map#{"count" => JBool(true)};
+        Assert.assertEq(expected = 7, JsonCodec.intOr("count", 7, obj))
+
+    /// stringOr: キーがあり文字列なら中身、無ければ fallback、型違いでも fallback。
+    @Test
+    def testStringOrReadsPresentKey(): Unit \ Assert =
+        let obj = Map#{"name" => JString("hero")};
+        Assert.assertEq(expected = "hero", JsonCodec.stringOr("name", "unknown", obj))
+
+    @Test
+    def testStringOrFallsBackWhenKeyMissing(): Unit \ Assert =
+        Assert.assertEq(expected = "unknown", JsonCodec.stringOr("name", "unknown", Map.empty()))
+
+    @Test
+    def testStringOrFallsBackWhenTypeMismatches(): Unit \ Assert =
+        let obj = Map#{"name" => JNumber(JsonCodec.intToBd(1))};
+        Assert.assertEq(expected = "unknown", JsonCodec.stringOr("name", "unknown", obj))
+
+    /// boolOr: キーがあり真偽値なら中身、無ければ fallback、型違いでも fallback。
+    @Test
+    def testBoolOrReadsPresentKey(): Unit \ Assert =
+        let obj = Map#{"enabled" => JBool(true)};
+        Assert.assertEq(expected = true, JsonCodec.boolOr("enabled", false, obj))
+
+    @Test
+    def testBoolOrFallsBackWhenKeyMissing(): Unit \ Assert =
+        Assert.assertEq(expected = false, JsonCodec.boolOr("enabled", false, Map.empty()))
+
+    @Test
+    def testBoolOrFallsBackWhenTypeMismatches(): Unit \ Assert =
+        let obj = Map#{"enabled" => JString("yes")};
+        Assert.assertEq(expected = false, JsonCodec.boolOr("enabled", false, obj))
 }

@@ -8,8 +8,10 @@
 ///     +-- CircleShape2D: 円
 ///     +-- CapsuleShape2D: カプセル（両端が半円の矩形）
 ///     +-- SlopeShape2D: 坂（直角三角形の床）
+///     +-- PolygonShape2D: 単純多角形（凹あり可・静的地形向け）
 ///
-/// すべての判定関数は形状の **中心座標** を基準として受け取る。
+/// すべての判定関数は形状の **中心座標** を基準として受け取る
+/// （PolygonShape2D だけは「中心」でなく作者が決めたローカル原点）。
 pub enum CollisionShape2D {
     /// 軸平行の矩形
     case RectShape2D({width = Float64, height = Float64})
@@ -24,6 +26,9 @@ pub enum CollisionShape2D {
     /// width / height: 外接箱の幅と高さ（判定関数に渡す中心座標はこの外接箱の中心）
     /// riseRight: true なら右へ登る坂、false なら左へ登る坂
     case SlopeShape2D({width = Float64, height = Float64, riseRight = Bool})
+    /// 単純多角形（自己交差しない・凹あり可・回転なし）。静的地形向け。
+    /// points は判定関数に渡す pos を原点とするローカル座標の頂点列（3 点以上・巻き順は不問）。
+    case PolygonShape2D({points = List[Vec2.Vec2]})
 }
 
 mod CollisionShape2D {
@@ -96,6 +101,39 @@ mod CollisionShape2D {
             case (CollisionShape2D.SlopeShape2D(sa), CollisionShape2D.SlopeShape2D(sb)) =>
                 checkRectRect(posA, {x = sa#width, y = sa#height},
                               posB, {x = sb#width, y = sb#height})
+            // Circle vs Polygon
+            case (CollisionShape2D.CircleShape2D(ca), CollisionShape2D.PolygonShape2D(pb)) =>
+                checkCirclePolygon(posA, ca#radius, posB, pb#points)
+            // Polygon vs Circle
+            case (CollisionShape2D.PolygonShape2D(pa), CollisionShape2D.CircleShape2D(cb)) =>
+                checkCirclePolygon(posB, cb#radius, posA, pa#points)
+            // Capsule vs Polygon
+            case (CollisionShape2D.CapsuleShape2D(ca), CollisionShape2D.PolygonShape2D(pb)) =>
+                checkCapsulePolygon(posA, ca#radius, ca#height, ca#vertical, posB, pb#points)
+            // Polygon vs Capsule
+            case (CollisionShape2D.PolygonShape2D(pa), CollisionShape2D.CapsuleShape2D(cb)) =>
+                checkCapsulePolygon(posB, cb#radius, cb#height, cb#vertical, posA, pa#points)
+            // Rect vs Polygon（外接箱で近似 — 静的地形同士は分離しないため厳密判定は持たない）
+            case (CollisionShape2D.RectShape2D(ra), CollisionShape2D.PolygonShape2D(pb)) =>
+                let (centerB, sizeB) = polygonBoundsCenterSize(posB, pb#points);
+                checkRectRect(posA, {x = ra#width, y = ra#height}, centerB, sizeB)
+            // Polygon vs Rect（外接箱で近似）
+            case (CollisionShape2D.PolygonShape2D(pa), CollisionShape2D.RectShape2D(rb)) =>
+                let (centerA, sizeA) = polygonBoundsCenterSize(posA, pa#points);
+                checkRectRect(centerA, sizeA, posB, {x = rb#width, y = rb#height})
+            // Slope vs Polygon（外接箱で近似）
+            case (CollisionShape2D.SlopeShape2D(sa), CollisionShape2D.PolygonShape2D(pb)) =>
+                let (centerB, sizeB) = polygonBoundsCenterSize(posB, pb#points);
+                checkRectRect(posA, {x = sa#width, y = sa#height}, centerB, sizeB)
+            // Polygon vs Slope（外接箱で近似）
+            case (CollisionShape2D.PolygonShape2D(pa), CollisionShape2D.SlopeShape2D(sb)) =>
+                let (centerA, sizeA) = polygonBoundsCenterSize(posA, pa#points);
+                checkRectRect(centerA, sizeA, posB, {x = sb#width, y = sb#height})
+            // Polygon vs Polygon（外接箱で近似）
+            case (CollisionShape2D.PolygonShape2D(pa), CollisionShape2D.PolygonShape2D(pb)) =>
+                let (centerA, sizeA) = polygonBoundsCenterSize(posA, pa#points);
+                let (centerB, sizeB) = polygonBoundsCenterSize(posB, pb#points);
+                checkRectRect(centerA, sizeA, centerB, sizeB)
         }
 
     // ========================================================================
@@ -420,7 +458,7 @@ mod CollisionShape2D {
 
     /// 2 つの形状の重なりを解消する変位ベクトルを返す。
     /// posA / posB は各形状の中心座標。返り値は posA に足すと A が B から離れる変位。
-    /// 矩形と坂・坂同士のペアだけは None を返す（静的地形同士は分離しないため）。
+    /// 静的地形同士（矩形・坂・多角形の組）は None を返す（静的地形同士は分離しないため）。
     pub def resolveOverlap(posA: Vec2.Vec2, shapeA: CollisionShape2D,
                             posB: Vec2.Vec2, shapeB: CollisionShape2D): Option[Vec2.Vec2] =
         match (shapeA, shapeB) {
@@ -464,8 +502,27 @@ mod CollisionShape2D {
                 Option.map(v -> Vec2.neg(v),
                     resolveCapsuleSlope(posB, cb#radius, cb#height, cb#vertical,
                                         posA, {x = sa#width, y = sa#height}, sa#riseRight))
-            // 矩形と坂・坂同士は静的地形同士なので分離しない
-            case _ => None
+            case (CollisionShape2D.CircleShape2D(ca), CollisionShape2D.PolygonShape2D(pb)) =>
+                resolveCirclePolygon(posA, ca#radius, posB, pb#points)
+            case (CollisionShape2D.PolygonShape2D(pa), CollisionShape2D.CircleShape2D(cb)) =>
+                Option.map(v -> Vec2.neg(v),
+                    resolveCirclePolygon(posB, cb#radius, posA, pa#points))
+            case (CollisionShape2D.CapsuleShape2D(ca), CollisionShape2D.PolygonShape2D(pb)) =>
+                resolveCapsulePolygon(posA, ca#radius, ca#height, ca#vertical, posB, pb#points)
+            case (CollisionShape2D.PolygonShape2D(pa), CollisionShape2D.CapsuleShape2D(cb)) =>
+                Option.map(v -> Vec2.neg(v),
+                    resolveCapsulePolygon(posB, cb#radius, cb#height, cb#vertical, posA, pa#points))
+            // 静的地形同士（矩形・坂・多角形の組）は分離しない。
+            // ワイルドカードにせず全て列挙する: 6 番目の形状を足すとき、
+            // resolve の追加漏れがコンパイルエラーとして現れるように。
+            case (CollisionShape2D.RectShape2D(_), CollisionShape2D.SlopeShape2D(_)) => None
+            case (CollisionShape2D.SlopeShape2D(_), CollisionShape2D.RectShape2D(_)) => None
+            case (CollisionShape2D.SlopeShape2D(_), CollisionShape2D.SlopeShape2D(_)) => None
+            case (CollisionShape2D.RectShape2D(_), CollisionShape2D.PolygonShape2D(_)) => None
+            case (CollisionShape2D.PolygonShape2D(_), CollisionShape2D.RectShape2D(_)) => None
+            case (CollisionShape2D.SlopeShape2D(_), CollisionShape2D.PolygonShape2D(_)) => None
+            case (CollisionShape2D.PolygonShape2D(_), CollisionShape2D.SlopeShape2D(_)) => None
+            case (CollisionShape2D.PolygonShape2D(_), CollisionShape2D.PolygonShape2D(_)) => None
         }
 
     /// AABB 矩形同士の MTV。重なる軸のうち侵入量が小さい方向に押し出す。
@@ -663,4 +720,206 @@ mod CollisionShape2D {
             Vec2.mul(edgeOutwardNormal(vb, vc, va), dBC + radius)
         else
             Vec2.mul(edgeOutwardNormal(vc, va, vb), dCA + radius)
+
+    // ========================================================================
+    // 多角形形状のヘルパー
+    // ========================================================================
+
+    /// ローカル頂点列をワールド座標の辺の列にする（最後の頂点→先頭で閉じる）。
+    def worldEdges(polyPos: Vec2.Vec2, points: List[Vec2.Vec2]): List[(Vec2.Vec2, Vec2.Vec2)] =
+        let world = List.map(p -> Vec2.add(polyPos, p), points);
+        match world {
+            case Nil => Nil
+            case first :: _ =>
+                List.zip(world, List.append(List.drop(1, world), first :: Nil))
+        }
+
+    /// 点が辺の列で囲まれた領域の内部にあるか（水平線との交差数の偶奇）。
+    def insideEdges(p: Vec2.Vec2, edges: List[(Vec2.Vec2, Vec2.Vec2)]): Bool =
+        // 偶奇判定は境界上の点で辺の拾い方が揺れるため、先に境界上を弾いて外扱いに固定する
+        // （「接触ちょうどは重ならない」政策の strict < と揃える）。
+        let onBoundary = List.exists(edge -> {
+            let (a, b) = edge;
+            pointToSegmentDistSq(p, a, b) < 0.000000001
+        }, edges);
+        if (onBoundary) false
+        else
+            List.foldLeft((inside, edge) -> {
+                let (a, b) = edge;
+                let crosses = ((a#y > p#y) != (b#y > p#y)) and
+                              (p#x < a#x + (b#x - a#x) * (p#y - a#y) / (b#y - a#y));
+                if (crosses) not inside else inside
+            }, false, edges)
+
+    /// 点が多角形の内部にあるか。交差数の偶奇で判定するので凹んだ形でも正しい。
+    /// 境界上は外扱い・巻き順は不問。
+    pub def pointInPolygon(p: Vec2.Vec2, polyPos: Vec2.Vec2, points: List[Vec2.Vec2]): Bool =
+        insideEdges(p, worldEdges(polyPos, points))
+
+    /// ローカル頂点列の外接箱。外接箱近似のペアと事前の足切りに使う。
+    pub def polygonBounds(points: List[Vec2.Vec2]): Rect2.Rect2 =
+        match points {
+            case Nil => {position = Vec2.zero(), size = Vec2.zero()}
+            case first :: rest =>
+                let (low, high) = List.foldLeft((acc, p) -> {
+                    let (lo, hi) = acc;
+                    ({x = Float64.min(lo#x, p#x), y = Float64.min(lo#y, p#y)},
+                     {x = Float64.max(hi#x, p#x), y = Float64.max(hi#y, p#y)})
+                }, (first, first), rest);
+                {position = low, size = Vec2.sub(high, low)}
+        }
+
+    /// 多角形のワールド外接箱を「中心とサイズ」で返す（checkRectRect にそのまま渡せる形）。
+    def polygonBoundsCenterSize(polyPos: Vec2.Vec2, points: List[Vec2.Vec2]): (Vec2.Vec2, Vec2.Vec2) =
+        let bounds = polygonBounds(points);
+        (Vec2.add(polyPos, Rect2.center(bounds)), bounds#size)
+
+    /// 辺 a→b の外向き単位法線。頂点列が signedArea 正の向きに揃っている前提
+    /// （揃っていないと符号が反転するので、呼び手が先に向きを正規化する）。
+    def polygonEdgeOutwardNormal(edge: (Vec2.Vec2, Vec2.Vec2)): Vec2.Vec2 =
+        let (a, b) = edge;
+        let d = Vec2.sub(b, a);
+        Vec2.normalized({x = d#y, y = -1.0 * d#x})
+
+    /// 多角形の境界上で点に最も近い点と、その点が乗っている辺を返す。
+    def closestBoundaryPair(p: Vec2.Vec2, edges: List[(Vec2.Vec2, Vec2.Vec2)]):
+            Option[(Vec2.Vec2, (Vec2.Vec2, Vec2.Vec2))] =
+        match edges {
+            case Nil => None
+            case first :: rest =>
+                let candidateOf = edge -> {
+                    let (a, b) = edge;
+                    (closestPointOnSegment(p, a, b), edge)
+                };
+                Some(List.foldLeft((best, edge) -> {
+                    let cand = candidateOf(edge);
+                    let (bestPoint, _) = best;
+                    let (candPoint, _) = cand;
+                    if (Vec2.distanceSquaredTo(p, candPoint) < Vec2.distanceSquaredTo(p, bestPoint))
+                        cand
+                    else best
+                }, candidateOf(first), rest))
+        }
+
+    // ========================================================================
+    // 多角形形状の衝突判定
+    // ========================================================================
+
+    /// 円と多角形の重なり判定（checkCircleSlope の n 辺版）。
+    /// 中心が内部にあるか、どれかの辺に半径未満まで近ければ重なる。
+    pub def checkCirclePolygon(circlePos: Vec2.Vec2, radius: Float64,
+                                polyPos: Vec2.Vec2, points: List[Vec2.Vec2]): Bool =
+        // 辺の総当りの前に外接箱で足切りする（多角形は辺数が多く、離れている相手が大半のため）。
+        let localBounds = polygonBounds(points);
+        let worldBounds = {position = Vec2.add(localBounds#position, polyPos), size = localBounds#size};
+        if (not Rect2.hasPoint(circlePos, Rect2.grow(radius, worldBounds))) false
+        else
+            let edges = worldEdges(polyPos, points);
+            if (insideEdges(circlePos, edges)) true
+            else
+                let radiusSq = radius * radius;
+                List.exists(edge -> {
+                    let (a, b) = edge;
+                    pointToSegmentDistSq(circlePos, a, b) < radiusSq
+                }, edges)
+
+    /// カプセルと多角形の重なり判定（checkCapsuleSlope の n 辺版）。
+    /// 軸線分の端点が内部にあるか、どれかの辺に半径未満まで近ければ重なる
+    /// （線分が多角形を貫くときは辺と交差するので距離 0 で拾える）。
+    pub def checkCapsulePolygon(capsulePos: Vec2.Vec2, radius: Float64,
+                                 height: Float64, vertical: Bool,
+                                 polyPos: Vec2.Vec2, points: List[Vec2.Vec2]): Bool =
+        let (segA, segB) = capsuleSegment(capsulePos, radius, height, vertical);
+        let edges = worldEdges(polyPos, points);
+        if (insideEdges(segA, edges) or insideEdges(segB, edges)) true
+        else
+            let radiusSq = radius * radius;
+            List.exists(edge -> {
+                let (e1, e2) = edge;
+                segmentToSegmentDistSq(segA, segB, e1, e2) < radiusSq
+            }, edges)
+
+    // ========================================================================
+    // 多角形の MTV
+    // ========================================================================
+
+    /// 円と多角形の MTV。円を多角形から離す変位を返す。
+    /// 押し出しの距離は必ず「辺（線分）への最近接点」から取る。坂の pushOutFromInside のような
+    /// 「辺を通る直線への距離」は、凹んだ角の近くで辺の延長線を拾い誤った向きに押すため使わない。
+    /// 3 頂点未満は None（潰れた坂と同じ政策）。
+    pub def resolveCirclePolygon(circlePos: Vec2.Vec2, radius: Float64,
+                                  polyPos: Vec2.Vec2, points: List[Vec2.Vec2]): Option[Vec2.Vec2] =
+        if (List.length(points) < 3) None
+        else
+            // 外向き法線の符号は巻き順で反転するため、どちら回りで渡されても
+            // 同じ押し出しになるようにここで正の向きへ揃える。
+            let oriented = if (Triangulate.signedArea(points) < 0.0) List.reverse(points) else points;
+            let edges = worldEdges(polyPos, oriented);
+            match closestBoundaryPair(circlePos, edges) {
+                case None => None
+                case Some((closest, edge)) =>
+                    let diff = Vec2.sub(circlePos, closest);
+                    let dist = Vec2.length(diff);
+                    if (insideEdges(circlePos, edges))
+                        // 中心が内部 — 境界最近接点の方向へ dist + radius
+                        if (dist < 0.001)
+                            Some(Vec2.mul(polygonEdgeOutwardNormal(edge), dist + radius))
+                        else
+                            Some(Vec2.mul(diff, -1.0 * (dist + radius) / dist))
+                    else if (dist >= radius) None
+                    else if (dist < 0.001)
+                        // 境界すれすれ — 向きの数値誤差を避けるため辺の外向き法線で押す
+                        Some(Vec2.mul(polygonEdgeOutwardNormal(edge), radius - dist))
+                    else
+                        // 外から浅くめり込み — 境界最近接点→中心方向へ不足ぶん
+                        Some(Vec2.mul(diff, (radius - dist) / dist))
+            }
+
+    /// カプセルと多角形の MTV。カプセルを多角形から離す変位を返す。
+    /// 多角形に最も近い軸線分上の点を求め、その点を円とみなして円の MTV に還元する
+    /// （既存のカプセル系と同じ還元）。
+    pub def resolveCapsulePolygon(capsulePos: Vec2.Vec2, radius: Float64,
+                                   height: Float64, vertical: Bool,
+                                   polyPos: Vec2.Vec2, points: List[Vec2.Vec2]): Option[Vec2.Vec2] =
+        let (segA, segB) = capsuleSegment(capsulePos, radius, height, vertical);
+        let edges = worldEdges(polyPos, points);
+        let s = if (insideEdges(segA, edges)) segA
+                else if (insideEdges(segB, edges)) segB
+                else closestSegPointToEdges(segA, segB, edges);
+        resolveCirclePolygon(s, radius, polyPos, points)
+
+    // ========================================================================
+    // 多角形の検証 — 外部データ（level.json 等）の読み込み時に使う
+    // ========================================================================
+
+    /// 頂点列が多角形として成立するか検証する。壊れていれば平易な日本語の理由を返す。
+    /// 判定関数からは呼ばない（自己交差の総当りは重く、毎フレームの経路に置けない）。
+    pub def validatePolygonPoints(points: List[Vec2.Vec2]): Result[String, Unit] =
+        if (List.length(points) < 3)
+            Err("頂点が ${List.length(points)} 個しかありません。多角形には 3 個以上の頂点が必要です")
+        else if (Float64.abs(Triangulate.signedArea(points)) < 0.000001)
+            Err("面積がほぼゼロです。頂点が一直線に並んでいないか確かめてください")
+        else if (hasSelfIntersection(points))
+            Err("辺同士が交差しています。自己交差しない形に直してください")
+        else Ok(())
+
+    /// 隣り合わない辺のペアに交差があるか（O(n²) の総当り）。
+    def hasSelfIntersection(points: List[Vec2.Vec2]): Bool =
+        let edges = worldEdges(Vec2.zero(), points);
+        let count = List.length(edges);
+        let indexed = List.zip(List.range(0, count), edges);
+        List.exists(left -> {
+            let (i, edgeI) = left;
+            List.exists(right -> {
+                let (j, edgeJ) = right;
+                // 隣の辺は頂点を共有していて必ず触れるので除外（先頭と末尾の辺も隣同士）
+                let adjacent = (j == i + 1) or (i == 0 and j == count - 1);
+                if (j <= i or adjacent) false
+                else {
+                    let (a1, a2) = edgeI;
+                    let (b1, b2) = edgeJ;
+                    segmentsIntersect(a1, a2, b1, b2)
+                }
+            }, indexed)
+        }, indexed)
 }
