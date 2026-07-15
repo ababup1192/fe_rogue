@@ -40,4 +40,10 @@ mod JsonCompat {
     /// `Util.Json.parse` は `Result` 返しなので Option に変換する。
     pub def parse(s: String): Option[Json] =
         Util.Json.parse(s) |> Result.toOption
+
+    /// エラーにノードの名前パス（例: "gallery/row1/box"）を前置する。ドキュメント木のパーサが
+    /// 「どのノードで失敗したか」を編集者へ伝える口。子のエラーは子が既にタグ済みなので、
+    /// 呼び側はノード自身のフィールド解析だけを包むこと（二重前置を避ける）。
+    pub def atNode(path: String, r: Result[JsonError, a]): Result[JsonError, a] =
+        Result.mapErr(e -> Decode(JsonPath.empty(), TypeMismatch("at ${path}: ${e}")), r)
 }

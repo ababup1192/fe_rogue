@@ -1,0 +1,124 @@
+// Flex — 宣言的なノード木を UiLayout（flexbox 風・純関数）でレイアウトし、
+// Render.PlacedItem の列に落とす薄い汎用層。UI ストア（UiSpec/UiStore の entity 木）を
+// 介さずに「毎フレーム View が組み立てる」使い方へ UiLayout の語彙を開放する。
+// 利用例: ギャラリーの行組み / HUD の横並び / ラベル付きセルの格子。
+//
+// 木は 2 種類のノードだけ:
+//   Leaf = 実寸（size）を持つ描画物。レイアウト確定後、割り当てられた rect を draw が受け取る。
+//   Box  = 子を UiLayout.Style（方向・gap・pad・寄せ・サイズ指定）で並べる容器。
+//
+// 内部は DFS で EntityId（= Int32 の透明 alias）を採番して LayoutInput を組み、
+// UiLayout.computeLayout に解決を委譲する。レイアウト計算そのものはここでは持たない。
+//
+// 注意:
+//   - Leaf に style は登録しない（defaultStyle + measures 登録で内在サイズ扱いになる）。
+//     Grow させたい葉は box({width = Grow(w) | ...}, leaf :: Nil) で包む。
+//   - root ノードのサイズ指定は place の rootRect に上書きされる（computeLayout は root に
+//     rootRect をそのまま割り当てる）。root の style は dir / pad / 寄せだけ意味を持つ。
+//   - Column の子を親幅いっぱいに広げたいときは親に crossAlign = Stretch（既定 Start では
+//     子は自分の内在幅に縮む）。
+
+mod Flex {
+
+    /// レイアウトノード。Leaf = 実寸つき描画物、Box = 子を並べる容器。
+    /// Box の draw は「自分の rect を描いてから子を載せる」容器用（ui.json の panel 相当）。
+    pub enum Node {
+        case Leaf({ size = Vec2.Vec2, draw = Rect2.Rect2 -> List[Render.PlacedItem] })
+        case Box({ style = UiLayout.Style,
+                   draw = Option[Rect2.Rect2 -> List[Render.PlacedItem]],
+                   children = List[Node] })
+    }
+
+    /// 実寸 size の葉。draw はレイアウト確定後の rect（左上原点）を受け取る。
+    pub def leaf(size: Vec2.Vec2, draw: Rect2.Rect2 -> List[Render.PlacedItem]): Node =
+        Node.Leaf({ size = size, draw = draw })
+
+    /// 「中心座標を受けて描く」既存語彙（Render.*At 系）をそのまま挿せる近道。
+    pub def leafAtCenter(size: Vec2.Vec2, make: Vec2.Vec2 -> List[Render.PlacedItem]): Node =
+        leaf(size, r -> make(Rect2.center(r)))
+
+    /// style で子を並べる容器。
+    pub def box(style: UiLayout.Style, children: List[Node]): Node =
+        Node.Box({ style = style, draw = None, children = children })
+
+    /// 自分の rect も描く容器（背景パネル + 子、の形）。draw の出力は子より先に並ぶ
+    /// （重なりは zIndex が決める）。
+    pub def boxDrawn(style: UiLayout.Style, draw: Rect2.Rect2 -> List[Render.PlacedItem],
+                     children: List[Node]): Node =
+        Node.Box({ style = style, draw = Some(draw), children = children })
+
+    /// 縦並びの既定 style（= UiLayout.defaultStyle）。`{... | Flex.columnStyle()}` で上書きする。
+    pub def columnStyle(): UiLayout.Style =
+        UiLayout.defaultStyle()
+
+    /// 横並びの既定 style。
+    pub def rowStyle(): UiLayout.Style =
+        { dir = UiLayout.Dir.Row | UiLayout.defaultStyle() }
+
+    /// 木を rootRect に敷いてレイアウトを解決し、各 Leaf の draw を rect で呼んで連結する。
+    /// 出力順は木の DFS 順（重なりは zIndex が決めるので、順序は再現性のための固定）。
+    pub def place(root: Node, rootRect: Rect2.Rect2): List[Render.PlacedItem] =
+        let (leaves, rects) = resolveTree(root, rootRect);
+        leaves |> List.flatMap(entry -> {
+            let (id, draw) = entry;
+            match Map.get(id, rects) {
+                case Some(r) => draw(r)
+                case None    => Nil
+            }
+        })
+
+    /// 各 Leaf に割り当てられた rect を DFS 順で返す（レイアウトだけ検分したいとき・テスト用）。
+    pub def leafRects(root: Node, rootRect: Rect2.Rect2): List[Rect2.Rect2] =
+        let (leaves, rects) = resolveTree(root, rootRect);
+        leaves |> List.filterMap(entry -> { let (id, _) = entry; Map.get(id, rects) })
+
+    // ── 内部 ──
+
+    /// 木の走査で積む状態。leaves は前置で積むので DFS の逆順（solve が反転して返す）。
+    type alias Acc = {
+        nextId   = Int32,
+        styles   = Map[EntityId, UiLayout.Style],
+        parents  = Map[EntityId, EntityId],
+        order    = Map[EntityId, Int32],
+        measures = Map[EntityId, Vec2.Vec2],
+        leaves   = List[(EntityId, Rect2.Rect2 -> List[Render.PlacedItem])]
+    }
+
+    def emptyAcc(): Acc =
+        { nextId = 0, styles = Map.empty(), parents = Map.empty(), order = Map.empty(),
+          measures = Map.empty(), leaves = Nil }
+
+    /// 採番済みの木を computeLayout に掛け、(DFS 順の Leaf 列, id → rect) を返す。
+    /// （solve は Flix の予約語なので resolveTree）
+    def resolveTree(root: Node, rootRect: Rect2.Rect2):
+            (List[(EntityId, Rect2.Rect2 -> List[Render.PlacedItem])], Map[EntityId, Rect2.Rect2]) =
+        let (rootId, acc) = build(root, emptyAcc());
+        let input = { styles = acc#styles, parents = acc#parents, order = acc#order,
+                      measures = acc#measures, visible = Map.empty() };
+        (List.reverse(acc#leaves), UiLayout.computeLayout(input, rootId, rootRect))
+
+    /// DFS で id を採番しつつ LayoutInput の素材を積む。自分の id と更新後の Acc を返す。
+    def build(node: Node, acc: Acc): (EntityId, Acc) =
+        let id = acc#nextId;
+        match node {
+            case Node.Leaf(l) =>
+                (id, { nextId   = id + 1,
+                       measures = Map.insert(id, l#size, acc#measures),
+                       leaves   = (id, l#draw) :: acc#leaves | acc })
+            case Node.Box(b) =>
+                let leaves1 = match b#draw {
+                    case Some(d) => (id, d) :: acc#leaves
+                    case None    => acc#leaves
+                };
+                let opened = { nextId = id + 1,
+                               styles = Map.insert(id, b#style, acc#styles),
+                               leaves = leaves1 | acc };
+                let (_, closed) = List.foldLeft((st, child) -> {
+                    let (i, a) = st;
+                    let (childId, a1) = build(child, a);
+                    (i + 1, { parents = Map.insert(childId, id, a1#parents),
+                              order   = Map.insert(childId, i, a1#order) | a1 })
+                }, (0, opened), b#children);
+                (id, closed)
+        }
+}

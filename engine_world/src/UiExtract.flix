@@ -55,6 +55,21 @@ mod UiExtract {
             })
             |> List.sortBy(entry -> {let (id, _pos, poly) = entry; (poly#zIndex, depthOf(id, ui#parents), orderOf(id, ui), id)})
 
+    /// shape entity を PlacedItem 列へ射影する。可視かつ rect 確定のみ。
+    /// 並びは extract と同じ (zIndex, 階層深さ, order, id)。幾何は UiShape.placedItems に委譲する
+    /// （UiDoc の Flex 経路と同じ関数 — 同じ JSON の図形が経路によらず同じ絵になる）。
+    pub def extractShapes(ui: UiStore.UiWorld, rects: Map[EntityId, Rect2.Rect2],
+                          vis: Map[EntityId, Bool]): List[Render.PlacedItem] =
+        ui#shapes
+            |> Map.toList
+            |> List.filter(entry -> {let (id, _s) = entry; Option.getWithDefault(true, Map.get(id, vis))})
+            |> List.filterMap(entry -> {
+                let (id, s) = entry;
+                Map.get(id, rects) |> Option.map(rect -> (id, s, rect))
+            })
+            |> List.sortBy(entry -> {let (id, s, _rect) = entry; (s#zIndex, depthOf(id, ui#parents), orderOf(id, ui), id)})
+            |> List.flatMap(entry -> {let (_id, s, rect) = entry; UiShape.placedItems(s, rect)})
+
     /// PolyComp の全サブポリの各頂点にレイアウト矩形左上 origin を足し、ローカル座標を design 空間の
     /// 絶対座標へ移す。
     def offsetPoly(poly: UiWidget.PolyComp, origin: Vec2.Vec2): UiWidget.PolyComp =
@@ -83,8 +98,9 @@ mod UiExtract {
     /// sprite の Item。左上原点（centered=false）でレイアウト矩形の位置に合わせる。
     /// regionRect を持たず格子分割（hframes*vframes>1）があるときは frame からセル矩形を導く
     /// （テクスチャ寸法は `textureInfoOf` で引く）。
-    def spriteItem(sprite: UiWidget.SpriteComp,
-                   textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): Render.Item \ ef =
+    /// pub なのは UiDoc（Flex 経路）が同じ sprite 意味論で描くため — 経路で絵が変わらない契約。
+    pub def spriteItem(sprite: UiWidget.SpriteComp,
+                       textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): Render.Item \ ef =
         let regionOpt = resolveRegion(sprite, textureInfoOf);
         Render.Item.Sprite({texture = sprite#texture, tint = sprite#tint, alpha = 1.0f32,
                                   scale = regionAdjustedScale(sprite, regionOpt, textureInfoOf), rotation = 0.0, centered = false,

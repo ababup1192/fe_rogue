@@ -71,7 +71,9 @@ mod UiRender {
                     { at = Vec2.zero(),
                       item = Render.polygon(sub, poly#color, poly#zIndex + offset) |> Render.fade(poly#alpha) })
             });
-        List.append(raised, polyItems)
+        let shapeItems = UiExtract.extractShapes(ui, rects, vis)
+            |> List.map(placed -> { item = Render.raiseZ(offset, placed#item) | placed });
+        List.append(raised, List.append(shapeItems, polyItems))
 
     /// root の layer を layers store から引き、CanvasLayer.layerStride 倍した zIndex 加算量を返す。未登録は 0。
     def layerOffset(ui: UiStore.UiWorld, root: EntityId): Int32 =
