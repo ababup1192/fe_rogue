@@ -25,15 +25,10 @@ mod UiFocus {
             else best,
             None)
 
-    /// UiWorld 全体を design 空間でレイアウトして最前面ヒットを引く近道
-    /// （マウスの hover / click の入口。毎フレーム呼んでよい純関数）。
-    /// measures は空で解くため text の Auto 寸法は 0 になる — 面積 0 の rect は
-    /// 「内部が無い」ので当たりから除外する（ボタン中心にぴったり重なった 0 サイズの
-    /// ラベルが、境界含み判定で当たりを奪う縮退を防ぐ）。当たり判定の対象には
-    /// width/height を Px で持つノード（ボタンのコンテナや図形）を使うこと。
-    /// z は各描画コンポーネントの zIndex そのまま（root の layer 差は見ない — HUD 単層想定）。
-    /// 描画物を持たないコンテナも rect を持つので当たる（root は design 全面に当たる）—
-    /// 呼び手は meta / hovers の有無で「意味のある当たり」だけを拾う。
+    /// UiWorld 全体を design 空間でレイアウトして最前面ヒットを引く（マウスの hover / click の入口）。
+    /// 当たるのは面積のある rect だけ — text は実寸を測らず 0 サイズになるので当たらない。
+    /// 当たり判定の対象には width/height を Px で持つノード（ボタンのコンテナや図形）を使うこと。
+    /// コンテナも rect を持つので当たる（root は画面全面）— 呼び手は meta の有無で選別する。
     pub def hitTestUi(ui: UiStore.UiWorld, design: Vec2.Vec2, point: Vec2.Vec2): Option[EntityId] =
         let rootRect: Rect2.Rect2 = {position = {x = 0.0, y = 0.0}, size = design};
         let roots = UiStore.rootsOf(ui);

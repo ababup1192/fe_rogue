@@ -649,7 +649,7 @@ mod UiDoc {
     pub def build(atlasOf: String -> FontAtlas, spec: Spec): Flex.Node =
         buildWith(atlasOf, _ -> None, spec)
 
-    /// build の sprite 対応版。textureInfoOf はテクスチャ名 → 寸法（frame 格子の解決に使う）。
+    /// build と同じ。加えて textureInfoOf（テクスチャ名 → 寸法）で sprite の frame 格子も解決できる。
     pub def buildWith(atlasOf: String -> FontAtlas,
                       textureInfoOf: String -> Option[GameEngine.TextureInfo],
                       spec: Spec): Flex.Node =
@@ -676,7 +676,7 @@ mod UiDoc {
     pub def render(atlasOf: String -> FontAtlas, spec: Spec, rootRect: Rect2.Rect2): List[Render.PlacedItem] =
         Flex.place(build(atlasOf, spec), rootRect)
 
-    /// render の sprite 対応版。
+    /// render と同じ。sprite を含むドキュメントはこちら（buildWith して place まで）。
     pub def renderWith(atlasOf: String -> FontAtlas,
                        textureInfoOf: String -> Option[GameEngine.TextureInfo],
                        spec: Spec, rootRect: Rect2.Rect2): List[Render.PlacedItem] =

@@ -170,16 +170,20 @@ mod UiSpec {
     /// load/parse に失敗した root は旧ツリーを保持し、残りの root のリロードは続行する。
     /// respawn は sources を触らないため、走査中に台帳は変わらない。
     pub def reloadAll(ui: UiStore.UiWorld): UiStore.UiWorld \ Fs.FileRead =
-        ui#sources |> Map.foldLeftWithKey((acc, rootName, assetPath) -> reloadOne(rootName, assetPath, acc), ui)
+        let (ui2, _) = reloadAllWithReport(ui);
+        ui2
 
-    /// 1 アセットを読み直し、登録済み root 名（sources のキー）へ強制的に付け直して respawn する。
-    /// spec 自身の root 名がキーと違っても（別名 spawn / json 側の root 名変更）キー名でツリーを
-    /// 組み直すので、旧キーの孤児ツリーが残らない。失敗時は現状維持（他 root を巻き添えにしない）。
-    def reloadOne(rootName: String, assetPath: String, ui: UiStore.UiWorld): UiStore.UiWorld \ Fs.FileRead =
-        match load(assetPath) {
-            case Err(_)   => ui
-            case Ok(spec) => let (_, ui2) = respawn(withRootName(spec, rootName), ui); ui2
-        }
+    /// reloadAll と同じリロードに加えて、失敗した root の (root 名, エラー文言) のリストを返す。
+    pub def reloadAllWithReport(ui: UiStore.UiWorld): (UiStore.UiWorld, List[(String, String)]) \ Fs.FileRead =
+        ui#sources |> Map.foldLeftWithKey((acc, rootName, assetPath) -> {
+            let (uiAcc, errs) = acc;
+            match load(assetPath) {
+                case Err(e)   => (uiAcc, (rootName, JsonCompat.describe(e)) :: errs)
+                case Ok(spec) =>
+                    let (_, ui2) = respawn(withRootName(spec, rootName), uiAcc);
+                    (ui2, errs)
+            }
+        }, (ui, Nil))
 
     /// 1 ノードを採番して各 store に登録し、子孫を再帰登録する。
     /// `path`: このノードの完全名パス。`parent`: 親 entity（root は None）。`orderIndex`: 兄弟内の順序。

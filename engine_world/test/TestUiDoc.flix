@@ -252,6 +252,29 @@ mod TestUiDoc {
             got)
 
     @Test
+    def testHoverAppliesToPolyAndSprite(): Unit \ Assert =
+        // hover は poly（color）と sprite（tint）にも効く — 「宣言を受理して黙って無視」を作らない。
+        let doc = "{\"root\": {\"name\":\"g\",\"dir\":\"row\",\"children\":["
+                + "{\"name\":\"p\",\"widget\":\"poly\",\"color\":\"#000000\",\"width\":10,\"height\":10,"
+                + "\"points\":[[0,0],[10,0],[5,10]],\"hover\":{\"color\":\"#ff0000\"}},"
+                + "{\"name\":\"s\",\"widget\":\"sprite\",\"texture\":\"t\",\"width\":10,\"height\":10,"
+                + "\"hover\":{\"tint\":\"#ff0000\"}}]}}";
+        let got = spawnDoc(doc) |> Option.map(ui -> {
+            let hovered = p -> UiStore.setHovered(Some(p), ui);
+            let polyColor = u -> UiExtract.extractPolys(u, layoutOf(u), visOf(u))
+                |> List.head |> Option.map(entry -> {let (_id, _pos, comp) = entry; colorTuple(comp#color)});
+            let spriteTint = u -> UiExtract.extract(u, layoutOf(u), visOf(u), _ -> dummyAtlas(), _ -> None)
+                |> List.filterMap(placed -> match placed#item {
+                    case Render.Item.Sprite(sp) => Some(colorTuple(sp#tint))
+                    case _                      => None
+                }) |> List.head;
+            (polyColor(hovered("g/p")), spriteTint(hovered("g/s")))
+        });
+        Assert.assertEq(
+            expected = Some((Some((1.0f32, 0.0f32, 0.0f32)), Some((1.0f32, 0.0f32, 0.0f32)))),
+            got)
+
+    @Test
     def testHitTestUiFindsButtonsByRect(): Unit \ Assert =
         // 縦に並んだ 2 ボタン(10×10)を hitTestUi で引き分ける。ボタン外は root(全面)に当たる。
         let doc = "{\"root\": {\"name\":\"g\",\"children\":["
@@ -291,6 +314,18 @@ mod TestUiDoc {
                 |> Option.flatMap(id -> UiStore.pathOf(id, ui)));
         // 不可視ボタンには当たらず、背後の root に落ちる。
         Assert.assertEq(expected = Some(Some("g")), got)
+
+    @Test
+    def testReloadAllWithReportKeepsOldTreeAndReports(): Unit \ {Assert, IO} =
+        // 読めないアセットの root は旧ツリーを保ちつつ、(root名, エラー文言) が報告に載る。
+        let doc = "{\"root\": {\"name\":\"g\",\"widget\":\"box\",\"color\":\"#000000\",\"width\":10,\"height\":10}}";
+        let got = spawnDoc(doc) |> Option.map(ui -> {
+            let ui1 = UiStore.putSource("g", "no/such/file.ui.json", ui);
+            let (ui2, errs) = run { UiSpec.reloadAllWithReport(ui1) } with Fs.FileRead.runWithIO;
+            (Option.isEmpty(UiStore.idOf("g", ui2)) == false,
+             List.map(entry -> {let (rootName, _msg) = entry; rootName}, errs))
+        });
+        Assert.assertEq(expected = Some((true, "g" :: Nil)), got)
 
     @Test
     def testSetShapeColorChangesExtractedShape(): Unit \ Assert =

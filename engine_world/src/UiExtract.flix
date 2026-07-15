@@ -26,7 +26,7 @@ mod UiExtract {
                 case Some(rect) => (id, box#zIndex, boxItem(hoverBox(hoverFor(ui, hoveredId, id), box), rect#size)) :: acc
             }, Nil);
         let spriteEntries = ui#sprites |> Map.foldLeftWithKey((acc, id, sprite) ->
-            (id, sprite#zIndex, spriteItem(sprite, textureInfoOf)) :: acc, Nil);
+            (id, sprite#zIndex, spriteItem(hoverSprite(hoverFor(ui, hoveredId, id), sprite), textureInfoOf)) :: acc, Nil);
         let textEntries = Map.foldLeftWithKey((acc, id, comp) ->
             (id, comp#zIndex, textItem(hoverText(hoverFor(ui, hoveredId, id), comp), atlasOf)) :: acc,
             (Nil : List[(EntityId, Int32, Render.Item)]), ui#texts);
@@ -61,6 +61,22 @@ mod UiExtract {
             case Some(hs) => { tint = Option.getWithDefault(comp#tint, hs#tint) | comp }
         }
 
+    /// sprite に効く hover は tint のみ（alpha は SpriteComp が持たない — 宣言しても効かない
+    /// のではなく、そもそも sprite の宣言語彙に無い）。
+    def hoverSprite(h: Option[UiWidget.HoverStyle], comp: UiWidget.SpriteComp): UiWidget.SpriteComp =
+        match h {
+            case None     => comp
+            case Some(hs) => { tint = Option.getWithDefault(comp#tint, hs#tint) | comp }
+        }
+
+    /// poly に効く hover は color / alpha。
+    def hoverPoly(h: Option[UiWidget.HoverStyle], comp: UiWidget.PolyComp): UiWidget.PolyComp =
+        match h {
+            case None     => comp
+            case Some(hs) => { color = Option.getWithDefault(comp#color, hs#color),
+                               alpha = Option.getWithDefault(comp#alpha, hs#alpha) | comp }
+        }
+
     def hoverShape(h: Option[UiWidget.HoverStyle], comp: UiShape.ShapeComp): UiShape.ShapeComp =
         match h {
             case None     => comp
@@ -80,12 +96,14 @@ mod UiExtract {
     /// （layer zIndex 加算・engine 型への詰め替え）は UiRender が行い、ここは engine 型へ依存しない。
     pub def extractPolys(ui: UiStore.UiWorld, rects: Map[EntityId, Rect2.Rect2],
                          vis: Map[EntityId, Bool]): List[(EntityId, Vec2.Vec2, UiWidget.PolyComp)] =
+        let hoveredId = hoveredIdOf(ui);
         ui#polys
             |> Map.toList
             |> List.filter(entry -> {let (id, _poly) = entry; Option.getWithDefault(true, Map.get(id, vis))})
             |> List.filterMap(entry -> {
                 let (id, poly) = entry;
-                Map.get(id, rects) |> Option.map(rect -> (id, rect#position, offsetPoly(poly, rect#position)))
+                Map.get(id, rects) |> Option.map(rect ->
+                    (id, rect#position, offsetPoly(hoverPoly(hoverFor(ui, hoveredId, id), poly), rect#position)))
             })
             |> List.sortBy(entry -> {let (id, _pos, poly) = entry; (poly#zIndex, UiHierarchy.depthOf(id, ui#parents), orderOf(id, ui), id)})
 

@@ -82,7 +82,7 @@
         "borderColor": { "$ref": "#/$defs/color" },
         "hover": {
           "type": "object",
-          "description": "hover 時の部分上書き (box: color/borderColor/alpha、text: tint、図形: color/borderColor/alpha)。UiStore 経路でのみ効く。",
+          "description": "hover 時の部分上書き (box/図形: color/borderColor/alpha、text: tint、sprite: tint、poly: color/alpha)。UiStore 経路でのみ効く。",
           "properties": {
             "color": { "$ref": "#/$defs/color" },
             "borderColor": { "$ref": "#/$defs/color" },
