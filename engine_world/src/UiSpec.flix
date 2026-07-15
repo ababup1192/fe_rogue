@@ -66,18 +66,17 @@ mod UiSpec {
 
     /// UiDoc.Spec（payload 持ち Widget）→ UiStore 向けの flat な Spec。
     def toSpec(doc: UiDoc.Spec): Result[JsonError, Spec] =
-        match doc {
-            case UiDoc.Spec.Spec(node) => forM (
-                comps    <- projectWidget(node#name, node#widget);
-                children <- Result.traverse(child -> toSpec(child), node#children)
-            ) yield Spec.Spec({
-                name = node#name, widget = comps#widget, style = node#style,
-                box = comps#box, text = comps#text, sprite = comps#sprite,
-                poly = comps#poly, shape = comps#shape, hover = node#hover,
-                visible = node#visible, binding = node#binding, meta = node#meta,
-                layer = node#layer, children = children
-            })
-        }
+        let UiDoc.Spec.Spec(node) = doc;
+        forM (
+            comps    <- projectWidget(node#name, node#widget);
+            children <- Result.traverse(child -> toSpec(child), node#children)
+        ) yield Spec.Spec({
+            name = node#name, widget = comps#widget, style = node#style,
+            box = comps#box, text = comps#text, sprite = comps#sprite,
+            poly = comps#poly, shape = comps#shape, hover = node#hover,
+            visible = node#visible, binding = node#binding, meta = node#meta,
+            layer = node#layer, children = children
+        })
 
     /// widget 1 個ぶんの射影結果（種別タグ + 対応コンポーネントだけ Some）。
     type alias WidgetComps = {

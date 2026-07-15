@@ -144,46 +144,34 @@ mod TestUiDoc {
             (parses(unknownWidget), parses(noRadius),
              parses(dupNames), parses(polyTwoPoints), parses(okControl)))
 
+    /// doc のパースエラーを編集者向け文言（describe）で返す（成功や JSON 構文エラーは目印文字列）。
+    def errTextOf(doc: String): String =
+        JsonCompat.parse(doc)
+            |> Option.map(json -> match UiDoc.parse(json) {
+                case Ok(_)  => "no error"
+                case Err(e) => JsonCompat.describe(e)
+            })
+            |> Option.getWithDefault("no json")
+
     @Test
     def testErrorCarriesNodePath(): Unit \ Assert =
         // 深いノードの必須キー欠落は、そのノードの名前パスでタグされる（編集箇所へ誘導する）。
         let doc = "{\"root\": {\"name\":\"g\",\"children\":[{\"name\":\"row1\",\"children\":["
                 + "{\"name\":\"box\",\"widget\":\"circle\",\"radius\":1.0}]}]}}";
-        let msg = match JsonCompat.parse(doc) {
-            case None       => "no json"
-            case Some(json) => match UiDoc.parse(json) {
-                case Ok(_)  => "no error"
-                case Err(e) => "${e}"
-            }
-        };
-        Assert.assertEq(expected = true, String.contains(substr = "g/row1/box", msg))
+        Assert.assertEq(expected = true, String.contains(substr = "g/row1/box", errTextOf(doc)))
 
     @Test
     def testErrorCarriesChildIndexWhenNameMissing(): Unit \ Assert =
         // name の無い子は名前で指せないので「親パス[兄弟内位置]」で指す。
         let doc = "{\"root\": {\"name\":\"g\",\"children\":["
                 + "{\"name\":\"a\"},{\"widget\":\"box\",\"color\":\"#000000\"}]}}";
-        let msg = match JsonCompat.parse(doc) {
-            case None       => "no json"
-            case Some(json) => match UiDoc.parse(json) {
-                case Ok(_)  => "no error"
-                case Err(e) => "${e}"
-            }
-        };
-        Assert.assertEq(expected = true, String.contains(substr = "g[1]", msg))
+        Assert.assertEq(expected = true, String.contains(substr = "g[1]", errTextOf(doc)))
 
     @Test
     def testErrorMessageHasNoDecoderNoise(): Unit \ Assert =
         // describe を通した文言に器の定型句("type mismatch: expected")が残らない —
         // 編集者は「どこで・何が要るか」だけを読む。
-        let doc = "{\"root\": {\"name\":\"g\",\"widget\":\"circle\",\"radius\":1.0}}";
-        let msg = match JsonCompat.parse(doc) {
-            case None       => "no json"
-            case Some(json) => match UiDoc.parse(json) {
-                case Ok(_)  => "no error"
-                case Err(e) => JsonCompat.describe(e)
-            }
-        };
+        let msg = errTextOf("{\"root\": {\"name\":\"g\",\"widget\":\"circle\",\"radius\":1.0}}");
         Assert.assertEq(
             expected = (true, false),
             (String.contains(substr = "at g: 'color' is required", msg),
@@ -279,6 +267,19 @@ mod TestUiDoc {
         Assert.assertEq(
             expected = Some((Some("g/b1"), Some("g/b2"), Some("g"))),
             got)
+
+    @Test
+    def testHitTestUiIgnoresZeroSizeText(): Unit \ Assert =
+        // ボタン中心に重なった text（measures 無しで 0×0）が高 zIndex でも当たりを奪わない —
+        // 面積 0 の rect は内部を持たない。
+        let doc = "{\"root\": {\"name\":\"g\",\"children\":["
+                + "{\"name\":\"btn\",\"widget\":\"box\",\"color\":\"#000000\",\"width\":10,\"height\":10,"
+                + "\"dir\":\"column\",\"mainAlign\":\"center\",\"crossAlign\":\"center\",\"zIndex\":5,\"children\":["
+                + "{\"name\":\"label\",\"widget\":\"text\",\"text\":\"+\",\"zIndex\":9}]}]}}";
+        let got = spawnDoc(doc) |> Option.map(ui ->
+            UiFocus.hitTestUi(ui, { x = 100.0, y = 100.0 }, { x = 5.0, y = 5.0 })
+                |> Option.flatMap(id -> UiStore.pathOf(id, ui)));
+        Assert.assertEq(expected = Some(Some("g/btn")), got)
 
     @Test
     def testHitTestUiSkipsInvisible(): Unit \ Assert =

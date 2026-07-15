@@ -56,7 +56,8 @@ mod UiDoc {
     }
 
     pub def nameOf(spec: Spec): String =
-        match spec { case Spec.Spec(node) => node#name }
+        let Spec.Spec(node) = spec;
+        node#name
 
     // ========================================================================
     // parse（純粋）
@@ -652,22 +653,24 @@ mod UiDoc {
     pub def buildWith(atlasOf: String -> FontAtlas,
                       textureInfoOf: String -> Option[GameEngine.TextureInfo],
                       spec: Spec): Flex.Node =
-        match spec {
-            case Spec.Spec(node) =>
-                let childNodes = node#children
-                    |> List.filter(child -> match child { case Spec.Spec(c) => c#visible })
-                    |> List.map(child -> buildWith(atlasOf, textureInfoOf, child));
-                match node#widget {
-                    case Widget.NoneW       => Flex.box(node#style, childNodes)
-                    case Widget.BoxW(b)     => Flex.boxDrawn(node#style, r -> drawBox(b, r), childNodes)
-                    case Widget.TextW(t)    => buildText(atlasOf, node#style, t, childNodes)
-                    case Widget.SpriteW(sp) => Flex.boxDrawn(node#style,
-                        r -> ({ at = r#position, item = UiExtract.spriteItem(sp, textureInfoOf) }) :: Nil,
-                        childNodes)
-                    case Widget.PolyW(p)    => Flex.boxDrawn(node#style, r -> drawPoly(p, r), childNodes)
-                    case Widget.ShapeW(s)   => Flex.boxDrawn(node#style, r -> UiShape.placedItems(s, r), childNodes)
-                }
+        let Spec.Spec(node) = spec;
+        let childNodes = node#children
+            |> List.filter(child -> visibleOf(child))
+            |> List.map(child -> buildWith(atlasOf, textureInfoOf, child));
+        match node#widget {
+            case Widget.NoneW       => Flex.box(node#style, childNodes)
+            case Widget.BoxW(b)     => Flex.boxDrawn(node#style, r -> drawBox(b, r), childNodes)
+            case Widget.TextW(t)    => buildText(atlasOf, node#style, t, childNodes)
+            case Widget.SpriteW(sp) => Flex.boxDrawn(node#style,
+                r -> ({ at = r#position, item = UiExtract.spriteItem(sp, textureInfoOf) }) :: Nil,
+                childNodes)
+            case Widget.PolyW(p)    => Flex.boxDrawn(node#style, r -> drawPoly(p, r), childNodes)
+            case Widget.ShapeW(s)   => Flex.boxDrawn(node#style, r -> UiShape.placedItems(s, r), childNodes)
         }
+
+    def visibleOf(spec: Spec): Bool =
+        let Spec.Spec(node) = spec;
+        node#visible
 
     /// 近道: build して place まで。
     pub def render(atlasOf: String -> FontAtlas, spec: Spec, rootRect: Rect2.Rect2): List[Render.PlacedItem] =

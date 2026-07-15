@@ -27,7 +27,9 @@ mod UiFocus {
 
     /// UiWorld 全体を design 空間でレイアウトして最前面ヒットを引く近道
     /// （マウスの hover / click の入口。毎フレーム呼んでよい純関数）。
-    /// measures は空で解くため text の Auto 寸法は 0 になる — 当たり判定の対象には
+    /// measures は空で解くため text の Auto 寸法は 0 になる — 面積 0 の rect は
+    /// 「内部が無い」ので当たりから除外する（ボタン中心にぴったり重なった 0 サイズの
+    /// ラベルが、境界含み判定で当たりを奪う縮退を防ぐ）。当たり判定の対象には
     /// width/height を Px で持つノード（ボタンのコンテナや図形）を使うこと。
     /// z は各描画コンポーネントの zIndex そのまま（root の layer 差は見ない — HUD 単層想定）。
     /// 描画物を持たないコンテナも rect を持つので当たる（root は design 全面に当たる）—
@@ -39,7 +41,8 @@ mod UiFocus {
             UiLayout.computeLayout(
                 {styles = ui#styles, parents = ui#parents, order = ui#order,
                  measures = Map.empty(), visible = ui#visible},
-                root, rootRect), acc), Map.empty());
+                root, rootRect), acc), Map.empty())
+            |> Map.filter(r -> r#size#x > 0.0 and r#size#y > 0.0);
         let vis = roots |> List.foldLeft((acc, root) -> Map.union(
             UiHierarchy.resolveInherited(ui#visible, ui#parents, root, ui#order), acc), Map.empty());
         hitTest({rects = rects, vis = vis,
@@ -48,22 +51,14 @@ mod UiFocus {
 
     /// entity の描画 zIndex（いずれかの描画コンポーネントの zIndex。描画物なしは 0）。
     def zIndexOf(id: EntityId, ui: UiStore.UiWorld): Int32 =
-        match Map.get(id, ui#boxes) {
-            case Some(c) => c#zIndex
-            case None => match Map.get(id, ui#texts) {
-                case Some(c) => c#zIndex
-                case None => match Map.get(id, ui#sprites) {
-                    case Some(c) => c#zIndex
-                    case None => match Map.get(id, ui#polys) {
-                        case Some(c) => c#zIndex
-                        case None => match Map.get(id, ui#shapes) {
-                            case Some(c) => c#zIndex
-                            case None => 0
-                        }
-                    }
-                }
-            }
-        }
+        let candidates =
+               (Map.get(id, ui#boxes)   |> Option.map(c -> c#zIndex))
+            :: (Map.get(id, ui#texts)   |> Option.map(c -> c#zIndex))
+            :: (Map.get(id, ui#sprites) |> Option.map(c -> c#zIndex))
+            :: (Map.get(id, ui#polys)   |> Option.map(c -> c#zIndex))
+            :: (Map.get(id, ui#shapes)  |> Option.map(c -> c#zIndex))
+            :: Nil;
+        candidates |> List.findMap(z -> z) |> Option.getWithDefault(0)
 
     /// 既存の当たり best と候補 candidate を比べ、(zIndex, 深さ, id) が大きい方を残す。
     def betterHit(best: Option[EntityId], candidate: EntityId,
