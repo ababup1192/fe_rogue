@@ -105,6 +105,7 @@ mod Editor {
             case ("GET", "/health")    => withProject(selection, exchange, dir -> handleHealth(dir, exchange))
             case ("GET", "/files")     => withProject(selection, exchange, dir -> handleFiles(dir, exchange))
             case ("GET", "/changes")   => withProject(selection, exchange, dir -> handleChanges(dir, exchange))
+            case ("GET", "/resources") => withProject(selection, exchange, dir -> handleResources(dir, exchange))
             case ("GET", "/file")      => withProject(selection, exchange, dir -> handleReadFile(dir, params, exchange))
             case ("PUT", "/file")      => withProject(selection, exchange, dir -> handleWriteFile(dir, readBody(exchange), exchange))
             case ("POST", "/preview/ui") => withProject(selection, exchange, dir -> {
@@ -248,6 +249,70 @@ mod Editor {
             "fx"      => JsonCodec.encodeList(p -> JString(p), index#fx),
             "palette" => JsonCodec.encodeList(p -> JString(p), paletteList)
         }), exchange)
+
+    /// GET /resources — project.json の "editor" 宣言と一致ファイルを配る。
+    /// サーバは宣言を解釈しない(plugin は文字列のまま素通し) — どれを扱えるかの選別は
+    /// エディタ側の仕事にすることで、種別が増えてもサーバ改修を要らなくする。
+    def handleResources(dir: String, exchange: HttpExchange): Unit \ IO =
+        match FileIndex.readInside(dir, "project.json") {
+            case Err(message) => sendJson(400, errorJson("project.json: ${message}"), exchange)
+            case Ok(text) => match JsonCompat.parse(text) {
+                case None => sendJson(400, errorJson("project.json が JSON として読めません"), exchange)
+                case Some(json) => match ResourceDecl.fromProjectJson(json) {
+                    case Err(message) => sendJson(400, errorJson(message), exchange)
+                    case Ok(decls) => {
+                        let all = FileIndex.listAllJson(dir);
+                        let entries = decls#resources |> List.map(decl -> resourceJson(dir, all, decl));
+                        let dashboards = decls#dashboards |> List.map(dashboardJson);
+                        sendJson(200, JObject(Map#{
+                            "root"       => JString(dir),
+                            "resources"  => JArray(List.toVector(entries)),
+                            "dashboards" => JArray(List.toVector(dashboards))
+                        }), exchange)
+                    }
+                }
+            }
+        }
+
+    /// 宣言 1 件ぶんの応答。files は pattern に一致した実ファイルで、各ファイルに
+    /// スキーマパス(宣言 or 隣の *.schema.json)を実在確認つきで添える — エディタが
+    /// 「フォームが出るか」を開く前に知れるように。
+    def resourceJson(dir: String, allJsonPaths: List[String], decl: ResourceDecl.Decl): Json \ IO =
+        let files = ResourceDecl.matchFiles(decl#pattern, allJsonPaths) |> List.map(path -> {
+            let schemaPath = match decl#schemaPath {
+                case Some(s) => s
+                case None    => ResourceDecl.siblingSchemaPath(path)
+            };
+            let base = Map#{"path" => JString(path)};
+            JObject(if (Result.isOk(FileIndex.readInside(dir, schemaPath)))
+                        Map.insert("schema", JString(schemaPath), base)
+                    else base)
+        });
+        let base = Map#{
+            "id"      => JString(decl#id),
+            "pattern" => JString(decl#pattern),
+            "files"   => JArray(List.toVector(files))
+        };
+        let withTitle = match decl#title {
+            case Some(t) => Map.insert("title", JString(t), base)
+            case None    => base
+        };
+        JObject(match decl#plugin {
+            case Some(p) => Map.insert("plugin", JString(p), withTitle)
+            case None    => withTitle
+        })
+
+    /// ダッシュボード宣言 1 件ぶんの応答(素通し)。
+    def dashboardJson(decl: ResourceDecl.DashboardDecl): Json =
+        let base = Map#{
+            "id"     => JString(decl#id),
+            "plugin" => JString(decl#plugin),
+            "uses"   => JsonCodec.encodeList(u -> JString(u), decl#uses)
+        };
+        JObject(match decl#title {
+            case Some(t) => Map.insert("title", JString(t), base)
+            case None    => base
+        })
 
     /// ui ファイル 1 件ぶんのメタ情報。composable = poly の rotation/pivot を含まない
     /// (含む文書は合成プレビューが断るので、選ばせる前にここで伝える)。
