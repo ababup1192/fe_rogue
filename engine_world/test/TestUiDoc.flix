@@ -20,6 +20,12 @@ mod TestUiDoc {
     def styleOf(spec: UiDoc.Spec): UiLayout.Style =
         match spec { case UiDoc.Spec.Spec(node) => node#style }
 
+    def noteOf(spec: UiDoc.Spec): Option[String] =
+        match spec { case UiDoc.Spec.Spec(node) => node#note }
+
+    def originOf(spec: UiDoc.Spec): Option[String] =
+        match spec { case UiDoc.Spec.Spec(node) => node#origin }
+
     def firstChild(spec: UiDoc.Spec): Option[UiDoc.Spec] =
         List.head(childrenOf(spec))
 
@@ -505,6 +511,44 @@ mod TestUiDoc {
              String.contains(substr = "cannot be combined", withUse),
              String.contains(substr = "leaf fields only", badPatch),
              String.contains(substr = "not loaded", unloaded)))
+
+    // ── note / origin（エディタ向けの印）──
+
+    @Test
+    def testNoteAbsentIsNone(): Unit \ Assert =
+        // note を書いていない既存ドキュメントはそのまま通る（後方互換）。
+        let doc = "{\"root\": {\"name\":\"g\"}}";
+        Assert.assertEq(expected = Some(None), parseDoc(doc) |> Option.map(noteOf))
+
+    @Test
+    def testNoteParsesAndNodeWinsOnInstance(): Unit \ Assert =
+        // instance の「ノード勝ちマージ」が note にも効く:
+        // b1 = ノード側にも note → ノード側が勝つ / b2 = ノード側に無し → 参照先 root の note が残る。
+        let btn = ("btn.ui.json",
+            "{\"root\": {\"name\":\"button\",\"note\":\"ref note\","
+            + "\"widget\":\"box\",\"color\":\"#000000\",\"width\":10,\"height\":10}}");
+        let main = "{\"root\": {\"name\":\"g\",\"children\":["
+                 + "{\"name\":\"b1\",\"instance\":\"btn.ui.json\",\"note\":\"node note\"},"
+                 + "{\"name\":\"b2\",\"instance\":\"btn.ui.json\"}]}}";
+        let got = parseWithDocs(btn :: Nil, main)
+            |> Option.map(spec -> childrenOf(spec) |> List.map(noteOf));
+        Assert.assertEq(expected = Some(Some("node note") :: Some("ref note") :: Nil), got)
+
+    @Test
+    def testOriginMarksInstanceRootOnly(): Unit \ Assert =
+        // instance の根には参照パスが刻まれ、通常ノードと instance の子孫は None のまま。
+        let main = "{\"root\": {\"name\":\"g\",\"children\":["
+                 + "{\"name\":\"b1\",\"instance\":\"btn.ui.json\"},"
+                 + "{\"name\":\"plain\"}]}}";
+        let got = parseWithDocs(buttonDoc() :: Nil, main)
+            |> Option.map(spec -> {
+                let kids = childrenOf(spec);
+                (List.map(originOf, kids),
+                 List.head(kids) |> Option.flatMap(firstChild) |> Option.map(originOf))
+            });
+        Assert.assertEq(
+            expected = Some((Some("btn.ui.json") :: None :: Nil, Some(None))),
+            got)
 
     @Test
     def testInstanceCycleIsError(): Unit \ Assert =

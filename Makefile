@@ -6,6 +6,7 @@
 ##   engine_world/ ─ App/World/UI ランタイム。examples が利用する
 ##   engine_tools/ ─ ヘッドレス bake/snapshot 工具箱。examples が利用する
 ##   engine_full/  ─ 上4つのソースを1つに集めた自己完結の全部入り flix_game_engine（配布物）
+##   editor_server/─ ui.json/hitbox.json エディタの常駐 HTTP バックエンド（make editor で起動）
 ##   examples/     ─ 各 example は `cd examples/<name> && flix ...` で直接
 ##
 ## Makefile に集約するのは workspace 横断の配布作業だけ:
@@ -72,12 +73,16 @@ ENGINE_FULL_SUBPATH   := lib/github/ababup1192/flix_game_engine/$(VERSION)
 ENGINE_FULL_FPKG_NAME := flix_game_engine-$(VERSION).fpkg
 ENGINE_FULL_TOML_NAME := flix_game_engine-$(VERSION).toml
 
+# editor_server は engine / engine_world / engine_tools に依存する常駐 HTTP サーバ。
+# 配布はしない (fpkg を作らない) が、sync の配布ループの受け手として lib/ を張ってもらう。
+EDITOR_SERVER_DIR := editor_server
+
 # lib/github/ababup1192/<pkg>/<version> サブパスの階層数 (= 5)。
 # `$$dir` のスラッシュ数 (render_gl/ や engine_full/ なら 1、examples/<name>/ なら 2) と足して
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par release bump
+.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par release bump editor
 
 help:
 	@echo "Targets:"
@@ -95,6 +100,7 @@ help:
 	@echo "  make clean-locks          flix check 中断で残った Maven cache の *.lock を削除"
 	@echo "  make clean-example-builds examples/*/build/ を全削除 (IDE の scene.json glob 高速化用)"
 	@echo "  make sync-engine-full     engine_full だけ src 集約 & build-pkg & 配布 (examples へ)"
+	@echo "  make editor DIR=<dir>     ui.json/hitbox.json エディタのバックエンドを起動 (PORT=8787)"
 	@echo "  make release              全部入りを build-pkg し flix_game_engine の Release に公開"
 	@echo "  make bump FROM=x TO=y     全 flix.toml の version を一括更新 (lockstep)"
 
@@ -121,7 +127,7 @@ clean-example-builds:
 
 # ── テスト ────────────────────────────────────────────────
 # 全パッケージのテストを順に回す。1 つでも赤ならそこで止まり exit 1。
-TEST_DIRS := $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR) $(wildcard examples/*)
+TEST_DIRS := $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR) $(EDITOR_SERVER_DIR) $(wildcard examples/*)
 
 test:
 	@for dir in $(TEST_DIRS); do \
@@ -234,6 +240,13 @@ sync-engine-full:
 		fi \
 	done
 
+# ── エディタバックエンド ──────────────────────────────────
+# ui.json/hitbox.json エディタの常駐 HTTP サーバを、DIR のゲームプロジェクトを対象に起動する。
+# 例: make editor DIR=../flix_ge_shapes PORT=8787
+editor:
+	@test -n "$(DIR)" || { echo "usage: make editor DIR=<game project dir> [PORT=8787]"; exit 1; }
+	cd $(EDITOR_SERVER_DIR) && EDITOR_DIR="$(abspath $(DIR))" EDITOR_PORT="$(if $(PORT),$(PORT),8787)" $(FLIX) run
+
 # ── リリース ──────────────────────────────────────────────
 # 自己完結の全部入り engine_full を build-pkg し、既存リポ flix_game_engine の GitHub Release に
 # fpkg と flix.toml を添付する。利用側は github:ababup1192/flix_game_engine の1行でこの版を引く。
@@ -255,7 +268,7 @@ bump:
 	@for f in $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR) $(ENGINE_FULL_DIR); do \
 		perl -pi -e 's/^(version\s*=\s*)"\Q$(FROM)\E"/$${1}"$(TO)"/' "$$f/flix.toml"; \
 	done
-	@for f in $(ENGINE_DIR)/flix.toml $(RENDER_GL_DIR)/flix.toml $(ENGINE_WORLD_DIR)/flix.toml $(ENGINE_TOOLS_DIR)/flix.toml $(ENGINE_FULL_DIR)/flix.toml examples/*/flix.toml templates/*/flix.toml; do \
+	@for f in $(ENGINE_DIR)/flix.toml $(RENDER_GL_DIR)/flix.toml $(ENGINE_WORLD_DIR)/flix.toml $(ENGINE_TOOLS_DIR)/flix.toml $(ENGINE_FULL_DIR)/flix.toml $(EDITOR_SERVER_DIR)/flix.toml examples/*/flix.toml templates/*/flix.toml; do \
 		[ -f "$$f" ] && perl -pi -e 's|(ababup1192/flix_[a-z_]*"[^"]*version = )"\Q$(FROM)\E"|$${1}"$(TO)"|g' "$$f" || true; \
 	done
 	@perl -pi -e 's/^(VERSION := ).*/$${1}$(TO)/' Makefile
@@ -307,7 +320,7 @@ sync-render-gl:
 # fpkg / toml は cp ではなく相対 symlink で配布する (engine 再ビルドが即反映される)
 sync-engine:
 	cd $(ENGINE_DIR) && $(FLIX) build-pkg
-	@for dir in $(RENDER_GL_DIR)/ $(ENGINE_WORLD_DIR)/ $(ENGINE_TOOLS_DIR)/ examples/*/; do \
+	@for dir in $(RENDER_GL_DIR)/ $(ENGINE_WORLD_DIR)/ $(ENGINE_TOOLS_DIR)/ $(EDITOR_SERVER_DIR)/ examples/*/; do \
 		toml="$$dir/flix.toml"; \
 		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_engine_core"' "$$toml"; then \
 			target="$${dir}$(ENGINE_SUBPATH)"; \
@@ -325,7 +338,7 @@ sync-engine:
 # engine に依存するので sync チェーンでは sync-engine の後に置く（lib に engine fpkg が要る）。
 sync-engine-world:
 	cd $(ENGINE_WORLD_DIR) && $(FLIX) build-pkg
-	@for dir in examples/*/; do \
+	@for dir in $(EDITOR_SERVER_DIR)/ examples/*/; do \
 		toml="$$dir/flix.toml"; \
 		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_engine_world"' "$$toml"; then \
 			target="$${dir}$(ENGINE_WORLD_SUBPATH)"; \
@@ -343,7 +356,7 @@ sync-engine-world:
 # engine に依存するので sync チェーンでは sync-engine の後に置く（lib に engine fpkg が要る）。
 sync-engine-tools:
 	cd $(ENGINE_TOOLS_DIR) && $(FLIX) build-pkg
-	@for dir in examples/*/; do \
+	@for dir in $(EDITOR_SERVER_DIR)/ examples/*/; do \
 		toml="$$dir/flix.toml"; \
 		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_engine_tools"' "$$toml"; then \
 			target="$${dir}$(ENGINE_TOOLS_SUBPATH)"; \

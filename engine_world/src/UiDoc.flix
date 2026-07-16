@@ -18,6 +18,8 @@
 //     ノード自身のフィールドが root に勝ち、"override": { "相対名パス": {...} } で子孫も上書きできる。
 //   トップレベル: "version"（省略時 1。1 以外は Err）。"$schema"・"//" キーは無視（コメント可）。
 //   "paletteFile": パス（load 経路のみ。外部ファイルのパレットを inline "palette" と合成。同名は inline 勝ち）。
+//   "note": エディタで表示するノートコメント（描画には影響しない）。
+//     Spec#origin は JSON の語彙ではなく、parse が instance 合成の根に参照パスを刻んだもの。
 //
 // エラーはノードの名前パス付き（例: `at gallery/row1/box: 'color' is required`）— 手書き
 // ドキュメントの編集箇所へ誘導する。
@@ -36,10 +38,13 @@ mod UiDoc {
     // 型（テンプレ解決済み・pure data）
     // ========================================================================
 
+    /// `note`: エディタで表示するノートコメント（描画には影響しない）。
+    /// `origin`: このノードが instance 合成の根なら参照パス、それ以外は None（子孫には付けない）。
     pub enum Spec {
         case Spec({ name = String, widget = Widget, style = UiLayout.Style,
                     visible = Bool, binding = Option[String], meta = Option[String],
                     hover = Option[UiWidget.HoverStyle],
+                    note = Option[String], origin = Option[String],
                     layer = Int32, children = List[Spec] })
     }
 
@@ -162,7 +167,8 @@ mod UiDoc {
                 ) yield Spec.Spec({
                     name = name, widget = own#widget, style = own#style,
                     visible = own#visible, binding = own#binding, meta = own#meta,
-                    hover = own#hover, layer = own#layer, children = children
+                    hover = own#hover, note = own#note, origin = None,
+                    layer = own#layer, children = children
                 })
         }
 
@@ -200,7 +206,13 @@ mod UiDoc {
                                      palette = top#palette,
                                      resolver = env#resolver, stack = instPath :: env#stack },
                                    parentPath, ordinal, patched)
-        ) yield spec
+        ) yield withOrigin(instPath, spec)
+
+    /// instance の根だけに参照パスを刻む。子孫まで刻むとエディタが「どこから編集すべきか」を
+    /// 見誤る（差し替え単位は根のファイル参照 1 点）ので、根に限る。
+    def withOrigin(instPath: String, spec: Spec): Spec =
+        let Spec.Spec(node) = spec;
+        Spec.Spec({ origin = Some(instPath) | node })
 
     /// instance ノード自身のフィールド（参照先 root にノード勝ちで重ねる分）。
     /// children の丸ごと差し替えと use の併用は意味が曖昧なので断る。
@@ -283,10 +295,11 @@ mod UiDoc {
     def unloadedErr(path: String): JsonError =
         JsonCompat.jsonError(Root, Set#{"instance '${path}' is not loaded (use UiDoc.load)"})
 
-    /// ノード自身の属性（widget・style・visible・bind/meta/hover/layer）。
+    /// ノード自身の属性（widget・style・visible・bind/meta/hover/note/layer）。
     def parseOwnFields(env: ParseEnv, merged: Map[String, Json]):
             Result[JsonError, { widget = Widget, style = UiLayout.Style, visible = Bool,
                                 binding = Option[String], meta = Option[String],
+                                note = Option[String],
                                 hover = Option[UiWidget.HoverStyle], layer = Int32 }] =
         forM (
             widgetOpt  <- (JsonCompat.getAtKeyOpt(Root, "widget", merged): Result[JsonError, Option[String]]);
@@ -295,12 +308,14 @@ mod UiDoc {
             visibleOpt <- (JsonCompat.getAtKeyOpt(Root, "visible", merged): Result[JsonError, Option[Bool]]);
             bindingOpt <- (JsonCompat.getAtKeyOpt(Root, "bind", merged): Result[JsonError, Option[String]]);
             metaOpt    <- (JsonCompat.getAtKeyOpt(Root, "meta", merged): Result[JsonError, Option[String]]);
+            noteOpt    <- (JsonCompat.getAtKeyOpt(Root, "note", merged): Result[JsonError, Option[String]]);
             hover      <- parseHoverOpt(env#palette, merged);
             layerOpt   <- (JsonCompat.getAtKeyOpt(Root, "layer", merged): Result[JsonError, Option[Int32]])
         ) yield {
             widget = widget, style = applyIntrinsic(widget, style),
             visible = Option.getWithDefault(true, visibleOpt),
             binding = bindingOpt, meta = metaOpt, hover = hover,
+            note = noteOpt,
             layer = Option.getWithDefault(0, layerOpt)
         }
 
@@ -903,36 +918,54 @@ mod UiDoc {
     /// トップに "paletteFile" があれば外部パレットもここで読んで合成する（リロードでも再読され、
     /// instance で参照される側のドキュメントにも効く — 合成は collectDocs の読み口で行う）。
     pub def load(path: String): Result[JsonError, Spec] \ Fs.FileRead =
-        collectDocs(path :: Nil, Map.empty()) |> Result.flatMap(resolver ->
+        collectDocs("", path :: Nil, Map.empty()) |> Result.flatMap(resolver ->
             Map.get(path, resolver) |> Option.toOk(unloadedErr(path))
                 |> Result.flatMap(json -> parseWith(resolver, json)))
 
+    /// メモリ上のドキュメントを、instance / paletteFile の参照ファイルだけ baseDir 起点で読んで
+    /// Spec にする（保存前の編集中ドキュメントを本番と同じ解決で確かめる口）。
+    /// resolver のキーは JSON に書かれたパス文字列のまま — ディスク上の置き場所をキーに混ぜると
+    /// ドキュメント間の参照（循環検出・訪問済み判定）が食い違うので、結合はファイル読みに限る。
+    pub def parseAt(baseDir: String, json: Json): Result[JsonError, Spec] \ Fs.FileRead =
+        forM (
+            merged   <- mergePaletteFile(baseDir, json);
+            resolver <- collectDocs(baseDir, instanceRefs(merged), Map.empty());
+            spec     <- parseWith(resolver, merged)
+        ) yield spec
+
+    /// baseDir と相対パスの単純連結。baseDir が空なら path をそのまま使う
+    /// （load 経路の「CWD 基準のパスがそのまま resolver のキー」という既存契約を崩さない）。
+    def joinPath(dir: String, rel: String): String =
+        if (dir == "") rel
+        else if (String.endsWith(suffix = "/", dir)) "${dir}${rel}"
+        else "${dir}/${rel}"
+
     /// ドキュメント 1 枚を読み、トップに "paletteFile" があれば外部パレットを合成して返す
     /// （同名は inline 勝ち）。parse は純粋なまま — 外部参照はこの load 層で畳む。
-    def readDocMerged(path: String): Result[JsonError, Json] \ Fs.FileRead =
-        JsonCompat.readJson(path) |> Result.flatMap(json -> mergePaletteFile(json))
+    def readDocMerged(baseDir: String, path: String): Result[JsonError, Json] \ Fs.FileRead =
+        JsonCompat.readJson(joinPath(baseDir, path)) |> Result.flatMap(json -> mergePaletteFile(baseDir, json))
 
     /// トップが object なら paletteFile の合成を試みる（object でなければそのまま）。
-    def mergePaletteFile(json: Json): Result[JsonError, Json] \ Fs.FileRead =
+    def mergePaletteFile(baseDir: String, json: Json): Result[JsonError, Json] \ Fs.FileRead =
         match json {
-            case JObject(top) => mergePaletteInto(top)
+            case JObject(top) => mergePaletteInto(baseDir, top)
             case _            => Ok(json)
         }
 
     /// "paletteFile" が無ければそのまま。パス文字列なら読んで "palette" キーを合成し直す。
-    def mergePaletteInto(top: Map[String, Json]): Result[JsonError, Json] \ Fs.FileRead =
+    def mergePaletteInto(baseDir: String, top: Map[String, Json]): Result[JsonError, Json] \ Fs.FileRead =
         match Map.get("paletteFile", top) {
             case None                  => Ok(JObject(top))
             case Some(JString(pfPath)) => forM (
-                filePalette <- readPaletteFile(pfPath);
+                filePalette <- readPaletteFile(baseDir, pfPath);
                 merged      <- overlayInlinePalette(filePalette, top)
             ) yield JObject(Map.insert("palette", JObject(merged), top))
             case Some(_)               => Err(JsonCompat.jsonError(Root, Set#{"paletteFile must be a string path"}))
         }
 
     /// paletteFile を読んでパレットの Map にする。読めない・形が違うときは loud に Err（黙って無視しない）。
-    def readPaletteFile(path: String): Result[JsonError, Map[String, Json]] \ Fs.FileRead =
-        JsonCompat.readJson(path)
+    def readPaletteFile(baseDir: String, path: String): Result[JsonError, Map[String, Json]] \ Fs.FileRead =
+        JsonCompat.readJson(joinPath(baseDir, path))
             |> Result.mapErr(e -> JsonCompat.jsonError(Root, Set#{"paletteFile: ${JsonCompat.describe(e)}"}))
             |> Result.flatMap(json -> match json {
                 case JObject(m) => Ok(m)
@@ -949,16 +982,16 @@ mod UiDoc {
 
     /// frontier のドキュメントを読み、instance 参照を辿って全部集める（訪問済みは読まない —
     /// 循環していても読み込みはここで止まり、循環自体は parse が Err にする）。
-    def collectDocs(frontier: List[String], acc: Map[String, Json]): Result[JsonError, Map[String, Json]] \ Fs.FileRead =
+    def collectDocs(baseDir: String, frontier: List[String], acc: Map[String, Json]): Result[JsonError, Map[String, Json]] \ Fs.FileRead =
         match frontier {
             case Nil => Ok(acc)
             case path :: rest =>
-                if (Map.memberOf(path, acc)) collectDocs(rest, acc)
-                else match readDocMerged(path) {
+                if (Map.memberOf(path, acc)) collectDocs(baseDir, rest, acc)
+                else match readDocMerged(baseDir, path) {
                     case Err(e)   => Err(e)
                     case Ok(json) =>
                         let refs = instanceRefs(json) |> List.filter(p -> not Map.memberOf(p, acc));
-                        collectDocs(List.append(refs, rest), Map.insert(path, json, acc))
+                        collectDocs(baseDir, List.append(refs, rest), Map.insert(path, json, acc))
                 }
         }
 

@@ -32,6 +32,13 @@ case "$PWD" in
         case "$1 $*" in
             test\ *|test) FLAGS="$FLAGS -Djava.awt.headless=true" ;;
             *"--entrypoint Bake"*) FLAGS="$FLAGS -Djava.awt.headless=true" ;;
+            *)
+                # editor_server (常駐 HTTP サーバ) の run も実ウィンドウを開かないので headless。
+                # HTTP ワーカースレッドが AWT を初期化すると上記と同じ AppKit 待ちハングになり得る。
+                case "$PWD" in
+                    */editor_server|*/editor_server/*) FLAGS="$FLAGS -Djava.awt.headless=true" ;;
+                esac
+                ;;
         esac
         ;;
 esac

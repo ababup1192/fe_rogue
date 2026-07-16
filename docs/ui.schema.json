@@ -77,6 +77,7 @@
         "visible": { "type": "boolean" },
         "bind": { "type": "string", "description": "text 流し込み先の bind key (UiStore 経路)" },
         "meta": { "type": "string" },
+        "note": { "type": "string", "description": "エディタで表示するノートコメント（描画には影響しない）" },
         "layer": { "type": "integer", "description": "root の描画レイヤ (UiStore 経路)" },
         "children": { "type": "array", "items": { "$ref": "#/$defs/node" } },
 

@@ -1,0 +1,16 @@
+[package]
+name        = "editor_server"
+description = "Resident HTTP preview/edit backend for ui.json & hitbox.json editors (health/files/file endpoints; preview endpoints to come)"
+version     = "0.1.0"
+flix        = "0.75.1"
+authors     = ["ababup1192 <ababup1192@gmail.com>"]
+
+# ブラウザの UI エディタ画面から叩く常駐 HTTP サーバ。対象ゲームプロジェクト
+# (EDITOR_DIR) の project.json / *.ui.json / hitbox.json を読み書きする。
+# GL ウィンドウは開かない (headless)。プレビュー描画は engine_tools の
+# ソフトラスタライザを使う予定のため依存に含めている。
+
+[dependencies]
+"github:ababup1192/flix_engine_core" = { version = "0.4.0", security = "unrestricted" }
+"github:ababup1192/flix_engine_world" = { version = "0.4.0", security = "unrestricted" }
+"github:ababup1192/flix_engine_tools" = { version = "0.4.0", security = "unrestricted" }

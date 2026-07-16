@@ -114,6 +114,10 @@ mod UiSpec {
     pub def load(path: String): Result[JsonError, Spec] \ Fs.FileRead =
         UiDoc.load(path) |> Result.flatMap(spec -> toSpec(spec))
 
+    /// メモリ上のドキュメントを Spec にする。instance / paletteFile の参照ファイルは baseDir 起点で読む。
+    pub def parseAt(baseDir: String, json: Json): Result[JsonError, Spec] \ Fs.FileRead =
+        UiDoc.parseAt(baseDir, json) |> Result.flatMap(spec -> toSpec(spec))
+
     // ========================================================================
     // spawn / respawn
     // ========================================================================
