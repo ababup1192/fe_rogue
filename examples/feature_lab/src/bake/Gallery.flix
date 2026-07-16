@@ -58,6 +58,15 @@ mod Gallery {
         let overlay = Annotate.fpsItems(atlas, View.design(), Annotate.fpsOf(anno));
         Render.draw(List.append(View.frame(ctx, world), overlay))
 
+    // ── blend 比較（RGB 3 円 × Normal/Add/Multiply）──
+
+    /// blend デモを表示した世界を本番と同じ投影（View.frame）で焼く。
+    /// 3 モードを同じ構図で並べると、Add は重なりが白へ光り・Multiply は黒へ沈むのが一目で分かる。
+    def bakeBlendPng(atlas: FontAtlas, ui: UiStore.UiWorld, mode: DrawCmd.BlendMode, name: String): Unit \ IO =
+        let world = GameUi.projectUi({ blend = Some(mode) | World.initial(ui) });
+        let (drawables, polygons) = worldCmds(atlas, world);
+        Bakery.renderPng(config(atlas), drawables, polygons, name)
+
     // ── AudioFade: 音量カーブの図 ──
 
     def risingColor(): Color = { r = 0.360784f32, g = 0.831373f32, b = 0.462745f32 }   // 現れる側（緑）
@@ -180,6 +189,10 @@ mod Gallery {
         let (fpsDrawables, fpsPolys) = fpsOverlayScene(atlas, ui);
         Bakery.renderPng(config(atlas), fpsDrawables, fpsPolys, "fps_overlay");
 
+        bakeBlendPng(atlas, ui, DrawCmd.BlendMode.Normal, "blend_normal");
+        bakeBlendPng(atlas, ui, DrawCmd.BlendMode.Add, "blend_add");
+        bakeBlendPng(atlas, ui, DrawCmd.BlendMode.Multiply, "blend_multiply");
+
         bakeCurvePng(atlas, (AudioFade.fadeIn(), risingColor()) :: Nil, "audio_fade_in_curve");
         bakeCurvePng(atlas, (AudioFade.fadeOut(), fadingColor()) :: Nil, "audio_fade_out_curve");
         bakeCurvePng(atlas, (AudioFade.fadeOut(), fadingColor()) :: (AudioFade.fadeIn(), risingColor()) :: Nil,
@@ -208,6 +221,9 @@ mod Gallery {
         gif("wipe_left", "黒い帯が右から左へ画面を覆っていく", "Transition", films#wipeLeft) ::
         gif("wipe_right", "黒い帯が左から右へ画面を覆っていく", "Transition", films#wipeRight) ::
         png("fps_overlay", "debug 有効時に画面右上へ出す fps オーバレイの見本（60fps 固定 dt で計測）", "Debug") ::
+        png("blend_normal", "Normal: ふつうの重なり — 後から描いた円が上を覆う（白地の左と暗地の右で同じ）", "Blend") ::
+        png("blend_add", "Add: 明るく足す — R+G=黄・3 色の重なりは白へ光る。暗い地ほど映える", "Blend") ::
+        png("blend_multiply", "Multiply: 掛けて沈める — 重なりは黒へ。白地は円の色がそのまま・暗地はさらに暗く", "Blend") ::
         png("audio_fade_in_curve", "フェードインの音量カーブ: volumeOf(0→1)。横=時間 t・縦=音量（audio.html で試聴可）", "AudioFade") ::
         png("audio_fade_out_curve", "フェードアウトの音量カーブ: volumeOf(1→0)", "AudioFade") ::
         png("audio_crossfade_curve", "クロスフェード: 消える側（赤）と現れる側（緑）。同じ t の 2 本で、和は常に 1", "AudioFade") :: Nil

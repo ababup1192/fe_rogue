@@ -110,6 +110,51 @@ mod TestRender {
             (style |> Option.map(s -> s#checkerAlpha),
              style |> Option.map(s -> s#checkerCell)))
 
+    // ── blend（ピクセルの重ね方）──
+
+    /// blend テスト用の小さな三角形。
+    def triangle(): List[Vec2.Vec2] =
+        { x = 0.0, y = 0.0 } :: { x = 4.0, y = 0.0 } :: { x = 0.0, y = 3.0 } :: Nil
+
+    // 何も指定しなければ全部 Normal — 既存の描画の見た目が 1 ビットも変わらない前提条件。
+    @Test
+    def testBlendDefaultsToNormal(): Unit \ Assert =
+        let items =
+            { at = Vec2.zero(), item = Render.sprite("ball", 0) } ::
+            { at = Vec2.zero(), item = Render.box({ x = 2.0, y = 2.0 }, red(), 0) } ::
+            { at = Vec2.zero(), item = Render.polygon(triangle(), red(), 0) } :: Nil;
+        let (ds, ps) = Render.draw(items);
+        Assert.assertEq(
+            expected = (Some(DrawCmd.BlendMode.Normal), Some(DrawCmd.BlendMode.Normal), Some(DrawCmd.BlendMode.Normal)),
+            (ds |> List.head |> Option.map(d -> d#blend),
+             ds |> List.drop(1) |> List.head |> Option.map(d -> d#blend),
+             ps |> List.head |> Option.map(p -> p#blend)))
+
+    // blended は Sprite / Box / Poly に効き、draw の出口（Drawable / PolygonRenderCmd）まで届く。
+    @Test
+    def testBlendedReachesDrawOutput(): Unit \ Assert =
+        let items =
+            { at = Vec2.zero(), item = Render.sprite("ball", 0) |> Render.blended(DrawCmd.BlendMode.Add) } ::
+            { at = Vec2.zero(), item = Render.box({ x = 2.0, y = 2.0 }, red(), 0) |> Render.blended(DrawCmd.BlendMode.Multiply) } ::
+            { at = Vec2.zero(), item = Render.polygon(triangle(), red(), 0) |> Render.blended(DrawCmd.BlendMode.Add) } :: Nil;
+        let (ds, ps) = Render.draw(items);
+        Assert.assertEq(
+            expected = (Some(DrawCmd.BlendMode.Add), Some(DrawCmd.BlendMode.Multiply), Some(DrawCmd.BlendMode.Add)),
+            (ds |> List.head |> Option.map(d -> d#blend),
+             ds |> List.drop(1) |> List.head |> Option.map(d -> d#blend),
+             ps |> List.head |> Option.map(p -> p#blend)))
+
+    // blended は Clipped の窓越しに葉へ届く（fade と同じ onLeaf 規約）。窓（clip）はそのまま残る。
+    @Test
+    def testBlendedThroughClip(): Unit \ Assert =
+        let clipRect = { position = Vec2.zero(), size = { x = 4.0, y = 4.0 } };
+        let boxed = Render.clipped(clipRect, Render.box({ x = 2.0, y = 2.0 }, red(), 0))
+            |> Render.blended(DrawCmd.BlendMode.Add);
+        let (ds, _) = Render.draw({ at = Vec2.zero(), item = boxed } :: Nil);
+        Assert.assertEq(expected = (Some(DrawCmd.BlendMode.Add), Some(true)),
+            (ds |> List.head |> Option.map(d -> d#blend),
+             ds |> List.head |> Option.map(d -> Option.nonEmpty(d#clip))))
+
     // ── 図形の語彙（ngonAt / ellipseAt / sectorAt / circleSegmentAt / starAt / lineSeg）──
 
     /// PlacedItem から Poly の頂点列を取り出す（図形テストの共通口）。

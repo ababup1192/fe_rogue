@@ -27,7 +27,8 @@ mod World {
         bgm = Bgm,
         ui = UiStore.UiWorld,
         fullscreen = Bool,     // Enter で切り替え（ウィンドウ⇄ボーダーレスフルスクリーン）
-        cursorVisible = Bool   // H で切り替え（マウスカーソルの表示/非表示）
+        cursorVisible = Bool,  // H で切り替え（マウスカーソルの表示/非表示）
+        blend = Option[DrawCmd.BlendMode]  // None = デモ非表示 / Z/X/C で重ね方を選ぶと表示
     }
 
     /// 起動直後は Idle（覆いなし）で始める。いきなり遷移を再生すると画面が
@@ -35,10 +36,13 @@ mod World {
     /// BGM は無音からのフェードインで始まり、マスターは全開。
     /// ui は外の世界（ファイル）に触れるので、読み込み済みの物を Main から受け取る。
     /// ウィンドウ表示は通常の窓・カーソルは見える状態で始める。
+    /// blend デモは初期非表示（None）。常時表示にすると遷移 GIF や fps 見本の bake に
+    /// 映り込み、既存の gallery の絵が変わってしまう。
     pub def initial(ui: UiStore.UiWorld): World =
         { kind = Transition.Kind.FadeOut, playing = None, steps = 0,
           bgm = { rising = true, progress = Transition.start(bgmDuration()), master = 1.0, playing = false },
-          ui = ui, fullscreen = false, cursorVisible = true }
+          ui = ui, fullscreen = false, cursorVisible = true,
+          blend = None }
 
     /// いまの BGM 音量（フェードの向きと進み具合から導く。実機へ流す値と同じ計算）。
     pub def bgmVolume(bgm: Bgm): Float64 =
@@ -56,11 +60,24 @@ mod World {
     pub def transitionT(world: World): Float64 =
         world#playing |> Option.map(Transition.tOf) |> Option.getWithDefault(0.0)
 
-    /// 画面下の 1 行サマリ（遷移・固定ステップ・BGM 音量とマスター音量・フルスクリーン・カーソル）。
+    /// 画面下の 1 行サマリ（遷移・固定ステップ・BGM・フルスクリーン・カーソル・ブレンド）。
     pub def statusLine(world: World): String =
         "transition=${transitionLabel(world)} t=${round2(transitionT(world))} steps=${world#steps}"
             + " bgm=${round2(bgmVolume(world#bgm))} master=${round2(world#bgm#master)}"
             + " fullscreen=${onOff(world#fullscreen)} cursor=${onOff(world#cursorVisible)}"
+            + " blend=${blendLabel(world#blend)}"
+
+    /// blend デモの表示名（HUD の bind と statusLine の両方が使う）。非表示中は操作案内。
+    pub def blendLabel(blend: Option[DrawCmd.BlendMode]): String =
+        blend |> Option.map(modeLabel) |> Option.getWithDefault("off (Z/X/C)")
+
+    /// ブレンドモード単体の表示名（gallery のカード名にも使う）。
+    pub def modeLabel(mode: DrawCmd.BlendMode): String =
+        match mode {
+            case DrawCmd.BlendMode.Normal   => "Normal"
+            case DrawCmd.BlendMode.Add      => "Add"
+            case DrawCmd.BlendMode.Multiply => "Multiply"
+        }
 
     /// on/off 表記。statusLine と HUD 表示（GameUi.bindText）の両方が使う共通表記。
     pub def onOff(b: Bool): String = if (b) "on" else "off"

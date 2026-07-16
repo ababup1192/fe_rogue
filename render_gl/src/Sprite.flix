@@ -34,6 +34,23 @@ mod RenderSprite {
         GL30.glBindVertexArray(0);
         (vao, vbo)
 
+    /// blend に応じて GL のブレンド因子を切り替える。呼んだ後の描画から効く。
+    /// Multiply は因子だけでは alpha 付きの正しい式にならないため、シェーダ側の
+    /// premultiply（multiplyBlend uniform）とペアで dst×(1−a×(1−src)) を作る。
+    pub def applyBlend(blend: DrawCmd.BlendMode): Unit \ IO =
+        match blend {
+            case DrawCmd.BlendMode.Normal   =>
+                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA)
+            case DrawCmd.BlendMode.Add      =>
+                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE)
+            case DrawCmd.BlendMode.Multiply =>
+                GL11.glBlendFunc(GL11.GL_DST_COLOR, GL11.GL_ONE_MINUS_SRC_ALPHA)
+        }
+
+    /// multiplyBlend uniform に渡す値（Multiply のときだけ premultiply を有効化）。
+    pub def multiplyFlag(blend: DrawCmd.BlendMode): Int32 =
+        if (blend == DrawCmd.BlendMode.Multiply) 1 else 0
+
     /// 1 スプライトを描画する。
     /// rotation は center 周りのラジアン回転。useTex = false で純色矩形。
     /// uniforms は起動時に 1 回だけ引いた location 一式（RenderShader.spriteUniformsOf）。
@@ -75,6 +92,8 @@ mod RenderSprite {
         GL20.glUniform1i(uniforms#useTexture, if (useTex) 1 else 0);
         // SDF テキスト uniform。テキスト以外は 0 にして GL state 持ち越しを防ぐ。
         GL20.glUniform1i(uniforms#sdfText, if (sdf) 1 else 0);
+        // drawPolygon と同じシェーダを共有するため、premultiply スイッチも明示 0 にして持ち越しを防ぐ。
+        GL20.glUniform1i(uniforms#multiplyBlend, 0);
         // 角丸＋枠スタイル uniform。Some のとき styleEnabled=1（単色矩形のみシェーダ側で適用）。
         match style {
             case Some(st) =>
@@ -134,13 +153,16 @@ mod RenderSprite {
     /// uniforms は起動時に 1 回だけ引いた location 一式（RenderShader.spriteUniformsOf）。
     pub def drawPolygon(spriteShader: Int32, polyVao: Int32, polyVbo: Int32,
                          uniforms: RenderShader.SpriteUniforms,
-                         verts: List[Vec2.Vec2], color: Color, alpha: Float32): Unit \ IO =
+                         verts: List[Vec2.Vec2], color: Color, alpha: Float32,
+                         blend: DrawCmd.BlendMode): Unit \ IO =
         let f32 = RenderUtil.f32;
         let flat = Triangulate.triangles(verts)
             |> List.flatMap(tri -> { let (a, b, c) = tri; a :: b :: c :: Nil });
         let n = List.length(flat);
         if (n < 3) () else {
             GL20.glUseProgram(spriteShader);
+            applyBlend(blend);
+            GL20.glUniform1i(uniforms#multiplyBlend, multiplyFlag(blend));
             let model = Array#{
                 1.0f32, 0.0f32, 0.0f32, 0.0f32,
                 0.0f32, 1.0f32, 0.0f32, 0.0f32,
@@ -314,9 +336,14 @@ mod RenderSprite {
     /// data は 1 体 38 floats を列順に並べた instance データ（RenderFrame が組む）。
     /// 毎フレーム glBufferData で丸ごと差し替える（orphaning。drawPolygon と同方式）。
     /// texId = 0 は単色矩形の run で、シェーダはテクスチャを読まないので bind しない。
+    /// blend は run 内で均一（RenderFrame が blend 変化で run を切る）。multiplyBlendLoc は
+    /// instanced シェーダの premultiply スイッチの location（起動時に 1 回引いたもの）。
     pub def drawSpriteInstanced(shader: Int32, vao: Int32, instanceVbo: Int32, texId: Int32,
+                                 multiplyBlendLoc: Int32, blend: DrawCmd.BlendMode,
                                  data: Array[Float32, Static], count: Int32): Unit \ IO =
         GL20.glUseProgram(shader);
+        applyBlend(blend);
+        GL20.glUniform1i(multiplyBlendLoc, multiplyFlag(blend));
         if (texId != 0) {
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId)

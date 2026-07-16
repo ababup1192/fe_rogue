@@ -1,4 +1,4 @@
-<!doctype html><meta charset="utf-8"><title>feature_lab Gallery — Debug</title>
+<!doctype html><meta charset="utf-8"><title>feature_lab Gallery — Blend</title>
 <style>body{background:#1a1f2b;color:#cdd5e6;font-family:sans-serif;margin:16px}
 a{color:#9cc0ff}h1{font-size:18px}
 p.hint{font-size:12px;color:#8c99ad;margin:0 0 16px}
@@ -50,12 +50,14 @@ code.fs-addr{font-size:12px;font-weight:700;color:#ffd479;background:#241c07;
   padding:2px 6px;border-radius:4px;cursor:pointer;
   font-family:ui-monospace,Menlo,Consolas,monospace}
 .filmstrip.playing .fs-play{border-color:#7bd88f;color:#7bd88f}</style>
-<nav class="crumbs"><a href="index.html">← index</a> <a href="page_Transition.html">◀ Transition</a> <a href="page_Blend.html">▶ Blend</a></nav>
-<h1>Debug</h1>
+<nav class="crumbs"><a href="index.html">← index</a> <a href="page_Debug.html">◀ Debug</a> <a href="page_AudioFade.html">▶ AudioFade</a></nav>
+<h1>Blend</h1>
 <p class="hint">The yellow code tag is the snapshot name (report bugs by it); click to copy. Tags link to their cross-feature pages.</p>
 <h2 class="section">Basic states</h2>
 <main>
-  <figure id="fps_overlay" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('fps_overlay')" title="click to copy the name">fps_overlay</code><span class="desc">debug 有効時に画面右上へ出す fps オーバレイの見本（60fps 固定 dt で計測）</span></figcaption><img src="fps_overlay.png" alt="fps_overlay"></figure>
+  <figure id="blend_normal" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('blend_normal')" title="click to copy the name">blend_normal</code><span class="desc">Normal: ふつうの重なり — 後から描いた円が上を覆う（白地の左と暗地の右で同じ）</span></figcaption><img src="blend_normal.png" alt="blend_normal"></figure>
+  <figure id="blend_add" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('blend_add')" title="click to copy the name">blend_add</code><span class="desc">Add: 明るく足す — R+G=黄・3 色の重なりは白へ光る。暗い地ほど映える</span></figcaption><img src="blend_add.png" alt="blend_add"></figure>
+  <figure id="blend_multiply" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('blend_multiply')" title="click to copy the name">blend_multiply</code><span class="desc">Multiply: 掛けて沈める — 重なりは黒へ。白地は円の色がそのまま・暗地はさらに暗く</span></figcaption><img src="blend_multiply.png" alt="blend_multiply"></figure>
 
 </main>
 

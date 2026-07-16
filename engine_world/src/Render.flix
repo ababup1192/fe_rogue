@@ -13,13 +13,15 @@ mod Render {
         /// （`region` は Flix 予約語なので engine と同じ `regionRect`）
         case Sprite({ texture = String, tint = Color, alpha = Float32,
                       scale = Vec2.Vec2, rotation = Float64, centered = Bool,
-                      flipH = Bool, flipV = Bool, regionRect = Option[Rect2.Rect2], zIndex = Int32 })
+                      flipH = Bool, flipV = Bool, regionRect = Option[Rect2.Rect2], zIndex = Int32,
+                      blend = DrawCmd.BlendMode })
         case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color, zIndex = Int32 })
         case Box({ size = Vec2.Vec2, color = Color, alpha = Float32,
-                   style = Option[GameEngine.BoxStyle], zIndex = Int32 })
+                   style = Option[GameEngine.BoxStyle], zIndex = Int32, blend = DrawCmd.BlendMode })
         /// 単色の単純多角形（自己交差しなければ凹でもよい。塗りは描画側が耳切りで三角形化）。
         /// 頂点は置き場所からの相対座標（draw が置き場所を全頂点に加算する）。
-        case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32 })
+        case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32,
+                    blend = DrawCmd.BlendMode })
         /// rect（スクリーン空間・design px）で inner を切り抜く。入れ子は交差。
         /// App + withCamera 経路では中身にはカメラが掛かるが、窓は常にスクリーン固定 —
         /// PiP やパネル内スクロール用（world に追従する窓は v1 対象外）。
@@ -37,14 +39,16 @@ mod Render {
     pub def sprite(texture: String, zIndex: Int32): Item =
         Item.Sprite({ texture = texture, tint = white(), alpha = 1.0f32,
                             scale = {x = 1.0, y = 1.0}, rotation = 0.0, centered = true,
-                            flipH = false, flipV = false, regionRect = None, zIndex = zIndex })
+                            flipH = false, flipV = false, regionRect = None, zIndex = zIndex,
+                            blend = DrawCmd.BlendMode.Normal })
 
     /// 反転付きスプライト。同型の Bool 2 つは取り違えやすいので名前で渡す。
     pub def spriteFlipped(texture: String, zIndex: Int32,
                           flip: { flipH = Bool, flipV = Bool }): Item =
         Item.Sprite({ texture = texture, tint = white(), alpha = 1.0f32,
                             scale = {x = 1.0, y = 1.0}, rotation = 0.0, centered = true,
-                            flipH = flip#flipH, flipV = flip#flipV, regionRect = None, zIndex = zIndex })
+                            flipH = flip#flipH, flipV = flip#flipV, regionRect = None, zIndex = zIndex,
+                            blend = DrawCmd.BlendMode.Normal })
 
     pub def text(content: String, fontAtlas: FontAtlas, fontSize: Float64, zIndex: Int32): Item =
         Item.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = white(), zIndex = zIndex })
@@ -56,7 +60,8 @@ mod Render {
     /// 単色塗りの矩形（左上原点・サイズ指定）。
     pub def box(size: Vec2.Vec2, color: Color, zIndex: Int32): Item =
         Item.Box({ size = size, color = color, alpha = 1.0f32,
-                         style = Some(solidStyle()), zIndex = zIndex })
+                         style = Some(solidStyle()), zIndex = zIndex,
+                         blend = DrawCmd.BlendMode.Normal })
 
     /// 単色塗りの円（直径 radius×2 の全角丸 Box）。置き場所は外接正方形の左上。
     /// 中心で置きたいときは circleAt を使う。
@@ -76,7 +81,8 @@ mod Render {
     /// 単色塗りの多角形。頂点は置き場所からの相対座標で渡す（絶対座標で組みたいときは
     /// 置き場所を Vec2.zero() にする）。左右反転した形が欲しいときは頂点を flipH に通してから渡す。
     pub def polygon(vertices: List[Vec2.Vec2], color: Color, zIndex: Int32): Item =
-        Item.Poly({ vertices = vertices, color = color, alpha = 1.0f32, zIndex = zIndex })
+        Item.Poly({ vertices = vertices, color = color, alpha = 1.0f32, zIndex = zIndex,
+                    blend = DrawCmd.BlendMode.Normal })
 
     // ── 図形の語彙（polygon の上に組んだ形。凹も可 — 描画側の耳切りが三角形化する）──
     // 角度はぜんぶ「1 周 = 1.0 の回転量 t」で渡す（t = 0 が真上・時計回り = 画面の見た目どおり）。
@@ -225,6 +231,19 @@ mod Render {
             case other                => other
         }, item)
 
+    /// ピクセルの重ね方を変える（Sprite / Box / Poly に効く。Text は文字の可読性が第一で対象外）。
+    /// Add = 明るく足す（グロー・炎・魔法）、Multiply = 暗く沈める（影・暗幕）。
+    /// どちらも「自分より奥（小さい zIndex）に描かれた物」に効く — 暗幕で暗くしたい物は
+    /// 暗幕より小さい z に置くこと。同じ zIndex 同士では draw の並べ順が奥/手前を決める
+    /// （安定ソートは同順位を入力順のまま保つため、先に並べた物ほど奥＝ blend が効く側になる）。
+    pub def blended(mode: DrawCmd.BlendMode, item: Item): Item =
+        onLeaf(leaf -> match leaf {
+            case Item.Sprite(s) => Item.Sprite({ blend = mode | s })
+            case Item.Box(b)    => Item.Box({ blend = mode | b })
+            case Item.Poly(p)   => Item.Poly({ blend = mode | p })
+            case other          => other
+        }, item)
+
     /// 頂点列を左右に鏡映する（縦軸で x を反転・2 回で元に戻る）。polygon や Bezier の
     /// 輪郭・背骨に渡す前に使う。鏡映は頂点の上でだけ提供する（Text のような
     /// 鏡映できない物に flip を書くと型が合わない = 落ちる代わりにコンパイルで止まる）。
@@ -364,9 +383,10 @@ mod Render {
 
     /// Poly を置き場所 pos の描画命令へ（全頂点に pos を加算）。
     def polyCmd(pos: Vec2.Vec2,
-                p: { vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32 }): GameEngine.PolygonRenderCmd =
+                p: { vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32,
+                     blend = DrawCmd.BlendMode }): GameEngine.PolygonRenderCmd =
         { vertices = List.map(v -> Vec2.add(v, pos), p#vertices),
-          color = p#color, alpha = p#alpha, zIndex = p#zIndex, clip = None }
+          color = p#color, alpha = p#alpha, zIndex = p#zIndex, clip = None, blend = p#blend }
 
     /// World 由来 Drawable 群に camera のズーム倍率を適用する（位置は `Projection.applyToWorldPos` で
     /// screenPos を出した後の共通後処理）。render-from-World の各オーバーレイ（ユニット / 背景 / 範囲表示 /
@@ -382,11 +402,11 @@ mod Render {
         match item {
             case Item.Sprite(s) =>
                 spriteDrawable(s#texture, s#tint, s#alpha, s#scale, s#rotation,
-                               s#centered, s#flipH, s#flipV, s#regionRect, s#zIndex, pos) :: Nil
+                               s#centered, s#flipH, s#flipV, s#regionRect, s#zIndex, s#blend, pos) :: Nil
             case Item.Text(t) =>
                 textDrawables(t#text, t#fontAtlas, t#fontSize, t#tint, t#zIndex, pos)
             case Item.Box(b) =>
-                boxDrawable(b#size, b#color, b#alpha, b#style, b#zIndex, pos) :: Nil
+                boxDrawable(b#size, b#color, b#alpha, b#style, b#zIndex, b#blend, pos) :: Nil
             case Item.Poly(_) =>
                 bug!("Render.toDrawables: Poly は Drawable にならない（draw が PolygonRenderCmd へ振り分ける）")
             case Item.Clipped(c) =>
@@ -419,7 +439,7 @@ mod Render {
                    scale = {x = s#scale#x * flipSign(s#flipH), y = s#scale#y * flipSign(s#flipV)},
                    rotation = s#rotation, color = s#tint, alpha = s#alpha, centered = s#centered,
                    uvOffset = uvOff, uvScale = uvScl, zIndex = s#zIndex, style = None,
-                   clip = None }: GameEngine.Drawable) :: Nil
+                   clip = None, blend = s#blend }: GameEngine.Drawable) :: Nil
             case other => toDrawables(other, pos)
         }
 
@@ -427,7 +447,8 @@ mod Render {
     // region=Some は textureSize(\Game) が要るので今回未対応＝loud に落とす（部分関数を残さない）。
     def spriteDrawable(texture: String, tint: Color, alpha: Float32, scale: Vec2.Vec2,
                        rotation: Float64, centered: Bool, flipH: Bool, flipV: Bool,
-                       regionRect: Option[Rect2.Rect2], zIndex: Int32, pos: Vec2.Vec2): GameEngine.Drawable =
+                       regionRect: Option[Rect2.Rect2], zIndex: Int32, blend: DrawCmd.BlendMode,
+                       pos: Vec2.Vec2): GameEngine.Drawable =
         match regionRect {
             case Some(_) => bug!("Render: region atlas not supported yet (pass regionRect=None)")
             case None    =>
@@ -442,7 +463,8 @@ mod Render {
                   uvScale  = {x = 1.0, y = 1.0},
                   zIndex   = zIndex,
                   style    = None,
-                  clip     = None }
+                  clip     = None,
+                  blend    = blend }
         }
 
     def flipSign(b: Bool): Float64 = if (b) -1.0 else 1.0
@@ -455,7 +477,7 @@ mod Render {
             |> List.map(d -> {color = tint, zIndex = zIndex | d})
 
     def boxDrawable(size: Vec2.Vec2, color: Color, alpha: Float32,
-                    style: Option[GameEngine.BoxStyle], zIndex: Int32,
+                    style: Option[GameEngine.BoxStyle], zIndex: Int32, blend: DrawCmd.BlendMode,
                     pos: Vec2.Vec2): GameEngine.Drawable =
         // texture=""・centered=false・position=左上・scale=ピクセルサイズ・style=Some で単色塗り。
         { texture  = "",
@@ -469,5 +491,6 @@ mod Render {
           uvScale  = {x = 1.0, y = 1.0},
           zIndex   = zIndex,
           style    = style,
-          clip     = None }
+          clip     = None,
+          blend    = blend }
 }

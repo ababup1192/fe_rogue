@@ -69,14 +69,7 @@ mod SoftRaster {
         let h = ri(req#design#y * sf);
         let image = new BufferedImage(Int32.max(1i32, w), Int32.max(1i32, h), 2i32);
         let g: Graphics2D = image.createGraphics();
-        // box/poly の塗り（fillRoundRect/fillPolygon）は角丸の縁をなめらかにするため AA を効かせる。
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        // スプライト拡大（drawTextured の drawImage）は最近傍固定。実機の GPU 描画はドット絵を
-        // 補間せず拡大するため、ここで補間すると実機と見え方がずれる（にじみ・輪郭ボケ）。
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-        // 出力解像度で小サイズ文字をくっきり焼くためのテキスト品質ヒント（drawString は INTERPOLATION の対象外）。
-        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+        applyQualityHints(g);
         // 背景（clearColor）で塗りつぶす。
         g.setColor(awtColor(req#background, 1.0f32));
         g.fillRect(0i32, 0i32, Int32.max(1i32, w), Int32.max(1i32, h));
@@ -90,13 +83,97 @@ mod SoftRaster {
             |> List.zipWithIndex
             |> List.sortBy(ix -> let (idx, item) = ix; (zOf(item), idx))
             |> List.map(ix -> let (_, item) = ix; item);
+        // blend=Normal は従来どおり Graphics2D（SrcOver）で直接描く。Add / Multiply は
+        // Java2D の標準 Composite に無い重ね方なので、下書きへ描いてから自前の式で合成する。
         List.forEach(item -> match item {
-            case Result.Ok(d)  => withClip(g, sf, d#clip, () -> drawDrawable(g, sf, textures, fctx, d))
-            case Result.Err(p) => withClip(g, sf, p#clip, () -> drawPolygon(rc, g, sf, p))
+            case Result.Ok(d)  =>
+                if (d#blend == DrawCmd.BlendMode.Normal)
+                    withClip(g, sf, d#clip, () -> drawDrawable(g, sf, textures, fctx, d))
+                else
+                    blendedDraw(image, sf, d#blend, d#clip, gs -> drawDrawable(gs, sf, textures, fctx, d))
+            case Result.Err(p) =>
+                if (p#blend == DrawCmd.BlendMode.Normal)
+                    withClip(g, sf, p#clip, () -> drawPolygon(rc, g, sf, p))
+                else
+                    blendedDraw(image, sf, p#blend, p#clip, gs -> drawPolygon(rc, gs, sf, p))
         }, sorted);
         g.dispose();
         image
     }
+
+    /// 本体と下書き（blendedDraw）が同じ見た目で描くための描画品質ヒント一式。
+    def applyQualityHints(g: Graphics2D): Unit \ IO =
+        // box/poly の塗り（fillRoundRect/fillPolygon）は角丸の縁をなめらかにするため AA を効かせる。
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        // スプライト拡大（drawTextured の drawImage）は最近傍固定。実機の GPU 描画はドット絵を
+        // 補間せず拡大するため、ここで補間すると実機と見え方がずれる（にじみ・輪郭ボケ）。
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+        // 出力解像度で小サイズ文字をくっきり焼くためのテキスト品質ヒント（drawString は INTERPOLATION の対象外）。
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON)
+
+    // ════════════════════════════════════════════════════════
+    // ブレンド合成（Add / Multiply — Java2D 標準 Composite に無い重ね方）
+    // ════════════════════════════════════════════════════════
+
+    /// Normal 以外の描画: いったん透明な下書き画像へ普通に描き、その画素を合成式で本体に混ぜる。
+    /// clip は下書きへの描画に掛ける — 透明のまま残った画素は合成しないので、窓の外は本体に触れない。
+    /// 下書きは本体と同じ全面サイズ（bake 用途なので単純さを性能より優先）。
+    def blendedDraw(image: BufferedImage, sf: Float64, blend: DrawCmd.BlendMode,
+                    clip: Option[Rect2.Rect2], draw: Graphics2D -> Unit \ ef): Unit \ IO + ef =
+        let w = Int32.max(1i32, image.getWidth());
+        let h = Int32.max(1i32, image.getHeight());
+        let scratch = new BufferedImage(w, h, 2i32);
+        let gs: Graphics2D = scratch.createGraphics();
+        applyQualityHints(gs);
+        withClip(gs, sf, clip, () -> draw(gs));
+        gs.dispose();
+        composeInto(image, scratch, blend, w, h)
+
+    /// 下書きの不透明画素だけを合成式で本体に書き戻す（getRGB/setRGB の行列一括転送）。
+    def composeInto(dst: BufferedImage, src: BufferedImage, blend: DrawCmd.BlendMode,
+                    w: Int32, h: Int32): Unit \ IO = region rc {
+        let n = w * h;
+        let dstBuf: Array[Int32, rc] = Array.empty(rc, n);
+        let srcBuf: Array[Int32, rc] = Array.empty(rc, n);
+        discard dst.getRGB(0i32, 0i32, w, h, dstBuf, 0i32, w);
+        discard src.getRGB(0i32, 0i32, w, h, srcBuf, 0i32, w);
+        Array.forEachWithIndex((i, sp) -> {
+            if (channelOf(24, sp) == 0) ()
+            else Array.put(blendPixel(blend, sp, Array.get(i, dstBuf)), i, dstBuf)
+        }, srcBuf);
+        dst.setRGB(0i32, 0i32, w, h, dstBuf, 0i32, w)
+    }
+
+    /// ARGB 1 画素の合成（src を dst に重ねた結果。out の alpha は dst のまま —
+    /// bake 出力は背景が不透明で埋まっているため）。式は DrawCmd.BlendMode の doc と
+    /// GL 側（RenderSprite.applyBlend + シェーダの premultiply）に一致させてある:
+    ///   Normal   : out = (src×a + dst×(255−a)) / 255           （SrcOver）
+    ///   Add      : out = min(255, dst + src×a/255)             （明るく足す・クランプ）
+    ///   Multiply : out = dst×(255 − a×(255−src)/255) / 255     （白は素通し・黒は黒・a=0 で恒等）
+    pub def blendPixel(blend: DrawCmd.BlendMode, srcArgb: Int32, dstArgb: Int32): Int32 =
+        let a = channelOf(24, srcArgb);
+        let mix = f ->
+            withChannels((s, d) -> clampI(f(s, d), 0i32, 255i32), srcArgb, dstArgb);
+        match blend {
+            case DrawCmd.BlendMode.Normal   => mix((s, d) -> (s * a + d * (255 - a)) / 255)
+            case DrawCmd.BlendMode.Add      => mix((s, d) -> d + s * a / 255)
+            case DrawCmd.BlendMode.Multiply => mix((s, d) -> d * (255 - a * (255 - s) / 255) / 255)
+        }
+
+    /// RGB 3 チャンネルへ同じ式 f を適用し、alpha は dst のまま ARGB に組み直す。
+    def withChannels(f: (Int32, Int32) -> Int32, srcArgb: Int32, dstArgb: Int32): Int32 =
+        let r = f(channelOf(16, srcArgb), channelOf(16, dstArgb));
+        let g = f(channelOf(8, srcArgb), channelOf(8, dstArgb));
+        let b = f(channelOf(0, srcArgb), channelOf(0, dstArgb));
+        Int32.leftShift(channelOf(24, dstArgb), 24)
+            |> Int32.bitwiseOr(Int32.leftShift(r, 16))
+            |> Int32.bitwiseOr(Int32.leftShift(g, 8))
+            |> Int32.bitwiseOr(b)
+
+    /// ARGB int から 8bit チャンネルを取り出す（shift = 24/16/8/0 = A/R/G/B）。
+    def channelOf(shift: Int32, argb: Int32): Int32 =
+        Int32.bitwiseAnd(Int32.logicalRightShift(dist = shift, argb), 255)
 
     /// z 値取り出し（Ok=Drawable / Err=Polygon）。
     def zOf(item: Result[GameEngine.PolygonRenderCmd, GameEngine.Drawable]): Int32 =

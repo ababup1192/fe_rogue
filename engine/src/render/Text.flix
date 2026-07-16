@@ -175,7 +175,8 @@ mod Text {
                             uvScale = {x = gm#s1 - gm#s0, y = gm#t1 - gm#t0},
                             zIndex = r#visual#zIndex,
                             style = None,
-                            clip = None
+                            clip = None,
+                            blend = DrawCmd.BlendMode.Normal
                         })
                     case None => None
                 }

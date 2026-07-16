@@ -53,6 +53,9 @@ mod RenderShader {
         "uniform vec3 checkerColor;\n" +
         "uniform float checkerAlpha;\n" +
         "uniform float checkerCell;\n" +
+        // Multiply ブレンド時に rgb へ alpha を掛けて出す（premultiply）。glBlendFunc の
+        // 因子だけでは「alpha ぶんだけ乗算を弱める」式が作れないため、シェーダ側で仕込む。
+        "uniform bool multiplyBlend;\n" +
         // 角丸矩形 SDF (RenderSdf.roundedBox と同式)。p=中心からのオフセット, hsz=半サイズ, r=角半径。
         "float roundedBox(vec2 p, vec2 hsz, float r) {\n" +
         "    vec2 q = abs(p) - hsz + r;\n" +
@@ -114,6 +117,10 @@ mod RenderShader {
         "    } else {\n" +
         "        color = vec4(spriteColor, spriteAlpha);\n" +
         "    }\n" +
+        // Multiply の合成は dst×(1−a×(1−src))。GL 側 (GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA) と
+        // 合わせるにはここで rgb×a（premultiply）が要る — 因子を変えるだけだと a=0 で暗幕が
+        // 消えるどころか明るくなる。
+        "    if (multiplyBlend) { color.rgb *= color.a; }\n" +
         "}\n"
 
     pub def tileVertexShaderSource(): String =
@@ -208,6 +215,9 @@ mod RenderShader {
         "in vec4 InstChecker;\n" +
         "out vec4 color;\n" +
         "uniform sampler2D image;\n" +
+        // uniform 版と同じ Multiply 用 premultiply スイッチ。run 内は blend が均一
+        // （RenderFrame が blend 変化で run を切る）ため per-instance 属性ではなく uniform で足りる。
+        "uniform bool multiplyBlend;\n" +
         "float roundedBox(vec2 p, vec2 hsz, float r) {\n" +
         "    vec2 q = abs(p) - hsz + r;\n" +
         "    return min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - r;\n" +
@@ -262,6 +272,8 @@ mod RenderShader {
         "    } else {\n" +
         "        color = InstColor;\n" +
         "    }\n" +
+        // uniform 版 main 末尾と同じ premultiply（式を同一に保ち経路間で絵を割らない）。
+        "    if (multiplyBlend) { color.rgb *= color.a; }\n" +
         "}\n"
 
     // ========================================================================
@@ -326,7 +338,8 @@ mod RenderShader {
         hatchDir = Int32,
         checkerColor = Int32,
         checkerAlpha = Int32,
-        checkerCell = Int32
+        checkerCell = Int32,
+        multiplyBlend = Int32
     }
 
     /// tile シェーダの uniform location 一式。理由は `SpriteUniforms` と同じ。
@@ -360,7 +373,8 @@ mod RenderShader {
             hatchDir = GL20.glGetUniformLocation(shader, "hatchDir"),
             checkerColor = GL20.glGetUniformLocation(shader, "checkerColor"),
             checkerAlpha = GL20.glGetUniformLocation(shader, "checkerAlpha"),
-            checkerCell = GL20.glGetUniformLocation(shader, "checkerCell")
+            checkerCell = GL20.glGetUniformLocation(shader, "checkerCell"),
+            multiplyBlend = GL20.glGetUniformLocation(shader, "multiplyBlend")
         }
 
     pub def tileUniformsOf(shader: Int32): TileUniforms \ IO =

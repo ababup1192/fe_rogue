@@ -27,6 +27,7 @@ def main(): Unit \ IO =
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.countStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.audioStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.windowStep(frame, world)))
+                |> App.addSystem((frame, world) -> checked_ecast(Controls.blendStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.projectUi(frame, world)))
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadUi)
                 |> App.withView((ctx, world) -> checked_ecast(View.frame(ctx, world)))

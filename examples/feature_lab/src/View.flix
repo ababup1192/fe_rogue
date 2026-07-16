@@ -88,7 +88,34 @@ mod View {
     def viewportMarkerItems(): List[Render.PlacedItem] =
         List.flatten(edgeItems() :: cornerItems() :: crossItems() :: Nil)
 
-    /// 背景の格子 → viewport 目印 → ラベル UI（ui.json）→ 覆い（Transition）の順に重ねる。
+    // ── blend デモ（RGB 3 円。Z/X/C で重ね方を切り替える）──
+
+    def blendDemoCenter(): Vec2.Vec2 = { x = 160.0, y = 130.0 }
+    def demoRed(): Color = { r = 1.0f32, g = 0.0f32, b = 0.0f32 }
+    def demoGreen(): Color = { r = 0.0f32, g = 1.0f32, b = 0.0f32 }
+    def demoBlue(): Color = { r = 0.0f32, g = 0.0f32, b = 1.0f32 }
+    /// 白い下敷きの色。Add は暗い地で光り Multiply は明るい地で沈むので、
+    /// 円を白地（左）と暗地（右）の境界にまたがせて 1 画面で両方の差が見えるようにする。
+    def demoPanelColor(): Color = { r = 0.95f32, g = 0.95f32, b = 0.95f32 }
+
+    /// RGB 3 円を三角配置で重ねた絵。Add は重なりが白へ光り（R+G=黄・3 色=白）、
+    /// Multiply は重なりが黒へ沈み、Normal は後から描いた円が上を覆う。
+    pub def blendDemoItems(blend: DrawCmd.BlendMode): List[Render.PlacedItem] =
+        let center = blendDemoCenter();
+        let radius = 26.0;
+        let spread = 15.0;
+        let panel = { at = { x = center#x - 75.0, y = center#y - 50.0 },
+                      item = Render.box({ x = 75.0, y = 100.0 }, demoPanelColor(), 30) };
+        let coloredCircle = (offset: Vec2.Vec2, color: Color) ->
+            Render.circleAt(Vec2.add(center, offset), radius, color, 31)
+                |> (placed -> { item = Render.blended(blend, placed#item) | placed });
+        panel
+            :: coloredCircle({ x = 0.0, y = -1.0 * spread }, demoRed())
+            :: coloredCircle({ x = -1.0 * spread, y = spread * 0.8 }, demoGreen())
+            :: coloredCircle({ x = spread, y = spread * 0.8 }, demoBlue())
+            :: Nil
+
+    /// 背景の格子 → viewport 目印 → blend デモ → ラベル UI（ui.json）→ 覆い（Transition）の順に重ねる。
     /// 覆いは再生中だけ描く（Idle でも描き続けると FadeOut 後の黒が残り、画面が消えたように見える）。
     pub def frame(ctx: App.ViewCtx, world: World.World): List[Render.PlacedItem] =
         let bg = { at = Vec2.zero(), item = Render.box(design(), bgColor(), 0) };
@@ -98,5 +125,8 @@ mod View {
                    kind = world#kind, t = Transition.tOf(progress),
                    viewport = design(), color = coverColor(), z = Transition.defaultZ() }))
             |> Option.getWithDefault(List.empty());
-        bg :: List.flatten(gridItems() :: viewportMarkerItems() :: ui :: cover :: Nil)
+        let blendDemo = world#blend
+            |> Option.map(blendDemoItems)
+            |> Option.getWithDefault(List.empty());
+        bg :: List.flatten(gridItems() :: viewportMarkerItems() :: blendDemo :: ui :: cover :: Nil)
 }

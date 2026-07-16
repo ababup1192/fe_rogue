@@ -27,6 +27,7 @@ mod GameUi {
         case "kindLabel"      => Some(World.transitionLabel(world))
         case "fullscreenFlag" => Some("fullscreen=${World.onOff(world#fullscreen)}")
         case "cursorFlag"     => Some("cursor=${World.onOff(world#cursorVisible)}")
+        case "blendFlag"      => Some("blend=${World.blendLabel(world#blend)}")
         case _                => None
     }
 }

@@ -97,6 +97,33 @@ mod Controls {
     pub def reloadUi(world: World.World): World.World \ {Fs.FileRead} =
         { ui = UiSpec.reloadAll(world#ui) | world }
 
+    /// ブレンド実験の意図。Z/X/C で Normal/Add/Multiply を直接選ぶ
+    /// （W/A/S/D の Transition 選択と同じ「N 択 = 専用キー N 個」の形）。
+    enum BlendIntent with Eq {
+        case PickNormal
+        case PickAdd
+        case PickMultiply
+    }
+
+    def blendTable(): InputMap.Table[BlendIntent] =
+           (Key.Z, BlendIntent.PickNormal)
+        :: (Key.X, BlendIntent.PickAdd)
+        :: (Key.C, BlendIntent.PickMultiply)
+        :: Nil
+
+    def blendOf(intent: BlendIntent): DrawCmd.BlendMode = match intent {
+        case BlendIntent.PickNormal   => DrawCmd.BlendMode.Normal
+        case BlendIntent.PickAdd      => DrawCmd.BlendMode.Add
+        case BlendIntent.PickMultiply => DrawCmd.BlendMode.Multiply
+    }
+
+    /// RGB 3 円デモの重ね方を選ぶ（初回のキーでデモが現れる）。View が world#blend を絵にする。
+    pub def blendStep(frame: App.Frame, world: World.World): World.World =
+        InputMap.taps(blendTable(), frame)
+            |> List.head
+            |> Option.map(intent -> { blend = Some(blendOf(intent)) | world })
+            |> Option.getWithDefault(world)
+
     /// フルスクリーン切替・カーソル表示切替の意図。Enter = フルスクリーン、H = カーソル。
     enum WindowIntent with Eq {
         case ToggleFullscreen
