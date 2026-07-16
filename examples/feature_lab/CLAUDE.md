@@ -10,3 +10,9 @@ W/A/S/D キーで種類を切り替え、Space で再生し直せる。
 実験中の機能一覧: withFixedStep（固定タイムステップ）— Main で有効化済み。絵は見た目上変えず、
 Controls.countStep が回った回数を statusLine の `steps=` に出すだけ（HTTP の `/state` や
 リモートデバッグの view=status で見える）。
+
+AudioFade + マスター音量 — B キーで BGM（assets/sfx/bgm.wav・looping）のフェードの向きを反転、
+M キーでマスター音量 1.0/0.3 を切り替え。値は statusLine の `bgm=` / `master=` に出る。
+Controls.audioStep が「値の導出はエンジン（Transition.Progress + AudioFade.volumeOf）・
+setVolume / setMasterVolume の適用はゲーム側 system」の分業の手本。gallery/ には音量カーブ
+PNG 3 枚と、同じ volumeOf をサンプル毎に焼き込んだ試聴 WAV 3 本（audio.html から聴ける）。

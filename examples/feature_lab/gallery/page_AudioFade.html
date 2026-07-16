@@ -1,4 +1,4 @@
-<!doctype html><meta charset="utf-8"><title>feature_lab Gallery — Debug</title>
+<!doctype html><meta charset="utf-8"><title>feature_lab Gallery — AudioFade</title>
 <style>body{background:#1a1f2b;color:#cdd5e6;font-family:sans-serif;margin:16px}
 a{color:#9cc0ff}h1{font-size:18px}
 p.hint{font-size:12px;color:#8c99ad;margin:0 0 16px}
@@ -50,12 +50,14 @@ code.fs-addr{font-size:12px;font-weight:700;color:#ffd479;background:#241c07;
   padding:2px 6px;border-radius:4px;cursor:pointer;
   font-family:ui-monospace,Menlo,Consolas,monospace}
 .filmstrip.playing .fs-play{border-color:#7bd88f;color:#7bd88f}</style>
-<nav class="crumbs"><a href="index.html">← index</a> <a href="page_Transition.html">◀ Transition</a> <a href="page_AudioFade.html">▶ AudioFade</a></nav>
-<h1>Debug</h1>
+<nav class="crumbs"><a href="index.html">← index</a> <a href="page_Debug.html">◀ Debug</a></nav>
+<h1>AudioFade</h1>
 <p class="hint">The yellow code tag is the snapshot name (report bugs by it); click to copy. Tags link to their cross-feature pages.</p>
 <h2 class="section">Basic states</h2>
 <main>
-  <figure id="fps_overlay" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('fps_overlay')" title="click to copy the name">fps_overlay</code><span class="desc">debug 有効時に画面右上へ出す fps オーバレイの見本（60fps 固定 dt で計測）</span></figcaption><img src="fps_overlay.png" alt="fps_overlay"></figure>
+  <figure id="audio_fade_in_curve" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('audio_fade_in_curve')" title="click to copy the name">audio_fade_in_curve</code><span class="desc">フェードインの音量カーブ: volumeOf(0→1)。横=時間 t・縦=音量（audio.html で試聴可）</span></figcaption><img src="audio_fade_in_curve.png" alt="audio_fade_in_curve"></figure>
+  <figure id="audio_fade_out_curve" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('audio_fade_out_curve')" title="click to copy the name">audio_fade_out_curve</code><span class="desc">フェードアウトの音量カーブ: volumeOf(1→0)</span></figcaption><img src="audio_fade_out_curve.png" alt="audio_fade_out_curve"></figure>
+  <figure id="audio_crossfade_curve" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('audio_crossfade_curve')" title="click to copy the name">audio_crossfade_curve</code><span class="desc">クロスフェード: 消える側（赤）と現れる側（緑）。同じ t の 2 本で、和は常に 1</span></figcaption><img src="audio_crossfade_curve.png" alt="audio_crossfade_curve"></figure>
 
 </main>
 

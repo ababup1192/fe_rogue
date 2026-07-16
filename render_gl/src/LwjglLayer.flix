@@ -43,6 +43,7 @@ mod LwjglLayer {
         case GameEngine.Key.A         => 65
         case GameEngine.Key.S         => 83
         case GameEngine.Key.D         => 68
+        case GameEngine.Key.B         => 66
         case GameEngine.Key.Z         => 90
         case GameEngine.Key.X         => 88
         case GameEngine.Key.C         => 67
@@ -473,6 +474,11 @@ mod LwjglLayer {
                         AL10.alSourcei(src, AL10.AL_LOOPING, v)
                     case None      => ()
                 };
+                k(())
+            }
+            def setMasterVolume(gain, k) = {
+                // listener gain は全ソースに乗算で効く = マスター音量。範囲外は契約どおりクランプ。
+                AL10.alListenerf(AL10.AL_GAIN, Float32.max(0.0f32, Float32.min(1.0f32, gain)));
                 k(())
             }
         } with handler GameEngine.Game {

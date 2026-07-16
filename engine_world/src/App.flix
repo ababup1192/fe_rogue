@@ -969,6 +969,7 @@ mod App {
                 def stopAudio(name, k)          = k(GameEngine.Audio.stopAudio(name))
                 def setVolume(name, volume, k)  = k(GameEngine.Audio.setVolume(name, volume))
                 def setLooping(name, looping, k) = k(GameEngine.Audio.setLooping(name, looping))
+                def setMasterVolume(gain, k)    = k(GameEngine.Audio.setMasterVolume(gain))
             };
             { world = final#world,
               newHistory = List.take(historyLimit(), final#acc),

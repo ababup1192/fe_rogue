@@ -11,5 +11,7 @@
   "fonts": [
     {"name": "default", "path": "assets/Xolonium-Regular.ttf", "fontSize": 60.0}
   ],
-  "sounds": []
+  "sounds": [
+    {"name": "bgm", "path": "assets/sfx/bgm.wav", "looping": true}
+  ]
 }

@@ -102,6 +102,7 @@ mod GameEngine {
         case A
         case S
         case D
+        case B
         case Z
         case X
         case C
@@ -124,7 +125,7 @@ mod GameEngine {
     /// Key の全バリアント。InputEvent などのイベント駆動入力で
     /// 走査対象として使う。新しい Key を追加した際はここにも追加する。
     pub def allKeys(): List[Key] =
-        Key.W :: Key.A :: Key.S :: Key.D :: Key.Z :: Key.X :: Key.C :: Key.M :: Key.H ::
+        Key.W :: Key.A :: Key.S :: Key.D :: Key.B :: Key.Z :: Key.X :: Key.C :: Key.M :: Key.H ::
         Key.Up :: Key.Down :: Key.Left :: Key.Right ::
         Key.Enter :: Key.Space :: Key.Escape :: Key.F1 :: Key.F8 ::
         Key.LeftShift :: Key.LeftCtrl :: Key.LeftSuper :: Nil
@@ -215,6 +216,9 @@ mod GameEngine {
         /// 指定した名前のサウンドの AL_LOOPING を実行時に切り替える。
         /// 起動時の `soundManifest#looping` 初期値を上書きする (再生中の音にも反映)
         def setLooping(name: String, loop: Bool): Unit
+        /// 全サウンド共通のマスター音量（全体つまみ）を 0.0〜1.0 で設定する。範囲外はクランプ。
+        /// 各サウンドの setVolume と乗算で効く（OpenAL の listener gain × source gain）。
+        def setMasterVolume(gain: Float32): Unit
     }
 
     // ========================================================================

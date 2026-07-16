@@ -131,9 +131,10 @@ mod TestWorldJourney {
                     Ref.put((Ref.get(framesRef), name) :: Ref.get(soundsRef), soundsRef);
                     k()
                 }
-                def stopAudio(_, k)     = k()
-                def setVolume(_, _, k)  = k()
-                def setLooping(_, _, k) = k()
+                def stopAudio(_, k)        = k()
+                def setVolume(_, _, k)     = k()
+                def setLooping(_, _, k)    = k()
+                def setMasterVolume(_, k)  = k()
             } with handler Math.Random {
                 def randomFloat64(k) = k(rng.nextDouble())
                 def randomInt64(k)   = k(rng.nextLong())

@@ -48,6 +48,39 @@ mod Controls {
     pub def countStep(_frame: App.Frame, world: World.World): World.World =
         { steps = world#steps + 1 | world }
 
+    /// BGM 実験の意図。B = フェードの向きを反転、M = マスター音量 1.0/0.3 の切り替え。
+    enum AudioIntent with Eq {
+        case ToggleFade
+        case ToggleMaster
+    }
+
+    def audioTable(): InputMap.Table[AudioIntent] =
+           (Key.B, AudioIntent.ToggleFade)
+        :: (Key.M, AudioIntent.ToggleMaster)
+        :: Nil
+
+    /// BGM フェードとマスター音量の手本 system。
+    /// 分業: 音量の「値」はエンジンの純関数（Transition.Progress + AudioFade.volumeOf）が導き、
+    /// それを実機へ流す setVolume / setMasterVolume の副作用だけをこの system が受け持つ。
+    pub def audioStep(frame: App.Frame, world: World.World): World.World \ GameEngine.Audio =
+        let taps = InputMap.taps(audioTable(), frame);
+        let bgm = world#bgm
+            |> (b -> if (List.memberOf(AudioIntent.ToggleFade, taps)) reverseFade(b) else b)
+            |> (b -> if (List.memberOf(AudioIntent.ToggleMaster, taps))
+                         { master = if (b#master < 1.0) 1.0 else 0.3 | b } else b)
+            |> (b -> { progress = Transition.advance(frame#dt, b#progress) | b });
+        if (not bgm#playing) GameEngine.Audio.playAudio("bgm") else ();
+        GameEngine.Audio.setVolume("bgm", RenderUtil.f32(World.bgmVolume(bgm)));
+        GameEngine.Audio.setMasterVolume(RenderUtil.f32(bgm#master));
+        { bgm = { playing = true | bgm } | world }
+
+    /// フェードの向きを反転する。今の音量から続きになるよう、進み具合も左右反転して引き継ぐ
+    /// （例: t=0.3 のフェードインを反転すると t=0.7 のフェードアウト。音量が飛ばない）。
+    def reverseFade(bgm: World.Bgm): World.Bgm =
+        let remaining = (1.0 - Transition.tOf(bgm#progress)) * World.bgmDuration();
+        { rising = not bgm#rising,
+          progress = Transition.start(World.bgmDuration()) |> Transition.advance(remaining) | bgm }
+
     /// 毎フレームのシステムその二: 進んだ後の状態から UI の bind 文言を整える。
     pub def projectUi(_frame: App.Frame, world: World.World): World.World =
         GameUi.projectUi(world)
