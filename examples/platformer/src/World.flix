@@ -131,8 +131,21 @@ mod Field {
     pub def spikyAt(id: EntityId, base: Vec2.Vec2): Enemy =
         { id = id, kind = EnemyKind.SpikyKind, base = base, motion = None, alive = true }
 
-    /// 敵の当たり判定（円・半径 10）。
+    /// 敵の絵と配置の基準半径（円・半径 10）。判定の半径は hitbox.json の宣言
+    /// （Hits.enemyHitRadius）から引き、既定値はこの値と同じ。
     pub def enemyRadius(): Float64 = 10.0
+
+    // ── 照会型の当たり（敵との接触・踏み）の形 ──
+    // 正本は hitbox.json（起動時ロード・F1 で読み直し）。地形の物理は従来どおり
+    // playerShape / platformShape が Physics2D へ流す — そちらは宣言の対象外。
+
+    /// 自機の照会用の形（宣言 sheet から）。
+    pub def playerHitShapes(hits: HitDoc.Sheet): List[Hit.HitShape] =
+        HitDoc.shapesOf(Hits.playerKey(), hits)
+
+    /// 敵の照会用の形（宣言 sheet から・全種共通）。
+    pub def enemyHitShapes(hits: HitDoc.Sheet): List[Hit.HitShape] =
+        HitDoc.shapesOf(Hits.enemyKey(), hits)
 
     /// 踏んだ瞬間だけ世界を止める「手応え」の秒数（ヒットストップ・ちょうど 3 コマ）。
     /// 1/64 の倍数なので凍結は常に 3 フレームぴったり = テストの pin が厳密になる。
@@ -204,8 +217,14 @@ mod Field {
         clearedAt = Option[Float64],         // クリアした時刻（None = 未クリア）。花火の発射台本の基点
         freezeLeft = Float64,                // ヒットストップの残り秒（>0 の間は時間も物理も丸ごと止まる・踏みで充填）
         charIndex = Int32,                   // 操作中のキャラ（1..15・左 Shift で巡回・死んでも引き継ぐ）
-        time = Float64                       // 通し秒
+        time = Float64,                      // 通し秒
+        hits = HitDoc.Sheet,                 // 当たりの形の宣言（hitbox.json 由来。起動時ロード・F1 で読み直し）
+        showHits = Bool                      // H で当たり形の重ね描きを出す（デバッグ表示）
     }
+
+    /// 当たり形の重ね描き表示を切り替える（H キーのデバッグ表示）。
+    pub def toggleHits(world: World): World =
+        { showHits = not world#showHits | world }
 
     // moveX は走りの軸値。左右キーの押し下げを -1.0（左） 〜 0.0 〜 +1.0（右）に畳んだもの。
     pub type alias Input = { moveX = Float64, dash = Bool,
@@ -351,7 +370,11 @@ mod Field {
           camY = FollowCam.snapCamY(Level.levelHeight(), startAt#y),
           levelW = Level.levelWidth(), levelH = Level.levelHeight(),
           spawnPos = startAt, respawnPos = startAt, checkpointPos = Level.checkpointPos(),
-          goalX = Level.goalX(), clearedAt = None, freezeLeft = 0.0, charIndex = 1, time = 0.0 }
+          goalX = Level.goalX(), clearedAt = None, freezeLeft = 0.0, charIndex = 1, time = 0.0,
+          hits = Hits.defaults(), showHits = false }
+
+    /// 起動時の World: initialWorld + 読み込んだ当たりの宣言（Main が hitbox.json を渡す）。
+    pub def initialWorldWith(hits: HitDoc.Sheet): World = { hits = hits | initialWorld() }
 
     // ── リモートデバッグ（view=status）用の 1 行サマリ ──
 

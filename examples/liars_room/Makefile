@@ -1,4 +1,4 @@
-# sokoban の入口。
+# liars_room の入口。
 #   make run   … ゲームを起動する
 #   make debug … デバッグ機能（F8 の時間停止・注釈・巻き戻し）付きで起動する
 #   make bake  … ギャラリー（PNG・GIF・ダッシュボード）と効果音 WAV を生成する

@@ -1,16 +1,17 @@
 {
   "defaultFont": "default",
+  "paletteFile": "assets/palette.json",
   "root": {
     "name": "Ending", "widget": "none", "visible": false, "layer": 4,
     "dir": "column", "mainAlign": "center", "crossAlign": "center", "gap": 8,
     "children": [
       { "name": "headline", "widget": "text", "text": "ぜんぶクリア！",
-        "fontSize": 28, "tint": "#fbf236", "zIndex": 160 },
+        "fontSize": 28, "tint": "@accent", "zIndex": 160 },
       { "name": "detail", "widget": "text", "text": "10 のへやの正直者を見ぬいた！",
-        "fontSize": 12, "tint": "#cbdbfc", "zIndex": 160 },
+        "fontSize": 12, "tint": "@detail", "zIndex": 160 },
       { "name": "spacer", "widget": "none", "width": 1, "height": 12 },
       { "name": "prompt", "widget": "text", "text": "Enter: タイトルへ",
-        "fontSize": 10, "tint": "#847e87", "zIndex": 160 }
+        "fontSize": 10, "tint": "@muted", "zIndex": 160 }
     ]
   }
 }

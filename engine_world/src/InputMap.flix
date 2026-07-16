@@ -28,4 +28,21 @@ mod InputMap {
             |> List.filterMap(match (key, intent) ->
                 if (Set.memberOf(key, keys)) Some(intent) else None)
             |> List.distinct
+
+    /// ホイールの生 delta を「目盛り」へ畳む。マウスは 1 目盛りで ±1.0 が届くが、
+    /// トラックパッドは 1 未満の細かい値が毎フレーム届くので、そのまま使うと速度が
+    /// フレームレート依存になる。carry に貯めて ±1.0 を超えたぶんだけを目盛り数として
+    /// 返し、端数は次フレームへ持ち越す。carry は呼び側が World に持つ — Frame は
+    /// 毎フレーム作り直しで、ここに状態は持てない。
+    /// バックエンド由来の不正値(NaN / ∞)や Int32 に収まらない蓄積は (0, 0.0) に戻す —
+    /// 一度 carry に混ざると以後ずっと 0 目盛りのまま直らないので、黙って捨てて回復を取る。
+    pub def wheelSteps(carry: Float64, delta: Float64): (Int32, Float64) =
+        let total = carry + delta;
+        if (Float64.isNan(total) or Float64.abs(total) > 2147483000.0)
+            (0, 0.0)
+        else {
+            let whole = if (total >= 0.0) Float64.floor(total) else Float64.ceil(total);
+            let steps = Float64.tryToInt32(whole) |> Option.getWithDefault(0);
+            (steps, total - Int32.toFloat64(steps))
+        }
 }

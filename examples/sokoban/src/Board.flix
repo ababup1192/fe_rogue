@@ -88,7 +88,7 @@ mod Board {
     pub def playingWorld(n: Int32): World = fromLevel(Screen.Playing, n)
 
     /// 同梱のレベル文字列はテストによってパース可能と保証されている。壊れた文字列
-    /// は、起動を落とす代わりに何もない床へ縮退する。
+    /// のときは、起動を落とす代わりに何もない床のボードで動き続ける。
     def fromLevel(screen: Screen, n: Int32): World =
         match Level.parse(levelText(n)) {
             case Result.Ok(p)  => toWorld(screen, n, p)

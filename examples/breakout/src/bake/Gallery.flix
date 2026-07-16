@@ -73,12 +73,12 @@ mod Gallery {
     def fanScene(atlas: FontAtlas): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
         let paddleY = 205.0;
         let center = 160.0;
-        let halfW = Field.paddleHalfWidth();
+        let halfW = Field.paddleHalfWidth(Hits.defaults());
         // 5 ゾーンと色（通常ブロックの行色を流用）。
         let zones =
             (-1.0, Palette.blockRow(0)) :: (-0.5, Palette.blockRow(1)) :: (0.0, Palette.blockRow(2)) ::
             (0.5, Palette.blockRow(3)) :: (1.0, Palette.blockRow(4)) :: Nil;
-        let paddleArt = View.paddleItemsAt({ x = center, y = paddleY });
+        let paddleArt = View.paddleItemsAt(Hits.defaults(), { x = center, y = paddleY });
         let rays = List.flatMap(zc -> {
             let (zone, color) = zc;
             let impactX = center + zone * halfW;

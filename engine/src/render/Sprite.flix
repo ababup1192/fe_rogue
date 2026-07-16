@@ -145,7 +145,8 @@ mod Sprite {
             uvOffset = uv#uvOffset,
             uvScale = uvSc,
             zIndex = r#visual#zIndex,
-            style = None
+            style = None,
+            clip = None
         }
 
     /// regionRect / hframes / vframes / frame と元テクスチャサイズから

@@ -10,7 +10,7 @@
 //   - `parse(text)` (Option 返し)
 mod JsonCompat {
     use Util.Json.Json
-    use Util.Json.Json.JObject
+    use Util.Json.Json.{JObject, JArray}
     use Util.Json.JsonError
     use Util.Json.JsonError.JsonError.Decode
     use Util.Json.JsonError.DecodeErrorKind.TypeMismatch
@@ -73,6 +73,34 @@ mod JsonCompat {
     pub def numOr(key: String, fallback: Float64, m: Map[String, Json]): Result[JsonError, Float64] =
         (getAtKeyOpt(PathTag.Root, key, m): Result[JsonError, Option[Float64]])
             |> Result.map(Option.getWithDefault(fallback))
+
+    /// field のオブジェクト（名前 → 配列）を、要素パーサで名前ごとのリストに読む。
+    /// 要素のエラーには "field.名前[i]" の位置が付き、"//" で始まる名前はコメントとして飛ばす。
+    pub def sheetAt(field: String, itemAt: Json -> Result[JsonError, a],
+                    top: Map[String, Json]): Result[JsonError, Map[String, List[a]]] =
+        match Map.get(field, top) {
+            case Some(JObject(m)) =>
+                m |> Map.toList
+                  |> List.filter(entry -> { let (name, _) = entry; not String.startsWith(prefix = "//", name) })
+                  |> Result.traverse(entry -> {
+                        let (name, json) = entry;
+                        sheetItemsAt(field, name, itemAt, json) |> Result.map(items -> (name, items))
+                     })
+                  |> Result.map(List.toMap)
+            case _ => Err(jsonError(PathTag.Root, Set#{"${field} must be an object of name -> lists"}))
+        }
+
+    /// 名前 1 個ぶんの配列を要素パーサで読む。要素のエラーに "field.名前[i]" の位置を付ける。
+    def sheetItemsAt(field: String, name: String, itemAt: Json -> Result[JsonError, a],
+                     json: Json): Result[JsonError, List[a]] =
+        match json {
+            case JArray(arr) =>
+                Result.traverse(entry -> {
+                    let (i, j) = entry;
+                    atNode("${field}.${name}[${i}]", itemAt(j))
+                }, List.zipWithIndex(Vector.toList(arr)))
+            case _ => Err(jsonError(PathTag.Root, Set#{"${field} '${name}' must be an array"}))
+        }
 
     /// エラーにノードの名前パス（例: "gallery/row1/box"）を前置する。ドキュメント木のパーサが
     /// 「どのノードで失敗したか」を編集者へ伝える口。子のエラーは子が既にタグ済みなので、

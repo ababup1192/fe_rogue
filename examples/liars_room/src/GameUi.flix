@@ -10,7 +10,7 @@ mod GameUi {
         "assets/Memo.ui.json" :: "assets/Result.ui.json" :: "assets/Ending.ui.json" :: Nil
 
     /// 全ページの Spec を 1 つの UiWorld へ生成する。壊れた・存在しないファイルは
-    /// ページなしへ縮退する（ゲームはそれでも動く）。
+    /// そのページを抜いたまま進む（ゲームはそれでも動く）。
     pub def loadUi(): UiStore.UiWorld \ Fs.FileRead =
         pagePaths() |> List.foldLeft((ui, path) -> spawnPage(path, ui), UiStore.empty())
 

@@ -20,6 +20,10 @@ mod Render {
         /// 単色の単純多角形（自己交差しなければ凹でもよい。塗りは描画側が耳切りで三角形化）。
         /// 頂点は置き場所からの相対座標（draw が置き場所を全頂点に加算する）。
         case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32 })
+        /// rect（スクリーン空間・design px）で inner を切り抜く。入れ子は交差。
+        /// App + withCamera 経路では中身にはカメラが掛かるが、窓は常にスクリーン固定 —
+        /// PiP やパネル内スクロール用（world に追従する窓は v1 対象外）。
+        case Clipped({ rect = Rect2.Rect2, inner = Item })
     }
 
     /// 置き場所つきの描画物。View はこの列を組み、draw が描画命令へ変換する。
@@ -152,12 +156,20 @@ mod Render {
     /// 「Item を作る → パイプで修飾 → atCenter で置く」が一方通行で読める並びになる。
     /// Poly は受け付けず loud に落とす — 頂点が原点中心なので `{ at = center, item = … }` が
     /// そのまま中心置きであり、ここを通すと黙って半サイズずれる事故になるため。
+    /// ガードは Clipped を剥がした葉で判定する（窓に包んでもすり抜けさせない）。
     pub def atCenter(center: Vec2.Vec2, size: Vec2.Vec2, item: Item): PlacedItem =
-        match item {
+        match leafOf(item) {
             case Item.Poly(_) =>
                 bug!("Render.atCenter: Poly は at がそのまま中心 — { at = center, item = … } と書く")
-            case other =>
-                { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 }, item = other }
+            case _ =>
+                { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 }, item = item }
+        }
+
+    /// Clipped を剥がした芯の item（ガード判定用 — 窓は見ない）。
+    def leafOf(item: Item): Item =
+        match item {
+            case Item.Clipped(c) => leafOf(c#inner)
+            case leaf            => leaf
         }
 
     /// 円周（楕円周）上の点（Vec2.onEllipse の近道 — 半径 2 つを個別に受ける内部形）。
@@ -174,24 +186,44 @@ mod Render {
     def solidStyle(): GameEngine.BoxStyle =
         DrawCmd.defaultStyle(white())
 
+    // ── clip（スクリーン空間の切り抜き窓）──
+
+    /// item を rect（スクリーン空間・design px）で切り抜く。窓の外のピクセルは描かれない。
+    /// 入れ子は交差。修飾（fade / scaled 等）は窓を素通りして中身に効く。
+    /// 端のちらつきを避けるため rect は整数 design px で作ること。
+    pub def clipped(rect: Rect2.Rect2, item: Item): Item =
+        Item.Clipped({ rect = rect, inner = item })
+
+    /// 置き場所つきの列をまとめて切り抜く近道（PiP・パネル内スクロールの出口で使う）。
+    pub def clippedAll(rect: Rect2.Rect2, items: List[PlacedItem]): List[PlacedItem] =
+        items |> List.map(p -> { item = clipped(rect, p#item) | p })
+
     // ── 修飾（稀な属性はパイプで重ねる。効かない種類の item は素通し）──
+
+    /// 修飾を Clipped の窓越しに葉へ届ける。窓（rect）には触れない —
+    /// 「clip は最後の見た目、修飾は中身」という一方向の重なりを保つ。
+    def onLeaf(f: Item -> Item, item: Item): Item =
+        match item {
+            case Item.Clipped(c) => Item.Clipped({ inner = onLeaf(f, c#inner) | c })
+            case leaf            => f(leaf)
+        }
 
     /// 角を丸める（Box に効く）。
     pub def rounded(radius: Float64, item: Item): Item =
-        match item {
+        onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
                 Item.Box({ style = Some({ cornerRadius = radius | styleOf(b#style) }) | b })
             case other => other
-        }
+        }, item)
 
     /// 透明度（alpha）を指定した値にする（Sprite / Box / Poly に効く。Text は tint が濃度を兼ねる）。
     pub def fade(alpha: Float32, item: Item): Item =
-        match item {
+        onLeaf(leaf -> match leaf {
             case Item.Sprite(s) => Item.Sprite({ alpha = alpha | s })
             case Item.Box(b)    => Item.Box({ alpha = alpha | b })
             case Item.Poly(p)   => Item.Poly({ alpha = alpha | p })
             case other                => other
-        }
+        }, item)
 
     /// 頂点列を左右に鏡映する（縦軸で x を反転・2 回で元に戻る）。polygon や Bezier の
     /// 輪郭・背骨に渡す前に使う。鏡映は頂点の上でだけ提供する（Text のような
@@ -220,34 +252,34 @@ mod Render {
 
     /// 枠線を付ける（Box に効く）。
     pub def outline(color: Color, width: Float64, item: Item): Item =
-        match item {
+        onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
                 Item.Box({ style = Some({ borderColor = color, borderWidth = width,
                                                 borderAlpha = 1.0f32 | styleOf(b#style) }) | b })
             case other => other
-        }
+        }, item)
 
     /// 縞模様を敷く（Box に効く）。dir は 0 = 斜め 45° / 1 = 横縞 / 2 = 縦縞。
     pub def striped(stripe: { color = Color, alpha = Float32, width = Float64, period = Float64, dir = Int32 },
                     item: Item): Item =
-        match item {
+        onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
                 Item.Box({ style = Some({ stripeColor = stripe#color, stripeAlpha = stripe#alpha,
                                                 stripeWidth = stripe#width, stripePeriod = stripe#period,
                                                 stripeDir = stripe#dir
                                                 | styleOf(b#style) }) | b })
             case other => other
-        }
+        }, item)
 
     /// 市松のタイルを重ねる（Box に効く）。PC-98 の網ディザ風。
     pub def checker(c: { color = Color, alpha = Float32, cell = Float64 }, item: Item): Item =
-        match item {
+        onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
                 Item.Box({ style = Some({ checkerColor = c#color, checkerAlpha = c#alpha,
                                                 checkerCell = c#cell
                                                 | styleOf(b#style) }) | b })
             case other => other
-        }
+        }, item)
 
     /// 大きさ系の属性を factor 倍する（全種類の item に効く）。camera の zoom 適用の芯:
     /// Box は size と style の太さ（角丸・枠・縞・市松）、Sprite は scale、Text は fontSize、
@@ -257,24 +289,26 @@ mod Render {
     /// 物を大きく見せたいときはこれではなく、boxAt のサイズや sprite の scale を変えること。
     /// これが正しく見えるのは、at にも同じ倍率の変換を掛ける camera 経路（CameraRig.centerOn）だけ。
     pub def scaled(factor: Float64, item: Item): Item =
-        match item {
+        onLeaf(leaf -> match leaf {
             case Item.Sprite(s) => Item.Sprite({ scale = { x = s#scale#x * factor, y = s#scale#y * factor } | s })
             case Item.Text(t)   => Item.Text({ fontSize = t#fontSize * factor | t })
             case Item.Box(b)    =>
                 let style1 = b#style |> Option.map(s -> DrawCmd.scalePx(factor, s));
                 Item.Box({ size = { x = b#size#x * factor, y = b#size#y * factor }, style = style1 | b })
             case Item.Poly(p)   => Item.Poly({ vertices = List.map(v -> Vec2.mul(v, factor), p#vertices) | p })
-        }
+            case Item.Clipped(_) => bug!("Render.scaled: onLeaf が Clipped を剥がすのでここには届かない")
+        }, item)
 
     /// zIndex を delta だけ持ち上げる（全種類の item に効く）。組み上がった item の列を
     /// まとめて別の z 帯へ移すとき（UI レイヤーの合流など）に使う。
     pub def raiseZ(delta: Int32, item: Item): Item =
-        match item {
+        onLeaf(leaf -> match leaf {
             case Item.Sprite(s) => Item.Sprite({ zIndex = s#zIndex + delta | s })
             case Item.Text(t)   => Item.Text({ zIndex = t#zIndex + delta | t })
             case Item.Box(b)    => Item.Box({ zIndex = b#zIndex + delta | b })
             case Item.Poly(p)   => Item.Poly({ zIndex = p#zIndex + delta | p })
-        }
+            case Item.Clipped(_) => bug!("Render.raiseZ: onLeaf が Clipped を剥がすのでここには届かない")
+        }, item)
 
     /// 修飾の土台になる style（無ければ solid）。
     def styleOf(style: Option[GameEngine.BoxStyle]): GameEngine.BoxStyle =
@@ -286,40 +320,53 @@ mod Render {
     /// Sprite / Text / Box は Drawable、Poly は置き場所を頂点に織り込んだ PolygonRenderCmd になる —
     /// 呼び側は 1 本のリストを組むだけで、2 系統への振り分けはここで終わる。
     pub def draw(items: List[PlacedItem]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
-        let drawables = items |> List.flatMap(placed ->
-            match placed#item {
-                case Item.Poly(_) => Nil
-                case other              => toDrawables(other, placed#at)
-            });
-        let polygons = items |> List.filterMap(placed ->
-            match placed#item {
-                case Item.Poly(p) => Some(polyCmd(placed#at, p))
-                case _                  => None
-            });
-        (drawables, polygons)
+        drawInto((item, pos) -> toDrawables(item, pos), items)
 
     /// `draw` の atlas 注入版。Sprite の region UV を textureInfoOf で解決しつつ、
     /// Poly も PolygonRenderCmd へ振り分ける（draw と同じ 2 列を返す）。
     /// region 付き sprite と Poly が同じ列に混ざる UI（UiRender）の描画口。
     pub def drawWith(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
                      items: List[PlacedItem]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) \ ef =
-        let drawables = items |> List.flatMap(placed ->
-            match placed#item {
+        drawInto((item, pos) -> toDrawablesAtlas(textureInfoOf, item, pos), items)
+
+    /// draw / drawWith の共通トラバーサル。Clipped を剥がして有効な窓（入れ子は交差）を決め、
+    /// 葉を Drawable / PolygonRenderCmd へ振り分けてから窓を刻む。振り分けの分岐を 1 本に
+    /// しておかないと、Clipped の扱いが 2 経路で割れる。
+    def drawInto(toDs: (Item, Vec2.Vec2) -> List[GameEngine.Drawable] \ ef,
+                 items: List[PlacedItem]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) \ ef =
+        let drawables = items |> List.flatMap(placed -> {
+            let (leaf, clip) = unwrapClip(placed#item, None);
+            match leaf {
                 case Item.Poly(_) => (Nil: List[GameEngine.Drawable])
-                case other              => toDrawablesAtlas(textureInfoOf, other, placed#at)
-            });
-        let polygons = items |> List.filterMap(placed ->
-            match placed#item {
-                case Item.Poly(p) => Some(polyCmd(placed#at, p))
-                case _                  => None
-            });
+                case other        => toDs(other, placed#at) |> List.map(d -> { clip = clip | d })
+            }
+        });
+        let polygons = items |> List.filterMap(placed -> {
+            let (leaf, clip) = unwrapClip(placed#item, None);
+            match leaf {
+                case Item.Poly(p) => Some({ clip = clip | polyCmd(placed#at, p) })
+                case _            => None
+            }
+        });
         (drawables, polygons)
+
+    /// Clipped を剥がし、(芯の item, 有効な窓) を返す。入れ子の窓は交差する。
+    def unwrapClip(item: Item, clip: Option[Rect2.Rect2]): (Item, Option[Rect2.Rect2]) =
+        match item {
+            case Item.Clipped(c) =>
+                let merged = match clip {
+                    case None    => Some(c#rect)
+                    case Some(r) => Some(Rect2.intersect(r, c#rect))
+                };
+                unwrapClip(c#inner, merged)
+            case leaf => (leaf, clip)
+        }
 
     /// Poly を置き場所 pos の描画命令へ（全頂点に pos を加算）。
     def polyCmd(pos: Vec2.Vec2,
                 p: { vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32 }): GameEngine.PolygonRenderCmd =
         { vertices = List.map(v -> Vec2.add(v, pos), p#vertices),
-          color = p#color, alpha = p#alpha, zIndex = p#zIndex }
+          color = p#color, alpha = p#alpha, zIndex = p#zIndex, clip = None }
 
     /// World 由来 Drawable 群に camera のズーム倍率を適用する（位置は `Projection.applyToWorldPos` で
     /// screenPos を出した後の共通後処理）。render-from-World の各オーバーレイ（ユニット / 背景 / 範囲表示 /
@@ -330,6 +377,7 @@ mod Render {
         List.map(d -> {scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y} | d}, ds)
 
     /// 1 アイテム → 複数 Drawable（ボタン等は呼び側で複数アイテムにする）。
+    /// Clipped は中身を変換してから窓を刻む（入れ子は交差 — draw を通さない直呼びでも clip が効く）。
     pub def toDrawables(item: Item, pos: Vec2.Vec2): List[GameEngine.Drawable] =
         match item {
             case Item.Sprite(s) =>
@@ -341,6 +389,15 @@ mod Render {
                 boxDrawable(b#size, b#color, b#alpha, b#style, b#zIndex, pos) :: Nil
             case Item.Poly(_) =>
                 bug!("Render.toDrawables: Poly は Drawable にならない（draw が PolygonRenderCmd へ振り分ける）")
+            case Item.Clipped(c) =>
+                toDrawables(c#inner, pos) |> List.map(d -> { clip = mergeClip(c#rect, d#clip) | d })
+        }
+
+    /// 窓 rect を既存の clip と重ねる（両方あれば交差）。
+    def mergeClip(rect: Rect2.Rect2, existing: Option[Rect2.Rect2]): Option[Rect2.Rect2] =
+        match existing {
+            case None    => Some(rect)
+            case Some(r) => Some(Rect2.intersect(rect, r))
         }
 
     /// region atlas 対応の射影（drawWith が使う）。textureSize を引いて UV を計算する
@@ -361,7 +418,8 @@ mod Render {
                 ({ texture = s#texture, position = pos,
                    scale = {x = s#scale#x * flipSign(s#flipH), y = s#scale#y * flipSign(s#flipV)},
                    rotation = s#rotation, color = s#tint, alpha = s#alpha, centered = s#centered,
-                   uvOffset = uvOff, uvScale = uvScl, zIndex = s#zIndex, style = None }: GameEngine.Drawable) :: Nil
+                   uvOffset = uvOff, uvScale = uvScl, zIndex = s#zIndex, style = None,
+                   clip = None }: GameEngine.Drawable) :: Nil
             case other => toDrawables(other, pos)
         }
 
@@ -383,7 +441,8 @@ mod Render {
                   uvOffset = {x = 0.0, y = 0.0},
                   uvScale  = {x = 1.0, y = 1.0},
                   zIndex   = zIndex,
-                  style    = None }
+                  style    = None,
+                  clip     = None }
         }
 
     def flipSign(b: Bool): Float64 = if (b) -1.0 else 1.0
@@ -409,5 +468,6 @@ mod Render {
           uvOffset = {x = 0.0, y = 0.0},
           uvScale  = {x = 1.0, y = 1.0},
           zIndex   = zIndex,
-          style    = style }
+          style    = style,
+          clip     = None }
 }

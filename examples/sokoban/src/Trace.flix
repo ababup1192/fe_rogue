@@ -15,9 +15,8 @@ mod Trace {
     /// ある。
     pub def dt(): Float64 = 1.0 / 64.0
 
-    pub def idle(): Board.Input =
-        { up = false, down = false, left = false, right = false,
-          undo = false, enter = false, back = false, esc = false }
+    /// 何も押していない 1 フレーム（Board.noKeys の別名。Trace の語彙として置く）。
+    pub def idle(): Board.Input = Board.noKeys()
 
     def dirInput(d: Dir4.Dir4): Board.Input = match d {
         case Dir4.Up    => { up = true | idle() }

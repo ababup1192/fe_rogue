@@ -21,7 +21,10 @@ mod App {
         cursor = Vec2.Vec2,                // マウス位置（design 座標。バックエンドが窓→design に変換済み）
         mouseDown = Bool,                  // 左ボタンがいま押されているか
         mouseClicked = Bool,               // 左ボタンがこのフレームで新しく押されたか（エッジ）
-        mouseMoved = Bool                  // このフレームでマウスが動いたか（前フレームとの座標比較）
+        mouseMoved = Bool,                 // このフレームでマウスが動いたか（前フレームとの座標比較）
+        wheel = Float64                    // このフレームのホイール量（上が正・下が負。無ければ 0。
+                                           // ランナーが毎フレーム consumeScrollDelta を読み切るので、
+                                           // ゲーム側が直接 consume すると常に 0 が返る — 必ずここから読む）
     }
 
     /// key がいま押されているか（押しっぱなしも true）。移動などの連続入力に。
@@ -222,11 +225,12 @@ mod App {
     /// （今あって前に無いキー）なので、押しっぱなしはエッジにならない。
     /// マウスも同じ考え方: mouseClicked は「今押されていて前は押されていない」エッジ、
     /// mouseMoved は前フレームとの座標比較（最初のフレームは prevCursor = None で false）。
+    /// wheel はバックエンドが貯めた 1 フレームぶんの量を素通しする。
     pub def frameOf(prev: {prev = Set[GameEngine.Key]},
                     current: {current = Set[GameEngine.Key]}, dt: Float64,
                     viewport: Vec2.Vec2,
                     cursor: {prevCursor = Option[Vec2.Vec2], cursor = Vec2.Vec2},
-                    mouse: {prevDown = Bool, down = Bool}): Frame =
+                    mouse: {prevDown = Bool, down = Bool, wheel = Float64}): Frame =
         { down = current#current,
           justPressed = Set.difference(current#current, prev#prev),
           dt = dt,
@@ -234,7 +238,8 @@ mod App {
           cursor = cursor#cursor,
           mouseDown = mouse#down,
           mouseClicked = mouse#down and not mouse#prevDown,
-          mouseMoved = Option.exists(p -> p#x != cursor#cursor#x or p#y != cursor#cursor#y, cursor#prevCursor) }
+          mouseMoved = Option.exists(p -> p#x != cursor#cursor#x or p#y != cursor#cursor#y, cursor#prevCursor),
+          wheel = mouse#wheel }
 
     /// システムの列を追加順（左から右）に World へ畳み込む。
     pub def applySystems(frame: Frame, systems: List[(Frame, w) -> w \ ef], world: w): w \ ef =
@@ -320,7 +325,8 @@ mod App {
         let frame = frameOf(prev = prevKeys, current = currentKeys, readDt(),
                             GameEngine.Game.getViewportRect()#size,
                             { prevCursor = prevCursor, cursor = cursorNow },
-                            { prevDown = prevMouseDown, down = mouseDown });
+                            { prevDown = prevMouseDown, down = mouseDown,
+                              wheel = GameEngine.Game.consumeScrollDelta() });
         let wantsQuit = app#quit;
         if (GameEngine.Game.shouldClose() or wantsQuit(frame, world)) ()
         else {
@@ -411,7 +417,8 @@ mod App {
                       leftDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left),
                       middleDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Middle),
                       spaceDown = isDown(GameEngine.Key.Space, frame),
-                      scroll = GameEngine.Game.consumeScrollDelta(),
+                      // ホイールは loop が Frame へ焼いた後なので、二度読みせず frame から引く
+                      scroll = frame#wheel,
                       design = design };
         let (next, emitted) = Annotate.step(input, scrubbed);
         // 注釈のフレーム番号は「表示中の瞬間」のもの（スクラブぶんを引く）
@@ -774,11 +781,11 @@ mod App {
                         Ref.put(frameNo, frameNoRef);
                         // 実ハンドラへ素通し = glfwPollEvents が回り、窓が固まらない・閉じられる
                         let closing = GameEngine.Game.shouldClose();
-                        // /step の台本はキーのみ（マウスは台本に無いので常に「押されず・動かず」）。
+                        // /step の台本はキーのみ（マウスは台本に無いので常に「押されず・動かず・回さず」）。
                         let frame = frameOf(prev = state#prev, current = frameKeys, stepParams#dtSeconds,
                                             GameEngine.Game.getViewportRect()#size,
                                             { prevCursor = None, cursor = Vec2.zero() },
-                                            { prevDown = false, down = false });
+                                            { prevDown = false, down = false, wheel = 0.0 });
                         let wantsQuit = app#quit;
                         if (closing or wantsQuit(frame, state#world))
                             { stopped = "quit", quit = true | state }

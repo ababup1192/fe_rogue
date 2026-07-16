@@ -1,16 +1,18 @@
 {
   "defaultFont": "default",
+  "paletteFile": "assets/palette.json",
+  "palette": { "menuFrame": "#5b6ee1" },
   "templates": {
     "slot": { "widget": "none", "visible": false, "height": 13, "dir": "row", "crossAlign": "center", "gap": 4, "pad": [3, 0, 3, 0] },
     "name": { "widget": "text", "fontSize": 10, "tint": "#eef1f7", "zIndex": 143 },
-    "mk":   { "widget": "text", "fontSize": 10, "tint": "#847e87", "zIndex": 143 },
+    "mk":   { "widget": "text", "fontSize": 10, "tint": "@muted", "zIndex": 143 },
     "sw":   { "widget": "box", "color": "#ffffff", "width": 8, "height": 8, "cornerRadius": 2, "zIndex": 143 }
   },
   "root": {
     "name": "Memo", "widget": "none", "visible": false, "layer": 3,
     "children": [
-      { "name": "panel", "widget": "box", "color": "#131020", "alpha": 0.95,
-        "borderWidth": 1, "borderColor": "#5b6ee1", "cornerRadius": 3, "zIndex": 140,
+      { "name": "panel", "widget": "box", "color": "@panelDark", "alpha": 0.95,
+        "borderWidth": 1, "borderColor": "@menuFrame", "cornerRadius": 3, "zIndex": 140,
         "abs": [204, 24], "width": 108, "height": "auto",
         "dir": "column", "pad": [5, 4, 5, 5], "gap": 2,
         "children": [
@@ -19,7 +21,7 @@
           { "name": "menu", "widget": "none", "dir": "column", "gap": 0, "crossAlign": "stretch",
             "children": [
               { "name": "highlight", "widget": "box", "color": "#16314f", "alpha": 1.0,
-                "borderWidth": 0.5, "borderColor": "#5b6ee1", "cornerRadius": 2, "zIndex": 141,
+                "borderWidth": 0.5, "borderColor": "@menuFrame", "cornerRadius": 2, "zIndex": 141,
                 "abs": [0.5, 0.5], "width": 96, "height": 12 },
               { "use": "slot", "name": "slot0", "children": [ { "use": "sw", "name": "swatch" }, { "use": "name", "name": "label" }, { "use": "mk", "name": "mark" } ] },
               { "use": "slot", "name": "slot1", "children": [ { "use": "sw", "name": "swatch" }, { "use": "name", "name": "label" }, { "use": "mk", "name": "mark" } ] },
@@ -31,9 +33,9 @@
             ]
           },
           { "name": "submit", "widget": "text", "text": "ぜんいんぶん埋めよう",
-            "fontSize": 8, "tint": "#847e87", "zIndex": 142 },
+            "fontSize": 8, "tint": "@muted", "zIndex": 142 },
           { "name": "hint", "widget": "text", "text": "Z:しるし C:とじる",
-            "fontSize": 8, "tint": "#847e87", "zIndex": 142 }
+            "fontSize": 8, "tint": "@muted", "zIndex": 142 }
         ]
       }
     ]

@@ -52,32 +52,67 @@ mod RichText {
         lineGap = Float64
     }
 
-    /// スパン列を左上 pos から 1 文字ずつ置いていく。maxWidth を超える字は次の行へ折り返す
-    /// （字単位の折返し — 日本語向き。'\n' でも改行する）。太字スパンは半ピクセル右に
-    /// ずらしてもう一度描くことで線を太らせる。
+    /// スパン列を最大幅で行の列へ折る。折る規則は描画(place)と同一 — 字単位で、収まらない
+    /// 字は次の行へ、'\n' でも改行。スパンの属性(tint / bold)は行をまたいでも保たれる。
+    /// 字幅は charWidth で外から与える: place は atlas の実測を渡すが、描画の前に行数だけ
+    /// 知りたい呼び側(スクロールの勘定・ページ割りなど)は「全角 2・半角 1」のような純粋な
+    /// 近似を渡してよい。同じ charWidth を通す限り、勘定と描画の行割りはずれない。
+    /// 行数の規約: 空の入力も「空行 1 つ」(結果が Nil になることはない)、末尾の '\n' は
+    /// 末尾に空行を残す — 行数を高さの予約に使う呼び側が空文字で 0 行にならないため。
+    pub def wrapLinesBy(charWidth: Char -> Float64, maxWidth: Float64, spans: List[Span]): List[List[Span]] =
+        // 行の組み立て中は lines(確定行・逆順)/ line(組み立て中の行のスパン・逆順)/
+        // chunk(いま処理中のスパンから今の行に積んだ文字)/ x(行の使用幅)を持ち回る。
+        let final = spans |> List.foldLeft((acc, span) -> {
+            let s = String.toList(span#text) |> List.foldLeft((st, ch) -> {
+                if (ch == '\n')
+                    { lines = closeLine(st#chunk, span, st#line) :: st#lines, line = Nil, chunk = "", x = 0.0 }
+                else {
+                    let w = charWidth(ch);
+                    // 行頭(x = 0)では折らない — maxWidth より広い字でも 1 字は必ず置く(無限ループを作らない)。
+                    let st1 = if (st#x + w > maxWidth and st#x > 0.0)
+                        { lines = closeLine(st#chunk, span, st#line) :: st#lines, line = Nil, chunk = "", x = 0.0 }
+                        else st;
+                    { chunk = "${st1#chunk}${ch}", x = st1#x + w | st1 }
+                }
+            }, { lines = acc#lines, line = acc#line, chunk = "", x = acc#x });
+            { lines = s#lines, line = pushChunk(s#chunk, span, s#line), x = s#x }
+        }, { lines = (Nil: List[List[Span]]), line = (Nil: List[Span]), x = 0.0 });
+        List.reverse(List.reverse(final#line) :: final#lines)
+
+    /// 組み立て中のスパン片を行へ積む(空なら何も足さない)。属性は元スパンから引き継ぐ。
+    def pushChunk(chunk: String, span: Span, line: List[Span]): List[Span] =
+        if (chunk == "") line else ({ text = chunk | span }) :: line
+
+    /// 組み立て中の行を確定する(逆順を戻す)。
+    def closeLine(chunk: String, span: Span, line: List[Span]): List[Span] =
+        List.reverse(pushChunk(chunk, span, line))
+
+    /// スパン列を左上 pos から 1 文字ずつ置いていく。行割りは wrapLinesBy(atlas の実測幅)で、
+    /// 太字スパンは半ピクセル右にずらしてもう一度描くことで線を太らせる。
     pub def place(p: Placement, spans: List[Span]): List[Render.PlacedItem] =
-        let (items, _, _) = spans |> List.foldLeft((acc, span) -> {
-            let (done, x, y) = acc;
+        wrapLinesBy(ch -> TextDraw.width(Char.toString(ch), p#atlas, p#size), p#maxWidth, spans)
+            |> List.zipWithIndex
+            |> List.flatMap(pair -> {
+                let (i, line) = pair;
+                placeLine(p, Int32.toFloat64(i) * (p#size + p#lineGap), line)
+            })
+
+    /// 折返し済みの 1 行を y の高さに置く。
+    def placeLine(p: Placement, y: Float64, line: List[Span]): List[Render.PlacedItem] =
+        let (items, _) = line |> List.foldLeft((acc, span) -> {
             let tint = Option.getWithDefault(p#baseTint, span#tint);
             String.toList(span#text) |> List.foldLeft((acc2, ch) -> {
-                let (done2, x2, y2) = acc2;
-                if (ch == '\n')
-                    (done2, 0.0, y2 + p#size + p#lineGap)
-                else {
-                    let text = Char.toString(ch);
-                    let w = TextDraw.width(text, p#atlas, p#size);
-                    let (x3, y3) = if (x2 + w > p#maxWidth and x2 > 0.0)
-                        (0.0, y2 + p#size + p#lineGap) else (x2, y2);
-                    let at = { x = p#pos#x + x3, y = p#pos#y + y3 };
-                    let glyph = { at = at, item = Render.textTinted(text, p#atlas, p#size, tint, p#z) };
-                    let emboldened = if (span#bold)
-                        { at = { x = at#x + 0.5, y = at#y },
-                          item = Render.textTinted(text, p#atlas, p#size, tint, p#z) } :: Nil
-                    else
-                        Nil;
-                    (List.append(done2, glyph :: emboldened), x3 + w, y3)
-                }
-            }, (done, x, y))
-        }, (Nil, 0.0, 0.0));
+                let (done, x) = acc2;
+                let text = Char.toString(ch);
+                let at = { x = p#pos#x + x, y = p#pos#y + y };
+                let glyph = { at = at, item = Render.textTinted(text, p#atlas, p#size, tint, p#z) };
+                let emboldened = if (span#bold)
+                    { at = { x = at#x + 0.5, y = at#y },
+                      item = Render.textTinted(text, p#atlas, p#size, tint, p#z) } :: Nil
+                else
+                    Nil;
+                (List.append(done, glyph :: emboldened), x + TextDraw.width(text, p#atlas, p#size))
+            }, acc)
+        }, (Nil, 0.0));
         items
 }

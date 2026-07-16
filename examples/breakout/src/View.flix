@@ -32,13 +32,13 @@ mod View {
             case Field.Phase.Title =>
                 Nil
             case Field.Phase.Playing(core, Field.BallState.Waiting) =>
-                boardItems(world#params, core, Nil, Vec2.zero())
+                boardItems(world#hits, world#params, core, Nil, Vec2.zero())
             case Field.Phase.Playing(core, Field.BallState.Moving(mv)) =>
-                boardItems(world#params, core, mv#trail, mv#vel)
+                boardItems(world#hits, world#params, core, mv#trail, mv#vel)
             case Field.Phase.Cleared(core) =>
-                boardItems(world#params, core, Nil, Vec2.zero())
+                boardItems(world#hits, world#params, core, Nil, Vec2.zero())
             case Field.Phase.GameOver(core) =>
-                boardItems(world#params, core, Nil, Vec2.zero())
+                boardItems(world#hits, world#params, core, Nil, Vec2.zero())
         }
 
     // ── hud: フェーズを画面の空間の絵へ投影する（カメラを掛けない = 揺れない）──
@@ -60,14 +60,14 @@ mod View {
 
     /// 盤ひとそろい（盤の空間）。trail と vel は飛行中だけ中身があり、
     /// 待機・クリア・ゲームオーバーでは空（残像は出ない）。
-    def boardItems(params: GameParameters.Params, core: Field.GameCore,
+    def boardItems(hits: HitDoc.Sheet, params: GameParameters.Params, core: Field.GameCore,
                    trail: List[Vec2.Vec2], vel: Vec2.Vec2): List[Render.PlacedItem] =
         List.flatten(
             wallBoxes(core) ::
             blockBoxes(core) ::
-            paddleBoxes(core) ::
+            paddleBoxes(hits, core) ::
             trailBoxes(params, vel, trail) ::
-            ballBoxes(core) ::
+            ballBoxes(hits, core) ::
             burstItems(core) :: Nil)
 
     // ── カメラ（App.withCamera に渡す。状態を持たず毎フレーム trauma から純粋に導出する）──
@@ -162,13 +162,13 @@ mod View {
     /// 両端のアクセントゾーンの幅（px）。ここで受けると鋭角＋追加加速。
     def paddleEdgeZoneWidth(): Float64 = 7.0
 
-    def paddleBoxes(core: Field.GameCore): List[Render.PlacedItem] =
-        paddleItemsAt(Field.paddlePos(core#paddle#x))
+    def paddleBoxes(hits: HitDoc.Sheet, core: Field.GameCore): List[Render.PlacedItem] =
+        paddleItemsAt(hits, Field.paddlePos(core#paddle#x))
 
     /// パドルの絵ひとそろい（中心座標指定）。ゲーム本編とギャラリーの扇形図が共有する。
-    pub def paddleItemsAt(center: Vec2.Vec2): List[Render.PlacedItem] =
-        let halfW = Field.paddleHalfWidth();
-        let halfH = Field.paddleHalfHeight();
+    pub def paddleItemsAt(hits: HitDoc.Sheet, center: Vec2.Vec2): List[Render.PlacedItem] =
+        let halfW = Field.paddleHalfWidth(hits);
+        let halfH = Field.paddleHalfHeight(hits);
         let width = halfW * 2.0;
         let height = halfH * 2.0;
         let topLeft = { x = center#x - halfW, y = center#y - halfH };
@@ -192,10 +192,10 @@ mod View {
                        Palette.paddleHighlight(), zPaddle() + 3) :: Nil;
         List.append(shadeBand, zones)
 
-    // ── ボール（位置は core#ballPos、形は Field の定数）──
+    // ── ボール（位置は core#ballPos、半径は宣言 sheet から）──
 
-    def ballBoxes(core: Field.GameCore): List[Render.PlacedItem] =
-        circleItem(core#ballPos, Field.ballRadius() * 2.0, Palette.ball(), zBall()) :: Nil
+    def ballBoxes(hits: HitDoc.Sheet, core: Field.GameCore): List[Render.PlacedItem] =
+        circleItem(core#ballPos, Field.ballRadius(hits) * 2.0, Palette.ball(), zBall()) :: Nil
 
     // ── ボールの残像（飛行中の速度と位置リングからの導出）──
     // 状態はリング（直近の位置列）だけ。各点の大きさと薄さは (age, 加速の道のり) の純関数で、

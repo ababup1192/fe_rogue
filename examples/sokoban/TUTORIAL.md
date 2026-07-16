@@ -821,6 +821,10 @@ def main(): Unit \ IO =
   into the `Frame` before any of our code runs. `App.isDown` is just a set
   lookup on that snapshot. If you try to call `isKeyPressed` inside `step`, the
   compiler stops you — purity here is a checked property, not a house rule.
+  (A heads-up for readers following along in the shipped repo: this row of
+  direct `App.isDown` reads is how `inputOf` *starts out*. The finished game
+  replaces it with a key table — chapter 6 shows it — which is also where
+  WASD joins the arrows.)
 - All the *rules* still live in `step`, and they are ordinary world rules:
   opposing keys cancel (`axis`), the horizontal wins a diagonal (`facingOf`),
   the screen edge clamps, and releasing every key snaps `walkPhase` to `0.0` —
@@ -1748,8 +1752,9 @@ def main(): Unit \ IO =
         |> App.launch
 ```
 
-(`inputOf` now also reads Z into `undo`; `tick` wraps `step` and owns the
-history, and the view projects whatever World is *current* on the line.)
+(`inputOf` now also reads Z into `undo` — still as a direct read at this
+stage; `tick` wraps `step` and owns the history, and the view projects
+whatever World is *current* on the line.)
 
 ### What memory costs
 
@@ -1845,8 +1850,10 @@ pure tick owns every change of it.
 
 `Input` grows three keys — `enter`, `back` (X) and `esc` — and `enter` and
 `esc` are **edges**, not levels: the Frame carries both "down now" and "went
-down this frame", and `inputOf` picks `App.justPressed` for these two. One
-press turns exactly one page, no matter how long the finger rests. And
+down this frame", and the key mapping reads these two on the edge (in the
+shipped `Controls.flix`, shown at the end of this chapter, they sit in a tap
+table of their own, apart from the held keys). One press turns exactly one
+page, no matter how long the finger rests. And
 `tick` becomes a page-turner on top of the machine chapter 5 built — the
 whole of that machine survives untouched underneath, renamed `playTick`:
 
@@ -2012,53 +2019,102 @@ the bundle gets a name:
 ```
 
 The wiring has also grown enough to deserve files of its own. In the shipped
-repo the pages live in `GameUi.flix`, the drawing in `View.flix` — and `Controls.flix`
+repo the pages live in `GameUi.flix`, the drawing in `View.flix`, the board
+rules (and with them the `Input` record) in `Board.flix` — and `Controls.flix`
 holds every bridge between the Frame and the game — the key mapping, the two
-systems, the F1 reload and the quit judge:
+systems, the F1 reload and the quit judge.
+
+And the key mapping is no longer a row of direct `App.isDown` reads. The keys
+were multiplying — four directions, undo, reset, confirm, cancel — so the
+shipped code names each *intent* once, in an enum, and lays the key
+assignments out as a table: one row per key, mapped through **InputMap**, a
+piece of the engine's vocabulary (since v0.3.2). Because several rows may
+share one intent, supporting both WASD and the arrows costs exactly one extra
+row per key. And the table comes in two halves that answer the edge-versus-level
+question from earlier: `heldTable` for keys that keep firing while held —
+movement, Z's rewind, X's reset — and `tapTable` for keys that fire once, on
+the edge — Enter and Escape. `inputOf` folds whatever intents fired this
+frame into the same `Input` record the rules have been reading all along; the
+rules never learn a key was involved:
 
 ```flix
 mod Controls {
     use GameEngine.Key
 
-    pub def inputOf(frame: App.Frame): Sokoban.Input =
-        { up    = App.isDown(Key.Up, frame),
-          down  = App.isDown(Key.Down, frame),
-          left  = App.isDown(Key.Left, frame),
-          right = App.isDown(Key.Right, frame),
-          undo  = App.isDown(Key.Z, frame),
-          enter = App.justPressed(Key.Enter, frame),
-          back  = App.isDown(Key.X, frame),
-          esc   = App.justPressed(Key.Escape, frame) }
+    enum Intent with Eq {
+        case MoveUp
+        case MoveDown
+        case MoveLeft
+        case MoveRight
+        case Undo
+        case Reset
+        case Confirm
+        case Cancel
+    }
 
-    /// System one: turn the keys into Input and advance the board and its
-    /// history by one frame (pure).
+    def heldTable(): InputMap.Table[Intent] =
+        (Key.W,     Intent.MoveUp)    ::
+        (Key.Up,    Intent.MoveUp)    ::
+        (Key.S,     Intent.MoveDown)  ::
+        (Key.Down,  Intent.MoveDown)  ::
+        (Key.A,     Intent.MoveLeft)  ::
+        (Key.Left,  Intent.MoveLeft)  ::
+        (Key.D,     Intent.MoveRight) ::
+        (Key.Right, Intent.MoveRight) ::
+        (Key.Z,     Intent.Undo)      ::
+        (Key.X,     Intent.Reset)     :: Nil
+
+    def tapTable(): InputMap.Table[Intent] =
+        (Key.Enter,  Intent.Confirm) ::
+        (Key.Escape, Intent.Cancel)  :: Nil
+
+    pub def inputOf(frame: App.Frame): Board.Input =
+        let held = InputMap.held(heldTable(), frame) |> List.foldLeft(applyHeld, Board.noKeys());
+        InputMap.taps(tapTable(), frame) |> List.foldLeft(applyTap, held)
+
+    def applyHeld(acc: Board.Input, intent: Intent): Board.Input = match intent {
+        case Intent.MoveUp    => { up = true | acc }
+        case Intent.MoveDown  => { down = true | acc }
+        case Intent.MoveLeft  => { left = true | acc }
+        case Intent.MoveRight => { right = true | acc }
+        case Intent.Undo      => { undo = true | acc }
+        case Intent.Reset     => { back = true | acc }
+        case _                => acc
+    }
+
+    def applyTap(acc: Board.Input, intent: Intent): Board.Input = match intent {
+        case Intent.Confirm => { enter = true | acc }
+        case Intent.Cancel  => { esc = true | acc }
+        case _              => acc
+    }
+
     pub def step(frame: App.Frame, s: Sokoban.Session): Sokoban.Session =
         { line = Sokoban.tick(inputOf(frame), frame#dt, s#line) | s }
 
-    /// System two: stamp the advanced World onto the UI pages (pure).
     pub def projectUi(_frame: App.Frame, s: Sokoban.Session): Sokoban.Session =
-        { ui = GameUi.projectUi(Worldline.pastLength(s#line),
-                                Worldline.current(s#line), s#ui) | s }
+        { ui = GameUi.projectUi(Worldline.pastLength(s#line), Worldline.current(s#line), s#ui) | s }
 
-    /// F1: re-read every spawned Spec from disk. Edit the json while the
-    /// game runs, press F1, and the page changes under you.
     pub def reloadUi(s: Sokoban.Session): Sokoban.Session \ {Fs.FileRead} =
         { ui = UiSpec.reloadAll(s#ui) | s }
 
-    /// Quit on Escape's edge — except while the CLEAR panel is up (that
-    /// Escape belongs to tick, which closes the panel).
     pub def wantsQuit(frame: App.Frame, s: Sokoban.Session): Bool =
-        App.justPressed(Key.Escape, frame)
+        inputOf(frame)#esc
             and not Sokoban.clearModal(Worldline.current(s#line))
 }
 ```
+
+(Excerpted from `src/Controls.flix` with its doc comments elided. `step` is
+system one — advance the board and its history; `projectUi` is system two —
+stamp the advanced World onto the UI pages; `reloadUi` is the F1 handler; and
+`wantsQuit` quits on Escape's tap — except while the CLEAR panel is up, when
+that Escape belongs to `tick`, which closes the panel.)
 
 And `Main.flix`, final form — every idea in this game is one line here:
 
 ```flix
 def main(): Unit \ IO =
     let ui = run { GameUi.loadUi() } with Fs.FileRead.runWithIO;
-    App.make({ ui = ui, line = Worldline.make(Sokoban.initialWorld(), Sokoban.historyCap()) })
+    App.make({ ui = ui, line = Worldline.make(Board.initialWorld(), Sokoban.historyCap()) })
         |> App.addSystem(Controls.step)
         |> App.addSystem(Controls.projectUi)
         |> App.reloadOn(GameEngine.Key.F1, Controls.reloadUi)

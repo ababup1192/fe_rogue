@@ -14,6 +14,7 @@ mod View {
     def zEnemy(): Int32 = 8
     def zPlayer(): Int32 = 10
     def zBurst(): Int32 = 20
+    def zHitOverlay(): Int32 = 90
     def zText(): Int32 = 100
 
     /// World をワールド空間の絵へ。地形 → 旗（ゴール・中間地点） → 敵 → プレイヤー → 演出の粒。
@@ -25,7 +26,8 @@ mod View {
             goalItems(world) ::
             enemyItems(world#time, world#enemies) ::
             playerItems(world) ::
-            burstItems(world#bursts) :: Nil)
+            burstItems(world#bursts) ::
+            hitOverlay(world) :: Nil)
 
     /// スクリーン空間の絵（HUD。カメラを掛けない = スクロールしても動かない）。
     pub def hud(ctx: App.ViewCtx, world: Field.World): List[Render.PlacedItem] =
@@ -328,6 +330,51 @@ mod View {
     /// PlacedItem の中身だけ半透明にする（置き場所は保つ）。
     def fadePlaced(alpha: Float32, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.fade(alpha, placed#item) | placed }
+
+    // ── 当たり形の重ね描き（H のデバッグ表示）──
+    // showHits のとき、自機と生きている敵の hit 形状（hitbox.json 由来）を半透明の赤で
+    // 最上層に重ねる。地形は Physics2D の領分なので対象外 — ここで見せるのは照会型の当たりだけ。
+
+    def hitFillColor(): Color = Color.hsv({ h = 0.0, s = 0.85, v = 1.00 })
+
+    def hitOverlay(world: Field.World): List[Render.PlacedItem] =
+        if (not world#showHits) Nil
+        else hitTargets(world) |> List.flatMap(match (pos, shapes) -> hitShapeItems(pos, shapes))
+
+    /// 重ね描きの対象（中心位置と形の列）: 自機と、生きている敵の全部。
+    def hitTargets(world: Field.World): List[(Vec2.Vec2, List[Hit.HitShape])] =
+        (world#player#pos, Field.playerHitShapes(world#hits)) ::
+        (world#enemies
+            |> List.filter(e -> e#alive)
+            |> List.map(e -> (Field.enemyPosAt(world#time, e), Field.enemyHitShapes(world#hits))))
+
+    /// 中心 pos に置いた形の列を描画物へ。エンティティ種別に依らない共通の 1 個口。
+    def hitShapeItems(pos: Vec2.Vec2, shapes: List[Hit.HitShape]): List[Render.PlacedItem] =
+        List.flatMap(shape -> hitShapeItem(pos, shape), shapes)
+
+    /// 形 1 個ぶんの重ね描き。塗りは薄く、箱には濃いめの枠線をつけて輪郭を読めるようにする。
+    def hitShapeItem(pos: Vec2.Vec2, shape: Hit.HitShape): List[Render.PlacedItem] =
+        match shape {
+            case Hit.HitShape.CircleH(c) =>
+                let center = Vec2.add(pos, { x = c#dx, y = c#dy });
+                let fill = Render.circleAt(center, c#r, hitFillColor(), zHitOverlay());
+                ({ item = Render.fade(0.35f32, fill#item) | fill }) :: Nil
+            case Hit.HitShape.BoxH(b) =>
+                let center = Vec2.add(pos, { x = b#dx, y = b#dy });
+                let fill = Render.boxAt(center, { x = b#w, y = b#h }, hitFillColor(), zHitOverlay());
+                ({ item = Render.fade(0.35f32, fill#item) | fill }) :: boxFrame(center, b#w, b#h)
+        }
+
+    /// 箱の枠線（1px・濃いめ）。塗りだけだと隣の箱と溶けて境界が読めない。
+    def boxFrame(center: Vec2.Vec2, w: Float64, h: Float64): List[Render.PlacedItem] =
+        let x0 = center#x - w / 2.0; let x1 = center#x + w / 2.0;
+        let y0 = center#y - h / 2.0; let y1 = center#y + h / 2.0;
+        (({ x = x0, y = y0 }, { x = x1, y = y0 }) :: (({ x = x1, y = y0 }, { x = x1, y = y1 }))
+            :: (({ x = x1, y = y1 }, { x = x0, y = y1 })) :: (({ x = x0, y = y1 }, { x = x0, y = y0 })) :: Nil)
+            |> List.map(match (a, b) -> {
+                let seg = Render.lineSeg(a, b, 1.0, hitFillColor(), zHitOverlay() + 1);
+                { item = Render.fade(0.8f32, seg#item) | seg }
+            })
 
     // ── 演出の粒（土埃・ジャンプ噴射）──
 

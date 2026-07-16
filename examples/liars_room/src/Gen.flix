@@ -86,32 +86,27 @@ mod Gen {
         }
 
     /// 全員が 1 発言ずつ（自分の種別に整合する主張）。候補が尽きたら None（作り直し）。
-    /// すでに出た主張は候補から外す — 同じセリフを言う人を 2 人出さない。
     def baseStatements(difficulty: Difficulty, liars: Set[Int32]): Option[List[(Int32, Claim)]] \ Random.Rng =
-        List.range(0, difficulty#npcCount) |> List.foldLeft((acc, speaker) -> {
-            match acc {
-                case None       => None
-                case Some(list) => {
-                    let used = list |> List.map(snd) |> List.toSet;
-                    let claimOpt = claimFor(difficulty, liars, speaker, used);
-                    claimOpt |> Option.map(claim -> List.append(list, (speaker, claim) :: Nil))
-                }
-            }
-        }, Some(Nil))
+        List.range(0, difficulty#npcCount) |> List.foldLeft((acc, speaker) ->
+            acc |> Option.flatMap(list -> addStatement(difficulty, liars, speaker, Nil, list)),
+            Some(Nil))
 
     /// 余分な発言: 話し手をランダムに選んで同じ整合ルールで作る（重複禁止も同じ）。
     def extraStatements(difficulty: Difficulty, liars: Set[Int32], base: List[(Int32, Claim)]): (Option[List[(Int32, Claim)]]) \ Random.Rng =
-        List.range(0, difficulty#extraStatements) |> List.foldLeft((acc, _) -> {
-            match acc {
-                case None       => None
-                case Some(list) => {
-                    let used = List.append(base, list) |> List.map(snd) |> List.toSet;
-                    let speaker = Random.sample(Random.int(lo = 0, hi = difficulty#npcCount));
-                    let claimOpt = claimFor(difficulty, liars, speaker, used);
-                    claimOpt |> Option.map(claim -> List.append(list, (speaker, claim) :: Nil))
-                }
-            }
-        }, Some(Nil))
+        List.range(0, difficulty#extraStatements) |> List.foldLeft((acc, _) ->
+            acc |> Option.flatMap(list -> {
+                let speaker = Random.sample(Random.int(lo = 0, hi = difficulty#npcCount));
+                addStatement(difficulty, liars, speaker, base, list)
+            }),
+            Some(Nil))
+
+    /// list の末尾に speaker の発言を 1 本足す。すでに出た主張（already + list）は候補から
+    /// 外す — 同じセリフを言う人を 2 人出さない。候補が尽きたら None。
+    def addStatement(difficulty: Difficulty, liars: Set[Int32], speaker: Int32,
+                     already: List[(Int32, Claim)], list: List[(Int32, Claim)]): Option[List[(Int32, Claim)]] \ Random.Rng =
+        let used = List.append(already, list) |> List.map(snd) |> List.toSet;
+        claimFor(difficulty, liars, speaker, used)
+            |> Option.map(claim -> List.append(list, (speaker, claim) :: Nil))
 
     /// 話し手の種別に整合する主張を 1 つ引く（正直者は真の主張・嘘つきは偽の主張）。
     /// used に入っている主張は選ばない。

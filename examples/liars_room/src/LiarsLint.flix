@@ -68,7 +68,7 @@ mod LiarsLint {
             |> List.filter(f -> not f#suppressed)
             |> List.map(f -> "[${f#sceneName}] ${f#rule} ${f#severity}: ${f#detail}")
 
-    // ── 要素射影（sokoban のページにあるのは box と text だけ）──
+    // ── 要素射影（liars_room のページにあるのは box と text だけ）──
 
     /// パネル（box）: レイアウト rect がそのまま描かれる箱になる。
     def boxElements(ui: UiStore.UiWorld, ctx: Ctx): List[RenderLint.Element] =

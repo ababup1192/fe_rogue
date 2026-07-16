@@ -49,6 +49,16 @@ mod Rect2 {
         point#x >= rect#position#x and point#x <= e#x and
         point#y >= rect#position#y and point#y <= e#y
 
+    /// 2 つの矩形の交差（重なっている部分）。重なりが無ければ size が 0 以下の矩形を返す —
+    /// 「空」を Option にせず負サイズで表すのは、描画側の「幅か高さが 0 以下なら何も描かない」
+    /// 規約にそのまま接続するため。面積が要る呼び側は size の正負で先に判定する。
+    pub def intersect(a: Rect2, b: Rect2): Rect2 =
+        let x0 = Float64.max(a#position#x, b#position#x);
+        let y0 = Float64.max(a#position#y, b#position#y);
+        let x1 = Float64.min(a#position#x + a#size#x, b#position#x + b#size#x);
+        let y1 = Float64.min(a#position#y + a#size#y, b#position#y + b#size#y);
+        { position = { x = x0, y = y0 }, size = { x = x1 - x0, y = y1 - y0 } }
+
     // ========================================================================
     // サイズ変更
     // ========================================================================

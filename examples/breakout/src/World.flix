@@ -93,9 +93,10 @@ mod Field {
         sfx = List[Sfx]                             // このフレームの衝突音の記録（毎フレーム頭で空へ。凍結盤では読まれない）
     }
 
-    /// breakout 1 プレイの全状態: 調整値 params と、いまのフェーズ phase。ゲームのデータは phase の中。
+    /// breakout 1 プレイの全状態: 調整値 params・当たりの宣言 hits・いまのフェーズ phase。
     pub type alias World = {
         params = GameParameters.Params,   // 調整パラメータ（F1 で parameters.json から差し替わる・全フェーズ共通）
+        hits = HitDoc.Sheet,              // 当たりの形の宣言（hitbox.json 由来。起動時ロード・F1 で読み直し）
         phase = Phase                     // いまのフェーズ（ゲームのデータはこの case の中）
     }
 
@@ -108,33 +109,32 @@ mod Field {
     def innerLeft(): Float64 = wallThickness()               // 6
     def innerRight(): Float64 = designW() - wallThickness()  // 314
 
-    def paddleWidth(): Float64 = 44.0
-    def paddleHeight(): Float64 = 6.0
     def paddleY(): Float64 = 220.0
     /// パドルが横に動く速さ（px/秒）。
     pub def paddleSpeed(): Float64 = 200.0
-    /// パドルの半幅。反射角の政策（Bounce）が当たり位置の正規化に使う。
-    pub def paddleHalfWidth(): Float64 = paddleWidth() / 2.0
+    /// パドルの半幅（hitbox.json の宣言から）。反射角の政策（Bounce）が当たり位置の正規化に使う。
+    pub def paddleHalfWidth(hits: HitDoc.Sheet): Float64 = Hits.paddleSize(hits)#x / 2.0
     /// パドルの半分の厚み（View が面シェーディングの帯を組むのに使う）。
-    pub def paddleHalfHeight(): Float64 = paddleHeight() / 2.0
+    pub def paddleHalfHeight(hits: HitDoc.Sheet): Float64 = Hits.paddleSize(hits)#y / 2.0
     /// パドル中心 x の可動範囲（枠の内側でパドルが全部見える範囲）。
-    pub def paddleMinX(): Float64 = innerLeft() + paddleHalfWidth()
-    pub def paddleMaxX(): Float64 = innerRight() - paddleHalfWidth()
+    pub def paddleMinX(hits: HitDoc.Sheet): Float64 = innerLeft() + paddleHalfWidth(hits)
+    pub def paddleMaxX(hits: HitDoc.Sheet): Float64 = innerRight() - paddleHalfWidth(hits)
 
-    /// ボールの半径（px）。ボールの形は Store ではなくこの定数が持つ。
-    pub def ballRadius(): Float64 = 3.0
+    /// ボールの半径（px）。寸法の正本は hitbox.json で、ここは sheet から引くだけ。
+    pub def ballRadius(hits: HitDoc.Sheet): Float64 = Hits.ballRadius(hits)
     /// ボールの基準の速さ（px/秒）。サーブとミス後のリセットはこの値に戻る。
     /// プレイ中はパドルヒットのたびに Bounce の加速規則で少しずつ速くなる。
     pub def ballSpeed(): Float64 = 130.0
     /// この距離だけ画面下端を割ったらミス（枠の無い底からボールが落ちた）。
     pub def ballFallMargin(): Float64 = 8.0
 
-    // ブロック格子。
+    // ブロック格子。ブロックの幅と高さは格子の割り方から導出される値なので、
+    // JSON には置かずここの式が正（種族寸法の ball/paddle だけが hitbox.json）。
     def blockCols(): Int32 = 9
     def blockGap(): Float64 = 2.0
     def blockAreaTop(): Float64 = 34.0
-    def blockH(): Float64 = 12.0
     def blockCellW(): Float64 = (innerRight() - innerLeft()) / Int32.toFloat64(blockCols())
+    def blockH(): Float64 = 12.0
     def blockW(): Float64 = blockCellW() - blockGap()
 
     // 演出の寿命。
@@ -177,16 +177,17 @@ mod Field {
 
     // ── 形の補助 ──
     def rect(w: Float64, h: Float64): CollisionShape2D = CollisionShape2D.RectShape2D({ width = w, height = h })
-    def circle(r: Float64): CollisionShape2D = CollisionShape2D.CircleShape2D({ radius = r })
     def vec(x: Float64, y: Float64): Vec2.Vec2 = { x = x, y = y }
 
-    // ── ボールとパドルの形と位置（Store に載せず、定数と x から導く）──
+    // ── ボールとパドルの形と位置（Store に載せず、宣言 sheet と x から導く）──
 
-    /// ボールの当たり判定の形。物理へ射影する瞬間に使う。
-    pub def ballShape(): CollisionShape2D = circle(ballRadius())
+    /// ボールの当たり判定（中心からのずれと形）。物理へ射影する瞬間に使い、ずれは位置に足す。
+    pub def ballCollision(hits: HitDoc.Sheet): (Vec2.Vec2, CollisionShape2D) =
+        Hits.collisionOf(Hits.ballKey(), hits)
 
-    /// パドルの当たり判定の形。物理へ射影する瞬間に使う。
-    pub def paddleShape(): CollisionShape2D = rect(paddleWidth(), paddleHeight())
+    /// パドルの当たり判定（中心からのずれと形）。物理へ射影する瞬間に使う。
+    pub def paddleCollision(hits: HitDoc.Sheet): (Vec2.Vec2, CollisionShape2D) =
+        Hits.collisionOf(Hits.paddleKey(), hits)
 
     /// パドルの中心座標。動くのは x だけで、y はレイアウト定数。
     pub def paddlePos(x: Float64): Vec2.Vec2 = vec(x, paddleY())
@@ -194,14 +195,14 @@ mod Field {
     // ── 位置の導出 ──
 
     /// サーブ待ちのボール位置: パドル上端のすぐ上、パドル中心 paddleX の真上。
-    pub def servePos(paddleX: Float64): Vec2.Vec2 =
-        vec(paddleX, paddleY() - paddleHeight() / 2.0 - ballRadius())
+    pub def servePos(hits: HitDoc.Sheet, paddleX: Float64): Vec2.Vec2 =
+        vec(paddleX, paddleY() - paddleHalfHeight(hits) - ballRadius(hits))
 
     /// サーブの初速: 少しだけ右に傾けた上向き・基準の速さ（反射規則を再利用して真上から 0.2 ぶん開く）。
     /// ミス後の再サーブもここを通るので、加速した速さは基準へリセットされる。
     pub def serveVelocity(): Vec2.Vec2 = Bounce.paddleReflect(0.2, ballSpeed())
 
-    /// ブロック (col, row) の中心座標。
+    /// ブロック (col, row) の中心座標。行の間隔はブロック高さ + すき間。
     def blockCenter(col: Int32, row: Int32): Vec2.Vec2 =
         vec(innerLeft() + (Int32.toFloat64(col) + 0.5) * blockCellW(),
             blockAreaTop() + (Int32.toFloat64(row) + 0.5) * (blockH() + blockGap()))
@@ -236,8 +237,8 @@ mod Field {
 
     /// レベル n の盤（GameCore）: パドル中央、ボールはパドル上のサーブ待ち位置、残機 3、演出なし。
     /// ボールとパドルは普通のフィールドとして持ち、Store（positions / shapes）には動かないもの
-    /// （壁・ブロック）だけを載せる。レベル進行・やり直しはこの盤を組み直す。
-    pub def freshCore(n: Int32): GameCore =
+    /// （壁・ブロック）だけを載せる。ブロックの形は格子の式から組む（ball/paddle は宣言 sheet）。
+    pub def freshCore(hits: HitDoc.Sheet, n: Int32): GameCore =
         let cells = levelCells(n);
         let blockEntries = List.map(cell -> {
             let (id, col, row, _ch) = cell;
@@ -253,19 +254,24 @@ mod Field {
               let (id, _col, _row, ch) = cell;
               durabilityOf(ch) |> Option.map(durability -> (id, durability))
           }, cells) |> List.toMap,
-          ballPos = servePos(centerX),   // パドル上のサーブ待ち位置
+          ballPos = servePos(hits, centerX),   // パドル上のサーブ待ち位置
           level = n,
           lives = 3, score = 0,
           trauma = 0.0, fxClock = 0.0, bursts = Nil, sfx = Nil }
 
-    /// レベル n のプレイ開始時の World: 盤は freshCore(n)、ボールはサーブ待ち、パラメータは既定値。
+    /// レベル n のプレイ開始時の World: 盤は freshCore、ボールはサーブ待ち。パラメータと
+    /// 当たりの宣言は既定値（hitbox.json と同じ値）— テストとギャラリーはファイルに依らない。
     pub def playingWorld(n: Int32): World =
-        { params = GameParameters.defaults(), phase = Phase.Playing(freshCore(n), BallState.Waiting) }
+        let hits = Hits.defaults();
+        { params = GameParameters.defaults(), hits = hits,
+          phase = Phase.Playing(freshCore(hits, n), BallState.Waiting) }
 
     /// タイトル画面の World: 文字を見せるだけのフェーズ（盤は持たない）。
-    pub def titleWorld(): World = { params = GameParameters.defaults(), phase = Phase.Title }
+    pub def titleWorld(): World =
+        { params = GameParameters.defaults(), hits = Hits.defaults(), phase = Phase.Title }
 
-    pub def initialWorld(): World = titleWorld()
+    /// 起動時の World: タイトル画面 + 読み込んだ当たりの宣言（Main が hitbox.json を渡す）。
+    pub def initialWorldWith(hits: HitDoc.Sheet): World = { hits = hits | titleWorld() }
 
     // ── 導出クエリ ──
 

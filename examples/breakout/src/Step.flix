@@ -21,36 +21,36 @@
 
 mod Step {
 
-    /// 飛行 1 フレームの作業束: 盤・ボールの速度・残像・調整値をひとつにまとめてパイプへ流す。
+    /// 飛行 1 フレームの作業束: 盤・ボールの速度・残像・調整値・当たりの宣言をまとめてパイプへ流す。
     /// 位置は core#ballPos（常在）、速度と残像は飛行中だけ在るので Frame に載せて運ぶ。
     type alias Frame = { core = Field.GameCore, vel = Vec2.Vec2, trail = List[Vec2.Vec2],
-                         params = GameParameters.Params }
+                         params = GameParameters.Params, hits = HitDoc.Sheet }
 
     // ── update: フェーズごとに 1 フレーム進める ──
 
     pub def update(input: Field.Input, dt: Float64, world: Field.World): Field.World =
-        { phase = nextPhase(input, dt, world#params, world#phase) | world }
+        { phase = nextPhase(input, dt, world#hits, world#params, world#phase) | world }
 
     /// いまのフェーズから次のフェーズを決める。case は網羅（ワイルドカードを使わず、読み落としを型で防ぐ）。
-    def nextPhase(input: Field.Input, dt: Float64, params: GameParameters.Params,
+    def nextPhase(input: Field.Input, dt: Float64, hits: HitDoc.Sheet, params: GameParameters.Params,
                   phase: Field.Phase): Field.Phase =
         match phase {
             case Field.Phase.Title =>
-                if (input#enter) Field.Phase.Playing(Field.freshCore(1), Field.BallState.Waiting)
+                if (input#enter) Field.Phase.Playing(Field.freshCore(hits, 1), Field.BallState.Waiting)
                 else Field.Phase.Title
-            case Field.Phase.Playing(core, Field.BallState.Waiting)   => updateWaiting(input, dt, params, core)
-            case Field.Phase.Playing(core, Field.BallState.Moving(mv)) => updateMoving(input, dt, params, core, mv)
-            case Field.Phase.Cleared(core)  => updateCleared(input, dt, core)
-            case Field.Phase.GameOver(core) => updateGameOver(input, dt, core)
+            case Field.Phase.Playing(core, Field.BallState.Waiting)   => updateWaiting(input, dt, hits, params, core)
+            case Field.Phase.Playing(core, Field.BallState.Moving(mv)) => updateMoving(input, dt, hits, params, core, mv)
+            case Field.Phase.Cleared(core)  => updateCleared(input, dt, hits, core)
+            case Field.Phase.GameOver(core) => updateGameOver(input, dt, hits, core)
         }
 
     /// サーブ待ち: パドルを動かし、ボールをその上に貼り付ける。launch でその速度を与えて飛ばす。
     /// 待っている間も演出（シェイク・破片）の時計は進む。速度も残像も持たない = Waiting の型のまま。
     /// 音の記録（sfx）はフレーム頭で空へ（待機中は何にも当たらない）。
-    def updateWaiting(input: Field.Input, dt: Float64, params: GameParameters.Params,
+    def updateWaiting(input: Field.Input, dt: Float64, hits: HitDoc.Sheet, params: GameParameters.Params,
                       core: Field.GameCore): Field.Phase =
-        let movedCore = movePaddle(input, dt, params, { sfx = Nil | core });
-        let glued = updateEffects(dt, { ballPos = Field.servePos(movedCore#paddle#x) | movedCore });
+        let movedCore = movePaddle(input, dt, hits, params, { sfx = Nil | core });
+        let glued = updateEffects(dt, { ballPos = Field.servePos(hits, movedCore#paddle#x) | movedCore });
         if (input#launch)
             Field.Phase.Playing(glued, Field.BallState.Moving({ vel = Field.serveVelocity(), trail = Nil }))
         else
@@ -63,11 +63,12 @@ mod Step {
     ///   落下したが残機が残る     → サーブ待ちへ戻す（残機を 1 減らし、ボールをパドル上へ）
     ///   まだ飛んでいる           → Moving のまま次フレームへ
     /// どの結末でも updateEffects(dt) を必ず通してから移る（破片の経過・シェイクを 1dt 進める）。
-    def updateMoving(input: Field.Input, dt: Float64, params: GameParameters.Params,
+    def updateMoving(input: Field.Input, dt: Float64, hits: HitDoc.Sheet, params: GameParameters.Params,
                      core: Field.GameCore, moving: { vel = Vec2.Vec2, trail = List[Vec2.Vec2] }): Field.Phase =
-        let movedCore = movePaddle(input, dt, params, { sfx = Nil | core });   // 音の記録はフレーム頭で空へ
+        let movedCore = movePaddle(input, dt, hits, params, { sfx = Nil | core });   // 音の記録はフレーム頭で空へ
         let (stepped, collisions) =
-            stepPhysics(dt, { core = movedCore, vel = moving#vel, trail = moving#trail, params = params });
+            stepPhysics(dt, { core = movedCore, vel = moving#vel, trail = moving#trail,
+                              params = params, hits = hits });
         let frame = stepped
             |> onPaddleHit(collisions)
             |> onBlockHit(collisions)
@@ -82,7 +83,7 @@ mod Step {
                 else
                     Field.Phase.Playing(
                         updateEffects(dt, { lives = played#lives - 1,
-                                            ballPos = Field.servePos(played#paddle#x) | played }),
+                                            ballPos = Field.servePos(hits, played#paddle#x) | played }),
                         Field.BallState.Waiting)
             case (false, false) =>
                 Field.Phase.Playing(updateEffects(dt, played),
@@ -91,10 +92,10 @@ mod Step {
 
     /// クリア後: Enter で次の面へスコア・残機を持ち越す（最終面を終えたらタイトルへ）。Enter 無しは
     /// 余韻（updateEffects）だけ進む。凍結した盤とボール位置はそのまま見せ続ける。
-    def updateCleared(input: Field.Input, dt: Float64, core: Field.GameCore): Field.Phase =
+    def updateCleared(input: Field.Input, dt: Float64, hits: HitDoc.Sheet, core: Field.GameCore): Field.Phase =
         if (input#enter)
             (if (core#level < Levels.count())
-                Field.Phase.Playing({ lives = core#lives, score = core#score | Field.freshCore(core#level + 1) },
+                Field.Phase.Playing({ lives = core#lives, score = core#score | Field.freshCore(hits, core#level + 1) },
                                     Field.BallState.Waiting)
              else
                 Field.Phase.Title)
@@ -103,9 +104,9 @@ mod Step {
 
     /// ゲームオーバー後: Enter で同じ面を最初からやり直す（残機もスコアも初期値へ）。Enter 無しは
     /// 余韻だけ進む。
-    def updateGameOver(input: Field.Input, dt: Float64, core: Field.GameCore): Field.Phase =
+    def updateGameOver(input: Field.Input, dt: Float64, hits: HitDoc.Sheet, core: Field.GameCore): Field.Phase =
         if (input#enter)
-            Field.Phase.Playing(Field.freshCore(core#level), Field.BallState.Waiting)
+            Field.Phase.Playing(Field.freshCore(hits, core#level), Field.BallState.Waiting)
         else
             Field.Phase.GameOver(updateEffects(dt, core))
 
@@ -114,12 +115,16 @@ mod Step {
     /// ボールとパドルはここで一瞬だけ Store に混ざり、すぐ値へ帰る。
     def stepPhysics(dt: Float64, frame: Frame): (Frame, List[Physics2D.Contact]) =
         let core = frame#core;
+        // 形は宣言 sheet（hitbox.json）から変換して流す。中心からのずれは位置に足して射影し、
+        // 読み戻すときに引く（ずれ 0 の宣言なら従来と同じ座標）。
+        let (ballOff, ballShape) = Field.ballCollision(frame#hits);
+        let (paddleOff, paddleShape) = Field.paddleCollision(frame#hits);
         let positions = core#positions
-            |> Map.insert(Field.ballId(), core#ballPos)
-            |> Map.insert(Field.paddleId(), Field.paddlePos(core#paddle#x));
+            |> Map.insert(Field.ballId(), Vec2.add(core#ballPos, ballOff))
+            |> Map.insert(Field.paddleId(), Vec2.add(Field.paddlePos(core#paddle#x), paddleOff));
         let shapes = core#shapes
-            |> Map.insert(Field.ballId(), Field.ballShape())
-            |> Map.insert(Field.paddleId(), Field.paddleShape());
+            |> Map.insert(Field.ballId(), ballShape)
+            |> Map.insert(Field.paddleId(), paddleShape);
         let velocities = Map.singleton(Field.ballId(), frame#vel);
         let restitutions = Map.singleton(Field.ballId(), 1.0);   // ボールは完全弾性
         let integrated = Physics2D.integrate(dt, velocities, positions);
@@ -127,17 +132,19 @@ mod Step {
         let separated = Physics2D.separate(collisions, velocities, integrated);
         let bounced = Physics2D.bounce(collisions, restitutions, velocities);
         // 読み戻し: ボールは射影に必ず居るので、既定値は「動かなかった」に倒すだけの保険。
-        let newPos = Map.get(Field.ballId(), separated) |> Option.getWithDefault(core#ballPos);
+        let newPos = Map.get(Field.ballId(), separated)
+            |> Option.map(p -> Vec2.sub(p, ballOff))
+            |> Option.getWithDefault(core#ballPos);
         let newVel = Map.get(Field.ballId(), bounced) |> Option.getWithDefault(frame#vel);
         ({ core = { ballPos = newPos | core }, vel = newVel | frame }, collisions)
 
     // ── パドル移動（位置を入力で直接書く。速さはパラメータ）──
 
-    def movePaddle(input: Field.Input, dt: Float64, params: GameParameters.Params,
+    def movePaddle(input: Field.Input, dt: Float64, hits: HitDoc.Sheet, params: GameParameters.Params,
                    core: Field.GameCore): Field.GameCore =
         let dir = input#moveX;
-        let newX = Float64.max(Field.paddleMinX(),
-                               Float64.min(Field.paddleMaxX(),
+        let newX = Float64.max(Field.paddleMinX(hits),
+                               Float64.min(Field.paddleMaxX(hits),
                                            core#paddle#x + dir * params#paddleSpeed * dt));
         { paddle = { x = newX } | core }
 
@@ -150,7 +157,7 @@ mod Step {
         if (Physics2D.touches(Field.paddleId(), collisions)) {
             let core = frame#core;
             let offset = Bounce.offsetFraction({ ballX = core#ballPos#x, paddleX = core#paddle#x,
-                                                 halfWidth = Field.paddleHalfWidth() });
+                                                 halfWidth = Field.paddleHalfWidth(frame#hits) });
             let tuning = { gain = frame#params#speedGainPerHit,
                            edgeBonus = frame#params#edgeSpeedBonus,
                            maxFactor = frame#params#maxSpeedFactor };

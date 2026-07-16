@@ -86,14 +86,17 @@ mod Hero {
                 { legADx = -3.0, legALift = 0.0, legBDx = 3.0, legBLift = 0.0, bodyLift = 0.0 }
             else
                 { legADx = -3.0, legALift = 0.0, legBDx = 3.0, legBLift = 0.0, bodyLift = -0.5 }
-        case Pose.RunPose => match Int32.modulo(frame, 4) {
-            case 0 => { legADx = -3.5, legALift = 0.0, legBDx = 3.5, legBLift = 0.0, bodyLift = 0.0 }
-            case 1 => { legADx = -1.0, legALift = 2.0, legBDx = 1.0, legBLift = 0.0, bodyLift = 1.0 }
-            case 2 => { legADx = 3.5, legALift = 0.0, legBDx = -3.5, legBLift = 0.0, bodyLift = 0.0 }
-            case _ => { legADx = -1.0, legALift = 0.0, legBDx = 1.0, legBLift = 2.0, bodyLift = 1.0 }
-        }
+        case Pose.RunPose  => runGait(Int32.modulo(frame, 4))
         case Pose.JumpPose => { legADx = -2.0, legALift = 2.0, legBDx = 2.0, legBLift = 2.0, bodyLift = 0.0 }
         case Pose.FallPose => { legADx = -5.0, legALift = 0.0, legBDx = 5.0, legBLift = 0.0, bodyLift = 0.0 }
+    }
+
+    /// 走り 4 コマの表: 接地（両脚を開く）→ 上げ（後脚を畳む）→ 交差 → 上げ（逆脚）。
+    def runGait(step: Int32): Gait = match step {
+        case 0 => { legADx = -3.5, legALift = 0.0, legBDx = 3.5, legBLift = 0.0, bodyLift = 0.0 }
+        case 1 => { legADx = -1.0, legALift = 2.0, legBDx = 1.0, legBLift = 0.0, bodyLift = 1.0 }
+        case 2 => { legADx = 3.5, legALift = 0.0, legBDx = -3.5, legBLift = 0.0, bodyLift = 0.0 }
+        case _ => { legADx = -1.0, legALift = 0.0, legBDx = 1.0, legBLift = 2.0, bodyLift = 1.0 }
     }
 
     /// Look からヒーロー全パーツ（ローカル座標）を組む。順序: 体 → 目 → 脚。

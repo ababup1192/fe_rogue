@@ -249,7 +249,7 @@ mod TestAnnotate {
         let drawable = { texture = "unit", position = { x = 100.0, y = 100.0 },
                          scale = { x = 2.0, y = 2.0 }, rotation = 0.0, color = white,
                          alpha = 1.0f32, centered = true, uvOffset = { x = 0.0, y = 0.0 },
-                         uvScale = { x = 1.0, y = 1.0 }, zIndex = 5, style = None };
+                         uvScale = { x = 1.0, y = 1.0 }, zIndex = 5, style = None, clip = None };
         let sizeOf = _ -> Some({ id = GpuHandle.wrapTextureId(0), width = 10.0, height = 20.0 });
         let rect = { position = { x = 95.0, y = 95.0 }, size = { x = 10.0, y = 10.0 } };
         match Annotate.hitsFromDrawables(sizeOf, rect, drawable :: Nil) {

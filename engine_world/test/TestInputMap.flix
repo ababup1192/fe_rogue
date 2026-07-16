@@ -81,7 +81,7 @@ mod TestInputMap {
 
     def frameOfKeys(prev: Set[GameEngine.Key], current: Set[GameEngine.Key]): App.Frame =
         App.frameOf(prev = prev, current = current, 0.016, { x = 320.0, y = 240.0 },
-            { prevCursor = None, cursor = Vec2.zero() }, { prevDown = false, down = false })
+            { prevCursor = None, cursor = Vec2.zero() }, { prevDown = false, down = false, wheel = 0.0 })
 
     // taps はエッジ: 押しっぱなしでは発火しない。
     @Test
@@ -106,4 +106,48 @@ mod TestInputMap {
     def testFirstTapNoneWhenNothingPressed(): Unit \ Assert =
         let frame = frameOfKeys(Set#{}, Set#{});
         Assert.assertEq(expected = (None: Option[Menu]), InputMap.firstTap(menuTable(), frame))
+
+    // ========================================================================
+    // wheelSteps: 生 delta → 目盛り（端数は持ち越し）
+    // ========================================================================
+
+    // マウスの 1 目盛り（±1.0）はそのまま 1 目盛りになり、持ち越しは出ない。
+    @Test
+    def testWheelStepsWholeNotch(): Unit \ Assert =
+        Assert.assertEq(expected = ((1, 0.0), (-1, 0.0)),
+            (InputMap.wheelSteps(0.0, 1.0), InputMap.wheelSteps(0.0, -1.0)))
+
+    // トラックパッドの細かい delta は貯まるまで 0 目盛りで、超えた瞬間に 1 目盛り出る。
+    @Test
+    def testWheelStepsAccumulatesFractions(): Unit \ Assert =
+        let (s1, c1) = InputMap.wheelSteps(0.0, 0.4);
+        let (s2, c2) = InputMap.wheelSteps(c1, 0.4);
+        let (s3, c3) = InputMap.wheelSteps(c2, 0.4);
+        Assert.assertEq(expected = (0, 0, 1, true),
+            (s1, s2, s3, Float64.abs(c3 - 0.2) < 0.000001))
+
+    // 逆方向へ回すと貯めが打ち消される（振動で誤発火しない）。
+    @Test
+    def testWheelStepsOppositeCancels(): Unit \ Assert =
+        let (_, c1) = InputMap.wheelSteps(0.0, 0.6);
+        let (s2, c2) = InputMap.wheelSteps(c1, -0.6);
+        Assert.assertEq(expected = (0, true), (s2, Float64.abs(c2) < 0.000001))
+
+    // 大きな delta は複数目盛りにまとめて畳まれる（負方向も 0 へ向けて切り捨て）。
+    @Test
+    def testWheelStepsMultipleNotches(): Unit \ Assert =
+        Assert.assertEq(expected = ((2, true), (-2, true)),
+            ({ let (s, c) = InputMap.wheelSteps(0.0, 2.4); (s, Float64.abs(c - 0.4) < 0.000001) },
+             { let (s, c) = InputMap.wheelSteps(0.0, -2.4); (s, Float64.abs(c + 0.4) < 0.000001) }))
+
+    // 不正値（NaN / ∞ / Int32 に収まらない蓄積）は (0, 0.0) に戻る — carry が汚染されて
+    // 以後のホイールが死なない。次の正常な入力はそのまま効く。
+    @Test
+    def testWheelStepsRecoversFromBadDelta(): Unit \ Assert =
+        let (s1, c1) = InputMap.wheelSteps(0.0, Float64.nan());
+        let (s2, c2) = InputMap.wheelSteps(c1, Float64.positiveInfinity());
+        let (s3, c3) = InputMap.wheelSteps(c2, 9999999999999.0);
+        let (s4, c4) = InputMap.wheelSteps(c3, 1.0);
+        Assert.assertEq(expected = (0, 0.0, 0, 0.0, 0, 0.0, 1, 0.0),
+            (s1, c1, s2, c2, s3, c3, s4, c4))
 }

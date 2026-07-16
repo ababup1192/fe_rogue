@@ -127,7 +127,7 @@ mod Trace {
             level = 1, lives = 3, score = 0,
             trauma = 0.0, fxClock = 0.0, bursts = Nil, sfx = Nil
         };
-        { params = GameParameters.defaults(),
+        { params = GameParameters.defaults(), hits = Hits.defaults(),
           phase = Field.Phase.Playing(core, Field.BallState.Moving({ vel = setup#ball#vel, trail = Nil })) }
 
     def blockAt(center: Vec2.Vec2): (EntityId, Vec2.Vec2, CollisionShape2D) =
@@ -191,7 +191,7 @@ mod Trace {
     /// パドル（中央 x=160）は mkWorld が備え付けるので、当たると角度＋加速規則
     /// （Bounce）で速度が上書きされる。
     pub def paddleBounceWorld(offset: Float64): Field.World =
-        let ballX = 160.0 + offset * Field.paddleHalfWidth();
+        let ballX = 160.0 + offset * Field.paddleHalfWidth(Hits.defaults());
         mkWorld({ statics = Nil,
                   ball = { pos = vec(ballX, 180.0), vel = vec(0.0, 130.0) },
                   blocks = Nil, durabilities = Nil })
@@ -203,8 +203,8 @@ mod Trace {
     /// わずかに右へ傾けて入れる（角度が横流れの速さになる。垂直だと同じ列を往復するだけ）。
     /// 入射（x=156, offset=0.10）は「600 フレームで 5 個壊す」持続チューニングの実測値。
     pub def pocketWorld(): Field.World =
-        let core = { ballPos = vec(156.0, 200.0) | Field.freshCore(3) };
-        { params = GameParameters.defaults(),
+        let core = { ballPos = vec(156.0, 200.0) | Field.freshCore(Hits.defaults(), 3) };
+        { params = GameParameters.defaults(), hits = Hits.defaults(),
           phase = Field.Phase.Playing(core,
               Field.BallState.Moving({ vel = Bounce.paddleReflect(0.10, Field.ballSpeed()), trail = Nil })) }
 

@@ -681,7 +681,7 @@ mod Sokoban {
 ### 何が起きたか
 
 - 拍子は変わっていません。今も毎フレーム `world |> step |> frame` です。ループは拍の始まる前に値をひとつ*用意*するようになっただけ — `step(readInput(), world)` — で、その先は今までどおり純粋です。
-- `readInput` のシグネチャを見てください: `Input \ GameEngine.Game`。Flix では、**その関数が何に触るかは型に書いてあります**。`\ GameEngine.Game` 自体は第0章から `start` と `loop` に付いていました — ループはウィンドウに絵を描くのだから、外に触るのは当然です。新しいのは境界線です: キーボードを読む場所はちょうど1箇所で、そこを過ぎればキーはただの Bool 4個のレコード。`step` の中で `isKeyPressed` を呼ぼうとすればコンパイラが止めます — ここでの純粋さは紳士協定ではなく、検査される性質です。
+- `readInput` のシグネチャを見てください: `Input \ GameEngine.Game`。Flix では、**その関数が何に触るかは型に書いてあります**。`\ GameEngine.Game` 自体は第0章から `start` と `loop` に付いていました — ループはウィンドウに絵を描くのだから、外に触るのは当然です。新しいのは境界線です: キーボードを読む場所はちょうど1箇所で、そこを過ぎればキーはただの Bool 4個のレコード。`step` の中で `isKeyPressed` を呼ぼうとすればコンパイラが止めます — ここでの純粋さは紳士協定ではなく、検査される性質です。（リポジトリのコードを並べて読んでいる人へ: キーを1本ずつ直接読むこの書き方は `readInput` の*最初の姿*です。完成形ではキー割り当てを表に移します — 第6章の最後で紹介します。WASD で動けるようになるのもそこです。）
 - *ルール*は全部いまも `step` の中にあり、どれも普通の世界のルールです: 逆向きのキーは打ち消し合う（`axis`）、斜めは横が勝つ（`facingOf`）、画面端で止まる（clamp）、全キーを離すと `walkPhase` が `0.0` に戻る — そして Robot の設計上、それが*そのまま*直立ポーズです。キーハンドラもコールバックも「入力システム」もなし: データが入り、World が出るだけ。
 - `frame` は `Robot.parts` でプレイヤーを描きます — ギャラリーのファイルを焼いたのと*同じ関数*です。「ゲーム用の絵」は別に存在しません: 目で承認したギャラリーと画面の中のキャラクターは、ひとつの関数です。
 - そして新しい語彙はゼロ: 画面のすべてはいまも **World**・**Step**・**Projection** で説明できます。`Input` は4語目ではなく、ループが `step` に手渡すただの値です。
@@ -1667,11 +1667,99 @@ pub def historyCap(): Int32 = 10000
         }
 ```
 
-（`sfxEvent` の match と `GameEngine.Audio` effect は第8章の音が先に届いたものです — このループが本当に最終形です。）
+（`sfxEvent` の match と `GameEngine.Audio` effect は第8章の音が先に届いたものです — 手書きのループとしては、これが最終形です。）
 
 UiWorld はループの中、Worldline の隣に住みます — 時間機械が使ったのと同じ文法: ただの値を糸のように通す、グローバルにはしない。毎フレーム `UiRender.renderUi` が見えているページをレイアウトし、`frame` が既に作っているのと同じ2チャンネルで箱とグリフを返す; ループはそれを連結して1回の呼び出しでエンジンに渡します。タイトルページでは `frame` は*何も*描きません — あの画面に見えているものは、すべて Spec です。
 
 そして、小さなキーに大きな帰結がひとつ: **F1** は `UiSpec.reloadAll` を呼び、spawn 済みのすべての Spec をディスクから読み直してノードをその場で組み直します。パースに失敗したファイルは古いページを保ちます — リロードが動いているゲームを壊すことはありません。
+
+ここまでのループは、この章の時点の姿です。出荷されているリポジトリのコードはもう一歩進んでいて、手書きのループはエンジンの **App** に置き換わりました: App が毎フレーム1回キーと時計を **Frame** という値に写し取り、`App.addSystem(Controls.step)` のように差し込まれた純粋な部品へ順に手渡します（英語版チュートリアルはこの形で書かれています）。
+
+入力まわりでは、設計がひとつ進んでいます。キーを1本ずつ直接読む代わりに、**まず「操作の意図」（Intent）の表に写してから読みます**。表を引くのは InputMap — エンジン（v0.3.2）の語彙です。同じ意図に複数キーを並べられるので、WASD と矢印の両対応が表 1 行ずつで済みます。表は2枚あって、この章で手作りした「エッジかレベルか」の区別が、どちらの表に住むかという選択になります: 押しっぱなしで効く操作（移動、Z の巻き戻し、X のリセット）は `heldTable`、押した瞬間だけ効く操作（Enter と Escape）は `tapTable`。出荷されている `src/Controls.flix` の中身がこれです:
+
+```flix
+mod Controls {
+    use GameEngine.Key
+
+    /// 操作の意図。キーとの対応は heldTable / tapTable が持ち、ルールはこの意図だけを見る。
+    enum Intent with Eq {
+        case MoveUp
+        case MoveDown
+        case MoveLeft
+        case MoveRight
+        case Undo
+        case Reset
+        case Confirm
+        case Cancel
+    }
+
+    /// 押しっぱなしで効く操作の表。移動は WASD と矢印のどちらでも同じ意図になる。
+    def heldTable(): InputMap.Table[Intent] =
+        (Key.W,     Intent.MoveUp)    ::
+        (Key.Up,    Intent.MoveUp)    ::
+        (Key.S,     Intent.MoveDown)  ::
+        (Key.Down,  Intent.MoveDown)  ::
+        (Key.A,     Intent.MoveLeft)  ::
+        (Key.Left,  Intent.MoveLeft)  ::
+        (Key.D,     Intent.MoveRight) ::
+        (Key.Right, Intent.MoveRight) ::
+        (Key.Z,     Intent.Undo)      ::
+        (Key.X,     Intent.Reset)     :: Nil
+
+    /// 押した瞬間だけ効く操作の表（決定と、CLEAR を閉じる・終了の Escape）。
+    def tapTable(): InputMap.Table[Intent] =
+        (Key.Enter,  Intent.Confirm) ::
+        (Key.Escape, Intent.Cancel)  :: Nil
+
+    /// このフレームのキーを sokoban の意味（Board.Input）へ写す。押しっぱなし系と
+    /// 単発系それぞれの発火した意図を、中立の入力へ旗として畳み込む。
+    pub def inputOf(frame: App.Frame): Board.Input =
+        let held = InputMap.held(heldTable(), frame) |> List.foldLeft(applyHeld, Board.noKeys());
+        InputMap.taps(tapTable(), frame) |> List.foldLeft(applyTap, held)
+
+    /// 押しっぱなし系の意図 1 つを Input の旗にする。
+    def applyHeld(acc: Board.Input, intent: Intent): Board.Input = match intent {
+        case Intent.MoveUp    => { up = true | acc }
+        case Intent.MoveDown  => { down = true | acc }
+        case Intent.MoveLeft  => { left = true | acc }
+        case Intent.MoveRight => { right = true | acc }
+        case Intent.Undo      => { undo = true | acc }
+        case Intent.Reset     => { back = true | acc }
+        case _                => acc
+    }
+
+    /// 単発系の意図 1 つを Input の旗にする。
+    def applyTap(acc: Board.Input, intent: Intent): Board.Input = match intent {
+        case Intent.Confirm => { enter = true | acc }
+        case Intent.Cancel  => { esc = true | acc }
+        case _              => acc
+    }
+
+    /// 毎フレームのシステムその一: キーを Input へ写し、tick のルールで盤面と履歴を
+    /// 1 歩進める（純粋）。
+    pub def step(frame: App.Frame, s: Sokoban.Session): Sokoban.Session =
+        { line = Sokoban.tick(inputOf(frame), frame#dt, s#line) | s }
+
+    /// 毎フレームのシステムその二: 進んだ後の盤面から UI ページの見た目を導く
+    /// （Title / Clear の表示切替と手数の文言）。UI の状態はここで毎フレーム
+    /// 上書きされるので、どの画面に居るかを UI 側が別に覚える必要はない。
+    pub def projectUi(_frame: App.Frame, s: Sokoban.Session): Sokoban.Session =
+        { ui = GameUi.projectUi(Worldline.pastLength(s#line), Worldline.current(s#line), s#ui) | s }
+
+    /// F1 リロード: 生成済みの UI Spec を 1 つ残らずディスクから読み直す。
+    /// ゲーム実行中に ui.json を編集し、F1 を押せば、その場でページが変わる。
+    pub def reloadUi(s: Sokoban.Session): Sokoban.Session \ {Fs.FileRead} =
+        { ui = UiSpec.reloadAll(s#ui) | s }
+
+    /// 終了判定: Escape の押した瞬間 —— ただし CLEAR パネルが出ている間は除く
+    /// （そのときの Escape はパネルを閉じる操作として tick が受け取る）。
+    pub def wantsQuit(frame: App.Frame, s: Sokoban.Session): Bool =
+        inputOf(frame)#esc
+            and not Sokoban.clearModal(Worldline.current(s#line))
+}
+```
+
+（このファイルでは盤面のルールと `Input` のレコードは `Board.flix` に住んでいます。）ルールが見るのは相変わらず `Input` のレコードだけです — どのキーがどの意図だったかを知っているのは、この表だけ。キーを1本足すのも、割り当てを変えるのも、表の1行で済みます。
 
 ### 何が起きたか
 

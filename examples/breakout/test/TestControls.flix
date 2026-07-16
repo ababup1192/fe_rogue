@@ -36,4 +36,21 @@ mod TestControls {
     def testInputOfNoKeysIsNoInput(): Unit \ Assert =
         Assert.assertEq(expected = inputTuple(Field.noInput()),
             inputTuple(Controls.inputOf(emptyFrame())))
+
+    // A/D でもパドルは動く（矢印との両対応）。
+    @Test
+    def testInputOfWasdMoves(): Unit \ Assert =
+        let a = Set#{GameEngine.Key.A};
+        let d = Set#{GameEngine.Key.D};
+        let leftFrame = App.frameOf(prev = a, current = a, 0.016, testViewport(), { prevCursor = None, cursor = Vec2.zero() }, { prevDown = false, down = false });
+        let rightFrame = App.frameOf(prev = d, current = d, 0.016, testViewport(), { prevCursor = None, cursor = Vec2.zero() }, { prevDown = false, down = false });
+        Assert.assertEq(expected = (-1.0, 1.0),
+            (Controls.inputOf(leftFrame)#moveX, Controls.inputOf(rightFrame)#moveX))
+
+    // 同じ向きの 2 キー同時押し（A と ←）でも軸は -1.0 のまま（二重加速にならない）。
+    @Test
+    def testInputOfSameIntentTwoKeysNoDouble(): Unit \ Assert =
+        let held = Set#{GameEngine.Key.A, GameEngine.Key.Left};
+        let frame = App.frameOf(prev = held, current = held, 0.016, testViewport(), { prevCursor = None, cursor = Vec2.zero() }, { prevDown = false, down = false });
+        Assert.assertEq(expected = -1.0, Controls.inputOf(frame)#moveX)
 }

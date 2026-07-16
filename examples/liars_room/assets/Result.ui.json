@@ -1,20 +1,21 @@
 {
   "defaultFont": "default",
+  "paletteFile": "assets/palette.json",
   "root": {
     "name": "Result", "widget": "none", "visible": false, "layer": 4,
     "dir": "column", "mainAlign": "center", "crossAlign": "center",
     "children": [
-      { "name": "panel", "widget": "box", "color": "#222034", "alpha": 0.94,
-        "borderWidth": 1, "borderColor": "#eec39a", "cornerRadius": 3, "zIndex": 150,
+      { "name": "panel", "widget": "box", "color": "@panel", "alpha": 0.94,
+        "borderWidth": 1, "borderColor": "@cream", "cornerRadius": 3, "zIndex": 150,
         "dir": "column", "pad": [16, 10, 16, 12], "gap": 6, "crossAlign": "center",
         "width": "auto", "height": "auto",
         "children": [
           { "name": "headline", "widget": "text", "text": "せいかい！",
-            "fontSize": 24, "tint": "#fbf236", "zIndex": 151 },
+            "fontSize": 24, "tint": "@accent", "zIndex": 151 },
           { "name": "detail", "widget": "text", "text": "",
-            "fontSize": 10, "tint": "#cbdbfc", "zIndex": 151 },
+            "fontSize": 10, "tint": "@detail", "zIndex": 151 },
           { "name": "prompt", "widget": "text", "text": "Enter: つぎへ",
-            "fontSize": 10, "tint": "#847e87", "zIndex": 151 }
+            "fontSize": 10, "tint": "@muted", "zIndex": 151 }
         ]
       }
     ]

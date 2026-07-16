@@ -45,8 +45,21 @@ mod DrawCmd {
           stripePeriod = st#stripePeriod * factor,
           checkerCell  = st#checkerCell * factor | st }
 
+    /// clip 矩形（design px・スクリーン空間）を出力ピクセルの整数矩形 (x0, y0, x1, y1) へ写す
+    /// （top-left 原点・floor 量子化）。GL の glScissor と SoftRaster の setClip が同じ画素集合を
+    /// 見るための共通式 — y の反転（GL は左下原点）は GL 側だけが行う。
+    /// 端のちらつきを避けたい呼び側は clip 矩形を整数 design px で作ること。
+    pub def clipPixels(scale: {scaleX = Float64, scaleY = Float64}, clip: Rect2.Rect2): (Int32, Int32, Int32, Int32) =
+        let f = v -> Float64.floor(v) |> Float64.tryToInt32 |> Option.getWithDefault(0);
+        (f(clip#position#x * scale#scaleX),
+         f(clip#position#y * scale#scaleY),
+         f((clip#position#x + clip#size#x) * scale#scaleX),
+         f((clip#position#y + clip#size#y) * scale#scaleY))
+
     /// スプライト 1 つ分の描画命令（zIndex 順にソートして描画される）。
     /// `style = Some(..)` かつ texture="" のとき角丸スタイル矩形として描く。
+    /// `clip` はスクリーン空間（design px）の切り抜き窓 — None なら切らない。
+    /// バックエンドは窓の外のピクセルを描かない（GL: scissor / SoftRaster: setClip）。
     pub type alias Drawable = {
         texture = String,
         position = Vec2.Vec2,
@@ -58,7 +71,8 @@ mod DrawCmd {
         uvOffset = Vec2.Vec2,
         uvScale = Vec2.Vec2,
         zIndex = Int32,
-        style = Option[BoxStyle]
+        style = Option[BoxStyle],
+        clip = Option[Rect2.Rect2]
     }
 
     /// タイルマップ 1 タイル分のインスタンスデータ。tilemap loader が組み立て、
@@ -85,11 +99,13 @@ mod DrawCmd {
     }
 
     /// 凸多角形の塗り潰し命令。vertices はスクリーン px に変換済みの頂点列を渡す。
+    /// `clip` は Drawable と同じスクリーン空間の切り抜き窓（None なら切らない）。
     pub type alias PolygonRenderCmd = {
         vertices = List[Vec2.Vec2],
         color    = Color,
         alpha    = Float32,
-        zIndex   = Int32
+        zIndex   = Int32,
+        clip     = Option[Rect2.Rect2]
     }
 
 }

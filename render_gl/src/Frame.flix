@@ -146,8 +146,32 @@ mod RenderFrame {
                 case Result.Err(pc) => pc#zIndex
             };
             let sortedMerged = stableByZ(zOf, merged);
-            // 連続する「同じテクスチャ」のスプライトを 1 回の instanced draw に
-            // 畳む（run 収集 → flush）。run を切るのはテクスチャ変化と polygon だけ。
+            // clip 窓 → framebuffer 座標の整数 scissor 矩形 (x0, y0, x1, y1)（top-left 原点）。
+            // record に Eq が無いので、run の分断キーはこの int 組で比較する（fb 画素への
+            // 量子化を兼ね、1px 未満の差で run を無駄に割らない）。
+            let scaleX = Int32.toFloat64(vpW) / designW;
+            let scaleY = Int32.toFloat64(vpH) / designH;
+            let clipKeyOf = clip -> match clip {
+                case None    => (None: Option[(Int32, Int32, Int32, Int32)])
+                case Some(r) => Some(DrawCmd.clipPixels({ scaleX = scaleX, scaleY = scaleY }, r))
+            };
+            // scissor を張り替える。y は GL の左下原点へ反転し、viewport と交差する
+            // （clip が画面外へ食み出しても letterbox の黒帯を侵さない）。
+            // 幅か高さが 0 以下の矩形は glScissor(…, 0, 0) になり、その run は何も描かない。
+            let setScissor = clipK -> match clipK {
+                case None => GL11.glDisable(GL11.GL_SCISSOR_TEST)
+                case Some((x0, y0, x1, y1)) => {
+                    let cx0 = Int32.max(0, x0);
+                    let cx1 = Int32.min(vpW, x1);
+                    let cy0 = Int32.max(0, y0);
+                    let cy1 = Int32.min(vpH, y1);
+                    GL11.glEnable(GL11.GL_SCISSOR_TEST);
+                    GL11.glScissor(vpX + cx0, vpY + vpH - cy1,
+                                   Int32.max(0, cx1 - cx0), Int32.max(0, cy1 - cy0))
+                }
+            };
+            // 連続する「同じテクスチャ・同じ scissor」のスプライトを 1 回の instanced draw に
+            // 畳む（run 収集 → flush）。run を切るのはテクスチャ変化・scissor 変化と polygon だけ。
             // 1 要素 1 draw call だと呼び出しの固定費が積み上がり、
             // 数千体で描画時間のほとんどを占めてしまうため。
             //
@@ -203,29 +227,37 @@ mod RenderFrame {
                     cc#r, cc#g, cc#b, ca
                 } @ Static
             };
-            // run = (テクスチャ id, 体数, 積んだ instance の逆順リスト)。texId=0 は単色矩形の run。
-            let emptyRun: (Int32, Int32, List[Array[Float32, Static]]) = (0, 0, Nil);
-            let flush = (acc: (Int32, Int32, List[Array[Float32, Static]])) -> {
-                let (accTex, accCount, accRev) = acc;
-                flushSpriteRun(instShader, instVao, instVbo, accTex, accCount, accRev)
+            // run = (テクスチャ id, scissor キー, 体数, 積んだ instance の逆順リスト)。
+            // texId=0 は単色矩形の run。scissor キーが変わるところでも run を切る。
+            let emptyRun: (Int32, Option[(Int32, Int32, Int32, Int32)], Int32, List[Array[Float32, Static]]) =
+                (0, None, 0, Nil);
+            // 空 run では scissor を触らない — GL 状態を無駄に往復させない。
+            let flush = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], Int32, List[Array[Float32, Static]])) -> {
+                let (accTex, accClip, accCount, accRev) = acc;
+                if (accCount == 0) () else {
+                    setScissor(accClip);
+                    flushSpriteRun(instShader, instVao, instVbo, accTex, accCount, accRev)
+                }
             };
-            let push = (acc: (Int32, Int32, List[Array[Float32, Static]]), texId: Int32,
-                         inst: Array[Float32, Static]) -> {
-                let (accTex, accCount, accRev) = acc;
+            let push = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], Int32, List[Array[Float32, Static]]),
+                        texId: Int32, clipK: Option[(Int32, Int32, Int32, Int32)],
+                        inst: Array[Float32, Static]) -> {
+                let (accTex, accClip, accCount, accRev) = acc;
                 if (accCount == 0)
-                    (texId, 1, inst :: Nil)
-                else if (accTex == texId)
-                    (accTex, accCount + 1, inst :: accRev)
+                    (texId, clipK, 1, inst :: Nil)
+                else if (accTex == texId and accClip == clipK)
+                    (accTex, accClip, accCount + 1, inst :: accRev)
                 else {
-                    // テクスチャが変わったら現 run を吐いてから新しい run を始める。
+                    // テクスチャか scissor が変わったら現 run を吐いてから新しい run を始める。
                     flush(acc);
-                    (texId, 1, inst :: Nil)
+                    (texId, clipK, 1, inst :: Nil)
                 }
             };
             let lastRun = List.foldLeft((acc, item) -> match item {
                 case Result.Ok(drawable) =>
                     if (String.isEmpty(drawable#texture)) {
-                        push(acc, 0, makeInst(drawable#position, drawable#scale, drawable, false, false))
+                        push(acc, 0, clipKeyOf(drawable#clip),
+                             makeInst(drawable#position, drawable#scale, drawable, false, false))
                     } else {
                         match Map.get(drawable#texture, registry) {
                             case Some(texInfo) =>
@@ -238,7 +270,7 @@ mod RenderFrame {
                                 else drawable#position;
                                 // フォントアトラス (font_*) は SDF テキストとして描く。
                                 let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
-                                push(acc, GpuHandle.textureIdInt(texInfo#id),
+                                push(acc, GpuHandle.textureIdInt(texInfo#id), clipKeyOf(drawable#clip),
                                      makeInst(pos, displaySize, drawable, true, isFont))
                             // texture 未登録は従来どおり描かない。描かないだけなので run は途切れさせない。
                             case None => acc
@@ -247,11 +279,15 @@ mod RenderFrame {
                 case Result.Err(pc) =>
                     // polygon が来たら run を吐いてから polygon を描く（列順を守る）。
                     flush(acc);
+                    setScissor(clipKeyOf(pc#clip));
                     RenderSprite.drawPolygon(spriteShader, polyVao, polyVbo, spriteUniforms,
                                               pc#vertices, pc#color, pc#alpha);
                     emptyRun
             }, emptyRun, sortedMerged);
-            flush(lastRun)
+            flush(lastRun);
+            // フレーム末尾で必ず scissor を解除する — 有効なまま持ち越すと、次フレームの
+            // 全画面 clear や F8 注釈のスクリーンショット再描画が小矩形に切られる。
+            GL11.glDisable(GL11.GL_SCISSOR_TEST)
         } else ()
 
 }

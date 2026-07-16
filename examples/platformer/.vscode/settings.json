@@ -1,0 +1,10 @@
+{
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "hitbox.json"
+      ],
+      "url": "./docs/hitbox.schema.json"
+    }
+  ]
+}

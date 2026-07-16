@@ -91,8 +91,8 @@ mod SoftRaster {
             |> List.sortBy(ix -> let (idx, item) = ix; (zOf(item), idx))
             |> List.map(ix -> let (_, item) = ix; item);
         List.forEach(item -> match item {
-            case Result.Ok(d)  => drawDrawable(g, sf, textures, fctx, d)
-            case Result.Err(p) => drawPolygon(rc, g, sf, p)
+            case Result.Ok(d)  => withClip(g, sf, d#clip, () -> drawDrawable(g, sf, textures, fctx, d))
+            case Result.Err(p) => withClip(g, sf, p#clip, () -> drawPolygon(rc, g, sf, p))
         }, sorted);
         g.dispose();
         image
@@ -217,13 +217,17 @@ mod SoftRaster {
             let bw = ri(d#scale#x * sf);
             let bh = ri(d#scale#y * sf);
             let arc = ri(st#cornerRadius * 2.0 * sf);
-            let clip = new RoundRect(Int32.toFloat64(x), Int32.toFloat64(y),
-                                     Int32.toFloat64(bw), Int32.toFloat64(bh),
-                                     Int32.toFloat64(arc), Int32.toFloat64(arc));
-            g.setClip(clip);
+            let shape = new RoundRect(Int32.toFloat64(x), Int32.toFloat64(y),
+                                      Int32.toFloat64(bw), Int32.toFloat64(bh),
+                                      Int32.toFloat64(arc), Int32.toFloat64(arc));
+            // setClip(置き換え)ではなく clip(交差)で重ねる — drawable の clip 窓(withClip)が
+            // 外側に張られているとき、縞・市松がその窓を破って漏れないため。終わったら退避値へ
+            // 戻す(setClip(null) の全解除だと、この後に描く枠線まで窓の外へ漏れる)。
+            let saved = g.getClip();
+            g.clip(shape);
             if (hasStripe) drawStripes(g, sf, d, st) else ();
             if (hasChecker) drawChecker(g, sf, d, st) else ();
-            g.setClip(unchecked_cast(null as Shape))
+            g.setClip(saved)
         } else ()
 
     /// 縞を描く。GL シェーダと同じ box 中心原点のローカル座標 p を使い、
@@ -313,6 +317,21 @@ mod SoftRaster {
         let dy2 = ri((posY + displayH) * sf);
         discard g.drawImage(tinted, dx1, dy1, dx2, dy2, 0i32, 0i32, sw, sh,
                             unchecked_cast(null as ImageObserver))
+
+    /// clip 窓(design px)を出力ピクセルへ floor 量子化して張り、draw を実行してから元へ戻す。
+    /// 量子化は GL の glScissor と同じ DrawCmd.clipPixels — 同じ画素集合になるのが golden の前提。
+    /// 退避・復元で行うので、draw の内側の g.clip(交差)とも安全に入れ子になる。
+    def withClip(g: Graphics2D, sf: Float64, clip: Option[Rect2.Rect2], draw: Unit -> Unit \ ef): Unit \ IO + ef =
+        match clip {
+            case None    => draw()
+            case Some(r) => {
+                let saved = g.getClip();
+                let (x0, y0, x1, y1) = DrawCmd.clipPixels({ scaleX = sf, scaleY = sf }, r);
+                g.setClip(x0, y0, Int32.max(0, x1 - x0), Int32.max(0, y1 - y0));
+                draw();
+                g.setClip(saved)
+            }
+        }
 
     /// 多角形塗り。頂点は design px。
     def drawPolygon(rc: Region[r], g: Graphics2D, sf: Float64, p: GameEngine.PolygonRenderCmd): Unit \ IO + r =

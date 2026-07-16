@@ -10,7 +10,7 @@ def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()
     else {
         run {
-            App.make(Field.initialWorld())
+            App.make(Field.initialWorldWith(Hits.load()))
                 |> App.addSystem(Controls.step)
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadParams)
                 |> App.withView(View.frame)

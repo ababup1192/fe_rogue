@@ -14,8 +14,8 @@ mod GameUi {
     pub def designSize(): Vec2.Vec2 = { x = 320.0, y = 240.0 }
 
     /// 両方のページ Spec を1つの UiWorld へ生成する。壊れた、あるいは存在しない
-    /// ファイルはページなしへと縮退する —— 壊れたレベル文字列と同様、ゲームはそ
-    /// れでも動く。
+    /// ファイルはそのページを抜いたまま進む —— 壊れたレベル文字列と同様、ゲームは
+    /// それでも動く。
     pub def loadUi(): UiStore.UiWorld \ Fs.FileRead =
         UiStore.empty() |> spawnPage(titleUiPath()) |> spawnPage(clearUiPath())
 

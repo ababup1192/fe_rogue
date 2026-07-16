@@ -79,5 +79,5 @@ mod Polygon {
         let sy = scaleVec#y * r#transform#scale#y;
         let verts = r#points |> List.map(p ->
             ({x = screenPos#x + p#x * sx, y = screenPos#y + p#y * sy}: Vec2.Vec2));
-        {vertices = verts, color = r#visual#color, alpha = r#alpha, zIndex = r#visual#zIndex}
+        {vertices = verts, color = r#visual#color, alpha = r#alpha, zIndex = r#visual#zIndex, clip = None}
 }

@@ -229,7 +229,7 @@ mod TestBreakout {
 
     /// レベル n の（壊せる数, 壊れない数）。
     def levelCensus(n: Int32): (Int32, Int32) =
-        let core = Field.freshCore(n);
+        let core = Field.freshCore(Hits.defaults(), n);
         (Map.size(core#durabilities), Map.size(core#blocks) - Map.size(core#durabilities))
 
     // 配置の宣言データを数で固定: 1面=導入22個（不壊なし）/ 2面=19+不壊7 / 3面=26+不壊8。
@@ -241,8 +241,8 @@ mod TestBreakout {
     // クリア後の Enter は次の面へ進み、スコアと残機を持ち越す。
     @Test
     def testClearAdvancesToNextLevelCarryingScore(): Unit \ Assert =
-        let clearedCore = { durabilities = Map.empty(), score = 220, lives = 2 | Field.freshCore(1) };
-        let cleared = { params = GameParameters.defaults(), phase = Field.Phase.Cleared(clearedCore) };
+        let clearedCore = { durabilities = Map.empty(), score = 220, lives = 2 | Field.freshCore(Hits.defaults(), 1) };
+        let cleared = { params = GameParameters.defaults(), hits = Hits.defaults(), phase = Field.Phase.Cleared(clearedCore) };
         let next = Step.update({ enter = true | Trace.idle() }, Trace.dt(), cleared);
         let nextCore = Trace.coreOf(next);
         Assert.assertEq(expected = (Some(2), Some(220), Some(2), Some(19)),
@@ -254,8 +254,8 @@ mod TestBreakout {
     // 最終面をクリアして Enter するとタイトルへ戻る（最終面 = Levels.count() 面）。
     @Test
     def testClearOfLastLevelReturnsToTitle(): Unit \ Assert =
-        let clearedCore = { durabilities = Map.empty() | Field.freshCore(Levels.count()) };
-        let cleared = { params = GameParameters.defaults(), phase = Field.Phase.Cleared(clearedCore) };
+        let clearedCore = { durabilities = Map.empty() | Field.freshCore(Hits.defaults(), Levels.count()) };
+        let cleared = { params = GameParameters.defaults(), hits = Hits.defaults(), phase = Field.Phase.Cleared(clearedCore) };
         let after = Step.update({ enter = true | Trace.idle() }, Trace.dt(), cleared);
         Assert.assertEq(expected = true, Trace.isTitle(after))
 

@@ -127,7 +127,7 @@ mod Arc {
                 let verts =
                     mkPt(a0, outerR) :: mkPt(a1, outerR) ::
                     mkPt(a1, innerR) :: mkPt(a0, innerR) :: Nil;
-                ({vertices = verts, color = r#visual#color, alpha = r#alpha,
+                ({vertices = verts, color = r#visual#color, alpha = r#alpha, clip = None,
                   zIndex = r#visual#zIndex}: GameEngine.PolygonRenderCmd)
             })
         }

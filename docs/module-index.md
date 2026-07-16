@@ -8,6 +8,10 @@
 | やりたいこと | モジュール |
 |---|---|
 | メニューを作る（項目列・カーソル・ハイライト） | UiMenu |
+| 窓より長い内容をスクロールで覗く（ログ・履歴・一覧） | UiScroll |
+| 描画物を矩形で切り抜く（スクロール窓・PiP。スクリーン空間） | Render（clipped / clippedAll） |
+| 文章を幅で行に折る・描く前に行数を数える | RichText（wrapLinesBy） |
+| ホイールの生 delta を目盛りに畳む | InputMap（wheelSteps） |
 | 固定スロットに可変個の項目を流し込む | UiSlots |
 | UI を JSON（ui.json）で宣言する | UiDoc / UiSpec |
 | UI 要素を並べる・整列する | UiLayout / Flex |
@@ -23,6 +27,7 @@
 | セーブ・ロード | SaveManager / Persistence |
 | タイルのマス目と移動範囲 | Grid / GridSearch |
 | 重なり判定・物理 | Collision / Physics2D |
+| 当たり判定を JSON で宣言する | HitDoc + Hit |
 | キーが押された瞬間を取る | InputEdge |
 | 複数キーを 1 つの操作にまとめる（WASD と矢印の両対応） | InputMap |
 | カメラで寄せる・追いかける | CameraRig |
@@ -65,6 +70,7 @@
 - **UiBinding** — UI のテキスト欄に付けた「差し込み名」を実行時の値に置き換える。
 - **UiSlots** — ui.json に用意した固定数のスロットへ、可変個の項目を先頭から流し込む。
 - **UiMenu** — 選択メニュー共通の「項目の並べ方」「選択中の見せ方」「カーソルの動かし方」。
+- **UiScroll** — 窓より長い内容を位置ひとつで覗く共通の勘定（末尾基準 offset・両端 clamp・▲▼判定）。
 - **UiMeta** — UI の目印（meta 文字列）の共通の読み方（接頭辞 + 番号）。
 - **UiDialog** — 会話窓の中身（誰が・何を・どこまで見せたか）と、その進め方。
 - **UiTypewriter** — 文章を 1 文字ずつ現す「文字送り」の進み具合を持つ小さな値。
@@ -87,6 +93,8 @@
 
 - **Physics2D** — 物理を「積分・検出・反射・分離」の 4 つの純関数に切り出して合成する。
 - **Collision** — たくさんの物体の中から、実際に重なっている組を見つけて返す。
+- **Hit** — JSON で宣言した形（円・箱の列）で「触れているか」だけを聞く照会専用の判定。
+- **HitDoc** — 当たりの形の宣言（hitbox.json）を読む codec。欠け・間違いは位置付きで断る。
 
 ## データと保存
 

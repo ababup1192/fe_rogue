@@ -13,8 +13,9 @@ mod TestApp {
     /// テスト用の design サイズ。ここのテストは viewport を見ないので値は任意。
     def testViewport(): Vec2.Vec2 = { x = 320.0, y = 240.0 }
 
-    /// マウス無し（ボタン未押下）。キーだけを見るテストの frameOf に渡す。
-    def noMouse(): { prevDown = Bool, down = Bool } = { prevDown = false, down = false }
+    /// マウス無し（ボタン未押下・ホイール停止）。キーだけを見るテストの frameOf に渡す。
+    def noMouse(): { prevDown = Bool, down = Bool, wheel = Float64 } =
+        { prevDown = false, down = false, wheel = 0.0 }
 
     /// カーソル無し（原点のまま・前の位置も無し）。キーだけを見るテストの frameOf に渡す。
     def noCursor(): { prevCursor = Option[Vec2.Vec2], cursor = Vec2.Vec2 } =
@@ -68,7 +69,7 @@ mod TestApp {
     @Test
     def testFrameOfMousePressIsEdge(): Unit \ Assert =
         let actual = App.frameOf(prev = Set#{}, current = Set#{}, 0.016, testViewport(),
-            { prevCursor = None, cursor = { x = 10.0, y = 20.0 } }, { prevDown = false, down = true });
+            { prevCursor = None, cursor = { x = 10.0, y = 20.0 } }, { prevDown = false, down = true, wheel = 0.0 });
         Assert.assertEq(expected = (true, true, (10.0, 20.0)),
             (actual#mouseDown, actual#mouseClicked, (actual#cursor#x, actual#cursor#y)))
 
@@ -76,15 +77,22 @@ mod TestApp {
     @Test
     def testFrameOfHeldMouseIsNotEdge(): Unit \ Assert =
         let actual = App.frameOf(prev = Set#{}, current = Set#{}, 0.016, testViewport(),
-            noCursor(), { prevDown = true, down = true });
+            noCursor(), { prevDown = true, down = true, wheel = 0.0 });
         Assert.assertEq(expected = (true, false), (actual#mouseDown, actual#mouseClicked))
 
     // 離し: どちらも立たない。
     @Test
     def testFrameOfMouseReleaseIsSilent(): Unit \ Assert =
         let actual = App.frameOf(prev = Set#{}, current = Set#{}, 0.016, testViewport(),
-            noCursor(), { prevDown = true, down = false });
+            noCursor(), { prevDown = true, down = false, wheel = 0.0 });
         Assert.assertEq(expected = (false, false), (actual#mouseDown, actual#mouseClicked))
+
+    // ホイール: バックエンドが貯めた量がそのまま Frame に乗る（上が正・下が負）。
+    @Test
+    def testFrameOfWheelPassesThrough(): Unit \ Assert =
+        let actual = App.frameOf(prev = Set#{}, current = Set#{}, 0.016, testViewport(),
+            noCursor(), { prevDown = false, down = false, wheel = -2.0 });
+        Assert.assertEq(expected = -2.0, actual#wheel)
 
     // ========================================================================
     // frameOf: マウス移動（前フレームとの座標比較）

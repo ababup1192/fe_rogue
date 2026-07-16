@@ -98,16 +98,12 @@ mod Level {
     /// 1 セル分進める。狙ったグリフが続けば current を伸ばし、途切れたら finished へ確定する。
     def stepRunScan(glyph: Char, scan: RunScan, colCh: (Int32, Char)): RunScan =
         let (col, ch) = colCh;
-        if (ch == glyph)
-            match scan#current {
-                case Some((startCol, len)) => { current = Some((startCol, len + 1)) | scan }
-                case None                  => { current = Some((col, 1)) | scan }
-            }
-        else
-            match scan#current {
-                case Some(platRun) => { current = None, finished = platRun :: scan#finished }
-                case None      => scan
-            }
+        match (ch == glyph, scan#current) {
+            case (true,  Some((startCol, len))) => { current = Some((startCol, len + 1)) | scan }
+            case (true,  None)                  => { current = Some((col, 1)) | scan }
+            case (false, Some(platRun))         => { current = None, finished = platRun :: scan#finished }
+            case (false, None)                  => scan
+        }
 
     /// 走査を締める: 行末で継続中の platRun があれば確定させる。
     def closeRunScan(scan: RunScan): List[(Int32, Int32)] =

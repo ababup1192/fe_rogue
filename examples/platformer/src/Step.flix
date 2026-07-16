@@ -176,10 +176,10 @@ mod Step {
         // 同フレームで踏みと致命の接触が同時なら死亡が勝つ（安全側）: 致命の重なりが
         // 1 つでもあれば、そのフレームの踏みは成立させない（敵も倒れない）。
         let overlaps = world#enemies
-            |> List.filter(enemy -> enemy#alive and overlapsPlayer(t1, posFinal, enemy));
+            |> List.filter(enemy -> enemy#alive and overlapsPlayer(world#hits, t1, posFinal, enemy));
         // 致命の接触は 3 段の受け皿: 無敵中（ガード直後）は素通し → ガードが残っていれば
         // 1 消費して耐える（敵は生きたまま・小さく跳ね上がる）→ どちらも無ければ死亡。
-        let lethalTouch = overlaps |> List.exists(enemy -> not isStomp(t1, prevBottom, velFinal#y, enemy));
+        let lethalTouch = overlaps |> List.exists(enemy -> not isStomp(world#hits, t1, prevBottom, velFinal#y, enemy));
         let invulnerable = player0#invulnLeft > 0.0;
         let guarding = lethalTouch and not invulnerable and player0#guardLeft > 0;
         let diedByEnemy = lethalTouch and not invulnerable and player0#guardLeft <= 0;
@@ -189,7 +189,7 @@ mod Step {
         // フレームも同じ扱い）。無敵中は致命側が消えるので、踏みは普通に成立する。
         let stompedIds = if (diedByEnemy or guarding) Nil
             else overlaps
-                |> List.filter(enemy -> isStomp(t1, prevBottom, velFinal#y, enemy))
+                |> List.filter(enemy -> isStomp(world#hits, t1, prevBottom, velFinal#y, enemy))
                 |> List.map(enemy -> enemy#id);
         let stomping = not List.isEmpty(stompedIds);
         let enemies1 = if (stomping)
@@ -370,24 +370,28 @@ mod Step {
 
     // ── 敵との接触判定 ──
     // 敵は Physics2D の positions/shapes に載せない（床の物理へ一切干渉しない）。
-    // 解決済みのプレイヤー位置と、時刻 t1 の敵の実位置で円同士の重なりだけを見る。
+    // 解決済みのプレイヤー位置と、時刻 t1 の敵の実位置で重なりだけを見る照会型 —
+    // 形は宣言 sheet（hitbox.json 由来）から引き、判定はエンジンの Hit.overlaps。
 
     /// 踏める種か（トゲだけは踏めない）。
     def stompable(enemy: Field.Enemy): Bool =
         enemy#kind != Field.EnemyKind.SpikyKind
 
     /// この重なりが「踏み」か: 踏める種で、前フレーム（carry 後）の足元が敵の頭
-    /// （上端 + 2px の猶予）より上に居て、いま下向きに落ちている。
-    def isStomp(t1: Float64, prevBottom: Float64, vyFinal: Float64, enemy: Field.Enemy): Bool =
+    /// （上端 + 2px の猶予）より上に居て、いま下向きに落ちている。「頭より上か」は
+    /// ゲームの意味論のままで、頭の高さの半径だけを宣言 sheet から引く。
+    def isStomp(hits: HitDoc.Sheet, t1: Float64, prevBottom: Float64, vyFinal: Float64,
+                enemy: Field.Enemy): Bool =
         stompable(enemy)
-        and prevBottom <= Field.enemyPosAt(t1, enemy)#y - Field.enemyRadius() + 2.0
+        and prevBottom <= Field.enemyPosAt(t1, enemy)#y - Hits.enemyHitRadius(hits) + 2.0
         and vyFinal > 0.0
 
-    /// プレイヤーと敵（時刻 t1 の実位置）が重なっているか（円同士・半径の和より近い）。
-    def overlapsPlayer(t1: Float64, playerPos: Vec2.Vec2, enemy: Field.Enemy): Bool =
-        let d = Vec2.sub(Field.enemyPosAt(t1, enemy), playerPos);
-        let reach = Field.playerRadius() + Field.enemyRadius();
-        Vec2.dot(d, d) < reach * reach
+    /// プレイヤーと敵（時刻 t1 の実位置）が重なっているか。形は宣言 sheet から
+    /// （境界の規則もエンジンと共通: ちょうど接するのは外）。
+    def overlapsPlayer(hits: HitDoc.Sheet, t1: Float64, playerPos: Vec2.Vec2,
+                       enemy: Field.Enemy): Bool =
+        Hit.overlaps(playerPos, Field.playerHitShapes(hits),
+                     Field.enemyPosAt(t1, enemy), Field.enemyHitShapes(hits))
 
     // ── 物理の 1 ステップ ──
 

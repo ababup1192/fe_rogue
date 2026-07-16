@@ -70,7 +70,8 @@ mod Trace {
           spawnPos = { x = 56.0, y = 104.0 }, respawnPos = { x = 56.0, y = 104.0 },
           checkpointPos = { x = Field.classicW() + 1000.0, y = 104.0 },
           goalX = Field.classicW() + 1000.0,
-          clearedAt = None, freezeLeft = 0.0, charIndex = 1, time = 0.0 }
+          clearedAt = None, freezeLeft = 0.0, charIndex = 1, time = 0.0,
+          hits = Hits.defaults(), showHits = false }
 
     /// 地面だけの世界（浮き床・壁なし）。ジャンプ曲線と走りを邪魔なしで測る。
     pub def flatWorld(): Field.World =

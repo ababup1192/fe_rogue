@@ -253,6 +253,10 @@ mod Annotate {
                 { position = pos, size = b#size }
             case Render.Item.Poly(p) =>
                 vertexAabb(pos, p#vertices)
+            case Render.Item.Clipped(c) =>
+                // 窓の外は描かれないので、外形も窓と交差させる — 完全に切り取られて
+                // 見えない物が注釈やヒット一覧に載る嘘を作らない(交差が空なら負サイズ)。
+                Rect2.intersect(c#rect, itemAabb(sizeOf, { at = pos, item = c#inner }))
         }
 
     /// 多角形の頂点列（置き場所からの相対座標）を覆う矩形。頂点が無ければ置き場所の点。
@@ -288,7 +292,12 @@ mod Annotate {
                    };
         let size = { x = base#x * Float64.abs(d#scale#x), y = base#y * Float64.abs(d#scale#y) };
         let topLeft = if (d#centered) Vec2.sub(d#position, Vec2.div(size, 2.0)) else d#position;
-        { position = topLeft, size = size }
+        let aabb = { position = topLeft, size = size };
+        // clip 窓の外は描かれない — 外形も窓と交差させる(itemAabb の Clipped と同じ理由)。
+        match d#clip {
+            case None    => aabb
+            case Some(r) => Rect2.intersect(r, aabb)
+        }
 
     /// 描画物 1 件を Hit の形へ。
     def hitOf(placed: Render.PlacedItem, aabb: Rect2.Rect2): Hit =
@@ -302,6 +311,9 @@ mod Annotate {
                 { kind = "box", name = "", position = pos, zIndex = b#zIndex, aabb = aabb }
             case Render.Item.Poly(p) =>
                 { kind = "poly", name = "", position = pos, zIndex = p#zIndex, aabb = aabb }
+            case Render.Item.Clipped(c) =>
+                // Hit の種類・名前・z は窓ではなく中身のもの。
+                hitOf({ at = pos, item = c#inner }, aabb)
         }
 
     // ── 成果物の本文（文字列の組み立て）──
@@ -378,7 +390,15 @@ mod Annotate {
         if (isIdentity(view)) ds
         else ds |> List.map(d -> { position = toScreen(view, d#position),
                                    scale = Vec2.mul(d#scale, view#zoom),
-                                   style = Option.map(st -> scaleStyle(view#zoom, st), d#style) | d })
+                                   style = Option.map(st -> scaleStyle(view#zoom, st), d#style),
+                                   // clip 窓も一緒に写す — 忘れると中身だけ動いて、切り口が
+                                   // スクリーンに置き去りになる(ズームすると見当違いに切れる)。
+                                   clip = Option.map(r -> inspectRect(view, r), d#clip) | d })
+
+    /// 矩形へ見え方を適用する(位置は toScreen、大きさは zoom 倍。軸平行なので厳密に写る)。
+    def inspectRect(view: View, r: Rect2.Rect2): Rect2.Rect2 =
+        { position = toScreen(view, r#position),
+          size = { x = r#size#x * view#zoom, y = r#size#y * view#zoom } }
 
     /// BoxStyle の px 単位フィールドを zoom 倍する（対象フィールドの表は DrawCmd.scalePx が持つ）。
     def scaleStyle(zoom: Float64, style: GameEngine.BoxStyle): GameEngine.BoxStyle =
@@ -387,7 +407,8 @@ mod Annotate {
     /// 多角形の描画命令へ見え方を適用する（頂点は画面 px の絶対座標なので各頂点を写す）。
     pub def applyInspectPoly(view: View, ps: List[GameEngine.PolygonRenderCmd]): List[GameEngine.PolygonRenderCmd] =
         if (isIdentity(view)) ps
-        else ps |> List.map(p -> { vertices = List.map(v -> toScreen(view, v), p#vertices) | p })
+        else ps |> List.map(p -> { vertices = List.map(v -> toScreen(view, v), p#vertices),
+                                   clip = Option.map(r -> inspectRect(view, r), p#clip) | p })
 
     /// タイルマップの描画命令へ見え方を適用する（置き場所は toScreen、タイル倍率は zoom 倍）。
     pub def applyInspectTiles(view: View, ts: List[GameEngine.TileMapRenderCmd]): List[GameEngine.TileMapRenderCmd] =

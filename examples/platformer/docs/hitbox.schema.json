@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hitbox.schema.json",
+  "title": "flix_ge_shooting hitbox",
+  "description": "当たりの形の宣言。原点は各エンティティの中心(絵と同じ錨)。'//' で始まるキーはコメント。",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "enum": [1] },
+    "hit": {
+      "type": "object",
+      "description": "エンティティ名 → 形のリスト。複数形を重ねると「先端だけ当たる」等が書ける",
+      "patternProperties": { "^//": {} },
+      "additionalProperties": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/shape" } }
+    }
+  },
+  "required": ["hit"],
+  "patternProperties": { "^//": {} },
+  "$defs": {
+    "shape": {
+      "type": "object",
+      "properties": {
+        "shape": { "type": "string", "enum": ["circle", "box"] },
+        "dx": { "type": "number", "description": "エンティティ中心からの横ずれ" },
+        "dy": { "type": "number", "description": "エンティティ中心からの縦ずれ(下が正)" },
+        "r": { "type": "number", "exclusiveMinimum": 0, "description": "circle の半径" },
+        "w": { "type": "number", "exclusiveMinimum": 0 },
+        "h": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "required": ["shape", "dx", "dy"],
+      "patternProperties": { "^//": {} },
+      "allOf": [
+        { "if": { "properties": { "shape": { "const": "circle" } } },
+          "then": { "required": ["r"] } },
+        { "if": { "properties": { "shape": { "const": "box" } } },
+          "then": { "required": ["w", "h"] } }
+      ]
+    }
+  }
+}
