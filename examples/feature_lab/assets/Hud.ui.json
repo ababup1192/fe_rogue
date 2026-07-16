@@ -1,0 +1,11 @@
+{
+  "defaultFont": "default",
+  "root": {
+    "name": "Hud", "widget": "none", "layer": 1,
+    "dir": "column", "crossAlign": "center", "pad": [0, 12, 0, 0],
+    "children": [
+      { "name": "kind", "widget": "text", "text": "FadeOut", "bind": "kindLabel",
+        "fontSize": 14, "tint": "#ffffff", "zIndex": 10 }
+    ]
+  }
+}

@@ -16,7 +16,8 @@ mod App {
     pub type alias Frame = {
         down = Set[GameEngine.Key],        // いま押されているキー
         justPressed = Set[GameEngine.Key], // このフレームで新しく押されたキー（エッジ）
-        dt = Float64,                      // 前フレームからの経過秒（エンジンがクランプ済み）
+        dt = Float64,                      // 前フレームからの経過秒（エンジンがクランプ済み。
+                                           // withFixedStep 使用時はサブステップ中ずっと固定値）
         viewport = Vec2.Vec2,              // design 解像度の幅・高さ（project.json の designWidth/Height）
         cursor = Vec2.Vec2,                // マウス位置（design 座標。バックエンドが窓→design に変換済み）
         mouseDown = Bool,                  // 左ボタンがいま押されているか
@@ -89,7 +90,10 @@ mod App {
         // 注釈チケットに world.json として同梱され、リモートデバッグの view=full にもなる。
         worldDump = Option[(Rect2.Rect2, w) -> String \ ef],
         // World の 1 行サマリ。リモートデバッグ（HTTP）の view=status と trace の源。
-        statusLine = Option[w -> String \ ef]
+        statusLine = Option[w -> String \ ef],
+        // 物理・当たり判定を実時間でなく固定量子で進めたいゲームの刻み幅（秒）。None = 可変 dt
+        // のまま（既定・全既存ゲームはこちら）。withFixedStep で有効化する（詳細は同関数を参照）。
+        fixedStep = Option[Float64]
     }
 
     /// 初期 World だけを持つ空の App。絵はまだ無い（withView で繋ぐまで何も描かない）。
@@ -117,7 +121,8 @@ mod App {
           debug = false,
           debugView = None,
           worldDump = None,
-          statusLine = None }
+          statusLine = None,
+          fixedStep = None }
 
     /// 起動時に 1 回だけ走るシステムを末尾へ繋ぐ（追加順に適用される）。
     pub def addStartup(sys: w -> w \ ef, app: App[w, ef]): App[w, ef] =
@@ -219,6 +224,22 @@ mod App {
     pub def withStatusLine(f: w -> String \ ef, app: App[w, ef]): App[w, ef] =
         { statusLine = Some(f) | app }
 
+    /// 物理・当たり判定を固定刻み（dtSeconds 秒）で進める accumulator 方式を有効にする。
+    /// 実フレームの経過秒を貯め、刻みの倍数だけ updateSystems を 0〜5 回サブステップで回し、
+    /// 端数は次フレームへ持ち越す（fixedSteps が芯）。5 回を超える貯金は処理落ち時に
+    /// ゲームが延々追いつこうとしないよう切り捨てる（エンジン側の maxDeltaTime は 1 フレームの
+    /// 実 dt 自体の上限で、こちらはサブステップ回数の上限 — 役割が異なるので併用してよい）。
+    /// justPressed / mouseClicked / mouseMoved / wheel は最初のサブステップだけで発火し、
+    /// 2 回目以降は suppressEdges で消える（held 系のキー・ボタン押下は全サブステップで生きる）。
+    /// 0 サブステップのフレームで立ったエッジは捨てず PendingEdges へ取り置き、次にサブステップが
+    /// 回るフレームの最初の 1 回へ合流させる（刻みがフレーム間隔より長くても入力を取り逃さない）。
+    /// render・音・入力リロード・履歴・quit 判定はサブステップ単位でなく実フレーム単位のまま
+    /// （音は reload 後 → 全サブステップ後の World から 1 回だけ導く）。
+    /// リモートデバッグの /step は現時点でこの刻みを見ない（台本 1 行 = updateSystems 1 回のまま）。
+    /// 呼ばなければ現行の可変 dt のまま挙動は変わらない。
+    pub def withFixedStep(dtSeconds: Float64, app: App[w, ef]): App[w, ef] =
+        { fixedStep = Some(dtSeconds) | app }
+
     // ── 純粋な芯（テストはここを直接叩く）──
 
     /// 前フレームと今フレームのキー集合から Frame を組む。justPressed は差分
@@ -241,9 +262,91 @@ mod App {
           mouseMoved = Option.exists(p -> p#x != cursor#cursor#x or p#y != cursor#cursor#y, cursor#prevCursor),
           wheel = mouse#wheel }
 
+    /// withFixedStep の accumulator。持ち越し carry と実フレームの経過秒 realDt を足し、
+    /// fixedDt の倍数だけサブステップ回数を出し、端数を次フレームへの持ち越しとして返す。
+    /// 回数は 5 を上限にクランプする（暴走防止）。上限に達したフレームは処理落ちの貯金を
+    /// 素通しさせず切り捨てる（carry を 0 にする）— そうしないと処理落ちが翌フレーム以降に
+    /// 尾を引き、追いつこうとしてさらに重くなる悪循環になる。
+    pub def fixedSteps(carry: Float64, realDt: Float64, fixedDt: Float64): (Int32, Float64) =
+        let total = carry + realDt;
+        let rawSteps = Float64.floor(total / fixedDt);
+        if (rawSteps > 5.0)
+            (5, 0.0)
+        else
+            (Float64.tryToInt32(rawSteps) |> Option.getWithDefault(0), total - rawSteps * fixedDt)
+
+    /// withFixedStep の 2 サブステップ目以降に渡す Frame: エッジ 4 種（justPressed /
+    /// mouseClicked / mouseMoved / wheel）だけを「今フレームでは既に消費済み」に潰す。
+    /// down / mouseDown のような押しっぱなし状態はそのまま残すので、複数サブステップに
+    /// またがっても連続入力（移動など）は各回とも効く。
+    pub def suppressEdges(frame: Frame): Frame =
+        { justPressed = Set.empty(), mouseClicked = false, mouseMoved = false, wheel = 0.0 | frame }
+
+    /// 0 サブステップのフレームで捨てられそうになったエッジの取り置き。エッジは prev との
+    /// 差分なので、同じ押下は次の実フレームでは二度と立たない — 消費されるまでここに
+    /// 取り置き、最初のサブステップが来た瞬間に合流させる（fixedDt がフレーム間隔より
+    /// 長い構成でも入力を取り逃さないための待合室）。
+    pub type alias PendingEdges = {
+        justPressed = Set[GameEngine.Key],
+        mouseClicked = Bool,
+        mouseMoved = Bool,
+        wheel = Float64
+    }
+
+    /// withFixedStep がフレームをまたいで持ち回す状態（持ち越し秒 + 未消費エッジ）。
+    /// 可変 dt（fixedStep = None）のゲームでは常に初期値のまま動かない。
+    pub type alias StepState = { carry = Float64, pending = PendingEdges }
+
+    /// 起動直後の StepState（貯金ゼロ・未消費エッジなし）。
+    pub def freshStepState(): StepState =
+        { carry = 0.0, pending = noPending() }
+
+    /// 未消費エッジなし。
+    def noPending(): PendingEdges =
+        { justPressed = Set.empty(), mouseClicked = false, mouseMoved = false, wheel = 0.0 }
+
+    /// 取り置いたエッジを今フレームの Frame へ合流させる: justPressed は和集合・
+    /// クリックと移動は「どちらかで起きた」・wheel は量なので加算。
+    /// held 系（down / mouseDown / cursor / dt）は今フレームの値をそのまま使う。
+    pub def mergeEdges(pending: PendingEdges, frame: Frame): Frame =
+        { justPressed = Set.union(pending#justPressed, frame#justPressed),
+          mouseClicked = pending#mouseClicked or frame#mouseClicked,
+          mouseMoved = pending#mouseMoved or frame#mouseMoved,
+          wheel = pending#wheel + frame#wheel | frame }
+
+    /// Frame からエッジ 4 種を抜き出して取り置きの形にする（0 ステップのフレームの持ち越し用）。
+    pub def pendingOf(frame: Frame): PendingEdges =
+        { justPressed = frame#justPressed, mouseClicked = frame#mouseClicked,
+          mouseMoved = frame#mouseMoved, wheel = frame#wheel }
+
     /// システムの列を追加順（左から右）に World へ畳み込む。
     pub def applySystems(frame: Frame, systems: List[(Frame, w) -> w \ ef], world: w): w \ ef =
         List.foldLeft((acc, sys) -> sys(frame, acc), world, systems)
+
+    /// 1 実フレームぶんの updateSystems 適用。fixedStep 未指定なら現行どおり frame を 1 回
+    /// そのまま流すだけ（挙動不変・pending も動かない）。指定していれば fixedSteps で回数を
+    /// 決め、取り置いたエッジを合流した Frame（dt は固定値）で 0〜5 回サブステップする
+    /// （2 回目以降は suppressEdges でエッジを消す）。
+    /// 0 回のフレームは World をそのまま返し、合流済みエッジを次フレームへ取り置く —
+    /// そうしないと prev 差分ゆえ二度と立たないエッジがそのまま失われる。
+    pub def advanceFrame(app: App[w, ef], frame: Frame, state: StepState, world: w): (w, StepState) \ ef =
+        match app#fixedStep {
+            case None => (applySystems(frame, app#updateSystems, world), state)
+            case Some(fixedDt) =>
+                let (steps, nextCarry) = fixedSteps(state#carry, frame#dt, fixedDt);
+                let merged = mergeEdges(state#pending, frame);
+                if (steps == 0)
+                    (world, { carry = nextCarry, pending = pendingOf(merged) })
+                else {
+                    let firstFrame = { dt = fixedDt | merged };
+                    let laterFrame = suppressEdges(firstFrame);
+                    let advanced = List.range(0, steps) |> List.foldLeft((acc, i) -> {
+                        let subFrame = if (i == 0) firstFrame else laterFrame;
+                        applySystems(subFrame, app#updateSystems, acc)
+                    }, world);
+                    (advanced, { carry = nextCarry, pending = noPending() })
+                }
+        }
 
     /// view 由来の絵（world）に camera（center と zoom。等倍は 1.0）を掛け、hud の絵を
     /// 後ろに繋ぐ。hud には掛けない。center = None でも zoom ≠ 1.0 なら画面中央
@@ -294,9 +397,10 @@ mod App {
                      else None;
         // キーと同じく、起動時にすでに押されているボタンは一度離すまでエッジにならない。
         // カーソルの「前の位置」はまだ無い（None）ので、最初のフレームの mouseMoved は false。
+        // 固定ステップの状態（持ち越し秒と未消費エッジ）は空から始める。
         loop(app, world0, InputEvent.currentKeys(),
              GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left), None,
-             Annotate.initial(), Nil, bridge, false);
+             Annotate.initial(), Nil, bridge, false, freshStepState());
         Option.forEach(RemoteDebug.shutdown, bridge)
 
     /// 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
@@ -316,9 +420,15 @@ mod App {
     ///
     /// bridge はリモートデバッグの HTTP 口（無効なら None）。remoteHold が真の間は
     /// HTTP 側が停止の主導権を持つので、F8 での解除は効かない（/resume で戻す）。
+    ///
+    /// stepState は withFixedStep の持ち回し（持ち越し秒 + 未消費エッジ。未使用なら初期値のまま）。
+    /// 一時停止中・リモート処理中・一時停止からの再開フレームはどの分岐でも world を進めないので
+    /// stepState も動かさず素通しする（巻き戻すのは World の見た目であって、貯まっていた
+    /// 実時間の端数や取り置いたエッジではない）。
     def loop(app: App[w, ef], world: w, prevKeys: Set[GameEngine.Key], prevMouseDown: Bool,
              prevCursor: Option[Vec2.Vec2], anno: Annotate.State, history: List[w],
-             bridge: Option[RemoteDebug.Bridge], remoteHold: Bool): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
+             bridge: Option[RemoteDebug.Bridge], remoteHold: Bool,
+             stepState: StepState): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
         let currentKeys = InputEvent.currentKeys();
         let mouseDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
         let cursorNow = GameEngine.Game.getMousePosition();
@@ -340,7 +450,7 @@ mod App {
                     // （停止中は元々進まないし、実行中でも 1 フレームの息継ぎに過ぎない）。
                     let next = handleRemote(app, b, raw,
                         { world = world, anno = anno, history = history, hold = remoteHold });
-                    loop(app, next#world, currentKeys, mouseDown, Some(cursorNow), next#anno, next#history, bridge, next#hold)
+                    loop(app, next#world, currentKeys, mouseDown, Some(cursorNow), next#anno, next#history, bridge, next#hold, stepState)
                 case _ => {
                     let toggled = justPressed(GameEngine.Key.F8, frame) and canDebug(app) and not remoteHold;
                     let pausedNow = if (toggled) not anno#paused else anno#paused;
@@ -353,23 +463,25 @@ mod App {
                     } else ();
                     if (pausedNow) {
                         let nextAnno = pausedStep(app, world, history, frame, { paused = true | anno });
-                        loop(app, world, currentKeys, mouseDown, Some(cursorNow), nextAnno, history, bridge, remoteHold)
+                        loop(app, world, currentKeys, mouseDown, Some(cursorNow), nextAnno, history, bridge, remoteHold, stepState)
                     } else if (anno#paused) {
                         // 一時停止を抜けるフレーム: スクラブ位置の World から再開する。
                         // 巻き戻したぶんの履歴とフレーム番号も、そこを現在として数え直す。
                         let resumed = resumePoint(anno, history, world);
-                        renderFrame(app, resumed#world);
-                        loop(app, resumed#world, currentKeys, mouseDown, Some(cursorNow), resumed#anno, resumed#history, bridge, remoteHold)
+                        renderFrame(app, resumed#world, fpsOverlayOf(app, resumed#anno));
+                        loop(app, resumed#world, currentKeys, mouseDown, Some(cursorNow), resumed#anno, resumed#history, bridge, remoteHold, stepState)
                     } else {
                         let reloaded = applyReload(app, frame, world);
-                        let advanced = applySystems(frame, app#updateSystems, reloaded);
+                        let (advanced, nextStepState) = advanceFrame(app, frame, stepState, reloaded);
                         playSounds(app, reloaded, advanced);
-                        renderFrame(app, advanced);
+                        // fps は debug 有効時だけ計測する（本番ビルドは履歴を積まず無負荷）。
+                        let measuredAnno = if (app#debug) Annotate.recordDt(frame#dt, anno) else anno;
+                        renderFrame(app, advanced, fpsOverlayOf(app, measuredAnno));
                         // 時間スクラブ用の履歴（debug が無効なら一切持たない = 本番ビルドは無負荷）
                         let nextHistory = if (canDebug(app))
                                               List.take(historyLimit(), advanced :: history)
                                           else Nil;
-                        loop(app, advanced, currentKeys, mouseDown, Some(cursorNow), { frame = anno#frame + 1i64 | anno }, nextHistory, bridge, remoteHold)
+                        loop(app, advanced, currentKeys, mouseDown, Some(cursorNow), { frame = measuredAnno#frame + 1i64 | measuredAnno }, nextHistory, bridge, remoteHold, nextStepState)
                     }
                 }
             }
@@ -567,15 +679,28 @@ mod App {
         let ctx = { atlas = atlas, visible = visibleOf(center, z, design) };
         List.append(layers, composeScene(center, z, design, { world = toItems(ctx, world), hud = hud }))
 
+    /// debug 有効時だけ、画面右上に小さく fps を出す絵を組む（無効なら空 = 本番に一切出ない）。
+    /// fps 表示は withView を使うゲームのみ（view = None の自前描画ゲームには出ない）—
+    /// renderFrame が App の絵を描かない構成では、ここで組んでも捨てられるだけなので組まない。
+    def fpsOverlayOf(app: App[w, ef], anno: Annotate.State): List[Render.PlacedItem] \ GameEngine.Game =
+        if (not app#debug or Option.isEmpty(app#view)) Nil
+        else {
+            let atlas = GameEngine.Game.getFontAtlas("default");
+            let design = GameEngine.Game.getViewportRect()#size;
+            Annotate.fpsItems(atlas, design, Annotate.fpsOf(anno))
+        }
+
     /// view の投影した絵を描画命令にしてエンジンへ渡す（タイルマップは使わないので空の列を添える）。
     /// view = None のゲームは App では描かない（自分のシステム内で renderCommands を呼ぶ。
     /// camera / hudView もこの場合は効かない）。
-    def renderFrame(app: App[w, ef], world: w): Unit \ (ef + GameEngine.Game) =
+    /// fps は debug 有効時だけ隅に重ねる（本番は Nil を渡すので描画に一切現れない）。
+    def renderFrame(app: App[w, ef], world: w, fpsOverlay: List[Render.PlacedItem]): Unit \ (ef + GameEngine.Game) =
         match app#view {
             case None          => ()
             case Some(toItems) =>
                 let atlas = GameEngine.Game.getFontAtlas("default");
-                let (sprites, polygons) = Render.draw(sceneItems(app, atlas, world, toItems));
+                let items = List.append(sceneItems(app, atlas, world, toItems), fpsOverlay);
+                let (sprites, polygons) = Render.draw(items);
                 GameEngine.Game.renderCommands(sprites, Nil, polygons)
         }
 
@@ -762,6 +887,10 @@ mod App {
     ///   - 描画は捨てる（vsync 待ちが無くなるので数百コマが一瞬で回る）
     ///   - 音は鳴らさず (フレーム番号, 音名) で記録して観測データにする
     /// それ以外の操作（GLFW のイベント処理を含む shouldClose 等）は実ハンドラへ素通しする。
+    /// withFixedStep は見ない（台本 1 行 = updateSystems 1 回のまま）: 台本の 1 コマはすでに
+    /// フレーム精度の操作であり、そこへさらに accumulator のサブステップ化を重ねると
+    /// 「台本 N 行 = 何フレーム進んだか」が読めなくなる。fixedStep なゲームで /step を叩くと
+    /// 可変 dt 相当の 1 回更新になる。
     def remoteStep(app: App[w, ef], world0: w, frame0: Int64, script: RemoteDebug.Script,
                    stepParams: RemoteDebug.StepParams): StepOutcome[w] \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead) =
         region rc {

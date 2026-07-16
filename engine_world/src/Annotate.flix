@@ -1,7 +1,8 @@
-// Annotate — 実行中のゲームを一時停止して、画面の気になる場所を矩形で囲み、
-// 「どこに・何が描かれていたか」を書き出すための純粋な芯。
-// ズーム・パン・ドラッグの判断はすべてここが持ち、マウス読みやファイル書きは
-// App とエンジンの effect ハンドラが担う（このモジュールは値の計算だけ）。
+// Annotate — debug 中の小物一式（矩形の注釈・保存トースト・fps 表示）を担う純粋な芯。
+// 実行中のゲームを一時停止して、画面の気になる場所を矩形で囲み、
+// 「どこに・何が描かれていたか」を書き出せる。ズーム・パン・ドラッグの判断は
+// すべてここが持ち、マウス読みやファイル書きは App とエンジンの effect ハンドラが担う
+// （このモジュールは値の計算だけ）。
 //
 // 座標の約束:
 //   画面座標   = マウスの生値（ウィンドウをデザイン解像度へ線形に写したもの）
@@ -34,7 +35,8 @@ mod Annotate {
         toast = Option[{ message = String, framesLeft = Int32 }],  // 保存完了メッセージ（残り表示フレーム数つき）
         scrub = Int32,                     // 何フレーム前を表示しているか（0 = 停止した瞬間）
         scrubHold = Int32,                 // ←→ を押し続けているフレーム数（長押しの連続送り判定用）
-        scrubShow = Int32                  // スクラブ位置表示の残りフレーム数（操作が止まると数え減って消える）
+        scrubShow = Int32,                 // スクラブ位置表示の残りフレーム数（操作が止まると数え減って消える）
+        fpsAvg = Float64                   // 直近フレームの dt の指数移動平均（0.0 = まだ計測していない）
     }
 
     /// 一時停止中の 1 フレームぶんのマウスと画面の状態。App が effect で読んで渡す。
@@ -51,7 +53,8 @@ mod Annotate {
     pub def initial(): State =
         { paused = false, frame = 0i64, zoom = 1.0, pan = Vec2.zero(),
           dragStart = None, prevLeftDown = false, prevPanActive = false,
-          prevMouse = Vec2.zero(), toast = None, scrub = 0, scrubHold = 0, scrubShow = 0 }
+          prevMouse = Vec2.zero(), toast = None, scrub = 0, scrubHold = 0, scrubShow = 0,
+          fpsAvg = 0.0 }
 
     /// 状態から見え方を組む。
     pub def viewOf(design: Vec2.Vec2, state: State): View =
@@ -90,15 +93,28 @@ mod Annotate {
     pub def scrubIndicatorItems(fontAtlas: FontAtlas, design: Vec2.Vec2,
                                 scrub: Int32, historyLen: Int32): List[Render.PlacedItem] =
         let message = "<< ${scrub}/${historyLen - 1}";
-        let fontSize = 8.0;
-        let pad = 3.0;
-        let size = Text.measure(Text.make(message, fontAtlas, fontSize));
-        let top = design#y - size#y - pad * 2.0 - 4.0;
-        { at = { x = 4.0, y = top },
-          item = Render.box({ x = size#x + pad * 2.0, y = size#y + pad * 2.0 },
+        let size = badgeSize(fontAtlas, message);
+        badge(fontAtlas, { x = 4.0, y = design#y - size#y - 4.0 }, message)
+
+    // ── デバッグ小物の共通の見た目（黒地の帯 + 白文字）──
+
+    def badgeFontSize(): Float64 = 8.0
+
+    def badgePad(): Float64 = 3.0
+
+    /// 帯全体（pad 込み）の大きさ。右寄せ・下寄せの置き場所計算に使う。
+    def badgeSize(fontAtlas: FontAtlas, message: String): Vec2.Vec2 =
+        let size = Text.measure(Text.make(message, fontAtlas, badgeFontSize()));
+        { x = size#x + badgePad() * 2.0, y = size#y + badgePad() * 2.0 }
+
+    /// 黒地 alpha 0.7 の帯に白文字を載せる。topLeft は帯の左上（デザイン座標）。
+    /// z はゲームのどの絵よりも手前になる固定値（デバッグ中の表示は常に読めるように）。
+    def badge(fontAtlas: FontAtlas, topLeft: Vec2.Vec2, message: String): List[Render.PlacedItem] =
+        { at = topLeft,
+          item = Render.box(badgeSize(fontAtlas, message),
                             { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, 1000001) |> Render.fade(0.7f32) }
-        :: { at = { x = 4.0 + pad, y = top + pad },
-             item = Render.text(message, fontAtlas, fontSize, 1000002) }
+        :: { at = { x = topLeft#x + badgePad(), y = topLeft#y + badgePad() },
+             item = Render.text(message, fontAtlas, badgeFontSize(), 1000002) }
         :: Nil
 
     // ── 保存完了メッセージ（トースト）──
@@ -112,18 +128,34 @@ mod Annotate {
         { toast = state#toast |> Option.flatMap(t ->
             if (t#framesLeft <= 1) None else Some({ framesLeft = t#framesLeft - 1 | t })) | state }
 
-    /// 保存完了メッセージの絵（黒地の帯 + 白文字）。画面左上に固定で置く。
+    /// 保存完了メッセージの絵。画面左上に固定で置く。
     /// ズーム・パンの影響を受けないよう、呼び側は見え方の適用後にこれを重ねる。
     pub def toastItems(fontAtlas: FontAtlas, message: String): List[Render.PlacedItem] =
-        let fontSize = 8.0;
-        let pad = 3.0;
-        let size = Text.measure(Text.make(message, fontAtlas, fontSize));
-        { at = { x = 4.0, y = 4.0 },
-          item = Render.box({ x = size#x + pad * 2.0, y = size#y + pad * 2.0 },
-                            { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, 1000001) |> Render.fade(0.7f32) }
-        :: { at = { x = 4.0 + pad, y = 4.0 + pad },
-             item = Render.text(message, fontAtlas, fontSize, 1000002) }
-        :: Nil
+        badge(fontAtlas, { x = 4.0, y = 4.0 }, message)
+
+    // ── fps 計測（直近の dt の指数移動平均）──
+
+    /// 平滑化の強さ（新しい dt を毎フレーム 5% ずつ混ぜる ≈ 60fps なら約 1 秒で追従）。
+    def fpsSmoothing(): Float64 = 0.05
+
+    /// このフレームの dt を平均へ混ぜる。最初の 1 回は dt をそのまま採用する
+    /// （0 から混ぜ始めると平均が実態に追いつくまで fps が数十倍に化けるため）。
+    pub def recordDt(dt: Float64, state: State): State =
+        let avg = if (state#fpsAvg <= 0.0) dt
+                  else state#fpsAvg + (dt - state#fpsAvg) * fpsSmoothing();
+        { fpsAvg = avg | state }
+
+    /// 平均 dt から fps を出す（未計測なら 0）。表示用なので整数へ丸める。
+    pub def fpsOf(state: State): Int32 =
+        if (state#fpsAvg <= 0.0) 0
+        else Float64.tryToInt32(1.0 / state#fpsAvg + 0.5) |> Option.getWithDefault(0)
+
+    /// fps の絵。画面右上に固定で置く。
+    /// ズーム・パンの影響を受けないよう、呼び側は見え方の適用後にこれを重ねる。
+    pub def fpsItems(fontAtlas: FontAtlas, design: Vec2.Vec2, fps: Int32): List[Render.PlacedItem] =
+        let message = "fps ${fps}";
+        let size = badgeSize(fontAtlas, message);
+        badge(fontAtlas, { x = design#x - size#x - 4.0, y = 4.0 }, message)
 
     // ── 座標変換（不変条件: toDesign(view, toScreen(view, p)) == p）──
 
