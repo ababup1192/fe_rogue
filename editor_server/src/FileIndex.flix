@@ -6,40 +6,40 @@
 mod FileIndex {
     import java.io.{File => JFile}
 
-    /// 一覧から除外するディレクトリ名。生成物・依存・履歴はエディタの編集対象にしない。
-    def excludedDirs(): Set[String] = Set#{"build", "lib", ".git", "gallery", ".devbox"}
+    /// 走査から除外するディレクトリ名。生成物・依存・履歴はエディタの編集対象にしない。
+    pub def excludedDirs(): Set[String] = Set#{"build", "lib", ".git", "gallery", ".devbox", "node_modules"}
+
+    /// ディレクトリの中身 1 件 (名前と、ディレクトリかどうか)。
+    pub type alias DirEntry = {name = String, isDir = Bool}
 
     /// dir 配下の編集対象ファイルを列挙する。*.ui.json は ui、hitbox.json は hitbox。
     /// 返るパスは dir 相対。
-    pub def listFiles(dir: String): {ui = List[String], hitbox = List[String]} \ Fs.Glob =
-        // `**` が直下 (深さ 0) のファイルに掛かるかは glob 実装に依存するため、
-        // 直下用の `*.json` も重ねて引いて取りこぼしを防ぐ。
-        let all = (globJson(dir, "**/*.json") ::: globJson(dir, "*.json"))
-            |> List.distinct
-            |> List.filter(path -> not isExcluded(path))
-            |> List.sort;
+    pub def listFiles(dir: String): {ui = List[String], hitbox = List[String]} \ IO =
+        let all = walkJson(relDir -> childrenOf(dir, relDir), "") |> List.sort;
         { ui     = all |> List.filter(path -> String.endsWith(suffix = ".ui.json", path)),
           hitbox = all |> List.filter(path -> baseName(path) == "hitbox.json") }
 
-    /// パターンに合うファイルを dir 相対パスのリストで返す。列挙できなければ空。
-    def globJson(dir: String, pattern: String): List[String] \ Fs.Glob =
-        Fs.Glob.glob(dir, pattern)
-            |> Result.getWithDefault(Nil)
-            |> List.map(path -> stripRoot(dir, path))
+    /// relDir ("" = プロジェクト直下) から下りながら .json ファイルの相対パスを集める。
+    /// 除外ディレクトリには最初から降りない。
+    // WhyNot: 「全部集めてから除外パスを捨てる」フィルタにしない — build/ は数十万ファイルに
+    // 膨れることがあり、歩くだけで一覧の応答が数十秒かかるため。
+    pub def walkJson(listChildren: String -> List[DirEntry] \ ef, relDir: String): List[String] \ ef =
+        listChildren(relDir) |> List.flatMap(entry -> {
+            let path = if (relDir == "") entry#name else "${relDir}/${entry#name}";
+            if (entry#isDir) {
+                if (Set.memberOf(entry#name, excludedDirs())) Nil else walkJson(listChildren, path)
+            }
+            else if (String.endsWith(suffix = ".json", entry#name)) path :: Nil
+            else Nil
+        })
 
-    /// glob は絶対パス or rootDir 相対で返すので、rootDir プレフィックスを剥がして相対形に揃える。
-    def stripRoot(dir: String, path: String): String =
-        if (String.startsWith(prefix = dir + "/", path))
-            path.substring(String.length(dir) + 1)
-        else if (String.startsWith(prefix = dir, path))
-            path.substring(String.length(dir))
-        else
-            path
-
-    /// パスのどこかの階層が除外ディレクトリ名に一致するか。
-    def isExcluded(path: String): Bool =
-        String.splitOn(substr = "/", path)
-            |> List.exists(segment -> Set.memberOf(segment, excludedDirs()))
+    /// dir/relDir の中身を列挙する。読めないディレクトリは空扱い。
+    def childrenOf(dir: String, relDir: String): List[DirEntry] \ IO =
+        let absPath = if (relDir == "") dir else "${dir}/${relDir}";
+        let entries = new JFile(absPath).listFiles();
+        if (Object.isNull(entries)) Nil
+        else Array.toList(entries)
+            |> List.map(file -> ({name = file.getName(), isDir = file.isDirectory()}: DirEntry))
 
     /// パスの最後の要素 (ファイル名)。
     def baseName(path: String): String =

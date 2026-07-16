@@ -1,5 +1,7 @@
 // Editor — ui.json / hitbox.json エディタの常駐 HTTP サーバ本体。
-// ブラウザのエディタ画面 (別オリジン) から fetch で叩くため、全応答に CORS ヘッダを付ける。
+// ブラウザのエディタ画面 (別オリジン) から fetch で叩くため、許可したオリジンにだけ
+// CORS ヘッダを付けて応える。編集対象のプロジェクトは固定ではなく、起動後に
+// POST /project で切り替えられる (未選択のまま起動もできる)。
 // RemoteDebug と違いキュー (Bridge) は使わない: こちらにはゲームループが無く、リクエストの
 // 相手 (ファイル) 以外に共有する状態も無いので、ハンドラの中でその場で読んで返せば足りる。
 // executor を与えない (null) ので処理は 1 スレッド直列 = 同時リクエストも順番に並ぶ。
@@ -8,6 +10,7 @@ mod Editor {
     import java.lang.System
     import java.lang.Thread
     import java.lang.Exception
+    import java.io.{File => JFile}
     import java.net.InetSocketAddress
     import com.sun.net.httpserver.HttpServer
     import com.sun.net.httpserver.HttpHandler
@@ -15,12 +18,12 @@ mod Editor {
     import java.lang.{String => JavaString}
 
     use Util.Json.Json
-    use Util.Json.Json.{JObject, JArray, JString, JNumber, JBool}
+    use Util.Json.Json.{JObject, JArray, JString, JNumber, JBool, JNull}
 
     /// /health の version に載せる自分の版 (flix.toml の version と揃える)。
     def version(): String = "0.1.0"
 
-    /// 環境変数 EDITOR_DIR (編集対象のゲームプロジェクト)。未設定・空なら None。
+    /// 環境変数 EDITOR_DIR (起動時に選んでおく編集対象)。未設定・空なら None (未選択で起動)。
     pub def dirFromEnv(): Option[String] \ IO =
         let value = System.getenv("EDITOR_DIR");
         if (Object.isNull(value) or value == "") None else Some(value)
@@ -31,15 +34,17 @@ mod Editor {
         if (Object.isNull(value)) 8787 else Int32.fromString(value) |> Option.getWithDefault(8787)
 
     /// 127.0.0.1:port で HTTP サーバを立て、戻らずに待ち続ける。
+    /// initialDir は起動時の選択 (無ければ未選択で始め、POST /project を待つ)。
     /// caches はここで 1 回だけ作り、全リクエストで共有する (フォント atlas 等の焼き直し回避)。
-    pub def serve(dir: String, port: Int32): Unit \ IO =
+    pub def serve(initialDir: Option[String], port: Int32): Unit \ IO =
+        let selection = Projects.makeSelection(initialDir);
         let caches = Caches.make();
         let server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
         discard server.createContext("/", new HttpHandler {
             def handle(_this: HttpHandler, exchange: HttpExchange): Unit \ IO =
                 // 想定外の失敗でもサーバは落とさず、500 の JSON で理由を返して次のリクエストを受け続ける。
                 try {
-                    dispatch(dir, caches, exchange)
+                    dispatch(selection, caches, exchange)
                 } catch {
                     case e: Exception => {
                         let message = e.toString();
@@ -48,7 +53,10 @@ mod Editor {
                 }
         });
         server.start();
-        println("[editor] serving ${dir} on http://127.0.0.1:${port}");
+        match initialDir {
+            case Some(dir) => println("[editor] serving ${dir} on http://127.0.0.1:${port}")
+            case None      => println("[editor] no project selected — GET /projects で候補を見て POST /project で選ぶ (http://127.0.0.1:${port})")
+        };
         waitForever()
 
     /// main が返ると Flix ランタイムごと終了し得るので、ここで眠り続けてサーバを生かす。
@@ -59,28 +67,107 @@ mod Editor {
     // ── ルーティング ──────────────────────────────────────
 
     /// メソッドとパスで各エンドポイントへ振り分ける。
-    def dispatch(dir: String, caches: Caches.Caches, exchange: HttpExchange): Unit \ IO =
+    def dispatch(selection: Projects.Selection, caches: Caches.Caches, exchange: HttpExchange): Unit \ IO =
         let methodName = exchange.getRequestMethod();
         let uri = exchange.getRequestURI();
         let path = uri.getPath();
         let rawQuery = uri.getQuery();
         let params = queryParams(if (Object.isNull(rawQuery)) "" else rawQuery);
         match (methodName, path) {
-            case ("OPTIONS", _)     => sendPreflight(exchange)
-            case ("GET", "/health") => handleHealth(dir, exchange)
-            case ("GET", "/files")  => handleFiles(dir, exchange)
-            case ("GET", "/file")   => handleReadFile(dir, params, exchange)
-            case ("PUT", "/file")   => handleWriteFile(dir, readBody(exchange), exchange)
-            case ("POST", "/preview/ui") => {
+            case ("OPTIONS", _)        => sendPreflight(exchange)
+            case ("GET", "/projects")  => handleProjects(selection, exchange)
+            case ("POST", "/project")  => handleSelectProject(selection, readBody(exchange), exchange)
+            case ("GET", "/health")    => withProject(selection, exchange, dir -> handleHealth(dir, exchange))
+            case ("GET", "/files")     => withProject(selection, exchange, dir -> handleFiles(dir, exchange))
+            case ("GET", "/file")      => withProject(selection, exchange, dir -> handleReadFile(dir, params, exchange))
+            case ("PUT", "/file")      => withProject(selection, exchange, dir -> handleWriteFile(dir, readBody(exchange), exchange))
+            case ("POST", "/preview/ui") => withProject(selection, exchange, dir -> {
                 let (status, json) = PreviewUi.respond(dir, caches, readBody(exchange));
                 sendJson(status, json, exchange)
-            }
-            case ("POST", "/preview/hitbox") => {
+            })
+            case ("POST", "/preview/hitbox") => withProject(selection, exchange, dir -> {
                 let (status, json) = PreviewHitbox.respond(dir, caches, readBody(exchange));
                 sendJson(status, json, exchange)
-            }
-            case _                  => sendJson(404, errorJson("unknown endpoint: ${methodName} ${path}"), exchange)
+            })
+            case _                     => sendJson(404, errorJson("unknown endpoint: ${methodName} ${path}"), exchange)
         }
+
+    /// 選択中プロジェクトが要るエンドポイントの門番。未選択は 200 の ok:false で理由を返す
+    /// (エディタ画面はこれを見てプロジェクト選択へ誘導する)。
+    def withProject(selection: Projects.Selection, exchange: HttpExchange, respond: String -> Unit \ IO): Unit \ IO =
+        match Projects.currentDir(selection) {
+            case None      => sendJson(200, noProjectJson(), exchange)
+            case Some(dir) => respond(dir)
+        }
+
+    /// プロジェクト未選択のときの応答本文。error を {message} の形にするのは、
+    /// preview 系の失敗応答と同じ読み方でエディタ画面が扱えるようにするため。
+    def noProjectJson(): Json =
+        JObject(Map#{
+            "ok"    => JBool(false),
+            "error" => JObject(Map#{"message" => JString("no project selected")})
+        })
+
+    // ── プロジェクト切替 ──────────────────────────────────
+
+    /// GET /projects — 切替候補の一覧。current は選択中 (未選択は null)、recent は最近開いた順、
+    /// found は探索起点 (EDITOR_SCAN_ROOTS、既定 $HOME/Desktop) の深さ 2 までで見つけた
+    /// project.json 持ちディレクトリ。
+    def handleProjects(selection: Projects.Selection, exchange: HttpExchange): Unit \ IO =
+        let current = Projects.currentDir(selection);
+        let recent = Projects.loadRecent() |> List.map(dir -> projectEntryJson(dir));
+        let found = Projects.findProjects(Projects.scanRootsFromEnv()) |> List.map(dir -> projectEntryJson(dir));
+        sendJson(200, JObject(Map#{
+            "current" => current |> Option.map(dir -> JString(dir)) |> Option.getWithDefault(JNull),
+            "recent"  => JArray(List.toVector(recent)),
+            "found"   => JArray(List.toVector(found))
+        }), exchange)
+
+    /// 候補 1 件 {dir, title}。title は project.json の題名 (読めなければディレクトリ名)。
+    def projectEntryJson(dir: String): Json \ IO =
+        JObject(Map#{"dir" => JString(dir), "title" => JString(Projects.titleOf(dir))})
+
+    /// POST /project (body: {dir}) — 編集対象プロジェクトの切替。存在しない・project.json が
+    /// 無い/読めない dir は 400 で断り、選択は変えない。成功したら履歴の先頭へ記録する。
+    def handleSelectProject(selection: Projects.Selection, bodyText: String, exchange: HttpExchange): Unit \ IO =
+        let dirOpt = JsonCompat.parse(bodyText)
+            |> Option.flatMap(JsonCodec.expectObject)
+            |> Option.flatMap(obj -> Map.get("dir", obj))
+            |> Option.flatMap(JsonCodec.expectString);
+        match dirOpt {
+            case None      => sendJson(400, errorJson("body must be a JSON object {dir}"), exchange)
+            case Some(dir) =>
+                if (not new JFile(dir).isDirectory())
+                    sendJson(400, errorJson("no such directory: ${dir}"), exchange)
+                else if (not Projects.hasProjectJson(dir))
+                    sendJson(400, errorJson("project.json not found in: ${dir}"), exchange)
+                else
+                    // 履歴・current が同じプロジェクトの別表記 (末尾スラッシュ等) で
+                    // 二重登録されないよう、正規化した絶対パスに揃えてから選択する。
+                    selectValidated(new JFile(dir).getCanonicalPath(), selection, exchange)
+        }
+
+    /// 存在確認済みの dir へ切り替える。project.json が壊れていて読めないときは 400 で断る
+    /// (title も design も返せない切替は、エディタ画面がその後の全 API で困るだけ)。
+    def selectValidated(dir: String, selection: Projects.Selection, exchange: HttpExchange): Unit \ IO =
+        match (run { ProjectLoader.loadProject(dir) } with Fs.FileRead.runWithIO) {
+            case Err(message)      => sendJson(400, errorJson("project.json: ${message}"), exchange)
+            case Ok(loadedProject) =>
+                Projects.switchTo(dir, selection);
+                Projects.saveRecent(Projects.pushRecent(dir, Projects.loadRecent()));
+                let config = loadedProject#config;
+                sendJson(200, JObject(Map#{
+                    "ok"     => JBool(true),
+                    "dir"    => JString(dir),
+                    "title"  => JString(config#title),
+                    "design" => JObject(Map#{
+                        "w" => JNumber(JsonCodec.intToBd(config#designWidth)),
+                        "h" => JNumber(JsonCodec.intToBd(config#designHeight))
+                    })
+                }), exchange)
+        }
+
+    // ── ファイル・プレビュー系 ────────────────────────────
 
     /// GET /health — 対象プロジェクトの題名と設計解像度を返す。エディタ画面の接続確認用。
     /// project.json が読めなくてもサーバは起動継続する (ok: false で理由だけ返す)。
@@ -105,7 +192,7 @@ mod Editor {
     /// GET /files — 編集対象ファイルの一覧 (ui / hitbox 別) を返す。
     /// ui はメタ情報付き {path, composable} の列 (hitbox は従来どおり文字列の列)。
     def handleFiles(dir: String, exchange: HttpExchange): Unit \ IO =
-        let index = run { FileIndex.listFiles(dir) } with Fs.Glob.runWithIO;
+        let index = FileIndex.listFiles(dir);
         let uiEntries = index#ui |> List.map(relPath -> uiFileJson(dir, relPath));
         sendJson(200, JObject(Map#{
             "root"   => JString(dir),
@@ -157,6 +244,46 @@ mod Editor {
             }
         }
 
+    // ── CORS ──────────────────────────────────────────────
+
+    /// 既定で許すエディタ画面のオリジン (Vite の開発サーバ)。
+    def defaultAllowedOrigins(): List[String] =
+        "http://localhost:5173" :: "http://127.0.0.1:5173" :: Nil
+
+    /// 許可オリジンの一覧。EDITOR_ALLOW_ORIGINS (カンマ区切り) で追加できる。
+    def allowedOrigins(): List[String] \ IO =
+        let value = System.getenv("EDITOR_ALLOW_ORIGINS");
+        defaultAllowedOrigins() ::: (if (Object.isNull(value)) Nil else splitOrigins(value))
+
+    /// カンマ区切りの許可オリジン指定を分解する (前後の空白と空要素は捨てる)。
+    pub def splitOrigins(text: String): List[String] =
+        String.splitOn(substr = ",", text)
+            |> List.map(origin -> String.trim(origin))
+            |> List.filter(origin -> origin != "")
+
+    /// エコーしてよい Origin を決める。許可リストに無い・Origin ヘッダ自体が無い (curl 等) は
+    /// None = CORS ヘッダを付けない (ブラウザ以外のクライアントはヘッダ無しでそのまま通る)。
+    // WhyNot: ワイルドカード "*" を返さない — 任意の Web サイトがブラウザ経由で
+    // 127.0.0.1 の PUT /file を叩ける穴になるため。
+    pub def corsOriginFor(origin: Option[String], allowList: List[String]): Option[String] =
+        origin |> Option.flatMap(o -> if (List.memberOf(o, allowList)) Some(o) else None)
+
+    /// リクエストの Origin ヘッダ。無ければ None。
+    def requestOrigin(exchange: HttpExchange): Option[String] \ IO =
+        let value = exchange.getRequestHeaders().getFirst("Origin");
+        if (Object.isNull(value)) None else Some(value)
+
+    /// 許可した Origin にだけ Access-Control-Allow-Origin をエコーする。
+    /// Vary: Origin は、途中のキャッシュが別オリジン宛の応答を使い回さないための印。
+    def applyCors(exchange: HttpExchange): Unit \ IO =
+        match corsOriginFor(requestOrigin(exchange), allowedOrigins()) {
+            case None         => ()
+            case Some(origin) =>
+                let headers = exchange.getResponseHeaders();
+                headers.set("Access-Control-Allow-Origin", origin);
+                headers.set("Vary", "Origin")
+        }
+
     // ── HTTP の細部 ───────────────────────────────────────
 
     /// リクエストボディを UTF-8 文字列で読む。
@@ -177,18 +304,18 @@ mod Editor {
 
     /// OPTIONS 全パス — ブラウザの事前確認 (CORS preflight) に 204 で答える。
     def sendPreflight(exchange: HttpExchange): Unit \ IO =
+        applyCors(exchange);
         let headers = exchange.getResponseHeaders();
-        headers.set("Access-Control-Allow-Origin", "*");
         headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
         headers.set("Access-Control-Allow-Headers", "Content-Type");
         headers.set("Access-Control-Max-Age", "86400");
         exchange.sendResponseHeaders(204, -1i64);
         exchange.close()
 
-    /// JSON 応答を返す。別オリジンのエディタ画面から読めるよう、全応答に CORS ヘッダを付ける。
+    /// JSON 応答を返す。許可したオリジンのエディタ画面から読めるよう CORS ヘッダを付ける。
     def sendJson(status: Int32, json: Json, exchange: HttpExchange): Unit \ IO =
+        applyCors(exchange);
         let headers = exchange.getResponseHeaders();
-        headers.set("Access-Control-Allow-Origin", "*");
         headers.set("Content-Type", "application/json; charset=utf-8");
         let bytes = (Util.Json.toPrettyString(2, json) + "\n").getBytes("UTF-8");
         exchange.sendResponseHeaders(status, Int32.toInt64(Array.length(bytes)));

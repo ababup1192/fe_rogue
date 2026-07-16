@@ -100,7 +100,7 @@ help:
 	@echo "  make clean-locks          flix check 中断で残った Maven cache の *.lock を削除"
 	@echo "  make clean-example-builds examples/*/build/ を全削除 (IDE の scene.json glob 高速化用)"
 	@echo "  make sync-engine-full     engine_full だけ src 集約 & build-pkg & 配布 (examples へ)"
-	@echo "  make editor DIR=<dir>     ui.json/hitbox.json エディタのバックエンドを起動 (PORT=8787)"
+	@echo "  make editor [DIR=<dir>]   ui.json/hitbox.json エディタのバックエンドを起動 (PORT=8787。DIR 省略時は未選択で起動)"
 	@echo "  make release              全部入りを build-pkg し flix_game_engine の Release に公開"
 	@echo "  make bump FROM=x TO=y     全 flix.toml の version を一括更新 (lockstep)"
 
@@ -241,11 +241,12 @@ sync-engine-full:
 	done
 
 # ── エディタバックエンド ──────────────────────────────────
-# ui.json/hitbox.json エディタの常駐 HTTP サーバを、DIR のゲームプロジェクトを対象に起動する。
+# ui.json/hitbox.json エディタの常駐 HTTP サーバを起動する。DIR は省略可 —
+# 未指定ならプロジェクト未選択で立ち上がり、エディタ画面 (POST /project) から選ぶ。
 # 例: make editor DIR=../flix_ge_shapes PORT=8787
 editor:
-	@test -n "$(DIR)" || { echo "usage: make editor DIR=<game project dir> [PORT=8787]"; exit 1; }
-	cd $(EDITOR_SERVER_DIR) && EDITOR_DIR="$(abspath $(DIR))" EDITOR_PORT="$(if $(PORT),$(PORT),8787)" $(FLIX) run
+	@test -n "$(DIR)" || echo "[editor] DIR 未指定 — プロジェクト未選択で起動します (usage: make editor DIR=<game project dir> [PORT=8787])"
+	cd $(EDITOR_SERVER_DIR) && EDITOR_DIR="$(if $(DIR),$(abspath $(DIR)),)" EDITOR_PORT="$(if $(PORT),$(PORT),8787)" $(FLIX) run
 
 # ── リリース ──────────────────────────────────────────────
 # 自己完結の全部入り engine_full を build-pkg し、既存リポ flix_game_engine の GitHub Release に
