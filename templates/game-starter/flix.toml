@@ -6,4 +6,4 @@ flix        = "0.75.1"
 authors     = ["you <you@example.com>"]
 
 [dependencies]
-"github:ababup1192/flix_game_engine" = { version = "0.3.2", security = "unrestricted" }
+"github:ababup1192/flix_game_engine" = { version = "0.4.0", security = "unrestricted" }
