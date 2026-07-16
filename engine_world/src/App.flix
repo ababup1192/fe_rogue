@@ -61,6 +61,7 @@ mod App {
         startupSystems = List[w -> w \ ef],                        // 起動時に 1 回だけ・追加順
         updateSystems = List[(Frame, w) -> w \ ef],                // 毎フレーム・追加順
         reload = Option[(GameEngine.Key, w -> w \ {Fs.FileRead})], // ホットリロード（キーと、ファイル読みの副作用）
+        watch = List[(String, w -> w \ {Fs.FileRead})],            // 保存検知のホットリロード（パスと関数）の列・追加順
         // World を (置き場所, 見せたい物) の列へ投影する。None のゲームは App に描画させず自分の
         // システム内で描く（タイルマップ等の複数チャンネルを直接組むゲーム向け）。
         view = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef],
@@ -110,6 +111,7 @@ mod App {
           startupSystems = Nil,
           updateSystems = Nil,
           reload = None,
+          watch = Nil,
           view = None,
           camera = None,
           zoom = None,
@@ -136,6 +138,14 @@ mod App {
     /// 遊びながら設定ファイルを編集し、キー一発で効きを変える用途に。
     pub def reloadOn(key: GameEngine.Key, f: w -> w \ {Fs.FileRead}, app: App[w, ef]): App[w, ef] =
         { reload = Some((key, f)) | app }
+
+    /// path の保存（更新時刻の変化）を検知して World を作り直すホットリロードを繋ぐ。
+    /// reloadOn と同型の関数を渡せるので、F1 と保存検知に同じ関数を繋げる。
+    /// 監視は withDebug 有効時のみ・約 0.5 秒間隔。読めない・壊れたときの扱いは f の責務
+    /// （今の World をそのまま返す fail-open を推奨）。
+    /// 同じパスを複数回登録すると、保存のたびに登録順で全部発火する。
+    pub def watchFile(path: String, f: w -> w \ {Fs.FileRead}, app: App[w, ef]): App[w, ef] =
+        { watch = List.append(app#watch, (path, f) :: Nil) | app }
 
     /// World を絵（(置き場所, 見せたい物) の列）へ投影する関数を繋ぐ。
     /// 第 1 引数の ViewCtx から既定フォント（atlas）と見えている world 矩形（visible）が取れる。
@@ -378,6 +388,16 @@ mod App {
             case Some(c) => CameraRig.visibleRect(c, zoom = zoom, design = design)
             case None    => { position = Vec2.zero(), size = design }
         }
+
+    /// 監視中パスのうち「World を作り直すべき物」を watch の登録順で返す: current で見えて
+    /// prev と更新時刻が違うパスと、prev に無く current に現れたパス（新規出現）。
+    /// current に無いパス（消えた・読めない）は発火しない — 保存の途中で一瞬読めなくなる
+    /// エディタがあるので、見えなくなった事実では作り直さない。
+    pub def changedPaths(watch: List[String], prev: Map[String, Int64], current: Map[String, Int64]): List[String] =
+        watch |> List.filter(p -> match Map.get(p, current) {
+            case None    => false
+            case Some(t) => Map.get(p, prev) |> Option.forAll(prevT -> prevT != t)
+        })
 
     // ── ランナー: 起動して、閉じるまで回す ──
 

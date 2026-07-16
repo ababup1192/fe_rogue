@@ -11,6 +11,7 @@ mod Editor {
     import java.lang.Thread
     import java.lang.Exception
     import java.io.{File => JFile}
+    import java.nio.file.Files
     import java.math.{BigDecimal => JBigDecimal}
     import java.net.InetSocketAddress
     import com.sun.net.httpserver.HttpServer
@@ -34,18 +35,28 @@ mod Editor {
         let value = System.getenv("EDITOR_PORT");
         if (Object.isNull(value)) 8787 else Int32.fromString(value) |> Option.getWithDefault(8787)
 
+    /// 環境変数 EDITOR_WEB (ビルド済みエディタ画面のディレクトリ)。未設定なら既定の
+    /// 置き場所 (このリポの隣の flix_ge_editor/dist。cwd は editor_server/ なので 2 つ上がる)。
+    /// ディレクトリとして存在しなければ None = 静的配信は無効 (API サーバとしては従来どおり動く)。
+    pub def webRootFromEnv(): Option[String] \ IO =
+        let value = System.getenv("EDITOR_WEB");
+        let candidate = if (Object.isNull(value) or value == "") "../../flix_ge_editor/dist" else value;
+        let dirFile = new JFile(candidate);
+        if (dirFile.isDirectory()) Some(dirFile.getCanonicalPath()) else None
+
     /// 127.0.0.1:port で HTTP サーバを立て、戻らずに待ち続ける。
     /// initialDir は起動時の選択 (無ければ未選択で始め、POST /project を待つ)。
     /// caches はここで 1 回だけ作り、全リクエストで共有する (フォント atlas 等の焼き直し回避)。
     pub def serve(initialDir: Option[String], port: Int32): Unit \ IO =
         let selection = Projects.makeSelection(initialDir);
         let caches = Caches.make();
+        let webRoot = webRootFromEnv();
         let server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
         discard server.createContext("/", new HttpHandler {
             def handle(_this: HttpHandler, exchange: HttpExchange): Unit \ IO =
                 // 想定外の失敗でもサーバは落とさず、500 の JSON で理由を返して次のリクエストを受け続ける。
                 try {
-                    dispatch(selection, caches, exchange)
+                    dispatch(selection, caches, webRoot, exchange)
                 } catch {
                     case e: Exception => {
                         let message = e.toString();
@@ -58,6 +69,10 @@ mod Editor {
             case Some(dir) => println("[editor] serving ${dir} on http://127.0.0.1:${port}")
             case None      => println("[editor] no project selected — GET /projects で候補を見て POST /project で選ぶ (http://127.0.0.1:${port})")
         };
+        match webRoot {
+            case Some(_) => println("[editor] web UI: http://127.0.0.1:${port}/")
+            case None    => println("[editor] web UI: 無効(EDITOR_WEB が見つかりません)")
+        };
         waitForever()
 
     /// main が返ると Flix ランタイムごと終了し得るので、ここで眠り続けてサーバを生かす。
@@ -67,8 +82,9 @@ mod Editor {
 
     // ── ルーティング ──────────────────────────────────────
 
-    /// メソッドとパスで各エンドポイントへ振り分ける。
-    def dispatch(selection: Projects.Selection, caches: Caches.Caches, exchange: HttpExchange): Unit \ IO =
+    /// メソッドとパスで各エンドポイントへ振り分ける。API のパスが先に並び、
+    /// どれにも当たらない GET はビルド済みエディタ画面の静的ファイルとして探す。
+    def dispatch(selection: Projects.Selection, caches: Caches.Caches, webRoot: Option[String], exchange: HttpExchange): Unit \ IO =
         let methodName = exchange.getRequestMethod();
         let uri = exchange.getRequestURI();
         let path = uri.getPath();
@@ -91,6 +107,8 @@ mod Editor {
                 let (status, json) = PreviewHitbox.respond(dir, caches, readBody(exchange));
                 sendJson(status, json, exchange)
             })
+            case ("GET", _)            => handleStatic(webRoot, path, exchange)
+            case ("HEAD", _)           => handleStatic(webRoot, path, exchange)
             case _                     => sendJson(404, errorJson("unknown endpoint: ${methodName} ${path}"), exchange)
         }
 
@@ -280,6 +298,73 @@ mod Editor {
                 case Err(message) => sendJson(400, errorJson(message), exchange)
                 case Ok(_)        => sendJson(200, JObject(Map#{"ok" => JBool(true)}), exchange)
             }
+        }
+
+    // ── 静的配信 (ビルド済みエディタ画面) ─────────────────
+
+    /// API に無い GET パスを EDITOR_WEB 配下のファイルで答える。
+    /// 配信無効・門番で弾いた・実ファイルが無い、はどれも同じ 404 —
+    /// 区別して返すとプロジェクト外のファイルの有無が外から探れてしまう。
+    def handleStatic(webRoot: Option[String], path: String, exchange: HttpExchange): Unit \ IO =
+        let target = forM (
+            root    <- webRoot;
+            relPath <- staticRelPath(path)
+        ) yield (root, relPath);
+        let served = target |> Option.flatMap(pair -> {
+            let (root, relPath) = pair;
+            FileIndex.resolveInside(root, relPath)
+                |> Option.filter(fullPath -> new JFile(fullPath).isFile())
+                |> Option.map(fullPath -> (relPath, fullPath))
+        });
+        match served {
+            case Some((relPath, fullPath)) =>
+                sendBytes(contentTypeOf(relPath), Files.readAllBytes(new JFile(fullPath).toPath()), exchange)
+            case None =>
+                sendJson(404, errorJson("not found: ${path}"), exchange)
+        }
+
+    /// URL パス → 配信ルート相対のファイルパス。"/" は index.html を指す。
+    /// 空・`..` 入り・先頭を外しても "/" で始まる ("//host/…" 等) は None。
+    /// ここは文字列だけの純粋な門番で、シンボリックリンク越えの最終確認は
+    /// FileIndex.resolveInside (正規化して配下チェック) が受け持つ。
+    pub def staticRelPath(path: String): Option[String] =
+        let relPath =
+            if (path == "/") "index.html"
+            else if (String.startsWith(prefix = "/", path)) String.dropLeft(1, path)
+            else path;
+        let hasDotDot = String.splitOn(substr = "/", relPath) |> List.exists(segment -> segment == "..");
+        if (relPath == "" or hasDotDot or String.startsWith(prefix = "/", relPath))
+            None
+        else
+            Some(relPath)
+
+    /// 拡張子から Content-Type を決める。エディタ画面の dist に現れる種類だけ知っていて、
+    /// それ以外は中身を解釈させない octet-stream に倒す。
+    pub def contentTypeOf(path: String): String =
+        if      (String.endsWith(suffix = ".html", path))  "text/html; charset=utf-8"
+        else if (String.endsWith(suffix = ".js", path))    "text/javascript; charset=utf-8"
+        else if (String.endsWith(suffix = ".css", path))   "text/css; charset=utf-8"
+        else if (String.endsWith(suffix = ".svg", path))   "image/svg+xml"
+        else if (String.endsWith(suffix = ".png", path))   "image/png"
+        else if (String.endsWith(suffix = ".woff2", path)) "font/woff2"
+        else if (String.endsWith(suffix = ".json", path))  "application/json; charset=utf-8"
+        else "application/octet-stream"
+
+    /// バイト列そのままの 200 応答。sendJson (文字列経由) と別口なのは、
+    /// 画像やフォントを文字列に通すとバイトが壊れるため。
+    /// HEAD にはヘッダだけ返す (HttpServer は HEAD の本文書き込みを許さない)。
+    def sendBytes(contentType: String, bytes: Array[Int8, Static], exchange: HttpExchange): Unit \ IO =
+        applyCors(exchange);
+        let headers = exchange.getResponseHeaders();
+        headers.set("Content-Type", contentType);
+        if (exchange.getRequestMethod() == "HEAD") {
+            exchange.sendResponseHeaders(200, -1i64);
+            exchange.close()
+        } else {
+            exchange.sendResponseHeaders(200, Int32.toInt64(Array.length(bytes)));
+            let out = exchange.getResponseBody();
+            out.write(bytes);
+            out.close()
         }
 
     // ── CORS ──────────────────────────────────────────────

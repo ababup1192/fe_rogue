@@ -243,10 +243,11 @@ sync-engine-full:
 # ── エディタバックエンド ──────────────────────────────────
 # ui.json/hitbox.json エディタの常駐 HTTP サーバを起動する。DIR は省略可 —
 # 未指定ならプロジェクト未選択で立ち上がり、エディタ画面 (POST /project) から選ぶ。
+# EDITOR_WEB はビルド済みエディタ画面 (dist) の置き場所 (env で上書き可・無ければ配信無効の API 専用)。
 # 例: make editor DIR=../flix_ge_shapes PORT=8787
 editor:
 	@test -n "$(DIR)" || echo "[editor] DIR 未指定 — プロジェクト未選択で起動します (usage: make editor DIR=<game project dir> [PORT=8787])"
-	cd $(EDITOR_SERVER_DIR) && EDITOR_DIR="$(if $(DIR),$(abspath $(DIR)),)" EDITOR_PORT="$(if $(PORT),$(PORT),8787)" $(FLIX) run
+	cd $(EDITOR_SERVER_DIR) && EDITOR_DIR="$(if $(DIR),$(abspath $(DIR)),)" EDITOR_PORT="$(if $(PORT),$(PORT),8787)" EDITOR_WEB="$(if $(EDITOR_WEB),$(EDITOR_WEB),$(abspath ../flix_ge_editor/dist))" $(FLIX) run
 
 # ── リリース ──────────────────────────────────────────────
 # 自己完結の全部入り engine_full を build-pkg し、既存リポ flix_game_engine の GitHub Release に
@@ -269,11 +270,11 @@ bump:
 	@for f in $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR) $(ENGINE_FULL_DIR); do \
 		perl -pi -e 's/^(version\s*=\s*)"\Q$(FROM)\E"/$${1}"$(TO)"/' "$$f/flix.toml"; \
 	done
-	@for f in $(ENGINE_DIR)/flix.toml $(RENDER_GL_DIR)/flix.toml $(ENGINE_WORLD_DIR)/flix.toml $(ENGINE_TOOLS_DIR)/flix.toml $(ENGINE_FULL_DIR)/flix.toml $(EDITOR_SERVER_DIR)/flix.toml examples/*/flix.toml templates/*/flix.toml; do \
-		[ -f "$$f" ] && perl -pi -e 's|(ababup1192/flix_[a-z_]*"[^"]*version = )"\Q$(FROM)\E"|$${1}"$(TO)"|g' "$$f" || true; \
+	@for f in $(ENGINE_DIR)/flix.toml $(RENDER_GL_DIR)/flix.toml $(ENGINE_WORLD_DIR)/flix.toml $(ENGINE_TOOLS_DIR)/flix.toml $(ENGINE_FULL_DIR)/flix.toml $(EDITOR_SERVER_DIR)/flix.toml examples/*/flix.toml templates/*/flix.toml bench/*/flix.toml flix_ge_shapes/flix.toml; do \
+		[ -f "$$f" ] && perl -pi -e 's|(ababup1192/flix_[a-z_]*"[^"]*version = )"[0-9]+\.[0-9]+\.[0-9]+"|$${1}"$(TO)"|g' "$$f" || true; \
 	done
 	@perl -pi -e 's/^(VERSION := ).*/$${1}$(TO)/' Makefile
-	@echo "[bump] $(FROM) -> $(TO) 完了 (flix-random と flix コンパイラ版は据え置き)。"
+	@echo "[bump] $(FROM) -> $(TO) 完了 (依存行は旧版どれでも TO へ・flix-random と flix コンパイラ版は据え置き)。"
 
 # ── コミュニティビルド用ルート src/ ──────────────────────
 # Flix 公式の community build (flix/flix の community-build.yaml) は、このリポジトリを
