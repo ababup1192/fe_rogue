@@ -415,12 +415,17 @@ mod App {
         let world0 = List.foldLeft((acc, sys) -> sys(acc), init(GameEngine.Game.getViewportRect()#size), app#startupSystems);
         let bridge = if (canDebug(app)) Option.map(RemoteDebug.start, RemoteDebug.portFromEnv())
                      else None;
+        // 起動時点の更新時刻を「発火なしで」焼いておく — 焼かないと最初のポーリングが
+        // 全パスを新規出現と見なし、init 直後にもう一度リロードが走ってしまう。
+        let watch0 = if (app#debug and not List.isEmpty(app#watch))
+                         { sincePoll = 0.0, mtimes = statMtimes(List.map(fst, app#watch)) }
+                     else freshWatchState();
         // キーと同じく、起動時にすでに押されているボタンは一度離すまでエッジにならない。
         // カーソルの「前の位置」はまだ無い（None）ので、最初のフレームの mouseMoved は false。
         // 固定ステップの状態（持ち越し秒と未消費エッジ）は空から始める。
         loop(app, world0, InputEvent.currentKeys(),
              GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left), None,
-             Annotate.initial(), Nil, bridge, false, freshStepState());
+             Annotate.initial(), Nil, bridge, false, freshStepState(), watch0);
         Option.forEach(RemoteDebug.shutdown, bridge)
 
     /// 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
@@ -444,11 +449,12 @@ mod App {
     /// stepState は withFixedStep の持ち回し（持ち越し秒 + 未消費エッジ。未使用なら初期値のまま）。
     /// 一時停止中・リモート処理中・一時停止からの再開フレームはどの分岐でも world を進めないので
     /// stepState も動かさず素通しする（巻き戻すのは World の見た目であって、貯まっていた
-    /// 実時間の端数や取り置いたエッジではない）。
+    /// 実時間の端数や取り置いたエッジではない）。watchState（watchFile の保存検知）も同じ扱い —
+    /// World に触れない分岐では監視も動かさず素通しする。
     def loop(app: App[w, ef], world: w, prevKeys: Set[GameEngine.Key], prevMouseDown: Bool,
              prevCursor: Option[Vec2.Vec2], anno: Annotate.State, history: List[w],
              bridge: Option[RemoteDebug.Bridge], remoteHold: Bool,
-             stepState: StepState): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
+             stepState: StepState, watchState: WatchState): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
         let currentKeys = InputEvent.currentKeys();
         let mouseDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
         let cursorNow = GameEngine.Game.getMousePosition();
@@ -470,7 +476,7 @@ mod App {
                     // （停止中は元々進まないし、実行中でも 1 フレームの息継ぎに過ぎない）。
                     let next = handleRemote(app, b, raw,
                         { world = world, anno = anno, history = history, hold = remoteHold });
-                    loop(app, next#world, currentKeys, mouseDown, Some(cursorNow), next#anno, next#history, bridge, next#hold, stepState)
+                    loop(app, next#world, currentKeys, mouseDown, Some(cursorNow), next#anno, next#history, bridge, next#hold, stepState, watchState)
                 case _ => {
                     let toggled = justPressed(GameEngine.Key.F8, frame) and canDebug(app) and not remoteHold;
                     let pausedNow = if (toggled) not anno#paused else anno#paused;
@@ -483,15 +489,16 @@ mod App {
                     } else ();
                     if (pausedNow) {
                         let nextAnno = pausedStep(app, world, history, frame, { paused = true | anno });
-                        loop(app, world, currentKeys, mouseDown, Some(cursorNow), nextAnno, history, bridge, remoteHold, stepState)
+                        loop(app, world, currentKeys, mouseDown, Some(cursorNow), nextAnno, history, bridge, remoteHold, stepState, watchState)
                     } else if (anno#paused) {
                         // 一時停止を抜けるフレーム: スクラブ位置の World から再開する。
                         // 巻き戻したぶんの履歴とフレーム番号も、そこを現在として数え直す。
                         let resumed = resumePoint(anno, history, world);
                         renderFrame(app, resumed#world, fpsOverlayOf(app, resumed#anno));
-                        loop(app, resumed#world, currentKeys, mouseDown, Some(cursorNow), resumed#anno, resumed#history, bridge, remoteHold, stepState)
+                        loop(app, resumed#world, currentKeys, mouseDown, Some(cursorNow), resumed#anno, resumed#history, bridge, remoteHold, stepState, watchState)
                     } else {
-                        let reloaded = applyReload(app, frame, world);
+                        let (watched, nextWatchState) = applyWatch(app, frame#dt, watchState, world);
+                        let reloaded = applyReload(app, frame, watched);
                         let (advanced, nextStepState) = advanceFrame(app, frame, stepState, reloaded);
                         playSounds(app, reloaded, advanced);
                         // fps は debug 有効時だけ計測する（本番ビルドは履歴を積まず無負荷）。
@@ -501,7 +508,7 @@ mod App {
                         let nextHistory = if (canDebug(app))
                                               List.take(historyLimit(), advanced :: history)
                                           else Nil;
-                        loop(app, advanced, currentKeys, mouseDown, Some(cursorNow), { frame = measuredAnno#frame + 1i64 | measuredAnno }, nextHistory, bridge, remoteHold, nextStepState)
+                        loop(app, advanced, currentKeys, mouseDown, Some(cursorNow), { frame = measuredAnno#frame + 1i64 | measuredAnno }, nextHistory, bridge, remoteHold, nextStepState, nextWatchState)
                     }
                 }
             }
@@ -650,6 +657,54 @@ mod App {
         match app#reload {
             case Some((key, f)) => if (justPressed(key, frame)) f(world) else world
             case None           => world
+        }
+
+    /// watchFile がフレームをまたいで持ち回す状態（前回ポーリングからの経過秒と、
+    /// 前回見えた各パスの更新時刻）。監視しないゲームでは常に初期値のまま動かない。
+    type alias WatchState = { sincePoll = Float64, mtimes = Map[String, Int64] }
+
+    /// 監視を持たない・まだ何も見ていない WatchState。
+    def freshWatchState(): WatchState =
+        { sincePoll = 0.0, mtimes = Map.empty() }
+
+    /// 保存検知のポーリング間隔（秒）。体感の即時性と毎フレーム stat のコストの折り合い。
+    def watchPollInterval(): Float64 = 0.5
+
+    /// 監視中パスの更新時刻（epoch ミリ秒）をまとめて読む。読めないパスは黙って除く。
+    // Fs.FileTime を launch の効果行に出さないのは、デバッグ専用の内部ポーリングのために
+    // 全ゲームの Main へ with 追記を強いないため（ここで IO へ畳んで閉じる）。
+    def statMtimes(paths: List[String]): Map[String, Int64] \ IO =
+        run {
+            run {
+                List.foldLeft((acc, p) -> match Fs.ModificationTime.modificationTime(p) {
+                    case Ok(t)  => Map.insert(p, t, acc)
+                    case Err(_) => acc
+                }, Map.empty(), paths)
+            } with Fs.ModificationTime.runWithFileTime
+        } with Fs.FileTime.runWithIO
+
+    /// 保存検知の 1 フレームぶん: 間隔に達したら更新時刻を読み、変化したパスの関数を
+    /// 登録順に適用して World を作り直す（発火は標準エラーへ 1 行知らせる）。
+    /// debug 無効・watch 空・間隔未達なら stat を一切しない（フレーム予算ゼロ）。
+    def applyWatch(app: App[w, ef], dt: Float64, state: WatchState, world: w): (w, WatchState) \ {Fs.FileRead, IO} =
+        if (not app#debug or List.isEmpty(app#watch))
+            (world, state)
+        else {
+            let waited = state#sincePoll + dt;
+            if (waited < watchPollInterval())
+                (world, { sincePoll = waited | state })
+            else {
+                let current = statMtimes(List.map(fst, app#watch));
+                let changed = changedPaths(List.map(fst, app#watch), state#mtimes, current);
+                let next = app#watch |> List.foldLeft((acc, entry) -> {
+                    let (path, f) = entry;
+                    if (List.memberOf(path, changed)) {
+                        System.err.println("watch reload: ${path}");
+                        f(acc)
+                    } else acc
+                }, world);
+                (next, { sincePoll = 0.0, mtimes = current })
+            }
         }
 
     /// audio の導いた音名を鳴らす（システム適用の前後の World から導く）。

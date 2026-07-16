@@ -447,4 +447,43 @@ mod TestApp {
         Assert.assertEq(
             expected = (0, (Set#{GameEngine.Key.Z}, false, false, 0.0)),
             (w1, pendingTuple(s1#pending)))
+
+    // ========================================================================
+    // changedPaths: 保存検知の判定（watchFile の純粋な芯）
+    // ========================================================================
+
+    // 変化なし: 前回と今回の更新時刻が同じなら何も発火しない。
+    @Test
+    def testChangedPathsNoChangeIsEmpty(): Unit \ Assert =
+        let times = Map#{"a.json" => 100i64, "b.json" => 200i64};
+        Assert.assertEq(expected = Nil,
+            App.changedPaths("a.json" :: "b.json" :: Nil, times, times))
+
+    // 更新時刻の変化: 変わったパスだけが返る。
+    @Test
+    def testChangedPathsMtimeChangeFires(): Unit \ Assert =
+        Assert.assertEq(expected = "a.json" :: Nil,
+            App.changedPaths("a.json" :: "b.json" :: Nil,
+                Map#{"a.json" => 100i64, "b.json" => 200i64},
+                Map#{"a.json" => 150i64, "b.json" => 200i64}))
+
+    // 新規出現: 前回に無く今回見えたパスは発火する。
+    @Test
+    def testChangedPathsNewFileFires(): Unit \ Assert =
+        Assert.assertEq(expected = "a.json" :: Nil,
+            App.changedPaths("a.json" :: Nil, Map#{}, Map#{"a.json" => 100i64}))
+
+    // 消失: 今回見えないパス（消えた・読めない）は発火しない。
+    @Test
+    def testChangedPathsMissingFileIsSilent(): Unit \ Assert =
+        Assert.assertEq(expected = Nil,
+            App.changedPaths("a.json" :: Nil, Map#{"a.json" => 100i64}, Map#{}))
+
+    // 登録順: 複数のパスが同時に変わっても、返る順は watch の登録順のまま。
+    @Test
+    def testChangedPathsKeepsRegistrationOrder(): Unit \ Assert =
+        Assert.assertEq(expected = "b.json" :: "a.json" :: Nil,
+            App.changedPaths("b.json" :: "a.json" :: Nil,
+                Map#{"a.json" => 100i64, "b.json" => 200i64},
+                Map#{"a.json" => 101i64, "b.json" => 201i64}))
 }

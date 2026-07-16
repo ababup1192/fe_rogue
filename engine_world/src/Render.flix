@@ -16,7 +16,8 @@ mod Render {
                       flipH = Bool, flipV = Bool, regionRect = Option[Rect2.Rect2], zIndex = Int32 })
         case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color, zIndex = Int32 })
         case Box({ size = Vec2.Vec2, color = Color, alpha = Float32,
-                   style = Option[GameEngine.BoxStyle], zIndex = Int32 })
+                   style = Option[GameEngine.BoxStyle], zIndex = Int32,
+                   blend = DrawCmd.Blend })
         /// 単色の単純多角形（自己交差しなければ凹でもよい。塗りは描画側が耳切りで三角形化）。
         /// 頂点は置き場所からの相対座標（draw が置き場所を全頂点に加算する）。
         case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32 })
@@ -56,7 +57,8 @@ mod Render {
     /// 単色塗りの矩形（左上原点・サイズ指定）。
     pub def box(size: Vec2.Vec2, color: Color, zIndex: Int32): Item =
         Item.Box({ size = size, color = color, alpha = 1.0f32,
-                         style = Some(solidStyle()), zIndex = zIndex })
+                         style = Some(solidStyle()), zIndex = zIndex,
+                         blend = DrawCmd.Blend.Normal })
 
     /// 単色塗りの円（直径 radius×2 の全角丸 Box）。置き場所は外接正方形の左上。
     /// 中心で置きたいときは circleAt を使う。
@@ -250,6 +252,15 @@ mod Render {
             |> rotated(t)
             |> List.map(v -> Vec2.add(v, pivot))
 
+    /// 加算合成にする（Box に効く — circle / boxAt 系は中身が Box）。下の色に足し込むので
+    /// 重なるほど明るくなる。火花・光のにじみ・レーザーのような発光表現に使う。
+    /// Sprite / Text / Poly は v1 では対象外（素通し）。
+    pub def additive(item: Item): Item =
+        onLeaf(leaf -> match leaf {
+            case Item.Box(b) => Item.Box({ blend = DrawCmd.Blend.Add | b })
+            case other       => other
+        }, item)
+
     /// 枠線を付ける（Box に効く）。
     pub def outline(color: Color, width: Float64, item: Item): Item =
         onLeaf(leaf -> match leaf {
@@ -386,7 +397,7 @@ mod Render {
             case Item.Text(t) =>
                 textDrawables(t#text, t#fontAtlas, t#fontSize, t#tint, t#zIndex, pos)
             case Item.Box(b) =>
-                boxDrawable(b#size, b#color, b#alpha, b#style, b#zIndex, pos) :: Nil
+                boxDrawable(b, pos) :: Nil
             case Item.Poly(_) =>
                 bug!("Render.toDrawables: Poly は Drawable にならない（draw が PolygonRenderCmd へ振り分ける）")
             case Item.Clipped(c) =>
@@ -419,7 +430,7 @@ mod Render {
                    scale = {x = s#scale#x * flipSign(s#flipH), y = s#scale#y * flipSign(s#flipV)},
                    rotation = s#rotation, color = s#tint, alpha = s#alpha, centered = s#centered,
                    uvOffset = uvOff, uvScale = uvScl, zIndex = s#zIndex, style = None,
-                   clip = None }: GameEngine.Drawable) :: Nil
+                   clip = None, blend = DrawCmd.Blend.Normal }: GameEngine.Drawable) :: Nil
             case other => toDrawables(other, pos)
         }
 
@@ -442,7 +453,8 @@ mod Render {
                   uvScale  = {x = 1.0, y = 1.0},
                   zIndex   = zIndex,
                   style    = None,
-                  clip     = None }
+                  clip     = None,
+                  blend    = DrawCmd.Blend.Normal }
         }
 
     def flipSign(b: Bool): Float64 = if (b) -1.0 else 1.0
@@ -454,20 +466,22 @@ mod Render {
         Text.toDrawables(Text.make(content, fontAtlas, fontSize), pos)
             |> List.map(d -> {color = tint, zIndex = zIndex | d})
 
-    def boxDrawable(size: Vec2.Vec2, color: Color, alpha: Float32,
-                    style: Option[GameEngine.BoxStyle], zIndex: Int32,
+    def boxDrawable(b: { size = Vec2.Vec2, color = Color, alpha = Float32,
+                         style = Option[GameEngine.BoxStyle], zIndex = Int32,
+                         blend = DrawCmd.Blend },
                     pos: Vec2.Vec2): GameEngine.Drawable =
         // texture=""・centered=false・position=左上・scale=ピクセルサイズ・style=Some で単色塗り。
         { texture  = "",
           position = pos,
-          scale    = size,
+          scale    = b#size,
           rotation = 0.0,
-          color    = color,
-          alpha    = alpha,
+          color    = b#color,
+          alpha    = b#alpha,
           centered = false,
           uvOffset = {x = 0.0, y = 0.0},
           uvScale  = {x = 1.0, y = 1.0},
-          zIndex   = zIndex,
-          style    = style,
-          clip     = None }
+          zIndex   = b#zIndex,
+          style    = b#style,
+          clip     = None,
+          blend    = b#blend }
 }

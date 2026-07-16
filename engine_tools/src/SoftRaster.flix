@@ -91,7 +91,10 @@ mod SoftRaster {
             |> List.sortBy(ix -> let (idx, item) = ix; (zOf(item), idx))
             |> List.map(ix -> let (_, item) = ix; item);
         List.forEach(item -> match item {
-            case Result.Ok(d)  => withClip(g, sf, d#clip, () -> drawDrawable(g, sf, textures, fctx, d))
+            case Result.Ok(d)  => match d#blend {
+                case DrawCmd.Blend.Normal => withClip(g, sf, d#clip, () -> drawDrawable(g, sf, textures, fctx, d))
+                case DrawCmd.Blend.Add    => drawAdditive(image, sf, textures, fctx, d)
+            }
             case Result.Err(p) => withClip(g, sf, p#clip, () -> drawPolygon(rc, g, sf, p))
         }, sorted);
         g.dispose();
@@ -180,6 +183,98 @@ mod SoftRaster {
                 g.setColor(awtColor(d#color, d#alpha));
                 g.drawString(str, f32(baselineX), f32(baselineY))
         }
+
+    // ════════════════════════════════════════════════════════
+    // 加算合成（blend = Add の Drawable）
+    // ════════════════════════════════════════════════════════
+
+    /// blend = Add の Drawable を 1 つ描く。Java2D に「足し込み」の合成モードが無いので、
+    /// いったん透明な下書きへ普通に描き、そのピクセルを出力へ飽和つき足し算で写す。
+    /// 下書きは描かれる範囲のバウンディングボックスに切り詰め、走査を粒の近傍だけに抑える。
+    def drawAdditive(image: BufferedImage, sf: Float64,
+                     textures: Map[String, BufferedImage], fctx: FontCtx,
+                     d: GameEngine.Drawable): Unit \ IO =
+        let (bx0, by0, bx1, by1) = additiveBounds(image, sf, textures, d);
+        let bw = bx1 - bx0;
+        let bh = by1 - by0;
+        if (bw <= 0 or bh <= 0) () else {
+            let scratch = new BufferedImage(bw, bh, 2i32);
+            let gs: Graphics2D = scratch.createGraphics();
+            gs.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            gs.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            gs.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            gs.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+            // 原点を bbox 左上へずらし、出力ピクセル座標のまま既存の描画関数を使う
+            // （clip 窓の座標も平行移動された user 空間でそのまま正しく効く）。
+            gs.translate(0i32 - bx0, 0i32 - by0);
+            withClip(gs, sf, d#clip, () -> drawDrawable(gs, sf, textures, fctx, d));
+            gs.dispose();
+            addPixels(image, scratch, bx0, by0)
+        }
+
+    /// 加算描画の対象範囲（出力ピクセルの整数矩形・画像内にクランプ済み）。
+    /// 回転はどの向きでも対角線の内側に収まるので、回転があるときは対角線ぶん外へ広げる。
+    /// 枠線は塗りの外へ半分はみ出し、AA が 1px 弱にじむので、その分も足す。
+    /// フォントグリフはセル寸法の逆算が絡むため全面を対象にする（加算テキストは稀 — 正しさ優先）。
+    def additiveBounds(image: BufferedImage, sf: Float64, textures: Map[String, BufferedImage],
+                       d: GameEngine.Drawable): (Int32, Int32, Int32, Int32) \ IO =
+        let imgW = image.getWidth();
+        let imgH = image.getHeight();
+        let (px, py, w, h) =
+            if (String.isEmpty(d#texture))
+                (d#position#x, d#position#y, d#scale#x, d#scale#y)
+            else if (String.startsWith({prefix = "font_"}, d#texture))
+                (0.0, 0.0, Int32.toFloat64(imgW) / sf, Int32.toFloat64(imgH) / sf)
+            else match Map.get(d#texture, textures) {
+                case None      => (0.0, 0.0, 0.0, 0.0)
+                case Some(img) =>
+                    let dw = Int32.toFloat64(img.getWidth()) * d#scale#x;
+                    let dh = Int32.toFloat64(img.getHeight()) * d#scale#y;
+                    let ox = if (d#centered) d#position#x - dw / 2.0 else d#position#x;
+                    let oy = if (d#centered) d#position#y - dh / 2.0 else d#position#y;
+                    (ox, oy, dw, dh)
+            };
+        // flip（負の scale）でも lo/hi に正規化して正の矩形にする。
+        let lox = Float64.min(px, px + w);
+        let hix = Float64.max(px, px + w);
+        let loy = Float64.min(py, py + h);
+        let hiy = Float64.max(py, py + h);
+        let borderW = match d#style { case Some(st) => st#borderWidth case None => 0.0 };
+        let diag = Vec2.sqrt(w * w + h * h);
+        let margin = (if (d#rotation == 0.0) 0.0 else diag) + borderW + 2.0;
+        let x0 = clampI(floorI((lox - margin) * sf), 0i32, imgW);
+        let y0 = clampI(floorI((loy - margin) * sf), 0i32, imgH);
+        let x1 = clampI(floorI((hix + margin) * sf) + 1, 0i32, imgW);
+        let y1 = clampI(floorI((hiy + margin) * sf) + 1, 0i32, imgH);
+        (x0, y0, x1, y1)
+
+    /// 下書き（scratch）のピクセルを image の (dx, dy) 起点へ足し込む。
+    /// GL の glBlendFunc(SRC_ALPHA, GL_ONE) と同じ式: 出力 = min(255, 下地 + 描き色 × α)。
+    def addPixels(image: BufferedImage, scratch: BufferedImage, dx: Int32, dy: Int32): Unit \ IO =
+        let w = scratch.getWidth();
+        let h = scratch.getHeight();
+        let srcRow: Array[Int32, Static] = Array.empty(Static, w);
+        let dstRow: Array[Int32, Static] = Array.empty(Static, w);
+        List.range(0, h) |> List.forEach(y -> {
+            discard scratch.getRGB(0i32, y, w, 1i32, srcRow, 0i32, w);
+            discard image.getRGB(dx, dy + y, w, 1i32, dstRow, 0i32, w);
+            List.range(0, w) |> List.forEach(x -> {
+                let s = Array.get(x, srcRow);
+                let a = Int32.bitwiseAnd(Int32.logicalRightShift(dist = 24, s), 255);
+                if (a == 0) () else {
+                    let dpx = Array.get(x, dstRow);
+                    let ch = shift -> Int32.min(255,
+                        Int32.bitwiseAnd(Int32.logicalRightShift(dist = shift, dpx), 255)
+                        + (Int32.bitwiseAnd(Int32.logicalRightShift(dist = shift, s), 255) * a) / 255);
+                    let da = Int32.bitwiseAnd(Int32.logicalRightShift(dist = 24, dpx), 255);
+                    let out = Int32.bitwiseOr(Int32.leftShift(da, 24),
+                              Int32.bitwiseOr(Int32.leftShift(ch(16), 16),
+                              Int32.bitwiseOr(Int32.leftShift(ch(8), 8), ch(0))));
+                    Array.put(out, x, dstRow)
+                }
+            });
+            image.setRGB(dx, dy + y, w, 1i32, dstRow, 0i32, w)
+        })
 
     /// 単色矩形（角丸＋枠）。scale が design px サイズ、position が左上。
     /// 重ねる順は GL シェーダと同じ 塗り → 縞 → 市松 → 枠。
