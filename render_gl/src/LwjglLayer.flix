@@ -17,6 +17,7 @@ mod LwjglLayer {
     import org.lwjgl.glfw.GLFWVidMode
     import org.lwjgl.opengl.GL
     import org.lwjgl.opengl.GL11
+    import org.lwjgl.opengl.GL20
     import org.lwjgl.openal.AL
     import org.lwjgl.openal.AL10
     import org.lwjgl.openal.ALC
@@ -274,6 +275,7 @@ mod LwjglLayer {
         // location はリンク後に不変なので起動時に 1 回だけ引く（RenderShader.spriteUniformsOf 参照）。
         let spriteUniforms = RenderShader.spriteUniformsOf(spriteShader);
         let tileUniforms = RenderShader.tileUniformsOf(tileShader);
+        let instMultiplyBlend = GL20.glGetUniformLocation(instShader, "multiplyBlend");
 
         let (vao, quadVBO) = RenderSprite.initSpriteRenderer();
         let (polyVao, polyVbo) = RenderSprite.initPolygonRenderer();
@@ -349,7 +351,8 @@ mod LwjglLayer {
                 sprites = sprites, tileMaps = tileMaps, polygons = polygons,
                 polyVao = polyVao, polyVbo = polyVbo,
                 instShader = instShader, instVao = instVao, instVbo = instVbo,
-                spriteUniforms = spriteUniforms, tileUniforms = tileUniforms})
+                spriteUniforms = spriteUniforms, tileUniforms = tileUniforms,
+                instMultiplyBlend = instMultiplyBlend})
         };
 
         // 6 種のスタンダードカーソルを起動時に作成して再利用する。

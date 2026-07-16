@@ -109,7 +109,7 @@
         },
         "sizeOver": { "$ref": "#/$defs/curve", "description": "大きさの倍率カーブ" },
         "alphaOver": { "$ref": "#/$defs/curve", "description": "透明度の倍率カーブ" },
-        "blend": { "type": "string", "enum": ["normal", "add"], "description": "重ね方。add は下の色に足し込む（重なるほど明るい — 火花・光向け）。省略時 normal" },
+        "blend": { "type": "string", "enum": ["normal", "add", "multiply"], "description": "重ね方。add は下の色に足し込む（重なるほど明るい — 火花・光向け）。省略時 normal" },
         "zIndex": { "type": "integer", "description": "描画順。省略時 0" }
       },
       "required": ["name", "count", "size", "color", "life"],

@@ -14,7 +14,7 @@ mod TestPreviewFx {
           life = life, speed = { base = speed#base, vary = speed#vary, over = speed#over },
           dir = { base = 0.0, spread = 360.0 },
           sizeOver = sizeOver, alphaOver = FxDoc.CurveSpec.Constant,
-          blend = DrawCmd.Blend.Normal, zIndex = 0 }
+          blend = DrawCmd.BlendMode.Normal, zIndex = 0 }
 
     /// 等速 (constant)・vary 無しの emitter (見積もりの基本形)。
     def constEmitter(speedBase: Float64, size: Float64): FxDoc.Emitter =

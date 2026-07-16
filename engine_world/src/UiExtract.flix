@@ -141,7 +141,7 @@ mod UiExtract {
             | DrawCmd.defaultStyle(box#borderColor)
         }: GameEngine.BoxStyle);
         Render.Item.Box({size = size, color = box#color, alpha = box#alpha, style = Some(style), zIndex = box#zIndex,
-                         blend = DrawCmd.Blend.Normal})
+                         blend = DrawCmd.BlendMode.Normal})
 
     /// text の Item。atlasOf で font 名から FontAtlas を引く。
     def textItem(comp: UiWidget.TextComp, atlasOf: String -> FontAtlas \ ef): Render.Item \ ef =
@@ -157,7 +157,8 @@ mod UiExtract {
         Render.Item.Sprite({texture = sprite#texture, tint = sprite#tint, alpha = 1.0f32,
                                   scale = regionAdjustedScale(sprite, regionOpt, textureInfoOf), rotation = 0.0, centered = false,
                                   flipH = sprite#flipH, flipV = sprite#flipV,
-                                  regionRect = regionOpt, zIndex = sprite#zIndex})
+                                  regionRect = regionOpt, zIndex = sprite#zIndex,
+                                  blend = DrawCmd.BlendMode.Normal})
 
     /// region 使用時の描画 scale 補正。レンダラは quad を「テクスチャ全体サイズ × scale」で張るため、
     /// region（セル）描画では scale に regionSize/texSize を掛けて quad をセルサイズ × scale にする

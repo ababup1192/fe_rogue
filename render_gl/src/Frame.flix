@@ -67,7 +67,9 @@ mod RenderFrame {
         instVao = Int32,
         instVbo = Int32,
         spriteUniforms = RenderShader.SpriteUniforms,
-        tileUniforms = RenderShader.TileUniforms
+        tileUniforms = RenderShader.TileUniforms,
+        // instanced シェーダの premultiply スイッチ（Multiply ブレンド用）の uniform location。
+        instMultiplyBlend = Int32
     }
 
     /// 溜めた run（同じテクスチャの連続スプライト列）を 1 回の instanced draw で
@@ -77,7 +79,8 @@ mod RenderFrame {
     /// itemsRev は cons で積んだ逆順。末尾位置から前へ詰め戻すことで
     /// List.reverse なしに instance 順 = 列順を守る。
     def flushSpriteRun(instShader: Int32, instVao: Int32, instVbo: Int32,
-                        texId: Int32, count: Int32,
+                        texId: Int32, multiplyBlendLoc: Int32, blend: DrawCmd.BlendMode,
+                        count: Int32,
                         itemsRev: List[Array[Float32, Static]]): Unit \ IO =
         if (count == 0) () else {
             let data = Array.empty(Static, count * 38);
@@ -86,7 +89,8 @@ mod RenderFrame {
                 Array.forEachWithIndex((j, v) -> Array.put(v, base + j, data), inst);
                 endIdx - 1
             }, count, itemsRev);
-            RenderSprite.drawSpriteInstanced(instShader, instVao, instVbo, texId, data, count)
+            RenderSprite.drawSpriteInstanced(instShader, instVao, instVbo, texId,
+                                             multiplyBlendLoc, blend, data, count)
         }
 
     /// 1 フレーム描画: tileMaps を先に zIndex 順で描き、続いて sprites を zIndex 順で描く。
@@ -110,6 +114,7 @@ mod RenderFrame {
         let instVbo      = args#instVbo;
         let spriteUniforms = args#spriteUniforms;
         let tileUniforms = args#tileUniforms;
+        let instMultiplyBlend = args#instMultiplyBlend;
         if (fbW > 0 and fbH > 0) {
             let (vpX, vpY, vpW, vpH) = calcViewport(fbW, fbH, designW, designH);
             GL11.glViewport(0, 0, fbW, fbH);
@@ -170,21 +175,8 @@ mod RenderFrame {
                                    Int32.max(0, cx1 - cx0), Int32.max(0, cy1 - cy0))
                 }
             };
-            // blend（Normal/Add）はバッチ単位の GL 状態。record に Eq が無いので scissor と
-            // 同じく int キー（0 = Normal / 1 = Add）で run の分断を判定する。
-            let blendKeyOf = d -> match d#blend {
-                case DrawCmd.Blend.Normal => 0
-                case DrawCmd.Blend.Add    => 1
-            };
-            // Add は glBlendFunc(SRC_ALPHA, ONE) = 下の色に足し込む。Normal は通常の重ね塗り。
-            let setBlend = blendK ->
-                if (blendK == 1)
-                    GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE)
-                else
-                    GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-            // 連続する「同じテクスチャ・同じ scissor・同じ blend」のスプライトを 1 回の
-            // instanced draw に畳む（run 収集 → flush）。run を切るのはテクスチャ変化・
-            // scissor 変化・blend 変化と polygon だけ。
+            // 連続する「同じテクスチャ・同じ scissor」のスプライトを 1 回の instanced draw に
+            // 畳む（run 収集 → flush）。run を切るのはテクスチャ変化・scissor 変化と polygon だけ。
             // 1 要素 1 draw call だと呼び出しの固定費が積み上がり、
             // 数千体で描画時間のほとんどを占めてしまうため。
             //
@@ -240,37 +232,39 @@ mod RenderFrame {
                     cc#r, cc#g, cc#b, ca
                 } @ Static
             };
-            // run = (テクスチャ id, scissor キー, blend キー, 体数, 積んだ instance の逆順リスト)。
-            // texId=0 は単色矩形の run。scissor / blend キーが変わるところでも run を切る。
-            let emptyRun: (Int32, Option[(Int32, Int32, Int32, Int32)], Int32, Int32, List[Array[Float32, Static]]) =
-                (0, None, 0, 0, Nil);
+            // run = (テクスチャ id, scissor キー, blend, 体数, 積んだ instance の逆順リスト)。
+            // texId=0 は単色矩形の run。scissor キーか blend が変わるところでも run を切る
+            // （blend は GL のグローバル状態なので、混ぜると run 全体が同じ重ね方になってしまう）。
+            let emptyRun: (Int32, Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]]) =
+                (0, None, DrawCmd.BlendMode.Normal, 0, Nil);
             // 空 run では scissor / blend を触らない — GL 状態を無駄に往復させない。
-            let flush = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], Int32, Int32, List[Array[Float32, Static]])) -> {
+            let flush = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]])) -> {
                 let (accTex, accClip, accBlend, accCount, accRev) = acc;
                 if (accCount == 0) () else {
                     setScissor(accClip);
-                    setBlend(accBlend);
-                    flushSpriteRun(instShader, instVao, instVbo, accTex, accCount, accRev)
+                    flushSpriteRun(instShader, instVao, instVbo, accTex,
+                                   instMultiplyBlend, accBlend, accCount, accRev)
                 }
             };
-            let push = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], Int32, Int32, List[Array[Float32, Static]]),
-                        texId: Int32, clipK: Option[(Int32, Int32, Int32, Int32)], blendK: Int32,
+            let push = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]]),
+                        texId: Int32, clipK: Option[(Int32, Int32, Int32, Int32)],
+                        blend: DrawCmd.BlendMode,
                         inst: Array[Float32, Static]) -> {
                 let (accTex, accClip, accBlend, accCount, accRev) = acc;
                 if (accCount == 0)
-                    (texId, clipK, blendK, 1, inst :: Nil)
-                else if (accTex == texId and accClip == clipK and accBlend == blendK)
+                    (texId, clipK, blend, 1, inst :: Nil)
+                else if (accTex == texId and accClip == clipK and accBlend == blend)
                     (accTex, accClip, accBlend, accCount + 1, inst :: accRev)
                 else {
                     // テクスチャ・scissor・blend のどれかが変わったら現 run を吐いてから新しい run を始める。
                     flush(acc);
-                    (texId, clipK, blendK, 1, inst :: Nil)
+                    (texId, clipK, blend, 1, inst :: Nil)
                 }
             };
             let lastRun = List.foldLeft((acc, item) -> match item {
                 case Result.Ok(drawable) =>
                     if (String.isEmpty(drawable#texture)) {
-                        push(acc, 0, clipKeyOf(drawable#clip), blendKeyOf(drawable),
+                        push(acc, 0, clipKeyOf(drawable#clip), drawable#blend,
                              makeInst(drawable#position, drawable#scale, drawable, false, false))
                     } else {
                         match Map.get(drawable#texture, registry) {
@@ -285,7 +279,7 @@ mod RenderFrame {
                                 // フォントアトラス (font_*) は SDF テキストとして描く。
                                 let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
                                 push(acc, GpuHandle.textureIdInt(texInfo#id), clipKeyOf(drawable#clip),
-                                     blendKeyOf(drawable),
+                                     drawable#blend,
                                      makeInst(pos, displaySize, drawable, true, isFont))
                             // texture 未登録は従来どおり描かない。描かないだけなので run は途切れさせない。
                             case None => acc
@@ -293,19 +287,19 @@ mod RenderFrame {
                     }
                 case Result.Err(pc) =>
                     // polygon が来たら run を吐いてから polygon を描く（列順を守る）。
-                    // polygon に blend 指定は無い（v1）ので、直前の run が Add でも Normal に戻す。
                     flush(acc);
                     setScissor(clipKeyOf(pc#clip));
-                    setBlend(0);
                     RenderSprite.drawPolygon(spriteShader, polyVao, polyVbo, spriteUniforms,
-                                              pc#vertices, pc#color, pc#alpha);
+                                              pc#vertices, pc#color, pc#alpha, pc#blend);
                     emptyRun
             }, emptyRun, sortedMerged);
             flush(lastRun);
-            // フレーム末尾で必ず scissor を解除し blend を Normal に戻す — Add のまま持ち越すと、
-            // 次フレームのタイルマップや別画面の描画まで足し込みになる。
-            setBlend(0);
-            GL11.glDisable(GL11.GL_SCISSOR_TEST)
+            // フレーム末尾で必ず scissor を解除する — 有効なまま持ち越すと、次フレームの
+            // 全画面 clear や F8 注釈のスクリーンショット再描画が小矩形に切られる。
+            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+            // blend も Normal に戻す — Add/Multiply のまま持ち越すと、次フレーム冒頭の
+            // タイルマップや F8 注釈の再描画が違う重ね方で合成される。
+            RenderSprite.applyBlend(DrawCmd.BlendMode.Normal)
         } else ()
 
 }

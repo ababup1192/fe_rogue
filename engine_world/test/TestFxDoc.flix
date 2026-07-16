@@ -34,8 +34,8 @@ mod TestFxDoc {
     def shapeTag(s: FxDoc.Shape): String =
         match s { case FxDoc.Shape.Circle => "circle" case FxDoc.Shape.Box => "box" }
 
-    def blendTag(b: DrawCmd.Blend): String =
-        match b { case DrawCmd.Blend.Normal => "normal" case DrawCmd.Blend.Add => "add" }
+    def blendTag(b: DrawCmd.BlendMode): String =
+        match b { case DrawCmd.BlendMode.Normal => "normal" case DrawCmd.BlendMode.Add => "add" case DrawCmd.BlendMode.Multiply => "multiply" }
 
     def colorTuple(c: Color): (Float32, Float32, Float32) =
         (c#r, c#g, c#b)

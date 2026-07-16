@@ -20,6 +20,20 @@ mod World {
         playing = Bool                     // playAudio を一度呼んだか（起動後の初回だけ鳴らし始める）
     }
 
+    /// カンテラ実験の暗闇モード。Bright=通常表示（暗幕なし）、Dark=暗闇のみ
+    /// （Light.multiLightItems を lights=Nil で呼ぶ全面暗幕、光源なし）、
+    /// DarkWithLight=穴あき暗幕+ハロ（Light.singleLightItems）。
+    /// LeftShift は Bright ⇔ DarkWithLight をトグルする（Dark は比較用の対照カット専用で
+    /// ゲーム内操作からは経由しない — bakeLanternComparisonPngs の3枚がそれぞれ1モードに対応する）。
+    pub enum LanternMode with Eq {
+        case Bright
+        case Dark
+        case DarkWithLight
+    }
+
+    /// カンテラ実験の状態。at はプレイヤー（=光源）の位置、mode は今の暗闇の見せ方。
+    pub type alias Lantern = { at = Vec2.Vec2, mode = LanternMode }
+
     pub type alias World = {
         kind = Transition.Kind,                   // 最後に選んだ種類（Idle 中の Space もこれを再生）
         playing = Option[Transition.Progress],    // None = Idle（覆いなし）/ Some = 再生中の進み具合
@@ -27,7 +41,11 @@ mod World {
         bgm = Bgm,
         ui = UiStore.UiWorld,
         fullscreen = Bool,     // Enter で切り替え（ウィンドウ⇄ボーダーレスフルスクリーン）
-        cursorVisible = Bool   // H で切り替え（マウスカーソルの表示/非表示）
+        cursorVisible = Bool,  // H で切り替え（マウスカーソルの表示/非表示）
+        blend = Option[DrawCmd.BlendMode],  // None = デモ非表示 / Z/X/C で重ね方を選ぶと表示
+        // None = デモ非表示 / 矢印キーを押した瞬間に現れる（他デモと同じ Option パターン。
+        // 常時表示にすると他シーンの bake（blend/fps/遷移 GIF）にも部屋と目印が映り込んでしまう）。
+        lantern = Option[Lantern]
     }
 
     /// 起動直後は Idle（覆いなし）で始める。いきなり遷移を再生すると画面が
@@ -35,10 +53,14 @@ mod World {
     /// BGM は無音からのフェードインで始まり、マスターは全開。
     /// ui は外の世界（ファイル）に触れるので、読み込み済みの物を Main から受け取る。
     /// ウィンドウ表示は通常の窓・カーソルは見える状態で始める。
+    /// blend デモは初期非表示（None）。常時表示にすると遷移 GIF や fps 見本の bake に
+    /// 映り込み、既存の gallery の絵が変わってしまう。
     pub def initial(ui: UiStore.UiWorld): World =
         { kind = Transition.Kind.FadeOut, playing = None, steps = 0,
           bgm = { rising = true, progress = Transition.start(bgmDuration()), master = 1.0, playing = false },
-          ui = ui, fullscreen = false, cursorVisible = true }
+          ui = ui, fullscreen = false, cursorVisible = true,
+          blend = None,
+          lantern = None }
 
     /// いまの BGM 音量（フェードの向きと進み具合から導く。実機へ流す値と同じ計算）。
     pub def bgmVolume(bgm: Bgm): Float64 =
@@ -56,11 +78,32 @@ mod World {
     pub def transitionT(world: World): Float64 =
         world#playing |> Option.map(Transition.tOf) |> Option.getWithDefault(0.0)
 
-    /// 画面下の 1 行サマリ（遷移・固定ステップ・BGM 音量とマスター音量・フルスクリーン・カーソル）。
+    /// 画面下の 1 行サマリ（遷移・固定ステップ・BGM・フルスクリーン・カーソル・ブレンド・カンテラ）。
     pub def statusLine(world: World): String =
         "transition=${transitionLabel(world)} t=${round2(transitionT(world))} steps=${world#steps}"
             + " bgm=${round2(bgmVolume(world#bgm))} master=${round2(world#bgm#master)}"
             + " fullscreen=${onOff(world#fullscreen)} cursor=${onOff(world#cursorVisible)}"
+            + " blend=${blendLabel(world#blend)} ${lanternLabel(world#lantern)}"
+
+    /// blend デモの表示名（HUD の bind と statusLine の両方が使う）。非表示中は操作案内。
+    pub def blendLabel(blend: Option[DrawCmd.BlendMode]): String =
+        blend |> Option.map(modeLabel) |> Option.getWithDefault("off (Z/X/C)")
+
+    /// カンテラ実験の表示名。非表示中は操作案内、表示中は暗闇の on/off を出す
+    /// （LeftShift が行き来する Bright/DarkWithLight の2値として見せる — Dark はゲーム内
+    /// 操作から経由しないため on/off 表記のままで足りる）。
+    pub def lanternLabel(lantern: Option[Lantern]): String =
+        lantern
+            |> Option.map(l -> "darkness=${onOff(l#mode == LanternMode.DarkWithLight)}")
+            |> Option.getWithDefault("lantern=off (Arrows to start)")
+
+    /// ブレンドモード単体の表示名（gallery のカード名にも使う）。
+    pub def modeLabel(mode: DrawCmd.BlendMode): String =
+        match mode {
+            case DrawCmd.BlendMode.Normal   => "Normal"
+            case DrawCmd.BlendMode.Add      => "Add"
+            case DrawCmd.BlendMode.Multiply => "Multiply"
+        }
 
     /// on/off 表記。statusLine と HUD 表示（GameUi.bindText）の両方が使う共通表記。
     pub def onOff(b: Bool): String = if (b) "on" else "off"

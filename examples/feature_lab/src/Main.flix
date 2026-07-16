@@ -13,6 +13,9 @@
 // fullscreen= / cursor= と画面内 HUD の両方で確かめられる。実窓の切替そのもの（黒帯の出方）は
 // gallery には出せず起動確認のみ。画面の縁取り・四隅マーカー（View.viewportMarkerItems）は
 // フルスクリーン時に viewport が design 通りか目視するための目印。
+// もうひとつの実験は Light（放射グロー+穴あき暗幕）: 矢印キーでカンテラ（プレイヤー=光源）を
+// 動かし、LeftShift で暗闇の有無を切り替える。暗闇 on では Light.singleLightItems が
+// 「Multiply の穴あき暗幕+Add の暖色ハロ」を光の位置に重ね、目印図形が光の周りだけ見える。
 
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()
@@ -27,6 +30,8 @@ def main(): Unit \ IO =
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.countStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.audioStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.windowStep(frame, world)))
+                |> App.addSystem((frame, world) -> checked_ecast(Controls.blendStep(frame, world)))
+                |> App.addSystem((frame, world) -> checked_ecast(Controls.lanternStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.projectUi(frame, world)))
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadUi)
                 |> App.withView((ctx, world) -> checked_ecast(View.frame(ctx, world)))

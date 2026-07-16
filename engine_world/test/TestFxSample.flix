@@ -17,7 +17,7 @@ mod TestFxSample {
           speed = { base = 10.0, vary = 0.0, over = FxDoc.CurveSpec.Constant },
           dir = { base = 90.0, spread = 0.0 },
           sizeOver = FxDoc.CurveSpec.Constant, alphaOver = FxDoc.CurveSpec.Constant,
-          blend = DrawCmd.Blend.Normal, zIndex = 3 }
+          blend = DrawCmd.BlendMode.Normal, zIndex = 3 }
 
     def specOf(emitter: FxDoc.Emitter): FxDoc.Spec =
         { name = "test", duration = 1.0, note = None, emitters = emitter :: Nil }
@@ -32,7 +32,7 @@ mod TestFxSample {
         let (drawables, _) = Render.draw(items);
         List.map(d -> (d#position#x, d#position#y, d#scale#x, d#scale#y,
                        d#color#r, d#color#g, d#color#b, d#alpha,
-                       match d#blend { case DrawCmd.Blend.Normal => "normal" case DrawCmd.Blend.Add => "add" },
+                       match d#blend { case DrawCmd.BlendMode.Normal => "normal" case DrawCmd.BlendMode.Add => "add" case DrawCmd.BlendMode.Multiply => "multiply" },
                        d#zIndex), drawables)
 
     // ════════════════════════════════════════════════════════
@@ -129,7 +129,7 @@ mod TestFxSample {
     @Test
     def testAlphaBlendZIndexPropagate(): Unit \ Assert =
         let em = { alphaOver = FxDoc.CurveSpec.Linear({ fromV = 1.0, toV = 0.0 }),
-                   blend = DrawCmd.Blend.Add | baseEmitter() };
+                   blend = DrawCmd.BlendMode.Add | baseEmitter() };
         let got = fingerprints(Fx.sample(specOf(em), 0i64, 0.5)) |> List.head
             |> Option.map(fp -> { let (_, _, _, _, _, _, _, a, blend, z) = fp; (a, blend, z) });
         Assert.assertEq(expected = Some((0.5f32, "add", 3)), got)

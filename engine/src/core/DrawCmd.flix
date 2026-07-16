@@ -6,11 +6,16 @@
 
 mod DrawCmd {
 
-    /// ピクセルの重ね方。Normal は普通の上書き（透明度つき）、Add は下の色に足し込む
-    /// （重なるほど明るくなる — 火花・光のにじみ用）。既定は Normal。
-    pub enum Blend with Eq, Order, ToString {
+    /// ピクセルの重ね方（ブレンドモード）。
+    /// Normal = ふつうの半透明合成。Add = 光が重なるように明るく足す（グロー・炎・魔法）。
+    /// Multiply = 下の色に掛けて暗く沈める（影・暗幕。2D 光源の土台）。
+    /// バックエンド（GL / SoftRaster）は同じ式で合成する:
+    ///   Add      : out = min(1, dst + src×srcAlpha)
+    ///   Multiply : out = dst×(1 − srcAlpha×(1 − src))  （srcAlpha=1 で dst×src・白は素通し・黒は黒）
+    pub enum BlendMode with Eq, Order, ToString {
         case Normal
         case Add
+        case Multiply
     }
 
     /// 角丸＋枠線スタイル。`Drawable.style = Some(..)` かつ texture="" のとき、
@@ -67,6 +72,7 @@ mod DrawCmd {
     /// `style = Some(..)` かつ texture="" のとき角丸スタイル矩形として描く。
     /// `clip` はスクリーン空間（design px）の切り抜き窓 — None なら切らない。
     /// バックエンドは窓の外のピクセルを描かない（GL: scissor / SoftRaster: setClip）。
+    /// `blend` はピクセルの重ね方（既定 Normal — 従来と同じ半透明合成）。
     pub type alias Drawable = {
         texture = String,
         position = Vec2.Vec2,
@@ -80,7 +86,7 @@ mod DrawCmd {
         zIndex = Int32,
         style = Option[BoxStyle],
         clip = Option[Rect2.Rect2],
-        blend = Blend
+        blend = BlendMode
     }
 
     /// タイルマップ 1 タイル分のインスタンスデータ。tilemap loader が組み立て、
@@ -95,6 +101,7 @@ mod DrawCmd {
     /// タイルマップのインスタンス描画命令（1 draw call で全タイル）。
     /// `tileScale` はカメラの zoom を反映するスクリーン倍率で、zoom 未指定時は (1, 1)。
     /// `tileVaoId` は `initTileBuffer` が返したバックエンドのハンドル（中身はバックエンドだけが知る）。
+    /// blend は持たない = タイルは常に Normal（光り物・暗幕の実需要はエンティティ側。必要になったら拡張）。
     pub type alias TileMapRenderCmd = {
         textureName = String,
         tileSize    = Float64,
@@ -108,12 +115,14 @@ mod DrawCmd {
 
     /// 凸多角形の塗り潰し命令。vertices はスクリーン px に変換済みの頂点列を渡す。
     /// `clip` は Drawable と同じスクリーン空間の切り抜き窓（None なら切らない）。
+    /// `blend` はピクセルの重ね方（既定 Normal — 従来と同じ半透明合成）。
     pub type alias PolygonRenderCmd = {
         vertices = List[Vec2.Vec2],
         color    = Color,
         alpha    = Float32,
         zIndex   = Int32,
-        clip     = Option[Rect2.Rect2]
+        clip     = Option[Rect2.Rect2],
+        blend    = BlendMode
     }
 
 }

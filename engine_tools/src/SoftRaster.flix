@@ -69,14 +69,7 @@ mod SoftRaster {
         let h = ri(req#design#y * sf);
         let image = new BufferedImage(Int32.max(1i32, w), Int32.max(1i32, h), 2i32);
         let g: Graphics2D = image.createGraphics();
-        // box/poly の塗り（fillRoundRect/fillPolygon）は角丸の縁をなめらかにするため AA を効かせる。
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        // スプライト拡大（drawTextured の drawImage）は最近傍固定。実機の GPU 描画はドット絵を
-        // 補間せず拡大するため、ここで補間すると実機と見え方がずれる（にじみ・輪郭ボケ）。
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-        // 出力解像度で小サイズ文字をくっきり焼くためのテキスト品質ヒント（drawString は INTERPOLATION の対象外）。
-        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+        applyQualityHints(g);
         // 背景（clearColor）で塗りつぶす。
         g.setColor(awtColor(req#background, 1.0f32));
         g.fillRect(0i32, 0i32, Int32.max(1i32, w), Int32.max(1i32, h));
@@ -90,16 +83,116 @@ mod SoftRaster {
             |> List.zipWithIndex
             |> List.sortBy(ix -> let (idx, item) = ix; (zOf(item), idx))
             |> List.map(ix -> let (_, item) = ix; item);
+        // blend=Normal は従来どおり Graphics2D（SrcOver）で直接描く。Add / Multiply は
+        // Java2D の標準 Composite に無い重ね方なので、下書きへ描いてから自前の式で合成する。
         List.forEach(item -> match item {
-            case Result.Ok(d)  => match d#blend {
-                case DrawCmd.Blend.Normal => withClip(g, sf, d#clip, () -> drawDrawable(g, sf, textures, fctx, d))
-                case DrawCmd.Blend.Add    => drawAdditive(image, sf, textures, fctx, d)
-            }
-            case Result.Err(p) => withClip(g, sf, p#clip, () -> drawPolygon(rc, g, sf, p))
+            case Result.Ok(d)  =>
+                if (d#blend == DrawCmd.BlendMode.Normal)
+                    withClip(g, sf, d#clip, () -> drawDrawable(g, sf, textures, fctx, d))
+                else
+                    blendedDraw(image, sf, d#blend, d#clip, drawableAabb(req#design, textures, d),
+                                gs -> drawDrawable(gs, sf, textures, fctx, d))
+            case Result.Err(p) =>
+                if (p#blend == DrawCmd.BlendMode.Normal)
+                    withClip(g, sf, p#clip, () -> drawPolygon(rc, g, sf, p))
+                else
+                    blendedDraw(image, sf, p#blend, p#clip, polygonAabb(req#design, p),
+                                gs -> drawPolygon(rc, gs, sf, p))
         }, sorted);
         g.dispose();
         image
     }
+
+    /// 本体と下書き（blendedDraw）が同じ見た目で描くための描画品質ヒント一式。
+    def applyQualityHints(g: Graphics2D): Unit \ IO =
+        // box/poly の塗り（fillRoundRect/fillPolygon）は角丸の縁をなめらかにするため AA を効かせる。
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        // スプライト拡大（drawTextured の drawImage）は最近傍固定。実機の GPU 描画はドット絵を
+        // 補間せず拡大するため、ここで補間すると実機と見え方がずれる（にじみ・輪郭ボケ）。
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+        // 出力解像度で小サイズ文字をくっきり焼くためのテキスト品質ヒント（drawString は INTERPOLATION の対象外）。
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON)
+
+    // ════════════════════════════════════════════════════════
+    // ブレンド合成（Add / Multiply — Java2D 標準 Composite に無い重ね方）
+    // ════════════════════════════════════════════════════════
+
+    /// Normal 以外の描画: いったん透明な下書き画像へ普通に描き、その画素を合成式で本体に混ぜる。
+    /// clip は下書きへの描画に掛ける — 透明のまま残った画素は合成しないので、窓の外は本体に触れない。
+    /// 下書き自体は本体と同じ全面サイズで確保するが（Graphics2D の clip 計算を素直に保つため）、
+    /// getRGB/setRGB で往復する範囲は `aabb`（drawable/polygon の外形、画面クランプ・design px）
+    /// だけに絞る — 全面走査だと 1 個の光源・炎エフェクトのために毎フレーム画面全体を
+    /// 読み書きすることになり、drawable 数に対して不釣り合いに重くなるため。
+    def blendedDraw(image: BufferedImage, sf: Float64, blend: DrawCmd.BlendMode,
+                    clip: Option[Rect2.Rect2], aabb: Rect2.Rect2,
+                    draw: Graphics2D -> Unit \ ef): Unit \ IO + ef =
+        let w = Int32.max(1i32, image.getWidth());
+        let h = Int32.max(1i32, image.getHeight());
+        let scratch = new BufferedImage(w, h, 2i32);
+        let gs: Graphics2D = scratch.createGraphics();
+        applyQualityHints(gs);
+        withClip(gs, sf, clip, () -> draw(gs));
+        gs.dispose();
+        composeInto(image, scratch, blend, sf, aabb)
+
+    /// 下書きの不透明画素だけを合成式で本体に書き戻す（getRGB/setRGB の行列一括転送）。
+    /// 転送範囲は aabb を出力ピクセルへ量子化した矩形（画像境界にクランプ済み）だけに絞る。
+    def composeInto(dst: BufferedImage, src: BufferedImage, blend: DrawCmd.BlendMode,
+                    sf: Float64, aabb: Rect2.Rect2): Unit \ IO = region rc {
+        let dw = dst.getWidth();
+        let dh = dst.getHeight();
+        let (rx0, ry0, rx1, ry1) = DrawCmd.clipPixels({ scaleX = sf, scaleY = sf }, aabb);
+        let x0 = Int32.max(0i32, rx0);
+        let y0 = Int32.max(0i32, ry0);
+        let x1 = Int32.min(dw, rx1);
+        let y1 = Int32.min(dh, ry1);
+        let w = x1 - x0;
+        let h = y1 - y0;
+        if (w <= 0i32 or h <= 0i32) ()
+        else {
+            let n = w * h;
+            let dstBuf: Array[Int32, rc] = Array.empty(rc, n);
+            let srcBuf: Array[Int32, rc] = Array.empty(rc, n);
+            discard dst.getRGB(x0, y0, w, h, dstBuf, 0i32, w);
+            discard src.getRGB(x0, y0, w, h, srcBuf, 0i32, w);
+            Array.forEachWithIndex((i, sp) -> {
+                if (channelOf(24, sp) == 0) ()
+                else Array.put(blendPixel(blend, sp, Array.get(i, dstBuf)), i, dstBuf)
+            }, srcBuf);
+            dst.setRGB(x0, y0, w, h, dstBuf, 0i32, w)
+        }
+    }
+
+    /// ARGB 1 画素の合成（src を dst に重ねた結果。out の alpha は dst のまま —
+    /// bake 出力は背景が不透明で埋まっているため）。式は DrawCmd.BlendMode の doc と
+    /// GL 側（RenderSprite.applyBlend + シェーダの premultiply）に一致させてある:
+    ///   Normal   : out = (src×a + dst×(255−a)) / 255           （SrcOver）
+    ///   Add      : out = min(255, dst + src×a/255)             （明るく足す・クランプ）
+    ///   Multiply : out = dst×(255 − a×(255−src)/255) / 255     （白は素通し・黒は黒・a=0 で恒等）
+    pub def blendPixel(blend: DrawCmd.BlendMode, srcArgb: Int32, dstArgb: Int32): Int32 =
+        let a = channelOf(24, srcArgb);
+        let mix = f ->
+            withChannels((s, d) -> clampI(f(s, d), 0i32, 255i32), srcArgb, dstArgb);
+        match blend {
+            case DrawCmd.BlendMode.Normal   => mix((s, d) -> (s * a + d * (255 - a)) / 255)
+            case DrawCmd.BlendMode.Add      => mix((s, d) -> d + s * a / 255)
+            case DrawCmd.BlendMode.Multiply => mix((s, d) -> d * (255 - a * (255 - s) / 255) / 255)
+        }
+
+    /// RGB 3 チャンネルへ同じ式 f を適用し、alpha は dst のまま ARGB に組み直す。
+    def withChannels(f: (Int32, Int32) -> Int32, srcArgb: Int32, dstArgb: Int32): Int32 =
+        let r = f(channelOf(16, srcArgb), channelOf(16, dstArgb));
+        let g = f(channelOf(8, srcArgb), channelOf(8, dstArgb));
+        let b = f(channelOf(0, srcArgb), channelOf(0, dstArgb));
+        Int32.leftShift(channelOf(24, dstArgb), 24)
+            |> Int32.bitwiseOr(Int32.leftShift(r, 16))
+            |> Int32.bitwiseOr(Int32.leftShift(g, 8))
+            |> Int32.bitwiseOr(b)
+
+    /// ARGB int から 8bit チャンネルを取り出す（shift = 24/16/8/0 = A/R/G/B）。
+    def channelOf(shift: Int32, argb: Int32): Int32 =
+        Int32.bitwiseAnd(Int32.logicalRightShift(dist = shift, argb), 255)
 
     /// z 値取り出し（Ok=Drawable / Err=Polygon）。
     def zOf(item: Result[GameEngine.PolygonRenderCmd, GameEngine.Drawable]): Int32 =
@@ -107,6 +200,62 @@ mod SoftRaster {
             case Result.Ok(d)  => d#zIndex
             case Result.Err(p) => p#zIndex
         }
+
+    // ════════════════════════════════════════════════════════
+    // AABB（dirty-rect 化: blendedDraw が getRGB/setRGB を絞り込む範囲を出す）
+    // ════════════════════════════════════════════════════════
+
+    /// design 全体を覆う矩形（フォールバック用 — 外形が正確に分からない/計算コストに
+    /// 見合わない場合に安全側へ倒す。全面走査になるだけで結果は従来どおり正しい）。
+    def fullDesignRect(design: Vec2.Vec2): Rect2.Rect2 =
+        { position = Vec2.zero(), size = design }
+
+    /// clip があれば交差、design 全体にもクランプする（画面外へ広がった外形を切り詰める）。
+    def clampAabb(design: Vec2.Vec2, clip: Option[Rect2.Rect2], aabb: Rect2.Rect2): Rect2.Rect2 =
+        let withClip = match clip {
+            case None    => aabb
+            case Some(r) => Rect2.intersect(r, aabb)
+        };
+        Rect2.intersect(fullDesignRect(design), withClip)
+
+    /// Drawable 1 件の外形（design px）。box（texture=""）は scale がそのまま px サイズ、
+    /// テクスチャ物は実サイズ（textures から引く）× uvScale × |scale|、font_ は
+    /// グリフごとの実寸計算が煩雑なので design 全体へ安全側フォールバックする
+    /// （HUD 文字は毎フレーム変わり得るため、狭く絞って文字の一部を取りこぼす方が危険）。
+    def drawableAabb(design: Vec2.Vec2, textures: Map[String, BufferedImage],
+                     d: GameEngine.Drawable): Rect2.Rect2 \ IO =
+        if (String.startsWith({prefix = "font_"}, d#texture))
+            fullDesignRect(design)
+        else {
+            let base = if (String.isEmpty(d#texture)) { x = 1.0, y = 1.0 }
+                       else match Map.get(d#texture, textures) {
+                           case Some(img) =>
+                               { x = Int32.toFloat64(img.getWidth()) * d#uvScale#x,
+                                 y = Int32.toFloat64(img.getHeight()) * d#uvScale#y }
+                           case None      => Vec2.zero()
+                       };
+            let size = { x = base#x * Float64.abs(d#scale#x), y = base#y * Float64.abs(d#scale#y) };
+            let topLeft = if (d#centered) Vec2.sub(d#position, Vec2.div(size, 2.0)) else d#position;
+            // AA のにじみで縁の画素が塗り範囲よりわずかに外へ出るため 1px 分の余裕を足す。
+            // BasicStroke の枠線は中心線基準でさらに半分だけ外へはみ出すのでその分も足す。
+            let borderPad = 1.0 + match d#style {
+                case Some(st) => st#borderWidth / 2.0
+                case None     => 0.0
+            };
+            clampAabb(design, d#clip, Rect2.grow(borderPad, { position = topLeft, size = size }))
+        }
+
+    /// PolygonRenderCmd 1 件の外形（design px、頂点は既にスクリーン座標に変換済み）。
+    /// AA のにじみで縁の画素が塗り範囲よりわずかに外へ出ることがあるため 1px 分の余裕を足す。
+    def polygonAabb(design: Vec2.Vec2, p: GameEngine.PolygonRenderCmd): Rect2.Rect2 =
+        let aabb = match p#vertices {
+            case Nil       => { position = Vec2.zero(), size = Vec2.zero() }
+            case v :: rest =>
+                let lo = List.foldLeft((acc, q) -> { x = Float64.min(acc#x, q#x), y = Float64.min(acc#y, q#y) }, v, rest);
+                let hi = List.foldLeft((acc, q) -> { x = Float64.max(acc#x, q#x), y = Float64.max(acc#y, q#y) }, v, rest);
+                { position = lo, size = Vec2.sub(hi, lo) }
+        };
+        clampAabb(design, p#clip, Rect2.grow(1.0, aabb))
 
     /// texturePath の各エントリを ImageIO で読み込む。読めないものは飛ばす。
     /// indexed / grayscale 等の色モデルは RescaleOp（drawTextured の tint）が扱えないため、
@@ -183,98 +332,6 @@ mod SoftRaster {
                 g.setColor(awtColor(d#color, d#alpha));
                 g.drawString(str, f32(baselineX), f32(baselineY))
         }
-
-    // ════════════════════════════════════════════════════════
-    // 加算合成（blend = Add の Drawable）
-    // ════════════════════════════════════════════════════════
-
-    /// blend = Add の Drawable を 1 つ描く。Java2D に「足し込み」の合成モードが無いので、
-    /// いったん透明な下書きへ普通に描き、そのピクセルを出力へ飽和つき足し算で写す。
-    /// 下書きは描かれる範囲のバウンディングボックスに切り詰め、走査を粒の近傍だけに抑える。
-    def drawAdditive(image: BufferedImage, sf: Float64,
-                     textures: Map[String, BufferedImage], fctx: FontCtx,
-                     d: GameEngine.Drawable): Unit \ IO =
-        let (bx0, by0, bx1, by1) = additiveBounds(image, sf, textures, d);
-        let bw = bx1 - bx0;
-        let bh = by1 - by0;
-        if (bw <= 0 or bh <= 0) () else {
-            let scratch = new BufferedImage(bw, bh, 2i32);
-            let gs: Graphics2D = scratch.createGraphics();
-            gs.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            gs.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-            gs.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            gs.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
-            // 原点を bbox 左上へずらし、出力ピクセル座標のまま既存の描画関数を使う
-            // （clip 窓の座標も平行移動された user 空間でそのまま正しく効く）。
-            gs.translate(0i32 - bx0, 0i32 - by0);
-            withClip(gs, sf, d#clip, () -> drawDrawable(gs, sf, textures, fctx, d));
-            gs.dispose();
-            addPixels(image, scratch, bx0, by0)
-        }
-
-    /// 加算描画の対象範囲（出力ピクセルの整数矩形・画像内にクランプ済み）。
-    /// 回転はどの向きでも対角線の内側に収まるので、回転があるときは対角線ぶん外へ広げる。
-    /// 枠線は塗りの外へ半分はみ出し、AA が 1px 弱にじむので、その分も足す。
-    /// フォントグリフはセル寸法の逆算が絡むため全面を対象にする（加算テキストは稀 — 正しさ優先）。
-    def additiveBounds(image: BufferedImage, sf: Float64, textures: Map[String, BufferedImage],
-                       d: GameEngine.Drawable): (Int32, Int32, Int32, Int32) \ IO =
-        let imgW = image.getWidth();
-        let imgH = image.getHeight();
-        let (px, py, w, h) =
-            if (String.isEmpty(d#texture))
-                (d#position#x, d#position#y, d#scale#x, d#scale#y)
-            else if (String.startsWith({prefix = "font_"}, d#texture))
-                (0.0, 0.0, Int32.toFloat64(imgW) / sf, Int32.toFloat64(imgH) / sf)
-            else match Map.get(d#texture, textures) {
-                case None      => (0.0, 0.0, 0.0, 0.0)
-                case Some(img) =>
-                    let dw = Int32.toFloat64(img.getWidth()) * d#scale#x;
-                    let dh = Int32.toFloat64(img.getHeight()) * d#scale#y;
-                    let ox = if (d#centered) d#position#x - dw / 2.0 else d#position#x;
-                    let oy = if (d#centered) d#position#y - dh / 2.0 else d#position#y;
-                    (ox, oy, dw, dh)
-            };
-        // flip（負の scale）でも lo/hi に正規化して正の矩形にする。
-        let lox = Float64.min(px, px + w);
-        let hix = Float64.max(px, px + w);
-        let loy = Float64.min(py, py + h);
-        let hiy = Float64.max(py, py + h);
-        let borderW = match d#style { case Some(st) => st#borderWidth case None => 0.0 };
-        let diag = Vec2.sqrt(w * w + h * h);
-        let margin = (if (d#rotation == 0.0) 0.0 else diag) + borderW + 2.0;
-        let x0 = clampI(floorI((lox - margin) * sf), 0i32, imgW);
-        let y0 = clampI(floorI((loy - margin) * sf), 0i32, imgH);
-        let x1 = clampI(floorI((hix + margin) * sf) + 1, 0i32, imgW);
-        let y1 = clampI(floorI((hiy + margin) * sf) + 1, 0i32, imgH);
-        (x0, y0, x1, y1)
-
-    /// 下書き（scratch）のピクセルを image の (dx, dy) 起点へ足し込む。
-    /// GL の glBlendFunc(SRC_ALPHA, GL_ONE) と同じ式: 出力 = min(255, 下地 + 描き色 × α)。
-    def addPixels(image: BufferedImage, scratch: BufferedImage, dx: Int32, dy: Int32): Unit \ IO =
-        let w = scratch.getWidth();
-        let h = scratch.getHeight();
-        let srcRow: Array[Int32, Static] = Array.empty(Static, w);
-        let dstRow: Array[Int32, Static] = Array.empty(Static, w);
-        List.range(0, h) |> List.forEach(y -> {
-            discard scratch.getRGB(0i32, y, w, 1i32, srcRow, 0i32, w);
-            discard image.getRGB(dx, dy + y, w, 1i32, dstRow, 0i32, w);
-            List.range(0, w) |> List.forEach(x -> {
-                let s = Array.get(x, srcRow);
-                let a = Int32.bitwiseAnd(Int32.logicalRightShift(dist = 24, s), 255);
-                if (a == 0) () else {
-                    let dpx = Array.get(x, dstRow);
-                    let ch = shift -> Int32.min(255,
-                        Int32.bitwiseAnd(Int32.logicalRightShift(dist = shift, dpx), 255)
-                        + (Int32.bitwiseAnd(Int32.logicalRightShift(dist = shift, s), 255) * a) / 255);
-                    let da = Int32.bitwiseAnd(Int32.logicalRightShift(dist = 24, dpx), 255);
-                    let out = Int32.bitwiseOr(Int32.leftShift(da, 24),
-                              Int32.bitwiseOr(Int32.leftShift(ch(16), 16),
-                              Int32.bitwiseOr(Int32.leftShift(ch(8), 8), ch(0))));
-                    Array.put(out, x, dstRow)
-                }
-            });
-            image.setRGB(dx, dy + y, w, 1i32, dstRow, 0i32, w)
-        })
 
     /// 単色矩形（角丸＋枠）。scale が design px サイズ、position が左上。
     /// 重ねる順は GL シェーダと同じ 塗り → 縞 → 市松 → 枠。
@@ -462,4 +519,24 @@ mod SoftRaster {
         let parent = file.getParentFile();
         if (not Object.isNull(parent)) discard parent.mkdirs() else ();
         discard ImageIO.write(image, "png", file)
+
+    // ════════════════════════════════════════════════════════
+    // RadialGlow テクスチャの PNG 書き出し（AWT 依存をここへ閉じ込める）
+    // ════════════════════════════════════════════════════════
+
+    /// size×size の正方形を pixelOf(x, y) で画素ごとに埋めて PNG に書く。
+    /// RadialGlow の画素計算（純関数）と AWT の画像バッファ操作を分けるための橋渡し
+    /// （RadialGlow.haloPixel/maskPixel を pixelOf に部分適用して渡す）。
+    pub def writeRadialPng(size: Int32, pixelOf: (Int32, Int32) -> Int32, outPath: String): Unit \ IO = region rc {
+        let s = Int32.max(1i32, size);
+        let image = new BufferedImage(s, s, 2i32);
+        let buf: Array[Int32, rc] = Array.empty(rc, s * s);
+        Array.forEachWithIndex((i, _) -> {
+            let x = Int32.remainder(i, s);
+            let y = i / s;
+            Array.put(pixelOf(x, y), i, buf)
+        }, buf);
+        image.setRGB(0i32, 0i32, s, s, buf, 0i32, s);
+        writePng(image, outPath)
+    }
 }

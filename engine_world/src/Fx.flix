@@ -63,10 +63,7 @@ mod Fx {
                     case FxDoc.Shape.Box    => Render.boxAt(pos, { x = size, y = size }, color, emitter#zIndex)
                 };
                 let faded = placed#item |> Render.fade(Float64.truncateToFloat32(alpha));
-                let item = match emitter#blend {
-                    case DrawCmd.Blend.Add    => Render.additive(faded)
-                    case DrawCmd.Blend.Normal => faded
-                };
+                let item = Render.blended(emitter#blend, faded);
                 Some({ item = item | placed })
             }
         }

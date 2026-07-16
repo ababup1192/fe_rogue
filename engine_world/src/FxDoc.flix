@@ -9,7 +9,7 @@
 //   emitter: name / count / shape("circle"|"box"・省略時 circle) / size px /
 //     color（1〜N 色の配列 — 寿命に沿った線形グラデ。色表記は ui.json と同じ）/
 //     life {base 秒, vary} / speed {base px/s, vary, over} / dir {base 度, spread 度} /
-//     sizeOver / alphaOver（カーブ）/ blend("normal"|"add"・省略時 normal) / zIndex。
+//     sizeOver / alphaOver（カーブ）/ blend("normal"|"add"|"multiply"・省略時 normal) / zIndex。
 //     vary は 0..1 — 粒ごとに base × (1 ± vary) の幅でばらつく。dir は 0 度 = 真上・時計回り。
 //   カーブ: {"kind": ...} の 6 形。省略時は constant（= いつでも 1.0）。
 //     constant / linear {from, to} / easeOut {power} / easeIn {power} /
@@ -69,7 +69,7 @@ mod FxDoc {
         dir = { base = Float64, spread = Float64 }, // 射出方向 度（0 = 真上・時計回り）
         sizeOver = CurveSpec,                       // 大きさの倍率カーブ
         alphaOver = CurveSpec,                      // 透明度の倍率カーブ
-        blend = DrawCmd.Blend,                      // 重ね方（add = 加算合成）
+        blend = DrawCmd.BlendMode,                  // 重ね方（add = 加算・multiply = 乗算）
         zIndex = Int32                              // 描画順
     }
 
@@ -154,14 +154,15 @@ mod FxDoc {
                 JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"shape must be circle|box (got: ${unknown})"})))
         }
 
-    def parseBlend(path: String, m: Map[String, Json]): Result[JsonError, DrawCmd.Blend] =
+    def parseBlend(path: String, m: Map[String, Json]): Result[JsonError, DrawCmd.BlendMode] =
         match (JsonCompat.getAtKeyOpt(Root, "blend", m): Result[JsonError, Option[String]]) {
             case Err(e)             => JsonCompat.atNode(path, Err(e))
-            case Ok(None)           => Ok(DrawCmd.Blend.Normal)
-            case Ok(Some("normal")) => Ok(DrawCmd.Blend.Normal)
-            case Ok(Some("add"))    => Ok(DrawCmd.Blend.Add)
+            case Ok(None)           => Ok(DrawCmd.BlendMode.Normal)
+            case Ok(Some("normal")) => Ok(DrawCmd.BlendMode.Normal)
+            case Ok(Some("add"))    => Ok(DrawCmd.BlendMode.Add)
+            case Ok(Some("multiply")) => Ok(DrawCmd.BlendMode.Multiply)
             case Ok(Some(unknown))  =>
-                JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"blend must be normal|add (got: ${unknown})"})))
+                JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"blend must be normal|add|multiply (got: ${unknown})"})))
         }
 
     /// "color": [<色>, ...]（1 色以上）。色表記は ui.json と同一（UiDoc.colorOf に一本化）。
