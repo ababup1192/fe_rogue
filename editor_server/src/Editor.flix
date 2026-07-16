@@ -26,9 +26,17 @@ mod Editor {
     def version(): String = "0.1.0"
 
     /// 環境変数 EDITOR_DIR (起動時に選んでおく編集対象)。未設定・空なら None (未選択で起動)。
+    /// project.json の無いパス (展開されなかった ~ や打ち間違い) は、そのまま開くと全 API が
+    /// 「読めない」で固まって見えるため、未選択に落としてピッカーに任せる。
     pub def dirFromEnv(): Option[String] \ IO =
         let value = System.getenv("EDITOR_DIR");
-        if (Object.isNull(value) or value == "") None else Some(value)
+        if (Object.isNull(value) or value == "")
+            None
+        else if (not Projects.hasProjectJson(value)) {
+            println("[editor] EDITOR_DIR にプロジェクトが見つかりません (project.json 無し): ${value} — 未選択で起動します");
+            None
+        } else
+            Some(value)
 
     /// 環境変数 EDITOR_PORT。未設定・数値でなければ既定の 8787。
     pub def portFromEnv(): Int32 \ IO =
@@ -105,6 +113,10 @@ mod Editor {
             })
             case ("POST", "/preview/hitbox") => withProject(selection, exchange, dir -> {
                 let (status, json) = PreviewHitbox.respond(dir, caches, readBody(exchange));
+                sendJson(status, json, exchange)
+            })
+            case ("POST", "/preview/fx") => withProject(selection, exchange, dir -> {
+                let (status, json) = PreviewFx.respond(dir, caches, readBody(exchange));
                 sendJson(status, json, exchange)
             })
             case ("GET", _)            => handleStatic(webRoot, path, exchange)
@@ -209,7 +221,7 @@ mod Editor {
                 }), exchange)
         }
 
-    /// GET /files — 編集対象ファイルの一覧 (ui / hitbox / palette 別) を返す。
+    /// GET /files — 編集対象ファイルの一覧 (ui / hitbox / fx / palette 別) を返す。
     /// ui はメタ情報付き {path, composable, paletteFile?} の列 (hitbox は従来どおり文字列の列)。
     /// palette は ui 側の "paletteFile" 参照から逆引きした実在ファイルの列 —
     /// 名前パターンで拾うより「実際に参照されている物」を出す方が確実。
@@ -233,6 +245,7 @@ mod Editor {
             "root"    => JString(dir),
             "ui"      => JArray(List.toVector(uiEntries)),
             "hitbox"  => JsonCodec.encodeList(p -> JString(p), index#hitbox),
+            "fx"      => JsonCodec.encodeList(p -> JString(p), index#fx),
             "palette" => JsonCodec.encodeList(p -> JString(p), paletteList)
         }), exchange)
 

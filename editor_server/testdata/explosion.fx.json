@@ -1,0 +1,20 @@
+{
+  "name": "explosion",
+  "duration": 0.9,
+  "note": "fx① で承認した爆発スペック — /preview/fx の手動検証用",
+  "emitters": [
+    {
+      "name": "sparks",
+      "count": 20,
+      "shape": "circle",
+      "size": 3,
+      "color": ["#fff7c0", "#ff8a3d", "#69323a"],
+      "life": { "base": 0.5, "vary": 0.2 },
+      "speed": { "base": 140, "vary": 0.3, "over": { "kind": "easeOut", "power": 2.4 } },
+      "dir": { "base": 0, "spread": 360 },
+      "sizeOver": { "kind": "peak", "at": 0.25 },
+      "alphaOver": { "kind": "fadeOut" },
+      "blend": "add"
+    }
+  ]
+}

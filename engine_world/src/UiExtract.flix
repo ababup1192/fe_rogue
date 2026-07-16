@@ -140,7 +140,8 @@ mod UiExtract {
             borderAlpha  = if (box#borderWidth > 0.0) 1.0f32 else 0.0f32
             | DrawCmd.defaultStyle(box#borderColor)
         }: GameEngine.BoxStyle);
-        Render.Item.Box({size = size, color = box#color, alpha = box#alpha, style = Some(style), zIndex = box#zIndex})
+        Render.Item.Box({size = size, color = box#color, alpha = box#alpha, style = Some(style), zIndex = box#zIndex,
+                         blend = DrawCmd.Blend.Normal})
 
     /// text の Item。atlasOf で font 名から FontAtlas を引く。
     def textItem(comp: UiWidget.TextComp, atlasOf: String -> FontAtlas \ ef): Render.Item \ ef =

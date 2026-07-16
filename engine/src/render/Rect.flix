@@ -138,6 +138,7 @@ mod Rect {
             uvScale = {x = 1.0, y = 1.0},
             zIndex = r#visual#zIndex,
             style = if (styled) Some(boxStyleOf(r)) else None,
-            clip = None
+            clip = None,
+            blend = DrawCmd.Blend.Normal
         }
 }

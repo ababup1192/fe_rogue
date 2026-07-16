@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "fx.schema.json",
+  "title": "flix_game_engine fx.json document",
+  "description": "FxDoc が読む閉形式パーティクルの宣言ドキュメント。粒はどこにも保存されず、Fx.sample が (Spec, seed, t) から毎回計算する。'//' で始まるキーはコメントとして無視される。",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "enum": [1] },
+    "name": { "type": "string", "description": "効果の名前" },
+    "duration": { "type": "number", "exclusiveMinimum": 0, "description": "効果全体の長さ 秒。これを過ぎた時刻の sample は空になる" },
+    "note": { "type": "string", "description": "エディタで表示するノートコメント（描画には影響しない）" },
+    "emitters": {
+      "type": "array", "minItems": 1,
+      "items": { "$ref": "#/$defs/emitter" },
+      "description": "粒の群れの宣言（1 個以上）。v1 は burst（全粒が t=0 で同時に生まれる）固定"
+    }
+  },
+  "required": ["name", "duration", "emitters"],
+  "patternProperties": { "^//": {} },
+
+  "$defs": {
+    "color": {
+      "oneOf": [
+        { "type": "string", "pattern": "^#?[0-9a-fA-F]{6}$", "description": "\"#rrggbb\"" },
+        { "type": "object", "properties": { "hsv": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 } },
+          "required": ["hsv"], "additionalProperties": false,
+          "description": "{\"hsv\":[h,s,v]} — h は 1 周 = 1.0" },
+        { "type": "object", "properties": { "rgb": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 } },
+          "required": ["rgb"], "additionalProperties": false,
+          "description": "{\"rgb\":[r,g,b]} — 各 0.0..1.0" }
+      ]
+    },
+    "vary": {
+      "type": "number", "minimum": 0, "maximum": 1,
+      "description": "粒ごとのばらつき 0..1 — base × (1 ± vary) の幅で決まる。省略時 0"
+    },
+    "curve": {
+      "type": "object",
+      "description": "正規化寿命 u（0 = 生まれた瞬間, 1 = 消える瞬間）→ 倍率、のカーブ。省略時は constant（いつでも 1.0）",
+      "oneOf": [
+        { "properties": { "kind": { "const": "constant" } },
+          "required": ["kind"],
+          "description": "いつでも 1.0（変化なし）" },
+        { "properties": { "kind": { "const": "linear" },
+                          "from": { "type": "number" }, "to": { "type": "number" } },
+          "required": ["kind", "from", "to"],
+          "description": "from から to へまっすぐ変わる" },
+        { "properties": { "kind": { "const": "fadeOut" } },
+          "required": ["kind"],
+          "description": "linear {from: 1, to: 0} の別名（すーっと消える）" },
+        { "properties": { "kind": { "const": "easeIn" },
+                          "power": { "type": "number", "description": "省略時 2.0" } },
+          "required": ["kind"],
+          "description": "u^power — ゆっくり始まって加速しながら 0 → 1" },
+        { "properties": { "kind": { "const": "easeOut" },
+                          "power": { "type": "number", "description": "省略時 2.0" } },
+          "required": ["kind"],
+          "description": "(1-u)^power — 1 から始まり、速く出てだんだん弱まって 0 へ" },
+        { "properties": { "kind": { "const": "peak" },
+                          "at": { "type": "number", "minimum": 0, "maximum": 1 } },
+          "required": ["kind", "at"],
+          "description": "u = at で山（1.0）になる三角形 0 → 1 → 0（ふくらんで縮む）" },
+        { "properties": { "kind": { "const": "flicker" },
+                          "rate": { "type": "number", "description": "寿命あたりのチラつき回数" },
+                          "amount": { "type": "number", "description": "1 から最大どれだけ暗くなるか。省略時 1.0" } },
+          "required": ["kind", "rate"],
+          "description": "決定論の疑似乱数で 1 から amount ぶんチラつく。speed.over には使えない" }
+      ]
+    },
+    "emitter": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "粒ごとの乱数の系統を分ける識別子（名前が違えば別の散り方）" },
+        "count": { "type": "integer", "minimum": 1, "description": "粒の数" },
+        "shape": { "type": "string", "enum": ["circle", "box"], "description": "粒の形。省略時 circle" },
+        "size": { "type": "number", "exclusiveMinimum": 0, "description": "粒の大きさ px（circle は直径・box は一辺）" },
+        "color": {
+          "type": "array", "minItems": 1,
+          "items": { "$ref": "#/$defs/color" },
+          "description": "1〜N 色の配列 — 寿命 t/life に沿った線形グラデ（1 色なら固定色）"
+        },
+        "life": {
+          "type": "object",
+          "properties": {
+            "base": { "type": "number", "exclusiveMinimum": 0, "description": "粒の寿命 秒" },
+            "vary": { "$ref": "#/$defs/vary" }
+          },
+          "required": ["base"],
+          "description": "粒の寿命。尽きた粒は描かれない"
+        },
+        "speed": {
+          "type": "object",
+          "properties": {
+            "base": { "type": "number", "description": "初速 px/s" },
+            "vary": { "$ref": "#/$defs/vary" },
+            "over": { "$ref": "#/$defs/curve", "description": "速度の倍率カーブ。位置はこの積分（閉形式）— flicker は不可" }
+          },
+          "required": ["base"],
+          "description": "粒の飛ぶ速さ。省略時は動かない粒"
+        },
+        "dir": {
+          "type": "object",
+          "properties": {
+            "base": { "type": "number", "description": "射出方向 度（0 = 真上・時計回り）" },
+            "spread": { "type": "number", "description": "base を中心に ± spread/2 度の扇に散る。360 で全方位" }
+          },
+          "description": "射出方向。省略時は真上・広がりなし"
+        },
+        "sizeOver": { "$ref": "#/$defs/curve", "description": "大きさの倍率カーブ" },
+        "alphaOver": { "$ref": "#/$defs/curve", "description": "透明度の倍率カーブ" },
+        "blend": { "type": "string", "enum": ["normal", "add"], "description": "重ね方。add は下の色に足し込む（重なるほど明るい — 火花・光向け）。省略時 normal" },
+        "zIndex": { "type": "integer", "description": "描画順。省略時 0" }
+      },
+      "required": ["name", "count", "size", "color", "life"],
+      "patternProperties": { "^//": {} }
+    }
+  }
+}

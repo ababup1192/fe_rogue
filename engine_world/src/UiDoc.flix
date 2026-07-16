@@ -752,7 +752,9 @@ mod UiDoc {
             case Some(json) => colorOf(palette, key, json) |> Result.map(color -> Some(color))
         }
 
-    def colorOf(palette: Map[String, Color], key: String, json: Json): Result[JsonError, Color] =
+    /// 色 1 値のパース（"#rrggbb" / {"hsv":[h,s,v]} / {"rgb":[r,g,b]} / "@パレット名"）。
+    /// pub なのは fx.json（FxDoc）が同じ色表記を読むため — 色方言の定義はここに一本化する。
+    pub def colorOf(palette: Map[String, Color], key: String, json: Json): Result[JsonError, Color] =
         match json {
             case JString(s) =>
                 if (String.startsWith(prefix = "@", s))

@@ -146,7 +146,8 @@ mod Sprite {
             uvScale = uvSc,
             zIndex = r#visual#zIndex,
             style = None,
-            clip = None
+            clip = None,
+            blend = DrawCmd.Blend.Normal
         }
 
     /// regionRect / hframes / vframes / frame と元テクスチャサイズから

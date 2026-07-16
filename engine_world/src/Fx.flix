@@ -21,4 +21,144 @@ mod Fx {
     pub def deriveSeeded(spec: {seed = Int32, count = Int32}, t: Float64,
                           piece: (Int32, Int32 -> Float64, Float64) -> a): List[a] =
         List.map(i -> piece(i, k -> Hash01.at(spec#seed * 8191 + i, k), t), List.range(0, spec#count))
+
+    // ========================================================================
+    // fx.json（FxDoc.Spec）の閉形式サンプリング
+    // ========================================================================
+
+    /// fx.json の Spec を、時刻 t 秒の絵（描き物の列）にする。粒はどこにも保存されず、
+    /// 同じ (spec, seed, t) からは常に同じ絵が出る（巻き戻し・リプレイでも揺れない）。
+    /// 発生点は原点 (0, 0) — 置きたい場所は呼び側が各 at に足す。
+    /// seed は「撃つたびに変える通し番号」— 同じ爆発が毎回そっくり同じ姿になるのを避ける。
+    /// t < 0 と t > duration は空リスト（消えた効果は呼ぶだけ無駄だが、呼んでも安全）。
+    pub def sample(spec: FxDoc.Spec, seed: Int64, t: Float64): List[Render.PlacedItem] =
+        if (t < 0.0 or t > spec#duration) Nil
+        else spec#emitters |> List.flatMap(emitter -> sampleEmitter(emitter, seed, t))
+
+    def sampleEmitter(emitter: FxDoc.Emitter, seed: Int64, t: Float64): List[Render.PlacedItem] =
+        // emitter 名を種に混ぜて、同じ seed でも emitter ごとに別の乱数系統を引く。
+        let emitterSeed = mix64(Int64.bitwiseXor(seed, nameHash(emitter#name)));
+        List.range(0, emitter#count) |> List.filterMap(i -> sampleParticle(emitter, emitterSeed, i, t))
+
+    /// 粒 i の時刻 t の姿。寿命が尽きた粒は None。v1 は burst（全粒 t=0 生まれ）固定。
+    def sampleParticle(emitter: FxDoc.Emitter, emitterSeed: Int64, i: Int32,
+                       t: Float64): Option[Render.PlacedItem] =
+        let rand = k -> rand01(emitterSeed, i, k);
+        let life = varied(emitter#life#base, emitter#life#vary, rand(0));
+        if (t >= life or life <= 0.0) None
+        else {
+            let u = t / life;
+            // 位置 = 初速 × 速度カーブの積分（閉形式）。dir は度（0 = 真上・時計回り）。
+            let speed = varied(emitter#speed#base, emitter#speed#vary, rand(1));
+            let turn = (emitter#dir#base + emitter#dir#spread * (rand(2) - 0.5)) / 360.0;
+            let dist = speed * life * curveIntegral(emitter#speed#over, u);
+            let pos = Vec2.mul(Vec2.onEllipse({ x = 1.0, y = 1.0 }, turn), dist);
+            let size = emitter#size * curveValue(emitter#sizeOver, i, u);
+            let alpha = clamp01(curveValue(emitter#alphaOver, i, u));
+            if (size <= 0.0 or alpha <= 0.0) None
+            else {
+                let color = gradient(emitter#color, u);
+                let placed = match emitter#shape {
+                    case FxDoc.Shape.Circle => Render.circleAt(pos, size / 2.0, color, emitter#zIndex)
+                    case FxDoc.Shape.Box    => Render.boxAt(pos, { x = size, y = size }, color, emitter#zIndex)
+                };
+                let faded = placed#item |> Render.fade(Float64.truncateToFloat32(alpha));
+                let item = match emitter#blend {
+                    case DrawCmd.Blend.Add    => Render.additive(faded)
+                    case DrawCmd.Blend.Normal => faded
+                };
+                Some({ item = item | placed })
+            }
+        }
+
+    // ── カーブ評価 ──
+
+    /// カーブの u での値（倍率）。salt は flicker が粒ごとに別のチラつき方をするための番号。
+    def curveValue(curve: FxDoc.CurveSpec, salt: Int32, u: Float64): Float64 =
+        match curve {
+            case FxDoc.CurveSpec.Constant   => 1.0
+            case FxDoc.CurveSpec.Linear(l)  => l#fromV + (l#toV - l#fromV) * u
+            case FxDoc.CurveSpec.EaseIn(e)  => Float64.pow(base = u, e#power)
+            case FxDoc.CurveSpec.EaseOut(e) => Float64.pow(base = 1.0 - u, e#power)
+            case FxDoc.CurveSpec.Peak(p)    =>
+                if (p#at <= 0.0) 1.0 - u
+                else if (p#at >= 1.0) u
+                else if (u <= p#at) u / p#at
+                else (1.0 - u) / (1.0 - p#at)
+            case FxDoc.CurveSpec.Flicker(f) =>
+                1.0 - f#amount * Hash01.at(salt, stepOf(u * f#rate))
+        }
+
+    /// カーブの 0..u の積分（速度 → 移動距離）。flicker はパース（FxDoc）が速度カーブとして
+    /// 弾くので、ここへ届くのは手組みの Spec だけ — 黙って別の動きにせず loud に落とす。
+    def curveIntegral(curve: FxDoc.CurveSpec, u: Float64): Float64 =
+        match curve {
+            case FxDoc.CurveSpec.Constant   => u
+            case FxDoc.CurveSpec.Linear(l)  => l#fromV * u + (l#toV - l#fromV) * u * u / 2.0
+            case FxDoc.CurveSpec.EaseIn(e)  => Float64.pow(base = u, e#power + 1.0) / (e#power + 1.0)
+            case FxDoc.CurveSpec.EaseOut(e) => (1.0 - Float64.pow(base = 1.0 - u, e#power + 1.0)) / (e#power + 1.0)
+            case FxDoc.CurveSpec.Peak(p)    =>
+                if (p#at <= 0.0) u - u * u / 2.0
+                else if (p#at >= 1.0) u * u / 2.0
+                else if (u <= p#at) u * u / (2.0 * p#at)
+                else p#at / 2.0 + (1.0 - p#at) / 2.0 - (1.0 - u) * (1.0 - u) / (2.0 * (1.0 - p#at))
+            case FxDoc.CurveSpec.Flicker(_) =>
+                bug!("Fx.curveIntegral: flicker は速度カーブに使えない（FxDoc.parse が弾く）")
+        }
+
+    /// u * rate の整数段（flicker のチラつきの区切り番号）。
+    def stepOf(x: Float64): Int32 =
+        Float64.tryToInt32(Float64.floor(x)) |> Option.getWithDefault(0)
+
+    // ── 粒ごとの導出 ──
+
+    /// base × (1 ± vary)。r は [0,1) の乱数 — r=0.5 でちょうど base。
+    def varied(base: Float64, vary: Float64, r: Float64): Float64 =
+        base * (1.0 + vary * (2.0 * r - 1.0))
+
+    /// 1〜N 色の並びを u（0..1）で線形に混ぜた色。1 色ならその色のまま。
+    def gradient(colors: List[Color], u: Float64): Color =
+        match colors {
+            case Nil         => { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
+            case c :: Nil    => c
+            case _ :: _ :: _ =>
+                let n = List.length(colors);
+                let pos = clamp01(u) * Int32.toFloat64(n - 1);
+                let idx = stepOf(pos) |> Int32.min(n - 2);
+                let frac = pos - Int32.toFloat64(idx);
+                let a = List.nth(idx, colors) |> Option.getWithDefault({ r = 1.0f32, g = 1.0f32, b = 1.0f32 });
+                let b = List.nth(idx + 1, colors) |> Option.getWithDefault(a);
+                { r = mixCh(a#r, b#r, frac), g = mixCh(a#g, b#g, frac), b = mixCh(a#b, b#b, frac) }
+        }
+
+    def mixCh(a: Float32, b: Float32, frac: Float64): Float32 =
+        let av = Float32.toFloat64(a);
+        let bv = Float32.toFloat64(b);
+        Float64.truncateToFloat32(av + (bv - av) * frac)
+
+    def clamp01(x: Float64): Float64 =
+        Float64.max(0.0, Float64.min(1.0, x))
+
+    // ── 決定論の乱数（splitmix64 系のハッシュ）──
+    // flix-random は engine_world の依存に無いので、仕上げ混合だけ同じ式を private に持つ。
+    // 列を進める PRNG ではなく (種, 粒番号, チャンネル) → [0,1) の純粋な写像として使う。
+
+    /// splitmix64 の仕上げ混合。定数は 0xBF58476D1CE4E5B9 / 0x94D049BB133111EB を signed で表したもの。
+    def mix64(z0: Int64): Int64 =
+        let z1 = Int64.bitwiseXor(z0, Int64.logicalRightShift(dist = 30, z0)) * -4658895280553007687i64;
+        let z2 = Int64.bitwiseXor(z1, Int64.logicalRightShift(dist = 27, z1)) * -7723592293110705685i64;
+        Int64.bitwiseXor(z2, Int64.logicalRightShift(dist = 31, z2))
+
+    /// (emitter の種, 粒番号 i, チャンネル k) → [0,1)。gamma 0x9E3779B97F4A7C15 と奇数定数で
+    /// i と k を別々の歩幅にして混ぜ、上位 53bit を [0,1) の実数に写す。
+    def rand01(emitterSeed: Int64, i: Int32, k: Int32): Float64 =
+        let z = mix64(emitterSeed
+            + Int32.toInt64(i) * -7046029254386353131i64
+            + Int32.toInt64(k) * -4658895280553007687i64);
+        Int64.toFloat64(Int64.logicalRightShift(dist = 11, z)) / 9007199254740992.0
+
+    /// emitter 名 → Int64（31 進の文字畳み込み）。名前が違えば別の乱数系統になる。
+    def nameHash(name: String): Int64 =
+        String.toList(name) |> List.foldLeft((h, c) ->
+            h * 31i64 + Int32.toInt64(Char.toBmpCodePoint(c)), 1125899906842597i64)
 }

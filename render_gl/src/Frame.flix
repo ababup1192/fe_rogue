@@ -170,8 +170,21 @@ mod RenderFrame {
                                    Int32.max(0, cx1 - cx0), Int32.max(0, cy1 - cy0))
                 }
             };
-            // 連続する「同じテクスチャ・同じ scissor」のスプライトを 1 回の instanced draw に
-            // 畳む（run 収集 → flush）。run を切るのはテクスチャ変化・scissor 変化と polygon だけ。
+            // blend（Normal/Add）はバッチ単位の GL 状態。record に Eq が無いので scissor と
+            // 同じく int キー（0 = Normal / 1 = Add）で run の分断を判定する。
+            let blendKeyOf = d -> match d#blend {
+                case DrawCmd.Blend.Normal => 0
+                case DrawCmd.Blend.Add    => 1
+            };
+            // Add は glBlendFunc(SRC_ALPHA, ONE) = 下の色に足し込む。Normal は通常の重ね塗り。
+            let setBlend = blendK ->
+                if (blendK == 1)
+                    GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE)
+                else
+                    GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            // 連続する「同じテクスチャ・同じ scissor・同じ blend」のスプライトを 1 回の
+            // instanced draw に畳む（run 収集 → flush）。run を切るのはテクスチャ変化・
+            // scissor 変化・blend 変化と polygon だけ。
             // 1 要素 1 draw call だと呼び出しの固定費が積み上がり、
             // 数千体で描画時間のほとんどを占めてしまうため。
             //
@@ -227,36 +240,37 @@ mod RenderFrame {
                     cc#r, cc#g, cc#b, ca
                 } @ Static
             };
-            // run = (テクスチャ id, scissor キー, 体数, 積んだ instance の逆順リスト)。
-            // texId=0 は単色矩形の run。scissor キーが変わるところでも run を切る。
-            let emptyRun: (Int32, Option[(Int32, Int32, Int32, Int32)], Int32, List[Array[Float32, Static]]) =
-                (0, None, 0, Nil);
-            // 空 run では scissor を触らない — GL 状態を無駄に往復させない。
-            let flush = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], Int32, List[Array[Float32, Static]])) -> {
-                let (accTex, accClip, accCount, accRev) = acc;
+            // run = (テクスチャ id, scissor キー, blend キー, 体数, 積んだ instance の逆順リスト)。
+            // texId=0 は単色矩形の run。scissor / blend キーが変わるところでも run を切る。
+            let emptyRun: (Int32, Option[(Int32, Int32, Int32, Int32)], Int32, Int32, List[Array[Float32, Static]]) =
+                (0, None, 0, 0, Nil);
+            // 空 run では scissor / blend を触らない — GL 状態を無駄に往復させない。
+            let flush = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], Int32, Int32, List[Array[Float32, Static]])) -> {
+                let (accTex, accClip, accBlend, accCount, accRev) = acc;
                 if (accCount == 0) () else {
                     setScissor(accClip);
+                    setBlend(accBlend);
                     flushSpriteRun(instShader, instVao, instVbo, accTex, accCount, accRev)
                 }
             };
-            let push = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], Int32, List[Array[Float32, Static]]),
-                        texId: Int32, clipK: Option[(Int32, Int32, Int32, Int32)],
+            let push = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], Int32, Int32, List[Array[Float32, Static]]),
+                        texId: Int32, clipK: Option[(Int32, Int32, Int32, Int32)], blendK: Int32,
                         inst: Array[Float32, Static]) -> {
-                let (accTex, accClip, accCount, accRev) = acc;
+                let (accTex, accClip, accBlend, accCount, accRev) = acc;
                 if (accCount == 0)
-                    (texId, clipK, 1, inst :: Nil)
-                else if (accTex == texId and accClip == clipK)
-                    (accTex, accClip, accCount + 1, inst :: accRev)
+                    (texId, clipK, blendK, 1, inst :: Nil)
+                else if (accTex == texId and accClip == clipK and accBlend == blendK)
+                    (accTex, accClip, accBlend, accCount + 1, inst :: accRev)
                 else {
-                    // テクスチャか scissor が変わったら現 run を吐いてから新しい run を始める。
+                    // テクスチャ・scissor・blend のどれかが変わったら現 run を吐いてから新しい run を始める。
                     flush(acc);
-                    (texId, clipK, 1, inst :: Nil)
+                    (texId, clipK, blendK, 1, inst :: Nil)
                 }
             };
             let lastRun = List.foldLeft((acc, item) -> match item {
                 case Result.Ok(drawable) =>
                     if (String.isEmpty(drawable#texture)) {
-                        push(acc, 0, clipKeyOf(drawable#clip),
+                        push(acc, 0, clipKeyOf(drawable#clip), blendKeyOf(drawable),
                              makeInst(drawable#position, drawable#scale, drawable, false, false))
                     } else {
                         match Map.get(drawable#texture, registry) {
@@ -271,6 +285,7 @@ mod RenderFrame {
                                 // フォントアトラス (font_*) は SDF テキストとして描く。
                                 let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
                                 push(acc, GpuHandle.textureIdInt(texInfo#id), clipKeyOf(drawable#clip),
+                                     blendKeyOf(drawable),
                                      makeInst(pos, displaySize, drawable, true, isFont))
                             // texture 未登録は従来どおり描かない。描かないだけなので run は途切れさせない。
                             case None => acc
@@ -278,15 +293,18 @@ mod RenderFrame {
                     }
                 case Result.Err(pc) =>
                     // polygon が来たら run を吐いてから polygon を描く（列順を守る）。
+                    // polygon に blend 指定は無い（v1）ので、直前の run が Add でも Normal に戻す。
                     flush(acc);
                     setScissor(clipKeyOf(pc#clip));
+                    setBlend(0);
                     RenderSprite.drawPolygon(spriteShader, polyVao, polyVbo, spriteUniforms,
                                               pc#vertices, pc#color, pc#alpha);
                     emptyRun
             }, emptyRun, sortedMerged);
             flush(lastRun);
-            // フレーム末尾で必ず scissor を解除する — 有効なまま持ち越すと、次フレームの
-            // 全画面 clear や F8 注釈のスクリーンショット再描画が小矩形に切られる。
+            // フレーム末尾で必ず scissor を解除し blend を Normal に戻す — Add のまま持ち越すと、
+            // 次フレームのタイルマップや別画面の描画まで足し込みになる。
+            setBlend(0);
             GL11.glDisable(GL11.GL_SCISSOR_TEST)
         } else ()
 

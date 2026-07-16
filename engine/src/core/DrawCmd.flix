@@ -6,6 +6,13 @@
 
 mod DrawCmd {
 
+    /// ピクセルの重ね方。Normal は普通の上書き（透明度つき）、Add は下の色に足し込む
+    /// （重なるほど明るくなる — 火花・光のにじみ用）。既定は Normal。
+    pub enum Blend with Eq, Order, ToString {
+        case Normal
+        case Add
+    }
+
     /// 角丸＋枠線スタイル。`Drawable.style = Some(..)` かつ texture="" のとき、
     /// 単色矩形を「塗り＋枠＋角丸＋AA」で 1 フラグメント描画する。長さはすべて px。
     ///
@@ -72,7 +79,8 @@ mod DrawCmd {
         uvScale = Vec2.Vec2,
         zIndex = Int32,
         style = Option[BoxStyle],
-        clip = Option[Rect2.Rect2]
+        clip = Option[Rect2.Rect2],
+        blend = Blend
     }
 
     /// タイルマップ 1 タイル分のインスタンスデータ。tilemap loader が組み立て、

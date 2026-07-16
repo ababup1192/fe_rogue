@@ -12,12 +12,13 @@ mod FileIndex {
     /// ディレクトリの中身 1 件 (名前と、ディレクトリかどうか)。
     pub type alias DirEntry = {name = String, isDir = Bool}
 
-    /// dir 配下の編集対象ファイルを列挙する。*.ui.json は ui、hitbox.json は hitbox。
-    /// 返るパスは dir 相対。
-    pub def listFiles(dir: String): {ui = List[String], hitbox = List[String]} \ IO =
+    /// dir 配下の編集対象ファイルを列挙する。*.ui.json は ui、hitbox.json は hitbox、
+    /// *.fx.json は fx。返るパスは dir 相対。
+    pub def listFiles(dir: String): {ui = List[String], hitbox = List[String], fx = List[String]} \ IO =
         let all = listAllJson(dir);
         { ui     = all |> List.filter(path -> String.endsWith(suffix = ".ui.json", path)),
-          hitbox = all |> List.filter(path -> baseName(path) == "hitbox.json") }
+          hitbox = all |> List.filter(path -> baseName(path) == "hitbox.json"),
+          fx     = all |> List.filter(path -> String.endsWith(suffix = ".fx.json", path)) }
 
     /// dir 配下の .json ファイル全部 (prune 走査・dir 相対・ソート済み)。
     pub def listAllJson(dir: String): List[String] \ IO =
@@ -53,13 +54,14 @@ mod FileIndex {
 
     /// /changes で mtime を報告する対象を選ぶ。all は prune 走査で見つかった .json 全部、
     /// palettes は ui 側の "paletteFile" 参照から逆引きした外部パレット。
-    /// 対象 = 編集対象 (ui / hitbox / palette) + プレビュー設定 (*.preview.json) + project.json。
+    /// 対象 = 編集対象 (ui / hitbox / fx / palette) + プレビュー設定 (*.preview.json) + project.json。
     // WhyNot: all をそのまま報告しない — ゲームプロジェクトにはエディタと無関係な
     // .json (レベルデータ等) が大量にあり得て、応答が毎回無駄に太るため。
     pub def changeTargets(palettes: List[String], all: List[String]): List[String] =
         let picked = all |> List.filter(path ->
             String.endsWith(suffix = ".ui.json", path)
             or baseName(path) == "hitbox.json"
+            or String.endsWith(suffix = ".fx.json", path)
             or String.endsWith(suffix = ".preview.json", path)
             or path == "project.json");
         // palette は all との突き合わせで実在確認を兼ねる (走査に無い参照先は報告しない)
