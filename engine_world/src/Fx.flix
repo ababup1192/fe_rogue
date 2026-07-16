@@ -1,9 +1,10 @@
 // Fx — たくさんの粒を、どこにも保存せず「今の時刻から計算」して並べる薄い仕組み。
-// 粒ひとつずつに個性の蛇口（番号から引くばらつき）を配り、形も色も動きもすべて呼び側の
-// piece に任せる。spawn も update も free も無く、要らなくなったら呼ぶのをやめるだけ。
-// 利用例: 紙吹雪・火花・雨・星屑のような群れを、状態を持たずに描く。
-// 注意: 各粒は番号と時刻 t だけから決まる純粋な写像。piece の返り値は多相ゆえ、描画コマンド
-//   でも中間データでも好きな型を積める。
+// spawn も update も free も無く、同じ入力からは常に同じ絵が出る（巻き戻し・リプレイでも
+// 揺れない）。
+// 利用例: 紙吹雪・雨・星屑は derive / fx.json の爆発は sample・sampleAt /
+//   「撃つたびに出る」効果の管理は burst（発生）→ expire（寿命回収）→ drawAll（描画）。
+// 注意: 各粒は番号と時刻 t だけから決まる純粋な写像。derive の piece の返り値は多相ゆえ、
+//   描画コマンドでも中間データでも好きな型を積める。
 
 mod Fx {
 
@@ -34,6 +35,40 @@ mod Fx {
     pub def sample(spec: FxDoc.Spec, seed: Int64, t: Float64): List[Render.PlacedItem] =
         if (t < 0.0 or t > spec#duration) Nil
         else spec#emitters |> List.flatMap(emitter -> sampleEmitter(emitter, seed, t))
+
+    /// sample の絵（原点 (0, 0) 生まれ）を at へ平行移動して置く。
+    /// 「爆発をこの座標で」の定型を呼び側に書かせない（drawAll の内部でも使う）。
+    pub def sampleAt(spec: FxDoc.Spec, seed: Int64, t: Float64, at: Vec2.Vec2): List[Render.PlacedItem] =
+        sample(spec, seed, t) |> List.map(p -> { at = Vec2.add(at, p#at) | p })
+
+    // ========================================================================
+    // burst 管理（「撃つたびに出る」効果の器）
+    // ========================================================================
+
+    /// 進行中の効果 1 つ。「どの spec を・どの種で・どこで・いつ」始めたかの 4 値だけを持ち、
+    /// 粒の状態は持たない — 絵は drawAll が (spec, seed, 経過秒) から毎回計算する。
+    /// spec は名前や参照でなく値で持つ: 複数の fx.json が混ざっても寿命（duration）の正本が
+    /// burst 自身に宿り、どの spec の効果かを引く対応表が要らない。
+    pub type alias Burst = { spec = FxDoc.Spec, seed = Int64, at = Vec2.Vec2, bornAt = Float64 }
+
+    /// 時刻 now に at で始まる効果を作る。seed は「撃つたびに変える通し番号」— 同じ爆発が
+    /// 毎回そっくり同じ姿になるのを避ける。ゲームの連番は Int32 が普通なので口は Int32 にし、
+    /// sample が食べる Int64 への変換はここが済ませる。
+    pub def burst(spec: FxDoc.Spec, seed: Int32, at: Vec2.Vec2, now: Float64): Burst =
+        { spec = spec, seed = Int32.toInt64(seed), at = at, bornAt = now }
+
+    /// 寿命内（経過が各自の spec の duration まで）の burst だけ残す。毎フレーム呼んで、
+    /// 終わった効果でリストが伸び続けるのを防ぐ。
+    /// 境界の「経過 = duration」は sample がまだ絵を出す側なので、器も残す。
+    pub def expire(now: Float64, bursts: List[Burst]): List[Burst] =
+        List.filter(b -> now - b#bornAt <= b#spec#duration, bursts)
+
+    /// 進行中の burst 全部の、時刻 now の絵。各 burst の生まれた時刻からの経過で sampleAt を
+    /// 呼ぶだけ — 寿命切れは sample が空を返すので、expire より先に呼んでも安全。
+    pub def drawAll(now: Float64, bursts: List[Burst]): List[Render.PlacedItem] =
+        List.flatMap(b -> sampleAt(b#spec, b#seed, now - b#bornAt, b#at), bursts)
+
+    // ── sample の内部（emitter・粒の導出）──
 
     def sampleEmitter(emitter: FxDoc.Emitter, seed: Int64, t: Float64): List[Render.PlacedItem] =
         // emitter 名を種に混ぜて、同じ seed でも emitter ごとに別の乱数系統を引く。
