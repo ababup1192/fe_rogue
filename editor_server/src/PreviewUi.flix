@@ -1,8 +1,14 @@
 // PreviewUi — POST /preview/ui。編集中の ui.json (メモリ上の doc、またはプロジェクト内の
 // ファイル path) をヘッドレスで 1 枚の PNG に描き、レイアウト矩形とノード木を添えて返す。
-// 失敗の返し分け: リクエストの封筒が壊れている (JSON でない / doc も path も無い) ときだけ
-// HTTP 400。ドキュメント側の問題 (パース失敗・参照切れ等) は HTTP 200 の ok:false —
-// 編集画面はタイピング途中の壊れた JSON を送り続けるので、それを HTTP エラーにしない。
+// 追加の入力 (どれも任意・無ければ従来どおり):
+//   data    — 主 doc の bind 済みノードへ流し込むサンプル文字列 { bindKey: text, ... }
+//   compose — 主 doc の背面に重ねる保存済み文書列 [{path, data?}, ...] (配列順 = 奥→手前)
+//   sidecar — 主 doc を path 指定したとき、隣の <名前>.preview.json があれば
+//             { data, compose } の既定値として自動適用 (リクエスト明示がフィールド丸ごと優先)
+// 失敗の返し分け: リクエストの封筒が壊れている (JSON でない / doc も path も無い /
+// data・compose の形違い) ときだけ HTTP 400。ドキュメント側の問題 (パース失敗・参照切れ・
+// 合成先が読めない等) は HTTP 200 の ok:false — 編集画面はタイピング途中の壊れた JSON を
+// 送り続けるので、それを HTTP エラーにしない。
 
 mod PreviewUi {
     import java.awt.image.BufferedImage
@@ -25,17 +31,36 @@ mod PreviewUi {
         case FlexPath
     }
 
+    /// 合成 1 文書ぶんの指定。`path` はプロジェクト相対の保存済み ui.json (doc インラインは
+    /// 主 doc だけの特権 — 合成側まで未保存バッファを受けると封筒が際限なく太る)。
+    /// `data` はその文書の bind へ流す値。
+    pub type alias ComposeEntry = { path = String, data = Map[String, String] }
+
+    /// spawn 直前まで解決済みの 1 文書。主 doc も合成文書もこの形に揃えて同じ道を通す。
+    pub type alias DocToSpawn = { path = String, spec = UiSpec.Spec, data = Map[String, String] }
+
+    /// spawn 済み root の台帳 1 行 (応答の composed とレイアウトの入口に使う)。
+    pub type alias SpawnedRoot = { path = String, root = String, id = EntityId }
+
+    /// data / compose の解決済み入力 (リクエスト明示 > sidecar > 空)。
+    type alias PreviewInput = { data = Map[String, String], compose = List[ComposeEntry] }
+
     /// リクエストボディを解いて (HTTP status, 応答 JSON) を作る。
-    pub def respond(dir: String, body: String): (Int32, Json) \ IO =
+    pub def respond(dir: String, caches: Caches.Caches, body: String): (Int32, Json) \ IO =
         match (JsonCompat.parse(body) |> Option.flatMap(JsonCodec.expectObject)) {
-            case None      => (400, envelopeError("body must be a JSON object {path?, doc?, hovered?, scale?}"))
+            case None      => (400, envelopeError("body must be a JSON object {path?, doc?, hovered?, scale?, data?, compose?}"))
             case Some(obj) =>
                 let scale = clampScale(JsonCodec.intOr("scale", 1, obj));
                 let hovered = Map.get("hovered", obj) |> Option.flatMap(JsonCodec.expectString);
-                match docJsonOf(dir, obj) {
-                    case Err(BadRequest.Envelope(message)) => (400, envelopeError(message))
-                    case Err(BadRequest.Doc(message))      => (200, failJson(message))
-                    case Ok(docJson)                       => preview(dir, docJson, hovered, scale)
+                match requestExtras(obj) {
+                    case Err(message) => (400, envelopeError(message))
+                    case Ok(extras)   => match docJsonOf(dir, obj) {
+                        case Err(BadRequest.Envelope(message)) => (400, envelopeError(message))
+                        case Err(BadRequest.Doc(message))      => (200, failJson(message))
+                        case Ok(docJson)                       =>
+                            let (input, sidecarWarnings) = resolveInput(dir, obj, extras);
+                            preview(dir, caches, docJson, hovered, scale, input, sidecarWarnings)
+                    }
                 }
         }
 
@@ -59,40 +84,200 @@ mod PreviewUi {
             case (None, None)             => Err(BadRequest.Envelope("either 'doc' or 'path' is required"))
         }
 
-    /// プロジェクト設定を読み、ドキュメントを 2 経路 (描画用 UiSpec / 木情報用 UiDoc) でパースする。
-    /// UiDoc.Spec を別途取るのは note/origin (エディタ向け情報) が UiSpec.Spec に無いため。
-    def preview(dir: String, docJson: Json, hovered: Option[String], scale: Int32): (Int32, Json) \ IO =
+    // ════════════════════════════════════════════════════════
+    // data / compose / sidecar の解釈
+    // ════════════════════════════════════════════════════════
+
+    /// リクエストの data / compose を解く。キーが無いのは正常 (None)。形違いは封筒不正 (400) —
+    /// タイポで data が黙って無視されるより、その場で形を正してもらう方が早い。
+    def requestExtras(obj: Map[String, Json]):
+            Result[String, {data = Option[Map[String, String]], compose = Option[List[ComposeEntry]]}] =
+        forM (
+            data    <- optField("data", json -> dataFromJson(json), "'data' must be an object of string values", obj);
+            compose <- optField("compose", json -> composeFromJson(json), "'compose' must be an array of {path, data?}", obj)
+        ) yield { data = data, compose = compose }
+
+    /// キーが無ければ Ok(None)、あれば decode に通す (解けなければ message で Err)。
+    def optField(key: String, decode: Json -> Option[a], message: String, obj: Map[String, Json]): Result[String, Option[a]] =
+        match Map.get(key, obj) {
+            case None       => Ok(None)
+            case Some(json) => decode(json) |> Option.map(v -> Some(v)) |> Option.toOk(message)
+        }
+
+    /// {"key": "text", ...} を Map にする。文字列以外の値が混ざれば None
+    /// (数値の暗黙変換はしない — 表示文字列は呼び手が決める契約)。
+    pub def dataFromJson(json: Json): Option[Map[String, String]] =
+        JsonCodec.expectObject(json) |> Option.flatMap(obj ->
+            obj |> Map.foldLeftWithKey((accOpt, key, value) ->
+                forM (acc <- accOpt; text <- JsonCodec.expectString(value))
+                yield Map.insert(key, text, acc), Some(Map.empty())))
+
+    /// [{"path": "...", "data": {...}?}, ...] を読む。path 欠け・形違いの要素が 1 つでもあれば None。
+    pub def composeFromJson(json: Json): Option[List[ComposeEntry]] =
+        match json {
+            case JArray(entries) => entries
+                |> Vector.toList
+                |> List.map(entry -> composeEntryFromJson(entry))
+                |> List.foldRight((entryOpt, accOpt) ->
+                    forM (entry <- entryOpt; acc <- accOpt) yield entry :: acc, Some(Nil))
+            case _               => None
+        }
+
+    def composeEntryFromJson(json: Json): Option[ComposeEntry] =
+        forM (
+            obj  <- JsonCodec.expectObject(json);
+            path <- Map.get("path", obj) |> Option.flatMap(JsonCodec.expectString);
+            data <- match Map.get("data", obj) {
+                case None            => Some(Map.empty())
+                case Some(dataJson)  => dataFromJson(dataJson)
+            }
+        ) yield ({ path = path, data = data }: ComposeEntry)
+
+    /// 主 doc の隣に置く既定プレビュー設定 (sidecar) のパス。
+    /// *.ui.json 以外は sidecar 規約の対象外なので None。
+    pub def sidecarPathOf(path: String): Option[String] =
+        if (String.endsWith(suffix = ".ui.json", path))
+            Some("${String.take(String.length(path) - 8, path)}.preview.json")
+        else None
+
+    /// data / compose の最終値を決める。主 doc が path 指定なら sidecar を既定値として読み、
+    /// リクエストに明示があればフィールド丸ごとそちらが勝つ (キー単位で混ぜると
+    /// どこから来た値か追えなくなる)。
+    def resolveInput(dir: String, obj: Map[String, Json],
+                     extras: {data = Option[Map[String, String]], compose = Option[List[ComposeEntry]]}):
+                    (PreviewInput, List[String]) \ IO =
+        let bothExplicit = not Option.isEmpty(extras#data) and not Option.isEmpty(extras#compose);
+        let sidecarPath =
+            if (bothExplicit or not Option.isEmpty(Map.get("doc", obj))) None
+            else Map.get("path", obj) |> Option.flatMap(JsonCodec.expectString) |> Option.flatMap(p -> sidecarPathOf(p));
+        let (sidecar, warnings) = match sidecarPath {
+            case None       => (emptySidecar(), Nil)
+            case Some(path) => readSidecar(dir, path)
+        };
+        ({ data    = extras#data    |> Option.getWithDefault(sidecar#data),
+           compose = extras#compose |> Option.getWithDefault(sidecar#compose) },
+         warnings)
+
+    def emptySidecar(): PreviewInput =
+        { data = Map.empty(), compose = Nil }
+
+    /// sidecar を読む。ファイルが無いのは普通のこと (静かに素通し)。中身の形違いは置いた人の
+    /// 意図が果たされていないので warning で伝え、その項目だけ無視する。
+    def readSidecar(dir: String, sidecarPath: String): (PreviewInput, List[String]) \ IO =
+        match FileIndex.readInside(dir, sidecarPath) {
+            case Err(_)      => (emptySidecar(), Nil)
+            case Ok(content) => match (JsonCompat.parse(String.trim(content)) |> Option.flatMap(JsonCodec.expectObject)) {
+                case None      => (emptySidecar(), "sidecar ${sidecarPath} is not a JSON object — ignored" :: Nil)
+                case Some(obj) =>
+                    let (data, dataWarnings) =
+                        sidecarField("data", json -> dataFromJson(json), Map.empty(),
+                                     "an object of string values", sidecarPath, obj);
+                    let (compose, composeWarnings) =
+                        sidecarField("compose", json -> composeFromJson(json), Nil,
+                                     "an array of {path, data?}", sidecarPath, obj);
+                    ({ data = data, compose = compose }, dataWarnings ::: composeWarnings)
+            }
+        }
+
+    /// sidecar の 1 フィールドを解く。無ければ既定値 (警告なし)、形違いは既定値 + warning 1 行。
+    def sidecarField(key: String, decode: Json -> Option[a], fallback: a, shape: String,
+                     sidecarPath: String, obj: Map[String, Json]): (a, List[String]) =
+        match Map.get(key, obj) {
+            case None       => (fallback, Nil)
+            case Some(json) => match decode(json) {
+                case Some(value) => (value, Nil)
+                case None        => (fallback, "sidecar ${sidecarPath}: '${key}' must be ${shape} — ignored" :: Nil)
+            }
+        }
+
+    // ════════════════════════════════════════════════════════
+    // パース → 合成 → 描画
+    // ════════════════════════════════════════════════════════
+
+    /// プロジェクト設定を読み、主 doc を 2 経路 (描画用 UiSpec / 木情報用 UiDoc) でパースし、
+    /// 合成文書を読み集めてから描画へ渡す。UiDoc.Spec を別途取るのは note/origin
+    /// (エディタ向け情報) が UiSpec.Spec に無いため。
+    def preview(dir: String, caches: Caches.Caches, docJson: Json, hovered: Option[String], scale: Int32,
+                input: PreviewInput, extraWarnings: List[String]): (Int32, Json) \ IO =
         HeadlessFont.ensureHeadless();
         match ProjectCtx.load(dir) {
             case Err(message) => (200, failJson("project.json: ${message}"))
             case Ok(ctx)      =>
                 let specRes = run { UiSpec.parseAt(dir, docJson) } with Fs.FileRead.runWithIO;
                 let docRes  = run { UiDoc.parseAt(dir, docJson) } with Fs.FileRead.runWithIO;
-                match (specRes, docRes) {
-                    case (Ok(spec), Ok(docSpec)) =>
-                        render(dir, ctx, spec, docSpec, hovered, scale, DrawPath.StorePath)
-                    case (Err(e), Ok(docSpec))   =>
-                        if (isRotationErr(e)) rotationFallback(dir, ctx, docJson, docSpec, hovered, scale, e)
-                        else (200, failJson(JsonCompat.describe(e)))
-                    case (_, Err(e))             => (200, failJson(JsonCompat.describe(e)))
+                match loadComposed(dir, input#compose) {
+                    case Err(message)  => (200, failJson(message))
+                    case Ok(composed)  => match (specRes, docRes) {
+                        case (Ok(spec), Ok(docSpec)) =>
+                            render(dir, caches, ctx, docSpec, {
+                                main = { path = "", spec = spec, data = input#data },
+                                composed = composed, hovered = hovered, scale = scale,
+                                drawPath = DrawPath.StorePath, extraWarnings = extraWarnings })
+                        case (Err(e), Ok(docSpec))   =>
+                            if (isRotationErr(e) and List.isEmpty(composed))
+                                rotationFallback(dir, caches, ctx, docJson, docSpec, hovered, scale, input, extraWarnings, e)
+                            else if (isRotationErr(e))
+                                (200, failJson("this document uses poly rotation — composing is not supported for it, preview it alone"))
+                            else (200, failJson(JsonCompat.describe(e)))
+                        case (_, Err(e))             => (200, failJson(JsonCompat.describe(e)))
+                    }
                 }
         }
 
-    /// poly rotation/pivot 付きドキュメントの逃げ道。回転はレイアウト矩形を変えないので、
-    /// rects と名前表は rotation/pivot を落とした写しの UiStore から取り、絵は Flex 経路が
-    /// 回転込みで描く。写しでも通らなければ元のエラーをそのまま返す。
-    def rotationFallback(dir: String, ctx: ProjectCtx.Ctx, docJson: Json, docSpec: UiDoc.Spec,
-                         hovered: Option[String], scale: Int32,
-                         original: Util.Json.JsonError): (Int32, Json) \ IO =
+    /// 合成する各文書を読む。1 つでも読めない・解けない文書があれば全体を ok:false —
+    /// 一部だけ欠けた合成絵を「正」と誤読させないため。poly rotation 入りの文書は合成では
+    /// 未対応なので、単体プレビューへ誘導する文言で断る。
+    def loadComposed(dir: String, entries: List[ComposeEntry]): Result[String, List[DocToSpawn]] \ IO =
+        entries |> List.foldRight((entry, accRes) -> match accRes {
+            case Err(message) => Err(message)
+            case Ok(acc)      => loadComposeDoc(dir, entry) |> Result.map(doc -> doc :: acc)
+        }, Ok(Nil))
+
+    def loadComposeDoc(dir: String, entry: ComposeEntry): Result[String, DocToSpawn] \ IO =
+        let jsonRes = FileIndex.readInside(dir, entry#path)
+            |> Result.flatMap(content -> JsonCompat.parse(String.trim(content)) |> Option.toOk("JSON parse failed"));
+        match jsonRes {
+            case Err(message) => Err("compose '${entry#path}': ${message}")
+            case Ok(json)     =>
+                (run { UiSpec.parseAt(dir, json) } with Fs.FileRead.runWithIO)
+                    |> Result.mapErr(e ->
+                        if (isRotationErr(e))
+                            "compose '${entry#path}': poly rotation documents cannot be composed — preview it alone"
+                        else
+                            "compose '${entry#path}': ${JsonCompat.describe(e)}")
+                    |> Result.map(spec -> ({ path = entry#path, spec = spec, data = entry#data }: DocToSpawn))
+        }
+
+    /// poly rotation/pivot 付きドキュメントの逃げ道 (合成なしの単体時だけ)。回転はレイアウト
+    /// 矩形を変えないので、rects と名前表は rotation/pivot を落とした写しの UiStore から取り、
+    /// 絵は Flex 経路が回転込みで描く。写しでも通らなければ元のエラーをそのまま返す。
+    def rotationFallback(dir: String, caches: Caches.Caches, ctx: ProjectCtx.Ctx, docJson: Json, docSpec: UiDoc.Spec,
+                         hovered: Option[String], scale: Int32, input: PreviewInput,
+                         extraWarnings: List[String], original: Util.Json.JsonError): (Int32, Json) \ IO =
         let strippedRes = run { UiSpec.parseAt(dir, stripRotation(docJson)) } with Fs.FileRead.runWithIO;
         match strippedRes {
-            case Ok(spec) => render(dir, ctx, spec, docSpec, hovered, scale, DrawPath.FlexPath)
+            case Ok(spec) => render(dir, caches, ctx, docSpec, {
+                main = { path = "", spec = spec, data = input#data },
+                composed = Nil, hovered = hovered, scale = scale,
+                drawPath = DrawPath.FlexPath, extraWarnings = extraWarnings })
             case Err(_)   => (200, failJson(JsonCompat.describe(original)))
         }
 
     /// UiSpec 経路が poly rotation/pivot を断ったエラーか (文言で見分ける)。
     def isRotationErr(e: Util.Json.JsonError): Bool =
         String.contains(substr = "poly rotation/pivot is not supported", JsonCompat.describe(e))
+
+    /// JSON 木のどこかに "rotation"/"pivot" キーがあるか。ui.json 方言でこの 2 キーを読むのは
+    /// poly だけなので、キーの有無だけで「合成に使えない (回転入り) 文書」と判定できる。
+    /// GET /files が合成候補の事前判定に使う。
+    pub def containsRotation(json: Json): Bool =
+        match json {
+            case JObject(m) =>
+                Map.memberOf("rotation", m) or Map.memberOf("pivot", m)
+                    or (Map.valuesOf(m) |> List.exists(v -> containsRotation(v)))
+            case JArray(vs) => Vector.exists(v -> containsRotation(v), vs)
+            case _          => false
+        }
 
     /// JSON 木から "rotation"/"pivot" キーを全部落とす。ui.json 方言でこの 2 キーを読むのは
     /// poly だけなので、木全体から落としても他の widget の意味は変わらない。
@@ -104,33 +289,55 @@ mod PreviewUi {
             case other      => other
         }
 
-    /// パース済みドキュメントを spawn → レイアウト → ラスタライズして成功応答を組む。
-    def render(dir: String, ctx: ProjectCtx.Ctx, spec: UiSpec.Spec, docSpec: UiDoc.Spec,
-               hovered: Option[String], scale: Int32, drawPath: DrawPath): (Int32, Json) \ IO =
-        let (rootId, spawned) = UiSpec.spawnRoot(spec, UiStore.empty());
-        // 画面系の文書は「隠して開始→ゲームが表示を切り替える」作りが多い。プレビューは
-        // 初期表示状態の再現でなく文書を見る場なので、root だけ強制表示する(子孫の hidden は
-        // 条件付き UI なので尊重する)。
-        let shown = UiStore.setVisible(UiDoc.nameOf(docSpec), true, spawned);
-        let ui = UiStore.setHovered(hovered, shown);
+    /// render の入力一式。`composed` が奥、`main` (主 doc) が最前。
+    type alias RenderJob = {
+        main = DocToSpawn,
+        composed = List[DocToSpawn],
+        hovered = Option[String],
+        scale = Int32,
+        drawPath = DrawPath,
+        extraWarnings = List[String]
+    }
+
+    /// パース済みの全文書を spawn → レイアウト → ラスタライズして成功応答を組む。
+    def render(dir: String, caches: Caches.Caches, ctx: ProjectCtx.Ctx, docSpec: UiDoc.Spec, job: RenderJob): (Int32, Json) \ IO =
+        let hasCompose = not List.isEmpty(job#composed);
+        // FlexPath の絵は UiDoc (Spec 直読み) が描くので、store へ data を流すと rects だけが
+        // 動いて絵と食い違う。流さず warning で伝える。
+        let dataDropped = match job#drawPath {
+            case DrawPath.StorePath => false
+            case DrawPath.FlexPath  => not Map.isEmpty(job#main#data)
+        };
+        let mainDoc = if (dataDropped) { data = Map.empty() | job#main } else job#main;
+        let spawned = spawnDocs(List.append(job#composed, mainDoc :: Nil), hasCompose);
+        let mainRootName = UiDoc.nameOf(docSpec);
+        // hover は主 doc のみ対象。合成文書のノードに当てても絵は変えない (編集対象は主 doc)。
+        let hoveredApplied = job#hovered
+            |> Option.flatMap(path ->
+                if (underRootPath(mainRootName, path) and not Option.isEmpty(UiStore.idOf(path, spawned#ui)))
+                    Some(path)
+                else None);
+        let ui = UiStore.setHovered(hoveredApplied, spawned#ui);
         let usedFonts = ui#texts |> Map.valuesOf |> List.map(text -> text#font);
-        let fonts = ProjectCtx.fontSetup(usedFonts, dir, ctx);
+        let fonts = ProjectCtx.fontSetup(usedFonts, dir, caches, ctx);
         match fonts#primary {
             case None          =>
                 (200, failJson(Option.getWithDefault("no font available for preview", List.head(fonts#warnings))))
             case Some(primary) =>
                 let atlasOf = name -> Option.getWithDefault(primary#atlas, Map.get(name, fonts#atlases));
                 let usedTextures = ui#sprites |> Map.valuesOf |> List.map(sprite -> sprite#texture);
-                let textures = ProjectCtx.textureSetup(usedTextures, ctx);
+                let textures = ProjectCtx.textureSetup(usedTextures, caches, ctx);
                 let textureInfoOf = name -> Map.get(name, textures#infos);
                 let design: Vec2.Vec2 = { x = Int32.toFloat64(ctx#designW), y = Int32.toFloat64(ctx#designH) };
                 let rootRect: Rect2.Rect2 = { position = Vec2.zero(), size = design };
                 let measures = UiExtract.measureTexts(ui#texts, atlasOf);
-                let rects = UiLayout.computeLayout(
-                    { styles = ui#styles, parents = ui#parents, order = ui#order,
-                      measures = measures, visible = ui#visible },
-                    rootId, rootRect);
-                let out = match drawPath {
+                let layoutInput = { styles = ui#styles, parents = ui#parents, order = ui#order,
+                                    measures = measures, visible = ui#visible };
+                let rects = spawned#roots |> List.foldLeft((acc, root) ->
+                    UiLayout.computeLayout(layoutInput, root#id, rootRect)
+                        |> Map.foldLeftWithKey((m, id, rect) -> Map.insert(id, rect, m), acc),
+                    Map.empty());
+                let out = match job#drawPath {
                     case DrawPath.StorePath => UiRender.renderUiWith(atlasOf, textureInfoOf, ui, design)
                     case DrawPath.FlexPath  =>
                         // Store 経路と同じ理由で root を強制表示(こちらは Spec 直読みなので Spec 側を書き換える)。
@@ -142,43 +349,124 @@ mod PreviewUi {
                 };
                 let image = SoftRaster.renderToImage({
                     drawables = out#drawables, polygons = out#polygons,
-                    design = design, scale = scale, background = ctx#clearColor,
+                    design = design, scale = job#scale, background = ctx#clearColor,
                     texturePath = ProjectCtx.texturePaths(ctx),
                     fontTtf = primary#path, fontAtlas = primary#atlas,
                     outPath = "" });
-                let pathWarnings = match (drawPath, hovered) {
+                let pathWarnings = match (job#drawPath, job#hovered) {
                     case (DrawPath.FlexPath, Some(_)) =>
                         "hover is not applied — documents using poly rotation render via the static path" :: Nil
                     case _                            => Nil
                 };
+                let dataPathWarnings =
+                    if (dataDropped)
+                        "data is not applied — documents using poly rotation render via the static path" :: Nil
+                    else Nil;
+                let dataSources = mainDoc#data :: (job#composed |> List.map(doc -> doc#data));
                 let warnings = fonts#warnings ::: textures#warnings
-                    ::: hoverWarnings(hovered, ui) ::: pathWarnings;
+                    ::: hoverWarnings(job#hovered, hasCompose, mainRootName, ui)
+                    ::: duplicateRootWarnings(spawned#roots |> List.map(root -> root#root))
+                    ::: unmatchedDataWarnings(dataSources, spawned#bindKeys)
+                    ::: pathWarnings ::: dataPathWarnings ::: job#extraWarnings;
+                let composedRoots = List.take(List.length(spawned#roots) - 1, spawned#roots);
                 (200, JObject(Map#{
                     "ok"       => JBool(true),
                     "png"      => JString(PngBase64.encode(image)),
                     "width"    => JNumber(JsonCodec.intToBd(image.getWidth())),
                     "height"   => JNumber(JsonCodec.intToBd(image.getHeight())),
-                    "scale"    => JNumber(JsonCodec.intToBd(scale)),
+                    "scale"    => JNumber(JsonCodec.intToBd(job#scale)),
                     "design"   => JObject(Map#{
                         "w" => JNumber(JsonCodec.intToBd(ctx#designW)),
                         "h" => JNumber(JsonCodec.intToBd(ctx#designH))
                     }),
                     "rects"    => rectsJson(ui, rects),
                     "tree"     => treeJson("", docSpec),
+                    "composed" => composedJson(composedRoots),
                     "warnings" => JsonCodec.encodeList(warning -> JString(warning), warnings),
                     "error"    => JNull
                 }))
         }
 
-    /// hovered の名前パスが木のどのノードにも当たらないときだけ warning にする
+    // ════════════════════════════════════════════════════════
+    // 合成 spawn (純粋 — テストの入口)
+    // ════════════════════════════════════════════════════════
+
+    /// 文書列 (奥→手前) を 1 つの UiStore へ順に spawn する。各文書で行うこと:
+    /// root の強制表示 — 画面系文書は「隠して開始→ゲームが表示を切り替える」作りが多く、
+    /// プレビューは文書を見る場なので root だけ表示する (子孫の hidden は条件付き UI なので尊重)。
+    /// layer の付け直し (overrideLayers 時) — 合成の前後関係は文書側の layer でなく配列順が
+    /// 契約なので、root の layer を配列位置で上書きする。
+    /// data の流し込み — 同じ bind key を持つ別文書を巻き込まないよう、この spawn で採番された
+    /// entity に bindings を絞ってから、ゲームと同じ UiBinding.apply へ通す。
+    pub def spawnDocs(docs: List[DocToSpawn], overrideLayers: Bool):
+            { ui = UiStore.UiWorld, roots = List[SpawnedRoot], bindKeys = Set[String] } =
+        let seed = { ui = UiStore.empty(), roots = (Nil: List[SpawnedRoot]),
+                     bindKeys = (Set.empty(): Set[String]), layer = 0 };
+        let acc = docs |> List.foldLeft((state, doc) -> {
+            let startId = state#ui#nextId;
+            let (rootId, ui1) = UiSpec.spawnRoot(doc#spec, state#ui);
+            let rootName = specNameOf(doc#spec);
+            let ui2 = UiStore.setVisible(rootName, true, ui1);
+            let ui3 = if (overrideLayers) {layers = Map.insert(rootId, state#layer, ui2#layers) | ui2} else ui2;
+            let docBindings = ui3#bindings |> Map.filterWithKey((id, _key) -> id >= startId);
+            { ui = applyDocData(docBindings, doc#data, ui3),
+              roots = List.append(state#roots, ({ path = doc#path, root = rootName, id = rootId }: SpawnedRoot) :: Nil),
+              bindKeys = Set.union(state#bindKeys, docBindings |> Map.valuesOf |> List.toSet),
+              layer = state#layer + 1 }
+        }, seed);
+        { ui = acc#ui, roots = acc#roots, bindKeys = acc#bindKeys }
+
+    /// data をこの文書の bind (docBindings) だけに適用する。流し込みの本体はゲームと同じ
+    /// UiBinding.apply — bindings 台帳を一時的にこの文書ぶんへ絞って通し、通した後に元へ戻す。
+    def applyDocData(docBindings: Map[EntityId, String], data: Map[String, String], ui: UiStore.UiWorld): UiStore.UiWorld =
+        if (Map.isEmpty(data)) ui
+        else {
+            let applied = UiBinding.apply(key -> Map.get(key, data), {bindings = docBindings | ui});
+            {bindings = ui#bindings | applied}
+        }
+
+    /// UiSpec.Spec の root 名を取り出す。
+    def specNameOf(spec: UiSpec.Spec): String =
+        let UiSpec.Spec.Spec(fields) = spec;
+        fields#name
+
+    /// path が root 名そのものか、その配下 ("root/...") か。
+    def underRootPath(rootName: String, path: String): Bool =
+        path == rootName or String.startsWith(prefix = "${rootName}/", path)
+
+    // ════════════════════════════════════════════════════════
+    // warning の導出 (純粋 — テストの入口)
+    // ════════════════════════════════════════════════════════
+
+    /// 同じ root 名の文書を重ねると、名前パス台帳が後勝ちで上書きされ先の文書は rects からも
+    /// 絵からも消える。黙って消さず 1 行で伝える (重複した名前ごとに 1 行)。
+    pub def duplicateRootWarnings(rootNames: List[String]): List[String] =
+        rootNames
+            |> List.filter(name -> List.count(other -> other == name, rootNames) > 1)
+            |> List.distinct
+            |> List.map(name -> "root name '${name}' is used by multiple documents — the last one wins in rects and the image")
+
+    /// data のキーがどの文書の bind にも無ければタイポの可能性が高いので 1 行ずつ伝える。
+    pub def unmatchedDataWarnings(datas: List[Map[String, String]], bindKeys: Set[String]): List[String] =
+        datas
+            |> List.flatMap(data -> Map.keysOf(data) |> Set.toList)
+            |> List.distinct
+            |> List.filter(key -> not Set.memberOf(key, bindKeys))
+            |> List.map(key -> "data key '${key}' does not match any bind")
+
+    /// hovered の名前パスが主 doc のどのノードにも当たらないときだけ warning にする
     /// (絵が変わらない理由を編集画面へ伝える。当たれば絵の変化そのものが答え)。
-    def hoverWarnings(hovered: Option[String], ui: UiStore.UiWorld): List[String] =
+    def hoverWarnings(hovered: Option[String], hasCompose: Bool, mainRootName: String,
+                      ui: UiStore.UiWorld): List[String] =
         match hovered {
             case None       => Nil
             case Some(path) =>
-                if (Option.isEmpty(UiStore.idOf(path, ui)))
+                if (underRootPath(mainRootName, path) and not Option.isEmpty(UiStore.idOf(path, ui)))
+                    Nil
+                else if (hasCompose)
+                    "hovered '${path}' does not match any node in the main document" :: Nil
+                else
                     "hovered '${path}' does not match any node" :: Nil
-                else Nil
         }
 
     // ════════════════════════════════════════════════════════
@@ -197,6 +485,13 @@ mod PreviewUi {
 
     def num(value: Float64): Json =
         JNumber(JsonCodec.floatToBd(value))
+
+    /// 合成した文書の一覧 (主 doc は含めない)。各要素の rects は応答の rects に統合済み。
+    def composedJson(roots: List[SpawnedRoot]): Json =
+        JsonCodec.encodeList(root -> JObject(Map#{
+            "path" => JString(root#path),
+            "root" => JString(root#root)
+        }), roots)
 
     /// UiDoc.Spec のノード木をエディタ向けの JSON に写す。path は名前を "/" で繋いで組む。
     def treeJson(parentPath: String, spec: UiDoc.Spec): Json =

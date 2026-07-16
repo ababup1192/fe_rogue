@@ -12,7 +12,7 @@ mod PreviewHitbox {
     use Util.Json.Json.{JObject, JArray, JString, JNumber, JBool, JNull}
 
     /// リクエストボディを解いて (HTTP status, 応答 JSON) を作る。
-    pub def respond(dir: String, body: String): (Int32, Json) \ IO =
+    pub def respond(dir: String, caches: Caches.Caches, body: String): (Int32, Json) \ IO =
         match (JsonCompat.parse(body) |> Option.flatMap(JsonCodec.expectObject)) {
             case None      => (400, envelopeError("body must be a JSON object {path?, doc?, scale?}"))
             case Some(obj) =>
@@ -22,7 +22,7 @@ mod PreviewHitbox {
                     case Err(PreviewUi.BadRequest.Doc(message))      => (200, failJson(message))
                     case Ok(docJson) => match HitDoc.parse(docJson) {
                         case Err(e)    => (200, failJson(JsonCompat.describe(e)))
-                        case Ok(sheet) => preview(dir, docJson, sheet, scale)
+                        case Ok(sheet) => preview(dir, caches, docJson, sheet, scale)
                     }
                 }
         }
@@ -30,12 +30,12 @@ mod PreviewHitbox {
     /// プロジェクト設定とフォントを引いてから絵と応答を組む。フォントはラベル用と
     /// ラスタライザ用の両方 — ラスタライザが TTF を必ず 1 本要求するため、プロジェクトに
     /// TTF が 1 本も無いときはラベル省略でなく ok:false で理由を返す。
-    def preview(dir: String, docJson: Json, sheet: HitDoc.Sheet, scale: Int32): (Int32, Json) \ IO =
+    def preview(dir: String, caches: Caches.Caches, docJson: Json, sheet: HitDoc.Sheet, scale: Int32): (Int32, Json) \ IO =
         HeadlessFont.ensureHeadless();
         match ProjectCtx.load(dir) {
             case Err(message) => (200, failJson("project.json: ${message}"))
             case Ok(ctx)      =>
-                let fonts = ProjectCtx.fontSetup(Nil, dir, ctx);
+                let fonts = ProjectCtx.fontSetup(Nil, dir, caches, ctx);
                 match fonts#primary {
                     case None          =>
                         (200, failJson(Option.getWithDefault("no font available for preview", List.head(fonts#warnings))))

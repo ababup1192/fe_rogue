@@ -4,9 +4,6 @@
 // 描いて返し、欠けた分は warning の文言で編集画面へ伝える。
 
 mod ProjectCtx {
-    import java.io.File
-    import javax.imageio.ImageIO
-
     /// プレビュー描画に使うプロジェクト設定一式。
     /// `designW`/`designH`: 設計解像度 (px)。`clearColor`: 背景色。
     /// `fonts`/`textures`: project.json の manifest (パスは絶対パス化済み)。
@@ -48,7 +45,8 @@ mod ProjectCtx {
 
     /// ドキュメントが使うフォント名の一覧から atlas 表と代表フォントを組む。
     /// ラスタライザは TTF 1 本しか受けないので、複数フォントの使用は代表 1 本に寄せて warning にする。
-    pub def fontSetup(usedFonts: List[String], dir: String, ctx: Ctx): FontSetup \ IO =
+    /// atlas は caches の台帳経由で引く (同じ TTF の焼き直しは mtime が変わったときだけ)。
+    pub def fontSetup(usedFonts: List[String], dir: String, caches: Caches.Caches, ctx: Ctx): FontSetup \ IO =
         let used = List.distinct(usedFonts);
         let (primaryOpt, primaryWarnings) = primaryEntry(used, dir, ctx);
         match primaryOpt {
@@ -58,13 +56,13 @@ mod ProjectCtx {
                   primary  = None,
                   warnings = primaryWarnings }
             case Some(entry) =>
-                let primaryAtlas = HeadlessFont.buildUiAtlas(entry#path, "");
+                let primaryAtlas = Caches.fontAtlas(entry#path, caches);
                 let multiWarnings =
                     if (List.length(used) > 1)
                         "multiple fonts used (${String.intercalate(", ", used)}) — preview draws every text with '${entry#name}'" :: Nil
                     else Nil;
                 let folded = List.foldLeft(
-                    (acc, name) -> resolveFont(name, entry#name, entry#path, primaryAtlas, ctx, acc),
+                    (acc, name) -> resolveFont(name, entry#name, entry#path, primaryAtlas, caches, ctx, acc),
                     { byPath = Map#{entry#path => primaryAtlas},
                       byName = (Map.empty(): Map[String, FontAtlas]),
                       warnings = List.append(primaryWarnings, multiWarnings) },
@@ -84,7 +82,7 @@ mod ProjectCtx {
 
     /// フォント名 1 個を manifest から解決して acc に足す。manifest に無い名前は代表フォントで代替。
     def resolveFont(name: String, primaryName: String, primaryPath: String, primaryAtlas: FontAtlas,
-                    ctx: Ctx, acc: FontAcc): FontAcc \ IO =
+                    caches: Caches.Caches, ctx: Ctx, acc: FontAcc): FontAcc \ IO =
         match List.findLeft(font -> font#name == name, ctx#fonts) {
             case None       =>
                 { byName   = Map.insert(name, primaryAtlas, acc#byName),
@@ -95,7 +93,7 @@ mod ProjectCtx {
                 case Some(atlas) => { byName = Map.insert(name, atlas, acc#byName) | acc }
                 case None        =>
                     let atlas = if (font#path == primaryPath) primaryAtlas
-                                else HeadlessFont.buildUiAtlas(font#path, "");
+                                else Caches.fontAtlas(font#path, caches);
                     { byPath = Map.insert(font#path, atlas, acc#byPath),
                       byName = Map.insert(name, atlas, acc#byName)
                       | acc }
@@ -142,15 +140,16 @@ mod ProjectCtx {
         warnings = List[String]
     }
 
-    /// ドキュメントが使うテクスチャ名の一覧から実寸表を組む。
+    /// ドキュメントが使うテクスチャ名の一覧から実寸表を組む。実寸は caches の台帳経由で引く
+    /// (同じ画像のデコードは mtime が変わったときだけ)。
     /// manifest に無い・画像が読めない名前は表に載せず warning にする
     /// (寸法無しでも sprite 以外は描けるので、プレビュー全体は止めない)。
-    pub def textureSetup(usedTextures: List[String], ctx: Ctx): TextureSetup \ IO =
+    pub def textureSetup(usedTextures: List[String], caches: Caches.Caches, ctx: Ctx): TextureSetup \ IO =
         List.foldLeft((acc, name) -> match List.findLeft(tex -> tex#name == name, ctx#textures) {
             case None      =>
                 { warnings = List.append(acc#warnings,
                     "texture '${name}' is not in project.json textures" :: Nil) | acc }
-            case Some(tex) => match imageSize(tex#path) {
+            case Some(tex) => match Caches.imageSize(tex#path, caches) {
                 case None             =>
                     { warnings = List.append(acc#warnings,
                         "texture '${name}' could not be read: ${tex#path}" :: Nil) | acc }
@@ -164,13 +163,4 @@ mod ProjectCtx {
     /// ラスタライザに渡す 名前 → 画像パス の表 (manifest 全部)。
     pub def texturePaths(ctx: Ctx): Map[String, String] =
         ctx#textures |> List.map(tex -> (tex#name, tex#path)) |> List.toMap
-
-    /// 画像ファイルの実寸 (width, height)。読めなければ None。
-    def imageSize(path: String): Option[(Float64, Float64)] \ IO =
-        let file = new File(path);
-        if (file.exists()) {
-            let img = ImageIO.read(file);
-            if (Object.isNull(img)) None
-            else Some((Int32.toFloat64(img.getWidth()), Int32.toFloat64(img.getHeight())))
-        } else None
 }

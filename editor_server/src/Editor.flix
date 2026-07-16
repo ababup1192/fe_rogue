@@ -15,7 +15,7 @@ mod Editor {
     import java.lang.{String => JavaString}
 
     use Util.Json.Json
-    use Util.Json.Json.{JObject, JString, JNumber, JBool}
+    use Util.Json.Json.{JObject, JArray, JString, JNumber, JBool}
 
     /// /health の version に載せる自分の版 (flix.toml の version と揃える)。
     def version(): String = "0.1.0"
@@ -31,13 +31,15 @@ mod Editor {
         if (Object.isNull(value)) 8787 else Int32.fromString(value) |> Option.getWithDefault(8787)
 
     /// 127.0.0.1:port で HTTP サーバを立て、戻らずに待ち続ける。
+    /// caches はここで 1 回だけ作り、全リクエストで共有する (フォント atlas 等の焼き直し回避)。
     pub def serve(dir: String, port: Int32): Unit \ IO =
+        let caches = Caches.make();
         let server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
         discard server.createContext("/", new HttpHandler {
             def handle(_this: HttpHandler, exchange: HttpExchange): Unit \ IO =
                 // 想定外の失敗でもサーバは落とさず、500 の JSON で理由を返して次のリクエストを受け続ける。
                 try {
-                    dispatch(dir, exchange)
+                    dispatch(dir, caches, exchange)
                 } catch {
                     case e: Exception => {
                         let message = e.toString();
@@ -57,7 +59,7 @@ mod Editor {
     // ── ルーティング ──────────────────────────────────────
 
     /// メソッドとパスで各エンドポイントへ振り分ける。
-    def dispatch(dir: String, exchange: HttpExchange): Unit \ IO =
+    def dispatch(dir: String, caches: Caches.Caches, exchange: HttpExchange): Unit \ IO =
         let methodName = exchange.getRequestMethod();
         let uri = exchange.getRequestURI();
         let path = uri.getPath();
@@ -70,11 +72,11 @@ mod Editor {
             case ("GET", "/file")   => handleReadFile(dir, params, exchange)
             case ("PUT", "/file")   => handleWriteFile(dir, readBody(exchange), exchange)
             case ("POST", "/preview/ui") => {
-                let (status, json) = PreviewUi.respond(dir, readBody(exchange));
+                let (status, json) = PreviewUi.respond(dir, caches, readBody(exchange));
                 sendJson(status, json, exchange)
             }
             case ("POST", "/preview/hitbox") => {
-                let (status, json) = PreviewHitbox.respond(dir, readBody(exchange));
+                let (status, json) = PreviewHitbox.respond(dir, caches, readBody(exchange));
                 sendJson(status, json, exchange)
             }
             case _                  => sendJson(404, errorJson("unknown endpoint: ${methodName} ${path}"), exchange)
@@ -101,13 +103,29 @@ mod Editor {
         }
 
     /// GET /files — 編集対象ファイルの一覧 (ui / hitbox 別) を返す。
+    /// ui はメタ情報付き {path, composable} の列 (hitbox は従来どおり文字列の列)。
     def handleFiles(dir: String, exchange: HttpExchange): Unit \ IO =
         let index = run { FileIndex.listFiles(dir) } with Fs.Glob.runWithIO;
+        let uiEntries = index#ui |> List.map(relPath -> uiFileJson(dir, relPath));
         sendJson(200, JObject(Map#{
             "root"   => JString(dir),
-            "ui"     => JsonCodec.encodeList(p -> JString(p), index#ui),
+            "ui"     => JArray(List.toVector(uiEntries)),
             "hitbox" => JsonCodec.encodeList(p -> JString(p), index#hitbox)
         }), exchange)
+
+    /// ui ファイル 1 件ぶんのメタ情報。composable = poly の rotation/pivot を含まない
+    /// (含む文書は合成プレビューが断るので、選ばせる前にここで伝える)。
+    /// 読めない・JSON として壊れているファイルは true に倒す — 回転が理由ではないので、
+    /// 実際に合成を試みたときの本来のエラーで伝えるのが正しい。
+    def uiFileJson(dir: String, relPath: String): Json \ IO =
+        let composable = match FileIndex.readInside(dir, relPath) {
+            case Err(_)   => true
+            case Ok(text) => match JsonCompat.parse(text) {
+                case None       => true
+                case Some(json) => not PreviewUi.containsRotation(json)
+            }
+        };
+        JObject(Map#{"path" => JString(relPath), "composable" => JBool(composable)})
 
     /// GET /file?path=... — dir 相対パスのファイル内容を返す。無い・プロジェクト外は 404。
     def handleReadFile(dir: String, params: Map[String, String], exchange: HttpExchange): Unit \ IO =
