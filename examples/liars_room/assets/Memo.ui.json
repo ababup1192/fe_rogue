@@ -3,7 +3,7 @@
   "paletteFile": "assets/palette.json",
   "palette": { "menuFrame": "#5b6ee1" },
   "templates": {
-    "slot": { "widget": "none", "visible": false, "height": 13, "dir": "row", "crossAlign": "center", "gap": 4, "pad": [3, 0, 3, 0] },
+    "slot": { "widget": "none", "height": 13, "dir": "row", "crossAlign": "center", "gap": 4, "pad": [3, 0, 3, 0] },
     "name": { "widget": "text", "fontSize": 10, "tint": "#eef1f7", "zIndex": 143 },
     "mk":   { "widget": "text", "fontSize": 10, "tint": "@muted", "zIndex": 143 },
     "sw":   { "widget": "box", "color": "#ffffff", "width": 8, "height": 8, "cornerRadius": 2, "zIndex": 143 }
@@ -23,16 +23,16 @@
               { "name": "highlight", "widget": "box", "color": "#16314f", "alpha": 1.0,
                 "borderWidth": 0.5, "borderColor": "@menuFrame", "cornerRadius": 2, "zIndex": 141,
                 "abs": [0.5, 0.5], "width": 96, "height": 12 },
-              { "use": "slot", "name": "slot0", "children": [ { "use": "sw", "name": "swatch" }, { "use": "name", "name": "label" }, { "use": "mk", "name": "mark" } ] },
-              { "use": "slot", "name": "slot1", "children": [ { "use": "sw", "name": "swatch" }, { "use": "name", "name": "label" }, { "use": "mk", "name": "mark" } ] },
-              { "use": "slot", "name": "slot2", "children": [ { "use": "sw", "name": "swatch" }, { "use": "name", "name": "label" }, { "use": "mk", "name": "mark" } ] },
-              { "use": "slot", "name": "slot3", "children": [ { "use": "sw", "name": "swatch" }, { "use": "name", "name": "label" }, { "use": "mk", "name": "mark" } ] },
-              { "use": "slot", "name": "slot4", "children": [ { "use": "sw", "name": "swatch" }, { "use": "name", "name": "label" }, { "use": "mk", "name": "mark" } ] },
-              { "use": "slot", "name": "slot5", "children": [ { "use": "sw", "name": "swatch" }, { "use": "name", "name": "label" }, { "use": "mk", "name": "mark" } ] },
-              { "use": "slot", "name": "slot6", "children": [ { "use": "sw", "name": "swatch" }, { "use": "name", "name": "label" }, { "use": "mk", "name": "mark" } ] }
+              { "use": "slot", "name": "slot0", "children": [ { "use": "sw", "name": "swatch", "color": "#5b6ee1" }, { "use": "name", "name": "label", "bind": "slot0Name" }, { "use": "mk", "name": "mark", "bind": "slot0Mark" } ] },
+              { "use": "slot", "name": "slot1", "children": [ { "use": "sw", "name": "swatch", "color": "#6abe30" }, { "use": "name", "name": "label", "bind": "slot1Name" }, { "use": "mk", "name": "mark", "bind": "slot1Mark" } ] },
+              { "use": "slot", "name": "slot2", "children": [ { "use": "sw", "name": "swatch", "color": "#ac3232" }, { "use": "name", "name": "label", "bind": "slot2Name" }, { "use": "mk", "name": "mark", "bind": "slot2Mark" } ] },
+              { "use": "slot", "name": "slot3", "children": [ { "use": "sw", "name": "swatch", "color": "#fbf236" }, { "use": "name", "name": "label", "bind": "slot3Name" }, { "use": "mk", "name": "mark", "bind": "slot3Mark" } ] },
+              { "use": "slot", "name": "slot4", "children": [ { "use": "sw", "name": "swatch", "color": "#76428a" }, { "use": "name", "name": "label", "bind": "slot4Name" }, { "use": "mk", "name": "mark", "bind": "slot4Mark" } ] },
+              { "use": "slot", "name": "slot5", "children": [ { "use": "sw", "name": "swatch", "color": "#ffffff" }, { "use": "name", "name": "label", "bind": "slot5Name" }, { "use": "mk", "name": "mark", "bind": "slot5Mark" } ] },
+              { "use": "slot", "name": "slot6", "children": [ { "use": "sw", "name": "swatch", "color": "#df7126" }, { "use": "name", "name": "label", "bind": "slot6Name" }, { "use": "mk", "name": "mark", "bind": "slot6Mark" } ] }
             ]
           },
-          { "name": "submit", "widget": "text", "text": "ぜんいんぶん埋めよう",
+          { "name": "submit", "widget": "text", "text": "ぜんいんぶん埋めよう", "bind": "submitLabel",
             "fontSize": 8, "tint": "@muted", "zIndex": 142 },
           { "name": "hint", "widget": "text", "text": "Z:しるし C:とじる",
             "fontSize": 8, "tint": "@muted", "zIndex": 142 }

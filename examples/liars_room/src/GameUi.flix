@@ -45,14 +45,35 @@ mod GameUi {
             |> applyMemo(s)
             |> applyResult(s)
             |> UiStore.setVisible("Ending", s#phase == Room.Phase.Ending)
+            |> UiBinding.apply(key -> bindText(key, s))
+
+    /// bind key → いまの表示文字列。ui.json 側の "bind" 宣言と対になる表。
+    /// speakerName と slot 系の bind はここに載せない — 実行時は UiDialog / UiSlots / UiMenu が
+    /// 流し込む欄で、bind 宣言はエディタのプレビュー用（None なら今の文字のまま）。
+    def bindText(key: String, s: Room.State): Option[String] = match key {
+        case "stageLabel"     => Some("ステージ ${s#stage}／${Stage.stageCount()}")
+        case "liarsLabel"     => Some("うそつき ${s#liarCount}にん")
+        case "submitLabel"    => Some(if (Room.memoComplete(s)) "Enter:こたえあわせ！" else "ぜんいんぶん埋めよう")
+        case "resultHeadline" => resultText(s) |> Option.map(t -> t#headline)
+        case "resultDetail"   => resultText(s) |> Option.map(t -> t#detail)
+        case "resultPrompt"   => resultText(s) |> Option.map(t -> t#prompt)
+        case _                => None
+    }
+
+    /// 正解・不正解パネルの文言。パネルが出ていないフェーズは None（隠れている欄は触らない）。
+    def resultText(s: Room.State): Option[{headline = String, detail = String, prompt = String}] =
+        match s#phase {
+            case Room.Phase.Wrong   =>
+                Some({ headline = "はずれ…", detail = "メモのどこかがちがう…", prompt = "Enter: もういちど" })
+            case Room.Phase.Cleared =>
+                Some({ headline = "せいかい！", detail = "ぜんいんの正体を見やぶった！",
+                       prompt = if (s#stage < Stage.stageCount()) "Enter: つぎのへやへ" else "Enter: おしまいへ" })
+            case _                  => None
+        }
 
     /// HUD はゲーム中の全フェーズで出しっぱなし（タイトルとエンディングでは隠す）。
     def applyHud(s: Room.State, ui: UiStore.UiWorld): UiStore.UiWorld =
-        let visible = s#phase != Room.Phase.Title and s#phase != Room.Phase.Ending;
-        ui
-            |> UiStore.setVisible("Hud", visible)
-            |> UiStore.setText("Hud/bar/stage", "ステージ ${s#stage}／${Stage.stageCount()}")
-            |> UiStore.setText("Hud/bar/liars", "うそつき ${s#liarCount}にん")
+        UiStore.setVisible("Hud", s#phase != Room.Phase.Title and s#phase != Room.Phase.Ending, ui)
 
     /// 話者名を相手の色で塗る（本文の色付き名前と同じ約束）。
     def applySpeakerTint(s: Room.State, ui: UiStore.UiWorld): UiStore.UiWorld =
@@ -78,16 +99,10 @@ mod GameUi {
                 sel = s#memoSel, rowPitch = memoRowPitch(), inset = 0.5 })
             |> applySubmitRow(s)
 
-    /// 提出行: 全員ぶん埋まったら「Enter:こたえあわせ！」を点灯、まだなら灰色の案内。
+    /// 提出行の色: 全員ぶん埋まったら点灯、まだなら灰色（文言は bind submitLabel が入れる）。
     def applySubmitRow(s: Room.State, ui: UiStore.UiWorld): UiStore.UiWorld =
-        if (Room.memoComplete(s))
-            ui
-                |> UiStore.setText("Memo/panel/submit", "Enter:こたえあわせ！")
-                |> UiStore.setTextTint("Memo/panel/submit", Palette.talkIndicator())
-        else
-            ui
-                |> UiStore.setText("Memo/panel/submit", "ぜんいんぶん埋めよう")
-                |> UiStore.setTextTint("Memo/panel/submit", Palette.markUnknown())
+        UiStore.setTextTint("Memo/panel/submit",
+            if (Room.memoComplete(s)) Palette.talkIndicator() else Palette.markUnknown(), ui)
 
     /// 各スロットの色見本を NPC の色に、マーク文字をマークの色に塗る。
     def applySwatchesAndTints(s: Room.State, ui: UiStore.UiWorld): UiStore.UiWorld =
@@ -113,24 +128,18 @@ mod GameUi {
         case Room.Mark.HonestMark => Palette.markHonest()
     }
 
-    /// 正解・不正解のパネル。不正解ではどこが違うかは言わない（メモを見直させる）。
+    /// 正解・不正解のパネルの可視と見出し色（文言は bind の resultText が入れる）。
+    /// 不正解ではどこが違うかは言わない（メモを見直させる）。
     def applyResult(s: Room.State, ui: UiStore.UiWorld): UiStore.UiWorld =
         match s#phase {
             case Room.Phase.Wrong =>
                 ui
                     |> UiStore.setVisible("Result", true)
-                    |> UiStore.setText("Result/panel/headline", "はずれ…")
                     |> UiStore.setTextTint("Result/panel/headline", Palette.markLiar())
-                    |> UiStore.setText("Result/panel/detail", "メモのどこかがちがう…")
-                    |> UiStore.setText("Result/panel/prompt", "Enter: もういちど")
             case Room.Phase.Cleared =>
                 ui
                     |> UiStore.setVisible("Result", true)
-                    |> UiStore.setText("Result/panel/headline", "せいかい！")
                     |> UiStore.setTextTint("Result/panel/headline", Palette.markHonest())
-                    |> UiStore.setText("Result/panel/detail", "ぜんいんの正体を見やぶった！")
-                    |> UiStore.setText("Result/panel/prompt",
-                        if (s#stage < Stage.stageCount()) "Enter: つぎのへやへ" else "Enter: おしまいへ")
             case _ =>
                 UiStore.setVisible("Result", false, ui)
         }

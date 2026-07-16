@@ -9,7 +9,7 @@
         "abs": [8, 176], "width": 304, "height": 60,
         "dir": "column", "pad": [8, 5, 8, 5], "gap": 4,
         "children": [
-          { "name": "speaker", "widget": "text", "text": "",
+          { "name": "speaker", "widget": "text", "text": "", "bind": "speakerName",
             "fontSize": 10, "tint": "@accent", "zIndex": 125 },
           { "name": "bodySpace", "widget": "none", "width": 1, "height": 24 },
           { "name": "hint", "widget": "text", "text": "Z:とじる",

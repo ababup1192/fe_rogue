@@ -37,6 +37,11 @@ test/ は検証のみ: TestRules（意味論の pin）・TestSolver（10 ステ�
 唯一解 pin・fold vs Datalog の解集合一致・難易度カーブ・決定論）・
 TestLiarsRoom（フェーズ機械とメモの挙動 pin）・TestViewGuards（UI lint・パーツ数・到達性）。
 
+## UI の bind 規約
+
+実行時に変わる 1 色テキストは ui.json の `bind` キー（stageLabel / resultHeadline 等）に GameUi.bindText が流し込む。
+各画面の `assets/<名前>.preview.json`（サンプル文言 + Hud 合成）で ui.json エディタが本番相当の画面を再現できる。
+
 ## パズルの仕組み（要点）
 
 - 発言の意味論は Rules.flix の Datalog ルールパックにしか存在しない

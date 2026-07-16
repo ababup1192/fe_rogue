@@ -1,0 +1,16 @@
+{
+  "data": {
+    "slot0Name": "あお",      "slot0Mark": "？",
+    "slot1Name": "みどり",    "slot1Mark": "？",
+    "slot2Name": "あか",      "slot2Mark": "？",
+    "slot3Name": "きいろ",    "slot3Mark": "？",
+    "slot4Name": "むらさき",  "slot4Mark": "？",
+    "slot5Name": "しろ",      "slot5Mark": "？",
+    "slot6Name": "オレンジ",  "slot6Mark": "？",
+    "submitLabel": "ぜんいんぶん埋めよう"
+  },
+  "compose": [
+    { "path": "assets/Hud.ui.json",
+      "data": { "stageLabel": "ステージ 10／10", "liarsLabel": "うそつき 3にん" } }
+  ]
+}

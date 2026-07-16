@@ -10,11 +10,11 @@
         "dir": "column", "pad": [16, 10, 16, 12], "gap": 6, "crossAlign": "center",
         "width": "auto", "height": "auto",
         "children": [
-          { "name": "headline", "widget": "text", "text": "せいかい！",
+          { "name": "headline", "widget": "text", "text": "せいかい！", "bind": "resultHeadline",
             "fontSize": 24, "tint": "@accent", "zIndex": 151 },
-          { "name": "detail", "widget": "text", "text": "",
+          { "name": "detail", "widget": "text", "text": "", "bind": "resultDetail",
             "fontSize": 10, "tint": "@detail", "zIndex": 151 },
-          { "name": "prompt", "widget": "text", "text": "Enter: つぎへ",
+          { "name": "prompt", "widget": "text", "text": "Enter: つぎへ", "bind": "resultPrompt",
             "fontSize": 10, "tint": "@muted", "zIndex": 151 }
         ]
       }
