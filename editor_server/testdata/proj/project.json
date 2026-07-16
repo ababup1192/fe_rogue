@@ -1,0 +1,14 @@
+{
+  "title": "PreviewItems Test Project",
+  "designWidth": 320,
+  "designHeight": 240,
+  "windowWidth": 320,
+  "windowHeight": 240,
+  "clearColor": {"r": 0.0, "g": 0.0, "b": 0.0},
+  "maxDeltaTime": 0.05,
+  "textures": [],
+  "fonts": [
+    {"name": "default", "path": "assets/Xolonium-Regular.ttf", "fontSize": 60.0}
+  ],
+  "sounds": []
+}
