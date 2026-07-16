@@ -7,18 +7,23 @@
 // 含め毎回数え、statusLine の steps= に出る（絵は F8 なしでも肉眼で違和感が無ければ OK）。
 // もうひとつの実験は AudioFade + マスター音量: B で BGM のフェードの向きを反転、
 // M でマスター音量 1.0/0.3 を切り替え、statusLine の bgm= / master= で値を確かめる。
+// もうひとつの実験はフルスクリーン切替とカーソル非表示: Enter でウィンドウ⇄ボーダーレス
+// フルスクリーンを切り替え、H でマウスカーソルの表示/非表示を切り替える。実窓の挙動なので
+// gallery には出せず、statusLine の fullscreen= / cursor= で値を確かめる（起動確認のみ）。
 
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()
     else {
         let ui = run { GameUi.loadUi() } with Fs.FileRead.runWithIO;
         run {
-            // App の effect 集合は全フック共通なので、純粋な system / view / statusLine は
-            // checked_ecast で audioStep の {Audio} へそろえる（関数値そのままでは widen されない）。
+            // App の effect 集合は全フック共通の 1 つの型変数なので、Audio だけ・Game だけの
+            // system が混在すると単一化できない。全 system を checked_ecast で
+            // {Audio, Game} へそろえる（呼び出し式ごと widen すれば効く）。
             App.make(World.initial(ui))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.step(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.countStep(frame, world)))
-                |> App.addSystem(Controls.audioStep)
+                |> App.addSystem((frame, world) -> checked_ecast(Controls.audioStep(frame, world)))
+                |> App.addSystem((frame, world) -> checked_ecast(Controls.windowStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.projectUi(frame, world)))
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadUi)
                 |> App.withView((ctx, world) -> checked_ecast(View.frame(ctx, world)))

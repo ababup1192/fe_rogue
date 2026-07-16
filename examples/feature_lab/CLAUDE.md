@@ -16,3 +16,9 @@ M キーでマスター音量 1.0/0.3 を切り替え。値は statusLine の `b
 Controls.audioStep が「値の導出はエンジン（Transition.Progress + AudioFade.volumeOf）・
 setVolume / setMasterVolume の適用はゲーム側 system」の分業の手本。gallery/ には音量カーブ
 PNG 3 枚と、同じ volumeOf をサンプル毎に焼き込んだ試聴 WAV 3 本（audio.html から聴ける）。
+
+フルスクリーン切替 + カーソル非表示 — Enter キーでウィンドウ⇄ボーダーレスフルスクリーンを
+切り替え、H キーでマウスカーソルの表示/非表示を切り替える。値は statusLine の `fullscreen=` /
+`cursor=` に出る。実窓の挙動そのものを試す実験なので **gallery には出せず、起動確認のみ**
+（`make run` で手元のウィンドウを見て確かめる）。
+ポーズ中（F8）は system が回らないため Enter/H が効かない。F8 解除で復帰する。

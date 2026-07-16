@@ -959,6 +959,9 @@ mod App {
                 def getViewportRect(k)          = k(GameEngine.Game.getViewportRect())
                 def getTextureInfo(name, k)     = k(GameEngine.Game.getTextureInfo(name))
                 def setCursor(cursor, k)        = k(GameEngine.Game.setCursor(cursor))
+                def setCursorVisible(v, k)      = k(GameEngine.Game.setCursorVisible(v))
+                def setFullscreen(on, k)        = k(GameEngine.Game.setFullscreen(on))
+                def isFullscreen(k)             = k(GameEngine.Game.isFullscreen())
                 def saveAnnotation(req, k)      = k(GameEngine.Game.saveAnnotation(req))
                 def setDebugBadge(enabled, k)   = k(GameEngine.Game.setDebugBadge(enabled))
             } with handler GameEngine.Audio {

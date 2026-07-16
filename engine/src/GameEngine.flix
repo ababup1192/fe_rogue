@@ -196,6 +196,16 @@ mod GameEngine {
         def getTextureInfo(name: String): Option[TextureInfo]
         /// マウスカーソル形状を切り替える。連続して同じ Cursor を渡しても問題ない（冪等）
         def setCursor(cursor: Cursor): Unit
+        /// マウスカーソルの表示/非表示を切り替える。形状(setCursor)は「どんな絵か」、
+        /// これは「絵を出すか出さないか」で役割が別。連続して同じ値を渡しても問題ない（冪等）
+        def setCursorVisible(visible: Bool): Unit
+        /// ウィンドウ⇄ボーダーレスフルスクリーンを切り替える。フルスクリーンはプライマリ
+        /// モニタの現在の解像度を使う（解像度そのものは変えない）。連続して同じ値を渡しても
+        /// 問題ない（冪等）。切替の配線はゲームの system 側 — F8 ポーズ中は system が
+        /// 回らず切替キーも効かない点に注意
+        def setFullscreen(on: Bool): Unit
+        /// 直近の setFullscreen で今フルスクリーン中かを返す
+        def isFullscreen(): Bool
         /// 注釈一式（screenshot.png / highlighted.png / annotation.json / README.md）を
         /// debug/annotations/ 配下の新しいディレクトリへ書き出し、そのパスを返す。失敗時 None。
         /// 保存に成功するとシャッター風の効果音を鳴らす。

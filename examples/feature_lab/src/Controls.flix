@@ -88,4 +88,29 @@ mod Controls {
     /// F1 リロード: ui.json をディスクから読み直す（遊びながらラベルの見た目を直せる）。
     pub def reloadUi(world: World.World): World.World \ {Fs.FileRead} =
         { ui = UiSpec.reloadAll(world#ui) | world }
+
+    /// フルスクリーン切替・カーソル表示切替の意図。Enter = フルスクリーン、H = カーソル。
+    enum WindowIntent with Eq {
+        case ToggleFullscreen
+        case ToggleCursor
+    }
+
+    def windowTable(): InputMap.Table[WindowIntent] =
+           (Key.Enter, WindowIntent.ToggleFullscreen)
+        :: (Key.H,     WindowIntent.ToggleCursor)
+        :: Nil
+
+    /// ウィンドウ実験の手本 system。分業は audioStep と同じ: 値（on/off）は World が持ち、
+    /// 実機へ反映する setFullscreen / setCursorVisible の副作用だけをこの system が受け持つ。
+    /// 切り替わった回だけ呼ぶ（毎フレーム呼んでも実装は冪等だが、既存の setDebugBadge /
+    /// setCursor 呼び出し = App.flix の F8 トグルと同じ「変化した時だけ」の流儀に合わせる）。
+    pub def windowStep(frame: App.Frame, world: World.World): World.World \ GameEngine.Game =
+        let taps = InputMap.taps(windowTable(), frame);
+        let toggleFullscreen = List.memberOf(WindowIntent.ToggleFullscreen, taps);
+        let toggleCursor = List.memberOf(WindowIntent.ToggleCursor, taps);
+        let fullscreen = if (toggleFullscreen) not world#fullscreen else world#fullscreen;
+        let cursorVisible = if (toggleCursor) not world#cursorVisible else world#cursorVisible;
+        if (toggleFullscreen) GameEngine.Game.setFullscreen(fullscreen) else ();
+        if (toggleCursor) GameEngine.Game.setCursorVisible(cursorVisible) else ();
+        { fullscreen = fullscreen, cursorVisible = cursorVisible | world }
 }
