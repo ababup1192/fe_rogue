@@ -1,4 +1,4 @@
-<!doctype html><meta charset="utf-8"><title>feature_lab Gallery — Light</title>
+<!doctype html><meta charset="utf-8"><title>feature_lab Gallery — Shadow</title>
 <style>body{background:#1a1f2b;color:#cdd5e6;font-family:sans-serif;margin:16px}
 a{color:#9cc0ff}h1{font-size:18px}
 p.hint{font-size:12px;color:#8c99ad;margin:0 0 16px}
@@ -50,20 +50,20 @@ code.fs-addr{font-size:12px;font-weight:700;color:#ffd479;background:#241c07;
   padding:2px 6px;border-radius:4px;cursor:pointer;
   font-family:ui-monospace,Menlo,Consolas,monospace}
 .filmstrip.playing .fs-play{border-color:#7bd88f;color:#7bd88f}</style>
-<nav class="crumbs"><a href="index.html">← index</a> <a href="page_Blend.html">◀ Blend</a> <a href="page_Shadow.html">▶ Shadow</a></nav>
-<h1>Light</h1>
+<nav class="crumbs"><a href="index.html">← index</a> <a href="page_Light.html">◀ Light</a> <a href="page_AudioFade.html">▶ AudioFade</a></nav>
+<h1>Shadow</h1>
 <p class="hint">The yellow code tag is the snapshot name (report bugs by it); click to copy. Tags link to their cross-feature pages.</p>
 <h2 class="section">Basic states</h2>
 <main>
-  <figure id="lantern_bright" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('lantern_bright')" title="click to copy the name">lantern_bright</code><span class="desc">Bright: 部屋+目印がフル輝度（暗闇なし）の対照カット</span></figcaption><img src="lantern_bright.png" alt="lantern_bright"></figure>
-  <figure id="lantern_dark_no_light" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('lantern_dark_no_light')" title="click to copy the name">lantern_dark_no_light</code><span class="desc">Dark: 光源なしの全面暗幕（Light.multiLightItems を lights=Nil で流用）。目印はシルエット程度に残る</span></figcaption><img src="lantern_dark_no_light.png" alt="lantern_dark_no_light"></figure>
-  <figure id="lantern_dark_with_light" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('lantern_dark_with_light')" title="click to copy the name">lantern_dark_with_light</code><span class="desc">DarkWithLight: 穴あき暗幕（Multiply）+暖色ハロ（Add）で光の周りだけ目印が見える</span></figcaption><img src="lantern_dark_with_light.png" alt="lantern_dark_with_light"></figure>
+  <figure id="shadow_light_front" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('shadow_light_front')" title="click to copy the name">shadow_light_front</code><span class="desc">光が壁の手前: 壁の裏の目印（白丸）が影に沈んで見えない（Shadow.itemsFor の Multiply 黒 Poly）</span></figcaption><img src="shadow_light_front.png" alt="shadow_light_front"></figure>
+  <figure id="shadow_light_behind" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('shadow_light_behind')" title="click to copy the name">shadow_light_behind</code><span class="desc">光が壁の向こう側へ回り込むと同じ目印が照らされて見える（壁と遮蔽ポリゴンは同じ定義から導出）</span></figcaption><img src="shadow_light_behind.png" alt="shadow_light_behind"></figure>
+  <figure id="shadow_walls_off" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('shadow_walls_off')" title="click to copy the name">shadow_walls_off</code><span class="desc">対照カット: shadow_light_front と同じ光位置で walls=false。目印が沈まず見える＝暗さは壁の影であって距離減衰ではない</span></figcaption><img src="shadow_walls_off.png" alt="shadow_walls_off"></figure>
 
 </main>
 
 <h2 class="section">Flows</h2>
 <main>
-  <figure id="lantern_patrol" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('lantern_patrol')" title="click to copy the name">lantern_patrol</code><span class="desc">カンテラが目印の間を歩き回る（矢印キー相当の移動を巡回点列で再現）</span></figcaption><div class="filmstrip" data-name="lantern_patrol" data-frames="8" data-dir="frames/lantern_patrol/" data-dw="320" data-fps="10" style="width:320px"><canvas class="fs-canvas" width="640" height="480" style="width:320px;height:240px"></canvas><div class="fs-ctl"><button class="fs-play" title="再生 / 停止">⏯</button><button class="fs-prev" title="前のコマ">◀</button><input class="fs-range" type="range" min="0" max="7" value="0"><button class="fs-next" title="次のコマ">▶</button><code class="fs-addr" title="クリックで name#N をコピー">lantern_patrol#0</code></div></div></figure>
+  <figure id="shadow_walk" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('shadow_walk')" title="click to copy the name">shadow_walk</code><span class="desc">光が L 字壁と柱の周りを一周し、壁の陰が動的に回る（LeftCtrl で walls トグル相当）</span></figcaption><div class="filmstrip" data-name="shadow_walk" data-frames="8" data-dir="frames/shadow_walk/" data-dw="320" data-fps="10" style="width:320px"><canvas class="fs-canvas" width="640" height="480" style="width:320px;height:240px"></canvas><div class="fs-ctl"><button class="fs-play" title="再生 / 停止">⏯</button><button class="fs-prev" title="前のコマ">◀</button><input class="fs-range" type="range" min="0" max="7" value="0"><button class="fs-next" title="次のコマ">▶</button><code class="fs-addr" title="クリックで name#N をコピー">shadow_walk#0</code></div></div></figure>
 
 </main>
 

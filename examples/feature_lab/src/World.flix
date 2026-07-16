@@ -32,7 +32,9 @@ mod World {
     }
 
     /// カンテラ実験の状態。at はプレイヤー（=光源）の位置、mode は今の暗闇の見せ方。
-    pub type alias Lantern = { at = Vec2.Vec2, mode = LanternMode }
+    /// walls は壁と影（Shadow）のデモの表示スイッチ（既定 off — 常時表示にすると
+    /// 既存の lantern 系 bake の絵が変わってしまうため、トグルで足す）。
+    pub type alias Lantern = { at = Vec2.Vec2, mode = LanternMode, walls = Bool }
 
     pub type alias World = {
         kind = Transition.Kind,                   // 最後に選んだ種類（Idle 中の Space もこれを再生）
@@ -94,8 +96,11 @@ mod World {
     /// 操作から経由しないため on/off 表記のままで足りる）。
     pub def lanternLabel(lantern: Option[Lantern]): String =
         lantern
-            |> Option.map(l -> "darkness=${onOff(l#mode == LanternMode.DarkWithLight)}")
+            |> Option.map(l -> "darkness=${onOff(l#mode == LanternMode.DarkWithLight)}${wallsSuffix(l)}")
             |> Option.getWithDefault("lantern=off (Arrows to start)")
+
+    /// walls=off のときは何も足さない（既存 bake の文字列＝絵をバイト単位で変えないため）。
+    def wallsSuffix(l: Lantern): String = if (l#walls) " walls=on" else ""
 
     /// ブレンドモード単体の表示名（gallery のカード名にも使う）。
     pub def modeLabel(mode: DrawCmd.BlendMode): String =

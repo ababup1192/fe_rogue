@@ -101,18 +101,18 @@ mod Gallery {
     /// 「明（Bright。部屋+目印がフル輝度）」「暗闇のみ（Dark。光源なしの全面暗幕で
     /// 目印がシルエット程度に残る）」「暗闇+カンテラ（DarkWithLight。穴あき+ハロ）」の3枚を焼く。
     def bakeLanternComparisonPngs(atlas: FontAtlas, ui: UiStore.UiWorld): Unit \ IO =
-        bakeLanternPng(atlas, ui, Some({ at = lanternDemoAt(), mode = World.LanternMode.Bright }), "lantern_bright");
-        bakeLanternPng(atlas, ui, Some({ at = lanternDemoAt(), mode = World.LanternMode.Dark }), "lantern_dark_no_light");
-        bakeLanternPng(atlas, ui, Some({ at = lanternDemoAt(), mode = World.LanternMode.DarkWithLight }), "lantern_dark_with_light")
+        bakeLanternPng(atlas, ui, Some({ at = lanternDemoAt(), mode = World.LanternMode.Bright, walls = false }), "lantern_bright");
+        bakeLanternPng(atlas, ui, Some({ at = lanternDemoAt(), mode = World.LanternMode.Dark, walls = false }), "lantern_dark_no_light");
+        bakeLanternPng(atlas, ui, Some({ at = lanternDemoAt(), mode = World.LanternMode.DarkWithLight, walls = false }), "lantern_dark_with_light")
 
     /// カンテラが目印の間を歩き回る経路（往復する巡回点列。t を周期的に進めて線形補間する）。
     def lanternPatrolPoints(): List[Vec2.Vec2] =
         { x = 60.0, y = 60.0 } :: { x = 260.0, y = 60.0 } :: { x = 260.0, y = 180.0 } ::
         { x = 60.0, y = 180.0 } :: { x = 60.0, y = 60.0 } :: Nil
 
-    /// 巡回点列を frames コマぶん等分してなめらかに歩く World 列を作る（DarkWithLight 固定）。
-    def lanternTimeline(ui: UiStore.UiWorld, frames: Int32): List[World.World] =
-        let points = lanternPatrolPoints();
+    /// 巡回点列を frames コマぶん等分してなめらかに歩く World 列を作る（DarkWithLight 固定。
+    /// walls は影デモの GIF だけ true にする — 既存の lantern_patrol の絵を変えないため）。
+    def patrolTimeline(ui: UiStore.UiWorld, points: List[Vec2.Vec2], walls: Bool, frames: Int32): List[World.World] =
         let segments = List.length(points) - 1;
         List.range(0, frames + 1) |> List.map(i -> {
             let t = Int32.toFloat64(i) / Int32.toFloat64(frames) * Int32.toFloat64(segments);
@@ -121,13 +121,47 @@ mod Gallery {
             let segStart = List.nth(seg, points) |> Option.getWithDefault(lanternDemoAt());
             let segEnd = List.nth(seg + 1, points) |> Option.getWithDefault(lanternDemoAt());
             let at = Vec2.add(segStart, Vec2.mul(Vec2.sub(segEnd, segStart), localT));
-            GameUi.projectUi({ lantern = Some({ at = at, mode = World.LanternMode.DarkWithLight }) | World.initial(ui) })
+            GameUi.projectUi({ lantern = Some({ at = at, mode = World.LanternMode.DarkWithLight, walls = walls }) | World.initial(ui) })
         })
 
     /// カンテラが目印の間を歩き回る GIF（8 コマ）。
     def bakeLanternGif(atlas: FontAtlas, ui: UiStore.UiWorld): SnapshotSite.Filmstrip \ IO =
-        let frames = lanternTimeline(ui, 7);
+        let frames = patrolTimeline(ui, lanternPatrolPoints(), false, 7);
         Bakery.bakeGif(config(atlas), frames, 1, w -> worldCmds(atlas, w), "lantern_patrol")
+
+    // ── Shadow: 壁と影（View の壁定義 + Shadow.itemsFor の手本）──
+
+    /// 影比較 2 枚の光の位置。front は壁の手前（白丸目印と反対側）、behind は
+    /// 壁の向こう側（目印と同じ側）。目印は光の届く範囲（穴 48+落ち際）に入れる —
+    /// 遠すぎると影の有無にかかわらず真っ黒で、影の証明にならない。
+    /// 画面端からも離す（縁取りマーカーが落ち際で照らされて紛らわしいため）。
+    def shadowFrontAt(): Vec2.Vec2 = { x = 160.0, y = 120.0 }
+    def shadowBehindAt(): Vec2.Vec2 = { x = 262.0, y = 120.0 }
+
+    /// 影の比較 3 枚（DarkWithLight 固定）。front/behind は walls=true。
+    /// walls_off は front と同じ光位置で walls=false にした対照カット —
+    /// front の暗さが「壁の影」であって「光源からの距離減衰」でないことの証明になる
+    /// （walls=false でも目印まわりが front と同じ明るさなら、影は壁 occluder だけの効果）。
+    def bakeShadowPngs(atlas: FontAtlas, ui: UiStore.UiWorld): Unit \ IO =
+        bakeLanternPng(atlas, ui,
+            Some({ at = shadowFrontAt(), mode = World.LanternMode.DarkWithLight, walls = true }),
+            "shadow_light_front");
+        bakeLanternPng(atlas, ui,
+            Some({ at = shadowBehindAt(), mode = World.LanternMode.DarkWithLight, walls = true }),
+            "shadow_light_behind");
+        bakeLanternPng(atlas, ui,
+            Some({ at = shadowFrontAt(), mode = World.LanternMode.DarkWithLight, walls = false }),
+            "shadow_walls_off")
+
+    /// 光が L 字壁の周りを一周する巡回点列（壁の陰が回って見える経路）。
+    def shadowPatrolPoints(): List[Vec2.Vec2] =
+        { x = 160.0, y = 120.0 } :: { x = 200.0, y = 62.0 } :: { x = 262.0, y = 120.0 } ::
+        { x = 200.0, y = 178.0 } :: { x = 160.0, y = 120.0 } :: Nil
+
+    /// 光が壁の周りを一周して影が回る GIF（8 コマ・walls=true）。
+    def bakeShadowGif(atlas: FontAtlas, ui: UiStore.UiWorld): SnapshotSite.Filmstrip \ IO =
+        let frames = patrolTimeline(ui, shadowPatrolPoints(), true, 7);
+        Bakery.bakeGif(config(atlas), frames, 1, w -> worldCmds(atlas, w), "shadow_walk")
 
     // ── AudioFade: 音量カーブの図 ──
 
@@ -259,6 +293,9 @@ mod Gallery {
         bakeLanternComparisonPngs(atlas, ui);
         let lanternFilm = bakeLanternGif(atlas, ui);
 
+        bakeShadowPngs(atlas, ui);
+        let shadowFilm = bakeShadowGif(atlas, ui);
+
         bakeCurvePng(atlas, (AudioFade.fadeIn(), risingColor()) :: Nil, "audio_fade_in_curve");
         bakeCurvePng(atlas, (AudioFade.fadeOut(), fadingColor()) :: Nil, "audio_fade_out_curve");
         bakeCurvePng(atlas, (AudioFade.fadeOut(), fadingColor()) :: (AudioFade.fadeIn(), risingColor()) :: Nil,
@@ -269,7 +306,8 @@ mod Gallery {
             SnapshotSite.generate(
                 { outDir = outDir(), title = "feature_lab Gallery", cssScale = 2 },
                 catalog({ fadeOut = fadeOutFilm, fadeIn = fadeInFilm,
-                          wipeLeft = wipeLeftFilm, wipeRight = wipeRightFilm, lanternPatrol = lanternFilm }))
+                          wipeLeft = wipeLeftFilm, wipeRight = wipeRightFilm,
+                          lanternPatrol = lanternFilm, shadowWalk = shadowFilm }))
         } with Fs.FileWrite.runWithIO;
         writeText("${outDir()}/audio.html", audioHtml());
         linkAudioFromIndex()
@@ -279,7 +317,7 @@ mod Gallery {
     type alias Films = {
         fadeOut = SnapshotSite.Filmstrip, fadeIn = SnapshotSite.Filmstrip,
         wipeLeft = SnapshotSite.Filmstrip, wipeRight = SnapshotSite.Filmstrip,
-        lanternPatrol = SnapshotSite.Filmstrip
+        lanternPatrol = SnapshotSite.Filmstrip, shadowWalk = SnapshotSite.Filmstrip
     }
 
     def catalog(films: Films): List[SnapshotSite.Item] =
@@ -295,6 +333,10 @@ mod Gallery {
         png("lantern_dark_no_light", "Dark: 光源なしの全面暗幕（Light.multiLightItems を lights=Nil で流用）。目印はシルエット程度に残る", "Light") ::
         png("lantern_dark_with_light", "DarkWithLight: 穴あき暗幕（Multiply）+暖色ハロ（Add）で光の周りだけ目印が見える", "Light") ::
         gif("lantern_patrol", "カンテラが目印の間を歩き回る（矢印キー相当の移動を巡回点列で再現）", "Light", films#lanternPatrol) ::
+        png("shadow_light_front", "光が壁の手前: 壁の裏の目印（白丸）が影に沈んで見えない（Shadow.itemsFor の Multiply 黒 Poly）", "Shadow") ::
+        png("shadow_light_behind", "光が壁の向こう側へ回り込むと同じ目印が照らされて見える（壁と遮蔽ポリゴンは同じ定義から導出）", "Shadow") ::
+        png("shadow_walls_off", "対照カット: shadow_light_front と同じ光位置で walls=false。目印が沈まず見える＝暗さは壁の影であって距離減衰ではない", "Shadow") ::
+        gif("shadow_walk", "光が L 字壁と柱の周りを一周し、壁の陰が動的に回る（LeftCtrl で walls トグル相当）", "Shadow", films#shadowWalk) ::
         png("audio_fade_in_curve", "フェードインの音量カーブ: volumeOf(0→1)。横=時間 t・縦=音量（audio.html で試聴可）", "AudioFade") ::
         png("audio_fade_out_curve", "フェードアウトの音量カーブ: volumeOf(1→0)", "AudioFade") ::
         png("audio_crossfade_curve", "クロスフェード: 消える側（赤）と現れる側（緑）。同じ t の 2 本で、和は常に 1", "AudioFade") :: Nil

@@ -172,6 +172,52 @@ mod View {
         { at = at, radius = lanternRadius(), color = { r = 1.0f32, g = 0.75f32, b = 0.4f32 },
           halo = lanternHaloAlpha() }
 
+    // ── 壁と影（Shadow モジュールの手本。LeftCtrl で walls をトグル）──
+
+    /// 壁の色（目印のはっきりした色と紛れない石壁っぽい灰色）。
+    def wallColor(): Color = { r = 0.48f32, g = 0.47f32, b = 0.44f32 }
+
+    /// 壁の zIndex。目印（landmarkZ=25）より手前・暗幕（lanternZ=40）より奥に置く
+    /// （暗幕より手前だと暗闇でも壁が煌々と見えてしまう）。
+    def wallZ(): Int32 = 26
+
+    /// L字の壁 2 枚（中心と大きさ）。見た目の box と遮蔽ポリゴンの両方をここから導く
+    /// （二重定義にすると片方だけ動かして影が壁からずれる）。
+    /// 画面端に寄せると影の落ち先が「元々暗幕で真っ黒な領域」になり効果が写らないため、
+    /// 壁も影の落ち先も光の届く範囲（穴 48px+落ち際）に収まる中央寄りに置く。
+    def wallBoxes(): List[(Vec2.Vec2, Vec2.Vec2)] =
+        ({ x = 200.0, y = 120.0 }, { x = 12.0, y = 70.0 }) ::
+        ({ x = 181.0, y = 161.0 }, { x = 50.0, y = 12.0 }) :: Nil
+
+    /// 柱（円の遮蔽の手本）。中心と半径も見た目・遮蔽の共通ソース。
+    def wallPillarCenter(): Vec2.Vec2 = { x = 110.0, y = 90.0 }
+    def wallPillarRadius(): Float64 = 10.0
+
+    /// 影デモの証明用の目印（壁のすぐ裏の白丸）。壁の反対側から照らすと影に沈み、
+    /// 光が回り込むと照らされる — 距離の減衰では説明できない「影による見え隠れ」の証拠。
+    pub def shadowMarkerCenter(): Vec2.Vec2 = { x = 238.0, y = 120.0 }
+
+    def shadowMarkerItem(): Render.PlacedItem =
+        Render.circleAt(shadowMarkerCenter(), 6.0, { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, landmarkZ())
+
+    /// 壁の見た目（box 2 枚 + 柱 1 本）。
+    def wallItems(): List[Render.PlacedItem] =
+        let boxes = wallBoxes() |> List.map(pair -> {
+            let (center, size) = pair;
+            Render.boxAt(center, size, wallColor(), wallZ())
+        });
+        List.append(boxes,
+            Render.circleAt(wallPillarCenter(), wallPillarRadius(), wallColor(), wallZ()) :: Nil)
+
+    /// 壁の遮蔽ポリゴン（見た目と同じ中心・大きさから導く）。
+    def wallOccluders(): List[List[Vec2.Vec2]] =
+        let boxes = wallBoxes() |> List.map(pair -> {
+            let (center, size) = pair;
+            Shadow.occluderOfBox(center, size)
+        });
+        List.append(boxes,
+            Shadow.occluderOfCircle(wallPillarCenter(), wallPillarRadius(), 12) :: Nil)
+
     /// RadialGlow で焼くテクスチャの元 px サイズ。bake/Gallery.flix の実ファイル生成と
     /// ここのスケール計算が同じ値を見る必要があるため公開する。
     pub def maskSourceSize(): Float64 = 512.0
@@ -194,12 +240,20 @@ mod View {
                     lights = Nil, darkness = lanternDarkness(), viewport = design(),
                     haloSprite = "glow_halo", haloSourceSize = haloSourceSize(), z = lanternZ() })
             case World.LanternMode.DarkWithLight =>
-                Light.singleLightItems({
+                let lightItems = Light.singleLightItems({
                     light = lanternLight(lantern#at), viewport = design(),
                     maskSprite = "glow_mask", maskSourceSize = maskSourceSize(), maskHoleFrac = maskHoleFrac(),
                     haloSprite = "glow_halo", haloSourceSize = haloSourceSize(), darkness = lanternDarkness(),
                     z = lanternZ() })
-                |> growLastHalo
+                |> growLastHalo;
+                // 影は暗幕と同じ z（同 z 内は list の並び順で描かれるので、暗幕の後ろに
+                // 置けば穴で見えた領域を影の形だけ再度沈められる。z+1 のハロは影より手前に残る）。
+                let shadows = if (lantern#walls)
+                        Shadow.itemsFor(lanternLight(lantern#at), wallOccluders(),
+                            { darkness = lanternDarkness(), z = lanternZ(),
+                              extrudeLength = Shadow.infiniteExtrude() })
+                    else List.empty();
+                List.append(lightItems, shadows)
         }
 
     /// singleLightItems が返す列の末尾（ハロ）だけを lanternHaloDiameterFactor 倍する
@@ -219,7 +273,10 @@ mod View {
         lantern
             |> Option.map(l -> {
                 let room = { at = Vec2.zero(), item = Render.box(design(), darkRoomColor(), 0) };
-                room :: List.append(landmarkItems(), lanternDarknessItems(l))
+                // 白丸は影の証明用の目印なので walls と独立に常置する — walls=false の対照カットで
+                // 「同じ目印が沈まず見える」を成立させるため（壁と一緒に消すと対照の意味が無くなる）。
+                let walls = if (l#walls) wallItems() else List.empty();
+                room :: List.flatten(landmarkItems() :: (shadowMarkerItem() :: walls) :: lanternDarknessItems(l) :: Nil)
             })
             |> Option.getWithDefault(List.empty())
 

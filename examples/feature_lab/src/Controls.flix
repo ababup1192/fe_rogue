@@ -167,13 +167,17 @@ mod Controls {
         App.isDown(Key.Left, frame) or App.isDown(Key.Right, frame) or
         App.isDown(Key.Up, frame) or App.isDown(Key.Down, frame)
 
-    /// 暗闇 on/off の意図。LeftShift（Key に L は無いため、feature_lab 未使用のキーで代用）。
+    /// 暗闇 on/off と壁 on/off の意図。LeftShift・LeftCtrl
+    /// （Key に L や V は無いため、feature_lab 未使用のキーで代用）。
     enum LanternIntent with Eq {
         case ToggleDarkness
+        case ToggleWalls
     }
 
     def lanternTable(): InputMap.Table[LanternIntent] =
-        (Key.LeftShift, LanternIntent.ToggleDarkness) :: Nil
+           (Key.LeftShift, LanternIntent.ToggleDarkness)
+        :: (Key.LeftCtrl,  LanternIntent.ToggleWalls)
+        :: Nil
 
     /// カンテラ実験の手本 system。他デモ（blend）と同じ Option パターン: 矢印キーを
     /// 押すまでは None（非表示。bake する他シーンに映り込まない）で、押した瞬間に
@@ -181,10 +185,12 @@ mod Controls {
     /// （範囲外へ出るとカンテラの穴あき暗幕が画面から外れて見えなくなるため）。
     /// LeftShift は Bright ⇔ DarkWithLight をトグルする（Dark はゲーム内操作から経由しない）。
     pub def lanternStep(frame: App.Frame, world: World.World): World.World =
-        let toggled = InputMap.taps(lanternTable(), frame) |> List.memberOf(LanternIntent.ToggleDarkness);
+        let taps = InputMap.taps(lanternTable(), frame);
+        let toggled = List.memberOf(LanternIntent.ToggleDarkness, taps);
+        let toggledWalls = List.memberOf(LanternIntent.ToggleWalls, taps);
         match world#lantern {
             case None =>
-                if (arrowsDown(frame)) { lantern = Some({ at = lanternStart(), mode = World.LanternMode.Bright }) | world }
+                if (arrowsDown(frame)) { lantern = Some({ at = lanternStart(), mode = World.LanternMode.Bright, walls = false }) | world }
                 else world
             case Some(lantern) =>
                 let dx = App.axis({ negative = Key.Left }, { positive = Key.Right }, frame);
@@ -194,7 +200,8 @@ mod Controls {
                 let clamped = { x = Float64.max(lanternMargin(), Float64.min(bounds#x, moved#x)),
                                  y = Float64.max(lanternMargin(), Float64.min(bounds#y, moved#y)) };
                 let mode = if (toggled) toggleBrightness(lantern#mode) else lantern#mode;
-                { lantern = Some({ at = clamped, mode = mode }) | world }
+                let walls = if (toggledWalls) not lantern#walls else lantern#walls;
+                { lantern = Some({ at = clamped, mode = mode, walls = walls }) | world }
         }
 
     /// Bright ⇔ DarkWithLight のトグル（Dark はゲーム内操作から経由しないので、
