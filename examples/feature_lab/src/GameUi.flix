@@ -21,8 +21,12 @@ mod GameUi {
         { ui = UiBinding.apply(key -> bindText(key, world), world#ui) | world }
 
     /// bind key → いまの表示文字列。ui.json 側の "bind" 宣言と対になる表。
+    /// fullscreen/cursor はタイトルバーごと消えるフルスクリーン時でも statusLine の代わりに
+    /// 画面内で読めるようにするための表示（起動確認をウィンドウ内だけで完結させる）。
     def bindText(key: String, world: World.World): Option[String] = match key {
-        case "kindLabel" => Some(World.kindLabel(world#kind))
-        case _           => None
+        case "kindLabel"      => Some(World.transitionLabel(world))
+        case "fullscreenFlag" => Some("fullscreen=${World.onOff(world#fullscreen)}")
+        case "cursorFlag"     => Some("cursor=${World.onOff(world#cursorVisible)}")
+        case _                => None
     }
 }

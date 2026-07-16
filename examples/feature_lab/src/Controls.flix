@@ -1,5 +1,5 @@
-// Controls — キーで種類を選び、Space で再生し直す。dt は毎フレーム Progress に積む
-// （再生し終えたらそこで止まる。ループはしない = 切り替えの一瞬を眺める用途に合わせる）。
+// Controls — キーで種類を選ぶと最初から再生し、Space で今の種類を再生し直す。
+// 再生し終えたら自動で Idle（覆いなし）に戻る = FadeOut の黒も残らず画面が生き返る。
 // キー → 意図の対応は table が 1 枚で持ち、写しは InputMap に任せる。
 
 mod Controls {
@@ -38,10 +38,18 @@ mod Controls {
         let picked = tapped |> List.filterMap(kindOf) |> List.head;
         let restarted = List.memberOf(Intent.Restart, tapped);
         match (picked, restarted) {
-            case (Some(kind), _) => { kind = kind, progress = Transition.start(World.duration()) | world }
-            case (None, true)    => { progress = Transition.start(World.duration()) | world }
-            case (None, false)   => { progress = Transition.advance(frame#dt, world#progress) | world }
+            case (Some(kind), _) => { kind = kind, playing = Some(Transition.start(World.duration())) | world }
+            case (None, true)    => { playing = Some(Transition.start(World.duration())) | world }
+            case (None, false)   => { playing = advanceOrIdle(frame#dt, world#playing) | world }
         }
+
+    /// 再生中なら進め、最後まで行ったら Idle（None）へ戻す。FadeOut で終わった後も
+    /// 黒い覆いを描き続けると画面が消えたように見えるため、「終われば消える」にする。
+    def advanceOrIdle(dt: Float64, playing: Option[Transition.Progress]): Option[Transition.Progress] =
+        playing |> Option.flatMap(progress -> {
+            let advanced = Transition.advance(dt, progress);
+            if (Transition.done(advanced)) None else Some(advanced)
+        })
 
     /// withFixedStep 実験用のカウンタ: サブステップも含め updateSystems が回るたび 1 増える
     /// （statusLine の steps= に出る。可変 dt 時の増分と見比べる目安）。

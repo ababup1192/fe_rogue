@@ -1,5 +1,7 @@
 {
   "data": {
-    "kindLabel": "WipeRight"
+    "kindLabel": "WipeRight",
+    "fullscreenFlag": "fullscreen=on",
+    "cursorFlag": "cursor=off"
   }
 }

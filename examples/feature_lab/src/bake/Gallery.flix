@@ -34,12 +34,13 @@ mod Gallery {
     /// World が Transition.Progress を直に持つだけなので、これで十分に軽い）。
     /// 各コマは本番と同じ projectUi を通し、ラベルの bind 文言まで焼き込む。
     /// Progress はレコード直組みでなく start/advance で組む（内部の形に依存しない）。
+    /// t=1 のコマも「再生中」として焼く（実機は done で Idle に戻るが、GIF は覆い切った絵で締めたい）。
     def timelineOf(ui: UiStore.UiWorld, kind: Transition.Kind, steps: Int32): List[World.World] =
         List.range(0, steps + 1) |> List.map(i -> {
             let t = Int32.toFloat64(i) / Int32.toFloat64(steps);
             let progress = Transition.start(World.duration())
                         |> Transition.advance(t * World.duration());
-            GameUi.projectUi({ kind = kind, progress = progress | World.initial(ui) })
+            GameUi.projectUi({ kind = kind, playing = Some(progress) | World.initial(ui) })
         })
 
     /// 1 種類ぶんの GIF ＋ コマ別 PNG を焼く（8 コマ）。

@@ -1,5 +1,5 @@
-// World — 実験場の状態。今日の実験（Transition）は「今どの種類を見ているか」と
-// 「どれだけ再生が進んだか」、それにラベル UI のページで足りる。
+// World — 実験場の状態。今日の実験（Transition）は「最後にどの種類を選んだか」と
+// 「いま再生中か（Idle か）」、それにラベル UI のページで足りる。
 // steps は別実験（固定タイムステップ）の検証用カウンタ: withFixedStep を有効にした Main で
 // updateSystems が回った回数を数え、可変 dt と同じ絵になるかを目視できるようにする。
 // bgm は別実験（AudioFade + マスター音量）の状態: フェードの向き・進み具合・全体つまみを持つ。
@@ -21,8 +21,8 @@ mod World {
     }
 
     pub type alias World = {
-        kind = Transition.Kind,
-        progress = Transition.Progress,
+        kind = Transition.Kind,                   // 最後に選んだ種類（Idle 中の Space もこれを再生）
+        playing = Option[Transition.Progress],    // None = Idle（覆いなし）/ Some = 再生中の進み具合
         steps = Int32,
         bgm = Bgm,
         ui = UiStore.UiWorld,
@@ -30,12 +30,13 @@ mod World {
         cursorVisible = Bool   // H で切り替え（マウスカーソルの表示/非表示）
     }
 
-    /// 起動直後は FadeOut を再生中の状態で始める（画面に出た瞬間から見比べられる）。
+    /// 起動直後は Idle（覆いなし）で始める。いきなり遷移を再生すると画面が
+    /// フェードアウトして「消えた」ように見え、フルスクリーン等の起動確認ができないため。
     /// BGM は無音からのフェードインで始まり、マスターは全開。
     /// ui は外の世界（ファイル）に触れるので、読み込み済みの物を Main から受け取る。
     /// ウィンドウ表示は通常の窓・カーソルは見える状態で始める。
     pub def initial(ui: UiStore.UiWorld): World =
-        { kind = Transition.Kind.FadeOut, progress = Transition.start(duration()), steps = 0,
+        { kind = Transition.Kind.FadeOut, playing = None, steps = 0,
           bgm = { rising = true, progress = Transition.start(bgmDuration()), master = 1.0, playing = false },
           ui = ui, fullscreen = false, cursorVisible = true }
 
@@ -44,13 +45,25 @@ mod World {
         let fade = if (bgm#rising) AudioFade.fadeIn() else AudioFade.fadeOut();
         AudioFade.volumeOf(fade, Transition.tOf(bgm#progress))
 
+    /// HUD と statusLine の遷移表示。Idle のときは操作案内を出す
+    /// （何も再生していない画面で種類名だけ出ていると「再生中に見える」ため）。
+    pub def transitionLabel(world: World): String =
+        world#playing
+            |> Option.map(_ -> kindLabel(world#kind))
+            |> Option.getWithDefault("idle (W/A/S/D)")
+
+    /// いまの再生位置 t（Idle のときは 0）。
+    pub def transitionT(world: World): Float64 =
+        world#playing |> Option.map(Transition.tOf) |> Option.getWithDefault(0.0)
+
     /// 画面下の 1 行サマリ（遷移・固定ステップ・BGM 音量とマスター音量・フルスクリーン・カーソル）。
     pub def statusLine(world: World): String =
-        "transition=${kindLabel(world#kind)} t=${round2(Transition.tOf(world#progress))} steps=${world#steps}"
+        "transition=${transitionLabel(world)} t=${round2(transitionT(world))} steps=${world#steps}"
             + " bgm=${round2(bgmVolume(world#bgm))} master=${round2(world#bgm#master)}"
             + " fullscreen=${onOff(world#fullscreen)} cursor=${onOff(world#cursorVisible)}"
 
-    def onOff(b: Bool): String = if (b) "on" else "off"
+    /// on/off 表記。statusLine と HUD 表示（GameUi.bindText）の両方が使う共通表記。
+    pub def onOff(b: Bool): String = if (b) "on" else "off"
 
     def round2(x: Float64): Float64 = Float64.round(x * 100.0) / 100.0
 
