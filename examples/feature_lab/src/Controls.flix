@@ -148,4 +148,57 @@ mod Controls {
         if (toggleFullscreen) GameEngine.Game.setFullscreen(fullscreen) else ();
         if (toggleCursor) GameEngine.Game.setCursorVisible(cursorVisible) else ();
         { fullscreen = fullscreen, cursorVisible = cursorVisible | world }
+
+    /// カンテラ（プレイヤー=光源）の 1 秒あたりの移動距離（40px 格子を 0.4 秒で渡る速さ）。
+    def lanternSpeed(): Float64 = 100.0
+
+    /// design 領域（View.design と同じ 320×240）の内側にプレイヤーを留める余白。
+    /// カンテラ本体の見た目サイズぶん端で止まって見えるようにする目安値。
+    def lanternMargin(): Float64 = 8.0
+
+    /// design 領域の右下限（左上原点・余白を引いた可動範囲）。
+    def lanternBounds(): Vec2.Vec2 = { x = 320.0 - lanternMargin(), y = 240.0 - lanternMargin() }
+
+    /// カンテラ登場時の初期位置（design 中央）。
+    def lanternStart(): Vec2.Vec2 = { x = 160.0, y = 120.0 }
+
+    /// 矢印キーのどれかが押されているか（デモの出現条件と移動の両方に使う）。
+    def arrowsDown(frame: App.Frame): Bool =
+        App.isDown(Key.Left, frame) or App.isDown(Key.Right, frame) or
+        App.isDown(Key.Up, frame) or App.isDown(Key.Down, frame)
+
+    /// 暗闇 on/off の意図。LeftShift（Key に L は無いため、feature_lab 未使用のキーで代用）。
+    enum LanternIntent with Eq {
+        case ToggleDarkness
+    }
+
+    def lanternTable(): InputMap.Table[LanternIntent] =
+        (Key.LeftShift, LanternIntent.ToggleDarkness) :: Nil
+
+    /// カンテラ実験の手本 system。他デモ（blend）と同じ Option パターン: 矢印キーを
+    /// 押すまでは None（非表示。bake する他シーンに映り込まない）で、押した瞬間に
+    /// 出現して以降は移動し続ける。移動は design 範囲の内側にクランプする
+    /// （範囲外へ出るとカンテラの穴あき暗幕が画面から外れて見えなくなるため）。
+    /// LeftShift は Bright ⇔ DarkWithLight をトグルする（Dark はゲーム内操作から経由しない）。
+    pub def lanternStep(frame: App.Frame, world: World.World): World.World =
+        let toggled = InputMap.taps(lanternTable(), frame) |> List.memberOf(LanternIntent.ToggleDarkness);
+        match world#lantern {
+            case None =>
+                if (arrowsDown(frame)) { lantern = Some({ at = lanternStart(), mode = World.LanternMode.Bright }) | world }
+                else world
+            case Some(lantern) =>
+                let dx = App.axis({ negative = Key.Left }, { positive = Key.Right }, frame);
+                let dy = App.axis({ negative = Key.Up }, { positive = Key.Down }, frame);
+                let moved = Vec2.add(lantern#at, Vec2.mul({ x = dx, y = dy }, lanternSpeed() * frame#dt));
+                let bounds = lanternBounds();
+                let clamped = { x = Float64.max(lanternMargin(), Float64.min(bounds#x, moved#x)),
+                                 y = Float64.max(lanternMargin(), Float64.min(bounds#y, moved#y)) };
+                let mode = if (toggled) toggleBrightness(lantern#mode) else lantern#mode;
+                { lantern = Some({ at = clamped, mode = mode }) | world }
+        }
+
+    /// Bright ⇔ DarkWithLight のトグル（Dark はゲーム内操作から経由しないので、
+    /// 万一そこにいた場合も DarkWithLight 側へ寄せる）。
+    def toggleBrightness(mode: World.LanternMode): World.LanternMode =
+        if (mode == World.LanternMode.Bright) World.LanternMode.DarkWithLight else World.LanternMode.Bright
 }

@@ -28,6 +28,7 @@ mod GameUi {
         case "fullscreenFlag" => Some("fullscreen=${World.onOff(world#fullscreen)}")
         case "cursorFlag"     => Some("cursor=${World.onOff(world#cursorVisible)}")
         case "blendFlag"      => Some("blend=${World.blendLabel(world#blend)}")
+        case "darknessFlag"   => Some(World.lanternLabel(world#lantern))
         case _                => None
     }
 }

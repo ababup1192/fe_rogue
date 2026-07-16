@@ -1,0 +1,117 @@
+<!doctype html><meta charset="utf-8"><title>feature_lab Gallery — Light</title>
+<style>body{background:#1a1f2b;color:#cdd5e6;font-family:sans-serif;margin:16px}
+a{color:#9cc0ff}h1{font-size:18px}
+p.hint{font-size:12px;color:#8c99ad;margin:0 0 16px}
+p.hint.missing{margin:6px 0 0}
+nav.crumbs{font-size:13px;margin-bottom:8px;display:flex;gap:14px;flex-wrap:wrap}
+main{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+figure{margin:0;background:#0d1220;border:1px solid #2a3445;border-radius:6px;padding:8px}
+figcaption{margin-bottom:6px;display:flex;flex-direction:column;gap:3px}
+figcaption code{font-size:14px;font-weight:700;color:#ffd479;background:#241c07;
+  padding:2px 6px;border-radius:4px;align-self:flex-start;cursor:pointer;
+  font-family:ui-monospace,Menlo,Consolas,monospace}
+figcaption .desc{font-size:12px;color:#9cc0ff}
+.tags{font-size:11px;color:#6f7d94;display:flex;gap:6px;flex-wrap:wrap}
+a.tag{color:#6f7d94;text-decoration:none}a.tag:hover{color:#9cc0ff;text-decoration:underline}
+a.scenario-link{font-size:11px;color:#6f7d94;align-self:flex-start}
+img{display:block;image-rendering:pixelated;width:100%;height:auto;background:#000}
+.placeholder{display:flex;align-items:center;justify-content:center;height:80px;
+  color:#6f7d94;font-size:12px;background:#000;border:1px dashed #2a3445}
+a.scenario{display:block;text-decoration:none;background:#0d1220;border:1px solid #2a3445;
+  border-radius:6px;padding:8px}
+a.scenario:hover{border-color:#4a6fb0}
+.scenario-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.scenario-name{font-size:14px;font-weight:700;color:#ffd479}
+.count{font-size:12px;color:#8c99ad;background:#1a2332;border-radius:10px;padding:1px 8px}
+a.scenario .desc{display:block;font-size:12px;color:#9cc0ff;margin-top:6px}
+h2.section{font-size:13px;color:#8c99ad;margin:18px 0 8px;text-transform:uppercase;
+  letter-spacing:.04em;border-bottom:1px solid #2a3445;padding-bottom:4px}
+h2.section:first-of-type{margin-top:4px}
+p.tag-index{display:flex;gap:10px;flex-wrap:wrap;font-size:12px}
+span.lint{font-size:11px;border-radius:4px;padding:1px 6px;align-self:flex-start}
+span.lint.ok{color:#7bd88f;background:#123020}
+span.lint.warn{color:#ffce6b;background:#3a2a08}
+span.lint.sup{color:#8c99ad;background:#1a2332}
+details.lint-detail{align-self:flex-start}details.lint-detail summary{cursor:pointer;list-style:none}
+details.lint-detail ul{margin:4px 0 0;padding-left:16px;font-size:11px;color:#c9a24a}
+details.lint-detail li{margin:2px 0}
+figure:target{border-color:#ffd479}
+.filmstrip{display:flex;flex-direction:column;gap:6px}
+.fs-view{background:#000;background-repeat:no-repeat;image-rendering:pixelated;
+  border:1px solid #2a3445;border-radius:4px}
+.fs-canvas{display:block;background:#000;image-rendering:pixelated;
+  border:1px solid #2a3445;border-radius:4px}
+.fs-ctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.fs-ctl button{background:#1a2332;color:#cdd5e6;border:1px solid #2a3445;border-radius:4px;
+  cursor:pointer;font-size:12px;line-height:1;padding:3px 7px}
+.fs-ctl button:hover{border-color:#4a6fb0}
+.fs-range{flex:1;min-width:80px;accent-color:#4a6fb0;cursor:pointer}
+code.fs-addr{font-size:12px;font-weight:700;color:#ffd479;background:#241c07;
+  padding:2px 6px;border-radius:4px;cursor:pointer;
+  font-family:ui-monospace,Menlo,Consolas,monospace}
+.filmstrip.playing .fs-play{border-color:#7bd88f;color:#7bd88f}</style>
+<nav class="crumbs"><a href="index.html">← index</a> <a href="page_Blend.html">◀ Blend</a> <a href="page_AudioFade.html">▶ AudioFade</a></nav>
+<h1>Light</h1>
+<p class="hint">The yellow code tag is the snapshot name (report bugs by it); click to copy. Tags link to their cross-feature pages.</p>
+<h2 class="section">Basic states</h2>
+<main>
+  <figure id="lantern_bright" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('lantern_bright')" title="click to copy the name">lantern_bright</code><span class="desc">Bright: 部屋+目印がフル輝度（暗闇なし）の対照カット</span></figcaption><img src="lantern_bright.png" alt="lantern_bright"></figure>
+  <figure id="lantern_dark_no_light" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('lantern_dark_no_light')" title="click to copy the name">lantern_dark_no_light</code><span class="desc">Dark: 光源なしの全面暗幕（Light.multiLightItems を lights=Nil で流用）。目印はシルエット程度に残る</span></figcaption><img src="lantern_dark_no_light.png" alt="lantern_dark_no_light"></figure>
+  <figure id="lantern_dark_with_light" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('lantern_dark_with_light')" title="click to copy the name">lantern_dark_with_light</code><span class="desc">DarkWithLight: 穴あき暗幕（Multiply）+暖色ハロ（Add）で光の周りだけ目印が見える</span></figcaption><img src="lantern_dark_with_light.png" alt="lantern_dark_with_light"></figure>
+
+</main>
+
+<h2 class="section">Flows</h2>
+<main>
+  <figure id="lantern_patrol" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('lantern_patrol')" title="click to copy the name">lantern_patrol</code><span class="desc">カンテラが目印の間を歩き回る（矢印キー相当の移動を巡回点列で再現）</span></figcaption><div class="filmstrip" data-name="lantern_patrol" data-frames="8" data-dir="frames/lantern_patrol/" data-dw="320" data-fps="10" style="width:320px"><canvas class="fs-canvas" width="640" height="480" style="width:320px;height:240px"></canvas><div class="fs-ctl"><button class="fs-play" title="再生 / 停止">⏯</button><button class="fs-prev" title="前のコマ">◀</button><input class="fs-range" type="range" min="0" max="7" value="0"><button class="fs-next" title="次のコマ">▶</button><code class="fs-addr" title="クリックで name#N をコピー">lantern_patrol#0</code></div></div></figure>
+
+</main>
+
+<script>
+function fsWire(el){
+  var frames=parseInt(el.getAttribute('data-frames'),10);
+  var dw=parseFloat(el.getAttribute('data-dw'));
+  var name=el.getAttribute('data-name');
+  var fps=parseInt(el.getAttribute('data-fps'),10);
+  var dir=el.getAttribute('data-dir');
+  var view=el.querySelector('.fs-view');
+  var canvas=el.querySelector('.fs-canvas');
+  var range=el.querySelector('.fs-range');
+  var addr=el.querySelector('.fs-addr');
+  var i=0,timer=null,ctx=null,imgs=null;
+  if(dir){ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=false;imgs=new Array(frames);}
+  function frameAt(n){var im=imgs[n];
+    if(!im){im=new Image();im.src=dir+n+'.png';imgs[n]=im;}return im;}
+  function show(n){i=((n%frames)+frames)%frames;
+    if(dir){var im=frameAt(i),want=i;
+      if(im.complete&&im.naturalWidth>0){ctx.drawImage(im,0,0);}
+      else{im.onload=function(){if(i===want){ctx.drawImage(im,0,0);}};}}
+    else{view.style.backgroundPosition=(-i*dw)+'px 0';}
+    range.value=i;addr.textContent=name+'#'+i;}
+  function stop(){if(timer){clearInterval(timer);timer=null;el.classList.remove('playing');}}
+  function play(){if(timer){stop();return;}el.classList.add('playing');
+    timer=setInterval(function(){show(i+1);},Math.max(1,Math.round(1000/fps)));}
+  el.querySelector('.fs-prev').onclick=function(){stop();show(i-1);};
+  el.querySelector('.fs-next').onclick=function(){stop();show(i+1);};
+  el.querySelector('.fs-play').onclick=play;
+  range.oninput=function(){stop();show(parseInt(range.value,10));};
+  addr.onclick=function(){fsCopy(name+'#'+i);};
+  show(0);play();
+}
+function fsCopy(t){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).catch(function(){fsFallbackCopy(t);});}
+  else{fsFallbackCopy(t);}
+}
+function fsFallbackCopy(t){
+  var ta=document.createElement('textarea');ta.value=t;
+  ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.focus();ta.select();
+  try{document.execCommand('copy');}catch(e){}
+  document.body.removeChild(ta);
+}
+document.addEventListener('DOMContentLoaded',function(){
+  var els=document.querySelectorAll('.filmstrip');
+  for(var k=0;k<els.length;k++){fsWire(els[k]);}
+});
+</script>

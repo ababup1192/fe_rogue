@@ -90,12 +90,14 @@ mod SoftRaster {
                 if (d#blend == DrawCmd.BlendMode.Normal)
                     withClip(g, sf, d#clip, () -> drawDrawable(g, sf, textures, fctx, d))
                 else
-                    blendedDraw(image, sf, d#blend, d#clip, gs -> drawDrawable(gs, sf, textures, fctx, d))
+                    blendedDraw(image, sf, d#blend, d#clip, drawableAabb(req#design, textures, d),
+                                gs -> drawDrawable(gs, sf, textures, fctx, d))
             case Result.Err(p) =>
                 if (p#blend == DrawCmd.BlendMode.Normal)
                     withClip(g, sf, p#clip, () -> drawPolygon(rc, g, sf, p))
                 else
-                    blendedDraw(image, sf, p#blend, p#clip, gs -> drawPolygon(rc, gs, sf, p))
+                    blendedDraw(image, sf, p#blend, p#clip, polygonAabb(req#design, p),
+                                gs -> drawPolygon(rc, gs, sf, p))
         }, sorted);
         g.dispose();
         image
@@ -118,9 +120,13 @@ mod SoftRaster {
 
     /// Normal 以外の描画: いったん透明な下書き画像へ普通に描き、その画素を合成式で本体に混ぜる。
     /// clip は下書きへの描画に掛ける — 透明のまま残った画素は合成しないので、窓の外は本体に触れない。
-    /// 下書きは本体と同じ全面サイズ（bake 用途なので単純さを性能より優先）。
+    /// 下書き自体は本体と同じ全面サイズで確保するが（Graphics2D の clip 計算を素直に保つため）、
+    /// getRGB/setRGB で往復する範囲は `aabb`（drawable/polygon の外形、画面クランプ・design px）
+    /// だけに絞る — 全面走査だと 1 個の光源・炎エフェクトのために毎フレーム画面全体を
+    /// 読み書きすることになり、drawable 数に対して不釣り合いに重くなるため。
     def blendedDraw(image: BufferedImage, sf: Float64, blend: DrawCmd.BlendMode,
-                    clip: Option[Rect2.Rect2], draw: Graphics2D -> Unit \ ef): Unit \ IO + ef =
+                    clip: Option[Rect2.Rect2], aabb: Rect2.Rect2,
+                    draw: Graphics2D -> Unit \ ef): Unit \ IO + ef =
         let w = Int32.max(1i32, image.getWidth());
         let h = Int32.max(1i32, image.getHeight());
         let scratch = new BufferedImage(w, h, 2i32);
@@ -128,21 +134,34 @@ mod SoftRaster {
         applyQualityHints(gs);
         withClip(gs, sf, clip, () -> draw(gs));
         gs.dispose();
-        composeInto(image, scratch, blend, w, h)
+        composeInto(image, scratch, blend, sf, aabb)
 
     /// 下書きの不透明画素だけを合成式で本体に書き戻す（getRGB/setRGB の行列一括転送）。
+    /// 転送範囲は aabb を出力ピクセルへ量子化した矩形（画像境界にクランプ済み）だけに絞る。
     def composeInto(dst: BufferedImage, src: BufferedImage, blend: DrawCmd.BlendMode,
-                    w: Int32, h: Int32): Unit \ IO = region rc {
-        let n = w * h;
-        let dstBuf: Array[Int32, rc] = Array.empty(rc, n);
-        let srcBuf: Array[Int32, rc] = Array.empty(rc, n);
-        discard dst.getRGB(0i32, 0i32, w, h, dstBuf, 0i32, w);
-        discard src.getRGB(0i32, 0i32, w, h, srcBuf, 0i32, w);
-        Array.forEachWithIndex((i, sp) -> {
-            if (channelOf(24, sp) == 0) ()
-            else Array.put(blendPixel(blend, sp, Array.get(i, dstBuf)), i, dstBuf)
-        }, srcBuf);
-        dst.setRGB(0i32, 0i32, w, h, dstBuf, 0i32, w)
+                    sf: Float64, aabb: Rect2.Rect2): Unit \ IO = region rc {
+        let dw = dst.getWidth();
+        let dh = dst.getHeight();
+        let (rx0, ry0, rx1, ry1) = DrawCmd.clipPixels({ scaleX = sf, scaleY = sf }, aabb);
+        let x0 = Int32.max(0i32, rx0);
+        let y0 = Int32.max(0i32, ry0);
+        let x1 = Int32.min(dw, rx1);
+        let y1 = Int32.min(dh, ry1);
+        let w = x1 - x0;
+        let h = y1 - y0;
+        if (w <= 0i32 or h <= 0i32) ()
+        else {
+            let n = w * h;
+            let dstBuf: Array[Int32, rc] = Array.empty(rc, n);
+            let srcBuf: Array[Int32, rc] = Array.empty(rc, n);
+            discard dst.getRGB(x0, y0, w, h, dstBuf, 0i32, w);
+            discard src.getRGB(x0, y0, w, h, srcBuf, 0i32, w);
+            Array.forEachWithIndex((i, sp) -> {
+                if (channelOf(24, sp) == 0) ()
+                else Array.put(blendPixel(blend, sp, Array.get(i, dstBuf)), i, dstBuf)
+            }, srcBuf);
+            dst.setRGB(x0, y0, w, h, dstBuf, 0i32, w)
+        }
     }
 
     /// ARGB 1 画素の合成（src を dst に重ねた結果。out の alpha は dst のまま —
@@ -181,6 +200,62 @@ mod SoftRaster {
             case Result.Ok(d)  => d#zIndex
             case Result.Err(p) => p#zIndex
         }
+
+    // ════════════════════════════════════════════════════════
+    // AABB（dirty-rect 化: blendedDraw が getRGB/setRGB を絞り込む範囲を出す）
+    // ════════════════════════════════════════════════════════
+
+    /// design 全体を覆う矩形（フォールバック用 — 外形が正確に分からない/計算コストに
+    /// 見合わない場合に安全側へ倒す。全面走査になるだけで結果は従来どおり正しい）。
+    def fullDesignRect(design: Vec2.Vec2): Rect2.Rect2 =
+        { position = Vec2.zero(), size = design }
+
+    /// clip があれば交差、design 全体にもクランプする（画面外へ広がった外形を切り詰める）。
+    def clampAabb(design: Vec2.Vec2, clip: Option[Rect2.Rect2], aabb: Rect2.Rect2): Rect2.Rect2 =
+        let withClip = match clip {
+            case None    => aabb
+            case Some(r) => Rect2.intersect(r, aabb)
+        };
+        Rect2.intersect(fullDesignRect(design), withClip)
+
+    /// Drawable 1 件の外形（design px）。box（texture=""）は scale がそのまま px サイズ、
+    /// テクスチャ物は実サイズ（textures から引く）× uvScale × |scale|、font_ は
+    /// グリフごとの実寸計算が煩雑なので design 全体へ安全側フォールバックする
+    /// （HUD 文字は毎フレーム変わり得るため、狭く絞って文字の一部を取りこぼす方が危険）。
+    def drawableAabb(design: Vec2.Vec2, textures: Map[String, BufferedImage],
+                     d: GameEngine.Drawable): Rect2.Rect2 \ IO =
+        if (String.startsWith({prefix = "font_"}, d#texture))
+            fullDesignRect(design)
+        else {
+            let base = if (String.isEmpty(d#texture)) { x = 1.0, y = 1.0 }
+                       else match Map.get(d#texture, textures) {
+                           case Some(img) =>
+                               { x = Int32.toFloat64(img.getWidth()) * d#uvScale#x,
+                                 y = Int32.toFloat64(img.getHeight()) * d#uvScale#y }
+                           case None      => Vec2.zero()
+                       };
+            let size = { x = base#x * Float64.abs(d#scale#x), y = base#y * Float64.abs(d#scale#y) };
+            let topLeft = if (d#centered) Vec2.sub(d#position, Vec2.div(size, 2.0)) else d#position;
+            // AA のにじみで縁の画素が塗り範囲よりわずかに外へ出るため 1px 分の余裕を足す。
+            // BasicStroke の枠線は中心線基準でさらに半分だけ外へはみ出すのでその分も足す。
+            let borderPad = 1.0 + match d#style {
+                case Some(st) => st#borderWidth / 2.0
+                case None     => 0.0
+            };
+            clampAabb(design, d#clip, Rect2.grow(borderPad, { position = topLeft, size = size }))
+        }
+
+    /// PolygonRenderCmd 1 件の外形（design px、頂点は既にスクリーン座標に変換済み）。
+    /// AA のにじみで縁の画素が塗り範囲よりわずかに外へ出ることがあるため 1px 分の余裕を足す。
+    def polygonAabb(design: Vec2.Vec2, p: GameEngine.PolygonRenderCmd): Rect2.Rect2 =
+        let aabb = match p#vertices {
+            case Nil       => { position = Vec2.zero(), size = Vec2.zero() }
+            case v :: rest =>
+                let lo = List.foldLeft((acc, q) -> { x = Float64.min(acc#x, q#x), y = Float64.min(acc#y, q#y) }, v, rest);
+                let hi = List.foldLeft((acc, q) -> { x = Float64.max(acc#x, q#x), y = Float64.max(acc#y, q#y) }, v, rest);
+                { position = lo, size = Vec2.sub(hi, lo) }
+        };
+        clampAabb(design, p#clip, Rect2.grow(1.0, aabb))
 
     /// texturePath の各エントリを ImageIO で読み込む。読めないものは飛ばす。
     /// indexed / grayscale 等の色モデルは RescaleOp（drawTextured の tint）が扱えないため、
@@ -444,4 +519,24 @@ mod SoftRaster {
         let parent = file.getParentFile();
         if (not Object.isNull(parent)) discard parent.mkdirs() else ();
         discard ImageIO.write(image, "png", file)
+
+    // ════════════════════════════════════════════════════════
+    // RadialGlow テクスチャの PNG 書き出し（AWT 依存をここへ閉じ込める）
+    // ════════════════════════════════════════════════════════
+
+    /// size×size の正方形を pixelOf(x, y) で画素ごとに埋めて PNG に書く。
+    /// RadialGlow の画素計算（純関数）と AWT の画像バッファ操作を分けるための橋渡し
+    /// （RadialGlow.haloPixel/maskPixel を pixelOf に部分適用して渡す）。
+    pub def writeRadialPng(size: Int32, pixelOf: (Int32, Int32) -> Int32, outPath: String): Unit \ IO = region rc {
+        let s = Int32.max(1i32, size);
+        let image = new BufferedImage(s, s, 2i32);
+        let buf: Array[Int32, rc] = Array.empty(rc, s * s);
+        Array.forEachWithIndex((i, _) -> {
+            let x = Int32.remainder(i, s);
+            let y = i / s;
+            Array.put(pixelOf(x, y), i, buf)
+        }, buf);
+        image.setRGB(0i32, 0i32, s, s, buf, 0i32, s);
+        writePng(image, outPath)
+    }
 }

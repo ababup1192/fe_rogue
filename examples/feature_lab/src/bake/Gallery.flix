@@ -18,10 +18,15 @@ mod Gallery {
 
     def bgColor(): Color = { r = 0.101961f32, g = 0.109804f32, b = 0.172549f32 }
 
-    /// Bakery に渡す焼き込み設定（テクスチャなし・単色/文字だけの絵）。
+    /// カンテラ探索デモが使うテクスチャ名 → project.json の実ファイルパス。
+    /// glow_halo/glow_mask は project.json 登録と揃える（実ファイルは bakeGlowTextures が焼く）。
+    def texturePath(): Map[String, String] =
+        Map#{ "glow_halo" => "assets/glow_halo.png", "glow_mask" => "assets/glow_mask.png" }
+
+    /// Bakery に渡す焼き込み設定。texturePath はカンテラ探索デモのテクスチャ付き。
     def config(atlas: FontAtlas): Bakery.BakeConfig =
         { design = View.design(), scale = scale(), background = bgColor(),
-          texturePath = Map.empty(), fontTtf = ttfPath(), fontAtlas = atlas,
+          texturePath = texturePath(), fontTtf = ttfPath(), fontAtlas = atlas,
           outDir = outDir(), frameW = frameW(), frameH = frameH(),
           gifDelayMs = gifDelayMs(), gifFps = gifFps() }
 
@@ -66,6 +71,63 @@ mod Gallery {
         let world = GameUi.projectUi({ blend = Some(mode) | World.initial(ui) });
         let (drawables, polygons) = worldCmds(atlas, world);
         Bakery.renderPng(config(atlas), drawables, polygons, name)
+
+    // ── Light: カンテラ探索デモ（放射グロー＋穴あき暗幕）──
+
+    /// haloTexture/maskTexture の実ファイルを assets/ に焼く。project.json の texturePath が
+    /// 指すファイルはここでしか生成されないので、実行前に必ず bake を通す必要がある。
+    /// maskTexture は maskCurveWithHole で平坦な穴を持たせる（View.maskHoleFrac と揃える —
+    /// 揃っていないと Light.singleLightItems のスケール計算が前提とする「穴の実寸半径」がずれる）。
+    def bakeGlowTextures(): Unit \ IO =
+        let maskSize = RenderUtil.floatToInt32(View.maskSourceSize());
+        let haloSize = RenderUtil.floatToInt32(View.haloSourceSize());
+        let maskCurve = t -> RadialGlow.maskCurveWithHole(View.maskHoleFrac(), RadialGlow.smoothstepCurve, t);
+        SoftRaster.writeRadialPng(maskSize,
+            (x, y) -> RadialGlow.maskPixel(maskCurve, RadialGlow.normalizedRadius(maskSize, x, y)),
+            "assets/glow_mask.png");
+        SoftRaster.writeRadialPng(haloSize,
+            (x, y) -> RadialGlow.haloPixel(RadialGlow.smoothstepCurve, RadialGlow.normalizedRadius(haloSize, x, y)),
+            "assets/glow_halo.png")
+
+    /// カンテラ探索の比較 3 枚が使う共通のプレイヤー位置（目印の間、画面中央よりやや上）。
+    def lanternDemoAt(): Vec2.Vec2 = { x = 160.0, y = 100.0 }
+
+    /// 比較 PNG 1 枚ぶんの世界を組んで焼く。
+    def bakeLanternPng(atlas: FontAtlas, ui: UiStore.UiWorld, lantern: Option[World.Lantern], name: String): Unit \ IO =
+        let world = GameUi.projectUi({ lantern = lantern | World.initial(ui) });
+        let (drawables, polygons) = worldCmds(atlas, world);
+        Bakery.renderPng(config(atlas), drawables, polygons, name)
+
+    /// 「明（Bright。部屋+目印がフル輝度）」「暗闇のみ（Dark。光源なしの全面暗幕で
+    /// 目印がシルエット程度に残る）」「暗闇+カンテラ（DarkWithLight。穴あき+ハロ）」の3枚を焼く。
+    def bakeLanternComparisonPngs(atlas: FontAtlas, ui: UiStore.UiWorld): Unit \ IO =
+        bakeLanternPng(atlas, ui, Some({ at = lanternDemoAt(), mode = World.LanternMode.Bright }), "lantern_bright");
+        bakeLanternPng(atlas, ui, Some({ at = lanternDemoAt(), mode = World.LanternMode.Dark }), "lantern_dark_no_light");
+        bakeLanternPng(atlas, ui, Some({ at = lanternDemoAt(), mode = World.LanternMode.DarkWithLight }), "lantern_dark_with_light")
+
+    /// カンテラが目印の間を歩き回る経路（往復する巡回点列。t を周期的に進めて線形補間する）。
+    def lanternPatrolPoints(): List[Vec2.Vec2] =
+        { x = 60.0, y = 60.0 } :: { x = 260.0, y = 60.0 } :: { x = 260.0, y = 180.0 } ::
+        { x = 60.0, y = 180.0 } :: { x = 60.0, y = 60.0 } :: Nil
+
+    /// 巡回点列を frames コマぶん等分してなめらかに歩く World 列を作る（DarkWithLight 固定）。
+    def lanternTimeline(ui: UiStore.UiWorld, frames: Int32): List[World.World] =
+        let points = lanternPatrolPoints();
+        let segments = List.length(points) - 1;
+        List.range(0, frames + 1) |> List.map(i -> {
+            let t = Int32.toFloat64(i) / Int32.toFloat64(frames) * Int32.toFloat64(segments);
+            let seg = Int32.min(segments - 1, Float64.tryToInt32(Float64.floor(t)) |> Option.getWithDefault(0));
+            let localT = t - Int32.toFloat64(seg);
+            let segStart = List.nth(seg, points) |> Option.getWithDefault(lanternDemoAt());
+            let segEnd = List.nth(seg + 1, points) |> Option.getWithDefault(lanternDemoAt());
+            let at = Vec2.add(segStart, Vec2.mul(Vec2.sub(segEnd, segStart), localT));
+            GameUi.projectUi({ lantern = Some({ at = at, mode = World.LanternMode.DarkWithLight }) | World.initial(ui) })
+        })
+
+    /// カンテラが目印の間を歩き回る GIF（8 コマ）。
+    def bakeLanternGif(atlas: FontAtlas, ui: UiStore.UiWorld): SnapshotSite.Filmstrip \ IO =
+        let frames = lanternTimeline(ui, 7);
+        Bakery.bakeGif(config(atlas), frames, 1, w -> worldCmds(atlas, w), "lantern_patrol")
 
     // ── AudioFade: 音量カーブの図 ──
 
@@ -178,6 +240,7 @@ mod Gallery {
 
     pub def bakeAll(): Unit \ IO =
         discard (new File(outDir())).mkdirs();
+        bakeGlowTextures();
         let atlas = Harness.atlas();
         let ui = Harness.ui();
 
@@ -193,6 +256,9 @@ mod Gallery {
         bakeBlendPng(atlas, ui, DrawCmd.BlendMode.Add, "blend_add");
         bakeBlendPng(atlas, ui, DrawCmd.BlendMode.Multiply, "blend_multiply");
 
+        bakeLanternComparisonPngs(atlas, ui);
+        let lanternFilm = bakeLanternGif(atlas, ui);
+
         bakeCurvePng(atlas, (AudioFade.fadeIn(), risingColor()) :: Nil, "audio_fade_in_curve");
         bakeCurvePng(atlas, (AudioFade.fadeOut(), fadingColor()) :: Nil, "audio_fade_out_curve");
         bakeCurvePng(atlas, (AudioFade.fadeOut(), fadingColor()) :: (AudioFade.fadeIn(), risingColor()) :: Nil,
@@ -203,7 +269,7 @@ mod Gallery {
             SnapshotSite.generate(
                 { outDir = outDir(), title = "feature_lab Gallery", cssScale = 2 },
                 catalog({ fadeOut = fadeOutFilm, fadeIn = fadeInFilm,
-                          wipeLeft = wipeLeftFilm, wipeRight = wipeRightFilm }))
+                          wipeLeft = wipeLeftFilm, wipeRight = wipeRightFilm, lanternPatrol = lanternFilm }))
         } with Fs.FileWrite.runWithIO;
         writeText("${outDir()}/audio.html", audioHtml());
         linkAudioFromIndex()
@@ -212,7 +278,8 @@ mod Gallery {
 
     type alias Films = {
         fadeOut = SnapshotSite.Filmstrip, fadeIn = SnapshotSite.Filmstrip,
-        wipeLeft = SnapshotSite.Filmstrip, wipeRight = SnapshotSite.Filmstrip
+        wipeLeft = SnapshotSite.Filmstrip, wipeRight = SnapshotSite.Filmstrip,
+        lanternPatrol = SnapshotSite.Filmstrip
     }
 
     def catalog(films: Films): List[SnapshotSite.Item] =
@@ -224,6 +291,10 @@ mod Gallery {
         png("blend_normal", "Normal: ふつうの重なり — 後から描いた円が上を覆う（白地の左と暗地の右で同じ）", "Blend") ::
         png("blend_add", "Add: 明るく足す — R+G=黄・3 色の重なりは白へ光る。暗い地ほど映える", "Blend") ::
         png("blend_multiply", "Multiply: 掛けて沈める — 重なりは黒へ。白地は円の色がそのまま・暗地はさらに暗く", "Blend") ::
+        png("lantern_bright", "Bright: 部屋+目印がフル輝度（暗闇なし）の対照カット", "Light") ::
+        png("lantern_dark_no_light", "Dark: 光源なしの全面暗幕（Light.multiLightItems を lights=Nil で流用）。目印はシルエット程度に残る", "Light") ::
+        png("lantern_dark_with_light", "DarkWithLight: 穴あき暗幕（Multiply）+暖色ハロ（Add）で光の周りだけ目印が見える", "Light") ::
+        gif("lantern_patrol", "カンテラが目印の間を歩き回る（矢印キー相当の移動を巡回点列で再現）", "Light", films#lanternPatrol) ::
         png("audio_fade_in_curve", "フェードインの音量カーブ: volumeOf(0→1)。横=時間 t・縦=音量（audio.html で試聴可）", "AudioFade") ::
         png("audio_fade_out_curve", "フェードアウトの音量カーブ: volumeOf(1→0)", "AudioFade") ::
         png("audio_crossfade_curve", "クロスフェード: 消える側（赤）と現れる側（緑）。同じ t の 2 本で、和は常に 1", "AudioFade") :: Nil
