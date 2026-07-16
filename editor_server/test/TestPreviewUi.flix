@@ -3,6 +3,7 @@
 // warning の導出だけを見る。
 
 mod TestPreviewUi {
+    use Util.Json.Json
 
     /// テスト用の最小 ui.json を UiSpec.Spec に解く。ここで解けないのはテスト自身の書き間違い。
     def specOf(text: String): UiSpec.Spec =
@@ -63,6 +64,58 @@ mod TestPreviewUi {
         Assert.assertEq(
             expected = (Some(true), Some(true), Some(false)),
             (check(deepRotation), check(pivotOnly), check(plain)))
+
+    // ========================================================================
+    // パレット表 (応答の palette フィールド)
+    // ========================================================================
+
+    /// 文字列をトップレベルの Map[String, Json] に解く (テスト入力用)。
+    def topOf(text: String): Map[String, Json] =
+        match (JsonCompat.parse(text) |> Option.flatMap(JsonCodec.expectObject)) {
+            case Some(m) => m
+            case None    => bug!("test json does not parse: ${text}")
+        }
+
+    /// 合成順: 外部パレットの上に inline "palette" が勝つ (UiDoc.load と同じ)。
+    /// 外部だけの名前・inline だけの名前はそのまま残る。
+    @Test
+    def testPaletteTableInlineWins(): Unit \ Assert =
+        Assert.assertEq(
+            expected = Map#{"base" => "#111111", "main" => "#ff0000", "extra" => "#00ff00"},
+            PreviewUi.paletteTable(
+                topOf("{\"base\": \"#111111\", \"main\": \"#0000ff\"}"),
+                topOf("{\"palette\": {\"main\": \"#ff0000\", \"extra\": \"#00ff00\"}}")))
+
+    /// 色 3 表記の解決: "#RRGGBB" は小文字へ正規化、{"rgb"} と {"hsv"} は hex へ変換
+    /// (hsv 0/0/1 = 白・0/1/1 = 赤)。解決できない値 ("@参照"・形違い) は表から落ちる。
+    @Test
+    def testPaletteTableResolvesColorForms(): Unit \ Assert =
+        Assert.assertEq(
+            expected = Map#{"hexUp" => "#a0b1c2", "red" => "#ff0000", "white" => "#ffffff"},
+            PreviewUi.paletteTable(Map.empty(), topOf(
+                "{\"palette\": {" +
+                "\"hexUp\": \"#A0B1C2\", " +
+                "\"white\": {\"hsv\": [0, 0, 1]}, " +
+                "\"red\": {\"rgb\": [1, 0, 0]}, " +
+                "\"broken\": \"@white\", " +
+                "\"weird\": 12}}")))
+
+    /// palette キーが無いドキュメントは空の表 (paletteFile 側も無ければ何も出ない)。
+    @Test
+    def testPaletteTableEmpty(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (Map.empty(): Map[String, String]),
+            PreviewUi.paletteTable(Map.empty(), topOf("{\"root\": {\"name\": \"g\"}}")))
+
+    /// paletteFile 参照の逆引き: トップレベルの文字列だけ拾う (数値などの形違いは None)。
+    @Test
+    def testPaletteRefOf(): Unit \ Assert =
+        let refOf = text -> JsonCompat.parse(text) |> Option.flatMap(PreviewUi.paletteRefOf);
+        Assert.assertEq(
+            expected = (Some("assets/palette.json"), (None: Option[String]), (None: Option[String])),
+            (refOf("{\"paletteFile\": \"assets/palette.json\", \"root\": {}}"),
+             refOf("{\"root\": {\"name\": \"g\"}}"),
+             refOf("{\"paletteFile\": 3}")))
 
     // ========================================================================
     // 合成 spawn (spawnDocs)

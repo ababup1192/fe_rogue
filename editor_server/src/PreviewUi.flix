@@ -205,6 +205,7 @@ mod PreviewUi {
             case Ok(ctx)      =>
                 let specRes = run { UiSpec.parseAt(dir, docJson) } with Fs.FileRead.runWithIO;
                 let docRes  = run { UiDoc.parseAt(dir, docJson) } with Fs.FileRead.runWithIO;
+                let palette = resolvedPalette(dir, docJson);
                 match loadComposed(dir, input#compose) {
                     case Err(message)  => (200, failJson(message))
                     case Ok(composed)  => match (specRes, docRes) {
@@ -212,7 +213,8 @@ mod PreviewUi {
                             render(dir, caches, ctx, docSpec, {
                                 main = { path = "", spec = spec, data = input#data },
                                 composed = composed, hovered = hovered, scale = scale,
-                                drawPath = DrawPath.StorePath, extraWarnings = extraWarnings })
+                                drawPath = DrawPath.StorePath, palette = palette,
+                                extraWarnings = extraWarnings })
                         case (Err(e), Ok(docSpec))   =>
                             if (isRotationErr(e) and List.isEmpty(composed))
                                 rotationFallback(dir, caches, ctx, docJson, docSpec, hovered, scale, input, extraWarnings, e)
@@ -259,7 +261,8 @@ mod PreviewUi {
             case Ok(spec) => render(dir, caches, ctx, docSpec, {
                 main = { path = "", spec = spec, data = input#data },
                 composed = Nil, hovered = hovered, scale = scale,
-                drawPath = DrawPath.FlexPath, extraWarnings = extraWarnings })
+                drawPath = DrawPath.FlexPath, palette = resolvedPalette(dir, docJson),
+                extraWarnings = extraWarnings })
             case Err(_)   => (200, failJson(JsonCompat.describe(original)))
         }
 
@@ -289,6 +292,108 @@ mod PreviewUi {
             case other      => other
         }
 
+    // ════════════════════════════════════════════════════════
+    // パレット表 (応答の palette フィールド)
+    // ════════════════════════════════════════════════════════
+
+    /// 主 doc の解決済みパレット表 ("名前" → "#rrggbb")。paletteFile を dir 起点で読み、
+    /// inline "palette" を上に重ねる (同名は inline 勝ち = UiDoc.load と同じ合成順)。
+    /// 読めない・形違いはその分だけ落として空側に倒す — この表は編集画面の色見本用で、
+    /// ドキュメント自体の誤りはプレビュー本体 (parse) が名前パス付きで報告する。
+    pub def resolvedPalette(dir: String, docJson: Json): Map[String, String] \ IO =
+        match docJson {
+            case JObject(top) => paletteTable(filePaletteOf(dir, top), top)
+            case _            => Map.empty()
+        }
+
+    /// トップの "paletteFile" が指す先を読んでパレットの Map にする (無い・読めないは空)。
+    def filePaletteOf(dir: String, top: Map[String, Json]): Map[String, Json] \ IO =
+        match paletteRefOf(JObject(top)) {
+            case None       => Map.empty()
+            case Some(path) => match FileIndex.readInside(dir, path) {
+                case Err(_)      => Map.empty()
+                case Ok(content) => JsonCompat.parse(String.trim(content))
+                    |> Option.flatMap(JsonCodec.expectObject)
+                    |> Option.getWithDefault(Map.empty())
+            }
+        }
+
+    /// トップレベルの "paletteFile" 参照 (文字列のときだけ)。
+    /// GET /files が palette.json の一覧 (逆引き) を組むのにも使う。
+    pub def paletteRefOf(json: Json): Option[String] =
+        JsonCodec.expectObject(json)
+            |> Option.flatMap(top -> Map.get("paletteFile", top))
+            |> Option.flatMap(JsonCodec.expectString)
+
+    /// 外部パレットの上に inline "palette" を重ね (同名は inline 勝ち)、各色を "#rrggbb" へ
+    /// 解決した表にする。解決できない値は表から落とす (色見本に出せない値を無理に出さない)。
+    pub def paletteTable(filePalette: Map[String, Json], top: Map[String, Json]): Map[String, String] =
+        let inline = Map.get("palette", top)
+            |> Option.flatMap(JsonCodec.expectObject)
+            |> Option.getWithDefault(Map.empty());
+        let merged = Map.foldLeftWithKey((acc, name, value) -> Map.insert(name, value, acc), filePalette, inline);
+        merged |> Map.toList
+            |> List.filterMap(entry -> {
+                let (name, value) = entry;
+                colorHexOf(value) |> Option.map(hex -> (name, hex))
+            })
+            |> List.toMap
+
+    /// 色値 ("#rrggbb" | {"hsv":[h,s,v]} | {"rgb":[r,g,b]}) を "#rrggbb" へ。
+    /// hsv→rgb の数式はエンジンの Color.hsv に任せる (二重実装を作らない)。
+    def colorHexOf(json: Json): Option[String] =
+        match json {
+            case JString(s) => normalizeHex(s)
+            case JObject(m) => match (Map.get("hsv", m), Map.get("rgb", m)) {
+                case (Some(hsvJson), None) => floats3Of(hsvJson) |> Option.map(t -> {
+                    let (h, s, v) = t;
+                    colorToHex(Color.hsv({ h = h, s = s, v = v }))
+                })
+                case (None, Some(rgbJson)) => floats3Of(rgbJson) |> Option.map(t -> {
+                    let (r, g, b) = t;
+                    colorToHex({ r = channelOf(r), g = channelOf(g), b = channelOf(b) })
+                })
+                case _ => None
+            }
+            case _ => None
+        }
+
+    /// "#rrggbb" (先頭 # は任意・大文字可) を小文字の "#rrggbb" へ。6 桁 16 進以外は None
+    /// ("@名前" もここで落ちる — パレットの値に "@..." は書けない規約)。
+    def normalizeHex(s: String): Option[String] =
+        let body = if (String.startsWith(prefix = "#", s)) String.drop(1, s) else s;
+        let chars = String.toList(String.toLowerCase(body));
+        if (List.length(chars) == 6 and List.forAll(c -> isHexDigit(c), chars))
+            Some("#${String.toLowerCase(body)}")
+        else None
+
+    def isHexDigit(c: Char): Bool =
+        (c >= '0' and c <= '9') or (c >= 'a' and c <= 'f')
+
+    def floats3Of(json: Json): Option[(Float64, Float64, Float64)] =
+        match json {
+            case JArray(v) => match Vector.toList(v) |> List.map(JsonCodec.expectFloat) {
+                case Some(a) :: Some(b) :: Some(c) :: Nil => Some((a, b, c))
+                case _                                    => None
+            }
+            case _ => None
+        }
+
+    def channelOf(x: Float64): Float32 =
+        Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, x)
+
+    /// Color (0〜1 の 3 チャンネル) を "#rrggbb" にする。
+    def colorToHex(c: Color): String =
+        "#${hexByte(c#r)}${hexByte(c#g)}${hexByte(c#b)}"
+
+    def hexByte(x: Float32): String =
+        let raw = Float64.tryToInt32(Float32.toFloat64(x) * 255.0 + 0.5) |> Option.getWithDefault(0);
+        let n = Int32.max(0, Int32.min(255, raw));
+        "${hexDigit(n / 16)}${hexDigit(Int32.modulo(n, 16))}"
+
+    def hexDigit(n: Int32): String =
+        "0123456789abcdef" |> String.drop(n) |> String.take(1)
+
     /// render の入力一式。`composed` が奥、`main` (主 doc) が最前。
     type alias RenderJob = {
         main = DocToSpawn,
@@ -296,6 +401,7 @@ mod PreviewUi {
         hovered = Option[String],
         scale = Int32,
         drawPath = DrawPath,
+        palette = Map[String, String],
         extraWarnings = List[String]
     }
 
@@ -381,6 +487,7 @@ mod PreviewUi {
                     }),
                     "rects"    => rectsJson(ui, rects),
                     "tree"     => treeJson("", docSpec),
+                    "palette"  => JObject(job#palette |> Map.map(hex -> JString(hex))),
                     "composed" => composedJson(composedRoots),
                     "warnings" => JsonCodec.encodeList(warning -> JString(warning), warnings),
                     "error"    => JNull

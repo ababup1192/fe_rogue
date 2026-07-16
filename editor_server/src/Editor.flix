@@ -11,6 +11,7 @@ mod Editor {
     import java.lang.Thread
     import java.lang.Exception
     import java.io.{File => JFile}
+    import java.math.{BigDecimal => JBigDecimal}
     import java.net.InetSocketAddress
     import com.sun.net.httpserver.HttpServer
     import com.sun.net.httpserver.HttpHandler
@@ -79,6 +80,7 @@ mod Editor {
             case ("POST", "/project")  => handleSelectProject(selection, readBody(exchange), exchange)
             case ("GET", "/health")    => withProject(selection, exchange, dir -> handleHealth(dir, exchange))
             case ("GET", "/files")     => withProject(selection, exchange, dir -> handleFiles(dir, exchange))
+            case ("GET", "/changes")   => withProject(selection, exchange, dir -> handleChanges(dir, exchange))
             case ("GET", "/file")      => withProject(selection, exchange, dir -> handleReadFile(dir, params, exchange))
             case ("PUT", "/file")      => withProject(selection, exchange, dir -> handleWriteFile(dir, readBody(exchange), exchange))
             case ("POST", "/preview/ui") => withProject(selection, exchange, dir -> {
@@ -189,30 +191,66 @@ mod Editor {
                 }), exchange)
         }
 
-    /// GET /files — 編集対象ファイルの一覧 (ui / hitbox 別) を返す。
-    /// ui はメタ情報付き {path, composable} の列 (hitbox は従来どおり文字列の列)。
+    /// GET /files — 編集対象ファイルの一覧 (ui / hitbox / palette 別) を返す。
+    /// ui はメタ情報付き {path, composable, paletteFile?} の列 (hitbox は従来どおり文字列の列)。
+    /// palette は ui 側の "paletteFile" 参照から逆引きした実在ファイルの列 —
+    /// 名前パターンで拾うより「実際に参照されている物」を出す方が確実。
     def handleFiles(dir: String, exchange: HttpExchange): Unit \ IO =
         let index = FileIndex.listFiles(dir);
-        let uiEntries = index#ui |> List.map(relPath -> uiFileJson(dir, relPath));
+        let uiMetas = index#ui |> List.map(relPath -> (relPath, uiFileMeta(dir, relPath)));
+        let paletteList = uiMetas
+            |> List.filterMap(entry -> snd(entry)#paletteFile)
+            |> List.distinct
+            |> List.sort
+            |> List.filter(path -> Result.isOk(FileIndex.readInside(dir, path)));
+        let uiEntries = uiMetas |> List.map(entry -> {
+            let (relPath, meta) = entry;
+            let base = Map#{"path" => JString(relPath), "composable" => JBool(meta#composable)};
+            JObject(match meta#paletteFile {
+                case None      => base
+                case Some(ref) => Map.insert("paletteFile", JString(ref), base)
+            })
+        });
         sendJson(200, JObject(Map#{
-            "root"   => JString(dir),
-            "ui"     => JArray(List.toVector(uiEntries)),
-            "hitbox" => JsonCodec.encodeList(p -> JString(p), index#hitbox)
+            "root"    => JString(dir),
+            "ui"      => JArray(List.toVector(uiEntries)),
+            "hitbox"  => JsonCodec.encodeList(p -> JString(p), index#hitbox),
+            "palette" => JsonCodec.encodeList(p -> JString(p), paletteList)
         }), exchange)
 
     /// ui ファイル 1 件ぶんのメタ情報。composable = poly の rotation/pivot を含まない
     /// (含む文書は合成プレビューが断るので、選ばせる前にここで伝える)。
-    /// 読めない・JSON として壊れているファイルは true に倒す — 回転が理由ではないので、
-    /// 実際に合成を試みたときの本来のエラーで伝えるのが正しい。
-    def uiFileJson(dir: String, relPath: String): Json \ IO =
-        let composable = match FileIndex.readInside(dir, relPath) {
-            case Err(_)   => true
+    /// 読めない・JSON として壊れているファイルは composable=true に倒す — 回転が理由では
+    /// ないので、実際に合成を試みたときの本来のエラーで伝えるのが正しい。
+    def uiFileMeta(dir: String, relPath: String): {composable = Bool, paletteFile = Option[String]} \ IO =
+        match FileIndex.readInside(dir, relPath) {
+            case Err(_)   => { composable = true, paletteFile = None }
             case Ok(text) => match JsonCompat.parse(text) {
-                case None       => true
-                case Some(json) => not PreviewUi.containsRotation(json)
+                case None       => { composable = true, paletteFile = None }
+                case Some(json) => { composable = not PreviewUi.containsRotation(json),
+                                     paletteFile = PreviewUi.paletteRefOf(json) }
             }
-        };
-        JObject(Map#{"path" => JString(relPath), "composable" => JBool(composable)})
+        }
+
+    /// GET /changes — 監視対象 (/files と同じ集合 + *.preview.json + project.json) の
+    /// mtime 一覧と集計 token。エディタ画面はこれを定期的に見て、ディスク上の外部変更へ
+    /// 追従する (token 変化 = 何かが変わった、個別 mtime = どれが変わった)。
+    // WhyNot: SSE で push しない — このサーバは executor 無しの 1 スレッド直列で、
+    // 常駐接続が 1 本あるとスレッドを占有して全リクエストが詰まるため。
+    def handleChanges(dir: String, exchange: HttpExchange): Unit \ IO =
+        let all = FileIndex.listAllJson(dir);
+        let palettes = all
+            |> List.filter(path -> String.endsWith(suffix = ".ui.json", path))
+            |> List.filterMap(path -> uiFileMeta(dir, path)#paletteFile);
+        let entries = FileIndex.mtimesOf(dir, FileIndex.changeTargets(palettes, all));
+        sendJson(200, JObject(Map#{
+            "token" => JString(FileIndex.changeToken(entries)),
+            "files" => JObject(entries |> List.map(entry -> (fst(entry), JNumber(mtimeToBd(snd(entry))))) |> List.toMap)
+        }), exchange)
+
+    /// mtime (Int64 ミリ秒) を JSON 数値へ。JS の Number で安全な範囲 (2^53) に収まる。
+    def mtimeToBd(value: Int64): BigDecimal =
+        JBigDecimal.valueOf(value)
 
     /// GET /file?path=... — dir 相対パスのファイル内容を返す。無い・プロジェクト外は 404。
     def handleReadFile(dir: String, params: Map[String, String], exchange: HttpExchange): Unit \ IO =

@@ -15,9 +15,13 @@ mod FileIndex {
     /// dir 配下の編集対象ファイルを列挙する。*.ui.json は ui、hitbox.json は hitbox。
     /// 返るパスは dir 相対。
     pub def listFiles(dir: String): {ui = List[String], hitbox = List[String]} \ IO =
-        let all = walkJson(relDir -> childrenOf(dir, relDir), "") |> List.sort;
+        let all = listAllJson(dir);
         { ui     = all |> List.filter(path -> String.endsWith(suffix = ".ui.json", path)),
           hitbox = all |> List.filter(path -> baseName(path) == "hitbox.json") }
+
+    /// dir 配下の .json ファイル全部 (prune 走査・dir 相対・ソート済み)。
+    pub def listAllJson(dir: String): List[String] \ IO =
+        walkJson(relDir -> childrenOf(dir, relDir), "") |> List.sort
 
     /// relDir ("" = プロジェクト直下) から下りながら .json ファイルの相対パスを集める。
     /// 除外ディレクトリには最初から降りない。
@@ -44,6 +48,42 @@ mod FileIndex {
     /// パスの最後の要素 (ファイル名)。
     def baseName(path: String): String =
         String.splitOn(substr = "/", path) |> List.last |> Option.getWithDefault(path)
+
+    // ── ディスク変更の見張り (/changes) ───────────────────
+
+    /// /changes で mtime を報告する対象を選ぶ。all は prune 走査で見つかった .json 全部、
+    /// palettes は ui 側の "paletteFile" 参照から逆引きした外部パレット。
+    /// 対象 = 編集対象 (ui / hitbox / palette) + プレビュー設定 (*.preview.json) + project.json。
+    // WhyNot: all をそのまま報告しない — ゲームプロジェクトにはエディタと無関係な
+    // .json (レベルデータ等) が大量にあり得て、応答が毎回無駄に太るため。
+    pub def changeTargets(palettes: List[String], all: List[String]): List[String] =
+        let picked = all |> List.filter(path ->
+            String.endsWith(suffix = ".ui.json", path)
+            or baseName(path) == "hitbox.json"
+            or String.endsWith(suffix = ".preview.json", path)
+            or path == "project.json");
+        // palette は all との突き合わせで実在確認を兼ねる (走査に無い参照先は報告しない)
+        (picked ::: List.filter(path -> List.memberOf(path, all), palettes))
+            |> List.distinct
+            |> List.sort
+
+    /// (パス, mtime) の一覧全体から決まる集計値。ファイルの増減でも、どれか 1 つの
+    /// mtime 変化でも必ず別の値になる。エディタ画面はこれの変化だけ見れば
+    /// 「何かが変わった」と分かる (どれが変わったかは個別の mtime で判定する)。
+    pub def changeToken(entries: List[(String, Int64)]): String =
+        let mix = entries |> List.foldLeft((acc, entry) -> {
+            let (path, mtime) = entry;
+            acc * 1000003i64 + Int32.toInt64(Hash.hash(path)) + mtime
+        }, 0i64);
+        "${List.length(entries)}-${mix}"
+
+    /// dir 相対パスたちの mtime (ミリ秒)。走査と読みの合間に消えたファイルは
+    /// (mtime 0 で報告せず) 一覧から落とす。
+    pub def mtimesOf(dir: String, paths: List[String]): List[(String, Int64)] \ IO =
+        paths |> List.filterMap(path -> {
+            let mtime = new JFile("${dir}/${path}").lastModified();
+            if (mtime == 0i64) None else Some((path, mtime))
+        })
 
     // ── 読み書き ──────────────────────────────────────────
 

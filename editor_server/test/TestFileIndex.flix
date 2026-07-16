@@ -27,4 +27,36 @@ mod TestFileIndex {
         Assert.assertEq(
             expected = "assets/Hud.ui.json" :: "assets/hitbox.json" :: "assets/nested/Deep.ui.json" :: "top.ui.json" :: Nil,
             FileIndex.walkJson(fakeChildren, "") |> List.sort)
+
+    // ══ /changes の対象集合と token ═══════════════════════
+
+    /// 対象に残るのは ui / hitbox / *.preview.json / project.json / 実在パレット。
+    /// 走査に無いパレット参照 (missing.json) と無関係な .json (level.json 等) は落ちる。
+    @Test
+    def testChangeTargetsPicksEditorFacingFiles(): Unit \ Assert =
+        let all = "assets/hud.ui.json" :: "assets/hud.preview.json" :: "assets/hitbox.json"
+               :: "assets/palette.json" :: "assets/level.json" :: "project.json" :: "devbox.json" :: Nil;
+        Assert.assertEq(
+            expected = "assets/hitbox.json" :: "assets/hud.preview.json" :: "assets/hud.ui.json"
+                    :: "assets/palette.json" :: "project.json" :: Nil,
+            FileIndex.changeTargets("assets/palette.json" :: "assets/missing.json" :: Nil, all))
+
+    /// パレットが *.ui.json でもあるような重複指定は 1 件に畳まれる。
+    @Test
+    def testChangeTargetsDedupes(): Unit \ Assert =
+        Assert.assertEq(
+            expected = "a.ui.json" :: Nil,
+            FileIndex.changeTargets("a.ui.json" :: Nil, "a.ui.json" :: Nil))
+
+    /// token は「同じ一覧なら同じ・mtime が 1 つ変わる/件数が変わると別」の集計値。
+    @Test
+    def testChangeTokenReactsToMtimeAndCount(): Unit \ Assert =
+        let base = ("a.ui.json", 100i64) :: ("b.ui.json", 200i64) :: Nil;
+        let touched = ("a.ui.json", 100i64) :: ("b.ui.json", 201i64) :: Nil;
+        let removed = ("a.ui.json", 100i64) :: Nil;
+        Assert.assertEq(
+            expected = (true, false, false),
+            (FileIndex.changeToken(base) == FileIndex.changeToken(base),
+             FileIndex.changeToken(base) == FileIndex.changeToken(touched),
+             FileIndex.changeToken(base) == FileIndex.changeToken(removed)))
 }
