@@ -302,4 +302,149 @@ mod TestApp {
         let app = App.make(9) |> App.quitWhen((_frame, n) -> n == 9);
         let wantsQuit = app#quit;
         Assert.assertEq(expected = true, wantsQuit(emptyFrame(), 9))
+
+    // ========================================================================
+    // fixedSteps: accumulator の量子化（withFixedStep の芯）
+    // ========================================================================
+
+    // 貯金 0 で 1/60 秒（≈0.01667s）ぶん経過・刻み 1/60: ちょうど 1 回分に届かず 0 回・
+    // 経過秒がそのまま持ち越しに残る。
+    @Test
+    def testFixedStepsBelowOneQuantumIsZeroSteps(): Unit \ Assert =
+        Assert.assertEq(expected = (0, 0.01), App.fixedSteps(0.0, 0.01, 1.0 / 60.0))
+
+    // 刻みちょうど 2 回分（1/30 秒）: 2 回分回り、持ち越しはほぼ 0（浮動小数の丸め誤差のみ）。
+    @Test
+    def testFixedStepsExactMultipleConsumesCarry(): Unit \ Assert =
+        let (steps, carry) = App.fixedSteps(0.0, 1.0 / 30.0, 1.0 / 60.0);
+        Assert.assertEq(expected = (2, true), (steps, Float64.abs(carry) < 0.000001))
+
+    // 端数の持ち越し: 前フレームの余り 0.02 + 今回 0.01 = 0.03 秒、刻み 1/60（≈0.01667s）で
+    // 1 回分消費し、残り約 0.0133 秒が次へ持ち越る。
+    @Test
+    def testFixedStepsCarriesRemainderToNextFrame(): Unit \ Assert =
+        let (steps, carry) = App.fixedSteps(0.02, 0.01, 1.0 / 60.0);
+        Assert.assertEq(expected = (1, true), (steps, Float64.abs(carry - (0.03 - 1.0 / 60.0)) < 0.000001))
+
+    // 暴走防止: 1 秒分もの貯金（本来 60 回分）があっても上限 5 回でクランプし、
+    // 超過ぶんの貯金は次フレームへ持ち越さず捨てる（carry = 0）。
+    @Test
+    def testFixedStepsClampsToFiveAndDropsOverflow(): Unit \ Assert =
+        Assert.assertEq(expected = (5, 0.0), App.fixedSteps(0.0, 1.0, 1.0 / 60.0))
+
+    // スライシング不変: 16.667ms を 3 回に分けて渡しても、50ms を 1 回で渡しても、
+    // 合計ステップ数と最終持ち越しは一致する（固定ステップが存在する意義そのもの）。
+    @Test
+    def testFixedStepsSlicingInvarianceMatchesTotal(): Unit \ Assert =
+        let fixedDt = 1.0 / 60.0;
+        let sliced = List.range(0, 3) |> List.foldLeft((state, _i) -> {
+            let (stepsSoFar, carry) = state;
+            let (steps, nextCarry) = App.fixedSteps(carry, 0.016667, fixedDt);
+            (stepsSoFar + steps, nextCarry)
+        }, (0, 0.0));
+        let lumped = App.fixedSteps(0.0, 0.050001, fixedDt);
+        let (slicedSteps, slicedCarry) = sliced;
+        let (lumpedSteps, lumpedCarry) = lumped;
+        Assert.assertEq(expected = (slicedSteps, true),
+            (lumpedSteps, Float64.abs(slicedCarry - lumpedCarry) < 0.000001))
+
+    // ========================================================================
+    // suppressEdges: 2 回目以降のサブステップでエッジが消える（held 系は残る）
+    // ========================================================================
+
+    /// 全エッジが立ち・キーも押されている Frame（suppressEdges の入力サンプル）。
+    def edgyFrame(): App.Frame =
+        App.frameOf(prev = Set#{}, current = Set#{GameEngine.Key.Left}, 0.016, testViewport(),
+            { prevCursor = Some({ x = 0.0, y = 0.0 }), cursor = { x = 5.0, y = 5.0 } },
+            { prevDown = false, down = true, wheel = 1.5 })
+
+    // 元の Frame は justPressed・mouseClicked・mouseMoved・wheel が全部立っている（前提確認）。
+    @Test
+    def testEdgyFrameHasAllEdgesSet(): Unit \ Assert =
+        let frame = edgyFrame();
+        Assert.assertEq(expected = (Set#{GameEngine.Key.Left}, true, true, 1.5),
+            (frame#justPressed, frame#mouseClicked, frame#mouseMoved, frame#wheel))
+
+    // suppressEdges 後はエッジ 4 種が全部消え、down / mouseDown は生きたまま
+    // （押しっぱなし入力は消えない）。
+    @Test
+    def testSuppressEdgesClearsEdgesKeepsHeld(): Unit \ Assert =
+        let suppressed = App.suppressEdges(edgyFrame());
+        Assert.assertEq(
+            expected = (Set#{}, false, false, 0.0, Set#{GameEngine.Key.Left}, true),
+            (suppressed#justPressed, suppressed#mouseClicked, suppressed#mouseMoved, suppressed#wheel,
+             suppressed#down, suppressed#mouseDown))
+
+    // dt はそのまま素通し（fixedStep の呼び出し側が固定値をセットしてから渡す想定であり、
+    // suppressEdges 自体は dt に触れない）。
+    @Test
+    def testSuppressEdgesLeavesDtUntouched(): Unit \ Assert =
+        Assert.assertEq(expected = 0.016, App.suppressEdges(edgyFrame())#dt)
+
+    // ========================================================================
+    // advanceFrame: 0 ステップのフレームで立ったエッジは取り置かれ、
+    // 次にサブステップが回るフレームでちょうど 1 回だけ消費される
+    // ========================================================================
+
+    /// キーとホイールだけ違う Frame（advanceFrame のエッジ持ち越しテスト用）。
+    def stepFrame(prev: Set[GameEngine.Key], current: Set[GameEngine.Key], dt: Float64,
+                  wheel: Float64): App.Frame =
+        App.frameOf(prev = prev, current = current, dt, testViewport(), noCursor(),
+            { prevDown = false, down = false, wheel = wheel })
+
+    /// PendingEdges を比較できるタプルへ射影する。
+    def pendingTuple(p: App.PendingEdges): (Set[GameEngine.Key], Bool, Bool, Float64) =
+        (p#justPressed, p#mouseClicked, p#mouseMoved, p#wheel)
+
+    // 0 ステップのフレーム（dt 0.02 < 刻み 0.03）で押した Z は、World を進めないまま
+    // 取り置かれ、次のフレーム（貯金 0.04 で 1 ステップ）でちょうど 1 回だけ数えられる。
+    @Test
+    def testAdvanceFrameLatchesEdgeAcrossZeroStepFrame(): Unit \ Assert =
+        let app = App.make(0)
+            |> App.withFixedStep(0.03)
+            |> App.addSystem((f, n) -> if (App.justPressed(GameEngine.Key.Z, f)) n + 1 else n);
+        let (w1, s1) = App.advanceFrame(app, stepFrame(Set#{}, Set#{GameEngine.Key.Z}, 0.02, 0.0),
+                                        App.freshStepState(), 0);
+        let (w2, _s2) = App.advanceFrame(app, stepFrame(Set#{}, Set#{}, 0.02, 0.0), s1, w1);
+        Assert.assertEq(expected = (0, 1), (w1, w2))
+
+    // 0 ステップが 2 連続: justPressed は和集合・wheel は加算で貯まり、3 フレーム目の
+    // 1 サブステップでまとめて 1 回だけ観測される（calls=1 が「二重消費なし」の証明）。
+    @Test
+    def testAdvanceFramePendingAccumulatesAcrossTwoZeroStepFrames(): Unit \ Assert =
+        let observe = (f, w) -> {
+            let (calls, edges, wheelSum) = w;
+            (calls + 1, edges + Set.size(f#justPressed), wheelSum + f#wheel)
+        };
+        let app = App.make((0, 0, 0.0)) |> App.withFixedStep(0.05) |> App.addSystem(observe);
+        let (w1, s1) = App.advanceFrame(app, stepFrame(Set#{}, Set#{GameEngine.Key.Z}, 0.015, 1.0),
+                                        App.freshStepState(), (0, 0, 0.0));
+        let (w2, s2) = App.advanceFrame(app, stepFrame(Set#{GameEngine.Key.Z}, Set#{GameEngine.Key.Z, GameEngine.Key.X}, 0.015, 0.5),
+                                        s1, w1);
+        let (w3, _s3) = App.advanceFrame(app, stepFrame(Set#{}, Set#{}, 0.03, 0.0), s2, w2);
+        Assert.assertEq(expected = ((0, 0, 0.0), (1, 2, 1.5)), (w2, w3))
+
+    // 消費したフレームの後は取り置きが空に戻る（同じエッジが後で二度と発火しない）。
+    @Test
+    def testAdvanceFrameClearsPendingAfterConsumption(): Unit \ Assert =
+        let app = App.make(0) |> App.withFixedStep(0.03) |> App.addSystem((_f, n) -> n + 1);
+        let (w1, s1) = App.advanceFrame(app, stepFrame(Set#{}, Set#{GameEngine.Key.Z}, 0.02, 2.0),
+                                        App.freshStepState(), 0);
+        let (_w2, s2) = App.advanceFrame(app, stepFrame(Set#{}, Set#{}, 0.02, 0.0), s1, w1);
+        Assert.assertEq(
+            expected = ((Set#{GameEngine.Key.Z}, false, false, 2.0), (Set#{}, false, false, 0.0)),
+            (pendingTuple(s1#pending), pendingTuple(s2#pending)))
+
+    // 可変 dt（fixedStep = None）の経路: 取り置きは合流も更新もされず素通し
+    // （既存ゲームの挙動不変の証明。system は今フレームのエッジだけを見る）。
+    @Test
+    def testAdvanceFrameVariableDtIgnoresPending(): Unit \ Assert =
+        let app = App.make(0)
+            |> App.addSystem((f, n) -> n + Set.size(f#justPressed));
+        let seeded = { carry = 0.0,
+                       pending = App.pendingOf(stepFrame(Set#{}, Set#{GameEngine.Key.Z}, 0.016, 0.0)) };
+        let (w1, s1) = App.advanceFrame(app, stepFrame(Set#{}, Set#{}, 0.016, 0.0), seeded, 0);
+        Assert.assertEq(
+            expected = (0, (Set#{GameEngine.Key.Z}, false, false, 0.0)),
+            (w1, pendingTuple(s1#pending)))
 }

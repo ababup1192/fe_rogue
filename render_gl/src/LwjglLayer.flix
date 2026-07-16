@@ -14,6 +14,7 @@ mod LwjglLayer {
     import org.lwjgl.glfw.GLFWFramebufferSizeCallbackI
     import org.lwjgl.glfw.GLFWMouseButtonCallbackI
     import org.lwjgl.glfw.GLFWScrollCallbackI
+    import org.lwjgl.glfw.GLFWVidMode
     import org.lwjgl.opengl.GL
     import org.lwjgl.opengl.GL11
     import org.lwjgl.openal.AL
@@ -43,6 +44,7 @@ mod LwjglLayer {
         case GameEngine.Key.A         => 65
         case GameEngine.Key.S         => 83
         case GameEngine.Key.D         => 68
+        case GameEngine.Key.B         => 66
         case GameEngine.Key.Z         => 90
         case GameEngine.Key.X         => 88
         case GameEngine.Key.C         => 67
@@ -314,6 +316,20 @@ mod LwjglLayer {
         // 起動時に実測した値を持ち回り、変化はリサイズ callback だけが更新する。
         let framebufferSizeHolder = Array#{(fbWidth, fbHeight)} @ Static;
 
+        // フルスクリーンからウィンドウへ戻すとき、起動時のウィンドウ位置・サイズへ復元する
+        // （フルスクリーン中に glfwSetWindowMonitor(NULL) で消える情報なので事前に確保しておく）。
+        let originalWindowRectHolder = {
+            let posStack = MemoryStack.stackPush();
+            let xBuf = posStack.mallocInt(1);
+            let yBuf = posStack.mallocInt(1);
+            GLFW.glfwGetWindowPos(window, xBuf, yBuf);
+            let x = xBuf.get(0);
+            let y = yBuf.get(0);
+            discard MemoryStack.stackPop();
+            Array#{(x, y, config#windowWidth, config#windowHeight)} @ Static
+        };
+        let fullscreenHolder = Array#{false} @ Static;
+
         // リサイズ中の再描画用に最後のフレームの描画コマンドを保持する (sprites + tileMaps + polygons)
         let renderStateHolder = Array#{((Nil: List[GameEngine.Drawable]),
                                          (Nil: List[GameEngine.TileMapRenderCmd]),
@@ -475,6 +491,11 @@ mod LwjglLayer {
                 };
                 k(())
             }
+            def setMasterVolume(gain, k) = {
+                // listener gain は全ソースに乗算で効く = マスター音量。範囲外は契約どおりクランプ。
+                AL10.alListenerf(AL10.AL_GAIN, Float32.max(0.0f32, Float32.min(1.0f32, gain)));
+                k(())
+            }
         } with handler GameEngine.Game {
             def renderCommands(sprites, tileMaps, polygons, k) = {
                 Array.put((sprites, tileMaps, polygons), 0, renderStateHolder);
@@ -570,6 +591,55 @@ mod LwjglLayer {
                     Array.put(cursor, 0, lastCursorHolder)
                 } else ();
                 k(())
+            }
+            def setCursorVisible(visible, k) = {
+                let mode = if (visible) GLFW.GLFW_CURSOR_NORMAL else GLFW.GLFW_CURSOR_HIDDEN;
+                GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, mode);
+                k(())
+            }
+            def setFullscreen(on, k) = {
+                let wasFullscreen = Array.get(0, fullscreenHolder);
+                if (on == wasFullscreen) ()
+                else if (on) {
+                    // 現在のウィンドウ位置・サイズを復元用に確保してから、プライマリモニタの
+                    // 現在の解像度でボーダーレス化する（解像度そのものは変えないので、
+                    // 既存の letterbox/pillarbox な calcViewport がそのまま吸収できる）。
+                    let posStack = MemoryStack.stackPush();
+                    let xBuf = posStack.mallocInt(1);
+                    let yBuf = posStack.mallocInt(1);
+                    GLFW.glfwGetWindowPos(window, xBuf, yBuf);
+                    let sizeStack = MemoryStack.stackPush();
+                    let wBuf = sizeStack.mallocInt(1);
+                    let hBuf = sizeStack.mallocInt(1);
+                    GLFW.glfwGetWindowSize(window, wBuf, hBuf);
+                    Array.put((xBuf.get(0), yBuf.get(0), wBuf.get(0), hBuf.get(0)), 0, originalWindowRectHolder);
+                    discard MemoryStack.stackPop();
+                    discard MemoryStack.stackPop();
+                    // glfwSetWindowMonitor はモード切替のたびに glfwSetFramebufferSizeCallback を
+                    // 発火させる（GLFW の仕様）ので、framebufferSizeHolder は既存の callback が
+                    // 自然に拾って更新する。calcViewport はここを明示的に叩き直す必要はない。
+                    let monitor = GLFW.glfwGetPrimaryMonitor();
+                    let vidMode = GLFW.glfwGetVideoMode(monitor);
+                    GLFW.glfwSetWindowMonitor(window, monitor, 0, 0,
+                        vidMode.width(), vidMode.height(), vidMode.refreshRate())
+                } else {
+                    // 保存値を検証してから戻す — 壊れた保存値でウィンドウが見えない場所に
+                    // 行くと、ユーザーはフルスクリーンから二度と戻れなくなる。
+                    let (x, y, w, h) = Array.get(0, originalWindowRectHolder);
+                    let width = if (w < 1) config#windowWidth else w;
+                    let height = if (h < 1) config#windowHeight else h;
+                    let monitor = GLFW.glfwGetPrimaryMonitor();
+                    let vidMode = GLFW.glfwGetVideoMode(monitor);
+                    let clampedX = Int32.max(0, Int32.min(x, Int32.max(0, vidMode.width() - width)));
+                    let clampedY = Int32.max(0, Int32.min(y, Int32.max(0, vidMode.height() - height)));
+                    GLFW.glfwSetWindowMonitor(window, MemoryUtil.NULL, clampedX, clampedY,
+                        width, height, GLFW.GLFW_DONT_CARE)
+                };
+                Array.put(on, 0, fullscreenHolder);
+                k(())
+            }
+            def isFullscreen(k) = {
+                k(Array.get(0, fullscreenHolder))
             }
             def saveAnnotation(req, k) = {
                 let saved = try {

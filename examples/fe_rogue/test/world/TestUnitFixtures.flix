@@ -265,6 +265,9 @@ mod TestUnitFixtures {
             def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 128.0, y = 128.0}})
             def getTextureInfo(_, k)        = k(None)
             def setCursor(_, k)             = k(())
+            def setCursorVisible(_, k)      = k(())
+            def setFullscreen(_, k)         = k(())
+            def isFullscreen(k)             = k(false)
             def saveAnnotation(_, k)        = k(None)
             def setDebugBadge(_, k)         = k(())
         }
@@ -317,10 +320,11 @@ mod TestUnitFixtures {
     pub def withMockAudio(thunk: Unit -> a \ ef):
             a \ (ef - GameEngine.Audio) =
         run { thunk() } with handler GameEngine.Audio {
-            def playAudio(_, k)     = k()
-            def stopAudio(_, k)     = k()
-            def setVolume(_, _, k)  = k()
-            def setLooping(_, _, k) = k()
+            def playAudio(_, k)        = k()
+            def stopAudio(_, k)        = k()
+            def setVolume(_, _, k)     = k()
+            def setLooping(_, _, k)    = k()
+            def setMasterVolume(_, k)  = k()
         }
 
     /// EnemyTurn.Queue の no-op スタブ。`isEmpty` は true、その他の操作は捨てる。

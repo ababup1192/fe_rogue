@@ -124,6 +124,9 @@ mod TestWorldJourney {
                 def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 240.0, y = 128.0}})
                 def getTextureInfo(name, k)     = k(Map.get(name, texInfo))
                 def setCursor(_, k)             = k(())
+                def setCursorVisible(_, k)      = k(())
+                def setFullscreen(_, k)         = k(())
+                def isFullscreen(k)             = k(false)
                 def saveAnnotation(_, k)        = k(None)
                 def setDebugBadge(_, k)         = k(())
             } with handler GameEngine.Audio {
@@ -131,9 +134,10 @@ mod TestWorldJourney {
                     Ref.put((Ref.get(framesRef), name) :: Ref.get(soundsRef), soundsRef);
                     k()
                 }
-                def stopAudio(_, k)     = k()
-                def setVolume(_, _, k)  = k()
-                def setLooping(_, _, k) = k()
+                def stopAudio(_, k)        = k()
+                def setVolume(_, _, k)     = k()
+                def setLooping(_, _, k)    = k()
+                def setMasterVolume(_, k)  = k()
             } with handler Math.Random {
                 def randomFloat64(k) = k(rng.nextDouble())
                 def randomInt64(k)   = k(rng.nextLong())

@@ -1,0 +1,27 @@
+{
+  "defaultFont": "default",
+  "root": {
+    "name": "Hud", "widget": "none", "layer": 1,
+    "dir": "column", "crossAlign": "center", "pad": [0, 12, 0, 0],
+    "children": [
+      { "name": "kind", "widget": "text", "text": "FadeOut", "bind": "kindLabel",
+        "fontSize": 14, "tint": "#ffffff", "zIndex": 10 },
+      { "name": "fullscreen", "widget": "text", "text": "fullscreen=off", "bind": "fullscreenFlag",
+        "fontSize": 12, "tint": "#ffe066", "zIndex": 10 },
+      { "name": "cursor", "widget": "text", "text": "cursor=on", "bind": "cursorFlag",
+        "fontSize": 12, "tint": "#ffe066", "zIndex": 10 },
+      { "name": "keys", "widget": "none", "abs": [8, 174], "dir": "column", "gap": 2,
+        "children": [
+          { "name": "keysLine1", "widget": "text",
+            "text": "W/A/S/D: fade/wipe  Space: replay",
+            "fontSize": 10, "tint": "#8899aa", "zIndex": 10 },
+          { "name": "keysLine2", "widget": "text",
+            "text": "Enter: fullscreen  H: cursor  B: bgm  M: master",
+            "fontSize": 10, "tint": "#8899aa", "zIndex": 10 },
+          { "name": "keysLine3", "widget": "text",
+            "text": "F1: ui reload  F8: pause/scrub",
+            "fontSize": 10, "tint": "#8899aa", "zIndex": 10 }
+        ] }
+    ]
+  }
+}
