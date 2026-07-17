@@ -1,0 +1,9 @@
+{
+  "note": "カンテラ探索デモの光の質感。矢印キーの位置は World が持つので at はここでは初期値の目安。",
+  "darkness": 0.95,
+  "rim": { "width": 2.5, "strength": 0.5 },
+  "haloDiameterFactor": 1.25,
+  "lights": [
+    { "at": [160, 120], "radius": 48, "color": "#ffbf66", "halo": 0.35 }
+  ]
+}

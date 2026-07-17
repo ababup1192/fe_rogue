@@ -40,23 +40,23 @@ mod Gallery {
     /// 各コマは本番と同じ projectUi を通し、ラベルの bind 文言まで焼き込む。
     /// Progress はレコード直組みでなく start/advance で組む（内部の形に依存しない）。
     /// t=1 のコマも「再生中」として焼く（実機は done で Idle に戻るが、GIF は覆い切った絵で締めたい）。
-    def timelineOf(ui: UiStore.UiWorld, kind: Transition.Kind, steps: Int32): List[World.World] =
+    def timelineOf(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, kind: Transition.Kind, steps: Int32): List[World.World] =
         List.range(0, steps + 1) |> List.map(i -> {
             let t = Int32.toFloat64(i) / Int32.toFloat64(steps);
             let progress = Transition.start(World.duration())
                         |> Transition.advance(t * World.duration());
-            GameUi.projectUi({ kind = kind, playing = Some(progress) | World.initial(ui) })
+            GameUi.projectUi({ kind = kind, playing = Some(progress) | World.initial(ui, lightDoc) })
         })
 
     /// 1 種類ぶんの GIF ＋ コマ別 PNG を焼く（8 コマ）。
-    def bakeKind(atlas: FontAtlas, ui: UiStore.UiWorld, kind: Transition.Kind, name: String): SnapshotSite.Filmstrip \ IO =
-        let frames = timelineOf(ui, kind, 7);
+    def bakeKind(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, kind: Transition.Kind, name: String): SnapshotSite.Filmstrip \ IO =
+        let frames = timelineOf(ui, lightDoc, kind, 7);
         Bakery.bakeGif(config(atlas), frames, 1, w -> worldCmds(atlas, w), name)
 
     /// fps オーバレイの見本（debug 表示と同じ絵を 1 枚）。App を起動せずに
     /// Annotate.fpsItems を直接呼んで合成する（App.fpsOverlayOf と同じロジック）。
-    def fpsOverlayScene(atlas: FontAtlas, ui: UiStore.UiWorld): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
-        let world = GameUi.projectUi(World.initial(ui));
+    def fpsOverlayScene(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+        let world = GameUi.projectUi(World.initial(ui, lightDoc));
         let ctx = { atlas = atlas, visible = { position = Vec2.zero(), size = View.design() } };
         let sixtyFps = 1.0 / 60.0;
         let anno = List.range(0, 60) |> List.foldLeft((acc, _) -> Annotate.recordDt(sixtyFps, acc), Annotate.initial());
@@ -67,8 +67,8 @@ mod Gallery {
 
     /// blend デモを表示した世界を本番と同じ投影（View.frame）で焼く。
     /// 3 モードを同じ構図で並べると、Add は重なりが白へ光り・Multiply は黒へ沈むのが一目で分かる。
-    def bakeBlendPng(atlas: FontAtlas, ui: UiStore.UiWorld, mode: DrawCmd.BlendMode, name: String): Unit \ IO =
-        let world = GameUi.projectUi({ blend = Some(mode) | World.initial(ui) });
+    def bakeBlendPng(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, mode: DrawCmd.BlendMode, name: String): Unit \ IO =
+        let world = GameUi.projectUi({ blend = Some(mode) | World.initial(ui, lightDoc) });
         let (drawables, polygons) = worldCmds(atlas, world);
         Bakery.renderPng(config(atlas), drawables, polygons, name)
 
@@ -77,7 +77,7 @@ mod Gallery {
     /// haloTexture/maskTexture の実ファイルを assets/ に焼く。project.json の texturePath が
     /// 指すファイルはここでしか生成されないので、実行前に必ず bake を通す必要がある。
     /// maskTexture は maskCurveWithHole で平坦な穴を持たせる（View.maskHoleFrac と揃える —
-    /// 揃っていないと Light.singleLightItems のスケール計算が前提とする「穴の実寸半径」がずれる）。
+    /// 揃っていないと Light.items のスケール計算が前提とする「穴の実寸半径」がずれる）。
     def bakeGlowTextures(): Unit \ IO =
         let maskSize = RenderUtil.floatToInt32(View.maskSourceSize());
         let haloSize = RenderUtil.floatToInt32(View.haloSourceSize());
@@ -93,17 +93,17 @@ mod Gallery {
     def lanternDemoAt(): Vec2.Vec2 = { x = 160.0, y = 100.0 }
 
     /// 比較 PNG 1 枚ぶんの世界を組んで焼く。
-    def bakeLanternPng(atlas: FontAtlas, ui: UiStore.UiWorld, lantern: Option[World.Lantern], name: String): Unit \ IO =
-        let world = GameUi.projectUi({ lantern = lantern | World.initial(ui) });
+    def bakeLanternPng(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, lantern: Option[World.Lantern], name: String): Unit \ IO =
+        let world = GameUi.projectUi({ lantern = lantern | World.initial(ui, lightDoc) });
         let (drawables, polygons) = worldCmds(atlas, world);
         Bakery.renderPng(config(atlas), drawables, polygons, name)
 
     /// 「明（Bright。部屋+目印がフル輝度）」「暗闇のみ（Dark。光源なしの全面暗幕で
     /// 目印がシルエット程度に残る）」「暗闇+カンテラ（DarkWithLight。穴あき+ハロ）」の3枚を焼く。
-    def bakeLanternComparisonPngs(atlas: FontAtlas, ui: UiStore.UiWorld): Unit \ IO =
-        bakeLanternPng(atlas, ui, Some({ at = lanternDemoAt(), mode = World.LanternMode.Bright, walls = false }), "lantern_bright");
-        bakeLanternPng(atlas, ui, Some({ at = lanternDemoAt(), mode = World.LanternMode.Dark, walls = false }), "lantern_dark_no_light");
-        bakeLanternPng(atlas, ui, Some({ at = lanternDemoAt(), mode = World.LanternMode.DarkWithLight, walls = false }), "lantern_dark_with_light")
+    def bakeLanternComparisonPngs(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): Unit \ IO =
+        bakeLanternPng(atlas, ui, lightDoc, Some({ at = lanternDemoAt(), mode = World.LanternMode.Bright, walls = false }), "lantern_bright");
+        bakeLanternPng(atlas, ui, lightDoc, Some({ at = lanternDemoAt(), mode = World.LanternMode.Dark, walls = false }), "lantern_dark_no_light");
+        bakeLanternPng(atlas, ui, lightDoc, Some({ at = lanternDemoAt(), mode = World.LanternMode.DarkWithLight, walls = false }), "lantern_dark_with_light")
 
     /// カンテラが目印の間を歩き回る経路（往復する巡回点列。t を周期的に進めて線形補間する）。
     def lanternPatrolPoints(): List[Vec2.Vec2] =
@@ -112,7 +112,7 @@ mod Gallery {
 
     /// 巡回点列を frames コマぶん等分してなめらかに歩く World 列を作る（DarkWithLight 固定。
     /// walls は影デモの GIF だけ true にする — 既存の lantern_patrol の絵を変えないため）。
-    def patrolTimeline(ui: UiStore.UiWorld, points: List[Vec2.Vec2], walls: Bool, frames: Int32): List[World.World] =
+    def patrolTimeline(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, points: List[Vec2.Vec2], walls: Bool, frames: Int32): List[World.World] =
         let segments = List.length(points) - 1;
         List.range(0, frames + 1) |> List.map(i -> {
             let t = Int32.toFloat64(i) / Int32.toFloat64(frames) * Int32.toFloat64(segments);
@@ -121,12 +121,12 @@ mod Gallery {
             let segStart = List.nth(seg, points) |> Option.getWithDefault(lanternDemoAt());
             let segEnd = List.nth(seg + 1, points) |> Option.getWithDefault(lanternDemoAt());
             let at = Vec2.add(segStart, Vec2.mul(Vec2.sub(segEnd, segStart), localT));
-            GameUi.projectUi({ lantern = Some({ at = at, mode = World.LanternMode.DarkWithLight, walls = walls }) | World.initial(ui) })
+            GameUi.projectUi({ lantern = Some({ at = at, mode = World.LanternMode.DarkWithLight, walls = walls }) | World.initial(ui, lightDoc) })
         })
 
     /// カンテラが目印の間を歩き回る GIF（8 コマ）。
-    def bakeLanternGif(atlas: FontAtlas, ui: UiStore.UiWorld): SnapshotSite.Filmstrip \ IO =
-        let frames = patrolTimeline(ui, lanternPatrolPoints(), false, 7);
+    def bakeLanternGif(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): SnapshotSite.Filmstrip \ IO =
+        let frames = patrolTimeline(ui, lightDoc, lanternPatrolPoints(), false, 7);
         Bakery.bakeGif(config(atlas), frames, 1, w -> worldCmds(atlas, w), "lantern_patrol")
 
     // ── Shadow: 壁と影（View の壁定義 + Shadow.itemsFor の手本）──
@@ -142,14 +142,14 @@ mod Gallery {
     /// walls_off は front と同じ光位置で walls=false にした対照カット —
     /// front の暗さが「壁の影」であって「光源からの距離減衰」でないことの証明になる
     /// （walls=false でも目印まわりが front と同じ明るさなら、影は壁 occluder だけの効果）。
-    def bakeShadowPngs(atlas: FontAtlas, ui: UiStore.UiWorld): Unit \ IO =
-        bakeLanternPng(atlas, ui,
+    def bakeShadowPngs(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): Unit \ IO =
+        bakeLanternPng(atlas, ui, lightDoc,
             Some({ at = shadowFrontAt(), mode = World.LanternMode.DarkWithLight, walls = true }),
             "shadow_light_front");
-        bakeLanternPng(atlas, ui,
+        bakeLanternPng(atlas, ui, lightDoc,
             Some({ at = shadowBehindAt(), mode = World.LanternMode.DarkWithLight, walls = true }),
             "shadow_light_behind");
-        bakeLanternPng(atlas, ui,
+        bakeLanternPng(atlas, ui, lightDoc,
             Some({ at = shadowFrontAt(), mode = World.LanternMode.DarkWithLight, walls = false }),
             "shadow_walls_off")
 
@@ -159,8 +159,8 @@ mod Gallery {
         { x = 200.0, y = 178.0 } :: { x = 160.0, y = 120.0 } :: Nil
 
     /// 光が壁の周りを一周して影が回る GIF（8 コマ・walls=true）。
-    def bakeShadowGif(atlas: FontAtlas, ui: UiStore.UiWorld): SnapshotSite.Filmstrip \ IO =
-        let frames = patrolTimeline(ui, shadowPatrolPoints(), true, 7);
+    def bakeShadowGif(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): SnapshotSite.Filmstrip \ IO =
+        let frames = patrolTimeline(ui, lightDoc, shadowPatrolPoints(), true, 7);
         Bakery.bakeGif(config(atlas), frames, 1, w -> worldCmds(atlas, w), "shadow_walk")
 
     // ── AudioFade: 音量カーブの図 ──
@@ -277,24 +277,25 @@ mod Gallery {
         bakeGlowTextures();
         let atlas = Harness.atlas();
         let ui = Harness.ui();
+        let lightDoc = Harness.lightDoc();
 
-        let fadeOutFilm = bakeKind(atlas, ui, Transition.Kind.FadeOut, "fade_out");
-        let fadeInFilm  = bakeKind(atlas, ui, Transition.Kind.FadeIn, "fade_in");
-        let wipeLeftFilm  = bakeKind(atlas, ui, Transition.Kind.WipeLeft, "wipe_left");
-        let wipeRightFilm = bakeKind(atlas, ui, Transition.Kind.WipeRight, "wipe_right");
+        let fadeOutFilm = bakeKind(atlas, ui, lightDoc, Transition.Kind.FadeOut, "fade_out");
+        let fadeInFilm  = bakeKind(atlas, ui, lightDoc, Transition.Kind.FadeIn, "fade_in");
+        let wipeLeftFilm  = bakeKind(atlas, ui, lightDoc, Transition.Kind.WipeLeft, "wipe_left");
+        let wipeRightFilm = bakeKind(atlas, ui, lightDoc, Transition.Kind.WipeRight, "wipe_right");
 
-        let (fpsDrawables, fpsPolys) = fpsOverlayScene(atlas, ui);
+        let (fpsDrawables, fpsPolys) = fpsOverlayScene(atlas, ui, lightDoc);
         Bakery.renderPng(config(atlas), fpsDrawables, fpsPolys, "fps_overlay");
 
-        bakeBlendPng(atlas, ui, DrawCmd.BlendMode.Normal, "blend_normal");
-        bakeBlendPng(atlas, ui, DrawCmd.BlendMode.Add, "blend_add");
-        bakeBlendPng(atlas, ui, DrawCmd.BlendMode.Multiply, "blend_multiply");
+        bakeBlendPng(atlas, ui, lightDoc, DrawCmd.BlendMode.Normal, "blend_normal");
+        bakeBlendPng(atlas, ui, lightDoc, DrawCmd.BlendMode.Add, "blend_add");
+        bakeBlendPng(atlas, ui, lightDoc, DrawCmd.BlendMode.Multiply, "blend_multiply");
 
-        bakeLanternComparisonPngs(atlas, ui);
-        let lanternFilm = bakeLanternGif(atlas, ui);
+        bakeLanternComparisonPngs(atlas, ui, lightDoc);
+        let lanternFilm = bakeLanternGif(atlas, ui, lightDoc);
 
-        bakeShadowPngs(atlas, ui);
-        let shadowFilm = bakeShadowGif(atlas, ui);
+        bakeShadowPngs(atlas, ui, lightDoc);
+        let shadowFilm = bakeShadowGif(atlas, ui, lightDoc);
 
         bakeCurvePng(atlas, (AudioFade.fadeIn(), risingColor()) :: Nil, "audio_fade_in_curve");
         bakeCurvePng(atlas, (AudioFade.fadeOut(), fadingColor()) :: Nil, "audio_fade_out_curve");

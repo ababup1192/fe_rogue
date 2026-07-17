@@ -14,18 +14,21 @@
 // gallery には出せず起動確認のみ。画面の縁取り・四隅マーカー（View.viewportMarkerItems）は
 // フルスクリーン時に viewport が design 通りか目視するための目印。
 // もうひとつの実験は Light（放射グロー+穴あき暗幕）: 矢印キーでカンテラ（プレイヤー=光源）を
-// 動かし、LeftShift で暗闇の有無を切り替える。暗闇 on では Light.singleLightItems が
+// 動かし、LeftShift で暗闇の有無を切り替える。暗闇 on では Light.items が
 // 「Multiply の穴あき暗幕+Add の暖色ハロ」を光の位置に重ね、目印図形が光の周りだけ見える。
+// 光の質感（暗さ・照り返しフチ・ハロの大きさ）は assets/Lantern.light.json が持ち、
+// make debug で起動中は保存するたびに即反映される（App.watchFile。F1 の ui.json 再読込と同居）。
 
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()
     else {
         let ui = run { GameUi.loadUi() } with Fs.FileRead.runWithIO;
+        let lightDoc = run { Controls.loadLightDoc() } with Fs.FileRead.runWithIO;
         run {
             // App の effect 集合は全フック共通の 1 つの型変数なので、Audio だけ・Game だけの
             // system が混在すると単一化できない。全 system を checked_ecast で
             // {Audio, Game} へそろえる（呼び出し式ごと widen すれば効く）。
-            App.make(World.initial(ui))
+            App.make(World.initial(ui, lightDoc))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.step(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.countStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.audioStep(frame, world)))
@@ -34,6 +37,7 @@ def main(): Unit \ IO =
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.lanternStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.projectUi(frame, world)))
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadUi)
+                |> App.watchFile("assets/Lantern.light.json", Controls.reloadLightDoc)
                 |> App.withView((ctx, world) -> checked_ecast(View.frame(ctx, world)))
                 |> App.withStatusLine(world -> checked_ecast(World.statusLine(world)))
                 |> App.withFixedStep(1.0 / 60.0)

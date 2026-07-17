@@ -97,6 +97,19 @@ mod Controls {
     pub def reloadUi(world: World.World): World.World \ {Fs.FileRead} =
         { ui = UiSpec.reloadAll(world#ui) | world }
 
+    /// light.json の置き場所（カンテラ探索デモの光の質感）。
+    def lightDocPath(): String = "assets/Lantern.light.json"
+
+    /// light.json を読む。読めない・壊れているときは LightDoc.empty()（fail-open —
+    /// ランタイムを止めずに「今は質感の上書きなし」で走らせる）。
+    pub def loadLightDoc(): LightDoc.Spec \ Fs.FileRead =
+        LightDoc.load(lightDocPath()) |> Result.getWithDefault(LightDoc.empty())
+
+    /// App.watchFile 用: light.json の保存を検知して World の質感を差し替える
+    /// （at はここでは触らない — 位置は lantern#at が持ち続ける）。
+    pub def reloadLightDoc(world: World.World): World.World \ {Fs.FileRead} =
+        { lightDoc = loadLightDoc() | world }
+
     /// ブレンド実験の意図。Z/X/C で Normal/Add/Multiply を直接選ぶ
     /// （W/A/S/D の Transition 選択と同じ「N 択 = 専用キー N 個」の形）。
     enum BlendIntent with Eq {

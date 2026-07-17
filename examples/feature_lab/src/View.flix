@@ -151,26 +151,9 @@ mod View {
     /// 暗い部屋の下敷き（通常表示より一段暗い色。暗闇 off でもここが「夜の部屋」と分かる）。
     def darkRoomColor(): Color = { r = 0.05f32, g = 0.05f32, b = 0.08f32 }
 
-    /// カンテラの穴半径（design 320×240 の 30% ＝ 穴直径 96px。ホラー成立の要 —
-    /// 光の周りだけ見えて最遠隅は完全に黒へ沈む大きさ）。
-    def lanternRadius(): Float64 = 48.0
-
-    /// 暗幕の濃さ（0.95＝穴の外はほぼ完全な黒。Light.SingleLightConfig#darkness と
-    /// Light.MultiLightConfig#darkness の両方に渡す共通値）。
-    def lanternDarkness(): Float64 = 0.95
-
-    /// ハロの強さ（Add alpha。0.30〜0.40 のホラー成立レンジの中央）。
-    def lanternHaloAlpha(): Float64 = 0.35
-
-    /// ハロの見た目直径を穴の直径（2×radius）よりひとまわり大きい 2.5×radius にする倍率
-    /// （singleLightItems が返す末尾のハロ item だけへ後掛けする — Light.haloScale 自体は
-    /// 「直径=2×radius」固定のため、ここでの追加拡大が実寸を 2.5×radius へ引き上げる）。
-    def lanternHaloDiameterFactor(): Float64 = 1.25
-
-    /// カンテラの光。暖色（松明の色味）。radius は lanternRadius（穴半径）と揃える。
-    def lanternLight(at: Vec2.Vec2): Light.Light =
-        { at = at, radius = lanternRadius(), color = { r = 1.0f32, g = 0.75f32, b = 0.4f32 },
-          halo = lanternHaloAlpha() }
+    // カンテラの穴半径・暗さ・色・ハロの強さは assets/Lantern.light.json（World#lightDoc）が
+    // 質感として持つ（LightDoc.empty() が fail-open の既定値）。at だけは World（lantern#at）が
+    // 正 — lanternDarknessItems が lightDoc#lights[0] の質感 + lantern#at を毎フレーム合成する。
 
     // ── 壁と影（Shadow モジュールの手本。LeftCtrl で walls をトグル）──
 
@@ -229,66 +212,42 @@ mod View {
         List.append(boxes,
             Shadow.occluderOfCircle(wallPillarCenter(), wallPillarRadius(), 12) :: Nil)
 
-    /// RadialGlow で焼くテクスチャの元 px サイズ。bake/Gallery.flix の実ファイル生成と
-    /// ここのスケール計算が同じ値を見る必要があるため公開する。
-    pub def maskSourceSize(): Float64 = 512.0
-    pub def haloSourceSize(): Float64 = 256.0
-
-    /// maskTexture の平坦な穴の広さ（RadialGlow.defaultHoleFrac と同じ値）。
-    /// bake/Gallery.flix のテクスチャ焼き込みと Light.singleLightItems のスケール計算の
-    /// 両方がこの値を見るため、ここに 1 箇所だけ持つ。
-    pub def maskHoleFrac(): Float64 = RadialGlow.defaultHoleFrac()
+    /// RadialGlow で焼くテクスチャの元 px サイズ・穴の広さ。bake/Gallery.flix の実ファイル
+    /// 生成と Light.items のスケール計算が同じ値を見る必要があるため、Light.defaultGlowAssets
+    /// （エンジン側の既定値）にそのまま委譲する — ここで数値を複製しない。
+    pub def maskSourceSize(): Float64 = Light.defaultGlowAssets()#maskSourceSize
+    pub def haloSourceSize(): Float64 = Light.defaultGlowAssets()#haloSourceSize
+    pub def maskHoleFrac(): Float64 = Light.defaultGlowAssets()#maskHoleFrac
 
     /// mode に応じて「暗闇の見せ方」を切り替える。Bright は何も足さず素の明るさのまま、
-    /// Dark は Light.multiLightItems を lights=Nil で呼ぶ全面暗幕のみ（API ドッグフーディング —
-    /// 光源が無いときの見た目を単体光源と同じ関数群で表す）、DarkWithLight は
-    /// singleLightItems の穴あき暗幕+ハロにハロだけ追加拡大を後掛けする。
-    def lanternDarknessItems(lantern: World.Lantern): List[Render.PlacedItem] =
+    /// Dark は runtimeLights=Nil で全面暗幕のみ（API ドッグフーディング — 光源が無いときの
+    /// 見た目を単体光源と同じ入口で表す）、DarkWithLight は lightDoc の質感（darkness/rim/
+    /// haloDiameterFactor/light）+ lantern#at（LightDoc.toConfigWithLights が「json は質感、
+    /// 位置はゲーム」の分業を担う）で Light.items 一本に任せる（walls=on なら occluders も
+    /// 渡すだけで影まで合成される）。
+    def lanternDarknessItems(lightDoc: LightDoc.Spec, lantern: World.Lantern): List[Render.PlacedItem] =
+        let occluders = if (lantern#mode == World.LanternMode.DarkWithLight and lantern#walls) wallOccluders() else Nil;
+        let ctx = { occluders = occluders, viewport = design(), glow = Light.defaultGlowAssets(), z = lanternZ() };
         match lantern#mode {
             case World.LanternMode.Bright => List.empty()
-            case World.LanternMode.Dark =>
-                Light.multiLightItems({
-                    lights = Nil, darkness = lanternDarkness(), viewport = design(),
-                    haloSprite = "glow_halo", haloSourceSize = haloSourceSize(), z = lanternZ() })
+            case World.LanternMode.Dark   => Light.items(LightDoc.toConfigWithLights(lightDoc, Nil, ctx))
             case World.LanternMode.DarkWithLight =>
-                let lightItems = Light.singleLightItems({
-                    light = lanternLight(lantern#at), viewport = design(),
-                    maskSprite = "glow_mask", maskSourceSize = maskSourceSize(), maskHoleFrac = maskHoleFrac(),
-                    haloSprite = "glow_halo", haloSourceSize = haloSourceSize(), darkness = lanternDarkness(),
-                    z = lanternZ() })
-                |> growLastHalo;
-                // 影は暗幕と同じ z（同 z 内は list の並び順で描かれるので、暗幕の後ろに
-                // 置けば穴で見えた領域を影の形だけ再度沈められる。z+1 のハロは影より手前に残る）。
-                let shadows = if (lantern#walls)
-                        Shadow.itemsFor(lanternLight(lantern#at), wallOccluders(),
-                            { darkness = lanternDarkness(), z = lanternZ(),
-                              extrudeLength = Shadow.infiniteExtrude(),
-                              rimWidth = Shadow.defaultRimWidth(), rimStrength = Shadow.defaultRimStrength() })
-                    else List.empty();
-                List.append(lightItems, shadows)
-        }
-
-    /// singleLightItems が返す列の末尾（ハロ）だけを lanternHaloDiameterFactor 倍する
-    /// （先頭の暗幕・周囲黒帯はそのまま）。
-    def growLastHalo(items: List[Render.PlacedItem]): List[Render.PlacedItem] =
-        match List.reverse(items) {
-            case Nil          => Nil
-            case halo :: rest =>
-                let grown = { item = Render.scaled(lanternHaloDiameterFactor(), halo#item) | halo };
-                List.reverse(grown :: rest)
+                let runtimeLights = lightDoc#lights
+                    |> List.map(spec -> ({ at = lantern#at, radius = spec#radius, color = spec#color, halo = spec#halo }: Light.Light));
+                Light.items(LightDoc.toConfigWithLights(lightDoc, runtimeLights, ctx))
         }
 
     /// 部屋の下敷き → 目印図形 → 暗闇モードに応じた覆い、の順。
     /// 下敷きは bg と同じ z=0（格子線 z=1 より奥）に置き、格子が常に見える上に重なるようにする。
     /// None（未出現）のときは何も描かない（他デモの bake に映り込ませないため）。
-    pub def lanternDemoItems(lantern: Option[World.Lantern]): List[Render.PlacedItem] =
+    pub def lanternDemoItems(lightDoc: LightDoc.Spec, lantern: Option[World.Lantern]): List[Render.PlacedItem] =
         lantern
             |> Option.map(l -> {
                 let room = { at = Vec2.zero(), item = Render.box(design(), darkRoomColor(), 0) };
                 // 白丸は影の証明用の目印なので walls と独立に常置する — walls=false の対照カットで
                 // 「同じ目印が沈まず見える」を成立させるため（壁と一緒に消すと対照の意味が無くなる）。
                 let walls = if (l#walls) wallItems() else List.empty();
-                room :: List.flatten(landmarkItems() :: (shadowMarkerItem() :: walls) :: lanternDarknessItems(l) :: Nil)
+                room :: List.flatten(landmarkItems() :: (shadowMarkerItem() :: walls) :: lanternDarknessItems(lightDoc, l) :: Nil)
             })
             |> Option.getWithDefault(List.empty())
 
@@ -307,5 +266,5 @@ mod View {
             |> Option.map(blendDemoItems)
             |> Option.getWithDefault(List.empty());
         bg :: List.flatten(gridItems() :: viewportMarkerItems() :: blendDemo ::
-                            lanternDemoItems(world#lantern) :: ui :: cover :: Nil)
+                            lanternDemoItems(world#lightDoc, world#lantern) :: ui :: cover :: Nil)
 }
