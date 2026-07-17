@@ -272,13 +272,20 @@ mod LwjglLayer {
             RenderShader.spriteInstancedFragmentShaderSource());
         RenderShader.setProjectionMatrix(instShader, screenW, screenH);
 
+        // 連続する同 blend / 切り抜き窓の多角形を 1 draw call に畳むバッチ描画用（頂点色）。
+        let polyBatchShader = RenderShader.createShaderProgram(
+            RenderShader.polyBatchVertexShaderSource(),
+            RenderShader.polyBatchFragmentShaderSource());
+        RenderShader.setProjectionMatrix(polyBatchShader, screenW, screenH);
+
         // location はリンク後に不変なので起動時に 1 回だけ引く（RenderShader.spriteUniformsOf 参照）。
         let spriteUniforms = RenderShader.spriteUniformsOf(spriteShader);
         let tileUniforms = RenderShader.tileUniformsOf(tileShader);
         let instMultiplyBlend = GL20.glGetUniformLocation(instShader, "multiplyBlend");
+        let polyBatchMultiplyBlend = GL20.glGetUniformLocation(polyBatchShader, "multiplyBlend");
 
         let (vao, quadVBO) = RenderSprite.initSpriteRenderer();
-        let (polyVao, polyVbo) = RenderSprite.initPolygonRenderer();
+        let (polyBatchVao, polyBatchVbo) = RenderSprite.initPolygonBatchRenderer();
         let (instVao, instVbo) = RenderSprite.initSpriteInstancedRenderer(quadVBO);
 
         println("Loading textures...");
@@ -349,7 +356,8 @@ mod LwjglLayer {
                 registry = registry, clearColor = config#clearColor,
                 designW = screenW, designH = screenH, fbW = fbW, fbH = fbH,
                 sprites = sprites, tileMaps = tileMaps, polygons = polygons,
-                polyVao = polyVao, polyVbo = polyVbo,
+                polyBatchShader = polyBatchShader, polyBatchVao = polyBatchVao,
+                polyBatchVbo = polyBatchVbo, polyBatchMultiplyBlend = polyBatchMultiplyBlend,
                 instShader = instShader, instVao = instVao, instVbo = instVbo,
                 spriteUniforms = spriteUniforms, tileUniforms = tileUniforms,
                 instMultiplyBlend = instMultiplyBlend})

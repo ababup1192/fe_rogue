@@ -276,6 +276,35 @@ mod RenderShader {
         "    if (multiplyBlend) { color.rgb *= color.a; }\n" +
         "}\n"
 
+    /// 多角形バッチ用の頂点シェーダ。1 頂点 = 位置(vec2) + 色(vec4)。
+    /// 同じ blend / 切り抜き窓の多角形を三角形化して 1 本の頂点バッファに連結し、
+    /// 1 回の draw call でまとめて塗る。色を uniform でなく頂点属性で持たせるのは、
+    /// 多角形ごとに色が違っても run をまたいで 1 バッファに詰められるようにするため
+    /// （洞窟の壁数千枚が 1 枚ずつ描かれる詰まりを解く）。
+    pub def polyBatchVertexShaderSource(): String =
+        "#version 330 core\n" +
+        "layout (location = 0) in vec2 vertex;\n" +
+        "layout (location = 1) in vec4 vColor;\n" +   // color.rgb + alpha（アルファは頂点色に畳み込み済み）
+        "out vec4 FragColor;\n" +
+        "uniform mat4 projection;\n" +
+        "void main() {\n" +
+        "    gl_Position = projection * vec4(vertex, 0.0, 1.0);\n" +
+        "    FragColor = vColor;\n" +
+        "}\n"
+
+    /// 多角形バッチ用のフラグメントシェーダ。
+    /// 頂点色をそのまま出すだけ。末尾の premultiply は uniform 版 drawPolygon と同式で、
+    /// Multiply ブレンド時に絵が割れないよう合わせてある（run 内は blend 均一なので uniform）。
+    pub def polyBatchFragmentShaderSource(): String =
+        "#version 330 core\n" +
+        "in vec4 FragColor;\n" +
+        "out vec4 color;\n" +
+        "uniform bool multiplyBlend;\n" +
+        "void main() {\n" +
+        "    color = FragColor;\n" +
+        "    if (multiplyBlend) { color.rgb *= color.a; }\n" +
+        "}\n"
+
     // ========================================================================
     // Shader Compilation
     // ========================================================================

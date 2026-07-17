@@ -61,8 +61,11 @@ mod RenderFrame {
         sprites = List[RenderType.Drawable],
         tileMaps = List[RenderType.TileMapRenderCmd],
         polygons = List[RenderType.PolygonCmd],
-        polyVao = Int32,
-        polyVbo = Int32,
+        // 同 blend / 切り抜き窓の連続多角形を 1 draw call に畳むバッチ描画用。
+        polyBatchShader = Int32,
+        polyBatchVao = Int32,
+        polyBatchVbo = Int32,
+        polyBatchMultiplyBlend = Int32,
         instShader = Int32,
         instVao = Int32,
         instVbo = Int32,
@@ -93,10 +96,28 @@ mod RenderFrame {
                                              multiplyBlendLoc, blend, data, count)
         }
 
+    /// 溜めた多角形 run（同じ blend / 切り抜き窓の連続多角形）を 1 回の draw call で
+    /// 吐き出す。vertsRev は各多角形を三角形化して逆順に cons で積んだ頂点配列のリスト
+    /// （1 配列 = 1 頂点の 6 floats）。末尾位置から前へ詰め戻すことで List.reverse なしに
+    /// 三角形の順序 = 入力順を守る（塗り順が絵に影響しないので順序は本質でないが、
+    /// スプライト run と同じ詰め方に揃えて読みやすくする）。
+    def flushPolyRun(shader: Int32, vao: Int32, vbo: Int32,
+                      multiplyBlendLoc: Int32, blend: DrawCmd.BlendMode,
+                      vertCount: Int32,
+                      vertsRev: List[Array[Float32, Static]]): Unit \ IO =
+        if (vertCount < 3) () else {
+            let data = Array.empty(Static, vertCount * 6);
+            let _ = List.foldLeft((endIdx, v) -> {
+                let base = (endIdx - 1) * 6;
+                Array.forEachWithIndex((j, x) -> Array.put(x, base + j, data), v);
+                endIdx - 1
+            }, vertCount, vertsRev);
+            RenderSprite.drawPolygonBatch(shader, vao, vbo, multiplyBlendLoc, blend, data, vertCount)
+        }
+
     /// 1 フレーム描画: tileMaps を先に zIndex 順で描き、続いて sprites を zIndex 順で描く。
     /// 黒帯部分は scissor で clear する。
     pub def renderFrameMixed(args: FrameArgs): Unit \ IO =
-        let spriteShader = args#spriteShader;
         let tileShader   = args#tileShader;
         let registry     = args#registry;
         let clearColor   = args#clearColor;
@@ -107,12 +128,13 @@ mod RenderFrame {
         let sprites      = args#sprites;
         let tileMaps     = args#tileMaps;
         let polygons     = args#polygons;
-        let polyVao      = args#polyVao;
-        let polyVbo      = args#polyVbo;
+        let polyBatchShader = args#polyBatchShader;
+        let polyBatchVao = args#polyBatchVao;
+        let polyBatchVbo = args#polyBatchVbo;
+        let polyBatchMultiplyBlend = args#polyBatchMultiplyBlend;
         let instShader   = args#instShader;
         let instVao      = args#instVao;
         let instVbo      = args#instVbo;
-        let spriteUniforms = args#spriteUniforms;
         let tileUniforms = args#tileUniforms;
         let instMultiplyBlend = args#instMultiplyBlend;
         if (fbW > 0 and fbH > 0) {
@@ -261,39 +283,91 @@ mod RenderFrame {
                     (texId, clipK, blend, 1, inst :: Nil)
                 }
             };
-            let lastRun = List.foldLeft((acc, item) -> match item {
-                case Result.Ok(drawable) =>
-                    if (String.isEmpty(drawable#texture)) {
-                        push(acc, 0, clipKeyOf(drawable#clip), drawable#blend,
-                             makeInst(drawable#position, drawable#scale, drawable, false, false))
-                    } else {
-                        match Map.get(drawable#texture, registry) {
-                            case Some(texInfo) =>
-                                let displayW = texInfo#width * drawable#scale#x;
-                                let displayH = texInfo#height * drawable#scale#y;
-                                let displaySize: Vec2.Vec2 = {x = displayW, y = displayH};
-                                let pos: Vec2.Vec2 = if (drawable#centered)
-                                    {x = drawable#position#x - displayW / 2.0,
-                                     y = drawable#position#y - displayH / 2.0}
-                                else drawable#position;
-                                // フォントアトラス (font_*) は SDF テキストとして描く。
-                                let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
-                                push(acc, GpuHandle.textureIdInt(texInfo#id), clipKeyOf(drawable#clip),
-                                     drawable#blend,
-                                     makeInst(pos, displaySize, drawable, true, isFont))
-                            // texture 未登録は従来どおり描かない。描かないだけなので run は途切れさせない。
-                            case None => acc
-                        }
-                    }
-                case Result.Err(pc) =>
-                    // polygon が来たら run を吐いてから polygon を描く（列順を守る）。
-                    flush(acc);
-                    setScissor(clipKeyOf(pc#clip));
-                    RenderSprite.drawPolygon(spriteShader, polyVao, polyVbo, spriteUniforms,
-                                              pc#vertices, pc#color, pc#alpha, pc#blend);
-                    emptyRun
-            }, emptyRun, sortedMerged);
+            // 多角形 run = (scissor キー, blend, 積んだ頂点数, 三角形頂点配列の逆順リスト)。
+            // 切り抜き窓か blend が変わるところで run を切る（スプライト run と同じ理由:
+            // scissor と blend は GL のグローバル状態なので 1 バッチ内で均一でないといけない）。
+            // 1 バッチにまとめても頂点は入力順のまま連結する。GL は 1 draw call 内の三角形を
+            // 提出順に処理するので、重なった多角形どうしのアルファ合成も 1 枚ずつ描いたときと同じ結果になる。
+            let emptyPolyRun: (Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]]) =
+                (None, DrawCmd.BlendMode.Normal, 0, Nil);
+            let flushPoly = (acc: (Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]])) -> {
+                let (accClip, accBlend, accCount, accRev) = acc;
+                if (accCount == 0) () else {
+                    setScissor(accClip);
+                    flushPolyRun(polyBatchShader, polyBatchVao, polyBatchVbo,
+                                 polyBatchMultiplyBlend, accBlend, accCount, accRev)
+                }
+            };
+            // 1 多角形を三角形化し、各頂点を 6 floats (x, y, r, g, b, a) にして run へ積む。
+            // 色×alpha は頂点属性に畳み込む（drawPolygon が uniform で渡していた spriteColor /
+            // spriteAlpha と同じ値を頂点ごとに持たせるだけなので絵は変わらない）。
+            let pushPoly = (acc: (Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]]),
+                            clipK: Option[(Int32, Int32, Int32, Int32)], blend: DrawCmd.BlendMode,
+                            pc: RenderType.PolygonCmd) -> {
+                let (accClip, accBlend, accCount, accRev) = acc;
+                let color = pc#color;
+                let alpha = pc#alpha;
+                let flat = Triangulate.triangles(pc#vertices)
+                    |> List.flatMap(tri -> { let (a, b, c) = tri; a :: b :: c :: Nil });
+                let n = List.length(flat);
+                let vertsRev = List.foldLeft((rest, v) ->
+                    (Array#{ f32(v#x), f32(v#y), color#r, color#g, color#b, alpha } @ Static) :: rest,
+                    Nil, flat);
+                // 頂点数が 3 未満（退化）なら run を切らずに素通しする（drawPolygon の n<3 と同じ扱い）。
+                if (n < 3)
+                    acc
+                else if (accCount == 0)
+                    (clipK, blend, n, vertsRev)
+                else if (accClip == clipK and accBlend == blend)
+                    // vertsRev は逆順の cons。既存 accRev の前に繋ぐと全体は「新→旧」の逆順のまま。
+                    // flushPolyRun が末尾から詰め戻すので、最終的な頂点順は入力順に戻る。
+                    (accClip, accBlend, accCount + n, List.append(vertsRev, accRev))
+                else {
+                    flushPoly(acc);
+                    (clipK, blend, n, vertsRev)
+                }
+            };
+            // スプライト run と多角形 run を並行して溜める。種類が切り替わる瞬間に
+            // もう一方を吐き出すことで、sortedMerged の列順（＝重なり順）を厳密に守る。
+            // 同一時点で両 run が非空になることはない（切替時に必ず flush する）。
+            let (lastRun, lastPolyRun) = List.foldLeft((acc, item) -> {
+                let (sRun, pRun) = acc;
+                match item {
+                    case Result.Ok(drawable) =>
+                        // スプライトが来たら溜まっている多角形 run を先に吐く（列順を守る）。
+                        flushPoly(pRun);
+                        let sRun2 = if (String.isEmpty(drawable#texture)) {
+                            push(sRun, 0, clipKeyOf(drawable#clip), drawable#blend,
+                                 makeInst(drawable#position, drawable#scale, drawable, false, false))
+                        } else {
+                            match Map.get(drawable#texture, registry) {
+                                case Some(texInfo) =>
+                                    let displayW = texInfo#width * drawable#scale#x;
+                                    let displayH = texInfo#height * drawable#scale#y;
+                                    let displaySize: Vec2.Vec2 = {x = displayW, y = displayH};
+                                    let pos: Vec2.Vec2 = if (drawable#centered)
+                                        {x = drawable#position#x - displayW / 2.0,
+                                         y = drawable#position#y - displayH / 2.0}
+                                    else drawable#position;
+                                    // フォントアトラス (font_*) は SDF テキストとして描く。
+                                    let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
+                                    push(sRun, GpuHandle.textureIdInt(texInfo#id), clipKeyOf(drawable#clip),
+                                         drawable#blend,
+                                         makeInst(pos, displaySize, drawable, true, isFont))
+                                // texture 未登録は従来どおり描かない。描かないだけなので run は途切れさせない。
+                                case None => sRun
+                            }
+                        };
+                        (sRun2, emptyPolyRun)
+                    case Result.Err(pc) =>
+                        // 多角形が来たら溜まっているスプライト run を先に吐く（列順を守る）。
+                        flush(sRun);
+                        (emptyRun, pushPoly(pRun, clipKeyOf(pc#clip), pc#blend, pc))
+                }
+            }, (emptyRun, emptyPolyRun), sortedMerged);
+            // どちらか片方だけが非空（切替時に相手を吐いているため）。空 flush は no-op。
             flush(lastRun);
+            flushPoly(lastPolyRun);
             // フレーム末尾で必ず scissor を解除する — 有効なまま持ち越すと、次フレームの
             // 全画面 clear や F8 注釈のスクリーンショット再描画が小矩形に切られる。
             GL11.glDisable(GL11.GL_SCISSOR_TEST);

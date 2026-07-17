@@ -8,12 +8,30 @@ mod Triangulate {
     /// 多角形を三角形に分割する。3頂点未満は空。凸なら n−2 枚（ファンと同じ枚数）。
     /// 数値退化（重なった頂点など）で耳が一周見つからないときは、残りをファンで閉じて
     /// 必ず停止する（クラッシュや無限ループより「多少の描き崩れ」を選ぶ）。
+    /// 凸多角形は先頭からのファンで分割する — 凸なら耳判定（各頂点で残り全点の内包チェック）を
+    /// 回さずに正しく割れるので O(n²) が O(n) に落ちる。四角形・箱・影四角形・多くの壁タイルは
+    /// 凸なので、画面に多角形が数千枚出る場面（暗い洞窟の影）ではここが効く。凹（星形など）は
+    /// ファンが凹みを跨いで塗るため従来の耳切りに回す。
     pub def triangles(points: List[Vec2.Vec2]): List[(Vec2.Vec2, Vec2.Vec2, Vec2.Vec2)] =
         if (List.length(points) < 3) Nil
         else {
             // 向きを正規化: 符号付き面積が正（この式では反時計回り）に揃えて耳判定の符号を固定する。
             let oriented = if (signedArea(points) < 0.0) List.reverse(points) else points;
-            clip(oriented, Nil, 0)
+            if (isConvex(oriented)) fan(oriented) else clip(oriented, Nil, 0)
+        }
+
+    /// 反時計回りに正規化済みの多角形が凸か。全ての連続する3点の曲がりが左回り（外積>=0）なら凸。
+    /// ちょうど0（一直線）は凸に含める — ファンでは退化三角形（面積0）になり塗りに影響しない。
+    /// 少しの負まで許すのは、隣り合う辺がほぼ一直線のときの丸め誤差で凹と誤判定しないため。
+    def isConvex(ps: List[Vec2.Vec2]): Bool =
+        let n = List.length(ps);
+        if (n < 3) true
+        else {
+            let verts = List.toVector(ps);
+            List.range(0, n) |> List.forAll(i ->
+                cross(Vector.get(i, verts),
+                      Vector.get(Int32.modulo(i + 1, n), verts),
+                      Vector.get(Int32.modulo(i + 2, n), verts)) >= -0.000000001)
         }
 
     /// 耳切り本体。先頭3点 (a, b, c) が耳なら b を落として三角形を積み、

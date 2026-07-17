@@ -129,71 +129,43 @@ mod RenderSprite {
         GL30.glBindVertexArray(0)
 
     // ========================================================================
-    // Polygon (Polygon) Rendering — sprite シェーダを useTexture=0 で流用
+    // Polygon Batch Rendering — 同じ blend / 切り抜き窓の多角形を 1 draw call で
     // ========================================================================
 
-    /// 多角形描画用の VAO と動的 VBO を生成する。
-    /// vertex layout は sprite と同じ (x, y, u, v) の 4 floats（u,v は未使用）。
+    /// 多角形バッチ用の VAO と動的 VBO を生成する（起動時に 1 回）。
+    /// vertex layout: 位置(x, y) + 色(r, g, b, a) の 6 floats / 24 bytes。
+    ///   loc 0: 位置 (vec2)
+    ///   loc 1: 色 (vec4)。drawPolygon の単色 uniform を頂点色に置き換えたもの。
     /// 戻り値: (vao, vbo)
-    pub def initPolygonRenderer(): (Int32, Int32) \ IO =
+    pub def initPolygonBatchRenderer(): (Int32, Int32) \ IO =
         let vao = GL30.glGenVertexArrays();
         let vbo = GL15.glGenBuffers();
         GL30.glBindVertexArray(vao);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
         GL20.glEnableVertexAttribArray(0);
-        GL20.glVertexAttribPointer(0, 4, GL11.GL_FLOAT, false, 16, 0i64);
+        GL20.glVertexAttribPointer(0, 2, GL11.GL_FLOAT, false, 24, 0i64);
+        GL20.glEnableVertexAttribArray(1);
+        GL20.glVertexAttribPointer(1, 4, GL11.GL_FLOAT, false, 24, 8i64);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
         (vao, vbo)
 
-    /// 単純多角形（凹あり可）を単色で塗り潰す。頂点は既にスクリーン px。
-    /// 耳切り（Triangulate.triangles）で三角形化して GL_TRIANGLES で描くので、星のような
-    /// 凹多角形も SoftRaster（スキャンライン塗り）と同じ絵になる。凸は従来と同じ見た目。
-    /// sprite シェーダを model=identity / useTexture=0 で流用する。
-    /// uniforms は起動時に 1 回だけ引いた location 一式（RenderShader.spriteUniformsOf）。
-    pub def drawPolygon(spriteShader: Int32, polyVao: Int32, polyVbo: Int32,
-                         uniforms: RenderShader.SpriteUniforms,
-                         verts: List[Vec2.Vec2], color: Color, alpha: Float32,
-                         blend: DrawCmd.BlendMode): Unit \ IO =
-        let f32 = RenderUtil.f32;
-        let flat = Triangulate.triangles(verts)
-            |> List.flatMap(tri -> { let (a, b, c) = tri; a :: b :: c :: Nil });
-        let n = List.length(flat);
-        if (n < 3) () else {
-            GL20.glUseProgram(spriteShader);
+    /// 三角形化済みの多角形頂点をまとめて 1 回の draw call で塗る。
+    /// data は 1 頂点 6 floats（位置 2 + 色 4）を列順に並べたもの（RenderFrame が組む）。
+    /// blend は run 内で均一（RenderFrame が blend / 切り抜き窓の変化で run を切る）。
+    /// glBufferData で丸ごと差し替える（orphaning。drawSpriteInstanced と同方式）。
+    pub def drawPolygonBatch(shader: Int32, vao: Int32, vbo: Int32,
+                              multiplyBlendLoc: Int32, blend: DrawCmd.BlendMode,
+                              data: Array[Float32, Static], vertexCount: Int32): Unit \ IO =
+        if (vertexCount < 3) () else {
+            GL20.glUseProgram(shader);
             applyBlend(blend);
-            GL20.glUniform1i(uniforms#multiplyBlend, multiplyFlag(blend));
-            let model = Array#{
-                1.0f32, 0.0f32, 0.0f32, 0.0f32,
-                0.0f32, 1.0f32, 0.0f32, 0.0f32,
-                0.0f32, 0.0f32, 1.0f32, 0.0f32,
-                0.0f32, 0.0f32, 0.0f32, 1.0f32
-            } @ Static;
-            GL20.glUniformMatrix4fv(uniforms#model, false, model);
-            GL20.glUniform3f(uniforms#spriteColor, color#r, color#g, color#b);
-            GL20.glUniform1f(uniforms#spriteAlpha, alpha);
-            GL20.glUniform2f(uniforms#uvOffset, 0.0f32, 0.0f32);
-            GL20.glUniform2f(uniforms#uvScale, 1.0f32, 1.0f32);
-            GL20.glUniform1i(uniforms#useTexture, 0);
-            // sprite シェーダ共有のため styleEnabled / hatchEnabled / checkerCell を明示 0 にして GL state 持ち越しを防ぐ。
-            GL20.glUniform1i(uniforms#styleEnabled, 0);
-            GL20.glUniform1i(uniforms#hatchEnabled, 0);
-            GL20.glUniform1f(uniforms#checkerCell, 0.0f32);
-            GL20.glUniform1i(uniforms#sdfText, 0);
-            let data = Array.empty(Static, n * 4);
-            let _ = List.foldLeft((i, v) -> {
-                let base = i * 4;
-                Array.put(f32(v#x), base + 0, data);
-                Array.put(f32(v#y), base + 1, data);
-                Array.put(0.0f32,   base + 2, data);
-                Array.put(0.0f32,   base + 3, data);
-                i + 1
-            }, 0, flat);
-            GL30.glBindVertexArray(polyVao);
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, polyVbo);
+            GL20.glUniform1i(multiplyBlendLoc, multiplyFlag(blend));
+            GL30.glBindVertexArray(vao);
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
             GL15.glBufferData(GL15.GL_ARRAY_BUFFER, data, GL15.GL_DYNAMIC_DRAW);
-            GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, n);
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, vertexCount);
             GL30.glBindVertexArray(0)
         }
 
