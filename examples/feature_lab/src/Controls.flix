@@ -68,19 +68,25 @@ mod Controls {
         :: Nil
 
     /// BGM フェードとマスター音量の手本 system。
-    /// 分業: 音量の「値」はエンジンの純関数（Transition.Progress + AudioFade.volumeOf）が導き、
-    /// それを実機へ流す setVolume / setMasterVolume の副作用だけをこの system が受け持つ。
+    /// 分業: フェード音量はエンジンの純関数（Transition.Progress + AudioFade.volumeOf）が導き、
+    /// 実機へ流す setVolume（毎フレーム変わる値なので常時呼ぶ）だけをこの system が受け持つ。
+    /// マスター音量は settings#masterVolume（コンフィグ画面のスライダーと共有の真実源）を
+    /// M キーでも 1.0/0.3 に切り替えるが、setMasterVolume の実適用は ConfigApply.step に
+    /// 一本化する（コンフィグ画面のスライダーも同じ settings を書き換えるため）。
     pub def audioStep(frame: App.Frame, world: World.World): World.World \ GameEngine.Audio =
         let taps = InputMap.taps(audioTable(), frame);
+        let toggleMaster = List.memberOf(AudioIntent.ToggleMaster, taps);
         let bgm = world#bgm
             |> (b -> if (List.memberOf(AudioIntent.ToggleFade, taps)) reverseFade(b) else b)
-            |> (b -> if (List.memberOf(AudioIntent.ToggleMaster, taps))
-                         { master = if (b#master < 1.0) 1.0 else 0.3 | b } else b)
             |> (b -> { progress = Transition.advance(frame#dt, b#progress) | b });
-        if (not bgm#playing) GameEngine.Audio.playAudio("bgm") else ();
+        let masterVolume = if (toggleMaster)
+                               (if (world#settings#masterVolume < 1.0) 1.0 else 0.3)
+                           else world#settings#masterVolume;
+        // 初回再生は bgmOn の初期値に従う（bgmOn=false で始まったセーブなら鳴らさない）。
+        // 以降の on/off 切り替えは ConfigApply.step の playAudio/stopAudio に一本化する。
+        if (not bgm#playing and world#settings#bgmOn) GameEngine.Audio.playAudio("bgm") else ();
         GameEngine.Audio.setVolume("bgm", RenderUtil.f32(World.bgmVolume(bgm)));
-        GameEngine.Audio.setMasterVolume(RenderUtil.f32(bgm#master));
-        { bgm = { playing = true | bgm } | world }
+        { bgm = { playing = true | bgm }, settings = { masterVolume = masterVolume | world#settings } | world }
 
     /// フェードの向きを反転する。今の音量から続きになるよう、進み具合も左右反転して引き継ぐ
     /// （例: t=0.3 のフェードインを反転すると t=0.7 のフェードアウト。音量が飛ばない）。
@@ -148,19 +154,16 @@ mod Controls {
         :: (Key.H,     WindowIntent.ToggleCursor)
         :: Nil
 
-    /// ウィンドウ実験の手本 system。分業は audioStep と同じ: 値（on/off）は World が持ち、
-    /// 実機へ反映する setFullscreen / setCursorVisible の副作用だけをこの system が受け持つ。
-    /// 切り替わった回だけ呼ぶ（毎フレーム呼んでも実装は冪等だが、既存の setDebugBadge /
-    /// setCursor 呼び出し = App.flix の F8 トグルと同じ「変化した時だけ」の流儀に合わせる）。
-    pub def windowStep(frame: App.Frame, world: World.World): World.World \ GameEngine.Game =
+    /// ウィンドウ実験の手本 system。Enter/H は settings の値を書き換えるだけ
+    /// （実機への反映は ConfigApply.step に一本化 — コンフィグ画面のトグルも同じ settings を
+    /// 書き換えるので、実適用をキー入力側とコンフィグ画面側の 2 箇所に置くと反映漏れが起きうる）。
+    pub def windowStep(frame: App.Frame, world: World.World): World.World =
         let taps = InputMap.taps(windowTable(), frame);
         let toggleFullscreen = List.memberOf(WindowIntent.ToggleFullscreen, taps);
         let toggleCursor = List.memberOf(WindowIntent.ToggleCursor, taps);
-        let fullscreen = if (toggleFullscreen) not world#fullscreen else world#fullscreen;
-        let cursorVisible = if (toggleCursor) not world#cursorVisible else world#cursorVisible;
-        if (toggleFullscreen) GameEngine.Game.setFullscreen(fullscreen) else ();
-        if (toggleCursor) GameEngine.Game.setCursorVisible(cursorVisible) else ();
-        { fullscreen = fullscreen, cursorVisible = cursorVisible | world }
+        let fullscreen = if (toggleFullscreen) not world#settings#fullscreen else world#settings#fullscreen;
+        let cursorVisible = if (toggleCursor) not world#settings#cursorVisible else world#settings#cursorVisible;
+        { settings = { fullscreen = fullscreen, cursorVisible = cursorVisible | world#settings } | world }
 
     /// カンテラ（プレイヤー=光源）の 1 秒あたりの移動距離（40px 格子を 0.4 秒で渡る速さ）。
     def lanternSpeed(): Float64 = 100.0

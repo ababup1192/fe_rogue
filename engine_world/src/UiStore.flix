@@ -205,6 +205,13 @@ mod UiStore {
             case Some((id, style)) => {styles = Map.insert(id, style, ui#styles) | ui}
         }
 
+    /// 名前パスの entity のフロー外オフセット（style#abs）を読む。`setAbs` の読み戻し。
+    /// abs 未設定（フロー内）・未登録パスは None。
+    pub def absOf(path: String, ui: UiWorld): Option[Vec2.Vec2] =
+        idOf(path, ui)
+            |> Option.flatMap(id -> Map.get(id, ui#styles))
+            |> Option.flatMap(style -> style#abs)
+
     /// 名前パスの poly コンポーネントの凸サブポリゴン列を差し替える。poly を持たなければ no-op。
     /// 各サブポリの頂点はノードのレイアウト矩形左上を原点とするローカル design px（extract が矩形
     /// 左上を足す）。1 サブポリ = 1 PolygonRenderCmd（凸前提）なので、中空リング等の凹形状は

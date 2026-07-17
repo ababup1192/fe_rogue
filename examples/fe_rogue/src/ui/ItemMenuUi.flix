@@ -494,7 +494,7 @@ mod ItemMenuUi {
     /// `showChrome` が true（ItemSelect）ならアイコン/サブライン/装備バッジ/マーク色を出す。
     /// false（ItemActionSelect）ならテキストのみ（アイコン/サブライン/バッジは隠す・マークなし）。
     def fillWindow(fill: WindowFill, ui: UiStore.UiWorld): UiStore.UiWorld =
-        UiRowFill.fill(rowSpec(fill#offset), fill#items, (i, entry, acc) -> {
+        UiRowFill.fill(rowSpec(fill#offset), fill#items, entry -> entry#metadata, (i, entry, acc) -> {
             let itemIdx = fill#offset + i;
             let hasIcon = fill#showChrome and Option.nonEmpty(List.nth(itemIdx, fill#sprites));
             let base = UiStore.setVisible(iconBgPath(i), hasIcon, acc);

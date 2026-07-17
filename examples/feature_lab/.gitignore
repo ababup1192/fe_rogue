@@ -1,0 +1,5 @@
+# コンフィグ画面の保存設定は追跡しないが、ディレクトリ自体は残す
+# （Persistence.save は saves/settings.json への相対パスを使い、Fs.WriteFile は
+#  親ディレクトリを自動作成しないため。ディレクトリが無いと保存が失敗する）
+saves/*
+!saves/.gitkeep

@@ -421,7 +421,7 @@ mod TradeMenuUi {
     def fillPaneRows(input: PaneRowsInput, ui: UiStore.UiWorld): UiStore.UiWorld =
         // 在庫が窓（maxSlots）を超えるのは windowOffset のスクロールで正常なので上限チェックはしない。
         UiRowFill.fill({rowPath = r -> rowPath(input#i, r), maxSlots = maxSlots(), offset = input#offset},
-            input#entries, (r, entry, acc) -> {
+            input#entries, entry -> entry#metadata, (r, entry, acc) -> {
                 let idx = input#offset + r;
                 let hasIcon = Option.nonEmpty(Map.get(idx, input#sprites));
                 let hasSubline = Option.nonEmpty(Map.get(idx, input#sublines));

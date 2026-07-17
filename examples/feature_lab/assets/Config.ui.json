@@ -1,0 +1,120 @@
+{
+  "defaultFont": "default",
+  "templates": {
+    "row": {
+      "widget": "none", "width": 244, "height": 20,
+      "dir": "row", "crossAlign": "center", "gap": 10
+    },
+    "rowLabel": {
+      "widget": "text", "fontSize": 12, "tint": "#ffffff", "zIndex": 210, "text": "", "width": 70
+    },
+    "mark": {
+      "widget": "text", "fontSize": 12, "tint": "#66ccff", "zIndex": 210, "text": "OFF"
+    },
+    "pillTrack": {
+      "widget": "box", "color": "#4a5064", "width": 32, "height": 14, "cornerRadius": 7, "zIndex": 210
+    },
+    "pillKnob": {
+      "widget": "box", "color": "#ffffff", "width": 12, "height": 12, "cornerRadius": 6,
+      "zIndex": 212, "abs": [1, 1]
+    }
+  },
+  "root": {
+    "name": "Config", "widget": "none", "visible": false, "layer": 2,
+    "children": [
+      {
+        "name": "panel", "widget": "box", "color": "#1c1e26", "alpha": 0.92,
+        "borderWidth": 1, "borderColor": "#66ccff", "cornerRadius": 4,
+        "width": 260, "height": 184, "zIndex": 200, "abs": [30, 40]
+      },
+      {
+        "name": "title", "widget": "text", "text": "CONFIG", "fontSize": 14,
+        "tint": "#ffffff", "zIndex": 210, "abs": [46, 52]
+      },
+      {
+        "name": "menu", "widget": "none", "dir": "column", "gap": 6, "abs": [46, 80],
+        "children": [
+          {
+            "name": "highlight", "widget": "box", "color": "#66ccff", "alpha": 0.18,
+            "width": 244, "height": 20, "cornerRadius": 3, "zIndex": 205, "abs": [0, 0]
+          },
+          {
+            "name": "masterVolumeRow", "use": "row", "meta": "volume",
+            "children": [
+              { "name": "label", "use": "rowLabel", "text": "volume" },
+              {
+                "name": "track", "widget": "box", "color": "#333846", "width": 100, "height": 6,
+                "cornerRadius": 3, "zIndex": 210,
+                "children": [
+                  {
+                    "name": "fill", "widget": "box", "color": "#66ccff", "width": 0, "height": 6,
+                    "cornerRadius": 3, "zIndex": 211
+                  },
+                  {
+                    "name": "knob", "widget": "box", "color": "#ffffff", "width": 6, "height": 12,
+                    "cornerRadius": 3, "zIndex": 212, "abs": [0, -3]
+                  }
+                ]
+              },
+              { "name": "value", "widget": "text", "text": "100", "fontSize": 12, "tint": "#8899aa", "zIndex": 210, "bind": "volumeValue" }
+            ]
+          },
+          {
+            "name": "bgmRow", "use": "row", "meta": "bgm",
+            "children": [
+              { "name": "label", "use": "rowLabel", "text": "bgm" },
+              {
+                "name": "toggle", "widget": "none", "width": 32, "height": 14,
+                "children": [
+                  {
+                    "name": "track", "use": "pillTrack",
+                    "children": [ { "name": "knob", "use": "pillKnob" } ]
+                  }
+                ]
+              },
+              { "name": "mark", "use": "mark", "fontSize": 10, "bind": "bgmMark" }
+            ]
+          },
+          {
+            "name": "fullscreenRow", "use": "row", "meta": "fullscreen",
+            "children": [
+              { "name": "label", "use": "rowLabel", "text": "fullscreen" },
+              {
+                "name": "toggle", "widget": "none", "width": 32, "height": 14,
+                "children": [
+                  {
+                    "name": "track", "use": "pillTrack",
+                    "children": [ { "name": "knob", "use": "pillKnob" } ]
+                  }
+                ]
+              },
+              { "name": "mark", "use": "mark", "fontSize": 10, "bind": "fullscreenMark" }
+            ]
+          },
+          {
+            "name": "cursorRow", "use": "row", "meta": "cursor",
+            "children": [
+              { "name": "label", "use": "rowLabel", "text": "cursor" },
+              {
+                "name": "toggle", "widget": "none", "width": 32, "height": 14,
+                "children": [
+                  {
+                    "name": "track", "use": "pillTrack",
+                    "children": [ { "name": "knob", "use": "pillKnob" } ]
+                  }
+                ]
+              },
+              { "name": "mark", "use": "mark", "fontSize": 10, "bind": "cursorMark" }
+            ]
+          },
+          {
+            "name": "closeRow", "use": "row", "meta": "close",
+            "children": [
+              { "name": "label", "use": "rowLabel", "text": "close (Escape)" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

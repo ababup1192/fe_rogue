@@ -3,6 +3,10 @@
 // steps は別実験（固定タイムステップ）の検証用カウンタ: withFixedStep を有効にした Main で
 // updateSystems が回った回数を数え、可変 dt と同じ絵になるかを目視できるようにする。
 // bgm は別実験（AudioFade + マスター音量）の状態: フェードの向き・進み具合・全体つまみを持つ。
+// settings はコンフィグ画面が編集する「保存される設定」、configMenu はその画面自体の
+// 開閉・カーソル・ドラッグなど「画面の一時的な UI 状態」（保存しない）。設定と画面状態を
+// 分けるのは、設定だけを Persistence でセーブ/ロードしたいため（画面が開いているかどうかを
+// セーブファイルに残す意味は無い）。
 
 mod World {
 
@@ -16,9 +20,52 @@ mod World {
     pub type alias Bgm = {
         rising = Bool,                     // true = フェードイン中（無音へ向かうなら false）
         progress = Transition.Progress,    // フェードの進み具合（B で向きを反転して引き継ぐ）
-        master = Float64,                  // マスター音量（M で 1.0 / 0.3 を切り替え）
         playing = Bool                     // playAudio を一度呼んだか（起動後の初回だけ鳴らし始める）
     }
+
+    /// コンフィグ画面が編集し、ディスクへ保存する設定一式。
+    /// masterVolume はスライダーの値（B/M デモの bgm フェードとは独立 — フェードは
+    /// 「曲の出入り」、masterVolume は「全体の音量つまみ」で役目が違う）。
+    /// Eq は ConfigApply.step が「前フレームと変わったフィールドだけ実機へ反映する」ための比較に使う。
+    pub type alias Settings = {
+        masterVolume  = Float64,  // 0.0-1.0。GameEngine.Audio.setMasterVolume へそのまま渡す
+        bgmOn         = Bool,     // BGM トグル行の on/off
+        fullscreen    = Bool,     // フルスクリーントグル行の on/off（Enter デモと共有の真実源）
+        cursorVisible = Bool      // カーソル表示トグル行の on/off（H デモと共有の真実源）
+    }
+
+    /// 起動直後の既定設定。全開の音量・BGM on・ウィンドウ表示・カーソル表示。
+    pub def defaultSettings(): Settings =
+        { masterVolume = 1.0, bgmOn = true, fullscreen = false, cursorVisible = true }
+
+    /// 2 つの設定が全フィールド一致するか（record は Eq を自動導出できないため、
+    /// タプル化して比較する）。ConfigApply.step が「保存が要るか」を判定するのに使う。
+    pub def settingsEqual(a: Settings, b: Settings): Bool =
+        (a#masterVolume, a#bgmOn, a#fullscreen, a#cursorVisible) ==
+        (b#masterVolume, b#bgmOn, b#fullscreen, b#cursorVisible)
+
+    /// コンフィグ画面の行の並び（上から順。カーソル移動・ハイライト位置に使う）。
+    pub def configRowPaths(): List[String] =
+        configRows() |> List.map(row -> { let (path, _meta) = row; path })
+
+    /// 行の名前パスと meta 文字列の対。ui.json の各行に置いた "meta" 宣言と同じ文字列で、
+    /// 行 index → 行の種類（ConfigMenuUi.rowKindOf）を引く唯一の表。
+    pub def configRows(): List[(String, String)] =
+        ("Config/menu/masterVolumeRow", "volume") :: ("Config/menu/bgmRow", "bgm") ::
+        ("Config/menu/fullscreenRow", "fullscreen") :: ("Config/menu/cursorRow", "cursor") ::
+        ("Config/menu/closeRow", "close") :: Nil
+
+    /// cursor 位置の行の meta（範囲外は "close" — 決定キーだけ効く安全側）。
+    pub def configRowMeta(cursor: Int32): String =
+        List.nth(cursor, configRows()) |> Option.map(row -> { let (_path, meta) = row; meta })
+            |> Option.getWithDefault("close")
+
+    /// コンフィグ画面の一時的な UI 状態（保存しない）。open=画面の開閉、
+    /// cursor=選択中の行 index、dragging=スライダーの track をつまんでいる間だけ Some
+    /// （その行の名前パス。値は毎フレーム mouseDown が続く限り更新し、離した瞬間に None へ戻す）。
+    pub type alias ConfigMenu = { open = Bool, cursor = Int32, dragging = Option[String] }
+
+    pub def initialConfigMenu(): ConfigMenu = { open = false, cursor = 0, dragging = None }
 
     /// カンテラ実験の暗闇モード。Bright=通常表示（暗幕なし）、Dark=暗闇のみ
     /// （Light.multiLightItems を lights=Nil で呼ぶ全面暗幕、光源なし）、
@@ -42,8 +89,11 @@ mod World {
         steps = Int32,
         bgm = Bgm,
         ui = UiStore.UiWorld,
-        fullscreen = Bool,     // Enter で切り替え（ウィンドウ⇄ボーダーレスフルスクリーン）
-        cursorVisible = Bool,  // H で切り替え（マウスカーソルの表示/非表示）
+        settings = Settings,        // コンフィグ画面が編集し、保存/復元する設定
+        appliedSettings = Settings, // 直近で実機（GameEngine）へ反映した設定
+        // （settings と食い違うフィールドだけ ConfigApply.step が反映して揃える。
+        // 「変化した時だけ呼ぶ」を大元の入力手段（キー/コンフィグ画面）によらず一本化するための影）。
+        configMenu = ConfigMenu,    // コンフィグ画面の開閉・カーソル・ドラッグ（保存しない）
         blend = Option[DrawCmd.BlendMode],  // None = デモ非表示 / Z/X/C で重ね方を選ぶと表示
         // None = デモ非表示 / 矢印キーを押した瞬間に現れる（他デモと同じ Option パターン。
         // 常時表示にすると他シーンの bake（blend/fps/遷移 GIF）にも部屋と目印が映り込んでしまう）。
@@ -56,15 +106,19 @@ mod World {
 
     /// 起動直後は Idle（覆いなし）で始める。いきなり遷移を再生すると画面が
     /// フェードアウトして「消えた」ように見え、フルスクリーン等の起動確認ができないため。
-    /// BGM は無音からのフェードインで始まり、マスターは全開。
+    /// BGM は無音からのフェードインで始まる。
     /// ui/lightDoc は外の世界（ファイル）に触れるので、読み込み済みの物を Main から受け取る。
-    /// ウィンドウ表示は通常の窓・カーソルは見える状態で始める。
+    /// settings は起動時に保存済みファイルがあれば読み込んだ値、無ければ既定値を Main が渡す
+    /// （ここでは常に defaultSettings を仮置きせず、呼び側の読み込み結果をそのまま受け取る）。
     /// blend デモは初期非表示（None）。常時表示にすると遷移 GIF や fps 見本の bake に
     /// 映り込み、既存の gallery の絵が変わってしまう。
-    pub def initial(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): World =
+    /// appliedSettings は起動直後の実機状態（既定値）で始める。settings が保存済みの値で
+    /// 始まっていても、実機（音量・ウィンドウ）への反映は ConfigApply.step の最初の 1 回に任せる
+    /// ことで、起動処理を「初期化」と「反映」の 2 箇所に分けずに済む。
+    pub def initial(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, settings: Settings): World =
         { kind = Transition.Kind.FadeOut, playing = None, steps = 0,
-          bgm = { rising = true, progress = Transition.start(bgmDuration()), master = 1.0, playing = false },
-          ui = ui, fullscreen = false, cursorVisible = true,
+          bgm = { rising = true, progress = Transition.start(bgmDuration()), playing = false },
+          ui = ui, settings = settings, appliedSettings = defaultSettings(), configMenu = initialConfigMenu(),
           blend = None,
           lantern = None, lightDoc = lightDoc }
 
@@ -87,9 +141,10 @@ mod World {
     /// 画面下の 1 行サマリ（遷移・固定ステップ・BGM・フルスクリーン・カーソル・ブレンド・カンテラ）。
     pub def statusLine(world: World): String =
         "transition=${transitionLabel(world)} t=${round2(transitionT(world))} steps=${world#steps}"
-            + " bgm=${round2(bgmVolume(world#bgm))} master=${round2(world#bgm#master)}"
-            + " fullscreen=${onOff(world#fullscreen)} cursor=${onOff(world#cursorVisible)}"
+            + " bgm=${round2(bgmVolume(world#bgm))} master=${round2(world#settings#masterVolume)}"
+            + " fullscreen=${onOff(world#settings#fullscreen)} cursor=${onOff(world#settings#cursorVisible)}"
             + " blend=${blendLabel(world#blend)} ${lanternLabel(world#lantern)}"
+            + " config=${onOff(world#configMenu#open)}"
 
     /// blend デモの表示名（HUD の bind と statusLine の両方が使う）。非表示中は操作案内。
     pub def blendLabel(blend: Option[DrawCmd.BlendMode]): String =

@@ -239,7 +239,7 @@ mod WeaponSelectUi {
             bug!("WeaponSelect rows (${List.length(view#items)}) exceed slots (${maxSlots()})")
         else
         UiRowFill.fill({rowPath = i -> rowPath(i), maxSlots = maxSlots(), offset = 0},
-            view#items, (i, entry, acc) -> {
+            view#items, entry -> entry#metadata, (i, entry, acc) -> {
                 let hasBadge = Option.nonEmpty(Map.get(i, view#badges));
                 acc
                     |> UiStore.setText(namePath(i), entry#text)

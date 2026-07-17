@@ -3,7 +3,7 @@
 
 mod GameUi {
 
-    def pagePaths(): List[String] = "assets/Hud.ui.json" :: Nil
+    def pagePaths(): List[String] = "assets/Hud.ui.json" :: "assets/Config.ui.json" :: Nil
 
     /// 全ページの Spec を 1 つの UiWorld へ生成する。壊れた・存在しないファイルは
     /// そのページを抜いたまま進む（実験はそれでも動く）。
@@ -25,10 +25,15 @@ mod GameUi {
     /// 画面内で読めるようにするための表示（起動確認をウィンドウ内だけで完結させる）。
     def bindText(key: String, world: World.World): Option[String] = match key {
         case "kindLabel"      => Some(World.transitionLabel(world))
-        case "fullscreenFlag" => Some("fullscreen=${World.onOff(world#fullscreen)}")
-        case "cursorFlag"     => Some("cursor=${World.onOff(world#cursorVisible)}")
+        case "fullscreenFlag" => Some("fullscreen=${World.onOff(world#settings#fullscreen)}")
+        case "cursorFlag"     => Some("cursor=${World.onOff(world#settings#cursorVisible)}")
         case "blendFlag"      => Some("blend=${World.blendLabel(world#blend)}")
         case "darknessFlag"   => Some(World.lanternLabel(world#lantern))
+        case "volumeValue"    => Some(Int32.toString(
+            Float64.round(world#settings#masterVolume * 100.0) |> Float64.tryToInt32 |> Option.getWithDefault(0)))
+        case "bgmMark"        => Some(UiToggle.markText(world#settings#bgmOn, "ON", "OFF"))
+        case "fullscreenMark" => Some(UiToggle.markText(world#settings#fullscreen, "ON", "OFF"))
+        case "cursorMark"     => Some(UiToggle.markText(world#settings#cursorVisible, "ON", "OFF"))
         case _                => None
     }
 }

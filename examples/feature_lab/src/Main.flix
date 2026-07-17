@@ -18,23 +18,31 @@
 // 「Multiply の穴あき暗幕+Add の暖色ハロ」を光の位置に重ね、目印図形が光の周りだけ見える。
 // 光の質感（暗さ・照り返しフチ・ハロの大きさ）は assets/Lantern.light.json が持ち、
 // make debug で起動中は保存するたびに即反映される（App.watchFile。F1 の ui.json 再読込と同居）。
+// もうひとつの実験はコンフィグ画面: LeftSuper で開閉、上下でカーソル移動、左右で音量つまみ、
+// Enter でトグル決定、Escape で閉じる。マウスは行の hover/クリック/スライダー track のドラッグに
+// 対応。設定変更のたびに saves/settings.json へ保存し、起動時に読み戻す。
 
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()
     else {
         let ui = run { GameUi.loadUi() } with Fs.FileRead.runWithIO;
         let lightDoc = run { Controls.loadLightDoc() } with Fs.FileRead.runWithIO;
+        let settings = run { ConfigApply.loadSettings() } with Fs.FileRead.runWithIO;
         run {
             // App の effect 集合は全フック共通の 1 つの型変数なので、Audio だけ・Game だけの
             // system が混在すると単一化できない。全 system を checked_ecast で
-            // {Audio, Game} へそろえる（呼び出し式ごと widen すれば効く）。
-            App.make(World.initial(ui, lightDoc))
+            // {Audio, Game, Fs.FileWrite} へそろえる（呼び出し式ごと widen すれば効く）。
+            App.make(World.initial(ui, lightDoc, settings))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.step(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.countStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.audioStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.windowStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.blendStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.lanternStep(frame, world)))
+                |> App.addSystem((frame, world) -> checked_ecast(ConfigMenuUi.step(frame, world)))
+                |> App.addSystem((frame, world) -> checked_ecast(ConfigMenuUi.mouseStep(frame, world)))
+                |> App.addSystem((frame, world) -> checked_ecast(ConfigApply.step(frame, world)))
+                |> App.addSystem((_frame, world) -> checked_ecast(ConfigMenuUi.projectUi(world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.projectUi(frame, world)))
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadUi)
                 |> App.watchFile("assets/Lantern.light.json", Controls.reloadLightDoc)

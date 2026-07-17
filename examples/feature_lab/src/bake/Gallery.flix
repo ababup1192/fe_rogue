@@ -45,7 +45,7 @@ mod Gallery {
             let t = Int32.toFloat64(i) / Int32.toFloat64(steps);
             let progress = Transition.start(World.duration())
                         |> Transition.advance(t * World.duration());
-            GameUi.projectUi({ kind = kind, playing = Some(progress) | World.initial(ui, lightDoc) })
+            GameUi.projectUi({ kind = kind, playing = Some(progress) | World.initial(ui, lightDoc, World.defaultSettings()) })
         })
 
     /// 1 種類ぶんの GIF ＋ コマ別 PNG を焼く（8 コマ）。
@@ -56,7 +56,7 @@ mod Gallery {
     /// fps オーバレイの見本（debug 表示と同じ絵を 1 枚）。App を起動せずに
     /// Annotate.fpsItems を直接呼んで合成する（App.fpsOverlayOf と同じロジック）。
     def fpsOverlayScene(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
-        let world = GameUi.projectUi(World.initial(ui, lightDoc));
+        let world = GameUi.projectUi(World.initial(ui, lightDoc, World.defaultSettings()));
         let ctx = { atlas = atlas, visible = { position = Vec2.zero(), size = View.design() } };
         let sixtyFps = 1.0 / 60.0;
         let anno = List.range(0, 60) |> List.foldLeft((acc, _) -> Annotate.recordDt(sixtyFps, acc), Annotate.initial());
@@ -68,7 +68,7 @@ mod Gallery {
     /// blend デモを表示した世界を本番と同じ投影（View.frame）で焼く。
     /// 3 モードを同じ構図で並べると、Add は重なりが白へ光り・Multiply は黒へ沈むのが一目で分かる。
     def bakeBlendPng(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, mode: DrawCmd.BlendMode, name: String): Unit \ IO =
-        let world = GameUi.projectUi({ blend = Some(mode) | World.initial(ui, lightDoc) });
+        let world = GameUi.projectUi({ blend = Some(mode) | World.initial(ui, lightDoc, World.defaultSettings()) });
         let (drawables, polygons) = worldCmds(atlas, world);
         Bakery.renderPng(config(atlas), drawables, polygons, name)
 
@@ -89,12 +89,28 @@ mod Gallery {
             (x, y) -> RadialGlow.haloPixel(RadialGlow.smoothstepCurve, RadialGlow.normalizedRadius(haloSize, x, y)),
             "assets/glow_halo.png")
 
+    /// コンフィグ画面の検品 2 枚: カーソル行とトグル/スライダー値を変えて焼く
+    /// （ハイライトの行ズレ・ピルの ON/OFF 見た目・knob 位置の退行をエディタ無しで検出する）。
+    def bakeConfigPng(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec,
+                       cursor: Int32, settings: World.Settings, name: String): Unit \ IO =
+        let base = World.initial(ui, lightDoc, settings);
+        let world = GameUi.projectUi(ConfigMenuUi.projectUi(
+            { configMenu = { open = true, cursor = cursor | World.initialConfigMenu() } | base }));
+        let (drawables, polygons) = worldCmds(atlas, world);
+        Bakery.renderPng(config(atlas), drawables, polygons, name)
+
+    def bakeConfigPngs(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): Unit \ IO =
+        bakeConfigPng(atlas, ui, lightDoc, 0, World.defaultSettings(), "config_row0_defaults");
+        bakeConfigPng(atlas, ui, lightDoc, 2,
+            { masterVolume = 0.2, fullscreen = true, bgmOn = false
+              | World.defaultSettings() }, "config_row2_mixed")
+
     /// カンテラ探索の比較 3 枚が使う共通のプレイヤー位置（目印の間、画面中央よりやや上）。
     def lanternDemoAt(): Vec2.Vec2 = { x = 160.0, y = 100.0 }
 
     /// 比較 PNG 1 枚ぶんの世界を組んで焼く。
     def bakeLanternPng(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, lantern: Option[World.Lantern], name: String): Unit \ IO =
-        let world = GameUi.projectUi({ lantern = lantern | World.initial(ui, lightDoc) });
+        let world = GameUi.projectUi({ lantern = lantern | World.initial(ui, lightDoc, World.defaultSettings()) });
         let (drawables, polygons) = worldCmds(atlas, world);
         Bakery.renderPng(config(atlas), drawables, polygons, name)
 
@@ -121,7 +137,7 @@ mod Gallery {
             let segStart = List.nth(seg, points) |> Option.getWithDefault(lanternDemoAt());
             let segEnd = List.nth(seg + 1, points) |> Option.getWithDefault(lanternDemoAt());
             let at = Vec2.add(segStart, Vec2.mul(Vec2.sub(segEnd, segStart), localT));
-            GameUi.projectUi({ lantern = Some({ at = at, mode = World.LanternMode.DarkWithLight, walls = walls }) | World.initial(ui, lightDoc) })
+            GameUi.projectUi({ lantern = Some({ at = at, mode = World.LanternMode.DarkWithLight, walls = walls }) | World.initial(ui, lightDoc, World.defaultSettings()) })
         })
 
     /// カンテラが目印の間を歩き回る GIF（8 コマ）。
@@ -291,6 +307,7 @@ mod Gallery {
         bakeBlendPng(atlas, ui, lightDoc, DrawCmd.BlendMode.Add, "blend_add");
         bakeBlendPng(atlas, ui, lightDoc, DrawCmd.BlendMode.Multiply, "blend_multiply");
 
+        bakeConfigPngs(atlas, ui, lightDoc);
         bakeLanternComparisonPngs(atlas, ui, lightDoc);
         let lanternFilm = bakeLanternGif(atlas, ui, lightDoc);
 
