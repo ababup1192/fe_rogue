@@ -32,7 +32,7 @@ mod TestFxDoc {
         }
 
     def shapeTag(s: FxDoc.Shape): String =
-        match s { case FxDoc.Shape.Circle => "circle" case FxDoc.Shape.Box => "box" }
+        match s { case FxDoc.Shape.Circle => "circle" case FxDoc.Shape.Box => "box" case FxDoc.Shape.Glow => "glow" }
 
     def blendTag(b: DrawCmd.BlendMode): String =
         match b { case DrawCmd.BlendMode.Normal => "normal" case DrawCmd.BlendMode.Add => "add" case DrawCmd.BlendMode.Multiply => "multiply" }
@@ -148,6 +148,16 @@ mod TestFxDoc {
         let got = parseDoc(doc) |> Option.flatMap(firstEmitter)
             |> Option.map(em -> (shapeTag(em#shape), curve3(em#alphaOver)));
         Assert.assertEq(expected = Some(("box", ("flicker", 8.0, 0.6))), got)
+
+    /// shape=glow（縁がふわっと消える円）も読める。
+    @Test
+    def testParseGlowShape(): Unit \ Assert =
+        let doc = "{ \"name\": \"m\", \"duration\": 1.0, \"emitters\": ["
+            + " { \"name\": \"d\", \"count\": 1, \"shape\": \"glow\", \"size\": 2,"
+            + " \"color\": [\"#ffffff\"], \"life\": { \"base\": 0.4 } } ] }";
+        Assert.assertEq(
+            expected = Some("glow"),
+            parseDoc(doc) |> Option.flatMap(firstEmitter) |> Option.map(em -> shapeTag(em#shape)))
 
     // ════════════════════════════════════════════════════════
     // parse: エラー（ノードパス付き）

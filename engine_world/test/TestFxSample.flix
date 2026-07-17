@@ -150,6 +150,26 @@ mod TestFxSample {
             |> Option.map(fp -> { let (x, y, sx, sy, _, _, _, _, _, _) = fp; (x, y, sx, sy) });
         Assert.assertEq(expected = Some((4.0, -1.0, 2.0, 2.0)), got)
 
+    /// glow 形: 1 粒が同心円の重ねになる。外側の輪は circle と同じ置き場所・同じ大きさ
+    /// （中心置き → 左上 (5-1, 0-1)・直径 = size）で、内へ向かって半径が等分に縮む。
+    /// alpha は縁（外の輪）ほど薄く中心ほど濃い — ふわっとした減衰の向きを固定する。
+    ///
+    ///   ┌───────┐← 半径 1.0 の輪（circle と同じ外形・いちばん薄い）
+    ///   │ ◎◎◎ │   内側ほど小さく濃い輪が重なる（半径 0.75, 0.5, 0.25）
+    ///   └───────┘
+    @Test
+    def testGlowShape(): Unit \ Assert =
+        let em = { count = 1, shape = FxDoc.Shape.Glow | baseEmitter() };
+        let fps = fingerprints(Fx.sample(specOf(em), 0i64, 0.5));
+        let posSizes = List.map(fp -> { let (x, y, sx, sy, _, _, _, _, _, _) = fp; (x, y, sx, sy) }, fps);
+        let alphas = List.map(fp -> { let (_, _, _, _, _, _, _, a, _, _) = fp; a }, fps);
+        let increasing = List.zip(alphas, List.drop(1, alphas))
+            |> List.forAll(pair -> { let (outer, inner) = pair; outer < inner });
+        Assert.assertEq(
+            expected = ((4.0, -1.0, 2.0, 2.0) :: (4.25, -0.75, 1.5, 1.5)
+                        :: (4.5, -0.5, 1.0, 1.0) :: (4.75, -0.25, 0.5, 0.5) :: Nil, true),
+            (posSizes, increasing))
+
     /// parse → sample の通し: 相談で承認した explosion スペックが t=0.15 で絵を出す。
     @Test
     def testParsedExplosionSamples(): Unit \ Assert =

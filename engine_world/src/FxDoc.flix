@@ -6,7 +6,7 @@
 // 語彙（version 1）:
 //   トップレベル: name（必須）/ duration 秒（必須）/ emitters（必須・1 個以上）。
 //     "version"（省略時 1。1 以外は Err）・"$schema"・"note"・"//" キーは ui.json と同じ扱い。
-//   emitter: name / count / shape("circle"|"box"・省略時 circle) / size px /
+//   emitter: name / count / shape("circle"|"box"|"glow"・省略時 circle) / size px /
 //     color（1〜N 色の配列 — 寿命に沿った線形グラデ。色表記は ui.json と同じ）/
 //     life {base 秒, vary} / speed {base px/s, vary, over} / dir {base 度, spread 度} /
 //     sizeOver / alphaOver（カーブ）/ blend("normal"|"add"|"multiply"・省略時 normal) / zIndex。
@@ -48,9 +48,12 @@ mod FxDoc {
     }
 
     /// 粒の形。circle は直径 size の円、box は一辺 size の正方形。
+    /// glow は直径 size の「縁がふわっと消える円」— 煙・光の玉のように、
+    /// 円の輪郭を見せたくない粒に使う。
     pub enum Shape with Eq {
         case Circle
         case Box
+        case Glow
     }
 
     /// ばらつき付きの量。粒ごとに base × (1 ± vary) の範囲で決まり、
@@ -157,8 +160,9 @@ mod FxDoc {
             case Ok(None)            => Ok(Shape.Circle)
             case Ok(Some("circle"))  => Ok(Shape.Circle)
             case Ok(Some("box"))     => Ok(Shape.Box)
+            case Ok(Some("glow"))    => Ok(Shape.Glow)
             case Ok(Some(unknown))   =>
-                JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"shape must be circle|box (got: ${unknown})"})))
+                JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"shape must be circle|box|glow (got: ${unknown})"})))
         }
 
     def parseBlend(path: String, m: Map[String, Json]): Result[JsonError, DrawCmd.BlendMode] =

@@ -73,6 +73,57 @@ mod Render {
         { at = { x = center#x - radius, y = center#y - radius },
           item = circle(radius, color, zIndex) }
 
+    /// 中心 center に置いた「縁がふわっと消える円」の列（ソフトな光球・煙玉）。
+    /// look#alpha は中心の濃さ 0..1、look#blend は重ね方（光り物は Add が定番）。
+    /// 中心から縁への減衰は RadialGlow（グロー bake）と同じ smoothstep カーブ —
+    /// 焼いたハロと絵の系統が揃う。実現は同心円の重ねで、重なった見かけの濃さが
+    /// カーブに一致するよう各円の alpha を逆算する。テクスチャや描画部の拡張に
+    /// 頼らないのは、fx.json（閉形式パーティクル）が「アセット不要・どの描画部でも
+    /// 同じ絵」を守るため — バックエンドごとの実装差や PNG 資産の登録漏れという
+    /// 事故の入口を作らない。
+    pub def glowAt(center: Vec2.Vec2, radius: Float64, color: Color,
+                   look: { alpha = Float64, blend = DrawCmd.BlendMode },
+                   zIndex: Int32): List[PlacedItem] =
+        if (radius <= 0.0 or look#alpha <= 0.0) Nil
+        else {
+            // 輪の数は半径に応じて増やす（1px 未満の輪は意味がないため半径 px を上限の目安に、
+            // 大きな玉でも段差が見えない 24 で頭打ち・小さな粒でも形が保てる下限 4）。
+            let rings = Int32.min(24, Int32.max(4, ceilI(radius)));
+            let n = Int32.toFloat64(rings);
+            // 外側の輪から順に「その輪まで重なった濃さ」が減衰カーブに乗るように積む。
+            // 同色・同ブレンドの重なりは順序に依らないので、輪の並び順は見た目に影響しない。
+            List.range(0, rings) |> List.filterMap(k -> {
+                let kf = Int32.toFloat64(k);
+                let ringRadius = radius * (1.0 - kf / n);
+                // 輪 k が受け持つ帯の中央の距離（0=中心, 1=縁）で目標の濃さを決める。
+                let target = c -> look#alpha * smoothFalloff(1.0 - (c + 0.5) / n);
+                let before = if (k == 0) 0.0 else target(kf - 1.0);
+                let goal = target(kf);
+                // Add は足し算で濃さが積もる。Normal / Multiply は「上に重ねるほど
+                // 残りの薄さが縮む」ので、差分を残り分で割って 1 枚ぶんの alpha に戻す。
+                let ringAlpha = match look#blend {
+                    case DrawCmd.BlendMode.Add => goal - before
+                    case _                     =>
+                        if (before >= 0.9999) 0.0 else (goal - before) / (1.0 - before)
+                };
+                if (ringAlpha <= 0.0) None
+                else Some(circleAt(center, ringRadius, color, zIndex)
+                    |> (placed -> { item = placed#item
+                                        |> fade(Float64.truncateToFloat32(ringAlpha))
+                                        |> blended(look#blend) | placed }))
+            })
+        }
+
+    /// 中心 0 → 縁 1 の距離を濃さ倍率に写す減衰（RadialGlow.smoothstepCurve と同じ式）。
+    /// engine_world は engine_tools（RadialGlow の住処）に依存できないため、式だけ揃える。
+    def smoothFalloff(t: Float64): Float64 =
+        let x = Float64.max(0.0, Float64.min(1.0, 1.0 - t));
+        x * x * (3.0 - 2.0 * x)
+
+    /// 切り上げの Int32（輪の数の見積もり用。非負前提）。
+    def ceilI(x: Float64): Int32 =
+        Float64.ceil(x) |> Float64.tryToInt32 |> Option.getWithDefault(16)
+
     /// 中心 center に置いた単色の矩形（PlacedItem）。左上で置きたいときは box を使う。
     pub def boxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32): PlacedItem =
         { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },

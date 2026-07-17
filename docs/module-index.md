@@ -36,6 +36,7 @@
 | 起動中のゲームを外から操作・観測する | RemoteDebug |
 | 画面を覆う・晴らす切り替え演出（フェード・ワイプ） | Transition |
 | 光らせる・暗く沈める（加算・乗算の重ね方） | Render（blended） |
+| 縁がふわっと消える光球・煙玉を置く | Render（glowAt）/ fx.json の shape "glow" |
 | BGM をだんだん出す・消す・入れ替える（音量カーブ） | AudioFade |
 
 ## 土台（App・ECS）

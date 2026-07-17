@@ -51,11 +51,12 @@ mod Fx {
     /// burst 自身に宿り、どの spec の効果かを引く対応表が要らない。
     pub type alias Burst = { spec = FxDoc.Spec, seed = Int64, at = Vec2.Vec2, bornAt = Float64 }
 
-    /// 時刻 now に at で始まる効果を作る。seed は「撃つたびに変える通し番号」— 同じ爆発が
+    /// 時刻 bornAt に at で始まる効果を作る(普段は「今」を渡す。bake のように過去生まれを
+    /// 作るときはその時刻を渡す)。seed は「撃つたびに変える通し番号」— 同じ爆発が
     /// 毎回そっくり同じ姿になるのを避ける。ゲームの連番は Int32 が普通なので口は Int32 にし、
     /// sample が食べる Int64 への変換はここが済ませる。
-    pub def burst(spec: FxDoc.Spec, seed: Int32, at: Vec2.Vec2, now: Float64): Burst =
-        { spec = spec, seed = Int32.toInt64(seed), at = at, bornAt = now }
+    pub def burst(spec: FxDoc.Spec, seed: Int32, at: Vec2.Vec2, bornAt: Float64): Burst =
+        { spec = spec, seed = Int32.toInt64(seed), at = at, bornAt = bornAt }
 
     /// 寿命内（経過が各自の spec の duration まで）の burst だけ残す。毎フレーム呼んで、
     /// 終わった効果でリストが伸び続けるのを防ぐ。
@@ -73,14 +74,15 @@ mod Fx {
     def sampleEmitter(emitter: FxDoc.Emitter, seed: Int64, t: Float64): List[Render.PlacedItem] =
         // emitter 名を種に混ぜて、同じ seed でも emitter ごとに別の乱数系統を引く。
         let emitterSeed = mix64(Int64.bitwiseXor(seed, nameHash(emitter#name)));
-        List.range(0, emitter#count) |> List.filterMap(i -> sampleParticle(emitter, emitterSeed, i, t))
+        List.range(0, emitter#count) |> List.flatMap(i -> sampleParticle(emitter, emitterSeed, i, t))
 
-    /// 粒 i の時刻 t の姿。寿命が尽きた粒は None。v1 は burst（全粒 t=0 生まれ）固定。
+    /// 粒 i の時刻 t の姿。寿命が尽きた粒は空リスト。v1 は burst（全粒 t=0 生まれ）固定。
+    /// circle / box は 1 粒 = 1 枚、glow だけは縁の減衰を同心円の重ねで作るため 1 粒 = 複数枚。
     def sampleParticle(emitter: FxDoc.Emitter, emitterSeed: Int64, i: Int32,
-                       t: Float64): Option[Render.PlacedItem] =
+                       t: Float64): List[Render.PlacedItem] =
         let rand = k -> rand01(emitterSeed, i, k);
         let life = varied(emitter#life#base, emitter#life#vary, rand(0));
-        if (t >= life or life <= 0.0) None
+        if (t >= life or life <= 0.0) Nil
         else {
             let u = t / life;
             // 位置 = 初速 × 速度カーブの積分（閉形式）。dir は度（0 = 真上・時計回り）。
@@ -90,16 +92,24 @@ mod Fx {
             let pos = Vec2.mul(Vec2.onEllipse({ x = 1.0, y = 1.0 }, turn), dist);
             let size = emitter#size * curveValue(emitter#sizeOver, i, u);
             let alpha = clamp01(curveValue(emitter#alphaOver, i, u));
-            if (size <= 0.0 or alpha <= 0.0) None
+            if (size <= 0.0 or alpha <= 0.0) Nil
             else {
                 let color = gradient(emitter#color, u);
-                let placed = match emitter#shape {
-                    case FxDoc.Shape.Circle => Render.circleAt(pos, size / 2.0, color, emitter#zIndex)
-                    case FxDoc.Shape.Box    => Render.boxAt(pos, { x = size, y = size }, color, emitter#zIndex)
+                let decorate = placed -> {
+                    let faded = placed#item |> Render.fade(Float64.truncateToFloat32(alpha));
+                    { item = Render.blended(emitter#blend, faded) | placed }
                 };
-                let faded = placed#item |> Render.fade(Float64.truncateToFloat32(alpha));
-                let item = Render.blended(emitter#blend, faded);
-                Some({ item = item | placed })
+                match emitter#shape {
+                    case FxDoc.Shape.Circle =>
+                        decorate(Render.circleAt(pos, size / 2.0, color, emitter#zIndex)) :: Nil
+                    case FxDoc.Shape.Box    =>
+                        decorate(Render.boxAt(pos, { x = size, y = size }, color, emitter#zIndex)) :: Nil
+                    case FxDoc.Shape.Glow   =>
+                        // 濃さとブレンドは glowAt が輪ごとに配るので decorate は通さない
+                        //（後から fade を掛けると輪ごとの配分が上書きされて減衰が消える）。
+                        Render.glowAt(pos, size / 2.0, color,
+                                      { alpha = alpha, blend = emitter#blend }, emitter#zIndex)
+                }
             }
         }
 
