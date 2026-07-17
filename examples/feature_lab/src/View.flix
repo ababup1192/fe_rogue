@@ -209,6 +209,17 @@ mod View {
         List.append(boxes,
             Render.circleAt(wallPillarCenter(), wallPillarRadius(), wallColor(), wallZ()) :: Nil)
 
+    /// 壁の当たり判定形（見た目・遮蔽ポリゴンと同じ wallBoxes/wallPillar* から導く —
+    /// 三重定義にすると見た目とすり抜け判定がずれる）。dx/dy=0 の絶対座標として持つので、
+    /// Hit.overlaps へ渡す pos は常に Vec2.zero() でよい。
+    pub def wallHitShapes(): List[Hit.HitShape] =
+        let boxes = wallBoxes() |> List.map(pair -> {
+            let (center, size) = pair;
+            Hit.HitShape.BoxH({ dx = center#x, dy = center#y, w = size#x, h = size#y })
+        });
+        List.append(boxes,
+            Hit.HitShape.CircleH({ dx = wallPillarCenter()#x, dy = wallPillarCenter()#y, r = wallPillarRadius() }) :: Nil)
+
     /// 壁の遮蔽ポリゴン（見た目と同じ中心・大きさから導く）。
     def wallOccluders(): List[List[Vec2.Vec2]] =
         let boxes = wallBoxes() |> List.map(pair -> {
@@ -251,7 +262,8 @@ mod View {
                 let shadows = if (lantern#walls)
                         Shadow.itemsFor(lanternLight(lantern#at), wallOccluders(),
                             { darkness = lanternDarkness(), z = lanternZ(),
-                              extrudeLength = Shadow.infiniteExtrude() })
+                              extrudeLength = Shadow.infiniteExtrude(),
+                              rimWidth = Shadow.defaultRimWidth(), rimStrength = Shadow.defaultRimStrength() })
                     else List.empty();
                 List.append(lightItems, shadows)
         }

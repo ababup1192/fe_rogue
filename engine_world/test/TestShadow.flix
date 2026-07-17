@@ -22,6 +22,17 @@ mod TestShadow {
     def quadStartingAt(quads: List[List[Vec2.Vec2]], x: Float64, y: Float64): Option[List[Vec2.Vec2]] =
         quads |> List.find(q -> List.head(q) |> Option.map(v -> near(v#x, x) and near(v#y, y)) |> Option.getWithDefault(false))
 
+    /// (quad, falloff) タプルから quad 部分だけ取り出す（rimQuads の戻り値を既存の
+    /// quad リスト前提のヘルパーへ渡すための橋渡し）。
+    def quadOf(pair: (List[Vec2.Vec2], Float64)): List[Vec2.Vec2] =
+        let (quad, _) = pair;
+        quad
+
+    /// (quad, falloff) タプルから falloff 部分だけ取り出す。
+    def falloffOf(pair: (List[Vec2.Vec2], Float64)): Float64 =
+        let (_, falloff) = pair;
+        falloff
+
     /// 中心 (0,0)・一辺10 の正方形（左上→右上→右下→左下＝画面上で時計回り）。
     def square(): List[Vec2.Vec2] =
         at(-5.0, -5.0) :: at(5.0, -5.0) :: at(5.0, 5.0) :: at(-5.0, 5.0) :: Nil
@@ -119,20 +130,44 @@ mod TestShadow {
 
     // ── itemsFor: Light との合成（blend/alpha/z の pin） ──
 
+    /// フチ無し（rimWidth=0）の共通 cfg。互換確認や胴体/影四角形だけを見たいテストで使う。
+    def cfgNoRim(): Shadow.ShadowConfig =
+        { darkness = 0.6, z = 7, extrudeLength = 100.0, rimWidth = 0.0, rimStrength = 0.5 }
+
     /// itemsFor が返す PlacedItem が Multiply・alpha=darkness・cfg#z の黒 Poly になっていることを
     /// pin する（頂点そのものは shadowQuads 側で確認済みなので、ここでは合成の属性だけを見る）。
+    /// n=2 の線分（占有物）は「胴体」を四角形にできない退化ケースなので、胴体 Poly の
+    /// 頂点数=2（線分そのもの）・影四角形 Poly の頂点数=4 という 2 種の混在が pin される。
     @Test
     def testItemsForProducesMultiplyBlackPolyWithConfiguredAlphaAndZ(): Unit \ Assert =
         let light: Light.Light = { at = at(-100.0, 0.0), radius = 50.0, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, halo = 0.0 };
         let segment = at(0.0, -5.0) :: at(0.0, 5.0) :: Nil;
-        let cfg = { darkness = 0.6, z = 7, extrudeLength = 100.0 };
-        let items = Shadow.itemsFor(light, segment :: Nil, cfg);
+        let items = Shadow.itemsFor(light, segment :: Nil, cfgNoRim());
         let attrsOf = (placed: Render.PlacedItem) -> match placed#item {
-            case Render.Item.Poly(p) => Some((p#blend, p#alpha, p#zIndex, p#color#r))
+            case Render.Item.Poly(p) => Some((p#blend, p#alpha, p#zIndex, p#color#r, List.length(p#vertices)))
             case _                   => None
         };
-        Assert.assertEq(expected = (1, Some((DrawCmd.BlendMode.Multiply, 0.6f32, 7, 0.0f32))),
-            (List.length(items), List.head(items) |> Option.flatMap(attrsOf)))
+        // 2件: [0]=胴体(線分そのまま2頂点)、[1]=影四角形(4頂点)。
+        Assert.assertEq(expected = (2,
+                Some((DrawCmd.BlendMode.Multiply, 0.6f32, 7, 0.0f32, 2)),
+                Some((DrawCmd.BlendMode.Multiply, 0.6f32, 7, 0.0f32, 4))),
+            (List.length(items),
+             List.head(items) |> Option.flatMap(attrsOf),
+             List.drop(1, items) |> List.head |> Option.flatMap(attrsOf)))
+
+    /// 遮蔽物自身の胴体（正方形）が itemsFor の出力に Multiply 黒 Poly として含まれることを
+    /// 枚数と頂点集合の両方で pin する（「壁の胴体は影に含まれない＝ガラスの壁」の回帰防止）。
+    /// square は3背面辺を持つので、items = 胴体1 + 影四角形3 = 4件になる。
+    @Test
+    def testItemsForIncludesOccluderBodyAsMultiplyPoly(): Unit \ Assert =
+        let light: Light.Light = { at = at(-100.0, 0.0), radius = 50.0, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, halo = 0.0 };
+        let items = Shadow.itemsFor(light, square() :: Nil, cfgNoRim());
+        let bodyVertsOf = (placed: Render.PlacedItem) -> match placed#item {
+            case Render.Item.Poly(p) => p#vertices
+            case _                   => Nil
+        };
+        let body = List.head(items) |> Option.map(bodyVertsOf) |> Option.getWithDefault(Nil);
+        Assert.assertEq(expected = (4, true), (List.length(items), sameVertexSet(square(), body)))
 
     /// 逆に、壁の手前（光と壁の間）の点は影四角形に含まれない。
     @Test
@@ -178,4 +213,130 @@ mod TestShadow {
             forward |> List.forAll(qf -> reversed |> List.exists(qr -> sameVertexSet(qf, qr)));
         Assert.assertEq(expected = (3, true),
             (List.length(reversed), everyForwardQuadMatchedInReversed))
+
+    // ── rimQuads: 光向き面（前面辺）のフチ ──
+
+    /// 正方形+左からの光: 背面3辺(top/right/bottom)の逆で、前面はleft辺(-5,-5)-(-5,5)だけ。
+    /// rimQuads はその1辺だけから帯を1枚返す。他の遮蔽物なし(allShadowQuads=Nil)・
+    /// radius=1000は辺までの距離(約95)より十分大きいので遮蔽/減衰の影響を受けない。
+    @Test
+    def testRimQuadsOfSquareLeftLightOnlyLeftEdgeIsFront(): Unit \ Assert =
+        let rims = Shadow.rimQuads(at(-100.0, 0.0), square(), 2.5, 1000.0, Nil);
+        Assert.assertEq(expected = 1, List.length(rims))
+
+    /// left辺の帯は「ポリゴンの内側（+x側）」へ寄る: 4頂点すべてが x=-5（辺そのもの）
+    /// または x=-5+rimWidth（内側へ寄せた側）のどちらかになり、外側(x<-5)へは出ない。
+    @Test
+    def testRimQuadsHugInsideOfOccluder(): Unit \ Assert =
+        let rimWidth = 2.5;
+        let rims = Shadow.rimQuads(at(-100.0, 0.0), square(), rimWidth, 1000.0, Nil);
+        let quads = List.map(quadOf, rims);
+        let onEdgeOrInside = (v: Vec2.Vec2) -> near(v#x, -5.0) or near(v#x, -5.0 + rimWidth);
+        let allInside = quads |> List.forAll(q -> q |> List.forAll(onEdgeOrInside));
+        Assert.assertEq(expected = (1, true), (List.length(quads), allInside))
+
+    /// rimWidth<=0 ではフチを作らない（既定 off = 互換の確認）。
+    @Test
+    def testRimQuadsEmptyWhenRimWidthZero(): Unit \ Assert =
+        let rims = Shadow.rimQuads(at(-100.0, 0.0), square(), 0.0, 1000.0, Nil);
+        Assert.assertEq(expected = 0, List.length(rims))
+
+    /// itemsFor: rimWidth>0 のとき、light#color・Add・alpha=rimStrength の Poly が
+    /// 胴体・影四角形の後ろに追加で並ぶことを pin する。
+    /// n=2 の線分（1背面辺+1前面辺）: 胴体1 + 影四角形1 + フチ1 = 3件。
+    /// radius=1000 は前面辺の中点(0,0)から光(-100,0)までの距離100より十分大きく、
+    /// 遮蔽物も1個だけ(自己遮蔽なし)なので falloff=1.0・alpha=rimStrengthそのまま。
+    @Test
+    def testItemsForAddsAddBlendRimPolyWithLightColorAndStrength(): Unit \ Assert =
+        let light: Light.Light = { at = at(-100.0, 0.0), radius = 1000.0,
+                                     color = { r = 1.0f32, g = 0.75f32, b = 0.4f32 }, halo = 0.0 };
+        let segment = at(0.0, -5.0) :: at(0.0, 5.0) :: Nil;
+        let cfg = { darkness = 0.6, z = 7, extrudeLength = 100.0, rimWidth = 2.5, rimStrength = 0.5 };
+        let items = Shadow.itemsFor(light, segment :: Nil, cfg);
+        let attrsOf = (placed: Render.PlacedItem) -> match placed#item {
+            case Render.Item.Poly(p) => Some((p#blend, p#alpha, p#zIndex, p#color#r, p#color#g, p#color#b))
+            case _                   => None
+        };
+        let rim = List.drop(2, items) |> List.head |> Option.flatMap(attrsOf);
+        Assert.assertEq(expected = (3, Some((DrawCmd.BlendMode.Add, 0.5f32, 7, 1.0f32, 0.75f32, 0.4f32))),
+            (List.length(items), rim))
+
+    // ── rimQuads: 遮蔽（修正D）・自己遮蔽（修正D）・距離減衰（修正E） ──
+
+    /// 中心 (cx, 0)・一辺10 の正方形（square() と同じ形を任意の中心へ）。
+    def squareAt(cx: Float64): List[Vec2.Vec2] =
+        at(cx - 5.0, -5.0) :: at(cx + 5.0, -5.0) :: at(cx + 5.0, 5.0) :: at(cx - 5.0, 5.0) :: Nil
+
+    /// 光・手前の正方形A(center=-50)・奥の正方形B(center=50)を一直線に並べる。
+    /// A の right 辺(x=-45)が落とす影四角形が B の left 辺(前面, 中点(45,0))を覆うため、
+    /// B のフチは出ない。A 自身の left 辺(前面, 中点(-55,0))は何にも遮られず出る（対照）。
+    @Test
+    def testRimQuadsBlockedByOtherOccludersShadow(): Unit \ Assert =
+        let light = at(-100.0, 0.0);
+        let a = squareAt(-50.0);
+        let b = squareAt(50.0);
+        let allShadowQuads = Shadow.shadowQuads(light, a, 200.0) ++ Shadow.shadowQuads(light, b, 200.0);
+        let aRims = Shadow.rimQuads(light, a, 2.5, 1000.0, allShadowQuads);
+        let bRims = Shadow.rimQuads(light, b, 2.5, 1000.0, allShadowQuads);
+        // A: left辺(-55,-5)-(-55,5)由来の帯が1枚出る。B: 前面辺が遮蔽されフチ0枚。
+        Assert.assertEq(expected = (1, 0),
+            (List.length(aRims), List.length(bRims)))
+
+    /// A 自身のフチの中身も pin する: 内側(+x側)へ寄った帯の4頂点。
+    @Test
+    def testRimQuadsBlockedByOtherOccludersFrontEdgeVertices(): Unit \ Assert =
+        let light = at(-100.0, 0.0);
+        let a = squareAt(-50.0);
+        let b = squareAt(50.0);
+        let allShadowQuads = Shadow.shadowQuads(light, a, 200.0) ++ Shadow.shadowQuads(light, b, 200.0);
+        let aRims = Shadow.rimQuads(light, a, 2.5, 1000.0, allShadowQuads);
+        let expected = at(-55.0, 5.0) :: at(-55.0, -5.0) :: at(-52.5, -5.0) :: at(-52.5, 5.0) :: Nil;
+        let actual = List.head(aRims) |> Option.map(quadOf);
+        Assert.assertEq(expected = Some(true),
+            Option.map(q -> verticesNear(expected, q), actual))
+
+    /// L字（凹ポリゴン）の自己遮蔽: くぼみの奥の前面辺(v=(0,0)-(10,0)、中点(5,0))は
+    /// 自分自身が落とす影四角形(自己遮蔽)に中点が含まれ、フチが消える。
+    /// 他の2前面辺(top辺 (-10,-10)-(0,-10) 中点(-5,-10)、left辺 (-10,10)-(-10,-10) 中点(-10,0))
+    /// は遮られず残る → rimQuads は3前面辺のうち2枚だけ返す。
+    @Test
+    def testRimQuadsSelfOcclusionOnConcavePolygon(): Unit \ Assert =
+        let light = at(-150.0, -30.0);
+        let occluder = lShape();
+        let allShadowQuads = Shadow.shadowQuads(light, occluder, 300.0);
+        let rims = Shadow.rimQuads(light, occluder, 2.5, 1000.0, allShadowQuads);
+        let quads = List.map(quadOf, rims);
+        let notchFrontStillLit = quads |> List.exists(q -> List.head(q) |> Option.map(v -> near(v#x, 0.0) and near(v#y, 0.0)) |> Option.getWithDefault(false));
+        Assert.assertEq(expected = (2, false), (List.length(quads), notchFrontStillLit))
+
+    /// 距離減衰: 光(0,0)・radius=100。正方形の中心 D を変えて前面辺(left辺)の中点までの
+    /// 距離を作る。D=55→中点(50,0)距離50(radius内)→falloff=1.0。
+    /// D=155→中点(150,0)距離150(=1.5*radius)→falloff=0.5。
+    /// D=255→中点(250,0)距離250(>2*radius)→None(Polyごと省かれる)。
+    @Test
+    def testRimQuadsDistanceFalloff(): Unit \ Assert =
+        let light = at(0.0, 0.0);
+        let radius = 100.0;
+        let withinRadius = Shadow.rimQuads(light, squareAt(55.0), 2.5, radius, Nil);
+        let atOneAndHalfRadius = Shadow.rimQuads(light, squareAt(155.0), 2.5, radius, Nil);
+        let beyondTwiceRadius = Shadow.rimQuads(light, squareAt(255.0), 2.5, radius, Nil);
+        let falloffWithin = List.head(withinRadius) |> Option.map(falloffOf);
+        let falloffHalf = List.head(atOneAndHalfRadius) |> Option.map(falloffOf);
+        Assert.assertEq(expected = (Some(1.0), Some(0.5), 0),
+            (falloffWithin, falloffHalf, List.length(beyondTwiceRadius)))
+
+    /// itemsFor 経由でも falloff が rimStrength に乗算されて alpha に反映されることを pin する。
+    /// D=155(1.5*radius)・rimStrength=0.5・falloff=0.5 → alpha=0.25。
+    @Test
+    def testItemsForAppliesFalloffToRimAlpha(): Unit \ Assert =
+        let light: Light.Light = { at = at(0.0, 0.0), radius = 100.0,
+                                     color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, halo = 0.0 };
+        let cfg = { darkness = 0.6, z = 7, extrudeLength = 400.0, rimWidth = 2.5, rimStrength = 0.5 };
+        let items = Shadow.itemsFor(light, squareAt(155.0) :: Nil, cfg);
+        let alphaOf = (placed: Render.PlacedItem) -> match placed#item {
+            case Render.Item.Poly(p) => if (p#blend == DrawCmd.BlendMode.Add) Some(p#alpha) else None
+            case _                   => None
+        };
+        let rimAlpha = items |> List.filterMap(alphaOf) |> List.head;
+        Assert.assertEq(expected = Some(0.25f32), rimAlpha)
 }
