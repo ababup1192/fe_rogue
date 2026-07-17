@@ -120,6 +120,10 @@ mod Editor {
                 let (status, json) = PreviewFx.respond(dir, caches, readBody(exchange));
                 sendJson(status, json, exchange)
             })
+            case ("POST", "/preview/items") => withProject(selection, exchange, dir -> {
+                let (status, json) = PreviewItems.respond(dir, caches, readBody(exchange));
+                sendJson(status, json, exchange)
+            })
             case ("GET", _)            => handleStatic(webRoot, path, exchange)
             case ("HEAD", _)           => handleStatic(webRoot, path, exchange)
             case _                     => sendJson(404, errorJson("unknown endpoint: ${methodName} ${path}"), exchange)
