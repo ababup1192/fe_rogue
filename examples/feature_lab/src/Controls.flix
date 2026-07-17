@@ -97,6 +97,19 @@ mod Controls {
     pub def reloadUi(world: World.World): World.World \ {Fs.FileRead} =
         { ui = UiSpec.reloadAll(world#ui) | world }
 
+    /// light.json の置き場所（カンテラ探索デモの光の質感）。
+    def lightDocPath(): String = "assets/Lantern.light.json"
+
+    /// light.json を読む。読めない・壊れているときは LightDoc.empty()（fail-open —
+    /// ランタイムを止めずに「今は質感の上書きなし」で走らせる）。
+    pub def loadLightDoc(): LightDoc.Spec \ Fs.FileRead =
+        LightDoc.load(lightDocPath()) |> Result.getWithDefault(LightDoc.empty())
+
+    /// App.watchFile 用: light.json の保存を検知して World の質感を差し替える
+    /// （at はここでは触らない — 位置は lantern#at が持ち続ける）。
+    pub def reloadLightDoc(world: World.World): World.World \ {Fs.FileRead} =
+        { lightDoc = loadLightDoc() | world }
+
     /// ブレンド実験の意図。Z/X/C で Normal/Add/Multiply を直接選ぶ
     /// （W/A/S/D の Transition 選択と同じ「N 択 = 専用キー N 個」の形）。
     enum BlendIntent with Eq {
@@ -162,18 +175,26 @@ mod Controls {
     /// カンテラ登場時の初期位置（design 中央）。
     def lanternStart(): Vec2.Vec2 = { x = 160.0, y = 120.0 }
 
+    /// カンテラの当たり判定半径（見た目のカンテラ玉＝影の証明用マーカーと同じ 6px 級の
+    /// 小さな円。光の穴 lanternRadius=48 は「見える範囲」であって当たり判定の大きさではない）。
+    def lanternHitRadius(): Float64 = 6.0
+
     /// 矢印キーのどれかが押されているか（デモの出現条件と移動の両方に使う）。
     def arrowsDown(frame: App.Frame): Bool =
         App.isDown(Key.Left, frame) or App.isDown(Key.Right, frame) or
         App.isDown(Key.Up, frame) or App.isDown(Key.Down, frame)
 
-    /// 暗闇 on/off の意図。LeftShift（Key に L は無いため、feature_lab 未使用のキーで代用）。
+    /// 暗闇 on/off と壁 on/off の意図。LeftShift・LeftCtrl
+    /// （Key に L や V は無いため、feature_lab 未使用のキーで代用）。
     enum LanternIntent with Eq {
         case ToggleDarkness
+        case ToggleWalls
     }
 
     def lanternTable(): InputMap.Table[LanternIntent] =
-        (Key.LeftShift, LanternIntent.ToggleDarkness) :: Nil
+           (Key.LeftShift, LanternIntent.ToggleDarkness)
+        :: (Key.LeftCtrl,  LanternIntent.ToggleWalls)
+        :: Nil
 
     /// カンテラ実験の手本 system。他デモ（blend）と同じ Option パターン: 矢印キーを
     /// 押すまでは None（非表示。bake する他シーンに映り込まない）で、押した瞬間に
@@ -181,21 +202,46 @@ mod Controls {
     /// （範囲外へ出るとカンテラの穴あき暗幕が画面から外れて見えなくなるため）。
     /// LeftShift は Bright ⇔ DarkWithLight をトグルする（Dark はゲーム内操作から経由しない）。
     pub def lanternStep(frame: App.Frame, world: World.World): World.World =
-        let toggled = InputMap.taps(lanternTable(), frame) |> List.memberOf(LanternIntent.ToggleDarkness);
+        let taps = InputMap.taps(lanternTable(), frame);
+        let toggled = List.memberOf(LanternIntent.ToggleDarkness, taps);
+        let toggledWalls = List.memberOf(LanternIntent.ToggleWalls, taps);
         match world#lantern {
             case None =>
-                if (arrowsDown(frame)) { lantern = Some({ at = lanternStart(), mode = World.LanternMode.Bright }) | world }
+                if (arrowsDown(frame)) { lantern = Some({ at = lanternStart(), mode = World.LanternMode.Bright, walls = false }) | world }
                 else world
             case Some(lantern) =>
                 let dx = App.axis({ negative = Key.Left }, { positive = Key.Right }, frame);
                 let dy = App.axis({ negative = Key.Up }, { positive = Key.Down }, frame);
-                let moved = Vec2.add(lantern#at, Vec2.mul({ x = dx, y = dy }, lanternSpeed() * frame#dt));
+                let delta = Vec2.mul({ x = dx, y = dy }, lanternSpeed() * frame#dt);
+                let walls = if (toggledWalls) not lantern#walls else lantern#walls;
+                let moved = moveLantern(lantern#at, delta, walls);
                 let bounds = lanternBounds();
                 let clamped = { x = Float64.max(lanternMargin(), Float64.min(bounds#x, moved#x)),
                                  y = Float64.max(lanternMargin(), Float64.min(bounds#y, moved#y)) };
                 let mode = if (toggled) toggleBrightness(lantern#mode) else lantern#mode;
-                { lantern = Some({ at = clamped, mode = mode }) | world }
+                { lantern = Some({ at = clamped, mode = mode, walls = walls }) | world }
         }
+
+    /// カンテラの新しい位置。walls=off なら delta をそのまま足すだけ（自由移動）。
+    /// walls=on なら軸ごとに独立して「その軸だけ動かした先が壁と重ならないか」を判定し、
+    /// 通れる軸だけ動かす（定番のスライド — 斜め入力で片方の軸が壁際でも、もう片方の軸は
+    /// 通り続けられるので壁沿いで引っかかって止まらない）。
+    pub def moveLantern(at: Vec2.Vec2, delta: Vec2.Vec2, walls: Bool): Vec2.Vec2 =
+        if (not walls)
+            Vec2.add(at, delta)
+        else {
+            let afterX = { x = at#x + delta#x, y = at#y };
+            let steppedX = if (hitsWall(afterX)) at else afterX;
+            let afterY = { x = steppedX#x, y = steppedX#y + delta#y };
+            if (hitsWall(afterY)) steppedX else afterY
+        }
+
+    /// pos に置いたカンテラの当たり判定円が、壁のどれかと重なっているか
+    /// （形は View.wallHitShapes — 見た目の壁と同じソースから導く。ここで手書きの
+    /// AABB 判定は書かず、既存の Hit.overlaps 1 本に判定を委ねる）。
+    def hitsWall(pos: Vec2.Vec2): Bool =
+        let lanternShape = Hit.HitShape.CircleH({ dx = 0.0, dy = 0.0, r = lanternHitRadius() });
+        Hit.overlaps(pos, lanternShape :: Nil, Vec2.zero(), View.wallHitShapes())
 
     /// Bright ⇔ DarkWithLight のトグル（Dark はゲーム内操作から経由しないので、
     /// 万一そこにいた場合も DarkWithLight 側へ寄せる）。

@@ -32,7 +32,9 @@ mod World {
     }
 
     /// カンテラ実験の状態。at はプレイヤー（=光源）の位置、mode は今の暗闇の見せ方。
-    pub type alias Lantern = { at = Vec2.Vec2, mode = LanternMode }
+    /// walls は壁と影（Shadow）のデモの表示スイッチ（既定 off — 常時表示にすると
+    /// 既存の lantern 系 bake の絵が変わってしまうため、トグルで足す）。
+    pub type alias Lantern = { at = Vec2.Vec2, mode = LanternMode, walls = Bool }
 
     pub type alias World = {
         kind = Transition.Kind,                   // 最後に選んだ種類（Idle 中の Space もこれを再生）
@@ -45,22 +47,26 @@ mod World {
         blend = Option[DrawCmd.BlendMode],  // None = デモ非表示 / Z/X/C で重ね方を選ぶと表示
         // None = デモ非表示 / 矢印キーを押した瞬間に現れる（他デモと同じ Option パターン。
         // 常時表示にすると他シーンの bake（blend/fps/遷移 GIF）にも部屋と目印が映り込んでしまう）。
-        lantern = Option[Lantern]
+        lantern = Option[Lantern],
+        // カンテラの光の質感（assets/Lantern.light.json）。at は光源位置の初期値の目安に
+        // すぎず、実行中は lantern#at（World が持つプレイヤー位置）が正 — LightDoc.toConfigWithLights
+        // で毎フレーム差し替える（「json は質感、位置はゲーム」の分業）。
+        lightDoc = LightDoc.Spec
     }
 
     /// 起動直後は Idle（覆いなし）で始める。いきなり遷移を再生すると画面が
     /// フェードアウトして「消えた」ように見え、フルスクリーン等の起動確認ができないため。
     /// BGM は無音からのフェードインで始まり、マスターは全開。
-    /// ui は外の世界（ファイル）に触れるので、読み込み済みの物を Main から受け取る。
+    /// ui/lightDoc は外の世界（ファイル）に触れるので、読み込み済みの物を Main から受け取る。
     /// ウィンドウ表示は通常の窓・カーソルは見える状態で始める。
     /// blend デモは初期非表示（None）。常時表示にすると遷移 GIF や fps 見本の bake に
     /// 映り込み、既存の gallery の絵が変わってしまう。
-    pub def initial(ui: UiStore.UiWorld): World =
+    pub def initial(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): World =
         { kind = Transition.Kind.FadeOut, playing = None, steps = 0,
           bgm = { rising = true, progress = Transition.start(bgmDuration()), master = 1.0, playing = false },
           ui = ui, fullscreen = false, cursorVisible = true,
           blend = None,
-          lantern = None }
+          lantern = None, lightDoc = lightDoc }
 
     /// いまの BGM 音量（フェードの向きと進み具合から導く。実機へ流す値と同じ計算）。
     pub def bgmVolume(bgm: Bgm): Float64 =
@@ -94,8 +100,11 @@ mod World {
     /// 操作から経由しないため on/off 表記のままで足りる）。
     pub def lanternLabel(lantern: Option[Lantern]): String =
         lantern
-            |> Option.map(l -> "darkness=${onOff(l#mode == LanternMode.DarkWithLight)}")
+            |> Option.map(l -> "darkness=${onOff(l#mode == LanternMode.DarkWithLight)}${wallsSuffix(l)}")
             |> Option.getWithDefault("lantern=off (Arrows to start)")
+
+    /// walls=off のときは何も足さない（既存 bake の文字列＝絵をバイト単位で変えないため）。
+    def wallsSuffix(l: Lantern): String = if (l#walls) " walls=on" else ""
 
     /// ブレンドモード単体の表示名（gallery のカード名にも使う）。
     pub def modeLabel(mode: DrawCmd.BlendMode): String =

@@ -26,7 +26,7 @@
             "text": "Z/X/C: blend normal/add/multiply",
             "fontSize": 10, "tint": "#8899aa", "zIndex": 10 },
           { "name": "keysLine4", "widget": "text",
-            "text": "Arrows: lantern walk  LeftShift: darkness",
+            "text": "Arrows: lantern walk  LeftShift: darkness  LeftCtrl: walls",
             "fontSize": 10, "tint": "#8899aa", "zIndex": 10 },
           { "name": "keysLine5", "widget": "text",
             "text": "F1: ui reload  F8: pause/scrub",

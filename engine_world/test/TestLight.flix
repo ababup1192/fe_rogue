@@ -137,4 +137,71 @@ mod TestLight {
         Assert.assertEq(
             expected = Some((DrawCmd.BlendMode.Add, 200.0, 150.0, 0.4f32)),
             second |> Option.map(d -> (d#blend, d#position#x, d#position#y, d#alpha)))
+
+    // ── items（唯一の入口。単一/複数の振り分け + haloDiameterFactor + occluders 合成）──
+
+    def sceneCfg(lights: List[Light.Light], occluders: List[List[Vec2.Vec2]]): Light.SceneLightConfig =
+        { lights = lights, occluders = occluders,
+          viewport = { x = 320.0, y = 240.0 }, glow = Light.defaultGlowAssets(),
+          darkness = sampleDarkness(), z = 10,
+          rimWidth = Shadow.defaultRimWidth(), rimStrength = Shadow.defaultRimStrength(),
+          haloDiameterFactor = 1.0 }
+
+    // lights=0 個は multiLightItems を lights=Nil で呼ぶのと同じ枚数（全面暗幕1枚のみ）。
+    @Test
+    def testItemsZeroLightsIsCoverOnly(): Unit \ Assert =
+        let (drawables, _) = Render.draw(Light.items(sceneCfg(Nil, Nil)));
+        Assert.assertEq(expected = 1, List.length(drawables))
+
+    // lights=1 個・occludersなしは singleLightItems と同じ 6 枚（haloDiameterFactor=1.0 なら
+    // ハロの scale も singleLightItems 直呼びと同じ値になる）。
+    @Test
+    def testItemsOneLightMatchesSingleLightItems(): Unit \ Assert =
+        let cfg = sceneCfg(sampleLight() :: Nil, Nil);
+        let (drawables, _) = Render.draw(Light.items(cfg));
+        let (directDrawables, _) = Render.draw(Light.singleLightItems({
+            light = sampleLight(), viewport = cfg#viewport,
+            maskSprite = cfg#glow#maskSprite, maskSourceSize = cfg#glow#maskSourceSize,
+            maskHoleFrac = cfg#glow#maskHoleFrac,
+            haloSprite = cfg#glow#haloSprite, haloSourceSize = cfg#glow#haloSourceSize,
+            darkness = cfg#darkness, z = cfg#z }));
+        Assert.assertEq(
+            expected = (6, List.map(d -> d#scale#x, directDrawables)),
+            (List.length(drawables), List.map(d -> d#scale#x, drawables)))
+
+    // haloDiameterFactor はハロ（末尾）だけを拡大する。暗幕（先頭）の scale は変わらない。
+    @Test
+    def testItemsHaloDiameterFactorGrowsOnlyHalo(): Unit \ Assert =
+        let cfg = { haloDiameterFactor = 2.0 | sceneCfg(sampleLight() :: Nil, Nil) };
+        let (drawables, _) = Render.draw(Light.items(cfg));
+        let maskScale = List.head(drawables) |> Option.map(d -> d#scale#x);
+        let haloScale = List.last(drawables) |> Option.map(d -> d#scale#x);
+        Assert.assertEq(
+            expected = (Some(0.3125), Some(0.3125 * 2.0)),
+            (maskScale, haloScale))
+
+    // lights=1 個・occludersありは Shadow.itemsFor の結果が末尾に合流する
+    // （singleLightItems の 6 枚 + 遮蔽物1個ぶんの itemsFor 出力）。
+    @Test
+    def testItemsOneLightWithOccludersAppendsShadow(): Unit \ Assert =
+        let occluder = Shadow.occluderOfBox({ x = 100.0, y = 80.0 }, { x = 20.0, y = 20.0 });
+        let cfg = sceneCfg(sampleLight() :: Nil, occluder :: Nil);
+        let (withShadow, _) = Render.draw(Light.items(cfg));
+        let (withoutShadow, _) = Render.draw(Light.items({ occluders = Nil | cfg }));
+        let expectedShadowItems = Shadow.itemsFor(sampleLight(), occluder :: Nil,
+            { darkness = cfg#darkness, z = cfg#z, extrudeLength = Shadow.infiniteExtrude(),
+              rimWidth = cfg#rimWidth, rimStrength = cfg#rimStrength });
+        let (shadowOnly, _) = Render.draw(expectedShadowItems);
+        Assert.assertEq(
+            expected = List.length(withoutShadow) + List.length(shadowOnly),
+            List.length(withShadow))
+
+    // lights=2 個以上は occluders を渡しても影が増えない（multiLightItems と同じ枚数）
+    // — 複数光源では影が出ない制約の pin。
+    @Test
+    def testItemsMultiLightsIgnoreOccluders(): Unit \ Assert =
+        let occluder = Shadow.occluderOfBox({ x = 100.0, y = 80.0 }, { x = 20.0, y = 20.0 });
+        let cfg = sceneCfg(twoLights(), occluder :: Nil);
+        let (drawables, _) = Render.draw(Light.items(cfg));
+        Assert.assertEq(expected = 3, List.length(drawables))
 }
