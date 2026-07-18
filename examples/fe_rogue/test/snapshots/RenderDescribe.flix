@@ -32,7 +32,7 @@ mod RenderDescribe {
             (a, List[Frame]) \ (ef - GameEngine.Game) + r =
         let framesRef: Ref[List[Frame], r] = Ref.fresh(rc, Nil);
         let out = run { thunk() } with handler GameEngine.Game {
-            def renderCommands(sprites, tiles, polys, k) = {
+            def renderCommands(sprites, tiles, polys, _staticLayer, k) = {
                 Ref.put(({drawables = sprites, tileMaps = tiles, polygons = polys}: Frame)
                             :: Ref.get(framesRef), framesRef);
                 k(())

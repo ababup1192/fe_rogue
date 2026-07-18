@@ -925,7 +925,8 @@ def renderFrame(catalogs: GameLifecycle.Catalogs, world2: World):
                 UiWorldState.State, TurnPhase.State, ArrowCursorState.State, MinimapState.State,
                 RangeOverlayState.State, CursorState.State, CameraState.State} =
     let (worldDrawables, tileMaps, polygons) = buildFrame(catalogs, world2);
-    GameEngine.Game.renderCommands(worldDrawables, tileMaps, polygons)
+    // fe_rogue は静的レイヤー（retained）を使わないので None を渡す（従来と同じ経路）。
+    GameEngine.Game.renderCommands(worldDrawables, tileMaps, polygons, None)
 
 /// 1 フレームぶんの描画チャンネル（drawable / tileMap / polygon）を World から組み立てる。
 /// renderFrame（通常描画）と App のデバッグ機能（F8 の凍結表示・注釈スクリーンショット）が共用する。

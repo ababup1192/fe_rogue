@@ -35,7 +35,7 @@ mod SnapshotSupport {
     pub def withMockGame(atlas: FontAtlas, texInfo: Map[String, GameEngine.TextureInfo],
                          f: Unit -> a \ ef + GameEngine.Game): a \ ef =
         run f() with handler GameEngine.Game {
-            def renderCommands(_, _, _, k)  = k(())
+            def renderCommands(_, _, _, _, k)  = k(())
             def initTileBuffer(_, k)        = k((GpuHandle.wrapTileVao(0i32), 0i32))
             def shouldClose(k)              = k(false)
             def getDeltaTime(k)             = k(Duration.seconds(0.1))

@@ -155,12 +155,18 @@ mod RenderSprite {
     /// blend は run 内で均一（RenderFrame が blend / 切り抜き窓の変化で run を切る）。
     /// glBufferData で丸ごと差し替える（orphaning。drawSpriteInstanced と同方式）。
     pub def drawPolygonBatch(shader: Int32, vao: Int32, vbo: Int32,
-                              multiplyBlendLoc: Int32, blend: DrawCmd.BlendMode,
+                              uniforms: RenderShader.PolyBatchUniforms, blend: DrawCmd.BlendMode,
                               data: Array[Float32, Static], vertexCount: Int32): Unit \ IO =
         if (vertexCount < 3) () else {
             GL20.glUseProgram(shader);
             applyBlend(blend);
-            GL20.glUniform1i(multiplyBlendLoc, multiplyFlag(blend));
+            GL20.glUniform1i(uniforms#multiplyBlend, multiplyFlag(blend));
+            // 動的多角形は既に centerOn 済みのスクリーン座標で来るので camera uniform は恒等。
+            // 静的レンジ描画が設定した値が持ち越されないよう毎 draw call で明示リセットする
+            // （sprite の multiplyBlend が毎回 0 明示されるのと同じ作法）。
+            GL20.glUniform2f(uniforms#viewOffset, 0.0f32, 0.0f32);
+            GL20.glUniform2f(uniforms#viewScale, 1.0f32, 1.0f32);
+            GL20.glUniform2f(uniforms#halfDesign, 0.0f32, 0.0f32);
             GL30.glBindVertexArray(vao);
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
             GL15.glBufferData(GL15.GL_ARRAY_BUFFER, data, GL15.GL_DYNAMIC_DRAW);
@@ -168,6 +174,54 @@ mod RenderSprite {
             GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, vertexCount);
             GL30.glBindVertexArray(0)
         }
+
+    // ========================================================================
+    // Static Polygon Retained Rendering — 三角形化済み頂点を 1 度だけ GPU に載せ使い回す
+    // ========================================================================
+
+    /// 三角形化済みの静的多角形頂点を永続 VBO へアップロードする（キー変化時に 1 度だけ）。
+    /// vertex layout は drawPolygonBatch と同じ 6 floats（位置 2 + 色 4 / 24 bytes）。
+    /// GL_STATIC_DRAW で載せ、毎フレームは範囲だけ流して drawStaticRange で描く。
+    /// 戻り値: (vao, vbo)。free 時に両方 delete する。
+    pub def buildStaticPolyVBO(data: Array[Float32, Static], vertexCount: Int32): (Int32, Int32) \ IO =
+        let vao = GL30.glGenVertexArrays();
+        let vbo = GL15.glGenBuffers();
+        GL30.glBindVertexArray(vao);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, data, GL15.GL_STATIC_DRAW);
+        GL20.glEnableVertexAttribArray(0);
+        GL20.glVertexAttribPointer(0, 2, GL11.GL_FLOAT, false, 24, 0i64);
+        GL20.glEnableVertexAttribArray(1);
+        GL20.glVertexAttribPointer(1, 4, GL11.GL_FLOAT, false, 24, 8i64);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        let _ = vertexCount;
+        (vao, vbo)
+
+    /// 永続 VBO の [first, first+count) の頂点範囲を 1 回の draw call で塗る（アップロードなし）。
+    /// camera（viewOffset/viewScale/halfDesign）を uniform で当てる。blend / scissor は
+    /// 呼び側（RenderFrame）が設定済み。
+    pub def drawStaticRange(shader: Int32, vao: Int32,
+                             uniforms: RenderShader.PolyBatchUniforms, blend: DrawCmd.BlendMode,
+                             viewOffset: Vec2.Vec2, viewScale: Vec2.Vec2, halfDesign: Vec2.Vec2,
+                             first: Int32, count: Int32): Unit \ IO =
+        if (count < 3) () else {
+            let f32 = RenderUtil.f32;
+            GL20.glUseProgram(shader);
+            applyBlend(blend);
+            GL20.glUniform1i(uniforms#multiplyBlend, multiplyFlag(blend));
+            GL20.glUniform2f(uniforms#viewOffset, f32(viewOffset#x), f32(viewOffset#y));
+            GL20.glUniform2f(uniforms#viewScale, f32(viewScale#x), f32(viewScale#y));
+            GL20.glUniform2f(uniforms#halfDesign, f32(halfDesign#x), f32(halfDesign#y));
+            GL30.glBindVertexArray(vao);
+            GL11.glDrawArrays(GL11.GL_TRIANGLES, first, count);
+            GL30.glBindVertexArray(0)
+        }
+
+    /// 永続 VBO と VAO を解放する（キー変化でキャッシュを作り直す前に古い方を捨てる）。
+    pub def freeStaticPolyVBO(vao: Int32, vbo: Int32): Unit \ IO =
+        GL15.glDeleteBuffers(vbo);
+        GL30.glDeleteVertexArrays(vao)
 
     // ========================================================================
     // Tile Map Instanced Rendering

@@ -67,6 +67,12 @@ mod GameEngine {
     /// 凸多角形の塗り潰し命令。共有型 `DrawCmd.PolygonRenderCmd`。
     pub type alias PolygonRenderCmd = DrawCmd.PolygonRenderCmd
 
+    /// 静的多角形バッファのキャッシュキー。共有型 `DrawCmd.StaticKey`。
+    pub type alias StaticKey = DrawCmd.StaticKey
+
+    /// 静的レイヤー描画依頼。共有型 `DrawCmd.StaticLayerCmd`。
+    pub type alias StaticLayerCmd = DrawCmd.StaticLayerCmd
+
     /// 注釈 1 件の書き出し依頼。ゲーム画面の気になる場所を矩形で囲んだとき、
     /// その情報一式をファイルに残すために `saveAnnotation` へ渡す。
     /// sprites / tileMaps / polygons は等倍・オーバーレイ無しの 1 フレームぶんの描画命令で、
@@ -174,9 +180,13 @@ mod GameEngine {
     /// ゲームエフェクト: 描画・ウィンドウ制御・時間取得・キー入力・マウス入力・フォント・
     /// ビューポート・マウスカーソル形状切り替え
     pub eff Game {
-        /// zIndex 混合で sprites と tileMaps を 1 フレーム描画し、最後に polygons を塗る
+        /// zIndex 混合で sprites・tileMaps・polygons を 1 フレーム描画する。
+        /// staticLayer は「1 度だけ GPU へ焼いて使い回す静的多角形」の依頼（無ければ None）。
+        /// エンジンがキーでキャッシュし、動的な polygons と同じ z 安定ソート列にレンジを混ぜて
+        /// 描くので重なり順は壊れない。ゲームは GL ハンドルを触らずキーと中身を宣言するだけ。
         def renderCommands(sprites: List[Drawable], tileMaps: List[TileMapRenderCmd],
-                           polygons: List[PolygonRenderCmd]): Unit
+                           polygons: List[PolygonRenderCmd],
+                           staticLayer: Option[StaticLayerCmd]): Unit
         /// タイルインスタンスデータを GPU VBO にアップロードし (vaoハンドル, count) を返す
         def initTileBuffer(instances: List[TileInstance]): (GpuHandle.TileVao, Int32)
         def shouldClose(): Bool

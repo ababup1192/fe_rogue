@@ -6,6 +6,15 @@
 mod RenderFrame {
     import org.lwjgl.opengl.GL11
 
+    /// z 安定ソート列に混ぜる 3 種の描画物。MSprite=スプライト/箱、MPoly=動的多角形、
+    /// MStatic=永続 VBO のレンジ（頂点は運ばず範囲だけ）。種類が切り替わる瞬間に
+    /// 溜めた run を吐くことで、列順（＝重なり順）を厳密に守る。
+    enum Merged {
+        case MSprite(RenderType.Drawable)
+        case MPoly(RenderType.PolygonCmd)
+        case MStatic(RenderStatic.Range)
+    }
+
     /// デザイン解像度のアスペクト比を維持しつつ、フレームバッファに収まる最大矩形を計算。
     /// 戻り値: (vpX, vpY, vpW, vpH)
     pub def calcViewport(fbW: Int32, fbH: Int32, designW: Float64, designH: Float64): (Int32, Int32, Int32, Int32) =
@@ -61,11 +70,15 @@ mod RenderFrame {
         sprites = List[RenderType.Drawable],
         tileMaps = List[RenderType.TileMapRenderCmd],
         polygons = List[RenderType.PolygonCmd],
+        // 1 度だけ GPU に焼いて使い回す静的多角形のレンジ列（無ければ Nil）。動的 polygons と
+        // 同じ z 安定ソート列に混ぜて描くので重なり順は壊れない。camera（viewOffset/viewScale）
+        // は各レンジが持ち、halfDesign は design/2 をここで計算して当てる。
+        staticRanges = List[RenderStatic.Range],
         // 同 blend / 切り抜き窓の連続多角形を 1 draw call に畳むバッチ描画用。
         polyBatchShader = Int32,
         polyBatchVao = Int32,
         polyBatchVbo = Int32,
-        polyBatchMultiplyBlend = Int32,
+        polyBatchUniforms = RenderShader.PolyBatchUniforms,
         instShader = Int32,
         instVao = Int32,
         instVbo = Int32,
@@ -102,7 +115,7 @@ mod RenderFrame {
     /// 三角形の順序 = 入力順を守る（塗り順が絵に影響しないので順序は本質でないが、
     /// スプライト run と同じ詰め方に揃えて読みやすくする）。
     def flushPolyRun(shader: Int32, vao: Int32, vbo: Int32,
-                      multiplyBlendLoc: Int32, blend: DrawCmd.BlendMode,
+                      uniforms: RenderShader.PolyBatchUniforms, blend: DrawCmd.BlendMode,
                       vertCount: Int32,
                       vertsRev: List[Array[Float32, Static]]): Unit \ IO =
         if (vertCount < 3) () else {
@@ -112,7 +125,7 @@ mod RenderFrame {
                 Array.forEachWithIndex((j, x) -> Array.put(x, base + j, data), v);
                 endIdx - 1
             }, vertCount, vertsRev);
-            RenderSprite.drawPolygonBatch(shader, vao, vbo, multiplyBlendLoc, blend, data, vertCount)
+            RenderSprite.drawPolygonBatch(shader, vao, vbo, uniforms, blend, data, vertCount)
         }
 
     /// 1 フレーム描画: tileMaps を先に zIndex 順で描き、続いて sprites を zIndex 順で描く。
@@ -128,10 +141,11 @@ mod RenderFrame {
         let sprites      = args#sprites;
         let tileMaps     = args#tileMaps;
         let polygons     = args#polygons;
+        let staticRanges = args#staticRanges;
         let polyBatchShader = args#polyBatchShader;
         let polyBatchVao = args#polyBatchVao;
         let polyBatchVbo = args#polyBatchVbo;
-        let polyBatchMultiplyBlend = args#polyBatchMultiplyBlend;
+        let polyBatchUniforms = args#polyBatchUniforms;
         let instShader   = args#instShader;
         let instVao      = args#instVao;
         let instVbo      = args#instVbo;
@@ -158,19 +172,23 @@ mod RenderFrame {
                                          tm#color, tm#tileCount)
                 case None => ()
             }, sortedTiles);
-            // sprites と polygons を 1 本の zIndex 安定ソート列にマージして描く。
+            // sprites・polygons・静的レンジを 1 本の zIndex 安定ソート列にマージして描く。
             // sprite だけ z 順にし polygon を最後へまとめて描くと、ワールド配置のポリゴン
-            // （武器グリフ等）が手前のポップアップを貫通してしまう。両者を同じ z 空間で
-            // 並べることで、重なり順が zIndex の指定どおりになる。
-            // 同一 zIndex 内は入力順（sprites → polygons）を保つ（stableByZ が構造的に保証）。
-            // Ok = Drawable（スプライト/Rect）、Err = PolygonCmd（Polygon/Arc）。
-            let merged: List[Result[RenderType.PolygonCmd, RenderType.Drawable]] =
+            // （武器グリフ等）が手前のポップアップを貫通してしまう。3 者を同じ z 空間で
+            // 並べることで、重なり順が zIndex の指定どおりになる。静的レンジは「頂点は既に
+            // GPU にある永続 VBO の範囲」を軽い値で表す第 3 の run 種で、同 z 内の動的アイテム
+            // との前後も入力順で保たれる（洞窟の壁 z=2 が粒 z=2 を正しく隠す等）。
+            // 同一 zIndex 内は入力順（sprites → polygons → static）を保つ（stableByZ が構造的に保証）。
+            let merged: List[Merged] =
                 List.append(
-                    sprites  |> List.map(d  -> Result.Ok(d)),
-                    polygons |> List.map(pc -> Result.Err(pc)));
+                    List.append(
+                        sprites  |> List.map(d  -> Merged.MSprite(d)),
+                        polygons |> List.map(pc -> Merged.MPoly(pc))),
+                    staticRanges |> List.map(r -> Merged.MStatic(r)));
             let zOf = item -> match item {
-                case Result.Ok(d)   => d#zIndex
-                case Result.Err(pc) => pc#zIndex
+                case Merged.MSprite(d) => d#zIndex
+                case Merged.MPoly(pc)  => pc#zIndex
+                case Merged.MStatic(r) => r#zIndex
             };
             let sortedMerged = stableByZ(zOf, merged);
             // clip 窓 → framebuffer 座標の整数 scissor 矩形 (x0, y0, x1, y1)（top-left 原点）。
@@ -295,8 +313,16 @@ mod RenderFrame {
                 if (accCount == 0) () else {
                     setScissor(accClip);
                     flushPolyRun(polyBatchShader, polyBatchVao, polyBatchVbo,
-                                 polyBatchMultiplyBlend, accBlend, accCount, accRev)
+                                 polyBatchUniforms, accBlend, accCount, accRev)
                 }
+            };
+            // 静的レンジ 1 本を描く: 溜まっている両 run は呼び側で吐き終えている前提。
+            // scissor をレンジの clip に合わせ、永続 VBO の範囲を 1 draw call で塗る
+            // （アップロードも三角形化もしない）。
+            let drawStatic = (r: RenderStatic.Range) -> {
+                setScissor(clipKeyOf(r#clip));
+                RenderSprite.drawStaticRange(polyBatchShader, r#vao, polyBatchUniforms, r#blend,
+                                             r#viewOffset, r#viewScale, r#halfDesign, r#first, r#count)
             };
             // 1 多角形を三角形化し、各頂点を 6 floats (x, y, r, g, b, a) にして run へ積む。
             // 色×alpha は頂点属性に畳み込む（drawPolygon が uniform で渡していた spriteColor /
@@ -333,7 +359,7 @@ mod RenderFrame {
             let (lastRun, lastPolyRun) = List.foldLeft((acc, item) -> {
                 let (sRun, pRun) = acc;
                 match item {
-                    case Result.Ok(drawable) =>
+                    case Merged.MSprite(drawable) =>
                         // スプライトが来たら溜まっている多角形 run を先に吐く（列順を守る）。
                         flushPoly(pRun);
                         let sRun2 = if (String.isEmpty(drawable#texture)) {
@@ -359,10 +385,16 @@ mod RenderFrame {
                             }
                         };
                         (sRun2, emptyPolyRun)
-                    case Result.Err(pc) =>
+                    case Merged.MPoly(pc) =>
                         // 多角形が来たら溜まっているスプライト run を先に吐く（列順を守る）。
                         flush(sRun);
                         (emptyRun, pushPoly(pRun, clipKeyOf(pc#clip), pc#blend, pc))
+                    case Merged.MStatic(r) =>
+                        // 静的レンジが来たら両 run を吐いてから 1 draw call で描く（列順を守る）。
+                        flush(sRun);
+                        flushPoly(pRun);
+                        drawStatic(r);
+                        (emptyRun, emptyPolyRun)
                 }
             }, (emptyRun, emptyPolyRun), sortedMerged);
             // どちらか片方だけが非空（切替時に相手を吐いているため）。空 flush は no-op。

@@ -125,4 +125,42 @@ mod DrawCmd {
         blend    = BlendMode
     }
 
+    /// 静的多角形バッファのキャッシュキー。ゲームは「静的な中身を決める全入力」
+    /// （フロア id・テーマ・作り直しの世代番号など）をこの 1 文字列にまとめて渡す。
+    /// エンジンはキーが前フレームと同じなら焼いた VBO を使い回し、変わったら古い VBO を
+    /// 解放して作り直す（テクスチャを名前で 1 度だけ GPU に上げるのと同じ隠蔽）。
+    /// ゲームは GL ハンドルも無効化ロジックも持たない — キーの組み立てだけが責務。
+    pub type alias StaticKey = String
+
+    /// 1 フレームぶんの静的レイヤー描画依頼。`renderCommands` の第 4 チャンネルに載せる。
+    /// key が変わったときだけ polys を評価して GPU へ焼き直す（同じキーの間 polys は呼ばれず、
+    /// 頂点の作り直し・アップロードが毎フレームから消える）ので、polys は「作り方」を包んだ
+    /// 純粋関数（Unit -> 多角形列）で渡す。静的な絵は World の純粋な投影から作れる（camera も
+    /// エンジンが uniform で当てるので触らない）ため副作用は要らない — 効果を帯びさせないことで
+    /// renderCommands の op を効果多相にせずに済む。viewOffset / viewScale / halfDesign は
+    /// カメラ（平行移動 / ズーム）を頂点シェーダの uniform で当てる値。静的頂点はワールド座標で
+    /// 焼くので screenPos = (world − viewOffset)×viewScale + halfDesign。
+    /// カメラ有り（中心 c・ズーム z）なら (c, (z,z), design/2) で CPU の centerOn と一致し、
+    /// カメラ無しなら (0, (1,1), 0) で恒等（world 座標そのまま）。
+    /// SoftRaster は GPU バッファを持たないので polys を毎回描くだけ（キャッシュを見ない）。
+    pub type alias StaticLayerCmd = {
+        key        = StaticKey,
+        polys      = Unit -> List[PolygonRenderCmd],
+        viewOffset = Vec2.Vec2,
+        viewScale  = Vec2.Vec2,
+        halfDesign = Vec2.Vec2
+    }
+
+    /// エンジン内部でキャッシュした 1 レンジの目次（バックエンドだけが使う）。
+    /// 入力の多角形を z 昇順に三角形化して 1 本の VBO に連続配置したときの、
+    /// z / blend / 切り抜き窓ごとの (開始頂点, 頂点数)。zIndex で動的アイテムと同じ
+    /// z 安定ソート列に並べ、重なり順を壊さない。
+    pub type alias StaticPolyMeta = {
+        first  = Int32,
+        count  = Int32,
+        blend  = BlendMode,
+        clip   = Option[Rect2.Rect2],
+        zIndex = Int32
+    }
+
 }

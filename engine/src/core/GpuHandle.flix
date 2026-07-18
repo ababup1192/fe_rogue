@@ -10,6 +10,11 @@ mod GpuHandle {
     /// タイルマップの GPU インスタンスバッファのハンドル（`initTileBuffer` が返す）。
     pub enum TileVao { case TileVao(Int32) }
 
+    /// 永続化した静的多角形の GPU バッファのハンドル（`initStaticPolys` が返す）。
+    /// タイルと違い後で解放する（フロアを行き来するたびに作り直すため）ので、
+    /// 削除に要る VBO も一緒に包む（vao, vbo の 2 つ）。
+    pub enum StaticVao { case StaticVao(Int32, Int32) }
+
     /// テクスチャの GPU ハンドル。
     pub enum TextureId { case TextureId(Int32) }
 
@@ -18,6 +23,15 @@ mod GpuHandle {
 
     /// ハンドルから Int32 の実体を取り出す（バックエンドが描画時に呼ぶ）。
     pub def tileVaoInt(h: TileVao): Int32 = let TileVao.TileVao(v) = h; v
+
+    /// 静的多角形の VAO/VBO の実体をハンドルに包む（バックエンドが割り当て時に呼ぶ）。
+    pub def wrapStaticVao(vao: Int32, vbo: Int32): StaticVao = StaticVao.StaticVao(vao, vbo)
+
+    /// ハンドルから VAO の実体を取り出す（描画時に使う）。
+    pub def staticVaoInt(h: StaticVao): Int32 = let StaticVao.StaticVao(v, _) = h; v
+
+    /// ハンドルから VBO の実体を取り出す（解放時に使う）。
+    pub def staticVboInt(h: StaticVao): Int32 = let StaticVao.StaticVao(_, v) = h; v
 
     /// Int32 の実体をハンドルに包む。
     pub def wrapTextureId(v: Int32): TextureId = TextureId.TextureId(v)

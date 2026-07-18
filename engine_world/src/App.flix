@@ -90,6 +90,14 @@ mod App {
         // 注釈の矩形（デザイン座標）と表示中の瞬間の World からテキストを組む。
         // 注釈チケットに world.json として同梱され、リモートデバッグの view=full にもなる。
         worldDump = Option[(Rect2.Rect2, w) -> String \ ef],
+        // 「1 度だけ GPU に焼いて使い回す静的な絵」の宣言（無ければ None）。key = 静的な中身を
+        // 決める全入力を 1 文字列にまとめたキャッシュキー（フロア id・テーマ・作り直しの世代など。
+        // これが変わるとエンジンが古い VBO を捨てて焼き直す）、build = ワールド座標の静的 PlacedItem を
+        // 組む純粋関数（camera はエンジンが uniform で当てるので触らない。多角形だけが焼かれ、
+        // それ以外の item は無視される）。GL ハンドルも無効化ロジックもゲームは持たない。
+        // 純粋関数に限るのは renderCommands の op を効果多相にしないため（静的な絵は World の
+        // 純粋な投影から作れる）。
+        staticLayer = Option[{ key = w -> GameEngine.StaticKey, build = w -> List[Render.PlacedItem] }],
         // World の 1 行サマリ。リモートデバッグ（HTTP）の view=status と trace の源。
         statusLine = Option[w -> String \ ef],
         // 物理・当たり判定を実時間でなく固定量子で進めたいゲームの刻み幅（秒）。None = 可変 dt
@@ -118,6 +126,7 @@ mod App {
           cameraBounds = None,
           parallaxLayers = Nil,
           hudView = None,
+          staticLayer = None,
           audio = _worlds -> checked_ecast(Nil),
           quit = (frame, _world) -> checked_ecast(justPressed(GameEngine.Key.Escape, frame)),
           debug = false,
@@ -152,6 +161,19 @@ mod App {
     pub def withView(v: (ViewCtx, w) -> List[Render.PlacedItem] \ ef,
                      app: App[w, ef]): App[w, ef] =
         { view = Some(v) | app }
+
+    /// 「1 度だけ GPU に焼いて使い回す静的な絵」を宣言する。key は静的な中身を決める全入力を
+    /// 1 文字列にまとめたキャッシュキー（フロア id・テーマ・作り直しの世代番号など） — これが
+    /// 変わったときだけエンジンが古い VBO を捨てて焼き直す（テクスチャを名前で 1 度上げるのと同じ
+    /// 隠蔽で、ゲームは GL ハンドルを持たない）。build はワールド座標の静的 PlacedItem を組む
+    /// 純粋関数（camera はエンジンが uniform で当てるので触らない）。多角形（Poly）だけが焼かれ、
+    /// それ以外の item は無視される。松明の炎・水面の粒・影・プレイヤーのように毎フレーム変わる
+    /// 物は必ず withView 側（動的）に残すこと — 「本当に不変な物だけ」を静的層に入れる。
+    /// view = None のゲームでは効かない（App が描画しないため）。
+    pub def withStaticLayer(key: w -> GameEngine.StaticKey,
+                            build: w -> List[Render.PlacedItem],
+                            app: App[w, ef]): App[w, ef] =
+        { staticLayer = Some({ key = key, build = build }) | app }
 
     /// World から「画面中央に映したい world 座標」を導く関数を繋ぐ。view は world 座標のまま
     /// 書けばよく、画面へのずらしは App が引き受ける（F8 の凍結画面やリモートの注釈にも同じ
@@ -571,8 +593,12 @@ mod App {
         match app#view {
             case Some(toItems) =>
                 let atlas = GameEngine.Game.getFontAtlas("default");
-                // displayed（スクラブで表示中の瞬間）から絵もカメラも導く — 注釈の hits も同じ items を使う
-                let items = sceneItems(app, atlas, displayed, toItems);
+                // displayed（スクラブで表示中の瞬間）から絵もカメラも導く — 注釈の hits も同じ items を使う。
+                // F8 停止中は静的レイヤーも通常の動的アイテムに畳んで描く（F8 のズーム/パンは
+                // channels に効く別変換なので、retained の camera uniform では追随できないため）。
+                // 停止中は毎フレーム再投影で軽さは問題にならない。
+                let items = List.append(sceneItems(app, atlas, displayed, toItems),
+                                        staticPausedItems(app, design, displayed));
                 let (sprites, polygons) = Render.draw(items);
                 let hitList = match emitted {
                     case Some(rect) => Annotate.hits(name -> GameEngine.Game.getTextureInfo(name), rect, items)
@@ -647,10 +673,13 @@ mod App {
                               Annotate.scrubIndicatorItems(ctx#atlas, ctx#design, anno#scrub, ctx#historyLen)
                           else Nil;
         let (fixedSprites, fixedPolygons) = Render.draw(List.append(toastPlaced, scrubPlaced));
+        // 停止中は静的レイヤーを channels#polygons に畳んで渡す（staticPausedItems）ので、
+        // ここでは retained の静的依頼は無し（None）— F8 のズーム/パンが channels に効くため。
         GameEngine.Game.renderCommands(
             List.append(Annotate.applyInspect(view, List.append(channels#drawables, overlaySprites)), fixedSprites),
             Annotate.applyInspectTiles(view, channels#tileMaps),
-            List.append(Annotate.applyInspectPoly(view, List.append(channels#polygons, overlayPolygons)), fixedPolygons))
+            List.append(Annotate.applyInspectPoly(view, List.append(channels#polygons, overlayPolygons)), fixedPolygons),
+            None)
 
     /// reloadOn で繋いだキーが押された瞬間だけ、リロード関数で World を作り直す。
     def applyReload(app: App[w, ef], frame: Frame, world: w): w \ {Fs.FileRead} =
@@ -719,16 +748,14 @@ mod App {
     /// world から画面に出す絵一式を組む: view の絵に camera を掛け、hud を合流する（純粋な芯は
     /// composeScene）。F8 スクラブ中は「表示中の瞬間」の World を渡すこと — 現在の world を
     /// 渡すと絵は過去・カメラは現在のズレた画面になり、注釈の当たり判定も全部ずれる。
-    def sceneItems(app: App[w, ef], atlas: FontAtlas, world: w,
-                   toItems: (ViewCtx, w) -> List[Render.PlacedItem] \ ef):
-            List[Render.PlacedItem] \ (ef + GameEngine.Game) =
-        let design = GameEngine.Game.getViewportRect()#size;
+    /// 確定した camera（中心と zoom）を World から 1 回だけ導く: zoom-only の正規化
+    /// （zoomedCenter）→ cameraBounds クランプ。主 view と静的レイヤーがこの同じ値から
+    /// 派生するので、動的な絵と静的な絵の視点が必ず一致する（1px もずれない）。
+    def resolvedCamera(app: App[w, ef], world: w, design: Vec2.Vec2): (Option[Vec2.Vec2], Float64) \ ef =
         let z = match app#zoom {
             case None    => 1.0
             case Some(f) => f(world)
         };
-        // 確定した camera 中心を1回だけ導く: zoom-only の正規化（zoomedCenter）→ bounds クランプ。
-        // 視差レイヤと主レイヤがこの同じ値から派生するので、レイヤ間の視点がずれない。
         let center0 = match app#camera {
             case Some(f) => Some(f(world))
             case None    => None
@@ -739,6 +766,13 @@ mod App {
                 Some(CameraRig.clampCenter(bounds = fb(world), seen = seen, c))
             case (c, _) => c
         };
+        (center, z)
+
+    def sceneItems(app: App[w, ef], atlas: FontAtlas, world: w,
+                   toItems: (ViewCtx, w) -> List[Render.PlacedItem] \ ef):
+            List[Render.PlacedItem] \ (ef + GameEngine.Game) =
+        let design = GameEngine.Game.getViewportRect()#size;
+        let (center, z) = resolvedCamera(app, world, design);
         let hud = match app#hudView {
             case None    => Nil
             // HUD は画面固定なので、見えている矩形は常に design 全体（原点起点）で zoom も掛けない。
@@ -765,6 +799,39 @@ mod App {
             Annotate.fpsItems(atlas, design, Annotate.fpsOf(anno))
         }
 
+    /// F8 停止中に静的レイヤーを通常の動的アイテムとして描くための PlacedItem 列。
+    /// build（ワールド座標）に主 view と同じ camera（resolvedCamera → composeScene）を掛けて、
+    /// 動的な絵と重なり順・位置を揃える。静的レイヤーが無ければ空。
+    def staticPausedItems(app: App[w, ef], design: Vec2.Vec2, world: w): List[Render.PlacedItem] \ ef =
+        match app#staticLayer {
+            case None    => Nil
+            case Some(sl) =>
+                let (center, z) = resolvedCamera(app, world, design);
+                composeScene(center, z, design, { world = (sl#build)(world), hud = Nil })
+        }
+
+    /// 静的レイヤー（withStaticLayer）を、この World の camera から解決した描画依頼にする。
+    /// key と polys（build → Render.draw の多角形チャンネル）はエンジンがキャッシュに使い、
+    /// viewOffset/viewScale/halfDesign は動的な絵と同じ camera 値（resolvedCamera）から出すので、
+    /// 静的な絵と動的な絵の視点は 1px もずれない。カメラ無しなら恒等（world 座標そのまま）。
+    /// polys は build（純粋）だけを包むので、キャッシュヒット時に呼ばれても副作用は無い。
+    def staticLayerCmd(app: App[w, ef], world: w): Option[GameEngine.StaticLayerCmd] \ (ef + GameEngine.Game) =
+        match app#staticLayer {
+            case None    => None
+            case Some(sl) =>
+                let design = GameEngine.Game.getViewportRect()#size;
+                let (center, z) = resolvedCamera(app, world, design);
+                let (viewOffset, viewScale, halfDesign) = match center {
+                    case Some(c) => (c, { x = z, y = z }, Vec2.div(design, 2.0))
+                    case None    => (Vec2.zero(), { x = 1.0, y = 1.0 }, Vec2.zero())
+                };
+                let key = (sl#key)(world);
+                let build = sl#build;
+                Some({ key = key,
+                       polys = () -> { let (_, polys) = Render.draw(build(world)); polys },
+                       viewOffset = viewOffset, viewScale = viewScale, halfDesign = halfDesign })
+        }
+
     /// view の投影した絵を描画命令にしてエンジンへ渡す（タイルマップは使わないので空の列を添える）。
     /// view = None のゲームは App では描かない（自分のシステム内で renderCommands を呼ぶ。
     /// camera / hudView もこの場合は効かない）。
@@ -776,7 +843,7 @@ mod App {
                 let atlas = GameEngine.Game.getFontAtlas("default");
                 let items = List.append(sceneItems(app, atlas, world, toItems), fpsOverlay);
                 let (sprites, polygons) = Render.draw(items);
-                GameEngine.Game.renderCommands(sprites, Nil, polygons)
+                GameEngine.Game.renderCommands(sprites, Nil, polygons, staticLayerCmd(app, world))
         }
 
     // ── リモートデバッグ（HTTP）: コマンド処理 ──
@@ -1024,7 +1091,7 @@ mod App {
             } with handler GameEngine.Game {
                 def getDeltaTime(k)             = k(Duration.seconds(stepParams#dtSeconds))
                 def isKeyPressed(key, k)        = k(Set.memberOf(key, Ref.get(keysRef)))
-                def renderCommands(_s, _t, _p, k) = k(())
+                def renderCommands(_s, _t, _p, _st, k) = k(())
                 def shouldClose(k)              = k(GameEngine.Game.shouldClose())
                 def initTileBuffer(instances, k) = k(GameEngine.Game.initTileBuffer(instances))
                 def getMousePosition(k)         = k(GameEngine.Game.getMousePosition())

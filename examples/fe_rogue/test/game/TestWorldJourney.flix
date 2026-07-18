@@ -100,7 +100,7 @@ mod TestWorldJourney {
                 }
                 def getDeltaTime(k)             = k(Duration.millis(16))
                 def isKeyPressed(key, k)        = k(List.memberOf(key, Ref.get(keysRef)))
-                def renderCommands(sprites, tiles, _polys, k) = {
+                def renderCommands(sprites, tiles, _polys, _staticLayer, k) = {
                     Ref.put(List.length(sprites), lastDrawRef);
                     if (not List.isEmpty(tiles))
                         Ref.put(Ref.get(tileFramesRef) + 1, tileFramesRef)

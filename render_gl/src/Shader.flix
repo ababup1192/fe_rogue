@@ -287,8 +287,17 @@ mod RenderShader {
         "layout (location = 1) in vec4 vColor;\n" +   // color.rgb + alpha（アルファは頂点色に畳み込み済み）
         "out vec4 FragColor;\n" +
         "uniform mat4 projection;\n" +
+        // カメラの平行移動 / ズームを頂点シェーダで当てる（タイルの layerPos/tileScale と同型）。
+        // 動的多角形は既に centerOn 済みのスクリーン座標で来るので、毎 draw call で
+        // viewOffset=(0,0) viewScale=(1,1) halfDesign=(0,0) を渡して恒等にする（絵は不変）。
+        // 静的多角形はワールド座標で焼き、viewOffset=camera center・viewScale=zoom・
+        // halfDesign=design/2 を渡して screenPos に写す。
+        "uniform vec2 viewOffset;\n" +
+        "uniform vec2 viewScale;\n" +
+        "uniform vec2 halfDesign;\n" +
         "void main() {\n" +
-        "    gl_Position = projection * vec4(vertex, 0.0, 1.0);\n" +
+        "    vec2 screenPos = (vertex - viewOffset) * viewScale + halfDesign;\n" +
+        "    gl_Position = projection * vec4(screenPos, 0.0, 1.0);\n" +
         "    FragColor = vColor;\n" +
         "}\n"
 
@@ -379,6 +388,15 @@ mod RenderShader {
         layerColor = Int32
     }
 
+    /// 多角形バッチシェーダの uniform location 一式。動的多角形と静的レンジで同じ
+    /// シェーダを共有し、camera（viewOffset/viewScale/halfDesign）を毎 draw call で明示設定する。
+    pub type alias PolyBatchUniforms = {
+        multiplyBlend = Int32,
+        viewOffset = Int32,
+        viewScale = Int32,
+        halfDesign = Int32
+    }
+
     pub def spriteUniformsOf(shader: Int32): SpriteUniforms \ IO =
         {
             model = GL20.glGetUniformLocation(shader, "model"),
@@ -412,6 +430,14 @@ mod RenderShader {
             tileSize = GL20.glGetUniformLocation(shader, "tileSize"),
             tileScale = GL20.glGetUniformLocation(shader, "tileScale"),
             layerColor = GL20.glGetUniformLocation(shader, "layerColor")
+        }
+
+    pub def polyBatchUniformsOf(shader: Int32): PolyBatchUniforms \ IO =
+        {
+            multiplyBlend = GL20.glGetUniformLocation(shader, "multiplyBlend"),
+            viewOffset = GL20.glGetUniformLocation(shader, "viewOffset"),
+            viewScale = GL20.glGetUniformLocation(shader, "viewScale"),
+            halfDesign = GL20.glGetUniformLocation(shader, "halfDesign")
         }
 
     // ========================================================================

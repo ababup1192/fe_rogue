@@ -282,7 +282,7 @@ mod LwjglLayer {
         let spriteUniforms = RenderShader.spriteUniformsOf(spriteShader);
         let tileUniforms = RenderShader.tileUniformsOf(tileShader);
         let instMultiplyBlend = GL20.glGetUniformLocation(instShader, "multiplyBlend");
-        let polyBatchMultiplyBlend = GL20.glGetUniformLocation(polyBatchShader, "multiplyBlend");
+        let polyBatchUniforms = RenderShader.polyBatchUniformsOf(polyBatchShader);
 
         let (vao, quadVBO) = RenderSprite.initSpriteRenderer();
         let (polyBatchVao, polyBatchVbo) = RenderSprite.initPolygonBatchRenderer();
@@ -339,25 +339,39 @@ mod LwjglLayer {
         };
         let fullscreenHolder = Array#{false} @ Static;
 
-        // リサイズ中の再描画用に最後のフレームの描画コマンドを保持する (sprites + tileMaps + polygons)
+        // 静的多角形バッファのキャッシュ（キー → 焼いた VBO とレンジ目次）。テクスチャ registry と
+        // 同じくエンジン内部に隠し、ゲームは GameEngine.StaticLayerCmd のキーと中身を宣言するだけ。
+        // キー一致で使い回し・不一致で古い VBO を free して作り直す（RenderStatic.resolve）。
+        let staticCacheCell = Array#{(None: Option[RenderStatic.Entry])} @ Static;
+
+        // リサイズ中の再描画用に最後のフレームの描画コマンドを保持する
+        // (sprites + tileMaps + polygons + 静的レイヤー依頼)
         let renderStateHolder = Array#{((Nil: List[GameEngine.Drawable]),
                                          (Nil: List[GameEngine.TileMapRenderCmd]),
-                                         (Nil: List[GameEngine.PolygonRenderCmd]))} @ Static;
+                                         (Nil: List[GameEngine.PolygonRenderCmd]),
+                                         (None: Option[GameEngine.StaticLayerCmd]))} @ Static;
 
         // renderFrameMixed への FrameArgs 組み立ては呼び出し箇所ごとに同じ固定値
         // （シェーダ・VAO・registry・uniforms 等）が並ぶので、可変な部分だけを引数にした
-        // 1 箇所へ集約する。
+        // 1 箇所へ集約する。静的レイヤーはここで resolve（キャッシュ照合・必要なら焼き直し）し、
+        // レンジ列を FrameArgs に載せる。None なら Nil（従来と完全に同じ経路）。
         let renderFrame = (fbW: Int32, fbH: Int32,
                             sprites: List[GameEngine.Drawable],
                             tileMaps: List[GameEngine.TileMapRenderCmd],
-                            polygons: List[GameEngine.PolygonRenderCmd]) -> {
+                            polygons: List[GameEngine.PolygonRenderCmd],
+                            staticLayer: Option[GameEngine.StaticLayerCmd]) -> {
+            let staticRanges = match staticLayer {
+                case None    => Nil
+                case Some(l) => RenderStatic.resolve(staticCacheCell, l)
+            };
             RenderFrame.renderFrameMixed({
                 spriteShader = spriteShader, tileShader = tileShader, vao = vao,
                 registry = registry, clearColor = config#clearColor,
                 designW = screenW, designH = screenH, fbW = fbW, fbH = fbH,
                 sprites = sprites, tileMaps = tileMaps, polygons = polygons,
+                staticRanges = staticRanges,
                 polyBatchShader = polyBatchShader, polyBatchVao = polyBatchVao,
-                polyBatchVbo = polyBatchVbo, polyBatchMultiplyBlend = polyBatchMultiplyBlend,
+                polyBatchVbo = polyBatchVbo, polyBatchUniforms = polyBatchUniforms,
                 instShader = instShader, instVao = instVao, instVbo = instVbo,
                 spriteUniforms = spriteUniforms, tileUniforms = tileUniforms,
                 instMultiplyBlend = instMultiplyBlend})
@@ -463,8 +477,8 @@ mod LwjglLayer {
         discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
             def invoke(_this: GLFWFramebufferSizeCallbackI, cbWindow: Int64, width: Int32, height: Int32): Unit \ IO = {
                 Array.put((width, height), 0, framebufferSizeHolder);
-                let (sprites, tileMaps, polygons) = Array.get(0, renderStateHolder);
-                renderFrame(width, height, sprites, tileMaps, polygons);
+                let (sprites, tileMaps, polygons, staticLayer) = Array.get(0, renderStateHolder);
+                renderFrame(width, height, sprites, tileMaps, polygons, staticLayer);
                 GLFW.glfwSwapBuffers(cbWindow)
             }
         });
@@ -508,10 +522,10 @@ mod LwjglLayer {
                 k(())
             }
         } with handler GameEngine.Game {
-            def renderCommands(sprites, tileMaps, polygons, k) = {
-                Array.put((sprites, tileMaps, polygons), 0, renderStateHolder);
+            def renderCommands(sprites, tileMaps, polygons, staticLayer, k) = {
+                Array.put((sprites, tileMaps, polygons, staticLayer), 0, renderStateHolder);
                 let (fbW, fbH) = Array.get(0, framebufferSizeHolder);
-                renderFrame(fbW, fbH, sprites, tileMaps, polygons);
+                renderFrame(fbW, fbH, sprites, tileMaps, polygons, staticLayer);
                 GLFW.glfwSwapBuffers(window);
                 k(())
             }
@@ -668,7 +682,11 @@ mod LwjglLayer {
                     let fbW = wBuf.get(0);
                     let fbH = hBuf.get(0);
                     discard MemoryStack.stackPop();
-                    renderFrame(fbW, fbH, req#sprites, req#tileMaps, req#polygons);
+                    // 注釈のスクリーンショットにも静的レイヤーを含める（壁が消えないように）。
+                    // AnnotationRequest は静的レイヤーを運ばないので、直近フレームの依頼を使う
+                    // （キャッシュ済みなので焼き直しは起きない）。
+                    let (_, _, _, lastStatic) = Array.get(0, renderStateHolder);
+                    renderFrame(fbW, fbH, req#sprites, req#tileMaps, req#polygons, lastStatic);
                     let image = framebufferImage(fbW, fbH);
                     writePngFile(image, "${dirPath}/screenshot.png");
                     burnHighlight(image, designRectToImage(req#rect, fbW, fbH, screenW, screenH));
