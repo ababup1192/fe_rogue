@@ -268,14 +268,15 @@ mod View {
         bg :: List.flatten(gridItems() :: viewportMarkerItems() :: blendDemo :: shaderDemoItems(world) ::
                             lanternDemoItems(world#lightDoc, world#lantern) :: ui :: cover :: Nil)
 
-    /// 宣言シェーダー面（eff Shader）の骨格デモ。SHADER_DEMO=1 のときだけ、画面下半分に
-    /// 「時間で色が回る横グラデ面」を 1 枚出す。GPU シェーダーの配管（宣言木→GLSL→GPU）を
-    /// 端から端まで通す最小の絵。z=1（背景 bg=0 の上・グリッドや UI の下）に敷く。
+    /// 宣言シェーダー面（eff Shader）のデモ。SHADER_DEMO=1 のときだけ、画面下半分に
+    /// 「水の網目（Worley F2−F1）が時間でゆらぐ面」を 1 枚出す。宣言木（Warp→Scaled→Worley →
+    /// Smoothstep → Ramp）から codegen が GLSL を吐き、GPU で塗る配管の実機確認。
+    /// z=1（背景 bg=0 の上・グリッドや UI の下）に敷く。
     def shaderDemoItems(world: World.World): List[Render.PlacedItem] =
         if (not world#shaderDemo) Nil
         else {
-            let d = design();
-            let rect = { position = { x = 0.0, y = d#y / 2.0 }, size = { x = d#x, y = d#y / 2.0 } };
-            Render.shaderFill(ShaderDoc.demoSurface(), rect, world#shaderTime, 1) :: Nil
+            // RPG の池くらいの小さい矩形に描いて、その大きさでの網目の見え方を確認する。
+            let rect = { position = { x = 110.0, y = 130.0 }, size = { x = 100.0, y = 80.0 } };
+            Render.shaderFill(world#surfaceSpec, rect, world#shaderTime, 1) :: Nil
         }
 }

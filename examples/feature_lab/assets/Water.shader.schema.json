@@ -1,0 +1,39 @@
+{
+  "note": "Water.shader.json（宣言シェーダー面）の語彙リファレンス。値の場(field)/色(shade)/出力(out)を 'kind' で分岐する再帰構造。任意 GLSL は書けず、この語彙の合成だけが GLSL になる。壊れた JSON はフォールバック(waterVeins)へ fail-open。",
+  "top": {
+    "name": "String（面の名前・任意）",
+    "cycleRate": "Float 0..（パレット循環の速さ。0 で静止・0.25 目安）",
+    "out": "Out（必須）"
+  },
+  "out": {
+    "fill": { "kind": "fill", "shade": "Shade", "alpha": "Field（0..1）" }
+  },
+  "shade": {
+    "solid": { "kind": "solid", "color": "Color" },
+    "ramp":  { "kind": "ramp", "lo": "Color", "hi": "Color", "field": "Field（0..1 で lo↔hi 補間）" }
+  },
+  "field": {
+    "const":      { "kind": "const", "value": "Float" },
+    "uv":         { "kind": "uv", "axis": "u | v" },
+    "worley":     { "kind": "worley", "scale": "Float 1..12（網目の密度）", "seed": "Int", "out": "f1 | f2 | f2mf1（f2mf1=目地=網目）" },
+    "fbm":        { "kind": "fbm", "octaves": "Int 1..4", "scale": "Float", "seed": "Int" },
+    "smoothstep": { "kind": "smoothstep", "lo": "Float", "hi": "Float（lo..hi を 0→1・目地の細さ）", "of": "Field" },
+    "scaled":     { "kind": "scaled", "factor": "Float（inner の座標を factor 倍＝タイル密度）", "scroll": { "x": "Float", "y": "Float（uv に uTime*scroll＝流れ）" }, "of": "Field" },
+    "warp":       { "kind": "warp", "amount": "Float 0..0.3（うねりの強さ）", "scale": "Float", "seed": "Int", "of": "Field" },
+    "mix":        { "kind": "mix", "a": "Field", "b": "Field", "t": "Float 0..1（定数比）" },
+    "blend":      { "kind": "blend", "a": "Field", "b": "Field", "by": "Field（0..1 で a↔b）" },
+    "disk":       { "kind": "disk", "cx": "Float 0..1", "cy": "Float 0..1", "radius": "Float 0..1（丸マスクの半径）", "feather": "Float 0..（縁の soft fade 幅）" }
+  },
+  "color": "\"#rrggbb\" または { \"r\": 0..1, \"g\": 0..1, \"b\": 0..1 }",
+  "sliders": {
+    "cycleRate":        { "min": 0.0, "max": 1.0,  "step": 0.05 },
+    "worley.scale":     { "min": 1.0, "max": 12.0, "step": 0.5 },
+    "scaled.factor":    { "min": 1.0, "max": 12.0, "step": 0.5 },
+    "scaled.scroll.x":  { "min": -0.5, "max": 0.5, "step": 0.01 },
+    "scaled.scroll.y":  { "min": -0.5, "max": 0.5, "step": 0.01 },
+    "warp.amount":      { "min": 0.0, "max": 0.3,  "step": 0.01 },
+    "smoothstep.hi":    { "min": 0.0, "max": 0.3,  "step": 0.01 },
+    "disk.radius":      { "min": 0.0, "max": 0.5,  "step": 0.02 },
+    "disk.feather":     { "min": 0.0, "max": 0.3,  "step": 0.02 }
+  }
+}

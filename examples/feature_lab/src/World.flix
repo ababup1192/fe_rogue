@@ -53,11 +53,15 @@ mod World {
         // で毎フレーム差し替える（「json は質感、位置はゲーム」の分業）。
         lightDoc = LightDoc.Spec,
         // 宣言シェーダー面（eff Shader）の骨格デモ。環境変数 SHADER_DEMO=1 で on。
-        // on のとき View が画面下半分に「時間で色が回るグラデ面」を 1 枚出す（GPU シェーダーの配管確認）。
+        // on のとき View が画面下半分に「水の網目がゆらぐ面」を 1 枚出す（GPU シェーダーの配管確認）。
         // 既存 gallery の bake を汚さないよう既定は off。
         shaderDemo = Bool,
         // シェーダー面に渡す経過秒（毎フレーム dt を足す。uTime uniform の源）。
-        shaderTime = Float64
+        shaderTime = Float64,
+        // シェーダー面の質感（水=Water.shader.json / マグマ=Lava.shader.json・env で選ぶ）。
+        // 流れ・網目サイズ・色を engine を触らず JSON 保存だけで即調整できる
+        // （App.watchFile。light.json と同居）。
+        surfaceSpec = ShaderDoc.Spec
     }
 
     /// 起動直後は Idle（覆いなし）で始める。いきなり遷移を再生すると画面が
@@ -67,13 +71,14 @@ mod World {
     /// ウィンドウ表示は通常の窓・カーソルは見える状態で始める。
     /// blend デモは初期非表示（None）。常時表示にすると遷移 GIF や fps 見本の bake に
     /// 映り込み、既存の gallery の絵が変わってしまう。
-    pub def initial(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, shaderDemo: Bool): World =
+    pub def initial(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, shaderDemo: Bool,
+                    surfaceSpec: ShaderDoc.Spec): World =
         { kind = Transition.Kind.FadeOut, playing = None, steps = 0,
           bgm = { rising = true, progress = Transition.start(bgmDuration()), master = 1.0, playing = false },
           ui = ui, fullscreen = false, cursorVisible = true,
           blend = None,
           lantern = None, lightDoc = lightDoc,
-          shaderDemo = shaderDemo, shaderTime = 0.0 }
+          shaderDemo = shaderDemo, shaderTime = 0.0, surfaceSpec = surfaceSpec }
 
     /// いまの BGM 音量（フェードの向きと進み具合から導く。実機へ流す値と同じ計算）。
     pub def bgmVolume(bgm: Bgm): Float64 =

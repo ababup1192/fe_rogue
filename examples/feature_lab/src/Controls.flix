@@ -121,6 +121,25 @@ mod Controls {
     pub def reloadLightDoc(world: World.World): World.World \ {Fs.FileRead} =
         { lightDoc = loadLightDoc() | world }
 
+    /// LAVA_DEMO=1 ならマグマ、それ以外は水。SHADER_DEMO=1 のときだけ面を出す（別 env）。
+    def surfaceIsLava(): Bool \ IO =
+        let v = System.getenv("LAVA_DEMO");
+        not Object.isNull(v) and v != ""
+
+    /// 監視・読み込みするシェーダー json のパス（env で水/マグマを選ぶ）。Main が起動時に 1 度読む。
+    pub def surfacePath(): String \ IO =
+        if (surfaceIsLava()) "assets/Lava.shader.json" else "assets/Water.shader.json"
+
+    /// 選ばれた面のフォールバック Spec（水/マグマ。壊れ json でも素材は出る fail-open）。Main が使う。
+    pub def surfaceFallback(): ShaderDoc.Spec \ IO =
+        if (surfaceIsLava()) ShaderDoc.lavaVeins() else ShaderDoc.waterVeins()
+
+    /// path/fallback を捕まえた「保存検知で World の面質感を差し替える」関数を作る。
+    /// env 読みは Main で済ませ、この関数は Fs.FileRead だけ（watchFile の要求に合わせる）。
+    pub def surfaceReloader(path: String, fallback: ShaderDoc.Spec):
+            World.World -> World.World \ {Fs.FileRead} =
+        world -> { surfaceSpec = ShaderJson.load(path) |> Result.getWithDefault(fallback) | world }
+
     /// ブレンド実験の意図。Z/X/C で Normal/Add/Multiply を直接選ぶ
     /// （W/A/S/D の Transition 選択と同じ「N 択 = 専用キー N 個」の形）。
     enum BlendIntent with Eq {

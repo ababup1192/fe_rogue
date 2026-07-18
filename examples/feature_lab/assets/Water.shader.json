@@ -1,0 +1,48 @@
+{
+  "note": "宣言シェーダー面（丸い水たまり）。Warp→Scaled→Worley(f2mf1)→Smoothstep で目地を作り Ramp 2色で塗り、alpha=Warp(Disk) で縁のゆらいだ丸い池型に抜く。make debug 中に保存すると即反映（App.watchFile）。流れ=scroll / 網目サイズ=Scaled.factor / 濃淡=Smoothstep.hi / 色=Ramp.lo,hi / 池の大きさ=alpha.of.radius / 縁のゆらぎ=alpha.amount。",
+  "name": "water_veins",
+  "cycleRate": 0.25,
+  "out": {
+    "kind": "fill",
+    "shade": {
+      "kind": "ramp",
+      "lo": { "r": 0.35, "g": 0.55, "b": 0.60 },
+      "hi": { "r": 0.80, "g": 0.95, "b": 0.98 },
+      "field": {
+        "kind": "smoothstep",
+        "lo": 0.0,
+        "hi": 0.06,
+        "of": {
+          "kind": "warp",
+          "amount": 0.08,
+          "scale": 4.0,
+          "seed": 7,
+          "of": {
+            "kind": "scaled",
+            "factor": 5.0,
+            "scroll": { "x": 0.11, "y": 0.07 },
+            "of": {
+              "kind": "worley",
+              "scale": 1.0,
+              "seed": 42,
+              "out": "f2mf1"
+            }
+          }
+        }
+      }
+    },
+    "alpha": {
+      "kind": "warp",
+      "amount": 0.06,
+      "scale": 3.0,
+      "seed": 11,
+      "of": {
+        "kind": "disk",
+        "cx": 0.5,
+        "cy": 0.5,
+        "radius": 0.42,
+        "feather": 0.12
+      }
+    }
+  }
+}
