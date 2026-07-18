@@ -31,16 +31,105 @@ mod ShaderJson {
     // ========================================================================
 
     /// JSON をトップレベルの Spec へ畳む。壊れていれば Err（パス付きの説明）。
+    /// shared（bindings）は前方参照のみ・循環は Err・out や後の binding の未定義 Ref も Err。
     pub def parse(json: Json): Result[JsonError, ShaderDoc.Spec] =
         match json {
             case JObject(top) =>
                 forM (
                     name      <- strOr("name", "surface", top);
                     cycleRate <- numOr("cycleRate", 0.0, top);
+                    bindings  <- parseBindings(top);
                     outJson   <- reqKey("out", top);
-                    out       <- parseOut(outJson)
-                ) yield ({ name = name, cycleRate = cycleRate, out = out }: ShaderDoc.Spec)
+                    out       <- parseOut(outJson);
+                    _         <- checkOutRefs(bindings, out)
+                ) yield ({ name = name, cycleRate = cycleRate, bindings = bindings, out = out }: ShaderDoc.Spec)
             case _ => Err(err("ShaderDoc must be a JSON object"))
+        }
+
+    /// トップの "shared":[["name",{..field..}],..] を bindings へ（省略時 Nil）。
+    /// 各 binding の Field 内の Ref は「自分より前に定義された名前」だけを指せる
+    /// （後方参照・自己参照＝循環は Err・未定義 Ref も Err）。
+    def parseBindings(top: Map[String, Json]): Result[JsonError, List[(String, ShaderDoc.Field)]] =
+        match Map.get("shared", top) {
+            case None => Ok(Nil)
+            case Some(JArray(items)) => foldBindings(Vector.toList(items), Nil)
+            case Some(_) => Err(err("'shared' must be an array of [name, field]"))
+        }
+
+    // 各要素を順に読み、その時点で定義済みの名前だけを Ref できることを検証しながら畳む。
+    def foldBindings(items: List[Json], acc: List[(String, ShaderDoc.Field)]):
+            Result[JsonError, List[(String, ShaderDoc.Field)]] =
+        match items {
+            case Nil => Ok(List.reverse(acc))
+            case item :: rest =>
+                parseBindingEntry(item) |> Result.flatMap(entry ->
+                    checkRefsDefined(entry, acc) |> Result.flatMap(_ ->
+                        foldBindings(rest, entry :: acc)))
+        }
+
+    // ["name", {..field..}] を (name, Field) へ。
+    def parseBindingEntry(item: Json): Result[JsonError, (String, ShaderDoc.Field)] =
+        match item {
+            case JArray(v) => match Vector.toList(v) {
+                case JString(name) :: fieldJson :: Nil =>
+                    parseField(fieldJson) |> Result.map(field -> (name, field))
+                case _ => Err(err("shared entry must be [name(string), field]"))
+            }
+            case _ => Err(err("shared entry must be [name, field]"))
+        }
+
+    // entry の Field 内の Ref が全て「既に定義された名前」（priorNames）に含まれることを検証。
+    def checkRefsDefined(entry: (String, ShaderDoc.Field),
+                         prior: List[(String, ShaderDoc.Field)]): Result[JsonError, Unit] =
+        let (_, field) = entry;
+        let priorNames = List.map(nf -> fst(nf), prior);
+        let unknown = List.filter(r -> not List.memberOf(r, priorNames), collectRefs(field));
+        match unknown {
+            case Nil     => Ok()
+            case bad :: _ => Err(err("shared binding refs undefined/forward name '${bad}'"))
+        }
+
+    // out（shade/alpha）内の Ref が全 binding 名のどれかであることを検証。
+    def checkOutRefs(bindings: List[(String, ShaderDoc.Field)], out: ShaderDoc.Out): Result[JsonError, Unit] =
+        let names = List.map(nf -> fst(nf), bindings);
+        let refs = match out {
+            case ShaderDoc.Out.Fill(f) =>
+                let shadeRefs = match f#shade {
+                    case ShaderDoc.Shade.Solid(_) => Nil
+                    case ShaderDoc.Shade.Ramp(r)  => collectRefs(r#field)
+                };
+                List.append(shadeRefs, collectRefs(f#alpha))
+        };
+        let unknown = List.filter(r -> not List.memberOf(r, names), refs);
+        match unknown {
+            case Nil      => Ok()
+            case bad :: _ => Err(err("out refs undefined shared name '${bad}'"))
+        }
+
+    /// Field の木を走査して現れる Ref 名を集める（検証用の薄いヘルパ）。
+    def collectRefs(field: ShaderDoc.Field): List[String] =
+        match field {
+            case ShaderDoc.Field.Const(_)      => Nil
+            case ShaderDoc.Field.Uv(_)         => Nil
+            case ShaderDoc.Field.Worley(_)     => Nil
+            case ShaderDoc.Field.Fbm(_)        => Nil
+            case ShaderDoc.Field.Smoothstep(s) => collectRefs(s#of)
+            case ShaderDoc.Field.Scaled(s)     => collectRefs(s#of)
+            case ShaderDoc.Field.Warp(wp)      => collectRefs(wp#of)
+            case ShaderDoc.Field.Mix(m)        => List.append(collectRefs(m#a), collectRefs(m#b))
+            case ShaderDoc.Field.Blend(bl)     => List.append(collectRefs(bl#a),
+                                                    List.append(collectRefs(bl#b), collectRefs(bl#by)))
+            case ShaderDoc.Field.Disk(_)       => Nil
+            case ShaderDoc.Field.Scales(_)     => Nil
+            case ShaderDoc.Field.Glints(_)     => Nil
+            case ShaderDoc.Field.Ripples(_)    => Nil
+            case ShaderDoc.Field.Sparkle(_)    => Nil
+            case ShaderDoc.Field.Bin(bn)       => List.append(collectRefs(bn#a), collectRefs(bn#b))
+            case ShaderDoc.Field.Un(un)        => collectRefs(un#of)
+            case ShaderDoc.Field.Pow(pw)       => collectRefs(pw#of)
+            case ShaderDoc.Field.Time(tm)      => collectRefs(tm#offset)
+            case ShaderDoc.Field.Tiling(tl)    => collectRefs(tl#of)
+            case ShaderDoc.Field.Ref(name)     => name :: Nil
         }
 
     def parseOut(json: Json): Result[JsonError, ShaderDoc.Out] =
@@ -198,6 +287,14 @@ mod ShaderJson {
                         offsetJson <- reqKey("offset", m);
                         offset     <- parseField(offsetJson)
                     ) yield ShaderDoc.Field.Time({ scale = scale, offset = offset })
+                case "tile" =>
+                    forM (
+                        tiles  <- parseVec2("tiles", m);
+                        ofJson <- reqKey("of", m);
+                        of     <- parseField(ofJson)
+                    ) yield ShaderDoc.Field.Tiling({ tiles = tiles, of = of })
+                case "use" =>
+                    forM (name <- strAt("name", m)) yield ShaderDoc.Field.Ref(name)
                 case other => Err(err("unknown field kind: '${other}'"))
             }
         })
@@ -332,11 +429,21 @@ mod ShaderJson {
     // ========================================================================
 
     pub def toJson(spec: ShaderDoc.Spec): Json =
-        JObject(Map#{
+        // bindings が空なら "shared" を出さない（既存 JSON の round-trip を 1 バイトも変えない）。
+        let base = Map#{
             "name"      => JString(spec#name),
             "cycleRate" => num(spec#cycleRate),
             "out"       => outToJson(spec#out)
-        })
+        };
+        let full = if (List.isEmpty(spec#bindings)) base
+                   else Map.insert("shared", bindingsToJson(spec#bindings), base);
+        JObject(full)
+
+    def bindingsToJson(bindings: List[(String, ShaderDoc.Field)]): Json =
+        JArray(List.toVector(List.map(nf -> {
+            let (name, field) = nf;
+            JArray(Vector#{ JString(name), fieldToJson(field) })
+        }, bindings)))
 
     def outToJson(out: ShaderDoc.Out): Json =
         match out {
@@ -413,6 +520,11 @@ mod ShaderJson {
             case ShaderDoc.Field.Time(tm) =>
                 JObject(Map#{ "kind" => JString("time"), "scale" => num(tm#scale),
                               "offset" => fieldToJson(tm#offset) })
+            case ShaderDoc.Field.Tiling(tl) =>
+                JObject(Map#{ "kind" => JString("tile"), "tiles" => vec2ToJson(tl#tiles),
+                              "of" => fieldToJson(tl#of) })
+            case ShaderDoc.Field.Ref(name) =>
+                JObject(Map#{ "kind" => JString("use"), "name" => JString(name) })
         }
 
     def binOpStr(op: ShaderDoc.BinOp): String =

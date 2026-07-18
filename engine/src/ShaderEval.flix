@@ -8,28 +8,42 @@ mod ShaderEval {
     /// 代表点 uv（0..1 目安）と時刻 t の最終色（Color = 0..1 の Float32 rgb）。
     pub def evalPixel(spec: ShaderDoc.Spec, uv: Vec2.Vec2, t: Float64): Color =
         match spec#out {
-            case ShaderDoc.Out.Fill(f) => evalShade(spec#cycleRate, f#shade, uv, t)
+            case ShaderDoc.Out.Fill(f) => evalShade(spec#cycleRate, f#shade, uv, t, envOf(spec#bindings))
         }
 
     /// 代表点のアルファ（Fill#alpha の場を評価）。
     pub def evalAlpha(spec: ShaderDoc.Spec, uv: Vec2.Vec2, t: Float64): Float64 =
         match spec#out {
-            case ShaderDoc.Out.Fill(f) => evalField(f#alpha, uv, t)
+            case ShaderDoc.Out.Fill(f) => evalFieldEnv(f#alpha, uv, t, envOf(spec#bindings))
         }
 
-    def evalShade(cycleRate: Float64, shade: ShaderDoc.Shade, uv: Vec2.Vec2, t: Float64): Color =
+    /// bindings（前から順）を名前→場の env に畳む。前の binding だけが後の binding から Ref できる。
+    def envOf(bindings: List[(String, ShaderDoc.Field)]): Map[String, ShaderDoc.Field] =
+        List.foldLeft((env, nf) -> {
+            let (name, field) = nf;
+            Map.insert(name, field, env)
+        }, Map.empty(), bindings)
+
+    def evalShade(cycleRate: Float64, shade: ShaderDoc.Shade, uv: Vec2.Vec2, t: Float64,
+                  env: Map[String, ShaderDoc.Field]): Color =
         match shade {
             case ShaderDoc.Shade.Solid(c) => c
             case ShaderDoc.Shade.Ramp(r)  =>
                 // cycleRate = 0 は素直な補間。cycleRate>0 だけ三角波で往復（パレット循環）。
-                let field = evalField(r#field, uv, t);
+                let field = evalFieldEnv(r#field, uv, t, env);
                 let phase = if (cycleRate == 0.0) clamp01(field)
                             else clamp01(triWave(field + cycleRate * t));
                 mixColor(r#lo, r#hi, phase)
         }
 
     /// 場を Float64 へ。uv は「今読むべき座標」（Scaled/Warp が差し替える）。
+    /// public はシグネチャ不変（呼び元を割らない）で、内部の env 版に空 env で委譲する。
     pub def evalField(field: ShaderDoc.Field, uv: Vec2.Vec2, t: Float64): Float64 =
+        evalFieldEnv(field, uv, t, Map.empty())
+
+    /// env 付きの場評価。Ref だけが env を読み、他 case は受けて再帰へ渡すだけ。
+    def evalFieldEnv(field: ShaderDoc.Field, uv: Vec2.Vec2, t: Float64,
+                     env: Map[String, ShaderDoc.Field]): Float64 =
         match field {
             case ShaderDoc.Field.Const(v) => v
             case ShaderDoc.Field.Uv(u)    =>
@@ -47,20 +61,20 @@ mod ShaderEval {
             case ShaderDoc.Field.Fbm(b) =>
                 fbm(Vec2.mul(uv, b#scale), b#octaves, Int32.toFloat64(b#seed))
             case ShaderDoc.Field.Smoothstep(s) =>
-                smoothstep(s#lo, s#hi, evalField(s#of, uv, t))
+                smoothstep(s#lo, s#hi, evalFieldEnv(s#of, uv, t, env))
             case ShaderDoc.Field.Scaled(s) =>
                 let uv2 = Vec2.add(Vec2.mul(uv, s#factor), Vec2.mul(s#scroll, t));
-                evalField(s#of, uv2, t)
+                evalFieldEnv(s#of, uv2, t, env)
             case ShaderDoc.Field.Warp(wp) =>
                 let ox = fbm(Vec2.mul(uv, wp#scale), 3, Int32.toFloat64(wp#seed)) - 0.5;
                 let oy = fbm(Vec2.mul(uv, wp#scale), 3, Int32.toFloat64(wp#seed) + 91.0) - 0.5;
                 let uv2 = Vec2.add(uv, Vec2.mul({ x = ox, y = oy }, wp#amount));
-                evalField(wp#of, uv2, t)
+                evalFieldEnv(wp#of, uv2, t, env)
             case ShaderDoc.Field.Mix(m) =>
-                lerp(evalField(m#a, uv, t), evalField(m#b, uv, t), m#t)
+                lerp(evalFieldEnv(m#a, uv, t, env), evalFieldEnv(m#b, uv, t, env), m#t)
             case ShaderDoc.Field.Blend(bl) =>
-                lerp(evalField(bl#a, uv, t), evalField(bl#b, uv, t),
-                     clamp01(evalField(bl#by, uv, t)))
+                lerp(evalFieldEnv(bl#a, uv, t, env), evalFieldEnv(bl#b, uv, t, env),
+                     clamp01(evalFieldEnv(bl#by, uv, t, env)))
             case ShaderDoc.Field.Disk(d) =>
                 let dist = Vec2.length(Vec2.sub(uv, { x = d#cx, y = d#cy }));
                 1.0 - smoothstep(d#radius, d#radius + d#feather, dist)
@@ -111,8 +125,8 @@ mod ShaderEval {
                 let point = 1.0 - smoothstep(0.04, 0.26, d);
                 on * tw * point
             case ShaderDoc.Field.Bin(bn) =>
-                let a = evalField(bn#a, uv, t);
-                let b = evalField(bn#b, uv, t);
+                let a = evalFieldEnv(bn#a, uv, t, env);
+                let b = evalFieldEnv(bn#b, uv, t, env);
                 match bn#op {
                     case ShaderDoc.BinOp.Add  => a + b
                     case ShaderDoc.BinOp.Sub  => a - b
@@ -122,7 +136,7 @@ mod ShaderEval {
                     case ShaderDoc.BinOp.Step => if (b >= a) 1.0 else 0.0
                 }
             case ShaderDoc.Field.Un(un) =>
-                let x = evalField(un#of, uv, t);
+                let x = evalFieldEnv(un#of, uv, t, env);
                 match un#op {
                     case ShaderDoc.UnOp.Neg      => -x
                     case ShaderDoc.UnOp.Abs      => Float64.abs(x)
@@ -134,9 +148,19 @@ mod ShaderEval {
                     case ShaderDoc.UnOp.OneMinus => 1.0 - x
                 }
             case ShaderDoc.Field.Pow(pw) =>
-                powf(evalField(pw#of, uv, t), pw#p)
+                powf(evalFieldEnv(pw#of, uv, t, env), pw#p)
             case ShaderDoc.Field.Time(tm) =>
-                t * tm#scale + evalField(tm#offset, uv, t)
+                t * tm#scale + evalFieldEnv(tm#offset, uv, t, env)
+            case ShaderDoc.Field.Tiling(tl) =>
+                // 各マス内は fract(uv*tiles)。of をこの座標で読む（GLSL の差し替えと同じ形）。
+                let uv2 = { x = fract(uv#x * tl#tiles#x), y = fract(uv#y * tl#tiles#y) };
+                evalFieldEnv(tl#of, uv2, t, env)
+            case ShaderDoc.Field.Ref(name) =>
+                // parse が定義済みを保証する。未定義は 0.0（保険）。
+                match Map.get(name, env) {
+                    case Some(f) => evalFieldEnv(f, uv, t, env)
+                    case None    => 0.0
+                }
         }
 
     // Pow の CPU 評価。整数指数は反復積（GLSL の powProduct と同じ左結合の並び）で、

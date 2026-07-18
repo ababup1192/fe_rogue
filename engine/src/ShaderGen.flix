@@ -126,21 +126,45 @@ mod ShaderGen {
         "uniform float uTime;\n" +
         preludeSource() +
         "void main() {\n" +
-        "    " + outStmt(spec#cycleRate, spec#out) + "\n" +
+        bindingPrelude(spec#bindings) +
+        "    " + outStmt(spec#cycleRate, spec#out, envOf(spec#bindings)) + "\n" +
         "}\n"
 
     // ── main 本体（prelude 抜き）のスナップショット用。ノイズテンプレを混ぜず Spec だけ pin する。──
     pub def compileBody(spec: ShaderDoc.Spec): String =
-        outStmt(spec#cycleRate, spec#out)
+        bindingPrelude(spec#bindings) +
+        outStmt(spec#cycleRate, spec#out, envOf(spec#bindings))
 
-    def outStmt(cycleRate: Float64, out: ShaderDoc.Out): String =
-        match out {
-            case ShaderDoc.Out.Fill(f) =>
-                "outColor = vec4(" + shadeExpr(cycleRate, f#shade) + ", " +
-                fieldExpr(f#alpha, "vUv") + ");"
+    /// bindings を main 先頭の `float sg_b_<name> = <式>;` 宣言に並べる（前から順）。
+    /// 各 binding の式は自分より前の binding だけ Ref できるので、env を前へ畳みながら組む。
+    /// bindings が空（既存 Spec）なら 1 文字も吐かない（main 本体は現行と完全一致）。
+    def bindingPrelude(bindings: List[(String, ShaderDoc.Field)]): String =
+        if (List.isEmpty(bindings)) ""
+        else {
+            let (text, _) = List.foldLeft((acc, nf) -> {
+                let (out, env) = acc;
+                let (name, field) = nf;
+                let line = "    float sg_b_" + name + " = " + fieldExpr(field, "vUv", env) + ";\n";
+                (out + line, Map.insert(name, "sg_b_" + name, env))
+            }, ("", Map.empty()), bindings);
+            text
         }
 
-    def shadeExpr(cycleRate: Float64, shade: ShaderDoc.Shade): String =
+    /// bindings 名 → GLSL 変数名（sg_b_<name>）の env。out 式（shade/alpha）が Ref を解くのに使う。
+    def envOf(bindings: List[(String, ShaderDoc.Field)]): Map[String, String] =
+        List.foldLeft((env, nf) -> {
+            let (name, _) = nf;
+            Map.insert(name, "sg_b_" + name, env)
+        }, Map.empty(), bindings)
+
+    def outStmt(cycleRate: Float64, out: ShaderDoc.Out, env: Map[String, String]): String =
+        match out {
+            case ShaderDoc.Out.Fill(f) =>
+                "outColor = vec4(" + shadeExpr(cycleRate, f#shade, env) + ", " +
+                fieldExpr(f#alpha, "vUv", env) + ");"
+        }
+
+    def shadeExpr(cycleRate: Float64, shade: ShaderDoc.Shade, env: Map[String, String]): String =
         match shade {
             case ShaderDoc.Shade.Solid(c) => vec3Lit(c)
             case ShaderDoc.Shade.Ramp(r)  =>
@@ -148,15 +172,16 @@ mod ShaderGen {
                 // field を cycleRate*uTime で往復させる三角波にして色が呼吸する（パレット循環）。
                 let factor =
                     if (cycleRate == 0.0)
-                        "clamp(" + fieldExpr(r#field, "vUv") + ", 0.0, 1.0)"
+                        "clamp(" + fieldExpr(r#field, "vUv", env) + ", 0.0, 1.0)"
                     else
-                        "clamp(abs(fract((" + fieldExpr(r#field, "vUv") + ") + " +
+                        "clamp(abs(fract((" + fieldExpr(r#field, "vUv", env) + ") + " +
                         f(cycleRate) + " * uTime) * 2.0 - 1.0), 0.0, 1.0)";
                 "mix(" + vec3Lit(r#lo) + ", " + vec3Lit(r#hi) + ", " + factor + ")"
         }
 
-    /// 場を GLSL の float 式へ。uv は「今読むべき座標」の GLSL 式（Scaled/Warp が差し替える）。
-    def fieldExpr(field: ShaderDoc.Field, uv: String): String =
+    /// 場を GLSL の float 式へ。uv は「今読むべき座標」の GLSL 式（Scaled/Warp/Tiling が差し替える）。
+    /// env は bindings 名 → GLSL 変数名で、Ref だけがこれを読む（他の case は受けて再帰へ渡すだけ）。
+    def fieldExpr(field: ShaderDoc.Field, uv: String, env: Map[String, String]): String =
         match field {
             case ShaderDoc.Field.Const(v) => f(v)
             case ShaderDoc.Field.Uv(u)    =>
@@ -174,23 +199,23 @@ mod ShaderGen {
             case ShaderDoc.Field.Fbm(b) =>
                 "sg_fbm((" + uv + ") * " + f(b#scale) + ", " + iLit(b#octaves) + ", " + fSeed(b#seed) + ")"
             case ShaderDoc.Field.Smoothstep(s) =>
-                "smoothstep(" + f(s#lo) + ", " + f(s#hi) + ", " + fieldExpr(s#of, uv) + ")"
+                "smoothstep(" + f(s#lo) + ", " + f(s#hi) + ", " + fieldExpr(s#of, uv, env) + ")"
             case ShaderDoc.Field.Scaled(s) =>
                 // inner の見る座標を factor 倍 + uTime*scroll で差し替える。
                 let uv2 = "((" + uv + ") * " + f(s#factor) + " + vec2(" +
                           f(s#scroll#x) + ", " + f(s#scroll#y) + ") * uTime)";
-                fieldExpr(s#of, uv2)
+                fieldExpr(s#of, uv2, env)
             case ShaderDoc.Field.Warp(wp) =>
                 // fbm でずらしたオフセットを uv に足して inner を読む（ドメインワープ）。
                 let off = "(vec2(sg_fbm((" + uv + ") * " + f(wp#scale) + ", 3, " + fSeed(wp#seed) +
                           "), sg_fbm((" + uv + ") * " + f(wp#scale) + ", 3, " + fSeed(wp#seed) + " + 91.0)) - 0.5)";
                 let uv2 = "((" + uv + ") + " + off + " * " + f(wp#amount) + ")";
-                fieldExpr(wp#of, uv2)
+                fieldExpr(wp#of, uv2, env)
             case ShaderDoc.Field.Mix(m) =>
-                "mix(" + fieldExpr(m#a, uv) + ", " + fieldExpr(m#b, uv) + ", " + f(m#t) + ")"
+                "mix(" + fieldExpr(m#a, uv, env) + ", " + fieldExpr(m#b, uv, env) + ", " + f(m#t) + ")"
             case ShaderDoc.Field.Blend(bl) =>
-                "mix(" + fieldExpr(bl#a, uv) + ", " + fieldExpr(bl#b, uv) + ", " +
-                "clamp(" + fieldExpr(bl#by, uv) + ", 0.0, 1.0))"
+                "mix(" + fieldExpr(bl#a, uv, env) + ", " + fieldExpr(bl#b, uv, env) + ", " +
+                "clamp(" + fieldExpr(bl#by, uv, env) + ", 0.0, 1.0))"
             case ShaderDoc.Field.Disk(d) =>
                 // 中心からの距離が radius 以内で 1、radius→radius+feather で 0 へ soft fade。
                 "(1.0 - smoothstep(" + f(d#radius) + ", " + f(d#radius + d#feather) + ", " +
@@ -207,8 +232,8 @@ mod ShaderGen {
                 "sg_sparkle((" + uv + "), " + f(sp#scale) + ", " + f(sp#rate) + ", " +
                 f(sp#density) + ", " + fSeed(sp#seed) + ")"
             case ShaderDoc.Field.Bin(bn) =>
-                let ae = fieldExpr(bn#a, uv);
-                let be = fieldExpr(bn#b, uv);
+                let ae = fieldExpr(bn#a, uv, env);
+                let be = fieldExpr(bn#b, uv, env);
                 match bn#op {
                     case ShaderDoc.BinOp.Add  => "(" + ae + " + " + be + ")"
                     case ShaderDoc.BinOp.Sub  => "(" + ae + " - " + be + ")"
@@ -218,7 +243,7 @@ mod ShaderGen {
                     case ShaderDoc.BinOp.Step => "step(" + ae + ", " + be + ")"
                 }
             case ShaderDoc.Field.Un(un) =>
-                let x = fieldExpr(un#of, uv);
+                let x = fieldExpr(un#of, uv, env);
                 match un#op {
                     case ShaderDoc.UnOp.Neg      => "(-(" + x + "))"
                     case ShaderDoc.UnOp.Abs      => "abs(" + x + ")"
@@ -232,13 +257,20 @@ mod ShaderGen {
             case ShaderDoc.Field.Pow(pw) =>
                 // 整数指数は pow() でなく反復積の文字列にして CPU 側の反復積と構造を合わせる
                 // （GPU/CPU で丸め順が揃いパリティが強くなる）。負の底の非整数乗は NaN なので 0 で下切り。
-                let base = "max(0.0, " + fieldExpr(pw#of, uv) + ")";
+                let base = "max(0.0, " + fieldExpr(pw#of, uv, env) + ")";
                 if (Float64.floor(pw#p) == pw#p)
                     powProduct(base, Float64.floor(pw#p))
                 else
-                    "pow(max(0.0, (" + fieldExpr(pw#of, uv) + ")), " + f(pw#p) + ")"
+                    "pow(max(0.0, (" + fieldExpr(pw#of, uv, env) + ")), " + f(pw#p) + ")"
             case ShaderDoc.Field.Time(tm) =>
-                "(uTime * " + f(tm#scale) + " + (" + fieldExpr(tm#offset, uv) + "))"
+                "(uTime * " + f(tm#scale) + " + (" + fieldExpr(tm#offset, uv, env) + "))"
+            case ShaderDoc.Field.Tiling(tl) =>
+                // 各マス内は fract(uv*tiles)。of が読む座標をこの式に差し替える（sg_tiling は作らない）。
+                let uv2 = "fract((" + uv + ") * vec2(" + f(tl#tiles#x) + ", " + f(tl#tiles#y) + "))";
+                fieldExpr(tl#of, uv2, env)
+            case ShaderDoc.Field.Ref(name) =>
+                // parse が定義済みを保証するので env に必ず居る。0.0 は保険。
+                Map.getWithDefault("0.0", name, env)
         }
 
     /// base を n 回掛けた GLSL 積の文字列（n=0 は 1.0・n=1 は base そのもの）。

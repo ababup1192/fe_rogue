@@ -58,7 +58,7 @@ def testWaterVeinsSpecShape(): Unit \ Assert =
 
 /// Spec 本体を組む小道具（prelude 抜きの main 式を作るためのラッパ）。
 def bodyOfField(field: ShaderDoc.Field): String =
-    ShaderGen.compileBody({ name = "t", cycleRate = 0.0,
+    ShaderGen.compileBody({ name = "t", cycleRate = 0.0, bindings = Nil,
         out = ShaderDoc.Out.Fill({ shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
                                    alpha = field }) })
 
@@ -334,6 +334,103 @@ def testScanlineBodySnapshot(): Unit \ Assert =
 def testScanlineEval(): Unit \ Assert =
     let got = ShaderEval.evalField(scanlineField(), { x = 0.0, y = 0.3 }, 0.1);
     Assert.assertEq(expected = 0.5 + 0.5 * Vec2.sin(11.7), got)
+
+// ════════════════════════════════════════════════════════════════════
+// (6) Wave 2a: bindings（shared/use）＋ Tiling — 共有機構と座標のマス目化
+// ════════════════════════════════════════════════════════════════════
+
+// ripples プリミティブと同じ式を素の atom + bindings(wob) で書き下す（§3 の反射うねり線）。
+//   freq=9, amp=0.24, speed=0.09, seed=7。厳密一致のため掛け算の順序と 2π 定数(6.2831853)を
+//   プリミティブ（sg_ripples の CPU 版）とそっくり同じに畳む（浮動小数は結合則が成り立たないので）。
+//   wob = sin(uv.x*6.2831853*9*0.5 + 7)*0.24 + sin(uv.x*6.2831853*9*1.3 + 18.9)*0.096
+//   結果 = 0.5 + 0.5*sin((uv.y*9 + wob + t*0.09) * 6.2831853)。
+def ripplesAtomField(): (List[(String, ShaderDoc.Field)], ShaderDoc.Field) =
+    let tau = 6.2831853;
+    let mul = (a, b) -> ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Mul, a = a, b = b });
+    let add = (a, b) -> ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Add, a = a, b = b });
+    let c = v -> ShaderDoc.Field.Const(v);
+    let uvU = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U });
+    // sin(((uv.x * tau) * freq) * fracK + phase)。掛け順は sg_ripples に一致。
+    let sinOf = (fracK, phase) ->
+        ShaderDoc.Field.Un({ op = ShaderDoc.UnOp.Sin,
+            of = add(mul(mul(mul(uvU, c(tau)), c(9.0)), c(fracK)), c(phase)) });
+    // 第 1 項 = sin(...)*amp、第 2 項 = (sin(...)*amp)*0.4（プリミティブの掛け順そのまま）。
+    let wob = add(mul(sinOf(0.5, 7.0), c(0.24)),
+                  mul(mul(sinOf(1.3, 18.900000000000002), c(0.24)), c(0.4)));
+    // band = uv.y*9 + wob + t*0.09。alpha = 0.5 + 0.5*sin(band * tau)。
+    let band = add(add(mul(ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.V }), c(9.0)),
+                       ShaderDoc.Field.Ref("wob")),
+                   ShaderDoc.Field.Time({ scale = 0.09, offset = c(0.0) }));
+    let alpha = add(c(0.5), mul(c(0.5), ShaderDoc.Field.Un({ op = ShaderDoc.UnOp.Sin,
+        of = mul(band, c(tau)) })));
+    (("wob", wob) :: Nil, alpha)
+
+/// ② 素 atom + bindings(wob) で組んだ ripples が、プリミティブ Ripples と代表点で厳密一致する。
+///   連続 sin なので hash/floor を踏まず assertEq で完全一致するはず（ズレたら式の写し間違い）。
+@Test
+def testRipplesAtomsMatchPrimitive(): Unit \ Assert =
+    let uv = { x = 0.3, y = 0.4 };
+    let t = 0.2;
+    let (bindings, alpha) = ripplesAtomField();
+    let spec = { name = "r", cycleRate = 0.0, bindings = bindings,
+                 out = ShaderDoc.Out.Fill({
+                     shade = ShaderDoc.Shade.Solid({ r = 1.0f32, g = 1.0f32, b = 1.0f32 }),
+                     alpha = alpha }) };
+    let atomVal = ShaderEval.evalAlpha(spec, uv, t);
+    let prim = ShaderDoc.Field.Ripples({ freq = 9.0, amp = 0.24, speed = 0.09, seed = 7 });
+    let primVal = ShaderEval.evalField(prim, uv, t);
+    Assert.assertEq(expected = primVal, atomVal)
+
+/// ③ Tiling ノードは inner uv を fract((vUv) * vec2(..,..)) に差し替える（初回出力を固定）。
+@Test
+def testTilingNodeSnapshot(): Unit \ Assert =
+    let field = ShaderDoc.Field.Tiling({ tiles = { x = 8.0, y = 8.0 },
+                                         of = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U }) });
+    Assert.assertEq(expected =
+        "outColor = vec4(vec3(0.0, 0.0, 0.0), (fract((vUv) * vec2(8.0, 8.0))).x);",
+        bodyOfField(field))
+
+/// ④a 前方参照: 後の binding が前の binding を Ref して正しく評価される。
+///   base=0.5 を wob=base+0.25 が参照 → alpha=use(wob)=0.75。
+@Test
+def testBindingForwardRef(): Unit \ Assert =
+    let bindings =
+        ("base", ShaderDoc.Field.Const(0.5)) ::
+        ("wob", ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Add,
+            a = ShaderDoc.Field.Ref("base"), b = ShaderDoc.Field.Const(0.25) })) :: Nil;
+    let spec = { name = "f", cycleRate = 0.0, bindings = bindings,
+                 out = ShaderDoc.Out.Fill({
+                     shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+                     alpha = ShaderDoc.Field.Ref("wob") }) };
+    Assert.assertEq(expected = 0.75, ShaderEval.evalAlpha(spec, { x = 0.0, y = 0.0 }, 0.0))
+
+/// ④b 循環（自己参照 or 後方参照）の JSON は parse で Err（fail-open で呼び側がフォールバック）。
+@Test
+def testBindingCircularIsErr(): Unit \ Assert =
+    // "a" が自分自身を Ref（自己参照＝定義前の名前）→ Err。
+    let json = "{\"name\":\"x\"," +
+               "\"shared\":[[\"a\",{\"kind\":\"use\",\"name\":\"a\"}]]," +
+               "\"out\":{\"kind\":\"fill\"," +
+               "\"shade\":{\"kind\":\"solid\",\"color\":\"#000000\"}," +
+               "\"alpha\":{\"kind\":\"const\",\"value\":1.0}}}";
+    let r = match Util.Json.parse(json) {
+        case Ok(j)  => Result.isErr(ShaderJson.parse(j))
+        case Err(_) => false
+    };
+    Assert.assertEq(expected = true, r)
+
+/// ④c 未定義 Ref（out が定義されていない名前を使う）の JSON は parse で Err。
+@Test
+def testUndefinedRefIsErr(): Unit \ Assert =
+    let json = "{\"name\":\"x\"," +
+               "\"out\":{\"kind\":\"fill\"," +
+               "\"shade\":{\"kind\":\"solid\",\"color\":\"#000000\"}," +
+               "\"alpha\":{\"kind\":\"use\",\"name\":\"ghost\"}}}";
+    let r = match Util.Json.parse(json) {
+        case Ok(j)  => Result.isErr(ShaderJson.parse(j))
+        case Err(_) => false
+    };
+    Assert.assertEq(expected = true, r)
 
 /// lava の alpha は Disk（丸い溶岩溜まり）を Warp でくるんだ木（往復後も辿れる）。
 @Test

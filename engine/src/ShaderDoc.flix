@@ -91,6 +91,12 @@ mod ShaderDoc {
         /// 今の時刻（秒）を scale 倍して offset の場を足す。動きの元。
         /// offset を Const にすれば「時刻 × scale + 定数」の素直な時間項になる。
         case Time({ scale = Float64, offset = Field })
+        /// 模様をマス目（tiles.x × tiles.y 個）に敷いて、各マスの中を 0..1 の座標で読み直す。
+        /// of は「1 マス内の場」で、fract(uv*tiles) を uv として読む（同じ模様がタイル状に繰り返す）。
+        case Tiling({ tiles = Vec2.Vec2, of = Field })
+        /// 名前を付けて使い回す場（shared に定義したものを参照する）。
+        /// 同じ計算を何度も書かずに一度だけ書いて名前で呼べる。
+        case Ref(String)
     }
 
     /// 面の色（rgb）。
@@ -109,9 +115,12 @@ mod ShaderDoc {
 
     /// シェーダー面 1 枚ぶんの宣言（theme.json の materials[i].surface に対応する予定）。
     /// cycleRate = パレット循環の速さ（Ramp の位相 uniform に掛かる。0 で静止）。
+    /// bindings = 名前付きで使い回す場の置き場（前から順に定義・後の場は前の名前を Ref できる）。
+    ///   空リストなら GLSL は何も増えない（既存 Spec は bindings = Nil）。
     pub type alias Spec = {
         name = String,
         cycleRate = Float64,
+        bindings = List[(String, Field)],
         out = Out
     }
 
@@ -120,6 +129,7 @@ mod ShaderDoc {
     pub def demoSurface(): Spec =
         { name = "demo",
           cycleRate = 0.5,
+          bindings = Nil,
           out = Out.Fill({
               shade = Shade.Ramp({ lo = { r = 0.15f32, g = 0.35f32, b = 0.55f32 },
                                    hi = { r = 0.55f32, g = 0.85f32, b = 0.95f32 },
@@ -142,6 +152,7 @@ mod ShaderDoc {
                     of = Field.Disk({ cx = 0.5, cy = 0.5, radius = 0.42, feather = 0.12 }) });
         { name = "water_veins",
           cycleRate = 0.25,
+          bindings = Nil,
           out = Out.Fill({
               shade = Shade.Ramp({ lo = { r = 0.35f32, g = 0.55f32, b = 0.60f32 },
                                    hi = { r = 0.80f32, g = 0.95f32, b = 0.98f32 },
@@ -166,6 +177,7 @@ mod ShaderDoc {
                     of = Field.Disk({ cx = 0.5, cy = 0.5, radius = 0.42, feather = 0.12 }) });
         { name = "lava",
           cycleRate = 0.35,
+          bindings = Nil,
           out = Out.Fill({
               shade = Shade.Ramp({ lo = { r = 0.10f32, g = 0.04f32, b = 0.02f32 },
                                    hi = { r = 1.0f32,  g = 0.88f32, b = 0.54f32 },
