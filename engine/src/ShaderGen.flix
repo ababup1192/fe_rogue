@@ -311,8 +311,11 @@ mod ShaderGen {
                 let uv2 = "fract((" + uv + ") * vec2(" + f(tl#tiles#x) + ", " + f(tl#tiles#y) + "))";
                 fieldExpr(tl#of, uv2, env)
             case ShaderDoc.Field.Ref(name) =>
-                // parse が定義済みを保証するので env に必ず居る。0.0 は保険。
-                Map.getWithDefault("0.0", name, env)
+                // parse が定義済みを保証する。未定義は 0.0（保険）。
+                match Map.get(name, env) {
+                    case Some(glslVar) => glslVar
+                    case None          => "0.0"
+                }
         }
 
     /// hash に渡すセル座標の GLSL 式。floor((uv)*scale) を作り、bucket が有ればその式を足す。

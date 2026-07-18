@@ -404,6 +404,24 @@ def testBindingForwardRef(): Unit \ Assert =
                      alpha = ShaderDoc.Field.Ref("wob") }) };
     Assert.assertEq(expected = 0.75, ShaderEval.evalAlpha(spec, { x = 0.0, y = 0.0 }, 0.0))
 
+/// ④a-gl GLSL 経路: bindings は main 先頭に sg_b_<name> を宣言し、Ref は生の名前でなく
+///   sg_b_<name> を参照する（bindings/Ref を実際にコンパイルして「未宣言 wob」事故を釘打ち）。
+@Test
+def testBindingCompilesToBindingVar(): Unit \ Assert =
+    let bindings =
+        ("base", ShaderDoc.Field.Const(0.5)) ::
+        ("wob", ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Add,
+            a = ShaderDoc.Field.Ref("base"), b = ShaderDoc.Field.Const(0.25) })) :: Nil;
+    let spec = { name = "f", cycleRate = 0.0, bindings = bindings,
+                 out = ShaderDoc.Out.Fill({
+                     shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+                     alpha = ShaderDoc.Field.Ref("wob") }) };
+    let expected =
+        "    float sg_b_base = 0.5;\n" +
+        "    float sg_b_wob = (sg_b_base + 0.25);\n" +
+        "outColor = vec4(vec3(0.0, 0.0, 0.0), sg_b_wob);";
+    Assert.assertEq(expected = expected, ShaderGen.compileBody(spec))
+
 /// ④b 循環（自己参照 or 後方参照）の JSON は parse で Err（fail-open で呼び側がフォールバック）。
 @Test
 def testBindingCircularIsErr(): Unit \ Assert =
