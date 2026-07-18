@@ -65,7 +65,7 @@ def bodyOfField(field: ShaderDoc.Field): String =
 /// prelude は長さだけ pin（本文は別扱い）。長さが変わったら prelude を触った合図。
 @Test
 def testPreludeLength(): Unit \ Assert =
-    Assert.assertEq(expected = 1371, String.length(ShaderGen.preludeSource()))
+    Assert.assertEq(expected = 2286, String.length(ShaderGen.preludeSource()))
 
 /// demoSurface の main 式（prelude 抜き）。Ramp の三角波位相・Uv 展開まで含めて決定論で pin。
 @Test
