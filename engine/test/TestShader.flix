@@ -544,6 +544,97 @@ def countOccurrences(needle: String, haystack: String): Int32 =
         };
     loop(haystack, 0)
 
+// ════════════════════════════════════════════════════════════════════
+// (8) Wave 3: Shade.Gradient（3 色以上のグラデ）
+//   prelude を増やさず素の mix/smoothstep の入れ子で色を作る。連続なので hash/floor を
+//   踏まず、代表色（field=0.5 補間）も evalPixel の脈動も厳密に pin できる。
+// ════════════════════════════════════════════════════════════════════
+
+/// Gradient の shade を包んで compileBody を作る小道具（alpha=1 固定）。
+def bodyOfGradient(stops: List[(Float64, Color)], field: ShaderDoc.Field): String =
+    ShaderGen.compileBody({ name = "g", cycleRate = 0.0, bindings = Nil,
+        out = ShaderDoc.Out.Fill({ shade = ShaderDoc.Shade.Gradient({ stops = stops, field = field }),
+                                   alpha = ShaderDoc.Field.Const(1.0) }) })
+
+/// 3 stops の Gradient の GLSL 片（入れ子 mix + smoothstep・cycleRate=0 の clamp 係数）。
+@Test
+def testGradientNodeSnapshot(): Unit \ Assert =
+    let stops =
+        (0.0, { r = 0.0f32, g = 0.0f32, b = 0.0f32 }) ::
+        (0.5, { r = 1.0f32, g = 0.0f32, b = 0.0f32 }) ::
+        (1.0, { r = 1.0f32, g = 1.0f32, b = 0.0f32 }) :: Nil;
+    let field = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U });
+    let expected =
+        "outColor = vec4(mix(mix(vec3(0.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0), " +
+        "smoothstep(0.0, 0.5, clamp((vUv).x, 0.0, 1.0))), vec3(1.0, 1.0, 0.0), " +
+        "smoothstep(0.5, 1.0, clamp((vUv).x, 0.0, 1.0))), 1.0);";
+    Assert.assertEq(expected = expected, bodyOfGradient(stops, field))
+
+/// representativeColor は field を評価せず f=0.5 の補間色を返す（GL なし経路のベタ塗り）。
+///   stops = [(0, #000000), (0.5, #ff6000 相当), (1, #ffe0a0 相当)] の f=0.5 → 2 つ目の色ちょうど。
+///   f=0.5 では 1 つ目→2 つ目の smoothstep(0,0.5,0.5)=1（2 つ目にぴったり）、
+///   2 つ目→3 つ目の smoothstep(0.5,1,0.5)=0（動かない）ので結果は 2 つ目の色そのもの。
+@Test
+def testGradientRepresentativeColor(): Unit \ Assert =
+    let stops =
+        (0.0, { r = 0.1f32, g = 0.02f32, b = 0.01f32 }) ::
+        (0.5, { r = 0.8f32, g = 0.3f32, b = 0.05f32 }) ::
+        (1.0, { r = 1.0f32, g = 0.9f32, b = 0.6f32 }) :: Nil;
+    let spec = { name = "g", cycleRate = 0.0, bindings = Nil,
+                 out = ShaderDoc.Out.Fill({
+                     shade = ShaderDoc.Shade.Gradient({ stops = stops,
+                         field = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U }) }),
+                     alpha = ShaderDoc.Field.Const(1.0) }) };
+    let got = ShaderDoc.representativeColor(spec);
+    // f=0.5 の補間は 2 つ目の色そのもの（1つ目→2つ目 smoothstep=1・2つ目→3つ目 smoothstep=0）。
+    let ok = Float32.abs(got#r - 0.8f32) < 0.001f32 and
+             Float32.abs(got#g - 0.3f32) < 0.001f32 and
+             Float32.abs(got#b - 0.05f32) < 0.001f32;
+    Assert.assertEq(expected = true, ok)
+
+/// ヒーロー: magma_geothermal（地熱の脈動する溶岩流）。§3 の hero JSON を parse し、
+///   ① hex stops + comment キーが通って parse 成功する（hash 不使用の連続 spec）、
+///   ② 同じ uv で 2 時刻の evalPixel が違う色になる（脈動する）ことと値が正気（0..1）なことを確かめる。
+@Test
+def testMagmaGeothermalPulses(): Unit \ Assert =
+    // hex stops（#rrggbb）と各ノードの comment キー（parser は無視する）が通る証拠も兼ねる。
+    let json =
+        "{\"name\":\"magma_geothermal\",\"cycleRate\":0.0,\"out\":{\"kind\":\"fill\"," +
+        "\"shade\":{\"kind\":\"gradient\",\"stops\":[[0.0,\"#1a0602\"],[0.45,\"#e0500a\"]," +
+        "[1.0,\"#ffe6a0\"]],\"field\":{\"kind\":\"math2\",\"op\":\"add\"," +
+        "\"a\":{\"comment\":\"cleft x pulse\",\"kind\":\"math2\",\"op\":\"mul\"," +
+        "\"a\":{\"kind\":\"pow\",\"p\":2.5,\"of\":{\"kind\":\"smoothstep\",\"lo\":0.55,\"hi\":0.72," +
+        "\"of\":{\"kind\":\"warp\",\"amount\":0.12,\"scale\":2.5,\"seed\":5," +
+        "\"of\":{\"kind\":\"scaled\",\"factor\":3.5,\"scroll\":{\"x\":0.05,\"y\":0.04}," +
+        "\"of\":{\"kind\":\"fbm\",\"octaves\":3,\"scale\":1.0,\"seed\":11}}}}}," +
+        "\"b\":{\"comment\":\"pulse\",\"kind\":\"math2\",\"op\":\"add\"," +
+        "\"a\":{\"kind\":\"const\",\"value\":0.55},\"b\":{\"kind\":\"math2\",\"op\":\"mul\"," +
+        "\"a\":{\"kind\":\"const\",\"value\":0.45},\"b\":{\"kind\":\"math1\",\"op\":\"sin\"," +
+        "\"of\":{\"kind\":\"time\",\"scale\":1.6,\"offset\":{\"kind\":\"const\",\"value\":0.0}}}}}}," +
+        "\"b\":{\"comment\":\"heat\",\"kind\":\"math2\",\"op\":\"mul\"," +
+        "\"a\":{\"kind\":\"const\",\"value\":0.12},\"b\":{\"kind\":\"math2\",\"op\":\"add\"," +
+        "\"a\":{\"kind\":\"const\",\"value\":0.5},\"b\":{\"kind\":\"math2\",\"op\":\"mul\"," +
+        "\"a\":{\"kind\":\"const\",\"value\":0.5},\"b\":{\"kind\":\"math1\",\"op\":\"sin\"," +
+        "\"of\":{\"kind\":\"math2\",\"op\":\"sub\",\"a\":{\"kind\":\"math2\",\"op\":\"mul\"," +
+        "\"a\":{\"kind\":\"uv\",\"axis\":\"v\"},\"b\":{\"kind\":\"const\",\"value\":14.0}}," +
+        "\"b\":{\"kind\":\"time\",\"scale\":2.0,\"offset\":{\"kind\":\"const\",\"value\":0.0}}}}}}}}}," +
+        "\"alpha\":{\"kind\":\"const\",\"value\":1.0}}}";
+    let result = match Util.Json.parse(json) {
+        case Ok(j) => match ShaderJson.parse(j) {
+            case Ok(spec) =>
+                let uv = { x = 0.4, y = 0.6 };
+                let c0 = ShaderEval.evalPixel(spec, uv, 0.0);
+                let c1 = ShaderEval.evalPixel(spec, uv, 1.0);
+                // 脈動: 2 時刻で色が違う。正気: 各成分が 0..1 に収まる。
+                let differ = c0#r != c1#r or c0#g != c1#g or c0#b != c1#b;
+                let sane = c0#r >= 0.0f32 and c0#r <= 1.0f32 and c1#g >= 0.0f32 and c1#g <= 1.0f32;
+                Some((differ, sane))
+            case Err(_) => None
+        }
+        case Err(_) => None
+    };
+    Assert.assertEq(expected = Some((true, true)), result)
+
 /// lava の alpha は Disk（丸い溶岩溜まり）を Warp でくるんだ木（往復後も辿れる）。
 @Test
 def testLavaAlphaIsWarpDisk(): Unit \ Assert =

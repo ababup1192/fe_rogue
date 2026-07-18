@@ -34,6 +34,33 @@ mod ShaderEval {
                 let phase = if (cycleRate == 0.0) clamp01(field)
                             else clamp01(triWave(field + cycleRate * t));
                 mixColor(r#lo, r#hi, phase)
+            case ShaderDoc.Shade.Gradient(g) =>
+                // GLSL と同じ数式でなぞる: 係数 f を Ramp と同じ規約で作り、
+                // 先頭色から隣の区切りごとに smoothstep 重みで次の色へ寄せる。
+                let field = evalFieldEnv(g#field, uv, t, env);
+                let f = if (cycleRate == 0.0) clamp01(field)
+                        else clamp01(triWave(field + cycleRate * t));
+                gradientColor(f, g#stops)
+        }
+
+    /// 係数 f（0..1）で stops を混ぜた色。ShaderGen の gradientExpr と同じ入れ子 mix を辿る。
+    def gradientColor(f: Float64, stops: List[(Float64, Color)]): Color =
+        match stops {
+            case Nil => { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
+            case (_, c0) :: rest =>
+                let (col, _) = List.foldLeft((acc, sc) -> {
+                    let (curCol, prevPos) = acc;
+                    let (pos, col) = sc;
+                    let w = smoothstep(prevPos, pos, f);
+                    (mixColor(curCol, col, w), pos)
+                }, (c0, gradientFirstPos(stops)), rest);
+                col
+        }
+
+    def gradientFirstPos(stops: List[(Float64, Color)]): Float64 =
+        match stops {
+            case (p, _) :: _ => p
+            case Nil         => 0.0
         }
 
     /// 場を Float64 へ。uv は「今読むべき座標」（Scaled/Warp が差し替える）。

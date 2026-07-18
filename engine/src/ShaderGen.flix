@@ -177,6 +177,38 @@ mod ShaderGen {
                         "clamp(abs(fract((" + fieldExpr(r#field, "vUv", env) + ") + " +
                         f(cycleRate) + " * uTime) * 2.0 - 1.0), 0.0, 1.0)";
                 "mix(" + vec3Lit(r#lo) + ", " + vec3Lit(r#hi) + ", " + factor + ")"
+            case ShaderDoc.Shade.Gradient(g) =>
+                // 係数 f は Ramp と同じ規約（cycleRate=0 は clamp・>0 は三角波で往復）。
+                let factor =
+                    if (cycleRate == 0.0)
+                        "clamp(" + fieldExpr(g#field, "vUv", env) + ", 0.0, 1.0)"
+                    else
+                        "clamp(abs(fract((" + fieldExpr(g#field, "vUv", env) + ") + " +
+                        f(cycleRate) + " * uTime) * 2.0 - 1.0), 0.0, 1.0)";
+                // 先頭色から始め、隣り合う区切りごとに mix(..., 次の色, smoothstep(前,次,f)) を入れ子で重ねる
+                // （sg_gradient は作らず素の mix/smoothstep を直書き＝prelude を増やさない）。
+                gradientExpr(g#stops, factor)
+        }
+
+    /// stops を先頭色から入れ子 mix にする GLSL 式。区切りが 2 つなら
+    /// mix(mix(c0, c1, smoothstep(s0,s1,f)), c2, smoothstep(s1,s2,f)) の形。
+    def gradientExpr(stops: List[(Float64, Color)], factor: String): String =
+        match stops {
+            case Nil => "vec3(0.0, 0.0, 0.0)"
+            case (_, c0) :: rest =>
+                let (expr, _) = List.foldLeft((acc, sc) -> {
+                    let (curExpr, prevPos) = acc;
+                    let (pos, col) = sc;
+                    let w = "smoothstep(" + f(prevPos) + ", " + f(pos) + ", " + factor + ")";
+                    ("mix(" + curExpr + ", " + vec3Lit(col) + ", " + w + ")", pos)
+                }, (vec3Lit(c0), gradientFirstPos(stops)), rest);
+                expr
+        }
+
+    def gradientFirstPos(stops: List[(Float64, Color)]): Float64 =
+        match stops {
+            case (p, _) :: _ => p
+            case Nil         => 0.0
         }
 
     /// 場を GLSL の float 式へ。uv は「今読むべき座標」の GLSL 式（Scaled/Warp/Tiling が差し替える）。

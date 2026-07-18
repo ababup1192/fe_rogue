@@ -95,8 +95,9 @@ mod ShaderJson {
         let refs = match out {
             case ShaderDoc.Out.Fill(f) =>
                 let shadeRefs = match f#shade {
-                    case ShaderDoc.Shade.Solid(_) => Nil
-                    case ShaderDoc.Shade.Ramp(r)  => collectRefs(r#field)
+                    case ShaderDoc.Shade.Solid(_)    => Nil
+                    case ShaderDoc.Shade.Ramp(r)     => collectRefs(r#field)
+                    case ShaderDoc.Shade.Gradient(g) => collectRefs(g#field)
                 };
                 List.append(shadeRefs, collectRefs(f#alpha))
         };
@@ -167,9 +168,46 @@ mod ShaderJson {
                         fieldJson <- reqKey("field", m);
                         field     <- parseField(fieldJson)
                     ) yield ShaderDoc.Shade.Ramp({ lo = lo, hi = hi, field = field })
-                case other => Err(err("unknown shade kind: '${other}' (want 'solid'/'ramp')"))
+                case "gradient" =>
+                    forM (
+                        stopsJson <- reqKey("stops", m);
+                        stops     <- parseStops(stopsJson);
+                        fieldJson <- reqKey("field", m);
+                        field     <- parseField(fieldJson)
+                    ) yield ShaderDoc.Shade.Gradient({ stops = stops, field = field })
+                case other => Err(err("unknown shade kind: '${other}' (want 'solid'/'ramp'/'gradient')"))
             }
         })
+
+    /// gradient の stops = [[位置, 色], ...] を (Float64, Color) のリストへ（位置は数・色は #rrggbb か {r,g,b}）。
+    def parseStops(json: Json): Result[JsonError, List[(Float64, Color)]] =
+        match json {
+            case JArray(items) => foldStops(Vector.toList(items), Nil)
+            case _             => Err(err("gradient 'stops' must be an array of [pos, color]"))
+        }
+
+    def foldStops(items: List[Json], acc: List[(Float64, Color)]):
+            Result[JsonError, List[(Float64, Color)]] =
+        match items {
+            case Nil          => Ok(List.reverse(acc))
+            case item :: rest =>
+                parseStop(item) |> Result.flatMap(stop -> foldStops(rest, stop :: acc))
+        }
+
+    def parseStop(item: Json): Result[JsonError, (Float64, Color)] =
+        match item {
+            case JArray(v) => match Vector.toList(v) {
+                case JNumber(bd) :: colorJson :: Nil =>
+                    forM (
+                        pos   <- (match BigDecimal.tryToFloat64(bd) {
+                                    case Some(p) => Ok(p)
+                                    case None    => Err(err("gradient stop pos is not a finite number")) });
+                        color <- parseColor(colorJson)
+                    ) yield (pos, color)
+                case _ => Err(err("gradient stop must be [pos(number), color]"))
+            }
+            case _ => Err(err("gradient stop must be [pos, color]"))
+        }
 
     def parseField(json: Json): Result[JsonError, ShaderDoc.Field] =
         asObjKind(json, "field") |> Result.flatMap(km -> {
@@ -497,7 +535,18 @@ mod ShaderJson {
                 JObject(Map#{ "kind" => JString("ramp"),
                               "lo" => colorToJson(r#lo), "hi" => colorToJson(r#hi),
                               "field" => fieldToJson(r#field) })
+            case ShaderDoc.Shade.Gradient(g) =>
+                JObject(Map#{ "kind" => JString("gradient"),
+                              "stops" => stopsToJson(g#stops),
+                              "field" => fieldToJson(g#field) })
         }
+
+    // stops を [[位置, 色], ..] の配列へ（色は {r,g,b}・parse は hex/{r,g,b} どちらも受ける）。
+    def stopsToJson(stops: List[(Float64, Color)]): Json =
+        JArray(List.toVector(List.map(sc -> {
+            let (pos, color) = sc;
+            JArray(Vector#{ num(pos), colorToJson(color) })
+        }, stops)))
 
     def fieldToJson(field: ShaderDoc.Field): Json =
         match field {

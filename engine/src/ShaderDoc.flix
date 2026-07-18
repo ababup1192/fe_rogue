@@ -111,6 +111,10 @@ mod ShaderDoc {
         case Solid(Color)
         /// 2 色を field（0..1）で補間する。cycleRate>0 なら時間で位相が回る（パレット循環）。
         case Ramp({ lo = Color, hi = Color, field = Field })
+        /// 3 色以上をなめらかに変える（黒殻→橙→黄白など）。stops = (位置 0..1, 色) を位置の小さい順に
+        /// 並べた区切り。field（0..1）が位置のどこにいるかで、隣り合う色をなめらかに混ぜていく。
+        /// 2 色 Ramp では「黒い締まりと明るい芯」を同時に出せないが、これなら間に色を挟める。
+        case Gradient({ stops = List[(Float64, Color)], field = Field })
     }
 
     /// 面の出力（このピクセルの最終色とアルファ）。
@@ -205,5 +209,42 @@ mod ShaderDoc {
                 { r = (r#lo#r + r#hi#r) / 2.0f32,
                   g = (r#lo#g + r#hi#g) / 2.0f32,
                   b = (r#lo#b + r#hi#b) / 2.0f32 }
+            case Shade.Gradient(g) =>
+                // field を評価せず、真ん中（f=0.5）の位置で stops を混ぜた色を返す。
+                gradientColorAt(0.5, g#stops)
+        }
+
+    /// 係数 f（0..1）で stops を混ぜた色。先頭色から始めて、隣り合う区切りごとに
+    /// smoothstep(前の位置, 次の位置, f) の重みで次の色へ寄せていく（GPU/CPU 同じ数式）。
+    def gradientColorAt(f: Float64, stops: List[(Float64, Color)]): Color =
+        match stops {
+            case Nil => { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
+            case (_, c0) :: rest =>
+                let (col, _) = List.foldLeft((acc, sc) -> {
+                    let (curCol, prevPos) = acc;
+                    let (pos, col) = sc;
+                    let w = smoothstepF(prevPos, pos, f);
+                    (mixColorF(curCol, col, w), pos)
+                }, (c0, firstPos(stops)), rest);
+                col
+        }
+
+    def firstPos(stops: List[(Float64, Color)]): Float64 =
+        match stops {
+            case (p, _) :: _ => p
+            case Nil         => 0.0
+        }
+
+    def mixColorF(a: Color, b: Color, t: Float64): Color =
+        let tf = Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, t);
+        { r = a#r + (b#r - a#r) * tf,
+          g = a#g + (b#g - a#g) * tf,
+          b = a#b + (b#b - a#b) * tf }
+
+    def smoothstepF(lo: Float64, hi: Float64, x: Float64): Float64 =
+        if (hi - lo == 0.0) (if (x < lo) 0.0 else 1.0)
+        else {
+            let tt = Float64.max(0.0, Float64.min(1.0, (x - lo) / (hi - lo)));
+            tt * tt * (3.0 - 2.0 * tt)
         }
 }
