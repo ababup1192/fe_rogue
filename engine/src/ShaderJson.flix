@@ -158,6 +158,46 @@ mod ShaderJson {
                         density <- numOr("density", 0.3, m);
                         seed    <- intAt("seed", m)
                     ) yield ShaderDoc.Field.Glints({ scale = scale, rate = rate, density = density, seed = seed })
+                case "ripples" =>
+                    forM (
+                        freq  <- numAt("freq", m);
+                        amp   <- numOr("amp", 0.1, m);
+                        speed <- numOr("speed", 0.1, m);
+                        seed  <- intAt("seed", m)
+                    ) yield ShaderDoc.Field.Ripples({ freq = freq, amp = amp, speed = speed, seed = seed })
+                case "sparkle" =>
+                    forM (
+                        scale   <- numAt("scale", m);
+                        rate    <- numOr("rate", 1.0, m);
+                        density <- numOr("density", 0.3, m);
+                        seed    <- intAt("seed", m)
+                    ) yield ShaderDoc.Field.Sparkle({ scale = scale, rate = rate, density = density, seed = seed })
+                case "math2" =>
+                    forM (
+                        op    <- parseBinOp(m);
+                        aJson <- reqKey("a", m);
+                        a     <- parseField(aJson);
+                        bJson <- reqKey("b", m);
+                        b     <- parseField(bJson)
+                    ) yield ShaderDoc.Field.Bin({ op = op, a = a, b = b })
+                case "math1" =>
+                    forM (
+                        op     <- parseUnOp(m);
+                        ofJson <- reqKey("of", m);
+                        of     <- parseField(ofJson)
+                    ) yield ShaderDoc.Field.Un({ op = op, of = of })
+                case "pow" =>
+                    forM (
+                        ofJson <- reqKey("of", m);
+                        of     <- parseField(ofJson);
+                        p      <- numAt("p", m)
+                    ) yield ShaderDoc.Field.Pow({ of = of, p = p })
+                case "time" =>
+                    forM (
+                        scale      <- numAt("scale", m);
+                        offsetJson <- reqKey("offset", m);
+                        offset     <- parseField(offsetJson)
+                    ) yield ShaderDoc.Field.Time({ scale = scale, offset = offset })
                 case other => Err(err("unknown field kind: '${other}'"))
             }
         })
@@ -168,6 +208,30 @@ mod ShaderJson {
             case "v" => Ok(ShaderDoc.Axis.V)
             case other => Err(err("axis must be 'u'/'v' (got '${other}')"))
         }) yield a
+
+    def parseBinOp(m: Map[String, Json]): Result[JsonError, ShaderDoc.BinOp] =
+        forM (s <- strAt("op", m); o <- match s {
+            case "add"  => Ok(ShaderDoc.BinOp.Add)
+            case "sub"  => Ok(ShaderDoc.BinOp.Sub)
+            case "mul"  => Ok(ShaderDoc.BinOp.Mul)
+            case "min"  => Ok(ShaderDoc.BinOp.Min)
+            case "max"  => Ok(ShaderDoc.BinOp.Max)
+            case "step" => Ok(ShaderDoc.BinOp.Step)
+            case other  => Err(err("math2 op must be add/sub/mul/min/max/step (got '${other}')"))
+        }) yield o
+
+    def parseUnOp(m: Map[String, Json]): Result[JsonError, ShaderDoc.UnOp] =
+        forM (s <- strAt("op", m); o <- match s {
+            case "neg"      => Ok(ShaderDoc.UnOp.Neg)
+            case "abs"      => Ok(ShaderDoc.UnOp.Abs)
+            case "fract"    => Ok(ShaderDoc.UnOp.Fract)
+            case "floor"    => Ok(ShaderDoc.UnOp.Floor)
+            case "sin"      => Ok(ShaderDoc.UnOp.Sin)
+            case "cos"      => Ok(ShaderDoc.UnOp.Cos)
+            case "sat"      => Ok(ShaderDoc.UnOp.Sat)
+            case "oneMinus" => Ok(ShaderDoc.UnOp.OneMinus)
+            case other      => Err(err("math1 op must be neg/abs/fract/floor/sin/cos/sat/oneMinus (got '${other}')"))
+        }) yield o
 
     def parseWorleyOut(m: Map[String, Json]): Result[JsonError, ShaderDoc.WorleyOut] =
         forM (s <- strAt("out", m); o <- match s {
@@ -330,6 +394,47 @@ mod ShaderJson {
                 JObject(Map#{ "kind" => JString("glints"), "scale" => num(g#scale),
                               "rate" => num(g#rate), "density" => num(g#density),
                               "seed" => inum(g#seed) })
+            case ShaderDoc.Field.Ripples(rp) =>
+                JObject(Map#{ "kind" => JString("ripples"), "freq" => num(rp#freq),
+                              "amp" => num(rp#amp), "speed" => num(rp#speed),
+                              "seed" => inum(rp#seed) })
+            case ShaderDoc.Field.Sparkle(sp) =>
+                JObject(Map#{ "kind" => JString("sparkle"), "scale" => num(sp#scale),
+                              "rate" => num(sp#rate), "density" => num(sp#density),
+                              "seed" => inum(sp#seed) })
+            case ShaderDoc.Field.Bin(bn) =>
+                JObject(Map#{ "kind" => JString("math2"), "op" => JString(binOpStr(bn#op)),
+                              "a" => fieldToJson(bn#a), "b" => fieldToJson(bn#b) })
+            case ShaderDoc.Field.Un(un) =>
+                JObject(Map#{ "kind" => JString("math1"), "op" => JString(unOpStr(un#op)),
+                              "of" => fieldToJson(un#of) })
+            case ShaderDoc.Field.Pow(pw) =>
+                JObject(Map#{ "kind" => JString("pow"), "of" => fieldToJson(pw#of), "p" => num(pw#p) })
+            case ShaderDoc.Field.Time(tm) =>
+                JObject(Map#{ "kind" => JString("time"), "scale" => num(tm#scale),
+                              "offset" => fieldToJson(tm#offset) })
+        }
+
+    def binOpStr(op: ShaderDoc.BinOp): String =
+        match op {
+            case ShaderDoc.BinOp.Add  => "add"
+            case ShaderDoc.BinOp.Sub  => "sub"
+            case ShaderDoc.BinOp.Mul  => "mul"
+            case ShaderDoc.BinOp.Min  => "min"
+            case ShaderDoc.BinOp.Max  => "max"
+            case ShaderDoc.BinOp.Step => "step"
+        }
+
+    def unOpStr(op: ShaderDoc.UnOp): String =
+        match op {
+            case ShaderDoc.UnOp.Neg      => "neg"
+            case ShaderDoc.UnOp.Abs      => "abs"
+            case ShaderDoc.UnOp.Fract    => "fract"
+            case ShaderDoc.UnOp.Floor    => "floor"
+            case ShaderDoc.UnOp.Sin      => "sin"
+            case ShaderDoc.UnOp.Cos      => "cos"
+            case ShaderDoc.UnOp.Sat      => "sat"
+            case ShaderDoc.UnOp.OneMinus => "oneMinus"
         }
 
     def colorToJson(c: Color): Json =

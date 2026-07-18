@@ -87,7 +87,72 @@ mod ShaderEval {
                 let dash = (1.0 - smoothstep(0.04, 0.10, Float64.abs(fpy - 0.5))) *
                            (1.0 - smoothstep(0.28, 0.46, Float64.abs(fpx - 0.5)));
                 on * tw * dash
+            case ShaderDoc.Field.Ripples(rp) =>
+                let sd = Int32.toFloat64(rp#seed);
+                let wob = Vec2.sin(uv#x * 6.2831853 * rp#freq * 0.5 + sd) * rp#amp
+                        + Vec2.sin(uv#x * 6.2831853 * rp#freq * 1.3 + sd * 2.7) * rp#amp * 0.4;
+                let band = uv#y * rp#freq + wob + t * rp#speed;
+                0.5 + 0.5 * Vec2.sin(band * 6.2831853)
+            case ShaderDoc.Field.Sparkle(sp) =>
+                let p = Vec2.mul(uv, sp#scale);
+                let ip = { x = Float64.floor(p#x), y = Float64.floor(p#y) };
+                let fp = { x = fract(p#x), y = fract(p#y) };
+                let sd = Int32.toFloat64(sp#seed);
+                let tt = t * sp#rate + hash1(ip, sd + 3.0) * 6.2831853;
+                let cyc = Float64.floor(tt / 6.2831853);
+                let ipc = Vec2.add(ip, { x = cyc, y = cyc });
+                let on = if (hash1(ipc, sd) >= 1.0 - sp#density) 1.0 else 0.0;
+                let s = Float64.max(0.0, Vec2.sin(tt));
+                let s4 = (s * s) * (s * s);
+                let tw = (s4 * s4) * s4;
+                let h = hash2(ipc, sd + 11.0);
+                let pos = { x = 0.15 + 0.7 * h#x, y = 0.15 + 0.7 * h#y };
+                let d = Float64.abs(fp#x - pos#x) + Float64.abs(fp#y - pos#y);
+                let point = 1.0 - smoothstep(0.04, 0.26, d);
+                on * tw * point
+            case ShaderDoc.Field.Bin(bn) =>
+                let a = evalField(bn#a, uv, t);
+                let b = evalField(bn#b, uv, t);
+                match bn#op {
+                    case ShaderDoc.BinOp.Add  => a + b
+                    case ShaderDoc.BinOp.Sub  => a - b
+                    case ShaderDoc.BinOp.Mul  => a * b
+                    case ShaderDoc.BinOp.Min  => Float64.min(a, b)
+                    case ShaderDoc.BinOp.Max  => Float64.max(a, b)
+                    case ShaderDoc.BinOp.Step => if (b >= a) 1.0 else 0.0
+                }
+            case ShaderDoc.Field.Un(un) =>
+                let x = evalField(un#of, uv, t);
+                match un#op {
+                    case ShaderDoc.UnOp.Neg      => -x
+                    case ShaderDoc.UnOp.Abs      => Float64.abs(x)
+                    case ShaderDoc.UnOp.Fract    => fract(x)
+                    case ShaderDoc.UnOp.Floor    => Float64.floor(x)
+                    case ShaderDoc.UnOp.Sin      => Vec2.sin(x)
+                    case ShaderDoc.UnOp.Cos      => Vec2.cos(x)
+                    case ShaderDoc.UnOp.Sat      => clamp01(x)
+                    case ShaderDoc.UnOp.OneMinus => 1.0 - x
+                }
+            case ShaderDoc.Field.Pow(pw) =>
+                powf(evalField(pw#of, uv, t), pw#p)
+            case ShaderDoc.Field.Time(tm) =>
+                t * tm#scale + evalField(tm#offset, uv, t)
         }
+
+    // Pow の CPU 評価。整数指数は反復積（GLSL の powProduct と同じ左結合の並び）で、
+    // 非整数のみ Float64.pow を呼ぶ（第 1 引数はレコード）。負の底は 0 で下切り。
+    def powf(x: Float64, p: Float64): Float64 =
+        let base = Float64.max(0.0, x);
+        if (Float64.floor(p) == p)
+            powProduct(base, Float64.floor(p))
+        else
+            Float64.pow({ base = base }, p)
+
+    // base を n 回掛ける（n=0 は 1.0）。ShaderGen.powProduct と同じ左からの掛け順。
+    def powProduct(base: Float64, n: Float64): Float64 =
+        let k = Int32.max(0, Float64.tryToInt32(n) |> Option.getWithDefault(0));
+        if (k == 0) 1.0
+        else List.foldLeft((acc, _) -> acc * base, base, List.range(1, k))
 
     // ── ノイズの CPU 版（GLSL prelude と同じ構造・byte 一致は狙わない）──
 

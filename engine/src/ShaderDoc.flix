@@ -24,6 +24,21 @@ mod ShaderDoc {
         case F2mF1  // F2 − F1（セル境界＝網目）
     }
 
+    /// 2 つの場を合わせる素の計算。混ぜる意図（0..1 の重み）は Blend を使い、これは生の値の合成。
+    pub enum BinOp with Eq, ToString {
+        case Add  case Sub  case Mul      // 足す・引く・掛ける
+        case Min  case Max                // 小さい方・大きい方
+        case Step                         // b が a 以上なら 1、そうでなければ 0
+    }
+
+    /// 1 つの場に掛ける素の関数。
+    pub enum UnOp with Eq, ToString {
+        case Neg case Abs case Fract case Floor
+        case Sin case Cos
+        case Sat        // 0..1 に丸める
+        case OneMinus   // 1 から引く（反転）
+    }
+
     /// 値の場（スカラー・0..1 目安）。GPU では 1 個の float、CPU では Float64 になる。
     /// Scaled / Warp は「inner が見る座標」を変える座標変換ノード（uv を差し替える）。
     pub enum Field {
@@ -57,6 +72,25 @@ mod ShaderDoc {
         /// rate = 明滅の速さ、density = 光るセルの割合（0..1・小さいほどまばら）、seed = 配置。
         /// セルごとに違う位相で横に伸びた短い線が現れて消える（時間 uTime で明滅）。
         case Glints({ scale = Float64, rate = Float64, density = Float64, seed = Int32 })
+        /// 横方向に波打つ縞（水面の反射・熱のゆらぎ・旗）。freq = 縞の密度、amp = うねりの
+        /// 強さ、speed = 流れる速さ、seed = 位相。時間 uTime で縦に流れる。出力は縞のサイン
+        /// (0..1)。Smoothstep で山を絞れば細い波線になる。
+        case Ripples({ freq = Float64, amp = Float64, speed = Float64, seed = Int32 })
+        /// キラッと光る菱形（水面の反射のきらめき・星の瞬き）。scale = きらめきの間隔、
+        /// rate = 瞬きの速さ（小さいほどたまに）、density = 一度に光る割合（0..1）、seed = 配置。
+        /// 点滅の回ごとに光る場所を選び直すので同じ所で繰り返さず、菱形（L1 距離）が一瞬で光り一瞬で
+        /// 消える（時間 uTime・pow で尖ったパルス）。Glints の横線と違い点で光る。
+        case Sparkle({ scale = Float64, rate = Float64, density = Float64, seed = Int32 })
+        /// 2 つの場 a,b を op で合わせる（足す・掛ける・大きい方…）。生の値の合成。
+        /// 混ぜる意図（0..1 の重みで補間）は Blend の方が暴れなくて安全。
+        case Bin({ op = BinOp, a = Field, b = Field })
+        /// 場 of に op（sin・絶対値・反転…）を 1 つ掛ける。
+        case Un({ op = UnOp, of = Field })
+        /// of を p 乗して尖らせる（山を細くする）。負にならないよう 0 で下切りしてから累乗する。
+        case Pow({ of = Field, p = Float64 })
+        /// 今の時刻（秒）を scale 倍して offset の場を足す。動きの元。
+        /// offset を Const にすれば「時刻 × scale + 定数」の素直な時間項になる。
+        case Time({ scale = Float64, offset = Field })
     }
 
     /// 面の色（rgb）。

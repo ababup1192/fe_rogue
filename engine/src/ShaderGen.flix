@@ -86,6 +86,29 @@ mod ShaderGen {
         "                 (1.0 - smoothstep(0.28, 0.46, abs(fp.x - 0.5)));\n" +
         "    return on * tw * dash;\n" +
         "}\n" +
+        // 横に波打つ縞: y にサインのゆらぎ(wob)を足した band を、時間で縦に流す。出力 0..1。
+        "float sg_ripples(vec2 uv, float freq, float amp, float speed, float seed) {\n" +
+        "    float wob = sin(uv.x * 6.2831853 * freq * 0.5 + seed) * amp\n" +
+        "              + sin(uv.x * 6.2831853 * freq * 1.3 + seed * 2.7) * amp * 0.4;\n" +
+        "    float band = uv.y * freq + wob + uTime * speed;\n" +
+        "    return 0.5 + 0.5 * sin(band * 6.2831853);\n" +
+        "}\n" +
+        // キラッと光る菱形。点滅の回 cyc ごとに「光るセル(on)」と「セル内の位置(pos)」を選び直すので
+        // 同じ場所で繰り返さず毎回ランダムな所に出る。pow を大きくして一瞬で光り一瞬で消える鋭いパルス。
+        "float sg_sparkle(vec2 uv, float scale, float rate, float density, float seed) {\n" +
+        "    vec2 p = uv * scale;\n" +
+        "    vec2 ip = floor(p);\n" +
+        "    vec2 fp = fract(p);\n" +
+        "    float t = uTime * rate + sg_hash1(ip, seed + 3.0) * 6.2831853;\n" +
+        "    float cyc = floor(t / 6.2831853);\n" +
+        "    float on = step(1.0 - density, sg_hash1(ip + cyc, seed));\n" +
+        "    float tw = pow(max(0.0, sin(t)), 12.0);\n" +
+        "    vec2 pos = 0.15 + 0.7 * sg_hash2(ip + cyc, seed + 11.0);\n" +
+        "    vec2 e = fp - pos;\n" +
+        "    float d = abs(e.x) + abs(e.y);\n" +
+        "    float point = 1.0 - smoothstep(0.04, 0.26, d);\n" +
+        "    return on * tw * point;\n" +
+        "}\n" +
         "float sg_fbm(vec2 p, int octaves, float seed) {\n" +
         "    float sum = 0.0; float amp = 0.5; float freq = 1.0;\n" +
         "    for (int i = 0; i < octaves; i++) {\n" +
@@ -177,7 +200,54 @@ mod ShaderGen {
             case ShaderDoc.Field.Glints(g) =>
                 "sg_glints((" + uv + "), " + f(g#scale) + ", " + f(g#rate) + ", " +
                 f(g#density) + ", " + fSeed(g#seed) + ")"
+            case ShaderDoc.Field.Ripples(rp) =>
+                "sg_ripples((" + uv + "), " + f(rp#freq) + ", " + f(rp#amp) + ", " +
+                f(rp#speed) + ", " + fSeed(rp#seed) + ")"
+            case ShaderDoc.Field.Sparkle(sp) =>
+                "sg_sparkle((" + uv + "), " + f(sp#scale) + ", " + f(sp#rate) + ", " +
+                f(sp#density) + ", " + fSeed(sp#seed) + ")"
+            case ShaderDoc.Field.Bin(bn) =>
+                let ae = fieldExpr(bn#a, uv);
+                let be = fieldExpr(bn#b, uv);
+                match bn#op {
+                    case ShaderDoc.BinOp.Add  => "(" + ae + " + " + be + ")"
+                    case ShaderDoc.BinOp.Sub  => "(" + ae + " - " + be + ")"
+                    case ShaderDoc.BinOp.Mul  => "(" + ae + " * " + be + ")"
+                    case ShaderDoc.BinOp.Min  => "min(" + ae + ", " + be + ")"
+                    case ShaderDoc.BinOp.Max  => "max(" + ae + ", " + be + ")"
+                    case ShaderDoc.BinOp.Step => "step(" + ae + ", " + be + ")"
+                }
+            case ShaderDoc.Field.Un(un) =>
+                let x = fieldExpr(un#of, uv);
+                match un#op {
+                    case ShaderDoc.UnOp.Neg      => "(-(" + x + "))"
+                    case ShaderDoc.UnOp.Abs      => "abs(" + x + ")"
+                    case ShaderDoc.UnOp.Fract    => "fract(" + x + ")"
+                    case ShaderDoc.UnOp.Floor    => "floor(" + x + ")"
+                    case ShaderDoc.UnOp.Sin      => "sin(" + x + ")"
+                    case ShaderDoc.UnOp.Cos      => "cos(" + x + ")"
+                    case ShaderDoc.UnOp.Sat      => "clamp(" + x + ", 0.0, 1.0)"
+                    case ShaderDoc.UnOp.OneMinus => "(1.0 - (" + x + "))"
+                }
+            case ShaderDoc.Field.Pow(pw) =>
+                // 整数指数は pow() でなく反復積の文字列にして CPU 側の反復積と構造を合わせる
+                // （GPU/CPU で丸め順が揃いパリティが強くなる）。負の底の非整数乗は NaN なので 0 で下切り。
+                let base = "max(0.0, " + fieldExpr(pw#of, uv) + ")";
+                if (Float64.floor(pw#p) == pw#p)
+                    powProduct(base, Float64.floor(pw#p))
+                else
+                    "pow(max(0.0, (" + fieldExpr(pw#of, uv) + ")), " + f(pw#p) + ")"
+            case ShaderDoc.Field.Time(tm) =>
+                "(uTime * " + f(tm#scale) + " + (" + fieldExpr(tm#offset, uv) + "))"
         }
+
+    /// base を n 回掛けた GLSL 積の文字列（n=0 は 1.0・n=1 は base そのもの）。
+    /// CPU 側の反復積と同じ左結合の並びにする。
+    def powProduct(base: String, n: Float64): String =
+        let k = Int32.max(0, Float64.tryToInt32(n) |> Option.getWithDefault(0));
+        if (k == 0) "1.0"
+        else List.foldLeft((acc, _) -> "(" + acc + " * " + base + ")",
+                           base, List.range(1, k))
 
     def vec3Lit(c: Color): String =
         "vec3(" + f32(c#r) + ", " + f32(c#g) + ", " + f32(c#b) + ")"

@@ -65,7 +65,7 @@ def bodyOfField(field: ShaderDoc.Field): String =
 /// prelude は長さだけ pin（本文は別扱い）。長さが変わったら prelude を触った合図。
 @Test
 def testPreludeLength(): Unit \ Assert =
-    Assert.assertEq(expected = 2286, String.length(ShaderGen.preludeSource()))
+    Assert.assertEq(expected = 3167, String.length(ShaderGen.preludeSource()))
 
 /// demoSurface の main 式（prelude 抜き）。Ramp の三角波位相・Uv 展開まで含めて決定論で pin。
 @Test
@@ -302,6 +302,38 @@ def testLavaJsonRoundTripGlslIdentical(): Unit \ Assert =
         case Err(_) => false
     };
     Assert.assertEq(expected = true, same)
+
+// ════════════════════════════════════════════════════════════════════
+// (5) 素の代数（Bin/Un/Pow/Time）— 走査線を math2/math1/time だけで組む
+// ════════════════════════════════════════════════════════════════════
+
+/// 走査線の木を作る。scan = 0.5 + 0.5*sin(v*40 - uTime*3)。hash も floor も踏まない連続 sin。
+def scanlineField(): ShaderDoc.Field =
+    ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Add,
+        a = ShaderDoc.Field.Const(0.5),
+        b = ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Mul,
+            a = ShaderDoc.Field.Const(0.5),
+            b = ShaderDoc.Field.Un({ op = ShaderDoc.UnOp.Sin,
+                of = ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Sub,
+                    a = ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Mul,
+                        a = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.V }),
+                        b = ShaderDoc.Field.Const(40.0) }),
+                    b = ShaderDoc.Field.Time({ scale = 3.0,
+                        offset = ShaderDoc.Field.Const(0.0) }) }) }) }) })
+
+/// 走査線が Bin/Un/Time だけで書けて compileBody を pin（実装が最初に吐いた文字列を固定）。
+@Test
+def testScanlineBodySnapshot(): Unit \ Assert =
+    let expected =
+        "outColor = vec4(vec3(0.0, 0.0, 0.0), " +
+        "(0.5 + (0.5 * sin((((vUv).y * 40.0) - (uTime * 3.0 + (0.0)))))));";
+    Assert.assertEq(expected = expected, bodyOfField(scanlineField()))
+
+/// 同じ木の CPU 代表点 pin。v=0.3, t=0.1 → 位相 = 40*0.3 - 3*0.1 = 11.7（連続 sin ＝ 安全）。
+@Test
+def testScanlineEval(): Unit \ Assert =
+    let got = ShaderEval.evalField(scanlineField(), { x = 0.0, y = 0.3 }, 0.1);
+    Assert.assertEq(expected = 0.5 + 0.5 * Vec2.sin(11.7), got)
 
 /// lava の alpha は Disk（丸い溶岩溜まり）を Warp でくるんだ木（往復後も辿れる）。
 @Test
