@@ -59,6 +59,33 @@ mod ShaderGen {
         "    float d = sg_hash1(ip + vec2(1.0, 1.0), seed);\n" +
         "    return mix(mix(a, b, w.x), mix(c, d, w.x), w.y);\n" +
         "}\n" +
+        // 規則的な丸い鱗: 行ごとに stagger だけずらした格子点への「最近距離」（0→1）。
+        // 近傍 3x3 の格子点を見て最短を取るので、隙間なくタイル状に繋がる（孤立した円にならない）。
+        "float sg_scales(vec2 uv, float scale, float stagger) {\n" +
+        "    vec2 p = uv * scale;\n" +
+        "    vec2 ip = floor(p);\n" +
+        "    float best = 8.0;\n" +
+        "    for (int j = -1; j <= 1; j++) {\n" +
+        "        for (int i = -1; i <= 1; i++) {\n" +
+        "            vec2 cell = ip + vec2(float(i), float(j));\n" +
+        "            vec2 center = cell + vec2(0.5 + mod(cell.y, 2.0) * stagger, 0.5);\n" +
+        "            best = min(best, length(p - center));\n" +
+        "        }\n" +
+        "    }\n" +
+        "    return clamp(best, 0.0, 1.0);\n" +
+        "}\n" +
+        // まばらに明滅する短い横線のきらめき。セルごとに density で点灯・位相ずれで sin 明滅。
+        "float sg_glints(vec2 uv, float scale, float rate, float density, float seed) {\n" +
+        "    vec2 p = uv * scale;\n" +
+        "    vec2 ip = floor(p);\n" +
+        "    vec2 fp = fract(p);\n" +
+        "    float on = step(1.0 - density, sg_hash1(ip, seed));\n" +
+        "    float phase = sg_hash1(ip, seed + 7.0) * 6.2831853;\n" +
+        "    float tw = max(0.0, sin(uTime * rate + phase));\n" +
+        "    float dash = (1.0 - smoothstep(0.04, 0.10, abs(fp.y - 0.5))) *\n" +
+        "                 (1.0 - smoothstep(0.28, 0.46, abs(fp.x - 0.5)));\n" +
+        "    return on * tw * dash;\n" +
+        "}\n" +
         "float sg_fbm(vec2 p, int octaves, float seed) {\n" +
         "    float sum = 0.0; float amp = 0.5; float freq = 1.0;\n" +
         "    for (int i = 0; i < octaves; i++) {\n" +
@@ -94,10 +121,15 @@ mod ShaderGen {
         match shade {
             case ShaderDoc.Shade.Solid(c) => vec3Lit(c)
             case ShaderDoc.Shade.Ramp(r)  =>
-                // 位相 = field を cycleRate*uTime で往復させる（0..1 に折り返す三角波）。
-                "mix(" + vec3Lit(r#lo) + ", " + vec3Lit(r#hi) + ", " +
-                "clamp(abs(fract((" + fieldExpr(r#field, "vUv") + ") + " +
-                f(cycleRate) + " * uTime) * 2.0 - 1.0), 0.0, 1.0))"
+                // cycleRate = 0 は素直な補間（field 0→lo・1→hi）。cycleRate>0 のときだけ
+                // field を cycleRate*uTime で往復させる三角波にして色が呼吸する（パレット循環）。
+                let factor =
+                    if (cycleRate == 0.0)
+                        "clamp(" + fieldExpr(r#field, "vUv") + ", 0.0, 1.0)"
+                    else
+                        "clamp(abs(fract((" + fieldExpr(r#field, "vUv") + ") + " +
+                        f(cycleRate) + " * uTime) * 2.0 - 1.0), 0.0, 1.0)";
+                "mix(" + vec3Lit(r#lo) + ", " + vec3Lit(r#hi) + ", " + factor + ")"
         }
 
     /// 場を GLSL の float 式へ。uv は「今読むべき座標」の GLSL 式（Scaled/Warp が差し替える）。
@@ -140,6 +172,11 @@ mod ShaderGen {
                 // 中心からの距離が radius 以内で 1、radius→radius+feather で 0 へ soft fade。
                 "(1.0 - smoothstep(" + f(d#radius) + ", " + f(d#radius + d#feather) + ", " +
                 "length((" + uv + ") - vec2(" + f(d#cx) + ", " + f(d#cy) + "))))"
+            case ShaderDoc.Field.Scales(sc) =>
+                "sg_scales((" + uv + "), " + f(sc#scale) + ", " + f(sc#stagger) + ")"
+            case ShaderDoc.Field.Glints(g) =>
+                "sg_glints((" + uv + "), " + f(g#scale) + ", " + f(g#rate) + ", " +
+                f(g#density) + ", " + fSeed(g#seed) + ")"
         }
 
     def vec3Lit(c: Color): String =

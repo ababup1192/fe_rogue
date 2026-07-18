@@ -29,8 +29,10 @@ mod Render {
         /// 宣言シェーダーで矩形 rect を塗る面（水面など）。GL 経路では eff Shader が本物の
         /// シェーダーで描き、GL の無い経路（SoftRaster / F8 注釈）では代表色のベタ塗りに落ちる。
         /// rect はスクリーン空間 px（uv=0..1 がこの矩形）、t は world#time（uTime に渡す）。
+        /// mask = この面を切り抜く多角形の列（rect 左上からの相対座標）。空なら矩形そのまま。
+        /// 非空なら GL でステンシルに焼いて「多角形の内側だけ」塗る（丸い池形など任意形に抜く）。
         case Shader({ rect = Rect2.Rect2, spec = ShaderDoc.Spec, t = Float64,
-                      zIndex = Int32, blend = DrawCmd.BlendMode })
+                      mask = List[List[Vec2.Vec2]], zIndex = Int32, blend = DrawCmd.BlendMode })
     }
 
     /// 置き場所つきの描画物。View はこの列を組み、draw が描画命令へ変換する。
@@ -134,12 +136,25 @@ mod Render {
         { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
           item = box(size, color, zIndex) }
 
-    /// 宣言シェーダーで矩形 rect を塗る面（PlacedItem）。at は使わず rect が全てを決める
-    /// （置き場所は rect の左上）。t は uTime に渡す秒（world#time など）。
+    /// 宣言シェーダーで矩形 rect を塗る面（PlacedItem）。at に rect の左上を入れる —
+    /// 描画は at を置き場所に使うので、withCamera 下では at がカメラ変換を受けて面が追従する
+    /// （カメラ無しなら at は rect#position のままで画面固定）。t は uTime に渡す秒（world#time など）。
     /// GL 経路では eff Shader が本物のシェーダーで描き、GL の無い経路では代表色ベタ塗りに落ちる。
     pub def shaderFill(spec: ShaderDoc.Spec, rect: Rect2.Rect2, t: Float64, zIndex: Int32): PlacedItem =
         { at = rect#position,
-          item = Item.Shader({ rect = rect, spec = spec, t = t, zIndex = zIndex,
+          item = Item.Shader({ rect = rect, spec = spec, t = t, mask = Nil, zIndex = zIndex,
+                               blend = DrawCmd.BlendMode.Normal }) }
+
+    /// 宣言シェーダーで rect を塗り、maskPolys（ワールド座標の多角形の列）の内側だけに抜く面。
+    /// 丸い池のような任意の形に水面を切り抜くのに使う（GL 経路がステンシルで抜く）。
+    /// maskPolys は shaderFill と同じワールド座標で渡す — 内部で rect 左上からの相対に直して
+    /// 持つので、withCamera の平行移動・ズームが rect と一緒に mask にも掛かる（形がずれない）。
+    pub def shaderFillMasked(spec: ShaderDoc.Spec, rect: Rect2.Rect2,
+                             maskPolys: List[List[Vec2.Vec2]], t: Float64, zIndex: Int32): PlacedItem =
+        let rel = maskPolys |> List.map(poly ->
+            poly |> List.map(v -> Vec2.sub(v, rect#position)));
+        { at = rect#position,
+          item = Item.Shader({ rect = rect, spec = spec, t = t, mask = rel, zIndex = zIndex,
                                blend = DrawCmd.BlendMode.Normal }) }
 
     /// 単色塗りの多角形。頂点は置き場所からの相対座標で渡す（絶対座標で組みたいときは
@@ -381,7 +396,9 @@ mod Render {
             case Item.Poly(p)   => Item.Poly({ vertices = List.map(v -> Vec2.mul(v, factor), p#vertices) | p })
             case Item.Shader(s) =>
                 Item.Shader({ rect = { position = Vec2.mul(s#rect#position, factor),
-                                       size = Vec2.mul(s#rect#size, factor) } | s })
+                                       size = Vec2.mul(s#rect#size, factor) },
+                              mask = s#mask |> List.map(poly ->
+                                  poly |> List.map(v -> Vec2.mul(v, factor))) | s })
             case Item.Clipped(_) => bug!("Render.scaled: onLeaf が Clipped を剥がすのでここには届かない")
         }, item)
 
@@ -426,8 +443,17 @@ mod Render {
             let (leaf, _clip) = unwrapClip(placed#item, None);
             match leaf {
                 case Item.Shader(s) =>
-                    Some({ program = programOf(s#spec), rect = s#rect, time = s#t,
-                           zIndex = s#zIndex, blend = s#blend })
+                    // 位置は placed#at（カメラの平行移動＋ズームを済ませた点）から、大きさは
+                    // scaled 済みの rect#size から取る。こうすると HUD/画面固定（カメラ無し=
+                    // at は rect#position のまま）は不変で、withCamera 下だけワールドの矩形が
+                    // 追従する（他の item 種と同じ「at が置き場所」の約束にそろえる）。
+                    // mask も同じ理屈: rect 左上相対 + at で画面座標の多角形に直す（rect と同じ
+                    // カメラ変換に乗るので形がずれない）。scaled が頂点を既にズーム済み。
+                    Some({ program = programOf(s#spec),
+                           rect = { position = placed#at, size = s#rect#size },
+                           mask = s#mask |> List.map(poly ->
+                               poly |> List.map(v -> Vec2.add(placed#at, v))),
+                           time = s#t, zIndex = s#zIndex, blend = s#blend })
                 case _ => None
             }
         })

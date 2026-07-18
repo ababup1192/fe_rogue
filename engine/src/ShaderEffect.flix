@@ -16,6 +16,9 @@ mod ShaderEffect {
     pub type alias ShaderRenderCmd = {
         program = GpuHandle.ShaderProgram,
         rect = Rect2.Rect2,
+        // 面を切り抜く多角形の列（スクリーン空間 px の三角形化前の頂点）。空なら矩形そのまま、
+        // 非空なら GL がステンシルに焼いて「多角形の内側だけ」塗る（丸い池形など任意形に抜く）。
+        mask = List[List[Vec2.Vec2]],
         time = Float64,
         zIndex = Int32,
         blend = DrawCmd.BlendMode

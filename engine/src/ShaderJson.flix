@@ -146,6 +146,18 @@ mod ShaderJson {
                         radius  <- numAt("radius", m);
                         feather <- numAt("feather", m)
                     ) yield ShaderDoc.Field.Disk({ cx = cx, cy = cy, radius = radius, feather = feather })
+                case "scales" =>
+                    forM (
+                        scale   <- numAt("scale", m);
+                        stagger <- numOr("stagger", 0.5, m)
+                    ) yield ShaderDoc.Field.Scales({ scale = scale, stagger = stagger })
+                case "glints" =>
+                    forM (
+                        scale   <- numAt("scale", m);
+                        rate    <- numOr("rate", 1.0, m);
+                        density <- numOr("density", 0.3, m);
+                        seed    <- intAt("seed", m)
+                    ) yield ShaderDoc.Field.Glints({ scale = scale, rate = rate, density = density, seed = seed })
                 case other => Err(err("unknown field kind: '${other}'"))
             }
         })
@@ -311,6 +323,13 @@ mod ShaderJson {
             case ShaderDoc.Field.Disk(d) =>
                 JObject(Map#{ "kind" => JString("disk"), "cx" => num(d#cx), "cy" => num(d#cy),
                               "radius" => num(d#radius), "feather" => num(d#feather) })
+            case ShaderDoc.Field.Scales(sc) =>
+                JObject(Map#{ "kind" => JString("scales"), "scale" => num(sc#scale),
+                              "stagger" => num(sc#stagger) })
+            case ShaderDoc.Field.Glints(g) =>
+                JObject(Map#{ "kind" => JString("glints"), "scale" => num(g#scale),
+                              "rate" => num(g#rate), "density" => num(g#density),
+                              "seed" => inum(g#seed) })
         }
 
     def colorToJson(c: Color): Json =

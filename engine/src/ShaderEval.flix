@@ -21,7 +21,10 @@ mod ShaderEval {
         match shade {
             case ShaderDoc.Shade.Solid(c) => c
             case ShaderDoc.Shade.Ramp(r)  =>
-                let phase = clamp01(triWave(evalField(r#field, uv, t) + cycleRate * t));
+                // cycleRate = 0 は素直な補間。cycleRate>0 だけ三角波で往復（パレット循環）。
+                let field = evalField(r#field, uv, t);
+                let phase = if (cycleRate == 0.0) clamp01(field)
+                            else clamp01(triWave(field + cycleRate * t));
                 mixColor(r#lo, r#hi, phase)
         }
 
@@ -61,6 +64,29 @@ mod ShaderEval {
             case ShaderDoc.Field.Disk(d) =>
                 let dist = Vec2.length(Vec2.sub(uv, { x = d#cx, y = d#cy }));
                 1.0 - smoothstep(d#radius, d#radius + d#feather, dist)
+            case ShaderDoc.Field.Scales(sc) =>
+                let p = Vec2.mul(uv, sc#scale);
+                let ip = { x = Float64.floor(p#x), y = Float64.floor(p#y) };
+                let best = List.foldLeft((acc, cell) -> {
+                    let (i, j) = cell;
+                    let cy = ip#y + Int32.toFloat64(j);
+                    let stag = (cy - Float64.floor(cy / 2.0) * 2.0) * sc#stagger;
+                    let center = { x = ip#x + Int32.toFloat64(i) + 0.5 + stag, y = cy + 0.5 };
+                    Float64.min(acc, Vec2.length(Vec2.sub(p, center)))
+                }, 8.0, neighborCells());
+                clamp01(best)
+            case ShaderDoc.Field.Glints(g) =>
+                let p = Vec2.mul(uv, g#scale);
+                let ip = { x = Float64.floor(p#x), y = Float64.floor(p#y) };
+                let fpx = fract(p#x);
+                let fpy = fract(p#y);
+                let sd = Int32.toFloat64(g#seed);
+                let on = if (hash1(ip, sd) >= 1.0 - g#density) 1.0 else 0.0;
+                let phase = hash1(ip, sd + 7.0) * 6.2831853;
+                let tw = Float64.max(0.0, Vec2.sin(t * g#rate + phase));
+                let dash = (1.0 - smoothstep(0.04, 0.10, Float64.abs(fpy - 0.5))) *
+                           (1.0 - smoothstep(0.28, 0.46, Float64.abs(fpx - 0.5)));
+                on * tw * dash
         }
 
     // ── ノイズの CPU 版（GLSL prelude と同じ構造・byte 一致は狙わない）──

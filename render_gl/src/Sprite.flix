@@ -320,6 +320,63 @@ mod RenderSprite {
         GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 6);
         GL30.glBindVertexArray(0)
 
+    /// マスク多角形（スクリーン px）を三角形化し、drawPolygonBatch が食う頂点配列
+    /// （頂点ごとに x,y,r,g,b,a の 6 float・色はステンシルにしか使わないので白）へ。
+    /// 戻り値 = (頂点配列, 頂点数)。
+    def buildMaskData(maskPolys: List[List[Vec2.Vec2]]): (Array[Float32, Static], Int32) \ IO =
+        let f32 = RenderUtil.f32;
+        let flat = maskPolys |> List.flatMap(poly ->
+            Triangulate.triangles(poly) |> List.flatMap(tri -> {
+                let (a, b, c) = tri; a :: b :: c :: Nil }));
+        let n = List.length(flat);
+        let data = Array.empty(Static, n * 6);
+        let _ = List.foldLeft((i, v) -> {
+            let base = i * 6;
+            Array.put(f32(v#x), base + 0, data);
+            Array.put(f32(v#y), base + 1, data);
+            Array.put(1.0f32, base + 2, data);
+            Array.put(1.0f32, base + 3, data);
+            Array.put(1.0f32, base + 4, data);
+            Array.put(1.0f32, base + 5, data);
+            i + 1
+        }, 0, flat);
+        (data, n)
+
+    /// 宣言シェーダー面を maskPolys（スクリーン px の多角形）の内側だけに抜いて描く。
+    /// mask を GL のステンシルに焼き（色は書かない・内側を 1 に）、EQUAL テスト付きで矩形を塗る。
+    /// これで丸い池形など任意の形に水面を切り抜ける（矩形の隅がはみ出さない）。
+    /// mask が退化（頂点 3 未満）なら素直に矩形そのまま描く。
+    pub def drawShaderSurfaceMasked(program: Int32, vao: Int32,
+                                    uRectPos: Int32, uRectSize: Int32, uTime: Int32,
+                                    rect: Rect2.Rect2, time: Float64, blend: DrawCmd.BlendMode,
+                                    polyShader: Int32, polyVao: Int32, polyVbo: Int32,
+                                    polyUniforms: RenderShader.PolyBatchUniforms,
+                                    maskPolys: List[List[Vec2.Vec2]]): Unit \ IO =
+        let (maskData, maskCount) = buildMaskData(maskPolys);
+        if (maskCount < 3)
+            drawShaderSurface(program, vao, uRectPos, uRectSize, uTime, rect, time, blend)
+        else {
+            // 1) mask を stencil に焼く（色は書かず内側を 1 に）。この面ぶんだけ使うので毎回 clear。
+            GL11.glEnable(GL11.GL_STENCIL_TEST);
+            GL11.glStencilMask(255i32);
+            GL11.glClearStencil(0);
+            GL11.glClear(GL11.GL_STENCIL_BUFFER_BIT);
+            GL11.glStencilFunc(GL11.GL_ALWAYS, 1i32, 255i32);
+            GL11.glStencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_REPLACE);
+            GL11.glColorMask(false, false, false, false);
+            drawPolygonBatch(polyShader, polyVao, polyVbo, polyUniforms,
+                             DrawCmd.BlendMode.Normal, maskData, maskCount);
+            GL11.glColorMask(true, true, true, true);
+            // 2) stencil==1 の画素だけシェーダー矩形を塗る（stencil は書かない）。
+            GL11.glStencilFunc(GL11.GL_EQUAL, 1i32, 255i32);
+            GL11.glStencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
+            GL11.glStencilMask(0i32);
+            drawShaderSurface(program, vao, uRectPos, uRectSize, uTime, rect, time, blend);
+            // 3) 後始末（次の描画にステンシル状態を持ち越さない）。
+            GL11.glStencilMask(255i32);
+            GL11.glDisable(GL11.GL_STENCIL_TEST)
+        }
+
     // ========================================================================
     // Sprite Instanced Rendering — 連続する同テクスチャのスプライトを 1 draw call で
     // ========================================================================

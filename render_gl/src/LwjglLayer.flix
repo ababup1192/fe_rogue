@@ -229,6 +229,9 @@ mod LwjglLayer {
         GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_PROFILE, GLFW.GLFW_OPENGL_CORE_PROFILE);
         GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_FORWARD_COMPAT, GL11.GL_TRUE);
         GLFW.glfwWindowHint(GLFW.GLFW_RESIZABLE, GL11.GL_TRUE);
+        // シェーダー面を任意形（丸い池など）に抜くステンシル用に、既定フレームバッファへ
+        // 8bit のステンシルを確保する。使うのはマスク描画のときだけ（通常描画は無影響）。
+        GLFW.glfwWindowHint(GLFW.GLFW_STENCIL_BITS, 8);
 
         let window = GLFW.glfwCreateWindow(config#windowWidth, config#windowHeight, config#title, MemoryUtil.NULL, MemoryUtil.NULL);
         GLFW.glfwMakeContextCurrent(window);
@@ -377,8 +380,16 @@ mod LwjglLayer {
             let (uRectPos, uRectSize, uTime) =
                 Map.get(program, Ref.get(shaderUniformCache))
                 |> Option.getWithDefault((-1, -1, -1));
-            RenderSprite.drawShaderSurface(program, vao, uRectPos, uRectSize, uTime,
-                                           cmd#rect, cmd#time, cmd#blend)
+            // mask が空なら矩形そのまま、非空なら多角形の内側だけにステンシルで抜く
+            // （多角形描画は poly バッチ経路を借りる）。
+            if (List.isEmpty(cmd#mask))
+                RenderSprite.drawShaderSurface(program, vao, uRectPos, uRectSize, uTime,
+                                               cmd#rect, cmd#time, cmd#blend)
+            else
+                RenderSprite.drawShaderSurfaceMasked(program, vao, uRectPos, uRectSize, uTime,
+                                               cmd#rect, cmd#time, cmd#blend,
+                                               polyBatchShader, polyBatchVao, polyBatchVbo,
+                                               polyBatchUniforms, cmd#mask)
         };
         let renderFrame = (fbW: Int32, fbH: Int32,
                             sprites: List[GameEngine.Drawable],
