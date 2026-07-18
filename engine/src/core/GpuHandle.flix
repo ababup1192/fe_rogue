@@ -18,6 +18,10 @@ mod GpuHandle {
     /// テクスチャの GPU ハンドル。
     pub enum TextureId { case TextureId(Int32) }
 
+    /// 宣言シェーダー面をコンパイルした GPU プログラムのハンドル（`buildProgram` が返す）。
+    /// コンパイル/リンクに失敗した面のためのフォールバック単色プログラムも同じ型で運ぶ。
+    pub enum ShaderProgram { case ShaderProgram(Int32) }
+
     /// Int32 の実体をハンドルに包む（バックエンドが割り当て時に呼ぶ）。
     pub def wrapTileVao(v: Int32): TileVao = TileVao.TileVao(v)
 
@@ -38,5 +42,11 @@ mod GpuHandle {
 
     /// ハンドルから Int32 の実体を取り出す。
     pub def textureIdInt(h: TextureId): Int32 = let TextureId.TextureId(v) = h; v
+
+    /// Int32 の実体をハンドルに包む（バックエンドがコンパイル成功時に呼ぶ）。
+    pub def wrapShaderProgram(v: Int32): ShaderProgram = ShaderProgram.ShaderProgram(v)
+
+    /// ハンドルから Int32 の実体を取り出す（描画時に使う）。
+    pub def shaderProgramInt(h: ShaderProgram): Int32 = let ShaderProgram.ShaderProgram(v) = h; v
 
 }

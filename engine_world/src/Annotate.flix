@@ -285,6 +285,9 @@ mod Annotate {
                 { position = pos, size = b#size }
             case Render.Item.Poly(p) =>
                 vertexAabb(pos, p#vertices)
+            case Render.Item.Shader(s) =>
+                // シェーダー面の外形は塗る矩形そのもの（rect が置き場所とサイズを持つ）。
+                s#rect
             case Render.Item.Clipped(c) =>
                 // 窓の外は描かれないので、外形も窓と交差させる — 完全に切り取られて
                 // 見えない物が注釈やヒット一覧に載る嘘を作らない(交差が空なら負サイズ)。
@@ -343,6 +346,8 @@ mod Annotate {
                 { kind = "box", name = "", position = pos, zIndex = b#zIndex, aabb = aabb }
             case Render.Item.Poly(p) =>
                 { kind = "poly", name = "", position = pos, zIndex = p#zIndex, aabb = aabb }
+            case Render.Item.Shader(s) =>
+                { kind = "shader", name = s#spec#name, position = pos, zIndex = s#zIndex, aabb = aabb }
             case Render.Item.Clipped(c) =>
                 // Hit の種類・名前・z は窓ではなく中身のもの。
                 hitOf({ at = pos, item = c#inner }, aabb)

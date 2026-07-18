@@ -208,13 +208,13 @@ mod LwjglLayer {
     /// 直接 with-chain に並べて使う。loadProject 失敗時は bug! で停止する
     /// (project.json が壊れているのは開発者が直すべき状態)。
     pub def withProject(rootDir: String, f: Unit -> a \ ef):
-            a \ ef - GameEngine.Game - GameEngine.Audio + IO + Fs.FileRead =
+            a \ ef - GameEngine.Game - GameEngine.Audio - ShaderEffect.Shader + IO + Fs.FileRead =
         match ProjectLoader.loadProject(rootDir) {
             case Ok(proj)  => withLwjgl(proj#config, f)
             case Err(msg) => bug!("Failed to load project.json: ${msg}")
         }
 
-    pub def withLwjgl(config: GameEngine.EngineConfig, f: Unit -> a \ ef): a \ ef - GameEngine.Game - GameEngine.Audio + IO =
+    pub def withLwjgl(config: GameEngine.EngineConfig, f: Unit -> a \ ef): a \ ef - GameEngine.Game - GameEngine.Audio - ShaderEffect.Shader + IO =
         // GLFW と AWT は macOS で同じメインスレッド・GL を取り合って固まるため、
         // この窓（GLFW）のプロセスでは AWT を headless に固定する。注釈のスクリーンショット
         // 保存（BufferedImage / Graphics2D / ImageIO）はオフスクリーン描画なので headless でも動く。
@@ -288,6 +288,19 @@ mod LwjglLayer {
         let (polyBatchVao, polyBatchVbo) = RenderSprite.initPolygonBatchRenderer();
         let (instVao, instVbo) = RenderSprite.initSpriteInstancedRenderer(quadVBO);
 
+        // 宣言シェーダー面（eff Shader）用: codegen が吐いた GLSL のコンパイル失敗時に
+        // 差し替える単色フォールバックプログラム（起動時に 1 回だけ作る）。
+        let fallbackShader = RenderShader.createShaderProgram(
+            ShaderGen.vertexSource(), RenderShader.fallbackFragmentSource());
+        RenderShader.setProjectionMatrix(fallbackShader, screenW, screenH);
+        // GLSL ソース文字列 → コンパイル済みプログラム（+ uniform location）のキャッシュ。
+        // buildProgram は毎フレーム呼ばれ得るので、同じ Spec の再コンパイルをここで防ぐ。
+        let shaderProgramCache: Ref[Map[String, (Int32, Int32, Int32, Int32)], Static] = Ref.fresh(Static, Map.empty());
+        // このフレームに溜まったシェーダー面の描画依頼（drawSurface が積み、renderFrame が描いて空にする）。
+        let pendingShaderHolder = Array#{(Nil: List[ShaderEffect.ShaderRenderCmd])} @ Static;
+        // program ハンドル → (uRectPos, uRectSize, uTime) の逆引き（drawSurface が uniform 設定に使う）。
+        let shaderUniformCache: Ref[Map[Int32, (Int32, Int32, Int32)], Static] = Ref.fresh(Static, Map.empty());
+
         println("Loading textures...");
         let registry0 = RenderTexture.loadTextureRegistry(config#textureManifest);
 
@@ -345,21 +358,34 @@ mod LwjglLayer {
         let staticCacheCell = Array#{(None: Option[RenderStatic.Entry])} @ Static;
 
         // リサイズ中の再描画用に最後のフレームの描画コマンドを保持する
-        // (sprites + tileMaps + polygons + 静的レイヤー依頼)
+        // (sprites + tileMaps + polygons + 静的レイヤー依頼 + シェーダー面)
         let renderStateHolder = Array#{((Nil: List[GameEngine.Drawable]),
                                          (Nil: List[GameEngine.TileMapRenderCmd]),
                                          (Nil: List[GameEngine.PolygonRenderCmd]),
-                                         (None: Option[GameEngine.StaticLayerCmd]))} @ Static;
+                                         (None: Option[GameEngine.StaticLayerCmd]),
+                                         (Nil: List[ShaderEffect.ShaderRenderCmd]))} @ Static;
 
         // renderFrameMixed への FrameArgs 組み立ては呼び出し箇所ごとに同じ固定値
         // （シェーダ・VAO・registry・uniforms 等）が並ぶので、可変な部分だけを引数にした
         // 1 箇所へ集約する。静的レイヤーはここで resolve（キャッシュ照合・必要なら焼き直し）し、
         // レンジ列を FrameArgs に載せる。None なら Nil（従来と完全に同じ経路）。
+        // シェーダー面 1 枚を GL へ描くクロージャ。program の uniform location を逆引きして差す。
+        // z の合流（sprites/polygons/静的レンジとの重なり順）は renderFrameMixed が受け持つので、
+        // ここは 1 枚の描画だけに徹する。
+        let drawSurface = (cmd: ShaderEffect.ShaderRenderCmd) -> {
+            let program = GpuHandle.shaderProgramInt(cmd#program);
+            let (uRectPos, uRectSize, uTime) =
+                Map.get(program, Ref.get(shaderUniformCache))
+                |> Option.getWithDefault((-1, -1, -1));
+            RenderSprite.drawShaderSurface(program, vao, uRectPos, uRectSize, uTime,
+                                           cmd#rect, cmd#time, cmd#blend)
+        };
         let renderFrame = (fbW: Int32, fbH: Int32,
                             sprites: List[GameEngine.Drawable],
                             tileMaps: List[GameEngine.TileMapRenderCmd],
                             polygons: List[GameEngine.PolygonRenderCmd],
-                            staticLayer: Option[GameEngine.StaticLayerCmd]) -> {
+                            staticLayer: Option[GameEngine.StaticLayerCmd],
+                            surfaces: List[ShaderEffect.ShaderRenderCmd]) -> {
             let staticRanges = match staticLayer {
                 case None    => Nil
                 case Some(l) => RenderStatic.resolve(staticCacheCell, l)
@@ -374,7 +400,8 @@ mod LwjglLayer {
                 polyBatchVbo = polyBatchVbo, polyBatchUniforms = polyBatchUniforms,
                 instShader = instShader, instVao = instVao, instVbo = instVbo,
                 spriteUniforms = spriteUniforms, tileUniforms = tileUniforms,
-                instMultiplyBlend = instMultiplyBlend})
+                instMultiplyBlend = instMultiplyBlend,
+                surfaces = surfaces, drawSurface = drawSurface})
         };
 
         // 6 種のスタンダードカーソルを起動時に作成して再利用する。
@@ -477,8 +504,8 @@ mod LwjglLayer {
         discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
             def invoke(_this: GLFWFramebufferSizeCallbackI, cbWindow: Int64, width: Int32, height: Int32): Unit \ IO = {
                 Array.put((width, height), 0, framebufferSizeHolder);
-                let (sprites, tileMaps, polygons, staticLayer) = Array.get(0, renderStateHolder);
-                renderFrame(width, height, sprites, tileMaps, polygons, staticLayer);
+                let (sprites, tileMaps, polygons, staticLayer, surfaces) = Array.get(0, renderStateHolder);
+                renderFrame(width, height, sprites, tileMaps, polygons, staticLayer, surfaces);
                 GLFW.glfwSwapBuffers(cbWindow)
             }
         });
@@ -523,9 +550,13 @@ mod LwjglLayer {
             }
         } with handler GameEngine.Game {
             def renderCommands(sprites, tileMaps, polygons, staticLayer, k) = {
-                Array.put((sprites, tileMaps, polygons, staticLayer), 0, renderStateHolder);
+                // drawSurface が積んだこのフレームのシェーダー面を取り出して holder を空にする。
+                // 順序は積んだ順（drawShaders の列順）に戻す。z の合流は renderFrameMixed が行う。
+                let surfaces = List.reverse(Array.get(0, pendingShaderHolder));
+                Array.put(Nil, 0, pendingShaderHolder);
+                Array.put((sprites, tileMaps, polygons, staticLayer, surfaces), 0, renderStateHolder);
                 let (fbW, fbH) = Array.get(0, framebufferSizeHolder);
-                renderFrame(fbW, fbH, sprites, tileMaps, polygons, staticLayer);
+                renderFrame(fbW, fbH, sprites, tileMaps, polygons, staticLayer, surfaces);
                 GLFW.glfwSwapBuffers(window);
                 k(())
             }
@@ -684,9 +715,11 @@ mod LwjglLayer {
                     discard MemoryStack.stackPop();
                     // 注釈のスクリーンショットにも静的レイヤーを含める（壁が消えないように）。
                     // AnnotationRequest は静的レイヤーを運ばないので、直近フレームの依頼を使う
-                    // （キャッシュ済みなので焼き直しは起きない）。
-                    let (_, _, _, lastStatic) = Array.get(0, renderStateHolder);
-                    renderFrame(fbW, fbH, req#sprites, req#tileMaps, req#polygons, lastStatic);
+                    // （キャッシュ済みなので焼き直しは起きない）。シェーダー面は本物を使わず、
+                    // req#sprites に含まれる代表色ベタ塗り（App が Render.draw で出す・スクラブ中の
+                    // 表示中の瞬間に一致）を使う。live の面を混ぜると巻き戻し位置とズレるため空で渡す。
+                    let (_, _, _, lastStatic, _) = Array.get(0, renderStateHolder);
+                    renderFrame(fbW, fbH, req#sprites, req#tileMaps, req#polygons, lastStatic, Nil);
                     let image = framebufferImage(fbW, fbH);
                     writePngFile(image, "${dirPath}/screenshot.png");
                     burnHighlight(image, designRectToImage(req#rect, fbW, fbH, screenW, screenH));
@@ -712,6 +745,36 @@ mod LwjglLayer {
             def setDebugBadge(enabled, k) = {
                 let title = if (enabled) "${config#title} (Debug)" else config#title;
                 GLFW.glfwSetWindowTitle(window, title);
+                k(())
+            }
+        } with handler ShaderEffect.Shader {
+            def buildProgram(spec, k) = {
+                // codegen が吐いた GLSL をコンパイル（fail-open）。同じソースはキャッシュから返す。
+                // コンパイル/リンク失敗時は単色フォールバックプログラムに落ちる（黒画面でなく色は出る）。
+                let source = ShaderGen.compile(spec);
+                let cache0 = Ref.get(shaderProgramCache);
+                let (program, uPos, uSize, uTime) = match Map.get(source, cache0) {
+                    case Some(entry) => entry
+                    case None =>
+                        let prog = match RenderShader.tryCreateProgram(
+                                ShaderGen.vertexSource(), source, "surface:${spec#name}") {
+                            case Some(p) => RenderShader.setProjectionMatrix(p, screenW, screenH); p
+                            case None    => fallbackShader
+                        };
+                        let up = GL20.glGetUniformLocation(prog, "uRectPos");
+                        let us = GL20.glGetUniformLocation(prog, "uRectSize");
+                        let ut = GL20.glGetUniformLocation(prog, "uTime");
+                        let entry = (prog, up, us, ut);
+                        Ref.put(Map.insert(source, entry, cache0), shaderProgramCache);
+                        Ref.put(Map.insert(prog, (up, us, ut), Ref.get(shaderUniformCache)), shaderUniformCache);
+                        entry
+                };
+                let _ = (uPos, uSize, uTime);
+                k(GpuHandle.wrapShaderProgram(program))
+            }
+            def drawSurface(cmd, k) = {
+                // 実描画はこのフレームの clear 直後（renderFrameMixed 内）で行う。ここでは溜めるだけ。
+                Array.put(cmd :: Array.get(0, pendingShaderHolder), 0, pendingShaderHolder);
                 k(())
             }
         };

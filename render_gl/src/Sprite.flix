@@ -301,6 +301,26 @@ mod RenderSprite {
         GL30.glBindVertexArray(0)
 
     // ========================================================================
+    // 宣言シェーダー面（eff Shader）— 面 quad 1 枚を宣言シェーダーで塗る
+    // ========================================================================
+
+    /// 宣言シェーダー面 1 枚を描く。共有 quad VAO（loc0 = x,y,u,v）を使い、
+    /// rect（スクリーン px）と time を uniform で差して 1 draw call で塗る。
+    /// projection は起動時に setProjectionMatrix 済みの前提（program ごとに1回）。
+    pub def drawShaderSurface(program: Int32, vao: Int32,
+                              uRectPos: Int32, uRectSize: Int32, uTime: Int32,
+                              rect: Rect2.Rect2, time: Float64, blend: DrawCmd.BlendMode): Unit \ IO =
+        let f32 = RenderUtil.f32;
+        GL20.glUseProgram(program);
+        applyBlend(blend);
+        GL20.glUniform2f(uRectPos, f32(rect#position#x), f32(rect#position#y));
+        GL20.glUniform2f(uRectSize, f32(rect#size#x), f32(rect#size#y));
+        GL20.glUniform1f(uTime, f32(time));
+        GL30.glBindVertexArray(vao);
+        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 6);
+        GL30.glBindVertexArray(0)
+
+    // ========================================================================
     // Sprite Instanced Rendering — 連続する同テクスチャのスプライトを 1 draw call で
     // ========================================================================
 

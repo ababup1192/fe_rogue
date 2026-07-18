@@ -432,7 +432,7 @@ mod App {
     /// 自分の effect ハンドラ束を張った内側で呼ぶ。
     /// デバッグ有効（withDebug）かつ環境変数 DEBUG_HTTP_PORT があれば、リモートデバッグの
     /// HTTP 口も一緒に立ち上がる（例: `DEBUG=1 DEBUG_HTTP_PORT=7777 flix run`）。
-    pub def launch(app: App[w, ef]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
+    pub def launch(app: App[w, ef]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + Fs.FileRead + IO) =
         let init = app#init;
         let world0 = List.foldLeft((acc, sys) -> sys(acc), init(GameEngine.Game.getViewportRect()#size), app#startupSystems);
         let bridge = if (canDebug(app)) Option.map(RemoteDebug.start, RemoteDebug.portFromEnv())
@@ -476,7 +476,7 @@ mod App {
     def loop(app: App[w, ef], world: w, prevKeys: Set[GameEngine.Key], prevMouseDown: Bool,
              prevCursor: Option[Vec2.Vec2], anno: Annotate.State, history: List[w],
              bridge: Option[RemoteDebug.Bridge], remoteHold: Bool,
-             stepState: StepState, watchState: WatchState): Unit \ (ef + GameEngine.Game + GameEngine.Audio + Fs.FileRead + IO) =
+             stepState: StepState, watchState: WatchState): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + Fs.FileRead + IO) =
         let currentKeys = InputEvent.currentKeys();
         let mouseDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
         let cursorNow = GameEngine.Game.getMousePosition();
@@ -836,13 +836,17 @@ mod App {
     /// view = None のゲームは App では描かない（自分のシステム内で renderCommands を呼ぶ。
     /// camera / hudView もこの場合は効かない）。
     /// fps は debug 有効時だけ隅に重ねる（本番は Nil を渡すので描画に一切現れない）。
-    def renderFrame(app: App[w, ef], world: w, fpsOverlay: List[Render.PlacedItem]): Unit \ (ef + GameEngine.Game) =
+    def renderFrame(app: App[w, ef], world: w, fpsOverlay: List[Render.PlacedItem]): Unit \ (ef + GameEngine.Game + ShaderEffect.Shader) =
         match app#view {
             case None          => ()
             case Some(toItems) =>
                 let atlas = GameEngine.Game.getFontAtlas("default");
                 let items = List.append(sceneItems(app, atlas, world, toItems), fpsOverlay);
-                let (sprites, polygons) = Render.draw(items);
+                // 宣言シェーダー面は別チャンネル（eff Shader）で描く。renderCommands の下（固定 z 帯）
+                // に敷くため drawSurface を先に呼び、通常の絵からは Shader 面を外して二重描きを避ける。
+                let shaderCmds = Render.drawShaders(spec -> ShaderEffect.Shader.buildProgram(spec), items);
+                List.forEach(cmd -> ShaderEffect.Shader.drawSurface(cmd), shaderCmds);
+                let (sprites, polygons) = Render.draw(Render.withoutShaders(items));
                 GameEngine.Game.renderCommands(sprites, Nil, polygons, staticLayerCmd(app, world))
         }
 

@@ -265,6 +265,17 @@ mod View {
         let blendDemo = world#blend
             |> Option.map(blendDemoItems)
             |> Option.getWithDefault(List.empty());
-        bg :: List.flatten(gridItems() :: viewportMarkerItems() :: blendDemo ::
+        bg :: List.flatten(gridItems() :: viewportMarkerItems() :: blendDemo :: shaderDemoItems(world) ::
                             lanternDemoItems(world#lightDoc, world#lantern) :: ui :: cover :: Nil)
+
+    /// 宣言シェーダー面（eff Shader）の骨格デモ。SHADER_DEMO=1 のときだけ、画面下半分に
+    /// 「時間で色が回る横グラデ面」を 1 枚出す。GPU シェーダーの配管（宣言木→GLSL→GPU）を
+    /// 端から端まで通す最小の絵。z=1（背景 bg=0 の上・グリッドや UI の下）に敷く。
+    def shaderDemoItems(world: World.World): List[Render.PlacedItem] =
+        if (not world#shaderDemo) Nil
+        else {
+            let d = design();
+            let rect = { position = { x = 0.0, y = d#y / 2.0 }, size = { x = d#x, y = d#y / 2.0 } };
+            Render.shaderFill(ShaderDoc.demoSurface(), rect, world#shaderTime, 1) :: Nil
+        }
 }

@@ -26,6 +26,11 @@ mod Render {
         /// App + withCamera 経路では中身にはカメラが掛かるが、窓は常にスクリーン固定 —
         /// PiP やパネル内スクロール用（world に追従する窓は v1 対象外）。
         case Clipped({ rect = Rect2.Rect2, inner = Item })
+        /// 宣言シェーダーで矩形 rect を塗る面（水面など）。GL 経路では eff Shader が本物の
+        /// シェーダーで描き、GL の無い経路（SoftRaster / F8 注釈）では代表色のベタ塗りに落ちる。
+        /// rect はスクリーン空間 px（uv=0..1 がこの矩形）、t は world#time（uTime に渡す）。
+        case Shader({ rect = Rect2.Rect2, spec = ShaderDoc.Spec, t = Float64,
+                      zIndex = Int32, blend = DrawCmd.BlendMode })
     }
 
     /// 置き場所つきの描画物。View はこの列を組み、draw が描画命令へ変換する。
@@ -128,6 +133,14 @@ mod Render {
     pub def boxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32): PlacedItem =
         { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
           item = box(size, color, zIndex) }
+
+    /// 宣言シェーダーで矩形 rect を塗る面（PlacedItem）。at は使わず rect が全てを決める
+    /// （置き場所は rect の左上）。t は uTime に渡す秒（world#time など）。
+    /// GL 経路では eff Shader が本物のシェーダーで描き、GL の無い経路では代表色ベタ塗りに落ちる。
+    pub def shaderFill(spec: ShaderDoc.Spec, rect: Rect2.Rect2, t: Float64, zIndex: Int32): PlacedItem =
+        { at = rect#position,
+          item = Item.Shader({ rect = rect, spec = spec, t = t, zIndex = zIndex,
+                               blend = DrawCmd.BlendMode.Normal }) }
 
     /// 単色塗りの多角形。頂点は置き場所からの相対座標で渡す（絶対座標で組みたいときは
     /// 置き場所を Vec2.zero() にする）。左右反転した形が欲しいときは頂点を flipH に通してから渡す。
@@ -366,6 +379,9 @@ mod Render {
                 let style1 = b#style |> Option.map(s -> DrawCmd.scalePx(factor, s));
                 Item.Box({ size = { x = b#size#x * factor, y = b#size#y * factor }, style = style1 | b })
             case Item.Poly(p)   => Item.Poly({ vertices = List.map(v -> Vec2.mul(v, factor), p#vertices) | p })
+            case Item.Shader(s) =>
+                Item.Shader({ rect = { position = Vec2.mul(s#rect#position, factor),
+                                       size = Vec2.mul(s#rect#size, factor) } | s })
             case Item.Clipped(_) => bug!("Render.scaled: onLeaf が Clipped を剥がすのでここには届かない")
         }, item)
 
@@ -377,6 +393,7 @@ mod Render {
             case Item.Text(t)   => Item.Text({ zIndex = t#zIndex + delta | t })
             case Item.Box(b)    => Item.Box({ zIndex = b#zIndex + delta | b })
             case Item.Poly(p)   => Item.Poly({ zIndex = p#zIndex + delta | p })
+            case Item.Shader(s) => Item.Shader({ zIndex = s#zIndex + delta | s })
             case Item.Clipped(_) => bug!("Render.raiseZ: onLeaf が Clipped を剥がすのでここには届かない")
         }, item)
 
@@ -398,6 +415,33 @@ mod Render {
     pub def drawWith(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef,
                      items: List[PlacedItem]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) \ ef =
         drawInto((item, pos) -> toDrawablesAtlas(textureInfoOf, item, pos), items)
+
+    /// Shader 面だけを取り出して eff Shader が食える描画依頼へ変換する（GL 経路専用）。
+    /// programOf は Spec → コンパイル済みプログラムのハンドル（バックエンドが用意）。
+    /// Clipped に包まれた Shader も剥がして拾う。GL の無い経路（F8/SoftRaster）は
+    /// これを呼ばず draw の代表色ベタ塗りに任せる。
+    pub def drawShaders(programOf: ShaderDoc.Spec -> GpuHandle.ShaderProgram \ ef,
+                        items: List[PlacedItem]): List[ShaderEffect.ShaderRenderCmd] \ ef =
+        items |> List.filterMap(placed -> {
+            let (leaf, _clip) = unwrapClip(placed#item, None);
+            match leaf {
+                case Item.Shader(s) =>
+                    Some({ program = programOf(s#spec), rect = s#rect, time = s#t,
+                           zIndex = s#zIndex, blend = s#blend })
+                case _ => None
+            }
+        })
+
+    /// Shader 面を除いた PlacedItem 列（GL 経路で draw に渡す前に外す — 本物のシェーダーは
+    /// drawShaders + eff Shader が別チャンネルで描くので、draw の代表色ベタ塗りと二重にしない）。
+    pub def withoutShaders(items: List[PlacedItem]): List[PlacedItem] =
+        items |> List.filter(placed -> {
+            let (leaf, _clip) = unwrapClip(placed#item, None);
+            match leaf {
+                case Item.Shader(_) => false
+                case _              => true
+            }
+        })
 
     /// draw / drawWith の共通トラバーサル。Clipped を剥がして有効な窓（入れ子は交差）を決め、
     /// 葉を Drawable / PolygonRenderCmd へ振り分けてから窓を刻む。振り分けの分岐を 1 本に
@@ -460,6 +504,11 @@ mod Render {
                 boxDrawable(b#size, b#color, b#alpha, b#style, b#zIndex, b#blend, pos) :: Nil
             case Item.Poly(_) =>
                 bug!("Render.toDrawables: Poly は Drawable にならない（draw が PolygonRenderCmd へ振り分ける）")
+            case Item.Shader(s) =>
+                // GL の無い経路（SoftRaster / F8 注釈）向けの代表色ベタ塗り。本物のシェーダーは
+                // eff Shader が別チャンネルで描くので、ここは「面がそこにある」ことだけ残す。
+                boxDrawable(s#rect#size, ShaderDoc.representativeColor(s#spec), 1.0f32, None,
+                            s#zIndex, s#blend, s#rect#position) :: Nil
             case Item.Clipped(c) =>
                 toDrawables(c#inner, pos) |> List.map(d -> { clip = mergeClip(c#rect, d#clip) | d })
         }

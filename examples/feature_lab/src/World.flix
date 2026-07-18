@@ -51,7 +51,13 @@ mod World {
         // カンテラの光の質感（assets/Lantern.light.json）。at は光源位置の初期値の目安に
         // すぎず、実行中は lantern#at（World が持つプレイヤー位置）が正 — LightDoc.toConfigWithLights
         // で毎フレーム差し替える（「json は質感、位置はゲーム」の分業）。
-        lightDoc = LightDoc.Spec
+        lightDoc = LightDoc.Spec,
+        // 宣言シェーダー面（eff Shader）の骨格デモ。環境変数 SHADER_DEMO=1 で on。
+        // on のとき View が画面下半分に「時間で色が回るグラデ面」を 1 枚出す（GPU シェーダーの配管確認）。
+        // 既存 gallery の bake を汚さないよう既定は off。
+        shaderDemo = Bool,
+        // シェーダー面に渡す経過秒（毎フレーム dt を足す。uTime uniform の源）。
+        shaderTime = Float64
     }
 
     /// 起動直後は Idle（覆いなし）で始める。いきなり遷移を再生すると画面が
@@ -61,12 +67,13 @@ mod World {
     /// ウィンドウ表示は通常の窓・カーソルは見える状態で始める。
     /// blend デモは初期非表示（None）。常時表示にすると遷移 GIF や fps 見本の bake に
     /// 映り込み、既存の gallery の絵が変わってしまう。
-    pub def initial(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): World =
+    pub def initial(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, shaderDemo: Bool): World =
         { kind = Transition.Kind.FadeOut, playing = None, steps = 0,
           bgm = { rising = true, progress = Transition.start(bgmDuration()), master = 1.0, playing = false },
           ui = ui, fullscreen = false, cursorVisible = true,
           blend = None,
-          lantern = None, lightDoc = lightDoc }
+          lantern = None, lightDoc = lightDoc,
+          shaderDemo = shaderDemo, shaderTime = 0.0 }
 
     /// いまの BGM 音量（フェードの向きと進み具合から導く。実機へ流す値と同じ計算）。
     pub def bgmVolume(bgm: Bgm): Float64 =

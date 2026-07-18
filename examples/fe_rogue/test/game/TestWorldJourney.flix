@@ -175,6 +175,10 @@ mod TestWorldJourney {
                 def mkDir(d, _k)            = bug!("mock saves: unexpected mkDir '${d}'")
                 def mkDirs(d, _k)           = bug!("mock saves: unexpected mkDirs '${d}'")
                 def mkTempDir(p, _k)        = bug!("mock saves: unexpected mkTempDir '${p}'")
+            } with handler ShaderEffect.Shader {
+                // headless 駆動: 宣言シェーダー面は GL が無いので何もしない（op が来ても落ちない）。
+                def buildProgram(_spec, k) = k(GpuHandle.wrapShaderProgram(0))
+                def drawSurface(_cmd, k)   = k(())
             };
             // 台本が中断セーブを書いた場合の内容（模擬は空で始まるので、有る = 台本が書いた）。
             let slotAfter = Map.get(saveSlotPath(), Ref.get(mockSavesRef));

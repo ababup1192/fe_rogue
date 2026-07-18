@@ -348,6 +348,60 @@ mod RenderShader {
         program
 
     // ========================================================================
+    // 宣言シェーダー面（eff Shader）用: fail-open コンパイル
+    // ========================================================================
+
+    /// GLSL をコンパイルする（fail-open 版）。失敗時は bug! で落とさず、log をパス付きで
+    /// println して None を返す（呼び側が単色フォールバックへ切り替える）。
+    /// theme 由来の codegen ミスで全体クラッシュを避けるための「落ちない版」。
+    pub def tryCompileShader(source: String, shaderType: Int32, label: String): Option[Int32] \ IO =
+        let shader = GL20.glCreateShader(shaderType);
+        GL20.glShaderSource(shader, source);
+        GL20.glCompileShader(shader);
+        let success = GL20.glGetShaderi(shader, GL20.GL_COMPILE_STATUS);
+        if (success == GL11.GL_FALSE) {
+            let log = GL20.glGetShaderInfoLog(shader, 1024);
+            println("[shader ${label}] compile failed (単色フォールバックへ): ${log}");
+            GL20.glDeleteShader(shader);
+            None
+        } else Some(shader)
+
+    /// vertex/fragment ソースからプログラムを作る（fail-open 版）。コンパイル/リンク
+    /// いずれかが失敗したら None を返す（呼び側が単色フォールバックへ切り替える）。
+    pub def tryCreateProgram(vertexSrc: String, fragmentSrc: String, label: String): Option[Int32] \ IO =
+        match tryCompileShader(vertexSrc, GL20.GL_VERTEX_SHADER, "${label}.vs") {
+            case None     => None
+            case Some(vs) => match tryCompileShader(fragmentSrc, GL20.GL_FRAGMENT_SHADER, "${label}.fs") {
+                case None     => GL20.glDeleteShader(vs); None
+                case Some(fs) =>
+                    let program = GL20.glCreateProgram();
+                    GL20.glAttachShader(program, vs);
+                    GL20.glAttachShader(program, fs);
+                    GL20.glLinkProgram(program);
+                    let ok = GL20.glGetProgrami(program, GL20.GL_LINK_STATUS);
+                    GL20.glDeleteShader(vs);
+                    GL20.glDeleteShader(fs);
+                    if (ok == GL11.GL_FALSE) {
+                        let log = GL20.glGetProgramInfoLog(program, 1024);
+                        println("[shader ${label}] link failed (単色フォールバックへ): ${log}");
+                        GL20.glDeleteProgram(program);
+                        None
+                    } else Some(program)
+            }
+        }
+
+    /// 宣言シェーダー面の代表色ベタ塗りフォールバック用フラグメントシェーダー。
+    /// codegen が壊れた GLSL を吐いた面をこれで塗る（黒画面でなく色は出る）。
+    pub def fallbackFragmentSource(): String =
+        "#version 330 core\n" +
+        "in vec2 vUv;\n" +
+        "out vec4 outColor;\n" +
+        "uniform float uTime;\n" +
+        "void main() {\n" +
+        "    outColor = vec4(0.5, 0.2, 0.2, 1.0);\n" +
+        "}\n"
+
+    // ========================================================================
     // Uniform Locations
     // ========================================================================
 

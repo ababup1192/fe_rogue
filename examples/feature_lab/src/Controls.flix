@@ -3,7 +3,13 @@
 // キー → 意図の対応は table が 1 枚で持ち、写しは InputMap に任せる。
 
 mod Controls {
+    import java.lang.System
     use GameEngine.Key
+
+    /// SHADER_DEMO 環境変数が設定されていれば true（宣言シェーダー面の骨格デモを on）。
+    pub def shaderDemoFromEnv(): Bool \ IO =
+        let value = System.getenv("SHADER_DEMO");
+        not Object.isNull(value) and value != ""
 
     /// 押した瞬間だけ効く操作の意図。矢印の代わりに WASD を使い、Left/Right は
     /// 今後スクラブ等の他機能と衝突しないようにする。
@@ -55,6 +61,11 @@ mod Controls {
     /// （statusLine の steps= に出る。可変 dt 時の増分と見比べる目安）。
     pub def countStep(_frame: App.Frame, world: World.World): World.World =
         { steps = world#steps + 1 | world }
+
+    /// シェーダー面デモの経過秒を進める（uTime uniform の源）。SHADER_DEMO=off なら足しても
+    /// 描かれないだけで無害。
+    pub def shaderStep(frame: App.Frame, world: World.World): World.World =
+        { shaderTime = world#shaderTime + frame#dt | world }
 
     /// BGM 実験の意図。B = フェードの向きを反転、M = マスター音量 1.0/0.3 の切り替え。
     enum AudioIntent with Eq {

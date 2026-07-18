@@ -13,6 +13,7 @@ mod RenderFrame {
         case MSprite(RenderType.Drawable)
         case MPoly(RenderType.PolygonCmd)
         case MStatic(RenderStatic.Range)
+        case MSurface(ShaderEffect.ShaderRenderCmd)
     }
 
     /// デザイン解像度のアスペクト比を維持しつつ、フレームバッファに収まる最大矩形を計算。
@@ -85,7 +86,13 @@ mod RenderFrame {
         spriteUniforms = RenderShader.SpriteUniforms,
         tileUniforms = RenderShader.TileUniforms,
         // instanced シェーダの premultiply スイッチ（Multiply ブレンド用）の uniform location。
-        instMultiplyBlend = Int32
+        instMultiplyBlend = Int32,
+        // 宣言シェーダー面の描画依頼列。sprites/polygons/静的レンジと同じ z 安定ソート列に
+        // 第 4 の run 種として混ぜ、各面の zIndex の位置で描く（水を床の上・壁の下に置ける）。
+        surfaces = List[ShaderEffect.ShaderRenderCmd],
+        // シェーダー面 1 枚を実際に GL へ描くクロージャ（program の uniform location を知る
+        // バックエンド側が提供する）。renderFrameMixed は z の合流だけを受け持つ。
+        drawSurface = ShaderEffect.ShaderRenderCmd -> Unit \ IO
     }
 
     /// 溜めた run（同じテクスチャの連続スプライト列）を 1 回の instanced draw で
@@ -151,6 +158,8 @@ mod RenderFrame {
         let instVbo      = args#instVbo;
         let tileUniforms = args#tileUniforms;
         let instMultiplyBlend = args#instMultiplyBlend;
+        let surfaces     = args#surfaces;
+        let drawSurface  = args#drawSurface;
         if (fbW > 0 and fbH > 0) {
             let (vpX, vpY, vpW, vpH) = calcViewport(fbW, fbH, designW, designH);
             GL11.glViewport(0, 0, fbW, fbH);
@@ -179,16 +188,22 @@ mod RenderFrame {
             // GPU にある永続 VBO の範囲」を軽い値で表す第 3 の run 種で、同 z 内の動的アイテム
             // との前後も入力順で保たれる（洞窟の壁 z=2 が粒 z=2 を正しく隠す等）。
             // 同一 zIndex 内は入力順（sprites → polygons → static）を保つ（stableByZ が構造的に保証）。
+            // 宣言シェーダー面も同じ z 空間に第 4 の run 種として混ぜる。zIndex の位置で
+            // 両 run を吐いてから面を 1 枚描くので、水を床(z=0)の上・壁(z=2)の下に置ける
+            // （clear 直後の一括描画だと zIndex を無視して最下になり、不透明な背景に覆われて消える）。
             let merged: List[Merged] =
                 List.append(
                     List.append(
-                        sprites  |> List.map(d  -> Merged.MSprite(d)),
-                        polygons |> List.map(pc -> Merged.MPoly(pc))),
-                    staticRanges |> List.map(r -> Merged.MStatic(r)));
+                        List.append(
+                            sprites  |> List.map(d  -> Merged.MSprite(d)),
+                            polygons |> List.map(pc -> Merged.MPoly(pc))),
+                        staticRanges |> List.map(r -> Merged.MStatic(r))),
+                    surfaces |> List.map(s -> Merged.MSurface(s)));
             let zOf = item -> match item {
                 case Merged.MSprite(d) => d#zIndex
                 case Merged.MPoly(pc)  => pc#zIndex
                 case Merged.MStatic(r) => r#zIndex
+                case Merged.MSurface(s) => s#zIndex
             };
             let sortedMerged = stableByZ(zOf, merged);
             // clip 窓 → framebuffer 座標の整数 scissor 矩形 (x0, y0, x1, y1)（top-left 原点）。
@@ -394,6 +409,14 @@ mod RenderFrame {
                         flush(sRun);
                         flushPoly(pRun);
                         drawStatic(r);
+                        (emptyRun, emptyPolyRun)
+                    case Merged.MSurface(s) =>
+                        // シェーダー面が来たら両 run を吐いてから 1 枚描く（列順＝重なり順を守る）。
+                        // 面は矩形全体を塗るので scissor は viewport 全体に戻す（前 run の clip 窓を持ち越さない）。
+                        flush(sRun);
+                        flushPoly(pRun);
+                        setScissor(None);
+                        drawSurface(s);
                         (emptyRun, emptyPolyRun)
                 }
             }, (emptyRun, emptyPolyRun), sortedMerged);

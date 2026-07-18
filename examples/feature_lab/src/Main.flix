@@ -24,13 +24,16 @@ def main(): Unit \ IO =
     else {
         let ui = run { GameUi.loadUi() } with Fs.FileRead.runWithIO;
         let lightDoc = run { Controls.loadLightDoc() } with Fs.FileRead.runWithIO;
+        // SHADER_DEMO=1 で宣言シェーダー面（eff Shader）の骨格デモを on にする（既定 off）。
+        let shaderDemo = Controls.shaderDemoFromEnv();
         run {
             // App の effect 集合は全フック共通の 1 つの型変数なので、Audio だけ・Game だけの
             // system が混在すると単一化できない。全 system を checked_ecast で
             // {Audio, Game} へそろえる（呼び出し式ごと widen すれば効く）。
-            App.make(World.initial(ui, lightDoc))
+            App.make(World.initial(ui, lightDoc, shaderDemo))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.step(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.countStep(frame, world)))
+                |> App.addSystem((frame, world) -> checked_ecast(Controls.shaderStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.audioStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.windowStep(frame, world)))
                 |> App.addSystem((frame, world) -> checked_ecast(Controls.blendStep(frame, world)))
