@@ -242,6 +242,16 @@ mod ShaderGen {
                     case ShaderDoc.BinOp.Max  => "max(" + ae + ", " + be + ")"
                     case ShaderDoc.BinOp.Step => "step(" + ae + ", " + be + ")"
                 }
+            case ShaderDoc.Field.Hash1(h) =>
+                // セルの整数座標 floor(uv*scale) を hash に渡す。bucket が有れば座標に足す（GLSL の
+                // vec2+float は自動で両成分に配る）。既存 sg_hash1 を呼ぶだけ（prelude は増やさない）。
+                "sg_hash1(" + hashCoord(h#scale, h#bucket, uv, env) + ", " + fSeed(h#seed) + ")"
+            case ShaderDoc.Field.Hash2(h) =>
+                let comp = match h#comp {
+                    case ShaderDoc.Axis.U => ".x"
+                    case ShaderDoc.Axis.V => ".y"
+                };
+                "(sg_hash2(" + hashCoord(h#scale, h#bucket, uv, env) + ", " + fSeed(h#seed) + "))" + comp
             case ShaderDoc.Field.Un(un) =>
                 let x = fieldExpr(un#of, uv, env);
                 match un#op {
@@ -271,6 +281,15 @@ mod ShaderGen {
             case ShaderDoc.Field.Ref(name) =>
                 // parse が定義済みを保証するので env に必ず居る。0.0 は保険。
                 Map.getWithDefault("0.0", name, env)
+        }
+
+    /// hash に渡すセル座標の GLSL 式。floor((uv)*scale) を作り、bucket が有ればその式を足す。
+    def hashCoord(scale: Float64, bucket: Option[ShaderDoc.Field], uv: String,
+                  env: Map[String, String]): String =
+        let cell = "floor((" + uv + ") * " + f(scale) + ")";
+        match bucket {
+            case None    => cell
+            case Some(b) => "(" + cell + " + (" + fieldExpr(b, uv, env) + "))"
         }
 
     /// base を n 回掛けた GLSL 積の文字列（n=0 は 1.0・n=1 は base そのもの）。

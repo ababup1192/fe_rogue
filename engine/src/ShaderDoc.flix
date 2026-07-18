@@ -84,6 +84,12 @@ mod ShaderDoc {
         /// 2 つの場 a,b を op で合わせる（足す・掛ける・大きい方…）。生の値の合成。
         /// 混ぜる意図（0..1 の重みで補間）は Blend の方が暴れなくて安全。
         case Bin({ op = BinOp, a = Field, b = Field })
+        /// セルごとに違う乱数（0〜1）。scale = マス目の細かさ、seed = 模様の種。
+        /// bucket は「時間などで乱数を選び直す」時に足す座標オフセット（None なら足さない）。
+        case Hash1({ scale = Float64, seed = Int32, bucket = Option[Field] })
+        /// セルごとに違う乱数の 2 成分（x か y を comp で選ぶ・0〜1）。
+        /// scale/seed/bucket は Hash1 と同じ意味。ずらした点を置く時などに 2 成分いる。
+        case Hash2({ scale = Float64, seed = Int32, comp = Axis, bucket = Option[Field] })
         /// 場 of に op（sin・絶対値・反転…）を 1 つ掛ける。
         case Un({ op = UnOp, of = Field })
         /// of を p 乗して尖らせる（山を細くする）。負にならないよう 0 で下切りしてから累乗する。

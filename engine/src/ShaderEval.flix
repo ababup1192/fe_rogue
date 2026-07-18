@@ -135,6 +135,14 @@ mod ShaderEval {
                     case ShaderDoc.BinOp.Max  => Float64.max(a, b)
                     case ShaderDoc.BinOp.Step => if (b >= a) 1.0 else 0.0
                 }
+            case ShaderDoc.Field.Hash1(h) =>
+                hash1(hashCoord(h#scale, h#bucket, uv, t, env), Int32.toFloat64(h#seed))
+            case ShaderDoc.Field.Hash2(h) =>
+                let v = hash2(hashCoord(h#scale, h#bucket, uv, t, env), Int32.toFloat64(h#seed));
+                match h#comp {
+                    case ShaderDoc.Axis.U => v#x
+                    case ShaderDoc.Axis.V => v#y
+                }
             case ShaderDoc.Field.Un(un) =>
                 let x = evalFieldEnv(un#of, uv, t, env);
                 match un#op {
@@ -179,6 +187,16 @@ mod ShaderEval {
         else List.foldLeft((acc, _) -> acc * base, base, List.range(1, k))
 
     // ── ノイズの CPU 版（GLSL prelude と同じ構造・byte 一致は狙わない）──
+
+    // hash に渡すセル座標。floor(uv*scale) に、bucket が有ればその値を両成分へ足す（GLSL の
+    // vec2+float 自動配りと同じ）。GLSL の hashCoord と同じ形。
+    def hashCoord(scale: Float64, bucket: Option[ShaderDoc.Field], uv: Vec2.Vec2, t: Float64,
+                  env: Map[String, ShaderDoc.Field]): Vec2.Vec2 =
+        let ip = { x = Float64.floor(uv#x * scale), y = Float64.floor(uv#y * scale) };
+        match bucket {
+            case None    => ip
+            case Some(b) => let bv = evalFieldEnv(b, uv, t, env); Vec2.add(ip, { x = bv, y = bv })
+        }
 
     def hash1(p: Vec2.Vec2, seed: Float64): Float64 =
         fract(Vec2.sin(p#x * 127.1 + p#y * 311.7 + seed * 0.017) * 43758.5453123)

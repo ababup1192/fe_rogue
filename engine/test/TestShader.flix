@@ -432,6 +432,118 @@ def testUndefinedRefIsErr(): Unit \ Assert =
     };
     Assert.assertEq(expected = true, r)
 
+// ════════════════════════════════════════════════════════════════════
+// (7) Wave 2b: Hash1/Hash2（bucket）— セル乱数
+//   パリティの線引き（設計 §5）を厳守する:
+//     floor/hash を踏む値を「GPU が出すはずの値」として assertEq しない。
+//     許すのは「範囲が正気」「floor が段を刻んで値が変わる」「亜種が JSON で組める」だけ。
+//   （GPU は f32/floor で境界の位置が CPU と別なので、CPU の hash/cyc 値が GPU と一致する
+//     保証はない。ここでは GPU 一致を一切主張しない。）
+// ════════════════════════════════════════════════════════════════════
+
+/// 時間で乱数を選び直すための「バケツ」場: cyc = floor(uTime*0.5)。
+/// （bucket にこれを入れると一定時間ごとに別の乱数へ切り替わる。）
+def cycField(): ShaderDoc.Field =
+    ShaderDoc.Field.Un({ op = ShaderDoc.UnOp.Floor,
+        of = ShaderDoc.Field.Time({ scale = 0.5, offset = ShaderDoc.Field.Const(0.0) }) })
+
+/// ⑤ Hash1 の GLSL 片（bucket 無し/有り）。既存 sg_hash1 を呼ぶだけ（prelude は増えない）。
+@Test
+def testHash1NodeSnapshot(): Unit \ Assert =
+    let none = ShaderDoc.Field.Hash1({ scale = 8.0, seed = 5, bucket = None });
+    let buck = ShaderDoc.Field.Hash1({ scale = 8.0, seed = 5, bucket = Some(cycField()) });
+    let expNone = "outColor = vec4(vec3(0.0, 0.0, 0.0), sg_hash1(floor((vUv) * 8.0), 5.0));";
+    let expBuck = "outColor = vec4(vec3(0.0, 0.0, 0.0), " +
+        "sg_hash1((floor((vUv) * 8.0) + (floor((uTime * 0.5 + (0.0))))), 5.0));";
+    Assert.assertEq(expected = (expNone, expBuck), (bodyOfField(none), bodyOfField(buck)))
+
+/// ⑤ Hash2 の GLSL 片（bucket 無し=comp u / bucket 有り=comp v）。
+@Test
+def testHash2NodeSnapshot(): Unit \ Assert =
+    let none = ShaderDoc.Field.Hash2({ scale = 8.0, seed = 22, comp = ShaderDoc.Axis.U, bucket = None });
+    let buck = ShaderDoc.Field.Hash2({ scale = 8.0, seed = 22, comp = ShaderDoc.Axis.V,
+                                       bucket = Some(cycField()) });
+    let expNone = "outColor = vec4(vec3(0.0, 0.0, 0.0), (sg_hash2(floor((vUv) * 8.0), 22.0)).x);";
+    let expBuck = "outColor = vec4(vec3(0.0, 0.0, 0.0), " +
+        "(sg_hash2((floor((vUv) * 8.0) + (floor((uTime * 0.5 + (0.0))))), 22.0)).y);";
+    Assert.assertEq(expected = (expNone, expBuck), (bodyOfField(none), bodyOfField(buck)))
+
+/// ⑥ hash1 の eval は代表点で 0..1 の範囲に収まる（範囲の正気のみ・GPU 一致は非主張）。
+@Test
+def testHash1Range(): Unit \ Assert =
+    let field = ShaderDoc.Field.Hash1({ scale = 8.0, seed = 5, bucket = None });
+    let v = ShaderEval.evalField(field, { x = 0.37, y = 0.62 }, 0.0);
+    Assert.assertEq(expected = true, 0.0 <= v and v < 1.0)
+
+/// ⑥ bucket=cyc（floor(uTime*k)）の Hash1 を、別々の時間バケツに落ちる 2 時刻で eval し、
+///   「floor が段を刻んで値が変わる」ことだけ確かめる（値そのものは pin しない）。
+///   t=0.0 → cyc=floor(0)=0、t=3.0 → cyc=floor(1.5)=1 で別セルの乱数になる。
+///   GPU は f32/floor で境界が別位置なので、この CPU 値が GPU と一致するとは主張しない。
+@Test
+def testHashBucketSteps(): Unit \ Assert =
+    let field = ShaderDoc.Field.Hash1({ scale = 8.0, seed = 5, bucket = Some(cycField()) });
+    let uv = { x = 0.37, y = 0.62 };
+    let vLow  = ShaderEval.evalField(field, uv, 0.0);   // cyc=0
+    let vHigh = ShaderEval.evalField(field, uv, 3.0);   // cyc=1（段が 1 つ上がる）
+    // 段が変われば hash の入力座標が変わるので値も変わる。範囲も両方 0..1 に収まる。
+    let sane = 0.0 <= vLow and vLow < 1.0 and 0.0 <= vHigh and vHigh < 1.0;
+    Assert.assertEq(expected = (true, true), (vLow != vHigh, sane))
+
+/// ⑥ Hash1(bucket=cyc) を on、菱形（Pow）/丸（Un）で組んだ Sparkle 亜種を eval して
+///   0.0 <= v の範囲に収まることだけ確かめる（＝亜種が JSON 語彙で組めることの実証）。
+///   この亜種は bucket に floor(cyc) を通すので CPU パリティ（GPU との値一致）は適用外。
+@Test
+def testSparkleVariantEvalSane(): Unit \ Assert =
+    // on = Hash1(bucket=cyc)、tw = pow(sat(sin(uTime)), 12)、point = 1 - sat(|uv.x-0.5|)。
+    let on = ShaderDoc.Field.Hash1({ scale = 8.0, seed = 5, bucket = Some(cycField()) });
+    let tw = ShaderDoc.Field.Pow({ p = 12.0,
+        of = ShaderDoc.Field.Un({ op = ShaderDoc.UnOp.Sat,
+            of = ShaderDoc.Field.Un({ op = ShaderDoc.UnOp.Sin,
+                of = ShaderDoc.Field.Time({ scale = 1.0, offset = ShaderDoc.Field.Const(0.0) }) }) }) });
+    let point = ShaderDoc.Field.Un({ op = ShaderDoc.UnOp.OneMinus,
+        of = ShaderDoc.Field.Un({ op = ShaderDoc.UnOp.Sat,
+            of = ShaderDoc.Field.Un({ op = ShaderDoc.UnOp.Abs,
+                of = ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Sub,
+                    a = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U }),
+                    b = ShaderDoc.Field.Const(0.5) }) }) }) });
+    let variant = ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Mul,
+        a = ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Mul, a = on, b = tw }), b = point });
+    let v = ShaderEval.evalField(variant, { x = 0.4, y = 0.6 }, 0.3);
+    Assert.assertEq(expected = true, 0.0 <= v)
+
+/// ⑦ hash 呼び出し回数 lint。生成 GLSL 中の sg_hash 出現数の上限を機械ガードする。
+///   compileBody（prelude 抜き）で数える理由: prelude には sg_hash1/sg_hash2 の定義と内部呼びが
+///   多数あり、そこを含めると Spec 側の展開数が測れない（prelude の定数に埋もれる）。
+///   方式(b): 同じ hash 場を「binding で 1 回だけ計算して 2 か所で use する版」と
+///   「2 か所に直書きする版」で作り、共有版の sg_hash 数 < 直書き版 を assert する。
+///   閾値マジックナンバーを使わず、共有し忘れると sg_hash がテキスト増殖する footgun を直接示す。
+@Test
+def testHashCallCountBounded(): Unit \ Assert =
+    let h = ShaderDoc.Field.Hash1({ scale = 8.0, seed = 5, bucket = Some(cycField()) });
+    let mul = (a, b) -> ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Mul, a = a, b = b });
+    // 直書き版: alpha = h * h（h を 2 か所に展開）→ sg_hash がテキストで 2 回出る。
+    let inlinedSpec = { name = "inl", cycleRate = 0.0, bindings = Nil,
+        out = ShaderDoc.Out.Fill({
+            shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+            alpha = mul(h, h) }) };
+    // 共有版: binding "h" に 1 回だけ計算し、alpha = use(h) * use(h)。sg_hash はテキストで 1 回。
+    let sharedSpec = { name = "shr", cycleRate = 0.0, bindings = ("h", h) :: Nil,
+        out = ShaderDoc.Out.Fill({
+            shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+            alpha = mul(ShaderDoc.Field.Ref("h"), ShaderDoc.Field.Ref("h")) }) };
+    let nInlined = countOccurrences("sg_hash", ShaderGen.compileBody(inlinedSpec));
+    let nShared  = countOccurrences("sg_hash", ShaderGen.compileBody(sharedSpec));
+    Assert.assertEq(expected = (true, true), (nShared < nInlined, nShared >= 1))
+
+/// 部分文字列の非重複な出現回数を数える薄いヘルパ（見つけたら needle の長さだけ削って進む）。
+def countOccurrences(needle: String, haystack: String): Int32 =
+    def loop(rest, acc) =
+        match String.indexOf({ substr = needle }, rest) {
+            case Some(i) => loop(String.drop(i + String.length(needle), rest), acc + 1)
+            case None    => acc
+        };
+    loop(haystack, 0)
+
 /// lava の alpha は Disk（丸い溶岩溜まり）を Warp でくるんだ木（往復後も辿れる）。
 @Test
 def testLavaAlphaIsWarpDisk(): Unit \ Assert =

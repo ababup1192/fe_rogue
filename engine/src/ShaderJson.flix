@@ -124,6 +124,8 @@ mod ShaderJson {
             case ShaderDoc.Field.Glints(_)     => Nil
             case ShaderDoc.Field.Ripples(_)    => Nil
             case ShaderDoc.Field.Sparkle(_)    => Nil
+            case ShaderDoc.Field.Hash1(h)      => Option.toList(h#bucket) |> List.flatMap(collectRefs)
+            case ShaderDoc.Field.Hash2(h)      => Option.toList(h#bucket) |> List.flatMap(collectRefs)
             case ShaderDoc.Field.Bin(bn)       => List.append(collectRefs(bn#a), collectRefs(bn#b))
             case ShaderDoc.Field.Un(un)        => collectRefs(un#of)
             case ShaderDoc.Field.Pow(pw)       => collectRefs(pw#of)
@@ -261,6 +263,19 @@ mod ShaderJson {
                         density <- numOr("density", 0.3, m);
                         seed    <- intAt("seed", m)
                     ) yield ShaderDoc.Field.Sparkle({ scale = scale, rate = rate, density = density, seed = seed })
+                case "hash1" =>
+                    forM (
+                        scale  <- numOr("scale", 8.0, m);
+                        seed   <- intOr("seed", 0, m);
+                        bucket <- parseBucket(m)
+                    ) yield ShaderDoc.Field.Hash1({ scale = scale, seed = seed, bucket = bucket })
+                case "hash2" =>
+                    forM (
+                        scale  <- numOr("scale", 8.0, m);
+                        seed   <- intOr("seed", 0, m);
+                        comp   <- parseComp(m);
+                        bucket <- parseBucket(m)
+                    ) yield ShaderDoc.Field.Hash2({ scale = scale, seed = seed, comp = comp, bucket = bucket })
                 case "math2" =>
                     forM (
                         op    <- parseBinOp(m);
@@ -305,6 +320,21 @@ mod ShaderJson {
             case "v" => Ok(ShaderDoc.Axis.V)
             case other => Err(err("axis must be 'u'/'v' (got '${other}')"))
         }) yield a
+
+    // hash2 の成分（x か y）は "comp":"u"/"v"。Axis を共有（Uv の axis と同じ語彙）。
+    def parseComp(m: Map[String, Json]): Result[JsonError, ShaderDoc.Axis] =
+        forM (s <- strAt("comp", m); a <- match s {
+            case "u" => Ok(ShaderDoc.Axis.U)
+            case "v" => Ok(ShaderDoc.Axis.V)
+            case other => Err(err("comp must be 'u'/'v' (got '${other}')"))
+        }) yield a
+
+    // hash の bucket は省略可（無ければ None）。在れば Field として読む。
+    def parseBucket(m: Map[String, Json]): Result[JsonError, Option[ShaderDoc.Field]] =
+        match Map.get("bucket", m) {
+            case None    => Ok(None)
+            case Some(j) => parseField(j) |> Result.map(Some)
+        }
 
     def parseBinOp(m: Map[String, Json]): Result[JsonError, ShaderDoc.BinOp] =
         forM (s <- strAt("op", m); o <- match s {
@@ -418,6 +448,12 @@ mod ShaderJson {
             case Some(_) => numAt(key, m)
         }
 
+    def intOr(key: String, fallback: Int32, m: Map[String, Json]): Result[JsonError, Int32] =
+        match Map.get(key, m) {
+            case None    => Ok(fallback)
+            case Some(_) => intAt(key, m)
+        }
+
     def err(msg: String): JsonError =
         Decode(JsonPath.empty(), TypeMismatch(msg))
 
@@ -509,6 +545,12 @@ mod ShaderJson {
                 JObject(Map#{ "kind" => JString("sparkle"), "scale" => num(sp#scale),
                               "rate" => num(sp#rate), "density" => num(sp#density),
                               "seed" => inum(sp#seed) })
+            case ShaderDoc.Field.Hash1(h) =>
+                withBucket(Map#{ "kind" => JString("hash1"), "scale" => num(h#scale),
+                                 "seed" => inum(h#seed) }, h#bucket)
+            case ShaderDoc.Field.Hash2(h) =>
+                withBucket(Map#{ "kind" => JString("hash2"), "scale" => num(h#scale),
+                                 "seed" => inum(h#seed), "comp" => JString(axisStr(h#comp)) }, h#bucket)
             case ShaderDoc.Field.Bin(bn) =>
                 JObject(Map#{ "kind" => JString("math2"), "op" => JString(binOpStr(bn#op)),
                               "a" => fieldToJson(bn#a), "b" => fieldToJson(bn#b) })
@@ -525,6 +567,13 @@ mod ShaderJson {
                               "of" => fieldToJson(tl#of) })
             case ShaderDoc.Field.Ref(name) =>
                 JObject(Map#{ "kind" => JString("use"), "name" => JString(name) })
+        }
+
+    // bucket が None なら "bucket" キーを出さない（省略時の JSON を 1 バイトも増やさない）。
+    def withBucket(base: Map[String, Json], bucket: Option[ShaderDoc.Field]): Json =
+        match bucket {
+            case None    => JObject(base)
+            case Some(b) => JObject(Map.insert("bucket", fieldToJson(b), base))
         }
 
     def binOpStr(op: ShaderDoc.BinOp): String =
