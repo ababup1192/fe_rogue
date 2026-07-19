@@ -1,0 +1,169 @@
+{
+  "name": "m_molten_metal",
+  "cycleRate": 0.0,
+  "note": "パレット=ブラックボディ金属(黒→暗赤→橙→白熱)。技法=fbm(oct4)をwarpでうねらせた滑らかな流れ`flow`を主役の下地にし、smoothstep+pow2.4で反射のホットバンドを鋭く締め(金属の高反射感)、そこにflow位相を注いだsin脈動で表面が「溶けて流れる」動きを付与。さらにflow自身を弱めた下駄で溶湯の厚みムラを出し、細かいfbmを微量上乗せして白熱スパッタのざらつきを足した。gradientは0.55→0.8を橙〜金の帯に寄せて発光の芯を太く。自信度=A。朝の調整ノブ: (1)smoothstepのlo/hi(0.36/0.60)=幅を狭めるほど明暗のバンドが鋭く金属光沢が強まる/広げると溶岩寄りに柔らかく。(2)pow.p(2.4)=上げると暗部が締まりハイライトが点在、下げると全体が明るくのっぺり。(3)sinのscale(1.1)=脈動の速さ。sin振幅(0.26)=明滅の強さ。(4)flow.warp.amount(0.14)=流れのうねり量、上げると渦巻き感。(5)flow.scroll.y(0.038)=溶湯が下へ流れる速さ。(6)白熱スパッタfbmのmul係数(0.20)=上げるとザラつき増、下げると鏡面的に。",
+  "shared": [
+    [
+      "flow",
+      {
+        "kind": "warp",
+        "amount": 0.14,
+        "scale": 2.6,
+        "seed": 9,
+        "of": {
+          "kind": "scaled",
+          "factor": 3.0,
+          "scroll": {
+            "x": 0.018,
+            "y": 0.038
+          },
+          "of": {
+            "kind": "fbm",
+            "octaves": 4,
+            "scale": 1.0,
+            "seed": 31
+          }
+        }
+      }
+    ]
+  ],
+  "out": {
+    "kind": "fill",
+    "shade": {
+      "kind": "gradient",
+      "stops": [
+        [
+          0.0,
+          "#0a0a0a"
+        ],
+        [
+          0.22,
+          "#2b0a02"
+        ],
+        [
+          0.42,
+          "#a52a00"
+        ],
+        [
+          0.62,
+          "#ff8c1e"
+        ],
+        [
+          0.82,
+          "#ffc65c"
+        ],
+        [
+          1.0,
+          "#ffffff"
+        ]
+      ],
+      "field": {
+        "kind": "math2",
+        "op": "add",
+        "a": {
+          "kind": "math2",
+          "op": "add",
+          "a": {
+            "kind": "math2",
+            "op": "mul",
+            "a": {
+              "kind": "pow",
+              "p": 2.4,
+              "of": {
+                "kind": "smoothstep",
+                "lo": 0.36,
+                "hi": 0.6,
+                "of": {
+                  "kind": "use",
+                  "name": "flow"
+                }
+              }
+            },
+            "b": {
+              "kind": "math2",
+              "op": "add",
+              "a": {
+                "kind": "const",
+                "value": 0.74
+              },
+              "b": {
+                "kind": "math2",
+                "op": "mul",
+                "a": {
+                  "kind": "const",
+                  "value": 0.26
+                },
+                "b": {
+                  "kind": "math1",
+                  "op": "sin",
+                  "of": {
+                    "kind": "math2",
+                    "op": "add",
+                    "a": {
+                      "kind": "time",
+                      "scale": 1.1,
+                      "offset": {
+                        "kind": "const",
+                        "value": 0.0
+                      }
+                    },
+                    "b": {
+                      "kind": "math2",
+                      "op": "mul",
+                      "a": {
+                        "kind": "const",
+                        "value": 6.0
+                      },
+                      "b": {
+                        "kind": "use",
+                        "name": "flow"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "b": {
+            "kind": "math2",
+            "op": "mul",
+            "a": {
+              "kind": "const",
+              "value": 0.16
+            },
+            "b": {
+              "kind": "use",
+              "name": "flow"
+            }
+          }
+        },
+        "b": {
+          "kind": "math2",
+          "op": "mul",
+          "a": {
+            "kind": "const",
+            "value": 0.2
+          },
+          "b": {
+            "kind": "scaled",
+            "factor": 5.0,
+            "scroll": {
+              "x": 0.03,
+              "y": 0.02
+            },
+            "of": {
+              "kind": "fbm",
+              "octaves": 3,
+              "scale": 1.0,
+              "seed": 47
+            }
+          }
+        }
+      }
+    },
+    "alpha": {
+      "kind": "const",
+      "value": 1.0
+    }
+  }
+}

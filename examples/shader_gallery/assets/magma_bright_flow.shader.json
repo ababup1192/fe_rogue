@@ -1,0 +1,193 @@
+{
+  "name": "m_bright_flow",
+  "cycleRate": 0.0,
+  "shared": [
+    [
+      "flow",
+      {
+        "kind": "warp",
+        "amount": 0.24,
+        "scale": 2.2,
+        "seed": 13,
+        "of": {
+          "kind": "warp",
+          "amount": 0.14,
+          "scale": 4.8,
+          "seed": 29,
+          "of": {
+            "kind": "scaled",
+            "factor": 2.5,
+            "scroll": {
+              "x": 0.05,
+              "y": 0.12
+            },
+            "of": {
+              "kind": "fbm",
+              "octaves": 4,
+              "scale": 1.0,
+              "seed": 8
+            }
+          }
+        }
+      }
+    ],
+    [
+      "cracks",
+      {
+        "kind": "warp",
+        "amount": 0.1,
+        "scale": 3.6,
+        "seed": 44,
+        "of": {
+          "kind": "scaled",
+          "factor": 3.6,
+          "scroll": {
+            "x": 0.03,
+            "y": 0.07
+          },
+          "of": {
+            "kind": "worley",
+            "scale": 1.0,
+            "seed": 21,
+            "out": "f2mf1"
+          }
+        }
+      }
+    ],
+    [
+      "heat",
+      {
+        "kind": "scaled",
+        "factor": 4.2,
+        "scroll": {
+          "x": 0.04,
+          "y": 0.09
+        },
+        "of": {
+          "kind": "fbm",
+          "octaves": 3,
+          "scale": 1.0,
+          "seed": 51
+        }
+      }
+    ]
+  ],
+  "out": {
+    "kind": "fill",
+    "shade": {
+      "kind": "gradient",
+      "stops": [
+        [
+          0.0,
+          "#000004"
+        ],
+        [
+          0.28,
+          "#451077"
+        ],
+        [
+          0.52,
+          "#cd4071"
+        ],
+        [
+          0.74,
+          "#fd9567"
+        ],
+        [
+          0.9,
+          "#feca8d"
+        ],
+        [
+          1.0,
+          "#fcfdbf"
+        ]
+      ],
+      "field": {
+        "kind": "math2",
+        "op": "add",
+        "a": {
+          "kind": "math2",
+          "op": "add",
+          "a": {
+            "kind": "math2",
+            "op": "mul",
+            "a": {
+              "kind": "pow",
+              "p": 1.5,
+              "of": {
+                "kind": "use",
+                "name": "flow"
+              }
+            },
+            "b": {
+              "kind": "math2",
+              "op": "add",
+              "a": {
+                "kind": "const",
+                "value": 0.7
+              },
+              "b": {
+                "kind": "math2",
+                "op": "mul",
+                "a": {
+                  "kind": "const",
+                  "value": 0.3
+                },
+                "b": {
+                  "kind": "math1",
+                  "op": "sin",
+                  "of": {
+                    "kind": "time",
+                    "scale": 1.7,
+                    "offset": {
+                      "kind": "const",
+                      "value": 0.0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "b": {
+            "kind": "math2",
+            "op": "mul",
+            "a": {
+              "kind": "const",
+              "value": 0.16
+            },
+            "b": {
+              "kind": "use",
+              "name": "heat"
+            }
+          }
+        },
+        "b": {
+          "kind": "math2",
+          "op": "mul",
+          "a": {
+            "kind": "const",
+            "value": 0.42
+          },
+          "b": {
+            "kind": "pow",
+            "p": 2.4,
+            "of": {
+              "kind": "smoothstep",
+              "lo": 0.0,
+              "hi": 0.11,
+              "of": {
+                "kind": "use",
+                "name": "cracks"
+              }
+            }
+          }
+        }
+      }
+    },
+    "alpha": {
+      "kind": "const",
+      "value": 1.0
+    },
+    "note": "パレット=matplotlib Magma(黒→紫→桃→橙→淡黄)。技法=fbm を二段 warp(粗2.2+細4.8)で溶けた流れを主役にし、pow1.5 で明部を伸ばす。割れ目は Worley F2-F1 を軽く warp(0.1)して硬すぎない発光線に、smoothstep+pow2.4 で細く締めて上乗せ。heat 用 fbm を薄く(0.16)足して熱ムラ、sin(1.7) で全体を脈動。自信度=A。朝に触るノブ: flow の外側 warp.amount(0.24)=大きいほど流れが渦巻く/小さいと素直、scroll.y(0.12)=流れる速さ、cracks の smoothstep.hi(0.11)=小さいほど割れ目が細く鋭い/大きいと太く滲む、cracks の上乗せ係数(0.42)=割れ目の明るさ、time.scale(1.7)=脈動の速さ、gradient の 0.52 の桃色ストップ位置=色の温度感(左へ寄せると熱く)。"
+  }
+}

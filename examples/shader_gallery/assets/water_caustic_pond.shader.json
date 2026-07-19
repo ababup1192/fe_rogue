@@ -1,0 +1,37 @@
+{
+  "note": "Terraria系の池。ほぼ一色のスチールブルー(#4a6c9c)を主役に、ボロノイ(worley f2mf1)境界の淡い網目を細く控えめに乗せ、fbmでセルに微かなムラ。深さグラデは弱め。ゆっくり流れて軽く歪む。朝の調整ノブ: 網の密度=net内 scaled.factor(4.0)↑で細かく/網の太さ=smoothstep.hi(0.08)↓で細く/網の明るさ=net係数0.55/水の色=gradient中間stop #4a6c9c/ムラ=mottle係数0.12/流れ=scroll。",
+  "name": "w_pond",
+  "cycleRate": 0.0,
+  "shared": [
+    ["net", {
+      "kind": "math1", "op": "oneMinus",
+      "of": { "kind": "smoothstep", "lo": 0.0, "hi": 0.08,
+        "of": { "kind": "warp", "amount": 0.05, "scale": 3.0, "seed": 11,
+          "of": { "kind": "scaled", "factor": 4.0, "scroll": { "x": 0.015, "y": 0.01 },
+            "of": { "kind": "worley", "scale": 1.0, "seed": 7, "out": "f2mf1" } } } }
+    }],
+    ["mottle", {
+      "kind": "scaled", "factor": 2.0, "scroll": { "x": 0.008, "y": 0.012 },
+      "of": { "kind": "fbm", "octaves": 2, "scale": 1.0, "seed": 21 }
+    }]
+  ],
+  "out": {
+    "kind": "fill",
+    "shade": {
+      "kind": "gradient",
+      "stops": [ [0.0, "#33507a"], [0.4, "#4a6c9c"], [0.72, "#89b0d0"], [1.0, "#d6ebf5"] ],
+      "field": {
+        "kind": "math2", "op": "add",
+        "a": {
+          "kind": "math2", "op": "add",
+          "a": { "kind": "const", "value": 0.34 },
+          "b": { "kind": "math2", "op": "mul",
+                 "a": { "kind": "math2", "op": "sub", "a": { "kind": "use", "name": "mottle" }, "b": { "kind": "const", "value": 0.5 } },
+                 "b": { "kind": "const", "value": 0.12 } }
+        },
+        "b": { "kind": "math2", "op": "mul", "a": { "kind": "use", "name": "net" }, "b": { "kind": "const", "value": 0.55 } }
+      }
+    },
+    "alpha": { "kind": "const", "value": 1.0 }
+  }
+}
