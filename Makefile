@@ -30,7 +30,7 @@ FLIX_TEST := $(CURDIR)/bin/flix
 
 # 全パッケージ共通のバージョン (lockstep)。sync 先ディレクトリ名や release の
 # asset 名に使う。make bump FROM=x TO=y で各 flix.toml と一緒に上げる。
-VERSION := 0.7.0
+VERSION := 0.7.1
 
 RENDER_GL_DIR       := render_gl
 RENDER_GL_FPKG_SRC  := $(RENDER_GL_DIR)/artifact/render_gl.fpkg
@@ -82,7 +82,7 @@ EDITOR_SERVER_DIR := editor_server
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par release bump editor
+.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par release release-guard bump editor
 
 help:
 	@echo "Targets:"
@@ -101,14 +101,18 @@ help:
 	@echo "  make clean-example-builds examples/*/build/ を全削除 (IDE の scene.json glob 高速化用)"
 	@echo "  make sync-engine-full     engine_full だけ src 集約 & build-pkg & 配布 (examples へ)"
 	@echo "  make editor [DIR=<dir>]   ui.json/hitbox.json エディタのバックエンドを起動 (PORT=8787。DIR 省略時は未選択で起動)"
-	@echo "  make release              全部入りを build-pkg し flix_game_engine の Release に公開"
-	@echo "  make bump FROM=x TO=y     全 flix.toml の version を一括更新 (lockstep)"
+	@echo "  make release              sync→test-par→build-pkg→gh release を一括実行 (未コミットなら中断・tagはHEAD固定)"
+	@echo "  make bump FROM=x TO=y     全 flix.toml の version を一括更新 (lockstep)。release の前に実行する"
 
 # flix check を Ctrl-C で中断すると lib/cache/.../*.lock が残り、
 # 次回 Maven リゾルバが「他プロセスが取得中」と誤認して無限待ちになる。
-# 各ワークスペース配下のロックをまとめて削除する。
+# ルートから `find .` すると worktree や巨大な build/ まで stat して数分固まるので、
+# 走査先はパッケージ配下だけに絞り、build/ は枝ごと prune する (lock は lib/cache だけにある)。
+# 消すのは -delete でなく -exec rm にする: BSD find の -delete は暗黙に -depth を立て、
+# すると -prune が無効化されて GB 級の build/ を全部歩き数分固まる (元の 7 分ハングの正体)。
+LOCK_DIRS := $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR) $(ENGINE_FULL_DIR) $(EDITOR_SERVER_DIR) $(wildcard examples/*) $(wildcard templates/*) $(wildcard bench/*)
 clean-locks:
-	@find . -path "*/lib/cache/*" -name "*.lock" -print -delete | awk 'END { print NR " lock(s) removed" }'
+	@find $(LOCK_DIRS) -type d -name build -prune -o \( -path "*/lib/cache/*" -name "*.lock" -print -exec rm -f {} + \) 2>/dev/null | awk 'END { print NR " lock(s) removed" }'
 
 # IDE で examples 配下のプロジェクトを開くと ProjectLoader.findSceneFiles の Fs.Glob が
 # build/class 配下の数十万コンパイル成果物を stat してしまい、プロジェクト読み込みに
@@ -256,12 +260,33 @@ editor:
 # 自己完結の全部入り engine_full を build-pkg し、既存リポ flix_game_engine の GitHub Release に
 # fpkg と flix.toml を添付する。利用側は github:ababup1192/flix_game_engine の1行でこの版を引く。
 # 依存ゼロなので公開はこの1リポで完結する (推移先の別リポは不要)。
-# 事前に make bump で version を上げ、sync + test 緑を確認してから実行する。
-release: sync test
+#
+# 推奨フロー (この3手だけ):
+#   1) make bump FROM=<旧> TO=<新>   … 全 flix.toml と VERSION を一括更新
+#   2) git で変更を commit → main へ push  … リリースする版を GitHub に載せる
+#   3) make release                        … sync → test-par(全量ゲート) → build-pkg → gh release
+#   終了後の案内どおり、lib/ を消したコピーで外部 fetch を検証する。
+#
+# release は sync (clean-locks はパッケージ配下だけ walk するのでもう固まらない) と
+# test-par (並列全量ゲート) を前提に組み、以下の安全策を持つ:
+#   - engine ソースが未コミットだと配布 fpkg がどのコミットにも対応しなくなるため中断する。
+#   - tag は現在の HEAD に固定する。push し忘れていれば gh が「commit が無い」と明示エラーにする。
+# test-par に不審な挙動があれば TEST := test で逐次にフォールバックする (make release TEST=test)。
+RELEASE_SHA := $(shell git rev-parse HEAD)
+TEST := test-par
+release-guard:
+	@dirty=$$(git status --porcelain -- $(ROOT_SRC_PKGS)); \
+	 if [ -n "$$dirty" ]; then \
+	   echo "[release] engine ソースが未コミットです。commit してから実行してください:"; echo "$$dirty"; exit 1; \
+	 fi
+	@echo "[release] v$(VERSION) を $(RELEASE_SHA) で公開します"
+release: release-guard sync $(TEST)
 	cd $(ENGINE_FULL_DIR) && $(FLIX) build-pkg
-	gh release create v$(VERSION) --repo ababup1192/flix_game_engine --title "v$(VERSION)" --generate-notes \
+	gh release create v$(VERSION) --repo ababup1192/flix_game_engine --target $(RELEASE_SHA) \
+	  --title "v$(VERSION)" --generate-notes \
 	  "$(ENGINE_FULL_FPKG_SRC)#$(ENGINE_FULL_FPKG_NAME)" \
 	  "$(ENGINE_FULL_TOML_SRC)#$(ENGINE_FULL_TOML_NAME)"
+	@echo "[release] 完了。外部 fetch 検証: lib/ を消したサンプルで github:ababup1192/flix_game_engine v$(VERSION) を引けるか確認してください"
 
 # ── バージョン更新 (lockstep) ─────────────────────────────
 # 5パッケージの flix.toml の [package] version と、パッケージ間・examples/templates の
