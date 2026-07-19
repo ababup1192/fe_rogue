@@ -31,9 +31,10 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 - **bake のバイト一致比較は「挙動を変えていない」と主張するリファクタの時だけ**:
   `make bake-par`（不審なら `make bake`）のあと `git status` で gallery / assets/sfx の差分ゼロを確認する。
   機能追加リリースでは不要。
-- **リリース手順**: `make bump FROM=x TO=y` → 個別 sync（`make sync` の clean-locks は全 worktree 走査で
-  ハングし得るため、sync-engine 等を個別に）→ 全量ゲート → コミット/push → `gh release create` →
-  lib/ を消したコピーで外部 fetch 検証。
+- **リリース手順**: `make bump FROM=x TO=y` → コミット/push → `make release`。`make release` は
+  sync → `test-par`（全量ゲート）→ build-pkg → `gh release create` を一括で回す。engine ソースが
+  未コミットなら中断し、tag は現在の HEAD SHA に固定する（push 忘れは gh が明示エラー）。並列版に
+  不審があれば `make release TEST=test` で逐次にフォールバック。最後に lib/ を消したコピーで外部 fetch 検証。
 
 ## スキル一覧
 
