@@ -250,11 +250,15 @@ sync-engine-full:
 # EDITOR_WEB はビルド済みエディタ画面 (dist) の置き場所 (env で上書き可・無ければ配信無効の API 専用)。
 # 例: make editor DIR=../flix_ge_shapes PORT=8787
 # DIR の先頭 ~ はシェルによって展開されずに届く (make editor DIR=~/foo) ため、ここで HOME に読み替える。
+# EDITOR_WEB も同様に ~ と相対パスをここで絶対化する — editor_server は editor_server/ で走るため、
+# 呼び出し側基準の相対パスは黙って「dist 無し」に化ける。
 EDITOR_DIR_EXPANDED = $(if $(DIR),$(abspath $(patsubst ~/%,$(HOME)/%,$(patsubst ~,$(HOME),$(DIR)))),)
+EDITOR_WEB_EXPANDED = $(if $(EDITOR_WEB),$(abspath $(patsubst ~/%,$(HOME)/%,$(patsubst ~,$(HOME),$(EDITOR_WEB)))),$(abspath ../flix_ge_resource_editor/dist))
 
 editor:
 	@test -n "$(DIR)" || echo "[editor] DIR 未指定 — プロジェクト未選択で起動します (usage: make editor DIR=<game project dir> [PORT=8787])"
-	cd $(EDITOR_SERVER_DIR) && EDITOR_DIR="$(EDITOR_DIR_EXPANDED)" EDITOR_PORT="$(if $(PORT),$(PORT),8787)" EDITOR_WEB="$(if $(EDITOR_WEB),$(EDITOR_WEB),$(abspath ../flix_ge_editor/dist))" $(FLIX) run
+	@test -f "$(EDITOR_WEB_EXPANDED)/index.html" || echo "[editor] 注意: $(EDITOR_WEB_EXPANDED) に dist が無い — 画面配信なしの API 専用で起動します"
+	cd $(EDITOR_SERVER_DIR) && EDITOR_DIR="$(EDITOR_DIR_EXPANDED)" EDITOR_PORT="$(if $(PORT),$(PORT),8787)" EDITOR_WEB="$(EDITOR_WEB_EXPANDED)" $(FLIX) run
 
 # ── リリース ──────────────────────────────────────────────
 # 自己完結の全部入り engine_full を build-pkg し、既存リポ flix_game_engine の GitHub Release に

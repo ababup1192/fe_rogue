@@ -268,10 +268,14 @@ mod Editor {
                         let all = FileIndex.listAllJson(dir);
                         let entries = decls#resources |> List.map(decl -> resourceJson(dir, all, decl));
                         let dashboards = decls#dashboards |> List.map(dashboardJson);
+                        let warnings = List.append(
+                            declKeyWarnings(json),
+                            decls#resources |> List.flatMap(decl -> declWarnings(dir, all, decl)));
                         sendJson(200, JObject(Map#{
                             "root"       => JString(dir),
                             "resources"  => JArray(List.toVector(entries)),
-                            "dashboards" => JArray(List.toVector(dashboards))
+                            "dashboards" => JArray(List.toVector(dashboards)),
+                            "warnings"   => JArray(warnings |> List.map(w -> JString(w)) |> List.toVector)
                         }), exchange)
                     }
                 }
@@ -305,6 +309,57 @@ mod Editor {
             case Some(p) => Map.insert("plugin", JString(p), withTitle)
             case None    => withTitle
         })
+
+    /// editor.resources[] の各宣言に知らないキーが無いかを見る。タイポ(例: schemaPath)は
+    /// エラーにならず「schema 未指定」として黙って sibling 規約へ倒れ、フォームが出ない理由が
+    /// 誰にも分からなくなる — ここで名指しすることでだけ気づける。
+    def declKeyWarnings(projectJson: Json): List[String] =
+        let known = Set#{"id", "pattern", "title", "schema", "plugin"};
+        let decls = JsonCodec.expectObject(projectJson)
+            |> Option.flatMap(obj -> Map.get("editor", obj))
+            |> Option.flatMap(JsonCodec.expectObject)
+            |> Option.flatMap(obj -> Map.get("resources", obj))
+            |> Option.map(rs -> match rs {
+                case JArray(items) => Vector.toList(items)
+                case _             => Nil
+            })
+            |> Option.getWithDefault(Nil);
+        decls |> List.flatMap(d -> match JsonCodec.expectObject(d) {
+            case None      => Nil
+            case Some(obj) =>
+                let declId = Map.get("id", obj) |> Option.flatMap(JsonCodec.expectString) |> Option.getWithDefault("?");
+                Map.keysOf(obj) |> Set.toList
+                    |> List.filter(k -> not Set.memberOf(k, known))
+                    |> List.map(k -> "宣言『${declId}』に未知のキー『${k}』があります(使えるのは id / pattern / title / schema / plugin)")
+        })
+
+    /// 宣言と実ファイルの健康診断。応答は 200 のまま warnings で「見える化」だけする —
+    /// 読み込みは fail-open で既定へ倒れるので、壊れていてもゲームは動く。ここで気づけないと
+    /// 「直したのに反映されない(実は JSON が壊れて既定に倒れている)」で人が迷子になる。
+    def declWarnings(dir: String, allJsonPaths: List[String], decl: ResourceDecl.Decl): List[String] \ IO =
+        let files = ResourceDecl.matchFiles(decl#pattern, allJsonPaths);
+        let noMatch =
+            if (List.isEmpty(files)) "宣言『${decl#id}』の pattern『${decl#pattern}』に一致するファイルがありません" :: Nil
+            else Nil;
+        let schemaMissing = match decl#schemaPath {
+            case Some(s) =>
+                if (Result.isOk(FileIndex.readInside(dir, s))) Nil
+                else "宣言『${decl#id}』の schema『${s}』が見つかりません" :: Nil
+            case None => Nil
+        };
+        let fileWarns = files |> List.flatMap(path -> match FileIndex.readInside(dir, path) {
+            case Err(_)   => "『${path}』が読めません" :: Nil
+            case Ok(text) => match JsonCompat.parse(text) {
+                case None       => "『${path}』が JSON として読めません(読み込みは既定値へ倒れます)" :: Nil
+                case Some(json) => match JsonCodec.expectObject(json) {
+                    case None      => "『${path}』のトップが JSON オブジェクトではありません" :: Nil
+                    case Some(obj) =>
+                        if (Map.memberOf("version", obj)) Nil
+                        else "『${path}』に version がありません(Doc 規約)" :: Nil
+                }
+            }
+        });
+        noMatch ::: schemaMissing ::: fileWarns
 
     /// ダッシュボード宣言 1 件ぶんの応答(素通し)。
     def dashboardJson(decl: ResourceDecl.DashboardDecl): Json =
@@ -360,26 +415,53 @@ mod Editor {
                 case Err(message) => sendJson(404, errorJson(message), exchange)
                 case Ok(content)  => sendJson(200, JObject(Map#{
                     "path"    => JString(relPath),
-                    "content" => JString(content)
+                    "content" => JString(content),
+                    "mtime"   => JNumber(mtimeToBd(mtimeOf(dir, relPath)))
                 }), exchange)
             }
         }
 
-    /// PUT /file (body: {path, content}) — dir 相対パスへ書き込む。
+    /// ファイル 1 つの mtime (ミリ秒)。取れなければ 0 — If-Match の比較で必ず不一致になり、
+    /// 「消えたファイルへの上書き」も衝突として扱われる。
+    def mtimeOf(dir: String, relPath: String): Int64 \ IO =
+        FileIndex.mtimesOf(dir, relPath :: Nil) |> List.head |> Option.map(snd) |> Option.getWithDefault(0i64)
+
+    /// PUT /file (body: {path, content, ifMtime?}) — dir 相対パスへ書き込む。
     /// プロジェクト外・親ディレクトリ不在は拒否する。
+    /// ifMtime (GET /file が返した mtime) 付きなら、ディスクの現 mtime と違うとき 409 を返す —
+    /// 別の窓・別プロセスが先に保存した内容を黙って上書きしない(最後の書き手勝ちの事故防止)。
+    /// 省略時は従来どおり無条件で書く(後方互換)。
     def handleWriteFile(dir: String, bodyText: String, exchange: HttpExchange): Unit \ IO =
-        let fields = JsonCompat.parse(bodyText)
-            |> Option.flatMap(JsonCodec.expectObject)
+        let parsed = JsonCompat.parse(bodyText) |> Option.flatMap(JsonCodec.expectObject);
+        let fields = parsed
             |> Option.flatMap(obj -> forM (
                 relPath <- Map.get("path", obj) |> Option.flatMap(JsonCodec.expectString);
                 content <- Map.get("content", obj) |> Option.flatMap(JsonCodec.expectString)
             ) yield (relPath, content));
+        let ifMtime = parsed
+            |> Option.flatMap(obj -> Map.get("ifMtime", obj))
+            |> Option.flatMap(JsonCodec.expectFloat);
         match fields {
             case None => sendJson(400, errorJson("body must be a JSON object {path, content}"), exchange)
-            case Some((relPath, content)) => match FileIndex.writeInside(str = content, dir, relPath) {
-                case Err(message) => sendJson(400, errorJson(message), exchange)
-                case Ok(_)        => sendJson(200, JObject(Map#{"ok" => JBool(true)}), exchange)
-            }
+            case Some((relPath, content)) =>
+                let current = mtimeOf(dir, relPath);
+                let conflict = match ifMtime {
+                    case None           => false
+                    case Some(expected) => Int64.toFloat64(current) != expected
+                };
+                if (conflict)
+                    sendJson(409, JObject(Map#{
+                        "ok"           => JBool(false),
+                        "error"        => JString("conflict: ディスク上のファイルが編集開始後に変わっています"),
+                        "currentMtime" => JNumber(mtimeToBd(current))
+                    }), exchange)
+                else match FileIndex.writeInside(str = content, dir, relPath) {
+                    case Err(message) => sendJson(400, errorJson(message), exchange)
+                    case Ok(_)        => sendJson(200, JObject(Map#{
+                        "ok"    => JBool(true),
+                        "mtime" => JNumber(mtimeToBd(mtimeOf(dir, relPath)))
+                    }), exchange)
+                }
         }
 
     // ── 静的配信 (ビルド済みエディタ画面) ─────────────────
