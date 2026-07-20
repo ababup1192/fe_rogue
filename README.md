@@ -100,6 +100,20 @@ flix run             # launch
 flix test            # test
 ```
 
+## Game data (Docs)
+
+A game's numbers, look, and layout live outside the code in JSON files called
+**Docs** (`<name>.<kind>.json` — e.g. `grass.theme.json`, `b1.dungeon.json`).
+Behavior — rules, collision, spawning — stays in code; only values and looks go
+into Docs. Every Doc kind ships a `<kind>.schema.json`, so the same schema drives
+the editor form, startup validation, and AI-written data. A game can watch its
+Docs with `App.watchFile`, so saving a Doc shows up in the running game right away.
+
+Docs are edited by hand, or through forms/sliders in **flix_ge_studio** (a
+separate Elm + Tauri editor). See [docs/doc-conventions.md](docs/doc-conventions.md)
+for the full convention, and the "エディタと Doc の流儀" section in
+[CLAUDE.md](CLAUDE.md).
+
 ## Project layout (monorepo)
 
 ```
@@ -233,6 +247,20 @@ cd examples/<name>
 flix run             # 起動
 flix test            # テスト
 ```
+
+## ゲームデータ（Doc）
+
+ゲームの数値・見た目・配置は、コードの外の JSON ファイル **Doc**
+（`<名前>.<種類>.json` — 例 `grass.theme.json` / `b1.dungeon.json`）に外出しする。
+振る舞い（ルール・当たり判定・生成）はコードのまま。数値と見た目だけを Doc に置く。
+Doc の種類ごとに `<種類>.schema.json` があり、この 1 枚のスキーマが
+エディタのフォーム生成・起動時の検証・AI がデータを書くときの仕様書を兼ねる。
+ゲームが `App.watchFile` で Doc を監視すると、保存した内容が走っているゲームに即反映される。
+
+Doc は手書きでも、**flix_ge_studio**（別リポの Elm + Tauri エディタ）の
+フォーム／スライダーからでも編集できる。詳しくは
+[docs/doc-conventions.md](docs/doc-conventions.md) と、[CLAUDE.md](CLAUDE.md) の
+「エディタと Doc の流儀」の節を参照。
 
 ## プロジェクト構成（monorepo）
 
