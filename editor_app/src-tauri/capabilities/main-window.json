@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-window",
+  "description": "WebView は editor_server が配信する http://127.0.0.1:<動的ポート> から読まれる。この remote 元から自作コマンド (list_running_games) を invoke できるようにする。",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*/*"]
+  },
+  "permissions": ["core:default"]
+}

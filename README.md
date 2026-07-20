@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/brand/flix_ge_banner.png" alt="Flix_GE" width="680">
+</p>
+
 # Flix Game Engine
 
 ![sokoban rewind demo](examples/sokoban/gallery/rewind_demo.gif)

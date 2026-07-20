@@ -1,0 +1,8 @@
+# cargo のビルド成果物は 1GB 超になるので絶対に git に入れない
+src-tauri/target/
+
+# jlink で作った同梱 JRE (再生成できるので git に入れない)
+runtime/
+
+# .app に固める前の同梱リソース置き場 (jar 242M + JRE 52M + dist)。再生成可。
+src-tauri/resources/
