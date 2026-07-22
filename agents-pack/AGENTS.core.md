@@ -17,14 +17,15 @@
 
 - `atelier/` は **採用前の候補**を置く場所。中身は `assets/` と同じ Doc 形式。
 - `assets/` のパスは**スロット**（Doc の `entityId` で互換を確認する）。
-- 昇格は **swap**: 候補をスロットへ移し、旧版は `atelier/<名前>.prev-N` へ退避する。
+- 採用は **swap**: 候補の中身をスロットへ移す(候補ファイルは消える)。それまでの中身は
+  `atelier/archive/<base>.vN.<kind>.json` に積まれる(何も捨てない。戻すのもここから)。
 - **AI が素材を作るときは `assets/` に直接書かず、必ず `atelier/` に書く。**
 
 ## make の入口
 
 - `make run` / `make debug`（watchFile・F8 有効）/ `make check`（型検査・一番速い確認）
 - `make test` / `make bake`（決定的な絵を焼く）/ `make bench`（gallery/ vs golden/ のバイト比較）
-- `make golden`（いまの gallery を基準として祝福）
+- `make golden`（いまの gallery を基準にする）
 - `debug/` のコンタクトシート系ターゲット（例: `make gallery-prologue` の all.png、
   `make gallery-sounds` の sounds.png / music.png）で**目視・目聴**して批評する。
 
@@ -37,8 +38,19 @@
 - 橋渡しテストは **1 Doc につき最大3本**（壊れた JSON→既定値 / 1 フィールド上書き /
   rows 長の追随）。initialState の写経など情報量ゼロのテストは書かない。
 
+## エンジン API 優先(車輪の再発明禁止)
+
+- 実装の前に engine リポの `docs/module-index.md`(「やりたいこと → モジュール」の逆引き)を引く。
+  メニュー・スクロール・文字折り・当たり判定・タイムラインなど、**エンジンにある物を自前で書かない**。
+- 各モジュールの詳しい使い方は `engine_world/src/<名前>.flix` 冒頭の doc コメントと、
+  templates/ のスターターにある実使用例が正。
+- 迷ったら「低い API で書けたか」ではなく「一番高い API で書けたか」を疑う。
+  自前実装が残っていたら、それはレビュー(critique)で指摘される対象。
+
 ## 迷ったら読む物
 
 - Flix の書き方・エンジンの流儀: `.claude/skills/flix-docs`(構文の癖)、`compile-fix`(コンパイルエラーの定石)、`quality-assurance`(テスト設計)
 - Doc の外形規約の正: engine リポの `docs/doc-conventions.md`
+- エンジン API の地図: engine リポの `docs/module-index.md`(やりたいこと → モジュールの逆引き)
+- UI に出す言葉の決め方と対応表: engine リポの `docs/glossary.md`(効果語だけ・内部語は UI に出さない)
 - 動く見本: engine の `templates/game-starter`(最小)と、隣にある既存ゲーム(村・breakout 等)のソース
