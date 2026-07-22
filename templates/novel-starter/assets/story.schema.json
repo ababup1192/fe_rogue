@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "台本（novel.story.json）",
+  "description": "文章・分岐・結末の rows。節(sections)の beats を順に読み、読み終えたら ask(あれば)で分岐、無ければ next へ。ask も next も無い節が結末。suspect: true の選択肢は館の灯りをひとつ消す。進め方の規則はコード(World)側。",
+  "type": "object",
+  "required": ["version", "start", "sections"],
+  "properties": {
+    "version": { "type": "integer", "description": "Doc の形の版。いまは 1" },
+    "note": { "type": "string", "description": "人間と AI のためのメモ(ゲームは読まない)" },
+    "title": { "type": "string", "description": "表紙に出す事件の名前" },
+    "subtitle": { "type": "string", "description": "表紙に出す一行(事件のあらまし)" },
+    "start": { "type": "string", "description": "最初に読む節の id" },
+    "lamps": { "type": "integer", "minimum": 1, "maximum": 8, "default": 3, "description": "館の灯りの数。疑う選択のたびに 1 つ消える" },
+    "sections": {
+      "type": "array",
+      "description": "台本の節の rows。増減自由",
+      "items": {
+        "type": "object",
+        "required": ["id", "beats"],
+        "properties": {
+          "id": { "type": "string", "description": "節の名前。ask の goto / next がここを指す" },
+          "beats": {
+            "type": "array",
+            "description": "順に読む文章の rows",
+            "items": {
+              "type": "object",
+              "required": ["text"],
+              "properties": {
+                "speaker": { "type": "string", "description": "話者名。空文字なら地の文" },
+                "text": { "type": "string", "description": "本文(文字送りで表示される)" }
+              }
+            }
+          },
+          "ask": {
+            "type": "object",
+            "description": "beats を読み終えたら出す質問。無ければ next へ流れる",
+            "required": ["text", "options"],
+            "properties": {
+              "speaker": { "type": "string" },
+              "text": { "type": "string", "description": "問いの文" },
+              "options": {
+                "type": "array",
+                "maxItems": 6,
+                "description": "選択肢の rows(画面のスロットは 6 つまで)",
+                "items": {
+                  "type": "object",
+                  "required": ["label", "goto"],
+                  "properties": {
+                    "label": { "type": "string", "description": "画面に出す言葉(選ぶとどうなるかが伝わる言葉で)" },
+                    "goto": { "type": "string", "description": "選んだ先の節 id" },
+                    "suspect": { "type": "boolean", "default": false, "description": "「誰かを疑う」選択なら true(灯りがひとつ消える)" }
+                  }
+                }
+              }
+            }
+          },
+          "next": { "type": "string", "description": "beats を読み終えたあとの行き先(ask が無いとき)。空文字なら行き先なし = 結末" }
+        }
+      }
+    }
+  }
+}

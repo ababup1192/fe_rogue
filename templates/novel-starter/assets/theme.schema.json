@@ -1,0 +1,11 @@
+{
+  "//": "novel.theme.json の形の宣言（Studio の sections 方言）。Doc は平置きの #rrggbb なので、色 1 つ = kind field / type color のセクション 1 つ。派生色はコードで導く（独自の色を増やさない）。",
+  "version": 1,
+  "sections": {
+    "bg":     { "kind": "field", "type": "color", "label": "部屋の闇（床・全体）", "order": 1, "required": true },
+    "wall":   { "kind": "field", "type": "color", "label": "書斎の壁",             "order": 2, "required": true },
+    "window": { "kind": "field", "type": "color", "label": "雨の窓",               "order": 3, "required": true },
+    "accent": { "kind": "field", "type": "color", "label": "灯り・金（差し色）",   "order": 4, "required": true },
+    "ink":    { "kind": "field", "type": "color", "label": "本文・表紙の文字色",   "order": 5, "required": true }
+  }
+}

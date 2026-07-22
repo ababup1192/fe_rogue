@@ -1,0 +1,54 @@
+{
+  "title": "消えた絵",
+  "designWidth": 480,
+  "designHeight": 300,
+  "windowWidth": 960,
+  "windowHeight": 600,
+  "windowScale": 2,
+  "clearColor": {"r": 0.062745, "g": 0.062745, "b": 0.109804},
+  "maxDeltaTime": 0.05,
+  "textures": [],
+  "fonts": [
+    {"name": "default", "path": "assets/PixelMplus10-Regular.ttf", "fontSize": 10.0}
+  ],
+  "sounds": [],
+  "editor": {
+    "resources": [
+      {
+        "id": "story",
+        "pattern": "assets/novel.story.json",
+        "title": "台本（文章・分岐・結末）",
+        "schema": "assets/story.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "theme",
+        "pattern": "assets/novel.theme.json",
+        "title": "色（部屋・壁・窓・灯り）",
+        "schema": "assets/theme.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "sprite",
+        "pattern": "assets/*.sprite.json",
+        "title": "ドット絵（額縁）",
+        "schema": "assets/sprite.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "ui",
+        "pattern": "assets/ui/*.ui.json",
+        "title": "画面の枠（会話窓・選択肢）",
+        "schema": "assets/ui/ui.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "kind",
+        "pattern": "assets/novel.kind.json",
+        "title": "手触り（文字送り・暗さ）",
+        "schema": "assets/kind.schema.json",
+        "role": "tuning"
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+lib/
+build/
+artifact/
+dist/
+dist-win/
+*.fpkg
+*.jar
+.DS_Store
+debug/
+gallery/
