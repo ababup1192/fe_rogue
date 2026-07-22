@@ -1,0 +1,47 @@
+{
+  "title": "霧の里",
+  "designWidth": 480,
+  "designHeight": 300,
+  "windowWidth": 960,
+  "windowHeight": 600,
+  "windowScale": 2,
+  "clearColor": {"r": 0.168627, "g": 0.133333, "b": 0.200000},
+  "maxDeltaTime": 0.05,
+  "textures": [],
+  "fonts": [
+    {"name": "default", "path": "assets/PixelMplus10-Regular.ttf", "fontSize": 10.0}
+  ],
+  "sounds": [],
+  "editor": {
+    "resources": [
+      {
+        "id": "map",
+        "pattern": "assets/rpg.map.json",
+        "title": "里の間取り（タイル・住人・扉と約束・薬草）",
+        "schema": "assets/map.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "theme",
+        "pattern": "assets/rpg.theme.json",
+        "title": "色（空・畑・霧・灯り）",
+        "schema": "assets/theme.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "sprite",
+        "pattern": "assets/*.sprite.json",
+        "title": "ドット絵（主人公・住人・薬草）",
+        "schema": "assets/sprite.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "kind",
+        "pattern": "assets/rpg.kind.json",
+        "title": "手触り（歩く速さ・文字送り）",
+        "schema": "assets/kind.schema.json",
+        "role": "tuning"
+      }
+    ]
+  }
+}

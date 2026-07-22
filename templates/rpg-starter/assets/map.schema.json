@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "里の間取り（rpg.map.json）",
+  "description": "タイルの rows・住人・扉と約束・薬草と灯りの配置。rows は '#'=石垣 ','=畑 '.'=道（知らない文字は道）。扉は物の鍵でなく約束で開く: promise の住人に話しかけ、need 個の薬草を持っていれば開く。goal 個の薬草を拾うとクリア。歩ける・ぶつかる・開く・クリアの規則はコード（World）側。",
+  "type": "object",
+  "required": ["version", "rows"],
+  "properties": {
+    "version": { "type": "integer", "description": "Doc の形の版。いまは 1" },
+    "note": { "type": "string", "description": "人間と AI のためのメモ（ゲームは読まない）" },
+    "title": { "type": "string", "description": "表紙に出す里の名前" },
+    "subtitle": { "type": "string", "description": "表紙に出す一行" },
+    "clear": { "type": "string", "description": "クリア画面に出す一行" },
+    "start": {
+      "type": "object",
+      "description": "主人公が最初に立つマス",
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "description": "タイルの文字格子（上から 1 行ずつ）。増減自由 — 短い行の足りない分は石垣",
+      "items": { "type": "string" }
+    },
+    "villagers": {
+      "type": "array",
+      "description": "住人の rows。話しかけると line の 1 行が出る",
+      "items": {
+        "type": "object",
+        "required": ["id", "x", "y"],
+        "properties": {
+          "id": { "type": "string", "description": "住人の名前。door.promise がここを指す" },
+          "x": { "type": "integer", "minimum": 0 },
+          "y": { "type": "integer", "minimum": 0 },
+          "line": { "type": "string", "description": "いつもの 1 行" }
+        }
+      }
+    },
+    "door": {
+      "type": "object",
+      "description": "約束で開く木戸。閉じている間は通れない",
+      "required": ["x", "y", "promise"],
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "promise": { "type": "string", "description": "約束の相手（住人の id）" },
+        "need": { "type": "integer", "minimum": 0, "description": "約束を果たすのに要る薬草の数" },
+        "ask": { "type": "string", "description": "薬草が足りないときの頼まれごとの 1 行" },
+        "opened": { "type": "string", "description": "約束を果たしたときの 1 行（このとき木戸が開く）" }
+      }
+    },
+    "herbs": {
+      "type": "array",
+      "description": "薬草の生えるマスの rows。踏むと拾う",
+      "items": {
+        "type": "object",
+        "properties": {
+          "x": { "type": "integer", "minimum": 0 },
+          "y": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "lamps": {
+      "type": "array",
+      "description": "灯りの立つマスの rows。薬草を拾うたび並び順にひとつ点く",
+      "items": {
+        "type": "object",
+        "properties": {
+          "x": { "type": "integer", "minimum": 0 },
+          "y": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "goal": { "type": "integer", "minimum": 1, "description": "クリアに要る薬草の数（置いた数より多くは求められない）" }
+  }
+}
