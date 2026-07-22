@@ -427,14 +427,16 @@ sync-agents:
 	@echo "[sync-agents] wrote $(GAME)/AGENTS.md"
 
 # ── 新しいゲームを 1 コマンドで産む ──────────────────────
-# 使い方: make new-game GAME=/abs/path/to/dir NAME=<パッケージ名> TITLE=<題名> W=240 H=320
+# 使い方: make new-game GAME=/abs/path/to/dir NAME=<パッケージ名> TITLE=<題名> W=240 H=320 TEMPLATE=novel-starter
 #   - GAME  … 生成先（存在しない絶対パス）。
+#   - TEMPLATE … 複製元（templates/ 直下の名前。省略時は game-starter）。
 #   - NAME  … Flix パッケージ名（小文字英字はじまり・[a-z0-9_]）。sprite の entityId にも使う。
 #   - TITLE … 窓の題名（省略時は NAME）。
 #   - W/H   … design 解像度（省略時は 480×300。窓はその 2 倍）。
 # templates/game-starter を写して __NAME__/__TITLE__/__W__/__H__/__WW__/__WH__/__ENGINE__ を
 # 置換し、lib/ をエンジン手元の成果物から種付け（初回ダウンロード不要）、git init（commit はしない）、
 # sync-agents を配ってから check → test → bake を通して「生きて産まれた」ことを証明する。
+NG_TEMPLATE := $(if $(TEMPLATE),$(TEMPLATE),game-starter)
 NG_W := $(if $(W),$(W),480)
 NG_H := $(if $(H),$(H),300)
 NG_TITLE = $(if $(TITLE),$(TITLE),$(NAME))
@@ -447,16 +449,18 @@ new-game:
 	@echo "$(NAME)" | grep -Eq '^[a-z][a-z0-9_]*$$' || { echo "error: NAME が不正です: $(NAME)（小文字英字はじまり・英小文字/数字/_ のみ）"; exit 1; }
 	@echo "$(NG_W)" | grep -Eq '^[0-9]+$$' || { echo "error: W が数値ではありません: $(NG_W)"; exit 1; }
 	@echo "$(NG_H)" | grep -Eq '^[0-9]+$$' || { echo "error: H が数値ではありません: $(NG_H)"; exit 1; }
+	@echo "$(NG_TEMPLATE)" | grep -Eq '^[a-z][a-z0-9-]*$$' || { echo "error: TEMPLATE が不正です: $(NG_TEMPLATE)"; exit 1; }
+	@if [ ! -d "templates/$(NG_TEMPLATE)" ]; then echo "error: templates/$(NG_TEMPLATE) がありません"; exit 1; fi
 	@if [ -z "$(W)$(H)" ]; then echo "[new-game] W/H 未指定 — 既定の 480×300 で作ります"; fi
 	@if [ ! -f "$(ENGINE_FULL_FPKG_SRC)" ]; then echo "error: $(ENGINE_FULL_FPKG_SRC) がありません。先に make sync-engine-full を実行してください"; exit 1; fi
 	@set -e; \
-	echo "[new-game] $(GAME) を作成します (NAME=$(NAME) TITLE=$(NG_TITLE) design=$(NG_W)x$(NG_H))"; \
+	echo "[new-game] $(GAME) を作成します (NAME=$(NAME) TITLE=$(NG_TITLE) design=$(NG_W)x$(NG_H) TEMPLATE=$(NG_TEMPLATE))"; \
 	mkdir -p "$(GAME)"; \
-	cp -R templates/game-starter/. "$(GAME)/"; \
+	cp -R "templates/$(NG_TEMPLATE)/." "$(GAME)/"; \
 	rm -rf "$(GAME)/lib"; \
 	mkdir -p "$(GAME)/gallery" "$(GAME)/golden" "$(GAME)/debug" "$(GAME)/atelier"; \
-	mv "$(GAME)/assets/__NAME__.theme.json" "$(GAME)/assets/$(NAME).theme.json"; \
-	mv "$(GAME)/assets/__NAME__.sprite.json" "$(GAME)/assets/$(NAME).sprite.json"; \
+	if [ -f "$(GAME)/assets/__NAME__.theme.json" ]; then mv "$(GAME)/assets/__NAME__.theme.json" "$(GAME)/assets/$(NAME).theme.json"; fi; \
+	if [ -f "$(GAME)/assets/__NAME__.sprite.json" ]; then mv "$(GAME)/assets/__NAME__.sprite.json" "$(GAME)/assets/$(NAME).sprite.json"; fi; \
 	NG_NAME='$(NAME)' NG_TITLE='$(NG_TITLE)' NG_W='$(NG_W)' NG_H='$(NG_H)' \
 	NG_WW=$$(( $(NG_W) * 2 )) NG_WH=$$(( $(NG_H) * 2 )) NG_ENGINE='$(CURDIR)' \
 	find "$(GAME)" -type f \( -name '*.flix' -o -name '*.json' -o -name '*.toml' -o -name '*.md' -o -name 'Makefile' \) \
@@ -478,6 +482,6 @@ new-game:
 	echo "🎉 新しいゲームが産まれました: $(GAME)"; \
 	echo "  次にやること:"; \
 	echo "    cd $(GAME) && make run              … 窓を開いて遊ぶ（矢印キーで移動）"; \
-	echo "    make golden                          … いまの絵を golden として祝福する"; \
+	echo "    make golden                          … いまの絵を golden(基準)にする"; \
 	echo "    make editor DIR=$(GAME)              … (engine 側で) Studio で開いて色や数値を調整する"; \
 	echo "  git init 済み・未コミットです。最初のコミットは自分の手で。"
