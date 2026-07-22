@@ -60,6 +60,21 @@ while IFS= read -r candidate; do
     esac
 done < <(type -aP flix)
 
+# devbox シェルの外 (素のターミナル・Studio の .app 等) では PATH に flix が居ない。
+# engine 自身の devbox profile から直接借りる — new-game で産まれたゲームの
+# make check が「シェルの入り方」で失敗しないように。
+if [ -z "$FLIX_JAR" ]; then
+    for prof in "$PROJECT_ROOT/.devbox/nix/profile/default/bin/flix"; do
+        real="$(readlink -f "$prof" 2>/dev/null)"
+        case "$real" in
+            /nix/store/*)
+                jar="$(dirname "$(dirname "$real")")/share/java/flix/flix.jar"
+                if [ -f "$jar" ]; then FLIX_JAR="$jar"; break; fi
+                ;;
+        esac
+    done
+fi
+
 # nix が無ければ手動配置の bin/flix.jar にフォールバック。
 if [ -z "$FLIX_JAR" ] && [ -f "$SCRIPT_DIR/flix.jar" ]; then
     FLIX_JAR="$SCRIPT_DIR/flix.jar"
@@ -70,4 +85,9 @@ if [ -z "$FLIX_JAR" ]; then
     exit 127
 fi
 
-exec java $FLAGS -jar "$FLIX_JAR" "$@"
+# java も同じ理由で devbox の外に備える: PATH に無ければ engine の devbox の jdk を使う。
+JAVA_CMD="java"
+if ! command -v java >/dev/null 2>&1; then
+    JAVA_CMD="$PROJECT_ROOT/.devbox/nix/profile/default/bin/java"
+fi
+exec "$JAVA_CMD" $FLAGS -jar "$FLIX_JAR" "$@"

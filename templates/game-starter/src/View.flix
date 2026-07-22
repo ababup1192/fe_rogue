@@ -1,21 +1,29 @@
 // View — World から「(置き場所, 見せたい物) のリスト」への投影（純粋）。
-// ここに状態は無い: プレイヤーの四角は、渡された World の位置から毎フレーム作り直すだけ。
-// 背景色は project.json の clearColor が塗るので、ここではプレイヤーだけ描く。
-
+// 背景はテーマの bg を全面に塗り、主人公はドット絵（PxSprite + ThemeDoc の resolver）。
+// スプライトが読めないときは同じ差し色の四角に倒す（fail-open）。
 mod View {
 
-    // 描く高さ（z）。数が大きいほど手前。今は1つだけなので値はなんでもよい。
-    def zPlayer(): Int32 = 10
+    def zBg(): Int32 = 0
+    def zHero(): Int32 = 10
 
-    /// プレイヤーの色（明るい青）。
-    def playerColor(): Color = { r = 0.388235f32, g = 0.607843f32, b = 1.000000f32 }
+    /// スプライトの格子は 1 セル = 2px で描く。
+    def px(): Int32 = 2
 
-    /// World を描画コマンドの列へ写す。ctx から文字用フォント（atlas）や
-    /// 見えている範囲（visible）が取れるが、今は使わない。
-    pub def frame(_ctx: App.ViewCtx, world: World.World): List[Render.PlacedItem] =
-        let s = World.size();
-        // Box は左上原点なので、中心座標から半分ずらして左上を出す。
-        let topLeft = { x = world#x - s / 2.0, y = world#y - s / 2.0 };
-        let square = Render.box({ x = s, y = s }, playerColor(), zPlayer());
-        { at = topLeft, item = square } :: Nil
+    pub def frame(_ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
+        List.append(bg(w#theme), hero(w))
+
+    def bg(theme: ThemeDoc.Doc): List[Render.PlacedItem] =
+        { at = { x = 0.0, y = 0.0 },
+          item = Render.box({ x = World.width(), y = World.height() }, theme#bg, zBg()) } :: Nil
+
+    def hero(w: World.World): List[Render.PlacedItem] =
+        let s = World.heroSize();
+        let topLeft = { x = w#x - s / 2.0, y = w#y - s / 2.0 };
+        let items = PxSprite.draw(w#sprites, "hero", "idle", topLeft,
+            false, px(), key -> ThemeDoc.resolver(w#theme, key), zHero());
+        if (List.isEmpty(items))
+            // fail-open: スプライトが無い・読めないときは差し色の四角。
+            { at = topLeft, item = Render.box({ x = s, y = s }, w#theme#accent, zHero()) } :: Nil
+        else
+            items
 }

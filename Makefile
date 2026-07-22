@@ -425,3 +425,59 @@ sync-agents:
 	  echo "[sync-agents] skill: $$name"; \
 	done
 	@echo "[sync-agents] wrote $(GAME)/AGENTS.md"
+
+# ── 新しいゲームを 1 コマンドで産む ──────────────────────
+# 使い方: make new-game GAME=/abs/path/to/dir NAME=<パッケージ名> TITLE=<題名> W=240 H=320
+#   - GAME  … 生成先（存在しない絶対パス）。
+#   - NAME  … Flix パッケージ名（小文字英字はじまり・[a-z0-9_]）。sprite の entityId にも使う。
+#   - TITLE … 窓の題名（省略時は NAME）。
+#   - W/H   … design 解像度（省略時は 480×300。窓はその 2 倍）。
+# templates/game-starter を写して __NAME__/__TITLE__/__W__/__H__/__WW__/__WH__/__ENGINE__ を
+# 置換し、lib/ をエンジン手元の成果物から種付け（初回ダウンロード不要）、git init（commit はしない）、
+# sync-agents を配ってから check → test → bake を通して「生きて産まれた」ことを証明する。
+NG_W := $(if $(W),$(W),480)
+NG_H := $(if $(H),$(H),300)
+NG_TITLE = $(if $(TITLE),$(TITLE),$(NAME))
+.PHONY: new-game
+new-game:
+	@if [ -z "$(GAME)" ]; then echo "error: GAME を指定してください (make new-game GAME=/abs/path NAME=mygame TITLE=題名 W=240 H=320)"; exit 1; fi
+	@case "$(GAME)" in /*) : ;; *) echo "error: GAME は絶対パスで指定してください: $(GAME)"; exit 1;; esac
+	@if [ -e "$(GAME)" ]; then echo "error: 生成先が既に存在します: $(GAME)"; exit 1; fi
+	@if [ -z "$(NAME)" ]; then echo "error: NAME を指定してください（Flix パッケージ名）"; exit 1; fi
+	@echo "$(NAME)" | grep -Eq '^[a-z][a-z0-9_]*$$' || { echo "error: NAME が不正です: $(NAME)（小文字英字はじまり・英小文字/数字/_ のみ）"; exit 1; }
+	@echo "$(NG_W)" | grep -Eq '^[0-9]+$$' || { echo "error: W が数値ではありません: $(NG_W)"; exit 1; }
+	@echo "$(NG_H)" | grep -Eq '^[0-9]+$$' || { echo "error: H が数値ではありません: $(NG_H)"; exit 1; }
+	@if [ -z "$(W)$(H)" ]; then echo "[new-game] W/H 未指定 — 既定の 480×300 で作ります"; fi
+	@if [ ! -f "$(ENGINE_FULL_FPKG_SRC)" ]; then echo "error: $(ENGINE_FULL_FPKG_SRC) がありません。先に make sync-engine-full を実行してください"; exit 1; fi
+	@set -e; \
+	echo "[new-game] $(GAME) を作成します (NAME=$(NAME) TITLE=$(NG_TITLE) design=$(NG_W)x$(NG_H))"; \
+	mkdir -p "$(GAME)"; \
+	cp -R templates/game-starter/. "$(GAME)/"; \
+	rm -rf "$(GAME)/lib"; \
+	mkdir -p "$(GAME)/gallery" "$(GAME)/golden" "$(GAME)/debug" "$(GAME)/atelier"; \
+	mv "$(GAME)/assets/__NAME__.theme.json" "$(GAME)/assets/$(NAME).theme.json"; \
+	mv "$(GAME)/assets/__NAME__.sprite.json" "$(GAME)/assets/$(NAME).sprite.json"; \
+	NG_NAME='$(NAME)' NG_TITLE='$(NG_TITLE)' NG_W='$(NG_W)' NG_H='$(NG_H)' \
+	NG_WW=$$(( $(NG_W) * 2 )) NG_WH=$$(( $(NG_H) * 2 )) NG_ENGINE='$(CURDIR)' \
+	find "$(GAME)" -type f \( -name '*.flix' -o -name '*.json' -o -name '*.toml' -o -name '*.md' -o -name 'Makefile' \) \
+	  -exec perl -pi -e 's/__NAME__/$$ENV{NG_NAME}/g; s/__TITLE__/$$ENV{NG_TITLE}/g; s/__WW__/$$ENV{NG_WW}/g; s/__WH__/$$ENV{NG_WH}/g; s/__W__/$$ENV{NG_W}/g; s/__H__/$$ENV{NG_H}/g; s/__ENGINE__/$$ENV{NG_ENGINE}/g;' {} +; \
+	mkdir -p "$(GAME)/$(ENGINE_FULL_SUBPATH)"; \
+	cp "$(ENGINE_FULL_FPKG_SRC)" "$(GAME)/$(ENGINE_FULL_SUBPATH)/$(ENGINE_FULL_FPKG_NAME)"; \
+	cp "$(ENGINE_FULL_TOML_SRC)" "$(GAME)/$(ENGINE_FULL_SUBPATH)/$(ENGINE_FULL_TOML_NAME)"; \
+	for d in cache external; do \
+	  if [ -d "lib/$$d" ]; then mkdir -p "$(GAME)/lib"; cp -R "lib/$$d" "$(GAME)/lib/$$d"; fi; \
+	done; \
+	echo "[new-game] lib/ を種付けしました（engine 手元に無い Maven 依存 (LWJGL natives 等) は初回ビルドで自動ダウンロードされます）"; \
+	git -C "$(GAME)" init -q; \
+	$(MAKE) --no-print-directory sync-agents GAME="$(GAME)"; \
+	echo "[new-game] 産声の確認: check → test → bake"; \
+	$(MAKE) --no-print-directory -C "$(GAME)" check ENGINE="$(CURDIR)"; \
+	$(MAKE) --no-print-directory -C "$(GAME)" test ENGINE="$(CURDIR)"; \
+	$(MAKE) --no-print-directory -C "$(GAME)" bake ENGINE="$(CURDIR)"; \
+	echo ""; \
+	echo "🎉 新しいゲームが産まれました: $(GAME)"; \
+	echo "  次にやること:"; \
+	echo "    cd $(GAME) && make run              … 窓を開いて遊ぶ（矢印キーで移動）"; \
+	echo "    make golden                          … いまの絵を golden として祝福する"; \
+	echo "    make editor DIR=$(GAME)              … (engine 側で) Studio で開いて色や数値を調整する"; \
+	echo "  git init 済み・未コミットです。最初のコミットは自分の手で。"

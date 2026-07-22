@@ -1,21 +1,22 @@
-// エントリーポイント。ここでゲームを組み立てて起動する。
-//
-// App に3点を繋ぐ: 出発点の World（World.initial）・毎フレームの処理（Controls.step）・
-// 絵への写し（View.frame）。窓・時計・キー・描画といった外の世界の処理は App が引き受けるので、
-// ゲーム側は純粋な関数を渡すだけでよい。外の世界に触れる処理（effect）は隠さず with で並べる。
-//
-// このゲームは「四角を矢印キーで動かすだけ」。自分のゲームにするには、まず World / Controls / View を
-// いじる。音や設定リロードが要るなら App.withAudio / App.reloadOn を足す（breakout 例が参考になる）。
+// エントリーポイント。Doc は App を組む前に読み、その値から初期 World を作る
+// （壊れていても defaults で必ず起動する）。App の中でファイルを読むのは F1 の reloadOn と
+// 保存検知（watchFile）だけ。外の世界に触れる処理（effect）は隠さず with で並べる。
 
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()
     else {
         run {
-            // makeWith: App が画面サイズ（project.json の designWidth/Height）を読んで
-            // World.initial に渡してくれる。ゲーム側で画面サイズをベタ書きしない。
-            App.makeWith(World.initial)
+            let doc = SampleDoc.load(SampleDoc.path());
+            let theme = ThemeDoc.load(ThemeDoc.path());
+            let sprites = PxSpriteDoc.load(World.spritePath());
+            App.make(World.initial(doc, theme, sprites))
                 |> App.addSystem(Controls.step)
                 |> App.withView(View.frame)
+                |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
+                |> App.watchFile(SampleDoc.path(), Controls.reloadDoc)
+                |> App.watchFile(ThemeDoc.path(), Controls.reloadTheme)
+                |> App.watchFile(World.spritePath(), Controls.reloadSprites)
+                |> App.withDebug(App.debugFromEnv())
                 |> App.launch
         } with LwjglLayer.withProject(".")
           with Fs.FileRead.runWithIO

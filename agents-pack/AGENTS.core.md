@@ -36,3 +36,9 @@
 - **期待値は Doc（JSON 既定値）から導く**。数値リテラルを貼らない。
 - 橋渡しテストは **1 Doc につき最大3本**（壊れた JSON→既定値 / 1 フィールド上書き /
   rows 長の追随）。initialState の写経など情報量ゼロのテストは書かない。
+
+## 迷ったら読む物
+
+- Flix の書き方・エンジンの流儀: `.claude/skills/flix-docs`(構文の癖)、`compile-fix`(コンパイルエラーの定石)、`quality-assurance`(テスト設計)
+- Doc の外形規約の正: engine リポの `docs/doc-conventions.md`
+- 動く見本: engine の `templates/game-starter`(最小)と、隣にある既存ゲーム(村・breakout 等)のソース

@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "note": "手触りの調整例。増やしたくなったらフィールドを足し、schema と SampleDoc の defaults も揃える。",
+  "speed": 120.0
+}

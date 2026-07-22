@@ -1,15 +1,40 @@
 {
-  "title": "My Flix Game",
-  "designWidth": 320,
-  "designHeight": 240,
-  "windowWidth": 960,
-  "windowHeight": 720,
-  "windowScale": 3,
-  "clearColor": {"r": 0.133333, "g": 0.125490, "b": 0.203922},
+  "title": "__TITLE__",
+  "designWidth": __W__,
+  "designHeight": __H__,
+  "windowWidth": __WW__,
+  "windowHeight": __WH__,
+  "windowScale": 2,
+  "clearColor": {"r": 0.066667, "g": 0.066667, "b": 0.101961},
   "maxDeltaTime": 0.05,
   "textures": [],
   "fonts": [
     {"name": "default", "path": "assets/Xolonium-Regular.ttf", "fontSize": 60.0}
   ],
-  "sounds": []
+  "sounds": [],
+  "editor": {
+    "resources": [
+      {
+        "id": "theme",
+        "pattern": "assets/__NAME__.theme.json",
+        "title": "色（背景・差し色）",
+        "schema": "assets/theme.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "sprite",
+        "pattern": "assets/*.sprite.json",
+        "title": "ドット絵",
+        "schema": "assets/sprite.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "sample",
+        "pattern": "assets/sample.kind.json",
+        "title": "手触り（速さ）",
+        "schema": "assets/sample.schema.json",
+        "role": "tuning"
+      }
+    ]
+  }
 }

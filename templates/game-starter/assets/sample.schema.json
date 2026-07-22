@@ -1,0 +1,15 @@
+{
+  "//": "sample.kind.json の形の宣言（Studio の sections 方言）。数値の初期値だけ Doc に置き、規則はコード側。",
+  "version": 1,
+  "sections": {
+    "speed": {
+      "kind": "field",
+      "type": "float",
+      "label": "主人公の速さ（px/秒）",
+      "order": 1,
+      "min": 10,
+      "max": 600,
+      "default": 120
+    }
+  }
+}

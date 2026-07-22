@@ -1,58 +1,46 @@
-# Flix ゲーム スターターテンプレート
+# __TITLE__
 
-Flix でゲームを作るための最小の雛形です。プレイヤーの四角を矢印キーで動かせるだけの、
+flix_game_engine のスターター。主人公（ドット絵）を矢印キーで動かせるだけの、
 「ここから自分のゲームを育てる」ための骨組みが入っています。
-
-## 前提
-
-必要なのは [devbox](https://www.jetify.com/devbox) を1つ入れることだけです。
-JDK21・Flix コンパイラ・make は devbox が（内部で nix を使って）自動でそろえます。
-自分で nix や JDK を入れる必要はありません。
+`make new-game` で生成された時点で check / test / bake が全部通る状態です。
 
 ## 始め方
 
-このテンプレートを clone またはコピーして、フォルダの中でこう打ちます。
-
-```sh
-devbox run make run
-```
-
-初回は依存パッケージのダウンロードとコンパイルで少し時間がかかります。窓が開いたら成功です。
-
-よく使うコマンド:
+Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶので、devbox shell の外でも動きます。
+エンジンの場所が既定（生成時に埋め込み）と違うときは `ENGINE=/path/to/flix_game_engine` を付けてください。
 
 | コマンド | 何をするか |
 |---|---|
-| `devbox run make run`   | ゲームを起動する（窓が開く） |
-| `devbox run make check` | 型検査だけ走らせる（一番速い確認） |
-| `devbox run make build` | 実行できる形にビルドする |
-| `devbox run make test`  | テストを実行する |
+| `make run`    | ゲームを起動する（窓が開く） |
+| `make debug`  | 保存即反映(watchFile)と F8 を有効にして起動 |
+| `make check`  | 型検査だけ走らせる（一番速い確認） |
+| `make test`   | テストを実行する |
+| `make bake`   | ギャラリー PNG を焼く（決定的） |
+| `make bench`  | 焼いた絵を golden とバイト比較する |
+| `make golden` | いまの gallery を golden として祝福する |
+| `make atelier-preview` | atelier/ の候補と assets/ の現行を debug/atelier/ に焼く |
 
 ## 触る場所
 
-ゲームのコードは `src/` にあります。役割はこの4つです。
-
-- `src/World.flix` … ゲームの状態そのもの（いま何がどこにあるか）と、次の状態を作る規則。
-- `src/Controls.flix` … キーの割り当て（どのキーで何をするか）。
+- `src/World.flix` … ゲームの状態そのものと、次の状態を作る規則（純粋）。
+- `src/Controls.flix` … キーの割り当てと Doc の読み直し。
 - `src/View.flix` … 状態を絵に写す（何をどこに描くか）。
 - `src/Main.flix` … 上の3つを App に繋いで起動する目次。
+- `src/bake/Bake.flix` … 決定的な場面を PNG に焼く（golden とアトリエ）。
 
-まずは `World.flix` の速度や色、`View.flix` の四角を変えてみると、感覚がつかめます。
+数値・色・絵は `assets/` の Doc（保存即反映）:
 
-`project.json` は窓の大きさ・背景色・使うフォントを決める設定ファイルです。
+- `assets/sample.kind.json` … 手触りの数値（例: 速さ）。`src/SampleDoc.flix` が読む。
+- `assets/*.theme.json` … 色票。`src/ThemeDoc.flix` が読む。
+- `assets/*.sprite.json` … ドット絵（文字格子）。entityId は `<パッケージ名>.sprites`。
 
-## GitHub テンプレートリポジトリとして使う
+それぞれに Studio 用の schema（sections 方言 / sprite は draft-07）が並んでいて、
+`project.json` の `editor.resources` が宣言しています。Studio で開けばそのまま編集できます。
 
-このテンプレートを GitHub のテンプレートリポジトリにしておくと、次の1コマンドで新しいゲームを複製できます。
+## 絵の開発ループ
 
-```sh
-gh repo create <あなたのゲーム名> --template ababup1192/flix-game-template
-```
-
-## 注記
-
-このテンプレートは、エンジン本体（`flix_game_engine_full`）が GitHub Release に公開済みであることが前提です。
-まだ公開されていない場合、依存のダウンロードに失敗して動きません。
+- `make bake` で `gallery/` に決定的な PNG を焼き、`make golden` で祝福、`make bench` で防護。
+- 候補のスプライト・テーマは `atelier/` に置き、`make atelier-preview` で `debug/atelier/` に焼いて目視。
 
 ## AI エージェント向け指針の配布（sync-agents）
 

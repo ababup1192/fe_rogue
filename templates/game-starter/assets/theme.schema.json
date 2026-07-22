@@ -1,0 +1,8 @@
+{
+  "//": "__NAME__.theme.json の形の宣言（Studio の sections 方言）。Doc は平置きの #rrggbb なので、色 1 つ = kind field / type color のセクション 1 つ。派生色はコードで導く（独自の色を増やさない）。",
+  "version": 1,
+  "sections": {
+    "bg":     { "kind": "field", "type": "color", "label": "背景",   "order": 1, "required": true },
+    "accent": { "kind": "field", "type": "color", "label": "差し色", "order": 2, "required": true }
+  }
+}

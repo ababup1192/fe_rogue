@@ -6,3 +6,5 @@ dist-win/
 *.fpkg
 *.jar
 .DS_Store
+debug/
+gallery/
