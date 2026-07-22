@@ -24,6 +24,9 @@
 | 撃つたびに出る効果を発生・寿命回収・描画で回す | Fx（burst / expire / drawAll） |
 | 値を滑らかに動かす | EcsTween / Curve |
 | スプライトをコマ送りする | Anim |
+| ドット絵を文字格子(*.sprite.json)で宣言して描く | PxSpriteDoc / PxSprite |
+| 一続きの振り付け(歩く→拾う→戻る)の現在区間を時刻から引く | Timeline |
+| 経路(脚の列)の現在地・歩き量・到着を時刻から引く | Journey |
 | 一定間隔で合図を出す・残り時間を数える | Clock |
 | 巻き戻し・リプレイ・履歴 | Worldline |
 | セーブ・ロード | SaveManager / Persistence |
@@ -58,9 +61,12 @@
 - **Quad** — 回転した矩形や太さのある線の、四隅の座標を計算する。
 - **Bezier** — ベジエ曲線の平坦化と、曲線から作る描画部品。
 - **Fx** — たくさんの粒を、保存せず「今の時刻から計算」して並べる薄い仕組み。「撃つたびに出る」効果の器（burst / expire / drawAll）も持つ。
-- **FxDoc** — fx.json（閉形式パーティクル）を Spec に読むパーサ。絵は Fx.sample が導く。
+- **FxDoc** — fx.json（閉形式パーティクル）を Spec に読むパーサ。絵は Fx.sample が導く。R3 で mode: loop（常時系）/ spawn（発生源の広がり）/ accel（重力/風・½at²）/ seed（決定的シードの上乗せ）/ parseWith（"@名前" の色キーをパレットで解決）を追加。
 - **Scatter** — どこまでスクロールしても同じ配置が再現される、無限の「物の撒き方」。
 - **Anim** — スプライトシートのコマ送りを「時刻の純関数」で導く。
+- **PxSpriteDoc** — *.sprite.json（文字格子+意味色キー+名前付きコマ+anchor）を読む fail-open の Doc 層。
+- **PxSprite** — PxSpriteDoc のコマを box 列（横連続の同色文字は 1 矩形に結合・既定）または drawQuad（アトラス 1 クアッド・opt-in）で描く。色は resolver（キー→実色）が解決。
+- **PxSpriteAtlas** — PxSpriteDoc×resolver を 1 枚のアトラス画素（ARGB+コマ→矩形の目次）に焼く純関数。GL（RenderTexture.loadTextureFromPixels）と PNG（SoftRaster.writeRadialPng）が同じ Baked を読む。
 - **Viewport** — 画面の矩形の外へ出た物を見つけて返す。
 - **Transition** — 進行度 t から画面を覆う/晴らす描画物を作る（フェード・ワイプ）。
 - **Light** — 光源の値（位置・半径・色）から穴あき暗幕+ハロの描画物を導く。
@@ -93,7 +99,9 @@
 - **Clock** — 経過時間を貯めて「一定間隔で合図」「残り時間を数える」を数値だけで扱う。
 - **Curve** — 時間から値をひとつ計算する、状態を持たない小さな関数の詰め合わせ。
 - **EcsTween** — 値をある値から別の値へ、時間をかけて滑らかに動かす（補間する）。
+- **Journey** — 脚(出発点・行き先・速さ)の列を「時刻の純関数」で歩く。到着判定(done)と絵の位置(pos)を同じ戻り値で返す。
 - **Motion** — 物の動かし方の小さな道具箱（等速移動と往復運動）。
+- **Timeline** — 区間(名前+長さ)の列を「時刻の純関数」でサンプルする。範囲外は None = 終わり。
 
 ## 盤面
 

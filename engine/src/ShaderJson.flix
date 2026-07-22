@@ -121,6 +121,7 @@ mod ShaderJson {
             case ShaderDoc.Field.Blend(bl)     => List.append(collectRefs(bl#a),
                                                     List.append(collectRefs(bl#b), collectRefs(bl#by)))
             case ShaderDoc.Field.Disk(_)       => Nil
+            case ShaderDoc.Field.Radial(_)     => Nil
             case ShaderDoc.Field.Scales(_)     => Nil
             case ShaderDoc.Field.Glints(_)     => Nil
             case ShaderDoc.Field.Ripples(_)    => Nil
@@ -275,6 +276,11 @@ mod ShaderJson {
                         radius  <- numAt("radius", m);
                         feather <- numAt("feather", m)
                     ) yield ShaderDoc.Field.Disk({ cx = cx, cy = cy, radius = radius, feather = feather })
+                case "radial" =>
+                    forM (
+                        cx <- numOr("cx", 0.5, m);
+                        cy <- numOr("cy", 0.5, m)
+                    ) yield ShaderDoc.Field.Radial({ cx = cx, cy = cy })
                 case "scales" =>
                     forM (
                         scale   <- numAt("scale", m);
@@ -579,6 +585,8 @@ mod ShaderJson {
             case ShaderDoc.Field.Disk(d) =>
                 JObject(Map#{ "kind" => JString("disk"), "cx" => num(d#cx), "cy" => num(d#cy),
                               "radius" => num(d#radius), "feather" => num(d#feather) })
+            case ShaderDoc.Field.Radial(rd) =>
+                JObject(Map#{ "kind" => JString("radial"), "cx" => num(rd#cx), "cy" => num(rd#cy) })
             case ShaderDoc.Field.Scales(sc) =>
                 JObject(Map#{ "kind" => JString("scales"), "scale" => num(sc#scale),
                               "stagger" => num(sc#stagger) })

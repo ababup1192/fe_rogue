@@ -72,24 +72,57 @@ mod Fx {
     // ── sample の内部（emitter・粒の導出）──
 
     def sampleEmitter(emitter: FxDoc.Emitter, seed: Int64, t: Float64): List[Render.PlacedItem] =
-        // emitter 名を種に混ぜて、同じ seed でも emitter ごとに別の乱数系統を引く。
-        let emitterSeed = mix64(Int64.bitwiseXor(seed, nameHash(emitter#name)));
+        // emitter 名（と emitter#seed の上乗せ）を種に混ぜて、同じ seed でも emitter ごとに
+        // 別の乱数系統を引く。seed = 0 の混ぜ込みは加算なので既存の絵を 1 ビットも変えない。
+        let emitterSeed = mix64(Int64.bitwiseXor(seed, nameHash(emitter#name))
+            + Int32.toInt64(emitter#seed));
         List.range(0, emitter#count) |> List.flatMap(i -> sampleParticle(emitter, emitterSeed, i, t))
 
-    /// 粒 i の時刻 t の姿。寿命が尽きた粒は空リスト。v1 は burst（全粒 t=0 生まれ）固定。
+    /// 粒 i の時刻 t の姿。寿命が尽きた粒は空リスト。burst は全粒 t=0 生まれ、loop は
+    /// 各粒が寿命ごとに生まれ直す（位相 = 粒ごとの乱数で分散・生まれ直すたびに速度と方向を
+    /// 引き直す — すべて t の純関数のまま）。
     /// circle / box は 1 粒 = 1 枚、glow だけは縁の減衰を同心円の重ねで作るため 1 粒 = 複数枚。
     def sampleParticle(emitter: FxDoc.Emitter, emitterSeed: Int64, i: Int32,
                        t: Float64): List[Render.PlacedItem] =
         let rand = k -> rand01(emitterSeed, i, k);
         let life = varied(emitter#life#base, emitter#life#vary, rand(0));
-        if (t >= life or life <= 0.0) Nil
+        if (life <= 0.0) Nil
         else {
-            let u = t / life;
-            // 位置 = 初速 × 速度カーブの積分（閉形式）。dir は度（0 = 真上・時計回り）。
+            // burst: 経過 = t そのもの・寿命切れは消える。loop: 位相をずらした t を寿命で
+            // 折り返し（経過 = mod(t + 位相, 寿命)）、周回番号 cycle を乱数の種に混ぜて
+            // 生まれ直すたびに別の個性を引く。burst は cycle = 0 なので randC = rand
+            //（既存の burst 文書の絵はビット単位で不変）。
+            let (age, cycle) = match emitter#mode {
+                case FxDoc.Mode.Burst => (t, 0i64)
+                case FxDoc.Mode.Loop  =>
+                    let local = t + rand(3) * life;
+                    let c = Float64.floor(local / life);
+                    (local - c * life, Float64.tryToInt64(c) |> Option.getWithDefault(0i64))
+            };
+            if (age >= life or age < 0.0) Nil
+            else sampleParticleAt(emitter, emitterSeed, i, life, age, cycle)
+        }
+
+    /// 生まれてから age 秒経った粒 i（周回 cycle）の姿。個性（速度・方向・発生位置）は
+    /// (emitterSeed, cycle, i) から引く — 同じ入力からは常に同じ絵。
+    def sampleParticleAt(emitter: FxDoc.Emitter, emitterSeed: Int64, i: Int32,
+                         life: Float64, age: Float64, cycle: Int64): List[Render.PlacedItem] =
+        // 周回ごとに別の乱数系統（cycle = 0 は emitterSeed そのもの = burst と同一）。
+        let cycleSeed = emitterSeed + cycle * -7046029254386353131i64;
+        let rand = k -> rand01(cycleSeed, i, k);
+        {
+            let u = age / life;
+            // 位置 = 初速 × 速度カーブの積分（閉形式）+ 発生源のずれ + 重力/風（½at²）。
+            // dir は度（0 = 真上・時計回り）。spawn/accel が既定（0）なら加算は恒等 —
+            // 既存文書の絵はビット単位で不変。
             let speed = varied(emitter#speed#base, emitter#speed#vary, rand(1));
             let turn = (emitter#dir#base + emitter#dir#spread * (rand(2) - 0.5)) / 360.0;
             let dist = speed * life * curveIntegral(emitter#speed#over, u);
-            let pos = Vec2.mul(Vec2.onEllipse({ x = 1.0, y = 1.0 }, turn), dist);
+            let spawnOff = { x = (rand(4) - 0.5) * emitter#spawnArea#w,
+                             y = (rand(5) - 0.5) * emitter#spawnArea#h };
+            let accelOff = Vec2.mul(emitter#accel, 0.5 * age * age);
+            let pos = Vec2.add(Vec2.add(Vec2.mul(Vec2.onEllipse({ x = 1.0, y = 1.0 }, turn), dist),
+                spawnOff), accelOff);
             let size = emitter#size * curveValue(emitter#sizeOver, i, u);
             let alpha = clamp01(curveValue(emitter#alphaOver, i, u));
             if (size <= 0.0 or alpha <= 0.0) Nil

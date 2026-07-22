@@ -4,8 +4,10 @@
 
 mod RenderTexture {
     import org.lwjgl.opengl.GL11
+    import org.lwjgl.opengl.GL12
     import org.lwjgl.stb.STBImage
     import org.lwjgl.system.MemoryStack
+    import org.lwjgl.BufferUtils
 
     /// PNG/JPG など STBImage がサポートする画像をロードし、OpenGL テクスチャとして
     /// アップロードする。NEAREST フィルタ + REPEAT ラップ (ピクセルアート前提)。
@@ -35,6 +37,36 @@ mod RenderTexture {
             discard MemoryStack.stackPop();
             { id = GpuHandle.wrapTextureId(textureID), width = Int32.toFloat64(texWidth), height = Int32.toFloat64(texHeight) }
         }
+
+    /// メモリ上の ARGB 画素(行優先 width×height — PxSpriteAtlas.bake の出力そのまま)を
+    /// OpenGL テクスチャとしてアップロードする(実行時アトラス焼きの GL 側出口)。
+    /// GL_BGRA + UNSIGNED_INT_8_8_8_8_REV は ARGB int 列をそのまま食う組み合わせ。
+    /// フィルタは loadTexture と同じ NEAREST(ドット絵前提)。
+    pub def loadTextureFromPixels(width: Int32, height: Int32, argb: Vector[Int32]): RenderAsset.TextureInfo \ IO =
+        let textureID = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureID);
+        uploadArgb(width, height, argb);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        { id = GpuHandle.wrapTextureId(textureID), width = Int32.toFloat64(width), height = Int32.toFloat64(height) }
+
+    /// 既存テクスチャの画素を丸ごと差し替える(watchFile での再ベイク差し替え用 —
+    /// フレーム先頭で呼ぶ。fontAtlas と同じライフサイクル)。registry の TextureInfo は
+    /// 寸法を持つので、辺長が変わったときは呼び手が registry も差し替えること。
+    pub def updateTexturePixels(info: RenderAsset.TextureInfo, width: Int32, height: Int32,
+                                argb: Vector[Int32]): Unit \ IO =
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, GpuHandle.textureIdInt(info#id));
+        uploadArgb(width, height, argb)
+
+    /// ARGB int 列を IntBuffer に詰めて glTexImage2D する共通部。
+    def uploadArgb(width: Int32, height: Int32, argb: Vector[Int32]): Unit \ IO =
+        let buf = BufferUtils.createIntBuffer(Int32.max(1, width * height));
+        Vector.forEach(p -> discard buf.put(p), argb);
+        discard buf.flip();
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, width, height, 0,
+                          GL12.GL_BGRA, GL12.GL_UNSIGNED_INT_8_8_8_8_REV, buf)
 
     /// テクスチャマニフェストから全テクスチャを読み込み、論理名 → TextureInfo の
     /// マップを返す。

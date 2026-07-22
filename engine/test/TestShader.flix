@@ -669,3 +669,89 @@ def testLavaAlphaIsWarpDisk(): Unit \ Assert =
         case Err(_) => None
     };
     Assert.assertEq(expected = Some(0.42), radius)
+
+// ════════════════════════════════════════════════════════════════════
+// (R3) Radial — 中心距離場（ビネットの素材）。3面（Gen/Eval/Json）を同時に pin する。
+// ════════════════════════════════════════════════════════════════════
+
+/// Radial ノード単体の GLSL 片（length((uv) - vec2(cx, cy)) をそのまま吐く）。
+@Test
+def testRadialNodeSnapshot(): Unit \ Assert =
+    let field = ShaderDoc.Field.Radial({ cx = 0.5, cy = 0.5 });
+    Assert.assertEq(expected =
+        "outColor = vec4(vec3(0.0, 0.0, 0.0), length((vUv) - vec2(0.5, 0.5)));",
+        bodyOfField(field))
+
+/// Radial の CPU 評価: 中心 0・横 0.5・四隅 √0.5（GLSL の length と同じ式）。
+@Test
+def testEvalRadial(): Unit \ Assert =
+    let rd = ShaderDoc.Field.Radial({ cx = 0.5, cy = 0.5 });
+    let center = ShaderEval.evalField(rd, { x = 0.5, y = 0.5 }, 0.0);
+    let edge = ShaderEval.evalField(rd, { x = 1.0, y = 0.5 }, 0.0);
+    let corner = ShaderEval.evalField(rd, { x = 1.0, y = 1.0 }, 0.0);
+    Assert.assertEq(expected = (true, true, true),
+        (center == 0.0, edge == 0.5, Float64.abs(corner - Vec2.sqrt(0.5)) < 0.0000001))
+
+/// CPU/GPU 一致: Radial+Smoothstep のビネット式で、CPU 評価（ShaderEval）と
+/// GLSL 側（ShaderGen）が同じ smoothstep(lo, hi, length(...)) の構造を持つことを釘打ちする。
+/// 代表点の値は CPU で（GLSL は文字列 pin — GL の無いテスト環境での「一致」の作法は Disk と同じ）。
+@Test
+def testRadialVignetteCpuGpuParity(): Unit \ Assert =
+    let vig = ShaderDoc.Field.Smoothstep({ lo = 0.3, hi = 0.7,
+        of = ShaderDoc.Field.Radial({ cx = 0.5, cy = 0.5 }) });
+    // GLSL: smoothstep が Radial の length を包む（CPU と同じ入れ子構造）。
+    Assert.assertEq(expected =
+        "outColor = vec4(vec3(0.0, 0.0, 0.0), " +
+        "smoothstep(0.3, 0.7, length((vUv) - vec2(0.5, 0.5))));",
+        bodyOfField(vig));
+    // CPU: 中心 0（暗がり無し）・距離 0.5（= (lo+hi)/2）で 0.5・四隅 ≈ 1 近く。
+    let center = ShaderEval.evalField(vig, { x = 0.5, y = 0.5 }, 0.0);
+    let mid = ShaderEval.evalField(vig, { x = 1.0, y = 0.5 }, 0.0);
+    Assert.assertEq(expected = (true, true),
+        (center == 0.0, Float64.abs(mid - 0.5) < 0.0000001))
+
+/// Radial の JSON 往復: radial {cx, cy} → Field.Radial → toJson → parse で保たれ、
+/// 往復後の GLSL がバイト一致する（Gen/Json の 2 面がズレない）。cx/cy 省略時は中心 (0.5, 0.5)。
+@Test
+def testRadialJsonRoundTrip(): Unit \ Assert =
+    let spec: ShaderDoc.Spec = { name = "vignette", cycleRate = 0.0, bindings = Nil,
+        out = ShaderDoc.Out.Fill({
+            shade = ShaderDoc.Shade.Solid({ r = 0.1f32, g = 0.1f32, b = 0.2f32 }),
+            alpha = ShaderDoc.Field.Smoothstep({ lo = 0.3, hi = 0.7,
+                of = ShaderDoc.Field.Radial({ cx = 0.4, cy = 0.6 }) }) }) };
+    let roundTrip = ShaderJson.parse(ShaderJson.toJson(spec));
+    let glslSame = match roundTrip {
+        case Ok(spec2) => ShaderGen.compile(spec2) == ShaderGen.compile(spec)
+        case Err(_)    => false
+    };
+    let cxcy = match roundTrip {
+        case Ok(spec2) => match spec2#out {
+            case ShaderDoc.Out.Fill(f) => match f#alpha {
+                case ShaderDoc.Field.Smoothstep(s) => match s#of {
+                    case ShaderDoc.Field.Radial(rd) => Some((rd#cx, rd#cy))
+                    case _ => None
+                }
+                case _ => None
+            }
+        }
+        case Err(_) => None
+    };
+    Assert.assertEq(expected = (true, Some((0.4, 0.6))), (glslSame, cxcy))
+
+/// radial の cx/cy は省略可（既定 0.5, 0.5 = 中心）。
+@Test
+def testRadialJsonDefaults(): Unit \ Assert =
+    let json = "{ \"name\": \"v\", \"out\": { \"kind\": \"fill\"," +
+        " \"shade\": { \"kind\": \"solid\", \"color\": \"#101020\" }," +
+        " \"alpha\": { \"kind\": \"radial\" } } }";
+    let got = Util.Json.parse(json) |> Result.flatMap(ShaderJson.parse);
+    let cxcy = match got {
+        case Ok(spec) => match spec#out {
+            case ShaderDoc.Out.Fill(f) => match f#alpha {
+                case ShaderDoc.Field.Radial(rd) => Some((rd#cx, rd#cy))
+                case _ => None
+            }
+        }
+        case Err(_) => None
+    };
+    Assert.assertEq(expected = Some((0.5, 0.5)), cxcy)

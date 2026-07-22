@@ -42,6 +42,15 @@ mod Bakery {
                       polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO =
         SoftRaster.render(reqOf(cfg, drawables, polygons, pngPath(cfg, name)))
 
+    /// 宣言シェーダー面つきの renderPng。surfaces（Render.shaderSurfaces の出力と同形の
+    /// 構造レコード）は ShaderEval の画素評価で焼かれ、z 順で他の描き物と合流する。
+    /// 渡す側は draw の代表色ベタ塗りと二重にならないよう、items を Render.withoutShaders で
+    /// 外してから draw すること。
+    pub def renderPngWith(cfg: BakeConfig, drawables: List[GameEngine.Drawable],
+                          polygons: List[GameEngine.PolygonRenderCmd],
+                          surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO =
+        SoftRaster.renderWithSurfaces(reqOf(cfg, drawables, polygons, pngPath(cfg, name)), surfaces)
+
     /// frames を stride 枚ごとに間引き、各コマを toCmds で描いて GIF ＋ コマ別 PNG に焼く。
     /// 返り値は SnapshotSite 用のフィルムストリップ情報（駒送りビューア）。
     pub def bakeGif(cfg: BakeConfig, frames: List[w], stride: Int32,

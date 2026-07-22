@@ -13,6 +13,7 @@ mod TestPreviewFx {
           color = ({r = 1.0f32, g = 1.0f32, b = 1.0f32}: Color) :: Nil,
           life = life, speed = { base = speed#base, vary = speed#vary, over = speed#over },
           dir = { base = 0.0, spread = 360.0 },
+          mode = FxDoc.Mode.Burst, spawnArea = { w = 0.0, h = 0.0 }, accel = Vec2.zero(), seed = 0,
           sizeOver = sizeOver, alphaOver = FxDoc.CurveSpec.Constant,
           blend = DrawCmd.BlendMode.Normal, zIndex = 0 }
 

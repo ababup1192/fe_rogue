@@ -252,6 +252,9 @@ mod ShaderGen {
                 // 中心からの距離が radius 以内で 1、radius→radius+feather で 0 へ soft fade。
                 "(1.0 - smoothstep(" + f(d#radius) + ", " + f(d#radius + d#feather) + ", " +
                 "length((" + uv + ") - vec2(" + f(d#cx) + ", " + f(d#cy) + "))))"
+            case ShaderDoc.Field.Radial(rd) =>
+                // 中心からの生の距離（クランプしない — 呼び側の Smoothstep がカーブを決める）。
+                "length((" + uv + ") - vec2(" + f(rd#cx) + ", " + f(rd#cy) + "))"
             case ShaderDoc.Field.Scales(sc) =>
                 "sg_scales((" + uv + "), " + f(sc#scale) + ", " + f(sc#stagger) + ")"
             case ShaderDoc.Field.Glints(g) =>

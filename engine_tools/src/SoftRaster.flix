@@ -55,14 +55,44 @@ mod SoftRaster {
         codepointByCell = Map[(Int32, Int32), Int32]
     }
 
+    /// 宣言シェーダー面 1 枚の headless ラスタライズ要求（Render.ShaderSurface と同形の
+    /// 構造レコード — GL の program ハンドルを持たない純データ）。ShaderEval で画素ごとに
+    /// 評価して焼く。mask が非空なら多角形の内側だけ塗る（GL のステンシルと同じ意図）。
+    pub type alias SurfaceCmd = {
+        rect = Rect2.Rect2,
+        spec = ShaderDoc.Spec,
+        time = Float64,
+        mask = List[List[Vec2.Vec2]],
+        zIndex = Int32,
+        blend = DrawCmd.BlendMode
+    }
+
+    /// 描き物 1 件（z 合流用の内部タグ）。Drawable / Polygon / シェーダー面を
+    /// 1 列に混ぜて (zIndex, 追加順) で安定ソートするための包み。
+    enum RItem {
+        case RDraw(GameEngine.Drawable)
+        case RPoly(GameEngine.PolygonRenderCmd)
+        case RSurf(SurfaceCmd)
+    }
+
     /// 要求を 1 枚の PNG に焼いて書き出す。
     pub def render(req: RasterReq): Unit \ IO =
         writePng(renderToImage(req), req#outPath)
 
+    /// シェーダー面つきの render（面は ShaderEval で画素評価して z 順に合流する）。
+    pub def renderWithSurfaces(req: RasterReq, surfaces: List[SurfaceCmd]): Unit \ IO =
+        writePng(renderToImageWith(req, surfaces), req#outPath)
+
     /// 要求を 1 枚の BufferedImage に焼いて返す（PNG 書き出しはしない）。
     /// PNG スナップショット（render）と GIF アニメ（GifEncoder が 1 フレームずつ集める）の
     /// 共有ラスタライズ経路。`outPath` は使わない。
-    pub def renderToImage(req: RasterReq): BufferedImage \ IO = region rc {
+    pub def renderToImage(req: RasterReq): BufferedImage \ IO =
+        renderToImageWith(req, Nil)
+
+    /// renderToImage のシェーダー面つき版。surfaces は Drawable / Polygon と同じ
+    /// (zIndex, 追加順) の安定ソートに合流する（面より手前の物は面の上に描かれる —
+    /// GL 経路の renderFrameMixed と同じ z 合流の意図）。
+    pub def renderToImageWith(req: RasterReq, surfaces: List[SurfaceCmd]): BufferedImage \ IO = region rc {
         HeadlessFont.ensureHeadless();
         let sf = Int32.toFloat64(req#scale);
         let w = ri(req#design#x * sf);
@@ -75,33 +105,107 @@ mod SoftRaster {
         g.fillRect(0i32, 0i32, Int32.max(1i32, w), Int32.max(1i32, h));
         let textures = loadTextures(req#texturePath);
         let fctx = buildFontCtx(req#fontTtf, req#fontAtlas);
-        // Drawable(Ok) と Polygon(Err) を 1 列にまとめ、(z, 追加順) で安定ソートする。
+        // Drawable / Polygon / シェーダー面を 1 列にまとめ、(z, 追加順) で安定ソートする。
         let tagged = List.append(
-            List.map(d -> (Result.Ok(d): Result[GameEngine.PolygonRenderCmd, GameEngine.Drawable]), req#drawables),
-            List.map(p -> (Result.Err(p): Result[GameEngine.PolygonRenderCmd, GameEngine.Drawable]), req#polygons));
+            List.map(d -> RItem.RDraw(d), req#drawables),
+            List.append(
+                List.map(p -> RItem.RPoly(p), req#polygons),
+                List.map(s -> RItem.RSurf(s), surfaces)));
         let sorted = tagged
             |> List.zipWithIndex
             |> List.sortBy(ix -> let (idx, item) = ix; (zOf(item), idx))
             |> List.map(ix -> let (_, item) = ix; item);
         // blend=Normal は従来どおり Graphics2D（SrcOver）で直接描く。Add / Multiply は
         // Java2D の標準 Composite に無い重ね方なので、下書きへ描いてから自前の式で合成する。
+        // シェーダー面は Graphics2D を使わず、ShaderEval の画素評価 + blendPixel で直接混ぜる。
         List.forEach(item -> match item {
-            case Result.Ok(d)  =>
+            case RItem.RDraw(d)  =>
                 if (d#blend == DrawCmd.BlendMode.Normal)
                     withClip(g, sf, d#clip, () -> drawDrawable(g, sf, textures, fctx, d))
                 else
                     blendedDraw(image, sf, d#blend, d#clip, drawableAabb(req#design, textures, d),
                                 gs -> drawDrawable(gs, sf, textures, fctx, d))
-            case Result.Err(p) =>
+            case RItem.RPoly(p) =>
                 if (p#blend == DrawCmd.BlendMode.Normal)
                     withClip(g, sf, p#clip, () -> drawPolygon(rc, g, sf, p))
                 else
                     blendedDraw(image, sf, p#blend, p#clip, polygonAabb(req#design, p),
                                 gs -> drawPolygon(rc, gs, sf, p))
+            case RItem.RSurf(s) => drawSurface(image, sf, s)
         }, sorted);
         g.dispose();
         image
     }
+
+    /// シェーダー面を画素ごとに焼く。rect を出力ピクセルへ量子化し、各画素の中心を
+    /// uv（rect 内 0..1）に写して ShaderEval.evalPixel / evalAlpha で評価、blendPixel で
+    /// 本体へ混ぜる（Normal / Add / Multiply とも GL 側と同じ合成式）。
+    /// mask が非空なら「どれかの多角形の内側」の画素だけ塗る（GL のステンシル抜きと同じ意図）。
+    def drawSurface(image: BufferedImage, sf: Float64, s: SurfaceCmd): Unit \ IO = region rc {
+        let dw = image.getWidth();
+        let dh = image.getHeight();
+        let (rx0, ry0, rx1, ry1) = DrawCmd.clipPixels({ scaleX = sf, scaleY = sf }, s#rect);
+        let x0 = Int32.max(0i32, rx0);
+        let y0 = Int32.max(0i32, ry0);
+        let x1 = Int32.min(dw, rx1);
+        let y1 = Int32.min(dh, ry1);
+        let w = x1 - x0;
+        let h = y1 - y0;
+        if (w <= 0i32 or h <= 0i32 or s#rect#size#x <= 0.0 or s#rect#size#y <= 0.0) ()
+        else {
+            let n = w * h;
+            let buf: Array[Int32, rc] = Array.empty(rc, n);
+            discard image.getRGB(x0, y0, w, h, buf, 0i32, w);
+            Array.forEachWithIndex((i, dst) -> {
+                let px = Int32.remainder(i, w) + x0;
+                let py = i / w + y0;
+                // 出力ピクセル中心 → design px → rect 内 uv（0..1）。
+                let dx = (Int32.toFloat64(px) + 0.5) / sf;
+                let dy = (Int32.toFloat64(py) + 0.5) / sf;
+                if (not insideMask(s#mask, { x = dx, y = dy })) ()
+                else {
+                    let uv = { x = (dx - s#rect#position#x) / s#rect#size#x,
+                               y = (dy - s#rect#position#y) / s#rect#size#y };
+                    let c = ShaderEval.evalPixel(s#spec, uv, s#time);
+                    let a = Float64.max(0.0, Float64.min(1.0, ShaderEval.evalAlpha(s#spec, uv, s#time)));
+                    let srcArgb = argbOf(c, a);
+                    Array.put(blendPixel(s#blend, srcArgb, dst), i, buf)
+                }
+            }, buf);
+            image.setRGB(x0, y0, w, h, buf, 0i32, w)
+        }
+    }
+
+    /// mask が空なら常に真。非空なら「どれかの多角形の内側」（偶奇の交差数判定）。
+    def insideMask(mask: List[List[Vec2.Vec2]], p: Vec2.Vec2): Bool =
+        match mask {
+            case Nil => true
+            case _   => List.exists(poly -> pointInPoly(poly, p), mask)
+        }
+
+    /// 偶奇規則の point-in-polygon（水平レイキャスト）。
+    def pointInPoly(poly: List[Vec2.Vec2], p: Vec2.Vec2): Bool =
+        match poly {
+            case Nil => false
+            case _   =>
+                let vs = List.toVector(poly);
+                let n = Vector.length(vs);
+                let hits = List.foldLeft((acc, i) -> {
+                    let a = Vector.get(i, vs);
+                    let b = Vector.get(Int32.modulo(i + 1, n), vs);
+                    let crosses = ((a#y > p#y) != (b#y > p#y))
+                        and (p#x < (b#x - a#x) * (p#y - a#y) / (b#y - a#y) + a#x);
+                    if (crosses) acc + 1 else acc
+                }, 0, List.range(0, n));
+                Int32.modulo(hits, 2) == 1
+        }
+
+    /// Color(0..1) + alpha(0..1) を ARGB int へ。
+    def argbOf(c: Color, a: Float64): Int32 =
+        Int32.leftShift(clampI(ri(a * 255.0), 0i32, 255i32), 24)
+            |> Int32.bitwiseOr(Int32.leftShift(byteOf(c#r), 16))
+            |> Int32.bitwiseOr(Int32.leftShift(byteOf(c#g), 8))
+            |> Int32.bitwiseOr(byteOf(c#b))
 
     /// 本体と下書き（blendedDraw）が同じ見た目で描くための描画品質ヒント一式。
     def applyQualityHints(g: Graphics2D): Unit \ IO =
@@ -194,11 +298,12 @@ mod SoftRaster {
     def channelOf(shift: Int32, argb: Int32): Int32 =
         Int32.bitwiseAnd(Int32.logicalRightShift(dist = shift, argb), 255)
 
-    /// z 値取り出し（Ok=Drawable / Err=Polygon）。
-    def zOf(item: Result[GameEngine.PolygonRenderCmd, GameEngine.Drawable]): Int32 =
+    /// z 値取り出し（Drawable / Polygon / シェーダー面）。
+    def zOf(item: RItem): Int32 =
         match item {
-            case Result.Ok(d)  => d#zIndex
-            case Result.Err(p) => p#zIndex
+            case RItem.RDraw(d) => d#zIndex
+            case RItem.RPoly(p) => p#zIndex
+            case RItem.RSurf(s) => s#zIndex
         }
 
     // ════════════════════════════════════════════════════════

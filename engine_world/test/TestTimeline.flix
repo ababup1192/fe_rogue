@@ -1,0 +1,42 @@
+// Timeline のテスト。テストするのは「合計尺」と「境界でどの区間に落ちるか・
+// 範囲外で None(Done)になるか」だけ — 絵はテストしない(golden と目視の仕事)。
+
+mod TestTimeline {
+
+    def walkPickBack(): List[Timeline.Seg] =
+        Timeline.seg("walk", 2.0) :: Timeline.seg("pick", 0.5)
+            :: Timeline.seg("back", 2.0) :: Nil
+
+    /// 合計尺は区間の和。
+    @Test
+    def testTotalSumsDurations(): Unit \ Assert =
+        Assert.assertEq(expected = 4.5, Timeline.total(walkPickBack()))
+
+    /// 区間の頭からの経過秒 u が返る。境界(dur ちょうど)は次の区間の 0 秒目。
+    @Test
+    def testAtReturnsSegAndElapsed(): Unit \ Assert =
+        let segs = walkPickBack();
+        Assert.assertEq(expected = (Some(("walk", 0.0)), Some(("walk", 1.5)),
+                                    Some(("pick", 0.0)), Some(("back", 0.25))),
+            (Timeline.at(segs, 0.0) |> Option.map(r -> (r#name, r#u)),
+             Timeline.at(segs, 1.5) |> Option.map(r -> (r#name, r#u)),
+             Timeline.at(segs, 2.0) |> Option.map(r -> (r#name, r#u)),
+             Timeline.at(segs, 2.75) |> Option.map(r -> (r#name, r#u))))
+
+    /// 範囲外は None = Done。合計尺ちょうども Done(区間は半開 [0, dur))。
+    @Test
+    def testAtOutOfRangeIsDone(): Unit \ Assert =
+        let segs = walkPickBack();
+        Assert.assertEq(expected = (None, None, None),
+            (Timeline.at(segs, 4.5) |> Option.map(r -> r#name),
+             Timeline.at(segs, -0.1) |> Option.map(r -> r#name),
+             Timeline.at(Nil, 0.0) |> Option.map(r -> r#name)))
+
+    /// 長さ 0 の区間は踏まれない(次の区間の頭に落ちる)。
+    @Test
+    def testAtSkipsZeroLengthSeg(): Unit \ Assert =
+        let segs = Timeline.seg("a", 1.0) :: Timeline.seg("empty", 0.0)
+            :: Timeline.seg("b", 1.0) :: Nil;
+        Assert.assertEq(expected = Some(("b", 0.0)),
+            Timeline.at(segs, 1.0) |> Option.map(r -> (r#name, r#u)))
+}

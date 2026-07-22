@@ -320,6 +320,7 @@ mod Render {
             case Item.Sprite(s) => Item.Sprite({ blend = mode | s })
             case Item.Box(b)    => Item.Box({ blend = mode | b })
             case Item.Poly(p)   => Item.Poly({ blend = mode | p })
+            case Item.Shader(s) => Item.Shader({ blend = mode | s })
             case other          => other
         }, item)
 
@@ -454,6 +455,30 @@ mod Render {
                            mask = s#mask |> List.map(poly ->
                                poly |> List.map(v -> Vec2.add(placed#at, v))),
                            time = s#t, zIndex = s#zIndex, blend = s#blend })
+                case _ => None
+            }
+        })
+
+    /// GL の無い経路（bake / SoftRaster）が ShaderEval で面を焼くための純データ。
+    /// drawShaders（GL 用・program ハンドル入り）の headless 版 — バックエンドに依らない値だけ持つ。
+    pub type alias ShaderSurface = {
+        rect = Rect2.Rect2, spec = ShaderDoc.Spec, time = Float64,
+        mask = List[List[Vec2.Vec2]], zIndex = Int32, blend = DrawCmd.BlendMode }
+
+    /// Shader 面を純データ（ShaderSurface）で取り出す（bake / SoftRaster 用）。
+    /// 座標の扱いは drawShaders と同一: 位置は placed#at、mask は rect 左上相対 + at。
+    /// これを SoftRaster の surfaces に渡すと、draw の代表色ベタ塗りの代わりに
+    /// ShaderEval の画素評価で焼ける（draw 側からは withoutShaders で外して二重にしない）。
+    pub def shaderSurfaces(items: List[PlacedItem]): List[ShaderSurface] =
+        items |> List.filterMap(placed -> {
+            let (leaf, _clip) = unwrapClip(placed#item, None);
+            match leaf {
+                case Item.Shader(s) =>
+                    Some({ rect = { position = placed#at, size = s#rect#size },
+                           spec = s#spec, time = s#t,
+                           mask = s#mask |> List.map(poly ->
+                               poly |> List.map(v -> Vec2.add(placed#at, v))),
+                           zIndex = s#zIndex, blend = s#blend })
                 case _ => None
             }
         })

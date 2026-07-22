@@ -56,8 +56,12 @@ mod PreviewFx {
     pub def emitterExtent(emitter: FxDoc.Emitter): Float64 =
         let speedMax = Float64.abs(emitter#speed#base) * (1.0 + emitter#speed#vary);
         let lifeMax  = emitter#life#base * (1.0 + emitter#life#vary);
+        // spawn（発生源の広がり）と accel（重力/風の ½at²）も最悪値で足す — R3 の語彙追加。
+        let spawnHalf = Float64.max(emitter#spawnArea#w, emitter#spawnArea#h) / 2.0;
+        let accelMax = Float64.max(Float64.abs(emitter#accel#x), Float64.abs(emitter#accel#y))
+            * lifeMax * lifeMax / 2.0;
         speedMax * lifeMax * integralPeak(emitter#speed#over)
-            + emitter#size * curvePeak(emitter#sizeOver)
+            + emitter#size * curvePeak(emitter#sizeOver) + spawnHalf + accelMax
 
     /// 速度カーブの積分 |∫₀ᵘ curve| の u∈[0,1] での最大値 (= 到達距離の倍率)。
     /// 単調に離れるカーブは u=1 が最遠。途中で速度の符号が変わる linear だけは

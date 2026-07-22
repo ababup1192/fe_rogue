@@ -599,7 +599,8 @@ mod App {
                 // 停止中は毎フレーム再投影で軽さは問題にならない。
                 let items = List.append(sceneItems(app, atlas, displayed, toItems),
                                         staticPausedItems(app, design, displayed));
-                let (sprites, polygons) = Render.draw(items);
+                let (sprites, polygons) = Render.drawWith(
+                    name -> GameEngine.Game.getTextureInfo(name), items);
                 let hitList = match emitted {
                     case Some(rect) => Annotate.hits(name -> GameEngine.Game.getTextureInfo(name), rect, items)
                     case None       => Nil
@@ -846,7 +847,11 @@ mod App {
                 // に敷くため drawSurface を先に呼び、通常の絵からは Shader 面を外して二重描きを避ける。
                 let shaderCmds = Render.drawShaders(spec -> ShaderEffect.Shader.buildProgram(spec), items);
                 List.forEach(cmd -> ShaderEffect.Shader.drawSurface(cmd), shaderCmds);
-                let (sprites, polygons) = Render.draw(Render.withoutShaders(items));
+                // drawWith(getTextureInfo): regionRect 付き Sprite(PxSprite.drawQuad の
+                // アトラス 1 クアッド等)の UV を registry の寸法で解決する。regionRect 無しの
+                // 絵は draw と同一の Drawable になる(挙動不変)。
+                let (sprites, polygons) = Render.drawWith(
+                    name -> GameEngine.Game.getTextureInfo(name), Render.withoutShaders(items));
                 GameEngine.Game.renderCommands(sprites, Nil, polygons, staticLayerCmd(app, world))
         }
 

@@ -5,13 +5,30 @@
   "windowWidth": 960,
   "windowHeight": 720,
   "windowScale": 3,
-  "clearColor": {"r": 0.101961, "g": 0.109804, "b": 0.172549},
+  "clearColor": {
+    "r": 0.101961,
+    "g": 0.109804,
+    "b": 0.172549
+  },
   "maxDeltaTime": 10.0,
   "textures": [
-    {"name": "flag", "path": "assets/sprites/flag.png", "hasAlpha": true}
+    {
+      "name": "flag",
+      "path": "assets/sprites/flag.png",
+      "hasAlpha": true
+    },
+    {
+      "name": "px_atlas",
+      "path": "assets/sprites/px_atlas.png",
+      "hasAlpha": true
+    }
   ],
   "fonts": [
-    {"name": "default", "path": "assets/Xolonium-Regular.ttf", "fontSize": 60.0}
+    {
+      "name": "default",
+      "path": "assets/Xolonium-Regular.ttf",
+      "fontSize": 60.0
+    }
   ],
   "sounds": []
 }

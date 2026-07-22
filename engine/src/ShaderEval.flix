@@ -105,6 +105,8 @@ mod ShaderEval {
             case ShaderDoc.Field.Disk(d) =>
                 let dist = Vec2.length(Vec2.sub(uv, { x = d#cx, y = d#cy }));
                 1.0 - smoothstep(d#radius, d#radius + d#feather, dist)
+            case ShaderDoc.Field.Radial(rd) =>
+                Vec2.length(Vec2.sub(uv, { x = rd#cx, y = rd#cy }))
             case ShaderDoc.Field.Scales(sc) =>
                 let p = Vec2.mul(uv, sc#scale);
                 let ip = { x = Float64.floor(p#x), y = Float64.floor(p#y) };

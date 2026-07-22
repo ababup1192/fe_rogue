@@ -13,7 +13,7 @@
     "emitters": {
       "type": "array", "minItems": 1,
       "items": { "$ref": "#/$defs/emitter" },
-      "description": "粒の群れの宣言（1 個以上）。v1 は burst（全粒が t=0 で同時に生まれる）固定"
+      "description": "粒の群れの宣言（1 個以上）。既定は burst（全粒が t=0 で同時に生まれる）— mode: loop で常時系（粒が寿命ごとに生まれ直す）"
     }
   },
   "required": ["name", "duration", "emitters"],
@@ -73,12 +73,13 @@
       "properties": {
         "name": { "type": "string", "description": "粒ごとの乱数の系統を分ける識別子（名前が違えば別の散り方）" },
         "count": { "type": "integer", "minimum": 1, "description": "粒の数" },
+        "mode": { "type": "string", "enum": ["burst", "loop"], "description": "生まれ方。burst = 全粒が t=0 で同時に生まれる（爆発・木くず）。loop = 各粒が寿命を終えるたびに生まれ直す（周期 = 寿命・位相は粒ごとにずれる — 煙・雪・舞う葉）。省略時 burst" },
         "shape": { "type": "string", "enum": ["circle", "box", "glow"], "description": "粒の形。glow は縁がふわっと消える円 — にじみに明るさが配られるぶん同じ size では circle より細く見える(1.5 倍が目安)。省略時 circle" },
         "size": { "type": "number", "exclusiveMinimum": 0, "description": "粒の大きさ px（circle は直径・box は一辺）" },
         "color": {
           "type": "array", "minItems": 1,
           "items": { "$ref": "#/$defs/color" },
-          "description": "1〜N 色の配列 — 寿命 t/life に沿った線形グラデ（1 色なら固定色）"
+          "description": "1〜N 色の配列 — 寿命 t/life に沿った線形グラデ（1 色なら固定色）。parseWith 経由なら \"@名前\" でパレットの色キーを参照できる"
         },
         "life": {
           "type": "object",
@@ -107,6 +108,23 @@
           },
           "description": "射出方向。省略時は真上・広がりなし"
         },
+        "spawn": {
+          "type": "object",
+          "properties": {
+            "w": { "type": "number", "minimum": 0, "description": "発生源の横幅 px" },
+            "h": { "type": "number", "minimum": 0, "description": "発生源の縦幅 px" }
+          },
+          "description": "発生源の広がり（原点中心の矩形・粒ごとに一様乱数で散らす）。省略時は点"
+        },
+        "accel": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number", "description": "横の加速度 px/s²（風 — 正 = 右）" },
+            "y": { "type": "number", "description": "縦の加速度 px/s²（重力 — 正 = 画面下）" }
+          },
+          "description": "重力/風。位置には閉形式 ½at² で効く。省略時 {0, 0}"
+        },
+        "seed": { "type": "integer", "description": "決定的シードの上乗せ。同名 emitter を並べて別の散り方にする。省略時 0" },
         "sizeOver": { "$ref": "#/$defs/curve", "description": "大きさの倍率カーブ" },
         "alphaOver": { "$ref": "#/$defs/curve", "description": "透明度の倍率カーブ" },
         "blend": { "type": "string", "enum": ["normal", "add", "multiply"], "description": "重ね方。add は下の色に足し込む（重なるほど明るい — 火花・光向け）。省略時 normal" },

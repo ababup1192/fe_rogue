@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "note": "box 列 vs 1 クアッドの A/B 用スプライト(村の villager の写し・6x10)",
+  "legend": { "h": "hair", "s": "skin", "b": "body" },
+  "sprites": {
+    "villager": {
+      "anchor": { "x": 0.0, "y": 0.0 },
+      "frames": {
+        "walk0": [
+          ".hhhh.",
+          "hhhhhh",
+          "ssssss",
+          ".ssss.",
+          ".bbbb.",
+          "bbbbbb",
+          "bbbbbb",
+          ".bbbb.",
+          "bb..bb",
+          "bb..bb"
+        ],
+        "walk1": [
+          ".hhhh.",
+          "hhhhhh",
+          "ssssss",
+          ".ssss.",
+          ".bbbb.",
+          "bbbbbb",
+          "bbbbbb",
+          ".bbbb.",
+          "..bbbb",
+          "..bbbb"
+        ]
+      }
+    }
+  }
+}

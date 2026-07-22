@@ -64,6 +64,11 @@ mod ShaderDoc {
         /// 丸マスク。uv 空間で中心 (cx,cy) から radius 以内は 1、radius→radius+feather で
         /// なめらかに 0（縁が soft に消える）。矩形の描画枠の中を丸い池型に抜く alpha に使う。
         case Disk({ cx = Float64, cy = Float64, radius = Float64, feather = Float64 })
+        /// 中心距離場。uv 空間で (cx,cy) からの距離そのもの（中心 0・中心 (0.5,0.5) なら
+        /// 四隅で約 0.707）。Smoothstep と組んでビネット（縁が滑らかに沈む暗がり）を作る素材 —
+        /// Disk が「radius で 1→0 に落ちるマスク」なのに対し、これは生の距離を返すので
+        /// 呼び側がカーブを自由に絞れる。
+        case Radial({ cx = Float64, cy = Float64 })
         /// 規則的に敷き詰めた丸い鱗（魚の鱗・煉瓦積み・屋根瓦）。scale = 鱗の細かさ、
         /// stagger = 行ごとの横ずらし（0 = 真四角の格子・0.5 = 半分ずれた段違い）。
         /// 出力は鱗の中心 0 → 縁 1 の丸い距離場（Worley と違い乱数でなく規則配置）。

@@ -66,3 +66,24 @@ jstack 再計測で「Render.box は常に style=Some(solidStyle) を付ける �
 
 - 改修前 (プロジェクト開始時) 比: N=10000 で ~1000ms → 18.7ms = **~53 倍**。
 - フラグメントの style 数式は uniform 版の逐語移植 (varying 置換のみ) でピクセル同一を保証。
+
+## R2b: PxSprite「box 列」vs「アトラス 1 クアッド」の同数 A/B (2026-07-21, BenchPx.bench)
+
+シナリオ: 村の villager (6×10・~18 run/体) を黄金比軌道で N 体、box 列 (PxSprite.draw = polygon 列)
+と 1 クアッド (PxSprite.drawQuad = regionRect 付き Item.Sprite・アトラスは PxSpriteAtlas.bake →
+px_atlas.png を起動時ロード)。区間を box → quad の順に交互に並べ、同一実行内で背中合わせに取る。
+`flix run --entrypoint BenchPx.bakeAtlas` → `flix run --entrypoint BenchPx.bench`。
+
+| N | box 列 avg / p99 | 1 クアッド avg / p99 | 倍率 (avg) |
+|---|------------------|----------------------|-----------|
+| 500 | 16.67ms / 21.37ms (60fps) | **3.05ms / 8.06ms (328fps)** | ~5.5x |
+| 1900 | 54.61ms / 67.32ms (18fps) | **8.33ms / 11.15ms (120fps)** | ~6.6x |
+| 5000 | 146.36ms / 188.44ms (7fps) | **16.66ms / 18.27ms (60fps)** | ~8.8x |
+
+- 予算 (R3: 動的 PlacedItem < 2000/フレーム、avg < 8ms / p99 < 12ms) に対して:
+  N=1900 の 1 クアッドは p99 11.15ms で予算内、avg 8.33ms はわずかに超 (直前区間が
+  box 54ms の重負荷なので熱の水増しを含む — 単独実行ならもう少し下がる見込み)。
+  box 列は N=1900 で 54.6ms と予算の ~7 倍 — **人型を数百体以上動かす画は 1 クアッドが必須**。
+- 村の序章 (数十体・box 列) は予算に遠く、既定モード据え置きで問題ない。
+- 検証: 両モードの絵は SoftRaster で全画素バイト一致 (editor_server/test/TestPxSpriteRaster —
+  非反転 / flipX とも diff 0)。

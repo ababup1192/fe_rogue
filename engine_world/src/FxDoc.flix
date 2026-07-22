@@ -6,9 +6,13 @@
 // 語彙（version 1）:
 //   トップレベル: name（必須）/ duration 秒（必須）/ emitters（必須・1 個以上）。
 //     "version"（省略時 1。1 以外は Err）・"$schema"・"note"・"//" キーは ui.json と同じ扱い。
-//   emitter: name / count / shape("circle"|"box"|"glow"・省略時 circle) / size px /
-//     color（1〜N 色の配列 — 寿命に沿った線形グラデ。色表記は ui.json と同じ）/
+//   emitter: name / count / mode("burst"|"loop"・省略時 burst — loop は粒が寿命ごとに
+//     生まれ直す常時系: 煙・雪・舞う葉) / shape("circle"|"box"|"glow"・省略時 circle) / size px /
+//     color（1〜N 色の配列 — 寿命に沿った線形グラデ。色表記は ui.json と同じ。parseWith 経由なら
+//     "@名前" でパレットの色キーを参照できる）/
 //     life {base 秒, vary} / speed {base px/s, vary, over} / dir {base 度, spread 度} /
+//     spawn {w, h}（発生源の広がり px・省略時は点）/ accel {x, y}（重力/風 px/s²・閉形式 ½at²）/
+//     seed（決定的シードの上乗せ・省略時 0）/
 //     sizeOver / alphaOver（カーブ）/ blend("normal"|"add"|"multiply"・省略時 normal) / zIndex。
 //     vary は 0..1 — 粒ごとに base × (1 ± vary) の幅でばらつく。dir は 0 度 = 真上・時計回り。
 //   カーブ: {"kind": ...} の 6 形。省略時は constant（= いつでも 1.0）。
@@ -60,16 +64,28 @@ mod FxDoc {
     /// over が寿命に沿った倍率を掛ける。
     pub type alias Scalar = { base = Float64, vary = Float64, over = CurveSpec }
 
-    /// 粒の群れ 1 種類ぶんの宣言。v1 は burst（全粒が t=0 で同時に生まれる）固定。
+    /// 粒の生まれ方。Burst = 全粒が t=0 で同時に生まれて寿命で消える（爆発・木くず）。
+    /// Loop = 各粒が寿命を終えるたびに生まれ直す（位相は粒ごとにずれる — 煙・雪・舞う葉の
+    /// ような「出続ける」効果。周期 = 各粒の寿命）。どちらも t の純関数（保存しない）。
+    pub enum Mode with Eq {
+        case Burst
+        case Loop
+    }
+
+    /// 粒の群れ 1 種類ぶんの宣言。既定は burst（全粒が t=0 で同時に生まれる）。
     pub type alias Emitter = {
         name = String,                              // 粒ごとの乱数の系統を分ける識別子
         count = Int32,                              // 粒の数
+        mode = Mode,                                // 生まれ方（burst / loop）
         shape = Shape,                              // 粒の形
         size = Float64,                             // 粒の大きさ px（円は直径・箱は一辺）
         color = List[Color],                        // 寿命に沿った色グラデ（1 色以上）
         life = { base = Float64, vary = Float64 },  // 粒の寿命 秒
         speed = Scalar,                             // 初速 px/s（over が減速カーブ）
         dir = { base = Float64, spread = Float64 }, // 射出方向 度（0 = 真上・時計回り）
+        spawnArea = { w = Float64, h = Float64 },   // 発生源の広がり px（原点中心の矩形・0 で点。JSON キーは "spawn"）
+        accel = Vec2.Vec2,                          // 重力/風 px/s²（+y = 画面下向き・閉形式で積分）
+        seed = Int32,                               // 決定的シードの上乗せ（同名 emitter を並べて別の絵にする）
         sizeOver = CurveSpec,                       // 大きさの倍率カーブ
         alphaOver = CurveSpec,                      // 透明度の倍率カーブ
         blend = DrawCmd.BlendMode,                  // 重ね方（add = 加算・multiply = 乗算）
@@ -96,7 +112,14 @@ mod FxDoc {
     // ========================================================================
 
     /// ドキュメント（version + name + duration + emitters）を Spec へ畳む。
+    /// 色は実色（"#rrggbb" 等）のみ — テーマの色キー（"@名前"）を使うときは parseWith。
     pub def parse(json: Json): Result[JsonError, Spec] =
+        parseWith(Map.empty(), json)
+
+    /// パレット付きの parse。emitter の color に "@名前" と書くと palette から解決する
+    /// （ui.json の色方言と同一 — UiDoc.colorOf に一本化）。テーマ切替は「palette を
+    /// 差し替えて parse し直す」だけ（Spec は pure data なので焼き直しが安い）。
+    pub def parseWith(palette: Map[String, Color], json: Json): Result[JsonError, Spec] =
         match json {
             case JObject(top) => forM (
                 _v       <- JsonCompat.checkVersion("fx document", top);
@@ -104,12 +127,12 @@ mod FxDoc {
                 duration <- JsonCompat.numAt("duration", top);
                 _dur     <- require(duration > 0.0, "(top)", "duration must be > 0 (got: ${duration})");
                 note     <- (JsonCompat.getAtKeyOpt(Root, "note", top): Result[JsonError, Option[String]]);
-                emitters <- parseEmitters(top)
+                emitters <- parseEmitters(palette, top)
             ) yield ({ name = name, duration = duration, note = note, emitters = emitters }: Spec)
             case _ => Err(JsonCompat.jsonError(Root, Set#{"FxDoc must be a JSON object with 'name', 'duration', 'emitters'"}))
         }
 
-    def parseEmitters(top: Map[String, Json]): Result[JsonError, List[Emitter]] =
+    def parseEmitters(palette: Map[String, Color], top: Map[String, Json]): Result[JsonError, List[Emitter]] =
         match Map.get("emitters", top) {
             case Some(JArray(arr)) =>
                 if (Vector.isEmpty(arr))
@@ -119,35 +142,75 @@ mod FxDoc {
                         let (i, json) = entry;
                         forM (
                             m       <- JsonCompat.atNode("emitters[${i}]", JsonCompat.asObject("emitter", json));
-                            emitter <- parseEmitter("emitters[${i}]", m)
+                            emitter <- parseEmitter(palette, "emitters[${i}]", m)
                         ) yield emitter
                     }, List.zipWithIndex(Vector.toList(arr)))
             case _ => Err(JsonCompat.jsonError(Root, Set#{"'emitters' is required and must be an array"}))
         }
 
     /// 1 emitter を読む。エラーは "emitters[i]"（サブオブジェクトは "emitters[i].speed" 等）でタグする。
-    def parseEmitter(path: String, m: Map[String, Json]): Result[JsonError, Emitter] =
+    def parseEmitter(palette: Map[String, Color], path: String, m: Map[String, Json]): Result[JsonError, Emitter] =
         forM (
             name      <- JsonCompat.atNode(path, (JsonCompat.getAtKey(Root, "name", m): Result[JsonError, String]));
             count     <- JsonCompat.atNode(path, (JsonCompat.getAtKey(Root, "count", m): Result[JsonError, Int32]));
             _cnt      <- require(count >= 1, path, "count must be >= 1 (got: ${count})");
+            mode      <- parseMode(path, m);
             shape     <- parseShape(path, m);
             size      <- JsonCompat.atNode(path, JsonCompat.numAt("size", m));
             _size     <- require(size > 0.0, path, "size must be > 0 (got: ${size})");
-            color     <- parseColors(path, m);
+            color     <- parseColors(palette, path, m);
             life      <- parseLife("${path}.life", m);
             speed     <- parseSpeed("${path}.speed", m);
             dir       <- parseDir("${path}.dir", m);
+            spawnArea <- parseSpawn("${path}.spawn", m);
+            accel     <- parseAccel("${path}.accel", m);
+            seedOpt   <- JsonCompat.atNode(path, (JsonCompat.getAtKeyOpt(Root, "seed", m): Result[JsonError, Option[Int32]]));
             sizeOver  <- parseCurveAt("${path}.sizeOver", "sizeOver", m);
             alphaOver <- parseCurveAt("${path}.alphaOver", "alphaOver", m);
             blend     <- parseBlend(path, m);
             zIndexOpt <- JsonCompat.atNode(path, (JsonCompat.getAtKeyOpt(Root, "zIndex", m): Result[JsonError, Option[Int32]]))
         ) yield ({
-            name = name, count = count, shape = shape, size = size, color = color,
+            name = name, count = count, mode = mode, shape = shape, size = size, color = color,
             life = life, speed = speed, dir = dir,
+            spawnArea = spawnArea, accel = accel, seed = Option.getWithDefault(0, seedOpt),
             sizeOver = sizeOver, alphaOver = alphaOver, blend = blend,
             zIndex = Option.getWithDefault(0, zIndexOpt)
         }: Emitter)
+
+    /// "mode": "burst"（省略時）| "loop"。loop は粒が寿命ごとに生まれ直す（周期 = 寿命）。
+    def parseMode(path: String, m: Map[String, Json]): Result[JsonError, Mode] =
+        match (JsonCompat.getAtKeyOpt(Root, "mode", m): Result[JsonError, Option[String]]) {
+            case Err(e)            => JsonCompat.atNode(path, Err(e))
+            case Ok(None)          => Ok(Mode.Burst)
+            case Ok(Some("burst")) => Ok(Mode.Burst)
+            case Ok(Some("loop"))  => Ok(Mode.Loop)
+            case Ok(Some(unknown)) =>
+                JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"mode must be burst|loop (got: ${unknown})"})))
+        }
+
+    /// "spawn": {"w": px, "h": px}（発生源の広がり・省略時は点 = {0, 0}）。
+    def parseSpawn(path: String, m: Map[String, Json]): Result[JsonError, { w = Float64, h = Float64 }] =
+        match (JsonCompat.getAtKeyOpt(Root, "spawn", m): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)       => JsonCompat.atNode(path, Err(e))
+            case Ok(None)     => Ok({ w = 0.0, h = 0.0 })
+            case Ok(Some(sm)) => forM (
+                w  <- JsonCompat.atNode(path, JsonCompat.numOr("w", 0.0, sm));
+                h  <- JsonCompat.atNode(path, JsonCompat.numOr("h", 0.0, sm));
+                _w <- require(w >= 0.0 and h >= 0.0, path, "spawn w/h must be >= 0 (got: ${w}, ${h})")
+            ) yield { w = w, h = h }
+        }
+
+    /// "accel": {"x": px/s², "y": px/s²}（重力/風・省略時は {0, 0}）。+y は画面下向き —
+    /// 重力は y を正に、風は x に。位置には閉形式（½at²）で効く。
+    def parseAccel(path: String, m: Map[String, Json]): Result[JsonError, Vec2.Vec2] =
+        match (JsonCompat.getAtKeyOpt(Root, "accel", m): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)       => JsonCompat.atNode(path, Err(e))
+            case Ok(None)     => Ok(Vec2.zero())
+            case Ok(Some(am)) => forM (
+                x <- JsonCompat.atNode(path, JsonCompat.numOr("x", 0.0, am));
+                y <- JsonCompat.atNode(path, JsonCompat.numOr("y", 0.0, am))
+            ) yield ({ x = x, y = y }: Vec2.Vec2)
+        }
 
     /// 条件が成り立たなければ path 付きで断る（値の下限・範囲の検査に使う）。
     def require(ok: Bool, path: String, msg: String): Result[JsonError, Unit] =
@@ -177,14 +240,15 @@ mod FxDoc {
         }
 
     /// "color": [<色>, ...]（1 色以上）。色表記は ui.json と同一（UiDoc.colorOf に一本化）。
-    def parseColors(path: String, m: Map[String, Json]): Result[JsonError, List[Color]] =
+    /// palette に有る名前は "@名前" で参照できる（テーマの色キー — parseWith 経由のみ）。
+    def parseColors(palette: Map[String, Color], path: String, m: Map[String, Json]): Result[JsonError, List[Color]] =
         match Map.get("color", m) {
             case Some(JArray(arr)) =>
                 if (Vector.isEmpty(arr))
                     JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"color must have at least 1 entry"})))
                 else
                     JsonCompat.atNode(path,
-                        Result.traverse(c -> UiDoc.colorOf(Map.empty(), "color", c), Vector.toList(arr)))
+                        Result.traverse(c -> UiDoc.colorOf(palette, "color", c), Vector.toList(arr)))
             case Some(_) => JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"color must be an array of colors"})))
             case None    => JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"'color' is required"})))
         }
