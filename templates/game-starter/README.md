@@ -53,3 +53,10 @@ gh repo create <あなたのゲーム名> --template ababup1192/flix-game-templa
 
 このテンプレートは、エンジン本体（`flix_game_engine_full`）が GitHub Release に公開済みであることが前提です。
 まだ公開されていない場合、依存のダウンロードに失敗して動きません。
+
+## AI エージェント向け指針の配布（sync-agents）
+
+エンジン側で `make sync-agents GAME=/path/to/このゲーム` を実行すると、エンジン共通の
+エージェント指針（agents-pack/AGENTS.core.md）とこのゲームの `AGENTS.local.md` を連結した
+`AGENTS.md` が生成され、共通スキルが `.claude/skills/` にコピーされます。`AGENTS.md` は
+生成物なので直接編集せず、ゲーム固有の原則は `AGENTS.local.md` に書いて再 sync してください。
