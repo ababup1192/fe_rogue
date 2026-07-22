@@ -12,7 +12,7 @@ mod StoryDoc {
     /// 質問（選択肢を出す拍）。beats を読み終えた節がこれを出し、options から 1 つ選ばせる。
     pub type alias Ask = { speaker = String, text = String, options = List[Choice] }
 
-    /// 地の文・せりふの 1 拍。speaker が空文字なら地の文。
+    /// 地の文・セリフの 1 拍。speaker が空文字なら地の文。
     pub type alias Beat = { speaker = String, text = String }
 
     /// 台本の 1 節。beats を順に読み、読み終えたら ask（あれば）で分岐する。
