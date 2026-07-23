@@ -81,11 +81,13 @@ mod NovelKit {
               z = 103, pos = { x = 22.0, y = 244.0 }, maxWidth = 436.0, lineGap = 3.0 },
             UiDialog.visibleBody(kit#dialog))
 
+    /// キットが使う ui.json の一覧（spawn と「表示中」の名乗りが同じ台帳を見る）。
+    pub def uiPaths(): List[String] =
+        "assets/ui/dialog.ui.json" :: "assets/ui/choices.ui.json" :: Nil
+
     /// キットの ui.json 一式を 1 つの UiStore へ spawn する（起動と bake が同じ台帳を見る）。
     pub def spawnAssets(): UiStore.UiWorld \ Fs.FileRead =
-        UiStore.empty()
-            |> spawnOne("assets/ui/dialog.ui.json")
-            |> spawnOne("assets/ui/choices.ui.json")
+        List.foldLeft((ui, path) -> spawnOne(path, ui), UiStore.empty(), uiPaths())
 
     def spawnOne(path: String, ui: UiStore.UiWorld): UiStore.UiWorld \ Fs.FileRead =
         match UiSpec.spawnAsset(path, ui) {

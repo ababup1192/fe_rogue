@@ -38,7 +38,8 @@ mod World {
         picked = Int32,
         doorOpen = Bool,
         dialog = UiDialog.Dialog,
-        talkingTo = Option[Grid.Cell]
+        talkingTo = Option[Grid.Cell],
+        activeDocsWritten = String
     }
 
     // ── 盤の寸法（design 480×300 の中の定数。project.json と同じ値） ──
@@ -57,7 +58,7 @@ mod World {
           phase = Phase.Title,
           hero = docs#map#start, facing = Dir4.Down, stepGauge = 0.0, steps = 0,
           herbs = docs#map#herbs, picked = 0, doorOpen = false,
-          dialog = UiDialog.closed(), talkingTo = None }
+          dialog = UiDialog.closed(), talkingTo = None, activeDocsWritten = "" }
 
     /// 里を歩ける状態に置き直す（表紙から始めるとき・間取りの Doc を差し替えたとき）。
     /// 薬草は全部戻り、扉は閉じ、主人公は start のマスに立つ。
@@ -76,6 +77,21 @@ mod World {
     /// ともっている灯りの数（薬草を拾うたびひとつ点く。灯りの数より多くは点かない）。
     pub def lampsLit(w: World): Int32 =
         Int32.min(w#picked, List.length(w#map#lamps))
+
+    /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
+    /// Studio の「表示中」バッジの材料（ActiveDocs.step が debug/ に名乗る）。
+    /// 表紙とクリアの幕でも盤は霧の下に見えているので map / theme / sprite は常に表示中。
+    /// 手触り（kind: 歩く速さ・文字送り）は里を歩いている間だけ —
+    /// 全部を常時 active にしない（バッジの意味が死ぬ）。
+    pub def activeDocs(w: World): List[(String, List[String])] =
+        let base = ("map", MapDoc.path() :: Nil)
+            :: ("theme", ThemeDoc.path() :: Nil)
+            :: ("sprite", spritePath() :: Nil)
+            :: Nil;
+        match w#phase {
+            case Phase.Play => List.append(base, ("kind", KindDoc.path() :: Nil) :: Nil)
+            case _          => base
+        }
 
     // ── 歩ける・ぶつかるの規則 ──
 

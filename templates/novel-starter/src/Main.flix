@@ -9,9 +9,14 @@ def main(): Unit \ IO =
             let ui = NovelKit.spawnAssets();
             let docs = Controls.loadDocs();
             App.make(World.initial(docs, ui))
-                |> App.addSystem(Controls.step)
-                |> App.addSystem(Controls.interact)
-                |> App.withView(View.frame)
+                // ActiveDocs.step だけ Fs.FileWrite を使うので、純粋な部品は checked_ecast で
+                // 同じ効果行へそろえる（部品側の ef は {} のまま保つ）。
+                |> App.addSystem((f, w) -> checked_ecast(Controls.step(f, w)))
+                |> App.addSystem((f, w) -> checked_ecast(Controls.interact(f, w)))
+                // 表示中の Doc を debug/active-docs.json に名乗る（Studio の「表示中」バッジ。
+                // 一覧が変わった瞬間だけ書くので、毎フレームでも無駄な IO は走らない）。
+                |> App.addSystem((_f, w) -> ActiveDocs.step(World.activeDocs(w), w))
+                |> App.withView((ctx, w) -> checked_ecast(View.frame(ctx, w)))
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
                 |> App.watchFile(StoryDoc.path(), Controls.reloadStory)
                 |> App.watchFile(KindDoc.path(), Controls.reloadKind)
@@ -21,4 +26,5 @@ def main(): Unit \ IO =
                 |> App.launch
         } with LwjglLayer.withProject(".")
           with Fs.FileRead.runWithIO
+          with Fs.FileWrite.runWithIO
     }

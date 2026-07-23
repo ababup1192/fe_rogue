@@ -11,7 +11,8 @@ mod World {
         theme = ThemeDoc.Doc,
         sprites = PxSpriteDoc.Doc,
         x = Float64,
-        y = Float64
+        y = Float64,
+        activeDocsWritten = String
     }
 
     // ── 盤の寸法（design __W__×__H__ の中の定数。project.json と同じ値） ──
@@ -27,7 +28,18 @@ mod World {
     /// ゲーム開始時の状態。主人公は画面の真ん中。
     pub def initial(doc: SampleDoc.Doc, theme: ThemeDoc.Doc, sprites: PxSpriteDoc.Doc): World =
         { doc = doc, theme = theme, sprites = sprites,
-          x = width() / 2.0, y = height() / 2.0 }
+          x = width() / 2.0, y = height() / 2.0, activeDocsWritten = "" }
+
+    /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
+    /// Studio の「表示中」バッジの材料（ActiveDocs.step が debug/ に名乗る）。
+    /// この骨組みは場面が 1 つで、3 つの Doc を常に表示に使っている —
+    /// 場面（表紙・クリア等）が増えたら、ここで使っている物だけに絞ること
+    /// （全部を常時 active にするとバッジの意味が死ぬ）。
+    pub def activeDocs(_w: World): List[(String, List[String])] =
+        ("sample", SampleDoc.path() :: Nil)
+            :: ("theme", ThemeDoc.path() :: Nil)
+            :: ("sprite", spritePath() :: Nil)
+            :: Nil
 
     def clampF(lo: Float64, hi: Float64, v: Float64): Float64 =
         Float64.max(lo, Float64.min(hi, v))

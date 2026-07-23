@@ -10,8 +10,13 @@ def main(): Unit \ IO =
             let theme = ThemeDoc.load(ThemeDoc.path());
             let sprites = PxSpriteDoc.load(World.spritePath());
             App.make(World.initial(doc, theme, sprites))
-                |> App.addSystem(Controls.step)
-                |> App.withView(View.frame)
+                // ActiveDocs.step だけ Fs.FileWrite を使うので、純粋な部品は checked_ecast で
+                // 同じ効果行へそろえる（部品側の ef は {} のまま保つ）。
+                |> App.addSystem((f, w) -> checked_ecast(Controls.step(f, w)))
+                // 表示中の Doc を debug/active-docs.json に名乗る（Studio の「表示中」バッジ。
+                // 一覧が変わった瞬間だけ書くので、毎フレームでも無駄な IO は走らない）。
+                |> App.addSystem((_f, w) -> ActiveDocs.step(World.activeDocs(w), w))
+                |> App.withView((ctx, w) -> checked_ecast(View.frame(ctx, w)))
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
                 |> App.watchFile(SampleDoc.path(), Controls.reloadDoc)
                 |> App.watchFile(ThemeDoc.path(), Controls.reloadTheme)
@@ -20,4 +25,5 @@ def main(): Unit \ IO =
                 |> App.launch
         } with LwjglLayer.withProject(".")
           with Fs.FileRead.runWithIO
+          with Fs.FileWrite.runWithIO
     }

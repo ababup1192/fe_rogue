@@ -114,6 +114,20 @@ mod TestRules {
         let w = World.advance(ended);
         Assert.assertEq(expected = (World.Phase.Story, 0), (w#phase, w#lightsOut))
 
+    // ══════════════════════════════════════════════════════
+    // 表示中の Doc の名乗り（Studio のバッジの材料。どの id を名乗るかはルール）
+    // ══════════════════════════════════════════════════════
+
+    @Test
+    def testActiveDocsFollowPhase(): Unit \ Assert =
+        // 表紙では会話窓（ui）と手触り（kind）を名乗らない — 本文に入ってから加わる。
+        // id は project.json の editor 宣言と対（Studio が突き合わせに使う）。
+        Assert.assertEq(
+            expected = ("story" :: "theme" :: "sprite" :: Nil,
+                        "story" :: "theme" :: "sprite" :: "ui" :: "kind" :: Nil),
+            (World.activeDocs(w0()) |> List.map(fst),
+             World.activeDocs(World.advance(w0())) |> List.map(fst)))
+
     // ── fixture の分岐から期待値を引く小物 ──
 
     def fixtureOption(i: Int32): StoryDoc.Choice =

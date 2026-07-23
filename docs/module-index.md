@@ -37,6 +37,7 @@
 | 複数キーを 1 つの操作にまとめる（WASD と矢印の両対応） | InputMap |
 | カメラで寄せる・追いかける | CameraRig |
 | 起動中のゲームを外から操作・観測する | RemoteDebug |
+| Studio に「いま表示中の Doc」を名乗る（表示中バッジ） | ActiveDocs |
 | 画面を覆う・晴らす切り替え演出（フェード・ワイプ） | Transition |
 | 光らせる・暗く沈める（加算・乗算の重ね方） | Render（blended） |
 | 縁がふわっと消える光球・煙玉を置く | Render（glowAt）/ fx.json の shape "glow" |
@@ -136,6 +137,7 @@
 
 ## デバッグ・開発
 
+- **ActiveDocs** — 「いま表示に使っている Doc(JSON)はどれか」を debug/active-docs.json に名乗る（Studio の「表示中」バッジの窓口。同じ内容なら書かない）。
 - **Annotate** — 実行中のゲームを一時停止して、画面の気になる場所を矩形で囲んで記録する。
 - **RemoteDebug** — 起動中のゲームを外部プロセスが HTTP で操作・観測する口。
 - **GameLogger** — 起きたことを 1 行ずつログに積み、あとでまとめて取り出す effect。

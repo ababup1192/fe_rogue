@@ -31,7 +31,8 @@ mod World {
         cursor = Int32,
         lightsOut = Int32,
         ui = UiStore.UiWorld,
-        docError = Option[String]
+        docError = Option[String],
+        activeDocsWritten = String
     }
 
     // ── 盤の寸法（design 480×300 の中の定数。project.json と同じ値） ──
@@ -47,11 +48,29 @@ mod World {
           story = docs#story, kind = docs#kind, theme = docs#theme, sprites = docs#sprites,
           section = docs#story#start, idx = 0,
           kit = NovelKit.closed(), cursor = 0, lightsOut = 0,
-          ui = ui, docError = None }
+          ui = ui, docError = None, activeDocsWritten = "" }
 
     /// いまついている灯りの数（消えた分を引いた残り。負にはならない）。
     pub def lampsLit(w: World): Int32 =
         Int32.max(0, w#story#lamps - w#lightsOut)
+
+    /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
+    /// Studio の「表示中」バッジの材料（ActiveDocs.step が debug/ に名乗る）。
+    /// 表紙も部屋と額縁と台本の題を描くので story / theme / sprite は常に表示中。
+    /// 会話窓（ui）と手触り（kind: 文字送り・暗さ）は本文に入ってから —
+    /// 全部を常時 active にしない（バッジの意味が死ぬ）。
+    pub def activeDocs(w: World): List[(String, List[String])] =
+        let base = ("story", StoryDoc.path() :: Nil)
+            :: ("theme", ThemeDoc.path() :: Nil)
+            :: ("sprite", spritePath() :: Nil)
+            :: Nil;
+        match w#phase {
+            case Phase.Title => base
+            case Phase.Story => List.append(base,
+                   ("ui", NovelKit.uiPaths())
+                :: ("kind", KindDoc.path() :: Nil)
+                :: Nil)
+        }
 
     // ── 進行の規則 ──
 

@@ -178,6 +178,22 @@ mod TestRules {
                                      theme = ThemeDoc.defaults(), sprites = PxSpriteDoc.empty() });
         Assert.assertEq(expected = List.length(fixture()#herbs), World.goalOf(greedy))
 
+    // ══════════════════════════════════════════════════════
+    // 表示中の Doc の名乗り(Studio のバッジの材料。どの id を名乗るかはルール)
+    // ══════════════════════════════════════════════════════
+
+    @Test
+    def testActiveDocsFollowPhase(): Unit \ Assert =
+        // 表紙とクリアでは手触り(kind)を名乗らない — 里を歩いている間だけ加わる。
+        // id は project.json の editor 宣言と対(Studio が突き合わせに使う)。
+        Assert.assertEq(
+            expected = ("map" :: "theme" :: "sprite" :: Nil,
+                        "map" :: "theme" :: "sprite" :: "kind" :: Nil,
+                        "map" :: "theme" :: "sprite" :: Nil),
+            (World.activeDocs(w0()) |> List.map(fst),
+             World.activeDocs(atStart()) |> List.map(fst),
+             World.activeDocs(clearedWorld()) |> List.map(fst)))
+
     // ── 脚本の小物(期待値はぜんぶ fixture から引く) ──
 
     def gateCell(): Grid.Cell =
