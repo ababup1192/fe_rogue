@@ -17,9 +17,9 @@ mod TestDocs {
     @Test
     def testMapOverridesOneField(): Unit \ Assert =
         // 1 フィールドだけ書いた JSON はそこだけ効き、残りは既定のまま。
-        let doc = MapDoc.fromJson("{\"version\":1, \"goal\": 7}")
+        let doc = MapDoc.fromJson("{\"version\":1, \"hint\": \"Xではじめる\"}")
             |> Option.getWithDefault(MapDoc.defaults());
-        Assert.assertEq(expected = (7, MapDoc.defaults()#door#need), (doc#goal, doc#door#need))
+        Assert.assertEq(expected = ("Xではじめる", MapDoc.defaults()#goal), (doc#hint, doc#goal))
 
     @Test
     def testMapRowsLengthFollowsJson(): Unit \ Assert =

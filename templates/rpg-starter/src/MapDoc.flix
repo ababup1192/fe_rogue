@@ -17,12 +17,15 @@ mod MapDoc {
 
     /// 里の間取り。rows = タイルの文字格子（'#' = 石垣、',' = 畑、'.' = 道。
     /// 知らない文字は道に倒す）、start = 主人公の最初のマス、goal = クリアに要る薬草の数、
-    /// lamps = 灯りの立つマス（薬草を拾うたびひとつ点く）。title / subtitle / clear は画面の文言。
+    /// lamps = 灯りの立つマス（薬草を拾うたびひとつ点く）。
+    /// title / subtitle / clear / hint / clearHint は画面の文言（hint = 表紙、clearHint = クリア画面の操作ヒント）。
     pub type alias Doc = {
         version = Int32,
         title = String,
         subtitle = String,
         clear = String,
+        hint = String,
+        clearHint = String,
         start = Grid.Cell,
         rows = List[String],
         villagers = List[Villager],
@@ -46,6 +49,8 @@ mod MapDoc {
           title = "霧の里",
           subtitle = "薬草を届けに、夕暮れの段々畑へ",
           clear = "薬草はぜんぶ届いた。里に灯がともる",
+          hint = "Zキーではじめる",
+          clearHint = "Zキーではじめにもどる",
           start = { x = 2, y = 2 },
           rows =
                  "############"
@@ -106,6 +111,8 @@ mod MapDoc {
           title = JsonCodec.stringOr("title", d#title, root),
           subtitle = JsonCodec.stringOr("subtitle", d#subtitle, root),
           clear = JsonCodec.stringOr("clear", d#clear, root),
+          hint = JsonCodec.stringOr("hint", d#hint, root),
+          clearHint = JsonCodec.stringOr("clearHint", d#clearHint, root),
           start = cellOr(d#start, "start", root),
           rows = Map.get("rows", root)
               |> Option.flatMap(JsonCodec.decodeList(JsonCodec.expectString))

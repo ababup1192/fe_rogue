@@ -15,6 +15,7 @@ mod TestRules {
 
     def fixture(): MapDoc.Doc =
         { version = 1, title = "test", subtitle = "", clear = "",
+          hint = "", clearHint = "",
           start = { x = 3, y = 1 },
           rows =
                  "#########"

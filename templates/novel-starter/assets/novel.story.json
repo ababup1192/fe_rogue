@@ -3,6 +3,7 @@
   "note": "台本。文章・分岐・結末は全部この rows にあり、書き換えれば別の事件になる。節(sections)の並び: beats を順に読み、読み終えたら ask(あれば)で分岐、無ければ next へ。ask も next も無い節が結末(読み終わりで表紙へ戻る)。suspect: true の選択肢を選ぶと館の灯りがひとつ消える。",
   "title": "消えた絵",
   "subtitle": "雨の夜、洋館の書斎から一枚の絵が消えた",
+  "hint": "クリックではじめる",
   "start": "arrival",
   "lamps": 3,
   "sections": [

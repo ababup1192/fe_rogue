@@ -14,7 +14,7 @@ mod TestRules {
         { speaker = speaker, text = text }
 
     def fixture(): StoryDoc.Doc =
-        { version = 1, title = "test", subtitle = "", start = "hall", lamps = 2,
+        { version = 1, title = "test", subtitle = "", hint = "", start = "hall", lamps = 2,
           sections =
               { id = "hall", beats = beat("", "雨の音。") :: beat("私", "壁の色が違う。") :: Nil,
                 ask = Some({ speaker = "私", text = "誰を疑う?",

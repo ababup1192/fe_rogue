@@ -233,7 +233,7 @@ mod View {
     def clampF(lo: Float64, hi: Float64, v: Float64): Float64 =
         Float64.max(lo, Float64.min(hi, v))
 
-    // ── 表紙とクリアの幕（文言は間取りの Doc から。操作のヒントだけコード） ──
+    // ── 表紙とクリアの幕（文言はすべて間取りの Doc から: 見出し・一行・操作のヒント） ──
 
     def overlay(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         match w#phase {
@@ -241,11 +241,11 @@ mod View {
             case World.Phase.Title =>
                 List.append(veil(w#theme, 0.45), banner(atlas, w#theme,
                     { head = w#map#title, headSize = 26.0,
-                      body = w#map#subtitle, hint = "Zキーではじめる" }))
+                      body = w#map#subtitle, hint = w#map#hint }))
             case World.Phase.Clear =>
                 List.append(veil(w#theme, 0.55), banner(atlas, w#theme,
                     { head = w#map#title, headSize = 16.0,
-                      body = w#map#clear, hint = "Zキーではじめにもどる" }))
+                      body = w#map#clear, hint = w#map#clearHint }))
         }
 
     def veil(theme: ThemeDoc.Doc, alpha: Float64): List[Render.PlacedItem] =

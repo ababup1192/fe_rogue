@@ -15,9 +15,9 @@ mod TestDocs {
     @Test
     def testStoryOverridesOneField(): Unit \ Assert =
         // 1 フィールドだけ書いた JSON はそこだけ効き、残りは既定のまま。
-        let doc = StoryDoc.fromJson("{\"version\":1, \"lamps\": 5}")
+        let doc = StoryDoc.fromJson("{\"version\":1, \"hint\": \"Zではじめる\"}")
             |> Option.getWithDefault(StoryDoc.defaults());
-        Assert.assertEq(expected = (5, StoryDoc.defaults()#start), (doc#lamps, doc#start))
+        Assert.assertEq(expected = ("Zではじめる", StoryDoc.defaults()#start), (doc#hint, doc#start))
 
     @Test
     def testStoryRowsLengthFollowsJson(): Unit \ Assert =

@@ -131,7 +131,7 @@ mod View {
                                  { r = 0.02f32, g = 0.02f32, b = 0.05f32 }, zVeil())
                    |> Render.fade(Float64.truncateToFloat32(alpha)) } :: Nil
 
-    // ── 表紙（事件の名前と一行は台本 Doc から。はじめ方のヒントだけ操作の言葉 = コード） ──
+    // ── 表紙（文言はすべて台本 Doc から: 事件の名前・一行・はじめ方のヒント） ──
 
     def title(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         match w#phase {
@@ -143,7 +143,7 @@ mod View {
                 :: TextDraw.centered({ text = w#story#subtitle,
                                        atlas = atlas, size = 10.0, color = w#theme#ink,
                                        z = zTitle(), centerX = World.width() / 2.0, y = 160.0 })
-                :: TextDraw.centered({ text = "クリックではじめる", atlas = atlas, size = 9.0,
+                :: TextDraw.centered({ text = w#story#hint, atlas = atlas, size = 9.0,
                                        color = ThemeDoc.lighten(w#theme#bg, 0.35),
                                        z = zTitle(), centerX = World.width() / 2.0, y = 196.0 })
                 :: Nil

@@ -10,6 +10,8 @@
     "title": { "type": "string", "description": "表紙に出す里の名前" },
     "subtitle": { "type": "string", "description": "表紙に出す一行" },
     "clear": { "type": "string", "description": "クリア画面に出す一行" },
+    "hint": { "type": "string", "description": "表紙に出す操作のヒント(はじめ方)" },
+    "clearHint": { "type": "string", "description": "クリア画面に出す操作のヒント(もどり方)" },
     "start": {
       "type": "object",
       "description": "主人公が最初に立つマス",
