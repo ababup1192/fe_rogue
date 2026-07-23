@@ -36,7 +36,8 @@ mod Controls {
         { map = MapDoc.load(MapDoc.path()),
           kind = KindDoc.load(KindDoc.path()),
           theme = ThemeDoc.load(ThemeDoc.path()),
-          sprites = PxSpriteDoc.load(World.spritePath()) }
+          sprites = PxSpriteDoc.load(World.spritePath()),
+          terrain = TerrainDoc.load(World.terrainPath()) }
 
     pub def reloadMap(w: World.World): World.World \ Fs.FileRead =
         World.withMap(MapDoc.load(MapDoc.path()), w)
@@ -50,7 +51,10 @@ mod Controls {
     pub def reloadSprites(w: World.World): World.World \ Fs.FileRead =
         World.withSprites(PxSpriteDoc.load(World.spritePath()), w)
 
+    pub def reloadTerrain(w: World.World): World.World \ Fs.FileRead =
+        World.withTerrain(TerrainDoc.load(World.terrainPath()), w)
+
     /// F1: Doc を全部読み直す。
     pub def reloadAll(w: World.World): World.World \ Fs.FileRead =
-        w |> reloadMap |> reloadKind |> reloadTheme |> reloadSprites
+        w |> reloadMap |> reloadKind |> reloadTheme |> reloadSprites |> reloadTerrain
 }

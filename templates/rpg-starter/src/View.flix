@@ -1,14 +1,14 @@
 // View — World から「(置き場所, 見せたい物) のリスト」への投影（純粋）。
 // 場面は霧の出た夕暮れの段々畑の里: タイルの盤・扉・薬草・灯り・住人・主人公、
 // その上に霧、いちばん上に ふきだし と表紙/クリアの文字。
-// タイルの色分け・段差の陰・霧のばらつきは全部ここで導く（Doc は基準色と配置だけ持つ）。
+// 盤は「ベース床（道）を全セルに敷き、その上に terrain の表（rpg.terrain.json）を重ねる」—
+// 石垣・畑の角の変化形は Terrain（デュアルグリッド）が自動生成し、View は幾何を書かない。
 mod View {
 
     // ── z 層（盤 1..9 / 物 10..29 / 霧 30 / 幕と文字 40.. / ふきだし 50..） ──
 
     def zSky(): Int32 = 0
     def zTile(): Int32 = 1
-    def zTileEdge(): Int32 = 2
     def zDoor(): Int32 = 10
     def zHerb(): Int32 = 12
     def zLamp(): Int32 = 14
@@ -62,44 +62,45 @@ mod View {
         { at = { x = 0.0, y = 0.0 },
           item = Render.box({ x = World.width(), y = World.height() }, theme#sky, zSky()) } :: Nil
 
-    /// rows の文字格子をそのまま塗る。'#' = 石垣、',' = 畑、'.'（と知らない文字） = 道。
-    /// 畑は Hash01 でわずかに明るさを散らし（毎回同じ = bake が決定的）、
-    /// 下が畑でないマスの裾に陰を落として段々に見せる。
+    /// ベース床（道）を全セルに敷き、その上に terrain の表を重ねる。
+    /// entries に無い文字は床のまま = fail-open。
+    /// z の秩序: zTile() = 1 < terrain の fill/band/surface（zPlanOf が 2..9 に
+    /// 割り付ける）< zDoor() = 10。ベース床は必ず terrain の下、
+    /// 扉・薬草・人・ふきだしは必ず terrain の上に出る。
     def tiles(w: World.World): List[Render.PlacedItem] =
+        let t = World.tileSize();
+        let table = w#terrain#entries
+            |> List.map(e -> { char = e#char,
+                               spec = TerrainDoc.specOf(key -> ThemeDoc.resolver(w#theme, key), e),
+                               z = zPlanOf(e) });
+        List.append(
+            baseFloor(w, t),
+            Terrain.fromRows({ tileSize = t, origin = boardOrigin(w),
+                               styleMix = w#terrain#styleMix }, table, w#map#rows))
+
+    /// terrain の z 割り付け（2..9 の帯）。平らな地形（畑）は床のすぐ上、
+    /// 持ち上げ地形（石垣）はその上 — 持ち上げの立ち上がりが北隣の平ら地形
+    /// （畑の裾）に重なって 2.5D に見えるための順序。
+    def zPlanOf(e: TerrainDoc.EntryDoc): { fill = Int32, band = Int32, surface = Int32 } =
+        match e#height {
+            case None    => { fill = 2, band = 3, surface = 3 }
+            case Some(_) => { fill = 6, band = 7, surface = 7 }
+        }
+
+    /// ベース床（道）を全セルに敷く。色と式は旧 View.tile の道と同一
+    /// （theme#path + Hash01 のゆらぎ。Hash01.at の座標順 (y, x) もそのまま）。
+    def baseFloor(w: World.World, t: Float64): List[Render.PlacedItem] =
         w#map#rows |> List.zipWithIndex |> List.flatMap(rowEntry -> {
             let (y, row) = rowEntry;
-            String.toList(row) |> List.zipWithIndex |> List.flatMap(colEntry -> {
-                let (x, ch) = colEntry;
-                tile(w, { x = x, y = y }, ch)
+            String.toList(row) |> List.zipWithIndex |> List.map(colEntry -> {
+                let (x, _) = colEntry;
+                let cell = { x = x, y = y };
+                { at = cellTopLeft(w, cell),
+                  item = Render.box({ x = t, y = t },
+                      ThemeDoc.lighten(w#theme#path, Hash01.at(cell#y, cell#x) * 0.06),
+                      zTile()) }
             })
         })
-
-    def tile(w: World.World, cell: Grid.Cell, ch: Char): List[Render.PlacedItem] =
-        let t = World.tileSize();
-        let at = cellTopLeft(w, cell);
-        let theme = w#theme;
-        match ch {
-            case '#' =>
-                // 石垣: 本体 + 上辺のハイライト（霧の里の低い石積み）。
-                   { at = at, item = Render.box({ x = t, y = t }, theme#wall, zTile()) }
-                :: { at = at, item = Render.box({ x = t, y = 3.0 },
-                        ThemeDoc.lighten(theme#wall, 0.18), zTileEdge()) }
-                :: Nil
-            case ',' =>
-                // 畑: マスごとに明るさを散らす。下のマスが畑でなければ裾に段の陰。
-                let tint = ThemeDoc.lighten(theme#field, Hash01.at(cell#x, cell#y) * 0.10);
-                let body = { at = at, item = Render.box({ x = t, y = t }, tint, zTile()) };
-                if (MapDoc.tileAt(Grid.neighborOf(cell, Dir4.Down), w#map) != ',')
-                    body :: { at = { x = at#x, y = at#y + t - 4.0 },
-                              item = Render.box({ x = t, y = 4.0 },
-                                  ThemeDoc.darken(theme#field, 0.35), zTileEdge()) } :: Nil
-                else
-                    body :: Nil
-            case _ =>
-                // 道（知らない文字も道に倒す = MapDoc.solidAt と同じ読み方）。
-                { at = at, item = Render.box({ x = t, y = t },
-                    ThemeDoc.lighten(theme#path, Hash01.at(cell#y, cell#x) * 0.06), zTile()) } :: Nil
-        }
 
     // ── 扉（約束で開く木戸。閉じている間は通れない） ──
 

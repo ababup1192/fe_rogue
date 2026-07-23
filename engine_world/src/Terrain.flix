@@ -68,7 +68,9 @@ mod Terrain {
         table |> List.flatMap(entry ->
             List.append(
                 corners |> List.flatMap(corner -> itemsAt(opts, entry, corner)),
-                blotchItemsOf(entry, opts#tileSize)))
+                List.append(
+                    mottleItemsOf(entry, opts#tileSize),
+                    blotchItemsOf(entry, opts#tileSize))))
 
     /// 表面の時間演出(水のきらめきなど)。静止した見た目と違い毎フレーム呼ぶ —
     /// 状態は持たず、同じ時刻なら同じ絵(巻き戻しても揺れない)。
@@ -149,6 +151,41 @@ mod Terrain {
             case Some(fx) =>
                 entry#cells |> Set.toList |> List.flatMap(cell ->
                     Material.blotchItems(fx, cell, tileSize, entry#z#surface))
+        }
+
+    /// 1エントリぶんのセル別の明度ゆらぎ(耕した畑のパッチワーク感)。mottle <= 0 は
+    /// 描かない(fail-open 既定オフ)。白の薄箱をセルに重ねる — 白 α=t の重ねは
+    /// lighten(fill, t) と等価なので、α = hash × mottle で「セルごとに fill を
+    /// 0..mottle だけ白へ寄せた」市松のゆらぎになる。
+    /// 境界側(隣が同種でない)は tile×0.3 内側へ寄せる — デュアルグリッドの角の丸み・
+    /// 欠き(最悪はひし形の 1/2 タイル)から食み出さないため。持ち上げ地形は天面と同じだけ
+    /// 上へずらす(天面に乗る明度ゆらぎ = 石積みの石ごとの色違い)。
+    /// z は blotch と同じ surface — 塗りと同 z だと sprite 系が先に併合されて沈むため。
+    def mottleItemsOf(entry: Entry, tileSize: Float64): List[Render.PlacedItem] =
+        if (entry#spec#mottle <= 0.0009)
+            Nil
+        else {
+            let lift = match entry#spec#height {
+                case Material.HeightProfile.Flat      => 0.0
+                case Material.HeightProfile.Lifted(l) => l#height
+            };
+            let margin = tileSize * 0.3;
+            entry#cells |> Set.toList |> List.filterMap(cell -> {
+                let (x, y) = cell;
+                let edges = edgesOf(entry#cells, cell);
+                let x0 = Int32.toFloat64(x) * tileSize + (if (edges#w) 0.0 else margin);
+                let x1 = Int32.toFloat64(x + 1) * tileSize - (if (edges#e) 0.0 else margin);
+                let y0 = Int32.toFloat64(y) * tileSize - lift + (if (edges#n) 0.0 else margin);
+                let y1 = Int32.toFloat64(y + 1) * tileSize - lift - (if (edges#s) 0.0 else margin);
+                let alpha = entry#spec#mottle * DualGrid.hash(x, y, 45);
+                if (x1 - x0 <= 0.5 or y1 - y0 <= 0.5) None
+                else Some(
+                    { at = { x = x0, y = y0 },
+                      item = Render.box({ x = x1 - x0, y = y1 - y0 },
+                                        { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
+                                        entry#z#surface)
+                          |> Render.fade(Float64.truncateToFloat32(alpha)) })
+            })
         }
 
     /// このセルの上下左右の隣も同じ種か。cells は1種のセル集合なので、メンバー判定だけで

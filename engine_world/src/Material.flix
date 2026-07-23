@@ -176,7 +176,10 @@ mod Material {
     /// 質感1式。fill = 塗り、edge/edgeWidth = 輪郭フチ、forceStyle = 角の形の固定
     /// (None = 場所ごとに混ぜる。水は丸固定 — 水面はどのテーマでも角ばらせない)、
     /// jitter = 対角辺の岩肌の揺らぎ、surface = 表面の時間演出の重ね(空 = 演出なし)、
-    /// blotch = 静的なむら(prebuilt に焼く)、height = 立体感。
+    /// blotch = 静的なむら(prebuilt に焼く)、
+    /// mottle = セル別の明度ゆらぎの最大量(0 = なし。耕した畑のパッチワーク —
+    /// セル座標ハッシュ×この値ぶん白へ寄せる。lighten(fill, hash*mottle) と等価)、
+    /// height = 立体感。
     pub type alias Spec = {
         fill = Color,
         edge = EdgeKind,
@@ -185,6 +188,7 @@ mod Material {
         jitter = Float64,
         surface = List[SurfaceFx],
         blotch = Option[BlotchFx],
+        mottle = Float64,
         height = HeightProfile
     }
 

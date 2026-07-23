@@ -19,7 +19,8 @@ mod TerrainDoc {
     /// 表の1行の宣言。char = rows の文字、name = パレットに出る名前(Studio の1ボタン)、
     /// fill = 塗り("#rrggbb" | "@wall")、edge / edgeWidth = 輪郭フチ、
     /// style = 角の形("round"|"square"|"diamond"|"mix")、jitter = 対角辺の岩肌の揺らぎ、
-    /// surface = 表面の粒(preset 名+1色)、height = 持ち上げ(None = 平ら)。
+    /// surface = 表面の粒(preset 名+1色)、mottle = セル別の明度ゆらぎの最大量(0 = なし)、
+    /// height = 持ち上げ(None = 平ら)。
     pub type alias EntryDoc = {
         char = Char, name = String,
         fill = String,
@@ -28,6 +29,7 @@ mod TerrainDoc {
         style = String,
         jitter = Float64,
         surface = List[{ preset = String, color = String }],
+        mottle = Float64,
         height = Option[{ lift = Float64, front = String, shade = String, clipToFloor = Bool }]
     }
 
@@ -48,14 +50,14 @@ mod TerrainDoc {
                 edge = EdgeRef.ByNormal({ top = "@wallTop", side = "@wallSide",
                                           shade = "@wallShade" }),
                 edgeWidth = 2.5, style = "mix", jitter = 0.0,
-                surface = Nil,
+                surface = Nil, mottle = 0.0,
                 height = Some({ lift = 6.0, front = "@wallFront", shade = "@wallShade",
                                 clipToFloor = true }) }
            :: { char = ',', name = "畑",
                 fill = "@field",
                 edge = EdgeRef.Uniform("@fieldShade"),
                 edgeWidth = 1.5, style = "round", jitter = 0.0,
-                surface = Nil, height = None }
+                surface = Nil, mottle = 0.0, height = None }
            :: Nil }
 
     /// テキストから Doc へ(fail-open)。entries の char 重複は先勝ちで畳み(Studio 契約)、
@@ -85,6 +87,7 @@ mod TerrainDoc {
           jitter = e#jitter,
           surface = e#surface |> List.filterMap(fx -> presetOf(resolve, fx)),
           blotch = None,
+          mottle = e#mottle,
           height = heightOf(resolve, e#height) }
 
     /// Studio パレット供給口: entries の {char, name} だけを並べる(1エントリ=1ボタン)。
@@ -129,6 +132,7 @@ mod TerrainDoc {
                       style = JsonCodec.stringOr("style", "mix", obj),
                       jitter = JsonCodec.floatOr("jitter", 0.0, obj),
                       surface = surfaceOf(obj),
+                      mottle = JsonCodec.floatOr("mottle", 0.0, obj),
                       height = heightDocOf(fill, obj) })
         })
 

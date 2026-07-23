@@ -30,6 +30,13 @@
         "role": "material"
       },
       {
+        "id": "terrain",
+        "pattern": "assets/*.terrain.json",
+        "title": "地形の質感（石垣・畑）",
+        "schema": "assets/terrain.schema.json",
+        "role": "material"
+      },
+      {
         "id": "sprite",
         "pattern": "assets/*.sprite.json",
         "title": "ドット絵（主人公・住人・薬草）",
