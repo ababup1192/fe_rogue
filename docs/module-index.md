@@ -14,6 +14,7 @@
 | ホイールの生 delta を目盛りに畳む | InputMap（wheelSteps） |
 | 固定スロットに可変個の項目を流し込む | UiSlots |
 | UI を JSON（ui.json）で宣言する | UiDoc / UiSpec |
+| UI の箱にドット絵の皮を着せる（九分割スキン。box の skin） | UiExtract（boxPlacedItems）/ UiDoc |
 | UI 要素を並べる・整列する | UiLayout / Flex |
 | UI の文字欄に実行時の値を差し込む | UiBinding |
 | 会話窓・文字送りを出す | UiDialog / UiTypewriter |

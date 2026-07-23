@@ -424,14 +424,18 @@ mod UiDoc {
             zIndexOpt       <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
             cornerRadiusOpt <- (JsonCompat.getAtKeyOpt(Root, "cornerRadius", map): Result[JsonError, Option[Float64]]);
             borderWidthOpt  <- (JsonCompat.getAtKeyOpt(Root, "borderWidth", map): Result[JsonError, Option[Float64]]);
-            borderColorOpt  <- parseColorOpt(palette, "borderColor", map)
+            borderColorOpt  <- parseColorOpt(palette, "borderColor", map);
+            skinOpt         <- (JsonCompat.getAtKeyOpt(Root, "skin", map): Result[JsonError, Option[String]]);
+            skinCornerOpt   <- (JsonCompat.getAtKeyOpt(Root, "skinCorner", map): Result[JsonError, Option[Float64]])
         ) yield ({
             color = color,
             alpha = Float64.truncateToFloat32(Option.getWithDefault(1.0, alphaOpt)),
             zIndex = Option.getWithDefault(0, zIndexOpt),
             cornerRadius = Option.getWithDefault(0.0, cornerRadiusOpt),
             borderWidth = Option.getWithDefault(0.0, borderWidthOpt),
-            borderColor = Option.getWithDefault(white(), borderColorOpt)
+            borderColor = Option.getWithDefault(white(), borderColorOpt),
+            skin = skinOpt,
+            skinCorner = skinCornerOpt
         }: UiWidget.BoxComp)
 
     def parseText(defaultFont: String, palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, UiWidget.TextComp] =
@@ -848,7 +852,7 @@ mod UiDoc {
             |> List.map(child -> buildWith(atlasOf, textureInfoOf, child));
         match node#widget {
             case Widget.NoneW       => Flex.box(node#style, childNodes)
-            case Widget.BoxW(b)     => Flex.boxDrawn(node#style, r -> drawBox(b, r), childNodes)
+            case Widget.BoxW(b)     => Flex.boxDrawn(node#style, r -> drawBox(textureInfoOf, b, r), childNodes)
             case Widget.TextW(t)    => buildText(atlasOf, node#style, t, childNodes)
             case Widget.SpriteW(sp) => Flex.boxDrawn(node#style,
                 r -> ({ at = r#position, item = UiExtract.spriteItem(sp, textureInfoOf) }) :: Nil,
@@ -889,10 +893,12 @@ mod UiDoc {
                     item = Render.textTinted(t#text, atlas, t#fontSize, t#tint, t#zIndex) }) :: Nil,
             childNodes)
 
-    /// box: rect を塗る。BoxComp→Item 変換は UiExtract.boxItem が唯一の実装
-    /// （経路で絵が変わる二実装を作らない）。
-    def drawBox(b: UiWidget.BoxComp, r: Rect2.Rect2): List[Render.PlacedItem] =
-        ({ at = r#position, item = UiExtract.boxItem(b, r#size) }) :: Nil
+    /// box: rect を塗る（skin があれば九分割スキン）。BoxComp→PlacedItem 変換は
+    /// UiExtract.boxPlacedItems が唯一の実装（経路で絵が変わる二実装を作らない）。
+    def drawBox(textureInfoOf: String -> Option[GameEngine.TextureInfo],
+                b: UiWidget.BoxComp, r: Rect2.Rect2): List[Render.PlacedItem] =
+        UiExtract.boxPlacedItems(b, r#size, textureInfoOf)
+            |> List.map(placed -> { at = Vec2.add(r#position, placed#at) | placed })
 
     /// poly: 頂点は rect 左上相対（UiSpec 互換）。rotation は pivot 未指定なら
     /// 「rect 中心を原点」に Render.rotated（頂点をどこ原点で組むかが軸、の流儀そのまま）。

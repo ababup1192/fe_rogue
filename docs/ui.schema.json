@@ -99,6 +99,8 @@
         "cornerRadius": { "type": "number" },
         "borderWidth": { "type": "number" },
         "borderColor": { "$ref": "#/$defs/color" },
+        "skin": { "type": "string", "description": "窓の皮にするドット絵(テクスチャ)の名前。box で指定すると塗りの代わりに九分割スキン(角は等倍・辺と中は伸ばす)で描く。名前が引けないときは従来の塗りに戻る" },
+        "skinCorner": { "type": "number", "description": "九分割の角の厚み(テクスチャpx)。省略時は皮の短辺の 1/3" },
         "hover": {
           "type": "object",
           "description": "hover 時の部分上書き (box/図形: color/borderColor/alpha、text: tint、sprite: tint、poly: color/alpha)。UiStore 経路でのみ効く。",

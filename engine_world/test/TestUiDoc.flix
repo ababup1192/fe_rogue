@@ -750,4 +750,51 @@ mod TestUiDoc {
         let uiSpecOk = JsonCompat.parse(doc) |> Option.map(json -> Result.isOk(UiSpec.parse(json)));
         let uiDocOk  = JsonCompat.parse(doc) |> Option.map(json -> Result.isOk(UiDoc.parse(json)));
         Assert.assertEq(expected = (Some(false), Some(true)), (uiSpecOk, uiDocOk))
+
+    // ── box skin（九分割スキン） ──
+
+    def skinDoc(): String =
+        "{\"root\": {\"name\":\"g\",\"children\":["
+            + "{\"name\":\"panel\",\"widget\":\"box\",\"color\":\"#112233\","
+            + "\"skin\":\"winSkin\",\"skinCorner\":4.0,\"width\":100,\"height\":40}]}}"
+
+    def skinBoxOf(doc: String): Option[UiWidget.BoxComp] =
+        parseDoc(doc) |> Option.flatMap(firstChild) |> Option.flatMap(child ->
+            match widgetOf(child) {
+                case UiDoc.Widget.BoxW(b) => Some(b)
+                case _                    => None
+            })
+
+    @Test
+    def testBoxSkinNineSlice(): Unit \ Assert =
+        // skin 指定の box は九分割 Sprite になる。置き先の切れ目は skinCorner（角は等倍）から導く。
+        let c = 4.0;
+        let w = 100.0;
+        let h = 40.0;
+        let texInfo = _ -> Some({ id = GpuHandle.wrapTextureId(0), width = 12.0, height = 12.0 });
+        let expectedOffsets = List.toSet(
+            (0.0 :: c :: w - c :: Nil) |> List.flatMap(x -> (0.0 :: c :: h - c :: Nil) |> List.map(y -> (x, y))));
+        let got = skinBoxOf(skinDoc()) |> Option.map(b -> {
+            let pieces = UiExtract.boxPlacedItems(b, { x = w, y = h }, texInfo);
+            let allSkinSprites = pieces |> List.forAll(p -> match p#item {
+                case Render.Item.Sprite(s) => s#texture == "winSkin" and Option.nonEmpty(s#regionRect)
+                case _                     => false
+            });
+            (List.length(pieces), allSkinSprites,
+             (pieces |> List.map(p -> (p#at#x, p#at#y)) |> List.toSet) == expectedOffsets)
+        });
+        Assert.assertEq(expected = Some((9, true, true)), got)
+
+    @Test
+    def testBoxSkinFailOpen(): Unit \ Assert =
+        // skin 名のテクスチャが引けないときは従来の Box 1 枚に静かに倒す（窓は壊れない）。
+        let got = skinBoxOf(skinDoc()) |> Option.flatMap(b ->
+            match UiExtract.boxPlacedItems(b, { x = 100.0, y = 40.0 }, _ -> None) {
+                case placed :: Nil => match placed#item {
+                    case Render.Item.Box(bx) => Some((placed#at#x, placed#at#y, bx#size#x, bx#size#y))
+                    case _                   => None
+                }
+                case _ => None
+            });
+        Assert.assertEq(expected = Some((0.0, 0.0, 100.0, 40.0)), got)
 }

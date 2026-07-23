@@ -13,28 +13,31 @@ mod UiExtract {
 
     /// UI entity を PlacedItem（置き場所つきの描画物）列へ射影する。可視 entity のみ・矩形が確定したもののみ。
     /// 並びは (zIndex, 階層深さ, order, id) で安定ソートする（背面から前面へ）。
-    /// box → 単色塗り（alpha 反映）、text → 着色テキスト、sprite → スプライト。
+    /// box → 単色塗り（alpha 反映。skin 指定時は九分割スキン）、text → 着色テキスト、sprite → スプライト。
     /// 文字実寸は `atlasOf`、sprite のセル分割（frame→regionRect）のテクスチャ寸法は `textureInfoOf`
     /// で引く。どちらも呼び側が注入するので、画面なしのテストでは純粋関数を渡せる。
     pub def extract(ui: UiStore.UiWorld, rects: Map[EntityId, Rect2.Rect2],
                     vis: Map[EntityId, Bool], atlasOf: String -> FontAtlas \ ef,
                     textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): List[Render.PlacedItem] \ ef =
         let hoveredId = hoveredIdOf(ui);
+        // box は 1 entity が複数枚（九分割スキン）になり得るので、rect 左上からのずれを entry に持たせる。
         let boxEntries = ui#boxes |> Map.foldLeftWithKey((acc, id, box) ->
             match Map.get(id, rects) {
                 case None       => acc
-                case Some(rect) => (id, box#zIndex, boxItem(hoverBox(hoverFor(ui, hoveredId, id), box), rect#size)) :: acc
+                case Some(rect) =>
+                    let placed = boxPlacedItems(hoverBox(hoverFor(ui, hoveredId, id), box), rect#size, textureInfoOf);
+                    List.append(placed |> List.map(p -> (id, box#zIndex, p#at, p#item)), acc)
             }, Nil);
         let spriteEntries = ui#sprites |> Map.foldLeftWithKey((acc, id, sprite) ->
-            (id, sprite#zIndex, spriteItem(hoverSprite(hoverFor(ui, hoveredId, id), sprite), textureInfoOf)) :: acc, Nil);
+            (id, sprite#zIndex, Vec2.zero(), spriteItem(hoverSprite(hoverFor(ui, hoveredId, id), sprite), textureInfoOf)) :: acc, Nil);
         let textEntries = Map.foldLeftWithKey((acc, id, comp) ->
-            (id, comp#zIndex, textItem(hoverText(hoverFor(ui, hoveredId, id), comp), atlasOf)) :: acc,
-            (Nil : List[(EntityId, Int32, Render.Item)]), ui#texts);
+            (id, comp#zIndex, Vec2.zero(), textItem(hoverText(hoverFor(ui, hoveredId, id), comp), atlasOf)) :: acc,
+            (Nil : List[(EntityId, Int32, Vec2.Vec2, Render.Item)]), ui#texts);
         List.append(boxEntries, List.append(spriteEntries, textEntries))
-            |> List.filter(entry -> {let (id, _z, _item) = entry; Option.getWithDefault(true, Map.get(id, vis))})
+            |> List.filter(entry -> {let (id, _z, _off, _item) = entry; Option.getWithDefault(true, Map.get(id, vis))})
             |> List.filterMap(entry -> {
-                let (id, z, item) = entry;
-                Map.get(id, rects) |> Option.map(rect -> (id, z, rect#position, item))
+                let (id, z, off, item) = entry;
+                Map.get(id, rects) |> Option.map(rect -> (id, z, Vec2.add(rect#position, off), item))
             })
             |> List.sortBy(entry -> {let (id, z, _pos, _item) = entry; (z, UiHierarchy.depthOf(id, ui#parents), orderOf(id, ui), id)})
             |> List.map(entry -> {let (_id, _z, pos, item) = entry; { at = pos, item = item }})
@@ -142,6 +145,60 @@ mod UiExtract {
         }: GameEngine.BoxStyle);
         Render.Item.Box({size = size, color = box#color, alpha = box#alpha, style = Some(style), zIndex = box#zIndex,
                          blend = DrawCmd.BlendMode.Normal})
+
+    /// box の PlacedItem 列（`at` は箱の左上からのずれ — 置き場所は呼び手が足す）。
+    /// skin が無ければ従来の Box 1 枚。skin があればテクスチャを九分割した Sprite 群にする。
+    /// skin 名のテクスチャが引けないときは従来の Box に静かに倒す（fail-open — 窓は壊れない）。
+    /// pub なのは UiDoc（Flex 経路）と extract（UiStore 経路）が同じ box 意味論で描くため —
+    /// BoxComp→PlacedItem 変換の唯一の実装。
+    pub def boxPlacedItems(box: UiWidget.BoxComp, size: Vec2.Vec2,
+                           textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): List[Render.PlacedItem] \ ef =
+        match box#skin {
+            case None       => plainBox(box, size)
+            case Some(name) => match textureInfoOf(name) {
+                case None       => plainBox(box, size)
+                case Some(info) => nineSlice(box, name, info, size)
+            }
+        }
+
+    def plainBox(box: UiWidget.BoxComp, size: Vec2.Vec2): List[Render.PlacedItem] =
+        ({ at = Vec2.zero(), item = boxItem(box, size) }) :: Nil
+
+    /// 九分割スキン: テクスチャを角の厚み c（テクスチャ px、既定 短辺/3）で 3×3 に割り、
+    /// 角 4 枚は等倍のまま、辺 4 枚と中 1 枚は箱のサイズまで伸ばす。箱が角 2 つ分より
+    /// 小さいときだけ角も半分サイズまで縮める（裏返って重なる絵を作らない）。
+    /// 幅か高さが 0 以下の帯（角の厚みちょうどのテクスチャ等）は出さない。
+    def nineSlice(box: UiWidget.BoxComp, texture: String, info: GameEngine.TextureInfo,
+                  size: Vec2.Vec2): List[Render.PlacedItem] =
+        let c = Option.getWithDefault(Float64.min(info#width, info#height) / 3.0, box#skinCorner);
+        let cw = Float64.min(c, size#x / 2.0);
+        let ch = Float64.min(c, size#y / 2.0);
+        // 各帯 = (src 始点, src 長, dst 始点, dst 長)。cols × rows の 9 交差が九分割。
+        let cols = (0.0, c, 0.0, cw)
+                :: (c, info#width - c * 2.0, cw, size#x - cw * 2.0)
+                :: (info#width - c, c, size#x - cw, cw) :: Nil;
+        let rows = (0.0, c, 0.0, ch)
+                :: (c, info#height - c * 2.0, ch, size#y - ch * 2.0)
+                :: (info#height - c, c, size#y - ch, ch) :: Nil;
+        cols |> List.flatMap(col -> rows |> List.filterMap(row -> {
+            let (sx, sw, dx, dw) = col;
+            let (sy, sh, dy, dh) = row;
+            if (sw <= 0.0 or sh <= 0.0 or dw <= 0.0 or dh <= 0.0) None
+            else Some({ at = ({ x = dx, y = dy }: Vec2.Vec2),
+                        item = slicePiece(box, texture, info,
+                                          { position = { x = sx, y = sy }, size = { x = sw, y = sh } },
+                                          { x = dw, y = dh }) })
+        }))
+
+    /// 九分割の 1 枚。レンダラは quad を「テクスチャ全体サイズ × scale」で張る（regionRect は
+    /// UV だけ）ので、置き先サイズ dst になる scale = dst / テクスチャ全体サイズ を渡す。
+    def slicePiece(box: UiWidget.BoxComp, texture: String, info: GameEngine.TextureInfo,
+                   src: Rect2.Rect2, dst: Vec2.Vec2): Render.Item =
+        Render.Item.Sprite({
+            texture = texture, tint = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, alpha = box#alpha,
+            scale = { x = dst#x / info#width, y = dst#y / info#height },
+            rotation = 0.0, centered = false, flipH = false, flipV = false,
+            regionRect = Some(src), zIndex = box#zIndex, blend = DrawCmd.BlendMode.Normal })
 
     /// text の Item。atlasOf で font 名から FontAtlas を引く。
     def textItem(comp: UiWidget.TextComp, atlasOf: String -> FontAtlas \ ef): Render.Item \ ef =

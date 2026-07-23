@@ -8,8 +8,12 @@ mod UiWidget {
     /// `color`: 塗り色。`alpha`: 不透明度。`zIndex`: 重なり順。
     /// `cornerRadius`: 角丸半径（px、既定 0.0=角丸なし）。
     /// `borderWidth`: 枠線幅（px、既定 0.0=枠なし）。`borderColor`: 枠線色（既定 白）。
+    /// `skin`: 窓の皮にするドット絵（テクスチャ名）。指定すると塗りの代わりに九分割スキン
+    /// （角4枚は等倍・辺と中は伸ばす）で描く。テクスチャが引けなければ従来の塗りに倒す（fail-open）。
+    /// `skinCorner`: 九分割の角の厚み（テクスチャ px）。None は短辺の 1/3 を使う。
     pub type alias BoxComp = { color = Color, alpha = Float32, zIndex = Int32,
-                               cornerRadius = Float64, borderWidth = Float64, borderColor = Color }
+                               cornerRadius = Float64, borderWidth = Float64, borderColor = Color,
+                               skin = Option[String], skinCorner = Option[Float64] }
 
     /// テキストの描画属性。
     /// `text`: 表示文字列。`font`: フォント名（atlas 引き当てキー）。`fontSize`: 表示サイズ。
