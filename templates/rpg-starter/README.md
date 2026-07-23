@@ -36,6 +36,10 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 - `assets/rpg.map.json` … 里の間取り。タイルの rows（`#`=石垣 `,`=畑 `.`=道）・住人と 1 行・
   扉と約束（promise / need / ask / opened）・薬草と灯りの配置・goal・表紙の文言。
   `src/MapDoc.flix` が読む。
+- `assets/rpg.terrain.json` … セル文字→質感の表。**rows を塗るだけで地形が描ける**
+  デュアルグリッド（角の埋まり方から丸/四角/ひし形が自動生成される）。チップ絵を描かず
+  色と質感パラメータだけで地形を作る。色は `#rrggbb` か `@キー`（rpg.theme.json 参照）。
+  `src/View.flix` が engine の `TerrainDoc`（読み込み）と `Terrain.fromRows`（描画）に渡す。
 - `assets/rpg.kind.json` … 手触りの数値（歩く速さ・文字送り）。`src/KindDoc.flix` が読む。
 - `assets/rpg.theme.json` … 色票（空・畑・霧・灯りなど）。`src/ThemeDoc.flix` が読む。
 - `assets/rpg.sprite.json` … ドット絵（主人公・住人・薬草。文字格子）。entityId は `rpg.sprites`。

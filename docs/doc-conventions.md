@@ -67,6 +67,15 @@ Doc は「初期値と見た目の宣言」まで。実行中の状態は World 
 表示中でないファイルを編集している時に注意を出す。ファイルが無ければ
 エディタは何も出さない（付けるかどうかはゲームの自由）。
 
+## スキーマの書き方（sections 方言の細かい取り決め）
+
+- **スカラー型は `text` を標準**にする。schema の `kind: "field"` と `"value"` は
+  同義（どちらも「スカラー 1 個のセクション」）。**`@参照`（テーマ色などを名前で
+  引く）を書く欄は `color` でなく `text`** にする — color ピッカーは `#rrggbb` の
+  固定色しか表せず、`@wall` のような参照を書けないため。
+- **terrain の `entries[].char` は表内で一意**が契約。重複していたら先勝ち
+  （先の宣言が有効・後は捨てる）で decode する（壊れ扱いにせず静かに畳む = fail-open）。
+
 ## 良いお手本
 
 flix_ge_dungeon の assets/ がこの規約の実例になっている:
@@ -74,3 +83,8 @@ flix_ge_dungeon の assets/ がこの規約の実例になっている:
 見た目）、`*.light.json`（灯り）、`*.dungeon.json`（フロア）、`sprites.json`
 （飾り）、`*.shader.json`（水・マグマの面）。project.json の editor 宣言と
 セットで、エディタ・ホットリロード・テストが全部この形の上で動く。
+
+templates/rpg-starter の assets/ も実例:
+`rpg.terrain.json` + `terrain.schema.json`（セル文字→質感の表。色は `#rrggbb` か
+`@キー` のテーマ参照。`entries[].char` は一意・重複は先勝ち）。`rows` を塗るだけで
+DualGrid の角の変化形が自動生成される「地形」Doc の書き方の見本になっている。

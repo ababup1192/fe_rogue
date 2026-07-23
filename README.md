@@ -114,6 +114,12 @@ separate Elm + Tauri editor). See [docs/doc-conventions.md](docs/doc-conventions
 for the full convention, and the "エディタと Doc の流儀" section in
 [CLAUDE.md](CLAUDE.md).
 
+Maps can be drawn without any tile art: a `*.terrain.json` Doc maps cell
+characters to a material, and **painting the `rows` character grid is enough** —
+the dual-grid renderer (`Terrain` / `TerrainDoc`) auto-generates the corner shapes
+(round / square / diamond) from how the four corners are filled. See
+`templates/rpg-starter`.
+
 ## Project layout (monorepo)
 
 ```
@@ -261,6 +267,10 @@ Doc は手書きでも、**flix_ge_studio**（別リポの Elm + Tauri エディ
 フォーム／スライダーからでも編集できる。詳しくは
 [docs/doc-conventions.md](docs/doc-conventions.md) と、[CLAUDE.md](CLAUDE.md) の
 「エディタと Doc の流儀」の節を参照。
+
+マップはチップ絵を描かずに作れる: `*.terrain.json` Doc がセル文字を質感に対応づけ、
+**`rows` の文字格子を塗るだけ**でデュアルグリッド（`Terrain` / `TerrainDoc`）が
+角の埋まり方から丸/四角/ひし形の形を自動生成する。見本は `templates/rpg-starter`。
 
 ## プロジェクト構成（monorepo）
 
