@@ -5,18 +5,21 @@ mod KindDoc {
     use Util.Json.Json
 
     /// 手触りの数値。cps = 文字送りの速さ（1 秒あたりの文字数）、
-    /// dim = 灯りが 1 つ消えるごとに部屋へ重なる暗さ（0〜1 の濃さ）。
+    /// dim = 灯りが 1 つ消えるごとに部屋へ重なる暗さ（0〜1 の濃さ）、
+    /// bodySize / bodyGap = 本文の文字の大きさ・行間（px）。
     pub type alias Doc = {
         version = Int32,
         cps = Float64,
-        dim = Float64
+        dim = Float64,
+        bodySize = Float64,
+        bodyGap = Float64
     }
 
     pub def path(): String = "assets/novel.kind.json"
 
     /// コード側の既定値（assets/novel.kind.json と同じ値から出発する）。
     pub def defaults(): Doc =
-        { version = 1, cps = 30.0, dim = 0.22 }
+        { version = 1, cps = 30.0, dim = 0.22, bodySize = 10.0, bodyGap = 3.0 }
 
     /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ倒す。
     pub def fromJson(text: String): Option[Doc] =
@@ -28,7 +31,9 @@ mod KindDoc {
         let d = defaults();
         { version = JsonCodec.intOr("version", d#version, root),
           cps = JsonCodec.floatOr("cps", d#cps, root),
-          dim = JsonCodec.floatOr("dim", d#dim, root) }
+          dim = JsonCodec.floatOr("dim", d#dim, root),
+          bodySize = JsonCodec.floatOr("bodySize", d#bodySize, root),
+          bodyGap = JsonCodec.floatOr("bodyGap", d#bodyGap, root) }
 
     /// path の Doc を読む。読めない・壊れているときは defaults（fail-open）。
     pub def load(p: String): Doc \ Fs.FileRead =

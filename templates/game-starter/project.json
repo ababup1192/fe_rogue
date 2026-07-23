@@ -34,6 +34,13 @@
         "title": "手触り（速さ）",
         "schema": "assets/sample.schema.json",
         "role": "tuning"
+      },
+      {
+        "id": "project",
+        "pattern": "project.json",
+        "schema": "project.schema.json",
+        "title": "ゲームの題・画面",
+        "role": "tuning"
       }
     ]
   }

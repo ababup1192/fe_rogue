@@ -22,10 +22,6 @@ mod View {
     /// スプライトの格子は 1 セル = 2px で描く（8×8 の格子 = 16px。タイル 20px の中に収まる）。
     def px(): Int32 = 2
 
-    /// ふきだし本文の文字の大きさと行間。
-    def bubbleFontSize(): Float64 = 10.0
-    def bubbleLineGap(): Float64 = 3.0
-
     pub def frame(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
         List.flatten(
                sky(w#theme)
@@ -200,17 +196,20 @@ mod View {
         let spans = UiDialog.visibleBody(w#dialog);
         let fullSpans = UiDialog.currentLine(w#dialog)
             |> Option.map(line -> line#body) |> Option.getWithDefault(Nil);
-        let pad = 6.0;
-        let maxTextW = 200.0;
+        // 文字の大きさ・行間・余白・最大幅は手触り（rpg.kind.json）から来る。
+        let fontSize = w#kind#bubbleSize;
+        let lineGap = w#kind#bubbleGap;
+        let pad = w#kind#bubblePad;
+        let maxTextW = w#kind#bubbleWidth;
         // 枠の寸法は「全文」で測る — 文字送りの途中で枠がガタつかない。
         let lineCount = RichText.wrapLinesBy(
-            ch -> TextDraw.width(Char.toString(ch), atlas, bubbleFontSize()),
+            ch -> TextDraw.width(Char.toString(ch), atlas, fontSize),
             maxTextW, fullSpans) |> List.length |> Int32.max(1);
         let textW = Float64.min(maxTextW,
-            TextDraw.width(RichText.plainText(fullSpans), atlas, bubbleFontSize()));
+            TextDraw.width(RichText.plainText(fullSpans), atlas, fontSize));
         let boxW = textW + pad * 2.0;
-        let boxH = Int32.toFloat64(lineCount) * (bubbleFontSize() + bubbleLineGap())
-            - bubbleLineGap() + pad * 2.0;
+        let boxH = Int32.toFloat64(lineCount) * (fontSize + lineGap)
+            - lineGap + pad * 2.0;
         let boxX = clampF(4.0, World.width() - boxW - 4.0, speakerCenter#x - boxW / 2.0);
         let boxY = Float64.max(4.0, speakerCenter#y - World.tileSize() / 2.0 - boxH - 8.0);
         List.flatten(
@@ -218,9 +217,9 @@ mod View {
                   item = Render.box({ x = boxW, y = boxH }, w#theme#paper, zBubble()) } :: Nil)
             :: tail(speakerCenter, boxY + boxH, w#theme#paper)
             :: RichText.place(
-                   { atlas = atlas, size = bubbleFontSize(), baseTint = w#theme#ink,
+                   { atlas = atlas, size = fontSize, baseTint = w#theme#ink,
                      z = zBubble() + 2, pos = { x = boxX + pad, y = boxY + pad },
-                     maxWidth = maxTextW, lineGap = bubbleLineGap() }, spans)
+                     maxWidth = maxTextW, lineGap = lineGap }, spans)
             :: Nil)
 
     /// ふきだしの口（枠の下辺から話し手へ落ちる小さな三角）。
@@ -239,11 +238,11 @@ mod View {
         match w#phase {
             case World.Phase.Play  => Nil
             case World.Phase.Title =>
-                List.append(veil(w#theme, 0.45), banner(atlas, w#theme,
+                List.append(veil(w#theme, w#theme#titleVeil), banner(atlas, w#theme,
                     { head = w#map#title, headSize = 26.0,
                       body = w#map#subtitle, hint = w#map#hint }))
             case World.Phase.Clear =>
-                List.append(veil(w#theme, 0.55), banner(atlas, w#theme,
+                List.append(veil(w#theme, w#theme#clearVeil), banner(atlas, w#theme,
                     { head = w#map#title, headSize = 16.0,
                       body = w#map#clear, hint = w#map#clearHint }))
         }

@@ -43,10 +43,23 @@
         "role": "material"
       },
       {
+        "id": "palette",
+        "pattern": "assets/ui/palette.json",
+        "title": "枠の色（会話窓・選択肢ボタン・文字）",
+        "role": "material"
+      },
+      {
         "id": "kind",
         "pattern": "assets/novel.kind.json",
         "title": "手触り（文字送り・暗さ）",
         "schema": "assets/kind.schema.json",
+        "role": "tuning"
+      },
+      {
+        "id": "project",
+        "pattern": "project.json",
+        "schema": "project.schema.json",
+        "title": "ゲームの題・画面",
         "role": "tuning"
       }
     ]

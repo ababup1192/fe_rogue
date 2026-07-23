@@ -2,5 +2,9 @@
   "version": 1,
   "note": "手触りの数値。増やしたくなったらフィールドを足し、kind.schema.json と KindDoc の defaults も揃える。",
   "walk": 6.0,
-  "cps": 20.0
+  "cps": 20.0,
+  "bubbleSize": 10.0,
+  "bubbleGap": 3.0,
+  "bubblePad": 6.0,
+  "bubbleWidth": 200.0
 }

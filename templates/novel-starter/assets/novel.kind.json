@@ -2,5 +2,7 @@
   "version": 1,
   "note": "手触りの数値。増やしたくなったらフィールドを足し、kind.schema.json と KindDoc の defaults も揃える。",
   "cps": 30.0,
-  "dim": 0.22
+  "dim": 0.22,
+  "bodySize": 10.0,
+  "bodyGap": 3.0
 }

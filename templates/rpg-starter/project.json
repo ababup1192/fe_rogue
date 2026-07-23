@@ -41,6 +41,13 @@
         "title": "手触り（歩く速さ・文字送り）",
         "schema": "assets/kind.schema.json",
         "role": "tuning"
+      },
+      {
+        "id": "project",
+        "pattern": "project.json",
+        "schema": "project.schema.json",
+        "title": "ゲームの題・画面",
+        "role": "tuning"
       }
     ]
   }

@@ -4,15 +4,18 @@
 mod ThemeDoc {
     use Util.Json.Json
 
-    /// 場面の色票。bg = 部屋の闇（床・全体）、wall = 書斎の壁、
-    /// window = 雨の窓、accent = 灯り・金（差し色）、ink = 本文・表紙の文字色。
+    /// 場面の色票と雨の空気。bg = 部屋の闇（床・全体）、wall = 書斎の壁、
+    /// window = 雨の窓、accent = 灯り・金（差し色）、ink = 本文・表紙の文字色、
+    /// rainCount = 窓の雨すじの本数、rainGlow = 雨すじの明るさ（0〜1。窓色を白に寄せる度合い）。
     pub type alias Doc = {
         version = Int32,
         bg = Color,
         wall = Color,
         window = Color,
         accent = Color,
-        ink = Color
+        ink = Color,
+        rainCount = Int32,
+        rainGlow = Float64
     }
 
     pub def path(): String = "assets/novel.theme.json"
@@ -29,7 +32,9 @@ mod ThemeDoc {
           wall   = rgb(0.164706, 0.141176, 0.219608),
           window = rgb(0.101961, 0.137255, 0.2),
           accent = rgb(1.0, 0.788235, 0.368627),
-          ink    = rgb(0.921569, 0.941176, 1.0) }
+          ink    = rgb(0.921569, 0.941176, 1.0),
+          rainCount = 7,
+          rainGlow = 0.22 }
 
     /// テキストから Doc へ（fail-open）。色の表記（#rrggbb）は UiDoc.colorOf に委ねる。
     pub def fromJson(text: String): Option[Doc] =
@@ -44,7 +49,9 @@ mod ThemeDoc {
           wall   = colorOr(d#wall, "wall", root),
           window = colorOr(d#window, "window", root),
           accent = colorOr(d#accent, "accent", root),
-          ink    = colorOr(d#ink, "ink", root) }
+          ink    = colorOr(d#ink, "ink", root),
+          rainCount = JsonCodec.intOr("rainCount", d#rainCount, root),
+          rainGlow = JsonCodec.floatOr("rainGlow", d#rainGlow, root) }
 
     def colorOr(fallbackColor: Color, key: String, obj: Map[String, Json]): Color =
         Map.get(key, obj)

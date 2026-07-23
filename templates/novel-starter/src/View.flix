@@ -26,7 +26,8 @@ mod View {
             :: veil(w)
             :: title(ctx#atlas, w)
             :: UiRender.itemsWith(_ -> ctx#atlas, _ -> None, w#ui, ctx#visible#size)
-            :: NovelKit.body(ctx#atlas, w#theme#ink, w#kit)
+            :: NovelKit.body(ctx#atlas, w#theme#ink,
+                   { size = w#kind#bodySize, lineGap = w#kind#bodyGap }, w#ui, w#kit)
             :: TextDraw.errorBanner(ctx#atlas, w#docError)
             :: Nil)
 
@@ -65,10 +66,11 @@ mod View {
              item = Render.box({ x = thickness, y = size#y }, color, z) }
         :: Nil
 
-    /// 雨すじ。i 番目の位置と長さは Hash01 が決める（毎回同じ = bake が決定的）。
+    /// 雨すじ。本数と明るさは色票（novel.theme.json）から、
+    /// i 番目の位置と長さは Hash01 が決める（毎回同じ = bake が決定的）。
     def rain(paneAt: Vec2.Vec2, paneSize: Vec2.Vec2, theme: ThemeDoc.Doc): List[Render.PlacedItem] =
-        let streakColor = ThemeDoc.lighten(theme#window, 0.22);
-        List.range(0, 7) |> List.map(i ->
+        let streakColor = ThemeDoc.lighten(theme#window, theme#rainGlow);
+        List.range(0, theme#rainCount) |> List.map(i ->
             { at = { x = paneAt#x + 4.0 + Hash01.at(i, 0) * (paneSize#x - 8.0),
                      y = paneAt#y + Hash01.at(i, 1) * (paneSize#y - 34.0) },
               item = Render.box({ x = 1.0, y = 12.0 + Hash01.at(i, 2) * 20.0 },
