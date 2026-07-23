@@ -4,6 +4,8 @@
 // 描画へ写すだけ — Terrain 自身は Theme も Doc も知らない。
 // rows(文字格子)の入口 cellsOf / flagsOf / fromRows で「文字を塗るだけで角の変化形が出る」。
 // 表を誰が作るかは消費者ごと: rpg-starter は TerrainDoc(JSON)から、dungeon は Surfaces 層から。
+// fromRows(rows+表だけで完結する教科書 API)とデュアルグリッドの初学者向け概念説明は
+// docs/dual-grid.md。
 
 mod Terrain {
 
