@@ -1,0 +1,162 @@
+// Terrain — 「どのセル文字に、どの質感(Material.Spec)を着せるか」の表と rows アダプタ。
+// dungeon の Surfaces を Theme・マップ型に依存しない形へ一般化したもの: 表(Entry)は
+// 呼び側が注入し、Terrain はそれを消費して DualGrid(16ケースの多角形)と Material(質感)の
+// 描画へ写すだけ — Terrain 自身は Theme も Doc も知らない。
+// rows(文字格子)の入口 cellsOf / flagsOf / fromRows で「文字を塗るだけで角の変化形が出る」。
+// 表を誰が作るかは消費者ごと: rpg-starter は TerrainDoc(JSON)から、dungeon は Surfaces 層から。
+
+mod Terrain {
+
+    /// 表の1行(Surfaces.Entry の一般形)。spec = Material.Spec なので、
+    /// 立体感(持ち上げ壁)は spec#height = Material.HeightProfile.Lifted({...}) で表に乗る
+    /// — height のために別フィールドは持たない(Doc からの接続は TerrainDoc.specOf)。
+    /// 責務の線引き: spec は TerrainDoc.specOf が EntryDoc+resolver から生成する
+    /// (色と height の解決は TerrainDoc の責務)。Terrain は spec を消費するだけ。
+    /// flagsAt = 角の埋まり方の読み方、cells = このセル種の座標集合(表面演出と岸の判定用)、
+    /// z = 塗り・フチ帯・表面(粒とむら)の重なり順。
+    pub type alias Entry = {
+        flagsAt = ((Int32, Int32)) -> DualGrid.Corner,
+        cells   = Set[(Int32, Int32)],
+        spec    = Material.Spec,
+        z       = { fill = Int32, band = Int32, surface = Int32 }
+    }
+
+    // ════════════════════════════════════════════════════════
+    // rows(文字格子)アダプタ — 「マップ=rows を塗るだけ」の入口
+    // ════════════════════════════════════════════════════════
+
+    /// rows から「この種のセル」の座標集合を拾う。
+    pub def cellsOf(isKind: Char -> Bool, rows: List[String]): Set[(Int32, Int32)] =
+        rows |> List.zipWithIndex |> List.flatMap(rowEntry -> {
+            let (y, row) = rowEntry;
+            String.toList(row) |> List.zipWithIndex |> List.filterMap(colEntry -> {
+                let (x, ch) = colEntry;
+                if (isKind(ch)) Some((x, y)) else None
+            })
+        }) |> List.toSet
+
+    /// 角 (i, j) のまわり4セル(左上・右上・左下・右下)の埋まり方。
+    /// dungeon の Tiles.wallFlagsAt が原型 — Dungeon.isWallAt を cells の
+    /// メンバー判定に置き換えた一般形。
+    pub def flagsOf(cells: Set[(Int32, Int32)]): ((Int32, Int32)) -> DualGrid.Corner =
+        corner -> {
+            let (i, j) = corner;
+            { tl = Set.memberOf((i - 1, j - 1), cells),
+              tr = Set.memberOf((i,     j - 1), cells),
+              bl = Set.memberOf((i - 1, j    ), cells),
+              br = Set.memberOf((i,     j    ), cells) }
+        }
+
+    /// デュアル格子の全角。セル格子 cols×rowCount に対し角は (cols+1)×(rowCount+1)、
+    /// 北の行から順に返す(持ち上げ壁は南の行が北の行に重なる 2.5D の見た目)。
+    pub def cornersOf(cols: Int32, rowCount: Int32): List[(Int32, Int32)] =
+        List.range(0, rowCount + 1) |> List.flatMap(j ->
+            List.range(0, cols + 1) |> List.map(i -> (i, j)))
+
+    // ════════════════════════════════════════════════════════
+    // 描画(角の並び順は呼び側 — 2.5D の重なりを呼び側が決める)
+    // ════════════════════════════════════════════════════════
+
+    /// 表の全エントリ×渡された角の、静止した見た目。
+    /// z の不変式(呼び側契約): table の z は「ベース床の z < fill/band/surface < 前景(扉等)の z」
+    /// の秩序を呼び側が保証する。この関数は z を検証しない(fail-open)。
+    /// 静的なむら(blotch)は塗り・縁の後に重ねる — 同じ z の重なりは並び順が前後を決めるため、
+    /// 表の順も見た目の一部。
+    pub def staticItems(opts: { tileSize = Float64, styleMix = DualGrid.StyleMix },
+                        table: List[Entry],
+                        corners: List[(Int32, Int32)]): List[Render.PlacedItem] =
+        table |> List.flatMap(entry ->
+            List.append(
+                corners |> List.flatMap(corner -> itemsAt(opts, entry, corner)),
+                blotchItemsOf(entry, opts#tileSize)))
+
+    /// 表面の時間演出(水のきらめきなど)。静止した見た目と違い毎フレーム呼ぶ —
+    /// 状態は持たず、同じ時刻なら同じ絵(巻き戻しても揺れない)。
+    /// セルごとに上下左右の隣も同じ種かを Material へ渡す — 岸(隣が別種)の側に粒が
+    /// はみ出して外へ漏れないよう、Material が内側へ寄せる/間引くため。
+    pub def surfaceItems(tileSize: Float64, table: List[Entry],
+                         time: Float64): List[Render.PlacedItem] =
+        table |> List.flatMap(entry ->
+            entry#cells |> Set.toList |> List.flatMap(cell ->
+                Material.surfaceItems(entry#spec#surface, cell, tileSize,
+                                      time, entry#z#surface, edgesOf(entry#cells, cell))))
+
+    /// 面シェーダー等を地形の形どおりに抜くためのマスク多角形(ワールド座標)。
+    /// 塗りに使うのと同じ DualGrid.resolve(丸角固定・揺らぎなし)を通すので、マスクの形は
+    /// 画面に出る塗りと 1px も違わない。角ごとのタイル頂点は角の原点からの相対なので、
+    /// 原点を足してワールド座標へ直す(dungeon の waterMaskPolys の一般形)。
+    pub def maskPolys(tileSize: Float64, flagsAt: ((Int32, Int32)) -> DualGrid.Corner,
+                      corners: List[(Int32, Int32)]): List[List[Vec2.Vec2]] =
+        corners |> List.flatMap(corner -> {
+            let flags = flagsAt(corner);
+            if (DualGrid.caseIndex(flags) == 0) Nil
+            else {
+                let tile = DualGrid.resolve({ tile = tileSize, corner = corner,
+                                              style = DualGrid.CornerStyle.Round,
+                                              jitter = 0.0 }, flags);
+                let origin = DualGrid.originOf(tileSize, corner);
+                tile#polys |> List.map(poly -> poly |> List.map(v -> Vec2.add(origin, v)))
+            }
+        })
+
+    /// 教科書用の1発 API: Doc 由来の表 + rows → 置き場所つき描画(origin で盤ずらし)。
+    /// 返すのは table に載った地形(石垣・畑など)だけ — ベース床は含めない。
+    /// 床は角の変化形を持たないベタ塗りで DualGrid の仕事ではなく、呼び側(View)が
+    /// 全セルに敷く — table に無い文字・未知文字が自動的に床へ倒れる fail-open は
+    /// 「呼び側が下に床を敷いてある」ことで成立する。
+    pub def fromRows(opts: { tileSize = Float64, origin = Vec2.Vec2,
+                             styleMix = DualGrid.StyleMix },
+                     table: List[{ char = Char, spec = Material.Spec,
+                                   z = { fill = Int32, band = Int32, surface = Int32 } }],
+                     rows: List[String]): List[Render.PlacedItem] =
+        let rowCount = List.length(rows);
+        let cols = rows |> List.map(String.length) |> List.foldLeft(Int32.max, 0);
+        let entries = table |> List.map(tableRow -> {
+            let cells = cellsOf(ch -> ch == tableRow#char, rows);
+            { flagsAt = flagsOf(cells), cells = cells,
+              spec = tableRow#spec, z = tableRow#z }
+        });
+        staticItems({ tileSize = opts#tileSize, styleMix = opts#styleMix },
+                    entries, cornersOf(cols, rowCount))
+            |> List.map(placed -> { at = Vec2.add(opts#origin, placed#at) | placed })
+
+    // ════════════════════════════════════════════════════════
+    // 内部(1角ぶんの描画・むら・岸の判定)
+    // ════════════════════════════════════════════════════════
+
+    /// 1エントリ×1角の描画。埋まっていない角(ケース0)は形が無いので早めに抜ける。
+    /// 角の形はエントリの forceStyle が無ければ styleMix で場所ごとに混ぜる
+    /// (dungeon の Surfaces.itemsAt が使う Theme.styleMix を opts#styleMix の注入に置き換えた形)。
+    def itemsAt(opts: { tileSize = Float64, styleMix = DualGrid.StyleMix },
+                entry: Entry, corner: (Int32, Int32)): List[Render.PlacedItem] =
+        let flags = entry#flagsAt(corner);
+        if (DualGrid.caseIndex(flags) == 0) Nil
+        else {
+            let style = entry#spec#forceStyle
+                |> Option.getWithDefault(DualGrid.styleAt(opts#styleMix, corner));
+            let tile = DualGrid.resolve({ tile = opts#tileSize, corner = corner, style = style,
+                                          jitter = entry#spec#jitter }, flags);
+            Material.place(entry#spec, tile, DualGrid.originOf(opts#tileSize, corner),
+                           { fill = entry#z#fill, band = entry#z#band })
+        }
+
+    /// 1エントリぶんの静的なむら(セル単位。角単位の塗り・縁とは粒度が違う)。
+    /// z は塗りと同じでなく surface — むら(円=sprite系)を塗り(多角形)と同じ z に置くと、
+    /// 描画部の同 z 併合(sprite系が先)で塗りの下に沈んで見えなくなる。
+    def blotchItemsOf(entry: Entry, tileSize: Float64): List[Render.PlacedItem] =
+        match entry#spec#blotch {
+            case None     => Nil
+            case Some(fx) =>
+                entry#cells |> Set.toList |> List.flatMap(cell ->
+                    Material.blotchItems(fx, cell, tileSize, entry#z#surface))
+        }
+
+    /// このセルの上下左右の隣も同じ種か。cells は1種のセル集合なので、メンバー判定だけで
+    /// 岸(隣が別種)が分かる — Material はマップを知らずに岸を扱える。
+    def edgesOf(cells: Set[(Int32, Int32)], cell: (Int32, Int32)): Material.Edges =
+        let (x, y) = cell;
+        { n = Set.memberOf((x, y - 1), cells),
+          s = Set.memberOf((x, y + 1), cells),
+          e = Set.memberOf((x + 1, y), cells),
+          w = Set.memberOf((x - 1, y), cells) }
+}

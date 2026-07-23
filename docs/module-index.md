@@ -34,6 +34,7 @@
 | タイルのマス目と移動範囲 | Grid / GridSearch |
 | タイルセット PNG(LDtk 互換)でマップを貼る | MapResource |
 | チップ絵なしでマップ地形(壁・水)を多角形で描く | DualGrid / Material |
+| rows の文字格子から地形の見た目を作る(*.terrain.json) | Terrain / TerrainDoc |
 | 重なり判定・物理 | Collision / Physics2D |
 | 当たり判定を JSON で宣言する | HitDoc + Hit |
 | キーが押された瞬間を取る | InputEdge |
@@ -115,6 +116,8 @@
 - **MapResource** — タイルセット PNG(LDtk 互換)でマップを貼る。チップ絵なしの並立経路は DualGrid / Material(§3.3 の棲み分け)。
 - **DualGrid** — セル4角の埋まり方から 16 ケースの地形多角形(丸/四角/ひし形/揺らぎ)を作る純幾何。
 - **Material** — DualGrid のタイルに質感(塗り・フチ帯・持ち上げ・表面の粒)を着せる。チップ絵は使わない。MapResource が「タイルセット PNG を貼る」のに対し、こちらは「色と質感パラメータで手続き生成する」並立の経路。
+- **Terrain** — 「どのセル文字に、どの質感を着せるか」の表と rows アダプタ。rows の文字格子を塗るだけで DualGrid の角の変化形が自動生成される。fromRows は Doc+rows だけで完結する教科書 API(実装例: rpg-starter)。
+- **TerrainDoc** — セル文字→質感の表の宣言(*.terrain.json)を読む codec。色は #rrggbb か @キー(テーマ参照)。
 
 ## 物理・衝突
 
