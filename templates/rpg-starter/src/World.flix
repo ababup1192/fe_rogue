@@ -17,7 +17,8 @@ mod World {
         map = MapDoc.Doc,
         kind = KindDoc.Doc,
         theme = ThemeDoc.Doc,
-        sprites = PxSpriteDoc.Doc
+        sprites = PxSpriteDoc.Doc,
+        terrain = TerrainDoc.Doc
     }
 
     /// ゲームの状態。hero / facing = 主人公のマスと向き、stepGauge = 次の一歩までの残り秒、
@@ -29,6 +30,7 @@ mod World {
         kind = KindDoc.Doc,
         theme = ThemeDoc.Doc,
         sprites = PxSpriteDoc.Doc,
+        terrain = TerrainDoc.Doc,
         phase = Phase,
         hero = Grid.Cell,
         facing = Dir4.Dir4,
@@ -52,9 +54,12 @@ mod World {
 
     pub def spritePath(): String = "assets/rpg.sprite.json"
 
+    pub def terrainPath(): String = "assets/rpg.terrain.json"
+
     /// ゲーム開始時の状態。表紙から始まる。
     pub def initial(docs: Docs): World =
         { map = docs#map, kind = docs#kind, theme = docs#theme, sprites = docs#sprites,
+          terrain = docs#terrain,
           phase = Phase.Title,
           hero = docs#map#start, facing = Dir4.Down, stepGauge = 0.0, steps = 0,
           herbs = docs#map#herbs, picked = 0, doorOpen = false,
@@ -87,6 +92,7 @@ mod World {
         let base = ("map", MapDoc.path() :: Nil)
             :: ("theme", ThemeDoc.path() :: Nil)
             :: ("sprite", spritePath() :: Nil)
+            :: ("terrain", terrainPath() :: Nil)
             :: Nil;
         match w#phase {
             case Phase.Play => List.append(base, ("kind", KindDoc.path() :: Nil) :: Nil)
@@ -213,4 +219,6 @@ mod World {
     pub def withTheme(theme: ThemeDoc.Doc, w: World): World = { theme = theme | w }
 
     pub def withSprites(sprites: PxSpriteDoc.Doc, w: World): World = { sprites = sprites | w }
+
+    pub def withTerrain(terrain: TerrainDoc.Doc, w: World): World = { terrain = terrain | w }
 }

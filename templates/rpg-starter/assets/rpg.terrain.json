@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "note": "セル文字→質感の表。色は #rrggbb か @キー（rpg.theme.json の色を参照）",
+  "styleMix": { "round": 0.4, "square": 0.4 },
+  "entries": [
+    { "char": "#", "name": "石垣",
+      "fill": "@wall",
+      "edge": { "top": "@wallTop", "side": "@wallSide", "shade": "@wallShade" },
+      "edgeWidth": 2.5, "style": "mix", "jitter": 0.0,
+      "height": { "lift": 6.0, "front": "@wallFront", "shade": "@wallShade",
+                  "clipToFloor": true } },
+    { "char": ",", "name": "畑",
+      "fill": "@field", "edge": { "uniform": "@fieldShade" },
+      "edgeWidth": 1.5, "style": "round", "jitter": 0.0 }
+  ]
+}

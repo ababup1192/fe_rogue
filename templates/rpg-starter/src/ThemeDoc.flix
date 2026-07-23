@@ -90,7 +90,9 @@ mod ThemeDoc {
         let t = Float64.truncateToFloat32(1.0 - k);
         { r = c#r * t, g = c#g * t, b = c#b * t }
 
-    /// スプライトの意味色キー → 実色。未知のキーはマゼンタ（描き忘れが目に見える）。
+    /// スプライト・地形の意味色キー → 実色。未知のキーはマゼンタ（描き忘れが目に見える）。
+    /// wall*/fieldShade は地形（rpg.terrain.json の @参照）向けの派生色 —
+    /// 基準色（wall/field）から導く（導出できる値は Doc に置かない）。
     pub def resolver(doc: Doc, key: String): Color =
         match key {
             case "accent"      => doc#accent
@@ -99,6 +101,13 @@ mod ThemeDoc {
             case "clothLight"  => lighten(doc#cloth, 0.5)
             case "ink"         => doc#ink
             case "leaf"        => lighten(doc#field, 0.35)
+            case "wall"        => doc#wall
+            case "field"       => doc#field
+            case "wallTop"     => lighten(doc#wall, 0.18)
+            case "wallSide"    => darken(doc#wall, 0.12)
+            case "wallShade"   => darken(doc#wall, 0.35)
+            case "wallFront"   => darken(doc#wall, 0.22)
+            case "fieldShade"  => darken(doc#field, 0.35)
             case _             => { r = 1.0f32, g = 0.0f32, b = 1.0f32 }
         }
 }

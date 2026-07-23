@@ -46,4 +46,20 @@ mod TestDocs {
         let doc = KindDoc.fromJson("{\"version\":1, \"walk\": 9.0}")
             |> Option.getWithDefault(KindDoc.defaults());
         Assert.assertEq(expected = (9.0, KindDoc.defaults()#cps), (doc#walk, doc#cps))
+
+    // ══════════════════════════════════════════════════════
+    // ThemeDoc resolver（terrain の @参照が使う派生色）
+    // TerrainDoc の橋渡し（fromJson / defaults / fail-open）は engine 側
+    // TestTerrainDoc で完結 — ここでは繰り返さない。
+    // ══════════════════════════════════════════════════════
+
+    @Test
+    def testThemeResolverDerivesWallTop(): Unit \ Assert =
+        // 派生色はテーマの基準色から導かれる（導出できる値は Doc に置かない）。
+        let d = ThemeDoc.defaults();
+        let expectedColor = ThemeDoc.lighten(d#wall, 0.18);
+        let got = ThemeDoc.resolver(d, "wallTop");
+        Assert.assertEq(
+            expected = (expectedColor#r, expectedColor#g, expectedColor#b),
+            (got#r, got#g, got#b))
 }
