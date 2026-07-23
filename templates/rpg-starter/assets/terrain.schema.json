@@ -37,6 +37,8 @@
             } } },
             "label": "表面の粒（プリセット+1色）", "order": 8
           },
+          "mottle": { "type": "float", "label": "セル別の明度ゆらぎ（耕した畑のパッチワーク。0 = なし）",
+                      "order": 9, "min": 0, "max": 0.5, "default": 0 },
           "height": {
             "type": { "record": {
               "lift":        { "type": "float", "label": "持ち上げ（px）", "order": 1, "min": 0, "max": 12, "default": 6.0 },
@@ -44,7 +46,7 @@
               "shade":       { "type": "text",  "label": "落ち影の色", "order": 3 },
               "clipToFloor": { "type": "bool",  "label": "床で刈り取る", "order": 4, "default": true }
             } },
-            "label": "持ち上げ（宣言しなければ平ら）", "order": 9
+            "label": "持ち上げ（宣言しなければ平ら）", "order": 10
           }
         }
       }
