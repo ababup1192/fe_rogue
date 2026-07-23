@@ -23,18 +23,26 @@ mod Bake {
     // ── 決定的な場面（golden） ──
 
     pub def all(): Unit \ IO =
+        discard allShots()
+
+    /// Bake.all の中身。焼けた PNG のパス列を返す — 走行中のゲームへの POST /bake
+    /// （Main の App.onBakeRequest）もこれを呼ぶ。プレイ状態には触れず Docs から組み立てる。
+    pub def allShots(): List[String] \ IO =
         discard (new File("gallery")).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
         let cfg = cfgOf("gallery", atlas, w0#theme#bg);
         let ctx = { atlas = atlas, visible = { position = Vec2.zero(), size = design() } };
-        shoot(cfg, ctx, w0, "main")
+        shoot(cfg, ctx, w0, "main") :: Nil
 
-    def shoot(cfg: Bakery.BakeConfig, ctx: App.ViewCtx, w: World.World, name: String): Unit \ IO =
+    /// 1 場面を PNG に焼き、焼けたファイルパスを返す。
+    def shoot(cfg: Bakery.BakeConfig, ctx: App.ViewCtx, w: World.World, name: String): String \ IO =
         let items = View.frame(ctx, w);
         let (drawables, polygons) = Render.draw(items);
         Bakery.renderPng(cfg, drawables, polygons, name);
-        println("baked: ${cfg#outDir}/${name}.png")
+        let path = "${cfg#outDir}/${name}.png";
+        println("baked: ${path}");
+        path
 
     // ── アトリエ（候補スプライト・候補テーマのプレビュー。golden の外） ──
 
@@ -69,7 +77,7 @@ mod Bake {
                 case None => ()
                 case Some(cand) => {
                     let w = loadWorld();
-                    shoot({ background = cand#bg | cfg }, ctx,
+                    discard shoot({ background = cand#bg | cfg }, ctx,
                         World.withTheme(cand, w), stripJson(f))
                 }
             }

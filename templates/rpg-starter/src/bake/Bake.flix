@@ -24,25 +24,31 @@ mod Bake {
     // ── 決定的な場面（golden） ──
 
     pub def all(): Unit \ IO =
+        discard allShots()
+
+    /// Bake.all の中身。焼けた PNG のパス列を返す — 走行中のゲームへの POST /bake
+    /// （Main の App.onBakeRequest）もこれを呼ぶ。プレイ状態には触れず Docs から組み立てる。
+    pub def allShots(): List[String] \ IO =
         discard (new File("gallery")).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
         let cfg = cfgOf("gallery", atlas, w0#theme#sky);
         let ctx = { atlas = atlas, visible = { position = Vec2.zero(), size = design() } };
         // 表紙: 夕暮れの里に霧、その上に題と一行。
-        shoot(cfg, ctx, w0, "title");
+        let title = shoot(cfg, ctx, w0, "title");
         // 歩き: start から 3 歩（規則で歩く。3 歩 = 歩きのコマが出る奇数）。
         let playing = World.confirm(w0);
         let walking = playing |> World.stepOnce(Dir4.Right) |> World.stepOnce(Dir4.Right)
             |> World.stepOnce(Dir4.Down);
-        shoot(cfg, ctx, walking, "walk");
+        let walk = shoot(cfg, ctx, walking, "walk");
         // 会話: いちばん後ろの住人（間取りの Doc の並びの末尾）の隣に立って話しかけ、
         // 文字送りを全部出す（settle）。
-        shoot(cfg, ctx, talkScene(playing), "talk");
+        let talk = shoot(cfg, ctx, talkScene(playing), "talk");
         // 扉前: 閉じた木戸に向いて立つ。
-        shoot(cfg, ctx, doorScene(playing), "door");
+        let door = shoot(cfg, ctx, doorScene(playing), "door");
         // クリア: 薬草がそろい、灯りが全部ともった里。
-        shoot(cfg, ctx, clearScene(playing), "clear")
+        let clear = shoot(cfg, ctx, clearScene(playing), "clear");
+        title :: walk :: talk :: door :: clear :: Nil
 
     /// 住人の隣（歩けるマス）に立ち、規則どおり話しかけて文字送りを終えた状態。
     /// 話し相手は villagers の末尾 — 約束の相手（先頭に置く習わし）でない住人が選ばれ、
@@ -78,11 +84,14 @@ mod Bake {
     /// 文字送りを使い切って 1 行を読み終えた状態にする。
     def settle(w: World.World): World.World = World.step(None, 60.0, w)
 
-    def shoot(cfg: Bakery.BakeConfig, ctx: App.ViewCtx, w: World.World, name: String): Unit \ IO =
+    /// 1 場面を PNG に焼き、焼けたファイルパスを返す。
+    def shoot(cfg: Bakery.BakeConfig, ctx: App.ViewCtx, w: World.World, name: String): String \ IO =
         let items = View.frame(ctx, w);
         let (drawables, polygons) = Render.draw(items);
         Bakery.renderPng(cfg, drawables, polygons, name);
-        println("baked: ${cfg#outDir}/${name}.png")
+        let path = "${cfg#outDir}/${name}.png";
+        println("baked: ${path}");
+        path
 
     // ── アトリエ（候補スプライト・候補テーマのプレビュー。golden の外） ──
 
@@ -117,7 +126,7 @@ mod Bake {
                 case None => ()
                 case Some(cand) => {
                     let w = loadWorld();
-                    shoot({ background = cand#sky | cfg }, ctx,
+                    discard shoot({ background = cand#sky | cfg }, ctx,
                         World.withTheme(cand, w), stripJson(f))
                 }
             }

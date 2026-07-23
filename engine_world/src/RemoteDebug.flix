@@ -357,6 +357,20 @@ mod RemoteDebug {
         else String.takeLeft(limit, text)
              + "\n...(truncated ${String.length(text) - limit} chars; pass rect=x,y,w,h to narrow)"
 
+    // ── POST /bake の応答 ──
+
+    /// POST /bake の成功応答。1 行目に枚数と所要ミリ秒、続く [baked] ブロックに
+    /// 焼けたファイルパスを焼いた順に 1 行 1 枚で載せる（0 枚ならブロックは省く）。
+    pub def bakeDoneText(ms: Int64, paths: List[String]): String =
+        "ok baked=${List.length(paths)} ms=${ms}\n"
+        + (if (List.isEmpty(paths)) ""
+           else "[baked]\n" + String.intercalate("\n", paths) + "\n")
+
+    /// 焼きの実体（App.onBakeRequest）を登録していないゲームへの応答。
+    /// Studio はこの error 行を見て自前の bake 起動（make bake 等）へフォールバックする。
+    pub def bakeUnsupportedText(): String =
+        "error: bake not supported (game does not wire App.onBakeRequest)\n"
+
     /// GET /help の本文。プロトコルの自己記述（セッション冒頭に 1 回読む想定）。
     pub def helpText(): String =
         "remote debug protocol (all responses are text/plain)\n"
@@ -365,6 +379,8 @@ mod RemoteDebug {
         + "GET  /state?view=&rect=       observe without advancing\n"
         + "POST /halt                    pause the game (lockstep mode)\n"
         + "POST /resume                  resume realtime play\n"
+        + "POST /bake                    run the game's registered bake (App.onBakeRequest)\n"
+        + "     on the warm JVM; answers the baked file paths. play state is untouched.\n"
         + "POST /step?view=&rect=&until=&max=&trace=&dt=\n"
         + "     body = input script; runs it frame by frame, then answers.\n"
         + "     auto-halts first if the game is running.\n"

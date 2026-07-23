@@ -164,4 +164,18 @@ mod TestRemoteDebug {
                      + "box pos=(10.0,20.0) size=(32.0,12.0) z=5\n"
                      + "sprite ball pos=(148.9,44.3) size=(6.0,6.0) z=30",
             RemoteDebug.sceneBlock(rect, hits))
+
+    // /bake の成功応答: 1 行目に枚数と所要 ms、[baked] ブロックに焼いた順のパス 1 行 1 枚。
+    @Test
+    def testBakeDoneTextListsPathsInOrder(): Unit \ Assert =
+        Assert.assertEq(
+            expected = "ok baked=2 ms=845\n[baked]\ngallery/title.png\ngallery/ending.png\n",
+            RemoteDebug.bakeDoneText(845i64, "gallery/title.png" :: "gallery/ending.png" :: Nil))
+
+    // 焼きの実体が未登録なら error 応答（Studio はこの 1 行目を見て自前 bake へフォールバック）。
+    @Test
+    def testBakeUnsupportedTextIsError(): Unit \ Assert =
+        Assert.assertEq(
+            expected = true,
+            String.startsWith(prefix = "error:", RemoteDebug.bakeUnsupportedText()))
 }

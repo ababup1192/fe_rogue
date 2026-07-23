@@ -23,26 +23,35 @@ mod Bake {
     // ── 決定的な場面（golden） ──
 
     pub def all(): Unit \ IO =
+        discard allShots()
+
+    /// Bake.all の中身。焼けた PNG のパス列を返す — 走行中のゲームへの POST /bake
+    /// （Main の App.onBakeRequest）もこれを呼ぶ。プレイ状態には触れず Docs から組み立てる。
+    pub def allShots(): List[String] \ IO =
         discard (new File("gallery")).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
         let cfg = cfgOf("gallery", atlas, w0#theme#bg);
         let ctx = { atlas = atlas, visible = { position = Vec2.zero(), size = design() } };
         // 表紙: 灯りが全部ついた書斎とタイトル。
-        shoot(cfg, ctx, w0, "title");
+        let title = shoot(cfg, ctx, w0, "title");
         // 最初の分岐: 問いを読み終え、選択肢のチップが出た状態。
         let asking = walkToAsk(40, World.advance(w0));
-        shoot(cfg, ctx, asking, "choice");
+        let choice = shoot(cfg, ctx, asking, "choice");
         // 結末: 疑いを重ねて灯りが消えた書斎で、最後の一文を読んでいる状態。
         // （分岐 2 つは選んで次の分岐まで歩き、最後の告発だけは結末の最後の拍で止める）
         let ended = asking |> pickAndWalk(0) |> pickAndWalk(0) |> World.pick(1) |> walkToLast(40);
-        shoot(cfg, ctx, ended, "ending")
+        let ending = shoot(cfg, ctx, ended, "ending");
+        title :: choice :: ending :: Nil
 
-    def shoot(cfg: Bakery.BakeConfig, ctx: App.ViewCtx, w: World.World, name: String): Unit \ IO =
+    /// 1 場面を PNG に焼き、焼けたファイルパスを返す。
+    def shoot(cfg: Bakery.BakeConfig, ctx: App.ViewCtx, w: World.World, name: String): String \ IO =
         let items = View.frame(ctx, w);
         let (drawables, polygons) = Render.draw(items);
         Bakery.renderPng(cfg, drawables, polygons, name);
-        println("baked: ${cfg#outDir}/${name}.png")
+        let path = "${cfg#outDir}/${name}.png";
+        println("baked: ${path}");
+        path
 
     /// 文字送りを使い切って 1 拍読み終えた状態にする（UI への投影も済む）。
     def settle(w: World.World): World.World = World.step(60.0, w)
@@ -97,7 +106,7 @@ mod Bake {
                 case None => ()
                 case Some(cand) => {
                     let w = loadWorld();
-                    shoot({ background = cand#bg | cfg }, ctx,
+                    discard shoot({ background = cand#bg | cfg }, ctx,
                         World.withTheme(cand, w), stripJson(f))
                 }
             }

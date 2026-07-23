@@ -100,6 +100,11 @@ mod App {
         staticLayer = Option[{ key = w -> GameEngine.StaticKey, build = w -> List[Render.PlacedItem] }],
         // World の 1 行サマリ。リモートデバッグ（HTTP）の view=status と trace の源。
         statusLine = Option[w -> String \ ef],
+        // リモートデバッグ（HTTP）の POST /bake が実行する「焼きの実体」。Docs から決定的な
+        // 場面を組み立てて PNG に焼き、焼けたファイルパスの列を返す（各ゲームの Bake.all の
+        // 中身を、温まった JVM で実行するだけ）。走行中のプレイ状態には一切触れないこと。
+        // None のゲームへの /bake は「未対応」の応答になる（Studio はそれでフォールバック）。
+        remoteBake = Option[Unit -> List[String] \ IO],
         // 物理・当たり判定を実時間でなく固定量子で進めたいゲームの刻み幅（秒）。None = 可変 dt
         // のまま（既定・全既存ゲームはこちら）。withFixedStep で有効化する（詳細は同関数を参照）。
         fixedStep = Option[Float64]
@@ -133,6 +138,7 @@ mod App {
           debugView = None,
           worldDump = None,
           statusLine = None,
+          remoteBake = None,
           fixedStep = None }
 
     /// 起動時に 1 回だけ走るシステムを末尾へ繋ぐ（追加順に適用される）。
@@ -255,6 +261,14 @@ mod App {
     /// 調査に効く値だけを短く。長い一覧は withWorldDump（view=full）側に任せる。
     pub def withStatusLine(f: w -> String \ ef, app: App[w, ef]): App[w, ef] =
         { statusLine = Some(f) | app }
+
+    /// リモートデバッグ（HTTP）の POST /bake が実行する「焼きの実体」を繋ぐ。
+    /// f は Docs から決定的な場面を組み立てて PNG に焼き、焼けたファイルパスの列を返す
+    /// （Bake.all の中身をそのまま渡せる形）。走行中のプレイ状態を読んだり変えたりしない
+    /// 関数に限る — /bake はゲームの進行に触れず、温まった JVM で焼き直すだけの口。
+    /// 繋がないゲームへの /bake は「未対応」の応答になる。
+    pub def onBakeRequest(f: Unit -> List[String] \ IO, app: App[w, ef]): App[w, ef] =
+        { remoteBake = Some(f) | app }
 
     /// 物理・当たり判定を固定刻み（dtSeconds 秒）で進める accumulator 方式を有効にする。
     /// 実フレームの経過秒を貯め、刻みの倍数だけ updateSystems を 0〜5 回サブステップで回し、
@@ -881,6 +895,7 @@ mod App {
             case ("POST", "/resume") => remoteResume(bridge, ctx)
             case ("GET", "/state")   => remoteState(app, bridge, request, ctx)
             case ("POST", "/step")   => remoteStepCommand(app, bridge, request, ctx)
+            case ("POST", "/bake")   => remoteBakeCommand(app, bridge, ctx)
             case (m, p)              => answer("error: no route for ${m} ${p} (see GET /help)\n", bridge, ctx)
         }
 
@@ -918,6 +933,29 @@ mod App {
             let resumed = resumePoint(ctx#anno, ctx#history, ctx#world);
             answer("ok mode=running frame=${resumed#anno#frame}\n", bridge,
                    { world = resumed#world, anno = resumed#anno, history = resumed#history, hold = false })
+        }
+
+    /// POST /bake: 登録された焼きの実体（App.onBakeRequest）を温まった JVM で実行し、
+    /// 焼けたファイルパスの列を返す。焼きは Docs から決定的な場面を組み立てるだけなので、
+    /// 走行中のプレイ状態（world・停止状態・履歴）には一切触れない — ctx をそのまま返す。
+    /// 未登録のゲームには「未対応」を返す（Studio はそれを見て自前の bake 起動へ
+    /// フォールバックする）。同時に来た 2 発目は /step と同じ排他の流儀 — HTTP 側は
+    /// 1 スレッド直列・ゲームループは 1 フレーム 1 件なので、キュー順に必ず直列で捌かれる。
+    def remoteBakeCommand(app: App[w, ef], bridge: RemoteDebug.Bridge,
+                          ctx: RemoteNext[w]): RemoteNext[w] \ IO =
+        match app#remoteBake {
+            case None => answer(RemoteDebug.bakeUnsupportedText(), bridge, ctx)
+            case Some(bake) =>
+                // 焼き（SoftRaster / HeadlessFont）は Java2D = AWT を使う。macOS の実機起動は
+                // -XstartOnFirstThread で GLFW が主スレッドを占有しており、ここで AWT が
+                // AppKit を起こそうとすると永久ハングし得る。このプロセスは AWT の窓を
+                // 開かないので、初回の AWT 初期化前に headless を明示しておく
+                // （bin/flix が test / Bake 実行に付けるのと同じ理由）。
+                discard System.setProperty("java.awt.headless", "true");
+                let startNs = System.nanoTime();
+                let paths = bake();
+                let elapsedMs = (System.nanoTime() - startNs) / 1000000i64;
+                answer(RemoteDebug.bakeDoneText(elapsedMs, paths), bridge, ctx)
         }
 
     /// GET /state: 進めずに観測だけ返す。停止中はスクラブで表示中の瞬間を見る。

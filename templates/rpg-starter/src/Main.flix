@@ -21,6 +21,8 @@ def main(): Unit \ IO =
                 |> App.watchFile(KindDoc.path(), Controls.reloadKind)
                 |> App.watchFile(ThemeDoc.path(), Controls.reloadTheme)
                 |> App.watchFile(World.spritePath(), Controls.reloadSprites)
+                // 走行中の POST /bake（Studio の「焼いて」）は Bake.all と同じ実体を呼ぶ。
+                |> App.onBakeRequest(Bake.allShots)
                 |> App.withDebug(App.debugFromEnv())
                 |> App.launch
         } with LwjglLayer.withProject(".")
