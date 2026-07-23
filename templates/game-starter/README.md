@@ -20,13 +20,19 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 | `make golden` | いまの gallery を golden として祝福する |
 | `make atelier-preview` | atelier/ の候補と assets/ の現行を debug/atelier/ に焼く |
 
-## 触る場所
+## 読む順（全体像のつかみ方）
 
-- `src/World.flix` … ゲームの状態そのものと、次の状態を作る規則（純粋）。
-- `src/Controls.flix` … キーの割り当てと Doc の読み直し。
-- `src/View.flix` … 状態を絵に写す（何をどこに描くか）。
-- `src/Main.flix` … 上の3つを App に繋いで起動する目次。
-- `src/bake/Bake.flix` … 決定的な場面を PNG に焼く（golden とアトリエ）。
+**遊ぶ → 読む → JSON をいじる** の順で仕組みが見えます。
+
+1. まず `make run` で遊ぶ（矢印キーで主人公が動く）。
+2. コードは **エントリ→状態→描画** の順で読む:
+   1. `src/Main.flix` … 3 つを App に繋いで起動する目次。冒頭 doc に**毎フレームの流れ
+      （入力→状態更新→描画 がどの行か）**が書いてある。まずここ。
+   2. `src/World.flix` … ゲームの状態そのものと、次の状態を作る規則（`step` が入力→更新。純粋）。
+   3. `src/View.flix` … 状態を絵に写す（何をどこに描くか）。
+   4. `src/Controls.flix` … キーの割り当てと Doc の読み直し。
+   5. `src/bake/Bake.flix` … 決定的な場面を PNG に焼く（golden とアトリエ）。
+3. 手触り・色・絵は下の `assets/` の Doc を保存即反映でいじる。
 
 数値・色・絵は `assets/` の Doc（保存即反映）:
 

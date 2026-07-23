@@ -1,6 +1,12 @@
 // エントリーポイント。Doc は App を組む前に読み、その値から初期 World を作る
 // （壊れていても defaults で必ず起動する）。App の中でファイルを読むのは F1 の reloadOn と
 // 保存検知（watchFile）だけ。外の世界に触れる処理（effect）は隠さず with で並べる。
+//
+// ── 毎フレームの流れ（入力 → 状態更新 → 描画）──
+//   入力 + 状態更新: addSystem(Controls.step)  … キー入力を読み、World.step で次の状態へ。
+//   描画:            withView(View.frame)      … World から「何をどこに描くか」を作る。
+//   （ActiveDocs.step は Studio の「表示中」バッジ用の補助。ゲーム進行には関与しない。）
+// 場面（表紙・クリア等）が増えたら World にフェーズを持たせ、step / frame を分岐させる。
 
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()

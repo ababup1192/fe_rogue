@@ -67,6 +67,10 @@ mod View {
     /// z の秩序: zTile() = 1 < terrain の fill/band/surface（zPlanOf が 2..9 に
     /// 割り付ける）< zDoor() = 10。ベース床は必ず terrain の下、
     /// 扉・薬草・人・ふきだしは必ず terrain の上に出る。
+    ///
+    /// Terrain.fromRows は「文字の rows + 質感の表」を受け取り、角の埋まり方から
+    /// 丸/四角/ひし形を自動生成した地形タイルの並びを返す黒箱（デュアルグリッド）。
+    /// 中で何をしているかは engine の docs/module-index.md（Terrain / TerrainDoc）を引く。
     def tiles(w: World.World): List[Render.PlacedItem] =
         let t = World.tileSize();
         let table = w#terrain#entries
