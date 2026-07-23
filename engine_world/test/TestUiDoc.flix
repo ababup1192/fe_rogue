@@ -570,6 +570,8 @@ mod TestUiDoc {
     @Test
     def testPaletteFileMergesAndInlineWins(): Unit \ {Assert, IO} =
         // 外部パレットの base が引け、同名の accent は inline が勝つ。
+        // 参照先 (palette_shared.json) は Doc 規約の "version" キーを含む —
+        // version が色として解釈されず読み飛ばされることも、この load で同時に確かめている。
         let got = run { UiSpec.load("test/assets/palette_main.ui.json") } with Fs.FileRead.runWithIO;
         let colors = got |> Result.toOption |> Option.flatMap(firstTwoBoxColors);
         Assert.assertEq(

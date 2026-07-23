@@ -972,11 +972,12 @@ mod UiDoc {
         }
 
     /// paletteFile を読んでパレットの Map にする。読めない・形が違うときは loud に Err（黙って無視しない）。
+    /// "version" は Doc 規約のメタキーで色定義ではないので、ここで取り除く。
     def readPaletteFile(baseDir: String, path: String): Result[JsonError, Map[String, Json]] \ Fs.FileRead =
         JsonCompat.readJson(joinPath(baseDir, path))
             |> Result.mapErr(e -> JsonCompat.jsonError(Root, Set#{"paletteFile: ${JsonCompat.describe(e)}"}))
             |> Result.flatMap(json -> match json {
-                case JObject(m) => Ok(m)
+                case JObject(m) => Ok(Map.remove("version", m))
                 case _          => Err(JsonCompat.jsonError(Root, Set#{"paletteFile must be an object"}))
             })
 
