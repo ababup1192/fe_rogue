@@ -2,6 +2,7 @@
   "version": 1,
   "note": "ドット絵。文字は意味色キーで、実色は ThemeDoc.resolver が解決する。frame は 16×12・scale 4 で 64×48px の空の額縁。内側は透明で、壁の「絵があった跡」が透ける。",
   "entityId": "novel.sprites",
+  "paletteFile": "assets/ui/palette.json",
   "legend": {
     "a": "accent",
     "A": "accentLight"

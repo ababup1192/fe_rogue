@@ -21,6 +21,8 @@ def main(): Unit \ IO =
                 |> App.watchFile(StoryDoc.path(), Controls.reloadStory)
                 |> App.watchFile(KindDoc.path(), Controls.reloadKind)
                 |> App.watchFile(ThemeDoc.path(), Controls.reloadTheme)
+                // accentLight の宣言元（palette.json）もテーマとして読み直す（保存即反映）。
+                |> App.watchFile(ThemeDoc.palettePath(), Controls.reloadTheme)
                 |> App.watchFile(World.spritePath(), Controls.reloadSprites)
                 // 走行中の POST /bake（Studio の「焼いて」）は Bake.all と同じ実体を呼ぶ。
                 |> App.onBakeRequest(Bake.allShots)

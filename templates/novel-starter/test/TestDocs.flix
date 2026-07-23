@@ -51,4 +51,26 @@ mod TestDocs {
         let doc = KindDoc.fromJson("{\"version\":1, \"cps\": 99.0}")
             |> Option.getWithDefault(KindDoc.defaults());
         Assert.assertEq(expected = (99.0, KindDoc.defaults()#dim), (doc#cps, doc#dim))
+
+    // ══════════════════════════════════════════════════════
+    // ThemeDoc（accentLight だけ橋渡しを書く: palette.json の宣言が導出に勝つ規則。
+    // 他のフィールドは KindDoc と同型の Or 読みなので書かない）
+    // ══════════════════════════════════════════════════════
+
+    @Test
+    def testThemeAccentLightPaletteWins(): Unit \ Assert =
+        // palette.json に accentLight が宣言されていればそれが勝つ。
+        let doc = ThemeDoc.overlayAccentLight(
+            "{\"accentLight\": {\"rgb\": [0.0, 0.5, 1.0]}}", ThemeDoc.defaults());
+        Assert.assertEq(expected = (0.0f32, 0.5f32, 1.0f32),
+            (doc#accentLight#r, doc#accentLight#g, doc#accentLight#b))
+
+    @Test
+    def testThemeAccentLightFallsBackToDerived(): Unit \ Assert =
+        // palette が壊れている・宣言が無いときは従来どおり accent からの導出のまま。
+        let d = ThemeDoc.defaults();
+        let derived = ThemeDoc.lighten(d#accent, 0.5);
+        let doc = ThemeDoc.overlayAccentLight("{ broken", d);
+        Assert.assertEq(expected = (derived#r, derived#g, derived#b),
+            (doc#accentLight#r, doc#accentLight#g, doc#accentLight#b))
 }

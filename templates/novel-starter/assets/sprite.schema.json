@@ -6,6 +6,7 @@
   "properties": {
     "version": { "type": "integer", "const": 1 },
     "note": { "type": "string", "description": "人間と AI のためのメモ(パーサは無視する)" },
+    "paletteFile": { "type": "string", "description": "legend の意味色キーを解決する色票(Studio のピクセルエディタが引く。ゲーム側は無視)" },
     "legend": {
       "type": "object",
       "description": "1 文字 → 意味色キー。ファイルに 1 個・全コマで共有。",
