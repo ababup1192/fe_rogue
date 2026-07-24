@@ -1,6 +1,12 @@
 // エントリーポイント。Doc と ui.json は App を組む前に読み、その値から初期 World を作る
 // （壊れていても defaults で必ず起動する）。App の中でファイルを読むのは F1 の reloadOn と
 // 保存検知（watchFile）だけ。外の世界に触れる処理（effect）は隠さず with で並べる。
+//
+// ゲーム 1 本の標準形は App.game の 1 レコードに宣言する — ここを読めばループの全体像
+// （出発点 init・毎フレームの更新 update・描画 view・保存で読み直す Doc reloads）が掴める。
+// update は「1 本の合成関数」: 複数のシステムを `w |> step |> interact |> …` と中で繋いで渡す
+// （繋ぎが Main に見えるのが教育的）。App.game の外側の口（reloadOn・onBakeRequest・withDebug）は
+// 戻り値の App に従来どおり後ろから pipe で足す。
 
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()
@@ -8,22 +14,28 @@ def main(): Unit \ IO =
         run {
             let ui = NovelKit.spawnAssets();
             let docs = Controls.loadDocs();
-            App.make(World.initial(docs, ui))
+            App.game({
+                init = World.initial(docs, ui),
+                // 毎フレーム: 入力で状態を進め → 相互作用を解決し → 表示中の Doc を名乗る。
                 // ActiveDocs.step だけ Fs.FileWrite を使うので、純粋な部品は checked_ecast で
-                // 同じ効果行へそろえる（部品側の ef は {} のまま保つ）。
-                |> App.addSystem((f, w) -> checked_ecast(Controls.step(f, w)))
-                |> App.addSystem((f, w) -> checked_ecast(Controls.interact(f, w)))
-                // 表示中の Doc を debug/active-docs.json に名乗る（Studio の「表示中」バッジ。
-                // 一覧が変わった瞬間だけ書くので、毎フレームでも無駄な IO は走らない）。
-                |> App.addSystem((_f, w) -> ActiveDocs.step(World.activeDocs(w), w))
-                |> App.withView((ctx, w) -> checked_ecast(View.frame(ctx, w)))
+                // 同じ効果行へそろえる（部品側の ef は {} のまま保つ）。ActiveDocs は debug/active-docs.json に
+                // 「表示中」を書くだけ（Studio のバッジ用・一覧が変わった瞬間だけ書くので無駄な IO は走らない）。
+                update = (f, w) ->
+                    checked_ecast(Controls.step(f, w))
+                        |> (w1 -> checked_ecast(Controls.interact(f, w1)))
+                        |> (w2 -> ActiveDocs.step(World.activeDocs(w2), w2)),
+                view = (ctx, w) -> checked_ecast(View.frame(ctx, w)),
+                // 保存即反映で読み直す Doc たち（各 1 本の watchFile に展開される）。
+                reloads =
+                    (StoryDoc.path(), Controls.reloadStory) ::
+                    (KindDoc.path(), Controls.reloadKind) ::
+                    (ThemeDoc.path(), Controls.reloadTheme) ::
+                    // accentLight の宣言元（palette.json）もテーマとして読み直す（保存即反映）。
+                    (ThemeDoc.palettePath(), Controls.reloadTheme) ::
+                    (World.spritePath(), Controls.reloadSprites) :: Nil
+            })
+                // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
-                |> App.watchFile(StoryDoc.path(), Controls.reloadStory)
-                |> App.watchFile(KindDoc.path(), Controls.reloadKind)
-                |> App.watchFile(ThemeDoc.path(), Controls.reloadTheme)
-                // accentLight の宣言元（palette.json）もテーマとして読み直す（保存即反映）。
-                |> App.watchFile(ThemeDoc.palettePath(), Controls.reloadTheme)
-                |> App.watchFile(World.spritePath(), Controls.reloadSprites)
                 // 走行中の POST /bake（Studio の「焼いて」）は Bake.all と同じ実体を呼ぶ。
                 |> App.onBakeRequest(Bake.allShots)
                 |> App.withDebug(App.debugFromEnv())

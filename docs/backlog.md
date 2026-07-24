@@ -5,12 +5,15 @@
 
 ## App の構造
 
-- **App を `{init, update, view}` の3口へ整理する検討** — トリガー: **初学者向けに
-  「ゲームループの2役割」を doc でなく型で示したくなった時点**。現状 App は addSystem /
-  withView / withAudio 等の多数の繋ぎ口を持ち、更新（状態を進める）と描画（絵に写す）の
-  分業は doc コメントで説明している。この分業を1つのレコード型（init/update/view）で表に出すと
-  初学者がループ構造を型から掴めるが、既存ゲーム全ての Main を書き換える大工事なので別計画。
-  今回は API を変えず doc の明示に留めた。
+- **App を `{init, update, view}` の3口へ整理する検討** — **App.game として着手済み**
+  （2026-07-24）。`make / addSystem / watchFile / withView` の合成へ desugar するだけの
+  便利コンストラクタ `App.game({init, update, view, reloads})` を engine_world/App.flix に
+  **追加**し（既存ビルダーは不変）、novel/rpg/game-starter の Main をこの 1 レコード形へ
+  書き換えた（golden 全枚バイト一致で挙動不変を確認）。初学者は Main を読むだけでループの
+  全体像を掴める。update は「合成 1 本」方式（複数システムはゲーム側で `w |> step |> …` と
+  繋いで渡す）で、音・HUD・quit 差し替え・複数システムの明示列挙が要る高度なゲームは従来
+  ビルダーへ降りる、という線引きは doc コメントに明記済み。新 API なので外部ゲームが使うには
+  将来リリースが要る（in-repo テンプレは sync でローカル解決）。
 
 ## デュアルグリッド地形の昇格（2026-07 完了）に伴う積み残し
 

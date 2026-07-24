@@ -2,11 +2,17 @@
 // （壊れていても defaults で必ず起動する）。App の中でファイルを読むのは F1 の reloadOn と
 // 保存検知（watchFile）だけ。外の世界に触れる処理（effect）は隠さず with で並べる。
 //
-// ── 毎フレームの流れ（入力 → 状態更新 → 描画）──
-//   入力 + 状態更新: addSystem(Controls.step)  … キー入力を読み、World.step で次の状態へ。
-//   描画:            withView(View.frame)      … World から「何をどこに描くか」を作る。
-//   （ActiveDocs.step は Studio の「表示中」バッジ用の補助。ゲーム進行には関与しない。）
+// ── ゲームループの全体像（App.game の 1 レコード）──
+// ここを読めば「何から始まり・毎フレームどう進み・どう絵になり・保存で何を読み直すか」が掴める。
+//   init    = 出発点の World（初期状態）。
+//   update  = 毎フレームの更新（入力 → 次の状態）。1 本の合成関数で渡す約束 —
+//             複数のシステムは `w |> step(f) |> …` と中で繋いでから渡す（繋ぎが Main に見える）。
+//   view    = World → 「何をどこに描くか」。World は読むだけで変えない。
+//   reloads = 保存で読み直す Doc（各 1 本の watchFile に展開される）。
 // 場面（表紙・クリア等）が増えたら World にフェーズを持たせ、step / frame を分岐させる。
+// 音（withAudio）や複数システムの明示的な列挙が要る高度なゲームは、make から始める従来の
+// ビルダー（addSystem / withView / …）へ降りる。App.game の外側の口（reloadOn・onBakeRequest・
+// withDebug）は戻り値の App に後ろから pipe で足す。
 
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()
@@ -15,18 +21,23 @@ def main(): Unit \ IO =
             let doc = SampleDoc.load(SampleDoc.path());
             let theme = ThemeDoc.load(ThemeDoc.path());
             let sprites = PxSpriteDoc.load(World.spritePath());
-            App.make(World.initial(doc, theme, sprites))
+            App.game({
+                init = World.initial(doc, theme, sprites),
+                // 入力を読み World.step で次の状態へ → 表示中の Doc を名乗る。
                 // ActiveDocs.step だけ Fs.FileWrite を使うので、純粋な部品は checked_ecast で
-                // 同じ効果行へそろえる（部品側の ef は {} のまま保つ）。
-                |> App.addSystem((f, w) -> checked_ecast(Controls.step(f, w)))
-                // 表示中の Doc を debug/active-docs.json に名乗る（Studio の「表示中」バッジ。
-                // 一覧が変わった瞬間だけ書くので、毎フレームでも無駄な IO は走らない）。
-                |> App.addSystem((_f, w) -> ActiveDocs.step(World.activeDocs(w), w))
-                |> App.withView((ctx, w) -> checked_ecast(View.frame(ctx, w)))
+                // 同じ効果行へそろえる（部品側の ef は {} のまま保つ）。ActiveDocs は Studio の
+                // 「表示中」バッジ用の補助で、ゲーム進行には関与しない（一覧が変わった瞬間だけ書く）。
+                update = (f, w) ->
+                    checked_ecast(Controls.step(f, w))
+                        |> (w1 -> ActiveDocs.step(World.activeDocs(w1), w1)),
+                view = (ctx, w) -> checked_ecast(View.frame(ctx, w)),
+                reloads =
+                    (SampleDoc.path(), Controls.reloadDoc) ::
+                    (ThemeDoc.path(), Controls.reloadTheme) ::
+                    (World.spritePath(), Controls.reloadSprites) :: Nil
+            })
+                // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
-                |> App.watchFile(SampleDoc.path(), Controls.reloadDoc)
-                |> App.watchFile(ThemeDoc.path(), Controls.reloadTheme)
-                |> App.watchFile(World.spritePath(), Controls.reloadSprites)
                 // 走行中の POST /bake（Studio の「焼いて」）は Bake.all と同じ実体を呼ぶ。
                 |> App.onBakeRequest(Bake.allShots)
                 |> App.withDebug(App.debugFromEnv())
