@@ -45,29 +45,29 @@ mod Fx {
     // burst 管理（「撃つたびに出る」効果の器）
     // ========================================================================
 
-    /// 進行中の効果 1 つ。「どの spec を・どの種で・どこで・いつ」始めたかの 4 値だけを持ち、
+    /// 進行中の効果 1 つ。「どの spec を・どの種で・どこで」に加え、誕生時刻＋寿命を Lifetime で持つ。
     /// 粒の状態は持たない — 絵は drawAll が (spec, seed, 経過秒) から毎回計算する。
-    /// spec は名前や参照でなく値で持つ: 複数の fx.json が混ざっても寿命（duration）の正本が
-    /// burst 自身に宿り、どの spec の効果かを引く対応表が要らない。
-    pub type alias Burst = { spec = FxDoc.Spec, seed = Int64, at = Vec2.Vec2, bornAt = Float64 }
+    /// spec は名前や参照でなく値で持つ: 複数の fx.json が混ざっても寿命の正本が burst 自身に宿り、
+    /// どの spec の効果かを引く対応表が要らない。時刻管理は Lifetime に委ねる（得点ポップ等と同じ一族）。
+    pub type alias Burst = { spec = FxDoc.Spec, seed = Int64, at = Vec2.Vec2, life = Lifetime.Lifetime }
 
     /// 時刻 bornAt に at で始まる効果を作る(普段は「今」を渡す。bake のように過去生まれを
     /// 作るときはその時刻を渡す)。seed は「撃つたびに変える通し番号」— 同じ爆発が
     /// 毎回そっくり同じ姿になるのを避ける。ゲームの連番は Int32 が普通なので口は Int32 にし、
-    /// sample が食べる Int64 への変換はここが済ませる。
+    /// sample が食べる Int64 への変換はここが済ませる。寿命は spec の duration。
     pub def burst(spec: FxDoc.Spec, seed: Int32, at: Vec2.Vec2, bornAt: Float64): Burst =
-        { spec = spec, seed = Int32.toInt64(seed), at = at, bornAt = bornAt }
+        { spec = spec, seed = Int32.toInt64(seed), at = at,
+          life = Lifetime.fire(bornAt, spec#duration) }
 
-    /// 寿命内（経過が各自の spec の duration まで）の burst だけ残す。毎フレーム呼んで、
-    /// 終わった効果でリストが伸び続けるのを防ぐ。
-    /// 境界の「経過 = duration」は sample がまだ絵を出す側なので、器も残す。
+    /// 寿命内（経過が寿命まで）の burst だけ残す。毎フレーム呼んで、終わった効果でリストが
+    /// 伸び続けるのを防ぐ。境界の「経過 = 寿命」は sample がまだ絵を出す側なので、器も残す（≤）。
     pub def expire(now: Float64, bursts: List[Burst]): List[Burst] =
-        List.filter(b -> now - b#bornAt <= b#spec#duration, bursts)
+        List.filter(b -> Lifetime.elapsedOf(now, b#life) <= b#life#dur, bursts)
 
     /// 進行中の burst 全部の、時刻 now の絵。各 burst の生まれた時刻からの経過で sampleAt を
     /// 呼ぶだけ — 寿命切れは sample が空を返すので、expire より先に呼んでも安全。
     pub def drawAll(now: Float64, bursts: List[Burst]): List[Render.PlacedItem] =
-        List.flatMap(b -> sampleAt(b#spec, b#seed, now - b#bornAt, b#at), bursts)
+        List.flatMap(b -> sampleAt(b#spec, b#seed, Lifetime.elapsedOf(now, b#life), b#at), bursts)
 
     // ── sample の内部（emitter・粒の導出）──
 

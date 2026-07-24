@@ -36,7 +36,9 @@ mod TestFxBurst {
     @Test
     def testBurstKeepsFields(): Unit \ Assert =
         let b = Fx.burst(specOf(1.0), 5, { x = 1.0, y = 2.0 }, 3.0);
-        Assert.assertEq(expected = (5i64, 1.0, 2.0, 3.0), (b#seed, b#at#x, b#at#y, b#bornAt))
+        // 誕生時刻＋寿命は Lifetime に入る（bornAt=3.0=life.startedAt、duration=1.0=life.dur）。
+        Assert.assertEq(expected = (5i64, 1.0, 2.0, 3.0, 1.0),
+            (b#seed, b#at#x, b#at#y, b#life#startedAt, b#life#dur))
 
     // ════════════════════════════════════════════════════════
     // expire（寿命回収）
