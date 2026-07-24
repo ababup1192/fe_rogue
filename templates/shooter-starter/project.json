@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "title": "Shooter",
+  "designWidth": 240,
+  "designHeight": 360,
+  "windowWidth": 480,
+  "windowHeight": 720,
+  "windowScale": 2,
+  "clearColor": {"r": 0.043137, "g": 0.050980, "b": 0.086275},
+  "maxDeltaTime": 0.05,
+  "textures": [],
+  "fonts": [
+    {"name": "default", "path": "assets/Xolonium-Regular.ttf", "fontSize": 10.0}
+  ],
+  "sounds": [],
+  "editor": {
+    "resources": [
+      {
+        "id": "theme",
+        "pattern": "assets/shooter.theme.json",
+        "title": "色（宇宙・自機・弾・敵・爆発）",
+        "schema": "assets/theme.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "rules",
+        "pattern": "assets/shooter.rules.json",
+        "title": "手触りと収支（移動速度・弾速・連射・敵速・得点）",
+        "schema": "assets/rules.schema.json",
+        "role": "tuning"
+      },
+      {
+        "id": "waves",
+        "pattern": "assets/shooter.waves.json",
+        "title": "敵の波（文字格子で配置）",
+        "schema": "assets/waves.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "project",
+        "pattern": "project.json",
+        "schema": "project.schema.json",
+        "title": "ゲームの題・画面",
+        "role": "tuning"
+      }
+    ]
+  }
+}

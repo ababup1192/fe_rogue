@@ -1,0 +1,13 @@
+{
+  "//": "shooter.theme.json の形の宣言（Studio の sections 方言）。色 1 つ = kind field / type color のセクション 1 つ。派生色（明るめ・暗め）はコードで導く（独自の色を増やさない）。",
+  "version": 1,
+  "sections": {
+    "space":  { "kind": "field", "type": "color", "label": "宇宙の背景",         "order": 1, "required": true },
+    "star":   { "kind": "field", "type": "color", "label": "流れる星",           "order": 2, "required": true },
+    "player": { "kind": "field", "type": "color", "label": "自機",               "order": 3, "required": true },
+    "bullet": { "kind": "field", "type": "color", "label": "弾",                 "order": 4, "required": true },
+    "enemy":  { "kind": "field", "type": "color", "label": "敵",                 "order": 5, "required": true },
+    "boom":   { "kind": "field", "type": "color", "label": "撃破の閃光",         "order": 6, "required": true },
+    "text":   { "kind": "field", "type": "color", "label": "文字（HUD・幕）",     "order": 7, "required": true }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "//": "shooter.rules.json の形の宣言（Studio の sections 方言）。手触りと収支の数値の初期値だけ Doc に置き、撃つ・当たる・降りるの規則はコード（World）側。",
+  "version": 1,
+  "sections": {
+    "playerSpeed": {
+      "kind": "field",
+      "type": "float",
+      "label": "自機の移動速度（px/秒・大きいほど機敏）",
+      "description": "←→ で動く速さ。大きすぎると避けやすく、小さいと被弾しやすくなる。",
+      "order": 1,
+      "min": 40,
+      "max": 400,
+      "default": 150
+    },
+    "bulletSpeed": {
+      "kind": "field",
+      "type": "float",
+      "label": "弾の速さ（px/秒・上へ飛ぶ）",
+      "description": "小さいと敵に届くまで時間がかかる。",
+      "order": 2,
+      "min": 80,
+      "max": 600,
+      "default": 260
+    },
+    "fireInterval": {
+      "kind": "field",
+      "type": "float",
+      "label": "連射の間隔（秒・小さいほど速く撃てる）",
+      "description": "Space 押しっぱなしで、この間隔ごとに 1 発撃つ。",
+      "order": 3,
+      "min": 0.05,
+      "max": 1.0,
+      "default": 0.28
+    },
+    "enemyFallSpeed": {
+      "kind": "field",
+      "type": "float",
+      "label": "敵の降下速度（px/秒・大きいほど攻めが激しい）",
+      "description": "波が自機まで降りきる前に撃ち落とせないと被弾する。",
+      "order": 4,
+      "min": 4,
+      "max": 120,
+      "default": 24
+    },
+    "enemyStep": {
+      "kind": "field",
+      "type": "float",
+      "label": "敵 1 体の大きさ（px・当たり判定も兼ねる）",
+      "description": "隊列の間隔と当たりの大きさを兼ねる。大きいほど当てやすい。",
+      "order": 5,
+      "min": 8,
+      "max": 32,
+      "default": 18
+    },
+    "scorePerKill": {
+      "kind": "field",
+      "type": "int",
+      "label": "敵 1 体撃破の得点",
+      "order": 6,
+      "min": 0,
+      "max": 10000,
+      "default": 100
+    },
+    "waveClearBonus": {
+      "kind": "field",
+      "type": "int",
+      "label": "波を 1 つ全滅させたときの追加得点",
+      "order": 7,
+      "min": 0,
+      "max": 10000,
+      "default": 500
+    }
+  }
+}

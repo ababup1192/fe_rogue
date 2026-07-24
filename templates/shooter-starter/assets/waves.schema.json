@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "敵の波（shooter.waves.json）",
+  "description": "waves は『文字格子の配列』の配列（1 波 = 行の並び）。1 波は rpg のマップ rows と同じ発想で、'.'/空白 = 空き、それ以外の文字（'X' など）= 敵 1 体。行や文字を増やせば敵が増え、波（外側の配列）を足せばステージが伸びる。先頭の波から順に出てくる。降りる・当てる・全滅を判定する規則はコード（World）側。",
+  "type": "object",
+  "required": ["version", "waves"],
+  "properties": {
+    "version": { "type": "integer", "description": "Doc の形の版。いまは 1" },
+    "note": { "type": "string", "description": "人間と AI のためのメモ（ゲームは読まない）" },
+    "waves": {
+      "type": "array",
+      "description": "波の並び。先頭から順に出てくる。波を足せばステージが伸びる",
+      "items": {
+        "type": "array",
+        "description": "1 波の文字格子（上から 1 行ずつ）。'.'/空白 = 空き、それ以外 = 敵 1 体。行や文字を増やせば敵が増える",
+        "items": { "type": "string" }
+      }
+    }
+  }
+}
