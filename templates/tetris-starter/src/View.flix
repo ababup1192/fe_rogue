@@ -191,10 +191,13 @@ mod View {
             case _ => Nil
         }
 
-    /// 画面中央にテキストを 1 行置く（幅はエンジンが実測して中央へ揃える）。
+    /// 盤の中央 x。幕（GAME OVER）は右パネルにかぶらないよう画面全幅でなく play エリアに寄せる。
+    def boardCenterX(): Float64 = originX() + Int32.toFloat64(World.cols()) * cell() / 2.0
+
+    /// 盤の中央にテキストを 1 行置く（幅はエンジンが実測して中央へ揃える）。
     def centered(atlas: FontAtlas, s: String, size: Float64, color: Color, y: Float64): Render.PlacedItem =
         TextDraw.centered({ text = s, atlas = atlas, size = size, color = color,
-                            z = zOverlay() + 1, centerX = designW() / 2.0, y = y })
+                            z = zOverlay() + 1, centerX = boardCenterX(), y = y })
 
     def clampF(lo: Float64, hi: Float64, v: Float64): Float64 =
         Float64.max(lo, Float64.min(hi, v))
