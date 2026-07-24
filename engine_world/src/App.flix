@@ -179,6 +179,34 @@ mod App {
                      app: App[w, ef]): App[w, ef] =
         { view = Some(v) | app }
 
+    /// ゲーム 1 本の標準形を 1 つのレコードで宣言する入口（初学者向け）。
+    /// ここを読むだけでゲームループの全体像 ——「何から始まり（init）・毎フレームどう進み（update）・
+    /// どう絵になり（view）・保存で何を読み直すか（reloads）」—— が 1 か所に見える。
+    ///   init    = 出発点の World（初期状態）。
+    ///   update  = 毎フレームの更新（入力と dt を持つ Frame と、いまの World → 次の World）。
+    ///             更新は「1 本の合成関数」で渡す約束: 複数の手続きをゲーム側で
+    ///             `\f w -> w |> step(f) |> interact(f)` のように中で繋いで 1 個にしてから渡す
+    ///             （繋ぎが Main に見えて教育的。App.game 側は複数システムを受け取らない）。
+    ///   view    = World → 絵（(置き場所, 見せたい物) の列）。World は読むだけで変えない。
+    ///   reloads = 保存で読み直す Doc の列（監視パスと、読み直し関数）。各要素が watchFile 1 本に展開される。
+    /// 内部では make(init) |> addSystem(update) |> watchFile(各 reload) |> withView(view) に
+    /// 展開されるだけ。戻り値は App なので、reloadOn（F1 リロード）・onBakeRequest（走行中 bake）・
+    /// withDebug などの高度な口は、この後ろに従来どおり pipe で足せる。
+    /// ── この入口が担うのは「最も普通の 1 本道」だけ ──: 更新系が 1 本に合成でき・描画は view で・
+    /// 音（withAudio）や HUD（withHudView）や quit の差し替え・複数システムの明示的な列挙が要る
+    /// 高度なゲームは、make から始める従来のビルダー（addSystem / withView / …）へ降りる。
+    pub def game(spec: { init = w,
+                         update = (Frame, w) -> w \ ef,
+                         view = (ViewCtx, w) -> List[Render.PlacedItem] \ ef,
+                         reloads = List[(String, w -> w \ {Fs.FileRead})] }): App[w, ef] =
+        make(spec#init)
+            |> addSystem(spec#update)
+            |> (app -> List.foldLeft((acc, entry) -> {
+                let (path, f) = entry;
+                watchFile(path, f, acc)
+            }, app, spec#reloads))
+            |> withView(spec#view)
+
     /// 「1 度だけ GPU に焼いて使い回す静的な絵」を宣言する。key は静的な中身を決める全入力を
     /// 1 文字列にまとめたキャッシュキー（フロア id・テーマ・作り直しの世代番号など） — これが
     /// 変わったときだけエンジンが古い VBO を捨てて焼き直す（テクスチャを名前で 1 度上げるのと同じ
