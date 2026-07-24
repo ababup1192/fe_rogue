@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "育成の中身（raise.plan.json）",
+  "description": "育成シミュの『表』を全部持つ Doc。stats = パラメータの名前、actions = 毎日えらべる行動（各パラメータの伸び幅）、events = ときどき起きること（増減と出やすさ weight）、endings = 発表会の結末（合計値のしきい値）。行を足せば選択肢や結末が増える。プレイヤーの目に入る文言（行動名・イベント文・結末文）は全部ここに置く（コードに直書きしない）。伸ばす・抽選する・結末を選ぶの規則はコード（World）側。",
+  "type": "object",
+  "required": ["version", "stats", "actions", "events", "endings"],
+  "properties": {
+    "version": { "type": "integer", "description": "Doc の形の版。いまは 1" },
+    "note": { "type": "string", "description": "人間と AI のためのメモ（ゲームは読まない）" },
+    "title": { "type": "string", "description": "表紙の題（大きく出る）" },
+    "subtitle": { "type": "string", "description": "表紙の一行（題の下）" },
+    "stats": {
+      "type": "array",
+      "description": "パラメータ（数値）の一覧。id はコードが参照する名前、label は画面に出す言葉。3 つを想定（棒の色 bar1..bar3 と対）",
+      "items": {
+        "type": "object",
+        "required": ["id", "label"],
+        "properties": {
+          "id": { "type": "string", "description": "パラメータの名前（power / spirit / skill）" },
+          "label": { "type": "string", "description": "画面に出す言葉（たいりょく 等）" }
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "description": "毎日えらべる行動。↑↓ で選び Space/Enter で決定する。行を足すと選択肢が増える",
+      "items": {
+        "type": "object",
+        "required": ["label", "power", "spirit", "skill"],
+        "properties": {
+          "label": { "type": "string", "description": "行動の名前（れんしゅう 等）" },
+          "note": { "type": "string", "description": "その行動の一言説明（画面に出す）" },
+          "power":  { "type": "integer", "description": "たいりょくの伸び幅" },
+          "spirit": { "type": "integer", "description": "きあいの伸び幅" },
+          "skill":  { "type": "integer", "description": "わざの伸び幅" }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "description": "行動のあと確率（rules.eventChance）で 1 つ起きる。weight が大きいほど選ばれやすい。増減はマイナスも書ける",
+      "items": {
+        "type": "object",
+        "required": ["label", "text", "power", "spirit", "skill", "weight"],
+        "properties": {
+          "label": { "type": "string", "description": "イベントの名前（メモ用）" },
+          "text": { "type": "string", "description": "起きたとき画面に出す文" },
+          "power":  { "type": "integer", "description": "たいりょくの増減（マイナス可）" },
+          "spirit": { "type": "integer", "description": "きあいの増減（マイナス可）" },
+          "skill":  { "type": "integer", "description": "わざの増減（マイナス可）" },
+          "weight": { "type": "integer", "description": "出やすさの重み（大きいほど選ばれやすい。0 で出ない）" }
+        }
+      }
+    },
+    "endings": {
+      "type": "array",
+      "description": "発表会の結末。合計値（3 パラメータの和）が threshold 以上で一番上の結末になる。threshold の大きい順に並べる",
+      "items": {
+        "type": "object",
+        "required": ["label", "text", "threshold"],
+        "properties": {
+          "label": { "type": "string", "description": "結末の名前（きん 等）" },
+          "text": { "type": "string", "description": "結末の文（発表会の結果）" },
+          "threshold": { "type": "integer", "description": "この結末になる合計値の下限。一番小さいものを 0 にして必ずどれかに当たるようにする" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
+  "packages": ["jdk@21", "gnumake@latest", "github:Cj-bc/flix.nix#flix_0_75_1"],
+  "shell": {
+    "scripts": {
+      "run": "make run",
+      "test": "make test",
+      "build": "make build",
+      "check": "make check"
+    }
+  }
+}

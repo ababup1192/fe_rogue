@@ -1,0 +1,14 @@
+{
+  "//": "raise.theme.json の形の宣言（Studio の sections 方言）。色 1 つ = kind field / type color のセクション 1 つ。派生色（明るめ・暗め）はコードで導く（独自の色を増やさない）。",
+  "version": 1,
+  "sections": {
+    "bg":     { "kind": "field", "type": "color", "label": "背景",                 "order": 1, "required": true },
+    "panel":  { "kind": "field", "type": "color", "label": "パネル（枠の中）",     "order": 2, "required": true },
+    "cursor": { "kind": "field", "type": "color", "label": "選択カーソル",         "order": 3, "required": true },
+    "text":   { "kind": "field", "type": "color", "label": "文字",                 "order": 4, "required": true },
+    "bar1":   { "kind": "field", "type": "color", "label": "パラメータ棒 1（たいりょく）", "order": 5, "required": true },
+    "bar2":   { "kind": "field", "type": "color", "label": "パラメータ棒 2（きあい）",     "order": 6, "required": true },
+    "bar3":   { "kind": "field", "type": "color", "label": "パラメータ棒 3（わざ）",       "order": 7, "required": true },
+    "spark":  { "kind": "field", "type": "color", "label": "きらめき（伸びた合図）", "order": 8, "required": true }
+  }
+}

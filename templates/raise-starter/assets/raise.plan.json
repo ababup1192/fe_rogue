@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "note": "育成の中身の一覧（表）。stats = 3 つのパラメータの名前。actions = 毎日えらべる行動（伸び幅つき）。events = ときどき起きること（増減つき・weight で出やすさ）。endings = 発表会の結末（合計値のしきい値で決まる）。行を足せば選択肢や結末が増える。文言は全部ここ（コードに直書きしない）。",
+  "title": "そだてゲーム",
+  "subtitle": "発表会まで、毎日ひとつえらぶ",
+  "stats": [
+    { "id": "power",  "label": "たいりょく" },
+    { "id": "spirit", "label": "きあい" },
+    { "id": "skill",  "label": "わざ" }
+  ],
+  "actions": [
+    { "label": "れんしゅう", "note": "わざが大きく伸びる",             "power": 2, "spirit": 1, "skill": 6 },
+    { "label": "きんとれ",   "note": "たいりょくが大きく伸びる",       "power": 6, "spirit": 1, "skill": 1 },
+    { "label": "やすむ",     "note": "きあいが戻る（ほかは伸びない）", "power": 0, "spirit": 7, "skill": 0 },
+    { "label": "しあい",     "note": "全部そこそこ伸びる",             "power": 3, "spirit": 2, "skill": 3 }
+  ],
+  "events": [
+    { "label": "ちょうし good", "text": "きょうは のっている！",     "power": 3, "spirit": 5, "skill": 3, "weight": 3 },
+    { "label": "ねぶそく",      "text": "ねぶそくで きあいが さがった", "power": 0, "spirit": -6, "skill": 0, "weight": 2 },
+    { "label": "ひらめき",      "text": "こつを つかんだ！",         "power": 0, "spirit": 2, "skill": 6, "weight": 2 }
+  ],
+  "endings": [
+    { "label": "きん",  "text": "かんぺきな はっぴょうかい！",     "threshold": 150 },
+    { "label": "ぎん",  "text": "よく そだった。おおきな はくしゅ", "threshold": 90 },
+    { "label": "どう",  "text": "むずかしかった。また あした",     "threshold": 0 }
+  ]
+}
