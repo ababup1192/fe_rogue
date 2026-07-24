@@ -23,6 +23,11 @@ mod TestRules {
     def fullRow(r: Int32, kind: Kind): List[(Cell, Kind)] =
         List.range(0, World.cols()) |> List.map(c -> ((c, r), kind))
 
+    /// w から連続して n 回涌かせた World の列（純粋。盤が空なら涌き衝突しない）。
+    def spawnChain(n: Int32, w: World.World): List[World.World] =
+        if (n <= 0) Nil
+        else { let w2 = World.spawnNext(w); w2 :: spawnChain(n - 1, w2) }
+
     // ══════════════════════════════════════════════════════
     // 衝突（壁・床・既存セル）
     // ══════════════════════════════════════════════════════
@@ -166,6 +171,22 @@ mod TestRules {
         Assert.assertEq(
             expected = (true, true),
             (Map.memberOf((5, bottom - 1), after#board), Map.memberOf((6, bottom - 1), after#board)))
+
+    // ══════════════════════════════════════════════════════
+    // NEXT 予告（袋の切れ目でも実物と一致する）
+    // ══════════════════════════════════════════════════════
+
+    @Test
+    def testNextPreviewMatchesFollowingSpawn(): Unit \ Assert =
+        // 空盤で連続して涌かせ、各ステップの NEXT が「次に実際に涌くミノ」と一致することを固定する。
+        // 16 回涌かせて 7-bag の切れ目を跨ぐ（袋の最後の 1 枚で NEXT が現在のミノに化けないこと）。
+        let worlds = base() :: spawnChain(16, base());
+        let pairs = List.zip(worlds, List.drop(1, worlds));
+        let allMatch = pairs |> List.forAll(pair -> {
+            let (prev, cur) = pair;
+            prev#nextKind == cur#current#kind
+        });
+        Assert.assertEq(expected = true, allMatch)
 
     // ══════════════════════════════════════════════════════
     // スコア（期待値は Doc から導く・リテラル禁止）

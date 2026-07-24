@@ -153,16 +153,19 @@ mod World {
     // 涌き（spawnNext）と 7-bag（決定的な擬似乱数）
     // ══════════════════════════════════════════════════════
 
-    /// 次のミノを涌かせる。bag から 1 個取り出して current に据え、bag の次を NEXT として覗く。
-    /// bag が尽きたら 7 種を種（seed）でシャッフルして詰め直す（7-bag: 7 個ごとに全種が 1 度ずつ）。
+    /// 次のミノを涌かせる。キュー（bag）の先頭を current に据え、その次を NEXT として覗く。
+    /// **取り出す前にキューを 2 枚以上へ継ぎ足す**（refill）ので、NEXT は必ず「次に涌く物」と
+    /// 一致する。素朴に「空になってから引き直す」と、袋の最後の 1 枚を取った直後は覗く先が無く
+    /// NEXT が現在のミノと同じに化け、次の引き直しで実物とズレる（ハードドロップで顕著）。それを防ぐ。
+    /// 7-bag: 継ぎ足しは 7 種のシャッフル 1 袋なので、7 個ごとに全種が 1 度ずつ出る性質は保つ。
     /// 涌いた current が既にぶつかっていたら積み上がり = GAME OVER。[遷移: Playing→GameOver]
     pub def spawnNext(w: World): World =
-        let (filled, s1) = if (List.isEmpty(w#bag)) shuffle(Pieces.all(), w#seed) else (w#bag, w#seed);
-        match filled {
-            case Nil          => w                       // 起こらない（Pieces.all は非空）が fail-safe
+        let (queue, s1) = refill(w#bag, w#seed);
+        match queue {
+            case Nil          => w                       // 起こらない（refill 後は必ず 2 枚以上）
             case kind :: rest =>
                 let piece = spawnPiece(kind);
-                let next = List.head(rest) |> Option.getWithDefault(kind);
+                let next = List.head(rest) |> Option.getWithDefault(kind);   // refill 済みなので rest は非空
                 let w1 = { current = piece, nextKind = next, bag = rest, seed = s1,
                            gravityTimer = 0.0, lockTimer = 0.0, grounded = false, lockResets = 0 | w };
                 if (collides(piece, w1#board))
@@ -170,6 +173,15 @@ mod World {
                 else
                     w1
         }
+
+    /// キューが 2 枚未満なら 7 種シャッフルを 1 袋継ぎ足す（current を取り出しても NEXT を
+    /// 正確に覗ける最小の在庫を保つ）。Pieces.all は 7 枚なので継ぎ足しは 1 回で足りる（再帰は保険）。
+    def refill(bag: List[Kind], s: Int64): (List[Kind], Int64) =
+        if (List.length(bag) >= 2)
+            (bag, s)
+        else
+            let (fresh, s1) = shuffle(Pieces.all(), s);
+            refill(List.append(bag, fresh), s1)
 
     // LCG（線形合同法・Knuth）。純粋・決定的。bake の seed 固定で毎回同じ絵になる。
     def nextSeed(s: Int64): Int64 =
