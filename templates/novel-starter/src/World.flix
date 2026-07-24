@@ -1,6 +1,24 @@
 // World — ゲームの状態そのものと、次の状態を作る規則（すべて純粋）。
 // 台本（文章・分岐・結末）は StoryDoc の rows、進め方と「疑うと灯りが消える」規則はここ。
 // 表紙（Title）→ 物語（Story）→ 結末の節を読み終えたら表紙へ戻る。プレイヤーは死なない。
+//
+// 場面の移り変わり（Phase と、Story の中の台本の流れ）:
+//
+//     Title ──決定(advance/begin)──▶ Story
+//                                      │  節の beats を順に読む(advance)
+//                                      ▼
+//                                  ask あり ──選ぶ(pick)──▶ goto の節へ(enter)
+//                                  ask なし ──▶ next の節へ / next 空なら結末
+//                                                              │
+//     Title ◀──────結末を読み終えた・台本が切れた(toTitle)──────┘
+//
+// 遷移を起こす関数の doc には [遷移: X→Y] を付けてある（探すときの目印）。
+//
+// Doc が壊れていても止まらない（fail-open の 3 段）:
+//   読めない → 既定値で起動（Controls.loadDocs / *Doc.defaults）
+//   一部が欠け → その欄だけ既定値（fromJson が欄ごとに拾う）
+//   型が違う   → その欄は既定値のまま（行き先の節が無ければ表紙へ倒れる 等）
+// だからプレイヤーの前でクラッシュしない。台本の編集ミスは既定に倒れて読みは続く。
 mod World {
 
     /// いま画面が何をしているか。Title = 表紙（決定で物語がはじまる）、Story = 台本を読んでいる。
@@ -74,17 +92,18 @@ mod World {
 
     // ── 進行の規則 ──
 
-    /// 表紙から物語をはじめる。灯りは全部つき直る（新しい夜）。
+    /// 表紙から物語をはじめる。灯りは全部つき直る（新しい夜）。[遷移: Title→Story]
     def begin(w: World): World =
         enter(w#story#start, 0, { phase = Phase.Story, lightsOut = 0 | w })
 
     /// 表紙へ戻る（結末を読み終えた・台本が切れた）。部屋の暗さはそのまま残り、
-    /// 次に begin したとき灯り直す。
+    /// 次に begin したとき灯り直す。[遷移: Story→Title]
     def toTitle(w: World): World =
         { phase = Phase.Title, kit = NovelKit.closed() | w }
 
     /// 台本の (section, idx) の拍をキットに乗せる。拍を読み終えた節は
     /// ask（分岐）→ next（次の節）→ どちらも無ければ結末 = 表紙へ、の順に出口を選ぶ。
+    /// [遷移: 節→次の拍 / 次の節 / 結末(Story→Title)]
     /// fuel は空の節が連なる壊れた台本でも必ず止まるための上限。
     pub def enter(sectionId: String, idx: Int32, w: World): World =
         enterFuel(8, sectionId, idx, w)
@@ -120,8 +139,9 @@ mod World {
             ({ text = choice#label, meta = Some("${NovelKit.choicePrefix()}${i}") }: UiSlots.Entry)
         })
 
-    /// 決定 1 回分。表紙では物語をはじめ、文字送り中なら全文へ、
-    /// 読み終えていれば次の拍へ。選択肢待ちは動かない（pick だけが進める）。
+    /// 決定 1 回分。表紙では物語をはじめ［遷移: Title→Story］、文字送り中なら全文へ、
+    /// 読み終えていれば次の拍へ（Story のまま enter で進む）。
+    /// 選択肢待ちは動かない（pick だけが進める）。
     pub def advance(w: World): World =
         match w#phase {
             case Phase.Title => begin(w)
@@ -138,7 +158,7 @@ mod World {
         { cursor = UiMenu.moveCursor(delta, count, w#cursor) | w }
 
     /// 選択肢 i を選ぶ: 「疑う」選択（suspect）なら館の灯りをひとつ消してから、
-    /// 行き先の節の先頭へ。
+    /// 行き先の節の先頭へ。[遷移: 分岐→goto の節]
     pub def pick(i: Int32, w: World): World =
         match currentOptions(w) |> List.nth(i) {
             case None => w
