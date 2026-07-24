@@ -1,0 +1,14 @@
+{
+  "//": "race.theme.json の形の宣言（Studio の sections 方言）。色 1 つ = kind field / type color のセクション 1 つ。派生色（明るめ・暗め）はコードで導く（独自の色を増やさない）。",
+  "version": 1,
+  "sections": {
+    "grass":  { "kind": "field", "type": "color", "label": "道の外（草）",       "order": 1, "required": true },
+    "road":   { "kind": "field", "type": "color", "label": "路面",               "order": 2, "required": true },
+    "lane":   { "kind": "field", "type": "color", "label": "レーンの破線",       "order": 3, "required": true },
+    "player": { "kind": "field", "type": "color", "label": "自機の車",           "order": 4, "required": true },
+    "rivalA": { "kind": "field", "type": "color", "label": "ライバル A",         "order": 5, "required": true },
+    "rivalB": { "kind": "field", "type": "color", "label": "ライバル B",         "order": 6, "required": true },
+    "finish": { "kind": "field", "type": "color", "label": "ゴールの旗",         "order": 7, "required": true },
+    "text":   { "kind": "field", "type": "color", "label": "文字（HUD・幕）",     "order": 8, "required": true }
+  }
+}

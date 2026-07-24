@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "title": "Race",
+  "designWidth": 240,
+  "designHeight": 360,
+  "windowWidth": 480,
+  "windowHeight": 720,
+  "windowScale": 2,
+  "clearColor": {"r": 0.180392, "g": 0.360784, "b": 0.196078},
+  "maxDeltaTime": 0.05,
+  "textures": [],
+  "fonts": [
+    {"name": "default", "path": "assets/Xolonium-Regular.ttf", "fontSize": 10.0}
+  ],
+  "sounds": [],
+  "editor": {
+    "resources": [
+      {
+        "id": "theme",
+        "pattern": "assets/race.theme.json",
+        "title": "色（草・路面・車・ゴール）",
+        "schema": "assets/theme.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "rules",
+        "pattern": "assets/race.rules.json",
+        "title": "手触りと収支（前進速度・ハンドル・ライバル速度・周回数・得点）",
+        "schema": "assets/rules.schema.json",
+        "role": "tuning"
+      },
+      {
+        "id": "course",
+        "pattern": "assets/race.course.json",
+        "title": "コースの形（文字格子で路面と草）",
+        "schema": "assets/course.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "project",
+        "pattern": "project.json",
+        "schema": "project.schema.json",
+        "title": "ゲームの題・画面",
+        "role": "tuning"
+      }
+    ]
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "//": "race.rules.json の形の宣言（Studio の sections 方言）。手触りと収支の数値の初期値だけ Doc に置き、走る・曲がる・抜く・周回するの規則はコード（World）側。",
+  "version": 1,
+  "sections": {
+    "forwardSpeed": {
+      "kind": "field",
+      "type": "float",
+      "label": "前進の速さ（px/秒・大きいほど疾走感）",
+      "description": "コースが下へ流れる速さ。草にはみ出すと offRoadSlow を掛けて落ちる。",
+      "order": 1,
+      "min": 40,
+      "max": 400,
+      "default": 120
+    },
+    "steerSpeed": {
+      "kind": "field",
+      "type": "float",
+      "label": "ハンドルの効き（px/秒・大きいほど機敏）",
+      "description": "←→ で左右に寄る速さ。大きすぎると曲げ過ぎ、小さいとカーブで草に落ちやすい。",
+      "order": 2,
+      "min": 40,
+      "max": 400,
+      "default": 130
+    },
+    "offRoadSlow": {
+      "kind": "field",
+      "type": "float",
+      "label": "草での減速（0..1・小さいほど強く減速）",
+      "description": "道の外に出たとき前進速度へ掛かる係数。1 に近いとペナルティが軽い。",
+      "order": 3,
+      "min": 0.1,
+      "max": 1.0,
+      "default": 0.45
+    },
+    "rivalSpeedA": {
+      "kind": "field",
+      "type": "float",
+      "label": "ライバル A の速さ（px/秒）",
+      "description": "自機の前進より速いと追い抜けない。遅いと抜きやすい。",
+      "order": 4,
+      "min": 20,
+      "max": 400,
+      "default": 96
+    },
+    "rivalSpeedB": {
+      "kind": "field",
+      "type": "float",
+      "label": "ライバル B の速さ（px/秒）",
+      "order": 5,
+      "min": 20,
+      "max": 400,
+      "default": 108
+    },
+    "lapLength": {
+      "kind": "field",
+      "type": "float",
+      "label": "1 周の距離（px・長いほど 1 周が長い）",
+      "description": "この距離ぶん前進すると 1 周（lap）進む。",
+      "order": 6,
+      "min": 200,
+      "max": 3000,
+      "default": 900
+    },
+    "totalLaps": {
+      "kind": "field",
+      "type": "int",
+      "label": "ゴールに必要な周回数",
+      "description": "この周回に達したらゴール（WIN）。",
+      "order": 7,
+      "min": 1,
+      "max": 20,
+      "default": 3
+    },
+    "scorePerPass": {
+      "kind": "field",
+      "type": "int",
+      "label": "ライバルを 1 台抜くたびの得点",
+      "order": 8,
+      "min": 0,
+      "max": 10000,
+      "default": 300
+    },
+    "finishBonus": {
+      "kind": "field",
+      "type": "int",
+      "label": "ゴール到達の追加得点",
+      "order": 9,
+      "min": 0,
+      "max": 10000,
+      "default": 1000
+    }
+  }
+}

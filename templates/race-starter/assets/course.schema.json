@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "コースの形（race.course.json）",
+  "description": "rows は文字格子（1 行 = コースを縦に切った 1 段。上ほど先、下ほど手前）。'#' = 路面（走れる）、'.'/空白 = 草（道の外・減速）。'#' の帯を左右にずらすとカーブ、幅を変えると道の広さが変わる。コースは下から上へ無限に流れる（周回）。曲がる・はみ出す・周回するの規則はコード（World）側。",
+  "type": "object",
+  "required": ["version", "rows"],
+  "properties": {
+    "version": { "type": "integer", "description": "Doc の形の版。いまは 1" },
+    "note": { "type": "string", "description": "人間と AI のためのメモ（ゲームは読まない）" },
+    "rows": {
+      "type": "array",
+      "description": "コースの段の並び（上から 1 段ずつ）。'#' = 路面、'.'/空白 = 草。段を足せばコースが長くなる",
+      "items": {
+        "type": "string",
+        "description": "1 段の文字格子。'#' の並びが路面（走れる帯）"
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "note": "画面の色。grass = 道の外、road = 路面、lane = レーンの破線、player = 自機、rivalA/rivalB = ライバル 2 台、finish = ゴールの旗、text = 文字。#rrggbb で指定。",
+  "grass": "#2e5c32",
+  "road": "#393b42",
+  "lane": "#e8e087",
+  "player": "#60c8ed",
+  "rivalA": "#e85a68",
+  "rivalB": "#fac149",
+  "finish": "#eceff2",
+  "text": "#eceff2"
+}
