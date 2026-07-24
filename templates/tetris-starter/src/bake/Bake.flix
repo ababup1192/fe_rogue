@@ -27,6 +27,9 @@ mod Bake {
         let w0 = loadWorld();
         let cfg = cfgOf("gallery", atlas, w0#theme#bg);
         let ctx = { atlas = atlas, visible = { position = Vec2.zero(), size = design() } };
+        // title: ジャンルカードの顔（彩り豊かな中盤の一枚）。Studio が golden/title.png を
+        // /genesis/title で読み、「パズル」の札のサムネにする（各 starter 共通の規約）。
+        let t = shoot(cfg, ctx, stackScene(w0), "title");
         // s1: 初期盤（空）+ 涌いたばかりの current + NEXT + score 0。
         let s1 = shoot(cfg, ctx, w0, "s1_start");
         // s2: 積み上がった中盤 + 落下中のミノ + ゴースト。
@@ -35,7 +38,7 @@ mod Bake {
         let s3 = shoot(cfg, ctx, clearScene(w0), "s3_clear");
         // s4: GAME OVER の幕。
         let s4 = shoot(cfg, ctx, overScene(w0), "s4_over");
-        s1 :: s2 :: s3 :: s4 :: Nil
+        t :: s1 :: s2 :: s3 :: s4 :: Nil
 
     // ── 決定的な場面の脚本（RNG を回さず board を直接組む） ──
 
