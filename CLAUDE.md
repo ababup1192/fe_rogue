@@ -73,6 +73,31 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 - 機械的リファクタ（分割・Doc 化）は「前後の PNG バイト一致」で見た目不変を証明する。
 - リグレッション防護は golden（`gallery/` vs `golden/` のバイト比較）に任せる。
 
+## テンプレートを足す・更新する
+
+`templates/` の各スターターは `make new-game` の複製元であり、Studio の「ジャンル」の顔でもある。
+2 系統ある:
+
+- **具体値式**（rpg / novel / tetris-starter）: 値をそのまま書く。**in-repo で
+  `make -C templates/<name> check / test / bake` が通り golden を持つ**作り込み例。凝った演出も
+  テストも載せられる。Studio の「はじめる」は複製で始まる。
+- **トークン式**（game-starter）: `__NAME__` `__W__` などを埋めた最小の骨組み。in-repo では
+  ビルドしない（`make new-game` が置換して初めて動く）。W/H を引数で決める素体。
+
+新しいテンプレを足すときの手順（**どれか欠けると Studio で「出ない / 絵がない / 作れない」になる**）:
+
+1. `templates/<genre>-starter/` を作る（rpg-starter を写経元に。具体値式なら golden も焼く）。
+2. **`golden/title.png` を必ず用意する**。Studio のジャンル札のサムネは `GET /genesis/title` が
+   これを読む（無いと空絵に倒れる）。bake に `title` シーンを 1 枚足して祝福する。
+3. Studio に登録する: `flix_ge_studio` の `server/src/Genesis.flix` の families で、該当ジャンルの
+   `starter = "templates/<genre>-starter"` にする（starter が空だとゼロ生成フローのまま）。
+4. Studio に反映する: `flix_ge_studio` で **`make swap-jar`**（動いている `.app` の同梱 jar を
+   差し替え + 再署名）→ Studio を Cmd+Q して開き直し。**`make jar` だけでは動いている .app に効かない**。
+
+`make new-game GAME=/abs NAME=x TITLE=題名 TEMPLATE=<genre>-starter`。TITLE は自由文でよい
+（アポストロフィ・空白・記号も通る）。具体値式テンプレは自身の W/H・題名を使う（引数の W/H・TITLE は
+反映されない — 作成後に project.json の「ゲームの題・画面」Doc で変える）。
+
 ## スキル一覧
 
 以下、スキルを適宜参照してください。
