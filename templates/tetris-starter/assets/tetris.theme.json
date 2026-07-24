@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "bg": "#0f121a",
+  "board": "#1a1e28",
+  "grid": "#2e3442",
+  "wall": "#515a71",
+  "ghost": "#78849c",
+  "flash": "#ffffff",
+  "colorI": "#50d0e0",
+  "colorO": "#f1cb3c",
+  "colorT": "#ac60d8",
+  "colorS": "#66c95c",
+  "colorZ": "#e5505f",
+  "colorJ": "#4c79e0",
+  "colorL": "#f1903c"
+}
