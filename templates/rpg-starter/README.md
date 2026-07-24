@@ -23,13 +23,26 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 | `make golden` | いまの gallery を golden として祝福する |
 | `make atelier-preview` | atelier/ の候補と assets/ の現行を debug/atelier/ に焼く |
 
-## 触る場所
+## 読む順（全体像のつかみ方）
 
-- `src/World.flix` … ゲームの状態と規則（歩ける・ぶつかる・約束で開く・クリア。純粋）。
-- `src/Controls.flix` … キーの割り当て（InputMap）と Doc の読み直し。
-- `src/View.flix` … 状態を絵に写す（タイル・木戸・灯り・霧・ふきだし）。
-- `src/Main.flix` … 上の3つを App に繋いで起動する目次。
-- `src/bake/Bake.flix` … 決定的な 5 場面を PNG に焼く（golden とアトリエ）。
+**遊ぶ → 読む → JSON をいじる** の順で仕組みが見えます。
+
+1. まず `make run` で遊ぶ（矢印キーで歩き、住人に話しかけ、薬草を拾う）。
+2. コードは **エントリ→状態→描画→入力** の順で読む:
+   1. `src/Main.flix` … 3 つを App に繋いで起動する目次。冒頭 doc に**毎フレームの流れ
+      （入力→状態更新→描画 がどの行か）**が書いてある（`update = …` の 3 行）。まずここ。
+   2. `src/World.flix` … ゲームの状態そのものと、次の状態を作る規則（歩ける・ぶつかる・
+      約束で開く・クリア。すべて純粋）。冒頭 doc に**場面の移り変わりの図**（表紙→里→クリア）が
+      あり、遷移を起こす関数には doc に `[遷移: X→Y]` が付いている。まず `step`（毎フレームの拍）と
+      `confirm`（決定＝話す/進める）を読む。
+   3. `src/View.flix` … 状態を絵に写す（タイル・木戸・灯り・霧・ふきだしを、何をどこに描くか）。
+   4. `src/Controls.flix` … キーの割り当て（InputMap）と Doc の読み直し。
+   5. `src/bake/Bake.flix` … 決定的な 5 場面を PNG に焼く（golden とアトリエ）。
+3. 手触り・色・絵・盤面は下の `assets/` の Doc を保存即反映でいじる。
+
+**いちばん小さい変え方**（保存即反映を体験する）: `make debug` で起動したまま
+`assets/rpg.map.json` の `"goal": 5` を `2` に書き換えて保存すると、薬草 2 個でクリアになる。
+`assets/rpg.kind.json` の `"walk": 6.0` を大きくすると歩きが速くなる。数値ひとつで手触りが変わる。
 
 数値・色・絵・盤面は `assets/` の Doc（保存即反映）:
 

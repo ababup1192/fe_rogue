@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "セル文字→質感の表。色は #rrggbb か @キー（rpg.theme.json の色を参照）",
+  "note": "セル文字→質感の表（rows の 1 文字ずつが、ここの char に対応する質感で塗られる）。色は #rrggbb か @キー（rpg.theme.json の色を参照）。いじると何が変わるか: styleMix=角の丸/四角の混ざり具合、style=角の形（round/square/diamond/mix）、jitter=岩肌の揺らぎ（大きいほどごつごつ）、mottle=セルごとの明度ゆらぎ（畑のパッチワーク感）、edgeWidth=フチの太さ、height.lift=立体の持ち上げ高さ。各欄の意味は terrain.schema.json の label に。",
   "styleMix": { "round": 0.35, "square": 0.35 },
   "entries": [
     { "char": "#", "name": "石垣",

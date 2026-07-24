@@ -2,6 +2,20 @@
 // 見下ろしの里を 1 マスずつ歩き、住人に話しかけ、薬草を拾う。
 // 扉の鍵は物ではなく約束 — 頼まれた数の薬草を持って約束の相手と話すと扉が開く。
 // 盤面のデータ（rows・配置・文言）は MapDoc、手触りは KindDoc — 実行中の状態はこの World だけが持つ。
+//
+// 場面の移り変わり（Phase）:
+//
+//     Title ──決定(confirm/begin)──▶ Play ──薬草が goal 個(pickUp)──▶ Clear
+//       ▲                                                                │
+//       └─────────────────────決定(confirm)──────────────────────────────┘
+//
+// 遷移を起こす関数の doc には [遷移: X→Y] を付けてある（探すときの目印）。
+//
+// Doc が壊れていても止まらない（fail-open の 3 段）:
+//   読めない → 既定値で起動（Controls.loadDocs / *Doc.defaults）
+//   一部が欠け → その欄だけ既定値（fromJson が欄ごとに拾う）
+//   型が違う   → その欄は既定値のまま（数を入れる欄に文字 等）
+// だからプレイヤーの前でクラッシュしない。編集ミスは既定に倒れて遊びは続く。
 mod World {
 
     /// いま画面が何をしているか。Title = 表紙（決定で歩き出す）、Play = 里を歩いている、
@@ -66,7 +80,7 @@ mod World {
           dialog = UiDialog.closed(), talkingTo = None, activeDocsWritten = "" }
 
     /// 里を歩ける状態に置き直す（表紙から始めるとき・間取りの Doc を差し替えたとき）。
-    /// 薬草は全部戻り、扉は閉じ、主人公は start のマスに立つ。
+    /// 薬草は全部戻り、扉は閉じ、主人公は start のマスに立つ。[遷移: Title→Play]
     def begin(w: World): World =
         { phase = Phase.Play,
           hero = w#map#start, facing = Dir4.Down, stepGauge = 0.0, steps = 0,
@@ -118,7 +132,7 @@ mod World {
         else
             faced
 
-    /// いま立っているマスの薬草を拾う。goal に届いたらクリア（Phase.Clear）。
+    /// いま立っているマスの薬草を拾う。goal に届いたらクリア（Phase.Clear）。[遷移: Play→Clear]
     /// 拾った薬草は盤から消えるので、同じマスをまた踏んでも二度は数えない。
     def pickUp(w: World): World =
         if (List.exists(cell -> MapDoc.sameCell(cell, w#hero), w#herbs)) {
@@ -165,9 +179,9 @@ mod World {
 
     // ── 決定（話す・進める）の規則 ──
 
-    /// 決定 1 回分。表紙では歩き出し、クリア画面では表紙へ戻る。
+    /// 決定 1 回分。表紙では歩き出し［遷移: Title→Play］、クリア画面では表紙へ戻る［遷移: Clear→Title］。
     /// 里では: ふきだしが開いていれば送り（文字送り中なら全文へ・読み終えていれば閉じる）、
-    /// 閉じていれば目の前の住人に話しかける。
+    /// 閉じていれば目の前の住人に話しかける（Play のまま）。
     pub def confirm(w: World): World =
         match w#phase {
             case Phase.Title => begin(w)
