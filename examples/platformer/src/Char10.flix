@@ -116,7 +116,7 @@ mod Char10 {
 
     /// 着地の型: 地面すれすれの一列に散って着水し、粒ごとに小さく跳ね直す。
     def groundLine(i: Int32, q: Float64): Vec2.Vec2 =
-        let hop = 4.0 * q * (1.0 - q);
+        let hop = Curve.arch01(q);
         {x = (hashA(i) - 0.5) * 20.0, y = -1.6 - (2.0 + 5.0 * hashB(i)) * hop}
 
     // ── ダッシュ付随のエフェクト ──

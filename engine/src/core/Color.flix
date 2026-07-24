@@ -7,6 +7,22 @@ pub type alias Color = {r = Float32, g = Float32, b = Float32}
 
 mod Color {
 
+    /// 色を白へamountだけ寄せる。通常は0から1を渡し、範囲外は補正しない。
+    /// 既存ゲームと同じ色を保つため、amountをFloat32へ変えてから各チャンネルを補間する。
+    pub def lighten(color: Color, amount: Float64): Color =
+        let value = Float64.truncateToFloat32(amount);
+        { r = color#r + (1.0f32 - color#r) * value,
+          g = color#g + (1.0f32 - color#g) * value,
+          b = color#b + (1.0f32 - color#b) * value }
+
+    /// 色を黒へamountだけ寄せる。通常は0から1を渡し、範囲外は補正しない。
+    /// 丸め順を保つため、Float64で残す割合を求めてからFloat32へ変える。
+    pub def darken(color: Color, amount: Float64): Color =
+        let remaining = Float64.truncateToFloat32(1.0 - amount);
+        { r = color#r * remaining,
+          g = color#g * remaining,
+          b = color#b * remaining }
+
     /// HSV から色を作る。h は色相（1 周 = 1.0・0 = 赤・範囲外は折り返し）、s は鮮やかさ、
     /// v は明るさ（どちらも 0〜1）。「値に沿って色相を流す」（虹のグラデーション・
     /// 残量ゲージの緑→赤）が 1 行で導ける。

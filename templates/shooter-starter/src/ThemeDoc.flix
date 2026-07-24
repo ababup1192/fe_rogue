@@ -38,13 +38,11 @@ mod ThemeDoc {
 
     /// 白に寄せる（ハイライト）。自機の照りなどに使う。
     pub def lighten(c: Color, k: Float64): Color =
-        let t = Float64.truncateToFloat32(k);
-        { r = c#r + (1.0f32 - c#r) * t, g = c#g + (1.0f32 - c#g) * t, b = c#b + (1.0f32 - c#b) * t }
+        Color.lighten(c, k)
 
     /// 黒に寄せる（影）。
     pub def darken(c: Color, k: Float64): Color =
-        let t = Float64.truncateToFloat32(1.0 - k);
-        { r = c#r * t, g = c#g * t, b = c#b * t }
+        Color.darken(c, k)
 
     /// テキストから Doc へ（fail-open）。色の表記（#rrggbb）は UiDoc.colorOf に委ねる。
     pub def fromJson(text: String): Option[Doc] =

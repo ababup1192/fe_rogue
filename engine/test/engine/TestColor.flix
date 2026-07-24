@@ -2,6 +2,54 @@
 // 彩度ゼロの無彩色化、色相の折り返し。
 mod TestColor {
 
+    /// 明暗の両端と中央で、白または黒へ指定した割合だけ近づく。
+    @Test
+    def testLightenAndDarkenAtKeyAmounts(): Unit \ Assert =
+        let color = { r = 0.25f32, g = 0.5f32, b = 0.75f32 };
+        let channels = value -> (value#r, value#g, value#b);
+        Assert.assertEq(
+            expected = ((0.25f32, 0.5f32, 0.75f32),
+                        (0.625f32, 0.75f32, 0.875f32),
+                        (1.0f32, 1.0f32, 1.0f32),
+                        (0.25f32, 0.5f32, 0.75f32),
+                        (0.125f32, 0.25f32, 0.375f32),
+                        (0.0f32, 0.0f32, 0.0f32)),
+            (channels(Color.lighten(color, 0.0)),
+             channels(Color.lighten(color, 0.5)),
+             channels(Color.lighten(color, 1.0)),
+             channels(Color.darken(color, 0.0)),
+             channels(Color.darken(color, 0.5)),
+             channels(Color.darken(color, 1.0))))
+
+    /// 範囲外のamountを補正せず、既存ゲームと同じ式をそのまま延長する。
+    @Test
+    def testLightenAndDarkenDoNotClampAmount(): Unit \ Assert =
+        let color = { r = 0.25f32, g = 0.5f32, b = 0.75f32 };
+        let light = Color.lighten(color, -1.0);
+        let dark = Color.darken(color, 2.0);
+        Assert.assertEq(
+            expected = ((-0.5f32, 0.0f32, 0.5f32),
+                        (-0.25f32, -0.5f32, -0.75f32)),
+            ((light#r, light#g, light#b), (dark#r, dark#g, dark#b)))
+
+    /// lightenはamountを、darkenはFloat64で求めた残りをFloat32へ変えてから各色へ使う。
+    @Test
+    def testLightenAndDarkenKeepFloatConversionOrder(): Unit \ Assert =
+        let color = { r = 0.01f32, g = 0.6f32, b = 0.9f32 };
+        let amount = 0.6;
+        let value = Float64.truncateToFloat32(amount);
+        let remaining = Float64.truncateToFloat32(1.0 - amount);
+        let light = Color.lighten(color, amount);
+        let dark = Color.darken(color, amount);
+        Assert.assertEq(
+            expected = (color#r + (1.0f32 - color#r) * value,
+                        color#g + (1.0f32 - color#g) * value,
+                        color#b + (1.0f32 - color#b) * value,
+                        color#r * remaining,
+                        color#g * remaining,
+                        color#b * remaining),
+            (light#r, light#g, light#b, dark#r, dark#g, dark#b))
+
     @Test
     def testHsvHitsPrimariesGreysAndWraps(): Unit \ Assert =
         // h=0 は赤・1/3 は緑・2/3 は青。s=0 は h によらず灰（v がそのまま3チャンネルに出る）。

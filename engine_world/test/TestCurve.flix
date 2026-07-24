@@ -5,6 +5,21 @@ mod TestCurve {
 
     def near(a: Float64, b: Float64): Bool = Float64.abs(a - b) < 0.000000001
 
+    /// arch01: 両端が0、中央が1になる左右対称の山を、四半点を含めて確認する。
+    @Test
+    def testArch01KeyPoints(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (0.0, 0.75, 1.0, 0.75, 0.0),
+            (Curve.arch01(0.0), Curve.arch01(0.25), Curve.arch01(0.5),
+             Curve.arch01(0.75), Curve.arch01(1.0)))
+
+    /// arch01: 範囲外を端へ丸めず、左右対称な負の値として放物線を延長する。
+    @Test
+    def testArch01ExtendsOutsideUnitRange(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (-1.25, -1.25),
+            (Curve.arch01(-0.25), Curve.arch01(1.25)))
+
     /// loop: 端 span で折り返し [0, span) に収まる。10/4=2.5 の小数部 0.5 に span=4 を掛けて 2.0。
     @Test
     def testLoopWraps(): Unit \ Assert =

@@ -91,7 +91,7 @@ mod Char03 {
                       - face * 3.5 * shape#compress;
         let baseY = -(6.2 - 2.2 * along) * (1.0 - 0.45 * shape#low);
         let wiggle = -1.4 * strideAmp * Curve.triWave(stage#pos#x * 0.13 + along * 0.55);
-        let archY = -shape#arch * 6.0 * (4.0 * along * (1.0 - along));
+        let archY = -shape#arch * 6.0 * Curve.arch01(along);
         let flutY = shape#flut * 0.4 * Curve.triWave(stage#t * 13.0 + along * 2.0);
         let ground = { x = groundX, y = stage#pos#y + baseY + wiggle + archY + flutY };
         // 丸まり: 手で振り付けた C 字の並び（頭が前下、背が上へ巻く）。

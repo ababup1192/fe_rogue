@@ -151,7 +151,7 @@ mod Char09 {
         let e = Float64.min(1.0, stage#modeT * 5.0);
         List.range(0, 3) |> List.map(c ->
             let fc = Int32.toFloat64(c);
-            let hop = 4.0 * e * (1.0 - e);
+            let hop = Curve.arch01(e);
             let cx = stage#pos#x + stage#facing * (6.0 + 3.0 * fc) * e;
             let cyv = -1.5 - (3.0 + 1.5 * fc) * hop;
             { at = {x = cx, y = cyv},
@@ -161,7 +161,7 @@ mod Char09 {
     /// 着地の破片: 左右へ弾け飛ぶ三角形。上がって落ちる小さな山なりで消える。
     def popChips(stage: CharStage.Stage): List[Render.PlacedItem] =
         let q = stage#modeT / 0.2;
-        let hop = 4.0 * q * (1.0 - q);
+        let hop = Curve.arch01(q);
         List#{-1.0, 1.0} |> List.map(side ->
             let cx = stage#pos#x + side * (5.0 + 18.0 * stage#modeT);
             let cyv = -2.5 - 5.0 * hop;

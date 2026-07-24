@@ -82,13 +82,11 @@ mod ThemeDoc {
 
     /// 白に寄せる（ハイライト）。
     pub def lighten(c: Color, k: Float64): Color =
-        let t = Float64.truncateToFloat32(k);
-        { r = c#r + (1.0f32 - c#r) * t, g = c#g + (1.0f32 - c#g) * t, b = c#b + (1.0f32 - c#b) * t }
+        Color.lighten(c, k)
 
     /// 黒に寄せる（影・段の陰）。
     pub def darken(c: Color, k: Float64): Color =
-        let t = Float64.truncateToFloat32(1.0 - k);
-        { r = c#r * t, g = c#g * t, b = c#b * t }
+        Color.darken(c, k)
 
     /// スプライト・地形の意味色キー → 実色。未知のキーはマゼンタ（描き忘れが目に見える）。
     /// wall*/fieldShade は地形（rpg.terrain.json の @参照）向けの派生色 —

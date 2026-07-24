@@ -52,8 +52,7 @@ mod ThemeDoc {
 
     /// 白に寄せる（ハイライト）。
     pub def lighten(c: Color, k: Float64): Color =
-        let t = Float64.truncateToFloat32(k);
-        { r = c#r + (1.0f32 - c#r) * t, g = c#g + (1.0f32 - c#g) * t, b = c#b + (1.0f32 - c#b) * t }
+        Color.lighten(c, k)
 
     /// スプライトの意味色キー → 実色。未知のキーはマゼンタ（描き忘れが目に見える）。
     pub def resolver(doc: Doc, key: String): Color =

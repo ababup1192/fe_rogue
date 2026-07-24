@@ -9,6 +9,11 @@ mod Curve {
 
     def fract(x: Float64): Float64 = x - Float64.floor(x)
 
+    /// 進行度0から始まり、中央で1、進行度1で0へ戻る放物線。
+    /// 通常は0から1を渡す。範囲外は補正せず、同じ式の延長として負の値を返す。
+    pub def arch01(progress: Float64): Float64 =
+        4.0 * progress * (1.0 - progress)
+
     /// 速さ `speed` で増える量を `span` で折り返し、[0, span) に収めた値。落ち物や流れる
     /// 帯が端まで来たら反対側から出直す、途切れない周回に使う。
     pub def loop(speed: Float64, span: Float64, t: Float64): Float64 =

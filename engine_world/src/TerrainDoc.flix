@@ -234,7 +234,9 @@ mod TerrainDoc {
         match fx#preset {
             case "sparkle" => Some(Material.sparkle(c))
             case "scales"  => Some(Material.scales(
-                                  { deep = darken(c, 0.25), mid = c, lite = lighten(c, 0.25) }, 1.0))
+                                  { deep = Color.darken(c, 0.25),
+                                    mid = c,
+                                    lite = Color.lighten(c, 0.25) }, 1.0))
             case "bubble"  => Some(Material.bubble(c))
             case "glow"    => Some(Material.glow(c))
             case _         => None
@@ -252,17 +254,4 @@ mod TerrainDoc {
                                                             shade = colorOf(resolve, h#shade),
                                                             clipToFloor = h#clipToFloor })
         }
-
-    /// 白に寄せる(ハイライト)。engine には共有の lighten/darken が無い(rpg-starter は
-    /// ThemeDoc に pub def として持つ)ため、TerrainDoc が同式を private に持つ(白/黒へ
-    /// 寄せる線形補間)。engine が template の ThemeDoc に依存する向きは作れないための重複 —
-    /// 将来 engine の Color(共有ユーティリティ)へ寄せて一本化する課題として M5 に記録。
-    def lighten(c: Color, k: Float64): Color =
-        let t = Float64.truncateToFloat32(k);
-        { r = c#r + (1.0f32 - c#r) * t, g = c#g + (1.0f32 - c#g) * t, b = c#b + (1.0f32 - c#b) * t }
-
-    /// 黒に寄せる(影・段の陰)。lighten と同じく private の重複(一本化は将来課題)。
-    def darken(c: Color, k: Float64): Color =
-        let t = Float64.truncateToFloat32(1.0 - k);
-        { r = c#r * t, g = c#g * t, b = c#b * t }
 }
