@@ -143,14 +143,21 @@ mod View {
     def lamp(w: World.World, cell: Grid.Cell, litNow: Bool): List[Render.PlacedItem] =
         let center = cellCenter(w, cell);
         let theme = w#theme;
-        let post = { at = { x = center#x - 1.0, y = center#y - 8.0 },
-                     item = Render.box({ x = 2.0, y = 12.0 }, theme#ink, zLamp()) };
-        let headColor = if (litNow) theme#accent else ThemeDoc.lighten(theme#sky, 0.12);
-        let head = { at = { x = center#x - 3.0, y = center#y - 13.0 },
+        // ポストは背を高くして持ち上げ地形の裾から頭を出す（濃い地形に埋もれない）。
+        let post = { at = { x = center#x - 1.0, y = center#y - 11.0 },
+                     item = Render.box({ x = 2.0, y = 15.0 }, theme#ink, zLamp()) };
+        // 消灯時のヘッドも「灯りの器」として読めるよう少し明るめに（暗い地形で埋もれない）。
+        let headColor = if (litNow) theme#accent else ThemeDoc.lighten(theme#sky, 0.24);
+        let head = { at = { x = center#x - 3.0, y = center#y - 16.0 },
                      item = Render.box({ x = 6.0, y = 6.0 }, headColor, zLamp() + 1) };
+        // 点灯時のグローは大きく暖かく。地形がリッチになった分、halo を強めて「灯がともる」を出す。
+        // 外側の淡い光 + 芯の濃い光の二重で、点でありつつ周りへにじむ。
         let glow = if (litNow)
-            Render.glowAt({ x = center#x, y = center#y - 10.0 }, 22.0, theme#accent,
-                { alpha = 0.30, blend = DrawCmd.BlendMode.Add }, zLamp() + 2)
+            List.append(
+                Render.glowAt({ x = center#x, y = center#y - 13.0 }, 34.0, theme#accent,
+                    { alpha = 0.42, blend = DrawCmd.BlendMode.Add }, zLamp() + 2),
+                Render.glowAt({ x = center#x, y = center#y - 13.0 }, 14.0, theme#accent,
+                    { alpha = 0.55, blend = DrawCmd.BlendMode.Add }, zLamp() + 3))
         else Nil;
         post :: head :: glow
 
