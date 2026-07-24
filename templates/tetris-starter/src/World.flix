@@ -93,10 +93,12 @@ mod World {
           lockResets = 0, phase = Phase.Playing, clearRows = Nil, clearTimer = 0.0,
           score = 0, lines = 0, activeDocsWritten = "" }
 
-    /// 涌き位置に置いた Piece（rot 0・盤の上端中央あたり）。
-    /// col = cols/2 - 2 は 4×4 のミノ枠が中央に来るための左寄せ。
+    /// 涌き位置に置いた Piece（rot 0・上端中央）。row = -1 は「最上段の 1 段上（隠しバッファ）」。
+    /// こうすると最上段（row 0）まで積める＝盤が上まで満杯になって初めて涌けず GAME OVER になる。
+    /// row 0 で涌かせると足元（row 0..1）の中央が塞がった時点で負け、画面の上に空きが見えるのに
+    /// 負ける違和感が出る。col = cols/2 - 2 は 4×4 のミノ枠が中央に来るための左寄せ。
     def spawnPiece(kind: Kind): Piece =
-        { kind = kind, rot = 0, col = cols() / 2 - 2, row = 0 }
+        { kind = kind, rot = 0, col = cols() / 2 - 2, row = -1 }
 
     // ══════════════════════════════════════════════════════
     // 衝突・移動・回転（純粋な規則）
