@@ -440,6 +440,11 @@ NG_TEMPLATE := $(if $(TEMPLATE),$(TEMPLATE),game-starter)
 NG_W := $(if $(W),$(W),480)
 NG_H := $(if $(H),$(H),300)
 NG_TITLE = $(if $(TITLE),$(TITLE),$(NAME))
+# 題名は自由文（アポストロフィ・空白・記号を含みうる）。シェルの '...' 囲みだと
+# "Tetris's" のような ' で構文が壊れる。make の export で環境変数として直接渡し
+# （execve が値をそのまま載せる・シェル再クォート無し）、recipe 側の perl は
+# $ENV{NG_TITLE} で安全に読む。
+export NG_TITLE
 .PHONY: new-game
 new-game:
 	@if [ -z "$(GAME)" ]; then echo "error: GAME を指定してください (make new-game GAME=/abs/path NAME=mygame TITLE=題名 W=240 H=320)"; exit 1; fi
@@ -461,7 +466,7 @@ new-game:
 	mkdir -p "$(GAME)/gallery" "$(GAME)/golden" "$(GAME)/debug" "$(GAME)/atelier"; \
 	if [ -f "$(GAME)/assets/__NAME__.theme.json" ]; then mv "$(GAME)/assets/__NAME__.theme.json" "$(GAME)/assets/$(NAME).theme.json"; fi; \
 	if [ -f "$(GAME)/assets/__NAME__.sprite.json" ]; then mv "$(GAME)/assets/__NAME__.sprite.json" "$(GAME)/assets/$(NAME).sprite.json"; fi; \
-	NG_NAME='$(NAME)' NG_TITLE='$(NG_TITLE)' NG_W='$(NG_W)' NG_H='$(NG_H)' \
+	NG_NAME='$(NAME)' NG_W='$(NG_W)' NG_H='$(NG_H)' \
 	NG_WW=$$(( $(NG_W) * 2 )) NG_WH=$$(( $(NG_H) * 2 )) NG_ENGINE='$(CURDIR)' \
 	find "$(GAME)" -type f \( -name '*.flix' -o -name '*.json' -o -name '*.toml' -o -name '*.md' -o -name 'Makefile' \) \
 	  -exec perl -pi -e 's/__NAME__/$$ENV{NG_NAME}/g; s/__TITLE__/$$ENV{NG_TITLE}/g; s/__WW__/$$ENV{NG_WW}/g; s/__WH__/$$ENV{NG_WH}/g; s/__W__/$$ENV{NG_W}/g; s/__H__/$$ENV{NG_H}/g; s/__ENGINE__/$$ENV{NG_ENGINE}/g;' {} +; \
