@@ -116,6 +116,27 @@ mod ShaderGen {
         "        freq *= 2.0; amp *= 0.5;\n" +
         "    }\n" +
         "    return sum;\n" +
+        "}\n" +
+        // 中心 (cx,cy) のまわりに座標を回す（中心ほど速い差動回転＋rate*uTime の全体回転）。
+        "vec2 sg_swirl(vec2 uv, float cx, float cy, float strength, float rate) {\n" +
+        "    vec2 c = vec2(cx, cy);\n" +
+        "    vec2 p = uv - c;\n" +
+        "    float r = length(p);\n" +
+        "    float a = strength / (r + 0.08) + rate * uTime;\n" +
+        "    float s = sin(a); float co = cos(a);\n" +
+        "    return c + mat2(co, -s, s, co) * p;\n" +
+        "}\n" +
+        // コサインパレット col = a + b*cos(2π(c*t + d))（Inigo Quilez 方式）。
+        "vec3 sg_cospal(float t, vec3 a, vec3 b, vec3 c, vec3 d) {\n" +
+        "    return clamp(a + b * cos(6.2831853 * (c * t + d)), 0.0, 1.0);\n" +
+        "}\n" +
+        // 中心 (cx,cy) まわりに座標を均一に回す（turns + rate*uTime 周）。
+        "vec2 sg_rotate(vec2 uv, float cx, float cy, float turns, float rate) {\n" +
+        "    vec2 c = vec2(cx, cy);\n" +
+        "    vec2 p = uv - c;\n" +
+        "    float a = 6.2831853 * (turns + rate * uTime);\n" +
+        "    float s = sin(a); float co = cos(a);\n" +
+        "    return c + mat2(co, -s, s, co) * p;\n" +
         "}\n"
 
     /// Spec → fragment シェーダー全体（prelude + main）。uTime uniform を前提に持つ。
@@ -188,6 +209,15 @@ mod ShaderGen {
                 // 先頭色から始め、隣り合う区切りごとに mix(..., 次の色, smoothstep(前,次,f)) を入れ子で重ねる
                 // （sg_gradient は作らず素の mix/smoothstep を直書き＝prelude を増やさない）。
                 gradientExpr(g#stops, factor)
+            case ShaderDoc.Shade.Cosine(cs) =>
+                // t = field（cycleRate>0 なら uTime を足して位相を回す。clamp しない＝cos の周期で色が巡る）。
+                let t =
+                    if (cycleRate == 0.0)
+                        "(" + fieldExpr(cs#field, "vUv", env) + ")"
+                    else
+                        "(" + fieldExpr(cs#field, "vUv", env) + " + " + f(cycleRate) + " * uTime)";
+                "sg_cospal(" + t + ", " + vec3Lit(cs#a) + ", " + vec3Lit(cs#b) + ", " +
+                    vec3Lit(cs#c) + ", " + vec3Lit(cs#d) + ")"
         }
 
     /// stops を先頭色から入れ子 mix にする GLSL 式。区切りが 2 つなら
@@ -243,6 +273,19 @@ mod ShaderGen {
                           "), sg_fbm((" + uv + ") * " + f(wp#scale) + ", 3, " + fSeed(wp#seed) + " + 91.0)) - 0.5)";
                 let uv2 = "((" + uv + ") + " + off + " * " + f(wp#amount) + ")";
                 fieldExpr(wp#of, uv2, env)
+            case ShaderDoc.Field.Swirl(sw) =>
+                // 読む座標を中心まわりに回してから of を読む（Warp と同じ「座標差し替え」）。
+                let uv2 = "sg_swirl((" + uv + "), " + f(sw#cx) + ", " + f(sw#cy) + ", " +
+                          f(sw#strength) + ", " + f(sw#rate) + ")";
+                fieldExpr(sw#of, uv2, env)
+            case ShaderDoc.Field.Angle(an) =>
+                // 中心から見た角度を 0..1 へ（atan2 / 2π + 0.5）。
+                "(atan((" + uv + ").y - " + f(an#cy) + ", (" + uv + ").x - " + f(an#cx) +
+                    ") * 0.15915494 + 0.5)"
+            case ShaderDoc.Field.Rotate(rt) =>
+                let uv2 = "sg_rotate((" + uv + "), " + f(rt#cx) + ", " + f(rt#cy) + ", " +
+                          f(rt#turns) + ", " + f(rt#rate) + ")";
+                fieldExpr(rt#of, uv2, env)
             case ShaderDoc.Field.Mix(m) =>
                 "mix(" + fieldExpr(m#a, uv, env) + ", " + fieldExpr(m#b, uv, env) + ", " + f(m#t) + ")"
             case ShaderDoc.Field.Blend(bl) =>

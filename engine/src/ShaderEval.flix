@@ -41,7 +41,22 @@ mod ShaderEval {
                 let f = if (cycleRate == 0.0) clamp01(field)
                         else clamp01(triWave(field + cycleRate * t));
                 gradientColor(f, g#stops)
+            case ShaderDoc.Shade.Cosine(cs) =>
+                let field = evalFieldEnv(cs#field, uv, t, env);
+                let tt = if (cycleRate == 0.0) field else field + cycleRate * t;
+                cosColor(cs#a, cs#b, cs#c, cs#d, tt)
         }
+
+    /// コサインパレット col = a + b·cos(2π(c·t + d)) を各チャンネルで（ShaderGen の sg_cospal と同じ数式）。
+    def cosColor(pa: Color, pb: Color, pc: Color, pd: Color, t: Float64): Color =
+        let ch = (av, bv, cv, dv) ->
+            colorF32(av + bv * Vec2.cos(6.2831853 * (cv * t + dv)));
+        { r = ch(colorF64(pa#r), colorF64(pb#r), colorF64(pc#r), colorF64(pd#r)),
+          g = ch(colorF64(pa#g), colorF64(pb#g), colorF64(pc#g), colorF64(pd#g)),
+          b = ch(colorF64(pa#b), colorF64(pb#b), colorF64(pc#b), colorF64(pd#b)) }
+
+    def colorF64(x: Float32): Float64 = Float32.toFloat64(x)
+    def colorF32(x: Float64): Float32 = Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, x)
 
     /// 係数 f（0..1）で stops を混ぜた色。ShaderGen の gradientExpr と同じ入れ子 mix を辿る。
     def gradientColor(f: Float64, stops: List[(Float64, Color)]): Color =
@@ -97,6 +112,25 @@ mod ShaderEval {
                 let oy = fbm(Vec2.mul(uv, wp#scale), 3, Int32.toFloat64(wp#seed) + 91.0) - 0.5;
                 let uv2 = Vec2.add(uv, Vec2.mul({ x = ox, y = oy }, wp#amount));
                 evalFieldEnv(wp#of, uv2, t, env)
+            case ShaderDoc.Field.Swirl(sw) =>
+                let c = { x = sw#cx, y = sw#cy };
+                let p = Vec2.sub(uv, c);
+                let r = Vec2.length(p);
+                let a = sw#strength / (r + 0.08) + sw#rate * t;
+                let co = Vec2.cos(a);
+                let s = Vec2.sin(a);
+                let uv2 = { x = c#x + p#x * co - p#y * s, y = c#y + p#x * s + p#y * co };
+                evalFieldEnv(sw#of, uv2, t, env)
+            case ShaderDoc.Field.Angle(an) =>
+                Vec2.atan2(uv#y - an#cy, uv#x - an#cx) * 0.15915494 + 0.5
+            case ShaderDoc.Field.Rotate(rt) =>
+                let c = { x = rt#cx, y = rt#cy };
+                let p = Vec2.sub(uv, c);
+                let a = 6.2831853 * (rt#turns + rt#rate * t);
+                let co = Vec2.cos(a);
+                let s = Vec2.sin(a);
+                let uv2 = { x = c#x + p#x * co - p#y * s, y = c#y + p#x * s + p#y * co };
+                evalFieldEnv(rt#of, uv2, t, env)
             case ShaderDoc.Field.Mix(m) =>
                 lerp(evalFieldEnv(m#a, uv, t, env), evalFieldEnv(m#b, uv, t, env), m#t)
             case ShaderDoc.Field.Blend(bl) =>

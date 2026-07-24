@@ -65,7 +65,7 @@ def bodyOfField(field: ShaderDoc.Field): String =
 /// prelude は長さだけ pin（本文は別扱い）。長さが変わったら prelude を触った合図。
 @Test
 def testPreludeLength(): Unit \ Assert =
-    Assert.assertEq(expected = 3167, String.length(ShaderGen.preludeSource()))
+    Assert.assertEq(expected = 3826, String.length(ShaderGen.preludeSource()))
 
 /// demoSurface の main 式（prelude 抜き）。Ramp の三角波位相・Uv 展開まで含めて決定論で pin。
 @Test
@@ -165,6 +165,40 @@ def testEvalWorleyNonNegative(): Unit \ Assert =
     let field = ShaderDoc.Field.Worley({ scale = 6.0, seed = 42, out = ShaderDoc.WorleyOut.F2mF1 });
     let v = ShaderEval.evalField(field, { x = 0.5, y = 0.5 }, 0.0);
     Assert.assertEq(expected = true, v >= 0.0 and v < 2.0)
+
+/// Angle: 中心の真右（角度 0）は 0.5 を返す（atan2(0, +)/2π + 0.5 = 0.5）。
+@Test
+def testEvalAngleRightIsHalf(): Unit \ Assert =
+    let field = ShaderDoc.Field.Angle({ cx = 0.5, cy = 0.5 });
+    Assert.assertEq(expected = 0.5, ShaderEval.evalField(field, { x = 1.0, y = 0.5 }, 0.0))
+
+/// Rotate: turns=0・rate=0 は恒等（座標を回さない）→ Uv.U はそのまま。
+@Test
+def testEvalRotateIdentity(): Unit \ Assert =
+    let field = ShaderDoc.Field.Rotate({ cx = 0.5, cy = 0.5, turns = 0.0, rate = 0.0,
+                                         of = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U }) });
+    Assert.assertEq(expected = 0.3, ShaderEval.evalField(field, { x = 0.3, y = 0.5 }, 0.0))
+
+/// Rotate: 半周回すと (0.7,0.5) は中心対称の (0.3,0.5) を読む → Uv.U ≈ 0.3。
+@Test
+def testEvalRotateHalfTurnMirrors(): Unit \ Assert =
+    let field = ShaderDoc.Field.Rotate({ cx = 0.5, cy = 0.5, turns = 0.5, rate = 0.0,
+                                         of = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U }) });
+    let v = ShaderEval.evalField(field, { x = 0.7, y = 0.5 }, 0.0);
+    Assert.assertEq(expected = true, v > 0.29 and v < 0.31)
+
+/// Cosine: b=0 なら cos 項が消えて col=a（a.r=0.5 → 画素 r=0.5）。
+@Test
+def testEvalCosineBaseColorIsA(): Unit \ Assert =
+    let shade = ShaderDoc.Shade.Cosine({
+        a = { r = 0.5f32, g = 0.2f32, b = 0.8f32 },
+        b = { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
+        c = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
+        d = { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
+        field = ShaderDoc.Field.Const(0.3) });
+    let spec = { name = "t", cycleRate = 0.0, bindings = Nil,
+                 out = ShaderDoc.Out.Fill({ shade = shade, alpha = ShaderDoc.Field.Const(1.0) }) };
+    Assert.assertEq(expected = 0.5f32, ShaderEval.evalPixel(spec, { x = 0.0, y = 0.0 }, 0.0)#r)
 
 /// waterVeins は Ramp 2 色の範囲内の色を返す（lo..hi の間・網目の濃淡）。
 @Test

@@ -105,6 +105,16 @@ mod ShaderDoc {
         /// 模様をマス目（tiles.x × tiles.y 個）に敷いて、各マスの中を 0..1 の座標で読み直す。
         /// of は「1 マス内の場」で、fract(uv*tiles) を uv として読む（同じ模様がタイル状に繰り返す）。
         case Tiling({ tiles = Vec2.Vec2, of = Field })
+        /// 中心 (cx,cy) のまわりに座標を回して of を読む（水に溶いた絵の具を混ぜる渦）。
+        /// 中心に近いほど速く回る（差動回転 strength/距離）ので、絵の具が渦を巻いて混ざる。
+        /// rate は時間あたりの全体回転（uTime に掛かる）。Warp と同じく「読む座標を差し替える」変換。
+        case Swirl({ cx = Float64, cy = Float64, strength = Float64, rate = Float64, of = Field })
+        /// 中心 (cx,cy) から見た「角度」を 0..1 で返す（1 周で 0→1）。Radial（距離）と対で極座標をなす。
+        /// これ一つで放射状の縞・花びら（sin(angle*枚数)）・螺旋（angle+radial）などが組み合わせで作れる。
+        case Angle({ cx = Float64, cy = Float64 })
+        /// 中心 (cx,cy) のまわりに座標を「均一に」回して of を読む（Swirl の差動でない版）。
+        /// turns = 回す量（1.0 で 1 周）、rate = 時間あたりの回転（uTime に掛かる）。座標差し替え変換。
+        case Rotate({ cx = Float64, cy = Float64, turns = Float64, rate = Float64, of = Field })
         /// 名前を付けて使い回す場（shared に定義したものを参照する）。
         /// 同じ計算を何度も書かずに一度だけ書いて名前で呼べる。
         case Ref(String)
@@ -120,6 +130,10 @@ mod ShaderDoc {
         /// 並べた区切り。field（0..1）が位置のどこにいるかで、隣り合う色をなめらかに混ぜていく。
         /// 2 色 Ramp では「黒い締まりと明るい芯」を同時に出せないが、これなら間に色を挟める。
         case Gradient({ stops = List[(Float64, Color)], field = Field })
+        /// コサインパレット（Inigo Quilez 方式）。col = a + b·cos(2π(c·field + d))。
+        /// a=中心色・b=振れ幅・c=各色の周期・d=各色の位相。滑らかに循環する色が作れて、
+        /// d を少しずらすだけで全体の配色が変わる（ステージごとの色替えに向く）。cycleRate>0 で位相が時間で回る。
+        case Cosine({ a = Color, b = Color, c = Color, d = Color, field = Field })
     }
 
     /// 面の出力（このピクセルの最終色とアルファ）。
@@ -217,6 +231,9 @@ mod ShaderDoc {
             case Shade.Gradient(g) =>
                 // field を評価せず、真ん中（f=0.5）の位置で stops を混ぜた色を返す。
                 gradientColorAt(0.5, g#stops)
+            case Shade.Cosine(cs) =>
+                // GLSL を走らせない代表色は中心色 a（実際に巡回する色は GL でのみ出る）。
+                cs#a
         }
 
     /// 係数 f（0..1）で stops を混ぜた色。先頭色から始めて、隣り合う区切りごとに

@@ -98,6 +98,7 @@ mod ShaderJson {
                     case ShaderDoc.Shade.Solid(_)    => Nil
                     case ShaderDoc.Shade.Ramp(r)     => collectRefs(r#field)
                     case ShaderDoc.Shade.Gradient(g) => collectRefs(g#field)
+                    case ShaderDoc.Shade.Cosine(c)   => collectRefs(c#field)
                 };
                 List.append(shadeRefs, collectRefs(f#alpha))
         };
@@ -133,6 +134,9 @@ mod ShaderJson {
             case ShaderDoc.Field.Pow(pw)       => collectRefs(pw#of)
             case ShaderDoc.Field.Time(tm)      => collectRefs(tm#offset)
             case ShaderDoc.Field.Tiling(tl)    => collectRefs(tl#of)
+            case ShaderDoc.Field.Swirl(sw)     => collectRefs(sw#of)
+            case ShaderDoc.Field.Angle(_)      => Nil
+            case ShaderDoc.Field.Rotate(rt)    => collectRefs(rt#of)
             case ShaderDoc.Field.Ref(name)     => name :: Nil
         }
 
@@ -176,7 +180,20 @@ mod ShaderJson {
                         fieldJson <- reqKey("field", m);
                         field     <- parseField(fieldJson)
                     ) yield ShaderDoc.Shade.Gradient({ stops = stops, field = field })
-                case other => Err(err("unknown shade kind: '${other}' (want 'solid'/'ramp'/'gradient')"))
+                case "cosine" =>
+                    forM (
+                        aJson     <- reqKey("a", m);
+                        a         <- parseColor(aJson);
+                        bJson     <- reqKey("b", m);
+                        b         <- parseColor(bJson);
+                        cJson     <- reqKey("c", m);
+                        c         <- parseColor(cJson);
+                        dJson     <- reqKey("d", m);
+                        d         <- parseColor(dJson);
+                        fieldJson <- reqKey("field", m);
+                        field     <- parseField(fieldJson)
+                    ) yield ShaderDoc.Shade.Cosine({ a = a, b = b, c = c, d = d, field = field })
+                case other => Err(err("unknown shade kind: '${other}' (want 'solid'/'ramp'/'gradient'/'cosine')"))
             }
         })
 
@@ -252,6 +269,29 @@ mod ShaderJson {
                         ofJson <- reqKey("of", m);
                         of     <- parseField(ofJson)
                     ) yield ShaderDoc.Field.Warp({ amount = amount, scale = scale, seed = seed, of = of })
+                case "swirl" =>
+                    forM (
+                        cx       <- numOr("cx", 0.5, m);
+                        cy       <- numOr("cy", 0.5, m);
+                        strength <- numOr("strength", 0.3, m);
+                        rate     <- numOr("rate", 0.2, m);
+                        ofJson   <- reqKey("of", m);
+                        of       <- parseField(ofJson)
+                    ) yield ShaderDoc.Field.Swirl({ cx = cx, cy = cy, strength = strength, rate = rate, of = of })
+                case "angle" =>
+                    forM (
+                        cx <- numOr("cx", 0.5, m);
+                        cy <- numOr("cy", 0.5, m)
+                    ) yield ShaderDoc.Field.Angle({ cx = cx, cy = cy })
+                case "rotate" =>
+                    forM (
+                        cx     <- numOr("cx", 0.5, m);
+                        cy     <- numOr("cy", 0.5, m);
+                        turns  <- numOr("turns", 0.0, m);
+                        rate   <- numOr("rate", 0.1, m);
+                        ofJson <- reqKey("of", m);
+                        of     <- parseField(ofJson)
+                    ) yield ShaderDoc.Field.Rotate({ cx = cx, cy = cy, turns = turns, rate = rate, of = of })
                 case "mix" =>
                     forM (
                         aJson <- reqKey("a", m);
@@ -545,6 +585,11 @@ mod ShaderJson {
                 JObject(Map#{ "kind" => JString("gradient"),
                               "stops" => stopsToJson(g#stops),
                               "field" => fieldToJson(g#field) })
+            case ShaderDoc.Shade.Cosine(cs) =>
+                JObject(Map#{ "kind" => JString("cosine"),
+                              "a" => colorToJson(cs#a), "b" => colorToJson(cs#b),
+                              "c" => colorToJson(cs#c), "d" => colorToJson(cs#d),
+                              "field" => fieldToJson(cs#field) })
         }
 
     // stops を [[位置, 色], ..] の配列へ（色は {r,g,b}・parse は hex/{r,g,b} どちらも受ける）。
@@ -622,6 +667,16 @@ mod ShaderJson {
             case ShaderDoc.Field.Tiling(tl) =>
                 JObject(Map#{ "kind" => JString("tile"), "tiles" => vec2ToJson(tl#tiles),
                               "of" => fieldToJson(tl#of) })
+            case ShaderDoc.Field.Swirl(sw) =>
+                JObject(Map#{ "kind" => JString("swirl"), "cx" => num(sw#cx), "cy" => num(sw#cy),
+                              "strength" => num(sw#strength), "rate" => num(sw#rate),
+                              "of" => fieldToJson(sw#of) })
+            case ShaderDoc.Field.Angle(an) =>
+                JObject(Map#{ "kind" => JString("angle"), "cx" => num(an#cx), "cy" => num(an#cy) })
+            case ShaderDoc.Field.Rotate(rt) =>
+                JObject(Map#{ "kind" => JString("rotate"), "cx" => num(rt#cx), "cy" => num(rt#cy),
+                              "turns" => num(rt#turns), "rate" => num(rt#rate),
+                              "of" => fieldToJson(rt#of) })
             case ShaderDoc.Field.Ref(name) =>
                 JObject(Map#{ "kind" => JString("use"), "name" => JString(name) })
         }
