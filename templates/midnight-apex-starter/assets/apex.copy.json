@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "note": "プレイヤーの目に入る文言。別の世界観へ変えるときはここだけを書き換える。",
+  "titleTop": "MIDNIGHT",
+  "titleMain": "APEX",
+  "tagline": "CHASE THE LAST LIGHT",
+  "steerHint": "ARROWS / A D   STEER",
+  "speedHint": "UP   THROTTLE    DOWN   BRAKE",
+  "boostHint": "SPACE   BOOST",
+  "startHint": "PRESS SPACE",
+  "positionLabel": "POS",
+  "lapLabel": "LAP",
+  "speedLabel": "KM/H",
+  "timeLabel": "TIME",
+  "energyLabel": "ENERGY",
+  "sectorLabel": "SECTOR",
+  "readyLabel": "GET READY",
+  "offRoadLabel": "GRIP LOST",
+  "finishTitle": "FINISH",
+  "crashedTitle": "POWER FAILURE",
+  "gameOverTitle": "MACHINE LOST",
+  "retryHint": "SPACE TO RUN AGAIN"
+}

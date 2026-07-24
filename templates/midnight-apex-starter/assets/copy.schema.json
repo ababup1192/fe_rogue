@@ -1,0 +1,25 @@
+{
+  "//": "apex.copy.json の形。プレイヤーの目に入る固定文言をまとめる。",
+  "version": 1,
+  "sections": {
+    "titleTop":{"kind":"field","type":"text","label":"題の上段","order":1},
+    "titleMain":{"kind":"field","type":"text","label":"題の主役","order":2},
+    "tagline":{"kind":"field","type":"text","label":"短いコピー","order":3},
+    "steerHint":{"kind":"field","type":"text","label":"ハンドルの案内","order":4},
+    "speedHint":{"kind":"field","type":"text","label":"アクセルとブレーキの案内","order":5},
+    "boostHint":{"kind":"field","type":"text","label":"ブーストの案内","order":6},
+    "startHint":{"kind":"field","type":"text","label":"開始の案内","order":7},
+    "positionLabel":{"kind":"field","type":"text","label":"順位の見出し","order":8},
+    "lapLabel":{"kind":"field","type":"text","label":"周回の見出し","order":9},
+    "speedLabel":{"kind":"field","type":"text","label":"速度の見出し","order":10},
+    "timeLabel":{"kind":"field","type":"text","label":"時間の見出し","order":11},
+    "energyLabel":{"kind":"field","type":"text","label":"エネルギーの見出し","order":12},
+    "sectorLabel":{"kind":"field","type":"text","label":"区間の見出し","order":13},
+    "readyLabel":{"kind":"field","type":"text","label":"開始前の見出し","order":14},
+    "offRoadLabel":{"kind":"field","type":"text","label":"路外警告","order":15},
+    "finishTitle":{"kind":"field","type":"text","label":"ゴール見出し","order":16},
+    "crashedTitle":{"kind":"field","type":"text","label":"爆発中の見出し","order":17},
+    "gameOverTitle":{"kind":"field","type":"text","label":"ゲームオーバー見出し","order":18},
+    "retryHint":{"kind":"field","type":"text","label":"再挑戦の案内","order":19}
+  }
+}

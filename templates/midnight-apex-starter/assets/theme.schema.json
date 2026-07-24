@@ -1,0 +1,18 @@
+{
+  "//": "apex.theme.json の形。色の役割だけを宣言し、車や道路の描き方は View に置く。",
+  "version": 1,
+  "sections": {
+    "night":     {"kind":"field","type":"color","label":"夜空","order":1,"required":true},
+    "ground":    {"kind":"field","type":"color","label":"道路の外","order":2,"required":true},
+    "road":      {"kind":"field","type":"color","label":"路面","order":3,"required":true},
+    "roadShade": {"kind":"field","type":"color","label":"路面の影","order":4,"required":true},
+    "shoulder":  {"kind":"field","type":"color","label":"発光する路肩","order":5,"required":true},
+    "lane":      {"kind":"field","type":"color","label":"中央線","order":6,"required":true},
+    "player":    {"kind":"field","type":"color","label":"自機","order":7,"required":true},
+    "rivalA":    {"kind":"field","type":"color","label":"ライバルA","order":8,"required":true},
+    "rivalB":    {"kind":"field","type":"color","label":"ライバルB","order":9,"required":true},
+    "danger":    {"kind":"field","type":"color","label":"路外警告","order":10,"required":true},
+    "text":      {"kind":"field","type":"color","label":"主な文字","order":11,"required":true},
+    "muted":     {"kind":"field","type":"color","label":"控えめな文字","order":12,"required":true}
+  }
+}

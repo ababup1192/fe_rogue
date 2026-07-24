@@ -1,0 +1,9 @@
+[package]
+name        = "midnight_apex"
+description = "MIDNIGHT APEX - a night road racing template for flix_game_engine"
+version     = "0.1.0"
+flix        = "0.75.1"
+authors     = ["you <you@example.com>"]
+
+[dependencies]
+"github:ababup1192/flix_game_engine" = { version = "0.8.1", security = "unrestricted" }

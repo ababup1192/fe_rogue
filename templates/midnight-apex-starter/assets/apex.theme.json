@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "note": "夜道の色票。各色の役割を保つと、小さな画面でも道路と車を見分けやすい。",
+  "night": "#05101d",
+  "ground": "#091a27",
+  "road": "#182536",
+  "roadShade": "#111b29",
+  "shoulder": "#25d9ff",
+  "lane": "#ffd166",
+  "player": "#ff3d8d",
+  "rivalA": "#43e8bd",
+  "rivalB": "#ff9f43",
+  "danger": "#ff5d73",
+  "text": "#f3f7ff",
+  "muted": "#8292aa"
+}

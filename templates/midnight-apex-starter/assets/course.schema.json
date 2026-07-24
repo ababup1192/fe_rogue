@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "空中都市コース",
+  "description": "rows は閉じたコースを短い区間に分けた文字格子。# が通常路面、= が加速帯、^ がジャンプ台、[ ] が反発壁、. が開いた路外。",
+  "type": "object",
+  "required": ["version", "rows"],
+  "properties": {
+    "version": {"type":"integer"},
+    "note": {"type":"string"},
+    "rows": {
+      "type":"array",
+      "minItems":2,
+      "items":{"type":"string","minLength":3}
+    }
+  }
+}

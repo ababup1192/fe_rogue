@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "note": "夜景の文字格子。far_city と near_city は横80セルで、左右へ繰り返して使う。",
+  "legend": {
+    "s": "star",
+    "d": "farBuilding",
+    "b": "nearBuilding",
+    "c": "cyanLight",
+    "m": "magentaLight",
+    "a": "amberLight",
+    "t": "circuitTrace",
+    "g": "circuitTraceDim",
+    "v": "circuitVia",
+    "p": "copperPlane"
+  },
+  "sprites": {
+    "far_city": {
+      "anchor": { "x": 0.0, "y": 0.0 },
+      "frames": {
+        "idle": [
+          "...s..............s.......................s.....................s.............",
+          "........s...................s......................s.......................s....",
+          "........................................d.......................................",
+          "........................................d..........................d............",
+          "...............d....................ddddddddd......................d............",
+          "...............d....................ddddddddd...................dddddd..........",
+          "............ddddddd.................ddadddcdd....ddddddddddd....dddddd..........",
+          "............ddddddd....ddddddddd....ddddddddd..ddddddddddddddd..ddaddd..........",
+          "..dddddd....ddmdddd..ddddddddddddd..ddddddddd..ddddddddddddddd..dddddd....dddd..",
+          "dddddddddd..ddddddd..ddddddddddddd..ddadddcdd..ddcdddmdddadddd..dddddd..dddddddd",
+          "dddddddddd..ddddddd..ddcdddmdddadd..ddddddddd..ddddddddddddddd..ddaddd..dddddddd",
+          "ddmdddaddd..ddmdddd..ddddddddddddd..ddddddddd..ddddddddddddddd..dddddd..ddmdddad",
+          "dddddddddd..ddddddd..ddddddddddddd..ddadddcdd..ddcdddmdddadddd..dddddd..dddddddd",
+          "dddddddddd..ddddddd..ddddddddddddd..ddddddddd..ddddddddddddddd..dddddd..dddddddd"
+        ]
+      }
+    },
+    "near_city": {
+      "anchor": { "x": 0.0, "y": 0.0 },
+      "frames": {
+        "idle": [
+          "..................b...........................b...........................b.....",
+          "..................b......................bbbbbbbbbb.......................b.....",
+          "..............bbbbbbbb...................bbbbbbbbbb..................bbbbbbbbbbb",
+          "..............bbbbbbbb...................bbcbbbmbbb....bbbbbbbbbb....bbbbbbbbbbb",
+          "..............bbmbbbab....bbbbbbbbbbb....bbbbbbbbbb..bbbbbbbbbbbbbb..bbcbbbmbbbb",
+          "..bbbbbbbb....bbbbbbbb..bbbbbbbbbbbbbbb..bbbbbbbbbb..bbbbbbbbbbbbbb..bbbbbbbbbbb",
+          "bbbbbbbbbbbb..bbbbbbbb..bbbbbbbbbbbbbbb..bbcbbbmbbb..bbcbbbmbbbabbb..bbbbbbbbbbb",
+          "bbbbbbbbbbbb..bbmbbbab..bbcbbbmbbbabbbb..bbbbbbbbbb..bbbbbbbbbbbbbb..bbcbbbmbbbb",
+          "bbmbbbabbbcb..bbbbbbbb..bbbbbbbbbbbbbbb..bbbbbbbbbb..bbbbbbbbbbbbbb..bbbbbbbbbbb",
+          "bbbbbbbbbbbb..bbbbbbbb..bbbbbbbbbbbbbbb..bbcbbbmbbb..bbcbbbmbbbabbb..bbbbbbbbbbb",
+          "bbbbbbbbbbbb..bbmbbbab..bbcbbbmbbbabbbb..bbbbbbbbbb..bbbbbbbbbbbbbb..bbcbbbmbbbb",
+          "bbmbbbabbbcb..bbbbbbbb..bbbbbbbbbbbbbbb..bbbbbbbbbb..bbbbbbbbbbbbbb..bbbbbbbbbbb",
+          "bbbbbbbbbbbb..bbbbbbbb..bbbbbbbbbbbbbbb..bbcbbbmbbb..bbcbbbmbbbabbb..bbbbbbbbbbb",
+          "bbbbbbbbbbbb..bbbbbbbb..bbbbbbbbbbbbbbb..bbbbbbbbbb..bbbbbbbbbbbbbb..bbbbbbbbbbb"
+        ]
+      }
+    },
+    "circuit_left": {
+      "anchor": { "x": 0.0, "y": 0.0 },
+      "frames": {
+        "idle": [
+          "tttttt..ggg...v...ttttt....ppppp",
+          "......t.g..g..v...t....t...ppppp",
+          "vvvv..t.g..g......t....t...ppppp",
+          "......t.g..gggggggt....t...ppppp",
+          "ggggggt.g.........t....t...ppppp",
+          ".......tg.........t....ttttttttt",
+          ".......tg....vvvv.t.............t",
+          ".......tggggggggggt..vvvv.......t",
+          ".......t..........t.............t",
+          "tttttttt..........tttttttttttttt",
+          "t.......vvvv.....................",
+          "t..ppppppppppp....gggggggggg....",
+          "t..ppppppppppp....g........g....",
+          "t..ppppppppppp....g..vvvv..g....",
+          "t..ppppppppppp....g........ggggg",
+          "t..ppppppppppp....gggggggggg....",
+          "t..ppppppppppp...................",
+          "tttttttttttttttttt....vvvv......",
+          ".................t...............",
+          "vvvv..gggggggg...t....tttttttttt",
+          "......g......g...t....t..........",
+          "......g..vv..ggggt....t..vvvv....",
+          "......g...........t....t..........",
+          "ttttttgggggggggggg....tttttttttt",
+          "t.......................pppppppp.",
+          "t..vvvv..tttttttttt.....pppppppp.",
+          "t........t........t.....pppppppp.",
+          "t........t..vvvv..t.....pppppppp.",
+          "tttttttttt........t.....pppppppp.",
+          ".........tttttttttt.....pppppppp.",
+          "vvvv....................pppppppp.",
+          "gggggggggggggggggggggggggggggggg"
+        ]
+      }
+    },
+    "circuit_right": {
+      "anchor": { "x": 0.0, "y": 0.0 },
+      "frames": {
+        "idle": [
+          "ppppppp....tttttt..v..gggggggggg",
+          "ppppppp....t.....t.v..g.........",
+          "ppppppp....t.....t....g..vvvv...",
+          "ppppppp....ttttttt....g.........",
+          "ppppppp..........t....gggggggggg",
+          "ppppppp..........tttttt.........",
+          "ppppppp..vvvv..........t.........",
+          "ppppppp..........ggggggt..vvvv...",
+          "ppppppp..........g.....t.........",
+          "tttttttttttttttttt.....ttttttttt",
+          ".................t..vvvv.........",
+          "...gggggggggg.....t......pppppppp",
+          "...g........g.....t......pppppppp",
+          "...g..vvvv..g.....t......pppppppp",
+          "gggg........g.....t......pppppppp",
+          "...gggggggggg.....tttttttppppppp",
+          ".........................pppppppp",
+          "......vvvv....ttttttttttttttttttt",
+          "..............t...................",
+          "tttttttttt....t...gggggggg..vvvv",
+          "..........t...t...g......g.......",
+          "....vvvv..t...ttttg..vv..g.......",
+          "..........t.......g......g.......",
+          "ttttttttttt.......ggggggggttttttt",
+          ".pppppppp.......................t",
+          ".pppppppp.....tttttttttt..vvvv..t",
+          ".pppppppp.....t........t........t",
+          ".pppppppp.....t..vvvv..t........t",
+          ".pppppppp.....t........tttttttttt",
+          ".pppppppp.....tttttttttt.........",
+          ".pppppppp....................vvvv",
+          "gggggggggggggggggggggggggggggggg"
+        ]
+      }
+    }
+  }
+}
