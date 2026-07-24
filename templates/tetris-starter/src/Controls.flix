@@ -1,6 +1,6 @@
 // Controls — 入力の解釈（純粋）と Doc の読み直し。
 // 操作は「寄せる」(←→、押した瞬間ごとに 1 マス)・「そっと落とす」(↓ 押しっぱなしで加速)・
-// 「回す」(Z=反時計 / X=時計、押した瞬間)・「叩きつける」(Space=ハードドロップ)・
+// 「回す」(Z=反時計 / X=時計、押した瞬間)・「叩きつける」(↑ または Space=ハードドロップ)・
 // GAME OVER からの「仕切り直し」(Space/Enter)。
 // 押した瞬間だけ効く操作（回転・叩きつけ・決定）は justPressed、押しっぱなしで効く操作
 // （左右の移動・そっと落とす）は isDown を使う。
@@ -21,7 +21,8 @@ mod Controls {
             |> (w1 -> if (tap(Key.Left))  World.moveLeft(w1)  else w1)
             |> (w1 -> if (tap(Key.Right)) World.moveRight(w1) else w1)
             |> (w1 -> if (tap(Key.Z))     World.rotateCCW(w1) else w1)
-            |> (w1 -> if (tap(Key.X) or tap(Key.Up)) World.rotateCW(w1) else w1)
+            |> (w1 -> if (tap(Key.X))     World.rotateCW(w1)  else w1)
+            |> (w1 -> if (tap(Key.Up))    World.hardDrop(w1)  else w1)
             |> (w1 -> if (tap(Key.Space)) confirm(w1)         else w1)
             |> (w1 -> if (tap(Key.Enter)) confirm(w1)         else w1)
 
