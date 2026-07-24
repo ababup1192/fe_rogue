@@ -1,0 +1,51 @@
+// Controls — 入力の解釈（純粋）と Doc の読み直し。
+// 操作は「寄せる」(←→、押した瞬間ごとに 1 マス)・「そっと落とす」(↓ 押しっぱなしで加速)・
+// 「回す」(Z=反時計 / X=時計、押した瞬間)・「叩きつける」(Space=ハードドロップ)・
+// GAME OVER からの「仕切り直し」(Space/Enter)。
+// 押した瞬間だけ効く操作（回転・叩きつけ・決定）は justPressed、押しっぱなしで効く操作
+// （左右の移動・そっと落とす）は isDown を使う。
+mod Controls {
+    use GameEngine.Key
+
+    /// 毎フレームのシステム: まず状態を dt 進め、そのあと押した瞬間の操作を反映する。
+    /// softDrop（↓ 押しっぱなし）だけは step の落下加速に渡す。
+    pub def step(frame: App.Frame, w: World.World): World.World =
+        World.step(App.isDown(Key.Down, frame), frame#dt, w)
+            |> (w1 -> applyTaps(frame, w1))
+
+    /// 押した瞬間だけ効く操作（左右の 1 マス寄せ・回転・叩きつけ・決定）を反映する。
+    /// 左右も justPressed にして「1 押し = 1 マス」にする（押しっぱなしで滑らない素直な操作）。
+    def applyTaps(frame: App.Frame, w: World.World): World.World =
+        let tap = key -> App.justPressed(key, frame);
+        w
+            |> (w1 -> if (tap(Key.Left))  World.moveLeft(w1)  else w1)
+            |> (w1 -> if (tap(Key.Right)) World.moveRight(w1) else w1)
+            |> (w1 -> if (tap(Key.Z))     World.rotateCCW(w1) else w1)
+            |> (w1 -> if (tap(Key.X) or tap(Key.Up)) World.rotateCW(w1) else w1)
+            |> (w1 -> if (tap(Key.Space)) confirm(w1)         else w1)
+            |> (w1 -> if (tap(Key.Enter)) confirm(w1)         else w1)
+
+    /// Space / Enter の意味は場面で変わる: GAME OVER なら仕切り直し、遊び中なら叩きつけ。
+    /// （Enter 中の叩きつけは Space と同じ扱い — どちらでも落とせる。）
+    def confirm(w: World.World): World.World =
+        match w#phase {
+            case World.Phase.GameOver => World.restart(w)
+            case _                    => World.hardDrop(w)
+        }
+
+    // ── Doc の読み込み・読み直し（watchFile / F1） ──
+
+    /// 起動時と bake が同じ形で読む Doc の束。
+    pub def loadDocs(): World.Docs \ Fs.FileRead =
+        { doc = RulesDoc.load(RulesDoc.path()), theme = ThemeDoc.load(ThemeDoc.path()) }
+
+    pub def reloadRules(w: World.World): World.World \ Fs.FileRead =
+        World.withRules(RulesDoc.load(RulesDoc.path()), w)
+
+    pub def reloadTheme(w: World.World): World.World \ Fs.FileRead =
+        World.withTheme(ThemeDoc.load(ThemeDoc.path()), w)
+
+    /// F1: Doc を全部読み直す。
+    pub def reloadAll(w: World.World): World.World \ Fs.FileRead =
+        w |> reloadRules |> reloadTheme
+}
