@@ -8,6 +8,11 @@ mod Render {
 
     // ── render component（位置を持たない・ノードでない）──
 
+    /// 傾き（rotation）の単位は「回転数」— 1 周 = 1.0・正で時計回り（画面の見た目どおり）。
+    /// 頂点を回す rotated / ui.json の poly と同じ数え方に揃えてある。ラジアンへの変換は
+    /// 描画命令を作る出口で 1 回だけ行う。
+    /// 回す軸は種類ごとに 1 つに決めてある: Box と Sprite は自分の中心、Text は置き場所。
+    /// 集まりを丸ごと傾けるときは turnedAll を使う（軸の違いはそこが吸収する）。
     pub enum Item {
         /// texture は handle 相当（String）。regionRect=None で全テクスチャ。UV は射影が計算。
         /// （`region` は Flix 予約語なので engine と同じ `regionRect`）
@@ -15,8 +20,9 @@ mod Render {
                       scale = Vec2.Vec2, rotation = Float64, centered = Bool,
                       flipH = Bool, flipV = Bool, regionRect = Option[Rect2.Rect2], zIndex = Int32,
                       blend = DrawCmd.BlendMode })
-        case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color, zIndex = Int32 })
-        case Box({ size = Vec2.Vec2, color = Color, alpha = Float32,
+        case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color,
+                    rotation = Float64, zIndex = Int32 })
+        case Box({ size = Vec2.Vec2, color = Color, alpha = Float32, rotation = Float64,
                    style = Option[GameEngine.BoxStyle], zIndex = Int32, blend = DrawCmd.BlendMode })
         /// 単色の単純多角形（自己交差しなければ凹でもよい。塗りは描画側が耳切りで三角形化）。
         /// 頂点は置き場所からの相対座標（draw が置き場所を全頂点に加算する）。
@@ -58,15 +64,17 @@ mod Render {
                             blend = DrawCmd.BlendMode.Normal })
 
     pub def text(content: String, fontAtlas: FontAtlas, fontSize: Float64, zIndex: Int32): Item =
-        Item.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = white(), zIndex = zIndex })
+        Item.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = white(),
+                    rotation = 0.0, zIndex = zIndex })
 
     /// B0b: 着色テキスト（Text.setColor を適用）。menu の disabled グレー / cursor 色 / ヘッダ accent 等に必要。
     pub def textTinted(content: String, fontAtlas: FontAtlas, fontSize: Float64, tint: Color, zIndex: Int32): Item =
-        Item.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = tint, zIndex = zIndex })
+        Item.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = tint,
+                    rotation = 0.0, zIndex = zIndex })
 
     /// 単色塗りの矩形（左上原点・サイズ指定）。
     pub def box(size: Vec2.Vec2, color: Color, zIndex: Int32): Item =
-        Item.Box({ size = size, color = color, alpha = 1.0f32,
+        Item.Box({ size = size, color = color, alpha = 1.0f32, rotation = 0.0,
                          style = Some(solidStyle()), zIndex = zIndex,
                          blend = DrawCmd.BlendMode.Normal })
 
@@ -349,6 +357,44 @@ mod Render {
             |> rotated(t)
             |> List.map(v -> Vec2.add(v, pivot))
 
+    /// 1 点を pivot 周りに t 回す（rotatedAround の 1 点版）。
+    def rotAbout(t: Float64, pivot: Vec2.Vec2, p: Vec2.Vec2): Vec2.Vec2 =
+        rotatedAround(t, pivot, p :: Nil) |> List.head |> Option.getWithDefault(p)
+
+    /// item を自分の軸で t（1 周 = 1.0）傾ける。軸は Box / Sprite が自分の中心、Text が置き場所、
+    /// Poly が頂点の原点（＝置き場所）。Shader の面は傾かない — uv の向きが面と一緒に回ると
+    /// 模様の意味が変わってしまうので、模様を回したいときは spec 側の Rotate を使う。
+    pub def turned(t: Float64, item: Item): Item =
+        onLeaf(leaf -> match leaf {
+            case Item.Sprite(s) => Item.Sprite({ rotation = s#rotation + t | s })
+            case Item.Box(b)    => Item.Box({ rotation = b#rotation + t | b })
+            case Item.Text(x)   => Item.Text({ rotation = x#rotation + t | x })
+            case Item.Poly(p)   => Item.Poly({ vertices = rotated(t, p#vertices) | p })
+            case other          => other
+        }, item)
+
+    /// 置き場所つきの列を、pivot（画面座標）のまわりに丸ごと t 傾ける。
+    /// カード 1 枚のように「箱と文字と多角形の集まり」で 1 つの物を作っているとき、
+    /// これを通せば全体が 1 枚の板のように傾く（各部品を自分の軸で回しつつ、
+    /// 部品の置き場所も pivot のまわりを回る）。
+    /// 注意: 窓（clipped）の枠は傾かない — 窓は常に画面に平行な矩形のまま中身だけが回る。
+    /// centered=false のスプライトは中心の位置がテクスチャの大きさ次第でここでは分からないため、
+    /// 左上を軸に回る（既定の sprite は centered=true なのでこのズレは出ない）。
+    pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[PlacedItem] =
+        items |> List.map(placed -> {
+            let anchor = anchorOf(placed);
+            let shift = Vec2.sub(rotAbout(t, pivot, anchor), anchor);
+            { at = Vec2.add(placed#at, shift), item = turned(t, placed#item) }
+        })
+
+    /// その item が「自分の軸で回るときの中心」（画面座標）。turnedAll はこの点を pivot の
+    /// まわりに動かすことで、部品の自転と公転を噛み合わせる。
+    def anchorOf(placed: PlacedItem): Vec2.Vec2 =
+        match leafOf(placed#item) {
+            case Item.Box(b) => Vec2.add(placed#at, Vec2.div(b#size, 2.0))
+            case _           => placed#at
+        }
+
     /// 枠線を付ける（Box に効く）。
     pub def outline(color: Color, width: Float64, item: Item): Item =
         onLeaf(leaf -> match leaf {
@@ -550,15 +596,15 @@ mod Render {
                 spriteDrawable(s#texture, s#tint, s#alpha, s#scale, s#rotation,
                                s#centered, s#flipH, s#flipV, s#regionRect, s#zIndex, s#blend, pos) :: Nil
             case Item.Text(t) =>
-                textDrawables(t#text, t#fontAtlas, t#fontSize, t#tint, t#zIndex, pos)
+                textDrawables(t#text, t#fontAtlas, t#fontSize, t#tint, t#rotation, t#zIndex, pos)
             case Item.Box(b) =>
-                boxDrawable(b#size, b#color, b#alpha, b#style, b#zIndex, b#blend, pos) :: Nil
+                boxDrawable(b#size, b#color, b#alpha, b#rotation, b#style, b#zIndex, b#blend, pos) :: Nil
             case Item.Poly(_) =>
                 bug!("Render.toDrawables: Poly は Drawable にならない（draw が PolygonRenderCmd へ振り分ける）")
             case Item.Shader(s) =>
                 // GL の無い経路（SoftRaster / F8 注釈）向けの代表色ベタ塗り。本物のシェーダーは
                 // eff Shader が別チャンネルで描くので、ここは「面がそこにある」ことだけ残す。
-                boxDrawable(s#rect#size, ShaderDoc.representativeColor(s#spec), 1.0f32, None,
+                boxDrawable(s#rect#size, ShaderDoc.representativeColor(s#spec), 1.0f32, 0.0, None,
                             s#zIndex, s#blend, s#rect#position) :: Nil
             case Item.Clipped(c) =>
                 toDrawables(c#inner, pos) |> List.map(d -> { clip = mergeClip(c#rect, d#clip) | d })
@@ -588,7 +634,7 @@ mod Render {
                 };
                 ({ texture = s#texture, position = pos,
                    scale = {x = s#scale#x * flipSign(s#flipH), y = s#scale#y * flipSign(s#flipV)},
-                   rotation = s#rotation, color = s#tint, alpha = s#alpha, centered = s#centered,
+                   rotation = radiansOf(s#rotation), color = s#tint, alpha = s#alpha, centered = s#centered,
                    uvOffset = uvOff, uvScale = uvScl, zIndex = s#zIndex, style = None,
                    clip = None, blend = s#blend }: GameEngine.Drawable) :: Nil
             case other => toDrawables(other, pos)
@@ -606,7 +652,7 @@ mod Render {
                 { texture  = texture,
                   position = pos,
                   scale    = {x = scale#x * flipSign(flipH), y = scale#y * flipSign(flipV)},
-                  rotation = rotation,
+                  rotation = radiansOf(rotation),
                   color    = tint,
                   alpha    = alpha,
                   centered = centered,
@@ -620,21 +666,38 @@ mod Render {
 
     def flipSign(b: Bool): Float64 = if (b) -1.0 else 1.0
 
+    /// 回転数（1 周 = 1.0）→ 描画命令のラジアン。単位の境目はここ 1 か所だけ。
+    def radiansOf(turns: Float64): Float64 = Vec2.tau() * turns
+
     def textDrawables(content: String, fontAtlas: FontAtlas, fontSize: Float64,
-                      tint: Color, zIndex: Int32, pos: Vec2.Vec2): List[GameEngine.Drawable] =
+                      tint: Color, rotation: Float64, zIndex: Int32,
+                      pos: Vec2.Vec2): List[GameEngine.Drawable] =
         // engine の public 純粋射影に委譲。B0b: Drawable の color を tint で上書き＝文字色
         // （SDF 描画では color が color＝文字色。ItemList の per-item 色相当）。
-        Text.toDrawables(Text.make(content, fontAtlas, fontSize), pos)
-            |> List.map(d -> {color = tint, zIndex = zIndex | d})
+        let ds = Text.toDrawables(Text.make(content, fontAtlas, fontSize), pos)
+            |> List.map(d -> {color = tint, zIndex = zIndex | d});
+        if (rotation == 0.0) ds
+        else ds |> List.map(turnGlyph(rotation, fontAtlas#textureSize, pos))
 
-    def boxDrawable(size: Vec2.Vec2, color: Color, alpha: Float32,
+    /// 文字 1 つぶんの四角を、文字列の置き場所 pivot のまわりに回して置き直す。
+    /// 描画側は四角を自分の中心で回すので、中心を公転させたうえで同じ角度を持たせると
+    /// 文字列全体が 1 枚の板のように回る。グリフの四角の大きさは
+    /// scale × アトラス辺長（Text.toDrawables がそう組んでいる）。
+    def turnGlyph(t: Float64, textureSize: Float64, pivot: Vec2.Vec2,
+                  d: GameEngine.Drawable): GameEngine.Drawable =
+        let size = { x = d#scale#x * textureSize, y = d#scale#y * textureSize };
+        let half = Vec2.div(size, 2.0);
+        let moved = rotAbout(t, pivot, Vec2.add(d#position, half));
+        { position = Vec2.sub(moved, half), rotation = radiansOf(t) | d }
+
+    def boxDrawable(size: Vec2.Vec2, color: Color, alpha: Float32, rotation: Float64,
                     style: Option[GameEngine.BoxStyle], zIndex: Int32, blend: DrawCmd.BlendMode,
                     pos: Vec2.Vec2): GameEngine.Drawable =
         // texture=""・centered=false・position=左上・scale=ピクセルサイズ・style=Some で単色塗り。
         { texture  = "",
           position = pos,
           scale    = size,
-          rotation = 0.0,
+          rotation = radiansOf(rotation),
           color    = color,
           alpha    = alpha,
           centered = false,

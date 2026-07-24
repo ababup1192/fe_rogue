@@ -89,13 +89,27 @@ mod UiSpec {
     def noComps(widget: Widget): WidgetComps =
         { widget = widget, box = None, text = None, sprite = None, poly = None, shape = None }
 
+    /// 傾きが指定されていたら断る（黙って傾きを落とすと、経路によって絵が変わる）。
+    def turnUnsupported(name: String, kind: String, rotation: Float64,
+                        pivot: Option[Vec2.Vec2]): Result[JsonError, Unit] =
+        if (rotation != 0.0 or not Option.isEmpty(pivot))
+            Err(JsonCompat.jsonError(Root, Set#{
+                "at ${name}: ${kind} rotation/pivot is not supported via UiSpec/UiStore yet (use the UiDoc/Flex path)"}))
+        else Ok(())
+
     def projectWidget(name: String, w: UiDoc.Widget): Result[JsonError, WidgetComps] =
         match w {
             case UiDoc.Widget.NoneW      => Ok(noComps(Widget.NoneW))
-            case UiDoc.Widget.BoxW(b)    => Ok({ box = Some(b) | noComps(Widget.BoxW) })
-            case UiDoc.Widget.TextW(t)   => Ok({ text = Some(t) | noComps(Widget.TextW) })
+            case UiDoc.Widget.BoxW(b)    =>
+                turnUnsupported(name, "box", b#rotation, b#pivot)
+                    |> Result.map(_ -> { box = Some(b#box) | noComps(Widget.BoxW) })
+            case UiDoc.Widget.TextW(t)   =>
+                turnUnsupported(name, "text", t#rotation, t#pivot)
+                    |> Result.map(_ -> { text = Some(t#text) | noComps(Widget.TextW) })
             case UiDoc.Widget.SpriteW(s) => Ok({ sprite = Some(s) | noComps(Widget.SpriteW) })
-            case UiDoc.Widget.ShapeW(s)  => Ok({ shape = Some(s) | noComps(Widget.ShapeW) })
+            case UiDoc.Widget.ShapeW(s)  =>
+                turnUnsupported(name, "shape", s#rotation, s#pivot)
+                    |> Result.map(_ -> { shape = Some(s#shape) | noComps(Widget.ShapeW) })
             case UiDoc.Widget.PolyW(p)   =>
                 if (p#rotation != 0.0 or not Option.isEmpty(p#pivot))
                     Err(JsonCompat.jsonError(Root, Set#{

@@ -50,6 +50,7 @@
 | Studio に「いま表示中の Doc」を名乗る（表示中バッジ） | ActiveDocs |
 | 画面を覆う・晴らす切り替え演出（フェード・ワイプ） | Transition |
 | 光らせる・暗く沈める（加算・乗算の重ね方） | Render（blended） |
+| 絵を傾ける・集まりを丸ごと傾ける（カードの傾き・振り子） | Render（turned / turnedAll）/ ui.json の rotation |
 | 縁がふわっと消える光球・煙玉を置く | Render（glowAt）/ fx.json の shape "glow" |
 | 暗い部屋に光源を置く（穴あき暗幕+ハロ） | Light |
 | 壁に影を落とす（単一光源のハードシャドウ） | Shadow |

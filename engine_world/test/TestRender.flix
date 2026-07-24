@@ -245,6 +245,72 @@ mod TestRender {
         }, 0.0, Triangulate.triangles(vs));
         Assert.assertEq(expected = round4(Float64.abs(Triangulate.signedArea(vs))), round4(area))
 
+    // ── 傾き（回転数 → 描画命令のラジアン・群回転）──
+
+    // 傾きの単位は回転数。1/4 周を渡すと描画命令には τ/4 ラジアンで届く。
+    @Test
+    def testTurnedBoxIsQuarterTurnInRadians(): Unit \ Assert =
+        let item = Render.box({ x = 4.0, y = 2.0 }, red(), 0) |> Render.turned(0.25);
+        let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
+        Assert.assertEq(expected = Some(round4(Vec2.tau() / 4.0)),
+            ds |> List.head |> Option.map(d -> round4(d#rotation)))
+
+    // 自分の中心を軸にすれば、群回転をかけても置き場所は動かない（その場で回るだけ）。
+    @Test
+    def testTurnedAllAroundOwnCenterKeepsPlace(): Unit \ Assert =
+        let center = { x = 100.0, y = 50.0 };
+        let placed = Render.boxAt(center, { x = 20.0, y = 10.0 }, red(), 0);
+        let turned = Render.turnedAll(0.25, center, placed :: Nil) |> List.head;
+        Assert.assertEq(expected = Some((90.0, 45.0)),
+            turned |> Option.map(p -> (round4(p#at#x), round4(p#at#y))))
+
+    // 半周を 2 回かけると元の並びに戻る（群回転が可逆＝ずれを溜め込まない）。
+    @Test
+    def testTurnedAllHalfTurnTwiceIsIdentity(): Unit \ Assert =
+        let pivot = { x = 0.0, y = 0.0 };
+        let items = Render.boxAt({ x = 30.0, y = 10.0 }, { x = 4.0, y = 4.0 }, red(), 0) :: Nil;
+        let back = items |> Render.turnedAll(0.5, pivot) |> Render.turnedAll(0.5, pivot) |> List.head;
+        Assert.assertEq(expected = Some((28.0, 8.0)),
+            back |> Option.map(p -> (round4(p#at#x), round4(p#at#y))))
+
+    // テキストは置き場所が軸なので、群回転では pivot のまわりを公転して自分も同じだけ傾く。
+    // 1/4 周（時計回り）で (10,0) は (0,10) へ移る。
+    @Test
+    def testTurnedAllOrbitsTextAndSpinsIt(): Unit \ Assert =
+        let item = Render.text("A", testAtlas(), 1.0, 0);
+        let turned = Render.turnedAll(0.25, { x = 0.0, y = 0.0 },
+                                      { at = { x = 10.0, y = 0.0 }, item = item } :: Nil) |> List.head;
+        let spin = turned |> Option.map(p -> match p#item {
+            case Render.Item.Text(t) => t#rotation
+            case _                   => 0.0
+        });
+        Assert.assertEq(expected = (Some((0.0, 10.0)), Some(0.25)),
+            (turned |> Option.map(p -> (round4(p#at#x), round4(p#at#y))), spin))
+
+    // 半周傾けた文字は、文字の四角が置き場所を挟んで反対側へ回る（文字列が 1 枚の板として
+    // 回っている証拠 — 文字ごとにその場で回るだけなら中心は動かない）。
+    @Test
+    def testHalfTurnedTextMirrorsGlyphCenters(): Unit \ Assert =
+        let pos = { x = 100.0, y = 40.0 };
+        let centersOf = t -> {
+            let item = Render.text("AB", testAtlas(), 1.0, 0) |> Render.turned(t);
+            let (ds, _) = Render.draw({ at = pos, item = item } :: Nil);
+            ds |> List.map(d -> (round4(d#position#x + d#scale#x / 2.0),
+                                 round4(d#position#y + d#scale#y / 2.0)))
+        };
+        let mirrored = centersOf(0.0) |> List.map(c -> {
+            let (x, y) = c; (round4(2.0 * pos#x - x), round4(2.0 * pos#y - y))
+        });
+        Assert.assertEq(expected = mirrored, centersOf(0.5))
+
+    /// 幅・高さのある四角を持つ小さなアトラス（textureSize=1 なので scale がそのまま px）。
+    def testAtlas(): FontAtlas =
+        let gm = { xOff = 0.0, yOff = 0.0, glyphW = 6.0, glyphH = 8.0, advance = 10.0,
+                   s0 = 0.0, t0 = 0.0, s1 = 1.0, t1 = 1.0 };
+        { textureName = "test", fontSize = 1.0, textureSize = 1.0,
+          ascent = 1.0, descent = 0.0, lineGap = 0.0,
+          glyphs = Map.insert(66, gm, Map.insert(65, gm, Map.empty())) }
+
     /// 小数4桁へ丸める（円周上の点の浮動小数比較用）。
     def round4(x: Float64): Float64 = Float64.floor(x * 10000.0 + 0.5) / 10000.0
 }

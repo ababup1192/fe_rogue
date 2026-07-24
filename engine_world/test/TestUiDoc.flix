@@ -46,6 +46,9 @@ mod TestUiDoc {
             case UiLayout.SizeSpec.Grow(w) => ("grow", w)
         }
 
+    /// 小数4桁へ丸める（回した頂点の浮動小数比較用）。
+    def round4(x: Float64): Float64 = Float64.floor(x * 10000.0 + 0.5) / 10000.0
+
     /// テキスト計測用のダミーアトラス（グリフ無し）。FontAtlas は単純レコードなので直構築できる。
     def dummyAtlas(): FontAtlas =
         { textureName = "dummy", fontSize = 32.0, textureSize = 256.0,
@@ -59,8 +62,8 @@ mod TestUiDoc {
                 + "{\"name\":\"c\",\"widget\":\"circle\",\"radius\":18.0,\"color\":\"#ff0000\",\"zIndex\":10}]}}";
         let got = parseDoc(doc) |> Option.flatMap(firstChild) |> Option.flatMap(child ->
             match widgetOf(child) {
-                case UiDoc.Widget.ShapeW(s) => match s#shape {
-                    case UiShape.Shape.CircleS(c) => Some((UiDoc.nameOf(child), c#radius, s#zIndex, colorTuple(s#color)))
+                case UiDoc.Widget.ShapeW(s) => match s#shape#shape {
+                    case UiShape.Shape.CircleS(c) => Some((UiDoc.nameOf(child), c#radius, s#shape#zIndex, colorTuple(s#shape#color)))
                     case _ => None
                 }
                 case _ => None
@@ -87,7 +90,7 @@ mod TestUiDoc {
         let got = parseDoc(doc) |> Option.flatMap(firstChild) |> Option.flatMap(child ->
             match widgetOf(child) {
                 case UiDoc.Widget.ShapeW(s) =>
-                    Some((sizeSpec2(styleOf(child)#width), sizeSpec2(styleOf(child)#height), s#zIndex))
+                    Some((sizeSpec2(styleOf(child)#width), sizeSpec2(styleOf(child)#height), s#shape#zIndex))
                 case _ => None
             });
         Assert.assertEq(
@@ -108,7 +111,7 @@ mod TestUiDoc {
         let expected = Color.hsv({ h = 0.5, s = 0.72, v = 1.0 });
         let got = parseDoc(doc) |> Option.flatMap(firstChild) |> Option.flatMap(child ->
             match widgetOf(child) {
-                case UiDoc.Widget.ShapeW(s) => Some(colorTuple(s#color))
+                case UiDoc.Widget.ShapeW(s) => Some(colorTuple(s#shape#color))
                 case _ => None
             });
         Assert.assertEq(expected = Some(colorTuple(expected)), got)
@@ -119,7 +122,7 @@ mod TestUiDoc {
                 + "{\"name\":\"c\",\"widget\":\"circle\",\"radius\":1.0,\"color\":{\"rgb\":[0.560784,0.588235,0.713726]}}]}}";
         let got = parseDoc(doc) |> Option.flatMap(firstChild) |> Option.flatMap(child ->
             match widgetOf(child) {
-                case UiDoc.Widget.ShapeW(s) => Some(colorTuple(s#color))
+                case UiDoc.Widget.ShapeW(s) => Some(colorTuple(s#shape#color))
                 case _ => None
             });
         Assert.assertEq(
@@ -195,7 +198,7 @@ mod TestUiDoc {
             match widgetOf(child) {
                 case UiDoc.Widget.ShapeW(s) => match child {
                     case UiDoc.Spec.Spec(node) =>
-                        Some((colorTuple(s#color),
+                        Some((colorTuple(s#shape#color),
                               node#hover |> Option.flatMap(h -> Option.map(colorTuple, h#borderColor))))
                 }
                 case _ => None
@@ -223,7 +226,7 @@ mod TestUiDoc {
         let got = parseWithDocs(btn :: Nil, main)
             |> Option.flatMap(firstChild)
             |> Option.flatMap(b -> match widgetOf(b) {
-                case UiDoc.Widget.BoxW(box) => Some(colorTuple(box#color))
+                case UiDoc.Widget.BoxW(box) => Some(colorTuple(box#box#color))
                 case _ => None
             });
         Assert.assertEq(expected = Some((0.0f32, 1.0f32, 0.0f32)), got)
@@ -460,7 +463,7 @@ mod TestUiDoc {
             |> Option.flatMap(firstChild)
             |> Option.flatMap(b1 -> firstChild(b1) |> Option.flatMap(label ->
                 match widgetOf(label) {
-                    case UiDoc.Widget.TextW(t) => Some((UiDoc.nameOf(b1), t#text))
+                    case UiDoc.Widget.TextW(t) => Some((UiDoc.nameOf(b1), t#text#text))
                     case _                     => None
                 }));
         Assert.assertEq(expected = Some(("b1", "+")), got)
@@ -718,7 +721,7 @@ mod TestUiDoc {
         let viaDoc = parseDoc(doc) |> Option.flatMap(spec -> match childrenOf(spec) {
             case b :: t :: Nil => match (widgetOf(b), widgetOf(t)) {
                 case (UiDoc.Widget.BoxW(box), UiDoc.Widget.TextW(text)) =>
-                    Some((colorTuple(box#color), box#cornerRadius, text#text, text#fontSize))
+                    Some((colorTuple(box#box#color), box#box#cornerRadius, text#text#text, text#text#fontSize))
                 case _ => None
             }
             case _ => None
@@ -744,6 +747,49 @@ mod TestUiDoc {
         Assert.assertEq(expected = Some(1), count)
 
     @Test
+    def testBoxRotationTurnsAroundRectCenter(): Unit \ Assert =
+        // box の rotation は rect の中心が軸。半周（0.5）なら箱は同じ場所に戻り、
+        // 傾きだけが Item に載る（軸が中心である証拠）。
+        let doc = "{\"root\": {\"name\":\"b\",\"widget\":\"box\",\"color\":\"#ffffff\",\"rotation\":0.5}}";
+        let got = parseDoc(doc) |> Option.flatMap(spec ->
+            UiDoc.render(_ -> dummyAtlas(), spec,
+                         { position = { x = 10.0, y = 20.0 }, size = { x = 40.0, y = 8.0 } })
+                |> List.head)
+            |> Option.flatMap(placed -> match placed#item {
+                case Render.Item.Box(b) => Some(((placed#at#x, placed#at#y), b#rotation))
+                case _                  => None
+            });
+        Assert.assertEq(expected = Some(((10.0, 20.0), 0.5)), got)
+
+    @Test
+    def testShapeRotationTurnsShapeAndIsLoudViaUiSpec(): Unit \ Assert =
+        // 図形 widget（star）の傾き。半周回した星は、頂点が rect 中心を挟んで反対側へ移る。
+        // UiStore 経路は box / poly と同じく loud に Err。
+        let doc = "{\"root\": {\"name\":\"s\",\"widget\":\"star\",\"color\":\"#ffffff\","
+                + "\"points\":5,\"outer\":10.0,\"inner\":4.0,\"rotation\":0.5}}";
+        let vertsOfDoc = d -> parseDoc(d) |> Option.flatMap(spec ->
+            UiDoc.render(_ -> dummyAtlas(), spec,
+                         { position = { x = 0.0, y = 0.0 }, size = { x = 20.0, y = 20.0 } })
+                |> List.head)
+            |> Option.flatMap(placed -> match placed#item {
+                case Render.Item.Poly(p) => Some(List.map(v -> (round4(v#x + placed#at#x),
+                                                                round4(v#y + placed#at#y)), p#vertices))
+                case _                   => None
+            });
+        let flat = vertsOfDoc(String.replace(src = ",\"rotation\":0.5", dst = "", doc));
+        let mirrored = flat |> Option.map(List.map(c -> let (x, y) = c; (round4(20.0 - x), round4(20.0 - y))));
+        let uiSpecOk = JsonCompat.parse(doc) |> Option.map(json -> Result.isOk(UiSpec.parse(json)));
+        Assert.assertEq(expected = (mirrored, Some(false)), (vertsOfDoc(doc), uiSpecOk))
+
+    @Test
+    def testBoxRotationIsLoudErrorViaUiSpec(): Unit \ Assert =
+        // poly と同じ契約: 傾きは Flex 経路（UiDoc）だけが解釈でき、UiStore 経路は黙って落とさず Err。
+        let doc = "{\"root\": {\"name\":\"b\",\"widget\":\"box\",\"color\":\"#ffffff\",\"rotation\":0.1}}";
+        let uiSpecOk = JsonCompat.parse(doc) |> Option.map(json -> Result.isOk(UiSpec.parse(json)));
+        let uiDocOk  = JsonCompat.parse(doc) |> Option.map(json -> Result.isOk(UiDoc.parse(json)));
+        Assert.assertEq(expected = (Some(false), Some(true)), (uiSpecOk, uiDocOk))
+
+    @Test
     def testPolyRotationIsLoudErrorViaUiSpec(): Unit \ Assert =
         // rotation 付き poly は Flex 経路（UiDoc）では通り、UiStore 経路（UiSpec）では loud に Err —
         // 「黙って無視」を作らない契約の pin。
@@ -763,7 +809,7 @@ mod TestUiDoc {
     def skinBoxOf(doc: String): Option[UiWidget.BoxComp] =
         parseDoc(doc) |> Option.flatMap(firstChild) |> Option.flatMap(child ->
             match widgetOf(child) {
-                case UiDoc.Widget.BoxW(b) => Some(b)
+                case UiDoc.Widget.BoxW(b) => Some(b#box)
                 case _                    => None
             })
 

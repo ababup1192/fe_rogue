@@ -47,7 +47,7 @@ mod RobotGallery {
         let style = { cornerRadius = r * u() | DrawCmd.defaultStyle(c) };
         { at = {x = o#x + x * u(), y = o#y + y * u()},
           item = Render.Item.Box({ size = {x = w * u(), y = h * u()}, color = c,
-                                 alpha = 1.0f32, style = Some(style), zIndex = 1,
+                                 alpha = 1.0f32, rotation = 0.0, style = Some(style), zIndex = 1,
                                  blend = DrawCmd.BlendMode.Normal }) }
 
     /// タイル単位の凸クアッド（候補5の台形の胴体）。z -1 でボックス群の下に置

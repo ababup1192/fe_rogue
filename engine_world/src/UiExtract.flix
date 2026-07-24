@@ -143,7 +143,8 @@ mod UiExtract {
             borderAlpha  = if (box#borderWidth > 0.0) 1.0f32 else 0.0f32
             | DrawCmd.defaultStyle(box#borderColor)
         }: GameEngine.BoxStyle);
-        Render.Item.Box({size = size, color = box#color, alpha = box#alpha, style = Some(style), zIndex = box#zIndex,
+        Render.Item.Box({size = size, color = box#color, alpha = box#alpha, rotation = 0.0,
+                         style = Some(style), zIndex = box#zIndex,
                          blend = DrawCmd.BlendMode.Normal})
 
     /// box の PlacedItem 列（`at` は箱の左上からのずれ — 置き場所は呼び手が足す）。

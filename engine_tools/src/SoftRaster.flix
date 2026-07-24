@@ -347,7 +347,23 @@ mod SoftRaster {
                 case Some(st) => st#borderWidth / 2.0
                 case None     => 0.0
             };
-            clampAabb(design, d#clip, Rect2.grow(borderPad, { position = topLeft, size = size }))
+            let quad = turnedBounds(d#rotation, { position = topLeft, size = size });
+            clampAabb(design, d#clip, Rect2.grow(borderPad, quad))
+        }
+
+    /// 傾けた四角を覆う矩形（中心はそのまま・半径だけ広がる）。傾けた物の外形を
+    /// 回転前のまま見積もると、Add / Multiply の合成で角がはみ出して欠ける。
+    def turnedBounds(rot: Float64, r: Rect2.Rect2): Rect2.Rect2 =
+        if (rot == 0.0) r
+        else {
+            let c = Float64.abs(RenderUtil.cosF(rot));
+            let s = Float64.abs(RenderUtil.sinF(rot));
+            let hw = Float64.abs(r#size#x) / 2.0;
+            let hh = Float64.abs(r#size#y) / 2.0;
+            let w = c * hw + s * hh;
+            let h = s * hw + c * hh;
+            let center = Vec2.add(r#position, Vec2.div(r#size, 2.0));
+            { position = { x = center#x - w, y = center#y - h }, size = { x = w * 2.0, y = h * 2.0 } }
         }
 
     /// PolygonRenderCmd 1 件の外形（design px、頂点は既にスクリーン座標に変換済み）。
@@ -388,15 +404,50 @@ mod SoftRaster {
     /// それ以外はテクスチャ画像。
     def drawDrawable(g: Graphics2D, sf: Float64,
                      textures: Map[String, BufferedImage], fctx: FontCtx, d: GameEngine.Drawable): Unit \ IO =
-        if (String.isEmpty(d#texture))
-            drawBox(g, sf, d)
+        withRotation(g, sf, d#rotation, quadCenter(textures, fctx, d), () ->
+            if (String.isEmpty(d#texture))
+                drawBox(g, sf, d)
+            else if (String.startsWith({prefix = "font_"}, d#texture))
+                drawGlyph(g, sf, fctx, d)
+            else
+                match Map.get(d#texture, textures) {
+                    case None      => ()
+                    case Some(img) => drawTextured(g, sf, img, d)
+                })
+
+    /// 傾き（ラジアン）を掛けてから描き、終わったら座標系を戻す。回す軸は四角の中心で、
+    /// render_gl/Frame の model 行列（pos + size/2 まわり）と同じ点にしてある — ここがズレると
+    /// 焼いた絵と実機の絵が食い違う。
+    /// 窓（clip）は device 空間で保たれるので、傾けても窓は画面に平行なまま（Render の約束どおり）。
+    def withRotation(g: Graphics2D, sf: Float64, rot: Float64, center: Vec2.Vec2,
+                     draw: Unit -> Unit \ ef): Unit \ IO + ef =
+        if (rot == 0.0) draw()
+        else {
+            let saved = g.getTransform();
+            g.rotate(rot, center#x * sf, center#y * sf);
+            draw();
+            g.setTransform(saved)
+        }
+
+    /// Drawable の四角の中心（design px）。表示サイズの出し方は種類ごとに drawBox /
+    /// drawGlyph / drawTextured と同じ式を使う。
+    def quadCenter(textures: Map[String, BufferedImage], fctx: FontCtx,
+                   d: GameEngine.Drawable): Vec2.Vec2 \ IO =
+        let size = displaySize(textures, fctx, d);
+        if (d#centered) d#position else Vec2.add(d#position, Vec2.div(size, 2.0))
+
+    /// Drawable の表示サイズ（design px・反転の符号は残す）。box は scale がそのまま px、
+    /// font_ はアトラス辺長との積、その他はテクスチャ実寸との積。
+    def displaySize(textures: Map[String, BufferedImage], fctx: FontCtx,
+                    d: GameEngine.Drawable): Vec2.Vec2 \ IO =
+        if (String.isEmpty(d#texture)) d#scale
         else if (String.startsWith({prefix = "font_"}, d#texture))
-            drawGlyph(g, sf, fctx, d)
-        else
-            match Map.get(d#texture, textures) {
-                case None      => ()
-                case Some(img) => drawTextured(g, sf, img, d)
-            }
+            { x = d#scale#x * fctx#atlas#textureSize, y = d#scale#y * fctx#atlas#textureSize }
+        else match Map.get(d#texture, textures) {
+            case Some(img) => { x = Int32.toFloat64(img.getWidth()) * d#scale#x,
+                                y = Int32.toFloat64(img.getHeight()) * d#scale#y }
+            case None      => Vec2.zero()
+        }
 
     // ════════════════════════════════════════════════════════
     // フォント（グリフ Drawable を出力解像度で直接 drawString）

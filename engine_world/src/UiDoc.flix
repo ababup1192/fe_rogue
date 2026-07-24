@@ -50,17 +50,33 @@ mod UiDoc {
 
     pub enum Widget {
         case NoneW
-        case BoxW(UiWidget.BoxComp)
-        case TextW(UiWidget.TextComp)
+        case BoxW(BoxSpec)
+        case TextW(TextSpec)
         case SpriteW(UiWidget.SpriteComp)
         case PolyW(PolySpec)
-        case ShapeW(UiShape.ShapeComp)
+        case ShapeW(ShapeSpec)
     }
 
     /// poly widget（UiWidget.PolyComp の宣言形 + rotation/pivot 拡張）。
     pub type alias PolySpec = {
         points = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32,
         rotation = Float64, pivot = Option[Vec2.Vec2]
+    }
+
+    /// box widget（UiWidget.BoxComp + 傾き）。rotation は回転数（1 周 = 1.0）。
+    /// pivot は rect 左上からの相対点で、未指定なら rect の中心を軸にする。
+    pub type alias BoxSpec = {
+        box = UiWidget.BoxComp, rotation = Float64, pivot = Option[Vec2.Vec2]
+    }
+
+    /// text widget（UiWidget.TextComp + 傾き）。軸の決め方は BoxSpec と同じ。
+    pub type alias TextSpec = {
+        text = UiWidget.TextComp, rotation = Float64, pivot = Option[Vec2.Vec2]
+    }
+
+    /// 図形 widget（UiShape.ShapeComp + 傾き）。軸の決め方は BoxSpec と同じ。
+    pub type alias ShapeSpec = {
+        shape = UiShape.ShapeComp, rotation = Float64, pivot = Option[Vec2.Vec2]
     }
 
     pub def nameOf(spec: Spec): String =
@@ -378,7 +394,7 @@ mod UiDoc {
     def applyIntrinsic(widget: Widget, style: UiLayout.Style): UiLayout.Style =
         match widget {
             case Widget.ShapeW(s) =>
-                let size = UiShape.intrinsicSize(s#shape);
+                let size = UiShape.intrinsicSize(s#shape#shape);
                 let w = match style#width {
                     case UiLayout.SizeSpec.Auto => UiLayout.SizeSpec.Px(size#x)
                     case other                  => other
@@ -401,8 +417,8 @@ mod UiDoc {
         match opt {
             case None             => Ok(Widget.NoneW)
             case Some("none")     => Ok(Widget.NoneW)
-            case Some("box")      => parseBox(palette, map)                      |> Result.map(b -> Widget.BoxW(b))
-            case Some("text")     => parseText(env#defaultFont, palette, map)    |> Result.map(t -> Widget.TextW(t))
+            case Some("box")      => parseBoxSpec(palette, map)                  |> Result.map(b -> Widget.BoxW(b))
+            case Some("text")     => parseTextSpec(env#defaultFont, palette, map) |> Result.map(t -> Widget.TextW(t))
             case Some("sprite")   => parseSprite(palette, map)                   |> Result.map(sp -> Widget.SpriteW(sp))
             case Some("poly")     => parsePoly(palette, map)                     |> Result.map(p -> Widget.PolyW(p))
             case Some("circle")   => shapeWidget(palette, map, parseCircle(map))
@@ -416,6 +432,26 @@ mod UiDoc {
             case Some("bezier")   => shapeWidget(palette, map, parseBezier(map))
             case Some(unknown)    => Err(JsonCompat.jsonError(Root, Set#{"unknown widget (got: ${unknown})"}))
         }
+
+    /// box / text の傾き（回転数）と軸（rect 左上からの相対点・省略で rect 中心）。
+    def parseTurn(map: Map[String, Json]): Result[JsonError, { rotation = Float64, pivot = Option[Vec2.Vec2] }] =
+        forM (
+            rotationOpt <- (JsonCompat.getAtKeyOpt(Root, "rotation", map): Result[JsonError, Option[Float64]]);
+            pivot       <- parseVec2Opt("pivot", map)
+        ) yield { rotation = Option.getWithDefault(0.0, rotationOpt), pivot = pivot }
+
+    def parseBoxSpec(palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, BoxSpec] =
+        forM (
+            box  <- parseBox(palette, map);
+            turn <- parseTurn(map)
+        ) yield ({ box = box, rotation = turn#rotation, pivot = turn#pivot }: BoxSpec)
+
+    def parseTextSpec(defaultFont: String, palette: Map[String, Color],
+                      map: Map[String, Json]): Result[JsonError, TextSpec] =
+        forM (
+            text <- parseText(defaultFont, palette, map);
+            turn <- parseTurn(map)
+        ) yield ({ text = text, rotation = turn#rotation, pivot = turn#pivot }: TextSpec)
 
     def parseBox(palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, UiWidget.BoxComp] =
         forM (
@@ -504,13 +540,17 @@ mod UiDoc {
             alphaOpt       <- (JsonCompat.getAtKeyOpt(Root, "alpha", map): Result[JsonError, Option[Float64]]);
             zIndexOpt      <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
             borderWidthOpt <- (JsonCompat.getAtKeyOpt(Root, "borderWidth", map): Result[JsonError, Option[Float64]]);
-            borderColorOpt <- parseColorOpt(palette, "borderColor", map)
+            borderColorOpt <- parseColorOpt(palette, "borderColor", map);
+            turn           <- parseTurn(map)
         ) yield Widget.ShapeW({
-            shape = shape, color = color,
-            alpha = Float64.truncateToFloat32(Option.getWithDefault(1.0, alphaOpt)),
-            zIndex = Option.getWithDefault(0, zIndexOpt),
-            borderWidth = Option.getWithDefault(0.0, borderWidthOpt),
-            borderColor = borderColorOpt
+            shape = ({
+                shape = shape, color = color,
+                alpha = Float64.truncateToFloat32(Option.getWithDefault(1.0, alphaOpt)),
+                zIndex = Option.getWithDefault(0, zIndexOpt),
+                borderWidth = Option.getWithDefault(0.0, borderWidthOpt),
+                borderColor = borderColorOpt
+            }: UiShape.ShapeComp),
+            rotation = turn#rotation, pivot = turn#pivot
         })
 
     def parseCircle(map: Map[String, Json]): Result[JsonError, UiShape.Shape] =
@@ -858,7 +898,8 @@ mod UiDoc {
                 r -> ({ at = r#position, item = UiExtract.spriteItem(sp, textureInfoOf) }) :: Nil,
                 childNodes)
             case Widget.PolyW(p)    => Flex.boxDrawn(node#style, r -> drawPoly(p, r), childNodes)
-            case Widget.ShapeW(s)   => Flex.boxDrawn(node#style, r -> UiShape.placedItems(s, r), childNodes)
+            case Widget.ShapeW(s)   => Flex.boxDrawn(node#style,
+                r -> turnedIn(s#rotation, s#pivot, r, UiShape.placedItems(s#shape, r)), childNodes)
         }
 
     def visibleOf(spec: Spec): Bool =
@@ -876,8 +917,9 @@ mod UiDoc {
         Flex.place(buildWith(atlasOf, textureInfoOf, spec), rootRect)
 
     /// text ノード。width/height 未指定なら実寸（Text.measure）を Px として敷く。
-    def buildText(atlasOf: String -> FontAtlas, style: UiLayout.Style, t: UiWidget.TextComp,
+    def buildText(atlasOf: String -> FontAtlas, style: UiLayout.Style, spec: TextSpec,
                   childNodes: List[Flex.Node]): Flex.Node =
+        let t = spec#text;
         let atlas = atlasOf(t#font);
         let dims = Text.measure(Text.make(t#text, atlas, t#fontSize));
         let w = match style#width {
@@ -889,16 +931,31 @@ mod UiDoc {
             case other                  => other
         };
         Flex.boxDrawn({ width = w, height = h | style },
-            r -> ({ at = r#position,
-                    item = Render.textTinted(t#text, atlas, t#fontSize, t#tint, t#zIndex) }) :: Nil,
+            r -> turnedIn(spec#rotation, spec#pivot, r,
+                     ({ at = r#position,
+                        item = Render.textTinted(t#text, atlas, t#fontSize, t#tint, t#zIndex) }) :: Nil),
             childNodes)
 
     /// box: rect を塗る（skin があれば九分割スキン）。BoxComp→PlacedItem 変換は
     /// UiExtract.boxPlacedItems が唯一の実装（経路で絵が変わる二実装を作らない）。
     def drawBox(textureInfoOf: String -> Option[GameEngine.TextureInfo],
-                b: UiWidget.BoxComp, r: Rect2.Rect2): List[Render.PlacedItem] =
-        UiExtract.boxPlacedItems(b, r#size, textureInfoOf)
+                spec: BoxSpec, r: Rect2.Rect2): List[Render.PlacedItem] =
+        UiExtract.boxPlacedItems(spec#box, r#size, textureInfoOf)
             |> List.map(placed -> { at = Vec2.add(r#position, placed#at) | placed })
+            |> turnedIn(spec#rotation, spec#pivot, r)
+
+    /// rect の中で傾ける。軸は pivot（rect 左上からの相対）か、省略時は rect の中心。
+    /// 傾けても敷き詰めの計算（Flex）は動かない — 場所取りは回転前の rect のまま。
+    def turnedIn(rotation: Float64, pivot: Option[Vec2.Vec2], r: Rect2.Rect2,
+                 items: List[Render.PlacedItem]): List[Render.PlacedItem] =
+        if (rotation == 0.0) items
+        else {
+            let axis = match pivot {
+                case Some(p) => Vec2.add(r#position, p)
+                case None    => Rect2.center(r)
+            };
+            Render.turnedAll(rotation, axis, items)
+        }
 
     /// poly: 頂点は rect 左上相対（UiSpec 互換）。rotation は pivot 未指定なら
     /// 「rect 中心を原点」に Render.rotated（頂点をどこ原点で組むかが軸、の流儀そのまま）。

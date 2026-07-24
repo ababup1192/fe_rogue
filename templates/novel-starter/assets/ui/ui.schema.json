@@ -132,7 +132,7 @@
         "frame": { "type": "integer" },
 
         "points": { "$ref": "#/$defs/points" },
-        "rotation": { "type": "number", "description": "1 周 = 1.0。pivot 未指定は rect 中心が原点。" },
+        "rotation": { "type": "number", "description": "傾き（poly / box / text / 図形 widget）。1 周 = 1.0。pivot 未指定は rect 中心が原点。" },
         "pivot": { "$ref": "#/$defs/vec2" },
 
         "radius": { "type": "number" },
