@@ -332,6 +332,23 @@ mod Render {
             case other          => other
         }, item)
 
+    /// 重なり順（zIndex）を delta だけずらす。組み上がった絵の相対的な前後関係は保ったまま、
+    /// 集まり全体を別の層へ持ち上げる／沈める。
+    /// 見下ろし画面の Y ソート（足元の高さで前後を決める）は Depth がこれを使って作る。
+    pub def zShifted(delta: Int32, item: Item): Item =
+        onLeaf(leaf -> match leaf {
+            case Item.Sprite(s) => Item.Sprite({ zIndex = s#zIndex + delta | s })
+            case Item.Text(x)   => Item.Text({ zIndex = x#zIndex + delta | x })
+            case Item.Box(b)    => Item.Box({ zIndex = b#zIndex + delta | b })
+            case Item.Poly(p)   => Item.Poly({ zIndex = p#zIndex + delta | p })
+            case Item.Shader(s) => Item.Shader({ zIndex = s#zIndex + delta | s })
+            case other          => other
+        }, item)
+
+    /// 置き場所つきの列を丸ごと delta だけずらす（zShifted の列版）。
+    pub def zShiftedAll(delta: Int32, items: List[PlacedItem]): List[PlacedItem] =
+        items |> List.map(placed -> { item = zShifted(delta, placed#item) | placed })
+
     /// 頂点列を左右に鏡映する（縦軸で x を反転・2 回で元に戻る）。polygon や Bezier の
     /// 輪郭・背骨に渡す前に使う。鏡映は頂点の上でだけ提供する（Text のような
     /// 鏡映できない物に flip を書くと型が合わない = 落ちる代わりにコンパイルで止まる）。

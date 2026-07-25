@@ -29,15 +29,54 @@ mod RenderFont {
             |> List.filter(cp -> STBTruetype.stbtt_FindGlyphIndex(fontInfo, cp) != 0)
 
     /// アトラス辺長の候補。R8 単チャンネルなので 8192² でも 64MB。
-    /// それ以上は CPU 側の直接バッファが巨大になるため候補に入れず、
-    /// 8192 でも収まらない場合は実ベイクの溢れ検査が起動エラーにする。
+    /// それ以上は CPU 側の直接バッファが巨大になるため候補に入れない。
+    /// 最大の候補でも収まらない焼きサイズは fitBakeSize が事前に縮めるので、
+    /// 実ベイクの溢れ検査まで届いたら engine 側の詰め方の不具合。
     def atlasSizeCandidates(): List[Int32] = 4096 :: 8192 :: Nil
 
-    /// 下見: 各グリフの SDF セル寸法（bitmap box + 両側 padding + 詰めの 1px）を合計し、
-    /// シェルフパッキングの取りこぼし余裕 (+約14%) を上乗せして、収まる最小の辺長を選ぶ。
-    /// SDF 本体の生成より桁違いに軽い（矩形の計算だけでラスタライズしない）。
-    /// どの候補にも収まらない見積もりでも最大候補を返し、実ベイクの溢れ検査に委ねる。
-    def chooseAtlasSize(fontInfo: STBTTFontinfo, scale: Float32, padding: Int32, cps: List[Int32]): Int32 \ IO =
+    def maxAtlasSize(): Int32 = 8192
+
+    /// 焼きサイズの下限。これ以下に縮めても読める字にならないので、
+    /// ここで止めて（収まらないまま）実ベイクの検査に委ねる。
+    def minBakeSize(): Float64 = 6.0
+
+    /// 収まる最大の焼きサイズを選ぶ。要求どおりで収まるならそのまま返し、
+    /// 収まらないときだけ 8192 に入る大きさまで縮める。
+    ///
+    /// 焼きサイズは「絵の細かさ」だけを決めるつまみで、文字の並びには効かない
+    /// （描画時に 出したい大きさ / 焼きサイズ で拡縮するため）。だから勝手に縮めても
+    /// レイアウトは 1px も動かない — 少しぼやけるだけで、ゲームは必ず起動する。
+    ///
+    /// 探し方は二分探索。必要面積の下見（矩形の計算だけ）はラスタライズより桁違いに軽い。
+    def fitBakeSize(fontInfo: STBTTFontinfo, requested: Float64, padding: Int32,
+                    oversample: Float64, cps: List[Int32]): Float64 \ IO =
+        let fitsAt = size -> neededArea(fontInfo, scaleOf(fontInfo, size, oversample), padding, cps)
+            <= atlasCapacity();
+        if (fitsAt(requested)) requested
+        else narrow(fitsAt, minBakeSize(), requested, 8)
+
+    /// lo（収まる）と hi（収まらない）の間を詰めて、収まる最大を返す。
+    def narrow(fitsAt: Float64 -> Bool \ IO, lo: Float64, hi: Float64, steps: Int32): Float64 \ IO =
+        if (steps <= 0 or hi - lo < 0.5) lo
+        else {
+            let mid = (lo + hi) / 2.0;
+            if (fitsAt(mid)) narrow(fitsAt, mid, hi, steps - 1)
+            else narrow(fitsAt, lo, mid, steps - 1)
+        }
+
+    /// 最大アトラスに敷ける面積（シェルフ詰めの取りこぼし余裕を差し引いた実効値）。
+    def atlasCapacity(): Int32 =
+        let side = maxAtlasSize();
+        side * side - (side * side) / 8
+
+    def scaleOf(fontInfo: STBTTFontinfo, bakeSize: Float64, oversample: Float64): Float32 \ IO =
+        RenderUtil.f32(
+            Float32.toFloat64(STBTruetype.stbtt_ScaleForMappingEmToPixels(
+                fontInfo, RenderUtil.f32(bakeSize))) * oversample)
+
+    /// 全グリフの SDF セル（bitmap box + 両側 padding + 詰めの 1px）の合計面積。
+    def neededArea(fontInfo: STBTTFontinfo, scale: Float32, padding: Int32,
+                   cps: List[Int32]): Int32 \ IO =
         let cellArea = cp -> {
             let stack = MemoryStack.stackPush();
             let x0Buf = stack.mallocInt(1);
@@ -50,7 +89,14 @@ mod RenderFont {
             discard MemoryStack.stackPop();
             w * h
         };
-        let needed = List.foldLeft((acc, cp) -> acc + cellArea(cp), 0, cps);
+        List.foldLeft((acc, cp) -> acc + cellArea(cp), 0, cps)
+
+    /// 下見: 各グリフの SDF セル寸法（bitmap box + 両側 padding + 詰めの 1px）を合計し、
+    /// シェルフパッキングの取りこぼし余裕 (+約14%) を上乗せして、収まる最小の辺長を選ぶ。
+    /// SDF 本体の生成より桁違いに軽い（矩形の計算だけでラスタライズしない）。
+    /// どの候補にも収まらない見積もりでも最大候補を返し、実ベイクの溢れ検査に委ねる。
+    def chooseAtlasSize(fontInfo: STBTTFontinfo, scale: Float32, padding: Int32, cps: List[Int32]): Int32 \ IO =
+        let needed = neededArea(fontInfo, scale, padding, cps);
         let fits = size -> needed + needed / 7 <= size * size;
         match List.find(fits, atlasSizeCandidates()) {
             case Some(size) => size
@@ -88,13 +134,32 @@ mod RenderFont {
         discard fontBuffer.put(fontBytes);
         discard fontBuffer.flip();
 
-        // フォント情報を初期化し、em ベースの補正サイズを算出。
-        // SDF/advance のスケールはこの emScale を使う（従来の PackFontRanges が内部で使う
-        // ScaleForPixelHeight(bakeSize) と数学的に一致するため、レイアウトは不変）。
         let fontInfo = STBTTFontinfo.malloc();
         discard STBTruetype.stbtt_InitFont(fontInfo, fontBuffer);
+
+        // SDF パラメータ。padding ぶんの距離場を縁に持たせ、oversample 倍の解像度でラスタ化する
+        // （どちらもセルの大きさに効くので、収まるかどうかの下見より先に決める）。
+        let oversample = 3.0;
+        let invOversample = 1.0 / oversample;
+        let padding = 5;
+        let onedge = 127i8;
+        let pixDist = f32(127.0 / 5.0);
+
+        // このフォントが持つ字を全部数え、要求された焼きサイズが最大アトラスに収まるか下見する。
+        // 収まらなければ収まる大きさまで自動で縮める（少しぼやけるだけで、文字の並びは変わらない）。
+        let cps = fontCodepoints(fontInfo);
+        let bakeSize = fitBakeSize(fontInfo, entry#fontSize, padding, oversample, cps);
+        if (bakeSize < entry#fontSize)
+            println("[RenderFont] '${entry#name}': ${List.length(cps)} 字は焼きサイズ "
+                + "${entry#fontSize} では最大アトラスに入らないので ${bakeSize} に縮めました"
+                + "（文字の並びは変わりません。くっきりさせたいなら字数の少ないフォントにするか、"
+                + "project.json の fontSize を下げて意図した値を明示してください）")
+        else ();
+
+        // em ベースの補正サイズ。SDF/advance のスケールはこの emScale を使う（従来の
+        // PackFontRanges が内部で使う ScaleForPixelHeight(bakeSize) と数学的に一致する）。
         let emScale = Float32.toFloat64(
-            STBTruetype.stbtt_ScaleForMappingEmToPixels(fontInfo, f32(entry#fontSize)));
+            STBTruetype.stbtt_ScaleForMappingEmToPixels(fontInfo, f32(bakeSize)));
 
         // フォントの正式メトリクスを取得
         let metricStack = MemoryStack.stackPush();
@@ -107,24 +172,18 @@ mod RenderFont {
         let lineGap = Int32.toFloat64(lineGapBuf.get(0)) * emScale;
         discard MemoryStack.stackPop();
 
-        // SDF パラメータ。padding ぶんの距離場を縁に持たせ、onedge=127 を境界 (≈0.5) とする。
-        // pixel_dist_scale = onedge/padding で 1px あたりの距離値を正規化する。
+        // onedge=127 を境界 (≈0.5) とし、pixel_dist_scale = onedge/padding で
+        // 1px あたりの距離値を正規化する。
         //
-        // oversample: SDF ラスタ解像度を fontSize の oversample 倍にする。集 のように横線が
+        // oversample: SDF ラスタ解像度を焼きサイズの oversample 倍にする。集 のように横線が
         // 密な漢字は等倍 (16px) だと線の隙間が距離場で潰れるため、高解像度でラスタ化して
         // ディテールを保つ。グリフ幾何メトリクス (glyphW/xOff 等) は 1/oversample して論理
         // サイズへ戻すので、レイアウト・表示サイズは不変（UV は実テクセルなので影響なし）。
-        let oversample = 3.0;
-        let invOversample = 1.0 / oversample;
         let scale = f32(emScale * oversample);
-        let padding = 5;
-        let onedge = 127i8;
-        let pixDist = f32(127.0 / 5.0);
 
-        // ベイク対象と、それが収まる最小のアトラス辺長を決める。
-        // 日本語フルフォント × 大きめ fontSize でも自動で 8192 に広がるので、
+        // 焼きサイズが決まったので、それが収まる最小のアトラス辺長を選ぶ。
+        // 日本語フルフォントでも自動で 8192 に広がり、それでも足りなければ上で縮んでいるので、
         // ゲーム側は fontSize を品質だけで選べばよい（容量の心配をしない）。
-        let cps = fontCodepoints(fontInfo);
         let bitmapSize  = chooseAtlasSize(fontInfo, scale, padding, cps);
         let bitmapSizeF = Int32.toFloat64(bitmapSize);
         println("[RenderFont] '${entry#name}': ${List.length(cps)} グリフ → ${bitmapSize}x${bitmapSize} アトラス");
@@ -195,11 +254,13 @@ mod RenderFont {
         let initSt: PackState = { glyphs = Map.empty(), cx = 0, cy = 0, rowH = 0, overflow = 0 };
         let finalSt = List.foldLeft(bakeGlyph, initSt, cps);
         // 溢れは起動エラーにする: 空白文字での出荷は「フォントが壊れた」ように見え、
-        // 警告 1 行では見逃されるため（自動辺長選択後に届くのは極端な fontSize のみ）。
+        // 警告 1 行では見逃されるため。焼きサイズは fitBakeSize が収まる大きさまで縮めて
+        // あるので、ここへ届くのは詰め方（シェルフパッキング）側の不具合。
         let glyphs =
             if (finalSt#overflow > 0)
                 bug!("フォント '${entry#name}' の ${finalSt#overflow} 字が ${bitmapSize}x${bitmapSize} "
-                    + "アトラスに収まりません（project.json の fontSize を下げてください）")
+                    + "アトラスに収まりません（焼きサイズ ${bakeSize} は下見では収まる見積もりでした "
+                    + "— engine の詰め方の不具合）")
             else
                 finalSt#glyphs;
 
@@ -223,7 +284,7 @@ mod RenderFont {
         let texInfo: RenderAsset.TextureInfo = { id = GpuHandle.wrapTextureId(texId), width = bitmapSizeF, height = bitmapSizeF };
         let atlas: FontAtlas = {
             textureName = texName,
-            fontSize = entry#fontSize,
+            fontSize = bakeSize,
             textureSize = bitmapSizeF,
             ascent = ascent,
             descent = descent,
