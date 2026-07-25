@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "note": "進行と収支の数値。dayCount を変えると発表会までの日数が変わり、eventChance を上げるとイベントが起きやすくなる。statCap は各パラメータの上限。seed は決定的な乱数の種（同じ種なら同じ運びになる）。",
-  "dayCount": 6,
-  "eventChance": 0.35,
-  "statCap": 100,
-  "seed": 12345
-}
