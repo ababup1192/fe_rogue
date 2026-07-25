@@ -747,6 +747,35 @@ mod TestUiDoc {
         Assert.assertEq(expected = Some(1), count)
 
     @Test
+    def testRectsOfIsKeyedByNamePath(): Unit \ Assert =
+        // 敷いた結果を名前の道で引ける。描くのと同じ宣言から当たり矩形が取れる、が要点。
+        let doc = "{\"root\": {\"name\":\"g\",\"dir\":\"row\",\"children\":["
+                + "{\"name\":\"a\",\"widget\":\"box\",\"color\":\"#ffffff\",\"width\":40,\"height\":20},"
+                + "{\"name\":\"b\",\"widget\":\"box\",\"color\":\"#ffffff\",\"width\":60,\"height\":20}]}}";
+        let rects = parseDoc(doc) |> Option.map(spec ->
+            UiDoc.rectsOf(_ -> dummyAtlas(), spec,
+                          { position = { x = 0.0, y = 0.0 }, size = { x = 100.0, y = 20.0 } }));
+        let at = key -> rects |> Option.flatMap(m -> Map.get(key, m)) |> Option.map(rect4);
+        Assert.assertEq(expected = (Some((0.0, 0.0, 40.0, 20.0)), Some((40.0, 0.0, 60.0, 20.0))),
+            (at("g/a"), at("g/b")))
+
+    @Test
+    def testRenderWithRectsAgreesWithRenderAndRectsOf(): Unit \ Assert =
+        // 1 回で両方返す近道は、別々に呼んだ結果と一致する（片方だけずれると二重管理に戻る）。
+        let doc = "{\"root\": {\"name\":\"g\",\"children\":["
+                + "{\"name\":\"p\",\"widget\":\"box\",\"color\":\"#ffffff\",\"width\":30,\"height\":10}]}}";
+        let rootRect = { position = { x = 5.0, y = 7.0 }, size = { x = 50.0, y = 20.0 } };
+        let got = parseDoc(doc) |> Option.map(spec -> {
+            let (items, rects) = UiDoc.renderWithRects(_ -> dummyAtlas(), spec, rootRect);
+            let plain = UiDoc.render(_ -> dummyAtlas(), spec, rootRect);
+            let only = UiDoc.rectsOf(_ -> dummyAtlas(), spec, rootRect);
+            (List.length(items) == List.length(plain),
+             Map.get("g/p", rects) |> Option.map(rect4),
+             Map.get("g/p", only) |> Option.map(rect4))
+        });
+        Assert.assertEq(expected = Some((true, Some((5.0, 7.0, 30.0, 10.0)), Some((5.0, 7.0, 30.0, 10.0)))), got)
+
+    @Test
     def testBoxRotationTurnsAroundRectCenter(): Unit \ Assert =
         // box の rotation は rect の中心が軸。半周（0.5）なら箱は同じ場所に戻り、
         // 傾きだけが Item に載る（軸が中心である証拠）。

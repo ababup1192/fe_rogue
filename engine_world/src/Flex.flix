@@ -20,13 +20,15 @@
 
 mod Flex {
 
-    /// レイアウトノード。Leaf = 実寸つき描画物、Box = 子を並べる容器。
+    /// レイアウトノード。Leaf = 実寸つき描画物、Box = 子を並べる容器、
+    /// Keyed = 中身に名札を付ける透明な包み（場所を取らず、レイアウトにも影響しない）。
     /// Box の draw は「自分の rect を描いてから子を載せる」容器用（ui.json の panel 相当）。
     pub enum Node {
         case Leaf({ size = Vec2.Vec2, draw = Rect2.Rect2 -> List[Render.PlacedItem] })
         case Box({ style = UiLayout.Style,
                    draw = Option[Rect2.Rect2 -> List[Render.PlacedItem]],
                    children = List[Node] })
+        case Keyed({ key = String, inner = Node })
     }
 
     /// 実寸 size の葉。draw はレイアウト確定後の rect（左上原点）を受け取る。
@@ -47,6 +49,12 @@ mod Flex {
                      children: List[Node]): Node =
         Node.Box({ style = style, draw = Some(draw), children = children })
 
+    /// 中身に名札を付ける（レイアウトには影響しない）。rectsOf / placeWithRects が
+    /// 「名札 → 画面上の矩形」を返すので、描く側と当たりを見る側が同じ宣言を読める。
+    /// 同じ名札を 2 つ付けたら後の方が勝つ（呼び側が一意にする責任）。
+    pub def keyed(key: String, node: Node): Node =
+        Node.Keyed({ key = key, inner = node })
+
     /// 縦並びの既定 style（= UiLayout.defaultStyle）。`{... | Flex.columnStyle()}` で上書きする。
     pub def columnStyle(): UiLayout.Style =
         UiLayout.defaultStyle()
@@ -58,18 +66,37 @@ mod Flex {
     /// 木を rootRect に敷いてレイアウトを解決し、各 Leaf の draw を rect で呼んで連結する。
     /// 出力順は木の DFS 順（重なりは zIndex が決めるので、順序は再現性のための固定）。
     pub def place(root: Node, rootRect: Rect2.Rect2): List[Render.PlacedItem] =
-        let (leaves, rects) = resolveTree(root, rootRect);
-        leaves |> List.flatMap(entry -> {
+        fst(placeWithRects(root, rootRect))
+
+    /// place と同じ描画物に加えて「名札 → 矩形」の表も返す。1 回のレイアウトで
+    /// 描画と当たり判定の両方を賄うための口（2 度敷くと座標が二重管理になる）。
+    pub def placeWithRects(root: Node, rootRect: Rect2.Rect2):
+            (List[Render.PlacedItem], Map[String, Rect2.Rect2]) =
+        let (leaves, rects, keys) = resolveTree(root, rootRect);
+        let items = leaves |> List.flatMap(entry -> {
             let (id, draw) = entry;
             match Map.get(id, rects) {
                 case Some(r) => draw(r)
                 case None    => Nil
             }
-        })
+        });
+        (items, namedRects(keys, rects))
+
+    /// 名札の付いたノードの矩形だけを引く（描かずに場所だけ知りたいとき）。
+    pub def rectsOf(root: Node, rootRect: Rect2.Rect2): Map[String, Rect2.Rect2] =
+        let (_, rects, keys) = resolveTree(root, rootRect);
+        namedRects(keys, rects)
+
+    def namedRects(keys: Map[String, EntityId], rects: Map[EntityId, Rect2.Rect2]):
+            Map[String, Rect2.Rect2] =
+        Map.foldLeftWithKey((acc, key, id) -> match Map.get(id, rects) {
+            case Some(r) => Map.insert(key, r, acc)
+            case None    => acc
+        }, Map.empty(), keys)
 
     /// 各 Leaf に割り当てられた rect を DFS 順で返す（レイアウトだけ検分したいとき・テスト用）。
     pub def leafRects(root: Node, rootRect: Rect2.Rect2): List[Rect2.Rect2] =
-        let (leaves, rects) = resolveTree(root, rootRect);
+        let (leaves, rects, _keys) = resolveTree(root, rootRect);
         leaves |> List.filterMap(entry -> { let (id, _) = entry; Map.get(id, rects) })
 
     // ── 内部 ──
@@ -81,21 +108,23 @@ mod Flex {
         parents  = Map[EntityId, EntityId],
         order    = Map[EntityId, Int32],
         measures = Map[EntityId, Vec2.Vec2],
-        leaves   = List[(EntityId, Rect2.Rect2 -> List[Render.PlacedItem])]
+        leaves   = List[(EntityId, Rect2.Rect2 -> List[Render.PlacedItem])],
+        keys     = Map[String, EntityId]
     }
 
     def emptyAcc(): Acc =
         { nextId = 0, styles = Map.empty(), parents = Map.empty(), order = Map.empty(),
-          measures = Map.empty(), leaves = Nil }
+          measures = Map.empty(), leaves = Nil, keys = Map.empty() }
 
     /// 採番済みの木を computeLayout に掛け、(DFS 順の Leaf 列, id → rect) を返す。
     /// （solve は Flix の予約語なので resolveTree）
     def resolveTree(root: Node, rootRect: Rect2.Rect2):
-            (List[(EntityId, Rect2.Rect2 -> List[Render.PlacedItem])], Map[EntityId, Rect2.Rect2]) =
+            (List[(EntityId, Rect2.Rect2 -> List[Render.PlacedItem])],
+             Map[EntityId, Rect2.Rect2], Map[String, EntityId]) =
         let (rootId, acc) = build(root, emptyAcc());
         let input = { styles = acc#styles, parents = acc#parents, order = acc#order,
                       measures = acc#measures, visible = Map.empty() };
-        (List.reverse(acc#leaves), UiLayout.computeLayout(input, rootId, rootRect))
+        (List.reverse(acc#leaves), UiLayout.computeLayout(input, rootId, rootRect), acc#keys)
 
     /// DFS で id を採番しつつ LayoutInput の素材を積む。自分の id と更新後の Acc を返す。
     def build(node: Node, acc: Acc): (EntityId, Acc) =
@@ -105,6 +134,10 @@ mod Flex {
                 (id, { nextId   = id + 1,
                        measures = Map.insert(id, l#size, acc#measures),
                        leaves   = (id, l#draw) :: acc#leaves | acc })
+            case Node.Keyed(k) =>
+                // 名札は場所を取らない: id を消費せず、中身に付いた id を名札に結び付ける。
+                let (innerId, acc1) = build(k#inner, acc);
+                (innerId, { keys = Map.insert(k#key, innerId, acc1#keys) | acc1 })
             case Node.Box(b) =>
                 let leaves1 = match b#draw {
                     case Some(d) => (id, d) :: acc#leaves

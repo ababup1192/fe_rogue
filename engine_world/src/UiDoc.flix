@@ -886,10 +886,27 @@ mod UiDoc {
     pub def buildWith(atlasOf: String -> FontAtlas,
                       textureInfoOf: String -> Option[GameEngine.TextureInfo],
                       spec: Spec): Flex.Node =
+        buildAt("", atlasOf, textureInfoOf, spec)
+
+    /// buildWith の実体。名前を "/" で繋いだ道（親/子/孫）を各ノードの名札にする —
+    /// これで描いたあとに「あの部品はどこに敷かれたか」を名前で引ける（rectsOf）。
+    def buildAt(parentPath: String, atlasOf: String -> FontAtlas,
+                textureInfoOf: String -> Option[GameEngine.TextureInfo],
+                spec: Spec): Flex.Node =
         let Spec.Spec(node) = spec;
+        let path = if (parentPath == "") node#name else "${parentPath}/${node#name}";
         let childNodes = node#children
             |> List.filter(child -> visibleOf(child))
-            |> List.map(child -> buildWith(atlasOf, textureInfoOf, child));
+            |> List.map(child -> buildAt(path, atlasOf, textureInfoOf, child));
+        Flex.keyed(path, buildNode(atlasOf, textureInfoOf, node, childNodes))
+
+    def buildNode(atlasOf: String -> FontAtlas,
+                  textureInfoOf: String -> Option[GameEngine.TextureInfo],
+                  node: { name = String, widget = Widget, style = UiLayout.Style,
+                          visible = Bool, binding = Option[String], meta = Option[String],
+                          hover = Option[UiWidget.HoverStyle], note = Option[String],
+                          origin = Option[String], layer = Int32, children = List[Spec] },
+                  childNodes: List[Flex.Node]): Flex.Node =
         match node#widget {
             case Widget.NoneW       => Flex.box(node#style, childNodes)
             case Widget.BoxW(b)     => Flex.boxDrawn(node#style, r -> drawBox(textureInfoOf, b, r), childNodes)
@@ -909,6 +926,17 @@ mod UiDoc {
     /// 近道: build して place まで。
     pub def render(atlasOf: String -> FontAtlas, spec: Spec, rootRect: Rect2.Rect2): List[Render.PlacedItem] =
         Flex.place(build(atlasOf, spec), rootRect)
+
+    /// 敷いた結果の「名前の道（親/子/孫）→ 画面上の矩形」。当たり判定やツールチップの位置を、
+    /// 描くのと同じ宣言から引くための口 — 座標をコードにもう一度書くと二重管理になる。
+    pub def rectsOf(atlasOf: String -> FontAtlas, spec: Spec,
+                    rootRect: Rect2.Rect2): Map[String, Rect2.Rect2] =
+        Flex.rectsOf(build(atlasOf, spec), rootRect)
+
+    /// 描画物と名前つき矩形を 1 回のレイアウトで両方返す（毎フレーム 2 度敷かない近道）。
+    pub def renderWithRects(atlasOf: String -> FontAtlas, spec: Spec, rootRect: Rect2.Rect2):
+            (List[Render.PlacedItem], Map[String, Rect2.Rect2]) =
+        Flex.placeWithRects(build(atlasOf, spec), rootRect)
 
     /// render と同じ。sprite を含むドキュメントはこちら（buildWith して place まで）。
     pub def renderWith(atlasOf: String -> FontAtlas,
