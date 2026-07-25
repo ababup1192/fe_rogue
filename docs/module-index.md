@@ -51,6 +51,7 @@
 | 画面を覆う・晴らす切り替え演出（フェード・ワイプ） | Transition |
 | 光らせる・暗く沈める（加算・乗算の重ね方） | Render（blended） |
 | 絵を傾ける・集まりを丸ごと傾ける（カードの傾き・振り子） | Render（turned / turnedAll）/ ui.json の rotation |
+| 焼いた絵に出ない指定を知る（実機との食い違い防止） | SoftRaster（dropped）/ [対応表](backend-parity.md) |
 | 縁がふわっと消える光球・煙玉を置く | Render（glowAt）/ fx.json の shape "glow" |
 | 暗い部屋に光源を置く（穴あき暗幕+ハロ） | Light |
 | 壁に影を落とす（単一光源のハードシャドウ） | Shadow |

@@ -37,9 +37,16 @@ mod Bakery {
     def pngPath(cfg: BakeConfig, name: String): String = "${cfg#outDir}/${name}.png"
     def gifPath(cfg: BakeConfig, name: String): String = "${cfg#outDir}/${name}.gif"
 
+    /// 焼く前に「この経路では絵に出ない指定」を知らせる。黙って落とすと、実機と違う絵が
+    /// golden に固定されてしまう（bake で証明する流儀そのものが嘘をつく）。
+    def warnDropped(drawables: List[GameEngine.Drawable], name: String): Unit \ IO =
+        SoftRaster.dropped(drawables)
+            |> List.forEach(x -> println("${SoftRaster.droppedLine(x)}（${name}）"))
+
     /// 描画コマンド列を 1 枚の PNG に焼く（World を介さない場面や、投影済みの静止画に使う）。
     pub def renderPng(cfg: BakeConfig, drawables: List[GameEngine.Drawable],
                       polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO =
+        warnDropped(drawables, name);
         SoftRaster.render(reqOf(cfg, drawables, polygons, pngPath(cfg, name)))
 
     /// 宣言シェーダー面つきの renderPng。surfaces（Render.shaderSurfaces の出力と同形の
@@ -49,6 +56,7 @@ mod Bakery {
     pub def renderPngWith(cfg: BakeConfig, drawables: List[GameEngine.Drawable],
                           polygons: List[GameEngine.PolygonRenderCmd],
                           surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO =
+        warnDropped(drawables, name);
         SoftRaster.renderWithSurfaces(reqOf(cfg, drawables, polygons, pngPath(cfg, name)), surfaces)
 
     /// frames を stride 枚ごとに間引き、各コマを toCmds で描いて GIF ＋ コマ別 PNG に焼く。
@@ -57,6 +65,8 @@ mod Bakery {
                     toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]),
                     name: String): SnapshotSite.Filmstrip \ IO =
         let sampled = every(stride, frames);
+        // コマ列は同じ作りの絵が続くので、報告は先頭コマぶんだけ出す（同じ警告が何十行も並ばない）。
+        List.head(sampled) |> Option.forEach(w -> warnDropped(fst(toCmds(w)), name));
         let images = List.map(w -> {
             let (drawables, polygons) = toCmds(w);
             SoftRaster.renderToImage(reqOf(cfg, drawables, polygons, gifPath(cfg, name)))

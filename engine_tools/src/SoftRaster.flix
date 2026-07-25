@@ -75,6 +75,34 @@ mod SoftRaster {
         case RSurf(SurfaceCmd)
     }
 
+    // ════════════════════════════════════════════════════════
+    // この経路が描けない指定（焼く前に知らせるための照会）
+    // ════════════════════════════════════════════════════════
+
+    /// 「絵に出ない指定」1 種類ぶんの報告。attr は指定の名前、count は件数、hint は逃げ道。
+    pub type alias Dropped = { attr = String, count = Int32, hint = String }
+
+    /// この経路が描けずに落とす指定を数える（純粋・焼く前に呼べる）。
+    /// GL の描画規約と揃っていない属性はここに 1 行足すこと — 黙って落とすと、焼いた絵と実機の絵が
+    /// 食い違ったまま golden に固定され、「絵は正しい」という嘘が残る。
+    /// 対応表は docs/backend-parity.md。
+    pub def dropped(ds: List[GameEngine.Drawable]): List[Dropped] =
+        let styledSprite = ds |> List.count(d ->
+            not String.isEmpty(d#texture)
+                and not String.startsWith({prefix = "font_"}, d#texture)
+                and not Option.isEmpty(d#style));
+        let styledGlyph = ds |> List.count(d ->
+            String.startsWith({prefix = "font_"}, d#texture) and not Option.isEmpty(d#style));
+        List.filter(x -> x#count > 0,
+            ({ attr = "style on textured sprite", count = styledSprite,
+               hint = "角丸・枠・縞・市松は単色の box にだけ焼ける。スプライトの枠は box を重ねて作る" }: Dropped) ::
+            ({ attr = "style on text", count = styledGlyph,
+               hint = "文字は出力解像度の TTF で直接描くので style は乗らない" }: Dropped) :: Nil)
+
+    /// 報告を 1 行の文へ（呼び出し側がそのまま出せる形）。
+    pub def droppedLine(x: Dropped): String =
+        "[bake] 焼けない指定: ${x#attr} ×${x#count} — ${x#hint}"
+
     /// 要求を 1 枚の PNG に焼いて書き出す。
     pub def render(req: RasterReq): Unit \ IO =
         writePng(renderToImage(req), req#outPath)

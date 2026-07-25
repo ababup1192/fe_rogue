@@ -1,79 +1,67 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "里の間取り（rpg.map.json）",
-  "description": "タイルの rows・住人・扉と約束・薬草と灯りの配置。rows は '#'=石垣 ','=畑 '.'=道（知らない文字は道）。扉は物の鍵でなく約束で開く: promise の住人に話しかけ、need 個の薬草を持っていれば開く。goal 個の薬草を拾うとクリア。歩ける・ぶつかる・開く・クリアの規則はコード（World）側。",
-  "type": "object",
-  "required": ["version", "rows"],
-  "properties": {
-    "version": { "type": "integer", "description": "Doc の形の版。いまは 1" },
-    "note": { "type": "string", "description": "人間と AI のためのメモ（ゲームは読まない）" },
-    "title": { "type": "string", "description": "表紙に出す里の名前" },
-    "subtitle": { "type": "string", "description": "表紙に出す一行" },
-    "clear": { "type": "string", "description": "クリア画面に出す一行" },
-    "hint": { "type": "string", "description": "表紙に出す操作のヒント(はじめ方)" },
-    "clearHint": { "type": "string", "description": "クリア画面に出す操作のヒント(もどり方)" },
+  "//": "rpg.map.json の形の宣言（sections 方言）。タイルの rows・住人・扉と約束・薬草と灯りの配置。rows は '#'=石垣 ','=畑 '.'=道（知らない文字は道）。扉は物の鍵でなく約束で開く: promise の住人に話しかけ、need 個の薬草を持っていれば開く。goal 個の薬草を拾うとクリア。歩ける・ぶつかる・開く・クリアの規則はコード（World）側。",
+  "version": 1,
+  "sections": {
+    "note":      { "kind": "field", "type": "text", "label": "メモ", "order": 1, "widget": "multiline" },
+    "title":     { "kind": "field", "type": "text", "label": "里の名前（表紙）", "order": 2 },
+    "subtitle":  { "kind": "field", "type": "text", "label": "表紙の一行", "order": 3 },
+    "hint":      { "kind": "field", "type": "text", "label": "表紙の操作ヒント", "order": 4 },
+    "clear":     { "kind": "field", "type": "text", "label": "クリア画面の一行", "order": 5 },
+    "clearHint": { "kind": "field", "type": "text", "label": "クリア画面の操作ヒント", "order": 6 },
+
+    "rows": { "kind": "field", "type": "grid", "label": "里の間取り（'#'=石垣 ','=畑 '.'=道）", "order": 10 },
+
     "start": {
-      "type": "object",
-      "description": "主人公が最初に立つマス",
-      "properties": {
-        "x": { "type": "integer", "minimum": 0 },
-        "y": { "type": "integer", "minimum": 0 }
+      "kind": "record",
+      "label": "はじめに立つマス",
+      "fields": {
+        "x": { "type": "int", "label": "x", "order": 1, "min": 0 },
+        "y": { "type": "int", "label": "y", "order": 2, "min": 0 }
       }
     },
-    "rows": {
-      "type": "array",
-      "description": "タイルの文字格子（上から 1 行ずつ）。増減自由 — 短い行の足りない分は石垣",
-      "items": { "type": "string" }
-    },
+
     "villagers": {
-      "type": "array",
-      "description": "住人の rows。話しかけると line の 1 行が出る",
-      "items": {
-        "type": "object",
-        "required": ["id", "x", "y"],
-        "properties": {
-          "id": { "type": "string", "description": "住人の名前。door.promise がここを指す" },
-          "x": { "type": "integer", "minimum": 0 },
-          "y": { "type": "integer", "minimum": 0 },
-          "line": { "type": "string", "description": "いつもの 1 行" }
-        }
+      "kind": "list",
+      "label": "住人（話しかけると 1 行出る）",
+      "fields": {
+        "id":   { "type": "text", "label": "名前（扉の約束が指す）", "order": 1, "required": true },
+        "x":    { "type": "int",  "label": "x", "order": 2, "min": 0, "required": true },
+        "y":    { "type": "int",  "label": "y", "order": 3, "min": 0, "required": true },
+        "line": { "type": "text", "label": "いつもの 1 行", "order": 4 }
       }
     },
+
     "door": {
-      "type": "object",
-      "description": "約束で開く木戸。閉じている間は通れない",
-      "required": ["x", "y", "promise"],
-      "properties": {
-        "x": { "type": "integer", "minimum": 0 },
-        "y": { "type": "integer", "minimum": 0 },
-        "promise": { "type": "string", "description": "約束の相手（住人の id）" },
-        "need": { "type": "integer", "minimum": 0, "description": "約束を果たすのに要る薬草の数" },
-        "ask": { "type": "string", "description": "薬草が足りないときの頼まれごとの 1 行" },
-        "opened": { "type": "string", "description": "約束を果たしたときの 1 行（このとき木戸が開く）" }
+      "kind": "record",
+      "label": "約束で開く木戸",
+      "fields": {
+        "x":       { "type": "int",  "label": "x", "order": 1, "min": 0, "required": true },
+        "y":       { "type": "int",  "label": "y", "order": 2, "min": 0, "required": true },
+        "promise": { "type": "text", "label": "約束の相手（住人の名前）", "order": 3, "required": true },
+        "need":    { "type": "int",  "label": "要る薬草の数", "order": 4, "min": 0 },
+        "ask":     { "type": "text", "label": "足りないときの 1 行", "order": 5 },
+        "opened":  { "type": "text", "label": "開くときの 1 行", "order": 6 }
       }
     },
+
     "herbs": {
-      "type": "array",
-      "description": "薬草の生えるマスの rows。踏むと拾う",
-      "items": {
-        "type": "object",
-        "properties": {
-          "x": { "type": "integer", "minimum": 0 },
-          "y": { "type": "integer", "minimum": 0 }
-        }
+      "kind": "list",
+      "label": "薬草の生えるマス",
+      "fields": {
+        "x": { "type": "int", "label": "x", "order": 1, "min": 0, "required": true },
+        "y": { "type": "int", "label": "y", "order": 2, "min": 0, "required": true }
       }
     },
+
     "lamps": {
-      "type": "array",
-      "description": "灯りの立つマスの rows。薬草を拾うたび並び順にひとつ点く",
-      "items": {
-        "type": "object",
-        "properties": {
-          "x": { "type": "integer", "minimum": 0 },
-          "y": { "type": "integer", "minimum": 0 }
-        }
+      "kind": "list",
+      "label": "灯りの立つマス（薬草を拾うたび並び順に点く）",
+      "fields": {
+        "x": { "type": "int", "label": "x", "order": 1, "min": 0, "required": true },
+        "y": { "type": "int", "label": "y", "order": 2, "min": 0, "required": true }
       }
     },
-    "goal": { "type": "integer", "minimum": 1, "description": "クリアに要る薬草の数（置いた数より多くは求められない）" }
+
+    "goal": { "kind": "field", "type": "int", "label": "クリアに要る薬草の数", "order": 90, "min": 1 }
   }
 }

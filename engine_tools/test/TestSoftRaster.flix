@@ -65,4 +65,33 @@ mod TestSoftRaster {
         let out = SoftRaster.blendPixel(DrawCmd.BlendMode.Normal,
             argb(128, 200, 0, 0), argb(255, 0, 200, 0));
         Assert.assertEq(expected = (255, 100, 99, 0), channels(out))
+
+    // ── 焼けない指定の報告（バックエンド同値の見張り） ──
+
+    /// 最小の Drawable（属性は個々のテストで上書きする）。
+    def drawable(texture: String, style: Option[GameEngine.BoxStyle]): GameEngine.Drawable =
+        { texture = texture, position = { x = 0.0, y = 0.0 }, scale = { x = 1.0, y = 1.0 },
+          rotation = 0.0, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, alpha = 1.0f32,
+          centered = false, uvOffset = { x = 0.0, y = 0.0 }, uvScale = { x = 1.0, y = 1.0 },
+          zIndex = 0, style = style, clip = None, blend = DrawCmd.BlendMode.Normal }
+
+    def someStyle(): Option[GameEngine.BoxStyle] =
+        Some(DrawCmd.defaultStyle({ r = 1.0f32, g = 1.0f32, b = 1.0f32 }))
+
+    /// 単色の box に付けた style は焼ける（＝報告に出ない）。テクスチャと文字に付けた style は
+    /// この経路では絵に出ないので、件数つきで報告される。
+    @Test
+    def testDroppedReportsStyleOnTexturedAndText(): Unit \ Assert =
+        let ds = drawable("", someStyle()) ::
+                 drawable("hero", someStyle()) ::
+                 drawable("font_ui", someStyle()) ::
+                 drawable("hero", None) :: Nil;
+        let got = SoftRaster.dropped(ds) |> List.map(x -> (x#attr, x#count));
+        Assert.assertEq(expected = ("style on textured sprite", 1) :: ("style on text", 1) :: Nil, got)
+
+    /// 落とす物が無ければ報告は空（毎回の bake に無意味な行を出さない）。
+    @Test
+    def testDroppedIsEmptyWhenNothingLost(): Unit \ Assert =
+        let ds = drawable("", someStyle()) :: drawable("hero", None) :: Nil;
+        Assert.assertEq(expected = 0, List.length(SoftRaster.dropped(ds)))
 }
