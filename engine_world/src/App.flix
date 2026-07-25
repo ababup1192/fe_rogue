@@ -67,6 +67,11 @@ mod App {
     pub type alias ViewCtx = { atlas = FontAtlas, visible = Rect2.Rect2 }
 
     /// 同じ App に乗せる（効果多相）。
+    /// 焼いたドット絵アトラス 1 枚ぶんの受け渡し。
+    /// texture = 絵を引くときの名前、key = その画素の中身を決める全入力を 1 文字列にまとめた物
+    /// （同じ key の間は GPU へ上げ直さない）、baked = PxSpriteAtlas.bake の焼き上がり。
+    pub type alias AtlasUpload = { texture = String, key = String, baked = PxSpriteAtlas.Baked }
+
     pub type alias App[w: Type, ef: Eff] = {
         init = Vec2.Vec2 -> w \ ef,                                // design 解像度 → 出発点の World（launch が画面サイズを渡して呼ぶ）
         startupSystems = List[w -> w \ ef],                        // 起動時に 1 回だけ・追加順
@@ -109,6 +114,13 @@ mod App {
         // 純粋関数に限るのは renderCommands の op を効果多相にしないため（静的な絵は World の
         // 純粋な投影から作れる）。
         staticLayer = Option[{ key = w -> GameEngine.StaticKey, build = w -> List[Render.PlacedItem] }],
+        // ドット絵を焼いたアトラス（1 体 = 1 枚のクアッドで描くための下ごしらえ）。
+        // 毎フレーム「同じ key なら何もしない」で呼ばれるので、焼く仕事は World 側で 1 度だけ
+        // 済ませ、ここは焼き上がりを渡すだけにする。
+        spriteAtlases = w -> List[AtlasUpload],
+        // カメラを何 px の升目に吸着させるか（0 = 吸着しない）。ドット絵のゲームは 1 にする。
+        // World から読むので、Doc を保存して値が変わればその場で効く。
+        pixelSnap = w -> Float64,
         // World の 1 行サマリ。リモートデバッグ（HTTP）の view=status と trace の源。
         statusLine = Option[w -> String \ ef],
         // リモートデバッグ（HTTP）の POST /bake が実行する「焼きの実体」。Docs から決定的な
@@ -143,6 +155,8 @@ mod App {
           parallaxLayers = Nil,
           hudView = None,
           staticLayer = None,
+          spriteAtlases = _ -> Nil,
+          pixelSnap = _ -> 0.0,
           audio = _worlds -> checked_ecast(Nil),
           quit = (frame, _world) -> checked_ecast(justPressed(GameEngine.Key.Escape, frame)),
           debug = false,
@@ -206,6 +220,37 @@ mod App {
                 watchFile(path, f, acc)
             }, app, spec#reloads))
             |> withView(spec#view)
+
+    /// カメラを何 px の升目に吸着させるかを World から読む（ドット絵のゲームは 1.0・0 で切る）。
+    /// 吸着させないと、主人公が半端な位置に来るたび画面全体が半画素ずれて、
+    /// せっかく升目に載せた絵の輪郭がにじむ。
+    ///
+    /// World から読むのは、絵の側（Render.snapped）が毎フレーム同じ値を読むため —
+    /// 起動時に 1 度だけ決めると、Doc を保存したときに絵だけ吸着が変わってカメラが取り残され、
+    /// かえって絵がずれる。
+    pub def withPixelSnap(f: w -> Float64, app: App[w, ef]): App[w, ef] =
+        { pixelSnap = f | app }
+
+    /// ドット絵のアトラス（PxSpriteAtlas.bake の焼き上がり）を、名前付きテクスチャとして
+    /// 使えるようにする。これを繋いだうえで PxSprite.drawQuad を使うと、1 体が画素ごとの
+    /// 矩形の列ではなく 1 枚のクアッドになる — 草や作物のように画面に何百と出る絵で効く。
+    /// key はその画素の中身を決める全入力（色票・世代番号など）を 1 文字列にまとめた物。
+    /// 同じ key の間は何も起きないので、毎フレーム呼ばれる前提でよい。
+    /// 焼く仕事（bake）は World 側で 1 度だけ済ませ、ここには焼き上がりを渡すこと。
+    pub def withSpriteAtlases(f: w -> List[AtlasUpload], app: App[w, ef]): App[w, ef] =
+        { spriteAtlases = f | app }
+
+    /// 焼いたアトラスを描画部へ渡しておく（同じ key の間は何も起きない）。
+    /// 同じ名前が 2 つ来たら後の方だけを使う — 両方渡すと毎フレーム key が入れ替わり、
+    /// 大きさが違えば 1 枚ずつ GPU に置き去りになる。
+    def uploadAtlases(uploads: List[AtlasUpload]): Unit \ GameEngine.Game =
+        uploads
+            |> List.foldLeft((acc, a) -> Map.insert(a#texture, a, acc), Map.empty())
+            |> Map.forEach((_, a) ->
+                if (a#baked#side > 0)
+                    GameEngine.Game.ensureTexture(a#texture, a#key,
+                        a#baked#side, a#baked#side, a#baked#pixels)
+                else ())
 
     /// 「1 度だけ GPU に焼いて使い回す静的な絵」を宣言する。key は静的な中身を決める全入力を
     /// 1 文字列にまとめたキャッシュキー（フロア id・テーマ・作り直しの世代番号など） — これが
@@ -648,6 +693,7 @@ mod App {
         };
         match app#view {
             case Some(toItems) =>
+                uploadAtlases((app#spriteAtlases)(world));
                 let atlas = GameEngine.Game.getFontAtlas("default");
                 // displayed（スクラブで表示中の瞬間）から絵もカメラも導く — 注釈の hits も同じ items を使う。
                 // F8 停止中は静的レイヤーも通常の動的アイテムに畳んで描く（F8 のズーム/パンは
@@ -823,7 +869,15 @@ mod App {
                 Some(CameraRig.clampCenter(bounds = fb(world), seen = seen, c))
             case (c, _) => c
         };
-        (center, z)
+        // 画素の升目に吸着させる（静的な絵と動く絵が同じ値を見るので、両者はずれない）。
+        let snap = (app#pixelSnap)(world);
+        // 画面の画素に載せたいので、zoom を掛けた後の値で丸める（world 座標で丸めるだけでは
+        // zoom が整数でないときに半画素ずれが残る）。
+        let unit = snap * CameraRig.safeZoom(z);
+        let snapped = if (not Float64.isFinite(unit) or unit <= 0.0) center
+                      else Option.map(c -> { x = Float64.round(c#x * CameraRig.safeZoom(z)) / CameraRig.safeZoom(z),
+                                             y = Float64.round(c#y * CameraRig.safeZoom(z)) / CameraRig.safeZoom(z) }, center);
+        (snapped, z)
 
     def sceneItems(app: App[w, ef], atlas: FontAtlas, world: w,
                    toItems: (ViewCtx, w) -> List[Render.PlacedItem] \ ef):
@@ -885,7 +939,11 @@ mod App {
                 let key = (sl#key)(world);
                 let build = sl#build;
                 Some({ key = key,
-                       polys = () -> { let (_, polys) = Render.draw(build(world)); polys },
+                       // 箱で組んだ絵（ドット絵の走りなど）も焼けるよう、飾りの無い箱は
+                       // 多角形へ直してから渡す — 静的層が焼くのは多角形チャンネルだけ。
+                       polys = () -> {
+                           let (_, polys) = Render.draw(Render.boxesAsPolys(build(world)));
+                           polys },
                        viewOffset = viewOffset, viewScale = viewScale, halfDesign = halfDesign })
         }
 
@@ -897,6 +955,7 @@ mod App {
         match app#view {
             case None          => ()
             case Some(toItems) =>
+                uploadAtlases((app#spriteAtlases)(world));
                 let atlas = GameEngine.Game.getFontAtlas("default");
                 let items = List.append(sceneItems(app, atlas, world, toItems), fpsOverlay);
                 // 宣言シェーダー面は別チャンネル（eff Shader）で描く。renderCommands の下（固定 z 帯）
@@ -1189,6 +1248,8 @@ mod App {
                 def getFontAtlas(name, k)       = k(GameEngine.Game.getFontAtlas(name))
                 def getViewportRect(k)          = k(GameEngine.Game.getViewportRect())
                 def getTextureInfo(name, k)     = k(GameEngine.Game.getTextureInfo(name))
+                def ensureTexture(n, key, w0, h0, px, k) =
+                    k(GameEngine.Game.ensureTexture(n, key, w0, h0, px))
                 def setCursor(cursor, k)        = k(GameEngine.Game.setCursor(cursor))
                 def setCursorVisible(v, k)      = k(GameEngine.Game.setCursorVisible(v))
                 def setFullscreen(on, k)        = k(GameEngine.Game.setFullscreen(on))

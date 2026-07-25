@@ -2,29 +2,245 @@
   "//": "apex.scenery.json の形。背景・回路平原・速度線の調整値。",
   "version": 1,
   "sections": {
-    "panoramaStrength": {"kind":"field","type":"float","label":"左右操作で背景が動く最大量","order":1,"min":0,"max":200,"default":112},
-    "farParallax": {"kind":"field","type":"float","label":"遠景の移動倍率","order":2,"min":0,"max":2,"default":0.32},
-    "nearParallax": {"kind":"field","type":"float","label":"近景の移動倍率","order":3,"min":0,"max":2,"default":1.18},
-    "spriteScale": {"kind":"field","type":"int","label":"夜景ドット絵の拡大率","order":4,"min":1,"max":8,"default":3},
-    "spriteColumns": {"kind":"field","type":"int","label":"夜景ドット絵の横セル数","order":5,"min":1,"max":200,"default":80},
-    "farTop": {"kind":"field","type":"float","label":"遠景の上位置","order":6,"min":0,"max":100,"default":14},
-    "nearTop": {"kind":"field","type":"float","label":"近景の上位置","order":7,"min":0,"max":100,"default":24},
-    "circuitStride": {"kind":"field","type":"int","label":"回路柄を置く断面間隔","order":8,"min":1,"max":8,"default":1},
-    "circuitLineWidth": {"kind":"field","type":"float","label":"回路線の太さ","order":9,"min":0.2,"max":4,"default":0.85},
-    "circuitInnerRatio": {"kind":"field","type":"float","label":"中央寄り回路線の位置","order":10,"min":0,"max":1,"default":0.96},
-    "circuitMiddleRatio": {"kind":"field","type":"float","label":"中央回路線の位置","order":11,"min":0,"max":1,"default":0.58},
-    "circuitOuterRatio": {"kind":"field","type":"float","label":"画面端寄り回路線の位置","order":12,"min":0,"max":1,"default":0.04},
-    "circuitTraceCount": {"kind":"field","type":"int","label":"平行配線の本数","order":13,"min":1,"max":16,"default":9},
-    "circuitBranchCount": {"kind":"field","type":"int","label":"横分岐の本数","order":14,"min":1,"max":10,"default":4},
-    "circuitViaEvery": {"kind":"field","type":"int","label":"丸い接点を置く間隔","order":15,"min":1,"max":8,"default":2},
-    "circuitViaSize": {"kind":"field","type":"float","label":"丸い接点の大きさ","order":16,"min":0.3,"max":4,"default":1.25},
-    "circuitPadEvery": {"kind":"field","type":"int","label":"平たい発光板の間隔","order":17,"min":1,"max":12,"default":3},
-    "circuitBrightness": {"kind":"field","type":"float","label":"回路平原の暗さ","order":18,"min":0,"max":1,"default":0.48},
-    "circuitScrollMultiplier": {"kind":"field","type":"float","label":"回路平原が流れる速度倍率","order":19,"min":0.25,"max":6,"default":3},
-    "speedLineThreshold": {"kind":"field","type":"float","label":"速度線が出始める速度割合","order":20,"min":0,"max":1,"default":0.52},
-    "speedLineLength": {"kind":"field","type":"float","label":"通常の速度線の長さ","order":21,"min":0,"max":150,"default":34},
-    "boostLineLength": {"kind":"field","type":"float","label":"ブースト速度線の長さ","order":22,"min":0,"max":200,"default":74},
-    "speedLineAlpha": {"kind":"field","type":"float","label":"通常速度線の濃さ","order":23,"min":0,"max":1,"default":0.30},
-    "boostLineAlpha": {"kind":"field","type":"float","label":"ブースト速度線の濃さ","order":24,"min":0,"max":1,"default":0.70}
+    "panoramaStrength": {
+      "kind": "field",
+      "type": "float",
+      "label": "左右操作で背景が動く最大量",
+      "order": 1,
+      "min": 0,
+      "max": 200,
+      "default": 112,
+      "group": "遠景"
+    },
+    "farParallax": {
+      "kind": "field",
+      "type": "float",
+      "label": "遠景の移動倍率",
+      "order": 2,
+      "min": 0,
+      "max": 2,
+      "default": 0.32,
+      "group": "遠景"
+    },
+    "nearParallax": {
+      "kind": "field",
+      "type": "float",
+      "label": "近景の移動倍率",
+      "order": 3,
+      "min": 0,
+      "max": 2,
+      "default": 1.18,
+      "group": "遠景"
+    },
+    "spriteScale": {
+      "kind": "field",
+      "type": "int",
+      "label": "夜景ドット絵の拡大率",
+      "order": 4,
+      "min": 1,
+      "max": 8,
+      "default": 3,
+      "group": "路肩の絵"
+    },
+    "spriteColumns": {
+      "kind": "field",
+      "type": "int",
+      "label": "夜景ドット絵の横セル数",
+      "order": 5,
+      "min": 1,
+      "max": 200,
+      "default": 80,
+      "group": "路肩の絵"
+    },
+    "farTop": {
+      "kind": "field",
+      "type": "float",
+      "label": "遠景の上位置",
+      "order": 6,
+      "min": 0,
+      "max": 100,
+      "default": 14,
+      "group": "遠景"
+    },
+    "nearTop": {
+      "kind": "field",
+      "type": "float",
+      "label": "近景の上位置",
+      "order": 7,
+      "min": 0,
+      "max": 100,
+      "default": 24,
+      "group": "遠景"
+    },
+    "circuitStride": {
+      "kind": "field",
+      "type": "int",
+      "label": "回路柄を置く断面間隔",
+      "order": 8,
+      "min": 1,
+      "max": 8,
+      "default": 1,
+      "group": "回路模様"
+    },
+    "circuitLineWidth": {
+      "kind": "field",
+      "type": "float",
+      "label": "回路線の太さ",
+      "order": 9,
+      "min": 0.2,
+      "max": 4,
+      "default": 0.85,
+      "group": "回路模様"
+    },
+    "circuitInnerRatio": {
+      "kind": "field",
+      "type": "float",
+      "label": "中央寄り回路線の位置",
+      "order": 10,
+      "min": 0,
+      "max": 1,
+      "default": 0.96,
+      "group": "回路模様"
+    },
+    "circuitMiddleRatio": {
+      "kind": "field",
+      "type": "float",
+      "label": "中央回路線の位置",
+      "order": 11,
+      "min": 0,
+      "max": 1,
+      "default": 0.58,
+      "group": "回路模様"
+    },
+    "circuitOuterRatio": {
+      "kind": "field",
+      "type": "float",
+      "label": "画面端寄り回路線の位置",
+      "order": 12,
+      "min": 0,
+      "max": 1,
+      "default": 0.04,
+      "group": "回路模様"
+    },
+    "circuitTraceCount": {
+      "kind": "field",
+      "type": "int",
+      "label": "平行配線の本数",
+      "order": 13,
+      "min": 1,
+      "max": 16,
+      "default": 9,
+      "group": "回路模様"
+    },
+    "circuitBranchCount": {
+      "kind": "field",
+      "type": "int",
+      "label": "横分岐の本数",
+      "order": 14,
+      "min": 1,
+      "max": 10,
+      "default": 4,
+      "group": "回路模様"
+    },
+    "circuitViaEvery": {
+      "kind": "field",
+      "type": "int",
+      "label": "丸い接点を置く間隔",
+      "order": 15,
+      "min": 1,
+      "max": 8,
+      "default": 2,
+      "group": "回路模様"
+    },
+    "circuitViaSize": {
+      "kind": "field",
+      "type": "float",
+      "label": "丸い接点の大きさ",
+      "order": 16,
+      "min": 0.3,
+      "max": 4,
+      "default": 1.25,
+      "group": "回路模様"
+    },
+    "circuitPadEvery": {
+      "kind": "field",
+      "type": "int",
+      "label": "平たい発光板の間隔",
+      "order": 17,
+      "min": 1,
+      "max": 12,
+      "default": 3,
+      "group": "回路模様"
+    },
+    "circuitBrightness": {
+      "kind": "field",
+      "type": "float",
+      "label": "回路平原の暗さ",
+      "order": 18,
+      "min": 0,
+      "max": 1,
+      "default": 0.48,
+      "group": "回路模様"
+    },
+    "circuitScrollMultiplier": {
+      "kind": "field",
+      "type": "float",
+      "label": "回路平原が流れる速度倍率",
+      "order": 19,
+      "min": 0.25,
+      "max": 6,
+      "default": 3,
+      "group": "回路模様"
+    },
+    "speedLineThreshold": {
+      "kind": "field",
+      "type": "float",
+      "label": "速度線が出始める速度割合",
+      "order": 20,
+      "min": 0,
+      "max": 1,
+      "default": 0.52,
+      "group": "速度線"
+    },
+    "speedLineLength": {
+      "kind": "field",
+      "type": "float",
+      "label": "通常の速度線の長さ",
+      "order": 21,
+      "min": 0,
+      "max": 150,
+      "default": 34,
+      "group": "速度線"
+    },
+    "boostLineLength": {
+      "kind": "field",
+      "type": "float",
+      "label": "ブースト速度線の長さ",
+      "order": 22,
+      "min": 0,
+      "max": 200,
+      "default": 74,
+      "group": "速度線"
+    },
+    "speedLineAlpha": {
+      "kind": "field",
+      "type": "float",
+      "label": "通常速度線の濃さ",
+      "order": 23,
+      "min": 0,
+      "max": 1,
+      "default": 0.3,
+      "group": "速度線"
+    },
+    "boostLineAlpha": {
+      "kind": "field",
+      "type": "float",
+      "label": "ブースト速度線の濃さ",
+      "order": 24,
+      "min": 0,
+      "max": 1,
+      "default": 0.7,
+      "group": "速度線"
+    }
   }
 }

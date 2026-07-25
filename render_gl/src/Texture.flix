@@ -60,6 +60,11 @@ mod RenderTexture {
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, GpuHandle.textureIdInt(info#id));
         uploadArgb(width, height, argb)
 
+    /// GPU からテクスチャを捨てる。辺長が変わって作り直すときは、古い方を必ずこれで捨てる —
+    /// 捨て忘れると差し替えるたびに GPU のメモリが増え続ける。
+    pub def deleteTexture(info: RenderAsset.TextureInfo): Unit \ IO =
+        GL11.glDeleteTextures(GpuHandle.textureIdInt(info#id))
+
     /// ARGB int 列を IntBuffer に詰めて glTexImage2D する共通部。
     def uploadArgb(width: Int32, height: Int32, argb: Vector[Int32]): Unit \ IO =
         let buf = BufferUtils.createIntBuffer(Int32.max(1, width * height));

@@ -59,6 +59,9 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 - **Doc の形**: [docs/doc-conventions.md](docs/doc-conventions.md) の外形6点に従う
   （version・`kind.schema.json`・fail-open・note・`project.json` の editor 宣言・watchFile）。
   1 つの種類 = 1 ファイル種 + 1 スキーマ。新機能は「Doc を1つ足す」形でだけ増やす。
+- **Doc の大きさ**: 1 Doc = 1 関心（いつ読み直したいかが同じ物だけ）。タブ 8 枚・1 タブ 15 個・
+  スカラー総数 30 個・入れ子 2 段を超えたら割る。単一値が 5 個以上並ぶならスキーマの
+  `group` で束ねる。詳しくは `/doc-design` skill。
 - **リアルタイム反映**: ゲームに `App.watchFile` を配線して、Doc の保存で作り直す。
   調整のたびに再起動しないで済む。開発中は `App.reloadOn(F1)` も。
 - **調整の入口**: flix_ge_studio（`make editor DIR=<game>` かビルド済みの `.app`）。
@@ -107,4 +110,5 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 | `/compile-fix` | Flixコンパイルエラーを診断し、既知の落とし穴と照合して修正を提案する |
 | `/flix-docs` | Flixの公式ドキュメントとプロジェクト固有のスタイル確認（パイプスタイル・エフェクト構文・テスト・0.71.0固有の注意点） |
 | `/quality-assurance` | テスト設計指針（モジュール新規作成時、ゲームロジック編集時） |
+| `/doc-design` | ゲームの値を Doc（JSON）へ出すときの設計指針（何を出す・どう割る・どう見せる） |
 | `/mapchip-debug` | fe_rogue のマップチップ不具合を F8 注釈チケットから修正する標準フロー（再現器・全セル差分検証・レンダ確認） |

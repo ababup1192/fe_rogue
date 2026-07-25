@@ -44,15 +44,19 @@ mod Daylight {
                   strength = lo#strength + (hi#strength - lo#strength) * f }
         }
 
-    /// いまの空気を画面いっぱいに掛ける 1 枚。size = design 解像度、z = 掛かる境目。
+    /// いまの空気を 1 枚の幕で掛ける。at / size = 覆う矩形、z = 掛かる境目。
     /// 濃さは色を白へ薄めることで表すので、重ね方は素直な乗算 1 回で済む。
-    pub def overlay(spec: { keys = List[Key], size = Vec2.Vec2, z = Int32 },
+    ///
+    /// HUD の面に置くなら at = 原点・size = design 解像度。カメラが掛かる面に置くなら
+    /// 見えている矩形（ViewCtx#visible）をそのまま渡す — 世界いっぱいに広げると、
+    /// 盤が広くなるほど無駄に大きな面になる。
+    pub def overlay(spec: { keys = List[Key], at = Vec2.Vec2, size = Vec2.Vec2, z = Int32 },
                     t: Float64): List[Render.PlacedItem] =
         let air = sample(spec#keys, t);
         if (air#strength <= 0.001) Nil
         else
             let white = { r = 1.0f32, g = 1.0f32, b = 1.0f32 };
-            { at = { x = 0.0, y = 0.0 },
+            { at = spec#at,
               item = Render.box(spec#size, mixColor(white, air#color, clamp01(air#strength)), spec#z)
                   |> Render.blended(DrawCmd.BlendMode.Multiply) } :: Nil
 
@@ -62,6 +66,96 @@ mod Daylight {
         let air = sample(keys, t);
         let mixed = mixColor({ r = 1.0f32, g = 1.0f32, b = 1.0f32 }, air#color, clamp01(air#strength));
         { r = base#r * mixed#r, g = base#g * mixed#g, b = base#b * mixed#b }
+
+    // ── 太陽の位置から導く物 ──
+
+    /// 地面に落ちる影の落ち方。dir = 伸びる向き（単位ベクトル）、
+    /// scale = 伸び具合（1.0 = 真下の丸のまま）、alpha = 濃さ。
+    pub type alias Shadow = { dir = Vec2.Vec2, scale = Float64, alpha = Float64 }
+
+    /// 影の落ち方の決まり。
+    /// longest / shortest = 日の出入りと正午の伸び具合、
+    /// alphaLow / alphaHigh = 同じく濃さ、tilt = 手前へ倒す量（見下ろしの絵では影は
+    /// 真横でなく少し手前へ落ちる方が地面に接して見える）。
+    pub type alias ShadowSpec = {
+        longest = Float64, shortest = Float64,
+        alphaLow = Float64, alphaHigh = Float64,
+        tilt = Float64
+    }
+
+    pub def shadowDefaults(): ShadowSpec =
+        { longest = 2.4, shortest = 1.0, alphaLow = 0.12, alphaHigh = 0.3, tilt = 0.55 }
+
+    /// 時刻（1 日の進み 0..1）から影の落ち方を導く。
+    /// 日の出は太陽が東（画面の右）にあるので影は左へ長く伸び、正午は真下で短く濃く、
+    /// 日の入りは右へ長く伸びる。夜は太陽が無いので、短くごく薄い影に落ち着く。
+    ///
+    /// 絵そのものは塗り替えない — 影の向きだけが動くので、ドット絵の色数は保たれる。
+    pub def shadowAt(spec: ShadowSpec, t: Float64): Shadow =
+        let sun = sunAt(t);
+        // 昼の度合い。日の出・日の入りをまたぐ所でなめらかに立ち上げる —
+        // 0/1 の段で切り替えると、影の長さがその瞬間だけパチンと飛ぶ。
+        let dayness = clamp01(sun#height * 6.0);
+        let up = clamp01(sun#height);
+        let dirX = 0.0 - sun#east;                         // 影は太陽の反対側へ
+        let len = Vec2.sqrt(dirX * dirX + spec#tilt * spec#tilt);
+        { dir = if (len < 0.0001) { x = 0.0, y = 1.0 }
+                else { x = dirX / len, y = spec#tilt / len },
+          scale = spec#shortest + (spec#longest - spec#shortest) * (1.0 - up) * dayness,
+          // 濃さは alphaLow を下回らない — 物は夜でも地面に触っているので、
+          // 接地の暗がりまで太陽と一緒に消すと、その物が浮いて見える。
+          alpha = spec#alphaLow + (spec#alphaHigh - spec#alphaLow) * up * dayness }
+
+    /// 見下ろしの落ち影を 2 枚で置く（接地の暗がり + 太陽の日影）。
+    ///
+    /// 1 枚目 = 接地。足元にぴったり付く濃い小判。物が地面に触っている合図で、これが無いと
+    /// 物が浮いて見える。2 枚目 = 日影。太陽の反対へ伸びる薄い影で、時刻で向きと長さが変わる。
+    ///
+    /// 伸びは物の大きさまでに抑える — 小さな石に長い影が付くと影の方が主役になり、
+    /// かえって浮いて見える。升目に載せるのは、なめらかな楕円だけ画素の階段が無いと
+    /// ドット絵の画面から浮くため（pixelStep = 0 で切る）。
+    pub def groundShadow(spec: { sun = Shadow, at = Vec2.Vec2, radius = Float64,
+                                 ink = Color, pixelStep = Float64,
+                                 z = Int32 }): List[Render.PlacedItem] =
+        let sun = spec#sun;
+        let r = spec#radius;
+        let stretch = 1.0 + Float64.min(1.0, sun#scale - 1.0);
+        let reach = r * (stretch - 1.0) * 0.7;
+        let cast = Render.ellipseAt(
+            { x = spec#at#x + sun#dir#x * reach, y = spec#at#y + sun#dir#y * reach * 0.4 },
+            { x = r * stretch, y = r * 0.34 * stretch }, spec#ink, spec#z);
+        let contact = Render.ellipseAt(spec#at, { x = r * 0.7, y = r * 0.26 },
+                                       spec#ink, spec#z + 1);
+        ({ item = Render.fade(Float64.truncateToFloat32(sun#alpha * 0.7), cast#item) | cast }
+         :: { item = Render.fade(Float64.truncateToFloat32(sun#alpha * 1.4), contact#item)
+                | contact } :: Nil)
+            |> Render.snappedAll(spec#pixelStep)
+
+    /// 太陽の位置。height = 高さ（+1 が真上・0 が地平線・負は夜）、
+    /// east = 東西（+1 が東＝画面の右・-1 が西）。
+    /// どちらも 1 日を通してなめらかで、日付が変わる所でも飛ばない。
+    pub def sunAt(t: Float64): { height = Float64, east = Float64 } =
+        // 6 時を 0、18 時を 1 とした昼の進み（外＝夜は負にも正にも伸びる）。
+        let u = (wrap01(t) - 0.25) / 0.5;
+        { height = Vec2.sin(Vec2.pi() * u), east = Vec2.cos(Vec2.pi() * u) }
+
+    /// 太陽の向きを、ドット絵の塗りが使う 8 方向のうち 1 つに丸める（-1 / 0 / +1）。
+    /// 絵は焼き直したときだけ塗りが変わるので、段でしか動かないのが正しい
+    /// （なめらかに回すと中間色が要り、ドット絵でなくなる）。
+    ///
+    /// 向きは影と必ず逆になる: 太陽が東（右）にあれば、光は右から差し、影は左へ伸びる。
+    /// ここを取り違えると「影は左・ふち光も左」というありえない絵になる。
+    pub def lightStepAt(t: Float64): (Int32, Int32) =
+        let east = sunAt(t)#east;
+        let x = if (east > 0.35) 1 else if (east < -0.35) -1 else 0;
+        // 見下ろしの絵では太陽は常に上にある（真上から見ているので）。
+        (x, -1)
+
+    /// その時刻の「暗さ」（0 = 素通し、1 = 真っ暗）。空気の色の濃さと同じ 1 つの値。
+    /// 明かりを点ける・沈む物を暗くするといった判断は、これを読めば空気の色とずれない
+    /// （別に昼夜の曲線を作ると、ランプの点灯と空の色が食い違う）。
+    pub def darkness(keys: List[Key], t: Float64): Float64 =
+        clamp01(sample(keys, t)#strength)
 
     // ── 内部 ──
 

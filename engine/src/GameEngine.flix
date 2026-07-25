@@ -204,6 +204,15 @@ mod GameEngine {
         /// 指定したテクスチャ名の元画像サイズ等を取得する。
         /// 登録されていないテクスチャ名なら None
         def getTextureInfo(name: String): Option[TextureInfo]
+
+        /// 実行時に焼いた画素を、名前付きテクスチャとして使えるようにする。
+        /// key はその画素の中身を決める全入力を 1 文字列にまとめた物（テーマ名・世代番号など）。
+        /// 同じ名前で key が前回と同じなら、描画部は何もしない（毎フレーム呼んでよい）。
+        /// argb は width×height の行優先（PxSpriteAtlas.bake の出力そのまま）。
+        /// 用途: ドット絵をアトラスに焼いて「1 体 = 1 枚のクアッド」で描く
+        /// （画素ごとの矩形を並べるより桁違いに軽い）。
+        def ensureTexture(name: String, key: String, width: Int32, height: Int32,
+                          argb: Vector[Int32]): Unit
         /// マウスカーソル形状を切り替える。連続して同じ Cursor を渡しても問題ない（冪等）
         def setCursor(cursor: Cursor): Unit
         /// マウスカーソルの表示/非表示を切り替える。形状(setCursor)は「どんな絵か」、

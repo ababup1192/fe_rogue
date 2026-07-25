@@ -10,6 +10,7 @@
 
 mod Bakery {
     import java.awt.image.BufferedImage
+    import java.io.File
 
     /// ゲームごとに 1 回宣言する焼き込み設定。design を `scale` 倍に拡大して出力する。
     /// texturePath は Drawable#texture 名 → PNG パス。fontAtlas はメトリクス、fontTtf は実サイズ焼き用 TTF。
@@ -26,6 +27,35 @@ mod Bakery {
         gifDelayMs  = Int32,
         gifFps      = Int32
     }
+
+    /// 走行中に作った正方形の絵（ドット絵アトラスなど）を PNG に落とし、
+    /// 「名前 → PNG パス」の表を返す。BakeConfig#texturePath にそのまま入れられる。
+    ///
+    /// 実機は画素をそのまま GPU へ上げられるが、焼き（SoftRaster）はファイルからしか
+    /// 絵を読めない。この差をゲームごとに埋めていると、焼き忘れた絵だけが gallery で
+    /// 消えて golden が実機を守れなくなる — だから配管はここが持つ。
+    pub def imagePngs(outDir: String,
+                      images: List[{ name = String, side = Int32,
+                                     pixelAt = (Int32, Int32) -> Int32 }]): Map[String, String] \ IO =
+        discard (new File(outDir)).mkdirs();
+        images |> List.foldLeft((acc, img) -> {
+            if (img#side <= 0) acc
+            else {
+                let path = "${outDir}/${img#name}.png";
+                SoftRaster.writeRadialPng(img#side, img#pixelAt, path);
+                Map.insert(img#name, path, acc)
+            }
+        }, Map.empty())
+
+    /// 同じ絵の一覧から「名前 → テクスチャの寸法」を引く関数を作る（Render.drawWith に渡す）。
+    /// UV を解くのに辺長が要るので、PNG のパスだけでは足りない。
+    pub def imageTextureInfo(images: List[{ name = String, side = Int32 | r }]):
+            String -> Option[{ id = GpuHandle.TextureId, width = Float64, height = Float64 }] =
+        let sides = images |> List.foldLeft((acc, img) ->
+            Map.insert(img#name, img#side, acc), Map.empty());
+        name -> Map.get(name, sides) |> Option.map(side ->
+            { id = GpuHandle.wrapTextureId(0), width = Int32.toFloat64(side),
+              height = Int32.toFloat64(side) })
 
     def reqOf(cfg: BakeConfig, drawables: List[GameEngine.Drawable],
               polygons: List[GameEngine.PolygonRenderCmd], outPath: String): SoftRaster.RasterReq =

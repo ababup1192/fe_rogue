@@ -233,6 +233,7 @@ mod TerrainDoc {
         let c = colorOf(resolve, fx#color);
         match fx#preset {
             case "sparkle" => Some(Material.sparkle(c))
+            case "grain"   => Some(Material.grain(c))
             case "scales"  => Some(Material.scales(
                                   { deep = Color.darken(c, 0.25),
                                     mid = c,

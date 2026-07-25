@@ -46,6 +46,7 @@ mod SnapshotSupport {
             def getFontAtlas(_, k)          = k(atlas)
             def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 240.0, y = 128.0}})
             def getTextureInfo(name, k)     = k(Map.get(name, texInfo))
+            def ensureTexture(_, _, _, _, _, k) = k(())
             def setCursor(_, k)             = k(())
             def setCursorVisible(_, k)      = k(())
             def setFullscreen(_, k)         = k(())

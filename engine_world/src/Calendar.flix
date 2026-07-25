@@ -30,11 +30,16 @@ mod Calendar {
 
     /// 実時間 dt 秒ぶん時を進める。1 フレームで何分進んでも取りこぼさない。
     pub def advance(spec: Spec, dt: Float64, s: Stamp): Stamp =
+        // 数でない dt（初回フレームや落ちたフレーム、Doc の壊れた速度）は見送る —
+        // 一度でも持ち越しに混ざると、以後どれだけ呼んでも時計が二度と進まなくなる。
+        if (not Float64.isFinite(dt)) s
+        else {
         let per = Float64.max(0.000001, spec#secondsPerMinute);
         let pool = s#carry + Float64.max(0.0, dt);
         let whole = Float64.floor(pool / per);
         let steps = whole |> Float64.tryToInt32 |> Option.getWithDefault(0);
         { minute = s#minute + steps, carry = pool - whole * per }
+        }
 
     /// 次の日の minuteOfDay 分へ飛ばす（寝る）。すでにその時刻を過ぎていても必ず翌日になる。
     pub def sleepTo(spec: Spec, minuteOfDay: Int32, s: Stamp): Stamp =
@@ -43,8 +48,10 @@ mod Calendar {
     // ── 読み出し ──
 
     /// 通算の日（0 始まり）。
+    /// 負の分（「今より 30 分前」）でも 1 日前として数える — 切り捨て除算だと
+    /// 「0 日目の 23:30」という、日と時刻が食い違う読みになる。
     pub def dayOf(spec: Spec, s: Stamp): Int32 =
-        s#minute / dayLength(spec)
+        (s#minute - minuteOfDay(spec, s)) / dayLength(spec)
 
     /// その日の何分目か（0 〜 minutesPerDay-1）。
     pub def minuteOfDay(spec: Spec, s: Stamp): Int32 =

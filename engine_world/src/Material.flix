@@ -62,6 +62,30 @@ mod Material {
         sizeSpan = Float64
     }
 
+    /// 地肌の粒。面の中に細かい点をたくさん置いて、ベタ塗りののっぺりを消す。
+    /// sparkle が「たまに光る 3 粒」なのに対し、こちらは「常にある十数粒」— 土や砂の質感。
+    /// 面の形（デュアルグリッドが決めた輪郭）の内側にだけ入るので、四角いタイルを重ねる
+    /// のと違って縁からはみ出さない。幅 1 マスの道のように「内側」が無い形でも効く。
+    /// channel 200 から 4×count ぶんを使う帯（きらめき・むら・泡のどれとも重ならない）。
+    /// 粒は毎フレーム 1 マスに count 個の箱を生むので、広い盤で使うときは静的レイヤーへ
+    /// 焼くか count を下げる — 40×30 マス × 16 個で 1 フレーム 19,200 個になる。
+    pub def grain(color: Color): SurfaceFx =
+        { shape = SurfaceShape.Speck,
+          count = 16,
+          color = color,
+          color2 = color,
+          color3 = color,
+          channel = 200,
+          twinkleRate = 0.0,
+          alphaBase = 0.38,
+          alphaSpan = 0.30,
+          sizeBase = 1.0,
+          sizeSpan = 1.0,
+          period = 0.0,
+          riseSpeed = 0.0,
+          sizeTo = 0.0,
+          blend = DrawCmd.BlendMode.Normal }
+
     /// 水のきらめきの設定(見た目 v2)。粒3個・幅1〜3px・濃さの山0.8 —
     /// 旧設定(2個・2x1固定・山0.5)は画面でほぼ見えないというフィードバックを受けた強化。
     /// channel 71 は泡(84..)や角スタイル(81)と重ならない帯。
@@ -288,13 +312,16 @@ mod Material {
         let px = Int32.toFloat64(x) * tile;
         let py = Int32.toFloat64(y) * tile;
         List.range(0, fx#count) |> List.map(k -> {
+            // 粒 1 つに 4 本の乱数を割り当て、粒ごとに 4 本ぶんずらす。
+            // 間隔を空けないと「粒 k の縦位置 = 粒 k+2 の横位置」になり、粒が対角に並ぶ。
+            let ch = fx#channel + k * 4;
             let twinkle = fx#alphaBase + fx#alphaSpan *
                 (0.5 + 0.5 * Vec2.sin(time * fx#twinkleRate
-                                      + DualGrid.hash(x, y, fx#channel + k) * 6.28));
+                                      + DualGrid.hash(x, y, ch) * 6.28));
             let w = fx#sizeBase
-                + Float64.floor(DualGrid.hash(x, y, fx#channel + 6 + k) * (fx#sizeSpan + 1.0));
-            let bx = px + 3.0 + Float64.floor(DualGrid.hash(x, y, fx#channel + 2 + k) * 10.0);
-            let by = py + 3.0 + Float64.floor(DualGrid.hash(x, y, fx#channel + 4 + k) * 10.0);
+                + Float64.floor(DualGrid.hash(x, y, ch + 3) * (fx#sizeSpan + 1.0));
+            let bx = px + 3.0 + Float64.floor(DualGrid.hash(x, y, ch + 1) * 10.0);
+            let by = py + 3.0 + Float64.floor(DualGrid.hash(x, y, ch + 2) * 10.0);
             // box は左上原点なので、幅ぶん見込んで岸の内側へ寄せる。
             let (ax, ay) = insetToLiquid(cell, tile, edges, Float64.max(w, 2.0), (bx, by));
             { at = { x = ax, y = ay },

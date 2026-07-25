@@ -53,4 +53,20 @@ mod TestCalendar {
         Assert.assertEq(expected = (0.0, 0.5),
             (Calendar.dayFraction(spec(), Calendar.at(spec(), 0, 0)),
              Calendar.dayFraction(spec(), Calendar.at(spec(), 0, 720))))
+
+    @Test
+    def testNonFiniteDeltaDoesNotStopTheClock(): Unit \ Assert =
+        // 数でない dt が持ち越しに混ざると、以後どれだけ呼んでも時計が進まなくなる。
+        let spec = Calendar.defaults();
+        let broken = Calendar.advance(spec, Float64.nan(), Calendar.at(spec, 0, 0));
+        let after = Calendar.advance(spec, 10.0, broken);
+        Assert.assertEq(expected = true, after#minute > 0)
+
+    @Test
+    def testMinutesBeforeTheStartReadAsThePreviousDay(): Unit \ Assert =
+        // 「今より 30 分前」は前日の終わり。日と時刻が食い違ってはいけない。
+        let spec = Calendar.defaults();
+        let s = Calendar.at(spec, 0, -30);
+        Assert.assertEq(expected = (-1, spec#minutesPerDay - 30),
+                        (Calendar.dayOf(spec, s), Calendar.minuteOfDay(spec, s)))
 }

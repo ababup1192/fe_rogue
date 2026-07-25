@@ -349,6 +349,77 @@ mod Render {
     pub def zShiftedAll(delta: Int32, items: List[PlacedItem]): List[PlacedItem] =
         items |> List.map(placed -> { item = zShifted(delta, placed#item) | placed })
 
+    /// 置き場所と頂点を step px の升目に載せる（ドット絵の升目に合わせて角を落とす）。
+    /// なめらかな多角形（デュアルグリッドの丸い角など）をドット絵と同じ画面に置くと、
+    /// そこだけ画素の階段が無くて浮く。升目に載せると階段がそろい、地続きに見える。
+    /// step = 1.0 で 1 画素、2.0 なら 2 画素ぶんの粗さになる。
+    /// 静的な絵（1 度だけ焼く層）に掛けるのが基本 — 毎フレーム掛ける物ではない。
+    ///
+    /// 動かすのは位置だけで、大きさ（箱の size・絵の scale）は触らない — 大きさを丸めると
+    /// 敷き詰めた面に隙間や重なりが出る。半端な大きさの物を升目に載せたいなら、
+    /// 呼ぶ側が整数の大きさで作ること。
+    pub def snapped(step: Float64, item: Item): Item =
+        if (not Float64.isFinite(step) or step <= 0.0) item
+        else onLeaf(leaf -> match leaf {
+            case Item.Poly(p) => Item.Poly({ vertices = List.map(snapVec(step), p#vertices) | p })
+            case other        => other
+        }, item)
+
+    /// snapped の列版（置き場所も升目に載せる）。
+    pub def snappedAll(step: Float64, items: List[PlacedItem]): List[PlacedItem] =
+        if (not Float64.isFinite(step) or step <= 0.0) items
+        else items |> List.map(p ->
+            { at = snapVec(step, p#at), item = snapped(step, p#item) })
+
+    def snapVec(step: Float64, v: Vec2.Vec2): Vec2.Vec2 =
+        { x = Float64.round(v#x / step) * step, y = Float64.round(v#y / step) * step }
+
+    /// 絵の色を差し替える（Sprite だけに効く。白 = 元の絵のまま）。同じ 1 枚の絵を、
+    /// 色だけ変えて使い回すための口 — 木や草を 1 本ずつわずかに違う色にすると、
+    /// 並んでも単調にならない。
+    ///
+    /// 掛け算ではなく差し替えなので、すでに色が乗っている絵に重ねても足し合わさらない。
+    /// 箱や多角形は素通し（色を持つ場所が別なので、ここでは触らない）。
+    pub def tinted(color: Color, item: Item): Item =
+        onLeaf(leaf -> match leaf {
+            case Item.Sprite(sp) => Item.Sprite({ tint = color | sp })
+            case other           => other
+        }, item)
+
+    /// tinted の列版。
+    pub def tintedAll(color: Color, items: List[PlacedItem]): List[PlacedItem] =
+        items |> List.map(p -> { item = tinted(color, p#item) | p })
+
+    /// 飾りの無い箱（角丸・枠線・縞・市松・回転がどれも無い単色）を、同じ形の多角形へ直す。
+    /// 静的レイヤー（1 度だけ GPU に焼く層）は多角形だけを焼くので、箱で組んだ絵を
+    /// そこへ載せたいときの入口。飾りのある箱・箱以外はそのまま返す（焼かれずに動的側へ残る）。
+    pub def boxAsPoly(item: Item): Item =
+        onLeaf(leaf -> match leaf {
+            case Item.Box(b) =>
+                if (Float64.abs(b#rotation) > 0.000001 or not plainStyle(b#style)) leaf
+                else Item.Poly({ vertices = { x = 0.0, y = 0.0 } :: { x = b#size#x, y = 0.0 }
+                                     :: { x = b#size#x, y = b#size#y } :: { x = 0.0, y = b#size#y } :: Nil,
+                                 color = b#color, alpha = b#alpha, zIndex = b#zIndex,
+                                 blend = b#blend })
+            case other => other
+        }, item)
+
+    /// boxAsPoly の列版。
+    pub def boxesAsPolys(items: List[PlacedItem]): List[PlacedItem] =
+        items |> List.map(p -> { item = boxAsPoly(p#item) | p })
+
+    /// その箱が「ただの単色の矩形」か（角丸・枠線・縞・市松がどれも無い）。
+    def plainStyle(style: Option[GameEngine.BoxStyle]): Bool =
+        match style {
+            case None    => true
+            case Some(s) =>
+                Float64.abs(s#cornerRadius) < 0.000001
+                    and Float64.abs(s#borderWidth) < 0.000001
+                    and s#borderAlpha == 0.0f32
+                    and s#stripeAlpha == 0.0f32
+                    and s#checkerAlpha == 0.0f32
+        }
+
     /// 頂点列を左右に鏡映する（縦軸で x を反転・2 回で元に戻る）。polygon や Bezier の
     /// 輪郭・背骨に渡す前に使う。鏡映は頂点の上でだけ提供する（Text のような
     /// 鏡映できない物に flip を書くと型が合わない = 落ちる代わりにコンパイルで止まる）。

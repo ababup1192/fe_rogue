@@ -23,6 +23,24 @@ mod Color {
           g = color#g * remaining,
           b = color#b * remaining }
 
+    /// 暖色（黄寄り）へ amount だけ寄せる。lighten と対で使う。
+    /// 明暗だけで塗ると面が塊に見えるので、光の当たる側は暖色・影の側は寒色へずらす。
+    /// 離れて見ると 2 色が混ざり、実際に使った色数より多くの階調があるように見える。
+    pub def warm(color: Color, amount: Float64): Color =
+        let t = Float64.truncateToFloat32(amount);
+        { r = pin01(color#r + t * 0.30f32),
+          g = pin01(color#g + t * 0.18f32),
+          b = pin01(color#b - t * 0.14f32) }
+
+    /// 寒色（青寄り）へ amount だけ寄せる（warm の対）。影の側に使う。
+    pub def cool(color: Color, amount: Float64): Color =
+        let t = Float64.truncateToFloat32(amount);
+        { r = pin01(color#r - t * 0.18f32),
+          g = pin01(color#g - t * 0.06f32),
+          b = pin01(color#b + t * 0.16f32) }
+
+    def pin01(v: Float32): Float32 = Float32.max(0.0f32, Float32.min(1.0f32, v))
+
     /// HSV から色を作る。h は色相（1 周 = 1.0・0 = 赤・範囲外は折り返し）、s は鮮やかさ、
     /// v は明るさ（どちらも 0〜1）。「値に沿って色相を流す」（虹のグラデーション・
     /// 残量ゲージの緑→赤）が 1 行で導ける。

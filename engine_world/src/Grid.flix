@@ -60,4 +60,36 @@ mod Grid {
     /// `inRect` の record 版。`cell` が `cols` x `rows`（列 [0,cols)・行 [0,rows)）の内側か。
     pub def inRectOf(cell: Cell, cols: Int32, rows: Int32): Bool =
         inRect((cell#x, cell#y), cols, rows)
+
+    /// 見えている矩形に重なるマスを並べる（盤の外は含めない）。
+    ///
+    /// margin は「矩形の外だけれど見るマス」の余分。上へ伸びる木や屋根は、画面の下の外に
+    /// 立っていても葉が画面の中へ差し込むので、下側を余分に見ないと縁で消える。
+    ///
+    /// 並びは上の行から、行の中は左から。1 フレームの仕事を画面ぶんに抑える口なので、
+    /// 盤が広くなっても組む量は増えない。
+    pub def cellsIn(spec: { tileSize = Float64, area = { position = Vec2.Vec2, size = Vec2.Vec2 },
+                            cols = Int32, rows = Int32,
+                            margin = { left = Int32, top = Int32,
+                                       right = Int32, bottom = Int32 } }): List[Cell] =
+        let t = spec#tileSize;
+        if (t <= 0.0 or spec#cols <= 0 or spec#rows <= 0) Nil
+        else {
+            let a = spec#area;
+            let m = spec#margin;
+            let c0 = Int32.max(0, floorTo(a#position#x / t) - m#left);
+            let r0 = Int32.max(0, floorTo(a#position#y / t) - m#top);
+            let c1 = Int32.min(spec#cols - 1, floorTo((a#position#x + a#size#x) / t) + m#right);
+            let r1 = Int32.min(spec#rows - 1, floorTo((a#position#y + a#size#y) / t) + m#bottom);
+            forM (r <- List.range(r0, r1 + 1); c <- List.range(c0, c1 + 1))
+                yield ({ x = c, y = r }: Cell)
+        }
+
+    /// 余分を見ない margin（見えている矩形にちょうど重なるマスだけ）。
+    pub def noMargin(): { left = Int32, top = Int32, right = Int32, bottom = Int32 } =
+        { left = 0, top = 0, right = 0, bottom = 0 }
+
+    def floorTo(v: Float64): Int32 =
+        if (not Float64.isFinite(v)) 0
+        else Float64.floor(v) |> Float64.tryToInt32 |> Option.getWithDefault(0)
 }

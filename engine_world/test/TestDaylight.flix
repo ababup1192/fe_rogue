@@ -26,11 +26,11 @@ mod TestDaylight {
     @Test
     def testOverlayVanishesWhenAirIsClear(): Unit \ Assert =
         // 昼（濃さ 0）は 1 枚も置かない — 無駄な描画物を出さない。
-        let items = Daylight.overlay({ keys = keys(), size = { x = 10.0, y = 10.0 }, z = 5 }, 0.5);
+        let items = Daylight.overlay({ keys = keys(), at = Vec2.zero(), size = { x = 10.0, y = 10.0 }, z = 5 }, 0.5);
         Assert.assertEq(expected = true, List.isEmpty(items))
 
     @Test
     def testOverlayIsOneSheetWhenAirIsThick(): Unit \ Assert =
-        let items = Daylight.overlay({ keys = keys(), size = { x = 10.0, y = 10.0 }, z = 5 }, 0.0);
+        let items = Daylight.overlay({ keys = keys(), at = Vec2.zero(), size = { x = 10.0, y = 10.0 }, z = 5 }, 0.0);
         Assert.assertEq(expected = 1, List.length(items))
 }

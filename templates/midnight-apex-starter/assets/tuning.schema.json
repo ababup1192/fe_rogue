@@ -2,30 +2,255 @@
   "//": "apex.tuning.json の形。数値の初期値だけを置き、加速や周回の規則は World に置く。",
   "version": 1,
   "sections": {
-    "maxSpeed": {"kind":"field","type":"float","label":"自機の最高速","order":1,"min":40,"max":400,"default":190},
-    "boostMaxSpeed": {"kind":"field","type":"float","label":"ブースト中の最高速","order":2,"min":60,"max":500,"default":270},
-    "acceleration": {"kind":"field","type":"float","label":"アクセルの加速","order":3,"min":10,"max":300,"default":92},
-    "boostAcceleration": {"kind":"field","type":"float","label":"ブーストの加速","order":4,"min":10,"max":500,"default":175},
-    "brakePower": {"kind":"field","type":"float","label":"ブレーキの減速","order":5,"min":10,"max":400,"default":150},
-    "coastDrag": {"kind":"field","type":"float","label":"何も押さない時の減速","order":6,"min":0,"max":200,"default":34},
-    "steerSpeed": {"kind":"field","type":"float","label":"ハンドルの効き","order":7,"min":20,"max":300,"default":118},
-    "brakeSteerMultiplier": {"kind":"field","type":"float","label":"ブレーキ中の旋回倍率","order":8,"min":1.0,"max":3.0,"default":1.8},
-    "offRoadGrip": {"kind":"field","type":"float","label":"路外で残るハンドルの効き","order":9,"min":0.1,"max":1.0,"default":0.55},
-    "offRoadMaxSpeed": {"kind":"field","type":"float","label":"路外で出せる最高速","order":10,"min":10,"max":300,"default":72},
-    "offRoadDrag": {"kind":"field","type":"float","label":"路外での減速","order":11,"min":10,"max":400,"default":120},
-    "collisionSpeedLoss": {"kind":"field","type":"float","label":"ライバル接触で失う速度","order":12,"min":0,"max":300,"default":56},
-    "wallBounceSpeed": {"kind":"field","type":"float","label":"壁から弾かれる強さ","order":13,"min":20,"max":500,"default":210},
-    "fallMargin": {"kind":"field","type":"float","label":"壁なし区間で落下する路端からの距離","order":14,"min":8,"max":50,"default":22},
-    "jumpDuration": {"kind":"field","type":"float","label":"ジャンプが続く秒数","order":15,"min":0.2,"max":2.5,"default":1.35},
-    "jumpHeight": {"kind":"field","type":"float","label":"ジャンプの見た目の高さ","order":16,"min":5,"max":100,"default":58},
-    "airSteerGrip": {"kind":"field","type":"float","label":"空中で残るハンドルの効き","order":17,"min":0.1,"max":1.0,"default":0.72},
-    "boostDrain": {"kind":"field","type":"float","label":"ブーストの毎秒エネルギー消費","order":18,"min":1,"max":100,"default":34},
-    "energyRecharge": {"kind":"field","type":"float","label":"通常走行の毎秒エネルギー回復","order":19,"min":0,"max":100,"default":12},
-    "collisionEnergyLoss": {"kind":"field","type":"float","label":"ライバル接触で失うエネルギー","order":20,"min":0,"max":100,"default":24},
-    "rivalSpeedA": {"kind":"field","type":"float","label":"ライバルAの速さ","order":21,"min":20,"max":400,"default":142},
-    "rivalSpeedB": {"kind":"field","type":"float","label":"ライバルBの速さ","order":22,"min":20,"max":400,"default":158},
-    "totalLaps": {"kind":"field","type":"int","label":"ゴールまでの周回数","order":23,"min":1,"max":10,"default":2},
-    "scorePerPass": {"kind":"field","type":"int","label":"1台抜いた得点","order":24,"min":0,"max":10000,"default":500},
-    "finishBonus": {"kind":"field","type":"int","label":"完走ボーナス","order":25,"min":0,"max":20000,"default":2000}
+    "maxSpeed": {
+      "kind": "field",
+      "type": "float",
+      "label": "自機の最高速",
+      "order": 1,
+      "min": 40,
+      "max": 400,
+      "default": 190,
+      "group": "速さと加速"
+    },
+    "boostMaxSpeed": {
+      "kind": "field",
+      "type": "float",
+      "label": "ブースト中の最高速",
+      "order": 2,
+      "min": 60,
+      "max": 500,
+      "default": 270,
+      "group": "速さと加速"
+    },
+    "acceleration": {
+      "kind": "field",
+      "type": "float",
+      "label": "アクセルの加速",
+      "order": 3,
+      "min": 10,
+      "max": 300,
+      "default": 92,
+      "group": "速さと加速"
+    },
+    "boostAcceleration": {
+      "kind": "field",
+      "type": "float",
+      "label": "ブーストの加速",
+      "order": 4,
+      "min": 10,
+      "max": 500,
+      "default": 175,
+      "group": "速さと加速"
+    },
+    "brakePower": {
+      "kind": "field",
+      "type": "float",
+      "label": "ブレーキの減速",
+      "order": 5,
+      "min": 10,
+      "max": 400,
+      "default": 150,
+      "group": "速さと加速"
+    },
+    "coastDrag": {
+      "kind": "field",
+      "type": "float",
+      "label": "何も押さない時の減速",
+      "order": 6,
+      "min": 0,
+      "max": 200,
+      "default": 34,
+      "group": "速さと加速"
+    },
+    "steerSpeed": {
+      "kind": "field",
+      "type": "float",
+      "label": "ハンドルの効き",
+      "order": 7,
+      "min": 20,
+      "max": 300,
+      "default": 118,
+      "group": "ハンドル"
+    },
+    "brakeSteerMultiplier": {
+      "kind": "field",
+      "type": "float",
+      "label": "ブレーキ中の旋回倍率",
+      "order": 8,
+      "min": 1.0,
+      "max": 3.0,
+      "default": 1.8,
+      "group": "ハンドル"
+    },
+    "offRoadGrip": {
+      "kind": "field",
+      "type": "float",
+      "label": "路外で残るハンドルの効き",
+      "order": 9,
+      "min": 0.1,
+      "max": 1.0,
+      "default": 0.55,
+      "group": "コース外"
+    },
+    "offRoadMaxSpeed": {
+      "kind": "field",
+      "type": "float",
+      "label": "路外で出せる最高速",
+      "order": 10,
+      "min": 10,
+      "max": 300,
+      "default": 72,
+      "group": "コース外"
+    },
+    "offRoadDrag": {
+      "kind": "field",
+      "type": "float",
+      "label": "路外での減速",
+      "order": 11,
+      "min": 10,
+      "max": 400,
+      "default": 120,
+      "group": "コース外"
+    },
+    "collisionSpeedLoss": {
+      "kind": "field",
+      "type": "float",
+      "label": "ライバル接触で失う速度",
+      "order": 12,
+      "min": 0,
+      "max": 300,
+      "default": 56,
+      "group": "ぶつかる・落ちる"
+    },
+    "wallBounceSpeed": {
+      "kind": "field",
+      "type": "float",
+      "label": "壁から弾かれる強さ",
+      "order": 13,
+      "min": 20,
+      "max": 500,
+      "default": 210,
+      "group": "ぶつかる・落ちる"
+    },
+    "fallMargin": {
+      "kind": "field",
+      "type": "float",
+      "label": "壁なし区間で落下する路端からの距離",
+      "order": 14,
+      "min": 8,
+      "max": 50,
+      "default": 22,
+      "group": "ぶつかる・落ちる"
+    },
+    "jumpDuration": {
+      "kind": "field",
+      "type": "float",
+      "label": "ジャンプが続く秒数",
+      "order": 15,
+      "min": 0.2,
+      "max": 2.5,
+      "default": 1.35,
+      "group": "跳ぶ"
+    },
+    "jumpHeight": {
+      "kind": "field",
+      "type": "float",
+      "label": "ジャンプの見た目の高さ",
+      "order": 16,
+      "min": 5,
+      "max": 100,
+      "default": 58,
+      "group": "跳ぶ"
+    },
+    "airSteerGrip": {
+      "kind": "field",
+      "type": "float",
+      "label": "空中で残るハンドルの効き",
+      "order": 17,
+      "min": 0.1,
+      "max": 1.0,
+      "default": 0.72,
+      "group": "ハンドル"
+    },
+    "boostDrain": {
+      "kind": "field",
+      "type": "float",
+      "label": "ブーストの毎秒エネルギー消費",
+      "order": 18,
+      "min": 1,
+      "max": 100,
+      "default": 34,
+      "group": "ブースト"
+    },
+    "energyRecharge": {
+      "kind": "field",
+      "type": "float",
+      "label": "通常走行の毎秒エネルギー回復",
+      "order": 19,
+      "min": 0,
+      "max": 100,
+      "default": 12,
+      "group": "ブースト"
+    },
+    "collisionEnergyLoss": {
+      "kind": "field",
+      "type": "float",
+      "label": "ライバル接触で失うエネルギー",
+      "order": 20,
+      "min": 0,
+      "max": 100,
+      "default": 24,
+      "group": "ぶつかる・落ちる"
+    },
+    "rivalSpeedA": {
+      "kind": "field",
+      "type": "float",
+      "label": "ライバルAの速さ",
+      "order": 21,
+      "min": 20,
+      "max": 400,
+      "default": 142,
+      "group": "相手と勝負"
+    },
+    "rivalSpeedB": {
+      "kind": "field",
+      "type": "float",
+      "label": "ライバルBの速さ",
+      "order": 22,
+      "min": 20,
+      "max": 400,
+      "default": 158,
+      "group": "相手と勝負"
+    },
+    "totalLaps": {
+      "kind": "field",
+      "type": "int",
+      "label": "ゴールまでの周回数",
+      "order": 23,
+      "min": 1,
+      "max": 10,
+      "default": 2,
+      "group": "相手と勝負"
+    },
+    "scorePerPass": {
+      "kind": "field",
+      "type": "int",
+      "label": "1台抜いた得点",
+      "order": 24,
+      "min": 0,
+      "max": 10000,
+      "default": 500,
+      "group": "相手と勝負"
+    },
+    "finishBonus": {
+      "kind": "field",
+      "type": "int",
+      "label": "完走ボーナス",
+      "order": 25,
+      "min": 0,
+      "max": 20000,
+      "default": 2000,
+      "group": "相手と勝負"
+    }
   }
 }

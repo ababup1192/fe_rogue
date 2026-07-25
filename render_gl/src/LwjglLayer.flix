@@ -309,6 +309,10 @@ mod LwjglLayer {
 
         println("Baking font atlases...");
         let (fontAtlases, registry) = RenderFont.bakeFontAtlases(config#fontManifest, registry0);
+        // テクスチャ表は実行時に増える（ensureTexture が焼いたアトラスを足す）ので可変で持つ。
+        // 併せて「名前 → 最後に上げた key」を持ち、同じ key の再アップロードを弾く。
+        let registryRef: Ref[RenderAsset.TextureRegistry, Static] = Ref.fresh(Static, registry);
+        let textureKeyRef: Ref[Map[String, String], Static] = Ref.fresh(Static, Map.empty());
 
         // ===== OpenAL audio init =====
         println("Initializing audio...");
@@ -403,7 +407,7 @@ mod LwjglLayer {
             };
             RenderFrame.renderFrameMixed({
                 spriteShader = spriteShader, tileShader = tileShader, vao = vao,
-                registry = registry, clearColor = config#clearColor,
+                registry = Ref.get(registryRef), clearColor = config#clearColor,
                 designW = screenW, designH = screenH, fbW = fbW, fbH = fbH,
                 sprites = sprites, tileMaps = tileMaps, polygons = polygons,
                 staticRanges = staticRanges,
@@ -649,7 +653,44 @@ mod LwjglLayer {
                 k({position = Vec2.zero(), size = {x = screenW, y = screenH}})
             }
             def getTextureInfo(name, k) = {
-                k(Map.get(name, registry))
+                k(Map.get(name, Ref.get(registryRef)))
+            }
+            def ensureTexture(name, key, width, height, argb, k) = {
+                // key が前と同じなら何もしない（毎フレーム呼ばれる前提の口）。
+                if (Map.get(name, Ref.get(textureKeyRef)) == Some(key)) k(())
+                else {
+                    let prev = Map.get(name, Ref.get(registryRef));
+                    let sameSize = Option.exists(info ->
+                        info#width == Int32.toFloat64(width)
+                            and info#height == Int32.toFloat64(height), prev);
+                    // 辺長が同じなら画素だけ差し替える（GL ハンドルを作り直さない）。
+                    // 名前の取り違え避け: マニフェストで読んだ絵と同じ名前だと、辺長が同じ
+                    // ときに元の絵の中身を上書きしてしまう。key を持たない名前 = 焼いた
+                    // アトラスではないので、そこへは書かない。
+                    let taken = not Option.isEmpty(prev)
+                        and Option.isEmpty(Map.get(name, Ref.get(textureKeyRef)));
+                    if (taken) {
+                        println("[ensureTexture] 名前 '${name}' はすでに別の絵が使っています（上書きしません）");
+                        k(())
+                    } else {
+                    let info = match prev {
+                        case Some(old) =>
+                            if (sameSize) {
+                                RenderTexture.updateTexturePixels(old, width, height, argb);
+                                old
+                            } else {
+                                // 辺長が変わったので作り直す。古い方は捨てる（漏らすと焼き直す
+                                // たびに GPU のメモリが増え続ける）。
+                                RenderTexture.deleteTexture(old);
+                                RenderTexture.loadTextureFromPixels(width, height, argb)
+                            }
+                        case None => RenderTexture.loadTextureFromPixels(width, height, argb)
+                    };
+                    Ref.put(Map.insert(name, info, Ref.get(registryRef)), registryRef);
+                    Ref.put(Map.insert(name, key, Ref.get(textureKeyRef)), textureKeyRef);
+                    k(())
+                    }
+                }
             }
             def setCursor(cursor, k) = {
                 let prev = Array.get(0, lastCursorHolder);

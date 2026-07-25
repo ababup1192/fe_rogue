@@ -52,7 +52,9 @@ mod RenderFont {
                     oversample: Float64, cps: List[Int32]): Float64 \ IO =
         let fitsAt = size -> neededArea(fontInfo, scaleOf(fontInfo, size, oversample), padding, cps)
             <= atlasCapacity();
-        if (fitsAt(requested)) requested
+        // 要求が下限より小さいなら縮める余地は無い（縮めるつまみなので、要求より
+        // 大きい値を返してはいけない — 大きく返すと収まらないまま実ベイクへ落ちる）。
+        if (requested <= minBakeSize() or fitsAt(requested)) requested
         else narrow(fitsAt, minBakeSize(), requested, 8)
 
     /// lo（収まる）と hi（収まらない）の間を詰めて、収まる最大を返す。

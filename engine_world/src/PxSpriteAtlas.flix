@@ -69,6 +69,14 @@ mod PxSpriteAtlas {
         if (x < 0 or y < 0 or x >= baked#side or y >= baked#side) 0
         else Vector.get(y * baked#side + x, baked#pixels)
 
+    /// 焼き上がりの一覧を「正方形の絵の一覧」へ写す（Bakery.imagePngs / imageTextureInfo 用）。
+    /// 焼き道具は engine_world の型を知らないので、素の形に直してから渡す。
+    pub def asImages(uploads: List[{ texture = String, baked = Baked | r }]):
+            List[{ name = String, side = Int32, pixelAt = (Int32, Int32) -> Int32 }] =
+        uploads |> List.map(u ->
+            { name = u#texture, side = u#baked#side,
+              pixelAt = (x, y) -> pixelAt(u#baked, x, y) })
+
     /// シェルフパッキング(棚詰め): items を与えられた順に左→右へ詰め、行に収まらなければ
     /// 「その行の最大高 + 1px」下の新しい行へ折り返す。コマ間は縦横とも 1px の隙間。
     /// 全部収まれば キー → 左上(x, y) の Map、1 つでも溢れれば None(呼び手が辺長を広げる)。

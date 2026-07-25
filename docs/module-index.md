@@ -59,7 +59,16 @@
 | BGM をだんだん出す・消す・入れ替える（音量カーブ） | AudioFade |
 | 見下ろしで「足元が下にある物ほど手前」に並べる（人が木の裏に回る） | Depth |
 | ゲームの中の時計と暦を回す（分・時・日・季節・年） | Calendar |
-| 時刻で世界の色を変える（朝の青・夕の橙・夜の紺） | Daylight |
+| 時刻で世界の色を変える（朝の青・夕の橙・夜の紺）・影の向きと長さを回す | Daylight |
+| ドット絵の塗りに光を当てる（ふち光・接地影・ディザ・地肌の粒） | PxShade |
+| 見下ろしの落ち影を置く（接地の暗がり + 時刻で回る日影） | Daylight.groundShadow |
+| 見えている範囲に重なるマスだけ並べる（盤が広くても仕事は画面ぶん） | Grid.cellsIn |
+| ドット絵を握るところで回す・左上でそろえて並べる | PxSprite.drawQuadTurned / drawQuadTopLeft |
+| 走行中に焼いた絵を bake でも同じ絵にする | Bakery.imagePngs / imageTextureInfo |
+| 光側は暖色・影側は寒色へ寄せて階調を増やす | Color.warm / Color.cool |
+| 焼いたドット絵アトラスを名前付きテクスチャとして使う（1 体 = 1 クアッド） | App.withSpriteAtlases |
+| ドット絵の輪郭をにじませない（カメラと頂点を画素の升目に載せる） | App.withPixelSnap / Render.snapped |
+| 同じ絵を色だけ変えて使い回す・重なり順をまとめてずらす | Render.tinted / Render.zShifted |
 | マスごとの「いま」を持つ（耕した・濡れた・置いた。セーブに乗る側） | TileState |
 
 ## 土台（App・ECS）
@@ -75,7 +84,7 @@
 - **Render** — 「何をどう見せたいか」だけ書いた Item を、描画部が食べられる形に変換する。
 - **CameraRig** — world のどこを・どれだけ寄せて映すかを描画物の列に掛ける道具箱。
 - **Depth** — 見下ろし画面で「足元が下にある物ほど手前」を重なり順（zIndex）の数として決める。
-- **Daylight** — 1 日の進み（0〜1）から「空気の色」を決め、画面全体に乗算で薄く掛ける。
+- **Daylight** — 1 日の進み（0〜1）から「空気の色」と「太陽の位置」を決める。色は画面全体に乗算で薄く掛け、太陽からは影の向き・長さ（shadowAt）とドット絵に当てる光の向き（lightStepAt）を導く。暗さ（darkness）を読めば、明かりの点灯と空の色が食い違わない。
 - **TextDraw** — 文字列を「中心をここに置きたい」で配置する。
 - **RichText** — 一部だけ色や太さの違う文章をスパンの列として持ち、描画アイテムへ組む。
 - **Quad** — 回転した矩形や太さのある線の、四隅の座標を計算する。
@@ -86,6 +95,7 @@
 - **Anim** — スプライトシートのコマ送りを「時刻の純関数」で導く。
 - **PxSpriteDoc** — *.sprite.json（文字格子+意味色キー+名前付きコマ+anchor）を読む fail-open の Doc 層。
 - **PxSprite** — PxSpriteDoc のコマを box 列（横連続の同色文字は 1 矩形に結合・既定）または drawQuad（アトラス 1 クアッド・opt-in）で描く。色は resolver（キー→実色）が解決。
+- **PxShade** — 文字格子のドット絵に「塗りの仕上げ」を 1 度だけ掛ける純粋な filter（ふち光・接地影・ディザ・地肌の粒）。絵は平らに塗り、光の当て方は後から重みで指定する。掛けるのは読み込み直後の 1 回だけなので走行中の負荷は増えない。
 - **PxSpriteAtlas** — PxSpriteDoc×resolver を 1 枚のアトラス画素（ARGB+コマ→矩形の目次）に焼く純関数。GL（RenderTexture.loadTextureFromPixels）と PNG（SoftRaster.writeRadialPng）が同じ Baked を読む。
 - **Viewport** — 画面の矩形の外へ出た物を見つけて返す。
 - **Transition** — 進行度 t から画面を覆う/晴らす描画物を作る（フェード・ワイプ）。
