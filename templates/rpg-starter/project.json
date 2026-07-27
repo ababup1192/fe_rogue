@@ -9,6 +9,8 @@
   "clearColor": {"r": 0.168627, "g": 0.133333, "b": 0.200000},
   "maxDeltaTime": 0.05,
   "textures": [],
+  "// glyphs": "起動時に焼く字。auto=出た字から順に焼く / used=ソースとアセットにある字を先に焼く / all=フォントの全字",
+  "glyphs": "auto",
   "fonts": [
     {"name": "default", "path": "assets/PixelMplus10-Regular.ttf", "fontSize": 10.0}
   ],

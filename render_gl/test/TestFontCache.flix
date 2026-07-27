@@ -6,6 +6,8 @@ mod TestFontCache {
     import java.io.File
     import java.io.RandomAccessFile
     import java.lang.System
+    import java.nio.file.Files
+    import java.nio.file.Paths
 
     /// 本物の取り置き場を汚さないよう、書き込み先をずらす。行き先は 1 つに固定する —
     /// テストごとに差し替えると、同じ JVM で順不同に走ったとき互いの行き先を奪い合う。
@@ -107,6 +109,49 @@ mod TestFontCache {
         Assert.assertEq(expected = true, exists(newKey));
         // 別のフォントの取り置きは巻き込まない。
         Assert.assertEq(expected = true, exists(otherFont))
+
+    /// 焼く字の一覧を書き換えたら、前の焼き上がりを読み直さない。
+    /// 読んでしまうと、足したはずの字が出ないまま気付けない。
+    @Test
+    def testCharsetChangeChangesKey(): Unit \ IO + Assert =
+        let bytes: Array[Int8, Static] = Array#{1i8, 2i8, 3i8} @ Static;
+        let a = RenderFontCache.keyOf(bytes, 12.0, Some(Set#{0x3042, 0x3044}));
+        let b = RenderFontCache.keyOf(bytes, 12.0, Some(Set#{0x3042, 0x3046}));
+        let all = RenderFontCache.keyOf(bytes, 12.0, None);
+        Assert.assertEq(expected = false, a == b);
+        Assert.assertEq(expected = false, a == all);
+        // 同じ一覧なら同じ印（毎回焼き直しにならない）。
+        Assert.assertEq(expected = a, RenderFontCache.keyOf(bytes, 12.0, Some(Set#{0x3044, 0x3042})))
+
+    /// 走査は、そのゲームが出しうる字を拾い、取り込んだライブラリやビルド成果物には入らない。
+    /// 入ると、このゲームが出さない字まで焼いて起動が遅くなる。
+    @Test
+    def testHarvestReadsProjectTextButNotLibs(): Unit \ IO + Assert =
+        let root = "${System.getProperty("java.io.tmpdir")}/flix_ge_harvest_test";
+        discard new File("${root}/assets").mkdirs();
+        discard new File("${root}/lib").mkdirs();
+        Files.writeString(Paths.get("${root}/assets/a.json"), "{ \"line\": \"あいう\" }");
+        Files.writeString(Paths.get("${root}/lib/other.flix"), "// 漢字漢字");
+        Files.writeString(Paths.get("${root}/assets/art.png"), "画像のふり");
+        match RenderFont.harvestGlyphs(root) {
+            case None => Assert.assertTrue(false)
+            case Some(cps) =>
+                // 拾う: あいう
+                Assert.assertEq(expected = true, Set.memberOf(0x3042, cps));
+                Assert.assertEq(expected = true, Set.memberOf(0x3046, cps));
+                // 拾わない: lib の中 / 中身を読まない拡張子
+                Assert.assertEq(expected = false, Set.memberOf(0x6F22, cps));
+                Assert.assertEq(expected = false, Set.memberOf(0x753B, cps));
+                // ASCII は常に入る（得点などは文字列に書かれていなくても画面に出る）
+                Assert.assertEq(expected = true, Set.memberOf(0x30, cps))
+        }
+
+    /// 何も拾えない場所なら None（＝フォントの字を全部焼く）に倒す。
+    @Test
+    def testHarvestFallsBackWhenNothingFound(): Unit \ IO + Assert =
+        let root = "${System.getProperty("java.io.tmpdir")}/flix_ge_harvest_empty";
+        discard new File(root).mkdirs();
+        Assert.assertEq(expected = true, Option.isEmpty(RenderFont.harvestGlyphs(root)))
 
     /// 取ってない印は素直に「無い」。
     @Test

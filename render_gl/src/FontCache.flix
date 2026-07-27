@@ -44,10 +44,12 @@ mod RenderFontCache {
         Object.isNull(value) or value == "0"
 
     /// 取ってあれば読み、無ければ焼いて取っておく。
-    pub def loadOrBake(entry: RenderAsset.FontEntry,
+    pub def loadOrBake(entry: RenderAsset.FontEntry, wanted: Option[Set[Int32]],
                        onGlyph: (Int32, Int32) -> Unit \ IO): RenderFont.BakedFont \ IO =
         let fontBytes = readAllBytes(entry#path);
-        let key = keyOf(fontBytes, entry#fontSize);
+        // 焼く字も鍵に混ぜる。混ぜないと、文言を足したのに前の焼き上がりを読んでしまい、
+        // 足したはずの字が出ないまま気付けない。
+        let key = keyOf(fontBytes, entry#fontSize, wanted);
         let useCache = enabled();
         match (if (useCache) load(key, entry) else None) {
             case Some(baked) =>
@@ -55,7 +57,7 @@ mod RenderFontCache {
                     + "（${baked#side}x${baked#side}）");
                 baked
             case None =>
-                let baked = RenderFont.bakeFontCpu(entry, fontBytes, onGlyph);
+                let baked = RenderFont.bakeFontCpu(entry, fontBytes, wanted, onGlyph);
                 if (useCache) store(key, baked) else ();
                 baked
         }
@@ -63,8 +65,13 @@ mod RenderFontCache {
     /// TTF の中身・焼く大きさ・焼き方の版から決まる見分けの印。ファイルの置き場所は含めない —
     /// 同じ字形なら、どこに置いてあっても同じ物を使い回せる。
     /// 中身から作るので、起動のたびに TTF を読み直して数え直す手間はかかる（10MB 級で数十 ms）。
-    pub def keyOf(fontBytes: Array[Int8, Static], fontSize: Float64): String \ IO =
-        "${fontHash(fontBytes)}_${sanitize(Float64.toString(fontSize))}_${RenderFont.bakeVersion()}"
+    pub def keyOf(fontBytes: Array[Int8, Static], fontSize: Float64,
+                  wanted: Option[Set[Int32]]): String \ IO =
+        let marks = match wanted {
+            case None      => "all"
+            case Some(cps) => "${Set.size(cps)}x${Set.foldLeft((acc, cp) -> acc + cp, 0, cps)}"
+        };
+        "${fontHash(fontBytes)}_${sanitize(Float64.toString(fontSize))}${sanitize(marks)}_${RenderFont.bakeVersion()}"
 
     /// 字形そのものを表す 16 桁。区切りに使う "_" を含まない形にしてある —
     /// 含むと、同じフォントの古い大きさを片付ける prefix 照合が他のフォントまで巻き込む。

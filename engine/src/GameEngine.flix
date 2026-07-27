@@ -42,7 +42,14 @@ mod GameEngine {
     ///   getDeltaTime が返す値の上限（秒）。初回フレームのウィンドウ初期化遅延や
     ///   フォーカス復帰時の巨大 dt による物理破綻（tunneling 等）を防ぐ。
     ///   クランプ無効化したい場合は Float64.maxValue() を渡す。
+    /// rootDir はプロジェクトの根（project.json のある場所）。バックエンドが
+    /// 「このゲームが画面に出しうる字」をソースとアセットから集めるのに使う。
+    /// glyphs は起動時にどの字を焼くか: "auto"（既定・焼かずに出た字から順に）/
+    /// "used"（出しうる字を先に）/ "all"（フォントの全字）。どれを選んでも、
+    /// 足りない字は出そうとしたときに焼き足される。
     pub type alias EngineConfig = {
+        rootDir         = String,
+        glyphs          = String,
         designWidth = Int32,
         designHeight = Int32,
         windowWidth = Int32,
@@ -200,6 +207,15 @@ mod GameEngine {
         /// （プラットフォーム依存）。スクロールアップで正、ダウンで負。
         def consumeScrollDelta(): Float64
         def getFontAtlas(name: String): FontAtlas
+
+        /// アトラスにまだ無い字を、いま焼いてアトラスに足す。
+        /// textureName は FontAtlas#textureName（どのフォントかの目印）。
+        ///
+        /// 起動時に焼くのは「ソースとアセットに書いてある字」なので、実行中に計算で
+        /// 作った字やプレイヤーが入れた名前は入っていない。それを出そうとしたとき、
+        /// 黙って消えるかわりにここで焼き足す。初めて出る字は 1 コマ遅れて現れる。
+        /// 呼ぶ側は毎フレーム「足りない字」を渡してよい（足りていなければ何もしない）。
+        def ensureGlyphs(textureName: String, codepoints: Set[Int32]): Unit
         def getViewportRect(): Rect2.Rect2
         /// 指定したテクスチャ名の元画像サイズ等を取得する。
         /// 登録されていないテクスチャ名なら None

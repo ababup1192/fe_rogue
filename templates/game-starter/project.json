@@ -9,6 +9,8 @@
   "clearColor": {"r": 0.066667, "g": 0.066667, "b": 0.101961},
   "maxDeltaTime": 0.05,
   "textures": [],
+  "// glyphs": "起動時に焼く字。auto=出た字から順に焼く / used=ソースとアセットにある字を先に焼く / all=フォントの全字",
+  "glyphs": "auto",
   "fonts": [
     {"name": "default", "path": "assets/Xolonium-Regular.ttf", "fontSize": 60.0}
   ],

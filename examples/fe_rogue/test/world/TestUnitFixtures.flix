@@ -262,6 +262,7 @@ mod TestUnitFixtures {
             def isMouseButtonPressed(_, k)  = k(false)
             def consumeScrollDelta(k)       = k(0.0)
             def getFontAtlas(_, k)          = k(testFontAtlas())
+            def ensureGlyphs(_, _cps, k)    = k(())
             def getViewportRect(k)          = k({position = Vec2.zero(), size = {x = 128.0, y = 128.0}})
             def getTextureInfo(_, k)        = k(None)
             def ensureTexture(_, _, _, _, _, k) = k(())

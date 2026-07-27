@@ -164,9 +164,30 @@ The text uses a **built-in font** embedded in the engine sources (ASCII only, 1-
 bitmap) — the game's own fonts are still being baked at that point, so they cannot be used.
 The same font backs the `DEBUG=1` fps badge, so it works whatever the game names its fonts.
 
-Baked font atlases are cached under `~/.cache/flix_game_engine/font`, which cuts the second
-and later launches of a Japanese-font game from ~20s to ~8s. A damaged or outdated cache is
-ignored and simply re-baked.
+**Glyphs are baked the first time they are drawn, not at startup.** A CJK font holds thousands
+to tens of thousands of glyphs and each one costs about a millisecond to turn into a distance
+field, so baking the lot stalls startup for tens of seconds. Instead the engine starts with an
+empty atlas: when a character is about to be drawn and is not there yet, it is baked into the
+atlas's free space and only that patch is uploaded. The character appears one frame later.
+Startup becomes instant and nothing ever silently disappears.
+
+The trade is a small hitch on the first screen that shows a lot of new text (a few dozen
+glyphs is one or two frames). `"glyphs": "used"` avoids it by scanning the project's sources
+and assets at launch (a few tens of milliseconds) and baking those characters up front.
+
+`"glyphs"` in `project.json` picks what to bake up front:
+
+| Value | Meaning |
+|---|---|
+| `"auto"` (default) | nothing up front — every glyph is baked the first time it is drawn |
+| `"used"` | characters found in the project's sources and assets, baked before the first frame |
+| `"all"` | every glyph the font has (slow; rarely what you want) |
+
+`FLIX_GE_GLYPHS=used\|all\|auto` overrides it for a single run, so you can compare without
+editing the project.
+
+Baked atlases are also cached under `~/.cache/flix_game_engine/font`, so later launches skip
+baking entirely. A damaged or outdated cache is ignored and simply re-baked.
 
 | Environment variable | Effect |
 |---|---|
@@ -340,9 +361,29 @@ GL の用意ができた時点ですぐ画面を地の色で塗り、ロゴ・�
 ゲームのフォントはまさにその時焼いている最中で使えないため。`DEBUG=1` の fps 表示も同じ
 フォントを使うので、ゲームがフォントに何という名前を付けていても出る。
 
-焼いたフォントアトラスは `~/.cache/flix_game_engine/font` に取っておく。日本語フォントの
-ゲームなら 2 回目以降の起動が約 20 秒 → 約 8 秒になる。壊れていたり古かったりする取り置きは
-黙って捨てて焼き直すので、起動が止まることはない。
+**字は起動時ではなく、初めて出るときに焼く。** 日本語フォントは数千〜2万字を持っていて、
+1 字を距離場にするのに約 1 ミリ秒かかるので、全部焼くと起動が数十秒止まる。そこでエンジンは
+空のアトラスから始め、これから描く字がまだ無ければその場で焼き、アトラスの空きに置いて
+**その区画だけ**を上げ直す。その字は 1 コマ遅れて現れる。起動は一瞬になり、
+**字が黙って消えることもない。**
+
+代わりに、新しい字がたくさん出る最初の画面で少し引っかかる（数十字 ＝ 1〜2 コマ）。
+`"glyphs": "used"` にすると、起動時にプロジェクトのソースとアセットを走査して（数十ミリ秒）
+そこにある字を先に焼くので、その引っかかりが無くなる。
+
+起動時に何を焼くかは `project.json` の `"glyphs"` で選ぶ:
+
+| 値 | 意味 |
+|---|---|
+| `"auto"`（既定） | 起動時は焼かず、出た字から順に焼く |
+| `"used"` | ソースとアセットにある字を、最初の 1 コマの前に焼いておく |
+| `"all"` | フォントが持つ字を全部（遅い。まず要らない） |
+
+`FLIX_GE_GLYPHS=used\|all\|auto` でその場かぎりの上書きができる（プロジェクトを触らずに
+見比べられる）。
+
+焼いた物は `~/.cache/flix_game_engine/font` にも取っておくので、2 回目以降は焼き自体が起きない。
+壊れていたり古かったりする取り置きは黙って捨てて焼き直すので、起動が止まることはない。
 
 | 環境変数 | 効き方 |
 |---|---|

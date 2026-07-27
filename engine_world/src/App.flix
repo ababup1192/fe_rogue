@@ -798,12 +798,18 @@ mod App {
             case None        => Nil
         };
         let (overlaySprites, overlayPolygons) = Render.draw(overlay);
+        // デバッグの小物はゲームのフォントを使わない。ゲームのフォントは「出た字から順に焼く」
+        // ので、まだ焼かれていない字は出せず、しかもこの停止中の経路は焼き足しを頼まない。
+        // 組み込みフォント（常に全部そろっているドット絵の字）を決め打ちで使う。
+        let debugAtlas = BootFont.atlas();
+        let debugSize = debugAtlas#fontSize;
         let toastPlaced = match anno#toast {
-            case Some(t) => Annotate.toastItems(ctx#atlas, t#message)
+            case Some(t) => Annotate.toastItems(debugAtlas, debugSize, t#message)
             case None    => Nil
         };
         let scrubPlaced = if (anno#scrub > 0 and anno#scrubShow > 0)
-                              Annotate.scrubIndicatorItems(ctx#atlas, ctx#design, anno#scrub, ctx#historyLen)
+                              Annotate.scrubIndicatorItems(debugAtlas, debugSize, ctx#design,
+                                                           anno#scrub, ctx#historyLen)
                           else Nil;
         let (fixedSprites, fixedPolygons) = Render.draw(List.append(toastPlaced, scrubPlaced));
         // 停止中は静的レイヤーを channels#polygons に畳んで渡す（staticPausedItems）ので、
@@ -1001,6 +1007,10 @@ mod App {
                 uploadAtlases((app#spriteAtlases)(world));
                 let atlas = GameEngine.Game.getFontAtlas("default");
                 let items = List.append(sceneItems(app, atlas, world, toItems), fpsOverlay);
+                // アトラスに無い字があれば、描く前に焼いてもらう（初めて出る字は 1 コマ遅れる）。
+                // たいていは空振りで、そのときは何も起きない。
+                Map.forEach((textureName, cps) -> GameEngine.Game.ensureGlyphs(textureName, cps),
+                            Render.missingGlyphs(items));
                 // 宣言シェーダー面は別チャンネル（eff Shader）で描く。renderCommands の下（固定 z 帯）
                 // に敷くため drawSurface を先に呼び、通常の絵からは Shader 面を外して二重描きを避ける。
                 let shaderCmds = Render.drawShaders(spec -> ShaderEffect.Shader.buildProgram(spec), items);
@@ -1289,6 +1299,7 @@ mod App {
                 def isMouseButtonPressed(b, k)  = k(GameEngine.Game.isMouseButtonPressed(b))
                 def consumeScrollDelta(k)       = k(GameEngine.Game.consumeScrollDelta())
                 def getFontAtlas(name, k)       = k(GameEngine.Game.getFontAtlas(name))
+                def ensureGlyphs(n, cps, k)     = k(GameEngine.Game.ensureGlyphs(n, cps))
                 def getViewportRect(k)          = k(GameEngine.Game.getViewportRect())
                 def getTextureInfo(name, k)     = k(GameEngine.Game.getTextureInfo(name))
                 def ensureTexture(n, key, w0, h0, px, k) =

@@ -568,6 +568,30 @@ mod Render {
                      items: List[PlacedItem]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) \ ef =
         drawInto((item, pos) -> toDrawablesAtlas(textureInfoOf, item, pos), items)
 
+    /// 描く物のうち、フォントのアトラスにまだ無い字を「テクスチャ名 → 字」で集める。
+    /// 起動時に焼くのは「ソースとアセットに書いてある字」なので、実行中に計算で作った字や
+    /// プレイヤーが入れた名前はここに出てくる。渡した先（描画部）が焼いて足す。
+    /// たいていは空なので、毎フレーム呼んでよい。
+    pub def missingGlyphs(items: List[PlacedItem]): Map[String, Set[Int32]] =
+        items |> List.foldLeft((acc, placed) -> {
+            let (leaf, _clip) = unwrapClip(placed#item, None);
+            match leaf {
+                case Item.Text(t) =>
+                    let atlas = t#fontAtlas;
+                    let missing = t#text |> String.toList |> List.filterMap(ch -> {
+                        let cp = TextLayout.charToCodePoint(ch);
+                        // 改行は字ではない（レイアウトの区切り）。
+                        if (cp == 10 or Map.memberOf(cp, atlas#glyphs)) None else Some(cp)
+                    });
+                    if (List.isEmpty(missing)) acc
+                    else {
+                        let had = Map.get(atlas#textureName, acc) |> Option.getWithDefault(Set.empty());
+                        Map.insert(atlas#textureName, Set.union(had, List.toSet(missing)), acc)
+                    }
+                case _ => acc
+            }
+        }, Map.empty())
+
     /// Shader 面だけを取り出して eff Shader が食える描画依頼へ変換する（GL 経路専用）。
     /// programOf は Spec → コンパイル済みプログラムのハンドル（バックエンドが用意）。
     /// Clipped に包まれた Shader も剥がして拾う。GL の無い経路（F8/SoftRaster）は

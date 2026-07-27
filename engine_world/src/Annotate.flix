@@ -90,11 +90,11 @@ mod Annotate {
 
     /// スクラブ位置の表示（「<< 42/300」= 300 フレームの履歴のうち 42 フレーム前を見ている）。
     /// 画面左下に固定で置く。呼び側は見え方の適用後に重ねる。
-    pub def scrubIndicatorItems(fontAtlas: FontAtlas, design: Vec2.Vec2,
+    pub def scrubIndicatorItems(fontAtlas: FontAtlas, fontSize: Float64, design: Vec2.Vec2,
                                 scrub: Int32, historyLen: Int32): List[Render.PlacedItem] =
         let message = "<< ${scrub}/${historyLen - 1}";
-        let size = badgeSize(fontAtlas, badgeFontSize(), message);
-        badge(fontAtlas, badgeFontSize(), { x = 4.0, y = design#y - size#y - 4.0 }, message)
+        let size = badgeSize(fontAtlas, fontSize, message);
+        badge(fontAtlas, fontSize, { x = 4.0, y = design#y - size#y - 4.0 }, message)
 
     // ── デバッグ小物の共通の見た目（黒地の帯 + 白文字）──
 
@@ -131,8 +131,8 @@ mod Annotate {
 
     /// 保存完了メッセージの絵。画面左上に固定で置く。
     /// ズーム・パンの影響を受けないよう、呼び側は見え方の適用後にこれを重ねる。
-    pub def toastItems(fontAtlas: FontAtlas, message: String): List[Render.PlacedItem] =
-        badge(fontAtlas, badgeFontSize(), { x = 4.0, y = 4.0 }, message)
+    pub def toastItems(fontAtlas: FontAtlas, fontSize: Float64, message: String): List[Render.PlacedItem] =
+        badge(fontAtlas, fontSize, { x = 4.0, y = 4.0 }, message)
 
     // ── fps 計測（直近の dt の指数移動平均）──
 
@@ -161,7 +161,8 @@ mod Annotate {
         let size = badgeSize(fontAtlas, fontSize, message);
         badge(fontAtlas, fontSize, { x = design#x - size#x - 4.0, y = 4.0 }, message)
 
-    /// 帯の字の大きさの既定（ゲームのフォントで出す注釈・トースト向け）。
+    /// 帯の字の大きさの既定。実機のデバッグ表示は組み込みフォントの等倍で出すので、
+    /// これを使うのは見本を焼く側（feature_lab の gallery）だけ。
     pub def defaultBadgeFontSize(): Float64 = badgeFontSize()
 
     // ── 座標変換（不変条件: toDesign(view, toScreen(view, p)) == p）──

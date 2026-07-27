@@ -454,6 +454,12 @@ mod LwjglLayer {
         let registry0 = RenderTexture.loadTextureRegistry(config#textureManifest,
             (done, total) -> splash("loading images...", done, total));
 
+        // このゲームが出しうる字を先に集める（数十ミリ秒）。フォントが持つ字を全部焼くと
+        // 日本語 1 本で数千〜2万字になり、起動が数十秒止まる。
+        let wantedGlyphs = RenderFont.startupGlyphs(config#rootDir, config#glyphs);
+        Option.forEach(cps -> println("[RenderFont] このゲームが出しうる字: ${Set.size(cps)} 字"),
+                       wantedGlyphs);
+
         println("Baking font atlases...");
         // 文言はフォントごとに 1 回だけ組み立てる（進捗は字ごとに数千回来る）。
         let fontPhases: Ref[Map[String, String], Static] = Ref.fresh(Static, Map.empty());
@@ -465,9 +471,24 @@ mod LwjglLayer {
                 text
         };
         let (gameAtlases, registry) = RenderFont.bakeFontAtlases(config#fontManifest, registry0,
-            (name, done, total) -> splash(fontPhaseOf(name), done, total));
+            wantedGlyphs, (name, done, total) -> splash(fontPhaseOf(name), done, total));
         // 組み込みフォントも名前で引けるようにする（fps 表示・フォント名が合わないときの受け皿）。
-        let fontAtlases = Map.insert(BootFont.name(), BootFont.atlas(), gameAtlases);
+        // アトラスは実行中に育つ（起動時に焼かなかった字を後から足す）ので可変で持つ。
+        let fontAtlasesRef = Ref.fresh(Static,
+            Map.insert(BootFont.name(), BootFont.atlas(), gameAtlases));
+        let growTable = RenderGlyphGrow.newTable();
+        List.forEach(entry -> {
+            match Map.get(entry#name, gameAtlases) {
+                case None => ()
+                case Some(atlas) =>
+                    match Map.get(atlas#textureName, registry) {
+                        case None => ()
+                        case Some(texInfo) =>
+                            RenderGlyphGrow.register(growTable, atlas,
+                                { path = entry#path, texId = GpuHandle.textureIdInt(texInfo#id) })
+                    }
+            }
+        }, config#fontManifest);
         // 起動画面の分（組み込みフォント・ロゴ）を残したままゲームのテクスチャを足す。
         Ref.put(Map.union(registry, Ref.get(registryRef)), registryRef);
 
@@ -752,8 +773,20 @@ mod LwjglLayer {
                 Array.put(0.0, 0, scrollDeltaHolder);
                 k(v)
             }
+            def ensureGlyphs(textureName, codepoints, k) = {
+                // 起動時に焼かなかった字を出そうとした。いま焼いて足す（無ければ何も起きない）。
+                let atlases = Ref.get(fontAtlasesRef);
+                let hit = atlases |> Map.findLeft((_n, a) -> a#textureName == textureName);
+                match hit {
+                    case None         => k(())
+                    case Some((n, a)) =>
+                        let grown = RenderGlyphGrow.ensure(growTable, a, codepoints);
+                        Ref.put(Map.insert(n, grown, atlases), fontAtlasesRef);
+                        k(())
+                }
+            }
             def getFontAtlas(name, k) = {
-                match Map.get(name, fontAtlases) {
+                match Map.get(name, Ref.get(fontAtlasesRef)) {
                     case Some(atlas) => k(atlas)
                     // 名前が合わないだけでゲームが落ちるより、組み込みフォントで出す方がまし。
                     // ただし黙って倒れると打ち間違いに気付けないので、名前ごとに 1 度だけ知らせる。

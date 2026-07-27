@@ -17,16 +17,124 @@ mod RenderFont {
     import org.lwjgl.stb.STBTTFontinfo
     import org.lwjgl.BufferUtils
     import org.lwjgl.system.MemoryStack
+    import org.lwjgl.system.MemoryUtil
     import java.nio.ByteBuffer
+    import java.lang.System
+    import java.lang.Exception
+    import java.io.File
+    import java.nio.file.Files
 
-    /// SDF ベイク対象のコードポイント列 = **そのフォントが実際にグリフを持つ BMP の全文字**。
-    /// U+0020..U+FFFF を cmap で走査し、グリフ index 0（.notdef）の字を除く。
-    /// 「使う字を人間が登録する」方式はやめた: フォントに入っている字は全部焼けるので、
-    /// 常用漢字リストにも追加登録（旧 extraKanji）にも依存しない。
-    /// アトラス辺長は下見の必要面積から自動で選ぶ（chooseAtlasSize）。
-    def fontCodepoints(fontInfo: STBTTFontinfo): List[Int32] \ IO =
-        List.range(0x20, 0x10000)
-            |> List.filter(cp -> STBTruetype.stbtt_FindGlyphIndex(fontInfo, cp) != 0)
+    /// 焼く字。フォントが持っている字のうち、焼くと決めた物だけ。
+    ///
+    /// `wanted` が None なら、そのフォントが持つ BMP の字を全部焼く。日本語フォントでは
+    /// 数千〜2万字になり、1 字あたり約 2 ミリ秒かかるので起動が数十秒止まる。
+    /// `wanted` を渡すと（project.json の `fonts[].charset`）その中の字だけになり、
+    /// 見た目を 1 画素も変えずに 1 桁以上速くなる。
+    ///
+    /// 欲しい字をフォントが持っていなくても黙って落とす — 画面からその字が消えるが、
+    /// 起動は止めない。持っているかどうかの見張りはゲーム側の仕事（kaidan の lint-font）。
+    def fontCodepoints(fontInfo: STBTTFontinfo, wanted: Option[Set[Int32]]): List[Int32] \ IO =
+        let candidates = match wanted {
+            case Some(cps) => Set.toList(cps)
+            case None      => List.range(0x20, 0x10000)
+        };
+        candidates |> List.filter(cp -> STBTruetype.stbtt_FindGlyphIndex(fontInfo, cp) != 0)
+
+    /// 起動時に焼く字を決める。mode は project.json の `glyphs`（"used" / "all" / "auto"）。
+    /// 環境変数 FLIX_GE_GLYPHS があればそちらが勝つ（作り替えずに試せるように）。
+    /// None を返すと「フォントが持つ字を全部」の意味になる。
+    pub def startupGlyphs(rootDir: String, mode: String): Option[Set[Int32]] \ IO =
+        let env = System.getenv("FLIX_GE_GLYPHS");
+        let chosen = if (Object.isNull(env)) mode else env;
+        match chosen {
+            case "all"  => None
+            case "auto" =>
+                println("[RenderFont] 起動時は焼かず、出た字から順に焼きます");
+                Some(Set.empty())
+            case "used" => harvestGlyphs(rootDir)
+            case other  =>
+                println("[RenderFont] glyphs に知らない値 '${other}' が指定されたので "
+                    + "'auto'（出た字から順に焼く）として扱います");
+                Some(Set.empty())
+        }
+
+    /// このゲームが画面に出しうる字を、プロジェクト配下のソースとアセットから集める。
+    ///
+    /// 画面に出る字は、必ずソースの文字列かアセットのどこかに書いてある。だから機械的に
+    /// 全部集めれば、実際に出る字を必ず含む。多めに拾っても 1 字 1 ミリ秒弱なので損は小さく、
+    /// 取りこぼして字が消える方がずっと痛い — だからコメントの字まで区別せずに拾う。
+    ///
+    /// ASCII は常に入れる。得点や残り時間のように、文字列として書かれていなくても
+    /// 実行中に組み立てられて画面に出る字があるため。
+    ///
+    /// 1 字も拾えなければ None を返す（＝フォントの字を全部焼く）。走査に失敗しても
+    /// 焼き直しが遅いだけで、字が消えることはない。
+    pub def harvestGlyphs(rootDir: String): Option[Set[Int32]] \ IO =
+        try {
+            let found = Ref.fresh(Static, Set.empty());
+            walkText(new File(rootDir), 0, found);
+            let ascii = List.range(0x20, 0x7F) |> List.toSet;
+            let cps = Set.union(ascii, Ref.get(found));
+            if (Set.size(cps) <= Set.size(ascii)) None else Some(cps)
+        } catch {
+            case _: Exception => None
+        }
+
+    /// 中身を読む相手。実行ファイルや画像を読んでも字は出てこない。
+    /// 説明書（.md）は読まない — 人に読ませる文で、ゲームが画面に出す物ではない。
+    def textSuffixes(): List[String] = ".flix" :: ".json" :: ".txt" :: ".csv" :: Nil
+
+    /// 入らない場所。取り込んだライブラリ・ビルド成果物・焼いた絵・説明書には、
+    /// このゲームが画面に出さない字が大量に入っている（拾うと焼く量が跳ね上がる）。
+    def skipDirs(): List[String] =
+        "lib" :: "build" :: "target" :: ".git" :: ".devbox" :: "node_modules"
+            :: "docs" :: "debug" :: "gallery" :: "golden" :: Nil
+
+    /// 配布用に固めた物（dist / dist-win / ...）はゲーム本体の複製なので、
+    /// 読むと同じ字を二度拾ったうえ、古い置き土産まで一緒に拾ってしまう。
+    def skipPrefixes(): List[String] = "dist" :: Nil
+
+    /// 深追いしすぎないための上限。ゲームの木はこれより浅い。
+    def maxDepth(): Int32 = 8
+
+    def walkText(dir: File, depth: Int32, found: Ref[Set[Int32], Static]): Unit \ IO =
+        if (depth > maxDepth()) ()
+        else {
+            let entries = dir.listFiles();
+            if (Object.isNull(entries)) ()
+            else Array.forEach(f -> {
+                let name = f.getName();
+                if (f.isDirectory())
+                    (if (List.memberOf(name, skipDirs())
+                            or String.startsWith({ prefix = "." }, name)
+                            or List.exists(pre -> String.startsWith({ prefix = pre }, name), skipPrefixes())) ()
+                     else walkText(f, depth + 1, found))
+                else if (List.exists(sfx -> String.endsWith({ suffix = sfx }, name), textSuffixes()))
+                    collectFrom(f, found)
+                else ()
+            }, entries)
+        }
+
+    def collectFrom(file: File, found: Ref[Set[Int32], Static]): Unit \ IO =
+        try {
+            let raw = Files.readString(file.toPath());
+            // まるごと注釈の行は読まない。画面に出す文が「// で始まる行そのもの」に
+            // なることはないので、落としても字は消えない。日本語で説明を書く流儀だと
+            // 注釈の字の方が多く、拾うと焼く量が倍増する。
+            let text = if (String.endsWith({ suffix = ".flix" }, file.getName()))
+                           String.lines(raw)
+                               |> List.filter(line -> not String.startsWith({ prefix = "//" }, String.trimLeft(line)))
+                               |> List.join("\n")
+                       else raw;
+            let cps = text |> String.toList |> List.filterMap(ch -> {
+                let cp = Char.toBmpCodePoint(ch);
+                // 空白と制御文字は焼く意味が無い。ASCII は後でまとめて足す。
+                if (cp <= 0x7F) None else Some(Int32.bitwiseAnd(cp, 0xFFFF))
+            });
+            Ref.put(Set.union(Ref.get(found), List.toSet(cps)), found)
+        } catch {
+            case _: Exception => ()
+        }
 
     /// アトラス辺長の候補。R8 単チャンネルなので 8192² でも 64MB。
     /// それ以上は CPU 側の直接バッファが巨大になるため候補に入れない。
@@ -133,6 +241,35 @@ mod RenderFont {
     /// 上げないと、前の焼き方で取っておいた物をそのまま読んでしまう。
     pub def bakeVersion(): Int32 = 1
 
+    /// 距離場の焼き方。起動時にまとめて焼く道と、あとから 1 字ずつ足す道
+    /// （RenderGlyphGrow）が同じ見た目になるよう、決め事はここ 1 か所だけに置く。
+    ///
+    /// oversample: 距離場を焼きサイズの倍率ぶん高い解像度でラスタ化する。集 のように横線が
+    /// 密な漢字は等倍だと線の隙間が距離場で潰れるため。幾何の寸法は 1/oversample して
+    /// 論理サイズへ戻すので、文字の並びも表示サイズも変わらない。
+    /// onedge=127 を境界(≈0.5)とし、1px あたりの距離値を onedge/padding で正規化する。
+    pub def oversample(): Float64 = 3.0
+    pub def padding(): Int32 = 5
+    pub def onedge(): Int8 = 127i8
+    pub def pixDist(): Float32 = RenderUtil.f32(127.0 / 5.0)
+
+    /// 1 字ぶんの寸法と切り出し位置。距離場を焼いた結果（画素の大きさ・はみ出し量・送り幅）と
+    /// 置いた場所から組む。**起動時の焼きと焼き足しで同じ式を使う** — ずれると、
+    /// あとから足した字だけ位置がおかしい、という気付きにくい壊れ方をする。
+    pub def glyphMetricsOf(place: { px = Int32, py = Int32, gw = Int32, gh = Int32 },
+                           shape: { xoff = Int32, yoff = Int32, advance = Float64 },
+                           sideF: Float64): TextLayout.GlyphMetrics =
+        let inv = 1.0 / oversample();
+        let pxF = Int32.toFloat64(place#px);
+        let pyF = Int32.toFloat64(place#py);
+        let gwF = Int32.toFloat64(place#gw);
+        let ghF = Int32.toFloat64(place#gh);
+        { xOff = Int32.toFloat64(shape#xoff) * inv, yOff = Int32.toFloat64(shape#yoff) * inv,
+          glyphW = gwF * inv, glyphH = ghF * inv,
+          advance = shape#advance,
+          s0 = pxF / sideF, t0 = pyF / sideF,
+          s1 = (pxF + gwF) / sideF, t1 = (pyF + ghF) / sideF }
+
     /// CPU 側だけで焼き上がったアトラス。GL へ上げる前の姿で、
     /// ディスクに取っておく（RenderFontCache）のもこの形。
     pub type alias BakedFont = { atlas = FontAtlas, side = Int32, pixels = ByteBuffer }
@@ -141,9 +278,9 @@ mod RenderFont {
     /// 戻り値: (FontAtlas, TextureInfo) — TextureInfo は registry に登録する用。
     /// onGlyph には「焼き終えた字数 / 全字数」を渡す。日本語フォントは 1 本で数千字あり
     /// 起動時間の大半を占めるので、起動画面はここまで細かく進み具合を見せる。
-    pub def bakeFontAtlas(entry: RenderAsset.FontEntry,
+    pub def bakeFontAtlas(entry: RenderAsset.FontEntry, wanted: Option[Set[Int32]],
                           onGlyph: (Int32, Int32) -> Unit \ IO): (FontAtlas, RenderAsset.TextureInfo) \ IO =
-        let baked = RenderFontCache.loadOrBake(entry, onGlyph);
+        let baked = RenderFontCache.loadOrBake(entry, wanted, onGlyph);
         (baked#atlas, uploadFont(baked))
 
     /// 焼き上がりを GPU へ載せる。距離場は滑らかに補間して読ませる — 拡大しても輪郭が
@@ -167,8 +304,10 @@ mod RenderFont {
     /// 全グリフを SDF にして 1 枚へ敷き詰める（GL には一切触らない）。
     /// fontBytes は TTF の中身 — 呼び手が既に読んでいる物を渡す（見分けの印を作るのに要るので二度読みしない）。
     pub def bakeFontCpu(entry: RenderAsset.FontEntry, fontBytes: Array[Int8, Static],
+                        wanted: Option[Set[Int32]],
                         onGlyph: (Int32, Int32) -> Unit \ IO): BakedFont \ IO =
         let f32 = RenderUtil.f32;
+        let startNanos = System.nanoTime();
 
         let fontBuffer = BufferUtils.createByteBuffer(Array.length(fontBytes));
         discard fontBuffer.put(fontBytes);
@@ -177,17 +316,15 @@ mod RenderFont {
         let fontInfo = STBTTFontinfo.malloc();
         discard STBTruetype.stbtt_InitFont(fontInfo, fontBuffer);
 
-        // SDF パラメータ。padding ぶんの距離場を縁に持たせ、oversample 倍の解像度でラスタ化する
-        // （どちらもセルの大きさに効くので、収まるかどうかの下見より先に決める）。
-        let oversample = 3.0;
-        let invOversample = 1.0 / oversample;
-        let padding = 5;
-        let onedge = 127i8;
-        let pixDist = f32(127.0 / 5.0);
+        // 焼き方の決め事は共有（焼き足しと同じ見た目にするため）。
+        let oversample = oversample();
+        let padding = padding();
+        let onedge = onedge();
+        let pixDist = pixDist();
 
         // このフォントが持つ字を全部数え、要求された焼きサイズが最大アトラスに収まるか下見する。
         // 収まらなければ収まる大きさまで自動で縮める（少しぼやけるだけで、文字の並びは変わらない）。
-        let cps = fontCodepoints(fontInfo);
+        let cps = fontCodepoints(fontInfo, wanted);
         let glyphCount = List.length(cps);
         // 下見（収まる焼きサイズ探し・アトラス辺長選び）も全字を 2 度走査するので体感に出る。
         // まだ何割かは言えないので、本数不明（0）として知らせる — 起動画面は
@@ -218,13 +355,6 @@ mod RenderFont {
         let lineGap = Int32.toFloat64(lineGapBuf.get(0)) * emScale;
         discard MemoryStack.stackPop();
 
-        // onedge=127 を境界 (≈0.5) とし、pixel_dist_scale = onedge/padding で
-        // 1px あたりの距離値を正規化する。
-        //
-        // oversample: SDF ラスタ解像度を焼きサイズの oversample 倍にする。集 のように横線が
-        // 密な漢字は等倍 (16px) だと線の隙間が距離場で潰れるため、高解像度でラスタ化して
-        // ディテールを保つ。グリフ幾何メトリクス (glyphW/xOff 等) は 1/oversample して論理
-        // サイズへ戻すので、レイアウト・表示サイズは不変（UV は実テクセルなので影響なし）。
         let scale = f32(emScale * oversample);
 
         // 焼きサイズが決まったので、それが収まる最小のアトラス辺長を選ぶ。
@@ -267,28 +397,22 @@ mod RenderFont {
                               cx = cx0, cy = cy0, rowH = rowH0, overflow = st#overflow + 1 }
                         } else {
                             // SDF ビットマップ (gw×gh) をアトラスの (cx0,cy0) に書き込む。
-                            List.forEach(y -> {
-                                let rowSrc = y * gw;
-                                let rowDst = (cy0 + y) * bitmapSize + cx0;
-                                List.forEach(x ->
-                                    discard bitmap.put(rowDst + x, sdf.get(rowSrc + x)),
-                                    List.range(0, gw))
-                            }, List.range(0, gh));
+                            // 行ごとにまとめて写す。1 画素ずつ運ぶ書き方と焼き時間は変わらない
+                            // （実測で差は出ない — 時間は距離場を作る側に入っている）。
+                            let srcAddr = MemoryUtil.memAddress(sdf);
+                            let dstAddr = MemoryUtil.memAddress(bitmap);
+                            let rowBytes = Int32.toInt64(gw);
+                            List.forEach(y ->
+                                MemoryUtil.memCopy(
+                                    srcAddr + Int32.toInt64(y * gw),
+                                    dstAddr + Int32.toInt64((cy0 + y) * bitmapSize + cx0),
+                                    rowBytes),
+                                List.range(0, gh));
                             STBTruetype.stbtt_FreeSDF(sdf);
-                            let pxF = Int32.toFloat64(cx0);
-                            let pyF = Int32.toFloat64(cy0);
-                            let gwF = Int32.toFloat64(gw);
-                            let ghF = Int32.toFloat64(gh);
-                            // 幾何メトリクスは 1/oversample で論理サイズへ戻す。
-                            // UV (s0..t1) は実テクセル位置から算出するので oversample 済みのまま。
-                            let gm: TextLayout.GlyphMetrics = {
-                                xOff = Int32.toFloat64(xoffBuf.get(0)) * invOversample,
-                                yOff = Int32.toFloat64(yoffBuf.get(0)) * invOversample,
-                                glyphW = gwF * invOversample, glyphH = ghF * invOversample,
-                                advance = advance,
-                                s0 = pxF / bitmapSizeF, t0 = pyF / bitmapSizeF,
-                                s1 = (pxF + gwF) / bitmapSizeF, t1 = (pyF + ghF) / bitmapSizeF
-                            };
+                            let gm = glyphMetricsOf(
+                                { px = cx0, py = cy0, gw = gw, gh = gh },
+                                { xoff = xoffBuf.get(0), yoff = yoffBuf.get(0), advance = advance },
+                                bitmapSizeF);
                             { glyphs = Map.insert(cp, gm, st#glyphs),
                               cx = cx0 + gw + 1, cy = cy0, rowH = Int32.max(rowH0, gh),
                               overflow = st#overflow }
@@ -321,6 +445,10 @@ mod RenderFont {
 
         fontInfo.free();
 
+        // 焼きに何秒かかったかは起動時間の内訳そのもの。字数と一緒に必ず出す。
+        let seconds = Int64.toFloat64(System.nanoTime() - startNanos) / 1000000000.0;
+        println("[RenderFont] '${entry#name}': ${List.length(cps)} グリフを ${seconds} 秒で焼きました");
+
         let atlas: FontAtlas = {
             textureName = "font_${entry#name}",
             fontSize = bakeSize,
@@ -334,14 +462,16 @@ mod RenderFont {
 
     /// 全 FontEntry をベイクし、(名前→FontAtlas) と更新済み TextureRegistry を返す。
     /// onProgress には「フォント名・焼き終えた字数・全字数」を渡す。
+    /// wanted は「このゲームが出しうる字」。None なら各フォントが持つ字を全部焼く。
     pub def bakeFontAtlases(manifest: List[RenderAsset.FontEntry],
                             registry: RenderAsset.TextureRegistry,
+                            wanted: Option[Set[Int32]],
                             onProgress: (String, Int32, Int32) -> Unit \ IO): (Map[String, FontAtlas], RenderAsset.TextureRegistry) \ IO =
         List.foldLeft((acc, entry) -> {
             let (atlases, reg) = acc;
             // 文言の組み立ては字ごとでなくフォントごとに 1 回。進捗は数千回呼ばれる。
             let report = (done, total) -> onProgress(entry#name, done, total);
-            let (atlas, texInfo) = bakeFontAtlas(entry, report);
+            let (atlas, texInfo) = bakeFontAtlas(entry, wanted, report);
             println("  Font '${entry#name}' baked (${atlas#textureName})");
             let newAtlases = Map.insert(entry#name, atlas, atlases);
             let newReg = Map.insert(atlas#textureName, texInfo, reg);

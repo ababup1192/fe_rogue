@@ -31,6 +31,8 @@ mod ProjectLoader {
     /// project.json に任意キー `windowScale`(>0) があれば、windowWidth/windowHeight より
     /// 優先して window = design × scale をロード時に解決する（buildProject 参照）。
     pub type alias ProjectConfig = {
+        rootDir         = String,
+        glyphs          = String,
         designWidth     = Int32,
         designHeight    = Int32,
         windowWidth     = Int32,
@@ -71,6 +73,15 @@ mod ProjectLoader {
         let title       = getString(root, "title");
         let designW     = getInt(root, "designWidth");
         let designH     = getInt(root, "designHeight");
+        // glyphs（任意）: 起動時にどの字を焼くか。
+        //   "auto"（既定）… 起動時は焼かず、出た字から順に焼く。起動が一番速い
+        //   "used"         … ソースとアセットに書いてある字を先に焼く。最初の画面で引っかからない
+        //   "all"          … フォントが持つ字を全部。日本語だと数十秒かかる
+        // どれでも、足りない字は出そうとしたときに焼き足される（消えることはない）。
+        let glyphs = match Map.get("glyphs", root) {
+            case Some(JString(g)) => g
+            case _                => "auto"
+        };
         // windowScale（任意）: あれば window = design × scale をロード時に解決し、
         // windowWidth/windowHeight より優先する。アスペクト比を design に合わせたまま
         // ウィンドウだけ拡大したいとき用（見た目そのままで画面を大きくする）。
@@ -90,6 +101,8 @@ mod ProjectLoader {
         let fonts       = readFonts(rootDir, getField(root, "fonts"));
         let sounds      = readSounds(rootDir, getField(root, "sounds"));
         let config: ProjectConfig = {
+            rootDir         = rootDir,
+            glyphs          = glyphs,
             designWidth     = designW,
             designHeight    = designH,
             windowWidth     = windowW,
