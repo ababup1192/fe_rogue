@@ -56,13 +56,16 @@ mod RenderAudio {
         MemoryUtil.memFree(pcmBuf);
         buffer
 
+    /// 拡張子で読み方を振り分けて OpenAL バッファへ載せる。
+    /// 起動時の一括読み込みと、実行中の差し替え（reloadAudio）で同じ道を通すために切り出してある。
+    pub def loadBuffer(path: String): Int32 \ IO =
+        if (String.endsWith({suffix = ".ogg"}, path)) loadOggToALBuffer(path)
+        else loadWavToALBuffer(path)
+
     /// サウンドマニフェストから全音声を読み込み、AudioRegistry (名前 → OpenAL ソース ID) を返す
     pub def loadAudioRegistry(manifest: List[RenderAsset.AudioEntry]): RenderAsset.AudioRegistry \ IO =
         List.foldLeft((registry, entry) -> {
-            let buffer = if (String.endsWith({suffix = ".ogg"}, entry#path))
-                loadOggToALBuffer(entry#path)
-            else
-                loadWavToALBuffer(entry#path);
+            let buffer = loadBuffer(entry#path);
             let source = AL10.alGenSources();
             AL10.alSourcei(source, AL10.AL_BUFFER, buffer);
             AL10.alSourcei(source, AL10.AL_LOOPING, if (entry#looping) AL10.AL_TRUE else AL10.AL_FALSE);

@@ -563,6 +563,27 @@ mod LwjglLayer {
                 AL10.alListenerf(AL10.AL_GAIN, Float32.max(0.0f32, Float32.min(1.0f32, gain)));
                 k(())
             }
+            def reloadAudio(name, path, k) = {
+                // 音源（ソース）は作り直さず、載っているバッファだけ差し替える —
+                // ソース ID が変わらないので、registry も音量・ループの設定もそのまま生きる。
+                match Map.get(name, audioRegistry) {
+                    case None      =>
+                        println("[reloadAudio] 知らない音 '${name}' — 読み直さない")
+                    case Some(src) =>
+                        if (not (new File(path)).exists()) {
+                            println("[reloadAudio] ${path} が無い — 鳴っている音をそのまま残す")
+                        } else {
+                            let old = AL10.alGetSourcei(src, AL10.AL_BUFFER);
+                            AL10.alSourceStop(src);
+                            // 差し替え前に外す（載せたままのバッファは削除できない）。
+                            AL10.alSourcei(src, AL10.AL_BUFFER, 0);
+                            let buffer = RenderAudio.loadBuffer(path);
+                            AL10.alSourcei(src, AL10.AL_BUFFER, buffer);
+                            if (old != 0) AL10.alDeleteBuffers(old) else ()
+                        }
+                };
+                k(())
+            }
         } with handler GameEngine.Game {
             def renderCommands(sprites, tileMaps, polygons, staticLayer, k) = {
                 // drawSurface が積んだこのフレームのシェーダー面を取り出して holder を空にする。

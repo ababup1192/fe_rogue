@@ -1,6 +1,7 @@
 {
   "version": 1,
   "note": "ドット絵。文字は意味色キーで、実色は ThemeDoc.resolver が解決する。hero は 8×8・scale 2 で 16×16px。",
+  "paletteFile": "assets/__NAME__.palette.json",
   "entityId": "__NAME__.sprites",
   "legend": {
     "a": "accent",

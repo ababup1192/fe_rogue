@@ -44,6 +44,10 @@ mod SoftRaster {
         outPath = String
     }
 
+    /// 追加フォント 1 本（既定フォント以外も混ぜて焼くとき）。ttf = 実サイズ焼き用の TTF、
+    /// atlas = その TTF から HeadlessFont.buildAtlas で組んだメトリクス。
+    pub type alias FontEntry = { ttf = String, atlas = FontAtlas }
+
     /// フォントグリフを直接 drawString するための描画コンテキスト。
     /// `baseFont` は素の TTF Font（サイズは deriveFont でグリフ毎に決める）。
     /// `atlas` はメトリクス（ascent/textureSize/bake fontSize）。
@@ -54,6 +58,16 @@ mod SoftRaster {
         atlas = FontAtlas,
         codepointByCell = Map[(Int32, Int32), Int32]
     }
+
+    /// 使えるフォント一式。`primary` は既定（req#fontTtf / req#fontAtlas）、`byTexture` は
+    /// テクスチャ名（"font_ui" / "font_girl" …）→ その本。セル座標 → codepoint の逆引き表は
+    /// フォントごとに違う（別のフォントでも同じセルから詰まるので混ぜられない）ので、
+    /// グリフを描く直前に Drawable#texture でこの表から 1 本選ぶ。
+    /// 知らないテクスチャ名は primary へ倒す（fail-open — 字が消えるより既定で出るほうがよい）。
+    type alias FontTable = { primary = FontCtx, byTexture = Map[String, FontCtx] }
+
+    def fontFor(fonts: FontTable, d: GameEngine.Drawable): FontCtx =
+        Map.get(d#texture, fonts#byTexture) |> Option.getWithDefault(fonts#primary)
 
     /// 宣言シェーダー面 1 枚の headless ラスタライズ要求（Render.ShaderSurface と同形の
     /// 構造レコード — GL の program ハンドルを持たない純データ）。ShaderEval で画素ごとに
@@ -107,6 +121,12 @@ mod SoftRaster {
     pub def render(req: RasterReq): Unit \ IO =
         writePng(renderToImage(req), req#outPath)
 
+    /// 追加フォントつきの render。`extraFonts` はテクスチャ名（"font_girl" など。実機の
+    /// project.json の fonts[].name に "font_" を付けた物）→ その本。既定フォント
+    /// （req#fontTtf / req#fontAtlas）はそのまま効くので、混ぜたい本だけ渡せばよい。
+    pub def renderFonts(req: RasterReq, extraFonts: Map[String, FontEntry]): Unit \ IO =
+        writePng(renderToImageFonts(req, Nil, extraFonts), req#outPath)
+
     /// シェーダー面つきの render（面は ShaderEval で画素評価して z 順に合流する）。
     pub def renderWithSurfaces(req: RasterReq, surfaces: List[SurfaceCmd]): Unit \ IO =
         writePng(renderToImageWith(req, surfaces), req#outPath)
@@ -120,7 +140,13 @@ mod SoftRaster {
     /// renderToImage のシェーダー面つき版。surfaces は Drawable / Polygon と同じ
     /// (zIndex, 追加順) の安定ソートに合流する（面より手前の物は面の上に描かれる —
     /// GL 経路の renderFrameMixed と同じ z 合流の意図）。
-    pub def renderToImageWith(req: RasterReq, surfaces: List[SurfaceCmd]): BufferedImage \ IO = region rc {
+    pub def renderToImageWith(req: RasterReq, surfaces: List[SurfaceCmd]): BufferedImage \ IO =
+        renderToImageFonts(req, surfaces, Map.empty())
+
+    /// renderToImageWith の複数フォント版。`extraFonts` はテクスチャ名 → 追加の本。
+    /// グリフはテクスチャ名で本を選んで描く（知らない名前は既定フォントへ倒す）。
+    pub def renderToImageFonts(req: RasterReq, surfaces: List[SurfaceCmd],
+                               extraFonts: Map[String, FontEntry]): BufferedImage \ IO = region rc {
         HeadlessFont.ensureHeadless();
         let sf = Int32.toFloat64(req#scale);
         let w = ri(req#design#x * sf);
@@ -132,7 +158,7 @@ mod SoftRaster {
         g.setColor(awtColor(req#background, 1.0f32));
         g.fillRect(0i32, 0i32, Int32.max(1i32, w), Int32.max(1i32, h));
         let textures = loadTextures(req#texturePath);
-        let fctx = buildFontCtx(req#fontTtf, req#fontAtlas);
+        let fctx = buildFontTable(req, extraFonts);
         // Drawable / Polygon / シェーダー面を 1 列にまとめ、(z, 追加順) で安定ソートする。
         let tagged = List.append(
             List.map(d -> RItem.RDraw(d), req#drawables),
@@ -431,12 +457,12 @@ mod SoftRaster {
     /// 1 つの Drawable を描く。texture が空なら box、`font_` ならグリフを直接 drawString、
     /// それ以外はテクスチャ画像。
     def drawDrawable(g: Graphics2D, sf: Float64,
-                     textures: Map[String, BufferedImage], fctx: FontCtx, d: GameEngine.Drawable): Unit \ IO =
+                     textures: Map[String, BufferedImage], fctx: FontTable, d: GameEngine.Drawable): Unit \ IO =
         withRotation(g, sf, d#rotation, quadCenter(textures, fctx, d), () ->
             if (String.isEmpty(d#texture))
                 drawBox(g, sf, d)
             else if (String.startsWith({prefix = "font_"}, d#texture))
-                drawGlyph(g, sf, fctx, d)
+                drawGlyph(g, sf, fontFor(fctx, d), d)
             else
                 match Map.get(d#texture, textures) {
                     case None      => ()
@@ -459,18 +485,20 @@ mod SoftRaster {
 
     /// Drawable の四角の中心（design px）。表示サイズの出し方は種類ごとに drawBox /
     /// drawGlyph / drawTextured と同じ式を使う。
-    def quadCenter(textures: Map[String, BufferedImage], fctx: FontCtx,
+    def quadCenter(textures: Map[String, BufferedImage], fctx: FontTable,
                    d: GameEngine.Drawable): Vec2.Vec2 \ IO =
         let size = displaySize(textures, fctx, d);
         if (d#centered) d#position else Vec2.add(d#position, Vec2.div(size, 2.0))
 
     /// Drawable の表示サイズ（design px・反転の符号は残す）。box は scale がそのまま px、
     /// font_ はアトラス辺長との積、その他はテクスチャ実寸との積。
-    def displaySize(textures: Map[String, BufferedImage], fctx: FontCtx,
+    def displaySize(textures: Map[String, BufferedImage], fctx: FontTable,
                     d: GameEngine.Drawable): Vec2.Vec2 \ IO =
         if (String.isEmpty(d#texture)) d#scale
         else if (String.startsWith({prefix = "font_"}, d#texture))
-            { x = d#scale#x * fctx#atlas#textureSize, y = d#scale#y * fctx#atlas#textureSize }
+            // アトラス辺長は本ごとに違うので、回す軸がずれないよう同じ本から取る。
+            let ts = fontFor(fctx, d)#atlas#textureSize;
+            { x = d#scale#x * ts, y = d#scale#y * ts }
         else match Map.get(d#texture, textures) {
             case Some(img) => { x = Int32.toFloat64(img.getWidth()) * d#scale#x,
                                 y = Int32.toFloat64(img.getHeight()) * d#scale#y }
@@ -480,6 +508,16 @@ mod SoftRaster {
     // ════════════════════════════════════════════════════════
     // フォント（グリフ Drawable を出力解像度で直接 drawString）
     // ════════════════════════════════════════════════════════
+
+    /// 既定フォントと追加フォントを読み、テクスチャ名で引ける一式にする。
+    /// 既定フォントも自分のテクスチャ名（fontAtlas#textureName）で引けるように入れておく —
+    /// そうしないと既定と同じ名前の追加を渡されたときに二重に持つことになる。
+    def buildFontTable(req: RasterReq, extraFonts: Map[String, FontEntry]): FontTable \ IO =
+        let primary = buildFontCtx(req#fontTtf, req#fontAtlas);
+        let table = Map.foldLeftWithKey((acc, texName, e) ->
+            Map.insert(texName, buildFontCtx(e#ttf, e#atlas), acc),
+            Map#{ req#fontAtlas#textureName => primary }, extraFonts);
+        { primary = primary, byTexture = table }
 
     /// TTF を読み、アトラスの各グリフの s0/t0 からセル左上 px を逆算した codepoint 表を組む。
     def buildFontCtx(ttfPath: String, atlas: FontAtlas): FontCtx \ IO =

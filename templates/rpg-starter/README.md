@@ -18,6 +18,7 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
 | `make debug`  | 保存即反映(watchFile)と F8 を有効にして起動 |
 | `make check`  | 型検査だけ走らせる（一番速い確認） |
 | `make test`   | テストを実行する |
+| `make palette` | Studio 用の色の写し(`assets/rpg.palette.json`)を作り直す |
 | `make bake`   | ギャラリー PNG を焼く（決定的な 5 場面: title / walk / talk / door / clear） |
 | `make bench`  | 焼いた絵を golden とバイト比較する |
 | `make golden` | いまの gallery を golden として祝福する |
@@ -55,6 +56,9 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
   `src/View.flix` が engine の `TerrainDoc`（読み込み）と `Terrain.fromRows`（描画）に渡す。
 - `assets/rpg.kind.json` … 手触りの数値（歩く速さ・文字送り）。`src/KindDoc.flix` が読む。
 - `assets/rpg.theme.json` … 色票（空・畑・霧・灯りなど）。`src/ThemeDoc.flix` が読む。
+- `assets/rpg.palette.json` … Studio のドット絵エディタに「意味色キー → 実色」を教える写し（生成物）。
+  つや・影のような派生色はコードで導いていて Studio からは見えないので、`make palette` で
+  書き出して `*.sprite.json` の `paletteFile` から指す。手で直さない（色を変えるのはテーマ側）。
 - `assets/rpg.sprite.json` … ドット絵（主人公・住人・薬草。文字格子）。entityId は `rpg.sprites`。
 
 それぞれに Studio 用の schema が並んでいて、`project.json` の `editor.resources` が宣言しています。

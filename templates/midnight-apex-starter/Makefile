@@ -3,7 +3,8 @@
 #   make debug  … 保存即反映(watchFile)と F8 を有効にして起動
 #   make test   … テストを実行する
 #   make check  … 型検査だけ走らせる（一番速い確認）
-#   make bake   … ギャラリー PNG を焼く（決定的）
+#   make bake   … ギャラリー PNG を焼く（決定的。先に palette を作り直す）
+#   make palette … Studio 用の色の写し(assets/apex.palette.json)を作り直す
 #   make bench  … 焼いた絵を golden とバイト比較する
 #   make golden … いまの gallery を golden として祝福する
 #
@@ -14,7 +15,7 @@
 ENGINE ?= /Users/abab/Desktop/flix_game_engine
 FLIX   := $(ENGINE)/bin/flix
 
-.PHONY: run debug test build check bake bench golden
+.PHONY: run debug test build check bake bench golden palette
 
 run:
 	$(FLIX) run
@@ -31,7 +32,10 @@ build:
 check:
 	$(FLIX) check
 
-bake:
+palette:
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Palette.write
+
+bake: palette
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Bake.all
 
 bench: bake

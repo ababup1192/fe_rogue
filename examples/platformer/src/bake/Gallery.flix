@@ -39,8 +39,8 @@ mod Gallery {
         let center = View.cameraCenter(world);
         let design = { x = Field.designW(), y = Field.designH() };
         // App が組むのと同じ ViewCtx（world 側はカメラの見える範囲・hud 側は画面全体）。
-        let ctx = { atlas = atlas, visible = App.visibleOf(Some(center), 1.0, design) };
-        let hudCtx = { atlas = atlas, visible = App.visibleOf(None, 1.0, design) };
+        let ctx = { atlas = atlas, fontOf = _ -> atlas, visible = App.visibleOf(Some(center), 1.0, design) };
+        let hudCtx = { atlas = atlas, fontOf = _ -> atlas, visible = App.visibleOf(None, 1.0, design) };
         let composed = App.composeScene(Some(center), 1.0, design,
             { world = View.frame(ctx, world), hud = View.hud(hudCtx, world) });
         Render.draw(composed)

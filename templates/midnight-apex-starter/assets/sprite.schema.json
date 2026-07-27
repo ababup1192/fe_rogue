@@ -6,6 +6,10 @@
   "properties": {
     "version": { "type": "integer", "const": 1 },
     "note": { "type": "string" },
+    "paletteFile": {
+      "type": "string",
+      "description": "legend の意味色キーを解決する色票（Studio のドット絵エディタが引く。ゲーム側は無視し、実色は CityscapeView.colorOf / SceneryView.patternColor が決める）"
+    },
     "legend": {
       "type": "object",
       "additionalProperties": { "type": "string" },

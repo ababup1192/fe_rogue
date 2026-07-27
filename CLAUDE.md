@@ -92,9 +92,14 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 1. `templates/<genre>-starter/` を作る（rpg-starter を写経元に。具体値式なら golden も焼く）。
 2. **`golden/title.png` を必ず用意する**。Studio のジャンル札のサムネは `GET /genesis/title` が
    これを読む（無いと空絵に倒れる）。bake に `title` シーンを 1 枚足して祝福する。
-3. Studio に登録する: `flix_ge_studio` の `server/src/Genesis.flix` の families で、該当ジャンルの
+3. **`make lint-palette` を通す**。ドット絵（`*.sprite.json`）の `legend` に書いた意味色キーは、
+   `*.theme.json` のトップレベル・`paletteFile` の指す色票・直下の `palette` のどれかに実体が
+   無いと Studio が仮色で塗り、編集画面と実機で配色が食い違う。派生色をコードで導いているなら、
+   色票 JSON を生成する `make` ターゲットを作り、`paletteFile` でそれを指す（`kaidan` の
+   `Palette` モジュール + `palette` ターゲット + テストが手本。テストで生成物と実機の色を pin する）。
+4. Studio に登録する: `flix_ge_studio` の `server/src/Genesis.flix` の families で、該当ジャンルの
    `starter = "templates/<genre>-starter"` にする（starter が空だとゼロ生成フローのまま）。
-4. Studio に反映する: `flix_ge_studio` で **`make swap-jar`**（動いている `.app` の同梱 jar を
+5. Studio に反映する: `flix_ge_studio` で **`make swap-jar`**（動いている `.app` の同梱 jar を
    差し替え + 再署名）→ Studio を Cmd+Q して開き直し。**`make jar` だけでは動いている .app に効かない**。
 
 `make new-game GAME=/abs NAME=x TITLE=題名 TEMPLATE=<genre>-starter`。TITLE は自由文でよい

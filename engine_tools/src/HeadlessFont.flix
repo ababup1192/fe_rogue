@@ -48,6 +48,13 @@ mod HeadlessFont {
     /// 返す FontAtlas は Text.measure / toDrawables がそのまま使えるメトリクスを持つ
     /// （textureName = "font_ui"、textureSize = 仮想アトラス一辺）。
     pub def buildUiAtlas(ttfPath: String, _joyoPath: String): FontAtlas \ IO =
+        buildAtlas("ui", ttfPath)
+
+    /// 名前つきでアトラスを組む（textureName = "font_${name}"）。実機の RenderFont が
+    /// project.json の fonts[].name から付ける名前と同じ規約なので、複数フォントを焼くときは
+    /// **実機と同じ name を渡す** — 名前が食い違うと SoftRaster がそのフォントを見つけられず、
+    /// その文字が PNG から黙って消える。
+    pub def buildAtlas(name: String, ttfPath: String): FontAtlas \ IO =
         ensureHeadless();
         let font = loadFont(ttfPath);
         // メトリクス測定用の 1x1 スクラッチ。
@@ -65,7 +72,7 @@ mod HeadlessFont {
         let init: PackState = { penX = 0i32, penY = 0i32, glyphs = Map.empty() };
         let baked = List.foldLeft((state, cp) ->
             bakeGlyph(fm, ascent, rowH, dim, dimF, state, cp), init, codepointsOf(font));
-        { textureName = "font_ui",
+        { textureName = "font_${name}",
           fontSize = Float32.toFloat64(bakeSize()),
           textureSize = dimF,
           ascent = Int32.toFloat64(ascent),

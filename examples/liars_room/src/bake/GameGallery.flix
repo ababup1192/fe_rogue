@@ -33,7 +33,7 @@ mod GameGallery {
             {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]} =
         let ui1 = GameUi.projectUi(w, ui);
         // App が組むのと同じ ViewCtx（カメラなし = design 全体が見えている）。
-        let ctx = { atlas = atlas, visible = App.visibleOf(None, 1.0, design()) };
+        let ctx = { atlas = atlas, fontOf = _ -> atlas, visible = App.visibleOf(None, 1.0, design()) };
         let (drawables, polygons) = Render.draw(View.compose(ctx, { ui = ui1, world = w }));
         { drawables = drawables, polygons = polygons }
 

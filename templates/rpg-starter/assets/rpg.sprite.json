@@ -1,6 +1,7 @@
 {
   "version": 1,
   "note": "ドット絵。文字は意味色キーで、実色は ThemeDoc.resolver が解決する。全部 8×8・scale 2 で 16×16px（タイル 20px の中に収まる）。",
+  "paletteFile": "assets/rpg.palette.json",
   "entityId": "rpg.sprites",
   "legend": {
     "a": "accent",

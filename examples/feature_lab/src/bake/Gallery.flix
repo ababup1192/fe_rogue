@@ -32,7 +32,7 @@ mod Gallery {
 
     /// World を本番と同じ投影（View.frame）で描画コマンドへ変換する。
     def worldCmds(atlas: FontAtlas, world: World.World): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
-        let ctx = { atlas = atlas, visible = { position = Vec2.zero(), size = View.design() } };
+        let ctx = App.viewCtxOf(atlas, View.design());
         Render.draw(View.frame(ctx, world))
 
     /// 遷移 1 種を t=0 から t=1 まで動かした frames 列を作る（Replay を使わず自前で刻む。
@@ -57,7 +57,7 @@ mod Gallery {
     /// Annotate.fpsItems を直接呼んで合成する（App.fpsOverlayOf と同じロジック）。
     def fpsOverlayScene(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
         let world = GameUi.projectUi(World.initial(ui, lightDoc, false, ShaderDoc.waterVeins()));
-        let ctx = { atlas = atlas, visible = { position = Vec2.zero(), size = View.design() } };
+        let ctx = App.viewCtxOf(atlas, View.design());
         let sixtyFps = 1.0 / 60.0;
         let anno = List.range(0, 60) |> List.foldLeft((acc, _) -> Annotate.recordDt(sixtyFps, acc), Annotate.initial());
         let overlay = Annotate.fpsItems(atlas, View.design(), Annotate.fpsOf(anno));

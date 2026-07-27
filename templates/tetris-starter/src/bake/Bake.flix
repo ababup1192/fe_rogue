@@ -26,7 +26,7 @@ mod Bake {
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
         let cfg = cfgOf("gallery", atlas, w0#theme#bg);
-        let ctx = { atlas = atlas, visible = { position = Vec2.zero(), size = design() } };
+        let ctx = App.viewCtxOf(atlas, design());
         // title: ジャンルカードの顔（彩り豊かな中盤の一枚）。Studio が golden/title.png を
         // /genesis/title で読み、「パズル」の札のサムネにする（各 starter 共通の規約）。
         let t = shoot(cfg, ctx, stackScene(w0), "title");

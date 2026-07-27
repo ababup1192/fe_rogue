@@ -32,7 +32,7 @@ mod Bake {
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
         let cfg = cfgOf("gallery", atlas, w0#theme#bg);
-        let ctx = { atlas = atlas, visible = { position = Vec2.zero(), size = design() } };
+        let ctx = App.viewCtxOf(atlas, design());
         // 表紙: 灯りが全部ついた書斎とタイトル。
         let title = shoot(cfg, ctx, w0, "title");
         // 最初の分岐: 問いを読み終え、選択肢のチップが出た状態。
@@ -87,7 +87,7 @@ mod Bake {
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let theme = run { ThemeDoc.load(ThemeDoc.path()) } with Fs.FileRead.runWithIO;
         let cfg = cfgOf("debug/atelier", atlas, theme#bg);
-        let ctx = { atlas = atlas, visible = { position = Vec2.zero(), size = design() } };
+        let ctx = App.viewCtxOf(atlas, design());
         // スプライト: 候補 + 現行。
         let jobs = List.append(
             jsonsIn("atelier", ".sprite.json") |> List.map(f -> ("atelier/${f}", stripJson(f))),

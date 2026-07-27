@@ -25,6 +25,7 @@
 | `make debug` | Doc の保存即反映と F8 注釈を有効にして起動する |
 | `make check` | 型検査だけを行う |
 | `make test` | ルールと JSON の橋渡しをテストする |
+| `make palette` | Studio 用の色の写し(`assets/apex.palette.json`)を作り直す |
 | `make bake` | 主要13場面と11の音を `gallery/` / `assets/sfx/` に焼く |
 | `make bench` | `gallery/` と `golden/` をバイト比較する |
 | `make golden` | 現在の `gallery/` を基準画像として祝福する |
@@ -93,6 +94,11 @@ rows の数から自動で決まるため、コースを増減しても周回判
   - コースの曲がり方と道幅。rows を増減できます。
 - `assets/apex.theme.json`
   - 夜空、路面、路肩、自機、ライバル、警告、文字の色。
+- `assets/apex.palette.json`
+  - Studio のドット絵エディタに「意味色キー → 実色」を教える写し（生成物・手で直さない）。
+  - 夜景と回路の色はテーマから導いていて Studio からは見えないので、`make palette` で書き出し、
+    `apex.sprite.json` の `paletteFile` から指します。色を変えるのは `apex.theme.json` 側です。
+  - 回路模様は実機が道の左右で色を振り分けるので、写しに載るのは左側の代表色です。
 - `assets/apex.copy.json`
   - 表紙、操作案内、HUD、結果画面の文言。
 

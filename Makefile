@@ -30,7 +30,7 @@ FLIX_TEST := $(CURDIR)/bin/flix
 
 # 全パッケージ共通のバージョン (lockstep)。sync 先ディレクトリ名や release の
 # asset 名に使う。make bump FROM=x TO=y で各 flix.toml と一緒に上げる。
-VERSION := 0.9.0
+VERSION := 0.9.1
 
 RENDER_GL_DIR       := render_gl
 RENDER_GL_FPKG_SRC  := $(RENDER_GL_DIR)/artifact/render_gl.fpkg
@@ -82,13 +82,14 @@ EDITOR_SERVER_DIR := editor_server
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par release release-guard bump editor
+.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par release release-guard bump editor lint-palette
 
 help:
 	@echo "Targets:"
 	@echo "  make test                 全パッケージ (engine系 + examples) のテストを headless で実行"
 	@echo "  make test-par             同上を並列実行 (壁時計 ≈ fe_rogue 1本分。ログは .test-logs/)"
 	@echo "  make test-<name>          1 つだけテスト (例: make test-fe_rogue / make test-engine)"
+	@echo "  make lint-palette         ドット絵 legend の意味色キーが Studio から解けるか検査"
 	@echo "  make bake                 bake ターゲットを持つ全 example の生成物を焼き直す"
 	@echo "  make bake-par             同上を並列実行"
 	@echo "  make sync                 engine / render_gl / engine_world / engine_tools を build-pkg し、各依存先に配布"
@@ -208,6 +209,12 @@ test-%:
 	else \
 		cd "$*" && $(FLIX_TEST) test; \
 	fi
+
+# ── 関所: ドット絵の意味色キー ────────────────────────────
+# legend の名前が Studio から実色に解けるかを検査する (解けないと編集画面が仮色で塗り、
+# 実機と配色が食い違う)。テンプレを足す・sprite Doc を触ったら通す。
+lint-palette:
+	@python3 bin/lint-palette.py
 
 sync: clean-locks sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src
 
@@ -468,6 +475,7 @@ new-game:
 	mkdir -p "$(GAME)/gallery" "$(GAME)/golden" "$(GAME)/debug" "$(GAME)/atelier"; \
 	if [ -f "$(GAME)/assets/__NAME__.theme.json" ]; then mv "$(GAME)/assets/__NAME__.theme.json" "$(GAME)/assets/$(NAME).theme.json"; fi; \
 	if [ -f "$(GAME)/assets/__NAME__.sprite.json" ]; then mv "$(GAME)/assets/__NAME__.sprite.json" "$(GAME)/assets/$(NAME).sprite.json"; fi; \
+	if [ -f "$(GAME)/assets/__NAME__.palette.json" ]; then mv "$(GAME)/assets/__NAME__.palette.json" "$(GAME)/assets/$(NAME).palette.json"; fi; \
 	NG_NAME='$(NAME)' NG_W='$(NG_W)' NG_H='$(NG_H)' \
 	NG_WW=$$(( $(NG_W) * 2 )) NG_WH=$$(( $(NG_H) * 2 )) NG_ENGINE='$(CURDIR)' \
 	find "$(GAME)" -type f \( -name '*.flix' -o -name '*.json' -o -name '*.toml' -o -name '*.md' -o -name 'Makefile' \) \

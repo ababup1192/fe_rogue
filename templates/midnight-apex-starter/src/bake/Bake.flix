@@ -38,7 +38,7 @@ mod Bake {
         let atlas = HeadlessFont.buildUiAtlas(fontPath(), fontPath());
         let initial = loadWorld();
         let bakeConfig = config("gallery", atlas, initial#theme#night);
-        let context = { atlas = atlas, visible = { position = Vec2.zero(), size = design() } };
+        let context = App.viewCtxOf(atlas, design());
         shoot(bakeConfig, context, initial, "title")
             :: shoot(bakeConfig, context, countdownScene(initial), "countdown")
             :: shoot(bakeConfig, context, roadScene(initial), "race_boost")

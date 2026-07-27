@@ -274,9 +274,11 @@ mod SceneryView {
             :: Nil
         }
 
-    def patternColor(side: Float64,
-                     key: String,
-                     theme: ThemeDoc.Doc): Color =
+    /// 回路模様の意味色キー → 実色。side は道のどちら側かで、色を左右で振り分ける。
+    /// Studio 用の色票（Palette）も同じここを引くので、実色を決める場所が 2 つに割れない。
+    pub def patternColor(side: Float64,
+                         key: String,
+                         theme: ThemeDoc.Doc): Color =
         if (key == "copperPlane")
             ThemeDoc.darken(
                 if (side < 0.0) theme#shoulder else theme#player,

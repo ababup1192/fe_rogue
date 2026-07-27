@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "//": "生成物（make palette）。Studio のドット絵エディタに意味色キーの実色を教えるための写し。色を変えるのは apex.theme.json 側。回路模様（circuitTrace / circuitTraceDim / circuitVia / copperPlane）は実機が道の左右で色を振り分けるので、ここに載るのは左側の代表色。",
+  "amberLight": { "rgb": [0.11898039, 0.6978039, 0.82] },
+  "circuitTrace": { "rgb": [0.08996079, 0.52760786, 0.62] },
+  "circuitTraceDim": { "rgb": [0.36, 0.29505885, 0.14400001] },
+  "circuitVia": { "rgb": [1.0, 0.84486276, 0.48400003] },
+  "copperPlane": { "rgb": [0.043529414, 0.25529414, 0.3] },
+  "cyanLight": { "rgb": [0.82, 0.67207843, 0.328] },
+  "farBuilding": { "rgb": [0.05466667, 0.08682353, 0.13184313] },
+  "magentaLight": { "rgb": [0.82, 0.19615686, 0.4534118] },
+  "nearBuilding": { "rgb": [0.046666667, 0.074117646, 0.11254902] },
+  "star": { "rgb": [0.66, 0.5409412, 0.26400003] }
+}

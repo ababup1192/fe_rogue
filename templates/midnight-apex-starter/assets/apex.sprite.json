@@ -1,6 +1,7 @@
 {
   "version": 1,
   "note": "夜景の文字格子。far_city と near_city は横80セルで、左右へ繰り返して使う。",
+  "paletteFile": "assets/apex.palette.json",
   "legend": {
     "s": "star",
     "d": "farBuilding",

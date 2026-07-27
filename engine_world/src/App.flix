@@ -64,7 +64,23 @@ mod App {
     /// visible は camera を通して画面に見えている world の矩形（camera なしなら design 全体）。
     /// 背景タイルの敷き詰めなど「見える分だけ組む」計算は visible から出す — ゲームが
     /// 画面サイズを World に持ち込む必要はない。HUD（画面固定）には常に design 全体が渡る。
-    pub type alias ViewCtx = { atlas = FontAtlas, visible = Rect2.Rect2 }
+    /// fontOf は名前でフォントを引く関数（project.json の fonts[].name）。withFonts で宣言した
+    /// 名前だけ引ける — 知らない名前は既定フォントへ倒す（fail-open）。話し手ごとに字を変える
+    /// ようなゲームは、名前を直に書かず「自分の enum → 名前」の関数を 1 つ置いて fontOf に
+    /// 渡すと、字の増減が 1 か所で済む。
+    pub type alias ViewCtx = { atlas = FontAtlas, fontOf = String -> FontAtlas, visible = Rect2.Rect2 }
+
+    /// bake（headless）から view を呼ぶときの ViewCtx。画面全体が見えている扱いにする。
+    /// フォント 1 本だけの版 — どの名前で引いても同じ本が返る。
+    pub def viewCtxOf(atlas: FontAtlas, design: Vec2.Vec2): ViewCtx =
+        viewCtxOfFonts(atlas, _ -> atlas, design)
+
+    /// viewCtxOf の複数フォント版。fontOf には実機と同じ名前で引ける関数を渡す
+    /// （HeadlessFont.buildAtlas に実機と同じ name を渡して組んだ本を返す関数）。
+    /// 名前が実機と食い違うと、焼いた絵だけ別の字になる。
+    pub def viewCtxOfFonts(atlas: FontAtlas, fontOf: String -> FontAtlas, design: Vec2.Vec2): ViewCtx =
+        { atlas = atlas, fontOf = fontOf,
+          visible = { position = { x = 0.0, y = 0.0 }, size = design } }
 
     /// 同じ App に乗せる（効果多相）。
     /// 焼いたドット絵アトラス 1 枚ぶんの受け渡し。
@@ -81,6 +97,9 @@ mod App {
         // World を (置き場所, 見せたい物) の列へ投影する。None のゲームは App に描画させず自分の
         // システム内で描く（タイルマップ等の複数チャンネルを直接組むゲーム向け）。
         view = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef],
+        // 既定フォント以外に使うフォントの名前（project.json の fonts[].name）。ここに宣言した
+        // 名前だけが ViewCtx#fontOf で引ける。withFonts で足す。
+        fonts = List[String],
         // World から「画面中央に映したい world 座標」を導く。None = カメラなし（view の座標が
         // そのまま画面座標）。view = None のゲームでは効かない。追従・クランプ・シェイクは
         // ゲーム側システムの責務（導いた値をここで返すだけ）。
@@ -149,6 +168,7 @@ mod App {
           reload = None,
           watch = Nil,
           view = None,
+          fonts = Nil,
           camera = None,
           zoom = None,
           cameraBounds = None,
@@ -192,6 +212,13 @@ mod App {
     pub def withView(v: (ViewCtx, w) -> List[Render.PlacedItem] \ ef,
                      app: App[w, ef]): App[w, ef] =
         { view = Some(v) | app }
+
+    /// 既定フォント以外に使うフォントの名前を宣言する（project.json の fonts[].name と同じ字）。
+    /// ここで宣言した名前だけが view の ViewCtx#fontOf で引ける（宣言していない名前は既定
+    /// フォントが返る）。話し手ごとに字を変えるようなゲームで使う。
+    /// project.json に無い名前を宣言すると起動時に落ちる — 綴りは fonts[] と揃えること。
+    pub def withFonts(names: List[String], app: App[w, ef]): App[w, ef] =
+        { fonts = List.append(app#fonts, names) | app }
 
     /// ゲーム 1 本の標準形を 1 つのレコードで宣言する入口（初学者向け）。
     /// ここを読むだけでゲームループの全体像 ——「何から始まり（init）・毎フレームどう進み（update）・
@@ -879,24 +906,34 @@ mod App {
                                              y = Float64.round(c#y * CameraRig.safeZoom(z)) / CameraRig.safeZoom(z) }, center);
         (snapped, z)
 
+    /// withFonts で宣言された名前を先に全部引いておき、名前 → アトラスの純粋な引き当てを作る。
+    /// view は純粋（ef）なので、その場で getFontAtlas を呼べない — ここで先に解いておく。
+    /// 宣言していない名前は既定フォントへ倒す（字が消えるより既定で出るほうがよい）。
+    def fontResolver(app: App[w, ef], dflt: FontAtlas): (String -> FontAtlas) \ GameEngine.Game =
+        let table = app#fonts |> List.foldLeft((acc, n) ->
+            Map.insert(n, GameEngine.Game.getFontAtlas(n), acc),
+            (Map.empty(): Map[String, FontAtlas]));
+        name -> Map.get(name, table) |> Option.getWithDefault(dflt)
+
     def sceneItems(app: App[w, ef], atlas: FontAtlas, world: w,
                    toItems: (ViewCtx, w) -> List[Render.PlacedItem] \ ef):
             List[Render.PlacedItem] \ (ef + GameEngine.Game) =
         let design = GameEngine.Game.getViewportRect()#size;
+        let fontOf = fontResolver(app, atlas);
         let (center, z) = resolvedCamera(app, world, design);
         let hud = match app#hudView {
             case None    => Nil
             // HUD は画面固定なので、見えている矩形は常に design 全体（原点起点）で zoom も掛けない。
-            case Some(h) => h({ atlas = atlas, visible = visibleOf(None, 1.0, design) }, world)
+            case Some(h) => h({ atlas = atlas, fontOf = fontOf, visible = visibleOf(None, 1.0, design) }, world)
         };
         // 視差レイヤ: 見かけの center（parallaxCenter）で culling も合成も行う。hud は混ぜない。
         let layers = app#parallaxLayers |> List.flatMap(fl -> {
             let (factor, lview) = fl;
             let lcenter = Option.map(c -> CameraRig.parallaxCenter(factor, c, design = design), center);
-            let lctx = { atlas = atlas, visible = visibleOf(lcenter, z, design) };
+            let lctx = { atlas = atlas, fontOf = fontOf, visible = visibleOf(lcenter, z, design) };
             composeScene(lcenter, z, design, { world = lview(lctx, world), hud = Nil })
         });
-        let ctx = { atlas = atlas, visible = visibleOf(center, z, design) };
+        let ctx = { atlas = atlas, fontOf = fontOf, visible = visibleOf(center, z, design) };
         List.append(layers, composeScene(center, z, design, { world = toItems(ctx, world), hud = hud }))
 
     /// debug 有効時だけ、画面右上に小さく fps を出す絵を組む（無効なら空 = 本番に一切出ない）。
@@ -1265,6 +1302,7 @@ mod App {
                 def setVolume(name, volume, k)  = k(GameEngine.Audio.setVolume(name, volume))
                 def setLooping(name, looping, k) = k(GameEngine.Audio.setLooping(name, looping))
                 def setMasterVolume(gain, k)    = k(GameEngine.Audio.setMasterVolume(gain))
+                def reloadAudio(name, path, k)  = k(GameEngine.Audio.reloadAudio(name, path))
             };
             { world = final#world,
               newHistory = List.take(historyLimit(), final#acc),

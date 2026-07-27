@@ -79,6 +79,16 @@ mod Bakery {
         warnDropped(drawables, name);
         SoftRaster.render(reqOf(cfg, drawables, polygons, pngPath(cfg, name)))
 
+    /// 複数フォントで焼く renderPng。`extraFonts` はテクスチャ名（実機の project.json の
+    /// fonts[].name に "font_" を付けた物。HeadlessFont.buildAtlas が付ける名前と同じ）→ その本。
+    /// 既定フォント（cfg#fontTtf / cfg#fontAtlas）はそのまま効くので、混ぜたい本だけ渡す。
+    /// 名前が実機と食い違うと、その字は既定フォントで描かれる（消えはしない）。
+    pub def renderPngFonts(cfg: BakeConfig, extraFonts: Map[String, SoftRaster.FontEntry],
+                           drawables: List[GameEngine.Drawable],
+                           polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO =
+        warnDropped(drawables, name);
+        SoftRaster.renderFonts(reqOf(cfg, drawables, polygons, pngPath(cfg, name)), extraFonts)
+
     /// 宣言シェーダー面つきの renderPng。surfaces（Render.shaderSurfaces の出力と同形の
     /// 構造レコード）は ShaderEval の画素評価で焼かれ、z 順で他の描き物と合流する。
     /// 渡す側は draw の代表色ベタ塗りと二重にならないよう、items を Render.withoutShaders で

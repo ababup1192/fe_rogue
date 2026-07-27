@@ -50,7 +50,9 @@ mod CityscapeView {
                     key -> colorOf(key, world#theme),
                     layer#z))
 
-    def colorOf(key: String, theme: ThemeDoc.Doc): Color =
+    /// 夜景の意味色キー → 実色。Studio 用の色票（Palette）も同じここを引く
+    /// ので、実色を決める場所が 2 つに割れない。
+    pub def colorOf(key: String, theme: ThemeDoc.Doc): Color =
         match key {
             case "star"            => ThemeDoc.darken(theme#lane, 0.34)
             case "farBuilding"     => ThemeDoc.darken(theme#roadShade, 0.18)
