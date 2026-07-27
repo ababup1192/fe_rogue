@@ -17,7 +17,7 @@ mod RenderFont {
     import org.lwjgl.stb.STBTTFontinfo
     import org.lwjgl.BufferUtils
     import org.lwjgl.system.MemoryStack
-    import java.io.FileInputStream
+    import java.nio.ByteBuffer
 
     /// SDF ベイク対象のコードポイント列 = **そのフォントが実際にグリフを持つ BMP の全文字**。
     /// U+0020..U+FFFF を cmap で走査し、グリフ index 0（.notdef）の字を除く。
@@ -48,10 +48,16 @@ mod RenderFont {
     /// レイアウトは 1px も動かない — 少しぼやけるだけで、ゲームは必ず起動する。
     ///
     /// 探し方は二分探索。必要面積の下見（矩形の計算だけ）はラスタライズより桁違いに軽い。
+    /// onProbe は 1 回の下見ごとに呼ぶ。下見は全字を走査するので日本語フォントでは数秒かかり、
+    /// ここで何も知らせないと起動画面が止まって見える。
     def fitBakeSize(fontInfo: STBTTFontinfo, requested: Float64, padding: Int32,
-                    oversample: Float64, cps: List[Int32]): Float64 \ IO =
-        let fitsAt = size -> neededArea(fontInfo, scaleOf(fontInfo, size, oversample), padding, cps)
-            <= atlasCapacity();
+                    oversample: Float64, cps: List[Int32],
+                    onProbe: Unit -> Unit \ IO): Float64 \ IO =
+        let fitsAt = size -> {
+            onProbe();
+            neededArea(fontInfo, scaleOf(fontInfo, size, oversample), padding, cps)
+                <= atlasCapacity()
+        };
         // 要求が下限より小さいなら縮める余地は無い（縮めるつまみなので、要求より
         // 大きい値を返してはいけない — 大きく返すと収まらないまま実ベイクへ落ちる）。
         if (requested <= minBakeSize() or fitsAt(requested)) requested
@@ -123,15 +129,47 @@ mod RenderFont {
         { xOff = 0.0, yOff = 0.0, glyphW = 0.0, glyphH = 0.0,
           advance = advance, s0 = 0.0, t0 = 0.0, s1 = 0.0, t1 = 0.0 }
 
-    /// 1 つの FontEntry をアトラスにベイクする。
+    /// 焼き方の版。SDF の詰め方・padding・oversample・焼く字の選び方を変えたら 1 つ上げる。
+    /// 上げないと、前の焼き方で取っておいた物をそのまま読んでしまう。
+    pub def bakeVersion(): Int32 = 1
+
+    /// CPU 側だけで焼き上がったアトラス。GL へ上げる前の姿で、
+    /// ディスクに取っておく（RenderFontCache）のもこの形。
+    pub type alias BakedFont = { atlas = FontAtlas, side = Int32, pixels = ByteBuffer }
+
+    /// 1 つの FontEntry をアトラスにベイクして GPU へ載せる。
     /// 戻り値: (FontAtlas, TextureInfo) — TextureInfo は registry に登録する用。
-    pub def bakeFontAtlas(entry: RenderAsset.FontEntry): (FontAtlas, RenderAsset.TextureInfo) \ IO =
+    /// onGlyph には「焼き終えた字数 / 全字数」を渡す。日本語フォントは 1 本で数千字あり
+    /// 起動時間の大半を占めるので、起動画面はここまで細かく進み具合を見せる。
+    pub def bakeFontAtlas(entry: RenderAsset.FontEntry,
+                          onGlyph: (Int32, Int32) -> Unit \ IO): (FontAtlas, RenderAsset.TextureInfo) \ IO =
+        let baked = RenderFontCache.loadOrBake(entry, onGlyph);
+        (baked#atlas, uploadFont(baked))
+
+    /// 焼き上がりを GPU へ載せる。距離場は滑らかに補間して読ませる — 拡大しても輪郭が
+    /// 階段にならず、1 枚のアトラスからどの大きさの字もくっきり出せる。
+    pub def uploadFont(baked: BakedFont): RenderAsset.TextureInfo \ IO =
+        let side = baked#side;
+        discard baked#pixels.position(0);
+        let texId = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_R8, side, side, 0, GL11.GL_RED, GL11.GL_UNSIGNED_BYTE, baked#pixels);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+        // Swizzle: (ONE, ONE, ONE, RED) → 白色 + 距離場を alpha に載せる
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL33.GL_TEXTURE_SWIZZLE_R, GL11.GL_ONE);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL33.GL_TEXTURE_SWIZZLE_G, GL11.GL_ONE);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL33.GL_TEXTURE_SWIZZLE_B, GL11.GL_ONE);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL33.GL_TEXTURE_SWIZZLE_A, GL11.GL_RED);
+        let sideF = Int32.toFloat64(side);
+        { id = GpuHandle.wrapTextureId(texId), width = sideF, height = sideF }
+
+    /// 全グリフを SDF にして 1 枚へ敷き詰める（GL には一切触らない）。
+    /// fontBytes は TTF の中身 — 呼び手が既に読んでいる物を渡す（見分けの印を作るのに要るので二度読みしない）。
+    pub def bakeFontCpu(entry: RenderAsset.FontEntry, fontBytes: Array[Int8, Static],
+                        onGlyph: (Int32, Int32) -> Unit \ IO): BakedFont \ IO =
         let f32 = RenderUtil.f32;
 
-        // フォントファイルを ByteBuffer に読み込む
-        let fis = new FileInputStream(entry#path);
-        let fontBytes = fis.readAllBytes();
-        fis.close();
         let fontBuffer = BufferUtils.createByteBuffer(Array.length(fontBytes));
         discard fontBuffer.put(fontBytes);
         discard fontBuffer.flip();
@@ -150,7 +188,13 @@ mod RenderFont {
         // このフォントが持つ字を全部数え、要求された焼きサイズが最大アトラスに収まるか下見する。
         // 収まらなければ収まる大きさまで自動で縮める（少しぼやけるだけで、文字の並びは変わらない）。
         let cps = fontCodepoints(fontInfo);
-        let bakeSize = fitBakeSize(fontInfo, entry#fontSize, padding, oversample, cps);
+        let glyphCount = List.length(cps);
+        // 下見（収まる焼きサイズ探し・アトラス辺長選び）も全字を 2 度走査するので体感に出る。
+        // まだ何割かは言えないので、本数不明（0）として知らせる — 起動画面は
+        // 溜まる棒でなく流れる帯になり、進み具合が出せない間も止まって見えない。
+        onGlyph(0, 0);
+        let bakeSize = fitBakeSize(fontInfo, entry#fontSize, padding, oversample, cps,
+            () -> onGlyph(0, 0));
         if (bakeSize < entry#fontSize)
             println("[RenderFont] '${entry#name}': ${List.length(cps)} 字は焼きサイズ "
                 + "${entry#fontSize} では最大アトラスに入らないので ${bakeSize} に縮めました"
@@ -254,7 +298,16 @@ mod RenderFont {
                 next
         };
         let initSt: PackState = { glyphs = Map.empty(), cx = 0, cy = 0, rowH = 0, overflow = 0 };
-        let finalSt = List.foldLeft(bakeGlyph, initSt, cps);
+        // 焼けた字数の数え上げは PackState に載せず、報告のためだけの数として外に置く
+        // （詰め方の状態と、進み具合の見せ方を混ぜない）。
+        let bakedCount = Array#{0} @ Static;
+        let finalSt = List.foldLeft((st, cp) -> {
+            let next = bakeGlyph(st, cp);
+            let done = Array.get(0, bakedCount) + 1;
+            Array.put(done, 0, bakedCount);
+            onGlyph(done, glyphCount);
+            next
+        }, initSt, cps);
         // 溢れは起動エラーにする: 空白文字での出荷は「フォントが壊れた」ように見え、
         // 警告 1 行では見逃されるため。焼きサイズは fitBakeSize が収まる大きさまで縮めて
         // あるので、ここへ届くのは詰め方（シェルフパッキング）側の不具合。
@@ -268,24 +321,8 @@ mod RenderFont {
 
         fontInfo.free();
 
-        // GL_RED テクスチャとしてアップロード + swizzle で RGBA 化。
-        // SDF は LINEAR で補間してエッジを滑らかに復元する（NEAREST だと距離場が階段状になる）。
-        discard bitmap.position(0);
-        let texId = GL11.glGenTextures();
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
-        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_R8, bitmapSize, bitmapSize, 0, GL11.GL_RED, GL11.GL_UNSIGNED_BYTE, bitmap);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
-        // Swizzle: (ONE, ONE, ONE, RED) → 白色 + 距離場を alpha に載せる
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL33.GL_TEXTURE_SWIZZLE_R, GL11.GL_ONE);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL33.GL_TEXTURE_SWIZZLE_G, GL11.GL_ONE);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL33.GL_TEXTURE_SWIZZLE_B, GL11.GL_ONE);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL33.GL_TEXTURE_SWIZZLE_A, GL11.GL_RED);
-
-        let texName = "font_${entry#name}";
-        let texInfo: RenderAsset.TextureInfo = { id = GpuHandle.wrapTextureId(texId), width = bitmapSizeF, height = bitmapSizeF };
         let atlas: FontAtlas = {
-            textureName = texName,
+            textureName = "font_${entry#name}",
             fontSize = bakeSize,
             textureSize = bitmapSizeF,
             ascent = ascent,
@@ -293,14 +330,18 @@ mod RenderFont {
             lineGap = lineGap,
             glyphs = glyphs
         };
-        (atlas, texInfo)
+        { atlas = atlas, side = bitmapSize, pixels = bitmap }
 
-    /// 全 FontEntry をベイクし、(名前→FontAtlas) と更新済み TextureRegistry を返す
+    /// 全 FontEntry をベイクし、(名前→FontAtlas) と更新済み TextureRegistry を返す。
+    /// onProgress には「フォント名・焼き終えた字数・全字数」を渡す。
     pub def bakeFontAtlases(manifest: List[RenderAsset.FontEntry],
-                            registry: RenderAsset.TextureRegistry): (Map[String, FontAtlas], RenderAsset.TextureRegistry) \ IO =
+                            registry: RenderAsset.TextureRegistry,
+                            onProgress: (String, Int32, Int32) -> Unit \ IO): (Map[String, FontAtlas], RenderAsset.TextureRegistry) \ IO =
         List.foldLeft((acc, entry) -> {
             let (atlases, reg) = acc;
-            let (atlas, texInfo) = bakeFontAtlas(entry);
+            // 文言の組み立ては字ごとでなくフォントごとに 1 回。進捗は数千回呼ばれる。
+            let report = (done, total) -> onProgress(entry#name, done, total);
+            let (atlas, texInfo) = bakeFontAtlas(entry, report);
             println("  Font '${entry#name}' baked (${atlas#textureName})");
             let newAtlases = Map.insert(entry#name, atlas, atlases);
             let newReg = Map.insert(atlas#textureName, texInfo, reg);

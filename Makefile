@@ -30,7 +30,7 @@ FLIX_TEST := $(CURDIR)/bin/flix
 
 # 全パッケージ共通のバージョン (lockstep)。sync 先ディレクトリ名や release の
 # asset 名に使う。make bump FROM=x TO=y で各 flix.toml と一緒に上げる。
-VERSION := 0.10.0
+VERSION := 0.11.0
 
 RENDER_GL_DIR       := render_gl
 RENDER_GL_FPKG_SRC  := $(RENDER_GL_DIR)/artifact/render_gl.fpkg
@@ -215,6 +215,20 @@ test-%:
 # 実機と配色が食い違う)。テンプレを足す・sprite Doc を触ったら通す。
 lint-palette:
 	@python3 bin/lint-palette.py
+
+# ── 起動画面の素材 ────────────────────────────────────────
+# 組み込みフォント (ASCII の 1bit ビットマップ) とロゴを engine/src/render/BootFontData.flix へ
+# 焼き直す。fpkg は .flix しか運べないので、生成物はコミットする。
+# 起動画面の文言に新しい字を足したとき・ロゴを差し替えたときだけ回す。
+# PREVIEW=<dir> を付けると、焼いた結果を目視用の PNG でも書き出す。
+boot-font:
+	@java bin/BootFontGen.java $(if $(PREVIEW),--preview $(PREVIEW))
+
+# フォントの焼き上がりの取り置きを捨てる (次の起動は焼き直しになる)。
+# 焼き方を変えた・容量が気になる・焼き直しを確かめたいときに。
+clean-font-cache:
+	@rm -rf "$${FLIX_GE_CACHE_DIR:-$$HOME/.cache/flix_game_engine/font}"
+	@echo "[clean-font-cache] 取り置きを捨てました"
 
 sync: clean-locks sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src
 

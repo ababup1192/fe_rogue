@@ -53,14 +53,15 @@ mod Gallery {
         let frames = timelineOf(ui, lightDoc, kind, 7);
         Bakery.bakeGif(config(atlas), frames, 1, w -> worldCmds(atlas, w), name)
 
-    /// fps オーバレイの見本（debug 表示と同じ絵を 1 枚）。App を起動せずに
-    /// Annotate.fpsItems を直接呼んで合成する（App.fpsOverlayOf と同じロジック）。
+    /// fps オーバレイの見本（帯の見た目を 1 枚）。App を起動せずに
+    /// Annotate.fpsItems を直接呼んで合成する。実機の fps 表示は組み込みフォントの
+    /// 等倍で出るので、字体と大きさはここと同じにはならない（見るのは帯の形）。
     def fpsOverlayScene(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
         let world = GameUi.projectUi(World.initial(ui, lightDoc, false, ShaderDoc.waterVeins()));
         let ctx = App.viewCtxOf(atlas, View.design());
         let sixtyFps = 1.0 / 60.0;
         let anno = List.range(0, 60) |> List.foldLeft((acc, _) -> Annotate.recordDt(sixtyFps, acc), Annotate.initial());
-        let overlay = Annotate.fpsItems(atlas, View.design(), Annotate.fpsOf(anno));
+        let overlay = Annotate.fpsItems(atlas, Annotate.defaultBadgeFontSize(), View.design(), Annotate.fpsOf(anno));
         Render.draw(List.append(View.frame(ctx, world), overlay))
 
     // ── blend 比較（RGB 3 円 × Normal/Add/Multiply）──

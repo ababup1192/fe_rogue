@@ -11,6 +11,6 @@ authors     = ["ababup1192 <ababup1192@gmail.com>"]
 # ソフトラスタライザを使う予定のため依存に含めている。
 
 [dependencies]
-"github:ababup1192/flix_engine_core" = { version = "0.10.0", security = "unrestricted" }
-"github:ababup1192/flix_engine_world" = { version = "0.10.0", security = "unrestricted" }
-"github:ababup1192/flix_engine_tools" = { version = "0.10.0", security = "unrestricted" }
+"github:ababup1192/flix_engine_core" = { version = "0.11.0", security = "unrestricted" }
+"github:ababup1192/flix_engine_world" = { version = "0.11.0", security = "unrestricted" }
+"github:ababup1192/flix_engine_tools" = { version = "0.11.0", security = "unrestricted" }

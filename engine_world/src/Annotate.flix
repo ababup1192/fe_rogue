@@ -93,8 +93,8 @@ mod Annotate {
     pub def scrubIndicatorItems(fontAtlas: FontAtlas, design: Vec2.Vec2,
                                 scrub: Int32, historyLen: Int32): List[Render.PlacedItem] =
         let message = "<< ${scrub}/${historyLen - 1}";
-        let size = badgeSize(fontAtlas, message);
-        badge(fontAtlas, { x = 4.0, y = design#y - size#y - 4.0 }, message)
+        let size = badgeSize(fontAtlas, badgeFontSize(), message);
+        badge(fontAtlas, badgeFontSize(), { x = 4.0, y = design#y - size#y - 4.0 }, message)
 
     // ── デバッグ小物の共通の見た目（黒地の帯 + 白文字）──
 
@@ -103,18 +103,19 @@ mod Annotate {
     def badgePad(): Float64 = 3.0
 
     /// 帯全体（pad 込み）の大きさ。右寄せ・下寄せの置き場所計算に使う。
-    def badgeSize(fontAtlas: FontAtlas, message: String): Vec2.Vec2 =
-        let size = Text.measure(Text.make(message, fontAtlas, badgeFontSize()));
+    def badgeSize(fontAtlas: FontAtlas, fontSize: Float64, message: String): Vec2.Vec2 =
+        let size = Text.measure(Text.make(message, fontAtlas, fontSize));
         { x = size#x + badgePad() * 2.0, y = size#y + badgePad() * 2.0 }
 
     /// 黒地 alpha 0.7 の帯に白文字を載せる。topLeft は帯の左上（デザイン座標）。
     /// z はゲームのどの絵よりも手前になる固定値（デバッグ中の表示は常に読めるように）。
-    def badge(fontAtlas: FontAtlas, topLeft: Vec2.Vec2, message: String): List[Render.PlacedItem] =
+    def badge(fontAtlas: FontAtlas, fontSize: Float64, topLeft: Vec2.Vec2,
+              message: String): List[Render.PlacedItem] =
         { at = topLeft,
-          item = Render.box(badgeSize(fontAtlas, message),
+          item = Render.box(badgeSize(fontAtlas, fontSize, message),
                             { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, 1000001) |> Render.fade(0.7f32) }
         :: { at = { x = topLeft#x + badgePad(), y = topLeft#y + badgePad() },
-             item = Render.text(message, fontAtlas, badgeFontSize(), 1000002) }
+             item = Render.text(message, fontAtlas, fontSize, 1000002) }
         :: Nil
 
     // ── 保存完了メッセージ（トースト）──
@@ -131,7 +132,7 @@ mod Annotate {
     /// 保存完了メッセージの絵。画面左上に固定で置く。
     /// ズーム・パンの影響を受けないよう、呼び側は見え方の適用後にこれを重ねる。
     pub def toastItems(fontAtlas: FontAtlas, message: String): List[Render.PlacedItem] =
-        badge(fontAtlas, { x = 4.0, y = 4.0 }, message)
+        badge(fontAtlas, badgeFontSize(), { x = 4.0, y = 4.0 }, message)
 
     // ── fps 計測（直近の dt の指数移動平均）──
 
@@ -152,10 +153,16 @@ mod Annotate {
 
     /// fps の絵。画面右上に固定で置く。
     /// ズーム・パンの影響を受けないよう、呼び側は見え方の適用後にこれを重ねる。
-    pub def fpsItems(fontAtlas: FontAtlas, design: Vec2.Vec2, fps: Int32): List[Render.PlacedItem] =
+    /// fontSize は呼び側が決める。ドット絵のフォントは焼いた大きさの等倍でしかくっきりせず、
+    /// どの大きさが合うかはどのフォントで出すかを知っている呼び側にしか分からない。
+    pub def fpsItems(fontAtlas: FontAtlas, fontSize: Float64, design: Vec2.Vec2,
+                     fps: Int32): List[Render.PlacedItem] =
         let message = "fps ${fps}";
-        let size = badgeSize(fontAtlas, message);
-        badge(fontAtlas, { x = design#x - size#x - 4.0, y = 4.0 }, message)
+        let size = badgeSize(fontAtlas, fontSize, message);
+        badge(fontAtlas, fontSize, { x = design#x - size#x - 4.0, y = 4.0 }, message)
+
+    /// 帯の字の大きさの既定（ゲームのフォントで出す注釈・トースト向け）。
+    pub def defaultBadgeFontSize(): Float64 = badgeFontSize()
 
     // ── 座標変換（不変条件: toDesign(view, toScreen(view, p)) == p）──
 

@@ -62,15 +62,22 @@ mod RenderAudio {
         if (String.endsWith({suffix = ".ogg"}, path)) loadOggToALBuffer(path)
         else loadWavToALBuffer(path)
 
-    /// サウンドマニフェストから全音声を読み込み、AudioRegistry (名前 → OpenAL ソース ID) を返す
-    pub def loadAudioRegistry(manifest: List[RenderAsset.AudioEntry]): RenderAsset.AudioRegistry \ IO =
-        List.foldLeft((registry, entry) -> {
+    /// サウンドマニフェストから全音声を読み込み、AudioRegistry (名前 → OpenAL ソース ID) を返す。
+    /// onProgress には「読み終えた本数 / 全本数」を渡す（起動画面が進み具合を出す）。
+    pub def loadAudioRegistry(manifest: List[RenderAsset.AudioEntry],
+                              onProgress: (Int32, Int32) -> Unit \ IO): RenderAsset.AudioRegistry \ IO =
+        let total = List.length(manifest);
+        onProgress(0, total);
+        let result = List.foldLeft((acc, entry) -> {
+            let (registry, done) = acc;
             let buffer = loadBuffer(entry#path);
             let source = AL10.alGenSources();
             AL10.alSourcei(source, AL10.AL_BUFFER, buffer);
             AL10.alSourcei(source, AL10.AL_LOOPING, if (entry#looping) AL10.AL_TRUE else AL10.AL_FALSE);
             println("  ${entry#path} loaded");
-            Map.insert(entry#name, source, registry)
-        }, Map.empty(), manifest)
+            onProgress(done + 1, total);
+            (Map.insert(entry#name, source, registry), done + 1)
+        }, (Map.empty(), 0), manifest);
+        fst(result)
 
 }

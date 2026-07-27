@@ -19,3 +19,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+## 同梱物 / Bundled assets
+
+`engine/src/render/BootFontData.flix` は起動画面のためにソースへ埋め込んだ生成物で、
+次の 2 つを素にしています（`make boot-font` で焼き直せます）。
+
+- **起動用フォント**: PixelMplus（PixelMplus10-Regular.ttf）の ASCII を 10px の
+  1bit ビットマップに焼いた物。PixelMplus は M+ FONT LICENSE のもとで配布されています。
+  M+ FONT LICENSE は再配布・改変・埋め込みを許諾しています。
+- **起動用ロゴ**: 本リポジトリの `docs/brand/flix_ge_icon.png` を 64×64・16 色に落とした物。

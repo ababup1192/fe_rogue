@@ -559,7 +559,10 @@ mod App {
     /// HTTP 口も一緒に立ち上がる（例: `DEBUG=1 DEBUG_HTTP_PORT=7777 flix run`）。
     pub def launch(app: App[w, ef]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + Fs.FileRead + IO) =
         let init = app#init;
-        let world0 = List.foldLeft((acc, sys) -> sys(acc), init(GameEngine.Game.getViewportRect()#size), app#startupSystems);
+        // 下ごしらえの間、画面には読み込み中の起動画面が出たまま残る（描き直さないので止まって見えるが、
+        // 出し直す口をここに作ると、間引きも中止スイッチも持たない 2 つ目の経路が生まれる）。
+        let world0 = List.foldLeft((acc, sys) -> sys(acc),
+                                   init(GameEngine.Game.getViewportRect()#size), app#startupSystems);
         let bridge = if (canDebug(app)) Option.map(RemoteDebug.start, RemoteDebug.portFromEnv())
                      else None;
         // 起動時点の更新時刻を「発火なしで」焼いておく — 焼かないと最初のポーリングが
@@ -939,12 +942,15 @@ mod App {
     /// debug 有効時だけ、画面右上に小さく fps を出す絵を組む（無効なら空 = 本番に一切出ない）。
     /// fps 表示は withView を使うゲームのみ（view = None の自前描画ゲームには出ない）—
     /// renderFrame が App の絵を描かない構成では、ここで組んでも捨てられるだけなので組まない。
+    /// 字はゲームのフォントではなく組み込みフォントで出す — ゲームごとにフォント名が違い、
+    /// 特定の名前を当てにすると名前が違うゲームで fps 表示が出せなくなる。
     def fpsOverlayOf(app: App[w, ef], anno: Annotate.State): List[Render.PlacedItem] \ GameEngine.Game =
         if (not app#debug or Option.isEmpty(app#view)) Nil
         else {
-            let atlas = GameEngine.Game.getFontAtlas("default");
+            let atlas = GameEngine.Game.getFontAtlas(BootFont.name());
             let design = GameEngine.Game.getViewportRect()#size;
-            Annotate.fpsItems(atlas, design, Annotate.fpsOf(anno))
+            // 組み込みフォントはドット絵なので、焼いた大きさの等倍で出す。
+            Annotate.fpsItems(atlas, atlas#fontSize, design, Annotate.fpsOf(anno))
         }
 
     /// F8 停止中に静的レイヤーを通常の動的アイテムとして描くための PlacedItem 列。

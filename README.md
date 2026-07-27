@@ -149,7 +149,31 @@ make sync-engine-tools   # build-pkg & distribute engine_tools only
 make sync-root-src       # regenerate the root src/ symlinks for the Flix community build
 make clean-locks         # remove stale *.lock left in the Maven cache by an interrupted flix check
 make clean-example-builds # delete examples/*/build/ (speeds up IDE scene loading)
+make boot-font           # re-bake the built-in splash font & logo into engine sources
+make clean-font-cache    # drop the cached font atlases (next launch re-bakes them)
 ```
+
+## Startup screen
+
+Every game shows a splash screen while assets load — the engine draws it, games write
+nothing. The window clears to the splash colour as soon as the GL context exists, then a
+logo, a white progress bar and a one-line status (`loading images...`, `loading font ui...`,
+`loading sounds...`) stay on screen until the first game frame.
+
+The text uses a **built-in font** embedded in the engine sources (ASCII only, 1-bit
+bitmap) — the game's own fonts are still being baked at that point, so they cannot be used.
+The same font backs the `DEBUG=1` fps badge, so it works whatever the game names its fonts.
+
+Baked font atlases are cached under `~/.cache/flix_game_engine/font`, which cuts the second
+and later launches of a Japanese-font game from ~20s to ~8s. A damaged or outdated cache is
+ignored and simply re-baked.
+
+| Environment variable | Effect |
+|---|---|
+| `FLIX_GE_NO_SPLASH=1` | Skip the splash screen entirely |
+| `FLIX_GE_NO_FONT_CACHE=1` | Never read or write the font atlas cache |
+| `FLIX_GE_CACHE_DIR=<dir>` | Put the font atlas cache somewhere else |
+| `FLIX_GE_SPLASH_SHOT=<file>` | Save a few PNGs of the splash screen (for eyeballing it) |
 
 ## Tech stack
 
@@ -301,7 +325,31 @@ make sync-engine-tools   # engine_tools だけ build-pkg & 配布
 make sync-root-src       # コミュニティビルド用ルート src/ symlink 集を再生成
 make clean-locks         # flix check 中断で残った Maven cache の *.lock を削除
 make clean-example-builds # examples/*/build/ を削除（IDE のシーン読み込み高速化用）
+make boot-font           # 起動画面の組み込みフォント・ロゴを engine のソースへ焼き直す
+make clean-font-cache    # フォントの焼き上がりの取り置きを捨てる（次の起動は焼き直し）
 ```
+
+## 起動画面
+
+読み込みの間、どのゲームでも起動画面が出る（エンジンが出すので、ゲーム側は何も書かない）。
+GL の用意ができた時点ですぐ画面を地の色で塗り、ロゴ・白いゲージ・いま何をしているかの一行
+（`loading images...` / `loading font ui...` / `loading sounds...`）を、ゲームの最初の 1 枚が
+出るまで見せ続ける。
+
+字は**エンジンのソースに埋め込んだ組み込みフォント**（ASCII だけ・1bit のドット絵）で描く。
+ゲームのフォントはまさにその時焼いている最中で使えないため。`DEBUG=1` の fps 表示も同じ
+フォントを使うので、ゲームがフォントに何という名前を付けていても出る。
+
+焼いたフォントアトラスは `~/.cache/flix_game_engine/font` に取っておく。日本語フォントの
+ゲームなら 2 回目以降の起動が約 20 秒 → 約 8 秒になる。壊れていたり古かったりする取り置きは
+黙って捨てて焼き直すので、起動が止まることはない。
+
+| 環境変数 | 効き方 |
+|---|---|
+| `FLIX_GE_NO_SPLASH=1` | 起動画面を出さない |
+| `FLIX_GE_NO_FONT_CACHE=1` | フォントの取り置きを読みも書きもしない |
+| `FLIX_GE_CACHE_DIR=<dir>` | フォントの取り置き場を変える |
+| `FLIX_GE_SPLASH_SHOT=<file>` | 起動画面を数枚 PNG に書き出す（目視で確かめる用） |
 
 ## 技術スタック
 

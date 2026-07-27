@@ -74,12 +74,18 @@ mod RenderTexture {
                           GL12.GL_BGRA, GL12.GL_UNSIGNED_INT_8_8_8_8_REV, buf)
 
     /// テクスチャマニフェストから全テクスチャを読み込み、論理名 → TextureInfo の
-    /// マップを返す。
-    pub def loadTextureRegistry(manifest: List[RenderAsset.TextureEntry]): RenderAsset.TextureRegistry \ IO =
-        List.foldLeft((registry, entry) -> {
+    /// マップを返す。onProgress には「読み終えた枚数 / 全枚数」を渡す（起動画面が進み具合を出す）。
+    pub def loadTextureRegistry(manifest: List[RenderAsset.TextureEntry],
+                                onProgress: (Int32, Int32) -> Unit \ IO): RenderAsset.TextureRegistry \ IO =
+        let total = List.length(manifest);
+        onProgress(0, total);
+        let result = List.foldLeft((acc, entry) -> {
+            let (registry, done) = acc;
             let texInfo = loadTexture(entry#path, entry#hasAlpha);
             println("  ${entry#path} loaded (${texInfo#width}x${texInfo#height})");
-            Map.insert(entry#name, texInfo, registry)
-        }, Map.empty(), manifest)
+            onProgress(done + 1, total);
+            (Map.insert(entry#name, texInfo, registry), done + 1)
+        }, (Map.empty(), 0), manifest);
+        fst(result)
 
 }

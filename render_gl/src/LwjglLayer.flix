@@ -99,6 +99,31 @@ mod LwjglLayer {
     def roundToInt(v: Float64): Int32 =
         Float64.tryToInt32(v + 0.5) |> Option.getWithDefault(0)
 
+    /// 起動画面の見た目を目で確かめるための書き出し口。環境変数 FLIX_GE_SPLASH_SHOT に
+    /// 保存先（`.../splash.png`）を入れて起動すると、間を空けて数枚だけ `splash-1.png` …
+    /// と落とす。ゲージが伸びているかを並べて確かめられる。
+    /// **枚数と間隔を絞ってあるのが肝** — 毎回書くと画面全体の読み出しと PNG 圧縮が
+    /// 読み込みの合間ごとに挟まり、起動が止まったように見えるほど遅くなる。
+    def splashShotLimit(): Int32 = 4
+    def splashShotGapMillis(): Int64 = 700i64
+
+    def splashShot(fbW: Int32, fbH: Int32, taken: Array[Int32, Static],
+                   lastNanos: Array[Int64, Static]): Unit \ IO =
+        let path = System.getenv("FLIX_GE_SPLASH_SHOT");
+        let count = Array.get(0, taken);
+        let now = System.nanoTime();
+        let gap = (now - Array.get(0, lastNanos)) / 1000000i64;
+        if (Object.isNull(path) or count >= splashShotLimit() or gap < splashShotGapMillis()) ()
+        else {
+            Array.put(count + 1, 0, taken);
+            Array.put(now, 0, lastNanos);
+            let stem = if (String.endsWith({ suffix = ".png" }, path))
+                           String.dropRight(4, path)
+                       else path;
+            discard ImageIO.write(framebufferImage(fbW, fbH), "png",
+                                  new File("${stem}-${count + 1}.png"))
+        }
+
     /// 現在のフレームバッファを読み出して画像にする。GL は左下原点なので
     /// 上下を反転しながら RGBA → RGB へ詰め替える。
     def framebufferImage(fbW: Int32, fbH: Int32): BufferedImage \ IO =
@@ -252,8 +277,22 @@ mod LwjglLayer {
         discard MemoryStack.stackPop();
         println("Framebuffer size: ${fbWidth}x${fbHeight}");
 
+        // フレームバッファサイズ。毎フレーム MemoryStack で問い合わせると呼び出しコストが積み上がるため、
+        // 起動時に実測した値を持ち回り、変化はリサイズ callback だけが更新する。
+        let framebufferSizeHolder = Array#{(fbWidth, fbHeight)} @ Static;
+
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+
+        // 窓は既に出ているのに、ここまで一度も塗っていないと中身は未定義（白やゴミ）のまま。
+        // シェーダの用意を待たずにまず一掃しておく。色はこの先のフレームと同じ物を使う —
+        // 別の色で塗ると、起動画面の 1 枚目が出た瞬間に画面の色がパッと変わって見える。
+        let clear = config#clearColor;
+        GL11.glViewport(0, 0, fbWidth, fbHeight);
+        GL11.glClearColor(clear#r, clear#g, clear#b, 1.0f32);
+        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        GLFW.glfwSwapBuffers(window);
+        GLFW.glfwPollEvents();
 
         let screenW = Int32.toFloat64(config#designWidth);
         let screenH = Int32.toFloat64(config#designHeight);
@@ -304,60 +343,14 @@ mod LwjglLayer {
         // program ハンドル → (uRectPos, uRectSize, uTime) の逆引き（drawSurface が uniform 設定に使う）。
         let shaderUniformCache: Ref[Map[Int32, (Int32, Int32, Int32)], Static] = Ref.fresh(Static, Map.empty());
 
-        println("Loading textures...");
-        let registry0 = RenderTexture.loadTextureRegistry(config#textureManifest);
-
-        println("Baking font atlases...");
-        let (fontAtlases, registry) = RenderFont.bakeFontAtlases(config#fontManifest, registry0);
         // テクスチャ表は実行時に増える（ensureTexture が焼いたアトラスを足す）ので可変で持つ。
+        // 起動画面が読み込みの最中に絵を出すため、ゲームのテクスチャより先に作って
+        // 組み込みフォントとロゴだけを入れておく。
         // 併せて「名前 → 最後に上げた key」を持ち、同じ key の再アップロードを弾く。
-        let registryRef: Ref[RenderAsset.TextureRegistry, Static] = Ref.fresh(Static, registry);
+        let registryRef: Ref[RenderAsset.TextureRegistry, Static] = Ref.fresh(Static, Map.empty());
         let textureKeyRef: Ref[Map[String, String], Static] = Ref.fresh(Static, Map.empty());
-
-        // ===== OpenAL audio init =====
-        println("Initializing audio...");
-        let alDevice = ALC10.nalcOpenDevice(MemoryUtil.NULL);
-        if (alDevice == 0i64) {
-            println("Failed to open OpenAL device");
-            bug!("Failed to open OpenAL device")
-        } else ();
-        let alcCaps = ALC.createCapabilities(alDevice);
-        let alContext = ALC10.nalcCreateContext(alDevice, MemoryUtil.NULL);
-        if (alContext == 0i64) {
-            println("Failed to create OpenAL context");
-            bug!("Failed to create OpenAL context")
-        } else ();
-        if (not ALC10.alcMakeContextCurrent(alContext)) {
-            println("Failed to make OpenAL context current");
-            bug!("Failed to make OpenAL context current")
-        } else ();
-        discard AL.createCapabilities(alcCaps);
-
-        println("  Loading sounds...");
-        let audioRegistry = RenderAudio.loadAudioRegistry(config#soundManifest);
-        // 注釈保存時のシャッター音（合成なのでゲーム側の音声マニフェストに依存しない）
-        let shutterSource = buildShutterSource();
-        println("  Audio ready");
-
-        let timeHolder = Array#{System.nanoTime()} @ Static;
-
-        // フレームバッファサイズ。毎フレーム MemoryStack で問い合わせると呼び出しコストが積み上がるため、
-        // 起動時に実測した値を持ち回り、変化はリサイズ callback だけが更新する。
-        let framebufferSizeHolder = Array#{(fbWidth, fbHeight)} @ Static;
-
-        // フルスクリーンからウィンドウへ戻すとき、起動時のウィンドウ位置・サイズへ復元する
-        // （フルスクリーン中に glfwSetWindowMonitor(NULL) で消える情報なので事前に確保しておく）。
-        let originalWindowRectHolder = {
-            let posStack = MemoryStack.stackPush();
-            let xBuf = posStack.mallocInt(1);
-            let yBuf = posStack.mallocInt(1);
-            GLFW.glfwGetWindowPos(window, xBuf, yBuf);
-            let x = xBuf.get(0);
-            let y = yBuf.get(0);
-            discard MemoryStack.stackPop();
-            Array#{(x, y, config#windowWidth, config#windowHeight)} @ Static
-        };
-        let fullscreenHolder = Array#{false} @ Static;
+        // 見つからないと知らせたフォント名。同じ名前で毎フレーム鳴らさないための控え。
+        let missingFontRef: Ref[Set[String], Static] = Ref.fresh(Static, Set.empty());
 
         // 静的多角形バッファのキャッシュ（キー → 焼いた VBO とレンジ目次）。テクスチャ registry と
         // 同じくエンジン内部に隠し、ゲームは GameEngine.StaticLayerCmd のキーと中身を宣言するだけ。
@@ -418,6 +411,112 @@ mod LwjglLayer {
                 instMultiplyBlend = instMultiplyBlend,
                 surfaces = surfaces, drawSurface = drawSurface})
         };
+
+        // macOS ではリサイズ中に glfwPollEvents がブロックされるため、
+        // フレームバッファサイズ変更コールバックで再描画を行う。
+        // **読み込みを始める前に付ける** — 読み込み中も起動画面が出ているぶん窓を掴まれる。
+        // 付いていないと、その間のサイズ変更が誰にも拾われず、読み込み後もずれたまま描き続ける。
+        discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
+            def invoke(_this: GLFWFramebufferSizeCallbackI, cbWindow: Int64, width: Int32, height: Int32): Unit \ IO = {
+                Array.put((width, height), 0, framebufferSizeHolder);
+                let (sprites, tileMaps, polygons, staticLayer, surfaces) = Array.get(0, renderStateHolder);
+                renderFrame(width, height, sprites, tileMaps, polygons, staticLayer, surfaces);
+                GLFW.glfwSwapBuffers(cbWindow)
+            }
+        });
+
+        // ===== 起動画面 =====
+        // ここから下は読み込みで数秒〜十数秒止まる。窓は既に出ているので、何も描かないと
+        // 固まったように見える。組み込みの絵だけで進み具合を出し続ける。
+        Ref.put(RenderSplash.install(), registryRef);
+        let splashState = RenderSplash.newState();
+        let splashShotTaken = Array#{0} @ Static;
+        let splashShotAt = Array#{0i64} @ Static;
+        let splashDesign = { x = screenW, y = screenH };
+        // 起動画面も renderStateHolder へ入れる。読み込み中に窓の大きさを変えると
+        // リサイズ callback が holder の中身で描き直すので、空だと真っ黒に落ちる。
+        // macOS では画面を出すたびにイベントを汲まないと窓が「応答なし」になる。
+        let drawSplash = (ds: List[GameEngine.Drawable]) -> {
+            Array.put((ds, Nil, Nil, None, Nil), 0, renderStateHolder);
+            let (splashW, splashH) = Array.get(0, framebufferSizeHolder);
+            renderFrame(splashW, splashH, ds, Nil, Nil, None, Nil);
+            splashShot(splashW, splashH, splashShotTaken, splashShotAt);
+            GLFW.glfwSwapBuffers(window);
+            GLFW.glfwPollEvents()
+        };
+        let splash = (phase: String, done: Int32, total: Int32) ->
+            RenderSplash.tick(splashState, drawSplash, splashDesign, phase, done, total);
+        // 読み込み中は画面の垂直同期を待たない（1 枚 16ms の待ちが読み込みそのものを遅くする）。
+        GLFW.glfwSwapInterval(0);
+        RenderSplash.show(splashState, drawSplash, splashDesign, "starting up...", 0, 0);
+
+        println("Loading textures...");
+        let registry0 = RenderTexture.loadTextureRegistry(config#textureManifest,
+            (done, total) -> splash("loading images...", done, total));
+
+        println("Baking font atlases...");
+        // 文言はフォントごとに 1 回だけ組み立てる（進捗は字ごとに数千回来る）。
+        let fontPhases: Ref[Map[String, String], Static] = Ref.fresh(Static, Map.empty());
+        let fontPhaseOf = (name: String) -> match Map.get(name, Ref.get(fontPhases)) {
+            case Some(text) => text
+            case None =>
+                let text = "loading font ${name}...";
+                Ref.put(Map.insert(name, text, Ref.get(fontPhases)), fontPhases);
+                text
+        };
+        let (gameAtlases, registry) = RenderFont.bakeFontAtlases(config#fontManifest, registry0,
+            (name, done, total) -> splash(fontPhaseOf(name), done, total));
+        // 組み込みフォントも名前で引けるようにする（fps 表示・フォント名が合わないときの受け皿）。
+        let fontAtlases = Map.insert(BootFont.name(), BootFont.atlas(), gameAtlases);
+        // 起動画面の分（組み込みフォント・ロゴ）を残したままゲームのテクスチャを足す。
+        Ref.put(Map.union(registry, Ref.get(registryRef)), registryRef);
+
+        // ===== OpenAL audio init =====
+        println("Initializing audio...");
+        RenderSplash.show(splashState, drawSplash, splashDesign, "starting audio...", 0, 0);
+        let alDevice = ALC10.nalcOpenDevice(MemoryUtil.NULL);
+        if (alDevice == 0i64) {
+            println("Failed to open OpenAL device");
+            bug!("Failed to open OpenAL device")
+        } else ();
+        let alcCaps = ALC.createCapabilities(alDevice);
+        let alContext = ALC10.nalcCreateContext(alDevice, MemoryUtil.NULL);
+        if (alContext == 0i64) {
+            println("Failed to create OpenAL context");
+            bug!("Failed to create OpenAL context")
+        } else ();
+        if (not ALC10.alcMakeContextCurrent(alContext)) {
+            println("Failed to make OpenAL context current");
+            bug!("Failed to make OpenAL context current")
+        } else ();
+        discard AL.createCapabilities(alcCaps);
+
+        println("  Loading sounds...");
+        let audioRegistry = RenderAudio.loadAudioRegistry(config#soundManifest,
+            (done, total) -> splash("loading sounds...", done, total));
+        // 注釈保存時のシャッター音（合成なのでゲーム側の音声マニフェストに依存しない）
+        let shutterSource = buildShutterSource();
+        println("  Audio ready");
+
+        // 読み込みは済んだので画面の垂直同期を戻す。ここから先（ゲームの下ごしらえ）も
+        // 起動画面は出続けるが、枚数が知れているので待ちは体感に出ない。
+        GLFW.glfwSwapInterval(1);
+
+        let timeHolder = Array#{System.nanoTime()} @ Static;
+
+        // フルスクリーンからウィンドウへ戻すとき、起動時のウィンドウ位置・サイズへ復元する
+        // （フルスクリーン中に glfwSetWindowMonitor(NULL) で消える情報なので事前に確保しておく）。
+        let originalWindowRectHolder = {
+            let posStack = MemoryStack.stackPush();
+            let xBuf = posStack.mallocInt(1);
+            let yBuf = posStack.mallocInt(1);
+            GLFW.glfwGetWindowPos(window, xBuf, yBuf);
+            let x = xBuf.get(0);
+            let y = yBuf.get(0);
+            discard MemoryStack.stackPop();
+            Array#{(x, y, config#windowWidth, config#windowHeight)} @ Static
+        };
+        let fullscreenHolder = Array#{false} @ Static;
 
         // 6 種のスタンダードカーソルを起動時に作成して再利用する。
         // setCursor 呼び出しの度に都度作成 / 破棄すると重く、リーク源にもなる
@@ -513,17 +612,6 @@ mod LwjglLayer {
                 case GameEngine.Key.LeftShift => padBtn(GLFW.GLFW_GAMEPAD_BUTTON_LEFT_BUMPER)
                 case _                        => false
             };
-
-        // macOS ではリサイズ中に glfwPollEvents がブロックされるため、
-        // フレームバッファサイズ変更コールバックで再描画を行う
-        discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
-            def invoke(_this: GLFWFramebufferSizeCallbackI, cbWindow: Int64, width: Int32, height: Int32): Unit \ IO = {
-                Array.put((width, height), 0, framebufferSizeHolder);
-                let (sprites, tileMaps, polygons, staticLayer, surfaces) = Array.get(0, renderStateHolder);
-                renderFrame(width, height, sprites, tileMaps, polygons, staticLayer, surfaces);
-                GLFW.glfwSwapBuffers(cbWindow)
-            }
-        });
 
         let result = run {
             f()
@@ -667,7 +755,16 @@ mod LwjglLayer {
             def getFontAtlas(name, k) = {
                 match Map.get(name, fontAtlases) {
                     case Some(atlas) => k(atlas)
-                    case None => bug!("Font atlas not found: ${name}")
+                    // 名前が合わないだけでゲームが落ちるより、組み込みフォントで出す方がまし。
+                    // ただし黙って倒れると打ち間違いに気付けないので、名前ごとに 1 度だけ知らせる。
+                    case None =>
+                        let warned = Ref.get(missingFontRef);
+                        if (not Set.memberOf(name, warned)) {
+                            println("[engine] フォント '${name}' は project.json にありません"
+                                + "（組み込みフォントで代用します）");
+                            Ref.put(Set.insert(name, warned), missingFontRef)
+                        } else ();
+                        k(BootFont.atlas())
                 }
             }
             def getViewportRect(k) = {
