@@ -139,6 +139,7 @@ mod TestWorldJourney {
                 def setVolume(_, _, k)     = k()
                 def setLooping(_, _, k)    = k()
                 def setMasterVolume(_, k)  = k()
+                def reloadAudio(_, _, k)   = k()
             } with handler Math.Random {
                 def randomFloat64(k) = k(rng.nextDouble())
                 def randomInt64(k)   = k(rng.nextLong())

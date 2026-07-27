@@ -326,6 +326,7 @@ mod TestUnitFixtures {
             def setVolume(_, _, k)     = k()
             def setLooping(_, _, k)    = k()
             def setMasterVolume(_, k)  = k()
+            def reloadAudio(_, _, k)   = k()
         }
 
     /// EnemyTurn.Queue の no-op スタブ。`isEmpty` は true、その他の操作は捨てる。
