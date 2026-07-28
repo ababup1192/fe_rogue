@@ -39,7 +39,7 @@ mod Fx {
     /// sample の絵（原点 (0, 0) 生まれ）を at へ平行移動して置く。
     /// 「爆発をこの座標で」の定型を呼び側に書かせない（drawAll の内部でも使う）。
     pub def sampleAt(spec: FxDoc.Spec, seed: Int64, t: Float64, at: Vec2.Vec2): List[Render.PlacedItem] =
-        sample(spec, seed, t) |> List.map(p -> { at = Vec2.add(at, p#at) | p })
+        sample(spec, seed, t) |> Render.movedAll(at)
 
     // ========================================================================
     // burst 管理（「撃つたびに出る」効果の器）

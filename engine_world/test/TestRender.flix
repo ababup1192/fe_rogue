@@ -313,4 +313,29 @@ mod TestRender {
 
     /// 小数4桁へ丸める（円周上の点の浮動小数比較用）。
     def round4(x: Float64): Float64 = Float64.floor(x * 10000.0 + 0.5) / 10000.0
+    /// 列の先頭の (置き場所, 大きさ, z)。動かしたとき何が変わって何が変わらないかを見る。
+    def shapeOf(items: List[Render.PlacedItem]): (Float64, Float64, Float64, Int32) =
+        match List.head(items) {
+            case None => (0.0, 0.0, -1.0, -1)
+            case Some(p) => match p#item {
+                case Render.Item.Box(b) => (p#at#x, p#at#y, b#size#x, b#zIndex)
+                case _                  => (p#at#x, p#at#y, -1.0, -1)
+            }
+        }
+
+    @Test
+    def testMovedAllShiftsPlacesOnly(): Unit \ Assert =
+        // 置き場所だけが動き、中身（大きさ・z）は触られない。
+        let items = { at = { x = 1.0, y = 2.0 }, item = Render.box({ x = 4.0, y = 4.0 }, red(), 7) } :: Nil;
+        Assert.assertEq(expected = (11.0, 22.0, 4.0, 7),
+            shapeOf(Render.movedAll({ x = 10.0, y = 20.0 }, items)))
+
+    @Test
+    def testMovedAllComposes(): Unit \ Assert =
+        // 2 度動かすのは、足した量で 1 度動かすのと同じ。
+        let items = { at = { x = 3.0, y = 5.0 }, item = Render.box(Vec2.one(), red(), 0) } :: Nil;
+        let twice = items |> Render.movedAll({ x = 1.0, y = 2.0 }) |> Render.movedAll({ x = 4.0, y = 8.0 });
+        Assert.assertEq(expected = shapeOf(items |> Render.movedAll({ x = 5.0, y = 10.0 })),
+            shapeOf(twice))
+
 }

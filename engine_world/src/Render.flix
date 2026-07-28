@@ -349,6 +349,13 @@ mod Render {
     pub def zShiftedAll(delta: Int32, items: List[PlacedItem]): List[PlacedItem] =
         items |> List.map(placed -> { item = zShifted(delta, placed#item) | placed })
 
+    /// 組み上がった列を丸ごと d だけ動かす（zShiftedAll の位置版）。
+    /// 部品を 0 起点で組んでから最後に置き場所を与える書き方（盤の原点へ寄せる・
+    /// UI の枠の中へ入れる・粒を発生源へ運ぶ）がこれで 1 行になる。
+    /// 中身（大きさ・頂点・z）には触らない — 動かすのは置き場所だけ。
+    pub def movedAll(d: Vec2.Vec2, items: List[PlacedItem]): List[PlacedItem] =
+        items |> List.map(placed -> { at = Vec2.add(d, placed#at) | placed })
+
     /// 置き場所と頂点を step px の升目に載せる（ドット絵の升目に合わせて角を落とす）。
     /// なめらかな多角形（デュアルグリッドの丸い角など）をドット絵と同じ画面に置くと、
     /// そこだけ画素の階段が無くて浮く。升目に載せると階段がそろい、地続きに見える。

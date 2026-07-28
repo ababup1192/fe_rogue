@@ -122,7 +122,7 @@ mod Terrain {
         });
         staticItems({ tileSize = opts#tileSize, styleMix = opts#styleMix },
                     entries, cornersOf(cols, rowCount))
-            |> List.map(placed -> { at = Vec2.add(opts#origin, placed#at) | placed })
+            |> Render.movedAll(opts#origin)
 
     // ════════════════════════════════════════════════════════
     // 内部(1角ぶんの描画・むら・岸の判定)

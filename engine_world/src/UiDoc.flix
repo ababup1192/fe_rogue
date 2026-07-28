@@ -969,7 +969,7 @@ mod UiDoc {
     def drawBox(textureInfoOf: String -> Option[GameEngine.TextureInfo],
                 spec: BoxSpec, r: Rect2.Rect2): List[Render.PlacedItem] =
         UiExtract.boxPlacedItems(spec#box, r#size, textureInfoOf)
-            |> List.map(placed -> { at = Vec2.add(r#position, placed#at) | placed })
+            |> Render.movedAll(r#position)
             |> turnedIn(spec#rotation, spec#pivot, r)
 
     /// rect の中で傾ける。軸は pivot（rect 左上からの相対）か、省略時は rect の中心。
