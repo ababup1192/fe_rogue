@@ -46,6 +46,16 @@ mod TestSceneSeq {
             expected = (4, 1),
             (List.length(played#frames), List.length(played#notes)))
 
+    /// カット→コマの対応表: 2 コマのカット + 1 コマのカットなら、
+    ///   frames = [w0, w1, w2, w3]（コマ番号 0..3）
+    ///   カット1 は コマ0（= w0）から、カット2 はカット1 を演じ終えた コマ2 から始まる。
+    @Test
+    def testMarksRecordCutBoundaries(): Unit \ Assert =
+        let played = SceneSeq.play(act, still, 10, 1.0, 2 :: 1 :: Nil, 0);
+        Assert.assertEq(
+            expected = (1, 0) :: (2, 2) :: Nil,
+            played#marks |> List.map(mark -> (mark#cut, mark#frame)))
+
     /// カットが尽きたら idle が時間だけを流す（tick は止まらない）。
     @Test
     def testIdleAfterCutsExhausted(): Unit \ Assert =

@@ -117,11 +117,17 @@ mod Bakery {
         let sampled = every(stride, frames);
         // コマ列は同じ作りの絵が続くので、報告は先頭コマぶんだけ出す（同じ警告が何十行も並ばない）。
         List.head(sampled) |> Option.forEach(w -> warnDropped(fst(toCmds(w)), name));
-        let images = List.map(w -> {
+        // コマ別 PNG は「描くたびに 1 枚ずつ」書く（最後に一括ではなく）— 長い焼きの最中でも
+        // Studio が frames/ をポーリングして、出来上がりつつあるコマを流し見できる。
+        // 命名・画素は Filmstrip.bakeFrames と同じ経路（bakeFrame）なのでバイト列も変わらない。
+        let images = List.zipWithIndex(sampled) |> List.map(pair -> {
+            let (i, w) = pair;
             let (drawables, polygons) = toCmds(w);
-            SoftRaster.renderToImageFonts(reqOf(cfg, drawables, polygons, gifPath(cfg, name)), Nil, extraFonts)
-        }, sampled);
-        GifEncoder.encodeWithFrames(images, cfg#gifDelayMs, gifPath(cfg, name), "${cfg#outDir}/frames/${name}");
+            let img = SoftRaster.renderToImageFonts(reqOf(cfg, drawables, polygons, gifPath(cfg, name)), Nil, extraFonts);
+            Filmstrip.bakeFrame(img, "${cfg#outDir}/frames/${name}/${i}.png");
+            img
+        });
+        GifEncoder.encode(images, cfg#gifDelayMs, gifPath(cfg, name));
         { strip = "frames/${name}/", frameCount = List.length(images),
           frameW = cfg#frameW, frameH = cfg#frameH, fps = cfg#gifFps }
 

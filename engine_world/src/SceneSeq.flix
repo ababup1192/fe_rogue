@@ -36,9 +36,14 @@ mod SceneSeq {
         notes = List[String]
     }
 
+    /// カット→コマの対応表の 1 行。cut = 1 始まりの通し番号、
+    /// frame = そのカットが始まる瞬間のコマ番号（frames の添字。frame 0 = w0）。
+    pub type alias Mark = { cut = Int32, frame = Int32 }
+
     /// 演じ切った結果。frames = コマの列（先頭 = 始まりの姿）、
+    /// marks = カットごとの始まりのコマ番号（コマ送りで「カット N へ跳ぶ」に使う）、
     /// notes = 報せ（飛ばしたカット・打ち切り。無ければ空）。
-    pub type alias Played[w] = { frames = List[w], notes = List[String] }
+    pub type alias Played[w] = { frames = List[w], marks = List[Mark], notes = List[String] }
 
     /// カットの列から進行状態を作る（1 番から演じ始める）。
     pub def start(cuts: List[c]): State[c, p] =
@@ -76,20 +81,26 @@ mod SceneSeq {
                  idle: (Float64, w) -> w,
                  maxFrames: Int32, dt: Float64,
                  cuts: List[c], w0: w): Played[w] =
-        let (ended, frames) = act(perform, idle, maxFrames, dt, start(cuts), w0, w0 :: Nil);
+        let (ended, frames, marks) = act(perform, idle, maxFrames, dt, start(cuts), w0, w0 :: Nil, 0, Nil);
         let notes = if (done(ended)) ended#notes
                     else "カット${ended#at} の途中、${maxFrames} コマで打ち切った"
                          + "(脚本が長すぎるか、終われないカットがある)" :: ended#notes;
-        { frames = frames |> List.reverse, notes = notes |> List.reverse }
+        { frames = frames |> List.reverse, marks = marks |> List.reverse,
+          notes = notes |> List.reverse }
 
     def act(perform: (c, Option[p], Float64, w) -> (Status[p], w),
             idle: (Float64, w) -> w,
             remaining: Int32, dt: Float64, s: State[c, p], w: w,
-            acc: List[w]): (State[c, p], List[w]) =
-        if (remaining <= 0 or done(s)) (s, acc)
+            acc: List[w], framesDone: Int32, marks: List[Mark]): (State[c, p], List[w], List[Mark]) =
+        if (remaining <= 0 or done(s)) (s, acc, marks)
         else {
+            // 演じているカットの番号が（Done/Skip で）進んだ瞬間だけ、対応表に 1 行足す。
+            let marked = match marks {
+                case head :: _ if head#cut == s#at => marks
+                case _                             => { cut = s#at, frame = framesDone } :: marks
+            };
             let (s2, w2) = tick(perform, idle, dt, s, w);
-            act(perform, idle, remaining - 1, dt, s2, w2, w2 :: acc)
+            act(perform, idle, remaining - 1, dt, s2, w2, w2 :: acc, framesDone + 1, marked)
         }
 
     /// 演じ切った終わりの姿だけ（テストの検査用）。

@@ -147,6 +147,10 @@ mod App {
         // 中身を、温まった JVM で実行するだけ）。走行中のプレイ状態には一切触れないこと。
         // None のゲームへの /bake は「未対応」の応答になる（Studio はそれでフォールバック）。
         remoteBake = Option[Unit -> List[String] \ IO],
+        // リモートデバッグ（HTTP）の任意パスに応える、ゲーム登録のハンドラ（onRequest で足す）。
+        // (パス, (クエリ, World) -> Ok(次の World) / Err(理由)) の列。既定ルートに無いパスだけが
+        // ここへ来て、パスの完全一致・登録順の先勝ちで 1 本選ばれる。
+        remoteHandlers = List[(String, (Map[String, String], w) -> Result[String, w] \ {Fs.FileRead})],
         // 物理・当たり判定を実時間でなく固定量子で進めたいゲームの刻み幅（秒）。None = 可変 dt
         // のまま（既定・全既存ゲームはこちら）。withFixedStep で有効化する（詳細は同関数を参照）。
         fixedStep = Option[Float64]
@@ -184,6 +188,7 @@ mod App {
           worldDump = None,
           statusLine = None,
           remoteBake = None,
+          remoteHandlers = Nil,
           fixedStep = None }
 
     /// 起動時に 1 回だけ走るシステムを末尾へ繋ぐ（追加順に適用される）。
@@ -380,6 +385,19 @@ mod App {
     /// 繋がないゲームへの /bake は「未対応」の応答になる。
     pub def onBakeRequest(f: Unit -> List[String] \ IO, app: App[w, ef]): App[w, ef] =
         { remoteBake = Some(f) | app }
+
+    /// リモートデバッグ（HTTP）の任意パス（例: "/save"）に応えるハンドラを繋ぐ。
+    /// f はクエリ（?slot=1 → Map。+ と %20 は空白に戻る）と今の World を受け取り、
+    /// Ok(次の World) か Err(理由) を返す。Ok なら world を差し替えて "ok"、
+    /// Err なら "error: 理由" を応答する。
+    /// スレッドの約束（RemoteDebug と同じ）: HTTP のスレッドは World に一切触れない。
+    /// リクエストはキューに積まれ、ゲームループが 1 フレームに 1 件だけ、このハンドラを
+    /// 自分のスレッドで適用して world を差し替える（/step と同じ流儀）。だから f の中で
+    /// World を同期に読み書きしてよいが、長い仕事を書くとその間ゲームは止まる。
+    /// /help など既定ルートと同じパスは登録しても選ばれない（既定ルートが先に照合される）。
+    pub def onRequest(path: String, f: (Map[String, String], w) -> Result[String, w] \ {Fs.FileRead},
+                      app: App[w, ef]): App[w, ef] =
+        { remoteHandlers = List.append(app#remoteHandlers, (path, f) :: Nil) | app }
 
     /// 物理・当たり判定を固定刻み（dtSeconds 秒）で進める accumulator 方式を有効にする。
     /// 実フレームの経過秒を貯め、刻みの倍数だけ updateSystems を 0〜5 回サブステップで回し、
@@ -1050,7 +1068,22 @@ mod App {
             case ("GET", "/state")   => remoteState(app, bridge, request, ctx)
             case ("POST", "/step")   => remoteStepCommand(app, bridge, request, ctx)
             case ("POST", "/bake")   => remoteBakeCommand(app, bridge, ctx)
-            case (m, p)              => answer("error: no route for ${m} ${p} (see GET /help)\n", bridge, ctx)
+            case (m, p)              =>
+                match RemoteDebug.findRoute(p, app#remoteHandlers) {
+                    case Some(chosen) => remoteCustom(chosen, bridge, request, ctx)
+                    case None => answer("error: no route for ${m} ${p} (see GET /help)\n", bridge, ctx)
+                }
+        }
+
+    /// ゲーム登録の任意ルート（App.onRequest）を 1 件適用する。Ok なら world を差し替えて
+    /// "ok"、Err なら理由をそのまま応答する。停止状態・履歴・hold には触れない —
+    /// 走行中なら差し替わった world で次の実フレームから進み、停止中なら /resume でそこから再開する。
+    def remoteCustom(apply: (Map[String, String], w) -> Result[String, w] \ {Fs.FileRead},
+                     bridge: RemoteDebug.Bridge, request: RemoteDebug.Request,
+                     ctx: RemoteNext[w]): RemoteNext[w] \ (Fs.FileRead + IO) =
+        match apply(request#params, ctx#world) {
+            case Ok(changed)  => answer("ok\n", bridge, { world = changed | ctx })
+            case Err(message) => answer("error: ${message}\n", bridge, ctx)
         }
 
     /// 応答を書いてから next を返すだけの小さな合流点。

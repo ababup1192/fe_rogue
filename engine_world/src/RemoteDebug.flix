@@ -107,15 +107,29 @@ mod RemoteDebug {
         { method = methodName, path = path, params = parseQuery(queryText),
           body = bodyLines |> String.intercalate("\n") }
 
-    /// "a=1&b=2" を Map へ。値に = を含む形や URL エンコードは扱わない（このプロトコルでは不要）。
+    /// "a=1&b=2" を Map へ。値に = を含む形は扱わない（このプロトコルでは不要）。
     def parseQuery(text: String): Map[String, String] =
         if (text == "") Map.empty()
         else String.splitOn({substr = "&"}, text)
              |> List.filterMap(pair -> match String.splitOn({substr = "="}, pair) {
-                 case key :: value :: Nil => Some((key, value))
+                 case key :: value :: Nil => Some((key, decodeValue(value)))
                  case _                   => None
              })
              |> List.toMap
+
+    /// クエリ値の最小限の URL デコード（"+" と "%20" を空白へ）。値は英数字が基本の
+    /// プロトコルなので、全 %XX の復号表は持たない（必要になったら足す）。
+    def decodeValue(text: String): String =
+        text |> String.replace(src = "+", dst = " ")
+             |> String.replace(src = "%20", dst = " ")
+
+    /// ゲーム登録の任意ルート（App.onRequest）から、パスに完全一致する最初の 1 本を選ぶ。
+    /// パスは parseRequest がクエリを外した後の物で照合する（"/save?slot=1" は "/save" に合う）。
+    pub def findRoute(path: String, routes: List[(String, a)]): Option[a] =
+        routes |> List.findMap(entry -> {
+            let (route, chosen) = entry;
+            if (route == path) Some(chosen) else None
+        })
 
     // ── /step・/state のパラメータ ──
 
@@ -384,6 +398,7 @@ mod RemoteDebug {
         + "POST /step?view=&rect=&until=&max=&trace=&dt=\n"
         + "     body = input script; runs it frame by frame, then answers.\n"
         + "     auto-halts first if the game is running.\n"
+        + "ANY  /<path>?k=v              game-registered handler (App.onRequest), if wired\n"
         + "\n"
         + "script DSL (one command per line, # comments):\n"
         + "  idle N        wait N frames\n"

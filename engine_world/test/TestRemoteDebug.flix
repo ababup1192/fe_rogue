@@ -26,6 +26,29 @@ mod TestRemoteDebug {
             expected = ("GET", "/help", 0, ""),
             (request#method, request#path, Map.size(request#params), request#body))
 
+    // クエリ値は最小限の URL デコード（+ と %20 → 空白）だけを行う。
+    @Test
+    def testParseRequestDecodesSpacesInQueryValues(): Unit \ Assert =
+        let request = RemoteDebug.parseRequest("POST /save?name=girl+in%20rain\n");
+        Assert.assertEq(
+            expected = Some("girl in rain"),
+            Map.get("name", request#params))
+
+    // ========================================================================
+    // findRoute: 任意ルート（App.onRequest）の照合
+    // ========================================================================
+
+    // クエリを外した後のパスの完全一致で照合し、同じパスは先に登録した方が勝つ。
+    // 前方一致ではない（"/save2" は "/save" に食われない）し、未登録パスは None。
+    @Test
+    def testFindRouteMatchesExactPathFirstWins(): Unit \ Assert =
+        let routes = ("/save", 1) :: ("/save2", 2) :: ("/save", 3) :: Nil;
+        Assert.assertEq(
+            expected = (Some(1), Some(2), None),
+            (RemoteDebug.findRoute("/save", routes),
+             RemoteDebug.findRoute("/save2", routes),
+             RemoteDebug.findRoute("/nope", routes)))
+
     // ========================================================================
     // parseParams: クエリの解釈
     // ========================================================================

@@ -47,17 +47,25 @@ mod Filmstrip {
             case first :: _ =>
                 let fw = Int32.max(1i32, first.getWidth());
                 let fh = Int32.max(1i32, first.getHeight());
-                discard (new File(dirPath)).mkdirs();
-                List.forEachWithIndex((i, img) -> {
-                    let file = new File("${dirPath}/${i}.png");
-                    match collectPalette(img :: Nil, fw, fh) {
-                        case Some(colors) =>
-                            discard ImageIO.write(drawIndexed(img :: Nil, fw, fw, fh, colors), "png", file)
-                        case None =>
-                            discard ImageIO.write(drawFullColor(img :: Nil, fw, fw, fh), "png", file)
-                    }
-                }, frames);
+                List.forEachWithIndex((i, img) -> bakeFrame(img, "${dirPath}/${i}.png"), frames);
                 Some({ frameCount = List.length(frames), frameW = fw, frameH = fh })
+        }
+
+    /// 1 コマだけをコマ別 PNG に書く（bakeFrames の 1 枚ぶんと同じ経路 = 同じバイト列になる）。
+    /// コマを描くたびに 1 枚ずつ書き出したい呼び側（Bakery の GIF 焼き）の口 — 全コマが
+    /// 揃うのを待たずに、焼き途中のコマをファイルで見せられる。減量方針も bakeFrames と
+    /// 同じ（256 色以下なら PNG-8、超えたらフルカラー）。親ディレクトリは無ければ作る。
+    pub def bakeFrame(img: BufferedImage, outPath: String): Unit \ IO =
+        let fw = Int32.max(1i32, img.getWidth());
+        let fh = Int32.max(1i32, img.getHeight());
+        let file = new File(outPath);
+        let parent = file.getParentFile();
+        if (not Object.isNull(parent)) discard parent.mkdirs() else ();
+        match collectPalette(img :: Nil, fw, fh) {
+            case Some(colors) =>
+                discard ImageIO.write(drawIndexed(img :: Nil, fw, fw, fh, colors), "png", file)
+            case None =>
+                discard ImageIO.write(drawFullColor(img :: Nil, fw, fw, fh), "png", file)
         }
 
     /// `frames`（同寸の BufferedImage 列）を横連結して `outPath` へ PNG で書き出す。
