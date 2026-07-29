@@ -304,6 +304,11 @@ release-guard:
 	 if [ -n "$$dirty" ]; then \
 	   echo "[release] engine ソースが未コミットです。commit してから実行してください:"; echo "$$dirty"; exit 1; \
 	 fi
+	@# ゲーム側 lib の flix.toml はここへの symlink なので、別プロセスの依存解決が
+	@# symlink 越しに中身を空にしてしまうことがある。壊れたまま build-pkg へ進まない。
+	@for f in $(ROOT_SRC_PKGS:%=%/flix.toml) $(ENGINE_FULL_DIR)/flix.toml; do \
+	   grep -q '^name' "$$f" || { echo "[release] $$f が壊れています (package.name が無い)。git checkout -- $$f で復元してください"; exit 1; }; \
+	 done
 	@echo "[release] v$(VERSION) を $(RELEASE_SHA) で公開します"
 release: release-guard sync $(TEST)
 	cd $(ENGINE_FULL_DIR) && $(FLIX) build-pkg
