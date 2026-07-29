@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "note": "ドット絵。文字は意味色キーで、実色は ThemeDoc.resolver が解決する。全部 8×8・scale 2 で 16×16px（タイル 20px の中に収まる）。",
+  "paletteFile": "assets/rpg.palette.json",
+  "entityId": "rpg.sprites",
+  "legend": {
+    "a": "accent",
+    "A": "accentLight",
+    "c": "cloth",
+    "C": "clothLight",
+    "i": "ink",
+    "f": "leaf"
+  },
+  "sprites": {
+    "hero": {
+      "note": "薬草を届けに来た行商の子。笠(i)と大きな荷(a)。walk は足を開いたコマ。",
+      "anchor": { "x": 0.0, "y": 0.0 },
+      "frames": {
+        "idle": [
+          "..iiii..",
+          ".iiiiii.",
+          "..AAAA..",
+          ".aaaaaa.",
+          "aaaaaaaa",
+          "aaaaaaaa",
+          "..a..a..",
+          "..i..i.."
+        ],
+        "walk": [
+          "..iiii..",
+          ".iiiiii.",
+          "..AAAA..",
+          ".aaaaaa.",
+          "aaaaaaaa",
+          "aaaaaaaa",
+          ".a....a.",
+          ".i....i."
+        ]
+      }
+    },
+    "villager": {
+      "note": "里の住人。頭巾(c)と前掛け(C)。",
+      "anchor": { "x": 0.0, "y": 0.0 },
+      "frames": {
+        "idle": [
+          "..cccc..",
+          ".cccccc.",
+          ".cCCCCc.",
+          "..CCCC..",
+          ".cccccc.",
+          "cccccccc",
+          "..c..c..",
+          "..i..i.."
+        ]
+      }
+    },
+    "herb": {
+      "note": "畑や道ばたに生える薬草。葉(f)が三つ、茎(i)が一本。",
+      "anchor": { "x": 0.0, "y": 0.0 },
+      "frames": {
+        "idle": [
+          "........",
+          "..f..f..",
+          ".fff.ff.",
+          "..ff.f..",
+          "...fff..",
+          "....f...",
+          "...if...",
+          "...i...."
+        ]
+      }
+    }
+  }
+}

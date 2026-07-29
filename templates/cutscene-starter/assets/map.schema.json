@@ -1,0 +1,199 @@
+{
+ "//": "rpg.map.json の形の宣言（sections 方言）。タイルの rows・住人・扉と約束・薬草と灯りの配置。rows は '#'=石垣 ','=畑 '.'=道（知らない文字は道）。扉は物の鍵でなく約束で開く: promise の住人に話しかけ、need 個の薬草を持っていれば開く。goal 個の薬草を拾うとクリア。歩ける・ぶつかる・開く・クリアの規則はコード（World）側。",
+ "version": 1,
+ "sections": {
+  "note": {
+   "kind": "field",
+   "type": "text",
+   "label": "メモ",
+   "order": 1,
+   "widget": "multiline"
+  },
+  "title": {
+   "kind": "field",
+   "type": "text",
+   "label": "里の名前（表紙）",
+   "order": 2
+  },
+  "subtitle": {
+   "kind": "field",
+   "type": "text",
+   "label": "表紙の一行",
+   "order": 3
+  },
+  "hint": {
+   "kind": "field",
+   "type": "text",
+   "label": "表紙の操作ヒント",
+   "order": 4
+  },
+  "clear": {
+   "kind": "field",
+   "type": "text",
+   "label": "クリア画面の一行",
+   "order": 5
+  },
+  "clearHint": {
+   "kind": "field",
+   "type": "text",
+   "label": "クリア画面の操作ヒント",
+   "order": 6
+  },
+  "rows": {
+   "kind": "field",
+   "type": "grid",
+   "label": "里の間取り（'#'=石垣 ','=畑 '.'=道）",
+   "order": 10
+  },
+  "start": {
+   "kind": "record",
+   "label": "はじめに立つマス",
+   "fields": {
+    "x": {
+     "type": "int",
+     "label": "x",
+     "order": 1,
+     "min": 0
+    },
+    "y": {
+     "type": "int",
+     "label": "y",
+     "order": 2,
+     "min": 0
+    }
+   }
+  },
+  "villagers": {
+   "kind": "list",
+   "label": "住人（話しかけると 1 行出る）",
+   "fields": {
+    "id": {
+     "type": "text",
+     "label": "名前（扉の約束が指す）",
+     "order": 1,
+     "required": true
+    },
+    "x": {
+     "type": "int",
+     "label": "x",
+     "order": 2,
+     "min": 0,
+     "required": true
+    },
+    "y": {
+     "type": "int",
+     "label": "y",
+     "order": 3,
+     "min": 0,
+     "required": true
+    },
+    "line": {
+     "type": "text",
+     "label": "いつもの 1 行",
+     "order": 4
+    }
+   }
+  },
+  "door": {
+   "kind": "record",
+   "label": "約束で開く木戸",
+   "fields": {
+    "x": {
+     "type": "int",
+     "label": "x",
+     "order": 1,
+     "min": 0,
+     "required": true
+    },
+    "y": {
+     "type": "int",
+     "label": "y",
+     "order": 2,
+     "min": 0,
+     "required": true
+    },
+    "promise": {
+     "type": "text",
+     "label": "約束の相手（住人の名前）",
+     "order": 3,
+     "required": true
+    },
+    "need": {
+     "type": "int",
+     "label": "要る薬草の数",
+     "order": 4,
+     "min": 0
+    },
+    "ask": {
+     "type": "text",
+     "label": "足りないときの 1 行",
+     "order": 5
+    },
+    "opened": {
+     "type": "text",
+     "label": "開くときの 1 行",
+     "order": 6
+    }
+   }
+  },
+  "herbs": {
+   "kind": "list",
+   "label": "薬草の生えるマス",
+   "fields": {
+    "x": {
+     "type": "int",
+     "label": "x",
+     "order": 1,
+     "min": 0,
+     "required": true
+    },
+    "y": {
+     "type": "int",
+     "label": "y",
+     "order": 2,
+     "min": 0,
+     "required": true
+    }
+   }
+  },
+  "lamps": {
+   "kind": "list",
+   "label": "灯りの立つマス（薬草を拾うたび並び順に点く）",
+   "fields": {
+    "x": {
+     "type": "int",
+     "label": "x",
+     "order": 1,
+     "min": 0,
+     "required": true
+    },
+    "y": {
+     "type": "int",
+     "label": "y",
+     "order": 2,
+     "min": 0,
+     "required": true
+    }
+   }
+  },
+  "goal": {
+   "kind": "field",
+   "type": "int",
+   "label": "クリアに要る薬草の数",
+   "order": 90,
+   "min": 1
+  },
+  "wisp": {
+   "kind": "field",
+   "type": "object",
+   "label": "火の玉(敵)の棲み処 {x, y}(書かなければ敵なしの里)",
+   "order": 40
+  },
+  "caught": {
+   "kind": "field",
+   "type": "text",
+   "label": "つかまった拍の一言(主人公は入り口へ戻される)",
+   "order": 41
+  }
+ }
+}

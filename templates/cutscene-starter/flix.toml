@@ -1,0 +1,9 @@
+[package]
+name        = "rpg"
+description = "霧の里 (flix_game_engine game)"
+version     = "0.1.0"
+flix        = "0.75.1"
+authors     = ["you <you@example.com>"]
+
+[dependencies]
+"github:ababup1192/flix_game_engine" = { version = "0.11.1", security = "unrestricted" }
