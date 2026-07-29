@@ -104,12 +104,22 @@ mod Bakery {
     pub def bakeGif(cfg: BakeConfig, frames: List[w], stride: Int32,
                     toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]),
                     name: String): SnapshotSite.Filmstrip \ IO =
+        bakeGifFonts(cfg, Map.empty(), frames, stride, toCmds, name)
+
+    /// 複数フォントで焼く bakeGif。`extraFonts` はテクスチャ名（実機の project.json の
+    /// fonts[].name に "font_" を付けた物。HeadlessFont.buildAtlas が付ける名前と同じ）→ その本。
+    /// 既定フォント（cfg#fontTtf / cfg#fontAtlas）はそのまま効くので、混ぜたい本だけ渡す。
+    /// 名前が実機と食い違うと、その字は既定フォントで描かれる（消えはしない）。
+    pub def bakeGifFonts(cfg: BakeConfig, extraFonts: Map[String, SoftRaster.FontEntry],
+                         frames: List[w], stride: Int32,
+                         toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]),
+                         name: String): SnapshotSite.Filmstrip \ IO =
         let sampled = every(stride, frames);
         // コマ列は同じ作りの絵が続くので、報告は先頭コマぶんだけ出す（同じ警告が何十行も並ばない）。
         List.head(sampled) |> Option.forEach(w -> warnDropped(fst(toCmds(w)), name));
         let images = List.map(w -> {
             let (drawables, polygons) = toCmds(w);
-            SoftRaster.renderToImage(reqOf(cfg, drawables, polygons, gifPath(cfg, name)))
+            SoftRaster.renderToImageFonts(reqOf(cfg, drawables, polygons, gifPath(cfg, name)), Nil, extraFonts)
         }, sampled);
         GifEncoder.encodeWithFrames(images, cfg#gifDelayMs, gifPath(cfg, name), "${cfg#outDir}/frames/${name}");
         { strip = "frames/${name}/", frameCount = List.length(images),
