@@ -31,7 +31,8 @@ mod Cutscene {
     def readPause(): Float64 = 0.7
 
     /// 暴走の安全弁: 1 シーンに許す最大のコマ数（30fps で 2 分）。
-    def maxFrames(): Int32 = 3600
+    /// pub なのは常駐の焼き係（CutscenePreview の 1 枚焼き）が同じ上限で回すため。
+    pub def maxFrames(): Int32 = 3600
 
     /// 脚本の始まりの状態に置く。場面の仕度（phase・ふきだし・幕）は World 自身が整える
     /// （World.stagedAt — 内臓の旗をここから触らない）。
@@ -48,7 +49,8 @@ mod Cutscene {
 
     /// カットが尽きたあとの 1 コマ（時間だけを流す。火の玉は凍らせたまま —
     /// シーンの絵の中で勝手に追跡が始まらない）。
-    def idle(dtv: Float64, w: World.World): World.World =
+    /// pub なのは常駐の焼き係（CutscenePreview）が SceneSeq.tick を自前で回すため。
+    pub def idle(dtv: Float64, w: World.World): World.World =
         World.step(None, dtv, World.calmWisp(w))
 
     // ── perform: カット 1 つを 1 コマ演じる（SceneSeq へ注入する唯一の関数） ──

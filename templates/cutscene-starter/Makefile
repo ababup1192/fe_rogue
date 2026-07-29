@@ -70,7 +70,10 @@ cutscene:
 #   make cutscene-server &   # 立ち上げ(初回は分の単位。listening が出たら準備完了)
 #   curl -X POST 'http://127.0.0.1:8793/cutscene?file=assets/intro.cutscene.json'
 #   curl -X POST 'http://127.0.0.1:8793/cutscene'   # 全シーン
-# 応答は {"baked":[{"gif":…,"frames":…,"notes":[…]}]}(notes = 飛ばしたカットの報せ)。
+#   curl -X POST 'http://127.0.0.1:8793/cutscene?file=…&draft=1'   # 下書き(等倍+粗い間引き。debug/cutscene/draft/ へ)
+#   curl -X POST 'http://127.0.0.1:8793/cutscene/frame?file=…&cut=3'   # カット 3 の最初の拍を PNG 1 枚
+# 応答は {"baked":[{"gif":…,"frames":…,"pngFrames":…,"stride":…,"draft":…,"notes":[…]}]}
+# (notes = 飛ばしたカットの報せ)。/cutscene/frame は {"png":…,"cut":…,"notes":[…]}。
 # ポートは CUTSCENE_PORT で変えられる(既定 8793)。
 cutscene-server:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint CutscenePreview.main

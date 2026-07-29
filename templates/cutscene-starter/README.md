@@ -40,6 +40,8 @@ open debug/cutscene/intro.gif                  # 目視
 `make cutscene-server &` で立ち上げ（初回は分の単位。listening が出たら準備完了）、
 `curl -X POST 'http://127.0.0.1:8793/cutscene?file=assets/intro.cutscene.json'` で焼く
 （file 無しなら全シーン。応答の notes に飛ばしたカットの報せが載る。10 分放置で自動終了）。
+`…&draft=1` で下書き（等倍 + 粗い間引き。debug/cutscene/draft/ へ、速い）、
+`/cutscene/frame?file=…&cut=3` でカット 3 の最初の拍を PNG 1 枚だけ焼ける（Studio のカット選択用）。
 
 脚本は `assets/*.cutscene.json`（1 ファイル = 1 シーン。語彙は assets/cutscene.schema.json）。
 見本は 2 本: `intro`（歩く・話す・ひとりごと・幕）と `chase`（火の玉が現れ・詰め・
