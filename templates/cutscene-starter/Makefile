@@ -13,6 +13,9 @@
 #   make cutscene-watch … 脚本の保存を見張って焼き直す(編集ループ用)
 #   make cutscene-server … 常駐の焼き係(2 回目からは秒単位。curl で頼む)
 #   make cutscene-grid … 間取りを座標定規つきで debug/cutscene/grid/ に焼く
+#   make hosts  … 焼き係(cutscene 8793)を起こす(冪等・非ブロッキング)。
+#                 Studio の自動起動もこれを撃つ。止めるのは make hosts-stop。
+#                 放置 10 分で自分からも消える(BakeService)。
 #
 # Flix コンパイラはエンジンリポの bin/flix ラッパ経由で呼ぶ（devbox shell の外でも動く）。
 # ラッパが nix store の flix.jar 解決と JVM フラグ（-XstartOnFirstThread、test/Bake の
@@ -21,7 +24,7 @@
 ENGINE ?= /Users/abab/Desktop/flix_game_engine
 FLIX   := $(ENGINE)/bin/flix
 
-.PHONY: run debug test build check bake bench golden atelier-preview palette cutscene cutscene-watch cutscene-server cutscene-grid
+.PHONY: run debug test build check bake bench golden atelier-preview palette cutscene cutscene-watch cutscene-server cutscene-grid hosts hosts-stop
 
 run:
 	$(FLIX) run
@@ -82,6 +85,28 @@ cutscene-server:
 # 脚本の start / at のマスを数える下敷き(golden の外)。
 cutscene-grid:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint CutsceneBake.grid
+
+# 焼き係(常駐サーバ)を起こす(冪等・非ブロッキング)。
+# /health への疎通が無ければ nohup で起こし、すぐ戻る — 起動完了は待たない
+# (初回はコンパイル込みで分の単位。debug/cutscene-server.log に listening が出たら準備完了)。
+# Studio の bakeCmd もこれを撃つ(冪等なので毎回撃ってよい)。
+# 止めるのは make hosts-stop。放置 10 分で自分からも消える(BakeService)。
+CUTSCENE_PORT ?= 8793
+
+hosts:
+	@mkdir -p debug
+	@if curl -s -m 1 "http://127.0.0.1:$(CUTSCENE_PORT)/health" > /dev/null 2>&1; then \
+	  echo "cutscene 焼き係: 既に稼働中 (port $(CUTSCENE_PORT))"; \
+	else \
+	  CUTSCENE_PORT=$(CUTSCENE_PORT) nohup $(MAKE) cutscene-server > debug/cutscene-server.log 2>&1 & \
+	  echo "cutscene 焼き係: 起こした (port $(CUTSCENE_PORT))。準備完了は debug/cutscene-server.log の listening を待つ"; \
+	fi
+
+# 焼き係を止める。ポートで LISTEN しているプロセスを特定して kill する。
+hosts-stop:
+	@pids=$$(lsof -ti:$(CUTSCENE_PORT) 2>/dev/null); \
+	if [ -n "$$pids" ]; then kill $$pids && echo "port $(CUTSCENE_PORT): 止めた (pid $$pids)"; \
+	else echo "port $(CUTSCENE_PORT): 稼働なし"; fi
 
 # 脚本の保存を見張り、変わったファイルだけ焼き直す(2 秒ごとのポーリング。Ctrl-C で止める)
 cutscene-watch:

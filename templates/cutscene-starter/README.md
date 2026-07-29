@@ -37,7 +37,8 @@ open debug/cutscene/intro.gif                  # 目視
 ```
 
 常駐サーバなら「保存 → 焼き上がり」が秒単位で回る:
-`make cutscene-server &` で立ち上げ（初回は分の単位。listening が出たら準備完了）、
+`make hosts` で立ち上げ（冪等 — 稼働していなければ起こすだけですぐ戻る。Studio の自動起動もこれを撃つ。
+初回は分の単位で、debug/cutscene-server.log に listening が出たら準備完了。止めるのは `make hosts-stop`）、
 `curl -X POST 'http://127.0.0.1:8793/cutscene?file=assets/intro.cutscene.json'` で焼く
 （file 無しなら全シーン。応答の notes に飛ばしたカットの報せが載る。10 分放置で自動終了）。
 `…&draft=1` で下書き（等倍 + 粗い間引き。debug/cutscene/draft/ へ、速い）、
