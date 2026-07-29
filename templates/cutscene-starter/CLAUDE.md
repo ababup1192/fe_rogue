@@ -31,13 +31,3 @@
   （t を固定し、乱数や実時間に依存しない world）を `gallery/` に焼く。
 - 焼いた PNG を `golden/` にコピーして基準にし、make のターゲットでバイト比較する。
 - 調整中の画は `debug/` 行きの別 entrypoint（例: `Bake.prologue`）に分け、golden を汚さない。
-
-## イベントシーン・敵 AI（このテンプレの主題）
-
-- 脚本（assets/*.cutscene.json）は**表であってスクリプトではない** — 分岐・変数は書かない。
-  守衛は only / unless（World の事実の名前）の条件行として書く。
-- 動きは canEnter を注入した Steering、進行は SceneSeq に perform を注入する
-  （engine docs/module-index.md の「進行 4 抽象の分業」表を参照）。
-- 編集ループ: 脚本保存 → `make cutscene` → GIF 目視。飛ばしたカットは番号+理由が出力に出る
-  （無音の fail-open にしない — 警告ゼロが完了条件）。
-- 実機再生は Director — bake と同じ道具を回すだけ。報せは debug/scene-notes.log。

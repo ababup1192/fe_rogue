@@ -11,6 +11,8 @@
 #   make cutscene … イベントシーン(assets/*.cutscene.json)を debug/cutscene/ に焼く
 #                   1 本だけなら make cutscene FILE=assets/intro.cutscene.json
 #   make cutscene-watch … 脚本の保存を見張って焼き直す(編集ループ用)
+#   make cutscene-server … 常駐の焼き係(2 回目からは秒単位。curl で頼む)
+#   make cutscene-grid … 間取りを座標定規つきで debug/cutscene/grid/ に焼く
 #
 # Flix コンパイラはエンジンリポの bin/flix ラッパ経由で呼ぶ（devbox shell の外でも動く）。
 # ラッパが nix store の flix.jar 解決と JVM フラグ（-XstartOnFirstThread、test/Bake の
@@ -19,7 +21,7 @@
 ENGINE ?= /Users/abab/Desktop/flix_game_engine
 FLIX   := $(ENGINE)/bin/flix
 
-.PHONY: run debug test build check bake bench golden atelier-preview palette cutscene cutscene-watch
+.PHONY: run debug test build check bake bench golden atelier-preview palette cutscene cutscene-watch cutscene-server cutscene-grid
 
 run:
 	$(FLIX) run
@@ -60,6 +62,23 @@ atelier-preview:
 cutscene:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" CUTSCENE_FILE="$(FILE)" \
 	  $(FLIX) run --entrypoint CutsceneBake.all
+
+# 常駐のイベントシーン焼き係。立ち上げ(コンパイル + JVM + フォントの仕度)が 1 回で
+# 済むので、2 回目からは演じて焼く時間だけ = 秒単位で編集ループが回る。
+# 10 分放置で自分から終わる(BakeService)。
+# 使い方:
+#   make cutscene-server &   # 立ち上げ(初回は分の単位。listening が出たら準備完了)
+#   curl -X POST 'http://127.0.0.1:8793/cutscene?file=assets/intro.cutscene.json'
+#   curl -X POST 'http://127.0.0.1:8793/cutscene'   # 全シーン
+# 応答は {"baked":[{"gif":…,"frames":…,"notes":[…]}]}(notes = 飛ばしたカットの報せ)。
+# ポートは CUTSCENE_PORT で変えられる(既定 8793)。
+cutscene-server:
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint CutscenePreview.main
+
+# 間取りを座標定規つき(上端に x・左端に y の数字)で debug/cutscene/grid/grid.png に焼く。
+# 脚本の start / at のマスを数える下敷き(golden の外)。
+cutscene-grid:
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint CutsceneBake.grid
 
 # 脚本の保存を見張り、変わったファイルだけ焼き直す(2 秒ごとのポーリング。Ctrl-C で止める)
 cutscene-watch:

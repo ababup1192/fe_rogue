@@ -18,24 +18,3 @@ RPG・アドベンチャー（見下ろし）のテンプレート「霧の里�
   UiDialog / UiTypewriter / RichText を使う。自前のタイル座標計算・文字折りを書かない。
 - 薬草を拾うたび、里の灯りがひとつ点く（lampsLit は picked からの導出。演出であって
   ルールではないのでテストしない）。
-
-## イベントシーン（このテンプレの主題）
-
-- **脚本（assets/*.cutscene.json）は表であってスクリプトではない**: cuts は上から順に
-  演じるカットの表で、分岐・変数は書けない。守衛は only / unless（World の事実の名前 —
-  door / herb）の条件行。ロジックを脚本に書き始めたら設計の匂い。
-- **分業は 進行 4 抽象の表（engine docs/module-index.md）のとおり**: 進行・報せ・安全弁は
-  SceneSeq（perform = カット 1 つを 1 コマ演じる関数を注入）、マス目の動きは
-  canEnter を注入した Steering（chase / flee / wander）。経路を自前で書かない・
-  フレーム数を先に数えない — 「歩き終わった」は World の状態から判定する。
-- **編集ループ**: 脚本を保存 → `make cutscene`（見張るなら `make cutscene-watch`）→
-  debug/cutscene/ の GIF を目視。飛ばしたカットは番号と理由が出力に出る
-  （fail-open だが無音ではない — 警告ゼロを完了条件にする）。
-- **実機再生は Director**: bake と同じ道具（stage → SceneSeq）を実機の 1 コマで回すだけ。
-  報せは debug/scene-notes.log に落ちる。再生専用のロジックを増やさない。
-
-## 敵 AI（火の玉）
-
-- 火の玉の追跡は Steering.chase（canEnter 注入・同着は上→下→左→右の固定順で決定的）。
-  乱数を持たないので、焼けば毎回同じ — golden が効く。
-- 演じている間の火の玉は World.calmWisp で凍らせる（脚本で指した位置に必ず居る）。

@@ -84,7 +84,8 @@ mod View {
     // ── 盤の位置合わせ（小さな間取りでも画面の真ん中に来る） ──
 
     /// 盤の左上の画面座標。design の真ん中に盤全体を置く（揺れがあれば盤ごと震える）。
-    def boardOrigin(w: World.World): Vec2.Vec2 =
+    /// pub なのは座標定規の焼き（CutsceneBake.grid）が盤と同じ位置合わせで数字を重ねるため。
+    pub def boardOrigin(w: World.World): Vec2.Vec2 =
         let t = World.tileSize();
         let jolt = quakeOffset(w);
         { x = (World.width() - Int32.toFloat64(MapDoc.cols(w#map)) * t) / 2.0 + jolt#x,

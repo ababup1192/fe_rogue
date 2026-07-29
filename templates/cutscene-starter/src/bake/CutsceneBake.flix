@@ -39,7 +39,8 @@ mod CutsceneBake {
 
     /// 脚本を読み、JSON ごと読めないときはその報せを添えて既定へ倒す
     /// （読めないカット 1 つぶんの報せは Cut.Broken を演じる側が出す）。
-    def readScript(path: String): (CutsceneDoc.Doc, List[String]) \ IO =
+    /// pub なのは常駐の焼き係（CutscenePreview）が同じ読み方をするため。
+    pub def readScript(path: String): (CutsceneDoc.Doc, List[String]) \ IO =
         let readResult = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead
             with Fs.FileRead.runWithIO;
         let text = readResult |> Result.toOption |> Option.getWithDefault("");
@@ -48,4 +49,42 @@ mod CutsceneBake {
                                "JSON が読めないので既定(空のシーン)へ倒した" :: Nil)
             case Some(doc) => (doc, Nil)
         }
+
+    // ── 座標定規（脚本の start / at のマスを数える下敷き。golden の外） ──
+
+    /// 間取りを座標定規つき（上端に x・左端に y の数字を薄く重ねる）で
+    /// debug/cutscene/grid/grid.png に焼く。実行: make cutscene-grid。
+    pub def grid(): Unit \ IO =
+        discard (new File("debug/cutscene/grid")).mkdirs();
+        let atlas = HeadlessFont.buildUiAtlas(Bake.ttf(), Bake.ttf());
+        // 表紙の文字が間取りに重ならないよう、決定を押して遊びの状態にしてから焼く。
+        let w0 = World.confirm(Bake.loadWorld());
+        let cfg = Bake.cfgOf("debug/cutscene/grid", atlas, w0#theme#sky);
+        let ctx = App.viewCtxOf(atlas, Bake.design());
+        let items = List.append(View.frame(ctx, w0), ruler(atlas, w0));
+        let (drawables, polygons) = Render.draw(items);
+        Bakery.renderPng(cfg, drawables, polygons, "grid");
+        println("baked: ${cfg#outDir}/grid.png")
+
+    /// 定規の数字。盤の位置は View と同じ式で引くので、絵とずれない。
+    /// 画面の外に出た数字は描かない。
+    def ruler(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
+        let t = World.tileSize();
+        let origin = View.boardOrigin(w);
+        let ink = w#theme#paper;
+        let xs = List.range(0, MapDoc.cols(w#map)) |> List.filterMap(c -> {
+            let cx = origin#x + Int32.toFloat64(c) * t + t / 2.0;
+            if (cx < 0.0 or cx >= World.width()) None
+            else Some(mark(atlas, ink, "${c}", { x = cx - 3.0, y = 1.0 }))
+        });
+        let ys = List.range(0, MapDoc.rowCount(w#map)) |> List.filterMap(r -> {
+            let cy = origin#y + Int32.toFloat64(r) * t + t / 2.0 - 3.0;
+            if (cy < 0.0 or cy >= World.height()) None
+            else Some(mark(atlas, ink, "${r}", { x = 1.0, y = cy }))
+        });
+        List.append(xs, ys)
+
+    /// 数字 1 つ。すべての上（z=500）に、薄く（fade）重ねる — 盤の絵を隠さない。
+    def mark(atlas: FontAtlas, ink: Color, label: String, at: Vec2.Vec2): Render.PlacedItem =
+        { at = at, item = Render.textTinted(label, atlas, 6.0, ink, 500) |> Render.fade(0.6f32) }
 }
