@@ -72,7 +72,11 @@
         "pattern": "assets/*.cutscene.json",
         "title": "イベントシーン(カットの列。make cutscene で debug/cutscene/ に焼く)",
         "schema": "assets/cutscene.schema.json",
-        "role": "material"
+        "role": "material",
+        "bakeCmd": "make cutscene-server",
+        "bakeUrl": "http://127.0.0.1:8793/cutscene",
+        "performCmd": "make debug",
+        "performUrl": "http://127.0.0.1:7778/scene"
       }
     ]
   }
