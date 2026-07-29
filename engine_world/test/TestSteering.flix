@@ -13,12 +13,12 @@ mod TestSteering {
         let (x, y) = cell;
         y == 1 and x >= 0 and x < 5
 
-    /// chase は target へ最短で近づく隣を選ぶ。同着（(1,1)→(0,0) は上と左が同距離）でも
-    /// 選び方は決定的 — 同じ盤・同じ位置なら毎回同じ 1 歩になる（golden が効く根拠）。
+    /// chase は target へ最短で近づく隣を選ぶ。同着（(1,1)→(0,0) は上と左が同距離）は
+    /// 上→下→左→右 の固定順で先に現れる「上」が勝つ — 毎回同じ 1 歩（golden が効く根拠）。
     @Test
     def testChasePicksShortestInFixedOrder(): Unit \ Assert =
         Assert.assertEq(
-            expected = (Some((2, 1)), Some((0, 1))),
+            expected = (Some((2, 1)), Some((1, 0))),
             (Steering.chase(open5, (2, 2), (2, 0), 25),
              Steering.chase(open5, (1, 1), (0, 0), 25)))
 

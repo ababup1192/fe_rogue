@@ -24,8 +24,7 @@ mod Steering {
                 |> List.filterMap(cell -> Map.get(cell, field)
                     |> Option.map(dist -> (dist, cell)))
                 |> List.filter(entry -> fst(entry) < here)
-                |> List.sortBy(fst)
-                |> List.head
+                |> firstMinBy(fst)
                 |> Option.map(snd))
 
     /// threat から遠ざかる 1 歩。距離場でいまより遠くなる隣のうち、一番遠いものを選ぶ。
@@ -38,8 +37,7 @@ mod Steering {
                 |> List.filterMap(cell -> Map.get(cell, field)
                     |> Option.map(dist -> (dist, cell)))
                 |> List.filter(entry -> fst(entry) > here)
-                |> List.sortBy(entry -> 0 - fst(entry))
-                |> List.head
+                |> firstMinBy(entry -> 0 - fst(entry))
                 |> Option.map(snd))
 
     /// 気の向くままの 1 歩。何歩目か（beat）と塩（salt）のハッシュで向きを引くので、
@@ -60,4 +58,12 @@ mod Steering {
     def neighborsOf(cell: (Int32, Int32)): List[(Int32, Int32)] =
         let (x, y) = cell;
         (x, y - 1) :: (x, y + 1) :: (x - 1, y) :: (x + 1, y) :: Nil
+
+    /// 並び順で最初に現れる最小（同値では置き換えない = 先勝ち）。
+    /// ソートに頼らず foldLeft で畳む — 同着の決定性を neighborsOf の順が担保する。
+    def firstMinBy(key: a -> Int32, l: List[a]): Option[a] =
+        List.foldLeft((acc, x) -> match acc {
+            case None    => Some(x)
+            case Some(b) => if (key(x) < key(b)) Some(x) else acc
+        }, None, l)
 }
