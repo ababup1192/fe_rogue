@@ -9,6 +9,10 @@ A 2D game engine written in [Flix](https://flix.dev/), built to be worked on
 usually need can ship as official parts rather than plugins, and it is wired so
 an AI can check its own work instead of asking you to look.
 
+**[flix_ge_studio](https://github.com/ababup1192/flix_ge_studio)** is the companion
+editor: pick a genre, generate a game, and tune its values through forms and sliders
+while it runs.
+
 | | | |
 |:--:|:--:|:--:|
 | <img src="docs/gallery/cards.gif" alt="cards" width="240"> | <img src="docs/gallery/farm.gif" alt="farm" width="240"> | <img src="docs/gallery/dungeon.gif" alt="dungeon" width="240"> |
@@ -36,6 +40,13 @@ state can be handed over as data, so you never have to put the symptom into word
 That last part is what makes the difference. Every engine gets easier once an AI
 writes the code; here the AI's output can be *checked by machine*, so far more of
 the work can be handed over.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/positioning-dark.png">
+    <img src="docs/brand/positioning-light.png" alt="Positioning: expressive range vs. engineering skill required" width="820">
+  </picture>
+</p>
 
 ## What is already built in
 
@@ -268,6 +279,9 @@ baking entirely. A damaged or outdated cache is ignored and simply re-baked.
 表現を 2D に絞ることで、足りない機能をプラグインで継ぎ足す形をやめ、ゲームでよくやることを
 公式の部品として用意する。さらに、AI が自分の仕事を自分で確かめられる作りにしてある。
 
+対になるエディタが **[flix_ge_studio](https://github.com/ababup1192/flix_ge_studio)**。
+ジャンルを選んでゲームを作り、走らせたままフォームやスライダーで値を調整できる。
+
 | | | |
 |:--:|:--:|:--:|
 | <img src="docs/gallery/cards.gif" alt="カードゲーム" width="240"> | <img src="docs/gallery/farm.gif" alt="農場シミュレーション" width="240"> | <img src="docs/gallery/dungeon.gif" alt="ダンジョン探索" width="240"> |
@@ -293,6 +307,13 @@ AI へ渡せるので、**症状を言葉で説明する必要がない**。
 
 AI がコードを書けば、どのエンジンでも敷居は下がる。差が出るのは下がり幅で、ここは
 **AI の書いた物を機械で検算できる**ぶん、任せられる範囲が広い。
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/positioning-dark.png">
+    <img src="docs/brand/positioning-light.png" alt="立ち位置: 表現力と、必要なエンジニアリング力" width="820">
+  </picture>
+</p>
 
 ## 何が最初から入っているか
 
