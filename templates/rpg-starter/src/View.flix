@@ -222,8 +222,10 @@ mod View {
         let boxW = textW + pad * 2.0;
         let boxH = Int32.toFloat64(lineCount) * (fontSize + lineGap)
             - lineGap + pad * 2.0;
-        let boxX = clampF(4.0, World.width() - boxW - 4.0, speakerCenter#x - boxW / 2.0);
-        let boxY = Float64.max(4.0, speakerCenter#y - World.tileSize() / 2.0 - boxH - 8.0);
+        let boxX = clampF(edgeMargin(), World.width() - boxW - edgeMargin(),
+            speakerCenter#x - boxW / 2.0);
+        let boxY = Float64.max(edgeMargin(),
+            speakerCenter#y - World.tileSize() / 2.0 - boxH - 8.0);
         List.flatten(
                ({ at = { x = boxX, y = boxY },
                   item = Render.box({ x = boxW, y = boxH }, w#theme#paper, zBubble()) } :: Nil)
@@ -240,6 +242,10 @@ mod View {
           item = Render.polygon(
               { x = -4.0, y = 0.0 } :: { x = 4.0, y = 0.0 } :: { x = 0.0, y = 6.0 } :: Nil,
               color, zBubble() + 1) } :: Nil
+
+    /// ふきだしの枠を画面の縁から離す幅。0 にすると枠が縁に接して切れて見えるので、
+    /// はみ出し止めの最小値ではなく目に見える余白として取る。
+    def edgeMargin(): Float64 = 8.0
 
     def clampF(lo: Float64, hi: Float64, v: Float64): Float64 =
         Float64.max(lo, Float64.min(hi, v))

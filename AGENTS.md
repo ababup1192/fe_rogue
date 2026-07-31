@@ -59,6 +59,9 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 - **Doc の形**: [docs/doc-conventions.md](docs/doc-conventions.md) の外形6点に従う
   （version・`kind.schema.json`・fail-open・note・`project.json` の editor 宣言・watchFile）。
   1 つの種類 = 1 ファイル種 + 1 スキーマ。新機能は「Doc を1つ足す」形でだけ増やす。
+- **Doc の大きさ**: 1 Doc = 1 関心（いつ読み直したいかが同じ物だけ）。タブ 8 枚・1 タブ 15 個・
+  スカラー総数 30 個・入れ子 2 段を超えたら割る。単一値が 5 個以上並ぶならスキーマの
+  `group` で束ねる。詳しくは `/doc-design` skill。
 - **リアルタイム反映**: ゲームに `App.watchFile` を配線して、Doc の保存で作り直す。
   調整のたびに再起動しないで済む。開発中は `App.reloadOn(F1)` も。
 - **調整の入口**: flix_ge_studio（`make editor DIR=<game>` かビルド済みの `.app`）。
@@ -72,6 +75,13 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 - 決定的な場面を headless bake で `debug/` に焼き（golden の外）、目視で批評 → 修正 → 再焼成を回す。
 - 機械的リファクタ（分割・Doc 化）は「前後の PNG バイト一致」で見た目不変を証明する。
 - リグレッション防護は golden（`gallery/` vs `golden/` のバイト比較）に任せる。
+- 直す所が複数見えたら、**一度に1つだけ直す**。並びを揃えるため・リストを消化するために
+  手を広げない（絵に限らず、手触りやテンポも同じ）。
+- **どれを直すかは人が決める**。Claude は選ばずに、遊ぶ人から見て目立つ順に候補を3つまで
+  並べる（1つ1行 + 焼いた絵か再現手順）。人は番号で答えれば済む。
+- ただし**壊れている物は聴かずに先に直す** — 落ちる・黒い穴・golden の退行は好みの問題ではない。
+- レビュー役に聴くのは「選んだ1つの直し方が90点か」だけ。**何を選ぶかは聴かない**
+  （コードを見ても、遊ぶ人に何が見えているかは判らない）。
 
 ## テンプレートを足す・更新する
 
@@ -89,9 +99,14 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 1. `templates/<genre>-starter/` を作る（rpg-starter を写経元に。具体値式なら golden も焼く）。
 2. **`golden/title.png` を必ず用意する**。Studio のジャンル札のサムネは `GET /genesis/title` が
    これを読む（無いと空絵に倒れる）。bake に `title` シーンを 1 枚足して祝福する。
-3. Studio に登録する: `flix_ge_studio` の `server/src/Genesis.flix` の families で、該当ジャンルの
+3. **`make lint-palette` を通す**。ドット絵（`*.sprite.json`）の `legend` に書いた意味色キーは、
+   `*.theme.json` のトップレベル・`paletteFile` の指す色票・直下の `palette` のどれかに実体が
+   無いと Studio が仮色で塗り、編集画面と実機で配色が食い違う。派生色をコードで導いているなら、
+   色票 JSON を生成する `make` ターゲットを作り、`paletteFile` でそれを指す（`kaidan` の
+   `Palette` モジュール + `palette` ターゲット + テストが手本。テストで生成物と実機の色を pin する）。
+4. Studio に登録する: `flix_ge_studio` の `server/src/Genesis.flix` の families で、該当ジャンルの
    `starter = "templates/<genre>-starter"` にする（starter が空だとゼロ生成フローのまま）。
-4. Studio に反映する: `flix_ge_studio` で **`make swap-jar`**（動いている `.app` の同梱 jar を
+5. Studio に反映する: `flix_ge_studio` で **`make swap-jar`**（動いている `.app` の同梱 jar を
    差し替え + 再署名）→ Studio を Cmd+Q して開き直し。**`make jar` だけでは動いている .app に効かない**。
 
 `make new-game GAME=/abs NAME=x TITLE=題名 TEMPLATE=<genre>-starter`。TITLE は自由文でよい
@@ -107,4 +122,5 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 | `/compile-fix` | Flixコンパイルエラーを診断し、既知の落とし穴と照合して修正を提案する |
 | `/flix-docs` | Flixの公式ドキュメントとプロジェクト固有のスタイル確認（パイプスタイル・エフェクト構文・テスト・0.71.0固有の注意点） |
 | `/quality-assurance` | テスト設計指針（モジュール新規作成時、ゲームロジック編集時） |
+| `/doc-design` | ゲームの値を Doc（JSON）へ出すときの設計指針（何を出す・どう割る・どう見せる） |
 | `/mapchip-debug` | fe_rogue のマップチップ不具合を F8 注釈チケットから修正する標準フロー（再現器・全セル差分検証・レンダ確認） |
