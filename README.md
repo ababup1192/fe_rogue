@@ -43,8 +43,8 @@ the work can be handed over.
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/positioning-dark.png">
-    <img src="docs/brand/positioning-light.png" alt="Positioning: expressive range vs. engineering skill required" width="820">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/positioning-dark-en.png">
+    <img src="docs/brand/positioning-light-en.png" alt="Positioning: expressive range vs. engineering skill needed" width="820">
   </picture>
 </p>
 
