@@ -10,7 +10,7 @@
 #
 # Flix コンパイラはエンジンリポの bin/flix ラッパ経由で呼ぶ（devbox shell の外でも動く）。
 # ラッパが nix store の flix.jar 解決と JVM フラグ（-XstartOnFirstThread、test/Bake の
-# headless）を面倒みるので、ここでは素の $(FLIX) を呼ぶだけでよい。
+# headless）を面倒みるので、ここでは素の "$(FLIX)" を呼ぶだけでよい。
 # エンジンの場所が違うときは `make run ENGINE=/path/to/flix_game_engine` で上書きする。
 ENGINE ?= /Users/abab/Desktop/flix_game_engine
 FLIX   := $(ENGINE)/bin/flix
@@ -18,25 +18,25 @@ FLIX   := $(ENGINE)/bin/flix
 .PHONY: run debug test build check bake bench golden palette
 
 run:
-	$(FLIX) run
+	"$(FLIX)" run
 
 debug:
-	DEBUG=true $(FLIX) run
+	DEBUG=true "$(FLIX)" run
 
 test:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) test
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" test
 
 build:
-	$(FLIX) build
+	"$(FLIX)" build
 
 check:
-	$(FLIX) check
+	"$(FLIX)" check
 
 palette:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Palette.write
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Palette.write
 
 bake: palette
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Bake.all
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Bake.all
 
 bench: bake
 	@ok=1; for f in gallery/*.png; do \

@@ -19,7 +19,7 @@
 #
 # Flix コンパイラはエンジンリポの bin/flix ラッパ経由で呼ぶ（devbox shell の外でも動く）。
 # ラッパが nix store の flix.jar 解決と JVM フラグ（-XstartOnFirstThread、test/Bake の
-# headless）を面倒みるので、ここでは素の $(FLIX) を呼ぶだけでよい。
+# headless）を面倒みるので、ここでは素の "$(FLIX)" を呼ぶだけでよい。
 # エンジンの場所が違うときは `make run ENGINE=/path/to/flix_game_engine` で上書きする。
 ENGINE ?= /Users/abab/Desktop/flix_game_engine
 FLIX   := $(ENGINE)/bin/flix
@@ -27,25 +27,25 @@ FLIX   := $(ENGINE)/bin/flix
 .PHONY: run debug test build check bake bench golden atelier-preview palette cutscene cutscene-watch cutscene-server cutscene-grid hosts hosts-stop
 
 run:
-	$(FLIX) run
+	"$(FLIX)" run
 
 debug:
-	DEBUG=true $(FLIX) run
+	DEBUG=true "$(FLIX)" run
 
 test:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) test
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" test
 
 build:
-	$(FLIX) build
+	"$(FLIX)" build
 
 check:
-	$(FLIX) check
+	"$(FLIX)" check
 
 palette:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Palette.write
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Palette.write
 
 bake: palette
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Bake.all
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Bake.all
 
 bench: bake
 	@ok=1; for f in gallery/*.png; do \
@@ -59,12 +59,12 @@ golden:
 	@echo "blessed: golden/*.png updated from gallery/"
 
 atelier-preview:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Bake.atelier
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Bake.atelier
 
 # イベントシーンを debug/cutscene/ に GIF＋コマ別 PNG で焼く(golden の外)
 cutscene:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" CUTSCENE_FILE="$(FILE)" \
-	  $(FLIX) run --entrypoint CutsceneBake.all
+	  "$(FLIX)" run --entrypoint CutsceneBake.all
 
 # 常駐のイベントシーン焼き係。立ち上げ(コンパイル + JVM + フォントの仕度)が 1 回で
 # 済むので、2 回目からは演じて焼く時間だけ = 秒単位で編集ループが回る。
@@ -79,12 +79,12 @@ cutscene:
 # (notes = 飛ばしたカットの報せ)。/cutscene/frame は {"png":…,"cut":…,"notes":[…]}。
 # ポートは CUTSCENE_PORT で変えられる(既定 8793)。
 cutscene-server:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint CutscenePreview.main
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint CutscenePreview.main
 
 # 間取りを座標定規つき(上端に x・左端に y の数字)で debug/cutscene/grid/grid.png に焼く。
 # 脚本の start / at のマスを数える下敷き(golden の外)。
 cutscene-grid:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint CutsceneBake.grid
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint CutsceneBake.grid
 
 # 焼き係(常駐サーバ)を起こす(冪等・非ブロッキング)。
 # /health への疎通が無ければ nohup で起こし、すぐ戻る — 起動完了は待たない
