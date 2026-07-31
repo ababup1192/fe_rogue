@@ -4,17 +4,70 @@
 
 # Flix Game Engine
 
-![sokoban rewind demo](examples/sokoban/gallery/rewind_demo.gif)
+A 2D game engine written in [Flix](https://flix.dev/), built to be worked on
+**together with an AI**. It narrows its scope to 2D so that the things games
+usually need can ship as official parts rather than plugins, and it is wired so
+an AI can check its own work instead of asking you to look.
 
-A 2D game engine written in [Flix](https://flix.dev/). Games are built around
-a single immutable `World` value: systems are pure functions run each frame by
-a Bevy-style `App`, and every frame is rendered from the `World`. Rendering,
-input, and audio are a from-scratch implementation on top of LWJGL
-(OpenGL 3.3 Core / GLFW / OpenAL).
+| | | |
+|:--:|:--:|:--:|
+| <img src="docs/gallery/cards.gif" alt="cards" width="240"> | <img src="docs/gallery/farm.gif" alt="farm" width="240"> | <img src="docs/gallery/dungeon.gif" alt="dungeon" width="240"> |
+| Card game | Farm sim | Dungeon crawler |
+| <img src="docs/gallery/novel.gif" alt="novel" width="240"> | <img src="docs/gallery/village.gif" alt="village" width="240"> | <img src="docs/gallery/puzzle.gif" alt="puzzle" width="240"> |
+| Visual novel | Village sim | Falling-block puzzle |
+| <img src="docs/gallery/horror.gif" alt="horror" width="240"> | | |
+| Horror exploration | | |
 
-The engine ships as a reusable library, with real games living under `examples/`,
-in a monorepo layout. The recommended one is **fe_rogue** (a Fire Emblem-style
-SRPG + roguelike).
+Development here is genre-free. The parts are plentiful and pitched at a high
+enough level that **any 2D game can be expressed** by combining them.
+
+Most of these were made **without a single hand-drawn or bought asset** — the
+engine can have an AI produce the minimum art and sound it needs.
+
+## Why this engine is easy to build with an AI
+
+The AI can check its own work, and you can hand it the situation without
+describing it. Game rules are pure functions, so they can be pulled out and
+exercised on their own — after a change the AI verifies itself. The look is
+guaranteed **pixel for pixel** by comparing baked frames, so a fix that quietly
+breaks something else shows up immediately. And when a game misbehaves, the whole
+state can be handed over as data, so you never have to put the symptom into words.
+
+That last part is what makes the difference. Every engine gets easier once an AI
+writes the code; here the AI's output can be *checked by machine*, so far more of
+the work can be handed over.
+
+## What is already built in
+
+Everything below is an official part of the engine, so neither you nor an AI has
+to build it from scratch. Full index: [docs/module-index.md](docs/module-index.md).
+
+- **Light and shadow** — reflections on mirrors and water, light sources, cast
+  shadows, a whole-screen colour filter (time of day), sprite shading, additive /
+  multiply blending, glow
+- **Motion and effects** — particles, procedural shader surfaces (no raw GLSL),
+  object sway, screen transitions, sprite rotation, tweening, sprite animation,
+  scripted action sequences, path following, cutscenes, BGM fades
+- **Game systems** — save/load, rewind & replay, per-tile state, pathfinding and
+  movement range, enemy AI, hitboxes declared in JSON, collision and physics, timers
+- **UI** — dialogue windows with typewriter text, menus, scrolling lists, UI
+  declared in JSON (one declaration drives both the look and the click target),
+  9-slice window frames, variables embedded in text, mouse picking
+- **Boards and terrain** — dual-grid terrain that needs no tile art, maps written
+  as a character grid, tileset images with auto-tiling, sprites as character grids,
+  automatic depth sorting, view culling, infinite scatter
+- **Input and camera** — key mapping, edge detection, mouse wheel, camera
+  follow/zoom, camera shake, pixel-perfect rendering
+- **While you work** — tune numbers without restarting, machine-verified visual
+  regressions, drive the game over HTTP from an AI or external tool, pause and
+  circle a spot to report it
+
+Games are built around a single immutable `World` value: systems are pure
+functions run each frame by a Bevy-style `App`, and every frame is rendered from
+the `World`. Rendering, input, and audio are a from-scratch implementation on top
+of LWJGL (OpenGL 3.3 Core / GLFW / OpenAL). The engine ships as a reusable
+library, with real games living under `examples/`, in a monorepo layout. The
+recommended one is **fe_rogue** (a Fire Emblem-style SRPG + roguelike).
 
 > 日本語版は[下](#flix-game-engine-日本語)にあります。
 
@@ -211,12 +264,64 @@ baking entirely. A damaged or outdated cache is ignored and simply re-baked.
 
 # Flix Game Engine (日本語)
 
-[Flix](https://flix.dev/) で書く 2D ゲームエンジン。ゲームは不変の `World` 値を中心に組み立てる:
-システムは Bevy 風 `App` が毎フレーム実行する純粋関数で、各フレームは `World` から描画を導出する。
-描画・入力・音声は LWJGL（OpenGL 3.3 Core / GLFW / OpenAL）を直接叩く自前実装。
+[Flix](https://flix.dev/) で書く 2D ゲームエンジン。**AI と一緒に作る**ことを前提に設計している。
+表現を 2D に絞ることで、足りない機能をプラグインで継ぎ足す形をやめ、ゲームでよくやることを
+公式の部品として用意する。さらに、AI が自分の仕事を自分で確かめられる作りにしてある。
 
-エンジンを再利用ライブラリとして提供し、`examples/` 配下に実際のゲームが並ぶ monorepo 構成。
-おすすめは **fe_rogue**（ファイアーエムブレム風 SRPG + ローグライク）。
+| | | |
+|:--:|:--:|:--:|
+| <img src="docs/gallery/cards.gif" alt="カードゲーム" width="240"> | <img src="docs/gallery/farm.gif" alt="農場シミュレーション" width="240"> | <img src="docs/gallery/dungeon.gif" alt="ダンジョン探索" width="240"> |
+| カードゲーム | 農場シミュレーション | ダンジョン探索 |
+| <img src="docs/gallery/novel.gif" alt="ノベル" width="240"> | <img src="docs/gallery/village.gif" alt="村づくりシミュレーション" width="240"> | <img src="docs/gallery/puzzle.gif" alt="落ちものパズル" width="240"> |
+| ノベル | 村づくりシミュレーション | 落ちものパズル |
+| <img src="docs/gallery/horror.gif" alt="ホラー探索" width="240"> | | |
+| ホラー探索 | | |
+
+ジャンルフリーにゲーム開発ができる。豊富で抽象度の高いパーツの組み合わせで、
+**あらゆる 2D ゲームが表現可能**。
+
+これらのほとんどは、**人が描いた絵も、買ってきた素材も使わずに**作ったもの。絵や音も、
+最低限のものは AI に作らせる仕組みがある。
+
+## なぜ AI と作りやすいのか
+
+**AI が自分で答え合わせをしやすく、人も今の状態を AI に伝えやすい**作りになっているから。
+ゲームのルールは、その部分だけを取り出して自動で試せるので、AI は直したあと自分で確かめられる。
+見た目は**ピクセル単位で変わっていないことを機械が保証できる**ので、直したつもりが別の場所を
+壊していれば、その場で分かる。思ったとおりに動かないときも、そのときのゲームの中身をまるごと
+AI へ渡せるので、**症状を言葉で説明する必要がない**。
+
+AI がコードを書けば、どのエンジンでも敷居は下がる。差が出るのは下がり幅で、ここは
+**AI の書いた物を機械で検算できる**ぶん、任せられる範囲が広い。
+
+## 何が最初から入っているか
+
+以下はすべてエンジンの公式部品なので、人も AI も一から組む必要がない。
+全モジュールの一覧は [docs/module-index.md](docs/module-index.md)。
+
+- **光と影** — 反射・映り込み、ライティング、影の生成、画面全体の色フィルタ（朝・夕・夜）、
+  スプライトの陰影、発光と減光（加算・乗算）、グロー
+- **動きと演出** — パーティクル、絵を描かずに作る動く模様（シェーダーを宣言で組む）、
+  オブジェクトの揺れ、画面転換（フェード・ワイプ）、スプライトの回転、トゥイーン、
+  スプライトアニメ、一連の動作の再生、経路移動、イベントシーン、BGM のフェード
+- **遊びの仕組み** — セーブ・ロード、巻き戻し・リプレイ、マスごとの状態、経路探索と移動範囲、
+  敵 AI、当たり判定を JSON で宣言、衝突と物理、タイマー
+- **画面まわり（UI）** — 会話ウィンドウと文字送り、メニュー、スクロールする一覧、
+  UI を JSON で記述（見た目とクリック判定が同じ宣言から決まる）、9 スライスの枠、
+  テキストの変数表示、マウス操作
+- **盤面と地形** — タイル画像の要らないデュアルグリッド地形、文字で書くマップ、
+  タイルセット画像（自動タイル選択）、文字の格子で描くスプライト、前後関係の自動決定、
+  画面外の間引き、無限に広がる配置
+- **操作とカメラ** — キーマッピング、押した瞬間の判定、マウスホイール、カメラ操作、
+  画面揺れ、ピクセルパーフェクト描画
+- **作っているときの道具** — 再起動せずに数値を調整、見た目の変化を機械が保証、
+  AI や外部ツールから HTTP でゲームを操作、プレイ中に止めて気になる範囲を囲んで記録
+
+ゲームは不変の `World` 値を中心に組み立てる: システムは Bevy 風 `App` が毎フレーム実行する
+純粋関数で、各フレームは `World` から描画を導出する。描画・入力・音声は
+LWJGL（OpenGL 3.3 Core / GLFW / OpenAL）を直接叩く自前実装。エンジンを再利用ライブラリとして
+提供し、`examples/` 配下に実際のゲームが並ぶ monorepo 構成。おすすめは
+**fe_rogue**（ファイアーエムブレム風 SRPG + ローグライク）。
 
 ## 必要環境
 
