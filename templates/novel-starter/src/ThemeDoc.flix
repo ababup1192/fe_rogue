@@ -102,6 +102,10 @@ mod ThemeDoc {
     pub def lighten(c: Color, k: Float64): Color =
         Color.lighten(c, k)
 
+    /// 黒に寄せる（床など、同じ面より奥まって見せたい派生色）。
+    pub def darken(c: Color, k: Float64): Color =
+        Color.darken(c, k)
+
     /// スプライトの意味色キー → 実色。未知のキーはマゼンタ（描き忘れが目に見える）。
     pub def resolver(doc: Doc, key: String): Color =
         match key {

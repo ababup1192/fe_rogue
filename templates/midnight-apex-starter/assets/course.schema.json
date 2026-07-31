@@ -1,8 +1,0 @@
-{
-  "//": "apex.course.json の形の宣言（sections 方言）。rows は閉じたコースを短い区間に分けた文字格子。'#' が通常路面、'=' が加速帯、'^' がジャンプ台、'[' ']' が反発壁、'.' が開いた路外。走り・跳ね・反発の規則はコード（World）側。",
-  "version": 1,
-  "sections": {
-    "note": { "kind": "field", "type": "text", "label": "メモ", "order": 1, "widget": "multiline" },
-    "rows": { "kind": "field", "type": "grid", "label": "コースの段", "order": 2 }
-  }
-}

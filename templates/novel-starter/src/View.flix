@@ -33,11 +33,22 @@ mod View {
 
     // ── 部屋（壁・床・雨の窓） ──
 
+    /// 壁と床の境目（design px）。
+    def wallBottom(): Float64 = 190.0
+
     def room(theme: ThemeDoc.Doc): List[Render.PlacedItem] =
            { at = { x = 0.0, y = 0.0 },
              item = Render.box({ x = World.width(), y = World.height() }, theme#bg, zRoom()) }
         :: { at = { x = 0.0, y = 0.0 },
-             item = Render.box({ x = World.width(), y = 190.0 }, theme#wall, zWall()) }
+             item = Render.box({ x = World.width(), y = wallBottom() }, theme#wall, zWall()) }
+        // 壁の下を bg のまま残さない — 背景色が覗くと部屋の底が抜けて見える。
+        :: { at = { x = 0.0, y = wallBottom() },
+             item = Render.box({ x = World.width(), y = World.height() - wallBottom() },
+                               ThemeDoc.darken(theme#wall, 0.18), zWall()) }
+        // 幅木。暗い床と暗い壁だけでは境目が立たず、床を敷いたことが伝わらない。
+        :: { at = { x = 0.0, y = wallBottom() - 2.0 },
+             item = Render.box({ x = World.width(), y = 2.0 },
+                               ThemeDoc.lighten(theme#wall, 0.25), zWall() + 1) }
         :: window(theme)
 
     /// 雨の窓。枠は壁の派生色、雨すじは Hash01 で決定的に散らす（保存も乱数の種も持たない）。

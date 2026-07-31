@@ -82,7 +82,7 @@ EDITOR_SERVER_DIR := editor_server
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par release release-guard bump editor lint-palette
+.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff release release-guard bump editor lint-palette
 
 help:
 	@echo "Targets:"
@@ -92,6 +92,7 @@ help:
 	@echo "  make lint-palette         ドット絵 legend の意味色キーが Studio から解けるか検査"
 	@echo "  make bake                 bake ターゲットを持つ全 example の生成物を焼き直す"
 	@echo "  make bake-par             同上を並列実行"
+	@echo "  make diff DIR=<dir>       直す前(golden)と後(gallery)を左右に並べて <dir>/debug/diff/ に焼く"
 	@echo "  make sync                 engine / render_gl / engine_world / engine_tools を build-pkg し、各依存先に配布"
 	@echo "  make sync-render-gl       render_gl だけ build-pkg & 配布 (examples へ)"
 	@echo "  make sync-engine          engine だけ build-pkg & 配布 (render_gl / engine_world / engine_tools / examples へ)"
@@ -201,6 +202,21 @@ bake-par:
 		exit 1; \
 	fi; \
 	echo "[bake-par] all done ($$ran examples)"
+
+# 直した絵の「前 (golden)」と「後 (gallery)」を左右に並べて <dir>/debug/diff/ に焼く。
+# bench はバイトが違うことしか言わないので、どこがどう変わったかを目で追えるようにする物。
+# 焼くのは変わった絵だけ — どれが変わったかは cmp が決め、名前だけ工具へ渡す。
+diff:
+	@test -n "$(DIR)" || { echo "使い方: make diff DIR=templates/rpg-starter"; exit 1; }
+	@names=$$(cd "$(DIR)" && for f in gallery/*.png; do \
+		n=$$(basename "$$f"); \
+		if [ ! -f "golden/$$n" ]; then echo "[diff] 比べる前がありません (新しい場面): $$n" >&2; \
+		elif ! cmp -s "$$f" "golden/$$n"; then printf '%s,' "$$n"; fi; \
+	done); \
+	if [ -z "$$names" ]; then echo "[diff] 変わった絵はありません"; else \
+		cd $(ENGINE_TOOLS_DIR) && DIFF_DIR="$(abspath $(DIR))" DIFF_NAMES="$$names" \
+			JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint GoldenDiff.pairs; \
+	fi
 
 # 個別テスト: make test-fe_rogue (examples/ を先に探し、無ければルート直下のパッケージ名)
 test-%:
