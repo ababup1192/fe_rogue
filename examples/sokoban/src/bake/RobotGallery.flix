@@ -54,7 +54,8 @@ mod RobotGallery {
     /// き、z 0 で描かれる腕や胸のディテールが胴体の上に見えるようにする。
     def quad(o: Vec2.Vec2, ps: List[(Float64, Float64)], c: Color): GameEngine.PolygonRenderCmd =
         { vertices = List.map(p -> let (x, y) = p; {x = o#x + x * u(), y = o#y + y * u()}, ps),
-          color = c, alpha = 1.0f32, zIndex = -1, clip = None, blend = DrawCmd.BlendMode.Normal }
+          color = c, alpha = 1.0f32, zIndex = -1, clip = None, blend = DrawCmd.BlendMode.Normal,
+          grad = None }
 
     // ── 6候補 ──
 

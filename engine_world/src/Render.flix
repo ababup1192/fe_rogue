@@ -26,8 +26,10 @@ mod Render {
                    style = Option[GameEngine.BoxStyle], zIndex = Int32, blend = DrawCmd.BlendMode })
         /// 単色の単純多角形（自己交差しなければ凹でもよい。塗りは描画側が耳切りで三角形化）。
         /// 頂点は置き場所からの相対座標（draw が置き場所を全頂点に加算する）。
+        /// grad = Some(色列) で頂点ごとの色になり面の中で滑らかに混ざる（gradPolygon / vgrad で作る。
+        /// 扇割りのため凸の形で使う）。None = color 一色。
         case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32,
-                    blend = DrawCmd.BlendMode })
+                    blend = DrawCmd.BlendMode, grad = Option[List[DrawCmd.VertexTint]] })
         /// rect（スクリーン空間・design px）で inner を切り抜く。入れ子は交差。
         /// App + withCamera 経路では中身にはカメラが掛かるが、窓は常にスクリーン固定 —
         /// PiP やパネル内スクロール用（world に追従する窓は v1 対象外）。
@@ -169,7 +171,29 @@ mod Render {
     /// 置き場所を Vec2.zero() にする）。左右反転した形が欲しいときは頂点を flipH に通してから渡す。
     pub def polygon(vertices: List[Vec2.Vec2], color: Color, zIndex: Int32): Item =
         Item.Poly({ vertices = vertices, color = color, alpha = 1.0f32, zIndex = zIndex,
-                    blend = DrawCmd.BlendMode.Normal })
+                    blend = DrawCmd.BlendMode.Normal, grad = None })
+
+    /// 頂点色つきの凸多角形。各頂点に色と濃さを与えると、面の中で滑らかに混ざる
+    /// （空・水面・光の帯のグラデを 1 部品で描く — 1px の色帯を積む必要はない）。
+    /// 頂点は置き場所からの相対座標。描画側が扇割りで三角形化するため凸の形で使うこと
+    /// — 凹ませたい形は凸に割って並べる。
+    pub def gradPolygon(vertices: List[DrawCmd.GradVertex], zIndex: Int32): Item =
+        Item.Poly({ vertices = List.map(v -> v#pos, vertices),
+                    color = vertices |> List.head |> Option.map(v -> v#color)
+                                     |> Option.getWithDefault(white()),
+                    alpha = 1.0f32, zIndex = zIndex, blend = DrawCmd.BlendMode.Normal,
+                    grad = Some(List.map(v -> ({ color = v#color, alpha = v#alpha }: DrawCmd.VertexTint),
+                                         vertices)) })
+
+    /// 上下 2 色の縦グラデ矩形（左上原点・サイズ指定）。空や夕暮れの背景の定番形。
+    /// 濃さも変えたいとき（上へ消える光の帯など）は gradPolygon で頂点ごとに渡す。
+    pub def vgrad(size: Vec2.Vec2, colors: { top = Color, bottom = Color }, zIndex: Int32): Item =
+        gradPolygon(
+            { pos = { x = 0.0, y = 0.0 },       color = colors#top,    alpha = 1.0f32 } ::
+            { pos = { x = size#x, y = 0.0 },    color = colors#top,    alpha = 1.0f32 } ::
+            { pos = { x = size#x, y = size#y }, color = colors#bottom, alpha = 1.0f32 } ::
+            { pos = { x = 0.0, y = size#y },    color = colors#bottom, alpha = 1.0f32 } :: Nil,
+            zIndex)
 
     // ── 図形の語彙（polygon の上に組んだ形。凹も可 — 描画側の耳切りが三角形化する）──
     // 角度はぜんぶ「1 周 = 1.0 の回転量 t」で渡す（t = 0 が真上・時計回り = 画面の見た目どおり）。
@@ -407,7 +431,7 @@ mod Render {
                 else Item.Poly({ vertices = { x = 0.0, y = 0.0 } :: { x = b#size#x, y = 0.0 }
                                      :: { x = b#size#x, y = b#size#y } :: { x = 0.0, y = b#size#y } :: Nil,
                                  color = b#color, alpha = b#alpha, zIndex = b#zIndex,
-                                 blend = b#blend })
+                                 blend = b#blend, grad = None })
             case other => other
         }, item)
 
@@ -496,6 +520,17 @@ mod Render {
             case Item.Box(b) =>
                 Item.Box({ style = Some({ borderColor = color, borderWidth = width,
                                                 borderAlpha = 1.0f32 | styleOf(b#style) }) | b })
+            case other => other
+        }, item)
+
+    /// 濃さつきの枠線を付ける（Box に効く）。outline は枠が常に不透明 — 中身を邪魔しない
+    /// 薄い枠（ホバー枠・ガイド線）はこちらで alpha を渡す。同型の引数の取り違えを防ぐため
+    /// 名前つきで渡す。
+    pub def outlineA(border: { color = Color, alpha = Float32, width = Float64 }, item: Item): Item =
+        onLeaf(leaf -> match leaf {
+            case Item.Box(b) =>
+                Item.Box({ style = Some({ borderColor = border#color, borderWidth = border#width,
+                                                borderAlpha = border#alpha | styleOf(b#style) }) | b })
             case other => other
         }, item)
 
@@ -695,9 +730,10 @@ mod Render {
     /// Poly を置き場所 pos の描画命令へ（全頂点に pos を加算）。
     def polyCmd(pos: Vec2.Vec2,
                 p: { vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32,
-                     blend = DrawCmd.BlendMode }): GameEngine.PolygonRenderCmd =
+                     blend = DrawCmd.BlendMode, grad = Option[List[DrawCmd.VertexTint]] }): GameEngine.PolygonRenderCmd =
         { vertices = List.map(v -> Vec2.add(v, pos), p#vertices),
-          color = p#color, alpha = p#alpha, zIndex = p#zIndex, clip = None, blend = p#blend }
+          color = p#color, alpha = p#alpha, zIndex = p#zIndex, clip = None, blend = p#blend,
+          grad = p#grad }
 
     /// World 由来 Drawable 群に camera のズーム倍率を適用する（位置は `Projection.applyToWorldPos` で
     /// screenPos を出した後の共通後処理）。render-from-World の各オーバーレイ（ユニット / 背景 / 範囲表示 /

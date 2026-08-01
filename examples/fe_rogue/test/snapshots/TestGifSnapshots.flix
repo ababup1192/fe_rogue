@@ -594,7 +594,8 @@ mod TestGifSnapshots {
         let edge = (p0, p1) ->
             ({ vertices = Quad.strip(p0, p1, -0.5, 0.5),
                color = {r = 0.35f32, g = 0.4f32, b = 0.5f32}, alpha = 0.5f32,
-               zIndex = 10, clip = None, blend = DrawCmd.BlendMode.Normal }: GameEngine.PolygonRenderCmd);
+               zIndex = 10, clip = None, blend = DrawCmd.BlendMode.Normal,
+               grad = None }: GameEngine.PolygonRenderCmd);
         edge({x = center#x - half, y = center#y - half}, {x = center#x + half, y = center#y - half}) ::
         edge({x = center#x + half, y = center#y - half}, {x = center#x + half, y = center#y + half}) ::
         edge({x = center#x + half, y = center#y + half}, {x = center#x - half, y = center#y + half}) ::

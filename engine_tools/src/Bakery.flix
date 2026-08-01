@@ -131,6 +131,33 @@ mod Bakery {
         { strip = "frames/${name}/", frameCount = List.length(images),
           frameW = cfg#frameW, frameH = cfg#frameH, fps = cfg#gifFps }
 
+    /// シェーダー面つきの bakeGif（renderPngWith の GIF 版）。toCmds が各コマの
+    /// (描き物, 多角形, シェーダー面) を返し、面は ShaderEval の画素評価で z 順に合流する。
+    /// 渡す側は draw の代表色ベタ塗りと二重にならないよう、items を Render.withoutShaders で
+    /// 外してから draw すること（renderPngWith と同じ約束）。
+    /// 既存 bakeGif に surfaces 引数を足さないのは、面チャンネルの無い呼び元のシグネチャを
+    /// 割らないため。
+    pub def bakeGifWith(cfg: BakeConfig, frames: List[w], stride: Int32,
+                        toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd],
+                                      List[SoftRaster.SurfaceCmd]),
+                        name: String): SnapshotSite.Filmstrip \ IO =
+        let sampled = every(stride, frames);
+        // コマ列は同じ作りの絵が続くので、報告は先頭コマぶんだけ出す（bakeGifFonts と同じ）。
+        List.head(sampled) |> Option.forEach(w -> {
+            let (drawables, _, _) = toCmds(w);
+            warnDropped(drawables, name)
+        });
+        let images = List.zipWithIndex(sampled) |> List.map(pair -> {
+            let (i, w) = pair;
+            let (drawables, polygons, surfaces) = toCmds(w);
+            let img = SoftRaster.renderToImageWith(reqOf(cfg, drawables, polygons, gifPath(cfg, name)), surfaces);
+            Filmstrip.bakeFrame(img, "${cfg#outDir}/frames/${name}/${i}.png");
+            img
+        });
+        GifEncoder.encode(images, cfg#gifDelayMs, gifPath(cfg, name));
+        { strip = "frames/${name}/", frameCount = List.length(images),
+          frameW = cfg#frameW, frameH = cfg#frameH, fps = cfg#gifFps }
+
     /// stride 枚ごとに 1 枚を残す（0 番から）。
     pub def every(stride: Int32, xs: List[a]): List[a] =
         List.zipWithIndex(xs)

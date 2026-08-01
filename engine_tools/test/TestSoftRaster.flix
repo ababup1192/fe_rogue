@@ -4,6 +4,7 @@
 //   Add      = 明るく足す（255 でクランプ）
 //   Multiply = 暗く沈める（白は素通し・黒は黒・alpha 0 で何も変えない）
 mod TestSoftRaster {
+    import java.awt.image.BufferedImage
 
     /// ARGB int の組み立て（テスト入力用）。
     def argb(a: Int32, r: Int32, g: Int32, b: Int32): Int32 =
@@ -94,4 +95,67 @@ mod TestSoftRaster {
     def testDroppedIsEmptyWhenNothingLost(): Unit \ Assert =
         let ds = drawable("", someStyle()) :: drawable("hero", None) :: Nil;
         Assert.assertEq(expected = 0, List.length(SoftRaster.dropped(ds)))
+
+    // ══════════════════════════════════════════════════════════════
+    // 頂点色つき多角形（grad）の補間 — GL の頂点色補間と同じ線形の式であることの pin
+    // ══════════════════════════════════════════════════════════════
+
+    def black(): Color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
+    def white(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
+
+    /// 上 2 頂点 top・下 2 頂点 bottom の縦グラデ四角（0,0)-(4,4)。
+    def vgradQuad(top: Color, bottom: Color): GameEngine.PolygonRenderCmd =
+        { vertices = { x = 0.0, y = 0.0 } :: { x = 4.0, y = 0.0 }
+                  :: { x = 4.0, y = 4.0 } :: { x = 0.0, y = 4.0 } :: Nil,
+          color = top, alpha = 1.0f32, zIndex = 0, clip = None,
+          blend = DrawCmd.BlendMode.Normal,
+          grad = Some({ color = top, alpha = 1.0f32 } :: { color = top, alpha = 1.0f32 }
+                   :: { color = bottom, alpha = 1.0f32 } :: { color = bottom, alpha = 1.0f32 } :: Nil) }
+
+    //   (0,0)黒 ── (4,0)黒
+    //     │  y=1.5 の点は上下の 0.375 地点 → 灰 0.375（=3/8。二進で正確）
+    //   (0,4)白 ── (4,4)白
+    @Test
+    def testGradSampleInterpolatesVertically(): Unit \ Assert =
+        let tris = DrawCmd.gradTriangles(vgradQuad(black(), white()));
+        let got = SoftRaster.gradSample(tris, { x = 0.5, y = 1.5 })
+            |> Option.map(t -> (t#color#r, t#color#g, t#color#b, t#alpha));
+        Assert.assertEq(expected = Some((0.375f32, 0.375f32, 0.375f32, 1.0f32)), got)
+
+    /// 色列が頂点より短いときは残りを color（ここでは青）で補い、濃さは頂点 α × 全体 α。
+    /// 角の真上でサンプルすると重みが (1,0,0) になるので、期待値が丸め無しで決まる。
+    @Test
+    def testGradShortListFallsBackToBaseColorAndFoldsAlpha(): Unit \ Assert =
+        let red: Color = { r = 1.0f32, g = 0.0f32, b = 0.0f32 };
+        let blue: Color = { r = 0.0f32, g = 0.0f32, b = 1.0f32 };
+        let tri: GameEngine.PolygonRenderCmd =
+            { vertices = { x = 0.0, y = 0.0 } :: { x = 4.0, y = 0.0 } :: { x = 0.0, y = 4.0 } :: Nil,
+              color = blue, alpha = 0.5f32, zIndex = 0, clip = None,
+              blend = DrawCmd.BlendMode.Normal,
+              grad = Some({ color = red, alpha = 0.5f32 } :: Nil) };
+        let tris = DrawCmd.gradTriangles(tri);
+        let sampleAt = at -> SoftRaster.gradSample(tris, at)
+            |> Option.map(t -> (t#color#r, t#color#b, t#alpha));
+        // 頂点 0 = 渡した赤（α = 0.5×0.5）、頂点 1 = 補われた青（α = 1×0.5）。
+        Assert.assertEq(
+            expected = (Some((1.0f32, 0.0f32, 0.25f32)), Some((0.0f32, 1.0f32, 0.5f32))),
+            (sampleAt({ x = 0.0, y = 0.0 }), sampleAt({ x = 4.0, y = 0.0 })))
+
+    /// 縦グラデ四角を 4×4 の PNG 画素に焼くと、各行の画素中心 (y+0.5)/4 の位置の
+    /// 中間色が出る（0..255 へは argb の四捨五入。黒→白なら 32 / 96 / 159 / 223）。
+    /// フォントは描かないが RasterReq の配管上 TTF の実パスが要るため、リポジトリ内の
+    /// 資産を相対参照する（テストの cwd = engine_tools/ 前提）。
+    @Test
+    def testVgradBakesMiddleColors(): Unit \ {Assert, IO} =
+        let img: BufferedImage = SoftRaster.renderToImage({
+            drawables = Nil, polygons = vgradQuad(black(), white()) :: Nil,
+            design = { x = 4.0, y = 4.0 }, scale = 1, background = black(),
+            texturePath = Map.empty(),
+            fontTtf = "../examples/breakout/assets/Xolonium-Regular.ttf",
+            fontAtlas = { textureName = "font_ui", fontSize = 16.0, textureSize = 256.0,
+                          ascent = 12.0, descent = 4.0, lineGap = 0.0, glyphs = Map.empty() },
+            outPath = "" });
+        let grayAt = y -> { let (_, r, _, _) = channels(img.getRGB(1i32, y)); r };
+        Assert.assertEq(expected = 32 :: 96 :: 159 :: 223 :: Nil,
+            grayAt(0i32) :: grayAt(1i32) :: grayAt(2i32) :: grayAt(3i32) :: Nil)
 }

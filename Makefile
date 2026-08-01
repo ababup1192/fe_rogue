@@ -82,7 +82,7 @@ EDITOR_SERVER_DIR := editor_server
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par release release-guard bump editor lint-palette
+.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff release release-guard bump editor lint-palette
 
 help:
 	@echo "Targets:"
@@ -92,6 +92,7 @@ help:
 	@echo "  make lint-palette         ドット絵 legend の意味色キーが Studio から解けるか検査"
 	@echo "  make bake                 bake ターゲットを持つ全 example の生成物を焼き直す"
 	@echo "  make bake-par             同上を並列実行"
+	@echo "  make diff DIR=<dir>       直す前(golden)と後(gallery)を左右に並べて <dir>/debug/diff/ に焼く"
 	@echo "  make sync                 engine / render_gl / engine_world / engine_tools を build-pkg し、各依存先に配布"
 	@echo "  make sync-render-gl       render_gl だけ build-pkg & 配布 (examples へ)"
 	@echo "  make sync-engine          engine だけ build-pkg & 配布 (render_gl / engine_world / engine_tools / examples へ)"
@@ -138,7 +139,7 @@ test:
 	@for dir in $(TEST_DIRS); do \
 		if [ -f "$$dir/flix.toml" ]; then \
 			echo "===== $$dir ====="; \
-			(cd "$$dir" && $(FLIX_TEST) test) || exit 1; \
+			(cd "$$dir" && "$(FLIX_TEST)" test) || exit 1; \
 		fi \
 	done
 
@@ -154,7 +155,7 @@ test-par:
 	printf '%s\n' $(TEST_DIRS) | xargs -P $(TEST_PAR_JOBS) -n 1 sh -c ' \
 		dir="$$0"; [ -f "$$dir/flix.toml" ] || exit 0; \
 		name=$$(printf "%s" "$$dir" | tr / _); \
-		if (cd "$$dir" && $(FLIX_TEST) test) > ".test-logs/$$name.log" 2>&1; then \
+		if (cd "$$dir" && "$(FLIX_TEST)" test) > ".test-logs/$$name.log" 2>&1; then \
 			echo "[test-par] PASS $$dir"; \
 		else \
 			echo "[test-par] FAIL $$dir"; touch ".test-logs/$$name.fail"; \
@@ -202,12 +203,27 @@ bake-par:
 	fi; \
 	echo "[bake-par] all done ($$ran examples)"
 
+# 直した絵の「前 (golden)」と「後 (gallery)」を左右に並べて <dir>/debug/diff/ に焼く。
+# bench はバイトが違うことしか言わないので、どこがどう変わったかを目で追えるようにする物。
+# 焼くのは変わった絵だけ — どれが変わったかは cmp が決め、名前だけ工具へ渡す。
+diff:
+	@test -n "$(DIR)" || { echo "使い方: make diff DIR=templates/rpg-starter"; exit 1; }
+	@names=$$(cd "$(DIR)" && for f in gallery/*.png; do \
+		n=$$(basename "$$f"); \
+		if [ ! -f "golden/$$n" ]; then echo "[diff] 比べる前がありません (新しい場面): $$n" >&2; \
+		elif ! cmp -s "$$f" "golden/$$n"; then printf '%s,' "$$n"; fi; \
+	done); \
+	if [ -z "$$names" ]; then echo "[diff] 変わった絵はありません"; else \
+		cd $(ENGINE_TOOLS_DIR) && DIFF_DIR="$(abspath $(DIR))" DIFF_NAMES="$$names" \
+			JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint GoldenDiff.pairs; \
+	fi
+
 # 個別テスト: make test-fe_rogue (examples/ を先に探し、無ければルート直下のパッケージ名)
 test-%:
 	@if [ -d "examples/$*" ]; then \
-		cd "examples/$*" && $(FLIX_TEST) test; \
+		cd "examples/$*" && "$(FLIX_TEST)" test; \
 	else \
-		cd "$*" && $(FLIX_TEST) test; \
+		cd "$*" && "$(FLIX_TEST)" test; \
 	fi
 
 # ── 関所: ドット絵の意味色キー ────────────────────────────
@@ -250,7 +266,7 @@ sync-engine-full:
 		done; \
 	done; \
 	find $(ENGINE_FULL_DIR)/src -type l | awk 'END { print "[sync-engine-full] " NR " source symlink(s)" }'
-	cd $(ENGINE_FULL_DIR) && $(FLIX) build-pkg
+	cd $(ENGINE_FULL_DIR) && "$(FLIX)" build-pkg
 	@for dir in examples/*/ templates/*/ bench/*/; do \
 		toml="$$dir/flix.toml"; \
 		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_game_engine"' "$$toml"; then \
@@ -279,7 +295,7 @@ EDITOR_WEB_EXPANDED = $(if $(EDITOR_WEB),$(abspath $(patsubst ~/%,$(HOME)/%,$(pa
 editor:
 	@test -n "$(DIR)" || echo "[editor] DIR 未指定 — プロジェクト未選択で起動します (usage: make editor DIR=<game project dir> [PORT=8787])"
 	@test -f "$(EDITOR_WEB_EXPANDED)/index.html" || echo "[editor] 注意: $(EDITOR_WEB_EXPANDED) に dist が無い — 画面配信なしの API 専用で起動します"
-	cd $(EDITOR_SERVER_DIR) && EDITOR_DIR="$(EDITOR_DIR_EXPANDED)" EDITOR_PORT="$(if $(PORT),$(PORT),8787)" EDITOR_WEB="$(EDITOR_WEB_EXPANDED)" $(FLIX) run
+	cd $(EDITOR_SERVER_DIR) && EDITOR_DIR="$(EDITOR_DIR_EXPANDED)" EDITOR_PORT="$(if $(PORT),$(PORT),8787)" EDITOR_WEB="$(EDITOR_WEB_EXPANDED)" "$(FLIX)" run
 
 # ── リリース ──────────────────────────────────────────────
 # 自己完結の全部入り engine_full を build-pkg し、既存リポ flix_game_engine の GitHub Release に
@@ -311,7 +327,7 @@ release-guard:
 	 done
 	@echo "[release] v$(VERSION) を $(RELEASE_SHA) で公開します"
 release: release-guard sync $(TEST)
-	cd $(ENGINE_FULL_DIR) && $(FLIX) build-pkg
+	cd $(ENGINE_FULL_DIR) && "$(FLIX)" build-pkg
 	gh release create v$(VERSION) --repo ababup1192/flix_game_engine --target $(RELEASE_SHA) \
 	  --title "v$(VERSION)" --generate-notes \
 	  "$(ENGINE_FULL_FPKG_SRC)#$(ENGINE_FULL_FPKG_NAME)" \
@@ -360,7 +376,7 @@ sync-root-src:
 # render_gl は engine（フロント契約）を実装する GL バックエンド。examples が直接依存にする。
 # engine に依存するので sync チェーンでは sync-engine の後に置く（lib に engine fpkg が要る）。
 sync-render-gl:
-	cd $(RENDER_GL_DIR) && $(FLIX) build-pkg
+	cd $(RENDER_GL_DIR) && "$(FLIX)" build-pkg
 	@for dir in examples/*/; do \
 		toml="$$dir/flix.toml"; \
 		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_render_gl"' "$$toml"; then \
@@ -379,7 +395,7 @@ sync-render-gl:
 # 特に render_gl は engine を実装するバックエンドなので、engine fpkg を render_gl にも配る。
 # fpkg / toml は cp ではなく相対 symlink で配布する (engine 再ビルドが即反映される)
 sync-engine:
-	cd $(ENGINE_DIR) && $(FLIX) build-pkg
+	cd $(ENGINE_DIR) && "$(FLIX)" build-pkg
 	@for dir in $(RENDER_GL_DIR)/ $(ENGINE_WORLD_DIR)/ $(ENGINE_TOOLS_DIR)/ $(EDITOR_SERVER_DIR)/ examples/*/; do \
 		toml="$$dir/flix.toml"; \
 		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_engine_core"' "$$toml"; then \
@@ -397,7 +413,7 @@ sync-engine:
 # engine_world は engine を依存にする再利用 ECS lib。examples に配布する。
 # engine に依存するので sync チェーンでは sync-engine の後に置く（lib に engine fpkg が要る）。
 sync-engine-world:
-	cd $(ENGINE_WORLD_DIR) && $(FLIX) build-pkg
+	cd $(ENGINE_WORLD_DIR) && "$(FLIX)" build-pkg
 	@for dir in $(EDITOR_SERVER_DIR)/ examples/*/; do \
 		toml="$$dir/flix.toml"; \
 		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_engine_world"' "$$toml"; then \
@@ -415,7 +431,7 @@ sync-engine-world:
 # engine_tools は engine を依存にするヘッドレス描画/スナップショット工具箱 lib。examples に配布する。
 # engine に依存するので sync チェーンでは sync-engine の後に置く（lib に engine fpkg が要る）。
 sync-engine-tools:
-	cd $(ENGINE_TOOLS_DIR) && $(FLIX) build-pkg
+	cd $(ENGINE_TOOLS_DIR) && "$(FLIX)" build-pkg
 	@for dir in $(EDITOR_SERVER_DIR)/ examples/*/; do \
 		toml="$$dir/flix.toml"; \
 		if [ -f "$$toml" ] && grep -q 'ababup1192/flix_engine_tools"' "$$toml"; then \

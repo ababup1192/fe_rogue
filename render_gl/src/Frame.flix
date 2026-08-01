@@ -342,18 +342,12 @@ mod RenderFrame {
             // 1 多角形を三角形化し、各頂点を 6 floats (x, y, r, g, b, a) にして run へ積む。
             // 色×alpha は頂点属性に畳み込む（drawPolygon が uniform で渡していた spriteColor /
             // spriteAlpha と同じ値を頂点ごとに持たせるだけなので絵は変わらない）。
+            // 展開（単色の耳切り / grad の扇割り＋頂点色）は RenderSprite.polyVertsRev に共通化。
             let pushPoly = (acc: (Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]]),
                             clipK: Option[(Int32, Int32, Int32, Int32)], blend: DrawCmd.BlendMode,
                             pc: RenderType.PolygonCmd) -> {
                 let (accClip, accBlend, accCount, accRev) = acc;
-                let color = pc#color;
-                let alpha = pc#alpha;
-                let flat = Triangulate.triangles(pc#vertices)
-                    |> List.flatMap(tri -> { let (a, b, c) = tri; a :: b :: c :: Nil });
-                let n = List.length(flat);
-                let vertsRev = List.foldLeft((rest, v) ->
-                    (Array#{ f32(v#x), f32(v#y), color#r, color#g, color#b, alpha } @ Static) :: rest,
-                    Nil, flat);
+                let (n, vertsRev) = RenderSprite.polyVertsRev(pc);
                 // 頂点数が 3 未満（退化）なら run を切らずに素通しする（drawPolygon の n<3 と同じ扱い）。
                 if (n < 3)
                     acc

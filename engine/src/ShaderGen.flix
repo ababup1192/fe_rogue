@@ -117,6 +117,26 @@ mod ShaderGen {
         "    }\n" +
         "    return sum;\n" +
         "}\n" +
+        // 周期つき value noise: 格子点を period で折り返してから hash する（period マスで模様が閉じる）。
+        "float sg_valueNoiseTile(vec2 p, vec2 period, float seed) {\n" +
+        "    vec2 ip = floor(p);\n" +
+        "    vec2 fp = fract(p);\n" +
+        "    vec2 w = fp * fp * (3.0 - 2.0 * fp);\n" +
+        "    float a = sg_hash1(mod(ip + vec2(0.0, 0.0), period), seed);\n" +
+        "    float b = sg_hash1(mod(ip + vec2(1.0, 0.0), period), seed);\n" +
+        "    float c = sg_hash1(mod(ip + vec2(0.0, 1.0), period), seed);\n" +
+        "    float d = sg_hash1(mod(ip + vec2(1.0, 1.0), period), seed);\n" +
+        "    return mix(mix(a, b, w.x), mix(c, d, w.x), w.y);\n" +
+        "}\n" +
+        // 周期つき fbm。オクターブごとに period も freq 倍する（各層とも同じ位置で折り返す）。
+        "float sg_fbmTile(vec2 p, vec2 period, int octaves, float seed) {\n" +
+        "    float sum = 0.0; float amp = 0.5; float freq = 1.0;\n" +
+        "    for (int i = 0; i < octaves; i++) {\n" +
+        "        sum += amp * sg_valueNoiseTile(p * freq, period * freq, seed + float(i) * 13.0);\n" +
+        "        freq *= 2.0; amp *= 0.5;\n" +
+        "    }\n" +
+        "    return sum;\n" +
+        "}\n" +
         // 中心 (cx,cy) のまわりに座標を回す（中心ほど速い差動回転＋rate*uTime の全体回転）。
         "vec2 sg_swirl(vec2 uv, float cx, float cy, float strength, float rate) {\n" +
         "    vec2 c = vec2(cx, cy);\n" +
@@ -260,6 +280,9 @@ mod ShaderGen {
                 }
             case ShaderDoc.Field.Fbm(b) =>
                 "sg_fbm((" + uv + ") * " + f(b#scale) + ", " + iLit(b#octaves) + ", " + fSeed(b#seed) + ")"
+            case ShaderDoc.Field.FbmTile(b) =>
+                "sg_fbmTile((" + uv + ") * " + f(b#scale) + ", vec2(" + f(b#period#x) + ", " +
+                f(b#period#y) + "), " + iLit(b#octaves) + ", " + fSeed(b#seed) + ")"
             case ShaderDoc.Field.Smoothstep(s) =>
                 "smoothstep(" + f(s#lo) + ", " + f(s#hi) + ", " + fieldExpr(s#of, uv, env) + ")"
             case ShaderDoc.Field.Scaled(s) =>
@@ -298,6 +321,14 @@ mod ShaderGen {
             case ShaderDoc.Field.Radial(rd) =>
                 // 中心からの生の距離（クランプしない — 呼び側の Smoothstep がカーブを決める）。
                 "length((" + uv + ") - vec2(" + f(rd#cx) + ", " + f(rd#cy) + "))"
+            case ShaderDoc.Field.RadialAspect(ra) =>
+                // u 方向だけ aspect 倍してから距離を測る（非正方形 rect でも px で真円）。
+                "length(vec2(((" + uv + ").x - " + f(ra#cx) + ") * " + f(ra#aspect) + ", (" +
+                uv + ").y - " + f(ra#cy) + "))"
+            case ShaderDoc.Field.Quantize(q) =>
+                // steps は 1 未満だと 0 除算になるので生成時に 1 で下切りする（CPU 側と同じ扱い）。
+                let n = f(Int32.toFloat64(Int32.max(1, q#steps)));
+                "(floor((" + fieldExpr(q#of, uv, env) + ") * " + n + ") / " + n + ")"
             case ShaderDoc.Field.Scales(sc) =>
                 "sg_scales((" + uv + "), " + f(sc#scale) + ", " + f(sc#stagger) + ")"
             case ShaderDoc.Field.Glints(g) =>
@@ -356,6 +387,12 @@ mod ShaderGen {
                 // 各マス内は fract(uv*tiles)。of が読む座標をこの式に差し替える（sg_tiling は作らない）。
                 let uv2 = "fract((" + uv + ") * vec2(" + f(tl#tiles#x) + ", " + f(tl#tiles#y) + "))";
                 fieldExpr(tl#of, uv2, env)
+            case ShaderDoc.Field.Snap(sn) =>
+                // マスの中心（+0.5）を読む — 角を読むと格子ノイズの節点に乗って塊が半マスずれる。
+                // cells は 1 未満だと 0 除算になるので生成時に 1 で下切りする（CPU 側と同じ扱い）。
+                let cells = "vec2(" + f(snapCells(sn#cells#x)) + ", " + f(snapCells(sn#cells#y)) + ")";
+                let uv2 = "((floor((" + uv + ") * " + cells + ") + 0.5) / " + cells + ")";
+                fieldExpr(sn#of, uv2, env)
             case ShaderDoc.Field.Ref(name) =>
                 // parse が定義済みを保証する。未定義は 0.0（保険）。
                 match Map.get(name, env) {
@@ -372,6 +409,9 @@ mod ShaderGen {
             case None    => cell
             case Some(b) => "(" + cell + " + (" + fieldExpr(b, uv, env) + "))"
         }
+
+    /// Snap の分割数（ShaderEval.snapCells と同じ下切り）。
+    def snapCells(c: Float64): Float64 = Float64.max(1.0, c)
 
     /// base を n 回掛けた GLSL 積の文字列（n=0 は 1.0・n=1 は base そのもの）。
     /// CPU 側の反復積と同じ左結合の並びにする。

@@ -128,7 +128,8 @@ mod Arc {
                     mkPt(a0, outerR) :: mkPt(a1, outerR) ::
                     mkPt(a1, innerR) :: mkPt(a0, innerR) :: Nil;
                 ({vertices = verts, color = r#visual#color, alpha = r#alpha, clip = None,
-                  zIndex = r#visual#zIndex, blend = DrawCmd.BlendMode.Normal}: GameEngine.PolygonRenderCmd)
+                  zIndex = r#visual#zIndex, blend = DrawCmd.BlendMode.Normal,
+                  grad = None}: GameEngine.PolygonRenderCmd)
             })
         }
 }

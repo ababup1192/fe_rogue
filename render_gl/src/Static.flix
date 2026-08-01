@@ -63,26 +63,20 @@ mod RenderStatic {
     /// 連続配置する。レンジ目次（z / blend / clip ごとの開始頂点・頂点数）も同時に作る。
     /// 同 z 内は入力順を保つ（動的側の stableByZ と同じ安定性）。
     def bake(key: DrawCmd.StaticKey, polys: List[DrawCmd.PolygonRenderCmd]): Entry \ IO =
-        let f32 = RenderUtil.f32;
         // z 昇順・同 z は入力順（安定）に並べ替える。
         let sorted = stableByZ(pc -> pc#zIndex, polys);
         // 各多角形を三角形化して 6 floats/頂点の配列にし、(頂点配列列, レンジ目次) を畳む。
         // レンジは「連続する同 z・同 blend・同 clip」でまとめる。
+        // 展開（単色の耳切り / grad の扇割り＋頂点色）は RenderSprite.polyVertsRev に共通化。
         let init = { vertsRev = (Nil: List[Array[Float32, Static]]), total = 0,
                      metasRev = (Nil: List[DrawCmd.StaticPolyMeta]),
                      cur = (None: Option[{ z = Int32, blend = DrawCmd.BlendMode,
                                            clip = Option[Rect2.Rect2], start = Int32, count = Int32 }]) };
         let folded = List.foldLeft((acc, pc) -> {
-            let color = pc#color;
-            let alpha = pc#alpha;
-            let flat = Triangulate.triangles(pc#vertices)
-                |> List.flatMap(tri -> { let (a, b, c) = tri; a :: b :: c :: Nil });
-            let n = List.length(flat);
+            let (n, polyRev) = RenderSprite.polyVertsRev(pc);
             if (n < 3) acc
             else {
-                let verts2 = List.foldLeft((rest, v) ->
-                    (Array#{ f32(v#x), f32(v#y), color#r, color#g, color#b, alpha } @ Static) :: rest,
-                    acc#vertsRev, flat);
+                let verts2 = List.append(polyRev, acc#vertsRev);
                 let total2 = acc#total + n;
                 // レンジをまとめられるか（同 z・同 blend・同 clip）。Rect2 に Eq が無いので clip は
                 // 座標 4 つを直接比べる（clipEq）。

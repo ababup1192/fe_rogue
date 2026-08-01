@@ -46,6 +46,25 @@ mod TestCurve {
     def testSpin(): Unit \ Assert =
         Assert.assertEq(expected = 10.0, Curve.spin(2.5, 4.0))
 
+    /// dampedSpring: t=0 は振幅そのもの（e^0·cos0 = 1）。半周期 π/freq では cos が −1 になり
+    /// 符号が反転しつつ、封筒 e^(−decay·t) のぶんだけ縮む（式どおりの値と突き合わせる）。
+    @Test
+    def testDampedSpringStartAndHalfPeriod(): Unit \ Assert =
+        let pi = 3.141592653589793;
+        let atStart = Curve.dampedSpring(2.0, 1.5, 4.0, 0.0);
+        let half = Curve.dampedSpring(2.0, 1.5, 4.0, pi / 4.0);
+        let expectedHalf = -2.0 * Float64.exp(-1.5 * pi / 4.0);
+        Assert.assertEq(expected = (true, true),
+            (near(atStart, 2.0), near(half, expectedHalf)))
+
+    /// dampedSpring: 1 周期ごとの山（cos = 1 の点）は decay の封筒どおり単調に縮んで 0 へ向かう。
+    @Test
+    def testDampedSpringDecays(): Unit \ Assert =
+        let tau = 6.283185307179586;
+        let peak = k -> Curve.dampedSpring(1.0, 0.8, tau, Int32.toFloat64(k));
+        Assert.assertEq(expected = (true, true, true),
+            (peak(1) < peak(0), peak(2) < peak(1), peak(2) > 0.0))
+
     /// pieces: 折れ線 (0,0)-(2,4)-(4,0)。区間内は線形、両端の外は平ら。
     @Test
     def testPiecesInterpolatesAndClamps(): Unit \ Assert =

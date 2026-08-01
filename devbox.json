@@ -1,14 +1,19 @@
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
-  "packages": ["jdk@21", "gnumake@latest", "github:Cj-bc/flix.nix#flix_0_75_1"],
+  "packages": [
+    "jdk@21",
+    "gnumake@latest",
+    "github:Cj-bc/flix.nix#flix_0_75_1",
+    "ffmpeg@latest"
+  ],
   "shell": {
     "init_hook": [
       "export PATH=\"$PWD/bin:$PATH\""
     ],
     "scripts": {
-      "flix": "$PWD/bin/flix",
-      "test": "$PWD/bin/flix test",
-      "run": "$PWD/bin/flix run",
+      "flix":  "$PWD/bin/flix",
+      "test":  "$PWD/bin/flix test",
+      "run":   "$PWD/bin/flix run",
       "build": "$PWD/bin/flix build"
     }
   }

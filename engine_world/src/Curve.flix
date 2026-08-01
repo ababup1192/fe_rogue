@@ -50,6 +50,13 @@ mod Curve {
         else if (p < 0.75) 2.0 - 4.0 * p
         else 4.0 * p - 4.0
 
+    /// 減衰バネ: 振幅 `amp` から始まり、`decay`（1 秒あたりの減り・大きいほど早く静まる）で
+    /// 小さくなりながら `freq`（1 秒あたりの角速度・ラジアン）で往復する波。
+    /// 式は amp · e^(−decay·t) · cos(freq·t)。t=0 で amp、時間とともに 0 へ落ち着く。
+    /// 着地のあとの「ぷるん」、UI が跳ねて収まる動きに使う。
+    pub def dampedSpring(amp: Float64, decay: Float64, freq: Float64, t: Float64): Float64 =
+        amp * Float64.exp(-decay * t) * RenderUtil.cosF(freq * t)
+
     /// (時刻, 値) の折れ線を `t` で読んだ値。`keyframes` は時刻の昇順。区間内は線形に
     /// 補間し、先頭の時刻より前は先頭値・末尾の時刻より後は末尾値で平ら（外挿しない）。
     /// 宣言データで表した時間変化をそのまま評価する土台に使う。
