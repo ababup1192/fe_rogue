@@ -71,6 +71,18 @@
 | シェーダー面を多角形の形に抜く（池・水たまり） | Render（shaderFillMasked） |
 | 光らせる・暗く沈める（加算・乗算の重ね方） | Render（blended） |
 | 絵を傾ける・集まりを丸ごと傾ける（カードの傾き・振り子） | Render（turned / turnedAll）/ ui.json の rotation |
+| ドット絵のコマの大きさを知る（当たり・置き場所を絵に追随させる） | PxSprite.sizeOf / PxSpriteDoc.gridSizeOf |
+| 文字の並び（rows）の大きさを測る・1 マスずつほどく | Grid.dimsOfRows / Grid.cellsOfRows |
+| 0〜1 に収める・小数部だけ残す・周期で折り返す（負の値も安全） | Num.clamp01 / clamp / fract / wrapTo / lerp |
+| 色を作る（0〜1・0〜255・#rrggbb）・2 色を混ぜる・比べる | Color.rgb / rgb8 / hex / mix / channels |
+| 置き場所つきの絵に修飾を掛ける・列を丸ごと薄くする | Render.overItem / Render.fadeAll |
+| Doc を fail-open で読む（読めない・壊れは既定値へ） | JsonCompat.loadOr / decodeObject |
+| 太さのある線・棒を引く（法線を手計算しない） | Render.lineSeg / Quad.strip |
+| 値を範囲に収める（1 軸） | Num.clamp（カメラの寄せ幅は CameraRig.clampAxis） |
+| 色を明るく・暗くする | Color.lighten / Color.darken |
+| 文字を中央に置く・幅を測る | TextDraw.centered / TextDraw.width |
+| 文字格子から 1 種類の文字のマスを集める | Terrain.cellsOf |
+| テスト用の入力フレームを組む | App.frameOf |
 | 焼いた絵に出ない指定を知る（実機との食い違い防止） | SoftRaster（dropped）/ [対応表](backend-parity.md) |
 | 縁がふわっと消える光球・煙玉を置く | Render（glowAt）/ fx.json の shape "glow" |
 | 空・水面・光の帯のグラデを 1 部品で塗る（頂点色つき凸ポリゴン。1px の色帯を積まない） | Render（gradPolygon / vgrad） |

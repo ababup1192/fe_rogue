@@ -15,25 +15,18 @@ mod ThemeDoc {
 
     pub def path(): String = "assets/__NAME__.theme.json"
 
-    def rgb(r: Float64, g: Float64, b: Float64): Color =
-        { r = Float64.truncateToFloat32(r),
-          g = Float64.truncateToFloat32(g),
-          b = Float64.truncateToFloat32(b) }
-
     /// コード側の既定値（assets/__NAME__.theme.json と同じ値から出発する）。
     /// 仕上げは「光は左上から・ふち光と接地影は全部・ディザは半分・粒は無し」。
     pub def defaults(): Doc =
         { version = 1,
-          bg     = rgb(0.066667, 0.066667, 0.101961),
-          accent = rgb(0.388235, 0.690196, 1.0),
+          bg     = Color.rgb(0.066667, 0.066667, 0.101961),
+          accent = Color.rgb(0.388235, 0.690196, 1.0),
           shade  = { rim = 1.0, contact = 1.0, dither = 0.5, grain = 0.0,
                      grainScale = 1, lightX = -1, lightY = -1 } }
 
     /// テキストから Doc へ（fail-open）。色の表記（#rrggbb）は UiDoc.colorOf に委ねる。
     pub def fromJson(text: String): Option[Doc] =
-        JsonCompat.parse(String.trim(text))
-            |> Option.flatMap(JsonCodec.expectObject)
-            |> Option.map(fromRoot)
+        JsonCompat.decodeObject(fromRoot, text)
 
     def fromRoot(root: Map[String, Json]): Doc =
         let d = defaults();
@@ -63,11 +56,7 @@ mod ThemeDoc {
 
     /// path の Doc を読む。読めない・壊れているときは defaults（fail-open）。
     pub def load(p: String): Doc \ Fs.FileRead =
-        let readResult = run { Fs.ReadFile.read(p) } with Fs.ReadFile.runWithFileRead;
-        readResult
-            |> Result.toOption
-            |> Option.flatMap(fromJson)
-            |> Option.getWithDefault(defaults())
+        JsonCompat.loadOr(fromJson, defaults(), p)
 
     // ── 派生色と resolver ──
 

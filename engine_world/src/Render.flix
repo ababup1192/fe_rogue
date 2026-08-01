@@ -342,6 +342,16 @@ mod Render {
             case other                => other
         }, item)
 
+    /// 置き場所はそのままに、中身（Item）だけ入れ替える。`fade` や `rounded` のような
+    /// 「Item を受けて Item を返す」修飾を、置き場所つきの物へ掛ける口。
+    /// 修飾ごとに PlacedItem 版を増やさなくて済む。
+    pub def overItem(f: Item -> Item \ ef, placed: PlacedItem): PlacedItem \ ef =
+        { item = f(placed#item) | placed }
+
+    /// 組み上がった列を丸ごと薄くする（`fade` の列版）。覆い・淡い層・消えていく残像に使う。
+    pub def fadeAll(alpha: Float32, items: List[PlacedItem]): List[PlacedItem] =
+        items |> List.map(placed -> overItem(fade(alpha), placed))
+
     /// ピクセルの重ね方を変える（Sprite / Box / Poly に効く。Text は文字の可読性が第一で対象外）。
     /// Add = 明るく足す（グロー・炎・魔法）、Multiply = 暗く沈める（影・暗幕）。
     /// どちらも「自分より奥（小さい zIndex）に描かれた物」に効く — 暗幕で暗くしたい物は

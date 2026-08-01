@@ -26,25 +26,11 @@ mod World {
     /// ドット絵を何倍の大きさで描くか（1 セル = 何 px か）。
     pub def spriteScale(): Int32 = 2
 
-    /// コマを描いたときの大きさ（px）。読めない・そのコマが無いときは None。
-    /// PxSpriteDoc はコマを「文字列の並び」までしか教えてくれないので、ここで測る。
-    /// どのゲームでも要る形なので、2 例目が出たらエンジン（PxSprite）へ上げたい
-    /// — 上げるときは engine 側と相談してから。
-    pub def spriteBox(doc: PxSpriteDoc.Doc, sprite: String, frame: String): Option[Vec2.Vec2] =
-        Map.get(sprite, doc#sprites)
-            |> Option.flatMap(sp -> Map.get(frame, sp#frames))
-            |> Option.flatMap(rows ->
-                List.head(rows) |> Option.map(top -> {
-                    let s = Int32.toFloat64(spriteScale());
-                    ({ x = Int32.toFloat64(String.length(top)) * s,
-                       y = Int32.toFloat64(List.length(rows)) * s }: Vec2.Vec2)
-                }))
-
     /// 主人公の大きさ = 絵の大きさ。絵を描き替えたら当たりもついてくる
     /// （固定値にすると、絵だけ大きくして当たりが古いまま、という食い違いが出る）。
     /// 絵がまだ読めていないときだけ 16×16 に倒す（fail-open）。
     pub def heroBox(w: World): Vec2.Vec2 =
-        spriteBox(w#sprites, "hero", "idle")
+        PxSprite.sizeOf(w#sprites, "hero", "idle", spriteScale())
             |> Option.getWithDefault({ x = 16.0, y = 16.0 })
 
     pub def spritePath(): String = "assets/__NAME__.sprite.json"
@@ -80,13 +66,10 @@ mod World {
             :: ("shader", shaderPath() :: Nil)
             :: Nil
 
-    def clampF(lo: Float64, hi: Float64, v: Float64): Float64 =
-        Float64.max(lo, Float64.min(hi, v))
-
     /// 大きさ box の物が画面から出ない位置へ丸める（端で止まるのはルール）。
     pub def clampInside(box: Vec2.Vec2, p: Vec2.Vec2): Vec2.Vec2 =
-        { x = clampF(box#x / 2.0, width() - box#x / 2.0, p#x),
-          y = clampF(box#y / 2.0, height() - box#y / 2.0, p#y) }
+        { x = Num.clamp(box#x / 2.0, width() - box#x / 2.0, p#x),
+          y = Num.clamp(box#y / 2.0, height() - box#y / 2.0, p#y) }
 
     /// 入力と経過時間から次の状態を作る。速さは Doc（sample.kind.json）から。
     /// t は積み上げた秒。空の流れ・塵・待ち姿の揺れがこれを見る。

@@ -11,6 +11,7 @@ Shadertoy / GSAP 系）の技法をこのエンジンで再現するとき。**�
 この辞書の仕事。
 
 **engine の版に注意**: 下の表で **[新]** を付けた部品は **0.13.0 から**（0.12.1 以前には無い）。
+`PxSprite.sizeOf` / `Render.fadeAll` / `Color.hex` / `Num.*` / `Grid.dimsOfRows` は **0.14.0 から**。
 自分のゲームが引いている版は `flix.toml` の `github:ababup1192/flix_game_engine` を見る。
 シェーダーの語彙は知らない `kind` が 1 つあるだけで **Doc 全体が既定値へ倒れる**
 （エラーは出ず絵だけ別物になる）ので、書いたら必ず焼いて確かめる。
@@ -105,7 +106,7 @@ canvas の狙い絵 → 実エンジンの headless bake（静止画 + 完全ル
 |---|---|---|
 | `PxShade` | `engine_world/src/PxShade.flix` | 平らに塗ったドット絵に、ふち光・接地影・ディザ・地肌の粒を読み込み時 1 回だけ乗せる（走行コスト 0） |
 | `FxDoc`（fx.json） | `engine_world/src/FxDoc.flix`、schema は `docs/fx.schema.json` | パーティクルを JSON で宣言（Studio で調整できる）。手組みの `Fx.derive` から昇格させる |
-| `Render.vgrad` / `gradPolygon` **[新]** | `engine_world/src/Render.flix:180,190` | 空・水面・光の帯を頂点色つきポリゴン 1 枚で（1px 帯積みの代替） |
+| `Render.vgrad` / `gradPolygon` | `engine_world/src/Render.flix:180,190` | 空・水面・光の帯を頂点色つきポリゴン 1 枚で（1px 帯積みの代替） |
 | `Daylight` + `Calendar` | `engine_world/src/Daylight.flix`, `Calendar.flix` | 時刻 0..1 で空気色の幕・影の向きと長さ・ドット絵に当たる光の向きが回る（昼夜） |
 | `Scatter` | `engine_world/src/Scatter.flix` | どこまでスクロールしても同じ配置になる撒き物（星・草・埃）を無限に |
 | `Render.turned` / `turnedAll` | `engine_world/src/Render.flix:486,502` | 絵・集まりを傾ける（カードの傾き・振り子）。単位は回転数（1 周 = 1.0） |
@@ -151,8 +152,9 @@ canvas の狙い絵 → 実エンジンの headless bake（静止画 + 完全ル
 2. `Light` のテクスチャレス・フォールバック
 3. `ShaderDoc` の語彙: Worley の軸別スケール
 4. `PxSprite` の小数 scale / legend α
-5. コマの大きさを測る口（`PxSprite.sizeOf`）— いまは呼ぶ側が rows の文字数を数えている
 
+解消済み（0.14.0）: コマの大きさを測る口（`PxSprite.sizeOf`）・列を丸ごと薄くする
+（`Render.fadeAll` / `overItem`）・色の作り方（`Color.rgb` / `rgb8` / `hex` / `mix`）。
 解消済み（0.13.0）: 頂点色つきポリゴン（`gradPolygon` / `vgrad`）・半透明の枠（`outlineA`）・
 周期 Fbm（`fbmTile`）・量子化（`quantize`）・真円放射（`radialAspect`）・升目吸着（`snap`）・
 減衰バネ（`Curve.dampedSpring`）・シェーダ面つき GIF（`Bakery.bakeGifWith`）。

@@ -92,6 +92,17 @@ mod PxSprite {
         }
 
     /// 絵の真ん中から anchor（握るところ）へ向かうベクトル（px）。
+    /// コマを描いたときの大きさ（px）。そのスプライト・そのコマが無ければ None。
+    /// 当たり判定・置き場所・並べる間隔を絵に追随させたいときの唯一の入口 —
+    /// 固定値で持つと、絵を描き替えたときに絵と当たりが静かにズレる。
+    pub def sizeOf(doc: PxSpriteDoc.Doc, sprite: String, frame: String,
+                   scale: Int32): Option[Vec2.Vec2] =
+        PxSpriteDoc.gridSizeOf(doc, sprite, frame)
+            |> Option.map(g -> {
+                let s = Int32.toFloat64(scale);
+                ({ x = Int32.toFloat64(g#cols) * s, y = Int32.toFloat64(g#rows) * s }: Vec2.Vec2)
+            })
+
     /// 置き方の規約（anchor セルの左上 = at・flipX で左右の逆側へ写る）はここが唯一の持ち主 —
     /// 呼び側で同じ計算を書き直すと、規約を直したときに気付かないまま食い違う。
     pub def anchorOffsetOf(doc: PxSpriteDoc.Doc, sprite: String, frame: String,
@@ -101,9 +112,9 @@ mod PxSprite {
             case Some(sp) => {
                 let rows = Map.get(frame, sp#frames) |> Option.getWithDefault(Nil);
                 let s = Int32.toFloat64(scale);
-                let cols = rows |> List.foldLeft((acc, row) -> Int32.max(acc, String.length(row)), 0)
-                    |> Int32.toFloat64;
-                let height = List.length(rows) |> Int32.toFloat64;
+                let dims = Grid.dimsOfRows(rows);
+                let cols = Int32.toFloat64(dims#cols);
+                let height = Int32.toFloat64(dims#rows);
                 let ax = sp#anchor#x;
                 { x = if (flipX) cols * s / 2.0 - (ax + 1.0) * s else ax * s - cols * s / 2.0,
                   y = sp#anchor#y * s - height * s / 2.0 }

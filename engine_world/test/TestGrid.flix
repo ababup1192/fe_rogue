@@ -57,4 +57,24 @@ mod TestGrid {
         Assert.assertEq(
             expected = (true, false),
             (Grid.inRectOf({x = 0, y = 0}, 3, 3), Grid.inRectOf({x = 3, y = 0}, 3, 3)))
+
+    /// 大きさは「一番長い行」で測る。短い行は右が空いているものとして扱うので、
+    /// 末尾の空白を書き足さなくてよい。
+    @Test
+    def testDimsOfRowsUsesLongestRow(): Unit \ Assert =
+        let d = Grid.dimsOfRows("###" :: "#" :: "#####" :: Nil);
+        Assert.assertEq(expected = (5, 3), (d#cols, d#rows))
+
+    /// 空の並びは 0×0（空リストで落ちない）。
+    @Test
+    def testDimsOfRowsHandlesEmpty(): Unit \ Assert =
+        let d = Grid.dimsOfRows(Nil);
+        Assert.assertEq(expected = (0, 0), (d#cols, d#rows))
+
+    /// ほどく順は上の行から・行の中は左から。短い行はそこで終わる（空きは作らない）。
+    @Test
+    def testCellsOfRowsWalksTopLeftFirstAndStopsAtShortRow(): Unit \ Assert =
+        let cells = Grid.cellsOfRows("ab" :: "c" :: Nil)
+            |> List.map(pair -> { let (c, ch) = pair; (c#x, c#y, ch) });
+        Assert.assertEq(expected = (0, 0, 'a') :: (1, 0, 'b') :: (0, 1, 'c') :: Nil, cells)
 }

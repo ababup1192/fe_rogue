@@ -1,0 +1,33 @@
+// TestNum — 0〜1 への丸め・小数部・周期の折り返しを具体値で固定する。
+// 特に「負の値でどうなるか」を pin する（書き方が割れるのはそこだけ）。
+mod TestNum {
+
+    @Test
+    def testClamp01PinsBothEnds(): Unit \ Assert =
+        Assert.assertEq(expected = (0.0, 0.25, 1.0),
+            (Num.clamp01(-3.0), Num.clamp01(0.25), Num.clamp01(9.0)))
+
+    @Test
+    def testClampFallsToLowEndWhenRangeIsEmpty(): Unit \ Assert =
+        // lo > hi は範囲が無い。下端に寄せる（呼び側が気付けるよう黙って通さない）。
+        Assert.assertEq(expected = (2.0, 5.0), (Num.clamp(2.0, 8.0, -1.0), Num.clamp(5.0, 1.0, 3.0)))
+
+    @Test
+    def testFractIsAlwaysInsideZeroToOne(): Unit \ Assert =
+        // 負でも 0 以上 1 未満。歩行の位相が逆向きでも途切れないための性質。
+        Assert.assertEq(expected = (0.25, 0.75, 0.0), (Num.fract(1.25), Num.fract(-0.25), Num.fract(3.0)))
+
+    @Test
+    def testWrapToLoopsAndKeepsNegativesPositive(): Unit \ Assert =
+        Assert.assertEq(expected = (1.0, 9.0, 0.0),
+            (Num.wrapTo(4.0, 5.0), Num.wrapTo(10.0, -1.0), Num.wrapTo(4.0, 8.0)))
+
+    @Test
+    def testWrapToLeavesValueAloneWhenPeriodIsNotPositive(): Unit \ Assert =
+        Assert.assertEq(expected = (7.0, 7.0), (Num.wrapTo(0.0, 7.0), Num.wrapTo(-2.0, 7.0)))
+
+    @Test
+    def testLerpDoesNotClampOutsideRange(): Unit \ Assert =
+        // 範囲外は伸ばしたまま（外挿）。収めたいなら呼ぶ側が clamp01 を通す約束。
+        Assert.assertEq(expected = (5.0, 20.0), (Num.lerp(0.0, 10.0, 0.5), Num.lerp(0.0, 10.0, 2.0)))
+}

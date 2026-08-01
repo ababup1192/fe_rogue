@@ -17,9 +17,7 @@ mod SampleDoc {
 
     /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ倒す。
     pub def fromJson(text: String): Option[Doc] =
-        JsonCompat.parse(String.trim(text))
-            |> Option.flatMap(JsonCodec.expectObject)
-            |> Option.map(fromRoot)
+        JsonCompat.decodeObject(fromRoot, text)
 
     def fromRoot(root: Map[String, Json]): Doc =
         let d = defaults();
@@ -28,9 +26,5 @@ mod SampleDoc {
 
     /// path の Doc を読む。読めない・壊れているときは defaults（fail-open）。
     pub def load(p: String): Doc \ Fs.FileRead =
-        let readResult = run { Fs.ReadFile.read(p) } with Fs.ReadFile.runWithFileRead;
-        readResult
-            |> Result.toOption
-            |> Option.flatMap(fromJson)
-            |> Option.getWithDefault(defaults())
+        JsonCompat.loadOr(fromJson, defaults(), p)
 }

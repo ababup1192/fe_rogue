@@ -7,6 +7,57 @@ pub type alias Color = {r = Float32, g = Float32, b = Float32}
 
 mod Color {
 
+    /// 0〜1 の 3 つ組から色を作る。Float64 のまま書けるので、色を計算で導くときに使う。
+    pub def rgb(r: Float64, g: Float64, b: Float64): Color =
+        { r = Float64.truncateToFloat32(r),
+          g = Float64.truncateToFloat32(g),
+          b = Float64.truncateToFloat32(b) }
+
+    /// 0〜255 の 3 つ組から色を作る。色見本（パレット表）は 255 段で配られるので、
+    /// 255 で割った 6 桁の小数を書き写さずに済む。
+    pub def rgb8(r: Int32, g: Int32, b: Int32): Color =
+        { r = byte(r), g = byte(g), b = byte(b) }
+
+    /// "#rrggbb"（先頭の # は省略可）から色を作る。6 桁の 16 進でなければ None。
+    /// 色見本をそのまま貼れるので、手で 255 で割らない。
+    pub def hex(text: String): Option[Color] =
+        let body = if (String.startsWith(prefix = "#", text)) String.drop(1, text) else text;
+        match String.toList(body) {
+            case r0 :: r1 :: g0 :: g1 :: b0 :: b1 :: Nil =>
+                match (byteOf(r0, r1), byteOf(g0, g1), byteOf(b0, b1)) {
+                    case (Some(r), Some(g), Some(b)) => Some({ r = byte(r), g = byte(g), b = byte(b) })
+                    case _                           => None
+                }
+            case _ => None
+        }
+
+    /// 2 色の間を t（0〜1）で混ぜる。lighten（白へ）/ darken（黒へ）が「片方が決め打ち」
+    /// なのに対し、こちらは任意の 2 色をつなぐ（グラデーションの段・状態の移り変わり）。
+    pub def mix(a: Color, b: Color, t: Float64): Color =
+        let k = Float64.truncateToFloat32(t);
+        { r = a#r + (b#r - a#r) * k,
+          g = a#g + (b#g - a#g) * k,
+          b = a#b + (b#b - a#b) * k }
+
+    /// 3 チャンネルを組にして取り出す。Color は record なので **そのままでは比べられない**
+    /// （Flix の record は Eq を持てない）。比べたい・並べ替えたい・Map の鍵にしたいときは
+    /// これを通す。テストで色を pin するときの定石でもある。
+    pub def channels(color: Color): (Float32, Float32, Float32) =
+        (color#r, color#g, color#b)
+
+    def byte(v: Int32): Float32 =
+        Float64.truncateToFloat32(Int32.toFloat64(v) / 255.0)
+
+    def byteOf(hi: Char, lo: Char): Option[Int32] =
+        forM (h <- nibble(hi); l <- nibble(lo)) yield h * 16 + l
+
+    def nibble(c: Char): Option[Int32] =
+        let code = Char.toBmpCodePoint(c);
+        if (code >= 48 and code <= 57) Some(code - 48)
+        else if (code >= 97 and code <= 102) Some(code - 97 + 10)
+        else if (code >= 65 and code <= 70) Some(code - 65 + 10)
+        else None
+
     /// 色を白へamountだけ寄せる。通常は0から1を渡し、範囲外は補正しない。
     /// 既存ゲームと同じ色を保つため、amountをFloat32へ変えてから各チャンネルを補間する。
     pub def lighten(color: Color, amount: Float64): Color =

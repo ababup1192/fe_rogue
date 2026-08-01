@@ -74,15 +74,9 @@ mod View {
         let color = ThemeDoc.lighten(w#theme#accent, 0.6);
         Fx.derive(22, w#t, (_i, rand, t) -> {
             let speed = 5.0 + rand(1) * 12.0;
-            let x = wrap(rand(0) * World.width() + t * speed, World.width());
+            let x = Num.wrapTo(World.width(), rand(0) * World.width() + t * speed);
             let y = rand(2) * World.height() + Sway.wave(t, rand(3), 0.35) * 7.0;
-            let p = Render.circleAt({ x = x, y = y }, 0.8 + rand(4) * 1.3, color, zDust());
-            { item = p#item
-                |> Render.fade(Float64.truncateToFloat32(0.20 + rand(5) * 0.30))
-                | p }
+            Render.circleAt({ x = x, y = y }, 0.8 + rand(4) * 1.3, color, zDust())
+                |> Render.overItem(Render.fade(Float64.truncateToFloat32(0.20 + rand(5) * 0.30)))
         })
-
-    /// 0 以上 hi 未満へ折り返す（塵が右端から左端へ回り込む）。
-    def wrap(v: Float64, hi: Float64): Float64 =
-        v - hi * Float64.floor(v / hi)
 }

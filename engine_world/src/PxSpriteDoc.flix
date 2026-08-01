@@ -101,6 +101,14 @@ mod PxSpriteDoc {
                 |> List.toMap)
             |> Option.getWithDefault(Map.empty())
 
+    /// コマの格子の大きさ（列数・行数）。列数は一番長い行の文字数。
+    /// そのスプライト・そのコマが無ければ None。
+    /// 絵の大きさは「絵が決める」— 呼び側が数えると、絵を描き替えたとき静かに食い違う。
+    pub def gridSizeOf(doc: Doc, sprite: String, frame: String): Option[{ cols = Int32, rows = Int32 }] =
+        Map.get(sprite, doc#sprites)
+            |> Option.flatMap(sp -> Map.get(frame, sp#frames))
+            |> Option.map(Grid.dimsOfRows)
+
     /// path の Doc を読む。読めない・壊れているときは empty(fail-open)。
     pub def load(p: String): Doc \ Fs.FileRead =
         let readResult = run { Fs.ReadFile.read(p) } with Fs.ReadFile.runWithFileRead;

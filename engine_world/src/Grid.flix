@@ -52,6 +52,30 @@ mod Grid {
         let (col, row) = cellOf(tileSize, pos);
         { x = col, y = row }
 
+    /// 文字の並び（rows）の大きさ。`cols` は**一番長い行**の文字数で、短い行は右が
+    /// 空いているものとして扱う（末尾の空白を書かなくてよい）。
+    /// 盤・面・部屋・ドット絵のコマなど、テキストで書いた格子は全部この形で測る。
+    pub def dimsOfRows(rows: List[String]): { cols = Int32, rows = Int32 } =
+        { cols = rows |> List.foldLeft((acc, row) -> Int32.max(acc, String.length(row)), 0),
+          rows = List.length(rows) }
+
+    /// 文字の並びを「(セル, その文字)」の列にほどく。並びは上の行から、行の中は左から
+    /// （毎回同じ順なので、畳んだ結果が焼き直しでもぶれない）。
+    /// 短い行はそこで終わる — 空きを埋める文字は呼び側が決める（意味づけはゲームの仕事）。
+    pub def cellsOfRows(rows: List[String]): List[(Cell, Char)] =
+        rows
+            |> List.zipWithIndex
+            |> List.flatMap(rowPair -> {
+                let (row, text) = rowPair;
+                text
+                    |> String.toList
+                    |> List.zipWithIndex
+                    |> List.map(colPair -> {
+                        let (col, ch) = colPair;
+                        (({ x = col, y = row }: Cell), ch)
+                    })
+            })
+
     /// `neighbor` の record 版。`cell` から方向 `d` へ 1 歩進んだセルを `{x, y}` で返す。
     pub def neighborOf(cell: Cell, d: Dir4.Dir4): Cell =
         let (col, row) = neighbor((cell#x, cell#y), d);

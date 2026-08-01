@@ -88,4 +88,19 @@ mod TestPxSprite {
             (List.length(PxSprite.runs(d, "guy", "f0", z, false, 0)),
              List.length(PxSprite.runs(d, "nobody", "f0", z, false, 1)),
              List.length(PxSprite.runs(d, "guy", "f9", z, false, 1))))
+
+    /// コマの大きさは絵が決める（格子の列数・行数 × scale）。
+    /// 固定値で持つと、絵を描き替えたとき当たりや置き場所が静かにズレる。
+    @Test
+    def testSizeOfFollowsTheDrawnGrid(): Unit \ Assert =
+        let size = PxSprite.sizeOf(doc(), "guy", "f0", 3);
+        Assert.assertEq(expected = Some((12.0, 9.0)), Option.map(v -> (v#x, v#y), size))
+
+    /// 無いスプライト・無いコマは None（呼ぶ側が既定へ倒せるように）。
+    @Test
+    def testSizeOfIsNoneForUnknownNames(): Unit \ Assert =
+        let xy = Option.map(v -> (v#x, v#y));
+        Assert.assertEq(expected = (None, None),
+            (xy(PxSprite.sizeOf(doc(), "nobody", "f0", 2)),
+             xy(PxSprite.sizeOf(doc(), "guy", "nosuchframe", 2))))
 }

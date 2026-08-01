@@ -842,29 +842,13 @@ mod UiDoc {
         }
 
     /// "#rrggbb"（先頭 # は任意）を Color へ。6 桁 16 進以外は Err。
+    /// 読み取り自体は Color.hex が持つ（Flix のリテラルからも同じ変換を使えるように）。
+    /// ここは JSON の言葉づかいでの説明を足すだけ。
     def hexToColor(hex: String): Result[JsonError, Color] =
-        let body = if (String.startsWith(prefix = "#", hex)) String.drop(1, hex) else hex;
-        match String.toList(body) {
-            case r0 :: r1 :: g0 :: g1 :: b0 :: b1 :: Nil =>
-                match (byteOf(r0, r1), byteOf(g0, g1), byteOf(b0, b1)) {
-                    case (Some(r), Some(g), Some(b)) => Ok({r = channel(r), g = channel(g), b = channel(b)})
-                    case _                           => Err(JsonCompat.jsonError(Root, Set#{"invalid hex color: ${hex}"}))
-                }
-            case _ => Err(JsonCompat.jsonError(Root, Set#{"hex color must be #rrggbb (got: ${hex})"}))
+        match Color.hex(hex) {
+            case Some(c) => Ok(c)
+            case None    => Err(JsonCompat.jsonError(Root, Set#{"hex color must be #rrggbb (got: ${hex})"}))
         }
-
-    def byteOf(hi: Char, lo: Char): Option[Int32] =
-        forM (h <- hexNibble(hi); l <- hexNibble(lo)) yield h * 16 + l
-
-    def hexNibble(c: Char): Option[Int32] =
-        let code = Char.toBmpCodePoint(c);
-        if (code >= 48 and code <= 57) Some(code - 48)
-        else if (code >= 97 and code <= 102) Some(code - 97 + 10)
-        else if (code >= 65 and code <= 70) Some(code - 65 + 10)
-        else None
-
-    def channel(byte: Int32): Float32 =
-        Float64.truncateToFloat32(Int32.toFloat64(byte) / 255.0)
 
     def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 

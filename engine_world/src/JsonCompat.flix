@@ -50,6 +50,24 @@ mod JsonCompat {
             case Ok(Some(v)) => Err(jsonError(PathTag.Root, Set#{"unsupported ${docName} version ${v} (supported: 1)"}))
         }
 
+    /// テキストを JSON オブジェクトとして読み、中身の Map から Doc を組む。
+    /// JSON でない・オブジェクトでないときは None（各欄の欠けは fromRoot 側が既定へ倒す）。
+    /// Doc 層の `fromJson` はこれ 1 行で書ける。
+    pub def decodeObject(fromRoot: Map[String, Json] -> a \ ef, text: String): Option[a] \ ef =
+        parse(String.trim(text))
+            |> Option.flatMap(JsonCodec.expectObject)
+            |> Option.map(fromRoot)
+
+    /// path の Doc を読む。読めない・壊れているときは fallback（fail-open）。
+    /// 「書き損じで画面が壊れるより、保存し直せる方を選ぶ」という Doc 規約の実体で、
+    /// 外の世界に触る手続き（ファイルを開く・効果を畳む）をここ 1 箇所に閉じ込める。
+    pub def loadOr(decode: String -> Option[a] \ ef, fallback: a, path: String): a \ ef + Fs.FileRead =
+        let readResult = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;
+        readResult
+            |> Result.toOption
+            |> Option.flatMap(decode)
+            |> Option.getWithDefault(fallback)
+
     /// path のファイルを読んで JSON にする。読めない・崩れているときは Err で返す。
     pub def readJson(path: String): Result[JsonError, Json] \ Fs.FileRead =
         let content = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;

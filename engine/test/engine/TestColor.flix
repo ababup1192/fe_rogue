@@ -63,4 +63,30 @@ mod TestColor {
              rgb({ h = 2.0 / 3.0, s = 1.0, v = 1.0 }),
              rgb({ h = 0.5, s = 0.0, v = 0.5 }),
              rgb({ h = 1.25, s = 1.0, v = 1.0 })))
+
+    /// 色見本の書き方 3 通り（0〜1・0〜255・#rrggbb）が同じ色になる。
+    @Test
+    def testRgbRgb8AndHexAgree(): Unit \ Assert =
+        let ch = Color.channels;
+        let black = Color.rgb8(0, 0, 0);
+        let fromHex = Color.hex("#63b0ff") |> Option.getWithDefault(black);
+        Assert.assertEq(expected = (ch(Color.rgb8(99, 176, 255)), ch(Color.rgb8(99, 176, 255))),
+            (ch(fromHex), ch(Color.rgb(99.0 / 255.0, 176.0 / 255.0, 1.0))))
+
+    /// # は省略でき、大文字小文字も通る。6 桁でない・16 進でないものは断る。
+    @Test
+    def testHexAcceptsShapesAndRejectsOthers(): Unit \ Assert =
+        let chOf = Option.map(Color.channels);
+        Assert.assertEq(expected = (chOf(Color.hex("#63b0ff")), chOf(Color.hex("#ffffff")), None, None),
+            (chOf(Color.hex("63b0ff")), chOf(Color.hex("#FFFFFF")),
+             chOf(Color.hex("#fff")), chOf(Color.hex("#gggggg"))))
+
+    /// 2 色の間を混ぜる。両端は元の色そのもの。
+    @Test
+    def testMixHitsBothEndsAndMiddle(): Unit \ Assert =
+        let ch = Color.channels;
+        let a = Color.rgb8(0, 0, 0);
+        let b = Color.rgb8(255, 100, 50);
+        Assert.assertEq(expected = (ch(a), ch(b), ch(Color.rgb(0.5, 100.0 / 255.0 * 0.5, 50.0 / 255.0 * 0.5))),
+            (ch(Color.mix(a, b, 0.0)), ch(Color.mix(a, b, 1.0)), ch(Color.mix(a, b, 0.5))))
 }
