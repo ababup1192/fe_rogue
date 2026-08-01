@@ -336,7 +336,8 @@ mod FireFx {
             { vertices = kite({center = burst#center, halfW = half, topReach = half, dropReach = half}, 0.0),
               color = spec#flashColor,
               alpha = Float64.truncateToFloat32(0.9 * (1.0 - u)),
-              zIndex = zFire() + 2, clip = None, blend = DrawCmd.BlendMode.Normal } :: Nil
+              zIndex = zFire() + 2, clip = None, blend = DrawCmd.BlendMode.Normal,
+              grad = None } :: Nil
         }
 
     // ── 炎の舌: 根元から点火し、揺れながら立ち上り、ramp の色に冷めて消える ──
@@ -415,7 +416,7 @@ mod FireFx {
                   flameLeanMax() * wave + spec#leanBias),
               color = flameColor(spec, u),
               alpha = flameAlpha(u),
-              zIndex = zFire(), clip = None, blend = DrawCmd.BlendMode.Normal }
+              zIndex = zFire(), clip = None, blend = DrawCmd.BlendMode.Normal, grad = None }
         })
 
     /// 冷め具合 u（0 = 点火, 1 = 燃え尽き）→ 色。Spec の折れ線を成分ごとに読む。
@@ -468,7 +469,8 @@ mod FireFx {
                 ({ vertices = disk({x = burst#center#x + offX, y = burst#center#y + offY}, radius, ballVerts(), phase),
                    color = flameColor(spec, 0.12 + 0.3 * rand(chBallHue())),
                    alpha = Float64.truncateToFloat32(0.7 * env),
-                   zIndex = zFire(), clip = None, blend = DrawCmd.BlendMode.Normal }: GameEngine.PolygonRenderCmd)
+                   zIndex = zFire(), clip = None, blend = DrawCmd.BlendMode.Normal,
+                   grad = None }: GameEngine.PolygonRenderCmd)
             })
         }
 
@@ -485,7 +487,8 @@ mod FireFx {
                 ({ vertices = disk(burst#center, radius, coreVerts(), 0.0),
                    color = spec#coreColor,
                    alpha = Float64.truncateToFloat32((0.55 + 0.4 * f) * env),
-                   zIndex = zFire() + 2, clip = None, blend = DrawCmd.BlendMode.Normal }: GameEngine.PolygonRenderCmd)
+                   zIndex = zFire() + 2, clip = None, blend = DrawCmd.BlendMode.Normal,
+                   grad = None }: GameEngine.PolygonRenderCmd)
             }, List.range(0, n))
         }
 
@@ -550,6 +553,6 @@ mod FireFx {
             { vertices = verts,
               color = spec#sparkColor,
               alpha = Float64.truncateToFloat32(fade * flick),
-              zIndex = zFire() + 1, clip = None, blend = DrawCmd.BlendMode.Normal }
+              zIndex = zFire() + 1, clip = None, blend = DrawCmd.BlendMode.Normal, grad = None }
         })
 }

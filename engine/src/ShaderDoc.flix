@@ -50,6 +50,11 @@ mod ShaderDoc {
         case Worley({ scale = Float64, seed = Int32, out = WorleyOut })
         /// 雲状ノイズ（オクターブを重ねた value noise・octaves は小さめに）。
         case Fbm({ octaves = Int32, scale = Float64, seed = Int32 })
+        /// 周期つきの雲状ノイズ（Fbm のタイル版）。格子点を period.x × period.y マスで
+        /// 折り返すので、読む座標が period マスぶん進むと同じ値に戻る（スクロールで流しても
+        /// 継ぎ目が出ない）。Fbm はこの折り返しが無く、流すとループが閉じない。
+        /// period は正の整数マス数を推奨（uv 0..1 に scale = period を合わせると 1 枚で 1 周期）。
+        case FbmTile({ octaves = Int32, scale = Float64, period = Vec2.Vec2, seed = Int32 })
         /// lo..hi の間でなめらかに 0→1（それ以外は 0 か 1 にクランプ）。
         case Smoothstep({ lo = Float64, hi = Float64, of = Field })
         /// inner の場を、uv を factor 倍 + 時刻スクロールした座標で読む
@@ -69,6 +74,13 @@ mod ShaderDoc {
         /// Disk が「radius で 1→0 に落ちるマスク」なのに対し、これは生の距離を返すので
         /// 呼び側がカーブを自由に絞れる。
         case Radial({ cx = Float64, cy = Float64 })
+        /// アスペクト補正つきの中心距離場。Radial は uv 空間の距離なので非正方形の rect では
+        /// 円が楕円に歪む — aspect = 矩形の幅 ÷ 高さ を渡すと、u 方向の距離を aspect 倍して
+        /// px で見た真円になる（距離は「rect の高さ = 1」の単位・aspect = 1 で Radial と同じ）。
+        case RadialAspect({ cx = Float64, cy = Float64, aspect = Float64 })
+        /// 値を steps 段の階段に量子化する（ポスタライズ）。滑らかなノイズやグラデが
+        /// ドット絵調の段々になる。steps が 1 未満なら 1 として扱う。
+        case Quantize({ of = Field, steps = Int32 })
         /// 規則的に敷き詰めた丸い鱗（魚の鱗・煉瓦積み・屋根瓦）。scale = 鱗の細かさ、
         /// stagger = 行ごとの横ずらし（0 = 真四角の格子・0.5 = 半分ずれた段違い）。
         /// 出力は鱗の中心 0 → 縁 1 の丸い距離場（Worley と違い乱数でなく規則配置）。

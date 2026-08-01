@@ -26,7 +26,7 @@ canvas の狙い絵 → 実エンジンの headless bake（静止画 + 完全ル
 | コースティクス | Worley の F2−F1 | ShaderDoc で形が届かない時は CPU 計算 + 2×2px の Add 斑 |
 | 画面揺れ | `CameraRig`（減衰ノイズ） | **動き専用**。bake では world 層だけ translate（UI・雨・HUD は外に出す） |
 | 白フラッシュ / hitstop | 白矩形の α を easeOut 減衰 | **動き専用** — 静止画に入れるなら α を実機の 1/3 程度に（常時の靄に見える） |
-| イージング / バネ | `Curve` / `EcsTween` | easeOutCubic / easeOutBack / 減衰バネ = exp·cos。`Float64.exp` が無いので `Float64.pow` で代用 |
+| イージング / バネ | `Curve` / `EcsTween` | easeOutCubic / easeOutBack / 減衰バネ = exp·cos（`Curve.dampedSpring`）。`Float64.exp` は標準にある（Float64 モジュール — 探せば大抵ある、が教訓） |
 | ドット絵キャラ | `PxSprite`（文字格子） | scale は整数のみ。伸縮の中間コマは `PxSprite.runs` の矩形を中心周りに伸縮して回避。legend の色に α は持てない（Add 前提で色に織り込む） |
 | タイル地形 | `TileLayer` / `DualGrid` / `Terrain` | タイル角の丸めは明色の欠き取り（チャンファ）で DualGrid 風に |
 | 光の帯 / ハードシャドウ | 半透明ポリゴン（`Light` / `Shadow`） | 影は光源と反対へ伸ばす。長さは距離の逆数で減らすと自然 |
@@ -53,12 +53,28 @@ canvas の狙い絵 → 実エンジンの headless bake（静止画 + 完全ル
   なる（scale を落とすか部品を減らす）
 - 決定性: 同じ入力なら GIF がバイト一致する（実測済み）— 動きの golden 比較に使える
 
+### 配る時は WebP に変換する
+
+- **GIF のサイズは解像度でほぼ縮まない — 効くのはコマ数**。ドット絵は 1 画素ごとの
+  ノイズが情報量の本体で、整数倍拡大した分の同色画素は LZW が畳んでしまう
+  （720×405 と 480×270 が同じバイト数になった実測あり）
+- **アニメ WebP は lossless で GIF の 1/3〜1/4**（実測 2.8〜4.2 倍圧縮）。
+  しかもドット絵では **lossless の方が lossy より小さい**（限られた色数のため）。
+  `<img src="...">` でそのまま animated 再生される
+- 変換（ffmpeg は devbox に入っている。リポのルートから呼ぶこと）:
+  `devbox run -- ffmpeg -y -i in.gif -c:v libwebp_anim -lossless 1 -loop 0 out.webp`
+- 検証: ffprobe は animated WebP を読めない。`grep -a -o ANMF x.webp | wc -l` で
+  コマ数を数え、ヘッダに `VP8X` と `ANIM` があることを見る
+
 ## 辞書の穴（エンジン側の宿題 — 勝手に直さず、相談してから）
 
 1. 線形グラデ primitive（頂点色ポリゴン）— module-index の記載と実装の齟齬。見た目とコストの両方に効く
 2. 放射の Multiply 版（darkAt）と、glowAt の減衰カーブ・輪数を渡す口
 3. `Light` のテクスチャレス・フォールバック
 4. `Render.outline` の枠 α
-5. `ShaderDoc` の語彙: 軸別スケール・量子化ノード・周期 Fbm・GIF 経路のシェーダ面（bakeGifWith）
+5. `ShaderDoc` の語彙: Worley の軸別スケール
 6. `PxSprite` の小数 scale / legend α
-7. `Float64.exp`
+
+解消済み（2026-08 のエンジン拡張）: 周期 Fbm（`FbmTile`）・量子化（`Quantize`）・
+真円放射（`RadialAspect`）・`Bakery.bakeGifWith`・`Curve.dampedSpring`。
+`Float64.exp` は元々標準にあった（穴ではなく見落とし）。

@@ -115,6 +115,7 @@ mod ShaderJson {
             case ShaderDoc.Field.Uv(_)         => Nil
             case ShaderDoc.Field.Worley(_)     => Nil
             case ShaderDoc.Field.Fbm(_)        => Nil
+            case ShaderDoc.Field.FbmTile(_)    => Nil
             case ShaderDoc.Field.Smoothstep(s) => collectRefs(s#of)
             case ShaderDoc.Field.Scaled(s)     => collectRefs(s#of)
             case ShaderDoc.Field.Warp(wp)      => collectRefs(wp#of)
@@ -123,6 +124,8 @@ mod ShaderJson {
                                                     List.append(collectRefs(bl#b), collectRefs(bl#by)))
             case ShaderDoc.Field.Disk(_)       => Nil
             case ShaderDoc.Field.Radial(_)     => Nil
+            case ShaderDoc.Field.RadialAspect(_) => Nil
+            case ShaderDoc.Field.Quantize(q)   => collectRefs(q#of)
             case ShaderDoc.Field.Scales(_)     => Nil
             case ShaderDoc.Field.Glints(_)     => Nil
             case ShaderDoc.Field.Ripples(_)    => Nil
@@ -247,6 +250,14 @@ mod ShaderJson {
                         scale   <- numAt("scale", m);
                         seed    <- intAt("seed", m)
                     ) yield ShaderDoc.Field.Fbm({ octaves = octaves, scale = scale, seed = seed })
+                case "fbmTile" =>
+                    forM (
+                        octaves <- intOr("octaves", 3, m);
+                        scale   <- numOr("scale", 4.0, m);
+                        period  <- parseVec2("period", m);
+                        seed    <- intOr("seed", 0, m)
+                    ) yield ShaderDoc.Field.FbmTile({ octaves = octaves, scale = scale,
+                                                      period = period, seed = seed })
                 case "smoothstep" =>
                     forM (
                         lo     <- numAt("lo", m);
@@ -321,6 +332,18 @@ mod ShaderJson {
                         cx <- numOr("cx", 0.5, m);
                         cy <- numOr("cy", 0.5, m)
                     ) yield ShaderDoc.Field.Radial({ cx = cx, cy = cy })
+                case "radialAspect" =>
+                    forM (
+                        cx     <- numOr("cx", 0.5, m);
+                        cy     <- numOr("cy", 0.5, m);
+                        aspect <- numOr("aspect", 1.0, m)
+                    ) yield ShaderDoc.Field.RadialAspect({ cx = cx, cy = cy, aspect = aspect })
+                case "quantize" =>
+                    forM (
+                        ofJson <- reqKey("of", m);
+                        of     <- parseField(ofJson);
+                        steps  <- intOr("steps", 4, m)
+                    ) yield ShaderDoc.Field.Quantize({ of = of, steps = steps })
                 case "scales" =>
                     forM (
                         scale   <- numAt("scale", m);
@@ -611,6 +634,10 @@ mod ShaderJson {
             case ShaderDoc.Field.Fbm(b) =>
                 JObject(Map#{ "kind" => JString("fbm"), "octaves" => inum(b#octaves),
                               "scale" => num(b#scale), "seed" => inum(b#seed) })
+            case ShaderDoc.Field.FbmTile(b) =>
+                JObject(Map#{ "kind" => JString("fbmTile"), "octaves" => inum(b#octaves),
+                              "scale" => num(b#scale), "period" => vec2ToJson(b#period),
+                              "seed" => inum(b#seed) })
             case ShaderDoc.Field.Smoothstep(s) =>
                 JObject(Map#{ "kind" => JString("smoothstep"), "lo" => num(s#lo),
                               "hi" => num(s#hi), "of" => fieldToJson(s#of) })
@@ -632,6 +659,12 @@ mod ShaderJson {
                               "radius" => num(d#radius), "feather" => num(d#feather) })
             case ShaderDoc.Field.Radial(rd) =>
                 JObject(Map#{ "kind" => JString("radial"), "cx" => num(rd#cx), "cy" => num(rd#cy) })
+            case ShaderDoc.Field.RadialAspect(ra) =>
+                JObject(Map#{ "kind" => JString("radialAspect"), "cx" => num(ra#cx),
+                              "cy" => num(ra#cy), "aspect" => num(ra#aspect) })
+            case ShaderDoc.Field.Quantize(q) =>
+                JObject(Map#{ "kind" => JString("quantize"), "of" => fieldToJson(q#of),
+                              "steps" => inum(q#steps) })
             case ShaderDoc.Field.Scales(sc) =>
                 JObject(Map#{ "kind" => JString("scales"), "scale" => num(sc#scale),
                               "stagger" => num(sc#stagger) })

@@ -8,7 +8,8 @@
 //                               uvOffset/uvScale が元テクスチャの部分矩形を選ぶ。
 //   - font_*（テキスト）      : 各グリフ Drawable を PNG 出力解像度の Font で直接 drawString する
 //                               （アトラス縮小サンプルではなく実サイズ焼きなので小サイズでもくっきり）。
-//   - polygon                 : 頂点を design px として塗りつぶす。
+//   - polygon                 : 頂点を design px として塗りつぶす。grad（頂点色）つきは
+//                               画素ごとの線形補間（Gouraud）で焼く。
 // z 順は (zIndex, 追加順) の安定ソートで Frame と揃える。design を `scale` 倍に拡大して出力する。
 mod SoftRaster {
     import java.awt.image.BufferedImage
@@ -180,7 +181,9 @@ mod SoftRaster {
                     blendedDraw(image, sf, d#blend, d#clip, drawableAabb(req#design, textures, d),
                                 gs -> drawDrawable(gs, sf, textures, fctx, d))
             case RItem.RPoly(p) =>
-                if (p#blend == DrawCmd.BlendMode.Normal)
+                if (not Option.isEmpty(p#grad))
+                    drawGradPolygon(image, sf, req#design, p)
+                else if (p#blend == DrawCmd.BlendMode.Normal)
                     withClip(g, sf, p#clip, () -> drawPolygon(rc, g, sf, p))
                 else
                     blendedDraw(image, sf, p#blend, p#clip, polygonAabb(req#design, p),
@@ -704,6 +707,81 @@ mod SoftRaster {
                 g.setClip(x0, y0, Int32.max(0, x1 - x0), Int32.max(0, y1 - y0));
                 draw();
                 g.setClip(saved)
+            }
+        }
+
+    /// 頂点色つき多角形を画素ごとに焼く（面の中の線形補間）。Graphics2D を通さないのは、
+    /// Java2D に三角形内の頂点色補間が無いため。内外は画素中心で判定する（AA なし）—
+    /// GL の三角形ラスタライズと同じ硬い縁で、単色多角形（Java2D の AA 塗り）とは縁の写りが違う
+    /// （対応表 docs/backend-parity.md に記載）。clip・blend は drawSurface と同じ扱いで
+    /// この関数の中で済ませる（polygonAabb が clip と画面に切り詰め、blendPixel で混ぜる）。
+    def drawGradPolygon(image: BufferedImage, sf: Float64, design: Vec2.Vec2,
+                        p: GameEngine.PolygonRenderCmd): Unit \ IO = region rc {
+        let tris = DrawCmd.gradTriangles(p);
+        let dw = image.getWidth();
+        let dh = image.getHeight();
+        let (rx0, ry0, rx1, ry1) = DrawCmd.clipPixels({ scaleX = sf, scaleY = sf },
+                                                      polygonAabb(design, p));
+        let x0 = Int32.max(0i32, rx0);
+        let y0 = Int32.max(0i32, ry0);
+        let x1 = Int32.min(dw, rx1);
+        let y1 = Int32.min(dh, ry1);
+        let w = x1 - x0;
+        let h = y1 - y0;
+        if (List.isEmpty(tris) or w <= 0i32 or h <= 0i32) ()
+        else {
+            let n = w * h;
+            let buf: Array[Int32, rc] = Array.empty(rc, n);
+            discard image.getRGB(x0, y0, w, h, buf, 0i32, w);
+            Array.forEachWithIndex((i, dst) -> {
+                let px = Int32.remainder(i, w) + x0;
+                let py = i / w + y0;
+                let at = { x = (Int32.toFloat64(px) + 0.5) / sf,
+                           y = (Int32.toFloat64(py) + 0.5) / sf };
+                match gradSample(tris, at) {
+                    case None     => ()
+                    case Some(gv) =>
+                        let srcArgb = argbOf(gv#color, Float32.toFloat64(gv#alpha));
+                        Array.put(blendPixel(p#blend, srcArgb, dst), i, buf)
+                }
+            }, buf);
+            image.setRGB(x0, y0, w, h, buf, 0i32, w)
+        }
+    }
+
+    /// 扇割り三角形列から、点 at を含む三角形の補間色を引く（どの三角形にも入らなければ None）。
+    /// 式は面積比の重み（バリセントリック）— GL が頂点色を画素へ補間するのと同じ線形補間。
+    /// 隣り合う三角形の共有辺の上では両者の補間が一致するので、どちらが拾っても同じ色になる。
+    pub def gradSample(tris: List[(DrawCmd.GradVertex, DrawCmd.GradVertex, DrawCmd.GradVertex)],
+                       at: Vec2.Vec2): Option[DrawCmd.VertexTint] =
+        tris |> List.findMap(tri -> triSample(tri, at))
+
+    /// つぶれた三角形（面積 ≈ 0）とみなす行列式の下限。0 割りを避けるためだけの値で、
+    /// design px の座標では 1e-9 より小さい面積の三角形は 1 画素にも満たない。
+    def degenerateEps(): Float64 = 0.000000001
+
+    /// 1 三角形の中なら重み付き平均の色、外なら None。つぶれた三角形（面積 0）は None。
+    def triSample(tri: (DrawCmd.GradVertex, DrawCmd.GradVertex, DrawCmd.GradVertex),
+                  at: Vec2.Vec2): Option[DrawCmd.VertexTint] =
+        let (a, b, c) = tri;
+        let det = (b#pos#y - c#pos#y) * (a#pos#x - c#pos#x)
+                + (c#pos#x - b#pos#x) * (a#pos#y - c#pos#y);
+        if (Float64.abs(det) < degenerateEps()) None
+        else {
+            let w0 = ((b#pos#y - c#pos#y) * (at#x - c#pos#x)
+                    + (c#pos#x - b#pos#x) * (at#y - c#pos#y)) / det;
+            let w1 = ((c#pos#y - a#pos#y) * (at#x - c#pos#x)
+                    + (a#pos#x - c#pos#x) * (at#y - c#pos#y)) / det;
+            let w2 = 1.0 - w0 - w1;
+            if (w0 < 0.0 or w1 < 0.0 or w2 < 0.0) None
+            else {
+                let lerp3 = f -> f32(w0 * Float32.toFloat64(f(a))
+                                   + w1 * Float32.toFloat64(f(b))
+                                   + w2 * Float32.toFloat64(f(c)));
+                Some({ color = { r = lerp3(v -> v#color#r),
+                                 g = lerp3(v -> v#color#g),
+                                 b = lerp3(v -> v#color#b) },
+                       alpha = lerp3(v -> v#alpha) })
             }
         }
 

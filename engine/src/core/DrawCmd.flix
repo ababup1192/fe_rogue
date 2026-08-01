@@ -113,17 +113,70 @@ mod DrawCmd {
         tileCount   = Int32
     }
 
+    /// 頂点 1 つぶんの色と濃さ。`PolygonRenderCmd#grad` が頂点列と同じ順で持つ。
+    pub type alias VertexTint = {
+        color = Color,
+        alpha = Float32
+    }
+
+    /// 展開済みの色つき頂点（位置＋色＋濃さ）。バックエンドが三角形の中で線形に混ぜる単位。
+    pub type alias GradVertex = {
+        pos   = Vec2.Vec2,
+        color = Color,
+        alpha = Float32
+    }
+
     /// 凸多角形の塗り潰し命令。vertices はスクリーン px に変換済みの頂点列を渡す。
     /// `clip` は Drawable と同じスクリーン空間の切り抜き窓（None なら切らない）。
     /// `blend` はピクセルの重ね方（既定 Normal — 従来と同じ半透明合成）。
+    /// `grad` は頂点ごとの色（vertices と同じ長さ・同じ順）。Some のとき color は
+    /// 補いにだけ使い、面の中で頂点色が滑らかに混ざる（空・水面・光の帯のグラデ）。
+    /// 展開が扇割りのため grad つきは凸の形で使うこと。None = color 一色（従来どおり）。
+    /// 注意: Some(Nil) も grad 経路で描かれる（色は全頂点 color 補い＝一色だが、
+    /// SoftRaster の縁の写りが None の AA 塗りと違う）。一色なら None を渡すこと。
     pub type alias PolygonRenderCmd = {
         vertices = List[Vec2.Vec2],
         color    = Color,
         alpha    = Float32,
         zIndex   = Int32,
         clip     = Option[Rect2.Rect2],
-        blend    = BlendMode
+        blend    = BlendMode,
+        grad     = Option[List[VertexTint]]
     }
+
+    /// grad つき多角形を「色つき頂点の三角形列」に展開する。GL と SoftRaster が同じ
+    /// 割り方・同じ補間の入力を見るための共通式で、grad = None なら空を返す
+    /// （単色は従来の耳切り経路のまま — 絵を 1 バイトも変えないため）。
+    /// 扇割り（頂点 0 を要）なので凸専用 — 凹ませたい形は呼び側で凸に割って並べる。
+    /// 色列が頂点より短い分は color で補い、長い分は捨てる（fail-open — 落として
+    /// 消すより一色で出るほうが調整中に気づける）。濃さは頂点 α × 全体 α を畳み込み済み。
+    pub def gradTriangles(p: PolygonRenderCmd): List[(GradVertex, GradVertex, GradVertex)] =
+        match p#grad {
+            case None        => Nil
+            case Some(tints) => fanTriangles(gradVertices(tints, p))
+        }
+
+    /// vertices と grad の色列を 1 本に綴じる（不足は color / α=1 で補う）。
+    def gradVertices(tints: List[VertexTint], p: PolygonRenderCmd): List[GradVertex] =
+        let fallback: VertexTint = { color = p#color, alpha = 1.0f32 };
+        let folded = List.foldLeft((acc, v) -> {
+            let (outRev, rest) = acc;
+            let (tint, rest2) = match rest {
+                case t :: more => (t, more)
+                case Nil       => (fallback, Nil)
+            };
+            (({ pos = v, color = tint#color, alpha = tint#alpha * p#alpha }: GradVertex) :: outRev, rest2)
+        }, ((Nil: List[GradVertex]), tints), p#vertices);
+        let (outRev, _) = folded;
+        List.reverse(outRev)
+
+    /// 頂点 0 を要にした扇割り（v0, v1, v2), (v0, v2, v3), …。凸の形なら面を過不足なく覆う。
+    def fanTriangles(vs: List[GradVertex]): List[(GradVertex, GradVertex, GradVertex)] =
+        match vs {
+            case v0 :: v1 :: rest =>
+                List.zip(v1 :: rest, rest) |> List.map(pair -> { let (a, b) = pair; (v0, a, b) })
+            case _ => Nil
+        }
 
     /// 静的多角形バッファのキャッシュキー。ゲームは「静的な中身を決める全入力」
     /// （フロア id・テーマ・作り直しの世代番号など）をこの 1 文字列にまとめて渡す。

@@ -102,6 +102,8 @@ mod ShaderEval {
                 }
             case ShaderDoc.Field.Fbm(b) =>
                 fbm(Vec2.mul(uv, b#scale), b#octaves, Int32.toFloat64(b#seed))
+            case ShaderDoc.Field.FbmTile(b) =>
+                fbmTile(Vec2.mul(uv, b#scale), b#period, b#octaves, Int32.toFloat64(b#seed))
             case ShaderDoc.Field.Smoothstep(s) =>
                 smoothstep(s#lo, s#hi, evalFieldEnv(s#of, uv, t, env))
             case ShaderDoc.Field.Scaled(s) =>
@@ -141,6 +143,11 @@ mod ShaderEval {
                 1.0 - smoothstep(d#radius, d#radius + d#feather, dist)
             case ShaderDoc.Field.Radial(rd) =>
                 Vec2.length(Vec2.sub(uv, { x = rd#cx, y = rd#cy }))
+            case ShaderDoc.Field.RadialAspect(ra) =>
+                Vec2.length({ x = (uv#x - ra#cx) * ra#aspect, y = uv#y - ra#cy })
+            case ShaderDoc.Field.Quantize(q) =>
+                let n = Int32.toFloat64(Int32.max(1, q#steps));
+                Float64.floor(evalFieldEnv(q#of, uv, t, env) * n) / n
             case ShaderDoc.Field.Scales(sc) =>
                 let p = Vec2.mul(uv, sc#scale);
                 let ip = { x = Float64.floor(p#x), y = Float64.floor(p#y) };
@@ -304,6 +311,33 @@ mod ShaderEval {
         List.foldLeft((acc, i) -> {
             let (sum, amp, freq) = acc;
             let s = sum + amp * valueNoise(Vec2.mul(p, freq), seed + Int32.toFloat64(i) * 13.0);
+            (s, amp * 0.5, freq * 2.0)
+        }, (0.0, 0.5, 1.0), List.range(0, Int32.max(0, octaves))) |> fst3
+
+    // GLSL の mod と同じ折り返し（結果の符号は m 側・fract と違い任意周期）。
+    def gmod(x: Float64, m: Float64): Float64 = x - m * Float64.floor(x / m)
+
+    // 格子点を period で折り返す value noise（GLSL prelude の sg_valueNoiseTile と同じ構造）。
+    def valueNoiseTile(p: Vec2.Vec2, period: Vec2.Vec2, seed: Float64): Float64 =
+        let ip = { x = Float64.floor(p#x), y = Float64.floor(p#y) };
+        let fx = fract(p#x);
+        let fy = fract(p#y);
+        let wx = fx * fx * (3.0 - 2.0 * fx);
+        let wy = fy * fy * (3.0 - 2.0 * fy);
+        let wrap = (dx, dy) ->
+            ({ x = gmod(ip#x + dx, period#x), y = gmod(ip#y + dy, period#y) }: Vec2.Vec2);
+        let a = hash1(wrap(0.0, 0.0), seed);
+        let b = hash1(wrap(1.0, 0.0), seed);
+        let c = hash1(wrap(0.0, 1.0), seed);
+        let d = hash1(wrap(1.0, 1.0), seed);
+        lerp(lerp(a, b, wx), lerp(c, d, wx), wy)
+
+    // 周期つき fbm。オクターブごとに period も freq 倍する（sg_fbmTile と同じ構造）。
+    def fbmTile(p: Vec2.Vec2, period: Vec2.Vec2, octaves: Int32, seed: Float64): Float64 =
+        List.foldLeft((acc, i) -> {
+            let (sum, amp, freq) = acc;
+            let s = sum + amp * valueNoiseTile(Vec2.mul(p, freq), Vec2.mul(period, freq),
+                                               seed + Int32.toFloat64(i) * 13.0);
             (s, amp * 0.5, freq * 2.0)
         }, (0.0, 0.5, 1.0), List.range(0, Int32.max(0, octaves))) |> fst3
 

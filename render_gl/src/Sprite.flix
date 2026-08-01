@@ -150,6 +150,34 @@ mod RenderSprite {
         GL30.glBindVertexArray(0);
         (vao, vbo)
 
+    /// 多角形 1 個を 6 floats/頂点 (x, y, r, g, b, a) の配列列（逆順）に展開する。
+    /// 動的バッチ（RenderFrame）と静的焼き（RenderStatic）が同じ展開を見るための共通口。
+    /// grad = None は従来どおり耳切り＋単色 — 単色の絵を 1 バイトも変えないため経路を分けたまま、
+    /// grad = Some だけ DrawCmd.gradTriangles（凸の扇割り）＋頂点色で展開する。
+    /// 戻り値 = (頂点数, 逆順の配列列)。呼び側が末尾から詰め戻すと入力順に戻る。
+    pub def polyVertsRev(pc: DrawCmd.PolygonRenderCmd): (Int32, List[Array[Float32, Static]]) \ IO =
+        let f32 = RenderUtil.f32;
+        match pc#grad {
+            case None =>
+                let color = pc#color;
+                let alpha = pc#alpha;
+                let flat = Triangulate.triangles(pc#vertices)
+                    |> List.flatMap(tri -> { let (a, b, c) = tri; a :: b :: c :: Nil });
+                let n = List.length(flat);
+                let vertsRev = List.foldLeft((rest, v) ->
+                    (Array#{ f32(v#x), f32(v#y), color#r, color#g, color#b, alpha } @ Static) :: rest,
+                    Nil, flat);
+                (n, vertsRev)
+            case Some(_) =>
+                let flat = DrawCmd.gradTriangles(pc)
+                    |> List.flatMap(tri -> { let (a, b, c) = tri; a :: b :: c :: Nil });
+                let n = List.length(flat);
+                let vertsRev = List.foldLeft((rest, v) ->
+                    (Array#{ f32(v#pos#x), f32(v#pos#y), v#color#r, v#color#g, v#color#b, v#alpha } @ Static) :: rest,
+                    Nil, flat);
+                (n, vertsRev)
+        }
+
     /// 三角形化済みの多角形頂点をまとめて 1 回の draw call で塗る。
     /// data は 1 頂点 6 floats（位置 2 + 色 4）を列順に並べたもの（RenderFrame が組む）。
     /// blend は run 内で均一（RenderFrame が blend / 切り抜き窓の変化で run を切る）。

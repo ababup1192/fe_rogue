@@ -32,7 +32,9 @@ SoftRaster が指定を黙って落とすと、**golden は「実機と違う絵
 | zIndex の並び | ○ | ○ | (z, 追加順) の安定ソートで両者一致 |
 | clip（窓） | ○ | ○ | 量子化は `DrawCmd.clipPixels` を共有 |
 | blend（Add / Multiply） | ○ | ○ | 式は `SoftRaster.blendPixel` にテストで固定 |
-| style（角丸・枠・縞・市松）on 単色 box | ○ | ○ | |
+| style（角丸・枠・縞・市松）on 単色 box | ○ | ○ | 枠の濃さ（borderAlpha）も両者対応 |
+| 単色多角形の塗り | ○ | ○ | **縁だけ近似**: SoftRaster は Java2D の AA、GL は AA なし |
+| 頂点色つき多角形（grad のグラデ） | ○ | ○ | 補間は同じ線形の式（扇割りは `DrawCmd.gradTriangles` を共有、式は `SoftRaster.gradSample` にテストで固定）。縁は両者とも画素中心判定で AA なし — 単色多角形とは縁の写りが違う |
 | **style on テクスチャ / 文字** | ○ | **×** | 落とす。焼くときに件数を報告する |
 | 文字の描き方 | SDF シェーダ | 出力解像度の TTF を直接 drawString | **近似**。小サイズでは焼いた方がくっきり出る |
 | 宣言シェーダーの面 | 本物の GLSL | `ShaderEval` の画素評価 | **近似**。式は揃えてあるが完全一致は保証しない |

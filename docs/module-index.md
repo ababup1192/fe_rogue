@@ -56,6 +56,8 @@
 | 絵を傾ける・集まりを丸ごと傾ける（カードの傾き・振り子） | Render（turned / turnedAll）/ ui.json の rotation |
 | 焼いた絵に出ない指定を知る（実機との食い違い防止） | SoftRaster（dropped）/ [対応表](backend-parity.md) |
 | 縁がふわっと消える光球・煙玉を置く | Render（glowAt）/ fx.json の shape "glow" |
+| 空・水面・光の帯のグラデを 1 部品で塗る（頂点色つき凸ポリゴン。1px の色帯を積まない） | Render（gradPolygon / vgrad） |
+| 箱に枠線を付ける（半透明の枠も） | Render（outline / outlineA） |
 | 暗い部屋に光源を置く（穴あき暗幕+ハロ） | Light |
 | 壁に影を落とす（単一光源のハードシャドウ） | Shadow |
 | 夜のガラス・鏡・磨いた床に姿を映す（明るいところは光として返し、暗いところは影として重ねる） | Mirror |

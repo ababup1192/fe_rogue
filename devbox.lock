@@ -1,6 +1,119 @@
 {
   "lockfile_version": "1",
   "packages": {
+    "ffmpeg@latest": {
+      "last_modified": "2026-07-23T13:11:22Z",
+      "resolved": "github:NixOS/nixpkgs/6d12004108e0e4a5cfa4bd83b14477f040b15773#ffmpeg",
+      "source": "devbox-search",
+      "version": "8.1.2",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "bin",
+              "path": "/nix/store/jqdnb188i5hmjv7smi7498nzv9mr9n46-ffmpeg-8.1.2-bin",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/ja4qh65w8hw6pd9mmvigjs0kraz68jsb-ffmpeg-8.1.2-man",
+              "default": true
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/ws89q4gvqc25mzpcq3vdkqq5ffjhr2lz-ffmpeg-8.1.2-lib"
+            },
+            {
+              "name": "out",
+              "path": "/nix/store/c4jjwaplsmbw09vpqsss2ry4dwv3zwz9-ffmpeg-8.1.2"
+            },
+            {
+              "name": "data",
+              "path": "/nix/store/1ayzbslwj8cvj4clhd01rj9xpmkddr6p-ffmpeg-8.1.2-data"
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/h4dl409p37h0jxxkrb2p4a4wcqpp7m2z-ffmpeg-8.1.2-dev"
+            },
+            {
+              "name": "doc",
+              "path": "/nix/store/75s8k6wrjhv01q09wdaqpzb691rxyxw2-ffmpeg-8.1.2-doc"
+            }
+          ],
+          "store_path": "/nix/store/jqdnb188i5hmjv7smi7498nzv9mr9n46-ffmpeg-8.1.2-bin"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "bin",
+              "path": "/nix/store/sp5vyrybs6r8676rc2nbfksjkq9yvv2p-ffmpeg-8.1.2-bin",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/jx46pj775y8jmj2ll05lrvhx79bs9qqy-ffmpeg-8.1.2-man",
+              "default": true
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/cz87fcy5zjr5slzawgy6gaxfkbqv1kkf-ffmpeg-8.1.2-lib"
+            },
+            {
+              "name": "out",
+              "path": "/nix/store/axz9d1jymhksa54ig6bghsydnnhg1bzc-ffmpeg-8.1.2"
+            },
+            {
+              "name": "data",
+              "path": "/nix/store/myhw5zbrm5vb0834zb22q0lrziyylnjf-ffmpeg-8.1.2-data"
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/880a1gc8ip5nq7qm99d4hbxbf6czrrf9-ffmpeg-8.1.2-dev"
+            },
+            {
+              "name": "doc",
+              "path": "/nix/store/9aqylkvksq7k8ms7by3ll1azs5spc8xb-ffmpeg-8.1.2-doc"
+            }
+          ],
+          "store_path": "/nix/store/sp5vyrybs6r8676rc2nbfksjkq9yvv2p-ffmpeg-8.1.2-bin"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "bin",
+              "path": "/nix/store/wfdhrw2jxj59gllsf1kh70g7a1n6zyvs-ffmpeg-8.1.2-bin",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/16xzwhjbmpq0p87a7zh0ysp15g66gzv7-ffmpeg-8.1.2-man",
+              "default": true
+            },
+            {
+              "name": "data",
+              "path": "/nix/store/kgcly52b85rrb26y65fk6iydzri48kq9-ffmpeg-8.1.2-data"
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/2m5ys9hiyrwl3fk471dm4f7vxkh9wrb5-ffmpeg-8.1.2-dev"
+            },
+            {
+              "name": "doc",
+              "path": "/nix/store/6ijk1jzqxqil52w7fhghsbbgpvmngyqn-ffmpeg-8.1.2-doc"
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/b3vjqmgrkadsln0g0lvygavnznwrbbgs-ffmpeg-8.1.2-lib"
+            },
+            {
+              "name": "out",
+              "path": "/nix/store/3dh84xnaydyxvs47rzskihkl4r90wkp5-ffmpeg-8.1.2"
+            }
+          ],
+          "store_path": "/nix/store/wfdhrw2jxj59gllsf1kh70g7a1n6zyvs-ffmpeg-8.1.2-bin"
+        }
+      }
+    },
     "github:Cj-bc/flix.nix#flix_0_75_1": {
       "last_modified": "2026-07-12T13:29:54Z",
       "resolved": "github:Cj-bc/flix.nix/a9c4256e891a97ec5636282ea273fef9d709ba8f?lastModified=1783862994#flix_0_75_1"
