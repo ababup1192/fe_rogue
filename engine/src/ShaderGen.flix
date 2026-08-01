@@ -387,6 +387,12 @@ mod ShaderGen {
                 // 各マス内は fract(uv*tiles)。of が読む座標をこの式に差し替える（sg_tiling は作らない）。
                 let uv2 = "fract((" + uv + ") * vec2(" + f(tl#tiles#x) + ", " + f(tl#tiles#y) + "))";
                 fieldExpr(tl#of, uv2, env)
+            case ShaderDoc.Field.Snap(sn) =>
+                // マスの中心（+0.5）を読む — 角を読むと格子ノイズの節点に乗って塊が半マスずれる。
+                // cells は 1 未満だと 0 除算になるので生成時に 1 で下切りする（CPU 側と同じ扱い）。
+                let cells = "vec2(" + f(snapCells(sn#cells#x)) + ", " + f(snapCells(sn#cells#y)) + ")";
+                let uv2 = "((floor((" + uv + ") * " + cells + ") + 0.5) / " + cells + ")";
+                fieldExpr(sn#of, uv2, env)
             case ShaderDoc.Field.Ref(name) =>
                 // parse が定義済みを保証する。未定義は 0.0（保険）。
                 match Map.get(name, env) {
@@ -403,6 +409,9 @@ mod ShaderGen {
             case None    => cell
             case Some(b) => "(" + cell + " + (" + fieldExpr(b, uv, env) + "))"
         }
+
+    /// Snap の分割数（ShaderEval.snapCells と同じ下切り）。
+    def snapCells(c: Float64): Float64 = Float64.max(1.0, c)
 
     /// base を n 回掛けた GLSL 積の文字列（n=0 は 1.0・n=1 は base そのもの）。
     /// CPU 側の反復積と同じ左結合の並びにする。

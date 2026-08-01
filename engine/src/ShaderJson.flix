@@ -137,6 +137,7 @@ mod ShaderJson {
             case ShaderDoc.Field.Pow(pw)       => collectRefs(pw#of)
             case ShaderDoc.Field.Time(tm)      => collectRefs(tm#offset)
             case ShaderDoc.Field.Tiling(tl)    => collectRefs(tl#of)
+            case ShaderDoc.Field.Snap(sn)      => collectRefs(sn#of)
             case ShaderDoc.Field.Swirl(sw)     => collectRefs(sw#of)
             case ShaderDoc.Field.Angle(_)      => Nil
             case ShaderDoc.Field.Rotate(rt)    => collectRefs(rt#of)
@@ -415,6 +416,12 @@ mod ShaderJson {
                         ofJson <- reqKey("of", m);
                         of     <- parseField(ofJson)
                     ) yield ShaderDoc.Field.Tiling({ tiles = tiles, of = of })
+                case "snap" =>
+                    forM (
+                        cells  <- vec2Or("cells", { x = 8.0, y = 8.0 }, m);
+                        ofJson <- reqKey("of", m);
+                        of     <- parseField(ofJson)
+                    ) yield ShaderDoc.Field.Snap({ cells = cells, of = of })
                 case "use" =>
                     forM (name <- strAt("name", m)) yield ShaderDoc.Field.Ref(name)
                 case other => Err(err("unknown field kind: '${other}'"))
@@ -481,6 +488,13 @@ mod ShaderJson {
             case JObject(vm) => forM (x <- numAt("x", vm); y <- numAt("y", vm)) yield ({ x = x, y = y }: Vec2.Vec2)
             case _           => Err(err("'${key}' must be {x, y}"))
         })
+
+    /// 省略できる {x, y}（無ければ fallback）。在れば parseVec2 と同じ厳しさで読む。
+    def vec2Or(key: String, fallback: Vec2.Vec2, m: Map[String, Json]): Result[JsonError, Vec2.Vec2] =
+        match Map.get(key, m) {
+            case None    => Ok(fallback)
+            case Some(_) => parseVec2(key, m)
+        }
 
     /// 色: "#rrggbb" か {"r":..,"g":..,"b":..}（0..1）。他 Doc の色表記に合わせた素朴版。
     def parseColor(json: Json): Result[JsonError, Color] =
@@ -700,6 +714,9 @@ mod ShaderJson {
             case ShaderDoc.Field.Tiling(tl) =>
                 JObject(Map#{ "kind" => JString("tile"), "tiles" => vec2ToJson(tl#tiles),
                               "of" => fieldToJson(tl#of) })
+            case ShaderDoc.Field.Snap(sn) =>
+                JObject(Map#{ "kind" => JString("snap"), "cells" => vec2ToJson(sn#cells),
+                              "of" => fieldToJson(sn#of) })
             case ShaderDoc.Field.Swirl(sw) =>
                 JObject(Map#{ "kind" => JString("swirl"), "cx" => num(sw#cx), "cy" => num(sw#cy),
                               "strength" => num(sw#strength), "rate" => num(sw#rate),

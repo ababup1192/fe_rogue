@@ -233,6 +233,13 @@ mod ShaderEval {
                 // 各マス内は fract(uv*tiles)。of をこの座標で読む（GLSL の差し替えと同じ形）。
                 let uv2 = { x = fract(uv#x * tl#tiles#x), y = fract(uv#y * tl#tiles#y) };
                 evalFieldEnv(tl#of, uv2, t, env)
+            case ShaderDoc.Field.Snap(sn) =>
+                // GLSL の (floor(uv*cells)+0.5)/cells と同じ形（bake と実機で塊の位置を割らない）。
+                let cx = snapCells(sn#cells#x);
+                let cy = snapCells(sn#cells#y);
+                let uv2 = { x = (Float64.floor(uv#x * cx) + 0.5) / cx,
+                            y = (Float64.floor(uv#y * cy) + 0.5) / cy };
+                evalFieldEnv(sn#of, uv2, t, env)
             case ShaderDoc.Field.Ref(name) =>
                 // parse が定義済みを保証する。未定義は 0.0（保険）。
                 match Map.get(name, env) {
@@ -249,6 +256,9 @@ mod ShaderEval {
             powProduct(base, Float64.floor(p))
         else
             Float64.pow({ base = base }, p)
+
+    // Snap の分割数（ShaderGen.snapCells と同じ下切り）。
+    def snapCells(c: Float64): Float64 = Float64.max(1.0, c)
 
     // base を n 回掛ける（n=0 は 1.0）。ShaderGen.powProduct と同じ左からの掛け順。
     def powProduct(base: Float64, n: Float64): Float64 =

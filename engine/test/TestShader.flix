@@ -888,3 +888,75 @@ def testNewNodesJsonDefaults(): Unit \ Assert =
         case Err(_) => None
     };
     Assert.assertEq(expected = Some((4, 1.0)), vals)
+
+// ════════════════════════════════════════════════════════════════════
+// (10) 座標スナップ（Snap）— uv をマス目に丸めて絵をドット絵の粒に落とす
+//   GLSL と CPU のパリティは「片方に (floor(uv*cells)+0.5)/cells の文字列を pin し、
+//   もう片方に同じ数式で出る数値を pin する」の 2 本立てで見る（Radial/Quantize と同じ流儀）。
+// ════════════════════════════════════════════════════════════════════
+
+/// Snap ノード単体の GLSL 片。inner の uv が (floor(uv*cells)+0.5)/cells に差し替わり、
+/// cells は軸ごと（4 分割 × 2 分割）に効く。
+@Test
+def testSnapNodeSnapshot(): Unit \ Assert =
+    let field = ShaderDoc.Field.Snap({ cells = { x = 4.0, y = 2.0 },
+                                       of = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U }) });
+    Assert.assertEq(expected =
+        "outColor = vec4(vec3(0.0, 0.0, 0.0), " +
+        "(((floor((vUv) * vec2(4.0, 2.0)) + 0.5) / vec2(4.0, 2.0))).x);",
+        bodyOfField(field))
+
+/// Snap の CPU 評価はマスの中心を読む（GLSL 片と同じ数式の数値側）。
+///   cells=(4,2)・uv=(0.3, 0.3) → u は (floor(1.2)+0.5)/4 = 0.375、v は (floor(0.6)+0.5)/2 = 0.25。
+///   u と v で答えが違う = 軸ごとの分割数が効いている証拠。
+@Test
+def testEvalSnapReadsCellCenter(): Unit \ Assert =
+    let snapOf = axis -> ShaderDoc.Field.Snap({ cells = { x = 4.0, y = 2.0 },
+                                                of = ShaderDoc.Field.Uv({ axis = axis }) });
+    let at = axis -> ShaderEval.evalField(snapOf(axis), { x = 0.3, y = 0.3 }, 0.0);
+    Assert.assertEq(expected = (0.375, 0.25),
+        (at(ShaderDoc.Axis.U), at(ShaderDoc.Axis.V)))
+
+/// 同じマスの中はどこを読んでも同じ値・マスの境をまたぐと値が変わる（＝塊が出ている）。
+///   cells=(4,4) なので u の境は 0.25/0.5/0.75。
+///       0.26  0.49 |  0.51
+///        └ 同じマス ┘  └ 隣のマス
+///   なめらかな Fbm を包んでも段差が立つことを確かめる。
+@Test
+def testEvalSnapHoldsValueInsideCell(): Unit \ Assert =
+    let field = ShaderDoc.Field.Snap({ cells = { x = 4.0, y = 4.0 },
+        of = ShaderDoc.Field.Fbm({ octaves = 3, scale = 6.0, seed = 5 }) });
+    let at = u -> ShaderEval.evalField(field, { x = u, y = 0.1 }, 0.0);
+    Assert.assertEq(expected = (true, true),
+        (at(0.26) == at(0.49), at(0.49) != at(0.51)))
+
+/// Snap を含む Spec の JSON 往復で GLSL がバイト一致する（Gen/Json の 2 面がズレない）。
+@Test
+def testSnapJsonRoundTripGlslIdentical(): Unit \ Assert =
+    let spec: ShaderDoc.Spec = { name = "nebula", cycleRate = 0.0, bindings = Nil,
+        out = ShaderDoc.Out.Fill({
+            shade = ShaderDoc.Shade.Solid({ r = 0.3f32, g = 0.5f32, b = 0.9f32 }),
+            alpha = ShaderDoc.Field.Snap({ cells = { x = 120.0, y = 68.0 },
+                of = ShaderDoc.Field.Fbm({ octaves = 3, scale = 4.0, seed = 11 }) }) }) };
+    let same = match ShaderJson.parse(ShaderJson.toJson(spec)) {
+        case Ok(spec2) => ShaderGen.compile(spec2) == ShaderGen.compile(spec)
+        case Err(_)    => false
+    };
+    Assert.assertEq(expected = true, same)
+
+/// fail-open の既定: snap の cells 省略 = 8×8（of は必須）。
+@Test
+def testSnapJsonDefaultCells(): Unit \ Assert =
+    let json = "{\"name\":\"s\",\"out\":{\"kind\":\"fill\"," +
+               "\"shade\":{\"kind\":\"solid\",\"color\":\"#000000\"}," +
+               "\"alpha\":{\"kind\":\"snap\",\"of\":{\"kind\":\"uv\",\"axis\":\"u\"}}}}";
+    let cells = match Util.Json.parse(json) |> Result.flatMap(ShaderJson.parse) {
+        case Ok(spec) => match spec#out {
+            case ShaderDoc.Out.Fill(f) => match f#alpha {
+                case ShaderDoc.Field.Snap(sn) => Some((sn#cells#x, sn#cells#y))
+                case _ => None
+            }
+        }
+        case Err(_) => None
+    };
+    Assert.assertEq(expected = Some((8.0, 8.0)), cells)
