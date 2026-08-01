@@ -29,6 +29,7 @@ def main(): Unit \ IO =
                     (MapDoc.path(), Controls.reloadMap) ::
                     (KindDoc.path(), Controls.reloadKind) ::
                     (ThemeDoc.path(), Controls.reloadTheme) ::
+                    (BattleDoc.path(), Controls.reloadBattle) ::
                     (World.spritePath(), Controls.reloadSprites) ::
                     (World.terrainPath(), Controls.reloadTerrain) :: Nil
             })

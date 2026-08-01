@@ -29,7 +29,8 @@ def main(): Unit \ IO =
                 // 保存即反映で読み直す Doc たち（各 1 本の watchFile に展開される）。
                 reloads =
                     (RulesDoc.path(), Controls.reloadRules) ::
-                    (ThemeDoc.path(), Controls.reloadTheme) :: Nil
+                    (ThemeDoc.path(), Controls.reloadTheme) ::
+                    (World.shaderPath(), Controls.reloadShader) :: Nil
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)

@@ -1,6 +1,6 @@
 // Bake — ゲーム画面を画面なしで PNG に焼く（golden 比較・目視批評用）。
 // 実行: flix run --entrypoint Bake.all → gallery/s1_start.png .. s4_over.png
-// すべて t（実時間）に依存しない決定的な場面。World を直接組み（RNG を回さず固定し）、
+// すべて決定的な場面（時計 t は場面ごとに固定値を入れる）。World を直接組み（RNG を回さず固定し）、
 // 実機と同じ描画経路（View.frame → Render.draw → Bakery.renderPng）で焼く。
 mod Bake {
     import java.io.File
@@ -31,7 +31,7 @@ mod Bake {
         // /genesis/title で読み、「パズル」の札のサムネにする（各 starter 共通の規約）。
         let t = shoot(cfg, ctx, stackScene(w0), "title");
         // s1: 初期盤（空）+ 涌いたばかりの current + NEXT + score 0。
-        let s1 = shoot(cfg, ctx, w0, "s1_start");
+        let s1 = shoot(cfg, ctx, { t = 0.4 | w0 }, "s1_start");
         // s2: 積み上がった中盤 + 落下中のミノ + ゴースト。
         let s2 = shoot(cfg, ctx, stackScene(w0), "s2_stack");
         // s3: ライン消しの演出中（下 2 行が満杯・演出の途中で固定）。
@@ -55,7 +55,7 @@ mod Bake {
         }, Map.empty());
         { board = board,
           current = { kind = World.Kind.T, rot = 0, col = 4, row = 3 },
-          nextKind = World.Kind.L, phase = World.Phase.Playing | w0 }
+          nextKind = World.Kind.L, phase = World.Phase.Playing, t = 1.1 | w0 }
 
     /// ライン消しの演出中。下 2 行を満杯にして固定し、演出を途中（40%）で止める。
     def clearScene(w0: World.World): World.World =
@@ -68,7 +68,7 @@ mod Bake {
             Map.insert((c, bottom - 2), World.Kind.J, b), full);
         { board = withTower, phase = World.Phase.Clearing,
           clearRows = bottom :: (bottom - 1) :: Nil,
-          clearTimer = w0#doc#clearDuration * 0.4 | w0 }
+          clearTimer = w0#doc#clearDuration * 0.4, t = 2.6 | w0 }
 
     /// GAME OVER の幕。盤を上まで積んで overlay を写す。
     def overScene(w0: World.World): World.World =
@@ -77,7 +77,7 @@ mod Bake {
                 // まばらに空けて「積み上がった山」らしく（全面ベタ塗りにしない）。
                 if (Int32.modulo(c + r, 5) == 0) b2 else Map.insert((c, r), overKind(c, r), b2), b),
             Map.empty());
-        { board = board, phase = World.Phase.GameOver, score = 4200, lines = 24 | w0 }
+        { board = board, phase = World.Phase.GameOver, score = 4200, lines = 24, t = 5.0 | w0 }
 
     // ── セルの色を決定的にばらす小物（種類 = 色。7 種を順に舐める） ──
     def kindAt(i: Int32): World.Kind =

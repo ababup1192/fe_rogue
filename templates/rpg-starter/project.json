@@ -53,6 +53,13 @@
         "role": "tuning"
       },
       {
+        "id": "battle",
+        "pattern": "assets/rpg.battle.json",
+        "title": "戦い（出会う歩数・体力・一撃の重さ・文言）",
+        "schema": "assets/battle.schema.json",
+        "role": "tuning"
+      },
+      {
         "id": "project",
         "pattern": "project.json",
         "schema": "project.schema.json",

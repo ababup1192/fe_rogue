@@ -24,31 +24,29 @@ mod ThemeDoc {
 
     pub def path(): String = "assets/rpg.theme.json"
 
-    def rgb(r: Float64, g: Float64, b: Float64): Color =
-        { r = Float64.truncateToFloat32(r),
-          g = Float64.truncateToFloat32(g),
-          b = Float64.truncateToFloat32(b) }
+    /// 色見本の 6 桁 16 進をそのまま書くための近道。読めない綴りはマゼンタ
+    /// （書き間違いが画面で目に見える）。
+    def hex(code: String): Color =
+        Color.hex(code) |> Option.getWithDefault({ r = 1.0f32, g = 0.0f32, b = 1.0f32 })
 
     /// コード側の既定値（assets/rpg.theme.json と同じ色から出発する）。
     pub def defaults(): Doc =
         { version = 1,
-          sky    = rgb(0.168627, 0.133333, 0.200000),   // #2b2233
-          path   = rgb(0.431373, 0.372549, 0.305882),   // #6e5f4e
-          field  = rgb(0.274510, 0.376471, 0.247059),   // #46603f
-          wall   = rgb(0.333333, 0.313725, 0.368627),   // #55505e
-          fog    = rgb(0.721569, 0.705882, 0.784314),   // #b8b4c8
-          paper  = rgb(0.949020, 0.917647, 0.847059),   // #f2ead8
-          ink    = rgb(0.149020, 0.133333, 0.180392),   // #26222e
-          accent = rgb(1.000000, 0.705882, 0.329412),   // #ffb454
-          cloth  = rgb(0.309804, 0.498039, 0.619608),   // #4f7f9e
+          sky    = hex("#2b2233"),   // 夕暮れの空
+          path   = hex("#6e5f4e"),   // 道
+          field  = hex("#46603f"),   // 畑
+          wall   = hex("#55505e"),   // 石垣
+          fog    = hex("#b8b4c8"),   // 霧
+          paper  = hex("#f2ead8"),   // ふきだしの紙
+          ink    = hex("#26222e"),   // 文字と輪郭
+          accent = hex("#ffb454"),   // 灯り・主人公の外套
+          cloth  = hex("#4f7f9e"),   // 住人の服
           titleVeil = 0.45,
           clearVeil = 0.55 }
 
     /// テキストから Doc へ（fail-open）。色の表記（#rrggbb）は UiDoc.colorOf に委ねる。
     pub def fromJson(text: String): Option[Doc] =
-        JsonCompat.parse(String.trim(text))
-            |> Option.flatMap(JsonCodec.expectObject)
-            |> Option.map(fromRoot)
+        JsonCompat.decodeObject(fromRoot, text)
 
     def fromRoot(root: Map[String, Json]): Doc =
         let d = defaults();
@@ -72,11 +70,7 @@ mod ThemeDoc {
 
     /// path の Doc を読む。読めない・壊れているときは defaults（fail-open）。
     pub def load(p: String): Doc \ Fs.FileRead =
-        let readResult = run { Fs.ReadFile.read(p) } with Fs.ReadFile.runWithFileRead;
-        readResult
-            |> Result.toOption
-            |> Option.flatMap(fromJson)
-            |> Option.getWithDefault(defaults())
+        JsonCompat.loadOr(fromJson, defaults(), p)
 
     // ── 派生色と resolver ──
 
@@ -98,7 +92,17 @@ mod ThemeDoc {
             case "cloth"       => doc#cloth
             case "clothLight"  => lighten(doc#cloth, 0.5)
             case "ink"         => doc#ink
+            case "paper"       => doc#paper
             case "leaf"        => lighten(doc#field, 0.35)
+            case "leafLight"   => lighten(doc#field, 0.60)
+            // 人の肌と髪。灯りの色を薄めて肌に、輪郭の色を持ち上げて髪にする
+            // （色票に足さずに済む＝調整する物を増やさない）。
+            case "skin"        => Color.warm(lighten(doc#accent, 0.55), 0.06)
+            case "skinLight"   => Color.warm(lighten(doc#accent, 0.75), 0.04)
+            case "hair"        => Color.warm(lighten(doc#ink, 0.22), 0.10)
+            // 魔物。畑の緑を寒色へ振って、里の物と見分けがつく色にする。
+            case "foe"         => Color.cool(lighten(doc#field, 0.22), 0.14)
+            case "foeLight"    => Color.cool(lighten(doc#field, 0.50), 0.10)
             case "wall"        => doc#wall
             case "field"       => doc#field
             case "wallTop"     => lighten(doc#wall, 0.18)

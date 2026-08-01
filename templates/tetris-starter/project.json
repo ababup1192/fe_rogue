@@ -6,7 +6,7 @@
   "windowWidth": 512,
   "windowHeight": 704,
   "windowScale": 2,
-  "clearColor": {"r": 0.058824, "g": 0.070588, "b": 0.101961},
+  "clearColor": {"r": 0.937255, "g": 0.901961, "b": 0.823529},
   "maxDeltaTime": 0.05,
   "textures": [],
   "// glyphs": "起動時に焼く字。auto=出た字から順に焼く / used=ソースとアセットにある字を先に焼く / all=フォントの全字",
@@ -30,6 +30,13 @@
         "title": "手触りと収支（落下速度・接地の猶予・得点）",
         "schema": "assets/rules.schema.json",
         "role": "tuning"
+      },
+      {
+        "id": "shader",
+        "pattern": "assets/tetris.shader.json",
+        "title": "盤の下の紙の塗り（宣言シェーダー）",
+        "schema": "assets/shader.schema.json",
+        "role": "material"
       },
       {
         "id": "project",

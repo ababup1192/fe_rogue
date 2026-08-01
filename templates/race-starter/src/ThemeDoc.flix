@@ -21,36 +21,31 @@ mod ThemeDoc {
 
     pub def path(): String = "assets/race.theme.json"
 
-    def rgb(r: Float64, g: Float64, b: Float64): Color =
-        { r = Float64.truncateToFloat32(r),
-          g = Float64.truncateToFloat32(g),
-          b = Float64.truncateToFloat32(b) }
+    /// 色見本の 6 桁 16 進をそのまま書くための近道。読めない綴りはマゼンタ
+    /// （書き間違いが画面で目に見える）。
+    def hex(code: String): Color =
+        Color.hex(code) |> Option.getWithDefault({ r = 1.0f32, g = 0.0f32, b = 1.0f32 })
 
     /// コード側の既定値（assets/race.theme.json と同じ色から出発する）。
+    /// 夜のハイウェイの色。光っているのはレーン標識と車だけで、地面は沈んでいる。
     pub def defaults(): Doc =
         { version = 1,
-          grass  = rgb(0.180392, 0.360784, 0.196078),   // #2e5c32 道の外の草
-          road   = rgb(0.223529, 0.231373, 0.258824),   // #393b42 路面（アスファルト）
-          lane   = rgb(0.909804, 0.878431, 0.529412),   // #e8e087 レーンの破線（淡い黄）
-          player = rgb(0.376471, 0.784314, 0.929412),    // #60c8ed 自機（水色）
-          rivalA = rgb(0.909804, 0.352941, 0.407843),    // #e85a68 ライバル A（赤）
-          rivalB = rgb(0.980392, 0.756863, 0.286275),    // #fac149 ライバル B（黄）
-          finish = rgb(0.925490, 0.937255, 0.949020),    // #eceff2 ゴール（白）
-          text   = rgb(0.925490, 0.937255, 0.949020) }   // #eceff2 文字
+          grass  = hex("#141a26"),   // 路肩（夜に沈んだ地面）
+          road   = hex("#3b4358"),   // 路面（濡れたアスファルト）
+          lane   = hex("#ffe066"),   // レーンの標識（ネオンの黄）
+          player = hex("#5ee0ff"),   // 自機（水色）
+          rivalA = hex("#ff5a7a"),   // ライバル A（赤）
+          rivalB = hex("#ffb84d"),   // ライバル B（橙）
+          finish = hex("#eceff2"),   // ゴール（白）
+          text   = hex("#eceff2") }  // 文字
 
-    /// 白に寄せる（ハイライト）。車の照りなどに使う。
-    pub def lighten(c: Color, k: Float64): Color =
-        Color.lighten(c, k)
-
-    /// 黒に寄せる（影）。
-    pub def darken(c: Color, k: Float64): Color =
-        Color.darken(c, k)
+    /// 遠くへ向かって路面が溶けていく色（夜霧）。基準色から導けるので Doc には置かない。
+    pub def haze(doc: Doc): Color =
+        Color.cool(Color.darken(doc#road, 0.45), 0.2)
 
     /// テキストから Doc へ（fail-open）。色の表記（#rrggbb）は UiDoc.colorOf に委ねる。
     pub def fromJson(text: String): Option[Doc] =
-        JsonCompat.parse(String.trim(text))
-            |> Option.flatMap(JsonCodec.expectObject)
-            |> Option.map(fromRoot)
+        JsonCompat.decodeObject(fromRoot, text)
 
     def fromRoot(root: Map[String, Json]): Doc =
         let d = defaults();
@@ -71,9 +66,5 @@ mod ThemeDoc {
 
     /// path の Doc を読む。読めない・壊れているときは defaults（fail-open）。
     pub def load(p: String): Doc \ Fs.FileRead =
-        let readResult = run { Fs.ReadFile.read(p) } with Fs.ReadFile.runWithFileRead;
-        readResult
-            |> Result.toOption
-            |> Option.flatMap(fromJson)
-            |> Option.getWithDefault(defaults())
+        JsonCompat.loadOr(fromJson, defaults(), p)
 }

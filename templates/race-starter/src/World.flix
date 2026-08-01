@@ -44,11 +44,15 @@ mod World {
     ///   rank     … いまの順位（1 = 先頭）。ライバルより前にいるほど小さい。
     ///   rivals   … ライバル 2 台。
     ///   score    … 得点（追い抜き + ゴールボーナス）。
+    ///   t        … 起動からの積み上げ秒。路肩の流れ・ヘッドライトの揺らぎ・速度線が見る。
+    ///              場面に関係なく進む（タイトルでも画面が止まらない）。
     pub type alias World = {
         rules = RulesDoc.Doc,
         theme = ThemeDoc.Doc,
         course = CourseDoc.Doc,
+        shader = ShaderDoc.Spec,
         phase = Phase,
+        t = Float64,
         playerX = Float64,
         distance = Float64,
         lap = Int32,
@@ -74,17 +78,20 @@ mod World {
     /// 自機が左右に出られる範囲（画面の縁に少し余白を残す）。草には出られるが画面外へは出ない。
     def marginX(): Float64 = 10.0
 
+    pub def shaderPath(): String = "assets/race.shader.json"
+
     /// コース 1 段（格子の 1 行）が距離いくつ分か（px）。距離 → 行番号の割り算の分母。
     /// 見た目のスクロール量（View）とも対にする（マジックナンバーを 2 か所に置かない）。
     pub def rowPitch(): Float64 = 40.0
 
     /// 起動時と bake が同じ形で読む Doc の束。
-    pub type alias Docs = { rules = RulesDoc.Doc, theme = ThemeDoc.Doc, course = CourseDoc.Doc }
+    pub type alias Docs = { rules = RulesDoc.Doc, theme = ThemeDoc.Doc,
+                            course = CourseDoc.Doc, shader = ShaderDoc.Spec }
 
     /// ゲーム開始時の状態。Title 画面から始まる（まだ走っていない）。
     pub def initial(docs: Docs): World =
-        { rules = docs#rules, theme = docs#theme, course = docs#course,
-          phase = Phase.Title, playerX = designW() / 2.0, distance = 0.0,
+        { rules = docs#rules, theme = docs#theme, course = docs#course, shader = docs#shader,
+          phase = Phase.Title, t = 0.0, playerX = designW() / 2.0, distance = 0.0,
           lap = 0, speed = 0.0, rank = startRank(docs#rules), rivals = initialRivals(docs#rules),
           score = 0, passFlash = 0.0, activeDocsWritten = "" }
 
@@ -113,10 +120,12 @@ mod World {
     ///   Racing 以外（Title/Finish）… 何もしない（入力は Controls が拾う）。
     ///   Racing … ハンドル → 前進（はみ出し減速込み）→ ライバル前進 → 追い抜き → 周回/ゴール。
     /// dir = 左右入力（-1/0/+1。Controls が渡す）。
+    /// 時計（t）だけは場面を問わず進める — 待っている画面でも路肩が流れ、光が揺れる。
     pub def step(dir: Float64, dt: Float64, w: World): World =
+        let ticked = { t = w#t + dt | w };
         match w#phase {
-            case Phase.Racing => tickRacing(dir, dt, w)
-            case _            => w
+            case Phase.Racing => tickRacing(dir, dt, ticked)
+            case _            => ticked
         }
 
     /// Racing の 1 拍。「進める部品」を順に pipe でつなぐ（読み下すと 1 フレームの物語になる）。
@@ -133,7 +142,7 @@ mod World {
     /// 草にははみ出せる（減速するのは advance 側の役目）。
     def steer(dir: Float64, dt: Float64, w: World): World =
         let nx = w#playerX + dir * w#rules#steerSpeed * dt;
-        { playerX = clampF(marginX(), designW() - marginX(), nx) | w }
+        { playerX = Num.clamp(marginX(), designW() - marginX(), nx) | w }
 
     /// 前進: 前進速度ぶん distance を伸ばす。ただし自機の足元が草（道の外）なら
     /// offRoadSlow を掛けて遅くする（はみ出し減速 = ルール）。
@@ -214,9 +223,10 @@ mod World {
     // 場面の仕切り直し（Title へ戻る）
     // ══════════════════════════════════════════════════════
 
-    /// Finish から最初（Title）へ戻る。[遷移: Finish→Title]
+    /// Finish から最初（Title）へ戻る。時計は引き継ぐ（絵の流れを巻き戻さない）。[遷移: Finish→Title]
     pub def toTitle(w: World): World =
-        initial({ rules = w#rules, theme = w#theme, course = w#course })
+        { t = w#t | initial({ rules = w#rules, theme = w#theme,
+                              course = w#course, shader = w#shader }) }
 
     /// Space/Enter の意味は場面で変わる: Title/Finish では仕切り直し、走行中は無し（ハンドルは別入力）。
     pub def confirm(w: World): World =
@@ -235,13 +245,12 @@ mod World {
     pub def withRules(rules: RulesDoc.Doc, w: World): World = { rules = rules | w }
     pub def withTheme(theme: ThemeDoc.Doc, w: World): World = { theme = theme | w }
     pub def withCourse(course: CourseDoc.Doc, w: World): World = { course = course | w }
+    pub def withShader(shader: ShaderDoc.Spec, w: World): World = { shader = shader | w }
 
     /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。Studio の「表示中」バッジの材料。
     pub def activeDocs(_w: World): List[(String, List[String])] =
         ("rules", RulesDoc.path() :: Nil)
             :: ("theme", ThemeDoc.path() :: Nil)
-            :: ("course", CourseDoc.path() :: Nil) :: Nil
-
-    def clampF(lo: Float64, hi: Float64, v: Float64): Float64 =
-        Float64.max(lo, Float64.min(hi, v))
+            :: ("course", CourseDoc.path() :: Nil)
+            :: ("shader", shaderPath() :: Nil) :: Nil
 }

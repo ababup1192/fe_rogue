@@ -19,11 +19,41 @@
 mod World {
 
     /// いま画面が何をしているか。Title = 表紙（決定で歩き出す）、Play = 里を歩いている、
-    /// Clear = 薬草がそろった（決定で表紙へ戻る）。
+    /// Battle = 魔物と向き合っている、Clear = 薬草がそろった（決定で表紙へ戻る）。
     pub enum Phase with Eq, ToString {
         case Title
         case Play
+        case Battle
         case Clear
+    }
+
+    /// 戦いのどの段か。Choosing = コマンドを選んでいる、Report = 打ち合いの結果を読んでいる
+    /// （決定でつぎの番へ）、Done = 決着（決定で里へ戻る）。
+    pub enum BattleStep with Eq, ToString {
+        case Choosing
+        case Report
+        case Done
+    }
+
+    /// 戦いの終わり方。
+    pub enum Outcome with Eq, ToString {
+        case Win
+        case Lose
+        case Flee
+    }
+
+    /// いま戦っている 1 回ぶん。主人公の体力は戦いをまたいで残るので World 側が持ち、
+    /// ここには「この戦いの中だけの物」を置く。
+    ///   step … いまどの段か。cursor … 選んでいるコマンド（0 = たたかう / 1 = にげる）。
+    ///   foeHp … 魔物の残り体力。lines … 下の窓に出す文（上から順）。
+    ///   foeHurt … 魔物が殴られたコマを出すか。outcome … 決着（まだなら None）。
+    pub type alias Battle = {
+        step = BattleStep,
+        cursor = Int32,
+        foeHp = Int32,
+        lines = List[String],
+        foeHurt = Bool,
+        outcome = Option[Outcome]
     }
 
     /// 起動時に読む Doc の束（Main と Bake が同じ形で組む）。
@@ -31,6 +61,7 @@ mod World {
         map = MapDoc.Doc,
         kind = KindDoc.Doc,
         theme = ThemeDoc.Doc,
+        battle = BattleDoc.Doc,
         sprites = PxSpriteDoc.Doc,
         terrain = TerrainDoc.Doc
     }
@@ -39,13 +70,17 @@ mod World {
     /// steps = 歩いた歩数（歩きのコマ送りに使う）、herbs = まだ拾っていない薬草のマス、
     /// picked = 拾った薬草の数、doorOpen = 扉が開いたか、
     /// dialog = ふきだし（開いている間は歩けない）、talkingTo = 話し相手のマス（ふきだしの位置）。
+    /// t = 起動からの積み上げ秒（場面に関係なく進む — 待っている画面でも絵を止めないため）。
+    /// heroHp = 主人公の残り体力（戦いをまたいで残る）。battle = いま戦っている 1 回ぶん。
     pub type alias World = {
         map = MapDoc.Doc,
         kind = KindDoc.Doc,
         theme = ThemeDoc.Doc,
+        battleDoc = BattleDoc.Doc,
         sprites = PxSpriteDoc.Doc,
         terrain = TerrainDoc.Doc,
         phase = Phase,
+        t = Float64,
         hero = Grid.Cell,
         facing = Dir4.Dir4,
         stepGauge = Float64,
@@ -53,6 +88,8 @@ mod World {
         herbs = List[Grid.Cell],
         picked = Int32,
         doorOpen = Bool,
+        heroHp = Int32,
+        battle = Battle,
         dialog = UiDialog.Dialog,
         talkingTo = Option[Grid.Cell],
         activeDocsWritten = String
@@ -72,19 +109,26 @@ mod World {
 
     /// ゲーム開始時の状態。表紙から始まる。
     pub def initial(docs: Docs): World =
-        { map = docs#map, kind = docs#kind, theme = docs#theme, sprites = docs#sprites,
-          terrain = docs#terrain,
-          phase = Phase.Title,
+        { map = docs#map, kind = docs#kind, theme = docs#theme, battleDoc = docs#battle,
+          sprites = docs#sprites, terrain = docs#terrain,
+          phase = Phase.Title, t = 0.0,
           hero = docs#map#start, facing = Dir4.Down, stepGauge = 0.0, steps = 0,
           herbs = docs#map#herbs, picked = 0, doorOpen = false,
+          heroHp = docs#battle#heroMaxHp, battle = noBattle(),
           dialog = UiDialog.closed(), talkingTo = None, activeDocsWritten = "" }
 
+    /// 戦っていないときの空の戦い（場が無い間の置き物）。
+    def noBattle(): Battle =
+        { step = BattleStep.Choosing, cursor = 0, foeHp = 0,
+          lines = Nil, foeHurt = false, outcome = None }
+
     /// 里を歩ける状態に置き直す（表紙から始めるとき・間取りの Doc を差し替えたとき）。
-    /// 薬草は全部戻り、扉は閉じ、主人公は start のマスに立つ。[遷移: Title→Play]
+    /// 薬草は全部戻り、扉は閉じ、体力は満タン、主人公は start のマスに立つ。[遷移: Title→Play]
     def begin(w: World): World =
         { phase = Phase.Play,
           hero = w#map#start, facing = Dir4.Down, stepGauge = 0.0, steps = 0,
           herbs = w#map#herbs, picked = 0, doorOpen = false,
+          heroHp = w#battleDoc#heroMaxHp, battle = noBattle(),
           dialog = UiDialog.closed(), talkingTo = None | w }
 
     // ── 収支の導出 ──
@@ -109,8 +153,12 @@ mod World {
             :: ("terrain", terrainPath() :: Nil)
             :: Nil;
         match w#phase {
-            case Phase.Play => List.append(base, ("kind", KindDoc.path() :: Nil) :: Nil)
-            case _          => base
+            case Phase.Play   => List.append(base, ("kind", KindDoc.path() :: Nil) :: Nil)
+            // 戦いの最中は盤が隠れる。出ているのは魔物の絵と戦いの数・文言だけ。
+            case Phase.Battle => ("sprite", spritePath() :: Nil)
+                                     :: ("theme", ThemeDoc.path() :: Nil)
+                                     :: ("battle", BattleDoc.path() :: Nil) :: Nil
+            case _            => base
         }
 
     // ── 歩ける・ぶつかるの規則 ──
@@ -128,7 +176,7 @@ mod World {
         let faced = { facing = direction | w };
         let target = Grid.neighborOf(w#hero, direction);
         if (walkable(target, faced))
-            pickUp({ hero = target, steps = w#steps + 1 | faced })
+            pickUp({ hero = target, steps = w#steps + 1 | faced }) |> meetFoe
         else
             faced
 
@@ -145,16 +193,18 @@ mod World {
     /// 毎フレーム: ふきだしの文字送りを進め、開いていなければ歩みを進める。
     /// ふきだしが開いている間は歩けない（会話中に動かないのはルール）。
     /// 歩く速さは KindDoc（walk マス/秒）— 押しっぱなしで 1/walk 秒ごとに 1 歩。
+    /// 時計（t）だけは場面を問わず進める — 表紙でも戦いの最中でも霧が流れ、魔物が息をする。
     pub def step(direction: Option[Dir4.Dir4], dt: Float64, w: World): World =
-        match w#phase {
+        let ticked = { t = w#t + dt | w };
+        match ticked#phase {
             case Phase.Play => {
-                let talked = { dialog = UiDialog.step(cps = w#kind#cps, dt, w#dialog) | w };
+                let talked = { dialog = UiDialog.step(cps = w#kind#cps, dt, ticked#dialog) | ticked };
                 if (UiDialog.isOpen(talked#dialog))
                     talked
                 else
                     walk(direction, Clock.countdown(talked#stepGauge, dt), talked)
             }
-            case _ => w
+            case _ => ticked
         }
 
     /// 歩みの拍。向きは押せばすぐ変わり、gauge が 0 になった拍だけ 1 歩進む。
@@ -177,15 +227,104 @@ mod World {
     def stepInterval(w: World): Float64 =
         1.0 / Float64.max(1.0, w#kind#walk)
 
+    // ══════════════════════════════════════════════════════
+    // 戦い（歩数で出会い、殴り合い、勝つか負けるか逃げる）
+    // ══════════════════════════════════════════════════════
+    //
+    //   Play ──encounterSteps 歩ごと(meetFoe)──▶ Battle
+    //     ▲                                        │
+    //     └────勝ち / 逃げ / 負け(leaveBattle)──────┘
+    //
+    // 乱数は持ち込まない: 何歩めで出会うかも、一撃の重さも Doc の数から決まる。
+    // 決定的なので bake の絵もテストの期待値も揺れない（強さの調整は Doc 側で足りる）。
+
+    /// この歩数で魔物と出会うか。encounterSteps 歩ごとに 1 回。0 以下なら出会わない。
+    pub def meetsFoeAt(steps: Int32, doc: BattleDoc.Doc): Bool =
+        doc#encounterSteps > 0 and steps > 0 and Int32.modulo(steps, doc#encounterSteps) == 0
+
+    /// 1 歩ぶん進んだあとの出会い判定。里を歩いている間だけ。[遷移: Play→Battle]
+    def meetFoe(w: World): World =
+        if (w#phase == Phase.Play and meetsFoeAt(w#steps, w#battleDoc))
+            { phase = Phase.Battle,
+              battle = { step = BattleStep.Report, cursor = 0, foeHp = w#battleDoc#foeMaxHp,
+                         lines = "${w#battleDoc#foeName} ${w#battleDoc#foeAppears}" :: Nil,
+                         foeHurt = false, outcome = None } | w }
+        else w
+
+    /// 戦いのコマンドの並び（見出しは UI の構造なので固定でよい）。
+    pub def battleCommands(): List[String] = "たたかう" :: "にげる" :: Nil
+
+    /// 選ぶカーソルを 1 つ動かす（上下。端で止まる）。Choosing の間だけ効く。
+    pub def moveCursor(delta: Int32, w: World): World =
+        if (w#phase != Phase.Battle or w#battle#step != BattleStep.Choosing) w
+        else {
+            let last = List.length(battleCommands()) - 1;
+            let cursor = Int32.max(0, Int32.min(last, w#battle#cursor + delta));
+            { battle = { cursor = cursor | w#battle } | w }
+        }
+
+    /// 戦いの決定 1 回分。段によって意味が変わる:
+    ///   Report   … 読み終えた → つぎのコマンド選びへ。
+    ///   Choosing … 選んだコマンドを実行する（たたかう / にげる）。
+    ///   Done     … 決着を読み終えた → 里へ戻る。
+    def battleConfirm(w: World): World =
+        match w#battle#step {
+            case BattleStep.Report =>
+                { battle = { step = BattleStep.Choosing, lines = Nil, foeHurt = false | w#battle } | w }
+            case BattleStep.Done   => leaveBattle(w)
+            case BattleStep.Choosing =>
+                if (w#battle#cursor == 1) flee(w) else strike(w)
+        }
+
+    /// 「たたかう」1 回分。こちらが殴り、倒せなければ相手が殴り返す。
+    def strike(w: World): World =
+        let doc = w#battleDoc;
+        let foeHp = Int32.max(0, w#battle#foeHp - doc#heroAttack);
+        let hitLine = "${doc#foeName} に ${Int32.toString(doc#heroAttack)} ${doc#damageSuffix}";
+        if (foeHp <= 0)
+            { battle = { step = BattleStep.Done, foeHp = 0, foeHurt = true,
+                         lines = hitLine :: doc#heroWins :: Nil,
+                         outcome = Some(Outcome.Win) | w#battle } | w }
+        else {
+            let heroHp = Int32.max(0, w#heroHp - doc#foeAttack);
+            let backLine = "こちらに ${Int32.toString(doc#foeAttack)} ${doc#damageSuffix}";
+            if (heroHp <= 0)
+                { heroHp = 0,
+                  battle = { step = BattleStep.Done, foeHp = foeHp, foeHurt = true,
+                             lines = hitLine :: backLine :: doc#heroLoses :: Nil,
+                             outcome = Some(Outcome.Lose) | w#battle } | w }
+            else
+                { heroHp = heroHp,
+                  battle = { step = BattleStep.Report, foeHp = foeHp, foeHurt = true,
+                             lines = hitLine :: backLine :: Nil, outcome = None | w#battle } | w }
+        }
+
+    /// 「にげる」1 回分。必ず逃げられる（starter は詰ませない — 難しさは Doc の数で足す）。
+    def flee(w: World): World =
+        { battle = { step = BattleStep.Done, lines = w#battleDoc#heroFlees :: Nil,
+                     foeHurt = false, outcome = Some(Outcome.Flee) | w#battle } | w }
+
+    /// 決着して里へ戻る。倒れていたら入口へ戻って体力が満ちる（詰まない）。
+    /// [遷移: Battle→Play]
+    def leaveBattle(w: World): World =
+        let back = { phase = Phase.Play, battle = noBattle() | w };
+        match w#battle#outcome {
+            case Some(Outcome.Lose) =>
+                { hero = w#map#start, facing = Dir4.Down, heroHp = w#battleDoc#heroMaxHp | back }
+            case _ => back
+        }
+
     // ── 決定（話す・進める）の規則 ──
 
     /// 決定 1 回分。表紙では歩き出し［遷移: Title→Play］、クリア画面では表紙へ戻る［遷移: Clear→Title］。
     /// 里では: ふきだしが開いていれば送り（文字送り中なら全文へ・読み終えていれば閉じる）、
     /// 閉じていれば目の前の住人に話しかける（Play のまま）。
+    /// 戦いの最中は battleConfirm へ渡す。
     pub def confirm(w: World): World =
         match w#phase {
-            case Phase.Title => begin(w)
-            case Phase.Clear => { phase = Phase.Title | w }
+            case Phase.Title  => begin(w)
+            case Phase.Clear  => { phase = Phase.Title | w }
+            case Phase.Battle => battleConfirm(w)
             case Phase.Play =>
                 if (UiDialog.isOpen(w#dialog)) {
                     let dialog = UiDialog.advance(w#dialog);
@@ -229,6 +368,10 @@ mod World {
         }
 
     pub def withKind(kind: KindDoc.Doc, w: World): World = { kind = kind | w }
+
+    /// 戦いの数値・文言の差し替え。体力の上限が動くので、いまの体力もそこへ収める。
+    pub def withBattleDoc(doc: BattleDoc.Doc, w: World): World =
+        { battleDoc = doc, heroHp = Int32.min(w#heroHp, doc#heroMaxHp) | w }
 
     pub def withTheme(theme: ThemeDoc.Doc, w: World): World = { theme = theme | w }
 

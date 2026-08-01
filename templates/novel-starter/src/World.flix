@@ -36,13 +36,15 @@ mod World {
     }
 
     /// ゲームの状態。section / idx = 台本上の現在地、kit = 会話窓と選択肢、
-    /// cursor = 選択肢のカーソル位置、lightsOut = 消えた灯りの数（疑うたびに増える）。
+    /// cursor = 選択肢のカーソル位置、lightsOut = 消えた灯りの数（疑うたびに増える）、
+    /// t = 起動からの積み上げ秒（雨・炎の揺らぎ・埃が見る。読んでいる間も部屋を止めない）。
     pub type alias World = {
         phase = Phase,
         story = StoryDoc.Doc,
         kind = KindDoc.Doc,
         theme = ThemeDoc.Doc,
         sprites = PxSpriteDoc.Doc,
+        t = Float64,
         section = String,
         idx = Int32,
         kit = NovelKit.Kit,
@@ -64,7 +66,7 @@ mod World {
     pub def initial(docs: Docs, ui: UiStore.UiWorld): World =
         { phase = Phase.Title,
           story = docs#story, kind = docs#kind, theme = docs#theme, sprites = docs#sprites,
-          section = docs#story#start, idx = 0,
+          t = 0.0, section = docs#story#start, idx = 0,
           kit = NovelKit.closed(), cursor = 0, lightsOut = 0,
           ui = ui, docError = None, activeDocsWritten = "" }
 
@@ -178,9 +180,11 @@ mod World {
             |> Option.getWithDefault(Nil)
 
     /// 毎フレーム: 文字送りを進め、キットの状態を UI へ刻む（表紙では窓は閉じている）。
+    /// 毎フレーム: 文字送りを進め、時計を進める。時計は場面を問わず進む —
+    /// 読んでいる間も表紙でも、雨は降り炎は揺れる（動かない絵は止まって見える）。
     pub def step(dt: Float64, w: World): World =
         let kit = NovelKit.step(cps = w#kind#cps, dt, w#kit);
-        { kit = kit, ui = NovelKit.apply(kit, w#ui) | w }
+        { kit = kit, ui = NovelKit.apply(kit, w#ui), t = w#t + dt | w }
 
     // ── Doc の差し替え（保存即反映） ──
 

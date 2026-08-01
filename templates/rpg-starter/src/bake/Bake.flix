@@ -46,9 +46,30 @@ mod Bake {
         let talk = shoot(cfg, ctx, talkScene(playing), "talk");
         // 扉前: 閉じた木戸に向いて立つ。
         let door = shoot(cfg, ctx, doorScene(playing), "door");
+        // 戦い: 魔物と向き合い、1 回殴り合った直後（下の窓に打ち合いの結果が出ている）。
+        let fight = shoot(cfg, ctx, battleScene(playing), "battle");
         // クリア: 薬草がそろい、灯りが全部ともった里。
         let clear = shoot(cfg, ctx, clearScene(playing), "clear");
-        title :: walk :: talk :: door :: clear :: Nil
+        title :: walk :: talk :: door :: fight :: clear :: Nil
+
+    /// 魔物と出会い、「たたかう」を 1 回選んだ直後。歩数も打ち合いも規則どおりに進める
+    /// （World を手で組まない = 規則が変わればこの絵も一緒に変わる）。
+    def battleScene(playing: World.World): World.World =
+        let met = walkUntilFoe(playing#battleDoc#encounterSteps, playing);
+        // 出会いの 1 行を読み終え（決定）、「たたかう」を選ぶ（決定）。
+        World.confirm(World.confirm(met)) |> withClock(2.1)
+
+    /// 魔物に出会うまで規則どおり歩く（左右に往復するので間取りが小さくても歩数が稼げる）。
+    /// 上限を切って必ず止まる（Doc で encounterSteps を 0 にしても回り続けない）。
+    def walkUntilFoe(budget: Int32, w: World.World): World.World =
+        if (budget <= 0 or w#phase == World.Phase.Battle) w
+        else {
+            let dir = if (Int32.modulo(budget, 2) == 0) Dir4.Right else Dir4.Left;
+            walkUntilFoe(budget - 1, World.stepOnce(dir, w))
+        }
+
+    /// 時計を決まった秒に据える（またたきや息づかいを毎回同じ位相で焼くため）。
+    def withClock(t: Float64, w: World.World): World.World = { t = t | w }
 
     /// 住人の隣（歩けるマス）に立ち、規則どおり話しかけて文字送りを終えた状態。
     /// 話し相手は villagers の末尾 — 約束の相手（先頭に置く習わし）でない住人が選ばれ、

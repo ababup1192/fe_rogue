@@ -1,7 +1,7 @@
 // Bake — ゲーム画面を画面なしで PNG に焼く（golden 比較・目視批評用）。
 // 実行: flix run --entrypoint Bake.all → gallery/title.png .. gallery/s3_last.png
-// すべて t（実時間）に依存しない決定的な場面。World を直接組み、実機と同じ描画経路
-// （View.frame → Render.draw → Bakery.renderPng）で焼く。
+// すべて決定的な場面（時計 t は場面ごとに固定値を入れる — 実時間を見ない）。World を直接
+// 組み、実機と同じ描画経路（View.frame → Render.draw → Bakery.renderPng）で焼く。
 mod Bake {
     import java.io.File
 
@@ -29,7 +29,7 @@ mod Bake {
         let ctx = App.viewCtxOf(atlas, design());
         // title: ジャンルカードの顔（Title 画面）。Studio が golden/title.png を /genesis/title で
         // 読み、「レース」の札のサムネにする（各 starter 共通の規約）。
-        let t = shoot(cfg, ctx, w0, "title");
+        let t = shoot(cfg, ctx, { t = 2.2 | w0 }, "title");
         // s1: 走行中盤（コースが流れ・ライバルが前方に見え・抜いた瞬間の閃光が出ている）。
         let s1 = shoot(cfg, ctx, raceScene(w0), "s1_race");
         // s2: FINISH（WIN）の幕。
@@ -51,13 +51,13 @@ mod Bake {
             if (i == 0) { progress = dist - 30.0, passed = true | r }   // 抜いた（後ろ）
             else        { progress = dist + 60.0 | r }                  // まだ前方
         });
-        { phase = World.Phase.Racing, distance = dist, playerX = 130.0,
+        { phase = World.Phase.Racing, t = 1.7, distance = dist, playerX = 130.0,
           rivals = rivals, rank = 2, score = 300, passFlash = World.flashDuration() | started }
 
     /// FINISH（WIN）の幕。totalLaps 周を走り切って 1 位でゴール。
     def finishScene(w0: World.World): World.World =
         let started = World.startGame(w0);
-        { phase = World.Phase.Finish, lap = w0#rules#totalLaps, rank = 1,
+        { phase = World.Phase.Finish, t = 3.4, lap = w0#rules#totalLaps, rank = 1,
           score = 2 * w0#rules#scorePerPass + w0#rules#finishBonus,
           rivals = Nil | started }
 
@@ -66,7 +66,7 @@ mod Bake {
         let started = World.startGame(w0);
         let dist = World.rowPitch() * 1.0;
         let rivals = started#rivals |> List.map(r -> { progress = dist + 120.0 | r });
-        { phase = World.Phase.Racing, distance = dist, playerX = 96.0,
+        { phase = World.Phase.Racing, t = 0.9, distance = dist, playerX = 96.0,
           rivals = rivals, rank = 3, score = 0 | started }
 
     /// 1 場面を PNG に焼き、焼けたファイルパスを返す。

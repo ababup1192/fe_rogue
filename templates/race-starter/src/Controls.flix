@@ -24,7 +24,13 @@ mod Controls {
     pub def loadDocs(): World.Docs \ Fs.FileRead =
         { rules = RulesDoc.load(RulesDoc.path()),
           theme = ThemeDoc.load(ThemeDoc.path()),
-          course = CourseDoc.load(CourseDoc.path()) }
+          course = CourseDoc.load(CourseDoc.path()),
+          shader = loadShader() }
+
+    /// 路肩の面。読めない・語彙が違うときはエンジンの見本の面へ倒す（fail-open）。
+    pub def loadShader(): ShaderDoc.Spec \ Fs.FileRead =
+        ShaderJson.load(World.shaderPath())
+            |> Result.getWithDefault(ShaderDoc.demoSurface())
 
     pub def reloadRules(w: World.World): World.World \ Fs.FileRead =
         World.withRules(RulesDoc.load(RulesDoc.path()), w)
@@ -35,7 +41,10 @@ mod Controls {
     pub def reloadCourse(w: World.World): World.World \ Fs.FileRead =
         World.withCourse(CourseDoc.load(CourseDoc.path()), w)
 
+    pub def reloadShader(w: World.World): World.World \ Fs.FileRead =
+        World.withShader(loadShader(), w)
+
     /// F1: Doc を全部読み直す。
     pub def reloadAll(w: World.World): World.World \ Fs.FileRead =
-        w |> reloadRules |> reloadTheme |> reloadCourse
+        w |> reloadRules |> reloadTheme |> reloadCourse |> reloadShader
 }

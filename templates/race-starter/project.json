@@ -39,6 +39,13 @@
         "role": "material"
       },
       {
+        "id": "shader",
+        "pattern": "assets/race.shader.json",
+        "title": "路肩の地面の塗り（宣言シェーダー）",
+        "schema": "assets/shader.schema.json",
+        "role": "material"
+      },
+      {
         "id": "project",
         "pattern": "project.json",
         "schema": "project.schema.json",

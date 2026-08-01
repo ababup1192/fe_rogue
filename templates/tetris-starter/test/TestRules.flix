@@ -9,7 +9,8 @@ mod TestRules {
 
     /// 既定の Doc から空の World を作り、current だけ差し替えられるようにする土台。
     def base(): World.World =
-        World.initial({ doc = RulesDoc.defaults(), theme = ThemeDoc.defaults() })
+        World.initial({ doc = RulesDoc.defaults(), theme = ThemeDoc.defaults(),
+                        shader = ShaderDoc.demoSurface() })
 
     /// current を指定の Piece に据えた World（衝突・移動・回転のテスト用）。
     def withPiece(kind: Kind, rot: Int32, col: Int32, row: Int32, w: World.World): World.World =

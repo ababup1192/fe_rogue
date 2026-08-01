@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "note": "画面の色。grass = 道の外、road = 路面、lane = レーンの破線、player = 自機、rivalA/rivalB = ライバル 2 台、finish = ゴールの旗、text = 文字。#rrggbb で指定。",
-  "grass": "#2e5c32",
-  "road": "#393b42",
-  "lane": "#e8e087",
-  "player": "#60c8ed",
-  "rivalA": "#e85a68",
-  "rivalB": "#fac149",
+  "note": "画面の色。grass = 道の外（路肩）、road = 路面、lane = レーンの標識、player = 自機、rivalA/rivalB = ライバル 2 台、finish = ゴールの旗、text = 文字。#rrggbb で指定。夜の絵なので地面は沈めて lane と車だけを光らせている — 地面を明るくすると光る物が無くなって画面が平らに見える。",
+  "grass": "#141a26",
+  "road": "#3b4358",
+  "lane": "#ffe066",
+  "player": "#5ee0ff",
+  "rivalA": "#ff5a7a",
+  "rivalB": "#ffb84d",
   "finish": "#eceff2",
   "text": "#eceff2"
 }

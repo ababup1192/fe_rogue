@@ -34,8 +34,8 @@ mod TestRules {
 
     def w0(): World.World =
         World.initial({ map = fixture(), kind = KindDoc.defaults(),
-                        theme = ThemeDoc.defaults(), sprites = PxSpriteDoc.empty(),
-                        terrain = TerrainDoc.defaults() })
+                        theme = ThemeDoc.defaults(), battle = BattleDoc.defaults(),
+                        sprites = PxSpriteDoc.empty(), terrain = TerrainDoc.defaults() })
 
     /// 表紙から歩き出した直後の状態。
     def atStart(): World.World = World.confirm(w0())
@@ -177,8 +177,8 @@ mod TestRules {
     def testGoalClampedToPlacedHerbs(): Unit \ Assert =
         // goal が置いてある薬草より多くても、クリアに要る数は置いた数まで(詰みを作らない)。
         let greedy = World.initial({ map = { goal = 99 | fixture() }, kind = KindDoc.defaults(),
-                                     theme = ThemeDoc.defaults(), sprites = PxSpriteDoc.empty(),
-                                     terrain = TerrainDoc.defaults() });
+                                     theme = ThemeDoc.defaults(), battle = BattleDoc.defaults(),
+                                     sprites = PxSpriteDoc.empty(), terrain = TerrainDoc.defaults() });
         Assert.assertEq(expected = List.length(fixture()#herbs), World.goalOf(greedy))
 
     // ══════════════════════════════════════════════════════
@@ -224,4 +224,83 @@ mod TestRules {
             |> go(Dir4.Left :: Dir4.Left :: Nil)
             |> go(Dir4.Down :: Dir4.Down :: Nil)
             |> go(Dir4.Right :: Dir4.Right :: Dir4.Right :: Nil)
+
+    // ══════════════════════════════════════════════════════
+    // 戦い（歩数で出会う・殴り合う・逃げる・倒れても詰まない）
+    // ══════════════════════════════════════════════════════
+
+    /// 魔物と出会った直後の状態（出会いの 1 行を読んでいるところ）。
+    def met(): World.World =
+        let d = BattleDoc.defaults();
+        { phase = World.Phase.Battle, steps = d#encounterSteps,
+          battle = { step = World.BattleStep.Report, cursor = 0, foeHp = d#foeMaxHp,
+                     lines = Nil, foeHurt = false, outcome = None } | atStart() }
+
+    /// コマンドを選べる段まで進めた状態。
+    def choosing(): World.World = World.confirm(met())
+
+    @Test
+    def testFoeAppearsEveryEncounterSteps(): Unit \ Assert =
+        // encounterSteps 歩ちょうどで出会い、その手前では出会わない。
+        let d = BattleDoc.defaults();
+        Assert.assertEq(
+            expected = (false, true, false, true),
+            (World.meetsFoeAt(0, d),
+             World.meetsFoeAt(d#encounterSteps, d),
+             World.meetsFoeAt(d#encounterSteps + 1, d),
+             World.meetsFoeAt(d#encounterSteps * 2, d)))
+
+    @Test
+    def testFoeNeverAppearsWhenStepsIsZero(): Unit \ Assert =
+        // encounterSteps を 0 にすると魔物は出ない（戦いを外した遊びも作れる）。
+        let quiet = { encounterSteps = 0 | BattleDoc.defaults() };
+        Assert.assertEq(expected = false, World.meetsFoeAt(40, quiet))
+
+    @Test
+    def testStrikeHurtsBothSides(): Unit \ Assert =
+        // 「たたかう」1 回で、魔物は heroAttack ぶん減り、こちらは foeAttack ぶん減る。
+        let d = BattleDoc.defaults();
+        let after = World.confirm(choosing());
+        Assert.assertEq(
+            expected = (d#foeMaxHp - d#heroAttack, d#heroMaxHp - d#foeAttack),
+            (after#battle#foeHp, after#heroHp))
+
+    @Test
+    def testKillingFoeEndsBattleWithWin(): Unit \ Assert =
+        // 魔物の体力が一撃ぶんしか無ければ、その 1 回で決着（勝ち）になり反撃も受けない。
+        let d = BattleDoc.defaults();
+        let weak = { battle = { foeHp = d#heroAttack | choosing()#battle } | choosing() };
+        let after = World.confirm(weak);
+        Assert.assertEq(
+            expected = (Some(World.Outcome.Win), d#heroMaxHp),
+            (after#battle#outcome, after#heroHp))
+
+    @Test
+    def testFleeAlwaysReturnsToVillage(): Unit \ Assert =
+        // 「にげる」を選ぶと必ず逃げられ、決定をもう 1 回で里へ戻る（詰ませない）。
+        let fleeing = World.confirm(World.moveCursor(1, choosing()));
+        let back = World.confirm(fleeing);
+        Assert.assertEq(
+            expected = (Some(World.Outcome.Flee), World.Phase.Play),
+            (fleeing#battle#outcome, back#phase))
+
+    @Test
+    def testLosingSendsHeroBackAliveToStart(): Unit \ Assert =
+        // 倒れても終わりではない: 入口へ戻り、体力は満タンに戻る（やり直せる）。
+        let d = BattleDoc.defaults();
+        let dying = { heroHp = d#foeAttack | choosing() };
+        let lost = World.confirm(dying);
+        let back = World.confirm(lost);
+        Assert.assertEq(
+            expected = (Some(World.Outcome.Lose), World.Phase.Play, d#heroMaxHp, true),
+            (lost#battle#outcome, back#phase, back#heroHp,
+             MapDoc.sameCell(back#hero, back#map#start)))
+
+    @Test
+    def testCursorStaysInsideCommandList(): Unit \ Assert =
+        // カーソルはコマンドの外へ出ない（端で止まる）。
+        let last = List.length(World.battleCommands()) - 1;
+        let up = World.moveCursor(-1, choosing());
+        let down = World.moveCursor(1, World.moveCursor(1, choosing()));
+        Assert.assertEq(expected = (0, last), (up#battle#cursor, down#battle#cursor))
 }

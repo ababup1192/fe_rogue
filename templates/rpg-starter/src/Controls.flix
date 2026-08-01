@@ -22,11 +22,18 @@ mod Controls {
     pub def step(frame: App.Frame, w: World.World): World.World =
         World.step(List.head(InputMap.held(moveTable(), frame)), frame#dt, w)
 
-    /// 毎フレームのシステム: 決定キーの解釈（表紙では歩き出す・里では話す/送る）。
+    /// 毎フレームのシステム: 決定キーの解釈（表紙では歩き出す・里では話す/送る・
+    /// 戦いでは選んだコマンドを実行する）。戦いのカーソル移動（↑↓）も押した瞬間だけ拾う
+    /// — 歩きと違って押しっぱなしで滑ってほしくないため。
     pub def interact(frame: App.Frame, w: World.World): World.World =
+        let moved = match InputMap.firstTap(moveTable(), frame) {
+            case Some(Dir4.Up)   => World.moveCursor(-1, w)
+            case Some(Dir4.Down) => World.moveCursor(1, w)
+            case _               => w
+        };
         match InputMap.firstTap(confirmTable(), frame) {
-            case Some(_) => World.confirm(w)
-            case None    => w
+            case Some(_) => World.confirm(moved)
+            case None    => moved
         }
 
     // ── Doc の読み込み・読み直し（watchFile / F1） ──
@@ -36,6 +43,7 @@ mod Controls {
         { map = MapDoc.load(MapDoc.path()),
           kind = KindDoc.load(KindDoc.path()),
           theme = ThemeDoc.load(ThemeDoc.path()),
+          battle = BattleDoc.load(BattleDoc.path()),
           sprites = PxSpriteDoc.load(World.spritePath()),
           terrain = TerrainDoc.load(World.terrainPath()) }
 
@@ -48,6 +56,9 @@ mod Controls {
     pub def reloadTheme(w: World.World): World.World \ Fs.FileRead =
         World.withTheme(ThemeDoc.load(ThemeDoc.path()), w)
 
+    pub def reloadBattle(w: World.World): World.World \ Fs.FileRead =
+        World.withBattleDoc(BattleDoc.load(BattleDoc.path()), w)
+
     pub def reloadSprites(w: World.World): World.World \ Fs.FileRead =
         World.withSprites(PxSpriteDoc.load(World.spritePath()), w)
 
@@ -56,5 +67,6 @@ mod Controls {
 
     /// F1: Doc を全部読み直す。
     pub def reloadAll(w: World.World): World.World \ Fs.FileRead =
-        w |> reloadMap |> reloadKind |> reloadTheme |> reloadSprites |> reloadTerrain
+        w |> reloadMap |> reloadKind |> reloadTheme |> reloadBattle
+          |> reloadSprites |> reloadTerrain
 }

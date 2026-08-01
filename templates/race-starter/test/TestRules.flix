@@ -6,7 +6,8 @@ mod TestRules {
 
     /// 既定の Doc から Title の World を作る土台。
     def base(): World.World =
-        World.initial({ rules = RulesDoc.defaults(), theme = ThemeDoc.defaults(), course = CourseDoc.defaults() })
+        World.initial({ rules = RulesDoc.defaults(), theme = ThemeDoc.defaults(),
+                        course = CourseDoc.defaults(), shader = ShaderDoc.demoSurface() })
 
     /// Racing にした World（進行・当たり・収支のテスト用）。
     def racing(w: World.World): World.World =

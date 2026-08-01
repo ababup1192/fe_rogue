@@ -90,11 +90,15 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 `templates/` の各スターターは `make new-game` の複製元であり、Studio の「ジャンル」の顔でもある。
 2 系統ある:
 
-- **具体値式**（rpg / novel / tetris-starter）: 値をそのまま書く。**in-repo で
+- **具体値式**（rpg / novel / race / tetris-starter）: 値をそのまま書く。**in-repo で
   `make -C templates/<name> check / test / bake` が通り golden を持つ**作り込み例。凝った演出も
   テストも載せられる。Studio の「はじめる」は複製で始まる。
 - **トークン式**（game-starter）: `__NAME__` `__W__` などを埋めた最小の骨組み。in-repo では
   ビルドしない（`make new-game` が置換して初めて動く）。W/H を引数で決める素体。
+
+**空の抜け殻を置かない**: `src/` の無いディレクトリを `templates/` に残すと、Studio の札からは
+選べるのに複製しても動かない。中身を作れないうちは Studio 側の `starter` を空にしておき、
+ディレクトリごと作らない（存在しないパスを `starter` に書くのも同じ事故になる）。
 
 新しいテンプレを足すときの手順（**どれか欠けると Studio で「出ない / 絵がない / 作れない」になる**）:
 
@@ -106,9 +110,13 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
    無いと Studio が仮色で塗り、編集画面と実機で配色が食い違う。派生色をコードで導いているなら、
    色票 JSON を生成する `make` ターゲットを作り、`paletteFile` でそれを指す（`kaidan` の
    `Palette` モジュール + `palette` ターゲット + テストが手本。テストで生成物と実機の色を pin する）。
-4. Studio に登録する: `flix_ge_studio` の `server/src/Genesis.flix` の families で、該当ジャンルの
+4. **画風を宣言する**。`AGENTS.local.md` に「## この画面の画風」を書き（3 色・やらないこと 1 つ）、
+   `src/View.flix` の頭に層の並びと、各層が「絵の下限」の 4 性質のどれを受け持つかを書く。
+   **テンプレどうしで画風をそろえない** — 揃えると「この画風が正解」という手本になってしまう
+   （夜のネオン・紙の刷り物・霧の夕暮れ・雨の夜、と別々にしてあるのはそのため）。
+5. Studio に登録する: `flix_ge_studio` の `server/src/Genesis.flix` の families で、該当ジャンルの
    `starter = "templates/<genre>-starter"` にする（starter が空だとゼロ生成フローのまま）。
-5. Studio に反映する: `flix_ge_studio` で **`make swap-jar`**（動いている `.app` の同梱 jar を
+6. Studio に反映する: `flix_ge_studio` で **`make swap-jar`**（動いている `.app` の同梱 jar を
    差し替え + 再署名）→ Studio を Cmd+Q して開き直し。**`make jar` だけでは動いている .app に効かない**。
 
 `make new-game GAME=/abs NAME=x TITLE=題名 TEMPLATE=<genre>-starter`。TITLE は自由文でよい

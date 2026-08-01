@@ -53,6 +53,8 @@ mod World {
     pub type alias World = {
         doc = RulesDoc.Doc,
         theme = ThemeDoc.Doc,
+        shader = ShaderDoc.Spec,
+        t = Float64,
         board = Map[Cell, Kind],
         current = Piece,
         nextKind = Kind,
@@ -76,7 +78,9 @@ mod World {
     pub def rows(): Int32 = 20
 
     /// 起動時と bake が同じ形で読む Doc の束。
-    pub type alias Docs = { doc = RulesDoc.Doc, theme = ThemeDoc.Doc }
+    pub type alias Docs = { doc = RulesDoc.Doc, theme = ThemeDoc.Doc, shader = ShaderDoc.Spec }
+
+    pub def shaderPath(): String = "assets/tetris.shader.json"
 
     /// ゲーム開始時の状態。空の盤に最初のミノが涌いた状態から始まる。
     /// seed は固定の定数から出発する（bake が決定的になる・遊びも毎回同じ並びで再現できる）。
@@ -87,7 +91,7 @@ mod World {
     /// まだ何も涌いていない空の World（initial だけが使う下ごしらえ）。
     /// seed は固定の定数から出発する（bake が決定的になる・遊びも毎回同じ並びで再現できる）。
     def blank(docs: Docs): World =
-        { doc = docs#doc, theme = docs#theme, board = Map.empty(),
+        { doc = docs#doc, theme = docs#theme, shader = docs#shader, t = 0.0, board = Map.empty(),
           current = spawnPiece(Kind.I), nextKind = Kind.I, bag = Nil,
           seed = 1i64, gravityTimer = 0.0, lockTimer = 0.0, grounded = false,
           lockResets = 0, phase = Phase.Playing, clearRows = Nil, clearTimer = 0.0,
@@ -232,11 +236,14 @@ mod World {
     ///   Clearing … 演出の時間を進め、終わったら実消去して次のミノへ。
     ///   GameOver … 何もしない（Space/Enter の restart 待ち）。
     /// softDrop は下キーが押されているか（Controls が渡す）。
+    /// 時計（t）だけは場面を問わず進める — 手が止まっている間も紙の繊維が流れ、
+    /// 操作中のミノの縁が息をする（画面を完全に静止させないため）。
     pub def step(softDrop: Bool, dt: Float64, w: World): World =
+        let ticked = { t = w#t + dt | w };
         match w#phase {
-            case Phase.Playing  => tickPlaying(softDrop, dt, w)
-            case Phase.Clearing => tickClearing(dt, w)
-            case Phase.GameOver => w
+            case Phase.Playing  => tickPlaying(softDrop, dt, ticked)
+            case Phase.Clearing => tickClearing(dt, ticked)
+            case Phase.GameOver => ticked
         }
 
     /// Playing の 1 拍: 重力を積んで 1 段落とし、落ちられなければ接地として固定を待つ。
@@ -328,9 +335,9 @@ mod World {
         if (moved) dropToBottom(w1) else w
 
     /// GAME OVER から仕切り直す（Space/Enter）。seed を初期へ戻して決定的に始め直す。
-    /// [遷移: GameOver→Playing]
+    /// 時計は引き継ぐ（絵の流れを巻き戻さない）。[遷移: GameOver→Playing]
     pub def restart(w: World): World =
-        initial({ doc = w#doc, theme = w#theme })
+        { t = w#t | initial({ doc = w#doc, theme = w#theme, shader = w#shader }) }
 
     def isPlaying(w: World): Bool = w#phase == Phase.Playing
 
@@ -344,8 +351,12 @@ mod World {
     /// 色の Doc を差し替える。
     pub def withTheme(theme: ThemeDoc.Doc, w: World): World = { theme = theme | w }
 
+    /// 紙の面を差し替える。
+    pub def withShader(shader: ShaderDoc.Spec, w: World): World = { shader = shader | w }
+
     /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
     /// Studio の「表示中」バッジの材料。盤・ミノは常に色（theme）と数値（rules）で描かれる。
     pub def activeDocs(_w: World): List[(String, List[String])] =
-        ("rules", RulesDoc.path() :: Nil) :: ("theme", ThemeDoc.path() :: Nil) :: Nil
+        ("rules", RulesDoc.path() :: Nil) :: ("theme", ThemeDoc.path() :: Nil)
+            :: ("shader", shaderPath() :: Nil) :: Nil
 }

@@ -28,30 +28,28 @@ mod ThemeDoc {
     /// accentLight の宣言元（Studio の色解決と同じ色票）。
     pub def palettePath(): String = "assets/ui/palette.json"
 
-    def rgb(r: Float64, g: Float64, b: Float64): Color =
-        { r = Float64.truncateToFloat32(r),
-          g = Float64.truncateToFloat32(g),
-          b = Float64.truncateToFloat32(b) }
+    /// 色見本の 6 桁 16 進をそのまま書くための近道。読めない綴りはマゼンタ
+    /// （書き間違いが画面で目に見える）。
+    def hex(code: String): Color =
+        Color.hex(code) |> Option.getWithDefault({ r = 1.0f32, g = 0.0f32, b = 1.0f32 })
 
     /// コード側の既定値（assets/novel.theme.json と同じ色から出発する）。
     /// accentLight の既定は従来どおり accent からの導出（palette.json が上書きする）。
     pub def defaults(): Doc =
-        let accent = rgb(1.0, 0.788235, 0.368627);
+        let accent = hex("#ffc95e");
         { version = 1,
-          bg     = rgb(0.062745, 0.062745, 0.109804),
-          wall   = rgb(0.164706, 0.141176, 0.219608),
-          window = rgb(0.101961, 0.137255, 0.2),
-          accent = accent,
+          bg     = hex("#10101c"),   // 部屋の闇（床の底）
+          wall   = hex("#2a2438"),   // 書斎の壁
+          window = hex("#1a2333"),   // 雨の窓
+          accent = accent,           // 灯り
           accentLight = lighten(accent, 0.5),
-          ink    = rgb(0.921569, 0.941176, 1.0),
+          ink    = hex("#ebf0ff"),   // 本文
           rainCount = 7,
           rainGlow = 0.22 }
 
     /// テキストから Doc へ（fail-open）。色の表記（#rrggbb）は UiDoc.colorOf に委ねる。
     pub def fromJson(text: String): Option[Doc] =
-        JsonCompat.parse(String.trim(text))
-            |> Option.flatMap(JsonCodec.expectObject)
-            |> Option.map(fromRoot)
+        JsonCompat.decodeObject(fromRoot, text)
 
     def fromRoot(root: Map[String, Json]): Doc =
         let d = defaults();
@@ -74,16 +72,8 @@ mod ThemeDoc {
     /// path の Doc を読む。読めない・壊れているときは defaults（fail-open）。
     /// accentLight は palette.json（palettePath）の宣言があれば重ねる。
     pub def load(p: String): Doc \ Fs.FileRead =
-        let readResult = run { Fs.ReadFile.read(p) } with Fs.ReadFile.runWithFileRead;
-        let doc = readResult
-            |> Result.toOption
-            |> Option.flatMap(fromJson)
-            |> Option.getWithDefault(defaults());
-        let paletteResult = run { Fs.ReadFile.read(palettePath()) } with Fs.ReadFile.runWithFileRead;
-        paletteResult
-            |> Result.toOption
-            |> Option.map(text -> overlayAccentLight(text, doc))
-            |> Option.getWithDefault(doc)
+        let doc = JsonCompat.loadOr(fromJson, defaults(), p);
+        JsonCompat.loadOr(text -> Some(overlayAccentLight(text, doc)), doc, palettePath())
 
     /// palette.json のテキストの "accentLight" を doc に重ねる。
     /// 読めない・キーが無いときは doc のまま（fail-open = accent からの導出）。

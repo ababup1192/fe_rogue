@@ -2,8 +2,22 @@
 // 盤・固定セル・落下中ミノ・着地予測（ゴースト）・NEXT・スコア・ライン消しの閃光・
 // GAME OVER の幕を、World を読むだけで（変えずに）絵にする。幾何はここに閉じる。
 //
-// ── z 層（重なり順。大きいほど手前）──
-//   bg=0 / 盤背景=1 / grid 線=2 / ghost=8 / 固定セル=10 / current=11 / 演出=20 / HUD=30 / overlay=40
+// ── この画面の画風（AGENTS.local.md と同じ宣言）──
+// 「生成りの紙に版で刷った積み木」。明るい紙の上に、彩度を落としたインクの色面が乗る。
+//   色は 3 つ: 紙の生成り / 罫線の茶 / インクの濃い茶。ミノの 7 色はその上の刷り色。
+//   やらないこと: 光らせない（Add ブレンドのネオンを使わない — 紙は発光しない）。
+// **これは数ある画風の 1 つでしかない。** 真似してほしいのは「層に分けて、各層に役割を
+// 持たせる」組み方の方で、色や効果ではない。別の作り方の例は `.claude/skills/visual-dict`。
+//
+// ── 画面の層（奥から手前へ。z が大きいほど手前）──
+//    0  paper    … 紙（宣言シェーダーの面。繊維がごく遅く流れる）→ 面に質感・時間が流れる
+//    1  board    … 盤の窪み（紙が一段沈んで見える）             → 面に階調
+//    2  grid     … マス目の罫線
+//    8  ghost    … 着地予測（下書きの薄い線）
+//    9  drop     … 落下中のミノが紙に落とす影                    → 主役が背景から分離
+//   10  locked   … 積んだマス（面 + 上の照り + 下の沈み）        → 面に階調
+//   11  current  … 操作中のミノ（縁が息をする）                  → 主役が背景から分離・時間が流れる
+//   20  clear    … ライン消しの閃光 / 30 HUD / 40 overlay
 //
 // View は fail-open: 盤が空でも Doc が既定でも必ず何かを描く（プレイヤーの前で白画面にしない）。
 mod View {
@@ -15,6 +29,7 @@ mod View {
     def zBoard(): Int32 = 1
     def zGrid(): Int32 = 2
     def zGhost(): Int32 = 8
+    def zDropShadow(): Int32 = 9
     def zLocked(): Int32 = 10
     def zCurrent(): Int32 = 11
     def zClear(): Int32 = 20
@@ -33,9 +48,10 @@ mod View {
 
     pub def frame(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
         List.flatten(
-               background(w#theme)
+               background(w)
             :: gridLines(w#theme)
             :: ghost(w)
+            :: dropShadow(w)
             :: lockedCells(w)
             :: currentCells(w)
             :: clearFx(w)
@@ -51,21 +67,42 @@ mod View {
         { x = originX() + (Int32.toFloat64(c) + 0.5) * cell(),
           y = originY() + (Int32.toFloat64(r) + 0.5) * cell() }
 
-    /// 1 マスを塗る（中心置き・0.5px の隙間でマス目感を出す）。
-    def blockAt(c: Int32, r: Int32, color: Color, z: Int32): Render.PlacedItem =
+    /// 1 マスを平らに塗る（中心置き・0.5px の隙間でマス目感を出す）。
+    /// ゴーストと NEXT のように「そこに物は無い」印にはこちらを使う。
+    def flatBlock(c: Int32, r: Int32, color: Color, z: Int32): Render.PlacedItem =
         Render.boxAt(cellCenter(c, r), { x = cell() - 1.0, y = cell() - 1.0 }, color, z)
+
+    /// 刷ったマス 1 つ。面 + 上辺の照り + 下辺の沈み の 3 枚を重ねる。
+    /// 平らな 1 枚だけだと積み上がった山が「べた塗りの塊」になり、
+    /// どこからどこまでが 1 マスかが読めなくなる（同じ色が隣り合うほど顕著）。
+    def printedBlock(c: Int32, r: Int32, color: Color, z: Int32): List[Render.PlacedItem] =
+        printedRect(cellCenter(c, r), cell() - 1.0, color, z)
+
+    /// 刷った四角 1 つ（1 辺 side・中心置き）。盤のマスと NEXT のプレビューが共有する
+    /// ので、盤の格子に縛られない形（中心と辺の長さ）で受ける。
+    def printedRect(at: Vec2.Vec2, side: Float64, color: Color, z: Int32): List[Render.PlacedItem] =
+           Render.boxAt(at, { x = side, y = side }, color, z)
+        :: Render.boxAt({ x = at#x, y = at#y - side / 2.0 + 1.5 }, { x = side - 3.0, y = 3.0 },
+               Color.warm(Color.lighten(color, 0.42), 0.10), z + 1)
+        :: Render.boxAt({ x = at#x, y = at#y + side / 2.0 - 1.0 }, { x = side, y = 2.0 },
+               Color.cool(Color.darken(color, 0.42), 0.10), z + 1)
+        :: Nil
 
     // ── 背景・枠・grid ──
 
-    /// 盤外の背景 → 盤の中の背景 → 枠（wall）。fail-open の土台（常に何か出る）。
-    def background(theme: ThemeDoc.Doc): List[Render.PlacedItem] =
+    /// 紙（画素ごとの計算で塗る面）→ 盤の縁 → 盤の窪み。fail-open の土台（常に何か出る）。
+    /// 紙は単色の四角ではなく、細かい繊維がごく遅く流れる面。何がどう効くかは Doc の note と
+    /// engine の `docs/shader-doc.md` を参照。
+    def background(w: World.World): List[Render.PlacedItem] =
+        let theme = w#theme;
         let boardW = Int32.toFloat64(World.cols()) * cell();
         let boardH = Int32.toFloat64(World.rows()) * cell();
-        // 枠は盤より 2px 外に一回り大きく敷いてから、盤背景を上に重ねる（縁取りに見える）。
-           { at = { x = 0.0, y = 0.0 },
-             item = Render.box({ x = designW(), y = designH() }, theme#bg, zBg()) }
+        // 縁は盤より 2px 外に一回り大きく敷いてから、盤の窪みを上に重ねる（縁取りに見える）。
+           Render.shaderFill(w#shader,
+               { position = { x = 0.0, y = 0.0 }, size = { x = designW(), y = designH() } },
+               w#t, zBg())
         :: { at = { x = originX() - 2.0, y = originY() - 2.0 },
-             item = Render.box({ x = boardW + 4.0, y = boardH + 4.0 }, theme#wall, zBg()) }
+             item = Render.box({ x = boardW + 4.0, y = boardH + 4.0 }, theme#wall, zBg() + 1) }
         :: { at = { x = originX(), y = originY() },
              item = Render.box({ x = boardW, y = boardH }, theme#board, zBoard()) }
         :: Nil
@@ -86,17 +123,46 @@ mod View {
 
     /// 盤に固定されたセル（それぞれの Kind の色で）。
     def lockedCells(w: World.World): List[Render.PlacedItem] =
-        Map.toList(w#board) |> List.map(entry -> {
+        Map.toList(w#board) |> List.flatMap(entry -> {
             let (cellPos, kind) = entry;
             let (c, r) = cellPos;
-            blockAt(c, r, ThemeDoc.colorOf(w#theme, kind), zLocked())
+            printedBlock(c, r, ThemeDoc.colorOf(w#theme, kind), zLocked())
         })
 
     /// いま操作しているミノ。Clearing / GameOver 中は消える行や幕に集中させるため出さない。
+    /// 積んだマスと同じ刷り方の上に、息をする縁を重ねる — 積み山の中で「いま動かせるのはこれ」が
+    /// 一目で分かり、手を止めていても画面が静止しない。
     def currentCells(w: World.World): List[Render.PlacedItem] =
         match w#phase {
             case World.Phase.Playing =>
-                pieceCells(w#current, ThemeDoc.colorOf(w#theme, w#current#kind), zCurrent())
+                let color = ThemeDoc.colorOf(w#theme, w#current#kind);
+                let pulse = 0.5 + 0.5 * Sway.wave(w#t, 0.0, 0.8);
+                let edge = { color = w#theme#flash,
+                             alpha = Float64.truncateToFloat32(0.30 + 0.45 * pulse),
+                             width = 1.0 };
+                World.piecesCells(w#current) |> List.flatMap(cellPos -> {
+                    let (c, r) = cellPos;
+                    if (r < 0) Nil                       // 上にはみ出した分は描かない
+                    else printedBlock(c, r, color, zCurrent())
+                        |> List.map(item -> { item = Render.outlineA(edge, item#item) | item })
+                })
+            case _ => Nil
+        }
+
+    /// 落下中のミノが紙に落とす影（少し右下へずらした薄いインク）。
+    /// 盤から浮いていることが分かるので、ゴースト（着地点）と混ざらない。
+    def dropShadow(w: World.World): List[Render.PlacedItem] =
+        match w#phase {
+            case World.Phase.Playing =>
+                World.piecesCells(w#current) |> List.filterMap(cellPos -> {
+                    let (c, r) = cellPos;
+                    if (r < 0) None
+                    else {
+                        let at = cellCenter(c, r);
+                        Some(Render.boxAt({ x = at#x + 2.0, y = at#y + 3.0 },
+                            { x = cell() - 1.0, y = cell() - 1.0 }, w#theme#wall, zDropShadow()))
+                    }
+                }) |> Render.fadeAll(0.18f32)
             case _ => Nil
         }
 
@@ -107,7 +173,7 @@ mod View {
             case World.Phase.Playing =>
                 let landed = World.dropToBottom(w);
                 pieceCells(landed#current, w#theme#ghost, zGhost())
-                    |> List.map(item -> { item = Render.fade(0.35f32, item#item) | item })
+                    |> Render.fadeAll(0.5f32)
             case _ => Nil
         }
 
@@ -115,7 +181,7 @@ mod View {
     def pieceCells(p: World.Piece, color: Color, z: Int32): List[Render.PlacedItem] =
         World.piecesCells(p) |> List.filterMap(cellPos -> {
             let (c, r) = cellPos;
-            if (r < 0) None else Some(blockAt(c, r, color, z))   // 上にはみ出した分は描かない
+            if (r < 0) None else Some(flatBlock(c, r, color, z))   // 上にはみ出した分は描かない
         })
 
     // ── ライン消しの演出（凝りすぎない: 閃光の帯 + ソフトな光球）──
@@ -123,7 +189,7 @@ mod View {
     def clearFx(w: World.World): List[Render.PlacedItem] =
         match w#phase {
             case World.Phase.Clearing =>
-                let t = clampF(0.0, 1.0, w#clearTimer / Float64.max(0.0001, w#doc#clearDuration));
+                let t = Num.clamp01(w#clearTimer / Float64.max(0.0001, w#doc#clearDuration));
                 let fade = Float64.truncateToFloat32(1.0 - t);          // 1→0 に減衰
                 let boardW = Int32.toFloat64(World.cols()) * cell();
                 w#clearRows |> List.flatMap(r -> {
@@ -131,10 +197,11 @@ mod View {
                     let band = { at = { x = originX(), y = originY() + Int32.toFloat64(r) * cell() },
                                  item = Render.box({ x = boardW, y = cell() }, w#theme#flash, zClear())
                                      |> Render.fade(fade) };
-                    // さらに各セルの中心にソフトな光球（Add ブレンド。閉形式で安全な glowAt）。
+                    // さらに各セルの中心に、紙が白く抜ける柔らかい丸を重ねる（閉形式で安全な glowAt）。
+                    // Add でなく Normal なのは画風の約束 — 紙は発光しない（白へ抜けるだけ）。
                     let glows = List.range(0, World.cols()) |> List.flatMap(c ->
-                        Render.glowAt(cellCenter(c, r), cell() * 0.7, w#theme#flash,
-                            { alpha = 0.6 * (1.0 - t), blend = DrawCmd.BlendMode.Add }, zClear() + 1));
+                        Render.glowAt(cellCenter(c, r), cell() * 0.75, w#theme#flash,
+                            { alpha = 0.75 * (1.0 - t), blend = DrawCmd.BlendMode.Normal }, zClear() + 1));
                     band :: glows
                 })
             case _ => Nil
@@ -151,10 +218,10 @@ mod View {
         let py0 = originY() + 16.0;
         let s = cell() - 3.0;                          // 少し小さめのマス
         let color = ThemeDoc.colorOf(w#theme, w#nextKind);
-        let blocks = Pieces.cellsOf(w#nextKind, 0) |> List.map(cellPos -> {
+        let blocks = Pieces.cellsOf(w#nextKind, 0) |> List.flatMap(cellPos -> {
             let (c, r) = cellPos;
-            { at = { x = px0 + Int32.toFloat64(c) * s, y = py0 + Int32.toFloat64(r) * s },
-              item = Render.box({ x = s - 1.0, y = s - 1.0 }, color, zHud()) }
+            printedRect({ x = px0 + (Int32.toFloat64(c) + 0.5) * s,
+                          y = py0 + (Int32.toFloat64(r) + 0.5) * s }, s - 1.0, color, zHud())
         });
         label :: blocks
 
@@ -169,12 +236,12 @@ mod View {
              item = Render.textTinted("SCORE", atlas, 9.0, w#theme#wall, zHud()) }
         :: { at = { x = x, y = scoreY + 12.0 },
              item = Render.textTinted(Int32.toString(w#score), atlas, 12.0,
-                 ThemeDoc.lighten(w#theme#wall, 0.6), zHud()) }
+                 Color.darken(w#theme#wall, 0.25), zHud()) }
         :: { at = { x = x, y = linesY },
              item = Render.textTinted("LINES", atlas, 9.0, w#theme#wall, zHud()) }
         :: { at = { x = x, y = linesY + 12.0 },
              item = Render.textTinted(Int32.toString(w#lines), atlas, 12.0,
-                 ThemeDoc.lighten(w#theme#wall, 0.6), zHud()) }
+                 Color.darken(w#theme#wall, 0.25), zHud()) }
         :: Nil
 
     // ── GAME OVER の幕 ──
@@ -183,10 +250,11 @@ mod View {
         match w#phase {
             case World.Phase.GameOver =>
                    { at = { x = 0.0, y = 0.0 },
-                     item = Render.box({ x = designW(), y = designH() }, w#theme#bg, zOverlay())
-                         |> Render.fade(0.6f32) }
+                     item = Render.box({ x = designW(), y = designH() },
+                             Color.darken(w#theme#wall, 0.35), zOverlay())
+                         |> Render.fade(0.62f32) }
                 :: centered(atlas, "GAME OVER", 20.0, w#theme#flash, 150.0)
-                :: centered(atlas, "PRESS SPACE", 10.0, w#theme#wall, 180.0)
+                :: centered(atlas, "PRESS SPACE", 10.0, w#theme#ghost, 180.0)
                 :: Nil
             case _ => Nil
         }
@@ -198,7 +266,4 @@ mod View {
     def centered(atlas: FontAtlas, s: String, size: Float64, color: Color, y: Float64): Render.PlacedItem =
         TextDraw.centered({ text = s, atlas = atlas, size = size, color = color,
                             z = zOverlay() + 1, centerX = boardCenterX(), y = y })
-
-    def clampF(lo: Float64, hi: Float64, v: Float64): Float64 =
-        Float64.max(lo, Float64.min(hi, v))
 }

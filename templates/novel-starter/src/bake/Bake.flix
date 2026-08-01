@@ -27,6 +27,8 @@ mod Bake {
 
     /// Bake.all の中身。焼けた PNG のパス列を返す — 走行中のゲームへの POST /bake
     /// （Main の App.onBakeRequest）もこれを呼ぶ。プレイ状態には触れず Docs から組み立てる。
+    /// 場面ごとに時計 t を固定してから焼く（雨も炎も埃も t から導くので、
+    /// 据えれば毎回同じ絵になる = golden がバイトで比べられる）。
     pub def allShots(): List[String] \ IO =
         discard (new File("gallery")).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
@@ -34,14 +36,14 @@ mod Bake {
         let cfg = cfgOf("gallery", atlas, w0#theme#bg);
         let ctx = App.viewCtxOf(atlas, design());
         // 表紙: 灯りが全部ついた書斎とタイトル。
-        let title = shoot(cfg, ctx, w0, "title");
+        let title = shoot(cfg, ctx, { t = 2.3 | w0 }, "title");
         // 最初の分岐: 問いを読み終え、選択肢のチップが出た状態。
         let asking = walkToAsk(40, World.advance(w0));
-        let choice = shoot(cfg, ctx, asking, "choice");
+        let choice = shoot(cfg, ctx, { t = 5.1 | asking }, "choice");
         // 結末: 疑いを重ねて灯りが消えた書斎で、最後の一文を読んでいる状態。
         // （分岐 2 つは選んで次の分岐まで歩き、最後の告発だけは結末の最後の拍で止める）
         let ended = asking |> pickAndWalk(0) |> pickAndWalk(0) |> World.pick(1) |> walkToLast(40);
-        let ending = shoot(cfg, ctx, ended, "ending");
+        let ending = shoot(cfg, ctx, { t = 8.4 | ended }, "ending");
         title :: choice :: ending :: Nil
 
     /// 1 場面を PNG に焼き、焼けたファイルパスを返す。

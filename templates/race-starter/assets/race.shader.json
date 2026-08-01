@@ -1,0 +1,33 @@
+{
+  "note": "路肩（道の外）の地面。画素ごとの計算で塗る面で、単色の四角の代わり。粗い粒（fbmTile）を段（quantize）に落として下へ流し、夜に沈んだ土の質感を出している。ここが動くので、止まっている画面（タイトル）でも走っている気配が残る。調整ノブ: 色=gradient.stops の 3 色 / 流れの速さ=scaled.scroll.y（大きいほど速い）/ 粒の粗さ=fbmTile.scale / 段の数=quantize.steps（少ないほどドット絵寄り）。fbmTile.period は整数のままにする（流しても継ぎ目が出ない）。make debug 中に保存すると即反映（App.watchFile）。書式は engine の docs/shader-doc.md。",
+  "name": "roadside",
+  "cycleRate": 0.0,
+  "out": {
+    "kind": "fill",
+    "shade": {
+      "kind": "gradient",
+      "stops": [
+        [0.0, "#080b12"],
+        [0.55, "#101623"],
+        [1.0, "#1b2434"]
+      ],
+      "field": {
+        "kind": "quantize",
+        "steps": 6,
+        "of": {
+          "kind": "scaled",
+          "factor": 1.0,
+          "scroll": { "x": 0.0, "y": 0.09 },
+          "of": {
+            "kind": "fbmTile",
+            "octaves": 3,
+            "scale": 5.0,
+            "period": { "x": 3.0, "y": 3.0 },
+            "seed": 12
+          }
+        }
+      }
+    },
+    "alpha": { "kind": "const", "value": 1.0 }
+  }
+}

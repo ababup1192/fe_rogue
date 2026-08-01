@@ -28,27 +28,29 @@ mod ThemeDoc {
 
     pub def path(): String = "assets/tetris.theme.json"
 
-    def rgb(r: Float64, g: Float64, b: Float64): Color =
-        { r = Float64.truncateToFloat32(r),
-          g = Float64.truncateToFloat32(g),
-          b = Float64.truncateToFloat32(b) }
+    /// 色見本の 6 桁 16 進をそのまま書くための近道。読めない綴りはマゼンタ
+    /// （書き間違いが画面で目に見える）。
+    def hex(code: String): Color =
+        Color.hex(code) |> Option.getWithDefault({ r = 1.0f32, g = 0.0f32, b = 1.0f32 })
 
     /// コード側の既定値（assets/tetris.theme.json と同じ色から出発する）。
+    /// 生成りの紙に版で刷った色、という見立ての色票。ミノの色は蛍光色にせず、
+    /// インクらしく彩度を落としてある（紙の上で 7 色が喧嘩しない）。
     pub def defaults(): Doc =
         { version = 1,
-          bg     = rgb(0.058824, 0.070588, 0.101961),   // #0f121a 盤外の暗い紺
-          board  = rgb(0.101961, 0.117647, 0.156690),   // #1a1e28 盤内はほんの少し明るい
-          grid   = rgb(0.180392, 0.203922, 0.258824),   // #2e3442 マス目の線
-          wall   = rgb(0.317647, 0.352941, 0.443137),   // #515a71 枠
-          ghost  = rgb(0.470588, 0.517647, 0.611765),   // #78849c 着地予測
-          flash  = rgb(1.000000, 1.000000, 1.000000),   // #ffffff 閃光（白）
-          colorI = rgb(0.313725, 0.815686, 0.878431),   // シアン
-          colorO = rgb(0.945098, 0.796078, 0.235294),   // 黄
-          colorT = rgb(0.674510, 0.376471, 0.847059),   // 紫
-          colorS = rgb(0.400000, 0.788235, 0.360784),   // 緑
-          colorZ = rgb(0.898039, 0.313725, 0.372549),   // 赤
-          colorJ = rgb(0.298039, 0.474510, 0.878431),   // 青
-          colorL = rgb(0.945098, 0.564706, 0.235294) }  // 橙
+          bg     = hex("#efe6d2"),   // 盤外の紙
+          board  = hex("#dccfae"),   // 盤の中（紙が一段沈んで見える）
+          grid   = hex("#cdbd9c"),   // マス目の罫線
+          wall   = hex("#6b5b45"),   // 枠とラベルのインク
+          ghost  = hex("#b5a486"),   // 着地予測（下書きの薄い線）
+          flash  = hex("#fffdf5"),   // 消えるときの閃光（紙より白い）
+          colorI = hex("#3f9aa8"),   // 青緑
+          colorO = hex("#e0a52e"),   // 山吹
+          colorT = hex("#8a5aa8"),   // すみれ
+          colorS = hex("#5f9e4f"),   // 若草
+          colorZ = hex("#c2494b"),   // 朱
+          colorJ = hex("#3b5f9e"),   // 藍
+          colorL = hex("#d4763a") }  // 柿
 
     /// ミノの種類 → 実色（固定セル・落下中ミノ・NEXT が使う）。
     pub def colorOf(doc: Doc, kind: Kind): Color =
@@ -62,19 +64,9 @@ mod ThemeDoc {
             case Kind.L => doc#colorL
         }
 
-    /// 白に寄せる（ハイライト）。ミノ天面の照りなどに使う。
-    pub def lighten(c: Color, k: Float64): Color =
-        Color.lighten(c, k)
-
-    /// 黒に寄せる（影）。
-    pub def darken(c: Color, k: Float64): Color =
-        Color.darken(c, k)
-
     /// テキストから Doc へ（fail-open）。色の表記（#rrggbb）は UiDoc.colorOf に委ねる。
     pub def fromJson(text: String): Option[Doc] =
-        JsonCompat.parse(String.trim(text))
-            |> Option.flatMap(JsonCodec.expectObject)
-            |> Option.map(fromRoot)
+        JsonCompat.decodeObject(fromRoot, text)
 
     def fromRoot(root: Map[String, Json]): Doc =
         let d = defaults();
@@ -100,9 +92,5 @@ mod ThemeDoc {
 
     /// path の Doc を読む。読めない・壊れているときは defaults（fail-open）。
     pub def load(p: String): Doc \ Fs.FileRead =
-        let readResult = run { Fs.ReadFile.read(p) } with Fs.ReadFile.runWithFileRead;
-        readResult
-            |> Result.toOption
-            |> Option.flatMap(fromJson)
-            |> Option.getWithDefault(defaults())
+        JsonCompat.loadOr(fromJson, defaults(), p)
 }

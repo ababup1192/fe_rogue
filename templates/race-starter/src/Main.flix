@@ -30,7 +30,8 @@ def main(): Unit \ IO =
                 reloads =
                     (RulesDoc.path(), Controls.reloadRules) ::
                     (ThemeDoc.path(), Controls.reloadTheme) ::
-                    (CourseDoc.path(), Controls.reloadCourse) :: Nil
+                    (CourseDoc.path(), Controls.reloadCourse) ::
+                    (World.shaderPath(), Controls.reloadShader) :: Nil
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
