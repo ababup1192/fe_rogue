@@ -30,7 +30,8 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
    1. `src/Main.flix` … 3 つを App に繋いで起動する目次。冒頭 doc に**毎フレームの流れ
       （入力→状態更新→描画 がどの行か）**が書いてある。まずここ。
    2. `src/World.flix` … ゲームの状態そのものと、次の状態を作る規則（`step` が入力→更新。純粋）。
-   3. `src/View.flix` … 状態を絵に写す（何をどこに描くか）。
+   3. `src/View.flix` … 状態を絵に写す（何をどこに描くか）。冒頭 doc に**画面の層**
+      （背景・主役・粒がどの関数か）が並べてある。
    4. `src/Controls.flix` … キーの割り当てと Doc の読み直し。
    5. `src/bake/Bake.flix` … 決定的な場面を PNG に焼く（golden とアトリエ）。
 3. 手触り・色・絵は下の `assets/` の Doc を保存即反映でいじる。
@@ -43,12 +44,17 @@ Flix コンパイラはエンジンリポの `bin/flix` ラッパ経由で呼ぶ
   つや・影のような派生色はコードで導いていて Studio からは見えないので、`make palette` で
   書き出して `*.sprite.json` の `paletteFile` から指す。手で直さない（色を変えるのはテーマ側）。
 - `assets/*.sprite.json` … ドット絵（文字格子）。entityId は `<パッケージ名>.sprites`。
+  絵は差し色 1 色で平らに塗り、ふち光・影は読み込み時に `PxShade` が乗せます。
+- `assets/*.shader.json` … 背景の塗り（画素ごとの計算）。単色の四角の代わり。
+  書き方は engine の `docs/shader-doc.md`。
 
 それぞれに Studio 用の schema（sections 方言 / sprite は draft-07）が並んでいて、
 `project.json` の `editor.resources` が宣言しています。Studio で開けばそのまま編集できます。
 
 ## 絵の開発ループ
 
+- **画風は最初に決めて `AGENTS.local.md` に書く**。この骨組みの見た目は一例で、
+  そのまま引き継ぐ物ではありません（決め方は `.claude/skills/visual-dict`）。
 - `make bake` で `gallery/` に決定的な PNG を焼き、`make golden` で祝福、`make bench` で防護。
 - 候補のスプライト・テーマは `atelier/` に置き、`make atelier-preview` で `debug/atelier/` に焼いて目視。
 

@@ -1,0 +1,44 @@
+{
+  "note": "背景の塗り（画素ごとの計算で塗る面）。単色の四角の代わりで、上から下への色の移り変わり（uv v）に雲のムラ（fbm）を混ぜ、ゆっくり流している。調整ノブ: 色=gradient.stops の 3 色 / 流れの速さ=scaled.scroll / 雲の粗さ=fbmTile.scale / 雲の強さ=2 つめの math2.mul の const 0.25 / 上下の効き=1 つめの math2.mul の const 0.8。fbmTile.period は整数のままにする（流しても継ぎ目が出ない）。make debug 中に保存すると即反映（App.watchFile）。書式は engine の docs/shader-doc.md。",
+  "name": "background",
+  "cycleRate": 0.0,
+  "out": {
+    "kind": "fill",
+    "shade": {
+      "kind": "gradient",
+      "stops": [
+        [0.0, "#0d1020"],
+        [0.5, "#1e2749"],
+        [1.0, "#46557f"]
+      ],
+      "field": {
+        "kind": "math2",
+        "op": "add",
+        "a": {
+          "kind": "math2",
+          "op": "mul",
+          "a": { "kind": "uv", "axis": "v" },
+          "b": { "kind": "const", "value": 0.8 }
+        },
+        "b": {
+          "kind": "math2",
+          "op": "mul",
+          "a": {
+            "kind": "scaled",
+            "factor": 1.0,
+            "scroll": { "x": 0.015, "y": 0.005 },
+            "of": {
+              "kind": "fbmTile",
+              "octaves": 3,
+              "scale": 3.0,
+              "period": { "x": 4.0, "y": 4.0 },
+              "seed": 5
+            }
+          },
+          "b": { "kind": "const", "value": 0.25 }
+        }
+      }
+    },
+    "alpha": { "kind": "const", "value": 1.0 }
+  }
+}

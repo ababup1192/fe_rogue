@@ -8,6 +8,21 @@
 - App のゲームループ（更新系システムで進める → view で描く の2役割と1周の順）は `engine_world/src/App.flix` 冒頭の doc を参照。
 - 座標→[0,1) の決定的なばらつき（乱数を使わない理由 = golden 決定性）は `engine_world/src/Hash01.flix` を参照。
 
+## 矩形だけの画面から脱する（絵の下限）
+
+`Render.box` を並べただけの画面は未完成。求めるのは次の 4 つの**性質**で、**どの画風で
+満たすかは自由**（画風はゲームごとに決める。詳しくは `.claude/skills/visual-dict`、
+シェーダーの語彙は [shader-doc.md](shader-doc.md)）。下は手の一例。
+
+| 満たす性質 | 手の例 |
+|---|---|
+| 面に階調か質感がある | ShaderDoc + Render.shaderFill / Render.vgrad・gradPolygon / Material（粒・きらめき・染み）/ Render.striped・checker / PxShade のディザ |
+| 主役が背景から分離して読める | PxShade（ふち光・接地影）/ Render.glowAt / Render.outline / 明度差・色相差 |
+| 層が分かれている（奥・主役・手前） | Render.zShifted・zShiftedAll / Depth / Transition の覆い |
+| 時間が流れている | Fx・FxDoc（粒）/ Sway（揺れ）/ Anim（コマ替え）/ Scatter / Daylight |
+
+光と影で色そのものを分けたいときは **Color.warm / Color.cool**。
+
 ## やりたいこと → モジュール
 
 | やりたいこと | モジュール |
@@ -52,6 +67,8 @@
 | 起動中のゲームを外から操作・観測する | RemoteDebug |
 | Studio に「いま表示中の Doc」を名乗る（表示中バッジ） | ActiveDocs |
 | 画面を覆う・晴らす切り替え演出（フェード・ワイプ） | Transition |
+| 面を画素ごとの計算で塗る（動く霧・水面・溶岩・vignette。単色 box の置き換え） | ShaderDoc + Render（shaderFill / shaderFillMasked）→ [書き方](shader-doc.md) |
+| シェーダー面を多角形の形に抜く（池・水たまり） | Render（shaderFillMasked） |
 | 光らせる・暗く沈める（加算・乗算の重ね方） | Render（blended） |
 | 絵を傾ける・集まりを丸ごと傾ける（カードの傾き・振り子） | Render（turned / turnedAll）/ ui.json の rotation |
 | 焼いた絵に出ない指定を知る（実機との食い違い防止） | SoftRaster（dropped）/ [対応表](backend-parity.md) |

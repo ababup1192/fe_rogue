@@ -30,7 +30,7 @@ FLIX_TEST := $(CURDIR)/bin/flix
 
 # 全パッケージ共通のバージョン (lockstep)。sync 先ディレクトリ名や release の
 # asset 名に使う。make bump FROM=x TO=y で各 flix.toml と一緒に上げる。
-VERSION := 0.12.1
+VERSION := 0.13.0
 
 RENDER_GL_DIR       := render_gl
 RENDER_GL_FPKG_SRC  := $(RENDER_GL_DIR)/artifact/render_gl.fpkg
@@ -508,9 +508,10 @@ new-game:
 	cp -R "templates/$(NG_TEMPLATE)/." "$(GAME)/"; \
 	rm -rf "$(GAME)/lib"; \
 	mkdir -p "$(GAME)/gallery" "$(GAME)/golden" "$(GAME)/debug" "$(GAME)/atelier"; \
-	if [ -f "$(GAME)/assets/__NAME__.theme.json" ]; then mv "$(GAME)/assets/__NAME__.theme.json" "$(GAME)/assets/$(NAME).theme.json"; fi; \
-	if [ -f "$(GAME)/assets/__NAME__.sprite.json" ]; then mv "$(GAME)/assets/__NAME__.sprite.json" "$(GAME)/assets/$(NAME).sprite.json"; fi; \
-	if [ -f "$(GAME)/assets/__NAME__.palette.json" ]; then mv "$(GAME)/assets/__NAME__.palette.json" "$(GAME)/assets/$(NAME).palette.json"; fi; \
+	for f in "$(GAME)"/assets/__NAME__.*; do \
+	  [ -e "$$f" ] || continue; \
+	  mv "$$f" "$(GAME)/assets/$(NAME).$${f##*/__NAME__.}"; \
+	done; \
 	NG_NAME='$(NAME)' NG_W='$(NG_W)' NG_H='$(NG_H)' \
 	NG_WW=$$(( $(NG_W) * 2 )) NG_WH=$$(( $(NG_H) * 2 )) NG_ENGINE='$(CURDIR)' \
 	find "$(GAME)" -type f \( -name '*.flix' -o -name '*.json' -o -name '*.toml' -o -name '*.md' -o -name 'Makefile' \) \

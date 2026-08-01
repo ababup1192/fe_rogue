@@ -21,8 +21,9 @@ def main(): Unit \ IO =
             let doc = SampleDoc.load(SampleDoc.path());
             let theme = ThemeDoc.load(ThemeDoc.path());
             let sprites = PxSpriteDoc.load(World.spritePath());
+            let shader = Controls.loadShader();
             App.game({
-                init = World.initial(doc, theme, sprites),
+                init = World.initial(doc, theme, sprites, shader),
                 // 入力を読み World.step で次の状態へ → 表示中の Doc を名乗る。
                 // ActiveDocs.step だけ Fs.FileWrite を使うので、純粋な部品は checked_ecast で
                 // 同じ効果行へそろえる（部品側の ef は {} のまま保つ）。ActiveDocs は Studio の
@@ -34,7 +35,8 @@ def main(): Unit \ IO =
                 reloads =
                     (SampleDoc.path(), Controls.reloadDoc) ::
                     (ThemeDoc.path(), Controls.reloadTheme) ::
-                    (World.spritePath(), Controls.reloadSprites) :: Nil
+                    (World.spritePath(), Controls.reloadSprites) ::
+                    (World.shaderPath(), Controls.reloadShader) :: Nil
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)

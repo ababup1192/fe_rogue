@@ -17,8 +17,13 @@ mod Bake {
         run {
             World.initial(SampleDoc.load(SampleDoc.path()),
                 ThemeDoc.load(ThemeDoc.path()),
-                PxSpriteDoc.load(World.spritePath()))
+                PxSpriteDoc.load(World.spritePath()),
+                Controls.loadShader())
         } with Fs.FileRead.runWithIO
+
+    /// 焼くときの時刻（秒）。実時間でなく固定値を使う — 空の流れも塵の位置もこの t
+    /// だけで決まるので、何度焼いても同じ PNG が出る（golden のバイト比較が成り立つ）。
+    def bakeTime(): Float64 = 3.0
 
     // ── 決定的な場面（golden） ──
 
@@ -36,10 +41,13 @@ mod Bake {
         shoot(cfg, ctx, w0, "main") :: Nil
 
     /// 1 場面を PNG に焼き、焼けたファイルパスを返す。
+    /// 宣言シェーダーの面は draw に渡さず（渡すと代表色のベタ塗りになる）、
+    /// surfaces として別に取り出して画素ごとに評価させる。
     def shoot(cfg: Bakery.BakeConfig, ctx: App.ViewCtx, w: World.World, name: String): String \ IO =
-        let items = View.frame(ctx, w);
-        let (drawables, polygons) = Render.draw(items);
-        Bakery.renderPng(cfg, drawables, polygons, name);
+        let items = View.frame(ctx, { t = bakeTime() | w });
+        let surfaces = Render.shaderSurfaces(items);
+        let (drawables, polygons) = Render.draw(Render.withoutShaders(items));
+        Bakery.renderPngWith(cfg, drawables, polygons, surfaces, name);
         let path = "${cfg#outDir}/${name}.png";
         println("baked: ${path}");
         path
@@ -77,8 +85,10 @@ mod Bake {
                 case None => ()
                 case Some(cand) => {
                     let w = loadWorld();
+                    let sprites = run { PxSpriteDoc.load(World.spritePath()) }
+                        with Fs.FileRead.runWithIO;
                     discard shoot({ background = cand#bg | cfg }, ctx,
-                        World.withTheme(cand, w), stripJson(f))
+                        World.withTheme(cand, sprites, w), stripJson(f))
                 }
             }
         })

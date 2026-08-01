@@ -25,6 +25,13 @@
         "role": "material"
       },
       {
+        "id": "shader",
+        "pattern": "assets/*.shader.json",
+        "title": "空の塗り",
+        "schema": "assets/shader.schema.json",
+        "role": "material"
+      },
+      {
         "id": "sprite",
         "pattern": "assets/*.sprite.json",
         "title": "ドット絵",
