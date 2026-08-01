@@ -74,6 +74,7 @@
 ## 迷ったら読む物
 
 - Flix の書き方・エンジンの流儀: `.claude/skills/flix-docs`(構文の癖)、`compile-fix`(コンパイルエラーの定石)、`quality-assurance`(テスト設計)
+- 見栄え・映えの実装: `.claude/skills/visual-dict`(web の絵の技法 → エンジン部品の翻訳辞書。グロー・グラデ・vignette・完全ループ GIF はまずここを引く)
 - Doc の外形規約の正: engine リポの `docs/doc-conventions.md`
 - エンジン API の地図: engine リポの `docs/module-index.md`(やりたいこと → モジュールの逆引き)
 - UI に出す言葉の決め方と対応表: engine リポの `docs/glossary.md`(効果語だけ・内部語は UI に出さない)
