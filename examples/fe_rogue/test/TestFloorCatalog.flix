@@ -157,7 +157,7 @@ mod TestFloorCatalog {
     /// （= 既存 floors.json を壊さない後方互換の担保）。
     @Test
     def testDecodeFloorWithoutChestsDefaultsEmpty(): Unit \ Assert =
-        let decoded = JsonCompat.parse(legacyFloorJson())
+        let decoded = DocJson.parse(legacyFloorJson())
             |> Option.flatMap(FloorCatalogCodec.decodeFloor)
             |> Option.map(f -> (List.length(f#chests), f#chestsPerFloor#min, f#chestsPerFloor#max));
         Assert.assertEq(expected = Some((0, 0, 0)), decoded)

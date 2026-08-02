@@ -4,15 +4,15 @@ mod TestLightDoc {
     // ── 道具 ──
 
     def parseDoc(s: String): Option[LightDoc.Spec] =
-        JsonCompat.parse(s) |> Option.flatMap(json -> LightDoc.parse(json) |> Result.toOption)
+        DocJson.parse(s) |> Option.flatMap(json -> LightDoc.parse(json) |> Result.toOption)
 
     /// doc のパースエラーを編集者向け文言（describe）で返す（成功や JSON 構文エラーは目印文字列）。
     def errTextOf(doc: String): String =
-        match JsonCompat.parse(doc) {
+        match DocJson.parse(doc) {
             case None       => "(json syntax error)"
             case Some(json) => match LightDoc.parse(json) {
                 case Ok(_)  => "(parsed ok)"
-                case Err(e) => JsonCompat.describe(e)
+                case Err(e) => DocJson.describe(e)
             }
         }
 

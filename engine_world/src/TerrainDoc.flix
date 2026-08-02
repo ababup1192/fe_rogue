@@ -63,7 +63,7 @@ mod TerrainDoc {
     /// テキストから Doc へ(fail-open)。entries の char 重複は先勝ちで畳み(Studio 契約)、
     /// surface の未知 preset 名は decode 時に捨てる(specOf 側 presetOf の None は防衛の二重化)。
     pub def fromJson(text: String): Option[Doc] =
-        JsonCompat.parse(String.trim(text))
+        DocJson.parse(String.trim(text))
             |> Option.flatMap(JsonCodec.expectObject)
             |> Option.map(fromRoot)
 

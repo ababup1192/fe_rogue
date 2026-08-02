@@ -20,7 +20,7 @@ mod PreviewSprite {
     /// リクエストボディを解いて (HTTP status, 応答 JSON) を作る。
     /// body: {path?, doc?, mode?, sprite?, frame?, scale?, themes?}。doc が path より優先。
     pub def respond(dir: String, caches: Caches.Caches, body: String): (Int32, Json) \ IO =
-        match (JsonCompat.parse(body) |> Option.flatMap(JsonCodec.expectObject)) {
+        match (DocJson.parse(body) |> Option.flatMap(JsonCodec.expectObject)) {
             case None      => (400, envelopeError("body must be a JSON object {path?, doc?, mode?, sprite?, frame?, scale?, themes?}"))
             case Some(obj) =>
                 let scale = PreviewUi.clampScale(JsonCodec.intOr("scale", 4, obj));

@@ -171,7 +171,7 @@ mod Editor {
     /// POST /project (body: {dir}) — 編集対象プロジェクトの切替。存在しない・project.json が
     /// 無い/読めない dir は 400 で断り、選択は変えない。成功したら履歴の先頭へ記録する。
     def handleSelectProject(selection: Projects.Selection, bodyText: String, exchange: HttpExchange): Unit \ IO =
-        let dirOpt = JsonCompat.parse(bodyText)
+        let dirOpt = DocJson.parse(bodyText)
             |> Option.flatMap(JsonCodec.expectObject)
             |> Option.flatMap(obj -> Map.get("dir", obj))
             |> Option.flatMap(JsonCodec.expectString);
@@ -264,7 +264,7 @@ mod Editor {
     def handleResources(dir: String, exchange: HttpExchange): Unit \ IO =
         match FileIndex.readInside(dir, "project.json") {
             case Err(message) => sendJson(400, errorJson("project.json: ${message}"), exchange)
-            case Ok(text) => match JsonCompat.parse(text) {
+            case Ok(text) => match DocJson.parse(text) {
                 case None => sendJson(400, errorJson("project.json が JSON として読めません"), exchange)
                 case Some(json) => match ResourceDecl.fromProjectJson(json) {
                     case Err(message) => sendJson(400, errorJson(message), exchange)
@@ -353,7 +353,7 @@ mod Editor {
         };
         let fileWarns = files |> List.flatMap(path -> match FileIndex.readInside(dir, path) {
             case Err(_)   => "『${path}』が読めません" :: Nil
-            case Ok(text) => match JsonCompat.parse(text) {
+            case Ok(text) => match DocJson.parse(text) {
                 case None       => "『${path}』が JSON として読めません(読み込みは既定値へ倒れます)" :: Nil
                 case Some(json) => match JsonCodec.expectObject(json) {
                     case None      => "『${path}』のトップが JSON オブジェクトではありません" :: Nil
@@ -384,7 +384,7 @@ mod Editor {
     def uiFileMeta(dir: String, relPath: String): {composable = Bool, paletteFile = Option[String]} \ IO =
         match FileIndex.readInside(dir, relPath) {
             case Err(_)   => { composable = true, paletteFile = None }
-            case Ok(text) => match JsonCompat.parse(text) {
+            case Ok(text) => match DocJson.parse(text) {
                 case None       => { composable = true, paletteFile = None }
                 case Some(json) => { composable = not PreviewUi.containsRotation(json),
                                      paletteFile = PreviewUi.paletteRefOf(json) }
@@ -436,7 +436,7 @@ mod Editor {
     /// 別の窓・別プロセスが先に保存した内容を黙って上書きしない(最後の書き手勝ちの事故防止)。
     /// 省略時は従来どおり無条件で書く(後方互換)。
     def handleWriteFile(dir: String, bodyText: String, exchange: HttpExchange): Unit \ IO =
-        let parsed = JsonCompat.parse(bodyText) |> Option.flatMap(JsonCodec.expectObject);
+        let parsed = DocJson.parse(bodyText) |> Option.flatMap(JsonCodec.expectObject);
         let fields = parsed
             |> Option.flatMap(obj -> forM (
                 relPath <- Map.get("path", obj) |> Option.flatMap(JsonCodec.expectString);

@@ -95,7 +95,7 @@ mod Schema {
         match readResult {
             case Err(e)      => Err("スキーマファイルが読めません (${path}): ${e}")
             case Ok(content) =>
-                JsonCompat.parse(String.trim(content))
+                DocJson.parse(String.trim(content))
                     |> Option.toOk("スキーマの JSON が崩れています (${path})")
                     |> Result.flatMap(fromJson)
         }

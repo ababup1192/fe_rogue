@@ -522,7 +522,7 @@ mod ShaderJson {
     def hexByte(two: String): Option[Int32] =
         Int32.parse(16, two) |> Result.toOption
 
-    // ── Util.Json 小道具（engine 契約層に閉じるため JsonCompat/UiDoc に頼らない）──
+    // ── Util.Json 小道具（engine 契約層に閉じるため DocJson/UiDoc に頼らない）──
 
     def asObjKind(json: Json, label: String): Result[JsonError, (String, Map[String, Json])] =
         match json {

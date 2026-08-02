@@ -46,7 +46,7 @@ mod GameParameters {
     /// JSON テキストからパラメータを組む純粋な芯（テストはここを直接叩く）。
     /// ファイル全体が JSON でなければ None。キー単位では、無い・数値でないキーは既定値のまま。
     pub def fromJson(text: String): Option[Params] =
-        JsonCompat.parse(String.trim(text)) |> Option.map(fromParsed)
+        DocJson.parse(String.trim(text)) |> Option.map(fromParsed)
 
     def fromParsed(json: Json): Params = match json {
         case JObject(map) =>

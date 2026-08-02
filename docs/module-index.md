@@ -83,7 +83,7 @@
 | Doc の一覧を台帳 1 枚にし watchFile・一括リロード・表示中バッジを導出 | DocTable |
 | 色を作る（0〜1・0〜255・#rrggbb）・2 色を混ぜる・比べる | Color.rgb / rgb8 / hex / mix / channels |
 | 置き場所つきの絵に修飾を掛ける・列を丸ごと薄くする | Render.overItem / Render.fadeAll |
-| Doc を fail-open で読む（読めない・壊れは既定値へ） | JsonCompat.loadOr / decodeObject |
+| Doc を fail-open で読む（読めない・壊れは既定値へ） | DocJson.loadOr / decodeObject |
 | 太さのある線・棒を引く（法線を手計算しない） | Render.lineSeg / Quad.strip |
 | 値を範囲に収める（1 軸） | Num.clamp（カメラの寄せ幅は CameraRig.clampAxis） |
 | 色を明るく・暗くする | Color.lighten / Color.darken |
@@ -182,7 +182,7 @@
 - **EcsTween** — 値をある値から別の値へ、時間をかけて滑らかに動かす（補間する）。
 - **Journey** — 脚(出発点・行き先・速さ)の列を「時刻の純関数」で歩く。到着判定(done)と絵の位置(pos)を同じ戻り値で返す。
 - **Motion** — 物の動かし方の小さな道具箱（等速移動と往復運動）。
-- **Timeline** — 区間(名前+長さ)の列を「時刻の純関数」でサンプルする。範囲外は None = 終わり。
+- **Timeline** — 区間(名前+長さ)の列を「時刻の純関数」でサンプルする。範囲外は None = 終わり。履歴・巻き戻しは Worldline（別物）。
 - **SceneSeq** — カット列の逐次シーケンサ骨格。perform（カットを 1 コマ演じる）と idle（尽きたあと時間だけ流す）を注入し、Skip・打ち切りは notes に残す（fail-open だが無音ではない）。
 - **Sway** — 時刻から微小な揺れを作る純粋な道具（蓮の葉の浮遊・草や旗の風・吊るした物）。一様にずらせば浮遊（drift）、高さに比例して曲げれば根が止まって先だけしなる（wave）。掛け方は呼び側が決める。
 
@@ -202,7 +202,7 @@
 - **GridSearch** — マス目の上で「どこまで行けるか・何歩かかるか・どこが射程か」を求める。
 - **Steering** — 距離場（GridSearch）の 1 歩 chase / flee / wander。「入れるか」は canEnter で注入。敵 AI とイベントシーンが同じ 1 歩を使う。乱数を持たず同着は固定順 — 焼けば毎回同じ。
 - **Dir4** — 上下左右の 4 方向を 1 つの値としてまとめて表す。
-- **MapResource** — タイルセット PNG + 自前の map.json でマップを貼る(LDtk のエクスポートは読めない。数値の意味を揃えているだけ)。チップ絵なしの並立経路は DualGrid / Material(棲み分けは docs/dual-grid.md)。
+- **MapResource**（legacy/） — タイルセット PNG + 自前の map.json でマップを貼る旧世代層。新規は DualGrid / Material / TerrainDoc を使う(棲み分けは docs/dual-grid.md)。
 - **TileScene** — App.withTileLayers のタイル層宣言(TileLayerSpec)を CPU 投影で普通の絵に畳む。headless bake・F8 停止画面・golden が GPU 焼き置きと同じ絵になるための橋。
 - **DualGrid** — セル4角の埋まり方から 16 ケースの地形多角形(丸/四角/ひし形/揺らぎ)を作る純幾何。概念: docs/dual-grid.md。
 - **Material** — DualGrid のタイルに質感(塗り・フチ帯・持ち上げ・表面の粒)を着せる。チップ絵は使わない。MapResource が「タイルセット PNG を貼る」のに対し、こちらは「色と質感パラメータで手続き生成する」並立の経路。
@@ -218,13 +218,21 @@
 
 ## データと保存
 
+新しい Doc（*.kind.json）を 1 つ足すときは、この順で使う:
+
+1. **Schema** — 形を宣言する（`*.schema.json`。任意）
+2. **`<X>Doc.flix`** — 型と fromJson/toJson を書く（decode は JsonCodec、エラー位置は DocJson.atNode）
+3. **DocJson** — decodeObject で fromJson を 1 行に / loadOr で fail-open 読み
+4. **DocTable** — 台帳に 1 行足す（watch・F1 リロード・表示中バッジが導出される）
+5. **Persistence / EcsCodec** — セーブに乗る値だけ（表なら EcsCodec）
+
 - **Persistence** — 値をディスクに保存し、また読み戻すための汎用のしくみ。
 - **SaveManager** — セーブデータをスロット番号でファイルに保存・読み出しする薄い層。
-- **Worldline** — World の軌跡（履歴・巻き戻し・リプレイ・分岐の土台）。
-- **JsonCodec** — JSON の読み書きでよく使う小さなヘルパを 1 箇所に集める。
-- **JsonCompat** — 標準 `Util.Json` への委譲層 + 宣言ドキュメント共通の読み方（version 確認・ファイル読み）。
+- **Worldline** — World の軌跡（履歴・巻き戻し・リプレイ・分岐の土台）。時間区間の振り付けは Timeline（別物）。
+- **JsonCodec** — 値 ⇄ JSON の純変換ヘルパ（expect 系 / encode・decode）。
+- **DocJson** — Doc を読むときの JSON 道具箱。parse・デコード補助（atNode 等）と fail-open 読み込み（loadOr・checkVersion）。
 - **EcsCodec** — 「番号ごとの値の表」を JSON と相互変換する共通ヘルパ。
-- **Resource** — ゲーム独自のデータ型に「どんなフィールドがあり、どう編集するか」を宣言する。
+- **Resource**（legacy/） — 旧世代のスキーマ方言。新規は Schema を使う（残り使用者は fe_rogue 系のみ）。
 - **CatalogContainer** — 「1 ファイル = 1 種類の一覧」を表す汎用の入れ物。
 - **Schema** — リソース（ゲームデータ JSON）の形を宣言する公式スキーマ方言（例: level.json の隣の level.schema.json）。データの形（type / required / default）はゲームも検証に使い、見せ方（widget）はエディタ専用でエンジンは開けない封筒として運ぶ。未知の type タグ・kind は黙って通さず Err にする。
 

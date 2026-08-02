@@ -1,14 +1,15 @@
-// JsonCompat — flix-json 形式の JSON 呼び出しを、標準ライブラリ `Util.Json` の API へそのまま委譲する。
-// これで既存コードの呼び出しサイトを書き換えずに、標準の JSON 実装を使える。
-// 利用例: `getAtKey(Root, key, map)` でキーを引く / `parse(text)` で文字列を JSON にする。
-// 注意: flix-json はエラーにパス接頭辞 (`Root`) を持たせるが、`Util.Json` は decode 時に内部で
-//   パスを構築するため、呼び出し側が渡す接頭辞は捨てる。
+// DocJson — Doc（*.kind.json）を読むときの JSON 道具箱。parse / デコード補助（atNode・jsonError・
+// getAtKey 系）と、壊れた JSON を既定値へ倒す fail-open 読み込み（loadOr・checkVersion）を持つ。
+// 境界: 値 ⇄ Json の純変換は JsonCodec、Doc 1 種ごとの型と読み書きは各 *Doc モジュールの持ち場。
+// 注意: flix-json 互換の呼び出し形（`getAtKey(Root, ...)` 等）を残している。flix-json はエラーに
+//   パス接頭辞 (`Root`) を持たせるが、`Util.Json` は decode 時に内部でパスを構築するため、
+//   呼び出し側が渡す接頭辞は捨てる。
 //
 // 対応する呼び出し形:
 //   - `getAtKey(Root, key, map)` / `getAtKeyOpt(...)`
 //   - `jsonError(Root, Set#{...})`
 //   - `parse(text)` (Option 返し)
-mod JsonCompat {
+mod DocJson {
     use Util.Json.Json
     use Util.Json.Json.{JObject, JArray}
     use Util.Json.JsonError

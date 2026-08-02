@@ -1,4 +1,5 @@
-// MapResource — タイルマップの Resource 群。マップ実体 `Level` と素材 `Material` を分けて持ち、
+// MapResource — 旧世代（Resource 方言）のタイルマップ層。新しく作るゲームは Material / TerrainDoc / DualGrid を使う（fe_rogue 系だけが残り使用者）。
+// タイルマップの Resource 群。マップ実体 `Level` と素材 `Material` を分けて持ち、
 // 同じ間取りを別 Material に差し替えて複数テーマで再生できる (`Level` は `materialId` で参照)。
 // 自動壁は decorTiles (床) のセルから動的に決まる: 床が無く 8 近傍に床があるセルを壁として扱う。
 mod MapResource {

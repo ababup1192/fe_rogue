@@ -74,7 +74,7 @@ mod EnemyCatalog {
     pub def resolveSpriteFrames(enemiesPath: String, catalog: EnemyCatalog):
             EnemyCatalog \ {Fs.FileRead, GameEngine.Game} =
         let json = readFile(enemiesPath);
-        let parsed = match JsonCompat.parse(json) {
+        let parsed = match DocJson.parse(json) {
             case None       => bug!("EnemyCatalog enemies JSON re-parse failed during resolveSpriteFrames")
             case Some(elem) => elem
         };

@@ -4,7 +4,7 @@ mod TestUiApi {
 
     /// JSON テキストを parse して空 UiWorld へ spawnRoot した結果（失敗時 None）。
     def spawnFrom(jsonText: String): Option[UiStore.UiWorld] =
-        JsonCompat.parse(jsonText)
+        DocJson.parse(jsonText)
             |> Option.flatMap(json -> UiSpec.parse(json) |> Result.toOption)
             |> Option.map(spec -> let (_, ui) = UiSpec.spawnRoot(spec, UiStore.empty()); ui)
 

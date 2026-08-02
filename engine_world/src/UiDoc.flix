@@ -15,7 +15,7 @@ mod UiDoc {
     use Util.Json.Json
     use Util.Json.Json.{JObject, JArray, JString, JNumber}
     use Util.Json.JsonError
-    use JsonCompat.PathTag.Root
+    use DocJson.PathTag.Root
 
     // ========================================================================
     // 型（テンプレ解決済み・pure data）
@@ -95,7 +95,7 @@ mod UiDoc {
                                     palette = top#palette,
                                     resolver = resolver, stack = stack }, "", 0, top#rootMap)
             ) yield spec
-            case _ => Err(JsonCompat.jsonError(Root, Set#{"UiDoc must be a JSON object with a 'root'"}))
+            case _ => Err(DocJson.jsonError(Root, Set#{"UiDoc must be a JSON object with a 'root'"}))
         }
 
     /// トップレベル（version / templates / defaultFont / palette / root）をまとめて取り出す。
@@ -104,17 +104,17 @@ mod UiDoc {
             Result[JsonError, { templates = Map[String, Map[String, Json]], defaultFont = String,
                                 palette = Map[String, Color], rootMap = Map[String, Json] }] =
         forM (
-            _v          <- JsonCompat.checkVersion("ui document", topMap);
+            _v          <- DocJson.checkVersion("ui document", topMap);
             templates   <- parseTemplates(topMap);
             defaultFont <- parseDefaultFont(topMap);
             palette     <- parsePalette(topMap);
-            rootMap     <- (JsonCompat.getAtKey(Root, "root", topMap): Result[JsonError, Map[String, Json]])
+            rootMap     <- (DocJson.getAtKey(Root, "root", topMap): Result[JsonError, Map[String, Json]])
         ) yield { templates = templates, defaultFont = defaultFont, palette = palette, rootMap = rootMap }
 
     /// "palette": { "名前": <色> }。ノードの色値から "@名前" で参照する。
     /// パレットの値自体に "@..." は書けない（自己参照を作らない）。
     def parsePalette(topMap: Map[String, Json]): Result[JsonError, Map[String, Color]] =
-        match (JsonCompat.getAtKeyOpt(Root, "palette", topMap): Result[JsonError, Option[Map[String, Json]]]) {
+        match (DocJson.getAtKeyOpt(Root, "palette", topMap): Result[JsonError, Option[Map[String, Json]]]) {
             case Err(e)      => Err(e)
             case Ok(None)    => Ok(Map.empty())
             case Ok(Some(m)) =>
@@ -125,17 +125,17 @@ mod UiDoc {
         }
 
     def parseDefaultFont(topMap: Map[String, Json]): Result[JsonError, String] =
-        (JsonCompat.getAtKeyOpt(Root, "defaultFont", topMap): Result[JsonError, Option[String]])
+        (DocJson.getAtKeyOpt(Root, "defaultFont", topMap): Result[JsonError, Option[String]])
             |> Result.map(Option.getWithDefault("ui"))
 
     def parseTemplates(topMap: Map[String, Json]): Result[JsonError, Map[String, Map[String, Json]]] =
-        match (JsonCompat.getAtKeyOpt(Root, "templates", topMap): Result[JsonError, Option[Map[String, Json]]]) {
+        match (DocJson.getAtKeyOpt(Root, "templates", topMap): Result[JsonError, Option[Map[String, Json]]]) {
             case Err(e)      => Err(e)
             case Ok(None)    => Ok(Map.empty())
             case Ok(Some(m)) =>
                 Map.foldLeftWithKey((acc, tname, json) -> forM (
                     sofar <- acc;
-                    tmap  <- JsonCompat.asObject("template '${tname}'", json)
+                    tmap  <- DocJson.asObject("template '${tname}'", json)
                 ) yield Map.insert(tname, tmap, sofar), Ok(Map.empty()), m)
         }
 
@@ -143,10 +143,10 @@ mod UiDoc {
     /// ordinal は兄弟内の位置で、name 確定前のエラーを `parent[ordinal]` で指すのに使う。
     def parseNode(env: ParseEnv, parentPath: String, ordinal: Int32,
                   nodeMap: Map[String, Json]): Result[JsonError, Spec] =
-        match (JsonCompat.getAtKeyOpt(Root, "instance", nodeMap): Result[JsonError, Option[String]]) {
+        match (DocJson.getAtKeyOpt(Root, "instance", nodeMap): Result[JsonError, Option[String]]) {
             case Err(e)             => Err(e)
             case Ok(Some(instPath)) =>
-                JsonCompat.atNode(siteTag(parentPath, ordinal),
+                DocJson.atNode(siteTag(parentPath, ordinal),
                     resolveInstance(env, parentPath, ordinal, instPath, nodeMap))
             case Ok(None)           => parsePlainNode(env, parentPath, ordinal, nodeMap)
         }
@@ -160,9 +160,9 @@ mod UiDoc {
             case Ok((name, merged)) =>
                 let path = if (parentPath == "") name else "${parentPath}/${name}";
                 forM (
-                    own      <- JsonCompat.atNode(path, parseOwnFields(env, merged));
+                    own      <- DocJson.atNode(path, parseOwnFields(env, merged));
                     children <- parseChildren(env, path, merged);
-                    _uniq    <- JsonCompat.atNode(path, ensureUniqueNames(children))
+                    _uniq    <- DocJson.atNode(path, ensureUniqueNames(children))
                 ) yield Spec.Spec({
                     name = name, widget = own#widget, style = own#style,
                     visible = own#visible, binding = own#binding, meta = own#meta,
@@ -178,9 +178,9 @@ mod UiDoc {
     /// use 解決と name の取り出し。name 確定前の失敗は siteTag でタグする。
     def nodeIdentity(env: ParseEnv, parentPath: String, ordinal: Int32,
                      nodeMap: Map[String, Json]): Result[JsonError, (String, Map[String, Json])] =
-        JsonCompat.atNode(siteTag(parentPath, ordinal), forM (
+        DocJson.atNode(siteTag(parentPath, ordinal), forM (
             merged <- resolveTemplate(env#templates, nodeMap);
-            name   <- (JsonCompat.getAtKey(Root, "name", merged): Result[JsonError, String]);
+            name   <- (DocJson.getAtKey(Root, "name", merged): Result[JsonError, String]);
             _valid <- validateName(name)
         ) yield (name, merged))
 
@@ -192,11 +192,11 @@ mod UiDoc {
                         instPath: String, nodeMap: Map[String, Json]): Result[JsonError, Spec] =
         forM (
             _noCycle  <- if (List.memberOf(instPath, env#stack))
-                             Err(JsonCompat.jsonError(Root, Set#{
+                             Err(DocJson.jsonError(Root, Set#{
                                  "instance cycle: ${String.intercalate(" -> ", List.reverse(instPath :: env#stack))}"}))
                          else Ok(());
             docJson   <- Map.get(instPath, env#resolver) |> Option.toOk(unloadedErr(instPath));
-            topMap    <- JsonCompat.asObject("instance '${instPath}'", docJson);
+            topMap    <- DocJson.asObject("instance '${instPath}'", docJson);
             top       <- parseTopLevel(topMap);
             own       <- instanceOwnFields(nodeMap);
             overrides <- parseOverrides(nodeMap);
@@ -217,20 +217,20 @@ mod UiDoc {
     /// children の丸ごと差し替えと use の併用は意味が曖昧なので断る。
     def instanceOwnFields(nodeMap: Map[String, Json]): Result[JsonError, Map[String, Json]] =
         if (Map.memberOf("children", nodeMap))
-            Err(JsonCompat.jsonError(Root, Set#{"an instance node cannot have 'children' — use \"override\" to patch descendants"}))
+            Err(DocJson.jsonError(Root, Set#{"an instance node cannot have 'children' — use \"override\" to patch descendants"}))
         else if (Map.memberOf("use", nodeMap))
-            Err(JsonCompat.jsonError(Root, Set#{"'use' and 'instance' cannot be combined"}))
+            Err(DocJson.jsonError(Root, Set#{"'use' and 'instance' cannot be combined"}))
         else Ok(nodeMap |> Map.remove("instance") |> Map.remove("override"))
 
     /// "override": { "相対名パス": { 部分フィールド } } を読む。patch には葉のフィールドだけ許す。
     def parseOverrides(nodeMap: Map[String, Json]): Result[JsonError, List[(String, Map[String, Json])]] =
-        match (JsonCompat.getAtKeyOpt(Root, "override", nodeMap): Result[JsonError, Option[Map[String, Json]]]) {
+        match (DocJson.getAtKeyOpt(Root, "override", nodeMap): Result[JsonError, Option[Map[String, Json]]]) {
             case Err(e)      => Err(e)
             case Ok(None)    => Ok(Nil)
             case Ok(Some(m)) => m |> Map.toList |> Result.traverse(entry -> {
                 let (relPath, json) = entry;
                 forM (
-                    patch <- JsonCompat.asObject("override '${relPath}'", json);
+                    patch <- DocJson.asObject("override '${relPath}'", json);
                     _ok   <- validatePatch(relPath, patch)
                 ) yield (relPath, patch)
             })
@@ -240,7 +240,7 @@ mod UiDoc {
         let keys = "children" :: "instance" :: "override" :: Nil;
         let banned = List.filter(k -> Map.memberOf(k, patch), keys);
         if (List.isEmpty(banned)) Ok(())
-        else Err(JsonCompat.jsonError(Root, Set#{
+        else Err(DocJson.jsonError(Root, Set#{
             "override '${relPath}' cannot contain ${String.intercalate(", ", banned)} — patch leaf fields only"}))
 
     def applyOverrides(overrides: List[(String, Map[String, Json])],
@@ -260,14 +260,14 @@ mod UiDoc {
                 case Some(JArray(arr)) => forM (
                     patchedChildren <- patchChild(seg, rest, patch, fullPath, Vector.toList(arr))
                 ) yield Map.insert("children", JArray(List.toVector(patchedChildren)), nodeMap)
-                case _ => Err(JsonCompat.jsonError(Root, Set#{"override path '${fullPath}' not found: node has no children"}))
+                case _ => Err(DocJson.jsonError(Root, Set#{"override path '${fullPath}' not found: node has no children"}))
             }
         }
 
     def patchChild(seg: String, rest: List[String], patch: Map[String, Json], fullPath: String,
                    children: List[Json]): Result[JsonError, List[Json]] =
         match children {
-            case Nil => Err(JsonCompat.jsonError(Root, Set#{"override path '${fullPath}' not found: no child named '${seg}'"}))
+            case Nil => Err(DocJson.jsonError(Root, Set#{"override path '${fullPath}' not found: no child named '${seg}'"}))
             case child :: tail => match namedObject(seg, child) {
                 case Some(m) =>
                     let patchedM = if (List.isEmpty(rest)) Ok(mergeNode(m, patch))
@@ -292,7 +292,7 @@ mod UiDoc {
         }
 
     def unloadedErr(path: String): JsonError =
-        JsonCompat.jsonError(Root, Set#{"instance '${path}' is not loaded (use UiDoc.load)"})
+        DocJson.jsonError(Root, Set#{"instance '${path}' is not loaded (use UiDoc.load)"})
 
     /// ノード自身の属性（widget・style・visible・bind/meta/hover/note/layer）。
     def parseOwnFields(env: ParseEnv, merged: Map[String, Json]):
@@ -301,15 +301,15 @@ mod UiDoc {
                                 note = Option[String],
                                 hover = Option[UiWidget.HoverStyle], layer = Int32 }] =
         forM (
-            widgetOpt  <- (JsonCompat.getAtKeyOpt(Root, "widget", merged): Result[JsonError, Option[String]]);
+            widgetOpt  <- (DocJson.getAtKeyOpt(Root, "widget", merged): Result[JsonError, Option[String]]);
             widget     <- parseWidget(widgetOpt, env, merged);
             style      <- parseStyle(merged);
-            visibleOpt <- (JsonCompat.getAtKeyOpt(Root, "visible", merged): Result[JsonError, Option[Bool]]);
-            bindingOpt <- (JsonCompat.getAtKeyOpt(Root, "bind", merged): Result[JsonError, Option[String]]);
-            metaOpt    <- (JsonCompat.getAtKeyOpt(Root, "meta", merged): Result[JsonError, Option[String]]);
-            noteOpt    <- (JsonCompat.getAtKeyOpt(Root, "note", merged): Result[JsonError, Option[String]]);
+            visibleOpt <- (DocJson.getAtKeyOpt(Root, "visible", merged): Result[JsonError, Option[Bool]]);
+            bindingOpt <- (DocJson.getAtKeyOpt(Root, "bind", merged): Result[JsonError, Option[String]]);
+            metaOpt    <- (DocJson.getAtKeyOpt(Root, "meta", merged): Result[JsonError, Option[String]]);
+            noteOpt    <- (DocJson.getAtKeyOpt(Root, "note", merged): Result[JsonError, Option[String]]);
             hover      <- parseHoverOpt(env#palette, merged);
-            layerOpt   <- (JsonCompat.getAtKeyOpt(Root, "layer", merged): Result[JsonError, Option[Int32]])
+            layerOpt   <- (DocJson.getAtKeyOpt(Root, "layer", merged): Result[JsonError, Option[Int32]])
         ) yield {
             widget = widget, style = applyIntrinsic(widget, style),
             visible = Option.getWithDefault(true, visibleOpt),
@@ -321,25 +321,25 @@ mod UiDoc {
     /// "hover": { color / borderColor / tint / alpha } — hover 時の部分上書き。
     /// 効くのは UiStore 経路（extract）のみで、Flex 経路は静的なので持たない。
     def parseHoverOpt(palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, Option[UiWidget.HoverStyle]] =
-        match (JsonCompat.getAtKeyOpt(Root, "hover", map): Result[JsonError, Option[Map[String, Json]]]) {
+        match (DocJson.getAtKeyOpt(Root, "hover", map): Result[JsonError, Option[Map[String, Json]]]) {
             case Err(e)      => Err(e)
             case Ok(None)    => Ok(None)
             case Ok(Some(m)) => forM (
                 color       <- parseColorOpt(palette, "color", m);
                 borderColor <- parseColorOpt(palette, "borderColor", m);
                 tint        <- parseColorOpt(palette, "tint", m);
-                alphaOpt    <- (JsonCompat.getAtKeyOpt(Root, "alpha", m): Result[JsonError, Option[Float64]])
+                alphaOpt    <- (DocJson.getAtKeyOpt(Root, "alpha", m): Result[JsonError, Option[Float64]])
             ) yield Some({ color = color, borderColor = borderColor, tint = tint,
                            alpha = Option.map(a -> Float64.truncateToFloat32(a), alphaOpt) })
         }
 
     def resolveTemplate(templates: Map[String, Map[String, Json]],
                         nodeMap: Map[String, Json]): Result[JsonError, Map[String, Json]] =
-        match (JsonCompat.getAtKeyOpt(Root, "use", nodeMap): Result[JsonError, Option[String]]) {
+        match (DocJson.getAtKeyOpt(Root, "use", nodeMap): Result[JsonError, Option[String]]) {
             case Err(e)          => Err(e)
             case Ok(None)        => Ok(nodeMap)
             case Ok(Some(tname)) => match Map.get(tname, templates) {
-                case None       => Err(JsonCompat.jsonError(Root, Set#{"unknown template: ${tname}"}))
+                case None       => Err(DocJson.jsonError(Root, Set#{"unknown template: ${tname}"}))
                 case Some(tmap) => Ok(mergeNode(tmap, nodeMap))
             }
         }
@@ -354,24 +354,24 @@ mod UiDoc {
                 Result.traverse(entry -> {
                     let (i, child) = entry;
                     forM (
-                        m    <- JsonCompat.atNode("${path}[${i}]", JsonCompat.asObject("child", child));
+                        m    <- DocJson.atNode("${path}[${i}]", DocJson.asObject("child", child));
                         spec <- parseNode(env, path, i, m)
                     ) yield spec
                 }, List.zipWithIndex(Vector.toList(arr)))
-            case Some(_)           => Err(JsonCompat.jsonError(Root, Set#{"children must be an array"}))
+            case Some(_)           => Err(DocJson.jsonError(Root, Set#{"children must be an array"}))
         }
 
     def validateName(name: String): Result[JsonError, Unit] =
         if (name == "")
-            Err(JsonCompat.jsonError(Root, Set#{"node name must not be empty"}))
+            Err(DocJson.jsonError(Root, Set#{"node name must not be empty"}))
         else if (String.contains(substr = "/", name))
-            Err(JsonCompat.jsonError(Root, Set#{"node name must not contain '/' (got: ${name})"}))
+            Err(DocJson.jsonError(Root, Set#{"node name must not contain '/' (got: ${name})"}))
         else Ok(())
 
     def ensureUniqueNames(children: List[Spec]): Result[JsonError, Unit] =
         let names = List.map(child -> nameOf(child), children);
         if (List.length(names) == Set.size(List.toSet(names))) Ok(())
-        else Err(JsonCompat.jsonError(Root, Set#{"sibling names must be unique (got: ${names})"}))
+        else Err(DocJson.jsonError(Root, Set#{"sibling names must be unique (got: ${names})"}))
 
     /// 図形 widget の width/height 未指定（Auto）を内在サイズの Px に置き換える。
     def applyIntrinsic(widget: Widget, style: UiLayout.Style): UiLayout.Style =
@@ -413,13 +413,13 @@ mod UiDoc {
             case Some("line")     => shapeWidget(palette, map, parseLine(map))
             case Some("polyline") => shapeWidget(palette, map, parsePolyline(map))
             case Some("bezier")   => shapeWidget(palette, map, parseBezier(map))
-            case Some(unknown)    => Err(JsonCompat.jsonError(Root, Set#{"unknown widget (got: ${unknown})"}))
+            case Some(unknown)    => Err(DocJson.jsonError(Root, Set#{"unknown widget (got: ${unknown})"}))
         }
 
     /// box / text の傾き（回転数）と軸（rect 左上からの相対点・省略で rect 中心）。
     def parseTurn(map: Map[String, Json]): Result[JsonError, { rotation = Float64, pivot = Option[Vec2.Vec2] }] =
         forM (
-            rotationOpt <- (JsonCompat.getAtKeyOpt(Root, "rotation", map): Result[JsonError, Option[Float64]]);
+            rotationOpt <- (DocJson.getAtKeyOpt(Root, "rotation", map): Result[JsonError, Option[Float64]]);
             pivot       <- parseVec2Opt("pivot", map)
         ) yield { rotation = Option.getWithDefault(0.0, rotationOpt), pivot = pivot }
 
@@ -439,13 +439,13 @@ mod UiDoc {
     def parseBox(palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, UiWidget.BoxComp] =
         forM (
             color           <- parseColor(palette, "color", map);
-            alphaOpt        <- (JsonCompat.getAtKeyOpt(Root, "alpha", map): Result[JsonError, Option[Float64]]);
-            zIndexOpt       <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
-            cornerRadiusOpt <- (JsonCompat.getAtKeyOpt(Root, "cornerRadius", map): Result[JsonError, Option[Float64]]);
-            borderWidthOpt  <- (JsonCompat.getAtKeyOpt(Root, "borderWidth", map): Result[JsonError, Option[Float64]]);
+            alphaOpt        <- (DocJson.getAtKeyOpt(Root, "alpha", map): Result[JsonError, Option[Float64]]);
+            zIndexOpt       <- (DocJson.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
+            cornerRadiusOpt <- (DocJson.getAtKeyOpt(Root, "cornerRadius", map): Result[JsonError, Option[Float64]]);
+            borderWidthOpt  <- (DocJson.getAtKeyOpt(Root, "borderWidth", map): Result[JsonError, Option[Float64]]);
             borderColorOpt  <- parseColorOpt(palette, "borderColor", map);
-            skinOpt         <- (JsonCompat.getAtKeyOpt(Root, "skin", map): Result[JsonError, Option[String]]);
-            skinCornerOpt   <- (JsonCompat.getAtKeyOpt(Root, "skinCorner", map): Result[JsonError, Option[Float64]])
+            skinOpt         <- (DocJson.getAtKeyOpt(Root, "skin", map): Result[JsonError, Option[String]]);
+            skinCornerOpt   <- (DocJson.getAtKeyOpt(Root, "skinCorner", map): Result[JsonError, Option[Float64]])
         ) yield ({
             color = color,
             alpha = Float64.truncateToFloat32(Option.getWithDefault(1.0, alphaOpt)),
@@ -459,11 +459,11 @@ mod UiDoc {
 
     def parseText(defaultFont: String, palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, UiWidget.TextComp] =
         forM (
-            textOpt     <- (JsonCompat.getAtKeyOpt(Root, "text", map): Result[JsonError, Option[String]]);
-            fontOpt     <- (JsonCompat.getAtKeyOpt(Root, "font", map): Result[JsonError, Option[String]]);
-            fontSizeOpt <- (JsonCompat.getAtKeyOpt(Root, "fontSize", map): Result[JsonError, Option[Float64]]);
+            textOpt     <- (DocJson.getAtKeyOpt(Root, "text", map): Result[JsonError, Option[String]]);
+            fontOpt     <- (DocJson.getAtKeyOpt(Root, "font", map): Result[JsonError, Option[String]]);
+            fontSizeOpt <- (DocJson.getAtKeyOpt(Root, "fontSize", map): Result[JsonError, Option[Float64]]);
             tintOpt     <- parseColorOpt(palette, "tint", map);
-            zIndexOpt   <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]])
+            zIndexOpt   <- (DocJson.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]])
         ) yield ({
             text = Option.getWithDefault("", textOpt),
             font = Option.getWithDefault(defaultFont, fontOpt),
@@ -475,16 +475,16 @@ mod UiDoc {
     /// sprite（既存 ui.json と同義。tint は色 3 表記の上位互換）。
     def parseSprite(palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, UiWidget.SpriteComp] =
         forM (
-            texture    <- (JsonCompat.getAtKey(Root, "texture", map): Result[JsonError, String]);
+            texture    <- (DocJson.getAtKey(Root, "texture", map): Result[JsonError, String]);
             regionRect <- parseRegionRectOpt(map);
             scale      <- parseVec2Or("scale", {x = 1.0, y = 1.0}, map);
-            flipHOpt   <- (JsonCompat.getAtKeyOpt(Root, "flipH", map): Result[JsonError, Option[Bool]]);
-            flipVOpt   <- (JsonCompat.getAtKeyOpt(Root, "flipV", map): Result[JsonError, Option[Bool]]);
+            flipHOpt   <- (DocJson.getAtKeyOpt(Root, "flipH", map): Result[JsonError, Option[Bool]]);
+            flipVOpt   <- (DocJson.getAtKeyOpt(Root, "flipV", map): Result[JsonError, Option[Bool]]);
             tintOpt    <- parseColorOpt(palette, "tint", map);
-            zIndexOpt  <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
-            hframesOpt <- (JsonCompat.getAtKeyOpt(Root, "hframes", map): Result[JsonError, Option[Int32]]);
-            vframesOpt <- (JsonCompat.getAtKeyOpt(Root, "vframes", map): Result[JsonError, Option[Int32]]);
-            frameOpt   <- (JsonCompat.getAtKeyOpt(Root, "frame", map): Result[JsonError, Option[Int32]])
+            zIndexOpt  <- (DocJson.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
+            hframesOpt <- (DocJson.getAtKeyOpt(Root, "hframes", map): Result[JsonError, Option[Int32]]);
+            vframesOpt <- (DocJson.getAtKeyOpt(Root, "vframes", map): Result[JsonError, Option[Int32]]);
+            frameOpt   <- (DocJson.getAtKeyOpt(Root, "frame", map): Result[JsonError, Option[Int32]])
         ) yield ({
             texture = texture, regionRect = regionRect, scale = scale,
             flipH = Option.getWithDefault(false, flipHOpt),
@@ -500,11 +500,11 @@ mod UiDoc {
         forM (
             points      <- parsePointList(map);
             _enough     <- if (List.length(points) >= 3) Ok(())
-                           else Err(JsonCompat.jsonError(Root, Set#{"poly points must have >= 3 entries (got: ${List.length(points)})"}));
+                           else Err(DocJson.jsonError(Root, Set#{"poly points must have >= 3 entries (got: ${List.length(points)})"}));
             color       <- parseColor(palette, "color", map);
-            alphaOpt    <- (JsonCompat.getAtKeyOpt(Root, "alpha", map): Result[JsonError, Option[Float64]]);
-            zIndexOpt   <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
-            rotationOpt <- (JsonCompat.getAtKeyOpt(Root, "rotation", map): Result[JsonError, Option[Float64]]);
+            alphaOpt    <- (DocJson.getAtKeyOpt(Root, "alpha", map): Result[JsonError, Option[Float64]]);
+            zIndexOpt   <- (DocJson.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
+            rotationOpt <- (DocJson.getAtKeyOpt(Root, "rotation", map): Result[JsonError, Option[Float64]]);
             pivot       <- parseVec2Opt("pivot", map)
         ) yield ({
             points = points, color = color,
@@ -520,9 +520,9 @@ mod UiDoc {
         forM (
             shape          <- shapeRes;
             color          <- parseColor(palette, "color", map);
-            alphaOpt       <- (JsonCompat.getAtKeyOpt(Root, "alpha", map): Result[JsonError, Option[Float64]]);
-            zIndexOpt      <- (JsonCompat.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
-            borderWidthOpt <- (JsonCompat.getAtKeyOpt(Root, "borderWidth", map): Result[JsonError, Option[Float64]]);
+            alphaOpt       <- (DocJson.getAtKeyOpt(Root, "alpha", map): Result[JsonError, Option[Float64]]);
+            zIndexOpt      <- (DocJson.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
+            borderWidthOpt <- (DocJson.getAtKeyOpt(Root, "borderWidth", map): Result[JsonError, Option[Float64]]);
             borderColorOpt <- parseColorOpt(palette, "borderColor", map);
             turn           <- parseTurn(map)
         ) yield Widget.ShapeW({
@@ -537,36 +537,36 @@ mod UiDoc {
         })
 
     def parseCircle(map: Map[String, Json]): Result[JsonError, UiShape.Shape] =
-        forM (radius <- (JsonCompat.getAtKey(Root, "radius", map): Result[JsonError, Float64]))
+        forM (radius <- (DocJson.getAtKey(Root, "radius", map): Result[JsonError, Float64]))
         yield UiShape.Shape.CircleS({ radius = radius })
 
     def parseNgon(map: Map[String, Json]): Result[JsonError, UiShape.Shape] =
         forM (
-            n      <- (JsonCompat.getAtKey(Root, "n", map): Result[JsonError, Int32]);
-            radius <- (JsonCompat.getAtKey(Root, "radius", map): Result[JsonError, Float64])
+            n      <- (DocJson.getAtKey(Root, "n", map): Result[JsonError, Int32]);
+            radius <- (DocJson.getAtKey(Root, "radius", map): Result[JsonError, Float64])
         ) yield UiShape.Shape.NgonS({ n = n, radius = radius })
 
     def parseStar(map: Map[String, Json]): Result[JsonError, UiShape.Shape] =
         forM (
-            points <- (JsonCompat.getAtKey(Root, "points", map): Result[JsonError, Int32]);
-            outer  <- (JsonCompat.getAtKey(Root, "outer", map): Result[JsonError, Float64]);
-            inner  <- (JsonCompat.getAtKey(Root, "inner", map): Result[JsonError, Float64]);
+            points <- (DocJson.getAtKey(Root, "points", map): Result[JsonError, Int32]);
+            outer  <- (DocJson.getAtKey(Root, "outer", map): Result[JsonError, Float64]);
+            inner  <- (DocJson.getAtKey(Root, "inner", map): Result[JsonError, Float64]);
             via    <- parseVia(map)
         ) yield UiShape.Shape.StarS({ points = points, outer = outer, inner = inner, via = via })
 
     def parseEllipse(map: Map[String, Json]): Result[JsonError, UiShape.Shape] =
         forM (
             radii    <- parseVec2("radii", map);
-            segsOpt  <- (JsonCompat.getAtKeyOpt(Root, "segments", map): Result[JsonError, Option[Int32]]);
+            segsOpt  <- (DocJson.getAtKeyOpt(Root, "segments", map): Result[JsonError, Option[Int32]]);
             via      <- parseVia(map)
         ) yield UiShape.Shape.EllipseS({ radii = radii, segments = Option.getWithDefault(32, segsOpt), via = via })
 
     /// sector / segment 共通（radius + from/to）。isSector で作る形を選ぶ。
     def parseSweep(map: Map[String, Json], isSector: Bool): Result[JsonError, UiShape.Shape] =
         forM (
-            radius <- (JsonCompat.getAtKey(Root, "radius", map): Result[JsonError, Float64]);
-            fromT  <- (JsonCompat.getAtKey(Root, "from", map): Result[JsonError, Float64]);
-            toT    <- (JsonCompat.getAtKey(Root, "to", map): Result[JsonError, Float64])
+            radius <- (DocJson.getAtKey(Root, "radius", map): Result[JsonError, Float64]);
+            fromT  <- (DocJson.getAtKey(Root, "from", map): Result[JsonError, Float64]);
+            toT    <- (DocJson.getAtKey(Root, "to", map): Result[JsonError, Float64])
         ) yield {
             if (isSector) UiShape.Shape.SectorS({ radius = radius, fromT = fromT, toT = toT })
             else          UiShape.Shape.SegmentS({ radius = radius, fromT = fromT, toT = toT })
@@ -575,53 +575,53 @@ mod UiDoc {
     def parseLine(map: Map[String, Json]): Result[JsonError, UiShape.Shape] =
         forM (
             points    <- parsePointList(map);
-            lineWidth <- (JsonCompat.getAtKey(Root, "lineWidth", map): Result[JsonError, Float64]);
+            lineWidth <- (DocJson.getAtKey(Root, "lineWidth", map): Result[JsonError, Float64]);
             shape     <- match points {
                 case a :: b :: Nil => Ok(UiShape.Shape.LineS({ a = a, b = b, lineWidth = lineWidth }))
-                case _ => Err(JsonCompat.jsonError(Root, Set#{"line points must be [[x1,y1],[x2,y2]]"}))
+                case _ => Err(DocJson.jsonError(Root, Set#{"line points must be [[x1,y1],[x2,y2]]"}))
             }
         ) yield shape
 
     def parsePolyline(map: Map[String, Json]): Result[JsonError, UiShape.Shape] =
         forM (
             points    <- parsePointList(map);
-            lineWidth <- (JsonCompat.getAtKey(Root, "lineWidth", map): Result[JsonError, Float64]);
+            lineWidth <- (DocJson.getAtKey(Root, "lineWidth", map): Result[JsonError, Float64]);
             _enough   <- if (List.length(points) >= 2) Ok(())
-                         else Err(JsonCompat.jsonError(Root, Set#{"polyline points must have >= 2 entries"}))
+                         else Err(DocJson.jsonError(Root, Set#{"polyline points must have >= 2 entries"}))
         ) yield UiShape.Shape.PolylineS({ points = points, lineWidth = lineWidth })
 
     def parseBezier(map: Map[String, Json]): Result[JsonError, UiShape.Shape] =
         forM (
             points   <- parsePointList(map);
-            stepsOpt <- (JsonCompat.getAtKeyOpt(Root, "steps", map): Result[JsonError, Option[Int32]]);
+            stepsOpt <- (DocJson.getAtKeyOpt(Root, "steps", map): Result[JsonError, Option[Int32]]);
             taper    <- parseTaper(map);
             shape    <- match points {
                 case p0 :: ctrl :: p1 :: Nil =>
                     Ok(UiShape.Shape.BezierS({ p0 = p0, ctrl = ctrl, p1 = p1,
                                                steps = Option.getWithDefault(16, stepsOpt),
                                                widthFrom = taper#w0, widthTo = taper#w1 }))
-                case _ => Err(JsonCompat.jsonError(Root, Set#{"bezier points must be [[p0],[ctrl],[p1]]"}))
+                case _ => Err(DocJson.jsonError(Root, Set#{"bezier points must be [[p0],[ctrl],[p1]]"}))
             }
         ) yield shape
 
     def parseVia(map: Map[String, Json]): Result[JsonError, UiShape.Via] =
-        match (JsonCompat.getAtKeyOpt(Root, "via", map): Result[JsonError, Option[String]]) {
+        match (DocJson.getAtKeyOpt(Root, "via", map): Result[JsonError, Option[String]]) {
             case Err(e)              => Err(e)
             case Ok(None)            => Ok(UiShape.Via.RenderVia)
             case Ok(Some("render"))  => Ok(UiShape.Via.RenderVia)
             case Ok(Some("bezier"))  => Ok(UiShape.Via.BezierVia)
-            case Ok(Some(unknown))   => Err(JsonCompat.jsonError(Root, Set#{"via must be render|bezier (got: ${unknown})"}))
+            case Ok(Some(unknown))   => Err(DocJson.jsonError(Root, Set#{"via must be render|bezier (got: ${unknown})"}))
         }
 
     /// "taper": {"from": w0, "to": w1}（bezier の線形太さ。t=0 で w0、t=1 で w1）。
     /// レコードラベルの from/to は Flix の予約語なので内部名は w0/w1。
     def parseTaper(map: Map[String, Json]): Result[JsonError, {w0 = Float64, w1 = Float64}] =
-        match (JsonCompat.getAtKeyOpt(Root, "taper", map): Result[JsonError, Option[Map[String, Json]]]) {
+        match (DocJson.getAtKeyOpt(Root, "taper", map): Result[JsonError, Option[Map[String, Json]]]) {
             case Err(e)      => Err(e)
-            case Ok(None)    => Err(JsonCompat.jsonError(Root, Set#{"bezier requires 'taper' {\"from\": w0, \"to\": w1}"}))
+            case Ok(None)    => Err(DocJson.jsonError(Root, Set#{"bezier requires 'taper' {\"from\": w0, \"to\": w1}"}))
             case Ok(Some(m)) => forM (
-                w0 <- (JsonCompat.getAtKey(Root, "from", m): Result[JsonError, Float64]);
-                w1 <- (JsonCompat.getAtKey(Root, "to", m): Result[JsonError, Float64])
+                w0 <- (DocJson.getAtKey(Root, "from", m): Result[JsonError, Float64]);
+                w1 <- (DocJson.getAtKey(Root, "to", m): Result[JsonError, Float64])
             ) yield { w0 = w0, w1 = w1 }
         }
 
@@ -631,17 +631,17 @@ mod UiDoc {
 
     def parseStyle(map: Map[String, Json]): Result[JsonError, UiLayout.Style] =
         forM (
-            dirOpt   <- (JsonCompat.getAtKeyOpt(Root, "dir", map): Result[JsonError, Option[String]]);
+            dirOpt   <- (DocJson.getAtKeyOpt(Root, "dir", map): Result[JsonError, Option[String]]);
             dir      <- parseDir(dirOpt);
-            gapOpt   <- (JsonCompat.getAtKeyOpt(Root, "gap", map): Result[JsonError, Option[Float64]]);
+            gapOpt   <- (DocJson.getAtKeyOpt(Root, "gap", map): Result[JsonError, Option[Float64]]);
             pad      <- parsePad(map);
             width    <- parseSizeSpec("width", map);
             height   <- parseSizeSpec("height", map);
-            mainOpt  <- (JsonCompat.getAtKeyOpt(Root, "mainAlign", map): Result[JsonError, Option[String]]);
+            mainOpt  <- (DocJson.getAtKeyOpt(Root, "mainAlign", map): Result[JsonError, Option[String]]);
             main     <- parseMainAlign(mainOpt);
-            crossOpt <- (JsonCompat.getAtKeyOpt(Root, "crossAlign", map): Result[JsonError, Option[String]]);
+            crossOpt <- (DocJson.getAtKeyOpt(Root, "crossAlign", map): Result[JsonError, Option[String]]);
             cross    <- parseCrossAlign(crossOpt);
-            wrapOpt  <- (JsonCompat.getAtKeyOpt(Root, "wrap", map): Result[JsonError, Option[Bool]]);
+            wrapOpt  <- (DocJson.getAtKeyOpt(Root, "wrap", map): Result[JsonError, Option[Bool]]);
             abs      <- parseVec2Opt("abs", map);
             wrap     <- validateWrap(Option.getWithDefault(false, wrapOpt), dir, width, height)
         ) yield ({
@@ -659,9 +659,9 @@ mod UiDoc {
                      height: UiLayout.SizeSpec): Result[JsonError, Bool] =
         if (not wrap) Ok(false)
         else if (dir != UiLayout.Dir.Row)
-            Err(JsonCompat.jsonError(Root, Set#{"wrap is only supported with dir: \"row\""}))
+            Err(DocJson.jsonError(Root, Set#{"wrap is only supported with dir: \"row\""}))
         else if (isAuto(width) or isAuto(height))
-            Err(JsonCompat.jsonError(Root, Set#{"wrap requires explicit width and height (px or \"grow\") — auto cannot be solved"}))
+            Err(DocJson.jsonError(Root, Set#{"wrap requires explicit width and height (px or \"grow\") — auto cannot be solved"}))
         else Ok(true)
 
     def isAuto(spec: UiLayout.SizeSpec): Bool =
@@ -672,7 +672,7 @@ mod UiDoc {
             case None           => Ok(UiLayout.Dir.Column)
             case Some("row")    => Ok(UiLayout.Dir.Row)
             case Some("column") => Ok(UiLayout.Dir.Column)
-            case Some(unknown)  => Err(JsonCompat.jsonError(Root, Set#{"dir must be row|column (got: ${unknown})"}))
+            case Some(unknown)  => Err(DocJson.jsonError(Root, Set#{"dir must be row|column (got: ${unknown})"}))
         }
 
     def parseMainAlign(opt: Option[String]): Result[JsonError, UiLayout.MainAlign] =
@@ -682,7 +682,7 @@ mod UiDoc {
             case Some("center")       => Ok(UiLayout.MainAlign.Center)
             case Some("end")          => Ok(UiLayout.MainAlign.End)
             case Some("spaceBetween") => Ok(UiLayout.MainAlign.SpaceBetween)
-            case Some(unknown)        => Err(JsonCompat.jsonError(Root, Set#{"mainAlign unknown (got: ${unknown})"}))
+            case Some(unknown)        => Err(DocJson.jsonError(Root, Set#{"mainAlign unknown (got: ${unknown})"}))
         }
 
     def parseCrossAlign(opt: Option[String]): Result[JsonError, UiLayout.CrossAlign] =
@@ -692,15 +692,15 @@ mod UiDoc {
             case Some("center")  => Ok(UiLayout.CrossAlign.Center)
             case Some("end")     => Ok(UiLayout.CrossAlign.End)
             case Some("stretch") => Ok(UiLayout.CrossAlign.Stretch)
-            case Some(unknown)   => Err(JsonCompat.jsonError(Root, Set#{"crossAlign unknown (got: ${unknown})"}))
+            case Some(unknown)   => Err(DocJson.jsonError(Root, Set#{"crossAlign unknown (got: ${unknown})"}))
         }
 
     def parsePad(map: Map[String, Json]): Result[JsonError, {l = Float64, t = Float64, r = Float64, b = Float64}] =
-        match (JsonCompat.getAtKeyOpt(Root, "pad", map): Result[JsonError, Option[List[Float64]]]) {
+        match (DocJson.getAtKeyOpt(Root, "pad", map): Result[JsonError, Option[List[Float64]]]) {
             case Err(e)   => Err(e)
             case Ok(None) => Ok({l = 0.0, t = 0.0, r = 0.0, b = 0.0})
             case Ok(Some(left :: top :: right :: bottom :: Nil)) => Ok({l = left, t = top, r = right, b = bottom})
-            case Ok(Some(_)) => Err(JsonCompat.jsonError(Root, Set#{"pad must be [left, top, right, bottom]"}))
+            case Ok(Some(_)) => Err(DocJson.jsonError(Root, Set#{"pad must be [left, top, right, bottom]"}))
         }
 
     def parseSizeSpec(key: String, map: Map[String, Json]): Result[JsonError, UiLayout.SizeSpec] =
@@ -709,7 +709,7 @@ mod UiDoc {
             case Some(JString("auto")) => Ok(UiLayout.SizeSpec.Auto)
             case Some(JString("grow")) => Ok(UiLayout.SizeSpec.Grow(1.0))
             case Some(JNumber(bd))     => Ok(UiLayout.SizeSpec.Px(bigDecToF64(bd)))
-            case Some(_)               => Err(JsonCompat.jsonError(Root, Set#{"${key} must be a number, \"auto\", or \"grow\""}))
+            case Some(_)               => Err(DocJson.jsonError(Root, Set#{"${key} must be a number, \"auto\", or \"grow\""}))
         }
 
     // ========================================================================
@@ -719,35 +719,35 @@ mod UiDoc {
     /// "points": [[x,y], ...] を Vec2 列へ（点数の下限は呼び手が形ごとに検査する）。
     def parsePointList(map: Map[String, Json]): Result[JsonError, List[Vec2.Vec2]] =
         match Map.get("points", map) {
-            case None              => Err(JsonCompat.jsonError(Root, Set#{"'points' is required"}))
+            case None              => Err(DocJson.jsonError(Root, Set#{"'points' is required"}))
             case Some(JArray(arr)) => Result.traverse(pointJson -> parsePointJson(pointJson), Vector.toList(arr))
-            case Some(_)           => Err(JsonCompat.jsonError(Root, Set#{"points must be an array of [x, y]"}))
+            case Some(_)           => Err(DocJson.jsonError(Root, Set#{"points must be an array of [x, y]"}))
         }
 
     def parsePointJson(json: Json): Result[JsonError, Vec2.Vec2] =
         match json {
             case JArray(v) => match Vector.toList(v) {
                 case JNumber(x) :: JNumber(y) :: Nil => Ok({x = bigDecToF64(x), y = bigDecToF64(y)})
-                case _                               => Err(JsonCompat.jsonError(Root, Set#{"point must be [x, y]"}))
+                case _                               => Err(DocJson.jsonError(Root, Set#{"point must be [x, y]"}))
             }
-            case _ => Err(JsonCompat.jsonError(Root, Set#{"point must be [x, y]"}))
+            case _ => Err(DocJson.jsonError(Root, Set#{"point must be [x, y]"}))
         }
 
     /// [x, y] を Vec2 へ（必須）。
     def parseVec2(key: String, map: Map[String, Json]): Result[JsonError, Vec2.Vec2] =
-        match (JsonCompat.getAtKey(Root, key, map): Result[JsonError, List[Float64]]) {
+        match (DocJson.getAtKey(Root, key, map): Result[JsonError, List[Float64]]) {
             case Err(e)            => Err(e)
             case Ok(x :: y :: Nil) => Ok({x = x, y = y})
-            case Ok(_)             => Err(JsonCompat.jsonError(Root, Set#{"${key} must be [x, y]"}))
+            case Ok(_)             => Err(DocJson.jsonError(Root, Set#{"${key} must be [x, y]"}))
         }
 
     /// [x, y] を Vec2 へ。キー欠落は None。
     def parseVec2Opt(key: String, map: Map[String, Json]): Result[JsonError, Option[Vec2.Vec2]] =
-        match (JsonCompat.getAtKeyOpt(Root, key, map): Result[JsonError, Option[List[Float64]]]) {
+        match (DocJson.getAtKeyOpt(Root, key, map): Result[JsonError, Option[List[Float64]]]) {
             case Err(e)                  => Err(e)
             case Ok(None)                => Ok(None)
             case Ok(Some(x :: y :: Nil)) => Ok(Some({x = x, y = y}))
-            case Ok(Some(_))             => Err(JsonCompat.jsonError(Root, Set#{"${key} must be [x, y]"}))
+            case Ok(Some(_))             => Err(DocJson.jsonError(Root, Set#{"${key} must be [x, y]"}))
         }
 
     /// [x, y] を Vec2 へ。欠落は既定値。
@@ -756,7 +756,7 @@ mod UiDoc {
 
     /// "regionRect": {"pos": [x,y], "size": [w,h]} を Rect2 へ。欠落は None。
     def parseRegionRectOpt(map: Map[String, Json]): Result[JsonError, Option[Rect2.Rect2]] =
-        match (JsonCompat.getAtKeyOpt(Root, "regionRect", map): Result[JsonError, Option[Map[String, Json]]]) {
+        match (DocJson.getAtKeyOpt(Root, "regionRect", map): Result[JsonError, Option[Map[String, Json]]]) {
             case Err(e)      => Err(e)
             case Ok(None)    => Ok(None)
             case Ok(Some(m)) => forM (
@@ -768,7 +768,7 @@ mod UiDoc {
     /// 色（必須）: "#rrggbb" | {"hsv":[h,s,v]} | {"rgb":[r,g,b]}。
     def parseColor(palette: Map[String, Color], key: String, map: Map[String, Json]): Result[JsonError, Color] =
         match Map.get(key, map) {
-            case None       => Err(JsonCompat.jsonError(Root, Set#{"'${key}' is required"}))
+            case None       => Err(DocJson.jsonError(Root, Set#{"'${key}' is required"}))
             case Some(json) => colorOf(palette, key, json)
         }
 
@@ -785,7 +785,7 @@ mod UiDoc {
         match json {
             case JString(s) =>
                 if (String.startsWith(prefix = "@", s))
-                    Map.get(String.drop(1, s), palette) |> Option.toOk(JsonCompat.jsonError(Root,
+                    Map.get(String.drop(1, s), palette) |> Option.toOk(DocJson.jsonError(Root,
                         Set#{"${key}: unknown palette color '${s}' (defined: ${definedNames(palette)})"}))
                 else hexToColor(s)
             case JObject(m)   => match (Map.get("hsv", m), Map.get("rgb", m)) {
@@ -812,16 +812,16 @@ mod UiDoc {
         if (List.isEmpty(names)) "none" else String.intercalate(", ", names)
 
     def colorFormatError(key: String): JsonError =
-        JsonCompat.jsonError(Root, Set#{"${key} must be \"#rrggbb\", {\"hsv\":[h,s,v]}, or {\"rgb\":[r,g,b]}"})
+        DocJson.jsonError(Root, Set#{"${key} must be \"#rrggbb\", {\"hsv\":[h,s,v]}, or {\"rgb\":[r,g,b]}"})
 
     def floats3(key: String, json: Json): Result[JsonError, (Float64, Float64, Float64)] =
         match json {
             case JArray(v) => match Vector.toList(v) {
                 case JNumber(a) :: JNumber(b) :: JNumber(c) :: Nil =>
                     Ok((bigDecToF64(a), bigDecToF64(b), bigDecToF64(c)))
-                case _ => Err(JsonCompat.jsonError(Root, Set#{"${key} components must be 3 numbers"}))
+                case _ => Err(DocJson.jsonError(Root, Set#{"${key} components must be 3 numbers"}))
             }
-            case _ => Err(JsonCompat.jsonError(Root, Set#{"${key} components must be 3 numbers"}))
+            case _ => Err(DocJson.jsonError(Root, Set#{"${key} components must be 3 numbers"}))
         }
 
     /// "#rrggbb"（先頭 # は任意）を Color へ。6 桁 16 進以外は Err。
@@ -830,7 +830,7 @@ mod UiDoc {
     def hexToColor(hex: String): Result[JsonError, Color] =
         match Color.hex(hex) {
             case Some(c) => Ok(c)
-            case None    => Err(JsonCompat.jsonError(Root, Set#{"hex color must be #rrggbb (got: ${hex})"}))
+            case None    => Err(DocJson.jsonError(Root, Set#{"hex color must be #rrggbb (got: ${hex})"}))
         }
 
     def white(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
@@ -1003,7 +1003,7 @@ mod UiDoc {
     /// ドキュメント 1 枚を読み、トップに "paletteFile" があれば外部パレットを合成して返す
     /// （同名は inline 勝ち）。parse は純粋なまま — 外部参照はこの load 層で畳む。
     def readDocMerged(baseDir: String, path: String): Result[JsonError, Json] \ Fs.FileRead =
-        JsonCompat.readJson(joinPath(baseDir, path)) |> Result.flatMap(json -> mergePaletteFile(baseDir, json))
+        DocJson.readJson(joinPath(baseDir, path)) |> Result.flatMap(json -> mergePaletteFile(baseDir, json))
 
     /// トップが object なら paletteFile の合成を試みる（object でなければそのまま）。
     def mergePaletteFile(baseDir: String, json: Json): Result[JsonError, Json] \ Fs.FileRead =
@@ -1020,24 +1020,24 @@ mod UiDoc {
                 filePalette <- readPaletteFile(baseDir, pfPath);
                 merged      <- overlayInlinePalette(filePalette, top)
             ) yield JObject(Map.insert("palette", JObject(merged), top))
-            case Some(_)               => Err(JsonCompat.jsonError(Root, Set#{"paletteFile must be a string path"}))
+            case Some(_)               => Err(DocJson.jsonError(Root, Set#{"paletteFile must be a string path"}))
         }
 
     /// paletteFile を読んでパレットの Map にする。読めない・形が違うときは loud に Err（黙って無視しない）。
     /// "version" は Doc 規約のメタキーで色定義ではないので、ここで取り除く。
     def readPaletteFile(baseDir: String, path: String): Result[JsonError, Map[String, Json]] \ Fs.FileRead =
-        JsonCompat.readJson(joinPath(baseDir, path))
-            |> Result.mapErr(e -> JsonCompat.jsonError(Root, Set#{"paletteFile: ${JsonCompat.describe(e)}"}))
+        DocJson.readJson(joinPath(baseDir, path))
+            |> Result.mapErr(e -> DocJson.jsonError(Root, Set#{"paletteFile: ${DocJson.describe(e)}"}))
             |> Result.flatMap(json -> match json {
                 case JObject(m) => Ok(Map.remove("version", m))
-                case _          => Err(JsonCompat.jsonError(Root, Set#{"paletteFile must be an object"}))
+                case _          => Err(DocJson.jsonError(Root, Set#{"paletteFile must be an object"}))
             })
 
     /// inline "palette" を外部パレットの上に重ねる（同名は inline 勝ち）。inline が無ければ外部のまま。
     def overlayInlinePalette(filePalette: Map[String, Json], top: Map[String, Json]): Result[JsonError, Map[String, Json]] =
         match Map.get("palette", top) {
             case None    => Ok(filePalette)
-            case Some(j) => JsonCompat.asObject("palette", j)
+            case Some(j) => DocJson.asObject("palette", j)
                 |> Result.map(inline -> Map.foldLeftWithKey((acc, k, v) -> Map.insert(k, v, acc), filePalette, inline))
         }
 
@@ -1077,6 +1077,6 @@ mod UiDoc {
     pub def loadOrBug(path: String): Spec \ Fs.FileRead =
         match load(path) {
             case Ok(spec) => spec
-            case Err(e)   => bug!("UiDoc.load(${path}): ${JsonCompat.describe(e)}")
+            case Err(e)   => bug!("UiDoc.load(${path}): ${DocJson.describe(e)}")
         }
 }

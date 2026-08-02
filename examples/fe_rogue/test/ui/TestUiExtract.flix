@@ -8,7 +8,7 @@ mod TestUiExtract {
         let json =
             "{\"root\":{\"name\":\"Mark\",\"widget\":\"poly\","
             + "\"points\":[[0,0],[0,4],[3,2]],\"color\":\"#ffd966\",\"zIndex\":3}}";
-        JsonCompat.parse(json)
+        DocJson.parse(json)
             |> Option.flatMap(json2 -> UiSpec.parse(json2) |> Result.toOption)
             |> Option.map(spec -> { let (_, ui) = UiSpec.spawnRoot(spec, UiStore.empty()); ui })
 

@@ -153,7 +153,7 @@ mod UnitCatalog {
     pub def resolveSpriteFrames(unitsPath: String, catalog: UnitCatalog):
             UnitCatalog \ {Fs.FileRead, GameEngine.Game} =
         let unitsJson = readFile(unitsPath);
-        let parsed = match JsonCompat.parse(unitsJson) {
+        let parsed = match DocJson.parse(unitsJson) {
             case None       => bug!("UnitCatalog units JSON re-parse failed during resolveSpriteFrames")
             case Some(json) => json
         };
@@ -165,7 +165,7 @@ mod UnitCatalog {
 
     /// JSON 文字列から `UnitCatalog` を decode する内部ヘルパ（spriteFrames は常に None）。
     def decodeUnitsJson(content: String): UnitCatalog =
-        match JsonCompat.parse(content) {
+        match DocJson.parse(content) {
             case None       => bug!("UnitCatalog units JSON parse failed")
             case Some(json) =>
                 let decoded: Option[UnitCatalog] = Saveable.fromJson(json);

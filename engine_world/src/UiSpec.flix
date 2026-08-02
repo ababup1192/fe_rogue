@@ -9,7 +9,7 @@
 mod UiSpec {
     use Util.Json.Json
     use Util.Json.JsonError
-    use JsonCompat.PathTag.Root
+    use DocJson.PathTag.Root
 
     /// ノードの描画種別。box=単色矩形、text=テキスト、sprite=スプライト、poly=塗り潰し多角形、
     /// shape=パラメトリック図形（circle/ngon/star/ellipse/sector/segment/line/polyline/bezier）、
@@ -87,7 +87,7 @@ mod UiSpec {
     def turnUnsupported(name: String, kind: String, rotation: Float64,
                         pivot: Option[Vec2.Vec2]): Result[JsonError, Unit] =
         if (rotation != 0.0 or not Option.isEmpty(pivot))
-            Err(JsonCompat.jsonError(Root, Set#{
+            Err(DocJson.jsonError(Root, Set#{
                 "at ${name}: ${kind} rotation/pivot is not supported via UiSpec/UiStore yet (use the UiDoc/Flex path)"}))
         else Ok(())
 
@@ -106,7 +106,7 @@ mod UiSpec {
                     |> Result.map(_ -> { shape = Some(s#shape) | noComps(Widget.ShapeW) })
             case UiDoc.Widget.PolyW(p)   =>
                 if (p#rotation != 0.0 or not Option.isEmpty(p#pivot))
-                    Err(JsonCompat.jsonError(Root, Set#{
+                    Err(DocJson.jsonError(Root, Set#{
                         "at ${name}: poly rotation/pivot is not supported via UiSpec/UiStore yet (use the UiDoc/Flex path)"}))
                 else
                     Ok({ poly = Some(({ polys = p#points :: Nil, color = p#color,
@@ -182,7 +182,7 @@ mod UiSpec {
         ui#sources |> Map.foldLeftWithKey((acc, rootName, assetPath) -> {
             let (uiAcc, errs) = acc;
             match load(assetPath) {
-                case Err(e)   => (uiAcc, (rootName, JsonCompat.describe(e)) :: errs)
+                case Err(e)   => (uiAcc, (rootName, DocJson.describe(e)) :: errs)
                 case Ok(spec) =>
                     let (_, ui2) = respawn(withRootName(spec, rootName), uiAcc);
                     (ui2, errs)

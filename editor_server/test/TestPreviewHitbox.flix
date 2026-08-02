@@ -76,7 +76,7 @@ mod TestPreviewHitbox {
         let text = "{\"//\": \"all\", \"hit\": {\"//\": \"loose\", \"//player\": \"core\", \"player\": []}}";
         Assert.assertEq(
             expected = Some((Some("all"), Map#{"player" => "core"})),
-            JsonCompat.parse(text) |> Option.map(PreviewHitbox.notesOf))
+            DocJson.parse(text) |> Option.map(PreviewHitbox.notesOf))
 
     /// 注釈がまったく無い文書では (None, 空 Map)。
     @Test
@@ -84,5 +84,5 @@ mod TestPreviewHitbox {
         let text = "{\"hit\": {\"player\": []}}";
         Assert.assertEq(
             expected = Some((None, (Map.empty(): Map[String, String]))),
-            JsonCompat.parse(text) |> Option.map(PreviewHitbox.notesOf))
+            DocJson.parse(text) |> Option.map(PreviewHitbox.notesOf))
 }

@@ -49,7 +49,7 @@ mod ThemeDoc {
 
     /// テキストから Doc へ（fail-open）。色の表記（#rrggbb）は UiDoc.colorOf に委ねる。
     pub def fromJson(text: String): Option[Doc] =
-        JsonCompat.decodeObject(fromRoot, text)
+        DocJson.decodeObject(fromRoot, text)
 
     def fromRoot(root: Map[String, Json]): Doc =
         let d = defaults();
@@ -72,13 +72,13 @@ mod ThemeDoc {
     /// path の Doc を読む。読めない・壊れているときは defaults（fail-open）。
     /// accentLight は palette.json（palettePath）の宣言があれば重ねる。
     pub def load(p: String): Doc \ Fs.FileRead =
-        let doc = JsonCompat.loadOr(fromJson, defaults(), p);
-        JsonCompat.loadOr(text -> Some(overlayAccentLight(text, doc)), doc, palettePath())
+        let doc = DocJson.loadOr(fromJson, defaults(), p);
+        DocJson.loadOr(text -> Some(overlayAccentLight(text, doc)), doc, palettePath())
 
     /// palette.json のテキストの "accentLight" を doc に重ねる。
     /// 読めない・キーが無いときは doc のまま（fail-open = accent からの導出）。
     pub def overlayAccentLight(text: String, doc: Doc): Doc =
-        JsonCompat.parse(String.trim(text))
+        DocJson.parse(String.trim(text))
             |> Option.flatMap(JsonCodec.expectObject)
             |> Option.flatMap(root -> Map.get("accentLight", root))
             |> Option.flatMap(json ->

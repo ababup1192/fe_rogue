@@ -6,7 +6,7 @@ mod TestPreviewItems {
 
     /// テスト用の items JSON を描き物の列に解く。ここで JSON 自体が解けないのはテストの書き間違い。
     def itemsOf(text: String): Result[String, List[PreviewItems.Item]] =
-        match JsonCompat.parse(text) {
+        match DocJson.parse(text) {
             case Some(json) => PreviewItems.itemsFromJson(json)
             case None       => bug!("test json does not parse: ${text}")
         }

@@ -7,7 +7,7 @@ mod TestPreviewUi {
 
     /// テスト用の最小 ui.json を UiSpec.Spec に解く。ここで解けないのはテスト自身の書き間違い。
     def specOf(text: String): UiSpec.Spec =
-        match (JsonCompat.parse(text) |> Option.map(UiSpec.parse)) {
+        match (DocJson.parse(text) |> Option.map(UiSpec.parse)) {
             case Some(Ok(spec)) => spec
             case _              => bug!("test ui.json does not parse: ${text}")
         }
@@ -36,16 +36,16 @@ mod TestPreviewUi {
     def testDataFromJson(): Unit \ Assert =
         Assert.assertEq(
             expected = (Some(Map#{"hp" => "12", "name" => "アレン"}), (None: Option[Map[String, String]])),
-            (JsonCompat.parse("{\"hp\": \"12\", \"name\": \"アレン\"}") |> Option.flatMap(PreviewUi.dataFromJson),
-             JsonCompat.parse("{\"hp\": 12}") |> Option.flatMap(PreviewUi.dataFromJson)))
+            (DocJson.parse("{\"hp\": \"12\", \"name\": \"アレン\"}") |> Option.flatMap(PreviewUi.dataFromJson),
+             DocJson.parse("{\"hp\": 12}") |> Option.flatMap(PreviewUi.dataFromJson)))
 
     /// compose は [{path, data?}] の列。data 省略は空 Map、path 欠けの要素があれば丸ごと None。
     @Test
     def testComposeFromJson(): Unit \ Assert =
-        let parsed = JsonCompat.parse("[{\"path\": \"a.ui.json\"}, {\"path\": \"b.ui.json\", \"data\": {\"k\": \"v\"}}]")
+        let parsed = DocJson.parse("[{\"path\": \"a.ui.json\"}, {\"path\": \"b.ui.json\", \"data\": {\"k\": \"v\"}}]")
             |> Option.flatMap(PreviewUi.composeFromJson)
             |> Option.map(entries -> entries |> List.map(entry -> (entry#path, entry#data)));
-        let broken = JsonCompat.parse("[{\"data\": {\"k\": \"v\"}}]")
+        let broken = DocJson.parse("[{\"data\": {\"k\": \"v\"}}]")
             |> Option.flatMap(PreviewUi.composeFromJson)
             |> Option.map(entries -> List.length(entries));
         Assert.assertEq(
@@ -60,7 +60,7 @@ mod TestPreviewUi {
         let deepRotation = "{\"root\": {\"name\": \"g\", \"children\": [{\"name\": \"p\", \"widget\": \"poly\", \"rotation\": 0.1}]}}";
         let pivotOnly    = "{\"root\": {\"name\": \"g\", \"widget\": \"poly\", \"pivot\": [1, 2]}}";
         let plain        = "{\"root\": {\"name\": \"g\", \"widget\": \"text\", \"text\": \"rotation\"}}";
-        let check = text -> JsonCompat.parse(text) |> Option.map(PreviewUi.containsRotation);
+        let check = text -> DocJson.parse(text) |> Option.map(PreviewUi.containsRotation);
         Assert.assertEq(
             expected = (Some(true), Some(true), Some(false)),
             (check(deepRotation), check(pivotOnly), check(plain)))
@@ -71,7 +71,7 @@ mod TestPreviewUi {
 
     /// 文字列をトップレベルの Map[String, Json] に解く (テスト入力用)。
     def topOf(text: String): Map[String, Json] =
-        match (JsonCompat.parse(text) |> Option.flatMap(JsonCodec.expectObject)) {
+        match (DocJson.parse(text) |> Option.flatMap(JsonCodec.expectObject)) {
             case Some(m) => m
             case None    => bug!("test json does not parse: ${text}")
         }
@@ -110,7 +110,7 @@ mod TestPreviewUi {
     /// paletteFile 参照の逆引き: トップレベルの文字列だけ拾う (数値などの形違いは None)。
     @Test
     def testPaletteRefOf(): Unit \ Assert =
-        let refOf = text -> JsonCompat.parse(text) |> Option.flatMap(PreviewUi.paletteRefOf);
+        let refOf = text -> DocJson.parse(text) |> Option.flatMap(PreviewUi.paletteRefOf);
         Assert.assertEq(
             expected = (Some("assets/palette.json"), (None: Option[String]), (None: Option[String])),
             (refOf("{\"paletteFile\": \"assets/palette.json\", \"root\": {}}"),

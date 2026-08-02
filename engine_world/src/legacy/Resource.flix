@@ -1,4 +1,5 @@
-// Resource — ゲーム独自データ型に「どんなフィールドがあり、どう編集するか」という編集 UI の
+// Resource — 旧世代のスキーマ方言。新しく作るゲームは Schema を使う（fe_rogue 系だけが残り使用者）。
+// ゲーム独自データ型に「どんなフィールドがあり、どう編集するか」という編集 UI の
 // 規格（schema）を JSON（`_schema.json`）で与える。IDE はデータの中身を知らなくても、
 // 各フィールドに合った入力欄を出せる。
 // 注意: schema が記述するのはフィールド定義だけで、ファイル全体の形（catalog / single 等）は
@@ -138,7 +139,7 @@ mod Resource {
         match readResult {
             case Err(e) => Err("file read failed (${path}): ${e}")
             case Ok(content) =>
-                match JsonCompat.parse(content) {
+                match DocJson.parse(content) {
                     case None => Err("JSON parse failed (${path})")
                     case Some(json) =>
                         let decoded: Option[ResourceSchema] = Saveable.fromJson(json);

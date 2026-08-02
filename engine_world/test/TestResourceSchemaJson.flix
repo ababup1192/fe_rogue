@@ -57,11 +57,11 @@ mod TestResourceSchemaJson {
         "  }" ::
         "}" :: Nil)
 
-    /// JsonCompat.parse + Saveable.fromJson が成功し、トップレベル fields の
+    /// DocJson.parse + Saveable.fromJson が成功し、トップレベル fields の
     /// key 集合が {moveTiles, hp, sprite} になる
     @Test
     def testDecodeRealSchemaJson(): Unit \ Assert =
-        let parsed: Option[Util.Json.Json] = JsonCompat.parse(schemaJson());
+        let parsed: Option[Util.Json.Json] = DocJson.parse(schemaJson());
         let decoded: Option[Resource.ResourceSchema] =
             Option.flatMap(Saveable.fromJson, parsed);
         let parsedOk = Option.nonEmpty(parsed);
@@ -96,7 +96,7 @@ mod TestResourceSchemaJson {
     /// metaHints あり: fields に hp、metaHints に players/tags が decode される。
     @Test
     def testDecodeSchemaWithMetaHints(): Unit \ Assert =
-        let parsed: Option[Util.Json.Json] = JsonCompat.parse(schemaJsonWithMeta());
+        let parsed: Option[Util.Json.Json] = DocJson.parse(schemaJsonWithMeta());
         let decoded: Option[Resource.ResourceSchema] =
             Option.flatMap(Saveable.fromJson, parsed);
         let metaKeys = match decoded {
@@ -123,7 +123,7 @@ mod TestResourceSchemaJson {
         let json = Saveable.toJson(original);
         let pretty = Util.Json.toPrettyString(2, json);
         let reparsed: Option[Resource.ResourceSchema] =
-            JsonCompat.parse(pretty) |> Option.flatMap(Saveable.fromJson);
+            DocJson.parse(pretty) |> Option.flatMap(Saveable.fromJson);
         let metaHints = match reparsed {
             case Some(s) => Resource.metaHintsOf(s)
             case None    => Map.empty()

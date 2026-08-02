@@ -40,6 +40,6 @@ mod Persistence {
         } with Fs.ReadFile.runWithFileRead;
         readResult
             |> Result.toOption
-            |> Option.flatMap(JsonCompat.parse)
+            |> Option.flatMap(DocJson.parse)
             |> Option.flatMap(Saveable.fromJson)
 }

@@ -1,4 +1,4 @@
-// Hit / HitDoc / JsonCompat.sheetAt のテスト。3 ケース（円×円・円×箱・箱×箱）の境界と
+// Hit / HitDoc / DocJson.sheetAt のテスト。3 ケース（円×円・円×箱・箱×箱）の境界と
 // 複数形の意味論、エンジンの円判定（CollisionShape2D）とのパリティ、codec の文言を固定する。
 // 境界の線引きは「ちょうど接するのは当たりに入れない」。
 
@@ -156,23 +156,23 @@ mod TestHit {
 
     /// text を Sheet として読んだ結果を 1 行に落とす（成功なら "ok"）。
     def parseMessage(text: String): String =
-        JsonCompat.parse(text)
-            |> Option.toOk(JsonCompat.jsonError(JsonCompat.PathTag.Root, Set#{"parse failed"}))
+        DocJson.parse(text)
+            |> Option.toOk(DocJson.jsonError(DocJson.PathTag.Root, Set#{"parse failed"}))
             |> Result.flatMap(HitDoc.parse)
             |> messageOf
 
     def messageOf(r: Result[JsonError, HitDoc.Sheet]): String =
         match r {
             case Ok(_)  => "ok"
-            case Err(e) => JsonCompat.describe(e)
+            case Err(e) => DocJson.describe(e)
         }
 
     /// "//" で始まる名前はコメントとして飛ばされ、sheet に載らない。
     @Test
     def testCommentKeyIsSkipped(): Unit \ Assert =
         let text = "{ \"hit\": { \"//memo\": \"自由に書ける\", \"player\": [ { \"shape\": \"circle\", \"dx\": 0, \"dy\": 0, \"r\": 5.0 } ] } }";
-        let summary = JsonCompat.parse(text)
-            |> Option.toOk(JsonCompat.jsonError(JsonCompat.PathTag.Root, Set#{"parse failed"}))
+        let summary = DocJson.parse(text)
+            |> Option.toOk(DocJson.jsonError(DocJson.PathTag.Root, Set#{"parse failed"}))
             |> Result.flatMap(HitDoc.parse)
             |> Result.map(sheet -> "keys=${Map.size(sheet)} player=${List.length(HitDoc.shapesOf("player", sheet))}")
             |> Result.getWithDefault("error");
@@ -202,7 +202,7 @@ mod TestHit {
     def testReloadedKeepsCurrentOnBrokenJson(): Unit \ Assert =
         let current = fullSheet(5.0);
         let fresh   = fullSheet(9.0);
-        let broken  = Err(JsonCompat.jsonError(JsonCompat.PathTag.Root, Set#{"boom"}));
+        let broken  = Err(DocJson.jsonError(DocJson.PathTag.Root, Set#{"boom"}));
         let gapped  = Ok(Map#{ "player" => (Nil: List[Hit.HitShape]) });
         Assert.assertEq(
             expected = (freshR(), 5.0, 5.0),
@@ -234,19 +234,19 @@ mod TestHit {
             })
             |> Option.getWithDefault(-1.0)
 
-    // ── JsonCompat.sheetAt（単体） ──
+    // ── DocJson.sheetAt（単体） ──
 
     /// text の一番外のオブジェクトを Map にする（テスト入力用の近道）。
     def topOf(text: String): Map[String, Json] =
-        JsonCompat.parse(text)
-            |> Option.flatMap(json -> JsonCompat.asObject("top", json) |> Result.toOption)
+        DocJson.parse(text)
+            |> Option.flatMap(json -> DocJson.asObject("top", json) |> Result.toOption)
             |> Option.getWithDefault(Map.empty())
 
     /// 結果のエラーを一文にする（成功なら "ok"）。
     def describeErr(r: Result[JsonError, a]): String =
         match r {
             case Ok(_)  => "ok"
-            case Err(e) => JsonCompat.describe(e)
+            case Err(e) => DocJson.describe(e)
         }
 
     /// 名前ごとの配列が要素パーサでリストになり、"//" の名前は飛ばされる。
@@ -255,7 +255,7 @@ mod TestHit {
         let top = topOf("{ \"s\": { \"a\": [10, 20], \"//memo\": \"comment\", \"b\": [] } }");
         Assert.assertEq(
             expected = Some(("a", 1 :: 1 :: Nil) :: ("b", (Nil: List[Int32])) :: Nil),
-            JsonCompat.sheetAt("s", _json -> Ok(1), top)
+            DocJson.sheetAt("s", _json -> Ok(1), top)
                 |> Result.toOption
                 |> Option.map(Map.toList))
 
@@ -265,14 +265,14 @@ mod TestHit {
         let top = topOf("{ \"other\": 1 }");
         Assert.assertEq(
             expected = "s must be an object of name -> lists",
-            describeErr(JsonCompat.sheetAt("s", _json -> (Ok(1): Result[JsonError, Int32]), top)))
+            describeErr(DocJson.sheetAt("s", _json -> (Ok(1): Result[JsonError, Int32]), top)))
 
     /// 要素パーサのエラーには "field.名前[i]" の位置が付く。
     @Test
     def testSheetAtTagsItemErrors(): Unit \ Assert =
         let top = topOf("{ \"s\": { \"a\": [true] } }");
-        let itemAt = _json -> (Err(JsonCompat.jsonError(JsonCompat.PathTag.Root, Set#{"boom here"})): Result[JsonError, Int32]);
+        let itemAt = _json -> (Err(DocJson.jsonError(DocJson.PathTag.Root, Set#{"boom here"})): Result[JsonError, Int32]);
         Assert.assertEq(
             expected = "at s.a[0]: boom here",
-            describeErr(JsonCompat.sheetAt("s", itemAt, top)))
+            describeErr(DocJson.sheetAt("s", itemAt, top)))
 }

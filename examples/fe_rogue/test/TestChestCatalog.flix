@@ -21,7 +21,7 @@ mod TestChestCatalog {
     /// wooden が id でひけて、label / contents 件数 / sprite#frame が期待通りに読める。
     @Test
     def testDecodeSampleChests(): Unit \ Assert =
-        let chests = JsonCompat.parse(sampleChestsJson())
+        let chests = DocJson.parse(sampleChestsJson())
             |> Option.flatMap(Saveable.fromJson)
             |> Option.map(ChestCatalog.chestsOf)
             |> Option.getWithDefault(Map.empty());

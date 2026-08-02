@@ -63,7 +63,7 @@ mod Controls {
 
     /// 窯の煙の FxDoc。読めなければ粒なし（empty = 煙が出ないだけで落ちない）。
     def loadSmokeFx(): FxDoc.Spec \ Fs.FileRead =
-        JsonCompat.readJson(smokeFxPath())
+        DocJson.readJson(smokeFxPath())
             |> Result.flatMap(FxDoc.parse)
             |> Result.toOption
             |> Option.getWithDefault(FxDoc.empty())
