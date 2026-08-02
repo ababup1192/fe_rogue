@@ -133,6 +133,10 @@ mod App {
         // 純粋関数に限るのは renderCommands の op を効果多相にしないため（静的な絵は World の
         // 純粋な投影から作れる）。
         staticLayer = Option[{ key = w -> GameEngine.StaticKey, build = w -> List[Render.PlacedItem] }],
+        // 「1 度だけ GPU に焼いて 1 draw call で敷くタイルの層」の宣言（無ければ None）。
+        // Spec の key が変わるとエンジンが焼き直す。純粋関数に限る理由は staticLayer と同じ。
+        // タイル層は動的な絵より必ず奥に描かれる — キャラを隠す絵（屋根・庇）は置けない。
+        tileLayers = Option[w -> List[TileLayerSpec]],
         // ドット絵を焼いたアトラス（1 体 = 1 枚のクアッドで描くための下ごしらえ）。
         // 毎フレーム「同じ key なら何もしない」で呼ばれるので、焼く仕事は World 側で 1 度だけ
         // 済ませ、ここは焼き上がりを渡すだけにする。
@@ -179,6 +183,7 @@ mod App {
           parallaxLayers = Nil,
           hudView = None,
           staticLayer = None,
+          tileLayers = None,
           spriteAtlases = _ -> Nil,
           pixelSnap = _ -> 0.0,
           audio = _worlds -> checked_ecast(Nil),
@@ -296,6 +301,25 @@ mod App {
                             build: w -> List[Render.PlacedItem],
                             app: App[w, ef]): App[w, ef] =
         { staticLayer = Some({ key = key, build = build }) | app }
+
+    /// タイルの層（床・壁1段目など、格子に敷く静的な絵）を宣言する。エンジンが Spec ごとに
+    /// 1 度だけ GPU に焼き、以後は毎フレーム 1 draw call で敷く（数百〜千マスでも軽い）。
+    /// Spec の tiles はサンク — 毎フレーム呼ばれるのは宣言（key の比較）だけで、
+    /// 中身のリスト構築は key が変わった焼き直しの時にしか走らない。
+    /// key が変わったとき、または watchFile / reloadOn の読み直しが起きたときに焼き直す —
+    /// key は素のまま（マップ id 等）でよく、Doc の世代番号を key へ混ぜ込む必要はない。
+    /// key は頻繁に転がってもよい（照明・カメラのバケツを混ぜた地形など）— GPU バッファは
+    /// 層の席（リストの並び順）に 1 本で、焼き直しは同じ VAO への入れ直しになる。
+    /// そのぶん層は毎フレーム同じ並び・同じ本数で宣言すること（席がずれると無駄に焼き直る）。
+    /// f は純粋関数に限る — 理由は withStaticLayer と同じ（renderCommands の op を
+    /// 効果多相にしないため）。camera は動的な絵と同じ値でエンジンが掛ける。
+    /// zIndex は動的な絵と同じ z 空間で解釈される — キャラより大きい zIndex を与えれば、
+    /// キャラを隠す屋根・庇もタイル層で置ける（同じ zIndex ならタイル層が奥）。CPU 投影
+    /// （TileScene.toItems・F8 の凍結画面・headless bake）は zIndex をそのまま動的アイテムに
+    /// 載せるので、GPU と CPU で重なりの解釈は一致する。タイルのコマ替えアニメは持てない —
+    /// 水面・旗のように動く絵は動的側かシェーダー面で描く。view = None のゲームでは効かない。
+    pub def withTileLayers(f: w -> List[TileLayerSpec], app: App[w, ef]): App[w, ef] =
+        { tileLayers = Some(f) | app }
 
     /// World から「画面中央に映したい world 座標」を導く関数を繋ぐ。view は world 座標のまま
     /// 書けばよく、画面へのずらしは App が引き受ける（F8 の凍結画面やリモートの注釈にも同じ
@@ -593,7 +617,7 @@ mod App {
         // 固定ステップの状態（持ち越し秒と未消費エッジ）は空から始める。
         loop(app, world0, InputEvent.currentKeys(),
              GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left), None,
-             Annotate.initial(), Nil, bridge, false, freshStepState(), watch0);
+             Annotate.initial(), Nil, bridge, false, freshStepState(), watch0, freshTileCache());
         Option.forEach(RemoteDebug.shutdown, bridge)
 
     /// 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
@@ -625,7 +649,8 @@ mod App {
     def loop(app: App[w, ef], world: w, prevKeys: Set[GameEngine.Key], prevMouseDown: Bool,
              prevCursor: Option[Vec2.Vec2], anno: Annotate.State, history: List[w],
              bridge: Option[RemoteDebug.Bridge], remoteHold: Bool,
-             stepState: StepState, watchState: WatchState): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + Fs.FileRead + IO) =
+             stepState: StepState, watchState: WatchState,
+             tileCache: TileCache): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + Fs.FileRead + IO) =
         let currentKeys = InputEvent.currentKeys();
         let mouseDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
         let cursorNow = GameEngine.Game.getMousePosition();
@@ -647,7 +672,7 @@ mod App {
                     // （停止中は元々進まないし、実行中でも 1 フレームの息継ぎに過ぎない）。
                     let next = handleRemote(app, b, raw,
                         { world = world, anno = anno, history = history, hold = remoteHold });
-                    loop(app, next#world, currentKeys, mouseDown, Some(cursorNow), next#anno, next#history, bridge, next#hold, stepState, watchState)
+                    loop(app, next#world, currentKeys, mouseDown, Some(cursorNow), next#anno, next#history, bridge, next#hold, stepState, watchState, tileCache)
                 case _ => {
                     let toggled = justPressed(GameEngine.Key.F8, frame) and canDebug(app) and not remoteHold;
                     let pausedNow = if (toggled) not anno#paused else anno#paused;
@@ -660,26 +685,28 @@ mod App {
                     } else ();
                     if (pausedNow) {
                         let nextAnno = pausedStep(app, world, history, frame, { paused = true | anno });
-                        loop(app, world, currentKeys, mouseDown, Some(cursorNow), nextAnno, history, bridge, remoteHold, stepState, watchState)
+                        loop(app, world, currentKeys, mouseDown, Some(cursorNow), nextAnno, history, bridge, remoteHold, stepState, watchState, tileCache)
                     } else if (anno#paused) {
                         // 一時停止を抜けるフレーム: スクラブ位置の World から再開する。
                         // 巻き戻したぶんの履歴とフレーム番号も、そこを現在として数え直す。
                         let resumed = resumePoint(anno, history, world);
-                        renderFrame(app, resumed#world, fpsOverlayOf(app, resumed#anno));
-                        loop(app, resumed#world, currentKeys, mouseDown, Some(cursorNow), resumed#anno, resumed#history, bridge, remoteHold, stepState, watchState)
+                        let cache1 = renderFrame(app, resumed#world, fpsOverlayOf(app, resumed#anno), tileCache);
+                        loop(app, resumed#world, currentKeys, mouseDown, Some(cursorNow), resumed#anno, resumed#history, bridge, remoteHold, stepState, watchState, cache1)
                     } else {
-                        let (watched, nextWatchState) = applyWatch(app, frame#dt, watchState, world);
-                        let reloaded = applyReload(app, frame, watched);
+                        let (watched, nextWatchState, watchFired) = applyWatch(app, frame#dt, watchState, world);
+                        let (reloaded, reloadFired) = applyReload(app, frame, watched);
                         let (advanced, nextStepState) = advanceFrame(app, frame, stepState, reloaded);
                         playSounds(app, reloaded, advanced);
                         // fps は debug 有効時だけ計測する（本番ビルドは履歴を積まず無負荷）。
                         let measuredAnno = if (app#debug) Annotate.recordDt(frame#dt, anno) else anno;
-                        renderFrame(app, advanced, fpsOverlayOf(app, measuredAnno));
+                        // Doc の読み直しが起きたフレームはタイル層の世代を進め、同じ key でも焼き直す。
+                        let cache1 = renderFrame(app, advanced, fpsOverlayOf(app, measuredAnno),
+                                                 bumpTileGen(watchFired or reloadFired, tileCache));
                         // 時間スクラブ用の履歴（debug が無効なら一切持たない = 本番ビルドは無負荷）
                         let nextHistory = if (canDebug(app))
                                               List.take(historyLimit(), advanced :: history)
                                           else Nil;
-                        loop(app, advanced, currentKeys, mouseDown, Some(cursorNow), { frame = measuredAnno#frame + 1i64 | measuredAnno }, nextHistory, bridge, remoteHold, nextStepState, nextWatchState)
+                        loop(app, advanced, currentKeys, mouseDown, Some(cursorNow), { frame = measuredAnno#frame + 1i64 | measuredAnno }, nextHistory, bridge, remoteHold, nextStepState, nextWatchState, cache1)
                     }
                 }
             }
@@ -747,8 +774,9 @@ mod App {
                 // F8 停止中は静的レイヤーも通常の動的アイテムに畳んで描く（F8 のズーム/パンは
                 // channels に効く別変換なので、retained の camera uniform では追随できないため）。
                 // 停止中は毎フレーム再投影で軽さは問題にならない。
-                let items = List.append(sceneItems(app, atlas, displayed, toItems),
-                                        staticPausedItems(app, design, displayed));
+                let items = List.append(tilePausedItems(app, design, displayed),
+                            List.append(sceneItems(app, atlas, displayed, toItems),
+                                        staticPausedItems(app, design, displayed)));
                 let (sprites, polygons) = Render.drawWith(
                     name -> GameEngine.Game.getTextureInfo(name), items);
                 let hitList = match emitted {
@@ -839,10 +867,11 @@ mod App {
             None)
 
     /// reloadOn で繋いだキーが押された瞬間だけ、リロード関数で World を作り直す。
-    def applyReload(app: App[w, ef], frame: Frame, world: w): w \ {Fs.FileRead} =
+    /// 第 2 要素は「このフレームで読み直しが起きたか」（タイル層の世代を進める合図）。
+    def applyReload(app: App[w, ef], frame: Frame, world: w): (w, Bool) \ {Fs.FileRead} =
         match app#reload {
-            case Some((key, f)) => if (justPressed(key, frame)) f(world) else world
-            case None           => world
+            case Some((key, f)) => if (justPressed(key, frame)) (f(world), true) else (world, false)
+            case None           => (world, false)
         }
 
     /// watchFile がフレームをまたいで持ち回す状態（前回ポーリングからの経過秒と、
@@ -872,13 +901,14 @@ mod App {
     /// 保存検知の 1 フレームぶん: 間隔に達したら更新時刻を読み、変化したパスの関数を
     /// 登録順に適用して World を作り直す（発火は標準エラーへ 1 行知らせる）。
     /// debug 無効・watch 空・間隔未達なら stat を一切しない（フレーム予算ゼロ）。
-    def applyWatch(app: App[w, ef], dt: Float64, state: WatchState, world: w): (w, WatchState) \ {Fs.FileRead, IO} =
+    /// 第 3 要素は「このフレームでどれかの Doc が読み直されたか」（タイル層の世代を進める合図）。
+    def applyWatch(app: App[w, ef], dt: Float64, state: WatchState, world: w): (w, WatchState, Bool) \ {Fs.FileRead, IO} =
         if (not app#debug or List.isEmpty(app#watch))
-            (world, state)
+            (world, state, false)
         else {
             let waited = state#sincePoll + dt;
             if (waited < watchPollInterval())
-                (world, { sincePoll = waited | state })
+                (world, { sincePoll = waited | state }, false)
             else {
                 let current = statMtimes(List.map(fst, app#watch));
                 let changed = changedPaths(List.map(fst, app#watch), state#mtimes, current);
@@ -889,7 +919,7 @@ mod App {
                         f(acc)
                     } else acc
                 }, world);
-                (next, { sincePoll = 0.0, mtimes = current })
+                (next, { sincePoll = 0.0, mtimes = current }, not List.isEmpty(changed))
             }
         }
 
@@ -1014,13 +1044,112 @@ mod App {
                        viewOffset = viewOffset, viewScale = viewScale, halfDesign = halfDesign })
         }
 
-    /// view の投影した絵を描画命令にしてエンジンへ渡す（タイルマップは使わないので空の列を添える）。
+    /// タイル層の GPU 焼きの持ち回し。ループが引数で持ち回す。
+    /// gen は「Doc の読み直し（watchFile / reloadOn）が起きた回数」= タイル層の世代。
+    /// entries は層の席（宣言リストの並び順）→ (焼いた時点の世代, 焼いた時の key, VAO, 数)。
+    /// 席で引くので、key が頻繁に転がる層（照明・カメラ追随で焼き直る地形など）でも
+    /// VAO は 1 層に 1 本のまま — 焼き直しは updateTileBuffer の入れ直しで済む。
+    pub type alias TileCache =
+        { gen = Int32, entries = Map[String, (Int32, String, GpuHandle.TileVao, Int32)] }
+
+    /// まだ何も焼いていない起動時の持ち回し。
+    pub def freshTileCache(): TileCache = { gen = 0, entries = Map.empty() }
+
+    /// Doc の読み直しが起きたフレームで世代を進める。ゲームの書く key は素のまま、
+    /// 世代の不一致が「焼き直しが要る」の判定になる（tileCacheHit が見る）。
+    // どの Doc がどのタイル層に効くかの依存表は持たない — 無関係な Doc の保存でも全層が
+    // 焼き直されるが、保存は人の手の速さでしか起きず、焼き直しは 1 回のバッファ転送で済む。
+    pub def bumpTileGen(fired: Bool, cache: TileCache): TileCache =
+        if (fired) { gen = cache#gen + 1 | cache } else cache
+
+    /// 席の焼き置きを引く。焼いた時点の世代と key が今と一致した時だけ使い回せる。
+    pub def tileCacheHit(slot: String, key: String, cache: TileCache): Option[(GpuHandle.TileVao, Int32)] =
+        Map.get(slot, cache#entries) |> Option.flatMap(e -> {
+            let (g, k, vao, n) = e;
+            if (g == cache#gen and k == key) Some((vao, n)) else None
+        })
+
+    /// 席に焼き置きがあれば、その VAO を返す（世代・key が古くてもよい —
+    /// updateTileBuffer で中身を入れ直す先として使う）。
+    pub def tileCacheVaoAt(slot: String, cache: TileCache): Option[GpuHandle.TileVao] =
+        Map.get(slot, cache#entries) |> Option.map(e -> {
+            let (_, _, vao, _) = e;
+            vao
+        })
+
+    /// 焼いた結果を席へ上書きで置く（台帳は宣言中の層の数までしか育たない）。
+    pub def tileCacheStore(slot: String, key: String, vao: GpuHandle.TileVao, count: Int32,
+                           cache: TileCache): TileCache =
+        { entries = Map.insert(slot, (cache#gen, key, vao, count), cache#entries) | cache }
+
+    /// 宣言されたタイル層を描画コマンドにする。席（宣言リストの並び順）に同じ世代・
+    /// 同じ key で焼き置きされていれば使い回し、key か世代が変われば同じ VAO へ中身を
+    /// 入れ直す（updateTileBuffer）。新しい席だけ initTileBuffer で VAO を作る —
+    /// key が毎バケツ転がる層でも GPU バッファは 1 層 1 本のまま。
+    /// 位置と倍率は動的な絵と同じ camera 値（resolvedCamera）から出すので視点はずれない。
+    def tileLayerCmds(app: App[w, ef], world: w, cache: TileCache):
+            (List[GameEngine.TileMapRenderCmd], TileCache) \ (ef + GameEngine.Game) =
+        match app#tileLayers {
+            case None    => (Nil, cache)
+            case Some(f) =>
+                let design = GameEngine.Game.getViewportRect()#size;
+                let (center, z) = resolvedCamera(app, world, design);
+                let (cmds, nextCache) = List.foldLeft((acc, entry) -> {
+                    let (i, spec) = entry;
+                    let slot = "${i}";
+                    let (done, c) = acc;
+                    let (vao, count) = match tileCacheHit(slot, spec#key, c) {
+                        case Some(h) => h
+                        case None    =>
+                            let ts = spec#tileSet#atlasSource#tileSize;
+                            let tilesOf = spec#tiles;
+                            let instances = TileLayer.buildInstances(tilesOf(), spec#tileSet, ts);
+                            match tileCacheVaoAt(slot, c) {
+                                case Some(v) => GameEngine.Game.updateTileBuffer(v, instances)
+                                case None    => GameEngine.Game.initTileBuffer(instances)
+                            }
+                    };
+                    let (pos, scale) = match center {
+                        case Some(c0) => (Vec2.add(Vec2.mul(Vec2.sub(spec#origin, c0), z),
+                                                   Vec2.div(design, 2.0)),
+                                          ({ x = z, y = z }: Vec2.Vec2))
+                        case None     => (spec#origin, ({ x = 1.0, y = 1.0 }: Vec2.Vec2))
+                    };
+                    let cmd: GameEngine.TileMapRenderCmd = {
+                        textureName = spec#tileSet#atlasSource#textureName,
+                        tileSize    = spec#tileSet#atlasSource#tileSize,
+                        position    = pos,
+                        tileScale   = scale,
+                        color       = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
+                        zIndex      = spec#zIndex,
+                        tileVaoId   = vao,
+                        tileCount   = count };
+                    (cmd :: done, tileCacheStore(slot, spec#key, vao, count, c))
+                }, ((Nil: List[GameEngine.TileMapRenderCmd]), cache), List.zipWithIndex(f(world)));
+                (List.reverse(cmds), nextCache)
+        }
+
+    /// F8 停止中にタイル層を通常の動的アイテムとして描くための PlacedItem 列。
+    /// staticPausedItems と同じ理屈 — F8 のズーム/パンは channels に効く別変換なので、
+    /// GPU タイル経路の camera では追随できない。CPU 投影（TileScene.toItems）で畳む。
+    def tilePausedItems(app: App[w, ef], design: Vec2.Vec2, world: w): List[Render.PlacedItem] \ ef =
+        match app#tileLayers {
+            case None    => Nil
+            case Some(f) =>
+                let (center, z) = resolvedCamera(app, world, design);
+                let items = f(world) |> List.flatMap(TileScene.toItems);
+                composeScene(center, z, design, { world = items, hud = Nil })
+        }
+
+    /// view の投影した絵を描画命令にしてエンジンへ渡す。タイルマップは withTileLayers の
+    /// 宣言があるときだけ焼いて添える（持ち回しの TileCache を返す）。
     /// view = None のゲームは App では描かない（自分のシステム内で renderCommands を呼ぶ。
     /// camera / hudView もこの場合は効かない）。
     /// fps は debug 有効時だけ隅に重ねる（本番は Nil を渡すので描画に一切現れない）。
-    def renderFrame(app: App[w, ef], world: w, fpsOverlay: List[Render.PlacedItem]): Unit \ (ef + GameEngine.Game + ShaderEffect.Shader) =
+    def renderFrame(app: App[w, ef], world: w, fpsOverlay: List[Render.PlacedItem],
+                    tileCache: TileCache): TileCache \ (ef + GameEngine.Game + ShaderEffect.Shader) =
         match app#view {
-            case None          => ()
+            case None          => tileCache
             case Some(toItems) =>
                 uploadAtlases((app#spriteAtlases)(world));
                 let atlas = GameEngine.Game.getFontAtlas("default");
@@ -1033,12 +1162,14 @@ mod App {
                 // に敷くため drawSurface を先に呼び、通常の絵からは Shader 面を外して二重描きを避ける。
                 let shaderCmds = Render.drawShaders(spec -> ShaderEffect.Shader.buildProgram(spec), items);
                 List.forEach(cmd -> ShaderEffect.Shader.drawSurface(cmd), shaderCmds);
+                let (tileCmds, nextCache) = tileLayerCmds(app, world, tileCache);
                 // drawWith(getTextureInfo): regionRect 付き Sprite(PxSprite.drawQuad の
                 // アトラス 1 クアッド等)の UV を registry の寸法で解決する。regionRect 無しの
                 // 絵は draw と同一の Drawable になる(挙動不変)。
                 let (sprites, polygons) = Render.drawWith(
                     name -> GameEngine.Game.getTextureInfo(name), Render.withoutShaders(items));
-                GameEngine.Game.renderCommands(sprites, Nil, polygons, staticLayerCmd(app, world))
+                GameEngine.Game.renderCommands(sprites, tileCmds, polygons, staticLayerCmd(app, world));
+                nextCache
         }
 
     // ── リモートデバッグ（HTTP）: コマンド処理 ──
@@ -1296,7 +1427,9 @@ mod App {
                             { stopped = "quit", quit = true | state }
                         else {
                             let capturedBefore = List.length(Ref.get(soundsRef));
-                            let reloaded = applyReload(app, frame, state#world);
+                            // /step は描画を捨てるので、リロード発火の合図（タイル層の世代）は
+                            // ここでは使わない — 台本にリロードキーを混ぜる運用は想定しない。
+                            let (reloaded, _reloadFired) = applyReload(app, frame, state#world);
                             let advanced = applySystems(frame, app#updateSystems, reloaded);
                             // 音の 2 経路: システムが直接鳴らした分はプロキシが記録済み、
                             // withAudio 由来はここで導出して記録する。
@@ -1328,6 +1461,7 @@ mod App {
                 def renderCommands(_s, _t, _p, _st, k) = k(())
                 def shouldClose(k)              = k(GameEngine.Game.shouldClose())
                 def initTileBuffer(instances, k) = k(GameEngine.Game.initTileBuffer(instances))
+                def updateTileBuffer(vaoId, instances, k) = k(GameEngine.Game.updateTileBuffer(vaoId, instances))
                 def getMousePosition(k)         = k(GameEngine.Game.getMousePosition())
                 def isMouseButtonPressed(b, k)  = k(GameEngine.Game.isMouseButtonPressed(b))
                 def consumeScrollDelta(k)       = k(GameEngine.Game.consumeScrollDelta())

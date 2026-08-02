@@ -117,6 +117,7 @@ mod TestWorldJourney {
                     k(())
                 }
                 def initTileBuffer(_, k)        = k((GpuHandle.wrapTileVao(0i32), 0i32))
+                def updateTileBuffer(_, _, k)   = k((GpuHandle.wrapTileVao(0i32), 0i32))
                 def getMousePosition(k)         = k({x = 0.0, y = 0.0})
                 def isMouseButtonPressed(_, k)  = k(false)
                 def consumeScrollDelta(k)       = k(0.0)

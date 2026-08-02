@@ -70,7 +70,7 @@ mod MapLoader {
                 srcY  = Int32.toFloat64(t#srcY),
                 flipH = t#flipH,
                 flipV = t#flipV,
-                alpha = 1.0f32
+                alpha = 1.0f32, tint = TileLayer.noTint()
             }: TileData)
         }, d#manualTiles);
 
@@ -151,7 +151,7 @@ mod MapLoader {
                 srcY  = Int32.toFloat64(t#srcY),
                 flipH = t#flipH,
                 flipV = t#flipV,
-                alpha = 1.0f32
+                alpha = 1.0f32, tint = TileLayer.noTint()
             }: TileData)
         }, d#decorTiles);
         // tileSet 構築 (装飾用 texture)
@@ -201,7 +201,7 @@ mod MapLoader {
                 srcY  = Int32.toFloat64(t#srcY),
                 flipH = t#flipH,
                 flipV = t#flipV,
-                alpha = 1.0f32
+                alpha = 1.0f32, tint = TileLayer.noTint()
             }: TileData)
         }, d#decorTiles);
         let texInfo = match GameEngine.Game.getTextureInfo(textureName) {
@@ -302,7 +302,7 @@ mod MapLoader {
                             srcY  = Int32.toFloat64(srcY),
                             flipH = false,
                             flipV = false,
-                            alpha = 1.0f32
+                            alpha = 1.0f32, tint = TileLayer.noTint()
                         }: TileData))
                     }
                 }
@@ -395,7 +395,7 @@ mod MapLoader {
                                y = Int32.toFloat64(row * tileSizeI)}: Vec2.Vec2),
                     srcX  = Int32.toFloat64(r#srcX),
                     srcY  = Int32.toFloat64(r#srcY),
-                    flipH = false, flipV = false, alpha = 1.0f32
+                    flipH = false, flipV = false, alpha = 1.0f32, tint = TileLayer.noTint()
                 }: TileData))
             else applyFirstMatchingRule(intGrid, width, height, col, row, rest, tileSizeI)
     }

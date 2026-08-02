@@ -329,6 +329,9 @@ mod LwjglLayer {
         let (vao, quadVBO) = RenderSprite.initSpriteRenderer();
         let (polyBatchVao, polyBatchVbo) = RenderSprite.initPolygonBatchRenderer();
         let (instVao, instVbo) = RenderSprite.initSpriteInstancedRenderer(quadVBO);
+        // タイル VAO → インスタンス VBO の台帳。updateTileBuffer（既存 VAO への
+        // 入れ直し）が再アップロード先の VBO をここから引く。
+        let tileVboRegistry: Ref[Map[Int32, Int32], Static] = Ref.fresh(Static, Map.empty());
 
         // 宣言シェーダー面（eff Shader）用: codegen が吐いた GLSL のコンパイル失敗時に
         // 差し替える単色フォールバックプログラム（起動時に 1 回だけ作る）。
@@ -708,7 +711,24 @@ mod LwjglLayer {
             def initTileBuffer(instances, k) = {
                 let instanceVBO = RenderSprite.buildTileInstanceVBO(instances);
                 let tileVao = RenderSprite.buildTileMapVAO(quadVBO, instanceVBO);
+                Ref.put(Map.insert(tileVao, instanceVBO, Ref.get(tileVboRegistry)), tileVboRegistry);
                 k((GpuHandle.wrapTileVao(tileVao), List.length(instances)))
+            }
+            def updateTileBuffer(vaoId, instances, k) = {
+                let tileVao = GpuHandle.tileVaoInt(vaoId);
+                match Map.get(tileVao, Ref.get(tileVboRegistry)) {
+                    case Some(vbo) => {
+                        RenderSprite.uploadTileInstances(vbo, instances);
+                        k((vaoId, List.length(instances)))
+                    }
+                    case None => {
+                        // 台帳に無い VAO（理論上来ない）: 新規に焼いて返す。
+                        let instanceVBO = RenderSprite.buildTileInstanceVBO(instances);
+                        let fresh = RenderSprite.buildTileMapVAO(quadVBO, instanceVBO);
+                        Ref.put(Map.insert(fresh, instanceVBO, Ref.get(tileVboRegistry)), tileVboRegistry);
+                        k((GpuHandle.wrapTileVao(fresh), List.length(instances)))
+                    }
+                }
             }
             def shouldClose(k) = {
                 // glfwPollEvents の **直前** に PRESS フラグをリセット。

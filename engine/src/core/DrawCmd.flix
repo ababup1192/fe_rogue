@@ -95,7 +95,8 @@ mod DrawCmd {
         px    = Vec2.Vec2,
         uvOff = Vec2.Vec2,
         uvSc  = Vec2.Vec2,
-        alpha = Float32
+        alpha = Float32,
+        tint  = Color
     }
 
     /// タイルマップのインスタンス描画命令（1 draw call で全タイル）。

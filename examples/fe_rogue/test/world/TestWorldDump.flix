@@ -147,9 +147,11 @@ def testWorldDumpMapFloorInfoStoreRoundTrip(): Unit \ Assert =
 @Test
 def testWorldDumpChipsOfTilesStacksInDrawOrder(): Unit \ Assert =
     let floorTile = ({px = {x = 26.0, y = 0.0}, srcX = 0.0,  srcY = 52.0,
-                      flipH = false, flipV = false, alpha = 1.0f32}: TileData);
+                      flipH = false, flipV = false, alpha = 1.0f32,
+                      tint = TileLayer.noTint()}: TileData);
     let wallTile  = ({px = {x = 26.0, y = 0.0}, srcX = 78.0, srcY = 26.0,
-                      flipH = false, flipV = false, alpha = 1.0f32}: TileData);
+                      flipH = false, flipV = false, alpha = 1.0f32,
+                      tint = TileLayer.noTint()}: TileData);
     let chips = MapSetup.chipsOfTiles(26.0, floorTile :: wallTile :: Nil, Map.empty());
     Assert.assertEq(
         expected = (0, 2) :: (3, 1) :: Nil,

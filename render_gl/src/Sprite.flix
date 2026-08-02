@@ -255,14 +255,22 @@ mod RenderSprite {
     // Tile Map Instanced Rendering
     // ========================================================================
 
-    /// タイルインスタンスデータを GPU VBO にアップロードする (一度だけ呼ぶ)。
-    /// 各インスタンスは 7 floats: instPos(2) + instUVO(2) + instUVS(2) + instA(1) = 28 bytes
+    /// タイルインスタンスデータ用の VBO を新規に作り、中身をアップロードする。
+    /// 各インスタンスは 10 floats:
+    /// instPos(2) + instUVO(2) + instUVS(2) + instA(1) + instTint(3) = 40 bytes
     pub def buildTileInstanceVBO(instances: List[RenderType.TileInstance]): Int32 \ IO =
+        let vbo = GL15.glGenBuffers();
+        uploadTileInstances(vbo, instances);
+        vbo
+
+    /// 既存のインスタンス VBO へ中身を入れ直す（glBufferData の作り直し —
+    /// 古い領域はドライバが回収する）。焼き直しの多いタイル層が VBO を積み増さないための口。
+    pub def uploadTileInstances(vbo: Int32, instances: List[RenderType.TileInstance]): Unit \ IO =
         let f32 = RenderUtil.f32;
         let count = List.length(instances);
-        let data = Array.empty(Static, count * 7);
+        let data = Array.empty(Static, count * 10);
         let _ = List.foldLeft((i, inst) -> {
-            let base = i * 7;
+            let base = i * 10;
             let px = inst#px;
             Array.put(f32(px#x),       base + 0, data);
             Array.put(f32(px#y),       base + 1, data);
@@ -273,13 +281,15 @@ mod RenderSprite {
             Array.put(f32(uvSc#x),     base + 4, data);
             Array.put(f32(uvSc#y),     base + 5, data);
             Array.put(inst#alpha,      base + 6, data);
+            let tint = inst#tint;
+            Array.put(tint#r,          base + 7, data);
+            Array.put(tint#g,          base + 8, data);
+            Array.put(tint#b,          base + 9, data);
             i + 1
         }, 0, instances);
-        let vbo = GL15.glGenBuffers();
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
         GL15.glBufferData(GL15.GL_ARRAY_BUFFER, data, GL15.GL_STATIC_DRAW);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-        vbo
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0)
 
     /// TileLayer 専用 VAO を構築する。
     /// loc 0: 共有 quad VBO (vertex.xy = 局所座標, vertex.zw = UV)
@@ -294,17 +304,20 @@ mod RenderSprite {
         // インスタンス VBO (loc 1-4, divisor=1)
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, instanceVBO);
         GL20.glEnableVertexAttribArray(1);
-        GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, 28, 0i64);
+        GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, 40, 0i64);
         GL33.glVertexAttribDivisor(1, 1);
         GL20.glEnableVertexAttribArray(2);
-        GL20.glVertexAttribPointer(2, 2, GL11.GL_FLOAT, false, 28, 8i64);
+        GL20.glVertexAttribPointer(2, 2, GL11.GL_FLOAT, false, 40, 8i64);
         GL33.glVertexAttribDivisor(2, 1);
         GL20.glEnableVertexAttribArray(3);
-        GL20.glVertexAttribPointer(3, 2, GL11.GL_FLOAT, false, 28, 16i64);
+        GL20.glVertexAttribPointer(3, 2, GL11.GL_FLOAT, false, 40, 16i64);
         GL33.glVertexAttribDivisor(3, 1);
         GL20.glEnableVertexAttribArray(4);
-        GL20.glVertexAttribPointer(4, 1, GL11.GL_FLOAT, false, 28, 24i64);
+        GL20.glVertexAttribPointer(4, 1, GL11.GL_FLOAT, false, 40, 24i64);
         GL33.glVertexAttribDivisor(4, 1);
+        GL20.glEnableVertexAttribArray(5);
+        GL20.glVertexAttribPointer(5, 3, GL11.GL_FLOAT, false, 40, 28i64);
+        GL33.glVertexAttribDivisor(5, 1);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
         vao

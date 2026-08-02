@@ -5,5 +5,6 @@ mod Bake {
 
     pub def all(): Unit \ IO =
         SfxBake.bakeAll();
-        Gallery.bakeAll()
+        Gallery.bakeAll();
+        TileDemo.bake()
 }

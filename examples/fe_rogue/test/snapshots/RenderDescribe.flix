@@ -38,6 +38,7 @@ mod RenderDescribe {
                 k(())
             }
             def initTileBuffer(_, k)        = k((GpuHandle.wrapTileVao(0i32), 0i32))
+            def updateTileBuffer(_, _, k)   = k((GpuHandle.wrapTileVao(0i32), 0i32))
             def shouldClose(k)              = k(false)
             def getDeltaTime(k)             = k(Duration.seconds(0.016))
             def isKeyPressed(_, k)          = k(false)

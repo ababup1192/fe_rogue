@@ -204,10 +204,10 @@ mod TestMapIntegration {
     @Test
     def testMapToLocalAroundInitial(): Unit \ Assert =
         let layer = realTileMapLayer();
-        let center = TileLayer.mapToLocal(({x = 5, y = 5}: {x = Int32, y = Int32}), layer);
-        let right  = TileLayer.mapToLocal(({x = 6, y = 5}: {x = Int32, y = Int32}), layer);
-        let up     = TileLayer.mapToLocal(({x = 5, y = 4}: {x = Int32, y = Int32}), layer);
-        let down   = TileLayer.mapToLocal(({x = 5, y = 6}: {x = Int32, y = Int32}), layer);
+        let center = TileLayer.cellCenterOf(({x = 5, y = 5}: {x = Int32, y = Int32}), layer);
+        let right  = TileLayer.cellCenterOf(({x = 6, y = 5}: {x = Int32, y = Int32}), layer);
+        let up     = TileLayer.cellCenterOf(({x = 5, y = 4}: {x = Int32, y = Int32}), layer);
+        let down   = TileLayer.cellCenterOf(({x = 5, y = 6}: {x = Int32, y = Int32}), layer);
         Assert.assertEq(
             expected = ( 88.0,  88.0,
                         104.0,  88.0,

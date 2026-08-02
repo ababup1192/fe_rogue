@@ -138,7 +138,7 @@ mod MapSetup {
         let TileLayer.TileLayer(r) = layer;
         {
             tileSize   = TileLayer.tileSize(layer),
-            usedRect   = TileLayer.getUsedRect(layer),
+            usedRect   = TileLayer.usedRect(layer),
             wallCells  = r#collisionCells |> List.map(toGridCell) |> List.toSet,
             mapGlobal  = mapGlobal,
             placements = placements
@@ -176,7 +176,7 @@ mod MapSetup {
         }, seedChips)
 
     /// 壁セルの Float64 座標を整数グリッドへ。collisionCells はタイルグリッド由来で整数 Float64 が
-    /// 保証される（engine getCellSourceId/getUsedRect が整数前提）。非整数が来たら盤面衝突が静かに
+    /// 保証される（engine sourceIdAt/usedRect が整数前提）。非整数が来たら盤面衝突が静かに
     /// 欠落するので、握りつぶさず即落とす。
     def toGridCell(v: {x = Float64, y = Float64}): (Int32, Int32) =
         match (Float64.tryToInt32(v#x), Float64.tryToInt32(v#y)) {

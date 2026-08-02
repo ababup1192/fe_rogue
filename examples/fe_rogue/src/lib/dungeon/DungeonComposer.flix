@@ -370,7 +370,7 @@ mod DungeonComposer {
             srcY  = Int32.toFloat64(t#srcY),
             flipH = t#flipH,
             flipV = t#flipV,
-            alpha = 1.0f32
+            alpha = 1.0f32, tint = TileLayer.noTint()
         }: TileData), mergedFloor);
         let instances = TileRendering.buildTileInstances(tiles, tileSet, tileSize);
         let (vao, count) = GameEngine.Game.initTileBuffer(instances);
@@ -415,7 +415,7 @@ mod DungeonComposer {
                         srcY  = Int32.toFloat64(sy),
                         flipH = false,
                         flipV = false,
-                        alpha = 1.0f32
+                        alpha = 1.0f32, tint = TileLayer.noTint()
                     }: TileData))
                 }
             });
@@ -429,7 +429,7 @@ mod DungeonComposer {
             srcY  = Int32.toFloat64(t#srcY),
             flipH = t#flipH,
             flipV = t#flipV,
-            alpha = 1.0f32
+            alpha = 1.0f32, tint = TileLayer.noTint()
         }: TileData), mergedManual);
         let ruleTiles = MapLoader.buildAutoRuleTiles(intGrid, gridSize#x, gridSize#y,
                                                        md#autoRules, manualCoords, tileSizeI);

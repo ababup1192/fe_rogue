@@ -1,6 +1,7 @@
 /// タイルセットのアトラス元 — 1 枚のタイル画像と、そこからマスを切り出す設定。
-/// texWidth / texHeight は tilemap loader 側で getTextureInfo() を呼んで自動補完する想定。
-/// tileSize は .ldtkl の __gridSize から自動補完する。
+/// 寸法（texWidth / texHeight / tileSize）は自分で全部埋めてもよいし（実行時に焼いた
+/// アトラスを使うゲーム）、make で 0 のまま作ってマップの loader 側に
+/// getTextureInfo() で補完させてもよい。
 pub type alias TileSetAtlasSource = {
     textureName = String,
     texWidth    = Float64,

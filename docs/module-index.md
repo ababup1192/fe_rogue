@@ -108,6 +108,7 @@
 | ドット絵の輪郭をにじませない（カメラと頂点を画素の升目に載せる） | App.withPixelSnap / Render.snapped |
 | 同じ絵を色だけ変えて使い回す・重なり順をまとめてずらす | Render.tinted / Render.zShifted |
 | マスごとの「いま」を持つ（耕した・濡れた・置いた。セーブに乗る側） | TileState |
+| 静的なタイル地形を 1 draw call で敷く（マスごとの照明色 tint 付き。bake/F8 は CPU 投影） | App.withTileLayers / TileScene.toItems / TileLayer |
 
 ## 土台（App・ECS）
 

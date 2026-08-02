@@ -14,7 +14,7 @@ pub enum TileLayer {
         tileSet = Tileset,            // タイルセット
         tiles = List[TileData],       // タイル一覧
         collisionCells = List[Vec2.Vec2], // 衝突グリッドセル
-        gridSize = {x = Int32, y = Int32},        // マップのグリッド寸法（__cWid, __cHei）
+        gridSize = {x = Int32, y = Int32},        // マップのグリッド寸法（マス数）
         tileVaoId = GpuHandle.TileVao,    // GPU VAO ハンドル
         tileCount = Int32             // インスタンス数
     })
@@ -27,10 +27,15 @@ pub type alias TileData = {
     srcY  = Float64,
     flipH = Bool,
     flipV = Bool,
-    alpha = Float32
+    alpha = Float32,
+    tint  = Color
 }
 
 mod TileLayer {
+
+    /// 色変調なし（白 = テクスチャの色のまま）。tint の既定値として使う。
+    /// per-tile の照明（松明の暖色・月光）を乗せるゲームは、マスごとの明度色をここに渡す。
+    pub def noTint(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }
 
     /// TileLayer を TileMapRenderCmd に変換する（GameEngine.render 内で使用）。
     /// `position` は既にカメラ ViewTransform を適用したスクリーン座標、
@@ -93,25 +98,23 @@ mod TileLayer {
         let TileLayer.TileLayer(r) = tileMap;
         Tileset.tileSize(r#tileSet)
 
-    /// 使用中のマス範囲を矩形で返す。
-    /// position は (0,0) 固定（LDTK は座標オフセット無し）、size は gridSize
-    pub def getUsedRect(tileMap: TileLayer):
+    /// 使用中のマス範囲を矩形で返す。position は (0,0) 固定、size は gridSize。
+    pub def usedRect(tileMap: TileLayer):
             { position = {x = Int32, y = Int32}, size = {x = Int32, y = Int32} } =
         let TileLayer.TileLayer(r) = tileMap;
         { position = Vec2i.zero(), size = r#gridSize }
 
-    /// グリッド座標 → セル中心のローカルピクセル座標に変換する。
+    /// マス座標 → セル中心のローカルピクセル座標（Grid.cellCenterOf と同じ約束）。
     /// world 座標が必要な場合は呼び出し側でレイヤーの原点を足し合わせる。
-    pub def mapToLocal(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Vec2.Vec2 =
+    pub def cellCenterOf(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Vec2.Vec2 =
         let s = tileSize(tileMap);
         let v = Vec2i.toVec2(coords);
         { x = v#x * s + s / 2.0,
           y = v#y * s + s / 2.0 }
 
-    /// 指定マスのソース ID を返す。
-    /// 空セル（範囲外含む）: -1
-    /// 壁セル: 0（本プロジェクトは intGrid 二値構造、source は 1 種類のみ）
-    pub def getCellSourceId(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Int32 =
+    /// 指定マスのソース ID を返す。空セル（範囲外含む）: -1、壁セル: 0
+    /// （現状は二値構造 — source は 1 種類のみ）。
+    pub def sourceIdAt(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Int32 =
         let TileLayer.TileLayer(r) = tileMap;
         if (not isInBounds(coords, tileMap)) -1
         else
@@ -123,15 +126,15 @@ mod TileLayer {
 
     // ── 本プロジェクト固有の便宜 API ──
 
-    /// 範囲チェック: getUsedRect 内に収まるか
+    /// 範囲チェック: usedRect 内に収まるか
     pub def isInBounds(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Bool =
         let TileLayer.TileLayer(r) = tileMap;
         coords#x >= 0 and coords#x < r#gridSize#x and
         coords#y >= 0 and coords#y < r#gridSize#y
 
-    /// 衝突セルか（getCellSourceId(coords, layer) != -1 の薄いラッパ）
+    /// 衝突セルか（sourceIdAt(coords, layer) != -1 の薄いラッパ）
     pub def isWall(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Bool =
-        getCellSourceId(coords, tileMap) != -1
+        sourceIdAt(coords, tileMap) != -1
 
     /// 範囲内 かつ 壁でない ⇒ 床
     pub def isFloor(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Bool =
@@ -142,5 +145,35 @@ mod TileLayer {
                               tileMap: TileLayer): TileLayer =
         let TileLayer.TileLayer(r) = tileMap;
         TileLayer.TileLayer({ tileVaoId = tileVaoId, tileCount = tileCount | r })
+
+    /// TileData のリストを GPU インスタンス (TileInstance) のリストに変換する。
+    /// UV は texture サイズと flipH/flipV から計算する。
+    pub def buildInstances(tiles: List[TileData],
+                            tileSet: Tileset,
+                            tileSize: Float64): List[GameEngine.TileInstance] =
+        let texWidth  = tileSet#atlasSource#texWidth;
+        let texHeight = tileSet#atlasSource#texHeight;
+        // UV は各 texel の中心 (src + 0.5 .. src + tileSize - 0.5) を結ぶように
+        // half-texel inset する。アトラスがタイル間 padding なしで密パックされているため、
+        // 境界そのまま (src .. src + tileSize) を UV にすると、シェーダ内補間の浮動小数
+        // 誤差で隣接タイルの最初の 1 texel を拾い、タイル境界に細い線として現れる。
+        let inset = 0.5;
+        List.map(tile -> {
+            let uvoX = if (tile#flipH) (tile#srcX + tileSize - inset) / texWidth
+                       else            (tile#srcX + inset) / texWidth;
+            let uvoY = if (tile#flipV) (tile#srcY + tileSize - inset) / texHeight
+                       else            (tile#srcY + inset) / texHeight;
+            let uvsX = if (tile#flipH) -((tileSize - 2.0 * inset) / texWidth)
+                       else            (tileSize - 2.0 * inset) / texWidth;
+            let uvsY = if (tile#flipV) -((tileSize - 2.0 * inset) / texHeight)
+                       else            (tileSize - 2.0 * inset) / texHeight;
+            ({
+                px    = tile#px,
+                uvOff = ({x = uvoX, y = uvoY}: Vec2.Vec2),
+                uvSc  = ({x = uvsX, y = uvsY}: Vec2.Vec2),
+                alpha = tile#alpha,
+                tint  = tile#tint
+            }: GameEngine.TileInstance)
+        }, tiles)
 }
 

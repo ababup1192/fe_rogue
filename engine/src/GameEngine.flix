@@ -196,6 +196,12 @@ mod GameEngine {
                            staticLayer: Option[StaticLayerCmd]): Unit
         /// タイルインスタンスデータを GPU VBO にアップロードし (vaoハンドル, count) を返す
         def initTileBuffer(instances: List[TileInstance]): (GpuHandle.TileVao, Int32)
+        /// 既存のタイル VAO のインスタンス VBO へ中身を入れ直す（VAO は増やさない）。
+        /// key の変わりやすい層（照明・カメラ追随で焼き直る地形など）が、焼き直しの
+        /// たびに initTileBuffer で VAO を積み増して GPU メモリを漏らさないための口。
+        /// 未知の VAO（理論上来ない）は新規に焼いて返す — 返った vaoハンドルを保存し直すこと。
+        def updateTileBuffer(vaoId: GpuHandle.TileVao,
+                             instances: List[TileInstance]): (GpuHandle.TileVao, Int32)
         def shouldClose(): Bool
         /// 前フレームからの経過時間。EngineConfig#maxDeltaTime で上限クランプ済み
         def getDeltaTime(): Duration.Duration

@@ -130,8 +130,10 @@ mod RenderShader {
         "layout (location = 2) in vec2 instUVO;\n" +
         "layout (location = 3) in vec2 instUVS;\n" +
         "layout (location = 4) in float instA;\n" +
+        "layout (location = 5) in vec3 instTint;\n" +
         "out vec2 TexCoords;\n" +
         "out float FragAlpha;\n" +
+        "out vec3 FragTint;\n" +
         "uniform mat4 projection;\n" +
         "uniform vec2 layerPos;\n" +
         "uniform float tileSize;\n" +
@@ -141,18 +143,20 @@ mod RenderShader {
         "    gl_Position = projection * vec4(screenPos, 0.0, 1.0);\n" +
         "    TexCoords = instUVO + vertex.zw * instUVS;\n" +
         "    FragAlpha = instA;\n" +
+        "    FragTint = instTint;\n" +
         "}\n"
 
     pub def tileFragmentShaderSource(): String =
         "#version 330 core\n" +
         "in vec2 TexCoords;\n" +
         "in float FragAlpha;\n" +
+        "in vec3 FragTint;\n" +
         "out vec4 color;\n" +
         "uniform sampler2D image;\n" +
         "uniform vec3 layerColor;\n" +
         "void main() {\n" +
         "    vec4 t = texture(image, TexCoords);\n" +
-        "    color = vec4(layerColor * t.rgb, t.a * FragAlpha);\n" +
+        "    color = vec4(layerColor * FragTint * t.rgb, t.a * FragAlpha);\n" +
         "    if (color.a < 0.01) discard;\n" +
         "}\n"
 
