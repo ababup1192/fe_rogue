@@ -57,7 +57,7 @@
 | タイルのマス目と移動範囲 | Grid / GridSearch |
 | 敵を追わせる・逃がす・ふらつかせる(距離場の 1 歩) | Steering |
 | タイルセット PNG + 自前の map.json でマップを貼る | MapResource |
-| チップ絵タイルを 1 draw call で敷く(焼き置き・屋根や庇は zIndex で手前にも) | App.withTileLayers / TileScene |
+| チップ絵タイルを 1 draw call で敷く(焼き置き・マスごとの照明色 tint・屋根や庇は zIndex で手前にも) | App.withTileLayers / TileScene |
 | チップ絵なしでマップ地形(壁・水)を多角形で描く | DualGrid / Material |
 | rows の文字格子から地形の見た目を作る(*.terrain.json) | Terrain / TerrainDoc |
 | 重なり判定・物理 | Collision / Physics2D |
@@ -109,7 +109,6 @@
 | ドット絵の輪郭をにじませない（カメラと頂点を画素の升目に載せる） | App.withPixelSnap / Render.snapped |
 | 同じ絵を色だけ変えて使い回す・重なり順をまとめてずらす | Render.tinted / Render.zShifted |
 | マスごとの「いま」を持つ（耕した・濡れた・置いた。セーブに乗る側） | TileState |
-| 静的なタイル地形を 1 draw call で敷く（マスごとの照明色 tint 付き。bake/F8 は CPU 投影） | App.withTileLayers / TileScene.toItems / TileLayer |
 
 ## 土台（App・ECS）
 
