@@ -187,15 +187,11 @@ mod DrawCmd {
     pub type alias StaticKey = String
 
     /// 1 フレームぶんの静的レイヤー描画依頼。`renderCommands` の第 4 チャンネルに載せる。
-    /// key が変わったときだけ polys を評価して GPU へ焼き直す（同じキーの間 polys は呼ばれず、
-    /// 頂点の作り直し・アップロードが毎フレームから消える）ので、polys は「作り方」を包んだ
-    /// 純粋関数（Unit -> 多角形列）で渡す。静的な絵は World の純粋な投影から作れる（camera も
-    /// エンジンが uniform で当てるので触らない）ため副作用は要らない — 効果を帯びさせないことで
-    /// renderCommands の op を効果多相にせずに済む。viewOffset / viewScale / halfDesign は
-    /// カメラ（平行移動 / ズーム）を頂点シェーダの uniform で当てる値。静的頂点はワールド座標で
-    /// 焼くので screenPos = (world − viewOffset)×viewScale + halfDesign。
-    /// カメラ有り（中心 c・ズーム z）なら (c, (z,z), design/2) で CPU の centerOn と一致し、
-    /// カメラ無しなら (0, (1,1), 0) で恒等（world 座標そのまま）。
+    /// key が変わったときだけ polys を評価して GPU へ焼き直す（同じキーの間は頂点の作り直し・
+    /// アップロードが毎フレームから消える）ので、polys は「作り方」を包んだ純粋関数で渡す
+    /// — 副作用を持たせないことで renderCommands の op を効果多相にせずに済む。
+    /// viewOffset / viewScale / halfDesign はカメラの平行移動・ズームを頂点シェーダの uniform
+    /// で当てる値（カメラ無しなら世界座標そのままになる値を渡す）。
     /// SoftRaster は GPU バッファを持たないので polys を毎回描くだけ（キャッシュを見ない）。
     pub type alias StaticLayerCmd = {
         key        = StaticKey,

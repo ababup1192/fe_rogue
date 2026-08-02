@@ -1,11 +1,7 @@
 // Terrain — 「どのセル文字に、どの質感(Material.Spec)を着せるか」の表と rows アダプタ。
-// dungeon の Surfaces を Theme・マップ型に依存しない形へ一般化したもの: 表(Entry)は
-// 呼び側が注入し、Terrain はそれを消費して DualGrid(16ケースの多角形)と Material(質感)の
-// 描画へ写すだけ — Terrain 自身は Theme も Doc も知らない。
-// rows(文字格子)の入口 cellsOf / flagsOf / fromRows で「文字を塗るだけで角の変化形が出る」。
-// 表を誰が作るかは消費者ごと: rpg-starter は TerrainDoc(JSON)から、dungeon は Surfaces 層から。
-// fromRows(rows+表だけで完結する教科書 API)とデュアルグリッドの初学者向け概念説明は
-// docs/dual-grid.md。
+// 表(Entry)は呼び側が注入し、Terrain はそれを消費して DualGrid・Material への描画へ写すだけ
+// — Terrain 自身は Theme も Doc も知らない。
+// 初学者向けの概念説明は docs/dual-grid.md。
 
 mod Terrain {
 
@@ -38,8 +34,6 @@ mod Terrain {
         }) |> List.toSet
 
     /// 角 (i, j) のまわり4セル(左上・右上・左下・右下)の埋まり方。
-    /// dungeon の Tiles.wallFlagsAt が原型 — Dungeon.isWallAt を cells の
-    /// メンバー判定に置き換えた一般形。
     pub def flagsOf(cells: Set[(Int32, Int32)]): ((Int32, Int32)) -> DualGrid.Corner =
         corner -> {
             let (i, j) = corner;
@@ -88,7 +82,7 @@ mod Terrain {
     /// 面シェーダー等を地形の形どおりに抜くためのマスク多角形(ワールド座標)。
     /// 塗りに使うのと同じ DualGrid.resolve(丸角固定・揺らぎなし)を通すので、マスクの形は
     /// 画面に出る塗りと 1px も違わない。角ごとのタイル頂点は角の原点からの相対なので、
-    /// 原点を足してワールド座標へ直す(dungeon の waterMaskPolys の一般形)。
+    /// 原点を足してワールド座標へ直す。
     pub def maskPolys(tileSize: Float64, flagsAt: ((Int32, Int32)) -> DualGrid.Corner,
                       corners: List[(Int32, Int32)]): List[List[Vec2.Vec2]] =
         corners |> List.flatMap(corner -> {
@@ -129,8 +123,7 @@ mod Terrain {
     // ════════════════════════════════════════════════════════
 
     /// 1エントリ×1角の描画。埋まっていない角(ケース0)は形が無いので早めに抜ける。
-    /// 角の形はエントリの forceStyle が無ければ styleMix で場所ごとに混ぜる
-    /// (dungeon の Surfaces.itemsAt が使う Theme.styleMix を opts#styleMix の注入に置き換えた形)。
+    /// 角の形はエントリの forceStyle が無ければ styleMix で場所ごとに混ぜる。
     def itemsAt(opts: { tileSize = Float64, styleMix = DualGrid.StyleMix },
                 entry: Entry, corner: (Int32, Int32)): List[Render.PlacedItem] =
         let flags = entry#flagsAt(corner);

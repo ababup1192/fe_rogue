@@ -2,15 +2,8 @@
 // ソフトウェアラスタライザ。GL を使わないので GL コンテキストの無い場所（スナップショット
 // テスト、将来の IDE ビューポートのプレビュー）で描画結果を目視確認できる。
 //
-// 描画規約は render_gl/Frame.drawSprite と一致させてある:
-//   - box（texture==""）      : scale がそのまま design px サイズ。角丸＋枠を描く。
-//   - textured（texture!=""）  : displaySize = texInfo × scale。centered なら中心原点。
-//                               uvOffset/uvScale が元テクスチャの部分矩形を選ぶ。
-//   - font_*（テキスト）      : 各グリフ Drawable を PNG 出力解像度の Font で直接 drawString する
-//                               （アトラス縮小サンプルではなく実サイズ焼きなので小サイズでもくっきり）。
-//   - polygon                 : 頂点を design px として塗りつぶす。grad（頂点色）つきは
-//                               画素ごとの線形補間（Gouraud）で焼く。
-// z 順は (zIndex, 追加順) の安定ソートで Frame と揃える。design を `scale` 倍に拡大して出力する。
+// 描画規約（box/textured/font/polygon の扱い、z 順）は render_gl/Frame.drawSprite と
+// 一致させてある — 各関数のコメントに規約を記す。design を `scale` 倍に拡大して出力する。
 mod SoftRaster {
     import java.awt.image.BufferedImage
     import java.awt.image.RescaleOp

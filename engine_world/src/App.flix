@@ -1,21 +1,10 @@
 // App — ゲームを「宣言」で組み立てて走らせるランナー。ゲーム側は初期 World にシステムと
-// 絵と音を繋いで launch を呼ぶだけ、窓・時計・キー・描画・末尾再帰のループはすべてここが引き受ける。
-// 外の世界に触れる処理（effect）はこのモジュールが独占するので、ゲームのシステムは
-// (Frame, w) -> w の純粋関数として書ける: 押されているキーとエッジと dt は、毎フレーム
-// App が Frame という値に焼いて渡す。World の型 w には触れない（初期値・システム・絵・音は
-// ぜんぶゲーム側が持ち込む。初期値の組み立てに effect が要るなら、main が自分のハンドラで
-// 組んでから App.make へ渡せばよい）。
+// 絵と音を繋いで launch を呼ぶだけで、窓・時計・入力・描画・ループはすべてここが引き受ける。
+// 外の世界に触れる処理（effect）をこのモジュールが独占するので、ゲームのシステムは
+// (Frame, w) -> w の純粋関数として書ける（毎フレームの入力と dt は Frame に焼いて渡す）。
 //
-// ゲームループの2役割（初学者向けの読み方）— 毎フレーム App が回すのは大きく2種類:
-//   1. 更新系システム（addSystem で繋ぐ (Frame, w) -> w）= 状態を1コマ進める。入力と dt を見て
-//      新しい World を作る。追加順（左→右）に畳み込むので、後のシステムは前のシステムが進めた
-//      World を受け取る。
-//   2. 描画（withView で繋ぐ (ViewCtx, w) -> 絵）= 進んだ後の World を「絵」に写すだけ。
-//      World は変えない（読むだけ）。音（withAudio）も同じく、進んだ後の World から鳴らす物を導く。
-// 1フレームは必ず「全システムで World を進める → その World を描く」の順。つまり画面に映るのは
-// 常に更新後の姿。この分業（進めるのはシステム・描くのは view、両者は別関数）が守られていれば、
-// ゲームロジックは effect も描画も知らない純関数のまま書け、テストは更新系だけを直接叩ける。
-// 実際の1周の全手順は下の loop の doc を見る。
+// 更新系（addSystem）が World を進め、描画（withView）は進んだ後の World を読むだけで
+// 変えない — 1 フレームは必ずこの順（1 周の全手順は下の loop の doc を見る）。
 
 mod App {
     import java.lang.System
@@ -56,14 +45,10 @@ mod App {
 
     // ── App: 宣言の入れ物 ──
 
-    /// ゲーム 1 本の宣言。make で空を作り、addStartup / addSystem / reloadOn / withView /
-    /// withAudio / quitWhen で部品を繋ぎ、launch へ渡す。w はゲームが持ち込む World の型。
-    /// ef はゲームのシステム・絵・音・終了判定が帯びる効果（外の世界に触れる処理）の行。
-    /// 純粋なゲームは ef = {}（Pure）、effect で状態を持つゲームは自分の効果行を ef に載せて
     /// view / hudView が受け取る「この 1 フレームの見え方」。atlas は文字描画用の既定フォント、
-    /// visible は camera を通して画面に見えている world の矩形（camera なしなら design 全体）。
-    /// 背景タイルの敷き詰めなど「見える分だけ組む」計算は visible から出す — ゲームが
-    /// 画面サイズを World に持ち込む必要はない。HUD（画面固定）には常に design 全体が渡る。
+    /// visible は camera を通して画面に見えている world の矩形（camera なしなら design 全体。
+    /// 背景タイルの敷き詰めなど「見える分だけ組む」計算はここから出す — ゲームが画面サイズを
+    /// World に持ち込む必要はない）。HUD（画面固定）には常に design 全体が渡る。
     /// fontOf は名前でフォントを引く関数（project.json の fonts[].name）。withFonts で宣言した
     /// 名前だけ引ける — 知らない名前は既定フォントへ倒す（fail-open）。話し手ごとに字を変える
     /// ようなゲームは、名前を直に書かず「自分の enum → 名前」の関数を 1 つ置いて fontOf に
@@ -82,12 +67,15 @@ mod App {
         { atlas = atlas, fontOf = fontOf,
           visible = { position = { x = 0.0, y = 0.0 }, size = design } }
 
-    /// 同じ App に乗せる（効果多相）。
     /// 焼いたドット絵アトラス 1 枚ぶんの受け渡し。
     /// texture = 絵を引くときの名前、key = その画素の中身を決める全入力を 1 文字列にまとめた物
     /// （同じ key の間は GPU へ上げ直さない）、baked = PxSpriteAtlas.bake の焼き上がり。
     pub type alias AtlasUpload = { texture = String, key = String, baked = PxSpriteAtlas.Baked }
 
+    /// ゲーム 1 本の宣言。make で空を作り、addStartup / addSystem / reloadOn / withView /
+    /// withAudio / quitWhen で部品を繋ぎ、launch へ渡す。w はゲームが持ち込む World の型、
+    /// ef はシステム・絵・音・終了判定が帯びる効果（外の世界に触れる処理）の行
+    /// （純粋なゲームは ef = {}）。各フィールドの意味は右の // コメントを参照。
     pub type alias App[w: Type, ef: Eff] = {
         init = Vec2.Vec2 -> w \ ef,                                // design 解像度 → 出発点の World（launch が画面サイズを渡して呼ぶ）
         startupSystems = List[w -> w \ ef],                        // 起動時に 1 回だけ・追加順
@@ -231,21 +219,16 @@ mod App {
         { fonts = List.append(app#fonts, names) | app }
 
     /// ゲーム 1 本の標準形を 1 つのレコードで宣言する入口（初学者向け）。
-    /// ここを読むだけでゲームループの全体像 ——「何から始まり（init）・毎フレームどう進み（update）・
-    /// どう絵になり（view）・保存で何を読み直すか（reloads）」—— が 1 か所に見える。
-    ///   init    = 出発点の World（初期状態）。
-    ///   update  = 毎フレームの更新（入力と dt を持つ Frame と、いまの World → 次の World）。
-    ///             更新は「1 本の合成関数」で渡す約束: 複数の手続きをゲーム側で
-    ///             `\f w -> w |> step(f) |> interact(f)` のように中で繋いで 1 個にしてから渡す
-    ///             （繋ぎが Main に見えて教育的。App.game 側は複数システムを受け取らない）。
-    ///   view    = World → 絵（(置き場所, 見せたい物) の列）。World は読むだけで変えない。
-    ///   reloads = 保存で読み直す Doc の列（監視パスと、読み直し関数）。各要素が watchFile 1 本に展開される。
-    /// 内部では make(init) |> addSystem(update) |> watchFile(各 reload) |> withView(view) に
-    /// 展開されるだけ。戻り値は App なので、reloadOn（F1 リロード）・onBakeRequest（走行中 bake）・
-    /// withDebug などの高度な口は、この後ろに従来どおり pipe で足せる。
-    /// ── この入口が担うのは「最も普通の 1 本道」だけ ──: 更新系が 1 本に合成でき・描画は view で・
-    /// 音（withAudio）や HUD（withHudView）や quit の差し替え・複数システムの明示的な列挙が要る
-    /// 高度なゲームは、make から始める従来のビルダー（addSystem / withView / …）へ降りる。
+    /// update は「1 本の合成関数」で渡す約束: 複数の手続きをゲーム側で
+    /// `\f w -> w |> step(f) |> interact(f)` のように中で繋いで 1 個にしてから渡す
+    /// （繋ぎが Main に見えて教育的。App.game 側は複数システムを受け取らない）。
+    /// reloads の各要素は watchFile 1 本に展開される。内部では
+    /// make(init) |> addSystem(update) |> watchFile(各 reload) |> withView(view) に展開されるだけ。
+    /// 戻り値は App なので、reloadOn（F1 リロード）・onBakeRequest（走行中 bake）・withDebug
+    /// などの高度な口は、この後ろに従来どおり pipe で足せる。
+    /// この入口が担うのは「最も普通の 1 本道」だけ — 音（withAudio）や HUD（withHudView）や
+    /// quit の差し替え・複数システムの明示的な列挙が要る高度なゲームは、make から始める
+    /// 従来のビルダー（addSystem / withView / …）へ降りる。
     pub def game(spec: { init = w,
                          update = (Frame, w) -> w \ ef,
                          view = (ViewCtx, w) -> List[Render.PlacedItem] \ ef,

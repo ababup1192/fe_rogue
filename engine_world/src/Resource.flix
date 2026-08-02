@@ -1,13 +1,8 @@
-// Resource — ゲーム独自のデータ型に、「どんなフィールドがあり、どう編集するか」という
-// 編集 UI の規格（schema）を与える。データ本体は JSON で保存し、その隣に `_schema.json` を置く。
-// これで IDE はデータの中身を知らなくても、各フィールドに合った入力欄を出せる。
-// 利用例: ユニット表を IDE で編集する / 数値にスライダーを出す / 参照フィールドを選択肢にする。
-// 注意: Flix 型と schema の一致はゲーム側の責任で、`checkConsistency` が起動時にズレを検出する。
-//
-// schema はどんなフィールドが存在しどう編集すべきかだけを記述し、ファイル全体の形（catalog / single 等）は
-// data 側の構造で示す。schema は `Saveable` 経由で往復でき、IDE で編集してファイルに書き戻せる。
-// 別ジャンルの Resource を足すときは、この規格で `_schema.json` を書き、data 型に
-// `instance Saveable[T]` を実装すればエンジンの機構に乗る。
+// Resource — ゲーム独自データ型に「どんなフィールドがあり、どう編集するか」という編集 UI の
+// 規格（schema）を JSON（`_schema.json`）で与える。IDE はデータの中身を知らなくても、
+// 各フィールドに合った入力欄を出せる。
+// 注意: schema が記述するのはフィールド定義だけで、ファイル全体の形（catalog / single 等）は
+// data 側の構造で決まる。Flix 型と schema のズレは `checkConsistency` が起動時に検出する（ゲーム側の責任）。
 mod Resource {
     use Util.Json.Json
     use Util.Json.Json.{JObject, JString, JNumber, JBool, JArray, JNull}

@@ -1,16 +1,10 @@
 // UiSpec — UI ツリーの宣言層（ui.json → UiStore spawn）
 //
-// ui.json の**方言のパースは UiDoc（唯一のパーサ）に一本化**されており、ここは UiDoc.Spec を
-// UiStore 向けの flat なコンポーネント形（box/text/sprite/poly/shape の Option フィールド）へ
-// 射影し、spawn / respawn / リロード台帳を担う層。
+// ui.json のパースは UiDoc（唯一のパーサ）に一本化し、ここは UiDoc.Spec を UiStore 向けの
+// flat な Spec へ射影して spawn / respawn / リロード台帳を担う。
 //
-// spawnRoot は Spec の各ノードを UiStore.alloc で採番し、parents/order/styles/boxes/texts/
-// sprites/polys/shapes/visible/bindings/metas/names を登録する。名前パスは "root/child/..." 形式。
-// respawn は despawnRoot で spec 由来 store を捨ててから spawnRoot し直す（selection/focus は
-// String キーなので生き残る）。
-//
-// UiDoc の poly rotation/pivot 拡張は UiStore 経路では未対応 — 黙って無視せず loud に Err する
-// （同じ JSON が経路で意味を変えないための契約。必要になったら PolyComp の拡張として別途対応）。
+// UiDoc の poly rotation/pivot 拡張は UiStore 経路では未対応 — 黙って無視すると同じ JSON が
+// 経路によって絵を変えてしまうため、loud に Err する。
 
 mod UiSpec {
     use Util.Json.Json

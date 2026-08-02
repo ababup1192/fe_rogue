@@ -1,27 +1,7 @@
-// FxDoc — fx.json（閉形式パーティクル）の宣言ドキュメント層。
-// 「火花を 20 粒、円で、白→橙→煤の色で、速く出てだんだん減速」のような群れの姿を
-// JSON に書き、Spec（pure data）へ畳む。粒の実体はどこにも保存されず、絵は Fx.sample が
-// (Spec, seed, t) から毎回計算する — spawn も update も free も無い。
-//
-// 語彙（version 1）:
-//   トップレベル: name（必須）/ duration 秒（必須）/ emitters（必須・1 個以上）。
-//     "version"（省略時 1。1 以外は Err）・"$schema"・"note"・"//" キーは ui.json と同じ扱い。
-//   emitter: name / count / mode("burst"|"loop"・省略時 burst — loop は粒が寿命ごとに
-//     生まれ直す常時系: 煙・雪・舞う葉) / shape("circle"|"box"|"glow"・省略時 circle) / size px /
-//     color（1〜N 色の配列 — 寿命に沿った線形グラデ。色表記は ui.json と同じ。parseWith 経由なら
-//     "@名前" でパレットの色キーを参照できる）/
-//     life {base 秒, vary} / speed {base px/s, vary, over} / dir {base 度, spread 度} /
-//     spawn {w, h}（発生源の広がり px・省略時は点）/ accel {x, y}（重力/風 px/s²・閉形式 ½at²）/
-//     seed（決定的シードの上乗せ・省略時 0）/
-//     sizeOver / alphaOver（カーブ）/ blend("normal"|"add"|"multiply"・省略時 normal) / zIndex。
-//     vary は 0..1 — 粒ごとに base × (1 ± vary) の幅でばらつく。dir は 0 度 = 真上・時計回り。
-//   カーブ: {"kind": ...} の 6 形。省略時は constant（= いつでも 1.0）。
-//     constant / linear {from, to} / easeOut {power} / easeIn {power} /
-//     peak {at} / flicker {rate, amount}。fadeOut は linear {1, 0} の別名。
-//     speed.over だけは flicker 不可（移動距離の式が閉形式にならない）— パース時に断る。
-//
-// エラーはノードのパス付き（例: `at emitters[0].speed: ...`）— UiDoc と同じ流儀で
-// 手書きドキュメントの編集箇所へ誘導する。
+// FxDoc — fx.json（閉形式パーティクル）を Spec（pure data）へ畳むパース層。
+// 粒の実体はどこにも保存せず、絵は Fx.sample が (Spec, seed, t) から毎回計算する
+// （spawn も update も free も無い）。エラーはノードのパス付き（例: `at emitters[0].speed: ...`）
+// で返す — UiDoc と同じ流儀。
 
 mod FxDoc {
     use Util.Json.Json

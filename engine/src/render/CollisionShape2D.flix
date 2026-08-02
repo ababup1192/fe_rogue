@@ -1,14 +1,5 @@
-/// 当たり判定に使う 2D の幾何形状（矩形・円・カプセル・坂）。
-/// 形状同士の重なり・点の内外・押し出しベクトルの計算をまとめて持つので、利用側は
-/// 形状の組み合わせを気にせず一つの関数で判定できる。
-/// 利用例: 2 つの形状と位置を渡して重なりを検出する。
-///
-///   CollisionShape2D
-///     +-- RectShape2D: 軸平行の矩形（AABB）
-///     +-- CircleShape2D: 円
-///     +-- CapsuleShape2D: カプセル（両端が半円の矩形）
-///     +-- SlopeShape2D: 坂（直角三角形の床）
-///     +-- PolygonShape2D: 単純多角形（凹あり可・静的地形向け）
+/// 当たり判定に使う 2D の幾何形状（矩形・円・カプセル・坂・多角形）。
+/// 形状の組み合わせを気にせず checkOverlap 1 つで判定できる。
 ///
 /// すべての判定関数は形状の **中心座標** を基準として受け取る
 /// （PolygonShape2D だけは「中心」でなく作者が決めたローカル原点）。
@@ -235,7 +226,7 @@ mod CollisionShape2D {
             Vec2.distanceSquaredTo(point, closest)
 
     /// 二つの 2D 線分が交差しているか判定する。
-    /// 交差の��積符号法を使用��る。
+    /// 外積の符号で交差を判定する。
     def segmentsIntersect(a1: Vec2.Vec2, a2: Vec2.Vec2,
                            b1: Vec2.Vec2, b2: Vec2.Vec2): Bool =
         let d1 = Vec2.cross(Vec2.sub(b2, b1), Vec2.sub(a1, b1));
@@ -246,7 +237,7 @@ mod CollisionShape2D {
 
     /// 二つの線分間の最短距離の二乗を返す。
     /// 2D 線分が交差する場合は 0 を返す。
-    /// それ以外��端点-線分距離の最小値を取る。
+    /// それ以外は端点-線分距離の最小値を取る。
     pub def segmentToSegmentDistSq(a1: Vec2.Vec2, a2: Vec2.Vec2,
                                     b1: Vec2.Vec2, b2: Vec2.Vec2): Float64 =
         let ab = Vec2.sub(a2, a1);

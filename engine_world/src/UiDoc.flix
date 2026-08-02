@@ -1,31 +1,14 @@
-// UiDoc — ui.json の宣言ドキュメント層。JSON のノード木を Spec（pure data）へ畳み、
-// Flex（→ UiLayout）でレイアウトして Render.PlacedItem の列に落とす。
-// **ここが ui.json 方言の唯一のパーサ** — UiSpec.parse はこの parse の結果を
-// UiStore コンポーネントへ射影する薄い層で、方言の定義はこのモジュールに一本化されている。
+// UiDoc — ui.json の宣言ドキュメントを Spec（pure data）へ畳み、Flex（→ UiLayout）で
+// レイアウトして Render.PlacedItem の列に落とす。**ui.json 方言の唯一のパーサ** —
+// UiSpec.parse はこの parse の結果を UiStore コンポーネントへ射影する薄い層で、
+// 方言の定義はこのモジュールに一本化されている。
 //
-// 語彙 = 既存 ui.json（templates/use・name/widget/children/visible/bind/meta/layer・
-// スタイルキー・box/text/sprite/poly）+ 拡張:
-//   図形 widget: "circle" "ngon" "star" "ellipse" "sector" "segment" "line" "polyline" "bezier"
-//     - 共通: color（必須）/ alpha（= Render.fade）/ zIndex。座標は解決 rect の中心相対で、
-//       図形は rect の中心に描かれる。width/height を書けば優先、無ければ図形の内在サイズ
-//       （circle→2r 四方など）が Px として敷かれる。
-//     - circle は Box（全角丸）なので borderWidth/borderColor で枠が効く（= ring が書ける）。
-//   色: "#rrggbb" に加えて {"hsv":[h,s,v]}（Color.hsv 直行）と {"rgb":[r,g,b]}。
-//   poly: rotation（1 周 = 1.0）。pivot 未指定なら rect 中心を原点に Render.rotated で回す
-//     （時計の針は「根元 = rect 中心」に頂点を組めば蝶番になる）。pivot=[x,y]（左上相対）指定時は
-//     Render.rotatedAround。※この拡張は Flex 経路のみ — UiStore 経路（UiSpec）は loud に断る。
-//   instance: "instance": "assets/button.ui.json" で別ドキュメントの root をそのノードとして合成。
-//     ノード自身のフィールドが root に勝ち、"override": { "相対名パス": {...} } で子孫も上書きできる。
-//   トップレベル: "version"（省略時 1。1 以外は Err）。"$schema"・"//" キーは無視（コメント可）。
-//   "paletteFile": パス（load 経路のみ。外部ファイルのパレットを inline "palette" と合成。同名は inline 勝ち）。
-//   "note": エディタで表示するノートコメント（描画には影響しない）。
-//     Spec#origin は JSON の語彙ではなく、parse が instance 合成の根に参照パスを刻んだもの。
-//
-// エラーはノードの名前パス付き（例: `at gallery/row1/box: 'color' is required`）— 手書き
-// ドキュメントの編集箇所へ誘導する。
-//
-// build（Flex 経路）は bind/meta/layer を使わない（動的束縛・レイヤ重ねは UiSpec/UiStore の領分）が、
-// Spec には保持する — 同じ JSON が経路で意味を失わないための契約。
+// 事故りやすい点:
+//   - 図形 widget（circle/ngon/star/ellipse/sector/segment/line/polyline/bezier）と
+//     poly の rotation/pivot は Flex 経路限定 — UiStore 経路（UiSpec）は loud に断る。
+//   - エラーはノードの名前パス付き（例: `at gallery/row1/box: 'color' is required`）。
+//   - build（Flex 経路）は bind/meta/layer を使わない（動的束縛・レイヤ重ねは UiSpec/UiStore
+//     の領分）が、Spec には保持する — 同じ JSON が経路を変えても意味を失わないための契約。
 
 mod UiDoc {
     import java.math.BigDecimal

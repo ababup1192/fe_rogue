@@ -1,14 +1,7 @@
-// Annotate — debug 中の小物一式（矩形の注釈・保存トースト・fps 表示）を担う純粋な芯。
-// 実行中のゲームを一時停止して、画面の気になる場所を矩形で囲み、
-// 「どこに・何が描かれていたか」を書き出せる。ズーム・パン・ドラッグの判断は
-// すべてここが持ち、マウス読みやファイル書きは App とエンジンの effect ハンドラが担う
-// （このモジュールは値の計算だけ）。
-//
-// 座標の約束:
-//   画面座標   = マウスの生値（ウィンドウをデザイン解像度へ線形に写したもの）
-//   デザイン座標 = ゲームが絵を置いている座標
-// ズームとパンは「見え方」にだけ効き、注釈に残す矩形は常にデザイン座標。
-// だから拡大して囲っても、記録される場所は等倍のときと同じになる。
+// Annotate — 一時停止中に画面を矩形で囲み、「どこに何が描かれていたか」を書き出す debug 小物
+// （矩形注釈・保存トースト・fps 表示）の純粋な芯。マウス読み・ファイル書きは呼び側（App/effect）が担う。
+// 座標には画面座標（マウスの生値）とデザイン座標（ゲームの絵の座標）の 2 つがあり、
+// ズーム・パンは見え方にしか効かない。注釈に残す矩形は常にデザイン座標なので、拡大して囲っても記録位置は等倍と同じ。
 
 mod Annotate {
     import java.lang.Math
@@ -102,7 +95,7 @@ mod Annotate {
 
     def badgePad(): Float64 = 3.0
 
-    /// 帯全体（pad 込み）の大きさ。右寄せ・下寄せの置き場所計算に使う。
+    /// 帯全体（pad 込み）の大きさ。右寄せ・下寄せの位置計算に使う。
     def badgeSize(fontAtlas: FontAtlas, fontSize: Float64, message: String): Vec2.Vec2 =
         let size = Text.measure(Text.make(message, fontAtlas, fontSize));
         { x = size#x + badgePad() * 2.0, y = size#y + badgePad() * 2.0 }
@@ -255,7 +248,7 @@ mod Annotate {
     pub type alias Hit = {
         kind = String,           // "sprite" | "text" | "box" | "poly"
         name = String,           // テクスチャ名 / テキスト内容（box・poly は空）
-        position = Vec2.Vec2,    // 置き場所（デザイン座標）
+        position = Vec2.Vec2,    // 位置（デザイン座標）
         zIndex = Int32,          // 重なり順
         aabb = Rect2.Rect2       // この描画物を覆う矩形（デザイン座標）
     }
@@ -270,7 +263,7 @@ mod Annotate {
         })
 
     /// 描画物 1 件を覆う矩形（デザイン座標）。回転は無視した外形の近似。
-    /// 寸法の分からない Sprite は置き場所だけの点（サイズ 0）として扱う。
+    /// 寸法の分からない Sprite は位置だけの点（サイズ 0）として扱う。
     pub def itemAabb(sizeOf: String -> Option[GameEngine.TextureInfo] \ ef,
                      placed: Render.PlacedItem): Rect2.Rect2 \ ef =
         let pos = placed#at;
@@ -284,7 +277,7 @@ mod Annotate {
                     }
                 };
                 let size = { x = base#x * Float64.abs(s#scale#x), y = base#y * Float64.abs(s#scale#y) };
-                // centered な sprite は置き場所が中心なので、左上へ半分ずらす
+                // centered な sprite は位置が中心なので、左上へ半分ずらす
                 let topLeft = if (s#centered) Vec2.sub(pos, Vec2.div(size, 2.0)) else pos;
                 { position = topLeft, size = size }
             case Render.Item.Text(t) =>
@@ -294,7 +287,7 @@ mod Annotate {
             case Render.Item.Poly(p) =>
                 vertexAabb(pos, p#vertices)
             case Render.Item.Shader(s) =>
-                // シェーダー面の外形は塗る矩形そのもの（rect が置き場所とサイズを持つ）。
+                // シェーダー面の外形は塗る矩形そのもの（rect が位置とサイズを持つ）。
                 s#rect
             case Render.Item.Clipped(c) =>
                 // 窓の外は描かれないので、外形も窓と交差させる — 完全に切り取られて
@@ -302,7 +295,7 @@ mod Annotate {
                 Rect2.intersect(c#rect, itemAabb(sizeOf, { at = pos, item = c#inner }))
         }
 
-    /// 多角形の頂点列（置き場所からの相対座標）を覆う矩形。頂点が無ければ置き場所の点。
+    /// 多角形の頂点列（位置からの相対座標）を覆う矩形。頂点が無ければ位置の点。
     def vertexAabb(pos: Vec2.Vec2, vertices: List[Vec2.Vec2]): Rect2.Rect2 =
         match vertices {
             case Nil => { position = pos, size = Vec2.zero() }
@@ -455,7 +448,7 @@ mod Annotate {
         else ps |> List.map(p -> { vertices = List.map(v -> toScreen(view, v), p#vertices),
                                    clip = Option.map(r -> inspectRect(view, r), p#clip) | p })
 
-    /// タイルマップの描画命令へ見え方を適用する（置き場所は toScreen、タイル倍率は zoom 倍）。
+    /// タイルマップの描画命令へ見え方を適用する（位置は toScreen、タイル倍率は zoom 倍）。
     pub def applyInspectTiles(view: View, ts: List[GameEngine.TileMapRenderCmd]): List[GameEngine.TileMapRenderCmd] =
         if (isIdentity(view)) ts
         else ts |> List.map(t -> { position = toScreen(view, t#position),

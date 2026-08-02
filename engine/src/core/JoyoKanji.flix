@@ -1,9 +1,8 @@
 // JoyoKanji — フォントアトラスにベイクする常用漢字 + UI 記号
 //
 // LwjglLayer.bakeFontAtlas が STBTruetype のベイクに渡すコードポイント列。
-// 以前は consumer 側で `assets/fonts/joyo_kanji.txt` を持たせていたが、
-// これは「フォント」ではなく「ベイク対象の文字集合」というメタデータなので、
-// engine 側に String 定数として持たせて consumer は気にしなくて済むようにする。
+// 「フォント」ではなく「ベイク対象の文字集合」というメタデータなので、
+// engine 側に String 定数として持たせ、各ゲーム（consumer）は気にしなくて済むようにする。
 //
 // 内訳:
 //   - 常用漢字 2,140 字

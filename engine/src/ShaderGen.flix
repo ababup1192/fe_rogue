@@ -59,7 +59,7 @@ mod ShaderGen {
         "    float d = sg_hash1(ip + vec2(1.0, 1.0), seed);\n" +
         "    return mix(mix(a, b, w.x), mix(c, d, w.x), w.y);\n" +
         "}\n" +
-        // 規則的な丸い鱗: 行ごとに stagger だけずらした格子点への「最近距離」（0→1）。
+        // 行ごとに stagger だけずらした格子点への最近距離（0→1）。
         // 近傍 3x3 の格子点を見て最短を取るので、隙間なくタイル状に繋がる（孤立した円にならない）。
         "float sg_scales(vec2 uv, float scale, float stagger) {\n" +
         "    vec2 p = uv * scale;\n" +
@@ -93,7 +93,7 @@ mod ShaderGen {
         "    float band = uv.y * freq + wob + uTime * speed;\n" +
         "    return 0.5 + 0.5 * sin(band * 6.2831853);\n" +
         "}\n" +
-        // キラッと光る菱形。点滅の回 cyc ごとに「光るセル(on)」と「セル内の位置(pos)」を選び直すので
+        // 点滅の回 cyc ごとに「光るセル(on)」と「セル内の位置(pos)」を選び直すので
         // 同じ場所で繰り返さず毎回ランダムな所に出る。pow を大きくして一瞬で光り一瞬で消える鋭いパルス。
         "float sg_sparkle(vec2 uv, float scale, float rate, float density, float seed) {\n" +
         "    vec2 p = uv * scale;\n" +

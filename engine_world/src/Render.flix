@@ -1,17 +1,15 @@
 // Render — 「何をどう見せたいか」だけ書いた Item を、描画部が食べられる形に変換する。
 // スプライトもテキストも箱も円も多角形も、同じ { at = 置き場所, item = Item } の語彙で並べられる。
-// 利用例: 弾や敵を絵として並べる / HUD の数字やラベルを出す / 破片や紙吹雪を polygon で撒く。
 // 形は box / circle / polygon で作り、稀な属性（角丸・半透明・枠・縞）はパイプ修飾で重ねる。
-// 注意: 置き場所（位置）は持たず呼び側が渡す。テキストの実寸計算は engine の純粋関数を使う。
+// 注意: 置き場所は持たず呼び側が渡す。テキストの実寸計算は engine の純粋関数を使う。
 
 mod Render {
 
     // ── render component（位置を持たない・ノードでない）──
 
-    /// 傾き（rotation）の単位は「回転数」— 1 周 = 1.0・正で時計回り（画面の見た目どおり）。
-    /// 頂点を回す rotated / ui.json の poly と同じ数え方に揃えてある。ラジアンへの変換は
-    /// 描画命令を作る出口で 1 回だけ行う。
-    /// 回す軸は種類ごとに 1 つに決めてある: Box と Sprite は自分の中心、Text は置き場所。
+    /// 傾き（rotation）の単位は「回転数」— 1 周 = 1.0・正で時計回り。ラジアンへの変換は
+    /// 描画命令を作る出口で 1 回だけ行う（rotated / ui.json の poly と同じ数え方）。
+    /// 回す軸は種類ごとに 1 つ: Box と Sprite は自分の中心、Text は置き場所。
     /// 集まりを丸ごと傾けるときは turnedAll を使う（軸の違いはそこが吸収する）。
     pub enum Item {
         /// texture は handle 相当（String）。regionRect=None で全テクスチャ。UV は射影が計算。
@@ -69,7 +67,7 @@ mod Render {
         Item.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = white(),
                     rotation = 0.0, zIndex = zIndex })
 
-    /// B0b: 着色テキスト（Text.setColor を適用）。menu の disabled グレー / cursor 色 / ヘッダ accent 等に必要。
+    /// 着色テキスト。disabled のグレー表示やカーソル色、見出しの強調色などに使う。
     pub def textTinted(content: String, fontAtlas: FontAtlas, fontSize: Float64, tint: Color, zIndex: Int32): Item =
         Item.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = tint,
                     rotation = 0.0, zIndex = zIndex })
@@ -90,14 +88,11 @@ mod Render {
         { at = { x = center#x - radius, y = center#y - radius },
           item = circle(radius, color, zIndex) }
 
-    /// 中心 center に置いた「縁がふわっと消える円」の列（ソフトな光球・煙玉）。
+    /// 中心 center に置いた、縁がふわっと消える円の列（ソフトな光の玉）。
     /// look#alpha は中心の濃さ 0..1、look#blend は重ね方（光り物は Add が定番）。
-    /// 中心から縁への減衰は RadialGlow（グロー bake）と同じ smoothstep カーブ —
-    /// 焼いたハロと絵の系統が揃う。実現は同心円の重ねで、重なった見かけの濃さが
-    /// カーブに一致するよう各円の alpha を逆算する。テクスチャや描画部の拡張に
-    /// 頼らないのは、fx.json（閉形式パーティクル）が「アセット不要・どの描画部でも
-    /// 同じ絵」を守るため — バックエンドごとの実装差や PNG 資産の登録漏れという
-    /// 事故の入口を作らない。
+    /// 減衰は RadialGlow（グロー bake）と同じ smoothstep カーブに合わせてある —
+    /// 焼いたハロと絵の系統が揃う。テクスチャに頼らないのは、fx.json（閉形式
+    /// パーティクル）が「アセット不要・どの描画部でも同じ絵」を守るため。
     pub def glowAt(center: Vec2.Vec2, radius: Float64, color: Color,
                    look: { alpha = Float64, blend = DrawCmd.BlendMode },
                    zIndex: Int32): List[PlacedItem] =
@@ -278,7 +273,6 @@ mod Render {
 
     /// 飾り終えた「左上原点の item」（box / circle / text）を中心 center に置く
     /// （size はその item の見た目の大きさ。中心→左上の換算をここが済ませる）。
-    /// 「Item を作る → パイプで修飾 → atCenter で置く」が一方通行で読める並びになる。
     /// Poly は受け付けず loud に落とす — 頂点が原点中心なので `{ at = center, item = … }` が
     /// そのまま中心置きであり、ここを通すと黙って半サイズずれる事故になるため。
     /// ガードは Clipped を剥がした葉で判定する（窓に包んでもすり抜けさせない）。
@@ -399,13 +393,12 @@ mod Render {
         items |> List.map(placed -> { at = Vec2.add(d, placed#at) | placed })
 
     /// 置き場所と頂点を step px の升目に載せる（ドット絵の升目に合わせて角を落とす）。
-    /// なめらかな多角形（デュアルグリッドの丸い角など）をドット絵と同じ画面に置くと、
-    /// そこだけ画素の階段が無くて浮く。升目に載せると階段がそろい、地続きに見える。
-    /// step = 1.0 で 1 画素、2.0 なら 2 画素ぶんの粗さになる。
-    /// 静的な絵（1 度だけ焼く層）に掛けるのが基本 — 毎フレーム掛ける物ではない。
+    /// なめらかな多角形をドット絵と同じ画面に置くと、そこだけ画素の階段が無くて浮くので揃える。
+    /// step = 1.0 で 1 画素、2.0 なら 2 画素ぶんの粗さ。静的な絵（1 度だけ焼く層）向けで、
+    /// 毎フレーム掛ける物ではない。
     ///
     /// 動かすのは位置だけで、大きさ（箱の size・絵の scale）は触らない — 大きさを丸めると
-    /// 敷き詰めた面に隙間や重なりが出る。半端な大きさの物を升目に載せたいなら、
+    /// 敷き詰めた面に隙間や重なりが出るため。半端な大きさの物を升目に載せたいなら、
     /// 呼ぶ側が整数の大きさで作ること。
     pub def snapped(step: Float64, item: Item): Item =
         if (not Float64.isFinite(step) or step <= 0.0) item
@@ -510,13 +503,11 @@ mod Render {
             case other          => other
         }, item)
 
-    /// 置き場所つきの列を、pivot（画面座標）のまわりに丸ごと t 傾ける。
-    /// カード 1 枚のように「箱と文字と多角形の集まり」で 1 つの物を作っているとき、
-    /// これを通せば全体が 1 枚の板のように傾く（各部品を自分の軸で回しつつ、
-    /// 部品の置き場所も pivot のまわりを回る）。
-    /// 注意: 窓（clipped）の枠は傾かない — 窓は常に画面に平行な矩形のまま中身だけが回る。
-    /// centered=false のスプライトは中心の位置がテクスチャの大きさ次第でここでは分からないため、
-    /// 左上を軸に回る（既定の sprite は centered=true なのでこのズレは出ない）。
+    /// 置き場所つきの列を、pivot（画面座標）のまわりに丸ごと t 傾ける。カード 1 枚のように
+    /// 複数部品で 1 つの物を作っているとき、これを通せば全体が 1 枚の板のように傾く
+    /// （各部品を自分の軸で回しつつ、置き場所も pivot のまわりを回る）。
+    /// 注意: 窓（clipped）の枠は傾かない — 中身だけが回る。centered=false のスプライトは
+    /// 中心位置がここでは分からないため左上を軸に回る（既定の centered=true ならズレない）。
     pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[PlacedItem] =
         items |> List.map(placed -> {
             let anchor = anchorOf(placed);
@@ -575,12 +566,12 @@ mod Render {
         }, item)
 
     /// 大きさ系の属性を factor 倍する（全種類の item に効く）。camera の zoom 適用の芯:
-    /// Box は size と style の太さ（角丸・枠・縞・市松）、Sprite は scale、Text は fontSize、
-    /// Poly は頂点を、それぞれ一様に伸縮する。置き場所（at）は持たないので呼び側が伸縮する。
-    /// 注意: これ単体では「置き場所はそのまま・中身だけ伸びる」= Box は左上を軸に右下へ育つ。
-    /// circleAt / boxAt が済ませた中心→左上の換算も崩れる（中心がずれて見える）。
-    /// 物を大きく見せたいときはこれではなく、boxAt のサイズや sprite の scale を変えること。
-    /// これが正しく見えるのは、at にも同じ倍率の変換を掛ける camera 経路（CameraRig.centerOn）だけ。
+    /// Box は size と style の太さ、Sprite は scale、Text は fontSize、Poly は頂点を、
+    /// それぞれ一様に伸縮する。置き場所（at）は持たないので呼び側が伸縮する。
+    /// 注意: これ単体では置き場所はそのままで中身だけ伸びる = Box は左上を軸に右下へ育ち、
+    /// circleAt / boxAt が済ませた中心→左上の換算も崩れる。単に物を大きく見せたいときは
+    /// これではなく boxAt のサイズや sprite の scale を変えること。正しく見えるのは、at にも
+    /// 同じ倍率を掛ける camera 経路（CameraRig.centerOn）だけ。
     pub def scaled(factor: Float64, item: Item): Item =
         onLeaf(leaf -> match leaf {
             case Item.Sprite(s) => Item.Sprite({ scale = { x = s#scale#x * factor, y = s#scale#y * factor } | s })
@@ -662,12 +653,11 @@ mod Render {
             let (leaf, _clip) = unwrapClip(placed#item, None);
             match leaf {
                 case Item.Shader(s) =>
-                    // 位置は placed#at（カメラの平行移動＋ズームを済ませた点）から、大きさは
-                    // scaled 済みの rect#size から取る。こうすると HUD/画面固定（カメラ無し=
-                    // at は rect#position のまま）は不変で、withCamera 下だけワールドの矩形が
-                    // 追従する（他の item 種と同じ「at が置き場所」の約束にそろえる）。
-                    // mask も同じ理屈: rect 左上相対 + at で画面座標の多角形に直す（rect と同じ
-                    // カメラ変換に乗るので形がずれない）。scaled が頂点を既にズーム済み。
+                    // 位置は placed#at（カメラの平行移動＋ズームを済ませた点）、大きさは
+                    // scaled 済みの rect#size から取る — HUD/画面固定（カメラ無しなら at は
+                    // rect#position のまま）は不変で、withCamera 下だけワールドの矩形が追従する。
+                    // mask も同じ理屈で rect 左上相対 + at にして画面座標にする（rect と同じ
+                    // カメラ変換に乗るので形がずれない）。
                     Some({ program = programOf(s#spec),
                            rect = { position = placed#at, size = s#rect#size },
                            mask = s#mask |> List.map(poly ->
@@ -845,8 +835,8 @@ mod Render {
     def textDrawables(content: String, fontAtlas: FontAtlas, fontSize: Float64,
                       tint: Color, rotation: Float64, zIndex: Int32,
                       pos: Vec2.Vec2): List[GameEngine.Drawable] =
-        // engine の public 純粋射影に委譲。B0b: Drawable の color を tint で上書き＝文字色
-        // （SDF 描画では color が color＝文字色。ItemList の per-item 色相当）。
+        // engine の public 純粋射影に委譲。Drawable の color を tint で上書きして文字色にする
+        // （SDF 描画では color がそのまま文字色になる）。
         let ds = Text.toDrawables(Text.make(content, fontAtlas, fontSize), pos)
             |> List.map(d -> {color = tint, zIndex = zIndex | d});
         if (rotation == 0.0) ds

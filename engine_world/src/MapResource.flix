@@ -1,25 +1,6 @@
-// MapResource — タイルマップを表す Resource 群。マップ実体 `Level` と素材 `Material` を分けて持つ。
-// Level は `materialId` で Material を参照するので、同じマップの見た目だけを別 Material に差し替えて
-// 複数テーマで再生できる。
-// 利用例: ダンジョンの1フロアを読む / 同じ間取りを別タイルセットで見せる / 扉などのエンティティを置く。
-//
-// JSON 形状の概略:
-//   Level     : {"tileSize":16, "width":10, "height":10, "materialId":"inca_stone",
-//                "decorTiles":[{"x":..,"y":..,"srcX":..,"srcY":..}, ...],
-//                "manualTiles":[{"x":..,"y":..,"srcX":..,"srcY":..}, ...],
-//                "entities":[{"identifier":"Door","x":5,"y":3,"fields":{...}}]}
-//   Material  : {"tileset":"inca_walls", "tileSize":16,
-//                "wallMap":{"0000":[3,5], "0001":[4,5], ...16件},
-//                "floorPalette":[[0,0],[1,0]], "decorPalette":[[5,5]]}
-//   FieldValue: {"string":"goblin"} / {"int":3} / {"bool":true}
-//
-// 自動壁 (AutoLayerWalls) は decorTiles のセル (=床) から動的に決まる:
-//   床の無いセルで 8 近傍に床があるセル = 壁 (描画 + 衝突)。
-// `wallMap` のキーは "TRBL" 形式 ("0000" 〜 "1111" の 16 通り)。マップ縁は壁として扱う (LDTKRules と同じ)。
-// Walls 層と Floor 層は別 tileset を使う構成なので、層を分けて保持する。
-//
-// 注意: Flix は type alias に instance を定義できないため、Level / Material は単一 case の enum で
-//   ラップする。データへのアクセスは `levelData` / `materialData` で record を取り出す。
+// MapResource — タイルマップの Resource 群。マップ実体 `Level` と素材 `Material` を分けて持ち、
+// 同じ間取りを別 Material に差し替えて複数テーマで再生できる (`Level` は `materialId` で参照)。
+// 自動壁は decorTiles (床) のセルから動的に決まる: 床が無く 8 近傍に床があるセルを壁として扱う。
 mod MapResource {
 
     /// Level の中身。フィールドの集合はここに集約し、enum 経由で持ち回す。
@@ -144,7 +125,7 @@ mod MapResource {
     pub def materialData(m: Material): MaterialData =
         let Material.Material(d) = m; d
 
-    /// "TRBL" 4-bit 文字列キーの完全集合 (旧仕様、フォールバック用)。
+    /// "TRBL" 4-bit 文字列キーの完全集合 (フォールバック用)。
     pub def wallMapKeys(): List[String] =
         "0000" :: "0001" :: "0010" :: "0011" ::
         "0100" :: "0101" :: "0110" :: "0111" ::
@@ -502,10 +483,10 @@ mod MapResourceCodec {
     def anythingMagic(): Int32 = 1000001i32
     def nothingMagic(): Int32 = -1000001i32
 
-    /// AutoRule JSON のバージョン。
-    /// 旧: 値域 {-1, 0, 1, 2} で -1=装飾中央 / 0=任意 / 1=床 / 2=壁(=!=1)
-    /// 新 (v=2): 上記マッピング + 5 値 ADT (Unspecified/Anything/Nothing/Value/NotValue)
-    /// 既存 JSON は v フィールドが無いので legacy として扱い、`2` を NotValue(1) に変換する。
+    /// AutoRule JSON のバージョン。v フィールドが無い、または v<2 の JSON は pattern の値域が
+    /// {-1, 0, 1, 2} (-1=装飾中央, 0=任意, 1=床, 2=壁) なので、decode 時に `2` を NotValue(1)、
+    /// `-1` を Unspecified に読み替える。v>=2 は 5 値 ADT (Unspecified/Anything/Nothing/Value/
+    /// NotValue) をそのままマッピングした値。
     def currentAutoRuleVersion(): Int32 = 2i32
 
     def encodePatternCell(c: PatternCell): Int32 = match c {
@@ -516,9 +497,8 @@ mod MapResourceCodec {
         case PatternCell.NotValue(n) => -n
     }
 
-    /// `v` = ファイル中の AutoRule バージョン (None なら legacy)。
-    /// legacy mode (None / 1) では旧 `2` を NotValue(1) に変換し、`-1` も Unspecified にする。
-    /// new mode (>=2) では magic number ベースの素直なマッピング。
+    /// `version` が None または 2 未満の JSON では `2` を NotValue(1)、`-1` を Unspecified に
+    /// 読み替える。2 以上では magic number ベースの素直なマッピングになる。
     def decodePatternCell(version: Option[Int32], n: Int32): PatternCell =
         let isLegacy = match version {
             case None    => true
@@ -544,7 +524,7 @@ mod MapResourceCodec {
         })
 
     /// AutoRule の正規 size。すべてのルールはこれに揃える。
-    /// legacy データで size=3 のものは decode 時に 5×5 に padding migration する。
+    /// size=3 の JSON は decode 時に 5×5 へ padding して読み込む。
     def canonicalAutoRuleSize(): Int32 = 5i32
 
     // 旧フォーマットに含まれていた "chance" キーは無視する (存在しても decode は成功)。
@@ -600,7 +580,7 @@ mod MapResourceCodec {
     }
 
     /// pattern 配列を decode する。中央セルも周辺セルと同じく値（マッチ条件）を保持する。
-    /// legacy `-1` (装飾中央) は decodePatternCell 側で Unspecified に変換されるので互換は維持される。
+    /// `-1` (v<2 での装飾中央) は decodePatternCell 側で Unspecified に読み替わる。
     def decodePatternVector(version: Option[Int32], _size: Int32,
                               element: Json): Option[Vector[PatternCell]] = match element {
         case JArray(items) =>

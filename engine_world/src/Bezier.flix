@@ -1,5 +1,5 @@
 // Bezier — ベジエ曲線の平坦化と、曲線から作る描画部品（太さ付きの帯・塗りつぶし）。
-// 角丸ボックスだけでは描けない「先細りの首」「しっぽのカーブ」「有機的なブロブ」を
+// 角丸ボックスだけでは描けない、線の太さを端に向けて変えた形や曲線に沿った輪郭を
 // 多角形として組み立てられる（塗りは描画側が耳切りで三角形化するので、凹んだ輪郭もよい）。
 // 利用例: spine = quadratic(付け根, 制御点, 先端, 12);
 //         stroke({ spine = spine, color = 緑, z = 2 }, t -> 5.0 - 3.0 * t)
@@ -56,7 +56,7 @@ mod Bezier {
             List.append(quads, joints)
         }
 
-    /// 互換のため残した fill の旧名。新規コードは fill を使う。
+    /// fill の別名（旧呼び出し向け）。新規コードは fill を使う。
     pub def convexFill(outline: List[Vec2.Vec2], color: Color, z: Int32): List[Render.PlacedItem] =
         fill(outline, color, z)
 

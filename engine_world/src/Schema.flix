@@ -1,11 +1,7 @@
 // Schema — リソース(ゲームデータ JSON)の形を宣言する公式スキーマ方言。
-// 1 リソース = 1 スキーマ(例: level.json の隣に level.schema.json)。
-// データの形(type / required / default)はゲームも検証に使う。見せ方(widget)はエディタ専用で、
-// エンジンは中身を開けない封筒としてそのまま運ぶ — 見せ方の部品はエディタ側だけで増やせる。
-// World への持たせ方の規約: World には catalog の id を持たせ、能力値は参照時に引く
-// (値のコピーを埋めない)と、再読込がスポーン済みの相手にも自然に効く。
-// 未知の type タグ・kind は黙って通さず Err にする — 綴りミスが「フォームに出ない」
-// 沈黙事故になるのを防ぐため。エンジンが解釈しない型は custom だけが明示的な逃げ道。
+// データの形(type / required / default)はゲームも検証に使うが、見せ方(widget)はエディタ専用でエンジンは中身を開けない封筒として運ぶ。
+// World には catalog の id を持たせ能力値は参照時に引く(値のコピーを埋めない) — 再読込がスポーン済みの相手にも自然に効く。
+// 未知の type タグ・kind は黙って通さず Err にする(綴りミスが「フォームに出ない」沈黙事故になるのを防ぐ)。custom だけが明示的な逃げ道。
 mod Schema {
     use Util.Json.Json
     use Util.Json.Json.{JObject, JString, JNumber, JBool, JArray}
