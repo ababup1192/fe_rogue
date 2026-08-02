@@ -110,13 +110,17 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
    無いと Studio が仮色で塗り、編集画面と実機で配色が食い違う。派生色をコードで導いているなら、
    色票 JSON を生成する `make` ターゲットを作り、`paletteFile` でそれを指す（`kaidan` の
    `Palette` モジュール + `palette` ターゲット + テストが手本。テストで生成物と実機の色を pin する）。
-4. **画風を宣言する**。`AGENTS.local.md` に「## この画面の画風」を書き（3 色・やらないこと 1 つ）、
+4. **Doc の外形規約を守る**（docs/doc-conventions.md）。全 Doc ファイルに `version` を入れる
+   （無いと Studio の健康診断が「version がありません」を出す）。`*.schema.json` は Studio の
+   **sections 方言**で書く（語彙リファレンス形式で書くと Studio のフォームが
+   「Expecting an OBJECT with a field named `sections`」で読めない。語彙の解説は docs/ 側に置く）。
+5. **画風を宣言する**。`AGENTS.local.md` に「## この画面の画風」を書き（3 色・やらないこと 1 つ）、
    `src/View.flix` の頭に層の並びと、各層が「絵の下限」の 4 性質のどれを受け持つかを書く。
    **テンプレどうしで画風をそろえない** — 揃えると「この画風が正解」という手本になってしまう
    （夜のネオン・紙の刷り物・霧の夕暮れ・雨の夜、と別々にしてあるのはそのため）。
-5. Studio に登録する: `flix_ge_studio` の `server/src/Genesis.flix` の families で、該当ジャンルの
+6. Studio に登録する: `flix_ge_studio` の `server/src/Genesis.flix` の families で、該当ジャンルの
    `starter = "templates/<genre>-starter"` にする（starter が空だとゼロ生成フローのまま）。
-6. Studio に反映する: `flix_ge_studio` で **`make swap-jar`**（動いている `.app` の同梱 jar を
+7. Studio に反映する: `flix_ge_studio` で **`make swap-jar`**（動いている `.app` の同梱 jar を
    差し替え + 再署名）→ Studio を Cmd+Q して開き直し。**`make jar` だけでは動いている .app に効かない**。
 
 `make new-game GAME=/abs NAME=x TITLE=題名 TEMPLATE=<genre>-starter`。TITLE は自由文でよい

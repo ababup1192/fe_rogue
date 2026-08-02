@@ -17,6 +17,7 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
 
 ```json
 {
+  "version": 1,
   "note": "この面は何で、どこをいじると何が変わるか（調整ノブの一覧）",
   "name": "水面",
   "cycleRate": 0.25,
@@ -29,6 +30,11 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
 - `shared` … 同じ場を 2 度書かないための束ね。`{"kind":"use","name":"…"}` で引く。
   **前方参照のみ**（自分より前に定義した名前だけ）。循環・未定義は読み込みエラー
 - 知らないキーは読み飛ばされる。`note` は必ず書く（調整ノブの説明を人に残す）
+- `version` は必ず書く（Doc 共通の外形規約。無いと Studio の健康診断が警告を出す —
+  docs/doc-conventions.md）
+- Studio でフォーム編集させるなら `shader.schema.json` は **sections 方言**で書く
+  （doc-conventions.md「スキーマの書き方」。ここの語彙表をそのまま schema に
+  書いても Studio は読めない — 語彙の参照先はこのファイルでよい）
 
 ## 場（Field）— 0〜1 の値を画素ごとに作る
 

@@ -1,4 +1,5 @@
 {
+  "version": 1,
   "note": "盤の下に敷く紙。画素ごとの計算で塗る面で、単色の四角の代わり。細かい粒（fbmTile）を紙の繊維に見立て、ごくゆっくり流している（止まった画面にしないため）。調整ノブ: 色=gradient.stops の 3 色 / 繊維の細かさ=fbmTile.scale（大きいほど細かい）/ 繊維の濃さ=math2.mul の const 0.30 / 流れの速さ=scaled.scroll。fbmTile.period は整数のままにする（流しても継ぎ目が出ない）。make debug 中に保存すると即反映（App.watchFile）。書式は engine の docs/shader-doc.md。",
   "name": "paper",
   "cycleRate": 0.0,
