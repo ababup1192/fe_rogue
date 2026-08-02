@@ -1,15 +1,18 @@
 // RenderFrame — 1 フレームぶんの絵（スプライト・タイル・多角形）を、重なり順に並べて一気に描く。
 // 描く順番（zIndex）や画面の縦横比合わせ（黒帯）をこの一箇所に任せられるので、上位は絵の材料を渡すだけでよい。
 // 利用例: 毎フレーム、集めた描画物を画面に出す / 手前・奥の重なりを正しく見せる。
-// 注意: 同じ zIndex 内は渡された入力順を保つ（安定ソート）。タイルはスプライトより先に描く。
+// 注意: 同じ zIndex 内は渡された入力順を保つ（安定ソート）。タイル層も動的な描画物と
+// 同じ z 空間で並ぶ（同 z なら列に先に積むタイル層が奥 — 手前に出すには大きい zIndex を与える）。
 
 mod RenderFrame {
     import org.lwjgl.opengl.GL11
 
-    /// z 安定ソート列に混ぜる 3 種の描画物。MSprite=スプライト/箱、MPoly=動的多角形、
-    /// MStatic=永続 VBO のレンジ（頂点は運ばず範囲だけ）。種類が切り替わる瞬間に
+    /// z 安定ソート列に混ぜる 5 種の描画物。MTile=タイルマップ 1 層（1 draw call）、
+    /// MSprite=スプライト/箱、MPoly=動的多角形、MStatic=永続 VBO のレンジ（頂点は運ばず
+    /// 範囲だけ）、MSurface=宣言シェーダー面。種類が切り替わる瞬間に
     /// 溜めた run を吐くことで、列順（＝重なり順）を厳密に守る。
     enum Merged {
+        case MTile(RenderType.TileMapRenderCmd)
         case MSprite(RenderType.Drawable)
         case MPoly(RenderType.PolygonCmd)
         case MStatic(RenderStatic.Range)
@@ -36,14 +39,14 @@ mod RenderFrame {
             (0, vpY, vpW, vpH)
         }
 
-    /// zIndex 昇順・同 z 内は入力順のまま、に並べ替える。
+    /// 鍵の昇順・同鍵内は入力順のまま、に並べ替える（鍵は Order を持つ任意の型）。
     /// 比較ソートにしないのは、1 比較ごとにキー関数の呼び出しと多相比較が走り、
     /// 物量シーン（数千件）でフレーム時間の大半を占めるため（スレッドダンプ実測）。
-    /// z ごとのバケツへ 1 パスで振り分けてキー昇順に繋ぎ直せば、比較は z の
-    /// 種類数ぶんの Map 操作だけで済み、同 z 内の順序も構造的に崩れない。
+    /// 鍵ごとのバケツへ 1 パスで振り分けてキー昇順に繋ぎ直せば、比較は鍵の
+    /// 種類数ぶんの Map 操作だけで済み、同鍵内の順序も構造的に崩れない。
     /// 同 z の入れ替わりは実害がある（bg Rect と同 z のテキスト最後の文字が
     /// 上書き消失した事故が過去にある）ため、安定性はこの関数の必須条件。
-    def stableByZ(zOf: a -> Int32, items: List[a]): List[a] =
+    def stableByZ(zOf: a -> k, items: List[a]): List[a] with Order[k] =
         // バケツは先頭挿入で溜める（= 逆順）。foldRight が z の大きい側から
         // 前置し直すので、全体は z 昇順・バケツ内は入力順に戻る。
         let buckets = List.foldLeft((m, x) -> {
@@ -135,7 +138,8 @@ mod RenderFrame {
             RenderSprite.drawPolygonBatch(shader, vao, vbo, uniforms, blend, data, vertCount)
         }
 
-    /// 1 フレーム描画: tileMaps を先に zIndex 順で描き、続いて sprites を zIndex 順で描く。
+    /// 1 フレーム描画: タイル層・sprites・polygons・静的レンジ・シェーダー面を
+    /// 1 本の安定ソート列に混ぜ、共有の zIndex どおりの重なり順で描く。
     /// 黒帯部分は scissor で clear する。
     pub def renderFrameMixed(args: FrameArgs): Unit \ IO =
         let tileShader   = args#tileShader;
@@ -171,38 +175,34 @@ mod RenderFrame {
             GL11.glClearColor(clearColor#r, clearColor#g, clearColor#b, 1.0f32);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
             GL11.glDisable(GL11.GL_SCISSOR_TEST);
-            // tileMaps: zIndex 昇順で 1 draw call ずつ描画。並べ替えは stableByZ（下記）。
-            let sortedTiles = stableByZ(tm -> tm#zIndex, tileMaps);
-            List.forEach(tm -> match Map.get(tm#textureName, registry) {
-                case Some(texInfo) =>
-                    RenderSprite.drawTileMapInstanced(tileShader, GpuHandle.textureIdInt(texInfo#id), GpuHandle.tileVaoInt(tm#tileVaoId),
-                                         tileUniforms,
-                                         tm#position, tm#tileSize, tm#tileScale,
-                                         tm#color, tm#tileCount)
-                case None => ()
-            }, sortedTiles);
-            // sprites・polygons・静的レンジを 1 本の zIndex 安定ソート列にマージして描く。
-            // sprite だけ z 順にし polygon を最後へまとめて描くと、ワールド配置のポリゴン
-            // （武器グリフ等）が手前のポップアップを貫通してしまう。3 者を同じ z 空間で
-            // 並べることで、重なり順が zIndex の指定どおりになる。静的レンジは「頂点は既に
-            // GPU にある永続 VBO の範囲」を軽い値で表す第 3 の run 種で、同 z 内の動的アイテム
-            // との前後も入力順で保たれる（洞窟の壁 z=2 が粒 z=2 を正しく隠す等）。
-            // 同一 zIndex 内は入力順（sprites → polygons → static）を保つ（stableByZ が構造的に保証）。
-            // 宣言シェーダー面も同じ z 空間に第 4 の run 種として混ぜる。zIndex の位置で
-            // 両 run を吐いてから面を 1 枚描くので、水を床(z=0)の上・壁(z=2)の下に置ける
-            // （clear 直後の一括描画だと zIndex を無視して最下になり、不透明な背景に覆われて消える）。
+            // タイル層・sprites・polygons・静的レンジ・シェーダー面を 1 本の安定ソート列に
+            // マージして描く。sprite だけ z 順にし polygon を最後へまとめて描くと、ワールド
+            // 配置のポリゴン（武器グリフ等）が手前のポップアップを貫通してしまう。全種を
+            // 同じ列で並べることで、重なり順が並べ替え鍵の指定どおりになる。静的レンジは
+            // 「頂点は既に GPU にある永続 VBO の範囲」を軽い値で表す run 種で、同鍵の
+            // 動的アイテムとの前後も入力順で保たれる（洞窟の壁 z=2 が粒 z=2 を正しく隠す等）。
+            // 同一鍵内は入力順（tiles → sprites → polygons → static → surfaces）を保つ
+            // （stableByZ が構造的に保証）。シェーダー面は zIndex の位置で両 run を吐いてから
+            // 1 枚描くので、水を床(z=0)の上・壁(z=2)の下に置ける（clear 直後の一括描画だと
+            // zIndex を無視して最下になり、不透明な背景に覆われて消える）。
             let merged: List[Merged] =
                 List.append(
+                    tileMaps |> List.map(tm -> Merged.MTile(tm)),
                     List.append(
                         List.append(
-                            sprites  |> List.map(d  -> Merged.MSprite(d)),
-                            polygons |> List.map(pc -> Merged.MPoly(pc))),
-                        staticRanges |> List.map(r -> Merged.MStatic(r))),
-                    surfaces |> List.map(s -> Merged.MSurface(s)));
+                            List.append(
+                                sprites  |> List.map(d  -> Merged.MSprite(d)),
+                                polygons |> List.map(pc -> Merged.MPoly(pc))),
+                            staticRanges |> List.map(r -> Merged.MStatic(r))),
+                        surfaces |> List.map(s -> Merged.MSurface(s))));
+            // 並べ替え鍵 = zIndex（全 run 種で共有の 1 つの z 空間）。同 z 内は入力順 =
+            // tiles → sprites → polygons → static → surfaces なので、「同 z ならタイル層が奥」
+            // が安定ソートの規約としてそのまま立つ（タイル層を手前に出すには大きい zIndex）。
             let zOf = item -> match item {
-                case Merged.MSprite(d) => d#zIndex
-                case Merged.MPoly(pc)  => pc#zIndex
-                case Merged.MStatic(r) => r#zIndex
+                case Merged.MTile(tm)   => tm#zIndex
+                case Merged.MSprite(d)  => d#zIndex
+                case Merged.MPoly(pc)   => pc#zIndex
+                case Merged.MStatic(r)  => r#zIndex
                 case Merged.MSurface(s) => s#zIndex
             };
             let sortedMerged = stableByZ(zOf, merged);
@@ -368,6 +368,25 @@ mod RenderFrame {
             let (lastRun, lastPolyRun) = List.foldLeft((acc, item) -> {
                 let (sRun, pRun) = acc;
                 match item {
+                    case Merged.MTile(tm) =>
+                        // タイル層が来たら両 run を吐いてから 1 draw call で描く（列順を守る）。
+                        // 層は画面全体に敷くので scissor は viewport 全体へ戻し、blend は
+                        // TileMapRenderCmd が blend を持たない（常に Normal）ため明示的に戻す
+                        // （前 run の Add/Multiply を持ち越さない）。
+                        flush(sRun);
+                        flushPoly(pRun);
+                        setScissor(None);
+                        RenderSprite.applyBlend(DrawCmd.BlendMode.Normal);
+                        match Map.get(tm#textureName, registry) {
+                            case Some(texInfo) =>
+                                RenderSprite.drawTileMapInstanced(tileShader, GpuHandle.textureIdInt(texInfo#id), GpuHandle.tileVaoInt(tm#tileVaoId),
+                                                     tileUniforms,
+                                                     tm#position, tm#tileSize, tm#tileScale,
+                                                     tm#color, tm#tileCount)
+                            // texture 未登録は従来どおり描かない（穴も開けない）。
+                            case None => ()
+                        };
+                        (emptyRun, emptyPolyRun)
                     case Merged.MSprite(drawable) =>
                         // スプライトが来たら溜まっている多角形 run を先に吐く（列順を守る）。
                         flushPoly(pRun);

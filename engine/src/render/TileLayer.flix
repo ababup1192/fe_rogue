@@ -142,5 +142,34 @@ mod TileLayer {
                               tileMap: TileLayer): TileLayer =
         let TileLayer.TileLayer(r) = tileMap;
         TileLayer.TileLayer({ tileVaoId = tileVaoId, tileCount = tileCount | r })
+
+    /// TileData のリストを GPU インスタンス (TileInstance) のリストに変換する。
+    /// UV は texture サイズと flipH/flipV から計算する。
+    pub def buildInstances(tiles: List[TileData],
+                            tileSet: Tileset,
+                            tileSize: Float64): List[GameEngine.TileInstance] =
+        let texWidth  = tileSet#atlasSource#texWidth;
+        let texHeight = tileSet#atlasSource#texHeight;
+        // UV は各 texel の中心 (src + 0.5 .. src + tileSize - 0.5) を結ぶように
+        // half-texel inset する。アトラスがタイル間 padding なしで密パックされているため、
+        // 境界そのまま (src .. src + tileSize) を UV にすると、シェーダ内補間の浮動小数
+        // 誤差で隣接タイルの最初の 1 texel を拾い、タイル境界に細い線として現れる。
+        let inset = 0.5;
+        List.map(tile -> {
+            let uvoX = if (tile#flipH) (tile#srcX + tileSize - inset) / texWidth
+                       else            (tile#srcX + inset) / texWidth;
+            let uvoY = if (tile#flipV) (tile#srcY + tileSize - inset) / texHeight
+                       else            (tile#srcY + inset) / texHeight;
+            let uvsX = if (tile#flipH) -((tileSize - 2.0 * inset) / texWidth)
+                       else            (tileSize - 2.0 * inset) / texWidth;
+            let uvsY = if (tile#flipV) -((tileSize - 2.0 * inset) / texHeight)
+                       else            (tileSize - 2.0 * inset) / texHeight;
+            ({
+                px    = tile#px,
+                uvOff = ({x = uvoX, y = uvoY}: Vec2.Vec2),
+                uvSc  = ({x = uvsX, y = uvsY}: Vec2.Vec2),
+                alpha = tile#alpha
+            }: GameEngine.TileInstance)
+        }, tiles)
 }
 

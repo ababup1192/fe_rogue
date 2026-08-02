@@ -486,4 +486,49 @@ mod TestApp {
             App.changedPaths("b.json" :: "a.json" :: Nil,
                 Map#{"a.json" => 100i64, "b.json" => 200i64},
                 Map#{"a.json" => 101i64, "b.json" => 201i64}))
+
+    // ========================================================================
+    // TileCache: 世代と焼き直しの判定
+    // ========================================================================
+
+    def testVao(): GpuHandle.TileVao = GpuHandle.wrapTileVao(7)
+
+    // 置いた key は同じ世代のうちは引ける（インスタンス数がそのまま返る）。
+    @Test
+    def testTileCacheHitSameGen(): Unit \ Assert =
+        let cache = App.tileCacheStore("map-1", testVao(), 42, App.freshTileCache());
+        Assert.assertEq(expected = Some(42),
+            App.tileCacheHit("map-1", cache) |> Option.map(snd))
+
+    // 読み直しが起きた（世代が進んだ）後は、同じ key でも引けない = 焼き直しになる。
+    @Test
+    def testTileCacheMissAfterBump(): Unit \ Assert =
+        let cache = App.tileCacheStore("map-1", testVao(), 42, App.freshTileCache());
+        Assert.assertEq(expected = None,
+            App.tileCacheHit("map-1", App.bumpTileGen(true, cache)) |> Option.map(snd))
+
+    // 読み直しの無いフレームでは世代は動かず、焼き置きは生きたまま。
+    @Test
+    def testTileCacheBumpFalseKeepsHit(): Unit \ Assert =
+        let cache = App.tileCacheStore("map-1", testVao(), 42, App.freshTileCache());
+        Assert.assertEq(expected = Some(42),
+            App.tileCacheHit("map-1", App.bumpTileGen(false, cache)) |> Option.map(snd))
+
+    // 焼き直しは素の key への上書き — 世代を重ねても台帳は 1 key = 1 件のままで、
+    // 新しい世代の焼き置きが引ける。
+    @Test
+    def testTileCacheStoreOverwritesPlainKey(): Unit \ Assert =
+        let c0 = App.tileCacheStore("map-1", testVao(), 42, App.freshTileCache());
+        let c1 = App.tileCacheStore("map-1", testVao(), 43, App.bumpTileGen(true, c0));
+        Assert.assertEq(expected = (1, Some(43)),
+            (Map.size(c1#entries), App.tileCacheHit("map-1", c1) |> Option.map(snd)))
+
+    // 別の key は独立に焼き置きされ、世代が同じ間はどちらも引ける。
+    @Test
+    def testTileCacheTwoKeysIndependent(): Unit \ Assert =
+        let cache = App.tileCacheStore("floor", testVao(), 10,
+                    App.tileCacheStore("walls", testVao(), 20, App.freshTileCache()));
+        Assert.assertEq(expected = (Some(10), Some(20)),
+            (App.tileCacheHit("floor", cache) |> Option.map(snd),
+             App.tileCacheHit("walls", cache) |> Option.map(snd)))
 }

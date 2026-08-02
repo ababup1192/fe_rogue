@@ -57,6 +57,7 @@
 | タイルのマス目と移動範囲 | Grid / GridSearch |
 | 敵を追わせる・逃がす・ふらつかせる(距離場の 1 歩) | Steering |
 | タイルセット PNG(LDtk 互換)でマップを貼る | MapResource |
+| チップ絵タイルを 1 draw call で敷く(焼き置き・屋根や庇は zIndex で手前にも) | App.withTileLayers / TileScene |
 | チップ絵なしでマップ地形(壁・水)を多角形で描く | DualGrid / Material |
 | rows の文字格子から地形の見た目を作る(*.terrain.json) | Terrain / TerrainDoc |
 | 重なり判定・物理 | Collision / Physics2D |
@@ -192,6 +193,7 @@
 - **Steering** — 距離場（GridSearch）の 1 歩 chase / flee / wander。「入れるか」は canEnter で注入。敵 AI とイベントシーンが同じ 1 歩を使う。乱数を持たず同着は固定順 — 焼けば毎回同じ。
 - **Dir4** — 上下左右の 4 方向を 1 つの値としてまとめて表す。
 - **MapResource** — タイルセット PNG(LDtk 互換)でマップを貼る。チップ絵なしの並立経路は DualGrid / Material(§3.3 の棲み分け)。
+- **TileScene** — App.withTileLayers のタイル層宣言(TileLayerSpec)を CPU 投影で普通の絵に畳む。headless bake・F8 停止画面・golden が GPU 焼き置きと同じ絵になるための橋。
 - **DualGrid** — セル4角の埋まり方から 16 ケースの地形多角形(丸/四角/ひし形/揺らぎ)を作る純幾何。概念: docs/dual-grid.md。
 - **Material** — DualGrid のタイルに質感(塗り・フチ帯・持ち上げ・表面の粒)を着せる。チップ絵は使わない。MapResource が「タイルセット PNG を貼る」のに対し、こちらは「色と質感パラメータで手続き生成する」並立の経路。
 - **Terrain** — 「どのセル文字に、どの質感を着せるか」の表と rows アダプタ。rows の文字格子を塗るだけで DualGrid の角の変化形が自動生成される。fromRows は Doc+rows だけで完結する教科書 API(実装例: rpg-starter)。
