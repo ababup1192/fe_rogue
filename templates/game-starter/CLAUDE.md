@@ -39,3 +39,10 @@
   （t を固定し、乱数や実時間に依存しない world）を `gallery/` に焼く。
 - 焼いた PNG を `golden/` にコピーして基準にし、make のターゲットでバイト比較する。
 - 調整中の画は `debug/` 行きの別 entrypoint（例: `Bake.prologue`）に分け、golden を汚さない。
+
+## Flix の予約語トラップ
+
+`handler` / `do` / `resume` / `run` / `spawn` / `region` / `inject` / `project` / `solve` は
+変数・関数だけでなく**レコードのフィールド名**にも使えない。ゲームで踏みやすいのは
+`spawn`（湧き位置 → `start`）と `run`（走り → `walkR` 等）。エラーは
+「Expected ',' before '='」のような間接的なパースエラーで出るので、まずこれを疑う。

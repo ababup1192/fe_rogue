@@ -6,6 +6,8 @@
 ## 設計・実装
 
 engine_world の「やりたいこと → モジュール」逆引きと全モジュール一覧は [docs/module-index.md](docs/module-index.md) を参照。
+engine/ 側（描画・音・入力などの土台）のモジュール索引は [docs/engine-module-index.md](docs/engine-module-index.md) を参照。
+音の付け方（効果音づくり・鳴らす配線・音の下限チェックリスト）は [docs/audio.md](docs/audio.md) を参照。
 
 複雑で大規模な変更の場合は、いきなり実装をせず、レビュー役を立てて、壁打ちして80~90点以上を目指してください。
 実装はするだけで満足せず、レビュー役に仕様漏れ・リファクタリング余地がな無いかを確認してもらいましょう。
@@ -18,6 +20,8 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 コードコメントには WhyNot
 
 特にコードコメントは、WhyNotを重視し、How, Whatを書かないように。また、実装の由来や旧実装などの歴史背景は、記述しなくて良い。
+
+命名の注意: Flix の予約語（`handler` / `do` / `resume` / `run` / `spawn` / `region` / `inject` / `project` / `solve`）は変数・関数・**レコードのフィールド名**に使えない。ゲームで踏みやすいのは `spawn`（湧き位置 → `start`）と `run`（走り → `walkR` 等）。エラーは「Expected ',' before '='」のような間接的なパースエラーで出る（詳細は `flix-docs` スキル）。
 
 ## 検証・リリースの流儀
 
@@ -118,6 +122,9 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
    `src/View.flix` の頭に層の並びと、各層が「絵の下限」の 4 性質のどれを受け持つかを書く。
    **テンプレどうしで画風をそろえない** — 揃えると「この画風が正解」という手本になってしまう
    （夜のネオン・紙の刷り物・霧の夕暮れ・雨の夜、と別々にしてあるのはそのため）。
+   **音と粒（パーティクル）も絵と同じ強さで意識する**。詳しくは [docs/audio.md](docs/audio.md) と
+   `/visual-dict` skill。粒を出すときはまず [docs/module-index.md](docs/module-index.md) の
+   逆引きを引く（fx.json の宣言的な書き方はまだ実例が薄いので、強い規約は課さない）。
 6. Studio に登録する: `flix_ge_studio` の `server/src/Genesis.flix` の families で、該当ジャンルの
    `starter = "templates/<genre>-starter"` にする（starter が空だとゼロ生成フローのまま）。
 7. Studio に反映する: `flix_ge_studio` で **`make swap-jar`**（動いている `.app` の同梱 jar を

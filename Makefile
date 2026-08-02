@@ -82,7 +82,7 @@ EDITOR_SERVER_DIR := editor_server
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff release release-guard bump editor lint-palette
+.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff release release-guard bump editor lint-palette check-docs-sync
 
 help:
 	@echo "Targets:"
@@ -467,6 +467,50 @@ sync-agents:
 	  echo "[sync-agents] skill: $$name"; \
 	done
 	@echo "[sync-agents] wrote $(GAME)/AGENTS.md"
+
+# CLAUDE.md（Claude 向け）と AGENTS.md（他エージェント向け）は同じ方針を別ファイルに
+# 手作業で置いているだけなので、コピー忘れで内容が食い違いやすい。生成はせず、
+# 「見出しの並び」「スキル一覧の表」「予約語・テンプレ一覧・docs 導線などの必須キーワード」
+# が両方に揃っているかだけを機械的に照合する（検査のみ・上書きはしない）。
+.PHONY: check-docs-sync
+check-docs-sync:
+	@ok=1; \
+	if [ ! -f CLAUDE.md ] || [ ! -f AGENTS.md ]; then \
+	  echo "[check-docs-sync] CLAUDE.md か AGENTS.md が見つかりません"; exit 1; \
+	fi; \
+	echo "[check-docs-sync] 見出し(## ...)の並びを比較"; \
+	grep '^## ' CLAUDE.md > /tmp/check-docs-sync.claude.headings.$$$$; \
+	grep '^## ' AGENTS.md > /tmp/check-docs-sync.agents.headings.$$$$; \
+	if ! diff -u /tmp/check-docs-sync.claude.headings.$$$$ /tmp/check-docs-sync.agents.headings.$$$$; then \
+	  echo "[check-docs-sync] NG: 見出しの並びが CLAUDE.md と AGENTS.md でずれています"; ok=0; \
+	fi; \
+	rm -f /tmp/check-docs-sync.claude.headings.$$$$ /tmp/check-docs-sync.agents.headings.$$$$; \
+	echo "[check-docs-sync] スキル一覧の表を比較"; \
+	grep '^| `/' CLAUDE.md > /tmp/check-docs-sync.claude.skills.$$$$; \
+	grep '^| `/' AGENTS.md > /tmp/check-docs-sync.agents.skills.$$$$; \
+	if ! diff -u /tmp/check-docs-sync.claude.skills.$$$$ /tmp/check-docs-sync.agents.skills.$$$$; then \
+	  echo "[check-docs-sync] NG: スキル一覧の表が CLAUDE.md と AGENTS.md でずれています"; ok=0; \
+	fi; \
+	rm -f /tmp/check-docs-sync.claude.skills.$$$$ /tmp/check-docs-sync.agents.skills.$$$$; \
+	echo "[check-docs-sync] 必須キーワードの有無を確認"; \
+	for kw in \
+	  "handler.*resume.*run.*spawn.*region.*inject.*project.*solve" \
+	  "rpg / novel / race / tetris-starter" \
+	  "docs/audio.md" \
+	  "docs/engine-module-index.md" \
+	  "docs/module-index.md" \
+	; do \
+	  in_claude=$$(grep -c "$$kw" CLAUDE.md || true); \
+	  in_agents=$$(grep -c "$$kw" AGENTS.md || true); \
+	  if [ "$$in_claude" = "0" ] || [ "$$in_agents" = "0" ]; then \
+	    echo "[check-docs-sync] NG: キーワード '$$kw' が片方にしかありません (CLAUDE.md:$$in_claude AGENTS.md:$$in_agents)"; ok=0; \
+	  fi; \
+	done; \
+	if [ "$$ok" = "1" ]; then \
+	  echo "[check-docs-sync] OK: CLAUDE.md と AGENTS.md は同期しています"; \
+	else \
+	  exit 1; \
+	fi
 
 # ── 新しいゲームを 1 コマンドで産む ──────────────────────
 # 使い方: make new-game GAME=/abs/path/to/dir NAME=<パッケージ名> TITLE=<題名> W=240 H=320 TEMPLATE=novel-starter

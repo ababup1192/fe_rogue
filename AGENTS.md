@@ -6,6 +6,8 @@
 ## 設計・実装
 
 engine_world の「やりたいこと → モジュール」逆引きと全モジュール一覧は [docs/module-index.md](docs/module-index.md) を参照。
+engine/ 側（描画・音・入力などの土台）のモジュール索引は [docs/engine-module-index.md](docs/engine-module-index.md) を参照。
+音の付け方（効果音づくり・鳴らす配線・音の下限チェックリスト）は [docs/audio.md](docs/audio.md) を参照。
 
 複雑で大規模な変更の場合は、いきなり実装をせず、レビュー役を立てて、壁打ちして80~90点以上を目指してください。
 実装はするだけで満足せず、レビュー役に仕様漏れ・リファクタリング余地がな無いかを確認してもらいましょう。
@@ -18,6 +20,8 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 コードコメントには WhyNot
 
 特にコードコメントは、WhyNotを重視し、How, Whatを書かないように。また、実装の由来や旧実装などの歴史背景は、記述しなくて良い。
+
+命名の注意: Flix の予約語（`handler` / `do` / `resume` / `run` / `spawn` / `region` / `inject` / `project` / `solve`）は変数・関数・**レコードのフィールド名**に使えない。ゲームで踏みやすいのは `spawn`（湧き位置 → `start`）と `run`（走り → `walkR` 等）。エラーは「Expected ',' before '='」のような間接的なパースエラーで出る（詳細は `flix-docs` スキル）。
 
 ## 検証・リリースの流儀
 
@@ -90,11 +94,15 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
 `templates/` の各スターターは `make new-game` の複製元であり、Studio の「ジャンル」の顔でもある。
 2 系統ある:
 
-- **具体値式**（rpg / novel / tetris-starter）: 値をそのまま書く。**in-repo で
+- **具体値式**（rpg / novel / race / tetris-starter）: 値をそのまま書く。**in-repo で
   `make -C templates/<name> check / test / bake` が通り golden を持つ**作り込み例。凝った演出も
   テストも載せられる。Studio の「はじめる」は複製で始まる。
 - **トークン式**（game-starter）: `__NAME__` `__W__` などを埋めた最小の骨組み。in-repo では
   ビルドしない（`make new-game` が置換して初めて動く）。W/H を引数で決める素体。
+
+**空の抜け殻を置かない**: `src/` の無いディレクトリを `templates/` に残すと、Studio の札からは
+選べるのに複製しても動かない。中身を作れないうちは Studio 側の `starter` を空にしておき、
+ディレクトリごと作らない（存在しないパスを `starter` に書くのも同じ事故になる）。
 
 新しいテンプレを足すときの手順（**どれか欠けると Studio で「出ない / 絵がない / 作れない」になる**）:
 
@@ -106,9 +114,20 @@ engine_world の「やりたいこと → モジュール」逆引きと全モ�
    無いと Studio が仮色で塗り、編集画面と実機で配色が食い違う。派生色をコードで導いているなら、
    色票 JSON を生成する `make` ターゲットを作り、`paletteFile` でそれを指す（`kaidan` の
    `Palette` モジュール + `palette` ターゲット + テストが手本。テストで生成物と実機の色を pin する）。
-4. Studio に登録する: `flix_ge_studio` の `server/src/Genesis.flix` の families で、該当ジャンルの
+4. **Doc の外形規約を守る**（docs/doc-conventions.md）。全 Doc ファイルに `version` を入れる
+   （無いと Studio の健康診断が「version がありません」を出す）。`*.schema.json` は Studio の
+   **sections 方言**で書く（語彙リファレンス形式で書くと Studio のフォームが
+   「Expecting an OBJECT with a field named `sections`」で読めない。語彙の解説は docs/ 側に置く）。
+5. **画風を宣言する**。`AGENTS.local.md` に「## この画面の画風」を書き（3 色・やらないこと 1 つ）、
+   `src/View.flix` の頭に層の並びと、各層が「絵の下限」の 4 性質のどれを受け持つかを書く。
+   **テンプレどうしで画風をそろえない** — 揃えると「この画風が正解」という手本になってしまう
+   （夜のネオン・紙の刷り物・霧の夕暮れ・雨の夜、と別々にしてあるのはそのため）。
+   **音と粒（パーティクル）も絵と同じ強さで意識する**。詳しくは [docs/audio.md](docs/audio.md) と
+   `/visual-dict` skill。粒を出すときはまず [docs/module-index.md](docs/module-index.md) の
+   逆引きを引く（fx.json の宣言的な書き方はまだ実例が薄いので、強い規約は課さない）。
+6. Studio に登録する: `flix_ge_studio` の `server/src/Genesis.flix` の families で、該当ジャンルの
    `starter = "templates/<genre>-starter"` にする（starter が空だとゼロ生成フローのまま）。
-5. Studio に反映する: `flix_ge_studio` で **`make swap-jar`**（動いている `.app` の同梱 jar を
+7. Studio に反映する: `flix_ge_studio` で **`make swap-jar`**（動いている `.app` の同梱 jar を
    差し替え + 再署名）→ Studio を Cmd+Q して開き直し。**`make jar` だけでは動いている .app に効かない**。
 
 `make new-game GAME=/abs NAME=x TITLE=題名 TEMPLATE=<genre>-starter`。TITLE は自由文でよい
