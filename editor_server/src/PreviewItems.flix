@@ -32,7 +32,7 @@ mod PreviewItems {
     /// リクエストボディを解いて (HTTP status, 応答 JSON) を作る。
     /// body: {items, design?, scale?}。items の中身の問題は 200 の ok:false で返す。
     pub def respond(dir: String, caches: Caches.Caches, body: String): (Int32, Json) \ IO =
-        match (JsonCompat.parse(body) |> Option.flatMap(JsonCodec.expectObject)) {
+        match (DocJson.parse(body) |> Option.flatMap(JsonCodec.expectObject)) {
             case None      => (400, envelopeError("body must be a JSON object {items, design?, scale?}"))
             case Some(obj) => match Map.get("items", obj) {
                 case None            => (400, envelopeError("body must contain items (array of primitives)"))

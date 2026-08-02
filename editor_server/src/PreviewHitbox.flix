@@ -13,7 +13,7 @@ mod PreviewHitbox {
 
     /// リクエストボディを解いて (HTTP status, 応答 JSON) を作る。
     pub def respond(dir: String, caches: Caches.Caches, body: String): (Int32, Json) \ IO =
-        match (JsonCompat.parse(body) |> Option.flatMap(JsonCodec.expectObject)) {
+        match (DocJson.parse(body) |> Option.flatMap(JsonCodec.expectObject)) {
             case None      => (400, envelopeError("body must be a JSON object {path?, doc?, scale?}"))
             case Some(obj) =>
                 let scale = PreviewUi.clampScale(JsonCodec.intOr("scale", 1, obj));
@@ -21,7 +21,7 @@ mod PreviewHitbox {
                     case Err(PreviewUi.BadRequest.Envelope(message)) => (400, envelopeError(message))
                     case Err(PreviewUi.BadRequest.Doc(message))      => (200, failJson(message))
                     case Ok(docJson) => match HitDoc.parse(docJson) {
-                        case Err(e)    => (200, failJson(JsonCompat.describe(e)))
+                        case Err(e)    => (200, failJson(DocJson.describe(e)))
                         case Ok(sheet) => preview(dir, caches, docJson, sheet, scale)
                     }
                 }

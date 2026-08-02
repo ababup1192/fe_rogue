@@ -16,7 +16,7 @@ mod LightDoc {
     use Util.Json.Json
     use Util.Json.Json.{JObject, JArray, JNumber}
     use Util.Json.JsonError
-    use JsonCompat.PathTag.Root
+    use DocJson.PathTag.Root
 
     // ========================================================================
     // 型（pure data）
@@ -51,11 +51,11 @@ mod LightDoc {
     pub def parse(json: Json): Result[JsonError, Spec] =
         match json {
             case JObject(top) => forM (
-                _v         <- JsonCompat.checkVersion("light document", top);
-                darkness   <- JsonCompat.atNode("(root)", JsonCompat.numOr("darkness", defaultDarkness(), top));
+                _v         <- DocJson.checkVersion("light document", top);
+                darkness   <- DocJson.atNode("(root)", DocJson.numOr("darkness", defaultDarkness(), top));
                 rim        <- parseRim(top);
-                factorOpt  <- JsonCompat.atNode("(root)", (JsonCompat.getAtKeyOpt(Root, "haloDiameterFactor", top): Result[JsonError, Option[Float64]]));
-                note       <- (JsonCompat.getAtKeyOpt(Root, "note", top): Result[JsonError, Option[String]]);
+                factorOpt  <- DocJson.atNode("(root)", (DocJson.getAtKeyOpt(Root, "haloDiameterFactor", top): Result[JsonError, Option[Float64]]));
+                note       <- (DocJson.getAtKeyOpt(Root, "note", top): Result[JsonError, Option[String]]);
                 lights     <- parseLights(top)
             ) yield ({
                 darkness = darkness,
@@ -63,7 +63,7 @@ mod LightDoc {
                 haloDiameterFactor = Option.getWithDefault(Light.defaultHaloDiameterFactor(), factorOpt),
                 lights = lights, note = note
             }: Spec)
-            case _ => Err(JsonCompat.jsonError(Root, Set#{"LightDoc must be a JSON object"}))
+            case _ => Err(DocJson.jsonError(Root, Set#{"LightDoc must be a JSON object"}))
         }
 
     /// mask 全体の暗さの既定値（Light.SingleLightConfig の doc と同じ既定 0.95 に揃える）。
@@ -71,12 +71,12 @@ mod LightDoc {
 
     /// "rim": {"width": px, "strength": alpha}（省略時は Shadow.defaultRimWidth/Strength）。
     def parseRim(top: Map[String, Json]): Result[JsonError, { width = Float64, strength = Float64 }] =
-        match (JsonCompat.getAtKeyOpt(Root, "rim", top): Result[JsonError, Option[Map[String, Json]]]) {
+        match (DocJson.getAtKeyOpt(Root, "rim", top): Result[JsonError, Option[Map[String, Json]]]) {
             case Err(e)      => Err(e)
             case Ok(None)    => Ok({ width = Shadow.defaultRimWidth(), strength = Shadow.defaultRimStrength() })
-            case Ok(Some(m)) => JsonCompat.atNode("rim", forM (
-                width    <- JsonCompat.numOr("width", Shadow.defaultRimWidth(), m);
-                strength <- JsonCompat.numOr("strength", Shadow.defaultRimStrength(), m)
+            case Ok(Some(m)) => DocJson.atNode("rim", forM (
+                width    <- DocJson.numOr("width", Shadow.defaultRimWidth(), m);
+                strength <- DocJson.numOr("strength", Shadow.defaultRimStrength(), m)
             ) yield { width = width, strength = strength })
         }
 
@@ -88,22 +88,22 @@ mod LightDoc {
                 Result.traverse(entry -> {
                     let (i, json) = entry;
                     forM (
-                        m     <- JsonCompat.atNode("lights[${i}]", JsonCompat.asObject("light", json));
+                        m     <- DocJson.atNode("lights[${i}]", DocJson.asObject("light", json));
                         light <- parseLight("lights[${i}]", m)
                     ) yield light
                 }, List.zipWithIndex(Vector.toList(arr)))
-            case Some(_) => Err(JsonCompat.jsonError(Root, Set#{"'lights' must be an array"}))
+            case Some(_) => Err(DocJson.jsonError(Root, Set#{"'lights' must be an array"}))
         }
 
     /// 1 光源: at（必須 [x,y]）/ radius（必須）/ color（必須）/ halo（省略時 Shadow 系と
     /// 同じ「既定の目安」ではなく、光の演出値なので 0.35 を素朴な既定にする）。
     def parseLight(path: String, m: Map[String, Json]): Result[JsonError, LightSpec] =
-        JsonCompat.atNode(path, forM (
+        DocJson.atNode(path, forM (
             at      <- parseVec2("at", m);
-            radius  <- JsonCompat.numAt("radius", m);
+            radius  <- DocJson.numAt("radius", m);
             _r      <- require(radius > 0.0, "radius must be > 0 (got: ${radius})");
             color   <- parseColorRequired("color", m);
-            halo    <- JsonCompat.numOr("halo", defaultHalo(), m);
+            halo    <- DocJson.numOr("halo", defaultHalo(), m);
             _h      <- require(halo >= 0.0 and halo <= 1.0, "halo must be within 0..1 (got: ${halo})")
         ) yield ({ at = at, radius = radius, color = color, halo = halo }: LightSpec))
 
@@ -111,21 +111,21 @@ mod LightDoc {
     def defaultHalo(): Float64 = 0.35
 
     def require(ok: Bool, msg: String): Result[JsonError, Unit] =
-        if (ok) Ok(()) else Err(JsonCompat.jsonError(Root, Set#{msg}))
+        if (ok) Ok(()) else Err(DocJson.jsonError(Root, Set#{msg}))
 
     /// "key": [x, y] を Vec2 へ（必須）。
     def parseVec2(key: String, m: Map[String, Json]): Result[JsonError, Vec2.Vec2] =
-        match (JsonCompat.getAtKey(Root, key, m): Result[JsonError, List[Float64]]) {
+        match (DocJson.getAtKey(Root, key, m): Result[JsonError, List[Float64]]) {
             case Err(e)            => Err(e)
             case Ok(x :: y :: Nil) => Ok({x = x, y = y})
-            case Ok(_)             => Err(JsonCompat.jsonError(Root, Set#{"${key} must be [x, y]"}))
+            case Ok(_)             => Err(DocJson.jsonError(Root, Set#{"${key} must be [x, y]"}))
         }
 
     /// 色（必須）。色表記は ui.json と同一 — UiDoc.colorOf に一本化（palette 参照 "@name" は
     /// light.json には無いので空パレットで呼ぶ）。
     def parseColorRequired(key: String, m: Map[String, Json]): Result[JsonError, Color] =
         match Map.get(key, m) {
-            case None       => Err(JsonCompat.jsonError(Root, Set#{"'${key}' is required"}))
+            case None       => Err(DocJson.jsonError(Root, Set#{"'${key}' is required"}))
             case Some(json) => UiDoc.colorOf(Map.empty(), key, json)
         }
 
@@ -159,8 +159,8 @@ mod LightDoc {
     // load（ファイル読み — parse は純粋なまま、IO はここだけ）
     // ========================================================================
 
-    /// path を読んで Spec にする。JsonCompat.readJson と同じ fail 経路
+    /// path を読んで Spec にする。DocJson.readJson と同じ fail 経路
     /// （読めない・崩れているときは Err）。
     pub def load(path: String): Result[JsonError, Spec] \ Fs.FileRead =
-        JsonCompat.readJson(path) |> Result.flatMap(parse)
+        DocJson.readJson(path) |> Result.flatMap(parse)
 }

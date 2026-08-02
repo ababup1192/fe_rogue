@@ -284,7 +284,7 @@ mod TestAnnotate {
         let rect = { position = { x = 10.0, y = 20.0 }, size = { x = 30.0, y = 40.0 } };
         let text = Annotate.annotationJson({ frame = 7i64, design = design(), rect = rect }, Nil);
         let parsed = forM (
-            json <- JsonCompat.parse(text);
+            json <- DocJson.parse(text);
             obj <- JsonCodec.expectObject(json);
             frameJ <- Map.get("frame", obj);
             frame <- JsonCodec.expectInt(frameJ);

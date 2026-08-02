@@ -1,6 +1,6 @@
 // UnitCatalog の Saveable[UnitCatalog] と weapons.json デコーダが、実 JSON と同じ
 // 構造の文字列を round-trip でデコードできるかを検証する。ファイル I/O は介さず、
-// 文字列リテラルを直接 JsonCompat.parse → decode して確認する。
+// 文字列リテラルを直接 DocJson.parse → decode して確認する。
 //
 // units.json と weapons.json は別ファイルなので、テスト内では:
 //   1. sampleUnitsJson() を Saveable.fromJson で UnitCatalog (weapons は空) にする
@@ -62,8 +62,8 @@ mod TestUnitCatalog {
     /// in-memory カタログを返す。テスト用ヘルパー。
     /// 段階 6 のリファクタで weapons は `WeaponCatalog` の Saveable 経由で decode する。
     def buildSampleCatalog(): Option[UnitCatalog.UnitCatalog] =
-        let unitsParsed   = JsonCompat.parse(sampleUnitsJson());
-        let weaponsParsed = JsonCompat.parse(sampleWeaponsJson());
+        let unitsParsed   = DocJson.parse(sampleUnitsJson());
+        let weaponsParsed = DocJson.parse(sampleWeaponsJson());
         let unitCatalogOpt: Option[UnitCatalog.UnitCatalog] =
             Option.flatMap(Saveable.fromJson, unitsParsed);
         let weaponCatalogOpt: Option[WeaponCatalog.WeaponCatalog] =

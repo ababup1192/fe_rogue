@@ -7,7 +7,7 @@ mod FxDoc {
     use Util.Json.Json
     use Util.Json.Json.{JObject, JArray, JString}
     use Util.Json.JsonError
-    use JsonCompat.PathTag.Root
+    use DocJson.PathTag.Root
 
     // ========================================================================
     // 型（pure data）
@@ -102,41 +102,41 @@ mod FxDoc {
     pub def parseWith(palette: Map[String, Color], json: Json): Result[JsonError, Spec] =
         match json {
             case JObject(top) => forM (
-                _v       <- JsonCompat.checkVersion("fx document", top);
-                name     <- (JsonCompat.getAtKey(Root, "name", top): Result[JsonError, String]);
-                duration <- JsonCompat.numAt("duration", top);
+                _v       <- DocJson.checkVersion("fx document", top);
+                name     <- (DocJson.getAtKey(Root, "name", top): Result[JsonError, String]);
+                duration <- DocJson.numAt("duration", top);
                 _dur     <- require(duration > 0.0, "(top)", "duration must be > 0 (got: ${duration})");
-                note     <- (JsonCompat.getAtKeyOpt(Root, "note", top): Result[JsonError, Option[String]]);
+                note     <- (DocJson.getAtKeyOpt(Root, "note", top): Result[JsonError, Option[String]]);
                 emitters <- parseEmitters(palette, top)
             ) yield ({ name = name, duration = duration, note = note, emitters = emitters }: Spec)
-            case _ => Err(JsonCompat.jsonError(Root, Set#{"FxDoc must be a JSON object with 'name', 'duration', 'emitters'"}))
+            case _ => Err(DocJson.jsonError(Root, Set#{"FxDoc must be a JSON object with 'name', 'duration', 'emitters'"}))
         }
 
     def parseEmitters(palette: Map[String, Color], top: Map[String, Json]): Result[JsonError, List[Emitter]] =
         match Map.get("emitters", top) {
             case Some(JArray(arr)) =>
                 if (Vector.isEmpty(arr))
-                    Err(JsonCompat.jsonError(Root, Set#{"emitters must have at least 1 entry"}))
+                    Err(DocJson.jsonError(Root, Set#{"emitters must have at least 1 entry"}))
                 else
                     Result.traverse(entry -> {
                         let (i, json) = entry;
                         forM (
-                            m       <- JsonCompat.atNode("emitters[${i}]", JsonCompat.asObject("emitter", json));
+                            m       <- DocJson.atNode("emitters[${i}]", DocJson.asObject("emitter", json));
                             emitter <- parseEmitter(palette, "emitters[${i}]", m)
                         ) yield emitter
                     }, List.zipWithIndex(Vector.toList(arr)))
-            case _ => Err(JsonCompat.jsonError(Root, Set#{"'emitters' is required and must be an array"}))
+            case _ => Err(DocJson.jsonError(Root, Set#{"'emitters' is required and must be an array"}))
         }
 
     /// 1 emitter を読む。エラーは "emitters[i]"（サブオブジェクトは "emitters[i].speed" 等）でタグする。
     def parseEmitter(palette: Map[String, Color], path: String, m: Map[String, Json]): Result[JsonError, Emitter] =
         forM (
-            name      <- JsonCompat.atNode(path, (JsonCompat.getAtKey(Root, "name", m): Result[JsonError, String]));
-            count     <- JsonCompat.atNode(path, (JsonCompat.getAtKey(Root, "count", m): Result[JsonError, Int32]));
+            name      <- DocJson.atNode(path, (DocJson.getAtKey(Root, "name", m): Result[JsonError, String]));
+            count     <- DocJson.atNode(path, (DocJson.getAtKey(Root, "count", m): Result[JsonError, Int32]));
             _cnt      <- require(count >= 1, path, "count must be >= 1 (got: ${count})");
             mode      <- parseMode(path, m);
             shape     <- parseShape(path, m);
-            size      <- JsonCompat.atNode(path, JsonCompat.numAt("size", m));
+            size      <- DocJson.atNode(path, DocJson.numAt("size", m));
             _size     <- require(size > 0.0, path, "size must be > 0 (got: ${size})");
             color     <- parseColors(palette, path, m);
             life      <- parseLife("${path}.life", m);
@@ -144,11 +144,11 @@ mod FxDoc {
             dir       <- parseDir("${path}.dir", m);
             spawnArea <- parseSpawn("${path}.spawn", m);
             accel     <- parseAccel("${path}.accel", m);
-            seedOpt   <- JsonCompat.atNode(path, (JsonCompat.getAtKeyOpt(Root, "seed", m): Result[JsonError, Option[Int32]]));
+            seedOpt   <- DocJson.atNode(path, (DocJson.getAtKeyOpt(Root, "seed", m): Result[JsonError, Option[Int32]]));
             sizeOver  <- parseCurveAt("${path}.sizeOver", "sizeOver", m);
             alphaOver <- parseCurveAt("${path}.alphaOver", "alphaOver", m);
             blend     <- parseBlend(path, m);
-            zIndexOpt <- JsonCompat.atNode(path, (JsonCompat.getAtKeyOpt(Root, "zIndex", m): Result[JsonError, Option[Int32]]))
+            zIndexOpt <- DocJson.atNode(path, (DocJson.getAtKeyOpt(Root, "zIndex", m): Result[JsonError, Option[Int32]]))
         ) yield ({
             name = name, count = count, mode = mode, shape = shape, size = size, color = color,
             life = life, speed = speed, dir = dir,
@@ -159,23 +159,23 @@ mod FxDoc {
 
     /// "mode": "burst"（省略時）| "loop"。loop は粒が寿命ごとに生まれ直す（周期 = 寿命）。
     def parseMode(path: String, m: Map[String, Json]): Result[JsonError, Mode] =
-        match (JsonCompat.getAtKeyOpt(Root, "mode", m): Result[JsonError, Option[String]]) {
-            case Err(e)            => JsonCompat.atNode(path, Err(e))
+        match (DocJson.getAtKeyOpt(Root, "mode", m): Result[JsonError, Option[String]]) {
+            case Err(e)            => DocJson.atNode(path, Err(e))
             case Ok(None)          => Ok(Mode.Burst)
             case Ok(Some("burst")) => Ok(Mode.Burst)
             case Ok(Some("loop"))  => Ok(Mode.Loop)
             case Ok(Some(unknown)) =>
-                JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"mode must be burst|loop (got: ${unknown})"})))
+                DocJson.atNode(path, Err(DocJson.jsonError(Root, Set#{"mode must be burst|loop (got: ${unknown})"})))
         }
 
     /// "spawn": {"w": px, "h": px}（発生源の広がり・省略時は点 = {0, 0}）。
     def parseSpawn(path: String, m: Map[String, Json]): Result[JsonError, { w = Float64, h = Float64 }] =
-        match (JsonCompat.getAtKeyOpt(Root, "spawn", m): Result[JsonError, Option[Map[String, Json]]]) {
-            case Err(e)       => JsonCompat.atNode(path, Err(e))
+        match (DocJson.getAtKeyOpt(Root, "spawn", m): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)       => DocJson.atNode(path, Err(e))
             case Ok(None)     => Ok({ w = 0.0, h = 0.0 })
             case Ok(Some(sm)) => forM (
-                w  <- JsonCompat.atNode(path, JsonCompat.numOr("w", 0.0, sm));
-                h  <- JsonCompat.atNode(path, JsonCompat.numOr("h", 0.0, sm));
+                w  <- DocJson.atNode(path, DocJson.numOr("w", 0.0, sm));
+                h  <- DocJson.atNode(path, DocJson.numOr("h", 0.0, sm));
                 _w <- require(w >= 0.0 and h >= 0.0, path, "spawn w/h must be >= 0 (got: ${w}, ${h})")
             ) yield { w = w, h = h }
         }
@@ -183,40 +183,40 @@ mod FxDoc {
     /// "accel": {"x": px/s², "y": px/s²}（重力/風・省略時は {0, 0}）。+y は画面下向き —
     /// 重力は y を正に、風は x に。位置には閉形式（½at²）で効く。
     def parseAccel(path: String, m: Map[String, Json]): Result[JsonError, Vec2.Vec2] =
-        match (JsonCompat.getAtKeyOpt(Root, "accel", m): Result[JsonError, Option[Map[String, Json]]]) {
-            case Err(e)       => JsonCompat.atNode(path, Err(e))
+        match (DocJson.getAtKeyOpt(Root, "accel", m): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)       => DocJson.atNode(path, Err(e))
             case Ok(None)     => Ok(Vec2.zero())
             case Ok(Some(am)) => forM (
-                x <- JsonCompat.atNode(path, JsonCompat.numOr("x", 0.0, am));
-                y <- JsonCompat.atNode(path, JsonCompat.numOr("y", 0.0, am))
+                x <- DocJson.atNode(path, DocJson.numOr("x", 0.0, am));
+                y <- DocJson.atNode(path, DocJson.numOr("y", 0.0, am))
             ) yield ({ x = x, y = y }: Vec2.Vec2)
         }
 
     /// 条件が成り立たなければ path 付きで断る（値の下限・範囲の検査に使う）。
     def require(ok: Bool, path: String, msg: String): Result[JsonError, Unit] =
         if (ok) Ok(())
-        else JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{msg})))
+        else DocJson.atNode(path, Err(DocJson.jsonError(Root, Set#{msg})))
 
     def parseShape(path: String, m: Map[String, Json]): Result[JsonError, Shape] =
-        match (JsonCompat.getAtKeyOpt(Root, "shape", m): Result[JsonError, Option[String]]) {
-            case Err(e)              => JsonCompat.atNode(path, Err(e))
+        match (DocJson.getAtKeyOpt(Root, "shape", m): Result[JsonError, Option[String]]) {
+            case Err(e)              => DocJson.atNode(path, Err(e))
             case Ok(None)            => Ok(Shape.Circle)
             case Ok(Some("circle"))  => Ok(Shape.Circle)
             case Ok(Some("box"))     => Ok(Shape.Box)
             case Ok(Some("glow"))    => Ok(Shape.Glow)
             case Ok(Some(unknown))   =>
-                JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"shape must be circle|box|glow (got: ${unknown})"})))
+                DocJson.atNode(path, Err(DocJson.jsonError(Root, Set#{"shape must be circle|box|glow (got: ${unknown})"})))
         }
 
     def parseBlend(path: String, m: Map[String, Json]): Result[JsonError, DrawCmd.BlendMode] =
-        match (JsonCompat.getAtKeyOpt(Root, "blend", m): Result[JsonError, Option[String]]) {
-            case Err(e)             => JsonCompat.atNode(path, Err(e))
+        match (DocJson.getAtKeyOpt(Root, "blend", m): Result[JsonError, Option[String]]) {
+            case Err(e)             => DocJson.atNode(path, Err(e))
             case Ok(None)           => Ok(DrawCmd.BlendMode.Normal)
             case Ok(Some("normal")) => Ok(DrawCmd.BlendMode.Normal)
             case Ok(Some("add"))    => Ok(DrawCmd.BlendMode.Add)
             case Ok(Some("multiply")) => Ok(DrawCmd.BlendMode.Multiply)
             case Ok(Some(unknown))  =>
-                JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"blend must be normal|add|multiply (got: ${unknown})"})))
+                DocJson.atNode(path, Err(DocJson.jsonError(Root, Set#{"blend must be normal|add|multiply (got: ${unknown})"})))
         }
 
     /// "color": [<色>, ...]（1 色以上）。色表記は ui.json と同一（UiDoc.colorOf に一本化）。
@@ -225,22 +225,22 @@ mod FxDoc {
         match Map.get("color", m) {
             case Some(JArray(arr)) =>
                 if (Vector.isEmpty(arr))
-                    JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"color must have at least 1 entry"})))
+                    DocJson.atNode(path, Err(DocJson.jsonError(Root, Set#{"color must have at least 1 entry"})))
                 else
-                    JsonCompat.atNode(path,
+                    DocJson.atNode(path,
                         Result.traverse(c -> UiDoc.colorOf(palette, "color", c), Vector.toList(arr)))
-            case Some(_) => JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"color must be an array of colors"})))
-            case None    => JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"'color' is required"})))
+            case Some(_) => DocJson.atNode(path, Err(DocJson.jsonError(Root, Set#{"color must be an array of colors"})))
+            case None    => DocJson.atNode(path, Err(DocJson.jsonError(Root, Set#{"'color' is required"})))
         }
 
     /// "life": {"base": 秒, "vary": 0..1}（必須。vary 省略時 0）。
     def parseLife(path: String, m: Map[String, Json]): Result[JsonError, { base = Float64, vary = Float64 }] =
-        match (JsonCompat.getAtKeyOpt(Root, "life", m): Result[JsonError, Option[Map[String, Json]]]) {
-            case Err(e)       => JsonCompat.atNode(path, Err(e))
-            case Ok(None)     => JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"'life' is required ({\"base\": seconds})"})))
+        match (DocJson.getAtKeyOpt(Root, "life", m): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)       => DocJson.atNode(path, Err(e))
+            case Ok(None)     => DocJson.atNode(path, Err(DocJson.jsonError(Root, Set#{"'life' is required ({\"base\": seconds})"})))
             case Ok(Some(lm)) => forM (
-                base  <- JsonCompat.atNode(path, JsonCompat.numAt("base", lm));
-                vary  <- JsonCompat.atNode(path, JsonCompat.numOr("vary", 0.0, lm));
+                base  <- DocJson.atNode(path, DocJson.numAt("base", lm));
+                vary  <- DocJson.atNode(path, DocJson.numOr("vary", 0.0, lm));
                 _base <- require(base > 0.0, path, "base must be > 0 (got: ${base})");
                 _vary <- requireVary(path, vary)
             ) yield { base = base, vary = vary }
@@ -249,12 +249,12 @@ mod FxDoc {
     /// "speed": {"base": px/s, "vary": 0..1, "over": <カーブ>}（省略時は動かない粒）。
     /// over に flicker は使えない — 位置 = 速度の積分が閉形式にならないため、パース時に断る。
     def parseSpeed(path: String, m: Map[String, Json]): Result[JsonError, Scalar] =
-        match (JsonCompat.getAtKeyOpt(Root, "speed", m): Result[JsonError, Option[Map[String, Json]]]) {
-            case Err(e)       => JsonCompat.atNode(path, Err(e))
+        match (DocJson.getAtKeyOpt(Root, "speed", m): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)       => DocJson.atNode(path, Err(e))
             case Ok(None)     => Ok({ base = 0.0, vary = 0.0, over = CurveSpec.Constant })
             case Ok(Some(sm)) => forM (
-                base  <- JsonCompat.atNode(path, JsonCompat.numAt("base", sm));
-                vary  <- JsonCompat.atNode(path, JsonCompat.numOr("vary", 0.0, sm));
+                base  <- DocJson.atNode(path, DocJson.numAt("base", sm));
+                vary  <- DocJson.atNode(path, DocJson.numOr("vary", 0.0, sm));
                 _vary <- requireVary(path, vary);
                 over  <- parseCurveAt(path, "over", sm);
                 _int  <- require(not isFlicker(over), path, "speed.over does not support flicker (position needs a closed-form integral)")
@@ -269,12 +269,12 @@ mod FxDoc {
 
     /// "dir": {"base": 度, "spread": 度}（省略時は真上・広がりなし）。
     def parseDir(path: String, m: Map[String, Json]): Result[JsonError, { base = Float64, spread = Float64 }] =
-        match (JsonCompat.getAtKeyOpt(Root, "dir", m): Result[JsonError, Option[Map[String, Json]]]) {
-            case Err(e)       => JsonCompat.atNode(path, Err(e))
+        match (DocJson.getAtKeyOpt(Root, "dir", m): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)       => DocJson.atNode(path, Err(e))
             case Ok(None)     => Ok({ base = 0.0, spread = 0.0 })
             case Ok(Some(dm)) => forM (
-                base   <- JsonCompat.atNode(path, JsonCompat.numOr("base", 0.0, dm));
-                spread <- JsonCompat.atNode(path, JsonCompat.numOr("spread", 0.0, dm))
+                base   <- DocJson.atNode(path, DocJson.numOr("base", 0.0, dm));
+                spread <- DocJson.atNode(path, DocJson.numOr("spread", 0.0, dm))
             ) yield { base = base, spread = spread }
         }
 
@@ -282,14 +282,14 @@ mod FxDoc {
     def parseCurveAt(path: String, key: String, m: Map[String, Json]): Result[JsonError, CurveSpec] =
         match Map.get(key, m) {
             case None              => Ok(CurveSpec.Constant)
-            case Some(JObject(cm)) => JsonCompat.atNode(path, parseCurveObj(cm))
+            case Some(JObject(cm)) => DocJson.atNode(path, parseCurveObj(cm))
             case Some(_)           =>
-                JsonCompat.atNode(path, Err(JsonCompat.jsonError(Root, Set#{"${key} must be an object {\"kind\": ...}"})))
+                DocJson.atNode(path, Err(DocJson.jsonError(Root, Set#{"${key} must be an object {\"kind\": ...}"})))
         }
 
     def parseCurveObj(cm: Map[String, Json]): Result[JsonError, CurveSpec] =
         forM (
-            kind  <- (JsonCompat.getAtKey(Root, "kind", cm): Result[JsonError, String]);
+            kind  <- (DocJson.getAtKey(Root, "kind", cm): Result[JsonError, String]);
             curve <- parseCurveKind(kind, cm)
         ) yield curve
 
@@ -297,21 +297,21 @@ mod FxDoc {
         match kind {
             case "constant" => Ok(CurveSpec.Constant)
             case "linear"   => forM (
-                fromV <- JsonCompat.numAt("from", cm);
-                toV   <- JsonCompat.numAt("to", cm)
+                fromV <- DocJson.numAt("from", cm);
+                toV   <- DocJson.numAt("to", cm)
             ) yield CurveSpec.Linear({ fromV = fromV, toV = toV })
             case "fadeOut"  => Ok(CurveSpec.Linear({ fromV = 1.0, toV = 0.0 }))
-            case "easeIn"   => JsonCompat.numOr("power", 2.0, cm) |> Result.map(p -> CurveSpec.EaseIn({ power = p }))
-            case "easeOut"  => JsonCompat.numOr("power", 2.0, cm) |> Result.map(p -> CurveSpec.EaseOut({ power = p }))
-            case "peak"     => JsonCompat.numAt("at", cm) |> Result.flatMap(at ->
+            case "easeIn"   => DocJson.numOr("power", 2.0, cm) |> Result.map(p -> CurveSpec.EaseIn({ power = p }))
+            case "easeOut"  => DocJson.numOr("power", 2.0, cm) |> Result.map(p -> CurveSpec.EaseOut({ power = p }))
+            case "peak"     => DocJson.numAt("at", cm) |> Result.flatMap(at ->
                 if (at < 0.0 or at > 1.0)
-                    Err(JsonCompat.jsonError(Root, Set#{"peak 'at' must be within 0..1 (got: ${at})"}))
+                    Err(DocJson.jsonError(Root, Set#{"peak 'at' must be within 0..1 (got: ${at})"}))
                 else Ok(CurveSpec.Peak({ at = at })))
             case "flicker"  => forM (
-                rate   <- JsonCompat.numAt("rate", cm);
-                amount <- JsonCompat.numOr("amount", 1.0, cm)
+                rate   <- DocJson.numAt("rate", cm);
+                amount <- DocJson.numOr("amount", 1.0, cm)
             ) yield CurveSpec.Flicker({ rate = rate, amount = amount })
-            case unknown    => Err(JsonCompat.jsonError(Root,
+            case unknown    => Err(DocJson.jsonError(Root,
                 Set#{"kind must be constant|linear|fadeOut|easeIn|easeOut|peak|flicker (got: ${unknown})"}))
         }
 }

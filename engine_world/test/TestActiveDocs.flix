@@ -17,7 +17,7 @@ mod TestActiveDocs {
                     JArray(Vector#{JString("assets/ui/a.ui.json"), JString("assets/ui/b.ui.json")})})})),
                 Some(JObject(Map#{"active" => JObject(Map.empty())}))
             ),
-            (JsonCompat.parse(ActiveDocs.json(one)),
-             JsonCompat.parse(ActiveDocs.json(many)),
-             JsonCompat.parse(ActiveDocs.json(Nil))))
+            (DocJson.parse(ActiveDocs.json(one)),
+             DocJson.parse(ActiveDocs.json(many)),
+             DocJson.parse(ActiveDocs.json(Nil))))
 }

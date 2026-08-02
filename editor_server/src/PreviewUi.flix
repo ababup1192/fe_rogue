@@ -47,7 +47,7 @@ mod PreviewUi {
 
     /// リクエストボディを解いて (HTTP status, 応答 JSON) を作る。
     pub def respond(dir: String, caches: Caches.Caches, body: String): (Int32, Json) \ IO =
-        match (JsonCompat.parse(body) |> Option.flatMap(JsonCodec.expectObject)) {
+        match (DocJson.parse(body) |> Option.flatMap(JsonCodec.expectObject)) {
             case None      => (400, envelopeError("body must be a JSON object {path?, doc?, hovered?, scale?, data?, compose?}"))
             case Some(obj) =>
                 let scale = clampScale(JsonCodec.intOr("scale", 1, obj));
@@ -74,11 +74,11 @@ mod PreviewUi {
         match (Map.get("doc", obj), Map.get("path", obj) |> Option.flatMap(JsonCodec.expectString)) {
             case (Some(JString(text)), _) =>
                 // 文字列で来たら編集中バッファの生テキストなので、ここで JSON として解く。
-                JsonCompat.parse(text) |> Option.toOk(BadRequest.Doc("doc is not valid JSON"))
+                DocJson.parse(text) |> Option.toOk(BadRequest.Doc("doc is not valid JSON"))
             case (Some(docJson), _)       => Ok(docJson)
             case (None, Some(relPath))    => match FileIndex.readInside(dir, relPath) {
                 case Err(message) => Err(BadRequest.Doc(message))
-                case Ok(content)  => JsonCompat.parse(String.trim(content))
+                case Ok(content)  => DocJson.parse(String.trim(content))
                     |> Option.toOk(BadRequest.Doc("JSON parse failed: ${relPath}"))
             }
             case (None, None)             => Err(BadRequest.Envelope("either 'doc' or 'path' is required"))
@@ -166,7 +166,7 @@ mod PreviewUi {
     def readSidecar(dir: String, sidecarPath: String): (PreviewInput, List[String]) \ IO =
         match FileIndex.readInside(dir, sidecarPath) {
             case Err(_)      => (emptySidecar(), Nil)
-            case Ok(content) => match (JsonCompat.parse(String.trim(content)) |> Option.flatMap(JsonCodec.expectObject)) {
+            case Ok(content) => match (DocJson.parse(String.trim(content)) |> Option.flatMap(JsonCodec.expectObject)) {
                 case None      => (emptySidecar(), "sidecar ${sidecarPath} is not a JSON object — ignored" :: Nil)
                 case Some(obj) =>
                     let (data, dataWarnings) =
@@ -220,8 +220,8 @@ mod PreviewUi {
                                 rotationFallback(dir, caches, ctx, docJson, docSpec, hovered, scale, input, extraWarnings, e)
                             else if (isRotationErr(e))
                                 (200, failJson("this document uses poly rotation — composing is not supported for it, preview it alone"))
-                            else (200, failJson(JsonCompat.describe(e)))
-                        case (_, Err(e))             => (200, failJson(JsonCompat.describe(e)))
+                            else (200, failJson(DocJson.describe(e)))
+                        case (_, Err(e))             => (200, failJson(DocJson.describe(e)))
                     }
                 }
         }
@@ -237,7 +237,7 @@ mod PreviewUi {
 
     def loadComposeDoc(dir: String, entry: ComposeEntry): Result[String, DocToSpawn] \ IO =
         let jsonRes = FileIndex.readInside(dir, entry#path)
-            |> Result.flatMap(content -> JsonCompat.parse(String.trim(content)) |> Option.toOk("JSON parse failed"));
+            |> Result.flatMap(content -> DocJson.parse(String.trim(content)) |> Option.toOk("JSON parse failed"));
         match jsonRes {
             case Err(message) => Err("compose '${entry#path}': ${message}")
             case Ok(json)     =>
@@ -246,7 +246,7 @@ mod PreviewUi {
                         if (isRotationErr(e))
                             "compose '${entry#path}': poly rotation documents cannot be composed — preview it alone"
                         else
-                            "compose '${entry#path}': ${JsonCompat.describe(e)}")
+                            "compose '${entry#path}': ${DocJson.describe(e)}")
                     |> Result.map(spec -> ({ path = entry#path, spec = spec, data = entry#data }: DocToSpawn))
         }
 
@@ -263,12 +263,12 @@ mod PreviewUi {
                 composed = Nil, hovered = hovered, scale = scale,
                 drawPath = DrawPath.FlexPath, palette = resolvedPalette(dir, docJson),
                 extraWarnings = extraWarnings })
-            case Err(_)   => (200, failJson(JsonCompat.describe(original)))
+            case Err(_)   => (200, failJson(DocJson.describe(original)))
         }
 
     /// UiSpec 経路が poly rotation/pivot を断ったエラーか (文言で見分ける)。
     def isRotationErr(e: Util.Json.JsonError): Bool =
-        String.contains(substr = "poly rotation/pivot is not supported", JsonCompat.describe(e))
+        String.contains(substr = "poly rotation/pivot is not supported", DocJson.describe(e))
 
     /// JSON 木のどこかに "rotation"/"pivot" キーがあるか。ui.json 方言でこの 2 キーを読むのは
     /// poly だけなので、キーの有無だけで「合成に使えない (回転入り) 文書」と判定できる。
@@ -312,7 +312,7 @@ mod PreviewUi {
             case None       => Map.empty()
             case Some(path) => match FileIndex.readInside(dir, path) {
                 case Err(_)      => Map.empty()
-                case Ok(content) => JsonCompat.parse(String.trim(content))
+                case Ok(content) => DocJson.parse(String.trim(content))
                     |> Option.flatMap(JsonCodec.expectObject)
                     |> Option.getWithDefault(Map.empty())
             }

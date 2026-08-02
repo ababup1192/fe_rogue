@@ -5,7 +5,7 @@ mod TestUiDoc {
     // ── 道具 ──
 
     def parseDoc(s: String): Option[UiDoc.Spec] =
-        JsonCompat.parse(s) |> Option.flatMap(json -> UiDoc.parse(json) |> Result.toOption)
+        DocJson.parse(s) |> Option.flatMap(json -> UiDoc.parse(json) |> Result.toOption)
 
     /// パースが通るか（エラー系テスト用）。JSON 構文エラーも false。
     def parses(s: String): Bool =
@@ -155,10 +155,10 @@ mod TestUiDoc {
 
     /// doc のパースエラーを編集者向け文言（describe）で返す（成功や JSON 構文エラーは目印文字列）。
     def errTextOf(doc: String): String =
-        JsonCompat.parse(doc)
+        DocJson.parse(doc)
             |> Option.map(json -> match UiDoc.parse(json) {
                 case Ok(_)  => "no error"
-                case Err(e) => JsonCompat.describe(e)
+                case Err(e) => DocJson.describe(e)
             })
             |> Option.getWithDefault("no json")
 
@@ -409,7 +409,7 @@ mod TestUiDoc {
 
     /// doc を parse → UiSpec 射影 → spawn した UiWorld（テスト用の定型）。
     def spawnDoc(doc: String): Option[UiStore.UiWorld] =
-        JsonCompat.parse(doc)
+        DocJson.parse(doc)
             |> Option.flatMap(json -> UiSpec.parse(json) |> Result.toOption)
             |> Option.map(spec -> { let (_, ui) = UiSpec.spawnRoot(spec, UiStore.empty()); ui })
 
@@ -431,20 +431,20 @@ mod TestUiDoc {
     def docsResolver(docs: List[(String, String)]): Map[String, Util.Json.Json] =
         docs |> List.filterMap(entry -> {
             let (p, text) = entry;
-            JsonCompat.parse(text) |> Option.map(json -> (p, json))
+            DocJson.parse(text) |> Option.map(json -> (p, json))
         }) |> List.toMap
 
     /// (パス, JSON 文字列) の組を resolver にして root をパースする。
     def parseWithDocs(docs: List[(String, String)], root: String): Option[UiDoc.Spec] =
-        JsonCompat.parse(root) |> Option.flatMap(json ->
+        DocJson.parse(root) |> Option.flatMap(json ->
             UiDoc.parseWith(docsResolver(docs), json) |> Result.toOption)
 
     /// parseWithDocs のエラー文言（成功時は目印文字列）。
     def errTextWithDocs(docs: List[(String, String)], root: String): String =
-        JsonCompat.parse(root)
+        DocJson.parse(root)
             |> Option.map(json -> match UiDoc.parseWith(docsResolver(docs), json) {
                 case Ok(_)  => "no error"
-                case Err(e) => JsonCompat.describe(e)
+                case Err(e) => DocJson.describe(e)
             })
             |> Option.getWithDefault("no json")
 
@@ -566,7 +566,7 @@ mod TestUiDoc {
         let got = run { UiDoc.load("no/such/file.ui.json") } with Fs.FileRead.runWithIO;
         Assert.assertEq(
             expected = true,
-            match got { case Err(e) => String.contains(substr = "failed to read", JsonCompat.describe(e)) case Ok(_) => false })
+            match got { case Err(e) => String.contains(substr = "failed to read", DocJson.describe(e)) case Ok(_) => false })
 
     // ── paletteFile（外部パレットの load 層合成）──
 
@@ -602,7 +602,7 @@ mod TestUiDoc {
         Assert.assertEq(
             expected = true,
             match got {
-                case Err(e) => String.contains(substr = "paletteFile: failed to read", JsonCompat.describe(e))
+                case Err(e) => String.contains(substr = "paletteFile: failed to read", DocJson.describe(e))
                 case Ok(_)  => false
             })
 
@@ -708,7 +708,7 @@ mod TestUiDoc {
         let doc = "{\"root\": {\"name\":\"g\",\"dir\":\"row\",\"children\":["
                 + "{\"name\":\"b\",\"widget\":\"box\",\"color\":\"#112233\",\"cornerRadius\":3.0},"
                 + "{\"name\":\"t\",\"widget\":\"text\",\"text\":\"hi\",\"fontSize\":9.0}]}}";
-        let viaSpec = JsonCompat.parse(doc)
+        let viaSpec = DocJson.parse(doc)
             |> Option.flatMap(json -> UiSpec.parse(json) |> Result.toOption)
             |> Option.flatMap(spec -> match spec {
                 case UiSpec.Spec.Spec(root) => match root#children {
@@ -733,7 +733,7 @@ mod TestUiDoc {
         // circle 図形ノードが UiSpec 経路（spawnRoot → extractShapes）でも 1 個の絵になる。
         let doc = "{\"root\": {\"name\":\"g\",\"children\":["
                 + "{\"name\":\"c\",\"widget\":\"circle\",\"radius\":10.0,\"color\":\"#ff0000\"}]}}";
-        let count = JsonCompat.parse(doc)
+        let count = DocJson.parse(doc)
             |> Option.flatMap(json -> UiSpec.parse(json) |> Result.toOption)
             |> Option.map(spec -> {
                 let (rootId, ui) = UiSpec.spawnRoot(spec, UiStore.empty());
@@ -807,15 +807,15 @@ mod TestUiDoc {
             });
         let flat = vertsOfDoc(String.replace(src = ",\"rotation\":0.5", dst = "", doc));
         let mirrored = flat |> Option.map(List.map(c -> let (x, y) = c; (round4(20.0 - x), round4(20.0 - y))));
-        let uiSpecOk = JsonCompat.parse(doc) |> Option.map(json -> Result.isOk(UiSpec.parse(json)));
+        let uiSpecOk = DocJson.parse(doc) |> Option.map(json -> Result.isOk(UiSpec.parse(json)));
         Assert.assertEq(expected = (mirrored, Some(false)), (vertsOfDoc(doc), uiSpecOk))
 
     @Test
     def testBoxRotationIsLoudErrorViaUiSpec(): Unit \ Assert =
         // poly と同じ契約: 傾きは Flex 経路（UiDoc）だけが解釈でき、UiStore 経路は黙って落とさず Err。
         let doc = "{\"root\": {\"name\":\"b\",\"widget\":\"box\",\"color\":\"#ffffff\",\"rotation\":0.1}}";
-        let uiSpecOk = JsonCompat.parse(doc) |> Option.map(json -> Result.isOk(UiSpec.parse(json)));
-        let uiDocOk  = JsonCompat.parse(doc) |> Option.map(json -> Result.isOk(UiDoc.parse(json)));
+        let uiSpecOk = DocJson.parse(doc) |> Option.map(json -> Result.isOk(UiSpec.parse(json)));
+        let uiDocOk  = DocJson.parse(doc) |> Option.map(json -> Result.isOk(UiDoc.parse(json)));
         Assert.assertEq(expected = (Some(false), Some(true)), (uiSpecOk, uiDocOk))
 
     @Test
@@ -824,8 +824,8 @@ mod TestUiDoc {
         // 「黙って無視」を作らない契約の pin。
         let doc = "{\"root\": {\"name\":\"g\",\"widget\":\"poly\",\"color\":\"#ffffff\",\"rotation\":0.1,"
                 + "\"points\":[[0,0],[4,0],[2,4]]}}";
-        let uiSpecOk = JsonCompat.parse(doc) |> Option.map(json -> Result.isOk(UiSpec.parse(json)));
-        let uiDocOk  = JsonCompat.parse(doc) |> Option.map(json -> Result.isOk(UiDoc.parse(json)));
+        let uiSpecOk = DocJson.parse(doc) |> Option.map(json -> Result.isOk(UiSpec.parse(json)));
+        let uiDocOk  = DocJson.parse(doc) |> Option.map(json -> Result.isOk(UiDoc.parse(json)));
         Assert.assertEq(expected = (Some(false), Some(true)), (uiSpecOk, uiDocOk))
 
     // ── box skin（九分割スキン） ──

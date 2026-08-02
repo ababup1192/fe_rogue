@@ -69,7 +69,7 @@ mod CourseDoc {
 
     /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ倒す。
     pub def fromJson(text: String): Option[Doc] =
-        JsonCompat.decodeObject(fromRoot, text)
+        DocJson.decodeObject(fromRoot, text)
 
     def fromRoot(root: Map[String, Json]): Doc =
         let d = defaults();
@@ -84,5 +84,5 @@ mod CourseDoc {
 
     /// path の Doc を読む。読めない・壊れているときは defaults（fail-open）。
     pub def load(p: String): Doc \ Fs.FileRead =
-        JsonCompat.loadOr(fromJson, defaults(), p)
+        DocJson.loadOr(fromJson, defaults(), p)
 }

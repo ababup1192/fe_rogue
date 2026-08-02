@@ -124,6 +124,6 @@ mod NovelKit {
     def spawnOne(path: String, ui: UiStore.UiWorld): UiStore.UiWorld \ Fs.FileRead =
         match UiSpec.spawnAsset(path, ui) {
             case Ok((_, ui1)) => ui1
-            case Err(e)       => bug!("${path}: ${JsonCompat.describe(e)}")
+            case Err(e)       => bug!("${path}: ${DocJson.describe(e)}")
         }
 }

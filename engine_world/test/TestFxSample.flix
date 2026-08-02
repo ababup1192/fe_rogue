@@ -183,7 +183,7 @@ mod TestFxSample {
             + " \"sizeOver\": {\"kind\": \"peak\", \"at\": 0.25},"
             + " \"alphaOver\": {\"kind\": \"fadeOut\"},"
             + " \"blend\": \"add\" } ] }";
-        let count = JsonCompat.parse(doc)
+        let count = DocJson.parse(doc)
             |> Option.flatMap(json -> FxDoc.parse(json) |> Result.toOption)
             |> Option.map(spec -> List.length(Fx.sample(spec, 1i64, 0.15)))
             |> Option.getWithDefault(-1);

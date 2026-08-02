@@ -85,7 +85,7 @@ mod CatalogContainer {
                 bug!("CatalogContainer.loadWithCheck file read failed: ${spec#dataPath} :: ${error}")
             case Ok(text)   => text
         };
-        let parsed = match JsonCompat.parse(content) {
+        let parsed = match DocJson.parse(content) {
             case None       =>
                 bug!("CatalogContainer.loadWithCheck JSON parse failed: ${spec#dataPath}")
             case Some(json) => json

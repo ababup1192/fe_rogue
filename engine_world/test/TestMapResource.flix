@@ -141,14 +141,14 @@ mod TestMapResource {
 
     @Test
     def testInvalidLevelJsonReturnsNone(): Unit \ Assert =
-        let parsed = JsonCompat.parse("{\"tileSize\": 16}");
+        let parsed = DocJson.parse("{\"tileSize\": 16}");
         let decoded: Option[Level] =
             Option.flatMap(Saveable.fromJson, parsed);
         Assert.assertEq(expected = false, Option.nonEmpty(decoded))
 
     @Test
     def testInvalidMaterialJsonReturnsNone(): Unit \ Assert =
-        let parsed = JsonCompat.parse("{\"tileset\": \"x\"}");
+        let parsed = DocJson.parse("{\"tileset\": \"x\"}");
         let decoded: Option[Material] =
             Option.flatMap(Saveable.fromJson, parsed);
         Assert.assertEq(expected = false, Option.nonEmpty(decoded))
@@ -160,17 +160,17 @@ mod TestMapResource {
     def roundTripFieldValue(v: FieldValue): Option[FieldValue] =
         let json    = Saveable.toJson(v);
         let pretty  = Util.Json.toPrettyString(2, json);
-        JsonCompat.parse(pretty) |> Option.flatMap(Saveable.fromJson)
+        DocJson.parse(pretty) |> Option.flatMap(Saveable.fromJson)
 
     def roundTripMaterial(m: Material): Option[Material] =
         let json    = Saveable.toJson(m);
         let pretty  = Util.Json.toPrettyString(2, json);
-        JsonCompat.parse(pretty) |> Option.flatMap(Saveable.fromJson)
+        DocJson.parse(pretty) |> Option.flatMap(Saveable.fromJson)
 
     def roundTripLevel(l: Level): Option[Level] =
         let json    = Saveable.toJson(l);
         let pretty  = Util.Json.toPrettyString(2, json);
-        JsonCompat.parse(pretty) |> Option.flatMap(Saveable.fromJson)
+        DocJson.parse(pretty) |> Option.flatMap(Saveable.fromJson)
 
     /// 16 キー全て埋めた最小 Material。座標値は適当だが、後段テストで
     /// "1010" → (7, 2) のように具体値を参照する。
@@ -339,7 +339,7 @@ mod TestMapResource {
     def testAutoRuleLegacySizeThreeMigratedToFive(): Unit \ Assert =
         let legacyJson =
             "{\"name\":\"L\",\"size\":3,\"srcX\":0,\"srcY\":0,\"pattern\":[0,0,0,0,-1,0,0,0,0]}";
-        let parsed = JsonCompat.parse(legacyJson);
+        let parsed = DocJson.parse(legacyJson);
         let mat = legacyMaterialFromAutoRule(parsed);
         let info = match mat {
             case Some(m) => match List.head(MapResource.materialData(m)#autoRules) {
@@ -356,7 +356,7 @@ mod TestMapResource {
     def testAutoRuleLegacyTwoBecomesNotValueOne(): Unit \ Assert =
         let legacyJson =
             "{\"name\":\"L\",\"size\":3,\"srcX\":0,\"srcY\":0,\"pattern\":[0,2,0,0,-1,0,0,1,0]}";
-        let parsed = JsonCompat.parse(legacyJson);
+        let parsed = DocJson.parse(legacyJson);
         let mat = legacyMaterialFromAutoRule(parsed);
         let firstPattern = match mat {
             case Some(m) => match List.head(MapResource.materialData(m)#autoRules) {
@@ -373,7 +373,7 @@ mod TestMapResource {
     def testAutoRuleLegacyCenterBecomesUnspecified(): Unit \ Assert =
         let legacyJson =
             "{\"name\":\"L\",\"size\":3,\"srcX\":0,\"srcY\":0,\"pattern\":[0,0,0,0,-1,0,0,0,0]}";
-        let parsed = JsonCompat.parse(legacyJson);
+        let parsed = DocJson.parse(legacyJson);
         let mat = legacyMaterialFromAutoRule(parsed);
         let centerCell = match mat {
             case Some(m) => match List.head(MapResource.materialData(m)#autoRules) {
@@ -389,7 +389,7 @@ mod TestMapResource {
     def testAutoRuleLegacyOneBecomesValueOne(): Unit \ Assert =
         let legacyJson =
             "{\"name\":\"L\",\"size\":3,\"srcX\":0,\"srcY\":0,\"pattern\":[1,0,0,0,-1,0,0,0,0]}";
-        let parsed = JsonCompat.parse(legacyJson);
+        let parsed = DocJson.parse(legacyJson);
         let mat = legacyMaterialFromAutoRule(parsed);
         let cell = match mat {
             case Some(m) => match List.head(MapResource.materialData(m)#autoRules) {
@@ -474,7 +474,7 @@ mod TestMapResource {
         let materialJson = "{\"tileset\":\"x\",\"tileSize\":16,"
             + "\"wallMap\":{},\"floorPalette\":[],\"decorPalette\":[],"
             + "\"autoRules\":[" + ruleJson + "]}";
-        JsonCompat.parse(materialJson) |> Option.flatMap(Saveable.fromJson)
+        DocJson.parse(materialJson) |> Option.flatMap(Saveable.fromJson)
     }
 
     /// NotValue(1), Anything, Nothing, Value(2) を混ぜた pattern を持つ Material。

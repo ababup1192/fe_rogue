@@ -29,7 +29,7 @@ mod TestUiSpec {
 
     /// JSON テキストを parse し、Spec と spawn 済み UiWorld の組を返す（失敗時 None）。
     def specAndWorld(jsonText: String): Option[(UiSpec.Spec, UiStore.UiWorld)] =
-        JsonCompat.parse(jsonText)
+        DocJson.parse(jsonText)
             |> Option.flatMap(json -> UiSpec.parse(json) |> Result.toOption)
             |> Option.map(spawnPair)
 
@@ -207,7 +207,7 @@ mod TestUiSpec {
     /// points が 2 点以下の poly は Err（塗り潰しに 3 頂点必要）。points キー欠落も Err。
     @Test
     def testParseRejectsPolyWithBadPoints(): Unit \ Assert =
-        let isErr = jsonText -> JsonCompat.parse(jsonText) |> Option.map(json -> Result.isErr(UiSpec.parse(json)));
+        let isErr = jsonText -> DocJson.parse(jsonText) |> Option.map(json -> Result.isErr(UiSpec.parse(json)));
         let twoPoints = isErr("{\"root\":{\"name\":\"m\",\"widget\":\"poly\",\"points\":[[0,0],[1,1]],\"color\":\"#ffffff\"}}");
         let noPoints  = isErr("{\"root\":{\"name\":\"m\",\"widget\":\"poly\",\"color\":\"#ffffff\"}}");
         Assert.assertEq(expected = (Some(true), Some(true)), (twoPoints, noPoints))
@@ -219,7 +219,7 @@ mod TestUiSpec {
     /// 未知 widget "blob" は Err。name 欠落も Err。兄弟 name 重複も Err。
     @Test
     def testParseRejectsInvalidInput(): Unit \ Assert =
-        let isErr = jsonText -> JsonCompat.parse(jsonText) |> Option.map(json -> Result.isErr(UiSpec.parse(json)));
+        let isErr = jsonText -> DocJson.parse(jsonText) |> Option.map(json -> Result.isErr(UiSpec.parse(json)));
         let unknownWidget = isErr("{\"root\":{\"name\":\"x\",\"widget\":\"blob\"}}");
         let missingName   = isErr("{\"root\":{\"widget\":\"box\",\"color\":\"#ffffff\"}}");
         let dupSibling    = isErr("{\"root\":{\"name\":\"r\",\"children\":[{\"name\":\"a\",\"widget\":\"none\"},{\"name\":\"a\",\"widget\":\"none\"}]}}");
@@ -298,14 +298,14 @@ mod TestUiSpec {
     /// name が空文字の root は Err（名前パス機構の破壊を防ぐ）。
     @Test
     def testParseRejectsEmptyName(): Unit \ Assert =
-        let isErr = JsonCompat.parse("{\"root\":{\"name\":\"\",\"widget\":\"none\"}}")
+        let isErr = DocJson.parse("{\"root\":{\"name\":\"\",\"widget\":\"none\"}}")
             |> Option.map(json -> Result.isErr(UiSpec.parse(json)));
         Assert.assertEq(expected = Some(true), isErr)
 
     /// name に区切り文字 "/" を含む root は Err（"a/b" は名前パスを曖昧にする）。
     @Test
     def testParseRejectsSlashInName(): Unit \ Assert =
-        let isErr = JsonCompat.parse("{\"root\":{\"name\":\"a/b\",\"widget\":\"none\"}}")
+        let isErr = DocJson.parse("{\"root\":{\"name\":\"a/b\",\"widget\":\"none\"}}")
             |> Option.map(json -> Result.isErr(UiSpec.parse(json)));
         Assert.assertEq(expected = Some(true), isErr)
 }

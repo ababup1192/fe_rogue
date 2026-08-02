@@ -22,7 +22,7 @@ mod TestHits {
                 case Ok(sheet) =>
                     "gaps=${List.length(HitDoc.gaps(Hits.requiredKeys(), sheet))} keys=${Map.size(sheet)}"
                         + sheetSummary(sheet)
-                case Err(e)    => "error: ${JsonCompat.describe(e)}"
+                case Err(e)    => "error: ${DocJson.describe(e)}"
             }
         } with Fs.FileRead.runWithIO
 

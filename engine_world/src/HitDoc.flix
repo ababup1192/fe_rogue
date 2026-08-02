@@ -5,7 +5,7 @@ mod HitDoc {
     use Hit.HitShape
     use Util.Json.Json
     use Util.Json.JsonError
-    use JsonCompat.PathTag.Root
+    use DocJson.PathTag.Root
 
     /// 名前 → 形の列。hitbox.json の "hit" と同じ形。
     pub type alias Sheet = Map[String, List[HitShape]]
@@ -52,16 +52,16 @@ mod HitDoc {
     /// hitbox.json 全体を Sheet にする（version 確認 + "hit" の名前 → 形の列）。
     pub def parse(json: Json): Result[JsonError, Sheet] =
         forM (
-            top   <- JsonCompat.asObject("hitbox", json);
-            _v    <- JsonCompat.checkVersion("hitbox", top);
-            sheet <- JsonCompat.sheetAt("hit", parseShape, top)
+            top   <- DocJson.asObject("hitbox", json);
+            _v    <- DocJson.checkVersion("hitbox", top);
+            sheet <- DocJson.sheetAt("hit", parseShape, top)
         ) yield sheet
 
     /// 形 1 個を読む。"shape" で種類を選び、寸法は種類ごとに読む。
     def parseShape(json: Json): Result[JsonError, HitShape] =
         forM (
-            m     <- JsonCompat.asObject("shape", json);
-            kind  <- (JsonCompat.getAtKey(Root, "shape", m): Result[JsonError, String]);
+            m     <- DocJson.asObject("shape", json);
+            kind  <- (DocJson.getAtKey(Root, "shape", m): Result[JsonError, String]);
             shape <- parseKind(kind, m)
         ) yield shape
 
@@ -69,35 +69,35 @@ mod HitDoc {
     def parseKind(kind: String, m: Map[String, Json]): Result[JsonError, HitShape] =
         match kind {
             case "circle" => forM (
-                dx <- JsonCompat.numAt("dx", m); dy <- JsonCompat.numAt("dy", m);
+                dx <- DocJson.numAt("dx", m); dy <- DocJson.numAt("dy", m);
                 r  <- positiveAt("r", m)
             ) yield HitShape.CircleH({ dx = dx, dy = dy, r = r })
             case "box" => forM (
-                dx <- JsonCompat.numAt("dx", m); dy <- JsonCompat.numAt("dy", m);
+                dx <- DocJson.numAt("dx", m); dy <- DocJson.numAt("dy", m);
                 w  <- positiveAt("w", m); h <- positiveAt("h", m)
             ) yield HitShape.BoxH({ dx = dx, dy = dy, w = w, h = h })
             case unknown =>
-                Err(JsonCompat.jsonError(Root, Set#{
+                Err(DocJson.jsonError(Root, Set#{
                     "unknown shape '${unknown}' (known: ${String.intercalate(", ", shapeKinds())})"}))
         }
 
     /// key の数値（0 より大きいこと）。負・ゼロの寸法は判定が黙って縮む・消えるので断る。
     def positiveAt(key: String, m: Map[String, Json]): Result[JsonError, Float64] =
-        JsonCompat.numAt(key, m) |> Result.flatMap(v ->
+        DocJson.numAt(key, m) |> Result.flatMap(v ->
             if (v > 0.0) Ok(v)
-            else Err(JsonCompat.jsonError(Root, Set#{"${key} must be positive (got ${v})"})))
+            else Err(DocJson.jsonError(Root, Set#{"${key} must be positive (got ${v})"})))
 
     // ── load（IO はここだけ） ──
 
     /// path を読んで Sheet にする。読めない・崩れているときは位置付きの Err。
     pub def load(path: String): Result[JsonError, Sheet] \ Fs.FileRead =
-        JsonCompat.readJson(path) |> Result.flatMap(json -> parse(json))
+        DocJson.readJson(path) |> Result.flatMap(json -> parse(json))
 
     /// 起動時用: 読めない・必須キーの欠落は bug! で起動を止めて loud に知らせる。
     pub def loadOrBug(path: String, required: List[String]): Sheet \ Fs.FileRead =
         match load(path) {
             case Ok(sheet) => checkGaps(required, sheet)
-            case Err(e)    => bug!("hitbox: ${JsonCompat.describe(e)}")
+            case Err(e)    => bug!("hitbox: ${DocJson.describe(e)}")
         }
 
     /// 欠けが無ければそのまま返し、有れば bug! で止める。

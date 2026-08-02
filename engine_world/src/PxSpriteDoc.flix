@@ -31,7 +31,7 @@ mod PxSpriteDoc {
 
     /// テキストから Doc へ(fail-open)。JSON でない・形が違うフィールドは既定へ倒す。
     pub def fromJson(text: String): Option[Doc] =
-        JsonCompat.parse(String.trim(text))
+        DocJson.parse(String.trim(text))
             |> Option.flatMap(JsonCodec.expectObject)
             |> Option.map(fromRoot)
 

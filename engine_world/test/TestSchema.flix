@@ -46,7 +46,7 @@ mod TestSchema {
 
     /// スキーマ JSON 文字列を parse + fromJson に通す
     def decodeText(text: String): Result[String, Schema.Schema] =
-        JsonCompat.parse(text)
+        DocJson.parse(text)
             |> Option.toOk("JSON parse failed")
             |> Result.flatMap(Schema.fromJson)
 

@@ -26,7 +26,7 @@ mod TestUiMenu {
                 + "{\"name\":\"slot1\",\"widget\":\"box\",\"color\":\"#000000\",\"width\":10,\"height\":10,\"meta\":\"m/1\"},"
                 + "{\"name\":\"head\",\"widget\":\"box\",\"color\":\"#000000\",\"width\":10,\"height\":10},"
                 + "{\"name\":\"slot2\",\"widget\":\"box\",\"color\":\"#000000\",\"width\":10,\"height\":10,\"meta\":\"m/2\"}]}}";
-        JsonCompat.parse(doc)
+        DocJson.parse(doc)
             |> Option.flatMap(json -> UiSpec.parse(json) |> Result.toOption)
             |> Option.map(spec -> { let (_, ui) = UiSpec.spawnRoot(spec, UiStore.empty()); ui })
 

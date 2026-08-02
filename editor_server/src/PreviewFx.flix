@@ -12,7 +12,7 @@ mod PreviewFx {
     /// リクエストボディを解いて (HTTP status, 応答 JSON) を作る。
     /// body: {path?, doc?, seed?, t?, scale?}。doc が path より優先 (編集中バッファ優先)。
     pub def respond(dir: String, caches: Caches.Caches, body: String): (Int32, Json) \ IO =
-        match (JsonCompat.parse(body) |> Option.flatMap(JsonCodec.expectObject)) {
+        match (DocJson.parse(body) |> Option.flatMap(JsonCodec.expectObject)) {
             case None      => (400, envelopeError("body must be a JSON object {path?, doc?, seed?, t?, scale?}"))
             case Some(obj) =>
                 let scale = PreviewUi.clampScale(JsonCodec.intOr("scale", 2, obj));
@@ -22,7 +22,7 @@ mod PreviewFx {
                     case Err(PreviewUi.BadRequest.Envelope(message)) => (400, envelopeError(message))
                     case Err(PreviewUi.BadRequest.Doc(message))      => (200, failJson(message))
                     case Ok(docJson)                                 => match FxDoc.parse(docJson) {
-                        case Err(e)   => (200, failJson(JsonCompat.describe(e)))
+                        case Err(e)   => (200, failJson(DocJson.describe(e)))
                         case Ok(spec) => renderFx(dir, caches, spec, {seed = seed, t = t, scale = scale})
                     }
                 }

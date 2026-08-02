@@ -46,7 +46,7 @@ mod ThemeDoc {
 
     /// テキストから Doc へ（fail-open）。色の表記（#rrggbb）は UiDoc.colorOf に委ねる。
     pub def fromJson(text: String): Option[Doc] =
-        JsonCompat.decodeObject(fromRoot, text)
+        DocJson.decodeObject(fromRoot, text)
 
     def fromRoot(root: Map[String, Json]): Doc =
         let d = defaults();
@@ -70,7 +70,7 @@ mod ThemeDoc {
 
     /// path の Doc を読む。読めない・壊れているときは defaults（fail-open）。
     pub def load(p: String): Doc \ Fs.FileRead =
-        JsonCompat.loadOr(fromJson, defaults(), p)
+        DocJson.loadOr(fromJson, defaults(), p)
 
     // ── 派生色と resolver ──
 
