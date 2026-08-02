@@ -32,5 +32,5 @@ mod Scatter {
 
     /// world 座標 / セル辺 の商をセル index（床関数）へ。
     def tileIndex(q: Float64): Int32 =
-        Float64.floor(q) |> Float64.tryToInt32 |> Option.getWithDefault(0)
+        Num.floorInt(q)
 }

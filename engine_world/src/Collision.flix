@@ -59,7 +59,7 @@ mod Collision {
                              Map.empty(), bodies)
 
     def toCell(cs: Float64, v: Float64): Int32 =
-        Float64.floor(v / cs) |> Float64.tryToInt32 |> Option.getWithDefault(0)
+        Num.floorInt(v / cs)
 
     def cellOf(cs: Float64, p: Vec2.Vec2): (Int32, Int32) = (toCell(cs, p#x), toCell(cs, p#y))
 

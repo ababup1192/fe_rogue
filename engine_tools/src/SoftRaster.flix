@@ -666,7 +666,7 @@ mod SoftRaster {
 
     /// Float64 の床を Int32 に（縞・市松の格子番号用。負値も床側へ丸める）。
     def floorI(x: Float64): Int32 =
-        Float64.tryToInt32(Float64.floor(x)) |> Option.getWithDefault(0i32)
+        Num.floorInt(x)
 
     /// 画像 Drawable。元テクスチャの uv 部分矩形を切り出し、color で tint・alpha を乗算して
     /// design px の表示矩形へ拡大転写する。font_ アトラス（白グリフ）もこの経路で色が付く。

@@ -183,7 +183,7 @@ mod Fx {
 
     /// u * rate の整数段（flicker のチラつきの区切り番号）。
     def stepOf(x: Float64): Int32 =
-        Float64.tryToInt32(Float64.floor(x)) |> Option.getWithDefault(0)
+        Num.floorInt(x)
 
     // ── 粒ごとの導出 ──
 

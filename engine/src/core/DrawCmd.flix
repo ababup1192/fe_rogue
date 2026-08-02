@@ -62,7 +62,7 @@ mod DrawCmd {
     /// 見るための共通式 — y の反転（GL は左下原点）は GL 側だけが行う。
     /// 端のちらつきを避けたい呼び側は clip 矩形を整数 design px で作ること。
     pub def clipPixels(scale: {scaleX = Float64, scaleY = Float64}, clip: Rect2.Rect2): (Int32, Int32, Int32, Int32) =
-        let f = v -> Float64.floor(v) |> Float64.tryToInt32 |> Option.getWithDefault(0);
+        let f = v -> Num.floorInt(v);
         (f(clip#position#x * scale#scaleX),
          f(clip#position#y * scale#scaleY),
          f((clip#position#x + clip#size#x) * scale#scaleX),

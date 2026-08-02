@@ -19,7 +19,7 @@ mod Anim {
         if (clip#frames <= 0) 0
         else if (t < 0.0) 0
         else {
-            let raw = Float64.floor(t * clip#fps) |> Float64.tryToInt32 |> Option.getWithDefault(0);
+            let raw = Num.floorInt(t * clip#fps);
             if (clip#looping) Int32.modulo(raw, clip#frames)
             else Int32.min(raw, clip#frames - 1)
         }

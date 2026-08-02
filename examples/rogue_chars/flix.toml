@@ -6,6 +6,6 @@ flix        = "0.75.1"
 authors     = ["ababup1192 <ababup1192@gmail.com>"]
 
 [dependencies]
-"github:ababup1192/flix_engine_core" = { version = "0.14.0", security = "unrestricted" }
-"github:ababup1192/flix_engine_world" = { version = "0.14.0", security = "unrestricted" }
-"github:ababup1192/flix_engine_tools" = { version = "0.14.0", security = "unrestricted" }
+"github:ababup1192/flix_engine_core" = { version = "0.15.0", security = "unrestricted" }
+"github:ababup1192/flix_engine_world" = { version = "0.15.0", security = "unrestricted" }
+"github:ababup1192/flix_engine_tools" = { version = "0.15.0", security = "unrestricted" }

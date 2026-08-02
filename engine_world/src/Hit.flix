@@ -71,17 +71,20 @@ mod Hit {
     /// 円×箱: 箱の中で円の中心に最も近い点（軸ごとのクランプ）までの距離が半径より
     /// 短ければ当たり。中心が箱の中ならその点は中心自身で、距離 0 = 必ず当たる。
     def circleBox(c: Vec2.Vec2, r: Float64, bc: Vec2.Vec2, w: Float64, h: Float64): Bool =
-        let nearest = { x = clamp(bc#x - w / 2.0, bc#x + w / 2.0, c#x),
-                        y = clamp(bc#y - h / 2.0, bc#y + h / 2.0, c#y) };
+        let nearest = { x = Num.clamp(bc#x - w / 2.0, bc#x + w / 2.0, c#x),
+                        y = Num.clamp(bc#y - h / 2.0, bc#y + h / 2.0, c#y) };
         Vec2.distanceSquaredTo(c, nearest) < r * r
 
     /// 箱×箱: 軸ごとに中心間のずれが半分幅の和より小さければ当たり（AABB）。
-    def boxBox(ca: Vec2.Vec2, wa: Float64, ha: Float64,
-               cb: Vec2.Vec2, wb: Float64, hb: Float64): Bool =
+    /// HitShape を組まずに素の中心＋幅高で聞ける口 — タイルやプレイヤーの当たり箱など
+    /// 「形が 1 個で決まっている」照会はこちらが素直。境界規則は本体と同じ
+    /// 「ちょうど接するのは外」（足元のタイルには置ける・触れて初めて被弾する）。
+    pub def boxBox(ca: Vec2.Vec2, wa: Float64, ha: Float64,
+                   cb: Vec2.Vec2, wb: Float64, hb: Float64): Bool =
         Float64.abs(ca#x - cb#x) < (wa + wb) / 2.0 and
         Float64.abs(ca#y - cb#y) < (ha + hb) / 2.0
 
-    /// v を lo..hi に収める。
-    def clamp(lo: Float64, hi: Float64, v: Float64): Float64 =
-        Float64.max(lo, Float64.min(hi, v))
+    /// 点×箱: 点が中心 c・幅 w・高さ h の箱の中か（縁の上は外 — boxBox の点版）。
+    pub def pointBox(p: Vec2.Vec2, c: Vec2.Vec2, w: Float64, h: Float64): Bool =
+        boxBox(p, 0.0, 0.0, c, w, h)
 }

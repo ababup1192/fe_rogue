@@ -44,6 +44,5 @@ mod Vec2i {
 
     /// Float64 座標 → Int 座標 (floor 切り捨て)
     pub def fromVec2Floor(v: Vec2.Vec2): {x = Int32, y = Int32} =
-        {x = Float64.floor(v#x) |> Float64.tryToInt32 |> Option.getWithDefault(0i32),
-         y = Float64.floor(v#y) |> Float64.tryToInt32 |> Option.getWithDefault(0i32)}
+        {x = Num.floorInt(v#x), y = Num.floorInt(v#y)}
 }

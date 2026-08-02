@@ -146,6 +146,14 @@ mod Render {
         { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
           item = box(size, color, zIndex) }
 
+    /// items が空なら boxAt の仮色の板 1 枚に倒す fail-open。スプライトのコマ名違い・
+    /// 読み込み失敗で画面に穴を開けない（板が出れば「絵が無い」と目で判る）ための口 —
+    /// 空でなければ items をそのまま返す。
+    pub def orBoxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32,
+                    items: List[PlacedItem]): List[PlacedItem] =
+        if (List.isEmpty(items)) boxAt(center, size, color, zIndex) :: Nil
+        else items
+
     /// 宣言シェーダーで矩形 rect を塗る面（PlacedItem）。at に rect の左上を入れる —
     /// 描画は at を置き場所に使うので、withCamera 下では at がカメラ変換を受けて面が追従する
     /// （カメラ無しなら at は rect#position のままで画面固定）。t は uTime に渡す秒（world#time など）。

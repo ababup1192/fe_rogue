@@ -29,4 +29,14 @@ mod Num {
     /// clamp01 を通してから渡す。
     pub def lerp(a: Float64, b: Float64, t: Float64): Float64 =
         a + (b - a) * t
+
+    /// 床へ丸めて Int32 に落とす（-1.5 → -2）。ゼロ向き切り捨てではない — 負の座標でも
+    /// マスの並びが 0 の両側で揃う。Int32 に収まらない大きさは 0（画面・マス目の範囲では
+    /// 起きない）。
+    pub def floorInt(x: Float64): Int32 =
+        Float64.floor(x) |> Float64.tryToInt32 |> Option.getWithDefault(0)
+
+    /// 最も近い整数へ丸めて Int32 に落とす（0.5 は上へ）。負でも床基準（-1.5 → -1）。
+    pub def roundInt(x: Float64): Int32 =
+        floorInt(x + 0.5)
 }

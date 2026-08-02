@@ -33,7 +33,7 @@ mod Grid {
 
     /// 浮動小数の除算を、含まれる整数セル添字へ切り下げる。
     def floorDiv(value: Float64, tileSize: Float64): Int32 =
-        Float64.floor(value / tileSize) |> Float64.tryToInt32 |> Option.getWithDefault(0)
+        Num.floorInt(value / tileSize)
 
     /// セル座標を名前付き成分で持つための record 型。列 = `x`、行 = `y`。tuple 版
     /// `(col, row)` と同じ値を表すが、境界で `(a, b)` へ組み替えずそのまま渡せる。
@@ -115,5 +115,5 @@ mod Grid {
 
     def floorTo(v: Float64): Int32 =
         if (not Float64.isFinite(v)) 0
-        else Float64.floor(v) |> Float64.tryToInt32 |> Option.getWithDefault(0)
+        else Num.floorInt(v)
 }

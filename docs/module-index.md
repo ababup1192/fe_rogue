@@ -74,6 +74,10 @@
 | ドット絵のコマの大きさを知る（当たり・置き場所を絵に追随させる） | PxSprite.sizeOf / PxSpriteDoc.gridSizeOf |
 | 文字の並び（rows）の大きさを測る・1 マスずつほどく | Grid.dimsOfRows / Grid.cellsOfRows |
 | 0〜1 に収める・小数部だけ残す・周期で折り返す（負の値も安全） | Num.clamp01 / clamp / fract / wrapTo / lerp |
+| 床・四捨五入で Int32 に落とす（負の座標もマスが揃う） | Num.floorInt / roundInt |
+| 素の中心＋幅高の箱どうし・点×箱の重なりを聞く（接するのは外） | Hit.boxBox / pointBox |
+| スプライトが無い・読めないとき仮色の板に倒す（穴を開けない） | Render.orBoxAt |
+| Doc の一覧を台帳 1 枚にし watchFile・一括リロード・表示中バッジを導出 | DocTable |
 | 色を作る（0〜1・0〜255・#rrggbb）・2 色を混ぜる・比べる | Color.rgb / rgb8 / hex / mix / channels |
 | 置き場所つきの絵に修飾を掛ける・列を丸ごと薄くする | Render.overItem / Render.fadeAll |
 | Doc を fail-open で読む（読めない・壊れは既定値へ） | JsonCompat.loadOr / decodeObject |
@@ -220,6 +224,7 @@
 ## デバッグ・開発
 
 - **ActiveDocs** — 「いま表示に使っている Doc(JSON)はどれか」を debug/active-docs.json に名乗る（Studio の「表示中」バッジの窓口。同じ内容なら書かない）。
+- **DocTable** — Doc の台帳（id・パス・読み直し）1 枚から、watchFile の配線・一括リロード・ActiveDocs の名乗りを導出する。一覧の手写しを 1 か所に。
 - **Annotate** — 実行中のゲームを一時停止して、画面の気になる場所を矩形で囲んで記録する。
 - **RemoteDebug** — 起動中のゲームを外部プロセスが HTTP で操作・観測する口。POST /bake は App.onBakeRequest で登録した「焼きの実体」を温まった JVM で実行し、焼けたパス列を返す（プレイ状態には触れない）。
 - **GameLogger** — 起きたことを 1 行ずつログに積み、あとでまとめて取り出す effect。

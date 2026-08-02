@@ -75,6 +75,13 @@ mod TestHit {
              hit1(at(0.0, 0.0), a, at(4.9, 0.0), b),
              hit1(at(0.0, 0.0), a, at(0.5, 0.5), box(0.0, 0.0, 2.0, 2.0))))
 
+    /// 点×箱: 縁の上は外・中は当たり（boxBox の点版という契約を固定する）。
+    @Test
+    def testPointBoxEdgeIsOut(): Unit \ Assert =
+        Assert.assertEq(expected = (false, true),
+            (Hit.pointBox({ x = 3.0, y = 0.0 }, { x = 0.0, y = 0.0 }, 6.0, 4.0),
+             Hit.pointBox({ x = 2.9, y = 0.0 }, { x = 0.0, y = 0.0 }, 6.0, 4.0)))
+
     /// 複数箱の意味論: 全長 24 の見た目のミサイルでも、当たりが先端の 6×6 だけなら
     /// 胴体・尾部への接触は外れで、先端だけが当たる。
     @Test

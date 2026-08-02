@@ -35,7 +35,7 @@ mod UiTypewriter {
     /// いま見えている文字数（整数）。スパン列など文字列以外の見せ方をする側が
     /// RichText.take などに渡して使う。
     pub def visibleCount(reveal: Reveal): Int32 =
-        Float64.floor(reveal#shown) |> Float64.tryToInt32 |> Option.getWithDefault(0)
+        Num.floorInt(reveal#shown)
 
     /// いま見えている先頭部分の文字列。UiStore.setText へそのまま渡せる。
     pub def visibleText(reveal: Reveal): String =
