@@ -186,8 +186,10 @@ def testFoo(): Unit \ Assert =
 
 ### 予約語に注意
 
-- `handler` は予約語（エフェクトハンドラで使用）
-- import 文、変数名として使うとパースエラーになる
+- `handler`, `do`, `resume`, `run`, `spawn`, `region`, `inject`, `project`, `solve` は予約語
+- import 文・変数名・関数名だけでなく、**レコードのフィールド名**でもパースエラーになる
+- ゲームコードで特に踏みやすいのは `spawn`（敵や主役の湧き位置）と `run`（走りアニメ・実行）。
+  エラーは「Expected ',' before '='」「Expected <pattern>」など間接的な形で出るので気づきにくい
 - 代わりの英単語を使うか、2単語以上で命名する
 
 ```flix
@@ -196,6 +198,14 @@ case Some((handler, params)) => ...
 
 // OK: 別の単語を使う
 case Some((action, params)) => ...
+
+// NG: フィールド名も同じ（{ spawn = Cell } / let run = ... は全部パースエラー）
+pub type alias Stage = { spawn = Cell }
+let run = { dir = 1.0 };
+
+// OK
+pub type alias Stage = { start = Cell }
+let walkR = { dir = 1.0 };
 ```
 
 ### Channel API
