@@ -1,43 +1,28 @@
 {
-  "note": "race.shader.json（宣言シェーダー面）の語彙リファレンス。値の場(field)・色(shade)・出力(out)を 'kind' で分岐する再帰構造で、任意の GLSL は書けない（この語彙の組み合わせだけがシェーダーになる）。知らない kind が 1 つあるだけで Doc 全体が既定値へ倒れる（エラーは出ず絵だけ別物になる）ので、書いたら必ず焼いて確かめる。壊れた JSON は engine の見本の面へ fail-open。語彙の全体は engine の docs/shader-doc.md。",
-  "top": {
-    "name": "String（面の名前・任意）",
-    "cycleRate": "Float 0..（色の位相が時間で回る速さ。0 で静止）",
-    "shared": "[[名前, Field], ...]（同じ場を使い回す。前方参照のみ）",
-    "out": "Out（必須）"
-  },
-  "out": {
-    "fill": { "kind": "fill", "shade": "Shade", "alpha": "Field（0..1）" }
-  },
-  "shade": {
-    "solid":    { "kind": "solid", "color": "Color" },
-    "ramp":     { "kind": "ramp", "lo": "Color", "hi": "Color", "field": "Field（0..1 で lo↔hi）" },
-    "gradient": { "kind": "gradient", "stops": "[[位置 0..1, Color], ...]", "field": "Field" },
-    "cosine":   { "kind": "cosine", "a": "Color", "b": "Color", "c": "Color", "d": "Color（d をずらすと別配色）", "field": "Field" }
-  },
-  "field": {
-    "const":      { "kind": "const", "value": "Float" },
-    "uv":         { "kind": "uv", "axis": "u | v" },
-    "fbm":        { "kind": "fbm", "octaves": "Int 1..4", "scale": "Float", "seed": "Int" },
-    "fbmTile":    { "kind": "fbmTile（engine 0.13.0 から）", "octaves": "Int 1..4", "scale": "Float（雲の粗さ）", "period": { "x": "Float（整数にすると継ぎ目が出ない）", "y": "Float" }, "seed": "Int" },
-    "worley":     { "kind": "worley", "scale": "Float 1..12（網目の密度）", "seed": "Int", "out": "f1 | f2 | f2mf1（f2mf1=網目）" },
-    "smoothstep": { "kind": "smoothstep", "lo": "Float", "hi": "Float（境の太さ）", "of": "Field" },
-    "scaled":     { "kind": "scaled", "factor": "Float（座標を factor 倍＝密度）", "scroll": { "x": "Float（流れの速さ）", "y": "Float" }, "of": "Field" },
-    "warp":       { "kind": "warp", "amount": "Float 0..0.3（うねりの強さ）", "scale": "Float", "seed": "Int", "of": "Field" },
-    "radialAspect": { "kind": "radialAspect（engine 0.13.0 から）", "cx": "Float 0..1", "cy": "Float 0..1", "aspect": "Float（面の 横÷縦。vignette はこれを使う）" },
-    "quantize":   { "kind": "quantize（engine 0.13.0 から）", "of": "Field", "steps": "Int（段数を減らす）" },
-    "math1":      { "kind": "math1", "op": "neg|abs|fract|floor|sin|cos|sat|oneMinus", "of": "Field" },
-    "math2":      { "kind": "math2", "op": "add|sub|mul|min|max|step", "a": "Field", "b": "Field" },
-    "use":        { "kind": "use", "name": "shared に置いた名前" }
-  },
-  "color": "\"#rrggbb\" または { \"r\": 0..1, \"g\": 0..1, \"b\": 0..1 }",
-  "sliders": {
-    "cycleRate":       { "min": 0.0,  "max": 1.0,  "step": 0.05 },
-    "fbmTile.scale":   { "min": 1.0,  "max": 12.0, "step": 0.5 },
-    "scaled.factor":   { "min": 0.5,  "max": 12.0, "step": 0.5 },
-    "scaled.scroll.x": { "min": -0.2, "max": 0.2,  "step": 0.002 },
-    "scaled.scroll.y": { "min": -0.2, "max": 0.2,  "step": 0.002 },
-    "warp.amount":     { "min": 0.0,  "max": 0.3,  "step": 0.01 },
-    "smoothstep.hi":   { "min": 0.0,  "max": 0.3,  "step": 0.01 }
+  "//": "race.shader.json（宣言シェーダー面）の形の宣言（Studio の sections 方言）。中身は値の場(field)・色(shade)・出力(out)を 'kind' で分岐する再帰構造で、フォームには畳めないため out は生 JSON 行で編集する。知らない kind が 1 つあるだけで Doc 全体が既定値へ倒れる（エラーは出ず絵だけ別物になる）ので、書いたら必ず焼いて確かめる。語彙の全体は engine の docs/shader-doc.md。",
+  "version": 1,
+  "sections": {
+    "name": {
+      "kind": "field",
+      "type": "text",
+      "label": "面の名前",
+      "order": 1,
+      "default": "roadside"
+    },
+    "cycleRate": {
+      "kind": "field",
+      "type": "float",
+      "label": "色の位相が時間で回る速さ（0 で静止）",
+      "order": 2,
+      "min": 0,
+      "max": 4,
+      "default": 0.0
+    },
+    "out": {
+      "kind": "field",
+      "type": "json",
+      "label": "出力（fill の再帰構造。生 JSON — 調整ノブは Doc の note を参照）",
+      "order": 3
+    }
   }
 }
