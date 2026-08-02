@@ -31,9 +31,27 @@ def main(): Unit \ IO =
                     (ThemeDoc.path(), Controls.reloadTheme) ::
                     (BattleDoc.path(), Controls.reloadBattle) ::
                     (World.spritePath(), Controls.reloadSprites) ::
-                    (World.terrainPath(), Controls.reloadTerrain) :: Nil
+                    (World.townSpritePath(), Controls.reloadTownSprites) ::
+                    (TownMapDoc.path(), Controls.reloadTownMap) ::
+                    (Controls.waterShaderPath(), Controls.reloadWaterShader) ::
+                    (Controls.smokeFxPath(), Controls.reloadSmokeFx) :: Nil
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
+                // 街タイル: World が焼いたアトラスを GPU へ上げ（同じ key の間は何も起きない）、
+                // タイル層として敷く。タイル層の zIndex は動的な絵と同じ z 空間で解釈される
+                // （z=0 の床は DualGrid 地形の下に隠れる — 見比べのため既存の絵は残してある）。
+                |> App.withSpriteAtlases(w ->
+                    { texture = TownMap.textureName(), key = w#townAtlasKey,
+                      baked = w#townAtlas } :: Nil)
+                // 宣言は World の持ち物を返すだけ — ここで TownMap.spec を呼ぶと
+                // エンジンが毎フレーム評価して全盤走査が 1 フレーム予算を食い潰す。
+                |> App.withTileLayers(w -> w#tileSpec :: Nil)
+                // camera: 主人公を追い、盤の外の虚空は映さない。ドット絵なので 1px に吸着。
+                // 画面固定の UI（空・霧・幕・戦いの窓）は hudView 側 — camera が掛からない。
+                |> App.withCamera(w -> checked_ecast(World.cameraCenter(w)))
+                |> App.withCameraBounds(w -> checked_ecast(World.boardRect(w)))
+                |> App.withPixelSnap(_ -> 1.0)
+                |> App.withHudView((ctx, w) -> checked_ecast(View.hud(ctx, w)))
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
                 // 走行中の POST /bake（Studio の「焼いて」）は Bake.all と同じ実体を呼ぶ。
                 |> App.onBakeRequest(Bake.allShots)

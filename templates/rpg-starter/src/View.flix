@@ -2,34 +2,55 @@
 // 画面は 2 つある: 里（歩く画面）と 戦い（魔物と向き合う画面）。frame が phase で振り分ける。
 //
 // ── この画面の画風（AGENTS.local.md と同じ宣言）──
-// 「霧の出た夕暮れの段々畑の里」。空も土も紫みを帯びて沈み、暖かいのは灯りだけ。
-//   色は 3 つ: 暮れた紫 / 土の茶 / 灯りの橙。
-//   やらないこと: 真っ黒と純白を使わない（霧の中なので、いちばん暗い所も明るい所も濁らせる）。
+// 「晴れた昼の城下町」。高い青空の下、石畳と水路が光り、家々の漆喰がまぶしい。
+//   色は 3 つ: 芝の緑 / 漆喰の白 / 屋根の赤茶。
+//   やらないこと: 輪郭に純黒を使わない（影も彩度のある濃色にする — 昼の影は色が残る）。
 // **これは数ある画風の 1 つでしかない。** 真似してほしいのは「層に分けて、各層に役割を
 // 持たせる」組み方の方で、色や効果ではない。別の作り方の例は `.claude/skills/visual-dict`。
 //
+// ── 絵は 2 系統（camera の掛かり方が違う）──
+//   frame = world 側（camera が掛かる）: 盤・扉・薬草・灯り・住人・主人公・ふきだし
+//   hud   = 画面固定側（camera を掛けない）: 空・霧・表紙とクリアの幕・戦いの窓
+// 重なり順は 2 つのリストの並びでなく zIndex が決める（Render.draw が安定ソート）。
+//
 // ── 里の層（奥から手前へ）──
-//   空 → ベース床 → terrain（石垣・畑）→ 扉・薬草・灯り・住人・主人公 → 霧 → ふきだし → 幕
-// 盤は「ベース床（道）を全セルに敷き、その上に terrain の表（rpg.terrain.json）を重ねる」—
-// 石垣・畑の角の変化形は Terrain（デュアルグリッド）が自動生成し、View は幾何を書かない。
+//   地面のタイル層（エンジンの別チャンネル。縁・角は TownMap が選ぶ）
+//   → 扉・薬草・灯り → 前後の帯（建物・住人・主人公 — 足元 y で前後が入れ替わる）
+//   → 霧(hud) → ふきだし → 幕(hud)
+// 建物は複数タイルにまたがる大きな 1 枚（town.sprite.json の house_*）をアトラスの
+// quad で置く — タイルを 1 枚ずつ独立に描かない。
+//
+// ── 絵の下限の 4 性質 × 層の担当（agents-pack/AGENTS.core.md「絵の下限」）──
+//   面の階調  … 地面のタイル層（縁・角・散らしのバリエーション）と水面シェーダー
+//               （流れる網目）。ベタの単色面を作らない。
+//   主役の分離 … 前後の帯のスプライト（彩度のある濃色の輪郭 + 接地影。純黒は使わない）。
+//   層の分かれ … 地面 → 置き物 → 前後の帯 → 霧 → ふきだし → 幕の z 帯
+//               （下の「z 層」の数が唯一の権威）。
+//   時間の流れ … 水面シェーダー・窯の煙(Fx)・旗と住人の歩き（コマ送り）・灯りの明滅。
+//               表紙や幕の下でも t は進み続ける（World の doc 参照）。
 //
 // ── 戦いの層（奥から手前へ）──
-//   夜空のグラデ → 霧 → 地面のグラデ → 魔物の影 → 魔物（息をする）→ 窓（体力・コマンド・文）
+//   夜空のグラデ → 霧 → 地面のグラデ → 魔物の影 → 魔物（息をする）→ 窓(hud)
+// 戦いの背景と魔物は画面座標のまま world 側に組む — 戦いでは camera が design 中央に
+// 固定される（World.cameraCenter）ので、ずらしは常にゼロになる。
 mod View {
 
-    // ── z 層（盤 1..9 / 物 10..29 / 霧 30 / 幕と文字 40.. / ふきだし 50..） ──
+    // ── z 層 ──
+    // 地面はタイル層（エンジンが動的な絵より必ず奥に敷く）なので、ここには出てこない。
+    // 置き物 10..29 / 前後の帯（人・建物）100..131 / 霧 200 / 幕 210.. / ふきだし 220..
+    // 前後の帯は Depth.forRows が行ごとに 1 段割り当てる — 帯の上下の数と重ならないこと。
 
-    def zSky(): Int32 = 0
-    def zTile(): Int32 = 1
-    def zDoor(): Int32 = 10
     def zHerb(): Int32 = 12
-    def zLamp(): Int32 = 14
-    def zVillager(): Int32 = 18
-    def zHero(): Int32 = 20
-    def zFog(): Int32 = 30
-    def zVeil(): Int32 = 40
-    def zOverlayText(): Int32 = 42
-    def zBubble(): Int32 = 50
+    def zBandBack(): Int32 = 100
+    def zFog(): Int32 = 200
+    def zVeil(): Int32 = 210
+    def zOverlayText(): Int32 = 212
+    def zBubble(): Int32 = 220
+
+    /// 人・建物の前後の帯。足元が下（南）にある物ほど手前に出る。
+    def band(w: World.World): Depth.Band =
+        Depth.forRows({ back = zBandBack(), originY = 0.0,
+                        rows = MapDoc.rowCount(w#map), tileSize = World.tileSize() })
 
     // ── 戦いの画面の z 層 ──
     def zBattleSky(): Int32 = 0
@@ -39,122 +60,215 @@ mod View {
     def zWindow(): Int32 = 20
     def zWindowText(): Int32 = 23
 
-    /// スプライトの格子は 1 セル = 1px で描く（16×16 の格子 = 16px。タイル 20px の中に収まる）。
+    /// スプライトの格子は 1 セル = 1px で描く（16×16 の格子 = 16px。タイル 16px にぴったり収まる）。
     def px(): Int32 = 1
 
     /// 戦いのときだけ、魔物をこの倍率で大きく描く（16×16 → 64px）。
     def foeScale(): Int32 = 5
 
+    /// world 側の絵（camera が掛かる）。
     pub def frame(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
         match w#phase {
-            case World.Phase.Battle => battle(ctx#atlas, w)
-            case _                  => village(ctx#atlas, w)
+            case World.Phase.Battle => battleWorld(w)
+            case _                  => village(ctx, w)
         }
 
-    /// 里の画面（歩く・話す・拾う）。
-    def village(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
+    /// 画面固定側の絵（camera を掛けない。App.withHudView と Bake が同じ物を読む）。
+    pub def hud(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
+        match w#phase {
+            case World.Phase.Battle =>
+                List.flatten(
+                       statusWindow(ctx#atlas, w)
+                    :: commandWindow(ctx#atlas, w)
+                    :: messageWindow(ctx#atlas, w)
+                    :: Nil)
+            case _ =>
+                // 空の面は出さない — 地面のタイル層が画面全体を覆う（bounds が虚空を映さない）。
+                // hud に空の矩形を置くと、常に奥へ敷かれるタイル層より手前に来て地面を塗り潰す。
+                List.flatten(
+                       fogBands(w#theme)
+                    // 薄い昼下がりの空気（乗算 1 枚）。幕・文字（z 210..）は染めない。
+                    :: Daylight.overlay({ keys = Daylight.defaults(),
+                           at = { x = 0.0, y = 0.0 },
+                           size = { x = World.width(), y = World.height() },
+                           z = 205 }, dayT())
+                    :: overlay(ctx#atlas, w)
+                    :: Nil)
+        }
+
+    /// 1 日のどこの空気か（0..1）。昼下がりの薄い暖色 — 画風の3色が濁らない強さに留める。
+    def dayT(): Float64 = 0.62
+
+    /// 里の world 側（歩く・話す・拾う）。地面はタイル層（TownMap）、霧・幕は hud 側。
+    def village(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
         List.flatten(
-               sky(w#theme)
-            :: tiles(w)
+               waterSurface(w)
             :: door(w)
+            :: fencesView(w)
             :: herbs(w)
             :: lamps(w)
+            :: bridgeRails(w)
+            :: houses(w)
+            :: smoke(w)
+            :: flags(w)
             :: villagers(w)
             :: hero(w)
-            :: fogBands(w#theme)
-            :: bubble(atlas, w)
-            :: overlay(atlas, w)
+            :: bubble(ctx, w)
             :: Nil)
 
-    // ── 盤の位置合わせ（小さな間取りでも画面の真ん中に来る） ──
+    // ── 盤の位置合わせ ──
 
-    /// 盤の左上の画面座標。design の真ん中に盤全体を置く。
-    def boardOrigin(w: World.World): Vec2.Vec2 =
-        let t = World.tileSize();
-        { x = (World.width() - Int32.toFloat64(MapDoc.cols(w#map)) * t) / 2.0,
-          y = (World.height() - Int32.toFloat64(MapDoc.rowCount(w#map)) * t) / 2.0 }
+    /// 盤の左上の world 座標。盤が design より大きいので中央寄せはせず (0,0) 固定
+    /// （world 座標 = マス×16。どこを映すかは camera が選ぶ）。
+    def boardOrigin(_w: World.World): Vec2.Vec2 =
+        { x = 0.0, y = 0.0 }
 
-    /// cell の中心の画面座標（盤の位置合わせ込み）。
+    /// cell の中心の world 座標（盤の位置合わせ込み）。
     def cellCenter(w: World.World, cell: Grid.Cell): Vec2.Vec2 =
         let origin = boardOrigin(w);
         let center = Grid.cellCenterOf(World.tileSize(), cell);
         { x = origin#x + center#x, y = origin#y + center#y }
 
-    /// cell の左上の画面座標（盤の位置合わせ込み）。
+    /// cell の左上の world 座標（盤の位置合わせ込み）。
     def cellTopLeft(w: World.World, cell: Grid.Cell): Vec2.Vec2 =
         let t = World.tileSize();
         let center = cellCenter(w, cell);
         { x = center#x - t / 2.0, y = center#y - t / 2.0 }
 
-    // ── 空とタイル ──
+    // ── 建物（複数タイルにまたがる大きな 1 枚をアトラスの quad で置く）──
 
-    def sky(theme: ThemeDoc.Doc): List[Render.PlacedItem] =
-        { at = { x = 0.0, y = 0.0 },
-          item = Render.box({ x = World.width(), y = World.height() }, theme#sky, zSky()) } :: Nil
+    /// 建物。壁と屋根は別 sprite だが足元 y（接地の南端）を共有して前後の帯に載る —
+    /// 主人公が北側（裏）を歩くと屋根と壁に隠れ、南側では建物の前に立つ。
+    def houses(w: World.World): List[Render.PlacedItem] =
+        TownMap.buildings() |> List.flatMap(b ->
+            buildingAt(w, b#cell, TownMap.buildingSpec(b#kind)))
 
-    /// ベース床（道）を全セルに敷き、その上に terrain の表を重ねる。
-    /// entries に無い文字は床のまま = fail-open。
-    /// z の秩序: zTile() = 1 < terrain の fill/band/surface（zPlanOf が 2..9 に
-    /// 割り付ける）< zDoor() = 10。ベース床は必ず terrain の下、
-    /// 扉・薬草・人・ふきだしは必ず terrain の上に出る。
-    ///
-    /// Terrain.fromRows は「文字の rows + 質感の表」を受け取り、角の埋まり方から
-    /// 丸/四角/ひし形を自動生成した地形タイルの並びを返す黒箱（デュアルグリッド）。
-    /// 中で何をしているかは engine の docs/module-index.md（Terrain / TerrainDoc）を引く。
-    def tiles(w: World.World): List[Render.PlacedItem] =
+    def buildingAt(w: World.World, nw: Grid.Cell,
+                   spec: { w = Int32, h = Int32, wall = String, roof = String }): List[Render.PlacedItem] =
         let t = World.tileSize();
-        let table = w#terrain#entries
-            |> List.map(e -> { char = e#char,
-                               spec = TerrainDoc.specOf(key -> ThemeDoc.resolver(w#theme, key), e),
-                               z = zPlanOf(e) });
-        List.append(
-            baseFloor(w, t),
-            Terrain.fromRows({ tileSize = t, origin = boardOrigin(w),
-                               styleMix = w#terrain#styleMix }, table, w#map#rows))
+        let southY = Int32.toFloat64(nw#y + spec#h) * t;
+        let x0 = Int32.toFloat64(nw#x) * t;
+        let bodyW = Int32.toFloat64(spec#w) * t;
+        let tex = TownMap.textureName();
+        // 大きさは絵から測る（描き替えても足元がずれない）。
+        let wallSize = PxSprite.sizeOf(w#townSprites, spec#wall, "idle", 1)
+            |> Option.getWithDefault({ x = bodyW, y = 32.0 });
+        let roofSize = PxSprite.sizeOf(w#townSprites, spec#roof, "idle", 1)
+            |> Option.getWithDefault({ x = bodyW + 2.0 * t, y = 48.0 });
+        let wallTop = southY - wallSize#y;
+        let wall = PxSprite.drawQuad(w#townSprites, w#townAtlas, tex, spec#wall, "idle",
+            { x = x0, y = wallTop }, false, 1, 0);
+        // 屋根は接地の幅の真ん中に載せ、軒が壁の頭に 4px かぶる
+        // （壁の上端の軒の陰と重なって、屋根が壁に載って見える）。
+        let roof = PxSprite.drawQuad(w#townSprites, w#townAtlas, tex, spec#roof, "idle",
+            { x = x0 + (bodyW - roofSize#x) / 2.0, y = wallTop + 4.0 - roofSize#y }, false, 1, 1);
+        Depth.place(band(w), southY, List.append(wall, roof))
 
-    /// terrain の z 割り付け（2..9 の帯）。平らな地形（畑）は床のすぐ上、
-    /// 持ち上げ地形（石垣）はその上 — 持ち上げの立ち上がりが北隣の平ら地形
-    /// （畑の裾）に重なって 2.5D に見えるための順序。
-    def zPlanOf(e: TerrainDoc.EntryDoc): { fill = Int32, band = Int32, surface = Int32 } =
-        match e#height {
-            case None    => { fill = 2, band = 3, surface = 3 }
-            case Some(_) => { fill = 6, band = 7, surface = 7 }
-        }
-
-    /// ベース床（道）を全セルに敷く。色と式は旧 View.tile の道と同一
-    /// （theme#path + Hash01 のゆらぎ。Hash01.at の座標順 (y, x) もそのまま）。
-    def baseFloor(w: World.World, t: Float64): List[Render.PlacedItem] =
-        w#map#rows |> List.zipWithIndex |> List.flatMap(rowEntry -> {
-            let (y, row) = rowEntry;
-            String.toList(row) |> List.zipWithIndex |> List.map(colEntry -> {
-                let (x, _) = colEntry;
-                let cell = { x = x, y = y };
-                { at = cellTopLeft(w, cell),
-                  item = Render.box({ x = t, y = t },
-                      ThemeDoc.lighten(w#theme#path, Hash01.at(cell#y, cell#x) * 0.06),
-                      zTile()) }
-            })
+    /// 低い柵（門の並び）。当たりは rpg.map の '#' が持ち、ここは絵だけ。
+    def fencesView(w: World.World): List[Render.PlacedItem] =
+        let t = World.tileSize();
+        TownMap.fences() |> List.flatMap(cell -> {
+            let bottom = Int32.toFloat64(cell#y + 1) * t;
+            Depth.place(band(w), bottom,
+                PxSprite.drawQuad(w#townSprites, w#townAtlas, TownMap.textureName(),
+                    "fence", "idle",
+                    { x = Int32.toFloat64(cell#x) * t, y = bottom - 12.0 }, false, 1, 0))
         })
 
-    // ── 扉（約束で開く木戸。閉じている間は通れない） ──
+    // ── 門（約束で開く木戸。閉じている間は通れない） ──
 
+    /// 家の扉と同じ描法の独立した木の門（門柱2本+板戸+小さな屋根）。
+    /// 開閉はコマの差し替え（gate_closed / gate_open）— ルールは World の doorOpen のまま。
     def door(w: World.World): List[Render.PlacedItem] =
         let t = World.tileSize();
         let at = cellTopLeft(w, w#map#door#cell);
-        let plank = ThemeDoc.lighten(w#theme#wall, 0.30);
-        if (w#doorOpen)
-            // 開いた木戸: 両脇の柱だけ残る。
-               { at = at, item = Render.box({ x = 4.0, y = t }, plank, zDoor()) }
-            :: { at = { x = at#x + t - 4.0, y = at#y }, item = Render.box({ x = 4.0, y = t }, plank, zDoor()) }
-            :: Nil
-        else
-            // 閉じた木戸: 板戸 + 横木 2 本 + 結び目（灯りの色。ここが約束の印）。
-               { at = at, item = Render.box({ x = t, y = t }, plank, zDoor()) }
-            :: { at = { x = at#x, y = at#y + 4.0 }, item = Render.box({ x = t, y = 3.0 }, w#theme#ink, zDoor() + 1) }
-            :: { at = { x = at#x, y = at#y + t - 7.0 }, item = Render.box({ x = t, y = 3.0 }, w#theme#ink, zDoor() + 1) }
-            :: { at = { x = at#x + t / 2.0 - 2.0, y = at#y + t / 2.0 - 2.0 },
-                 item = Render.box({ x = 4.0, y = 4.0 }, w#theme#accent, zDoor() + 1) }
-            :: Nil
+        let bottom = at#y + t;
+        let name = if (w#doorOpen) "gate_open" else "gate_closed";
+        let size = PxSprite.sizeOf(w#townSprites, name, "idle", 1)
+            |> Option.getWithDefault({ x = t, y = 24.0 });
+        Depth.place(band(w), bottom,
+            PxSprite.drawQuad(w#townSprites, w#townAtlas, TownMap.textureName(),
+                name, "idle", { x = at#x, y = bottom - size#y }, false, 1, 0))
+
+    // ── 橋の欄干（橋面はタイル層。欄干は前後の帯に立てる）──
+
+    /// 北の欄干は主人公の後ろ（足元 = マスの上端）、南の欄干は前
+    /// （足元 = 次の行の中ほど）— 渡っている間、体が南の欄干に半分隠れる。
+    def bridgeRails(w: World.World): List[Render.PlacedItem] =
+        let t = World.tileSize();
+        w#bridgeCells |> List.flatMap(cell -> {
+            let x0 = Int32.toFloat64(cell#x) * t;
+            let top = Int32.toFloat64(cell#y) * t;
+            let bottom = top + t;
+            let north = PxSprite.drawQuad(w#townSprites, w#townAtlas, TownMap.textureName(),
+                "bridge_rail", "idle", { x = x0, y = top - 3.0 }, false, 1, 0);
+            let south = PxSprite.drawQuad(w#townSprites, w#townAtlas, TownMap.textureName(),
+                "bridge_rail", "idle", { x = x0, y = bottom - 3.0 }, false, 1, 0);
+            List.append(
+                Depth.place(band(w), top, north),
+                Depth.place(band(w), bottom + t / 2.0, south))
+        })
+
+    // ── 水面（宣言シェーダー。岸と落ち影の 4px はタイルの絵に任せて内側だけ塗る） ──
+
+    // 橋・水面の配置は World の持ち物を読む — 毎フレームの全盤走査は予算を食い潰す。
+    def waterSurface(w: World.World): List[Render.PlacedItem] =
+        match w#waterRect {
+            case None       => Nil
+            case Some(rect) =>
+                let polys = w#waterMaskRects |> List.map(r ->
+                       r#position
+                    :: { x = r#position#x + r#size#x, y = r#position#y }
+                    :: { x = r#position#x + r#size#x, y = r#position#y + r#size#y }
+                    :: { x = r#position#x, y = r#position#y + r#size#y }
+                    :: Nil);
+                Render.shaderFillMasked(w#waterShader, rect, polys, w#t, 1) :: Nil
+        }
+
+    // ── 窯の煙（閉形式の粒。パン屋の煙突の口から） ──
+
+    def smoke(w: World.World): List[Render.PlacedItem] =
+        match List.find(b -> b#kind == "shop", TownMap.buildings()) {
+            case None    => Nil
+            case Some(b) =>
+                let t = World.tileSize();
+                let spec = TownMap.buildingSpec(b#kind);
+                let southY = Int32.toFloat64(b#cell#y + spec#h) * t;
+                // 煙突の口 = 屋根 sprite の cols10-15 の中心（屋根は接地幅の中央に載る）。
+                let roofX = Int32.toFloat64(b#cell#x) * t
+                    + (Int32.toFloat64(spec#w) * t - 64.0) / 2.0;
+                let mouth = { x = roofX + 13.0, y = southY - 32.0 + 4.0 - 40.0 + 1.0 };
+                let dur = Float64.max(0.1, w#smokeFx#duration);
+                let items = Fx.sampleAt(w#smokeFx, 7i64, w#t - dur * Float64.floor(w#t / dur), mouth);
+                Depth.place(band(w), southY, items)
+        }
+
+    // ── 旗（教会の尖塔の先。Sway で揺れる — 完全に止まった画面を出さない） ──
+
+    def flags(w: World.World): List[Render.PlacedItem] =
+        match List.find(b -> b#kind == "church", TownMap.buildings()) {
+            case None    => Nil
+            case Some(b) =>
+                let t = World.tileSize();
+                let spec = TownMap.buildingSpec(b#kind);
+                let southY = Int32.toFloat64(b#cell#y + spec#h) * t;
+                // 尖塔の頂点 = church_top(96×72) の col74（屋根は接地幅の中央に載る）。
+                let topX = Int32.toFloat64(b#cell#x) * t
+                    + (Int32.toFloat64(spec#w) * t - 96.0) / 2.0;
+                let apex = { x = topX + 74.0, y = southY - 48.0 + 4.0 - 72.0 };
+                let swayX = Sway.wave(w#t, 0.3, 0.9) * 1.6;
+                let swayY = Sway.wave(w#t, 0.8, 1.3) * 0.8;
+                let pole = { at = { x = apex#x, y = apex#y - 6.0 },
+                             item = Render.box({ x = 1.0, y = 6.0 },
+                                 ThemeDoc.resolver(w#theme, "woodDark"), 2) };
+                let pennant = { at = { x = apex#x + 1.0, y = apex#y - 6.0 },
+                                item = Render.polygon(
+                                       { x = 0.0, y = 0.0 }
+                                    :: { x = 7.0 + swayX, y = 1.5 + swayY }
+                                    :: { x = 0.0, y = 4.0 }
+                                    :: Nil, w#theme#accent, 3) };
+                Depth.place(band(w), southY, pole :: pennant :: Nil)
+        }
 
     // ── 薬草・灯り・住人・主人公 ──
 
@@ -170,42 +284,51 @@ mod View {
             lamp(w, cell, i < lit)
         })
 
+    /// 街灯 1 本（木の柱+鉄の腕+吊りランタン）。昼はガラスの暖色だけで光らせない —
+    /// 点灯（Daylight 連動は将来）はコマ差し替え + グロー。クリアの「全灯」演出はここが担う。
     def lamp(w: World.World, cell: Grid.Cell, litNow: Bool): List[Render.PlacedItem] =
         let center = cellCenter(w, cell);
-        let theme = w#theme;
-        // ポストは背を高くして持ち上げ地形の裾から頭を出す（濃い地形に埋もれない）。
-        let post = { at = { x = center#x - 1.0, y = center#y - 11.0 },
-                     item = Render.box({ x = 2.0, y = 15.0 }, theme#ink, zLamp()) };
-        // 消灯時のヘッドも「灯りの器」として読めるよう少し明るめに（暗い地形で埋もれない）。
-        let headColor = if (litNow) theme#accent else ThemeDoc.lighten(theme#sky, 0.24);
-        let head = { at = { x = center#x - 3.0, y = center#y - 16.0 },
-                     item = Render.box({ x = 6.0, y = 6.0 }, headColor, zLamp() + 1) };
-        // 点灯時のグローは大きく暖かく。地形がリッチになった分、halo を強めて「灯がともる」を出す。
-        // 外側の淡い光 + 芯の濃い光の二重で、点でありつつ周りへにじむ。
+        let bottom = center#y + World.tileSize() / 2.0;
+        let quad = PxSprite.drawQuad(w#townSprites, w#townAtlas, TownMap.textureName(),
+            "lamp", if (litNow) "lit" else "idle",
+            { x = center#x - 6.0, y = bottom - 20.0 }, false, 1, 0);
+        // ランタンのガラスの位置（絵の cols7-11 × rows3-8）にグローの芯を合わせる。
+        let lantern = { x = center#x + 3.0, y = bottom - 14.0 };
         let glow = if (litNow)
             List.append(
-                Render.glowAt({ x = center#x, y = center#y - 13.0 }, 34.0, theme#accent,
-                    { alpha = 0.42, blend = DrawCmd.BlendMode.Add }, zLamp() + 2),
-                Render.glowAt({ x = center#x, y = center#y - 13.0 }, 14.0, theme#accent,
-                    { alpha = 0.55, blend = DrawCmd.BlendMode.Add }, zLamp() + 3))
+                Render.glowAt(lantern, 30.0, w#theme#accent,
+                    { alpha = 0.40, blend = DrawCmd.BlendMode.Add }, 1),
+                Render.glowAt(lantern, 12.0, w#theme#accent,
+                    { alpha = 0.55, blend = DrawCmd.BlendMode.Add }, 2))
         else Nil;
-        post :: head :: glow
+        Depth.place(band(w), bottom, List.append(quad, glow))
 
     def villagers(w: World.World): List[Render.PlacedItem] =
         w#map#villagers |> List.flatMap(villager -> {
-            // 話しかけている相手だけ口を開けたコマにする（誰と話しているかが絵で分かる）。
+            // 位置は巡回の見本（World.villagerSampleAt）から。絵の位置と
+            // 歩ける・話せるの判定（villagerCellAt）が同じ見本を読むのでずれない。
+            let smp = World.villagerSampleAt(w, villager);
             let talking = w#talkingTo
-                |> Option.map(cell -> MapDoc.sameCell(cell, villager#cell))
+                |> Option.map(cell -> MapDoc.sameCell(cell, World.villagerCellAt(w, villager)))
                 |> Option.getWithDefault(false);
-            sprite(w, "villager", if (talking) "talk" else "idle",
-                villager#cell, false, zVillager(), w#theme#cloth)
+            // 歩きコマ: 歩いた累計 px 8px ごとに足を入れ替える（Journey.Sample#walking が種）。
+            let stepping = Int32.modulo(
+                Float64.tryToInt32(Float64.floor(smp#walking / 8.0)) |> Option.getWithDefault(0), 2) == 1;
+            let frameName = if (talking) "talk" else if (stepping) "walk" else "idle";
+            Depth.place(band(w), smp#pos#y + World.tileSize() / 2.0,
+                spriteAt(w, { name = "villager", frame = frameName, center = smp#pos,
+                              flipX = false, scale = px(), z = 0, fallback = w#theme#cloth }))
         })
 
     /// 主人公。向きごとに絵を持ち、歩数の偶奇で足を入れ替える。
     /// 左向きは右向きの絵の左右反転で済ませる（絵を増やさない）。
     def hero(w: World.World): List[Render.PlacedItem] =
         let (frameName, flipX) = heroFrame(w);
-        sprite(w, "hero", frameName, w#hero, flipX, zHero(), w#theme#accent)
+        placeAtFeet(w, w#hero, sprite(w, "hero", frameName, w#hero, flipX, 0, w#theme#accent))
+
+    /// マスに立つ 1 体を前後の帯へ載せる（足元 = マスの下端）。
+    def placeAtFeet(w: World.World, cell: Grid.Cell, items: List[Render.PlacedItem]): List[Render.PlacedItem] =
+        Depth.place(band(w), cellCenter(w, cell)#y + World.tileSize() / 2.0, items)
 
     /// 向き + 歩数 → 「どのコマを、反転するか」。
     def heroFrame(w: World.World): (String, Bool) =
@@ -255,13 +378,14 @@ mod View {
     // 画面に固定の窓ではないため。開閉・行送り・文字送りの状態はエンジンの UiDialog が持ち、
     // ここは visibleBody を RichText.place で描くだけ（文字折りも自前で書かない）。
 
-    def bubble(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
+    def bubble(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
         match (UiDialog.isOpen(w#dialog), w#talkingTo) {
-            case (true, Some(cell)) => bubbleAt(atlas, cellCenter(w, cell), w)
+            case (true, Some(cell)) => bubbleAt(ctx, cellCenter(w, cell), w)
             case _                  => Nil
         }
 
-    def bubbleAt(atlas: FontAtlas, speakerCenter: Vec2.Vec2, w: World.World): List[Render.PlacedItem] =
+    def bubbleAt(ctx: App.ViewCtx, speakerCenter: Vec2.Vec2, w: World.World): List[Render.PlacedItem] =
+        let atlas = ctx#atlas;
         let spans = UiDialog.visibleBody(w#dialog);
         let fullSpans = UiDialog.currentLine(w#dialog)
             |> Option.map(line -> line#body) |> Option.getWithDefault(Nil);
@@ -279,9 +403,13 @@ mod View {
         let boxW = textW + pad * 2.0;
         let boxH = Int32.toFloat64(lineCount) * (fontSize + lineGap)
             - lineGap + pad * 2.0;
-        let boxX = clampF(edgeMargin(), World.width() - boxW - edgeMargin(),
+        // 収める先は world 全体でなく「いま見えている矩形」（camera 込み）—
+        // 盤の東側で話しても、ふきだしは画面の中に残る。
+        let vis = ctx#visible;
+        let boxX = clampF(vis#position#x + edgeMargin(),
+            vis#position#x + vis#size#x - boxW - edgeMargin(),
             speakerCenter#x - boxW / 2.0);
-        let boxY = Float64.max(edgeMargin(),
+        let boxY = Float64.max(vis#position#y + edgeMargin(),
             speakerCenter#y - World.tileSize() / 2.0 - boxH - 8.0);
         List.flatten(
                ({ at = { x = boxX, y = boxY },
@@ -300,7 +428,7 @@ mod View {
               { x = -4.0, y = 0.0 } :: { x = 4.0, y = 0.0 } :: { x = 0.0, y = 6.0 } :: Nil,
               color, zBubble() + 1) } :: Nil
 
-    /// ふきだしの枠を画面の縁から離す幅。0 にすると枠が縁に接して切れて見えるので、
+    /// ふきだしの枠を見えている縁から離す幅。0 にすると枠が縁に接して切れて見えるので、
     /// はみ出し止めの最小値ではなく目に見える余白として取る。
     def edgeMargin(): Float64 = 8.0
 
@@ -334,13 +462,13 @@ mod View {
                opts: { head = String, headSize = Float64, body = String, hint = String }): List[Render.PlacedItem] =
            TextDraw.centered({ text = opts#head, atlas = atlas, size = opts#headSize,
                                color = theme#paper, z = zOverlayText(),
-                               centerX = World.width() / 2.0, y = 112.0 })
+                               centerX = World.width() / 2.0, y = 88.0 })
         :: TextDraw.centered({ text = opts#body, atlas = atlas, size = 10.0,
                                color = theme#fog, z = zOverlayText(),
-                               centerX = World.width() / 2.0, y = 152.0 })
+                               centerX = World.width() / 2.0, y = 120.0 })
         :: TextDraw.centered({ text = opts#hint, atlas = atlas, size = 9.0,
                                color = ThemeDoc.lighten(theme#sky, 0.4), z = zOverlayText(),
-                               centerX = World.width() / 2.0, y = 188.0 })
+                               centerX = World.width() / 2.0, y = 150.0 })
         :: Nil
 
     // ══════════════════════════════════════════════════════
@@ -348,17 +476,14 @@ mod View {
     // ══════════════════════════════════════════════════════
     //
     // 里の絵は出さない（盤・霧の帯・ふきだしは village 側の物）。ここは
-    // 「夜空 → 霧 → 地面 → 魔物 → 窓」の 5 段だけで、視線が魔物と下の文に集まるようにする。
+    // 「夜空 → 霧 → 地面 → 魔物」の 4 段（窓は hud 側）で、視線が魔物と下の文に集まるようにする。
 
-    def battle(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
+    def battleWorld(w: World.World): List[Render.PlacedItem] =
         List.flatten(
                battleSky(w#theme)
             :: battleMist(w#theme)
             :: battleGround(w#theme)
             :: foe(w)
-            :: statusWindow(atlas, w)
-            :: commandWindow(atlas, w)
-            :: messageWindow(atlas, w)
             :: Nil)
 
     /// 夜空。上ほど暗く、下ほど地面の色に近づく縦のグラデ（1px の色帯は積まない）。
@@ -373,8 +498,8 @@ mod View {
     /// 上下で薄れる頂点色つきの帯にして、境目を消す。
     def battleMist(theme: ThemeDoc.Doc): List[Render.PlacedItem] =
         List.range(0, 3) |> List.map(i -> {
-            let top = 60.0 + Hash01.at(i, 21) * 90.0;
-            let height = 26.0 + Hash01.at(i, 22) * 30.0;
+            let top = 48.0 + Hash01.at(i, 21) * 72.0;
+            let height = 20.0 + Hash01.at(i, 22) * 24.0;
             let alpha = Float64.truncateToFloat32(0.07 + Hash01.at(i, 23) * 0.05);
             softBand(theme#fog, { top = top, bottom = top + height }, alpha, zBattleSky() + 1)
         })
@@ -396,7 +521,7 @@ mod View {
     /// 魔物の立っている地面。上端は透けさせて空へなじませ、手前ほど明るくする
     /// （硬い横線が 1 本入ると、そこで絵が 2 枚に割れて見えるため）。
     def battleGround(theme: ThemeDoc.Doc): List[Render.PlacedItem] =
-        let top = 118.0;
+        let top = 94.0;
         let near = ThemeDoc.darken(theme#path, 0.25);
         let far = ThemeDoc.darken(theme#path, 0.6);
            { at = { x = 0.0, y = 0.0 },
@@ -413,7 +538,7 @@ mod View {
     /// 魔物と、その足元の影。上下にゆっくり息をする（手を止めても画面が止まらない）。
     /// 殴った直後のコマ（hit）は World が持つ foeHurt が決める。
     def foe(w: World.World): List[Render.PlacedItem] =
-        let groundY = 206.0;
+        let groundY = 165.0;
         let bob = Sway.wave(w#t, 0.0, 0.55) * 4.0;
         let half = 8.0 * Int32.toFloat64(foeScale());
         let center = { x = World.width() / 2.0, y = groundY - half + bob };
@@ -467,11 +592,11 @@ mod View {
     def commandWindow(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         if (w#battle#step != World.BattleStep.Choosing) Nil
         else {
-            let rect = { position = { x = 16.0, y = 156.0 }, size = { x = 108.0, y = 62.0 } };
+            let rect = { position = { x = 16.0, y = 126.0 }, size = { x = 108.0, y = 62.0 } };
             let blink = 0.55 + 0.45 * Sway.wave(w#t, 0.0, 1.6);
             let rows = World.battleCommands() |> List.zipWithIndex |> List.flatMap(entry -> {
                 let (i, label) = entry;
-                let y = 166.0 + Int32.toFloat64(i) * 22.0;
+                let y = 136.0 + Int32.toFloat64(i) * 22.0;
                 let chosen = i == w#battle#cursor;
                 let mark = if (chosen)
                         { at = { x = 30.0, y = y + 7.0 },

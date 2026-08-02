@@ -16,8 +16,14 @@ mod Palette {
     /// sprite Doc の legend に出てくる意味色キーを、テーマの実色へ解いた表（純粋）。
     /// 名前の重複は 1 つに畳み、並びは名前順（書き出しが毎回同じになる）。
     pub def entriesOf(sprites: PxSpriteDoc.Doc, theme: ThemeDoc.Doc): List[(String, Color)] =
-        sprites#legend
-            |> Map.valuesOf
+        entriesOfAll(sprites :: Nil, theme)
+
+    /// 複数の sprite Doc の legend をまとめて 1 つの表にする。写しは 1 枚
+    /// （assets/rpg.palette.json）だけ — Doc ごとに分けると paletteFile の指し先が
+    /// 増えてどれが正か迷うため。
+    pub def entriesOfAll(sprites: List[PxSpriteDoc.Doc], theme: ThemeDoc.Doc): List[(String, Color)] =
+        sprites
+            |> List.flatMap(doc -> doc#legend |> Map.valuesOf)
             |> List.distinct
             |> List.sort
             |> List.map(key -> (key, ThemeDoc.resolver(theme, key)))
@@ -41,10 +47,12 @@ mod Palette {
 
     /// 写しを書き出す。読むのは Studio だけなので、走らせるのは開発の手元だけでよい。
     pub def write(): Unit \ IO =
-        let (sprites, theme) = run {
-            (PxSpriteDoc.load(World.spritePath()), ThemeDoc.load(ThemeDoc.path()))
+        let (rpg, town, theme) = run {
+            (PxSpriteDoc.load(World.spritePath()),
+             PxSpriteDoc.load(World.townSpritePath()),
+             ThemeDoc.load(ThemeDoc.path()))
         } with Fs.FileRead.runWithIO;
-        let text = toJson(entriesOf(sprites, theme));
+        let text = toJson(entriesOfAll(rpg :: town :: Nil, theme));
         run {
             discard Fs.WriteFile.write({ str = text }, path())
         } with Fs.WriteFile.runWithFileWrite with Fs.FileWrite.runWithIO;

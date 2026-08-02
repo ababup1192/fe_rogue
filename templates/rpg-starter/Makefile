@@ -16,7 +16,7 @@
 ENGINE ?= /Users/abab/Desktop/flix_game_engine
 FLIX   := $(ENGINE)/bin/flix
 
-.PHONY: run debug test build check bake bench golden atelier-preview palette
+.PHONY: run debug test build check bake bake-town bake-town-scene bake-house bake-motion bake-seam bench golden atelier-preview palette
 
 run:
 	"$(FLIX)" run
@@ -38,6 +38,21 @@ palette:
 
 bake: palette
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Bake.all
+
+bake-town:
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Bake.town
+
+bake-town-scene:
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Bake.townScene
+
+bake-house:
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Bake.house
+
+bake-motion:
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Bake.motion
+
+bake-seam:
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Bake.seam
 
 bench: bake
 	@ok=1; for f in gallery/*.png; do \

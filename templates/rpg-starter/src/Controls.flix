@@ -45,7 +45,28 @@ mod Controls {
           theme = ThemeDoc.load(ThemeDoc.path()),
           battle = BattleDoc.load(BattleDoc.path()),
           sprites = PxSpriteDoc.load(World.spritePath()),
-          terrain = TerrainDoc.load(World.terrainPath()) }
+          townSprites = PxSpriteDoc.load(World.townSpritePath()),
+          townMap = TownMapDoc.load(TownMapDoc.path()),
+          waterShader = loadWaterShader(),
+          smokeFx = loadSmokeFx() }
+
+    pub def waterShaderPath(): String = "assets/town.shader.json"
+
+    pub def smokeFxPath(): String = "assets/town.fx.json"
+
+    /// 水面のシェーダー Doc。読めない・知らない語彙は既製の水面（waterVeins）へ倒す
+    /// — 知らない kind が 1 つあるだけで丸ごと既定値になるので、絵が別物なら語彙を疑う。
+    def loadWaterShader(): ShaderDoc.Spec \ Fs.FileRead =
+        ShaderJson.load(waterShaderPath())
+            |> Result.toOption
+            |> Option.getWithDefault(ShaderDoc.waterVeins())
+
+    /// 窯の煙の FxDoc。読めなければ粒なし（empty = 煙が出ないだけで落ちない）。
+    def loadSmokeFx(): FxDoc.Spec \ Fs.FileRead =
+        JsonCompat.readJson(smokeFxPath())
+            |> Result.flatMap(FxDoc.parse)
+            |> Result.toOption
+            |> Option.getWithDefault(FxDoc.empty())
 
     pub def reloadMap(w: World.World): World.World \ Fs.FileRead =
         World.withMap(MapDoc.load(MapDoc.path()), w)
@@ -62,11 +83,21 @@ mod Controls {
     pub def reloadSprites(w: World.World): World.World \ Fs.FileRead =
         World.withSprites(PxSpriteDoc.load(World.spritePath()), w)
 
-    pub def reloadTerrain(w: World.World): World.World \ Fs.FileRead =
-        World.withTerrain(TerrainDoc.load(World.terrainPath()), w)
+    pub def reloadTownSprites(w: World.World): World.World \ Fs.FileRead =
+        World.withTownSprites(PxSpriteDoc.load(World.townSpritePath()), w)
+
+    pub def reloadTownMap(w: World.World): World.World \ Fs.FileRead =
+        World.withTownMap(TownMapDoc.load(TownMapDoc.path()), w)
+
+    pub def reloadWaterShader(w: World.World): World.World \ Fs.FileRead =
+        World.withWaterShader(loadWaterShader(), w)
+
+    pub def reloadSmokeFx(w: World.World): World.World \ Fs.FileRead =
+        World.withSmokeFx(loadSmokeFx(), w)
 
     /// F1: Doc を全部読み直す。
     pub def reloadAll(w: World.World): World.World \ Fs.FileRead =
         w |> reloadMap |> reloadKind |> reloadTheme |> reloadBattle
-          |> reloadSprites |> reloadTerrain
+          |> reloadSprites |> reloadTownSprites |> reloadTownMap
+          |> reloadWaterShader |> reloadSmokeFx
 }

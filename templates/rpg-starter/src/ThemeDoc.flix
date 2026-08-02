@@ -32,7 +32,7 @@ mod ThemeDoc {
     /// コード側の既定値（assets/rpg.theme.json と同じ色から出発する）。
     pub def defaults(): Doc =
         { version = 1,
-          sky    = hex("#2b2233"),   // 夕暮れの空
+          sky    = hex("#73a6d9"),   // 晴れた昼の空
           path   = hex("#6e5f4e"),   // 道
           field  = hex("#46603f"),   // 畑
           wall   = hex("#55505e"),   // 石垣
@@ -82,9 +82,17 @@ mod ThemeDoc {
     pub def darken(c: Color, k: Float64): Color =
         Color.darken(c, k)
 
-    /// スプライト・地形の意味色キー → 実色。未知のキーはマゼンタ（描き忘れが目に見える）。
-    /// wall*/fieldShade は地形（rpg.terrain.json の @参照）向けの派生色 —
-    /// 基準色（wall/field）から導く（導出できる値は Doc に置かない）。
+    /// 屋根の赤茶の基準色（煉瓦の赤 3/4 + 灯りの橙 1/4）。
+    def roofBase(doc: Doc): Color =
+        Color.mix(doc#accent, Color.rgb(0.47, 0.20, 0.15), 0.74)
+
+    /// 藁の麦わら色の基準（灯りの橙と道の褐色の中間を、彩度を残して沈める）。
+    def strawBase(doc: Doc): Color =
+        Color.warm(darken(Color.mix(doc#accent, doc#path, 0.45), 0.16), 0.06)
+
+    /// スプライトの意味色キー → 実色。未知のキーはマゼンタ（描き忘れが目に見える）。
+    /// wall*/fieldShade は基準色（wall/field）から導く派生色
+    /// （導出できる値は Doc に置かない）。
     pub def resolver(doc: Doc, key: String): Color =
         match key {
             case "accent"      => doc#accent
@@ -105,6 +113,54 @@ mod ThemeDoc {
             case "foeLight"    => Color.cool(lighten(doc#field, 0.50), 0.10)
             case "wall"        => doc#wall
             case "field"       => doc#field
+            // 街タイル・建物（town.sprite.json）。素材ごとに「明・中・影・締め」の4階調を
+            // 基準色から導く（色票に足すのは導けない色だけ、の原則を崩さない）。
+            // 明は warm・影は cool へ寄せ、同じ色の明暗だけの階調にしない。純黒は使わない。
+            // 芝（明るい黄緑 〜 深緑）
+            case "grassBright" => Color.warm(lighten(doc#field, 0.52), 0.10)
+            case "grass"       => lighten(doc#field, 0.30)
+            case "grassDark"   => lighten(doc#field, 0.10)
+            case "grassDeep"   => Color.cool(darken(doc#field, 0.16), 0.05)
+            case "grassLight"  => lighten(doc#field, 0.50)
+            // 石畳（暖灰4段。水路の岸・建物の基礎も同じランプを使う）
+            case "paveLight"   => Color.warm(lighten(doc#wall, 0.55), 0.05)
+            case "pave"        => Color.warm(lighten(doc#wall, 0.40), 0.04)
+            case "paveDark"    => Color.warm(lighten(doc#wall, 0.24), 0.03)
+            case "paveDeep"    => Color.warm(lighten(doc#wall, 0.06), 0.02)
+            // 水（青緑3段）
+            case "waterGlint"  => Color.cool(lighten(doc#cloth, 0.50), 0.05)
+            case "water"       => Color.cool(lighten(doc#cloth, 0.05), 0.08)
+            case "waterDeep"   => Color.cool(darken(doc#cloth, 0.22), 0.10)
+            case "waterShade"  => Color.cool(darken(doc#cloth, 0.40), 0.10)
+            // 漆喰3階調（むらの明・地・影）
+            case "plasterHi"   => lighten(doc#paper, 0.05)
+            case "plasterMid"  => darken(doc#paper, 0.07)
+            case "plasterShade" => darken(doc#paper, 0.24)
+            // 屋根の赤茶5階調。灯りの橙だけでは黄に寄りすぎるので、煉瓦の赤へ大きく寄せる
+            // （accent を混ぜて残すのは、テーマの暖色を変えたとき屋根も一緒に振れるため）。
+            // roofLine は最暗の締めだが純黒にはしない（画風宣言）。
+            case "roofHi"      => Color.warm(lighten(roofBase(doc), 0.34), 0.10)
+            case "roofLight"   => lighten(roofBase(doc), 0.16)
+            case "roofMid"     => roofBase(doc)
+            case "roofDark"    => darken(roofBase(doc), 0.20)
+            case "roofLine"    => darken(roofBase(doc), 0.40)
+            // 藁葺き4階調（2棟目の店の屋根。灯りの橙と道の褐色の間の麦わら色）
+            case "strawHi"     => Color.warm(lighten(strawBase(doc), 0.25), 0.08)
+            case "strawMid"    => strawBase(doc)
+            case "strawDark"   => darken(strawBase(doc), 0.18)
+            case "strawLine"   => darken(strawBase(doc), 0.36)
+            // スレート石屋根4階調（教会。石垣の灰を青みへ寄せる — 民家の赤茶と対比）
+            case "slateHi"     => Color.cool(lighten(doc#wall, 0.42), 0.06)
+            case "slateMid"    => Color.cool(lighten(doc#wall, 0.22), 0.07)
+            case "slateDark"   => Color.cool(lighten(doc#wall, 0.04), 0.08)
+            case "slateLine"   => Color.cool(darken(doc#wall, 0.20), 0.08)
+            // 木3階調（梁・扉・看板。道の暖褐から）
+            case "woodLight"   => lighten(doc#path, 0.32)
+            case "woodMid"     => lighten(doc#path, 0.10)
+            case "woodDark"    => darken(doc#path, 0.28)
+            // 窓の室内光2階調（夜色の穴でなく「灯りのある窓」に見せる）
+            case "windowLight" => Color.warm(lighten(doc#accent, 0.30), 0.06)
+            case "windowDim"   => Color.warm(darken(doc#accent, 0.08), 0.04)
             case "wallTop"     => lighten(doc#wall, 0.18)
             case "wallSide"    => darken(doc#wall, 0.12)
             case "wallShade"   => darken(doc#wall, 0.35)

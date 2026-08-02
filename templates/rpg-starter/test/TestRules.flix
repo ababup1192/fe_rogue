@@ -35,7 +35,9 @@ mod TestRules {
     def w0(): World.World =
         World.initial({ map = fixture(), kind = KindDoc.defaults(),
                         theme = ThemeDoc.defaults(), battle = BattleDoc.defaults(),
-                        sprites = PxSpriteDoc.empty(), terrain = TerrainDoc.defaults() })
+                        sprites = PxSpriteDoc.empty(), townSprites = PxSpriteDoc.empty(),
+                        townMap = TownMapDoc.defaults(), waterShader = ShaderDoc.waterVeins(),
+                        smokeFx = FxDoc.empty() })
 
     /// 表紙から歩き出した直後の状態。
     def atStart(): World.World = World.confirm(w0())
@@ -178,7 +180,9 @@ mod TestRules {
         // goal が置いてある薬草より多くても、クリアに要る数は置いた数まで(詰みを作らない)。
         let greedy = World.initial({ map = { goal = 99 | fixture() }, kind = KindDoc.defaults(),
                                      theme = ThemeDoc.defaults(), battle = BattleDoc.defaults(),
-                                     sprites = PxSpriteDoc.empty(), terrain = TerrainDoc.defaults() });
+                                     sprites = PxSpriteDoc.empty(), townSprites = PxSpriteDoc.empty(),
+                                     townMap = TownMapDoc.defaults(), waterShader = ShaderDoc.waterVeins(),
+                                     smokeFx = FxDoc.empty() });
         Assert.assertEq(expected = List.length(fixture()#herbs), World.goalOf(greedy))
 
     // ══════════════════════════════════════════════════════
@@ -190,9 +194,9 @@ mod TestRules {
         // 表紙とクリアでは手触り(kind)を名乗らない — 里を歩いている間だけ加わる。
         // id は project.json の editor 宣言と対(Studio が突き合わせに使う)。
         Assert.assertEq(
-            expected = ("map" :: "theme" :: "sprite" :: "terrain" :: Nil,
-                        "map" :: "theme" :: "sprite" :: "terrain" :: "kind" :: Nil,
-                        "map" :: "theme" :: "sprite" :: "terrain" :: Nil),
+            expected = ("map" :: "theme" :: "sprite" :: Nil,
+                        "map" :: "theme" :: "sprite" :: "kind" :: Nil,
+                        "map" :: "theme" :: "sprite" :: Nil),
             (World.activeDocs(w0()) |> List.map(fst),
              World.activeDocs(atStart()) |> List.map(fst),
              World.activeDocs(clearedWorld()) |> List.map(fst)))

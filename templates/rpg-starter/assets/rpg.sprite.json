@@ -137,7 +137,7 @@
       }
     },
     "villager": {
-      "note": "里の住人。頭巾(c)と前掛け(C)。talk は口を開けたコマ（話しかけると入れ替わる）。",
+      "note": "里の住人。頭巾(c)と前掛け(C)。talk は口を開けたコマ、walk は歩きの足のコマ(巡回で idle と入れ替える)。",
       "anchor": {
         "x": 0.0,
         "y": 0.0
@@ -178,6 +178,24 @@
           "..icccccccccci..",
           "...icci..iccii..",
           "...ii......ii..."
+        ],
+        "walk": [
+          "................",
+          "................",
+          "....iiiiiiii....",
+          "...icccccccci...",
+          "...icCCCCCCci...",
+          "...ihsssssshi...",
+          "...ihsissiShi...",
+          "...ihsssssshi...",
+          "....ihsssshi....",
+          "....icccccci....",
+          "...icCCCCCCci...",
+          "..icccccccccci..",
+          "..iccCCCCCCcci..",
+          "..icccccccccci..",
+          "..icci......icc.",
+          "..ii..........i."
         ]
       }
     },

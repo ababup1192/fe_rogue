@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "title": "霧の里",
-  "designWidth": 480,
-  "designHeight": 300,
+  "title": "陽だまりの城下町",
+  "designWidth": 320,
+  "designHeight": 240,
   "windowWidth": 960,
-  "windowHeight": 600,
-  "windowScale": 2,
-  "clearColor": {"r": 0.168627, "g": 0.133333, "b": 0.200000},
+  "windowHeight": 720,
+  "windowScale": 3,
+  "clearColor": {"r": 0.450980, "g": 0.650980, "b": 0.850980},
   "maxDeltaTime": 0.05,
   "textures": [],
   "// glyphs": "起動時に焼く字。auto=出た字から順に焼く / used=ソースとアセットにある字を先に焼く / all=フォントの全字",
@@ -32,17 +32,17 @@
         "role": "material"
       },
       {
-        "id": "terrain",
-        "pattern": "assets/*.terrain.json",
-        "title": "地形の質感（石垣・畑）",
-        "schema": "assets/terrain.schema.json",
-        "role": "material"
-      },
-      {
         "id": "sprite",
         "pattern": "assets/*.sprite.json",
         "title": "ドット絵（主人公・住人・薬草）",
         "schema": "assets/sprite.schema.json",
+        "role": "material"
+      },
+      {
+        "id": "town-map",
+        "pattern": "assets/town.map.json",
+        "title": "街の間取り（タイルの敷き方）",
+        "schema": "assets/town-map.schema.json",
         "role": "material"
       },
       {

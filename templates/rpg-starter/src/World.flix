@@ -63,7 +63,10 @@ mod World {
         theme = ThemeDoc.Doc,
         battle = BattleDoc.Doc,
         sprites = PxSpriteDoc.Doc,
-        terrain = TerrainDoc.Doc
+        townSprites = PxSpriteDoc.Doc,
+        townMap = TownMapDoc.Doc,
+        waterShader = ShaderDoc.Spec,
+        smokeFx = FxDoc.Spec
     }
 
     /// ゲームの状態。hero / facing = 主人公のマスと向き、stepGauge = 次の一歩までの残り秒、
@@ -78,8 +81,18 @@ mod World {
         theme = ThemeDoc.Doc,
         battleDoc = BattleDoc.Doc,
         sprites = PxSpriteDoc.Doc,
-        terrain = TerrainDoc.Doc,
+        townSprites = PxSpriteDoc.Doc,
+        townMap = TownMapDoc.Doc,
+        townAtlas = PxSpriteAtlas.Baked,
+        townAtlasKey = String,
+        tileSpec = TileLayerSpec,
+        bridgeCells = List[Grid.Cell],
+        waterRect = Option[Rect2.Rect2],
+        waterMaskRects = List[Rect2.Rect2],
+        waterShader = ShaderDoc.Spec,
+        smokeFx = FxDoc.Spec,
         phase = Phase,
+        npcClock = Float64,
         t = Float64,
         hero = Grid.Cell,
         facing = Dir4.Dir4,
@@ -95,23 +108,67 @@ mod World {
         activeDocsWritten = String
     }
 
-    // ── 盤の寸法（design 480×300 の中の定数。project.json と同じ値） ──
+    // ── 画面と盤の寸法（design 320×240 は project.json と同じ値。盤は design より広く、
+    //    camera が主人公を追ってスクロールする） ──
 
-    pub def width(): Float64 = 480.0
-    pub def height(): Float64 = 300.0
+    pub def width(): Float64 = 320.0
+    pub def height(): Float64 = 240.0
 
-    /// タイルの 1 辺（px）。24×15 マスで画面がちょうど埋まる。
-    pub def tileSize(): Float64 = 20.0
+    /// タイルの 1 辺（px）。画面には 20×15 マスぶんが見える。
+    pub def tileSize(): Float64 = 16.0
+
+    /// 盤全体の world 矩形（camera の bounds）。盤原点は (0,0) 固定 —
+    /// 盤が design より大きいので中央寄せはせず、world 座標 = マス×16 にする。
+    pub def boardRect(w: World): Rect2.Rect2 =
+        { position = { x = 0.0, y = 0.0 },
+          size = { x = Int32.toFloat64(MapDoc.cols(w#map)) * tileSize(),
+                   y = Int32.toFloat64(MapDoc.rowCount(w#map)) * tileSize() } }
+
+    /// camera の中心。里（表紙・クリアの幕の下も含む）では主人公のマス中心を追い、
+    /// 戦い（盤を映さない画面）では design の中央に固定してずらしを消す —
+    /// 戦いの絵は画面座標のまま world 側に組んであるため。
+    pub def cameraCenter(w: World): Vec2.Vec2 =
+        match w#phase {
+            case Phase.Battle => { x = width() / 2.0, y = height() / 2.0 }
+            case _            => Grid.cellCenterOf(tileSize(), w#hero)
+        }
 
     pub def spritePath(): String = "assets/rpg.sprite.json"
 
-    pub def terrainPath(): String = "assets/rpg.terrain.json"
+    /// 街タイル（芝・石畳・水路・漆喰壁）のドット絵 Doc。
+    pub def townSpritePath(): String = "assets/town.sprite.json"
+
+    /// 街タイルのアトラスを焼き、GPU キャッシュ用の key と対にして返す。
+    /// key に画素のハッシュを織り込むのは、Doc や色票の保存即反映で絵が変わったとき、
+    /// 同じ key のまま古いテクスチャが画面に残らないため（毎フレーム計算しない —
+    /// 焼くのはここ 1 回で、World が結果を持つ）。
+    pub def bakeTownAtlas(doc: PxSpriteDoc.Doc, theme: ThemeDoc.Doc): (PxSpriteAtlas.Baked, String) =
+        let baked = PxSpriteAtlas.bake(doc, key -> ThemeDoc.resolver(theme, key));
+        let h = baked#pixels |> Vector.foldLeft((acc, px) -> acc * 31 + px, 17);
+        (baked, "town-tiles-v1:${Int32.toString(baked#side)}:${Int32.toString(h)}")
+
+    /// 街タイル盤から導く値（タイル層の宣言・橋のマス・水面の矩形）を持ち直す。
+    /// 毎フレーム計算しないのは、どれも全盤走査で 1 フレーム予算（120fps=8.3ms）を
+    /// 食い潰すため — 盤とアトラスが変わるのは Doc の保存と F1 だけ。
+    def refreshTownCache(w: World): World =
+        { tileSpec = TownMap.spec(w#townMap, w#townAtlas),
+          bridgeCells = TownMap.bridgeCells(w#townMap),
+          waterRect = TownMap.waterRect(w#townMap),
+          waterMaskRects = TownMap.waterMaskRects(w#townMap) | w }
 
     /// ゲーム開始時の状態。表紙から始まる。
     pub def initial(docs: Docs): World =
+        let (townAtlas, townKey) = bakeTownAtlas(docs#townSprites, docs#theme);
         { map = docs#map, kind = docs#kind, theme = docs#theme, battleDoc = docs#battle,
-          sprites = docs#sprites, terrain = docs#terrain,
-          phase = Phase.Title, t = 0.0,
+          sprites = docs#sprites,
+          townSprites = docs#townSprites, townMap = docs#townMap,
+          townAtlas = townAtlas, townAtlasKey = townKey,
+          tileSpec = TownMap.spec(docs#townMap, townAtlas),
+          bridgeCells = TownMap.bridgeCells(docs#townMap),
+          waterRect = TownMap.waterRect(docs#townMap),
+          waterMaskRects = TownMap.waterMaskRects(docs#townMap),
+          waterShader = docs#waterShader, smokeFx = docs#smokeFx,
+          phase = Phase.Title, t = 0.0, npcClock = 0.0,
           hero = docs#map#start, facing = Dir4.Down, stepGauge = 0.0, steps = 0,
           herbs = docs#map#herbs, picked = 0, doorOpen = false,
           heroHp = docs#battle#heroMaxHp, battle = noBattle(),
@@ -141,6 +198,70 @@ mod World {
     pub def lampsLit(w: World): Int32 =
         Int32.min(w#picked, List.length(w#map#lamps))
 
+    // ── 住人の巡回（Journey: 状態は npcClock だけ・位置は時刻の純関数） ──
+
+    /// 巡回路（歩けるマスを結ぶ角の列。末尾から先頭へ戻って循環）。
+    /// 知らない id は巡回しない（Doc のマスに立ち続ける = fail-open）。
+    pub def routeOf(id: String): List[Grid.Cell] =
+        match id {
+            case "monban"   => { x = 4, y = 8 } :: { x = 7, y = 8 }
+                            :: { x = 7, y = 6 } :: { x = 4, y = 6 } :: Nil
+            case "hatasaku" => { x = 4, y = 2 } :: { x = 8, y = 2 }
+                            :: { x = 8, y = 4 } :: { x = 4, y = 4 } :: Nil
+            case "ko"       => { x = 14, y = 6 } :: { x = 14, y = 7 }
+                            :: { x = 21, y = 7 } :: { x = 14, y = 7 } :: Nil
+            case _          => Nil
+        }
+
+    /// 巡回で踏む全マス（角の間も展開。テストが「歩けるマスしか通らない」を縛る口）。
+    pub def routeCells(id: String): List[Grid.Cell] =
+        match routeOf(id) {
+            case Nil => Nil
+            case pts =>
+                let closed = List.append(pts, List.take(1, pts));
+                List.zip(closed, List.drop(1, closed))
+                    |> List.flatMap(pair -> { let (a, b) = pair; cellsBetween(a, b) })
+        }
+
+    /// 軸に沿った 2 マス間の経路（両端込み）。斜めは想定しない（巡回路は角で曲がる）。
+    def cellsBetween(a: Grid.Cell, b: Grid.Cell): List[Grid.Cell] =
+        if (a#x == b#x)
+            List.range(Int32.min(a#y, b#y), Int32.max(a#y, b#y) + 1)
+                |> List.map(y -> { x = a#x, y = y })
+        else
+            List.range(Int32.min(a#x, b#x), Int32.max(a#x, b#x) + 1)
+                |> List.map(x -> { x = x, y = a#y })
+
+    /// 住人の今の見本（位置と歩いた距離）。巡回しない住人は Doc のマスに立つ。
+    pub def villagerSampleAt(w: World, villager: MapDoc.Villager): Journey.Sample =
+        match routeOf(villager#id) {
+            case Nil => { pos = Grid.cellCenterOf(tileSize(), villager#cell),
+                          walking = 0.0, done = true }
+            case pts => {
+                let centers = pts |> List.map(c -> Grid.cellCenterOf(tileSize(), c));
+                let closed = List.append(centers, List.take(1, centers));
+                let legs = List.zip(closed, List.drop(1, closed))
+                    |> List.map(pair -> { let (a, b) = pair;
+                        ({ src = a, dst = b, speed = 22.0 }: Journey.Leg) });
+                let total = Journey.total(legs);
+                // 同じ拍で全員が曲がらないよう、名前の長さで位相をずらす。
+                let phase = Int32.toFloat64(String.length(villager#id)) * 3.7;
+                let tt = wrapBy(total, w#npcClock + phase);
+                Journey.at(legs, tt)
+            }
+        }
+
+    /// 住人が今いるマス（歩ける・話せるの判定はこのマスで行う — 絵と規則を同じ見本から導く）。
+    pub def villagerCellAt(w: World, villager: MapDoc.Villager): Grid.Cell =
+        let smp = villagerSampleAt(w, villager);
+        { x = Float64.tryToInt32(Float64.floor(smp#pos#x / tileSize())) |> Option.getWithDefault(0),
+          y = Float64.tryToInt32(Float64.floor(smp#pos#y / tileSize())) |> Option.getWithDefault(0) }
+
+    /// 0 <= 戻り値 < total の折り返し（total が 0 以下なら 0）。
+    def wrapBy(total: Float64, t: Float64): Float64 =
+        if (total <= 0.0) 0.0
+        else t - total * Float64.floor(t / total)
+
     /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
     /// Studio の「表示中」バッジの材料（ActiveDocs.step が debug/ に名乗る）。
     /// 表紙とクリアの幕でも盤は霧の下に見えているので map / theme / sprite は常に表示中。
@@ -150,7 +271,6 @@ mod World {
         let base = ("map", MapDoc.path() :: Nil)
             :: ("theme", ThemeDoc.path() :: Nil)
             :: ("sprite", spritePath() :: Nil)
-            :: ("terrain", terrainPath() :: Nil)
             :: Nil;
         match w#phase {
             case Phase.Play   => List.append(base, ("kind", KindDoc.path() :: Nil) :: Nil)
@@ -167,7 +287,7 @@ mod World {
     pub def walkable(cell: Grid.Cell, w: World): Bool =
         Grid.inRectOf(cell, MapDoc.cols(w#map), MapDoc.rowCount(w#map))
             and not MapDoc.solidAt(cell, w#map)
-            and Option.isEmpty(MapDoc.villagerAt(cell, w#map))
+            and not List.exists(v -> MapDoc.sameCell(villagerCellAt(w, v), cell), w#map#villagers)
             and not (MapDoc.sameCell(cell, w#map#door#cell) and not w#doorOpen)
 
     /// 1 歩の規則: まず向きを変え、行き先に歩ければ進み、薬草があれば拾う。
@@ -200,9 +320,12 @@ mod World {
             case Phase.Play => {
                 let talked = { dialog = UiDialog.step(cps = w#kind#cps, dt, ticked#dialog) | ticked };
                 if (UiDialog.isOpen(talked#dialog))
+                    // 会話中は住人の巡回も止める — 話し相手が歩き去ると、
+                    // ふきだしの根本が誰も居ないマスを指すため。
                     talked
                 else
-                    walk(direction, Clock.countdown(talked#stepGauge, dt), talked)
+                    walk(direction, Clock.countdown(talked#stepGauge, dt),
+                         { npcClock = talked#npcClock + dt | talked })
             }
             case _ => ticked
         }
@@ -336,7 +459,7 @@ mod World {
 
     /// 目の前のマスに住人がいれば話しかける。いなければ何も起きない。
     def talk(cell: Grid.Cell, w: World): World =
-        match MapDoc.villagerAt(cell, w#map) {
+        match List.find(v -> MapDoc.sameCell(villagerCellAt(w, v), cell), w#map#villagers) {
             case None           => w
             case Some(villager) => speak(villager, w)
         }
@@ -354,7 +477,7 @@ mod World {
         { doorOpen = w#doorOpen or fulfilled,
           dialog = UiDialog.openWith(
               { speaker = villager#id, body = RichText.plain(line) :: Nil } :: Nil),
-          talkingTo = Some(villager#cell) | w }
+          talkingTo = Some(villagerCellAt(w, villager)) | w }
 
     // ── Doc の差し替え（保存即反映） ──
 
@@ -373,9 +496,25 @@ mod World {
     pub def withBattleDoc(doc: BattleDoc.Doc, w: World): World =
         { battleDoc = doc, heroHp = Int32.min(w#heroHp, doc#heroMaxHp) | w }
 
-    pub def withTheme(theme: ThemeDoc.Doc, w: World): World = { theme = theme | w }
+    /// 色票の差し替え。街タイルのアトラスは色票から実色を焼き込んでいるので、一緒に焼き直す
+    /// （焼き直さないと、タイルだけ古い色のまま画面に残る）。
+    pub def withTheme(theme: ThemeDoc.Doc, w: World): World =
+        let (townAtlas, townKey) = bakeTownAtlas(w#townSprites, theme);
+        refreshTownCache({ theme = theme, townAtlas = townAtlas, townAtlasKey = townKey | w })
 
     pub def withSprites(sprites: PxSpriteDoc.Doc, w: World): World = { sprites = sprites | w }
 
-    pub def withTerrain(terrain: TerrainDoc.Doc, w: World): World = { terrain = terrain | w }
+    /// 街タイルの Doc の差し替え（保存即反映）。アトラスも一緒に焼き直す。
+    pub def withTownSprites(doc: PxSpriteDoc.Doc, w: World): World =
+        let (townAtlas, townKey) = bakeTownAtlas(doc, w#theme);
+        refreshTownCache({ townSprites = doc, townAtlas = townAtlas, townAtlasKey = townKey | w })
+
+    /// 街のタイル盤の差し替え（保存即反映）。アトラスは盤に依らないので焼き直さない —
+    /// タイル層は Doc の読み直しをエンジンが世代で検知して勝手に敷き直す。
+    pub def withTownMap(doc: TownMapDoc.Doc, w: World): World =
+        refreshTownCache({ townMap = doc | w })
+
+    pub def withWaterShader(spec: ShaderDoc.Spec, w: World): World = { waterShader = spec | w }
+
+    pub def withSmokeFx(spec: FxDoc.Spec, w: World): World = { smokeFx = spec | w }
 }

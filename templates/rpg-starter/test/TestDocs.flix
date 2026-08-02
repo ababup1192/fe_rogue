@@ -48,9 +48,75 @@ mod TestDocs {
         Assert.assertEq(expected = (9.0, KindDoc.defaults()#cps), (doc#walk, doc#cps))
 
     // ══════════════════════════════════════════════════════
-    // ThemeDoc resolver（terrain の @参照が使う派生色）
-    // TerrainDoc の橋渡し（fromJson / defaults / fail-open）は engine 側
-    // TestTerrainDoc で完結 — ここでは繰り返さない。
+    // TownMapDoc(街のタイル盤: rows と legend)
+    // ══════════════════════════════════════════════════════
+
+    @Test
+    def testTownMapBrokenJsonFallsBackToDefaults(): Unit \ Assert =
+        // 壊れた JSON は既定の盤へ倒れる(街の絵は必ず出る)。
+        let doc = TownMapDoc.fromJson("{ broken") |> Option.getWithDefault(TownMapDoc.defaults());
+        Assert.assertEq(
+            expected = (TownMapDoc.rowCount(TownMapDoc.defaults()),
+                        Map.size(TownMapDoc.defaults()#legend)),
+            (TownMapDoc.rowCount(doc), Map.size(doc#legend)))
+
+    @Test
+    def testTownMapOverridesLegendOnly(): Unit \ Assert =
+        // legend だけ書いた JSON はそこだけ効き、rows は既定のまま。
+        // 2 文字以上のキーは黙って捨てられ、legend に無い文字は None(敷かれないだけ)。
+        let doc = TownMapDoc.fromJson("{\"version\":1, \"legend\": {\"g\": \"tile_pave\", \"ng\": \"x\"}}")
+            |> Option.getWithDefault(TownMapDoc.defaults());
+        Assert.assertEq(
+            expected = (Some("tile_pave"), None, TownMapDoc.rowCount(TownMapDoc.defaults())),
+            (TownMapDoc.tileNameOf(doc, 'g'), TownMapDoc.tileNameOf(doc, 'n'),
+             TownMapDoc.rowCount(doc)))
+
+    @Test
+    def testTownMapRowsLengthFollowsJson(): Unit \ Assert =
+        // rows の行数・列数を増減すれば Doc も追随する(列数は一番長い行に合わせる)。
+        let doc = TownMapDoc.fromJson("{\"version\":1, \"rows\":[\"gg\",\"gggg\",\"g\"]}")
+            |> Option.getWithDefault(TownMapDoc.defaults());
+        Assert.assertEq(expected = (3, 4), (TownMapDoc.rowCount(doc), TownMapDoc.cols(doc)))
+
+    @Test
+    def testGrassEdgeSelectionFollowsNeighbors(): Unit \ Assert =
+        // 縁選定の代表ケース: 中央 1 マスの石畳の周囲 8 マスで、
+        // 四方は縁、斜めは内角になる（rows は素材の文字のまま、縁はコードが選ぶ）。
+        let doc = { rows = "ggg" :: "gpg" :: "ggg" :: Nil | TownMapDoc.defaults() };
+        Assert.assertEq(
+            expected = ("tile_grass_edge_s", "tile_grass_edge_n",
+                        "tile_grass_edge_e", "tile_grass_edge_w",
+                        "tile_grass_incorner_se", "tile_grass_incorner_nw",
+                        Some("tile_pave")),
+            (TownMap.grassTileAt(doc, 1, 0), TownMap.grassTileAt(doc, 1, 2),
+             TownMap.grassTileAt(doc, 0, 1), TownMap.grassTileAt(doc, 2, 1),
+             TownMap.grassTileAt(doc, 0, 0), TownMap.grassTileAt(doc, 2, 2),
+             TownMap.groundTileAt(doc, 1, 1)))
+
+    @Test
+    def testFenceCellsAreSolid(): Unit \ {Assert, IO} =
+        // 柵のマス(門の並びの隙間)は歩けない。絵(TownMap.fences)と当たり(rpg.map の '#')の
+        // 対応が崩れると「見えない壁/すり抜ける柵」になるので、Doc と突き合わせて縛る。
+        let map = run { MapDoc.load(MapDoc.path()) } with Fs.FileRead.runWithIO;
+        Assert.assertEq(
+            expected = TownMap.fences() |> List.map(_ -> true),
+            TownMap.fences() |> List.map(cell -> MapDoc.solidAt(cell, map)))
+
+    @Test
+    def testPatrolRoutesStayOnWalkableCells(): Unit \ {Assert, IO} =
+        // 住人の巡回路は「歩けるマスしか通らない」— これはルール。角の間も展開して、
+        // 実際の間取り Doc の '#'（建物・水路・柵）と突き合わせる。
+        let map = run { MapDoc.load(MapDoc.path()) } with Fs.FileRead.runWithIO;
+        let cells = map#villagers |> List.flatMap(v -> World.routeCells(v#id));
+        Assert.assertEq(
+            expected = (false, cells |> List.map(_ -> true)),
+            (List.isEmpty(cells),
+             cells |> List.map(c ->
+                 Grid.inRectOf(c, MapDoc.cols(map), MapDoc.rowCount(map))
+                     and not MapDoc.solidAt(c, map))))
+
+    // ══════════════════════════════════════════════════════
+    // ThemeDoc resolver（意味色キー → 実色の派生）
     // ══════════════════════════════════════════════════════
 
     @Test
