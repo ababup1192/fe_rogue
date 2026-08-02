@@ -15,8 +15,8 @@ mod DocTable {
 
     /// 台帳の並び順に全 Doc を読み直す(App.reloadOn の一括リロードへ渡す形)。
     /// 導出 Doc(他の Doc の値から焼き直す物)は、依存先より後ろの行に置くこと。
-    pub def reloadAll(rows: List[Entry[w]], w: w): w \ Fs.FileRead =
-        rows |> List.foldLeft((acc, r) -> { let f = r#reload; f(acc) }, w)
+    pub def reloadAll(rows: List[Entry[w]], world: w): w \ Fs.FileRead =
+        rows |> List.foldLeft((acc, r) -> { let f = r#reload; f(acc) }, world)
 
     /// ActiveDocs.step へ渡す形(id → パスの列)。同じ id の行は、行が離れていても
     /// 最初に現れた位置へ台帳の並びのまま束ねる。

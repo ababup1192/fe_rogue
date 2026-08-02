@@ -16,6 +16,13 @@ mod TestDocTable {
                 :: "t.sprite.json" :: Nil,
             DocTable.reloads(rows()) |> List.map(fst))
 
+    /// 一括リロードは台帳の並び順に適用する — 「導出 Doc は依存先より後ろの行に」の
+    /// 約束はこの順序が支える。rows の関数は非可換(逆順なら 21)なので順序が固定される。
+    @Test
+    def testReloadAllAppliesRowsInOrder(): Unit \ {Assert, IO} =
+        let got = run { DocTable.reloadAll(rows(), 0) } with Fs.FileRead.runWithIO;
+        Assert.assertEq(expected = 12, got)
+
     /// ActiveDocs へ渡す形は id ごとに束なり、None の行は出ず、離れた同 id 行も
     /// 最初に現れた位置へ集まる。
     @Test

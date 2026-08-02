@@ -37,7 +37,7 @@ mod Calendar {
         let per = Float64.max(0.000001, spec#secondsPerMinute);
         let pool = s#carry + Float64.max(0.0, dt);
         let whole = Float64.floor(pool / per);
-        let steps = whole |> Float64.tryToInt32 |> Option.getWithDefault(0);
+        let steps = Num.floorInt(whole);
         { minute = s#minute + steps, carry = pool - whole * per }
         }
 

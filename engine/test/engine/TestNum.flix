@@ -23,6 +23,12 @@ mod TestNum {
             (Num.wrapTo(4.0, 5.0), Num.wrapTo(10.0, -1.0), Num.wrapTo(4.0, 8.0)))
 
     @Test
+    def testWrapToNeverGoesNegativeOnRoundingEdge(): Unit \ Assert =
+        // 1.7/0.1 は丸めで 17 ちょうどに繰り上がり、素朴な x - p*floor(x/p) は -2.2e-16 を返す。
+        // 時刻に使うと -ε が「-1 時」へ化けるので、0 以上へ戻すのが契約。
+        Assert.assertEq(expected = true, Num.wrapTo(0.1, 1.7) >= 0.0)
+
+    @Test
     def testWrapToLeavesValueAloneWhenPeriodIsNotPositive(): Unit \ Assert =
         Assert.assertEq(expected = (7.0, 7.0), (Num.wrapTo(0.0, 7.0), Num.wrapTo(-2.0, 7.0)))
 

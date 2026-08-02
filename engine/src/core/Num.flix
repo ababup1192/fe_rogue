@@ -21,9 +21,14 @@ mod Num {
 
     /// 0 以上 period 未満へ折り返す。画面の端から端へ回り込む物（流れる雲・スクロールする床・
     /// 繰り返すアニメの時刻）に使う。period が 0 以下なら折り返しようがないのでそのまま返す。
+    /// x/period の丸めが商を 1 つ繰り上げると微小な負が漏れる（wrapTo(0.1, 1.7) など）ので、
+    /// 0 未満は 1 周期戻して「0 以上」を守る — 時刻に使うと -ε が「-1 時」に化けるため。
     pub def wrapTo(period: Float64, x: Float64): Float64 =
         if (period <= 0.0 or not Float64.isFinite(period)) x
-        else x - period * Float64.floor(x / period)
+        else {
+            let f = x - period * Float64.floor(x / period);
+            if (f < 0.0) f + period else f
+        }
 
     /// a と b の間を t（0〜1）で混ぜる。範囲外の t は伸ばしたまま（外挿）— 収めたいなら
     /// clamp01 を通してから渡す。

@@ -128,7 +128,7 @@ mod CameraRig {
         let i = Float64.floor(t);
         let frac = t - i;
         let fade = frac * frac * frac * (frac * (frac * 6.0 - 15.0) + 10.0);
-        let idx = Float64.tryToInt32(i) |> Option.getWithDefault(0);
+        let idx = Num.floorInt(i);
         let a = 2.0 * Hash01.at(idx, channel) - 1.0;
         let b = 2.0 * Hash01.at(idx + 1, channel) - 1.0;
         a + (b - a) * fade
