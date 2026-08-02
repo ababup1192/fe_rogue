@@ -82,7 +82,7 @@ EDITOR_SERVER_DIR := editor_server
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff release release-guard bump editor lint-palette check-docs-sync
+.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff release release-guard bump editor lint-palette lint-view rules check-docs-sync
 
 help:
 	@echo "Targets:"
@@ -90,6 +90,8 @@ help:
 	@echo "  make test-par             同上を並列実行 (壁時計 ≈ fe_rogue 1本分。ログは .test-logs/)"
 	@echo "  make test-<name>          1 つだけテスト (例: make test-fe_rogue / make test-engine)"
 	@echo "  make lint-palette         ドット絵 legend の意味色キーが Studio から解けるか検査"
+	@echo "  make lint-view            View が矩形と円だけになっていないか検査"
+	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
 	@echo "  make bake                 bake ターゲットを持つ全 example の生成物を焼き直す"
 	@echo "  make bake-par             同上を並列実行"
 	@echo "  make diff DIR=<dir>       直す前(golden)と後(gallery)を左右に並べて <dir>/debug/diff/ に焼く"
@@ -459,6 +461,7 @@ sync-agents:
 	  cat agents-pack/AGENTS.core.md; \
 	  if [ -f "$(GAME)/AGENTS.local.md" ]; then echo ""; cat "$(GAME)/AGENTS.local.md"; fi; \
 	} > "$(GAME)/AGENTS.md"
+	@printf '@AGENTS.md\n' > "$(GAME)/CLAUDE.md"
 	@mkdir -p "$(GAME)/.claude/skills"
 	@for d in agents-pack/skills/*/; do \
 	  name=$$(basename $$d); \
@@ -466,48 +469,76 @@ sync-agents:
 	  cp -f $$d* "$(GAME)/.claude/skills/$$name/"; \
 	  echo "[sync-agents] skill: $$name"; \
 	done
-	@echo "[sync-agents] wrote $(GAME)/AGENTS.md"
+	@mkdir -p "$(GAME)/.claude/rules" "$(GAME)/bin"
+	@cp -f agents-pack/rules/*.md "$(GAME)/.claude/rules/"
+	@cp -f bin/lint-view.py bin/lint-palette.py "$(GAME)/bin/"
+	@echo "[sync-agents] rules: $$(ls agents-pack/rules | tr '\n' ' ')"
+	@echo "[sync-agents] lint: bin/lint-view.py bin/lint-palette.py"
+	@echo "[sync-agents] wrote $(GAME)/AGENTS.md + CLAUDE.md"
 
-# CLAUDE.md（Claude 向け）と AGENTS.md（他エージェント向け）は同じ方針を別ファイルに
-# 手作業で置いているだけなので、コピー忘れで内容が食い違いやすい。生成はせず、
-# 「見出しの並び」「スキル一覧の表」「予約語・テンプレ一覧・docs 導線などの必須キーワード」
-# が両方に揃っているかだけを機械的に照合する（検査のみ・上書きはしない）。
+# 規約の本文は docs/ に 1 つだけ置く。CLAUDE.md は AGENTS.md を import するだけ、
+# .claude/rules/ は bin/gen-rules.py の生成物。手で 2 か所に書かないので、ずれない。
+.PHONY: rules
+rules:
+	@python3 bin/gen-rules.py
+
+# 絵の下限（矩形と円だけになっていないか）。どの OS・どのエージェントからも同じ検査。
+.PHONY: lint-view
+lint-view:
+	@python3 bin/lint-view.py
+
+# 規約まわりの配線が崩れていないかの検査（生成はしない）。
 .PHONY: check-docs-sync
 check-docs-sync:
 	@ok=1; \
 	if [ ! -f CLAUDE.md ] || [ ! -f AGENTS.md ]; then \
 	  echo "[check-docs-sync] CLAUDE.md か AGENTS.md が見つかりません"; exit 1; \
 	fi; \
-	echo "[check-docs-sync] 見出し(## ...)の並びを比較"; \
-	grep '^## ' CLAUDE.md > /tmp/check-docs-sync.claude.headings.$$$$; \
-	grep '^## ' AGENTS.md > /tmp/check-docs-sync.agents.headings.$$$$; \
-	if ! diff -u /tmp/check-docs-sync.claude.headings.$$$$ /tmp/check-docs-sync.agents.headings.$$$$; then \
-	  echo "[check-docs-sync] NG: 見出しの並びが CLAUDE.md と AGENTS.md でずれています"; ok=0; \
+	echo "[check-docs-sync] CLAUDE.md が AGENTS.md を import しているか"; \
+	if ! grep -q '^@AGENTS.md' CLAUDE.md; then \
+	  echo "[check-docs-sync] NG: CLAUDE.md は @AGENTS.md の 1 行にしてください（本文の二重管理を避ける）"; ok=0; \
 	fi; \
-	rm -f /tmp/check-docs-sync.claude.headings.$$$$ /tmp/check-docs-sync.agents.headings.$$$$; \
-	echo "[check-docs-sync] スキル一覧の表を比較"; \
-	grep '^| `/' CLAUDE.md > /tmp/check-docs-sync.claude.skills.$$$$; \
-	grep '^| `/' AGENTS.md > /tmp/check-docs-sync.agents.skills.$$$$; \
-	if ! diff -u /tmp/check-docs-sync.claude.skills.$$$$ /tmp/check-docs-sync.agents.skills.$$$$; then \
-	  echo "[check-docs-sync] NG: スキル一覧の表が CLAUDE.md と AGENTS.md でずれています"; ok=0; \
-	fi; \
-	rm -f /tmp/check-docs-sync.claude.skills.$$$$ /tmp/check-docs-sync.agents.skills.$$$$; \
-	echo "[check-docs-sync] 必須キーワードの有無を確認"; \
+	echo "[check-docs-sync] .claude/rules が docs/ と一致しているか"; \
+	python3 bin/gen-rules.py --check || ok=0; \
+	echo "[check-docs-sync] AGENTS.md のスキル表が実在する skill を指しているか"; \
+	for s in $$(grep -o '`/[a-z][a-z-]*`' AGENTS.md | tr -d '`/' | sort -u); do \
+	  if [ ! -f ".claude/skills/$$s/SKILL.md" ]; then \
+	    echo "[check-docs-sync] NG: AGENTS.md が /$$s を指していますが .claude/skills/$$s/SKILL.md がありません"; ok=0; \
+	  fi; \
+	done; \
+	echo "[check-docs-sync] skill の frontmatter に name と description があるか"; \
+	for f in .claude/skills/*/SKILL.md agents-pack/skills/*/SKILL.md; do \
+	  if ! grep -q '^name:' $$f; then echo "[check-docs-sync] NG: $$f に name がありません"; ok=0; fi; \
+	  if ! grep -q '^description:' $$f; then echo "[check-docs-sync] NG: $$f に description がありません"; ok=0; fi; \
+	done; \
+	echo "[check-docs-sync] AGENTS.md から docs/ への導線があるか"; \
 	for kw in \
-	  "handler.*resume.*run.*spawn.*region.*inject.*project.*solve" \
-	  "rpg / novel / race / tetris-starter" \
 	  "docs/audio.md" \
 	  "docs/engine-module-index.md" \
 	  "docs/module-index.md" \
+	  "docs/drawing-floor.md" \
+	  "docs/flix-conventions.md" \
 	; do \
-	  in_claude=$$(grep -c "$$kw" CLAUDE.md || true); \
-	  in_agents=$$(grep -c "$$kw" AGENTS.md || true); \
-	  if [ "$$in_claude" = "0" ] || [ "$$in_agents" = "0" ]; then \
-	    echo "[check-docs-sync] NG: キーワード '$$kw' が片方にしかありません (CLAUDE.md:$$in_claude AGENTS.md:$$in_agents)"; ok=0; \
+	  if ! grep -q "$$kw" AGENTS.md; then \
+	    echo "[check-docs-sync] NG: AGENTS.md に $$kw への導線がありません"; ok=0; \
 	  fi; \
 	done; \
+	echo "[check-docs-sync] templates/ に CLAUDE.md を置いていないか"; \
+	for f in templates/*/CLAUDE.md; do \
+	  if [ -f "$$f" ]; then \
+	    echo "[check-docs-sync] NG: $$f は make new-game の sync-agents が @AGENTS.md で上書きするので、書いても捨てられます。ゲーム固有の事は AGENTS.local.md に、共通の方針は agents-pack/AGENTS.core.md に書いてください"; ok=0; \
+	  fi; \
+	done; \
+	if [ -d .agents/skills ]; then \
+	  for d in .agents/skills/*/; do \
+	    n=$$(basename $$d); \
+	    if [ ! -f ".claude/skills/$$n/SKILL.md" ] || ! diff -q "$$d/SKILL.md" ".claude/skills/$$n/SKILL.md" >/dev/null 2>&1; then \
+	      echo "[check-docs-sync] WARN: .agents/skills/$$n が .claude/skills/ と違います（どこからも参照されていない古い写しです。消すか揃えるか決めてください）"; \
+	    fi; \
+	  done; \
+	fi; \
 	if [ "$$ok" = "1" ]; then \
-	  echo "[check-docs-sync] OK: CLAUDE.md と AGENTS.md は同期しています"; \
+	  echo "[check-docs-sync] OK"; \
 	else \
 	  exit 1; \
 	fi

@@ -1,5 +1,6 @@
 // ArtGallery — 絵作り候補のシートをヘッドレスに焼き、承認用ダッシュボードを組む。
 // make bake が再生成する。ゲーム本体はまだ無い — 絵の承認が全部済んでから組む。
+// lint-view: 対象外 — 候補を並べる承認用の台紙。台紙そのものは作品ではない。
 mod ArtGallery {
     import java.io.File
 

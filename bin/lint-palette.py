@@ -134,6 +134,10 @@ def game_dirs(root):
             if rel in SKIP_GAMES or not os.path.isdir(os.path.join(root, rel)):
                 continue
             dirs.append(rel)
+    # 生成されたゲームには templates/ も examples/ も無い。空を返すと
+    # 「検査したが問題なし」と見分けが付かず、関所が黙って素通りする。
+    if not dirs and os.path.isdir(os.path.join(root, "assets")):
+        dirs.append(".")
     return dirs
 
 

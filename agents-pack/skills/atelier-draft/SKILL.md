@@ -1,6 +1,6 @@
 ---
 name: atelier-draft
-description: assets のスロットに対する素材候補を atelier/ に複数案つくり、焼いて自己批評して報告する。assets/ には書かない。
+description: "assets のスロットに対する素材候補を atelier/ に複数案つくり、焼いて自己批評して報告する（assets/ には書かない）。素材の案を見比べたいとき、「もっと暖かい色で」「短く鋭い音で」のように方向性だけ言われたとき、assets を差し替える前に候補を並べたいときに使う。"
 ---
 
 # atelier-draft — 素材候補づくり
