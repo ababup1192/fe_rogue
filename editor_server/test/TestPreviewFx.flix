@@ -12,7 +12,8 @@ mod TestPreviewFx {
         { name = "e", count = 1, shape = FxDoc.Shape.Circle, size = size,
           color = ({r = 1.0f32, g = 1.0f32, b = 1.0f32}: Color) :: Nil,
           life = life, speed = { base = speed#base, vary = speed#vary, over = speed#over },
-          dir = { base = 0.0, spread = 360.0 },
+          dir = { base = 0.0, spread = 360.0, mode = FxDoc.DirMode.Random },
+          turn = { base = 0.0, spread = 0.0, spin = 0.0, spinSpread = 0.0 },
           mode = FxDoc.Mode.Burst, spawnArea = { w = 0.0, h = 0.0 }, accel = Vec2.zero(), seed = 0,
           sizeOver = sizeOver, alphaOver = FxDoc.CurveSpec.Constant,
           blend = DrawCmd.BlendMode.Normal, zIndex = 0 }

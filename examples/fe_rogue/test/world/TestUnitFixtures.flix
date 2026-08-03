@@ -326,6 +326,7 @@ mod TestUnitFixtures {
             def playAudio(_, k)        = k()
             def stopAudio(_, k)        = k()
             def setVolume(_, _, k)     = k()
+            def setPitch(_, _, k)      = k()
             def setLooping(_, _, k)    = k()
             def setMasterVolume(_, k)  = k()
             def reloadAudio(_, _, k)   = k()

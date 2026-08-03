@@ -29,7 +29,7 @@
 | やりたいこと | モジュール |
 |---|---|
 | ゲームとエンジンの境界の共有型・効果（描画・入力・音・時間）を知りたい | GameEngine |
-| 効果音・BGM の再生／停止の低レベル効果口を知りたい（`GameEngine.Audio`） | GameEngine（Audio 効果）/ AudioStreamPlayer（engine_world 側の呼び口。詳しくは [audio.md](audio.md)） |
+| 効果音・BGM の再生／停止・音量・高さ（pitch）の低レベル効果口を知りたい（`GameEngine.Audio`） | GameEngine（Audio 効果）/ AudioStreamPlayer（呼び口。鳴り続ける音は engine_world の App.withSustained。詳しくは [audio.md](audio.md)） |
 | WAV ファイルの中身（形式・波形データの位置）を読み解きたい | AudioUtil |
 | engine の fpkg 読み込みを consumer 側で trigger したい | EngineSentinel |
 | project.json を読み込んでエンジン設定と scene 一覧を得たい | ProjectLoader |

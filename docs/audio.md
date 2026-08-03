@@ -46,7 +46,8 @@ App.make(initialWorld)
 
 ## 経路の使い分け
 
-音を鳴らす経路は2つある。**新しく作るゲームは `App.withAudio`（宣言的）を既定にする。**
+音を鳴らす経路は3つある。**新しく作るゲームは `App.withAudio`（単発）と
+`App.withSustained`（鳴り続ける音）の2つの宣言的な口を既定にする。**
 
 - `App.withAudio(sfx)` — 1フレームの `{before, after}`（進める前後の World）から
   「鳴らす音名の List」を導く純関数を渡す。再生そのものは App が引き受ける。
@@ -60,8 +61,43 @@ App.make(initialWorld)
 AudioStreamPlayer.play("cursor")
 AudioStreamPlayer.stop("bgm")
 AudioStreamPlayer.setVolume("bgm", 0.5f32)
+AudioStreamPlayer.setPitch("bgm", 1.2f32)
 AudioStreamPlayer.setLooping("bgm", true)
 ```
+
+## 鳴り続ける音（`App.withSustained`）
+
+`App.withAudio` が返せるのは「この拍で鳴らし始める名前」だけなので、走行音・風・雨・炎・
+機械の唸り・走っている間の足音のような**止め時をゲームが知っている音**は書けない。
+`App.withSustained` は逆に「**この拍で鳴り続けていてほしい音**」を World から宣言する。
+
+```flix
+pub def hums(w: World): List[App.Sustain] =
+    if (not w.running) Nil
+    else { name = "engine", volume = 0.4f32, pitch = 1.0f32 + 0.6f32 * speedRatio(w) } :: Nil
+
+App.make(initialWorld)
+    |> App.withAudio(Sfx.events)
+    |> App.withSustained(Sfx.hums)
+    |> App.launch
+```
+
+| 宣言の変わり方 | 音の振る舞い |
+|---|---|
+| 前の拍に無く、今の拍にある | ループを ON にして頭から鳴らし始める |
+| 前の拍にも今の拍にもある | 鳴らし直さず、音量と高さだけ流し込む（音が途切れない） |
+| 前の拍にあり、今の拍に無い | 止める |
+
+- `name` は project.json の `sounds` の論理名。**素材は継ぎ目なくループする波形**にする
+  （`looping` の初期値は宣言のたびに ON へ上書きされるので project.json 側は false でよい）。
+- `volume` は 0.0〜1.0、`pitch` は高さ（1.0 = 元のまま・2.0 で 1 オクターブ上・0.5 で 1 オクターブ下）。
+  **どちらも毎フレーム与え直せる** — 速度で唸りが変わるエンジン音はこれで作る。
+- 同じ名前を 2 回宣言しても 1 本に畳まれる（先勝ち）。二重に鳴らすと同じ音源を頭から
+  鳴らし直して音が途切れるため。
+- 「短い音を一定間隔で焚き直して続いているように見せる」逃げ方はもう要らない。
+  続く音は 1 本の宣言で書く。
+
+単発の効果音（当たった・取った・場面が変わった）は今までどおり `App.withAudio` で書く。
 
 ## project.json の sounds
 
@@ -75,7 +111,7 @@ AudioStreamPlayer.setLooping("bgm", true)
 |---|---|
 | `name` | ゲームコードから鳴らすときの論理名（`App.withAudio` が返す文字列・`AudioStreamPlayer.play` に渡す文字列） |
 | `path` | project root からの相対パス（WAV/OGG） |
-| `looping` | 起動時にロードした音源へ既定で付ける AL_LOOPING の初期値。実行中に変えるなら `AudioStreamPlayer.setLooping` |
+| `looping` | 起動時にロードした音源へ既定で付ける AL_LOOPING の初期値。実行中に変えるなら `AudioStreamPlayer.setLooping`（`App.withSustained` の宣言は自動で ON にする） |
 
 パスは project root からの相対で書く（実行時に rootDir と結合される。engine/src/core/ProjectLoader.flix）。
 
@@ -158,5 +194,7 @@ let (outVol, inVol) = AudioFade.crossfadeOf(t)
 - **無音の画面を出荷しない**。BGM を置かないゲームでも、少なくとも上の4種の sfx は鳴る状態にする。
 - **同じ音を1フレームに二重に鳴らさない**。`List.distinct` などで畳んでから `App.withAudio` へ返す
   （breakout の `hitSounds` が手本。同じ衝突が同フレームで複数回記録されても音は1回）。
+- **「続いている音」を短い音の焚き直しで作らない**。走行音・風・雨・炎・足音のループは
+  `App.withSustained` で 1 本の宣言にする（焚き直しは間隔が音より長いと途切れ、短いと二重に鳴る）。
 - **音のデザインは SfxSynth かファイルのどちらかに寄せる**。1ゲームの中で合成と録音素材を
   同じ種類の音（例: 効果音どうし）で混在させない — 質感が揃わない。

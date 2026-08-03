@@ -357,7 +357,12 @@ mod View {
         let box = PxSprite.sizeOf(w#sprites, spec#name, spec#frame, spec#scale)
             |> Option.getWithDefault({ x = side, y = side });
         let topLeft = { x = spec#center#x - box#x / 2.0, y = spec#center#y - box#y / 2.0 };
-        let items = PxSprite.draw(w#sprites, spec#name, spec#frame, topLeft,
+        // 置き場所は anchor（握るところ）で指すので、中心から anchor へのずれを足して渡す。
+        // 左右反転でこのずれは向きを変える — topLeft をそのまま渡すと反転した絵だけが横へ飛ぶ。
+        let off = PxSprite.anchorOffsetOf(w#sprites, spec#name, spec#frame,
+            spec#flipX, spec#scale);
+        let at = { x = spec#center#x + off#x, y = spec#center#y + off#y };
+        let items = PxSprite.draw(w#sprites, spec#name, spec#frame, at,
             spec#flipX, spec#scale, key -> ThemeDoc.resolver(w#theme, key), spec#z);
         if (List.isEmpty(items))
             { at = topLeft, item = Render.box(box, spec#fallback, spec#z) } :: Nil
