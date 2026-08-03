@@ -48,7 +48,8 @@ mod App {
     /// view / hudView が受け取る「この 1 フレームの見え方」。atlas は文字描画用の既定フォント、
     /// visible は camera を通して画面に見えている world の矩形（camera なしなら design 全体。
     /// 背景タイルの敷き詰めなど「見える分だけ組む」計算はここから出す — ゲームが画面サイズを
-    /// World に持ち込む必要はない）。HUD（画面固定）には常に design 全体が渡る。
+    /// World に持ち込む必要はない。この範囲を敷き詰めに使うなら Scatter（field / strip）が
+    /// セル走査と決定的乱数を持っている）。HUD（画面固定）には常に design 全体が渡る。
     /// fontOf は名前でフォントを引く関数（project.json の fonts[].name）。withFonts で宣言した
     /// 名前だけ引ける — 知らない名前は既定フォントへ倒す（fail-open）。話し手ごとに字を変える
     /// ようなゲームは、名前を直に書かず「自分の enum → 名前」の関数を 1 つ置いて fontOf に
@@ -105,6 +106,9 @@ mod App {
         // 重なり順は従来どおり zIndex が決める（Render.draw が安定ソート・同 z は後勝ち = hud）。
         hudView = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef],
         audio = { before = w, after = w } -> List[String] \ ef,    // 1 フレームの前後から鳴らす音名を導く
+        // 「このフレームで鳴り続けていてほしい音」の宣言。宣言が続く間は鳴り続け、消えた拍で
+        // 止まる（風・雨・炎・機械の唸り・足音のループ）。毎フレーム音量と高さを与えられる。
+        sustained = w -> List[Sustain] \ ef,
         quit = (Frame, w) -> Bool \ ef,                            // 終了判定（既定 = Escape のエッジ）
         debug = Bool,                                              // デバッグ機能（F8 の時間停止・注釈・巻き戻し）を有効にするか
         // view = None のゲームがデバッグ機能を使うための生投影（フォントアトラス名と、World →
@@ -175,6 +179,7 @@ mod App {
           spriteAtlases = _ -> Nil,
           pixelSnap = _ -> 0.0,
           audio = _worlds -> checked_ecast(Nil),
+          sustained = _world -> checked_ecast(Nil),
           quit = (frame, _world) -> checked_ecast(justPressed(GameEngine.Key.Escape, frame)),
           debug = false,
           debugView = None,
@@ -345,6 +350,31 @@ mod App {
     /// （再生は App が引き受ける）。
     pub def withAudio(sfx: { before = w, after = w } -> List[String] \ ef, app: App[w, ef]): App[w, ef] =
         { audio = sfx | app }
+
+    /// 鳴り続けてほしい音 1 本の宣言。name は project.json の sounds の論理名、
+    /// volume は音量 0.0〜1.0、pitch は高さ（1.0 = 元のまま・2.0 で 1 オクターブ上）。
+    pub type alias Sustain = { name = String, volume = Float32, pitch = Float32 }
+
+    /// 「このフレームで鳴り続けていてほしい音」を World から導く関数を繋ぐ。
+    /// 宣言に載っている間その音は鳴り続け（ループ再生）、載らなくなった拍で止まる。
+    /// 音量と高さは毎フレーム与え直せるので、速度で唸りが変わるエンジン音・強さで太る風・
+    /// 走っている間だけ続く足音のように「止め時をゲームが知っている音」をこれ 1 本で書ける。
+    /// 単発の効果音（当たった・取った）は withAudio の方を使う。
+    pub def withSustained(f: w -> List[Sustain] \ ef, app: App[w, ef]): App[w, ef] =
+        { sustained = f | app }
+
+    /// 前のフレームの宣言（名前の列）と今のフレームの宣言から、鳴らし始める音・
+    /// 鳴らし続ける音・止める音を仕分ける。同じ名前が 2 回宣言されたら先勝ちで 1 本に畳む
+    /// （二重に鳴らすと同じ音源を頭から鳴らし直して途切れる）。
+    /// RemoteDebug / App 本体の内部窓口 — ゲームからは呼ばない。
+    pub def sustainOps(prev: List[String], next: List[Sustain]):
+            { start = List[Sustain], keep = List[Sustain], stop = List[String] } =
+        let fresh = next |> List.foldLeft((acc, s) ->
+            if (List.exists(x -> x#name == s#name, acc)) acc else List.append(acc, s :: Nil), Nil);
+        let living = List.map(s -> s#name, fresh);
+        { start = List.filter(s -> not List.memberOf(s#name, prev), fresh),
+          keep  = List.filter(s -> List.memberOf(s#name, prev), fresh),
+          stop  = List.filter(n -> not List.memberOf(n, living), List.distinct(prev)) }
 
     /// 終了判定を差し替える。既定は「Escape のエッジで終了」だが、モーダル表示中は
     /// Escape をパネル閉じに使いたい、といったゲームはここで自分の条件を宣言する。
@@ -600,7 +630,7 @@ mod App {
         // 固定ステップの状態（持ち越し秒と未消費エッジ）は空から始める。
         loop(app, world0, InputEvent.currentKeys(),
              GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left), None,
-             Annotate.initial(), Nil, bridge, false, freshStepState(), watch0, freshTileCache());
+             Annotate.initial(), Nil, bridge, false, freshStepState(), watch0, Nil, freshTileCache());
         Option.forEach(RemoteDebug.shutdown, bridge)
 
     /// 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
@@ -633,7 +663,7 @@ mod App {
     def loop(app: App[w, ef], world: w, prevKeys: Set[GameEngine.Key], prevMouseDown: Bool,
              prevCursor: Option[Vec2.Vec2], anno: Annotate.State, history: List[w],
              bridge: Option[RemoteDebug.Bridge], remoteHold: Bool,
-             stepState: StepState, watchState: WatchState,
+             stepState: StepState, watchState: WatchState, sustaining: List[String],
              tileCache: TileCache): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + Fs.FileRead + IO) =
         let currentKeys = InputEvent.currentKeys();
         let mouseDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
@@ -656,7 +686,7 @@ mod App {
                     // （停止中は元々進まないし、実行中でも 1 フレームの息継ぎに過ぎない）。
                     let next = RemoteDebug.handleRemote(app, b, raw,
                         { world = world, anno = anno, history = history, hold = remoteHold });
-                    loop(app, next#world, currentKeys, mouseDown, Some(cursorNow), next#anno, next#history, bridge, next#hold, stepState, watchState, tileCache)
+                    loop(app, next#world, currentKeys, mouseDown, Some(cursorNow), next#anno, next#history, bridge, next#hold, stepState, watchState, sustaining, tileCache)
                 case _ => {
                     let toggled = justPressed(GameEngine.Key.F8, frame) and canDebug(app) and not remoteHold;
                     let pausedNow = if (toggled) not anno#paused else anno#paused;
@@ -669,18 +699,19 @@ mod App {
                     } else ();
                     if (pausedNow) {
                         let nextAnno = pausedStep(app, world, history, frame, { paused = true | anno });
-                        loop(app, world, currentKeys, mouseDown, Some(cursorNow), nextAnno, history, bridge, remoteHold, stepState, watchState, tileCache)
+                        loop(app, world, currentKeys, mouseDown, Some(cursorNow), nextAnno, history, bridge, remoteHold, stepState, watchState, sustaining, tileCache)
                     } else if (anno#paused) {
                         // 一時停止を抜けるフレーム: スクラブ位置の World から再開する。
                         // 巻き戻したぶんの履歴とフレーム番号も、そこを現在として数え直す。
                         let resumed = resumePoint(anno, history, world);
                         let cache1 = renderFrame(app, resumed#world, fpsOverlayOf(app, resumed#anno), tileCache);
-                        loop(app, resumed#world, currentKeys, mouseDown, Some(cursorNow), resumed#anno, resumed#history, bridge, remoteHold, stepState, watchState, cache1)
+                        loop(app, resumed#world, currentKeys, mouseDown, Some(cursorNow), resumed#anno, resumed#history, bridge, remoteHold, stepState, watchState, sustaining, cache1)
                     } else {
                         let (watched, nextWatchState, watchFired) = applyWatch(app, frame#dt, watchState, world);
                         let (reloaded, reloadFired) = applyReload(app, frame, watched);
                         let (advanced, nextStepState) = advanceFrame(app, frame, stepState, reloaded);
                         playSounds(app, reloaded, advanced);
+                        let nextSustaining = applySustained(app, sustaining, advanced);
                         // fps は debug 有効時だけ計測する（本番ビルドは履歴を積まず無負荷）。
                         let measuredAnno = if (app#debug) Annotate.recordDt(frame#dt, anno) else anno;
                         // Doc の読み直しが起きたフレームはタイル層の世代を進め、同じ key でも焼き直す。
@@ -690,7 +721,7 @@ mod App {
                         let nextHistory = if (canDebug(app))
                                               List.take(historyLimit(), advanced :: history)
                                           else Nil;
-                        loop(app, advanced, currentKeys, mouseDown, Some(cursorNow), { frame = measuredAnno#frame + 1i64 | measuredAnno }, nextHistory, bridge, remoteHold, nextStepState, nextWatchState, cache1)
+                        loop(app, advanced, currentKeys, mouseDown, Some(cursorNow), { frame = measuredAnno#frame + 1i64 | measuredAnno }, nextHistory, bridge, remoteHold, nextStepState, nextWatchState, nextSustaining, cache1)
                     }
                 }
             }
@@ -914,6 +945,25 @@ mod App {
     def playSounds(app: App[w, ef], before: w, after: w): Unit \ (ef + GameEngine.Audio) =
         let derive = app#audio;
         derive({ before = before, after = after }) |> List.forEach(name -> GameEngine.Audio.playAudio(name))
+
+    /// sustained の宣言を音へ反映し、次のフレームへ渡す「いま鳴っている名前」を返す。
+    /// 鳴らし始めだけ playAudio を打ち、続いている音には音量と高さだけ流す
+    /// （毎フレーム鳴らし直すと頭から再生され、続く音にならない）。
+    def applySustained(app: App[w, ef], prev: List[String], world: w): List[String] \ (ef + GameEngine.Audio) =
+        let derive = app#sustained;
+        let ops = sustainOps(prev, derive(world));
+        ops#stop |> List.forEach(name -> GameEngine.Audio.stopAudio(name));
+        ops#start |> List.forEach(s -> {
+            GameEngine.Audio.setLooping(s#name, true);
+            GameEngine.Audio.setVolume(s#name, s#volume);
+            GameEngine.Audio.setPitch(s#name, s#pitch);
+            GameEngine.Audio.playAudio(s#name)
+        });
+        ops#keep |> List.forEach(s -> {
+            GameEngine.Audio.setVolume(s#name, s#volume);
+            GameEngine.Audio.setPitch(s#name, s#pitch)
+        });
+        List.map(s -> s#name, List.append(ops#start, ops#keep))
 
     /// 時計は World の外に住む。エンジンが値をクランプするので、長いカクつきでも先へワープしない。
     def readDt(): Float64 \ GameEngine.Game =

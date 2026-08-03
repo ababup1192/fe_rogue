@@ -730,6 +730,7 @@ mod RemoteDebug {
                 }
                 def stopAudio(name, k)          = k(GameEngine.Audio.stopAudio(name))
                 def setVolume(name, volume, k)  = k(GameEngine.Audio.setVolume(name, volume))
+                def setPitch(name, pitch, k)    = k(GameEngine.Audio.setPitch(name, pitch))
                 def setLooping(name, looping, k) = k(GameEngine.Audio.setLooping(name, looping))
                 def setMasterVolume(gain, k)    = k(GameEngine.Audio.setMasterVolume(gain))
                 def reloadAudio(name, path, k)  = k(GameEngine.Audio.reloadAudio(name, path))

@@ -112,7 +112,13 @@ mod Fx {
             // dir は度（0 = 真上・時計回り）。spawn/accel が既定（0）なら加算は恒等 —
             // 既存文書の絵はビット単位で不変。
             let speed = varied(emitter#speed#base, emitter#speed#vary, rand(1));
-            let turn = (emitter#dir#base + emitter#dir#spread * (rand(2) - 0.5)) / 360.0;
+            // even は粒番号 i で扇を等分する（乱数と同じ ±spread/2 の幅に i/count を割り当てる）。
+            let fan = match emitter#dir#mode {
+                case FxDoc.DirMode.Random => rand(2) - 0.5
+                case FxDoc.DirMode.Even   =>
+                    Int32.toFloat64(i) / Int32.toFloat64(Int32.max(1, emitter#count)) - 0.5
+            };
+            let turn = (emitter#dir#base + emitter#dir#spread * fan) / 360.0;
             let dist = speed * life * curveIntegral(emitter#speed#over, u);
             let spawnOff = { x = (rand(4) - 0.5) * emitter#spawnArea#w,
                              y = (rand(5) - 0.5) * emitter#spawnArea#h };
@@ -128,11 +134,18 @@ mod Fx {
                     let faded = placed#item |> Render.fade(Float64.truncateToFloat32(alpha));
                     { item = Render.blended(emitter#blend, faded) | placed }
                 };
+                // 傾き = 初期の向き + 回る速さ × 経過（閉形式のまま）。
+                let spun = emitter#turn#base + emitter#turn#spread * (rand(6) - 0.5)
+                    + (emitter#turn#spin + emitter#turn#spinSpread * (rand(7) - 0.5)) * age;
                 match emitter#shape {
                     case FxDoc.Shape.Circle =>
+                        // 円とにじみは回しても同じ絵なので傾けない（粒ごとの回転を描画部へ
+                        // 送るだけ無駄になる）。
                         decorate(Render.circleAt(pos, size / 2.0, color, emitter#zIndex)) :: Nil
                     case FxDoc.Shape.Box    =>
-                        decorate(Render.boxAt(pos, { x = size, y = size }, color, emitter#zIndex)) :: Nil
+                        decorate(Render.boxAt(pos, { x = size, y = size }, color, emitter#zIndex)
+                            |> (p -> if (Float64.abs(spun) < 1.0e-12) p
+                                     else { item = Render.turned(spun, p#item) | p })) :: Nil
                     case FxDoc.Shape.Glow   =>
                         // 濃さとブレンドは glowAt が輪ごとに配るので decorate は通さない
                         //（後から fade を掛けると輪ごとの配分が上書きされて減衰が消える）。

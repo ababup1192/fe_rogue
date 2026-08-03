@@ -104,9 +104,20 @@
           "type": "object",
           "properties": {
             "base": { "type": "number", "description": "射出方向 度（0 = 真上・時計回り）" },
-            "spread": { "type": "number", "description": "base を中心に ± spread/2 度の扇に散る。360 で全方位" }
+            "spread": { "type": "number", "description": "base を中心に ± spread/2 度の扇に散る。360 で全方位" },
+            "mode": { "type": "string", "enum": ["random", "even"], "description": "扇の中の配り方。random = 粒ごとに乱数で引く（煙・火花）。even = 粒の番号 i で扇を等分する（spread: 360 で真円の輪・花火。乱数を引かないので種を変えても同じ形）。省略時 random" }
           },
-          "description": "射出方向。省略時は真上・広がりなし"
+          "description": "射出方向。省略時は真上・広がりなし・乱数"
+        },
+        "turn": {
+          "type": "object",
+          "properties": {
+            "base": { "type": "number", "description": "生まれたときの傾き 回転数（1 周 = 1.0）" },
+            "spread": { "type": "number", "minimum": 0, "description": "base を中心に ± spread/2 回転ぶん粒ごとにばらす。1 で全方位（向きがそろわない破片に）" },
+            "spin": { "type": "number", "description": "回る速さ 回転数/秒（正 = 時計回り）" },
+            "spinSpread": { "type": "number", "minimum": 0, "description": "spin を中心に ± spinSpread/2 ばらす。spin より大きくすると逆回りの粒も混ざる" }
+          },
+          "description": "粒の傾きと回る速さ。回るのは box だけ（circle / glow は回しても同じ絵なので傾けない）。省略時はすべて 0 = 回らない"
         },
         "spawn": {
           "type": "object",

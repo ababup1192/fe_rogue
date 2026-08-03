@@ -215,13 +215,30 @@ mod Render {
     /// 楕円（radii は x/y の半径・原点中心。32 角形の近似）。
     /// 同型の Float64 2 つは取り違えやすいので Vec2 で渡す。
     pub def ellipse(radii: Vec2.Vec2, color: Color, zIndex: Int32): Item =
-        let segs = 32;
-        polygon(List.range(0, segs) |> List.map(i ->
-            onCircle(radii#x, radii#y, Int32.toFloat64(i) / Int32.toFloat64(segs))), color, zIndex)
+        ellipseSegs(radii, 32, color, zIndex)
 
     /// ellipse を中心 center に置く近道。
     pub def ellipseAt(center: Vec2.Vec2, radii: Vec2.Vec2, color: Color, zIndex: Int32): PlacedItem =
         { at = center, item = ellipse(radii, color, zIndex) }
+
+    /// 縁の分割数を選べる楕円。小さく描く楕円（足元の影・遠くの茂み）では、既定の 32 分割は
+    /// 頂点どうしの間隔が 1px を大きく切る — 絵は変わらないのに、頂点を組んで三角形へ
+    /// ほどく手間だけが数を積む。何百個も撒く層では大きさに見合う分割数を渡す。
+    pub def ellipseSegs(radii: Vec2.Vec2, segs: Int32, color: Color, zIndex: Int32): Item =
+        let n = Int32.max(3, segs);
+        polygon(List.range(0, n) |> List.map(i ->
+            onCircle(radii#x, radii#y, Int32.toFloat64(i) / Int32.toFloat64(n))), color, zIndex)
+
+    /// ellipseSegs を中心 center に置く近道。
+    pub def ellipseSegsAt(center: Vec2.Vec2, radii: Vec2.Vec2, segs: Int32, color: Color,
+                          zIndex: Int32): PlacedItem =
+        { at = center, item = ellipseSegs(radii, segs, color, zIndex) }
+
+    /// その大きさの楕円に見合う縁の分割数。頂点の間隔がおよそ 2px になる所で頭打ちにする
+    /// （それ以上細かくしても画面では丸さが変わらない）。
+    pub def ellipseSegsFor(radii: Vec2.Vec2): Int32 =
+        let r = Float64.max(radii#x, radii#y);
+        Int32.max(6, Int32.min(32, Num.floorInt(r) + 6))
 
     /// 扇形（パイ。要が原点）。中心角が半周を超える形（パックマン等）も正しく塗れる
     /// — 凹みは描画側の耳切りが三角形化する。
@@ -705,23 +722,29 @@ mod Render {
     /// draw / drawWith の共通トラバーサル。Clipped を剥がして有効な窓（入れ子は交差）を決め、
     /// 葉を Drawable / PolygonRenderCmd へ振り分けてから窓を刻む。振り分けの分岐を 1 本に
     /// しておかないと、Clipped の扱いが 2 経路で割れる。
+    /// 2 列は 1 回の走査で同時に積む。列ごとに走査を分けると、描く物 1 個につき
+    /// Clipped の剥がしと葉の振り分けが 2 度ずつ走る（物量の多い画面では、その 2 度目が
+    /// そのままフレーム時間に乗る）。積むのは逆順の cons で、最後に一度ずつ戻す。
     def drawInto(toDs: (Item, Vec2.Vec2) -> List[GameEngine.Drawable] \ ef,
                  items: List[PlacedItem]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) \ ef =
-        let drawables = items |> List.flatMap(placed -> {
+        let (dsRev, psRev) = items |> List.foldLeft((acc, placed) -> {
+            let (ds, ps) = acc;
             let (leaf, clip) = unwrapClip(placed#item, None);
-            match leaf {
-                case Item.Poly(_) => (Nil: List[GameEngine.Drawable])
-                case other        => toDs(other, placed#at) |> List.map(d -> { clip = clip | d })
+            // 窓が無いときは刻まない。作りたての Drawable / 描画命令は clip = None なので、
+            // ここで None を書き直すと、同じ値を入れ直すためだけにフィールドの
+            // 抜き差しが描く物の数だけ走る（窓を使う画面はごく一部）。
+            match (leaf, clip) {
+                case (Item.Poly(p), None)    => (ds, polyCmd(placed#at, p) :: ps)
+                case (Item.Poly(p), Some(_)) => (ds, { clip = clip | polyCmd(placed#at, p) } :: ps)
+                case (other, None)           =>
+                    (toDs(other, placed#at)
+                        |> List.foldLeft((rest, d) -> d :: rest, ds), ps)
+                case (other, Some(_))        =>
+                    (toDs(other, placed#at)
+                        |> List.foldLeft((rest, d) -> { clip = clip | d } :: rest, ds), ps)
             }
-        });
-        let polygons = items |> List.filterMap(placed -> {
-            let (leaf, clip) = unwrapClip(placed#item, None);
-            match leaf {
-                case Item.Poly(p) => Some({ clip = clip | polyCmd(placed#at, p) })
-                case _            => None
-            }
-        });
-        (drawables, polygons)
+        }, ((Nil, Nil): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd])));
+        (List.reverse(dsRev), List.reverse(psRev))
 
     /// Clipped を剥がし、(芯の item, 有効な窓) を返す。入れ子の窓は交差する。
     def unwrapClip(item: Item, clip: Option[Rect2.Rect2]): (Item, Option[Rect2.Rect2]) =

@@ -12,7 +12,8 @@ mod TestFxVocab {
           color = white() :: Nil,
           life = { base = 1.0, vary = 0.0 },
           speed = { base = 10.0, vary = 0.0, over = FxDoc.CurveSpec.Constant },
-          dir = { base = 90.0, spread = 0.0 },
+          dir = { base = 90.0, spread = 0.0, mode = FxDoc.DirMode.Random },
+          turn = { base = 0.0, spread = 0.0, spin = 0.0, spinSpread = 0.0 },
           mode = FxDoc.Mode.Burst, spawnArea = { w = 0.0, h = 0.0 }, accel = Vec2.zero(), seed = 0,
           sizeOver = FxDoc.CurveSpec.Constant, alphaOver = FxDoc.CurveSpec.Constant,
           blend = DrawCmd.BlendMode.Normal, zIndex = 3 }
@@ -38,7 +39,7 @@ mod TestFxVocab {
     /// seed ≠ 0 は別の散り方（spread 有りで位置が動く）。
     @Test
     def testEmitterSeedZeroIsIdentity(): Unit \ Assert =
-        let spread = { dir = { base = 90.0, spread = 180.0 } | baseEmitter() };
+        let spread = { dir = { base = 90.0, spread = 180.0, mode = FxDoc.DirMode.Random } | baseEmitter() };
         let s0 = ats(Fx.sample(specOf(1.0, spread), 7i64, 0.5));
         let s0b = ats(Fx.sample(specOf(1.0, { seed = 0 | spread }), 7i64, 0.5));
         let s1 = ats(Fx.sample(specOf(1.0, { seed = 1 | spread }), 7i64, 0.5));
@@ -114,7 +115,7 @@ mod TestFxVocab {
     @Test
     def testLoopRerollsPerCycle(): Unit \ Assert =
         let loop = specOf(10.0, { mode = FxDoc.Mode.Loop,
-            dir = { base = 90.0, spread = 180.0 } | baseEmitter() });
+            dir = { base = 90.0, spread = 180.0, mode = FxDoc.DirMode.Random } | baseEmitter() });
         Assert.assertEq(expected = true,
             ats(Fx.sample(loop, 0i64, 2.2)) != ats(Fx.sample(loop, 0i64, 3.2)))
 

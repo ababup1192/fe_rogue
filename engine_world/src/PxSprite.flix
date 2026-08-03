@@ -5,8 +5,10 @@
 // 規約:
 //   - legend に無い文字は透明(fail-open)。スプライト名・コマ名が無ければ何も描かない。
 //   - anchor: 格子内の基準セル。draw の at がこのセルの左上に来る。
-//   - flipX: 列を左右反転する。anchor の鏡映は draw 側の規約 — 反転後も
-//     「anchor セルの左上 = at」のまま(anchor x は幅 w に対し w-1-ax へ写る)。
+//   - flipX: anchor を軸に列を左右反転する。anchor が指す絵の場所は反転しても at のまま
+//     （握るところが動かない）。格子の枠の方が anchor の左右へ入れ替わる — 枠を動かさない
+//     規約にすると、握るところが絵の真ん中に無い絵は反転で手から離れる。
+//     枠を据え置きたい呼び手は at を anchorOffsetOf で引き直す。
 //   - scale は整数のみ(NEAREST 前提)。0 以下は何も描かない。
 //   - 色は resolver(意味色キー → 実色)が解決する。テーマ替え・個体差(体色)は
 //     resolver の差し替えで行い、格子は共有する。
@@ -74,7 +76,7 @@ mod PxSprite {
                 case None       => Nil
                 case Some(rows) => {
                     let s = Int32.toFloat64(scale);
-                    let ax = if (flipX) mirroredAnchorX(rows, sp#anchor#x) else sp#anchor#x;
+                    let ax = sp#anchor#x;
                     let ay = sp#anchor#y;
                     rows |> List.zipWithIndex |> List.flatMap(entry -> {
                         let (r, row) = entry;
@@ -154,11 +156,6 @@ mod PxSprite {
         drawQuad(spec#doc, spec#baked, spec#texture, spec#sprite, spec#frame,
                  { x = spec#at#x + anchor#x * s, y = spec#at#y + anchor#y * s },
                  false, spec#scale, spec#z)
-
-    /// flipX 時の anchor の鏡映: 幅 w の格子で x は w-1-x へ写る(draw 側の規約)。
-    def mirroredAnchorX(rows: List[String], ax: Float64): Float64 =
-        let w = rows |> List.foldLeft((acc, row) -> Int32.max(acc, String.length(row)), 0);
-        Int32.toFloat64(w - 1) - ax
 
     /// 1 行を (開始列, 長さ, 色キー) の rn 列へ。legend に無い文字は透明で rn を切る。
     def rowRuns(legend: Map[Char, String], row: String): List[(Int32, Int32, String)] =

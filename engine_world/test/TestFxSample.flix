@@ -15,7 +15,8 @@ mod TestFxSample {
           color = white() :: Nil,
           life = { base = 1.0, vary = 0.0 },
           speed = { base = 10.0, vary = 0.0, over = FxDoc.CurveSpec.Constant },
-          dir = { base = 90.0, spread = 0.0 },
+          dir = { base = 90.0, spread = 0.0, mode = FxDoc.DirMode.Random },
+          turn = { base = 0.0, spread = 0.0, spin = 0.0, spinSpread = 0.0 },
           mode = FxDoc.Mode.Burst, spawnArea = { w = 0.0, h = 0.0 }, accel = Vec2.zero(), seed = 0,
           sizeOver = FxDoc.CurveSpec.Constant, alphaOver = FxDoc.CurveSpec.Constant,
           blend = DrawCmd.BlendMode.Normal, zIndex = 3 }
@@ -44,7 +45,7 @@ mod TestFxSample {
     @Test
     def testDeterministic(): Unit \ Assert =
         let em = { life = { base = 0.5, vary = 0.2 }, speed = { base = 140.0, vary = 0.3, over = FxDoc.CurveSpec.EaseOut({ power = 2.4 }) },
-                   dir = { base = 0.0, spread = 360.0 } | baseEmitter() };
+                   dir = { base = 0.0, spread = 360.0, mode = FxDoc.DirMode.Random } | baseEmitter() };
         Assert.assertEq(
             expected = fingerprints(Fx.sample(specOf(em), 7i64, 0.3)),
             fingerprints(Fx.sample(specOf(em), 7i64, 0.3)))
@@ -52,7 +53,7 @@ mod TestFxSample {
     /// seed が違えば別の姿（撃つたびに表情が変わる）。
     @Test
     def testSeedChangesShape(): Unit \ Assert =
-        let em = { dir = { base = 0.0, spread = 360.0 },
+        let em = { dir = { base = 0.0, spread = 360.0, mode = FxDoc.DirMode.Random },
                    speed = { base = 100.0, vary = 0.5, over = FxDoc.CurveSpec.Constant } | baseEmitter() };
         Assert.assertEq(expected = false,
             ats(Fx.sample(specOf(em), 1i64, 0.3)) == ats(Fx.sample(specOf(em), 2i64, 0.3)))

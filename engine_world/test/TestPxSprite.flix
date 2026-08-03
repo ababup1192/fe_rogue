@@ -67,17 +67,27 @@ mod TestPxSprite {
             { x = -1.0, y = -1.0, w = 0.0, h = 0.0, key = "" });
         Assert.assertEq(expected = (10.0, 16.0, 4.0, 2.0), (head#x, head#y, head#w, head#h))
 
-    /// flipX 規約: anchor は w-1-ax へ鏡映され、反転後も anchor セルの左上 = at。
-    /// "b?b." (row2) の run は col0(b) と col2(b) — 反転で col0 は右端側へ写る。
+    /// flipX 規約: anchor を軸に左右が入れ替わる。ax=1 の絵で "b?b." (row2) の
+    /// col0 は at の右へ、col2 は at の左へ写る。
     @Test
     def testFlipXMirrorsColumnsAroundAnchor(): Unit \ Assert =
-        // 幅 4・ax=1 → 鏡映 ax'=2。row2 の run(col0,n=1): x = at.x + (2-1+1-... )
-        // 式で: x = at.x + (ax' - (c0+n) + 1) * s = 0 + (2 - 1 + 1) * 1 = 2。
-        // run(col2,n=1): x = (2 - 3 + 1) = 0。
         let rs = PxSprite.runs(doc(), "guy", "f0", { x = 0.0, y = 0.0 }, true, 1)
             |> List.filter(r -> r#key == "hair")
             |> List.map(r -> r#x);
-        Assert.assertEq(expected = 2.0 :: 0.0 :: Nil, rs)
+        Assert.assertEq(expected = 1.0 :: -1.0 :: Nil, rs)
+
+    /// 反転しても anchor（握るところ）は at のまま。
+    /// 格子の真ん中 + anchorOffsetOf が at に戻ることで確かめる（両者が食い違うと、
+    /// 反転した絵だけが横へ飛んで影・足元が置き去りになる）。
+    @Test
+    def testAnchorOffsetAgreesWithRunsUnderFlip(): Unit \ Assert =
+        let centerX = flip -> {
+            let rs = PxSprite.runs(doc(), "guy", "f0", { x = 0.0, y = 0.0 }, flip, 1);
+            let lo = rs |> List.foldLeft((acc, r) -> Float64.min(acc, r#x), 999.0);
+            let hi = rs |> List.foldLeft((acc, r) -> Float64.max(acc, r#x + r#w), -999.0);
+            (lo + hi) / 2.0 + PxSprite.anchorOffsetOf(doc(), "guy", "f0", flip, 1)#x
+        };
+        Assert.assertEq(expected = (0.0, 0.0), (centerX(false), centerX(true)))
 
     /// scale 0 以下と、無いスプライト・無いコマは何も描かない(fail-open)。
     @Test

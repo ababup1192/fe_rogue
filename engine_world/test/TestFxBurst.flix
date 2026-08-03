@@ -14,7 +14,8 @@ mod TestFxBurst {
           color = white() :: Nil,
           life = { base = 1.0, vary = 0.0 },
           speed = { base = 10.0, vary = 0.0, over = FxDoc.CurveSpec.Constant },
-          dir = { base = 90.0, spread = 0.0 },
+          dir = { base = 90.0, spread = 0.0, mode = FxDoc.DirMode.Random },
+          turn = { base = 0.0, spread = 0.0, spin = 0.0, spinSpread = 0.0 },
           mode = FxDoc.Mode.Burst, spawnArea = { w = 0.0, h = 0.0 }, accel = Vec2.zero(), seed = 0,
           sizeOver = FxDoc.CurveSpec.Constant, alphaOver = FxDoc.CurveSpec.Constant,
           blend = DrawCmd.BlendMode.Normal, zIndex = 3 }

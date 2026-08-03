@@ -44,6 +44,13 @@ mod FxDoc {
     /// over が寿命に沿った倍率を掛ける。
     pub type alias Scalar = { base = Float64, vary = Float64, over = CurveSpec }
 
+    /// 射出方向の配り方。Random = 粒ごとに乱数で扇の中から引く（煙・火花）。
+    /// Even = 粒の番号 i で扇を等分する（衝撃の輪・花火のように、粒が均等に並ぶ形）。
+    pub enum DirMode with Eq {
+        case Random
+        case Even
+    }
+
     /// 粒の生まれ方。Burst = 全粒が t=0 で同時に生まれて寿命で消える（爆発・木くず）。
     /// Loop = 各粒が寿命を終えるたびに生まれ直す（位相は粒ごとにずれる — 煙・雪・舞う葉の
     /// ような「出続ける」効果。周期 = 各粒の寿命）。どちらも t の純関数（保存しない）。
@@ -62,7 +69,9 @@ mod FxDoc {
         color = List[Color],                        // 寿命に沿った色グラデ（1 色以上）
         life = { base = Float64, vary = Float64 },  // 粒の寿命 秒
         speed = Scalar,                             // 初速 px/s（over が減速カーブ）
-        dir = { base = Float64, spread = Float64 }, // 射出方向 度（0 = 真上・時計回り）
+        dir = { base = Float64, spread = Float64, mode = DirMode }, // 射出方向 度（0 = 真上・時計回り）
+        turn = { base = Float64, spread = Float64,  // 粒の傾き 回転数（1 周 = 1.0）
+                 spin = Float64, spinSpread = Float64 }, // 回る速さ 回転数/秒
         spawnArea = { w = Float64, h = Float64 },   // 発生源の広がり px（原点中心の矩形・0 で点。JSON キーは "spawn"）
         accel = Vec2.Vec2,                          // 重力/風 px/s²（+y = 画面下向き・閉形式で積分）
         seed = Int32,                               // 決定的シードの上乗せ（同名 emitter を並べて別の絵にする）
@@ -142,6 +151,7 @@ mod FxDoc {
             life      <- parseLife("${path}.life", m);
             speed     <- parseSpeed("${path}.speed", m);
             dir       <- parseDir("${path}.dir", m);
+            turn      <- parseTurn("${path}.turn", m);
             spawnArea <- parseSpawn("${path}.spawn", m);
             accel     <- parseAccel("${path}.accel", m);
             seedOpt   <- DocJson.atNode(path, (DocJson.getAtKeyOpt(Root, "seed", m): Result[JsonError, Option[Int32]]));
@@ -151,7 +161,7 @@ mod FxDoc {
             zIndexOpt <- DocJson.atNode(path, (DocJson.getAtKeyOpt(Root, "zIndex", m): Result[JsonError, Option[Int32]]))
         ) yield ({
             name = name, count = count, mode = mode, shape = shape, size = size, color = color,
-            life = life, speed = speed, dir = dir,
+            life = life, speed = speed, dir = dir, turn = turn,
             spawnArea = spawnArea, accel = accel, seed = Option.getWithDefault(0, seedOpt),
             sizeOver = sizeOver, alphaOver = alphaOver, blend = blend,
             zIndex = Option.getWithDefault(0, zIndexOpt)
@@ -267,15 +277,43 @@ mod FxDoc {
     def requireVary(path: String, vary: Float64): Result[JsonError, Unit] =
         require(vary >= 0.0 and vary <= 1.0, path, "vary must be within 0..1 (got: ${vary})")
 
-    /// "dir": {"base": 度, "spread": 度}（省略時は真上・広がりなし）。
-    def parseDir(path: String, m: Map[String, Json]): Result[JsonError, { base = Float64, spread = Float64 }] =
+    /// "dir": {"base": 度, "spread": 度, "mode": "random"|"even"}（省略時は真上・広がりなし・乱数）。
+    def parseDir(path: String, m: Map[String, Json]): Result[JsonError, { base = Float64, spread = Float64, mode = DirMode }] =
         match (DocJson.getAtKeyOpt(Root, "dir", m): Result[JsonError, Option[Map[String, Json]]]) {
             case Err(e)       => DocJson.atNode(path, Err(e))
-            case Ok(None)     => Ok({ base = 0.0, spread = 0.0 })
+            case Ok(None)     => Ok({ base = 0.0, spread = 0.0, mode = DirMode.Random })
             case Ok(Some(dm)) => forM (
                 base   <- DocJson.atNode(path, DocJson.numOr("base", 0.0, dm));
-                spread <- DocJson.atNode(path, DocJson.numOr("spread", 0.0, dm))
-            ) yield { base = base, spread = spread }
+                spread <- DocJson.atNode(path, DocJson.numOr("spread", 0.0, dm));
+                mode   <- parseDirMode(path, dm)
+            ) yield { base = base, spread = spread, mode = mode }
+        }
+
+    /// "dir.mode": "random"（省略時）| "even"。even は粒の番号で扇を等分する。
+    def parseDirMode(path: String, dm: Map[String, Json]): Result[JsonError, DirMode] =
+        match (DocJson.getAtKeyOpt(Root, "mode", dm): Result[JsonError, Option[String]]) {
+            case Err(e)             => DocJson.atNode(path, Err(e))
+            case Ok(None)           => Ok(DirMode.Random)
+            case Ok(Some("random")) => Ok(DirMode.Random)
+            case Ok(Some("even"))   => Ok(DirMode.Even)
+            case Ok(Some(unknown))  =>
+                DocJson.atNode(path, Err(DocJson.jsonError(Root, Set#{"dir.mode must be random|even (got: ${unknown})"})))
+        }
+
+    /// "turn": {"base": 回転数, "spread": 回転数, "spin": 回転数/秒, "spinSpread": 回転数/秒}
+    /// （省略時はすべて 0 = 回らない）。単位は回転数 — 1 周が 1.0。
+    def parseTurn(path: String, m: Map[String, Json]): Result[JsonError, { base = Float64, spread = Float64, spin = Float64, spinSpread = Float64 }] =
+        match (DocJson.getAtKeyOpt(Root, "turn", m): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)       => DocJson.atNode(path, Err(e))
+            case Ok(None)     => Ok({ base = 0.0, spread = 0.0, spin = 0.0, spinSpread = 0.0 })
+            case Ok(Some(tm)) => forM (
+                base       <- DocJson.atNode(path, DocJson.numOr("base", 0.0, tm));
+                spread     <- DocJson.atNode(path, DocJson.numOr("spread", 0.0, tm));
+                spin       <- DocJson.atNode(path, DocJson.numOr("spin", 0.0, tm));
+                spinSpread <- DocJson.atNode(path, DocJson.numOr("spinSpread", 0.0, tm));
+                _s         <- require(spread >= 0.0 and spinSpread >= 0.0, path,
+                                      "turn spread/spinSpread must be >= 0 (got: ${spread}, ${spinSpread})")
+            ) yield { base = base, spread = spread, spin = spin, spinSpread = spinSpread }
         }
 
     /// key のカーブ（省略時 constant）。{"kind": "..."} の 6 形 + fadeOut 別名。

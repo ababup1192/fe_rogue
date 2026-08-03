@@ -58,4 +58,69 @@ mod TestScatter {
         Assert.assertEq(
             expected = Some((1.8463446096617102, 8.344069677909662)),
             List.head(results))
+
+    // ── strip（帯 1 本の敷き詰め） ──
+
+    def stripSpec(cm: Int32): {cell = Float64, salt = Int32, lane = Int32,
+                               reach = Float64, cellsMax = Int32} =
+        { cell = 10.0, salt = 5, lane = 2, reach = 0.0, cellsMax = cm }
+
+    // セル番号と乱数チャンネル 0 の対を返す place。番号と個性の両方を観測できる。
+    def colRand(col: Int32, rand: Int32 -> Float64): List[(Int32, Float64)] =
+        (col, rand(0)) :: Nil
+
+    /// 決定性：同じ span + spec + place を 2 回呼ぶと、結果列が完全に一致する。
+    @Test
+    def testStripDeterministic(): Unit \ Assert =
+        Assert.assertEq(
+            expected = Scatter.strip({ lo = 0.0, hi = 55.0 }, stripSpec(100), colRand),
+            Scatter.strip({ lo = 0.0, hi = 55.0 }, stripSpec(100), colRand))
+
+    /// 歩く範囲：span を含むセルに加え、高い側だけ 1 セル余分（field と同じ流儀）。
+    @Test
+    def testStripWalksSpanCells(): Unit \ Assert =
+        Assert.assertEq(
+            expected = 0 :: 1 :: Nil,
+            Scatter.strip({ lo = 5.0, hi = 5.0 }, stripSpec(100), (col, _r) -> col :: Nil))
+
+    /// reach：セル 1 個ぶんの余白を足すと、span の外側のセルまで歩くようになる。
+    @Test
+    def testStripReachExpandsWalk(): Unit \ Assert =
+        Assert.assertEq(
+            expected = -1 :: 0 :: 1 :: 2 :: Nil,
+            Scatter.strip({ lo = 5.0, hi = 5.0 }, { reach = 10.0 | stripSpec(100) },
+                (col, _r) -> col :: Nil))
+
+    /// span が空（lo > hi）なら 1 セルも歩かない。
+    @Test
+    def testStripEmptySpanIsNil(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (Nil: List[Int32]),
+            Scatter.strip({ lo = 1.0, hi = 0.0 }, stripSpec(100), (col, _r) -> col :: Nil))
+
+    /// cellsMax の間引き：約 8 セルぶんの span を上限 4 に収めると間隔が 2 倍になり、
+    /// 残るセルの番号は元の番号のまま（0,2,4,…）。
+    @Test
+    def testStripThinnedColsKeepNumbers(): Unit \ Assert =
+        Assert.assertEq(
+            expected = 0 :: 2 :: 4 :: 6 :: 8 :: Nil,
+            Scatter.strip({ lo = 0.0, hi = 79.9 }, stripSpec(4), (col, _r) -> col :: Nil))
+
+    /// 間引かれても、残ったセルの乱数は間引き前と同じ（番号が鍵なので個性がずれない）。
+    @Test
+    def testStripThinnedKeepsCellIdentity(): Unit \ Assert =
+        let full = Scatter.strip({ lo = 0.0, hi = 79.9 }, stripSpec(100), colRand);
+        let survivors = List.filter(cr -> Int32.modulo(fst(cr), 2) == 0, full);
+        Assert.assertEq(
+            expected = survivors,
+            Scatter.strip({ lo = 0.0, hi = 79.9 }, stripSpec(4), colRand))
+
+    /// 乱数の鍵の合成（col + lane * 37 + salt）を実測値で pin する。ここが変わると
+    /// strip を使う既存の絵（race の草原）がバイト単位でずれる。
+    @Test
+    def testStripRandKeyPinned(): Unit \ Assert =
+        let got = Scatter.strip({ lo = 35.0, hi = 35.0 }, stripSpec(100), colRand)
+            |> List.head
+            |> Option.map(snd);
+        Assert.assertEq(expected = Some(0.9800205993820186), got)
 }

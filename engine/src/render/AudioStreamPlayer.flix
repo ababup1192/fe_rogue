@@ -47,6 +47,11 @@ mod AudioStreamPlayer {
     pub def setVolume(name: String, volume: Float32): Unit \ GameEngine.Audio =
         GameEngine.Audio.setVolume(name, volume)
 
+    /// 指定した名前のオーディオの高さ（再生速度）を変える。1.0 = 元のまま・
+    /// 2.0 で 1 オクターブ上・0.5 で 1 オクターブ下。鳴っている音にも即座に効く。
+    pub def setPitch(name: String, pitch: Float32): Unit \ GameEngine.Audio =
+        GameEngine.Audio.setPitch(name, pitch)
+
     /// 指定した名前のオーディオの loop フラグ (AL_LOOPING) を実行時に切り替える。
     /// 次回 play 後はもちろん、現在再生中の音にも即座に反映される。
     pub def setLooping(name: String, loop: Bool): Unit \ GameEngine.Audio =

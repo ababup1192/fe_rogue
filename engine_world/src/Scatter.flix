@@ -30,6 +30,44 @@ mod Scatter {
             yield {col = c0 + c, row = r0 + r})
         |> List.flatMap(cellAt)
 
+    /// 1 本の帯（横一列）にセルを敷く。疑似遠近の絵（奥の帯ほど広い世界が画面に入る）では
+    /// 帯ごとに見える幅が違うので、矩形 1 枚を渡す field でなく、帯 1 本ぶんの範囲 span
+    /// （world 座標）を渡してその帯だけ敷く。実戦の例は
+    /// templates/race-starter/src/ViewScene.flix の outfield。
+    ///
+    /// - reach: span の外でもこの幅（world px）までは敷く余白。置き物の端が画面へ届く
+    ///   ぶんだけ広げ、その外のセルは place を呼ばずに捨てる — 作ってから画面外と分かる
+    ///   より、作る前に捨てるほうが速い
+    /// - cellsMax: 帯 1 本で歩くセル数の上限。超えるなら間隔を 2 倍・4 倍…と広げる。
+    ///   倍々にするのは、間引いた後も残るセルの番号を元のままにするため — 端数で広げると
+    ///   番号の意味が変わり、置き物の個性が入れ替わってちらつく
+    /// - 乱数の鍵は col + lane * 37 + salt。field の合成（92821 系）と違うのは、帯の絵では
+    ///   lane（帯番号）が主で col の幅が広く、この形なら呼び側が「帯 × 升」の通し番号を
+    ///   そのまま鍵として共有できるため。同じセルは常に同じ乱数（決定性）
+    pub def strip(span: {lo = Float64, hi = Float64},
+                  spec: {cell = Float64, salt = Int32, lane = Int32,
+                         reach = Float64, cellsMax = Int32},
+                  place: (Int32, Int32 -> Float64) -> List[a]): List[a] =
+        if (span#lo > span#hi) Nil
+        else {
+            // 高い側だけ 1 セル余分に歩くのは field と同じ流儀 — 低い側は床関数が範囲外へ
+            // 自然にはみ出すが、高い側は 1 つ足さないと縁のセルが欠ける。
+            let mLo = tileIndex((span#lo - spec#reach) / spec#cell);
+            let mHi = tileIndex((span#hi + spec#reach) / spec#cell) + 1;
+            let width = (span#hi + spec#reach) - (span#lo - spec#reach);
+            let step = stepUpTo(width / spec#cell / Int32.toFloat64(spec#cellsMax), 1);
+            let jOf = m -> Num.floorInt(Int32.toFloat64(m) / Int32.toFloat64(step));
+            List.range(jOf(mLo), jOf(mHi) + 1) |> List.flatMap(j -> {
+                let col = j * step;
+                place(col, k -> Hash01.at(col + spec#lane * 37 + spec#salt, k))
+            })
+        }
+
+    /// 歩くセル数が上限に収まるまで間隔を 2 倍ずつ広げる。64 で打ち切るのは、そこまで
+    /// 広げても収まらない入力（cellsMax が極端に小さい等）で無限に倍々しないため。
+    def stepUpTo(times: Float64, s: Int32): Int32 =
+        if (s >= 64 or Int32.toFloat64(s) >= times) s else stepUpTo(times, s * 2)
+
     /// world 座標 / セル辺 の商をセル index（床関数）へ。
     def tileIndex(q: Float64): Int32 =
         Num.floorInt(q)

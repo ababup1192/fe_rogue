@@ -44,7 +44,9 @@
 | マウスの下の UI 要素を知る | UiFocus |
 | meta "prefix/N" から番号を読む | UiMeta |
 | 粒を舞わせる | Fx / Scatter |
+| 疑似遠近の帯（横一列）ごとに立ち物・床を敷く | Scatter.strip |
 | 爆発・火花を fx.json で宣言して時刻から描く | FxDoc / Fx（sample / sampleAt） |
+| 粒を輪に等分して撒く・破片を回しながら飛ばす | FxDoc（dir.mode: even / turn） |
 | 撃つたびに出る効果を発生・寿命回収・描画で回す | Fx（burst / expire / drawAll） |
 | 値を滑らかに動かす | EcsTween / Curve |
 | スプライトをコマ送りする | Anim |
@@ -99,6 +101,7 @@
 | 壁に影を落とす（単一光源のハードシャドウ） | Shadow |
 | 夜のガラス・鏡・磨いた床に姿を映す（明るいところは光として返し、暗いところは影として重ねる） | Mirror |
 | 効果音を鳴らしたい | App.withAudio（前後 World の差分から鳴らす名前の List を返す。詳しくは [audio.md](audio.md)） |
+| 鳴り続ける音を出したい（走行音・風・雨・炎・足音のループ） | App.withSustained（World から「鳴り続けていてほしい音」を宣言。音量と高さを毎フレーム与える。詳しくは [audio.md](audio.md)） |
 | BGM を流す・止める・音量やループを変える | AudioStreamPlayer（play / stop / setVolume / setLooping。詳しくは [audio.md](audio.md)） |
 | BGM をだんだん出す・消す・入れ替える（音量カーブ） | AudioFade |
 | 効果音の素材を録音なしで作りたい（波形合成） | SfxSynth（engine_tools。詳しくは [audio.md](audio.md)） |
@@ -117,6 +120,15 @@
 | ドット絵の輪郭をにじませない（カメラと頂点を画素の升目に載せる） | App.withPixelSnap / Render.snapped |
 | 同じ絵を色だけ変えて使い回す・重なり順をまとめてずらす | Render.tinted / Render.zShifted |
 | マスごとの「いま」を持つ（耕した・濡れた・置いた。セーブに乗る側） | TileState |
+
+## 症状 → モジュール（重い・fps が落ちる）
+
+| 症状 | モジュール |
+|---|---|
+| 小さすぎて見えない物・画面外の物を大量に作っている | Scatter.strip（作る前に捨てる。reach 余白と cellsMax の倍々間引き） |
+| 動かない背景を毎フレーム作り直している | App.withStaticLayer（鍵が同じ間は GPU バッファを使い回す） |
+| タイルが多い・タイル宣言の組み立てが毎フレーム走る | App.withTileLayers（tiles はサンク — 鍵が変わるまで評価されない） |
+| 遠くで 1px を切る物まで組み立てている | 倍率の床で place ごと切る（実戦の例: templates/race-starter の propCull / palmCull） |
 
 ## 土台（App・ECS）
 
@@ -137,8 +149,8 @@
 - **Quad** — 回転した矩形や太さのある線の、四隅の座標を計算する。
 - **Bezier** — ベジエ曲線の平坦化と、曲線から作る描画部品。
 - **Fx** — たくさんの粒を、保存せず「今の時刻から計算」して並べる薄い仕組み。「撃つたびに出る」効果の器（burst / expire / drawAll）も持つ。
-- **FxDoc** — fx.json（閉形式パーティクル）を Spec に読むパーサ。絵は Fx.sample が導く。R3 で mode: loop（常時系）/ spawn（発生源の広がり）/ accel（重力/風・½at²）/ seed（決定的シードの上乗せ）/ parseWith（"@名前" の色キーをパレットで解決）を追加。
-- **Scatter** — どこまでスクロールしても同じ配置が再現される、無限の「物の撒き方」。
+- **FxDoc** — fx.json（閉形式パーティクル）を Spec に読むパーサ。絵は Fx.sample が導く。語彙は mode: loop（常時系）/ spawn（発生源の広がり）/ accel（重力/風・½at²）/ seed（決定的シードの上乗せ）/ dir.mode: even（粒の番号で射出方向を等分 — 衝撃の輪・花火）/ turn（粒の傾き base・spread と回る速さ spin・spinSpread。単位は回転数で 1 周 = 1.0）/ parseWith（"@名前" の色キーをパレットで解決）。
+- **Scatter** — どこまでスクロールしても同じ配置が再現される、無限の「物の撒き方」。field は見えている矩形を升目走査、strip は疑似遠近の帯 1 本（帯ごとに見える幅が違う画面）を span + reach + cellsMax で敷き、画面外のセルは作る前に捨てる。
 - **Anim** — スプライトシートのコマ送りを「時刻の純関数」で導く。
 - **PxSpriteDoc** — *.sprite.json（文字格子+意味色キー+名前付きコマ+anchor）を読む fail-open の Doc 層。
 - **PxSprite** — PxSpriteDoc のコマを box 列（横連続の同色文字は 1 矩形に結合・既定）または drawQuad（アトラス 1 クアッド・opt-in）で描く。色は resolver（キー→実色）が解決。
