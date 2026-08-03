@@ -28,25 +28,31 @@ mod Bake {
         run { SfxBake.bakeAll() } with Fs.FileRead.runWithIO;
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
-        let cfg = cfgOf("gallery", atlas, w0#theme#grass);
+        // 実機が GPU へ上げるのと同じアトラス画素を PNG に落とし、regionRect 付き Sprite を
+        // 解決できる texInfo を組む（焼きは PNG からしか絵を読めない）。
+        let images = PxSpriteAtlas.asImages(
+            { texture = World.atlasName(), baked = w0#atlas } :: Nil);
+        let cfg = { texturePath = Bakery.imagePngs("debug", images)
+                    | cfgOf("gallery", atlas, w0#theme#grass) };
+        let texInfo = Bakery.imageTextureInfo(images);
         let ctx = App.viewCtxOf(atlas, design());
         // title: ジャンルカードの顔（Title 画面）。Studio が golden/title.png を /genesis/title で
         // 読み、「レース」の札のサムネにする（各 starter 共通の規約）。
-        let t = shoot(cfg, ctx, { t = 2.2 | w0 }, "title");
+        let t = shoot(cfg, texInfo, ctx, { t = 2.2 | w0 }, "title");
         // s1: S 字をドリフト中（タイヤ痕・白煙・ゲージ半分）。この絵が遊びの顔。
-        let s1 = shoot(cfg, ctx, driftScene(w0), "s1_drift");
+        let s1 = shoot(cfg, texInfo, ctx, driftScene(w0), "s1_drift");
         // s2: 直線でニトロ発動中（炎とスピード感・前方にライバル 1 台）。
-        let s2 = shoot(cfg, ctx, nitroScene(w0), "s2_nitro");
+        let s2 = shoot(cfg, texInfo, ctx, nitroScene(w0), "s2_nitro");
         // s3: 障害物に当たった直後（スピン中・閃光と火花）。
-        let s3 = shoot(cfg, ctx, crashScene(w0), "s3_crash");
+        let s3 = shoot(cfg, texInfo, ctx, crashScene(w0), "s3_crash");
         // s4: 左の U 字の入口（道が巻き込んで画面の外へ消える所）。急カーブの絵の顔。
-        let s4 = shoot(cfg, ctx, uturnScene(w0), "s4_uturn");
+        let s4 = shoot(cfg, texInfo, ctx, uturnScene(w0), "s4_uturn");
         // s5: 登りの頂上ぎわで土管ゲートへ差し掛かる所（坂とゲートの絵の顔）。
-        let s5 = shoot(cfg, ctx, gateScene(w0), "s5_gate");
+        let s5 = shoot(cfg, texInfo, ctx, gateScene(w0), "s5_gate");
         // s6: 左 U 字の外側のガードレールに擦り付けて曲がっている所（火花が散る）。
-        let s6 = shoot(cfg, ctx, railScene(w0), "s6_rail");
+        let s6 = shoot(cfg, texInfo, ctx, railScene(w0), "s6_rail");
         // s7: 長い直線の振り子バーが左へ振れきる手前（残った右の隙間を抜けに行く所）。
-        let s7 = shoot(cfg, ctx, barScene(w0), "s7_bar");
+        let s7 = shoot(cfg, texInfo, ctx, barScene(w0), "s7_bar");
         t :: s1 :: s2 :: s3 :: s4 :: s5 :: s6 :: s7 :: Nil
 
     // ── 決定的な場面の脚本（乱数を回さず World を直接組む） ──
@@ -212,9 +218,10 @@ mod Bake {
           rivals = rivals | started }
 
     /// 1 場面を PNG に焼き、焼けたファイルパスを返す。
-    def shoot(cfg: Bakery.BakeConfig, ctx: App.ViewCtx, w: World.World, name: String): String \ IO =
+    def shoot(cfg: Bakery.BakeConfig, texInfo: String -> Option[GameEngine.TextureInfo],
+              ctx: App.ViewCtx, w: World.World, name: String): String \ IO =
         let items = View.frame(ctx, w);
-        let (drawables, polygons) = Render.draw(items);
+        let (drawables, polygons) = Render.drawWith(texInfo, items);
         Bakery.renderPng(cfg, drawables, polygons, name);
         let path = "${cfg#outDir}/${name}.png";
         println("baked: ${path}");

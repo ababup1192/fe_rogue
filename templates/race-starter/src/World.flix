@@ -85,6 +85,8 @@ mod World {
         props = PropsDoc.Doc,
         palette = PaletteDoc.Doc,
         sprites = PxSpriteDoc.Doc,
+        atlas = PxSpriteAtlas.Baked,
+        atlasGen = Int32,
         fx = FxSpecs,
         sfxtune = SfxTuneDoc.Doc,
         phase = Phase,
@@ -270,7 +272,11 @@ mod World {
     pub def initial(docs: Docs): World =
         { rules = docs#rules, rivalsCfg = docs#rivalsCfg, theme = docs#theme,
           course = docs#course, props = docs#props, palette = docs#palette,
-          sprites = docs#sprites, fx = docs#fx, sfxtune = docs#sfxtune,
+          sprites = docs#sprites,
+          atlas = PxSpriteAtlas.bake(docs#sprites,
+                      PaletteDoc.carInk(docs#palette, docs#theme#player)),
+          atlasGen = 0,
+          fx = docs#fx, sfxtune = docs#sfxtune,
           phase = Phase.Title, t = 0.0,
           playerOff = 0.0, distance = 0.0, speed = 0.0,
           lap = 0, rank = startRank(docs#rivalsCfg), score = 0,
@@ -307,12 +313,16 @@ mod World {
     /// [遷移: Title→Racing]
     pub def startGame(w: World): World =
         { phase = Phase.Racing, speed = w#rules#forwardSpeed,
-          t = w#t, fxSeq = w#fxSeq, activeDocsWritten = w#activeDocsWritten
+          t = w#t, fxSeq = w#fxSeq, activeDocsWritten = w#activeDocsWritten,
+          atlas = w#atlas, atlasGen = w#atlasGen
         | initial(docsOf(w)) }
 
     /// 最初（Title）へ戻る。時計と効果の通し番号は引き継ぐ（絵の流れを巻き戻さない）。[遷移: Win/Lose→Title]
+    /// アトラスと世代も引き継ぐ — initial は世代 0 から数え直すので、読み直し済みの
+    /// 世界で仕切り直すと「新しい画素なのに古い鍵」になり、App が上げ直さない。
     pub def toTitle(w: World): World =
-        { t = w#t, fxSeq = w#fxSeq | initial(docsOf(w)) }
+        { t = w#t, fxSeq = w#fxSeq, atlas = w#atlas, atlasGen = w#atlasGen
+        | initial(docsOf(w)) }
 
     /// Space/Enter の意味は場面で変わる: Title では開始、Win/Lose では仕切り直し、走行中は無し。
     pub def confirm(w: World): World =
@@ -678,12 +688,24 @@ mod World {
 
     pub def withRules(rules: RulesDoc.Doc, w: World): World = { rules = rules | w }
     pub def withRivalsCfg(rivalsCfg: RivalsDoc.Doc, w: World): World = { rivalsCfg = rivalsCfg | w }
-    pub def withTheme(theme: ThemeDoc.Doc, w: World): World = { theme = theme | w }
+    pub def withTheme(theme: ThemeDoc.Doc, w: World): World = rebakeAtlas({ theme = theme | w })
     pub def withCourse(course: CourseDoc.Doc, w: World): World = { course = course | w }
     pub def withProps(props: PropsDoc.Doc, w: World): World = { props = props | w }
-    pub def withPalette(palette: PaletteDoc.Doc, w: World): World = { palette = palette | w }
-    pub def withSprites(sprites: PxSpriteDoc.Doc, w: World): World = { sprites = sprites | w }
+    pub def withPalette(palette: PaletteDoc.Doc, w: World): World = rebakeAtlas({ palette = palette | w })
+    pub def withSprites(sprites: PxSpriteDoc.Doc, w: World): World = rebakeAtlas({ sprites = sprites | w })
     pub def withFx(fx: FxSpecs, w: World): World = { fx = fx | w }
+
+    /// テーマ・色票・ドット絵のどれかが変わったらアトラスを焼き直して世代を進める。
+    /// 世代の鍵（atlasKey）が変わらないと、App は古い画素のテクスチャを使い続ける。
+    def rebakeAtlas(w: World): World =
+        { atlas = PxSpriteAtlas.bake(w#sprites, PaletteDoc.carInk(w#palette, w#theme#player)),
+          atlasGen = w#atlasGen + 1 | w }
+
+    /// ドット絵アトラスの論理名（GL の TextureRegistry と bake の texturePath が同じ鍵で引く）。
+    pub def atlasName(): String = "px"
+
+    /// アトラスの世代鍵。App はこの鍵の変化で GPU へ上げ直す。
+    pub def atlasKey(w: World): String = "gen${w#atlasGen}"
 
     /// 効果音のつまみ。走らせたまま効くのは鳴らす間隔だけで、音量・高さ・長さは
     /// 焼き上がりの WAV に入っている（make bake で焼き直して起動し直すと届く）。

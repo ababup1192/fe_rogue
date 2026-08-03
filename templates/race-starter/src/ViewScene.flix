@@ -271,7 +271,6 @@ mod ViewScene {
     /// 道からどれだけ離れるか」を決める — 乱数を保存せず行番号から毎回同じ答えを引くので、
     /// 周回して同じ行に戻ると同じ場所に同じ木が立っている。
     pub def palms(cam: Proj.Cam, w: World.World): List[Render.PlacedItem] =
-        let grids = palmGrids(w);
         Proj.bands(w) |> List.flatMap(b ->
             if (Hash01.at(b#n, 11) >= 0.30 or b#u0 > 20.0) Nil
             else {
@@ -282,14 +281,9 @@ mod ViewScene {
                 let off = clearance() + 16.0 * Hash01.at(b#n, 13);
                 let wx = if (leftSide) e#xl - off else e#xr + off;
                 let uc = b#u0 + 0.5;
-                palmAt(cam, plantInk(w, uc), grids,
+                palmAt(cam, w, plantInk(w, uc),
                        { wx = wx, uc = uc, leftSide = leftSide })
             })
-
-    /// ヤシの格子を左右の向きぶんだけほどいた物。1 フレームに 1 回引いて全部の木で使い回す。
-    def palmGrids(w: World.World): { facing = ViewCar.PxGrid, mirrored = ViewCar.PxGrid } =
-        { facing = ViewCar.pxGridOf(w#sprites, "palm", false),
-          mirrored = ViewCar.pxGridOf(w#sprites, "palm", true) }
 
     /// この距離で霞ませた「草木の意味色」をひとまとめに引いておく窓口。
     /// 色票の引き当ては名前で表を辿るので、1 枚 1 枚で引き直すと帯 1 本のあいだに
@@ -315,29 +309,37 @@ mod ViewScene {
     /// ヤシ 1 本 = 幹の根元の楕円影 + ドット絵（21x18）。
     /// 側で flipX を変えるのは、葉の張り出しを道側へ向けるため（左右対称の並木は作り物くさい）。
     /// 幹は格子の中心から 4.5px ずれた所にあるので、影ではなく絵をずらして幹を wx に立たせる。
-    def palmAt(cam: Proj.Cam, ink: String -> Color,
-               grids: { facing = ViewCar.PxGrid, mirrored = ViewCar.PxGrid },
+    def palmAt(cam: Proj.Cam, w: World.World, ink: String -> Color,
                p: { wx = Float64, uc = Float64, leftSide = Bool }): List[Render.PlacedItem] =
-        palmDraw(ink, grids, { at = { x = Proj.screenX(cam, p#wx, p#uc), y = Proj.yAt(cam, p#uc) },
-                               uc = p#uc, f = Proj.scaleOf(p#uc) * 1.5,
-                               flipX = not p#leftSide, turn = 0.0 })
+        palmDraw(w, ink, { at = { x = Proj.screenX(cam, p#wx, p#uc), y = Proj.yAt(cam, p#uc) },
+                           uc = p#uc, f = Proj.scaleOf(p#uc) * 1.5,
+                           flipX = not p#leftSide, turn = 0.0 })
 
     /// ヤシ 1 本を画面座標へ置く（道ぎわの並木も、草原の遠景も同じ入口を通す）。
     /// 幹は格子の中心から 4.5px ずれた所にあるので、影ではなく絵をずらして幹を at に立たせる。
     /// turn の傾きは絵の中心を軸に回るが、群れで使う角度（±6 度）では根元のずれは
     /// 1px に満たないので、幹が地面から浮かない。
-    def palmDraw(ink: String -> Color,
-                 grids: { facing = ViewCar.PxGrid, mirrored = ViewCar.PxGrid },
+    def palmDraw(w: World.World, ink: String -> Color,
                  p: { at = Vec2.Vec2, uc = Float64, f = Float64, flipX = Bool,
                       turn = Float64 }): List[Render.PlacedItem] =
         let trunkDx = if (p#flipX) -4.5 * p#f else 4.5 * p#f;
         if (p#f < palmCull()) Nil
         else shadowUnder(p#at, 7.0 * p#f, 2.2 * p#f, p#uc)
             :: (if (p#f < palmDetail()) palmFar(ink, p, trunkDx)
-                else ViewCar.pxGridAt(ink,
-                    if (p#flipX) grids#mirrored else grids#facing,
-                    { at = { x = p#at#x + trunkDx, y = p#at#y - 9.0 * p#f },
-                      f = p#f, turn = p#turn, z = z(p#uc) }))
+                // 1 本 = 矩形 75 枚の box 列だったのをアトラス 1 クアッドへ。葉と幹の色は
+                // アトラスに焼き込み済みなので、距離の霞だけ tint で近似する。
+                else ViewCar.pxQuadScaledCentered({
+                    doc = w#sprites, baked = w#atlas, texture = World.atlasName(),
+                    sprite = "palm", frame = "base",
+                    at = { x = p#at#x + trunkDx, y = p#at#y - 9.0 * p#f },
+                    flipX = p#flipX, scale = p#f, turn = p#turn,
+                    tint = hazeTint(w, p#uc), z = z(p#uc) }))
+
+    /// 距離の霞をクアッドの tint で近似する。box 列は色そのものを hazeTo へ混ぜる
+    /// （Color.mix）が、tint は掛け算なので白側へは寄せられない — クアッドで描く近さ
+    /// （霞 4% 未満）では差が画素に出ないため、近似で足りる。
+    def hazeTint(w: World.World, uc: Float64): Color =
+        Color.mix(Color.rgb(1.0, 1.0, 1.0), ThemeDoc.hazeTo(w#theme), Proj.hazeAt(uc))
 
     /// ドット絵の格子をそのまま積む一番小さい倍率。ヤシの格子は 21x18 で矩形 75 枚に
     /// ほどけるので、これを下回ると 1 枚が 0.5px を切って抜け始め、75 枚積んでも
@@ -430,7 +432,6 @@ mod ViewScene {
     /// （screenX(off) = screenX(0) + off × 縮み）なので、端の画面 x から off の範囲が直に出る —
     /// 遠くの升まで総当たりしなくて済む。
     pub def outfield(cam: Proj.Cam, w: World.World): List[Render.PlacedItem] =
-        let grids = palmGrids(w);
         Proj.bands(w) |> List.flatMap(b -> {
             let uc = b#u0 + 0.5;
             // 縮みは辺（edgeOf）より先に引く。辺は足し上げの表を 2 度たどるので、
@@ -450,7 +451,7 @@ mod ViewScene {
                       hi = (World.designW() + outMargin() - x0) / k },
                     { cell = lattice(), salt = 0, lane = b#n,
                       reach = 0.0, cellsMax = cellsMax() },
-                    (m, r) -> outfieldAt(w, edge, ink, grids, b#n, uc, m, r))
+                    (m, r) -> outfieldAt(w, edge, ink, b#n, uc, m, r))
             }
         })
 
@@ -459,7 +460,6 @@ mod ViewScene {
     /// 群れ（grove）が 1 本ごとの乱数の鍵に seed を混ぜるため。
     /// 道の近く（120px 以内）は空ける — そこは道ぎわのヤシ（palms）の持ち場。
     def outfieldAt(w: World.World, edge: Proj.Edge, ink: String -> Color,
-                   grids: { facing = ViewCar.PxGrid, mirrored = ViewCar.PxGrid },
                    n: Int32, uc: Float64, m: Int32,
                    r: Int32 -> Float64): List[Render.PlacedItem] =
         let seed = n * 37 + m;
@@ -474,7 +474,7 @@ mod ViewScene {
             let at = { x = x, y = groundY };
             let pick = r(4);
             // 標識は近い所だけ。遠くでは 2〜3px の赤白の点になり、景色でなく汚れに読める。
-            if (pick < 0.52) grove(ink, grids, at, uc, f, seed)
+            if (pick < 0.52) grove(w, ink, at, uc, f, seed)
             else if (pick < 0.90 or uc > 7.0) bushAt(ink, at, uc, f, r(6))
             else signAt(w, at, uc, f)
         }
@@ -483,8 +483,7 @@ mod ViewScene {
     /// 立てると 1 つの塊として読めて、遠さのわりに形が残る。
     /// 塊の中では 1 本ごとに前後・大きさ・向き・傾きを散らす。ここを揃えると、
     /// 同じ絵が横に並んだ「貼り付けた並木」として読める。
-    def grove(ink: String -> Color,
-              grids: { facing = ViewCar.PxGrid, mirrored = ViewCar.PxGrid },
+    def grove(w: World.World, ink: String -> Color,
               at: Vec2.Vec2, uc: Float64, f: Float64, seed: Int32): List[Render.PlacedItem] =
         let n = 2 + Num.floorInt(Hash01.at(seed, 7) * 3.0);
         List.range(0, n) |> List.flatMap(i -> {
@@ -493,7 +492,7 @@ mod ViewScene {
             // 手前（画面の下）に立つ木ほど大きく見せる — 前後のずれと大きさが噛み合わないと
             // 塊が 1 枚の板に見える。
             let depth = g(2);
-            palmDraw(ink, grids, { at = { x = at#x + (g(1) - 0.5) * 4.6 * spread,
+            palmDraw(w, ink, { at = { x = at#x + (g(1) - 0.5) * 4.6 * spread,
                                  y = at#y + (depth - 0.5) * 1.6 * spread },
                           uc = uc,
                           f = f * (0.66 + 0.52 * g(3) + 0.24 * (depth - 0.5)),

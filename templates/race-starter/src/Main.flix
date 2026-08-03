@@ -47,6 +47,12 @@ def main(): Unit \ IO =
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
+                // ドット絵は 1 枚のアトラスに焼き、ヤシと残像を 1 コマ = 1 クアッドで描く。
+                // 世代鍵（atlasKey）が変わった拍に App が GPU へ上げ直す（テーマ・色票・
+                // ドット絵の保存で World 側が焼き直す）。
+                |> App.withSpriteAtlases(w ->
+                    { texture = World.atlasName(), key = World.atlasKey(w),
+                      baked = w#atlas } :: Nil)
                 // 音: 1 フレームの前後の World から鳴らす音名を導く（再生は App が持つ）。
                 |> App.withAudio(worlds -> checked_ecast(Sfx.events(worlds)))
                 // 鳴り続ける音: 走っている間のエンジンの唸りと、滑っている間の擦れ。

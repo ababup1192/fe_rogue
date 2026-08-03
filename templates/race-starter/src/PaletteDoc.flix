@@ -69,6 +69,17 @@ mod PaletteDoc {
         // 既定の上に読めた色を重ねる（欠けたキーは既定で埋まる = fail-open）。
         Map.foldLeftWithKey((acc, name, color) -> Map.insert(name, color, acc), defaults(), loaded)
 
+    /// 車の意味色: body 系 3 キーだけ車体色 bodyColor から導き、残りはこの表で引く。
+    /// アトラス焼き（World）と box 列（ViewCar）が同じ導出をここで見る — 2 か所に式を持つと
+    /// クアッドと box の車体色が静かに食い違う。
+    pub def carInk(doc: Doc, bodyColor: Color, key: String): Color =
+        match key {
+            case "body"      => bodyColor
+            case "bodyLight" => Color.lighten(bodyColor, 0.22)
+            case "bodyDark"  => Color.darken(bodyColor, 0.28)
+            case _           => resolve(doc, key)
+        }
+
     /// 意味色キー → 実色。無いキーはマゼンタ（書き間違いが画面で目に見える）。
     pub def resolve(doc: Doc, name: String): Color =
         Map.get(name, doc) |> Option.getWithDefault({ r = 1.0f32, g = 0.0f32, b = 1.0f32 })

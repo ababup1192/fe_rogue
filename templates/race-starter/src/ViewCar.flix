@@ -1,7 +1,8 @@
 // ViewCar — 車（自機・ライバル）と、車から出る物（影・残像・炎・煙などの粒）を描く層。
-// あわせて「実数倍率つきドット絵描画」pxScaled をここに置く — PxSprite.draw は整数倍しか
-// できないが、遠近では 1.35 倍や 0.6 倍が要る。矩形列（runs）を自前で縮めれば
-// ドット絵のまま任意の倍率・任意の傾きで置ける（他の層のヤシ・コーン・アイテムも使う）。
+// あわせて「実数倍率つきドット絵描画」を 2 系統ここに置く — PxSprite.draw / drawQuad は
+// 整数倍しかできないが、遠近では 1.35 倍や 0.6 倍が要る。
+//   pxScaled     … 矩形列（runs）を自前で縮める（コーン・アイテム・車の本体が使う）。
+//   pxQuadScaled … アトラス 1 クアッドに実数 scale を掛ける（遠景のヤシ・ニトロ残像が使う）。
 mod ViewCar {
 
     /// 演出（煙・炎・閃光）を立ち物 z 帯（20..76）の上へ持ち上げる量。
@@ -59,15 +60,64 @@ mod ViewCar {
             })
         }
 
+    // ── アトラス 1 クアッドの実数倍率版 ──
+    // WhyNot: エンジンの PxSprite.drawQuad は整数倍率のみ。整数倍でない縮小は box 列と
+    // アトラスで画素の割れ方が違い、バイト一致の保証（drawQuad の規約）を満たせないため、
+    // 実数倍率版はエンジンへ入れず race 側に置く（2 本目の使い手が現れたら昇格を相談する）。
+
+    /// pxQuadScaled の引数一式。置き場所の規約は PxSprite.drawQuad と同一
+    /// （anchor セルの左上 = at・flipX は Item.Sprite の flipH で行い、右端が
+    /// at + (ax+1)×scale に来る）。turn は絵の中心を軸に傾ける（pxScaled の群回転と同じ軸）。
+    /// tint はアトラスに焼き込まれた色へ掛ける（白 = そのまま。遠景の霞の近似に使う）。
+    pub type alias PxQuad = { doc = PxSpriteDoc.Doc, baked = PxSpriteAtlas.Baked,
+                              texture = String, sprite = String, frame = String,
+                              at = Vec2.Vec2, flipX = Bool, scale = Float64,
+                              turn = Float64, tint = Color, z = Int32 }
+
+    /// ドット絵 1 コマを「アトラス 1 クアッド」で実数倍率 scale で描く。
+    /// 実戦の使い手: 遠景のヤシ（ViewScene.palmDraw — 1 本 = 矩形 75 枚が 1 枚に）と
+    /// ニトロ残像（nitroTrail — 車 4 枚 ≒ 800 矩形が 4 枚に）。
+    pub def pxQuadScaled(spec: PxQuad): List[Render.PlacedItem] =
+        if (spec#scale <= 0.0 or spec#baked#side <= 0) Nil
+        else match (Map.get(spec#sprite, spec#doc#sprites),
+                    PxSpriteAtlas.regionOf(spec#baked, spec#sprite, spec#frame)) {
+            case (Some(sp), Some(rect)) => {
+                let s = spec#scale;
+                let sideF = Int32.toFloat64(spec#baked#side);
+                let ax = sp#anchor#x;
+                let ay = sp#anchor#y;
+                let pos: Vec2.Vec2 =
+                    if (spec#flipX) { x = spec#at#x + (ax + 1.0) * s, y = spec#at#y - ay * s }
+                    else            { x = spec#at#x - ax * s,         y = spec#at#y - ay * s };
+                let quad = Render.Item.Sprite({
+                    texture = spec#texture,
+                    tint = spec#tint,
+                    alpha = 1.0f32,
+                    // Drawable の表示寸法 = テクスチャ全寸 × scale なので、
+                    // 「コマ px × 実数 scale」になるよう辺長で割り戻す。
+                    scale = { x = s * rect#size#x / sideF, y = s * rect#size#y / sideF },
+                    rotation = 0.0, centered = false,
+                    flipH = spec#flipX, flipV = false,
+                    regionRect = Some(rect), zIndex = spec#z,
+                    blend = DrawCmd.BlendMode.Normal });
+                { at = pos,
+                  item = if (Float64.abs(spec#turn) < 0.0001) quad
+                         else Render.turned(spec#turn, quad) } :: Nil
+            }
+            case _ => Nil
+        }
+
+    /// 絵の真ん中を at に置く版（pxScaled と同じ置き方の口 — 乗せ換え元と座標系を合わせる）。
+    pub def pxQuadScaledCentered(spec: PxQuad): List[Render.PlacedItem] =
+        let a = PxSprite.anchorOffsetOf(spec#doc, spec#sprite, spec#frame, spec#flipX, 1);
+        pxQuadScaled({ at = { x = spec#at#x + a#x * spec#scale,
+                              y = spec#at#y + a#y * spec#scale } | spec })
+
     /// 車の意味色: body 系 3 キーだけ車体色から導き、残りはパレット表に任せる。
     /// 格子は 1 枚を全員で共有し、塗り分けはこの関数の差し替えで行う。
+    /// 導出の式は PaletteDoc.carInk が正（アトラス焼きと同じ表を見る）。
     def carColor(palette: PaletteDoc.Doc, bodyColor: Color, key: String): Color =
-        match key {
-            case "body"      => bodyColor
-            case "bodyLight" => Color.lighten(bodyColor, 0.22)
-            case "bodyDark"  => Color.darken(bodyColor, 0.28)
-            case _           => PaletteDoc.resolve(palette, key)
-        }
+        PaletteDoc.carInk(palette, bodyColor, key)
 
     // ── ライバル ──
 
@@ -122,8 +172,8 @@ mod ViewCar {
         shadow :: pxGridAt(carColor(w#palette, look#color), carGrid(w),
             { at = at, f = look#f, turn = look#turn, z = look#z })
 
-    /// 車の格子。1 台ぶんの格子を残像 4 枚とライバル全台で使い回す
-    /// （1 台ごとにほどくと、同じ絵の読み取りが台数 + 残像の数だけ走る）。
+    /// 車の格子。1 台ぶんの格子を自機とライバル全台で使い回す
+    /// （1 台ごとにほどくと、同じ絵の読み取りが台数だけ走る）。
     def carGrid(w: World.World): PxGrid =
         pxGridOf(w#sprites, "car", false)
 
@@ -140,15 +190,18 @@ mod ViewCar {
             let flame = Fx.sampleAt(w#fx#flame, 0i64, Num.wrapTo(10.0, w#t), rear);
             let since = w#rules#nitroDuration - w#nitroLeft;
             let shock = Fx.sampleAt(w#fx#shock, 0i64, since, at);
-            let grid = carGrid(w);
-            let ink = carColor(w#palette, w#theme#player);
             let ghostTurn = World.driftTurnOf(w);
             let ghostZ = Proj.zOf(Proj.playerU()) - 1;
+            // 残像は 1 枚 = 1 クアッド。box 列で描くと 1 枚 ≒ 200 矩形 × 4 枚が
+            // 毎フレーム積まれる。車体色はアトラスに焼き込み済み（PaletteDoc.carInk）。
             let ghost = spec -> {
                 let (dy, alpha) = spec;
-                pxGridAt(ink, grid,
-                    { at = { x = at#x, y = at#y + dy * f },
-                      f = f, turn = ghostTurn, z = ghostZ })
+                pxQuadScaledCentered({
+                    doc = w#sprites, baked = w#atlas, texture = World.atlasName(),
+                    sprite = "car", frame = "base",
+                    at = { x = at#x, y = at#y + dy * f },
+                    flipX = false, scale = f, turn = ghostTurn,
+                    tint = Color.rgb(1.0, 1.0, 1.0), z = ghostZ })
                     |> Render.fadeAll(alpha)
             };
             let ghosts = (10.0, 0.42f32) :: (20.0, 0.28f32) :: (32.0, 0.17f32)
