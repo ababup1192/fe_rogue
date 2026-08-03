@@ -120,6 +120,11 @@ mod World {
     /// コース 1 段が距離いくつ分か（px）。距離 → 通し段の割り算の分母。
     pub def rowPitch(): Float64 = 40.0
 
+    /// 1 周の距離（px）= コースの段数 × 1 段の距離。Doc に別の数値としては持たない —
+    /// 持つと、コースの段数を編集したとき周長だけ古いままずれる。
+    pub def lapLength(course: CourseDoc.Doc): Float64 =
+        Int32.toFloat64(CourseDoc.rowCount(course)) * rowPitch()
+
     /// 自機は画面の少し先（1.35 行ぶん前）に見える。判定も同じ行を見る —
     /// 絵と当たりの物差しを 1 つにする（マジックナンバーを 2 か所に置かない）。
     pub def playerAheadPx(): Float64 = rowPitch() * 1.35
@@ -222,14 +227,14 @@ mod World {
                 case PropsDoc.Kind.Gate => gateBands(c#lane, half, w)
                 case PropsDoc.Kind.Bar =>
                     let x = barOffAt(n, w);
-                    let hw = w#rules#barHalfWidth;
+                    let hw = w#props#barHalfWidth;
                     ({ lo = x - hw, hi = x + hw, kind = c#kind }: Blocker) :: Nil
             })
 
     /// 土管ゲート = 隙間の左右に伸びる 2 本の帯。土管の外側の端を道の外まで伸ばすのは、
     /// 草へ迂回して隙間を通らずに済ませられないようにするため。
     def gateBands(lane: Int32, half: Float64, w: World): List[Blocker] =
-        let gap = Int32.max(1, w#rules#gateGapLanes);
+        let gap = Int32.max(1, w#props#gateGapLanes);
         let leftLane = lane - (gap - 1) / 2;
         let far = half + grassReach() + 40.0;
         let gapL = PropsDoc.laneEdge(leftLane, half);
@@ -242,9 +247,9 @@ mod World {
     /// 乱数も、覚えておく状態も無い。段番号が位相を決めるので、同じ段のバーは
     /// 何周目でもそっくり同じリズムで往復し、覚えて攻略できる。
     pub def barOffAt(n: Int32, w: World): Float64 =
-        let phase = w#t / w#rules#barPeriod + Int32.toFloat64(n) * w#rules#barPhaseStep;
+        let phase = w#t / w#props#barPeriod + Int32.toFloat64(n) * w#props#barPhaseStep;
         let half = halfWidthAt(n, w#course);
-        Vec2.sin(2.0 * Vec2.pi() * phase) * Float64.max(0.0, half - w#rules#barHalfWidth)
+        Vec2.sin(2.0 * Vec2.pi() * phase) * Float64.max(0.0, half - w#props#barHalfWidth)
 
     // ── ガードレール ──
 
@@ -297,14 +302,13 @@ mod World {
     def startRank(rivalsCfg: RivalsDoc.Doc): Int32 =
         List.length(rivalsCfg#rows) + 1
 
-    /// 遊び始め（Title → Racing）。[遷移: Title→Racing]
+    /// 遊び始め（Title → Racing）。initial から作り直し、時計・効果の通し番号・
+    /// 表示中 Doc の名乗りだけ引き継ぐ（絵の流れと Studio への名乗りを巻き戻さない）。
+    /// [遷移: Title→Racing]
     pub def startGame(w: World): World =
-        { phase = Phase.Racing, playerOff = 0.0, distance = 0.0,
-          speed = w#rules#forwardSpeed, lap = 0, rank = startRank(w#rivalsCfg), score = 0,
-          nitro = 0.0, nitroLeft = 0.0, boostLeft = 0.0, spinLeft = 0.0, bumpLeft = 0.0,
-          drifting = false, steerDir = 0.0,
-          rivals = initialRivals(docsOf(w)), taken = Set.empty(),
-          skids = Nil, bursts = Nil, smokeClock = 0.0, railClock = 0.0 | w }
+        { phase = Phase.Racing, speed = w#rules#forwardSpeed,
+          t = w#t, fxSeq = w#fxSeq, activeDocsWritten = w#activeDocsWritten
+        | initial(docsOf(w)) }
 
     /// 最初（Title）へ戻る。時計と効果の通し番号は引き継ぐ（絵の流れを巻き戻さない）。[遷移: Win/Lose→Title]
     pub def toTitle(w: World): World =
@@ -351,6 +355,7 @@ mod World {
             |> moveRivals(dt)
             |> rivalContact(dt)
             |> resolvePasses
+            |> resolveDriftFall
             |> emitDriftTrail(dt)
             |> coolTimers(dt)
             |> checkLaps
@@ -363,7 +368,8 @@ mod World {
           steerDir = inputs#dir | w }
 
     /// ハンドル。ドリフト中は舵が深く（driftTurnBoost）、ニトロ中は重い（nitroSteerPenalty）。
-    /// スピン中は効かない。画面の縁で止める（画面外へは出ない）。
+    /// スピン中は効かない。止めるのは画面の縁ではなく「道 + 草」の範囲（offRangeOf）—
+    /// 道そのものが画面の外まで曲がっていくので、縁で止めると車だけが道に置いて行かれる。
     def steer(inputs: Inputs, dt: Float64, w: World): World =
         if (w#spinLeft > 0.0) w
         else {
@@ -465,18 +471,21 @@ mod World {
                 | burstAt(w#fx#spark, { x = w#playerOff, y = playerDistOf(w) }, w) }
         }
 
+    /// 壁擦りの火花を散らす間隔（秒）。
+    def sparkPeriod(): Float64 = 0.07
+
     /// ガードレールを擦っている間: 減速（speedOf 側）と引き換えにゲージが貯まり、
-    /// 0.07 秒おきに火花が散る。壁の面から火花を出すので、擦っている所が目で判る。
+    /// sparkPeriod 秒おきに火花が散る。壁の面から火花を出すので、擦っている所が目で判る。
     def scrapeRail(dt: Float64, w: World): World =
         if (not scraping(w)) { railClock = 0.0 | w }
         else {
             let charged = { nitro = Num.clamp01(w#nitro + w#rules#nitroChargeRail * dt) | w };
             let clock = w#railClock + dt;
-            if (clock < 0.07) { railClock = clock | charged }
+            if (clock < sparkPeriod()) { railClock = clock | charged }
             else {
                 let n = playerRowOf(w#distance);
                 let face = railSideAt(n, w) * halfWidthAt(n, w#course);
-                { railClock = clock - 0.07
+                { railClock = clock - sparkPeriod()
                 | burstAt(w#fx#spark, { x = face, y = playerDistOf(w) }, charged) }
             }
         }
@@ -580,7 +589,7 @@ mod World {
         if (playerOff < rivalOff) -1.0 else 1.0
 
     /// スピン開始: 操作不能 + 大減速 + ゲージ半減 + クラッシュの粒。
-    /// ドリフト中に草へ流れ落ちたときもここへ来る（emitDriftTrail 側で判定）。
+    /// ドリフト中に草へ流れ落ちたときもここへ来る（resolveDriftFall が判定）。
     def startSpin(w: World): World =
         if (w#spinLeft > 0.0) w
         else
@@ -605,19 +614,24 @@ mod World {
     pub def rankOf(w: World): Int32 =
         1 + (w#rivals |> List.count(r -> r#progress > playerDistOf(w)))
 
+    /// ドリフトのまま草へ流れ落ちたら、そこでスピン（ドリフトの失敗には痛みがある）。
+    def resolveDriftFall(w: World): World =
+        if (w#drifting and not onRoad(w)) startSpin(w) else w
+
     // ── 演出の発生（タイヤ痕・煙。規則には絡まない） ──
 
-    /// ドリフト中の置き土産: タイヤ痕を刻み、0.09 秒おきに白煙を焚く。
-    /// ドリフトのまま草へ流れ落ちたら、そこでスピン（ドリフトの失敗には痛みがある）。
+    /// ドリフト煙を焚く間隔（秒）。
+    def smokePeriod(): Float64 = 0.09
+
+    /// ドリフト中の置き土産: タイヤ痕を刻み、smokePeriod 秒おきに白煙を焚く。
     def emitDriftTrail(dt: Float64, w: World): World =
         if (not w#drifting) { smokeClock = 0.0 | w }
-        else if (not onRoad(w)) startSpin(w)
         else {
             let clock = w#smokeClock + dt;
             let marked = { skids = pruneSkids(w#distance,
                 { dist = playerDistOf(w), off = w#playerOff, turn = driftTurnOf(w) } :: w#skids) | w };
-            if (clock >= 0.09)
-                { smokeClock = clock - 0.09
+            if (clock >= smokePeriod())
+                { smokeClock = clock - smokePeriod()
                 | burstAt(w#fx#smoke,
                     { x = w#playerOff - w#steerDir * 5.0, y = playerDistOf(w) - carHitLen() * 0.5 }, marked) }
             else { smokeClock = clock | marked }
@@ -650,7 +664,7 @@ mod World {
     /// 走った距離から周回数を更新し、totalLaps 周に達したらゴール。
     /// 最下位なら Lose、それ以外は Win（1 位だけ finishBonus）。[遷移: Racing→Win/Lose]
     def checkLaps(w: World): World =
-        let lapsDone = Num.floorInt(w#distance / w#rules#lapLength);
+        let lapsDone = Num.floorInt(w#distance / lapLength(w#course));
         if (lapsDone < w#rules#totalLaps) { lap = lapsDone | w }
         else if (w#rank >= startRank(w#rivalsCfg))
             { phase = Phase.Lose, lap = w#rules#totalLaps | w }

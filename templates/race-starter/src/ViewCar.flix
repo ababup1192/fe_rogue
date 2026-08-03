@@ -115,11 +115,10 @@ mod ViewCar {
     /// 車が浮いて見えないようにするため（主役の分離は影の仕事 — 暗がりで誤魔化さない）。
     def carAt(w: World.World, at: Vec2.Vec2,
               look: { f = Float64, turn = Float64, color = Color, z = Int32 }): List[Render.PlacedItem] =
-        let shadow = Render.ellipseAt(
-                { x = at#x + 2.0, y = at#y + 3.0 },
-                { x = 17.0 * look#f * 0.55 / 2.0, y = 27.0 * look#f * 0.55 / 2.0 },
-                { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, look#z)
-            |> Render.overItem(Render.fade(0.28f32));
+        let shadow = ViewRoad.shadowUnder({
+                at = { x = at#x + 2.0, y = at#y + 3.0 },
+                radii = { x = 17.0 * look#f * 0.55 / 2.0, y = 27.0 * look#f * 0.55 / 2.0 },
+                segs = 32, alpha = 0.28f32, z = look#z });
         shadow :: pxGridAt(carColor(w#palette, look#color), carGrid(w),
             { at = at, f = look#f, turn = look#turn, z = look#z })
 

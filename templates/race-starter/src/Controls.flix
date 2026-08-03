@@ -102,7 +102,7 @@ mod Controls {
     pub def reloadSprites(w: World.World): World.World \ Fs.FileRead =
         World.withSprites(PxSpriteDoc.load(World.spritePath()), w)
 
-    /// fx.json の保存で 4 本まとめて読み直す（いまの World のテーマ色で解決する）。
+    /// fx.json の保存で 5 本まとめて読み直す（いまの World のテーマ色で解決する）。
     pub def reloadFx(w: World.World): World.World \ Fs.FileRead =
         World.withFx(loadFx(w#theme), w)
 

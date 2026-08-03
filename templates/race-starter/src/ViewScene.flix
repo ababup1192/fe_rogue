@@ -538,12 +538,12 @@ mod ViewScene {
                     { x = 2.4 * s, y = Float64.max(1.0, 0.4 * s) }, mark, z(uc))
             :: Nil
 
-    /// 立ち物の接地影（足元の楕円）。遠いほど薄い。
+    /// 立ち物の接地影（足元の楕円）。遠いほど薄い。形と濃さの式は ViewRoad.shadowUnder が正 —
+    /// ここは何百と撒く立ち物向けに、分割数を大きさなりへ落とすだけ。
     def shadowUnder(at: Vec2.Vec2, rx: Float64, ry: Float64, uc: Float64): Render.PlacedItem =
         let radii = ({ x = rx, y = ry }: Vec2.Vec2);
-        Render.ellipseSegsAt(at, radii, Render.ellipseSegsFor(radii),
-                { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, z(uc))
-            |> Render.overItem(Render.fade(ViewRoad.shadowAlpha(uc)))
+        ViewRoad.shadowUnder({ at = at, radii = radii, segs = Render.ellipseSegsFor(radii),
+                               alpha = ViewRoad.shadowAlpha(uc), z = z(uc) })
 
     def z(uc: Float64): Int32 = Proj.zOf(uc)
 

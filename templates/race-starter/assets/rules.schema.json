@@ -1,5 +1,5 @@
 {
-  "//": "race.rules.json の形の宣言（Studio の sections 方言）。手触りと収支の数値の初期値だけ Doc に置き、走る・曲がる・滑る・抜く・壊れるの規則はコード（World）側。group は見せ方だけの束ね（同じ group 名が 1 枚のタブになる）。 障害物は 4 種 — 点のコーン・隙間を通す土管ゲート・閉じた式で往復する振り子バー・擦っても壊れないガードレール。置き場は race.props.json、どの区間に壁が立つかは race.course.json。",
+  "//": "race.rules.json の形の宣言（Studio の sections 方言）。手触りと収支の数値の初期値だけ Doc に置き、走る・曲がる・滑る・抜く・壊れるの規則はコード（World）側。group は見せ方だけの束ね（同じ group 名が 1 枚のタブになる）。 障害物は 4 種 — 点のコーン・隙間を通す土管ゲート・閉じた式で往復する振り子バー・擦っても壊れないガードレール。置き場とゲートの隙間・バーの寸法・周期は race.props.json、どの区間に壁が立つかは race.course.json。1 周の距離はコースの段数から導かれる（この Doc には無い）。",
   "version": 1,
   "sections": {
     "note": {
@@ -52,17 +52,6 @@
       "max": 1.0,
       "step": 0.05,
       "default": 0.45,
-      "group": "走り"
-    },
-    "lapLength": {
-      "kind": "field",
-      "type": "float",
-      "label": "1 周の距離（コースの行数×40 と揃えると気持ちよい）",
-      "unit": "px",
-      "order": 5,
-      "min": 200,
-      "max": 4000,
-      "default": 2640,
       "group": "走り"
     },
     "yawGain": {
@@ -296,53 +285,6 @@
       "max": 40,
       "default": 14,
       "group": "クラッシュ"
-    },
-    "gateGapLanes": {
-      "kind": "field",
-      "type": "int",
-      "label": "土管ゲートの隙間（レーン何本ぶん。狭いほど通すのが難しい）",
-      "unit": "レーン",
-      "order": 1,
-      "min": 1,
-      "max": 7,
-      "default": 3,
-      "group": "障害物"
-    },
-    "barPeriod": {
-      "kind": "field",
-      "type": "float",
-      "label": "振り子バーが 1 往復する時間（短いほど忙しい）",
-      "unit": "秒",
-      "order": 2,
-      "min": 0.5,
-      "max": 10,
-      "step": 0.1,
-      "default": 2.6,
-      "group": "障害物"
-    },
-    "barPhaseStep": {
-      "kind": "field",
-      "type": "float",
-      "label": "段が 1 つ進むごとにずれる振り子の位相（0 なら全部同時に振れる）",
-      "unit": "周",
-      "order": 3,
-      "min": 0,
-      "max": 1,
-      "step": 0.01,
-      "default": 0.37,
-      "group": "障害物"
-    },
-    "barHalfWidth": {
-      "kind": "field",
-      "type": "float",
-      "label": "振り子バーの半分の長さ（長いほど逃げ場が狭い）",
-      "unit": "px",
-      "order": 4,
-      "min": 4,
-      "max": 45,
-      "step": 1,
-      "default": 26,
-      "group": "障害物"
     },
     "railTouch": {
       "kind": "field",

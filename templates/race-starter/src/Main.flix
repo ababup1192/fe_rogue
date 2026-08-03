@@ -28,7 +28,7 @@ def main(): Unit \ IO =
                         |> (w1 -> ActiveDocs.step(World.activeDocs(w1), w1)),
                 view = (ctx, w) -> checked_ecast(View.frame(ctx, w)),
                 // 保存即反映で読み直す Doc たち（各 1 本の watchFile に展開される）。
-                // fx 4 本はどれを保存しても reloadFx（4 本まとめ読み）— 1 本ずつ差し替える
+                // fx 5 本はどれを保存しても reloadFx（5 本まとめ読み）— 1 本ずつ差し替える
                 // ほど数が多くないので、配管を 1 種類に保つ。
                 reloads =
                     (RulesDoc.path(), Controls.reloadRules) ::
@@ -42,6 +42,7 @@ def main(): Unit \ IO =
                     (Controls.fxSmokePath(), Controls.reloadFx) ::
                     (Controls.fxSparkPath(), Controls.reloadFx) ::
                     (Controls.fxFlamePath(), Controls.reloadFx) ::
+                    (Controls.fxShockPath(), Controls.reloadFx) ::
                     (Controls.fxCrashPath(), Controls.reloadFx) :: Nil
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。

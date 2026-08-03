@@ -16,7 +16,6 @@ mod RulesDoc {
         steerSpeed = Float64,          // ハンドルの効き（px/秒）
         brakeSlow = Float64,           // ブレーキ（↓）中の速度係数（0..1）
         offRoadSlow = Float64,         // 草へはみ出したときの速度係数（0..1）
-        lapLength = Float64,           // 1 周の距離（px）
         yawGain = Float64,             // コーナーでカメラが内側を向く強さ（0 = 向かない）
         skyParallax = Float64,         // 曲がった向きに空・太陽・雲が流れる量（px）
         totalLaps = Int32,             // ゴールに必要な周回数
@@ -26,11 +25,7 @@ mod RulesDoc {
         curvePush = Float64,           // カーブの急さ×超過速度に掛かる横押しの強さ
         driftTurnBoost = Float64,      // ドリフト中の舵角倍率
         driftSlide = Float64,          // ドリフト中に外へ流れ続ける速さ（px/秒）
-        // ── 障害物（ゲート・振り子バー・ガードレール） ──
-        gateGapLanes = Int32,          // 土管ゲートの隙間の広さ（レーン何本ぶん）
-        barPeriod = Float64,           // 振り子バーが 1 往復する時間（秒）
-        barPhaseStep = Float64,        // 段が 1 つ進むごとにずれる位相（周）
-        barHalfWidth = Float64,        // 振り子バーの半分の長さ（px）
+        // ── 障害物（ガードレール。ゲートの隙間とバーの寸法・周期は PropsDoc — 置き場と一緒に触る値） ──
         railTouch = Float64,           // 道の端からここまで寄ると壁を擦る（px）
         railScrapeSlow = Float64,      // 壁を擦っている間の速度係数（0..1）
         nitroChargeRail = Float64,     // 壁を擦っている 1 秒あたりのゲージ加算
@@ -71,22 +66,17 @@ mod RulesDoc {
           steerSpeed = 127.0,
           brakeSlow = 0.72,
           offRoadSlow = 0.45,
-          lapLength = 2640.0,
           yawGain = 0.35,
           skyParallax = 10.0,
           totalLaps = 3,
           hillSpeedGain = 0.05,
-          gateGapLanes = 3,
-          barPeriod = 2.6,
-          barPhaseStep = 0.37,
-          barHalfWidth = 26.0,
-          railTouch = 7.0,
-          railScrapeSlow = 0.58,
-          nitroChargeRail = 0.30,
           gripSpeed = 101.0,
           curvePush = 7.0,
           driftTurnBoost = 1.7,
           driftSlide = 36.0,
+          railTouch = 7.0,
+          railScrapeSlow = 0.58,
+          nitroChargeRail = 0.30,
           slipBoost = 1.35,
           slipRange = 56.0,
           slipWidth = 26.0,
@@ -121,22 +111,17 @@ mod RulesDoc {
           steerSpeed = JsonCodec.floatOr("steerSpeed", d#steerSpeed, root),
           brakeSlow = JsonCodec.floatOr("brakeSlow", d#brakeSlow, root),
           offRoadSlow = JsonCodec.floatOr("offRoadSlow", d#offRoadSlow, root),
-          lapLength = JsonCodec.floatOr("lapLength", d#lapLength, root),
           yawGain = JsonCodec.floatOr("yawGain", d#yawGain, root),
           skyParallax = JsonCodec.floatOr("skyParallax", d#skyParallax, root),
           totalLaps = JsonCodec.intOr("totalLaps", d#totalLaps, root),
           hillSpeedGain = JsonCodec.floatOr("hillSpeedGain", d#hillSpeedGain, root),
-          gateGapLanes = JsonCodec.intOr("gateGapLanes", d#gateGapLanes, root),
-          barPeriod = Float64.max(0.1, JsonCodec.floatOr("barPeriod", d#barPeriod, root)),
-          barPhaseStep = JsonCodec.floatOr("barPhaseStep", d#barPhaseStep, root),
-          barHalfWidth = JsonCodec.floatOr("barHalfWidth", d#barHalfWidth, root),
-          railTouch = JsonCodec.floatOr("railTouch", d#railTouch, root),
-          railScrapeSlow = JsonCodec.floatOr("railScrapeSlow", d#railScrapeSlow, root),
-          nitroChargeRail = JsonCodec.floatOr("nitroChargeRail", d#nitroChargeRail, root),
           gripSpeed = JsonCodec.floatOr("gripSpeed", d#gripSpeed, root),
           curvePush = JsonCodec.floatOr("curvePush", d#curvePush, root),
           driftTurnBoost = JsonCodec.floatOr("driftTurnBoost", d#driftTurnBoost, root),
           driftSlide = JsonCodec.floatOr("driftSlide", d#driftSlide, root),
+          railTouch = JsonCodec.floatOr("railTouch", d#railTouch, root),
+          railScrapeSlow = JsonCodec.floatOr("railScrapeSlow", d#railScrapeSlow, root),
+          nitroChargeRail = JsonCodec.floatOr("nitroChargeRail", d#nitroChargeRail, root),
           slipBoost = JsonCodec.floatOr("slipBoost", d#slipBoost, root),
           slipRange = JsonCodec.floatOr("slipRange", d#slipRange, root),
           slipWidth = JsonCodec.floatOr("slipWidth", d#slipWidth, root),

@@ -24,7 +24,7 @@ mod ViewRoad {
         // 帯の手前辺と奥辺は 1 回だけ引いて全部の層で使い回す（地面・轍・縁石は
         // どれも同じ 2 本の辺の上に点を並べるだけなので、層ごとに引き直す意味がない）。
         let ed = edgesOf(cam, b);
-        if (not onScreen(ed, b, e)) groundStrip(w, ed, b)
+        if (not onScreen(ed, e)) groundStrip(w, ed, b)
         else
             groundStrip(w, ed, b)
                 ::: (partsOf(b, e) |> List.flatMap(p -> {
@@ -69,8 +69,7 @@ mod ViewRoad {
         { near = Proj.edgeOf(cam, b#u0), far = Proj.edgeOf(cam, b#u0 + b#du) }
 
     /// その帯の道が画面に掛かっているか。手前辺と奥辺の左右 4 点で見る。
-    def onScreen(ed: Edges, b: Proj.Band, e: Strip): Bool =
-        let _ = b;
+    def onScreen(ed: Edges, e: Strip): Bool =
         let xs = Proj.edgeX(ed#near, e#xl0) :: Proj.edgeX(ed#near, e#xr0)
               :: Proj.edgeX(ed#far, e#xl1) :: Proj.edgeX(ed#far, e#xr1) :: Nil;
         let margin = 60.0;
@@ -103,6 +102,14 @@ mod ViewRoad {
     /// 落ち影の濃さ。霞のぶんだけ薄くする（遠くの影だけ黒く残ると点が散って見える）。
     pub def shadowAlpha(u: Float64): Float32 =
         Float64.truncateToFloat32(0.28 * (1.0 - Proj.hazeAt(u)))
+
+    /// 接地影の楕円 1 枚。立ち物・車の足元はぜんぶここから敷く（形と濃さの式を散らさない）。
+    /// segs は縁の分割数 — 主役の車は既定の 32、遠くに何百と撒く立ち物は大きさなりに減らす。
+    pub def shadowUnder(s: { at = Vec2.Vec2, radii = Vec2.Vec2, segs = Int32,
+                             alpha = Float32, z = Int32 }): Render.PlacedItem =
+        Render.ellipseSegsAt(s#at, s#radii, s#segs,
+                { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, s#z)
+            |> Render.overItem(Render.fade(s#alpha))
 
     /// 通し行の偶奇。OutRun 式の 1 行おきの縞は全部この判定に揃える
     /// （地面・路面・縁石が同じ行で同時に切り替わり、帯の境目が 1 本の線になる）。
@@ -429,9 +436,9 @@ mod ViewRoad {
             let z = Proj.zOf(uc);
             let bob = Sway.wave(w#t, Int32.toFloat64(b#n) * 0.7, 0.9) * 2.0;
             let center = { x = x, y = groundY - 5.0 * f - 2.0 + bob };
-            let shadow = Render.ellipseAt({ x = x, y = groundY },
-                    { x = 4.0 * f, y = 1.4 * f }, { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, z)
-                |> Render.overItem(Render.fade(shadowAlpha(uc)));
+            let shadow = shadowUnder({ at = { x = x, y = groundY },
+                    radii = { x = 4.0 * f, y = 1.4 * f }, segs = 32,
+                    alpha = shadowAlpha(uc), z = z });
             let glow = Render.glowAt(center, 7.0 * f, PaletteDoc.resolve(w#palette, "itemGold"),
                     { alpha = 0.3, blend = DrawCmd.BlendMode.Add }, z);
             shadow :: (glow ::: ViewCar.pxScaled(key -> hazedKey(w, uc, key),
@@ -460,9 +467,9 @@ mod ViewRoad {
         let x = Proj.screenX(cam, propOff, uc);
         let groundY = Proj.yAt(cam, uc);
         let z = Proj.zOf(uc);
-        let shadow = Render.ellipseAt({ x = x, y = groundY },
-                { x = 4.0 * f, y = 1.4 * f }, { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, z)
-            |> Render.overItem(Render.fade(shadowAlpha(uc)));
+        let shadow = shadowUnder({ at = { x = x, y = groundY },
+                radii = { x = 4.0 * f, y = 1.4 * f }, segs = 32,
+                alpha = shadowAlpha(uc), z = z });
         shadow :: ViewCar.pxScaled(key -> hazedKey(w, uc, key),
             { doc = w#sprites, sprite = "cone", at = { x = x, y = groundY - 4.0 * f },
               flipX = false, f = f, turn = 0.0, z = z })
@@ -589,19 +596,13 @@ mod ViewRoad {
         let hole = Render.ellipseAt({ x = x, y = topY },
                                     { x = rl * 0.62, y = rl * 0.40 * 0.62 },
                                     tint(Color.darken(w#theme#road, 0.52)), z);
-        shadowUnderPipe(x, gf, rl, s#uc, z)
+        shadowUnder({ at = { x = x, y = gf }, radii = { x = rl * 1.15, y = rl * 0.42 },
+                      segs = 32, alpha = shadowAlpha(s#uc), z = z })
             :: (roundFace({ xl = x - rs, xr = x + rs, yBot = gf, yTop = lipY,
                             axis = false, z = z }, stopsOf(clayOf(w#theme)))
                 ::: roundFace({ xl = x - rl, xr = x + rl, yBot = lipY, yTop = topY,
                                 axis = false, z = z }, stopsOf(w#theme#kerb))
                 ::: (cap :: hole :: Nil))
-
-    /// 立った土管の接地影。足元に楕円を敷かないと、路面から浮いて見える。
-    def shadowUnderPipe(x: Float64, gy: Float64, r: Float64, uc: Float64,
-                        z: Int32): Render.PlacedItem =
-        Render.ellipseAt({ x = x, y = gy }, { x = r * 1.15, y = r * 0.42 },
-                         { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, z)
-            |> Render.overItem(Render.fade(shadowAlpha(uc)))
 
     /// 振り子バー。振れ幅の跡 → 真下の落ち影 → 浮いた横棒（斜め縞）→ 両端の握りの順に積む。
     /// 跡を敷くのは、静止した 1 枚では動く物だと読めないため — 帯の中を往復すると判れば、
@@ -618,18 +619,17 @@ mod ViewRoad {
         let cx = (l + r) / 2.0;
         let wide = Float64.abs(r - l);
         let lift = 13.0 * k;
-        let reach = Float64.max(0.0, World.halfWidthAt(n, w#course) - w#rules#barHalfWidth)
-                    + w#rules#barHalfWidth;
+        let reach = Float64.max(0.0, World.halfWidthAt(n, w#course) - w#props#barHalfWidth)
+                    + w#props#barHalfWidth;
         let sl = Proj.screenX(cam, 0.0 - reach, uc);
         let sr = Proj.screenX(cam, reach, uc);
         let sweep = Render.boxAt({ x = (sl + sr) / 2.0, y = groundY - lift },
                 { x = Float64.abs(sr - sl), y = Float64.max(1.0, 5.0 * k) },
                 tint(w#theme#kerb), z)
             |> Render.overItem(Render.fade(0.16f32));
-        let shadow = Render.ellipseAt({ x = cx, y = groundY },
-                { x = wide / 2.0, y = Float64.max(1.0, 2.2 * k) },
-                { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, z)
-            |> Render.overItem(Render.fade(shadowAlpha(uc)));
+        let shadow = shadowUnder({ at = { x = cx, y = groundY },
+                radii = { x = wide / 2.0, y = Float64.max(1.0, 2.2 * k) },
+                segs = 32, alpha = shadowAlpha(uc), z = z });
         let under = Render.boxAt({ x = cx, y = groundY - lift + 2.6 * k },
                 { x = wide, y = Float64.max(1.0, 2.2 * k) },
                 tint(Color.darken(w#theme#road, 0.42)), z);

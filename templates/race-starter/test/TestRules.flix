@@ -55,6 +55,13 @@ mod TestRules {
           sections = { len = 2, curve = 0.0, hill = 0.0, width = 300.0, rail = "none",
                        note = "" } :: Nil }
 
+    /// 右へ曲がり続ける全面路面の 2 段コース（置き場は空）。
+    /// 「外側 = 左（負）」へ押される・流れる向きを見るテストの土台。
+    def rightCurveCourse(): CourseDoc.Doc =
+        { version = 1,
+          sections = { len = 2, curve = 6.0, hill = 0.0, width = 300.0, rail = "none",
+                       note = "" } :: Nil }
+
     /// 通し段 n をまたぐ直前の distance（1 拍で必ず n をまたいで入る位置）。
     /// playerRowOf(d) = floor((d + playerAheadPx) / rowPitch) の境界のすぐ手前に置く。
     def justBeforeRow(n: Int32): Float64 =
@@ -107,6 +114,21 @@ mod TestRules {
             expected = (true, w#playerOff),
             (World.curveAt(World.playerRowOf(w#distance), c) != 0.0, after#playerOff))
 
+    @Test
+    def testCurveExcessPushesOutward(): Unit \ Assert =
+        // gripSpeed を超えて右カーブへ入ると、カーブの外側（左 = 負）へ押し出され、
+        // 超過を 2 倍にすると押しも強くなる。超過は横押し率が 1.0 で頭打ちになる手前
+        // （forwardSpeed / curvePush 未満）に収めて、飽和で差が消えないようにする。
+        let d = RulesDoc.defaults();
+        let dt = 0.05;
+        let w = { course = rightCurveCourse(), rivals = Nil | racing() };
+        let sped = ex -> World.step(idle(), dt, { speed = d#gripSpeed + ex | w });
+        let small = sped(d#forwardSpeed / d#curvePush * 0.3);
+        let big = sped(d#forwardSpeed / d#curvePush * 0.6);
+        Assert.assertEq(
+            expected = (true, true),
+            (small#playerOff < 0.0, big#playerOff < small#playerOff))
+
     // ══════════════════════════════════════════════════════
     // 柱 1: ドリフトの成立とゲージ
     // ══════════════════════════════════════════════════════
@@ -135,6 +157,31 @@ mod TestRules {
         let half = World.step({ dir = 1.0, driftHeld = true | idle() }, 0.5, w);
         let after = World.step({ dir = 0.0 - 1.0, driftHeld = true | idle() }, 0.5, half);
         Assert.assertEq(expected = d#nitroChargeDrift, after#nitro)
+
+    @Test
+    def testDriftSlideFlowsTowardOutside(): Unit \ Assert =
+        // 右カーブでのドリフトは、舵の移動（steerSpeed × driftTurnBoost）に加えて
+        // 外側（左 = 負）へ driftSlide * dt だけ流れ続ける（速度の超過とは無関係の一定量）。
+        let d = RulesDoc.defaults();
+        let dt = 0.05;
+        let w = { course = rightCurveCourse(), rivals = Nil | racing() };
+        let after = World.step({ dir = 1.0, driftHeld = true | idle() }, dt, w);
+        Assert.assertEq(
+            expected = d#steerSpeed * d#driftTurnBoost * dt - d#driftSlide * dt,
+            after#playerOff)
+
+    @Test
+    def testDriftFallOntoGrassStartsSpin(): Unit \ Assert =
+        // ドリフトのまま草（道の外）にいると、その拍でスピンが始まりドリフトは解ける
+        // （coolTimers が同フレームで dt を削るので spinLeft = spinDuration - dt）。
+        let d = RulesDoc.defaults();
+        let dt = 0.05;
+        let half = World.halfWidthAt(0, flatCourse());
+        let w = { course = flatCourse(), playerOff = half + 20.0, rivals = Nil | racing() };
+        let after = World.step({ dir = 1.0, driftHeld = true | idle() }, dt, w);
+        Assert.assertEq(
+            expected = (d#spinDuration - dt, false),
+            (after#spinLeft, after#drifting))
 
     // ══════════════════════════════════════════════════════
     // 柱 3: スリップストリーム（前走車の真後ろの帯）
@@ -251,6 +298,18 @@ mod TestRules {
             expected = (0.0, d#nitroChargeNearMiss),
             (after#spinLeft, after#nitro))
 
+    @Test
+    def testSpinDrainsGaugeAndStopsNitro(): Unit \ Assert =
+        // 直撃スピンの瞬間、ゲージは spinNitroLoss の割合を失い、発動中のニトロも打ち切られる。
+        let d = RulesDoc.defaults();
+        let cone = firstPropAt(racing(), PropsDoc.Kind.Cone);
+        let w = { distance = justBeforeRow(cone#row), playerOff = cone#off,
+                  nitro = 0.8, nitroLeft = d#nitroDuration, rivals = Nil | racing() };
+        let after = World.step(idle(), 0.1, w);
+        Assert.assertEq(
+            expected = (0.8 * (1.0 - d#spinNitroLoss), 0.0),
+            (after#nitro, after#nitroLeft))
+
     // ══════════════════════════════════════════════════════
     // 柱 4: 土管ゲート（隙間だけが通れる・両側すれすれで 2 回貯まる）
     // ══════════════════════════════════════════════════════
@@ -293,8 +352,8 @@ mod TestRules {
         let a = at(0.3);
         Assert.assertEq(
             expected = (true, true),
-            (Float64.abs(at(0.3 + w#rules#barPeriod) - a) < 0.0001,
-             Float64.abs(at(0.3 + w#rules#barPeriod / 2.0) + a) < 0.0001))
+            (Float64.abs(at(0.3 + w#props#barPeriod) - a) < 0.0001,
+             Float64.abs(at(0.3 + w#props#barPeriod / 2.0) + a) < 0.0001))
 
     // ══════════════════════════════════════════════════════
     // 柱 4: ガードレール（擦っても壊れない・道の端で止まる）
@@ -452,7 +511,7 @@ mod TestRules {
         // totalLaps ぶん走り切った拍に: 1 位 = Win + finishBonus / 2 位 = Win（ボーナスなし）/
         // 最下位（既定 3 台 + 自機 = 4 位）= Lose。ライバルは接触もスリップも起きない距離に置く。
         let d = RulesDoc.defaults();
-        let dist = d#lapLength * Int32.toFloat64(d#totalLaps) + 10.0;
+        let dist = World.lapLength(CourseDoc.defaults()) * Int32.toFloat64(d#totalLaps) + 10.0;
         let me = dist + World.playerAheadPx();
         let first = World.step(idle(), 0.001, { distance = dist, rivals = Nil | racing() });
         let second = World.step(idle(), 0.001,
