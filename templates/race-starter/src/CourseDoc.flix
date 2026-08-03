@@ -1,71 +1,142 @@
 // CourseDoc — race.course.json（コースの形）の宣言ドキュメント層。
-// コースは「文字格子（rows）」1 枚で表す。1 行 = コースを縦に薄く切った 1 段で、
-// 上の行ほどコースの「先（遠く）」、下の行ほど「手前」。行の各文字がそのマスの地面:
-//   '#'（と '=' など '.'/' ' 以外）= 路面（走れる）、'.'・空白 = 草（道の外・減速）。
-// rpg のマップ rows と同じ発想 — 格子を書き換えれば別のコースになる。'#' の並びを
-// 左右にずらせばカーブになり、幅を変えれば道が広く/狭くなる。
+// コースは「区間の表」1 枚で表す。1 区間 = 同じ曲がり方が続くひとまとまりで、
+//   len   … 何段ぶん続くか（1 段 = World.rowPitch = 40px）
+//   curve … 1 段ごとに道が曲がっていく強さ（+ が右・0 が直線）。曲がりは段を追うごとに
+//           足し上がるので、同じ値が続くほど先の道は急に折れていく（これが 90 度・U 字の正体）。
+//   hill  … 1 段ごとに道が起きていく強さ（+ が登り・0 が平ら）。曲がりとまったく同じ数式で
+//           2 回足し上がるので、同じ値が続くほど坂は急になり、頂上の先は道が隠れる。
+//   width … 道幅（% — 100 が基準の道幅 baseHalfWidth の 2 倍）
+//   rail  … ガードレールを立てる側（"none" / "left" / "right" / "out"）。"out" は
+//           コーナーの外側（曲がりの向きの反対）— 直線の区間では立たない。
 //
-// コースは下から上へ無限に流れる（周回）。前進した距離を格子の行に写して、
-// いま自機の足元がどの行かを決める（World.roadRowAt）。曲がる・はみ出す・周回するの
-// 規則はコード（World）側 — ここは「地面の地図」だけ。
+// 立ち物（アイテム・コーン・ゲート・振り子バー）の置き場は別 Doc（race.props.json）。
+// コースは先頭へ巻き戻して周回する（sectionAt が余りで巻き戻す）。
+// 曲がる・はみ出す・周回するの規則はコード（World）側 — ここは「道の形」だけ。
 // fail-open — 読めない・壊れているときは defaults() へ倒し、ゲームは必ず起動する。
 mod CourseDoc {
     use Util.Json.Json
 
-    /// コースの地図。rows = 上（先）から下（手前）へ 1 段ずつの文字格子。
-    /// 各文字は「そのマスが路面か草か」。列数（一番長い行の長さ）を画面幅いっぱいに割り付ける。
+    /// コースの区間 1 つ。
+    pub type alias Section = {
+        len = Int32,
+        curve = Float64,
+        hill = Float64,
+        width = Float64,
+        rail = String,
+        note = String
+    }
+
+    /// コースの形。sections = スタートから先へ 1 区間ずつ。
     pub type alias Doc = {
         version = Int32,
-        rows = List[String]
+        sections = List[Section]
     }
 
     pub def path(): String = "assets/race.course.json"
 
-    /// 「路面（走れる）マス」を表す文字か（'.'・空白は草に倒す — fail-open）。
-    /// ここだけが「格子の文字 → 路面かどうか」を決める唯一の入口。
-    pub def isRoad(ch: Char): Bool =
-        not (ch == '.' or ch == ' ')
+    /// 道幅 100% のときの半幅（px）。区間の width はこれに対する百分率。
+    pub def baseHalfWidth(): Float64 = 50.0
 
-    /// コード側の既定値。ゆるやかに左右へ振れる 1 本道（読んで学べる最小のコース）。
-    /// '#' の帯が右へ寄り・左へ戻る = カーブ。手前（下）ほど道幅は素直に一定。
+    /// 区間が 1 つも無いときに倒す先。直線が延々続くコースになる（画面に穴を開けない）。
+    def straight(): Section =
+        { len = 1, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "" }
+
+    /// コード側の既定値。1 周 66 段 = 2640px（rules の lapLength と揃える）。
+    /// リズムは 2 幕。第 1 幕（起承転結）: スタート直線 → 緩い右（教習）→ 登り →
+    /// 急な左ヘアピン（試験・外側にガードレール）→ 救済直線 → 右→左の切り返し（見せ場）→ ゴール直線。
+    /// 第 2 幕はその鏡像（左へ流して右の 3 連で返す）— 同じ手が左右逆でもう一度試される。
+    /// curve の合計も hill の合計も 0（1 周でちょうど向きと高さが戻る）— 空の流れと
+    /// 地平線が周回の継ぎ目で飛ばない。
     pub def defaults(): Doc =
         { version = 1,
-          rows =
-              "...#####...."
-           :: "....#####..."
-           :: ".....#####.."
-           :: "......#####."
-           :: ".....#####.."
-           :: "....#####..."
-           :: "...#####...."
-           :: "..#####....."
-           :: ".#####......"
-           :: "..#####....."
-           :: "...#####...."
-           :: "....#####..."
+          sections =
+              { len = 3, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "スタート直線（スリップ勝負）" }
+           :: { len = 4, curve = 6.0, hill = 1.0, width = 100.0, rail = "none", note = "緩い右の登り（膨らみを教える）" }
+           :: { len = 2, curve = 0.0, hill = 1.0, width = 100.0, rail = "none", note = "登りきる（2 段目にゲート。頂上の先は道が隠れる）" }
+           :: { len = 1, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "コーンの段" }
+           :: { len = 1, curve = 0.0 - 18.0, hill = 0.0 - 1.0, width = 100.0, rail = "none", note = "U 字の入口（下りに入る。ここで速度を決める）" }
+           :: { len = 5, curve = 0.0 - 60.0, hill = 0.0 - 1.0, width = 88.0, rail = "out", note = "左の U 字。全速では曲がりきれない（ブレーキかドリフト、でなければ外壁を擦る）" }
+           :: { len = 3, curve = 36.0, hill = 0.0, width = 100.0, rail = "none", note = "巻き込みを解いて立ち上がる" }
+           :: { len = 1, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "救済のアイテムの段（下位の逆転口）" }
+           :: { len = 2, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "息継ぎ（2 段目にゲート）" }
+           :: { len = 3, curve = 20.0, hill = 0.0, width = 100.0, rail = "none", note = "右へ切り込み（見せ場）" }
+           :: { len = 1, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "切り返しの頂点（コーンの段）" }
+           :: { len = 1, curve = 0.0 - 18.0, hill = 0.0, width = 100.0, rail = "none", note = "左スナップ" }
+           :: { len = 1, curve = 0.0 - 18.0, hill = 0.0, width = 100.0, rail = "none", note = "リスク線上のアイテムの段" }
+           :: { len = 1, curve = 10.0, hill = 0.0, width = 100.0, rail = "none", note = "小さく右へフリックして締める" }
+           :: { len = 1, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "" }
+           :: { len = 1, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "ゴール直線のアイテムの段" }
+           :: { len = 4, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "長い直線（振り子バーの段を含む）" }
+           :: { len = 2, curve = 0.0 - 3.0, hill = 1.2, width = 100.0, rail = "none", note = "ごく緩い左の登り（第 2 幕は鏡像）" }
+           :: { len = 2, curve = 0.0, hill = 0.0 - 1.2, width = 100.0, rail = "none", note = "下りの直線" }
+           :: { len = 1, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "コーンの段" }
+           :: { len = 1, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "" }
+           :: { len = 1, curve = 10.0, hill = 0.0, width = 100.0, rail = "none", note = "ゲートの段（右ヘアピンの手前）" }
+           :: { len = 4, curve = 46.0, hill = 0.0, width = 92.0, rail = "out", note = "右ヘアピン（U 字の鏡。ぎりぎり全速で曲がれる）" }
+           :: { len = 3, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "右端の直線（振り子バーの段を含む）" }
+           :: { len = 1, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "コーンの段" }
+           :: { len = 2, curve = 0.0 - 8.0, hill = 0.0, width = 100.0, rail = "none", note = "緩い左" }
+           :: { len = 1, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "" }
+           :: { len = 1, curve = 0.0 - 8.0, hill = 0.0, width = 100.0, rail = "none", note = "コーナー中のアイテムの段（リスク線）" }
+           :: { len = 2, curve = 0.0 - 22.0, hill = 0.0, width = 100.0, rail = "none", note = "左スナップ 2 連" }
+           :: { len = 2, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "左端の直線（振り子バーの段を含む）" }
+           :: { len = 1, curve = 6.0, hill = 0.0, width = 100.0, rail = "none", note = "" }
+           :: { len = 2, curve = 23.0, hill = 0.0, width = 100.0, rail = "out", note = "右へ大きく返す（外側に壁）" }
+           :: { len = 1, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "" }
+           :: { len = 2, curve = 0.0 - 10.0, hill = 0.0, width = 100.0, rail = "none", note = "最後の左" }
+           :: { len = 2, curve = 0.0, hill = 0.0, width = 100.0, rail = "none", note = "ゴール前の直線（スタート段へ繋がる）" }
            :: Nil }
 
-    /// 行数（コースを縦に切った段の数）。前進距離を行に写すときの割り算の分母。
+    /// 段の数（コース 1 周の段数）。前進距離を段に写すときの割り算の分母。
     pub def rowCount(doc: Doc): Int32 =
-        List.length(doc#rows)
+        doc#sections |> List.foldLeft((acc, s) -> acc + lenOf(s), 0)
 
-    /// 列数（一番長い行の長さ）。画面幅を割り付けるマスの数。
-    pub def colCount(doc: Doc): Int32 =
-        doc#rows |> List.map(String.length) |> List.foldLeft(Int32.max, 1)
+    /// 区間の段数（0 以下は 1 段に倒す — 幅ゼロの区間で表が止まらないように）。
+    def lenOf(s: Section): Int32 =
+        Int32.max(1, s#len)
 
-    /// n 行目（0 始まり・範囲外は先頭へ巻き戻す = 周回）の文字格子。
-    /// コースは無限ループなので、行番号は rowCount で割った余りで読む。
-    pub def rowAt(n: Int32, doc: Doc): String =
+    /// 通し段 n（0 始まり・範囲外は先頭へ巻き戻す = 周回）を、コース 1 周の中の段へ写す。
+    /// 立ち物の置き場（PropsDoc）も同じ物差しで引く。
+    pub def wrapRow(n: Int32, doc: Doc): Int32 =
         let count = rowCount(doc);
-        if (count <= 0) ""
-        else {
-            let wrapped = Int32.modulo(Int32.modulo(n, count) + count, count);
-            List.nth(wrapped, doc#rows) |> Option.getWithDefault("")
+        if (count <= 0) 0 else Int32.modulo(Int32.modulo(n, count) + count, count)
+
+    /// 通し段 n が入っている区間と、その区間の中で何段目か。
+    /// ここだけが「段 → 区間」を決める唯一の入口。
+    pub def sectionAt(n: Int32, doc: Doc): { sec = Section, idx = Int32 } =
+        if (rowCount(doc) <= 0) { sec = straight(), idx = 0 }
+        else walk(wrapRow(n, doc), doc#sections)
+
+    def walk(k: Int32, secs: List[Section]): { sec = Section, idx = Int32 } =
+        match secs {
+            case Nil       => { sec = straight(), idx = 0 }
+            case s :: rest => if (k < lenOf(s)) { sec = s, idx = k } else walk(k - lenOf(s), rest)
         }
 
-    /// 列 c（0 始まり）が路面か。範囲外の列は草に倒す（fail-open）。
-    pub def isRoadCell(row: String, c: Int32): Bool =
-        String.toList(row) |> List.nth(c) |> Option.map(isRoad) |> Option.getWithDefault(false)
+    /// 通し段 n で道が曲がっていく強さ（+ が右）。
+    pub def curveAt(n: Int32, doc: Doc): Float64 =
+        (sectionAt(n, doc))#sec#curve
+
+    /// 通し段 n で道が起きていく強さ（+ が登り）。
+    pub def hillAt(n: Int32, doc: Doc): Float64 =
+        (sectionAt(n, doc))#sec#hill
+
+    /// 通し段 n の道の半幅（px）。細すぎる指定は 10% で止める（車が通れない道を作らない）。
+    pub def halfWidthAt(n: Int32, doc: Doc): Float64 =
+        baseHalfWidth() * Float64.max(10.0, (sectionAt(n, doc))#sec#width) / 100.0
+
+    /// 通し段 n にガードレールが立っている側（-1 = 左・+1 = 右・0 = 立っていない）。
+    /// "out" はコーナーの外側 = 曲がりの向きの反対。直線では外側が決まらないので立たない。
+    pub def railSideAt(n: Int32, doc: Doc): Float64 =
+        let a = sectionAt(n, doc);
+        match a#sec#rail {
+            case "left"  => -1.0
+            case "right" => 1.0
+            case "out"   =>
+                let c = a#sec#curve;
+                if (c > 0.0) -1.0 else if (c < 0.0) 1.0 else 0.0
+            case _       => 0.0
+        }
 
     /// テキストから Doc へ（fail-open）。JSON でない・形が違うフィールドは既定へ倒す。
     pub def fromJson(text: String): Option[Doc] =
@@ -74,13 +145,26 @@ mod CourseDoc {
     def fromRoot(root: Map[String, Json]): Doc =
         let d = defaults();
         { version = JsonCodec.intOr("version", d#version, root),
-          rows = rowsOr(d#rows, "rows", root) }
+          sections = sectionsOr(d#sections, root) }
 
-    /// 「文字列の配列」を読む。形が違う・要素に文字列でないものが混じるときは既定へ倒す。
-    def rowsOr(fallback: List[String], key: String, obj: Map[String, Json]): List[String] =
-        Map.get(key, obj)
-            |> Option.flatMap(JsonCodec.decodeList(JsonCodec.expectString))
+    /// sections（区間の一覧）を読む。配列でない・空のときは既定のコースへ倒す。
+    /// 欄が欠けた区間は、その欄だけ「直線 1 段」の値へ倒す（区間ごと捨てない）。
+    def sectionsOr(fallback: List[Section], root: Map[String, Json]): List[Section] =
+        Map.get("sections", root)
+            |> Option.flatMap(JsonCodec.decodeList(sectionOf))
+            |> Option.filter(secs -> not List.isEmpty(secs))
             |> Option.getWithDefault(fallback)
+
+    def sectionOf(json: Json): Option[Section] =
+        JsonCodec.expectObject(json) |> Option.map(obj -> {
+            let d = straight();
+            { len = JsonCodec.intOr("len", d#len, obj),
+              curve = JsonCodec.floatOr("curve", d#curve, obj),
+              hill = JsonCodec.floatOr("hill", d#hill, obj),
+              width = JsonCodec.floatOr("width", d#width, obj),
+              rail = JsonCodec.stringOr("rail", d#rail, obj),
+              note = JsonCodec.stringOr("note", d#note, obj) }
+        })
 
     /// path の Doc を読む。読めない・壊れているときは defaults（fail-open）。
     pub def load(p: String): Doc \ Fs.FileRead =

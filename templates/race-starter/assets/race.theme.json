@@ -1,12 +1,20 @@
 {
   "version": 1,
-  "note": "画面の色。grass = 道の外（路肩）、road = 路面、lane = レーンの標識、player = 自機、rivalA/rivalB = ライバル 2 台、finish = ゴールの旗、text = 文字。#rrggbb で指定。夜の絵なので地面は沈めて lane と車だけを光らせている — 地面を明るくすると光る物が無くなって画面が平らに見える。",
-  "grass": "#141a26",
-  "road": "#3b4358",
-  "lane": "#ffe066",
-  "player": "#5ee0ff",
-  "rivalA": "#ff5a7a",
-  "rivalB": "#ffb84d",
+  "note": "真夏の海岸ハイウェイの色票。派生色（縞の明暗・霞み・炎の芯）はコードで導く。",
+  "skyTop": "#1f86dd",
+  "skyLow": "#c2e7fc",
+  "sea": "#1273b8",
+  "grass": "#58b84e",
+  "road": "#8a91a4",
+  "sand": "#dcc98f",
+  "lane": "#f4f7fa",
+  "kerb": "#d63a4a",
+  "player": "#e63946",
+  "rivalA": "#2e6fe0",
+  "rivalB": "#f6a800",
+  "rivalC": "#8a4fd0",
+  "flame": "#ff7a1a",
+  "smoke": "#f2f5f8",
   "finish": "#eceff2",
-  "text": "#eceff2"
+  "text": "#ffffff"
 }

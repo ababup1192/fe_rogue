@@ -1,0 +1,823 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>race-starter 作り直し企画書 — 最後のコーナーまで勝敗が判らないレース</title>
+<style>
+  :root {
+    --paper: #eef6fc;   /* 昼の空気 */
+    --panel: #ffffff;
+    --line:  #d5e3ee;
+    --ink:   #152a3e;
+    --dim:   #5b7188;
+    --red:   #e63946;   /* 主役マシンと縁石の赤 */
+    --red-d: #c92735;
+    --blue:  #1d7fd4;   /* コバルトの空 */
+    --sun:   #f6a800;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  /* この企画書はゲームと同じ「真夏の昼」の世界で読む。単一ライトテーマは意図した選択 */
+  html { background: var(--paper); }
+  body {
+    margin: 0;
+    color: var(--ink);
+    font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    font-size: 15px;
+    line-height: 1.9;
+    background: linear-gradient(180deg, #c6e6fa 0%, var(--paper) 280px);
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 0 1.25rem 6rem; }
+
+  header.hero { padding: 4.5rem 0 2.5rem; border-bottom: 1px solid var(--line); }
+  .eyebrow {
+    font-family: var(--mono); font-size: .72rem; letter-spacing: .18em;
+    color: var(--dim); text-transform: uppercase; margin: 0 0 1rem;
+  }
+  h1 {
+    margin: 0; font-size: 2.1rem; line-height: 1.35; font-weight: 800;
+    font-style: italic; letter-spacing: .01em; text-wrap: balance;
+  }
+  h1 .rd { color: var(--red-d); }
+  .hero p.sub { color: var(--dim); margin: 1.2rem 0 0; max-width: 38rem; }
+
+  h2 {
+    margin: 4rem 0 1.2rem; font-size: 1.28rem; font-weight: 800; font-style: italic;
+    padding-left: .8rem; border-left: 4px solid var(--red); text-wrap: balance;
+  }
+  h3 { margin: 2.2rem 0 .6rem; font-size: 1.02rem; font-weight: 700; }
+  h3 .tag {
+    font-family: var(--mono); font-style: normal; font-weight: 600; font-size: .7rem;
+    letter-spacing: .1em; color: #fff; background: var(--red);
+    border-radius: 2px; padding: .1rem .45rem; margin-right: .55rem; vertical-align: 2px;
+  }
+  p { margin: .8rem 0; }
+  strong { color: var(--red-d); font-weight: 700; }
+  em { font-style: normal; color: var(--blue); }
+  code {
+    font-family: var(--mono); font-size: .84em; color: #0f5aa8;
+    background: #e2eef8; border-radius: 3px; padding: .1em .35em;
+  }
+
+  .tablewrap { overflow-x: auto; margin: 1.2rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; line-height: 1.6; }
+  th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; font-size: .78rem; letter-spacing: .06em; white-space: nowrap; }
+  td.k { font-family: var(--mono); font-size: .8rem; color: #0f5aa8; white-space: nowrap; }
+  td.n { font-family: var(--mono); font-size: .8rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .box {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1rem 1.2rem; margin: 1.2rem 0; box-shadow: 0 2px 10px rgba(21,42,62,0.05);
+  }
+  .box.concept {
+    background: linear-gradient(100deg, #ffffff 0%, #fff3d4 100%);
+    border-color: #ecd9a0; text-align: center; padding: 1.6rem 1.2rem;
+  }
+  .box.concept .big {
+    font-size: 1.45rem; font-weight: 800; font-style: italic; line-height: 1.5;
+    color: var(--red-d); text-wrap: balance; margin: 0;
+  }
+  ul { padding-left: 1.3rem; margin: .8rem 0; }
+  li { margin: .35rem 0; }
+  li::marker { color: var(--red); }
+
+  .loop { display: flex; flex-wrap: wrap; gap: .5rem; align-items: stretch; margin: 1.2rem 0; }
+  .loop .step {
+    flex: 1 1 8.5rem; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: .7rem .8rem; font-size: .82rem; line-height: 1.55;
+    box-shadow: 0 2px 8px rgba(21,42,62,0.05);
+  }
+  .loop .step b { display: block; color: var(--red-d); font-size: .85rem; margin-bottom: .2rem; }
+  .loop .arrow { align-self: center; color: var(--dim); font-family: var(--mono); }
+
+  figure { margin: 1.6rem 0; }
+  figure svg { display: block; margin: 0 auto; max-width: 100%; height: auto; border-radius: 10px; box-shadow: 0 4px 18px rgba(21,42,62,0.12); }
+  figcaption { color: var(--dim); font-size: .8rem; text-align: center; margin-top: .8rem; line-height: 1.7; }
+
+  .pillar { border-top: 1px solid var(--line); padding-top: .4rem; margin-top: 2.6rem; }
+
+  .cards { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1.2rem 0; }
+  .card {
+    flex: 1 1 9rem; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: .8rem .6rem; text-align: center; font-size: .8rem; line-height: 1.7;
+    box-shadow: 0 2px 8px rgba(21,42,62,0.05);
+  }
+  .card .rank { font-size: 1.3rem; font-weight: 800; font-style: italic; display: block; }
+  .card .fx { color: var(--red-d); font-weight: 700; }
+  .card .dn { color: var(--dim); font-family: var(--mono); font-size: .7rem; }
+</style>
+
+<main>
+<!-- 共有パーツ: マシン(パーツ構成)とグラデ・フィルタ。以降の全図から参照する -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="skyG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f86dd"/><stop offset="1" stop-color="#c2e7fc"/>
+    </linearGradient>
+    <linearGradient id="seaG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0e6fb4"/><stop offset="1" stop-color="#4db4e8"/>
+    </linearGradient>
+    <linearGradient id="roadDayG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#79839a"/><stop offset="1" stop-color="#9aa4b8"/>
+    </linearGradient>
+    <linearGradient id="grassG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#79d465"/><stop offset="1" stop-color="#3f9e46"/>
+    </linearGradient>
+    <radialGradient id="sunG" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.35" stop-color="#ffe9a8" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ffe9a8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="flameG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff7a1a"/><stop offset="0.55" stop-color="#ffc837"/><stop offset="1" stop-color="#fff6d8"/>
+    </linearGradient>
+    <linearGradient id="edgeDayL" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff8c2a" stop-opacity="0.45"/><stop offset="1" stop-color="#ff8c2a" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="edgeDayR" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#ff8c2a" stop-opacity="0.45"/><stop offset="1" stop-color="#ff8c2a" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glowD" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="1.6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softD" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="2.2"/>
+    </filter>
+    <!-- マシン(上向き・24x38)。色は使う側が color= で決める -->
+    <g id="gt">
+      <ellipse cx="14.5" cy="23" rx="12.5" ry="8" fill="#0c1a28" opacity="0.3"/>
+      <rect x="1" y="7" width="5" height="9" rx="2" fill="#1a1d24"/>
+      <rect x="18" y="7" width="5" height="9" rx="2" fill="#1a1d24"/>
+      <rect x="0.5" y="24" width="6" height="10" rx="2" fill="#1a1d24"/>
+      <rect x="17.5" y="24" width="6" height="10" rx="2" fill="#1a1d24"/>
+      <path d="M12,0 C17,0.5 19,4 19,10 L19,30 C19,35 16,38 12,38 C8,38 5,35 5,30 L5,10 C5,4 7,0.5 12,0 Z" fill="currentColor"/>
+      <path d="M8,4 C6.6,9 6.6,26 8.2,33" stroke="#ffffff" stroke-width="1.6" opacity="0.5" fill="none"/>
+      <rect x="11" y="1.5" width="2" height="8" fill="#ffffff" opacity="0.85"/>
+      <path d="M8,11 L16,11 L15,17 L9,17 Z" fill="#12222f" opacity="0.92"/>
+      <rect x="8.6" y="17" width="6.8" height="7" fill="#0c1824" opacity="0.5"/>
+      <path d="M9,24 L15,24 L16,28 L8,28 Z" fill="#12222f" opacity="0.8"/>
+      <rect x="4.5" y="32.5" width="15" height="3" rx="1" fill="#10161f" opacity="0.85"/>
+      <circle cx="8" cy="2.8" r="1.3" fill="#ffffff"/>
+      <circle cx="16" cy="2.8" r="1.3" fill="#ffffff"/>
+      <rect x="6" y="36" width="3.4" height="1.8" fill="#ff5148"/>
+      <rect x="14.6" y="36" width="3.4" height="1.8" fill="#ff5148"/>
+    </g>
+    <!-- ヤシの木 -->
+    <g id="palm">
+      <ellipse cx="5" cy="2" rx="10" ry="3" fill="#0c1a28" opacity="0.18"/>
+      <path d="M0,0 C1,-10 -1,-20 3,-28" stroke="#8a5a34" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <g stroke="#2f8f45" stroke-width="3" fill="none" stroke-linecap="round">
+        <path d="M3,-28 C-6,-34 -14,-34 -20,-30"/>
+        <path d="M3,-28 C-2,-38 -10,-40 -16,-38"/>
+        <path d="M3,-28 C6,-38 14,-40 20,-36"/>
+        <path d="M3,-28 C10,-34 18,-33 22,-28"/>
+        <path d="M3,-28 C2,-40 6,-44 10,-44"/>
+      </g>
+      <circle cx="3" cy="-27" r="2.2" fill="#6b4423"/>
+    </g>
+  </defs>
+</svg>
+
+<header class="hero">
+  <p class="eyebrow">templates/race-starter — remake pitch · 2026-08-02 · rev.3</p>
+  <h1>最後のコーナーまで<br>勝敗が判らない<span class="rd">レース</span>へ</h1>
+  <p class="sub">今のレーステンプレは「綺麗に走れるが、何も起きない」夜道だった。舞台を真夏の海岸ハイウェイへ引っ越し、急カーブをドリフトで攻めさせ、敵に意思を、順位に揺れを入れて、ハラハラドキドキする追い抜き合戦へ作り直す企画書。</p>
+</header>
+
+<h2>1. 今のレースの何がつまらないか</h2>
+<p>骨格（周回・追い抜き加点・はみ出し減速・Doc 化・テスト・golden）はよく出来ている。つまらなさの原因は 4 つに絞れる。</p>
+<ul>
+  <li><strong>コースが実質まっすぐ。</strong>文字格子は少し蛇行しているが、画面はただ縦に流れる夜道で、ハンドルを切る理由がほとんどない。<em>コーナーこそレースの本体</em>なのに、それが無い。</li>
+  <li><strong>ライバルが「動く背景」でしかない。</strong>2 台とも固定レーンを等速で走るだけ（<code>moveRivals</code> は progress の足し算のみ）。横に動かない、こちらを見ていない、当たりもしない。</li>
+  <li><strong>順位が序盤で確定する。</strong>自機 120 &gt; ライバル 96 / 108 で、普通に走れば必ず抜けて必ず 1 位。抜いた後は最後まで一人旅。</li>
+  <li><strong>失うものがない。</strong>敗北なし・クラッシュなし。はみ出しても少し遅くなるだけで、心拍数が上がる瞬間が 1 度もない。</li>
+</ul>
+<figure>
+  <!-- 今の画面(夜・意図的に地味なまま見せる) -->
+  <svg viewBox="0 0 160 210" width="200" role="img" aria-label="今のレース画面: 夜のまっすぐな道を等速で流れるだけ">
+    <rect width="160" height="210" fill="#141a26"/>
+    <rect x="52" y="0" width="56" height="210" fill="#3b4358"/>
+    <line x1="53" y1="0" x2="53" y2="210" stroke="#eceff2" stroke-width="1.5" opacity="0.45"/>
+    <line x1="107" y1="0" x2="107" y2="210" stroke="#eceff2" stroke-width="1.5" opacity="0.45"/>
+    <g fill="#ffe066" opacity="0.8">
+      <rect x="78" y="8" width="4" height="14"/><rect x="78" y="48" width="4" height="14"/>
+      <rect x="78" y="88" width="4" height="14"/><rect x="78" y="128" width="4" height="14"/>
+      <rect x="78" y="168" width="4" height="14"/>
+    </g>
+    <g>
+      <rect x="62" y="42" width="9" height="13" fill="#ff5a7a"/>
+      <rect x="90" y="86" width="9" height="13" fill="#ffb84d"/>
+      <rect x="70" y="150" width="10" height="15" fill="#5ee0ff"/>
+    </g>
+    <text x="80" y="200" font-size="8" fill="#5e6a80" text-anchor="middle" font-family="monospace">いまの画面</text>
+  </svg>
+  <figcaption>今の画面。車は矩形 1 枚、道はどこまでもまっすぐ、夜と霧で細部を省いている。この構図が 3 周ずっと変わらない。今回は<strong>舞台ごと真夏の昼へ引っ越し</strong>、誤魔化しの利かない日向で絵を作り直す。</figcaption>
+</figure>
+
+<h2>2. レースゲームの面白さの分解</h2>
+<p>名作がやっていることを 5 つに分解する。以降の設計はすべてこの 5 点に紐づける。</p>
+<div class="tablewrap"><table>
+  <tr><th>性質</th><th>中身</th><th>お手本</th></tr>
+  <tr><td><strong>コーナーが主役</strong></td><td>直線は息継ぎ、勝負はカーブで決まる。減速して安全に曲がるか、ドリフトで速度を殺さず攻めるか、毎コーナーが選択になる</td><td>リッジレーサー、頭文字D、OutRun の連続カーブ</td></tr>
+  <tr><td><strong>接戦の維持</strong></td><td>敵が常に視界にいる。離されても追いつけるし、引き離しても追ってくる</td><td>マリオカートのラバーバンド、F-Zero のライバル群</td></tr>
+  <tr><td><strong>リスクとリターンの往復</strong></td><td>速く走る手段が、必ず危険と抱き合わせになっている。安全に走ると遅い</td><td>ドリフト、敵の真後ろのスリップストリーム</td></tr>
+  <tr><td><strong>速度の体感</strong></td><td>数字ではなく画面で速さを感じる。うねる道・迫るコーナー・流れる景色</td><td>OutRun の青空と疑似 3D、カーブの寄り</td></tr>
+  <tr><td><strong>最終ラップの逆転劇</strong></td><td>下位ほど強い補正がかかり、ゴール直前まで結果が確定しない</td><td>マリオカートの順位別アイテム</td></tr>
+</table></div>
+
+<h2>3. コアコンセプト</h2>
+<div class="box concept">
+  <p class="big">「最後のコーナーまで勝敗が判らないレース」<br><span style="font-size:.9rem; color:#8a6a1f">— 舞台は真夏の海岸ハイウェイ。全部、日向で見せる —</span></p>
+</div>
+<p>5 つの仕組みは独立した機能ではなく、1 本のループとして噛み合わせる。<strong>危険な走り（ドリフト・張り付き・すれすれ）だけがゲージを貯め、ゲージだけが敵を千切れる</strong>。安全運転は構造的に勝てない。</p>
+<div class="loop">
+  <div class="step"><b>急カーブが迫る</b>減速するか、ドリフトで突っ込むか。ドリフトはゲージが貯まるが、失敗すればコースアウト</div>
+  <div class="arrow">▶</div>
+  <div class="step"><b>敵に張り付く</b>スリップストリームで加速、ゲージも貯まる。ただし前の敵はコーナーでラインを変える</div>
+  <div class="arrow">▶</div>
+  <div class="step"><b>ニトロ発動</b>直線で撃つか、賭けてコーナーで撃つか。発動中は操舵が重い</div>
+  <div class="arrow">▶</div>
+  <div class="step"><b>敵が追ってくる</b>ラバーバンドで千切った敵が加速し、また接戦へ戻る</div>
+</div>
+
+<figure>
+  <!-- メイン画面モック(240x360): 真夏の海岸、右急カーブをドリフトで攻める瞬間 -->
+  <svg viewBox="0 0 240 360" width="380" role="img" aria-label="真夏の海岸ハイウェイで右急カーブをドリフトする画面モック">
+    <!-- 空と太陽と雲 -->
+    <rect width="240" height="76" fill="url(#skyG)"/>
+    <circle cx="42" cy="28" r="24" fill="url(#sunG)"/>
+    <circle cx="42" cy="28" r="9" fill="#ffffff"/>
+    <g fill="#ffffff">
+      <g opacity="0.95">
+        <ellipse cx="158" cy="30" rx="26" ry="10"/>
+        <ellipse cx="140" cy="35" rx="16" ry="8"/>
+        <ellipse cx="178" cy="35" rx="18" ry="8"/>
+      </g>
+      <g opacity="0.85">
+        <ellipse cx="86" cy="54" rx="15" ry="6"/>
+        <ellipse cx="98" cy="57" rx="11" ry="5"/>
+      </g>
+    </g>
+    <!-- 海ときらめき -->
+    <rect y="76" width="240" height="24" fill="url(#seaG)"/>
+    <ellipse cx="206" cy="77" rx="18" ry="4" fill="#2b6f9e"/>
+    <g stroke="#ffffff" stroke-width="1.2" opacity="0.7">
+      <line x1="18" y1="82" x2="30" y2="82"/><line x1="66" y1="88" x2="82" y2="88"/>
+      <line x1="120" y1="83" x2="130" y2="83"/><line x1="170" y1="92" x2="186" y2="92"/>
+      <line x1="40" y1="94" x2="52" y2="94"/><line x1="210" y1="85" x2="222" y2="85"/>
+    </g>
+    <!-- 草地 -->
+    <rect y="100" width="240" height="260" fill="url(#grassG)"/>
+    <!-- 路面: 右へ折れ込む急カーブ -->
+    <path d="M 30,360 C 50,258 80,162 158,100 L 188,100 C 174,162 170,252 210,360 Z" fill="url(#roadDayG)"/>
+    <path d="M 52,360 C 70,260 96,168 164,103 L 178,103 C 168,164 168,254 188,360 Z" fill="#ffffff" opacity="0.10"/>
+    <!-- 縁石(赤白) -->
+    <path d="M 30,360 C 50,258 80,162 158,100" fill="none" stroke="#eef2f6" stroke-width="5" stroke-dasharray="14 14"/>
+    <path d="M 30,360 C 50,258 80,162 158,100" fill="none" stroke="#d63a4a" stroke-width="5" stroke-dasharray="14 14" stroke-dashoffset="14"/>
+    <path d="M 210,360 C 170,252 174,162 188,100" fill="none" stroke="#eef2f6" stroke-width="4" stroke-dasharray="12 12"/>
+    <path d="M 210,360 C 170,252 174,162 188,100" fill="none" stroke="#d63a4a" stroke-width="4" stroke-dasharray="12 12" stroke-dashoffset="12"/>
+    <!-- 中央レーン(白) -->
+    <g fill="#f4f7fa">
+      <rect x="116" y="322" width="8" height="28" transform="rotate(4 120 336)" opacity="0.95"/>
+      <rect x="119" y="264" width="7" height="21" transform="rotate(8 122 274)" opacity="0.85"/>
+      <rect x="124" y="212" width="6" height="16" transform="rotate(13 127 220)" opacity="0.7"/>
+      <rect x="132" y="166" width="5" height="12" transform="rotate(20 134 172)" opacity="0.55"/>
+      <rect x="143" y="130" width="4" height="9" transform="rotate(28 145 134)" opacity="0.4"/>
+    </g>
+    <!-- ヤシの木(外側の草地) -->
+    <use href="#palm" transform="translate(24,196) scale(1.15)"/>
+    <use href="#palm" transform="translate(56,140) scale(0.72)"/>
+    <use href="#palm" transform="translate(218,146) scale(0.8) scale(-1,1)"/>
+    <!-- 看板 -->
+    <g>
+      <line x1="200" y1="118" x2="200" y2="106" stroke="#8a94a4" stroke-width="2"/>
+      <line x1="224" y1="118" x2="224" y2="106" stroke="#8a94a4" stroke-width="2"/>
+      <rect x="194" y="96" width="36" height="14" rx="2" fill="#ffffff" stroke="#c9d4de"/>
+      <rect x="194" y="96" width="8" height="14" fill="#e63946"/>
+      <text x="216" y="106" font-size="7" font-weight="bold" font-style="italic" fill="#e63946" text-anchor="middle" font-family="sans-serif">SEA GP</text>
+    </g>
+    <!-- カーブ予告シェブロン(外側) -->
+    <g filter="url(#glowD)">
+      <rect x="50" y="200" width="32" height="17" rx="2" fill="#f6a800" stroke="#b87b00"/>
+      <polygon points="58,203 66,208.5 58,214" fill="#4a2f00"/>
+      <polygon points="68,203 76,208.5 68,214" fill="#4a2f00"/>
+    </g>
+    <g opacity="0.85">
+      <rect x="92" y="136" width="21" height="11" rx="1.5" fill="#f6a800" stroke="#b87b00"/>
+      <polygon points="97,138 102,141.5 97,145" fill="#4a2f00"/>
+      <polygon points="104,138 109,141.5 104,145" fill="#4a2f00"/>
+    </g>
+    <!-- ライバル: コーナー先で内側ラインを取り合う -->
+    <use href="#gt" style="color:#2e6fe0" transform="translate(142,124) rotate(20) scale(0.62)"/>
+    <use href="#gt" style="color:#f6a800" transform="translate(160,102) rotate(28) scale(0.44)"/>
+    <!-- 自機(赤): ドリフト中。タイヤ痕→煙→火花→車体の順 -->
+    <g>
+      <path d="M 96,300 C 88,320 78,340 64,358" fill="none" stroke="#3a404c" stroke-width="3.5" opacity="0.5"/>
+      <path d="M 106,302 C 100,322 92,342 80,360" fill="none" stroke="#3a404c" stroke-width="3.5" opacity="0.5"/>
+      <g fill="#ffffff" filter="url(#softD)">
+        <circle cx="86" cy="304" r="8" opacity="0.85"/>
+        <circle cx="75" cy="318" r="11" opacity="0.65"/>
+        <circle cx="63" cy="334" r="14" opacity="0.45"/>
+        <circle cx="50" cy="350" r="16" opacity="0.28"/>
+      </g>
+      <g stroke="#ffb52a" stroke-width="1.8" filter="url(#glowD)">
+        <line x1="94" y1="300" x2="86" y2="308"/><line x1="97" y1="304" x2="93" y2="313"/><line x1="92" y1="298" x2="82" y2="301"/>
+      </g>
+      <use href="#gt" style="color:#e63946" transform="translate(88,258) rotate(22) scale(1.05)"/>
+    </g>
+    <!-- 速度線(白・弧) -->
+    <g stroke="#ffffff" fill="none" stroke-width="1.5" opacity="0.55">
+      <path d="M 16,200 Q 14,230 8,258"/>
+      <path d="M 226,150 Q 226,185 220,215"/>
+      <path d="M 232,270 Q 230,305 222,340"/>
+      <path d="M 8,116 Q 8,138 3,158"/>
+    </g>
+    <!-- HUD -->
+    <g>
+      <rect x="8" y="10" width="52" height="30" rx="5" fill="#ffffff" opacity="0.92"/>
+      <text x="15" y="30" font-size="15" font-style="italic" font-weight="bold" fill="#152a3e" font-family="sans-serif">3rd</text>
+      <text x="15" y="37" font-size="6" fill="#5b7188" font-family="monospace">LAP 2/3</text>
+      <rect x="182" y="10" width="50" height="17" rx="5" fill="#ffffff" opacity="0.92"/>
+      <text x="207" y="22" font-size="9" font-style="italic" font-weight="bold" fill="#e63946" text-anchor="middle" font-family="sans-serif">DRIFT!</text>
+      <rect x="56" y="336" width="128" height="15" rx="5" fill="#ffffff" opacity="0.92"/>
+      <rect x="61" y="344" width="118" height="4" rx="2" fill="#dbe6ef"/>
+      <rect x="61" y="344" width="76" height="4" rx="2" fill="url(#flameG)"/>
+      <text x="120" y="342" font-size="5.5" fill="#5b7188" text-anchor="middle" font-family="monospace">NITRO [Z]</text>
+    </g>
+  </svg>
+  <figcaption>真夏の海岸ハイウェイで右の急カーブをドリフトで攻める瞬間。コバルトの空・入道雲・きらめく海・ヤシの木、外側には赤白の縁石とシェブロン看板。マシンはパーツ構成（ボディ・キャノピー・ウィング・タイヤ・ハイライト・落ち影）で、白い煙と黒いタイヤ痕を引く。先のコーナーではライバルが内側ラインを取り合っている。</figcaption>
+</figure>
+
+<h2>4. メカニクス 5 本柱</h2>
+<p>柱ごとに「仕組み / 数値の初期案 / Doc へ出す値 / テストで守ること」を書く。数値はすべて Doc に出すので、実装後にエディタで走らせながら詰め直す前提の初期値。</p>
+
+<div class="pillar">
+<h3><span class="tag">柱 1</span>急カーブとドリフト — 操作の核。ここが今回の本丸</h3>
+<p><strong>コースをうねらせる</strong>: 文字格子はそのまま、路面の中心列を行ごとに大きくずらして S 字・複合カーブ・ヘアピン級の切り返しを作る。画面は縦スクロールのまま、<em>描画だけを OutRun 式に曲げる</em> — 各行の横ずれを手前から奥へ積み上げ、道が画面の中で折れ込んで見える投影にする（ルールは格子のまま、写像は View の 1 関数）。まっすぐな道の絵には二度としない。</p>
+<p><strong>グリップの限界</strong>: カーブの急さ（行ごとの中心のずれ量から導出）と速度に応じて、車が<em>アウトへ膨らむ</em>。速いまま急カーブへ入ると、ハンドルだけでは曲がり切れず縁石の外へ押し出される — 減速して曲がるのが基本。</p>
+<p><strong>ドリフト</strong>: X を押しながら曲がると後輪が流れ、<em>減速せずに</em>深い舵角で曲がれる。ドリフト中はニトロゲージが貯まり続ける（貯まる速さは柱 3 の中で最大）。ただし車体は横へ流れ続けるので、切り返しが遅れれば縁石へ突っ込む。「毎コーナーで、安全な減速か、ゲージの貯まるドリフトか」を選ばせるのがこの柱の仕事。</p>
+<figure>
+  <!-- 1つのコーナーの2つの答え(上から見た図) -->
+  <svg viewBox="0 0 400 190" width="560" role="img" aria-label="同じコーナーの2つのライン: 減速する安全ラインとドリフトライン">
+    <rect width="400" height="190" fill="#dff0fb" rx="8"/>
+    <path d="M 20,64 L 210,64 Q 300,64 300,154 L 300,180" fill="none" stroke="#8b94a8" stroke-width="46" stroke-linecap="butt"/>
+    <path d="M 210,41 Q 323,41 323,154" fill="none" stroke="#eef2f6" stroke-width="5" stroke-dasharray="10 10"/>
+    <path d="M 210,41 Q 323,41 323,154" fill="none" stroke="#d63a4a" stroke-width="5" stroke-dasharray="10 10" stroke-dashoffset="10"/>
+    <g transform="translate(334,52)">
+      <rect x="0" y="0" width="28" height="16" rx="2" fill="#f6a800" stroke="#b87b00"/>
+      <polygon points="6,3 12,8 6,13" fill="#4a2f00"/>
+      <polygon points="15,3 21,8 15,13" fill="#4a2f00"/>
+    </g>
+    <!-- 安全ライン(青): 減速して大回り -->
+    <path d="M 20,52 L 205,52 Q 288,54 288,154 L 288,180" fill="none" stroke="#1d7fd4" stroke-width="2.5" stroke-dasharray="7 5" opacity="0.9"/>
+    <!-- ドリフトライン(赤): 全速でインへ -->
+    <path d="M 20,76 L 218,76 Q 278,78 279,154 L 279,180" fill="none" stroke="#e63946" stroke-width="2.5"/>
+    <!-- ドリフト中の車と煙(アペックス付近) -->
+    <g fill="#ffffff" filter="url(#softD)">
+      <circle cx="248" cy="80" r="6" opacity="0.9"/>
+      <circle cx="236" cy="78" r="5" opacity="0.65"/>
+      <circle cx="225" cy="77" r="4" opacity="0.4"/>
+    </g>
+    <use href="#gt" style="color:#e63946" transform="translate(258,72) rotate(148) scale(0.62)"/>
+    <!-- 減速中の車(安全ライン上・青) -->
+    <use href="#gt" style="color:#1d7fd4" transform="translate(150,62) rotate(90) scale(0.55)" opacity="0.75"/>
+    <g font-family="monospace" font-size="9">
+      <text x="56" y="36" fill="#0f5aa8">青 = 減速して安全に(ゲージ +0)</text>
+      <text x="42" y="106" fill="#c92735">赤 = ドリフトで全速(ゲージ +0.35/s)</text>
+      <text x="306" y="184" fill="#5b7188">はみ出せばスピン→</text>
+    </g>
+  </svg>
+  <figcaption>同じコーナーの 2 つの答え。<span style="color:var(--blue)">青のライン</span>は減速して確実に、<span style="color:var(--red-d)">赤のライン</span>はドリフトで速度を殺さず、しかもゲージが貯まる — ただし流れすぎれば縁石の外でスピン。毎コーナーがこの 2 択になる。</figcaption>
+</figure>
+<div class="tablewrap"><table>
+  <tr><th>Doc キー</th><th>初期値</th><th>意味</th></tr>
+  <tr><td class="k">gripSpeed</td><td class="n">90</td><td>これ以下の速度なら膨らまずに曲がれる</td></tr>
+  <tr><td class="k">curvePush</td><td class="n">1.6</td><td>カーブの急さ×超過速度に掛かる横押しの強さ</td></tr>
+  <tr><td class="k">driftTurnBoost</td><td class="n">1.7</td><td>ドリフト中の舵角倍率</td></tr>
+  <tr><td class="k">driftSlide</td><td class="n">45</td><td>ドリフト中に外へ流れ続ける速さ</td></tr>
+  <tr><td class="k">brakeSlow</td><td class="n">0.6</td><td>ブレーキ（↓）中の速度倍率</td></tr>
+</table></div>
+<p>テスト: カーブ量の導出（格子の中心ずれ→急さ）/ 速度超過時だけアウトへ押される / ドリフト中は押し出しが打ち消される / ブレーキの減速。<em>曲げて描く投影はテストしない</em>（golden の仕事）。</p>
+</div>
+
+<div class="pillar">
+<h3><span class="tag">柱 2</span>スリップストリーム + ラバーバンド AI — 接戦の維持</h3>
+<p><strong>スリップストリーム</strong>: 前走車の真後ろの帯（幅 24px × 長さ 48px 程度）に入ると前進速度が 1.35 倍。帯に入っている間はニトロゲージも貯まる。</p>
+<p><strong>ラバーバンド AI</strong>: ライバルの速度を自機との距離差で補正する。離されるほど速く（最大 +22%）、引き離すほど遅く（最大 −15%）。ライバルは<em>コーナーで減速し、レコードラインへ寄る</em>（コースの中心へ滑らかに戻る決定的ルール。前が詰まったら横へずれる。乱数なし）。台数は 2 → <em>3 台</em>に増やし、順位の揺れ幅を作る。コーナーが下手な敵・直線で速い敵、と性格を <code>rows</code> で持たせる。</p>
+<figure>
+  <svg viewBox="0 0 420 170" width="600" role="img" aria-label="スリップストリームの帯とラバーバンド補正の図解">
+    <rect width="420" height="170" fill="#dff0fb" rx="8"/>
+    <!-- 左: スリップストリーム(縦の道) -->
+    <rect x="34" y="10" width="88" height="150" fill="#8b94a8" rx="3"/>
+    <g fill="#f4f7fa" opacity="0.9">
+      <rect x="76" y="18" width="4" height="12"/><rect x="76" y="52" width="4" height="12"/>
+      <rect x="76" y="86" width="4" height="12"/><rect x="76" y="120" width="4" height="12"/>
+    </g>
+    <!-- 前走車(青)と帯 -->
+    <polygon points="64,50 90,50 96,120 58,120" fill="#1d7fd4" opacity="0.20"/>
+    <polygon points="66,50 88,50 92,84 62,84" fill="#1d7fd4" opacity="0.18"/>
+    <use href="#gt" style="color:#2e6fe0" transform="translate(65,22) scale(0.62)"/>
+    <!-- 自機(赤・帯の中) -->
+    <use href="#gt" style="color:#e63946" transform="translate(64,92) scale(0.68)"/>
+    <g font-family="monospace" font-size="9">
+      <text x="136" y="60" fill="#0f5aa8">帯の中: 速度 ×1.35</text>
+      <text x="136" y="74" fill="#b87b00">ゲージ +0.20/s</text>
+      <text x="136" y="96" fill="#5b7188">ただし前の敵は</text>
+      <text x="136" y="108" fill="#5b7188">コーナーで線を変える</text>
+    </g>
+    <!-- 右: ラバーバンド -->
+    <g font-family="monospace" font-size="9">
+      <text x="252" y="30" fill="#5b7188">離されると…</text>
+      <rect x="252" y="40" width="10" height="14" rx="2" fill="#e63946"/>
+      <line x1="268" y1="47" x2="360" y2="47" stroke="#a9bccb" stroke-dasharray="3 3"/>
+      <rect x="364" y="40" width="10" height="14" rx="2" fill="#2e6fe0"/>
+      <text x="326" y="36" fill="#0f5aa8">敵 +22%</text>
+      <polygon points="360,43 352,47 360,51" fill="#2e6fe0"/>
+      <text x="252" y="92" fill="#5b7188">千切ると…</text>
+      <rect x="364" y="102" width="10" height="14" rx="2" fill="#e63946"/>
+      <line x1="268" y1="109" x2="360" y2="109" stroke="#a9bccb" stroke-dasharray="3 3"/>
+      <rect x="252" y="102" width="10" height="14" rx="2" fill="#2e6fe0"/>
+      <text x="280" y="98" fill="#0f5aa8">敵 −15%</text>
+      <polygon points="268,105 276,109 268,113" fill="#2e6fe0"/>
+      <text x="252" y="146" fill="#5b7188">→ どちらへ転んでも</text>
+      <text x="252" y="158" fill="#5b7188">  敵は常に視界の中にいる</text>
+    </g>
+  </svg>
+  <figcaption>左: 前走車の真後ろに伸びる<span style="color:var(--blue)">スリップ帯</span>。入れば速く、ゲージも貯まる。右: ラバーバンド補正 — 離されれば敵が遅く見え、千切れば追い付いてくる。順位は常に揺れ続ける。</figcaption>
+</figure>
+<div class="tablewrap"><table>
+  <tr><th>Doc キー</th><th>初期値</th><th>意味</th></tr>
+  <tr><td class="k">slipBoost</td><td class="n">1.35</td><td>スリップ帯内の速度倍率</td></tr>
+  <tr><td class="k">slipRange</td><td class="n">48</td><td>帯の長さ（px）</td></tr>
+  <tr><td class="k">rubberRange</td><td class="n">400</td><td>補正が最大になる距離差</td></tr>
+  <tr><td class="k">rubberCatchUp</td><td class="n">0.22</td><td>離された時の加速上限</td></tr>
+  <tr><td class="k">rubberSlowDown</td><td class="n">0.15</td><td>先行時の減速上限</td></tr>
+  <tr><td class="k">rivals（rows）</td><td class="n">3 台</td><td>1 台 = 1 行: 基本速度・コーナーの上手さ・色</td></tr>
+</table></div>
+<p>テスト: 帯の内外でスリップ判定が切り替わる / 距離差に応じて補正の符号が変わる / コーナーで AI が減速する。</p>
+</div>
+
+<div class="pillar">
+<h3><span class="tag">柱 3</span>ニトロ / ブーストゲージ — リスクとリターンの往復</h3>
+<p>危険な走りだけがゲージを貯める: <em>ドリフト維持</em>（毎秒・最速）、<em>スリップ帯の維持</em>（毎秒）、<em>障害物・ライバルすれすれ</em>（1 回ごと）。Z で発動し、一定時間だけ爆発的に加速する。ただし<strong>発動中は操舵が半分に重くなる</strong>うえグリップ限界はそのまま — 直線で撃てば安全に速く、コーナー明けに撃てば博打で最速。</p>
+<figure>
+  <svg viewBox="0 0 200 300" width="280" role="img" aria-label="ニトロ発動中の画面モック(昼)">
+    <rect width="200" height="60" fill="url(#skyG)"/>
+    <circle cx="168" cy="20" r="16" fill="url(#sunG)"/>
+    <circle cx="168" cy="20" r="6" fill="#ffffff"/>
+    <g fill="#ffffff" opacity="0.95">
+      <ellipse cx="52" cy="26" rx="18" ry="7"/><ellipse cx="38" cy="30" rx="11" ry="5"/>
+    </g>
+    <rect y="60" width="200" height="16" fill="url(#seaG)"/>
+    <g stroke="#ffffff" stroke-width="1" opacity="0.7">
+      <line x1="24" y1="66" x2="34" y2="66"/><line x1="120" y1="70" x2="132" y2="70"/><line x1="166" y1="64" x2="176" y2="64"/>
+    </g>
+    <rect y="76" width="200" height="224" fill="url(#grassG)"/>
+    <!-- 出口へ抜ける緩いカーブ -->
+    <path d="M 34,300 C 48,210 64,130 88,76 L 128,76 C 124,130 138,210 172,300 Z" fill="url(#roadDayG)"/>
+    <path d="M 34,300 C 48,210 64,130 88,76" fill="none" stroke="#eef2f6" stroke-width="4" stroke-dasharray="11 11"/>
+    <path d="M 34,300 C 48,210 64,130 88,76" fill="none" stroke="#d63a4a" stroke-width="4" stroke-dasharray="11 11" stroke-dashoffset="11"/>
+    <path d="M 172,300 C 138,210 124,130 128,76" fill="none" stroke="#eef2f6" stroke-width="3.5" stroke-dasharray="10 10"/>
+    <path d="M 172,300 C 138,210 124,130 128,76" fill="none" stroke="#d63a4a" stroke-width="3.5" stroke-dasharray="10 10" stroke-dashoffset="10"/>
+    <g fill="#f4f7fa">
+      <rect x="98" y="262" width="7" height="24" transform="rotate(2 101 274)" opacity="0.95"/>
+      <rect x="101" y="202" width="6" height="17" transform="rotate(4 104 210)" opacity="0.8"/>
+      <rect x="103" y="150" width="5" height="12" transform="rotate(6 105 156)" opacity="0.6"/>
+      <rect x="105" y="108" width="4" height="9" transform="rotate(8 107 112)" opacity="0.45"/>
+    </g>
+    <use href="#palm" transform="translate(20,150) scale(0.85)"/>
+    <use href="#palm" transform="translate(184,128) scale(0.65) scale(-1,1)"/>
+    <!-- 画面端の熱の縁(ニトロ中だけ) -->
+    <rect x="0" y="0" width="24" height="300" fill="url(#edgeDayL)"/>
+    <rect x="176" y="0" width="24" height="300" fill="url(#edgeDayR)"/>
+    <!-- 千切られていくライバル(青) -->
+    <use href="#gt" style="color:#2e6fe0" transform="translate(100,92) scale(0.45)"/>
+    <!-- 自機(赤): 残像2枚+炎 -->
+    <g>
+      <g opacity="0.16"><use href="#gt" style="color:#e63946" transform="translate(88,254) scale(0.95)"/></g>
+      <g opacity="0.34"><use href="#gt" style="color:#e63946" transform="translate(89,224) scale(0.98)"/></g>
+      <use href="#gt" style="color:#e63946" transform="translate(90,182) scale(1.0)"/>
+      <polygon points="96,220 102,254 108,220" fill="url(#flameG)" filter="url(#glowD)"/>
+      <polygon points="99,220 102,238 105,220" fill="#ffffff"/>
+    </g>
+    <!-- 倍増した速度線(白) -->
+    <g stroke="#ffffff" stroke-width="1.5" opacity="0.75">
+      <line x1="14" y1="120" x2="8" y2="188"/><line x1="24" y1="200" x2="17" y2="268"/>
+      <line x1="186" y1="110" x2="180" y2="178"/><line x1="178" y1="196" x2="170" y2="262"/>
+      <line x1="40" y1="80" x2="36" y2="126"/><line x1="164" y1="82" x2="160" y2="126"/>
+    </g>
+    <text x="100" y="170" font-size="13" font-style="italic" font-weight="bold" fill="#e63946" text-anchor="middle" font-family="sans-serif" filter="url(#glowD)">×1.8</text>
+    <!-- HUD: 使い切ったゲージ -->
+    <rect x="46" y="278" width="108" height="14" rx="5" fill="#ffffff" opacity="0.92"/>
+    <rect x="51" y="286" width="98" height="3.5" rx="1.5" fill="#dbe6ef"/>
+    <rect x="51" y="286" width="12" height="3.5" rx="1.5" fill="url(#flameG)"/>
+    <text x="100" y="284" font-size="5.5" fill="#5b7188" text-anchor="middle" font-family="monospace">NITRO — BURNING</text>
+  </svg>
+  <figcaption>ニトロ発動の瞬間。赤い残像 2 枚と橙→白の炎、倍増した白い速度線、画面の両端に熱の縁。貯めたゲージを 1.2 秒で燃やし尽くし、前のライバルを一気に千切る — ただしこの間、ハンドルは半分しか効かない。</figcaption>
+</figure>
+<div class="tablewrap"><table>
+  <tr><th>Doc キー</th><th>初期値</th><th>意味</th></tr>
+  <tr><td class="k">nitroChargeDrift</td><td class="n">0.35</td><td>ドリフト 1 秒あたりの加算（満タン=1.0）</td></tr>
+  <tr><td class="k">nitroChargeSlip</td><td class="n">0.20</td><td>スリップ維持 1 秒あたりの加算</td></tr>
+  <tr><td class="k">nitroChargeNearMiss</td><td class="n">0.25</td><td>すれすれ 1 回の加算</td></tr>
+  <tr><td class="k">nitroBoost</td><td class="n">1.8</td><td>発動中の速度倍率</td></tr>
+  <tr><td class="k">nitroDuration</td><td class="n">1.2</td><td>発動時間（秒）</td></tr>
+  <tr><td class="k">nitroSteerPenalty</td><td class="n">0.5</td><td>発動中の操舵倍率</td></tr>
+</table></div>
+<p>テスト: ゲージの収支（3 経路で貯まる・上限 1.0・発動で消費）/ 未満タンでは発動しない / 発動中の速度と操舵の倍率。</p>
+</div>
+
+<div class="pillar">
+<h3><span class="tag">柱 4</span>障害物とクラッシュ、敗北 — 失うものを作る</h3>
+<p>コース格子に<strong>障害マス</strong>（<code>X</code> = コーン列・落下物）を置く。障害物・ライバル・<em>縁石の外の壁</em>に当たるとスピン: 約 1 秒間、操作不能でくるくる回りながら大きく減速し、ニトロゲージも半減する。ドリフトの失敗がそのままクラッシュに繋がる。</p>
+<p><strong>敗北条件</strong>: 完走時に最下位（4 位）なら LOSE。ラバーバンドで敵は常に近くにいるので、「スピン 2 回で負けが見える」緊張感が出る。プレイヤーが詰まない原則は守る: スピンしても必ず復帰し、レースは最後まで走れる。</p>
+<figure>
+  <svg viewBox="0 0 400 175" width="580" role="img" aria-label="接触からスピン、復帰までの3コマ">
+    <rect width="400" height="175" fill="#dff0fb" rx="8"/>
+    <!-- コマ1: 接触の直前 -->
+    <g transform="translate(14,12)">
+      <rect width="110" height="130" fill="#bfe0f2" rx="4"/>
+      <rect x="30" y="0" width="50" height="130" fill="#8b94a8"/>
+      <g>
+        <polygon points="46,36 55,18 64,36" fill="#ff8c2a"/>
+        <rect x="49" y="28" width="12" height="3" fill="#ffffff"/>
+        <ellipse cx="57" cy="37" rx="10" ry="2.5" fill="#0c1a28" opacity="0.2"/>
+      </g>
+      <use href="#gt" style="color:#e63946" transform="translate(46,80) scale(0.7)"/>
+      <text x="74" y="62" font-size="14" font-weight="bold" fill="#e63946" font-family="sans-serif">!</text>
+    </g>
+    <!-- コマ2: 接触、白フラッシュ+スピン開始 -->
+    <g transform="translate(145,12)">
+      <rect width="110" height="130" fill="#bfe0f2" rx="4"/>
+      <rect x="30" y="0" width="50" height="130" fill="#8b94a8"/>
+      <rect width="110" height="130" fill="#fff6d8" opacity="0.55" rx="4"/>
+      <use href="#gt" style="color:#e63946" transform="translate(46,52) rotate(105 8 13) scale(0.7)"/>
+      <g stroke="#ff8c2a" stroke-width="2" filter="url(#glowD)">
+        <line x1="44" y1="52" x2="35" y2="43"/><line x1="70" y1="50" x2="79" y2="41"/>
+        <line x1="42" y1="78" x2="32" y2="85"/><line x1="72" y1="80" x2="82" y2="88"/>
+      </g>
+      <text x="55" y="116" font-size="11" font-style="italic" font-weight="bold" fill="#c92735" text-anchor="middle" font-family="sans-serif">SPIN!</text>
+    </g>
+    <!-- コマ3: 回りながら減速、抜き返される -->
+    <g transform="translate(276,12)">
+      <rect width="110" height="130" fill="#bfe0f2" rx="4"/>
+      <rect x="30" y="0" width="50" height="130" fill="#8b94a8"/>
+      <g fill="#ffffff" filter="url(#softD)">
+        <circle cx="48" cy="44" r="6" opacity="0.8"/><circle cx="60" cy="36" r="5" opacity="0.55"/>
+      </g>
+      <use href="#gt" style="color:#e63946" transform="translate(44,56) rotate(250 8 13) scale(0.7)"/>
+      <use href="#gt" style="color:#2e6fe0" transform="translate(62,92) scale(0.55)"/>
+      <rect x="18" y="116" width="74" height="8" rx="3" fill="#ffffff" opacity="0.92"/>
+      <rect x="21" y="119" width="66" height="2.5" rx="1" fill="#dbe6ef"/>
+      <rect x="21" y="119" width="22" height="2.5" rx="1" fill="url(#flameG)"/>
+    </g>
+    <g font-family="monospace" font-size="9" fill="#5b7188">
+      <text x="42" y="162">1. 接触</text>
+      <text x="164" y="162">2. 1秒操作不能</text>
+      <text x="288" y="162">3. ゲージ半減・復帰</text>
+    </g>
+  </svg>
+  <figcaption>クラッシュの流れ。接触の瞬間に白いフラッシュ、1 秒間くるくる回って大減速、その間にさっき抜いた敵が横を通り過ぎていく。ゲージも半分失う — ドリフトの失敗には、ちゃんと痛みがある。</figcaption>
+</figure>
+<div class="tablewrap"><table>
+  <tr><th>Doc キー</th><th>初期値</th><th>意味</th></tr>
+  <tr><td class="k">spinDuration</td><td class="n">1.0</td><td>スピン時間（秒）</td></tr>
+  <tr><td class="k">spinSlow</td><td class="n">0.3</td><td>スピン中の速度倍率</td></tr>
+  <tr><td class="k">spinNitroLoss</td><td class="n">0.5</td><td>スピン時に失うゲージ割合</td></tr>
+  <tr><td class="k">nearMissDist</td><td class="n">10</td><td>「すれすれ」と判定する距離（px）</td></tr>
+</table></div>
+<p>テスト: 障害マス・壁との接触でスピン状態に入る / スピン中は操作が効かない / 時間経過で復帰する / 最下位ゴールで LOSE、それ以外は WIN。当たりの有無はルールなのでテスト対象、スピンの回転演出はテストしない。</p>
+</div>
+
+<div class="pillar">
+<h3><span class="tag">柱 5</span>アイテム — 最終ラップの逆転劇</h3>
+<p>コース格子に<strong>アイテムマス</strong>（<code>I</code> = 光る「?」）を固定配置する。効果は<strong>取った瞬間の順位で決める</strong>: 1 位なら小さく（スコアボーナス）、2 位ならニトロゲージ +30%、3〜4 位なら即時の大ブースト。<em>乱数はゼロ</em> — マリオカートから「下位ほど強い」という逆転補正だけを頂き、運の要素は入れない。テンプレとして決定的（テスト・bake が安定）なまま、最終ラップの逆転を仕組みで保証する。</p>
+<div class="cards">
+  <div class="card">
+    <svg viewBox="0 0 40 40" width="34" aria-hidden="true"><rect x="12" y="12" width="16" height="16" rx="2" fill="#f6a800" stroke="#b87b00" transform="rotate(45 20 20)"/><text x="20" y="25" font-size="12" font-weight="bold" fill="#4a2f00" text-anchor="middle" font-family="monospace">?</text></svg>
+    <span class="rank" style="color:var(--blue)">1st</span>
+    <span class="fx">+200 スコア</span><br>
+    <span class="dn">先頭は御褒美だけ。逃げ切りは実力で</span>
+  </div>
+  <div class="card">
+    <svg viewBox="0 0 40 40" width="34" aria-hidden="true"><rect x="5" y="16" width="30" height="9" rx="3" fill="#eef4f9" stroke="#c9d4de"/><rect x="7" y="18.5" width="18" height="4" rx="2" fill="url(#flameG)"/></svg>
+    <span class="rank" style="color:var(--ink)">2nd</span>
+    <span class="fx">ゲージ +30%</span><br>
+    <span class="dn">仕掛ける弾が貯まる。抜くのは自分</span>
+  </div>
+  <div class="card">
+    <svg viewBox="0 0 40 40" width="34" aria-hidden="true"><polygon points="14,7 27,7 22,19 31,19 12,35 18,22 9,22" fill="url(#flameG)" stroke="#d97d00" stroke-width="1"/></svg>
+    <span class="rank" style="color:var(--red-d)">3rd–4th</span>
+    <span class="fx">即・大ブースト ×1.5</span><br>
+    <span class="dn">下位ほど強い。最終ラップの牙</span>
+  </div>
+</div>
+<div class="tablewrap"><table>
+  <tr><th>Doc キー</th><th>初期値</th><th>意味</th></tr>
+  <tr><td class="k">itemScoreBonus</td><td class="n">200</td><td>1 位で取った時のスコア</td></tr>
+  <tr><td class="k">itemNitroCharge</td><td class="n">0.3</td><td>2 位で取った時のゲージ加算</td></tr>
+  <tr><td class="k">itemBoostLow</td><td class="n">1.5</td><td>3〜4 位で取った時の即時ブースト倍率</td></tr>
+  <tr><td class="k">itemBoostDuration</td><td class="n">0.8</td><td>即時ブーストの時間（秒）</td></tr>
+</table></div>
+<p>テスト: 順位ごとに効果が切り替わる / 同じマスは 1 周で 1 回だけ（再出現は次周）。</p>
+</div>
+
+<h2>5. コース設計 — 直線は息継ぎでしかない</h2>
+<p>1 周をリズムで組む: <em>スタート直線（スリップ勝負）→ S 字（ドリフト練習）→ アイテム直線 → 複合カーブ（障害物入り）→ 最終の急な切り返し（逆転ポイント）</em>。急カーブの手前にはシェブロン看板を必ず置き、初見でも「来るぞ」が判るようにする。</p>
+<figure>
+  <!-- コース全景(1周のリボン図) -->
+  <svg viewBox="0 0 440 188" width="620" role="img" aria-label="1周のコース全景図">
+    <rect width="440" height="188" fill="#dff0fb" rx="8"/>
+    <path d="M 28,128 C 88,128 84,44 140,44 C 186,44 172,120 218,124 C 250,127 258,96 282,74 C 300,58 330,58 344,80 C 360,105 342,132 380,136 C 398,138 410,124 414,106"
+      fill="none" stroke="#8b94a8" stroke-width="17" stroke-linecap="round"/>
+    <path d="M 28,128 C 88,128 84,44 140,44 C 186,44 172,120 218,124 C 250,127 258,96 282,74 C 300,58 330,58 344,80 C 360,105 342,132 380,136 C 398,138 410,124 414,106"
+      fill="none" stroke="#ffffff" stroke-width="1.2" stroke-dasharray="5 7" opacity="0.9"/>
+    <g transform="translate(30,120)">
+      <rect x="-2" y="0" width="4" height="16" fill="#ffffff"/>
+      <rect x="-2" y="0" width="4" height="4" fill="#152a3e"/><rect x="-2" y="8" width="4" height="4" fill="#152a3e"/>
+    </g>
+    <g>
+      <rect x="196" y="112" width="9" height="9" rx="1" fill="#f6a800" stroke="#b87b00" transform="rotate(45 200 117)"/>
+      <rect x="243" y="98" width="9" height="9" rx="1" fill="#f6a800" stroke="#b87b00" transform="rotate(45 247 103)"/>
+      <polygon points="300,52 305,42 310,52" fill="#ff8c2a"/>
+      <polygon points="336,132 341,122 346,132" fill="#ff8c2a"/>
+      <g fill="#d97d00"><polygon points="118,30 124,34 118,38"/><polygon points="126,30 132,34 126,38"/></g>
+      <g fill="#d97d00"><polygon points="374,150 380,154 374,158"/><polygon points="382,150 388,154 382,158"/></g>
+    </g>
+    <use href="#palm" transform="translate(70,84) scale(0.6)"/>
+    <use href="#palm" transform="translate(240,62) scale(0.5)"/>
+    <g font-family="monospace" font-size="9" fill="#33506b">
+      <text x="34" y="152">スタート直線</text>
+      <text x="96" y="24">S字(ドリフト)</text>
+      <text x="196" y="146">アイテム直線</text>
+      <text x="272" y="40">複合+障害物</text>
+      <text x="352" y="162">最終切り返し</text>
+    </g>
+    <g font-family="monospace" font-size="8" fill="#7a8ea1">
+      <text x="16" y="181">◆=アイテム ▲=障害物 »=シェブロン</text>
+    </g>
+  </svg>
+  <figcaption>1 周のリズム。<code>race.course.json</code> の文字格子で表現し（<code>#</code> 路面 / <code>I</code> アイテム / <code>X</code> 障害）、カーブの急さは中心列のずれ量から導出する — 急さを別 Doc に持たず、格子だけが正典。</figcaption>
+</figure>
+
+<h2>6. 絵作り — 真夏の昼、誤魔化しの利かない日向で</h2>
+<p>絵の下限 4 性質（面の階調・主役の分離・層・時間）は維持したまま、夜と霧に頼らない昼の絵へ作り替える。<strong>昼はごまかしが利かない</strong> — その分、決めるべき道具をはっきり決める。</p>
+<ul>
+  <li><strong>空と海が背景の主役</strong>: コバルト→淡青の空グラデ・入道雲・きらめく海（白い短線の明滅）・太陽のハロ。地平線で空と海が切り替わるだけで、画面の上半分に「夏」が入る。</li>
+  <li><strong>影が絵を地面に貼り付ける</strong>: 車の落ち影・ヤシの影・看板の影。昼の絵の説得力は影が 8 割。すべての置き物に楕円 1 枚の落ち影を必ず敷く（主役の分離もこれが受け持つ）。</li>
+  <li><strong>マシンは矩形 1 枚をやめてパーツ構成にする</strong>: ボディ（先細りのカプセル）+ キャノピー + ルーフ + リアウィング + 4 輪 + センターストライプ + 日差しのハイライト + 落ち影。polygon 数枚で組める分量に抑えつつ、拡大しても「車」に見える形にする（上のモックの車がそのまま実装仕様）。</li>
+  <li><strong>OutRun 式の曲がる投影</strong>: 各行の横ずれを手前から奥へ積み上げ、道が画面の中で折れ込む。行の高さも遠くほど詰めて収束。カーブ中はカメラをイン側へ寄せ、視線をコーナーの先へ。</li>
+  <li><strong>コーナーの道具立て</strong>: 外側に赤白の縁石・黄色いシェブロン看板・ヤシの木・スポンサー看板。景色がカーブに沿って流れて初めて「曲がっている」が見える。</li>
+  <li><strong>ドリフト演出</strong>: 車体を進行方向より内へ傾け（turns 回転）、後輪から黒いタイヤ痕 2 本・白い煙（昼だからこそ映える）・橙の火花。閉形式 <code>(spec, seed, i, t)</code> の純関数で導出し、保存する状態は増やさない。</li>
+  <li><strong>ニトロ演出</strong>: 橙→白の炎・赤い残像 2〜3 枚・白い速度線の倍増・画面端の熱の縁・路面スクロール倍速。</li>
+  <li><strong>スピン演出</strong>: 1 秒 2 回転 + 火花の飛散 + 接触の瞬間 2 フレームの白フラッシュ。</li>
+  <li><strong>接戦の演出</strong>: ライバルが近い間だけ相手の輪郭に薄い縁光と、自機 HUD の順位を揺らす。危険の近さが色と揺れで判る。</li>
+</ul>
+<figure>
+  <!-- Viewの層の分解図 -->
+  <svg viewBox="0 0 420 250" width="600" role="img" aria-label="Viewの層を手前から奥まで分解した図">
+    <rect width="420" height="250" fill="#f2f8fd" rx="8"/>
+    <g font-family="monospace" font-size="9" fill="#33506b">
+      <!-- z0 空と海 -->
+      <polygon points="70,18 250,18 290,42 110,42" fill="url(#skyG)" stroke="#c9d4de"/>
+      <ellipse cx="170" cy="27" rx="12" ry="4" fill="#ffffff"/>
+      <circle cx="120" cy="27" r="5" fill="#fff3c2"/>
+      <polygon points="102,36 262,36 290,42 110,42" fill="url(#seaG)" opacity="0.9"/>
+      <text x="302" y="36">z0  空・太陽・海・雲</text>
+      <!-- z1 路面 -->
+      <polygon points="70,54 250,54 290,78 110,78" fill="#8b94a8" stroke="#c9d4de"/>
+      <path d="M 150,58 Q 180,64 200,74" stroke="#f4f7fa" stroke-width="2" fill="none" stroke-dasharray="4 4"/>
+      <text x="302" y="72">z1  曲がる路面 + 白線</text>
+      <!-- z2 縁石・ヤシ・看板 -->
+      <polygon points="70,90 250,90 290,114 110,114" fill="#bfe0d2" stroke="#c9d4de" opacity="0.7"/>
+      <path d="M 130,96 Q 170,100 196,110" stroke="#d63a4a" stroke-width="3" fill="none" stroke-dasharray="5 5"/>
+      <path d="M 130,96 Q 170,100 196,110" stroke="#ffffff" stroke-width="3" fill="none" stroke-dasharray="5 5" stroke-dashoffset="5"/>
+      <use href="#palm" transform="translate(216,110) scale(0.42)"/>
+      <rect x="150" y="94" width="15" height="8" rx="1" fill="#f6a800" stroke="#b87b00"/>
+      <text x="302" y="108">z2  縁石・ヤシ・看板</text>
+      <!-- z3 車+影+タイヤ痕 -->
+      <polygon points="70,126 250,126 290,150 110,150" fill="#eef4f9" stroke="#c9d4de"/>
+      <path d="M 140,146 Q 158,138 168,132" stroke="#3a404c" stroke-width="1.5" fill="none" opacity="0.5"/>
+      <use href="#gt" style="color:#e63946" transform="translate(166,128) rotate(30) scale(0.42)"/>
+      <use href="#gt" style="color:#2e6fe0" transform="translate(200,130) scale(0.36)"/>
+      <text x="302" y="144">z3  車 + 落ち影 + タイヤ痕</text>
+      <!-- z4 Fx -->
+      <polygon points="70,162 250,162 290,186 110,186" fill="#eef4f9" stroke="#c9d4de"/>
+      <circle cx="160" cy="172" r="6" fill="#ffffff" filter="url(#softD)" opacity="0.9"/>
+      <circle cx="176" cy="176" r="4" fill="#ffffff" filter="url(#softD)" opacity="0.7"/>
+      <g stroke="#ff8c2a" stroke-width="1.4" filter="url(#glowD)"><line x1="192" y1="170" x2="198" y2="176"/><line x1="196" y1="168" x2="204" y2="170"/></g>
+      <line x1="220" y1="166" x2="216" y2="182" stroke="#ffffff" stroke-width="1.5"/>
+      <text x="302" y="180">z4  煙・火花・残像・速度線</text>
+      <!-- z5 HUD -->
+      <polygon points="70,198 250,198 290,222 110,222" fill="#eef4f9" stroke="#c9d4de" opacity="0.9"/>
+      <rect x="120" y="202" width="34" height="14" rx="4" fill="#ffffff" stroke="#c9d4de"/>
+      <text x="127" y="213" font-size="10" font-style="italic" font-weight="bold" fill="#152a3e" font-family="sans-serif">3rd</text>
+      <rect x="166" y="207" width="54" height="5" rx="2" fill="#dbe6ef"/>
+      <rect x="166" y="207" width="32" height="5" rx="2" fill="url(#flameG)"/>
+      <text x="302" y="216">z5  HUD・幕</text>
+    </g>
+    <g font-family="monospace" font-size="9" fill="#7a8ea1">
+      <text x="16" y="30">奥</text><text x="16" y="216">手前</text>
+      <line x1="24" y1="40" x2="24" y2="200" stroke="#c9d4de"/>
+      <polygon points="20,200 24,210 28,200" fill="#c9d4de"/>
+    </g>
+  </svg>
+  <figcaption>View の層構成。各層が絵の下限 4 性質のどれかを受け持つ: 空と路面が「面の階調」、落ち影と縁光が「主役の分離」、板の並びそのものが「層」、煙・速度線・流れる景色が「時間」。</figcaption>
+</figure>
+<div class="box">
+  <p style="margin:0"><strong>画風宣言の改訂案</strong>（AGENTS.local.md の形式のまま）:<br>
+  「真夏の海岸ハイウェイ。空は青く、海は光り、路面は白く灼けている。速さは流れる景色とタイヤ痕で、危険は膨らむ白煙で見せる」<br>
+  色は 3 つ: コバルトの空 / 灼けたアスファルト / 縁石の赤。<br>
+  やらないこと: 暗がりや霧で誤魔化さない（全部日向で見せる。分離は影の仕事）。<br>
+  <span style="color:var(--dim)">※ 同じ「昼」でも rpg テンプレ（陽だまりの城下町・ドット絵）とは別画風 — こちらは高彩度・ベクタ形状のレーシング。テンプレどうしで画風を揃えない方針は守る。</span></p>
+</div>
+
+<h2>7. Doc 設計</h2>
+<ul>
+  <li><code>race.rules.json</code>: 上の表の約 20 キーを追加。スカラー総数 30 個の分割ラインを超えるので、<strong>最初から 2 Doc に割る</strong>: <code>race.rules.json</code>（走行・ドリフト・ニトロ・クラッシュ・アイテム = 手触り）と <code>race.rivals.json</code>（ラバーバンド + ライバル 3 台の rows = 敵の性格）。「いつ読み直したいか」が違う（手触り調整 vs 難易度調整）ので関心も分かれる。</li>
+  <li><code>race.course.json</code>: 文字の語彙を拡張 — <code>#</code> 路面 / <code>.</code> 草 / <code>I</code> アイテム / <code>X</code> 障害物。カーブの急さは中心列のずれから導出（導出できる値は Doc に持たない）。判定は今まで通り <code>CourseDoc</code> の 1 か所に集める。</li>
+  <li><code>race.theme.json</code>: 全色を昼へ差し替え — 空 2 色・海・草・路面・縁石の赤・シェブロンの黄・マシン 4 色（自機の赤 + ライバル青/黄/緑）・炎・煙。</li>
+  <li>すべて sections 方言のスキーマ・fail-open・保存即反映（<code>watchFile</code>）は現状のまま。</li>
+</ul>
+
+<h2>8. テスト・bake 方針</h2>
+<p>テストするのはルールだけ（カーブ急さの導出・グリップ超過の押し出し・ドリフトの打ち消し・ラバーバンド補正・ゲージ収支・スピン遷移・順位と勝敗・アイテム効果・course 文字判定）。期待値は <code>RulesDoc.defaults()</code> から導く。曲げる投影・タイヤ痕・煙はテストしない — golden と目視の仕事。Doc 橋渡しは 1 Doc 3 本以内を維持。</p>
+<p>bake の 4 場面を差し替える: <em>タイトル</em> / <em>ドリフト</em>（急カーブ・タイヤ痕・煙）/ <em>ニトロ発動</em>（残像と炎）/ <em>クラッシュ</em>（スピンと白フラッシュ明け）。ハラハラの画がそのままジャンル札のサムネになる。<code>golden/title.png</code> は必ず維持する。</p>
+<figure>
+  <svg viewBox="0 0 440 180" width="620" role="img" aria-label="bakeで焼く4場面のサムネ案">
+    <rect width="440" height="180" fill="#f2f8fd" rx="8"/>
+    <!-- title -->
+    <g transform="translate(12,12)">
+      <rect width="98" height="134" fill="url(#skyG)" rx="4"/>
+      <circle cx="24" cy="26" r="12" fill="url(#sunG)"/><circle cx="24" cy="26" r="5" fill="#fff"/>
+      <ellipse cx="72" cy="30" rx="14" ry="5" fill="#ffffff"/>
+      <rect y="64" width="98" height="10" fill="url(#seaG)"/>
+      <rect y="74" width="98" height="60" fill="url(#grassG)"/>
+      <polygon points="34,134 64,134 55,74 43,74" fill="#8b94a8"/>
+      <rect x="47.5" y="84" width="3" height="9" fill="#f4f7fa"/>
+      <rect x="48" y="106" width="4" height="13" fill="#f4f7fa"/>
+      <use href="#palm" transform="translate(16,110) scale(0.55)"/>
+      <rect x="18" y="38" width="62" height="18" rx="3" fill="#ffffff" opacity="0.92"/>
+      <text x="49" y="51" font-size="12" font-style="italic" font-weight="bold" fill="#e63946" text-anchor="middle" font-family="sans-serif">RACE</text>
+      <text x="49" y="128" font-size="6" fill="#ffffff" text-anchor="middle" font-family="monospace">PRESS SPACE</text>
+    </g>
+    <!-- drift -->
+    <g transform="translate(120,12)">
+      <rect width="98" height="134" fill="#bfe0f2" rx="4"/>
+      <path d="M 18,134 C 26,90 40,56 74,30 L 90,30 C 76,60 70,96 84,134 Z" fill="#8b94a8"/>
+      <path d="M 18,134 C 26,90 40,56 74,30" fill="none" stroke="#eef2f6" stroke-width="3" stroke-dasharray="7 7"/>
+      <path d="M 18,134 C 26,90 40,56 74,30" fill="none" stroke="#d63a4a" stroke-width="3" stroke-dasharray="7 7" stroke-dashoffset="7"/>
+      <path d="M 48,122 C 42,106 40,94 44,82" stroke="#3a404c" stroke-width="2" fill="none" opacity="0.5"/>
+      <circle cx="42" cy="108" r="5" fill="#ffffff" filter="url(#softD)" opacity="0.9"/>
+      <circle cx="38" cy="120" r="7" fill="#ffffff" filter="url(#softD)" opacity="0.6"/>
+      <use href="#gt" style="color:#e63946" transform="translate(48,78) rotate(28) scale(0.6)"/>
+      <text x="49" y="128" font-size="6" fill="#33506b" text-anchor="middle" font-family="monospace">s1_drift</text>
+    </g>
+    <!-- nitro -->
+    <g transform="translate(228,12)">
+      <rect width="98" height="134" fill="#bfe0f2" rx="4"/>
+      <polygon points="30,134 68,134 56,16 42,16" fill="#8b94a8"/>
+      <rect x="0" y="0" width="12" height="134" fill="url(#edgeDayL)"/>
+      <rect x="86" y="0" width="12" height="134" fill="url(#edgeDayR)"/>
+      <g opacity="0.3"><use href="#gt" style="color:#e63946" transform="translate(42,84) scale(0.55)"/></g>
+      <use href="#gt" style="color:#e63946" transform="translate(42,56) scale(0.58)"/>
+      <polygon points="47,80 51,100 55,80" fill="url(#flameG)" filter="url(#glowD)"/>
+      <g stroke="#ffffff" stroke-width="1.2" opacity="0.8">
+        <line x1="16" y1="40" x2="13" y2="76"/><line x1="82" y1="56" x2="79" y2="92"/><line x1="20" y1="90" x2="17" y2="122"/>
+      </g>
+      <text x="49" y="128" font-size="6" fill="#33506b" text-anchor="middle" font-family="monospace">s2_nitro</text>
+    </g>
+    <!-- crash -->
+    <g transform="translate(336,12)">
+      <rect width="98" height="134" fill="#bfe0f2" rx="4"/>
+      <polygon points="28,134 70,134 60,16 38,16" fill="#8b94a8"/>
+      <rect width="98" height="134" fill="#fff6d8" opacity="0.5" rx="4"/>
+      <use href="#gt" style="color:#e63946" transform="translate(38,56) rotate(115 8 13) scale(0.6)"/>
+      <g stroke="#ff8c2a" stroke-width="1.5" filter="url(#glowD)">
+        <line x1="36" y1="52" x2="29" y2="45"/><line x1="62" y1="50" x2="69" y2="43"/><line x1="60" y1="80" x2="68" y2="86"/>
+      </g>
+      <text x="49" y="128" font-size="6" fill="#33506b" text-anchor="middle" font-family="monospace">s3_crash</text>
+    </g>
+    <g font-family="monospace" font-size="9" fill="#5b7188">
+      <text x="36" y="166">title</text><text x="136" y="166">ドリフト</text><text x="252" y="166">ニトロ</text><text x="362" y="166">クラッシュ</text>
+    </g>
+  </svg>
+  <figcaption>bake で焼く 4 場面の構図案。どれも t 固定・乱数なしの決定的な 1 枚で、Studio のジャンル札にはこのタイトルが載る。</figcaption>
+</figure>
+
+<h2>9. 実装マイルストーン（日単位・順序 = 依存順）</h2>
+<div class="tablewrap"><table>
+  <tr><th>段階</th><th>中身</th><th>目安</th></tr>
+  <tr><td><strong>M1</strong></td><td>曲がる投影 + うねるコース + グリップ限界 + ドリフト。<em>絵と手触りの土台なので最初にやる</em>。bake でモックの画に寄せる</td><td class="n">1.5 日</td></tr>
+  <tr><td><strong>M2</strong></td><td>昼の絵の土台（空・海・草・縁石・ヤシ・パーツ構成のマシン・落ち影）。theme.json 全色差し替え</td><td class="n">1 日</td></tr>
+  <tr><td><strong>M3</strong></td><td>ラバーバンド AI + コーナー減速 + 3 台目 + スリップストリーム</td><td class="n">1 日</td></tr>
+  <tr><td><strong>M4</strong></td><td>ニトロゲージと発動（3 経路の収支・操舵ペナルティ・HUD）</td><td class="n">0.5 日</td></tr>
+  <tr><td><strong>M5</strong></td><td>障害物・接触スピン・敗北条件（LOSE 画面）</td><td class="n">1 日</td></tr>
+  <tr><td><strong>M6</strong></td><td>アイテムマスと順位別効果</td><td class="n">0.5 日</td></tr>
+  <tr><td><strong>M7</strong></td><td>演出の仕上げ（煙・火花・残像・熱の縁・接戦の縁光）。bake → 目視批評 → 修正を 1 つずつ回す</td><td class="n">1.5 日</td></tr>
+  <tr><td><strong>仕上げ</strong></td><td>数値をエディタで詰める・golden 祝福・AGENTS.local.md の画風と「足さないもの」改訂・README 追随</td><td class="n">0.5 日</td></tr>
+</table></div>
+<p>各段階の終わりに <code>make -C templates/race-starter test</code> を回し、M1 の時点から常に遊べる状態を保つ。</p>
+
+<h2>10. この企画で race-starter は何のお手本になるか</h2>
+<p>今のテンプレは「Doc 化とテストのお手本」だった。作り直し後は加えて、<strong>「格子コースのまま道を曲げて見せる投影」「昼の絵を影とパーツ構成で成立させる書き方」「リスクとリターンをルールで組む書き方（ドリフト＝危険なほど強い）」「乱数なしで逆転劇を作る書き方」</strong>のお手本になる。凝った物理も乱数もなしに、決定的なルールの噛み合わせだけでハラハラドキドキは作れる — それをジャンルの顔として見せる。</p>
+
+</main>

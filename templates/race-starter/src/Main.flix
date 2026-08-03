@@ -10,8 +10,9 @@
 //   view    = World → 「何をどこに描くか」（View.frame）。World は読むだけで変えない。
 //   reloads = 保存で読み直す Doc（各 1 本の watchFile に展開される）。
 //
-// 走る・曲がる・抜く・周回する の規則そのものは World.flix にある。
-// まず World 冒頭の「毎フレームの流れ」と「場面の移り変わりの図」を読むとよい。
+// 遊びの骨格はドリフトとニトロ: X で滑りながら曲がってゲージを貯め、満タンで Z の爆速。
+// 曲がる・滑る・抜く・壊れる・周回する の規則そのものは World.flix にある。
+// まず World 冒頭の「遊びの骨格（5 本柱）」と「場面の移り変わりの図」を読むとよい。
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()
     else {
@@ -27,14 +28,29 @@ def main(): Unit \ IO =
                         |> (w1 -> ActiveDocs.step(World.activeDocs(w1), w1)),
                 view = (ctx, w) -> checked_ecast(View.frame(ctx, w)),
                 // 保存即反映で読み直す Doc たち（各 1 本の watchFile に展開される）。
+                // fx 4 本はどれを保存しても reloadFx（4 本まとめ読み）— 1 本ずつ差し替える
+                // ほど数が多くないので、配管を 1 種類に保つ。
                 reloads =
                     (RulesDoc.path(), Controls.reloadRules) ::
+                    (RivalsDoc.path(), Controls.reloadRivals) ::
                     (ThemeDoc.path(), Controls.reloadTheme) ::
                     (CourseDoc.path(), Controls.reloadCourse) ::
-                    (World.shaderPath(), Controls.reloadShader) :: Nil
+                    (PropsDoc.path(), Controls.reloadProps) ::
+                    (PaletteDoc.path(), Controls.reloadPalette) ::
+                    (World.spritePath(), Controls.reloadSprites) ::
+                    (SfxTuneDoc.path(), Controls.reloadSfxTune) ::
+                    (Controls.fxSmokePath(), Controls.reloadFx) ::
+                    (Controls.fxSparkPath(), Controls.reloadFx) ::
+                    (Controls.fxFlamePath(), Controls.reloadFx) ::
+                    (Controls.fxCrashPath(), Controls.reloadFx) :: Nil
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
+                // 音: 1 フレームの前後の World から鳴らす音名を導く（再生は App が持つ）。
+                |> App.withAudio(worlds -> checked_ecast(Sfx.events(worlds)))
+                // 鳴り続ける音: 走っている間のエンジンの唸りと、滑っている間の擦れ。
+                // 宣言が消えた拍で App が止めるので、ここは「今どう鳴っていてほしいか」だけ書く。
+                |> App.withSustained(w -> checked_ecast(Sfx.hums(w)))
                 // 走行中の POST /bake（Studio の「焼いて」）は Bake.all と同じ実体を呼ぶ。
                 |> App.onBakeRequest(Bake.allShots)
                 |> App.withDebug(App.debugFromEnv())
