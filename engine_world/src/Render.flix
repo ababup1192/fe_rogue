@@ -636,6 +636,26 @@ mod Render {
                      items: List[PlacedItem]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) \ ef =
         drawInto((item, pos) -> toDrawablesAtlas(textureInfoOf, item, pos), items)
 
+    /// そのフレームに描く字の集合の指紋（テクスチャ名と文の codepoint を織り込んだ Int64）。
+    /// 「前フレームと同じ字を描くか」を安く見分ける鍵。文字列の集合そのものを組んで
+    /// 毎フレーム比較する形にしないのは、比較のほうが missingGlyphs 本体と同じだけ
+    /// 掛かって本末転倒になるため。
+    /// 文は Java の 32bit hash 経由でなく codepoint を直接多項式へ fold する — 32bit hash を
+    /// 素材にすると、文どうしがその 32bit で衝突した時点で 64bit 指紋も丸ごと潰れるため。
+    pub def glyphFingerprint(items: List[PlacedItem]): Int64 =
+        items |> List.foldLeft((acc, placed) -> {
+            let (leaf, _clip) = unwrapClip(placed#item, None);
+            match leaf {
+                case Item.Text(t) =>
+                    let withTexture = acc * 1099511628211i64 + Int32.toInt64(Hash.hash(t#fontAtlas#textureName));
+                    t#text |> String.toList |> List.foldLeft((inner, ch) -> {
+                        let cp = TextLayout.charToCodePoint(ch);
+                        inner * 1099511628211i64 + Int32.toInt64(cp)
+                    }, withTexture)
+                case _ => acc
+            }
+        }, -3750763034362895579i64)
+
     /// 描く物のうち、フォントのアトラスにまだ無い字を「テクスチャ名 → 字」で集める。
     /// 起動時に焼くのは「ソースとアセットに書いてある字」なので、実行中に計算で作った字や
     /// プレイヤーが入れた名前はここに出てくる。渡した先（描画部）が焼いて足す。

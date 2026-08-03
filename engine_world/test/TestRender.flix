@@ -338,4 +338,47 @@ mod TestRender {
         Assert.assertEq(expected = shapeOf(items |> Render.movedAll({ x = 5.0, y = 10.0 })),
             shapeOf(twice))
 
+    // ── glyphFingerprint（前フレームと同じ字を描くかを見分ける鍵）──
+
+    /// テクスチャ名だけ差し替えたアトラス。
+    def testAtlasNamed(name: String): FontAtlas =
+        { textureName = name | testAtlas() }
+
+    def textPlaced(content: String, atlas: FontAtlas): Render.PlacedItem =
+        { at = { x = 0.0, y = 0.0 }, item = Render.text(content, atlas, 1.0, 0) }
+
+    // 同じ items からは同じ指紋が出る。実装が変わったら気付けるよう具体値で pin する。
+    @Test
+    def testGlyphFingerprintIsStableForSameItems(): Unit \ Assert =
+        let items = textPlaced("AB", testAtlas()) :: textPlaced("A", testAtlasNamed("other")) :: Nil;
+        Assert.assertEq(expected = -8678883010997511569i64, Render.glyphFingerprint(items))
+
+    // 文が 1 字変わると指紋が変わる。
+    @Test
+    def testGlyphFingerprintChangesWhenTextChanges(): Unit \ Assert =
+        let a = Render.glyphFingerprint(textPlaced("AB", testAtlas()) :: Nil);
+        let b = Render.glyphFingerprint(textPlaced("AA", testAtlas()) :: Nil);
+        Assert.assertEq(expected = false, a == b)
+
+    // Text 2 個の並びを入れ替えると指紋が変わる（acc を可換に混ぜていない証拠 —
+    // 多項式 fold を可換な演算に戻す退行が起きたらここで落ちる）。
+    @Test
+    def testGlyphFingerprintIsOrderSensitive(): Unit \ Assert =
+        let forward = textPlaced("AB", testAtlas()) :: textPlaced("A", testAtlasNamed("other")) :: Nil;
+        let backward = textPlaced("A", testAtlasNamed("other")) :: textPlaced("AB", testAtlas()) :: Nil;
+        Assert.assertEq(expected = false, Render.glyphFingerprint(forward) == Render.glyphFingerprint(backward))
+
+    // 同じ文でも textureName（フォントの出処）が違えば別の指紋になる。
+    @Test
+    def testGlyphFingerprintChangesWhenTextureNameChanges(): Unit \ Assert =
+        let a = Render.glyphFingerprint(textPlaced("AB", testAtlas()) :: Nil);
+        let b = Render.glyphFingerprint(textPlaced("AB", testAtlasNamed("other")) :: Nil);
+        Assert.assertEq(expected = false, a == b)
+
+    // Text を含まない items（Box だけなど）は基底値そのまま。
+    @Test
+    def testGlyphFingerprintOfNonTextItemsIsBase(): Unit \ Assert =
+        let items = { at = { x = 0.0, y = 0.0 }, item = Render.box({ x = 1.0, y = 1.0 }, red(), 0) } :: Nil;
+        Assert.assertEq(expected = -3750763034362895579i64, Render.glyphFingerprint(items))
+
 }

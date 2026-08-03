@@ -630,7 +630,7 @@ mod App {
         // 固定ステップの状態（持ち越し秒と未消費エッジ）は空から始める。
         loop(app, world0, InputEvent.currentKeys(),
              GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left), None,
-             Annotate.initial(), Nil, bridge, false, freshStepState(), watch0, Nil, freshTileCache());
+             Annotate.initial(), Nil, bridge, false, freshStepState(), watch0, Nil, freshTileCache(), None);
         Option.forEach(RemoteDebug.shutdown, bridge)
 
     /// 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
@@ -664,7 +664,7 @@ mod App {
              prevCursor: Option[Vec2.Vec2], anno: Annotate.State, history: List[w],
              bridge: Option[RemoteDebug.Bridge], remoteHold: Bool,
              stepState: StepState, watchState: WatchState, sustaining: List[String],
-             tileCache: TileCache): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + Fs.FileRead + IO) =
+             tileCache: TileCache, glyphSeen: Option[Int64]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + Fs.FileRead + IO) =
         let currentKeys = InputEvent.currentKeys();
         let mouseDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
         let cursorNow = GameEngine.Game.getMousePosition();
@@ -686,7 +686,7 @@ mod App {
                     // （停止中は元々進まないし、実行中でも 1 フレームの息継ぎに過ぎない）。
                     let next = RemoteDebug.handleRemote(app, b, raw,
                         { world = world, anno = anno, history = history, hold = remoteHold });
-                    loop(app, next#world, currentKeys, mouseDown, Some(cursorNow), next#anno, next#history, bridge, next#hold, stepState, watchState, sustaining, tileCache)
+                    loop(app, next#world, currentKeys, mouseDown, Some(cursorNow), next#anno, next#history, bridge, next#hold, stepState, watchState, sustaining, tileCache, glyphSeen)
                 case _ => {
                     let toggled = justPressed(GameEngine.Key.F8, frame) and canDebug(app) and not remoteHold;
                     let pausedNow = if (toggled) not anno#paused else anno#paused;
@@ -699,13 +699,13 @@ mod App {
                     } else ();
                     if (pausedNow) {
                         let nextAnno = pausedStep(app, world, history, frame, { paused = true | anno });
-                        loop(app, world, currentKeys, mouseDown, Some(cursorNow), nextAnno, history, bridge, remoteHold, stepState, watchState, sustaining, tileCache)
+                        loop(app, world, currentKeys, mouseDown, Some(cursorNow), nextAnno, history, bridge, remoteHold, stepState, watchState, sustaining, tileCache, glyphSeen)
                     } else if (anno#paused) {
                         // 一時停止を抜けるフレーム: スクラブ位置の World から再開する。
                         // 巻き戻したぶんの履歴とフレーム番号も、そこを現在として数え直す。
                         let resumed = resumePoint(anno, history, world);
-                        let cache1 = renderFrame(app, resumed#world, fpsOverlayOf(app, resumed#anno), tileCache);
-                        loop(app, resumed#world, currentKeys, mouseDown, Some(cursorNow), resumed#anno, resumed#history, bridge, remoteHold, stepState, watchState, sustaining, cache1)
+                        let (cache1, seen1) = renderFrame(app, resumed#world, fpsOverlayOf(app, resumed#anno), tileCache, glyphSeen);
+                        loop(app, resumed#world, currentKeys, mouseDown, Some(cursorNow), resumed#anno, resumed#history, bridge, remoteHold, stepState, watchState, sustaining, cache1, seen1)
                     } else {
                         let (watched, nextWatchState, watchFired) = applyWatch(app, frame#dt, watchState, world);
                         let (reloaded, reloadFired) = applyReload(app, frame, watched);
@@ -715,13 +715,14 @@ mod App {
                         // fps は debug 有効時だけ計測する（本番ビルドは履歴を積まず無負荷）。
                         let measuredAnno = if (app#debug) Annotate.recordDt(frame#dt, anno) else anno;
                         // Doc の読み直しが起きたフレームはタイル層の世代を進め、同じ key でも焼き直す。
-                        let cache1 = renderFrame(app, advanced, fpsOverlayOf(app, measuredAnno),
-                                                 bumpTileGen(watchFired or reloadFired, tileCache));
+                        let (cache1, seen1) = renderFrame(app, advanced, fpsOverlayOf(app, measuredAnno),
+                                                          bumpTileGen(watchFired or reloadFired, tileCache),
+                                                          glyphSeen);
                         // 時間スクラブ用の履歴（debug が無効なら一切持たない = 本番ビルドは無負荷）
                         let nextHistory = if (canDebug(app))
                                               List.take(historyLimit(), advanced :: history)
                                           else Nil;
-                        loop(app, advanced, currentKeys, mouseDown, Some(cursorNow), { frame = measuredAnno#frame + 1i64 | measuredAnno }, nextHistory, bridge, remoteHold, nextStepState, nextWatchState, nextSustaining, cache1)
+                        loop(app, advanced, currentKeys, mouseDown, Some(cursorNow), { frame = measuredAnno#frame + 1i64 | measuredAnno }, nextHistory, bridge, remoteHold, nextStepState, nextWatchState, nextSustaining, cache1, seen1)
                     }
                 }
             }
@@ -1185,17 +1186,27 @@ mod App {
     /// camera / hudView もこの場合は効かない）。
     /// fps は debug 有効時だけ隅に重ねる（本番は Nil を渡すので描画に一切現れない）。
     def renderFrame(app: App[w, ef], world: w, fpsOverlay: List[Render.PlacedItem],
-                    tileCache: TileCache): TileCache \ (ef + GameEngine.Game + ShaderEffect.Shader) =
+                    tileCache: TileCache, glyphSeen: Option[Int64]):
+            (TileCache, Option[Int64]) \ (ef + GameEngine.Game + ShaderEffect.Shader) =
         match app#view {
-            case None          => tileCache
+            case None          => (tileCache, glyphSeen)
             case Some(toItems) =>
                 uploadAtlases((app#spriteAtlases)(world));
                 let atlas = GameEngine.Game.getFontAtlas("default");
                 let items = List.append(sceneItems(app, atlas, world, toItems), fpsOverlay);
                 // アトラスに無い字があれば、描く前に焼いてもらう（初めて出る字は 1 コマ遅れる）。
-                // たいていは空振りで、そのときは何も起きない。
-                Map.forEach((textureName, cps) -> GameEngine.Game.ensureGlyphs(textureName, cps),
-                            Render.missingGlyphs(items));
+                // たいていは空振りで、そのときは何も起きない。glyphSeen は「欠けが無かった
+                // フレームの字の指紋」— 同じ指紋の間は 1 字ずつの照合を引き直さない。
+                // アトラスは ensureGlyphs でしか育たず、育つのは欠けが出たフレームだけなので、
+                // 欠けゼロの指紋を覚えても古い答えを返す余地が無い。欠けが出たフレームは
+                // 覚えない（焼いた直後にアトラスが育ち、同じ字でも答えが変わるため）。
+                let fp = Render.glyphFingerprint(items);
+                let nextSeen = if (glyphSeen == Some(fp)) glyphSeen else {
+                    let missing = Render.missingGlyphs(items);
+                    Map.forEach((textureName, cps) -> GameEngine.Game.ensureGlyphs(textureName, cps),
+                                missing);
+                    if (Map.isEmpty(missing)) Some(fp) else None
+                };
                 // 宣言シェーダー面は別チャンネル（eff Shader）で描く。renderCommands の下（固定 z 帯）
                 // に敷くため drawSurface を先に呼び、通常の絵からは Shader 面を外して二重描きを避ける。
                 let shaderCmds = Render.drawShaders(spec -> ShaderEffect.Shader.buildProgram(spec), items);
@@ -1207,7 +1218,7 @@ mod App {
                 let (sprites, polygons) = Render.drawWith(
                     name -> GameEngine.Game.getTextureInfo(name), Render.withoutShaders(items));
                 GameEngine.Game.renderCommands(sprites, tileCmds, polygons, staticLayerCmd(app, world));
-                nextCache
+                (nextCache, nextSeen)
         }
 
 }
