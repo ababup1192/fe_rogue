@@ -3,6 +3,7 @@
 // 利用例: キャラや弾の画像を描く / 敷き詰めた地形タイルをまとめて描く。
 
 mod RenderSprite {
+    import java.nio.FloatBuffer
     import org.lwjgl.opengl.GL11
     import org.lwjgl.opengl.GL13
     import org.lwjgl.opengl.GL15
@@ -176,6 +177,73 @@ mod RenderSprite {
                     (Array#{ f32(v#pos#x), f32(v#pos#y), v#color#r, v#color#g, v#color#b, v#alpha } @ Static) :: rest,
                     Nil, flat);
                 (n, vertsRev)
+        }
+
+    /// 多角形 1 個を三角形化し、頂点 6 floats (x, y, r, g, b, a) を入れ物の
+    /// firstVert 番目の頂点から順に直に書く。書いた頂点数を返す。
+    /// 頂点ごとに小さな配列を作って後で写し直さないのは、1 画面ぶんで
+    /// 万を数える作り直しになり、それだけでフレーム時間に乗るため。
+    pub def writePolyVerts(data: FloatBuffer, firstVert: Int32,
+                            pc: DrawCmd.PolygonRenderCmd): Int32 \ IO =
+        match pc#grad {
+            case None =>
+                let color = pc#color;
+                let r = color#r;
+                let g = color#g;
+                let b = color#b;
+                let alpha = pc#alpha;
+                Triangulate.triangles(pc#vertices) |> List.foldLeft((i, tri) -> {
+                    let (v0, v1, v2) = tri;
+                    writeXY(data, i,     v0, r, g, b, alpha);
+                    writeXY(data, i + 1, v1, r, g, b, alpha);
+                    writeXY(data, i + 2, v2, r, g, b, alpha);
+                    i + 3
+                }, firstVert) - firstVert
+            case Some(_) =>
+                DrawCmd.gradTriangles(pc) |> List.foldLeft((i, tri) -> {
+                    let (v0, v1, v2) = tri;
+                    writeTinted(data, i,     v0);
+                    writeTinted(data, i + 1, v1);
+                    writeTinted(data, i + 2, v2);
+                    i + 3
+                }, firstVert) - firstVert
+        }
+
+    def writeXY(data: FloatBuffer, vert: Int32, v: Vec2.Vec2,
+                r: Float32, g: Float32, b: Float32, alpha: Float32): Unit \ IO =
+        let base = vert * 6;
+        discard data.put(base + 0, RenderUtil.f32(v#x));
+        discard data.put(base + 1, RenderUtil.f32(v#y));
+        discard data.put(base + 2, r);
+        discard data.put(base + 3, g);
+        discard data.put(base + 4, b);
+        discard data.put(base + 5, alpha)
+
+    def writeTinted(data: FloatBuffer, vert: Int32, v: DrawCmd.GradVertex): Unit \ IO =
+        let color = v#color;
+        writeXY(data, vert, v#pos, color#r, color#g, color#b, v#alpha)
+
+    /// 溜めた頂点 [0, vertexCount) を 1 回の draw call で塗る（入れ物から直に流す）。
+    /// 流し終えたら書ける範囲を元に戻す — 上限を切ったままだと次の書き込みが弾かれる。
+    pub def drawPolygonBatchBuf(shader: Int32, vao: Int32, vbo: Int32,
+                                 uniforms: RenderShader.PolyBatchUniforms, blend: DrawCmd.BlendMode,
+                                 data: FloatBuffer, vertexCount: Int32): Unit \ IO =
+        if (vertexCount < 3) () else {
+            GL20.glUseProgram(shader);
+            applyBlend(blend);
+            GL20.glUniform1i(uniforms#multiplyBlend, multiplyFlag(blend));
+            GL20.glUniform2f(uniforms#viewOffset, 0.0f32, 0.0f32);
+            GL20.glUniform2f(uniforms#viewScale, 1.0f32, 1.0f32);
+            GL20.glUniform2f(uniforms#halfDesign, 0.0f32, 0.0f32);
+            GL30.glBindVertexArray(vao);
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+            discard data.position(0);
+            discard data.limit(vertexCount * 6);
+            GL15.glBufferData(GL15.GL_ARRAY_BUFFER, data, GL15.GL_DYNAMIC_DRAW);
+            discard data.clear();
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, vertexCount);
+            GL30.glBindVertexArray(0)
         }
 
     /// 三角形化済みの多角形頂点をまとめて 1 回の draw call で塗る。
@@ -495,6 +563,28 @@ mod RenderSprite {
         GL30.glBindVertexArray(vao);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, instanceVbo);
         GL15.glBufferData(GL15.GL_ARRAY_BUFFER, data, GL15.GL_DYNAMIC_DRAW);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GL31.glDrawArraysInstanced(GL11.GL_TRIANGLES, 0, 6, count);
+        GL30.glBindVertexArray(0)
+
+    /// 溜めた instance [0, count) を 1 回の instanced draw で描く（入れ物から直に流す）。
+    /// 流し終えたら書ける範囲を元に戻す — 上限を切ったままだと次の書き込みが弾かれる。
+    pub def drawSpriteInstancedBuf(shader: Int32, vao: Int32, instanceVbo: Int32, texId: Int32,
+                                    multiplyBlendLoc: Int32, blend: DrawCmd.BlendMode,
+                                    data: FloatBuffer, count: Int32): Unit \ IO =
+        GL20.glUseProgram(shader);
+        applyBlend(blend);
+        GL20.glUniform1i(multiplyBlendLoc, multiplyFlag(blend));
+        if (texId != 0) {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId)
+        } else ();
+        GL30.glBindVertexArray(vao);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, instanceVbo);
+        discard data.position(0);
+        discard data.limit(count * 38);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, data, GL15.GL_DYNAMIC_DRAW);
+        discard data.clear();
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         GL31.glDrawArraysInstanced(GL11.GL_TRIANGLES, 0, 6, count);
         GL30.glBindVertexArray(0)

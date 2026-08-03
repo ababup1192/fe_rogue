@@ -5,13 +5,14 @@
 // 同じ z 空間で並ぶ（同 z なら列に先に積むタイル層が奥 — 手前に出すには大きい zIndex を与える）。
 
 mod RenderFrame {
+    import java.nio.FloatBuffer
     import org.lwjgl.opengl.GL11
 
     /// z 安定ソート列に混ぜる 5 種の描画物。MTile=タイルマップ 1 層（1 draw call）、
     /// MSprite=スプライト/箱、MPoly=動的多角形、MStatic=永続 VBO のレンジ（頂点は運ばず
     /// 範囲だけ）、MSurface=宣言シェーダー面。種類が切り替わる瞬間に
     /// 溜めた run を吐くことで、列順（＝重なり順）を厳密に守る。
-    enum Merged {
+    pub enum Merged {
         case MTile(RenderType.TileMapRenderCmd)
         case MSprite(RenderType.Drawable)
         case MPoly(RenderType.PolygonCmd)
@@ -46,9 +47,90 @@ mod RenderFrame {
     /// 種類数ぶんの Map 操作だけで済み、同鍵内の順序も構造的に崩れない。
     /// 同 z の入れ替わりは実害がある（bg Rect と同 z のテキスト最後の文字が
     /// 上書き消失した事故が過去にある）ため、安定性はこの関数の必須条件。
-    def stableByZ(zOf: a -> k, items: List[a]): List[a] with Order[k] =
-        // バケツは先頭挿入で溜める（= 逆順）。foldRight が z の大きい側から
-        // 前置し直すので、全体は z 昇順・バケツ内は入力順に戻る。
+    /// zIndex は小さな整数がひとかたまりに並ぶので、鍵の幅ぶんの席を 1 本用意して
+    /// 振り分ける。木の Map だと 1 個ごとに挿入と枝の組み替えが走り、数千個の画面では
+    /// その組み替えだけがフレーム時間に現れる（スレッドダンプ実測）。
+    /// 席は先頭挿入で溜める（= 逆順）。席の大きい側から前置し直すので、
+    /// 全体は z 昇順・席内は入力順に戻る。
+    /// 5 種の描画物を、zIndex 昇順・同 z 内は
+    /// tiles → sprites → polygons → static → surfaces の順に並べた 1 本の列にする。
+    /// 5 本を 1 本に繋いでから並べ替えないのは、繋ぐだけで列 1 本ぶんの写しが増え、
+    /// 鍵と中身の組も 1 個ずつ作ることになるため（数千個の画面ではその作り直しが
+    /// フレーム時間に出る）。幅と個数は席を作る前に一度だけ数え、
+    /// 数える場所は組でなく席 3 つに置く（組は 1 個ごとに作り直しになる）。
+    pub def mergedByZ(tiles: List[RenderType.TileMapRenderCmd],
+                      sprites: List[RenderType.Drawable],
+                      polygons: List[RenderType.PolygonCmd],
+                      statics: List[RenderStatic.Range],
+                      surfaces: List[ShaderEffect.ShaderRenderCmd]): List[Merged] =
+        region rc {
+            // 0 = 一番小さい z / 1 = 一番大きい z / 2 = 個数
+            let tally: Array[Int32, rc] = Array#{2147483647, -2147483648, 0} @ rc;
+            let scan = (z: Int32) -> {
+                if (z < Array.get(0, tally)) Array.put(z, 0, tally) else ();
+                if (z > Array.get(1, tally)) Array.put(z, 1, tally) else ();
+                Array.put(Array.get(2, tally) + 1, 2, tally)
+            };
+            List.forEach(x -> scan(x#zIndex), tiles);
+            List.forEach(x -> scan(x#zIndex), sprites);
+            List.forEach(x -> scan(x#zIndex), polygons);
+            List.forEach(x -> scan(x#zIndex), statics);
+            List.forEach(x -> scan(x#zIndex), surfaces);
+            let lo = Array.get(0, tally);
+            let hi = Array.get(1, tally);
+            let count = Array.get(2, tally);
+            if (count == 0) Nil
+            // 鍵がまばらに散っていると席の数が描く物の数を大きく超える。
+            // そのときだけ木で並べ替える（席を数百万本用意して埋めないより速い）。
+            else if (hi - lo > seatLimit(count)) stableByZTree(zOfMerged, chain(tiles, sprites, polygons, statics, surfaces))
+            else {
+                let n = hi - lo + 1;
+                let seats: Array[List[Merged], rc] = Array.repeat(rc, n, Nil);
+                let seat = (z: Int32, m: Merged) -> {
+                    let i = z - lo;
+                    Array.put(m :: Array.get(i, seats), i, seats)
+                };
+                List.forEach(x -> seat(x#zIndex, Merged.MTile(x)), tiles);
+                List.forEach(x -> seat(x#zIndex, Merged.MSprite(x)), sprites);
+                List.forEach(x -> seat(x#zIndex, Merged.MPoly(x)), polygons);
+                List.forEach(x -> seat(x#zIndex, Merged.MStatic(x)), statics);
+                List.forEach(x -> seat(x#zIndex, Merged.MSurface(x)), surfaces);
+                List.range(0, n) |> List.foldLeft((acc, i) ->
+                    List.foldLeft((rest, x) -> x :: rest, acc,
+                                  Array.get(n - 1 - i, seats)), Nil)
+            }
+        }
+
+    /// 鍵がまばらなときだけ使う、5 本を入力順どおりに繋いだ 1 本。
+    def chain(tiles: List[RenderType.TileMapRenderCmd], sprites: List[RenderType.Drawable],
+              polygons: List[RenderType.PolygonCmd], statics: List[RenderStatic.Range],
+              surfaces: List[ShaderEffect.ShaderRenderCmd]): List[Merged] =
+        List.append(
+            tiles |> List.map(x -> Merged.MTile(x)),
+            List.append(
+                List.append(
+                    List.append(
+                        sprites  |> List.map(x -> Merged.MSprite(x)),
+                        polygons |> List.map(x -> Merged.MPoly(x))),
+                    statics |> List.map(x -> Merged.MStatic(x))),
+                surfaces |> List.map(x -> Merged.MSurface(x))))
+
+    /// 並べ替え鍵 = zIndex（全 run 種で共有の 1 つの z 空間）。
+    def zOfMerged(item: Merged): Int32 =
+        match item {
+            case Merged.MTile(tm)   => tm#zIndex
+            case Merged.MSprite(d)  => d#zIndex
+            case Merged.MPoly(pc)   => pc#zIndex
+            case Merged.MStatic(r)  => r#zIndex
+            case Merged.MSurface(s) => s#zIndex
+        }
+
+    /// 席方式に倒す鍵の幅の上限。描く物の数に比例させるのは、席が疎らでも
+    /// 「埋める手間 ≒ 描く物の数」に収まる範囲なら席のほうが速いため。
+    def seatLimit(count: Int32): Int32 = 4096 + 4 * count
+
+    /// 鍵がまばらなときの受け皿（席方式と同じ順序を返す）。
+    def stableByZTree(zOf: a -> Int32, items: List[a]): List[a] =
         let buckets = List.foldLeft((m, x) -> {
             let z = zOf(x);
             let bucket = Map.get(z, m) |> Option.getWithDefault(Nil);
@@ -86,6 +168,10 @@ mod RenderFrame {
         instShader = Int32,
         instVao = Int32,
         instVbo = Int32,
+        // 1 フレームぶんの instance / 頂点を直に書き溜める使い回しの入れ物
+        // （バックエンドが起動時に 1 つずつ作って毎フレーム貸す）。
+        instBuf = RenderBuf.Buf,
+        polyBuf = RenderBuf.Buf,
         spriteUniforms = RenderShader.SpriteUniforms,
         tileUniforms = RenderShader.TileUniforms,
         // instanced シェーダの premultiply スイッチ（Multiply ブレンド用）の uniform location。
@@ -98,45 +184,100 @@ mod RenderFrame {
         drawSurface = ShaderEffect.ShaderRenderCmd -> Unit \ IO
     }
 
-    /// 溜めた run（同じテクスチャの連続スプライト列）を 1 回の instanced draw で
-    /// 吐き出す。1 体 = 38 floats の Float32 配列で受け取る。record にしないのは、
-    /// record の `#` 読みが実行時のフィールド探索で、数千体の詰め直しでは
-    /// その探索だけでフレーム時間に現れるため（スレッドダンプ実測）。
-    /// itemsRev は cons で積んだ逆順。末尾位置から前へ詰め戻すことで
-    /// List.reverse なしに instance 順 = 列順を守る。
-    def flushSpriteRun(instShader: Int32, instVao: Int32, instVbo: Int32,
-                        texId: Int32, multiplyBlendLoc: Int32, blend: DrawCmd.BlendMode,
-                        count: Int32,
-                        itemsRev: List[Array[Float32, Static]]): Unit \ IO =
-        if (count == 0) () else {
-            let data = Array.empty(Static, count * 38);
-            let _ = List.foldLeft((endIdx, inst) -> {
-                let base = (endIdx - 1) * 38;
-                Array.forEachWithIndex((j, v) -> Array.put(v, base + j, data), inst);
-                endIdx - 1
-            }, count, itemsRev);
-            RenderSprite.drawSpriteInstanced(instShader, instVao, instVbo, texId,
-                                             multiplyBlendLoc, blend, data, count)
+    /// drawSprite が uniform に詰める model 行列と同じ式を CPU 側で計算して、
+    /// instance 属性 (38 floats・シェーダ loc1-10 と同並び) を入れ物の slot 番目へ直に書く
+    /// （絵が per-draw 経路と一致することを式の同一性で保証）。
+    /// style も per-instance 属性に載せる: 単色矩形は常に style 付きで届く
+    /// (Render.box が solidStyle を持たせる) ため、style をバッチ分割条件に
+    /// すると矩形が全部 1 枚ずつ描かれて一括化が骨抜きになる（実測で発覚）。
+    /// 38 本の書き込みを短い名前でまとめず並べるのは、まとめ役の小さな関数を挟むと
+    /// 1 体につき 38 回その呼び出しが走り、書き込み本体より高くつくため（実測）。
+    def writeInstAt(data: FloatBuffer, slot: Int32, pos: Vec2.Vec2, size: Vec2.Vec2,
+                    drawable: RenderType.Drawable, useTex: Bool, sdf: Bool): Unit \ IO =
+        let f32 = RenderUtil.f32;
+        let c = RenderUtil.cosF(drawable#rotation);
+        let s = RenderUtil.sinF(drawable#rotation);
+        let sx = size#x;
+        let sy = size#y;
+        let tx = pos#x + sx / 2.0 - c * sx / 2.0 + s * sy / 2.0;
+        let ty = pos#y + sy / 2.0 - s * sx / 2.0 - c * sy / 2.0;
+        let color = drawable#color;
+        let uvo = drawable#uvOffset;
+        let uvs = drawable#uvScale;
+        let base = slot * 38;
+        discard data.put(base + 0, f32(c * sx));
+        discard data.put(base + 1, f32(s * sx));
+        discard data.put(base + 2, f32(-1.0 * s * sy));
+        discard data.put(base + 3, f32(c * sy));
+        discard data.put(base + 4, f32(tx));
+        discard data.put(base + 5, f32(ty));
+        discard data.put(base + 6, f32(uvo#x));
+        discard data.put(base + 7, f32(uvo#y));
+        discard data.put(base + 8, f32(uvs#x));
+        discard data.put(base + 9, f32(uvs#y));
+        discard data.put(base + 10, color#r);
+        discard data.put(base + 11, color#g);
+        discard data.put(base + 12, color#b);
+        discard data.put(base + 13, drawable#alpha);
+        discard data.put(base + 14, if (useTex) 1.0f32 else 0.0f32);
+        discard data.put(base + 15, if (sdf) 1.0f32 else 0.0f32);
+        discard data.put(base + 18, f32(sx));
+        discard data.put(base + 19, f32(sy));
+        match drawable#style {
+            case None =>
+                discard data.put(base + 16, 0.0f32);
+                discard data.put(base + 17, 0.0f32);
+                discard data.put(base + 20, 0.0f32);
+                discard data.put(base + 21, 0.0f32);
+                discard data.put(base + 22, 0.0f32);
+                discard data.put(base + 23, 0.0f32);
+                discard data.put(base + 24, 0.0f32);
+                discard data.put(base + 25, 0.0f32);
+                discard data.put(base + 26, 0.0f32);
+                discard data.put(base + 27, 0.0f32);
+                discard data.put(base + 28, 0.0f32);
+                discard data.put(base + 29, 0.0f32);
+                discard data.put(base + 30, 0.0f32);
+                discard data.put(base + 31, 0.0f32);
+                discard data.put(base + 32, 0.0f32);
+                discard data.put(base + 33, 0.0f32);
+                discard data.put(base + 34, 0.0f32);
+                discard data.put(base + 35, 0.0f32);
+                discard data.put(base + 36, 0.0f32);
+                discard data.put(base + 37, 0.0f32)
+            case Some(st) =>
+                // hatch の有効判定は drawSprite の hatchOn と同式(period<=0 は GLSL の mod が未定義なので無効扱い)。
+                let hatch = if (st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32 and st#stripePeriod > 0.0) 1.0f32 else 0.0f32;
+                let bc = st#borderColor;
+                let hc = st#stripeColor;
+                let cc = st#checkerColor;
+                discard data.put(base + 16, 1.0f32);
+                discard data.put(base + 17, hatch);
+                discard data.put(base + 20, f32(st#cornerRadius));
+                discard data.put(base + 21, f32(st#borderWidth));
+                discard data.put(base + 22, bc#r);
+                discard data.put(base + 23, bc#g);
+                discard data.put(base + 24, bc#b);
+                discard data.put(base + 25, st#borderAlpha);
+                discard data.put(base + 26, hc#r);
+                discard data.put(base + 27, hc#g);
+                discard data.put(base + 28, hc#b);
+                discard data.put(base + 29, st#stripeAlpha);
+                discard data.put(base + 30, f32(st#stripeWidth));
+                discard data.put(base + 31, f32(st#stripePeriod));
+                discard data.put(base + 32, Int32.toFloat32(st#stripeDir));
+                discard data.put(base + 33, f32(st#checkerCell));
+                discard data.put(base + 34, cc#r);
+                discard data.put(base + 35, cc#g);
+                discard data.put(base + 36, cc#b);
+                discard data.put(base + 37, st#checkerAlpha)
         }
 
-    /// 溜めた多角形 run（同じ blend / 切り抜き窓の連続多角形）を 1 回の draw call で
-    /// 吐き出す。vertsRev は各多角形を三角形化して逆順に cons で積んだ頂点配列のリスト
-    /// （1 配列 = 1 頂点の 6 floats）。末尾位置から前へ詰め戻すことで List.reverse なしに
-    /// 三角形の順序 = 入力順を守る（塗り順が絵に影響しないので順序は本質でないが、
-    /// スプライト run と同じ詰め方に揃えて読みやすくする）。
-    def flushPolyRun(shader: Int32, vao: Int32, vbo: Int32,
-                      uniforms: RenderShader.PolyBatchUniforms, blend: DrawCmd.BlendMode,
-                      vertCount: Int32,
-                      vertsRev: List[Array[Float32, Static]]): Unit \ IO =
-        if (vertCount < 3) () else {
-            let data = Array.empty(Static, vertCount * 6);
-            let _ = List.foldLeft((endIdx, v) -> {
-                let base = (endIdx - 1) * 6;
-                Array.forEachWithIndex((j, x) -> Array.put(x, base + j, data), v);
-                endIdx - 1
-            }, vertCount, vertsRev);
-            RenderSprite.drawPolygonBatch(shader, vao, vbo, uniforms, blend, data, vertCount)
-        }
+    /// 多角形を三角形へほどいたときの頂点数の上限（1 個 n 頂点なら 3(n-2) 以下）。
+    /// 入れ物をこの数で先に広げておけば、溜めている途中で取り直す
+    /// （＝書きかけを捨てる）ことが起きない。
+    def polyVertCap(polygons: List[RenderType.PolygonCmd]): Int32 =
+        3 * List.foldLeft((acc, pc) -> acc + List.length(pc#vertices), 0, polygons)
 
     /// 1 フレーム描画: タイル層・sprites・polygons・静的レンジ・シェーダー面を
     /// 1 本の安定ソート列に混ぜ、共有の zIndex どおりの重なり順で描く。
@@ -160,6 +301,8 @@ mod RenderFrame {
         let instShader   = args#instShader;
         let instVao      = args#instVao;
         let instVbo      = args#instVbo;
+        let instBuf      = args#instBuf;
+        let polyBuf      = args#polyBuf;
         let tileUniforms = args#tileUniforms;
         let instMultiplyBlend = args#instMultiplyBlend;
         let surfaces     = args#surfaces;
@@ -185,27 +328,10 @@ mod RenderFrame {
             // （stableByZ が構造的に保証）。シェーダー面は zIndex の位置で両 run を吐いてから
             // 1 枚描くので、水を床(z=0)の上・壁(z=2)の下に置ける（clear 直後の一括描画だと
             // zIndex を無視して最下になり、不透明な背景に覆われて消える）。
-            let merged: List[Merged] =
-                List.append(
-                    tileMaps |> List.map(tm -> Merged.MTile(tm)),
-                    List.append(
-                        List.append(
-                            List.append(
-                                sprites  |> List.map(d  -> Merged.MSprite(d)),
-                                polygons |> List.map(pc -> Merged.MPoly(pc))),
-                            staticRanges |> List.map(r -> Merged.MStatic(r))),
-                        surfaces |> List.map(s -> Merged.MSurface(s))));
-            // 並べ替え鍵 = zIndex（全 run 種で共有の 1 つの z 空間）。同 z 内は入力順 =
-            // tiles → sprites → polygons → static → surfaces なので、「同 z ならタイル層が奥」
-            // が安定ソートの規約としてそのまま立つ（タイル層を手前に出すには大きい zIndex）。
-            let zOf = item -> match item {
-                case Merged.MTile(tm)   => tm#zIndex
-                case Merged.MSprite(d)  => d#zIndex
-                case Merged.MPoly(pc)   => pc#zIndex
-                case Merged.MStatic(r)  => r#zIndex
-                case Merged.MSurface(s) => s#zIndex
-            };
-            let sortedMerged = stableByZ(zOf, merged);
+            // 同 z 内は入力順 = tiles → sprites → polygons → static → surfaces なので、
+            // 「同 z ならタイル層が奥」が安定ソートの規約としてそのまま立つ
+            // （タイル層を手前に出すには大きい zIndex）。
+            let sortedMerged = mergedByZ(tileMaps, sprites, polygons, staticRanges, surfaces);
             // clip 窓 → framebuffer 座標の整数 scissor 矩形 (x0, y0, x1, y1)（top-left 原点）。
             // record に Eq が無いので、run の分断キーはこの int 組で比較する（fb 画素への
             // 量子化を兼ね、1px 未満の差で run を無駄に割らない）。
@@ -240,80 +366,49 @@ mod RenderFrame {
             // instance 順 = 列順。run をまたいでテクスチャごとに再グループ化するのは禁止:
             // アルファブレンドは描画順に依存するので、同 zIndex の bg 矩形とテキスト最後の
             // 文字が入れ替わって文字が消える実バグが過去に起きた。
-            let f32 = RenderUtil.f32;
-            let cosF = RenderUtil.cosF;
-            let sinF = RenderUtil.sinF;
-            // drawSprite が uniform に詰める model 行列と同じ式を CPU 側で計算して
-            // instance 属性 (38 floats・シェーダ loc1-10 と同並び) に落とす
-            // （絵が per-draw 経路と一致することを式の同一性で保証）。
-            // style も per-instance 属性に載せる: 単色矩形は常に style 付きで届く
-            // (Render.box が solidStyle を持たせる) ため、style をバッチ分割条件に
-            // すると矩形が全部 1 枚ずつ描かれて一括化が骨抜きになる（実測で発覚）。
-            let makeInst = (pos: Vec2.Vec2, size: Vec2.Vec2, drawable: RenderType.Drawable,
-                             useTex: Bool, sdf: Bool) -> {
-                let c = cosF(drawable#rotation);
-                let s = sinF(drawable#rotation);
-                let sx = size#x;
-                let sy = size#y;
-                let tx = pos#x + sx / 2.0 - c * sx / 2.0 + s * sy / 2.0;
-                let ty = pos#y + sy / 2.0 - s * sx / 2.0 - c * sy / 2.0;
-                let color = drawable#color;
-                let uvo = drawable#uvOffset;
-                let uvs = drawable#uvScale;
-                let (styleOn, hatchOn, cr, bw, bc, ba, hc, ha, hw, hp, hd, cc, ca, cl) = match drawable#style {
-                    case None =>
-                        let zero: Color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 };
-                        (0.0f32, 0.0f32, 0.0f32, 0.0f32, zero, 0.0f32,
-                         zero, 0.0f32, 0.0f32, 0.0f32, 0.0f32, zero, 0.0f32, 0.0f32)
-                    case Some(st) =>
-                        // hatch の有効判定は drawSprite の hatchOn と同式(period<=0 は GLSL の mod が未定義なので無効扱い)。
-                        let hatch = if (st#stripeWidth > 0.0 and st#stripeAlpha > 0.0f32 and st#stripePeriod > 0.0) 1.0f32 else 0.0f32;
-                        (1.0f32, hatch, f32(st#cornerRadius), f32(st#borderWidth),
-                         st#borderColor, st#borderAlpha,
-                         st#stripeColor, st#stripeAlpha, f32(st#stripeWidth), f32(st#stripePeriod),
-                         Int32.toFloat32(st#stripeDir),
-                         st#checkerColor, st#checkerAlpha, f32(st#checkerCell))
-                };
-                Array#{
-                    f32(c * sx), f32(s * sx), f32(-1.0 * s * sy), f32(c * sy),
-                    f32(tx), f32(ty),
-                    f32(uvo#x), f32(uvo#y), f32(uvs#x), f32(uvs#y),
-                    color#r, color#g, color#b, drawable#alpha,
-                    (if (useTex) 1.0f32 else 0.0f32), (if (sdf) 1.0f32 else 0.0f32), styleOn, hatchOn,
-                    f32(sx), f32(sy), cr, bw,
-                    bc#r, bc#g, bc#b, ba,
-                    hc#r, hc#g, hc#b, ha,
-                    hw, hp, hd, cl,
-                    cc#r, cc#g, cc#b, ca
-                } @ Static
-            };
-            // run = (テクスチャ id, scissor キー, blend, 体数, 積んだ instance の逆順リスト)。
+            // 書き溜める先は 1 フレーム 1 本の使い回し。溜まった run を吐くたびに
+            // 先頭へ戻すので、要る大きさは「一番大きい run」ぶんで足りる。
+            RenderBuf.ensure(instBuf, Int32.max(1, List.length(sprites)) * 38);
+            RenderBuf.ensure(polyBuf, Int32.max(3, polyVertCap(polygons)) * 6);
+            let instData = RenderBuf.buffer(instBuf);
+            let polyData = RenderBuf.buffer(polyBuf);
+            let writeInst = (slot: Int32, pos: Vec2.Vec2, size: Vec2.Vec2,
+                             drawable: RenderType.Drawable, useTex: Bool, sdf: Bool) ->
+                writeInstAt(instData, slot, pos, size, drawable, useTex, sdf);
+            // run = (テクスチャ id, scissor キー, blend, 体数)。中身は入れ物の先頭から
+            // 詰まっているので、run そのものは体数だけ覚えていればよい。
             // texId=0 は単色矩形の run。scissor キーか blend が変わるところでも run を切る
             // （blend は GL のグローバル状態なので、混ぜると run 全体が同じ重ね方になってしまう）。
-            let emptyRun: (Int32, Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]]) =
-                (0, None, DrawCmd.BlendMode.Normal, 0, Nil);
+            let emptyRun: (Int32, Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32) =
+                (0, None, DrawCmd.BlendMode.Normal, 0);
             // 空 run では scissor / blend を触らない — GL 状態を無駄に往復させない。
-            let flush = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]])) -> {
-                let (accTex, accClip, accBlend, accCount, accRev) = acc;
+            let flush = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32)) -> {
+                let (accTex, accClip, accBlend, accCount) = acc;
                 if (accCount == 0) () else {
                     setScissor(accClip);
-                    flushSpriteRun(instShader, instVao, instVbo, accTex,
-                                   instMultiplyBlend, accBlend, accCount, accRev)
+                    RenderSprite.drawSpriteInstancedBuf(instShader, instVao, instVbo, accTex,
+                                                        instMultiplyBlend, accBlend, instData, accCount)
                 }
             };
-            let push = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]]),
+            // 積むときにその場で入れ物へ書く。テクスチャ・窓・重ね方が変わるところでは
+            // **先に**溜めた run を吐く — 吐くと書き込み位置が先頭へ戻るため、
+            // 書いてから吐くと新しい 1 体が前の run に混ざって出てしまう。
+            let push = (acc: (Int32, Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32),
                         texId: Int32, clipK: Option[(Int32, Int32, Int32, Int32)],
                         blend: DrawCmd.BlendMode,
-                        inst: Array[Float32, Static]) -> {
-                let (accTex, accClip, accBlend, accCount, accRev) = acc;
-                if (accCount == 0)
-                    (texId, clipK, blend, 1, inst :: Nil)
-                else if (accTex == texId and accClip == clipK and accBlend == blend)
-                    (accTex, accClip, accBlend, accCount + 1, inst :: accRev)
-                else {
-                    // テクスチャ・scissor・blend のどれかが変わったら現 run を吐いてから新しい run を始める。
+                        pos: Vec2.Vec2, size: Vec2.Vec2, drawable: RenderType.Drawable,
+                        useTex: Bool, sdf: Bool) -> {
+                let (accTex, accClip, accBlend, accCount) = acc;
+                if (accCount == 0) {
+                    writeInst(0, pos, size, drawable, useTex, sdf);
+                    (texId, clipK, blend, 1)
+                } else if (accTex == texId and accClip == clipK and accBlend == blend) {
+                    writeInst(accCount, pos, size, drawable, useTex, sdf);
+                    (accTex, accClip, accBlend, accCount + 1)
+                } else {
                     flush(acc);
-                    (texId, clipK, blend, 1, inst :: Nil)
+                    writeInst(0, pos, size, drawable, useTex, sdf);
+                    (texId, clipK, blend, 1)
                 }
             };
             // 多角形 run = (scissor キー, blend, 積んだ頂点数, 三角形頂点配列の逆順リスト)。
@@ -321,14 +416,14 @@ mod RenderFrame {
             // scissor と blend は GL のグローバル状態なので 1 バッチ内で均一でないといけない）。
             // 1 バッチにまとめても頂点は入力順のまま連結する。GL は 1 draw call 内の三角形を
             // 提出順に処理するので、重なった多角形どうしのアルファ合成も 1 枚ずつ描いたときと同じ結果になる。
-            let emptyPolyRun: (Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]]) =
-                (None, DrawCmd.BlendMode.Normal, 0, Nil);
-            let flushPoly = (acc: (Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]])) -> {
-                let (accClip, accBlend, accCount, accRev) = acc;
+            let emptyPolyRun: (Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32) =
+                (None, DrawCmd.BlendMode.Normal, 0);
+            let flushPoly = (acc: (Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32)) -> {
+                let (accClip, accBlend, accCount) = acc;
                 if (accCount == 0) () else {
                     setScissor(accClip);
-                    flushPolyRun(polyBatchShader, polyBatchVao, polyBatchVbo,
-                                 polyBatchUniforms, accBlend, accCount, accRev)
+                    RenderSprite.drawPolygonBatchBuf(polyBatchShader, polyBatchVao, polyBatchVbo,
+                                                     polyBatchUniforms, accBlend, polyData, accCount)
                 }
             };
             // 静的レンジ 1 本を描く: 溜まっている両 run は呼び側で吐き終えている前提。
@@ -339,27 +434,26 @@ mod RenderFrame {
                 RenderSprite.drawStaticRange(polyBatchShader, r#vao, polyBatchUniforms, r#blend,
                                              r#viewOffset, r#viewScale, r#halfDesign, r#first, r#count)
             };
-            // 1 多角形を三角形化し、各頂点を 6 floats (x, y, r, g, b, a) にして run へ積む。
+            // 1 多角形を三角形化し、各頂点を 6 floats (x, y, r, g, b, a) にして入れ物へ直に書く。
             // 色×alpha は頂点属性に畳み込む（drawPolygon が uniform で渡していた spriteColor /
             // spriteAlpha と同じ値を頂点ごとに持たせるだけなので絵は変わらない）。
-            // 展開（単色の耳切り / grad の扇割り＋頂点色）は RenderSprite.polyVertsRev に共通化。
-            let pushPoly = (acc: (Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32, List[Array[Float32, Static]]),
+            // 展開（単色の耳切り / grad の扇割り＋頂点色）は RenderSprite.writePolyVerts に共通化。
+            // 窓か重ね方が変わるところでは先に吐く — 吐くと書き込み位置が先頭へ戻るため。
+            let pushPoly = (acc: (Option[(Int32, Int32, Int32, Int32)], DrawCmd.BlendMode, Int32),
                             clipK: Option[(Int32, Int32, Int32, Int32)], blend: DrawCmd.BlendMode,
                             pc: RenderType.PolygonCmd) -> {
-                let (accClip, accBlend, accCount, accRev) = acc;
-                let (n, vertsRev) = RenderSprite.polyVertsRev(pc);
-                // 頂点数が 3 未満（退化）なら run を切らずに素通しする（drawPolygon の n<3 と同じ扱い）。
-                if (n < 3)
-                    acc
-                else if (accCount == 0)
-                    (clipK, blend, n, vertsRev)
-                else if (accClip == clipK and accBlend == blend)
-                    // vertsRev は逆順の cons。既存 accRev の前に繋ぐと全体は「新→旧」の逆順のまま。
-                    // flushPolyRun が末尾から詰め戻すので、最終的な頂点順は入力順に戻る。
-                    (accClip, accBlend, accCount + n, List.append(vertsRev, accRev))
-                else {
+                let (accClip, accBlend, accCount) = acc;
+                if (accCount == 0) {
+                    let n = RenderSprite.writePolyVerts(polyData, 0, pc);
+                    // 頂点数が 3 未満（退化）なら何も積まない（drawPolygon の n<3 と同じ扱い）。
+                    if (n < 3) acc else (clipK, blend, n)
+                } else if (accClip == clipK and accBlend == blend) {
+                    let n = RenderSprite.writePolyVerts(polyData, accCount, pc);
+                    if (n < 3) acc else (accClip, accBlend, accCount + n)
+                } else {
                     flushPoly(acc);
-                    (clipK, blend, n, vertsRev)
+                    let n = RenderSprite.writePolyVerts(polyData, 0, pc);
+                    if (n < 3) emptyPolyRun else (clipK, blend, n)
                 }
             };
             // スプライト run と多角形 run を並行して溜める。種類が切り替わる瞬間に
@@ -392,7 +486,7 @@ mod RenderFrame {
                         flushPoly(pRun);
                         let sRun2 = if (String.isEmpty(drawable#texture)) {
                             push(sRun, 0, clipKeyOf(drawable#clip), drawable#blend,
-                                 makeInst(drawable#position, drawable#scale, drawable, false, false))
+                                 drawable#position, drawable#scale, drawable, false, false)
                         } else {
                             match Map.get(drawable#texture, registry) {
                                 case Some(texInfo) =>
@@ -407,7 +501,7 @@ mod RenderFrame {
                                     let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
                                     push(sRun, GpuHandle.textureIdInt(texInfo#id), clipKeyOf(drawable#clip),
                                          drawable#blend,
-                                         makeInst(pos, displaySize, drawable, true, isFont))
+                                         pos, displaySize, drawable, true, isFont)
                                 // texture 未登録は従来どおり描かない。描かないだけなので run は途切れさせない。
                                 case None => sRun
                             }

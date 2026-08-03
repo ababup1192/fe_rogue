@@ -329,6 +329,10 @@ mod LwjglLayer {
         let (vao, quadVBO) = RenderSprite.initSpriteRenderer();
         let (polyBatchVao, polyBatchVbo) = RenderSprite.initPolygonBatchRenderer();
         let (instVao, instVbo) = RenderSprite.initSpriteInstancedRenderer(quadVBO);
+        // 1 フレームぶんの instance / 頂点を書き溜める入れ物（毎フレーム作り直さず貸し出す）。
+        // 初めの大きさは「よくある画面」の見当で、足りなければ描画側が広げる。
+        let instBuf = RenderBuf.make(4096 * 38);
+        let polyBuf = RenderBuf.make(16384 * 6);
         // タイル VAO → インスタンス VBO の台帳。updateTileBuffer（既存 VAO への
         // 入れ直し）が再アップロード先の VBO をここから引く。
         let tileVboRegistry: Ref[Map[Int32, Int32], Static] = Ref.fresh(Static, Map.empty());
@@ -410,6 +414,7 @@ mod LwjglLayer {
                 polyBatchShader = polyBatchShader, polyBatchVao = polyBatchVao,
                 polyBatchVbo = polyBatchVbo, polyBatchUniforms = polyBatchUniforms,
                 instShader = instShader, instVao = instVao, instVbo = instVbo,
+                instBuf = instBuf, polyBuf = polyBuf,
                 spriteUniforms = spriteUniforms, tileUniforms = tileUniforms,
                 instMultiplyBlend = instMultiplyBlend,
                 surfaces = surfaces, drawSurface = drawSurface})
@@ -657,6 +662,14 @@ mod LwjglLayer {
             def setVolume(name, volume, k) = {
                 match Map.get(name, audioRegistry) {
                     case Some(src) => AL10.alSourcef(src, AL10.AL_GAIN, volume)
+                    case None      => ()
+                };
+                k(())
+            }
+            def setPitch(name, pitch, k) = {
+                match Map.get(name, audioRegistry) {
+                    // 0 以下は OpenAL がエラーにして音が止まるので、聞こえる下限で止める。
+                    case Some(src) => AL10.alSourcef(src, AL10.AL_PITCH, Float32.max(0.01f32, pitch))
                     case None      => ()
                 };
                 k(())
