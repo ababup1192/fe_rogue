@@ -8,3 +8,7 @@ dist-win/
 .DS_Store
 debug/
 gallery/
+# 焼いた絵は git に入れない。golden は SHA256SUMS.txt だけ追跡する。
+# title.png は Studio のジャンル札のサムネが実体を読むので例外。
+golden/*.png
+!golden/title.png

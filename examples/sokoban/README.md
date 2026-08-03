@@ -7,7 +7,7 @@ Z キーで巻き戻せる**（Worldline）。録音素材もドット絵素材�
 初めて読むなら、まず [breakout](../breakout/)（入口教材）を。
 作りながらの詳しい解説は [TUTORIAL.md](TUTORIAL.md)（英語）/ [TUTORIAL.ja.md](TUTORIAL.ja.md)（日本語）にある。
 
-![ゲーム1周分の様子](gallery/full_clear.gif)
+![ゲーム1周分の様子](../../docs/gallery/sokoban_full_clear.gif)
 
 ## 遊ぶ
 

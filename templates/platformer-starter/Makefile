@@ -48,15 +48,10 @@ shot:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" STAGE=$(STAGE) "$(FLIX)" run --entrypoint Bake.one
 
 bench: bake
-	@ok=1; for f in gallery/*.png; do \
-		name=$$(basename $$f); \
-		if cmp -s $$f golden/$$name; then echo "bench OK: $$name"; \
-		else echo "bench DIFF: $$name"; ok=0; fi; \
-	done; [ $$ok -eq 1 ]
+	"$(ENGINE)/bin/golden-check.sh"
 
 golden:
-	cp gallery/*.png golden/
-	@echo "blessed: golden/*.png updated from gallery/"
+	"$(ENGINE)/bin/golden-bless.sh"
 
 stages:
 	python3 tools/check_stages.py

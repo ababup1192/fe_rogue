@@ -18,8 +18,16 @@ allowed-tools: Read, Grep, Glob, Bash
 
 **「挙動を変えていない」と主張するリファクタの時だけ**やる。機能追加リリースでは不要。
 
+**`gallery/` は git 管理外なので `git status` では見えない。** 焼いた絵の一致は
+`make bench` の SHA 突き合わせで見る。
+
 1. `make bake-par`（不審なら逐次の `make bake`）
-2. `git status` で gallery / assets/sfx の差分ゼロを確認
+2. `git status` で assets/sfx の差分ゼロを確認（音や素材の退行はここに出る）
+3. `for d in templates/*/; do make -C "$d" bench; done` で全テンプレの絵が基準と一致するか確認
+4. examples 側は golden を持たないので、焼き直した `gallery/` を自分で目視する
+   （`.claude/skills/critique-bake` の手順）
+
+`python3 bin/lint-images.py` も併せて通す（焼いた絵が git に紛れ込んでいないか）。
 
 ## リリース手順
 

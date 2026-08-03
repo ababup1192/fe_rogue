@@ -42,7 +42,19 @@
 ```
 python3 bin/lint-view.py [ファイル...]   # 矩形と円だけになっていないか
 python3 bin/lint-palette.py              # ドット絵の意味色キーが色票から解けるか
+python3 bin/lint-images.py               # git に入れる絵が増えすぎていないか
 ```
+
+### 焼いた絵は git に入れない
+
+`make bake` が焼く `gallery/` と `golden/*.png` は **git 管理外**。焼き直すたびに PNG/GIF は
+丸ごと別の実体になり、差分圧縮も効かないまま履歴に積み上がるため。
+
+- **人に見せる絵は [docs/gallery/](docs/gallery/README.md) にだけ置く**（枚数・大きさの上限あり）。
+  焼いた中から選んでコピーする
+- 退行検知は `templates/*/golden/SHA256SUMS.txt`（`make -C templates/<name> bench` が突き合わせ、
+  `make golden` が作り直す）。PNG 本体は手元に残るので `make diff` の左右比較はそのまま効く
+- `templates/*/golden/title.png` だけ実体を追跡する。Studio のジャンル札のサムネが読むため
 
 ## 検証
 

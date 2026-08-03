@@ -24,3 +24,19 @@ hs_err_pid*.log
 # (replay_tiles.py ほか) まで管理外になるので annotations/ に絞る。
 **/debug/annotations/
 .test-logs/
+# 焼いた絵は git に入れない。焼き直すたび PNG/GIF は丸ごと新しい実体になり、
+# 差分圧縮が効かないまま履歴に世代が積み上がる。人に見せる絵は docs/gallery/ にだけ置く。
+# ディレクトリを戻す行と中身を戻す行の 2 行が要る（上の src/lib/ と同じ書き方）。
+**/gallery/
+!docs/gallery/
+!docs/gallery/**
+# golden は退行テスト(make bench)の正解データだが、PNG 本体でなく SHA256SUMS.txt を追跡する。
+# title.png だけは Studio のジャンル札のサムネが実体を読むので例外。
+**/golden/*.png
+!**/golden/title.png
+# 目視用の生成物（golden 比較はしていない）。
+examples/fe_rogue/test/snapshots/gifs/
+# debug/ 丸ごとは src/debug/(実ソース) や debug/ 直下の検証ツール(replay_tiles.py ほか)を
+# 巻き込むので、焼いた画像だけに絞る。
+**/debug/**/*.png
+**/debug/**/*.gif

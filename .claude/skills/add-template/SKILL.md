@@ -42,6 +42,11 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 Studio のジャンル札のサムネは `GET /genesis/title` がこれを読む（無いと空絵に倒れる）。
 bake に `title` シーンを 1 枚足して祝福する。
 
+祝福は `make -C templates/<name> golden`。これが `gallery/*.png` を `golden/` へ写し、
+**`golden/SHA256SUMS.txt` まで作り直す**。git に入るのはこの一覧と `title.png` だけで、
+他の golden PNG は管理外（`make bench` は一覧と突き合わせて退行を見る）。
+`SHA256SUMS.txt` を作り忘れると、clone した人の `make bench` が「まだ祝福されていません」で止まる。
+
 ### 3. `make lint-palette` を通す
 
 ドット絵（`*.sprite.json`）の `legend` に書いた意味色キーは、`*.theme.json` のトップレベル・

@@ -91,6 +91,7 @@ help:
 	@echo "  make test-<name>          1 つだけテスト (例: make test-fe_rogue / make test-engine)"
 	@echo "  make lint-palette         ドット絵 legend の意味色キーが Studio から解けるか検査"
 	@echo "  make lint-view            View が矩形と円だけになっていないか検査"
+	@echo "  make lint-images          git に入れる絵が増えすぎていないか検査"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
 	@echo "  make bake                 bake ターゲットを持つ全 example の生成物を焼き直す"
 	@echo "  make bake-par             同上を並列実行"
@@ -208,8 +209,15 @@ bake-par:
 # 直した絵の「前 (golden)」と「後 (gallery)」を左右に並べて <dir>/debug/diff/ に焼く。
 # bench はバイトが違うことしか言わないので、どこがどう変わったかを目で追えるようにする物。
 # 焼くのは変わった絵だけ — どれが変わったかは cmp が決め、名前だけ工具へ渡す。
+#
+# golden の PNG は git 管理外（追跡するのは SHA256SUMS.txt だけ）なので、clone 直後は
+# 「前」が手元に無い。その時は一度 make bake && make golden で今の絵を基準に置く。
 diff:
 	@test -n "$(DIR)" || { echo "使い方: make diff DIR=templates/rpg-starter"; exit 1; }
+	@ls "$(DIR)"/golden/*.png > /dev/null 2>&1 || { \
+		echo "[diff] $(DIR)/golden に比べる前の絵がありません。"; \
+		echo "       golden の PNG は git 管理外です。まず make -C $(DIR) bake && make -C $(DIR) golden で基準を置いてください。"; \
+		exit 1; }
 	@names=$$(cd "$(DIR)" && for f in gallery/*.png; do \
 		n=$$(basename "$$f"); \
 		if [ ! -f "golden/$$n" ]; then echo "[diff] 比べる前がありません (新しい場面): $$n" >&2; \
@@ -486,6 +494,11 @@ rules:
 .PHONY: lint-view
 lint-view:
 	@python3 bin/lint-view.py
+
+# git に入れる絵が増えすぎていないか（焼いた絵が紛れ込んでいないか）の検査。
+.PHONY: lint-images
+lint-images:
+	@python3 bin/lint-images.py
 
 # 規約まわりの配線が崩れていないかの検査（生成はしない）。
 .PHONY: check-docs-sync
