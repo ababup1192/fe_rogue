@@ -6,6 +6,14 @@
   "properties": {
     "version": { "type": "integer", "const": 1 },
     "note": { "type": "string", "description": "人間と AI のためのメモ(パーサは無視する)" },
+    "lint-anim": {
+      "type": "string",
+      "description": "lint-anim の除外宣言。'対象外(規則, ...) — 理由' の形で理由必須。ファイル全体に効く。"
+    },
+    "lint-sprite": {
+      "type": "string",
+      "description": "lint-sprite の除外宣言。'対象外(規則, ...) — 理由' の形で理由必須。ファイル全体に効く。"
+    },
     "legend": {
       "type": "object",
       "description": "1 文字 → 意味色キー。ファイルに 1 個・全コマで共有。",
@@ -18,6 +26,15 @@
       "additionalProperties": {
         "type": "object",
         "properties": {
+          "note": { "type": "string", "description": "人間と AI のためのメモ(パーサは無視する)" },
+          "lint-anim": {
+            "type": "string",
+            "description": "lint-anim の除外宣言。'対象外(規則, ...) — 理由' の形で理由必須。このスプライトだけに効く。"
+          },
+          "lint-sprite": {
+            "type": "string",
+            "description": "lint-sprite の除外宣言。'対象外(規則, ...) — 理由' の形で理由必須。このスプライトだけに効く。"
+          },
           "anchor": {
             "type": "object",
             "description": "格子内の基準セル。draw の置き場所がこのセルの左上に来る(省略時 0,0)。",

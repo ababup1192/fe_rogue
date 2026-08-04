@@ -92,6 +92,8 @@ help:
 	@echo "  make lint-palette         ドット絵 legend の意味色キーが Studio から解けるか検査"
 	@echo "  make lint-view            View が矩形と円だけになっていないか検査"
 	@echo "  make lint-images          git に入れる絵が増えすぎていないか検査"
+	@echo "  make lint-sprite          ドット絵の画素の並び (浮き・階段・帯・色数) を検査"
+	@echo "  make lint-anim            コマ間の飛び・体積・接地と 4 方向のそろいを検査"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
 	@echo "  make bake                 bake ターゲットを持つ全 example の生成物を焼き直す"
 	@echo "  make bake-par             同上を並列実行"
@@ -479,9 +481,9 @@ sync-agents:
 	done
 	@mkdir -p "$(GAME)/.claude/rules" "$(GAME)/bin"
 	@cp -f agents-pack/rules/*.md "$(GAME)/.claude/rules/"
-	@cp -f bin/lint-view.py bin/lint-palette.py "$(GAME)/bin/"
+	@cp -f bin/lint-view.py bin/lint-palette.py bin/lint-sprite.py bin/lint-anim.py "$(GAME)/bin/"
 	@echo "[sync-agents] rules: $$(ls agents-pack/rules | tr '\n' ' ')"
-	@echo "[sync-agents] lint: bin/lint-view.py bin/lint-palette.py"
+	@echo "[sync-agents] lint: bin/lint-view.py bin/lint-palette.py bin/lint-sprite.py bin/lint-anim.py"
 	@echo "[sync-agents] wrote $(GAME)/AGENTS.md + CLAUDE.md"
 
 # 規約の本文は docs/ に 1 つだけ置く。CLAUDE.md は AGENTS.md を import するだけ、
@@ -499,6 +501,17 @@ lint-view:
 .PHONY: lint-images
 lint-images:
 	@python3 bin/lint-images.py
+
+# ドット絵の画素の並びの検査。自己テストが壊れた lint には門番をさせない。
+.PHONY: lint-sprite
+lint-sprite:
+	@python3 bin/lint-sprite.py --self-test >/dev/null
+	@python3 bin/lint-sprite.py
+
+.PHONY: lint-anim
+lint-anim:
+	@python3 bin/lint-anim.py --self-test >/dev/null
+	@python3 bin/lint-anim.py
 
 # 規約まわりの配線が崩れていないかの検査（生成はしない）。
 .PHONY: check-docs-sync

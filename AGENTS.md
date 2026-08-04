@@ -43,6 +43,8 @@
 python3 bin/lint-view.py [ファイル...]   # 矩形と円だけになっていないか
 python3 bin/lint-palette.py              # ドット絵の意味色キーが色票から解けるか
 python3 bin/lint-images.py               # git に入れる絵が増えすぎていないか
+python3 bin/lint-sprite.py [ファイル...]  # ドット絵の画素の並び(浮き・階段・帯・色数)
+python3 bin/lint-anim.py [ファイル...]    # コマ間の飛び・接地と 4 方向のそろい
 ```
 
 ### 焼いた絵は git に入れない

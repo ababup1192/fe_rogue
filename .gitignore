@@ -24,6 +24,8 @@ hs_err_pid*.log
 # (replay_tiles.py ほか) まで管理外になるので annotations/ に絞る。
 **/debug/annotations/
 .test-logs/
+# bin/lint-palette.py を importlib で読む lint-sprite が作る。
+__pycache__/
 # 焼いた絵は git に入れない。焼き直すたび PNG/GIF は丸ごと新しい実体になり、
 # 差分圧縮が効かないまま履歴に世代が積み上がる。人に見せる絵は docs/gallery/ にだけ置く。
 # ディレクトリを戻す行と中身を戻す行の 2 行が要る（上の src/lib/ と同じ書き方）。
