@@ -72,7 +72,7 @@ mod UnitHPBarRender {
     def barCornerRadius(): Float64 = 2.0
     /// フィル（内側 3px）の角丸半径。半径＝高さ/2 でピル状にし、丸みが見えるようにする。
     def fillCornerRadius(): Float64 = innerHeightPx() / 2.0
-    def barZIndex(): Int32 = 50
+    def barZIndex(): Int32 = 1100
 
     /// フィル領域（枠 1px インセット）の幅・高さ。
     def innerWidthPx(): Float64 = barWidthPx() - 2.0 * borderPx()

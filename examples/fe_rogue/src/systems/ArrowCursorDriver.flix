@@ -17,8 +17,8 @@ mod ArrowCursorDriver {
     pub def texture(): String = "arrow"
     /// 照準矢印スプライトの拡大率。
     pub def spriteScale(): Vec2.Vec2 = {x = 1.625, y = 1.625}
-    /// 照準矢印の描画 zIndex。
-    pub def spriteZIndex(): Int32 = 20
+    /// 照準矢印の描画 zIndex。ユニットの前後の帯（100..980）より上。
+    pub def spriteZIndex(): Int32 = 1000
 
     /// 各方向の回転角（ラジアン）。矢印テクスチャは **上向き** に描かれている前提。
     ///   - Up    →   0°

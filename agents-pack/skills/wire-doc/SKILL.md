@@ -15,7 +15,7 @@ description: "まだコードに繋がっていない Doc(JSON) を、既存の 
 2. 同じ形で新しい loader を書く。`<種類>.schema.json` が無ければ書き、
    `project.json` の `editor.resources[]` に宣言する。
    Doc 本体には必ず `version` を入れる（無いと Studio の健康診断が警告する）。
-   schema は Studio の **sections 方言**で書く（docs/doc-conventions.md
+   schema は Studio の **sections 方言**で書く（engine リポの `docs/doc-conventions.md`
    「スキーマの書き方」。語彙リファレンス形式では Studio のフォームが読めない）。
 3. Main（App 起動部）に `App.watchFile` の配線を足し、保存即反映にする。
    既存の watchFile 配線をお手本にする。

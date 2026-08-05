@@ -26,8 +26,8 @@ mod WeaponGlyph {
         case Arc(Arc)
     }
 
-    /// 各ピースの基準 zIndex（WeaponIconRender の Bg=61 より手前）。ピースは base+i で重ねる。
-    def baseZIndex(): Int32 = 62
+    /// 各ピースの基準 zIndex（WeaponIconRender の Bg=1201 より手前）。ピースは base+i で重ねる。
+    def baseZIndex(): Int32 = 1220
 
     /// 対角の単位成分（cos45° = sin45°）。上右向き軸 = (diagD, -diagD)。
     def diagD(): Float64 = 0.7071067811865476
