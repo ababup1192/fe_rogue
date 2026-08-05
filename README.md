@@ -154,7 +154,6 @@ building a JRE-bundled `.dmg` / `.exe` or a jar + launcher.
 | **sokoban** | Sokoban with unlimited undo (Worldline) — has a full build-it-yourself TUTORIAL (EN/JA) |
 | **fe_rogue** | Fire Emblem-style turn-based SRPG + roguelike (recommended) |
 | **liars_room** | Liar logic puzzle — every stage is machine-proven solvable (Datalog) |
-| **nobi_patissier** | Pâtissier game (work in progress) |
 
 Every example runs and tests the same way:
 
@@ -415,7 +414,6 @@ JRE 同梱の `.dmg` / `.exe` や jar + ランチャの作り方は
 | **sokoban** | 無制限アンドゥ（Worldline）の倉庫番 — 組み立て式 TUTORIAL 英日つき |
 | **fe_rogue** | FE 風ターン制 SRPG + ローグライク（おすすめ） |
 | **liars_room** | 嘘つき論理パズル — 全ステージ機械証明済み（Datalog） |
-| **nobi_patissier** | パティシエゲーム（制作中） |
 
 どの example も同じ手順で実行・テストできる:
 
