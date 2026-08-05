@@ -531,6 +531,15 @@ mod LwjglLayer {
         // 起動画面は出続けるが、枚数が知れているので待ちは体感に出ない。
         GLFW.glfwSwapInterval(1);
 
+        // Windows だけ、毎フレームの受け渡し後に GPU の完了を待つ。ドライバが 2〜3 フレーム
+        // 先まで絵を貯め込むことがあり、60fps のままでも入力から表示までがその分遅れて
+        // 重く感じるため。vsync 待ちでどのみち止まる場所なので、待つ相手が変わるだけで
+        // フレームレートは落ちない。他の OS には貯め込みの癖が無いので付けない。
+        let finishAfterSwap = {
+            let osName = System.getProperty("os.name");
+            not Object.isNull(osName) and String.contains({substr = "Windows"}, osName)
+        };
+
         let timeHolder = Array#{System.nanoTime()} @ Static;
 
         // フルスクリーンからウィンドウへ戻すとき、起動時のウィンドウ位置・サイズへ復元する
@@ -719,6 +728,7 @@ mod LwjglLayer {
                 let (fbW, fbH) = Array.get(0, framebufferSizeHolder);
                 renderFrame(fbW, fbH, sprites, tileMaps, polygons, staticLayer, surfaces);
                 GLFW.glfwSwapBuffers(window);
+                if (finishAfterSwap) GL11.glFinish() else ();
                 k(())
             }
             def initTileBuffer(instances, k) = {
