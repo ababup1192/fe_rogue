@@ -150,7 +150,7 @@ mod TestRemoteDebug {
     def testParseScriptRejectsUnknownKey(): Unit \ Assert =
         Assert.assertEq(
             expected = true,
-            RemoteDebug.parseScript("press Q") |> Result.isErr)
+            RemoteDebug.parseScript("press NoSuchKey") |> Result.isErr)
 
     // ========================================================================
     // 応答の整形

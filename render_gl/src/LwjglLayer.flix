@@ -41,28 +41,115 @@ mod LwjglLayer {
     // ========================================================================
 
     def keyToGlfw(key: GameEngine.Key): Int32 = match key {
-        case GameEngine.Key.W         => 87
-        case GameEngine.Key.A         => 65
-        case GameEngine.Key.S         => 83
-        case GameEngine.Key.D         => 68
-        case GameEngine.Key.B         => 66
-        case GameEngine.Key.Z         => 90
-        case GameEngine.Key.X         => 88
-        case GameEngine.Key.C         => 67
-        case GameEngine.Key.M         => 77
-        case GameEngine.Key.H         => 72
-        case GameEngine.Key.Up        => 265
-        case GameEngine.Key.Down      => 264
-        case GameEngine.Key.Left      => 263
-        case GameEngine.Key.Right     => 262
-        case GameEngine.Key.Enter     => 257
-        case GameEngine.Key.Space     => 32
-        case GameEngine.Key.Escape    => 256
-        case GameEngine.Key.F1        => 290
-        case GameEngine.Key.F8        => 297
-        case GameEngine.Key.LeftShift => 340
-        case GameEngine.Key.LeftCtrl  => 341
-        case GameEngine.Key.LeftSuper => 343
+        // 英字
+        case GameEngine.Key.A              => 65
+        case GameEngine.Key.B              => 66
+        case GameEngine.Key.C              => 67
+        case GameEngine.Key.D              => 68
+        case GameEngine.Key.E              => 69
+        case GameEngine.Key.F              => 70
+        case GameEngine.Key.G              => 71
+        case GameEngine.Key.H              => 72
+        case GameEngine.Key.I              => 73
+        case GameEngine.Key.J              => 74
+        case GameEngine.Key.K              => 75
+        case GameEngine.Key.L              => 76
+        case GameEngine.Key.M              => 77
+        case GameEngine.Key.N              => 78
+        case GameEngine.Key.O              => 79
+        case GameEngine.Key.P              => 80
+        case GameEngine.Key.Q              => 81
+        case GameEngine.Key.R              => 82
+        case GameEngine.Key.S              => 83
+        case GameEngine.Key.T              => 84
+        case GameEngine.Key.U              => 85
+        case GameEngine.Key.V              => 86
+        case GameEngine.Key.W              => 87
+        case GameEngine.Key.X              => 88
+        case GameEngine.Key.Y              => 89
+        case GameEngine.Key.Z              => 90
+        // 数字(キーボード上段)
+        case GameEngine.Key.Digit0         => 48
+        case GameEngine.Key.Digit1         => 49
+        case GameEngine.Key.Digit2         => 50
+        case GameEngine.Key.Digit3         => 51
+        case GameEngine.Key.Digit4         => 52
+        case GameEngine.Key.Digit5         => 53
+        case GameEngine.Key.Digit6         => 54
+        case GameEngine.Key.Digit7         => 55
+        case GameEngine.Key.Digit8         => 56
+        case GameEngine.Key.Digit9         => 57
+        // 矢印
+        case GameEngine.Key.Up             => 265
+        case GameEngine.Key.Down           => 264
+        case GameEngine.Key.Left           => 263
+        case GameEngine.Key.Right          => 262
+        // 制御・編集
+        case GameEngine.Key.Enter          => 257
+        case GameEngine.Key.Space          => 32
+        case GameEngine.Key.Escape         => 256
+        case GameEngine.Key.Tab            => 258
+        case GameEngine.Key.Backspace      => 259
+        case GameEngine.Key.Insert         => 260
+        case GameEngine.Key.Delete         => 261
+        case GameEngine.Key.PageUp         => 266
+        case GameEngine.Key.PageDown       => 267
+        case GameEngine.Key.Home           => 268
+        case GameEngine.Key.End            => 269
+        case GameEngine.Key.CapsLock       => 280
+        // ファンクション
+        case GameEngine.Key.F1             => 290
+        case GameEngine.Key.F2             => 291
+        case GameEngine.Key.F3             => 292
+        case GameEngine.Key.F4             => 293
+        case GameEngine.Key.F5             => 294
+        case GameEngine.Key.F6             => 295
+        case GameEngine.Key.F7             => 296
+        case GameEngine.Key.F8             => 297
+        case GameEngine.Key.F9             => 298
+        case GameEngine.Key.F10            => 299
+        case GameEngine.Key.F11            => 300
+        case GameEngine.Key.F12            => 301
+        // 記号(US 配列の刻印)
+        case GameEngine.Key.Apostrophe     => 39
+        case GameEngine.Key.Comma          => 44
+        case GameEngine.Key.Minus          => 45
+        case GameEngine.Key.Period         => 46
+        case GameEngine.Key.Slash          => 47
+        case GameEngine.Key.Semicolon      => 59
+        case GameEngine.Key.Equal          => 61
+        case GameEngine.Key.LeftBracket    => 91
+        case GameEngine.Key.Backslash      => 92
+        case GameEngine.Key.RightBracket   => 93
+        case GameEngine.Key.GraveAccent    => 96
+        // 修飾
+        case GameEngine.Key.LeftShift      => 340
+        case GameEngine.Key.LeftCtrl       => 341
+        case GameEngine.Key.LeftAlt        => 342
+        case GameEngine.Key.LeftSuper      => 343
+        case GameEngine.Key.RightShift     => 344
+        case GameEngine.Key.RightCtrl      => 345
+        case GameEngine.Key.RightAlt       => 346
+        case GameEngine.Key.RightSuper     => 347
+        case GameEngine.Key.Menu           => 348
+        // テンキー
+        case GameEngine.Key.Numpad0        => 320
+        case GameEngine.Key.Numpad1        => 321
+        case GameEngine.Key.Numpad2        => 322
+        case GameEngine.Key.Numpad3        => 323
+        case GameEngine.Key.Numpad4        => 324
+        case GameEngine.Key.Numpad5        => 325
+        case GameEngine.Key.Numpad6        => 326
+        case GameEngine.Key.Numpad7        => 327
+        case GameEngine.Key.Numpad8        => 328
+        case GameEngine.Key.Numpad9        => 329
+        case GameEngine.Key.NumpadDecimal  => 330
+        case GameEngine.Key.NumpadDivide   => 331
+        case GameEngine.Key.NumpadMultiply => 332
+        case GameEngine.Key.NumpadSubtract => 333
+        case GameEngine.Key.NumpadAdd      => 334
+        case GameEngine.Key.NumpadEnter    => 335
+        case GameEngine.Key.NumpadEqual    => 336
     }
 
     def mouseButtonToGlfw(button: GameEngine.MouseButton): Int32 = match button {
