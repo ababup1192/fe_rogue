@@ -1,27 +1,25 @@
 // Controls — キーを World.Input へ写し、World.step で 1 歩進める(純粋)。
-// ←→(または A・D)で歩き、Space か ↑(W)でジャンプ、↓(S)で一方通行から降りる。
-// B(または Shift・X)を押しっぱなしで B ダッシュ — 最高速が dashMult 倍になり、
-// 離しても decel でゆるく戻るので勢いが残る。
+// どのキーがどの操作かは KeysDoc(player.keys.json)が決める — 既定は
+// ←→(A・D)で歩き、Space か ↑(W)でジャンプ、↓(S)で一方通行から降りる、
+// B(Shift・X)を押しっぱなしで B ダッシュ。エディタで割り当てを変えて保存すると即反映。
 // Doc の保存即反映(watchFile)と F1 一括リロードの台帳もここに 1 枚だけ置く。
 mod Controls {
-    use GameEngine.Key
 
-    /// このフレームのキーを World.Input へ。
-    /// ジャンプは「押しっぱなし」(可変ジャンプの維持)と「押した瞬間」(先行入力の
-    /// 取り置き)を別に読む — ゆるしの実装は World/Player 側にある。
-    pub def inputOf(frame: App.Frame): World.Input =
-        let arrows = App.axis(negative = Key.Left, positive = Key.Right, frame);
-        let letters = App.axis(negative = Key.A, positive = Key.D, frame);
-        let held = k -> App.isDown(k, frame);
-        let pressed = k -> App.justPressed(k, frame);
-        { dir = Num.clamp(-1.0, 1.0, arrows + letters),
-          jumpHeld = held(Key.Space) or held(Key.Up) or held(Key.W),
-          jumpPressed = pressed(Key.Space) or pressed(Key.Up) or pressed(Key.W),
-          drop = held(Key.Down) or held(Key.S),
-          dash = held(Key.B) or held(Key.LeftShift) or held(Key.X) }
+    /// このフレームのキーを World.Input へ。操作ごとのキーの列(keys Doc)の
+    /// どれか 1 つでも押されていれば効く。ジャンプは「押しっぱなし」(可変ジャンプの
+    /// 維持)と「押した瞬間」(先行入力の取り置き)を別に読む — ゆるしの実装は
+    /// World/Player 側にある。
+    pub def inputOf(frame: App.Frame, keys: KeysDoc.Doc): World.Input =
+        let held = ks -> List.exists(k -> App.isDown(k, frame), ks);
+        let pressed = ks -> List.exists(k -> App.justPressed(k, frame), ks);
+        { dir = (if (held(keys#right)) 1.0 else 0.0) - (if (held(keys#left)) 1.0 else 0.0),
+          jumpHeld = held(keys#jump),
+          jumpPressed = pressed(keys#jump),
+          drop = held(keys#drop),
+          dash = held(keys#dash) }
 
     pub def step(frame: App.Frame, w: World.World): World.World =
-        World.step(inputOf(frame), frame#dt, w)
+        World.step(inputOf(frame, w#keys), frame#dt, w)
 
     /// Doc の台帳(DocTable)。watchFile(保存即反映)と F1 の一括リロードは
     /// どちらもこの 1 枚から導出する — 足し忘れで「保存しても効かない」を作らないため。
@@ -29,6 +27,7 @@ mod Controls {
     /// 「いま画面に出ているファイル」を Studio に名乗れる(ActiveDocs)。
     pub def docTable(): List[DocTable.Entry[World.World]] =
         { docId = Some("motion"), path = MotionDoc.path(),      reload = World.reloadMotion }
+            :: { docId = Some("keys"),    path = KeysDoc.path(),     reload = World.reloadKeys }
             :: { docId = Some("rules"),   path = RulesDoc.path(),    reload = World.reloadRules }
             :: { docId = Some("enemies"), path = EnemyDoc.path(),    reload = World.reloadEnemies }
             :: { docId = Some("stages"),  path = StageDoc.path(),    reload = World.reloadStages }

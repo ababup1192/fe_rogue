@@ -150,4 +150,19 @@ mod TestInputMap {
         let (s4, c4) = InputMap.wheelSteps(c3, 1.0);
         Assert.assertEq(expected = (0, 0.0, 0, 0.0, 0, 0.0, 1, 0.0),
             (s1, c1, s2, c2, s3, c3, s4, c4))
+
+    // ── キー名の解決（keyOf / keysOf）— キー設定 Doc と台本の入り口 ──
+
+    // 大文字小文字は区別せず、知らない名前は None。
+    @Test
+    def testKeyOfIgnoresCase(): Unit \ Assert =
+        Assert.assertEq(
+            expected = (Some(GameEngine.Key.Z), Some(GameEngine.Key.LeftShift), None),
+            (InputMap.keyOf("z"), InputMap.keyOf("leftshift"), InputMap.keyOf("nosuchkey")))
+
+    // 書き間違いはその 1 個だけ落ちる — 列全体は死なず、書いた順を保つ。
+    @Test
+    def testKeysOfDropsUnknownNamesOnly(): Unit \ Assert =
+        Assert.assertEq(expected = GameEngine.Key.Left :: GameEngine.Key.A :: Nil,
+            InputMap.keysOf("Left" :: "Sinistra" :: "A" :: Nil))
 }

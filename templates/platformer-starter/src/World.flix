@@ -12,6 +12,7 @@ mod World {
 
     pub type alias World = {
         motion = MotionDoc.Doc,
+        keys = KeysDoc.Doc,
         rules = RulesDoc.Doc,
         enemyDoc = EnemyDoc.Doc,
         stageDoc = StageDoc.Doc,
@@ -53,12 +54,12 @@ mod World {
 
     // ── 生成 ──
 
-    pub def initial(motion: MotionDoc.Doc, rules: RulesDoc.Doc, enemyDoc: EnemyDoc.Doc,
-                    stageDoc: StageDoc.Doc, theme: Theme.Doc, uiText: UiText.Doc,
-                    pxDoc: PxSpriteDoc.Doc): World =
+    pub def initial(motion: MotionDoc.Doc, keys: KeysDoc.Doc, rules: RulesDoc.Doc,
+                    enemyDoc: EnemyDoc.Doc, stageDoc: StageDoc.Doc, theme: Theme.Doc,
+                    uiText: UiText.Doc, pxDoc: PxSpriteDoc.Doc): World =
         let stage = stageOf(stageDoc, 0);
         let at0 = standingAt(stage, stage#start);
-        { motion = motion, rules = rules, enemyDoc = enemyDoc, stageDoc = stageDoc, theme = theme,
+        { motion = motion, keys = keys, rules = rules, enemyDoc = enemyDoc, stageDoc = stageDoc, theme = theme,
           uiText = uiText, pxDoc = pxDoc,
           atlas = PxSpriteAtlas.bake(pxDoc, key -> Theme.resolve(theme, key)),
           atlasGen = 0,
@@ -350,6 +351,9 @@ mod World {
 
     pub def reloadMotion(w: World): World \ Fs.FileRead =
         { motion = MotionDoc.load(MotionDoc.path()) | w }
+
+    pub def reloadKeys(w: World): World \ Fs.FileRead =
+        { keys = KeysDoc.load(KeysDoc.path()) | w }
 
     pub def reloadRules(w: World): World \ Fs.FileRead =
         { rules = RulesDoc.load(RulesDoc.path()) | w }

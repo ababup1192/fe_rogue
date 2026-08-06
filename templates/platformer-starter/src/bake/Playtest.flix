@@ -61,7 +61,8 @@ mod Playtest {
 
     def load(): World.World \ IO =
         run {
-            World.initial(MotionDoc.load(MotionDoc.path()), RulesDoc.load(RulesDoc.path()),
+            World.initial(MotionDoc.load(MotionDoc.path()), KeysDoc.load(KeysDoc.path()),
+                RulesDoc.load(RulesDoc.path()),
                 EnemyDoc.load(EnemyDoc.path()),
                 StageDoc.load(StageDoc.path()), Theme.load(Theme.path()),
                 UiText.load(UiText.path()), PxSpriteDoc.load(World.spritePath()))

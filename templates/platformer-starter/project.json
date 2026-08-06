@@ -24,6 +24,13 @@
         "role": "tuning"
       },
       {
+        "id": "keys",
+        "pattern": "assets/player.keys.json",
+        "title": "キー割り当て（どのキーで動かすか）",
+        "schema": "assets/keys.schema.json",
+        "role": "tuning"
+      },
+      {
         "id": "rules",
         "pattern": "assets/platformer.rules.json",
         "title": "収支と進行（点・残機・幕の長さ）",

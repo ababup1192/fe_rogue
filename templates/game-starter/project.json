@@ -46,6 +46,13 @@
         "role": "tuning"
       },
       {
+        "id": "keys",
+        "pattern": "assets/player.keys.json",
+        "title": "キー割り当て（どのキーで動かすか）",
+        "schema": "assets/keys.schema.json",
+        "role": "tuning"
+      },
+      {
         "id": "project",
         "pattern": "project.json",
         "schema": "project.schema.json",

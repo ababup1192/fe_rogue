@@ -5,7 +5,8 @@ mod TestRules {
     def d(): SampleDoc.Doc = SampleDoc.defaults()
 
     def w0(): World.World =
-        World.initial(d(), ThemeDoc.defaults(), PxSpriteDoc.empty(), ShaderDoc.demoSurface())
+        World.initial(d(), KeysDoc.defaults(), ThemeDoc.defaults(), PxSpriteDoc.empty(),
+            ShaderDoc.demoSurface())
 
     /// 4×6 マスの絵を 1 体だけ持つ Doc（大きさが絵に追随することを見るため）。
     def spritesOf(): PxSpriteDoc.Doc =

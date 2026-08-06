@@ -12,6 +12,7 @@ mod Probe {
     def loadWorld(): World.World \ IO =
         run {
             World.initial(MotionDoc.load(MotionDoc.path()),
+                KeysDoc.load(KeysDoc.path()),
                 RulesDoc.load(RulesDoc.path()),
                 EnemyDoc.load(EnemyDoc.path()),
                 StageDoc.load(StageDoc.path()),
