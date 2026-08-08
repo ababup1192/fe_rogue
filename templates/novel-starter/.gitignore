@@ -12,3 +12,5 @@ gallery/
 # title.png は Studio のジャンル札のサムネが実体を読むので例外。
 golden/*.png
 !golden/title.png
+# マシンごとの実行環境 (ENGINE/JAVA の場所) — 共有しない
+local.mk

@@ -576,9 +576,10 @@ check-docs-sync:
 #   - NAME  … Flix パッケージ名（小文字英字はじまり・[a-z0-9_]）。sprite の entityId にも使う。
 #   - TITLE … 窓の題名（省略時は NAME）。
 #   - W/H   … design 解像度（省略時は 480×300。窓はその 2 倍）。
-# templates/game-starter を写して __NAME__/__TITLE__/__W__/__H__/__WW__/__WH__/__ENGINE__ を
-# 置換し、Makefile の `ENGINE ?=` 行はエンジンの現在地で上書きする（具体値式テンプレは in-repo で
-# ビルドするため実パスを持っていて、トークンにはできない）。lib/ をエンジン手元の成果物から
+# templates/game-starter を写して __NAME__/__TITLE__/__W__/__H__/__WW__/__WH__ を置換する。
+# エンジンの現在地は Makefile には書かず、git に入れない local.mk へ書く（Makefile は
+# マシンをまたいで共有できる形のまま。別のマシンでは local.mk を 1 度だけ書き直す）。
+# lib/ をエンジン手元の成果物から
 # 種付け（初回ダウンロード不要）、git init（commit はしない）、
 # sync-agents を配ってから check → test → bake を通して「生きて産まれた」ことを証明する。
 NG_TEMPLATE := $(if $(TEMPLATE),$(TEMPLATE),game-starter)
@@ -614,9 +615,10 @@ new-game:
 	  mv "$$f" "$(GAME)/assets/$(NAME).$${f##*/__NAME__.}"; \
 	done; \
 	NG_NAME='$(NAME)' NG_W='$(NG_W)' NG_H='$(NG_H)' \
-	NG_WW=$$(( $(NG_W) * 2 )) NG_WH=$$(( $(NG_H) * 2 )) NG_ENGINE='$(CURDIR)' \
+	NG_WW=$$(( $(NG_W) * 2 )) NG_WH=$$(( $(NG_H) * 2 )) \
 	find "$(GAME)" -type f \( -name '*.flix' -o -name '*.json' -o -name '*.toml' -o -name '*.md' -o -name 'Makefile' \) \
-	  -exec perl -pi -e 's/__NAME__/$$ENV{NG_NAME}/g; s/__TITLE__/$$ENV{NG_TITLE}/g; s/__WW__/$$ENV{NG_WW}/g; s/__WH__/$$ENV{NG_WH}/g; s/__W__/$$ENV{NG_W}/g; s/__H__/$$ENV{NG_H}/g; s/__ENGINE__/$$ENV{NG_ENGINE}/g; s/^ENGINE \?= .*$$/ENGINE ?= $$ENV{NG_ENGINE}/;' {} +; \
+	  -exec perl -pi -e 's/__NAME__/$$ENV{NG_NAME}/g; s/__TITLE__/$$ENV{NG_TITLE}/g; s/__WW__/$$ENV{NG_WW}/g; s/__WH__/$$ENV{NG_WH}/g; s/__W__/$$ENV{NG_W}/g; s/__H__/$$ENV{NG_H}/g;' {} +; \
+	printf '%s\n' '# このマシンの実行環境 (git には入れない — .gitignore 済み)。make new-game が生成。' '# ?= なのは Studio が環境変数 ENGINE で渡してくる同梱 engine を勝たせるため。' 'ENGINE ?= $(CURDIR)' > "$(GAME)/local.mk"; \
 	mkdir -p "$(GAME)/$(ENGINE_FULL_SUBPATH)"; \
 	cp "$(ENGINE_FULL_FPKG_SRC)" "$(GAME)/$(ENGINE_FULL_SUBPATH)/$(ENGINE_FULL_FPKG_NAME)"; \
 	cp "$(ENGINE_FULL_TOML_SRC)" "$(GAME)/$(ENGINE_FULL_SUBPATH)/$(ENGINE_FULL_TOML_NAME)"; \

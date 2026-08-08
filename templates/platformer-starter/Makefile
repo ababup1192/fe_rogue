@@ -14,38 +14,57 @@
 #   make playtest … bot に通しで遊ばせて「走れるか・詰まらないか」を測る
 #   make probe  … 面の読み込み・1 tick・タイル層の組み立てにかかる時間を測る
 #
-# Flix コンパイラはエンジンリポの bin/flix ラッパ経由で呼ぶ（devbox shell の外でも動く）。
-# エンジンの場所が違うときは `make run ENGINE=/path/to/flix_game_engine` で上書きする。
+# Flix コンパイラの呼び方は OS で変える:
+#   - macOS/Linux … エンジンリポの bin/flix ラッパ（nix store の flix.jar 解決と JVM フラグ
+#     （-XstartOnFirstThread、test/Bake の headless）を面倒みる）
+#   - Windows … ラッパ（bash）が無いので、JRE の java で bin/flix.jar を直接叩く
+# エンジンや java の場所はマシンごとに違うので、git に入れない local.mk に書く
+# （make new-game / Studio が生成する。別のマシンで clone したら 1 度だけ書き直す）:
+#   ENGINE := /abs/path/to/flix_game_engine   （Studio 同梱なら …/resources/engine）
+#   JAVA   := /abs/path/to/java.exe           （Windows のみ。Studio 同梱 JRE の java.exe）
+# 既定の ../.. は「テンプレを engine リポの中でそのまま動かす」ための値。
+-include local.mk
 ENGINE ?= ../..
-FLIX   := $(ENGINE)/bin/flix
+ifeq ($(wildcard $(ENGINE)/bin/flix*),)
+$(warning ENGINE が見当たりません ($(ENGINE)) — local.mk に「ENGINE := /path/to/flix_game_engine」を書くか、make <対象> ENGINE=... で指定してください)
+endif
+ifeq ($(OS),Windows_NT)
+JAVA   ?= java
+PYTHON ?= python
+# -Xss64m: View の式が深く入れ子になると、既定のスタックでは型検査が StackOverflow で落ちる。
+FLIX   := "$(JAVA)" -Xss64m -jar "$(ENGINE)/bin/flix.jar"
+else
+PYTHON ?= python3
+FLIX   := "$(ENGINE)/bin/flix"
+endif
 
 .PHONY: run debug test build check bake shot bench golden stages checkpoints playtest probe loc palette
 
 run:
-	"$(FLIX)" run
+	$(FLIX) run
 
 debug:
-	DEBUG=true "$(FLIX)" run
+	DEBUG=true $(FLIX) run
 
 test:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" test
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) test
 
 build:
-	"$(FLIX)" build
+	$(FLIX) build
 
 check:
-	"$(FLIX)" check
+	$(FLIX) check
 
 # Studio のドット絵エディタに legend の意味色キーの実色を教える写し（生成物）。
 # 色を変えたら焼き直す — 忘れると編集画面だけ仮色になり、実機と配色が食い違う。
 palette:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Palette.write
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Palette.write
 
 bake: palette
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Bake.all
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Bake.all
 
 shot:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" STAGE=$(STAGE) "$(FLIX)" run --entrypoint Bake.one
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" STAGE=$(STAGE) $(FLIX) run --entrypoint Bake.one
 
 bench: bake
 	"$(ENGINE)/bin/golden-check.sh"
@@ -54,20 +73,20 @@ golden:
 	"$(ENGINE)/bin/golden-bless.sh"
 
 stages:
-	python3 tools/check_stages.py
+	$(PYTHON) tools/check_stages.py
 
 # 中間ポイントを等間隔に置き直す（assets/stages.stage.json を書き換える）。
 # 置き直したら必ず静的検査へ — 戻り先が変われば面の流れも変わるため。
 checkpoints:
-	python3 tools/space_checkpoints.py
-	python3 tools/check_stages.py
+	$(PYTHON) tools/space_checkpoints.py
+	$(PYTHON) tools/check_stages.py
 
 # ロジックの大きさ。「全部読める大きさ」（上限 3,000 行）を保つための物差し。
 loc:
 	@find src test -name '*.flix' -print0 | xargs -0 wc -l | tail -1
 
 playtest:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Playtest.all
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Playtest.all
 
 probe:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint Probe.all
+	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Probe.all
