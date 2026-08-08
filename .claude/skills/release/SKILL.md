@@ -12,7 +12,7 @@ allowed-tools: Read, Grep, Glob, Bash
 
 - 変更が波及したパッケージだけ `make test-<name>`
 - それ以外は `flix check`（コンパイル通過）で足りる
-- テストを持たないパッケージ（nobi_patissier / templates 等）は常に check のみ
+- テストを持たないパッケージ（templates 等）は常に check のみ
 
 ## bake のバイト一致比較
 

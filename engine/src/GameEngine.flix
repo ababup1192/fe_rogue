@@ -109,39 +109,155 @@ mod GameEngine {
         pub def toDrawables(item: n, globalPos: Vec2.Vec2): List[Drawable] \ Game
     }
 
-    /// キーボードキー
+    /// キーボードキー。
+    /// GLFW のキートークンは US 配列の物理位置基準のため、JIS 固有キー
+    /// (無変換・変換・かな)は取れず、記号キーの位置も US 配列基準になる。
     pub enum Key with Eq, Order, ToString {
-        case W
+        // 英字
         case A
-        case S
-        case D
         case B
-        case Z
-        case X
         case C
-        case M
+        case D
+        case E
+        case F
+        case G
         case H
+        case I
+        case J
+        case K
+        case L
+        case M
+        case N
+        case O
+        case P
+        case Q
+        case R
+        case S
+        case T
+        case U
+        case V
+        case W
+        case X
+        case Y
+        case Z
+        // 数字(キーボード上段)
+        case Digit0
+        case Digit1
+        case Digit2
+        case Digit3
+        case Digit4
+        case Digit5
+        case Digit6
+        case Digit7
+        case Digit8
+        case Digit9
+        // 矢印
         case Up
         case Down
         case Left
         case Right
+        // 制御・編集
         case Enter
         case Space
         case Escape
+        case Tab
+        case Backspace
+        case Insert
+        case Delete
+        case PageUp
+        case PageDown
+        case Home
+        case End
+        case CapsLock
+        // ファンクション
         case F1
+        case F2
+        case F3
+        case F4
+        case F5
+        case F6
+        case F7
         case F8
+        case F9
+        case F10
+        case F11
+        case F12
+        // 記号(US 配列の刻印)
+        case Apostrophe
+        case Comma
+        case Minus
+        case Period
+        case Slash
+        case Semicolon
+        case Equal
+        case LeftBracket
+        case Backslash
+        case RightBracket
+        case GraveAccent
+        // 修飾
         case LeftShift
         case LeftCtrl
+        case LeftAlt
         case LeftSuper
+        case RightShift
+        case RightCtrl
+        case RightAlt
+        case RightSuper
+        case Menu
+        // テンキー
+        case Numpad0
+        case Numpad1
+        case Numpad2
+        case Numpad3
+        case Numpad4
+        case Numpad5
+        case Numpad6
+        case Numpad7
+        case Numpad8
+        case Numpad9
+        case NumpadDecimal
+        case NumpadDivide
+        case NumpadMultiply
+        case NumpadSubtract
+        case NumpadAdd
+        case NumpadEnter
+        case NumpadEqual
     }
 
     /// Key の全バリアント。InputEvent などのイベント駆動入力で
-    /// 走査対象として使う。新しい Key を追加した際はここにも追加する。
+    /// 走査対象として使う。新しい Key を追加した際はここにも追加する
+    /// (enum と同じグループ順で並べ、突き合わせできるようにしておく)。
     pub def allKeys(): List[Key] =
-        Key.W :: Key.A :: Key.S :: Key.D :: Key.B :: Key.Z :: Key.X :: Key.C :: Key.M :: Key.H ::
+        // 英字
+        Key.A :: Key.B :: Key.C :: Key.D :: Key.E :: Key.F :: Key.G :: Key.H ::
+        Key.I :: Key.J :: Key.K :: Key.L :: Key.M :: Key.N :: Key.O :: Key.P ::
+        Key.Q :: Key.R :: Key.S :: Key.T :: Key.U :: Key.V :: Key.W :: Key.X ::
+        Key.Y :: Key.Z ::
+        // 数字(キーボード上段)
+        Key.Digit0 :: Key.Digit1 :: Key.Digit2 :: Key.Digit3 :: Key.Digit4 ::
+        Key.Digit5 :: Key.Digit6 :: Key.Digit7 :: Key.Digit8 :: Key.Digit9 ::
+        // 矢印
         Key.Up :: Key.Down :: Key.Left :: Key.Right ::
-        Key.Enter :: Key.Space :: Key.Escape :: Key.F1 :: Key.F8 ::
-        Key.LeftShift :: Key.LeftCtrl :: Key.LeftSuper :: Nil
+        // 制御・編集
+        Key.Enter :: Key.Space :: Key.Escape :: Key.Tab :: Key.Backspace ::
+        Key.Insert :: Key.Delete :: Key.PageUp :: Key.PageDown :: Key.Home ::
+        Key.End :: Key.CapsLock ::
+        // ファンクション
+        Key.F1 :: Key.F2 :: Key.F3 :: Key.F4 :: Key.F5 :: Key.F6 ::
+        Key.F7 :: Key.F8 :: Key.F9 :: Key.F10 :: Key.F11 :: Key.F12 ::
+        // 記号(US 配列の刻印)
+        Key.Apostrophe :: Key.Comma :: Key.Minus :: Key.Period :: Key.Slash ::
+        Key.Semicolon :: Key.Equal :: Key.LeftBracket :: Key.Backslash ::
+        Key.RightBracket :: Key.GraveAccent ::
+        // 修飾
+        Key.LeftShift :: Key.LeftCtrl :: Key.LeftAlt :: Key.LeftSuper ::
+        Key.RightShift :: Key.RightCtrl :: Key.RightAlt :: Key.RightSuper ::
+        Key.Menu ::
+        // テンキー
+        Key.Numpad0 :: Key.Numpad1 :: Key.Numpad2 :: Key.Numpad3 :: Key.Numpad4 ::
+        Key.Numpad5 :: Key.Numpad6 :: Key.Numpad7 :: Key.Numpad8 :: Key.Numpad9 ::
+        Key.NumpadDecimal :: Key.NumpadDivide :: Key.NumpadMultiply ::
+        Key.NumpadSubtract :: Key.NumpadAdd :: Key.NumpadEnter :: Key.NumpadEqual :: Nil
 
     /// マウスボタン
     pub enum MouseButton with Eq, Order, ToString {

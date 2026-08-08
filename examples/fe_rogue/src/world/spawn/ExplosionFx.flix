@@ -22,8 +22,8 @@ mod ExplosionFx {
     def bigScaleFactor(): Float64 = 0.95
     /// 1 回の爆発の寿命（出現 → 消滅）。
     def lifetime(): Duration.Duration = Duration.millis(500)
-    /// ダメージポップアップ(100)より少し奥。ユニットよりは前面。renderExplosions 用に pub。
-    pub def zIndex(): Int32 = 90
+    /// ダメージポップアップ(1500)より少し奥。ユニットよりは前面。renderExplosions 用に pub。
+    pub def zIndex(): Int32 = 1400
 
     /// 指定セル中心に通常サイズの爆発を 1 つ発生させる。
     pub def emitAtCell(cell: {x = Int32, y = Int32}): Unit \ World.Command =

@@ -10,7 +10,7 @@ allowed-tools: Read, Grep, Glob, Bash
 
 ## 手順
 
-1. エラーメッセージを確認する（ユーザー提示 or `devbox run -- java -jar bin/flix.jar test` を実行）
+1. エラーメッセージを確認する（ユーザー提示 or `make check`（型検査だけ・一番速い）/ `make test` を実行）
 2. 下記の「既知の落とし穴リスト」と照合する
 3. 該当する場合は修正方法を提示する
 4. 該当しない場合は、エラー箇所のコードを読んで一般的な診断を行う

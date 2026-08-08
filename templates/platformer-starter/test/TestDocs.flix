@@ -98,4 +98,27 @@ mod TestDocs {
             not List.exists(e -> fst(e) == n, entries));
         Assert.assertEq(expected = (Nil, List.length(names)),
             (missing, List.length(entries)))
+
+    // ── keys(キー割り当て)──
+
+    @Test
+    def testKeysBrokenFallsBack(): Unit \ Assert =
+        Assert.assertEq(expected = true, Option.isEmpty(KeysDoc.fromJson("{oops")))
+
+    @Test
+    def testKeysDropsUnknownNameOnly(): Unit \ Assert =
+        // 書き間違い("Sinistra")はその 1 個だけ落ち、残りは書いた順で生きる。
+        let d = KeysDoc.fromJson("{\"left\": [\"Left\", \"Sinistra\", \"A\"]}")
+            |> Option.getWithDefault(KeysDoc.defaults());
+        Assert.assertEq(expected = GameEngine.Key.Left :: GameEngine.Key.A :: Nil, d#left)
+
+    @Test
+    def testKeysEmptyActionFallsBackToDefaults(): Unit \ Assert =
+        // 全部知らない名前で操作が空になったら、その操作だけ既定へ倒す(操作不能を
+        // 作らない)。書いた操作(dash)と触っていない操作(left)は影響を受けない。
+        let d = KeysDoc.fromJson("{\"jump\": [\"Hop\"], \"dash\": [\"Q\"]}")
+            |> Option.getWithDefault(KeysDoc.defaults());
+        Assert.assertEq(
+            expected = (KeysDoc.defaults()#jump, GameEngine.Key.Q :: Nil, KeysDoc.defaults()#left),
+            (d#jump, d#dash, d#left))
 }

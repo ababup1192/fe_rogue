@@ -16,6 +16,7 @@ mod Bake {
     def loadWorld(): World.World \ IO =
         run {
             World.initial(SampleDoc.load(SampleDoc.path()),
+                KeysDoc.load(KeysDoc.path()),
                 ThemeDoc.load(ThemeDoc.path()),
                 PxSpriteDoc.load(World.spritePath()),
                 Controls.loadShader())

@@ -6,7 +6,7 @@
 | 部品 | 実体 | 1 行で何ができるか |
 |---|---|---|
 | `PxShade` | `engine_world/src/PxShade.flix` | 平らに塗ったドット絵に、ふち光・接地影・ディザ・地肌の粒を読み込み時 1 回だけ乗せる（走行コスト 0） |
-| `FxDoc`（fx.json） | `engine_world/src/FxDoc.flix`、schema は `docs/fx.schema.json` | パーティクルを JSON で宣言（Studio で調整できる）。手組みの `Fx.derive` から昇格させる |
+| `FxDoc`（fx.json） | `engine_world/src/FxDoc.flix`、schema は engine リポの `docs/fx.schema.json` | パーティクルを JSON で宣言（Studio で調整できる）。手組みの `Fx.derive` から昇格させる |
 | `Render.vgrad` / `gradPolygon` | `engine_world/src/Render.flix:180,190` | 空・水面・光の帯を頂点色つきポリゴン 1 枚で（1px 帯積みの代替） |
 | `Daylight` + `Calendar` | `engine_world/src/Daylight.flix`, `Calendar.flix` | 時刻 0..1 で空気色の幕・影の向きと長さ・ドット絵に当たる光の向きが回る（昼夜） |
 | `Scatter` | `engine_world/src/Scatter.flix` | どこまでスクロールしても同じ配置になる撒き物（星・草・埃）を無限に |

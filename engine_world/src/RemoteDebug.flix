@@ -301,10 +301,10 @@ mod RemoteDebug {
                key <- keyOf(name) |> Option.toOk("error: unknown key '${name}' (${keyNames()})")
            ) yield Set.insert(key, keySet), Ok(Set.empty()))
 
-    /// "z" や "Enter" のようなキー名を Key へ（大文字小文字は区別しない）。
+    /// "z" や "Enter" のようなキー名を Key へ。解決は InputMap と同じ 1 本 —
+    /// 台本とキー設定 Doc で通る名前がずれない。
     pub def keyOf(name: String): Option[GameEngine.Key] =
-        GameEngine.allKeys()
-        |> List.find(key -> String.toLowerCase("${key}") == String.toLowerCase(name))
+        InputMap.keyOf(name)
 
     /// 台本で使える全キー名（help と unknown key エラーに載せる）。
     pub def keyNames(): String =

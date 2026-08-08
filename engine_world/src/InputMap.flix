@@ -29,6 +29,19 @@ mod InputMap {
                 if (Set.memberOf(key, keys)) Some(intent) else None)
             |> List.distinct
 
+    /// "z" や "Enter" のようなキー名を Key へ(大文字小文字は区別しない)。
+    /// 綴りは GameEngine.Key の ToString — キー設定 Doc とデバッグの台本が
+    /// 同じ名前で通る(別々の綴り表を作らない)。
+    pub def keyOf(name: String): Option[GameEngine.Key] =
+        GameEngine.allKeys()
+            |> List.find(key -> String.toLowerCase("${key}") == String.toLowerCase(name))
+
+    /// 名前の列 → キーの列(順は保つ)。知らない名前はその 1 個だけ捨てる —
+    /// 書き間違い 1 個で操作全体を殺さない。空になったとき既定へ倒すかは
+    /// 呼び側(Doc 層)が決める。
+    pub def keysOf(names: List[String]): List[GameEngine.Key] =
+        List.filterMap(keyOf, names)
+
     /// ホイールの生 delta を「目盛り」へ畳む。マウスは 1 目盛りで ±1.0 が届くが、
     /// トラックパッドは 1 未満の細かい値が毎フレーム届くので、そのまま使うと速度が
     /// フレームレート依存になる。carry に貯めて ±1.0 を超えたぶんだけを目盛り数として

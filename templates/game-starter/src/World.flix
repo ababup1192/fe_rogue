@@ -9,6 +9,7 @@ mod World {
 
     pub type alias World = {
         doc = SampleDoc.Doc,
+        keys = KeysDoc.Doc,
         theme = ThemeDoc.Doc,
         sprites = PxSpriteDoc.Doc,
         shader = ShaderDoc.Spec,
@@ -49,18 +50,19 @@ mod World {
         PxShade.polishDoc(theme#shade, shadeRamp(), doc)
 
     /// ゲーム開始時の状態。主人公は画面の真ん中。
-    pub def initial(doc: SampleDoc.Doc, theme: ThemeDoc.Doc, sprites: PxSpriteDoc.Doc,
-                    shader: ShaderDoc.Spec): World =
-        { doc = doc, theme = theme, sprites = polished(theme, sprites), shader = shader,
+    pub def initial(doc: SampleDoc.Doc, keys: KeysDoc.Doc, theme: ThemeDoc.Doc,
+                    sprites: PxSpriteDoc.Doc, shader: ShaderDoc.Spec): World =
+        { doc = doc, keys = keys, theme = theme, sprites = polished(theme, sprites), shader = shader,
           x = width() / 2.0, y = height() / 2.0, t = 0.0, activeDocsWritten = "" }
 
     /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。
     /// Studio の「表示中」バッジの材料（ActiveDocs.step が debug/ に名乗る）。
-    /// この骨組みは場面が 1 つで、4 つの Doc を常に表示に使っている —
+    /// この骨組みは場面が 1 つで、5 つの Doc を常に表示に使っている —
     /// 場面（表紙・クリア等）が増えたら、ここで使っている物だけに絞ること
     /// （全部を常時 active にするとバッジの意味が死ぬ）。
     pub def activeDocs(_w: World): List[(String, List[String])] =
         ("sample", SampleDoc.path() :: Nil)
+            :: ("keys", KeysDoc.path() :: Nil)
             :: ("theme", ThemeDoc.path() :: Nil)
             :: ("sprite", spritePath() :: Nil)
             :: ("shader", shaderPath() :: Nil)
@@ -82,6 +84,8 @@ mod World {
     // ── Doc の差し替え（保存即反映） ──
 
     pub def withDoc(doc: SampleDoc.Doc, w: World): World = { doc = doc | w }
+
+    pub def withKeys(keys: KeysDoc.Doc, w: World): World = { keys = keys | w }
 
     /// テーマには仕上げの強さ・光の向きも入っているので、色を変えたら絵も掛け直す。
     pub def withTheme(theme: ThemeDoc.Doc, sprites: PxSpriteDoc.Doc, w: World): World =

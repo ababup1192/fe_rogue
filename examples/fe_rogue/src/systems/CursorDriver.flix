@@ -43,9 +43,9 @@ mod CursorDriver {
     pub def cornerColor(): Color = {r = 1.0f32, g = 1.0f32, b = 1.0f32}
 
     /// カーソルの描画 zIndex。駒 (= 10) / HP バー (UnitHPBarRender = 50〜52) /
-    /// 武器アイコン (WeaponIconRender = 60〜62) より更に上に表示し、選択マスを常に
+    /// 武器アイコン (WeaponIconRender = 1200〜) より更に上に表示し、選択マスを常に
     /// 最前面で視認できるようにする (HUD/メニューは CanvasLayer なので更に上)。
-    pub def cornerZIndex(): Int32 = 70
+    pub def cornerZIndex(): Int32 = 1300
 
     /// 四隅 L字を構成する 8 枚の白ボックス。各要素はセル中心からの左上オフセットと px サイズを持つ。
     /// 隅ごとに横 1 本 + 縦 1 本で L字を作る。`RenderWorld.renderCursor` がこの並びをそのまま

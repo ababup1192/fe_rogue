@@ -19,11 +19,12 @@ def main(): Unit \ IO =
     else {
         run {
             let doc = SampleDoc.load(SampleDoc.path());
+            let keys = KeysDoc.load(KeysDoc.path());
             let theme = ThemeDoc.load(ThemeDoc.path());
             let sprites = PxSpriteDoc.load(World.spritePath());
             let shader = Controls.loadShader();
             App.game({
-                init = World.initial(doc, theme, sprites, shader),
+                init = World.initial(doc, keys, theme, sprites, shader),
                 // 入力を読み World.step で次の状態へ → 表示中の Doc を名乗る。
                 // ActiveDocs.step だけ Fs.FileWrite を使うので、純粋な部品は checked_ecast で
                 // 同じ効果行へそろえる（部品側の ef は {} のまま保つ）。ActiveDocs は Studio の
@@ -34,6 +35,7 @@ def main(): Unit \ IO =
                 view = (ctx, w) -> checked_ecast(View.frame(ctx, w)),
                 reloads =
                     (SampleDoc.path(), Controls.reloadDoc) ::
+                    (KeysDoc.path(), Controls.reloadKeys) ::
                     (ThemeDoc.path(), Controls.reloadTheme) ::
                     (World.spritePath(), Controls.reloadSprites) ::
                     (World.shaderPath(), Controls.reloadShader) :: Nil

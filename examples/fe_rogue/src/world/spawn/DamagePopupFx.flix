@@ -32,7 +32,7 @@ mod DamagePopupFx {
 
     /// 描画 zIndex。ゲームオブジェクト（スプライト・マップ）よりも前面に重ね、
     /// ダメージ数字がユニットや地形に埋もれないようにする。
-    pub def popupZIndex(): Int32 = 100
+    pub def popupZIndex(): Int32 = 1500
 
     /// プレイヤー攻撃 → 敵（被弾は敵）に使う色: 白
     pub def damageToEnemyColor(): Color = UITheme.white()

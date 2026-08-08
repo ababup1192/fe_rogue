@@ -137,9 +137,6 @@ mod PlayerDriver {
     pub def wouldOverloadByPicking(data: Data, item: ItemData.GroundItemKind): Bool =
         Encumbrance.wouldExceedImmobile(loadOf(data), Encumbrance.groundItemWeight(item))
 
-    /// プレイヤー Sprite の zIndex（Player は前面に立つ）。EnemyDriver と同じ 10。
-    pub def spriteZIndex(): Int32 = 10  // renderUnits が使うため pub
-
     /// 手動移動（PlayerMoving）・集合の主人公移動と味方追従（GatherMove）の 1 マス時間（≈ 0.167 秒）。
     /// 落ち着いて移動先を狙えるよう少しゆっくり（20 フレーム = 約 0.167 秒）にする。
     /// pub: 打ち手層（PlayerMovementDriver）が手動移動 / 追従 step で moveToById に渡す。

@@ -15,6 +15,7 @@ def main(): Unit \ IO =
     else {
         run {
             let motion = MotionDoc.load(MotionDoc.path());
+            let keys = KeysDoc.load(KeysDoc.path());
             let rules = RulesDoc.load(RulesDoc.path());
             let enemyDoc = EnemyDoc.load(EnemyDoc.path());
             let stageDoc = StageDoc.load(StageDoc.path());
@@ -22,7 +23,7 @@ def main(): Unit \ IO =
             let uiText = UiText.load(UiText.path());
             let pxDoc = PxSpriteDoc.load(World.spritePath());
             App.game({
-                init = World.initial(motion, rules, enemyDoc, stageDoc, theme, uiText, pxDoc),
+                init = World.initial(motion, keys, rules, enemyDoc, stageDoc, theme, uiText, pxDoc),
                 update = (f, w) -> checked_ecast(Controls.step(f, w)),
                 view = (ctx, w) -> checked_ecast(View.frameLive(ctx, w)),
                 reloads = Controls.reloads()

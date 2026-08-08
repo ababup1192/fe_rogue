@@ -10,10 +10,17 @@ mod View {
     /// 部屋 1 マスの画面上のサイズ。
     def tile(): Float64 = 24.0
 
-    // 描画レイヤー、下から上へ。床/壁 = 0..1、人 = 10..、頭上の印 = 20..。
-    def zChar(): Int32 = 10
-    def zMark(): Int32 = 20
-    def zIndicator(): Int32 = 22
+    // 描画レイヤー、下から上へ。床/壁 = 0..2、人と頭上の印 = 前後の帯 10..（会話 UI の 120 未満）。
+    /// 人の前後の帯の一番奥の zIndex。
+    def zBandBack(): Int32 = 10
+
+    /// 帯の 1 行ぶんの zIndex の幅。1 体の部品（体 0..3・印 4・▼ 5）が隣の行の段に
+    /// 食い込まない広さにする。
+    def zRowStride(): Int32 = 8
+
+    /// 頭上の印の、体の部品（0..3）に対する相対 zIndex。
+    def zMarkLift(): Int32 = 4
+    def zIndicatorLift(): Int32 = 5
 
     /// 不正解シェイクの揺れ幅（px）と速さ（Hz 相当）。
     def shakeAmp(): Float64 = 3.0
@@ -90,6 +97,16 @@ mod View {
         Vec2.add(origin(state),
             { x = Int32.toFloat64(x) * tile(), y = Int32.toFloat64(y) * tile() })
 
+    /// 人と頭上の印の前後の帯。足元が下（南）の人ほど手前に出る。
+    def band(state: Room.State): Depth.Band =
+        { back = zBandBack(),
+          front = zBandBack() + (state#rows + 1) * zRowStride(),
+          top = origin(state)#y,
+          bottom = origin(state)#y + Int32.toFloat64(state#rows) * tile() }
+
+    /// 帯に渡す足元の高さ（立ち位置セルの下端）。
+    def footY(center: Vec2.Vec2): Float64 = center#y + tile() / 2.0
+
     def cells(state: Room.State): List[(Int32, Int32)] =
         List.flatMap(y -> List.map(x -> (x, y), List.range(0, state#cols)),
             List.range(0, state#rows))
@@ -118,10 +135,12 @@ mod View {
 
     /// NPC は立ち姿 + 呼吸のボブ（id で位相をずらして一斉に沈まないようにする）。
     def npcBodies(state: Room.State): List[Render.PlacedItem] =
-        state#npcs |> List.flatMap(npc ->
-            Human.standing(cellCenter(state, npc#cell), tile(), Palette.npcSkin(npc#id),
+        state#npcs |> List.flatMap(npc -> {
+            let center = cellCenter(state, npc#cell);
+            Human.standing(center, tile(), Palette.npcSkin(npc#id),
                            npc#facing, state#idlePhase + Int32.toFloat64(npc#id) * 0.37)
-                |> List.map(raise(zChar())))
+                |> Depth.place(band(state), footY(center))
+        })
 
     /// プレイヤー。スライド中は前のセルから今のセルへ向かう途中の位置に描く。
     def playerParts(state: Room.State): List[Render.PlacedItem] =
@@ -131,7 +150,7 @@ mod View {
             case None => cellCenter(state, state#player)
         };
         Human.walking(center, tile(), Palette.playerSkin(), state#facing, drawnWalkPhase(state))
-            |> List.map(raise(zChar()))
+            |> Depth.place(band(state), footY(center))
 
     /// 立ち止まっているときは静止コマに寄せ、歩いているときは walkPhase をそのまま使う。
     def drawnWalkPhase(state: Room.State): Float64 =
@@ -140,19 +159,17 @@ mod View {
             case None    => 0.0
         }
 
-    def raise(delta: Int32, placed: Render.PlacedItem): Render.PlacedItem =
-        { item = Render.raiseZ(delta, placed#item) | placed }
-
     // ── 頭上の印 ──
 
     /// メモのマークを NPC の頭上に描く。嘘つき = 赤い斜め十字、本物 = 緑の輪。
+    /// 持ち主の足元の帯に載せるので、手前（南）に立つ人を貫かない。
     def headMarks(state: Room.State): List[Render.PlacedItem] =
         state#npcs |> List.flatMap(npc ->
-            match Map.get(npc#id, state#memo) |> Option.getWithDefault(Room.Mark.Unknown) {
+            (match Map.get(npc#id, state#memo) |> Option.getWithDefault(Room.Mark.Unknown) {
                 case Room.Mark.Unknown    => Nil
                 case Room.Mark.LiarMark   => crossMark(markPos(state, npc))
                 case Room.Mark.HonestMark => ringMark(markPos(state, npc))
-            })
+            }) |> Depth.place(band(state), footY(cellCenter(state, npc#cell))))
 
     /// マークの置き場所: NPC の頭の少し上。
     def markPos(state: Room.State, npc: Room.Npc): Vec2.Vec2 =
@@ -165,17 +182,17 @@ mod View {
         { at = center, item = Render.polygon(
             { x = -arm, y = -arm + thick } :: { x = -arm + thick, y = -arm } ::
             { x = arm, y = arm - thick } :: { x = arm - thick, y = arm } :: Nil,
-            Palette.markLiar(), zMark()) } ::
+            Palette.markLiar(), zMarkLift()) } ::
         { at = center, item = Render.polygon(
             { x = arm - thick, y = -arm } :: { x = arm, y = -arm + thick } ::
             { x = -arm + thick, y = arm } :: { x = -arm, y = arm - thick } :: Nil,
-            Palette.markLiar(), zMark()) } :: Nil
+            Palette.markLiar(), zMarkLift()) } :: Nil
 
     /// 緑の輪（塗りなしの丸い箱 = 枠線だけの円）。
     def ringMark(center: Vec2.Vec2): List[Render.PlacedItem] =
         let d = 9.0;
         { at = Vec2.add(center, { x = -d / 2.0, y = -d / 2.0 }),
-          item = Render.box({x = d, y = d}, Palette.markHonest(), zMark())
+          item = Render.box({x = d, y = d}, Palette.markHonest(), zMarkLift())
             |> Render.rounded(d / 2.0)
             |> Render.fade(0.0f32)
             |> Render.outline(Palette.markHonest(), 1.6) } :: Nil
@@ -191,6 +208,7 @@ mod View {
                     let bobY = RenderUtil.sinF(state#idlePhase * Vec2.tau()) * 1.5;
                     let pos = Vec2.add(cellCenter(state, npc#cell),
                         { x = -4.0, y = -(tile() * 1.15) + bobY });
-                    { at = pos, item = Render.textTinted("▼", atlas, 8.0, Palette.talkIndicator(), zIndicator()) } :: Nil
+                    ({ at = pos, item = Render.textTinted("▼", atlas, 8.0, Palette.talkIndicator(), zIndicatorLift()) } :: Nil)
+                        |> Depth.place(band(state), footY(cellCenter(state, npc#cell)))
             }
 }

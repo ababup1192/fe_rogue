@@ -10,8 +10,9 @@ mod RenderWorld {
     /// store、死亡点滅 alpha=dyingElapsed→`EnemyDriver.deathBlinkAlpha`。
     /// 位置は `World.visualPosOf`（静止=セル中心／移動=renderPos 補間／lunge=往復導出）。
     /// 可視ゲート: 味方 hidden=playerHidden store、敵=明るい穴 `holesOpt`（fog 由来の共有 lit ゲート）。
-    /// 重なり順は「画面下（y 大）ほど手前」＝描画位置 y の昇順に並べて描く
-    /// （zIndex は共通の spriteZIndex・同 z 内は列順が描画順。同 y は味方→敵の安定順）。
+    /// 重なり順は「画面下（y 大）ほど手前」＝足元 y を Depth の帯で zIndex に写す。
+    /// 同じ z に丸まった同士は列順が描画順なので、味方（id 昇順）→敵（id 昇順）の列組みが
+    /// 同値の順を決定的にする。
     pub def renderUnits(world: World, holesOpt: Option[List[GridRect]],
                          transform: Projection.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
         let players = World.playerIdsOf(world)
@@ -30,16 +31,26 @@ mod RenderWorld {
                 World.enemyResourceOf(World.EntityRef.Enemy(id), world)
                     |> Option.flatMap(res -> unitInput(World.EntityRef.Enemy(id), res#sprite, None, world))
                     |> Option.toList);
+        let band = unitBand(world);
         List.append(players, enemies)
-            |> List.sortBy(u -> (u#pos#y, drawRank(u#ref)))
-            |> List.flatMap(u -> unitDraw(u#ref, u#pos, u#sprite, u#frames, world, transform))
+            |> List.flatMap(u -> unitDraw(u#ref, u#pos, u#sprite, u#frames, world, band, transform))
 
-    /// Y-sort の同値タイブレーク（味方→敵、各 faction 内は id 昇順）。sort の安定性に
-    /// 依存せず同 y の描画順を決定的にする。
-    def drawRank(ref: World.EntityRef): (Int32, Int32) = match ref {
-        case World.EntityRef.Player(id) => (0, id)
-        case World.EntityRef.Enemy(id)  => (1, id)
-    }
+    /// ユニットの前後の帯。盤面の縦幅を z 100..980 に割り当て、足元が下のユニットほど
+    /// 手前に出す。y はユニット位置（`visualPosOf`）と同じ `cellCenter` の空間＝グリッド
+    /// 原点 0 起点で測る。盤面レス画面は幅ゼロの帯（zAt が常に back を返す）。
+    def unitBand(world: World): Depth.Band =
+        match World.terrainOf(world) {
+            case Some(m) =>
+                { back = unitZBack(), front = unitZFront(),
+                  top = 0.0,
+                  bottom = Int32.toFloat64(m#usedRect#size#y) * m#tileSize }
+            case None =>
+                { back = unitZBack(), front = unitZBack(), top = 0.0, bottom = 0.0 }
+        }
+
+    /// ユニット帯の z 範囲。下は宝箱（6）より上、上は照準矢印（1000）より下に収める。
+    def unitZBack(): Int32 = 100
+    def unitZFront(): Int32 = 980
 
     /// 1 ユニットの描画入力（描画位置つき）。未 spawn（pos 導出不能）は None＝描かない。
     def unitInput(ref: World.EntityRef, spriteRes: SpriteRes.SpriteResource,
@@ -78,7 +89,8 @@ mod RenderWorld {
     /// worldPos は呼び側が `World.visualPosOf` で導出済み（存在 gate 込み）。
     def unitDraw(ref: World.EntityRef, worldPos: Vec2,
                  spriteRes: SpriteRes.SpriteResource, spriteFrames: Option[SpriteFrames],
-                 world: World, transform: Projection.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
+                 world: World, band: Depth.Band,
+                 transform: Projection.ViewTransform): List[GameEngine.Drawable] \ GameEngine.Game =
         {
                 let flipH = World.flipHOf(ref, world);
                 let modColor = World.modulateOf(ref, world);
@@ -112,7 +124,8 @@ mod RenderWorld {
                     |> Sprite.setFlipH(flipH)
                     |> Sprite.mapVisual(Visual.setColor(modColor))
                     |> Sprite.setAlpha(alpha);
-                standaloneSprite(node, worldPos, PlayerDriver.spriteZIndex(), transform)
+                standaloneSprite(node, worldPos,
+                    Depth.zAt(band, worldPos#y + MapSnapshot.tileSize() / 2.0), transform)
         }
 
     /// ミニマップ（探索済みマップ）を World render System で直描きする。scene にノードを積まず、

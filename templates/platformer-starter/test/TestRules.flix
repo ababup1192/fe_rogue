@@ -14,7 +14,7 @@ mod TestRules {
         { version = 1, stages = { name = "t", kind = "outdoor", rows = rows } :: Nil }
 
     def world(rows: List[String]): World.World =
-        World.initial(m(), r(), EnemyDoc.defaults(), doc(rows), Theme.defaults(),
+        World.initial(m(), KeysDoc.defaults(), r(), EnemyDoc.defaults(), doc(rows), Theme.defaults(),
                       UiText.defaults(), PxSpriteDoc.empty())
 
     def idle(): World.Input =
@@ -163,7 +163,7 @@ mod TestRules {
             stages = { name = "one", kind = "outdoor", rows = "..P....." :: "########" :: Nil }
                   :: { name = "two", kind = "outdoor", rows = "..P....." :: "##.#####" :: Nil }
                   :: Nil };
-        let w0 = World.initial(m(), r(), EnemyDoc.defaults(), two, Theme.defaults(),
+        let w0 = World.initial(m(), KeysDoc.defaults(), r(), EnemyDoc.defaults(), two, Theme.defaults(),
                                UiText.defaults(), PxSpriteDoc.empty());
         // 2 面目・残機 1・点あり の状態から穴へ落ちる。
         let onTwo = { score = 1234, hearts = 1 | World.loadStage(1, w0) };

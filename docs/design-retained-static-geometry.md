@@ -266,7 +266,7 @@ SoftRaster は `DrawCmd` を CPU で描くだけで GPU を知らない。retain
 
 ### 段階 1：多角形シェーダに uniform を足す（恒等のまま・速くならない）
 - `viewOffset`/`viewScale` を追加。既存 `drawPolygonBatch` は毎 draw call で `(0,0)/(1,1)` を明示設定（§3.2）。
-- 全 example（breakout/sokoban/platformer/liars/nobi/fe_rogue）の絵が 1px も変わらないこと: golden 1165/0 ＋ 各 example の glReadPixels 恒等確認（uniform 追加前後で GL フレーム一致）。
+- 全 example（breakout/sokoban/platformer/liars/fe_rogue）の絵が 1px も変わらないこと: golden 1165/0 ＋ 各 example の glReadPixels 恒等確認（uniform 追加前後で GL フレーム一致）。
 - ゲート: 1165/0 ＋ 全 example GL フレーム不変。
 
 ### 段階 2（最初に速くなる里程標）：init/free + renderCommands 拡張、dungeon の**壁だけ** retained

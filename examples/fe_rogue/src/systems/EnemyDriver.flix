@@ -24,9 +24,6 @@ mod EnemyDriver {
     // (B) 定数
     // ────────────────────────────────────────────────────────
 
-    /// プレイヤーと同じ高さで前面に立つ。MoveRange (1) より上。
-    pub def spriteZIndex(): Int32 = 10  // renderUnits が使うため pub
-
     // per-room cap は引数の floor#monstersPerRoom で制御される（resource 駆動）。
 
     /// 1 マス分のスライド時間。Player と同じ感覚で見えるよう揃える。

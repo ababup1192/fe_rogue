@@ -51,7 +51,8 @@ description: "画面の絵を作るときの手順と、web/Canvas/Shadertoy の
 - **[recipes.md](recipes.md)** — 同じ 4 性質をまったく違う手で満たした実例 4 つ。
   **この中から選ぶための物ではない**（選ぶと同じ顔のゲームが並ぶ）。翻訳の例として読む。
 - **[loop-gif.md](loop-gif.md)** — 完全ループ GIF の焼き方と WebP 変換。
-- シェーダーの語彙（Field / Shade の全 kind とレシピ）は [docs/shader-doc.md](../../../docs/shader-doc.md) が正。
+- シェーダーの語彙（Field / Shade の全 kind とレシピ）は engine リポの `docs/shader-doc.md` が正
+  （engine の在り処はゲームの `Makefile` 冒頭の `ENGINE` 変数）。
 
 ## 画風に依らず効く作法
 
