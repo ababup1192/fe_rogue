@@ -616,8 +616,27 @@ NG_TITLE = $(if $(TITLE),$(TITLE),$(NAME))
 # （execve が値をそのまま載せる・シェル再クォート無し）、recipe 側の perl は
 # $ENV{NG_TITLE} で安全に読む。
 export NG_TITLE
+
+# engine_full.fpkg がソースより古いまま先へ進むのを止める。
+# WhyNot: 「在るかどうか」だけでは足りない。fpkg の版名は bump で進むので、中身が
+# 古くても名前は新しい版に見える。それがゲームの lib/ や Studio の .app へ写ると、
+# Flix は「版名が同じなら取り直さない」ので誰も気づけず、engine のソースにも Release
+# にも在る def が「Undefined name」になる。
+# 判定は mtime なので、git checkout 直後は中身が同じでも古く見えることがある。空振りは
+# sync-engine-full を 1 回回せば済む側の失敗なので、見逃すよりそちらへ倒す。
+.PHONY: engine-full-fresh
+engine-full-fresh:
+	@if [ ! -f "$(ENGINE_FULL_FPKG_SRC)" ]; then \
+	  echo "error: $(ENGINE_FULL_FPKG_SRC) がありません。先に make sync-engine-full を実行してください"; exit 1; \
+	fi
+	@newer=$$(find $(ROOT_SRC_PKGS:%=%/src) -name '*.flix' -newer "$(ENGINE_FULL_FPKG_SRC)" 2>/dev/null | head -5); \
+	 if [ -n "$$newer" ]; then \
+	   echo "error: $(ENGINE_FULL_FPKG_SRC) がソースより古いです。make sync-engine-full で焼き直してください"; \
+	   echo "$$newer" | sed 's/^/  新しい: /'; exit 1; \
+	 fi
+
 .PHONY: new-game
-new-game:
+new-game: engine-full-fresh
 	@if [ -z "$(GAME)" ]; then echo "error: GAME を指定してください (make new-game GAME=/abs/path NAME=mygame TITLE=題名 W=240 H=320)"; exit 1; fi
 	@case "$(GAME)" in /*) : ;; *) echo "error: GAME は絶対パスで指定してください: $(GAME)"; exit 1;; esac
 	@if [ -e "$(GAME)" ]; then echo "error: 生成先が既に存在します: $(GAME)"; exit 1; fi
@@ -628,7 +647,6 @@ new-game:
 	@echo "$(NG_TEMPLATE)" | grep -Eq '^[a-z][a-z0-9-]*$$' || { echo "error: TEMPLATE が不正です: $(NG_TEMPLATE)"; exit 1; }
 	@if [ ! -d "templates/$(NG_TEMPLATE)" ]; then echo "error: templates/$(NG_TEMPLATE) がありません"; exit 1; fi
 	@if [ -z "$(W)$(H)" ] && grep -q "__W__" "templates/$(NG_TEMPLATE)/project.json" 2>/dev/null; then echo "[new-game] W/H 未指定 — トークン式テンプレの既定 480×300 で作ります"; fi
-	@if [ ! -f "$(ENGINE_FULL_FPKG_SRC)" ]; then echo "error: $(ENGINE_FULL_FPKG_SRC) がありません。先に make sync-engine-full を実行してください"; exit 1; fi
 	@set -e; \
 	echo "[new-game] $(GAME) を作成します (NAME=$(NAME) TITLE=$(NG_TITLE) design=$(NG_W)x$(NG_H) TEMPLATE=$(NG_TEMPLATE))"; \
 	mkdir -p "$(GAME)"; \
