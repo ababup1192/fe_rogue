@@ -5,6 +5,10 @@
 これは `engine_world`（ゲームが直接触る土台）の索引。エンジンの奥（`engine/src`）の索引は
 [engine-module-index.md](engine-module-index.md) を参照。
 
+**API の型・引数を調べるとき**は、ソースを grep する前にまず [api-digest.md](api-digest.md)
+（全 pub 宣言の自動生成一覧）を引く。ソースの丸読みより桁違いに安い。
+**新しい場所で headless bake を組むとき**は [headless-bake-recipe.md](headless-bake-recipe.md) を写経する。
+
 **初学者向け概念ノート**（黒箱に見えがちな再利用パーツを1画面で解説）:
 - `docs/dual-grid.md` — チップ絵なしでマップ地形を描く仕組み（DualGrid / Material / Terrain の分業と「角の4セル→16ケース」）。
 - App のゲームループ（更新系システムで進める → view で描く の2役割と1周の順）は `engine_world/src/App.flix` 冒頭の doc を参照。
@@ -29,54 +33,54 @@
 
 | やりたいこと | モジュール |
 |---|---|
-| メニューを作る（項目列・カーソル・ハイライト） | UiMenu |
+| メニューを作る（項目列・カーソル・ハイライト） | UiMenu（実例: `templates/novel-starter/src/World.flix`） |
 | 窓より長い内容をスクロールで覗く（ログ・履歴・一覧） | UiScroll |
-| 描画物を矩形で切り抜く（スクロール窓・PiP。スクリーン空間） | Render（clipped / clippedAll） |
-| 文章を幅で行に折る・描く前に行数を数える | RichText（wrapLinesBy） |
+| 描画物を矩形で切り抜く（スクロール窓・PiP。スクリーン空間） | Render（clipped / clippedAll）（実例: `templates/novel-starter/src/View.flix`） |
+| 文章を幅で行に折る・描く前に行数を数える | RichText（wrapLinesBy）（実例: `templates/rpg-starter/src/View.flix`） |
 | ホイールの生 delta を目盛りに畳む | InputMap（wheelSteps） |
-| 固定スロットに可変個の項目を流し込む | UiSlots |
-| UI を JSON（ui.json）で宣言する | UiDoc / UiSpec |
+| 固定スロットに可変個の項目を流し込む | UiSlots（実例: `templates/novel-starter/src/World.flix` / `examples/liars_room/src/GameUi.flix`） |
+| UI を JSON（ui.json）で宣言する | UiDoc / UiSpec（実例: `examples/feature_lab/assets/Hud.ui.json` / `examples/sokoban/assets/Title.ui.json`） |
 | 宣言した UI の「名前 → 画面上の矩形」を引く（当たり判定を宣言と共有） | UiDoc（rectsOf / renderWithRects）/ Flex（keyed） |
 | UI の箱にドット絵の皮を着せる（九分割スキン。box の skin） | UiExtract（boxPlacedItems）/ UiDoc |
-| UI 要素を並べる・整列する | UiLayout / Flex |
-| UI の文字欄に実行時の値を差し込む | UiBinding |
-| 会話窓・文字送りを出す | UiDialog / UiTypewriter |
-| マウスの下の UI 要素を知る | UiFocus |
-| meta "prefix/N" から番号を読む | UiMeta |
-| 粒を舞わせる | Fx / Scatter |
-| 疑似遠近の帯（横一列）ごとに立ち物・床を敷く | Scatter.strip |
-| 爆発・火花を fx.json で宣言して時刻から描く | FxDoc / Fx（sample / sampleAt） |
-| 粒を輪に等分して撒く・破片を回しながら飛ばす | FxDoc（dir.mode: even / turn） |
+| UI 要素を並べる・整列する | UiLayout / Flex（実例: `templates/novel-starter/src/NovelKit.flix`） |
+| UI の文字欄に実行時の値を差し込む | UiBinding（実例: `examples/fe_rogue/src/ui/TopBarUi.flix`） |
+| 会話窓・文字送りを出す | UiDialog / UiTypewriter（実例: `templates/novel-starter/src/World.flix`） |
+| マウスの下の UI 要素を知る | UiFocus（実例: `templates/novel-starter/src/Controls.flix`） |
+| meta "prefix/N" から番号を読む | UiMeta（実例: `templates/novel-starter/src/Controls.flix`） |
+| 粒を舞わせる | Fx / Scatter（実例: `templates/race-starter/src/World.flix`） |
+| 疑似遠近の帯（横一列）ごとに立ち物・床を敷く | Scatter.strip（実例: `templates/race-starter/src/ViewScene.flix`） |
+| 爆発・火花を fx.json で宣言して時刻から描く | FxDoc / Fx（sample / sampleAt）（実例: `templates/race-starter/assets/fx/spark.fx.json`） |
+| 粒を輪に等分して撒く・破片を回しながら飛ばす | FxDoc（dir.mode: even / turn）（実例: `templates/race-starter/assets/fx/crash.fx.json` / `nitro-burst.fx.json`） |
 | 蛍・湯気をその場でゆらゆら舞わせる | FxDoc（wobble） |
 | 雨・火花・流星を速度方向の筋で描く | FxDoc（shape: streak / stretch） |
 | 粒をふわっと明滅させる | FxDoc（カーブ pulse） |
-| 撃つたびに出る効果を発生・寿命回収・描画で回す | Fx（burst / expire / drawAll） |
-| 値を滑らかに動かす | EcsTween / Curve |
-| スプライトをコマ送りする | Anim |
-| ドット絵を文字格子(*.sprite.json)で宣言して描く | PxSpriteDoc / PxSprite |
-| 一続きの振り付け(歩く→拾う→戻る)の現在区間を時刻から引く | Timeline |
-| 経路(脚の列)の現在地・歩き量・到着を時刻から引く | Journey |
+| 撃つたびに出る効果を発生・寿命回収・描画で回す | Fx（burst / expire / drawAll）（実例: `templates/race-starter/src/World.flix`） |
+| 値を滑らかに動かす | EcsTween / Curve（実例: `examples/platformer/src/Char10.flix`） |
+| スプライトをコマ送りする | Anim（実例: `templates/platformer-starter/src/View.flix`） |
+| ドット絵を文字格子(*.sprite.json)で宣言して描く | PxSpriteDoc / PxSprite（実例: `templates/game-starter/assets/`配下の `*.sprite.json` + `templates/game-starter/src/Palette.flix`） |
+| 一続きの振り付け(歩く→拾う→戻る)の現在区間を時刻から引く | Timeline（実例: `examples/feature_lab/src/bake/Gallery.flix`） |
+| 経路(脚の列)の現在地・歩き量・到着を時刻から引く | Journey（実例: `templates/rpg-starter/src/World.flix`。住人巡回） |
 | イベントシーン(カット列)を世界の状態を見ながら順に演じる | SceneSeq |
-| 一定間隔で合図を出す・残り時間を数える | Clock |
+| 一定間隔で合図を出す・残り時間を数える | Clock（実例: `templates/rpg-starter/src/World.flix`） |
 | 一過性演出（発火→寿命）の経過・進行・生存を時刻から引く | Lifetime |
-| 巻き戻し・リプレイ・履歴 | Worldline |
-| セーブ・ロード | SaveManager / Persistence |
-| タイルのマス目と移動範囲 | Grid / GridSearch |
+| 巻き戻し・リプレイ・履歴 | Worldline（実例: `examples/sokoban/src/Sokoban.flix`） |
+| セーブ・ロード | SaveManager / Persistence（実例: `examples/fe_rogue/src/ui/TitleMenuUi.flix`） |
+| タイルのマス目と移動範囲 | Grid / GridSearch（実例: `templates/platformer-starter/src/Stage.flix`） |
 | 敵を追わせる・逃がす・ふらつかせる(距離場の 1 歩) | Steering |
-| タイルセット PNG + 自前の map.json でマップを貼る | MapResource |
-| チップ絵タイルを 1 draw call で敷く(焼き置き・マスごとの照明色 tint・屋根や庇は zIndex で手前にも) | App.withTileLayers / TileScene |
-| チップ絵なしでマップ地形(壁・水)を多角形で描く | DualGrid / Material |
+| タイルセット PNG + 自前の map.json でマップを貼る | MapResource（実例: `examples/fe_rogue/test/TestMapLoader.flix`） |
+| チップ絵タイルを 1 draw call で敷く(焼き置き・マスごとの照明色 tint・屋根や庇は zIndex で手前にも) | App.withTileLayers / TileScene（実例: `templates/platformer-starter/src/Main.flix` / `templates/rpg-starter/src/TownMap.flix`） |
+| チップ絵なしでマップ地形(壁・水)を多角形で描く | DualGrid / Material（実例: `examples/fe_rogue/src/lib/map/MapLoader.flix` + `examples/fe_rogue/assets/materials/room_3.material.json`） |
 | rows の文字格子から地形の見た目を作る(*.terrain.json) | Terrain / TerrainDoc |
-| 重なり判定・物理 | Collision / Physics2D |
-| 当たり判定を JSON で宣言する | HitDoc + Hit |
-| キーが押された瞬間を取る | InputEdge |
-| 複数キーを 1 つの操作にまとめる（WASD と矢印の両対応） | InputMap |
-| カメラで寄せる・追いかける | CameraRig |
-| 被弾・着弾で画面を揺らす（減衰ノイズの画面揺れ） | CameraRig（addTrauma / tick / shakeOffset） |
-| 起動中のゲームを外から操作・観測する | RemoteDebug |
-| Studio に「いま表示中の Doc」を名乗る（表示中バッジ） | ActiveDocs |
-| 画面を覆う・晴らす切り替え演出（フェード・ワイプ） | Transition |
-| 面を画素ごとの計算で塗る（動く霧・水面・溶岩・vignette。単色 box の置き換え） | ShaderDoc + Render（shaderFill / shaderFillMasked）→ [書き方](shader-doc.md) |
+| 重なり判定・物理 | Collision / Physics2D（実例: `examples/platformer/src/World.flix`） |
+| 当たり判定を JSON で宣言する | HitDoc + Hit（実例: `examples/platformer/assets/hitbox.json` / `examples/breakout/assets/hitbox.json`） |
+| キーが押された瞬間を取る | InputEdge（実例: `examples/fe_rogue/src/ui/TurnEndHoldUi.flix`） |
+| 複数キーを 1 つの操作にまとめる（WASD と矢印の両対応） | InputMap（実例: `templates/game-starter/src/KeysDoc.flix`） |
+| カメラで寄せる・追いかける | CameraRig（実例: `templates/platformer-starter/src/World.flix`） |
+| 被弾・着弾で画面を揺らす（減衰ノイズの画面揺れ） | CameraRig（addTrauma / tick / shakeOffset）（実例: `examples/breakout/src/View.flix`） |
+| 起動中のゲームを外から操作・観測する | RemoteDebug（実例: `examples/platformer/src/World.flix`） |
+| Studio に「いま表示中の Doc」を名乗る（表示中バッジ） | ActiveDocs（実例: `templates/tetris-starter/src/World.flix`） |
+| 画面を覆う・晴らす切り替え演出（フェード・ワイプ） | Transition（実例: `examples/feature_lab/src/World.flix`） |
+| 面を画素ごとの計算で塗る（動く霧・水面・溶岩・vignette。単色 box の置き換え） | ShaderDoc + Render（shaderFill / shaderFillMasked）→ [書き方](shader-doc.md)（実例: `examples/shader_gallery/assets/water_caustic_pond.shader.json`） |
 | シェーダー面を多角形の形に抜く（池・水たまり） | Render（shaderFillMasked） |
 | 光らせる・暗く沈める（加算・乗算の重ね方） | Render（blended） |
 | 絵を傾ける・集まりを丸ごと傾ける（カードの傾き・振り子） | Render（turned / turnedAll）/ ui.json の rotation |
@@ -103,33 +107,33 @@
 | 放射状の明かり・翳りを 1 枚で置く（松明・スポットライト・vignette。アセット不要） | Render（lightAt / darkAt。組み込みテクスチャは engine の RadialBuiltin） |
 | 空・水面・光の帯のグラデを 1 部品で塗る（頂点色つき凸ポリゴン。1px の色帯を積まない） | Render（gradPolygon / vgrad） |
 | 箱に枠線を付ける（半透明の枠も） | Render（outline / outlineA） |
-| 暗い部屋に光源を置く（穴あき暗幕+ハロ） | Light |
-| 複数光源＋影（光マップ。Pass に灯りを集めて Multiply で貼る） | Light（lightMapPass / lightMapOverlay）+ App.withPasses |
+| 暗い部屋に光源を置く（穴あき暗幕+ハロ） | Light（実例: `examples/feature_lab/src/World.flix`） |
+| 複数光源＋影（光マップ。Pass に灯りを集めて Multiply で貼る） | Light（lightMapPass / lightMapOverlay）+ App.withPasses（実例: `examples/feature_lab/src/bake/Gallery.flix`） |
 | 光源を JSON で宣言する（light.json） | LightDoc + Light |
-| 壁に影を落とす（単一光源のハードシャドウ） | Shadow |
+| 壁に影を落とす（単一光源のハードシャドウ） | Shadow（実例: `examples/feature_lab/src/bake/Gallery.flix`） |
 | 夜のガラス・鏡・磨いた床に姿を映す（明るいところは光として返し、暗いところは影として重ねる） | Mirror |
-| 効果音を鳴らしたい | App.withAudio（前後 World の差分から鳴らす名前の List を返す。詳しくは [audio.md](audio.md)） |
-| 鳴り続ける音を出したい（走行音・風・雨・炎・足音のループ） | App.withSustained（World から「鳴り続けていてほしい音」を宣言。音量と高さを毎フレーム与える。詳しくは [audio.md](audio.md)） |
-| BGM を流す・止める・音量やループを変える | AudioStreamPlayer（play / stop / setVolume / setLooping。詳しくは [audio.md](audio.md)） |
-| BGM をだんだん出す・消す・入れ替える（音量カーブ） | AudioFade |
-| 効果音の素材を録音なしで作りたい（波形合成） | SfxSynth（engine_tools。詳しくは [audio.md](audio.md)） |
-| 揺れる演出を作る（浮遊・風のなびき） | Sway |
-| リソース JSON の形（型・必須・既定値）を公式スキーマ方言で宣言する | Schema |
-| 見下ろしで「足元が下にある物ほど手前」に並べる（人が木の裏に回る） | Depth |
+| 効果音を鳴らしたい | App.withAudio（前後 World の差分から鳴らす名前の List を返す。詳しくは [audio.md](audio.md)。実例: `templates/game-starter/src/Main.flix`） |
+| 鳴り続ける音を出したい（走行音・風・雨・炎・足音のループ） | App.withSustained（World から「鳴り続けていてほしい音」を宣言。音量と高さを毎フレーム与える。詳しくは [audio.md](audio.md)。実例: `templates/race-starter/src/Sfx.flix`） |
+| BGM を流す・止める・音量やループを変える | AudioStreamPlayer（play / stop / setVolume / setLooping。詳しくは [audio.md](audio.md)。実例: `examples/fe_rogue/src/ui/CharacterSelectUi.flix`） |
+| BGM をだんだん出す・消す・入れ替える（音量カーブ） | AudioFade（実例: `examples/feature_lab/src/World.flix`） |
+| 効果音の素材を録音なしで作りたい（波形合成） | SfxSynth（engine_tools。詳しくは [audio.md](audio.md)。実例: `templates/race-starter/src/bake/SfxBake.flix`） |
+| 揺れる演出を作る（浮遊・風のなびき） | Sway（実例: `templates/tetris-starter/src/View.flix`） |
+| リソース JSON の形（型・必須・既定値）を公式スキーマ方言で宣言する | Schema（実例: `templates/race-starter/project.schema.json`） |
+| 見下ろしで「足元が下にある物ほど手前」に並べる（人が木の裏に回る） | Depth（実例: `templates/rpg-starter/src/View.flix`） |
 | ゲームの中の時計と暦を回す（分・時・日・季節・年） | Calendar |
-| 時刻で世界の色を変える（朝の青・夕の橙・夜の紺）・影の向きと長さを回す | Daylight |
-| ドット絵の塗りに光を当てる（ふち光・接地影・ディザ・地肌の粒） | PxShade |
+| 時刻で世界の色を変える（朝の青・夕の橙・夜の紺）・影の向きと長さを回す | Daylight（実例: `templates/rpg-starter/src/View.flix`） |
+| ドット絵の塗りに光を当てる（ふち光・接地影・ディザ・地肌の粒） | PxShade（実例: `templates/game-starter/src/ThemeDoc.flix`） |
 | 見下ろしの落ち影を置く（接地の暗がり + 時刻で回る日影） | Daylight.groundShadow |
 | 見えている範囲に重なるマスだけ並べる（盤が広くても仕事は画面ぶん） | Grid.cellsIn |
 | ドット絵を握るところで回す・左上でそろえて並べる | PxSprite.drawQuadTurned / drawQuadTopLeft |
-| 走行中に焼いた絵を bake でも同じ絵にする | Bakery.imagePngs / imageTextureInfo |
+| 走行中に焼いた絵を bake でも同じ絵にする | Bakery.imagePngs / imageTextureInfo（実例: `templates/race-starter/src/bake/Bake.flix`） |
 | 光側は暖色・影側は寒色へ寄せて階調を増やす | Color.warm / Color.cool |
-| 焼いたドット絵アトラスを名前付きテクスチャとして使う（1 体 = 1 クアッド） | App.withSpriteAtlases |
-| ドット絵の輪郭をにじませない（カメラと頂点を画素の升目に載せる） | App.withPixelSnap / Render.snapped |
+| 焼いたドット絵アトラスを名前付きテクスチャとして使う（1 体 = 1 クアッド） | App.withSpriteAtlases（実例: `templates/race-starter/src/Main.flix`） |
+| ドット絵の輪郭をにじませない（カメラと頂点を画素の升目に載せる） | App.withPixelSnap / Render.snapped（実例: `templates/platformer-starter/src/Main.flix`） |
 | 同じ絵を色だけ変えて使い回す・重なり順をまとめてずらす | Render.tinted / Render.zShifted |
 | マスごとの「いま」を持つ（耕した・濡れた・置いた。セーブに乗る側） | TileState |
-| 画面を素材にする・複数光源・残像を作る（レンダーターゲットに描いてテクスチャとして貼り戻す） | Pass（`App.withPasses`）。ターゲットは design 解像度・宣言順に本編より先に描かれ、`Render.sprite(name, z)` で貼れる |
-| Pass を bake（Bakery の PassSpec）へ詰め替える（Shader 面の外し忘れを防ぐ） | Render.passSpecOf |
+| 画面を素材にする・複数光源・残像を作る（レンダーターゲットに描いてテクスチャとして貼り戻す） | Pass（`App.withPasses`）。ターゲットは design 解像度・宣言順に本編より先に描かれ、`Render.sprite(name, z)` で貼れる（実例: `examples/feature_lab/src/bake/Gallery.flix`） |
+| Pass を bake（Bakery の PassSpec）へ詰め替える（Shader 面の外し忘れを防ぐ） | Render.passSpecOf（実例: `examples/feature_lab/src/bake/Gallery.flix`） |
 | 全面でない面（帯など）から pass を等倍・鏡像で読む（陽炎の帯・水面の映り込み） | Render.passBandDy（Shift の dy 場を作る） |
 
 ## 症状 → モジュール（重い・fps が落ちる）

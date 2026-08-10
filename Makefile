@@ -532,8 +532,14 @@ sync-agents:
 # 規約の本文は docs/ に 1 つだけ置く。CLAUDE.md は AGENTS.md を import するだけ、
 # .claude/rules/ は bin/gen-rules.py の生成物。手で 2 か所に書かないので、ずれない。
 .PHONY: rules
-rules:
+rules: api-digest
 	@python3 bin/gen-rules.py
+
+# engine/engine_world/engine_tools の pub API を 1 枚のダイジェストに畳む。
+# AI エージェントが型・引数を調べる時、ソースを grep する前にまずここを読めば済む。
+.PHONY: api-digest
+api-digest:
+	@python3 bin/gen-api-digest.py
 
 # 絵の下限（矩形と円だけになっていないか）。どの OS・どのエージェントからも同じ検査。
 .PHONY: lint-view
@@ -597,6 +603,8 @@ check-docs-sync:
 	done; \
 	echo "[check-docs-sync] pub def を持つモジュールが API 索引に載っているか"; \
 	python3 bin/check-api-index.py || ok=0; \
+	echo "[check-docs-sync] docs/api-digest.md が作り直しても差分ゼロか"; \
+	python3 bin/gen-api-digest.py --check || ok=0; \
 	echo "[check-docs-sync] AGENTS.md から docs/ への導線があるか"; \
 	for kw in \
 	  "docs/audio.md" \
