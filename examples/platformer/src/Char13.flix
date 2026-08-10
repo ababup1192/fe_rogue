@@ -150,22 +150,22 @@ mod Char13 {
     /// ダッシュ演出: 残像分身 2 体（体色そのまま薄く）+ 白い風の筋。速いほど濃い。
     def ghostsAndStreaks(st: CharStage.Stage): List[Render.PlacedItem] =
         let b = band(st);
-        let ghost = (back: Float64, a: Float32) ->
+        let ghost = (back: Float64, a: Float64) ->
             fadePlaced(a, circleAt(st, -1.0 - back, -13.5, 4.2, hoodC(), 8)) ::
             fadePlaced(a, circleAt(st, 0.5 - back, -12.8, 3.5, skinC(), 8)) ::
             fadePlaced(a, boxAt(st, 0.0 - back, -8.5, 6.0, 5.5, hoodieC(), 8)) ::
             fadePlaced(a, boxAt(st, 0.0 - back, -3.2, 4.6, 4.8, pantsC(), 8)) :: Nil;
         List.flatten(
-            ghost(9.0, RenderUtil.f32(0.14 + 0.18 * b)) ::
-            ghost(17.0, RenderUtil.f32(0.07 + 0.10 * b)) ::
-            (fadePlaced(RenderUtil.f32(0.25 + 0.25 * b), boxAt(st, -12.0, -10.0, 7.0, 0.8, whiteC(), 8)) ::
-             fadePlaced(RenderUtil.f32(0.18 + 0.20 * b), boxAt(st, -15.0, -5.0, 9.0, 0.8, whiteC(), 8)) :: Nil) ::
+            ghost(9.0, 0.14 + 0.18 * b) ::
+            ghost(17.0, 0.07 + 0.10 * b) ::
+            (fadePlaced(0.25 + 0.25 * b, boxAt(st, -12.0, -10.0, 7.0, 0.8, whiteC(), 8)) ::
+             fadePlaced(0.18 + 0.20 * b, boxAt(st, -15.0, -5.0, 9.0, 0.8, whiteC(), 8)) :: Nil) ::
             Nil)
 
     /// スキッドの手擦り: 地面を擦る後ろ手から土埃、前足の下に白い滑り筋。
     def skidFx(st: CharStage.Stage): List[Render.PlacedItem] =
         let u = clamp01(st#modeT / 0.35);
-        let a = RenderUtil.f32(0.5 * (1.0 - u));
+        let a = 0.5 * (1.0 - u);
         fadePlaced(a, circleAt(st, -6.5 - u * 2.0, -1.5 - u * 1.5, 1.6, dustC(), 12)) ::
         fadePlaced(a, circleAt(st, -8.0 - u * 3.0, -0.8, 1.1, dustC(), 12)) ::
         fadePlaced(a, boxAt(st, 6.0, -0.5, 6.0, 0.9, whiteC(), 8)) :: Nil
@@ -175,7 +175,7 @@ mod Char13 {
         let u = clamp01(st#modeT / 0.14);
         if (u >= 1.0) Nil
         else {
-            let a = RenderUtil.f32(0.45 * (1.0 - u));
+            let a = 0.45 * (1.0 - u);
             fadePlaced(a, circleAt(st, 7.0 + u * 2.0, -1.2, 1.8 - u, dustC(), 12)) ::
             fadePlaced(a, circleAt(st, -5.0 - u * 3.0, -1.5, 1.6 - u, dustC(), 12)) :: Nil
         }
@@ -214,7 +214,7 @@ mod Char13 {
 
     // ── 小物ヘルパ ──
 
-    def fadePlaced(a: Float32, placed: Render.PlacedItem): Render.PlacedItem =
+    def fadePlaced(a: Float64, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.fade(a, placed#item) | placed }
 
     def clamp01(v: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, v))

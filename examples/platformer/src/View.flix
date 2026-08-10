@@ -301,14 +301,14 @@ mod View {
         if (Float64.abs(player#vel#x) < maxBandSpeed()) Nil
         else {
             let dt = 1.0 / 64.0;
-            let ghost = (framesBack: Float64, alpha: Float32) -> {
+            let ghost = (framesBack: Float64, alpha: Float64) -> {
                 let pos = { x = stage#pos#x - player#vel#x * framesBack * dt, y = 0.0 };
                 let ghostFeetY = feetY - player#vel#y * framesBack * dt;
                 drawFn({ pos = pos | stage })
                     |> List.map(shiftY(ghostFeetY))
                     |> List.map(fadePlaced(alpha))
             };
-            List.append(ghost(3.0, 0.35f32), ghost(6.0, 0.18f32))
+            List.append(ghost(3.0, 0.35), ghost(6.0, 0.18))
         }
 
     /// ガードが残っているキャラの盾: 体の周りをゆっくり周回する小さな光点 6 個
@@ -324,12 +324,12 @@ mod View {
                 let cx = player#pos#x + orbitR * Vec2.cos(angle);
                 let cy = player#pos#y - 2.0 + orbitR * 0.55 * Vec2.sin(angle);  // 楕円軌道(奥行き感)
                 { at = { x = cx - dotR, y = cy - dotR },
-                  item = Render.circle(dotR, Palette.eyeWhite(), zPlayer() - 5) |> Render.fade(0.7f32) }
+                  item = Render.circle(dotR, Palette.eyeWhite(), zPlayer() - 5) |> Render.fade(0.7) }
             })
         }
 
     /// PlacedItem の中身だけ半透明にする（置き場所は保つ）。
-    def fadePlaced(alpha: Float32, placed: Render.PlacedItem): Render.PlacedItem =
+    def fadePlaced(alpha: Float64, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.fade(alpha, placed#item) | placed }
 
     // ── 当たり形の重ね描き（H のデバッグ表示）──
@@ -359,11 +359,11 @@ mod View {
             case Hit.HitShape.CircleH(c) =>
                 let center = Vec2.add(pos, { x = c#dx, y = c#dy });
                 let fill = Render.circleAt(center, c#r, hitFillColor(), zHitOverlay());
-                ({ item = Render.fade(0.35f32, fill#item) | fill }) :: Nil
+                ({ item = Render.fade(0.35, fill#item) | fill }) :: Nil
             case Hit.HitShape.BoxH(b) =>
                 let center = Vec2.add(pos, { x = b#dx, y = b#dy });
                 let fill = Render.boxAt(center, { x = b#w, y = b#h }, hitFillColor(), zHitOverlay());
-                ({ item = Render.fade(0.35f32, fill#item) | fill }) :: boxFrame(center, b#w, b#h)
+                ({ item = Render.fade(0.35, fill#item) | fill }) :: boxFrame(center, b#w, b#h)
         }
 
     /// 箱の枠線（1px・濃いめ）。塗りだけだと隣の箱と溶けて境界が読めない。
@@ -374,7 +374,7 @@ mod View {
             :: (({ x = x1, y = y1 }, { x = x0, y = y1 })) :: (({ x = x0, y = y1 }, { x = x0, y = y0 })) :: Nil)
             |> List.map(match (a, b) -> {
                 let seg = Render.lineSeg(a, b, 1.0, hitFillColor(), zHitOverlay() + 1);
-                { item = Render.fade(0.8f32, seg#item) | seg }
+                { item = Render.fade(0.8, seg#item) | seg }
             })
 
     // ── 演出の粒（土埃・ジャンプ噴射）──

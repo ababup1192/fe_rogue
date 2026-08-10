@@ -72,7 +72,7 @@ mod Char09 {
         let nx = cx + facing * 1.5;
         List#{
             { at = {x = nx - 2.6, y = cy - 2.6}, item = Render.circle(2.6, nucleusInk(), 11) },
-            { at = {x = nx - 1.8, y = cy - 1.8}, item = Render.circle(0.9, glintWhite(), 12) |> Render.fade(0.9f32) }
+            { at = {x = nx - 1.8, y = cy - 1.8}, item = Render.circle(0.9, glintWhite(), 12) |> Render.fade(0.9) }
         }
 
     // ── モードごとの体 ──
@@ -103,7 +103,7 @@ mod Char09 {
             let scale = 0.92 - 0.1 * fg;
             { at = {x = stage#pos#x - stage#facing * (7.0 + 7.0 * fg), y = cy},
               item = Render.polygon(pentaVerts(rot + stage#facing * 0.35 * (fg + 1.0), 0.0, scale, scale), bodyCrys(), 8)
-                  |> Render.fade(RenderUtil.f32((0.38 - 0.16 * fg) * grip)) });
+                  |> Render.fade((0.38 - 0.16 * fg) * grip) });
         List.flatten(List#{ghosts, core :: Nil, grindChips(stage, grip), nucleus(stage#pos#x, cy, stage#facing)})
 
     /// 上昇: 回転をほどいて真上へ整列しながら、頂点 0 が伸びる「欠片」へ絞られる。
@@ -144,7 +144,7 @@ mod Char09 {
                 let layer = if (Vec2.sin(a) > 0.0) 12 else 8;
                 { at = {x = cx, y = cyv},
                   item = Render.polygon(triVerts(a * 2.0, 2.8), chipLight(), layer)
-                      |> Render.fade(RenderUtil.f32(0.85 * band)) })
+                      |> Render.fade(0.85 * band) })
 
     /// スキッドの研削破片: 進行方向の足元へ低く跳ねる小さな三角形 3 枚。
     def grindChips(stage: CharStage.Stage, grip: Float64): List[Render.PlacedItem] =
@@ -156,7 +156,7 @@ mod Char09 {
             let cyv = -1.5 - (3.0 + 1.5 * fc) * hop;
             { at = {x = cx, y = cyv},
               item = Render.polygon(triVerts(e * 10.0 + fc, 1.6), chipLight(), 11)
-                  |> Render.fade(RenderUtil.f32(Float64.max(0.0, (1.0 - e) * grip))) })
+                  |> Render.fade(Float64.max(0.0, (1.0 - e) * grip)) })
 
     /// 着地の破片: 左右へ弾け飛ぶ三角形。上がって落ちる小さな山なりで消える。
     def popChips(stage: CharStage.Stage): List[Render.PlacedItem] =
@@ -167,5 +167,5 @@ mod Char09 {
             let cyv = -2.5 - 5.0 * hop;
             { at = {x = cx, y = cyv},
               item = Render.polygon(triVerts(q * 8.0 * side, 1.8), chipLight(), 12)
-                  |> Render.fade(RenderUtil.f32(Float64.max(0.0, 1.0 - q))) })
+                  |> Render.fade(Float64.max(0.0, 1.0 - q)) })
 }

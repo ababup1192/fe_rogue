@@ -46,6 +46,8 @@ def main(): Unit \ IO =
                     (Controls.fxCrashPath(), Controls.reloadFx) :: Nil
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
+                // HUD（チップ・幕）は withHudView — world 側の z に隠されない。
+                |> App.withHudView((ctx, w) -> checked_ecast(View.hud(ctx, w)))
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
                 // ドット絵は 1 枚のアトラスに焼き、ヤシと残像を 1 コマ = 1 クアッドで描く。
                 // 世代鍵（atlasKey）が変わった拍に App が GPU へ上げ直す（テーマ・色票・

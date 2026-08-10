@@ -30,6 +30,12 @@ PNG 3 枚と、同じ volumeOf をサンプル毎に焼き込んだ試聴 WAV 3 
 収まっている証拠**。四隅マーカーが直角のまま欠けずに見えていればスケーリングも歪んでいない。
 ポーズ中（F8）は system が回らないため Enter/H が効かない。F8 解除で復帰する。
 
+光マップ方式（複数光源＋影）— ランタン 2 個が同時に照らし、同じ壁から 2 方向へ影が伸びる
+デモ（`gallery/lightmap_two_lanterns.png` / `lightmap_swing.png`）。`Light.lightMapPass` を
+pass に、`Light.lightMapOverlay` を絵の列に足す 2 行構成の手本で、質感（環境光・影の濃さ・色）
+は `assets/Lantern.light.json` の ambient / shadowStrength、位置と壁はコードが持つ。
+bake 専用（`bakeGif` が pass 未対応のため GIF は無し・実行時モードも未配線）。
+
 light.json 駆動のカンテラ探索 — カンテラの光の質感（暗さ・照り返しフチの太さ/強さ・
 ハロの大きさ倍率・光の半径/色/強さ）は `assets/Lantern.light.json` が持つ（位置だけは
 矢印キーで動く World の値が正）。`make debug` で起動中は、json を保存するたびに

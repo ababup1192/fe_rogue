@@ -93,7 +93,7 @@ mod Char04 {
             // 提灯の光暈: ゆっくり明滅する呼吸の光（ダッシュ中は速く脈打つ）。
             :: ({ at = { x = lantern#x - (4.5 + 1.5 * pulse), y = lantern#y - (4.5 + 1.5 * pulse) },
                   item = Render.circle(4.5 + 1.5 * pulse, glowColor(), 9)
-                     |> Render.fade(RenderUtil.f32(0.16 + 0.24 * pulse)) } :: Nil)
+                     |> Render.fade(0.16 + 0.24 * pulse) } :: Nil)
             :: legItems(stage, flight, seat, false)
             :: farWing(stage, seat)
             :: ({ at = { x = abdomen#x - abdomenW / 2.0, y = abdomen#y - abdomenH / 2.0 },
@@ -161,17 +161,17 @@ mod Char04 {
             case Mode.SkidMode =>
                 let dig = Float64.min(1.0, stage#modeT / 0.1);
                 wingPoly(shoulder, stage#facing,
-                         (5.5 * dig, -6.0) :: (8.5 * dig, -2.5) :: (3.0, 0.5) :: Nil, 0.55f32, 12)
+                         (5.5 * dig, -6.0) :: (8.5 * dig, -2.5) :: (3.0, 0.5) :: Nil, 0.55, 12)
             case Mode.FallMode =>
                 let slowFlap = 1.8 * Curve.triWave(stage#t * 7.0);
                 wingPoly(shoulder, stage#facing,
                          (-5.0, -5.5 + slowFlap) :: (-8.5, -3.0 + slowFlap) :: (-3.5, 0.8) :: Nil,
-                         0.5f32, 12)
+                         0.5, 12)
             case Mode.LandMode =>
                 let pop = 0.4 + 0.6 * flight#squash;
                 wingPoly(shoulder, stage#facing,
                          (-2.5 * pop, -5.5 * pop) :: (-5.0 * pop, -3.5 * pop) :: (-1.5, 0.0) :: Nil,
-                         0.5f32, 12)
+                         0.5, 12)
             case Mode.IdleMode => Nil
             case _ =>
                 // 走り・ダッシュ: 三角波の羽ばたきと、半位相ずらした残像の 2 枚でブレを描く。
@@ -180,10 +180,10 @@ mod Char04 {
                 List.append(
                     wingPoly(shoulder, stage#facing,
                              (-3.5, -6.5 + flap) :: (-7.0, -4.0 + flap * 0.6) :: (-2.5, -0.5) :: Nil,
-                             0.45f32, 12),
+                             0.45, 12),
                     wingPoly(shoulder, stage#facing,
                              (-3.5, -6.5 + ghost) :: (-7.0, -4.0 + ghost * 0.6) :: (-2.5, -0.5) :: Nil,
-                             0.15f32, 12))
+                             0.15, 12))
         }
 
     /// 奥の羽。手前より小さく薄く、半拍ずれて羽ばたく。
@@ -197,21 +197,21 @@ mod Char04 {
                 let slowFlap = 1.8 * Curve.triWave(stage#t * 7.0 + 0.4);
                 wingPoly(shoulder, stage#facing,
                          (4.5, -5.0 + slowFlap) :: (8.0, -2.5 + slowFlap) :: (3.0, 0.8) :: Nil,
-                         0.3f32, 9)
+                         0.3, 9)
             case Mode.SkidMode =>
                 let dig = Float64.min(1.0, stage#modeT / 0.1);
                 wingPoly(shoulder, stage#facing,
-                         (4.0 * dig, -5.5) :: (6.5 * dig, -2.0) :: (2.0, 0.5) :: Nil, 0.3f32, 9)
+                         (4.0 * dig, -5.5) :: (6.5 * dig, -2.0) :: (2.0, 0.5) :: Nil, 0.3, 9)
             case _ =>
                 let flap = 2.8 * Curve.triWave(stage#t * 16.0 + 0.5);
                 wingPoly(shoulder, stage#facing,
                          (-2.5, -5.5 + flap) :: (-5.5, -3.2 + flap * 0.6) :: (-1.8, -0.4) :: Nil,
-                         0.3f32, 9)
+                         0.3, 9)
         }
 
     /// 羽 1 枚: 肩を原点に相対頂点（x は向きで反転）で張る半透明の三角形。
     def wingPoly(shoulder: Vec2.Vec2, face: Float64, tips: List[(Float64, Float64)],
-                 alpha: Float32, layer: Int32): List[Render.PlacedItem] =
+                 alpha: Float64, layer: Int32): List[Render.PlacedItem] =
         { at = { x = shoulder#x, y = shoulder#y },
           item = Render.polygon({ x = 0.0, y = 0.0 }
                          :: (tips |> List.map(tip -> { let (tx, ty) = tip; { x = face * tx, y = ty } })),
@@ -260,7 +260,7 @@ mod Char04 {
                     let radius = 2.4 - 0.22 * fk;
                     { at = { x = backX - radius, y = backY - radius },
                       item = Render.circle(radius, glowColor(), 8)
-                         |> Render.fade(RenderUtil.f32(0.5 * (1.0 - fk / 6.0) * ramp)) }
+                         |> Render.fade(0.5 * (1.0 - fk / 6.0) * ramp) }
                 })
             case _ => Nil
         }

@@ -184,6 +184,10 @@ mod TestWorldJourney {
                 // headless 駆動: 宣言シェーダー面は GL が無いので何もしない（op が来ても落ちない）。
                 def buildProgram(_spec, k) = k(GpuHandle.wrapShaderProgram(0))
                 def drawSurface(_cmd, k)   = k(())
+            } with handler RenderTarget.Target {
+                // headless 駆動: 別紙描画も GL が無いので何もしない（op が来ても落ちない）。
+                def beginTarget(_name, _w, _h, _clear, k) = k(())
+                def endTarget(k)                          = k(())
             };
             // 台本が中断セーブを書いた場合の内容（模擬は空で始まるので、有る = 台本が書いた）。
             let slotAfter = Map.get(saveSlotPath(), Ref.get(mockSavesRef));

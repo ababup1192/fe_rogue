@@ -1,7 +1,8 @@
 # ゲーム開発の入口。
 #   make run    … ゲームを起動する（窓が開く）
 #   make debug  … 保存即反映(watchFile)と F8 を有効にして起動
-#   make test   … テストを実行する
+#   make test   … テストを実行する（記録は .test-logs/）
+#   make status … 現状 1 画面（テスト記録・golden・チケット・git）
 #   make check  … 型検査だけ走らせる（一番速い確認）
 #   make bake   … ギャラリー PNG を焼く（決定的）
 #   make bench  … 焼いた絵を golden とバイト比較する
@@ -32,7 +33,7 @@ PYTHON ?= python3
 FLIX   := "$(ENGINE)/bin/flix"
 endif
 
-.PHONY: run debug test build check bake bench golden atelier-preview
+.PHONY: status run debug test build check bake bench golden atelier-preview
 
 run:
 	$(FLIX) run
@@ -40,8 +41,15 @@ run:
 debug:
 	DEBUG=true $(FLIX) run
 
+# 出力は .test-logs/test.log に落とし、緑なら末尾 5 行だけ見せる。
+# make status が「最後にいつ・緑か赤か」をこの記録から読む。
 test:
-	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) test
+	@mkdir -p .test-logs; rm -f .test-logs/test.fail
+	@if JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) test > .test-logs/test.log 2>&1; then \
+		tail -5 .test-logs/test.log; \
+	else \
+		touch .test-logs/test.fail; tail -40 .test-logs/test.log; exit 1; \
+	fi
 
 build:
 	$(FLIX) build
@@ -60,3 +68,8 @@ golden:
 
 atelier-preview:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Bake.atelier
+
+# 現状 1 画面 (テスト記録・golden・チケット・git)。何も実行しない。
+# .claude/settings.json の SessionStart フックがセッション開始時に毎回呼ぶ。
+status:
+	@$(PYTHON) bin/status.py

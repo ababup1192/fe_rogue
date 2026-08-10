@@ -44,7 +44,7 @@ mod Char05 {
 
     /// 胴体まわりの置き方。bottom = 胴体下端の y / lean = 前後ずらし（facing 符号込みの px）/
     /// size = 胴体の幅と高さ（スカッシュ用）/ eyeGlow = 単眼スリットの明るさ。
-    type alias HullSpec = { bottom = Float64, lean = Float64, size = Vec2.Vec2, eyeGlow = Float32 }
+    type alias HullSpec = { bottom = Float64, lean = Float64, size = Vec2.Vec2, eyeGlow = Float64 }
 
     /// 胴体 + 頭 + 単眼スリット + リベット 2 個。lean は頭ほど大きく効かせて前後の傾きを出す。
     def hull(centerX: Float64, facing: Float64, spec: HullSpec): List[Render.PlacedItem] =
@@ -89,7 +89,7 @@ mod Char05 {
         let liftBack = Float64.max(0.0, Curve.triWave(gait + 0.5)) * 3.0;
         List.flatten(
             hull(stage#pos#x, stage#facing,
-                 {bottom = hullBottom, lean = stage#facing * 2.0, size = {x = 14.0, y = 10.0}, eyeGlow = 1.0f32}) ::
+                 {bottom = hullBottom, lean = stage#facing * 2.0, size = {x = 14.0, y = 10.0}, eyeGlow = 1.0}) ::
             pistonLeg({footX = stage#pos#x + 4.0, baseY = stage#pos#y, footLift = liftFront, hullBottom = hullBottom}) ::
             pistonLeg({footX = stage#pos#x - 4.0, baseY = stage#pos#y, footLift = liftBack, hullBottom = hullBottom}) :: Nil)
 
@@ -121,7 +121,7 @@ mod Char05 {
             let jitter = Curve.triWave(stage#t * (17.0 + 4.0 * seed) + 0.31 * seed);
             { at = {x = stage#pos#x - (5.0 + 4.0 * seed + 3.0 * jitter) * stage#facing,
                     y = stage#pos#y - 1.0 - 1.5 * Float64.abs(jitter)},
-              item = Render.box({x = 1.5, y = 1.5}, eyeAmber(), 12) |> Render.fade(RenderUtil.f32(band)) }
+              item = Render.box({x = 1.5, y = 1.5}, eyeAmber(), 12) |> Render.fade(band) }
         }, List.range(0, 3))
 
     /// スキッド = 前脚アンカー。胴体を深くのけぞらせ、斜め前に突き出したストラットで地面を掴む。
@@ -141,14 +141,14 @@ mod Char05 {
             let jitter = Curve.triWave(stage#t * (15.0 + 3.0 * seed) + 0.27 * seed);
             { at = {x = stage#pos#x + (8.0 + 3.0 * jitter) * facing, y = -1.5 - 2.0 * Float64.abs(jitter)},
               item = Render.box({x = 1.5, y = 1.5}, if (i == 1) flameOrange() else eyeAmber(), 12)
-              |> Render.fade(RenderUtil.f32(heat)) }
+              |> Render.fade(heat) }
         }, List.range(0, 3));
         let brakeSteam =
             { at = {x = stage#pos#x - 9.0 * facing - 2.0, y = -20.0},
-              item = Render.circle(2.0, steamWhite(), 12) |> Render.fade(RenderUtil.f32(heat * 0.5)) };
+              item = Render.circle(2.0, steamWhite(), 12) |> Render.fade(heat * 0.5) };
         List.flatten(
             hull(stage#pos#x, facing,
-                 {bottom = -10.0, lean = 0.0 - 5.0 * facing, size = {x = 14.0, y = 10.0}, eyeGlow = 1.0f32}) ::
+                 {bottom = -10.0, lean = 0.0 - 5.0 * facing, size = {x = 14.0, y = 10.0}, eyeGlow = 1.0}) ::
             pistonLeg({footX = stage#pos#x - 2.0 * facing, baseY = 0.0, footLift = 0.0, hullBottom = -10.0}) ::
             strut :: sparks :: (brakeSteam :: Nil) :: Nil)
 
@@ -168,14 +168,14 @@ mod Char05 {
           item = Render.box({x = 5.0, y = 2.0}, eyeAmber(), 12) } ::
         { at = {x = stage#pos#x - 2.2, y = baseY - 10.2}, item = Render.circle(2.2, coreCyan(), 12) } ::
         { at = {x = stage#pos#x - (4.0 + coreFlick), y = baseY - 12.0 - coreFlick},
-          item = Render.circle(4.0 + coreFlick, coreCyan(), 11) |> Render.fade(0.3f32) } :: Nil
+          item = Render.circle(4.0 + coreFlick, coreCyan(), 11) |> Render.fade(0.3) } :: Nil
 
     /// 落下 = 着陸脚の展開。胴を高く保ってロッドを全伸ばしし、足を左右に開いて接地に備える。
     def gearDownPose(stage: CharStage.Stage): List[Render.PlacedItem] =
         let hullBottom = stage#pos#y - 14.0;
         List.flatten(
             hull(stage#pos#x, stage#facing,
-                 {bottom = hullBottom, lean = 0.0, size = {x = 14.0, y = 10.0}, eyeGlow = 1.0f32}) ::
+                 {bottom = hullBottom, lean = 0.0, size = {x = 14.0, y = 10.0}, eyeGlow = 1.0}) ::
             pistonLeg({footX = stage#pos#x + 5.0, baseY = stage#pos#y, footLift = 0.0, hullBottom = hullBottom}) ::
             pistonLeg({footX = stage#pos#x - 5.0, baseY = stage#pos#y, footLift = 0.0, hullBottom = hullBottom}) :: Nil)
 
@@ -186,15 +186,15 @@ mod Char05 {
         let jetR = 2.0 + 1.5 * progress;
         let jets = List.map(side ->
             { at = {x = stage#pos#x + side * (9.0 + 6.0 * progress) - jetR, y = -6.0 - jetR},
-              item = Render.circle(jetR, steamWhite(), 12) |> Render.fade(RenderUtil.f32(ease * 0.7)) },
+              item = Render.circle(jetR, steamWhite(), 12) |> Render.fade(ease * 0.7) },
             -1.0 :: 1.0 :: Nil);
         let shock =
             { at = {x = stage#pos#x - (10.0 + 5.0 * progress), y = -1.5},
               item = Render.box({x = 20.0 + 10.0 * progress, y = 1.5}, steamWhite(), 8)
-              |> Render.rounded(0.75) |> Render.fade(RenderUtil.f32(ease * 0.5)) };
+              |> Render.rounded(0.75) |> Render.fade(ease * 0.5) };
         List.flatten(
             hull(stage#pos#x, stage#facing,
-                 {bottom = -9.0, lean = 0.0, size = {x = 18.0, y = 7.0}, eyeGlow = 0.8f32}) ::
+                 {bottom = -9.0, lean = 0.0, size = {x = 18.0, y = 7.0}, eyeGlow = 0.8}) ::
             pistonLeg({footX = stage#pos#x + 5.0, baseY = 0.0, footLift = 0.0, hullBottom = -9.0}) ::
             pistonLeg({footX = stage#pos#x - 5.0, baseY = 0.0, footLift = 0.0, hullBottom = -9.0}) ::
             jets :: (shock :: Nil) :: Nil)
@@ -203,14 +203,14 @@ mod Char05 {
     /// 単眼がとろとろ明滅する。
     def idlePose(stage: CharStage.Stage): List[Render.PlacedItem] =
         let hullBottom = -13.0 + 0.6 * Curve.triWave(stage#t * 0.7);
-        let glow = RenderUtil.f32(0.7 + 0.3 * Curve.tri(1.6, stage#t));
+        let glow = 0.7 + 0.3 * Curve.tri(1.6, stage#t);
         let puffCycle = cycleAt(stage#modeT / 1.1);
         let puffR = 1.5 + 2.0 * puffCycle;
         let puff =
             { at = {x = stage#pos#x - 5.0 * stage#facing - puffR,
                     y = hullBottom - 12.0 - 7.0 * puffCycle - puffR},
               item = Render.circle(puffR, steamWhite(), 12)
-              |> Render.fade(RenderUtil.f32((1.0 - puffCycle) * 0.55)) };
+              |> Render.fade((1.0 - puffCycle) * 0.55) };
         List.flatten(
             hull(stage#pos#x, stage#facing,
                  {bottom = hullBottom, lean = 0.0, size = {x = 14.0, y = 10.0}, eyeGlow = glow}) ::

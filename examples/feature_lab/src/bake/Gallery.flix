@@ -154,6 +154,28 @@ mod Gallery {
             Some({ at = shadowFrontAt(), mode = World.LanternMode.DarkWithLight, walls = false }),
             "shadow_walls_off")
 
+    // ── Light: 光マップ（ランタン 2 個+影。lightMapPass / lightMapOverlay の手本）──
+
+    /// 光マップデモ 1 枚を焼く。pass（光マップ）を先に焼いてから本編へ Multiply で貼る —
+    /// 実機の App.withPasses と同じ順序を renderPngWithPasses が再現する。
+    def bakeLightMapPng(atlas: FontAtlas, lightDoc: LightDoc.Spec,
+                        a: Vec2.Vec2, b: Vec2.Vec2, name: String): Unit \ IO =
+        let cfg = View.lightMapDemoConfig(lightDoc, View.lightMapLanterns(lightDoc, a, b));
+        let passSpec = Render.passSpecOf(_ -> None, Light.lightMapPass(cfg));
+        let (ds, ps) = Render.draw(View.lightMapDemoItems(cfg));
+        Bakery.renderPngWithPasses(config(atlas), passSpec :: Nil, ds, ps, Nil, name)
+
+    /// 2 枚連番: ランタン A が壁の反対側へ回ると、同じ壁の影が別の向きへ倒れる
+    /// （GIF にしないのは bakeGif が pass 未対応のため — 影の回りは 2 枚の見比べで示す）。
+    /// swing の B を two_lanterns と同じ (66,178) に置かないのは、そこが A の長影の帯の
+    /// 真ん中で B の灯りが丸ごと沈み、初見に「バグの絵」と映るため — 帯の外へ出し、
+    /// 「B の灯りは生きていて、その裾を A の影が横切る」が読める位置に置く。
+    def bakeLightMapPngs(atlas: FontAtlas, lightDoc: LightDoc.Spec): Unit \ IO =
+        bakeLightMapPng(atlas, lightDoc,
+            { x = 160.0, y = 120.0 }, { x = 66.0, y = 178.0 }, "lightmap_two_lanterns");
+        bakeLightMapPng(atlas, lightDoc,
+            { x = 238.0, y = 70.0 }, { x = 44.0, y = 72.0 }, "lightmap_swing")
+
     /// 光が L 字壁の周りを一周する巡回点列（壁の陰が回って見える経路）。
     def shadowPatrolPoints(): List[Vec2.Vec2] =
         { x = 160.0, y = 120.0 } :: { x = 200.0, y = 62.0 } :: { x = 262.0, y = 120.0 } ::
@@ -298,6 +320,10 @@ mod Gallery {
         bakeShadowPngs(atlas, ui, lightDoc);
         let shadowFilm = bakeShadowGif(atlas, ui, lightDoc);
 
+        bakeLightMapPngs(atlas, lightDoc);
+
+        let hazeFilm = TexDemo.bakeAll(config(atlas));
+
         bakeCurvePng(atlas, (AudioFade.fadeIn(), risingColor()) :: Nil, "audio_fade_in_curve");
         bakeCurvePng(atlas, (AudioFade.fadeOut(), fadingColor()) :: Nil, "audio_fade_out_curve");
         bakeCurvePng(atlas, (AudioFade.fadeOut(), fadingColor()) :: (AudioFade.fadeIn(), risingColor()) :: Nil,
@@ -309,7 +335,8 @@ mod Gallery {
                 { outDir = outDir(), title = "feature_lab Gallery", cssScale = 2 },
                 catalog({ fadeOut = fadeOutFilm, fadeIn = fadeInFilm,
                           wipeLeft = wipeLeftFilm, wipeRight = wipeRightFilm,
-                          lanternPatrol = lanternFilm, shadowWalk = shadowFilm }))
+                          lanternPatrol = lanternFilm, shadowWalk = shadowFilm,
+                          texHaze = hazeFilm }))
         } with Fs.FileWrite.runWithIO;
         writeText("${outDir()}/audio.html", audioHtml());
         linkAudioFromIndex()
@@ -319,7 +346,8 @@ mod Gallery {
     type alias Films = {
         fadeOut = SnapshotSite.Filmstrip, fadeIn = SnapshotSite.Filmstrip,
         wipeLeft = SnapshotSite.Filmstrip, wipeRight = SnapshotSite.Filmstrip,
-        lanternPatrol = SnapshotSite.Filmstrip, shadowWalk = SnapshotSite.Filmstrip
+        lanternPatrol = SnapshotSite.Filmstrip, shadowWalk = SnapshotSite.Filmstrip,
+        texHaze = SnapshotSite.Filmstrip
     }
 
     def catalog(films: Films): List[SnapshotSite.Item] =
@@ -338,7 +366,14 @@ mod Gallery {
         png("shadow_light_front", "光が壁の手前: 壁の裏の目印（白丸）が影に沈んで見えない（Shadow.itemsFor の Multiply 黒 Poly）", "Shadow") ::
         png("shadow_light_behind", "光が壁の向こう側へ回り込むと同じ目印が照らされて見える（壁と遮蔽ポリゴンは同じ定義から導出）", "Shadow") ::
         png("shadow_walls_off", "対照カット: shadow_light_front と同じ光位置で walls=false。目印が沈まず見える＝暗さは壁の影であって距離減衰ではない", "Shadow") ::
+        png("lightmap_two_lanterns", "光マップ方式: ランタン 2 個が同時に照らし、同じ壁から 2 方向へ影が伸びる（Light.lightMapPass + lightMapOverlay。暗幕方式では不可能な絵）", "Shadow") ::
+        png("lightmap_swing", "ランタン A が壁の反対側へ回った連番: 同じ壁の影が別の向きへ倒れる（影が光の位置から導かれている証拠）。A の長い影が B の灯りまで消しているのは v1 の割り切りどおり（Light.lightMapPass の doc 参照）", "Shadow") ::
         gif("shadow_walk", "光が L 字壁と柱の周りを一周し、壁の陰が動的に回る（LeftCtrl で walls トグル相当）", "Shadow", films#shadowWalk) ::
+        png("tex_blit", "tex 場の素通し: 左=pass をスプライト直貼り・右=Rgb{Tex×3} の面。継ぎ目が見えない=2 経路一致（中央の薄荷線が境界）", "ShaderTex") ::
+        png("tex_blur", "3×3 ガウス近似: Shift タップ×9 の加重平均（Tex 読み 27 回 — JSON 合成ぼかしの実用上限の見本）", "ShaderTex") ::
+        gif("tex_haze", "陽炎: sin ゆらぎの Shift + Warp のうねりで pass を歪めて読む（10 コマ完全ループ）", "ShaderTex", films#texHaze) ::
+        png("tex_shock", "衝撃波: 中心から広がるリング窓の上だけ座標を中心へ引き込む（t=0.8 の瞬間）", "ShaderTex") ::
+        png("tex_grade", "色調変換: luma を 1 本の場に畳み Gradient で夕暮れ 3 色へ染め直す", "ShaderTex") ::
         png("audio_fade_in_curve", "フェードインの音量カーブ: volumeOf(0→1)。横=時間 t・縦=音量（audio.html で試聴可）", "AudioFade") ::
         png("audio_fade_out_curve", "フェードアウトの音量カーブ: volumeOf(1→0)", "AudioFade") ::
         png("audio_crossfade_curve", "クロスフェード: 消える側（赤）と現れる側（緑）。同じ t の 2 本で、和は常に 1", "AudioFade") :: Nil

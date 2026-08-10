@@ -136,5 +136,5 @@ mod Char10 {
                 let cx = stage#pos#x - stage#facing * (8.0 + fj * 6.0);
                 { at = {x = cx - len * 0.5, y = -14.5 + fj * 3.2},
                   item = Render.box({x = len, y = 1.2}, sparkPale(), 8)
-                      |> Render.fade(RenderUtil.f32((0.5 - 0.13 * fj) * band)) })
+                      |> Render.fade((0.5 - 0.13 * fj) * band) })
 }

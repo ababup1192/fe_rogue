@@ -170,14 +170,14 @@ mod Char11 {
     def sandWall(st: CharStage.Stage): List[Render.PlacedItem] =
         let strength = 0.25 + band(st) * 0.45;
         (1.0 :: 2.0 :: 3.0 :: 4.0 :: Nil) |> List.map(kf -> {
-            let a = RenderUtil.f32(Float64.max(0.05, strength * (1.0 - kf * 0.18)));
+            let a = Float64.max(0.05, strength * (1.0 - kf * 0.18));
             fadePlaced(a, circleAt(st, -5.0 - kf * 6.5, -1.6 - kf * 0.7, 1.8 + kf * 0.9, dustC(), 8))
         })
 
     /// スキッドの土蹴り: 前足の先へ砂粒が飛び、足元に白い擦過線が残る。
     def skidDirt(st: CharStage.Stage): List[Render.PlacedItem] =
         let u = clamp01(st#modeT / 0.35);
-        let a = RenderUtil.f32(0.5 * (1.0 - u));
+        let a = 0.5 * (1.0 - u);
         fadePlaced(a, circleAt(st, 8.0 + u * 1.0, -2.0 - u * 3.0, 2.0, dustC(), 12)) ::
         fadePlaced(a, circleAt(st, 9.5 + u * 0.5, -1.0 - u * 1.5, 1.2, dustC(), 12)) ::
         fadePlaced(a, boxAt(st, 3.0, -0.6, 7.0, 0.9, wrapC(), 8)) :: Nil
@@ -187,7 +187,7 @@ mod Char11 {
         let u = clamp01(st#modeT / 0.14);
         if (u >= 1.0) Nil
         else {
-            let a = RenderUtil.f32(0.45 * (1.0 - u));
+            let a = 0.45 * (1.0 - u);
             fadePlaced(a, circleAt(st, 6.0 + u * 3.0, -1.5, 2.0 - u, dustC(), 12)) ::
             fadePlaced(a, circleAt(st, -6.0 - u * 3.0, -1.5, 2.0 - u, dustC(), 12)) :: Nil
         }
@@ -231,7 +231,7 @@ mod Char11 {
 
     // ── 小物ヘルパ ──
 
-    def fadePlaced(a: Float32, placed: Render.PlacedItem): Render.PlacedItem =
+    def fadePlaced(a: Float64, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.fade(a, placed#item) | placed }
 
     def clamp01(v: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, v))

@@ -212,7 +212,7 @@ mod View {
     /// 残像の点ひとつの見た目: age（0=最新 … 1=最古）で縮み・薄まり、色は加速ランプから。
     def trailDot(pos: Vec2.Vec2, age: Float64, ratio: Float64): Render.PlacedItem =
         let diameter = trailHeadDiameter() * (1.0 - (1.0 - trailTailScale()) * age);
-        let alpha = RenderUtil.f32(trailBaseAlpha() * (1.0 - age));
+        let alpha = trailBaseAlpha() * (1.0 - age);
         { at = { x = pos#x - diameter / 2.0, y = pos#y - diameter / 2.0 },
           item = Render.circle(diameter / 2.0, Palette.trailColor(ratio), zTrail()) |> Render.fade(alpha) }
 
@@ -257,7 +257,7 @@ mod View {
         let progress = t / Field.burstLifetime();
         let half = fragHalf() * (1.0 - progress);
         { at = center, item = Render.polygon(Quad.rotated(Vec2.zero(), half, half, spin), Palette.fragment(i), zBurst())
-                     |> Render.fade(RenderUtil.f32(1.0 - progress)) }
+                     |> Render.fade(1.0 - progress) }
 
     // ── テキスト（HUD と各フェーズのオーバーレイ）──
 

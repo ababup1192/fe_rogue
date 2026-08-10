@@ -12,7 +12,8 @@
 //
 // ── 画面の層（奥から手前へ）──
 //   壁（縦のグラデ）→ 床（縦のグラデ + 灯りの映り込み）→ 雨の窓（すじが落ちる）
-//   → 額縁の落ち影 → 額縁 → 灯り（炎が揺れる）→ 灯りの中を舞う埃 → 暗幕 → 表紙 → 会話窓
+//   → 額縁の落ち影 → 額縁 → 灯り（炎が揺れる）→ 灯りの中を舞う埃 → 暗幕 → 表紙
+//   会話窓・本文・エラーバナーは withHudView 側（hud）— 部屋の z に関わらず必ず手前
 mod View {
 
     // ── z 層（部屋 0..9 / 額縁 10 / 灯り 20 / 暗幕 50 / 表紙 60。UI は ui.json 側で 100+） ──
@@ -39,7 +40,13 @@ mod View {
             :: dust(w)
             :: veil(w)
             :: title(ctx#atlas, w)
-            :: UiRender.itemsWith(_ -> ctx#atlas, _ -> None, w#ui, ctx#visible#size)
+            :: Nil)
+
+    /// 画面固定の絵（会話窓・選択肢・本文・エラーバナー）。App.withHudView へ繋ぐ —
+    /// world 側の z がどれだけ大きくても、読ませたい文字は必ず手前に出る。
+    pub def hud(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
+        List.flatten(
+               UiRender.itemsWith(_ -> ctx#atlas, _ -> None, w#ui, ctx#visible#size)
             :: NovelKit.body(ctx#atlas, w#theme#ink,
                    { size = w#kind#bodySize, lineGap = w#kind#bodyGap }, w#ui, w#kit)
             :: TextDraw.errorBanner(ctx#atlas, w#docError)
@@ -142,7 +149,7 @@ mod View {
         let shadow = { at = { x = topLeft#x + 5.0, y = topLeft#y + 6.0 },
                        item = Render.box({ x = cell * 16.0, y = cell * 12.0 },
                                          ThemeDoc.darken(w#theme#wall, 0.6), zFrameShadow())
-                           |> Render.fade(0.45f32) };
+                           |> Render.fade(0.45) };
         let items = PxSprite.draw(w#sprites, "frame", "idle", topLeft,
             false, px(), key -> ThemeDoc.resolver(w#theme, key), zFrame());
         if (List.isEmpty(items))
@@ -204,7 +211,7 @@ mod View {
                     Render.circleAt({ x = x, y = y }, 0.7 + rand(3) * 0.6,
                             ThemeDoc.lighten(w#theme#accent, 0.35), zDust())
                         |> Render.overItem(item -> item
-                            |> Render.fade(Float64.truncateToFloat32(0.10 + rand(4) * 0.16))
+                            |> Render.fade(0.10 + rand(4) * 0.16)
                             |> Render.blended(DrawCmd.BlendMode.Add))
                 })
             })
@@ -217,7 +224,7 @@ mod View {
         else { at = { x = 0.0, y = 0.0 },
                item = Render.box({ x = World.width(), y = World.height() },
                                  { r = 0.02f32, g = 0.02f32, b = 0.05f32 }, zVeil())
-                   |> Render.fade(Float64.truncateToFloat32(alpha)) } :: Nil
+                   |> Render.fade(alpha) } :: Nil
 
     // ── 表紙（文言はすべて台本 Doc から: 事件の名前・一行・はじめ方のヒント） ──
 

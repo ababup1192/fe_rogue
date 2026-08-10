@@ -43,8 +43,7 @@ mod Controls {
 
     /// 盤の下に敷く紙の面。読めない・語彙が違うときはエンジンの見本の面へ倒す（fail-open）。
     pub def loadShader(): ShaderDoc.Spec \ Fs.FileRead =
-        ShaderJson.load(World.shaderPath())
-            |> Result.getWithDefault(ShaderDoc.demoSurface())
+        ShaderJson.loadOr(ShaderDoc.demoSurface(), World.shaderPath())
 
     pub def reloadRules(w: World.World): World.World \ Fs.FileRead =
         World.withRules(RulesDoc.load(RulesDoc.path()), w)

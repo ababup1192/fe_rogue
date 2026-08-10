@@ -59,7 +59,7 @@ mod TestFx {
         let particles = GameFx.particles(burst);
         let allAlphasValid = particles |> List.forAll(triple -> {
             let (_pos, _r, a) = triple;
-            a >= 0.0f32 and a <= 1.0f32
+            a >= 0.0 and a <= 1.0
         });
         Assert.assertEq(expected = (12, true), (List.length(particles), allAlphasValid))
 }

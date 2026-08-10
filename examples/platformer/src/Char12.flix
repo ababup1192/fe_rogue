@@ -180,7 +180,7 @@ mod Char12 {
         (1.0 :: 2.0 :: 3.0 :: Nil) |> List.map(kf -> {
             let w0 = Curve.triWave(st#t * 4.2 - kf * 0.33) * 3.0;
             let w1 = Curve.triWave(st#t * 4.2 - (kf + 1.0) * 0.33) * 3.0;
-            fadePlaced(RenderUtil.f32(baseA * (1.0 - kf * 0.24)),
+            fadePlaced(baseA * (1.0 - kf * 0.24),
                        limb(st, -3.0 - kf * 7.0, -13.0 + w0, -10.0 - kf * 7.0, -13.0 + w1,
                             1.6, scarfC(), 8))
         })
@@ -188,7 +188,7 @@ mod Char12 {
     /// スキッドの滑り筋: つま先の下に白い擦過線が 2 本伸びる（砂埃は立てない主義）。
     def slideStreaks(st: CharStage.Stage): List[Render.PlacedItem] =
         let u = clamp01(st#modeT / 0.35);
-        let a = RenderUtil.f32(0.5 * (1.0 - u));
+        let a = 0.5 * (1.0 - u);
         fadePlaced(a, boxAt(st, 4.0, -0.5, 8.0, 0.8, whiteC(), 8)) ::
         fadePlaced(a, boxAt(st, 1.0, -1.4, 5.0, 0.6, whiteC(), 8)) ::
         fadePlaced(a, circleAt(st, 8.8, -1.8, 1.4, whiteC(), 12)) :: Nil
@@ -198,7 +198,7 @@ mod Char12 {
         let u = clamp01(st#modeT / 0.14);
         if (u >= 1.0) Nil
         else {
-            let a = RenderUtil.f32(0.35 * (1.0 - u));
+            let a = 0.35 * (1.0 - u);
             fadePlaced(a, boxAt(st, 0.0, -1.0, 10.0 + u * 6.0, 0.8, whiteC(), 8)) :: Nil
         }
 
@@ -236,7 +236,7 @@ mod Char12 {
 
     // ── 小物ヘルパ ──
 
-    def fadePlaced(a: Float32, placed: Render.PlacedItem): Render.PlacedItem =
+    def fadePlaced(a: Float64, placed: Render.PlacedItem): Render.PlacedItem =
         { item = Render.fade(a, placed#item) | placed }
 
     def clamp01(v: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, v))

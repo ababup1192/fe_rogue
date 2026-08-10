@@ -40,7 +40,7 @@ mod GameFx {
     /// 粒ごとに dir を基準に、dir と直角な向きへ少しだけばらつかせて飛ばす（三角関数を使わず
     /// 直交ベクトルへの合成だけで散らす）。進んだ距離は速さ×elapsed。半径は寿命に向けて
     /// 線形に縮み、透明度も同様に落ちる。
-    pub def particles(burst: Field.Burst): List[(Vec2.Vec2, Float64, Float32)] =
+    pub def particles(burst: Field.Burst): List[(Vec2.Vec2, Float64, Float64)] =
         let life = lifeOf(burst#kind);
         let count = countOf(burst#kind, burst#power);
         let speed = speedOf(burst#kind);
@@ -55,20 +55,20 @@ mod GameFx {
     /// 尾が下へしなる。速さは粒ごとに少し揺らして輪をほぐす。半径・透明度は寿命で減衰。
     def fireworkParticleAt(burst: Field.Burst, life: Float64, speed: Float64, r0: Float64,
                            count: Int32, i: Int32, rand: Int32 -> Float64, t: Float64):
-                           (Vec2.Vec2, Float64, Float32) =
+                           (Vec2.Vec2, Float64, Float64) =
         let angle = Vec2.tau() * Int32.toFloat64(i) / Int32.toFloat64(count);
         let v = speed * (0.8 + 0.4 * rand(0));
         let pos = { x = burst#pos#x + Vec2.cos(angle) * v * t,
                     y = burst#pos#y + Vec2.sin(angle) * v * t + 40.0 * t * t };
         let progress = if (life <= 0.0) 1.0 else t / life;
         let radius = r0 * (1.0 - progress);
-        let alpha = RenderUtil.f32(Float64.max(0.0, 1.0 - progress));
+        let alpha = Float64.max(0.0, 1.0 - progress);
         (pos, radius, alpha)
 
     /// 粒 1 個の (位置, 半径, 透明度)。dir に直角なベクトルへ (rand(0)-0.5) 倍だけ寄せて
     /// 進行方向を散らし、速さも (rand(1)) で粒ごとに少し変える。
     def particleAt(burst: Field.Burst, life: Float64, speed: Float64, r0: Float64,
-                   _i: Int32, rand: Int32 -> Float64, t: Float64): (Vec2.Vec2, Float64, Float32) =
+                   _i: Int32, rand: Int32 -> Float64, t: Float64): (Vec2.Vec2, Float64, Float64) =
         let perp = { x = -burst#dir#y, y = burst#dir#x };
         let wobble = (rand(0) - 0.5) * 1.2;
         let dirEffective = { x = burst#dir#x + perp#x * wobble, y = burst#dir#y + perp#y * wobble };
@@ -76,6 +76,6 @@ mod GameFx {
         let pos = { x = burst#pos#x + dirEffective#x * dist, y = burst#pos#y + dirEffective#y * dist };
         let progress = if (life <= 0.0) 1.0 else t / life;
         let radius = r0 * (1.0 - progress);
-        let alpha = RenderUtil.f32(Float64.max(0.0, 1.0 - progress));
+        let alpha = Float64.max(0.0, 1.0 - progress);
         (pos, radius, alpha)
 }

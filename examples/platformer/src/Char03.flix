@@ -246,7 +246,7 @@ mod Char03 {
                     let fk = Int32.toFloat64(k);
                     let age = (shift + 9.0 * fk) / 27.0;
                     let printX = px - face * (5.0 + shift + 9.0 * fk);
-                    let alpha = RenderUtil.f32(Float64.max(0.0, 0.6 * (1.0 - age)));
+                    let alpha = Float64.max(0.0, 0.6 * (1.0 - age));
                     { at = { x = printX - 1.7, y = stage#pos#y - 1.2 - 1.7 },
                       item = Render.circle(1.7, paleColor(), 8) |> Render.fade(alpha) }
                 })
@@ -265,7 +265,7 @@ mod Char03 {
                           item = Render.polygon({ x = face * 9.0, y = -1.0 } :: { x = -face * 8.5, y = -1.0 }
                                          :: { x = -face * 6.5, y = 3.0 } :: { x = face * 7.5, y = 3.0 } :: Nil,
                                          paleColor(), 9)
-                             |> Render.fade(RenderUtil.f32(0.35 * shape#splay)) };
+                             |> Render.fade(0.35 * shape#splay) };
             sheet :: Nil
         }
 

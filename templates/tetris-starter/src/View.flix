@@ -17,7 +17,8 @@
 //    9  drop     … 落下中のミノが紙に落とす影                    → 主役が背景から分離
 //   10  locked   … 積んだマス（面 + 上の照り + 下の沈み）        → 面に階調
 //   11  current  … 操作中のミノ（縁が息をする）                  → 主役が背景から分離・時間が流れる
-//   20  clear    … ライン消しの閃光 / 30 HUD / 40 overlay
+//   20  clear    … ライン消しの閃光
+//   HUD（30 NEXT・スコア / 40 幕）は withHudView 側 — world の z に関わらず必ず手前
 //
 // View は fail-open: 盤が空でも Doc が既定でも必ず何かを描く（プレイヤーの前で白画面にしない）。
 mod View {
@@ -46,7 +47,7 @@ mod View {
     def designW(): Float64 = 256.0
     def designH(): Float64 = 352.0
 
-    pub def frame(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
+    pub def frame(_ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
         List.flatten(
                background(w)
             :: gridLines(w#theme)
@@ -55,8 +56,14 @@ mod View {
             :: lockedCells(w)
             :: currentCells(w)
             :: clearFx(w)
-            :: nextPreview(ctx#atlas, w)
-            :: hud(ctx#atlas, w)
+            :: Nil)
+
+    /// 画面固定の絵（NEXT・スコア・GAME OVER の幕）。App.withHudView へ繋ぐ —
+    /// world 側の z がどれだけ大きくても、この絵は必ず手前に出る。
+    pub def hud(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
+        List.flatten(
+               nextPreview(ctx#atlas, w)
+            :: hudPanel(ctx#atlas, w)
             :: overlay(ctx#atlas, w)
             :: Nil)
 
@@ -138,7 +145,7 @@ mod View {
                 let color = ThemeDoc.colorOf(w#theme, w#current#kind);
                 let pulse = 0.5 + 0.5 * Sway.wave(w#t, 0.0, 0.8);
                 let edge = { color = w#theme#flash,
-                             alpha = Float64.truncateToFloat32(0.30 + 0.45 * pulse),
+                             alpha = 0.30 + 0.45 * pulse,
                              width = 1.0 };
                 World.piecesCells(w#current) |> List.flatMap(cellPos -> {
                     let (c, r) = cellPos;
@@ -162,7 +169,7 @@ mod View {
                         Some(Render.boxAt({ x = at#x + 2.0, y = at#y + 3.0 },
                             { x = cell() - 1.0, y = cell() - 1.0 }, w#theme#wall, zDropShadow()))
                     }
-                }) |> Render.fadeAll(0.18f32)
+                }) |> Render.fadeAll(0.18)
             case _ => Nil
         }
 
@@ -173,7 +180,7 @@ mod View {
             case World.Phase.Playing =>
                 let landed = World.dropToBottom(w);
                 pieceCells(landed#current, w#theme#ghost, zGhost())
-                    |> Render.fadeAll(0.5f32)
+                    |> Render.fadeAll(0.5)
             case _ => Nil
         }
 
@@ -190,7 +197,7 @@ mod View {
         match w#phase {
             case World.Phase.Clearing =>
                 let t = Num.clamp01(w#clearTimer / Float64.max(0.0001, w#doc#clearDuration));
-                let fade = Float64.truncateToFloat32(1.0 - t);          // 1→0 に減衰
+                let fade = 1.0 - t;                                     // 1→0 に減衰
                 let boardW = Int32.toFloat64(World.cols()) * cell();
                 w#clearRows |> List.flatMap(r -> {
                     // 行全幅に閃光の帯（白）を重ねる。
@@ -227,7 +234,7 @@ mod View {
 
     // ── HUD（スコア・ライン数）──
 
-    def hud(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
+    def hudPanel(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         let x = panelX();
         // 文言はコードに直書きせず「見出し + 数」を組む。ラベルだけは UI の見出しなので固定でよい。
         let scoreY = 120.0;
@@ -252,7 +259,7 @@ mod View {
                    { at = { x = 0.0, y = 0.0 },
                      item = Render.box({ x = designW(), y = designH() },
                              Color.darken(w#theme#wall, 0.35), zOverlay())
-                         |> Render.fade(0.62f32) }
+                         |> Render.fade(0.62) }
                 :: centered(atlas, "GAME OVER", 20.0, w#theme#flash, 150.0)
                 :: centered(atlas, "PRESS SPACE", 10.0, w#theme#ghost, 180.0)
                 :: Nil

@@ -20,11 +20,12 @@ mod GifBake {
     def loadWorld(): World.World \ IO =
         run { World.initial(Controls.loadDocs()) } with Fs.FileRead.runWithIO
 
-    /// 本番と同じ絵の合成（View.frame → Render.draw）。焼き方が2通りだと絵がずれるので、
-    /// Bake.flix の静止画もこの GIF も同じ式を通す。
+    /// 本番と同じ絵の合成（View.frame + View.hud → App.composeScene → Render.draw）。
+    /// 焼き方が2通りだと絵がずれるので、Bake.flix の静止画もこの GIF も同じ式を通す。
     pub def worldCmds(ctx: App.ViewCtx, w: World.World):
             (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
-        Render.draw(View.frame(ctx, w))
+        Render.draw(App.composeScene(None, 1.0, design(),
+            { world = View.frame(ctx, w), hud = View.hud(ctx, w) }))
 
     pub def all(): Unit \ IO =
         discard (new File("debug")).mkdirs();

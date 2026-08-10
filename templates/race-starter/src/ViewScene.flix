@@ -236,8 +236,8 @@ mod ViewScene {
             Render.lineSeg({ x = x, y = y }, { x = x + len, y = y }, thick,
                     ThemeDoc.seaGlint(w#theme), zHorizon())
                 |> Render.overItem(item -> item
-                    |> Render.fade(Float64.truncateToFloat32(
-                           (0.15 + 0.4 * blink) * (0.55 + 0.45 * d)))
+                    |> Render.fade(
+                           (0.15 + 0.4 * blink) * (0.55 + 0.45 * d))
                     |> Render.blended(DrawCmd.BlendMode.Add))
         })
 
@@ -579,8 +579,8 @@ mod ViewScene {
             Render.lineSeg({ x = x, y = y0 }, { x = x, y = y0 + len }, 1.0,
                     w#theme#text, zSpeed())
                 |> Render.overItem(item -> item
-                    |> Render.fade(Float64.truncateToFloat32(
-                           Num.clamp01(strength * near * (0.10 + rand(4) * 0.10))))
+                    |> Render.fade(
+                           Num.clamp01(strength * near * (0.10 + rand(4) * 0.10)))
                     |> Render.blended(DrawCmd.BlendMode.Add))
         })
 

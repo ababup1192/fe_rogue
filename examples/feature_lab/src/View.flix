@@ -238,6 +238,39 @@ mod View {
                 Light.items(LightDoc.toConfigWithLights(lightDoc, runtimeLights, ctx))
         }
 
+    // ── 光マップデモ（ランタン 2 個+壁の影。Light.lightMapPass / lightMapOverlay の手本）──
+
+    /// 光マップデモの設定を組む。質感（ambient/shadowStrength/色）は light.json、
+    /// 位置・半径・壁はコード — 単一光源デモ（LightDoc.toConfigWithLights）と同じ分業。
+    /// pass 名と z を 1 か所で決め、pass（bake 側）と overlay（絵の列）の食い違いを防ぐ。
+    pub def lightMapDemoConfig(lightDoc: LightDoc.Spec, lanterns: List[Light.Light]): Light.LightMapConfig =
+        LightDoc.toLightMapConfigWithLights(lightDoc, lanterns,
+            { occluders = wallOccluders(), viewport = design(), passName = "lightmap", z = lanternZ() })
+
+    /// ランタン 2 個。色は light.json の 1 灯目から借り（無ければ月白）、半径と強さは
+    /// デモの構図に合わせた値 — 環境光の上で影の抜けが読める明るさまで上げる
+    /// （json の halo 0.35 は単一光源の Add ハロ向けで、光マップの放射には暗すぎる）。
+    pub def lightMapLanterns(lightDoc: LightDoc.Spec, a: Vec2.Vec2, b: Vec2.Vec2): List[Light.Light] =
+        let tone = lightDoc#lights
+            |> List.head
+            |> Option.map(l -> l#color)
+            |> Option.getWithDefault({ r = 1.0f32, g = 0.95f32, b = 0.85f32 });
+        ({ at = a, radius = 95.0, color = tone, halo = 0.9 }: Light.Light) ::
+        ({ at = b, radius = 80.0, color = tone, halo = 0.8 }: Light.Light) :: Nil
+
+    /// 光マップデモの床の色（明るい石畳）。darkRoomColor でなく明るい下敷きなのが肝 —
+    /// Multiply の光マップは暗くする方向にしか効かないため、下敷きが暗いと灯りを
+    /// いくら足しても床は明るくならない（暗さは丸ごと光マップの環境光が持つ）。
+    def lightMapRoomColor(): Color = { r = 0.62f32, g = 0.58f32, b = 0.52f32 }
+
+    /// 光マップデモの絵（明るい部屋 → 目印 → 白丸 → 壁 → 光マップの Multiply 覆い）。
+    /// 単一光源デモと違い暗幕を描かない — 暗さは光マップ（環境光+灯り）が丸ごと持つ。
+    pub def lightMapDemoItems(cfg: Light.LightMapConfig): List[Render.PlacedItem] =
+        let room = { at = Vec2.zero(), item = Render.box(design(), lightMapRoomColor(), 0) };
+        room :: List.flatten(
+            landmarkItems() :: (shadowMarkerItem() :: wallItems()) ::
+            (Light.lightMapOverlay(cfg) :: Nil) :: Nil)
+
     /// 部屋の下敷き → 目印図形 → 暗闇モードに応じた覆い、の順。
     /// 下敷きは bg と同じ z=0（格子線 z=1 より奥）に置き、格子が常に見える上に重なるようにする。
     /// None（未出現）のときは何も描かない（他デモの bake に映り込ませないため）。

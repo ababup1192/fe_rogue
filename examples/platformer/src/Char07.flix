@@ -47,7 +47,7 @@ mod Char07 {
         let inner =
             if (splitK > 0.05) {
                 // 分離中: 装甲の隙間から内部の魔力光が漏れる。
-                at(base, cx - 4.0, cy - 4.0, Render.circle(4.0, rune(), 8) |> Render.fade(0.45f32)) ::
+                at(base, cx - 4.0, cy - 4.0, Render.circle(4.0, rune(), 8) |> Render.fade(0.45)) ::
                 at(base, cx - 2.2, cy - 2.2, Render.circle(2.2, spark(), 9)) :: Nil
             } else {
                 // 密着中: 中央のルーンが脈動し、進行方向を見る光の目が灯る。
@@ -58,7 +58,7 @@ mod Char07 {
                                   rune(), 11)) ::
                 at(base, cx + f * 1.6 - 1.1, cy - 1.6, Render.circle(1.1, beam(), 12)) :: Nil
             };
-        let haloA = RenderUtil.f32(0.28 + 0.24 * Curve.tri(0.8, t));
+        let haloA = 0.28 + 0.24 * Curve.tri(0.8, t);
         let halo =
             at(base, cx - 4.0 + tilt * 0.5, cy - 7.0 * hS - splitK - 4.0,
                Render.box({ x = 8.0, y = 1.0 }, beam(), 9)
@@ -76,7 +76,7 @@ mod Char07 {
     def pillar(base: Vec2.Vec2, w: Float64, cy: Float64, a: Float64): List[Render.PlacedItem] =
         if (a <= 0.02) Nil
         else {
-            let aF = RenderUtil.f32(a);
+            let aF = a;
             at(base, 0.0 - w / 2.0, cy,
                Render.box({ x = w, y = 0.0 - cy }, beam(), 8)
                |> Render.rounded(w / 2.0) |> Render.fade(aF)) ::
@@ -94,14 +94,14 @@ mod Char07 {
         else
             at(base, 0.0 - f * (5.0 + 25.0 * g) - 0.8, cy - 9.0,
                Render.box({ x = 1.6, y = 18.0 }, beam(), 8)
-               |> Render.rounded(0.8) |> Render.fade(RenderUtil.f32(a))) :: Nil
+               |> Render.rounded(0.8) |> Render.fade(a)) :: Nil
 
     /// 光壁の面に浮かぶ小さなルーン刻印。
     def wallRune(base: Vec2.Vec2, f: Float64, dy: Float64, k: Float64): Render.PlacedItem =
         at(base, f * 10.0, dy,
            Render.polygon({ x = 0.0, y = -2.0 } :: { x = 1.5, y = 0.0 } ::
                           { x = 0.0, y = 2.0 } :: { x = -1.5, y = 0.0 } :: Nil, runeDeep(), 10)
-           |> Render.fade(RenderUtil.f32(0.35 + 0.45 * k)))
+           |> Render.fade(0.35 + 0.45 * k))
 
     // ── 本体 ──
 
@@ -141,7 +141,7 @@ mod Char07 {
                 let tilt = f * (2.5 * sp + 2.0 * dashK);
                 let sdx = 0.0 - f * 7.5;
                 let len = 5.0 + 9.0 * dashK;
-                let streakA = RenderUtil.f32(0.28 + 0.34 * dashK);
+                let streakA = 0.28 + 0.34 * dashK;
                 let sbx = if (f > 0.0) sdx - 1.0 - len else sdx + 1.0;
                 let streaks =
                     at(base, sbx, cy - 4.1,
@@ -164,7 +164,7 @@ mod Char07 {
                 let k = sp;
                 let cy = -11.0;
                 let cx = 0.0 - f * 2.0;
-                let wallA = RenderUtil.f32(0.2 + 0.4 * k);
+                let wallA = 0.2 + 0.4 * k;
                 let wall =
                     at(base, f * 10.0 - 1.0, -25.5,
                        Render.box({ x = 2.0, y = 24.0 }, beam(), 9)
@@ -174,13 +174,13 @@ mod Char07 {
                     wallRune(base, f, -20.0, k) :: Nil;
                 let sparks =
                     at(base, f * 8.6 - 0.9, cy - 5.4,
-                       Render.circle(0.9, spark(), 13) |> Render.fade(RenderUtil.f32(0.25 + 0.55 * k))) ::
+                       Render.circle(0.9, spark(), 13) |> Render.fade(0.25 + 0.55 * k)) ::
                     at(base, f * 8.4 - 0.9, cy + 1.1,
-                       Render.circle(0.9, spark(), 13) |> Render.fade(RenderUtil.f32(0.2 + 0.5 * k))) :: Nil;
+                       Render.circle(0.9, spark(), 13) |> Render.fade(0.2 + 0.5 * k)) :: Nil;
                 let drag =
                     ({ at = { x = base#x - 5.0, y = -2.0 },
                        item = Render.box({ x = 10.0, y = 2.0 }, beam(), 8)
-                       |> Render.rounded(1.0) |> Render.fade(RenderUtil.f32(0.35 * k)) }) :: Nil;
+                       |> Render.rounded(1.0) |> Render.fade(0.35 * k) }) :: Nil;
                 List.flatten(
                     wall :: drag ::
                     core(base, f, t, cx, cy, 0.0 - f * 4.5, 1.0, 1.0, 0.0) ::
@@ -204,9 +204,9 @@ mod Char07 {
                 let cx = 1.2 * Curve.triWave(t * 1.4 + 0.25);
                 let strings =
                     at(base, cx * 0.3 + spreadW - 0.4, cy - 10.0,
-                       Render.box({ x = 0.8, y = 9.0 }, beam(), 8) |> Render.fade(0.3f32)) ::
+                       Render.box({ x = 0.8, y = 9.0 }, beam(), 8) |> Render.fade(0.3)) ::
                     at(base, cx * 0.3 - spreadW - 0.4, cy - 10.0,
-                       Render.box({ x = 0.8, y = 9.0 }, beam(), 8) |> Render.fade(0.3f32)) :: Nil;
+                       Render.box({ x = 0.8, y = 9.0 }, beam(), 8) |> Render.fade(0.3)) :: Nil;
                 List.flatten(
                     strings ::
                     core(base, f, t, cx, cy, 0.0, 1.0, 1.0, 0.0) ::
@@ -222,8 +222,8 @@ mod Char07 {
                 let ring =
                     ({ at = { x = base#x - ringW / 2.0, y = -2.4 },
                        item = Render.box({ x = ringW, y = 2.0 }, beam(), 9)
-                       |> Render.rounded(1.0) |> Render.fade(RenderUtil.f32(0.5 * (1.0 - k))) }) :: Nil;
-                let dustA = RenderUtil.f32((1.0 - k) * 0.4);
+                       |> Render.rounded(1.0) |> Render.fade(0.5 * (1.0 - k)) }) :: Nil;
+                let dustA = (1.0 - k) * 0.4;
                 let dust =
                     at(base, 4.0 + 5.0 * k, -2.6, Render.circle(1.0, rune(), 9) |> Render.fade(dustA)) ::
                     at(base, 0.0 - (4.0 + 5.0 * k) - 2.0, -2.6,

@@ -3,6 +3,8 @@
   "darkness": 0.95,
   "rim": { "width": 2.5, "strength": 0.5 },
   "haloDiameterFactor": 1.25,
+  "ambient": "#1a1826",
+  "shadowStrength": 0.85,
   "lights": [
     { "at": [160, 120], "radius": 48, "color": "#ffbf66", "halo": 0.35 }
   ]

@@ -14,3 +14,5 @@ golden/*.png
 !golden/title.png
 # マシンごとの実行環境 (ENGINE/JAVA の場所) — 共有しない
 local.mk
+# テスト記録 (make status が読む) — マシンごとの物なので共有しない
+.test-logs/

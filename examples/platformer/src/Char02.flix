@@ -173,7 +173,7 @@ mod Char02 {
               item = Render.polygon({ x = 0.0, y = 0.0 }
                              :: { x = -face * 5.5 * pose#wing, y = (flap * 0.8 - 1.0) * pose#wing }
                              :: { x = -face * 1.5, y = 1.2 } :: Nil, legColor(), 9)
-                 |> Render.fade(0.7f32) }
+                 |> Render.fade(0.7) }
             :: { at = { x = shoulder#x, y = shoulder#y },
                  item = Render.polygon({ x = 0.0, y = 0.0 }
                                 :: { x = -face * 7.0 * pose#wing, y = flap * pose#wing }
@@ -194,7 +194,7 @@ mod Char02 {
                     { at = { x = plumeX, y = plumeY },
                       item = Render.polygon({ x = 0.0, y = 0.0 } :: { x = -stage#facing * 3.2, y = -1.2 }
                                      :: { x = -stage#facing * 1.4, y = 1.6 } :: Nil, bellyColor(), 8)
-                         |> Render.fade(RenderUtil.f32(0.8 * (1.0 - drift))) }
+                         |> Render.fade(0.8 * (1.0 - drift)) }
                 })
             case _ => Nil
         }

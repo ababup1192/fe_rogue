@@ -57,16 +57,14 @@ mod Controls {
     /// 水面のシェーダー Doc。読めない・知らない語彙は既製の水面（waterVeins）へ倒す
     /// — 知らない kind が 1 つあるだけで丸ごと既定値になるので、絵が別物なら語彙を疑う。
     def loadWaterShader(): ShaderDoc.Spec \ Fs.FileRead =
-        ShaderJson.load(waterShaderPath())
-            |> Result.toOption
-            |> Option.getWithDefault(ShaderDoc.waterVeins())
+        ShaderJson.loadOr(ShaderDoc.waterVeins(), waterShaderPath())
 
     /// 窯の煙の FxDoc。読めなければ粒なし（empty = 煙が出ないだけで落ちない）。
+    /// 読み口は DocJson.loadOr — 壊れた JSON で粒が消えた事実は標準エラーへ 1 行出る。
     def loadSmokeFx(): FxDoc.Spec \ Fs.FileRead =
-        DocJson.readJson(smokeFxPath())
-            |> Result.flatMap(FxDoc.parse)
-            |> Result.toOption
-            |> Option.getWithDefault(FxDoc.empty())
+        DocJson.loadOr(
+            text -> DocJson.parse(String.trim(text)) |> Option.flatMap(j -> FxDoc.parse(j) |> Result.toOption),
+            FxDoc.empty(), smokeFxPath())
 
     pub def reloadMap(w: World.World): World.World \ Fs.FileRead =
         World.withMap(MapDoc.load(MapDoc.path()), w)

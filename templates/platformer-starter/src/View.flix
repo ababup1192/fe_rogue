@@ -32,7 +32,6 @@ mod View {
     /// 設計解像度(px)。空・幕・bake・probe の「画面いっぱい」はここが唯一の権威。
     pub def design(): Vec2.Vec2 = { x = 640.0, y = 360.0 }
 
-    def f32(v: Float64): Float32 = Float64.truncateToFloat32(v)
 
     /// 2 コマ替えのコマが「前」か(fps = 1 秒あたりのコマ数)。コイン・炎・旗・
     /// 無敵の点滅・走り・敵はどれもこの 1 本で振る — 位相の丸めを揃えるため。
@@ -389,7 +388,7 @@ mod View {
             if (fade <= 0.0) Nil
             else if (f#kind == "land" or f#kind == "spring")
                 // 砂煙: 足元から左右へ広がって薄れる。
-                Render.fadeAll(f32(fade * 0.6),
+                Render.fadeAll(fade * 0.6,
                     Render.circleAt({ x = f#pos#x - 6.0 - age * 8.0, y = f#pos#y - 2.0 },
                                     3.0 + age * 2.0, dust, zFx())
                     :: Render.circleAt({ x = f#pos#x + 6.0 + age * 8.0, y = f#pos#y - 2.0 },
@@ -397,13 +396,13 @@ mod View {
                     :: Nil)
             else if (f#kind == "stomp")
                 // 星: その場で広がる十字。
-                Render.fadeAll(f32(fade),
+                Render.fadeAll(fade,
                     Render.boxAt(f#pos, { x = 2.0, y = 10.0 + age * 12.0 }, spark, zFx())
                     :: Render.boxAt(f#pos, { x = 10.0 + age * 12.0, y = 2.0 }, spark, zFx())
                     :: Nil)
             else
                 // コイン: 上へ抜ける光の粒。
-                Render.fadeAll(f32(fade),
+                Render.fadeAll(fade,
                     Render.circleAt({ x = f#pos#x, y = f#pos#y - age * 14.0 }, 3.0,
                                     spark, zFx()) :: Nil)
         })
@@ -429,6 +428,6 @@ mod View {
             let msg = if (w#phase == "clear") w#uiText#clear else w#uiText#gameOver;
             let label = { at = { x = 250.0, y = 160.0 },
                           item = Render.text(msg, ctx#atlas, 28.0, 99) };
-            Render.fadeAll(0.55f32, veil :: Nil) ::: label :: Nil
+            Render.fadeAll(0.55, veil :: Nil) ::: label :: Nil
         }
 }

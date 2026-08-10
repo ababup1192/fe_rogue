@@ -138,7 +138,7 @@ mod Controls {
     /// env 読みは Main で済ませ、この関数は Fs.FileRead だけ（watchFile の要求に合わせる）。
     pub def surfaceReloader(path: String, fallback: ShaderDoc.Spec):
             World.World -> World.World \ {Fs.FileRead} =
-        world -> { surfaceSpec = ShaderJson.load(path) |> Result.getWithDefault(fallback) | world }
+        world -> { surfaceSpec = ShaderJson.loadOr(fallback, path) | world }
 
     /// ブレンド実験の意図。Z/X/C で Normal/Add/Multiply を直接選ぶ
     /// （W/A/S/D の Transition 選択と同じ「N 択 = 専用キー N 個」の形）。

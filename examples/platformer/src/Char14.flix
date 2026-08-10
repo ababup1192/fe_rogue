@@ -68,7 +68,7 @@ mod Char14 {
     def clamp01(x: Float64): Float64 = Float64.max(0.0, Float64.min(1.0, x))
 
     def fadeP(a: Float64, pl: Render.PlacedItem): Render.PlacedItem =
-        { item = Render.fade(RenderUtil.f32(clamp01(a)), pl#item) | pl }
+        { item = Render.fade(clamp01(a), pl#item) | pl }
 
     def roundP(r: Float64, pl: Render.PlacedItem): Render.PlacedItem =
         { item = Render.rounded(r, pl#item) | pl }

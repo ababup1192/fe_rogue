@@ -376,7 +376,7 @@ mod View {
             { at = { x = 0.0, y = Hash01.at(i, 11) * (World.height() - 40.0) },
               item = Render.box({ x = World.width(), y = 30.0 + Hash01.at(i, 12) * 34.0 },
                                 theme#fog, zFog())
-                  |> Render.fade(Float64.truncateToFloat32(0.10 + Hash01.at(i, 13) * 0.08)) })
+                  |> Render.fade(0.10 + Hash01.at(i, 13) * 0.08) })
 
     // ── ふきだし（住人の頭の上。本文は文字送りの途中まで） ──
     // 枠は ui.json（UiStore）にしない: ふきだしは話し相手のマスに吸い付く世界側の物で、
@@ -460,7 +460,7 @@ mod View {
         { at = { x = 0.0, y = 0.0 },
           item = Render.box({ x = World.width(), y = World.height() },
                             ThemeDoc.darken(theme#sky, 0.5), zVeil())
-              |> Render.fade(Float64.truncateToFloat32(alpha)) } :: Nil
+              |> Render.fade(alpha) } :: Nil
 
     /// 見出し・一行・操作ヒントを画面の真ん中に積む。
     def banner(atlas: FontAtlas, theme: ThemeDoc.Doc,
@@ -552,7 +552,7 @@ mod View {
         let shadow = Render.ellipseAt({ x = center#x, y = groundY + 3.0 },
             { x = 40.0 - lift * 5.0, y = 10.0 - lift * 2.0 },
             ThemeDoc.darken(w#theme#sky, 0.55), zFoeShadow())
-            |> (placed -> { item = Render.fade(0.7f32, placed#item) | placed });
+            |> (placed -> { item = Render.fade(0.7, placed#item) | placed });
         let frameName = if (w#battle#foeHurt) "hit" else "idle";
         shadow :: spriteAt(w, { name = "foe", frame = frameName, center = center,
                                 flipX = false, scale = foeScale(), z = zFoe(),
@@ -608,7 +608,7 @@ mod View {
                           item = Render.polygon(
                               { x = 0.0, y = -5.0 } :: { x = 7.0, y = 0.0 } :: { x = 0.0, y = 5.0 } :: Nil,
                               w#theme#accent, zWindowText() + 1)
-                              |> Render.fade(Float64.truncateToFloat32(blink)) } :: Nil
+                              |> Render.fade(blink) } :: Nil
                     else Nil;
                 windowLine(atlas, label, { x = 44.0, y = y },
                     if (chosen) w#theme#paper else ThemeDoc.darken(w#theme#paper, 0.45)) :: mark
@@ -639,7 +639,7 @@ mod View {
                          item = Render.polygon(
                              { x = -5.0, y = 0.0 } :: { x = 5.0, y = 0.0 } :: { x = 0.0, y = 6.0 } :: Nil,
                              w#theme#accent, zWindowText() + 1)
-                             |> Render.fade(Float64.truncateToFloat32(blink)) };
+                             |> Render.fade(blink) };
             List.append(window(rect, w#theme), more :: rows)
         }
 }

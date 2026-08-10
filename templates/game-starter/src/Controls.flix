@@ -36,8 +36,7 @@ mod Controls {
 
     /// 空の塗り。壊れていれば engine の見本の面に倒す（何も出ないより気付ける）。
     pub def loadShader(): ShaderDoc.Spec \ Fs.FileRead =
-        ShaderJson.load(World.shaderPath())
-            |> Result.getWithDefault(ShaderDoc.demoSurface())
+        ShaderJson.loadOr(ShaderDoc.demoSurface(), World.shaderPath())
 
     pub def reloadShader(w: World.World): World.World \ Fs.FileRead =
         World.withShader(loadShader(), w)

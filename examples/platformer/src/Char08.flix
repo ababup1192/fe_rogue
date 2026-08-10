@@ -114,7 +114,7 @@ mod Char08 {
     def shine(stage: CharStage.Stage, pose: Pose): List[Render.PlacedItem] =
         let gx = stage#pos#x - stage#facing * 4.0 + pose#lean * 0.3;
         let gy = stage#pos#y - 16.0 * pose#hFac;
-        List#{{ at = {x = gx - 1.7, y = gy - 1.7}, item = Render.circle(1.7, gelGlint(), 11) |> Render.fade(0.5f32) }}
+        List#{{ at = {x = gx - 1.7, y = gy - 1.7}, item = Render.circle(1.7, gelGlint(), 11) |> Render.fade(0.5) }}
 
     /// ゲルに浮かぶ 2 つの目。体の変形（hFac・lean・うねり）にわずかに遅れて漂う。
     def eyes(stage: CharStage.Stage, pose: Pose): List[Render.PlacedItem] =
@@ -144,7 +144,7 @@ mod Char08 {
                 { at = {x = px - w * 0.5, y = -2.2},
                   item = Render.box({x = w, y = 2.2}, wetBase(), 8)
                       |> Render.rounded(1.1)
-                      |> Render.fade(RenderUtil.f32((0.55 - fj * 0.15) * band)) })
+                      |> Render.fade((0.55 - fj * 0.15) * band) })
 
     /// スキッドの飛沫: 前方へ弧を描いて飛ぶしずく 4 粒。残速度が強いほど濃い。
     def skidSplash(stage: CharStage.Stage): List[Render.PlacedItem] =
@@ -157,7 +157,7 @@ mod Char08 {
             let r = 1.7 - 0.25 * fd;
             { at = {x = stage#pos#x + dx - r, y = stage#pos#y + dy - r},
               item = Render.circle(r, bodyGel(), 12)
-                  |> Render.fade(RenderUtil.f32(Float64.max(0.0, (0.9 - tt * 2.2) * (0.4 + 0.6 * grip)))) })
+                  |> Render.fade(Float64.max(0.0, (0.9 - tt * 2.2) * (0.4 + 0.6 * grip))) })
 
     /// 上昇中に足元へ残す雫の尾（高度が出てから現れる）。
     def riseBeads(stage: CharStage.Stage): List[Render.PlacedItem] =
@@ -165,9 +165,9 @@ mod Char08 {
         let high = Float64.min(1.0, Float64.max(0.0, (0.0 - stage#pos#y - 8.0) / 12.0));
         List#{
             { at = {x = stage#pos#x - 1.4, y = stage#pos#y + 7.0 - 1.4},
-              item = Render.circle(1.4, bodyGel(), 9) |> Render.fade(RenderUtil.f32(0.6 * e * high)) },
+              item = Render.circle(1.4, bodyGel(), 9) |> Render.fade(0.6 * e * high) },
             { at = {x = stage#pos#x - 0.9, y = stage#pos#y + 13.0 - 0.9},
-              item = Render.circle(0.9, bodyGel(), 9) |> Render.fade(RenderUtil.f32(0.3 * e * high)) }
+              item = Render.circle(0.9, bodyGel(), 9) |> Render.fade(0.3 * e * high) }
         }
 
     /// 落下中に頭上へ置いていく雫（相対的に上へ「こぼれる」）。着地前に消える。
@@ -175,9 +175,9 @@ mod Char08 {
         let high = Float64.min(1.0, Float64.max(0.0, (0.0 - stage#pos#y - 6.0) / 10.0));
         List#{
             { at = {x = stage#pos#x - stage#facing * 2.0 - 1.2, y = stage#pos#y - 23.0 - 1.2},
-              item = Render.circle(1.2, bodyGel(), 9) |> Render.fade(RenderUtil.f32(0.45 * high)) },
+              item = Render.circle(1.2, bodyGel(), 9) |> Render.fade(0.45 * high) },
             { at = {x = stage#pos#x - stage#facing * 3.5 - 0.8, y = stage#pos#y - 28.0 - 0.8},
-              item = Render.circle(0.8, bodyGel(), 9) |> Render.fade(RenderUtil.f32(0.25 * high)) }
+              item = Render.circle(0.8, bodyGel(), 9) |> Render.fade(0.25 * high) }
         }
 
     /// 着地の飛沫: 左右へ低く跳ねるしずく。窓の後半で薄れて消える。
@@ -188,5 +188,5 @@ mod Char08 {
             let dy = -3.5 - 9.0 * Vec2.sin(recover * 3.14159265);
             { at = {x = stage#pos#x + dx - 1.6, y = dy - 1.6},
               item = Render.circle(1.6, bodyGel(), 12)
-                  |> Render.fade(RenderUtil.f32(Float64.max(0.0, 0.8 * (1.0 - recover)))) })
+                  |> Render.fade(Float64.max(0.0, 0.8 * (1.0 - recover))) })
 }

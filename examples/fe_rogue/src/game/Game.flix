@@ -541,7 +541,7 @@ mod Game {
     /// ゲーム起動エントリ。Region と各 effect handler を立ち上げ、初回画面を
     /// `applyPhaseChange` で組み立てて `gameLoop` に入る。
     /// **配線役** に徹するため、ここにゲームロジックは書かない。
-    pub def start(): Unit \ {GameEngine.Game, GameEngine.Audio, ShaderEffect.Shader,
+    pub def start(): Unit \ {GameEngine.Game, GameEngine.Audio, ShaderEffect.Shader, RenderTarget.Target,
                               Fs.FileRead, Fs.FileWrite, IO, Math.Random} =
         region rc {
             // BoardQuery handler が読む World の窓口（毎フレーム頭で gameLoop が更新）。World は

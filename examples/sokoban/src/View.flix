@@ -223,8 +223,8 @@ mod View {
         let r = robotCenter(b);
         { x = r#x, y = r#y - tile() * clockRiseTiles() }
 
-    def clockAlpha(f: Board.UndoFx): Float32 =
-        RenderUtil.f32(1.0 - f#linger / Board.clockLinger())
+    def clockAlpha(f: Board.UndoFx): Float64 =
+        1.0 - f#linger / Board.clockLinger()
 
     /// 文字盤: 暗い外側の円（縁）、白い内側の円（面）、そして上部の小さな四角い
     /// アラームボタン。
@@ -338,12 +338,12 @@ mod View {
         Render.circleAt(c, d / 2.0, color, z)
 
     /// 半透明の塗りつぶしボックス（時計のパーツは alpha でフェードする）。
-    def fxBox(pos: Vec2.Vec2, size: Vec2.Vec2, c: Color, a: Float32,
+    def fxBox(pos: Vec2.Vec2, size: Vec2.Vec2, c: Color, a: Float64,
               z: Int32): Render.PlacedItem =
         { at = pos, item = Render.box(size, c, z) |> Render.fade(a) }
 
     /// 直径 d の半透明の塗りつぶし円（時計の縁と面）。
-    def fxCircle(center: Vec2.Vec2, d: Float64, c: Color, a: Float32,
+    def fxCircle(center: Vec2.Vec2, d: Float64, c: Color, a: Float64,
                  z: Int32): Render.PlacedItem =
         { at = {x = center#x - d / 2.0, y = center#y - d / 2.0},
           item = Render.circle(d / 2.0, c, z) |> Render.fade(a) }

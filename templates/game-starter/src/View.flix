@@ -77,6 +77,6 @@ mod View {
             let x = Num.wrapTo(World.width(), rand(0) * World.width() + t * speed);
             let y = rand(2) * World.height() + Sway.wave(t, rand(3), 0.35) * 7.0;
             Render.circleAt({ x = x, y = y }, 0.8 + rand(4) * 1.3, color, zDust())
-                |> Render.overItem(Render.fade(Float64.truncateToFloat32(0.20 + rand(5) * 0.30)))
+                |> Render.overItem(Render.fade(0.20 + rand(5) * 0.30))
         })
 }

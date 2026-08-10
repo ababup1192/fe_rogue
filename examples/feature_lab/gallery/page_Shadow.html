@@ -50,7 +50,7 @@ code.fs-addr{font-size:12px;font-weight:700;color:#ffd479;background:#241c07;
   padding:2px 6px;border-radius:4px;cursor:pointer;
   font-family:ui-monospace,Menlo,Consolas,monospace}
 .filmstrip.playing .fs-play{border-color:#7bd88f;color:#7bd88f}</style>
-<nav class="crumbs"><a href="index.html">← index</a> <a href="page_Light.html">◀ Light</a> <a href="page_AudioFade.html">▶ AudioFade</a></nav>
+<nav class="crumbs"><a href="index.html">← index</a> <a href="page_Light.html">◀ Light</a> <a href="page_ShaderTex.html">▶ ShaderTex</a></nav>
 <h1>Shadow</h1>
 <p class="hint">The yellow code tag is the snapshot name (report bugs by it); click to copy. Tags link to their cross-feature pages.</p>
 <h2 class="section">Basic states</h2>
@@ -58,6 +58,8 @@ code.fs-addr{font-size:12px;font-weight:700;color:#ffd479;background:#241c07;
   <figure id="shadow_light_front" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('shadow_light_front')" title="click to copy the name">shadow_light_front</code><span class="desc">光が壁の手前: 壁の裏の目印（白丸）が影に沈んで見えない（Shadow.itemsFor の Multiply 黒 Poly）</span></figcaption><img src="shadow_light_front.png" alt="shadow_light_front"></figure>
   <figure id="shadow_light_behind" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('shadow_light_behind')" title="click to copy the name">shadow_light_behind</code><span class="desc">光が壁の向こう側へ回り込むと同じ目印が照らされて見える（壁と遮蔽ポリゴンは同じ定義から導出）</span></figcaption><img src="shadow_light_behind.png" alt="shadow_light_behind"></figure>
   <figure id="shadow_walls_off" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('shadow_walls_off')" title="click to copy the name">shadow_walls_off</code><span class="desc">対照カット: shadow_light_front と同じ光位置で walls=false。目印が沈まず見える＝暗さは壁の影であって距離減衰ではない</span></figcaption><img src="shadow_walls_off.png" alt="shadow_walls_off"></figure>
+  <figure id="lightmap_two_lanterns" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('lightmap_two_lanterns')" title="click to copy the name">lightmap_two_lanterns</code><span class="desc">光マップ方式: ランタン 2 個が同時に照らし、同じ壁から 2 方向へ影が伸びる（Light.lightMapPass + lightMapOverlay。暗幕方式では不可能な絵）</span></figcaption><img src="lightmap_two_lanterns.png" alt="lightmap_two_lanterns"></figure>
+  <figure id="lightmap_swing" style="width:320px"><figcaption><code onclick="navigator.clipboard&&navigator.clipboard.writeText('lightmap_swing')" title="click to copy the name">lightmap_swing</code><span class="desc">ランタン A が壁の反対側へ回った連番: 同じ壁の影が別の向きへ倒れる（影が光の位置から導かれている証拠）。A の長い影が B の灯りまで消しているのは v1 の割り切りどおり（Light.lightMapPass の doc 参照）</span></figcaption><img src="lightmap_swing.png" alt="lightmap_swing"></figure>
 
 </main>
 

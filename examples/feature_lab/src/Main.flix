@@ -27,8 +27,7 @@ def main(): Unit \ IO =
         // 面の json パスとフォールバックは env（LAVA_DEMO）で決めて起動時に 1 度だけ読む。
         let surfacePath = Controls.surfacePath();
         let surfaceFallback = Controls.surfaceFallback();
-        let surfaceLoaded = run { ShaderJson.load(surfacePath) } with Fs.FileRead.runWithIO;
-        let surfaceSpec = Result.getWithDefault(surfaceFallback, surfaceLoaded);
+        let surfaceSpec = run { ShaderJson.loadOr(surfaceFallback, surfacePath) } with Fs.FileRead.runWithIO;
         // SHADER_DEMO=1 で宣言シェーダー面（eff Shader）の骨格デモを on にする（既定 off）。
         let shaderDemo = Controls.shaderDemoFromEnv();
         run {

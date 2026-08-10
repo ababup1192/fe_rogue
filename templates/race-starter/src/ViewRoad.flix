@@ -109,7 +109,7 @@ mod ViewRoad {
                              alpha = Float32, z = Int32 }): Render.PlacedItem =
         Render.ellipseSegsAt(s#at, s#radii, s#segs,
                 { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, s#z)
-            |> Render.overItem(Render.fade(s#alpha))
+            |> Render.overItem(Render.fade(Float32.toFloat64(s#alpha)))
 
     /// 通し行の偶奇。OutRun 式の 1 行おきの縞は全部この判定に揃える
     /// （地面・路面・縁石が同じ行で同時に切り替わり、帯の境目が 1 本の線になる）。
@@ -372,7 +372,7 @@ mod ViewRoad {
             let banner = Render.boxAt({ x = cx, y = (yTop + yBot) / 2.0 },
                     { x = (g#xr - g#xl) * k, y = yBot - yTop }, w#theme#finish, zTrim())
                 |> Render.overItem(Render.checker(
-                       { color = Color.darken(w#theme#road, 0.35), alpha = 1.0f32,
+                       { color = Color.darken(w#theme#road, 0.35), alpha = 1.0,
                          cell = Float64.max(2.0, 4.0 * k) }));
             banner :: Nil
         }
@@ -565,7 +565,7 @@ mod ViewRoad {
                               { x = bl2, y = gb } :: { x = br2, y = gb }
                            :: { x = xr, y = gf }  :: { x = xl, y = gf }
                            :: Nil, { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, z)
-                           |> Render.fade(shadowAlpha(s#uc)) };
+                           |> Render.fade(Float32.toFloat64(shadowAlpha(s#uc))) };
         let top = { at = { x = 0.0, y = 0.0 },
                     item = Render.polygon(
                            { x = bl2, y = backTopY } :: { x = br2, y = backTopY }
@@ -626,7 +626,7 @@ mod ViewRoad {
         let sweep = Render.boxAt({ x = (sl + sr) / 2.0, y = groundY - lift },
                 { x = Float64.abs(sr - sl), y = Float64.max(1.0, 5.0 * k) },
                 tint(w#theme#kerb), z)
-            |> Render.overItem(Render.fade(0.16f32));
+            |> Render.overItem(Render.fade(0.16));
         let shadow = shadowUnder({ at = { x = cx, y = groundY },
                 radii = { x = wide / 2.0, y = Float64.max(1.0, 2.2 * k) },
                 segs = 32, alpha = shadowAlpha(uc), z = z });
@@ -635,7 +635,7 @@ mod ViewRoad {
                 tint(Color.darken(w#theme#road, 0.42)), z);
         let body = Render.boxAt({ x = cx, y = groundY - lift },
                 { x = wide, y = Float64.max(2.0, 5.4 * k) }, tint(w#theme#finish), z)
-            |> Render.overItem(Render.striped({ color = tint(w#theme#kerb), alpha = 1.0f32,
+            |> Render.overItem(Render.striped({ color = tint(w#theme#kerb), alpha = 1.0,
                     width = Float64.max(1.5, 4.0 * k), period = Float64.max(3.0, 8.5 * k),
                     dir = 0 }));
         let grip = xx -> Render.circleAt({ x = xx, y = groundY - lift },
@@ -657,7 +657,7 @@ mod ViewRoad {
                     |> List.map(o ->
                         Render.boxAt({ x = p#x + o#x * p#k, y = p#y + o#y * p#k },
                                 { x = 2.5 * p#k, y = 2.5 * p#k }, color, zSkid())
-                            |> Render.overItem(Render.fade(0.5f32)))
+                            |> Render.overItem(Render.fade(0.5)))
             }
         })
 }

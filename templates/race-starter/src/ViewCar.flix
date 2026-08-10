@@ -99,7 +99,7 @@ mod ViewCar {
                     rotation = 0.0, centered = false,
                     flipH = spec#flipX, flipV = false,
                     regionRect = Some(rect), zIndex = spec#z,
-                    blend = DrawCmd.BlendMode.Normal });
+                    blend = DrawCmd.BlendMode.Normal, maskPolys = Nil });
                 { at = pos,
                   item = if (Float64.abs(spec#turn) < 0.0001) quad
                          else Render.turned(spec#turn, quad) } :: Nil
@@ -204,8 +204,8 @@ mod ViewCar {
                     tint = Color.rgb(1.0, 1.0, 1.0), z = ghostZ })
                     |> Render.fadeAll(alpha)
             };
-            let ghosts = (10.0, 0.42f32) :: (20.0, 0.28f32) :: (32.0, 0.17f32)
-                :: (46.0, 0.09f32) :: Nil;
+            let ghosts = (10.0, 0.42) :: (20.0, 0.28) :: (32.0, 0.17)
+                :: (46.0, 0.09) :: Nil;
             Render.zShiftedAll(fxLift(), flame ::: shock)
                 ::: shockRing(w, at, f, since)
                 ::: List.flatMap(ghost, ghosts)
@@ -296,8 +296,8 @@ mod ViewCar {
                     Float64.max(1.0, (1.8 - 0.8 * p) * (0.6 + 0.7 * Hash01.at(i, 5))),
                     color, z)
                 |> Render.overItem(item -> item
-                    |> Render.fade(Float64.truncateToFloat32(
-                           Num.clamp01(base * (0.22 + 0.78 * rear))))
+                    |> Render.fade(
+                           Num.clamp01(base * (0.22 + 0.78 * rear)))
                     |> Render.blended(DrawCmd.BlendMode.Add))
         })
 
@@ -310,7 +310,7 @@ mod ViewCar {
             ::: (Render.ellipseAt(c, { x = r * 0.52, y = r * 0.52 * 0.42 },
                         w#theme#flame, z)
                     |> Render.overItem(item -> item
-                        |> Render.fade(Float64.truncateToFloat32(0.16 * a))
+                        |> Render.fade(0.16 * a)
                         |> Render.blended(DrawCmd.BlendMode.Add))
                 :: Nil)
 
@@ -322,7 +322,7 @@ mod ViewCar {
     def driftHeat(w: World.World, at: Vec2.Vec2, f: Float64): List[Render.PlacedItem] =
         if (not w#drifting) Nil
         else {
-            let heat = Float64.truncateToFloat32(0.55 + 0.45 * Num.clamp01(w#nitro));
+            let heat = 0.55 + 0.45 * Num.clamp01(w#nitro);
             let wheel = dx -> phase ->
                 Fx.sampleAt(w#fx#spark, 0i64, Num.wrapTo(0.24, w#t + dx * 0.004 + phase),
                         { x = at#x + dx * f, y = at#y + 8.0 * f })

@@ -29,7 +29,7 @@ mod Char06 {
     /// 足元の照り返し（浮遊している証拠の光だまり）。空中では高さに応じて薄くなる。
     def groundGlow(base: Vec2.Vec2, strength: Float64): List[Render.PlacedItem] =
         let lift = clamp01((0.0 - base#y) / 60.0);
-        let a = RenderUtil.f32(Float64.max(0.0, strength * (1.0 - lift)));
+        let a = Float64.max(0.0, strength * (1.0 - lift));
         ({ at = { x = base#x - 9.0, y = -2.0 },
            item = Render.box({ x = 18.0, y = 3.0 }, glassGlow(), 8) |> Render.rounded(1.5) |> Render.fade(a) }) :: Nil
 
@@ -83,7 +83,7 @@ mod Char06 {
             else at(base, cx, cy,
                     Render.polygon({ x = tipDx, y = 0.0 } :: { x = 0.0, y = 0.0 - midR * 0.75 } ::
                                    { x = 0.0, y = midR * 0.75 } :: Nil,
-                                   flameOuter(), 10) |> Render.fade(0.75f32)) :: Nil;
+                                   flameOuter(), 10) |> Render.fade(0.75)) :: Nil;
         let body =
             at(base, cx - midR, cy - midR, Render.circle(midR, flameMid(), 11)) ::
             at(base, cx - coreR, cy - coreR * 1.25, Render.circle(coreR, flameCore(), 12)) :: Nil;
@@ -94,7 +94,7 @@ mod Char06 {
         let fi = Int32.toFloat64(i);
         let dx = 0.0 - f * (2.5 + 3.2 * fi + 1.2 * Curve.triWave(t * 2.3 + fi * 0.37));
         let dy = 0.0 - hover - 7.0 + 2.2 * Curve.triWave(t * 3.1 + fi * 0.71);
-        let a = RenderUtil.f32(0.55 - 0.15 * fi);
+        let a = 0.55 - 0.15 * fi;
         at(base, dx - 1.0, dy - 1.0, Render.circle(1.0, flameMid(), 11) |> Render.fade(a))
 
     // ── 本体 ──
@@ -134,10 +134,10 @@ mod Char06 {
                 let streams =
                     at(base, bx1, 0.0 - hover - 3.0,
                        Render.box({ x = len1, y = 1.5 }, flameOuter(), 9)
-                       |> Render.rounded(0.75) |> Render.fade(RenderUtil.f32(0.35 + 0.3 * dashK))) ::
+                       |> Render.rounded(0.75) |> Render.fade(0.35 + 0.3 * dashK)) ::
                     at(base, bx2, 0.0 - hover - 5.5,
                        Render.box({ x = len2, y = 1.2 }, flameMid(), 9)
-                       |> Render.rounded(0.6) |> Render.fade(RenderUtil.f32(0.25 + 0.25 * dashK))) ::
+                       |> Render.rounded(0.6) |> Render.fade(0.25 + 0.25 * dashK)) ::
                     at(base, hatchX, 0.0 - hover - 1.0,
                        Render.box({ x = 3.0, y = 1.5 }, brass(), 10)) :: Nil;
                 List.flatten(
@@ -158,14 +158,14 @@ mod Char06 {
                     at(base, f * 5.0, cy,
                        Render.polygon({ x = f * blastLen, y = 0.0 } :: { x = 0.0, y = -3.5 - 1.5 * k } ::
                                       { x = 0.0, y = 3.5 + 1.5 * k } :: Nil,
-                                      flameMid(), 11) |> Render.fade(0.85f32)) ::
+                                      flameMid(), 11) |> Render.fade(0.85)) ::
                     at(base, f * 5.0, cy,
                        Render.polygon({ x = f * (2.0 + 4.0 * k), y = 0.0 } :: { x = 0.0, y = -1.8 } ::
                                       { x = 0.0, y = 1.8 } :: Nil, flameCore(), 12)) ::
                     at(base, f * (6.0 + 6.5 * k) - 1.0, cy + 2.0,
-                       Render.circle(1.0, flameCore(), 12) |> Render.fade(RenderUtil.f32(0.2 + 0.6 * k))) ::
+                       Render.circle(1.0, flameCore(), 12) |> Render.fade(0.2 + 0.6 * k)) ::
                     at(base, f * (5.0 + 5.5 * k) - 0.8, cy - 4.8,
-                       Render.circle(0.8, flameMid(), 12) |> Render.fade(RenderUtil.f32(0.15 + 0.55 * k))) :: Nil;
+                       Render.circle(0.8, flameMid(), 12) |> Render.fade(0.15 + 0.55 * k)) :: Nil;
                 List.flatten(
                     groundGlow(base, 0.4) ::
                     lantern(base, hover, 0.0 - f * 6.5, 0.0 - f * 2.0, 1.0, 1.0, 0.0) ::
@@ -185,7 +185,7 @@ mod Char06 {
                                       { x = 3.2, y = 2.5 } :: Nil, flameMid(), 11)) ::
                     at(base, 0.0 - coreR, cy - coreR - 1.0, Render.circle(coreR, flameCore(), 12)) ::
                     at(base, 0.0 - glowR, cy - glowR,
-                       Render.circle(glowR, flameOuter(), 8) |> Render.fade(0.3f32)) :: Nil;
+                       Render.circle(glowR, flameOuter(), 8) |> Render.fade(0.3)) :: Nil;
                 List.flatten(
                     groundGlow(base, 0.3) ::
                     lantern(base, hover, 0.0, 0.0, 1.0, 1.0, opn) ::
@@ -200,7 +200,7 @@ mod Char06 {
                     at(base, 0.0, cy,
                        Render.polygon({ x = 0.0, y = 0.0 - (8.0 + 3.0 * flut) } :: { x = -2.4, y = 1.8 } ::
                                       { x = 2.4, y = 1.8 } :: Nil,
-                                      flameOuter(), 10) |> Render.fade(0.7f32)) ::
+                                      flameOuter(), 10) |> Render.fade(0.7)) ::
                     at(base, -3.4, cy - 3.4, Render.circle(3.4, flameMid(), 11)) ::
                     at(base, -2.2, cy - 3.2, Render.circle(2.2, flameCore(), 12)) :: Nil;
                 List.flatten(
@@ -219,7 +219,7 @@ mod Char06 {
                     at(base, 0.0 - splatW / 2.0, 0.0 - hover - 5.5,
                        Render.box({ x = splatW, y = 3.0 }, flameMid(), 11) |> Render.rounded(1.5)) ::
                     at(base, -2.0, 0.0 - hover - 6.5, Render.circle(2.0, flameCore(), 12)) :: Nil;
-                let sparkA = RenderUtil.f32((1.0 - k) * 0.65);
+                let sparkA = (1.0 - k) * 0.65;
                 let sparks =
                     at(base, 2.5 + 6.0 * k, -1.5 - 3.0 * k,
                        Render.circle(1.1, flameMid(), 12) |> Render.fade(sparkA)) ::

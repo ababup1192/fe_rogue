@@ -33,7 +33,8 @@ mod View {
 
     /// 1 フレームの絵。カメラの注視 x を最初に 1 回だけ決め、全層で共有する
     /// （層ごとに計算すると、丸めの差で道と車が別のカメラを見てしまう）。
-    pub def frame(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
+    /// HUD と幕は withHudView 側（hud）— 揺れも掛からず、world の z にも隠されない。
+    pub def frame(_ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
         let cam = Proj.camOf(w);
         let shake = ViewCar.shakeOf(w);
         // 揺れは世界の層だけに掛ける。HUD と幕まで揺らすと、読ませたい文字が読めなくなる。
@@ -42,7 +43,7 @@ mod View {
         let moved = items ->
             if (shake#x == 0.0 and shake#y == 0.0) items
             else Render.movedAll(shake, items);
-        let world = moved(List.flatten(
+        moved(List.flatten(
                ViewScene.sky(cam, w)
             :: ViewScene.sea(cam, w)
             :: ViewScene.plain(cam, w)
@@ -53,12 +54,15 @@ mod View {
             :: ViewCar.player(cam, w)
             :: ViewCar.bursts(cam, w)
             :: ViewScene.speedLines(cam, w)
-            :: Nil));
-        world ::: hud(ctx#atlas, w) ::: overlay(ctx#atlas, w)
+            :: Nil))
+
+    /// 画面固定の絵（HUD のチップ・場面ごとの幕）。App.withHudView へ繋ぐ。
+    pub def hud(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
+        hudChips(ctx#atlas, w) ::: overlay(ctx#atlas, w)
 
     // ── HUD（Racing のときだけ） ──
 
-    def hud(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
+    def hudChips(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         if (w#phase != World.Phase.Racing) Nil
         else rankChip(atlas, w) ::: statusChips(atlas, w) ::: nitroGauge(atlas, w)
 
@@ -72,7 +76,7 @@ mod View {
         let ink = hudInk(w);
         let chip = Render.boxAt({ x = 40.0, y = 28.0 }, { x = 66.0, y = 46.0 },
                 w#theme#text, zHud())
-            |> Render.overItem(Render.fade(0.9f32));
+            |> Render.overItem(Render.fade(0.9));
         let lapShow = Int32.min(w#lap + 1, w#rules#totalLaps);
         chip
             :: { at = { x = 13.0, y = 10.0 },
@@ -107,7 +111,7 @@ mod View {
     def chipAt(atlas: FontAtlas, w: World.World, label: String, ink: Color, y: Float64): List[Render.PlacedItem] =
         let cx = 204.0;
         let back = Render.boxAt({ x = cx, y = y }, { x = 58.0, y = 15.0 }, w#theme#text, zHud())
-            |> Render.overItem(Render.fade(0.85f32));
+            |> Render.overItem(Render.fade(0.85));
         back
             :: TextDraw.centered({ text = label, atlas = atlas, size = 10.0, color = ink,
                                    z = zHud() + 1, centerX = cx, y = y - 5.0 })
@@ -119,7 +123,7 @@ mod View {
         let cy = 337.0;
         let frameChip = Render.boxAt({ x = 120.0, y = cy }, { x = 128.0, y = 13.0 },
                 w#theme#text, zHud())
-            |> Render.overItem(Render.fade(0.9f32));
+            |> Render.overItem(Render.fade(0.9));
         let barW = 118.0 * Num.clamp01(w#nitro);
         let bar = if (barW < 0.5) Nil
             else Render.boxAt({ x = 61.0 + barW / 2.0, y = cy }, { x = barW, y = 7.0 },
@@ -155,7 +159,7 @@ mod View {
             :: centered(atlas, "PRESS SPACE", 11.0,
                    Color.mix(ThemeDoc.hazeTo(w#theme), w#theme#lane, 0.35 + 0.65 * pulse), 240.0)
             :: Nil;
-        curtain(w#theme, 0.25f32) :: (titleWord(atlas, w, "RACE", 26.0, 116.0) ::: lines)
+        curtain(w#theme, 0.25) :: (titleWord(atlas, w, "RACE", 26.0, 116.0) ::: lines)
 
     /// タイトルの見出し 1 語。落ち影 → 白の縁取り → 車体色の芯の 3 枚重ね。
     /// ベタ塗り 1 枚だと、走る草地の緑と赤が同じ明るさで隣り合って文字が沈む。
@@ -178,7 +182,7 @@ mod View {
 
     /// 完走（最下位以外）。市松の帯で「ゴールを切った」ことを形でも祝う。
     def winOverlay(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
-        curtain(w#theme, 0.45f32)
+        curtain(w#theme, 0.45)
             :: checkerBand(w#theme)
             :: centered(atlas, "FINISH!", 24.0, w#theme#finish, 124.0)
             :: centered(atlas, "RANK ${ordinalOf(w#rank)}", 12.0, w#theme#text, 166.0)
@@ -188,7 +192,7 @@ mod View {
 
     /// 最下位で完走。順位を小さく見せてから LOSE — 責める色（縁石の赤）は 1 語だけに使う。
     def loseOverlay(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
-        curtain(w#theme, 0.5f32)
+        curtain(w#theme, 0.5)
             :: centered(atlas, "${ordinalOf(w#rank)}...", 12.0, w#theme#text, 118.0)
             :: centered(atlas, "LOSE", 24.0, w#theme#kerb, 140.0)
             :: centered(atlas, "SCORE ${Int32.toString(w#score)}", 12.0, w#theme#text, 186.0)
@@ -199,12 +203,12 @@ mod View {
     def checkerBand(theme: ThemeDoc.Doc): Render.PlacedItem =
         { at = { x = 0.0, y = 96.0 },
           item = Render.box({ x = World.designW(), y = 12.0 }, theme#finish, zOverlay() + 1)
-              |> Render.checker({ color = Color.darken(theme#sea, 0.4), alpha = 1.0f32, cell = 6.0 })
-              |> Render.fade(0.92f32) }
+              |> Render.checker({ color = Color.darken(theme#sea, 0.4), alpha = 1.0, cell = 6.0 })
+              |> Render.fade(0.92) }
 
     /// 画面全体を覆う紺の幕（幕の上に文字を載せて読みやすくする）。
     /// 黒でなく海の紺を使うのは、幕の下でも真夏の画面のままでいるため。
-    def curtain(theme: ThemeDoc.Doc, alpha: Float32): Render.PlacedItem =
+    def curtain(theme: ThemeDoc.Doc, alpha: Float64): Render.PlacedItem =
         { at = { x = 0.0, y = 0.0 },
           item = Render.box({ x = World.designW(), y = World.designH() },
                      Color.darken(theme#sea, 0.35), zOverlay())

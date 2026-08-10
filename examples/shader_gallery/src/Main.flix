@@ -15,8 +15,8 @@ def main(): Unit \ IO =
     else {
         run {
             // マグマ2枚を読む（壊れていても demo に倒れる）。
-            let flow = ShaderJson.load(pathFlow()) |> Result.getWithDefault(fallback());
-            let metal = ShaderJson.load(pathMetal()) |> Result.getWithDefault(fallback());
+            let flow = ShaderJson.loadOr(fallback(), pathFlow());
+            let metal = ShaderJson.loadOr(fallback(), pathMetal());
             // 前回スライダーで決めた値を読む（無ければ初期値）。水と岸は別ファイル。
             let settings = Store.load() |> Option.getWithDefault(World.initialSettings());
             let shore = Store.loadShore() |> Option.getWithDefault(World.initialShore());

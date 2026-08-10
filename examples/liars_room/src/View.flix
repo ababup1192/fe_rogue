@@ -194,7 +194,7 @@ mod View {
         { at = Vec2.add(center, { x = -d / 2.0, y = -d / 2.0 }),
           item = Render.box({x = d, y = d}, Palette.markHonest(), zMarkLift())
             |> Render.rounded(d / 2.0)
-            |> Render.fade(0.0f32)
+            |> Render.fade(0.0)
             |> Render.outline(Palette.markHonest(), 1.6) } :: Nil
 
     /// 正面の NPC に話しかけられるとき、その頭上に上下に揺れる「▼」を出す。

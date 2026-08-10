@@ -217,10 +217,12 @@ mod Bake {
           speed = w0#rules#forwardSpeed, nitro = 0.42, rank = 2, score = 750,
           rivals = rivals | started }
 
-    /// 1 場面を PNG に焼き、焼けたファイルパスを返す。
+    /// 1 場面を PNG に焼き、焼けたファイルパスを返す。hud の合流は実機と同じ
+    /// App.composeScene を通す（カメラ無しなので center = None・等倍）。
     def shoot(cfg: Bakery.BakeConfig, texInfo: String -> Option[GameEngine.TextureInfo],
               ctx: App.ViewCtx, w: World.World, name: String): String \ IO =
-        let items = View.frame(ctx, w);
+        let items = App.composeScene(None, 1.0, cfg#design,
+            { world = View.frame(ctx, w), hud = View.hud(ctx, w) });
         let (drawables, polygons) = Render.drawWith(texInfo, items);
         Bakery.renderPng(cfg, drawables, polygons, name);
         let path = "${cfg#outDir}/${name}.png";
