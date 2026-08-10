@@ -101,14 +101,16 @@ mod Annotate {
         { x = size#x + badgePad() * 2.0, y = size#y + badgePad() * 2.0 }
 
     /// 黒地 alpha 0.7 の帯に白文字を載せる。topLeft は帯の左上（デザイン座標）。
-    /// z はゲームのどの絵よりも手前になる固定値（デバッグ中の表示は常に読めるように）。
+    /// z はエンジンデバッグ帯（ZBand.debugBase）— HUD 帯より手前で、ゲームのどの絵にも
+    /// 隠されない（デバッグ中の表示は常に読めるように）。
     def badge(fontAtlas: FontAtlas, fontSize: Float64, topLeft: Vec2.Vec2,
               message: String): List[Render.PlacedItem] =
         { at = topLeft,
           item = Render.box(badgeSize(fontAtlas, fontSize, message),
-                            { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, 1000001) |> Render.fade(0.7f32) }
+                            { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
+                            ZBand.debugBase() + 1) |> Render.fade(0.7) }
         :: { at = { x = topLeft#x + badgePad(), y = topLeft#y + badgePad() },
-             item = Render.text(message, fontAtlas, fontSize, 1000002) }
+             item = Render.text(message, fontAtlas, fontSize, ZBand.debugBase() + 2) }
         :: Nil
 
     // ── 保存完了メッセージ（トースト）──
@@ -412,13 +414,13 @@ mod Annotate {
     // ── 一時停止中の表示 ──
 
     /// ドラッグ中の矩形オーバーレイ（薄い塗り + 枠線）。デザイン座標の列に混ぜて描く。
-    /// zIndex はゲームのどの絵よりも手前になる大きな値。
+    /// zIndex はエンジンデバッグ帯（ZBand.debugBase）— ゲームのどの絵にも隠されない。
     pub def overlayItems(dragStart: Vec2.Vec2, cursorDesign: Vec2.Vec2): List[Render.PlacedItem] =
         let rect = normRect(dragStart, cursorDesign);
         let red = { r = 1.0f32, g = 0.25f32, b = 0.25f32 };
         { at = rect#position,
-          item = Render.box(rect#size, red, 1000000)
-              |> Render.fade(0.25f32)
+          item = Render.box(rect#size, red, ZBand.debugBase())
+              |> Render.fade(0.25)
               |> Render.outline(red, 1.0) } :: Nil
 
     /// 描画命令の列へ見え方（ズーム・パン）を適用する。位置は toScreen、大きさは zoom 倍。

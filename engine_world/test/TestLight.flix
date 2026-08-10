@@ -204,4 +204,92 @@ mod TestLight {
         let cfg = sceneCfg(twoLights(), occluder :: Nil);
         let (drawables, _) = Render.draw(Light.items(cfg));
         Assert.assertEq(expected = 3, List.length(drawables))
+
+    // ── lightMapPass / lightMapOverlay（光マップ方式: 複数光源＋影つき）──
+
+    def mapOccluder(): List[Vec2.Vec2] =
+        Shadow.occluderOfBox({ x = 150.0, y = 110.0 }, { x = 20.0, y = 30.0 })
+
+    def lightMapCfg(lights: List[Light.Light], occluders: List[List[Vec2.Vec2]]): Light.LightMapConfig =
+        { lights = lights, occluders = occluders,
+          viewport = { x = 320.0, y = 240.0 },
+          ambient = Light.defaultAmbient(), shadowStrength = Light.defaultShadowStrength(),
+          extrudeLength = Shadow.infiniteExtrude(),
+          passName = "light", z = 90 }
+
+    // pass の name/clear は cfg#passName と黒 Clear（環境光は clear でなく先頭の box が担う）。
+    @Test
+    def testLightMapPassNameAndClear(): Unit \ Assert =
+        let p = Light.lightMapPass(lightMapCfg(twoLights(), Nil));
+        let clearIsBlack = match p#clear {
+            case RenderTarget.LoadOp.Clear(c) => c#r == 0.0f32 and c#g == 0.0f32 and c#b == 0.0f32
+            case _                            => false
+        };
+        Assert.assertEq(expected = ("light", true), (p#name, clearIsBlack))
+
+    // 先頭は環境光の全面 box（viewport いっぱい・ambient 色・z=0・Normal）。
+    @Test
+    def testLightMapPassAmbientIsFirst(): Unit \ Assert =
+        let (drawables, _) = Render.draw(Light.lightMapPass(lightMapCfg(twoLights(), Nil))#items);
+        let ambientBox = List.head(drawables);
+        Assert.assertEq(
+            expected = Some((DrawCmd.BlendMode.Normal, 0, 0.0, 0.0, 320.0, 240.0,
+                             Light.defaultAmbient()#r, Light.defaultAmbient()#g, Light.defaultAmbient()#b)),
+            ambientBox |> Option.map(d -> (d#blend, d#zIndex, d#position#x, d#position#y,
+                                           d#scale#x, d#scale#y, d#color#r, d#color#g, d#color#b)))
+
+    // 放射は光の数ぶん（2 光源なら sprite 2 枚）。全て組み込み放射テクスチャの Add。
+    @Test
+    def testLightMapPassRadiancePerLight(): Unit \ Assert =
+        let (drawables, _) = Render.draw(Light.lightMapPass(lightMapCfg(twoLights(), Nil))#items);
+        let radiance = List.drop(1, drawables);
+        Assert.assertEq(
+            expected = (2, true),
+            (List.length(radiance),
+             radiance |> List.forAll(d -> d#blend == DrawCmd.BlendMode.Add and d#texture == RadialBuiltin.lightName())))
+
+    // 放射の alpha は light#halo の写し・位置は light#at（halo → strength の橋渡しの pin）。
+    @Test
+    def testLightMapPassRadianceCarriesHaloAndAt(): Unit \ Assert =
+        let (drawables, _) = Render.draw(Light.lightMapPass(lightMapCfg(twoLights(), Nil))#items);
+        let second = List.drop(2, drawables) |> List.head;
+        Assert.assertEq(
+            expected = Some((200.0, 150.0, 0.4f32)),
+            second |> Option.map(d -> (d#position#x, d#position#y, d#alpha)))
+
+    // 影四角形の枚数 = 光ごとの背面辺の合計（2 光源 × 箱 1 個。Shadow.shadowQuads と同じ数）。
+    @Test
+    def testLightMapPassShadowCountMatchesBackEdges(): Unit \ Assert =
+        let cfg = lightMapCfg(twoLights(), mapOccluder() :: Nil);
+        let (_, polys) = Render.draw(Light.lightMapPass(cfg)#items);
+        let expectedCount = twoLights()
+            |> List.map(light -> List.length(Shadow.shadowQuads(light#at, mapOccluder(), cfg#extrudeLength)))
+            |> List.sum;
+        Assert.assertEq(expected = expectedCount, List.length(polys))
+
+    // 影は環境光色・Normal・alpha=shadowStrength で、z は放射（10）より上の 20
+    // （灯りを打ち消して環境光へ戻す並びの pin）。
+    @Test
+    def testLightMapPassShadowIsAmbientNormalAboveRadiance(): Unit \ Assert =
+        let cfg = lightMapCfg(twoLights(), mapOccluder() :: Nil);
+        let (_, polys) = Render.draw(Light.lightMapPass(cfg)#items);
+        let strength = Float64.truncateToFloat32(cfg#shadowStrength);
+        Assert.assertEq(
+            expected = true,
+            polys |> List.forAll(p -> p#blend == DrawCmd.BlendMode.Normal and p#zIndex == 20
+                and p#alpha == strength and p#color#r == Light.defaultAmbient()#r))
+
+    // 影は occluders が空なら 1 枚も出ない（放射と環境光だけ）。
+    @Test
+    def testLightMapPassNoOccludersNoShadows(): Unit \ Assert =
+        let (_, polys) = Render.draw(Light.lightMapPass(lightMapCfg(twoLights(), Nil))#items);
+        Assert.assertEq(expected = 0, List.length(polys))
+
+    // overlay は passName の sprite 1 枚を Multiply・z=cfg#z・viewport 中心に置く。
+    @Test
+    def testLightMapOverlayIsMultiplyAtCfgZ(): Unit \ Assert =
+        let (drawables, _) = Render.draw(Light.lightMapOverlay(lightMapCfg(twoLights(), Nil)) :: Nil);
+        Assert.assertEq(
+            expected = Some((DrawCmd.BlendMode.Multiply, 90, "light", 160.0, 120.0)),
+            List.head(drawables) |> Option.map(d -> (d#blend, d#zIndex, d#texture, d#position#x, d#position#y)))
 }

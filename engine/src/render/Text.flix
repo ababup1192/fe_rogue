@@ -176,7 +176,8 @@ mod Text {
                             zIndex = r#visual#zIndex,
                             style = None,
                             clip = None,
-                            blend = DrawCmd.BlendMode.Normal
+                            blend = DrawCmd.BlendMode.Normal,
+                            mask = Nil
                         })
                     case None => None
                 }

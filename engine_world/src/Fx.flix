@@ -77,7 +77,7 @@ mod Fx {
     /// 粒 i の時刻 t の姿。寿命が尽きた粒は空リスト。burst は全粒 t=0 生まれ、loop は
     /// 各粒が寿命ごとに生まれ直す（位相 = 粒ごとの乱数で分散・生まれ直すたびに速度と方向を
     /// 引き直す — すべて t の純関数のまま）。
-    /// circle / box は 1 粒 = 1 枚、glow だけは縁の減衰を同心円の重ねで作るため 1 粒 = 複数枚。
+    /// circle / box / streak は 1 粒 = 1 枚、glow だけは縁の減衰を同心円の重ねで作るため 1 粒 = 複数枚。
     def sampleParticle(emitter: FxDoc.Emitter, emitterSeed: Int64, i: Int32,
                        t: Float64): List[Render.PlacedItem] =
         let rand = k -> rand01(emitterSeed, i, k);
@@ -123,15 +123,18 @@ mod Fx {
             let spawnOff = { x = (rand(4) - 0.5) * emitter#spawnArea#w,
                              y = (rand(5) - 0.5) * emitter#spawnArea#h };
             let accelOff = Vec2.mul(emitter#accel, 0.5 * age * age);
-            let pos = Vec2.add(Vec2.add(Vec2.mul(Vec2.onEllipse({ x = 1.0, y = 1.0 }, turn), dist),
+            let straight = Vec2.add(Vec2.add(Vec2.mul(Vec2.onEllipse({ x = 1.0, y = 1.0 }, turn), dist),
                 spawnOff), accelOff);
+            // wobble 既定（amp 0）は足し算ごと飛ばす — 既存文書の絵はビット単位で不変。
+            let pos = if (emitter#wobble#amp#x == 0.0 and emitter#wobble#amp#y == 0.0) straight
+                      else Vec2.add(straight, wobbleOffset(emitter#wobble, rand, age));
             let size = emitter#size * curveValue(emitter#sizeOver, i, u);
             let alpha = clamp01(curveValue(emitter#alphaOver, i, u));
             if (size <= 0.0 or alpha <= 0.0) Nil
             else {
                 let color = gradient(emitter#color, u);
                 let decorate = placed -> {
-                    let faded = placed#item |> Render.fade(Float64.truncateToFloat32(alpha));
+                    let faded = placed#item |> Render.fade(alpha);
                     { item = Render.blended(emitter#blend, faded) | placed }
                 };
                 // 傾き = 初期の向き + 回る速さ × 経過（閉形式のまま）。
@@ -146,6 +149,22 @@ mod Fx {
                         decorate(Render.boxAt(pos, { x = size, y = size }, color, emitter#zIndex)
                             |> (p -> if (Float64.abs(spun) < 1.0e-12) p
                                      else { item = Render.turned(spun, p#item) | p })) :: Nil
+                    case FxDoc.Shape.Streak =>
+                        // 尾の向きは速度から導く（turn は効かせない — 筋の向きと粒の傾きが
+                        // 別々に回ると、雨・火花が「流れ」に見えなくなる）。wobble の揺れも
+                        // 向きには混ぜない — 微分を持ち込むほどの絵の差が出ない。
+                        let vel = Vec2.add(
+                            Vec2.mul(Vec2.onEllipse({ x = 1.0, y = 1.0 }, turn),
+                                     speed * curveValue(emitter#speed#over, i, u)),
+                            Vec2.mul(emitter#accel, age));
+                        let velLen = Vec2.length(vel);
+                        // 止まった粒は射出方向を向く（尾は 0 = ただの size 角の箱）。
+                        let velTurn = if (velLen < 1.0e-9) turn
+                                      else Vec2.atan2(vel#y, vel#x) / Vec2.tau() + 0.25;
+                        decorate(Render.boxAt(pos, { x = size, y = size + velLen * emitter#stretch },
+                                              color, emitter#zIndex)
+                            |> (p -> if (Float64.abs(velTurn) < 1.0e-12) p
+                                     else { item = Render.turned(velTurn, p#item) | p })) :: Nil
                     case FxDoc.Shape.Glow   =>
                         // 濃さとブレンドは glowAt が輪ごとに配るので decorate は通さない
                         //（後から fade を掛けると輪ごとの配分が上書きされて減衰が消える）。
@@ -171,6 +190,9 @@ mod Fx {
                 else (1.0 - u) / (1.0 - p#at)
             case FxDoc.CurveSpec.Flicker(f) =>
                 1.0 - f#amount * Hash01.at(salt, stepOf(u * f#rate))
+            case FxDoc.CurveSpec.Pulse(p)   =>
+                // u=0 で 1（生まれた瞬間に暗い粒を出さない）→ minV まで沈んで戻る cos 波。
+                p#minV + (1.0 - p#minV) * (0.5 + 0.5 * Vec2.cos(Vec2.tau() * p#rate * u))
         }
 
     /// カーブの 0..u の積分（速度 → 移動距離）。flicker はパース（FxDoc）が速度カーブとして
@@ -188,11 +210,20 @@ mod Fx {
                 else p#at / 2.0 + (1.0 - p#at) / 2.0 - (1.0 - u) * (1.0 - u) / (2.0 * (1.0 - p#at))
             case FxDoc.CurveSpec.Flicker(_) =>
                 bug!("Fx.curveIntegral: flicker は速度カーブに使えない（FxDoc.parse が弾く）")
+            case FxDoc.CurveSpec.Pulse(_)   =>
+                bug!("Fx.curveIntegral: pulse は速度カーブに使えない（FxDoc.parse が弾く）")
         }
 
     /// u * rate の整数段（flicker のチラつきの区切り番号）。
     def stepOf(x: Float64): Int32 =
         Num.floorInt(x)
+
+    /// 位置の正弦揺らぎ（閉形式）。位相は乱数 × vary — vary 0 で全粒がそろって揺れ、
+    /// 1 で 1 周ぶん散る。x と y は別の位相を引くので、両軸に振るとリサージュ型の
+    /// 有界運動（蛍・湯気の「その場でゆらゆら」）になる。
+    def wobbleOffset(wobble: FxDoc.Wobble, rand: Int32 -> Float64, age: Float64): Vec2.Vec2 =
+        { x = wobble#amp#x * Vec2.sin(Vec2.tau() * (wobble#freq#x * age + wobble#vary * rand(8))),
+          y = wobble#amp#y * Vec2.sin(Vec2.tau() * (wobble#freq#y * age + wobble#vary * rand(9))) }
 
     // ── 粒ごとの導出 ──
 

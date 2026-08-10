@@ -188,6 +188,36 @@ mod TestApp {
         Assert.assertEq(expected = Some((160.0, 120.0)), atOf(composed))
 
     // ========================================================================
+    // composeScene: hud の z は HUD 帯へ持ち上がる（world の z には触らない）
+    // ========================================================================
+
+    def boxAtZ(z: Int32): Render.PlacedItem =
+        { at = { x = 0.0, y = 0.0 },
+          item = Render.box({ x = 1.0, y = 1.0 }, { r = 1.0f32, g = 0.0f32, b = 0.0f32 }, z) }
+
+    def zAt(i: Int32, items: List[Render.PlacedItem]): Option[Int32] =
+        List.head(List.drop(i, items)) |> Option.flatMap(p -> match p#item {
+            case Render.Item.Box(b) => Some(b#zIndex)
+            case _                  => None
+        })
+
+    // world z=1000（爆発など）より hud z=10 の方が手前になる（帯の持ち上げ）。
+    @Test
+    def testComposeSceneLiftsHudAboveWorld(): Unit \ Assert =
+        let composed = App.composeScene(None, 1.0, sceneDesign(),
+            { world = boxAtZ(1000) :: Nil, hud = boxAtZ(10) :: Nil });
+        Assert.assertEq(expected = (Some(1000), Some(1_000_000_010)),
+            (zAt(0, composed), zAt(1, composed)))
+
+    // 帯からはみ出す hud の z は clamp（wrap しない）: 負は帯の底・過大は帯の上限。
+    @Test
+    def testComposeSceneClampsHudZIntoBand(): Unit \ Assert =
+        let composed = App.composeScene(None, 1.0, sceneDesign(),
+            { world = Nil, hud = boxAtZ(-5) :: boxAtZ(2_000_000_000) :: Nil });
+        Assert.assertEq(expected = (Some(1_000_000_000), Some(1_099_999_999)),
+            (zAt(0, composed), zAt(1, composed)))
+
+    // ========================================================================
     // composeScene / visibleOf: 寄り引き（zoom ≠ 1）の合成
     // ========================================================================
 

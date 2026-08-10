@@ -106,7 +106,7 @@ mod TestTransition {
                     |> List.head |> Option.flatMap(zOf);
         Assert.assertEq(expected = (Some(42), Some(7)), (fadeZ, wipeZ))
 
-    // defaultZ は UI の layer 帯（layer × 10000）より手前・Annotate のデバッグ帯（1000001〜）より奥。
+    // defaultZ は UI の layer 帯（layer × 10000）より手前・HUD 帯（ZBand.hudBase）より奥。
     @Test
     def testDefaultZSitsBetweenUiAndDebugBands(): Unit \ Assert =
         Assert.assertEq(expected = 100000, Transition.defaultZ())

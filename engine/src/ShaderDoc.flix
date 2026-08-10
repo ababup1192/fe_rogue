@@ -24,6 +24,11 @@ mod ShaderDoc {
         case F2mF1  // F2 − F1（セル境界＝網目）
     }
 
+    /// Tex がテクスチャのどのチャンネルを読むか。既定は R（明るさ・マスクの慣習）。
+    pub enum TexChan with Eq, ToString {
+        case R case G case B case A
+    }
+
     /// 2 つの場を合わせる素の計算。混ぜる意図（0..1 の重み）は Blend を使い、これは生の値の合成。
     pub enum BinOp with Eq, ToString {
         case Add  case Sub  case Mul      // 足す・引く・掛ける
@@ -131,7 +136,16 @@ mod ShaderDoc {
         case Rotate({ cx = Float64, cy = Float64, turns = Float64, rate = Float64, of = Field })
         /// 名前を付けて使い回す場（shared に定義したものを参照する）。
         /// 同じ計算を何度も書かずに一度だけ書いて名前で呼べる。
+        /// 値は「面の基準 uv で 1 回だけ」評価される — 座標変換（Scaled/Warp/Shift…）の
+        /// 内側に置いても変換後の座標では読み直さない（GL が main 先頭で 1 回計算する挙動が正）。
         case Ref(String)
+        /// 名前つきテクスチャ（pass のレンダーターゲットや普通のテクスチャ）を今の uv で
+        /// 標本して chan のチャンネル（0..1）を返す。標本は補間なし（NEAREST）・端は
+        /// 張り付き（CLAMP）。Shift や Warp と組むと「前フレームの絵を歪めて読む」が書ける。
+        case Tex({ name = String, chan = TexChan })
+        /// 読む座標を (dx, dy) だけずらして of を読む。dx/dy は「外側の uv」で評価する
+        /// （ずらし量自体は、ずらす前の位置で決まる — GL の式の組み方と同じ）。
+        case Shift({ dx = Field, dy = Field, of = Field })
     }
 
     /// 面の色（rgb）。
@@ -148,6 +162,10 @@ mod ShaderDoc {
         /// a=中心色・b=振れ幅・c=各色の周期・d=各色の位相。滑らかに循環する色が作れて、
         /// d を少しずらすだけで全体の配色が変わる（ステージごとの色替えに向く）。cycleRate>0 で位相が時間で回る。
         case Cosine({ a = Color, b = Color, c = Color, d = Color, field = Field })
+        /// 3 つの場をそのまま r/g/b にする（Tex×3 でテクスチャの色を素通しするのが主用途）。
+        /// cycleRate は掛からない — 3 本の場に別々の三角波を掛けると色が別々に呼吸して
+        /// 意図が読めなくなるため（位相を回したい絵は Ramp/Gradient/Cosine の 1 本場で作る）。
+        case Rgb({ r = Field, g = Field, b = Field })
     }
 
     /// 面の出力（このピクセルの最終色とアルファ）。
@@ -248,6 +266,10 @@ mod ShaderDoc {
             case Shade.Cosine(cs) =>
                 // GLSL を走らせない代表色は中心色 a（実際に巡回する色は GL でのみ出る）。
                 cs#a
+            case Shade.Rgb(_) =>
+                // 場を評価しない代表色は中間灰 — テクスチャの中身はここでは読めない
+                // （Cosine が a を返すのと同じ妥協）。
+                { r = 0.5f32, g = 0.5f32, b = 0.5f32 }
         }
 
     /// 係数 f（0..1）で stops を混ぜた色。先頭色から始めて、隣り合う区切りごとに
@@ -276,6 +298,71 @@ mod ShaderDoc {
         { r = a#r + (b#r - a#r) * tf,
           g = a#g + (b#g - a#g) * tf,
           b = a#b + (b#b - a#b) * tf }
+
+    /// 場の木を前置順（親 → 子）で 1 本ずつ f に渡して畳む汎用の走査。
+    /// Ref 集め（ShaderJson）と Tex 名集め（texNames）がこれに乗る — ノードを増やすときは
+    /// ここへ 1 case 足せば全部の走査が追随する（走査を何本も別々に持たない）。
+    pub def foldField(f: (a, Field) -> a, acc: a, field: Field): a =
+        let acc1 = f(acc, field);
+        match field {
+            case Field.Const(_)        => acc1
+            case Field.Uv(_)           => acc1
+            case Field.Worley(_)       => acc1
+            case Field.Fbm(_)          => acc1
+            case Field.FbmTile(_)      => acc1
+            case Field.Smoothstep(s)   => foldField(f, acc1, s#of)
+            case Field.Scaled(s)       => foldField(f, acc1, s#of)
+            case Field.Warp(wp)        => foldField(f, acc1, wp#of)
+            case Field.Mix(m)          => foldField(f, foldField(f, acc1, m#a), m#b)
+            case Field.Blend(bl)       => foldField(f, foldField(f, foldField(f, acc1, bl#a), bl#b), bl#by)
+            case Field.Disk(_)         => acc1
+            case Field.Radial(_)       => acc1
+            case Field.RadialAspect(_) => acc1
+            case Field.Quantize(q)     => foldField(f, acc1, q#of)
+            case Field.Scales(_)       => acc1
+            case Field.Glints(_)       => acc1
+            case Field.Ripples(_)      => acc1
+            case Field.Sparkle(_)      => acc1
+            case Field.Bin(bn)         => foldField(f, foldField(f, acc1, bn#a), bn#b)
+            case Field.Hash1(h)        => match h#bucket {
+                case None    => acc1
+                case Some(b) => foldField(f, acc1, b)
+            }
+            case Field.Hash2(h)        => match h#bucket {
+                case None    => acc1
+                case Some(b) => foldField(f, acc1, b)
+            }
+            case Field.Un(un)          => foldField(f, acc1, un#of)
+            case Field.Pow(pw)         => foldField(f, acc1, pw#of)
+            case Field.Time(tm)        => foldField(f, acc1, tm#offset)
+            case Field.Tiling(tl)      => foldField(f, acc1, tl#of)
+            case Field.Snap(sn)        => foldField(f, acc1, sn#of)
+            case Field.Swirl(sw)       => foldField(f, acc1, sw#of)
+            case Field.Angle(_)        => acc1
+            case Field.Rotate(rt)      => foldField(f, acc1, rt#of)
+            case Field.Ref(_)          => acc1
+            case Field.Tex(_)          => acc1
+            case Field.Shift(sh)       => foldField(f, foldField(f, foldField(f, acc1, sh#dx), sh#dy), sh#of)
+        }
+
+    /// Spec が読むテクスチャ名を「bindings（前から）→ 色 → alpha」の初出順・重複なしで列挙する。
+    /// この並びが正典 — GLSL の uniform 番号・GL の sampler unit 番号・描画依頼の texNames が
+    /// 全部この関数の並びを使うので、3 者がずれない。
+    pub def texNames(spec: Spec): List[String] =
+        let shadeFields = match spec#out {
+            case Out.Fill(f) => match f#shade {
+                case Shade.Solid(_)    => f#alpha :: Nil
+                case Shade.Ramp(r)     => r#field :: f#alpha :: Nil
+                case Shade.Gradient(g) => g#field :: f#alpha :: Nil
+                case Shade.Cosine(cs)  => cs#field :: f#alpha :: Nil
+                case Shade.Rgb(c)      => c#r :: c#g :: c#b :: f#alpha :: Nil
+            }
+        };
+        let fields = List.append(List.map(snd, spec#bindings), shadeFields);
+        List.foldLeft((acc, field) -> foldField((names, f) -> match f {
+            case Field.Tex(tx) => if (List.memberOf(tx#name, names)) names else tx#name :: names
+            case _             => names
+        }, acc, field), Nil, fields) |> List.reverse
 
     def smoothstepF(lo: Float64, hi: Float64, x: Float64): Float64 =
         if (hi - lo == 0.0) (if (x < lo) 0.0 else 1.0)

@@ -73,6 +73,11 @@ mod DrawCmd {
     /// `clip` はスクリーン空間（design px）の切り抜き窓 — None なら切らない。
     /// バックエンドは窓の外のピクセルを描かない（GL: scissor / SoftRaster: setClip）。
     /// `blend` はピクセルの重ね方（既定 Normal — 従来と同じ半透明合成）。
+    /// `mask` は多角形の型抜き（空 = 抜かない）。頂点は表示クアッドのローカル座標
+    /// （design px・原点 = クアッドの左上・回転前）で、rotation / 反転（scale の符号）は
+    /// クアッドと同じ変換が掛かる — 形を 1 回定義すれば回転は rotation に任せられる。
+    /// 縁は GL のステンシルも Java2D の clip も AA なしの硬い縁（docs/backend-parity.md）。
+    /// グリフ（font_ テクスチャ）には効かない。
     pub type alias Drawable = {
         texture = String,
         position = Vec2.Vec2,
@@ -86,7 +91,8 @@ mod DrawCmd {
         zIndex = Int32,
         style = Option[BoxStyle],
         clip = Option[Rect2.Rect2],
-        blend = BlendMode
+        blend = BlendMode,
+        mask = List[List[Vec2.Vec2]]
     }
 
     /// タイルマップ 1 タイル分のインスタンスデータ。tilemap loader が組み立て、

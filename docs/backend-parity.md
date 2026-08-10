@@ -35,9 +35,13 @@ SoftRaster が指定を黙って落とすと、**golden は「実機と違う絵
 | style（角丸・枠・縞・市松）on 単色 box | ○ | ○ | 枠の濃さ（borderAlpha）も両者対応 |
 | 単色多角形の塗り | ○ | ○ | **縁だけ近似**: SoftRaster は Java2D の AA、GL は AA なし |
 | 頂点色つき多角形（grad のグラデ） | ○ | ○ | 補間は同じ線形の式（扇割りは `DrawCmd.gradTriangles` を共有、式は `SoftRaster.gradSample` にテストで固定）。縁は両者とも画素中心判定で AA なし — 単色多角形とは縁の写りが違う |
+| 多角形マスク付きスプライト（mask の型抜き） | ○ | ○ | **縁だけ近似**（単色多角形と同じ注記）: GL はステンシル・SoftRaster は Java2D の clip で、どちらも AA なしの硬い縁。mask はクアッドのローカル座標なので rotation・反転が両経路とも同じ式で追随する。グリフ（font_）は対象外。GL では mask 付き 1 体ごとに run の一括 draw から単発 draw に落ちる。レンダーターゲット（Pass）の中では GL は抜けない（ターゲットの FBO にステンシルが無い — 抜きたい物は画面側で貼る） |
 | **style on テクスチャ / 文字** | ○ | **×** | 落とす。焼くときに件数を報告する |
 | 文字の描き方 | SDF シェーダ | 出力解像度の TTF を直接 drawString | **近似**。小サイズでは焼いた方がくっきり出る |
 | 宣言シェーダーの面 | 本物の GLSL | `ShaderEval` の画素評価 | **近似**。式は揃えてあるが完全一致は保証しない |
+| シェーダー面の tex 場（`Field.Tex`） | sampler uniform + sampler object | `texEnv`（画素表）を `ShaderEval` が標本 | 標本の量子化は**同一を保証する**: NEAREST（`floor` の釘打ち式）・CLAMP（端に張り付き）・8bit/255 の正規化・pass の上下逆の吸収位置（GL の uTexFlip だけが持つ）。テクスチャ値**以降**の float 合成は宣言シェーダー面と同じく近似。pass の alpha チャンネル（`chan:"a"`）は GL のブレンド副産物なので一致保証なし |
+| レンダーターゲット（Pass） | ○ | ○ | ターゲットは両経路とも design 解像度で焼き、貼るとき最近傍拡大。標本は最近傍（NEAREST）を**保証する** — 縮小→再拡大のピクセライズ/モザイクはこれに依存してよい（補間を変える拡張は opt-in にする）。ターゲットの中の Shader 面はどちらも描かない（`withoutShaders` で外す） |
+| 組み込み放射テクスチャのスプライト（`Render.lightAt` / `darkAt`） | ○ | ○ | **一致**（radial scene が機械証明）。土台は `RadialBuiltin` の画素定義 — 減衰カーブは rgb だけに焼き込み **alpha は常に 255**。alpha=255 なら Add は `d+s` の整数の足し算で GL（float 合成）と CPU（整数合成）の丸めが消える。Multiply（`darkAt`）は `d×s/255` が割り切れる下地（白・黒）でのみバイト一致 — 中間色の下地では ±1 の丸め差が出うる（GL は最近接丸め・CPU は切り捨て）。tint・strength の中間値も float 乗算が入るため一致保証は白 tint・strength=1.0 の範囲。もう 1 つの条件は四角の左上が画面内にあること — SoftRaster の出力矩形の丸め（`SoftRaster.ri` = 0 方向切り捨て）が**負座標で 1px 内側にずれ**、等倍の貼りが 1px 縮む（放射に限らず全スプライト共通の既知の穴。画面の左上からはみ出す置き方だけで踏む） |
 
 ## エンジンを拡張するときの手順
 
@@ -55,7 +59,27 @@ SoftRaster が指定を黙って落とすと、**golden は「実機と違う絵
 [bake] 焼けない指定: style on textured sprite ×3 — 角丸・枠・縞・市松は単色の box にだけ焼ける（title）
 ```
 
-## まだやっていない（将来）
+## 機械での突き合わせ（bench/gl_parity）
 
-GL をヘッドレスで焼いて 2 経路の PNG を突き合わせる同値テスト。決定版だが、オフスクリーンの
-GL 文脈を CI で用意する必要があるので、上の「落とした物を報告する」で足りなくなったら着手する。
+上の表の「同一を保証」の行は、`make gl-parity` が機械で確かめる。隠し窓
+（`FLIX_GE_HIDDEN=1`）で GL を 1 コマずつ焼き、同じ scene 宣言を SoftRaster でも焼いて
+画素比較する（golden は作らない — 基準は「もう片方の経路」）。回し方と scene の規約は
+[bench/gl_parity/README.md](../bench/gl_parity/README.md)。
+
+- 比較は 2 段。**A 段（同一保証の行だけを使った scene）は RGB バイト一致**が合格線で、
+  1 画素でも違えば exit 1。近似の行（縁 AA・文字・float 合成）は数字の報告だけで落とさない。
+- **alpha チャンネルは比較しない**（pass の alpha は GL のブレンド副産物 — 表の tex 場の行）。
+- 実測記録（2026-08-11・第 1 陣 4 scene）: 単色 box + zIndex + Add/Multiply + 軸平行縞 +
+  市松（boxes）、UV 部分矩形 + 反転 + 整数倍率の NEAREST（spriteNearest）、Pass の NEAREST
+  整数倍拡大（passPaste）、tex 場の素通し読み（texField）— **全て差 0 px のバイト一致**。
+  ±1 の引き直しが要る行は出ていない。
+- 実測記録（2026-08-11・Wave F）: 光マップの配管（`Light.lightMapPass` の環境光 box +
+  pass 内 Add + `lightMapOverlay` の Multiply 貼り。lightmap）— **差 0 px のバイト一致**。
+- 実測記録（2026-08-11・放射）: 組み込み放射スプライト（`Render.lightAt` の Add 重ね置き +
+  `darkAt` の白/黒下地 Multiply。radial）— **差 0 px のバイト一致**。かつては最大 ±8 の
+  差があったが、放射テクスチャを alpha=255 形（カーブは rgb に焼き込み）へ改めて解消した。
+- A 段の scene に入れてよい絵の条件（整数座標・k/255 の色・軸平行縞のみ等）と
+  「±1 が実測されたらこの表へ実測根拠つきで追記して線を引き直す」の手順は
+  bench/gl_parity/src/Scenes.flix の冒頭に固定してある。
+- 描画経路（render_gl / SoftRaster / Frame / ShaderEval）を触ったら手で回す。
+  CI には載せない（オフスクリーン GL を CI に用意しない判断はそのまま）。

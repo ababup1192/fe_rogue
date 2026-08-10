@@ -151,7 +151,8 @@ mod Sprite {
             zIndex = r#visual#zIndex,
             style = None,
             clip = None,
-            blend = DrawCmd.BlendMode.Normal
+            blend = DrawCmd.BlendMode.Normal,
+            mask = Nil
         }
 
     /// regionRect / hframes / vframes / frame と元テクスチャサイズから

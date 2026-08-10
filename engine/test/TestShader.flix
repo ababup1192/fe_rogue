@@ -960,3 +960,193 @@ def testSnapJsonDefaultCells(): Unit \ Assert =
         case Err(_) => None
     };
     Assert.assertEq(expected = Some((8.0, 8.0)), cells)
+
+// ════════════════════════════════════════════════════════════════════
+// (9) Wave D: tex 場（Tex / Shift / Shade.Rgb）— テクスチャを場として読む
+//   パリティの線引き: 標本の量子化（floor + clamp + 8bit/255）は両経路同式なので assertEq で
+//   釘打ちする。テクスチャ以降の float 合成は従来どおり近似（GPU 一致を主張しない）。
+// ════════════════════════════════════════════════════════════════════
+
+/// tex 場を使う代表 Spec（pin 用）: shade は pass "glow" の Rgb 素通し、alpha は "mask" の R。
+def texSpecOf(): ShaderDoc.Spec =
+    { name = "texdemo", cycleRate = 0.0, bindings = Nil,
+      out = ShaderDoc.Out.Fill({
+          shade = ShaderDoc.Shade.Rgb({
+              r = ShaderDoc.Field.Tex({ name = "glow", chan = ShaderDoc.TexChan.R }),
+              g = ShaderDoc.Field.Tex({ name = "glow", chan = ShaderDoc.TexChan.G }),
+              b = ShaderDoc.Field.Tex({ name = "glow", chan = ShaderDoc.TexChan.B }) }),
+          alpha = ShaderDoc.Field.Tex({ name = "mask", chan = ShaderDoc.TexChan.R }) }) }
+
+/// compile() の共通ヘッダ（uniform 宣言の直前まで）。
+def glslHeader(): String =
+    "#version 330 core\nin vec2 vUv;\nout vec4 outColor;\nuniform float uTime;\n"
+
+/// (a) 新語彙を使わない既存代表 Spec の compile() 全文は「ヘッダ + prelude + main」のままで、
+///   uTex uniform が 1 文字も足されない（GLSL ソースが program キャッシュの鍵なので全文で釘打ち）。
+@Test
+def testNoTexUniformForExistingSpecs(): Unit \ Assert =
+    let fullOf = (spec: ShaderDoc.Spec) ->
+        glslHeader() + ShaderGen.preludeSource() +
+        "void main() {\n    " + ShaderGen.compileBody(spec) + "\n}\n";
+    let specs = ShaderDoc.demoSurface() :: ShaderDoc.waterVeins() :: ShaderDoc.lavaVeins() :: Nil;
+    Assert.assertEq(expected = List.map(fullOf, specs), List.map(ShaderGen.compile, specs))
+
+/// (b) tex 場つき Spec の compile() 全文: uniform 行が texNames の正典順（glow=0, mask=1）で
+///   uTime の直後に並び、main は texture() 標本 + flip の mix を含む（番号割当を全文で固定）。
+@Test
+def testTexSpecCompileSnapshot(): Unit \ Assert =
+    let expectedBody =
+        "outColor = vec4(vec3(" +
+        "texture(uTex0, vec2((vUv).x, mix((vUv).y, 1.0 - (vUv).y, uTexFlip0))).r, " +
+        "texture(uTex0, vec2((vUv).x, mix((vUv).y, 1.0 - (vUv).y, uTexFlip0))).g, " +
+        "texture(uTex0, vec2((vUv).x, mix((vUv).y, 1.0 - (vUv).y, uTexFlip0))).b), " +
+        "texture(uTex1, vec2((vUv).x, mix((vUv).y, 1.0 - (vUv).y, uTexFlip1))).r);";
+    let expected =
+        glslHeader() +
+        "uniform sampler2D uTex0;\nuniform float uTexFlip0;\n" +
+        "uniform sampler2D uTex1;\nuniform float uTexFlip1;\n" +
+        ShaderGen.preludeSource() +
+        "void main() {\n    " + expectedBody + "\n}\n";
+    Assert.assertEq(expected = expected, ShaderGen.compile(texSpecOf()))
+
+/// (c) texNames の順序決定性: bindings（前から）→ 色 → alpha の初出順・重複除去。
+///   bindings の "b" が先頭・shade の "a" が次・alpha の "b" は 2 度目なので出ない。
+@Test
+def testTexNamesCanonicalOrder(): Unit \ Assert =
+    let texOf = name -> ShaderDoc.Field.Tex({ name = name, chan = ShaderDoc.TexChan.R });
+    let spec: ShaderDoc.Spec =
+        { name = "o", cycleRate = 0.0,
+          bindings = ("s", texOf("b")) :: Nil,
+          out = ShaderDoc.Out.Fill({
+              shade = ShaderDoc.Shade.Ramp({ lo = { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
+                                             hi = { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
+                                             field = texOf("a") }),
+              alpha = texOf("b") }) };
+    Assert.assertEq(expected = "b" :: "a" :: Nil, ShaderDoc.texNames(spec))
+
+/// Shift ノードの GLSL 片: dx/dy は外側 uv の式で組み、of は uv+vec2(dx,dy) で読む。
+@Test
+def testShiftNodeSnapshot(): Unit \ Assert =
+    let field = ShaderDoc.Field.Shift({
+        dx = ShaderDoc.Field.Const(0.1), dy = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.V }),
+        of = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U }) });
+    Assert.assertEq(expected =
+        "outColor = vec4(vec3(0.0, 0.0, 0.0), (((vUv) + vec2(0.1, (vUv).y))).x);",
+        bodyOfField(field))
+
+/// 2×2 のテスト画素（ARGB）。
+///   ┌───────────────┬───────────────┐
+///   │ (0,0) 赤 255  │ (1,0) 緑 128  │
+///   ├───────────────┼───────────────┤
+///   │ (0,1) 青 64   │ (1,1) α 255 白│
+///   └───────────────┴───────────────┘
+def tex2x2(): ShaderEval.TexData =
+    // ARGB を 10 進で書く（0xffff0000 などは Int32 の正リテラル範囲を超える）:
+    //   -65536 = 0xffff0000（不透明・R=255）、-16744448 = 0xff008000（G=128）、
+    //   -16777152 = 0xff000040（B=64）、-1 = 0xffffffff（不透明の白）。
+    { width = 2, height = 2,
+      pixels = Vector#{ -65536, -16744448, -16777152, -1 } }
+
+/// Tex の CPU 標本（NEAREST の釘打ち）: 四隅の画素中心でチャンネル値が 8bit/255 で出る。
+@Test
+def testEvalTexSamplesCorners(): Unit \ Assert =
+    let env = Map#{ "t" => tex2x2() };
+    let at = (u, v, chan) -> {
+        let spec: ShaderDoc.Spec = { name = "t", cycleRate = 0.0, bindings = Nil,
+            out = ShaderDoc.Out.Fill({
+                shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+                alpha = ShaderDoc.Field.Tex({ name = "t", chan = chan }) }) };
+        ShaderEval.evalAlphaTex(spec, { x = u, y = v }, 0.0, env)
+    };
+    Assert.assertEq(
+        expected = (255.0 / 255.0, 128.0 / 255.0, 64.0 / 255.0, 255.0 / 255.0),
+        (at(0.25, 0.25, ShaderDoc.TexChan.R), at(0.75, 0.25, ShaderDoc.TexChan.G),
+         at(0.25, 0.75, ShaderDoc.TexChan.B), at(0.75, 0.75, ShaderDoc.TexChan.A)))
+
+/// Tex の端は張り付き（CLAMP）: u<0 と u>1 は端の texel と同じ値になる（回り込まない）。
+@Test
+def testEvalTexClampsAtEdges(): Unit \ Assert =
+    let env = Map#{ "t" => tex2x2() };
+    let spec: ShaderDoc.Spec = { name = "t", cycleRate = 0.0, bindings = Nil,
+        out = ShaderDoc.Out.Fill({
+            shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+            alpha = ShaderDoc.Field.Tex({ name = "t", chan = ShaderDoc.TexChan.R }) }) };
+    let at = u -> ShaderEval.evalAlphaTex(spec, { x = u, y = 0.25 }, 0.0, env);
+    Assert.assertEq(expected = (at(0.25), at(0.75)), (at(-0.5), at(1.5)))
+
+/// Shift の dx/dy は「外側の uv」で評価する: dy = uv.y なので、読み先は (u, y+y) になる。
+///   uv=(0.25, 0.25) → 読み先 v = 0.5 → 下段（青 64）を拾う（内側 uv で再評価すると値が変わる）。
+@Test
+def testEvalShiftUsesOuterUv(): Unit \ Assert =
+    let env = Map#{ "t" => tex2x2() };
+    let spec: ShaderDoc.Spec = { name = "t", cycleRate = 0.0, bindings = Nil,
+        out = ShaderDoc.Out.Fill({
+            shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+            alpha = ShaderDoc.Field.Shift({
+                dx = ShaderDoc.Field.Const(0.0),
+                dy = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.V }),
+                of = ShaderDoc.Field.Tex({ name = "t", chan = ShaderDoc.TexChan.B }) }) }) };
+    Assert.assertEq(expected = 64.0 / 255.0,
+        ShaderEval.evalAlphaTex(spec, { x = 0.25, y = 0.25 }, 0.0, env))
+
+/// shared の先行評価: 座標変換（Shift）の内側で use しても「基準 uv で 1 回評価した値」が返る。
+///   binding u0 = uv.x。alpha = Shift(dx=0.5){ use(u0) } — 内側で読み直すなら 0.75 になるはずだが、
+///   基準 uv の 0.25 が返る（GL が main 先頭で 1 回計算する挙動が正）。
+@Test
+def testEvalSharedFrozenAtBaseUv(): Unit \ Assert =
+    let spec: ShaderDoc.Spec = { name = "t", cycleRate = 0.0,
+        bindings = ("u0", ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.U })) :: Nil,
+        out = ShaderDoc.Out.Fill({
+            shade = ShaderDoc.Shade.Solid({ r = 0.0f32, g = 0.0f32, b = 0.0f32 }),
+            alpha = ShaderDoc.Field.Shift({
+                dx = ShaderDoc.Field.Const(0.5), dy = ShaderDoc.Field.Const(0.0),
+                of = ShaderDoc.Field.Ref("u0") }) }) };
+    Assert.assertEq(expected = 0.25, ShaderEval.evalAlpha(spec, { x = 0.25, y = 0.5 }, 0.0))
+
+/// evalPixelAlphaTex は evalPixelTex / evalAlphaTex と同じ (色, α) を返す（委譲がズレない）。
+@Test
+def testEvalPixelAlphaTexAgrees(): Unit \ Assert =
+    let env = Map#{ "glow" => tex2x2(), "mask" => tex2x2() };
+    let spec = texSpecOf();
+    let uv = { x = 0.75, y = 0.25 };
+    let (c, a) = ShaderEval.evalPixelAlphaTex(spec, uv, 0.0, env);
+    let c2 = ShaderEval.evalPixelTex(spec, uv, 0.0, env);
+    let a2 = ShaderEval.evalAlphaTex(spec, uv, 0.0, env);
+    Assert.assertEq(
+        expected = (c2#r, c2#g, c2#b, a2),
+        (c#r, c#g, c#b, a))
+
+/// tex/shift/rgb の JSON 往復で GLSL がバイト一致する（Gen/Json の 2 面がズレない）。
+@Test
+def testTexJsonRoundTripGlslIdentical(): Unit \ Assert =
+    let spec: ShaderDoc.Spec = { name = "wave_d", cycleRate = 0.0, bindings = Nil,
+        out = ShaderDoc.Out.Fill({
+            shade = ShaderDoc.Shade.Rgb({
+                r = ShaderDoc.Field.Tex({ name = "scene", chan = ShaderDoc.TexChan.R }),
+                g = ShaderDoc.Field.Tex({ name = "scene", chan = ShaderDoc.TexChan.G }),
+                b = ShaderDoc.Field.Tex({ name = "scene", chan = ShaderDoc.TexChan.B }) }),
+            alpha = ShaderDoc.Field.Shift({
+                dx = ShaderDoc.Field.Const(0.01), dy = ShaderDoc.Field.Const(0.02),
+                of = ShaderDoc.Field.Tex({ name = "mask", chan = ShaderDoc.TexChan.A }) }) }) };
+    let same = match ShaderJson.parse(ShaderJson.toJson(spec)) {
+        case Ok(spec2) => ShaderGen.compile(spec2) == ShaderGen.compile(spec)
+        case Err(_)    => false
+    };
+    Assert.assertEq(expected = true, same)
+
+/// tex の chan 省略は R に倒れる（fail-open の既定）。
+@Test
+def testTexJsonDefaultChan(): Unit \ Assert =
+    let json = "{\"name\":\"s\",\"out\":{\"kind\":\"fill\"," +
+               "\"shade\":{\"kind\":\"solid\",\"color\":\"#000000\"}," +
+               "\"alpha\":{\"kind\":\"tex\",\"name\":\"scene\"}}}";
+    let chan = match Util.Json.parse(json) |> Result.flatMap(ShaderJson.parse) {
+        case Ok(spec) => match spec#out {
+            case ShaderDoc.Out.Fill(f) => match f#alpha {
+                case ShaderDoc.Field.Tex(tx) => Some((tx#name, tx#chan))
+                case _ => None
+            }
+        }
+        case Err(_) => None
+    };
+    Assert.assertEq(expected = Some(("scene", ShaderDoc.TexChan.R)), chan)

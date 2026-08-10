@@ -122,8 +122,8 @@ mod Daylight {
             { x = r * stretch, y = r * 0.34 * stretch }, spec#ink, spec#z);
         let contact = Render.ellipseAt(spec#at, { x = r * 0.7, y = r * 0.26 },
                                        spec#ink, spec#z + 1);
-        ({ item = Render.fade(Float64.truncateToFloat32(sun#alpha * 0.7), cast#item) | cast }
-         :: { item = Render.fade(Float64.truncateToFloat32(sun#alpha * 1.4), contact#item)
+        ({ item = Render.fade(sun#alpha * 0.7, cast#item) | cast }
+         :: { item = Render.fade(sun#alpha * 1.4, contact#item)
                 | contact } :: Nil)
             |> Render.snappedAll(spec#pixelStep)
 

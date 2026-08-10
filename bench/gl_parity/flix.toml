@@ -1,0 +1,9 @@
+[package]
+name        = "bench_gl_parity"
+description = "GL 描画と SoftRaster 描画が同じ指定から同じ絵を出すかを機械で突き合わせる harness"
+version     = "0.1.0"
+flix        = "0.75.1"
+authors     = ["ababup1192 <ababup1192@gmail.com>"]
+
+[dependencies]
+"github:ababup1192/flix_game_engine" = { version = "0.18.4", security = "unrestricted" }

@@ -89,6 +89,10 @@ mod RichText {
 
     /// スパン列を左上 pos から 1 文字ずつ置いていく。行割りは wrapLinesBy(atlas の実測幅)で、
     /// 太字スパンは半ピクセル右にずらしてもう一度描くことで線を太らせる。
+    /// 最小の呼び出し例:
+    ///   RichText.place({ atlas = atlas, size = 10.0, baseTint = ink, z = 40,
+    ///                    pos = { x = 16.0, y = 180.0 }, maxWidth = 288.0, lineGap = 3.0 },
+    ///                  RichText.plain("こんにちは") :: Nil)
     pub def place(p: Placement, spans: List[Span]): List[Render.PlacedItem] =
         wrapLinesBy(ch -> TextDraw.width(Char.toString(ch), p#atlas, p#size), p#maxWidth, spans)
             |> List.zipWithIndex

@@ -24,7 +24,8 @@ mod Transition {
     pub type alias Cover = { kind = Kind, t = Float64, viewport = Vec2.Vec2, color = Color, z = Int32 }
 
     /// 覆いの既定 zIndex。UI（layer × CanvasLayer.layerStride = 10000 台）より手前、
-    /// デバッグ表示（Annotate の帯 1000001〜1000002）より奥 — 遷移中も fps や注釈は隠れない。
+    /// HUD 帯（ZBand.hudBase）とデバッグ表示（ZBand.debugBase）より奥 —
+    /// 遷移中も fps や注釈は隠れない。
     pub def defaultZ(): Int32 = 100000
 
     /// 進行度と種類から、画面を覆う描画物の列を返す。
@@ -60,7 +61,7 @@ mod Transition {
 
     /// PlacedItem に alpha を掛ける（Render.fade は Item 向けなので item だけ通す）。
     def withAlpha(alpha: Float64, placed: Render.PlacedItem): Render.PlacedItem =
-        { item = Render.fade(RenderUtil.f32(alpha), placed#item) | placed }
+        { item = Render.fade(alpha, placed#item) | placed }
 
     // ── 進行層: 経過秒を貯める小さな値 ──
 

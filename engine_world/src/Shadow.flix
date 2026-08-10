@@ -199,7 +199,7 @@ mod Shadow {
         { at = Vec2.zero(),
           item = Render.polygon(quad, black, z)
               |> Render.blended(DrawCmd.BlendMode.Multiply)
-              |> Render.fade(RenderUtil.f32(darkness)) }
+              |> Render.fade(darkness) }
 
     /// 頂点列 quad を Add・alpha=strength・light 色の Poly にする（絶対座標のまま at=zero）。
     /// z は胴体・影四角形と同じ値を渡す（フチは胴体の縁の上に重ねて描く飾りのため、
@@ -208,7 +208,7 @@ mod Shadow {
         { at = Vec2.zero(),
           item = Render.polygon(quad, color, z)
               |> Render.blended(DrawCmd.BlendMode.Add)
-              |> Render.fade(RenderUtil.f32(strength)) }
+              |> Render.fade(strength) }
 
     // ── 幾何ユーティリティ（テストの「影が壁を透過しない」検証にも使う） ──
 

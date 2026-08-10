@@ -61,7 +61,7 @@ mod PxSprite {
                       rotation = 0.0, centered = false,
                       flipH = flipX, flipV = false,
                       regionRect = Some(rect), zIndex = z,
-                      blend = DrawCmd.BlendMode.Normal }) } :: Nil
+                      blend = DrawCmd.BlendMode.Normal, maskPolys = Nil }) } :: Nil
             }
             case _ => Nil
         }

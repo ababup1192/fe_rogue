@@ -13,8 +13,13 @@ mod ShaderEffect {
     /// program = buildProgram が返した GPU ハンドル、rect = 塗る矩形（スクリーン空間 px・uv=0..1 が
     /// この矩形）、time = uTime uniform に渡す秒、zIndex = 重なり順（骨格では固定 z 帯へ寄せる）、
     /// blend = 重ね方。
+    /// texNames = Spec の Tex ノードが読むテクスチャ名（ShaderDoc.texNames の正典順）。
+    /// program は GLSL ソースが鍵のキャッシュで共有され、名前を GLSL に写さないため、
+    /// 「どの名前をどの sampler unit に bind するか」は cmd がここで運ぶ（構造が同じで
+    /// 名前だけ違う 2 面が同じ program を使っても正しい絵になる）。
     pub type alias ShaderRenderCmd = {
         program = GpuHandle.ShaderProgram,
+        texNames = List[String],
         rect = Rect2.Rect2,
         // 面を切り抜く多角形の列（スクリーン空間 px の三角形化前の頂点）。空なら矩形そのまま、
         // 非空なら GL がステンシルに焼いて「多角形の内側だけ」塗る（丸い池形など任意形に抜く）。

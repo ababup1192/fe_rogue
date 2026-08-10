@@ -68,12 +68,9 @@ mod TerrainDoc {
             |> Option.map(fromRoot)
 
     /// path の Doc を読む。読めない・壊れているときは defaults(fail-open)。
+    /// 読み口を DocJson.loadOr に委譲し、壊れた JSON で倒れた事実は標準エラーへ 1 行出る。
     pub def load(p: String): Doc \ Fs.FileRead =
-        let readResult = run { Fs.ReadFile.read(p) } with Fs.ReadFile.runWithFileRead;
-        readResult
-            |> Result.toOption
-            |> Option.flatMap(fromJson)
-            |> Option.getWithDefault(defaults())
+        DocJson.loadOr(fromJson, defaults(), p)
 
     /// EntryDoc(文字列の色)→ Material.Spec(実色)。resolve は呼び側供給
     /// (rpg-starter なら key -> ThemeDoc.resolver(theme, key))。壊れた表記・存在しない

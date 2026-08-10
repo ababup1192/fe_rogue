@@ -89,7 +89,8 @@ mod Splash {
               zIndex   = 2,
               style    = None,
               clip     = None,
-              blend    = DrawCmd.BlendMode.Normal } :: Nil
+              blend    = DrawCmd.BlendMode.Normal,
+              mask     = Nil } :: Nil
         }
 
     /// 進み具合のゲージ。本数が分かっていれば左から溜まり、分からなければ帯が流れる。
@@ -132,7 +133,8 @@ mod Splash {
           zIndex   = z,
           style    = Some(DrawCmd.defaultStyle(color)),
           clip     = None,
-          blend    = DrawCmd.BlendMode.Normal }
+          blend    = DrawCmd.BlendMode.Normal,
+          mask     = Nil }
 
     // ── 寸法と色 ──────────────────────────────────────────────
 

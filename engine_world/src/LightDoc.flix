@@ -5,7 +5,8 @@
 // occluders/viewport/glow/z はゲーム側が Spec.toConfig で自分の値を足して組み立てる）。
 // light#at も json の値は初期値の扱いで、実行時は World（プレイヤー位置等）が上書きしてよい。
 //
-// 語彙（version 1）: トップレベルの darkness / rim / haloDiameterFactor / lights は全て
+// 語彙（version 1）: トップレベルの darkness / rim / haloDiameterFactor / ambient /
+// shadowStrength / lights は全て
 // optional（省略時は Light.defaultXxx 相当の既定値）。色表記は ui.json と同じ
 // （UiDoc.colorOf に一本化。#rrggbb / {"hsv":...} / {"rgb":...}）。
 // "version" / "$schema" / "note" / "//" キーは fx.json / ui.json と同じ扱い。
@@ -26,11 +27,14 @@ mod LightDoc {
     pub type alias LightSpec = { at = Vec2.Vec2, radius = Float64, color = Color, halo = Float64 }
 
     /// ドキュメント全体。darkness/rim/haloDiameterFactor は Light.SceneLightConfig の
-    /// 同名フィールドへそのまま流し込む値。
+    /// 同名フィールドへそのまま流し込む値。ambient/shadowStrength は光マップ方式
+    /// （Light.LightMapConfig）でだけ使う値 — 暗幕方式の toConfig はどちらも読まない。
     pub type alias Spec = {
         darkness = Float64,
         rimWidth = Float64, rimStrength = Float64,
         haloDiameterFactor = Float64,
+        ambient = Color,
+        shadowStrength = Float64,
         lights = List[LightSpec],
         note = Option[String]
     }
@@ -41,6 +45,7 @@ mod LightDoc {
         { darkness = defaultDarkness(),
           rimWidth = Shadow.defaultRimWidth(), rimStrength = Shadow.defaultRimStrength(),
           haloDiameterFactor = Light.defaultHaloDiameterFactor(),
+          ambient = Light.defaultAmbient(), shadowStrength = Light.defaultShadowStrength(),
           lights = Nil, note = None }
 
     // ========================================================================
@@ -55,12 +60,17 @@ mod LightDoc {
                 darkness   <- DocJson.atNode("(root)", DocJson.numOr("darkness", defaultDarkness(), top));
                 rim        <- parseRim(top);
                 factorOpt  <- DocJson.atNode("(root)", (DocJson.getAtKeyOpt(Root, "haloDiameterFactor", top): Result[JsonError, Option[Float64]]));
+                ambient    <- parseAmbient(top);
+                shadowStrength <- DocJson.atNode("(root)", DocJson.numOr("shadowStrength", Light.defaultShadowStrength(), top));
+                _s         <- require(shadowStrength >= 0.0 and shadowStrength <= 1.0,
+                                      "shadowStrength must be within 0..1 (got: ${shadowStrength})");
                 note       <- (DocJson.getAtKeyOpt(Root, "note", top): Result[JsonError, Option[String]]);
                 lights     <- parseLights(top)
             ) yield ({
                 darkness = darkness,
                 rimWidth = rim#width, rimStrength = rim#strength,
                 haloDiameterFactor = Option.getWithDefault(Light.defaultHaloDiameterFactor(), factorOpt),
+                ambient = ambient, shadowStrength = shadowStrength,
                 lights = lights, note = note
             }: Spec)
             case _ => Err(DocJson.jsonError(Root, Set#{"LightDoc must be a JSON object"}))
@@ -78,6 +88,14 @@ mod LightDoc {
                 width    <- DocJson.numOr("width", Shadow.defaultRimWidth(), m);
                 strength <- DocJson.numOr("strength", Shadow.defaultRimStrength(), m)
             ) yield { width = width, strength = strength })
+        }
+
+    /// "ambient": 色（省略時 Light.defaultAmbient()。光マップ方式でだけ使う環境光の色 —
+    /// ambient/shadowStrength は 0.19 系で足した語彙。古いエンジンは読み飛ばして既定になる）。
+    def parseAmbient(top: Map[String, Json]): Result[JsonError, Color] =
+        match Map.get("ambient", top) {
+            case None       => Ok(Light.defaultAmbient())
+            case Some(json) => UiDoc.colorOf(Map.empty(), "ambient", json)
         }
 
     /// "lights": [...]（省略時は空 = 光源なし）。
@@ -154,6 +172,30 @@ mod LightDoc {
 
     def lightOf(l: LightSpec): Light.Light =
         { at = l#at, radius = l#radius, color = l#color, halo = l#halo }
+
+    // ========================================================================
+    // Spec → Light.LightMapConfig（光マップ方式）
+    // ========================================================================
+
+    /// Spec の質感（ambient/shadowStrength/lights）に、ゲームが持つ occluders/viewport/
+    /// passName/z を足して光マップ設定を組む。extrudeLength は Shadow.infiniteExtrude() —
+    /// 影の伸ばし長さは絵の調整値ではないので Doc には出さない。
+    pub def toLightMapConfig(spec: Spec,
+        ctx: { occluders = List[List[Vec2.Vec2]], viewport = Vec2.Vec2,
+               passName = String, z = Int32 }): Light.LightMapConfig =
+        { lights = List.map(lightOf, spec#lights), occluders = ctx#occluders,
+          viewport = ctx#viewport,
+          ambient = spec#ambient, shadowStrength = spec#shadowStrength,
+          extrudeLength = Shadow.infiniteExtrude(),
+          passName = ctx#passName, z = ctx#z }
+
+    /// toLightMapConfig と同じだが、lights を丸ごと runtimeLights に差し替える
+    /// （toConfigWithLights と同じ「json は質感、位置はゲーム」の分業口）。
+    pub def toLightMapConfigWithLights(spec: Spec, runtimeLights: List[Light.Light],
+        ctx: { occluders = List[List[Vec2.Vec2]], viewport = Vec2.Vec2,
+               passName = String, z = Int32 }): Light.LightMapConfig =
+        let base = toLightMapConfig(spec, ctx);
+        { lights = runtimeLights | base }
 
     // ========================================================================
     // load（ファイル読み — parse は純粋なまま、IO はここだけ）

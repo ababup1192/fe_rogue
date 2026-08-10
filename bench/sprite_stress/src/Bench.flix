@@ -3,7 +3,13 @@
 // 描画量が揺れて、エンジン改修の差分と見分けが付かなくなるため。
 
 mod Bench {
+    import java.lang.System
     import org.lwjgl.glfw.GLFW
+
+    /// 環境変数 HUD が空でない値なら HUD あり構成で走る（例: `HUD=1 make run`）。
+    pub def hudEnabled(): Bool \ IO =
+        let value = System.getenv("HUD");
+        not Object.isNull(value) and value != ""
 
     pub type alias World = {
         t = Float64,
@@ -113,6 +119,20 @@ mod Bench {
             case 2 => { r = 0.35f32, g = 0.55f32, b = 0.87f32 }
             case _ => { r = 0.91f32, g = 0.75f32, b = 0.32f32 }
         }
+
+    /// HUD あり構成（HUD=1 で有効）の絵。withHudView 経由なので z は HUD 帯
+    /// （ZBand.hudBase 以上）へ持ち上がり、mergedByZ が帯別 2 段ソートに入る —
+    /// 帯が混ざっても席方式（counting sort）に乗り続けるかを HUD 無しとの A/B で見る。
+    pub def hud(ctx: App.ViewCtx, w: World): List[Render.PlacedItem] =
+        Render.boxAt({ x = 160.0, y = 228.0 }, { x = 300.0, y = 16.0 },
+            { r = 0.10f32, g = 0.10f32, b = 0.14f32 }, 0)
+        :: { at = { x = 14.0, y = 222.0 },
+             item = Render.textTinted("HUD SEG=${w#segment + 1} N=${countOf(w#segment)}",
+                 ctx#atlas, 9.0, { r = 0.95f32, g = 0.85f32, b = 0.40f32 }, 1) }
+        :: { at = { x = 200.0, y = 222.0 },
+             item = Render.textTinted("BAND CHECK", ctx#atlas, 9.0,
+                 { r = 0.60f32, g = 0.90f32, b = 0.60f32 }, 1) }
+        :: Nil
 
     /// SDF テキストの負荷は文字数で決まるので、毎フレームほぼ一定（約 300 文字）に固定する。
     def texts(atlas: FontAtlas, w: World): List[Render.PlacedItem] =

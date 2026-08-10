@@ -299,7 +299,7 @@ mod Material {
                 x = px + 4.0 + Float64.floor(DualGrid.hash(x, y, fx#channel + 2 + k) * 8.0),
                 y = py + 4.0 + Float64.floor(DualGrid.hash(x, y, fx#channel + 4 + k) * 8.0) };
             let placed = Render.circleAt(center, radius, fx#color, z);
-            { item = placed#item |> Render.fade(Float64.truncateToFloat32(alpha)) | placed }
+            { item = placed#item |> Render.fade(alpha) | placed }
         })
 
     /// きらめく粒(セル座標ハッシュの位置に小さな粒)。粒ごとに位相をずらした sin で
@@ -326,7 +326,7 @@ mod Material {
             let (ax, ay) = insetToLiquid(cell, tile, edges, Float64.max(w, 2.0), (bx, by));
             { at = { x = ax, y = ay },
               item = Render.box({ x = w, y = 1.0 }, fx#color, z)
-                  |> Render.fade(Float64.truncateToFloat32(twinkle))
+                  |> Render.fade(twinkle)
                   |> blendItem(fx#blend) }
         })
 
@@ -396,7 +396,7 @@ mod Material {
                     let liteArc = Render.polygon(
                         crescent({ x = cx, y = cy }, radius, 1.4, 0.34), toneColor, z);
                     { at = Vec2.zero(),
-                      item = liteArc |> Render.fade(Float64.truncateToFloat32(fx#alphaBase))
+                      item = liteArc |> Render.fade(fx#alphaBase)
                           |> blendItem(fx#blend) } :: Nil
                 }
             }))
@@ -478,7 +478,7 @@ mod Material {
                         let alpha = fx#alphaBase + fx#alphaSpan * grow;
                         let placed = Render.circleAt(center, fx#sizeTo * grow, fx#color, z);
                         ({ item = placed#item
-                               |> Render.fade(Float64.truncateToFloat32(alpha))
+                               |> Render.fade(alpha)
                                |> blendItem(fx#blend) | placed }) :: Nil
                     } else if (u < 0.9) {
                         // 弾け: リング + 飛沫線。
@@ -487,7 +487,7 @@ mod Material {
                         let alpha = (fx#alphaBase + fx#alphaSpan) * (1.0 - pop);
                         let ringBase = ring(center, rad, 1.0, fx#color, z);
                         let ringItem = { item = ringBase#item
-                                             |> Render.fade(Float64.truncateToFloat32(alpha)) | ringBase };
+                                             |> Render.fade(alpha) | ringBase };
                         let a0 = DualGrid.hash(x, y, fx#channel + 6 + k) * 6.283185307179586;
                         let splats = List.range(0, 3) |> List.map(s -> {
                             let ang = a0 + Int32.toFloat64(s) / 3.0 * 6.283185307179586;
@@ -495,7 +495,7 @@ mod Material {
                             let inner = Vec2.add(center, Vec2.mul(dir, rad));
                             let outer = Vec2.add(center, Vec2.mul(dir, rad + 2.5));
                             let seg = Render.lineSeg(inner, outer, 1.0, fx#color, z);
-                            { item = seg#item |> Render.fade(Float64.truncateToFloat32(alpha)) | seg }
+                            { item = seg#item |> Render.fade(alpha) | seg }
                         });
                         ringItem :: splats
                     } else Nil
@@ -523,7 +523,7 @@ mod Material {
             let center = { x = gcx, y = gcy };
             let placed = Render.circleAt(center, radius, fx#color, z);
             { item = placed#item
-                  |> Render.fade(Float64.truncateToFloat32(twinkle))
+                  |> Render.fade(twinkle)
                   |> blendItem(fx#blend) | placed }
         })
 

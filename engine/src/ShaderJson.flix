@@ -11,13 +11,16 @@
 //           {"kind":"smoothstep","lo":..,"hi":..,"of":{..}} /
 //           {"kind":"scaled","factor":..,"scroll":{"x":..,"y":..},"of":{..}} /
 //           {"kind":"warp","amount":..,"scale":..,"seed":..,"of":{..}} /
-//           {"kind":"mix","a":{..},"b":{..},"t":..} / {"kind":"blend","a":{..},"b":{..},"by":{..}}
-//   色:     {"kind":"solid","color":<color>} / {"kind":"ramp","lo":<color>,"hi":<color>,"field":{..}}
+//           {"kind":"mix","a":{..},"b":{..},"t":..} / {"kind":"blend","a":{..},"b":{..},"by":{..}} /
+//           {"kind":"tex","name":"..","chan":"r"} / {"kind":"shift","dx":{..},"dy":{..},"of":{..}}
+//   色:     {"kind":"solid","color":<color>} / {"kind":"ramp","lo":<color>,"hi":<color>,"field":{..}} /
+//           {"kind":"rgb","r":{..},"g":{..},"b":{..}}
 //   出力:   {"kind":"fill","shade":{..},"alpha":{..}}
 //   トップ: {"name":..,"cycleRate":..,"out":{..}}
 // 色は "#rrggbb" か {"r":..,"g":..,"b":..}（0..1）。WorleyOut は "f1"/"f2"/"f2mf1"、Axis は "u"/"v"。
 
 mod ShaderJson {
+    import java.lang.System
     import java.math.{BigDecimal => JBigDecimal}
     use Util.Json.Json
     use Util.Json.Json.{JObject, JArray, JNumber, JString}
@@ -99,6 +102,8 @@ mod ShaderJson {
                     case ShaderDoc.Shade.Ramp(r)     => collectRefs(r#field)
                     case ShaderDoc.Shade.Gradient(g) => collectRefs(g#field)
                     case ShaderDoc.Shade.Cosine(c)   => collectRefs(c#field)
+                    case ShaderDoc.Shade.Rgb(c)      => List.append(collectRefs(c#r),
+                                                          List.append(collectRefs(c#g), collectRefs(c#b)))
                 };
                 List.append(shadeRefs, collectRefs(f#alpha))
         };
@@ -109,40 +114,12 @@ mod ShaderJson {
         }
 
     /// Field の木を走査して現れる Ref 名を集める（検証用の薄いヘルパ）。
+    /// 走査は ShaderDoc.foldField に一本化 — ノードが増えてもここは触らない。
     def collectRefs(field: ShaderDoc.Field): List[String] =
-        match field {
-            case ShaderDoc.Field.Const(_)      => Nil
-            case ShaderDoc.Field.Uv(_)         => Nil
-            case ShaderDoc.Field.Worley(_)     => Nil
-            case ShaderDoc.Field.Fbm(_)        => Nil
-            case ShaderDoc.Field.FbmTile(_)    => Nil
-            case ShaderDoc.Field.Smoothstep(s) => collectRefs(s#of)
-            case ShaderDoc.Field.Scaled(s)     => collectRefs(s#of)
-            case ShaderDoc.Field.Warp(wp)      => collectRefs(wp#of)
-            case ShaderDoc.Field.Mix(m)        => List.append(collectRefs(m#a), collectRefs(m#b))
-            case ShaderDoc.Field.Blend(bl)     => List.append(collectRefs(bl#a),
-                                                    List.append(collectRefs(bl#b), collectRefs(bl#by)))
-            case ShaderDoc.Field.Disk(_)       => Nil
-            case ShaderDoc.Field.Radial(_)     => Nil
-            case ShaderDoc.Field.RadialAspect(_) => Nil
-            case ShaderDoc.Field.Quantize(q)   => collectRefs(q#of)
-            case ShaderDoc.Field.Scales(_)     => Nil
-            case ShaderDoc.Field.Glints(_)     => Nil
-            case ShaderDoc.Field.Ripples(_)    => Nil
-            case ShaderDoc.Field.Sparkle(_)    => Nil
-            case ShaderDoc.Field.Hash1(h)      => Option.toList(h#bucket) |> List.flatMap(collectRefs)
-            case ShaderDoc.Field.Hash2(h)      => Option.toList(h#bucket) |> List.flatMap(collectRefs)
-            case ShaderDoc.Field.Bin(bn)       => List.append(collectRefs(bn#a), collectRefs(bn#b))
-            case ShaderDoc.Field.Un(un)        => collectRefs(un#of)
-            case ShaderDoc.Field.Pow(pw)       => collectRefs(pw#of)
-            case ShaderDoc.Field.Time(tm)      => collectRefs(tm#offset)
-            case ShaderDoc.Field.Tiling(tl)    => collectRefs(tl#of)
-            case ShaderDoc.Field.Snap(sn)      => collectRefs(sn#of)
-            case ShaderDoc.Field.Swirl(sw)     => collectRefs(sw#of)
-            case ShaderDoc.Field.Angle(_)      => Nil
-            case ShaderDoc.Field.Rotate(rt)    => collectRefs(rt#of)
-            case ShaderDoc.Field.Ref(name)     => name :: Nil
-        }
+        ShaderDoc.foldField((acc, f) -> match f {
+            case ShaderDoc.Field.Ref(name) => name :: acc
+            case _                         => acc
+        }, Nil, field) |> List.reverse
 
     def parseOut(json: Json): Result[JsonError, ShaderDoc.Out] =
         asObjKind(json, "out") |> Result.flatMap(km -> {
@@ -197,7 +174,16 @@ mod ShaderJson {
                         fieldJson <- reqKey("field", m);
                         field     <- parseField(fieldJson)
                     ) yield ShaderDoc.Shade.Cosine({ a = a, b = b, c = c, d = d, field = field })
-                case other => Err(err("unknown shade kind: '${other}' (want 'solid'/'ramp'/'gradient'/'cosine')"))
+                case "rgb" =>
+                    forM (
+                        rJson <- reqKey("r", m);
+                        r     <- parseField(rJson);
+                        gJson <- reqKey("g", m);
+                        g     <- parseField(gJson);
+                        bJson <- reqKey("b", m);
+                        b     <- parseField(bJson)
+                    ) yield ShaderDoc.Shade.Rgb({ r = r, g = g, b = b })
+                case other => Err(err("unknown shade kind: '${other}' (want 'solid'/'ramp'/'gradient'/'cosine'/'rgb')"))
             }
         })
 
@@ -424,6 +410,20 @@ mod ShaderJson {
                     ) yield ShaderDoc.Field.Snap({ cells = cells, of = of })
                 case "use" =>
                     forM (name <- strAt("name", m)) yield ShaderDoc.Field.Ref(name)
+                case "tex" =>
+                    forM (
+                        name <- strAt("name", m);
+                        chan <- parseChan(m)
+                    ) yield ShaderDoc.Field.Tex({ name = name, chan = chan })
+                case "shift" =>
+                    forM (
+                        dxJson <- reqKey("dx", m);
+                        dx     <- parseField(dxJson);
+                        dyJson <- reqKey("dy", m);
+                        dy     <- parseField(dyJson);
+                        ofJson <- reqKey("of", m);
+                        of     <- parseField(ofJson)
+                    ) yield ShaderDoc.Field.Shift({ dx = dx, dy = dy, of = of })
                 case other => Err(err("unknown field kind: '${other}'"))
             }
         })
@@ -442,6 +442,19 @@ mod ShaderJson {
             case "v" => Ok(ShaderDoc.Axis.V)
             case other => Err(err("comp must be 'u'/'v' (got '${other}')"))
         }) yield a
+
+    // tex のチャンネルは "chan":"r"/"g"/"b"/"a"（省略時 r）。
+    def parseChan(m: Map[String, Json]): Result[JsonError, ShaderDoc.TexChan] =
+        match Map.get("chan", m) {
+            case None => Ok(ShaderDoc.TexChan.R)
+            case Some(_) => forM (s <- strAt("chan", m); c <- match s {
+                case "r" => Ok(ShaderDoc.TexChan.R)
+                case "g" => Ok(ShaderDoc.TexChan.G)
+                case "b" => Ok(ShaderDoc.TexChan.B)
+                case "a" => Ok(ShaderDoc.TexChan.A)
+                case other => Err(err("tex chan must be 'r'/'g'/'b'/'a' (got '${other}')"))
+            }) yield c
+        }
 
     // hash の bucket は省略可（無ければ None）。在れば Field として読む。
     def parseBucket(m: Map[String, Json]): Result[JsonError, Option[ShaderDoc.Field]] =
@@ -627,6 +640,9 @@ mod ShaderJson {
                               "a" => colorToJson(cs#a), "b" => colorToJson(cs#b),
                               "c" => colorToJson(cs#c), "d" => colorToJson(cs#d),
                               "field" => fieldToJson(cs#field) })
+            case ShaderDoc.Shade.Rgb(c) =>
+                JObject(Map#{ "kind" => JString("rgb"), "r" => fieldToJson(c#r),
+                              "g" => fieldToJson(c#g), "b" => fieldToJson(c#b) })
         }
 
     // stops を [[位置, 色], ..] の配列へ（色は {r,g,b}・parse は hex/{r,g,b} どちらも受ける）。
@@ -729,6 +745,12 @@ mod ShaderJson {
                               "of" => fieldToJson(rt#of) })
             case ShaderDoc.Field.Ref(name) =>
                 JObject(Map#{ "kind" => JString("use"), "name" => JString(name) })
+            case ShaderDoc.Field.Tex(tx) =>
+                JObject(Map#{ "kind" => JString("tex"), "name" => JString(tx#name),
+                              "chan" => JString(chanStr(tx#chan)) })
+            case ShaderDoc.Field.Shift(sh) =>
+                JObject(Map#{ "kind" => JString("shift"), "dx" => fieldToJson(sh#dx),
+                              "dy" => fieldToJson(sh#dy), "of" => fieldToJson(sh#of) })
         }
 
     // bucket が None なら "bucket" キーを出さない（省略時の JSON を 1 バイトも増やさない）。
@@ -768,6 +790,14 @@ mod ShaderJson {
     def vec2ToJson(v: Vec2.Vec2): Json =
         JObject(Map#{ "x" => num(v#x), "y" => num(v#y) })
 
+    def chanStr(c: ShaderDoc.TexChan): String =
+        match c {
+            case ShaderDoc.TexChan.R => "r"
+            case ShaderDoc.TexChan.G => "g"
+            case ShaderDoc.TexChan.B => "b"
+            case ShaderDoc.TexChan.A => "a"
+        }
+
     def axisStr(a: ShaderDoc.Axis): String =
         match a { case ShaderDoc.Axis.U => "u" case ShaderDoc.Axis.V => "v" }
 
@@ -796,4 +826,29 @@ mod ShaderJson {
             |> Result.mapErr(readErr -> err("failed to read '${path}': ${readErr}"))
             |> Result.flatMap(text -> Util.Json.parse(String.trim(text)))
             |> Result.flatMap(parse)
+
+    /// path を読み、読めない・語彙が違うときは fallback の面へ倒す（fail-open）。
+    /// 知らない kind で黙って倒すと「絵だけ別物」になって原因が追えないので、
+    /// 倒れた理由を標準エラーへ 1 行知らせる。呼ばれるのは読み込み・リロード時だけで
+    /// 毎フレームは通らない。stdout は bake のログが使うので混ぜない。
+    pub def loadOr(fallback: ShaderDoc.Spec, path: String): ShaderDoc.Spec \ Fs.FileRead =
+        match load(path) {
+            case Ok(spec) => spec
+            case Err(e)   => warnFellBack(fallback, path, e)
+        }
+
+    /// 倒れた理由を知らせてから fallback を返す。効果は `unsafe IO` で隠す
+    /// （呼び側の効果行を警告のために広げない）。
+    def warnFellBack(fallback: ShaderDoc.Spec, path: String, e: JsonError): ShaderDoc.Spec =
+        unsafe IO {
+            System.err.println("shader fail-open: ${path} を既定の面に倒しました — ${describeErr(e)}");
+            fallback
+        }
+
+    /// err が詰めた説明文を、器の定型句（"type mismatch: expected"）を剥がして返す。
+    def describeErr(e: JsonError): String =
+        match e {
+            case Decode(_, TypeMismatch(msg)) => msg
+            case other                        => "${other}"
+        }
 }

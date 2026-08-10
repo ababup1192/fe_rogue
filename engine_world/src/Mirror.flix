@@ -53,8 +53,8 @@ mod Mirror {
             else {
                 let lit = lum >= style#lit;
                 let box = Render.box({ x = cut#size#x, y = span#h }, color, z)
-                    |> Render.fade(Float64.truncateToFloat32(
-                           if (lit) style#alpha * lum else style#alpha * style#dim));
+                    |> Render.fade(
+                           if (lit) style#alpha * lum else style#alpha * style#dim);
                 Some({ at = { x = cut#position#x, y = span#y },
                        item = if (lit) Render.blended(DrawCmd.BlendMode.Add, box) else box })
             }

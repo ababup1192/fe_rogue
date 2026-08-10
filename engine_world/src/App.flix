@@ -86,6 +86,11 @@ mod App {
         // World を (置き場所, 見せたい物) の列へ投影する。None のゲームは App に描画させず自分の
         // システム内で描く（タイルマップ等の複数チャンネルを直接組むゲーム向け）。
         view = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef],
+        // 本編より先にレンダーターゲットへ描く列（追加順に描く）。各ターゲットは名前の
+        // テクスチャになり、view から Render.sprite(名前, z) で貼れる。カメラ・zoom は
+        // 掛からない（ターゲットの中は常に design 座標そのまま — カメラを効かせたい絵は
+        // view と同じ composeScene をゲーム側で通してから渡す）。
+        passes = w -> List[Render.Pass] \ ef,
         // 既定フォント以外に使うフォントの名前（project.json の fonts[].name）。ここに宣言した
         // 名前だけが ViewCtx#fontOf で引ける。withFonts で足す。
         fonts = List[String],
@@ -102,8 +107,8 @@ mod App {
         // 視差レイヤ（factor, view）の列・追加順。camera の動きに factor を掛けた速さで流れる
         // world 空間の絵（factor 0.3 の遠景など）。主 view より先に並ぶが、重なりは zIndex が決める。
         parallaxLayers = List[(Float64, (ViewCtx, w) -> List[Render.PlacedItem] \ ef)],
-        // カメラを掛けずに描く絵（スコア等の HUD）。view の絵と合流して1本のリストになるので、
-        // 重なり順は従来どおり zIndex が決める（Render.draw が安定ソート・同 z は後勝ち = hud）。
+        // カメラを掛けずに描く絵（スコア等の HUD）。合流時に z が HUD 帯（ZBand.liftHud）へ
+        // 持ち上がるので、world の z に関わらず必ず手前。zIndex が決めるのは HUD の中の前後だけ。
         hudView = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef],
         audio = { before = w, after = w } -> List[String] \ ef,    // 1 フレームの前後から鳴らす音名を導く
         // 「このフレームで鳴り続けていてほしい音」の宣言。宣言が続く間は鳴り続け、消えた拍で
@@ -168,6 +173,7 @@ mod App {
           reload = None,
           watch = Nil,
           view = None,
+          passes = _ -> checked_ecast(Nil),
           fonts = Nil,
           camera = None,
           zoom = None,
@@ -215,6 +221,15 @@ mod App {
     pub def withView(v: (ViewCtx, w) -> List[Render.PlacedItem] \ ef,
                      app: App[w, ef]): App[w, ef] =
         { view = Some(v) | app }
+
+    /// 本編より先にレンダーターゲット（描いた結果を読み返せる描き込み先）へ描く列を
+    /// World から導く関数を繋ぐ。1 枚は Render.Pass（名前・クリア指定・絵の列）で、
+    /// 名前がそのままテクスチャ名になる — view からは Render.sprite(名前, z) で普通の
+    /// スプライトとして貼れる（部分切り出し regionRect・blend・拡大も既存の道がそのまま効く）。
+    /// 複数光源の光マップ・画面を素材にする演出・残像（clear = RenderTarget.LoadOp.Keep で
+    /// 前フレームを残す）に使う。
+    pub def withPasses(f: w -> List[Render.Pass] \ ef, app: App[w, ef]): App[w, ef] =
+        { passes = f | app }
 
     /// 既定フォント以外に使うフォントの名前を宣言する（project.json の fonts[].name と同じ字）。
     /// ここで宣言した名前だけが view の ViewCtx#fontOf で引ける（宣言していない名前は既定
@@ -339,8 +354,9 @@ mod App {
                              app: App[w, ef]): App[w, ef] =
         { parallaxLayers = List.append(app#parallaxLayers, (factor, v) :: Nil) | app }
 
-    /// カメラを掛けない絵（スコア等の HUD）を繋ぐ。重なり順は zIndex が決める
-    /// （view の絵より手前に出したければ大きい zIndex を使う）。
+    /// カメラを掛けない絵（スコア等の HUD）を繋ぐ。ここに繋いだ絵は常に view の絵より
+    /// 手前（HUD 帯 = ZBand.hudBase 以上へ持ち上がる）。zIndex が決めるのは HUD の中の
+    /// 前後だけ（0..ZBand.innerMax。はみ出しは clamp）。
     /// ViewCtx の visible は常に画面全体（position = 原点, size = design）。
     pub def withHudView(v: (ViewCtx, w) -> List[Render.PlacedItem] \ ef,
                         app: App[w, ef]): App[w, ef] =
@@ -564,14 +580,18 @@ mod App {
     /// 後ろに繋ぐ。hud には掛けない。center = None でも zoom ≠ 1.0 なら画面中央
     /// （design/2 の world 点）を軸に寄り引きする（withZoom だけ繋いだゲームと同じ規則）。
     /// 2 つの絵は同型のリストなので record で名前渡しにして取り違えを防ぐ。
-    /// 重なり順はこの並びでなく zIndex が決める（Render.draw が安定ソート・同 z は後勝ち = hud）。
+    /// hud の z は HUD 帯（ZBand.liftHud）へ持ち上げる — world がどれだけ大きい z を
+    /// 使っても（爆発 z=1000 等）、hud はその手前に出る。hud の中の前後は元の z の
+    /// まま（0..ZBand.innerMax に clamp）。world 側の z には触らない。
     pub def composeScene(center: Option[Vec2.Vec2], zoom: Float64, design: Vec2.Vec2,
                          items: { world = List[Render.PlacedItem], hud = List[Render.PlacedItem] }): List[Render.PlacedItem] =
         let shifted = match zoomedCenter(center, zoom, design) {
             case None    => items#world
             case Some(c) => CameraRig.centerOn(c, zoom = zoom, design = design, items#world)
         };
-        List.append(shifted, items#hud)
+        let lifted = items#hud |> List.map(placed ->
+            { item = Render.zMapped(ZBand.liftHud, placed#item) | placed });
+        List.append(shifted, lifted)
 
     /// camera 無しでも zoom があれば「画面中央の world 点 = design/2」を軸に据える正規化。
     /// composeScene と visibleOf が同じ規則を共有するための1点
@@ -612,7 +632,7 @@ mod App {
     /// 自分の effect ハンドラ束を張った内側で呼ぶ。
     /// デバッグ有効（withDebug）かつ環境変数 DEBUG_HTTP_PORT があれば、リモートデバッグの
     /// HTTP 口も一緒に立ち上がる（例: `DEBUG=1 DEBUG_HTTP_PORT=7777 flix run`）。
-    pub def launch(app: App[w, ef]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + Fs.FileRead + IO) =
+    pub def launch(app: App[w, ef]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + RenderTarget.Target + Fs.FileRead + IO) =
         let init = app#init;
         // 下ごしらえの間、画面には読み込み中の起動画面が出たまま残る（描き直さないので止まって見えるが、
         // 出し直す口をここに作ると、間引きも中止スイッチも持たない 2 つ目の経路が生まれる）。
@@ -664,7 +684,7 @@ mod App {
              prevCursor: Option[Vec2.Vec2], anno: Annotate.State, history: List[w],
              bridge: Option[RemoteDebug.Bridge], remoteHold: Bool,
              stepState: StepState, watchState: WatchState, sustaining: List[String],
-             tileCache: TileCache, glyphSeen: Option[Int64]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + Fs.FileRead + IO) =
+             tileCache: TileCache, glyphSeen: Option[Int64]): Unit \ (ef + GameEngine.Game + GameEngine.Audio + ShaderEffect.Shader + RenderTarget.Target + Fs.FileRead + IO) =
         let currentKeys = InputEvent.currentKeys();
         let mouseDown = GameEngine.Game.isMouseButtonPressed(GameEngine.MouseButton.Left);
         let cursorNow = GameEngine.Game.getMousePosition();
@@ -1187,28 +1207,36 @@ mod App {
     /// fps は debug 有効時だけ隅に重ねる（本番は Nil を渡すので描画に一切現れない）。
     def renderFrame(app: App[w, ef], world: w, fpsOverlay: List[Render.PlacedItem],
                     tileCache: TileCache, glyphSeen: Option[Int64]):
-            (TileCache, Option[Int64]) \ (ef + GameEngine.Game + ShaderEffect.Shader) =
+            (TileCache, Option[Int64]) \ (ef + GameEngine.Game + ShaderEffect.Shader + RenderTarget.Target) =
         match app#view {
             case None          => (tileCache, glyphSeen)
             case Some(toItems) =>
                 uploadAtlases((app#spriteAtlases)(world));
                 let atlas = GameEngine.Game.getFontAtlas("default");
+                let design = GameEngine.Game.getViewportRect()#size;
+                let passList = (app#passes)(world);
+                renderPasses(design, passList);
                 let items = List.append(sceneItems(app, atlas, world, toItems), fpsOverlay);
+                // 字の欠け照合はレンダーターゲットの中の字も一緒に見る（ターゲットも本編と
+                // 同じ「初めて出る字は 1 コマ遅れる」に乗せる）。
+                let itemsForGlyphs = List.append(List.flatMap(p -> p#items, passList), items);
                 // アトラスに無い字があれば、描く前に焼いてもらう（初めて出る字は 1 コマ遅れる）。
                 // たいていは空振りで、そのときは何も起きない。glyphSeen は「欠けが無かった
                 // フレームの字の指紋」— 同じ指紋の間は 1 字ずつの照合を引き直さない。
                 // アトラスは ensureGlyphs でしか育たず、育つのは欠けが出たフレームだけなので、
                 // 欠けゼロの指紋を覚えても古い答えを返す余地が無い。欠けが出たフレームは
                 // 覚えない（焼いた直後にアトラスが育ち、同じ字でも答えが変わるため）。
-                let fp = Render.glyphFingerprint(items);
+                let fp = Render.glyphFingerprint(itemsForGlyphs);
                 let nextSeen = if (glyphSeen == Some(fp)) glyphSeen else {
-                    let missing = Render.missingGlyphs(items);
+                    let missing = Render.missingGlyphs(itemsForGlyphs);
                     Map.forEach((textureName, cps) -> GameEngine.Game.ensureGlyphs(textureName, cps),
                                 missing);
                     if (Map.isEmpty(missing)) Some(fp) else None
                 };
-                // 宣言シェーダー面は別チャンネル（eff Shader）で描く。renderCommands の下（固定 z 帯）
-                // に敷くため drawSurface を先に呼び、通常の絵からは Shader 面を外して二重描きを避ける。
+                // 宣言シェーダー面は別チャンネル（eff Shader）へ積む。drawSurface は描画依頼を
+                // 溜めるだけで、重なり順は renderFrameMixed が (zIndex, 追加順) の安定ソートで
+                // sprites / polygons / タイル / 静的レンジと合流させて決める。通常の絵からは
+                // Shader 面を外して二重描きを避ける。
                 let shaderCmds = Render.drawShaders(spec -> ShaderEffect.Shader.buildProgram(spec), items);
                 List.forEach(cmd -> ShaderEffect.Shader.drawSurface(cmd), shaderCmds);
                 let (tileCmds, nextCache) = tileLayerCmds(app, world, tileCache);
@@ -1220,5 +1248,19 @@ mod App {
                 GameEngine.Game.renderCommands(sprites, tileCmds, polygons, staticLayerCmd(app, world));
                 (nextCache, nextSeen)
         }
+
+    /// レンダーターゲットの列を本編より先に描く（宣言順）。ターゲットの中は design 座標
+    /// そのまま・Shader 面は乗らない（Pass の doc を参照）。design はターゲットの寸法に使う。
+    def renderPasses(design: Vec2.Vec2, passList: List[Render.Pass]):
+            Unit \ (GameEngine.Game + RenderTarget.Target) =
+        List.forEach(p -> {
+            RenderTarget.Target.beginTarget(p#name,
+                Num.floorInt(design#x), Num.floorInt(design#y), p#clear);
+            let (passDs, passPolys) = Render.drawWith(
+                name -> GameEngine.Game.getTextureInfo(name),
+                Render.withoutShaders(p#items));
+            GameEngine.Game.renderCommands(passDs, Nil, passPolys, None);
+            RenderTarget.Target.endTarget()
+        }, passList)
 
 }

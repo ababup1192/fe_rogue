@@ -46,5 +46,5 @@ mod TileScene {
                   regionRect = Some({ position = { x = tile#srcX, y = tile#srcY },
                                       size = { x = ts, y = ts } }),
                   zIndex = spec#zIndex,
-                  blend = DrawCmd.BlendMode.Normal }) })
+                  blend = DrawCmd.BlendMode.Normal, maskPolys = Nil }) })
 }

@@ -68,7 +68,7 @@ mod TestRender {
     // 修飾: fade は Box の α を差し替え、rounded は Poly には効かず素通し（Poly は Poly のまま出る）。
     @Test
     def testModifiersApplyAndPassThrough(): Unit \ Assert =
-        let faded = Render.box({ x = 1.0, y = 1.0 }, red(), 0) |> Render.fade(0.5f32);
+        let faded = Render.box({ x = 1.0, y = 1.0 }, red(), 0) |> Render.fade(0.5);
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = faded } :: Nil);
         let untouched = Render.polygon({ x = 0.0, y = 0.0 } :: Nil, red(), 0) |> Render.rounded(4.0);
         let (_, ps) = Render.draw({ at = { x = 9.0, y = 9.0 }, item = untouched } :: Nil);
@@ -80,7 +80,7 @@ mod TestRender {
     def testOutlineAndStripedStack(): Unit \ Assert =
         let item = Render.box({ x = 2.0, y = 2.0 }, red(), 0)
             |> Render.outline(red(), 1.5)
-            |> Render.striped({ color = red(), alpha = 0.25f32, width = 2.0, period = 6.0, dir = 0 });
+            |> Render.striped({ color = red(), alpha = 0.25, width = 2.0, period = 6.0, dir = 0 });
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
         let style = ds |> List.head |> Option.flatMap(d -> d#style);
         Assert.assertEq(expected = (Some(1.5), Some(0.25f32), Some(6.0)),
@@ -93,7 +93,7 @@ mod TestRender {
     def testStripedDirVariants(): Unit \ Assert =
         let dirOf = dir -> {
             let item = Render.box({ x = 2.0, y = 2.0 }, red(), 0)
-                |> Render.striped({ color = red(), alpha = 0.25f32, width = 2.0, period = 6.0, dir = dir });
+                |> Render.striped({ color = red(), alpha = 0.25, width = 2.0, period = 6.0, dir = dir });
             let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
             ds |> List.head |> Option.flatMap(d -> d#style) |> Option.map(s -> s#stripeDir)
         };
@@ -103,7 +103,7 @@ mod TestRender {
     @Test
     def testCheckerSetsStyle(): Unit \ Assert =
         let item = Render.box({ x = 8.0, y = 8.0 }, red(), 0)
-            |> Render.checker({ color = red(), alpha = 0.5f32, cell = 4.0 });
+            |> Render.checker({ color = red(), alpha = 0.5, cell = 4.0 });
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
         let style = ds |> List.head |> Option.flatMap(d -> d#style);
         Assert.assertEq(expected = (Some(0.5f32), Some(4.0)),
@@ -234,6 +234,34 @@ mod TestRender {
             |> List.map(v -> (round4(v#x), round4(v#y)));
         Assert.assertEq(expected = (5.0, 5.0) :: (5.0, 25.0) :: Nil, swung)
 
+    // 群回転 rotatedAroundAll: 1/4 回転で at は pivot（原点）まわりに公転し、
+    // Box は rotation に 0.25 が乗る（自転と公転で 1 枚の破片のように回る）。
+    @Test
+    def testRotatedAroundAllRevolvesAtAndSpinsBox(): Unit \ Assert =
+        let placed = { at = { x = 10.0, y = 0.0 }, item = Render.box({ x = 4.0, y = 2.0 }, red(), 0) };
+        let got = Render.rotatedAroundAll(0.25, Vec2.zero(), placed :: Nil)
+            |> List.head
+            |> Option.flatMap(p -> match p#item {
+                case Render.Item.Box(b) => Some((round4(p#at#x), round4(p#at#y), round4(b#rotation)))
+                case _                  => None
+            });
+        Assert.assertEq(expected = Some((0.0, 10.0, 0.25)), got)
+
+    // 群回転 rotatedAroundAll: at が pivot と一致する Poly は at が動かず、
+    // 頂点だけが原点まわりに 1/4 回る（右 (5,0) → 下 (0,5)。全体では pivot まわりの剛体回転）。
+    @Test
+    def testRotatedAroundAllSpinsPolyVerticesInPlace(): Unit \ Assert =
+        let placed = { at = { x = 10.0, y = 10.0 },
+                       item = Render.polygon({ x = 5.0, y = 0.0 } :: Nil, red(), 0) };
+        let got = Render.rotatedAroundAll(0.25, { x = 10.0, y = 10.0 }, placed :: Nil)
+            |> List.head
+            |> Option.flatMap(p -> match p#item {
+                case Render.Item.Poly(poly) => poly#vertices |> List.head
+                    |> Option.map(v -> (round4(p#at#x), round4(p#at#y), round4(v#x), round4(v#y)))
+                case _                      => None
+            });
+        Assert.assertEq(expected = Some((10.0, 10.0, 0.0, 5.0)), got)
+
     // 半周を超える扇形（パックマン）でも耳切りで面積が保存される（凹の実戦形の回帰）。
     // 期待値は頂点列そのものの靴ひも面積 — 分割で欠けても余っても一致しない。
     @Test
@@ -337,6 +365,48 @@ mod TestRender {
         let twice = items |> Render.movedAll({ x = 1.0, y = 2.0 }) |> Render.movedAll({ x = 4.0, y = 8.0 });
         Assert.assertEq(expected = shapeOf(items |> Render.movedAll({ x = 5.0, y = 10.0 })),
             shapeOf(twice))
+
+    /// 列の先頭の Clipped の窓 (x, y, w, h)。窓が追随したかを見る。
+    def windowOf(items: List[Render.PlacedItem]): (Float64, Float64, Float64, Float64) =
+        match List.head(items) {
+            case Some(p) => match p#item {
+                case Render.Item.Clipped(c) =>
+                    (c#rect#position#x, c#rect#position#y, c#rect#size#x, c#rect#size#y)
+                case _ => (-1.0, -1.0, -1.0, -1.0)
+            }
+            case None => (-1.0, -1.0, -1.0, -1.0)
+        }
+
+    def clippedBox(): List[Render.PlacedItem] =
+        Render.box({ x = 4.0, y = 4.0 }, red(), 7)
+            |> Render.clipped({ position = { x = 10.0, y = 20.0 }, size = { x = 30.0, y = 40.0 } })
+            |> Render.at({ x = 12.0, y = 24.0 })
+            |> (p -> p :: Nil)
+
+    @Test
+    def testMovedAllShiftsWindowToo(): Unit \ Assert =
+        // 窓の規約: 平行移動は窓 rect も追随する（中身だけ窓の外へ歩かない）。
+        Assert.assertEq(expected = (15.0, 26.0, 30.0, 40.0),
+            windowOf(Render.movedAll({ x = 5.0, y = 6.0 }, clippedBox())))
+
+    @Test
+    def testScaledAllAroundStretchesAtAndSize(): Unit \ Assert =
+        // pivot を不動点に、at は pivot からの距離が factor 倍・中身の大きさも factor 倍。
+        let items = { at = { x = 10.0, y = 20.0 }, item = Render.box({ x = 4.0, y = 6.0 }, red(), 7) } :: Nil;
+        Assert.assertEq(expected = (18.0, 36.0, 8.0, 7),
+            shapeOf(Render.scaledAllAround(2.0, { x = 2.0, y = 4.0 }, items)))
+
+    @Test
+    def testScaledAllAroundStretchesWindowToo(): Unit \ Assert =
+        // 窓の規約: 一様 scale は窓 rect も追随する（位置は pivot 不動点・大きさは factor 倍）。
+        Assert.assertEq(expected = (20.0, 40.0, 60.0, 80.0),
+            windowOf(Render.scaledAllAround(2.0, Vec2.zero(), clippedBox())))
+
+    @Test
+    def testAtPlacesTopLeft(): Unit \ Assert =
+        // Render.at は { at = pos, item = item } の純糖衣（パイプ末尾に載る形）。
+        let placed = Render.box({ x = 4.0, y = 4.0 }, red(), 7) |> Render.at({ x = 3.0, y = 5.0 });
+        Assert.assertEq(expected = (3.0, 5.0, 4.0, 7), shapeOf(placed :: Nil))
 
     // ── glyphFingerprint（前フレームと同じ字を描くかを見分ける鍵）──
 

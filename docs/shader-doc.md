@@ -7,8 +7,9 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
   `ShaderEval.flix`（CPU 評価 = bake）・`ShaderGen.flix`（GLSL 生成 = 実機）
 - **使える語彙は engine の版で決まる**。知らない `kind` が 1 つでもあると Doc 全体が
   読めず、丸ごと既定値へ倒れる（絵が別物になるだけでエラーは出ないので気付きにくい）。
-  下の表で **[新]** を付けた物は **0.13.0 から**（0.12.1 以前には無い）。自分のゲームが
-  引いている版は `flix.toml` の `github:ababup1192/flix_game_engine` を見る。
+  下の表で **[新]** を付けた物は **0.13.0 から**（0.12.1 以前には無い）、
+  **[新19]** を付けた物（tex 場: `tex` / `shift` / 色の `rgb`）は **0.19.0 から**。
+  自分のゲームが引いている版は `flix.toml` の `github:ababup1192/flix_game_engine` を見る。
 - 呼び方: `Render.shaderFill(spec, rect, t, z)` / `Render.shaderFillMasked(spec, rect, polys, t, z)`
 - 読み方: `ShaderJson.load(path)` は **fail-open**。`Result.getWithDefault(既定の Spec)` で受ける
 - 保存即反映: `App.watchFile(path, …)` に繋ぐ（`examples/shader_gallery/src/Main.flix:18` が手本）
@@ -50,6 +51,7 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
 | `fbmTile` **[新]** | `octaves`, `scale`, `period{x,y}`, `seed` | **周期つき** fbm。スクロールしても継ぎ目が出ない |
 | `worley` | `scale`, `seed`, `out`("f1"/"f2"/"f2mf1") | セル模様。`f2mf1` が網目（水のコースティクス） |
 | `hash1` / `hash2` | `scale`, `seed`, (`comp`), (`bucket`) | 升目ごとの乱数（`hash2` は成分指定） |
+| `tex` **[新19]** | `name`, (`chan`="r"/"g"/"b"/"a"、既定 "r") | 名前つきテクスチャ（pass の焼き上がりや普通のテクスチャ）を今の uv で標本した 1 チャンネル |
 
 **形**
 
@@ -76,6 +78,7 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
 | `warp` | `amount`, `scale`, `seed`, `of` | ぐにゃりと歪ませる |
 | `tile` | `tiles{x,y}`, `of` | 敷き詰める |
 | `snap` **[新]** | `cells{x,y}`, `of` | 升目に量子化（ドット絵風） |
+| `shift` **[新19]** | `dx`, `dy`, `of` | 場の分だけ座標をずらして読む（`dx`/`dy` は**外側の uv** で評価） |
 | `swirl` | `cx`, `cy`, `strength`, `rate`, `of` | 中心ほど速く回す（渦） |
 | `rotate` | `cx`, `cy`, `turns`, `rate`, `of` | まるごと回す（1 周 = 1.0） |
 | `angle` | `cx`, `cy` | 中心から見た角度（放射の縞・花びら・螺旋） |
@@ -104,6 +107,7 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
 | `ramp` | `lo`, `hi`, `field` | 2 色の間を場で補間 |
 | `gradient` | `stops`(`[[位置, 色], …]`), `field` | 多段のグラデ（空・水の深さ） |
 | `cosine` | `a`, `b`, `c`, `d`, `field` | `a + b·cos(2π(c·場 + d))`。**`d` をずらすだけで別配色**になるので、ステージごとの色替えに向く |
+| `rgb` **[新19]** | `r`, `g`, `b`（各: 場） | 3 つの場をそのまま rgb に（`tex`×3 でテクスチャの色を素通しするのが主用途）。**`cycleRate` は掛からない** |
 
 `out` は `{"kind":"fill", "shade": …, "alpha": …}`。`alpha` も場なので、形（`disk` など）を
 入れれば好きな輪郭に抜ける。
@@ -166,6 +170,38 @@ vignette・熱い溶岩を **JSON の保存だけで即調整できる**形で�
 ```
 
 `aspect` に面の 横÷縦 を渡すこと。`radial` のままだと横長の画面で楕円に歪む。
+
+## tex 場 — テクスチャを場として読む **[新19]**
+
+`{"kind":"tex","name":"…"}` で、名前つきテクスチャの画素を場として読める。名前は
+**pass（レンダーターゲット）の名前**か、登録済みの普通のテクスチャ名。pass と組むと
+「前段で焼いた絵を歪めて読む」（ぼかし・陽炎・衝撃波・色調変換）が JSON だけで書ける。
+実証面は `examples/feature_lab` の tex_blit / tex_blur / tex_haze / tex_shock / tex_grade。
+
+- 標本は**補間なし（NEAREST）・端は張り付き（CLAMP）**。`shift` で端を越えても
+  反対側へ回り込まない（実機は sampler object で通常テクスチャの REPEAT も封じる）
+- 値は 8bit を 255 で割った 0〜1。pass の上下逆格納は実機側が自動で吸収する（JSON は何もしない）
+- **無い名前は黒（0.0）**になり、標準エラーに一度だけ知らせる。特に「pass を宣言しない
+  フレームで名前だけ読む」と恒常的に黒のままなので、面を出すフレームでは pass も必ず宣言する
+- `chan:"a"` を pass に使うのは**近似**。GL ターゲットの alpha チャンネルはブレンドの
+  副産物で、bake（CPU）との一致は保証しない（rgb は一致の対象）
+
+### `use`（shared）の意味 — 基準 uv で 1 回だけ
+
+`use` は**座標変換（`scaled`/`warp`/`shift` など）の内側に書いても、面の基準 uv で
+1 回評価した値**が返る（変換後の座標では読み直さない。GLSL が main 先頭で 1 回計算する
+挙動が正で、CPU 評価もこれに揃えてある）。
+
+- 帰結: **ぼかしのタップは `shared` で括れない**（`shift{of: use(...)}` は全タップ同値になる）。
+  タップごとに `tex` をインライン展開すること
+- 性能注記: shared は out から参照されなくても**画素ごとに必ず評価される**（unused な
+  shared は合法だが黙って焼きが重くなる。使わない束ねは消す）
+
+### ぼかしのコスト（正直な試算）
+
+3×3 ガウス RGB = `tex` 読み 27 回 + 約 50 ノードの JSON。`shared` はタップに効かない
+（`use` は基準 uv で凍る）。**カーネル 5×5 以上が常用になったら専用ノード（または
+シェーダーチェーン Wave）を相談すること。**
 
 ## bake（焼き）での注意
 

@@ -81,6 +81,28 @@ mod TestLightDoc {
         let got = parseDoc(minimalDoc()) |> Option.flatMap(firstLight) |> Option.map(l -> l#halo);
         Assert.assertEq(expected = Some(0.35), got)
 
+    /// ambient / shadowStrength（光マップ方式の語彙）が読める。色表記は他と同じ ui.json 方言。
+    @Test
+    def testParseAmbientAndShadowStrength(): Unit \ Assert =
+        let doc = "{ \"ambient\": \"#102030\", \"shadowStrength\": 0.7, \"lights\": [] }";
+        let ch = (v: Int32) -> Float64.truncateToFloat32(Int32.toFloat64(v) / 255.0);
+        let got = parseDoc(doc) |> Option.map(spec -> (colorTuple(spec#ambient), spec#shadowStrength));
+        Assert.assertEq(expected = Some(((ch(16), ch(32), ch(48)), 0.7)), got)
+
+    /// ambient / shadowStrength 省略時は Light の既定値（既存の light.json はそのまま読める）。
+    @Test
+    def testParseAmbientAndShadowStrengthDefaults(): Unit \ Assert =
+        let got = parseDoc(minimalDoc())
+            |> Option.map(spec -> (colorTuple(spec#ambient), spec#shadowStrength));
+        Assert.assertEq(
+            expected = Some((colorTuple(Light.defaultAmbient()), Light.defaultShadowStrength())),
+            got)
+
+    /// shadowStrength は 0..1 の範囲外を弾く。
+    @Test
+    def testErrorShadowStrengthOutOfRange(): Unit \ Assert =
+        Assert.assertEq(expected = false, parses("{ \"shadowStrength\": 1.5, \"lights\": [] }"))
+
     /// lights 自体を省略すると空リスト（暗闇だけの演出も正当）。
     @Test
     def testParseLightsOmittedIsEmpty(): Unit \ Assert =
@@ -169,4 +191,36 @@ mod TestLightDoc {
         let cfg = LightDoc.toConfig(LightDoc.empty(), ctxFor(Nil));
         let (drawables, _) = Render.draw(Light.items(cfg));
         Assert.assertEq(expected = 1, List.length(drawables))
+
+    // ════════════════════════════════════════════════════════
+    // toLightMapConfig / toLightMapConfigWithLights（光マップ方式）
+    // ════════════════════════════════════════════════════════
+
+    def mapCtx(): { occluders = List[List[Vec2.Vec2]], viewport = Vec2.Vec2,
+                    passName = String, z = Int32 } =
+        { occluders = Nil, viewport = { x = 320.0, y = 240.0 }, passName = "light", z = 90 }
+
+    /// toLightMapConfig は spec の質感（ambient/shadowStrength/lights）+ ctx の
+    /// passName/z/viewport を運び、extrudeLength は Shadow.infiniteExtrude()。
+    @Test
+    def testToLightMapConfigCarriesSpecAndCtx(): Unit \ Assert =
+        let doc = "{ \"ambient\": \"#102030\", \"shadowStrength\": 0.7, "
+            + "\"lights\": [ { \"at\": [10,20], \"radius\": 5, \"color\": \"#ff0000\" } ] }";
+        let spec = parseDoc(doc) |> Option.getWithDefault(LightDoc.empty());
+        let cfg = LightDoc.toLightMapConfig(spec, mapCtx());
+        Assert.assertEq(
+            expected = (0.7, Shadow.infiniteExtrude(), "light", 90, 1, colorTuple(spec#ambient)),
+            (cfg#shadowStrength, cfg#extrudeLength, cfg#passName, cfg#z,
+             List.length(cfg#lights), colorTuple(cfg#ambient)))
+
+    /// toLightMapConfigWithLights は lights を丸ごと runtimeLights に差し替える。
+    @Test
+    def testToLightMapConfigWithLightsReplacesLights(): Unit \ Assert =
+        let spec = parseDoc(lanternDoc()) |> Option.getWithDefault(LightDoc.empty());
+        let runtimeLight = { at = { x = 5.0, y = 6.0 }, radius = 9.0,
+                             color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, halo = 0.2 };
+        let cfg = LightDoc.toLightMapConfigWithLights(spec, runtimeLight :: Nil, mapCtx());
+        Assert.assertEq(
+            expected = Some((5.0, 6.0)),
+            List.head(cfg#lights) |> Option.map(l -> (l#at#x, l#at#y)))
 }

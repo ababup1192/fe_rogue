@@ -14,10 +14,13 @@ mod Render {
     pub enum Item {
         /// texture は handle 相当（String）。regionRect=None で全テクスチャ。UV は射影が計算。
         /// （`region` は Flix 予約語なので engine と同じ `regionRect`）
+        /// maskPolys は多角形の型抜き（空 = 抜かない。masked で付ける）。頂点は表示クアッドの
+        /// ローカル座標（design px・原点 = クアッドの左上・回転前）— rotation・反転は
+        /// クアッドと同じ変換が掛かるので、形は 1 回定義すれば回転は rotation に任せられる。
         case Sprite({ texture = String, tint = Color, alpha = Float32,
                       scale = Vec2.Vec2, rotation = Float64, centered = Bool,
                       flipH = Bool, flipV = Bool, regionRect = Option[Rect2.Rect2], zIndex = Int32,
-                      blend = DrawCmd.BlendMode })
+                      blend = DrawCmd.BlendMode, maskPolys = List[List[Vec2.Vec2]] })
         case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color,
                     rotation = Float64, zIndex = Int32 })
         case Box({ size = Vec2.Vec2, color = Color, alpha = Float32, rotation = Float64,
@@ -53,7 +56,7 @@ mod Render {
         Item.Sprite({ texture = texture, tint = white(), alpha = 1.0f32,
                             scale = {x = 1.0, y = 1.0}, rotation = 0.0, centered = true,
                             flipH = false, flipV = false, regionRect = None, zIndex = zIndex,
-                            blend = DrawCmd.BlendMode.Normal })
+                            blend = DrawCmd.BlendMode.Normal, maskPolys = Nil })
 
     /// 反転付きスプライト。同型の Bool 2 つは取り違えやすいので名前で渡す。
     pub def spriteFlipped(texture: String, zIndex: Int32,
@@ -61,7 +64,7 @@ mod Render {
         Item.Sprite({ texture = texture, tint = white(), alpha = 1.0f32,
                             scale = {x = 1.0, y = 1.0}, rotation = 0.0, centered = true,
                             flipH = flip#flipH, flipV = flip#flipV, regionRect = None, zIndex = zIndex,
-                            blend = DrawCmd.BlendMode.Normal })
+                            blend = DrawCmd.BlendMode.Normal, maskPolys = Nil })
 
     pub def text(content: String, fontAtlas: FontAtlas, fontSize: Float64, zIndex: Int32): Item =
         Item.Text({ text = content, fontAtlas = fontAtlas, fontSize = fontSize, tint = white(),
@@ -121,7 +124,7 @@ mod Render {
                 if (ringAlpha <= 0.0) None
                 else Some(circleAt(center, ringRadius, color, zIndex)
                     |> (placed -> { item = placed#item
-                                        |> fade(Float64.truncateToFloat32(ringAlpha))
+                                        |> fade(ringAlpha)
                                         |> blended(look#blend) | placed }))
             })
         }
@@ -135,6 +138,38 @@ mod Render {
     /// 切り上げの Int32（輪の数の見積もり用。非負前提）。
     def ceilI(x: Float64): Int32 =
         Float64.ceil(x) |> Float64.tryToInt32 |> Option.getWithDefault(16)
+
+    /// 中心 at に置いた放射状の明かり 1 枚（松明・スポットライト・光だまり）。
+    /// 組み込みの放射テクスチャ（RadialBuiltin）を Add で重ねるので、ゲーム側の
+    /// アセット・配線は要らない。radius は見た目の半径 px、strength は中心の濃さ 0..1。
+    /// glowAt（同心円の輪を積む）と違い 1 枚ものなので、大半径でも段差が出ず部品数も増えない。
+    /// 定石: 光マップのレンダーターゲット（App.withPasses）へ Add で灯りを集め、それを
+    /// blended(Multiply) で本編に掛けると「暗闇に灯りだけが浮かぶ」絵になる。
+    pub def lightAt(spec: { at = Vec2.Vec2, radius = Float64, color = Color,
+                            strength = Float64, z = Int32 }): PlacedItem =
+        { at = spec#at,
+          item = sprite(RadialBuiltin.lightName(), spec#z)
+              |> tinted(spec#color)
+              |> fade(spec#strength)
+              |> scaled(builtinRadialScale(spec#radius))
+              |> blended(DrawCmd.BlendMode.Add) }
+
+    /// 中心 at に置いた放射状の翳り 1 枚（vignette・足元の影だまり・画面の隅を沈める）。
+    /// lightAt の Multiply 版: 中心ほど暗く、縁は素通しで背景になじむ。
+    /// strength は中心の暗さ 0..1（1 で中心が真っ黒）。暗くできるのは自分より
+    /// 奥（小さい zIndex）だけ — 沈めたい物は z 未満に置くこと。
+    pub def darkAt(spec: { at = Vec2.Vec2, radius = Float64, strength = Float64,
+                           z = Int32 }): PlacedItem =
+        { at = spec#at,
+          item = sprite(RadialBuiltin.darkName(), spec#z)
+              |> fade(spec#strength)
+              |> scaled(builtinRadialScale(spec#radius))
+              |> blended(DrawCmd.BlendMode.Multiply) }
+
+    /// 「見た目半径 = radius」になる組み込み放射テクスチャの拡大率。
+    /// 描画の四角の大きさは「テクスチャ実寸 × scale」なので、直径 2×radius から逆算する。
+    def builtinRadialScale(radius: Float64): Float64 =
+        radius * 2.0 / Int32.toFloat64(RadialBuiltin.size())
 
     /// 中心 center に置いた単色の矩形（PlacedItem）。左上で置きたいときは box を使う。
     pub def boxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32): PlacedItem =
@@ -169,6 +204,24 @@ mod Render {
         { at = rect#position,
           item = Item.Shader({ rect = rect, spec = spec, t = t, mask = rel, zIndex = zIndex,
                                blend = DrawCmd.BlendMode.Normal }) }
+
+    /// pass（レンダーターゲット）を、全面でない面（帯など）から等倍で読むための dy 場。
+    /// 面の uv.v（0..1）を pass の縦帯（design px の top / height）の texV へ写す。
+    /// passH は pass 全体の高さ（design px。App の pass は design 解像度なので普通は画面の高さ）。
+    /// flipV = true で上下鏡像（水面の映り込みなど）。
+    /// Shift の dy は「読み先 texV − 面の v」の差分なので、写像 texV = (top + height×v)/passH
+    /// を v の 1 次式に畳んだ係数で返す — 呼び側が同じ導出を定数の手計算で持つと、
+    /// 帯の位置替えのたびに写像が割れるため。
+    /// 例: Field.Shift({ dx = Field.Const(0.0), dy = Render.passBandDy(band, passH, false),
+    ///                   of = Field.Tex({ name = "screen", chan = chan }) })
+    pub def passBandDy(band: { top = Float64, height = Float64 }, passH: Float64, flipV: Bool): ShaderDoc.Field =
+        let texVAt0 = if (flipV) (band#top + band#height) / passH else band#top / passH;
+        let texVSlope = if (flipV) -(band#height) / passH else band#height / passH;
+        ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Add,
+            a = ShaderDoc.Field.Const(texVAt0),
+            b = ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Mul,
+                a = ShaderDoc.Field.Uv({ axis = ShaderDoc.Axis.V }),
+                b = ShaderDoc.Field.Const(texVSlope - 1.0) }) })
 
     /// 単色塗りの多角形。頂点は置き場所からの相対座標で渡す（絶対座標で組みたいときは
     /// 置き場所を Vec2.zero() にする）。左右反転した形が欲しいときは頂点を flipH に通してから渡す。
@@ -288,6 +341,14 @@ mod Render {
     pub def lineSeg(a: Vec2.Vec2, b: Vec2.Vec2, width: Float64, color: Color, zIndex: Int32): PlacedItem =
         { at = Vec2.zero(), item = polygon(lineQuad(a, b, width), color, zIndex) }
 
+    /// item を pos（左上）に置く純糖衣 — `{ at = pos, item = item }` と同じ値。
+    /// item を最後に受けるので、修飾パイプの末尾にそのまま載る:
+    /// `Render.box(…) |> Render.fade(0.6) |> Render.at(pos)`。
+    /// 中心置きの図形はこれではなく At 族（boxAt / circleAt / ngonAt …）を使う —
+    /// 中心→左上の換算と Poly のガード（atCenter）を迂回しないため。
+    pub def at(pos: Vec2.Vec2, item: Item): PlacedItem =
+        { at = pos, item = item }
+
     /// 飾り終えた「左上原点の item」（box / circle / text）を中心 center に置く
     /// （size はその item の見た目の大きさ。中心→左上の換算をここが済ませる）。
     /// Poly は受け付けず loud に落とす — 頂点が原点中心なので `{ at = center, item = … }` が
@@ -353,11 +414,14 @@ mod Render {
         }, item)
 
     /// 透明度（alpha）を指定した値にする（Sprite / Box / Poly に効く。Text は tint が濃度を兼ねる）。
-    pub def fade(alpha: Float32, item: Item): Item =
+    /// alpha は Float64 で受けて縁で 1 回だけ f32 へ落とす — ゲーム側の数はぜんぶ Float64 なので、
+    /// 呼び側に `f32` サフィックスや変換関数を書かせない（lightAt / glowAt と同じ方針）。
+    pub def fade(alpha: Float64, item: Item): Item =
+        let a = Float64.truncateToFloat32(alpha);
         onLeaf(leaf -> match leaf {
-            case Item.Sprite(s) => Item.Sprite({ alpha = alpha | s })
-            case Item.Box(b)    => Item.Box({ alpha = alpha | b })
-            case Item.Poly(p)   => Item.Poly({ alpha = alpha | p })
+            case Item.Sprite(s) => Item.Sprite({ alpha = a | s })
+            case Item.Box(b)    => Item.Box({ alpha = a | b })
+            case Item.Poly(p)   => Item.Poly({ alpha = a | p })
             case other                => other
         }, item)
 
@@ -368,7 +432,7 @@ mod Render {
         { item = f(placed#item) | placed }
 
     /// 組み上がった列を丸ごと薄くする（`fade` の列版）。覆い・淡い層・消えていく残像に使う。
-    pub def fadeAll(alpha: Float32, items: List[PlacedItem]): List[PlacedItem] =
+    pub def fadeAll(alpha: Float64, items: List[PlacedItem]): List[PlacedItem] =
         items |> List.map(placed -> overItem(fade(alpha), placed))
 
     /// ピクセルの重ね方を変える（Sprite / Box / Poly に効く。Text は文字の可読性が第一で対象外）。
@@ -389,12 +453,17 @@ mod Render {
     /// 集まり全体を別の層へ持ち上げる／沈める。
     /// 見下ろし画面の Y ソート（足元の高さで前後を決める）は Depth がこれを使って作る。
     pub def zShifted(delta: Int32, item: Item): Item =
+        zMapped(z -> z + delta, item)
+
+    /// 重なり順（zIndex）を関数 f で写す（zShifted の一般形）。
+    /// 足し算で書けない写し（HUD 帯への clamp 付き持ち上げ等）はこちらを使う。
+    pub def zMapped(f: Int32 -> Int32, item: Item): Item =
         onLeaf(leaf -> match leaf {
-            case Item.Sprite(s) => Item.Sprite({ zIndex = s#zIndex + delta | s })
-            case Item.Text(x)   => Item.Text({ zIndex = x#zIndex + delta | x })
-            case Item.Box(b)    => Item.Box({ zIndex = b#zIndex + delta | b })
-            case Item.Poly(p)   => Item.Poly({ zIndex = p#zIndex + delta | p })
-            case Item.Shader(s) => Item.Shader({ zIndex = s#zIndex + delta | s })
+            case Item.Sprite(s) => Item.Sprite({ zIndex = f(s#zIndex) | s })
+            case Item.Text(x)   => Item.Text({ zIndex = f(x#zIndex) | x })
+            case Item.Box(b)    => Item.Box({ zIndex = f(b#zIndex) | b })
+            case Item.Poly(p)   => Item.Poly({ zIndex = f(p#zIndex) | p })
+            case Item.Shader(s) => Item.Shader({ zIndex = f(s#zIndex) | s })
             case other          => other
         }, item)
 
@@ -405,9 +474,38 @@ mod Render {
     /// 組み上がった列を丸ごと d だけ動かす（zShiftedAll の位置版）。
     /// 部品を 0 起点で組んでから最後に置き場所を与える書き方（盤の原点へ寄せる・
     /// UI の枠の中へ入れる・粒を発生源へ運ぶ）がこれで 1 行になる。
-    /// 中身（大きさ・頂点・z）には触らない — 動かすのは置き場所だけ。
+    /// 中身（大きさ・頂点・z）には触らない — 動かすのは置き場所と、Clipped の窓 rect。
+    /// 窓の規約: 平行移動と一様 scale は窓も追随・回転だけ据え置き（窓 = 画面平行の不変条件）。
+    /// 窓を置き去りにすると「中身だけ窓の外へ歩いて消える」— 窓ごと動くのが組の意図。
     pub def movedAll(d: Vec2.Vec2, items: List[PlacedItem]): List[PlacedItem] =
-        items |> List.map(placed -> { at = Vec2.add(d, placed#at) | placed })
+        items |> List.map(placed ->
+            { at = Vec2.add(d, placed#at),
+              item = placed#item |> overWindows(r ->
+                  { position = Vec2.add(d, r#position), size = r#size }) })
+
+    /// 組み上がった列を、pivot（画面座標）を不動点に factor 倍へ伸縮する（ズーム演出・
+    /// 拡大プレビュー用）。at を pivot からの距離ごと伸縮し、中身は scaled に任せる —
+    /// Box の style の太さ・Text の fontSize・Sprite の maskPolys の追随はそこが持つ。
+    /// Clipped の窓 rect も一緒に伸縮する（窓の規約: 平行移動と一様 scale は窓も追随・
+    /// 回転だけ据え置き — movedAll と同じ）。
+    /// 倍率は一様（Float64 1 つ）だけ受ける — 非等方だと回転済みの物や円が歪み、
+    /// 「見た目を保ったまま大きさだけ変える」約束が守れないため、型で締め出す。
+    pub def scaledAllAround(factor: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[PlacedItem] =
+        let stretch = v -> Vec2.add(pivot, Vec2.mul(Vec2.sub(v, pivot), factor));
+        items |> List.map(placed ->
+            { at = stretch(placed#at),
+              item = placed#item
+                  |> scaled(factor)
+                  |> overWindows(r ->
+                      { position = stretch(r#position), size = Vec2.mul(r#size, factor) }) })
+
+    /// Clipped の窓 rect（入れ子は全段）だけを f で写す。葉（中身）には触らない —
+    /// onLeaf の裏面で、「窓 = 画面平行」の規約を守る変換（平行移動・一様 scale）専用。
+    def overWindows(f: Rect2.Rect2 -> Rect2.Rect2, item: Item): Item =
+        match item {
+            case Item.Clipped(c) => Item.Clipped({ rect = f(c#rect), inner = overWindows(f, c#inner) })
+            case leaf            => leaf
+        }
 
     /// 置き場所と頂点を step px の升目に載せる（ドット絵の升目に合わせて角を落とす）。
     /// なめらかな多角形をドット絵と同じ画面に置くと、そこだけ画素の階段が無くて浮くので揃える。
@@ -448,6 +546,19 @@ mod Render {
     /// tinted の列版。
     pub def tintedAll(color: Color, items: List[PlacedItem]): List[PlacedItem] =
         items |> List.map(p -> { item = tinted(color, p#item) | p })
+
+    /// 絵を多角形で型抜きする（Sprite にだけ効く。空 = 抜かない）。ガラス片・ちぎれた紙のような
+    /// 「矩形でない切り出し」を、黒い覆いの偽装なしで一級にする口。
+    /// polys の頂点は表示クアッドのローカル座標（design px・原点 = クアッドの左上・回転前）。
+    /// rotation・反転はクアッドと同じ変換が掛かる — 破片の形は 1 回定義すれば、
+    /// 回転は従来どおり turned / rotation に任せられる。
+    /// 縁は AA なしの硬い縁（GL: ステンシル / SoftRaster: Java2D clip — docs/backend-parity.md）。
+    /// GL では型抜き 1 体ごとに run の一括 draw から単発 draw に落ちる — 何百枚も撒く層には使わない。
+    pub def masked(polys: List[List[Vec2.Vec2]], item: Item): Item =
+        onLeaf(leaf -> match leaf {
+            case Item.Sprite(s) => Item.Sprite({ maskPolys = polys | s })
+            case other          => other
+        }, item)
 
     /// 飾りの無い箱（角丸・枠線・縞・市松・回転がどれも無い単色）を、同じ形の多角形へ直す。
     /// 静的レイヤー（1 度だけ GPU に焼く層）は多角形だけを焼くので、箱で組んだ絵を
@@ -532,6 +643,20 @@ mod Render {
             { at = Vec2.add(placed#at, shift), item = turned(t, placed#item) }
         })
 
+    /// 置き場所つきの列を、pivot（画面座標）のまわりに t（1 周 = 1.0）回す純関数。
+    /// at を pivot まわりに公転させ、中身は自分の軸で t 自転する: Sprite / Box / Text は
+    /// rotation に t を加算、Poly は頂点を自前回転（絶対座標で組んだ lineSeg / polygon が
+    /// そのまま正しく回る）、Clipped は中身だけ回して窓は据え置き（窓が画面に平行の約束を保つ）。
+    /// Shader の面は非対応 — そのまま返す（uv の向きが面と回ると模様の意味が変わるため。
+    /// 模様を回したいときは spec 側の Rotate を使う）。
+    /// turnedAll と違い anchor（Box の中心）を見ない素朴な at 公転 — Box を「1 枚の板」として
+    /// 回したいときは turnedAll、破片に細物（ハイライトの Poly など）を追随させるのはこちら。
+    pub def rotatedAroundAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[PlacedItem] =
+        items |> List.map(placed -> match leafOf(placed#item) {
+            case Item.Shader(_) => placed
+            case _              => { at = rotAbout(t, pivot, placed#at), item = turned(t, placed#item) }
+        })
+
     /// その item が「自分の軸で回るときの中心」（画面座標）。turnedAll はこの点を pivot の
     /// まわりに動かすことで、部品の自転と公転を噛み合わせる。
     def anchorOf(placed: PlacedItem): Vec2.Vec2 =
@@ -552,20 +677,22 @@ mod Render {
     /// 濃さつきの枠線を付ける（Box に効く）。outline は枠が常に不透明 — 中身を邪魔しない
     /// 薄い枠（ホバー枠・ガイド線）はこちらで alpha を渡す。同型の引数の取り違えを防ぐため
     /// 名前つきで渡す。
-    pub def outlineA(border: { color = Color, alpha = Float32, width = Float64 }, item: Item): Item =
+    pub def outlineA(border: { color = Color, alpha = Float64, width = Float64 }, item: Item): Item =
         onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
                 Item.Box({ style = Some({ borderColor = border#color, borderWidth = border#width,
-                                                borderAlpha = border#alpha | styleOf(b#style) }) | b })
+                                                borderAlpha = Float64.truncateToFloat32(border#alpha)
+                                                | styleOf(b#style) }) | b })
             case other => other
         }, item)
 
     /// 縞模様を敷く（Box に効く）。dir は 0 = 斜め 45° / 1 = 横縞 / 2 = 縦縞。
-    pub def striped(stripe: { color = Color, alpha = Float32, width = Float64, period = Float64, dir = Int32 },
+    pub def striped(stripe: { color = Color, alpha = Float64, width = Float64, period = Float64, dir = Int32 },
                     item: Item): Item =
         onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
-                Item.Box({ style = Some({ stripeColor = stripe#color, stripeAlpha = stripe#alpha,
+                Item.Box({ style = Some({ stripeColor = stripe#color,
+                                                stripeAlpha = Float64.truncateToFloat32(stripe#alpha),
                                                 stripeWidth = stripe#width, stripePeriod = stripe#period,
                                                 stripeDir = stripe#dir
                                                 | styleOf(b#style) }) | b })
@@ -573,10 +700,11 @@ mod Render {
         }, item)
 
     /// 市松のタイルを重ねる（Box に効く）。PC-98 の網ディザ風。
-    pub def checker(c: { color = Color, alpha = Float32, cell = Float64 }, item: Item): Item =
+    pub def checker(c: { color = Color, alpha = Float64, cell = Float64 }, item: Item): Item =
         onLeaf(leaf -> match leaf {
             case Item.Box(b) =>
-                Item.Box({ style = Some({ checkerColor = c#color, checkerAlpha = c#alpha,
+                Item.Box({ style = Some({ checkerColor = c#color,
+                                                checkerAlpha = Float64.truncateToFloat32(c#alpha),
                                                 checkerCell = c#cell
                                                 | styleOf(b#style) }) | b })
             case other => other
@@ -591,7 +719,12 @@ mod Render {
     /// 同じ倍率を掛ける camera 経路（CameraRig.centerOn）だけ。
     pub def scaled(factor: Float64, item: Item): Item =
         onLeaf(leaf -> match leaf {
-            case Item.Sprite(s) => Item.Sprite({ scale = { x = s#scale#x * factor, y = s#scale#y * factor } | s })
+            case Item.Sprite(s) =>
+                // maskPolys はクアッドのローカル px なので、クアッドと一緒に伸縮しないと
+                // 型抜きの形だけ置き去りになる（Shader の mask と同じ扱い）。
+                Item.Sprite({ scale = { x = s#scale#x * factor, y = s#scale#y * factor },
+                              maskPolys = s#maskPolys |> List.map(poly ->
+                                  poly |> List.map(v -> Vec2.mul(v, factor))) | s })
             case Item.Text(t)   => Item.Text({ fontSize = t#fontSize * factor | t })
             case Item.Box(b)    =>
                 let style1 = b#style |> Option.map(s -> DrawCmd.scalePx(factor, s));
@@ -620,6 +753,57 @@ mod Render {
     /// 修飾の土台になる style（無ければ solid）。
     def styleOf(style: Option[GameEngine.BoxStyle]): GameEngine.BoxStyle =
         Option.getWithDefault(solidStyle(), style)
+
+    // ── レンダーターゲット（描いた結果を読み返せる描き込み先。Pass に描いて blit で貼る）──
+
+    /// 本編より先にレンダーターゲットへ描く 1 枚ぶんの宣言（App.withPasses で列を渡す）。
+    /// name はそのままテクスチャ名になり、本編から Render.sprite(name, z) で貼れる。
+    /// ターゲットの寸法は常に design 解像度（投影が design 前提で固定されているため —
+    /// 別寸法のターゲットは投影の差し替えごと将来の拡張）。clear は開くたびの前の中身の始末
+    /// （RenderTarget.LoadOp: Keep = 残す（残像）・Clear = その色の不透明・
+    /// ClearTransparent = 透明。明部だけ描くターゲットは ClearTransparent にすると
+    /// Normal 合成でも下の絵が生きる）。
+    /// items の中の Shader 面は M1 では描かれない（中身は sprites/box/text/多角形のみ）。
+    /// ターゲットの標本は最近傍（NEAREST）を保証する — 縮小→再拡大のピクセライズ/モザイクは
+    /// これに依存してよい。補間を変える拡張は opt-in にする（黙って既定を変えない）。
+    pub type alias Pass = {
+        name = String,
+        clear = RenderTarget.LoadOp,
+        items = List[PlacedItem]
+    }
+
+    /// レンダーターゲット（Pass の name）を design 全面へ等倍で貼る（中心置き）。ターゲットは
+    /// 常に design 解像度なので等倍 = 全面ぴったり。blend / alpha / tint は
+    /// overItem + blended / fade / tinted で後がけする。
+    pub def blit(name: String, design: Vec2.Vec2, z: Int32): PlacedItem =
+        { at = { x = design#x / 2.0, y = design#y / 2.0 }, item = sprite(name, z) }
+
+    /// レンダーターゲット name の一部 src（ターゲット上の px 矩形）を、at を中心に size の
+    /// 四角へ伸縮して貼る。描画の四角の大きさは「テクスチャ実寸 × scale」なので
+    /// scale = size / ターゲットの寸（ターゲットは常に design 解像度）。
+    /// 反転圧縮・小窓縮小・モザイク拡大が全部この 1 本で書ける。
+    /// blend / alpha / tint / 反転は overItem + blended / fade / tinted 等で後がけする。
+    pub def blitRegion(spec: { name = String, design = Vec2.Vec2, src = Rect2.Rect2,
+                               at = Vec2.Vec2, size = Vec2.Vec2, z = Int32 }): PlacedItem =
+        { at = spec#at,
+          item = Item.Sprite({ texture = spec#name, tint = white(), alpha = 1.0f32,
+              scale = { x = spec#size#x / spec#design#x, y = spec#size#y / spec#design#y },
+              rotation = 0.0, centered = true, flipH = false, flipV = false,
+              regionRect = Some(spec#src), zIndex = spec#z,
+              blend = DrawCmd.BlendMode.Normal, maskPolys = Nil }) }
+
+    /// Pass 1 枚を bake 側の宣言（engine_tools の Bakery.PassSpec と同形のレコード）へ
+    /// 詰め替える。items は withoutShaders で外してから下ろす — ターゲットの中の
+    /// Shader 面は GL が描かないので、代表色ベタ塗りを混ぜると実機とズレる。この約束を
+    /// 呼び側ごとに書かせない（書き忘れた側だけズレる）ための 1 本。
+    /// textureInfoOf は region 付き sprite の UV 解決口（region を使わない pass なら
+    /// `_ -> None` でよい）。
+    pub def passSpecOf(textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef, p: Pass):
+            { name = String, clear = RenderTarget.LoadOp,
+              drawables = List[GameEngine.Drawable],
+              polygons = List[GameEngine.PolygonRenderCmd] } \ ef =
+        let (ds, ps) = drawWith(textureInfoOf, withoutShaders(p#items));
+        { name = p#name, clear = p#clear, drawables = ds, polygons = ps }
 
     // ── extract / 射影（lib が Drawable を1回だけ組む）──
 
@@ -696,6 +880,7 @@ mod Render {
                     // mask も同じ理屈で rect 左上相対 + at にして画面座標にする（rect と同じ
                     // カメラ変換に乗るので形がずれない）。
                     Some({ program = programOf(s#spec),
+                           texNames = ShaderDoc.texNames(s#spec),
                            rect = { position = placed#at, size = s#rect#size },
                            mask = s#mask |> List.map(poly ->
                                poly |> List.map(v -> Vec2.add(placed#at, v))),
@@ -792,7 +977,16 @@ mod Render {
     /// どちらも zoom で乗算するのが正しい camera 適用。
     pub def applyCameraScale(transform: Projection.ViewTransform,
                              ds: List[GameEngine.Drawable]): List[GameEngine.Drawable] =
-        List.map(d -> {scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y} | d}, ds)
+        // mask はクアッドのローカル px なので zoom で一緒に伸ばす（伸ばさないと型抜きの形だけ
+        // 等倍のまま置き去りになる）。空（＝大半）のときはフィールドを触らない。
+        List.map(d ->
+            if (List.isEmpty(d#mask))
+                {scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y} | d}
+            else
+                {scale = {x = d#scale#x * transform#scale#x, y = d#scale#y * transform#scale#y},
+                 mask = d#mask |> List.map(poly -> poly |> List.map(v ->
+                     ({ x = v#x * transform#scale#x, y = v#y * transform#scale#y }: Vec2.Vec2))) | d},
+            ds)
 
     /// 1 アイテム → 複数 Drawable（ボタン等は呼び側で複数アイテムにする）。
     /// Clipped は中身を変換してから窓を刻む（入れ子は交差 — draw を通さない直呼びでも clip が効く）。
@@ -800,7 +994,8 @@ mod Render {
         match item {
             case Item.Sprite(s) =>
                 spriteDrawable(s#texture, s#tint, s#alpha, s#scale, s#rotation,
-                               s#centered, s#flipH, s#flipV, s#regionRect, s#zIndex, s#blend, pos) :: Nil
+                               s#centered, s#flipH, s#flipV, s#regionRect, s#zIndex, s#blend,
+                               s#maskPolys, pos) :: Nil
             case Item.Text(t) =>
                 textDrawables(t#text, t#fontAtlas, t#fontSize, t#tint, t#rotation, t#zIndex, pos)
             case Item.Box(b) =>
@@ -842,7 +1037,7 @@ mod Render {
                    scale = {x = s#scale#x * flipSign(s#flipH), y = s#scale#y * flipSign(s#flipV)},
                    rotation = radiansOf(s#rotation), color = s#tint, alpha = s#alpha, centered = s#centered,
                    uvOffset = uvOff, uvScale = uvScl, zIndex = s#zIndex, style = None,
-                   clip = None, blend = s#blend }: GameEngine.Drawable) :: Nil
+                   clip = None, blend = s#blend, mask = s#maskPolys }: GameEngine.Drawable) :: Nil
             case other => toDrawables(other, pos)
         }
 
@@ -851,7 +1046,7 @@ mod Render {
     def spriteDrawable(texture: String, tint: Color, alpha: Float32, scale: Vec2.Vec2,
                        rotation: Float64, centered: Bool, flipH: Bool, flipV: Bool,
                        regionRect: Option[Rect2.Rect2], zIndex: Int32, blend: DrawCmd.BlendMode,
-                       pos: Vec2.Vec2): GameEngine.Drawable =
+                       maskPolys: List[List[Vec2.Vec2]], pos: Vec2.Vec2): GameEngine.Drawable =
         match regionRect {
             case Some(_) => bug!("Render: region atlas not supported yet (pass regionRect=None)")
             case None    =>
@@ -867,7 +1062,8 @@ mod Render {
                   zIndex   = zIndex,
                   style    = None,
                   clip     = None,
-                  blend    = blend }
+                  blend    = blend,
+                  mask     = maskPolys }
         }
 
     def flipSign(b: Bool): Float64 = if (b) -1.0 else 1.0
@@ -912,5 +1108,6 @@ mod Render {
           zIndex   = zIndex,
           style    = style,
           clip     = None,
-          blend    = blend }
+          blend    = blend,
+          mask     = Nil }
 }

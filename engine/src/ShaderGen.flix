@@ -160,32 +160,53 @@ mod ShaderGen {
         "}\n"
 
     /// Spec → fragment シェーダー全体（prelude + main）。uTime uniform を前提に持つ。
+    /// Tex を使う Spec だけ sampler uniform（uTexN / uTexFlipN）が増える — 使わない Spec の
+    /// 出力は 1 文字も変えない（GLSL ソースが program キャッシュの鍵なので、既存の面の
+    /// キャッシュとスナップショットを無傷に保つ）。
     pub def compile(spec: ShaderDoc.Spec): String =
+        // texNames は木を全走査するので、宣言と番号表で使い回す（毎回呼ぶと走査が重複する）。
+        let names = ShaderDoc.texNames(spec);
+        let tex = texIndexFrom(names);
         "#version 330 core\n" +
         "in vec2 vUv;\n" +
         "out vec4 outColor;\n" +
         "uniform float uTime;\n" +
+        texUniformDecls(names) +
         preludeSource() +
         "void main() {\n" +
-        bindingPrelude(spec#bindings) +
-        "    " + outStmt(spec#cycleRate, spec#out, envOf(spec#bindings)) + "\n" +
+        bindingPrelude(spec#bindings, tex) +
+        "    " + outStmt(spec#cycleRate, spec#out, envOf(spec#bindings), tex) + "\n" +
         "}\n"
+
+    /// texNames の並び（正典順）に uniform 宣言を吐く。空なら空文字（1 文字も足さない）。
+    def texUniformDecls(names: List[String]): String =
+        names |> List.zipWithIndex |> List.joinWith(iname -> {
+            let (i, _) = iname;
+            "uniform sampler2D uTex${i};\nuniform float uTexFlip${i};\n"
+        }, "")
+
+    /// テクスチャ名 → sampler 番号（texNames の正典順）。Tex ノードが uTexN を選ぶのに使う。
+    def texIndexFrom(names: List[String]): Map[String, Int32] =
+        names |> List.zipWithIndex
+            |> List.foldLeft((acc, iname) -> { let (i, name) = iname; Map.insert(name, i, acc) },
+                             Map.empty())
 
     // ── main 本体（prelude 抜き）のスナップショット用。ノイズテンプレを混ぜず Spec だけ pin する。──
     pub def compileBody(spec: ShaderDoc.Spec): String =
-        bindingPrelude(spec#bindings) +
-        outStmt(spec#cycleRate, spec#out, envOf(spec#bindings))
+        let tex = texIndexFrom(ShaderDoc.texNames(spec));
+        bindingPrelude(spec#bindings, tex) +
+        outStmt(spec#cycleRate, spec#out, envOf(spec#bindings), tex)
 
     /// bindings を main 先頭の `float sg_b_<name> = <式>;` 宣言に並べる（前から順）。
     /// 各 binding の式は自分より前の binding だけ Ref できるので、env を前へ畳みながら組む。
     /// bindings が空（既存 Spec）なら 1 文字も吐かない（main 本体は現行と完全一致）。
-    def bindingPrelude(bindings: List[(String, ShaderDoc.Field)]): String =
+    def bindingPrelude(bindings: List[(String, ShaderDoc.Field)], tex: Map[String, Int32]): String =
         if (List.isEmpty(bindings)) ""
         else {
             let (text, _) = List.foldLeft((acc, nf) -> {
                 let (out, env) = acc;
                 let (name, field) = nf;
-                let line = "    float sg_b_" + name + " = " + fieldExpr(field, "vUv", env) + ";\n";
+                let line = "    float sg_b_" + name + " = " + fieldExpr(field, "vUv", env, tex) + ";\n";
                 (out + line, Map.insert(name, "sg_b_" + name, env))
             }, ("", Map.empty()), bindings);
             text
@@ -198,14 +219,16 @@ mod ShaderGen {
             Map.insert(name, "sg_b_" + name, env)
         }, Map.empty(), bindings)
 
-    def outStmt(cycleRate: Float64, out: ShaderDoc.Out, env: Map[String, String]): String =
+    def outStmt(cycleRate: Float64, out: ShaderDoc.Out, env: Map[String, String],
+                tex: Map[String, Int32]): String =
         match out {
             case ShaderDoc.Out.Fill(f) =>
-                "outColor = vec4(" + shadeExpr(cycleRate, f#shade, env) + ", " +
-                fieldExpr(f#alpha, "vUv", env) + ");"
+                "outColor = vec4(" + shadeExpr(cycleRate, f#shade, env, tex) + ", " +
+                fieldExpr(f#alpha, "vUv", env, tex) + ");"
         }
 
-    def shadeExpr(cycleRate: Float64, shade: ShaderDoc.Shade, env: Map[String, String]): String =
+    def shadeExpr(cycleRate: Float64, shade: ShaderDoc.Shade, env: Map[String, String],
+                  tex: Map[String, Int32]): String =
         match shade {
             case ShaderDoc.Shade.Solid(c) => vec3Lit(c)
             case ShaderDoc.Shade.Ramp(r)  =>
@@ -213,18 +236,18 @@ mod ShaderGen {
                 // field を cycleRate*uTime で往復させる三角波にして色が呼吸する（パレット循環）。
                 let factor =
                     if (cycleRate == 0.0)
-                        "clamp(" + fieldExpr(r#field, "vUv", env) + ", 0.0, 1.0)"
+                        "clamp(" + fieldExpr(r#field, "vUv", env, tex) + ", 0.0, 1.0)"
                     else
-                        "clamp(abs(fract((" + fieldExpr(r#field, "vUv", env) + ") + " +
+                        "clamp(abs(fract((" + fieldExpr(r#field, "vUv", env, tex) + ") + " +
                         f(cycleRate) + " * uTime) * 2.0 - 1.0), 0.0, 1.0)";
                 "mix(" + vec3Lit(r#lo) + ", " + vec3Lit(r#hi) + ", " + factor + ")"
             case ShaderDoc.Shade.Gradient(g) =>
                 // 係数 f は Ramp と同じ規約（cycleRate=0 は clamp・>0 は三角波で往復）。
                 let factor =
                     if (cycleRate == 0.0)
-                        "clamp(" + fieldExpr(g#field, "vUv", env) + ", 0.0, 1.0)"
+                        "clamp(" + fieldExpr(g#field, "vUv", env, tex) + ", 0.0, 1.0)"
                     else
-                        "clamp(abs(fract((" + fieldExpr(g#field, "vUv", env) + ") + " +
+                        "clamp(abs(fract((" + fieldExpr(g#field, "vUv", env, tex) + ") + " +
                         f(cycleRate) + " * uTime) * 2.0 - 1.0), 0.0, 1.0)";
                 // 先頭色から始め、隣り合う区切りごとに mix(..., 次の色, smoothstep(前,次,f)) を入れ子で重ねる
                 // （sg_gradient は作らず素の mix/smoothstep を直書き＝prelude を増やさない）。
@@ -233,11 +256,15 @@ mod ShaderGen {
                 // t = field（cycleRate>0 なら uTime を足して位相を回す。clamp しない＝cos の周期で色が巡る）。
                 let t =
                     if (cycleRate == 0.0)
-                        "(" + fieldExpr(cs#field, "vUv", env) + ")"
+                        "(" + fieldExpr(cs#field, "vUv", env, tex) + ")"
                     else
-                        "(" + fieldExpr(cs#field, "vUv", env) + " + " + f(cycleRate) + " * uTime)";
+                        "(" + fieldExpr(cs#field, "vUv", env, tex) + " + " + f(cycleRate) + " * uTime)";
                 "sg_cospal(" + t + ", " + vec3Lit(cs#a) + ", " + vec3Lit(cs#b) + ", " +
                     vec3Lit(cs#c) + ", " + vec3Lit(cs#d) + ")"
+            case ShaderDoc.Shade.Rgb(c) =>
+                // cycleRate は読まない（Shade.Rgb の doc の約束 — 3 本の場に三角波は掛けない）。
+                "vec3(" + fieldExpr(c#r, "vUv", env, tex) + ", " +
+                fieldExpr(c#g, "vUv", env, tex) + ", " + fieldExpr(c#b, "vUv", env, tex) + ")"
         }
 
     /// stops を先頭色から入れ子 mix にする GLSL 式。区切りが 2 つなら
@@ -263,7 +290,9 @@ mod ShaderGen {
 
     /// 場を GLSL の float 式へ。uv は「今読むべき座標」の GLSL 式（Scaled/Warp/Tiling が差し替える）。
     /// env は bindings 名 → GLSL 変数名で、Ref だけがこれを読む（他の case は受けて再帰へ渡すだけ）。
-    def fieldExpr(field: ShaderDoc.Field, uv: String, env: Map[String, String]): String =
+    /// tex はテクスチャ名 → sampler 番号（texNames の正典順）で、Tex だけがこれを読む。
+    def fieldExpr(field: ShaderDoc.Field, uv: String, env: Map[String, String],
+                  tex: Map[String, Int32]): String =
         match field {
             case ShaderDoc.Field.Const(v) => f(v)
             case ShaderDoc.Field.Uv(u)    =>
@@ -284,23 +313,23 @@ mod ShaderGen {
                 "sg_fbmTile((" + uv + ") * " + f(b#scale) + ", vec2(" + f(b#period#x) + ", " +
                 f(b#period#y) + "), " + iLit(b#octaves) + ", " + fSeed(b#seed) + ")"
             case ShaderDoc.Field.Smoothstep(s) =>
-                "smoothstep(" + f(s#lo) + ", " + f(s#hi) + ", " + fieldExpr(s#of, uv, env) + ")"
+                "smoothstep(" + f(s#lo) + ", " + f(s#hi) + ", " + fieldExpr(s#of, uv, env, tex) + ")"
             case ShaderDoc.Field.Scaled(s) =>
                 // inner の見る座標を factor 倍 + uTime*scroll で差し替える。
                 let uv2 = "((" + uv + ") * " + f(s#factor) + " + vec2(" +
                           f(s#scroll#x) + ", " + f(s#scroll#y) + ") * uTime)";
-                fieldExpr(s#of, uv2, env)
+                fieldExpr(s#of, uv2, env, tex)
             case ShaderDoc.Field.Warp(wp) =>
                 // fbm でずらしたオフセットを uv に足して inner を読む（ドメインワープ）。
                 let off = "(vec2(sg_fbm((" + uv + ") * " + f(wp#scale) + ", 3, " + fSeed(wp#seed) +
                           "), sg_fbm((" + uv + ") * " + f(wp#scale) + ", 3, " + fSeed(wp#seed) + " + 91.0)) - 0.5)";
                 let uv2 = "((" + uv + ") + " + off + " * " + f(wp#amount) + ")";
-                fieldExpr(wp#of, uv2, env)
+                fieldExpr(wp#of, uv2, env, tex)
             case ShaderDoc.Field.Swirl(sw) =>
                 // 読む座標を中心まわりに回してから of を読む（Warp と同じ「座標差し替え」）。
                 let uv2 = "sg_swirl((" + uv + "), " + f(sw#cx) + ", " + f(sw#cy) + ", " +
                           f(sw#strength) + ", " + f(sw#rate) + ")";
-                fieldExpr(sw#of, uv2, env)
+                fieldExpr(sw#of, uv2, env, tex)
             case ShaderDoc.Field.Angle(an) =>
                 // 中心から見た角度を 0..1 へ（atan2 / 2π + 0.5）。
                 "(atan((" + uv + ").y - " + f(an#cy) + ", (" + uv + ").x - " + f(an#cx) +
@@ -308,12 +337,12 @@ mod ShaderGen {
             case ShaderDoc.Field.Rotate(rt) =>
                 let uv2 = "sg_rotate((" + uv + "), " + f(rt#cx) + ", " + f(rt#cy) + ", " +
                           f(rt#turns) + ", " + f(rt#rate) + ")";
-                fieldExpr(rt#of, uv2, env)
+                fieldExpr(rt#of, uv2, env, tex)
             case ShaderDoc.Field.Mix(m) =>
-                "mix(" + fieldExpr(m#a, uv, env) + ", " + fieldExpr(m#b, uv, env) + ", " + f(m#t) + ")"
+                "mix(" + fieldExpr(m#a, uv, env, tex) + ", " + fieldExpr(m#b, uv, env, tex) + ", " + f(m#t) + ")"
             case ShaderDoc.Field.Blend(bl) =>
-                "mix(" + fieldExpr(bl#a, uv, env) + ", " + fieldExpr(bl#b, uv, env) + ", " +
-                "clamp(" + fieldExpr(bl#by, uv, env) + ", 0.0, 1.0))"
+                "mix(" + fieldExpr(bl#a, uv, env, tex) + ", " + fieldExpr(bl#b, uv, env, tex) + ", " +
+                "clamp(" + fieldExpr(bl#by, uv, env, tex) + ", 0.0, 1.0))"
             case ShaderDoc.Field.Disk(d) =>
                 // 中心からの距離が radius 以内で 1、radius→radius+feather で 0 へ soft fade。
                 "(1.0 - smoothstep(" + f(d#radius) + ", " + f(d#radius + d#feather) + ", " +
@@ -328,7 +357,7 @@ mod ShaderGen {
             case ShaderDoc.Field.Quantize(q) =>
                 // steps は 1 未満だと 0 除算になるので生成時に 1 で下切りする（CPU 側と同じ扱い）。
                 let n = f(Int32.toFloat64(Int32.max(1, q#steps)));
-                "(floor((" + fieldExpr(q#of, uv, env) + ") * " + n + ") / " + n + ")"
+                "(floor((" + fieldExpr(q#of, uv, env, tex) + ") * " + n + ") / " + n + ")"
             case ShaderDoc.Field.Scales(sc) =>
                 "sg_scales((" + uv + "), " + f(sc#scale) + ", " + f(sc#stagger) + ")"
             case ShaderDoc.Field.Glints(g) =>
@@ -341,8 +370,8 @@ mod ShaderGen {
                 "sg_sparkle((" + uv + "), " + f(sp#scale) + ", " + f(sp#rate) + ", " +
                 f(sp#density) + ", " + fSeed(sp#seed) + ")"
             case ShaderDoc.Field.Bin(bn) =>
-                let ae = fieldExpr(bn#a, uv, env);
-                let be = fieldExpr(bn#b, uv, env);
+                let ae = fieldExpr(bn#a, uv, env, tex);
+                let be = fieldExpr(bn#b, uv, env, tex);
                 match bn#op {
                     case ShaderDoc.BinOp.Add  => "(" + ae + " + " + be + ")"
                     case ShaderDoc.BinOp.Sub  => "(" + ae + " - " + be + ")"
@@ -354,15 +383,15 @@ mod ShaderGen {
             case ShaderDoc.Field.Hash1(h) =>
                 // セルの整数座標 floor(uv*scale) を hash に渡す。bucket が有れば座標に足す（GLSL の
                 // vec2+float は自動で両成分に配る）。既存 sg_hash1 を呼ぶだけ（prelude は増やさない）。
-                "sg_hash1(" + hashCoord(h#scale, h#bucket, uv, env) + ", " + fSeed(h#seed) + ")"
+                "sg_hash1(" + hashCoord(h#scale, h#bucket, uv, env, tex) + ", " + fSeed(h#seed) + ")"
             case ShaderDoc.Field.Hash2(h) =>
                 let comp = match h#comp {
                     case ShaderDoc.Axis.U => ".x"
                     case ShaderDoc.Axis.V => ".y"
                 };
-                "(sg_hash2(" + hashCoord(h#scale, h#bucket, uv, env) + ", " + fSeed(h#seed) + "))" + comp
+                "(sg_hash2(" + hashCoord(h#scale, h#bucket, uv, env, tex) + ", " + fSeed(h#seed) + "))" + comp
             case ShaderDoc.Field.Un(un) =>
-                let x = fieldExpr(un#of, uv, env);
+                let x = fieldExpr(un#of, uv, env, tex);
                 match un#op {
                     case ShaderDoc.UnOp.Neg      => "(-(" + x + "))"
                     case ShaderDoc.UnOp.Abs      => "abs(" + x + ")"
@@ -376,38 +405,56 @@ mod ShaderGen {
             case ShaderDoc.Field.Pow(pw) =>
                 // 整数指数は pow() でなく反復積の文字列にして CPU 側の反復積と構造を合わせる
                 // （GPU/CPU で丸め順が揃いパリティが強くなる）。負の底の非整数乗は NaN なので 0 で下切り。
-                let base = "max(0.0, " + fieldExpr(pw#of, uv, env) + ")";
+                let base = "max(0.0, " + fieldExpr(pw#of, uv, env, tex) + ")";
                 if (Float64.floor(pw#p) == pw#p)
                     powProduct(base, Float64.floor(pw#p))
                 else
-                    "pow(max(0.0, (" + fieldExpr(pw#of, uv, env) + ")), " + f(pw#p) + ")"
+                    "pow(max(0.0, (" + fieldExpr(pw#of, uv, env, tex) + ")), " + f(pw#p) + ")"
             case ShaderDoc.Field.Time(tm) =>
-                "(uTime * " + f(tm#scale) + " + (" + fieldExpr(tm#offset, uv, env) + "))"
+                "(uTime * " + f(tm#scale) + " + (" + fieldExpr(tm#offset, uv, env, tex) + "))"
             case ShaderDoc.Field.Tiling(tl) =>
                 // 各マス内は fract(uv*tiles)。of が読む座標をこの式に差し替える（sg_tiling は作らない）。
                 let uv2 = "fract((" + uv + ") * vec2(" + f(tl#tiles#x) + ", " + f(tl#tiles#y) + "))";
-                fieldExpr(tl#of, uv2, env)
+                fieldExpr(tl#of, uv2, env, tex)
             case ShaderDoc.Field.Snap(sn) =>
                 // マスの中心（+0.5）を読む — 角を読むと格子ノイズの節点に乗って塊が半マスずれる。
                 // cells は 1 未満だと 0 除算になるので生成時に 1 で下切りする（CPU 側と同じ扱い）。
                 let cells = "vec2(" + f(snapCells(sn#cells#x)) + ", " + f(snapCells(sn#cells#y)) + ")";
                 let uv2 = "((floor((" + uv + ") * " + cells + ") + 0.5) / " + cells + ")";
-                fieldExpr(sn#of, uv2, env)
+                fieldExpr(sn#of, uv2, env, tex)
             case ShaderDoc.Field.Ref(name) =>
                 // parse が定義済みを保証する。未定義は 0.0（保険）。
                 match Map.get(name, env) {
                     case Some(glslVar) => glslVar
                     case None          => "0.0"
                 }
+            case ShaderDoc.Field.Tex(tx) =>
+                // pass ターゲットは上下逆に格納されるので、貼る側の流儀どおり uniform の
+                // uTexFlipN（0 か 1）で y を吸収する（テクスチャ側は触らない）。
+                // 番号は texNames の正典順なので Map に必ずある。無い場合の 0 は保険。
+                let i = Map.get(tx#name, tex) |> Option.getWithDefault(0);
+                let chan = match tx#chan {
+                    case ShaderDoc.TexChan.R => ".r"
+                    case ShaderDoc.TexChan.G => ".g"
+                    case ShaderDoc.TexChan.B => ".b"
+                    case ShaderDoc.TexChan.A => ".a"
+                };
+                "texture(uTex${i}, vec2((" + uv + ").x, mix((" + uv +
+                    ").y, 1.0 - (" + uv + ").y, uTexFlip${i})))" + chan
+            case ShaderDoc.Field.Shift(sh) =>
+                // ずらし量 dx/dy は外側の uv で評価してから、of をずらした座標で読む。
+                let uv2 = "((" + uv + ") + vec2(" + fieldExpr(sh#dx, uv, env, tex) + ", " +
+                          fieldExpr(sh#dy, uv, env, tex) + "))";
+                fieldExpr(sh#of, uv2, env, tex)
         }
 
     /// hash に渡すセル座標の GLSL 式。floor((uv)*scale) を作り、bucket が有ればその式を足す。
     def hashCoord(scale: Float64, bucket: Option[ShaderDoc.Field], uv: String,
-                  env: Map[String, String]): String =
+                  env: Map[String, String], tex: Map[String, Int32]): String =
         let cell = "floor((" + uv + ") * " + f(scale) + ")";
         match bucket {
             case None    => cell
-            case Some(b) => "(" + cell + " + (" + fieldExpr(b, uv, env) + "))"
+            case Some(b) => "(" + cell + " + (" + fieldExpr(b, uv, env, tex) + "))"
         }
 
     /// Snap の分割数（ShaderEval.snapCells と同じ下切り）。

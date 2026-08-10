@@ -47,6 +47,9 @@
 | 疑似遠近の帯（横一列）ごとに立ち物・床を敷く | Scatter.strip |
 | 爆発・火花を fx.json で宣言して時刻から描く | FxDoc / Fx（sample / sampleAt） |
 | 粒を輪に等分して撒く・破片を回しながら飛ばす | FxDoc（dir.mode: even / turn） |
+| 蛍・湯気をその場でゆらゆら舞わせる | FxDoc（wobble） |
+| 雨・火花・流星を速度方向の筋で描く | FxDoc（shape: streak / stretch） |
+| 粒をふわっと明滅させる | FxDoc（カーブ pulse） |
 | 撃つたびに出る効果を発生・寿命回収・描画で回す | Fx（burst / expire / drawAll） |
 | 値を滑らかに動かす | EcsTween / Curve |
 | スプライトをコマ送りする | Anim |
@@ -69,6 +72,7 @@
 | キーが押された瞬間を取る | InputEdge |
 | 複数キーを 1 つの操作にまとめる（WASD と矢印の両対応） | InputMap |
 | カメラで寄せる・追いかける | CameraRig |
+| 被弾・着弾で画面を揺らす（減衰ノイズの画面揺れ） | CameraRig（addTrauma / tick / shakeOffset） |
 | 起動中のゲームを外から操作・観測する | RemoteDebug |
 | Studio に「いま表示中の Doc」を名乗る（表示中バッジ） | ActiveDocs |
 | 画面を覆う・晴らす切り替え演出（フェード・ワイプ） | Transition |
@@ -85,6 +89,8 @@
 | Doc の一覧を台帳 1 枚にし watchFile・一括リロード・表示中バッジを導出 | DocTable |
 | 色を作る（0〜1・0〜255・#rrggbb）・2 色を混ぜる・比べる | Color.rgb / rgb8 / hex / mix / channels |
 | 置き場所つきの絵に修飾を掛ける・列を丸ごと薄くする | Render.overItem / Render.fadeAll |
+| 修飾パイプの末尾で置き場所を与える（`{ at = …, item = … }` の糖衣。中心置きは At 族） | Render.at |
+| 列を丸ごと動かす・pivot 不動点で一様に拡縮する（Clipped の窓も追随） | Render.movedAll / Render.scaledAllAround |
 | Doc を fail-open で読む（読めない・壊れは既定値へ） | DocJson.loadOr / decodeObject |
 | 太さのある線・棒を引く（法線を手計算しない） | Render.lineSeg / Quad.strip |
 | 値を範囲に収める（1 軸） | Num.clamp（カメラの寄せ幅は CameraRig.clampAxis） |
@@ -94,9 +100,11 @@
 | テスト用の入力フレームを組む | App.frameOf |
 | 焼いた絵に出ない指定を知る（実機との食い違い防止） | SoftRaster（dropped）/ [対応表](backend-parity.md) |
 | 縁がふわっと消える光球・煙玉を置く | Render（glowAt）/ fx.json の shape "glow" |
+| 放射状の明かり・翳りを 1 枚で置く（松明・スポットライト・vignette。アセット不要） | Render（lightAt / darkAt。組み込みテクスチャは engine の RadialBuiltin） |
 | 空・水面・光の帯のグラデを 1 部品で塗る（頂点色つき凸ポリゴン。1px の色帯を積まない） | Render（gradPolygon / vgrad） |
 | 箱に枠線を付ける（半透明の枠も） | Render（outline / outlineA） |
 | 暗い部屋に光源を置く（穴あき暗幕+ハロ） | Light |
+| 複数光源＋影（光マップ。Pass に灯りを集めて Multiply で貼る） | Light（lightMapPass / lightMapOverlay）+ App.withPasses |
 | 光源を JSON で宣言する（light.json） | LightDoc + Light |
 | 壁に影を落とす（単一光源のハードシャドウ） | Shadow |
 | 夜のガラス・鏡・磨いた床に姿を映す（明るいところは光として返し、暗いところは影として重ねる） | Mirror |
@@ -120,6 +128,9 @@
 | ドット絵の輪郭をにじませない（カメラと頂点を画素の升目に載せる） | App.withPixelSnap / Render.snapped |
 | 同じ絵を色だけ変えて使い回す・重なり順をまとめてずらす | Render.tinted / Render.zShifted |
 | マスごとの「いま」を持つ（耕した・濡れた・置いた。セーブに乗る側） | TileState |
+| 画面を素材にする・複数光源・残像を作る（レンダーターゲットに描いてテクスチャとして貼り戻す） | Pass（`App.withPasses`）。ターゲットは design 解像度・宣言順に本編より先に描かれ、`Render.sprite(name, z)` で貼れる |
+| Pass を bake（Bakery の PassSpec）へ詰め替える（Shader 面の外し忘れを防ぐ） | Render.passSpecOf |
+| 全面でない面（帯など）から pass を等倍・鏡像で読む（陽炎の帯・水面の映り込み） | Render.passBandDy（Shift の dy 場を作る） |
 
 ## 症状 → モジュール（重い・fps が落ちる）
 
@@ -149,7 +160,7 @@
 - **Quad** — 回転した矩形や太さのある線の、四隅の座標を計算する。
 - **Bezier** — ベジエ曲線の平坦化と、曲線から作る描画部品。
 - **Fx** — たくさんの粒を、保存せず「今の時刻から計算」して並べる薄い仕組み。「撃つたびに出る」効果の器（burst / expire / drawAll）も持つ。
-- **FxDoc** — fx.json（閉形式パーティクル）を Spec に読むパーサ。絵は Fx.sample が導く。語彙は mode: loop（常時系）/ spawn（発生源の広がり）/ accel（重力/風・½at²）/ seed（決定的シードの上乗せ）/ dir.mode: even（粒の番号で射出方向を等分 — 衝撃の輪・花火）/ turn（粒の傾き base・spread と回る速さ spin・spinSpread。単位は回転数で 1 周 = 1.0）/ parseWith（"@名前" の色キーをパレットで解決）。
+- **FxDoc** — fx.json（閉形式パーティクル）を Spec に読むパーサ。絵は Fx.sample が導く。語彙は mode: loop（常時系）/ spawn（発生源の広がり）/ accel（重力/風・½at²）/ seed（決定的シードの上乗せ）/ dir.mode: even（粒の番号で射出方向を等分 — 衝撃の輪・花火）/ turn（粒の傾き base・spread と回る速さ spin・spinSpread。単位は回転数で 1 周 = 1.0）/ wobble（位置の正弦揺らぎ amp・freq・vary — 蛍・湯気の有界運動）/ shape: streak + stretch（速度方向に伸びた筋 — 雨・火花・流星）/ カーブ pulse（1 と min の間の正弦明滅）/ parseWith（"@名前" の色キーをパレットで解決）。
 - **Scatter** — どこまでスクロールしても同じ配置が再現される、無限の「物の撒き方」。field は見えている矩形を升目走査、strip は疑似遠近の帯 1 本（帯ごとに見える幅が違う画面）を span + reach + cellsMax で敷き、画面外のセルは作る前に捨てる。
 - **Anim** — スプライトシートのコマ送りを「時刻の純関数」で導く。
 - **PxSpriteDoc** — *.sprite.json（文字格子+意味色キー+名前付きコマ+anchor）を読む fail-open の Doc 層。
@@ -158,10 +169,13 @@
 - **PxSpriteAtlas** — PxSpriteDoc×resolver を 1 枚のアトラス画素（ARGB+コマ→矩形の目次）に焼く純関数。GL（RenderTexture.loadTextureFromPixels）と PNG（SoftRaster.writeRadialPng）が同じ Baked を読む。
 - **Viewport** — 画面の矩形の外へ出た物を見つけて返す。
 - **Transition** — 進行度 t から画面を覆う/晴らす描画物を作る（フェード・ワイプ）。
-- **Light** — 光源の値（位置・半径・色）から穴あき暗幕+ハロの描画物を導く。
+- **Light** — 光源の値（位置・半径・色）から灯りの絵を導く。方式は 2 つで使い分ける:
+  暗幕方式（items。穴の外は一様な闇。pass 不要で rim・ハロ拡大の質感あり。影は単一光源のみ）と
+  光マップ方式（lightMapPass / lightMapOverlay。環境光のある夜。光源が何個でも光ごとに影が落ちる。
+  App.withPasses と組む。光 A の影は光 B の灯りも消す割り切り）。
 - **Shadow** — 光と壁の頂点列から影の四角形を導く（当たり判定の形からも作れる）。
 - **Mirror** — 面（夜のガラス・鏡・磨いた床）に映る姿を、ドット絵の走り（PxSprite.Run）から組む。映り込み用の絵を別に描かないので、元の絵を直せば映るほうも一緒に直る。映るかどうかと、どのコマをどこへ合わせるかは呼び側の決めごと。
-- **LightDoc** — light.json（光源の質感）の宣言層。暗さ・照り返しフチ・ハロの大きさ・光源の並びを JSON に書き、Spec へ畳む。壁の遮蔽形はゲームの World が持つので含まない。
+- **LightDoc** — light.json（光源の質感）の宣言層。暗さ・照り返しフチ・ハロの大きさ・環境光・影の濃さ・光源の並びを JSON に書き、Spec へ畳む。壁の遮蔽形はゲームの World が持つので含まない。ambient / shadowStrength（光マップ方式用）は 0.19 系から — 古い版のエンジンは読み飛ばして既定になる。
 
 ## UI
 

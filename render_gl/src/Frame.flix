@@ -3,6 +3,8 @@
 // 利用例: 毎フレーム、集めた描画物を画面に出す / 手前・奥の重なりを正しく見せる。
 // 注意: 同じ zIndex 内は渡された入力順を保つ（安定ソート）。タイル層も動的な描画物と
 // 同じ z 空間で並ぶ（同 z なら列に先に積むタイル層が奥 — 手前に出すには大きい zIndex を与える）。
+// z 空間は 1 本のまま、HUD 帯（ZBand.hudBase 以上）のような遠く離れた鍵が混ざるフレームは
+// 帯番号で 2 段に分けて並べ替える（並び順の約束は変わらない — 速さのための内部の形）。
 
 mod RenderFrame {
     import java.nio.FloatBuffer
@@ -47,11 +49,16 @@ mod RenderFrame {
     /// 種類数ぶんの Map 操作だけで済み、同鍵内の順序も構造的に崩れない。
     /// 同 z の入れ替わりは実害がある（bg Rect と同 z のテキスト最後の文字が
     /// 上書き消失した事故が過去にある）ため、安定性はこの関数の必須条件。
+    /// 帯内・帯間ともこの安定性を保つ。
     /// zIndex は小さな整数がひとかたまりに並ぶので、鍵の幅ぶんの席を 1 本用意して
     /// 振り分ける。木の Map だと 1 個ごとに挿入と枝の組み替えが走り、数千個の画面では
     /// その組み替えだけがフレーム時間に現れる（スレッドダンプ実測）。
     /// 席は先頭挿入で溜める（= 逆順）。席の大きい側から前置し直すので、
     /// 全体は z 昇順・席内は入力順に戻る。
+    /// z が席 1 本に収まらないほど広いフレーム（HUD 帯 = ZBand.hudBase 以上が混ざる等）は、
+    /// まず帯番号（z / ZBand.bandWidth）でグループ化し、帯の中で同じ席方式に倒す
+    /// （帯内の z 範囲は狭いので席に収まる）— HUD が混ざった瞬間に全部が遅い木の
+    /// 経路へ落ちるのを防ぐ。帯の中でも z がまばらなときだけ木で受ける。
     /// 5 種の描画物を、zIndex 昇順・同 z 内は
     /// tiles → sprites → polygons → static → surfaces の順に並べた 1 本の列にする。
     /// 5 本を 1 本に繋いでから並べ替えないのは、繋ぐだけで列 1 本ぶんの写しが増え、
@@ -80,40 +87,117 @@ mod RenderFrame {
             let hi = Array.get(1, tally);
             let count = Array.get(2, tally);
             if (count == 0) Nil
-            // 鍵がまばらに散っていると席の数が描く物の数を大きく超える。
-            // そのときだけ木で並べ替える（席を数百万本用意して埋めないより速い）。
-            else if (hi - lo > seatLimit(count)) stableByZTree(zOfMerged, chain(tiles, sprites, polygons, statics, surfaces))
-            else {
+            // 幅は Int64 で見る — HUD 帯（1e9）とデバッグ帯（2e9）が同居すると
+            // Int32 の引き算は溢れて、負の幅を「席に収まる」と誤読するため。
+            else if (spanOf(lo, hi) <= Int32.toInt64(seatLimit(count))) {
                 let n = hi - lo + 1;
                 let seats: Array[List[Merged], rc] = Array.repeat(rc, n, Nil);
-                let seat = (z: Int32, m: Merged) -> {
-                    let i = z - lo;
-                    Array.put(m :: Array.get(i, seats), i, seats)
-                };
-                List.forEach(x -> seat(x#zIndex, Merged.MTile(x)), tiles);
-                List.forEach(x -> seat(x#zIndex, Merged.MSprite(x)), sprites);
-                List.forEach(x -> seat(x#zIndex, Merged.MPoly(x)), polygons);
-                List.forEach(x -> seat(x#zIndex, Merged.MStatic(x)), statics);
-                List.forEach(x -> seat(x#zIndex, Merged.MSurface(x)), surfaces);
-                List.range(0, n) |> List.foldLeft((acc, i) ->
-                    List.foldLeft((rest, x) -> x :: rest, acc,
-                                  Array.get(n - 1 - i, seats)), Nil)
+                seatChannels(seats, lo, tiles, sprites, polygons, statics, surfaces);
+                emitSeats(seats, n, Nil)
             }
+            else bandMerged(rc, lo, hi, tiles, sprites, polygons, statics, surfaces)
         }
 
-    /// 鍵がまばらなときだけ使う、5 本を入力順どおりに繋いだ 1 本。
-    def chain(tiles: List[RenderType.TileMapRenderCmd], sprites: List[RenderType.Drawable],
-              polygons: List[RenderType.PolygonCmd], statics: List[RenderStatic.Range],
-              surfaces: List[ShaderEffect.ShaderRenderCmd]): List[Merged] =
-        List.append(
-            tiles |> List.map(x -> Merged.MTile(x)),
-            List.append(
-                List.append(
-                    List.append(
-                        sprites  |> List.map(x -> Merged.MSprite(x)),
-                        polygons |> List.map(x -> Merged.MPoly(x))),
-                    statics |> List.map(x -> Merged.MStatic(x))),
-                surfaces |> List.map(x -> Merged.MSurface(x))))
+    /// 席 1 本に収める判定に使う z の幅（Int64 — Int32 だと帯をまたぐ幅で溢れる）。
+    def spanOf(lo: Int32, hi: Int32): Int64 =
+        Int32.toInt64(hi) - Int32.toInt64(lo)
+
+    /// 5 本の描画物リストを、席の列へ入力順（tiles → sprites → polygons → static →
+    /// surfaces）に先頭挿入で振り分ける。席内は逆順に溜まる（emitSeats が戻す）。
+    def seatChannels(seats: Array[List[Merged], rc], lo: Int32,
+                     tiles: List[RenderType.TileMapRenderCmd],
+                     sprites: List[RenderType.Drawable],
+                     polygons: List[RenderType.PolygonCmd],
+                     statics: List[RenderStatic.Range],
+                     surfaces: List[ShaderEffect.ShaderRenderCmd]): Unit \ rc =
+        let seat = (z: Int32, m: Merged) -> {
+            let i = z - lo;
+            Array.put(m :: Array.get(i, seats), i, seats)
+        };
+        List.forEach(x -> seat(x#zIndex, Merged.MTile(x)), tiles);
+        List.forEach(x -> seat(x#zIndex, Merged.MSprite(x)), sprites);
+        List.forEach(x -> seat(x#zIndex, Merged.MPoly(x)), polygons);
+        List.forEach(x -> seat(x#zIndex, Merged.MStatic(x)), statics);
+        List.forEach(x -> seat(x#zIndex, Merged.MSurface(x)), surfaces)
+
+    /// 席の大きい側から acc へ前置し直す（席内の逆順が入力順へ戻る）。
+    /// acc に後続（より大きい帯の列）を渡せるので、帯別ソートの連結にもそのまま使える。
+    def emitSeats(seats: Array[List[Merged], rc], n: Int32, acc: List[Merged]): List[Merged] \ rc =
+        List.range(0, n) |> List.foldLeft((rest, i) ->
+            List.foldLeft((r, x) -> x :: r, rest,
+                          Array.get(n - 1 - i, seats)), acc)
+
+    /// 帯別 2 段ソート: 帯番号（z / ZBand.bandWidth）でグループ化し、帯の中は席方式
+    /// （まばらな帯だけ木）、帯順に連結する。帯の数は z が Int32 全域でも 43 以下なので
+    /// 帯ごとの入れ物は小さい。切り捨て割りは単調（z1 < z2 なら帯も z1 ≤ z2 の順）なので、
+    /// 帯の昇順連結 = 全体の z 昇順が崩れない。
+    def bandMerged(rc: Region[rc], lo: Int32, hi: Int32,
+                   tiles: List[RenderType.TileMapRenderCmd],
+                   sprites: List[RenderType.Drawable],
+                   polygons: List[RenderType.PolygonCmd],
+                   statics: List[RenderStatic.Range],
+                   surfaces: List[ShaderEffect.ShaderRenderCmd]): List[Merged] \ rc =
+        let w = ZBand.bandWidth();
+        let bLo = lo / w;
+        let nb = hi / w - bLo + 1;
+        // 帯ごとの 一番小さい z / 一番大きい z / 個数（席を作る前に一度だけ数える）。
+        let bandLoA: Array[Int32, rc] = Array.repeat(rc, nb, 2147483647);
+        let bandHiA: Array[Int32, rc] = Array.repeat(rc, nb, -2147483648);
+        let bandCnt: Array[Int32, rc] = Array.repeat(rc, nb, 0);
+        let scanB = (z: Int32) -> {
+            let b = z / w - bLo;
+            if (z < Array.get(b, bandLoA)) Array.put(z, b, bandLoA) else ();
+            if (z > Array.get(b, bandHiA)) Array.put(z, b, bandHiA) else ();
+            Array.put(Array.get(b, bandCnt) + 1, b, bandCnt)
+        };
+        List.forEach(x -> scanB(x#zIndex), tiles);
+        List.forEach(x -> scanB(x#zIndex), sprites);
+        List.forEach(x -> scanB(x#zIndex), polygons);
+        List.forEach(x -> scanB(x#zIndex), statics);
+        List.forEach(x -> scanB(x#zIndex), surfaces);
+        // 帯ごとに席を先に用意する。中間リストへ溜めて反転する形にしないのは、
+        // 1 個あたり cons が 2 回増えて、物量シーンでフレーム時間に乗るため。
+        // 席が個数に見合わない（z がまばらな）帯だけリストへ溜めて木で受ける。
+        let noSeats: Array[List[Merged], rc] = Array.repeat(rc, 0, Nil);
+        let bandSeats: Array[Array[List[Merged], rc], rc] = Array.repeat(rc, nb, noSeats);
+        let treeRev: Array[List[Merged], rc] = Array.repeat(rc, nb, Nil);
+        let useTree: Array[Bool, rc] = Array.repeat(rc, nb, false);
+        List.forEach(b -> {
+            let cnt = Array.get(b, bandCnt);
+            if (cnt == 0) ()
+            else if (spanOf(Array.get(b, bandLoA), Array.get(b, bandHiA))
+                     <= Int32.toInt64(seatLimit(cnt)))
+                Array.put(Array.repeat(rc, Array.get(b, bandHiA) - Array.get(b, bandLoA) + 1,
+                                       (Nil: List[Merged])), b, bandSeats)
+            else Array.put(true, b, useTree)
+        }, List.range(0, nb));
+        // 入力順（tiles → sprites → polygons → static → surfaces）に先頭挿入で振り分ける
+        // （席内は逆順に溜まり、emitSeats が入力順へ戻す — 単帯の席方式と同じ不変条件）。
+        let put = (z: Int32, m: Merged) -> {
+            let b = z / w - bLo;
+            if (Array.get(b, useTree))
+                Array.put(m :: Array.get(b, treeRev), b, treeRev)
+            else {
+                let seats = Array.get(b, bandSeats);
+                let j = z - Array.get(b, bandLoA);
+                Array.put(m :: Array.get(j, seats), j, seats)
+            }
+        };
+        List.forEach(x -> put(x#zIndex, Merged.MTile(x)), tiles);
+        List.forEach(x -> put(x#zIndex, Merged.MSprite(x)), sprites);
+        List.forEach(x -> put(x#zIndex, Merged.MPoly(x)), polygons);
+        List.forEach(x -> put(x#zIndex, Merged.MStatic(x)), statics);
+        List.forEach(x -> put(x#zIndex, Merged.MSurface(x)), surfaces);
+        // 帯の大きい側から前置で連結する（全体 = 帯昇順・帯内 = z 昇順・同 z は入力順）。
+        List.range(0, nb) |> List.foldLeft((acc, i) -> {
+            let b = nb - 1 - i;
+            if (Array.get(b, bandCnt) == 0) acc
+            else if (Array.get(b, useTree))
+                // 溜めは逆順なので、並べ替えの前に入力順へ戻す（まばらな帯だけの経路）。
+                List.append(stableByZTree(zOfMerged, List.reverse(Array.get(b, treeRev))), acc)
+            else emitSeats(Array.get(b, bandSeats),
+                           Array.get(b, bandHiA) - Array.get(b, bandLoA) + 1, acc)
+        }, Nil)
 
     /// 並べ替え鍵 = zIndex（全 run 種で共有の 1 つの z 空間）。
     def zOfMerged(item: Merged): Int32 =
@@ -181,7 +265,15 @@ mod RenderFrame {
         surfaces = List[ShaderEffect.ShaderRenderCmd],
         // シェーダー面 1 枚を実際に GL へ描くクロージャ（program の uniform location を知る
         // バックエンド側が提供する）。renderFrameMixed は z の合流だけを受け持つ。
-        drawSurface = ShaderEffect.ShaderRenderCmd -> Unit \ IO
+        drawSurface = ShaderEffect.ShaderRenderCmd -> Unit \ IO,
+        // None = 画面へのフレーム（黒帯 + design 領域の 2 段 clear）。Some(op) = レンダー
+        // ターゲット（FBO）へのフレームで、op（RenderTarget.LoadOp）が前の中身の始末を決める —
+        // Keep = 残す（残像用）・Clear = その色の不透明・ClearTransparent = 全画素透明。
+        // ターゲットは letterbox を持たないので黒帯 clear はしない。
+        targetClear = Option[RenderTarget.LoadOp],
+        // レンダーターゲットのテクスチャ名の集合。GL のターゲットは行 0 が下で上下逆に
+        // 格納されるため、この名前のスプライトだけ標本時に uv を上下反転する（emitSprite が見る）。
+        targetNames = Set[String]
     }
 
     /// drawSprite が uniform に詰める model 行列と同じ式を CPU 側で計算して、
@@ -432,10 +524,23 @@ mod RenderFrame {
                                 posX, posY, sizeX, sizeY, drawable, useTex, sdf)
         }
 
+    /// レンダーターゲット（FBO）のテクスチャは行 0 が下で上下逆に格納されている。
+    /// 指定の uv（上原点の部分矩形）を GL の格納向きへ写して標本する —
+    /// ゲーム側は普通の画像と同じ uv で書けばよい。ターゲット以外はそのまま返す。
+    def targetUvFlipped(targetNames: Set[String],
+                        drawable: RenderType.Drawable): RenderType.Drawable =
+        if (Set.memberOf(drawable#texture, targetNames))
+            { uvOffset = { x = drawable#uvOffset#x,
+                           y = 1.0 - drawable#uvOffset#y },
+              uvScale  = { x = drawable#uvScale#x,
+                           y = 0.0 - drawable#uvScale#y } | drawable }
+        else drawable
+
     /// スプライト 1 体を run へ積む（テクスチャ解決と centered の平行移動込み）。
     def emitSprite(st: Array[Int32, Static], instData: FloatBuffer,
                    scaleX: Float64, scaleY: Float64,
                    registry: RenderAsset.TextureRegistry,
+                   targetNames: Set[String],
                    drawable: RenderType.Drawable): Unit \ IO =
         if (String.isEmpty(drawable#texture)) {
             pushSpriteItem(st, instData, scaleX, scaleY, 0,
@@ -452,12 +557,89 @@ mod RenderFrame {
                                else drawable#position#y;
                     // フォントアトラス (font_*) は SDF テキストとして描く。
                     let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
+                    let d = targetUvFlipped(targetNames, drawable);
                     pushSpriteItem(st, instData, scaleX, scaleY,
                                    GpuHandle.textureIdInt(texInfo#id),
-                                   posX, posY, displayW, displayH, drawable, true, isFont)
+                                   posX, posY, displayW, displayH, d, true, isFont)
                 // texture 未登録は従来どおり描かない。描かないだけなので run は途切れさせない。
                 case None => ()
             }
+        }
+
+    /// mask 付きスプライト 1 体を単発で描く（テクスチャ解決と centered の平行移動は
+    /// emitSprite と同じ式）。run の一括化から外れるのは、ステンシルの書き込み・解除を
+    /// 1 体の draw の前後に挟む口が一括 draw に無いため — mask 付きは少数枚の前提。
+    /// 呼び側（emitMerged）が両 run を吐いてから呼ぶ。
+    def emitSpriteMasked(st: Array[Int32, Static], instData: FloatBuffer,
+                         scaleX: Float64, scaleY: Float64,
+                         registry: RenderAsset.TextureRegistry,
+                         targetNames: Set[String],
+                         polyUniforms: RenderShader.PolyBatchUniforms,
+                         drawable: RenderType.Drawable): Unit \ IO =
+        if (String.isEmpty(drawable#texture)) {
+            drawMaskedOne(st, instData, scaleX, scaleY, polyUniforms, 0,
+                          drawable#position#x, drawable#position#y,
+                          drawable#scale#x, drawable#scale#y, drawable, false, false)
+        } else {
+            match Map.get(drawable#texture, registry) {
+                case Some(texInfo) =>
+                    let displayW = texInfo#width * drawable#scale#x;
+                    let displayH = texInfo#height * drawable#scale#y;
+                    let posX = if (drawable#centered) drawable#position#x - displayW / 2.0
+                               else drawable#position#x;
+                    let posY = if (drawable#centered) drawable#position#y - displayH / 2.0
+                               else drawable#position#y;
+                    let isFont = String.startsWith({prefix = "font_"}, drawable#texture);
+                    // uv 反転は emitSprite と同じ（mask は形の変換なので uv には触らない）。
+                    let d = targetUvFlipped(targetNames, drawable);
+                    drawMaskedOne(st, instData, scaleX, scaleY, polyUniforms,
+                                  GpuHandle.textureIdInt(texInfo#id),
+                                  posX, posY, displayW, displayH, d, true, isFont)
+                case None => ()
+            }
+        }
+
+    /// mask 付き 1 体の実描画: scissor を張り、instance を slot 0 へ書き、mask を
+    /// スクリーン座標へ写してステンシル付きの単発 draw に渡す。
+    def drawMaskedOne(st: Array[Int32, Static], instData: FloatBuffer,
+                      scaleX: Float64, scaleY: Float64,
+                      polyUniforms: RenderShader.PolyBatchUniforms, texId: Int32,
+                      posX: Float64, posY: Float64, sizeX: Float64, sizeY: Float64,
+                      drawable: RenderType.Drawable, useTex: Bool, sdf: Bool): Unit \ IO =
+        match drawable#clip {
+            case None    => setScissorAt(st, 0, 0, 0, 0, 0)
+            case Some(r) =>
+                let (x0, y0, x1, y1) = DrawCmd.clipPixels({ scaleX = scaleX, scaleY = scaleY }, r);
+                setScissorAt(st, 1, x0, y0, x1, y1)
+        };
+        writeInstAt(instData, 0, posX, posY, sizeX, sizeY, drawable, useTex, sdf);
+        RenderSprite.drawSpriteMasked(Array.get(0, st), Array.get(1, st), Array.get(2, st), texId,
+                                      Array.get(3, st), drawable#blend, instData,
+                                      Array.get(4, st), Array.get(5, st), Array.get(6, st),
+                                      polyUniforms,
+                                      maskToScreen(drawable#rotation, posX, posY, sizeX, sizeY,
+                                                   drawable#mask))
+
+    /// mask 頂点（表示クアッドのローカル design px・原点 = 左上・回転前）を、writeInstAt と
+    /// 同じ model 変換（回転中心 = クアッド中心）でスクリーン px へ写す。頂点を size の
+    /// 符号で掛け直すのは、反転（負の scale）がクアッドと同じ向きに mask にも掛かるため。
+    /// クアッドが退化（辺長ほぼ 0）なら空を返す（絵も出ないので抜く形も要らない）。
+    def maskToScreen(rot: Float64, posX: Float64, posY: Float64,
+                     sizeX: Float64, sizeY: Float64,
+                     mask: List[List[Vec2.Vec2]]): List[List[Vec2.Vec2]] =
+        let aw = Float64.abs(sizeX);
+        let ah = Float64.abs(sizeY);
+        if (aw < 0.000001 or ah < 0.000001) Nil
+        else {
+            let c = RenderUtil.cosF(rot);
+            let s = RenderUtil.sinF(rot);
+            let tx = posX + sizeX / 2.0 - c * sizeX / 2.0 + s * sizeY / 2.0;
+            let ty = posY + sizeY / 2.0 - s * sizeX / 2.0 - c * sizeY / 2.0;
+            mask |> List.map(poly -> poly |> List.map(v -> {
+                let vx = v#x / aw * sizeX;
+                let vy = v#y / ah * sizeY;
+                ({ x = c * vx - s * vy + tx, y = s * vx + c * vy + ty }: Vec2.Vec2)
+            }))
         }
 
     /// 多角形 1 個を run へ積む（clip 窓を Int32 鍵へほどく）。
@@ -499,6 +681,7 @@ mod RenderFrame {
     def emitMerged(st: Array[Int32, Static], instData: FloatBuffer, polyData: FloatBuffer,
                    scaleX: Float64, scaleY: Float64,
                    registry: RenderAsset.TextureRegistry,
+                   targetNames: Set[String],
                    tileUniforms: RenderShader.TileUniforms,
                    polyBatchUniforms: RenderShader.PolyBatchUniforms,
                    drawSurface: ShaderEffect.ShaderRenderCmd -> Unit \ IO,
@@ -530,7 +713,15 @@ mod RenderFrame {
                     case Merged.MSprite(drawable) =>
                         // スプライトが来たら溜まっている多角形 run を先に吐く（列順を守る）。
                         flushPolys(st, polyData, polyBatchUniforms);
-                        emitSprite(st, instData, scaleX, scaleY, registry, drawable)
+                        if (List.isEmpty(drawable#mask))
+                            emitSprite(st, instData, scaleX, scaleY, registry, targetNames, drawable)
+                        else {
+                            // mask 付きはステンシルの焼き込みが draw の前後に要るため、
+                            // 一括 run に混ぜられない — 自分の run も吐いてから単発で描く。
+                            flushSprites(st, instData);
+                            emitSpriteMasked(st, instData, scaleX, scaleY, registry, targetNames,
+                                             polyBatchUniforms, drawable)
+                        }
                     case Merged.MPoly(pc) =>
                         // 多角形が来たら溜まっているスプライト run を先に吐く（列順を守る）。
                         flushSprites(st, instData);
@@ -549,8 +740,8 @@ mod RenderFrame {
                         setScissorAt(st, 0, 0, 0, 0, 0);
                         drawSurface(s)
                 };
-                emitMerged(st, instData, polyData, scaleX, scaleY, registry, tileUniforms,
-                           polyBatchUniforms, drawSurface, rest)
+                emitMerged(st, instData, polyData, scaleX, scaleY, registry, targetNames,
+                           tileUniforms, polyBatchUniforms, drawSurface, rest)
         }
 
     /// 多角形を三角形へほどいたときの頂点数の上限（1 個 n 頂点なら 3(n-2) 以下）。
@@ -589,15 +780,32 @@ mod RenderFrame {
         let drawSurface  = args#drawSurface;
         if (fbW > 0 and fbH > 0) {
             let (vpX, vpY, vpW, vpH) = calcViewport(fbW, fbH, designW, designH);
-            GL11.glViewport(0, 0, fbW, fbH);
-            GL11.glClearColor(0.0f32, 0.0f32, 0.0f32, 1.0f32);
-            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-            GL11.glViewport(vpX, vpY, vpW, vpH);
-            GL11.glEnable(GL11.GL_SCISSOR_TEST);
-            GL11.glScissor(vpX, vpY, vpW, vpH);
-            GL11.glClearColor(clearColor#r, clearColor#g, clearColor#b, 1.0f32);
-            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+            match args#targetClear {
+                case None =>
+                    // 画面: 黒帯を含む全面を黒 → design 領域だけ clearColor の 2 段 clear。
+                    GL11.glViewport(0, 0, fbW, fbH);
+                    GL11.glClearColor(0.0f32, 0.0f32, 0.0f32, 1.0f32);
+                    GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+                    GL11.glViewport(vpX, vpY, vpW, vpH);
+                    GL11.glEnable(GL11.GL_SCISSOR_TEST);
+                    GL11.glScissor(vpX, vpY, vpW, vpH);
+                    GL11.glClearColor(clearColor#r, clearColor#g, clearColor#b, 1.0f32);
+                    GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+                    GL11.glDisable(GL11.GL_SCISSOR_TEST)
+                case Some(op) =>
+                    // レンダーターゲット: 全面が design なので黒帯は無い。前の中身の始末は
+                    // op の 3 択（RenderTarget.LoadOp の doc を参照）。
+                    GL11.glViewport(vpX, vpY, vpW, vpH);
+                    match op {
+                        case RenderTarget.LoadOp.Clear(c) =>
+                            GL11.glClearColor(c#r, c#g, c#b, 1.0f32);
+                            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT)
+                        case RenderTarget.LoadOp.ClearTransparent =>
+                            GL11.glClearColor(0.0f32, 0.0f32, 0.0f32, 0.0f32);
+                            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT)
+                        case RenderTarget.LoadOp.Keep => ()
+                    }
+            };
             // タイル層・sprites・polygons・静的レンジ・シェーダー面を 1 本の安定ソート列に
             // マージして描く。sprite だけ z 順にし polygon を最後へまとめて描くと、ワールド
             // 配置のポリゴン（武器グリフ等）が手前のポップアップを貫通してしまう。全種を
@@ -642,8 +850,8 @@ mod RenderFrame {
             Array.put(vpW, 9, st);
             Array.put(vpH, 10, st);
             Array.put(tileShader, 26, st);
-            emitMerged(st, instData, polyData, scaleX, scaleY, registry, tileUniforms,
-                       polyBatchUniforms, drawSurface, sortedMerged);
+            emitMerged(st, instData, polyData, scaleX, scaleY, registry, args#targetNames,
+                       tileUniforms, polyBatchUniforms, drawSurface, sortedMerged);
             // どちらか片方だけが非空（切替時に相手を吐いているため）。空 flush は no-op。
             flushSprites(st, instData);
             flushPolys(st, polyData, polyBatchUniforms);

@@ -1,14 +1,20 @@
 // エントリーポイント。Bench の世界を App に繋ぎ、4 区間を走り切ったら自動終了する。
+// HUD=1 で HUD あり構成（withHudView = HUD 帯持ち上げ + 帯別ソート経路）の計測になる。
 
 def main(): Unit \ IO =
     if (GameEngine.ensureMainThread()) ()
     else {
+        let withHud = Bench.hudEnabled();
         run {
-            App.make(Bench.initialWorld())
+            let app = App.make(Bench.initialWorld())
                 |> App.addSystem(Bench.step)
                 |> App.withView((ctx, w) -> checked_ecast(Bench.view(ctx, w)))
-                |> App.quitWhen((_frame, w) -> checked_ecast(w#done))
-                |> App.launch
+                |> App.quitWhen((_frame, w) -> checked_ecast(w#done));
+            if (withHud)
+                app |> App.withHudView((ctx, w) -> checked_ecast(Bench.hud(ctx, w)))
+                    |> App.launch
+            else
+                app |> App.launch
         } with LwjglLayer.withProject(".")
           with Fs.FileRead.runWithIO
           with Fs.FileWrite.runWithIO

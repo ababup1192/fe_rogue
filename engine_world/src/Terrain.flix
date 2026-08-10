@@ -179,7 +179,7 @@ mod Terrain {
                       item = Render.box({ x = x1 - x0, y = y1 - y0 },
                                         { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
                                         entry#z#surface)
-                          |> Render.fade(Float64.truncateToFloat32(alpha)) })
+                          |> Render.fade(alpha) })
             })
         }
 

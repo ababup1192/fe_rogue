@@ -282,7 +282,7 @@ mod PreviewItems {
         match item {
             case Item.BoxI(box)       =>
                 let body = Render.box({ x = box#w, y = box#h }, box#color, box#z)
-                    |> Render.fade(box#alpha);
+                    |> Render.fade(Float32.toFloat64(box#alpha));
                 let framed = match box#outline {
                     case None        => body
                     case Some(color) => body |> Render.outline(color, 1.0)
@@ -290,10 +290,10 @@ mod PreviewItems {
                 ({ at = { x = box#x, y = box#y }, item = framed }) :: Nil
             case Item.CircleI(circle) =>
                 let filled = Render.circleAt({ x = circle#x, y = circle#y }, circle#r, circle#color, circle#z);
-                ({ item = Render.fade(circle#alpha, filled#item) | filled }) :: Nil
+                ({ item = Render.fade(Float32.toFloat64(circle#alpha), filled#item) | filled }) :: Nil
             case Item.LineI(line)     =>
                 let seg = Render.lineSeg(line#a, line#b, line#width, line#color, line#z);
-                ({ item = Render.fade(line#alpha, seg#item) | seg }) :: Nil
+                ({ item = Render.fade(Float32.toFloat64(line#alpha), seg#item) | seg }) :: Nil
             case Item.TextI(text)     =>
                 ({ at = { x = text#x, y = text#y },
                    item = Render.textTinted(text#text, atlas, text#size, text#color, text#z) }) :: Nil
@@ -310,7 +310,7 @@ mod PreviewItems {
                            scale = { x = sprite#w / info#width, y = sprite#h / info#height },
                            rotation = 0.0, centered = true, flipH = false, flipV = false,
                            regionRect = None, zIndex = sprite#z,
-                           blend = DrawCmd.BlendMode.Normal }) }) :: Nil
+                           blend = DrawCmd.BlendMode.Normal, maskPolys = Nil }) }) :: Nil
             }
         }
 

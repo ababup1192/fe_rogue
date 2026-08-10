@@ -91,6 +91,8 @@ mod Bakery {
 
     /// 宣言シェーダー面つきの renderPng。surfaces（Render.shaderSurfaces の出力と同形の
     /// 構造レコード）は ShaderEval の画素評価で焼かれ、z 順で他の描き物と合流する。
+    /// 面の tex 場（Field.Tex）が読めるのはゲームのテクスチャだけ — pass の名前も読むなら
+    /// renderPngWithPasses / renderPngWithImages を使う。
     /// 渡す側は draw の代表色ベタ塗りと二重にならないよう、items を Render.withoutShaders で
     /// 外してから draw すること。
     pub def renderPngWith(cfg: BakeConfig, drawables: List[GameEngine.Drawable],
@@ -98,6 +100,67 @@ mod Bakery {
                           surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO =
         warnDropped(drawables, name);
         SoftRaster.renderWithSurfaces(reqOf(cfg, drawables, polygons, pngPath(cfg, name)), surfaces)
+
+    // ════════════════════════════════════════════════════════
+    // pass（レンダーターゲット）— 本編より先に別画像へ描き、名前で本編から貼る
+    // ════════════════════════════════════════════════════════
+
+    /// pass 1 枚ぶんの宣言（Render.Pass のコマンド列版）。name はそのままテクスチャ名になり、
+    /// 本編の drawables から普通のスプライトとして参照できる。本編のシェーダー面の tex 場
+    ///（Field.Tex）も同じ name で焼き上がりを読める。
+    /// drawables へ下ろすときは items を Render.withoutShaders で外してから Render.draw する
+    /// こと — GL はターゲットの中の Shader 面を描かないので、代表色ベタ塗りが混ざると実機とズレる。
+    pub type alias PassSpec = {
+        name = String,
+        clear = RenderTarget.LoadOp,
+        drawables = List[GameEngine.Drawable],
+        polygons = List[GameEngine.PolygonRenderCmd]
+    }
+
+    /// pass 1 枚を design 解像度（scale = 1）の画像に焼く。GL のターゲットが design ×1 の
+    /// テクスチャなので、ここで cfg#scale を掛けると本編に貼るときの拡大と二重になる。
+    /// clear が Clear ならその色（不透明）で塗ってから — prev は見ない（GL の glClear と
+    /// 同じで、塗った時点で前の中身は消えるため）。ClearTransparent も prev を見ずに透明から。
+    /// Keep なら prev のコピーの上に描き足し（残像・軌跡を GIF やプレロールで再現する口）、
+    /// prev が無ければ透明から。
+    pub def bakePassImage(cfg: BakeConfig, p: PassSpec,
+                          prev: Option[BufferedImage]): BufferedImage \ IO =
+        bakePassImageWith(cfg, Map.empty(), p, prev)
+
+    /// bakePassImage の「先に焼けたターゲットも参照できる」版。`images` は既に焼いた pass の
+    /// 名前 → 画像（GL が宣言順に描くのと同じで、後の pass は前の pass を貼れる）。
+    pub def bakePassImageWith(cfg: BakeConfig, images: Map[String, BufferedImage],
+                              p: PassSpec, prev: Option[BufferedImage]): BufferedImage \ IO =
+        let req = { scale = 1 | reqOf(cfg, p#drawables, p#polygons, "") };
+        match p#clear {
+            case RenderTarget.LoadOp.Clear(c)         => SoftRaster.renderToImageFull({ background = c | req }, Nil, Map.empty(), images)
+            case RenderTarget.LoadOp.Keep             => SoftRaster.renderPassImage(req, prev, images)
+            case RenderTarget.LoadOp.ClearTransparent => SoftRaster.renderPassImage(req, None, images)
+        }
+
+    /// 追加の焼き済み画像（pass のレンダーターゲットなど）を textures に混ぜて本編を PNG に焼く。
+    pub def renderPngWithImages(cfg: BakeConfig, images: Map[String, BufferedImage],
+                                drawables: List[GameEngine.Drawable],
+                                polygons: List[GameEngine.PolygonRenderCmd],
+                                surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO =
+        warnDropped(drawables, name);
+        SoftRaster.renderFull(reqOf(cfg, drawables, polygons, pngPath(cfg, name)),
+            surfaces, Map.empty(), images)
+
+    /// passes を宣言順に焼いてから本編を PNG に焼く（GL の renderFrame と同じ順序 —
+    /// 後の pass の drawables は先に焼けた pass の名前を貼れる）。
+    /// 本編の drawables 同様、pass の items も Render.withoutShaders → Render.draw で
+    /// 下ろすこと（PassSpec の doc の約束）。
+    pub def renderPngWithPasses(cfg: BakeConfig, passes: List[PassSpec],
+                                drawables: List[GameEngine.Drawable],
+                                polygons: List[GameEngine.PolygonRenderCmd],
+                                surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO =
+        // pass の中の焼けない指定も本編と同じに知らせる（本編ぶんは renderPngWithImages が出す）。
+        passes |> List.forEach(p -> warnDropped(p#drawables, "${name}:pass ${p#name}"));
+        let images = passes |> List.foldLeft((acc, p) -> {
+            Map.insert(p#name, bakePassImageWith(cfg, acc, p, None), acc)
+        }, (Map.empty(): Map[String, BufferedImage]));
+        renderPngWithImages(cfg, images, drawables, polygons, surfaces, name)
 
     /// frames を stride 枚ごとに間引き、各コマを toCmds で描いて GIF ＋ コマ別 PNG に焼く。
     /// 返り値は SnapshotSite 用のフィルムストリップ情報（駒送りビューア）。
@@ -147,10 +210,13 @@ mod Bakery {
             let (drawables, _, _) = toCmds(w);
             warnDropped(drawables, name)
         });
+        // 欠け名の知らせもコマ列で 1 本の控えを共有する（同じ警告がコマ数ぶん並ばない）。
+        let warnLog = SoftRaster.freshTexWarnLog();
         let images = List.zipWithIndex(sampled) |> List.map(pair -> {
             let (i, w) = pair;
             let (drawables, polygons, surfaces) = toCmds(w);
-            let img = SoftRaster.renderToImageWith(reqOf(cfg, drawables, polygons, gifPath(cfg, name)), surfaces);
+            let img = SoftRaster.renderToImageLogged(reqOf(cfg, drawables, polygons, gifPath(cfg, name)),
+                                                     surfaces, Map.empty(), Map.empty(), warnLog);
             Filmstrip.bakeFrame(img, "${cfg#outDir}/frames/${name}/${i}.png");
             img
         });

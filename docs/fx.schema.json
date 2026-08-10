@@ -65,7 +65,12 @@
                           "rate": { "type": "number", "description": "寿命あたりのチラつき回数" },
                           "amount": { "type": "number", "description": "1 から最大どれだけ暗くなるか。省略時 1.0" } },
           "required": ["kind", "rate"],
-          "description": "決定論の疑似乱数で 1 から amount ぶんチラつく。speed.over には使えない" }
+          "description": "決定論の疑似乱数で 1 から amount ぶんチラつく。speed.over には使えない" },
+        { "properties": { "kind": { "const": "pulse" },
+                          "rate": { "type": "number", "description": "寿命あたりの明滅回数" },
+                          "min": { "type": "number", "minimum": 0, "maximum": 1, "description": "沈む下限 0..1。省略時 0（谷で消える）" } },
+          "required": ["kind", "rate"],
+          "description": "1 と min の間を正弦でなめらかに明滅する（u=0 は 1 から始まる）。flicker のガタつきと違い、蛍・信号灯の「ふわっ」とした点滅に。speed.over には使えない" }
       ]
     },
     "emitter": {
@@ -74,7 +79,7 @@
         "name": { "type": "string", "description": "粒ごとの乱数の系統を分ける識別子（名前が違えば別の散り方）" },
         "count": { "type": "integer", "minimum": 1, "description": "粒の数" },
         "mode": { "type": "string", "enum": ["burst", "loop"], "description": "生まれ方。burst = 全粒が t=0 で同時に生まれる（爆発・木くず）。loop = 各粒が寿命を終えるたびに生まれ直す（周期 = 寿命・位相は粒ごとにずれる — 煙・雪・舞う葉）。省略時 burst" },
-        "shape": { "type": "string", "enum": ["circle", "box", "glow"], "description": "粒の形。glow は縁がふわっと消える円 — にじみに明るさが配られるぶん同じ size では circle より細く見える(1.5 倍が目安)。省略時 circle" },
+        "shape": { "type": "string", "enum": ["circle", "box", "glow", "streak"], "description": "粒の形。glow は縁がふわっと消える円 — にじみに明るさが配られるぶん同じ size では circle より細く見える(1.5 倍が目安)。streak はその時刻の速度の向きに伸びた筋（太さ = size・長さ = size + 速さ × stretch）— 雨・火花・流星に。省略時 circle" },
         "size": { "type": "number", "exclusiveMinimum": 0, "description": "粒の大きさ px（circle は直径・box は一辺）" },
         "color": {
           "type": "array", "minItems": 1,
@@ -117,8 +122,32 @@
             "spin": { "type": "number", "description": "回る速さ 回転数/秒（正 = 時計回り）" },
             "spinSpread": { "type": "number", "minimum": 0, "description": "spin を中心に ± spinSpread/2 ばらす。spin より大きくすると逆回りの粒も混ざる" }
           },
-          "description": "粒の傾きと回る速さ。回るのは box だけ（circle / glow は回しても同じ絵なので傾けない）。省略時はすべて 0 = 回らない"
+          "description": "粒の傾きと回る速さ。回るのは box だけ（circle / glow は回しても同じ絵なので傾けない。streak の向きは速度が決めるので turn は効かない）。省略時はすべて 0 = 回らない"
         },
+        "wobble": {
+          "type": "object",
+          "properties": {
+            "amp": {
+              "type": "object",
+              "properties": {
+                "x": { "type": "number", "minimum": 0, "description": "横の揺れ幅 px" },
+                "y": { "type": "number", "minimum": 0, "description": "縦の揺れ幅 px" }
+              },
+              "description": "揺れ幅（0 で揺れない）。省略時 {0, 0}"
+            },
+            "freq": {
+              "type": "object",
+              "properties": {
+                "x": { "type": "number", "minimum": 0, "description": "横の揺れの速さ Hz" },
+                "y": { "type": "number", "minimum": 0, "description": "縦の揺れの速さ Hz" }
+              },
+              "description": "揺れの速さ Hz（1 秒あたりの往復回数）。省略時 {0, 0}"
+            },
+            "vary": { "$ref": "#/$defs/vary", "description": "粒ごとの位相ばらつき 0..1（0 = 全粒そろって揺れる・1 = 1 周ぶん散る）。省略時 0" }
+          },
+          "description": "位置の正弦揺らぎ（閉形式で位置に足す）。x と y は別の位相を引くので、両軸に振ると蛍・湯気の「その場でゆらゆら」の有界運動になる。省略時は揺れない"
+        },
+        "stretch": { "type": "number", "minimum": 0, "description": "streak の尾の長さ 秒（長さ = size + 速さ × これ。shape が streak のときだけ効く）。省略時 0.05 — 速さ 200px/s で尾 10px" },
         "spawn": {
           "type": "object",
           "properties": {

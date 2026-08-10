@@ -211,29 +211,27 @@ mod LwjglLayer {
                                   new File("${stem}-${count + 1}.png"))
         }
 
-    /// 現在のフレームバッファを読み出して画像にする。GL は左下原点なので
-    /// 上下を反転しながら RGBA → RGB へ詰め替える。
-    def framebufferImage(fbW: Int32, fbH: Int32): BufferedImage \ IO =
-        region rc {
-            let buf = MemoryUtil.memAlloc(fbW * fbH * 4);
-            GL11.glReadPixels(0, 0, fbW, fbH, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buf);
-            let image = new BufferedImage(fbW, fbH, 1i32);
-            let pixels: Array[Int32, rc] = Array.empty(rc, fbW * fbH);
-            let xs = List.range(0, fbW);
-            List.forEach(y -> {
-                let srcRowStart = (fbH - 1 - y) * fbW;
-                List.forEach(x -> {
-                    let src = (srcRowStart + x) * 4;
-                    let r = Int32.bitwiseAnd(Int8.toInt32(buf.get(src)), 255);
-                    let g = Int32.bitwiseAnd(Int8.toInt32(buf.get(src + 1)), 255);
-                    let b = Int32.bitwiseAnd(Int8.toInt32(buf.get(src + 2)), 255);
-                    Array.put(r * 65536 + g * 256 + b, y * fbW + x, pixels)
-                }, xs)
-            }, List.range(0, fbH));
-            MemoryUtil.memFree(buf);
-            image.setRGB(0, 0, fbW, fbH, pixels, 0, fbW);
-            image
+    /// 画面 1 フレームの絵を確かめるための書き出し口。環境変数 FLIX_GE_FRAME_SHOT に
+    /// 保存先ディレクトリを入れて起動すると、swap の直前の絵を `frame-1.png` … と落とす
+    /// （GL 突き合わせ harness の画面口。swap の後の back buffer は GL 仕様上 undefined
+    /// なので、外から読む形にはできない）。
+    /// 枚数上限は env の消し忘れ保険 — 実機 run に残ると毎フレームの全画面読み出しと
+    /// PNG 圧縮が挟まり、ゲームが止まったように見えるほど遅くなる。
+    def frameShotLimit(): Int32 = 16
+
+    def frameShot(fbW: Int32, fbH: Int32, taken: Array[Int32, Static]): Unit \ IO =
+        let dir = System.getenv("FLIX_GE_FRAME_SHOT");
+        let count = Array.get(0, taken);
+        if (Object.isNull(dir) or count >= frameShotLimit()) ()
+        else {
+            Array.put(count + 1, 0, taken);
+            GlReadback.readBoundPng(fbW, fbH, "${dir}/frame-${count + 1}.png")
         }
+
+    /// 現在のフレームバッファを読み出して画像にする（読み出しの核は GlReadback）。
+    /// RGB に落とすのは、splashShot・注釈スクショの出力 PNG のバイト列を変えないため。
+    def framebufferImage(fbW: Int32, fbH: Int32): BufferedImage \ IO =
+        GlReadback.readBoundImageRgb(fbW, fbH)
 
     /// デザイン座標の矩形を、書き出し画像（左上原点）上の px 矩形へ変換する。
     /// 黒帯（レターボックス / ピラーボックス）ぶんのオフセットも織り込む。
@@ -320,13 +318,13 @@ mod LwjglLayer {
     /// 直接 with-chain に並べて使う。loadProject 失敗時は bug! で停止する
     /// (project.json が壊れているのは開発者が直すべき状態)。
     pub def withProject(rootDir: String, f: Unit -> a \ ef):
-            a \ ef - GameEngine.Game - GameEngine.Audio - ShaderEffect.Shader + IO + Fs.FileRead =
+            a \ ef - GameEngine.Game - GameEngine.Audio - ShaderEffect.Shader - RenderTarget.Target + IO + Fs.FileRead =
         match ProjectLoader.loadProject(rootDir) {
             case Ok(proj)  => withLwjgl(proj#config, f)
             case Err(msg) => bug!("Failed to load project.json: ${msg}")
         }
 
-    pub def withLwjgl(config: GameEngine.EngineConfig, f: Unit -> a \ ef): a \ ef - GameEngine.Game - GameEngine.Audio - ShaderEffect.Shader + IO =
+    pub def withLwjgl(config: GameEngine.EngineConfig, f: Unit -> a \ ef): a \ ef - GameEngine.Game - GameEngine.Audio - ShaderEffect.Shader - RenderTarget.Target + IO =
         // GLFW と AWT は macOS で同じメインスレッド・GL を取り合って固まるため、
         // この窓（GLFW）のプロセスでは AWT を headless に固定する。注釈のスクリーンショット
         // 保存（BufferedImage / Graphics2D / ImageIO）はオフスクリーン描画なので headless でも動く。
@@ -345,9 +343,26 @@ mod LwjglLayer {
         // 8bit のステンシルを確保する。使うのはマスク描画のときだけ（通常描画は無影響）。
         GLFW.glfwWindowHint(GLFW.GLFW_STENCIL_BITS, 8);
 
-        let window = GLFW.glfwCreateWindow(config#windowWidth, config#windowHeight, config#title, MemoryUtil.NULL, MemoryUtil.NULL);
+        // 隠し窓モード（GL 突き合わせ harness 用）。Retina の 2 倍化を切るのは、
+        // フレームバッファ = design 寸に固定しないと letterbox 補間が乗り、
+        // 画素の突き合わせが成立しないため。
+        let hidden = not Object.isNull(System.getenv("FLIX_GE_HIDDEN"));
+        if (hidden) {
+            GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GL11.GL_FALSE);
+            GLFW.glfwWindowHint(GLFW.GLFW_COCOA_RETINA_FRAMEBUFFER, GL11.GL_FALSE)
+        } else ();
+
+        // 隠し窓は design 寸（ポイント）で作る。この開発機の実測では、隠し窓の drawable は
+        // Retina 倍にならず窓のポイント寸のままなので、これで drawable = design になる。
+        // Retina 倍になる環境でも drawable は design より大きいだけで、描画も読み出しも
+        // 左下 design 領域の 1:1 で完結する（下の隅印の門番が実測で確かめる）。
+        let (createW, createH) = if (hidden) (config#designWidth, config#designHeight)
+                                 else (config#windowWidth, config#windowHeight);
+        let window = GLFW.glfwCreateWindow(createW, createH, config#title, MemoryUtil.NULL, MemoryUtil.NULL);
         GLFW.glfwMakeContextCurrent(window);
-        GLFW.glfwSwapInterval(1);
+        // 隠し窓では垂直同期を待たない — 見えない窓・画面ロック中は swap 1 回が
+        // 1 秒級に落ちることがあり、harness の実行時間と安定性を壊す。
+        GLFW.glfwSwapInterval(if (hidden) 0 else 1);
         // Sticky mouse buttons: 1 フレーム未満の press→release（macOS の
         // トラックパッド「タップでクリック」など）が polling で取りこぼされる
         // のを防ぐ。次回 `glfwGetMouseButton` 呼び出し時に PRESS を 1 度返してから
@@ -359,10 +374,41 @@ mod LwjglLayer {
         let fbWidthBuf = fbStack.mallocInt(1);
         let fbHeightBuf = fbStack.mallocInt(1);
         GLFW.glfwGetFramebufferSize(window, fbWidthBuf, fbHeightBuf);
-        let fbWidth = fbWidthBuf.get(0);
-        let fbHeight = fbHeightBuf.get(0);
+        let fbMeasuredW = fbWidthBuf.get(0);
+        let fbMeasuredH = fbHeightBuf.get(0);
         discard MemoryStack.stackPop();
-        println("Framebuffer size: ${fbWidth}x${fbHeight}");
+        println("Framebuffer size: ${fbMeasuredW}x${fbMeasuredH}");
+
+        // 隠し窓では glfwGetFramebufferSize を信用せず fb 寸 = design 寸に固定する。
+        // この開発機の実測では、隠し窓の実 drawable は窓のポイント寸のままなのに、
+        // 問い合わせは Retina 倍を返して嘘をつく — 嘘の寸で描くと絵が 1/4 に潰れる。
+        let (fbWidth, fbHeight) = if (hidden) (config#designWidth, config#designHeight)
+                                  else (fbMeasuredW, fbMeasuredH);
+
+        // fb == design の門番(隠し窓モードのみ)。design の右上隅 1px に scissor で印を塗り、
+        // 読み戻して実測で確かめる — 実 drawable が design 寸に届かない環境だと、絵の欠けが
+        // 「全画素不一致」に化けて原因が突き合わせ経路の差に見えてしまうため、ここで落とす。
+        if (hidden) {
+            GL11.glViewport(0, 0, fbWidth, fbHeight);
+            GL11.glClearColor(0.0f32, 0.0f32, 0.0f32, 1.0f32);
+            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+            GL11.glEnable(GL11.GL_SCISSOR_TEST);
+            GL11.glScissor(fbWidth - 1, fbHeight - 1, 1, 1);
+            GL11.glClearColor(1.0f32, 0.0f32, 0.0f32, 1.0f32);
+            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+            let probe = MemoryUtil.memAlloc(4);
+            GL11.glReadPixels(fbWidth - 1, fbHeight - 1, 1, 1,
+                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, probe);
+            let probeR = Int32.bitwiseAnd(Int8.toInt32(probe.get(0)), 255);
+            let probeG = Int32.bitwiseAnd(Int8.toInt32(probe.get(1)), 255);
+            MemoryUtil.memFree(probe);
+            if (probeR != 255 or probeG != 0) {
+                println("[gl-parity] FAIL: drawable が design 寸 ${fbWidth}x${fbHeight} に"
+                    + "届かない（右上隅の印 (255,0,0) が (${probeR},${probeG},…) で返った）— 突き合わせ不成立");
+                System.exit(1)
+            } else ()
+        } else ();
 
         // フレームバッファサイズ。毎フレーム MemoryStack で問い合わせると呼び出しコストが積み上がるため、
         // 起動時に実測した値を持ち回り、変化はリサイズ callback だけが更新する。
@@ -434,8 +480,20 @@ mod LwjglLayer {
         let shaderProgramCache: Ref[Map[String, (Int32, Int32, Int32, Int32)], Static] = Ref.fresh(Static, Map.empty());
         // このフレームに溜まったシェーダー面の描画依頼（drawSurface が積み、renderFrame が描いて空にする）。
         let pendingShaderHolder = Array#{(Nil: List[ShaderEffect.ShaderRenderCmd])} @ Static;
-        // program ハンドル → (uRectPos, uRectSize, uTime) の逆引き（drawSurface が uniform 設定に使う）。
-        let shaderUniformCache: Ref[Map[Int32, (Int32, Int32, Int32)], Static] = Ref.fresh(Static, Map.empty());
+        // program ハンドル → (uRectPos, uRectSize, uTime, texLocs) の逆引き（drawSurface が
+        // uniform 設定に使う）。texLocs = tex 場の (uTexN, uTexFlipN) の location 列（正典順）。
+        let shaderUniformCache: Ref[Map[Int32, (Int32, Int32, Int32, List[(Int32, Int32)])], Static] = Ref.fresh(Static, Map.empty());
+        // tex 場の標本規約（NEAREST + CLAMP）を bind 中の unit へ強制する sampler（起動時に 1 個）。
+        let surfaceSampler = RenderSprite.createSurfaceSampler();
+        // 見つからないと知らせた tex 場のテクスチャ名（missingFontRef と同じ「一度だけ鳴らす」控え）。
+        let missingSurfaceTexRef: Ref[Set[String], Static] = Ref.fresh(Static, Set.empty());
+
+        // レンダーターゲット（eff RenderTarget.Target の FBO）の台帳: 名前 → GL 実体。
+        // ターゲットは初回の beginTarget で作られ、寸法が変わらない限り使い回す。
+        let targetsRef: Ref[Map[String, RenderTargetGl.Entry], Static] = Ref.fresh(Static, Map.empty());
+        // いま開いているターゲット (幅, 高さ, clear 指定)。renderCommands がこれを見て
+        // 「画面へのフレーム」と「ターゲットへのフレーム」を切り替える。
+        let activeTargetHolder = Array#{(None: Option[(Int32, Int32, RenderTarget.LoadOp)])} @ Static;
 
         // テクスチャ表は実行時に増える（ensureTexture が焼いたアトラスを足す）ので可変で持つ。
         // 起動画面が読み込みの最中に絵を出すため、ゲームのテクスチャより先に作って
@@ -459,29 +517,78 @@ mod LwjglLayer {
                                          (None: Option[GameEngine.StaticLayerCmd]),
                                          (Nil: List[ShaderEffect.ShaderRenderCmd]))} @ Static;
 
-        // renderFrameMixed への FrameArgs 組み立ては呼び出し箇所ごとに同じ固定値
-        // （シェーダ・VAO・registry・uniforms 等）が並ぶので、可変な部分だけを引数にした
-        // 1 箇所へ集約する。静的レイヤーはここで resolve（キャッシュ照合・必要なら焼き直し）し、
-        // レンジ列を FrameArgs に載せる。None なら Nil（従来と完全に同じ経路）。
         // シェーダー面 1 枚を GL へ描くクロージャ。program の uniform location を逆引きして差す。
         // z の合流（sprites/polygons/静的レンジとの重なり順）は renderFrameMixed が受け持つので、
         // ここは 1 枚の描画だけに徹する。
+        // cmd#texNames と texLocs の長さ不一致は List.zip が短い方に合わせて黙って吸収する —
+        // コンパイル失敗した複数 Spec が同じ fallback program を鍵に uniform cache を上書きし合い、
+        // fallback では texLocs が空（または全 -1）になるため、names 2 本 × locs 0 本は正常系
+        //（glUniform の location -1 も無視される）。
         let drawSurface = (cmd: ShaderEffect.ShaderRenderCmd) -> {
             let program = GpuHandle.shaderProgramInt(cmd#program);
-            let (uRectPos, uRectSize, uTime) =
+            let (uRectPos, uRectSize, uTime, texLocs) =
                 Map.get(program, Ref.get(shaderUniformCache))
-                |> Option.getWithDefault((-1, -1, -1));
+                |> Option.getWithDefault((-1, -1, -1, (Nil: List[(Int32, Int32)])));
+            // 名前 → GL テクスチャ id。無い名前は 0（黒）を bind して一度だけ知らせる —
+            // pass をこのフレームで宣言せず名前だけ読むと、ずっと 0 bind（黒）のままになる。
+            // registry / targets はこの 1 枚の描画中は変わらないので、名前ごとに読み直さない。
+            let registry = Ref.get(registryRef);
+            let targets = Ref.get(targetsRef);
+            let texBinds = List.zip(cmd#texNames, texLocs) |> List.zipWithIndex
+                |> List.map(itb -> {
+                    let (i, nameLocs) = itb;
+                    let (name, locs) = nameLocs;
+                    let (_samplerLoc, flipLoc) = locs;
+                    let texId = match Map.get(name, registry) {
+                        case Some(info) => GpuHandle.textureIdInt(info#id)
+                        case None =>
+                            let warned = Ref.get(missingSurfaceTexRef);
+                            if (Set.memberOf(name, warned)) ()
+                            else {
+                                System.err.println("shader tex '${name}' が見つからない — 黒(0)を貼る"
+                                    + "（pass ならこのフレームで宣言されているか確認）");
+                                Ref.put(Set.insert(name, warned), missingSurfaceTexRef)
+                            };
+                            0
+                    };
+                    // pass ターゲットは上下逆格納なので flip=1（貼る側で吸収する既存規約と同型）。
+                    let flip = if (Map.memberOf(name, targets)) 1.0 else 0.0;
+                    ({ texUnit = i, texId = texId, flipLoc = flipLoc, flip = flip }: RenderSprite.SurfaceTexBind)
+                });
             // mask が空なら矩形そのまま、非空なら多角形の内側だけにステンシルで抜く
             // （多角形描画は poly バッチ経路を借りる）。
             if (List.isEmpty(cmd#mask))
                 RenderSprite.drawShaderSurface(program, vao, uRectPos, uRectSize, uTime,
+                                               texBinds, surfaceSampler,
                                                cmd#rect, cmd#time, cmd#blend)
             else
                 RenderSprite.drawShaderSurfaceMasked(program, vao, uRectPos, uRectSize, uTime,
+                                               texBinds, surfaceSampler,
                                                cmd#rect, cmd#time, cmd#blend,
                                                polyBatchShader, polyBatchVao, polyBatchVbo,
                                                polyBatchUniforms, cmd#mask)
         };
+        // renderFrameMixed への FrameArgs は固定値（シェーダ・VAO・buf・uniforms 等）が
+        // 大半なので、共通ベースを 1 つ組み、呼び出し側は変わる所だけ上書きする。
+        // registry / targetNames は毎フレーム育つ Ref から読むため、ベースの値は仮
+        // （空）に置き、呼び出し時に必ず上書きする。
+        let frameArgsBase: RenderFrame.FrameArgs = {
+            spriteShader = spriteShader, tileShader = tileShader, vao = vao,
+            registry = Map.empty(), clearColor = config#clearColor,
+            designW = screenW, designH = screenH, fbW = 0, fbH = 0,
+            sprites = Nil, tileMaps = Nil, polygons = Nil,
+            staticRanges = Nil,
+            polyBatchShader = polyBatchShader, polyBatchVao = polyBatchVao,
+            polyBatchVbo = polyBatchVbo, polyBatchUniforms = polyBatchUniforms,
+            instShader = instShader, instVao = instVao, instVbo = instVbo,
+            instBuf = instBuf, polyBuf = polyBuf,
+            spriteUniforms = spriteUniforms, tileUniforms = tileUniforms,
+            instMultiplyBlend = instMultiplyBlend,
+            surfaces = Nil, drawSurface = drawSurface,
+            targetClear = None, targetNames = Set.empty()
+        };
+        // 画面への 1 フレーム。静的レイヤーはここで resolve（キャッシュ照合・必要なら
+        // 焼き直し）し、レンジ列を FrameArgs に載せる。None なら Nil（従来と同じ経路）。
         let renderFrame = (fbW: Int32, fbH: Int32,
                             sprites: List[GameEngine.Drawable],
                             tileMaps: List[GameEngine.TileMapRenderCmd],
@@ -493,18 +600,26 @@ mod LwjglLayer {
                 case Some(l) => RenderStatic.resolve(staticCacheCell, l)
             };
             RenderFrame.renderFrameMixed({
-                spriteShader = spriteShader, tileShader = tileShader, vao = vao,
-                registry = Ref.get(registryRef), clearColor = config#clearColor,
-                designW = screenW, designH = screenH, fbW = fbW, fbH = fbH,
+                registry = Ref.get(registryRef),
+                fbW = fbW, fbH = fbH,
                 sprites = sprites, tileMaps = tileMaps, polygons = polygons,
                 staticRanges = staticRanges,
-                polyBatchShader = polyBatchShader, polyBatchVao = polyBatchVao,
-                polyBatchVbo = polyBatchVbo, polyBatchUniforms = polyBatchUniforms,
-                instShader = instShader, instVao = instVao, instVbo = instVbo,
-                instBuf = instBuf, polyBuf = polyBuf,
-                spriteUniforms = spriteUniforms, tileUniforms = tileUniforms,
-                instMultiplyBlend = instMultiplyBlend,
-                surfaces = surfaces, drawSurface = drawSurface})
+                surfaces = surfaces,
+                targetNames = Map.keysOf(Ref.get(targetsRef)) | frameArgsBase })
+        };
+        // レンダーターゲットへの 1 フレーム。画面用の renderFrame と違い、黒帯 clear を
+        // せず（targetClear）、タイル層・静的レンジ・シェーダー面は乗らない（Pass の doc の
+        // 約束）。ターゲットは design と同寸なので投影行列はそのままでよい。
+        let renderTargetFrame = (tw: Int32, th: Int32, op: RenderTarget.LoadOp,
+                                  sprites: List[GameEngine.Drawable],
+                                  polygons: List[GameEngine.PolygonRenderCmd]) -> {
+            RenderFrame.renderFrameMixed({
+                registry = Ref.get(registryRef),
+                designW = Int32.toFloat64(tw), designH = Int32.toFloat64(th),
+                fbW = tw, fbH = th,
+                sprites = sprites, polygons = polygons,
+                targetClear = Some(op),
+                targetNames = Map.keysOf(Ref.get(targetsRef)) | frameArgsBase })
         };
 
         // macOS ではリサイズ中に glfwPollEvents がブロックされるため、
@@ -513,10 +628,15 @@ mod LwjglLayer {
         // 付いていないと、その間のサイズ変更が誰にも拾われず、読み込み後もずれたまま描き続ける。
         discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
             def invoke(_this: GLFWFramebufferSizeCallbackI, cbWindow: Int64, width: Int32, height: Int32): Unit \ IO = {
-                Array.put((width, height), 0, framebufferSizeHolder);
-                let (sprites, tileMaps, polygons, staticLayer, surfaces) = Array.get(0, renderStateHolder);
-                renderFrame(width, height, sprites, tileMaps, polygons, staticLayer, surfaces);
-                GLFW.glfwSwapBuffers(cbWindow)
+                // 隠し窓では無視する — fb 寸は design 寸に固定済みで、この callback が
+                // 万一発火すると（問い合わせ同様に嘘をつく）実測値で上書きされてしまう。
+                if (hidden) ()
+                else {
+                    Array.put((width, height), 0, framebufferSizeHolder);
+                    let (sprites, tileMaps, polygons, staticLayer, surfaces) = Array.get(0, renderStateHolder);
+                    renderFrame(width, height, sprites, tileMaps, polygons, staticLayer, surfaces);
+                    GLFW.glfwSwapBuffers(cbWindow)
+                }
             }
         });
 
@@ -527,6 +647,7 @@ mod LwjglLayer {
         let splashState = RenderSplash.newState();
         let splashShotTaken = Array#{0} @ Static;
         let splashShotAt = Array#{0i64} @ Static;
+        let frameShotTaken = Array#{0} @ Static;
         let splashDesign = { x = screenW, y = screenH };
         // 起動画面も renderStateHolder へ入れる。読み込み中に窓の大きさを変えると
         // リサイズ callback が holder の中身で描き直すので、空だと真っ黒に落ちる。
@@ -587,6 +708,18 @@ mod LwjglLayer {
         // 起動画面の分（組み込みフォント・ロゴ）を残したままゲームのテクスチャを足す。
         Ref.put(Map.union(registry, Ref.get(registryRef)), registryRef);
 
+        // 組み込みの放射テクスチャ（Render.lightAt / darkAt が引く）。ゲームの manifest には
+        // 載らない名前なので、ここで足さないと「アセット配線をしたゲームだけ光が出る」に
+        // なってしまう — どのゲームでも配線ゼロで使えるよう起動時に必ず上げる。
+        let radialSide = RadialBuiltin.size();
+        let radialLight = RenderTexture.loadTextureFromPixels(radialSide, radialSide,
+            RadialBuiltin.lightPixels());
+        let radialDark = RenderTexture.loadTextureFromPixels(radialSide, radialSide,
+            RadialBuiltin.darkPixels());
+        Ref.put(Ref.get(registryRef)
+            |> Map.insert(RadialBuiltin.lightName(), radialLight)
+            |> Map.insert(RadialBuiltin.darkName(), radialDark), registryRef);
+
         // ===== OpenAL audio init =====
         println("Initializing audio...");
         RenderSplash.show(splashState, drawSplash, splashDesign, "starting audio...", 0, 0);
@@ -616,7 +749,8 @@ mod LwjglLayer {
 
         // 読み込みは済んだので画面の垂直同期を戻す。ここから先（ゲームの下ごしらえ）も
         // 起動画面は出続けるが、枚数が知れているので待ちは体感に出ない。
-        GLFW.glfwSwapInterval(1);
+        // 隠し窓では戻さない（swap の 1 秒級の待ちを避ける理由が本編でも変わらないため）。
+        GLFW.glfwSwapInterval(if (hidden) 0 else 1);
 
         // Windows だけ、毎フレームの受け渡し後に GPU の完了を待つ。ドライバが 2〜3 フレーム
         // 先まで絵を貯め込むことがあり、60fps のままでも入力から表示までがその分遅れて
@@ -807,16 +941,26 @@ mod LwjglLayer {
             }
         } with handler GameEngine.Game {
             def renderCommands(sprites, tileMaps, polygons, staticLayer, k) = {
-                // drawSurface が積んだこのフレームのシェーダー面を取り出して holder を空にする。
-                // 順序は積んだ順（drawShaders の列順）に戻す。z の合流は renderFrameMixed が行う。
-                let surfaces = List.reverse(Array.get(0, pendingShaderHolder));
-                Array.put(Nil, 0, pendingShaderHolder);
-                Array.put((sprites, tileMaps, polygons, staticLayer, surfaces), 0, renderStateHolder);
-                let (fbW, fbH) = Array.get(0, framebufferSizeHolder);
-                renderFrame(fbW, fbH, sprites, tileMaps, polygons, staticLayer, surfaces);
-                GLFW.glfwSwapBuffers(window);
-                if (finishAfterSwap) GL11.glFinish() else ();
-                k(())
+                match Array.get(0, activeTargetHolder) {
+                    case Some((tw, th, op)) =>
+                        // ターゲットが開いている間の描画は画面でなくそこに着く。swap も
+                        // renderStateHolder（リサイズ再描画の控え）も触らない —
+                        // 画面のフレームは同じ絵のフレームの末尾に必ず別で来る。
+                        renderTargetFrame(tw, th, op, sprites, polygons);
+                        k(())
+                    case None =>
+                        // drawSurface が積んだこのフレームのシェーダー面を取り出して holder を空にする。
+                        // 順序は積んだ順（drawShaders の列順）に戻す。z の合流は renderFrameMixed が行う。
+                        let surfaces = List.reverse(Array.get(0, pendingShaderHolder));
+                        Array.put(Nil, 0, pendingShaderHolder);
+                        Array.put((sprites, tileMaps, polygons, staticLayer, surfaces), 0, renderStateHolder);
+                        let (fbW, fbH) = Array.get(0, framebufferSizeHolder);
+                        renderFrame(fbW, fbH, sprites, tileMaps, polygons, staticLayer, surfaces);
+                        frameShot(fbW, fbH, frameShotTaken);
+                        GLFW.glfwSwapBuffers(window);
+                        if (finishAfterSwap) GL11.glFinish() else ();
+                        k(())
+                }
             }
             def initTileBuffer(instances, k) = {
                 let instanceVBO = RenderSprite.buildTileInstanceVBO(instances);
@@ -1097,9 +1241,26 @@ mod LwjglLayer {
                         let up = GL20.glGetUniformLocation(prog, "uRectPos");
                         let us = GL20.glGetUniformLocation(prog, "uRectSize");
                         let ut = GL20.glGetUniformLocation(prog, "uTime");
+                        // tex 場の sampler / flip の location（正典順）。sampler 番号 = unit 番号を
+                        // リンク直後に 1 回だけ差す（毎フレーム差し直さない）。fallback に落ちた
+                        // program では全て -1 になり、glUniform が無視するのでそのまま通す。
+                        let texLocs = ShaderDoc.texNames(spec) |> List.zipWithIndex
+                            |> List.map(iname -> {
+                                let (i, _) = iname;
+                                (GL20.glGetUniformLocation(prog, "uTex${i}"),
+                                 GL20.glGetUniformLocation(prog, "uTexFlip${i}"))
+                            });
+                        if (List.isEmpty(texLocs)) ()
+                        else {
+                            GL20.glUseProgram(prog);
+                            List.forEachWithIndex((i, locs) -> {
+                                let (samplerLoc, _) = locs;
+                                GL20.glUniform1i(samplerLoc, i)
+                            }, texLocs)
+                        };
                         let entry = (prog, up, us, ut);
                         Ref.put(Map.insert(source, entry, cache0), shaderProgramCache);
-                        Ref.put(Map.insert(prog, (up, us, ut), Ref.get(shaderUniformCache)), shaderUniformCache);
+                        Ref.put(Map.insert(prog, (up, us, ut, texLocs), Ref.get(shaderUniformCache)), shaderUniformCache);
                         entry
                 };
                 let _ = (uPos, uSize, uTime);
@@ -1108,6 +1269,37 @@ mod LwjglLayer {
             def drawSurface(cmd, k) = {
                 // 実描画はこのフレームの clear 直後（renderFrameMixed 内）で行う。ここでは溜めるだけ。
                 Array.put(cmd :: Array.get(0, pendingShaderHolder), 0, pendingShaderHolder);
+                k(())
+            }
+        } with handler RenderTarget.Target {
+            def beginTarget(name, w, h, clearOp, k) = {
+                // 台帳から引く。無い・寸法が変わったら作り直す（古い方は必ず捨てる）。
+                let freshEntry = () -> {
+                    let fresh = RenderTargetGl.create(w, h);
+                    Ref.put(Map.insert(name, fresh, Ref.get(targetsRef)), targetsRef);
+                    fresh
+                };
+                let entry = match Map.get(name, Ref.get(targetsRef)) {
+                    case Some(e) =>
+                        if (e#width == w and e#height == h) e
+                        else { RenderTargetGl.destroy(e); freshEntry() }
+                    case None => freshEntry()
+                };
+                // ターゲットのテクスチャを registry へ登録する（同じ Entry なら同じ値の
+                // 上書きで無害）。以降 Render.sprite(name, z) が普通のスプライトとして引ける。
+                Ref.put(Map.insert(name,
+                            ({ id = GpuHandle.wrapTextureId(entry#tex),
+                               width = Int32.toFloat64(w), height = Int32.toFloat64(h) }: RenderAsset.TextureInfo),
+                            Ref.get(registryRef)), registryRef);
+                RenderTargetGl.bind(entry);
+                // clear は renderCommands（renderFrameMixed の targetClear）が行う — GL の
+                // clear 手順を 1 箇所に保つため、ここでは開いた印を残すだけ。
+                Array.put(Some((w, h, clearOp)), 0, activeTargetHolder);
+                k(())
+            }
+            def endTarget(k) = {
+                RenderTargetGl.unbind();
+                Array.put(None, 0, activeTargetHolder);
                 k(())
             }
         };

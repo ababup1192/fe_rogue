@@ -5,6 +5,7 @@
 mod RenderSprite {
     import java.nio.FloatBuffer
     import org.lwjgl.opengl.GL11
+    import org.lwjgl.opengl.GL12
     import org.lwjgl.opengl.GL13
     import org.lwjgl.opengl.GL15
     import org.lwjgl.opengl.GL20
@@ -413,11 +414,33 @@ mod RenderSprite {
     // 宣言シェーダー面（eff Shader）— 面 quad 1 枚を宣言シェーダーで塗る
     // ========================================================================
 
+    /// tex 場（Field.Tex）専用の sampler object を 1 個作る（起動時に 1 回）。
+    /// NEAREST + CLAMP_TO_EDGE を unit へ強制する — 通常テクスチャは REPEAT で上がっているため、
+    /// Shift で端を越えた標本が反対側へ回り込むと CPU（端に張り付き）と絵が割れる。
+    /// テクスチャ本体のパラメータは触らない（sprite 経路の見え方を変えない）。
+    pub def createSurfaceSampler(): Int32 \ IO =
+        let sampler = GL33.glGenSamplers();
+        GL33.glSamplerParameteri(sampler, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
+        GL33.glSamplerParameteri(sampler, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        GL33.glSamplerParameteri(sampler, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+        GL33.glSamplerParameteri(sampler, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+        sampler
+
+    /// tex 場の bind 指示 1 本。Int32 が 3 つ並ぶので位置タプルだと取り違えても型では
+    /// 捕まらない — 名前渡しのレコードにして混線を型より手前で防ぐ。
+    pub type alias SurfaceTexBind =
+        { texUnit = Int32, texId = Int32, flipLoc = Int32, flip = Float64 }
+
     /// 宣言シェーダー面 1 枚を描く。共有 quad VAO（loc0 = x,y,u,v）を使い、
     /// rect（スクリーン px）と time を uniform で差して 1 draw call で塗る。
     /// projection は起動時に setProjectionMatrix 済みの前提（program ごとに1回）。
+    /// texBinds が非空なら各 unit へテクスチャ + sampler を bind し、描画後は使った全 unit
+    ///（unit 0 含む）の sampler を解除して unit 0 へ戻す — unit 0 は sprite / tile / static /
+    /// font が glActiveTexture を触らず共用するため、残すとフォント焼き直しやアトラス
+    /// 差し替えが別 unit へ上がる事故になる。
     pub def drawShaderSurface(program: Int32, vao: Int32,
                               uRectPos: Int32, uRectSize: Int32, uTime: Int32,
+                              texBinds: List[SurfaceTexBind], texSampler: Int32,
                               rect: Rect2.Rect2, time: Float64, blend: DrawCmd.BlendMode): Unit \ IO =
         let f32 = RenderUtil.f32;
         GL20.glUseProgram(program);
@@ -425,9 +448,20 @@ mod RenderSprite {
         GL20.glUniform2f(uRectPos, f32(rect#position#x), f32(rect#position#y));
         GL20.glUniform2f(uRectSize, f32(rect#size#x), f32(rect#size#y));
         GL20.glUniform1f(uTime, f32(time));
+        List.forEach(tb -> {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0 + tb#texUnit);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, tb#texId);
+            GL33.glBindSampler(tb#texUnit, texSampler);
+            GL20.glUniform1f(tb#flipLoc, f32(tb#flip))
+        }, texBinds);
         GL30.glBindVertexArray(vao);
         GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 6);
-        GL30.glBindVertexArray(0)
+        GL30.glBindVertexArray(0);
+        if (List.isEmpty(texBinds)) ()
+        else {
+            List.forEach(tb -> GL33.glBindSampler(tb#texUnit, 0), texBinds);
+            GL13.glActiveTexture(GL13.GL_TEXTURE0)
+        }
 
     /// マスク多角形（スクリーン px）を三角形化し、drawPolygonBatch が食う頂点配列
     /// （頂点ごとに x,y,r,g,b,a の 6 float・色はステンシルにしか使わないので白）へ。
@@ -457,13 +491,15 @@ mod RenderSprite {
     /// mask が退化（頂点 3 未満）なら素直に矩形そのまま描く。
     pub def drawShaderSurfaceMasked(program: Int32, vao: Int32,
                                     uRectPos: Int32, uRectSize: Int32, uTime: Int32,
+                                    texBinds: List[SurfaceTexBind], texSampler: Int32,
                                     rect: Rect2.Rect2, time: Float64, blend: DrawCmd.BlendMode,
                                     polyShader: Int32, polyVao: Int32, polyVbo: Int32,
                                     polyUniforms: RenderShader.PolyBatchUniforms,
                                     maskPolys: List[List[Vec2.Vec2]]): Unit \ IO =
         let (maskData, maskCount) = buildMaskData(maskPolys);
         if (maskCount < 3)
-            drawShaderSurface(program, vao, uRectPos, uRectSize, uTime, rect, time, blend)
+            drawShaderSurface(program, vao, uRectPos, uRectSize, uTime, texBinds, texSampler,
+                              rect, time, blend)
         else {
             // 1) mask を stencil に焼く（色は書かず内側を 1 に）。この面ぶんだけ使うので毎回 clear。
             GL11.glEnable(GL11.GL_STENCIL_TEST);
@@ -480,7 +516,8 @@ mod RenderSprite {
             GL11.glStencilFunc(GL11.GL_EQUAL, 1i32, 255i32);
             GL11.glStencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
             GL11.glStencilMask(0i32);
-            drawShaderSurface(program, vao, uRectPos, uRectSize, uTime, rect, time, blend);
+            drawShaderSurface(program, vao, uRectPos, uRectSize, uTime, texBinds, texSampler,
+                              rect, time, blend);
             // 3) 後始末（次の描画にステンシル状態を持ち越さない）。
             GL11.glStencilMask(255i32);
             GL11.glDisable(GL11.GL_STENCIL_TEST)
@@ -588,5 +625,43 @@ mod RenderSprite {
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         GL31.glDrawArraysInstanced(GL11.GL_TRIANGLES, 0, 6, count);
         GL30.glBindVertexArray(0)
+
+    /// スプライト 1 体を maskPolys（スクリーン px の多角形）の内側だけに抜いて描く。
+    /// 手順は drawShaderSurfaceMasked と同じステンシル流用: mask を焼く（色は書かない）→
+    /// EQUAL テスト付きで instance 1 体だけ描く → 後始末。instData には slot 0 に
+    /// 1 体ぶんが書き込み済みの前提（RenderFrame が writeInstAt で書く）。
+    /// mask が退化（頂点 3 未満）ならステンシルを触らずそのまま 1 体描く。
+    pub def drawSpriteMasked(shader: Int32, vao: Int32, instanceVbo: Int32, texId: Int32,
+                             multiplyBlendLoc: Int32, blend: DrawCmd.BlendMode,
+                             instData: FloatBuffer,
+                             polyShader: Int32, polyVao: Int32, polyVbo: Int32,
+                             polyUniforms: RenderShader.PolyBatchUniforms,
+                             maskPolys: List[List[Vec2.Vec2]]): Unit \ IO =
+        let (maskData, maskCount) = buildMaskData(maskPolys);
+        if (maskCount < 3)
+            drawSpriteInstancedBuf(shader, vao, instanceVbo, texId, multiplyBlendLoc, blend,
+                                   instData, 1)
+        else {
+            // 1) mask を stencil に焼く（色は書かず内側を 1 に）。この 1 体ぶんだけ使うので毎回 clear。
+            GL11.glEnable(GL11.GL_STENCIL_TEST);
+            GL11.glStencilMask(255i32);
+            GL11.glClearStencil(0);
+            GL11.glClear(GL11.GL_STENCIL_BUFFER_BIT);
+            GL11.glStencilFunc(GL11.GL_ALWAYS, 1i32, 255i32);
+            GL11.glStencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_REPLACE);
+            GL11.glColorMask(false, false, false, false);
+            drawPolygonBatch(polyShader, polyVao, polyVbo, polyUniforms,
+                             DrawCmd.BlendMode.Normal, maskData, maskCount);
+            GL11.glColorMask(true, true, true, true);
+            // 2) stencil==1 の画素だけスプライトを描く（stencil は書かない）。
+            GL11.glStencilFunc(GL11.GL_EQUAL, 1i32, 255i32);
+            GL11.glStencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
+            GL11.glStencilMask(0i32);
+            drawSpriteInstancedBuf(shader, vao, instanceVbo, texId, multiplyBlendLoc, blend,
+                                   instData, 1);
+            // 3) 後始末（次の描画にステンシル状態を持ち越さない）。
+            GL11.glStencilMask(255i32);
+            GL11.glDisable(GL11.GL_STENCIL_TEST)
+        }
 
 }

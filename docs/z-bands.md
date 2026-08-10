@@ -1,0 +1,26 @@
+# z 帯の地図（どの zIndex が何用か）
+
+重なり順（zIndex）は 1 本の数直線だが、用途ごとに「帯」で仕切ってある。
+数の正本はコードの `ZBand`（engine/src/core/ZBand.flix）。この文書はその地図。
+
+| 帯 | z の範囲 | 用途 | 決め方 |
+|---|---|---|---|
+| world | 0 〜 数百（慣習） | 背景・キャラ・エフェクトなどゲームの絵 | ゲームが自由に決める。`Depth` の帯もここに入る |
+| UI layer | layer × 10000 | ui.json の root ごとの層（`CanvasLayer.layerStride`） | UiRender が layer から加算する |
+| Transition | 100000 | 画面を覆う切り替え演出の既定（`Transition.defaultZ`） | UI より手前・HUD 帯より奥 |
+| HUD 帯 | 1,000,000,000 〜 +99,999,999 | `App.withHudView` の絵 | `composeScene` が `ZBand.liftHud` で持ち上げる。ゲームが書く z は 0..99,999,999（はみ出しは clamp・wrap しない） |
+| エンジンデバッグ帯 | 2,000,000,000 〜 +10 | fps・矩形注釈・トースト・スクラブ表示（Annotate） | エンジン専用。ゲームは使わない |
+
+## 守られること
+
+- **HUD は world に隠されない**: world がどれだけ大きい z（爆発 z=1000 等）を使っても、
+  withHudView の絵は必ず手前。HUD の中の前後だけを HUD 側の z が決める。
+- **デバッグ表示は何にも隠されない**: F8 の注釈・fps は HUD よりさらに手前。
+- **速さは落ちない**: 帯が混ざるフレームは描画部（render_gl の `mergedByZ`）が
+  帯番号で 2 段に分けて並べ替え、席方式（counting sort）のまま処理する。
+
+## ゲーム側の指針
+
+- スコア・案内文・幕（モーダル）は `App.withHudView` に繋ぐ。world 側に文字を
+  直書きすると高い z の絵に隠されうる（`bin/lint-view.py` が匂いを警告する）。
+- world の z を HUD 帯（10 億）に自分で寄せない。帯の仕切りはエンジンの仕事。

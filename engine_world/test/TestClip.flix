@@ -66,7 +66,7 @@ mod TestClip {
     def testModifierReachesLeafThroughClip(): Unit \ Assert =
         // fade は窓を素通りして中身に効く(窓は変わらない)。
         let box = Render.box({ x = 10.0, y = 10.0 }, { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, 1);
-        let faded = Render.clipped(rect(1.0, 2.0, 3.0, 4.0), box) |> Render.fade(0.5f32);
+        let faded = Render.clipped(rect(1.0, 2.0, 3.0, 4.0), box) |> Render.fade(0.5);
         let (ds, _) = Render.draw(({ at = { x = 0.0, y = 0.0 }, item = faded }: Render.PlacedItem) :: Nil);
         Assert.assertEq(
             expected = (0.5f32, Some((1.0, 2.0, 3.0, 4.0))) :: Nil,

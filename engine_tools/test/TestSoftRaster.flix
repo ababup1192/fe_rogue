@@ -74,7 +74,7 @@ mod TestSoftRaster {
         { texture = texture, position = { x = 0.0, y = 0.0 }, scale = { x = 1.0, y = 1.0 },
           rotation = 0.0, color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, alpha = 1.0f32,
           centered = false, uvOffset = { x = 0.0, y = 0.0 }, uvScale = { x = 1.0, y = 1.0 },
-          zIndex = 0, style = style, clip = None, blend = DrawCmd.BlendMode.Normal }
+          zIndex = 0, style = style, clip = None, blend = DrawCmd.BlendMode.Normal, mask = Nil }
 
     def someStyle(): Option[GameEngine.BoxStyle] =
         Some(DrawCmd.defaultStyle({ r = 1.0f32, g = 1.0f32, b = 1.0f32 }))

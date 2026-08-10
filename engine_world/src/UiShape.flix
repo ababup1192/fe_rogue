@@ -106,7 +106,7 @@ mod UiShape {
 
     /// alpha < 1 のときだけ Render.fade を掛ける（1.0 は無修飾のまま — 既存の絵を変えない）。
     pub def fadeIf(alpha: Float32, item: Render.Item): Render.Item =
-        if (alpha < 1.0f32) Render.fade(alpha, item) else item
+        if (alpha < 1.0f32) Render.fade(Float32.toFloat64(alpha), item) else item
 
     def outlineIf(s: ShapeComp, item: Render.Item): Render.Item =
         if (s#borderWidth > 0.0)

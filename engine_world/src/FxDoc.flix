@@ -29,15 +29,30 @@ mod FxDoc {
         case Peak({ at = Float64 })
         /// 寿命あたり rate 回、1 から最大 amount ぶん暗くチラつく（決定論の疑似乱数）。
         case Flicker({ rate = Float64, amount = Float64 })
+        /// 寿命あたり rate 回、1 と minV の間を正弦でなめらかに明滅する（u=0 は 1 から始まる）。
+        /// flicker のガタつきと違い、蛍・信号灯のような「ふわっ」とした点滅に。
+        /// JSON キーの min は Float64.min との紛れを避けて内部名は minV。
+        case Pulse({ rate = Float64, minV = Float64 })
     }
 
     /// 粒の形。circle は直径 size の円、box は一辺 size の正方形。
     /// glow は直径 size の「縁がふわっと消える円」— 煙・光の玉のように、
     /// 円の輪郭を見せたくない粒に使う。
+    /// streak はその時刻の速度の向きに伸びた筋（太さ = size・長さ = size + 速さ × stretch）—
+    /// 雨・火花・流星のような「動きの跡が見える」粒に使う。
     pub enum Shape with Eq {
         case Circle
         case Box
         case Glow
+        case Streak
+    }
+
+    /// 位置の正弦揺らぎ。粒はまっすぐ飛ぶ式しか持たないので、蛍のような「その場でゆらゆら」の
+    /// 有界運動はこれが無いと作れない。amp が 0 なら足し算ごと省かれ、既存の絵は 1 ビットも動かない。
+    pub type alias Wobble = {
+        amp = Vec2.Vec2,   // 揺れ幅 px（軸ごと・0 で揺れない）
+        freq = Vec2.Vec2,  // 揺れの速さ Hz（1 秒あたりの往復回数・軸ごと）
+        vary = Float64     // 粒ごとの位相ばらつき 0..1（0 = 全粒そろって揺れる・1 = 1 周ぶん散る）
     }
 
     /// ばらつき付きの量。粒ごとに base × (1 ± vary) の範囲で決まり、
@@ -74,6 +89,8 @@ mod FxDoc {
                  spin = Float64, spinSpread = Float64 }, // 回る速さ 回転数/秒
         spawnArea = { w = Float64, h = Float64 },   // 発生源の広がり px（原点中心の矩形・0 で点。JSON キーは "spawn"）
         accel = Vec2.Vec2,                          // 重力/風 px/s²（+y = 画面下向き・閉形式で積分）
+        wobble = Wobble,                            // 位置の正弦揺らぎ（既定 amp 0 = 揺れない）
+        stretch = Float64,                          // streak の尾の長さ 秒（長さ = size + 速さ × これ。shape が streak のときだけ効く）
         seed = Int32,                               // 決定的シードの上乗せ（同名 emitter を並べて別の絵にする）
         sizeOver = CurveSpec,                       // 大きさの倍率カーブ
         alphaOver = CurveSpec,                      // 透明度の倍率カーブ
@@ -154,6 +171,8 @@ mod FxDoc {
             turn      <- parseTurn("${path}.turn", m);
             spawnArea <- parseSpawn("${path}.spawn", m);
             accel     <- parseAccel("${path}.accel", m);
+            wobble    <- parseWobble("${path}.wobble", m);
+            stretch   <- parseStretch(path, m);
             seedOpt   <- DocJson.atNode(path, (DocJson.getAtKeyOpt(Root, "seed", m): Result[JsonError, Option[Int32]]));
             sizeOver  <- parseCurveAt("${path}.sizeOver", "sizeOver", m);
             alphaOver <- parseCurveAt("${path}.alphaOver", "alphaOver", m);
@@ -162,7 +181,8 @@ mod FxDoc {
         ) yield ({
             name = name, count = count, mode = mode, shape = shape, size = size, color = color,
             life = life, speed = speed, dir = dir, turn = turn,
-            spawnArea = spawnArea, accel = accel, seed = Option.getWithDefault(0, seedOpt),
+            spawnArea = spawnArea, accel = accel, wobble = wobble, stretch = stretch,
+            seed = Option.getWithDefault(0, seedOpt),
             sizeOver = sizeOver, alphaOver = alphaOver, blend = blend,
             zIndex = Option.getWithDefault(0, zIndexOpt)
         }: Emitter)
@@ -202,6 +222,43 @@ mod FxDoc {
             ) yield ({ x = x, y = y }: Vec2.Vec2)
         }
 
+    /// "wobble": {"amp": {"x","y"} px, "freq": {"x","y"} Hz, "vary": 0..1}（省略時は揺れない）。
+    /// 位置に正弦のオフセットを足す — 蛍・湯気のような「その場でゆらゆら」の有界運動を作る。
+    def parseWobble(path: String, m: Map[String, Json]): Result[JsonError, Wobble] =
+        match (DocJson.getAtKeyOpt(Root, "wobble", m): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)       => DocJson.atNode(path, Err(e))
+            case Ok(None)     => Ok({ amp = Vec2.zero(), freq = Vec2.zero(), vary = 0.0 })
+            case Ok(Some(wm)) => forM (
+                amp  <- parseXYOr(path, "amp", wm);
+                freq <- parseXYOr(path, "freq", wm);
+                vary <- DocJson.atNode(path, DocJson.numOr("vary", 0.0, wm));
+                _amp <- require(amp#x >= 0.0 and amp#y >= 0.0, path,
+                                "wobble amp x/y must be >= 0 (got: ${amp#x}, ${amp#y})");
+                _frq <- require(freq#x >= 0.0 and freq#y >= 0.0, path,
+                                "wobble freq x/y must be >= 0 (got: ${freq#x}, ${freq#y})");
+                _vry <- requireVary(path, vary)
+            ) yield ({ amp = amp, freq = freq, vary = vary }: Wobble)
+        }
+
+    /// key の {"x": 数, "y": 数}（キー丸ごと・x/y の個別、どちらの省略も 0）。
+    def parseXYOr(path: String, key: String, m: Map[String, Json]): Result[JsonError, Vec2.Vec2] =
+        match (DocJson.getAtKeyOpt(Root, key, m): Result[JsonError, Option[Map[String, Json]]]) {
+            case Err(e)       => DocJson.atNode(path, Err(e))
+            case Ok(None)     => Ok(Vec2.zero())
+            case Ok(Some(xm)) => forM (
+                x <- DocJson.atNode(path, DocJson.numOr("x", 0.0, xm));
+                y <- DocJson.atNode(path, DocJson.numOr("y", 0.0, xm))
+            ) yield ({ x = x, y = y }: Vec2.Vec2)
+        }
+
+    /// "stretch": streak の尾の長さ 秒。省略時 0.05 — 速さ 200px/s で尾が 10px になる、
+    /// 雨・火花にそのまま使える見え方（0 だと尾が消えて streak を選んだ意味が無くなる）。
+    def parseStretch(path: String, m: Map[String, Json]): Result[JsonError, Float64] =
+        forM (
+            v  <- DocJson.atNode(path, DocJson.numOr("stretch", 0.05, m));
+            _v <- require(v >= 0.0, path, "stretch must be >= 0 (got: ${v})")
+        ) yield v
+
     /// 条件が成り立たなければ path 付きで断る（値の下限・範囲の検査に使う）。
     def require(ok: Bool, path: String, msg: String): Result[JsonError, Unit] =
         if (ok) Ok(())
@@ -214,8 +271,9 @@ mod FxDoc {
             case Ok(Some("circle"))  => Ok(Shape.Circle)
             case Ok(Some("box"))     => Ok(Shape.Box)
             case Ok(Some("glow"))    => Ok(Shape.Glow)
+            case Ok(Some("streak"))  => Ok(Shape.Streak)
             case Ok(Some(unknown))   =>
-                DocJson.atNode(path, Err(DocJson.jsonError(Root, Set#{"shape must be circle|box|glow (got: ${unknown})"})))
+                DocJson.atNode(path, Err(DocJson.jsonError(Root, Set#{"shape must be circle|box|glow|streak (got: ${unknown})"})))
         }
 
     def parseBlend(path: String, m: Map[String, Json]): Result[JsonError, DrawCmd.BlendMode] =
@@ -258,6 +316,7 @@ mod FxDoc {
 
     /// "speed": {"base": px/s, "vary": 0..1, "over": <カーブ>}（省略時は動かない粒）。
     /// over に flicker は使えない — 位置 = 速度の積分が閉形式にならないため、パース時に断る。
+    /// pulse も使えない — 明滅は明るさ・大きさの語彙で、速度に混ぜると意味が濁る。
     def parseSpeed(path: String, m: Map[String, Json]): Result[JsonError, Scalar] =
         match (DocJson.getAtKeyOpt(Root, "speed", m): Result[JsonError, Option[Map[String, Json]]]) {
             case Err(e)       => DocJson.atNode(path, Err(e))
@@ -267,12 +326,16 @@ mod FxDoc {
                 vary  <- DocJson.atNode(path, DocJson.numOr("vary", 0.0, sm));
                 _vary <- requireVary(path, vary);
                 over  <- parseCurveAt(path, "over", sm);
-                _int  <- require(not isFlicker(over), path, "speed.over does not support flicker (position needs a closed-form integral)")
+                _int  <- require(not isFlicker(over), path, "speed.over does not support flicker (position needs a closed-form integral)");
+                _pls  <- require(not isPulse(over), path, "speed.over does not support pulse (pulse is for alphaOver/sizeOver)")
             ) yield { base = base, vary = vary, over = over }
         }
 
     def isFlicker(curve: CurveSpec): Bool =
         match curve { case CurveSpec.Flicker(_) => true case _ => false }
+
+    def isPulse(curve: CurveSpec): Bool =
+        match curve { case CurveSpec.Pulse(_) => true case _ => false }
 
     def requireVary(path: String, vary: Float64): Result[JsonError, Unit] =
         require(vary >= 0.0 and vary <= 1.0, path, "vary must be within 0..1 (got: ${vary})")
@@ -316,7 +379,7 @@ mod FxDoc {
             ) yield { base = base, spread = spread, spin = spin, spinSpread = spinSpread }
         }
 
-    /// key のカーブ（省略時 constant）。{"kind": "..."} の 6 形 + fadeOut 別名。
+    /// key のカーブ（省略時 constant）。{"kind": "..."} の 7 形 + fadeOut 別名。
     def parseCurveAt(path: String, key: String, m: Map[String, Json]): Result[JsonError, CurveSpec] =
         match Map.get(key, m) {
             case None              => Ok(CurveSpec.Constant)
@@ -349,7 +412,14 @@ mod FxDoc {
                 rate   <- DocJson.numAt("rate", cm);
                 amount <- DocJson.numOr("amount", 1.0, cm)
             ) yield CurveSpec.Flicker({ rate = rate, amount = amount })
+            case "pulse"    => forM (
+                rate <- DocJson.numAt("rate", cm);
+                minV <- DocJson.numOr("min", 0.0, cm);
+                _min <- if (minV < 0.0 or minV > 1.0)
+                            Err(DocJson.jsonError(Root, Set#{"pulse 'min' must be within 0..1 (got: ${minV})"}))
+                        else Ok(())
+            ) yield CurveSpec.Pulse({ rate = rate, minV = minV })
             case unknown    => Err(DocJson.jsonError(Root,
-                Set#{"kind must be constant|linear|fadeOut|easeIn|easeOut|peak|flicker (got: ${unknown})"}))
+                Set#{"kind must be constant|linear|fadeOut|easeIn|easeOut|peak|flicker|pulse (got: ${unknown})"}))
         }
 }

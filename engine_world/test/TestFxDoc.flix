@@ -29,10 +29,16 @@ mod TestFxDoc {
             case FxDoc.CurveSpec.EaseOut(e) => ("easeOut", e#power, 0.0)
             case FxDoc.CurveSpec.Peak(p)    => ("peak", p#at, 0.0)
             case FxDoc.CurveSpec.Flicker(f) => ("flicker", f#rate, f#amount)
+            case FxDoc.CurveSpec.Pulse(p)   => ("pulse", p#rate, p#minV)
         }
 
     def shapeTag(s: FxDoc.Shape): String =
-        match s { case FxDoc.Shape.Circle => "circle" case FxDoc.Shape.Box => "box" case FxDoc.Shape.Glow => "glow" }
+        match s {
+            case FxDoc.Shape.Circle => "circle"
+            case FxDoc.Shape.Box    => "box"
+            case FxDoc.Shape.Glow   => "glow"
+            case FxDoc.Shape.Streak => "streak"
+        }
 
     def blendTag(b: DrawCmd.BlendMode): String =
         match b { case DrawCmd.BlendMode.Normal => "normal" case DrawCmd.BlendMode.Add => "add" case DrawCmd.BlendMode.Multiply => "multiply" }

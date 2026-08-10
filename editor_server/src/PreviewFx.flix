@@ -58,10 +58,16 @@ mod PreviewFx {
         let lifeMax  = emitter#life#base * (1.0 + emitter#life#vary);
         // spawn（発生源の広がり）と accel（重力/風の ½at²）も最悪値で足す — R3 の語彙追加。
         let spawnHalf = Float64.max(emitter#spawnArea#w, emitter#spawnArea#h) / 2.0;
-        let accelMax = Float64.max(Float64.abs(emitter#accel#x), Float64.abs(emitter#accel#y))
-            * lifeMax * lifeMax / 2.0;
+        let aAbs = Float64.max(Float64.abs(emitter#accel#x), Float64.abs(emitter#accel#y));
+        let accelMax = aAbs * lifeMax * lifeMax / 2.0;
+        // wobble は位置に amp まで足すだけ、streak は尾の半分だけ中心からはみ出す — R4 の語彙追加。
+        let wobbleMax = Float64.max(emitter#wobble#amp#x, emitter#wobble#amp#y);
+        let streakTail = if (emitter#shape == FxDoc.Shape.Streak)
+                             (speedMax + aAbs * lifeMax) * emitter#stretch / 2.0
+                         else 0.0;
         speedMax * lifeMax * integralPeak(emitter#speed#over)
             + emitter#size * curvePeak(emitter#sizeOver) + spawnHalf + accelMax
+            + wobbleMax + streakTail
 
     /// 速度カーブの積分 |∫₀ᵘ curve| の u∈[0,1] での最大値 (= 到達距離の倍率)。
     /// 単調に離れるカーブは u=1 が最遠。途中で速度の符号が変わる linear だけは
@@ -77,8 +83,9 @@ mod PreviewFx {
             case FxDoc.CurveSpec.EaseIn(e)  => powerIntegral(e#power)
             case FxDoc.CurveSpec.EaseOut(e) => powerIntegral(e#power)
             case FxDoc.CurveSpec.Peak(_)    => 0.5
-            // flicker は速度カーブとしてパースが弾くが、値 ≤ 1 なので積分 ≤ 1 を上限に使う。
+            // flicker / pulse は速度カーブとしてパースが弾くが、値 ≤ 1 なので積分 ≤ 1 を上限に使う。
             case FxDoc.CurveSpec.Flicker(_) => 1.0
+            case FxDoc.CurveSpec.Pulse(_)   => 1.0
         }
 
     /// u^p (easeIn) と (1-u)^p (easeOut) の ∫₀¹ = 1/(p+1)。

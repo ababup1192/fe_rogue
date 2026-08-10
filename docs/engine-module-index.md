@@ -39,8 +39,10 @@
 | shader.json を読み書きしたい | ShaderJson |
 | シェーダー面を描く GPU 側の効果口を知りたい | ShaderEffect |
 | 位置ベクトルの足し引き・長さ・回転を計算したい | Vec2 |
+| (x, y) から Vec2 を 1 行で作りたい（リスト内の型注釈を消す） | Vec2.v2 |
 | マス目やピクセルなど整数の (x, y) を計算したい | Vec2i |
 | 矩形の当たり・包含・膨張を計算したい | Rect2 |
+| HUD やデバッグ表示の z の帯（どの帯が何用か）を知りたい | ZBand（帯の地図は docs/z-bands.md） |
 | 色（sRGB-linear）を作る・GL の uniform に渡したい | Color（core 側の基礎型。ゲーム側の色操作は engine_world の Color を参照） |
 | 時間の長さ（継続・経過・残り）を型で扱いたい | Duration |
 | 1 フレームぶんの描画命令の共通の型を知りたい | DrawCmd |
@@ -67,7 +69,10 @@
 | 当たり判定の幾何形状（矩形・円・カプセル・坂）を計算したい | CollisionShape2D |
 | 今フレーム押されているキー・マウスボタンの集合を取りたい | InputEvent |
 | HUD を本体より確実に手前に出す zIndex の基準が欲しい | CanvasLayer |
+| 放射グラデの組み込みテクスチャ（`__radial_light` / `__radial_dark`）の画素・名前・寸法を知りたい | RadialBuiltin（ゲーム側の窓口は engine_world の `Render.lightAt` / `Render.darkAt`） |
 | Drawable 経路のカメラ・投影を知りたい（fe_rogue 以外では使わない） | Camera / Projection |
+| 画面でなくレンダーターゲットに描いてテクスチャとして読み返したい（`eff Target`） | RenderTarget（GL 実装は render_gl の Target.flix / RenderTargetGl。ゲーム側の窓口は engine_world の `Render.Pass` + `App.withPasses`、[逆引き](module-index.md)を参照） |
+| いま bind 中のフレームバッファ（FBO でも既定でも）を画像 / PNG に吸い出したい | GlReadback（render_gl の Readback.flix。`readBoundImage`（RGBA・左上原点）/ `readBoundImageRgb`（RGB に落とす皮）/ `readBoundPng`。splashShot・注釈スクショ・GL 突き合わせ（bench/gl_parity）が共有する読み出しの核） |
 
 ## 土台
 
@@ -77,11 +82,15 @@
 
 ## シェーダー
 
-- **ShaderDoc** — 面（矩形）を GPU シェーダーで塗るための「宣言データ」。生の GLSL を書かず、少数の部品（値の場・色・出力）を組み合わせて水面のような連続した見た目を作る。部品の型（Spec）を持つ。
+- **ShaderDoc** — 面（矩形）を GPU シェーダーで塗るための「宣言データ」。生の GLSL を書かず、少数の部品（値の場・色・出力）を組み合わせて水面のような連続した見た目を作る。部品の型（Spec）と、木の汎用走査 `ShaderDoc.foldField`・Tex が読むテクスチャ名の正典順列挙 `ShaderDoc.texNames`（GLSL の uniform 番号 = sampler unit 番号 = 描画依頼の texNames の並びの正）を持つ。全面でない面から pass を等倍・鏡像で読む Shift の dy 場は、ゲーム側の窓口 engine_world の `Render.passBandDy` で組める。
 - **ShaderGen** — Spec を GLSL の fragment シェーダー文字列へ変換する codegen。各部品が自分の GLSL 片（式）を返し、compile が 1 枚の main() に繋ぐ。出力は決定論なのでスナップショットで釘打ちできる。
-- **ShaderEval** — Spec 木を CPU（Float64）で評価する検証用の純関数。描画経路ではなく、式の構造が GLSL 側と揃っているかをテストで確かめるために使う。
+- **ShaderEval** — Spec 木を CPU（Float64）で評価する検証用の純関数。描画経路ではなく、式の構造が GLSL 側と揃っているかをテストで確かめるために使う。tex 場つきの評価は `ShaderEval.evalPixelTex` / `ShaderEval.evalAlphaTex`、焼きの画素ループは色と α を 1 回の shared 先行評価で返す `ShaderEval.evalPixelAlphaTex` を使う。
 - **ShaderJson** — シェーダー面の宣言（ShaderDoc.Spec）を JSON と相互変換する codec。engine を触らず `*.shader.json` の保存だけで調整できる（App.watchFile によるホットリロードの受け皿）。
 - **ShaderEffect** — 宣言シェーダー面を GPU で描くための別チャンネルの効果口（`eff Shader`）。`eff Game` に描画オペを足すとハンドラ全てが波及するため、シェーダー面だけ別効果に切り出している。
+
+## レンダーターゲット（RenderTarget）
+
+- **RenderTarget** — レンダーターゲット（描いた結果を読み返せる描き込み先）に描いてテクスチャとして読み返すための効果口（`eff Target`）。`eff Game` とは別チャンネルに隔離してあるので、レンダーターゲットを使わないゲームやハンドラには波及しない。GL 側の実体は `render_gl` の **Target.flix**（`mod RenderTargetGl`。FBO 1 枚 + カラーテクスチャ 1 枚を作り・切り替え・破棄する）と `LwjglLayer` のハンドラが持つ。ゲーム側は engine 内部の `eff Target` を直接触らず、engine_world の `Render.Pass` + `App.withPasses` を使う（[逆引き](module-index.md)を参照）。
 
 ## core（基礎の値と計算）
 
@@ -101,6 +110,7 @@
 - **Triangulate** — 単純多角形（自己交差しない・凹あり可）を三角形の列に分割する耳切り法。GL の塗り（GL_TRIANGLES）と SoftRaster（スキャンライン）の絵を一致させるための芯。
 - **Vec2** — 2D の位置や向きを表す (x, y) の組と、その足し引き・長さ・回転などの計算。
 - **Vec2i** — 整数の (x, y) の組に対する足し引きなどの計算。マス目やピクセルの位置を丸め誤差なく扱える。
+- **ZBand** — 重なり順（zIndex）の帯の取り決めの正本（HUD 帯・デバッグ帯・帯の幅と clamp）。帯の地図は docs/z-bands.md。
 
 ## render（描画物・Drawable 経路の部品）
 
@@ -113,6 +123,7 @@
 - **InputEvent** — 現在フレームで押されているキー・マウスボタンをまとめて取得する。押下エッジは呼び側が前フレームと差分して取る。
 - **Polygon** — 局所座標の単純多角形を単色（color + alpha）で塗り潰す描画物。
 - **Projection** — Drawable 経路専用の投影部品（ワールド座標→画面座標）。PlacedItem 経路は CameraRig が同じ役割を担う。
+- **RadialBuiltin** — 放射グラデ（中心から縁へ滑らかに変わる円）の組み込みテクスチャ。画素を純関数で決め、GL（起動時に GPU へ上げる）と SoftRaster（bake）が同じ列から絵を作るので、実機と bake がずれない。ゲーム側は engine_world の `Render.lightAt` / `Render.darkAt` から使う。
 - **Rect** — テクスチャなしで単色の矩形を描く描画物。枠線・角丸・45° の斜線ハッチも指定でき、枠付きパネルもこれ 1 つで描ける。
 - **Splash** — 起動画面 1 枚ぶんの絵を組み立てる。読み込みの間、何も描かれない時間が「固まった」ように見えるのを防ぐ。
 - **Sprite** — テクスチャを 1 枚表示するだけの軽い描画物で、見た目（visual）と座標変換（transform）を持つ。

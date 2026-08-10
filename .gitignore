@@ -38,6 +38,8 @@ __pycache__/
 !**/golden/title.png
 # 目視用の生成物（golden 比較はしていない）。
 examples/fe_rogue/test/snapshots/gifs/
+# 使い捨ての試作置き場。
+scratch/
 # debug/ 丸ごとは src/debug/(実ソース) や debug/ 直下の検証ツール(replay_tiles.py ほか)を
 # 巻き込むので、焼いた画像だけに絞る。
 **/debug/**/*.png

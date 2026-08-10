@@ -139,6 +139,7 @@ mod Rect {
             zIndex = r#visual#zIndex,
             style = if (styled) Some(boxStyleOf(r)) else None,
             clip = None,
-            blend = DrawCmd.BlendMode.Normal
+            blend = DrawCmd.BlendMode.Normal,
+            mask = Nil
         }
 }

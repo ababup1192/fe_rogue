@@ -14,11 +14,13 @@ mod SoftRaster {
     import java.awt.BasicStroke
     import java.awt.Font
     import java.awt.Shape
+    import java.awt.geom.{Path2D$Double => Path2D}
     import java.awt.geom.{RoundRectangle2D$Double => RoundRect}
     import java.awt.geom.{Line2D$Double => Line2D}
     import java.awt.geom.{Rectangle2D$Double => Rect2D}
     import java.io.File
     import java.io.FileInputStream
+    import java.lang.System
     import java.lang.{Character => JChar}
     import javax.imageio.ImageIO
 
@@ -125,6 +127,12 @@ mod SoftRaster {
     pub def renderWithSurfaces(req: RasterReq, surfaces: List[SurfaceCmd]): Unit \ IO =
         writePng(renderToImageWith(req, surfaces), req#outPath)
 
+    /// 追加の焼き済み画像（pass のレンダーターゲットなど）も混ぜて焼き、PNG に書き出す render。
+    pub def renderFull(req: RasterReq, surfaces: List[SurfaceCmd],
+                       extraFonts: Map[String, FontEntry],
+                       extraImages: Map[String, BufferedImage]): Unit \ IO =
+        writePng(renderToImageFull(req, surfaces, extraFonts, extraImages), req#outPath)
+
     /// 要求を 1 枚の BufferedImage に焼いて返す（PNG 書き出しはしない）。
     /// PNG スナップショット（render）と GIF アニメ（GifEncoder が 1 フレームずつ集める）の
     /// 共有ラスタライズ経路。`outPath` は使わない。
@@ -140,19 +148,99 @@ mod SoftRaster {
     /// renderToImageWith の複数フォント版。`extraFonts` はテクスチャ名 → 追加の本。
     /// グリフはテクスチャ名で本を選んで描く（知らない名前は既定フォントへ倒す）。
     pub def renderToImageFonts(req: RasterReq, surfaces: List[SurfaceCmd],
-                               extraFonts: Map[String, FontEntry]): BufferedImage \ IO = region rc {
+                               extraFonts: Map[String, FontEntry]): BufferedImage \ IO =
+        renderToImageFull(req, surfaces, extraFonts, Map.empty())
+
+    /// renderToImageFonts の「追加の焼き済み画像」つき版。`extraImages` はテクスチャ名 →
+    /// 焼き上がりの BufferedImage（pass のレンダーターゲットなど、ファイルに落とさず直接混ぜたい絵）。
+    /// texturePath の読み込み結果へ上書き合流する（同名は extraImages が勝つ — ファイルの
+    /// 古い絵より、いま焼いたばかりの絵のほうが実機に近い）。
+    pub def renderToImageFull(req: RasterReq, surfaces: List[SurfaceCmd],
+                              extraFonts: Map[String, FontEntry],
+                              extraImages: Map[String, BufferedImage]): BufferedImage \ IO =
+        renderToImageLogged(req, surfaces, extraFonts, extraImages, freshTexWarnLog())
+
+    /// tex 場の欠け名を知らせた控え。GIF などコマ列の焼きで同じ物を渡し続けると、
+    /// 同じ名前の知らせがコマ数ぶん並ばない（GL 側の missingSurfaceTexRef と同じ「一度だけ」）。
+    pub type alias TexWarnLog = Ref[Set[String], Static]
+
+    /// 欠け名の控えを新しく作る（コマ列の焼きの前に 1 本作って持ち回る）。
+    pub def freshTexWarnLog(): TexWarnLog \ IO = Ref.fresh(Static, Set.empty())
+
+    /// renderToImageFull の欠け名控えつき版。控えは知らせの回数にだけ効き、
+    /// 焼き上がりの画素には一切影響しない（バイト一致はそのまま）。
+    pub def renderToImageLogged(req: RasterReq, surfaces: List[SurfaceCmd],
+                                extraFonts: Map[String, FontEntry],
+                                extraImages: Map[String, BufferedImage],
+                                warnLog: TexWarnLog): BufferedImage \ IO =
         HeadlessFont.ensureHeadless();
-        let sf = Int32.toFloat64(req#scale);
-        let w = ri(req#design#x * sf);
-        let h = ri(req#design#y * sf);
-        let image = new BufferedImage(Int32.max(1i32, w), Int32.max(1i32, h), 2i32);
+        let (w, h) = outSize(req);
+        let image = new BufferedImage(w, h, 2i32);
         let g: Graphics2D = image.createGraphics();
-        applyQualityHints(g);
         // 背景（clearColor）で塗りつぶす。
         g.setColor(awtColor(req#background, 1.0f32));
-        g.fillRect(0i32, 0i32, Int32.max(1i32, w), Int32.max(1i32, h));
-        let textures = loadTextures(req#texturePath);
+        g.fillRect(0i32, 0i32, w, h);
+        g.dispose();
+        drawAllInto(image, req, surfaces, extraFonts, extraImages, warnLog);
+        image
+
+    /// pass（レンダーターゲット）焼き用の入口。req#background は使わない — 塗るかどうか
+    /// （clearColor）の判断は呼び出し側（Bakery）が持つので、ここで塗ると判断が二重になる。
+    /// `base` が Some ならその画像のコピーの上に描き足す（呼び出し側の画像は変異させない —
+    /// 前フレームの中身は残像の証拠としてそのまま残したい）、None なら全画素透明から始める。
+    pub def renderPassImage(req: RasterReq, base: Option[BufferedImage],
+                            extraImages: Map[String, BufferedImage]): BufferedImage \ IO =
+        HeadlessFont.ensureHeadless();
+        let image = match base {
+            case Some(b) => toArgb(b)
+            case None    => { let (w, h) = outSize(req); new BufferedImage(w, h, 2i32) }
+        };
+        drawAllInto(image, req, Nil, Map.empty(), extraImages, freshTexWarnLog());
+        image
+
+    /// 出力ピクセル寸法（design × scale、最低 1px）。
+    def outSize(req: RasterReq): (Int32, Int32) =
+        let sf = Int32.toFloat64(req#scale);
+        (Int32.max(1i32, ri(req#design#x * sf)), Int32.max(1i32, ri(req#design#y * sf)))
+
+    /// 描画本体（z 合流 + 種類ごとの分岐）。背景を塗る/塗らないの違いは入口関数側に置き、
+    /// ここを二重実装しない — 分岐の式が 2 か所に割れると、片方だけ直して絵が食い違う。
+    def drawAllInto(image: BufferedImage, req: RasterReq, surfaces: List[SurfaceCmd],
+                    extraFonts: Map[String, FontEntry],
+                    extraImages: Map[String, BufferedImage],
+                    warnLog: TexWarnLog): Unit \ IO = region rc {
+        let sf = Int32.toFloat64(req#scale);
+        let g: Graphics2D = image.createGraphics();
+        applyQualityHints(g);
+        // 組み込みの放射テクスチャを土台に、ゲームのテクスチャ → extraImages の順で重ねる
+        //（後から入れた方が勝つ。名前は `__` 予約なので実際に潰し合うことはない）。
+        // GL 側は起動時に必ず GPU へ上げるため、bake 側も配線ゼロで同じ名前が引けないと
+        // 実機と bake の絵がずれる。
+        let textures = Map.foldLeftWithKey((acc, name, img) -> Map.insert(name, img, acc),
+            Map.foldLeftWithKey((acc, name, img) -> Map.insert(name, img, acc),
+                builtinRadialImages(req#drawables),
+                loadTextures(req#texturePath)), extraImages);
         let fctx = buildFontTable(req, extraFonts);
+        // tex 場（Field.Tex）が読む画素表。surfaces が実際に使う名前だけ 1 回で Vector 化する —
+        // 画素ループの中で BufferedImage を触らない（getRGB を毎画素呼ぶと桁で遅い）。
+        // 無い名前は warnLog に控えて一度だけ知らせる（eval は純関数のまま黒 0.0 に倒す）。
+        let usedTexNames = surfaces
+            |> List.flatMap(sc -> ShaderDoc.texNames(sc#spec))
+            |> List.distinct;
+        let texEnv = usedTexNames |> List.foldLeft((acc, name) -> {
+            match Map.get(name, textures) {
+                case Some(img) => Map.insert(name, texDataOf(img), acc)
+                case None =>
+                    let warned = Ref.get(warnLog);
+                    if (Set.memberOf(name, warned)) ()
+                    else {
+                        System.err.println("shader tex '${name}' が見つからない — 黒(0)で焼く"
+                            + "（pass なら passes に同名の宣言があるか確認）");
+                        Ref.put(Set.insert(name, warned), warnLog)
+                    };
+                    acc
+            }
+        }, (Map.empty(): Map[String, ShaderEval.TexData]));
         // Drawable / Polygon / シェーダー面を 1 列にまとめ、(z, 追加順) で安定ソートする。
         let tagged = List.append(
             List.map(d -> RItem.RDraw(d), req#drawables),
@@ -181,17 +269,18 @@ mod SoftRaster {
                 else
                     blendedDraw(image, sf, p#blend, p#clip, polygonAabb(req#design, p),
                                 gs -> drawPolygon(rc, gs, sf, p))
-            case RItem.RSurf(s) => drawSurface(image, sf, s)
+            case RItem.RSurf(s) => drawSurface(image, sf, texEnv, s)
         }, sorted);
-        g.dispose();
-        image
+        g.dispose()
     }
 
     /// シェーダー面を画素ごとに焼く。rect を出力ピクセルへ量子化し、各画素の中心を
-    /// uv（rect 内 0..1）に写して ShaderEval.evalPixel / evalAlpha で評価、blendPixel で
-    /// 本体へ混ぜる（Normal / Add / Multiply とも GL 側と同じ合成式）。
+    /// uv（rect 内 0..1）に写して ShaderEval.evalPixelAlphaTex（色と α を 1 回の shared
+    /// 先行評価で一緒に返す版 — 別々に呼ぶと bindings を画素ごとに 2 回払う）で評価、
+    /// blendPixel で本体へ混ぜる（Normal / Add / Multiply とも GL 側と同じ合成式）。
     /// mask が非空なら「どれかの多角形の内側」の画素だけ塗る（GL のステンシル抜きと同じ意図）。
-    def drawSurface(image: BufferedImage, sf: Float64, s: SurfaceCmd): Unit \ IO = region rc {
+    def drawSurface(image: BufferedImage, sf: Float64, texEnv: Map[String, ShaderEval.TexData],
+                    s: SurfaceCmd): Unit \ IO = region rc {
         let dw = image.getWidth();
         let dh = image.getHeight();
         let (rx0, ry0, rx1, ry1) = DrawCmd.clipPixels({ scaleX = sf, scaleY = sf }, s#rect);
@@ -216,14 +305,23 @@ mod SoftRaster {
                 else {
                     let uv = { x = (dx - s#rect#position#x) / s#rect#size#x,
                                y = (dy - s#rect#position#y) / s#rect#size#y };
-                    let c = ShaderEval.evalPixel(s#spec, uv, s#time);
-                    let a = Float64.max(0.0, Float64.min(1.0, ShaderEval.evalAlpha(s#spec, uv, s#time)));
+                    let (c, a0) = ShaderEval.evalPixelAlphaTex(s#spec, uv, s#time, texEnv);
+                    let a = Float64.max(0.0, Float64.min(1.0, a0));
                     let srcArgb = argbOf(c, a);
                     Array.put(blendPixel(s#blend, srcArgb, dst), i, buf)
                 }
             }, buf);
             image.setRGB(x0, y0, w, h, buf, 0i32, w)
         }
+    }
+
+    /// BufferedImage を ShaderEval の画素表（ARGB・行優先・正立）へ 1 回で写す。
+    def texDataOf(img: BufferedImage): ShaderEval.TexData \ IO = region rc {
+        let w = Int32.max(1i32, img.getWidth());
+        let h = Int32.max(1i32, img.getHeight());
+        let buf: Array[Int32, rc] = Array.empty(rc, w * h);
+        discard img.getRGB(0i32, 0i32, w, h, buf, 0i32, w);
+        { width = w, height = h, pixels = Array.toVector(buf) }
     }
 
     /// mask が空なら常に真。非空なら「どれかの多角形の内側」（偶奇の交差数判定）。
@@ -428,6 +526,28 @@ mod SoftRaster {
         };
         clampAabb(design, p#clip, Rect2.grow(1.0, aabb))
 
+    /// 組み込みの放射テクスチャ（Render.lightAt / darkAt が引く）の表。焼くのは
+    /// drawables がその名前を実際に使うときだけ — 256×256 の画素計算を毎フレームの
+    /// bake に無条件で払わせない（bake の画素ループは既知の性能の池）。
+    def builtinRadialImages(drawables: List[GameEngine.Drawable]): Map[String, BufferedImage] \ IO =
+        let usedOf = name -> List.exists(d -> d#texture == name, drawables);
+        let withEntry = (name: String, pixelsOf: Unit -> Vector[Int32],
+                         acc: Map[String, BufferedImage]) ->
+            if (usedOf(name)) Map.insert(name, imageOfArgb(RadialBuiltin.size(), pixelsOf()), acc)
+            else acc;
+        withEntry(RadialBuiltin.darkName(), _ -> RadialBuiltin.darkPixels(),
+            withEntry(RadialBuiltin.lightName(), _ -> RadialBuiltin.lightPixels(), Map.empty()))
+
+    /// ARGB 画素列（行優先・size×size）を BufferedImage へ敷き詰める。
+    def imageOfArgb(size: Int32, pixels: Vector[Int32]): BufferedImage \ IO = region rc {
+        let s = Int32.max(1i32, size);
+        let image = new BufferedImage(s, s, 2i32);
+        let buf: Array[Int32, rc] = Array.empty(rc, s * s);
+        Array.forEachWithIndex((i, _) -> Array.put(Vector.get(i, pixels), i, buf), buf);
+        image.setRGB(0i32, 0i32, s, s, buf, 0i32, s);
+        image
+    }
+
     /// texturePath の各エントリを ImageIO で読み込む。読めないものは飛ばす。
     /// indexed / grayscale 等の色モデルは RescaleOp（drawTextured の tint）が扱えないため、
     /// 一律 ARGB へ正規化する。
@@ -456,14 +576,49 @@ mod SoftRaster {
                      textures: Map[String, BufferedImage], fctx: FontTable, d: GameEngine.Drawable): Unit \ IO =
         withRotation(g, sf, d#rotation, quadCenter(textures, fctx, d), () ->
             if (String.isEmpty(d#texture))
-                drawBox(g, sf, d)
+                withMask(g, sf, d#position, d#scale, d#mask, () -> drawBox(g, sf, d))
             else if (String.startsWith({prefix = "font_"}, d#texture))
+                // グリフは mask の対象外（文字の可読性が第一 — docs/backend-parity.md）。
                 drawGlyph(g, sf, fontFor(fctx, d), d)
             else
                 match Map.get(d#texture, textures) {
                     case None      => ()
-                    case Some(img) => drawTextured(g, sf, img, d)
+                    case Some(img) =>
+                        let size = { x = Int32.toFloat64(img.getWidth()) * d#scale#x,
+                                     y = Int32.toFloat64(img.getHeight()) * d#scale#y };
+                        let topLeft = if (d#centered) Vec2.sub(d#position, Vec2.div(size, 2.0))
+                                      else d#position;
+                        withMask(g, sf, topLeft, size, d#mask, () -> drawTextured(g, sf, img, d))
                 })
+
+    /// mask（表示クアッドのローカル design px・原点 = 左上・回転前）を Path2D に組み、
+    /// g.clip（交差）してから draw する。withRotation の内側で呼ぶのが肝 — Java2D の clip は
+    /// 現在の変換で形が写るので、クアッドの回転がそのまま mask にも掛かる。
+    /// 頂点を size の符号で掛け直すのは、反転（負の scale）をクアッドと同じ向きに掛けるため。
+    /// 縁は AA なしの硬い縁（GL のステンシルと同じ近似 — docs/backend-parity.md）。
+    /// クアッドが退化（辺長ほぼ 0）なら mask を張らずに描く（どのみち絵は出ない）。
+    def withMask(g: Graphics2D, sf: Float64, topLeft: Vec2.Vec2, size: Vec2.Vec2,
+                 mask: List[List[Vec2.Vec2]], draw: Unit -> Unit \ ef): Unit \ IO + ef =
+        let aw = Float64.abs(size#x);
+        let ah = Float64.abs(size#y);
+        if (List.isEmpty(mask) or aw < 0.000001 or ah < 0.000001) draw()
+        else {
+            let saved = g.getClip();
+            let path = new Path2D();
+            List.forEach(poly -> match poly {
+                case first :: rest =>
+                    let pt = (v: Vec2.Vec2) -> ({ x = (topLeft#x + v#x / aw * size#x) * sf,
+                                                  y = (topLeft#y + v#y / ah * size#y) * sf }: Vec2.Vec2);
+                    let p0 = pt(first);
+                    path.moveTo(p0#x, p0#y);
+                    List.forEach(v -> { let p = pt(v); path.lineTo(p#x, p#y) }, rest);
+                    path.closePath()
+                case Nil => ()
+            }, mask);
+            g.clip(path);
+            draw();
+            g.setClip(saved)
+        }
 
     /// 傾き（ラジアン）を掛けてから描き、終わったら座標系を戻す。回す軸は四角の中心で、
     /// render_gl/Frame の model 行列（pos + size/2 まわり）と同じ点にしてある — ここがズレると
