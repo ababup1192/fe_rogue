@@ -609,6 +609,17 @@ check-docs-sync:
 	  if ! grep -q '^name:' $$f; then echo "[check-docs-sync] NG: $$f に name がありません"; ok=0; fi; \
 	  if ! grep -q '^description:' $$f; then echo "[check-docs-sync] NG: $$f に description がありません"; ok=0; fi; \
 	done; \
+	echo "[check-docs-sync] 同名スキルの sync 印が両側で一致するか"; \
+	for d in agents-pack/skills/*/; do \
+	  s=$$(basename $$d); \
+	  if [ -f ".claude/skills/$$s/SKILL.md" ]; then \
+	    a=$$(grep '^sync:' "$$d/SKILL.md" | head -1); \
+	    b=$$(grep '^sync:' ".claude/skills/$$s/SKILL.md" | head -1); \
+	    if [ -z "$$a" ] || [ "$$a" != "$$b" ]; then \
+	      echo "[check-docs-sync] NG: skill $$s の sync 印が不一致（agents-pack=$$a / .claude=$$b）。片方を直したらもう片方へ内容を移植し、両方の sync: を同じ日付に上げる"; ok=0; \
+	    fi; \
+	  fi; \
+	done; \
 	echo "[check-docs-sync] pub def を持つモジュールが API 索引に載っているか"; \
 	python3 bin/check-api-index.py || ok=0; \
 	echo "[check-docs-sync] docs/api-digest.md が作り直しても差分ゼロか"; \

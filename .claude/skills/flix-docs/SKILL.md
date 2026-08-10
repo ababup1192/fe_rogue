@@ -1,6 +1,7 @@
 ---
 name: flix-docs
-description: "Flixの公式ドキュメントとプロジェクト固有のコーディングスタイルを確認する。パイプスタイル、エフェクト構文、テストの書き方、0.71.0固有の注意点を含む - Flixコードを新規作成・修正するとき、テストを書くとき、Flix構文を確認したいとき"
+description: "Flix の公式ドキュメントとこのプロジェクトのコーディングスタイルを出す。パイプスタイル・Algebraic Effect の伝播とハンドラ・標準ライブラリ優先・テストの書き方・0.71.0 固有の注意点（予約語・Channel API・Java interop）。Flix コードを書く前・直す前、テストを書くとき、構文や API の書き方に迷ったときに使う。"
+sync: 2026-08-11
 ---
 
 # Flix ドキュメント参照
@@ -186,27 +187,8 @@ def testFoo(): Unit \ Assert =
 
 ### 予約語に注意
 
-- `handler`, `do`, `resume`, `run`, `spawn`, `region`, `inject`, `project`, `solve` は予約語
-- import 文・変数名・関数名だけでなく、**レコードのフィールド名**でもパースエラーになる
-- ゲームコードで特に踏みやすいのは `spawn`（敵や主役の湧き位置）と `run`（走りアニメ・実行）。
-  エラーは「Expected ',' before '='」「Expected <pattern>」など間接的な形で出るので気づきにくい
-- 代わりの英単語を使うか、2単語以上で命名する
-
-```flix
-// NG: handler は予約語
-case Some((handler, params)) => ...
-
-// OK: 別の単語を使う
-case Some((action, params)) => ...
-
-// NG: フィールド名も同じ（{ spawn = Cell } / let run = ... は全部パースエラー）
-pub type alias Stage = { spawn = Cell }
-let run = { dir = 1.0 };
-
-// OK
-pub type alias Stage = { start = Cell }
-let walkR = { dir = 1.0 };
-```
+- 全リストと理屈は `.claude/rules/flix.md` が正（変数・関数名だけでなく**レコードのフィールド名**でも落ち、エラーは「Expected ',' before '='」など間接的な形で出る）
+- ゲームコードで特に踏みやすいのは `spawn`（湧き位置）と `run`（走り・実行）— `start` / `walkR` などへ逃がす
 
 ### Channel API
 

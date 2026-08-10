@@ -1,7 +1,8 @@
 ---
 name: compile-fix
-description: "Flixコンパイルエラーを診断し、既知の落とし穴と照合して修正を提案する"
+description: "Flix のコンパイルエラーを診断し、既知の落とし穴（予約語・import の位置・エフェクト伝播忘れ・Channel API・Java 例外型・パターン網羅性・Float32 サフィックス等）と照合して修正を出す。flix check / flix test / make が失敗したとき、E3138・E5252・E6217 等のエラー番号が出たとき、Unexpected token・Parse error・Unable to unify・Non-exhaustive match・Unresolved type が出たとき、「Expected ',' before '='」のような原因の見えないパースエラーが出たときに使う。"
 allowed-tools: Read, Grep, Glob, Bash
+sync: 2026-08-11
 ---
 
 # Flix コンパイルエラー診断
@@ -21,7 +22,7 @@ allowed-tools: Read, Grep, Glob, Bash
 
 **症状**: `Unexpected token` / `Parse error` が変数名や import 文で発生
 
-**修正**: 予約語（`handler`, `do`, `resume`, `spawn`, `region`, `inject`, `project`, `solve`）を識別子に使わない。別の単語か 2 単語以上で命名する。詳細は `flix-docs` の「予約語に注意」を参照。
+**修正**: 予約語（`handler`, `do`, `resume`, `run`, `spawn`, `region`, `inject`, `project`, `solve`）を識別子に使わない。別の単語か 2 単語以上で命名する。変数・関数名だけでなく**レコードのフィールド名**（`{ spawn = Cell }` 等）でもパースエラーになる。ゲームで踏みやすいのは `spawn`（湧き位置）と `run`（走り・実行）— `start` / `walkR` などへ逃がす。詳細は `flix-docs` の「予約語に注意」を参照。
 
 ### 2. import の位置（スコープエラー）
 

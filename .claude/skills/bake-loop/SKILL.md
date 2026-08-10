@@ -47,15 +47,11 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 ## Bake / golden の作り方（まだ無いゲームに足すとき）
 
-- `Bake.all()` のような entrypoint を用意し、`Bakery.renderPng` で決定的な場面
-  （t を固定し、乱数や実時間に依存しない world）を `gallery/` に焼く
-- 焼いた PNG を `golden/` にコピーして基準にし、make のターゲットでバイト比較する
-- 祝福は `make golden`（`bin/golden-bless.sh`）、比較は `make bench`（`bin/golden-check.sh`）。
-  git に入るのは `golden/SHA256SUMS.txt` と `title.png` だけで、他の golden PNG は管理外。
-  **手元には残るので `make diff` の左右比較はそのまま効く**（効かないのは clone 直後だけ。
-  その時は一度 `make bake && make golden` で基準を置く）
-- 調整中の画は `debug/` 行きの別 entrypoint（例: `Bake.prologue`）に分け、golden を汚さない
-- テストは検証だけを行う。**生成は `Bake.all` の仕事**（テストコードに生成を書かない）
+配管一式（Bake entrypoint・flix.toml・フォント・Bakery 呼び出し）の写経元は
+docs/headless-bake-recipe.md。golden の祝福は `make golden`（bin/golden-bless.sh）、
+比較は `make bench`（bin/golden-check.sh）。git に入るのは SHA256SUMS.txt と title.png だけ。
+守ることは 2 つ: 調整中の画は `debug/` 行きの別 entrypoint に分けて golden を汚さない・
+テストは検証だけ（生成は `Bake.all` の仕事）。
 
 ## 手順
 

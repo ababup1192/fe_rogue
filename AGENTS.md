@@ -25,10 +25,6 @@
 
 特にコードコメントは WhyNot を重視し、How・What を書かない。実装の由来や旧実装などの歴史背景も書かない。
 
-命名の注意: Flix の予約語（`handler` / `do` / `resume` / `run` / `spawn` / `region` / `inject` /
-`project` / `solve`）は変数・関数名だけでなく**レコードのフィールド名**にも使えない。
-エラーは「Expected ',' before '='」のような間接的なパースエラーで出る。
-
 ## 絵と音
 
 **`Render.box` を並べただけの画面は未完成。** 求めるのは 4 性質（面に階調か質感 / 主役が背景から
@@ -40,15 +36,8 @@
 下限の全文は [docs/drawing-floor.md](docs/drawing-floor.md)。
 音も絵と同じ強さで意識する（[docs/audio.md](docs/audio.md)）。
 
-人に見せる前に自分で確かめる（OS・エージェントを問わず動く）:
-
-```
-python3 bin/lint-view.py [ファイル...]   # 矩形と円だけになっていないか
-python3 bin/lint-palette.py              # ドット絵の意味色キーが色票から解けるか
-python3 bin/lint-images.py               # git に入れる絵が増えすぎていないか
-python3 bin/lint-sprite.py [ファイル...]  # ドット絵の画素の並び(浮き・階段・帯・色数)
-python3 bin/lint-anim.py [ファイル...]    # コマ間の飛び・接地と 4 方向のそろい
-```
+lint 群（矩形だけの View・色票・画像の量・画素の並び・コマ間）は保存時とコミット時の
+フックが自動で走らせる。手動で回す口の一覧は `make help`。
 
 ### 焼いた絵は git に入れない
 
@@ -59,8 +48,8 @@ python3 bin/lint-anim.py [ファイル...]    # コマ間の飛び・接地と 4
 
 ## 検証
 
-セッション開始時は SessionStart フックが `make status`（テスト記録・golden・チケット・git の
-1 画面）を自動で流す。現状把握はまずそこから。git log 掘りやテスト回し直しから始めない。
+現状把握は、セッション開始時に自動で流れる `make status` の 1 画面から。
+git log 掘りやテスト回し直しから始めない。
 
 **テストは絞って速く回す。全量の検証はリリース直前の 1 回だけ。**
 変更が波及したパッケージだけ `make test-<name>`、それ以外は `flix check` で足りる。
@@ -97,18 +86,7 @@ python3 bin/lint-anim.py [ファイル...]    # コマ間の飛び・接地と 4
 
 ### スキルを持たないエージェントへ
 
-`/名前` は Claude Code の呼び出し方だが、中身は**ただの markdown** なので、どのエージェントでも
-`.claude/skills/<名前>/SKILL.md` を直接読めば同じ内容が手に入る。`.claude/rules/*.md` も同じで、
-本文は `docs/` にある物と同一（`bin/gen-rules.py` の生成物）。
-
-規約の本文の置き場は 1 つだけ:
-
-| 内容 | 本文の在り処 | 各ツールへの配り方 |
-|---|---|---|
-| 全体方針 | `AGENTS.md`（このファイル） | `CLAUDE.md` は `@AGENTS.md` の 1 行 |
-| 絵の下限 | `docs/drawing-floor.md` | `make rules` が `.claude/rules/drawing.md` を生成 |
-| Flix の決まり | `docs/flix-conventions.md` | `make rules` が `.claude/rules/flix.md` を生成 |
-| 作業ごとの手順 | `.claude/skills/*/SKILL.md` | そのまま読む |
-
-`make check-docs-sync` が、この配線が崩れていないか（import・生成物のずれ・
-存在しない skill への参照・frontmatter 欠け）を検査する。**規約を直したら本文の方を直す。**
+`/名前` の中身は**ただの markdown**。どのエージェントでも `.claude/skills/<名前>/SKILL.md` を
+直接読めば同じ内容が手に入る。規約の本文は `docs/` とこのファイルに一本化してあり、
+`.claude/rules/*.md` は `make rules` の生成物、`CLAUDE.md` は `@AGENTS.md` の 1 行。
+配線の崩れは `make check-docs-sync` が検査する。**規約を直したら本文の方を直す。**

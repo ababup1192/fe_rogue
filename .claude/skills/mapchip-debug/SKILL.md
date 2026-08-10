@@ -103,19 +103,8 @@ python3 debug/apply_wall_rules.py add 候補.json     # 18 material へ冪等追
   （原因 / ルール名 / 検証結果 / gallery リンク / 「反映は次フロアから」）。
 - しくじったら `python3 debug/apply_wall_rules.py remove ルール名` で外せる。
 
-## チップ語彙（tileset_dungeon_green・26px角）
-
-ID は `gallery/tileset_green_chip_ids.png` の「(列,行)」。ユーザーとの会話もこの座標で通じる。
-
-| チップ | 役割 |
-|---|---|
-| (0,5) / (7,5) 等 | 壁の正面（床が下にあるときの明るいレンガ面） |
-| (6,0) | 横方向の天井帯（壁上面を横に走る明るい帯） |
-| (7,1) / (5,1) | 縦壁のエッジ（(7,1)=左端・(5,1)=右端。床のある側に細い線） |
-| (6,1) | 無地の暗い壁内部 |
-| (3,0) ┌ / (4,0) ┐ / (3,1) └ / (4,1) ┘ | 天井帯の L 字曲がり角 |
-| (7,0) / (5,0) | 帯の端が縦へ折れるフック |
-| (5,6) 等 | 床（実際の床装飾はマップの decorTiles 由来） |
+チップ語彙（ID と役割の対応表）は [chip-vocab.md](chip-vocab.md)。
+ユーザーとの会話は `gallery/tileset_green_chip_ids.png` の「(列,行)」座標で通じる。
 
 ## 落とし穴
 

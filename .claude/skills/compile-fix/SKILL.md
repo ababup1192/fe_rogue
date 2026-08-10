@@ -2,6 +2,7 @@
 name: compile-fix
 description: "Flix のコンパイルエラーを診断し、既知の落とし穴（予約語・import の位置・エフェクト伝播忘れ・Channel API・Java 例外型・パターン網羅性・Float32 サフィックス等）と照合して修正を出す。flix check / flix test / make が失敗したとき、E3138・E5252・E6217 等のエラー番号が出たとき、Unexpected token・Parse error・Unable to unify・Non-exhaustive match・Unresolved type が出たとき、「Expected ',' before '='」のような原因の見えないパースエラーが出たときに使う。"
 allowed-tools: Read, Grep, Glob, Bash
+sync: 2026-08-11
 ---
 
 # Flix コンパイルエラー診断

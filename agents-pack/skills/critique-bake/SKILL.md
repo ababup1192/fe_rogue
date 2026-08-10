@@ -1,6 +1,7 @@
 ---
 name: critique-bake
 description: "bake 系ターゲットを実行し、debug/gallery の PNG・WAV 可視化（sounds.png / music.png）を目視・目聴して、設計原則と絵の下限 4 性質に照らした批評レポートを返す。絵や音を作った・直した直後、報告の前の自己批評として、「見た目はどう？」「音はどう？」と聞かれたとき、golden を祝福する前に使う。"
+sync: 2026-08-11
 ---
 
 # critique-bake — 焼いて批評する
