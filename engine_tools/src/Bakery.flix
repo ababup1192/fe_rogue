@@ -224,6 +224,43 @@ mod Bakery {
         { strip = "frames/${name}/", frameCount = List.length(images),
           frameW = cfg#frameW, frameH = cfg#frameH, fps = cfg#gifFps }
 
+    /// pass つきの bakeGif（renderPngWithPasses の GIF 版）。toCmds が各コマの
+    /// (pass 列, 描き物, 多角形, シェーダー面) を返し、コマごとに pass を宣言順に焼いてから
+    /// 本編と合成する — 実機の App.withPasses と同じ順序で、後の pass は先に焼けた pass の
+    /// 名前を貼れる。items は本編・pass とも Render.withoutShaders → Render.draw で下ろす
+    /// こと（renderPngWithPasses と同じ約束。pass は Render.passSpecOf が外してくれる）。
+    /// pass の Keep はコマをまたいで持ち越さない — 実機の Keep は前フレームの画面を
+    /// 引き継ぐが、GIF は途中のコマからも見られるので、頭出しの位置で絵が変わる焼き物は
+    /// golden に固定できない。毎コマ透明から始める（静止画の renderPngWithPasses と同じ）。
+    pub def bakeGifWithPasses(cfg: BakeConfig, frames: List[w], stride: Int32,
+                              toCmds: w -> (List[PassSpec], List[GameEngine.Drawable],
+                                            List[GameEngine.PolygonRenderCmd],
+                                            List[SoftRaster.SurfaceCmd]),
+                              name: String): SnapshotSite.Filmstrip \ IO =
+        let sampled = every(stride, frames);
+        // コマ列は同じ作りの絵が続くので、報告は先頭コマぶんだけ出す（bakeGifWith と同じ）。
+        List.head(sampled) |> Option.forEach(w -> {
+            let (passes, drawables, _, _) = toCmds(w);
+            passes |> List.forEach(p -> warnDropped(p#drawables, "${name}:pass ${p#name}"));
+            warnDropped(drawables, name)
+        });
+        // 欠け名の知らせもコマ列で 1 本の控えを共有する（同じ警告がコマ数ぶん並ばない）。
+        let warnLog = SoftRaster.freshTexWarnLog();
+        let images = List.zipWithIndex(sampled) |> List.map(pair -> {
+            let (i, w) = pair;
+            let (passes, drawables, polygons, surfaces) = toCmds(w);
+            let passImages = passes |> List.foldLeft((acc, p) -> {
+                Map.insert(p#name, bakePassImageWith(cfg, acc, p, None), acc)
+            }, (Map.empty(): Map[String, BufferedImage]));
+            let img = SoftRaster.renderToImageLogged(reqOf(cfg, drawables, polygons, gifPath(cfg, name)),
+                                                     surfaces, Map.empty(), passImages, warnLog);
+            Filmstrip.bakeFrame(img, "${cfg#outDir}/frames/${name}/${i}.png");
+            img
+        });
+        GifEncoder.encode(images, cfg#gifDelayMs, gifPath(cfg, name));
+        { strip = "frames/${name}/", frameCount = List.length(images),
+          frameW = cfg#frameW, frameH = cfg#frameH, fps = cfg#gifFps }
+
     /// stride 枚ごとに 1 枚を残す（0 番から）。
     pub def every(stride: Int32, xs: List[a]): List[a] =
         List.zipWithIndex(xs)

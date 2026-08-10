@@ -111,9 +111,9 @@ mod Gallery {
         { x = 60.0, y = 60.0 } :: { x = 260.0, y = 60.0 } :: { x = 260.0, y = 180.0 } ::
         { x = 60.0, y = 180.0 } :: { x = 60.0, y = 60.0 } :: Nil
 
-    /// 巡回点列を frames コマぶん等分してなめらかに歩く World 列を作る（DarkWithLight 固定。
-    /// walls は影デモの GIF だけ true にする — 既存の lantern_patrol の絵を変えないため）。
-    def patrolTimeline(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, points: List[Vec2.Vec2], walls: Bool, frames: Int32): List[World.World] =
+    /// 巡回点列を frames コマぶん等分した位置の列（線形補間）。World を組むデモも
+    /// World を介さない光マップデモも、歩く位置の刻み方はこの 1 本を共有する。
+    def patrolPositions(points: List[Vec2.Vec2], frames: Int32): List[Vec2.Vec2] =
         let segments = List.length(points) - 1;
         List.range(0, frames + 1) |> List.map(i -> {
             let t = Int32.toFloat64(i) / Int32.toFloat64(frames) * Int32.toFloat64(segments);
@@ -121,9 +121,14 @@ mod Gallery {
             let localT = t - Int32.toFloat64(seg);
             let segStart = List.nth(seg, points) |> Option.getWithDefault(lanternDemoAt());
             let segEnd = List.nth(seg + 1, points) |> Option.getWithDefault(lanternDemoAt());
-            let at = Vec2.add(segStart, Vec2.mul(Vec2.sub(segEnd, segStart), localT));
-            GameUi.projectUi({ lantern = Some({ at = at, mode = World.LanternMode.DarkWithLight, walls = walls }) | World.initial(ui, lightDoc, false, ShaderDoc.waterVeins()) })
+            Vec2.add(segStart, Vec2.mul(Vec2.sub(segEnd, segStart), localT))
         })
+
+    /// 巡回点列を frames コマぶん等分してなめらかに歩く World 列を作る（DarkWithLight 固定。
+    /// walls は影デモの GIF だけ true にする — 既存の lantern_patrol の絵を変えないため）。
+    def patrolTimeline(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, points: List[Vec2.Vec2], walls: Bool, frames: Int32): List[World.World] =
+        patrolPositions(points, frames) |> List.map(at ->
+            GameUi.projectUi({ lantern = Some({ at = at, mode = World.LanternMode.DarkWithLight, walls = walls }) | World.initial(ui, lightDoc, false, ShaderDoc.waterVeins()) }))
 
     /// カンテラが目印の間を歩き回る GIF（8 コマ）。
     def bakeLanternGif(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): SnapshotSite.Filmstrip \ IO =
@@ -165,8 +170,8 @@ mod Gallery {
         let (ds, ps) = Render.draw(View.lightMapDemoItems(cfg));
         Bakery.renderPngWithPasses(config(atlas), passSpec :: Nil, ds, ps, Nil, name)
 
-    /// 2 枚連番: ランタン A が壁の反対側へ回ると、同じ壁の影が別の向きへ倒れる
-    /// （GIF にしないのは bakeGif が pass 未対応のため — 影の回りは 2 枚の見比べで示す）。
+    /// 2 枚連番: ランタン A が壁の反対側へ回ると、同じ壁の影が別の向きへ倒れる。
+    /// GIF（lightmap_orbit）があっても残す — 静止 2 枚は影の向きを止めて見比べられる。
     /// swing の B を two_lanterns と同じ (66,178) に置かないのは、そこが A の長影の帯の
     /// 真ん中で B の灯りが丸ごと沈み、初見に「バグの絵」と映るため — 帯の外へ出し、
     /// 「B の灯りは生きていて、その裾を A の影が横切る」が読める位置に置く。
@@ -175,6 +180,20 @@ mod Gallery {
             { x = 160.0, y = 120.0 }, { x = 66.0, y = 178.0 }, "lightmap_two_lanterns");
         bakeLightMapPng(atlas, lightDoc,
             { x = 238.0, y = 70.0 }, { x = 44.0, y = 72.0 }, "lightmap_swing")
+
+    /// ランタン A が L 字壁の周りを一周し、同じ壁の影が全方向へ回る GIF（8 コマ。
+    /// pass をコマごとに焼く bakeGifWithPasses の手本）。B は据え置き — 動く影（A 由来）と
+    /// 動かない灯り（B）が同居して、影が光の位置から導かれていることが 1 本で読める。
+    /// B が A の長影に沈むコマがあるのは v1 の割り切りどおり（Light.lightMapPass の doc 参照）。
+    def bakeLightMapGif(atlas: FontAtlas, lightDoc: LightDoc.Spec): SnapshotSite.Filmstrip \ IO =
+        let b = { x = 66.0, y = 178.0 };
+        let frames = patrolPositions(shadowPatrolPoints(), 7);
+        Bakery.bakeGifWithPasses(config(atlas), frames, 1, a -> {
+            let cfg = View.lightMapDemoConfig(lightDoc, View.lightMapLanterns(lightDoc, a, b));
+            let passSpec = Render.passSpecOf(_ -> None, Light.lightMapPass(cfg));
+            let (ds, ps) = Render.draw(View.lightMapDemoItems(cfg));
+            (passSpec :: Nil, ds, ps, (Nil: List[SoftRaster.SurfaceCmd]))
+        }, "lightmap_orbit")
 
     /// 光が L 字壁の周りを一周する巡回点列（壁の陰が回って見える経路）。
     def shadowPatrolPoints(): List[Vec2.Vec2] =
@@ -321,6 +340,7 @@ mod Gallery {
         let shadowFilm = bakeShadowGif(atlas, ui, lightDoc);
 
         bakeLightMapPngs(atlas, lightDoc);
+        let lightMapFilm = bakeLightMapGif(atlas, lightDoc);
 
         let hazeFilm = TexDemo.bakeAll(config(atlas));
 
@@ -336,7 +356,7 @@ mod Gallery {
                 catalog({ fadeOut = fadeOutFilm, fadeIn = fadeInFilm,
                           wipeLeft = wipeLeftFilm, wipeRight = wipeRightFilm,
                           lanternPatrol = lanternFilm, shadowWalk = shadowFilm,
-                          texHaze = hazeFilm }))
+                          lightMapOrbit = lightMapFilm, texHaze = hazeFilm }))
         } with Fs.FileWrite.runWithIO;
         writeText("${outDir()}/audio.html", audioHtml());
         linkAudioFromIndex()
@@ -347,7 +367,7 @@ mod Gallery {
         fadeOut = SnapshotSite.Filmstrip, fadeIn = SnapshotSite.Filmstrip,
         wipeLeft = SnapshotSite.Filmstrip, wipeRight = SnapshotSite.Filmstrip,
         lanternPatrol = SnapshotSite.Filmstrip, shadowWalk = SnapshotSite.Filmstrip,
-        texHaze = SnapshotSite.Filmstrip
+        lightMapOrbit = SnapshotSite.Filmstrip, texHaze = SnapshotSite.Filmstrip
     }
 
     def catalog(films: Films): List[SnapshotSite.Item] =
@@ -368,6 +388,7 @@ mod Gallery {
         png("shadow_walls_off", "対照カット: shadow_light_front と同じ光位置で walls=false。目印が沈まず見える＝暗さは壁の影であって距離減衰ではない", "Shadow") ::
         png("lightmap_two_lanterns", "光マップ方式: ランタン 2 個が同時に照らし、同じ壁から 2 方向へ影が伸びる（Light.lightMapPass + lightMapOverlay。暗幕方式では不可能な絵）", "Shadow") ::
         png("lightmap_swing", "ランタン A が壁の反対側へ回った連番: 同じ壁の影が別の向きへ倒れる（影が光の位置から導かれている証拠）。A の長い影が B の灯りまで消しているのは v1 の割り切りどおり（Light.lightMapPass の doc 参照）", "Shadow") ::
+        gif("lightmap_orbit", "光マップ方式の動き: ランタン A が L 字壁の周りを一周し、同じ壁の影が全方向へ回る。B は据え置き（Light.lightMapPass をコマごとに焼く bakeGifWithPasses の手本）", "Shadow", films#lightMapOrbit) ::
         gif("shadow_walk", "光が L 字壁と柱の周りを一周し、壁の陰が動的に回る（LeftCtrl で walls トグル相当）", "Shadow", films#shadowWalk) ::
         png("tex_blit", "tex 場の素通し: 左=pass をスプライト直貼り・右=Rgb{Tex×3} の面。継ぎ目が見えない=2 経路一致（中央の薄荷線が境界）", "ShaderTex") ::
         png("tex_blur", "3×3 ガウス近似: Shift タップ×9 の加重平均（Tex 読み 27 回 — JSON 合成ぼかしの実用上限の見本）", "ShaderTex") ::

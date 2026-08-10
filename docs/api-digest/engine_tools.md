@@ -52,6 +52,8 @@
   `pub def bakeGifFonts(cfg: BakeConfig, extraFonts: Map[String, SoftRaster.FontEntry], frames: List[w], stride: Int32, toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]), name: String): SnapshotSite.Filmstrip \ IO`
 - シェーダー面つきの bakeGif（renderPngWith の GIF 版）。toCmds が各コマの
   `pub def bakeGifWith(cfg: BakeConfig, frames: List[w], stride: Int32, toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd], List[SoftRaster.SurfaceCmd]), name: String): SnapshotSite.Filmstrip \ IO`
+- pass つきの bakeGif（renderPngWithPasses の GIF 版）。toCmds が各コマの
+  `pub def bakeGifWithPasses(cfg: BakeConfig, frames: List[w], stride: Int32, toCmds: w -> (List[PassSpec], List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd], List[SoftRaster.SurfaceCmd]), name: String): SnapshotSite.Filmstrip \ IO`
 - stride 枚ごとに 1 枚を残す（0 番から）。
   `pub def every(stride: Int32, xs: List[a]): List[a]`
 

@@ -5,6 +5,8 @@
 // 資産を相対参照する（テストの cwd = engine_tools/ 前提）。
 mod TestBakePasses {
     import java.awt.image.BufferedImage
+    import java.io.File
+    import javax.imageio.ImageIO
 
     /// 出力の比較は (a, r, g, b) のタプルで行う（負の ARGB int を直接比べると読みにくい）。
     def channels(p: Int32): (Int32, Int32, Int32, Int32) =
@@ -108,6 +110,33 @@ mod TestBakePasses {
                                                Map#{"paper" => paper});
         Assert.assertEq(expected = (255, 0, 255, 0) :: (255, 255, 0, 0) :: Nil,
             channels(img.getRGB(1i32, 1i32)) :: channels(img.getRGB(3i32, 3i32)) :: Nil)
+
+    /// PNG を読み戻した 1 画素。読めなければ (−1, −1, −1, −1)。
+    def readPixel(path: String, x: Int32, y: Int32): (Int32, Int32, Int32, Int32) \ IO =
+        let img = ImageIO.read(new File(path));
+        if (Object.isNull(img)) (-1, -1, -1, -1) else channels(img.getRGB(x, y))
+
+    // bakeGifWithPasses: コマ番号で色が変わる pass を本編がスプライトとして貼ると、
+    // コマ別 PNG に「そのコマの pass の色」が出る — pass がコマごとに焼き直されている証拠。
+    // GIF の実在と Filmstrip のコマ数も同時に釘打ちする。
+    @Test
+    def testBakeGifWithPassesBakesPassPerFrame(): Unit \ {Assert, IO} =
+        let c = { outDir = "build/test/bakegifpasses" | cfg(1) };
+        let toCmds = t -> {
+            let p: Bakery.PassSpec =
+                { name = "paper",
+                  clear = RenderTarget.LoadOp.Clear({ r = t, g = 0.0f32, b = 0.0f32 }),
+                  drawables = Nil, polygons = Nil };
+            (p :: Nil, drawable("paper") :: Nil,
+             (Nil: List[GameEngine.PolygonRenderCmd]), (Nil: List[SoftRaster.SurfaceCmd]))
+        };
+        let strip = Bakery.bakeGifWithPasses(c, 0.0f32 :: 1.0f32 :: Nil, 1, toCmds, "smoke");
+        let gifExists = (new File("build/test/bakegifpasses/smoke.gif")).exists();
+        Assert.assertEq(
+            expected = (2, true, (255, 0, 0, 0), (255, 255, 0, 0)),
+            (strip#frameCount, gifExists,
+             readPixel("build/test/bakegifpasses/frames/smoke/0.png", 1i32, 1i32),
+             readPixel("build/test/bakegifpasses/frames/smoke/1.png", 1i32, 1i32)))
 
     // 組み込みの放射テクスチャ: Render.lightAt が下ろす Drawable（texture "__radial_light"・
     // centered・Add）を texturePath 空のまま焼くと、黒背景の中心 (128,128) が白へ加算され、
