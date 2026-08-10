@@ -1,0 +1,4 @@
+#!/bin/sh
+# 中身は bin/precommit.py に 1 本化してある (Windows の Git Bash でも動くよう薄い入口だけ)。
+# 配線: make hooks (git config core.hooksPath bin/githooks)
+exec python3 "$(git rev-parse --show-toplevel)/bin/precommit.py"

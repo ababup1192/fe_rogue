@@ -89,6 +89,13 @@ SUBPATH_DEPTH := 5
 status:
 	@python3 bin/status.py
 
+# コミット時の関所 (焼いた絵の混入・規約の配線ずれ・矩形だけの View を止める)。
+# .git/hooks は git 管理外なので、clone ごとに 1 回この配線が要る (status が未配線を知らせる)。
+.PHONY: hooks
+hooks:
+	@git config core.hooksPath bin/githooks
+	@echo "[hooks] 配線しました: pre-commit = bin/githooks/pre-commit (中身は bin/precommit.py)"
+
 help:
 	@echo "Targets:"
 	@echo "  make status               現状 1 画面 (テスト記録・golden・チケット・git)。何も実行しない"
@@ -119,6 +126,7 @@ help:
 	@echo "  make editor [DIR=<dir>]   ui.json/hitbox.json エディタのバックエンドを起動 (PORT=8787。DIR 省略時は未選択で起動)"
 	@echo "  make release              sync→test-par→gl-parity→build-pkg→gh release を一括実行 (未コミットなら中断・tagはHEAD固定)"
 	@echo "  make bump FROM=x TO=y     全 flix.toml の version を一括更新 (lockstep)。release の前に実行する"
+	@echo "  make hooks                git の pre-commit 関所 (bin/githooks) をこの clone に配線する"
 
 # flix check を Ctrl-C で中断すると lib/cache/.../*.lock が残り、
 # 次回 Maven リゾルバが「他プロセスが取得中」と誤認して無限待ちになる。

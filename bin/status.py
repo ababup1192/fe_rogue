@@ -67,6 +67,10 @@ def section_git(out):
     out.append("git      ブランチ %s / 変更中 %d ファイル" % (branch, n))
     for line in git("log", "--oneline", "-3").splitlines():
         out.append("  " + line)
+    # コミット時の関所は clone ごとに配線が要る。読むだけの status は知らせるだけ。
+    if os.path.isdir(os.path.join("bin", "githooks")) and \
+            git("config", "core.hooksPath") != "bin/githooks":
+        out.append("  未配線: pre-commit 関所が効いていません → make hooks")
 
 
 def section_tests(out):

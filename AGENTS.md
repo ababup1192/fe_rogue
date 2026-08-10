@@ -52,14 +52,10 @@ python3 bin/lint-anim.py [ファイル...]    # コマ間の飛び・接地と 4
 
 ### 焼いた絵は git に入れない
 
-`make bake` が焼く `gallery/` と `golden/*.png` は **git 管理外**。焼き直すたびに PNG/GIF は
-丸ごと別の実体になり、差分圧縮も効かないまま履歴に積み上がるため。
-
-- **人に見せる絵は [docs/gallery/](docs/gallery/README.md) にだけ置く**（枚数・大きさの上限あり）。
-  焼いた中から選んでコピーする
-- 退行検知は `templates/*/golden/SHA256SUMS.txt`（`make -C templates/<name> bench` が突き合わせ、
-  `make golden` が作り直す）。PNG 本体は手元に残るので `make diff` の左右比較はそのまま効く
-- `templates/*/golden/title.png` だけ実体を追跡する。Studio のジャンル札のサムネが読むため
+焼いた `gallery/` と `golden/*.png` は git 管理外。人に見せる絵は
+[docs/gallery/](docs/gallery/README.md) へ選んでコピー、退行検知は
+`templates/*/golden/SHA256SUMS.txt`（例外は Studio が読む `golden/title.png` のみ）。
+違反はコミット時に pre-commit 関所が止める（配線 `make hooks`、理屈ごと `bin/precommit.py`）。
 
 ## 検証
 
