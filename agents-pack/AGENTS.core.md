@@ -28,6 +28,14 @@
   `atelier/archive/<base>.vN.<kind>.json` に積まれる(何も捨てない。戻すのもここから)。
 - **AI が素材を作るときは `assets/` に直接書かず、必ず `atelier/` に書く。**
 
+## セッションの始め方と終わり方
+
+- 開始時は `.claude/settings.json` の SessionStart フックが `make status` を自動で流す
+  （テスト記録・golden 一致・注釈チケット・git の 1 画面）。**個別に git log を掘ったり
+  テストを回し直したりせず、まずこの 1 画面から入る**。手動で見たいときも `make status`。
+- 終了時（または区切りごと）に `NOTES.md` の先頭へ「今どこまで・次やること」を 3 行残す。
+  次のセッションの status に載り、会話の記憶に頼らず再開できる。
+
 ## make の入口
 
 - `make run` / `make debug`（watchFile・F8 有効）/ `make check`（型検査・一番速い確認）

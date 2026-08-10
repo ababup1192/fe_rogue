@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""セッション開始の現状 1 画面。
+
+散らばった記録 (git / .test-logs / golden / 注釈チケット / NOTES.md) を集めて
+30 行前後に要約する。何も実行しない・何も変更しない・必ず exit 0。
+SessionStart フックから毎回呼ばれるので、出力の短さがそのまま固定費になる。
+"""
+import glob
+import hashlib
+import os
+import subprocess
+import sys
+import time
+
+# Windows のコンソール (cp932) でも落ちないように。絵文字は最初から使わない。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
+MAX_LINES = 40
+
+
+def age(path):
+    """更新からの経過を「3分前」「2時間前」「5日前」で返す。古い記録を新しいと誤認させない。"""
+    try:
+        sec = time.time() - os.path.getmtime(path)
+    except OSError:
+        return "?"
+    if sec < 90:
+        return "たった今"
+    if sec < 3600:
+        return "%d分前" % (sec // 60)
+    if sec < 86400:
+        return "%d時間前" % (sec // 3600)
+    return "%d日前" % (sec // 86400)
+
+
+def git(*args):
+    try:
+        out = subprocess.run(
+            ["git"] + list(args), capture_output=True, text=True, timeout=10,
+            encoding="utf-8", errors="replace")
+        return out.stdout.strip() if out.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def first_line(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                s = line.strip().lstrip("#").strip()
+                if s:
+                    return s
+    except OSError:
+        pass
+    return ""
+
+
+def section_git(out):
+    branch = git("rev-parse", "--abbrev-ref", "HEAD")
+    if not branch:
+        return
+    dirty = git("status", "--porcelain")
+    n = len(dirty.splitlines()) if dirty else 0
+    out.append("git      ブランチ %s / 変更中 %d ファイル" % (branch, n))
+    for line in git("log", "--oneline", "-3").splitlines():
+        out.append("  " + line)
+
+
+def section_tests(out):
+    logs = sorted(glob.glob(os.path.join(".test-logs", "*.log")))
+    logs = [p for p in logs if not os.path.basename(p).startswith("bake-")]
+    if not logs:
+        out.append("テスト   記録なし (make test / make test-par を一度も通していない)")
+        return
+    out.append("テスト   (最終実行の記録から。回し直してはいない)")
+    reds = []
+    greens = []
+    for p in logs:
+        name = os.path.basename(p)[:-4]
+        failed = os.path.exists(p[:-4] + ".fail")
+        (reds if failed else greens).append("%s(%s)" % (name, age(p)))
+    if greens:
+        out.append("  OK: " + " ".join(greens[:8]) + (" 他%d" % (len(greens) - 8) if len(greens) > 8 else ""))
+    for r in reds:
+        out.append("  NG: %s — 詳細は .test-logs/ の同名ログ" % r)
+    bake_fails = glob.glob(os.path.join(".test-logs", "bake-*.fail"))
+    for p in bake_fails:
+        out.append("  NG(bake): %s" % os.path.basename(p)[:-5])
+
+
+def golden_pairs():
+    """(名前, golden/SHA256SUMS.txt, gallery/) の組。ゲームリポは自分 1 組、engine リポは templates 全部。"""
+    if os.path.isfile(os.path.join("golden", "SHA256SUMS.txt")):
+        return [(".", os.path.join("golden", "SHA256SUMS.txt"), "gallery")]
+    pairs = []
+    for sums in sorted(glob.glob(os.path.join("templates", "*", "golden", "SHA256SUMS.txt"))):
+        base = os.path.dirname(os.path.dirname(sums))
+        pairs.append((os.path.basename(base), sums, os.path.join(base, "gallery")))
+    return pairs
+
+
+def check_golden(sums, gallery):
+    """一致した枚数と食い違い一覧を返す。shasum が無い Windows でも動くよう hashlib で比べる。"""
+    expected = {}
+    with open(sums, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            parts = line.split(None, 1)
+            if len(parts) == 2:
+                expected[parts[1].strip()] = parts[0]
+    actual = set(os.path.basename(p) for p in glob.glob(os.path.join(gallery, "*.png")))
+    bad = sorted(set(expected) - actual) + sorted(actual - set(expected))
+    ok = 0
+    for name, want in expected.items():
+        path = os.path.join(gallery, name)
+        if not os.path.isfile(path):
+            continue
+        h = hashlib.sha256()
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        if h.hexdigest() == want:
+            ok += 1
+        else:
+            bad.append(name)
+    return ok, sorted(set(bad))
+
+
+def section_golden(out):
+    pairs = golden_pairs()
+    if not pairs:
+        return
+    oks = []
+    for name, sums, gallery in pairs:
+        if not os.path.isdir(gallery):
+            continue  # 未焼きは「情報なし」。焼いてから比べる
+        try:
+            ok, bad = check_golden(sums, gallery)
+        except OSError:
+            continue
+        if bad:
+            out.append("golden   NG %s: %s%s (意図した変更なら make golden で祝福)" % (
+                name, " ".join(bad[:4]), " 他%d" % (len(bad) - 4) if len(bad) > 4 else ""))
+        else:
+            oks.append("%s(%d枚)" % (name, ok))
+    if oks:
+        out.append("golden   OK: " + " ".join(oks))
+
+
+def section_tickets(out):
+    dirs = glob.glob(os.path.join("debug", "annotations", "*")) + \
+        glob.glob(os.path.join("examples", "*", "debug", "annotations", "*"))
+    dirs = [d for d in dirs if os.path.isdir(d)]
+    if not dirs:
+        return
+    dirs.sort(key=lambda d: os.path.getmtime(d), reverse=True)
+    out.append("チケット 注釈 %d 件 (新しい順):" % len(dirs))
+    for d in dirs[:3]:
+        summary = first_line(os.path.join(d, "README.md"))
+        out.append("  %s (%s) %s" % (os.path.basename(d), age(d), summary[:60]))
+
+
+def section_notes(out):
+    if not os.path.isfile("NOTES.md"):
+        out.append("引き継ぎ NOTES.md なし (セッションの終わりに「次やること」を 3 行残すと次が安い)")
+        return
+    out.append("引き継ぎ NOTES.md (%s):" % age("NOTES.md"))
+    shown = 0
+    with open("NOTES.md", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            s = line.rstrip()
+            if not s.strip():
+                continue
+            out.append("  " + s[:80])
+            shown += 1
+            if shown >= 6:
+                break
+
+
+def main():
+    here = os.path.basename(os.getcwd())
+    out = ["== %s 状態 %s ==" % (here, time.strftime("%m-%d %H:%M"))]
+    for section in (section_git, section_tests, section_golden, section_tickets, section_notes):
+        try:
+            section(out)
+        except Exception as e:
+            out.append("(status: %s 区画で失敗 %s)" % (section.__name__, type(e).__name__))
+    if len(out) > MAX_LINES:
+        out = out[:MAX_LINES] + ["  … (長すぎるので切った。python3 bin/status.py で全文)"]
+    print("\n".join(out))
+
+
+if __name__ == "__main__":
+    main()
+    sys.exit(0)

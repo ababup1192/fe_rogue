@@ -8,6 +8,20 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 決定的な場面を headless bake で `debug/` に焼き（golden の外）、目視で批評 → 修正 → 再焼成を回す。
 
+## 見る前に数値（bench → img-digest → 目視の順）
+
+焼いた絵を毎回目視すると 1 枚数千トークン燃える。じょうごで絞る:
+
+1. まず `make bench`（golden とのハッシュ突き合わせ）。**全一致ならここで終わり** —
+   digest も目視も要らない
+2. 不一致の名前が出た時だけ、その名前を渡して数値で当たりを付ける:
+   ```
+   python3 bin/img-digest.py golden/ gallery/ battle.png   # 名前を挙げた絵だけ要約
+   python3 bin/img-digest.py old.png new.png               # 2 枚だけ比べる
+   ```
+   差分画素率・変化した領域・色数・明るさが数行で出る
+3. **画像を開くのは最終確認の 1 回だけ**
+
 - 機械的リファクタ（分割・Doc 化）は「前後の PNG バイト一致」で見た目不変を証明する
 - リグレッション防護は golden（`gallery/` vs `golden/` のバイト比較）に任せる
 

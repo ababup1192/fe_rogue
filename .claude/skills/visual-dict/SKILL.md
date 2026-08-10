@@ -85,7 +85,7 @@ description: "画面の絵を作るときの手順と、web/Canvas/Shadertoy の
 
 ## 辞書の穴（エンジン側の宿題 — 勝手に直さず、相談してから）
 
-1. 放射の Multiply 版（`darkAt`）と、`glowAt` の減衰カーブ・輪数を渡す口
+1. `glowAt` の減衰カーブ・輪数を渡す口（放射の Multiply 版は `Render.darkAt` として実装済み。Add 版は `Render.lightAt`）
 2. `Light` のテクスチャレス・フォールバック
 3. `ShaderDoc` の語彙: Worley の軸別スケール
 4. `PxSprite` の小数 scale / legend α

@@ -1,0 +1,623 @@
+#!/usr/bin/env python3
+"""checkd — flix check / flix test の常駐高速化。
+
+flix repl をパッケージごとに裏で 1 つだけ立てて温めておき、`:check` や `:test` を
+使い回すことで、毎回 JVM とコンパイラを立ち上げ直す時間 (数秒) を省く。
+見た目と終了コードは素の `bin/flix check` / `bin/flix test` と同じに揃える。
+
+使い方:
+    bin/checkd [パッケージdir]      # check する (省略時はカレント)
+    bin/checkd --test [dir]         # test する (check と同じ常駐 repl を使う)
+    bin/checkd --stop [dir]         # そのパッケージの常駐を止める
+    bin/checkd --stop-all           # 常駐を全部止める
+
+常駐が無い/壊れている/応答しない時は、黙って素の CLI に落ちる。
+速さより結果の正しさを常に優先する。
+
+Windows でも動かすため、OS 固有の仕組みは使わない:
+repl とは素のパイプで話し、常駐とは 127.0.0.1 の TCP で話す。
+実ポートは状態ディレクトリの port ファイルに書く (クライアントはそれを読んで接続)。
+"""
+import hashlib
+import json
+import os
+import queue
+import re
+import signal
+import socket
+import subprocess
+import sys
+import threading
+import time
+
+IDLE_SEC = 30 * 60        # この時間、誰も check しなければ常駐は自分で消える
+RSS_LIMIT_MB = 4096       # repl のメモリがこれを超えたら使い捨てて立て直す
+MAX_CHECKS = 200          # メモリは check のたびに少しずつ漏れるので回数でも立て直す
+SETTLE_SEC = 1.0          # 保存直後の check はソースを読み損ねる窓があるので少し待つ
+CHECK_TIMEOUT = 900       # 依存解決込みの初回コンパイルが数分かかり得るので長めに取る
+ANSI = re.compile(rb"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[=>]")
+
+
+def pkg_dir_of(arg):
+    return os.path.realpath(arg if arg else os.getcwd())
+
+
+def state_dir(pkg):
+    # パッケージのパスから決まる置き場。パスをそのままディレクトリ名にすると
+    # 長さや記号で壊れるのでハッシュで畳む。
+    h = hashlib.sha1(pkg.encode("utf-8")).hexdigest()[:16]
+    d = os.path.join(os.path.expanduser("~/.cache/flix-checkd"), h)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def flix_bin(pkg):
+    # ゲーム側の bin/flix (symlink 含む) を優先。無ければ engine の bin/flix。
+    cand = os.path.join(pkg, "bin", "flix")
+    if os.path.isfile(cand) and os.access(cand, os.X_OK):
+        return cand
+    return os.path.join(os.path.dirname(os.path.realpath(__file__)), "flix")
+
+
+def pid_alive(pid):
+    """その pid のプロセスが居るか。シグナルは送らない。
+
+    Windows の os.kill は 0 を送るつもりでも相手を止めてしまう
+    (TerminateProcess に化ける) ので、存在確認には使えない。
+    """
+    if os.name == "nt":
+        try:
+            out = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                capture_output=True, text=True, timeout=10).stdout
+            return re.search(rf"\b{pid}\b", out) is not None
+        except (OSError, subprocess.TimeoutExpired):
+            return True  # 確かめられない時は「居る」に倒す (誤って乗っ取らない)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        pass  # 権限エラー等は「居る」扱い
+    return True
+
+
+# ---------------------------------------------------------------- クライアント側
+
+def request(pkg, command, timeout):
+    """常駐へ 1 コマンド送り、(終了コード, 出力bytes) を返す。失敗は例外。"""
+    sd = state_dir(pkg)
+    port_path = os.path.join(sd, "port")
+    try:
+        with open(port_path, encoding="utf-8") as f:
+            port = int(f.read().strip())
+    except (OSError, ValueError):
+        raise ConnectionError("常駐なし (port ファイルが読めない)")
+    try:
+        s = socket.create_connection(("127.0.0.1", port), timeout=5)
+    except OSError:
+        # つながらない port ファイルは死んだ常駐の残骸なので片付ける
+        try:
+            os.unlink(port_path)
+        except OSError:
+            pass
+        raise
+    s.settimeout(timeout)
+    try:
+        s.sendall(command.encode("utf-8") + b"\n")
+        buf = b""
+        while b"\n" not in buf:
+            c = s.recv(65536)
+            if not c:
+                raise ConnectionError("常駐が応答せず切断")
+            buf += c
+        header, body = buf.split(b"\n", 1)
+        _tag, code, length = header.split()
+        code, length = int(code), int(length)
+        while len(body) < length:
+            c = s.recv(65536)
+            if not c:
+                raise ConnectionError("応答が途中で切れた")
+            body += c
+        return code, body
+    finally:
+        s.close()
+
+
+def spawn_daemon(pkg):
+    sd = state_dir(pkg)
+    log = open(os.path.join(sd, "daemon.log"), "ab")
+    kwargs = {}
+    # 親 (make 等) への Ctrl+C を常駐が巻き添えで受けないよう切り離す。
+    # 切り離し方だけは OS で API が別物なので、ここは分ける。
+    if os.name == "nt":
+        kwargs["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP
+                                   | subprocess.CREATE_NO_WINDOW)
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen(
+        [sys.executable, os.path.realpath(__file__), "--daemon", pkg],
+        cwd=pkg, stdin=subprocess.DEVNULL, stdout=log, stderr=log, **kwargs)
+    log.close()
+    # port が開くまで待つ (コンパイルは待たない。それは CHECK 側で待つ)
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        try:
+            request(pkg, "PING", timeout=2)
+            return True
+        except OSError:
+            time.sleep(0.2)
+    return False
+
+
+def run_fallback(pkg, verb):
+    env = os.environ.copy()
+    if verb == "test":
+        # 素の test も headless にする。GLFW と AWT の初期化がぶつかると
+        # テストが固まるパッケージがあるため (fe_rogue 等)。
+        env["JAVA_TOOL_OPTIONS"] = (
+            env.get("JAVA_TOOL_OPTIONS", "") + " -Djava.awt.headless=true").strip()
+    return subprocess.call([flix_bin(pkg), verb], cwd=pkg, env=env)
+
+
+def debug(msg):
+    if os.environ.get("CHECKD_DEBUG"):
+        print(f"[checkd] {msg}", file=sys.stderr, flush=True)
+
+
+def client_run(pkg, verb):
+    for attempt in (1, 2):
+        try:
+            code, out = request(pkg, verb.upper(), timeout=CHECK_TIMEOUT)
+            if code < 0:
+                debug(f"常駐が {verb} をやり切れなかった → 素の {verb} へ")
+                break
+            sys.stdout.buffer.write(out)
+            sys.stdout.buffer.flush()
+            return code
+        except OSError as e:
+            debug(f"常駐と話せない ({e!r})")
+            if attempt == 1 and spawn_daemon(pkg):
+                continue
+            break
+    return run_fallback(pkg, verb)
+
+
+def client_stop(pkg, quiet=False):
+    sd = state_dir(pkg)
+    stopped = False
+    try:
+        request(pkg, "STOP", timeout=10)
+        stopped = True
+    except OSError:
+        # 会話できない常駐は pid で直接落とす。repl は常駐とパイプで
+        # つながっているので、常駐が消えれば EOF を見て自分で終わる。
+        try:
+            with open(os.path.join(sd, "pid"), encoding="utf-8") as f:
+                pid = int(f.read().strip())
+            os.kill(pid, signal.SIGTERM)
+            stopped = True
+        except (OSError, ValueError):
+            pass
+    for f in ("port", "pid", "sock", "lock"):
+        try:
+            os.unlink(os.path.join(sd, f))
+        except OSError:
+            pass
+    if not quiet:
+        print(f"[checkd] {'停止: ' + pkg if stopped else '常駐なし: ' + pkg}")
+    return 0
+
+
+def client_stop_all():
+    base = os.path.expanduser("~/.cache/flix-checkd")
+    if not os.path.isdir(base):
+        print("[checkd] 常駐なし")
+        return 0
+    for name in sorted(os.listdir(base)):
+        meta_path = os.path.join(base, name, "meta.json")
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                pkg = json.load(f)["pkg"]
+        except (OSError, ValueError, KeyError):
+            continue
+        client_stop(pkg)
+    return 0
+
+
+# ---------------------------------------------------------------- 常駐側
+
+class Daemon:
+    def __init__(self, pkg):
+        self.pkg = pkg
+        self.sd = state_dir(pkg)
+        # pid ファイルの O_EXCL 作成が「1 匹だけ」の鍵。作れなければ先客が居る。
+        # 残骸 (死んだ pid) なら片付けてもう 1 度だけ試す。
+        if not self.acquire_pid_file():
+            sys.exit(0)
+        with open(os.path.join(self.sd, "meta.json"), "w", encoding="utf-8") as f:
+            json.dump({"pkg": pkg}, f)
+        port_path = os.path.join(self.sd, "port")
+        try:
+            os.unlink(port_path)
+        except OSError:
+            pass
+        # 127.0.0.1 限定 + ポート 0 (OS 採番)。外から届く口は開けない。
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen(16)
+        # port ファイルは書き終えてから置く。書きかけを読ませない。
+        tmp = port_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(str(self.sock.getsockname()[1]))
+        os.replace(tmp, port_path)
+        self.proc = None
+        self.out_q = None
+        self.seq = 0
+        self.checks = 0
+        self.snapshot = None
+
+    def acquire_pid_file(self):
+        pid_path = os.path.join(self.sd, "pid")
+        for _ in (1, 2):
+            try:
+                fd = os.open(pid_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(fd, str(os.getpid()).encode("utf-8"))
+                os.close(fd)
+                return True
+            except FileExistsError:
+                try:
+                    with open(pid_path, encoding="utf-8") as f:
+                        pid = int(f.read().strip())
+                except (OSError, ValueError):
+                    pid = -1
+                if pid > 0 and pid_alive(pid):
+                    return False
+                try:
+                    os.unlink(pid_path)
+                except OSError:
+                    pass
+        return False
+
+    # --- repl の寿命管理
+
+    def start_repl(self):
+        env = os.environ.copy()
+        # repl 起動時に依存解決が走る。素の匿名アクセスは GitHub の
+        # rate limit にすぐ当たるので、取れるなら token を持たせる。
+        if "GITHUB_TOKEN" not in env:
+            try:
+                r = subprocess.run(["gh", "auth", "token"], capture_output=True,
+                                   text=True, timeout=10)
+                if r.returncode == 0 and r.stdout.strip():
+                    env["GITHUB_TOKEN"] = r.stdout.strip()
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        # :test で GLFW と AWT の初期化がぶつかると固まるパッケージがある
+        # (fe_rogue 等)。checkd は run を扱わないので常時 headless で害がない。
+        env["JAVA_TOOL_OPTIONS"] = (
+            env.get("JAVA_TOOL_OPTIONS", "") + " -Djava.awt.headless=true").strip()
+        # 素のパイプで十分 (端末は要らない)。エコーが無いので、番兵文字列は
+        # repl が処理した応答の中にだけ現れる。
+        self.proc = subprocess.Popen(
+            [flix_bin(self.pkg), "repl"], cwd=self.pkg,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, env=env, bufsize=0)
+        # パイプの読みはブロックする一方、check には締め切りが要る。
+        # 読み専用の脇スレッドがキューに流し、本流はキューを締め切り付きで待つ。
+        self.out_q = queue.Queue()
+        threading.Thread(target=self.pump, args=(self.proc.stdout, self.out_q),
+                         daemon=True).start()
+        self.checks = 0
+        # 初回コンパイルが終わるまで repl は入力を処理しない。
+        # 番兵を投げて応答が返る = 温まった、とみなす。
+        self.send(b":zzz-warm\n")
+        ok, _ = self.wait_for(b"zzz-warm", CHECK_TIMEOUT)
+        if not ok:
+            self.kill_repl()
+            raise RuntimeError("repl の起動がタイムアウト")
+        # 鮮度の基準は温め完了後に撮る。起動中の依存解決が lib/ を触るので、
+        # 先に撮ると 1 回目の照合が必ず「変わった」になってしまう。
+        self.snapshot = self.take_snapshot()
+
+    @staticmethod
+    def pump(stream, q):
+        while True:
+            try:
+                chunk = stream.read(65536)
+            except (OSError, ValueError):
+                break
+            if not chunk:
+                break
+            q.put(chunk)
+
+    def send(self, data):
+        self.proc.stdin.write(data)
+        self.proc.stdin.flush()
+
+    def kill_repl(self):
+        if self.proc is None:
+            return
+        try:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                self.proc.wait(timeout=5)
+        except OSError:
+            pass
+        for stream in (self.proc.stdin, self.proc.stdout):
+            try:
+                stream.close()
+            except OSError:
+                pass
+        self.proc = None
+        self.out_q = None
+
+    def rss_mb(self):
+        # ps が無い環境 (Windows) では測れないので -1 を返し、
+        # 立て直しは回数の上限 (MAX_CHECKS) に任せる。PATH に頼ると
+        # make 経由以外の起動で見つからないことがあるので絶対パスを先に見る。
+        ps = "/bin/ps" if os.path.isfile("/bin/ps") else "ps"
+        try:
+            out = subprocess.run([ps, "-p", str(self.proc.pid), "-o", "rss="],
+                                 capture_output=True, text=True).stdout.strip()
+            return int(out) // 1024
+        except (ValueError, OSError, AttributeError):
+            return -1
+
+    # --- 鮮度 (make sync-engine で lib/ の fpkg 実体が差し替わったら作り直す)
+
+    def take_snapshot(self):
+        items = {}
+        toml = os.path.join(self.pkg, "flix.toml")
+        try:
+            items[toml] = os.stat(toml).st_mtime_ns
+        except OSError:
+            items[toml] = 0
+        libdir = os.path.join(self.pkg, "lib")
+        seen = set()
+        for root, dirs, files in os.walk(libdir, followlinks=True):
+            real = os.path.realpath(root)
+            if real in seen:
+                dirs[:] = []
+                continue
+            seen.add(real)
+            for f in files:
+                # 依存の実体だけ見る。cache の lock 等まで見ると、無関係な
+                # 更新のたびに repl を作り直してしまう。
+                if not f.endswith((".fpkg", ".toml", ".jar")):
+                    continue
+                p = os.path.join(root, f)
+                try:
+                    items[p] = os.stat(p).st_mtime_ns  # stat は symlink の先を見る
+                except OSError:
+                    items[p] = 0
+        return items
+
+    # --- 入出力
+
+    def wait_for(self, marker, timeout):
+        deadline = time.time() + timeout
+        out = b""
+        while time.time() < deadline:
+            try:
+                out += self.out_q.get(timeout=0.25)
+            except queue.Empty:
+                if self.proc.poll() is not None and self.out_q.empty():
+                    return False, out
+                continue
+            if marker in ANSI.sub(b"", out):
+                return True, out
+        return False, out
+
+    def settle(self):
+        # ファイル保存の直後に check すると書きかけを読むことがある。
+        # 一番新しい .flix の保存から SETTLE_SEC 経つまで待つ (古ければ待たない)。
+        newest = 0.0
+        skip = {"lib", "build", ".git", "gallery", "golden", "assets", "node_modules"}
+        for root, dirs, files in os.walk(self.pkg):
+            dirs[:] = [d for d in dirs if d not in skip]
+            for f in files:
+                if f.endswith(".flix") or f == "flix.toml":
+                    try:
+                        newest = max(newest, os.stat(os.path.join(root, f)).st_mtime)
+                    except OSError:
+                        pass
+        wait = SETTLE_SEC - (time.time() - newest)
+        if 0 < wait <= SETTLE_SEC:
+            time.sleep(wait)
+
+    @staticmethod
+    def scrub(raw, sentinel):
+        """repl の飾り (プロンプト・番兵の応答) を落とし、check の出力だけ残す。"""
+        txt = ANSI.sub(b"", raw).decode("utf-8", errors="replace")
+        txt = txt.replace("\r\n", "\n")
+        lines = []
+        for line in txt.split("\n"):
+            # 残った \r は「行頭に戻って上書き」の印。スピナーの描き捨てを消して、
+            # その行で最後に描かれた文字だけを残す。
+            line = line.split("\r")[-1]
+            if sentinel in line:
+                continue
+            line = line.replace("flix> ", "").replace("flix>", "")
+            # repl がコンパイル中に出す進捗ドット (=>....) は CLI には無いので削る
+            if line and set(line) <= set("=>. "):
+                continue
+            lines.append(line)
+        out = "\n".join(lines).strip("\n")
+        return (out + "\n") if out else ""
+
+    def log(self, msg):
+        print(f"[{time.strftime('%H:%M:%S')}] {msg}", file=sys.stderr, flush=True)
+
+    @staticmethod
+    def exit_code_of(verb, text):
+        """CLI と同じ終了コードを出力から復元する。読み取れなければ負 (=素の CLI へ)。"""
+        if "Compilation failed" in text:
+            return 1
+        if verb == "check":
+            # このバージョンの flix は check のエラーで "Compilation failed" を
+            # 出さない。代わりにエラーは "-- Resolution Error [E2136] ----" の
+            # ような "-- 〜 Error" 見出しで始まるので、それをマーカーにする。
+            return 1 if re.search(r"^-- .*\bError\b", text, re.M) else 0
+        # test はまとめ行 (Passed: N, Failed: M.) が唯一の頼り。行が無い出力は
+        # 途中で切れた可能性があるので、推測せず素の CLI に投げ直す。
+        m = re.search(r"Passed: (\d+), Failed: (\d+)\.", text)
+        if m is None:
+            return -1
+        return 0 if int(m.group(2)) == 0 else 1
+
+    def do_check(self, verb="check"):
+        """(終了コード, 出力bytes)。コードが負なら「素の CLI で確かめて」の意味。"""
+        t0 = time.time()
+        try:
+            if self.proc is None or self.proc.poll() is not None:
+                self.log("repl が居ないので起動")
+                self.kill_repl()
+                self.start_repl()
+            else:
+                now = self.take_snapshot()
+                if now != self.snapshot:
+                    # 依存の実体が変わった。温めた結果は古い依存で出るので作り直す。
+                    diff = [k for k in set(now) | set(self.snapshot)
+                            if now.get(k) != self.snapshot.get(k)]
+                    self.log(f"依存が変わったので repl を作り直す: {diff[:5]}")
+                    self.kill_repl()
+                    self.start_repl()
+            self.settle()
+            # 前のコマンドの残り (遅れて届いたプロンプト等) を捨てる。
+            # 混ざると check の出力に無関係な欠片が載ってしまう。
+            while True:
+                try:
+                    self.out_q.get_nowait()
+                except queue.Empty:
+                    break
+            self.seq += 1
+            sentinel = f"zzz{self.seq}"
+            self.send(f":{verb}\n:{sentinel}\n".encode("utf-8"))
+            ok, raw = self.wait_for(sentinel.encode("utf-8"), CHECK_TIMEOUT)
+            if not ok:
+                self.log(f"{verb} #{self.checks + 1} が番兵まで届かずタイムアウト")
+                self.kill_repl()
+                return -1, b""
+            text = self.scrub(raw, sentinel)
+            code = self.exit_code_of(verb, text)
+            if code < 0:
+                # 判定できない出力を返すと exit code が嘘になる。repl も疑わしいので捨てる
+                self.log(f"{verb} の出力から結果を読み取れない → 素の CLI へ")
+                self.kill_repl()
+                return -1, b""
+            self.checks += 1
+            rss = self.rss_mb()
+            self.log(f"{verb} #{self.checks} 完了 exit={code} "
+                     f"{time.time() - t0:.2f}s RSS={rss}MB")
+            # :test は 1 回で数百 MB 増えることがある。上限超えは次回の作り直しに
+            # 回さず、その場で使い捨てて漏れを持ち越さない。
+            if self.checks >= MAX_CHECKS or rss > RSS_LIMIT_MB:
+                self.log("repl を使い捨てる (回数か RSS の上限)")
+                self.kill_repl()
+            return code, text.encode("utf-8")
+        except (OSError, RuntimeError) as e:
+            self.log(f"{verb} 失敗: {e!r}")
+            self.kill_repl()
+            return -1, b""
+
+    # --- 本体ループ
+
+    @staticmethod
+    def respond(conn, code, body):
+        try:
+            conn.sendall(f"RES {code} {len(body)}\n".encode("utf-8") + body)
+        except OSError:
+            pass
+
+    def serve(self):
+        self.sock.settimeout(IDLE_SEC)
+        while True:
+            try:
+                conn, _ = self.sock.accept()
+            except socket.timeout:
+                break  # 誰も来ないなら消える。溜まった常駐でマシンを重くしない
+            except OSError:
+                break
+            try:
+                conn.settimeout(30)
+                data = b""
+                while b"\n" not in data:
+                    c = conn.recv(4096)
+                    if not c:
+                        break
+                    data += c
+                command = data.split(b"\n", 1)[0].strip().decode(errors="replace")
+                if command in ("CHECK", "TEST"):
+                    conn.settimeout(None)
+                    code, body = self.do_check(command.lower())
+                    self.respond(conn, code, body)
+                elif command == "PING":
+                    self.respond(conn, 0, b"")
+                elif command == "STOP":
+                    self.respond(conn, 0, b"")
+                    conn.close()
+                    break
+                else:
+                    self.respond(conn, -1, b"")
+            except OSError:
+                pass
+            finally:
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+        self.shutdown()
+
+    def shutdown(self):
+        self.kill_repl()
+        # 消すのは自分の分だけ。STOP の直後に次の常駐が立っていることがあり、
+        # 無条件に消すと入れ替わりの新入りのファイルを消してしまう。
+        try:
+            with open(os.path.join(self.sd, "pid"), encoding="utf-8") as f:
+                mine = int(f.read().strip()) == os.getpid()
+        except (OSError, ValueError):
+            mine = False
+        if mine:
+            for f in ("port", "pid"):
+                try:
+                    os.unlink(os.path.join(self.sd, f))
+                except OSError:
+                    pass
+        sys.exit(0)
+
+
+# ---------------------------------------------------------------- エントリ
+
+def main(argv):
+    # Windows の既定はロケール依存の文字コードで、日本語のログや flix の出力で
+    # 化ける・落ちるので UTF-8 に固定する。
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+    if argv and argv[0] == "--daemon":
+        Daemon(pkg_dir_of(argv[1])).serve()
+        return 0
+    if argv and argv[0] == "--stop-all":
+        return client_stop_all()
+    if argv and argv[0] == "--stop":
+        return client_stop(pkg_dir_of(argv[1] if len(argv) > 1 else None))
+    verb = "check"
+    if argv and argv[0] == "--test":
+        verb = "test"
+        argv = argv[1:]
+    if argv and argv[0].startswith("--"):
+        print(__doc__, file=sys.stderr)
+        return 2
+    pkg = pkg_dir_of(argv[0] if argv else None)
+    if not os.path.isfile(os.path.join(pkg, "flix.toml")):
+        print(f"[checkd] {pkg} に flix.toml がありません", file=sys.stderr)
+        return 2
+    return client_run(pkg, verb)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

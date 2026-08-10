@@ -82,6 +82,47 @@ def check(path: Path):
     return rect, total
 
 
+def hud_smell(project_dir: Path):
+    """HUD の匂い: view（world 側）に文字を直書きしているのに withHudView が無い。
+
+    world 側の文字は、爆発などの高い z の絵に隠されうる（HUD 帯に乗らない）。
+    強制はしない — 警告だけ出して、直すかどうかは人が決める。
+    """
+    src = project_dir / "src"
+    if not src.is_dir():
+        return None
+    uses_text = False
+    has_hud = False
+    for p in src.rglob("*.flix"):
+        try:
+            body = "\n".join(
+                ln
+                for ln in p.read_text(encoding="utf-8", errors="replace").splitlines()
+                if not ln.lstrip().startswith("//")
+            )
+        except OSError:
+            continue
+        if "withHudView" in body:
+            has_hud = True
+        if p.parent.name != "bake" and re.search(r"Render\.text|TextDraw\.", body):
+            uses_text = True
+    if uses_text and not has_hud:
+        return (
+            "警告: {} — 文字（Render.text / TextDraw）を world 側の絵に直書きしていますが"
+            " withHudView がありません。スコアや案内文は App.withHudView に繋ぐと、"
+            "world 側の z がどれだけ大きくても必ず手前に出ます（警告のみ・失敗にはしません）"
+        ).format(project_dir.as_posix())
+    return None
+
+
+def project_root_of(path: Path):
+    """View ファイルからゲーム 1 本の根（src の親）を探す。無ければ None。"""
+    for parent in path.parents:
+        if parent.name == "src":
+            return parent.parent
+    return None
+
+
 def main(argv):
     if argv:
         targets = [Path(a) for a in argv]
@@ -115,6 +156,19 @@ def main(argv):
 
     for path, reason in skipped:
         print("除外: {} — {}".format(path.as_posix(), reason))
+
+    # HUD の匂い（ゲーム 1 本ごとに 1 回だけ・警告のみで exit code に効かせない）。
+    seen_roots = set()
+    for path in targets:
+        if not path.is_file() or not is_view(path):
+            continue
+        root_dir = project_root_of(path)
+        if root_dir is None or root_dir in seen_roots:
+            continue
+        seen_roots.add(root_dir)
+        smell = hud_smell(root_dir)
+        if smell:
+            print(smell)
 
     if not bad:
         print("OK: 矩形だけの View はありません（除外 {} 件）".format(len(skipped)))

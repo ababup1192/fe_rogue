@@ -21,6 +21,9 @@ fi
 
 mkdir -p golden
 cp gallery/*.png golden/
-(cd golden && shasum -a 256 *.png > SHA256SUMS.txt)
+# 一覧に載せるのは bake が焼いた絵（= gallery にある名前）だけ。golden/ へ手で置いた
+# PNG（Studio のジャンル札が読む title.png 等）まで載せると、bench が gallery と
+# 名前の集合を突き合わせるため「消えた」扱いで必ず落ちる。
+(cd gallery && ls *.png) | sort | (cd golden && xargs shasum -a 256 > SHA256SUMS.txt)
 
 echo "blessed: golden/*.png と golden/SHA256SUMS.txt を更新しました ($count 枚)"

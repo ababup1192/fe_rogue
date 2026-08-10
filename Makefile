@@ -82,10 +82,16 @@ EDITOR_SERVER_DIR := editor_server
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff release release-guard bump editor lint-palette lint-view rules check-docs-sync
+.PHONY: help status sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff gl-parity release release-guard bump editor lint-palette lint-view rules check-docs-sync checkd-stop
+
+# セッション立ち上げの固定費を数百トークンに抑える口。SessionStart フックが毎回呼ぶので
+# 実行や変更は一切せず、残っている記録 (.test-logs/ golden チケット git) を集めるだけ。
+status:
+	@python3 bin/status.py
 
 help:
 	@echo "Targets:"
+	@echo "  make status               現状 1 画面 (テスト記録・golden・チケット・git)。何も実行しない"
 	@echo "  make test                 全パッケージ (engine系 + examples) のテストを headless で実行"
 	@echo "  make test-par             同上を並列実行 (壁時計 ≈ fe_rogue 1本分。ログは .test-logs/)"
 	@echo "  make test-<name>          1 つだけテスト (例: make test-fe_rogue / make test-engine)"
@@ -94,10 +100,12 @@ help:
 	@echo "  make lint-images          git に入れる絵が増えすぎていないか検査"
 	@echo "  make lint-sprite          ドット絵の画素の並び (浮き・階段・帯・色数) を検査"
 	@echo "  make lint-anim            コマ間の飛び・体積・接地と 4 方向のそろいを検査"
+	@echo "  python3 bin/img-digest.py A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
 	@echo "  make bake                 bake ターゲットを持つ全 example の生成物を焼き直す"
 	@echo "  make bake-par             同上を並列実行"
 	@echo "  make diff DIR=<dir>       直す前(golden)と後(gallery)を左右に並べて <dir>/debug/diff/ に焼く"
+	@echo "  make gl-parity            GL と SoftRaster が同じ絵を出すかを隠し窓で突き合わせ (不一致で exit 1)"
 	@echo "  make sync                 engine / render_gl / engine_world / engine_tools を build-pkg し、各依存先に配布"
 	@echo "  make sync-render-gl       render_gl だけ build-pkg & 配布 (examples へ)"
 	@echo "  make sync-engine          engine だけ build-pkg & 配布 (render_gl / engine_world / engine_tools / examples へ)"
@@ -105,10 +113,11 @@ help:
 	@echo "  make sync-engine-tools    engine_tools だけ build-pkg & 配布 (examples へ)"
 	@echo "  make sync-root-src        コミュニティビルド用にルート src/ の symlink 集を再生成"
 	@echo "  make clean-locks          flix check 中断で残った Maven cache の *.lock を削除"
+	@echo "  make checkd-stop          flix check 常駐 (bin/checkd) を全部止める (詳細は docs/checkd.md)"
 	@echo "  make clean-example-builds examples/*/build/ を全削除 (IDE の scene.json glob 高速化用)"
 	@echo "  make sync-engine-full     engine_full だけ src 集約 & build-pkg & 配布 (examples へ)"
 	@echo "  make editor [DIR=<dir>]   ui.json/hitbox.json エディタのバックエンドを起動 (PORT=8787。DIR 省略時は未選択で起動)"
-	@echo "  make release              sync→test-par→build-pkg→gh release を一括実行 (未コミットなら中断・tagはHEAD固定)"
+	@echo "  make release              sync→test-par→gl-parity→build-pkg→gh release を一括実行 (未コミットなら中断・tagはHEAD固定)"
 	@echo "  make bump FROM=x TO=y     全 flix.toml の version を一括更新 (lockstep)。release の前に実行する"
 
 # flix check を Ctrl-C で中断すると lib/cache/.../*.lock が残り、
@@ -120,6 +129,10 @@ help:
 LOCK_DIRS := $(ENGINE_DIR) $(RENDER_GL_DIR) $(ENGINE_WORLD_DIR) $(ENGINE_TOOLS_DIR) $(ENGINE_FULL_DIR) $(EDITOR_SERVER_DIR) $(wildcard examples/*) $(wildcard templates/*) $(wildcard bench/*)
 clean-locks:
 	@find $(LOCK_DIRS) -type d -name build -prune -o \( -path "*/lib/cache/*" -name "*.lock" -print -exec rm -f {} + \) 2>/dev/null | awk 'END { print NR " lock(s) removed" }'
+
+# flix check の常駐 (bin/checkd) を全部止める。挙動が怪しい時・メモリを空けたい時の逃げ道。
+checkd-stop:
+	@bin/checkd --stop-all
 
 # IDE で examples 配下のプロジェクトを開くと ProjectLoader.findSceneFiles の Fs.Glob が
 # build/class 配下の数十万コンパイル成果物を stat してしまい、プロジェクト読み込みに
@@ -230,12 +243,24 @@ diff:
 			JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" "$(FLIX)" run --entrypoint GoldenDiff.pairs; \
 	fi
 
+# GL と SoftRaster の突き合わせ (bench/gl_parity)。隠し窓で GL を 1 コマずつ焼き、
+# 同じ scene 宣言を SoftRaster でも焼いて画素比較する。A 段 (バイト一致層) に不一致が
+# あれば exit 1。描画経路 (render_gl / SoftRaster / Frame / ShaderEval) を触ったら回す。
+gl-parity:
+	@$(MAKE) -C bench/gl_parity run
+
 # 個別テスト: make test-fe_rogue (examples/ を先に探し、無ければルート直下のパッケージ名)
+# 出力は .test-logs/ に落とし (test-par と同じ命名)、緑なら末尾 5 行だけ見せる。
+# make status が「最後にいつ・どれが緑/赤だったか」をこの記録から読む。
 test-%:
-	@if [ -d "examples/$*" ]; then \
-		cd "examples/$*" && "$(FLIX_TEST)" test; \
+	@mkdir -p .test-logs; \
+	if [ -d "examples/$*" ]; then dir="examples/$*"; else dir="$*"; fi; \
+	name=$$(printf "%s" "$$dir" | tr / _); \
+	rm -f ".test-logs/$$name.fail"; \
+	if (cd "$$dir" && "$(FLIX_TEST)" test) > ".test-logs/$$name.log" 2>&1; then \
+		tail -5 ".test-logs/$$name.log"; \
 	else \
-		cd "$*" && "$(FLIX_TEST)" test; \
+		touch ".test-logs/$$name.fail"; tail -40 ".test-logs/$$name.log"; exit 1; \
 	fi
 
 # ── 関所: ドット絵の意味色キー ────────────────────────────
@@ -317,7 +342,7 @@ editor:
 # 推奨フロー (この3手だけ):
 #   1) make bump FROM=<旧> TO=<新>   … 全 flix.toml と VERSION を一括更新
 #   2) git で変更を commit → main へ push  … リリースする版を GitHub に載せる
-#   3) make release                        … sync → test-par(全量ゲート) → build-pkg → gh release
+#   3) make release                        … sync → test-par(全量ゲート) → gl-parity(A 段全一致) → build-pkg → gh release
 #   終了後の案内どおり、lib/ を消したコピーで外部 fetch を検証する。
 #
 # release は sync (clean-locks はパッケージ配下だけ walk するのでもう固まらない) と
@@ -338,7 +363,8 @@ release-guard:
 	   grep -q '^name' "$$f" || { echo "[release] $$f が壊れています (package.name が無い)。git checkout -- $$f で復元してください"; exit 1; }; \
 	 done
 	@echo "[release] v$(VERSION) を $(RELEASE_SHA) で公開します"
-release: release-guard sync $(TEST)
+# gl-parity も全量ゲートの一員 — GL と SoftRaster の絵の退行はテストに出ないため。
+release: release-guard sync $(TEST) gl-parity
 	cd $(ENGINE_FULL_DIR) && "$(FLIX)" build-pkg
 	gh release create v$(VERSION) --repo ababup1192/flix_game_engine --target $(RELEASE_SHA) \
 	  --title "v$(VERSION)" --generate-notes \
@@ -491,9 +517,16 @@ sync-agents:
 	done
 	@mkdir -p "$(GAME)/.claude/rules" "$(GAME)/bin"
 	@cp -f agents-pack/rules/*.md "$(GAME)/.claude/rules/"
-	@cp -f bin/lint-view.py bin/lint-palette.py bin/lint-sprite.py bin/lint-anim.py "$(GAME)/bin/"
+	@cp -f bin/lint-view.py bin/lint-palette.py bin/lint-sprite.py bin/lint-anim.py bin/img-digest.py bin/status.py bin/checkd "$(GAME)/bin/"
+	@mkdir -p "$(GAME)/.claude/hooks"
+	@cp -f .claude/hooks/after-flix-edit.py .claude/hooks/session-diet.py "$(GAME)/.claude/hooks/"
+	@if [ ! -f "$(GAME)/.claude/settings.json" ]; then \
+		cp agents-pack/settings.json "$(GAME)/.claude/settings.json"; \
+		echo "[sync-agents] hooks: .claude/settings.json (SessionStart → make status / PostToolUse → after-flix-edit)"; \
+	fi
 	@echo "[sync-agents] rules: $$(ls agents-pack/rules | tr '\n' ' ')"
-	@echo "[sync-agents] lint: bin/lint-view.py bin/lint-palette.py bin/lint-sprite.py bin/lint-anim.py"
+	@echo "[sync-agents] lint: bin/lint-view.py bin/lint-palette.py bin/lint-sprite.py bin/lint-anim.py bin/img-digest.py"
+	@echo "[sync-agents] checkd: bin/checkd + .claude/hooks/after-flix-edit.py"
 	@echo "[sync-agents] wrote $(GAME)/AGENTS.md + CLAUDE.md"
 
 # 規約の本文は docs/ に 1 つだけ置く。CLAUDE.md は AGENTS.md を import するだけ、
@@ -562,6 +595,8 @@ check-docs-sync:
 	  if ! grep -q '^name:' $$f; then echo "[check-docs-sync] NG: $$f に name がありません"; ok=0; fi; \
 	  if ! grep -q '^description:' $$f; then echo "[check-docs-sync] NG: $$f に description がありません"; ok=0; fi; \
 	done; \
+	echo "[check-docs-sync] pub def を持つモジュールが API 索引に載っているか"; \
+	python3 bin/check-api-index.py || ok=0; \
 	echo "[check-docs-sync] AGENTS.md から docs/ への導線があるか"; \
 	for kw in \
 	  "docs/audio.md" \
@@ -569,6 +604,7 @@ check-docs-sync:
 	  "docs/module-index.md" \
 	  "docs/drawing-floor.md" \
 	  "docs/flix-conventions.md" \
+	  "docs/z-bands.md" \
 	; do \
 	  if ! grep -q "$$kw" AGENTS.md; then \
 	    echo "[check-docs-sync] NG: AGENTS.md に $$kw への導線がありません"; ok=0; \

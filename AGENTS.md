@@ -7,6 +7,7 @@
 
 - **絵の下限（矩形だけの画面から脱する 4 性質）**: [docs/drawing-floor.md](docs/drawing-floor.md)
 - **Flix の決まり（予約語・コメントの流儀）**: [docs/flix-conventions.md](docs/flix-conventions.md)
+- **z 帯の地図（world / UI / Transition / HUD / デバッグの重なり順の仕切り）**: [docs/z-bands.md](docs/z-bands.md)
 - engine_world の「やりたいこと → モジュール」逆引きと全モジュール一覧: [docs/module-index.md](docs/module-index.md)
 - engine/ 側（描画・音・入力などの土台）のモジュール索引: [docs/engine-module-index.md](docs/engine-module-index.md)
 - 音の付け方（効果音づくり・鳴らす配線・音の下限チェックリスト）: [docs/audio.md](docs/audio.md)
@@ -59,6 +60,9 @@ python3 bin/lint-anim.py [ファイル...]    # コマ間の飛び・接地と 4
 - `templates/*/golden/title.png` だけ実体を追跡する。Studio のジャンル札のサムネが読むため
 
 ## 検証
+
+セッション開始時は SessionStart フックが `make status`（テスト記録・golden・チケット・git の
+1 画面）を自動で流す。現状把握はまずそこから。git log 掘りやテスト回し直しから始めない。
 
 **テストは絞って速く回す。全量の検証はリリース直前の 1 回だけ。**
 変更が波及したパッケージだけ `make test-<name>`、それ以外は `flix check` で足りる。

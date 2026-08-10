@@ -41,8 +41,9 @@ allowed-tools: Read, Grep, Glob, Bash
 - [ ] 5. lib/ を消したコピーで外部 fetch 検証
 ```
 
-`make release` は sync → `test-par`（全量ゲート）→ build-pkg → `gh release create` を一括で回す。
+`make release` は sync → `test-par`（全量ゲート）→ `gl-parity` → build-pkg → `gh release create` を一括で回す。
 tag は現在の HEAD SHA に固定される。
 
 **全量ゲート**は `make test-par`（全パッケージ並列・壁時計 ≈ fe_rogue 1 本分・ログは `.test-logs/`）。
+併せて `make gl-parity` を回して A 段全一致（全 scene 0 px）を確認する（GL と SoftRaster の絵の退行はテストに出ない）。
 並列版に不審な挙動があれば逐次へフォールバックする（`make test` / `make release TEST=test`）。
