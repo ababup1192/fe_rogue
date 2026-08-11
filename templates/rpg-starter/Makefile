@@ -21,7 +21,8 @@
 # 既定の ../.. は「テンプレを engine リポの中でそのまま動かす」ための値。
 -include local.mk
 ENGINE ?= ../..
-ifeq ($(wildcard $(ENGINE)/bin/flix*),)
+# $(wildcard) は空白入りパス (Studio.app 同梱の engine) を扱えないので shell の test で見る
+ifeq ($(shell test -e "$(ENGINE)/bin/flix" -o -e "$(ENGINE)/bin/flix.jar" && echo ok),)
 $(warning ENGINE が見当たりません ($(ENGINE)) — local.mk に「ENGINE := /path/to/flix_game_engine」を書くか、make <対象> ENGINE=... で指定してください)
 endif
 ifeq ($(OS),Windows_NT)
