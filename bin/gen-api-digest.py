@@ -15,6 +15,7 @@ pub enum・pub type alias は宣言全体（case 行・フィールドも含む�
 標準ライブラリだけで動く（Windows / macOS / Linux 共通。sed 等の外部コマンドを使わない）。
 """
 
+import datetime
 import re
 import sys
 from pathlib import Path
@@ -22,6 +23,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 INDEX_PATH = ROOT / "docs" / "api-digest.md"
 DIGEST_DIR = ROOT / "docs" / "api-digest"
+
+# 「いつの engine の姿か」を先頭に刻む (古い写しを最新と信じて誤推測しないため)。
+# 日付は内容が変わった時だけ進める — 毎回進めると --check の差分ゼロ検査が壊れる。
+VERSION_RE = re.compile(r"^VERSION\s*:=\s*(\S+)", re.M)
+STAMP_DATE_RE = re.compile(r"生成: \d{4}-\d{2}-\d{2}")
+
+
+def engine_version():
+    try:
+        m = VERSION_RE.search((ROOT / "Makefile").read_text(encoding="utf-8"))
+        return m.group(1) if m else "?"
+    except OSError:
+        return "?"
+
+
+def stamp_line():
+    return "<!-- engine v{} / 生成: {} -->\n".format(
+        engine_version(), datetime.date.today().isoformat()
+    )
+
+
+def dateless(text):
+    """スタンプの日付だけを均した本文を返す (差分比較は日付を見ない)。"""
+    return STAMP_DATE_RE.sub("生成: 0000-00-00", text)
 
 # (パッケージ表示名, ソース根)。表示順はこの並びのまま使う。
 PACKAGES = [
@@ -320,6 +345,7 @@ def build_index(stats):
 
 def main(argv):
     check = "--check" in argv
+    stamp = stamp_line().rstrip("\n")
     targets = []  # (path, content)
     stats = []
     for pkg_name, pkg_root in PACKAGES:
@@ -327,12 +353,13 @@ def main(argv):
         targets.append((DIGEST_DIR / "{}.md".format(pkg_name), content))
         stats.append((pkg_name, mod_count, decl_count))
     targets.append((INDEX_PATH, build_index(stats)))
+    targets = [(path, stamp + "\n" + content) for path, content in targets]
 
     if check:
         ok = True
         for path, content in targets:
             current = path.read_text(encoding="utf-8") if path.exists() else None
-            if current != content:
+            if current is None or dateless(current) != dateless(content):
                 ok = False
                 print(
                     "[gen-api-digest] NG: {} がソースとずれています。"
@@ -349,6 +376,9 @@ def main(argv):
     DIGEST_DIR.mkdir(parents=True, exist_ok=True)
     for path, content in targets:
         path.parent.mkdir(parents=True, exist_ok=True)
+        current = path.read_text(encoding="utf-8") if path.exists() else None
+        if current is not None and dateless(current) == dateless(content):
+            continue  # 内容が同じなら日付も進めない (git の空騒ぎを作らない)
         path.write_text(content, encoding="utf-8")
         print("[gen-api-digest] wrote {}".format(path.relative_to(ROOT)))
     return 0

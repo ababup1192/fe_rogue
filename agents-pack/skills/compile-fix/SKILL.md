@@ -2,7 +2,7 @@
 name: compile-fix
 description: "Flix のコンパイルエラーを診断し、既知の落とし穴（予約語・import の位置・エフェクト伝播忘れ・Channel API・Java 例外型・パターン網羅性・Float32 サフィックス等）と照合して修正を出す。flix check / flix test / make が失敗したとき、E3138・E5252・E6217 等のエラー番号が出たとき、Unexpected token・Parse error・Unable to unify・Non-exhaustive match・Unresolved type が出たとき、「Expected ',' before '='」のような原因の見えないパースエラーが出たときに使う。"
 allowed-tools: Read, Grep, Glob, Bash
-sync: 2026-08-11
+sync: 2026-08-12
 ---
 
 # Flix コンパイルエラー診断
@@ -11,10 +11,17 @@ sync: 2026-08-11
 
 ## 手順
 
+0. **型・引数・名前のエラー (Undefined name / Unexpected type / Unable to unify 等) は、
+   まず engine の `docs/api-digest.md`（全 pub 宣言のダイジェスト。`make api Q=<名前>` で
+   1 行でも引ける）で正しいシグネチャを確かめる** — ソースの grep や unzip より先。
 1. エラーメッセージを確認する（ユーザー提示 or `make check`（型検査だけ・一番速い）/ `make test` を実行）
 2. 下記の「既知の落とし穴リスト」と照合する
 3. 該当する場合は修正方法を提示する
 4. 該当しない場合は、エラー箇所のコードを読んで一般的な診断を行う
+
+補足: `make check` の失敗出力の末尾には `bin/explain-error` が処方箋 1 行を自動で添える。
+その対応表の実体は `bin/explain-error` にあり、由来はこのスキルの落とし穴リスト —
+落とし穴を足したら両方を更新する。
 
 ## 既知の落とし穴リスト（Flix 0.75.1）
 

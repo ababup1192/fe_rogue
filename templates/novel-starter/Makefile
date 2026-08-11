@@ -26,6 +26,9 @@ endif
 ifeq ($(OS),Windows_NT)
 JAVA   ?= java
 PYTHON ?= python
+# 常駐 checkd は bash ラッパー (bin/flix) しか起動を知らず、Windows の
+# JAVA+flix.jar 経路では落ちる。checkd が教わるまで Windows では素の check を使う。
+CHECKD := 0
 # -Xss64m: View の式が深く入れ子になると、既定のスタックでは型検査が StackOverflow で落ちる。
 FLIX   := "$(JAVA)" -Xss64m -jar "$(ENGINE)/bin/flix.jar"
 else
@@ -33,7 +36,7 @@ PYTHON ?= python3
 FLIX   := "$(ENGINE)/bin/flix"
 endif
 
-.PHONY: status run debug test build check bake bench golden atelier-preview
+.PHONY: status run debug test build check bake bench golden atelier-preview api
 
 run:
 	$(FLIX) run
@@ -54,8 +57,32 @@ test:
 build:
 	$(FLIX) build
 
+# check の全文は .test-logs/check.log に落とし、画面には要約だけ出す:
+# 成功 = 1 行、失敗 = 最初のエラー全文 + 残りの file:line 一覧 + 処方箋 1 行
+# (bin/explain-error が整形。全文が欲しいときは QUIET=0 make check かログを開く)。
+# 常駐 (bin/checkd) が居れば 2 回目からサブ秒。CHECKD=0 make check で素の check。
 check:
-	$(FLIX) check
+	@mkdir -p .test-logs
+	@if [ "$(CHECKD)" != "0" ] && [ -f bin/checkd ]; then \
+		"$(PYTHON)" bin/checkd . > .test-logs/check.log 2>&1; code=$$?; \
+	else \
+		$(FLIX) check > .test-logs/check.log 2>&1; code=$$?; \
+	fi; \
+	ee=bin/explain-error; [ -f "$$ee" ] || ee="$(ENGINE)/bin/explain-error"; \
+	if [ "$(QUIET)" = "0" ] || [ ! -f "$$ee" ]; then \
+		cat .test-logs/check.log; \
+	else \
+		"$(PYTHON)" "$$ee" --status $$code --log .test-logs/check.log < .test-logs/check.log; \
+	fi; \
+	exit $$code
+
+# エンジン API の型・引数を 1 行で引く ($(ENGINE)/docs/api-digest の grep)。
+# 例: make api Q=gradPolygon 。ソースの unzip や丸読みの前にまずこれ。
+api:
+	@test -n "$(Q)" || { echo "usage: make api Q=<関数名やモジュール名>"; exit 1; }
+	@out=$$(grep -h -i -- "$(Q)" "$(ENGINE)/docs/api-digest/"*.md 2>/dev/null | head -40); \
+	if [ -n "$$out" ]; then printf '%s\n' "$$out"; \
+	else echo "[api] '$(Q)' に当たりなし。$(ENGINE)/docs/module-index.md で別名を探す"; fi
 
 bake:
 	JAVA_TOOL_OPTIONS="-Djava.awt.headless=true" $(FLIX) run --entrypoint Bake.all

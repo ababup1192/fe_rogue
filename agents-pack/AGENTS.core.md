@@ -55,6 +55,8 @@
 
 ## エンジン API 優先(車輪の再発明禁止)
 
+- **API の型・引数・エフェクトはソースを grep/unzip する前に** engine リポの
+  `docs/api-digest.md`(全 pub 宣言の生成物)を引く。`make api Q=<名前>` で 1 行でも引ける。
 - 実装の前に engine リポの `docs/module-index.md`(「やりたいこと → モジュール」の逆引き)を引く。
   メニュー・スクロール・文字折り・当たり判定・タイムライン・**マップ地形(rows を塗るだけの
   デュアルグリッド = Terrain / TerrainDoc、タイルセット PNG = MapResource)**など、
@@ -145,8 +147,9 @@
 （sync-agents が自動生成する節）にある。作業に入る前に該当するスキルを読む。**
 
 - `.claude/rules/*.md`（絵の下限 `drawing.md`・Flix の決まり `flix.md`）も同じくただの
-  markdown。Claude Code は対象ファイルを触るとき自動で読むが、他のエージェントは
-  作業前に直接読む。
+  markdown。Claude Code 本体は対象ファイルを触るとき自動で読むが、**この自動読みは
+  サブエージェントでは発火しない** — サブエージェントと他のエージェントは作業前に
+  `.claude/rules/*.md` を直接読む。
 - 本文中の「engine リポの `docs/...`」は、このゲームの `Makefile` 冒頭の `ENGINE` 変数が
   指す場所にある（`make new-game` が実パスへ書き換え済み）。
 

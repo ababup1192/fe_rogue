@@ -20,34 +20,31 @@ import time
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[=>]")
 
-# エラー文中のキー → 平易な 1 行の処方箋。上から順に最初に当たった 1 件だけ出す。
-# 具体的なエラー番号を先、言い回しだけの広いキーを後に置く。
-PRESCRIPTIONS = [
-    ("Expected ',' before '='",
-     "予約語をレコードのフィールド名に使っている疑い (spawn/run/project 等)。別名へ逃がす"),
-    ("E5252",
-     "レコードは Eq/Order を持てない。比較したい値は名前付き 1 フィールド enum で包む"),
-    ("E6217",
-     "checked_ecast は不要。dispatch を単一の match に束ねる"),
-    ("E3138",
-     "定義が見つからない。ファイル移動で test 側だけ取り残されていないか"),
-    ("E5410",
-     "同名モジュールを別ファイルで開き直している。モジュールの再オープンは不可"),
-    ("Non-exhaustive",
-     "enum の全ケースを網羅していない。足りない case か case _ を足す"),
-    ("Expected Float32",
-     "浮動小数点リテラルに f32 サフィックスが要る (1.0 は Float64)"),
-    ("Unable to unify",
-     "型が合っていない。f32 サフィックス忘れ・Int32/Int64 の混在・エフェクト注釈の不足をまず疑う"),
-    ("Unexpected type",
-     "型が合っていない。f32 サフィックス忘れ・Int32/Int64 の混在をまず疑う"),
-    ("Unresolved type",
-     "Java の import は関数の中でなくモジュール直下に置く。例外型の ## 前置きは外す"),
-    ("Undefined name",
-     "名前の打ち間違いか、モジュール名の付け忘れ (Module.name)。docs/module-index.md で正しい名を引く"),
-    ("Unexpected token",
-     "予約語 (handler/do/run/spawn/region/project 等) を識別子に使っていないか"),
-]
+
+def load_prescriptions(pkg):
+    """エラー → 処方箋の対応表を bin/explain-error から借りる (実体は 1 か所)。
+
+    make check の要約と同じ表を使う。見つからない・読めない時は空 (処方箋なしで
+    エラー本文だけ出す) — フックの都合で作業を止めない。
+    """
+    import importlib.machinery
+    import importlib.util
+
+    root = os.environ.get("CLAUDE_PROJECT_DIR") or os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+    for base in (pkg, root):
+        cand = os.path.join(base, "bin", "explain-error")
+        if not os.path.isfile(cand):
+            continue
+        try:
+            loader = importlib.machinery.SourceFileLoader("explain_error", cand)
+            spec = importlib.util.spec_from_loader("explain_error", loader)
+            mod = importlib.util.module_from_spec(spec)
+            loader.exec_module(mod)
+            return mod.PRESCRIPTIONS
+        except Exception:
+            continue  # 壊れた候補は飛ばして次 (root 側) を試す
+    return []
 
 
 def state_dir(pkg):
@@ -171,7 +168,7 @@ def run_hook():
     if code == 0:
         return 0
     block = first_error_block(out)
-    tip = next((t for key, t in PRESCRIPTIONS if key in block), None)
+    tip = next((t for key, t in load_prescriptions(pkg) if key in block), None)
     msg = (f"# after-flix-edit: {os.path.basename(pkg)} で型検査 NG "
            f"(先頭 1 件, {time.time() - t0:.1f}s)\n{block}")
     if tip:

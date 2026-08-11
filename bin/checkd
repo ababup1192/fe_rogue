@@ -52,10 +52,32 @@ def state_dir(pkg):
 
 
 def flix_bin(pkg):
+    # TODO(Windows): ここで返すのは bash ラッパーの bin/flix だけで、Windows の
+    # 「JAVA + bin/flix.jar」経路をまだ知らない (repl 起動も run_fallback も落ちる)。
+    # そのためテンプレの make check は Windows で CHECKD := 0 に固定している。
+    # 教えるなら local.mk の JAVA と $(ENGINE)/bin/flix.jar から組み立てる。
     # ゲーム側の bin/flix (symlink 含む) を優先。無ければ engine の bin/flix。
     cand = os.path.join(pkg, "bin", "flix")
     if os.path.isfile(cand) and os.access(cand, os.X_OK):
         return cand
+    # sync-agents が配った先 (ゲームの bin/) には checkd だけが居て flix は居ない。
+    # ゲームが使う engine の場所を 環境変数 ENGINE → local.mk から引く
+    # (game Makefile / status.py と同じ解決順)。
+    engine = os.environ.get("ENGINE")
+    if not engine:
+        try:
+            with open(os.path.join(pkg, "local.mk"),
+                      encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    m = re.match(r"\s*ENGINE\s*[?:]*=\s*(.+?)\s*$", line)
+                    if m:
+                        engine = m.group(1)
+        except OSError:
+            pass
+    if engine:
+        cand = os.path.join(engine, "bin", "flix")
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
     return os.path.join(os.path.dirname(os.path.realpath(__file__)), "flix")
 
 

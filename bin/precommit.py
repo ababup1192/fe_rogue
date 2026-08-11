@@ -91,9 +91,13 @@ def check_staged_images(staged, li):
 
 def needs_docs_sync(staged):
     # docs/gallery/ の絵だけのコミットでは走らせない: 引き金は文章と規約の実体だけ。
-    triggers = (".claude/", "agents-pack/",
-                "bin/gen-rules.py", "bin/gen-api-digest.py", "bin/check-api-index.py")
+    triggers = (".claude/", "agents-pack/", "templates/",
+                "bin/gen-rules.py", "bin/gen-api-digest.py", "bin/check-api-index.py",
+                "bin/check-refs.py")
     for p in staged:
+        # Makefile は bin/・docs/ への参照を大量に持つ (check-refs の検査対象)。
+        if p == "Makefile" or p.endswith("/Makefile"):
+            return True
         if p.startswith(triggers) or p.endswith((".md", ".flix")):
             return True
     return False

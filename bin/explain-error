@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""flix check / test の出力を要約し、既知のエラーに処方箋 1 行を添える。
+
+`make check` の失敗のたびに全文 (数百行) を読み直すのはトークンと時間の無駄。
+成功は 1 行、失敗は「最初のエラー全文 + 残りの file:line 一覧 + 件数 + ログの場所」
+まで絞る。絞りすぎて全文 cat に戻られたら逆効果なので、最初の 1 件は丸ごと見せる。
+
+使い方 (パイプのフィルタ。テンプレの make check が通す):
+    flix check > check.log 2>&1; code=$?
+    bin/explain-error --status $code --log check.log < check.log
+
+  --status N   check の終了コード (0 = 成功)。省略時は本文のエラーブロックの有無で判定
+  --log PATH   全文の置き場所として案内するパス (省略時は案内しない)
+
+エラーブロック (`-- ` 見出し) が 1 つも読み取れない失敗出力は、要約せず全文を
+そのまま流す (未知の形式を黙って削らない)。
+
+処方箋の対応表 PRESCRIPTIONS はここが唯一の実体。中身の由来は agents-pack の
+compile-fix スキル (.claude/skills/compile-fix/SKILL.md) の「既知の落とし穴リスト」で、
+落とし穴を足したら両方を更新する。.claude/hooks/after-flix-edit.py はこのファイルを
+import して同じ表を使う (二重管理しない)。
+
+標準ライブラリだけで動く (Windows / macOS / Linux 共通)。
+"""
+
+import re
+import sys
+
+ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[=>]")
+
+# エラー文中のキー → 平易な 1 行の処方箋。上から順に最初に当たった 1 件だけ出す。
+# 具体的なエラー番号を先、言い回しだけの広いキーを後に置く。
+# 由来: compile-fix スキルの「既知の落とし穴リスト」(Flix 0.75.1)。
+PRESCRIPTIONS = [
+    ("Expected ',' before '='",
+     "予約語をレコードのフィールド名に使っている疑い (spawn/run/project 等)。別名へ逃がす"),
+    ("E5252",
+     "レコードは Eq/Order を持てない。比較したい値は名前付き 1 フィールド enum で包む"),
+    ("E6217",
+     "checked_ecast は不要。dispatch を単一の match に束ねる"),
+    ("E3138",
+     "定義が見つからない。ファイル移動で test 側だけ取り残されていないか"),
+    ("E5410",
+     "同名モジュールを別ファイルで開き直している。モジュールの再オープンは不可"),
+    ("Non-exhaustive",
+     "enum の全ケースを網羅していない。足りない case か case _ を足す"),
+    ("Expected Float32",
+     "浮動小数点リテラルに f32 サフィックスが要る (1.0 は Float64)"),
+    ("Unable to unify",
+     "型が合っていない。f32 サフィックス忘れ・Int32/Int64 の混在・エフェクト注釈の不足をまず疑う"),
+    ("Unexpected type",
+     "型が合っていない。f32 サフィックス忘れ・Int32/Int64 の混在をまず疑う"),
+    ("Unresolved type",
+     "Java の import は関数の中でなくモジュール直下に置く。例外型の ## 前置きは外す"),
+    ("Undefined name",
+     "名前の打ち間違いか、モジュール名の付け忘れ (Module.name)。"
+     "engine の docs/api-digest.md (make api Q=名前) で正しい名を引く"),
+    ("Unexpected token",
+     "予約語 (handler/do/run/spawn/region/project 等) を識別子に使っていないか"),
+]
+
+# `-- Type Error [E7796] ---- src/Broken.flix` の見出し。ANSI を落とした後に照合する。
+HEAD_RE = re.compile(r"^-- (.+?) -+ (\S+)\s*$")
+LINENO_RE = re.compile(r"^\s*(\d+) \|")
+
+
+def prescription(text):
+    """本文に最初に当たった処方箋 1 行を返す (無ければ None)。"""
+    return next((tip for key, tip in PRESCRIPTIONS if key in text), None)
+
+
+def parse_blocks(lines):
+    """[(見出し行index, エラー種別, ファイル, 行番号 or None)] を返す。"""
+    blocks = []
+    for i, line in enumerate(lines):
+        m = HEAD_RE.match(line)
+        if not m:
+            continue
+        label = m.group(1).strip()
+        path = m.group(2)
+        lineno = None
+        for l in lines[i + 1:i + 12]:
+            if HEAD_RE.match(l):
+                break
+            n = LINENO_RE.match(l)
+            if n:
+                lineno = n.group(1)
+                break
+        blocks.append((i, label, path, lineno))
+    return blocks
+
+
+def block_text(lines, blocks, idx):
+    start = blocks[idx][0]
+    end = blocks[idx + 1][0] if idx + 1 < len(blocks) else len(lines)
+    return "\n".join(lines[start:end]).rstrip()
+
+
+def summarize(text, status, log_path):
+    lines = ANSI.sub("", text).splitlines()
+    blocks = parse_blocks(lines)
+    failed = status != 0 if status is not None else bool(blocks)
+
+    if not failed:
+        note = " (警告 {} 件{})".format(
+            len(blocks), " — 全文は " + log_path if log_path else ""
+        ) if blocks else ""
+        return "[check] OK" + note
+
+    if not blocks:
+        # 未知の形式 (依存解決の失敗など)。黙って削ると全文 cat に戻られるので素通し。
+        return text.rstrip()
+
+    out = [block_text(lines, blocks, 0)]
+    if len(blocks) > 1:
+        out.append("")
+        out.append("残り {} 件:".format(len(blocks) - 1))
+        for _, label, path, lineno in blocks[1:]:
+            loc = "{}:{}".format(path, lineno) if lineno else path
+            out.append("  {} — {}".format(loc, label))
+    tail = next((l for l in reversed(lines) if "error(s)" in l), None)
+    if tail:
+        out.append("")
+        out.append(tail.strip())
+    if log_path:
+        out.append("全文: " + log_path)
+    # 処方箋は「いま表示している 1 件目」に対して引く。1 件目に当たりが無いときだけ
+    # 残りの見出し行へフォールバック (別のエラーの処方箋を 1 件目に貼らない)。
+    tip = prescription(out[0]) or prescription(
+        "\n".join(lines[b[0]] for b in blocks[1:]))
+    if tip:
+        out.append("処方箋: {} (詳細は /compile-fix)".format(tip))
+    return "\n".join(out)
+
+
+def main(argv):
+    status = None
+    log_path = None
+    it = iter(argv)
+    for a in it:
+        if a == "--status":
+            try:
+                status = int(next(it, ""))
+            except ValueError:
+                status = None
+        elif a == "--log":
+            log_path = next(it, None)
+    text = sys.stdin.read()
+    print(summarize(text, status, log_path))
+    return 0
+
+
+if __name__ == "__main__":
+    # Windows の既定はロケール依存の文字コードで日本語が化けるので UTF-8 に固定。
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
+    sys.exit(main(sys.argv[1:]))

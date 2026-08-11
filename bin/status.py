@@ -8,6 +8,7 @@ SessionStart フックから毎回呼ばれるので、出力の短さがその�
 import glob
 import hashlib
 import os
+import re
 import subprocess
 import sys
 import time
@@ -191,6 +192,53 @@ def section_style(out):
     out.append(hint)
 
 
+def read_engine_dir():
+    """このゲームが使う engine の場所。環境変数 ENGINE → local.mk の順で読む。"""
+    engine = os.environ.get("ENGINE")
+    if engine:
+        return engine
+    try:
+        with open("local.mk", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                m = re.match(r"\s*ENGINE\s*[?:]*=\s*(.+?)\s*$", line)
+                if m:
+                    return m.group(1)
+    except OSError:
+        pass
+    return None
+
+
+def section_pack(out):
+    """agents-pack の陳腐化検出。AGENTS.md 先頭に刻まれた engine 版と、いま使っている
+    engine の版 (Makefile の VERSION) を照らす。どちらかが読めなければ黙る (fail-open) —
+    status は知らせるだけで、作業を止めない。"""
+    if os.path.isdir("templates"):
+        return  # engine リポ自身。AGENTS.md は pack の生成物ではない
+    try:
+        with open("AGENTS.md", encoding="utf-8", errors="replace") as fh:
+            head = fh.read(400)
+    except OSError:
+        return
+    m = re.search(r"agents-pack \(engine v([0-9][0-9A-Za-z.\-]*)\)", head)
+    if not m:
+        return
+    stamped = m.group(1)
+    engine = read_engine_dir()
+    if not engine:
+        return
+    try:
+        with open(os.path.join(engine, "Makefile"),
+                  encoding="utf-8", errors="replace") as fh:
+            cur = next((mm.group(1) for line in fh
+                        for mm in [re.match(r"VERSION\s*:=\s*(\S+)", line)] if mm), None)
+    except OSError:
+        return
+    if cur and cur != stamped:
+        out.append("pack     古い (この AGENTS.md は engine v%s / いまの engine は v%s)。"
+                   "engine 側で make sync-agents GAME=\"%s\" を再実行"
+                   % (stamped, cur, os.getcwd()))
+
+
 def section_notes(out):
     if not os.path.isfile("NOTES.md"):
         out.append("引き継ぎ NOTES.md なし (セッションの終わりに「次やること」を 3 行残すと次が安い)")
@@ -212,7 +260,7 @@ def main():
     here = os.path.basename(os.getcwd())
     out = ["== %s 状態 %s ==" % (here, time.strftime("%m-%d %H:%M"))]
     for section in (section_git, section_tests, section_golden, section_tickets,
-                    section_style, section_notes):
+                    section_style, section_pack, section_notes):
         try:
             section(out)
         except Exception as e:
