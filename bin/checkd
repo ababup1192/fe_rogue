@@ -278,6 +278,10 @@ class Daemon:
         self.seq = 0
         self.checks = 0
         self.snapshot = None
+        # 直前に失敗した check の (出力, その時点の最新ソース mtime)。
+        # 「ソースを編集したのに同一のエラーが返る」= repl の増分コンパイルの
+        # 持ち越し (実測: 修正後も exit=1 を返し続ける) を見破る材料。
+        self.prev_fail = None
 
     def acquire_pid_file(self):
         pid_path = os.path.join(self.sd, "pid")
@@ -341,6 +345,8 @@ class Daemon:
         # 鮮度の基準は温め完了後に撮る。起動中の依存解決が lib/ を触るので、
         # 先に撮ると 1 回目の照合が必ず「変わった」になってしまう。
         self.snapshot = self.take_snapshot()
+        # 作り立ての repl の結果は持ち越しを含まないので、疑いも白紙に戻す。
+        self.prev_fail = None
 
     @staticmethod
     def pump(stream, q):
@@ -435,6 +441,7 @@ class Daemon:
         return False, out
 
     def settle(self):
+        """書きかけ読みを避けて少し待ち、最新ソースの mtime を返す (持ち越し検出に使う)。"""
         # ファイル保存の直後に check すると書きかけを読むことがある。
         # 一番新しい .flix の保存から SETTLE_SEC 経つまで待つ (古ければ待たない)。
         newest = 0.0
@@ -450,6 +457,7 @@ class Daemon:
         wait = SETTLE_SEC - (time.time() - newest)
         if 0 < wait <= SETTLE_SEC:
             time.sleep(wait)
+        return newest
 
     @staticmethod
     def scrub(raw, sentinel):
@@ -491,7 +499,7 @@ class Daemon:
             return -1
         return 0 if int(m.group(2)) == 0 else 1
 
-    def do_check(self, verb="check"):
+    def do_check(self, verb="check", retried=False):
         """(終了コード, 出力bytes)。コードが負なら「素の CLI で確かめて」の意味。"""
         t0 = time.time()
         try:
@@ -508,7 +516,7 @@ class Daemon:
                     self.log(f"依存が変わったので repl を作り直す: {diff[:5]}")
                     self.kill_repl()
                     self.start_repl()
-            self.settle()
+            src_newest = self.settle()
             # 前のコマンドの残り (遅れて届いたプロンプト等) を捨てる。
             # 混ざると check の出力に無関係な欠片が載ってしまう。
             while True:
@@ -535,6 +543,19 @@ class Daemon:
             rss = self.rss_mb()
             self.log(f"{verb} #{self.checks} 完了 exit={code} "
                      f"{time.time() - t0:.2f}s RSS={rss}MB")
+            # 持ち越しの防波堤: ソースが前回の失敗より後に編集されたのに、
+            # バイト同一のエラーが返った。repl の増分コンパイルがエラーを
+            # 抱え込んだ疑いがあるので、作り直して素の状態で確かめ直す
+            # (実測: 修正済みのソースに exit=1 を返し続ける事故があった)。
+            # 本当に直っていなければ再検査も同じエラーで、結果は変わらない。
+            if (code == 1 and not retried and self.prev_fail is not None
+                    and text == self.prev_fail[0]
+                    and src_newest > self.prev_fail[1]):
+                self.log("編集後も同一エラー — repl の持ち越しを疑い、作り直して確かめる")
+                self.kill_repl()
+                self.prev_fail = None
+                return self.do_check(verb, retried=True)
+            self.prev_fail = (text, src_newest) if code == 1 else None
             # :test は 1 回で数百 MB 増えることがある。上限超えは次回の作り直しに
             # 回さず、その場で使い捨てて漏れを持ち越さない。
             if self.checks >= MAX_CHECKS or rss > RSS_LIMIT_MB:
