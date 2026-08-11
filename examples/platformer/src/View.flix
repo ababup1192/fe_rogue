@@ -111,7 +111,7 @@ mod View {
                 { x = 0.0, y = size#y } :: { x = size#x, y = size#y } :: { x = size#x, y = 0.0 } :: Nil
             else
                 { x = 0.0, y = size#y } :: { x = size#x, y = size#y } :: { x = 0.0, y = 0.0 } :: Nil;
-        { at = topLeft, item = Render.polygon(verts, Palette.slopeGrass(), zOf(platform)) }
+        { at = topLeft, item = RawDraw.polygon(verts, Palette.slopeGrass(), zOf(platform)) }
 
     def zOf(platform: Field.Platform): Int32 =
         if (platform#size#y >= 30.0) zGround() else zPlatform()
@@ -139,7 +139,7 @@ mod View {
         let pennantVerts =
             { x = 0.0, y = 0.0 } :: { x = 14.0, y = 5.0 } :: { x = 0.0, y = 10.0 } :: Nil;
         let pennant = { at = { x = x + poleW / 2.0, y = baseY - poleH },
-                        item = Render.polygon(pennantVerts, color, zPlatform() + 1) };
+                        item = RawDraw.polygon(pennantVerts, color, zPlatform() + 1) };
         pole :: pennant :: Nil
 
     // ── 敵（生きているものだけ・時刻の実位置で描く）──
@@ -177,10 +177,10 @@ mod View {
     def domeAt(pos: Vec2.Vec2, color: Color, size: Vec2.Vec2, radius: Float64): List[Render.PlacedItem] =
         let bottom = pos#y + Field.enemyRadius();
         let bodyTopLeft = { x = pos#x - size#x / 2.0, y = bottom - size#y };
-        let body = { at = bodyTopLeft, item = Render.box(size, color, zEnemy()) |> Render.rounded(radius) };
+        let body = { at = bodyTopLeft, item = RawDraw.box(size, color, zEnemy()) |> Render.rounded(radius) };
         let squareH = 6.0;
         let squarePos = { x = pos#x - size#x / 2.0, y = bottom - squareH };
-        let square = { at = squarePos, item = Render.box({ x = size#x, y = squareH }, color, zEnemy()) };
+        let square = { at = squarePos, item = RawDraw.box({ x = size#x, y = squareH }, color, zEnemy()) };
         body :: square :: Nil
 
     /// 歩く敵の足 2 本（4×3 の小箱・ドーム底のすぐ下・本体より暗い色 = plankShadow 流用）。
@@ -189,8 +189,8 @@ mod View {
         let bottom = pos#y + Field.enemyRadius();
         let wobble = Field.triWave(t * 2.0) - 0.5; // -0.5..0.5 の揺れ幅
         let footSize = { x = 4.0, y = 3.0 };
-        { at = { x = pos#x - 6.0 + wobble, y = bottom }, item = Render.box(footSize, Palette.plankShadow(), zEnemy()) } ::
-        { at = { x = pos#x + 2.0 - wobble, y = bottom }, item = Render.box(footSize, Palette.plankShadow(), zEnemy()) } :: Nil
+        { at = { x = pos#x - 6.0 + wobble, y = bottom }, item = RawDraw.box(footSize, Palette.plankShadow(), zEnemy()) } ::
+        { at = { x = pos#x + 2.0 - wobble, y = bottom }, item = RawDraw.box(footSize, Palette.plankShadow(), zEnemy()) } :: Nil
 
     /// パタパタの羽 2 枚（6×3 の小箱・ドームの左右側面）。上下 ±2px の羽ばたきは
     /// triWave(t×2) から毎フレーム導く — 位置は保存しない（閉形式）。
@@ -198,8 +198,8 @@ mod View {
         let r = Field.enemyRadius();
         let flap = Field.triWave(t * 2.0) * 2.0;
         let size = { x = 6.0, y = 3.0 };
-        { at = { x = pos#x - r - 5.0, y = pos#y - 2.0 + flap }, item = Render.box(size, Palette.flyerWing(), zEnemy()) } ::
-        { at = { x = pos#x + r - 1.0, y = pos#y - 2.0 + flap }, item = Render.box(size, Palette.flyerWing(), zEnemy()) } :: Nil
+        { at = { x = pos#x - r - 5.0, y = pos#y - 2.0 + flap }, item = RawDraw.box(size, Palette.flyerWing(), zEnemy()) } ::
+        { at = { x = pos#x + r - 1.0, y = pos#y - 2.0 + flap }, item = RawDraw.box(size, Palette.flyerWing(), zEnemy()) } :: Nil
 
     /// ドーム上部の弧に沿って並ぶ、上向きの大きい棘 7 本（「踏むな」の記号）。
     /// -60°〜+60° を 7 等分した角度（ラジアンでなく単位ベクトルの定数表）で、
@@ -222,7 +222,7 @@ mod View {
                           y = reach + dir#y * (r - 2.0) + perp#y * 3.0 };
             let baseB = { x = reach + dir#x * (r - 2.0) - perp#x * 3.0,
                           y = reach + dir#y * (r - 2.0) - perp#y * 3.0 };
-            { at = topLeft, item = Render.polygon(baseA :: baseB :: tip :: Nil, Palette.spikeTip(), zEnemy()) }
+            { at = topLeft, item = RawDraw.polygon(baseA :: baseB :: tip :: Nil, Palette.spikeTip(), zEnemy()) }
         })
 
     /// 側面の小さい棘 2 本（左右に 1 本ずつ・見分けの飾り）。
@@ -240,7 +240,7 @@ mod View {
                           y = reach + dir#y * (r - 2.0) + perp#y * 2.5 };
             let baseB = { x = reach + dir#x * (r - 2.0) - perp#x * 2.5,
                           y = reach + dir#y * (r - 2.0) - perp#y * 2.5 };
-            { at = topLeft, item = Render.polygon(baseA :: baseB :: tip :: Nil, Palette.spikeTip(), zEnemy()) }
+            { at = topLeft, item = RawDraw.polygon(baseA :: baseB :: tip :: Nil, Palette.spikeTip(), zEnemy()) }
         })
 
     /// 目玉 2 個（本体中心から ±4, -3px・白目 r=eyeR + 黒目 r=eyeR×0.5 を中心に重ねる）。
@@ -254,8 +254,8 @@ mod View {
     /// 目玉 1 個 = 白目（円・zEnemy+1）+ 黒い瞳（円・zEnemy+2・白目より小さく前面）。
     def eyeAt(center: Vec2.Vec2, eyeR: Float64): List[Render.PlacedItem] =
         let pupilR = eyeR * 0.5;
-        { at = { x = center#x - eyeR, y = center#y - eyeR }, item = Render.circle(eyeR, Palette.eyeWhite(), zEnemy() + 1) } ::
-        { at = { x = center#x - pupilR, y = center#y - pupilR }, item = Render.circle(pupilR, Palette.eyePupil(), zEnemy() + 2) } :: Nil
+        { at = { x = center#x - eyeR, y = center#y - eyeR }, item = RawDraw.circle(eyeR, Palette.eyeWhite(), zEnemy() + 1) } ::
+        { at = { x = center#x - pupilR, y = center#y - pupilR }, item = RawDraw.circle(pupilR, Palette.eyePupil(), zEnemy() + 2) } :: Nil
 
     // ── プレイヤー（15 キャラの名簿 Roster 経由・演技情報はラボと同じ Stage）──
 
@@ -324,7 +324,7 @@ mod View {
                 let cx = player#pos#x + orbitR * Vec2.cos(angle);
                 let cy = player#pos#y - 2.0 + orbitR * 0.55 * Vec2.sin(angle);  // 楕円軌道(奥行き感)
                 { at = { x = cx - dotR, y = cy - dotR },
-                  item = Render.circle(dotR, Palette.eyeWhite(), zPlayer() - 5) |> Render.fade(0.7) }
+                  item = RawDraw.circle(dotR, Palette.eyeWhite(), zPlayer() - 5) |> Render.fade(0.7) }
             })
         }
 
@@ -358,11 +358,11 @@ mod View {
         match shape {
             case Hit.HitShape.CircleH(c) =>
                 let center = Vec2.add(pos, { x = c#dx, y = c#dy });
-                let fill = Render.circleAt(center, c#r, hitFillColor(), zHitOverlay());
+                let fill = RawDraw.circleAt(center, c#r, hitFillColor(), zHitOverlay());
                 ({ item = Render.fade(0.35, fill#item) | fill }) :: Nil
             case Hit.HitShape.BoxH(b) =>
                 let center = Vec2.add(pos, { x = b#dx, y = b#dy });
-                let fill = Render.boxAt(center, { x = b#w, y = b#h }, hitFillColor(), zHitOverlay());
+                let fill = RawDraw.boxAt(center, { x = b#w, y = b#h }, hitFillColor(), zHitOverlay());
                 ({ item = Render.fade(0.35, fill#item) | fill }) :: boxFrame(center, b#w, b#h)
         }
 
@@ -373,7 +373,7 @@ mod View {
         (({ x = x0, y = y0 }, { x = x1, y = y0 }) :: (({ x = x1, y = y0 }, { x = x1, y = y1 }))
             :: (({ x = x1, y = y1 }, { x = x0, y = y1 })) :: (({ x = x0, y = y1 }, { x = x0, y = y0 })) :: Nil)
             |> List.map(match (a, b) -> {
-                let seg = Render.lineSeg(a, b, 1.0, hitFillColor(), zHitOverlay() + 1);
+                let seg = RawDraw.lineSeg(a, b, 1.0, hitFillColor(), zHitOverlay() + 1);
                 { item = Render.fade(0.8, seg#item) | seg }
             })
 
@@ -385,7 +385,7 @@ mod View {
             GameFx.particles(burst) |> List.map(triple -> {
                 let (pos, radius, alpha) = triple;
                 { at = { x = pos#x - radius, y = pos#y - radius },
-                  item = Render.circle(radius, burstColor(burst), zBurst()) |> Render.fade(alpha) }
+                  item = RawDraw.circle(radius, burstColor(burst), zBurst()) |> Render.fade(alpha) }
             }))
 
     /// 粒の色。花火だけは発番号（seed）で 4 色を巡回する。
@@ -425,7 +425,7 @@ mod View {
 
     // ── 形の補助 ──
 
-    /// 中心座標とサイズから中心指定の Box を置く（Render.boxAt に委譲）。
+    /// 中心座標とサイズから中心指定の Box を置く（RawDraw.boxAt に委譲）。
     def flatBox(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): Render.PlacedItem =
-        Render.boxAt(center, size, color, z)
+        RawDraw.boxAt(center, size, color, z)
 }

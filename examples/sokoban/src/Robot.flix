@@ -146,7 +146,7 @@ mod Robot {
         let pos = {x = tlx + p#x * s, y = tly + p#y * s};
         let dim = {x = p#w * s, y = p#h * s};
         if (p#r <= 0.0)
-            { at = pos, item = Render.box(dim, p#color, p#z) }
+            { at = pos, item = RawDraw.box(dim, p#color, p#z) }
         else
-            { at = pos, item = Render.box(dim, p#color, p#z) |> Render.rounded(p#r * s) }
+            { at = pos, item = RawDraw.box(dim, p#color, p#z) |> Render.rounded(p#r * s) }
 }

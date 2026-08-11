@@ -69,7 +69,7 @@ mod UiRender {
                 // 1 サブポリ = 1 Poly item（レンダラは凸多角形しか塗れない）。
                 poly#polys |> List.map(sub ->
                     { at = Vec2.zero(),
-                      item = Render.polygon(sub, poly#color, poly#zIndex + offset) |> Render.fade(Float32.toFloat64(poly#alpha)) })
+                      item = RawDraw.polygon(sub, poly#color, poly#zIndex + offset) |> Render.fade(Float32.toFloat64(poly#alpha)) })
             });
         let shapeItems = UiExtract.extractShapes(ui, rects, vis)
             |> List.map(placed -> { item = Render.raiseZ(offset, placed#item) | placed });

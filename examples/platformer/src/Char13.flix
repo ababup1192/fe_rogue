@@ -1,6 +1,7 @@
 // 屋根裏のカイト — 街の屋根と塀を近道にするパルクール少年。
 // 頭でっかちの低頭身、刻みの速いピッチ走り、跳べば膝を抱えて前宙気味に丸まる。
 // 止まるときは手を地面に擦らせるロースライド、着地は必ず三点。橙の鞄は今日も配達中。
+// この箱組みは旧様式(RawDraw 大量使用の前例にしない)。新キャラは PxSprite+PxShade を第一候補に。
 
 mod Char13 {
 
@@ -186,19 +187,19 @@ mod Char13 {
     def boxAt(st: CharStage.Stage, cx: Float64, cy: Float64, w: Float64, h: Float64,
               color: Color, z: Int32): Render.PlacedItem =
         { at = { x = st#pos#x + st#facing * cx - w / 2.0, y = st#pos#y + cy - h / 2.0 },
-          item = Render.box({ x = w, y = h }, color, z) }
+          item = RawDraw.box({ x = w, y = h }, color, z) }
 
     /// 中心 (cx, cy)・半径 r の円。
     def circleAt(st: CharStage.Stage, cx: Float64, cy: Float64, r: Float64,
                  color: Color, z: Int32): Render.PlacedItem =
         { at = { x = st#pos#x + st#facing * cx - r, y = st#pos#y + cy - r },
-          item = Render.circle(r, color, z) }
+          item = RawDraw.circle(r, color, z) }
 
     /// 相対頂点列を facing で鏡映して置く（凸多角形・反転時は巻き順も戻す）。
     def polyAt(st: CharStage.Stage, verts: List[Vec2.Vec2], color: Color, z: Int32): Render.PlacedItem =
         let vs = List.map(v -> { x = st#facing * v#x, y = v#y }, verts);
         let ordered = if (st#facing >= 0.0) vs else List.reverse(vs);
-        { at = { x = st#pos#x, y = st#pos#y }, item = Render.polygon(ordered, color, z) }
+        { at = { x = st#pos#x, y = st#pos#y }, item = RawDraw.polygon(ordered, color, z) }
 
     /// (x0,y0)→(x1,y1) を結ぶ太さ w の棒。手足のひと節。
     def limb(st: CharStage.Stage, x0: Float64, y0: Float64, x1: Float64, y1: Float64,

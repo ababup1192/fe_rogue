@@ -50,7 +50,7 @@ mod View {
         // 最背面(z=-1)=草原色（池の外に見える床）。その上(z=0)=水底の背景色（floor スライダー・
         // opacity を下げるとこの色が透けて見える）。一番上(z=1)=シェーダーの網目。
         let grass = grassBg(world);
-        let waterFill = Render.boxAt(
+        let waterFill = RawDraw.boxAt(
             { x = pr#position#x + pr#size#x / 2.0, y = pr#position#y + pr#size#y / 2.0 },
             pr#size,
             { r = f32(world#floorR), g = f32(world#floorG), b = f32(world#floorB) }, 0);
@@ -75,7 +75,7 @@ mod View {
     def grassBg(world: World.World): Render.PlacedItem =
         let sz = pondMaxSize();
         let center = { x = pondOrigin()#x + sz#x / 2.0, y = pondOrigin()#y + sz#y / 2.0 };
-        Render.boxAt(center, sz,
+        RawDraw.boxAt(center, sz,
             { r = f32(world#bgR), g = f32(world#bgG), b = f32(world#bgB) }, -1)
 
     /// タイルの下端の中央にラベルを置く。
@@ -118,7 +118,7 @@ mod View {
         let land = gradientBand(x0, w, landTop, grassLine,
             lighten(grassCol, 0.25f32), darken(grassCol, 0.20f32), 0);
         // 3) 水（最下段・参考用の単純な青）。z=1。
-        let water = Render.boxAt(
+        let water = RawDraw.boxAt(
             { x = x0 + w / 2.0, y = (dirtBottom + waterBottom) / 2.0 },
             { x = w, y = waterBottom - dirtBottom },
             { r = 0.16f32, g = 0.43f32, b = 0.55f32 }, 1) :: Nil;
@@ -139,7 +139,7 @@ mod View {
             let t = (Int32.toFloat64(k) + 0.5) / Int32.toFloat64(segs);  // 0..1（段の中央）
             let col = mixCol(topCol, botCol, Float64.clampToFloat32(min = 0.0f32, max = 1.0f32, t));
             let cy = topY + (Int32.toFloat64(k) + 0.5) * h;
-            Render.boxAt({ x = x0 + w / 2.0, y = cy }, { x = w, y = h + 0.5 }, col, z)
+            RawDraw.boxAt({ x = x0 + w / 2.0, y = cy }, { x = w, y = h + 0.5 }, col, z)
         })
 
     /// 色を白へ寄せて明るくする（t=0 でそのまま・1 で真っ白）。
@@ -179,13 +179,13 @@ mod View {
             // コブの陰影: 同じ山を「暗い色で少し大きく」→「明るい色で少し小さく」の2枚重ねで縦グラデ風に。
             let vBot = bumpVerts(cx, grassLine, halfW, h, jag);
             let vTop = bumpVerts(cx, grassLine, halfW * 0.86, h * 0.7, jag);
-            let bodyBot = { at = Vec2.zero(), item = Render.polygon(vBot, colBot, 3) };
-            let bodyTop = { at = Vec2.zero(), item = Render.polygon(vTop, colTop, 4) };
+            let bodyBot = { at = Vec2.zero(), item = RawDraw.polygon(vBot, colBot, 3) };
+            let bodyTop = { at = Vec2.zero(), item = RawDraw.polygon(vTop, colTop, 4) };
             // 下側の縁取り: 同じ山を outW だけ下にずらした暗い山を裏に敷く。
             if (outW <= 0.0) bodyBot :: bodyTop :: Nil
             else {
                 let outVerts = bumpVerts(cx, grassLine + outW, halfW, h, jag);
-                let outline = { at = Vec2.zero(), item = Render.polygon(outVerts, outCol, 2) };
+                let outline = { at = Vec2.zero(), item = RawDraw.polygon(outVerts, outCol, 2) };
                 outline :: bodyBot :: bodyTop :: Nil
             }
         })
@@ -226,11 +226,11 @@ mod View {
             let u = (Int32.toFloat64(k) + 0.5) / Int32.toFloat64(cols);  // 0..1
             let bottom = dirtBottom + edgeProfile(u, jag) * waveAmp;
             let midCol = mixCol(colTop, colBot, 0.5f32);
-            let body = Render.boxAt({ x = cx, y = (dirtTop + bottom) / 2.0 },
+            let body = RawDraw.boxAt({ x = cx, y = (dirtTop + bottom) / 2.0 },
                 { x = cw + 0.5, y = Float64.max(1.0, bottom - dirtTop) }, midCol, 1);
-            let upper = Render.boxAt({ x = cx, y = (dirtTop + (dirtTop + bottom) / 2.0) / 2.0 },
+            let upper = RawDraw.boxAt({ x = cx, y = (dirtTop + (dirtTop + bottom) / 2.0) / 2.0 },
                 { x = cw + 0.5, y = Float64.max(1.0, (bottom - dirtTop) / 2.0) }, colTop, 1);
-            let line = Render.boxAt({ x = cx, y = bottom },
+            let line = RawDraw.boxAt({ x = cx, y = bottom },
                 { x = cw + 0.5, y = 1.5 }, outCol, 2);
             body :: upper :: line :: Nil
         });
@@ -266,8 +266,8 @@ mod View {
                     if (n3 < 0.22 or cy < dirtTop + 1.0 or cy > dirtBottom - 1.0) Nil
                     else {
                         let rr = spacing * 0.5 * (0.7 + 0.5 * n1);
-                        let shadow = Render.circleAt({ x = cx + off, y = cy + off }, rr, shadeCol, 3);
-                        let bulge = Render.circleAt({ x = cx - off * 0.6, y = cy - off * 0.6 },
+                        let shadow = RawDraw.circleAt({ x = cx + off, y = cy + off }, rr, shadeCol, 3);
+                        let bulge = RawDraw.circleAt({ x = cx - off * 0.6, y = cy - off * 0.6 },
                             rr * 0.82, litCol, 4);
                         shadow :: bulge :: Nil
                     }
@@ -300,14 +300,14 @@ mod View {
     def sliderRow(ctx: App.ViewCtx, world: World.World, i: Int32, d: Sliders.Def):
             List[Render.PlacedItem] =
         let ry = Sliders.rowY(i);
-        let track = Render.boxAt(
+        let track = RawDraw.boxAt(
             { x = Sliders.trackX() + Sliders.trackW() / 2.0, y = ry },
             { x = Sliders.trackW(), y = 4.0 },
             { r = 0.30f32, g = 0.30f32, b = 0.35f32 }, 50);
         let v = Sliders.get(world, d#key);
         let tnorm = (v - d#lo) / (d#hi - d#lo);
         let hx = Sliders.trackX() + tnorm * Sliders.trackW();
-        let handle = Render.boxAt(
+        let handle = RawDraw.boxAt(
             { x = hx, y = ry },
             { x = 8.0, y = 14.0 },
             { r = 0.90f32, g = 0.95f32, b = 1.0f32 }, 51);

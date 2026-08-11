@@ -128,7 +128,7 @@ mod Gallery {
         let left = idx * laneW();
         let sep = if (idx == 0) Nil else
             { at = { x = Int32.toFloat64(left), y = 0.0 },
-              item = Render.box({ x = 1.0, y = Int32.toFloat64(soloH()) }, frameColor(), 1) } :: Nil;
+              item = RawDraw.box({ x = 1.0, y = Int32.toFloat64(soloH()) }, frameColor(), 1) } :: Nil;
         let body = match tickFrame {
             case Some(Some(tick)) => tickPlaced(left + 8, 16, tick)
             case _              =>
@@ -177,7 +177,7 @@ mod Gallery {
         let y0 = headerH() + rowIdx * cellH();
         let frame =
             { at = { x = Int32.toFloat64(x0 + 1), y = Int32.toFloat64(y0 + 1) },
-              item = Render.box({ x = Int32.toFloat64(cellW() - 2), y = Int32.toFloat64(cellH() - 2) },
+              item = RawDraw.box({ x = Int32.toFloat64(cellW() - 2), y = Int32.toFloat64(cellH() - 2) },
                         frameColor(), 0) } :: Nil;
         let body = drawOf(classId, variant)
             |> Option.map(drawFn -> PixelCanvas.toPlaced(x0 + (cellW() - PixelCanvas.size()) / 2, y0 + 8, drawFn(RogueStage.Clip.IdleDown, 0)))
@@ -203,7 +203,7 @@ mod Gallery {
             let (i, c) = pair;
             let x0 = i * sw;
             { at = { x = Int32.toFloat64(x0), y = 12.0 },
-              item = Render.box({ x = Int32.toFloat64(sw), y = 44.0 }, c, 0) } ::
+              item = RawDraw.box({ x = Int32.toFloat64(sw), y = 44.0 }, c, 0) } ::
             PixelCanvas.toPlaced(x0 + 6, 20, idle0)
         });
         let items = label(atlas, "FLOOR CONTRAST", 4, 3) :: swatches;

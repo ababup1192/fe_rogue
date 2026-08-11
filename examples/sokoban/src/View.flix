@@ -261,7 +261,7 @@ mod View {
                 let tail = Vec2.sub(c, Vec2.mul(dir, needleTailReach()));
                 let tip = Vec2.add(c, Vec2.mul(dir, reach));
                 { at = Vec2.zero(),
-                  item = Render.polygon(Render.lineQuad(tail, tip, needleHalfWidth() * 2.0),
+                  item = RawDraw.polygon(RawDraw.lineQuad(tail, tip, needleHalfWidth() * 2.0),
                                 Palette.clockRim(), zClock() + 2)
                     |> Render.fade(clockAlpha(f)) } :: Nil
         }
@@ -310,7 +310,7 @@ mod View {
         let y = Curve.loop(fallSpeed, fallSpan, t + fallSpan * rand(7) / fallSpeed) - confettiSpawnAbove();
         let angle = Curve.spin(spinRate, t) + phase;
         { at = Vec2.zero(),
-          item = Render.polygon(Quad.rotated({ x = x, y = y }, confettiPieceHalfWidth(), confettiPieceHalfHeight(), angle),
+          item = RawDraw.polygon(Quad.rotated({ x = x, y = y }, confettiPieceHalfWidth(), confettiPieceHalfHeight(), angle),
                         Palette.confetti(i), zConfetti()) }
 
     /// 雨全体: パーティの時計が動いている間、インデックスごとに1つのクアッド。
@@ -331,20 +331,20 @@ mod View {
     /// 塗りつぶし矩形: 左上 (x, y)、サイズ (w, h)、レイヤー z。
     def boxAt(rect: { x = Float64, y = Float64, w = Float64, h = Float64 },
               c: Color, z: Int32): Render.PlacedItem =
-        { at = { x = rect#x, y = rect#y }, item = Render.box({ x = rect#w, y = rect#h }, c, z) }
+        { at = { x = rect#x, y = rect#y }, item = RawDraw.box({ x = rect#w, y = rect#h }, c, z) }
 
     /// c を中心とする直径 d の塗りつぶし円。
     def circleAt(c: Vec2.Vec2, d: Float64, color: Color, z: Int32): Render.PlacedItem =
-        Render.circleAt(c, d / 2.0, color, z)
+        RawDraw.circleAt(c, d / 2.0, color, z)
 
     /// 半透明の塗りつぶしボックス（時計のパーツは alpha でフェードする）。
     def fxBox(pos: Vec2.Vec2, size: Vec2.Vec2, c: Color, a: Float64,
               z: Int32): Render.PlacedItem =
-        { at = pos, item = Render.box(size, c, z) |> Render.fade(a) }
+        { at = pos, item = RawDraw.box(size, c, z) |> Render.fade(a) }
 
     /// 直径 d の半透明の塗りつぶし円（時計の縁と面）。
     def fxCircle(center: Vec2.Vec2, d: Float64, c: Color, a: Float64,
                  z: Int32): Render.PlacedItem =
         { at = {x = center#x - d / 2.0, y = center#y - d / 2.0},
-          item = Render.circle(d / 2.0, c, z) |> Render.fade(a) }
+          item = RawDraw.circle(d / 2.0, c, z) |> Render.fade(a) }
 }

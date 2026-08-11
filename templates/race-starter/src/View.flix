@@ -74,7 +74,7 @@ mod View {
     /// このゲームで刻々変わる一番大事な数だから。
     def rankChip(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         let ink = hudInk(w);
-        let chip = Render.boxAt({ x = 40.0, y = 28.0 }, { x = 66.0, y = 46.0 },
+        let chip = RawDraw.boxAt({ x = 40.0, y = 28.0 }, { x = 66.0, y = 46.0 },
                 w#theme#text, zHud())
             |> Render.overItem(Render.fade(0.9));
         let lapShow = Int32.min(w#lap + 1, w#rules#totalLaps);
@@ -110,7 +110,7 @@ mod View {
     /// 白チップ + 色文字の小さな札 1 枚。
     def chipAt(atlas: FontAtlas, w: World.World, label: String, ink: Color, y: Float64): List[Render.PlacedItem] =
         let cx = 204.0;
-        let back = Render.boxAt({ x = cx, y = y }, { x = 58.0, y = 15.0 }, w#theme#text, zHud())
+        let back = RawDraw.boxAt({ x = cx, y = y }, { x = 58.0, y = 15.0 }, w#theme#text, zHud())
             |> Render.overItem(Render.fade(0.85));
         back
             :: TextDraw.centered({ text = label, atlas = atlas, size = 10.0, color = ink,
@@ -121,12 +121,12 @@ mod View {
     /// 満タンになったら光らせて「Z」を明滅 — ボタンを押して良い瞬間を画面が教える。
     def nitroGauge(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         let cy = 337.0;
-        let frameChip = Render.boxAt({ x = 120.0, y = cy }, { x = 128.0, y = 13.0 },
+        let frameChip = RawDraw.boxAt({ x = 120.0, y = cy }, { x = 128.0, y = 13.0 },
                 w#theme#text, zHud())
             |> Render.overItem(Render.fade(0.9));
         let barW = 118.0 * Num.clamp01(w#nitro);
         let bar = if (barW < 0.5) Nil
-            else Render.boxAt({ x = 61.0 + barW / 2.0, y = cy }, { x = barW, y = 7.0 },
+            else RawDraw.boxAt({ x = 61.0 + barW / 2.0, y = cy }, { x = barW, y = 7.0 },
                     Color.mix(w#theme#flame, ThemeDoc.flameCore(w#theme), w#nitro),
                     zHud() + 1) :: Nil;
         let ready = if (w#nitro < 1.0) Nil
@@ -202,7 +202,7 @@ mod View {
     /// ゴールの市松帯（Win の飾り）。白帯に市松の穴を開けるだけで「ゴール」と読める。
     def checkerBand(theme: ThemeDoc.Doc): Render.PlacedItem =
         { at = { x = 0.0, y = 96.0 },
-          item = Render.box({ x = World.designW(), y = 12.0 }, theme#finish, zOverlay() + 1)
+          item = RawDraw.box({ x = World.designW(), y = 12.0 }, theme#finish, zOverlay() + 1)
               |> Render.checker({ color = Color.darken(theme#sea, 0.4), alpha = 1.0, cell = 6.0 })
               |> Render.fade(0.92) }
 
@@ -210,7 +210,7 @@ mod View {
     /// 黒でなく海の紺を使うのは、幕の下でも真夏の画面のままでいるため。
     def curtain(theme: ThemeDoc.Doc, alpha: Float64): Render.PlacedItem =
         { at = { x = 0.0, y = 0.0 },
-          item = Render.box({ x = World.designW(), y = World.designH() },
+          item = RawDraw.box({ x = World.designW(), y = World.designH() },
                      Color.darken(theme#sea, 0.35), zOverlay())
               |> Render.fade(alpha) }
 

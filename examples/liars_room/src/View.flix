@@ -120,15 +120,15 @@ mod View {
             |> List.map(p -> {
                 let (x, y) = p;
                 let color = if (Int32.modulo(x + y, 2) == 0) Palette.floorA() else Palette.floorB();
-                { at = cellTopLeft(state, p), item = Render.box({x = tile(), y = tile()}, color, 0) }
+                { at = cellTopLeft(state, p), item = RawDraw.box({x = tile(), y = tile()}, color, 0) }
             })
 
     /// 壁セル: 本体 + 上縁のハイライトで立体に見せる。
     def wallTiles(state: Room.State): List[Render.PlacedItem] =
         state#walls |> Set.toList |> List.flatMap(p -> {
             let tl = cellTopLeft(state, p);
-            { at = tl, item = Render.box({x = tile(), y = tile()}, Palette.wall(), 1) } ::
-            { at = tl, item = Render.box({x = tile(), y = tile() * 0.25}, Palette.wallTop(), 2) } :: Nil
+            { at = tl, item = RawDraw.box({x = tile(), y = tile()}, Palette.wall(), 1) } ::
+            { at = tl, item = RawDraw.box({x = tile(), y = tile() * 0.25}, Palette.wallTop(), 2) } :: Nil
         })
 
     // ── 人 ──
@@ -179,11 +179,11 @@ mod View {
     def crossMark(center: Vec2.Vec2): List[Render.PlacedItem] =
         let arm = 4.0;
         let thick = 1.4;
-        { at = center, item = Render.polygon(
+        { at = center, item = RawDraw.polygon(
             { x = -arm, y = -arm + thick } :: { x = -arm + thick, y = -arm } ::
             { x = arm, y = arm - thick } :: { x = arm - thick, y = arm } :: Nil,
             Palette.markLiar(), zMarkLift()) } ::
-        { at = center, item = Render.polygon(
+        { at = center, item = RawDraw.polygon(
             { x = arm - thick, y = -arm } :: { x = arm, y = -arm + thick } ::
             { x = -arm + thick, y = arm } :: { x = -arm, y = arm - thick } :: Nil,
             Palette.markLiar(), zMarkLift()) } :: Nil
@@ -192,7 +192,7 @@ mod View {
     def ringMark(center: Vec2.Vec2): List[Render.PlacedItem] =
         let d = 9.0;
         { at = Vec2.add(center, { x = -d / 2.0, y = -d / 2.0 }),
-          item = Render.box({x = d, y = d}, Palette.markHonest(), zMarkLift())
+          item = RawDraw.box({x = d, y = d}, Palette.markHonest(), zMarkLift())
             |> Render.rounded(d / 2.0)
             |> Render.fade(0.0)
             |> Render.outline(Palette.markHonest(), 1.6) } :: Nil

@@ -47,7 +47,7 @@ mod ViewScene {
         let at = sunAt(cam, w);
         Render.glowAt(at, 18.0, w#theme#text,
                 { alpha = 0.5, blend = DrawCmd.BlendMode.Add }, zSun())
-            ::: (Render.circleAt(at, 7.0, w#theme#text, zSun()) :: Nil)
+            ::: (RawDraw.circleAt(at, 7.0, w#theme#text, zSun()) :: Nil)
 
     /// 雲 4 つ。楕円 3 枚組を右から左へ 3px/s で流す（走らなくても空だけは動く = 時間の下限）。
     /// 曲がったぶんも一緒に流すが、太陽より少しだけ鈍く動かす（雲のほうが手前にある）。
@@ -59,10 +59,10 @@ mod ViewScene {
             let y = Float64.min(Proj.horizonYAt(cam) - 8.0, 18.0 + rand(1) * 34.0);
             let s = 4.0 + (y - 18.0) / 34.0 * 5.0 + rand(2) * 2.0;
             let c = w#theme#text;
-            Render.ellipseAt({ x = x, y = y }, { x = s * 2.2, y = s }, c, zCloud())
-                :: Render.ellipseAt({ x = x - s * 1.6, y = y + s * 0.35 },
+            RawDraw.ellipseAt({ x = x, y = y }, { x = s * 2.2, y = s }, c, zCloud())
+                :: RawDraw.ellipseAt({ x = x - s * 1.6, y = y + s * 0.35 },
                        { x = s * 1.4, y = s * 0.7 }, c, zCloud())
-                :: Render.ellipseAt({ x = x + s * 1.7, y = y + s * 0.3 },
+                :: RawDraw.ellipseAt({ x = x + s * 1.7, y = y + s * 0.3 },
                        { x = s * 1.5, y = s * 0.75 }, c, zCloud())
                 :: Nil
         }) |> List.flatten
@@ -233,7 +233,7 @@ mod ViewScene {
             let len = (2.5 + rand(2) * 5.0) * (0.6 + 1.1 * d);
             let thick = if (d > 0.55) 2.0 else 1.0;
             let blink = 0.5 + 0.5 * Sway.wave(w#t, rand(3) * 7.0, 0.35 + rand(4) * 0.5);
-            Render.lineSeg({ x = x, y = y }, { x = x + len, y = y }, thick,
+            RawDraw.lineSeg({ x = x, y = y }, { x = x + len, y = y }, thick,
                     ThemeDoc.seaGlint(w#theme), zHorizon())
                 |> Render.overItem(item -> item
                     |> Render.fade(
@@ -368,7 +368,7 @@ mod ViewScene {
         // ここで最低 1px を保証すると、消えていたはずの幹だけが茶色い点として残る。
         let half = 0.9 * f;
         let trunk = { at = { x = 0.0, y = 0.0 },
-                      item = Render.polygon(
+                      item = RawDraw.polygon(
                              { x = tx - half, y = p#at#y }
                           :: { x = tx + half, y = p#at#y }
                           :: { x = tx + half * 0.9, y = p#at#y - 10.0 * f }
@@ -378,7 +378,7 @@ mod ViewScene {
         // 葉のあいだの空きを長短の頂点で作る。頂点をこれ以上増やしても、この大きさでは
         // 隣り合う頂点の間が 1px に満たない。
         let leaves = { at = { x = 0.0, y = 0.0 },
-                       item = Render.polygon(
+                       item = RawDraw.polygon(
                            List.range(0, 12) |> List.map(i -> {
                                let a = 2.0 * Vec2.pi() * (Int32.toFloat64(i) + 0.5) / 12.0;
                                let reach = if (Int32.modulo(i, 2) == 0) 1.0 else 0.42;
@@ -509,8 +509,8 @@ mod ViewScene {
         // 縁の分割数は大きさなり（遠くの茂みは 3px ほどで、既定の 32 分割は要らない）。
         let blob = (dx, dy, rx, ry, c) -> {
             let radii = ({ x = rx * s, y = ry * s }: Vec2.Vec2);
-            Render.ellipseSegsAt({ x = at#x + dx * s, y = at#y + dy * s },
-                    radii, Render.ellipseSegsFor(radii), c, z(uc))
+            RawDraw.ellipseSegsAt({ x = at#x + dx * s, y = at#y + dy * s },
+                    radii, RawDraw.ellipseSegsFor(radii), c, z(uc))
         };
         shadowUnder(at, 1.5 * s, 0.5 * s, uc)
             :: blob(0.0 - 0.5, 0.0 - 0.5, 1.0, 0.7, dark)
@@ -527,13 +527,13 @@ mod ViewScene {
         let face = Color.mix(w#theme#finish, ThemeDoc.hazeTo(w#theme), Proj.hazeAt(uc));
         let mark = Color.mix(w#theme#kerb, ThemeDoc.hazeTo(w#theme), Proj.hazeAt(uc));
         let leg = dx ->
-            Render.boxAt({ x = at#x + dx * s, y = at#y - s * 0.9 },
+            RawDraw.boxAt({ x = at#x + dx * s, y = at#y - s * 0.9 },
                     { x = Float64.max(1.0, 0.22 * s), y = 1.8 * s }, post, z(uc));
         shadowUnder(at, 1.2 * s, 0.4 * s, uc)
             :: leg(-0.7) :: leg(0.7)
-            :: Render.boxAt({ x = at#x, y = at#y - s * 2.4 },
+            :: RawDraw.boxAt({ x = at#x, y = at#y - s * 2.4 },
                     { x = 2.4 * s, y = 1.4 * s }, face, z(uc))
-            :: Render.boxAt({ x = at#x, y = at#y - s * 2.4 },
+            :: RawDraw.boxAt({ x = at#x, y = at#y - s * 2.4 },
                     { x = 2.4 * s, y = Float64.max(1.0, 0.4 * s) }, mark, z(uc))
             :: Nil
 
@@ -541,7 +541,7 @@ mod ViewScene {
     /// ここは何百と撒く立ち物向けに、分割数を大きさなりへ落とすだけ。
     def shadowUnder(at: Vec2.Vec2, rx: Float64, ry: Float64, uc: Float64): Render.PlacedItem =
         let radii = ({ x = rx, y = ry }: Vec2.Vec2);
-        ViewRoad.shadowUnder({ at = at, radii = radii, segs = Render.ellipseSegsFor(radii),
+        ViewRoad.shadowUnder({ at = at, radii = radii, segs = RawDraw.ellipseSegsFor(radii),
                                alpha = ViewRoad.shadowAlpha(uc), z = z(uc) })
 
     def z(uc: Float64): Int32 = Proj.zOf(uc)
@@ -576,7 +576,7 @@ mod ViewScene {
                     l + rand(0) * (lane#r - lane#l) * near
                 };
             let len = (14.0 + rand(3) * 22.0) * (0.25 + 0.75 * near);
-            Render.lineSeg({ x = x, y = y0 }, { x = x, y = y0 + len }, 1.0,
+            RawDraw.lineSeg({ x = x, y = y0 }, { x = x, y = y0 + len }, 1.0,
                     w#theme#text, zSpeed())
                 |> Render.overItem(item -> item
                     |> Render.fade(

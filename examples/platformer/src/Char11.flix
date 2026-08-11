@@ -1,6 +1,7 @@
 // 韋駄天の源太（いだてんのげんた）— 江戸の宿場を風のように繋ぐ長身痩躯の飛脚。
 // 深い前傾と跳ぶような大股のバウンディング走法。担いだ文箱が慣性で振れ、
 // 赤い鉢巻の尾と巻き上がる砂塵の壁が「今日も御用」の勢いを物語る。
+// この箱組みは旧様式(RawDraw 大量使用の前例にしない)。新キャラは PxSprite+PxShade を第一候補に。
 
 mod Char11 {
 
@@ -203,19 +204,19 @@ mod Char11 {
     def boxAt(st: CharStage.Stage, cx: Float64, cy: Float64, w: Float64, h: Float64,
               color: Color, z: Int32): Render.PlacedItem =
         { at = { x = st#pos#x + st#facing * cx - w / 2.0, y = st#pos#y + cy - h / 2.0 },
-          item = Render.box({ x = w, y = h }, color, z) }
+          item = RawDraw.box({ x = w, y = h }, color, z) }
 
     /// 中心 (cx, cy)・半径 r の円。
     def circleAt(st: CharStage.Stage, cx: Float64, cy: Float64, r: Float64,
                  color: Color, z: Int32): Render.PlacedItem =
         { at = { x = st#pos#x + st#facing * cx - r, y = st#pos#y + cy - r },
-          item = Render.circle(r, color, z) }
+          item = RawDraw.circle(r, color, z) }
 
     /// 相対頂点列を facing で鏡映して置く（凸多角形・反転時は巻き順も戻す）。
     def polyAt(st: CharStage.Stage, verts: List[Vec2.Vec2], color: Color, z: Int32): Render.PlacedItem =
         let vs = List.map(v -> { x = st#facing * v#x, y = v#y }, verts);
         let ordered = if (st#facing >= 0.0) vs else List.reverse(vs);
-        { at = { x = st#pos#x, y = st#pos#y }, item = Render.polygon(ordered, color, z) }
+        { at = { x = st#pos#x, y = st#pos#y }, item = RawDraw.polygon(ordered, color, z) }
 
     /// (x0,y0)→(x1,y1) を結ぶ太さ w の棒。手足・棒・布のひと節。
     def limb(st: CharStage.Stage, x0: Float64, y0: Float64, x1: Float64, y1: Float64,

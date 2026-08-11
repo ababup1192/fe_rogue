@@ -156,7 +156,7 @@ mod Light {
         let pad = Vec2.length(viewport);
         let half = maskSize / 2.0;
         let blackBox = (center: Vec2.Vec2, size: Vec2.Vec2) ->
-            Render.boxAt(center, size, { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, z)
+            RawDraw.boxAt(center, size, { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, z)
                 |> (placed -> { item = Render.blended(DrawCmd.BlendMode.Multiply, placed#item)
                                     |> Render.fade(darkness) | placed });
         let wideW = maskSize + pad * 2.0;
@@ -195,7 +195,7 @@ mod Light {
     /// ハロは全て同じ z+1（Add は加算合成のため奥行き順に依らず重なりは自然に足し合わさる）。
     pub def multiLightItems(cfg: MultiLightConfig): List[Render.PlacedItem] =
         let darkColor = { r = 0.0f32, g = 0.0f32, b = 0.0f32 };
-        let cover = Render.boxAt(Vec2.mul(cfg#viewport, 0.5), cfg#viewport, darkColor, cfg#z)
+        let cover = RawDraw.boxAt(Vec2.mul(cfg#viewport, 0.5), cfg#viewport, darkColor, cfg#z)
             |> (placed -> { item = Render.blended(DrawCmd.BlendMode.Multiply, placed#item)
                                 |> Render.fade(cfg#darkness) | placed });
         let haloes = cfg#lights |> List.map(light -> {
@@ -252,7 +252,7 @@ mod Light {
     /// 領域を横切ると、B の灯りもその領域では消える**。厳密にするには光 1 個 = pass 1 本が
     /// 要り、pass 数が光源数に比例して増えるため v1 はこの割り切りを仕様にする。
     pub def lightMapPass(cfg: LightMapConfig): Render.Pass =
-        let ambientFloor = { at = Vec2.zero(), item = Render.box(cfg#viewport, cfg#ambient, 0) };
+        let ambientFloor = { at = Vec2.zero(), item = RawDraw.box(cfg#viewport, cfg#ambient, 0) };
         let radiance = cfg#lights |> List.map(light -> Render.lightAt({
             at = light#at, radius = light#radius, color = light#color,
             strength = light#halo, z = radianceZ() }));
@@ -280,7 +280,7 @@ mod Light {
     /// 合成も違う — 光マップの中で黒を掛けると本編がその領域だけ真っ黒に落ちてしまう。
     def ambientQuad(quad: List[Vec2.Vec2], ambient: Color, strength: Float64): Render.PlacedItem =
         { at = Vec2.zero(),
-          item = Render.polygon(quad, ambient, shadowZ()) |> Render.fade(strength) }
+          item = RawDraw.polygon(quad, ambient, shadowZ()) |> Render.fade(strength) }
 
     /// 8bit 値 k をそのままの色成分（k/255）にする。
     def c255(k: Int32): Float32 =

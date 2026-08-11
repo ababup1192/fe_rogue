@@ -25,8 +25,8 @@ mod TestDepth {
     @Test
     def testPlaceKeepsRelativeOrderInsideOneBody(): Unit \ Assert =
         // 1 体を 0・1・2 の小さな z で組んでも、帯へ持ち上げたあと差はそのまま。
-        let parts = { at = Vec2.zero(), item = Render.box(Vec2.one(), white(), 0) }
-            :: { at = Vec2.zero(), item = Render.box(Vec2.one(), white(), 2) } :: Nil;
+        let parts = { at = Vec2.zero(), item = RawDraw.box(Vec2.one(), white(), 0) }
+            :: { at = Vec2.zero(), item = RawDraw.box(Vec2.one(), white(), 2) } :: Nil;
         let lifted = Depth.place(band(), 100.0, parts) |> List.map(zOf);
         Assert.assertEq(expected = (30, 32), (fstOr(lifted), sndOr(lifted)))
 

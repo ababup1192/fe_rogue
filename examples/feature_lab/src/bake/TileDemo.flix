@@ -54,9 +54,9 @@ mod TileDemo {
 
     /// キャラ 1 体（z=10）。頭 + 胴の 2 箱（体の中心を at に置く）。
     def character(at: Vec2.Vec2): List[Render.PlacedItem] =
-        Render.boxAt(at, { x = 20.0, y = 44.0 },
+        RawDraw.boxAt(at, { x = 20.0, y = 44.0 },
                      { r = 0.30f32, g = 0.45f32, b = 0.85f32 }, 10)
-        :: Render.boxAt({ x = at#x, y = at#y - 28.0 }, { x = 14.0, y = 14.0 },
+        :: RawDraw.boxAt({ x = at#x, y = at#y - 28.0 }, { x = 14.0, y = 14.0 },
                         { r = 0.95f32, g = 0.80f32, b = 0.65f32 }, 10)
         :: Nil
 

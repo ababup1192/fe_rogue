@@ -236,7 +236,7 @@ mod Material {
         };
         let liftPts = pts -> pts |> List.map(v -> ({ x = v#x, y = v#y - h }: Vec2.Vec2));
         let placeAt = (color, zIndex, poly) ->
-            { at = origin, item = Render.polygon(poly, color, zIndex) };
+            { at = origin, item = RawDraw.polygon(poly, color, zIndex) };
         List.zip(tile#polys, tile#edges) |> List.flatMap(match (poly, edges) -> {
             // 前面: 南向きの輪郭辺から根元までの立ち面(+根元の締めの細帯)。
             let fronts = match spec#height {
@@ -298,7 +298,7 @@ mod Material {
             let center = {
                 x = px + 4.0 + Float64.floor(DualGrid.hash(x, y, fx#channel + 2 + k) * 8.0),
                 y = py + 4.0 + Float64.floor(DualGrid.hash(x, y, fx#channel + 4 + k) * 8.0) };
-            let placed = Render.circleAt(center, radius, fx#color, z);
+            let placed = RawDraw.circleAt(center, radius, fx#color, z);
             { item = placed#item |> Render.fade(alpha) | placed }
         })
 
@@ -325,7 +325,7 @@ mod Material {
             // box は左上原点なので、幅ぶん見込んで岸の内側へ寄せる。
             let (ax, ay) = insetToLiquid(cell, tile, edges, Float64.max(w, 2.0), (bx, by));
             { at = { x = ax, y = ay },
-              item = Render.box({ x = w, y = 1.0 }, fx#color, z)
+              item = RawDraw.box({ x = w, y = 1.0 }, fx#color, z)
                   |> Render.fade(twinkle)
                   |> blendItem(fx#blend) }
         })
@@ -393,7 +393,7 @@ mod Material {
                 let toneColor = ramp3(fx#color, fx#color3, fx#color2, phase);
                 if (droppedAtShore(cell, tile, edges, radius, (cx, cy))) Nil
                 else {
-                    let liteArc = Render.polygon(
+                    let liteArc = RawDraw.polygon(
                         crescent({ x = cx, y = cy }, radius, 1.4, 0.34), toneColor, z);
                     { at = Vec2.zero(),
                       item = liteArc |> Render.fade(fx#alphaBase)
@@ -443,7 +443,7 @@ mod Material {
         let outer = List.range(0, segs + 1) |> List.map(i -> at(radius, i));
         let inner = List.range(0, segs + 1) |> List.map(i -> at(radius - width, segs - i));
         { at = Vec2.zero(),
-          item = Render.polygon(List.append(outer, inner), color, z) }
+          item = RawDraw.polygon(List.append(outer, inner), color, z) }
 
     /// 湧いて膨らみ、終端でリング+飛沫に弾けて消える泡。粒の一生は
     /// 「時刻+セル位相を周期で折り返した tMod」だけから決まる閉形式 —
@@ -476,7 +476,7 @@ mod Material {
                         // 膨らむ塗り円。
                         let grow = u / 0.7;
                         let alpha = fx#alphaBase + fx#alphaSpan * grow;
-                        let placed = Render.circleAt(center, fx#sizeTo * grow, fx#color, z);
+                        let placed = RawDraw.circleAt(center, fx#sizeTo * grow, fx#color, z);
                         ({ item = placed#item
                                |> Render.fade(alpha)
                                |> blendItem(fx#blend) | placed }) :: Nil
@@ -494,7 +494,7 @@ mod Material {
                             let dir = { x = Vec2.cos(ang), y = Vec2.sin(ang) };
                             let inner = Vec2.add(center, Vec2.mul(dir, rad));
                             let outer = Vec2.add(center, Vec2.mul(dir, rad + 2.5));
-                            let seg = Render.lineSeg(inner, outer, 1.0, fx#color, z);
+                            let seg = RawDraw.lineSeg(inner, outer, 1.0, fx#color, z);
                             { item = seg#item |> Render.fade(alpha) | seg }
                         });
                         ringItem :: splats
@@ -521,7 +521,7 @@ mod Material {
                 (px + 3.0 + Float64.floor(DualGrid.hash(x, y, fx#channel + 2 + k) * 10.0),
                  py + 3.0 + Float64.floor(DualGrid.hash(x, y, fx#channel + 4 + k) * 10.0)));
             let center = { x = gcx, y = gcy };
-            let placed = Render.circleAt(center, radius, fx#color, z);
+            let placed = RawDraw.circleAt(center, radius, fx#color, z);
             { item = placed#item
                   |> Render.fade(twinkle)
                   |> blendItem(fx#blend) | placed }

@@ -1,5 +1,6 @@
 // ヨイボタル — 尻の提灯を灯して低空を飛ぶ甲虫。地上では六肢で立って提灯が呼吸のように明滅し、
 // 飛べば体が進行方向へ傾いて羽がブレ、ダッシュは提灯の光の残跡を曳く。急停止は羽を前へ突き出す空気ブレーキ。
+// この箱組みは旧様式(RawDraw 大量使用の前例にしない)。新キャラは PxSprite+PxShade を第一候補に。
 
 mod Char04 {
 
@@ -92,18 +93,18 @@ mod Char04 {
             dashTrail(stage, flight)
             // 提灯の光暈: ゆっくり明滅する呼吸の光（ダッシュ中は速く脈打つ）。
             :: ({ at = { x = lantern#x - (4.5 + 1.5 * pulse), y = lantern#y - (4.5 + 1.5 * pulse) },
-                  item = Render.circle(4.5 + 1.5 * pulse, glowColor(), 9)
+                  item = RawDraw.circle(4.5 + 1.5 * pulse, glowColor(), 9)
                      |> Render.fade(0.16 + 0.24 * pulse) } :: Nil)
             :: legItems(stage, flight, seat, false)
             :: farWing(stage, seat)
             :: ({ at = { x = abdomen#x - abdomenW / 2.0, y = abdomen#y - abdomenH / 2.0 },
-                  item = Render.box({ x = abdomenW, y = abdomenH }, abdomenColor(), 10)
+                  item = RawDraw.box({ x = abdomenW, y = abdomenH }, abdomenColor(), 10)
                      |> Render.rounded(3.5) } :: Nil)
             :: ({ at = { x = lantern#x - 2.5, y = lantern#y - 1.5 },
-                  item = Render.box({ x = 5.0, y = 3.0 }, glowColor(), 11) |> Render.rounded(1.5) } :: Nil)
+                  item = RawDraw.box({ x = 5.0, y = 3.0 }, glowColor(), 11) |> Render.rounded(1.5) } :: Nil)
             :: elytraItems(flight, seat)
             :: ({ at = { x = seat(1.0, -1.5)#x - 3.0, y = seat(1.0, -1.5)#y - 3.0 },
-                  item = Render.circle(3.0, collarColor(), 11) } :: Nil)
+                  item = RawDraw.circle(3.0, collarColor(), 11) } :: Nil)
             :: legItems(stage, flight, seat, true)
             :: headItems(stage, flight, seat)
             :: nearWing(stage, flight, seat)
@@ -121,13 +122,13 @@ mod Char04 {
         // しずく形では触角の先を後ろへ流す。
         let tipA = blendV(seat(7.6, -5.2 + sway), seat(1.8, -6.0), flight#tuck);
         let tipB = blendV(seat(8.4, -3.6 + sway2), seat(2.6, -5.0), flight#tuck);
-        { at = { x = head#x - 2.4, y = head#y - 2.4 }, item = Render.circle(2.4, darkColor(), 12) }
+        { at = { x = head#x - 2.4, y = head#y - 2.4 }, item = RawDraw.circle(2.4, darkColor(), 12) }
         :: rod(seat(5.0, -2.6), tipA, 0.6, darkColor(), 12)
         :: rod(seat(5.4, -1.8), tipB, 0.6, darkColor(), 12)
         :: { at = { x = head#x + face * 1.0 - 1.0, y = head#y - 0.6 - 1.0 },
-             item = Render.circle(1.0, eyeWhite(), 13) }
+             item = RawDraw.circle(1.0, eyeWhite(), 13) }
         :: { at = { x = head#x + face * 1.4 - 0.5, y = head#y - 0.6 - 0.5 },
-             item = Render.circle(0.5, eyeDark(), 13) }
+             item = RawDraw.circle(0.5, eyeDark(), 13) }
         :: Nil
 
     // ── 鞘翅（羽の覆い）: 飛ぶと持ち上がって開く ──
@@ -142,7 +143,7 @@ mod Char04 {
         let c = seat(-7.5, -0.2 + lift * 0.8);
         let d = seat(-3.0, 0.6);
         { at = { x = anchor#x, y = anchor#y },
-          item = Render.polygon({ x = 0.0, y = 0.0 }
+          item = RawDraw.polygon({ x = 0.0, y = 0.0 }
                          :: { x = a#x - anchor#x, y = a#y - anchor#y }
                          :: { x = b#x - anchor#x, y = b#y - anchor#y }
                          :: { x = c#x - anchor#x, y = c#y - anchor#y }
@@ -213,7 +214,7 @@ mod Char04 {
     def wingPoly(shoulder: Vec2.Vec2, face: Float64, tips: List[(Float64, Float64)],
                  alpha: Float64, layer: Int32): List[Render.PlacedItem] =
         { at = { x = shoulder#x, y = shoulder#y },
-          item = Render.polygon({ x = 0.0, y = 0.0 }
+          item = RawDraw.polygon({ x = 0.0, y = 0.0 }
                          :: (tips |> List.map(tip -> { let (tx, ty) = tip; { x = face * tx, y = ty } })),
                          wingColor(), layer)
              |> Render.fade(alpha) } :: Nil
@@ -259,7 +260,7 @@ mod Char04 {
                                 + 1.6 * Curve.triWave(backX * 0.07);
                     let radius = 2.4 - 0.22 * fk;
                     { at = { x = backX - radius, y = backY - radius },
-                      item = Render.circle(radius, glowColor(), 8)
+                      item = RawDraw.circle(radius, glowColor(), 8)
                          |> Render.fade(0.5 * (1.0 - fk / 6.0) * ramp) }
                 })
             case _ => Nil
@@ -274,7 +275,7 @@ mod Char04 {
         let len = Float64.max(0.001, Vec2.sqrt(dx * dx + dy * dy));
         let half = width * 0.5;
         { at = { x = a#x, y = a#y },
-          item = Render.polygon({ x = -dy / len * half, y = dx / len * half }
+          item = RawDraw.polygon({ x = -dy / len * half, y = dx / len * half }
                          :: { x = dx - dy / len * half, y = dy + dx / len * half }
                          :: { x = dx + dy / len * half, y = dy - dx / len * half }
                          :: { x = dy / len * half, y = -dx / len * half } :: Nil,

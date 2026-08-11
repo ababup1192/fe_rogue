@@ -1,5 +1,6 @@
 // 蒸気ゴーレム（05 STEAM-GOLEM）— ボイラー胴体・伸縮ピストン脚・単眼スリットの重量級機械人形。
 // 歩きは脚の伸縮ストンプ、空中は脚を格納して炉心をさらし、減速は前脚アンカー + 接地火花で踏ん張る。
+// この箱組みは旧様式(RawDraw 大量使用の前例にしない)。新キャラは PxSprite+PxShade を第一候補に。
 
 mod Char05 {
 
@@ -53,15 +54,15 @@ mod Char05 {
         let torsoTop = spec#bottom - spec#size#y;
         let headTop = torsoTop - 6.0;
         { at = {x = torsoX - spec#size#x / 2.0, y = torsoTop},
-          item = Render.box(spec#size, steelBody(), 10) |> Render.rounded(1.5) } ::
+          item = RawDraw.box(spec#size, steelBody(), 10) |> Render.rounded(1.5) } ::
         { at = {x = headX - 4.0, y = headTop},
-          item = Render.box({x = 8.0, y = 6.0}, steelDark(), 11) |> Render.rounded(1.0) } ::
+          item = RawDraw.box({x = 8.0, y = 6.0}, steelDark(), 11) |> Render.rounded(1.0) } ::
         { at = {x = headX - 2.5 + facing * 1.5, y = headTop + 2.0},
-          item = Render.box({x = 5.0, y = 2.0}, eyeAmber(), 12) |> Render.fade(spec#eyeGlow) } ::
+          item = RawDraw.box({x = 5.0, y = 2.0}, eyeAmber(), 12) |> Render.fade(spec#eyeGlow) } ::
         { at = {x = torsoX - spec#size#x / 2.0 + 1.5, y = torsoTop + 2.0},
-          item = Render.box({x = 1.0, y = 1.0}, pistonSilver(), 11) } ::
+          item = RawDraw.box({x = 1.0, y = 1.0}, pistonSilver(), 11) } ::
         { at = {x = torsoX + spec#size#x / 2.0 - 2.5, y = torsoTop + 2.0},
-          item = Render.box({x = 1.0, y = 1.0}, pistonSilver(), 11) } :: Nil
+          item = RawDraw.box({x = 1.0, y = 1.0}, pistonSilver(), 11) } :: Nil
 
     /// ピストン脚 1 本の置き方。footX = 足の中心 x / baseY = 足の基準面（接地時は 0・空中は pos の y）/
     /// footLift = 足の持ち上げ量 / hullBottom = 胴体下端の y。
@@ -72,11 +73,11 @@ mod Char05 {
         let rodTop = spec#hullBottom + 4.0;
         let padTop = spec#baseY - spec#footLift - 2.0;
         { at = {x = spec#footX - 2.0, y = spec#hullBottom},
-          item = Render.box({x = 4.0, y = 4.0}, steelDark(), 9) } ::
+          item = RawDraw.box({x = 4.0, y = 4.0}, steelDark(), 9) } ::
         { at = {x = spec#footX - 1.0, y = rodTop},
-          item = Render.box({x = 2.0, y = Float64.max(1.0, padTop - rodTop)}, pistonSilver(), 9) } ::
+          item = RawDraw.box({x = 2.0, y = Float64.max(1.0, padTop - rodTop)}, pistonSilver(), 9) } ::
         { at = {x = spec#footX - 3.0, y = padTop},
-          item = Render.box({x = 6.0, y = 2.0}, steelDark(), 10) } :: Nil
+          item = RawDraw.box({x = 6.0, y = 2.0}, steelDark(), 10) } :: Nil
 
     // ── ポーズ ──
 
@@ -107,10 +108,10 @@ mod Char05 {
         let len = 6.0 + 9.0 * band + 1.5 * Curve.triWave(stage#t * 13.0 + ventY * 0.2);
         let tipY = 0.9 * Curve.triWave(stage#t * 9.0 + ventY);
         { at = {x = backX, y = ventY},
-          item = Render.polygon({x = 0.0, y = -1.6} :: {x = 0.0, y = 1.6} ::
+          item = RawDraw.polygon({x = 0.0, y = -1.6} :: {x = 0.0, y = 1.6} ::
                          {x = 0.0 - len * stage#facing, y = tipY} :: Nil, flameOrange(), 9) } ::
         { at = {x = backX, y = ventY},
-          item = Render.polygon({x = 0.0, y = -0.9} :: {x = 0.0, y = 0.9} ::
+          item = RawDraw.polygon({x = 0.0, y = -0.9} :: {x = 0.0, y = 0.9} ::
                          {x = 0.0 - len * 0.55 * stage#facing, y = tipY * 0.6} :: Nil, eyeAmber(), 9) } :: Nil
 
     /// ダッシュの演出その 2: 足元から後ろへ散る接地火花。速度帯が高いほど濃く見える。
@@ -121,7 +122,7 @@ mod Char05 {
             let jitter = Curve.triWave(stage#t * (17.0 + 4.0 * seed) + 0.31 * seed);
             { at = {x = stage#pos#x - (5.0 + 4.0 * seed + 3.0 * jitter) * stage#facing,
                     y = stage#pos#y - 1.0 - 1.5 * Float64.abs(jitter)},
-              item = Render.box({x = 1.5, y = 1.5}, eyeAmber(), 12) |> Render.fade(band) }
+              item = RawDraw.box({x = 1.5, y = 1.5}, eyeAmber(), 12) |> Render.fade(band) }
         }, List.range(0, 3))
 
     /// スキッド = 前脚アンカー。胴体を深くのけぞらせ、斜め前に突き出したストラットで地面を掴む。
@@ -131,21 +132,21 @@ mod Char05 {
         let heat = clamp01(Float64.abs(stage#vx) / 200.0);
         let strut =
             { at = {x = stage#pos#x, y = 0.0},
-              item = Render.polygon({x = 1.0 * facing, y = -9.0} :: {x = 4.0 * facing, y = -9.0} ::
+              item = RawDraw.polygon({x = 1.0 * facing, y = -9.0} :: {x = 4.0 * facing, y = -9.0} ::
                              {x = 8.0 * facing, y = -1.0} :: {x = 5.0 * facing, y = -1.0} :: Nil,
                              pistonSilver(), 9) } ::
             { at = {x = stage#pos#x + 6.0 * facing - 3.0, y = -2.0},
-              item = Render.box({x = 6.0, y = 2.0}, steelDark(), 10) } :: Nil;
+              item = RawDraw.box({x = 6.0, y = 2.0}, steelDark(), 10) } :: Nil;
         let sparks = List.map(i -> {
             let seed = Int32.toFloat64(i);
             let jitter = Curve.triWave(stage#t * (15.0 + 3.0 * seed) + 0.27 * seed);
             { at = {x = stage#pos#x + (8.0 + 3.0 * jitter) * facing, y = -1.5 - 2.0 * Float64.abs(jitter)},
-              item = Render.box({x = 1.5, y = 1.5}, if (i == 1) flameOrange() else eyeAmber(), 12)
+              item = RawDraw.box({x = 1.5, y = 1.5}, if (i == 1) flameOrange() else eyeAmber(), 12)
               |> Render.fade(heat) }
         }, List.range(0, 3));
         let brakeSteam =
             { at = {x = stage#pos#x - 9.0 * facing - 2.0, y = -20.0},
-              item = Render.circle(2.0, steamWhite(), 12) |> Render.fade(heat * 0.5) };
+              item = RawDraw.circle(2.0, steamWhite(), 12) |> Render.fade(heat * 0.5) };
         List.flatten(
             hull(stage#pos#x, facing,
                  {bottom = -10.0, lean = 0.0 - 5.0 * facing, size = {x = 14.0, y = 10.0}, eyeGlow = 1.0}) ::
@@ -158,17 +159,17 @@ mod Char05 {
         let baseY = stage#pos#y;
         let coreFlick = 0.6 * Curve.triWave(stage#t * 10.0);
         { at = {x = stage#pos#x - 6.0, y = baseY - 12.0},
-          item = Render.box({x = 12.0, y = 9.0}, steelBody(), 10) |> Render.rounded(2.0) } ::
-        { at = {x = stage#pos#x - 4.5, y = baseY - 2.5}, item = Render.box({x = 4.0, y = 2.0}, steelDark(), 9) } ::
-        { at = {x = stage#pos#x + 0.5, y = baseY - 2.5}, item = Render.box({x = 4.0, y = 2.0}, steelDark(), 9) } ::
-        { at = {x = stage#pos#x - 3.0, y = baseY - 11.0}, item = Render.box({x = 6.0, y = 6.0}, hatchNavy(), 11) } ::
+          item = RawDraw.box({x = 12.0, y = 9.0}, steelBody(), 10) |> Render.rounded(2.0) } ::
+        { at = {x = stage#pos#x - 4.5, y = baseY - 2.5}, item = RawDraw.box({x = 4.0, y = 2.0}, steelDark(), 9) } ::
+        { at = {x = stage#pos#x + 0.5, y = baseY - 2.5}, item = RawDraw.box({x = 4.0, y = 2.0}, steelDark(), 9) } ::
+        { at = {x = stage#pos#x - 3.0, y = baseY - 11.0}, item = RawDraw.box({x = 6.0, y = 6.0}, hatchNavy(), 11) } ::
         { at = {x = stage#pos#x - 4.0, y = baseY - 17.0},
-          item = Render.box({x = 8.0, y = 5.0}, steelDark(), 11) |> Render.rounded(1.0) } ::
+          item = RawDraw.box({x = 8.0, y = 5.0}, steelDark(), 11) |> Render.rounded(1.0) } ::
         { at = {x = stage#pos#x - 2.5 + stage#facing * 1.5, y = baseY - 15.5},
-          item = Render.box({x = 5.0, y = 2.0}, eyeAmber(), 12) } ::
-        { at = {x = stage#pos#x - 2.2, y = baseY - 10.2}, item = Render.circle(2.2, coreCyan(), 12) } ::
+          item = RawDraw.box({x = 5.0, y = 2.0}, eyeAmber(), 12) } ::
+        { at = {x = stage#pos#x - 2.2, y = baseY - 10.2}, item = RawDraw.circle(2.2, coreCyan(), 12) } ::
         { at = {x = stage#pos#x - (4.0 + coreFlick), y = baseY - 12.0 - coreFlick},
-          item = Render.circle(4.0 + coreFlick, coreCyan(), 11) |> Render.fade(0.3) } :: Nil
+          item = RawDraw.circle(4.0 + coreFlick, coreCyan(), 11) |> Render.fade(0.3) } :: Nil
 
     /// 落下 = 着陸脚の展開。胴を高く保ってロッドを全伸ばしし、足を左右に開いて接地に備える。
     def gearDownPose(stage: CharStage.Stage): List[Render.PlacedItem] =
@@ -186,11 +187,11 @@ mod Char05 {
         let jetR = 2.0 + 1.5 * progress;
         let jets = List.map(side ->
             { at = {x = stage#pos#x + side * (9.0 + 6.0 * progress) - jetR, y = -6.0 - jetR},
-              item = Render.circle(jetR, steamWhite(), 12) |> Render.fade(ease * 0.7) },
+              item = RawDraw.circle(jetR, steamWhite(), 12) |> Render.fade(ease * 0.7) },
             -1.0 :: 1.0 :: Nil);
         let shock =
             { at = {x = stage#pos#x - (10.0 + 5.0 * progress), y = -1.5},
-              item = Render.box({x = 20.0 + 10.0 * progress, y = 1.5}, steamWhite(), 8)
+              item = RawDraw.box({x = 20.0 + 10.0 * progress, y = 1.5}, steamWhite(), 8)
               |> Render.rounded(0.75) |> Render.fade(ease * 0.5) };
         List.flatten(
             hull(stage#pos#x, stage#facing,
@@ -209,7 +210,7 @@ mod Char05 {
         let puff =
             { at = {x = stage#pos#x - 5.0 * stage#facing - puffR,
                     y = hullBottom - 12.0 - 7.0 * puffCycle - puffR},
-              item = Render.circle(puffR, steamWhite(), 12)
+              item = RawDraw.circle(puffR, steamWhite(), 12)
               |> Render.fade((1.0 - puffCycle) * 0.55) };
         List.flatten(
             hull(stage#pos#x, stage#facing,

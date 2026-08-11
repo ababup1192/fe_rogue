@@ -62,7 +62,7 @@ mod View {
             false, World.spriteScale(), key -> ThemeDoc.resolver(w#theme, key), zHero());
         if (List.isEmpty(items))
             // fail-open: スプライトが無い・読めないときは差し色の四角。
-            { at = topLeft, item = Render.box(box, w#theme#accent, zHero()) } :: Nil
+            { at = topLeft, item = RawDraw.box(box, w#theme#accent, zHero()) } :: Nil
         else
             items
 
@@ -76,7 +76,7 @@ mod View {
             let speed = 5.0 + rand(1) * 12.0;
             let x = Num.wrapTo(World.width(), rand(0) * World.width() + t * speed);
             let y = rand(2) * World.height() + Sway.wave(t, rand(3), 0.35) * 7.0;
-            Render.circleAt({ x = x, y = y }, 0.8 + rand(4) * 1.3, color, zDust())
+            RawDraw.circleAt({ x = x, y = y }, 0.8 + rand(4) * 1.3, color, zDust())
                 |> Render.overItem(Render.fade(0.20 + rand(5) * 0.30))
         })
 }

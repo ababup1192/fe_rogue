@@ -2,6 +2,7 @@
 // 集まろうとし、型のほうが動きに合わせて雲・彗星・鏃・柱・輪と姿を変える。
 // 急停止では粒がばらばらに吹き散り、速度が抜けるほど元の群れへ吸い戻される。
 // モードが変わるたび一瞬だけ雲へ緩んでから次の型へ組み直すのが、この群れの呼吸。
+// この箱組みは旧様式(RawDraw 大量使用の前例にしない)。新キャラは PxSprite+PxShade を第一候補に。
 
 mod Char10 {
 
@@ -33,7 +34,7 @@ mod Char10 {
         let r = if (i == 0) 2.2 else 1.2 + 0.9 * hashA(i);
         let layer = if (i == 0) 11 else 10;
         { at = {x = stage#pos#x + off#x - r, y = stage#pos#y + off#y - r},
-          item = Render.circle(r, moteColor(i), layer) }
+          item = RawDraw.circle(r, moteColor(i), layer) }
 
     /// 粒の色: 5 粒に 1 粒を淡色・深色に混ぜて、群れに奥行きを出す。
     def moteColor(i: Int32): Color =
@@ -135,6 +136,6 @@ mod Char10 {
                 let len = (7.0 + 9.0 * band) * (1.0 - fj * 0.18);
                 let cx = stage#pos#x - stage#facing * (8.0 + fj * 6.0);
                 { at = {x = cx - len * 0.5, y = -14.5 + fj * 3.2},
-                  item = Render.box({x = len, y = 1.2}, sparkPale(), 8)
+                  item = RawDraw.box({x = len, y = 1.2}, sparkPale(), 8)
                       |> Render.fade((0.5 - 0.13 * fj) * band) })
 }

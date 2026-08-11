@@ -2,6 +2,7 @@
 // 深い前かがみの小さな体に、寝袋と鍋と提灯を積んだ籠の行李がそびえる。
 // 走りは杖で地面を突く速足の刻み。急停止は杖を突き立てて踏ん張るが、
 // 荷は勢いで頭上へずり上がる。跳ぶと荷が背中から浮き、着地でどすんと沈む。
+// この箱組みは旧様式(RawDraw 大量使用の前例にしない)。新キャラは PxSprite+PxShade を第一候補に。
 
 mod Char15 {
 
@@ -37,13 +38,13 @@ mod Char15 {
     def boxC(stage: CharStage.Stage, dx: Float64, dy: Float64,
              w: Float64, h: Float64, c: Color, z: Int32): Render.PlacedItem =
         let p = at(stage, dx, dy);
-        { at = { x = p#x - w / 2.0, y = p#y - h / 2.0 }, item = Render.box({ x = w, y = h }, c, z) }
+        { at = { x = p#x - w / 2.0, y = p#y - h / 2.0 }, item = RawDraw.box({ x = w, y = h }, c, z) }
 
     /// 中心 (dx, dy) の円。
     def circC(stage: CharStage.Stage, dx: Float64, dy: Float64,
               r: Float64, c: Color, z: Int32): Render.PlacedItem =
         let p = at(stage, dx, dy);
-        { at = { x = p#x - r, y = p#y - r }, item = Render.circle(r, c, z) }
+        { at = { x = p#x - r, y = p#y - r }, item = RawDraw.circle(r, c, z) }
 
     /// 2 点を結ぶ太さ th の棒（腕・杖・肩ひもを斜めに描く）。
     def strut(stage: CharStage.Stage, ax: Float64, ay: Float64,
@@ -57,7 +58,7 @@ mod Char15 {
         let p = at(stage, ax, ay);
         let f = stage#facing;
         { at = { x = p#x, y = p#y },
-          item = Render.polygon({ x = f * nx, y = ny } :: { x = f * (ddx + nx), y = ddy + ny } ::
+          item = RawDraw.polygon({ x = f * nx, y = ny } :: { x = f * (ddx + nx), y = ddy + ny } ::
                          { x = f * (ddx - nx), y = ddy - ny } :: { x = f * (0.0 - nx), y = 0.0 - ny } :: Nil,
                          c, z) }
 

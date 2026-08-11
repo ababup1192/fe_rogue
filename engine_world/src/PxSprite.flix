@@ -26,7 +26,7 @@ mod PxSprite {
         runs(doc, sprite, frame, at, flipX, scale)
             |> List.map(r ->
                 { at = { x = r#x, y = r#y },
-                  item = Render.box({ x = r#w, y = r#h }, resolver(r#key), z) })
+                  item = RawDraw.box({ x = r#w, y = r#h }, resolver(r#key), z) })
 
     /// コマを「アトラス 1 クアッド」で描く(opt-in の GL 実行時最適化)。
     /// baked(PxSpriteAtlas.bake 済み)の regionRect を貼った Item.Sprite 1 個を返す —

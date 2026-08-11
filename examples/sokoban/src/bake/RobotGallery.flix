@@ -39,7 +39,7 @@ mod RobotGallery {
     def box(o: Vec2.Vec2, x: Float64, y: Float64, w: Float64, h: Float64,
             c: Color): Render.PlacedItem =
         { at = {x = o#x + x * u(), y = o#y + y * u()},
-          item = Render.box({x = w * u(), y = h * u()}, c, 0) }
+          item = RawDraw.box({x = w * u(), y = h * u()}, c, 0) }
 
     /// 角丸ボックス（cornerRadius はタイル単位）。候補4と候補6の車輪で使う。
     def rbox(o: Vec2.Vec2, x: Float64, y: Float64, w: Float64, h: Float64,

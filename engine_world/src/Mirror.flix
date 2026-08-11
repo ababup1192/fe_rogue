@@ -52,7 +52,7 @@ mod Mirror {
             if (cut#size#x < 1.0) None
             else {
                 let lit = lum >= style#lit;
-                let box = Render.box({ x = cut#size#x, y = span#h }, color, z)
+                let box = RawDraw.box({ x = cut#size#x, y = span#h }, color, z)
                     |> Render.fade(
                            if (lit) style#alpha * lum else style#alpha * style#dim);
                 Some({ at = { x = cut#position#x, y = span#y },

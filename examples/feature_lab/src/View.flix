@@ -24,11 +24,11 @@ mod View {
         let rows = List.range(0, 6);
         let verticals = cols |> List.map(i -> {
             let x = Int32.toFloat64(i) * cell;
-            { at = { x = x, y = 0.0 }, item = Render.box({ x = 1.0, y = design()#y }, gridColor(), 1) }
+            { at = { x = x, y = 0.0 }, item = RawDraw.box({ x = 1.0, y = design()#y }, gridColor(), 1) }
         });
         let horizontals = rows |> List.map(i -> {
             let y = Int32.toFloat64(i) * cell;
-            { at = { x = 0.0, y = y }, item = Render.box({ x = design()#x, y = 1.0 }, gridColor(), 1) }
+            { at = { x = 0.0, y = y }, item = RawDraw.box({ x = design()#x, y = 1.0 }, gridColor(), 1) }
         });
         List.append(verticals, horizontals)
 
@@ -47,10 +47,10 @@ mod View {
         let w = design()#x;
         let h = design()#y;
         let t = edgeThickness();
-        { at = { x = 0.0, y = 0.0 },     item = Render.box({ x = w, y = t }, edgeColor(), 20) } ::
-        { at = { x = 0.0, y = h - t },   item = Render.box({ x = w, y = t }, edgeColor(), 20) } ::
-        { at = { x = 0.0, y = 0.0 },     item = Render.box({ x = t, y = h }, edgeColor(), 20) } ::
-        { at = { x = w - t, y = 0.0 },   item = Render.box({ x = t, y = h }, edgeColor(), 20) } ::
+        { at = { x = 0.0, y = 0.0 },     item = RawDraw.box({ x = w, y = t }, edgeColor(), 20) } ::
+        { at = { x = 0.0, y = h - t },   item = RawDraw.box({ x = w, y = t }, edgeColor(), 20) } ::
+        { at = { x = 0.0, y = 0.0 },     item = RawDraw.box({ x = t, y = h }, edgeColor(), 20) } ::
+        { at = { x = w - t, y = 0.0 },   item = RawDraw.box({ x = t, y = h }, edgeColor(), 20) } ::
         Nil
 
     /// 四隅 1 つぶんの L 字（横棒 + 縦棒）。sign で内向きの方向を決める
@@ -60,8 +60,8 @@ mod View {
         let t = edgeThickness();
         let horiz = { x = if (sign#x > 0.0) corner#x else corner#x - len, y = corner#y };
         let vert  = { x = corner#x, y = if (sign#y > 0.0) corner#y else corner#y - len };
-        { at = horiz, item = Render.box({ x = len, y = t }, cornerColor(), 21) } ::
-        { at = vert,  item = Render.box({ x = t, y = len }, cornerColor(), 21) } ::
+        { at = horiz, item = RawDraw.box({ x = len, y = t }, cornerColor(), 21) } ::
+        { at = vert,  item = RawDraw.box({ x = t, y = len }, cornerColor(), 21) } ::
         Nil
 
     /// 四隅の L 字マーカー（スケーリングの歪み・欠けが起きると真っ先にズレて見える位置）。
@@ -78,9 +78,9 @@ mod View {
     def crossItems(): List[Render.PlacedItem] =
         let center = { x = design()#x / 2.0, y = design()#y / 2.0 };
         let len = crossLen();
-        Render.lineSeg({ x = center#x - len, y = center#y }, { x = center#x + len, y = center#y },
+        RawDraw.lineSeg({ x = center#x - len, y = center#y }, { x = center#x + len, y = center#y },
                         2.0, cornerColor(), 21) ::
-        Render.lineSeg({ x = center#x, y = center#y - len }, { x = center#x, y = center#y + len },
+        RawDraw.lineSeg({ x = center#x, y = center#y - len }, { x = center#x, y = center#y + len },
                         2.0, cornerColor(), 21) :: Nil
 
     /// フルスクリーン起動確認用の目印一式（縁取り + 四隅 L 字 + 中央十字）。
@@ -106,9 +106,9 @@ mod View {
         let radius = 26.0;
         let spread = 15.0;
         let panel = { at = { x = center#x - 75.0, y = center#y - 50.0 },
-                      item = Render.box({ x = 75.0, y = 100.0 }, demoPanelColor(), 30) };
+                      item = RawDraw.box({ x = 75.0, y = 100.0 }, demoPanelColor(), 30) };
         let coloredCircle = (offset: Vec2.Vec2, color: Color) ->
-            Render.circleAt(Vec2.add(center, offset), radius, color, 31)
+            RawDraw.circleAt(Vec2.add(center, offset), radius, color, 31)
                 |> (placed -> { item = Render.blended(blend, placed#item) | placed });
         panel
             :: coloredCircle({ x = 0.0, y = -1.0 * spread }, demoRed())
@@ -145,8 +145,8 @@ mod View {
             |> List.zipWithIndex
             |> List.map(pair -> {
                 let (i, (pos, color)) = pair;
-                if (Int32.modulo(i, 2) == 0) Render.boxAt(pos, { x = 24.0, y = 24.0 }, color, landmarkZ())
-                else Render.circleAt(pos, 14.0, color, landmarkZ())
+                if (Int32.modulo(i, 2) == 0) RawDraw.boxAt(pos, { x = 24.0, y = 24.0 }, color, landmarkZ())
+                else RawDraw.circleAt(pos, 14.0, color, landmarkZ())
             })
 
     /// 暗い部屋の下敷き（通常表示より一段暗い色。暗闇 off でもここが「夜の部屋」と分かる）。
@@ -182,16 +182,16 @@ mod View {
     pub def shadowMarkerCenter(): Vec2.Vec2 = { x = 238.0, y = 120.0 }
 
     def shadowMarkerItem(): Render.PlacedItem =
-        Render.circleAt(shadowMarkerCenter(), 6.0, { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, landmarkZ())
+        RawDraw.circleAt(shadowMarkerCenter(), 6.0, { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, landmarkZ())
 
     /// 壁の見た目（box 2 枚 + 柱 1 本）。
     def wallItems(): List[Render.PlacedItem] =
         let boxes = wallBoxes() |> List.map(pair -> {
             let (center, size) = pair;
-            Render.boxAt(center, size, wallColor(), wallZ())
+            RawDraw.boxAt(center, size, wallColor(), wallZ())
         });
         List.append(boxes,
-            Render.circleAt(wallPillarCenter(), wallPillarRadius(), wallColor(), wallZ()) :: Nil)
+            RawDraw.circleAt(wallPillarCenter(), wallPillarRadius(), wallColor(), wallZ()) :: Nil)
 
     /// 壁の当たり判定形（見た目・遮蔽ポリゴンと同じ wallBoxes/wallPillar* から導く —
     /// 三重定義にすると見た目とすり抜け判定がずれる）。dx/dy=0 の絶対座標として持つので、
@@ -266,7 +266,7 @@ mod View {
     /// 光マップデモの絵（明るい部屋 → 目印 → 白丸 → 壁 → 光マップの Multiply 覆い）。
     /// 単一光源デモと違い暗幕を描かない — 暗さは光マップ（環境光+灯り）が丸ごと持つ。
     pub def lightMapDemoItems(cfg: Light.LightMapConfig): List[Render.PlacedItem] =
-        let room = { at = Vec2.zero(), item = Render.box(design(), lightMapRoomColor(), 0) };
+        let room = { at = Vec2.zero(), item = RawDraw.box(design(), lightMapRoomColor(), 0) };
         room :: List.flatten(
             landmarkItems() :: (shadowMarkerItem() :: wallItems()) ::
             (Light.lightMapOverlay(cfg) :: Nil) :: Nil)
@@ -277,7 +277,7 @@ mod View {
     pub def lanternDemoItems(lightDoc: LightDoc.Spec, lantern: Option[World.Lantern]): List[Render.PlacedItem] =
         lantern
             |> Option.map(l -> {
-                let room = { at = Vec2.zero(), item = Render.box(design(), darkRoomColor(), 0) };
+                let room = { at = Vec2.zero(), item = RawDraw.box(design(), darkRoomColor(), 0) };
                 // 白丸は影の証明用の目印なので walls と独立に常置する — walls=false の対照カットで
                 // 「同じ目印が沈まず見える」を成立させるため（壁と一緒に消すと対照の意味が無くなる）。
                 let walls = if (l#walls) wallItems() else List.empty();
@@ -289,7 +289,7 @@ mod View {
     /// 覆い（Transition）の順に重ねる。覆いは再生中だけ描く（Idle でも描き続けると
     /// FadeOut 後の黒が残り、画面が消えたように見える）。
     pub def frame(ctx: App.ViewCtx, world: World.World): List[Render.PlacedItem] =
-        let bg = { at = Vec2.zero(), item = Render.box(design(), bgColor(), 0) };
+        let bg = { at = Vec2.zero(), item = RawDraw.box(design(), bgColor(), 0) };
         let ui = UiRender.itemsWith(_ -> ctx#atlas, _ -> None, world#ui, design());
         let cover = world#playing
             |> Option.map(progress -> Transition.itemsAt({

@@ -2,6 +2,7 @@
 // 伸び/潰れ）をそのまま Stage に写した、キャラクターラボの基準スロット。
 // 走りのコマは本編と同じ移動量駆動（pos.x × gaitK）— 足が地面を滑らない。
 // スキッドは現行に専用ポーズが無いので走りポーズのまま（本編では土埃が語る部分・ここは素で）。
+// この箱組みは旧様式(RawDraw 大量使用の前例にしない)。新キャラは PxSprite+PxShade を第一候補に。
 
 mod Char01 {
 
@@ -20,7 +21,7 @@ mod Char01 {
         Hero.parts(look) |> List.map(p -> {
             let topLeft = { x = stage#pos#x + p#cx - p#w / 2.0,
                             y = stage#pos#y - p#cy - p#h / 2.0 };
-            let box = Render.box({ x = p#w, y = p#h }, p#color, zChar() + p#z);
+            let box = RawDraw.box({ x = p#w, y = p#h }, p#color, zChar() + p#z);
             if (p#r <= 0.0) { at = topLeft, item = box } else { at = topLeft, item = box |> Render.rounded(p#r) }
         })
 

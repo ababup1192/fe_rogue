@@ -69,13 +69,13 @@ mod Bezier {
             quadPiece(outline, color, z) :: Nil
 
     /// 折れ線を一定幅の帯で描く（節は丸い継ぎ目でつなぐ）。単発の線分 1 本だけなら
-    /// Render.lineSeg（quad 1 枚で軽い）が近道。
+    /// RawDraw.lineSeg（quad 1 枚で軽い）が近道。
     pub def polyline(points: List[Vec2.Vec2], width: {width = Float64},
                      color: Color, z: Int32): List[Render.PlacedItem] =
         stroke({ spine = points, color = color, z = z }, _ -> width#width)
 
     /// 5 芒星の輪郭（上向き）。頂点列なので fill で塗る・stroke の背骨にする・加工する、が自由。
-    /// Item として置くだけなら Render.starAt が近道。
+    /// Item として置くだけなら RawDraw.starAt が近道。
     pub def star(center: Vec2.Vec2, rOut: {rOut = Float64}, rIn: {rIn = Float64}): List[Vec2.Vec2] =
         List.range(0, 10) |> List.map(i -> {
             let a = -1.5707963267948966 + 3.141592653589793 * Int32.toFloat64(i) / 5.0;
@@ -84,7 +84,7 @@ mod Bezier {
         })
 
     /// 楕円の輪郭（segments は 16〜24 で十分丸い）。頂点列なので fill・stroke・加工が自由。
-    /// Item として置くだけなら Render.ellipseAt が近道。
+    /// Item として置くだけなら RawDraw.ellipseAt が近道。
     pub def ellipse(center: Vec2.Vec2, rx: Float64, ry: Float64,
                     segments: Int32): List[Vec2.Vec2] =
         ellipseRot(center, rx, ry, 0.0, segments)
@@ -121,5 +121,5 @@ mod Bezier {
 
     /// 輪郭 1 枚ぶんの Poly（頂点は絶対座標で渡し、置き場所は原点にする）。
     def quadPiece(vertices: List[Vec2.Vec2], color: Color, z: Int32): Render.PlacedItem =
-        { at = Vec2.zero(), item = Render.polygon(vertices, color, z) }
+        { at = Vec2.zero(), item = RawDraw.polygon(vertices, color, z) }
 }

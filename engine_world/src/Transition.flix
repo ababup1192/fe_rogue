@@ -46,7 +46,7 @@ mod Transition {
         if (t <= 0.0) Nil
         else {
             let center = Vec2.div(viewport, 2.0);
-            (Render.boxAt(center, viewport, color, z) |> withAlpha(t)) :: Nil
+            (RawDraw.boxAt(center, viewport, color, z) |> withAlpha(t)) :: Nil
         }
 
     /// 画面幅 t 分だけ帯で覆う（fromRight=true で右端から左へ、false で左端から右へ）。
@@ -56,7 +56,7 @@ mod Transition {
             let w = viewport#x * t;
             let size = { x = w, y = viewport#y };
             let x = if (fromRight) viewport#x - w else 0.0;
-            { at = { x = x, y = 0.0 }, item = Render.box(size, color, z) } :: Nil
+            { at = { x = x, y = 0.0 }, item = RawDraw.box(size, color, z) } :: Nil
         }
 
     /// PlacedItem に alpha を掛ける（Render.fade は Item 向けなので item だけ通す）。

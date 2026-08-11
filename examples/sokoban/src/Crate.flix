@@ -74,7 +74,7 @@ mod Crate {
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
               c: Color, z: Int32): Render.PlacedItem =
-        { at = {x = x, y = y}, item = Render.box({x = w, y = h}, c, z) }
+        { at = {x = x, y = y}, item = RawDraw.box({x = w, y = h}, c, z) }
 
     /// 対角線のブレース: 内側の左下から内側の右上へ伸びる1本の太い帯に、暗い縁
     /// 線を2本加えたもの。3本の帯はすべて同じ中心線と方向ベクトルを共有し、法線
@@ -101,5 +101,5 @@ mod Crate {
         let d = Vec2.mul(Vec2.sub(tr, bl), 1.0 / Vec2.length(Vec2.sub(tr, bl)));
         let p0 = Vec2.sub(bl, Vec2.mul(d, ext));
         let p1 = Vec2.add(tr, Vec2.mul(d, ext));
-        { at = Vec2.zero(), item = Render.polygon(Quad.strip(p0, p1, o1, o2), c, z) }
+        { at = Vec2.zero(), item = RawDraw.polygon(Quad.strip(p0, p1, o1, o2), c, z) }
 }

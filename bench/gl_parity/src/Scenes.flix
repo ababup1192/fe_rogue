@@ -51,26 +51,26 @@ mod Scenes {
     def boxes(): Scene =
         { name = "boxes", via = ShotVia.ViaTarget, passes = Nil, items =
             // 左上の白枠なし赤箱 = 向きの目印（gl/soft で同じ隅に出なければ上下反転を疑う）
-            at(8.0, 8.0, Render.box({ x = 16.0, y = 16.0 }, c8(255, 64, 64), 10)) ::
+            at(8.0, 8.0, RawDraw.box({ x = 16.0, y = 16.0 }, c8(255, 64, 64), 10)) ::
             // zIndex 交差: 青(z1) の上に 緑(z2)
-            at(40.0, 30.0, Render.box({ x = 80.0, y = 60.0 }, c8(40, 80, 200), 1)) ::
-            at(80.0, 60.0, Render.box({ x = 80.0, y = 60.0 }, c8(40, 180, 90), 2)) ::
+            at(40.0, 30.0, RawDraw.box({ x = 80.0, y = 60.0 }, c8(40, 80, 200), 1)) ::
+            at(80.0, 60.0, RawDraw.box({ x = 80.0, y = 60.0 }, c8(40, 180, 90), 2)) ::
             // Add: 暗色ベース + 加算（飽和しない値で式そのものを見る）
-            at(180.0, 20.0, Render.box({ x = 60.0, y = 40.0 }, c8(60, 60, 60), 1)) ::
-            at(200.0, 30.0, Render.box({ x = 60.0, y = 40.0 }, c8(120, 80, 40), 2)
+            at(180.0, 20.0, RawDraw.box({ x = 60.0, y = 40.0 }, c8(60, 60, 60), 1)) ::
+            at(200.0, 30.0, RawDraw.box({ x = 60.0, y = 40.0 }, c8(120, 80, 40), 2)
                 |> Render.blended(DrawCmd.BlendMode.Add)) ::
             // Multiply: 白ベース × 灰（積が 8bit で割り切れる組）
-            at(180.0, 90.0, Render.box({ x = 60.0, y = 40.0 }, c8(255, 255, 255), 1)) ::
-            at(200.0, 100.0, Render.box({ x = 60.0, y = 40.0 }, c8(100, 100, 100), 2)
+            at(180.0, 90.0, RawDraw.box({ x = 60.0, y = 40.0 }, c8(255, 255, 255), 1)) ::
+            at(200.0, 100.0, RawDraw.box({ x = 60.0, y = 40.0 }, c8(100, 100, 100), 2)
                 |> Render.blended(DrawCmd.BlendMode.Multiply)) ::
             // 軸平行の縞（横 dir=1・縦 dir=2）と市松
-            at(20.0, 130.0, Render.box({ x = 48.0, y = 40.0 }, c8(200, 60, 140), 3)
+            at(20.0, 130.0, RawDraw.box({ x = 48.0, y = 40.0 }, c8(200, 60, 140), 3)
                 |> Render.striped({ color = c8(255, 255, 255), alpha = 1.0,
                                     width = 4.0, period = 8.0, dir = 1 })) ::
-            at(80.0, 130.0, Render.box({ x = 48.0, y = 40.0 }, c8(60, 140, 200), 3)
+            at(80.0, 130.0, RawDraw.box({ x = 48.0, y = 40.0 }, c8(60, 140, 200), 3)
                 |> Render.striped({ color = c8(255, 255, 255), alpha = 1.0,
                                     width = 4.0, period = 8.0, dir = 2 })) ::
-            at(140.0, 130.0, Render.box({ x = 48.0, y = 40.0 }, c8(220, 180, 60), 3)
+            at(140.0, 130.0, RawDraw.box({ x = 48.0, y = 40.0 }, c8(220, 180, 60), 3)
                 |> Render.checker({ color = c8(0, 0, 0), alpha = 1.0, cell = 4.0 })) ::
             Nil }
 
@@ -116,10 +116,10 @@ mod Scenes {
 
     def passPaste(): Scene =
         let p3: Render.Pass = { name = "p3", clear = RenderTarget.LoadOp.Clear(c8(16, 24, 40)), items =
-            at(0.0, 0.0, Render.box({ x = 40.0, y = 20.0 }, c8(200, 60, 60), 1)) ::
-            at(40.0, 0.0, Render.box({ x = 40.0, y = 20.0 }, c8(60, 200, 60), 1)) ::
-            at(0.0, 20.0, Render.box({ x = 80.0, y = 25.0 }, c8(60, 60, 200), 1)) ::
-            at(10.0, 5.0, Render.box({ x = 8.0, y = 8.0 }, c8(255, 255, 255), 2)) ::
+            at(0.0, 0.0, RawDraw.box({ x = 40.0, y = 20.0 }, c8(200, 60, 60), 1)) ::
+            at(40.0, 0.0, RawDraw.box({ x = 40.0, y = 20.0 }, c8(60, 200, 60), 1)) ::
+            at(0.0, 20.0, RawDraw.box({ x = 80.0, y = 25.0 }, c8(60, 60, 200), 1)) ::
+            at(10.0, 5.0, RawDraw.box({ x = 8.0, y = 8.0 }, c8(255, 255, 255), 2)) ::
             Nil };
         { name = "passPaste", via = ShotVia.ViaScreen, passes = p3 :: Nil, items =
             // 左上 80x45 を 2 倍（整数倍）で画面中央へ
@@ -145,13 +145,13 @@ mod Scenes {
 
     def texField(): Scene =
         let p4: Render.Pass = { name = "p4", clear = RenderTarget.LoadOp.Clear(c8(0, 0, 0)), items =
-            at(0.0, 0.0, Render.box({ x = 160.0, y = 90.0 }, c8(200, 40, 40), 1)) ::
-            at(160.0, 0.0, Render.box({ x = 160.0, y = 90.0 }, c8(40, 200, 40), 1)) ::
-            at(0.0, 90.0, Render.box({ x = 160.0, y = 90.0 }, c8(40, 40, 200), 1)) ::
-            at(160.0, 90.0, Render.box({ x = 160.0, y = 90.0 }, c8(200, 200, 40), 1)) ::
+            at(0.0, 0.0, RawDraw.box({ x = 160.0, y = 90.0 }, c8(200, 40, 40), 1)) ::
+            at(160.0, 0.0, RawDraw.box({ x = 160.0, y = 90.0 }, c8(40, 200, 40), 1)) ::
+            at(0.0, 90.0, RawDraw.box({ x = 160.0, y = 90.0 }, c8(40, 40, 200), 1)) ::
+            at(160.0, 90.0, RawDraw.box({ x = 160.0, y = 90.0 }, c8(200, 200, 40), 1)) ::
             // 白の目印（左上）と市松（texel が細かく変わる領域）
-            at(8.0, 8.0, Render.box({ x = 16.0, y = 16.0 }, c8(255, 255, 255), 2)) ::
-            at(120.0, 60.0, Render.box({ x = 80.0, y = 60.0 }, c8(90, 90, 90), 2)
+            at(8.0, 8.0, RawDraw.box({ x = 16.0, y = 16.0 }, c8(255, 255, 255), 2)) ::
+            at(120.0, 60.0, RawDraw.box({ x = 80.0, y = 60.0 }, c8(90, 90, 90), 2)
                 |> Render.checker({ color = c8(30, 30, 30), alpha = 1.0, cell = 4.0 })) ::
             Nil };
         { name = "texField", via = ShotVia.ViaScreen, passes = p4 :: Nil, items =
@@ -185,16 +185,16 @@ mod Scenes {
         // lightMapPass の items へ追記できることは公式の拡張口（Pass はただのレコード）。
         let base = Light.lightMapPass(cfg);
         let lamps =
-            at(48.0, 45.0, Render.box({ x = 128.0, y = 90.0 }, c8(96, 96, 64), 10)
+            at(48.0, 45.0, RawDraw.box({ x = 128.0, y = 90.0 }, c8(96, 96, 64), 10)
                 |> Render.blended(DrawCmd.BlendMode.Add)) ::
-            at(144.0, 45.0, Render.box({ x = 128.0, y = 90.0 }, c8(64, 80, 96), 10)
+            at(144.0, 45.0, RawDraw.box({ x = 128.0, y = 90.0 }, c8(64, 80, 96), 10)
                 |> Render.blended(DrawCmd.BlendMode.Add)) ::
             Nil;
         let p = { items = List.append(base#items, lamps) | base };
         { name = "lightmap", via = ShotVia.ViaScreen,
           passes = p :: Nil,
           items =
-            at(0.0, 0.0, Render.box({ x = designW(), y = designH() }, white, 1)) ::
+            at(0.0, 0.0, RawDraw.box({ x = designW(), y = designH() }, white, 1)) ::
             Light.lightMapOverlay(cfg) ::
             Nil }
 
@@ -215,7 +215,7 @@ mod Scenes {
     def radial(): Scene =
         { name = "radial", via = ShotVia.ViaTarget, passes = Nil, items =
             // 右側の白下地（darkAt の Multiply が exact になる面）
-            at(192.0, 0.0, Render.box({ x = 128.0, y = 180.0 }, c8(255, 255, 255), 2)) ::
+            at(192.0, 0.0, RawDraw.box({ x = 128.0, y = 180.0 }, c8(255, 255, 255), 2)) ::
             // 翳り: 白と黒の下地にだけ掛かる
             Render.darkAt({ at = { x = 256.0, y = 128.0 }, radius = 128.0,
                             strength = 1.0, z = 3 }) ::

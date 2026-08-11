@@ -52,7 +52,7 @@ mod ViewCar {
                 let spun = if (still) off
                            else Render.rotated(spec#turn, off :: Nil)
                                |> List.head |> Option.getWithDefault(off);
-                let boxed = Render.boxAt(
+                let boxed = RawDraw.boxAt(
                     { x = atX + spun#x * f, y = atY + spun#y * f },
                     { x = r#w * f, y = r#h * f },
                     resolver(r#key), spec#z);
@@ -292,7 +292,7 @@ mod ViewCar {
             let rear = shockRear(a);
             let k0 = 0.50 + 0.18 * Hash01.at(i, 3);
             let k1 = 1.02 + (0.08 + 0.22 * rear) * (0.5 + Hash01.at(i, 4));
-            Render.lineSeg(shockPt(c, r, a, k0), shockPt(c, r, a, k1),
+            RawDraw.lineSeg(shockPt(c, r, a, k0), shockPt(c, r, a, k1),
                     Float64.max(1.0, (1.8 - 0.8 * p) * (0.6 + 0.7 * Hash01.at(i, 5))),
                     color, z)
                 |> Render.overItem(item -> item
@@ -307,7 +307,7 @@ mod ViewCar {
         let a = Float64.pow(base = 1.0 - p, 2.0);
         Render.glowAt(c, r * 0.55, w#theme#flame,
                 { alpha = 0.30 * a, blend = DrawCmd.BlendMode.Add }, z)
-            ::: (Render.ellipseAt(c, { x = r * 0.52, y = r * 0.52 * 0.42 },
+            ::: (RawDraw.ellipseAt(c, { x = r * 0.52, y = r * 0.52 * 0.42 },
                         w#theme#flame, z)
                     |> Render.overItem(item -> item
                         |> Render.fade(0.16 * a)

@@ -151,11 +151,11 @@ mod TestFlex {
         def mark(): Color = { r = 1.0f32, g = 1.0f32, b = 1.0f32 };
         let root = Flex.box(Flex.rowStyle(),
                Flex.leaf({ x = 30.0, y = 10.0 },
-                         r -> ({ at = r#position, item = Render.box(r#size, mark(), 1) }) :: Nil)
+                         r -> ({ at = r#position, item = RawDraw.box(r#size, mark(), 1) }) :: Nil)
             :: Flex.leaf({ x = 50.0, y = 10.0 },
-                         r -> ({ at = r#position, item = Render.box(r#size, mark(), 1) }) :: Nil)
+                         r -> ({ at = r#position, item = RawDraw.box(r#size, mark(), 1) }) :: Nil)
             :: Flex.leafAtCenter({ x = 20.0, y = 10.0 },
-                         c -> Render.boxAt(c, { x = 4.0, y = 4.0 }, mark(), 1) :: Nil)
+                         c -> RawDraw.boxAt(c, { x = 4.0, y = 4.0 }, mark(), 1) :: Nil)
             :: Nil);
         let placed = Flex.place(root, { position = { x = 0.0, y = 0.0 }, size = { x = 100.0, y = 20.0 } });
         // leafAtCenter は中心 (90, 5) を受け、boxAt が半寸ずらすので at = (88, 3)。

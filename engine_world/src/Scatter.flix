@@ -4,7 +4,7 @@
 // 利用例: 星空・草むら・遠景の街灯・瓦礫を、World に保存せず描く。
 //   Scatter.field(ctx#visible, { cell = 40.0, salt = 11 }, (cell, rand) ->
 //       if (rand(0) > 0.5) Nil
-//       else { at = ..., item = Render.box(...) } :: Nil)
+//       else { at = ..., item = RawDraw.box(...) } :: Nil)
 // 注意: セルの個性は列・行・salt から決まる番号を Hash01 に渡して引く。この番号の作り方と
 //   走査範囲（見えている範囲の外側に1セル分の余白）は、星空などの既存の絵をバイト単位で
 //   保つために固定しており、変えると過去に焼いた絵がずれる。

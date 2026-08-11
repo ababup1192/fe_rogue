@@ -106,7 +106,7 @@ mod Annotate {
     def badge(fontAtlas: FontAtlas, fontSize: Float64, topLeft: Vec2.Vec2,
               message: String): List[Render.PlacedItem] =
         { at = topLeft,
-          item = Render.box(badgeSize(fontAtlas, fontSize, message),
+          item = RawDraw.box(badgeSize(fontAtlas, fontSize, message),
                             { r = 0.0f32, g = 0.0f32, b = 0.0f32 },
                             ZBand.debugBase() + 1) |> Render.fade(0.7) }
         :: { at = { x = topLeft#x + badgePad(), y = topLeft#y + badgePad() },
@@ -419,7 +419,7 @@ mod Annotate {
         let rect = normRect(dragStart, cursorDesign);
         let red = { r = 1.0f32, g = 0.25f32, b = 0.25f32 };
         { at = rect#position,
-          item = Render.box(rect#size, red, ZBand.debugBase())
+          item = RawDraw.box(rect#size, red, ZBand.debugBase())
               |> Render.fade(0.25)
               |> Render.outline(red, 1.0) } :: Nil
 

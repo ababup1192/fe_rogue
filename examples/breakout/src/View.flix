@@ -147,10 +147,10 @@ mod View {
                        rivetRadius() * 2.0, Palette.rivet(), zBlock() + 2)
         }, (-1.0, -1.0) :: (1.0, -1.0) :: (1.0, 1.0) :: (-1.0, 1.0) :: Nil);
         List.append(
-            { at = topLeft, item = Render.box(size, Palette.metalFace(), zBlock()) } ::
-            { at = topLeft, item = Render.box({ x = size#x, y = bevel }, Palette.metalTop(), zBlock() + 1) } ::
+            { at = topLeft, item = RawDraw.box(size, Palette.metalFace(), zBlock()) } ::
+            { at = topLeft, item = RawDraw.box({ x = size#x, y = bevel }, Palette.metalTop(), zBlock() + 1) } ::
             { at = { x = topLeft#x, y = topLeft#y + size#y - bevel },
-              item = Render.box({ x = size#x, y = bevel }, Palette.metalShade(), zBlock() + 1) } :: Nil,
+              item = RawDraw.box({ x = size#x, y = bevel }, Palette.metalShade(), zBlock() + 1) } :: Nil,
             rivets)
 
     // ── パドル（面シェーディング＋反射角ゾーンの帯）──
@@ -214,7 +214,7 @@ mod View {
         let diameter = trailHeadDiameter() * (1.0 - (1.0 - trailTailScale()) * age);
         let alpha = trailBaseAlpha() * (1.0 - age);
         { at = { x = pos#x - diameter / 2.0, y = pos#y - diameter / 2.0 },
-          item = Render.circle(diameter / 2.0, Palette.trailColor(ratio), zTrail()) |> Render.fade(alpha) }
+          item = RawDraw.circle(diameter / 2.0, Palette.trailColor(ratio), zTrail()) |> Render.fade(alpha) }
 
     /// 飛行中のボールの残像。速度 vel は色ランプ（冷→温→熱）に、位置リング trail は点の並びになる。
     def trailBoxes(params: GameParameters.Params, vel: Vec2.Vec2,
@@ -256,7 +256,7 @@ mod View {
         let spin = Curve.spin((fragSpinMin() + fragSpinSpan() * rand(3)) * spinDir, t);
         let progress = t / Field.burstLifetime();
         let half = fragHalf() * (1.0 - progress);
-        { at = center, item = Render.polygon(Quad.rotated(Vec2.zero(), half, half, spin), Palette.fragment(i), zBurst())
+        { at = center, item = RawDraw.polygon(Quad.rotated(Vec2.zero(), half, half, spin), Palette.fragment(i), zBurst())
                      |> Render.fade(1.0 - progress) }
 
     // ── テキスト（HUD と各フェーズのオーバーレイ）──
@@ -308,13 +308,13 @@ mod View {
 
     /// 中心指定の単色ボックス。
     def flatBox(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): Render.PlacedItem =
-        Render.boxAt(center, size, color, z)
+        RawDraw.boxAt(center, size, color, z)
 
     /// 左上指定・高さの半分まで角を丸めたボックス（パドルの丸端の帯）。
     def roundedBox(topLeft: Vec2.Vec2, size: Vec2.Vec2, color: Color, z: Int32): Render.PlacedItem =
-        { at = topLeft, item = Render.box(size, color, z) |> Render.rounded(Float64.min(size#x, size#y) / 2.0) }
+        { at = topLeft, item = RawDraw.box(size, color, z) |> Render.rounded(Float64.min(size#x, size#y) / 2.0) }
 
     /// center を中心とする直径 d の塗りつぶし円。
     def circleItem(center: Vec2.Vec2, d: Float64, color: Color, z: Int32): Render.PlacedItem =
-        Render.circleAt(center, d / 2.0, color, z)
+        RawDraw.circleAt(center, d / 2.0, color, z)
 }

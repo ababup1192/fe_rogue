@@ -1,5 +1,6 @@
 // ハシリドリ — 長い二本脚で地を蹴る、飛べない走鳥。細い脚のハサミ運びと伸び縮みする首が体幹。
 // ダッシュは首が水平に伸びて羽毛が舞い散り、スキッドは全身をのけぞらせ尾羽を扇に開いて踏ん張る。
+// この箱組みは旧様式(RawDraw 大量使用の前例にしない)。新キャラは PxSprite+PxShade を第一候補に。
 
 mod Char02 {
 
@@ -120,9 +121,9 @@ mod Char02 {
             :: tailFeathers(stage, bodyCx, bodyCy, face, pose)
             :: legOf(bodyCx - face * 2.5, 0.5, 1.0, 9)
             :: ({ at = { x = bodyCx - bodyW / 2.0, y = bodyCy - bodyH / 2.0 },
-                  item = Render.box({ x = bodyW, y = bodyH }, bodyColor(), 10) |> Render.rounded(4.0) } :: Nil)
+                  item = RawDraw.box({ x = bodyW, y = bodyH }, bodyColor(), 10) |> Render.rounded(4.0) } :: Nil)
             :: ({ at = { x = bodyCx + face * 1.0 - bodyW * 0.275, y = bodyCy + 0.5 },
-                  item = Render.box({ x = bodyW * 0.55, y = bodyH * 0.45 }, bellyColor(), 11) |> Render.rounded(2.5) } :: Nil)
+                  item = RawDraw.box({ x = bodyW * 0.55, y = bodyH * 0.45 }, bellyColor(), 11) |> Render.rounded(2.5) } :: Nil)
             :: wingItems(stage, bodyCx, bodyCy, face, pose)
             :: legOf(bodyCx + face * 2.5, 0.0, 0.0, 11)
             :: (strut(neckBase, head, 3.0, bodyColor(), 11) :: Nil)
@@ -131,16 +132,16 @@ mod Char02 {
 
     /// 頭まわり: 頭・くちばし・とさか・目。とさかはダッシュで寝て、待機で立つ。
     def headItems(head: Vec2.Vec2, face: Float64, pose: Pose): List[Render.PlacedItem] =
-        { at = { x = head#x - 3.2, y = head#y - 3.2 }, item = Render.circle(3.2, bodyColor(), 12) }
+        { at = { x = head#x - 3.2, y = head#y - 3.2 }, item = RawDraw.circle(3.2, bodyColor(), 12) }
         :: { at = { x = head#x, y = head#y },
-             item = Render.polygon({ x = face * 2.4, y = -1.2 } :: { x = face * 5.0, y = 0.0 }
+             item = RawDraw.polygon({ x = face * 2.4, y = -1.2 } :: { x = face * 5.0, y = 0.0 }
                             :: { x = face * 2.4, y = 1.4 } :: Nil, beakColor(), 12) }
         :: { at = { x = head#x, y = head#y },
-             item = Render.polygon({ x = -face * 0.3, y = -2.2 }
+             item = RawDraw.polygon({ x = -face * 0.3, y = -2.2 }
                             :: { x = -face * (1.8 + 2.2 * pose#neck), y = -4.6 + 2.2 * pose#neck }
                             :: { x = face * 1.2, y = -2.6 } :: Nil, crestColor(), 12) }
-        :: { at = { x = head#x + face * 0.9 - 1.4, y = head#y - 0.7 - 1.4 }, item = Render.circle(1.4, eyeWhite(), 13) }
-        :: { at = { x = head#x + face * 1.6 - 0.7, y = head#y - 0.7 - 0.7 }, item = Render.circle(0.7, eyeDark(), 13) }
+        :: { at = { x = head#x + face * 0.9 - 1.4, y = head#y - 0.7 - 1.4 }, item = RawDraw.circle(1.4, eyeWhite(), 13) }
+        :: { at = { x = head#x + face * 1.6 - 0.7, y = head#y - 0.7 - 0.7 }, item = RawDraw.circle(0.7, eyeDark(), 13) }
         :: Nil
 
     /// 尾羽 3 枚の扇。スキッドで全開になり、走りの速さに応じてはためく。
@@ -154,7 +155,7 @@ mod Char02 {
             let baseX = bodyCx - face * 5.0;
             let baseY = bodyCy - 1.0;
             { at = { x = 0.0, y = 0.0 },
-              item = Render.polygon({ x = baseX, y = baseY - 1.3 } :: { x = baseX, y = baseY + 1.3 }
+              item = RawDraw.polygon({ x = baseX, y = baseY - 1.3 } :: { x = baseX, y = baseY + 1.3 }
                              :: { x = baseX - face * 3.8, y = baseY - 2.2 - spreadY + flutter } :: Nil,
                              legColor(), 9) }
         })
@@ -164,18 +165,18 @@ mod Char02 {
                   face: Float64, pose: Pose): List[Render.PlacedItem] =
         if (pose#wing < 0.01)
             { at = { x = bodyCx - face * 1.0 - 3.25, y = bodyCy - 3.5 },
-              item = Render.box({ x = 6.5, y = 4.0 }, legColor(), 11) |> Render.rounded(2.0) } :: Nil
+              item = RawDraw.box({ x = 6.5, y = 4.0 }, legColor(), 11) |> Render.rounded(2.0) } :: Nil
         else {
             let flap = -7.5 + 4.5 * Curve.triWave(stage#t * 11.0);
             let shoulder = { x = bodyCx + face * 0.5, y = bodyCy - 2.0 };
             // 奥の羽（薄く）と手前の羽。羽ばたきは時刻駆動の三角波。
             { at = { x = shoulder#x, y = shoulder#y },
-              item = Render.polygon({ x = 0.0, y = 0.0 }
+              item = RawDraw.polygon({ x = 0.0, y = 0.0 }
                              :: { x = -face * 5.5 * pose#wing, y = (flap * 0.8 - 1.0) * pose#wing }
                              :: { x = -face * 1.5, y = 1.2 } :: Nil, legColor(), 9)
                  |> Render.fade(0.7) }
             :: { at = { x = shoulder#x, y = shoulder#y },
-                 item = Render.polygon({ x = 0.0, y = 0.0 }
+                 item = RawDraw.polygon({ x = 0.0, y = 0.0 }
                                 :: { x = -face * 7.0 * pose#wing, y = flap * pose#wing }
                                 :: { x = -face * 2.0, y = 1.5 } :: Nil, bellyColor(), 12) }
             :: Nil
@@ -192,7 +193,7 @@ mod Char02 {
                     let plumeY = stage#pos#y - 13.0 + 6.0 * drift
                                  + 1.5 * Curve.triWave(stage#t * 7.0 + fk);
                     { at = { x = plumeX, y = plumeY },
-                      item = Render.polygon({ x = 0.0, y = 0.0 } :: { x = -stage#facing * 3.2, y = -1.2 }
+                      item = RawDraw.polygon({ x = 0.0, y = 0.0 } :: { x = -stage#facing * 3.2, y = -1.2 }
                                      :: { x = -stage#facing * 1.4, y = 1.6 } :: Nil, bellyColor(), 8)
                          |> Render.fade(0.8 * (1.0 - drift)) }
                 })
@@ -209,7 +210,7 @@ mod Char02 {
         let nx = -dy / len * width * 0.5;
         let ny = dx / len * width * 0.5;
         { at = { x = 0.0, y = 0.0 },
-          item = Render.polygon({ x = a#x + nx, y = a#y + ny } :: { x = b#x + nx, y = b#y + ny }
+          item = RawDraw.polygon({ x = a#x + nx, y = a#y + ny } :: { x = b#x + nx, y = b#y + ny }
                          :: { x = b#x - nx, y = b#y - ny } :: { x = a#x - nx, y = a#y - ny } :: Nil,
                          color, layer) }
 

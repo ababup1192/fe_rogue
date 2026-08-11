@@ -677,7 +677,7 @@ mod TestUiDoc {
         // 「lineQuad → Render.rotated → at = 中心」と頂点まで一致する。
         let doc = "{\"root\": {\"name\":\"g\",\"widget\":\"poly\",\"color\":\"#ffffff\",\"rotation\":0.13,"
                 + "\"points\":[[28,24],[28,2],[24,2],[24,24]]}}";
-        let expectedVerts = Render.rotated(0.13, Render.lineQuad({ x = 0.0, y = 0.0 }, { x = 0.0, y = -22.0 }, 4.0))
+        let expectedVerts = Render.rotated(0.13, RawDraw.lineQuad({ x = 0.0, y = 0.0 }, { x = 0.0, y = -22.0 }, 4.0))
             |> List.map(v -> (v#x, v#y));
         let got = parseDoc(doc) |> Option.flatMap(spec ->
             UiDoc.render(_ -> dummyAtlas(), spec,

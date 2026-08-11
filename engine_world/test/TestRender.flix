@@ -1,6 +1,7 @@
 // Render の単体テスト: draw の 2 系統振り分け（Box→Drawable / Poly→PolygonRenderCmd と
-// 置き場所の頂点織り込み）、circle の正体（全角丸 Box）、修飾（半透明・角丸素通し・枠・縞）を
-// 具体値で固定する。
+// 置き場所の頂点織り込み）、修飾（半透明・角丸素通し・枠・縞・ブレンド）、置き配管
+// （atCenter・movedAll・scaledAllAround・rotatedAround・turnedAll・glyphFingerprint）を
+// 具体値で固定する。図形そのものの幾何は TestRawDraw を見る。
 mod TestRender {
 
     def red(): Color = { r = 1.0f32, g = 0.0f32, b = 0.0f32 }
@@ -10,35 +11,14 @@ mod TestRender {
     @Test
     def testDrawSplitsAndOffsetsPoly(): Unit \ Assert =
         let items =
-            { at = { x = 1.0, y = 2.0 }, item = Render.box({ x = 10.0, y = 5.0 }, red(), 3) } ::
+            { at = { x = 1.0, y = 2.0 }, item = RawDraw.box({ x = 10.0, y = 5.0 }, red(), 3) } ::
             { at = { x = 100.0, y = 200.0 },
-              item = Render.polygon({ x = 0.0, y = 0.0 } :: { x = 4.0, y = 0.0 } :: { x = 0.0, y = 3.0 } :: Nil, red(), 7) } :: Nil;
+              item = RawDraw.polygon({ x = 0.0, y = 0.0 } :: { x = 4.0, y = 0.0 } :: { x = 0.0, y = 3.0 } :: Nil, red(), 7) } :: Nil;
         let (drawables, polygons) = Render.draw(items);
         let firstVertex = polygons |> List.head |> Option.flatMap(p -> List.head(p#vertices)) |> Option.map(v -> (v#x, v#y));
         Assert.assertEq(expected = (1, 1, Some((100.0, 200.0)), Some(7)),
             (List.length(drawables), List.length(polygons), firstVertex,
              polygons |> List.head |> Option.map(p -> p#zIndex)))
-
-    // circle は直径サイズの全角丸 Box（Drawable の scale = 直径、cornerRadius = 半径）。
-    @Test
-    def testCircleIsFullyRoundedBox(): Unit \ Assert =
-        let (drawables, _polys) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = Render.circle(3.0, red(), 5) } :: Nil);
-        let d = List.head(drawables);
-        Assert.assertEq(expected = (Some((6.0, 6.0)), Some(Some(3.0))),
-            (d |> Option.map(x -> (x#scale#x, x#scale#y)),
-             d |> Option.map(x -> Option.map(s -> s#cornerRadius, x#style))))
-
-    // circleAt: 中心 (10,10)・半径 3 の円は、外接正方形の左上 (7,7) に置かれる。
-    @Test
-    def testCircleAtPlacesByCenter(): Unit \ Assert =
-        let placed = Render.circleAt({ x = 10.0, y = 10.0 }, 3.0, red(), 5);
-        Assert.assertEq(expected = (7.0, 7.0), (placed#at#x, placed#at#y))
-
-    // boxAt: 中心 (10,10)・サイズ 4×6 の矩形は、左上 (8,7) に置かれる。
-    @Test
-    def testBoxAtPlacesByCenter(): Unit \ Assert =
-        let placed = Render.boxAt({ x = 10.0, y = 10.0 }, { x = 4.0, y = 6.0 }, red(), 5);
-        Assert.assertEq(expected = (8.0, 7.0), (placed#at#x, placed#at#y))
 
     // flipH: 頂点の x が符号反転し（y 不変）、2 回で元に戻る。
     @Test
@@ -68,9 +48,9 @@ mod TestRender {
     // 修飾: fade は Box の α を差し替え、rounded は Poly には効かず素通し（Poly は Poly のまま出る）。
     @Test
     def testModifiersApplyAndPassThrough(): Unit \ Assert =
-        let faded = Render.box({ x = 1.0, y = 1.0 }, red(), 0) |> Render.fade(0.5);
+        let faded = RawDraw.box({ x = 1.0, y = 1.0 }, red(), 0) |> Render.fade(0.5);
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = faded } :: Nil);
-        let untouched = Render.polygon({ x = 0.0, y = 0.0 } :: Nil, red(), 0) |> Render.rounded(4.0);
+        let untouched = RawDraw.polygon({ x = 0.0, y = 0.0 } :: Nil, red(), 0) |> Render.rounded(4.0);
         let (_, ps) = Render.draw({ at = { x = 9.0, y = 9.0 }, item = untouched } :: Nil);
         Assert.assertEq(expected = (Some(0.5f32), 1),
             (ds |> List.head |> Option.map(d -> d#alpha), List.length(ps)))
@@ -78,7 +58,7 @@ mod TestRender {
     // outline と striped は同じ Box の style に重なる（枠幅・縞の濃度と周期を同時に pin）。
     @Test
     def testOutlineAndStripedStack(): Unit \ Assert =
-        let item = Render.box({ x = 2.0, y = 2.0 }, red(), 0)
+        let item = RawDraw.box({ x = 2.0, y = 2.0 }, red(), 0)
             |> Render.outline(red(), 1.5)
             |> Render.striped({ color = red(), alpha = 0.25, width = 2.0, period = 6.0, dir = 0 });
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
@@ -92,7 +72,7 @@ mod TestRender {
     @Test
     def testStripedDirVariants(): Unit \ Assert =
         let dirOf = dir -> {
-            let item = Render.box({ x = 2.0, y = 2.0 }, red(), 0)
+            let item = RawDraw.box({ x = 2.0, y = 2.0 }, red(), 0)
                 |> Render.striped({ color = red(), alpha = 0.25, width = 2.0, period = 6.0, dir = dir });
             let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
             ds |> List.head |> Option.flatMap(d -> d#style) |> Option.map(s -> s#stripeDir)
@@ -102,7 +82,7 @@ mod TestRender {
     // checker は Box の style に市松（色・濃度・セル辺）を書き込む。
     @Test
     def testCheckerSetsStyle(): Unit \ Assert =
-        let item = Render.box({ x = 8.0, y = 8.0 }, red(), 0)
+        let item = RawDraw.box({ x = 8.0, y = 8.0 }, red(), 0)
             |> Render.checker({ color = red(), alpha = 0.5, cell = 4.0 });
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
         let style = ds |> List.head |> Option.flatMap(d -> d#style);
@@ -121,8 +101,8 @@ mod TestRender {
     def testBlendDefaultsToNormal(): Unit \ Assert =
         let items =
             { at = Vec2.zero(), item = Render.sprite("ball", 0) } ::
-            { at = Vec2.zero(), item = Render.box({ x = 2.0, y = 2.0 }, red(), 0) } ::
-            { at = Vec2.zero(), item = Render.polygon(triangle(), red(), 0) } :: Nil;
+            { at = Vec2.zero(), item = RawDraw.box({ x = 2.0, y = 2.0 }, red(), 0) } ::
+            { at = Vec2.zero(), item = RawDraw.polygon(triangle(), red(), 0) } :: Nil;
         let (ds, ps) = Render.draw(items);
         Assert.assertEq(
             expected = (Some(DrawCmd.BlendMode.Normal), Some(DrawCmd.BlendMode.Normal), Some(DrawCmd.BlendMode.Normal)),
@@ -135,8 +115,8 @@ mod TestRender {
     def testBlendedReachesDrawOutput(): Unit \ Assert =
         let items =
             { at = Vec2.zero(), item = Render.sprite("ball", 0) |> Render.blended(DrawCmd.BlendMode.Add) } ::
-            { at = Vec2.zero(), item = Render.box({ x = 2.0, y = 2.0 }, red(), 0) |> Render.blended(DrawCmd.BlendMode.Multiply) } ::
-            { at = Vec2.zero(), item = Render.polygon(triangle(), red(), 0) |> Render.blended(DrawCmd.BlendMode.Add) } :: Nil;
+            { at = Vec2.zero(), item = RawDraw.box({ x = 2.0, y = 2.0 }, red(), 0) |> Render.blended(DrawCmd.BlendMode.Multiply) } ::
+            { at = Vec2.zero(), item = RawDraw.polygon(triangle(), red(), 0) |> Render.blended(DrawCmd.BlendMode.Add) } :: Nil;
         let (ds, ps) = Render.draw(items);
         Assert.assertEq(
             expected = (Some(DrawCmd.BlendMode.Add), Some(DrawCmd.BlendMode.Multiply), Some(DrawCmd.BlendMode.Add)),
@@ -148,71 +128,20 @@ mod TestRender {
     @Test
     def testBlendedThroughClip(): Unit \ Assert =
         let clipRect = { position = Vec2.zero(), size = { x = 4.0, y = 4.0 } };
-        let boxed = Render.clipped(clipRect, Render.box({ x = 2.0, y = 2.0 }, red(), 0))
+        let boxed = Render.clipped(clipRect, RawDraw.box({ x = 2.0, y = 2.0 }, red(), 0))
             |> Render.blended(DrawCmd.BlendMode.Add);
         let (ds, _) = Render.draw({ at = Vec2.zero(), item = boxed } :: Nil);
         Assert.assertEq(expected = (Some(DrawCmd.BlendMode.Add), Some(true)),
             (ds |> List.head |> Option.map(d -> d#blend),
              ds |> List.head |> Option.map(d -> Option.nonEmpty(d#clip))))
 
-    // ── 図形の語彙（ngonAt / ellipseAt / sectorAt / circleSegmentAt / starAt / lineSeg）──
-
-    /// PlacedItem から Poly の頂点列を取り出す（図形テストの共通口）。
-    def vertsOf(placed: Render.PlacedItem): List[Vec2.Vec2] =
-        match placed#item {
-            case Render.Item.Poly(p) => p#vertices
-            case _                   => Nil
-        }
-
-    // ngonAt: 頂点数 = n・最初の頂点は真上（y = −radius）・置き場所は中心そのもの。
-    @Test
-    def testNgonAtPointsUpWithNVertices(): Unit \ Assert =
-        let hex = Render.ngonAt({ x = 7.0, y = 9.0 }, 6, 10.0, red(), 0);
-        let first = List.head(vertsOf(hex)) |> Option.map(v -> (round4(v#x), round4(v#y)));
-        Assert.assertEq(expected = (6, Some((0.0, -10.0)), (7.0, 9.0)),
-            (List.length(vertsOf(hex)), first, (hex#at#x, hex#at#y)))
-
-    // ellipseAt: 32 頂点で、x 半径・y 半径がそれぞれ radii どおりに届く。
-    @Test
-    def testEllipseAtSpansRadii(): Unit \ Assert =
-        let e = Render.ellipseAt(Vec2.zero(), { x = 26.0, y = 16.0 }, red(), 0);
-        let vs = vertsOf(e);
-        let maxX = List.foldLeft((m, v) -> Float64.max(m, v#x), 0.0, vs);
-        let maxY = List.foldLeft((m, v) -> Float64.max(m, v#y), 0.0, vs);
-        Assert.assertEq(expected = (32, 26.0, 16.0), (List.length(vs), round4(maxX), round4(maxY)))
-
-    // sectorAt は中心点から始まり（パイの要）、circleSegmentAt は弧だけ（弦は自動で閉じる）。
-    @Test
-    def testSectorHasApexAndSegmentDoesNot(): Unit \ Assert =
-        let sec = Render.sectorAt(Vec2.zero(), 22.0, { fromT = 0.05, toT = 0.45 }, red(), 0);
-        let seg = Render.circleSegmentAt(Vec2.zero(), 22.0, { fromT = 0.05, toT = 0.45 }, red(), 0);
-        let apex = List.head(vertsOf(sec)) |> Option.map(v -> (v#x, v#y));
-        Assert.assertEq(expected = (Some((0.0, 0.0)), 26, 25),
-            (apex, List.length(vertsOf(sec)), List.length(vertsOf(seg))))
-
-    // starAt: 頂点数 = 尖り × 2（外径と内径の交互）。
-    @Test
-    def testStarAtAlternatesRadii(): Unit \ Assert =
-        let s = Render.starAt(Vec2.zero(), 5, { outer = 21.0, inner = 9.0 }, red(), 0);
-        Assert.assertEq(expected = 10, List.length(vertsOf(s)))
-
-    // lineQuad: 4 頂点で、両端の幅辺（始点側 v0-v3・終点側 v1-v2）がどちらも width
-    // （斜めの線でも太さが崩れない）。
-    @Test
-    def testLineQuadWidthIsPerpendicular(): Unit \ Assert =
-        let quad = Render.lineQuad({ x = 0.0, y = 0.0 }, { x = 10.0, y = 10.0 }, 4.0);
-        let widths = List.zip(quad, List.reverse(quad))
-            |> List.take(2)
-            |> List.map(pair -> { let (p, q) = pair; round4(Vec2.length(Vec2.sub(p, q))) });
-        Assert.assertEq(expected = (4, 4.0 :: 4.0 :: Nil), (List.length(quad), widths))
-
     // atCenter は「左上原点の item」の中心置き — 同じ box なら boxAt と同じ場所に着地する
     // （2 つの公開 API の整合。Poly を渡す誤用は bug! で loud に落ちる設計なのでテストしない）。
     @Test
     def testAtCenterAgreesWithBoxAt(): Unit \ Assert =
-        let viaAtCenter = Render.box({ x = 40.0, y = 30.0 }, red(), 0)
+        let viaAtCenter = RawDraw.box({ x = 40.0, y = 30.0 }, red(), 0)
             |> Render.atCenter({ x = 100.0, y = 50.0 }, { x = 40.0, y = 30.0 });
-        let viaBoxAt = Render.boxAt({ x = 100.0, y = 50.0 }, { x = 40.0, y = 30.0 }, red(), 0);
+        let viaBoxAt = RawDraw.boxAt({ x = 100.0, y = 50.0 }, { x = 40.0, y = 30.0 }, red(), 0);
         Assert.assertEq(expected = (viaBoxAt#at#x, viaBoxAt#at#y),
             (viaAtCenter#at#x, viaAtCenter#at#y))
 
@@ -238,7 +167,7 @@ mod TestRender {
     // Box は rotation に 0.25 が乗る（自転と公転で 1 枚の破片のように回る）。
     @Test
     def testRotatedAroundAllRevolvesAtAndSpinsBox(): Unit \ Assert =
-        let placed = { at = { x = 10.0, y = 0.0 }, item = Render.box({ x = 4.0, y = 2.0 }, red(), 0) };
+        let placed = { at = { x = 10.0, y = 0.0 }, item = RawDraw.box({ x = 4.0, y = 2.0 }, red(), 0) };
         let got = Render.rotatedAroundAll(0.25, Vec2.zero(), placed :: Nil)
             |> List.head
             |> Option.flatMap(p -> match p#item {
@@ -252,7 +181,7 @@ mod TestRender {
     @Test
     def testRotatedAroundAllSpinsPolyVerticesInPlace(): Unit \ Assert =
         let placed = { at = { x = 10.0, y = 10.0 },
-                       item = Render.polygon({ x = 5.0, y = 0.0 } :: Nil, red(), 0) };
+                       item = RawDraw.polygon({ x = 5.0, y = 0.0 } :: Nil, red(), 0) };
         let got = Render.rotatedAroundAll(0.25, { x = 10.0, y = 10.0 }, placed :: Nil)
             |> List.head
             |> Option.flatMap(p -> match p#item {
@@ -262,23 +191,12 @@ mod TestRender {
             });
         Assert.assertEq(expected = Some((10.0, 10.0, 0.0, 5.0)), got)
 
-    // 半周を超える扇形（パックマン）でも耳切りで面積が保存される（凹の実戦形の回帰）。
-    // 期待値は頂点列そのものの靴ひも面積 — 分割で欠けても余っても一致しない。
-    @Test
-    def testReflexSectorPreservesAreaUnderTriangulation(): Unit \ Assert =
-        let vs = vertsOf(Render.sectorAt(Vec2.zero(), 20.0, { fromT = 0.10, toT = 0.90 }, red(), 0));
-        let area = List.foldLeft((s, t) -> {
-            let (a, b, c) = t;
-            s + Float64.abs((b#x - a#x) * (c#y - a#y) - (b#y - a#y) * (c#x - a#x)) / 2.0
-        }, 0.0, Triangulate.triangles(vs));
-        Assert.assertEq(expected = round4(Float64.abs(Triangulate.signedArea(vs))), round4(area))
-
     // ── 傾き（回転数 → 描画命令のラジアン・群回転）──
 
     // 傾きの単位は回転数。1/4 周を渡すと描画命令には τ/4 ラジアンで届く。
     @Test
     def testTurnedBoxIsQuarterTurnInRadians(): Unit \ Assert =
-        let item = Render.box({ x = 4.0, y = 2.0 }, red(), 0) |> Render.turned(0.25);
+        let item = RawDraw.box({ x = 4.0, y = 2.0 }, red(), 0) |> Render.turned(0.25);
         let (ds, _) = Render.draw({ at = { x = 0.0, y = 0.0 }, item = item } :: Nil);
         Assert.assertEq(expected = Some(round4(Vec2.tau() / 4.0)),
             ds |> List.head |> Option.map(d -> round4(d#rotation)))
@@ -287,7 +205,7 @@ mod TestRender {
     @Test
     def testTurnedAllAroundOwnCenterKeepsPlace(): Unit \ Assert =
         let center = { x = 100.0, y = 50.0 };
-        let placed = Render.boxAt(center, { x = 20.0, y = 10.0 }, red(), 0);
+        let placed = RawDraw.boxAt(center, { x = 20.0, y = 10.0 }, red(), 0);
         let turned = Render.turnedAll(0.25, center, placed :: Nil) |> List.head;
         Assert.assertEq(expected = Some((90.0, 45.0)),
             turned |> Option.map(p -> (round4(p#at#x), round4(p#at#y))))
@@ -296,7 +214,7 @@ mod TestRender {
     @Test
     def testTurnedAllHalfTurnTwiceIsIdentity(): Unit \ Assert =
         let pivot = { x = 0.0, y = 0.0 };
-        let items = Render.boxAt({ x = 30.0, y = 10.0 }, { x = 4.0, y = 4.0 }, red(), 0) :: Nil;
+        let items = RawDraw.boxAt({ x = 30.0, y = 10.0 }, { x = 4.0, y = 4.0 }, red(), 0) :: Nil;
         let back = items |> Render.turnedAll(0.5, pivot) |> Render.turnedAll(0.5, pivot) |> List.head;
         Assert.assertEq(expected = Some((28.0, 8.0)),
             back |> Option.map(p -> (round4(p#at#x), round4(p#at#y))))
@@ -354,14 +272,14 @@ mod TestRender {
     @Test
     def testMovedAllShiftsPlacesOnly(): Unit \ Assert =
         // 置き場所だけが動き、中身（大きさ・z）は触られない。
-        let items = { at = { x = 1.0, y = 2.0 }, item = Render.box({ x = 4.0, y = 4.0 }, red(), 7) } :: Nil;
+        let items = { at = { x = 1.0, y = 2.0 }, item = RawDraw.box({ x = 4.0, y = 4.0 }, red(), 7) } :: Nil;
         Assert.assertEq(expected = (11.0, 22.0, 4.0, 7),
             shapeOf(Render.movedAll({ x = 10.0, y = 20.0 }, items)))
 
     @Test
     def testMovedAllComposes(): Unit \ Assert =
         // 2 度動かすのは、足した量で 1 度動かすのと同じ。
-        let items = { at = { x = 3.0, y = 5.0 }, item = Render.box(Vec2.one(), red(), 0) } :: Nil;
+        let items = { at = { x = 3.0, y = 5.0 }, item = RawDraw.box(Vec2.one(), red(), 0) } :: Nil;
         let twice = items |> Render.movedAll({ x = 1.0, y = 2.0 }) |> Render.movedAll({ x = 4.0, y = 8.0 });
         Assert.assertEq(expected = shapeOf(items |> Render.movedAll({ x = 5.0, y = 10.0 })),
             shapeOf(twice))
@@ -378,7 +296,7 @@ mod TestRender {
         }
 
     def clippedBox(): List[Render.PlacedItem] =
-        Render.box({ x = 4.0, y = 4.0 }, red(), 7)
+        RawDraw.box({ x = 4.0, y = 4.0 }, red(), 7)
             |> Render.clipped({ position = { x = 10.0, y = 20.0 }, size = { x = 30.0, y = 40.0 } })
             |> Render.at({ x = 12.0, y = 24.0 })
             |> (p -> p :: Nil)
@@ -392,7 +310,7 @@ mod TestRender {
     @Test
     def testScaledAllAroundStretchesAtAndSize(): Unit \ Assert =
         // pivot を不動点に、at は pivot からの距離が factor 倍・中身の大きさも factor 倍。
-        let items = { at = { x = 10.0, y = 20.0 }, item = Render.box({ x = 4.0, y = 6.0 }, red(), 7) } :: Nil;
+        let items = { at = { x = 10.0, y = 20.0 }, item = RawDraw.box({ x = 4.0, y = 6.0 }, red(), 7) } :: Nil;
         Assert.assertEq(expected = (18.0, 36.0, 8.0, 7),
             shapeOf(Render.scaledAllAround(2.0, { x = 2.0, y = 4.0 }, items)))
 
@@ -405,7 +323,7 @@ mod TestRender {
     @Test
     def testAtPlacesTopLeft(): Unit \ Assert =
         // Render.at は { at = pos, item = item } の純糖衣（パイプ末尾に載る形）。
-        let placed = Render.box({ x = 4.0, y = 4.0 }, red(), 7) |> Render.at({ x = 3.0, y = 5.0 });
+        let placed = RawDraw.box({ x = 4.0, y = 4.0 }, red(), 7) |> Render.at({ x = 3.0, y = 5.0 });
         Assert.assertEq(expected = (3.0, 5.0, 4.0, 7), shapeOf(placed :: Nil))
 
     // ── glyphFingerprint（前フレームと同じ字を描くかを見分ける鍵）──
@@ -448,7 +366,7 @@ mod TestRender {
     // Text を含まない items（Box だけなど）は基底値そのまま。
     @Test
     def testGlyphFingerprintOfNonTextItemsIsBase(): Unit \ Assert =
-        let items = { at = { x = 0.0, y = 0.0 }, item = Render.box({ x = 1.0, y = 1.0 }, red(), 0) } :: Nil;
+        let items = { at = { x = 0.0, y = 0.0 }, item = RawDraw.box({ x = 1.0, y = 1.0 }, red(), 0) } :: Nil;
         Assert.assertEq(expected = -3750763034362895579i64, Render.glyphFingerprint(items))
 
 }

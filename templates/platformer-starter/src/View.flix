@@ -52,7 +52,7 @@ mod View {
                     item = Render.vgrad(design(), { top = top, bottom = bottom }, 0) };
         if (kind == "cave") sky :: Nil
         else sky
-            :: Render.circleAt({ x = 500.0, y = 116.0 }, 24.0, c("sun"), 1)
+            :: RawDraw.circleAt({ x = 500.0, y = 116.0 }, 24.0, c("sun"), 1)
             :: Nil
 
     // ── 遠景のシルエット(横リピートのドット絵ストリップ。terra_like と同じ技法)──
@@ -112,7 +112,7 @@ mod View {
                 let under = match fillKey {
                     case Some(key) =>
                         if (fillH <= 0.0) Nil
-                        else Render.boxAt(
+                        else RawDraw.boxAt(
                             { x = (x0 + x1) / 2.0, y = bottom + fillH / 2.0 },
                             { x = x1 - x0, y = fillH },
                             Theme.resolve(w#theme, key), z) :: Nil
@@ -174,11 +174,11 @@ mod View {
         let ground = if (w#stage#kind == "outdoor") "dirtDark" else "stoneDark";
         let c = litColor(w, 0, w#stage#height - 1, Theme.resolve(w#theme, ground));
         { at = { x = -240.0, y = hpx },
-          item = Render.box({ x = wpx + 480.0, y = 320.0 }, c, zFore()) }
+          item = RawDraw.box({ x = wpx + 480.0, y = 320.0 }, c, zFore()) }
             :: { at = { x = -240.0, y = 0.0 },
-                 item = Render.box({ x = 240.0, y = hpx + 320.0 }, c, zFore()) }
+                 item = RawDraw.box({ x = 240.0, y = hpx + 320.0 }, c, zFore()) }
             :: { at = { x = wpx, y = 0.0 },
-                 item = Render.box({ x = 240.0, y = hpx + 320.0 }, c, zFore()) }
+                 item = RawDraw.box({ x = 240.0, y = hpx + 320.0 }, c, zFore()) }
             :: Nil
 
     // ── 地形(cellGroups の解釈)──
@@ -210,7 +210,7 @@ mod View {
         let anyResolved = g#quads |> List.exists(q -> TerrainLayers.ridesLayer(w, q));
         match (anyResolved, g#fallback) {
             case (false, Some(color)) =>
-                Render.orBoxAt({ x = at#x + ts / 2.0, y = at#y + ts / 2.0 },
+                RawDraw.orBoxAt({ x = at#x + ts / 2.0, y = at#y + ts / 2.0 },
                                { x = ts, y = ts }, litColor(w, x, y, color), g#z, drawn)
             case _ => drawn
         }
@@ -374,7 +374,7 @@ mod View {
         let items = PxSprite.drawQuad(w#pxDoc, w#atlas, World.atlasName(),
                                       sprite, frame, at, flip, scale(), z)
             |> lit(w, cx, cy);
-        Render.orBoxAt({ x = at#x, y = at#y - 6.0 }, { x = 12.0, y = 12.0 },
+        RawDraw.orBoxAt({ x = at#x, y = at#y - 6.0 }, { x = 12.0, y = 12.0 },
             litColor(w, cx, cy, Theme.resolve(w#theme, "shirt")), z, items)
 
     // ── ぱっと出て消える演出 ──
@@ -389,21 +389,21 @@ mod View {
             else if (f#kind == "land" or f#kind == "spring")
                 // 砂煙: 足元から左右へ広がって薄れる。
                 Render.fadeAll(fade * 0.6,
-                    Render.circleAt({ x = f#pos#x - 6.0 - age * 8.0, y = f#pos#y - 2.0 },
+                    RawDraw.circleAt({ x = f#pos#x - 6.0 - age * 8.0, y = f#pos#y - 2.0 },
                                     3.0 + age * 2.0, dust, zFx())
-                    :: Render.circleAt({ x = f#pos#x + 6.0 + age * 8.0, y = f#pos#y - 2.0 },
+                    :: RawDraw.circleAt({ x = f#pos#x + 6.0 + age * 8.0, y = f#pos#y - 2.0 },
                                        3.0 + age * 2.0, dust, zFx())
                     :: Nil)
             else if (f#kind == "stomp")
                 // 星: その場で広がる十字。
                 Render.fadeAll(fade,
-                    Render.boxAt(f#pos, { x = 2.0, y = 10.0 + age * 12.0 }, spark, zFx())
-                    :: Render.boxAt(f#pos, { x = 10.0 + age * 12.0, y = 2.0 }, spark, zFx())
+                    RawDraw.boxAt(f#pos, { x = 2.0, y = 10.0 + age * 12.0 }, spark, zFx())
+                    :: RawDraw.boxAt(f#pos, { x = 10.0 + age * 12.0, y = 2.0 }, spark, zFx())
                     :: Nil)
             else
                 // コイン: 上へ抜ける光の粒。
                 Render.fadeAll(fade,
-                    Render.circleAt({ x = f#pos#x, y = f#pos#y - age * 14.0 }, 3.0,
+                    RawDraw.circleAt({ x = f#pos#x, y = f#pos#y - age * 14.0 }, 3.0,
                                     spark, zFx()) :: Nil)
         })
 
@@ -424,7 +424,7 @@ mod View {
         if (w#phase == "play") Nil
         else {
             let veil = { at = { x = 0.0, y = 0.0 },
-                         item = Render.box(design(), Theme.resolve(w#theme, "ink"), 98) };
+                         item = RawDraw.box(design(), Theme.resolve(w#theme, "ink"), 98) };
             let msg = if (w#phase == "clear") w#uiText#clear else w#uiText#gameOver;
             let label = { at = { x = 250.0, y = 160.0 },
                           item = Render.text(msg, ctx#atlas, 28.0, 99) };

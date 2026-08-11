@@ -108,7 +108,7 @@ mod Bench {
         let center = { x = 160.0 + RenderUtil.cosF(angle) * radius,
                        y = 120.0 + RenderUtil.sinF(angle) * radius * 0.72 };
         if (Int32.modulo(i, 2) == 0)
-            Render.boxAt(center, { x = 4.0, y = 4.0 }, colorOf(i / 2), zBox())
+            RawDraw.boxAt(center, { x = 4.0, y = 4.0 }, colorOf(i / 2), zBox())
         else
             { at = center, item = Render.sprite("flag", zSprite()) }
 
@@ -124,7 +124,7 @@ mod Bench {
     /// （ZBand.hudBase 以上）へ持ち上がり、mergedByZ が帯別 2 段ソートに入る —
     /// 帯が混ざっても席方式（counting sort）に乗り続けるかを HUD 無しとの A/B で見る。
     pub def hud(ctx: App.ViewCtx, w: World): List[Render.PlacedItem] =
-        Render.boxAt({ x = 160.0, y = 228.0 }, { x = 300.0, y = 16.0 },
+        RawDraw.boxAt({ x = 160.0, y = 228.0 }, { x = 300.0, y = 16.0 },
             { r = 0.10f32, g = 0.10f32, b = 0.14f32 }, 0)
         :: { at = { x = 14.0, y = 222.0 },
              item = Render.textTinted("HUD SEG=${w#segment + 1} N=${countOf(w#segment)}",

@@ -107,7 +107,7 @@ mod ViewRoad {
     /// segs は縁の分割数 — 主役の車は既定の 32、遠くに何百と撒く立ち物は大きさなりに減らす。
     pub def shadowUnder(s: { at = Vec2.Vec2, radii = Vec2.Vec2, segs = Int32,
                              alpha = Float32, z = Int32 }): Render.PlacedItem =
-        Render.ellipseSegsAt(s#at, s#radii, s#segs,
+        RawDraw.ellipseSegsAt(s#at, s#radii, s#segs,
                 { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, s#z)
             |> Render.overItem(Render.fade(Float32.toFloat64(s#alpha)))
 
@@ -324,7 +324,7 @@ mod ViewRoad {
         let l1 = Proj.edgeX(ed#far, e#xl1);
         let r0 = Proj.edgeX(ed#near, e#xr0);
         let r1 = Proj.edgeX(ed#far, e#xr1);
-        let poly = vs -> { at = { x = 0.0, y = 0.0 }, item = Render.polygon(vs, color, zTrim()) };
+        let poly = vs -> { at = { x = 0.0, y = 0.0 }, item = RawDraw.polygon(vs, color, zTrim()) };
         poly({ x = l0 - k0, y = y0 } :: { x = l0, y = y0 }
              :: { x = l1, y = y1 } :: { x = l1 - k1, y = y1 } :: Nil)
             :: poly({ x = r0, y = y0 } :: { x = r0 + k0, y = y0 }
@@ -346,7 +346,7 @@ mod ViewRoad {
             let xb = Proj.screenX(cam, mid(0.8), ub);
             let color = Color.mix(w#theme#lane, ThemeDoc.hazeTo(w#theme), fadeOf(b#u0));
             { at = { x = 0.0, y = 0.0 },
-              item = Render.polygon(
+              item = RawDraw.polygon(
                      { x = xa - ha, y = Proj.yAt(cam, ua) }
                   :: { x = xa + ha, y = Proj.yAt(cam, ua) }
                   :: { x = xb + hb, y = Proj.yAt(cam, ub) }
@@ -369,7 +369,7 @@ mod ViewRoad {
             let yTop = Proj.yAt(cam, b#u0 + 0.45);
             let yBot = Proj.yAt(cam, b#u0 + 0.05);
             let cx = (Proj.screenX(cam, g#xl, ua) + Proj.screenX(cam, g#xr, ua)) / 2.0;
-            let banner = Render.boxAt({ x = cx, y = (yTop + yBot) / 2.0 },
+            let banner = RawDraw.boxAt({ x = cx, y = (yTop + yBot) / 2.0 },
                     { x = (g#xr - g#xl) * k, y = yBot - yTop }, w#theme#finish, zTrim())
                 |> Render.overItem(Render.checker(
                        { color = Color.darken(w#theme#road, 0.35), alpha = 1.0,
@@ -400,7 +400,7 @@ mod ViewRoad {
             let beam = spec -> {
                 let c = Color.mix(spec#color, ThemeDoc.hazeTo(w#theme), fadeOf(u0));
                 { at = { x = 0.0, y = 0.0 },
-                  item = Render.polygon(
+                  item = RawDraw.polygon(
                          { x = x0, y = g0 - railH() * k0 * spec#top }
                       :: { x = x1, y = g1 - railH() * k1 * spec#top }
                       :: { x = x1, y = g1 - railH() * k1 * spec#bot }
@@ -408,7 +408,7 @@ mod ViewRoad {
                       :: Nil, c, zTrim() + 1) }
             };
             let posts = if (not b#head or u0 > 14.0) Nil
-                else Render.boxAt({ x = x0, y = g0 - railH() * k0 * 0.35 },
+                else RawDraw.boxAt({ x = x0, y = g0 - railH() * k0 * 0.35 },
                         { x = Float64.max(1.0, 2.2 * k0), y = railH() * k0 * 0.7 },
                         Color.mix(Color.darken(w#theme#road, 0.55), ThemeDoc.hazeTo(w#theme),
                                   fadeOf(u0)), zTrim() + 1) :: Nil;
@@ -561,13 +561,13 @@ mod ViewRoad {
         let backTopY = gb - tubeDia() * kb;
         let crown = tint(Color.warm(Color.lighten(clayOf(w#theme), 0.12), 0.05));
         let shadow = { at = { x = 0.0, y = 0.0 },
-                       item = Render.polygon(
+                       item = RawDraw.polygon(
                               { x = bl2, y = gb } :: { x = br2, y = gb }
                            :: { x = xr, y = gf }  :: { x = xl, y = gf }
                            :: Nil, { r = 0.0f32, g = 0.0f32, b = 0.0f32 }, z)
                            |> Render.fade(Float32.toFloat64(shadowAlpha(s#uc))) };
         let top = { at = { x = 0.0, y = 0.0 },
-                    item = Render.polygon(
+                    item = RawDraw.polygon(
                            { x = bl2, y = backTopY } :: { x = br2, y = backTopY }
                         :: { x = xr, y = topY } :: { x = xl, y = topY }
                         :: Nil, crown, z) };
@@ -591,9 +591,9 @@ mod ViewRoad {
         let lipY = gf - postH() * kf * 0.80;
         let stopsOf = base -> roundStops(base) |> List.map(st ->
             { t = st#t, color = tint(st#color) });
-        let cap = Render.ellipseAt({ x = x, y = topY }, { x = rl, y = rl * 0.40 },
+        let cap = RawDraw.ellipseAt({ x = x, y = topY }, { x = rl, y = rl * 0.40 },
                                    tint(Color.lighten(w#theme#kerb, 0.14)), z);
-        let hole = Render.ellipseAt({ x = x, y = topY },
+        let hole = RawDraw.ellipseAt({ x = x, y = topY },
                                     { x = rl * 0.62, y = rl * 0.40 * 0.62 },
                                     tint(Color.darken(w#theme#road, 0.52)), z);
         shadowUnder({ at = { x = x, y = gf }, radii = { x = rl * 1.15, y = rl * 0.42 },
@@ -623,22 +623,22 @@ mod ViewRoad {
                     + w#props#barHalfWidth;
         let sl = Proj.screenX(cam, 0.0 - reach, uc);
         let sr = Proj.screenX(cam, reach, uc);
-        let sweep = Render.boxAt({ x = (sl + sr) / 2.0, y = groundY - lift },
+        let sweep = RawDraw.boxAt({ x = (sl + sr) / 2.0, y = groundY - lift },
                 { x = Float64.abs(sr - sl), y = Float64.max(1.0, 5.0 * k) },
                 tint(w#theme#kerb), z)
             |> Render.overItem(Render.fade(0.16));
         let shadow = shadowUnder({ at = { x = cx, y = groundY },
                 radii = { x = wide / 2.0, y = Float64.max(1.0, 2.2 * k) },
                 segs = 32, alpha = shadowAlpha(uc), z = z });
-        let under = Render.boxAt({ x = cx, y = groundY - lift + 2.6 * k },
+        let under = RawDraw.boxAt({ x = cx, y = groundY - lift + 2.6 * k },
                 { x = wide, y = Float64.max(1.0, 2.2 * k) },
                 tint(Color.darken(w#theme#road, 0.42)), z);
-        let body = Render.boxAt({ x = cx, y = groundY - lift },
+        let body = RawDraw.boxAt({ x = cx, y = groundY - lift },
                 { x = wide, y = Float64.max(2.0, 5.4 * k) }, tint(w#theme#finish), z)
             |> Render.overItem(Render.striped({ color = tint(w#theme#kerb), alpha = 1.0,
                     width = Float64.max(1.5, 4.0 * k), period = Float64.max(3.0, 8.5 * k),
                     dir = 0 }));
-        let grip = xx -> Render.circleAt({ x = xx, y = groundY - lift },
+        let grip = xx -> RawDraw.circleAt({ x = xx, y = groundY - lift },
                 Float64.max(1.5, 3.8 * k), tint(Color.darken(w#theme#kerb, 0.18)), z);
         sweep :: shadow :: under :: body :: grip(l) :: grip(r) :: Nil
 
@@ -655,7 +655,7 @@ mod ViewRoad {
                 let p = Proj.projectPoint(cam, w, { x = s#off, y = s#dist });
                 Render.rotated(s#turn, { x = -5.0, y = 0.0 } :: { x = 5.0, y = 0.0 } :: Nil)
                     |> List.map(o ->
-                        Render.boxAt({ x = p#x + o#x * p#k, y = p#y + o#y * p#k },
+                        RawDraw.boxAt({ x = p#x + o#x * p#k, y = p#y + o#y * p#k },
                                 { x = 2.5 * p#k, y = 2.5 * p#k }, color, zSkid())
                             |> Render.overItem(Render.fade(0.5)))
             }

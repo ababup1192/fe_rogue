@@ -1,5 +1,6 @@
 // マキオヤモリ — 地を這う低いシルエットのヤモリ。背骨を数珠玉の連なりで描き、尻尾は背中の上に
 // くるりと巻く。走りは体を波打たせ、ダッシュは光る足跡を残し、ジャンプは C の字に丸まって落下で滑空に開く。
+// この箱組みは旧様式(RawDraw 大量使用の前例にしない)。新キャラは PxSprite+PxShade を第一候補に。
 
 mod Char03 {
 
@@ -114,7 +115,7 @@ mod Char03 {
             let radius = (4.2 - 1.0 * along)
                          * (1.0 + shape#breath * 0.07 * Curve.tri(2.2, stage#t));
             { at = { x = center#x - radius, y = center#y - radius },
-              item = Render.circle(radius, backColor(), 10) }
+              item = RawDraw.circle(radius, backColor(), 10) }
         })
 
     /// 腹の若草色: 胴の下側に小さな玉を沿わせる。
@@ -124,7 +125,7 @@ mod Char03 {
             let center = spinePoint(stage, shape, along);
             let radius = 2.0 * (1.0 + shape#breath * 0.09 * Curve.tri(2.2, stage#t));
             { at = { x = center#x - radius, y = center#y + 1.7 - radius },
-              item = Render.circle(radius, paleColor(), 11) }
+              item = RawDraw.circle(radius, paleColor(), 11) }
         })
 
     // ── 頭 ──
@@ -144,17 +145,17 @@ mod Char03 {
                 if (stage#modeT >= 0.5 and stage#modeT <= 0.85) {
                     let out = 5.0 * Curve.tri(0.35, stage#modeT - 0.5);
                     { at = { x = head#x + face * 3.5, y = head#y + 0.6 },
-                      item = Render.polygon({ x = 0.0, y = -0.5 } :: { x = face * out, y = -0.2 }
+                      item = RawDraw.polygon({ x = 0.0, y = -0.5 } :: { x = face * out, y = -0.2 }
                                      :: { x = 0.0, y = 0.5 } :: Nil, tongueColor(), 13) } :: Nil
                 } else Nil
             case _ => Nil
         };
         List.append(
-            { at = { x = head#x - 4.3, y = head#y - 4.3 }, item = Render.circle(4.3, backColor(), 12) }
+            { at = { x = head#x - 4.3, y = head#y - 4.3 }, item = RawDraw.circle(4.3, backColor(), 12) }
             :: { at = { x = head#x + face * 1.4 - 1.7, y = head#y - 1.6 - 1.7 },
-                 item = Render.circle(1.7, irisColor(), 13) }
+                 item = RawDraw.circle(1.7, irisColor(), 13) }
             :: { at = { x = head#x + face * 1.7 - 0.4, y = head#y - 1.7 - 1.2 },
-                 item = Render.box({ x = 0.8, y = 2.4 }, slitColor(), 13) |> Render.rounded(0.4) }
+                 item = RawDraw.box({ x = 0.8, y = 2.4 }, slitColor(), 13) |> Render.rounded(0.4) }
             :: Nil,
             tongue)
 
@@ -187,7 +188,7 @@ mod Char03 {
             let radius = 2.2 - 1.7 * along;
             let center = { x = hip#x + face * sel#x * inBall, y = hip#y + sel#y * inBall };
             { at = { x = center#x - radius, y = center#y - radius },
-              item = Render.circle(radius, backColor(), 9) }
+              item = RawDraw.circle(radius, backColor(), 9) }
         })
 
     /// 巻き尻尾の x（腰からの相対・折れ線）。
@@ -227,9 +228,9 @@ mod Char03 {
                             tucked, shape#ball);
             // がに股の脚: 付け根から足先へ細る三角形 + 指先の吸盤。
             { at = { x = 0.0, y = 0.0 },
-              item = Render.polygon({ x = anchor#x, y = anchor#y - 1.4 } :: { x = anchor#x, y = anchor#y + 1.4 }
+              item = RawDraw.polygon({ x = anchor#x, y = anchor#y - 1.4 } :: { x = anchor#x, y = anchor#y + 1.4 }
                              :: { x = foot#x, y = foot#y } :: Nil, color, layer) }
-            :: { at = { x = foot#x - 1.2, y = foot#y - 1.2 }, item = Render.circle(1.2, color, layer) }
+            :: { at = { x = foot#x - 1.2, y = foot#y - 1.2 }, item = RawDraw.circle(1.2, color, layer) }
             :: Nil
         })
 
@@ -248,7 +249,7 @@ mod Char03 {
                     let printX = px - face * (5.0 + shift + 9.0 * fk);
                     let alpha = Float64.max(0.0, 0.6 * (1.0 - age));
                     { at = { x = printX - 1.7, y = stage#pos#y - 1.2 - 1.7 },
-                      item = Render.circle(1.7, paleColor(), 8) |> Render.fade(alpha) }
+                      item = RawDraw.circle(1.7, paleColor(), 8) |> Render.fade(alpha) }
                 })
             case _ => Nil
         }
@@ -262,7 +263,7 @@ mod Char03 {
         else {
             let face = stage#facing;
             let sheet = { at = { x = stage#pos#x, y = stage#pos#y - 4.0 },
-                          item = Render.polygon({ x = face * 9.0, y = -1.0 } :: { x = -face * 8.5, y = -1.0 }
+                          item = RawDraw.polygon({ x = face * 9.0, y = -1.0 } :: { x = -face * 8.5, y = -1.0 }
                                          :: { x = -face * 6.5, y = 3.0 } :: { x = face * 7.5, y = 3.0 } :: Nil,
                                          paleColor(), 9)
                              |> Render.fade(0.35 * shape#splay) };

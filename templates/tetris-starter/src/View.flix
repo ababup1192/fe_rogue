@@ -77,7 +77,7 @@ mod View {
     /// 1 マスを平らに塗る（中心置き・0.5px の隙間でマス目感を出す）。
     /// ゴーストと NEXT のように「そこに物は無い」印にはこちらを使う。
     def flatBlock(c: Int32, r: Int32, color: Color, z: Int32): Render.PlacedItem =
-        Render.boxAt(cellCenter(c, r), { x = cell() - 1.0, y = cell() - 1.0 }, color, z)
+        RawDraw.boxAt(cellCenter(c, r), { x = cell() - 1.0, y = cell() - 1.0 }, color, z)
 
     /// 刷ったマス 1 つ。面 + 上辺の照り + 下辺の沈み の 3 枚を重ねる。
     /// 平らな 1 枚だけだと積み上がった山が「べた塗りの塊」になり、
@@ -88,10 +88,10 @@ mod View {
     /// 刷った四角 1 つ（1 辺 side・中心置き）。盤のマスと NEXT のプレビューが共有する
     /// ので、盤の格子に縛られない形（中心と辺の長さ）で受ける。
     def printedRect(at: Vec2.Vec2, side: Float64, color: Color, z: Int32): List[Render.PlacedItem] =
-           Render.boxAt(at, { x = side, y = side }, color, z)
-        :: Render.boxAt({ x = at#x, y = at#y - side / 2.0 + 1.5 }, { x = side - 3.0, y = 3.0 },
+           RawDraw.boxAt(at, { x = side, y = side }, color, z)
+        :: RawDraw.boxAt({ x = at#x, y = at#y - side / 2.0 + 1.5 }, { x = side - 3.0, y = 3.0 },
                Color.warm(Color.lighten(color, 0.42), 0.10), z + 1)
-        :: Render.boxAt({ x = at#x, y = at#y + side / 2.0 - 1.0 }, { x = side, y = 2.0 },
+        :: RawDraw.boxAt({ x = at#x, y = at#y + side / 2.0 - 1.0 }, { x = side, y = 2.0 },
                Color.cool(Color.darken(color, 0.42), 0.10), z + 1)
         :: Nil
 
@@ -109,9 +109,9 @@ mod View {
                { position = { x = 0.0, y = 0.0 }, size = { x = designW(), y = designH() } },
                w#t, zBg())
         :: { at = { x = originX() - 2.0, y = originY() - 2.0 },
-             item = Render.box({ x = boardW + 4.0, y = boardH + 4.0 }, theme#wall, zBg() + 1) }
+             item = RawDraw.box({ x = boardW + 4.0, y = boardH + 4.0 }, theme#wall, zBg() + 1) }
         :: { at = { x = originX(), y = originY() },
-             item = Render.box({ x = boardW, y = boardH }, theme#board, zBoard()) }
+             item = RawDraw.box({ x = boardW, y = boardH }, theme#board, zBoard()) }
         :: Nil
 
     /// マス目の薄い線（縦・横）。盤の手触りを出すだけの飾り。
@@ -120,10 +120,10 @@ mod View {
         let boardH = Int32.toFloat64(World.rows()) * cell();
         let verticals = List.range(1, World.cols()) |> List.map(c ->
             { at = { x = originX() + Int32.toFloat64(c) * cell(), y = originY() },
-              item = Render.box({ x = 1.0, y = boardH }, theme#grid, zGrid()) });
+              item = RawDraw.box({ x = 1.0, y = boardH }, theme#grid, zGrid()) });
         let horizontals = List.range(1, World.rows()) |> List.map(r ->
             { at = { x = originX(), y = originY() + Int32.toFloat64(r) * cell() },
-              item = Render.box({ x = boardW, y = 1.0 }, theme#grid, zGrid()) });
+              item = RawDraw.box({ x = boardW, y = 1.0 }, theme#grid, zGrid()) });
         List.append(verticals, horizontals)
 
     // ── 固定セル・落下中ミノ・ゴースト ──
@@ -166,7 +166,7 @@ mod View {
                     if (r < 0) None
                     else {
                         let at = cellCenter(c, r);
-                        Some(Render.boxAt({ x = at#x + 2.0, y = at#y + 3.0 },
+                        Some(RawDraw.boxAt({ x = at#x + 2.0, y = at#y + 3.0 },
                             { x = cell() - 1.0, y = cell() - 1.0 }, w#theme#wall, zDropShadow()))
                     }
                 }) |> Render.fadeAll(0.18)
@@ -202,7 +202,7 @@ mod View {
                 w#clearRows |> List.flatMap(r -> {
                     // 行全幅に閃光の帯（白）を重ねる。
                     let band = { at = { x = originX(), y = originY() + Int32.toFloat64(r) * cell() },
-                                 item = Render.box({ x = boardW, y = cell() }, w#theme#flash, zClear())
+                                 item = RawDraw.box({ x = boardW, y = cell() }, w#theme#flash, zClear())
                                      |> Render.fade(fade) };
                     // さらに各セルの中心に、紙が白く抜ける柔らかい丸を重ねる（閉形式で安全な glowAt）。
                     // Add でなく Normal なのは画風の約束 — 紙は発光しない（白へ抜けるだけ）。
@@ -257,7 +257,7 @@ mod View {
         match w#phase {
             case World.Phase.GameOver =>
                    { at = { x = 0.0, y = 0.0 },
-                     item = Render.box({ x = designW(), y = designH() },
+                     item = RawDraw.box({ x = designW(), y = designH() },
                              Color.darken(w#theme#wall, 0.35), zOverlay())
                          |> Render.fade(0.62) }
                 :: centered(atlas, "GAME OVER", 20.0, w#theme#flash, 150.0)

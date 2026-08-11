@@ -130,7 +130,7 @@ mod Hero {
         let feetY = pos#y + Field.playerRadius();
         parts(look) |> List.map(p -> {
             let topLeft = { x = pos#x + p#cx - p#w / 2.0, y = feetY - p#cy - p#h / 2.0 };
-            let box = Render.box({ x = p#w, y = p#h }, p#color, zBase + p#z);
+            let box = RawDraw.box({ x = p#w, y = p#h }, p#color, zBase + p#z);
             if (p#r <= 0.0) { at = topLeft, item = box } else { at = topLeft, item = box |> Render.rounded(p#r) }
         })
 

@@ -176,7 +176,7 @@ mod Terrain {
                 if (x1 - x0 <= 0.5 or y1 - y0 <= 0.5) None
                 else Some(
                     { at = { x = x0, y = y0 },
-                      item = Render.box({ x = x1 - x0, y = y1 - y0 },
+                      item = RawDraw.box({ x = x1 - x0, y = y1 - y0 },
                                         { r = 1.0f32, g = 1.0f32, b = 1.0f32 },
                                         entry#z#surface)
                           |> Render.fade(alpha) })

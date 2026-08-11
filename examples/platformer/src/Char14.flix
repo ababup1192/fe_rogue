@@ -2,6 +2,7 @@
 // 肩幅より広い胸板に革前掛けと赤鉢巻。相棒の大鎚を肩に担ぎ、一歩ごとに体が沈む
 // 重い足取りで走る。急停止は大鎚を背後の地面へ突き立てて錨にし、火花を散らす。
 // 跳ぶときは大鎚を頭上へ振りかぶり、着地は打ち下ろしと同時に地面がひび割れる。
+// この箱組みは旧様式(RawDraw 大量使用の前例にしない)。新キャラは PxSprite+PxShade を第一候補に。
 
 mod Char14 {
 
@@ -35,13 +36,13 @@ mod Char14 {
     def boxC(stage: CharStage.Stage, dx: Float64, dy: Float64,
              w: Float64, h: Float64, c: Color, z: Int32): Render.PlacedItem =
         let p = at(stage, dx, dy);
-        { at = { x = p#x - w / 2.0, y = p#y - h / 2.0 }, item = Render.box({ x = w, y = h }, c, z) }
+        { at = { x = p#x - w / 2.0, y = p#y - h / 2.0 }, item = RawDraw.box({ x = w, y = h }, c, z) }
 
     /// 中心 (dx, dy) の円。
     def circC(stage: CharStage.Stage, dx: Float64, dy: Float64,
               r: Float64, c: Color, z: Int32): Render.PlacedItem =
         let p = at(stage, dx, dy);
-        { at = { x = p#x - r, y = p#y - r }, item = Render.circle(r, c, z) }
+        { at = { x = p#x - r, y = p#y - r }, item = RawDraw.circle(r, c, z) }
 
     /// (dx, dy) 起点の相対頂点ポリゴン。
     def polyC(stage: CharStage.Stage, dx: Float64, dy: Float64,
@@ -49,7 +50,7 @@ mod Char14 {
         let p = at(stage, dx, dy);
         let f = stage#facing;
         { at = { x = p#x, y = p#y },
-          item = Render.polygon(List.map(v -> { x = f * v#x, y = v#y }, verts), c, z) }
+          item = RawDraw.polygon(List.map(v -> { x = f * v#x, y = v#y }, verts), c, z) }
 
     /// 2 点を結ぶ太さ th の棒（腕や柄を斜めに描く）。
     def strut(stage: CharStage.Stage, ax: Float64, ay: Float64,

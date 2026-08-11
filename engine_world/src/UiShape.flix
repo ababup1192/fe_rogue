@@ -41,7 +41,7 @@ mod UiShape {
             case Shape.EllipseS(e)  => { x = e#radii#x * 2.0, y = e#radii#y * 2.0 }
             case Shape.SectorS(s)   => { x = s#radius * 2.0, y = s#radius * 2.0 }
             case Shape.SegmentS(s)  => { x = s#radius * 2.0, y = s#radius * 2.0 }
-            case Shape.LineS(l)     => bboxSize(Render.lineQuad(l#a, l#b, l#lineWidth))
+            case Shape.LineS(l)     => bboxSize(RawDraw.lineQuad(l#a, l#b, l#lineWidth))
             case Shape.PolylineS(p) => bboxSize(p#points)
             case Shape.BezierS(b)   => bboxSize(Bezier.quadratic(b#p0, b#ctrl, b#p1, b#steps))
         }
@@ -63,36 +63,36 @@ mod UiShape {
         let center = Rect2.center(r);
         match s#shape {
             case Shape.CircleS(c) =>
-                let item = Render.circle(c#radius, s#color, s#zIndex)
+                let item = RawDraw.circle(c#radius, s#color, s#zIndex)
                     |> fadeIf(s#alpha)
                     |> outlineIf(s);
                 Render.atCenter(center, { x = c#radius * 2.0, y = c#radius * 2.0 }, item) :: Nil
             case Shape.NgonS(g) =>
-                ({ at = center, item = fadeIf(s#alpha, Render.ngon(g#n, g#radius, s#color, s#zIndex)) }) :: Nil
+                ({ at = center, item = fadeIf(s#alpha, RawDraw.ngon(g#n, g#radius, s#color, s#zIndex)) }) :: Nil
             case Shape.StarS(st) => match st#via {
                 case Via.RenderVia =>
                     ({ at = center,
-                       item = fadeIf(s#alpha, Render.star(st#points, { outer = st#outer, inner = st#inner },
+                       item = fadeIf(s#alpha, RawDraw.star(st#points, { outer = st#outer, inner = st#inner },
                                                           s#color, s#zIndex)) }) :: Nil
                 case Via.BezierVia =>
                     Bezier.fill(Bezier.star(center, rOut = st#outer, rIn = st#inner), s#color, s#zIndex)
             }
             case Shape.EllipseS(e) => match e#via {
                 case Via.RenderVia =>
-                    ({ at = center, item = fadeIf(s#alpha, Render.ellipse(e#radii, s#color, s#zIndex)) }) :: Nil
+                    ({ at = center, item = fadeIf(s#alpha, RawDraw.ellipse(e#radii, s#color, s#zIndex)) }) :: Nil
                 case Via.BezierVia =>
                     Bezier.convexFill(Bezier.ellipse(center, e#radii#x, e#radii#y, e#segments), s#color, s#zIndex)
             }
             case Shape.SectorS(sc) =>
                 ({ at = center,
-                   item = fadeIf(s#alpha, Render.sector(sc#radius, { fromT = sc#fromT, toT = sc#toT },
+                   item = fadeIf(s#alpha, RawDraw.sector(sc#radius, { fromT = sc#fromT, toT = sc#toT },
                                                         s#color, s#zIndex)) }) :: Nil
             case Shape.SegmentS(sg) =>
                 ({ at = center,
-                   item = fadeIf(s#alpha, Render.circleSegment(sg#radius, { fromT = sg#fromT, toT = sg#toT },
+                   item = fadeIf(s#alpha, RawDraw.circleSegment(sg#radius, { fromT = sg#fromT, toT = sg#toT },
                                                                s#color, s#zIndex)) }) :: Nil
             case Shape.LineS(l) =>
-                Render.lineSeg(Vec2.add(center, l#a), Vec2.add(center, l#b), l#lineWidth,
+                RawDraw.lineSeg(Vec2.add(center, l#a), Vec2.add(center, l#b), l#lineWidth,
                                s#color, s#zIndex) :: Nil
             case Shape.PolylineS(pl) =>
                 Bezier.polyline(List.map(p -> Vec2.add(center, p), pl#points),

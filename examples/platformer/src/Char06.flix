@@ -1,6 +1,7 @@
 // 鬼火ランタン（WISP-LANTERN） — 持ち主を失った吊りランタンに、青白い鬼火が棲みついた。
 // 鉄枠と真鍮の「機械」の殻 × 中で燃える鬼火の「幻想」。浮遊ボブで進み、ブレーキは正面格子
 // からの逆噴射、空中はガラス 4 枚が展開して鬼火が剥き出しの火柱になる。
+// この箱組みは旧様式(RawDraw 大量使用の前例にしない)。新キャラは PxSprite+PxShade を第一候補に。
 
 mod Char06 {
 
@@ -31,7 +32,7 @@ mod Char06 {
         let lift = clamp01((0.0 - base#y) / 60.0);
         let a = Float64.max(0.0, strength * (1.0 - lift));
         ({ at = { x = base#x - 9.0, y = -2.0 },
-           item = Render.box({ x = 18.0, y = 3.0 }, glassGlow(), 8) |> Render.rounded(1.5) |> Render.fade(a) }) :: Nil
+           item = RawDraw.box({ x = 18.0, y = 3.0 }, glassGlow(), 8) |> Render.rounded(1.5) |> Render.fade(a) }) :: Nil
 
     /// ランタン本体（鉄枠+ガラス+吊り具）。hover = 底板の高さ / capShift = 笠のシアー量
     /// （前傾・後傾を上部のずれで表す）/ ringSway = 吊りリングの揺れ / wS,hS = スカッシュ比 /
@@ -43,36 +44,36 @@ mod Char06 {
         let glass =
             if (panelOpen <= 0.01)
                 at(base, -4.0 * wS, 0.0 - h - 12.0 * hS,
-                   Render.box({ x = 8.0 * wS, y = 10.0 * hS }, glassGlow(), 9)) :: Nil
+                   RawDraw.box({ x = 8.0 * wS, y = 10.0 * hS }, glassGlow(), 9)) :: Nil
             else {
                 // ガラス 4 枚が蝶番から外へ跳ね開く（空中の変形）。鬼火が剥き出しになる。
                 let o = panelOpen;
                 at(base, -6.0 - 4.5 * o, 0.0 - h - 13.0 - 1.5 * o,
-                   Render.box({ x = 2.0, y = 4.5 }, glassGlow(), 10)) ::
+                   RawDraw.box({ x = 2.0, y = 4.5 }, glassGlow(), 10)) ::
                 at(base, -6.0 - 2.5 * o, 0.0 - h - 7.5 + 0.5 * o,
-                   Render.box({ x = 2.0, y = 4.5 }, glassGlow(), 10)) ::
+                   RawDraw.box({ x = 2.0, y = 4.5 }, glassGlow(), 10)) ::
                 at(base, 4.0 + 4.5 * o, 0.0 - h - 13.0 - 1.5 * o,
-                   Render.box({ x = 2.0, y = 4.5 }, glassGlow(), 10)) ::
+                   RawDraw.box({ x = 2.0, y = 4.5 }, glassGlow(), 10)) ::
                 at(base, 4.0 + 2.5 * o, 0.0 - h - 7.5 + 0.5 * o,
-                   Render.box({ x = 2.0, y = 4.5 }, glassGlow(), 10)) :: Nil
+                   RawDraw.box({ x = 2.0, y = 4.5 }, glassGlow(), 10)) :: Nil
             };
         let frame =
             at(base, -6.0 * wS, 0.0 - h - 2.0 * hS,
-               Render.box({ x = 12.0 * wS, y = 2.0 * hS }, iron(), 10)) ::
+               RawDraw.box({ x = 12.0 * wS, y = 2.0 * hS }, iron(), 10)) ::
             at(base, -6.0 * wS, 0.0 - h - 12.0 * hS,
-               Render.box({ x = 2.0 * wS, y = 10.0 * hS }, ironDark(), 10)) ::
+               RawDraw.box({ x = 2.0 * wS, y = 10.0 * hS }, ironDark(), 10)) ::
             at(base, 4.0 * wS, 0.0 - h - 12.0 * hS,
-               Render.box({ x = 2.0 * wS, y = 10.0 * hS }, ironDark(), 10)) ::
+               RawDraw.box({ x = 2.0 * wS, y = 10.0 * hS }, ironDark(), 10)) ::
             at(base, -6.0 * wS + capShift, capY - 2.0 * hS,
-               Render.box({ x = 12.0 * wS, y = 2.0 * hS }, iron(), 10)) ::
+               RawDraw.box({ x = 12.0 * wS, y = 2.0 * hS }, iron(), 10)) ::
             at(base, -2.0 + capShift, capY - 4.0 * hS,
-               Render.box({ x = 4.0, y = 2.0 * hS }, brass(), 10)) :: Nil;
+               RawDraw.box({ x = 4.0, y = 2.0 * hS }, brass(), 10)) :: Nil;
         // 吊りリング: 真鍮の輪の中を暗色で抜いて輪に見せる。
         let ringX = capShift + ringSway;
         let ringCy = capY - 4.0 * hS - 2.0;
         let ring =
-            at(base, ringX - 2.2, ringCy - 2.2, Render.circle(2.2, brass(), 9)) ::
-            at(base, ringX - 1.1, ringCy - 1.1, Render.circle(1.1, ironDark(), 10)) :: Nil;
+            at(base, ringX - 2.2, ringCy - 2.2, RawDraw.circle(2.2, brass(), 9)) ::
+            at(base, ringX - 1.1, ringCy - 1.1, RawDraw.circle(1.1, ironDark(), 10)) :: Nil;
         List.flatten(glass :: frame :: ring :: Nil)
 
     /// 鬼火本体（芯 + 中身 + 後方へたなびく尾）。tipDx = 尾の先端の相対 x（0 なら尾なし）。
@@ -81,12 +82,12 @@ mod Char06 {
         let tail =
             if (Float64.abs(tipDx) <= 0.3) Nil
             else at(base, cx, cy,
-                    Render.polygon({ x = tipDx, y = 0.0 } :: { x = 0.0, y = 0.0 - midR * 0.75 } ::
+                    RawDraw.polygon({ x = tipDx, y = 0.0 } :: { x = 0.0, y = 0.0 - midR * 0.75 } ::
                                    { x = 0.0, y = midR * 0.75 } :: Nil,
                                    flameOuter(), 10) |> Render.fade(0.75)) :: Nil;
         let body =
-            at(base, cx - midR, cy - midR, Render.circle(midR, flameMid(), 11)) ::
-            at(base, cx - coreR, cy - coreR * 1.25, Render.circle(coreR, flameCore(), 12)) :: Nil;
+            at(base, cx - midR, cy - midR, RawDraw.circle(midR, flameMid(), 11)) ::
+            at(base, cx - coreR, cy - coreR * 1.25, RawDraw.circle(coreR, flameCore(), 12)) :: Nil;
         List.flatten(tail :: body :: Nil)
 
     /// 走り・ダッシュで後方へこぼれる火の粉。t と番号だけから位置を導く（閉形式）。
@@ -95,7 +96,7 @@ mod Char06 {
         let dx = 0.0 - f * (2.5 + 3.2 * fi + 1.2 * Curve.triWave(t * 2.3 + fi * 0.37));
         let dy = 0.0 - hover - 7.0 + 2.2 * Curve.triWave(t * 3.1 + fi * 0.71);
         let a = 0.55 - 0.15 * fi;
-        at(base, dx - 1.0, dy - 1.0, Render.circle(1.0, flameMid(), 11) |> Render.fade(a))
+        at(base, dx - 1.0, dy - 1.0, RawDraw.circle(1.0, flameMid(), 11) |> Render.fade(a))
 
     // ── 本体 ──
 
@@ -133,13 +134,13 @@ mod Char06 {
                 let hatchX = if (f > 0.0) -7.5 else 4.5;
                 let streams =
                     at(base, bx1, 0.0 - hover - 3.0,
-                       Render.box({ x = len1, y = 1.5 }, flameOuter(), 9)
+                       RawDraw.box({ x = len1, y = 1.5 }, flameOuter(), 9)
                        |> Render.rounded(0.75) |> Render.fade(0.35 + 0.3 * dashK)) ::
                     at(base, bx2, 0.0 - hover - 5.5,
-                       Render.box({ x = len2, y = 1.2 }, flameMid(), 9)
+                       RawDraw.box({ x = len2, y = 1.2 }, flameMid(), 9)
                        |> Render.rounded(0.6) |> Render.fade(0.25 + 0.25 * dashK)) ::
                     at(base, hatchX, 0.0 - hover - 1.0,
-                       Render.box({ x = 3.0, y = 1.5 }, brass(), 10)) :: Nil;
+                       RawDraw.box({ x = 3.0, y = 1.5 }, brass(), 10)) :: Nil;
                 List.flatten(
                     groundGlow(base, 0.35) ::
                     lantern(base, hover, lean, lean * 0.4, 1.0, 1.0, 0.0) ::
@@ -156,16 +157,16 @@ mod Char06 {
                 let blastLen = 3.5 + 7.0 * k;
                 let blast =
                     at(base, f * 5.0, cy,
-                       Render.polygon({ x = f * blastLen, y = 0.0 } :: { x = 0.0, y = -3.5 - 1.5 * k } ::
+                       RawDraw.polygon({ x = f * blastLen, y = 0.0 } :: { x = 0.0, y = -3.5 - 1.5 * k } ::
                                       { x = 0.0, y = 3.5 + 1.5 * k } :: Nil,
                                       flameMid(), 11) |> Render.fade(0.85)) ::
                     at(base, f * 5.0, cy,
-                       Render.polygon({ x = f * (2.0 + 4.0 * k), y = 0.0 } :: { x = 0.0, y = -1.8 } ::
+                       RawDraw.polygon({ x = f * (2.0 + 4.0 * k), y = 0.0 } :: { x = 0.0, y = -1.8 } ::
                                       { x = 0.0, y = 1.8 } :: Nil, flameCore(), 12)) ::
                     at(base, f * (6.0 + 6.5 * k) - 1.0, cy + 2.0,
-                       Render.circle(1.0, flameCore(), 12) |> Render.fade(0.2 + 0.6 * k)) ::
+                       RawDraw.circle(1.0, flameCore(), 12) |> Render.fade(0.2 + 0.6 * k)) ::
                     at(base, f * (5.0 + 5.5 * k) - 0.8, cy - 4.8,
-                       Render.circle(0.8, flameMid(), 12) |> Render.fade(0.15 + 0.55 * k)) :: Nil;
+                       RawDraw.circle(0.8, flameMid(), 12) |> Render.fade(0.15 + 0.55 * k)) :: Nil;
                 List.flatten(
                     groundGlow(base, 0.4) ::
                     lantern(base, hover, 0.0 - f * 6.5, 0.0 - f * 2.0, 1.0, 1.0, 0.0) ::
@@ -181,11 +182,11 @@ mod Char06 {
                 let coreR = 2.6 + 0.8 * opn;
                 let pillar =
                     at(base, 0.0, cy,
-                       Render.polygon({ x = 0.0, y = 0.0 - pillarLen } :: { x = -3.2, y = 2.5 } ::
+                       RawDraw.polygon({ x = 0.0, y = 0.0 - pillarLen } :: { x = -3.2, y = 2.5 } ::
                                       { x = 3.2, y = 2.5 } :: Nil, flameMid(), 11)) ::
-                    at(base, 0.0 - coreR, cy - coreR - 1.0, Render.circle(coreR, flameCore(), 12)) ::
+                    at(base, 0.0 - coreR, cy - coreR - 1.0, RawDraw.circle(coreR, flameCore(), 12)) ::
                     at(base, 0.0 - glowR, cy - glowR,
-                       Render.circle(glowR, flameOuter(), 8) |> Render.fade(0.3)) :: Nil;
+                       RawDraw.circle(glowR, flameOuter(), 8) |> Render.fade(0.3)) :: Nil;
                 List.flatten(
                     groundGlow(base, 0.3) ::
                     lantern(base, hover, 0.0, 0.0, 1.0, 1.0, opn) ::
@@ -198,11 +199,11 @@ mod Char06 {
                 let flut = Curve.tri(0.25, t);
                 let streamUp =
                     at(base, 0.0, cy,
-                       Render.polygon({ x = 0.0, y = 0.0 - (8.0 + 3.0 * flut) } :: { x = -2.4, y = 1.8 } ::
+                       RawDraw.polygon({ x = 0.0, y = 0.0 - (8.0 + 3.0 * flut) } :: { x = -2.4, y = 1.8 } ::
                                       { x = 2.4, y = 1.8 } :: Nil,
                                       flameOuter(), 10) |> Render.fade(0.7)) ::
-                    at(base, -3.4, cy - 3.4, Render.circle(3.4, flameMid(), 11)) ::
-                    at(base, -2.2, cy - 3.2, Render.circle(2.2, flameCore(), 12)) :: Nil;
+                    at(base, -3.4, cy - 3.4, RawDraw.circle(3.4, flameMid(), 11)) ::
+                    at(base, -2.2, cy - 3.2, RawDraw.circle(2.2, flameCore(), 12)) :: Nil;
                 List.flatten(
                     groundGlow(base, 0.3) ::
                     lantern(base, hover, 0.0, 0.0, 1.0, 1.0, opn) ::
@@ -217,18 +218,18 @@ mod Char06 {
                 let splatW = 9.0 + 4.0 * sq;
                 let splat =
                     at(base, 0.0 - splatW / 2.0, 0.0 - hover - 5.5,
-                       Render.box({ x = splatW, y = 3.0 }, flameMid(), 11) |> Render.rounded(1.5)) ::
-                    at(base, -2.0, 0.0 - hover - 6.5, Render.circle(2.0, flameCore(), 12)) :: Nil;
+                       RawDraw.box({ x = splatW, y = 3.0 }, flameMid(), 11) |> Render.rounded(1.5)) ::
+                    at(base, -2.0, 0.0 - hover - 6.5, RawDraw.circle(2.0, flameCore(), 12)) :: Nil;
                 let sparkA = (1.0 - k) * 0.65;
                 let sparks =
                     at(base, 2.5 + 6.0 * k, -1.5 - 3.0 * k,
-                       Render.circle(1.1, flameMid(), 12) |> Render.fade(sparkA)) ::
+                       RawDraw.circle(1.1, flameMid(), 12) |> Render.fade(sparkA)) ::
                     at(base, 0.0 - (2.5 + 6.0 * k) - 2.2, -1.5 - 3.0 * k,
-                       Render.circle(1.1, flameMid(), 12) |> Render.fade(sparkA)) ::
+                       RawDraw.circle(1.1, flameMid(), 12) |> Render.fade(sparkA)) ::
                     at(base, 1.5 + 4.0 * k, -0.5 - 5.5 * k,
-                       Render.circle(0.8, flameCore(), 12) |> Render.fade(sparkA)) ::
+                       RawDraw.circle(0.8, flameCore(), 12) |> Render.fade(sparkA)) ::
                     at(base, 0.0 - (1.5 + 4.0 * k) - 1.6, -0.5 - 5.5 * k,
-                       Render.circle(0.8, flameCore(), 12) |> Render.fade(sparkA)) :: Nil;
+                       RawDraw.circle(0.8, flameCore(), 12) |> Render.fade(sparkA)) :: Nil;
                 List.flatten(
                     groundGlow(base, 0.3 + 0.3 * sq) ::
                     lantern(base, hover, 0.0, 0.0, wS, hS, 0.0) ::

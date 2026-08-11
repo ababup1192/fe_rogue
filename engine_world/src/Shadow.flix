@@ -197,7 +197,7 @@ mod Shadow {
     def blackQuad(quad: List[Vec2.Vec2], darkness: Float64, z: Int32): Render.PlacedItem =
         let black = { r = 0.0f32, g = 0.0f32, b = 0.0f32 };
         { at = Vec2.zero(),
-          item = Render.polygon(quad, black, z)
+          item = RawDraw.polygon(quad, black, z)
               |> Render.blended(DrawCmd.BlendMode.Multiply)
               |> Render.fade(darkness) }
 
@@ -206,7 +206,7 @@ mod Shadow {
     /// 別の重なり順を持たせる理由がない）。
     def rimQuad(quad: List[Vec2.Vec2], color: Color, strength: Float64, z: Int32): Render.PlacedItem =
         { at = Vec2.zero(),
-          item = Render.polygon(quad, color, z)
+          item = RawDraw.polygon(quad, color, z)
               |> Render.blended(DrawCmd.BlendMode.Add)
               |> Render.fade(strength) }
 

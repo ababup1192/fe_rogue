@@ -228,7 +228,7 @@ mod Gallery {
         List.range(0, n) |> List.map(i -> {
             let t0 = Int32.toFloat64(i) / Int32.toFloat64(n);
             let t1 = Int32.toFloat64(i + 1) / Int32.toFloat64(n);
-            Render.lineSeg(plotPoint(t0, AudioFade.volumeOf(fade, t0)),
+            RawDraw.lineSeg(plotPoint(t0, AudioFade.volumeOf(fade, t0)),
                            plotPoint(t1, AudioFade.volumeOf(fade, t1)), 2.0, color, 10)
         })
 
@@ -237,8 +237,8 @@ mod Gallery {
         let origin = plotPoint(0.0, 0.0);
         let topLeft = plotPoint(0.0, 1.0);
         let bottomRight = plotPoint(1.0, 0.0);
-        Render.lineSeg(topLeft, origin, 1.0, axisColor(), 5)
-        :: Render.lineSeg(origin, bottomRight, 1.0, axisColor(), 5)
+        RawDraw.lineSeg(topLeft, origin, 1.0, axisColor(), 5)
+        :: RawDraw.lineSeg(origin, bottomRight, 1.0, axisColor(), 5)
         :: { at = { x = 10.0, y = topLeft#y - 6.0 }, item = Render.text("1.0", atlas, 12.0, 5) }
         :: { at = { x = 10.0, y = origin#y - 6.0 }, item = Render.text("0.0", atlas, 12.0, 5) }
         :: { at = { x = origin#x - 10.0, y = origin#y + 8.0 }, item = Render.text("t=0", atlas, 12.0, 5) }
@@ -247,7 +247,7 @@ mod Gallery {
 
     /// カーブ図 1 枚（複数カーブの重ね描きも同じ口）を PNG に焼く。
     def bakeCurvePng(atlas: FontAtlas, curves: List[(AudioFade.Fade, Color)], name: String): Unit \ IO =
-        let bg = { at = Vec2.zero(), item = Render.box(View.design(), bgColor(), 0) };
+        let bg = { at = Vec2.zero(), item = RawDraw.box(View.design(), bgColor(), 0) };
         let lines = curves |> List.flatMap(pair -> { let (fade, color) = pair; curveItems(fade, color) });
         let (drawables, polygons) = Render.draw(bg :: List.append(axisItems(atlas), lines));
         Bakery.renderPng(config(atlas), drawables, polygons, name)

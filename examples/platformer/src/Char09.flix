@@ -2,6 +2,7 @@
 // 地面へ倒して転がって進む（回転角は移動距離から閉形式で決まる＝滑らない）。
 // 跳べば上へ尖った欠片に絞られ、落下では 8 枚刃の星に開いて回り、着地で潰れて
 // 元の五角形へ戻る。中心の核（目）だけは何があっても水平を保つ。
+// この箱組みは旧様式(RawDraw 大量使用の前例にしない)。新キャラは PxSprite+PxShade を第一候補に。
 
 mod Char09 {
 
@@ -71,8 +72,8 @@ mod Char09 {
     def nucleus(cx: Float64, cy: Float64, facing: Float64): List[Render.PlacedItem] =
         let nx = cx + facing * 1.5;
         List#{
-            { at = {x = nx - 2.6, y = cy - 2.6}, item = Render.circle(2.6, nucleusInk(), 11) },
-            { at = {x = nx - 1.8, y = cy - 1.8}, item = Render.circle(0.9, glintWhite(), 12) |> Render.fade(0.9) }
+            { at = {x = nx - 2.6, y = cy - 2.6}, item = RawDraw.circle(2.6, nucleusInk(), 11) },
+            { at = {x = nx - 1.8, y = cy - 1.8}, item = RawDraw.circle(0.9, glintWhite(), 12) |> Render.fade(0.9) }
         }
 
     // ── モードごとの体 ──
@@ -82,14 +83,14 @@ mod Char09 {
         let rot = rollAngle(stage) + 0.13 * Curve.triWave(stage#modeT * 0.45);
         let pulse = 1.0 + 0.05 * Curve.triWave(stage#modeT * 0.8);
         let cy = groundCenterY(rollAngle(stage)) * pulse;
-        { at = {x = stage#pos#x, y = cy}, item = Render.polygon(pentaVerts(rot, 0.0, pulse, pulse), bodyCrys(), 10) }
+        { at = {x = stage#pos#x, y = cy}, item = RawDraw.polygon(pentaVerts(rot, 0.0, pulse, pulse), bodyCrys(), 10) }
             :: nucleus(stage#pos#x, cy, stage#facing)
 
     /// 走り・ダッシュ共通の転がる体。中心は辺と角の高低差でゴトゴト上下する。
     def rollBody(stage: CharStage.Stage): List[Render.PlacedItem] =
         let rot = rollAngle(stage);
         let cy = groundCenterY(rot);
-        { at = {x = stage#pos#x, y = cy}, item = Render.polygon(pentaVerts(rot, 0.0, 1.0, 1.0), bodyCrys(), 10) }
+        { at = {x = stage#pos#x, y = cy}, item = RawDraw.polygon(pentaVerts(rot, 0.0, 1.0, 1.0), bodyCrys(), 10) }
             :: nucleus(stage#pos#x, cy, stage#facing)
 
     /// スキッド: 逆回転ぎみに角を立てて地面へ食い込み、残像 2 枚と研削の火花破片を散らす。
@@ -97,12 +98,12 @@ mod Char09 {
         let grip = Float64.min(1.0, Float64.abs(stage#vx) / 280.0);
         let rot = rollAngle(stage) - stage#facing * 0.55 * grip;
         let cy = groundCenterY(rollAngle(stage));
-        let core = { at = {x = stage#pos#x, y = cy}, item = Render.polygon(pentaVerts(rot, 0.0, 1.0, 1.0), bodyCrys(), 10) };
+        let core = { at = {x = stage#pos#x, y = cy}, item = RawDraw.polygon(pentaVerts(rot, 0.0, 1.0, 1.0), bodyCrys(), 10) };
         let ghosts = List.range(0, 2) |> List.map(g ->
             let fg = Int32.toFloat64(g);
             let scale = 0.92 - 0.1 * fg;
             { at = {x = stage#pos#x - stage#facing * (7.0 + 7.0 * fg), y = cy},
-              item = Render.polygon(pentaVerts(rot + stage#facing * 0.35 * (fg + 1.0), 0.0, scale, scale), bodyCrys(), 8)
+              item = RawDraw.polygon(pentaVerts(rot + stage#facing * 0.35 * (fg + 1.0), 0.0, scale, scale), bodyCrys(), 8)
                   |> Render.fade((0.38 - 0.16 * fg) * grip) });
         List.flatten(List#{ghosts, core :: Nil, grindChips(stage, grip), nucleus(stage#pos#x, cy, stage#facing)})
 
@@ -111,14 +112,14 @@ mod Char09 {
         let e = Float64.min(1.0, stage#modeT * 4.5);
         let rot = rollAngle(stage) * (1.0 - e);
         let cy = stage#pos#y - bodyR();
-        { at = {x = stage#pos#x, y = cy}, item = Render.polygon(pentaVerts(rot, e, 1.0 - 0.25 * e, 1.0), bodyCrys(), 10) }
+        { at = {x = stage#pos#x, y = cy}, item = RawDraw.polygon(pentaVerts(rot, e, 1.0 - 0.25 * e, 1.0), bodyCrys(), 10) }
             :: nucleus(stage#pos#x, cy, stage#facing)
 
     /// 落下: 8 枚刃の星に開き、回転しながら落ちる（頂点数ごと切り替わる「割れ」の瞬間が頂点）。
     def sawBody(stage: CharStage.Stage): List[Render.PlacedItem] =
         let spin = rollAngle(stage) + stage#modeT * 13.0;
         let cy = stage#pos#y - bodyR() - 0.5;
-        { at = {x = stage#pos#x, y = cy}, item = Render.polygon(starVerts(spin), bodyCrys(), 10) }
+        { at = {x = stage#pos#x, y = cy}, item = RawDraw.polygon(starVerts(spin), bodyCrys(), 10) }
             :: nucleus(stage#pos#x, cy, stage#facing)
 
     /// 着地: 低い台形状に潰れ、左右へ破片が跳ねる。窓の終わりで元の五角形へ戻る。
@@ -126,7 +127,7 @@ mod Char09 {
         let squash = 1.0 - stage#modeT / 0.2;
         let cy = groundCenterY(rollAngle(stage)) * (1.0 - 0.45 * squash);
         let core = { at = {x = stage#pos#x, y = cy},
-                     item = Render.polygon(pentaVerts(rollAngle(stage), 0.0, 1.0 + 0.08 * squash, 1.0 - 0.45 * squash), bodyCrys(), 10) };
+                     item = RawDraw.polygon(pentaVerts(rollAngle(stage), 0.0, 1.0 + 0.08 * squash, 1.0 - 0.45 * squash), bodyCrys(), 10) };
         List.flatten(List#{core :: Nil, popChips(stage), nucleus(stage#pos#x, cy, stage#facing)})
 
     // ── モード付随のエフェクト ──
@@ -143,7 +144,7 @@ mod Char09 {
                 let cyv = stage#pos#y - bodyR() + 9.0 * Vec2.sin(a);
                 let layer = if (Vec2.sin(a) > 0.0) 12 else 8;
                 { at = {x = cx, y = cyv},
-                  item = Render.polygon(triVerts(a * 2.0, 2.8), chipLight(), layer)
+                  item = RawDraw.polygon(triVerts(a * 2.0, 2.8), chipLight(), layer)
                       |> Render.fade(0.85 * band) })
 
     /// スキッドの研削破片: 進行方向の足元へ低く跳ねる小さな三角形 3 枚。
@@ -155,7 +156,7 @@ mod Char09 {
             let cx = stage#pos#x + stage#facing * (6.0 + 3.0 * fc) * e;
             let cyv = -1.5 - (3.0 + 1.5 * fc) * hop;
             { at = {x = cx, y = cyv},
-              item = Render.polygon(triVerts(e * 10.0 + fc, 1.6), chipLight(), 11)
+              item = RawDraw.polygon(triVerts(e * 10.0 + fc, 1.6), chipLight(), 11)
                   |> Render.fade(Float64.max(0.0, (1.0 - e) * grip)) })
 
     /// 着地の破片: 左右へ弾け飛ぶ三角形。上がって落ちる小さな山なりで消える。
@@ -166,6 +167,6 @@ mod Char09 {
             let cx = stage#pos#x + side * (5.0 + 18.0 * stage#modeT);
             let cyv = -2.5 - 5.0 * hop;
             { at = {x = cx, y = cyv},
-              item = Render.polygon(triVerts(q * 8.0 * side, 1.8), chipLight(), 12)
+              item = RawDraw.polygon(triVerts(q * 8.0 * side, 1.8), chipLight(), 12)
                   |> Render.fade(Float64.max(0.0, 1.0 - q)) })
 }

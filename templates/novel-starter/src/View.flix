@@ -64,7 +64,7 @@ mod View {
         let theme = w#theme;
         let floorTop = wallBottom();
            { at = { x = 0.0, y = 0.0 },
-             item = Render.box({ x = World.width(), y = World.height() }, theme#bg, zRoom()) }
+             item = RawDraw.box({ x = World.width(), y = World.height() }, theme#bg, zRoom()) }
         :: { at = { x = 0.0, y = 0.0 },
              item = Render.vgrad({ x = World.width(), y = floorTop },
                  { top = ThemeDoc.lighten(theme#wall, 0.14),
@@ -76,7 +76,7 @@ mod View {
                    bottom = ThemeDoc.darken(theme#wall, 0.55) }, zWall()) }
         // 幅木。暗い床と暗い壁だけでは境目が立たず、床を敷いたことが伝わらない。
         :: { at = { x = 0.0, y = floorTop - 2.0 },
-             item = Render.box({ x = World.width(), y = 2.0 },
+             item = RawDraw.box({ x = World.width(), y = 2.0 },
                                ThemeDoc.lighten(theme#wall, 0.25), zWall() + 1) }
         :: List.append(window(w), lightCones(w))
 
@@ -99,9 +99,9 @@ mod View {
         let paneSize = { x = 88.0, y = 104.0 };
         List.flatten(
                border(paneAt, paneSize, 4.0, frameColor, zWindow())
-            :: ({ at = paneAt, item = Render.box(paneSize, theme#window, zWindow()) } :: Nil)
+            :: ({ at = paneAt, item = RawDraw.box(paneSize, theme#window, zWindow()) } :: Nil)
             :: ({ at = { x = paneAt#x + paneSize#x / 2.0 - 2.0, y = paneAt#y },
-                  item = Render.box({ x = 4.0, y = paneSize#y }, frameColor, zWindow() + 1) } :: Nil)
+                  item = RawDraw.box({ x = 4.0, y = paneSize#y }, frameColor, zWindow() + 1) } :: Nil)
             :: rain(paneAt, paneSize, w)
             :: Nil)
 
@@ -109,13 +109,13 @@ mod View {
     def border(at: Vec2.Vec2, size: Vec2.Vec2, thickness: Float64,
                color: Color, z: Int32): List[Render.PlacedItem] =
            { at = { x = at#x - thickness, y = at#y - thickness },
-             item = Render.box({ x = size#x + thickness * 2.0, y = thickness }, color, z) }
+             item = RawDraw.box({ x = size#x + thickness * 2.0, y = thickness }, color, z) }
         :: { at = { x = at#x - thickness, y = at#y + size#y },
-             item = Render.box({ x = size#x + thickness * 2.0, y = thickness }, color, z) }
+             item = RawDraw.box({ x = size#x + thickness * 2.0, y = thickness }, color, z) }
         :: { at = { x = at#x - thickness, y = at#y },
-             item = Render.box({ x = thickness, y = size#y }, color, z) }
+             item = RawDraw.box({ x = thickness, y = size#y }, color, z) }
         :: { at = { x = at#x + size#x, y = at#y },
-             item = Render.box({ x = thickness, y = size#y }, color, z) }
+             item = RawDraw.box({ x = thickness, y = size#y }, color, z) }
         :: Nil
 
     /// 雨すじ。本数と明るさは色票（novel.theme.json）から、i 番目の位置・長さ・速さは
@@ -130,7 +130,7 @@ mod View {
             let travel = paneSize#y + len;
             let y = Num.wrapTo(travel, rand(1) * travel + t * speed) - len;
             { at = { x = paneAt#x + 4.0 + rand(0) * (paneSize#x - 8.0), y = paneAt#y + y },
-              item = Render.box({ x = 1.0, y = len }, streakColor, zWindow() + 1)
+              item = RawDraw.box({ x = 1.0, y = len }, streakColor, zWindow() + 1)
                   |> Render.clipped({ position = paneAt, size = paneSize }) }
         })
 
@@ -143,11 +143,11 @@ mod View {
         let cell = Int32.toFloat64(px());
         // 絵があった跡: 長く飾られて壁が焼けなかった、ひとまわり明るい矩形。
         let trace = { at = { x = topLeft#x + cell * 2.0, y = topLeft#y + cell * 2.0 },
-                      item = Render.box({ x = cell * 12.0, y = cell * 8.0 },
+                      item = RawDraw.box({ x = cell * 12.0, y = cell * 8.0 },
                                         ThemeDoc.lighten(w#theme#wall, 0.08), zTrace()) };
         // 壁に落ちる影（右下へずらした薄い闇）。額縁が壁から浮いて見える。
         let shadow = { at = { x = topLeft#x + 5.0, y = topLeft#y + 6.0 },
-                       item = Render.box({ x = cell * 16.0, y = cell * 12.0 },
+                       item = RawDraw.box({ x = cell * 16.0, y = cell * 12.0 },
                                          ThemeDoc.darken(w#theme#wall, 0.6), zFrameShadow())
                            |> Render.fade(0.45) };
         let items = PxSprite.draw(w#sprites, "frame", "idle", topLeft,
@@ -182,11 +182,11 @@ mod View {
         let x = spec#x;
         let head = { x = x - 4.0, y = 28.0 };
         let arm = { at = { x = x - 2.0, y = 36.0 },
-                    item = Render.box({ x = 4.0, y = 10.0 },
+                    item = RawDraw.box({ x = 4.0, y = 10.0 },
                                       ThemeDoc.lighten(theme#wall, 0.1), zLamp()) };
         let headColor = if (spec#litNow) ThemeDoc.lighten(theme#accent, 0.3 * spec#flicker)
                         else ThemeDoc.lighten(theme#bg, 0.08);
-        let headBox = { at = head, item = Render.box({ x = 8.0, y = 8.0 }, headColor, zLamp() + 1) };
+        let headBox = { at = head, item = RawDraw.box({ x = 8.0, y = 8.0 }, headColor, zLamp() + 1) };
         let glow = if (spec#litNow)
             Render.glowAt({ x = x, y = 32.0 }, 36.0 * spec#flicker, theme#accent,
                           { alpha = 0.32 * spec#flicker, blend = DrawCmd.BlendMode.Add }, zLamp() + 2)
@@ -208,7 +208,7 @@ mod View {
                     let rise = 46.0;
                     let y = 88.0 - Num.wrapTo(rise, rand(1) * rise + t * 7.0);
                     let x = cx - 16.0 + rand(0) * 32.0 + Sway.wave(t, rand(2), 0.4) * 4.0;
-                    Render.circleAt({ x = x, y = y }, 0.7 + rand(3) * 0.6,
+                    RawDraw.circleAt({ x = x, y = y }, 0.7 + rand(3) * 0.6,
                             ThemeDoc.lighten(w#theme#accent, 0.35), zDust())
                         |> Render.overItem(item -> item
                             |> Render.fade(0.10 + rand(4) * 0.16)
@@ -222,7 +222,7 @@ mod View {
         let alpha = Float64.min(1.0, Int32.toFloat64(w#lightsOut) * w#kind#dim);
         if (alpha <= 0.0) Nil
         else { at = { x = 0.0, y = 0.0 },
-               item = Render.box({ x = World.width(), y = World.height() },
+               item = RawDraw.box({ x = World.width(), y = World.height() },
                                  { r = 0.02f32, g = 0.02f32, b = 0.05f32 }, zVeil())
                    |> Render.fade(alpha) } :: Nil
 

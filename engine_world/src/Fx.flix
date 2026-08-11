@@ -144,9 +144,9 @@ mod Fx {
                     case FxDoc.Shape.Circle =>
                         // 円とにじみは回しても同じ絵なので傾けない（粒ごとの回転を描画部へ
                         // 送るだけ無駄になる）。
-                        decorate(Render.circleAt(pos, size / 2.0, color, emitter#zIndex)) :: Nil
+                        decorate(RawDraw.circleAt(pos, size / 2.0, color, emitter#zIndex)) :: Nil
                     case FxDoc.Shape.Box    =>
-                        decorate(Render.boxAt(pos, { x = size, y = size }, color, emitter#zIndex)
+                        decorate(RawDraw.boxAt(pos, { x = size, y = size }, color, emitter#zIndex)
                             |> (p -> if (Float64.abs(spun) < 1.0e-12) p
                                      else { item = Render.turned(spun, p#item) | p })) :: Nil
                     case FxDoc.Shape.Streak =>
@@ -161,7 +161,7 @@ mod Fx {
                         // 止まった粒は射出方向を向く（尾は 0 = ただの size 角の箱）。
                         let velTurn = if (velLen < 1.0e-9) turn
                                       else Vec2.atan2(vel#y, vel#x) / Vec2.tau() + 0.25;
-                        decorate(Render.boxAt(pos, { x = size, y = size + velLen * emitter#stretch },
+                        decorate(RawDraw.boxAt(pos, { x = size, y = size + velLen * emitter#stretch },
                                               color, emitter#zIndex)
                             |> (p -> if (Float64.abs(velTurn) < 1.0e-12) p
                                      else { item = Render.turned(velTurn, p#item) | p })) :: Nil

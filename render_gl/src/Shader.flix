@@ -164,7 +164,7 @@ mod RenderShader {
     /// (角丸・枠・ハッチ・市松) をすべて instance 属性 (loc1-10) で受け取るので、
     /// uniform の設定なしに 1 回の draw call で何千体でも描ける。
     /// スタイルまで属性に載せるのは、単色矩形が常に style 付きで届く
-    /// (Render.box が solidStyle を持たせる) ため、style をバッチ分割条件に
+    /// (RawDraw.box が solidStyle を持たせる) ため、style をバッチ分割条件に
     /// すると矩形が全部 1 枚ずつ描かれて一括化の意味が消えるから。
     /// mat2(inst1.xy, inst1.zw) + inst2 は drawSprite の model 行列
     /// （回転×スケール＋平行移動）と同じ変換。

@@ -65,7 +65,7 @@ mod CharGallery {
                       item = Render.textTinted(name, atlas, 8.0, Palette.hudText(), zLabel()) };
         let sep = if (idx == 0) Nil else
             { at = { x = left, y = 0.0 },
-              item = Render.box({ x = 1.0, y = Int32.toFloat64(stageH()) }, Palette.wall(), 1) } :: Nil;
+              item = RawDraw.box({ x = 1.0, y = Int32.toFloat64(stageH()) }, Palette.wall(), 1) } :: Nil;
         let body = drawFn(stage) |> List.map(placed -> {
             { at = { x = placed#at#x + originX, y = placed#at#y + groundY() }, item = placed#item }
         });
@@ -75,8 +75,8 @@ mod CharGallery {
     def groundItems(): List[Render.PlacedItem] =
         let w = Int32.toFloat64(stageW());
         let dirtH = Int32.toFloat64(stageH()) - groundY() - 4.0;
-        { at = { x = 0.0, y = groundY() }, item = Render.box({ x = w, y = 4.0 }, Palette.grassTop(), 0) } ::
-        { at = { x = 0.0, y = groundY() + 4.0 }, item = Render.box({ x = w, y = dirtH }, Palette.dirtBody(), 0) } :: Nil
+        { at = { x = 0.0, y = groundY() }, item = RawDraw.box({ x = w, y = 4.0 }, Palette.grassTop(), 0) } ::
+        { at = { x = 0.0, y = groundY() + 4.0 }, item = RawDraw.box({ x = w, y = dirtH }, Palette.dirtBody(), 0) } :: Nil
 
     // ── 焼き込み ──
 

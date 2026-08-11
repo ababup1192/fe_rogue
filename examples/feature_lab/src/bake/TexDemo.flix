@@ -37,7 +37,7 @@ mod TexDemo {
                 let x = 40.0 + Float64.abs(Vec2.sin(fi * 2.3)) * 140.0;
                 let w = 26.0 + Float64.abs(Vec2.sin(fi * 1.7)) * 30.0;
                 let color = if (Int32.modulo(i, 2) == 0) mint() else sun();
-                Render.lineSeg({ x = x, y = y }, { x = x + w, y = y }, 1.5, color, 6)
+                RawDraw.lineSeg({ x = x, y = y }, { x = x + w, y = y }, 1.5, color, 6)
             })
 
     /// 夕日の反射帯（湖面に落ちる縦並びの短い横線）。
@@ -47,7 +47,7 @@ mod TexDemo {
                 let fi = Int32.toFloat64(i);
                 let y = horizonY() + 8.0 + fi * 13.0;
                 let w = 34.0 - fi * 4.0;
-                Render.lineSeg({ x = 240.0 - w / 2.0, y = y }, { x = 240.0 + w / 2.0, y = y },
+                RawDraw.lineSeg({ x = 240.0 - w / 2.0, y = y }, { x = 240.0 + w / 2.0, y = y },
                                2.5, sun(), 7)
             })
 
@@ -57,12 +57,12 @@ mod TexDemo {
         let sky = { at = Vec2.zero(),
                     item = Render.vgrad({ x = design()#x, y = horizonY() },
                                         { top = navy(), bottom = duskRose() }, 0) };
-        let sunHalo = Render.circleAt({ x = 240.0, y = 86.0 }, 30.0, duskRose(), 1);
-        let sunBody = Render.circleAt({ x = 240.0, y = 86.0 }, 21.0, sun(), 2);
-        let sunGlint = Render.circleAt({ x = 240.0, y = 86.0 }, 9.0, sunCore(), 3);
-        let farHill  = Render.ngonAt({ x = 70.0, y = 168.0 }, 24, 70.0, hillFar(), 4);
-        let farHill2 = Render.ngonAt({ x = 305.0, y = 178.0 }, 24, 58.0, hillFar(), 4);
-        let nearHill = Render.ngonAt({ x = 150.0, y = 196.0 }, 24, 62.0, hillNear(), 5);
+        let sunHalo = RawDraw.circleAt({ x = 240.0, y = 86.0 }, 30.0, duskRose(), 1);
+        let sunBody = RawDraw.circleAt({ x = 240.0, y = 86.0 }, 21.0, sun(), 2);
+        let sunGlint = RawDraw.circleAt({ x = 240.0, y = 86.0 }, 9.0, sunCore(), 3);
+        let farHill  = RawDraw.ngonAt({ x = 70.0, y = 168.0 }, 24, 70.0, hillFar(), 4);
+        let farHill2 = RawDraw.ngonAt({ x = 305.0, y = 178.0 }, 24, 58.0, hillFar(), 4);
+        let nearHill = RawDraw.ngonAt({ x = 150.0, y = 196.0 }, 24, 62.0, hillNear(), 5);
         let water = { at = { x = 0.0, y = horizonY() },
                       item = Render.vgrad({ x = design()#x, y = design()#y - horizonY() },
                                           { top = lake(), bottom = navy() }, 5) };
@@ -113,7 +113,7 @@ mod TexDemo {
                ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Step, a = c(0.5), b = uvU() }))
 
     def bakeBlit(cfg: Bakery.BakeConfig): Unit \ IO =
-        let divider = Render.lineSeg({ x = 160.0, y = 0.0 }, { x = 160.0, y = 240.0 },
+        let divider = RawDraw.lineSeg({ x = 160.0, y = 0.0 }, { x = 160.0, y = 240.0 },
                                      1.0, mint(), 10);
         // Render.sprite は中心原点なので design の中央へ置く（左上に置くと 1/4 だけ見える）。
         let (drawables, polygons) =

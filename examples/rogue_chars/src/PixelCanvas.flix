@@ -3,7 +3,7 @@
 // パーツを部品ごとに組んで overlay で重ねる合成スタイルで絵を作る。
 //
 // 出口は 2 つ:
-//   - toPlaced … ギャラリー（SoftRaster）用に 1 ピクセル = 1×1 の Render.box へ変換
+//   - toPlaced … ギャラリー（SoftRaster）用に 1 ピクセル = 1×1 の RawDraw.box へ変換
 //   - SheetBake が Map を直接 setRGB で PNG へ blit（こちらは等倍・正確）
 
 mod PixelCanvas {
@@ -135,13 +135,13 @@ mod PixelCanvas {
     pub def overlay(top: Canvas, bottom: Canvas): Canvas =
         Map.union(top, bottom)
 
-    /// ギャラリー用の出口: 1 ピクセルを 1×1 の Render.box にして design 座標
+    /// ギャラリー用の出口: 1 ピクセルを 1×1 の RawDraw.box にして design 座標
     /// (originX+x, originY+y) へ置く。整数座標なので SoftRaster の scale=4 でも
     /// にじまずクリスプに拡大される。
     pub def toPlaced(originX: Int32, originY: Int32, cv: Canvas): List[Render.PlacedItem] =
         Map.foldLeftWithKey((acc, k, c) -> {
             let (x, y) = k;
             let pos = { x = Int32.toFloat64(originX + x), y = Int32.toFloat64(originY + y) };
-            { at = pos, item = Render.box({ x = 1.0, y = 1.0 }, c, 10) } :: acc
+            { at = pos, item = RawDraw.box({ x = 1.0, y = 1.0 }, c, 10) } :: acc
         }, Nil, cv)
 }

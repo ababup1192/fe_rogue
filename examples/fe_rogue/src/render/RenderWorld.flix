@@ -390,7 +390,7 @@ mod RenderWorld {
                                transform: Projection.ViewTransform): List[GameEngine.Drawable] =
         let worldTopLeft: Vec2 = {x = center#x + box#offset#x, y = center#y + box#offset#y};
         let screenPos = Projection.applyToWorldPos(transform, worldTopLeft);
-        Render.toDrawables(Render.box(box#size, CursorDriver.cornerColor(), CursorDriver.cornerZIndex()), screenPos)
+        Render.toDrawables(RawDraw.box(box#size, CursorDriver.cornerColor(), CursorDriver.cornerZIndex()), screenPos)
             |> Render.applyCameraScale(transform)
 
     /// 杖・投擲の照準矢印を World render System で直描きする。表示は `StaffAim` / `ThrowAim` フェーズの間だけ。
@@ -417,7 +417,7 @@ mod RenderWorld {
         let worldPos: Vec2.Vec2 = {x = posV#x * s, y = posV#y * s};
         let sizePx:   Vec2.Vec2 = {x = sizeV#x * s, y = sizeV#y * s};
         let screenPos = Projection.applyToWorldPos(transform, worldPos);
-        Render.toDrawables(Render.box(sizePx, Fog.fogColor(), Fog.fogZIndex()), screenPos)
+        Render.toDrawables(RawDraw.box(sizePx, Fog.fogColor(), Fog.fogZIndex()), screenPos)
             |> Render.applyCameraScale(transform)
             |> List.map(d -> {alpha = Fog.fogAlpha() | d})
 

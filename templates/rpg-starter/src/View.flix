@@ -259,10 +259,10 @@ mod View {
                 let swayX = Sway.wave(w#t, 0.3, 0.9) * 1.6;
                 let swayY = Sway.wave(w#t, 0.8, 1.3) * 0.8;
                 let pole = { at = { x = apex#x, y = apex#y - 6.0 },
-                             item = Render.box({ x = 1.0, y = 6.0 },
+                             item = RawDraw.box({ x = 1.0, y = 6.0 },
                                  ThemeDoc.resolver(w#theme, "woodDark"), 2) };
                 let pennant = { at = { x = apex#x + 1.0, y = apex#y - 6.0 },
-                                item = Render.polygon(
+                                item = RawDraw.polygon(
                                        { x = 0.0, y = 0.0 }
                                     :: { x = 7.0 + swayX, y = 1.5 + swayY }
                                     :: { x = 0.0, y = 4.0 }
@@ -365,7 +365,7 @@ mod View {
         let items = PxSprite.draw(w#sprites, spec#name, spec#frame, at,
             spec#flipX, spec#scale, key -> ThemeDoc.resolver(w#theme, key), spec#z);
         if (List.isEmpty(items))
-            { at = topLeft, item = Render.box(box, spec#fallback, spec#z) } :: Nil
+            { at = topLeft, item = RawDraw.box(box, spec#fallback, spec#z) } :: Nil
         else
             items
 
@@ -374,7 +374,7 @@ mod View {
     def fogBands(theme: ThemeDoc.Doc): List[Render.PlacedItem] =
         List.range(0, 5) |> List.map(i ->
             { at = { x = 0.0, y = Hash01.at(i, 11) * (World.height() - 40.0) },
-              item = Render.box({ x = World.width(), y = 30.0 + Hash01.at(i, 12) * 34.0 },
+              item = RawDraw.box({ x = World.width(), y = 30.0 + Hash01.at(i, 12) * 34.0 },
                                 theme#fog, zFog())
                   |> Render.fade(0.10 + Hash01.at(i, 13) * 0.08) })
 
@@ -418,7 +418,7 @@ mod View {
             speakerCenter#y - World.tileSize() / 2.0 - boxH - 8.0);
         List.flatten(
                ({ at = { x = boxX, y = boxY },
-                  item = Render.box({ x = boxW, y = boxH }, w#theme#paper, zBubble()) } :: Nil)
+                  item = RawDraw.box({ x = boxW, y = boxH }, w#theme#paper, zBubble()) } :: Nil)
             :: tail(speakerCenter, boxY + boxH, w#theme#paper)
             :: RichText.place(
                    { atlas = atlas, size = fontSize, baseTint = w#theme#ink,
@@ -429,7 +429,7 @@ mod View {
     /// ふきだしの口（枠の下辺から話し手へ落ちる小さな三角）。
     def tail(speakerCenter: Vec2.Vec2, fromY: Float64, color: Color): List[Render.PlacedItem] =
         { at = { x = speakerCenter#x, y = fromY },
-          item = Render.polygon(
+          item = RawDraw.polygon(
               { x = -4.0, y = 0.0 } :: { x = 4.0, y = 0.0 } :: { x = 0.0, y = 6.0 } :: Nil,
               color, zBubble() + 1) } :: Nil
 
@@ -458,7 +458,7 @@ mod View {
 
     def veil(theme: ThemeDoc.Doc, alpha: Float64): List[Render.PlacedItem] =
         { at = { x = 0.0, y = 0.0 },
-          item = Render.box({ x = World.width(), y = World.height() },
+          item = RawDraw.box({ x = World.width(), y = World.height() },
                             ThemeDoc.darken(theme#sky, 0.5), zVeil())
               |> Render.fade(alpha) } :: Nil
 
@@ -549,7 +549,7 @@ mod View {
         let center = { x = World.width() / 2.0, y = groundY - half + bob };
         // 影は本体が浮くほど小さく薄くする（浮き沈みが影で読める）。
         let lift = (bob + 4.0) / 8.0;
-        let shadow = Render.ellipseAt({ x = center#x, y = groundY + 3.0 },
+        let shadow = RawDraw.ellipseAt({ x = center#x, y = groundY + 3.0 },
             { x = 40.0 - lift * 5.0, y = 10.0 - lift * 2.0 },
             ThemeDoc.darken(w#theme#sky, 0.55), zFoeShadow())
             |> (placed -> { item = Render.fade(0.7, placed#item) | placed });
@@ -564,9 +564,9 @@ mod View {
     /// 角丸や影を足さないのは、この画風の窓が「紙を切って貼った物」だから。
     def window(rect: Rect2.Rect2, theme: ThemeDoc.Doc): List[Render.PlacedItem] =
         let inset = 2.0;
-           { at = rect#position, item = Render.box(rect#size, theme#paper, zWindow()) }
+           { at = rect#position, item = RawDraw.box(rect#size, theme#paper, zWindow()) }
         :: { at = { x = rect#position#x + inset, y = rect#position#y + inset },
-             item = Render.box({ x = rect#size#x - inset * 2.0, y = rect#size#y - inset * 2.0 },
+             item = RawDraw.box({ x = rect#size#x - inset * 2.0, y = rect#size#y - inset * 2.0 },
                  ThemeDoc.darken(theme#ink, 0.15), zWindow() + 1) }
         :: Nil
 
@@ -586,10 +586,10 @@ mod View {
                windowLine(atlas, "HP ${Int32.toString(w#heroHp)}/${Int32.toString(maxHp)}",
                    { x = 26.0, y = 22.0 }, w#theme#paper)
             :: { at = { x = 26.0, y = 40.0 },
-                 item = Render.box({ x = barW, y = 6.0 },
+                 item = RawDraw.box({ x = barW, y = 6.0 },
                      ThemeDoc.darken(w#theme#paper, 0.75), zWindowText()) }
             :: { at = { x = 26.0, y = 40.0 },
-                 item = Render.box({ x = barW * ratio, y = 6.0 }, barColor, zWindowText() + 1) }
+                 item = RawDraw.box({ x = barW * ratio, y = 6.0 }, barColor, zWindowText() + 1) }
             :: Nil)
 
     /// コマンドの窓（左下）。コマンドを選んでいる間だけ出す。
@@ -605,7 +605,7 @@ mod View {
                 let chosen = i == w#battle#cursor;
                 let mark = if (chosen)
                         { at = { x = 30.0, y = y + 7.0 },
-                          item = Render.polygon(
+                          item = RawDraw.polygon(
                               { x = 0.0, y = -5.0 } :: { x = 7.0, y = 0.0 } :: { x = 0.0, y = 5.0 } :: Nil,
                               w#theme#accent, zWindowText() + 1)
                               |> Render.fade(blink) } :: Nil
@@ -636,7 +636,7 @@ mod View {
             let blink = 0.5 + 0.5 * Sway.wave(w#t, 0.25, 1.4);
             let more = { at = { x = rect#position#x + rect#size#x - 16.0,
                                 y = top + height - 12.0 },
-                         item = Render.polygon(
+                         item = RawDraw.polygon(
                              { x = -5.0, y = 0.0 } :: { x = 5.0, y = 0.0 } :: { x = 0.0, y = 6.0 } :: Nil,
                              w#theme#accent, zWindowText() + 1)
                              |> Render.fade(blink) };

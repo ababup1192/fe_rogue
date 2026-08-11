@@ -53,7 +53,7 @@ mod Daylight {
         else
             let white = { r = 1.0f32, g = 1.0f32, b = 1.0f32 };
             { at = spec#at,
-              item = Render.box(spec#size, mixColor(white, air#color, clamp01(air#strength)), spec#z)
+              item = RawDraw.box(spec#size, mixColor(white, air#color, clamp01(air#strength)), spec#z)
                   |> Render.blended(DrawCmd.BlendMode.Multiply) } :: Nil
 
     /// 空気の色を 1 つの色に掛ける。空そのものや遠景など、乗算の幕より手前に置きたい物を
@@ -117,10 +117,10 @@ mod Daylight {
         let r = spec#radius;
         let stretch = 1.0 + Float64.min(1.0, sun#scale - 1.0);
         let reach = r * (stretch - 1.0) * 0.7;
-        let cast = Render.ellipseAt(
+        let cast = RawDraw.ellipseAt(
             { x = spec#at#x + sun#dir#x * reach, y = spec#at#y + sun#dir#y * reach * 0.4 },
             { x = r * stretch, y = r * 0.34 * stretch }, spec#ink, spec#z);
-        let contact = Render.ellipseAt(spec#at, { x = r * 0.7, y = r * 0.26 },
+        let contact = RawDraw.ellipseAt(spec#at, { x = r * 0.7, y = r * 0.26 },
                                        spec#ink, spec#z + 1);
         ({ item = Render.fade(sun#alpha * 0.7, cast#item) | cast }
          :: { item = Render.fade(sun#alpha * 1.4, contact#item)

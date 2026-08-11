@@ -181,7 +181,7 @@ mod PreviewItems {
                 { position = { x = circle#x - circle#r, y = circle#y - circle#r },
                   size = { x = circle#r * 2.0, y = circle#r * 2.0 } }
             case Item.LineI(line)     =>
-                boundsOf(Render.lineQuad(line#a, line#b, line#width))
+                boundsOf(RawDraw.lineQuad(line#a, line#b, line#width))
             case Item.TextI(text)     =>
                 { position = { x = text#x, y = text#y },
                   size = { x = text#size * 0.6 * Int32.toFloat64(String.length(text#text)), y = text#size } }
@@ -281,7 +281,7 @@ mod PreviewItems {
                  atlas: FontAtlas, item: Item): List[Render.PlacedItem] =
         match item {
             case Item.BoxI(box)       =>
-                let body = Render.box({ x = box#w, y = box#h }, box#color, box#z)
+                let body = RawDraw.box({ x = box#w, y = box#h }, box#color, box#z)
                     |> Render.fade(Float32.toFloat64(box#alpha));
                 let framed = match box#outline {
                     case None        => body
@@ -289,10 +289,10 @@ mod PreviewItems {
                 };
                 ({ at = { x = box#x, y = box#y }, item = framed }) :: Nil
             case Item.CircleI(circle) =>
-                let filled = Render.circleAt({ x = circle#x, y = circle#y }, circle#r, circle#color, circle#z);
+                let filled = RawDraw.circleAt({ x = circle#x, y = circle#y }, circle#r, circle#color, circle#z);
                 ({ item = Render.fade(Float32.toFloat64(circle#alpha), filled#item) | filled }) :: Nil
             case Item.LineI(line)     =>
-                let seg = Render.lineSeg(line#a, line#b, line#width, line#color, line#z);
+                let seg = RawDraw.lineSeg(line#a, line#b, line#width, line#color, line#z);
                 ({ item = Render.fade(Float32.toFloat64(line#alpha), seg#item) | seg }) :: Nil
             case Item.TextI(text)     =>
                 ({ at = { x = text#x, y = text#y },

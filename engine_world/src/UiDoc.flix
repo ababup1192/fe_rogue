@@ -968,7 +968,7 @@ mod UiDoc {
         }
 
     def polyItem(p: PolySpec, vertices: List[Vec2.Vec2]): Render.Item =
-        UiShape.fadeIf(p#alpha, Render.polygon(vertices, p#color, p#zIndex))
+        UiShape.fadeIf(p#alpha, RawDraw.polygon(vertices, p#color, p#zIndex))
 
     // ========================================================================
     // load（ファイル読み — parse は純粋なまま、IO はここだけ）
