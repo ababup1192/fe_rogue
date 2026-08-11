@@ -121,6 +121,10 @@
 | 揺れる演出を作る（浮遊・風のなびき） | Sway（実例: `templates/tetris-starter/src/View.flix`） |
 | リソース JSON の形（型・必須・既定値）を公式スキーマ方言で宣言する | Schema（実例: `templates/race-starter/project.schema.json`） |
 | 見下ろしで「足元が下にある物ほど手前」に並べる（人が木の裏に回る） | Depth（実例: `templates/rpg-starter/src/View.flix`） |
+| 一人称・疑似 3D（2.5D）で世界の点を画面へ落とす（透視除算・近クリップ・逆投影・距離霧） | Persp |
+| マス目の迷路から「カメラに見える壁の面」だけを集める（内部面・裏面は落とす） | WallFaces |
+| 距離の遠→近の描画順（zIndex）を振る（疑似 3D の上塗り） | Painter（見下ろしの前後は Depth） |
+| 壁越しに見えるか（視線の遮蔽）を判定する（壁の向こうの松明を消す・敵から見えるか） | GridRay |
 | ゲームの中の時計と暦を回す（分・時・日・季節・年） | Calendar |
 | 時刻で世界の色を変える（朝の青・夕の橙・夜の紺）・影の向きと長さを回す | Daylight（実例: `templates/rpg-starter/src/View.flix`） |
 | ドット絵の塗りに光を当てる（ふち光・接地影・ディザ・地肌の粒） | PxShade（実例: `templates/game-starter/src/ThemeDoc.flix`） |
@@ -161,6 +165,9 @@
   View に直接並べる完成品ではない。正当な用途は HUD 下地・デバッグ描画・fail-open の仮板。
 - **CameraRig** — world のどこを・どれだけ寄せて映すかを描画物の列に掛ける道具箱。
 - **Depth** — 見下ろし画面で「足元が下にある物ほど手前」を重なり順（zIndex）の数として決める。
+- **Persp** — 疑似 3D（2.5D）カメラの数学一式。世界の点を前後 fwd・左右 lat に分解し、透視除算で画面へ落とす。近クリップ・逆投影（depthAtY）・距離霧の式も持つ。焦点距離や霧の色の実体はゲーム側の意見（theme Doc など）。
+- **WallFaces** — マス目の迷路から「カメラに見える壁の境界面」だけを集める純幾何。壁どうしの内部面と、カメラに背を向けた裏面は落とす。solid の判定は関数で注入する（MapDoc の形を知らない）。
+- **Painter** — カメラからの距離で遠→近に並べ、zBase から zStride 刻みの zIndex を振る（画家の順）。疑似 3D は z バッファを持たないので、遠い物から上塗りして前後を作る。見下ろしの前後は Depth（別物）。
 - **Daylight** — 1 日の進み（0〜1）から「空気の色」と「太陽の位置」を決める。色は画面全体に乗算で薄く掛け、太陽からは影の向き・長さ（shadowAt）とドット絵に当てる光の向き（lightStepAt）を導く。暗さ（darkness）を読めば、明かりの点灯と空の色が食い違わない。
 - **TextDraw** — 文字列を「中心をここに置きたい」で配置する。
 - **RichText** — 一部だけ色や太さの違う文章をスパンの列として持ち、描画アイテムへ組む。
@@ -234,6 +241,7 @@
 - **TileState** — マス目の「いま」を持つ疎な表（耕した・濡れた・置いた）。日ごとの一斉更新とセーブの往復を持つ。地図の形（読むだけの設計図）とは置き場所を分ける。
 - **GridSearch** — マス目の上で「どこまで行けるか・何歩かかるか・どこが射程か」を求める。
 - **Steering** — 距離場（GridSearch）の 1 歩 chase / flee / wander。「入れるか」は canEnter で注入。敵 AI とイベントシーンが同じ 1 歩を使う。乱数を持たず同着は固定順 — 焼けば毎回同じ。
+- **GridRay** — マス目の世界で「start から goal の間に壁が挟まるか」（視線の遮蔽）。壁の向こうの松明を消す・敵から主人公が見えるか、の見通し判定。solid の判定は関数で注入する。
 - **Dir4** — 上下左右の 4 方向を 1 つの値としてまとめて表す。
 - **MapResource**（legacy/） — タイルセット PNG + 自前の map.json でマップを貼る旧世代層。新規は DualGrid / Material / TerrainDoc を使う(棲み分けは docs/dual-grid.md)。
 - **TileScene** — App.withTileLayers のタイル層宣言(TileLayerSpec)を CPU 投影で普通の絵に畳む。headless bake・F8 停止画面・golden が GPU 焼き置きと同じ絵になるための橋。

@@ -1,4 +1,4 @@
-<!-- engine v0.21.0 / 生成: 2026-08-12 -->
+<!-- engine v0.23.0 / 生成: 2026-08-12 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_world
@@ -670,6 +670,10 @@
 - 余分を見ない margin（見えている矩形にちょうど重なるマスだけ）。
   `pub def noMargin(): { left = Int32, top = Int32, right = Int32, bottom = Int32 }`
 
+## GridRay — `engine_world/src/GridRay.flix`
+- start → goal の間に solid なマスが挟まるか。両端のマス自身も数えるので、
+  `pub def blocked(solidAt: Grid.Cell -> Bool, ignore: Grid.Cell -> Bool, start: Vec2.Vec2, goal: Vec2.Vec2): Bool`
+
 ## GridSearch — `engine_world/src/GridSearch.flix`
 - 4近傍のうち `canEnter` を満たすマスだけを通って、`start` から `maxSteps` 歩以内に
   `pub def reachable(canEnter: ((Int32, Int32)) -> Bool, start: (Int32, Int32), maxSteps: Int32): List[(Int32, Int32)]`
@@ -956,11 +960,51 @@
 - 時刻 t での基準位置からのずれ。triWave で駆動するので速さは一定（4×amplitude/period）。
   `pub def swingOffset(osc: Swing, t: Float64): Vec2.Vec2`
 
+## Painter — `engine_world/src/Painter.flix`
+- items を距離の遠い順に並べ、(zIndex, item) を返す。zIndex は
+  `pub def zOrdered(distOf: a -> Float64, zBase: Int32, zStride: Int32, items: List[a]): List[(Int32, a)]`
+
 ## Persistence — `engine_world/src/Persistence.flix`
 - `Saveable` を実装した値を `path` へ JSON で書き出す。
   `pub def save(path: String, value: a): Result[String, Unit] \ Fs.FileWrite with Saveable[a]`
 - `Saveable` を実装した型を `path` から読み出す。
   `pub def load(path: String): Option[a] \ Fs.FileRead with Saveable[a]`
+
+## Persp — `engine_world/src/Persp.flix`
+- カメラの置き方。pos = 位置（世界座標）、yaw = 向き（ラジアン。
+  `pub type alias Camera = { pos = Vec2.Vec2, yaw = Float64 }`
+- カメラ空間の 2D 点。fwd = 視線方向の奥行き、lat = 右向きの横ずれ。
+  `pub type alias CamPoint = { fwd = Float64, lat = Float64 }`
+- 画面への写し方（消失点 + 焦点距離 = 写し方の意見。画面サイズではない）。
+  `pub type alias Projection = { center = Vec2.Vec2, fx = Float64, fy = Float64 }`
+- 近クリップ済みの線分。camA / camB = 切った後の端点（カメラ空間）、
+  `pub type alias Clipped = { camA = CamPoint, camB = CamPoint, t0 = Float64, t1 = Float64, dist = Float64 }`
+- h 帯（世界の縦帯）を画面に落とした四隅。topA.x == botA.x を保証する
+  `pub type alias Corners = { topA = Vec2.Vec2, topB = Vec2.Vec2, botA = Vec2.Vec2, botB = Vec2.Vec2 }`
+- 世界の点をカメラ空間へ分解する。fwd = 視線方向の奥行き、lat = 右向きの横ずれ。
+  `pub def toCam(cam: Camera, p: Vec2.Vec2): CamPoint`
+- カメラからの放射距離（陰影・霧・ソートはこれを使う。fwd だけだと
+  `pub def dist(c: CamPoint): Float64`
+- 透視除算（x）。fwd が小さいほど大きく横に開く。
+  `pub def screenX(proj: Projection, c: CamPoint): Float64`
+- 透視除算（y）。h = 帯の中の高さ（世界単位。- が上・+ が下。
+  `pub def screenY(proj: Projection, h: Float64, c: CamPoint): Float64`
+- 点の投影（クリップ済みの CamPoint → 画面 px）。大きさの換算は sizeAt へ —
+  `pub def projectCam(proj: Projection, h: Float64, c: CamPoint): Vec2.Vec2`
+- 世界単位の長さ worldLen が、奥行き c#fwd でどれだけの px に見えるか
+  `pub def sizeAt(proj: Projection, worldLen: Float64, c: CamPoint): Float64`
+- 点の投影（世界座標から一息に）。fwd が spec#near 未満（真横〜後方）は None。
+  `pub def projectPoint(proj: Projection, cam: Camera, spec: { near = Float64, h = Float64 }, p: Vec2.Vec2): Option[Vec2.Vec2]`
+- CamPoint の線形補間（線分の途中の点もカメラ空間では直線のまま）。
+  `pub def camLerp(a: CamPoint, b: CamPoint, t: Float64): CamPoint`
+- 近クリップ。fwd が near 未満の部分（カメラの真横〜後方）を切り落とし、
+  `pub def clipSegment(near: Float64, camA: CamPoint, camB: CamPoint): Option[Clipped]`
+- h 帯（band#hTop..band#hBot）を画面の四隅へ。端点ごとに x を 1 回だけ求めるので
+  `pub def bandCorners(proj: Projection, band: { hTop = Float64, hBot = Float64 }, camA: CamPoint, camB: CamPoint): Corners`
+- 逆投影: 画面の走査線 sy が、高さ h の水平面のどの奥行きに当たるか。
+  `pub def depthAtY(proj: Projection, h: Float64, sy: Float64): Float64`
+- 距離霧の混合率。spec#base + d * spec#perDist を 0..spec#cap で止める
+  `pub def fogAmount(spec: { base = Float64, perDist = Float64, cap = Float64 }, d: Float64): Float64`
 
 ## Physics2D — `engine_world/src/Physics2D.flix`
 - `pub type alias Contact = { a = EntityId, b = EntityId, normal = Vec2.Vec2, point = Vec2.Vec2, penetration = Float64 }`
@@ -1966,6 +2010,18 @@
   `pub def isOutside(p: Vec2.Vec2, b: Bounds, margin: Float64): Bool`
 - position を持つ entity のうち、bounds の外（margin 付き）に出ているものの id 一覧。
   `pub def offscreenEntities(positions: Map[EntityId, Vec2.Vec2], b: Bounds, margin: Float64): List[EntityId]`
+
+## WallFaces — `engine_world/src/WallFaces.flix`
+- 面の足元の 2D 線分（a→b）と、外向き法線・属する壁マス。
+  `pub type alias Face = { a = Vec2.Vec2, b = Vec2.Vec2, normal = Vec2.Vec2, cell = Grid.Cell }`
+- eye の周囲 radius マスを走査し、壁と空きの境界のうち eye に見える面だけを集める。
+  `pub def visibleFaces(solidAt: Grid.Cell -> Bool, radius: Int32, eye: Vec2.Vec2): List[Face]`
+- 壁マスの dir 側の面（visibleFaces を通さず 1 枚だけ欲しいとき — 壁掛けの
+  `pub def faceOf(cell: Grid.Cell, dir: Dir4.Dir4): Face`
+- 面に沿った t（0..1。a が 0・b が 1）の世界座標。目地や飾りを
+  `pub def pointAt(face: Face, t: Float64): Vec2.Vec2`
+- 面の足元の中点（裏面カリングと「面のわずかに手前」の基準点）。
+  `pub def centerOf(face: Face): Vec2.Vec2`
 
 ## Worldline — `engine_world/src/Worldline.flix`
 - `pub enum Worldline[a] { case Worldline({ past = List[a], current = a, future = List[a], cap = Int32 }) }`

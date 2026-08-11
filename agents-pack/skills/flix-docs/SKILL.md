@@ -198,6 +198,15 @@ def testFoo(): Unit \ Assert =
 - エフェクトは `Chan` と `NonDet`
 - 参考: https://doc.flix.dev/concurrency.html?highlight=Channel#communicating-with-channels
 
+### List.sortBy / List.sort は安定ソートではない
+
+- 同キーの要素の並びが入力順に保たれない（実測: 同キー 7::8::9 が 9::7::8 になる）。
+  入力が同じなら結果は毎回同じ（決定的）だが、「渡した順のまま」は約束されない
+- 同キーの順序に意味があるときは、キーにタイブレーク（元 index など）を含めて
+  `List.zipWithIndex` + 複合キーで並べる
+- golden（バイト一致）に関わる描画順をソートで作る場合、この非安定性ごと
+  結果が決定的なので一致は保てる — ただし「安定だから大丈夫」という理屈は使えない
+
 ### try-catch での Java 例外
 
 - import してから使う（`##java.io.IOException` ではなく `IOException`）
