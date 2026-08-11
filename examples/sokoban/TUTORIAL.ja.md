@@ -254,7 +254,7 @@ mod Sokoban {
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
               c: Color, z: Int32): Render.PlacedItem =
-        ({x = x, y = y}, Render.box({x = w, y = h}, c, z))
+        ({x = x, y = y}, RawDraw.box({x = w, y = h}, c, z))
 
     /// Diagonal brace: one thick band from the inner bottom-left to the inner top-right,
     /// plus 2 dark edge lines. All 3 strips share the same centerline and direction vector;
@@ -456,7 +456,7 @@ mod Sokoban {
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
               c: Color, z: Int32): Render.PlacedItem =
-        ({x = x, y = y}, Render.box({x = w, y = h}, c, z))
+        ({x = x, y = y}, RawDraw.box({x = w, y = h}, c, z))
 
     /// Diagonal brace: one thick band from the inner bottom-left to the inner top-right,
     /// plus 2 dark edge lines. All 3 strips share the same centerline and direction vector;
@@ -941,7 +941,7 @@ mod Crate {
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
               c: Color, z: Int32): Render.PlacedItem =
-        ({x = x, y = y}, Render.box({x = w, y = h}, c, z))
+        ({x = x, y = y}, RawDraw.box({x = w, y = h}, c, z))
 
     /// Diagonal brace: one thick band from the inner bottom-left to the inner top-right,
     /// plus 2 dark edge lines. All 3 strips share the same centerline and direction vector;
@@ -1236,7 +1236,7 @@ mod Sokoban {
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
               c: Color, z: Int32): Render.PlacedItem =
-        ({x = x, y = y}, Render.box({x = w, y = h}, c, z))
+        ({x = x, y = y}, RawDraw.box({x = w, y = h}, c, z))
 
     def circleAt(c: Vec2.Vec2, d: Float64, color: Color, z: Int32): Render.PlacedItem =
         let style = { cornerRadius = d / 2.0, borderWidth = 0.0, borderColor = color,

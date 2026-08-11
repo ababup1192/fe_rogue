@@ -16,7 +16,7 @@
 
 ## 矩形だけの画面から脱する（絵の下限）
 
-`Render.box` を並べただけの画面は未完成。求めるのは次の 4 つの**性質**で、**どの画風で
+`RawDraw.box` を並べただけの画面は未完成。求めるのは次の 4 つの**性質**で、**どの画風で
 満たすかは自由**（画風はゲームごとに決める。詳しくは `.claude/skills/visual-dict`、
 シェーダーの語彙は [shader-doc.md](shader-doc.md)）。下は手の一例。
 
@@ -33,6 +33,7 @@
 
 | やりたいこと | モジュール |
 |---|---|
+| 箱や丸を並べて物・キャラを作りたくなった | PxSprite（+PxShade）/ gradPolygon / Terrain。RawDraw は下地とデバッグ用 |
 | メニューを作る（項目列・カーソル・ハイライト） | UiMenu（実例: `templates/novel-starter/src/World.flix`） |
 | 窓より長い内容をスクロールで覗く（ログ・履歴・一覧） | UiScroll |
 | 描画物を矩形で切り抜く（スクロール窓・PiP。スクリーン空間） | Render（clipped / clippedAll）（実例: `templates/novel-starter/src/View.flix`） |
@@ -89,14 +90,14 @@
 | 0〜1 に収める・小数部だけ残す・周期で折り返す（負の値も安全） | Num.clamp01 / clamp / fract / wrapTo / lerp |
 | 床丸め・最近整数（0.5 は上へ）で Int32 に落とす（負の座標もマスが揃う） | Num.floorInt / roundInt |
 | 素の中心＋幅高の箱どうし・点×箱の重なりを聞く（接するのは外） | Hit.boxBox / pointBox |
-| スプライトが無い・読めないとき仮色の板に倒す（穴を開けない） | Render.orBoxAt |
+| スプライトが無い・読めないとき仮色の板に倒す（穴を開けない） | RawDraw.orBoxAt |
 | Doc の一覧を台帳 1 枚にし watchFile・一括リロード・表示中バッジを導出 | DocTable |
 | 色を作る（0〜1・0〜255・#rrggbb）・2 色を混ぜる・比べる | Color.rgb / rgb8 / hex / mix / channels |
 | 置き場所つきの絵に修飾を掛ける・列を丸ごと薄くする | Render.overItem / Render.fadeAll |
 | 修飾パイプの末尾で置き場所を与える（`{ at = …, item = … }` の糖衣。中心置きは At 族） | Render.at |
 | 列を丸ごと動かす・pivot 不動点で一様に拡縮する（Clipped の窓も追随） | Render.movedAll / Render.scaledAllAround |
 | Doc を fail-open で読む（読めない・壊れは既定値へ） | DocJson.loadOr / decodeObject |
-| 太さのある線・棒を引く（法線を手計算しない） | Render.lineSeg / Quad.strip |
+| 太さのある線・棒を引く（法線を手計算しない） | RawDraw.lineSeg / Quad.strip |
 | 値を範囲に収める（1 軸） | Num.clamp（カメラの寄せ幅は CameraRig.clampAxis） |
 | 色を明るく・暗くする | Color.lighten / Color.darken |
 | 文字を中央に置く・幅を測る | TextDraw.centered / TextDraw.width |
@@ -156,6 +157,8 @@
 ## 描画
 
 - **Render** — 「何をどう見せたいか」だけ書いた Item を、描画部が食べられる形に変換する。
+- **RawDraw** — 単色ベタの素形状（box / circle / star / ellipse / sector / ngon など）。材料であって、
+  View に直接並べる完成品ではない。正当な用途は HUD 下地・デバッグ描画・fail-open の仮板。
 - **CameraRig** — world のどこを・どれだけ寄せて映すかを描画物の列に掛ける道具箱。
 - **Depth** — 見下ろし画面で「足元が下にある物ほど手前」を重なり順（zIndex）の数として決める。
 - **Daylight** — 1 日の進み（0〜1）から「空気の色」と「太陽の位置」を決める。色は画面全体に乗算で薄く掛け、太陽からは影の向き・長さ（shadowAt）とドット絵に当てる光の向き（lightStepAt）を導く。暗さ（darkness）を読めば、明かりの点灯と空の色が食い違わない。

@@ -17,5 +17,5 @@
 | `App.withPixelSnap` / `withSpriteAtlases` | `engine_world/src/App.flix` | 画素の升目に載せて輪郭をにじませない / ドット絵を 1 枚に焼いて 1 体 = 1 クアッド |
 | `Mirror` | `engine_world/src/Mirror.flix` | ドット絵の映り込み（鏡・ガラス・磨いた床） |
 | `Material` の SurfaceFx | `engine_world/src/Material.flix` | チップ絵なしで地形に質感（粒・きらめき・鱗・泡・発光・染み） |
-| `Render.star` / `ellipse` / `sector` / `ngon` | `engine_world/src/Render.flix` | 星・楕円・扇・正多角形。**box と circle の 2 択で我慢しない** |
+| `RawDraw.star` / `ellipse` / `sector` / `ngon` | `engine_world/src/RawDraw.flix` | 星・楕円・扇・正多角形。**box と circle の 2 択で我慢しない** |
 | `UiShape` | `engine_world/src/UiShape.flix` | ui.json の中に circle / star / line をパラメトリックに置く |

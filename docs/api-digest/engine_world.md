@@ -1079,6 +1079,50 @@
 ## RandomUtil — `engine_world/src/RandomUtil.flix`
 - `pub def pick(l: List[a]): Option[a] \ Math.Random`
 
+## RawDraw — `engine_world/src/RawDraw.flix`
+- 単色塗りの矩形（左上原点・サイズ指定）。
+  `pub def box(size: Vec2.Vec2, color: Color, zIndex: Int32): Item`
+- 単色塗りの円（直径 radius×2 の全角丸 Box）。置き場所は外接正方形の左上。
+  `pub def circle(radius: Float64, color: Color, zIndex: Int32): Item`
+- 中心 center に置いた単色の円（PlacedItem）。外接正方形の左上への換算はここが済ませる。
+  `pub def circleAt(center: Vec2.Vec2, radius: Float64, color: Color, zIndex: Int32): PlacedItem`
+- 中心 center に置いた単色の矩形（PlacedItem）。左上で置きたいときは box を使う。
+  `pub def boxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32): PlacedItem`
+- items が空なら boxAt の仮色の板 1 枚に倒す fail-open。スプライトのコマ名違い・
+  `pub def orBoxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32, items: List[PlacedItem]): List[PlacedItem]`
+- 単色塗りの多角形。頂点は置き場所からの相対座標で渡す（絶対座標で組みたいときは
+  `pub def polygon(vertices: List[Vec2.Vec2], color: Color, zIndex: Int32): Item`
+- 正 n 角形（外接半径 radius・頂点が真上・原点中心）。三角形・ひし形・六角形はこれ。
+  `pub def ngon(n: Int32, radius: Float64, color: Color, zIndex: Int32): Item`
+- ngon を中心 center に置く近道。
+  `pub def ngonAt(center: Vec2.Vec2, n: Int32, radius: Float64, color: Color, zIndex: Int32): PlacedItem`
+- 楕円（radii は x/y の半径・原点中心。32 角形の近似）。
+  `pub def ellipse(radii: Vec2.Vec2, color: Color, zIndex: Int32): Item`
+- ellipse を中心 center に置く近道。
+  `pub def ellipseAt(center: Vec2.Vec2, radii: Vec2.Vec2, color: Color, zIndex: Int32): PlacedItem`
+- 縁の分割数を選べる楕円。小さく描く楕円（足元の影・遠くの茂み）では、既定の 32 分割は
+  `pub def ellipseSegs(radii: Vec2.Vec2, segs: Int32, color: Color, zIndex: Int32): Item`
+- ellipseSegs を中心 center に置く近道。
+  `pub def ellipseSegsAt(center: Vec2.Vec2, radii: Vec2.Vec2, segs: Int32, color: Color, zIndex: Int32): PlacedItem`
+- その大きさの楕円に見合う縁の分割数。頂点の間隔がおよそ 2px になる所で頭打ちにする
+  `pub def ellipseSegsFor(radii: Vec2.Vec2): Int32`
+- 扇形（パイ。要が原点）。中心角が半周を超える形（パックマン等）も正しく塗れる
+  `pub def sector(radius: Float64, sweep: {fromT = Float64, toT = Float64}, color: Color, zIndex: Int32): Item`
+- sector を中心 center に置く近道。
+  `pub def sectorAt(center: Vec2.Vec2, radius: Float64, sweep: {fromT = Float64, toT = Float64}, color: Color, zIndex: Int32): PlacedItem`
+- 円を弦で切った弓形（弧 + 弦。多角形は自動で閉じる・原点中心の円由来）。
+  `pub def circleSegment(radius: Float64, sweep: {fromT = Float64, toT = Float64}, color: Color, zIndex: Int32): Item`
+- circleSegment を中心 center に置く近道。
+  `pub def circleSegmentAt(center: Vec2.Vec2, radius: Float64, sweep: {fromT = Float64, toT = Float64}, color: Color, zIndex: Int32): PlacedItem`
+- 星（points 尖り・外径と内径の交互・原点中心）。凹んだ形の代表。
+  `pub def star(points: Int32, radii: {outer = Float64, inner = Float64}, color: Color, zIndex: Int32): Item`
+- star を中心 center に置く近道。
+  `pub def starAt(center: Vec2.Vec2, points: Int32, radii: {outer = Float64, inner = Float64}, color: Color, zIndex: Int32): PlacedItem`
+- 線分 a→b の輪郭（太さ width の凸四角形の頂点列）。lineSeg の芯で、時計の針のように
+  `pub def lineQuad(a: Vec2.Vec2, b: Vec2.Vec2, width: Float64): List[Vec2.Vec2]`
+- 線分 a→b を太さ width の四角形で描く（任意角度の線の代用）。
+  `pub def lineSeg(a: Vec2.Vec2, b: Vec2.Vec2, width: Float64, color: Color, zIndex: Int32): PlacedItem`
+
 ## RemoteDebug — `engine_world/src/RemoteDebug.flix`
 - HTTP サーバ本体と、リクエスト / レスポンスを受け渡す 2 本のキュー。
   `pub type alias Bridge = { server = HttpServer, requests = JQueue[String], responses = JQueue[String] }`
@@ -1153,64 +1197,22 @@
 - `pub def text(content: String, fontAtlas: FontAtlas, fontSize: Float64, zIndex: Int32): Item`
 - 着色テキスト。disabled のグレー表示やカーソル色、見出しの強調色などに使う。
   `pub def textTinted(content: String, fontAtlas: FontAtlas, fontSize: Float64, tint: Color, zIndex: Int32): Item`
-- 単色塗りの矩形（左上原点・サイズ指定）。
-  `pub def box(size: Vec2.Vec2, color: Color, zIndex: Int32): Item`
-- 単色塗りの円（直径 radius×2 の全角丸 Box）。置き場所は外接正方形の左上。
-  `pub def circle(radius: Float64, color: Color, zIndex: Int32): Item`
-- 中心 center に置いた単色の円（PlacedItem）。外接正方形の左上への換算はここが済ませる。
-  `pub def circleAt(center: Vec2.Vec2, radius: Float64, color: Color, zIndex: Int32): PlacedItem`
 - 中心 center に置いた、縁がふわっと消える円の列（ソフトな光の玉）。
   `pub def glowAt(center: Vec2.Vec2, radius: Float64, color: Color, look: { alpha = Float64, blend = DrawCmd.BlendMode }, zIndex: Int32): List[PlacedItem]`
 - 中心 at に置いた放射状の明かり 1 枚（松明・スポットライト・光だまり）。
   `pub def lightAt(spec: { at = Vec2.Vec2, radius = Float64, color = Color, strength = Float64, z = Int32 }): PlacedItem`
 - 中心 at に置いた放射状の翳り 1 枚（vignette・足元の影だまり・画面の隅を沈める）。
   `pub def darkAt(spec: { at = Vec2.Vec2, radius = Float64, strength = Float64, z = Int32 }): PlacedItem`
-- 中心 center に置いた単色の矩形（PlacedItem）。左上で置きたいときは box を使う。
-  `pub def boxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32): PlacedItem`
-- items が空なら boxAt の仮色の板 1 枚に倒す fail-open。スプライトのコマ名違い・
-  `pub def orBoxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32, items: List[PlacedItem]): List[PlacedItem]`
 - 宣言シェーダーで矩形 rect を塗る面（PlacedItem）。at に rect の左上を入れる —
   `pub def shaderFill(spec: ShaderDoc.Spec, rect: Rect2.Rect2, t: Float64, zIndex: Int32): PlacedItem`
 - 宣言シェーダーで rect を塗り、maskPolys（ワールド座標の多角形の列）の内側だけに抜く面。
   `pub def shaderFillMasked(spec: ShaderDoc.Spec, rect: Rect2.Rect2, maskPolys: List[List[Vec2.Vec2]], t: Float64, zIndex: Int32): PlacedItem`
 - pass（レンダーターゲット）を、全面でない面（帯など）から等倍で読むための dy 場。
   `pub def passBandDy(band: { top = Float64, height = Float64 }, passH: Float64, flipV: Bool): ShaderDoc.Field`
-- 単色塗りの多角形。頂点は置き場所からの相対座標で渡す（絶対座標で組みたいときは
-  `pub def polygon(vertices: List[Vec2.Vec2], color: Color, zIndex: Int32): Item`
 - 頂点色つきの凸多角形。各頂点に色と濃さを与えると、面の中で滑らかに混ざる
   `pub def gradPolygon(vertices: List[DrawCmd.GradVertex], zIndex: Int32): Item`
 - 上下 2 色の縦グラデ矩形（左上原点・サイズ指定）。空や夕暮れの背景の定番形。
   `pub def vgrad(size: Vec2.Vec2, colors: { top = Color, bottom = Color }, zIndex: Int32): Item`
-- 正 n 角形（外接半径 radius・頂点が真上・原点中心）。三角形・ひし形・六角形はこれ。
-  `pub def ngon(n: Int32, radius: Float64, color: Color, zIndex: Int32): Item`
-- ngon を中心 center に置く近道。
-  `pub def ngonAt(center: Vec2.Vec2, n: Int32, radius: Float64, color: Color, zIndex: Int32): PlacedItem`
-- 楕円（radii は x/y の半径・原点中心。32 角形の近似）。
-  `pub def ellipse(radii: Vec2.Vec2, color: Color, zIndex: Int32): Item`
-- ellipse を中心 center に置く近道。
-  `pub def ellipseAt(center: Vec2.Vec2, radii: Vec2.Vec2, color: Color, zIndex: Int32): PlacedItem`
-- 縁の分割数を選べる楕円。小さく描く楕円（足元の影・遠くの茂み）では、既定の 32 分割は
-  `pub def ellipseSegs(radii: Vec2.Vec2, segs: Int32, color: Color, zIndex: Int32): Item`
-- ellipseSegs を中心 center に置く近道。
-  `pub def ellipseSegsAt(center: Vec2.Vec2, radii: Vec2.Vec2, segs: Int32, color: Color, zIndex: Int32): PlacedItem`
-- その大きさの楕円に見合う縁の分割数。頂点の間隔がおよそ 2px になる所で頭打ちにする
-  `pub def ellipseSegsFor(radii: Vec2.Vec2): Int32`
-- 扇形（パイ。要が原点）。中心角が半周を超える形（パックマン等）も正しく塗れる
-  `pub def sector(radius: Float64, sweep: {fromT = Float64, toT = Float64}, color: Color, zIndex: Int32): Item`
-- sector を中心 center に置く近道。
-  `pub def sectorAt(center: Vec2.Vec2, radius: Float64, sweep: {fromT = Float64, toT = Float64}, color: Color, zIndex: Int32): PlacedItem`
-- 円を弦で切った弓形（弧 + 弦。多角形は自動で閉じる・原点中心の円由来）。
-  `pub def circleSegment(radius: Float64, sweep: {fromT = Float64, toT = Float64}, color: Color, zIndex: Int32): Item`
-- circleSegment を中心 center に置く近道。
-  `pub def circleSegmentAt(center: Vec2.Vec2, radius: Float64, sweep: {fromT = Float64, toT = Float64}, color: Color, zIndex: Int32): PlacedItem`
-- 星（points 尖り・外径と内径の交互・原点中心）。凹んだ形の代表。
-  `pub def star(points: Int32, radii: {outer = Float64, inner = Float64}, color: Color, zIndex: Int32): Item`
-- star を中心 center に置く近道。
-  `pub def starAt(center: Vec2.Vec2, points: Int32, radii: {outer = Float64, inner = Float64}, color: Color, zIndex: Int32): PlacedItem`
-- 線分 a→b の輪郭（太さ width の凸四角形の頂点列）。lineSeg の芯で、時計の針のように
-  `pub def lineQuad(a: Vec2.Vec2, b: Vec2.Vec2, width: Float64): List[Vec2.Vec2]`
-- 線分 a→b を太さ width の四角形で描く（任意角度の線の代用）。
-  `pub def lineSeg(a: Vec2.Vec2, b: Vec2.Vec2, width: Float64, color: Color, zIndex: Int32): PlacedItem`
 - item を pos（左上）に置く純糖衣 — `{ at = pos, item = item }` と同じ値。
   `pub def at(pos: Vec2.Vec2, item: Item): PlacedItem`
 - 飾り終えた「左上原点の item」（box / circle / text）を中心 center に置く

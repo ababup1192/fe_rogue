@@ -291,7 +291,7 @@ mod Sokoban {
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
               c: Color, z: Int32): Render.PlacedItem =
-        ({x = x, y = y}, Render.box({x = w, y = h}, c, z))
+        ({x = x, y = y}, RawDraw.box({x = w, y = h}, c, z))
 
     /// Diagonal brace: one thick band from the inner bottom-left to the inner top-right,
     /// plus 2 dark edge lines. All 3 strips share the same centerline and direction vector;
@@ -320,7 +320,7 @@ mod Sokoban {
         let p0 = Vec2.sub(bl, Vec2.mul(d, ext));
         let p1 = Vec2.add(tr, Vec2.mul(d, ext));
         (Vec2.zero(),
-         Render.polygon(
+         RawDraw.polygon(
              Vec2.add(p0, Vec2.mul(n, o1)) :: Vec2.add(p1, Vec2.mul(n, o1)) ::
              Vec2.add(p1, Vec2.mul(n, o2)) :: Vec2.add(p0, Vec2.mul(n, o2)) :: Nil,
              c, z))
@@ -342,7 +342,7 @@ into the App.)
 - `frame` still **only returns one list of things to draw** — but the list now
   mixes three kinds of item: solid boxes, text, and a polygon. Boxes can only be
   axis-aligned rectangles, so **the diagonal band is the one shape where we
-  specify 4 vertices ourselves**, via `Render.polygon`. It rides in the same list
+  specify 4 vertices ourselves**, via `RawDraw.polygon`. It rides in the same list
   as everything else; the App sorts out what goes where.
 - The crate is 21 parts (18 boxes + 3 polygons) stacked. Each one is just "a
   colored rectangle" or "a colored parallelogram" — it is the **ratios and the
@@ -526,7 +526,7 @@ mod Sokoban {
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
               c: Color, z: Int32): Render.PlacedItem =
-        ({x = x, y = y}, Render.box({x = w, y = h}, c, z))
+        ({x = x, y = y}, RawDraw.box({x = w, y = h}, c, z))
 
     /// Diagonal brace: one thick band from the inner bottom-left to the inner top-right,
     /// plus 2 dark edge lines. All 3 strips share the same centerline and direction vector;
@@ -557,7 +557,7 @@ mod Sokoban {
         let p0 = Vec2.sub(bl, Vec2.mul(d, ext));
         let p1 = Vec2.add(tr, Vec2.mul(d, ext));
         (Vec2.zero(),
-         Render.polygon(
+         RawDraw.polygon(
              Vec2.add(p0, Vec2.mul(n, o1)) :: Vec2.add(p1, Vec2.mul(n, o1)) ::
              Vec2.add(p1, Vec2.mul(n, o2)) :: Vec2.add(p0, Vec2.mul(n, o2)) :: Nil,
              c, z))
@@ -1146,7 +1146,7 @@ mod Crate {
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
               c: Color, z: Int32): Render.PlacedItem =
-        ({x = x, y = y}, Render.box({x = w, y = h}, c, z))
+        ({x = x, y = y}, RawDraw.box({x = w, y = h}, c, z))
 
     /// Diagonal brace: one thick band from the inner bottom-left to the inner top-right,
     /// plus 2 dark edge lines. All 3 strips share the same centerline and direction vector;
@@ -1176,7 +1176,7 @@ mod Crate {
         let p0 = Vec2.sub(bl, Vec2.mul(d, ext));
         let p1 = Vec2.add(tr, Vec2.mul(d, ext));
         (Vec2.zero(),
-         Render.polygon(
+         RawDraw.polygon(
              Vec2.add(p0, Vec2.mul(n, o1)) :: Vec2.add(p1, Vec2.mul(n, o1)) ::
              Vec2.add(p1, Vec2.mul(n, o2)) :: Vec2.add(p0, Vec2.mul(n, o2)) :: Nil,
              c, z))
@@ -1453,11 +1453,11 @@ mod Sokoban {
 
     def boxAt(x: Float64, y: Float64, w: Float64, h: Float64,
               c: Color, z: Int32): Render.PlacedItem =
-        ({x = x, y = y}, Render.box({x = w, y = h}, c, z))
+        ({x = x, y = y}, RawDraw.box({x = w, y = h}, c, z))
 
     /// A filled circle of diameter d centered on c.
     def circleAt(c: Vec2.Vec2, d: Float64, color: Color, z: Int32): Render.PlacedItem =
-        ({x = c#x - d / 2.0, y = c#y - d / 2.0}, Render.circle(d / 2.0, color, z))
+        ({x = c#x - d / 2.0, y = c#y - d / 2.0}, RawDraw.circle(d / 2.0, color, z))
 
     /// Title always; "CLEAR!" appears the moment every crate sits on a goal —
     /// not stored anywhere, just projected from the Stores.
@@ -2433,7 +2433,7 @@ confetti is a *closed-form function* of that clock and its own index:
         let c = { x = x, y = y };
         let corner = (sx, sy) -> Vec2.add(c, Vec2.add(Vec2.mul(u, sx * 2.2), Vec2.mul(v, sy * 1.4)));
         (Vec2.zero(),
-         Render.polygon(
+         RawDraw.polygon(
              corner(-1.0, -1.0) :: corner(1.0, -1.0) ::
              corner(1.0, 1.0) :: corner(-1.0, 1.0) :: Nil,
              Palette.confetti(i), zConfetti()))

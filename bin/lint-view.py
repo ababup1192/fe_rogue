@@ -15,13 +15,15 @@ import sys
 from pathlib import Path
 
 # 矩形系 = box と circle。これだけで組んだ画面は下限を満たせない。
+# 図形プリミティブは Render から RawDraw へ移設済み（旧名 Render.* も過渡期のため両対応）。
 RECT = re.compile(
-    r"(?:Render\.(?:box|circle|boxAt|circleAt)|Item\.(?:Box|Circle))\b"
+    r"(?:(?:Render|RawDraw)\.(?:box|boxAt|orBoxAt|circle|circleAt)|Item\.Box)\b"
 )
 
 # 階調・質感・分離・層・時間のどれかを作れる部品。
 RICH = re.compile(
-    r"(?:Render\.(?:star|ellipse|sector|ngon|vgrad|gradPolygon|striped|checker"
+    r"(?:(?:Render|RawDraw)\.(?:star|ellipse\w*|sector|ngon)"
+    r"|Render\.(?:vgrad|gradPolygon|striped|checker"
     r"|glowAt|outline|outlineA|shaderFill|turned|turnedAll|clipped|clippedAll"
     r"|zShifted|zShiftedAll|fadeAll|overItem)"
     r"|PxSprite|PxShade|Material|Scatter|FxDoc|Fx\.|Anim|Sway|Daylight|Mirror"
@@ -33,11 +35,28 @@ MIN_DRAWS = 5
 # 矩形系がこの割合を超えたら指摘する。
 RECT_PCT = 80
 
-HINT = """絵の下限 4 性質（面に階調か質感 / 主役が背景から分離 / 層が分かれている /
-時間が流れている）を、それぞれどの部品で満たしているか答えてください。
-満たせていないなら .claude/skills/visual-dict/reference.md と unused-parts.md を
-読んでから直してください。star / ellipse / vgrad / gradPolygon / striped /
-PxShade / Material / Scatter / ShaderDoc は既に実装もテストもあります。"""
+# 行き先の目安。長い説明はしない — 1 行で足りる案内だけ。
+DESTINATIONS = (
+    "空・水面→vgrad/gradPolygon、パネル→outline+rounded、"
+    "キャラ・物→PxSprite+PxShade、面の質感→shader.json"
+)
+
+HINT = (
+    "絵の下限 4 性質を満たせていません。"
+    "{} （詳細は .claude/skills/visual-dict/reference.md）"
+).format(DESTINATIONS)
+
+
+def rect_counts(src: str):
+    """コメントを除いた本文で、RECT にマッチした関数名ごとの回数を数える。"""
+    body = "\n".join(
+        ln for ln in src.splitlines() if not ln.lstrip().startswith("//")
+    )
+    counts = {}
+    for m in RECT.finditer(body):
+        name = m.group(0).rsplit(".", 1)[-1]
+        counts[name] = counts.get(name, 0) + 1
+    return counts
 
 
 def is_view(path: Path) -> bool:
@@ -175,9 +194,17 @@ def main(argv):
         return 0
 
     for path, rect, total in bad:
+        try:
+            src = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            src = ""
+        counts = rect_counts(src)
+        detected = "、".join(
+            "{} が {} 回".format(name, n) for name, n in sorted(counts.items())
+        )
         print(
-            "{}: 描画がほぼ矩形と円だけです（矩形系 {} / 全体 {}）".format(
-                path.as_posix(), rect, total
+            "{}: 描画がほぼ矩形と円だけです（矩形系 {} / 全体 {}）— {}。{}".format(
+                path.as_posix(), rect, total, detected, DESTINATIONS
             ),
             file=sys.stderr,
         )

@@ -137,7 +137,7 @@ Effects and Handlers を参照してください。
 def ballBoxes(core: Field.GameCore): List[Render.PlacedItem] =
     let r = Field.ballRadius();
     ({ x = core#ballPos#x - r, y = core#ballPos#y - r },
-     Render.circle(r, Palette.ball(), zBall()) |> Render.outline(Palette.titleText(), 0.7)) :: Nil
+     RawDraw.circle(r, Palette.ball(), zBall()) |> Render.outline(Palette.titleText(), 0.7)) :: Nil
 ```
 
 修飾（rounded / fade / outline / striped）は「(置き場所, item)」の item 側に効く、というのがミソ。

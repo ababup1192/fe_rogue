@@ -26,7 +26,7 @@ sync: 2026-08-11
 - [ ] 時間が流れている: ____
 ```
 
-**4 性質の欄に `Render.box` / `Render.circle` しか書けなかったら、まだ辞書を引いていない。**
+**4 性質の欄に `RawDraw.box` / `RawDraw.circle` しか書けなかったら、まだ辞書を引いていない。**
 先に [reference.md](reference.md) と [unused-parts.md](unused-parts.md) を読む。
 
 ### 各手順の中身

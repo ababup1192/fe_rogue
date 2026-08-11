@@ -620,6 +620,11 @@ check-docs-sync:
 	    fi; \
 	  fi; \
 	done; \
+	echo "[check-docs-sync] 図形プリミティブの旧名 Render.box 等が docs/AGENTS.md に残っていないか"; \
+	old_names='Render\.(box|boxAt|orBoxAt|circle|circleAt|polygon|ngon|ngonAt|ellipse|ellipseAt|ellipseSegs|ellipseSegsAt|ellipseSegsFor|sector|sectorAt|circleSegment|circleSegmentAt|star|starAt|lineQuad|lineSeg)\b'; \
+	if grep -rlE "$$old_names" docs/*.md AGENTS.md 2>/dev/null | grep -v docs/api-digest; then \
+	  echo "[check-docs-sync] NG: 上のファイルに図形プリミティブの旧名（Render.box 等）が残っています。RawDraw.* へ書き換えてください"; ok=0; \
+	fi; \
 	echo "[check-docs-sync] pub def を持つモジュールが API 索引に載っているか"; \
 	python3 bin/check-api-index.py || ok=0; \
 	echo "[check-docs-sync] docs/api-digest.md が作り直しても差分ゼロか"; \
