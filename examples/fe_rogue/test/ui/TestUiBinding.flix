@@ -8,7 +8,8 @@ mod TestUiBinding {
 
     /// 表示文字列だけを変える単純な TextComp。
     def mkText(text: String): UiWidget.TextComp =
-        {text = text, font = "ui", fontSize = 4.0, tint = white(), zIndex = 0}
+        {text = text, font = "ui", fontSize = 4.0, tint = white(), zIndex = 0,
+         wrap = UiWidget.TextWrap.WrapOff, fit = None}
 
     /// entity 1 = bind "greeting" 付き / entity 2 = text だが bind 無し、の最小 UiWorld。
     def sample(): UiStore.UiWorld =
