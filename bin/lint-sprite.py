@@ -3,17 +3,18 @@
 
 lint-palette が「色が解けるか」を見るのに対し、こちらは画素の並びを見る。
 規則はドット絵の実務で広く共有されている物の機械化:
-  NG (終了コード 1) — 誤検知がほぼ無い決定的な規則だけ
+  NG (終了コード 1) — 形式の壊れ。誤検知がほぼ無い
     structure : rows が矩形 / legend に無い文字 / コマ間の大きさ不一致 /
                 anchor が格子の外 / 空のコマ / コマの丸ごとコピペ
     orphan    : 周り 4 方向すべて透明の浮いた 1 画素
-    palette   : 1 スプライトの色数が上限超え
-  注意 (終了コード 0。--strict で NG に昇格) — 閾値に依存する規則
+  注意 (終了コード 0。--strict で NG に昇格) — 閾値に依存する美学の規則
     jaggy     : 輪郭の階段のラン長が 長,1,長 と乱れる (例 3,1,3)
     banding   : ある色が輪郭の内側 1px の縁取りとしてしか使われていない
     corner    : 1px 線の角に画素が L 字に 2 重になっている
     silhouette: 枠に対して絵がスカスカ / 細長すぎる
-    palette   : 色どうしが近すぎる (ΔE)
+    palette   : 1 スプライトの色数が上限超え / 色どうしが近すぎる (ΔE)
+                (色数は少数パレットの画風向けの目安。色ランプ+ディザの
+                 高精細一枚絵では超えて良い — 気になるなら --strict で)
 
 塗り率 90% 以上のコマは「テクスチャ」(全面ディザ・タイル) と見なし、
 形の規則 (orphan/jaggy/banding/corner/silhouette) を掛けない。
@@ -491,7 +492,7 @@ def check_doc(doc, legend_hexes):
         big = sizes and max(max(w, h) for w, h in sizes.values()) > BIG_SIDE
         cap = MAX_COLORS_BIG if big else MAX_COLORS
         if len(used_keys) > cap:
-            report("palette", True, f"{name}: 色数 {len(used_keys)} が上限 {cap} を超えている (色を束ねるか分割を)")
+            report("palette", False, f"{name}: 色数 {len(used_keys)} が目安 {cap} を超えている (少数パレットの画風なら色を束ねる。色ランプ+ディザの画風なら気にしなくてよい)")
 
     return problems, warnings, excluded, sprite_count
 
@@ -746,6 +747,16 @@ def self_test():
             ),
             [],
             ["スカスカ"],
+        ),
+        (
+            "色数の超過は注意どまり",
+            {
+                "version": 1,
+                "legend": {c: "c" + c for c in "abcdefghijklm"},
+                "sprites": {"hero": {"frames": {"idle": ["abcdefghijklm"]}}},
+            },
+            [],
+            ["色数"],
         ),
         (
             "除外記法 (規則指定)",

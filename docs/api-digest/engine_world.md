@@ -1187,7 +1187,7 @@
 
 ## Render — `engine_world/src/Render.flix`
 - 傾き（rotation）の単位は「回転数」— 1 周 = 1.0・正で時計回り。ラジアンへの変換は
-  `pub enum Item { case Sprite({ texture = String, tint = Color, alpha = Float32, scale = Vec2.Vec2, rotation = Float64, centered = Bool, flipH = Bool, flipV = Bool, regionRect = Option[Rect2.Rect2], zIndex = Int32, blend = DrawCmd.BlendMode, maskPolys = List[List[Vec2.Vec2]] }) case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color, rotation = Float64, zIndex = Int32 }) case Box({ size = Vec2.Vec2, color = Color, alpha = Float32, rotation = Float64, style = Option[GameEngine.BoxStyle], zIndex = Int32, blend = DrawCmd.BlendMode }) case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32, blend = DrawCmd.BlendMode, grad = Option[List[DrawCmd.VertexTint]] }) case Clipped({ rect = Rect2.Rect2, inner = Item }) case Shader({ rect = Rect2.Rect2, spec = ShaderDoc.Spec, t = Float64, mask = List[List[Vec2.Vec2]], zIndex = Int32, blend = DrawCmd.BlendMode }) }`
+  `pub enum Item { case Sprite({ texture = String, tint = Color, alpha = Float32, scale = Vec2.Vec2, rotation = Float64, centered = Bool, flipH = Bool, flipV = Bool, regionRect = Option[Rect2.Rect2], zIndex = Int32, blend = DrawCmd.BlendMode, maskPolys = List[List[Vec2.Vec2]] }) case Text({ text = String, fontAtlas = FontAtlas, fontSize = Float64, tint = Color, rotation = Float64, zIndex = Int32, wrapWidth = Option[Float64] }) case Box({ size = Vec2.Vec2, color = Color, alpha = Float32, rotation = Float64, style = Option[GameEngine.BoxStyle], zIndex = Int32, blend = DrawCmd.BlendMode }) case Poly({ vertices = List[Vec2.Vec2], color = Color, alpha = Float32, zIndex = Int32, blend = DrawCmd.BlendMode, grad = Option[List[DrawCmd.VertexTint]] }) case Clipped({ rect = Rect2.Rect2, inner = Item }) case Shader({ rect = Rect2.Rect2, spec = ShaderDoc.Spec, t = Float64, mask = List[List[Vec2.Vec2]], zIndex = Int32, blend = DrawCmd.BlendMode }) }`
 - 置き場所つきの描画物。View はこの列を組み、draw が描画命令へ変換する。
   `pub type alias PlacedItem = { at = Vec2.Vec2, item = Item }`
 - 全テクスチャ・等倍・中心原点のスプライト（最頻ケース）。反転が要るときは spriteFlipped。
@@ -1197,6 +1197,8 @@
 - `pub def text(content: String, fontAtlas: FontAtlas, fontSize: Float64, zIndex: Int32): Item`
 - 着色テキスト。disabled のグレー表示やカーソル色、見出しの強調色などに使う。
   `pub def textTinted(content: String, fontAtlas: FontAtlas, fontSize: Float64, tint: Color, zIndex: Int32): Item`
+- 折り返し付きの着色テキスト。wrapWidth（design px）を超える字は次の行へ送られる。
+  `pub def textWrapped(content: String, fontAtlas: FontAtlas, look: { fontSize = Float64, wrapWidth = Float64, tint = Color, zIndex = Int32 }): Item`
 - 中心 center に置いた、縁がふわっと消える円の列（ソフトな光の玉）。
   `pub def glowAt(center: Vec2.Vec2, radius: Float64, color: Color, look: { alpha = Float64, blend = DrawCmd.BlendMode }, zIndex: Int32): List[PlacedItem]`
 - 中心 at に置いた放射状の明かり 1 枚（松明・スポットライト・光だまり）。
@@ -1656,6 +1658,8 @@
 ## UiExtract — `engine_world/src/UiExtract.flix`
 - text コンポーネントの内在サイズ（measure）を求める。
   `pub def measureTexts(texts: Map[EntityId, UiWidget.TextComp], atlasOf: String -> FontAtlas \ ef): Map[EntityId, Vec2.Vec2] \ ef`
+- 内在サイズの計測に効かせられる折り返しは数値（px）だけ。auto は「自分の矩形の幅」で、
+  `pub def intrinsicWrapOf(comp: UiWidget.TextComp): Option[Float64]`
 - UI entity を PlacedItem（置き場所つきの描画物）列へ射影する。可視 entity のみ・矩形が確定したもののみ。
   `pub def extract(ui: UiStore.UiWorld, rects: Map[EntityId, Rect2.Rect2], vis: Map[EntityId, Bool], atlasOf: String -> FontAtlas \ ef, textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): List[Render.PlacedItem] \ ef`
 - poly entity を (id, rect 左上, ワールド座標へ移した PolyComp) 列へ射影する。可視かつ rect 確定のみ。
@@ -1666,6 +1670,12 @@
   `pub def boxItem(box: UiWidget.BoxComp, size: Vec2.Vec2): Render.Item`
 - box の PlacedItem 列（`at` は箱の左上からのずれ — 置き場所は呼び手が足す）。
   `pub def boxPlacedItems(box: UiWidget.BoxComp, size: Vec2.Vec2, textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): List[Render.PlacedItem] \ ef`
+- text の Item。atlasOf で font 名から FontAtlas を引き、wrap 宣言を実際の折り返し幅へ
+  `pub def textItem(comp: UiWidget.TextComp, rectSize: Vec2.Vec2, atlasOf: String -> FontAtlas \ ef): Render.Item \ ef`
+- wrap 宣言 → 実際の折り返し幅（px）。auto は自分のレイアウト矩形の幅を使う。
+  `pub def resolvedWrapOf(comp: UiWidget.TextComp, rectWidth: Float64): Option[Float64]`
+- fit 適用後の fontSize。折った後の縦が rectHeight に収まるまで step 刻みで下げ、
+  `pub def fittedFontSize(comp: UiWidget.TextComp, atlas: FontAtlas, wrapW: Option[Float64], rectHeight: Float64): Float64`
 - sprite の Item。左上原点（centered=false）でレイアウト矩形の位置に合わせる。
   `pub def spriteItem(sprite: UiWidget.SpriteComp, textureInfoOf: String -> Option[GameEngine.TextureInfo] \ ef): Render.Item \ ef`
 
@@ -1925,8 +1935,16 @@
 ## UiWidget — `engine_world/src/UiWidget.flix`
 - 単色塗り矩形の描画属性。サイズは layout が決める。
   `pub type alias BoxComp = { color = Color, alpha = Float32, zIndex = Int32, cornerRadius = Float64, borderWidth = Float64, borderColor = Color, skin = Option[String], skinCorner = Option[Float64] }`
+- テキストの折り返し宣言。
+  `pub enum TextWrap with Eq, Order, ToString { case WrapOff case WrapAuto case WrapPx(Float64) }`
+- fit（枠に収める縮小）の規則。
+  `pub type alias TextFit = { step = Float64, minSize = Float64 }`
+- fit の縮小刻みの既定値（ui.schema.json の fitStep の既定と対）。
+  `pub def fitStepDefault(): Float64`
+- fit の下限 fontSize の既定値（ui.schema.json の fitMin の既定と対）。
+  `pub def fitMinDefault(): Float64`
 - テキストの描画属性。
-  `pub type alias TextComp = { text = String, font = String, fontSize = Float64, tint = Color, zIndex = Int32 }`
+  `pub type alias TextComp = { text = String, font = String, fontSize = Float64, tint = Color, zIndex = Int32, wrap = TextWrap, fit = Option[TextFit] }`
 - スプライトの描画属性。
   `pub type alias SpriteComp = { texture = String, regionRect = Option[Rect2.Rect2], scale = Vec2.Vec2, flipH = Bool, flipV = Bool, tint = Color, zIndex = Int32, hframes = Int32, vframes = Int32, frame = Int32 }`
 - hover 時の部分上書き（宣言 UI の ":hover" 相当）。全フィールド任意 — Some の

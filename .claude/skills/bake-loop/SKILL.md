@@ -12,7 +12,7 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 焼いた絵を毎回目視すると 1 枚数千トークン燃える。じょうごで絞る:
 
-1. まず `make bench`（golden とのハッシュ突き合わせ）。**全一致ならここで終わり** —
+1. まず `make -C templates/<name> bench`（golden とのハッシュ突き合わせ）。**全一致ならここで終わり** —
    digest も目視も要らない
 2. 不一致の名前が出た時だけ、その名前を渡して数値で当たりを付ける:
    ```
@@ -45,11 +45,18 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 `make diff DIR=<game>`。変わった絵だけ `debug/diff/` に「左=前・右=後」で焼ける。
 **ファイル名を並べるだけにしない** — 人が 2 枚を切り替えて差を探す羽目になる。
 
+## ループ GIF を焼いたら継ぎ目を確かめる
+
+完全ループを狙う GIF（コマ 0 に戻る演出）を焼いたら、目視の前に
+`make lint-loop`（または `python3 bin/lint-loop.py <framesディレクトリ>`）で
+最終コマ→0 コマの継ぎ目が浮いていないか機械検査する。fade・wipe など
+最初から戻らない演出は対象外。
+
 ## Bake / golden の作り方（まだ無いゲームに足すとき）
 
 配管一式（Bake entrypoint・flix.toml・フォント・Bakery 呼び出し）の写経元は
-docs/headless-bake-recipe.md。golden の祝福は `make golden`（bin/golden-bless.sh）、
-比較は `make bench`（bin/golden-check.sh）。git に入るのは SHA256SUMS.txt と title.png だけ。
+docs/headless-bake-recipe.md。golden の祝福は `make -C templates/<name> golden`（bin/golden-bless.sh）、
+比較は `make -C templates/<name> bench`（bin/golden-check.sh）。git に入るのは SHA256SUMS.txt と title.png だけ。
 守ることは 2 つ: 調整中の画は `debug/` 行きの別 entrypoint に分けて golden を汚さない・
 テストは検証だけ（生成は `Bake.all` の仕事）。
 
@@ -63,4 +70,4 @@ docs/headless-bake-recipe.md。golden の祝福は `make golden`（bin/golden-bl
 - [ ] 5. make diff DIR=<game> で前後を並べて見せた
 ```
 
-絵の部品選びは `/visual-dict`。絵の下限 4 性質は `.claude/rules/drawing.md` が正。
+絵の部品選びは `/visual-dict`。絵の下限 5 性質は docs/drawing-floor.md が正（`.claude/rules/drawing.md` はその生成物）。

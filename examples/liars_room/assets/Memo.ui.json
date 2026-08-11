@@ -17,7 +17,8 @@
         "dir": "column", "pad": [5, 4, 5, 5], "gap": 2,
         "children": [
           { "name": "title", "widget": "text", "text": "すいりメモ",
-            "fontSize": 10, "tint": "#9cc0ff", "zIndex": 142 },
+            "fontSize": 10, "tint": "#9cc0ff", "zIndex": 142,
+            "lint-ui": "対象外 — 固定の見出しで、実行時に文言が変わらない" },
           { "name": "menu", "widget": "none", "dir": "column", "gap": 0, "crossAlign": "stretch",
             "children": [
               { "name": "highlight", "widget": "box", "color": "#16314f", "alpha": 1.0,
@@ -33,9 +34,10 @@
             ]
           },
           { "name": "submit", "widget": "text", "text": "ぜんいんぶん埋めよう", "bind": "submitLabel",
-            "fontSize": 8, "tint": "@muted", "zIndex": 142 },
+            "wrap": "auto", "fontSize": 8, "tint": "@muted", "zIndex": 142 },
           { "name": "hint", "widget": "text", "text": "Z:しるし C:とじる",
-            "fontSize": 8, "tint": "@muted", "zIndex": 142 }
+            "fontSize": 8, "tint": "@muted", "zIndex": 142,
+            "lint-ui": "対象外 — 操作キーの固定短文で、実行時に文言が変わらない" }
         ]
       }
     ]

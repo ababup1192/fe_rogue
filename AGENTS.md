@@ -5,7 +5,7 @@
 
 ## 設計・実装
 
-- **絵の下限（矩形だけの画面から脱する 4 性質）**: [docs/drawing-floor.md](docs/drawing-floor.md)
+- **絵の下限（矩形だけの画面から脱する 5 性質）**: [docs/drawing-floor.md](docs/drawing-floor.md)
 - **Flix の決まり（予約語・コメントの流儀）**: [docs/flix-conventions.md](docs/flix-conventions.md)
 - **z 帯の地図（world / UI / Transition / HUD / デバッグの重なり順の仕切り）**: [docs/z-bands.md](docs/z-bands.md)
 - engine_world の「やりたいこと → モジュール」逆引きと全モジュール一覧: [docs/module-index.md](docs/module-index.md)
@@ -27,8 +27,8 @@
 
 ## 絵と音
 
-**`RawDraw.box` を並べただけの画面は未完成。** 求めるのは 4 性質（面に階調か質感 / 主役が背景から
-分離 / 層が分かれている / 時間が流れている）で、**どの画風で満たすかは自由**。
+**`RawDraw.box` を並べただけの画面は未完成。** 求めるのは 5 性質（面に階調か質感 / 主役が背景から
+分離 / 層が分かれている / 時間が流れている / 形が物として読める）で、**どの画風で満たすかは自由**。
 画風はゲームごとに決め直す（既定は無い。テンプレどうしでもそろえない）。
 素形状（RawDraw）は材料。View は完成品の部品で組む。
 
@@ -73,6 +73,7 @@ git log 掘りやテスト回し直しから始めない。
 
 | いつ | 必ず引く |
 |---|---|
+| 新しいゲームを作り始めるとき・画風がまだ決まっていないとき | `/style-interview` |
 | View / 背景 / キャラ / エフェクトを書く**前** | `/visual-dict` |
 | Flix を書く前・テストを書く前 | `/flix-docs` |
 | コンパイルエラーが出たら | `/compile-fix` |

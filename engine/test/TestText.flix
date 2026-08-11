@@ -101,4 +101,57 @@ mod TestText {
         Assert.assertTrue(approx(sz#x, 20.0));
         Assert.assertTrue(approx(sz#y, 10.0))
 
+    // ========================================================================
+    // 折り返し（wrapWidth）— measure
+    // ========================================================================
+
+    /// 幅 30 で折ると "ABCAB"(1 文字 10px) は "ABC" / "AB" の 2 行になる。
+    /// 幅 = 一番広い行の 30、高さ = 2 行 × 10
+    @Test
+    def testMeasureWrapFoldsIntoTwoRows(): Unit \ Assert =
+        let label = Text.make("ABCAB", sampleAtlas(), 16.0) |> Text.setWrapWidth(Some(30.0));
+        let sz = Text.measure(label);
+        Assert.assertEq(expected = (30.0, 20.0), (sz#x, sz#y))
+
+    /// 折り返し幅が文字列より広ければ、折り返し無しと同じ寸法（"ABC" = 30 × 10）
+    @Test
+    def testMeasureWrapWiderThanTextIsNoop(): Unit \ Assert =
+        let label = Text.make("ABC", sampleAtlas(), 16.0) |> Text.setWrapWidth(Some(100.0));
+        let sz = Text.measure(label);
+        Assert.assertEq(expected = (30.0, 10.0), (sz#x, sz#y))
+
+    /// 改行と折り返しの併用: "ABCA\nB" を幅 30 で折ると "ABC" / "A" / "B" の 3 行
+    @Test
+    def testMeasureWrapAndNewlineCombine(): Unit \ Assert =
+        let label = Text.make("ABCA\nB", sampleAtlas(), 16.0) |> Text.setWrapWidth(Some(30.0));
+        let sz = Text.measure(label);
+        Assert.assertEq(expected = (30.0, 30.0), (sz#x, sz#y))
+
+    // ========================================================================
+    // 折り返し（wrapWidth）— toDrawables
+    // ========================================================================
+
+    /// 幅 30 で折った "ABCA" の 4 文字目は 2 行目の先頭に置かれる。
+    /// x = 0（行頭）、y = lineHeight(10) + ascent(8) = 18
+    @Test
+    def testToDrawablesWrapSecondRowPosition(): Unit \ Assert =
+        let label = Text.make("ABCA", sampleAtlas(), 16.0) |> Text.setWrapWidth(Some(30.0));
+        let ds = Text.toDrawables(label, {x = 0.0, y = 0.0});
+        let fourth = List.drop(3, ds) |> List.head;
+        match fourth {
+            case Some(d) => Assert.assertEq(expected = (0.0, 18.0), (d#position#x, d#position#y))
+            case None    => bug!("4 文字目の Drawable が無い")
+        }
+
+    /// wrapWidth = None は折り返さない: "ABCA" は 1 行のまま、4 文字目は x=30・y=8（ascent）
+    @Test
+    def testToDrawablesNoWrapKeepsSingleRow(): Unit \ Assert =
+        let label = Text.make("ABCA", sampleAtlas(), 16.0);
+        let ds = Text.toDrawables(label, {x = 0.0, y = 0.0});
+        let fourth = List.drop(3, ds) |> List.head;
+        match fourth {
+            case Some(d) => Assert.assertEq(expected = (30.0, 8.0), (d#position#x, d#position#y))
+            case None    => bug!("4 文字目の Drawable が無い")
+        }
+
 }

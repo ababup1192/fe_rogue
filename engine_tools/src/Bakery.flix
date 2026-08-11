@@ -102,6 +102,63 @@ mod Bakery {
         SoftRaster.renderWithSurfaces(reqOf(cfg, drawables, polygons, pngPath(cfg, name)), surfaces)
 
     // ════════════════════════════════════════════════════════
+    // シルエット焼き — 造形（形が物として読めるか）を目視するための材料づくり
+    // ════════════════════════════════════════════════════════
+
+    /// シルエット焼きの絞り方。既定に使うのは WorldBand — 全アイテムを黒にすると画面が
+    /// 1 つの塊に融けて個々の形が見えないため、まず主役の z 帯（world 帯）だけに絞る。
+    /// All（全アイテム黒）の用途は画面全体の重心確認に限る（docs/drawing-floor.md）。
+    pub enum SilhouetteScope {
+        case WorldBand
+        case All
+    }
+
+    /// scope が z を対象に含むか。world 帯の上端は UI 層の底（CanvasLayer.layerStride）。
+    def silhouetteKeeps(scope: SilhouetteScope, z: Int32): Bool =
+        match scope {
+            case SilhouetteScope.WorldBand => z < CanvasLayer.layerStride()
+            case SilhouetteScope.All       => true
+        }
+
+    /// 描画コマンド列を「対象は真っ黒・それ以外は落とす」に写す純関数。背景を白にして
+    /// 焼けば、シルエットだけで何か分かるか（絵の下限の 5 つ目の性質）を目で確かめられる。
+    /// 形の良し悪しの判定はしない — 機械は見やすい材料を出すまで。
+    pub def silhouette(scope: SilhouetteScope,
+                       drawables: List[GameEngine.Drawable],
+                       polygons: List[GameEngine.PolygonRenderCmd]):
+                       (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
+        (drawables |> List.filter(d -> silhouetteKeeps(scope, d#zIndex)) |> List.map(blackenDrawable),
+         polygons  |> List.filter(p -> silhouetteKeeps(scope, p#zIndex)) |> List.map(blackenPolygon))
+
+    def silhouetteInk(): Color = { r = 0.0f32, g = 0.0f32, b = 0.0f32 }
+
+    /// Drawable を真っ黒の不透明に写す。texture は消さない — 絵の抜き（形）はテクスチャの
+    /// α が持っていて、色は黒 tint の乗算で消えるため。blend は Normal に倒す（Add は黒を
+    /// 足しても何も描かず、形ごと消える）。alpha を 1 に上げるのは、半透明の濃淡は塗りの
+    /// 情報で、形の検査には雑音だから。
+    def blackenDrawable(d: GameEngine.Drawable): GameEngine.Drawable =
+        { color = silhouetteInk(), alpha = 1.0f32, blend = DrawCmd.BlendMode.Normal,
+          style = d#style |> Option.map(st ->
+              { borderColor = silhouetteInk(), stripeColor = silhouetteInk(),
+                checkerColor = silhouetteInk() | st }) | d }
+
+    /// 多角形を真っ黒の不透明に写す。grad は外す — 頂点ごとの色は面の情報で、
+    /// 残すと補間の縁が灰色に出てシルエットの縁が濁る。
+    def blackenPolygon(p: GameEngine.PolygonRenderCmd): GameEngine.PolygonRenderCmd =
+        { color = silhouetteInk(), alpha = 1.0f32, blend = DrawCmd.BlendMode.Normal,
+          grad = None | p }
+
+    /// シルエット PNG を焼く（renderPng の変形版）。対象を黒・背景を白で <name>.png に書く。
+    /// 背景白を cfg でなくここで固定するのは、シルエットの読み取りが黒 / 白の 2 値で
+    /// 成り立つ検査で、ゲームごとの背景色が混ざると意味が変わるため。
+    pub def silhouettePng(cfg: BakeConfig, scope: SilhouetteScope,
+                          drawables: List[GameEngine.Drawable],
+                          polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO =
+        let (blackDrawables, blackPolygons) = silhouette(scope, drawables, polygons);
+        renderPng({ background = { r = 1.0f32, g = 1.0f32, b = 1.0f32 } | cfg },
+                  blackDrawables, blackPolygons, name)
+
+    // ════════════════════════════════════════════════════════
     // pass（レンダーターゲット）— 本編より先に別画像へ描き、名前で本編から貼る
     // ════════════════════════════════════════════════════════
 

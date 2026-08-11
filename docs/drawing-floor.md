@@ -1,6 +1,6 @@
 # 絵の下限
 
-`RawDraw.box` を並べただけの画面は未完成として扱う。次の 4 性質をすべて満たすこと。
+`RawDraw.box` を並べただけの画面は未完成として扱う。次の 5 性質をすべて満たすこと。
 **どの画風で満たすかは自由**。下は手の一例で、選択肢の全部ではない。
 
 名前空間（`RawDraw` = 素形状）は「気軽に使うと足かせになる」摩擦を作る仕切り。
@@ -8,10 +8,13 @@
 
 | 満たす性質 | 手の例 |
 |---|---|
-| 面に階調か質感がある | `ShaderDoc` + `Render.shaderFill` / `Render.vgrad`・`gradPolygon` / `Material`（粒・きらめき・染み）/ `Render.striped`・`checker` / `PxShade` のディザ |
-| 主役が背景から分離して読める | `PxShade`（ふち光・接地影）/ `Render.glowAt` / `Render.outline` / 明度差・色相差 |
-| 層が分かれている（奥・主役・手前） | `Render.zShifted`・`zShiftedAll` / `Depth` / `Transition` の覆い |
-| 時間が流れている | `Fx`・`FxDoc`（粒）/ `Sway`（揺れ）/ `Anim`（コマ替え）/ `Scatter` / `Daylight` |
+| 面に階調か質感がある | `ShaderDoc` + `Render.shaderFill` / `Render.vgrad`・`gradPolygon` / `Render.lightAt`・`darkAt`（放射の明かり・翳り）/ `Material`（粒・きらめき・染み）/ `Render.striped`・`checker` / `PxShade` のディザ |
+| 主役が背景から分離して読める | `PxShade`（ふち光・接地影）/ `Render.lightAt`・`darkAt` / `Render.glowAt` / `Render.outline` / 明度差・色相差 |
+| 層が分かれている（奥・主役・手前） | `Render.zShifted`・`zShiftedAll` / `Depth` / `Transition` の覆い / `Pass`（光マップを別の紙に集めて Multiply で本編に掛ける） |
+| 時間が流れている | `Fx`・`FxDoc`（粒）/ `Sway`（揺れ）/ `Anim`（コマ替え）/ `Curve`（sine・tri・arch01・pieces・dampedSpring）/ `Scatter` / `Daylight` |
+| 形が物として読める（シルエットだけで何か分かる / 部品同士の接続が破綻していない — 入り口・持ち手・関節 / 接地している / 比率が対象らしい） | シルエット焼き（`Bakery.silhouettePng` — 対象を黒・背景を白で焼いて、形だけを取り出して目視する） |
+
+記号・幾何が画風なら 5 つ目は「記号として一意に読める」で判定する（接地・関節は具象物の場合の言い換え）。
 
 光と影で色そのものを分けたいときは `Color.warm` / `Color.cool`。
 
@@ -71,3 +74,18 @@ python3 bin/lint-anim.py [ファイル...]   # コマ間の飛び・体積・接
 `make lint-view` / `make lint-palette` / `make lint-sprite` / `make lint-anim` でも同じ。
 lint-sprite の意図的な例外は、スプライトに理由付きで
 `"lint-sprite": "対象外(orphan) — 火の粉は浮かせたい"` と書く(黙って除外はしない)。
+
+### シルエット焼き（造形が怪しいときの材料づくり）
+
+「形が物として読める」が怪しいときは、対象を黒・背景を白だけにして焼くと、
+色や質感に紛れていた形の破綻（浮き・つながらない接続・崩れた比率）が浮き上がる。
+既存の bake 配管（`docs/headless-bake-recipe.md` の cfg と描画コマンド列）にそのまま流せる:
+
+```flix
+// 既定は「主役の z 帯だけ」= world 帯(ゲームの絵)。UI・HUD は形の検査の対象外。
+Bakery.silhouettePng(cfg, Bakery.SilhouetteScope.WorldBand, drawables, polygons, "scene_sil")
+```
+
+`SilhouetteScope.All`（全アイテム黒）も選べるが、画面全体が 1 つの塊に融けて個々の形は
+見えなくなるので、**用途は画面全体の重心確認に限る**。
+形の良し悪しを決めるのは目視のまま — 機械がやるのは「見やすい材料を出す」まで。

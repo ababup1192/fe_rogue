@@ -82,7 +82,7 @@ EDITOR_SERVER_DIR := editor_server
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help status sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff gl-parity release release-guard bump editor lint-palette lint-view rules check-docs-sync checkd-stop
+.PHONY: help status sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff gl-parity release release-guard bump editor lint-palette lint-view lint-loop rules check-docs-sync checkd-stop
 
 # セッション立ち上げの固定費を数百トークンに抑える口。SessionStart フックが毎回呼ぶので
 # 実行や変更は一切せず、残っている記録 (.test-logs/ golden チケット git) を集めるだけ。
@@ -107,6 +107,8 @@ help:
 	@echo "  make lint-images          git に入れる絵が増えすぎていないか検査"
 	@echo "  make lint-sprite          ドット絵の画素の並び (浮き・階段・帯・色数) を検査"
 	@echo "  make lint-anim            コマ間の飛び・体積・接地と 4 方向のそろいを検査"
+	@echo "  make lint-loop            ループ GIF の継ぎ目 (最終コマ→0 コマ) が浮かないか検査"
+	@echo "  make lint-ui              ui.json の text の折り返し宣言漏れ (はみ出す形) を検査"
 	@echo "  python3 bin/img-digest.py A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
 	@echo "  make bake                 bake ターゲットを持つ全 example の生成物を焼き直す"
@@ -569,6 +571,20 @@ lint-sprite:
 lint-anim:
 	@python3 bin/lint-anim.py --self-test >/dev/null
 	@python3 bin/lint-anim.py
+
+# ui.json の text の折り返し宣言漏れ (固定幅の枠 + wrap/fit なし) の検査。
+# 実寸は測らない構造検査。コード直組みの Text と instance 参照ノードは見えない。
+.PHONY: lint-ui
+lint-ui:
+	@python3 bin/lint-ui-overflow.py --self-test >/dev/null
+	@python3 bin/lint-ui-overflow.py
+
+# ループ GIF の継ぎ目（最終コマ→0 コマ）が浮かないかの検査。bake 済みコマが前提なので
+# 保存時フックや pre-commit には乗せない（手動で回す）。
+.PHONY: lint-loop
+lint-loop:
+	@python3 bin/lint-loop.py --self-test >/dev/null
+	@python3 bin/lint-loop.py
 
 # 規約まわりの配線が崩れていないかの検査（生成はしない）。
 .PHONY: check-docs-sync

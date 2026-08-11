@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """View が矩形と円だけになっていないかを検査する。
 
-絵の下限 4 性質（面に階調か質感 / 主役が背景から分離 / 層が分かれている /
+絵の下限 5 性質（面に階調か質感 / 主役が背景から分離 / 層が分かれている /
 時間が流れている）は box と circle では作れない。人の目視より前に機械が声を出す。
 
   python3 bin/lint-view.py                 # templates/ と examples/ を全部見る
@@ -42,7 +42,7 @@ DESTINATIONS = (
 )
 
 HINT = (
-    "絵の下限 4 性質を満たせていません。"
+    "絵の下限 5 性質を満たせていません。"
     "{} （詳細は .claude/skills/visual-dict/reference.md）"
 ).format(DESTINATIONS)
 
@@ -59,13 +59,10 @@ def rect_counts(src: str):
     return counts
 
 
-def is_view(path: Path) -> bool:
-    name = path.name
-    if not name.endswith(".flix"):
-        return False
-    if "View" in name:
-        return True
-    return path.parent.name == "bake"
+def is_target(path: Path) -> bool:
+    # 名前では絞らない — 名前を変えると素通りできる穴になる。
+    # 描画をほとんど含まないファイルは MIN_DRAWS で除外される。
+    return path.name.endswith(".flix")
 
 
 def exempt_reason(src: str):
@@ -135,7 +132,7 @@ def hud_smell(project_dir: Path):
 
 
 def project_root_of(path: Path):
-    """View ファイルからゲーム 1 本の根（src の親）を探す。無ければ None。"""
+    """検査対象のファイルからゲーム 1 本の根（src の親）を探す。無ければ None。"""
     for parent in path.parents:
         if parent.name == "src":
             return parent.parent
@@ -156,7 +153,7 @@ def main(argv):
     bad = []
     skipped = []
     for path in targets:
-        if not path.is_file() or not is_view(path):
+        if not path.is_file() or not is_target(path):
             continue
         try:
             src = path.read_text(encoding="utf-8", errors="replace")
@@ -179,7 +176,7 @@ def main(argv):
     # HUD の匂い（ゲーム 1 本ごとに 1 回だけ・警告のみで exit code に効かせない）。
     seen_roots = set()
     for path in targets:
-        if not path.is_file() or not is_view(path):
+        if not path.is_file() or not is_target(path):
             continue
         root_dir = project_root_of(path)
         if root_dir is None or root_dir in seen_roots:

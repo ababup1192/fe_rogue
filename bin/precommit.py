@@ -10,6 +10,8 @@
   3. 矩形だけの View     ステージした View が box と circle だけなら止める
   4. 解けない意味色      ステージに *.sprite.json / *.theme.json があれば
                          lint-palette を通す
+  5. 文字のはみ出す形    ステージに *.ui.json があれば lint-ui-overflow を
+                         そのファイルだけに通す (折り返し宣言漏れを止める)
 
 使い方:
   通常は git が bin/githooks/pre-commit 経由で呼ぶ (配線は make hooks)
@@ -123,6 +125,12 @@ def main():
     if any(p.endswith((".sprite.json", ".theme.json")) or "palette" in p
            for p in staged):
         if run([sys.executable, str(ROOT / "bin" / "lint-palette.py")]) != 0:
+            failed = True
+
+    ui = [p for p in staged if p.endswith(".ui.json")]
+    if ui:
+        if run([sys.executable, str(ROOT / "bin" / "lint-ui-overflow.py"),
+                "--strict", *ui]) != 0:
             failed = True
 
     if needs_docs_sync(staged):

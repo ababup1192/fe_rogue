@@ -13,10 +13,11 @@
         "zIndex": 100,
         "dir": "column", "pad": [10, 5, 10, 5],
         "children": [
-          { "name": "speaker", "widget": "text", "text": "", "fontSize": 9,
+          { "name": "speaker", "widget": "text", "text": "", "wrap": "auto", "fontSize": 9,
             "tint": "@accent", "zIndex": 102 },
           { "name": "hint", "widget": "text", "text": "クリック / Z", "fontSize": 7,
-            "tint": "@hint", "zIndex": 102, "abs": [386, 46] }
+            "tint": "@hint", "zIndex": 102, "abs": [386, 46],
+            "lint-ui": "対象外 — 操作案内の固定短文で、実行時に文言が変わらない" }
         ] }
     ]
   }

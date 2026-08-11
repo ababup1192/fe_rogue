@@ -10,7 +10,7 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 
 ## 2 系統ある
 
-- **具体値式**（rpg / novel / race / tetris-starter）: 値をそのまま書く。**in-repo で
+- **具体値式**（rpg / novel / race / tetris / platformer-starter）: 値をそのまま書く。**in-repo で
   `make -C templates/<name> check / test / bake` が通り golden を持つ**作り込み例。
   凝った演出もテストも載せられる。Studio の「はじめる」は複製で始まる。
 - **トークン式**（game-starter）: `__NAME__` `__W__` などを埋めた最小の骨組み。
@@ -69,10 +69,10 @@ Studio のフォームが「Expecting an OBJECT with a field named `sections`」
 ### 5. 画風を宣言する
 
 `AGENTS.local.md` に「## この画面の画風」を書き（色 3 つ・やらないこと 1 つ）、
-`src/View.flix` の頭に層の並びと、各層が「絵の下限」の 4 性質のどれを受け持つかを書く。
+`src/View.flix` の頭に層の並びと、各層が「絵の下限」の 5 性質のどれを受け持つかを書く。
 
 **テンプレどうしで画風をそろえない** — 揃えると「この画風が正解」という手本になってしまう
-（夜のネオン・紙の刷り物・霧の夕暮れ・雨の夜、と別々にしてあるのはそのため）。
+（テンプレごとに別画風にしてある。現物は各 `AGENTS.local.md` の「## この画面の画風」宣言が正）。
 
 **音と粒（パーティクル）も絵と同じ強さで意識する**。詳しくは [docs/audio.md](../../../docs/audio.md) と
 `/visual-dict`。粒を出すときはまず [docs/module-index.md](../../../docs/module-index.md) の逆引きを引く。

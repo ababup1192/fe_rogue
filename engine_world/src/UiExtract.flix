@@ -8,7 +8,18 @@ mod UiExtract {
     /// atlasOf は font 名→FontAtlas（呼び側が Game.getFontAtlas 等で組む）。
     /// atlasOf が副作用を持つ場合はその effect が伝播する。
     pub def measureTexts(texts: Map[EntityId, UiWidget.TextComp], atlasOf: String -> FontAtlas \ ef): Map[EntityId, Vec2.Vec2] \ ef =
-        texts |> Map.map(comp -> Text.measure(Text.make(comp#text, atlasOf(comp#font), comp#fontSize)))
+        texts |> Map.map(comp -> Text.measure(
+            Text.make(comp#text, atlasOf(comp#font), comp#fontSize)
+                |> Text.setWrapWidth(intrinsicWrapOf(comp))))
+
+    /// 内在サイズの計測に効かせられる折り返しは数値（px）だけ。auto は「自分の矩形の幅」で、
+    /// その矩形はこの計測の結果から決まるので、計測に混ぜると循環する。
+    /// pub なのは UiDoc（Flex 経路）が同じ計測規則で内在サイズを出すため。
+    pub def intrinsicWrapOf(comp: UiWidget.TextComp): Option[Float64] =
+        match comp#wrap {
+            case UiWidget.TextWrap.WrapPx(w) => Some(w)
+            case _                           => None
+        }
 
     /// UI entity を PlacedItem（置き場所つきの描画物）列へ射影する。可視 entity のみ・矩形が確定したもののみ。
     /// 並びは (zIndex, 階層深さ, order, id) で安定ソートする（背面から前面へ）。
@@ -29,8 +40,15 @@ mod UiExtract {
             }, Nil);
         let spriteEntries = ui#sprites |> Map.foldLeftWithKey((acc, id, sprite) ->
             (id, sprite#zIndex, Vec2.zero(), spriteItem(hoverSprite(hoverFor(ui, hoveredId, id), sprite), textureInfoOf)) :: acc, Nil);
+        // text は wrap="auto" / fit が自分のレイアウト矩形を基準にするため、rect を引いてから組む
+        // （rect が無い text はどのみち後段の filterMap で落ちる）。
         let textEntries = Map.foldLeftWithKey((acc, id, comp) ->
-            (id, comp#zIndex, Vec2.zero(), textItem(hoverText(hoverFor(ui, hoveredId, id), comp), atlasOf)) :: acc,
+            match Map.get(id, rects) {
+                case None       => acc
+                case Some(rect) =>
+                    (id, comp#zIndex, Vec2.zero(),
+                     textItem(hoverText(hoverFor(ui, hoveredId, id), comp), rect#size, atlasOf)) :: acc
+            },
             (Nil : List[(EntityId, Int32, Vec2.Vec2, Render.Item)]), ui#texts);
         List.append(boxEntries, List.append(spriteEntries, textEntries))
             |> List.filter(entry -> {let (id, _z, _off, _item) = entry; Option.getWithDefault(true, Map.get(id, vis))})
@@ -201,9 +219,45 @@ mod UiExtract {
             regionRect = Some(src), zIndex = box#zIndex, blend = DrawCmd.BlendMode.Normal,
             maskPolys = Nil })
 
-    /// text の Item。atlasOf で font 名から FontAtlas を引く。
-    def textItem(comp: UiWidget.TextComp, atlasOf: String -> FontAtlas \ ef): Render.Item \ ef =
-        Render.textTinted(comp#text, atlasOf(comp#font), comp#fontSize, comp#tint, comp#zIndex)
+    /// text の Item。atlasOf で font 名から FontAtlas を引き、wrap 宣言を実際の折り返し幅へ
+    /// 解き、fit なら矩形の縦に収まる fontSize まで縮めてから組む。
+    /// pub なのは UiDoc（Flex 経路）が同じ text 意味論で描くため — TextComp→Item 変換の唯一の実装。
+    pub def textItem(comp: UiWidget.TextComp, rectSize: Vec2.Vec2,
+                     atlasOf: String -> FontAtlas \ ef): Render.Item \ ef =
+        let atlas = atlasOf(comp#font);
+        let wrapW = resolvedWrapOf(comp, rectSize#x);
+        let size = fittedFontSize(comp, atlas, wrapW, rectSize#y);
+        match wrapW {
+            case None    => Render.textTinted(comp#text, atlas, size, comp#tint, comp#zIndex)
+            case Some(w) => Render.textWrapped(comp#text, atlas,
+                                { fontSize = size, wrapWidth = w, tint = comp#tint, zIndex = comp#zIndex })
+        }
+
+    /// wrap 宣言 → 実際の折り返し幅（px）。auto は自分のレイアウト矩形の幅を使う。
+    pub def resolvedWrapOf(comp: UiWidget.TextComp, rectWidth: Float64): Option[Float64] =
+        match comp#wrap {
+            case UiWidget.TextWrap.WrapOff   => None
+            case UiWidget.TextWrap.WrapAuto  => Some(rectWidth)
+            case UiWidget.TextWrap.WrapPx(w) => Some(w)
+        }
+
+    /// fit 適用後の fontSize。折った後の縦が rectHeight に収まるまで step 刻みで下げ、
+    /// minSize で打ち切る — 無限に縮めないのは、読めない字ははみ出しと別種の事故のため。
+    pub def fittedFontSize(comp: UiWidget.TextComp, atlas: FontAtlas,
+                           wrapW: Option[Float64], rectHeight: Float64): Float64 =
+        match comp#fit {
+            case None      => comp#fontSize
+            case Some(fit) =>
+                if (fit#step <= 0.0) comp#fontSize
+                else shrinkToFit(comp#text, atlas, wrapW, rectHeight, fit, comp#fontSize)
+        }
+
+    /// 収まるか下限に達するまで fontSize を fit#step ずつ下げる。
+    def shrinkToFit(content: String, atlas: FontAtlas, wrapW: Option[Float64],
+                    rectHeight: Float64, fit: UiWidget.TextFit, size: Float64): Float64 =
+        let dims = Text.measure(Text.make(content, atlas, size) |> Text.setWrapWidth(wrapW));
+        if (dims#y <= rectHeight or size - fit#step < fit#minSize) size
+        else shrinkToFit(content, atlas, wrapW, rectHeight, fit, size - fit#step)
 
     /// sprite の Item。左上原点（centered=false）でレイアウト矩形の位置に合わせる。
     /// regionRect を持たず格子分割（hframes*vframes>1）があるときは frame からセル矩形を導く

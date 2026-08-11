@@ -16,7 +16,7 @@ sync: 2026-08-11
 3. 該当する場合は修正方法を提示する
 4. 該当しない場合は、エラー箇所のコードを読んで一般的な診断を行う
 
-## 既知の落とし穴リスト（Flix 0.71.0）
+## 既知の落とし穴リスト（Flix 0.75.1）
 
 ### 1. 予約語の使用（パースエラー）
 
@@ -74,15 +74,7 @@ sync: 2026-08-11
 
 **修正**: 型注釈を付ける（例: `(Nil: List[Int32])`）、または要素付きで初期化。
 
-### 9. GameNode の trait 委譲で型が合わない
-
-**症状**: `CanvasItem[GameNode]` 等の instance 実装で型エラー
-
-**原因**: `match` の分岐で内部型（`Area2D`, `Sprite2D`）への委譲が正しくない
-
-**修正**: `SpriteNode` と Area2D 系で分岐し、ヘルパー関数（`getArea`, `mapArea`）で内部型に委譲する。`CollisionObject2D` では `SpriteNode` に `None` / `false` を返す。
-
-### 10. Float32 リテラルのサフィックス忘れ
+### 9. Float32 リテラルのサフィックス忘れ
 
 **症状**: `Expected Float32 but got Float64`
 

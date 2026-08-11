@@ -2,7 +2,7 @@
 """壁の autoRule をアンカー候補 material（base_room + room_*）へ一括反映する。
 
 ダンジョンの wallMap / autoRules は「アンカー部屋（modulePaths 先頭 = 常に部屋）」の material が
-フロア全体に適用されるため、ルール追加は base_room + room_1〜18 の 18 ファイル全部に入れる。
+フロア全体に適用されるため、ルール追加は base_room + room_1〜18 の 19 ファイル全部に入れる。
 pathway_* はアンカーになれないので対象外。
 
 使い方（examples/fe_rogue で実行）:

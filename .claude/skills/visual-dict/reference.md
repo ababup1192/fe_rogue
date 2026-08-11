@@ -16,6 +16,7 @@
 - タイル地形
 - 光の帯 / ハードシャドウ
 - 角丸パネル / 枠
+- UI の文字（枠に収める）
 
 根拠: 6 ジャンル（弾幕STG / 森ARPG / レース / ホラーADV / 海中パズル / 雪山ローグ）を
 canvas の狙い絵 → 実エンジンの headless bake（静止画 + 完全ループ GIF）で再現した実験。
@@ -37,3 +38,4 @@ canvas の狙い絵 → 実エンジンの headless bake（静止画 + 完全ル
 | タイル地形 | `TileLayer` / `DualGrid` / `Terrain` | タイル角の丸めは明色の欠き取り（チャンファ）で DualGrid 風に。質感は `Material`（粒・きらめき・鱗・泡・発光・染み）を重ねる |
 | 光の帯 / ハードシャドウ | 半透明ポリゴン（`Light` / `Shadow`） | 影は光源と反対へ伸ばす。長さは距離の逆数で減らすと自然 |
 | 角丸パネル / 枠 | `DrawCmd.BoxStyle` / `Render.outline` / `outlineA` **[新]** | 半透明の枠は `Render.outlineA`（α を渡す）。`Render.outline` は枠 α=1 固定なので、0.12.1 以前は Item.Box + BoxStyle を直組みしていた |
+| UI の文字（枠に収める） | `Text.measure`（採寸）/ `UiExtract.measureTexts`（world-entity UI の採寸口）/ `RichText.wrapLinesBy`（maxWidth で文字境界折り） | **文字を枠に入れるときは先に `Text.measure` で採寸してから枠を決める。** 枠が先に固定なら「折り返す(wrap)・fontSize を落とす・文言を縮める」のどれかを**明示的に選ぶ**（黙ってはみ出させない）。UiDialog 本文の折りは `RichText.wrapLinesBy`(maxWidth) が本番稼働中。ui.json の text ウィジェットは `"wrap": "auto"`（自分のレイアウト矩形の幅で折る）か数値（折り返し幅 px）、`"fit": true`（収まらなければ fontSize を段階的に縮める）を宣言すれば部品側で折れる（既定は off）。engine を直呼びするなら `Text.setWrapWidth` |

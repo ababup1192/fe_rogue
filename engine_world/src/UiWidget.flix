@@ -15,10 +15,33 @@ mod UiWidget {
                                cornerRadius = Float64, borderWidth = Float64, borderColor = Color,
                                skin = Option[String], skinCorner = Option[Float64] }
 
+    /// テキストの折り返し宣言。
+    /// WrapOff = 折らない（既定）。WrapAuto = 自分のレイアウト矩形の幅で折る。
+    /// WrapPx = 指定した幅（design px）で折る。
+    pub enum TextWrap with Eq, Order, ToString {
+        case WrapOff
+        case WrapAuto
+        case WrapPx(Float64)
+    }
+
+    /// fit（枠に収める縮小）の規則。
+    /// `step`: fontSize を下げる刻み（px）。`minSize`: fontSize の下限（px）— ここで打ち切る。
+    pub type alias TextFit = { step = Float64, minSize = Float64 }
+
+    /// fit の縮小刻みの既定値（ui.schema.json の fitStep の既定と対）。
+    pub def fitStepDefault(): Float64 = 1.0
+
+    /// fit の下限 fontSize の既定値（ui.schema.json の fitMin の既定と対）。
+    /// これ以上小さい字は読めず、はみ出しと別種の事故になるため無限には縮めない。
+    pub def fitMinDefault(): Float64 = 6.0
+
     /// テキストの描画属性。
     /// `text`: 表示文字列。`font`: フォント名（atlas 引き当てキー）。`fontSize`: 表示サイズ。
     /// `tint`: 文字色。`zIndex`: 重なり順。
-    pub type alias TextComp = { text = String, font = String, fontSize = Float64, tint = Color, zIndex = Int32 }
+    /// `wrap`: 折り返し宣言（既定 WrapOff — 宣言した物だけ折れる）。
+    /// `fit`: 折った後の縦が矩形を超えたら fontSize を段階的に縮める規則（None = しない）。
+    pub type alias TextComp = { text = String, font = String, fontSize = Float64, tint = Color, zIndex = Int32,
+                                wrap = TextWrap, fit = Option[TextFit] }
 
     /// スプライトの描画属性。
     /// `texture`: テクスチャ名。`regionRect`: アトラス切り出し矩形（None で全体）。

@@ -20,7 +20,7 @@
         "text": "(さて、誰の話から疑ってかかるか──)",
         "options": [
           { "label": "執事の動きを疑う", "goto": "butler", "suspect": true },
-          { "label": "画商の言葉を疑う", "goto": "dealer", "suspect": true }
+          { "label": "画商の言葉の食い違いをその場で問いただす", "goto": "dealer", "suspect": true }
         ]
       },
       "next": ""

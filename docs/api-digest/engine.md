@@ -614,6 +614,8 @@
 ## Text — `engine/src/render/Text.flix`
 - テキストとフォントアトラスから Text を生成する。
   `pub def make(text: String, fontAtlas: FontAtlas, fontSize: Float64): Text`
+- 折り返し幅（表示 px）を設定する。この幅を超える字は次の行へ送られる。
+  `pub def setWrapWidth(wrapWidth: Option[Float64], label: Text): Text`
 - 埋め込んだ Transform 部品を取り出す
   `pub def transform(label: Text): Transform`
 - Transform 部品に関数を適用して差し替える

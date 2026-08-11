@@ -36,6 +36,12 @@
   `pub def renderPngFonts(cfg: BakeConfig, extraFonts: Map[String, SoftRaster.FontEntry], drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO`
 - 宣言シェーダー面つきの renderPng。surfaces（Render.shaderSurfaces の出力と同形の
   `pub def renderPngWith(cfg: BakeConfig, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO`
+- シルエット焼きの絞り方。既定に使うのは WorldBand — 全アイテムを黒にすると画面が
+  `pub enum SilhouetteScope { case WorldBand case All }`
+- 描画コマンド列を「対象は真っ黒・それ以外は落とす」に写す純関数。背景を白にして
+  `pub def silhouette(scope: SilhouetteScope, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd])`
+- シルエット PNG を焼く（renderPng の変形版）。対象を黒・背景を白で <name>.png に書く。
+  `pub def silhouettePng(cfg: BakeConfig, scope: SilhouetteScope, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO`
 - pass 1 枚ぶんの宣言（Render.Pass のコマンド列版）。name はそのままテクスチャ名になり、
   `pub type alias PassSpec = { name = String, clear = RenderTarget.LoadOp, drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd] }`
 - pass 1 枚を design 解像度（scale = 1）の画像に焼く。GL のターゲットが design ×1 の

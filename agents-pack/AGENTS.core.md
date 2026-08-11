@@ -162,6 +162,7 @@ python3 bin/lint-anim.py [ファイル...]    # コマ間の飛び・接地と 4
 ## 迷ったら読む物
 
 - 書き方の癖と定石: `.claude/skills/flix-docs`(構文)・`compile-fix`(コンパイルエラー)・`quality-assurance`(テスト設計)
+- 画風がまだ決まっていない・新しいゲームを作り始める: `.claude/skills/style-interview`(人へ最大 6 問の聞き取り。注文は AGENTS.local.md へ)
 - 見栄えの実装: `.claude/skills/visual-dict`(絵の下限の節のとおり View の前に必読)と engine リポの `docs/shader-doc.md`(宣言シェーダーの語彙とレシピ)
 - 規約と地図: engine リポの `docs/doc-conventions.md`(Doc の外形)・`docs/module-index.md`(やりたいこと → モジュール)・`docs/glossary.md`(UI に出す言葉)
 - 動く見本: engine の `templates/game-starter`(最小)と、隣にある既存ゲームのソース

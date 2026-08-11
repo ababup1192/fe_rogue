@@ -166,6 +166,31 @@ def section_tickets(out):
         out.append("  %s (%s) %s" % (os.path.basename(d), age(d), summary[:60]))
 
 
+def section_style(out):
+    # engine リポ自身にはルート AGENTS.local.md が無く、素朴に検査すると毎回誤発火する。
+    # templates/ の有無でリポ種別を見分ける（golden_pairs() と同じ手）
+    if os.path.isdir("templates"):
+        return
+    hint = "[画風] AGENTS.local.md に「この画面の画風」がまだ無い → 絵を描く前に /style-interview"
+    try:
+        with open("AGENTS.local.md", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        out.append(hint)
+        return
+    # 全問おまかせでも聞き取り済みと分かるように、痕跡コメントを節より優先して見る
+    if "style-interview" in text:
+        return
+    # 見出しは「このゲームの画風」等に割れているので前方一致 + 「画風」で緩く拾う
+    has_heading = any(
+        line.startswith("## この") and "画風" in line for line in text.splitlines())
+    # 「最初に決めて、ここに」は templates/game-starter/AGENTS.local.md のプレースホルダ
+    # 定型文。節があっても書き足していなければ未記入。あちらの文言を直したらここも直す
+    if has_heading and "最初に決めて、ここに" not in text:
+        return
+    out.append(hint)
+
+
 def section_notes(out):
     if not os.path.isfile("NOTES.md"):
         out.append("引き継ぎ NOTES.md なし (セッションの終わりに「次やること」を 3 行残すと次が安い)")
@@ -186,7 +211,8 @@ def section_notes(out):
 def main():
     here = os.path.basename(os.getcwd())
     out = ["== %s 状態 %s ==" % (here, time.strftime("%m-%d %H:%M"))]
-    for section in (section_git, section_tests, section_golden, section_tickets, section_notes):
+    for section in (section_git, section_tests, section_golden, section_tickets,
+                    section_style, section_notes):
         try:
             section(out)
         except Exception as e:

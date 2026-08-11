@@ -10,6 +10,7 @@ exit 2 で stderr が Claude に返る（作業自体は止めない）。
 
     python3 bin/lint-view.py [ファイル...]
     python3 bin/lint-palette.py
+    python3 bin/lint-ui-overflow.py --strict [ファイル...]
 
 Windows で `python3` が無い場合は .claude/settings.json の hook 行を
 `python .claude/hooks/after-art-edit.py` に変える。
@@ -69,8 +70,18 @@ def main():
                 "仮色で塗り、編集画面と実機で配色が食い違います。\n\n" + out
             )
 
-    # View が矩形と円だけになっていないか。
-    if name.endswith(".flix") and ("View" in name or target.parent.name == "bake"):
+    # ui.json の text が折り返し宣言漏れ (固定幅の枠 + wrap/fit なし) になっていないか。
+    if name.endswith(".ui.json"):
+        failed, out = run("lint-ui-overflow.py", ["--strict", str(target)])
+        if failed:
+            msgs.append(
+                "lint-ui-overflow が失敗しました。固定幅の枠内の text に wrap/fit が"
+                "無いと、実行時の長い文言が枠からはみ出します。\n\n" + out
+            )
+
+    # 描画が矩形と円だけになっていないか。
+    # 名前では絞らない — 描画の少ないファイルは lint-view 側の MIN_DRAWS が除外する。
+    if name.endswith(".flix"):
         failed, out = run("lint-view.py", [str(target)])
         if failed:
             msgs.append(out)

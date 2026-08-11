@@ -86,7 +86,7 @@ mod Scene {
 }
 ```
 
-絵を書く前に `/visual-dict` を引く（このレシピの範囲外。絵の下限 4 性質は
+絵を書く前に `/visual-dict` を引く（このレシピの範囲外。絵の下限 5 性質は
 [docs/drawing-floor.md](drawing-floor.md)）。
 
 ## 5. 焼き込み設定 + Bakery 呼び出し
@@ -170,5 +170,7 @@ python3 bin/img-digest.py gallery/my_scene.png                    # 目視の前
 ```
 
 最後に `gallery/my_scene.gif` か `gallery/frames/my_scene/*.png` を実際に開いて目で見る。
-絵の下限 4 性質（面に階調か質感 / 主役が背景から分離 / 層が分かれている / 時間が流れている）
-を満たしているかは、機械では最後まで判定できない。
+絵の下限 5 性質（面に階調か質感 / 主役が背景から分離 / 層が分かれている / 時間が流れている /
+形が物として読める）を満たしているかは、機械では最後まで判定できない。造形が怪しいときは
+`Bakery.silhouettePng`（シルエット焼き — 対象を黒・背景を白）で形だけを取り出して見る
+（写経例は [docs/drawing-floor.md](drawing-floor.md)）。

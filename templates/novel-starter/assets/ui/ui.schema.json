@@ -89,8 +89,17 @@
         "height": { "$ref": "#/$defs/size" },
         "mainAlign": { "type": "string", "enum": ["start", "center", "end", "spaceBetween"] },
         "crossAlign": { "type": "string", "enum": ["start", "center", "end", "stretch"] },
-        "wrap": { "type": "boolean",
-                  "description": "主軸に収まらない子を次の行へ折り返す。dir: \"row\" かつ width/height 明示(px か \"grow\")が必要。行内は左詰め(mainAlign/crossAlign/Grow は効かない)。" },
+        "wrap": {
+          "oneOf": [
+            { "type": "boolean",
+              "description": "コンテナ: 主軸に収まらない子を次の行へ折り返す。dir: \"row\" かつ width/height 明示(px か \"grow\")が必要。行内は左詰め(mainAlign/crossAlign/Grow は効かない)。" },
+            { "type": "string", "enum": ["auto"],
+              "description": "text widget: 自分のレイアウト矩形の幅で文字を折り返す(幅の明示が要る — auto 幅は折れない)。" },
+            { "type": "number", "exclusiveMinimum": 0,
+              "description": "text widget: この幅(px)で文字を折り返す。" }
+          ],
+          "description": "既定は折り返し無し(宣言した物だけ折れる)。"
+        },
         "abs": { "$ref": "#/$defs/vec2", "description": "フロー外配置 (親コンテンツ原点相対)" },
 
         "color": { "$ref": "#/$defs/color" },
@@ -117,6 +126,12 @@
         "font": { "type": "string" },
         "fontSize": { "type": "number" },
         "tint": { "$ref": "#/$defs/color" },
+        "fit": { "type": "boolean",
+                 "description": "text widget: wrap で折った後の縦がレイアウト矩形を超えたら fontSize を fitStep 刻みで fitMin まで縮める(高さの明示が要る)。既定 false。" },
+        "fitStep": { "type": "number", "exclusiveMinimum": 0, "default": 1,
+                     "description": "fit の縮小刻み(px)。既定 1。" },
+        "fitMin": { "type": "number", "exclusiveMinimum": 0, "default": 6,
+                    "description": "fit の下限 fontSize(px) — これ以上は縮めず打ち切る。既定 6。" },
 
         "texture": { "type": "string" },
         "regionRect": {

@@ -22,7 +22,7 @@ F8 注釈チケット（`examples/fe_rogue/debug/annotations/<チケット>/`）
 - その上に `autoRules`（IntGrid 5x5 パターン・**第一マッチのみ**・manual セルは抑止）が重なる。
 - **wallMap は 4 近傍しか見えない**。同じキーで違うチップが要る箇所（L字の合流角など）は autoRules で上書きする。
 - material はアンカー部屋（modulePaths 先頭 = 常に部屋）のものがフロア全体に適用される。
-  → ルール追加先は **base_room + room_1〜18 の 18 ファイル**（pathway は対象外）。
+  → ルール追加先は **base_room + room_1〜18 の 19 ファイル**（pathway は対象外）。
 - タイルはフロア生成時に焼き込み。**material 修正は再起動 / 次フロアまで画面に反映されない**。
 
 ## フロー

@@ -16,6 +16,7 @@
 - タイル地形
 - 光の帯 / ハードシャドウ
 - 角丸パネル / 枠
+- UI の文字（枠に収める）
 
 根拠: 6 ジャンル（弾幕STG / 森ARPG / レース / ホラーADV / 海中パズル / 雪山ローグ）を
 canvas の狙い絵 → 実エンジンの headless bake（静止画 + 完全ループ GIF）で再現した実験。
@@ -24,7 +25,7 @@ canvas の狙い絵 → 実エンジンの headless bake（静止画 + 完全ル
 | web の技法 | エンジンの部品 | 実証済みの作法・癖 |
 |---|---|---|
 | グロー / bloom | `DrawCmd.BlendMode.Add` + 柔らかい円 | `Render.glowAt` は同心円 24 輪・減衰カーブ固定。大半径は段差が見える → 半径違いを数枚重ねてディザする |
-| 放射グラデ（光だまり・暗幕・vignette） | `ShaderDoc` の `radial` / `radialAspect` **[新]** + Gradient 面（SoftRaster が画素評価） | これが正解ルート（Multiply の暗幕もこれで組める）。`radial` は uv 空間なので非正方形 rect では楕円に歪む → **`radialAspect` に aspect を渡す**。0.12.1 以前は無いので、正方形 rect を大きく置いて回避する。`Light` は RadialGlow 焼きテクスチャ前提で、texturePath 無しの bake では使えない |
+| 放射グラデ（光だまり・暗幕・vignette） | **`Render.lightAt`（Add の明かり）/ `Render.darkAt`（Multiply の翳り）**が一次部品（組み込みテクスチャ 1 枚・アセット不要・GL と bake で同一画素）。面ごと塗るなら `ShaderDoc` の `radial` / `radialAspect` **[新]** + Gradient 面（SoftRaster が画素評価） | 円形の明かり・翳りはまず `lightAt` / `darkAt`（radius = 見た目半径 px・strength 0..1。光マップのレンダーターゲット（Pass）に Add で集めて Multiply で本編に掛けるのが定石）。`radial` は uv 空間なので非正方形 rect では楕円に歪む → **`radialAspect` に aspect を渡す**。0.12.1 以前は無いので、正方形 rect を大きく置いて回避する。`Light` は RadialGlow 焼きテクスチャ前提で、texturePath 無しの bake では使えない |
 | 線形グラデ（空・水・空気色） | **`Render.vgrad(size, {top, bottom}, z)` / `Render.gradPolygon`** **[新]**（頂点色つきポリゴン） | 実装済み・SoftRaster も対応済み（`gradSample`）。**1px 色帯の積みは禁止** — 部品数がそのまま焼き時間に乗る。任意方向・4 頂点別色は `gradPolygon`、縦のニ色は `vgrad` |
 | 残像 / トレイル | 過去位置に減衰 α で再描画 | **動き専用** — 静止画では 1px 未満のズレで写らない |
 | パーティクル | `Fx` / `FxDoc`（時刻の純関数） | burst / drift / gravity。状態を持たないので巻き戻し・bake と相性が良い。`FxDoc.parseWith(palette, json)` でテーマ色を `@名前` で引ける |
@@ -37,3 +38,4 @@ canvas の狙い絵 → 実エンジンの headless bake（静止画 + 完全ル
 | タイル地形 | `TileLayer` / `DualGrid` / `Terrain` | タイル角の丸めは明色の欠き取り（チャンファ）で DualGrid 風に。質感は `Material`（粒・きらめき・鱗・泡・発光・染み）を重ねる |
 | 光の帯 / ハードシャドウ | 半透明ポリゴン（`Light` / `Shadow`） | 影は光源と反対へ伸ばす。長さは距離の逆数で減らすと自然 |
 | 角丸パネル / 枠 | `DrawCmd.BoxStyle` / `Render.outline` / `outlineA` **[新]** | 半透明の枠は `Render.outlineA`（α を渡す）。`Render.outline` は枠 α=1 固定なので、0.12.1 以前は Item.Box + BoxStyle を直組みしていた |
+| UI の文字（枠に収める） | `Text.measure`（採寸）/ `UiExtract.measureTexts`（world-entity UI の採寸口）/ `RichText.wrapLinesBy`（maxWidth で文字境界折り） | **文字を枠に入れるときは先に `Text.measure` で採寸してから枠を決める。** 枠が先に固定なら「折り返す(wrap)・fontSize を落とす・文言を縮める」のどれかを**明示的に選ぶ**（黙ってはみ出させない）。UiDialog 本文の折りは `RichText.wrapLinesBy`(maxWidth) が本番稼働中。ui.json の text ウィジェットは `"wrap": "auto"`（自分のレイアウト矩形の幅で折る）か数値（折り返し幅 px）、`"fit": true`（収まらなければ fontSize を段階的に縮める）を宣言すれば部品側で折れる（既定は off）。engine を直呼びするなら `Text.setWrapWidth` |

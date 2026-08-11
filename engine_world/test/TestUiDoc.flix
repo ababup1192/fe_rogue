@@ -874,4 +874,64 @@ mod TestUiDoc {
                 case _ => None
             });
         Assert.assertEq(expected = Some((0.0, 0.0, 100.0, 40.0)), got)
+
+    // ── text の wrap / fit 宣言 ──
+
+    /// text ノードの TextComp を取り出す（他の形は None）。
+    def textCompOf(doc: String): Option[UiWidget.TextComp] =
+        parseDoc(doc) |> Option.flatMap(firstChild) |> Option.flatMap(child ->
+            match widgetOf(child) {
+                case UiDoc.Widget.TextW(t) => Some(t#text)
+                case _                     => None
+            })
+
+    @Test
+    def testParseTextWrapAuto(): Unit \ Assert =
+        // "wrap": "auto" は自分の矩形幅で折る宣言。宣言しなければ折らない（既定 off）。
+        let auto = "{\"root\": {\"name\":\"g\",\"children\":["
+                 + "{\"name\":\"t\",\"widget\":\"text\",\"text\":\"hi\",\"wrap\":\"auto\"}]}}";
+        let plain = "{\"root\": {\"name\":\"g\",\"children\":["
+                  + "{\"name\":\"t\",\"widget\":\"text\",\"text\":\"hi\"}]}}";
+        let got = (textCompOf(auto) |> Option.map(t -> t#wrap),
+                   textCompOf(plain) |> Option.map(t -> t#wrap));
+        Assert.assertEq(expected = (Some(UiWidget.TextWrap.WrapAuto), Some(UiWidget.TextWrap.WrapOff)), got)
+
+    @Test
+    def testParseTextWrapNumberIsPx(): Unit \ Assert =
+        // 数値の wrap は「その幅(px)で折る」。
+        let doc = "{\"root\": {\"name\":\"g\",\"children\":["
+                + "{\"name\":\"t\",\"widget\":\"text\",\"text\":\"hi\",\"wrap\":96}]}}";
+        let got = textCompOf(doc) |> Option.map(t -> t#wrap);
+        Assert.assertEq(expected = Some(UiWidget.TextWrap.WrapPx(96.0)), got)
+
+    /// fit の刻みと下限は宣言が無ければスキーマの既定値（UiWidget の既定と対）。
+    /// fitStep / fitMin を書けば上書きできる。
+    @Test
+    def testParseTextFitDefaultsAndOverride(): Unit \ Assert =
+        let defaults = "{\"root\": {\"name\":\"g\",\"children\":["
+                     + "{\"name\":\"t\",\"widget\":\"text\",\"text\":\"hi\",\"wrap\":\"auto\",\"fit\":true}]}}";
+        let overridden = "{\"root\": {\"name\":\"g\",\"children\":["
+                       + "{\"name\":\"t\",\"widget\":\"text\",\"text\":\"hi\",\"wrap\":\"auto\","
+                       + "\"fit\":true,\"fitStep\":0.5,\"fitMin\":4}]}}";
+        let fitTuple = t -> t#fit |> Option.map(f -> (f#step, f#minSize));
+        let got = (textCompOf(defaults) |> Option.flatMap(fitTuple),
+                   textCompOf(overridden) |> Option.flatMap(fitTuple));
+        Assert.assertEq(
+            expected = (Some((UiWidget.fitStepDefault(), UiWidget.fitMinDefault())), Some((0.5, 4.0))),
+            got)
+
+    /// コンテナの "wrap": true（flex の折り返し）は今までどおり真偽値で効き、
+    /// text の "wrap": "auto" はコンテナ側のスタイルには漏れない（同じキーの住み分け）。
+    @Test
+    def testWrapKeyContainerAndTextCoexist(): Unit \ Assert =
+        let doc = "{\"root\": {\"name\":\"g\",\"dir\":\"row\",\"width\":100,\"height\":40,\"wrap\":true,\"children\":["
+                + "{\"name\":\"t\",\"widget\":\"text\",\"text\":\"hi\",\"wrap\":\"auto\"}]}}";
+        let got = parseDoc(doc) |> Option.flatMap(spec -> {
+            let containerWrap = styleOf(spec)#wrap;
+            firstChild(spec) |> Option.flatMap(child -> match widgetOf(child) {
+                case UiDoc.Widget.TextW(t) => Some((containerWrap, styleOf(child)#wrap, t#text#wrap))
+                case _                     => None
+            })
+        });
+        Assert.assertEq(expected = Some((true, false, UiWidget.TextWrap.WrapAuto)), got)
 }

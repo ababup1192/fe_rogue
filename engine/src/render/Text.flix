@@ -26,6 +26,7 @@ pub enum Text {
         fontSize = Float64,
         horizontalAlignment = HorizontalAlignment,
         verticalAlignment = VerticalAlignment,
+        wrapWidth = Option[Float64],
         transform = Transform,
         visual = Visual
     })
@@ -33,7 +34,7 @@ pub enum Text {
 
 mod Text {
     /// テキストとフォントアトラスから Text を生成する。
-    /// 既定は horizontalAlignment = Left, verticalAlignment = Top。
+    /// 既定は horizontalAlignment = Left, verticalAlignment = Top, 折り返しなし。
     pub def make(text: String, fontAtlas: FontAtlas, fontSize: Float64): Text =
         Text.Text({
             text = text,
@@ -41,9 +42,16 @@ mod Text {
             fontSize = fontSize,
             horizontalAlignment = HorizontalAlignment.Left,
             verticalAlignment = VerticalAlignment.Top,
+            wrapWidth = None,
             transform = Transform.identity(),
             visual = Visual.default()
         })
+
+    /// 折り返し幅（表示 px）を設定する。この幅を超える字は次の行へ送られる。
+    /// None は折り返さない（既定）— measure・描画とも折り返し無しの従来どおりの結果になる。
+    pub def setWrapWidth(wrapWidth: Option[Float64], label: Text): Text =
+        let Text.Text(r) = label;
+        Text.Text({ wrapWidth = wrapWidth | r })
 
     /// 埋め込んだ Transform 部品を取り出す
     pub def transform(label: Text): Transform =
@@ -81,28 +89,68 @@ mod Text {
         Text.Text({ verticalAlignment = alignment | r })
 
     /// テキストを描画したときに占める表示サイズを返す。
-    /// width  = 行の中で最も幅広い行の advance 合計 (× scale)
-    /// height = 行数 × lineHeight (= (ascent + descent + lineGap) × scale)
+    /// width  = 見た目の行の中で最も幅広い行の advance 合計 (× scale)
+    /// height = 見た目の行数 × lineHeight (= (ascent + descent + lineGap) × scale)
+    /// wrapWidth があれば折り返し後の行で数える（描画とぴったり同じ寸法になる）。
     /// Layout モジュールが描画物の自然サイズを問い合わせるために使う。
     pub def measure(label: Text): Vec2.Vec2 =
         let Text.Text(r) = label;
         let atlas = r#fontAtlas;
         let scale = r#fontSize / atlas#fontSize;
         let lineHeight = (atlas#ascent + atlas#descent + atlas#lineGap) * scale;
-        let lines = TextLayout.splitLines(r#text);
-        let totalHeight = lineHeight * Int32.toFloat64(Int32.max(1, List.length(lines)));
-        let maxLineWidth = List.foldLeft((acc, lineChars) -> {
-            let advances = List.map(ch -> {
-                let cp = TextLayout.charToCodePoint(ch);
-                match Map.get(cp, atlas#glyphs) {
-                    case Some(gm) => gm#advance
-                    case None     => 0.0
-                }
-            }, lineChars);
-            let width = TextLayout.totalAdvance(advances) * scale;
-            Float64.max(acc, width)
-        }, 0.0, lines);
-        {x = maxLineWidth, y = totalHeight}
+        let rows = visualRows(label);
+        let totalHeight = lineHeight * Int32.toFloat64(Int32.max(1, List.length(rows)));
+        let maxRowWidth = List.foldLeft((acc, row) ->
+            Float64.max(acc, TextLayout.totalAdvance(List.map(snd, row)) * scale), 0.0, rows);
+        {x = maxRowWidth, y = totalHeight}
+
+    /// 描画に使う「見た目の行」の列。要素は (文字, 送り幅)。
+    /// 改行 (\n) で行を分けたうえで、wrapWidth があれば各行をさらに折り返しで分ける。
+    /// 折る位置の判定は TextLayout.layoutPositions の折り返し規則に委譲する —
+    /// 判定式をここへ写すと 2 実装になり、片方だけ直る事故を作るため。
+    def visualRows(label: Text): List[List[(Char, Float64)]] =
+        let Text.Text(r) = label;
+        let atlas = r#fontAtlas;
+        let scale = r#fontSize / atlas#fontSize;
+        let wrapWidth = Option.getWithDefault(0.0, r#wrapWidth);
+        TextLayout.splitLines(r#text)
+            |> List.flatMap(lineChars -> lineRows(atlas, scale, wrapWidth, lineChars))
+
+    /// 改行区切りの 1 行を、折り返しで見た目の行へ分ける。空行は空の 1 行として残す
+    /// （行数が減ると空行の高さが消えるため）。
+    def lineRows(atlas: FontAtlas, scale: Float64, wrapWidth: Float64,
+                 lineChars: List[Char]): List[List[(Char, Float64)]] =
+        if (List.isEmpty(lineChars))
+            (Nil: List[(Char, Float64)]) :: Nil
+        else {
+            let advances = advancesOf(atlas, lineChars);
+            // lineHeight に 1.0 を渡すのは、y を「何行目か」の番号としてだけ使うため。
+            // 実寸の行送りをここで混ぜると、描画側の行送り計算と二重になる。
+            let positions = TextLayout.layoutPositions(advances, wrapWidth, scale, 1.0);
+            groupRows(List.zip(List.zip(lineChars, advances), List.map(snd, positions)))
+        }
+
+    /// 各文字の送り幅（グリフ表に無い文字は 0）。
+    def advancesOf(atlas: FontAtlas, chars: List[Char]): List[Float64] =
+        List.map(ch -> {
+            let cp = TextLayout.charToCodePoint(ch);
+            match Map.get(cp, atlas#glyphs) {
+                case Some(gm) => gm#advance
+                case None     => 0.0
+            }
+        }, chars)
+
+    /// (文字, 送り幅) と行番号 y の並びを、y が変わる所で行に区切る。
+    def groupRows(entries: List[((Char, Float64), Float64)]): List[List[(Char, Float64)]] =
+        let folded = List.foldLeft((acc, entry) -> {
+            let (charAdv, y) = entry;
+            if (Float64.abs(y - acc#rowY) < 0.001)
+                { rows = acc#rows, current = charAdv :: acc#current, rowY = acc#rowY }
+            else
+                { rows = List.reverse(acc#current) :: acc#rows, current = charAdv :: Nil, rowY = y }
+        }, { rows = (Nil: List[List[(Char, Float64)]]),
+             current = (Nil: List[(Char, Float64)]), rowY = 0.0 }, entries);
+        List.reverse(List.reverse(folded#current) :: folded#rows)
 
     /// 行内テキスト幅 (lineWidth) と horizontalAlignment から、グリフ列に適用する
     /// 横方向オフセットを返す。Fill は本実装では Left と同じ扱い（justify は未対応）。
@@ -125,30 +173,25 @@ mod Text {
         }
 
     /// テキストから Drawable のリストを生成する。
-    /// 各グリフに対して 1 つの Drawable を生成する。テキスト中の改行 (\n) で複数行に分割される。
-    /// horizontalAlignment は行ごとに、verticalAlignment はテキストブロック全体に適用される。
+    /// 各グリフに対して 1 つの Drawable を生成する。テキスト中の改行 (\n) と、
+    /// wrapWidth の折り返しとで複数行に分割される。
+    /// horizontalAlignment は見た目の行ごとに、verticalAlignment はテキストブロック全体に適用される。
     pub def toDrawables(label: Text, globalPos: Vec2.Vec2): List[GameEngine.Drawable] =
         let Text.Text(r) = label;
         let atlas = r#fontAtlas;
         let scale = r#fontSize / atlas#fontSize;
         let lineHeight = (atlas#ascent + atlas#descent + atlas#lineGap) * scale;
-        let lines = TextLayout.splitLines(r#text);
-        let totalHeight = lineHeight * Int32.toFloat64(Int32.max(1, List.length(lines)));
+        let rows = visualRows(label);
+        let totalHeight = lineHeight * Int32.toFloat64(Int32.max(1, List.length(rows)));
         let blockYOffset = verticalOffsetFor(r#verticalAlignment, totalHeight);
-        let result = List.foldLeft((acc, lineChars) -> {
+        let result = List.foldLeft((acc, row) -> {
             let lineIdx = acc#lineIdx;
-            // 各文字の advance を取得
-            let advances = List.map(ch -> {
-                let cp = TextLayout.charToCodePoint(ch);
-                match Map.get(cp, atlas#glyphs) {
-                    case Some(gm) => gm#advance
-                    case None => 0.0
-                }
-            }, lineChars);
+            let lineChars = List.map(fst, row);
+            let advances = List.map(snd, row);
             // 行幅と horizontalAlignment から横オフセット計算
             let lineWidth = TextLayout.totalAdvance(advances) * scale;
             let offsetX = horizontalOffsetFor(r#horizontalAlignment, lineWidth);
-            // レイアウト位置計算
+            // 行内のペン送りだけ求める（行の割りは visualRows が済ませているので折り返し幅は 0）
             let positions = TextLayout.layoutPositions(advances, 0.0, scale, lineHeight);
             let yOff = Int32.toFloat64(lineIdx) * lineHeight + blockYOffset;
             let ascentOffset = atlas#ascent * scale;
@@ -183,7 +226,7 @@ mod Text {
                 }
             }, List.zip(lineChars, positions));
             {drawables = List.append(acc#drawables, lineDrawables), lineIdx = lineIdx + 1}
-        }, {drawables = (Nil: List[GameEngine.Drawable]), lineIdx = 0}, lines);
+        }, {drawables = (Nil: List[GameEngine.Drawable]), lineIdx = 0}, rows);
         result#drawables
 
 }

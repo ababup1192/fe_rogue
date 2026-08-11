@@ -13,7 +13,7 @@
 mod UiDoc {
     import java.math.BigDecimal
     use Util.Json.Json
-    use Util.Json.Json.{JObject, JArray, JString, JNumber}
+    use Util.Json.Json.{JObject, JArray, JString, JNumber, JBool}
     use Util.Json.JsonError
     use DocJson.PathTag.Root
 
@@ -463,14 +463,51 @@ mod UiDoc {
             fontOpt     <- (DocJson.getAtKeyOpt(Root, "font", map): Result[JsonError, Option[String]]);
             fontSizeOpt <- (DocJson.getAtKeyOpt(Root, "fontSize", map): Result[JsonError, Option[Float64]]);
             tintOpt     <- parseColorOpt(palette, "tint", map);
-            zIndexOpt   <- (DocJson.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]])
+            zIndexOpt   <- (DocJson.getAtKeyOpt(Root, "zIndex", map): Result[JsonError, Option[Int32]]);
+            wrap        <- parseTextWrap(map);
+            fit         <- parseTextFit(map)
         ) yield ({
             text = Option.getWithDefault("", textOpt),
             font = Option.getWithDefault(defaultFont, fontOpt),
             fontSize = Option.getWithDefault(8.0, fontSizeOpt),
             tint = Option.getWithDefault(white(), tintOpt),
-            zIndex = Option.getWithDefault(0, zIndexOpt)
+            zIndex = Option.getWithDefault(0, zIndexOpt),
+            wrap = wrap,
+            fit = fit
         }: UiWidget.TextComp)
+
+    /// text の "wrap": "auto"（自分のレイアウト矩形の幅で折る）か、正の数値（折り返し幅 px）。
+    /// 真偽値はコンテナの flex wrap（parseStyle の領分）なので、ここでは折らない扱いで素通しする
+    /// — 同じキーを 2 つの意味で読むが、断ると既存の「text ノードをコンテナ兼用にした宣言」が壊れる。
+    def parseTextWrap(map: Map[String, Json]): Result[JsonError, UiWidget.TextWrap] =
+        match Map.get("wrap", map) {
+            case None                  => Ok(UiWidget.TextWrap.WrapOff)
+            case Some(JString("auto")) => Ok(UiWidget.TextWrap.WrapAuto)
+            case Some(JString(other))  => Err(DocJson.jsonError(Root, Set#{
+                "text wrap must be \"auto\" or a positive number (got: ${other})"}))
+            case Some(JNumber(bd))     =>
+                let w = bigDecToF64(bd);
+                if (w > 0.0) Ok(UiWidget.TextWrap.WrapPx(w))
+                else Err(DocJson.jsonError(Root, Set#{"text wrap width must be > 0 (got: ${w})"}))
+            case Some(JBool(_))        => Ok(UiWidget.TextWrap.WrapOff)
+            case Some(_)               => Err(DocJson.jsonError(Root, Set#{
+                "text wrap must be \"auto\" or a positive number"}))
+        }
+
+    /// "fit": true で、折った後の縦がレイアウト矩形を超えたら fontSize を fitStep 刻みで
+    /// fitMin まで縮める。刻みと下限の既定値はスキーマ（ui.schema.json）と対の
+    /// UiWidget.fitStepDefault / fitMinDefault。
+    def parseTextFit(map: Map[String, Json]): Result[JsonError, Option[UiWidget.TextFit]] =
+        forM (
+            fitOpt  <- (DocJson.getAtKeyOpt(Root, "fit", map): Result[JsonError, Option[Bool]]);
+            stepOpt <- (DocJson.getAtKeyOpt(Root, "fitStep", map): Result[JsonError, Option[Float64]]);
+            minOpt  <- (DocJson.getAtKeyOpt(Root, "fitMin", map): Result[JsonError, Option[Float64]])
+        ) yield {
+            if (Option.getWithDefault(false, fitOpt))
+                Some(({ step = Option.getWithDefault(UiWidget.fitStepDefault(), stepOpt),
+                        minSize = Option.getWithDefault(UiWidget.fitMinDefault(), minOpt) }: UiWidget.TextFit))
+            else None
+        }
 
     /// sprite（既存 ui.json と同義。tint は色 3 表記の上位互換）。
     def parseSprite(palette: Map[String, Color], map: Map[String, Json]): Result[JsonError, UiWidget.SpriteComp] =
@@ -641,9 +678,9 @@ mod UiDoc {
             main     <- parseMainAlign(mainOpt);
             crossOpt <- (DocJson.getAtKeyOpt(Root, "crossAlign", map): Result[JsonError, Option[String]]);
             cross    <- parseCrossAlign(crossOpt);
-            wrapOpt  <- (DocJson.getAtKeyOpt(Root, "wrap", map): Result[JsonError, Option[Bool]]);
+            wrapOpt  <- parseFlexWrap(map);
             abs      <- parseVec2Opt("abs", map);
-            wrap     <- validateWrap(Option.getWithDefault(false, wrapOpt), dir, width, height)
+            wrap     <- validateWrap(wrapOpt, dir, width, height)
         ) yield ({
             dir = dir, gap = Option.getWithDefault(0.0, gapOpt),
             padLeft = pad#l, padTop = pad#t, padRight = pad#r, padBottom = pad#b,
@@ -652,6 +689,19 @@ mod UiDoc {
             wrap = wrap,
             abs = abs
         }: UiLayout.Style)
+
+    /// コンテナの "wrap"（真偽値 — 主軸に収まらない子を次の行へ送る flex wrap）を読む。
+    /// 文字列・数値は text widget の折り返し宣言（parseTextWrap の領分）なので、
+    /// ここでは flex wrap 無しとして素通しする。
+    def parseFlexWrap(map: Map[String, Json]): Result[JsonError, Bool] =
+        match Map.get("wrap", map) {
+            case None             => Ok(false)
+            case Some(JBool(b))   => Ok(b)
+            case Some(JString(_)) => Ok(false)
+            case Some(JNumber(_)) => Ok(false)
+            case Some(_)          => Err(DocJson.jsonError(Root, Set#{
+                "wrap must be true/false (container) or \"auto\"/number (text)"}))
+        }
 
     /// wrap の前提を検査する。折り返し位置は幅から、全体の高さは折り返し結果から決まるので、
     /// 幅と高さの両方を書いた Row でだけ使える（黙って変な形に潰さない）。
@@ -912,11 +962,15 @@ mod UiDoc {
         Flex.place(buildWith(atlasOf, textureInfoOf, spec), rootRect)
 
     /// text ノード。width/height 未指定なら実寸（Text.measure）を Px として敷く。
+    /// 内在サイズに効く折り返しは数値（px）の wrap だけ（auto は矩形が決まってから折る —
+    /// UiStore 経路の measureTexts と同じ規則）。描画は UiExtract.textItem に委譲する
+    /// （wrap / fit の解決を 2 実装にすると経路で絵が変わるため）。
     def buildText(atlasOf: String -> FontAtlas, style: UiLayout.Style, spec: TextSpec,
                   childNodes: List[Flex.Node]): Flex.Node =
         let t = spec#text;
         let atlas = atlasOf(t#font);
-        let dims = Text.measure(Text.make(t#text, atlas, t#fontSize));
+        let dims = Text.measure(Text.make(t#text, atlas, t#fontSize)
+            |> Text.setWrapWidth(UiExtract.intrinsicWrapOf(t)));
         let w = match style#width {
             case UiLayout.SizeSpec.Auto => UiLayout.SizeSpec.Px(dims#x)
             case other                  => other
@@ -928,7 +982,7 @@ mod UiDoc {
         Flex.boxDrawn({ width = w, height = h | style },
             r -> turnedIn(spec#rotation, spec#pivot, r,
                      ({ at = r#position,
-                        item = Render.textTinted(t#text, atlas, t#fontSize, t#tint, t#zIndex) }) :: Nil),
+                        item = UiExtract.textItem(t, r#size, atlasOf) }) :: Nil),
             childNodes)
 
     /// box: rect を塗る（skin があれば九分割スキン）。BoxComp→PlacedItem 変換は

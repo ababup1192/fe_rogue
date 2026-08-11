@@ -10,10 +10,11 @@
         "dir": "column", "pad": [8, 5, 8, 5], "gap": 4,
         "children": [
           { "name": "speaker", "widget": "text", "text": "", "bind": "speakerName",
-            "fontSize": 10, "tint": "@accent", "zIndex": 125 },
+            "wrap": "auto", "fontSize": 10, "tint": "@accent", "zIndex": 125 },
           { "name": "bodySpace", "widget": "none", "width": 1, "height": 24 },
           { "name": "hint", "widget": "text", "text": "Z:とじる",
-            "fontSize": 8, "tint": "@muted", "zIndex": 125 }
+            "fontSize": 8, "tint": "@muted", "zIndex": 125,
+            "lint-ui": "対象外 — 操作キーの固定短文で、実行時に文言が変わらない" }
         ]
       }
     ]
