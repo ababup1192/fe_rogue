@@ -171,7 +171,7 @@ def section_style(out):
     # templates/ の有無でリポ種別を見分ける（golden_pairs() と同じ手）
     if os.path.isdir("templates"):
         return
-    hint = "[画風] AGENTS.local.md に「この画面の画風」がまだ無い → 絵を描く前に /style-interview"
+    hint = "[画風] AGENTS.local.md の「この画面の画風」が未定（無い/仮置きのまま） → 絵を描く前に /style-interview"
     try:
         with open("AGENTS.local.md", encoding="utf-8", errors="replace") as fh:
             text = fh.read()
