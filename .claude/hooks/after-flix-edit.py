@@ -140,13 +140,30 @@ def first_error_block(text):
     return "\n".join(block).rstrip()
 
 
+def edited_path(payload):
+    """編集されたファイルのパスをペイロードから拾う。
+
+    Claude Code は tool_input.file_path に入れるが、Codex 等のペイロード形は
+    確定していないので、ありそうなキーを順に試す。どれも無ければ空文字を返して
+    呼び元が黙って降りる (フックの都合で作業を壊さない)。
+    """
+    ti = payload.get("tool_input") or {}
+    tr = payload.get("tool_response") or {}
+    for cand in (ti.get("file_path"), ti.get("path"),
+                 tr.get("file_path"), tr.get("path"),
+                 payload.get("file_path"), payload.get("path")):
+        if isinstance(cand, str) and cand:
+            return cand
+    return ""
+
+
 def run_hook():
     t0 = time.time()
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         return 0
-    path = (payload.get("tool_input") or {}).get("file_path") or ""
+    path = edited_path(payload)
     if not path.endswith(".flix"):
         return 0
     pkg = find_pkg(path)

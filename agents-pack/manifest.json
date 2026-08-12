@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "note": "sync-agents の配布物一覧の正本。Makefile 版 (bin/sync-agents.py) と Studio 版 (NewGame.flix) はこれを読むだけで、リストを二重に持たない。キー名 copy / copyIfAbsent / copyDirs は Studio の Flix 実装と共有するので変えない。src は engine リポからの相対パス、dst はゲームリポからの相対パス。copyIfAbsent はユーザ編集を守るため既存を上書きしない。",
+  "copy": [
+    {"src": "bin/lint-view.py", "dst": "bin/lint-view.py"},
+    {"src": "bin/lint-palette.py", "dst": "bin/lint-palette.py"},
+    {"src": "bin/lint-sprite.py", "dst": "bin/lint-sprite.py"},
+    {"src": "bin/lint-anim.py", "dst": "bin/lint-anim.py"},
+    {"src": "bin/lint-audio.py", "dst": "bin/lint-audio.py"},
+    {"src": "bin/lint-images.py", "dst": "bin/lint-images.py"},
+    {"src": "bin/lint-ui-overflow.py", "dst": "bin/lint-ui-overflow.py"},
+    {"src": "bin/img-digest.py", "dst": "bin/img-digest.py"},
+    {"src": "bin/status.py", "dst": "bin/status.py"},
+    {"src": "bin/checkd", "dst": "bin/checkd"},
+    {"src": "bin/explain-error", "dst": "bin/explain-error"},
+    {"src": "bin/precommit.py", "dst": "bin/precommit.py"},
+    {"src": "bin/githooks/pre-commit", "dst": "bin/githooks/pre-commit"},
+    {"src": ".claude/hooks/after-flix-edit.py", "dst": ".claude/hooks/after-flix-edit.py"},
+    {"src": ".claude/hooks/session-diet.py", "dst": ".claude/hooks/session-diet.py"}
+  ],
+  "copyIfAbsent": [
+    {"src": "agents-pack/settings.json", "dst": ".claude/settings.json"},
+    {"src": "agents-pack/codex-hooks.json", "dst": ".codex/hooks.json"}
+  ],
+  "copyDirs": [
+    {"src": "agents-pack/skills", "dst": ".claude/skills"},
+    {"src": "agents-pack/skills", "dst": ".agents/skills"},
+    {"src": "agents-pack/rules", "dst": ".claude/rules"}
+  ]
+}

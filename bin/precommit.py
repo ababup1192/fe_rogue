@@ -29,11 +29,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def tool(name):
+    """bin/ の検査スクリプトの場所。無ければ None (ゲームリポで pack が古い・
+    未配布でもコミットは止めない。fail-open で 1 行知らせるだけ)。"""
+    path = ROOT / "bin" / name
+    if path.is_file():
+        return path
+    print(f"[pre-commit] bin/{name} が無いのでその検査は飛ばします"
+          " (engine の make sync-agents GAME=... で配り直せます)")
+    return None
+
+
 def load_lint_images():
     """置き場の約束 (allowed 等) を bin/lint-images.py から借りる。二重管理しない。"""
-    spec = importlib.util.spec_from_file_location(
-        "lint_images", ROOT / "bin" / "lint-images.py"
-    )
+    path = tool("lint-images.py")
+    if path is None:
+        return None
+    spec = importlib.util.spec_from_file_location("lint_images", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -62,6 +74,8 @@ def human(n):
 def check_staged_images(staged, li):
     """今回ステージした画像だけを、置き場と大きさの約束に照らす。"""
     problems = []
+    if li is None:
+        return problems
     imgs = [p for p in staged if p.lower().endswith(li.IMAGE_EXTS)]
     for p in imgs:
         if not li.allowed(p):
@@ -103,6 +117,22 @@ def needs_docs_sync(staged):
     return False
 
 
+def has_docs_sync_target():
+    """make に check-docs-sync ターゲットが在るか。無い・make 自体が無いなら
+    1 行知らせてスキップ (関所の都合でコミットを壊さない。fail-open)。"""
+    try:
+        # -q は実行せずに「ターゲットとして解決できるか」だけ見る (無ければ exit 2)
+        probe = subprocess.run(["make", "-q", "check-docs-sync"],
+                               cwd=ROOT, capture_output=True)
+    except OSError:
+        print("[pre-commit] make が見つからないので配線検査 (check-docs-sync) は飛ばします")
+        return False
+    if probe.returncode == 2:
+        print("[pre-commit] make check-docs-sync が無いので配線検査は飛ばします")
+        return False
+    return True
+
+
 def main():
     if len(sys.argv) > 2 and sys.argv[1] == "--files":
         staged = sys.argv[2:]
@@ -123,21 +153,23 @@ def main():
 
     flix = [p for p in staged if p.endswith(".flix")]
     if flix:
-        if run([sys.executable, str(ROOT / "bin" / "lint-view.py"), *flix]) != 0:
+        lv = tool("lint-view.py")
+        if lv and run([sys.executable, str(lv), *flix]) != 0:
             failed = True
 
     if any(p.endswith((".sprite.json", ".theme.json")) or "palette" in p
            for p in staged):
-        if run([sys.executable, str(ROOT / "bin" / "lint-palette.py")]) != 0:
+        lp = tool("lint-palette.py")
+        if lp and run([sys.executable, str(lp)]) != 0:
             failed = True
 
     ui = [p for p in staged if p.endswith(".ui.json")]
     if ui:
-        if run([sys.executable, str(ROOT / "bin" / "lint-ui-overflow.py"),
-                "--strict", *ui]) != 0:
+        lu = tool("lint-ui-overflow.py")
+        if lu and run([sys.executable, str(lu), "--strict", *ui]) != 0:
             failed = True
 
-    if needs_docs_sync(staged):
+    if needs_docs_sync(staged) and has_docs_sync_target():
         if run(["make", "-s", "check-docs-sync"]) != 0:
             failed = True
 

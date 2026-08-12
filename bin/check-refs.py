@@ -48,6 +48,12 @@ BUNDLE_REQUIRED = [
     "bin/lint-palette.py",
     "bin/lint-sprite.py",
     "bin/lint-anim.py",
+    "bin/lint-audio.py",
+    "bin/lint-images.py",
+    "bin/lint-ui-overflow.py",
+    "bin/precommit.py",
+    "bin/githooks/pre-commit",
+    "bin/sync-agents.py",
     "docs/api-digest.md",
     "docs/api-digest/engine.md",
     "docs/api-digest/engine_world.md",
@@ -62,6 +68,8 @@ BUNDLE_REQUIRED = [
     ".claude/hooks/session-diet.py",
     "agents-pack/AGENTS.core.md",
     "agents-pack/settings.json",
+    "agents-pack/manifest.json",
+    "agents-pack/codex-hooks.json",
     "agents-pack/rules/drawing.md",
     "agents-pack/rules/flix.md",
     "templates/game-starter/Makefile",
@@ -106,25 +114,29 @@ def strip_mk_comments(text):
     return "\n".join(out)
 
 
-def sync_agents_dist(raw_text):
-    """sync-agents recipe の cp 行が実際にゲームへ配るパスの集合を返す。
+def sync_agents_dist():
+    """sync-agents が実際にゲームへ配るパスの集合を返す。
 
-    「Makefile 全文のどこかに文字列がある」だと、コメントや別ターゲットの記述でも
-    通ってしまい、cp 行から消えた欠落を見逃す (CI が腐る)。配布リストの実体 =
-    sync-agents recipe 内の `cp ... "$(GAME)/..."` 行だけを照合先にする。"""
+    配布リストの正本は agents-pack/manifest.json (Makefile と Studio の両実装が
+    読む唯一の実体)。src と dst の両方と、dst の親フォルダ (bin/githooks のような
+    「フォルダを指す参照」も配布済み扱いにする) を照合先に入れる。"""
+    import json
     dist = set()
-    in_recipe = False
-    for ln in raw_text.splitlines():
-        if re.match(r"^sync-agents\s*:", ln):
-            in_recipe = True
-            continue
-        if in_recipe:
-            if not ln.startswith("\t"):
-                break  # recipe はタブ行の連なりで終わる
-            if re.search(r"\bcp\b", ln) and "$(GAME)" in ln:
-                dist.update(m.group(0) for m in re.finditer(
-                    r"(?:bin|\.claude/hooks|\.claude/rules|agents-pack)"
-                    r"/[A-Za-z0-9_.*/-]+", ln))
+    try:
+        with open(ROOT / "agents-pack" / "manifest.json", encoding="utf-8") as fh:
+            m = json.load(fh)
+    except (OSError, ValueError):
+        return dist
+    for key in ("copy", "copyIfAbsent", "copyDirs"):
+        for e in m.get(key, []):
+            for rel in (e.get("src", ""), e.get("dst", "")):
+                if not rel:
+                    continue
+                dist.add(rel)
+                parent = re.sub(r"/[^/]+$", "", rel)
+                while "/" in parent:
+                    dist.add(parent)
+                    parent = re.sub(r"/[^/]+$", "", parent)
     return dist
 
 
@@ -134,11 +146,11 @@ def check_makefile(problems):
     for rel in sorted(extract_paths(text)):
         if not exists_in(ROOT, rel):
             problems.append("Makefile: {} が実在しません".format(rel))
-    dist = sync_agents_dist(raw)
+    dist = sync_agents_dist()
     if not dist:
         problems.append(
-            "Makefile: sync-agents recipe の cp 行が読み取れません"
-            " (配布リストの照合ができない — recipe の形が変わったなら"
+            "agents-pack/manifest.json が読み取れません"
+            " (配布リストの照合ができない — 形を変えたなら"
             " bin/check-refs.py の sync_agents_dist を追随)")
     return dist
 
