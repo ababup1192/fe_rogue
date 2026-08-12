@@ -226,17 +226,50 @@ def section_pack(out):
     engine = read_engine_dir()
     if not engine:
         return
-    try:
-        with open(os.path.join(engine, "Makefile"),
-                  encoding="utf-8", errors="replace") as fh:
-            cur = next((mm.group(1) for line in fh
-                        for mm in [re.match(r"VERSION\s*:=\s*(\S+)", line)] if mm), None)
-    except OSError:
-        return
+    cur = read_engine_version(engine)
     if cur and cur != stamped:
         out.append("pack     古い (この AGENTS.md は engine v%s / いまの engine は v%s)。"
                    "engine 側で make sync-agents GAME=\"%s\" を再実行"
                    % (stamped, cur, os.getcwd()))
+
+
+def read_engine_version(engine):
+    """engine の Makefile から VERSION := を読む。読めなければ None (fail-open)。"""
+    try:
+        with open(os.path.join(engine, "Makefile"),
+                  encoding="utf-8", errors="replace") as fh:
+            return next((m.group(1) for line in fh
+                         for m in [re.match(r"VERSION\s*:=\s*(\S+)", line)] if m), None)
+    except OSError:
+        return None
+
+
+def section_engine_drift(out):
+    """lib の engine 版ズレ検出。ゲームの flix.toml が指す flix_game_engine の版と、
+    いま使っている engine の版 (Makefile の VERSION) を照らす。ズレたままだと
+    make api や docs が「手元の lib に無い API」を教えてくる (使うと Undefined name)。
+    どちらかが読めなければ黙る (fail-open) — status は知らせるだけで、作業を止めない。"""
+    if os.path.isdir("templates"):
+        return  # engine リポ自身
+    try:
+        with open("flix.toml", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return
+    m = re.search(
+        r'"github:ababup1192/flix_game_engine"\s*=\s*\{[^}]*version\s*=\s*"([0-9][0-9A-Za-z.\-]*)"',
+        text)
+    if not m:
+        return
+    pinned = m.group(1)
+    engine = read_engine_dir()
+    if not engine:
+        return
+    cur = read_engine_version(engine)
+    if cur and cur != pinned:
+        out.append("engine   版ズレ (このゲームは v%s / いまの engine は v%s)。"
+                   "make api や docs は v%s の物なので、無い API を引く恐れ → make engine-upgrade で追随"
+                   % (pinned, cur, cur))
 
 
 def section_notes(out):
@@ -260,7 +293,7 @@ def main():
     here = os.path.basename(os.getcwd())
     out = ["== %s 状態 %s ==" % (here, time.strftime("%m-%d %H:%M"))]
     for section in (section_git, section_tests, section_golden, section_tickets,
-                    section_style, section_pack, section_notes):
+                    section_style, section_pack, section_engine_drift, section_notes):
         try:
             section(out)
         except Exception as e:

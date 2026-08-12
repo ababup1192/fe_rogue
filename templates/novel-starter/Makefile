@@ -107,3 +107,8 @@ status:
 		$(MAKE) -C "$(ENGINE)" sync-agents GAME="$(CURDIR)" || { echo "[status] 配布に失敗 — engine リポで make sync-agents GAME=$(CURDIR) を実行してください"; exit 1; }; \
 	fi
 	@$(PYTHON) bin/status.py
+
+# engine の版に追随する (flix.toml と lib/ の fpkg 差し替え + pack 配り直し + check)。
+# status の「engine 版ズレ」を見たらこれ。実体は engine 側の upgrade-game。
+engine-upgrade:
+	@$(MAKE) -C "$(ENGINE)" upgrade-game GAME="$(CURDIR)"

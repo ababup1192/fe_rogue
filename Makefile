@@ -30,7 +30,7 @@ FLIX_TEST := $(CURDIR)/bin/flix
 
 # 全パッケージ共通のバージョン (lockstep)。sync 先ディレクトリ名や release の
 # asset 名に使う。make bump FROM=x TO=y で各 flix.toml と一緒に上げる。
-VERSION := 0.23.3
+VERSION := 0.23.4
 
 RENDER_GL_DIR       := render_gl
 RENDER_GL_FPKG_SRC  := $(RENDER_GL_DIR)/artifact/render_gl.fpkg
@@ -791,3 +791,26 @@ new-game: engine-full-fresh
 	echo "    make golden                          … いまの絵を golden(基準)にする"; \
 	echo "    make editor DIR=$(GAME)              … (engine 側で) Studio で開いて色や数値を調整する"; \
 	echo "  git init 済み・未コミットです。最初のコミットは自分の手で。"
+
+# ── ゲームの engine 版追随 ────────────────────────────────
+# ゲームの flix.toml が指す flix_game_engine の版をこの engine の $(VERSION) へ上げ、
+# lib/ に対応する fpkg + toml を置き、agents-pack も配り直す。status.py の
+# 「engine 版ズレ」を見た人が 1 手で追随する入口 (テンプレの make engine-upgrade が
+# ここへ委譲する)。自動では走らせない — 版上げは挙動・golden まで変わりうる
+# 「人が選ぶ側」の変更。終わったら check だけ回して生存確認する。
+.PHONY: upgrade-game
+upgrade-game: engine-full-fresh
+	@if [ -z "$(GAME)" ]; then echo "error: GAME を指定してください (make upgrade-game GAME=/abs/path)"; exit 1; fi
+	@test -f "$(GAME)/flix.toml" || { echo "error: $(GAME)/flix.toml がありません"; exit 1; }
+	@set -e; \
+	old=$$(perl -ne 'print $$1 if /"github:ababup1192\/flix_game_engine"\s*=\s*\{[^}]*version\s*=\s*"([^"]+)"/' "$(GAME)/flix.toml"); \
+	if [ -z "$$old" ]; then echo "error: $(GAME)/flix.toml に flix_game_engine の依存行が見つかりません"; exit 1; fi; \
+	if [ "$$old" = "$(VERSION)" ]; then echo "[upgrade-game] 既に v$(VERSION) です。何もしません"; exit 0; fi; \
+	echo "[upgrade-game] $(GAME): v$$old -> v$(VERSION)"; \
+	perl -pi -e 's|("github:ababup1192/flix_game_engine"\s*=\s*\{[^}]*version\s*=\s*)"[^"]+"|$${1}"$(VERSION)"|' "$(GAME)/flix.toml"; \
+	mkdir -p "$(GAME)/$(ENGINE_FULL_SUBPATH)"; \
+	cp "$(ENGINE_FULL_FPKG_SRC)" "$(GAME)/$(ENGINE_FULL_SUBPATH)/$(ENGINE_FULL_FPKG_NAME)"; \
+	cp "$(ENGINE_FULL_TOML_SRC)" "$(GAME)/$(ENGINE_FULL_SUBPATH)/$(ENGINE_FULL_TOML_NAME)"; \
+	$(MAKE) --no-print-directory sync-agents GAME="$(GAME)"; \
+	$(MAKE) --no-print-directory -C "$(GAME)" check ENGINE="$(CURDIR)"; \
+	echo "[upgrade-game] check OK。続きは自分の目で: make test と make bench (golden のピクセル差の確認)"
