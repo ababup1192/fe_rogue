@@ -68,7 +68,7 @@ def onKeyPressed(key: GameEngine.Key):
         case GamePhase.Playing         => onPlayingKeyPressed(key)
     }
 
-/// 入力のエッジ検出。gameLoop が焼いた `Frame` の `justPressed`（このフレームで新たに押されたキー）
+/// 入力のエッジ検出。gameLoop が生成した `Frame` の `justPressed`（このフレームで新たに押されたキー）
 /// を各キー `onKeyPressed` ルータへ流す。前フレームとの差分計算・キー集合の持ち回りは gameLoop が担う。
 def handleInput(frame: App.Frame):
                  Unit

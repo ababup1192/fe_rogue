@@ -1,4 +1,4 @@
-// NpcGallery — 目視承認用のシルエットギャラリーをヘッドレスに焼き込む
+// NpcGallery — 目視承認用のシルエットギャラリーをヘッドレスに生成する
 // （engine_tools の SoftRaster + GifEncoder、GL なし）。make bake が生成する。
 //
 //   gallery/people.png      — NPC 7 色 + プレイヤー × 4 方向（静止ポーズ）
@@ -59,7 +59,7 @@ mod NpcGallery {
           texturePath = Map.empty(), fontTtf = ttfPath(), fontAtlas = atlas,
           outPath = path }
 
-    /// 静止ポーズの一覧 PNG と歩行サイクル GIF を焼く（Bake.all から呼ぶ）。
+    /// 静止ポーズの一覧 PNG と歩行サイクル GIF を生成する（Bake.all から呼ぶ）。
     pub def bakeAll(): Unit \ IO =
         HeadlessFont.ensureHeadless();
         let atlas = HeadlessFont.buildUiAtlas(ttfPath(), "");

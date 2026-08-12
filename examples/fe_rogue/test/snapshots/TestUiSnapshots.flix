@@ -1,6 +1,6 @@
 // TestUiSnapshots — 各 UI（ActionMenu / WeaponSelect / ItemMenu / TradeMenu / GameOverMenu /
 // SuspendConfirm / TopBar / UnitCard / EnemyCard）を代表的な状態で組み、renderUi の描画出力を
-// golden と比較しつつ build/snapshots/ に PNG を焼く。
+// golden と比較しつつ build/snapshots/ に PNG を生成する。
 //
 // 方針: フィクスチャは **データを宣言するだけ**で、UI の中身は本物のゲームコードが組む。各シーンは
 //   1. UiSpec.spawnRoot で ui.json の骨組みだけ立て、
@@ -13,7 +13,7 @@
 //
 // 複数 root を同じ UiWorld に spawn すれば renderUi が可視 root を全合成するので、組み合わせ
 // シーン（HUD 全部乗せ）は各 root の frameStep を 1 つの UiWorld 上で順に走らせるだけで作る。
-// アトラス焼き込みは重いので 1 つの @Test で 1 度だけ行い、全フィクスチャを回す。
+// アトラス生成は重いので 1 つの @Test で 1 度だけ行い、全フィクスチャを回す。
 //
 // 更新: 新規/変更 golden を承認するときは `FE_ROGUE_SNAPSHOT_UPDATE=1 flix test`。
 // 目視: build/snapshots/index.html を開くと全メニューを一覧できる。
@@ -27,7 +27,7 @@ mod TestUiSnapshots {
     def designW(): Int32 = 240i32
     def designH(): Int32 = 128i32
     def designSize(): Vec2.Vec2 = {x = Int32.toFloat64(designW()), y = Int32.toFloat64(designH())}
-    // 出力解像度 = design × outScale。実機 GPU 描画と同じくドット絵をカリカリ焼くため大きめに拡大する。
+    // 出力解像度 = design × outScale。実機 GPU 描画と同じくドット絵をくっきり出すため大きめに拡大する。
     def outScale(): Int32 = 8i32
     /// index.html の img CSS 幅（Retina 2x 前提で実ピクセル幅 ÷ 2。ブラウザ側の補間をゼロにする）。
     pub def outWidthPx(): Int32 = designW() * outScale() / 2i32
@@ -39,10 +39,10 @@ mod TestUiSnapshots {
     // オーケストレータ
     // ════════════════════════════════════════════════════════
 
-    /// 全 UI スナップショットを 1 度のアトラス焼き込みで処理する。撮る対象は SnapshotCatalog の
+    /// 全 UI スナップショットを 1 度のアトラス生成で処理する。撮る対象は SnapshotCatalog の
     /// PNG エントリ、drive は名前で driveByName に分岐する。golden 不一致があればそのリストを
     /// assert で提示して落ちる（更新モードでは golden を書き直して pass）。撮り終えたら
-    /// SnapshotSite でカタログ全体（PNG+GIF）を回遊できる HTML サイトに焼き直す。
+    /// SnapshotSite でカタログ全体（PNG+GIF）を回遊できる HTML サイトに生成し直す。
     @Test
     def testUiSnapshots(): Unit \ {Assert, Fs.FileRead, Fs.FileWrite, IO} = region rc {
         let atlas = HeadlessFont.buildUiAtlas(ttfPath(), joyoPath());
@@ -100,7 +100,7 @@ mod TestUiSnapshots {
         {outDir = "build/snapshots", title = "fe_rogue UI snapshots", cssScale = 2i32}
 
     /// カタログ全枚を SnapshotSite の表示用 Item 列へ。PNG/GIF で実ピクセル幅が違うので両方渡す
-    /// （GIF が未生成なら生成コマンドの案内をカードに出す）。ストリップが焼けている GIF は
+    /// （GIF が未生成なら生成コマンドの案内をカードに出す）。ストリップが生成済みの GIF は
     /// コマ送りビューア情報（filmstripByName）を添えてインタラクティブなカードにする。
     pub def catalogItems(): List[SnapshotSite.Item] \ IO =
         SnapshotCatalog.toItems({pngPxWidth = outWidthPx(), gifPxWidth = TestGifSnapshots.gifWidthPx()},
@@ -108,7 +108,7 @@ mod TestUiSnapshots {
             TestGifSnapshots.filmstripByName())
 
     /// 1 シーンを撮影し（golden 比較 + PNG 出力）、同じ UiWorld へ幾何リンタをかける。
-    /// drive → renderUi → build/snapshots へ焼く、の後に、描画に使ったのと同じ UiWorld を
+    /// drive → renderUi → build/snapshots へ生成する、の後に、描画に使ったのと同じ UiWorld を
     /// SnapshotLint で構造データへ射影して RenderLint.check する（描画には一切影響しない検査のみ）。
     /// 返り値は (名前, golden 相違 Option, Finding 列)。
     /// drive を record 越しに持ち回すと効果多相が効かないので名前で `driveByName` に分岐する。

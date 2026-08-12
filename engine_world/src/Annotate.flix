@@ -148,7 +148,7 @@ mod Annotate {
 
     /// fps の絵。画面右上に固定で置く。
     /// ズーム・パンの影響を受けないよう、呼び側は見え方の適用後にこれを重ねる。
-    /// fontSize は呼び側が決める。ドット絵のフォントは焼いた大きさの等倍でしかくっきりせず、
+    /// fontSize は呼び側が決める。ドット絵のフォントは生成した大きさの等倍でしかくっきりせず、
     /// どの大きさが合うかはどのフォントで出すかを知っている呼び側にしか分からない。
     pub def fpsItems(fontAtlas: FontAtlas, fontSize: Float64, design: Vec2.Vec2,
                      fps: Int32): List[Render.PlacedItem] =
@@ -157,7 +157,7 @@ mod Annotate {
         badge(fontAtlas, fontSize, { x = design#x - size#x - 4.0, y = 4.0 }, message)
 
     /// 帯の字の大きさの既定。実機のデバッグ表示は組み込みフォントの等倍で出すので、
-    /// これを使うのは見本を焼く側（feature_lab の gallery）だけ。
+    /// これを使うのは見本を生成する側（feature_lab の gallery）だけ。
     pub def defaultBadgeFontSize(): Float64 = badgeFontSize()
 
     // ── 座標変換（不変条件: toDesign(view, toScreen(view, p)) == p）──

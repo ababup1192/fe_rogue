@@ -68,7 +68,7 @@ mod ViewCar {
     /// pxQuadScaled の引数一式。置き場所の規約は PxSprite.drawQuad と同一
     /// （anchor セルの左上 = at・flipX は Item.Sprite の flipH で行い、右端が
     /// at + (ax+1)×scale に来る）。turn は絵の中心を軸に傾ける（pxScaled の群回転と同じ軸）。
-    /// tint はアトラスに焼き込まれた色へ掛ける（白 = そのまま。遠景の霞の近似に使う）。
+    /// tint はアトラス生成時に入れた色へ掛ける（白 = そのまま。遠景の霞の近似に使う）。
     pub type alias PxQuad = { doc = PxSpriteDoc.Doc, baked = PxSpriteAtlas.Baked,
                               texture = String, sprite = String, frame = String,
                               at = Vec2.Vec2, flipX = Bool, scale = Float64,

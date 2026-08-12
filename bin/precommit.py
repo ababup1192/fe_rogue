@@ -3,7 +3,7 @@
 
 文章で頼むだけだと守られない約束を、コミットの瞬間に機械が止める:
 
-  1. 焼いた絵の混入      今回ステージした画像が置き場の約束の外なら止める。
+  1. 生成した絵の混入    今回ステージした画像が置き場の約束の外なら止める。
                          過去から追跡されている違反は止めない (1 行知らせるだけ)
   2. 規約の配線ずれ      AGENTS.md / docs/ / .claude/ / *.flix を触ったコミットは
                          make check-docs-sync (api-digest のずれ検出を含む) を通す
@@ -80,7 +80,7 @@ def check_staged_images(staged, li):
     for p in imgs:
         if not li.allowed(p):
             problems.append(
-                f"{p} — 追跡してよい置き場ではありません。焼いた絵は git に入れない約束です。"
+                f"{p} — 追跡してよい置き場ではありません。生成した絵は git に入れない約束です。"
                 f"人に見せる絵なら docs/gallery/ へ (上限あり)"
             )
             continue

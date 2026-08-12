@@ -7,7 +7,7 @@
 
 **API の型・引数を調べるとき**は、ソースを grep する前にまず [api-digest.md](api-digest.md)
 （全 pub 宣言の自動生成一覧）を引く。ソースの丸読みより桁違いに安い。
-**新しい場所で headless bake を組むとき**は [headless-bake-recipe.md](headless-bake-recipe.md) を写経する。
+**新しい場所でヘッドレス生成を組むとき**は [headless-bake-recipe.md](headless-bake-recipe.md) を写経する。
 
 **初学者向け概念ノート**（黒箱に見えがちな再利用パーツを1画面で解説）:
 - `docs/dual-grid.md` — チップ絵なしでマップ地形を描く仕組み（DualGrid / Material / Terrain の分業と「角の4セル→16ケース」）。
@@ -69,7 +69,7 @@
 | タイルのマス目と移動範囲 | Grid / GridSearch（実例: `templates/platformer-starter/src/Stage.flix`） |
 | 敵を追わせる・逃がす・ふらつかせる(距離場の 1 歩) | Steering |
 | タイルセット PNG + 自前の map.json でマップを貼る | MapResource（実例: `examples/fe_rogue/test/TestMapLoader.flix`） |
-| チップ絵タイルを 1 draw call で敷く(焼き置き・マスごとの照明色 tint・屋根や庇は zIndex で手前にも) | App.withTileLayers / TileScene（実例: `templates/platformer-starter/src/Main.flix` / `templates/rpg-starter/src/TownMap.flix`） |
+| チップ絵タイルを 1 draw call で敷く(事前に生成・マスごとの照明色 tint・屋根や庇は zIndex で手前にも) | App.withTileLayers / TileScene（実例: `templates/platformer-starter/src/Main.flix` / `templates/rpg-starter/src/TownMap.flix`） |
 | チップ絵なしでマップ地形(壁・水)を多角形で描く | DualGrid / Material（実例: `examples/fe_rogue/src/lib/map/MapLoader.flix` + `examples/fe_rogue/assets/materials/room_3.material.json`） |
 | rows の文字格子から地形の見た目を作る(*.terrain.json) | Terrain / TerrainDoc |
 | 重なり判定・物理 | Collision / Physics2D（実例: `examples/platformer/src/World.flix`） |
@@ -103,7 +103,7 @@
 | 文字を中央に置く・幅を測る | TextDraw.centered / TextDraw.width |
 | 文字格子から 1 種類の文字のマスを集める | Terrain.cellsOf |
 | テスト用の入力フレームを組む | App.frameOf |
-| 焼いた絵に出ない指定を知る（実機との食い違い防止） | SoftRaster（dropped）/ [対応表](backend-parity.md) |
+| 生成した絵に出ない指定を知る（実機との食い違い防止） | SoftRaster（dropped）/ [対応表](backend-parity.md) |
 | 縁がふわっと消える光球・煙玉を置く | Render（glowAt）/ fx.json の shape "glow" |
 | 放射状の明かり・翳りを 1 枚で置く（松明・スポットライト・vignette。アセット不要） | Render（lightAt / darkAt。組み込みテクスチャは engine の RadialBuiltin） |
 | 空・水面・光の帯のグラデを 1 部品で塗る（頂点色つき凸ポリゴン。1px の色帯を積まない） | Render（gradPolygon / vgrad） |
@@ -131,14 +131,14 @@
 | 見下ろしの落ち影を置く（接地の暗がり + 時刻で回る日影） | Daylight.groundShadow |
 | 見えている範囲に重なるマスだけ並べる（盤が広くても仕事は画面ぶん） | Grid.cellsIn |
 | ドット絵を握るところで回す・左上でそろえて並べる | PxSprite.drawQuadTurned / drawQuadTopLeft |
-| 走行中に焼いた絵を bake でも同じ絵にする | Bakery.imagePngs / imageTextureInfo（実例: `templates/race-starter/src/bake/Bake.flix`） |
+| 走行中に生成した絵を静止画の生成でも同じ絵にする | Bakery.imagePngs / imageTextureInfo（実例: `templates/race-starter/src/bake/Bake.flix`） |
 | 光側は暖色・影側は寒色へ寄せて階調を増やす | Color.warm / Color.cool |
-| 焼いたドット絵アトラスを名前付きテクスチャとして使う（1 体 = 1 クアッド） | App.withSpriteAtlases（実例: `templates/race-starter/src/Main.flix`） |
+| 生成したドット絵アトラスを名前付きテクスチャとして使う（1 体 = 1 クアッド） | App.withSpriteAtlases（実例: `templates/race-starter/src/Main.flix`） |
 | ドット絵の輪郭をにじませない（カメラと頂点を画素の升目に載せる） | App.withPixelSnap / Render.snapped（実例: `templates/platformer-starter/src/Main.flix`） |
 | 同じ絵を色だけ変えて使い回す・重なり順をまとめてずらす | Render.tinted / Render.zShifted |
 | マスごとの「いま」を持つ（耕した・濡れた・置いた。セーブに乗る側） | TileState |
 | 画面を素材にする・複数光源・残像を作る（レンダーターゲットに描いてテクスチャとして貼り戻す） | Pass（`App.withPasses`）。ターゲットは design 解像度・宣言順に本編より先に描かれ、`Render.sprite(name, z)` で貼れる（実例: `examples/feature_lab/src/bake/Gallery.flix`） |
-| Pass を bake（Bakery の PassSpec）へ詰め替える（Shader 面の外し忘れを防ぐ） | Render.passSpecOf（実例: `examples/feature_lab/src/bake/Gallery.flix`） |
+| Pass を生成（Bakery の PassSpec）へ詰め替える（Shader 面の外し忘れを防ぐ） | Render.passSpecOf（実例: `examples/feature_lab/src/bake/Gallery.flix`） |
 | 全面でない面（帯など）から pass を等倍・鏡像で読む（陽炎の帯・水面の映り込み） | Render.passBandDy（Shift の dy 場を作る） |
 
 ## 症状 → モジュール（重い・fps が落ちる）
@@ -180,7 +180,7 @@
 - **PxSpriteDoc** — *.sprite.json（文字格子+意味色キー+名前付きコマ+anchor）を読む fail-open の Doc 層。
 - **PxSprite** — PxSpriteDoc のコマを box 列（横連続の同色文字は 1 矩形に結合・既定）または drawQuad（アトラス 1 クアッド・opt-in）で描く。色は resolver（キー→実色）が解決。drawQuad の scale は整数のみ（box 列とのバイト一致保証のため）。実数倍率のクアッドは templates/race-starter の ViewCar.pxQuadScaled が実戦例（遠景のヤシ・ニトロ残像。2 本目の使い手が現れたら昇格を相談）。
 - **PxShade** — 文字格子のドット絵に「塗りの仕上げ」を 1 度だけ掛ける純粋な filter（ふち光・接地影・ディザ・地肌の粒）。絵は平らに塗り、光の当て方は後から重みで指定する。掛けるのは読み込み直後の 1 回だけなので走行中の負荷は増えない。
-- **PxSpriteAtlas** — PxSpriteDoc×resolver を 1 枚のアトラス画素（ARGB+コマ→矩形の目次）に焼く純関数。GL（RenderTexture.loadTextureFromPixels）と PNG（SoftRaster.writeRadialPng）が同じ Baked を読む。
+- **PxSpriteAtlas** — PxSpriteDoc×resolver を 1 枚のアトラス画素（ARGB+コマ→矩形の目次）に生成する純関数。GL（RenderTexture.loadTextureFromPixels）と PNG（SoftRaster.writeRadialPng）が同じ Baked を読む。
 - **Viewport** — 画面の矩形の外へ出た物を見つけて返す。
 - **Transition** — 進行度 t から画面を覆う/晴らす描画物を作る（フェード・ワイプ）。
 - **Light** — 光源の値（位置・半径・色）から灯りの絵を導く。方式は 2 つで使い分ける:
@@ -244,7 +244,7 @@
 - **GridRay** — マス目の世界で「start から goal の間に壁が挟まるか」（視線の遮蔽）。壁の向こうの松明を消す・敵から主人公が見えるか、の見通し判定。solid の判定は関数で注入する。
 - **Dir4** — 上下左右の 4 方向を 1 つの値としてまとめて表す。
 - **MapResource**（legacy/） — タイルセット PNG + 自前の map.json でマップを貼る旧世代層。新規は DualGrid / Material / TerrainDoc を使う(棲み分けは docs/dual-grid.md)。
-- **TileScene** — App.withTileLayers のタイル層宣言(TileLayerSpec)を CPU 投影で普通の絵に畳む。headless bake・F8 停止画面・golden が GPU 焼き置きと同じ絵になるための橋。
+- **TileScene** — App.withTileLayers のタイル層宣言(TileLayerSpec)を CPU 投影で普通の絵に畳む。ヘッドレス生成・F8 停止画面・golden が GPU の事前生成と同じ絵になるための橋。
 - **DualGrid** — セル4角の埋まり方から 16 ケースの地形多角形(丸/四角/ひし形/揺らぎ)を作る純幾何。概念: docs/dual-grid.md。
 - **Material** — DualGrid のタイルに質感(塗り・フチ帯・持ち上げ・表面の粒)を着せる。チップ絵は使わない。MapResource が「タイルセット PNG を貼る」のに対し、こちらは「色と質感パラメータで手続き生成する」並立の経路。
 - **Terrain** — 「どのセル文字に、どの質感を着せるか」の表と rows アダプタ。rows の文字格子を塗るだけで DualGrid の角の変化形が自動生成される。fromRows は Doc+rows だけで完結する教科書 API(実装例: rpg-starter)。
@@ -288,5 +288,5 @@
 - **ActiveDocs** — 「いま表示に使っている Doc(JSON)はどれか」を debug/active-docs.json に名乗る（Studio の「表示中」バッジの窓口。同じ内容なら書かない）。
 - **DocTable** — Doc の台帳（id・パス・読み直し）1 枚から、watchFile の配線・一括リロード・ActiveDocs の名乗りを導出する。一覧の手写しを 1 か所に。
 - **Annotate** — 実行中のゲームを一時停止して、画面の気になる場所を矩形で囲んで記録する。
-- **RemoteDebug** — 起動中のゲームを外部プロセスが HTTP で操作・観測する口。POST /bake は App.onBakeRequest で登録した「焼きの実体」を温まった JVM で実行し、焼けたパス列を返す（プレイ状態には触れない）。
+- **RemoteDebug** — 起動中のゲームを外部プロセスが HTTP で操作・観測する口。POST /bake は App.onBakeRequest で登録した「生成の実体」を温まった JVM で実行し、生成したパス列を返す（プレイ状態には触れない）。
 - **GameLogger** — 起きたことを 1 行ずつログに積み、あとでまとめて取り出す effect。

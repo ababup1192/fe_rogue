@@ -1,5 +1,5 @@
 // FontAtlas — フォントアトラス型定義
-// STBTruetype で焼き込んだフォントビットマップのメタデータを保持する
+// STBTruetype で生成したフォントビットマップのメタデータを保持する
 
 /// フォントアトラス: テクスチャ名 + グリフメトリクスマップ
 pub type alias FontAtlas = {

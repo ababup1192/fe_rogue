@@ -49,9 +49,9 @@ def main(): Unit \ IO =
                 // HUD（チップ・幕）は withHudView — world 側の z に隠されない。
                 |> App.withHudView((ctx, w) -> checked_ecast(View.hud(ctx, w)))
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
-                // ドット絵は 1 枚のアトラスに焼き、ヤシと残像を 1 コマ = 1 クアッドで描く。
+                // ドット絵は 1 枚のアトラスに生成し、ヤシと残像を 1 コマ = 1 クアッドで描く。
                 // 世代鍵（atlasKey）が変わった拍に App が GPU へ上げ直す（テーマ・色票・
-                // ドット絵の保存で World 側が焼き直す）。
+                // ドット絵の保存で World 側が生成し直す）。
                 |> App.withSpriteAtlases(w ->
                     { texture = World.atlasName(), key = World.atlasKey(w),
                       baked = w#atlas } :: Nil)
@@ -60,7 +60,7 @@ def main(): Unit \ IO =
                 // 鳴り続ける音: 走っている間のエンジンの唸りと、滑っている間の擦れ。
                 // 宣言が消えた拍で App が止めるので、ここは「今どう鳴っていてほしいか」だけ書く。
                 |> App.withSustained(w -> checked_ecast(Sfx.hums(w)))
-                // 走行中の POST /bake（Studio の「焼いて」）は Bake.all と同じ実体を呼ぶ。
+                // 走行中の POST /bake（Studio の「生成して」）は Bake.all と同じ実体を呼ぶ。
                 |> App.onBakeRequest(Bake.allShots)
                 |> App.withDebug(App.debugFromEnv())
                 |> App.launch

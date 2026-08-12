@@ -1,7 +1,7 @@
-// Bake — ゲーム画面を画面なしで PNG に焼く（golden 比較・目視批評用）。
+// Bake — ゲーム画面を画面なしで PNG に生成する（golden 比較・目視批評用）。
 // 実行: flix run --entrypoint Bake.all → gallery/s1_start.png .. s4_over.png
 // すべて決定的な場面（時計 t は場面ごとに固定値を入れる）。World を直接組み（RNG を回さず固定し）、
-// 実機と同じ描画経路（View.frame → Render.draw → Bakery.renderPng）で焼く。
+// 実機と同じ描画経路（View.frame → Render.draw → Bakery.renderPng）で生成する。
 mod Bake {
     import java.io.File
 
@@ -20,7 +20,7 @@ mod Bake {
     pub def all(): Unit \ IO =
         discard allShots()
 
-    /// Bake.all の中身。焼けた PNG のパス列を返す — 走行中のゲームへの POST /bake も呼ぶ。
+    /// Bake.all の中身。生成した PNG のパス列を返す — 走行中のゲームへの POST /bake も呼ぶ。
     pub def allShots(): List[String] \ IO =
         discard (new File("gallery")).mkdirs();
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
@@ -87,7 +87,7 @@ mod Bake {
     def clearKind(i: Int32): World.Kind = kindAt(i + 2)
     def overKind(c: Int32, r: Int32): World.Kind = kindAt(c * 3 + r)
 
-    /// 1 場面を PNG に焼き、焼けたファイルパスを返す。hud の合流は実機と同じ
+    /// 1 場面を PNG に生成し、生成したファイルパスを返す。hud の合流は実機と同じ
     /// App.composeScene を通す（カメラ無しなので center = None・等倍）。
     def shoot(cfg: Bakery.BakeConfig, ctx: App.ViewCtx, w: World.World, name: String): String \ IO =
         let items = App.composeScene(None, 1.0, cfg#design,

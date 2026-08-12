@@ -1,7 +1,7 @@
-// Bake — ゲーム画面を画面なしで PNG に焼く（golden 比較・目視批評用）。
+// Bake — ゲーム画面を画面なしで PNG に生成する（golden 比較・目視批評用）。
 // 実行: flix run --entrypoint Bake.all → gallery/title.png .. gallery/s3_crash.png
 // すべて決定的な場面（時計 t は場面ごとに固定値を入れる — 実時間も乱数も見ない）。
-// World を直接組み、実機と同じ描画経路（View.frame → Render.draw → Bakery.renderPng）で焼く。
+// World を直接組み、実機と同じ描画経路（View.frame → Render.draw → Bakery.renderPng）で生成する。
 mod Bake {
     import java.io.File
 
@@ -20,8 +20,8 @@ mod Bake {
     pub def all(): Unit \ IO =
         discard allShots()
 
-    /// Bake.all の中身。焼けた PNG のパス列を返す — 走行中のゲームへの POST /bake も呼ぶ。
-    /// 効果音も同じ入口で焼く（絵と音を別の手順にしない）。返すのは目で見る物だけなので
+    /// Bake.all の中身。生成した PNG のパス列を返す — 走行中のゲームへの POST /bake も呼ぶ。
+    /// 効果音も同じ入口で生成する（絵と音を別の手順にしない）。返すのは目で見る物だけなので
     /// WAV はパス列に載せない。
     pub def allShots(): List[String] \ IO =
         discard (new File("gallery")).mkdirs();
@@ -29,7 +29,7 @@ mod Bake {
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
         let w0 = loadWorld();
         // 実機が GPU へ上げるのと同じアトラス画素を PNG に落とし、regionRect 付き Sprite を
-        // 解決できる texInfo を組む（焼きは PNG からしか絵を読めない）。
+        // 解決できる texInfo を組む（生成は PNG からしか絵を読めない）。
         let images = PxSpriteAtlas.asImages(
             { texture = World.atlasName(), baked = w0#atlas } :: Nil);
         let cfg = { texturePath = Bakery.imagePngs("debug", images)
@@ -217,7 +217,7 @@ mod Bake {
           speed = w0#rules#forwardSpeed, nitro = 0.42, rank = 2, score = 750,
           rivals = rivals | started }
 
-    /// 1 場面を PNG に焼き、焼けたファイルパスを返す。hud の合流は実機と同じ
+    /// 1 場面を PNG に生成し、生成したファイルパスを返す。hud の合流は実機と同じ
     /// App.composeScene を通す（カメラ無しなので center = None・等倍）。
     def shoot(cfg: Bakery.BakeConfig, texInfo: String -> Option[GameEngine.TextureInfo],
               ctx: App.ViewCtx, w: World.World, name: String): String \ IO =

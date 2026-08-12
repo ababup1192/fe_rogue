@@ -695,7 +695,7 @@ mod World {
     pub def withSprites(sprites: PxSpriteDoc.Doc, w: World): World = rebakeAtlas({ sprites = sprites | w })
     pub def withFx(fx: FxSpecs, w: World): World = { fx = fx | w }
 
-    /// テーマ・色票・ドット絵のどれかが変わったらアトラスを焼き直して世代を進める。
+    /// テーマ・色票・ドット絵のどれかが変わったらアトラスを生成し直して世代を進める。
     /// 世代の鍵（atlasKey）が変わらないと、App は古い画素のテクスチャを使い続ける。
     def rebakeAtlas(w: World): World =
         { atlas = PxSpriteAtlas.bake(w#sprites, PaletteDoc.carInk(w#palette, w#theme#player)),
@@ -708,7 +708,7 @@ mod World {
     pub def atlasKey(w: World): String = "gen${w#atlasGen}"
 
     /// 効果音のつまみ。走らせたまま効くのは鳴らす間隔だけで、音量・高さ・長さは
-    /// 焼き上がりの WAV に入っている（make bake で焼き直して起動し直すと届く）。
+    /// 生成した WAV に入っている（make bake で生成し直して起動し直すと届く）。
     pub def withSfxTune(sfxtune: SfxTuneDoc.Doc, w: World): World = { sfxtune = sfxtune | w }
 
     /// いま画面に出ている Doc（project.json の editor 宣言 id → パス）。Studio の「表示中」バッジの材料。

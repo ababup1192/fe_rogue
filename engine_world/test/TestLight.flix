@@ -10,7 +10,7 @@ mod TestLight {
 
     /// テスト用 holeFrac。engine_world は engine_tools（RadialGlow の所属先）に依存できない
     /// ため直接参照できず、値を複製する。RadialGlow.defaultHoleFrac() と揃えておかないと
-    /// 実際に焼くテクスチャと maskScale の前提がずれる — 変えたときは両方揃えて直すこと。
+    /// 実際に生成するテクスチャと maskScale の前提がずれる — 変えたときは両方揃えて直すこと。
     def holeFrac(): Float64 = 0.5
 
     def sampleDarkness(): Float64 = 0.95

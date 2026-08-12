@@ -39,7 +39,7 @@
 ## make の入口
 
 - `make run` / `make debug`（watchFile・F8 有効）/ `make check`（型検査・一番速い確認）
-- `make test` / `make bake`（決定的な絵を焼く）/ `make bench`（gallery/ vs golden/ のバイト比較）
+- `make test` / `make bake`（決定的な絵を生成する）/ `make bench`（gallery/ vs golden/ のバイト比較）
 - `make golden`（いまの gallery を基準にする）
 - `debug/` のコンタクトシート系ターゲット（例: `make gallery-prologue` の all.png、
   `make gallery-sounds` の sounds.png / music.png）で**目と耳で確かめて**批評する。
@@ -99,7 +99,7 @@
   「ここは平らであるべき」と決めた後の選択であって、既定ではない。
   （手の例: `ShaderDoc` の面 / `Render.vgrad`・`gradPolygon` / `Material` の質感
   （グレイン・きらめき）/ `Render.striped`・`checker` / ドット絵のディザ。**1px の帯を
-  積んだ疑似グラデーションだけは禁止** — 焼き時間に直撃するし、上の部品で正しく描ける。
+  積んだ疑似グラデーションだけは禁止** — 生成時間に直撃するし、上の部品で正しく描ける。
   使える部品は engine の版で決まるので visual-dict の **[新]** 印を見る）
 - **主役と背景が分離して読めること**。主役の輪郭が背景に溶けていない。
   （手の例: `PxShade.polishDoc` のリムライト（ふち光）・接地影 / 明度差 / 縁取り /

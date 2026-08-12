@@ -16,7 +16,7 @@ mod SfxBake {
             SfxSynth.fade(SfxSynth.tone(cfg(), 196.0, 0.14, 22)))
 
     /// 話しかけ: 昔の RPG の会話ふうの「ど・ど・ど・ど・ど」。同じ音を 5 回連続で鳴らす。
-    /// pitch で声の高さを変えられる（1.0 = ふつうの人。高い人・低い人を焼き分ける）。
+    /// pitch で声の高さを変えられる（1.0 = ふつうの人。高い人・低い人を作り分ける）。
     def talkPop(pitch: Float64): List[Float64] =
         let blip = talkBlip(261.63 * pitch);
         SfxSynth.sequence(blip :: blip :: blip :: blip :: blip :: Nil)

@@ -73,11 +73,11 @@ mod ProjectLoader {
         let title       = getString(root, "title");
         let designW     = getInt(root, "designWidth");
         let designH     = getInt(root, "designHeight");
-        // glyphs（任意）: 起動時にどの字を焼くか。
-        //   "auto"（既定）… 起動時は焼かず、出た字から順に焼く。起動が一番速い
-        //   "used"         … ソースとアセットに書いてある字を先に焼く。最初の画面で引っかからない
+        // glyphs（任意）: 起動時にどの字を生成するか。
+        //   "auto"（既定）… 起動時は生成せず、出た字から順に生成する。起動が一番速い
+        //   "used"         … ソースとアセットに書いてある字を先に生成する。最初の画面で引っかからない
         //   "all"          … フォントが持つ字を全部。日本語だと数十秒かかる
-        // どれでも、足りない字は出そうとしたときに焼き足される（消えることはない）。
+        // どれでも、足りない字は出そうとしたときに追加生成される（消えることはない）。
         let glyphs = match Map.get("glyphs", root) {
             case Some(JString(g)) => g
             case _                => "auto"

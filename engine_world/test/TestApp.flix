@@ -3,6 +3,7 @@
 // 左から右。+1 して ×2 なら 2、逆なら 1 なので順序が数字に出る）、quit の既定
 // （Escape のエッジで終了・押しっぱなしでは終了しない）。
 // Frame は record なので、比較はタプルへ射影して行う。
+// lint-view: 対象外 — 座席と z の並びを数字で固定するための目印。画面に出す絵ではない。
 
 mod TestApp {
 
@@ -518,7 +519,7 @@ mod TestApp {
                 Map#{"a.json" => 101i64, "b.json" => 201i64}))
 
     // ========================================================================
-    // TileCache: 世代と焼き直しの判定
+    // TileCache: 世代と生成し直しの判定
     // ========================================================================
 
     def testVao(): GpuHandle.TileVao = GpuHandle.wrapTileVao(7)
@@ -530,14 +531,14 @@ mod TestApp {
         Assert.assertEq(expected = Some(42),
             App.tileCacheHit("0", "map-1", cache) |> Option.map(snd))
 
-    // 読み直しが起きた（世代が進んだ）後は、同じ席・key でも引けない = 焼き直しになる。
+    // 読み直しが起きた（世代が進んだ）後は、同じ席・key でも引けない = 生成し直しになる。
     @Test
     def testTileCacheMissAfterBump(): Unit \ Assert =
         let cache = App.tileCacheStore("0", "map-1", testVao(), 42, App.freshTileCache());
         Assert.assertEq(expected = None,
             App.tileCacheHit("0", "map-1", App.bumpTileGen(true, cache)) |> Option.map(snd))
 
-    // 読み直しの無いフレームでは世代は動かず、焼き置きは生きたまま。
+    // 読み直しの無いフレームでは世代は動かず、事前に生成した物は生きたまま。
     @Test
     def testTileCacheBumpFalseKeepsHit(): Unit \ Assert =
         let cache = App.tileCacheStore("0", "map-1", testVao(), 42, App.freshTileCache());
@@ -557,7 +558,7 @@ mod TestApp {
         Assert.assertEq(expected = (1, Some(43)),
             (Map.size(c1#entries), App.tileCacheHit("0", "light:2", c1) |> Option.map(snd)))
 
-    // 別の席は独立に焼き置きされ、世代が同じ間はどちらも引ける。
+    // 別の席は独立に生成して置かれ、世代が同じ間はどちらも引ける。
     @Test
     def testTileCacheTwoSlotsIndependent(): Unit \ Assert =
         let cache = App.tileCacheStore("0", "floor", testVao(), 10,

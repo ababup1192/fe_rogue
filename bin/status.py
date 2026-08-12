@@ -140,7 +140,7 @@ def section_golden(out):
     oks = []
     for name, sums, gallery in pairs:
         if not os.path.isdir(gallery):
-            continue  # 未焼きは「情報なし」。焼いてから比べる
+            continue  # 未生成は「情報なし」。生成してから比べる
         try:
             ok, bad = check_golden(sums, gallery)
         except OSError:

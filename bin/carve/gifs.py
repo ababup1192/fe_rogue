@@ -82,7 +82,7 @@ def gif_of(width, height, frames, palette, delay=DELAY, transparent=0):
 def from_pngs(paths, shrink=1):
     """PNG を読んで、色を番号に振り直した GIF を作る。番号 0 は透明。
 
-    shrink は工程の絵の拡大率。**等倍に戻してから**焼く — 拡大したまま焼くと、
+    shrink は工程の絵の拡大率。**等倍に戻してから**生成する — 拡大したまま生成すると、
     同じ絵なのに何十倍にも膨らむ。見るときの拡大は表示側の仕事。
     """
     read = []
@@ -122,7 +122,7 @@ def from_pngs(paths, shrink=1):
 def main(argv):
     root = os.path.dirname(HERE)
     shrink = int(argv[0]) if argv else 6
-    only = argv[1:]        # 工程を指定すると、その工程だけ焼く
+    only = argv[1:]        # 工程を指定すると、その工程だけ生成する
     made = []
     for body in sorted(os.listdir(os.path.join(root, "gallery"))):
         home = os.path.join(root, "gallery", body)

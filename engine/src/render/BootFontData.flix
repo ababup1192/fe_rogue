@@ -1,4 +1,4 @@
-// BootFontData — 生成物。手で編集しない（`make boot-font` で焼き直す）。
+// BootFontData — 生成物。手で編集しない（`make boot-font` で生成し直す）。
 //
 // 起動画面 (Splash) が使う組み込みフォントとロゴの素データ。fpkg は .flix しか運べないので、
 // ビットマップを 16 進の文字列として持つ。読み解くのは BootFont。
@@ -13,7 +13,7 @@ mod BootFontData {
     /// アトラスの一辺。Text の表示サイズ計算がアトラスを正方と決め打つので正方。
     pub def side(): Int32 = 128
 
-    /// 焼き込みピクセル高さ。この大きさで出すとドットが 1:1 で揃う。
+    /// 生成ピクセル高さ。この大きさで出すとドットが 1:1 で揃う。
     pub def fontSize(): Float64 = 10.0
 
     pub def ascent(): Float64 = 9.0

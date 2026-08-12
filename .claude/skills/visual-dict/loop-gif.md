@@ -1,13 +1,13 @@
 # 完全ループ GIF の作法
 
-## 焼く
+## 生成する
 
 - 配管: `Bakery.bakeGif(cfg, frames, stride, toCmds, name)`。シェーダ面を使う場合は
   チャンネルが無いので `SoftRaster.renderToImageWith` + `Filmstrip.bakeFrame` +
   `GifEncoder.encode` を手組みする（シェーダ面つきは `Bakery.bakeGifWith`）
 - ループを閉じる: 周期項はループ長の整数倍周期だけ / 降下・スクロールはラップ幅の
   整数倍 / フラッシュ・揺れはループ境界で振幅 0
-- 尺は 4〜6 秒に一番動きのある拍を 1 つ（20 秒を全部焼かない）
+- 尺は 4〜6 秒に一番動きのある拍を 1 つ（20 秒を全部生成しない）
 - 実績: 72 コマ・15fps・720×405 で 2〜4MB。グラデの帯積みが多いと 1 コマ十数秒に
   なる（scale を落とすか部品を減らす）
 - 決定性: 同じ入力なら GIF がバイト一致する（実測済み）— 動きの golden 比較に使える

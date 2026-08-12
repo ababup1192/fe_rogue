@@ -70,7 +70,7 @@ mod PaletteDoc {
         Map.foldLeftWithKey((acc, name, color) -> Map.insert(name, color, acc), defaults(), loaded)
 
     /// 車の意味色: body 系 3 キーだけ車体色 bodyColor から導き、残りはこの表で引く。
-    /// アトラス焼き（World）と box 列（ViewCar）が同じ導出をここで見る — 2 か所に式を持つと
+    /// アトラス生成（World）と box 列（ViewCar）が同じ導出をここで見る — 2 か所に式を持つと
     /// クアッドと box の車体色が静かに食い違う。
     pub def carInk(doc: Doc, bodyColor: Color, key: String): Color =
         match key {

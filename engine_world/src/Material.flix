@@ -51,7 +51,7 @@ mod Material {
     }
 
     /// 静的なむら1式(深い水の暗がり・マグマの冷えた皮)。時間を持たないので
-    /// prebuilt に焼ける — 表面の粒(SurfaceFx)と分けるのはそのため。
+    /// prebuilt に生成できる — 表面の粒(SurfaceFx)と分けるのはそのため。
     /// 大きさ・濃さ・置き場所は全部座標ハッシュ(保存なしで場所ごとの個性)。
     pub type alias BlotchFx = {
         color = Color,
@@ -68,7 +68,7 @@ mod Material {
     /// のと違って縁からはみ出さない。幅 1 マスの道のように「内側」が無い形でも効く。
     /// channel 200 から 4×count ぶんを使う帯（きらめき・むら・泡のどれとも重ならない）。
     /// 粒は毎フレーム 1 マスに count 個の箱を生むので、広い盤で使うときは静的レイヤーへ
-    /// 焼くか count を下げる — 40×30 マス × 16 個で 1 フレーム 19,200 個になる。
+    /// 生成するか count を下げる — 40×30 マス × 16 個で 1 フレーム 19,200 個になる。
     pub def grain(color: Color): SurfaceFx =
         { shape = SurfaceShape.Speck,
           count = 16,
@@ -202,7 +202,7 @@ mod Material {
     /// 質感1式。fill = 塗り、edge/edgeWidth = 輪郭フチ、forceStyle = 角の形の固定
     /// (None = 場所ごとに混ぜる。水は丸固定 — 水面はどのテーマでも角ばらせない)、
     /// jitter = 対角辺の岩肌の揺らぎ、surface = 表面の時間演出の重ね(空 = 演出なし)、
-    /// blotch = 静的なむら(prebuilt に焼く)、
+    /// blotch = 静的なむら(prebuilt に生成する)、
     /// mottle = セル別の明度ゆらぎの最大量(0 = なし。耕した畑のパッチワーク —
     /// セル座標ハッシュ×この値ぶん白へ寄せる。lighten(fill, hash*mottle) と等価)、
     /// height = 立体感。
@@ -282,7 +282,7 @@ mod Material {
             case SurfaceShape.Glow    => glowItems(fx, cell, tile, time, z, edges)
         })
 
-    /// 静的なむらをセル1個ぶん描く(時間なし — prebuilt に焼く前提)。セルに1〜2個
+    /// 静的なむらをセル1個ぶん描く(時間なし — prebuilt に生成する前提)。セルに1〜2個
     /// (2個目は座標ハッシュの偶奇で間引く — 全セル同数だと市松模様の規則に見えるため)。
     /// 置き場所はセルの内側(4..11+半径3.5)に収める — 岸辺線の上に暗いむらが
     /// 乗ると縁が欠けて見えるため。

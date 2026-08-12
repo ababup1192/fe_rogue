@@ -14,7 +14,7 @@ mod Steering {
 
     /// target から流した距離場を 1 歩下る = target へ最短で近づく隣のマス。
     /// 着けない（道が無い・自分が場の外）なら None — 呼び側が「動かない」に倒す。
-    /// 同着は 上→下→左→右 の固定順で選ぶ（乱数を持たない — 焼けば毎回同じ、golden が効く）。
+    /// 同着は 上→下→左→右 の固定順で選ぶ（乱数を持たない — 生成すれば毎回同じ、golden が効く）。
     /// limit は距離場を流す上限歩数（盤のマス数を渡せば全域）。
     pub def chase(canEnter: ((Int32, Int32)) -> Bool, self: (Int32, Int32),
                   target: (Int32, Int32), limit: Int32): Option[(Int32, Int32)] =
@@ -41,7 +41,7 @@ mod Steering {
                 |> Option.map(snd))
 
     /// 気の向くままの 1 歩。何歩目か（beat）と塩（salt）のハッシュで向きを引くので、
-    /// 乱数の種を持たず、同じ場面を焼けば同じ道をたどる（golden が効く）。
+    /// 乱数の種を持たず、同じ場面を生成すれば同じ道をたどる（golden が効く）。
     /// 引いた向きへ入れなければ None — 呼び側が「今回は留まる」に倒す
     /// （beat が進めば次は別の向きを引くので、隅で固まらない）。
     pub def wander(canEnter: ((Int32, Int32)) -> Bool, self: (Int32, Int32),

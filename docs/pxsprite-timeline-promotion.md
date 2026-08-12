@@ -10,7 +10,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
 |---|---|---|
 | ドット絵のデータ化 | Doc 作法(JsonCodec/fail-open/watchFile/studio フォーム) | PxSpriteDoc(新) |
 | 1体1クアッド描画 | `Render.Item.Sprite`(region/tint/flipH/V)+ `render_gl/Sprite.flix`(instanced・実測 N=5000@60fps) | 無し |
-| 実行時アトラス焼き | `render_gl/Font.flix` の bakeFontAtlas と同型 | RGBA 版アップロード関数1本(~30行) |
+| 実行時アトラス生成 | `render_gl/Font.flix` の bakeFontAtlas と同型 | RGBA 版アップロード関数1本(~30行) |
 | 区間アニメ | 村 `Prologue.routeAt` が原型 | Timeline/Journey(engine_world へ一般化) |
 | 煙・雪・葉・木くず | `Fx`/`FxDoc`(fx.json) | emitter 種の追加のみ(新モジュール禁止) |
 | 風揺れ | `Sway` | 無し |
@@ -26,11 +26,11 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
 - 凡例(legend)はファイルに1個でコマ間共有。未定義文字は透明(fail-open)。
 - コマは既存 Doc の rows 慣行に合わせる(studio のフォーム自動化に乗る)。
 - flipX 時の anchor 鏡映は draw 側の規約。スケールは整数のみ(NEAREST 前提)。
-- **tint の両立**: テーマ切替は低頻度 → テーマ別に焼き分け(watchFile で再ベイク、
+- **tint の両立**: テーマ切替は低頻度 → テーマ別に生成し分け(watchFile で再生成、
   fontAtlas と同じライフサイクル)。寒色 mix・夜などの連続変化は `Sprite.tint`(乗算)
   とポスト面で。パレット LUT シェーダは作らない。
 - 一点物の背景(家・山)はコード矩形のまま。全部をスプライト化しない
-  (bake バイト一致の機械的検証を守るため)。
+  (生成のバイト一致の機械的検証を守るため)。
 
 ## Timeline / Journey
 
@@ -61,7 +61,7 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
     (monorepo の sync-engine-full と同じ流儀。GitHub への push/release はしない)。
     **次回リリース(0.7.2)で正規の fpkg に差し替えること**。リリース版 0.7.1 の
     バックアップは同ディレクトリの `flix_game_engine-0.7.1.fpkg.release-backup`。
-- **R2 PxSprite**(中): Doc+draw(第一段は box 列出力で bake バイト一致移行)→
+- **R2 PxSprite**(中): Doc+draw(第一段は box 列出力で生成バイト一致移行)→
   第二段でアトラス化(RGBA アップロード+PNG 共用で GL/SoftRaster 同一ソース)。
   PreviewSprite、コンタクトシートのギャラリー。
   - **✅ R2a 完了(2026-07-21)**: `engine_world/src/PxSpriteDoc.flix`(文字格子+legend
@@ -88,13 +88,13 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
       side/regions/ARGB 画素。棚詰めは RenderFont のシェルフ規則を `shelfPack` に関数化。
       Font 側は SDF 生成と癒着しているため据え置き — 規則は shelfPack のテストが pin)。
       GL 出口は `RenderTexture.loadTextureFromPixels`(+`updateTexturePixels` — watchFile
-      再ベイクの差し替えはフレーム先頭のシステムからこれを呼ぶ。テーマ別焼き分けは
-      resolver 差し替えで bake し直すだけ)。PNG 出口は既存 `SoftRaster.writeRadialPng` に
+      再生成の差し替えはフレーム先頭のシステムからこれを呼ぶ。テーマ別生成し分けは
+      resolver 差し替えで生成し直すだけ)。PNG 出口は既存 `SoftRaster.writeRadialPng` に
       `pixelAt` を渡す — **GL と headless が同一 Baked を読む**。
-    - **両モード**: `PxSprite.draw`(box 列・既定 — 村の bake バイト一致を守る)と
+    - **両モード**: `PxSprite.draw`(box 列・既定 — 村の生成バイト一致を守る)と
       `PxSprite.drawQuad`(regionRect 付き Item.Sprite 1 個・opt-in)。App の view 経路は
       `Render.draw` → `Render.drawWith(getTextureInfo)` に差し替え(regionRect 無しは
-      同一 Drawable = 挙動不変)。検証: SoftRaster で両モードを焼いて全画素バイト一致
+      同一 Drawable = 挙動不変)。検証: SoftRaster で両モードを生成して全画素バイト一致
       (editor_server/test/TestPxSpriteRaster — 非反転/flipX とも diff 0)。
     - **PreviewSprite**: `editor_server/src/PreviewSprite.flix` + POST /preview/sprite。
       mode="frame"(1 コマ拡大)/"sheet"(全スプライト×全コマ×themes — sprite 指定で
@@ -151,8 +151,8 @@ PxSprite の Doc と Journey(村の `Prologue.routeAt` の一般化)の2つだ�
       プログラムキャッシュも分岐) = smoothstep(U:0.708→1.0)×smoothstep(V:0.30→0.36)×0.38、
       とばり = maxDarkness × max(0, -sin(2πt/dayLen))(Night.rawNight と同式)を
       **uTime からシェーダー内で組む — spec が時刻に依らず一定なので GLSL の
-      再コンパイルはテーマ/開放状態の変化時だけ**。bake は Bake.shootPro
-      (shaderSurfaces + renderPngWith)で GL と同じ数式(ShaderEval)を焼く。
+      再コンパイルはテーマ/開放状態の変化時だけ**。生成は Bake.shootPro
+      (shaderSurfaces + renderPngWith)で GL と同じ数式(ShaderEval)を生成する。
       目視確認済み: 帯の縞・額縁の継ぎ目が消え、角へ滑らかに沈むビネットと
       右肩上がりの霧のグラデになった。夜は Normal 重ねから Multiply になり
       「夜色へ引っ張る」→「夜色で沈める」に変わって窓明かりが映える。

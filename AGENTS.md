@@ -40,9 +40,9 @@
 lint 群（矩形だけの View・色票・画像の量・画素の並び・コマ間）は保存時とコミット時の
 フックが自動で走らせる。手動で回す口の一覧は `make help`。
 
-### 焼いた絵は git に入れない
+### 生成した絵は git に入れない
 
-焼いた `gallery/` と `golden/*.png` は git 管理外。人に見せる絵は
+生成した `gallery/` と `golden/*.png` は git 管理外。人に見せる絵は
 [docs/gallery/](docs/gallery/README.md) へ選んでコピー、退行検知は
 `templates/*/golden/SHA256SUMS.txt`（例外は Studio が読む `golden/title.png` のみ）。
 違反はコミット時に pre-commit 関所が止める（配線 `make hooks`、理屈ごと `bin/precommit.py`）。

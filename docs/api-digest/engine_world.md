@@ -1,4 +1,4 @@
-<!-- engine v0.23.5 / 生成: 2026-08-12 -->
+<!-- engine v0.23.5 / 生成: 2026-08-13 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_world
@@ -941,7 +941,7 @@
   `pub type alias Edges = { n = Bool, s = Bool, e = Bool, w = Bool }`
 - 表面の時間演出をセル1個ぶん描く(状態なし — 同じ時刻なら同じ絵)。
   `pub def surfaceItems(fxs: List[SurfaceFx], cell: (Int32, Int32), tile: Float64, time: Float64, z: Int32, edges: Edges): List[Render.PlacedItem]`
-- 静的なむらをセル1個ぶん描く(時間なし — prebuilt に焼く前提)。セルに1〜2個
+- 静的なむらをセル1個ぶん描く(時間なし — prebuilt に生成する前提)。セルに1〜2個
   `pub def blotchItems(fx: BlotchFx, cell: (Int32, Int32), tile: Float64, z: Int32): List[Render.PlacedItem]`
 
 ## Mirror — `engine_world/src/Mirror.flix`
@@ -1068,17 +1068,17 @@
 ## PxSpriteAtlas — `engine_world/src/PxSpriteAtlas.flix`
 - アトラス内の 1 コマの矩形(px・セル数と同じ)。
   `pub type alias Slot = { x = Int32, y = Int32, w = Int32, h = Int32 }`
-- 焼き上がり。pixels は side×side の ARGB(行優先)。regions のキーは (スプライト名, コマ名)。
+- 生成した結果。pixels は side×side の ARGB(行優先)。regions のキーは (スプライト名, コマ名)。
   `pub type alias Baked = { side = Int32, regions = Map[(String, String), Slot], pixels = Vector[Int32] }`
-- 何も持たない空のアトラス(「まだ焼けていない」の置き場)。
+- 何も持たない空のアトラス(「まだ生成していない」の置き場)。
   `pub def empty(): Baked`
-- Doc の全スプライト×全コマを 1 枚に焼く。コマの順は Map 順(名前順)で決定的。
+- Doc の全スプライト×全コマを 1 枚に生成する。コマの順は Map 順(名前順)で決定的。
   `pub def bake(doc: PxSpriteDoc.Doc, resolver: String -> Color): Baked`
 - (スプライト名, コマ名) → アトラス内矩形(Rect2・px)。regionRect(Item.Sprite)にそのまま渡せる。
   `pub def regionOf(baked: Baked, sprite: String, frame: String): Option[Rect2.Rect2]`
 - 画素 1 個(ARGB)。範囲外・未 bake は透明 0。PNG 書き出し(SoftRaster.writeRadialPng)の
   `pub def pixelAt(baked: Baked, x: Int32, y: Int32): Int32`
-- 焼き上がりの一覧を「正方形の絵の一覧」へ写す（Bakery.imagePngs / imageTextureInfo 用）。
+- 生成した絵の一覧を「正方形の絵の一覧」へ写す（Bakery.imagePngs / imageTextureInfo 用）。
   `pub def asImages(uploads: List[{ texture = String, baked = Baked | r }]): List[{ name = String, side = Int32, pixelAt = (Int32, Int32) -> Int32 }]`
 - シェルフパッキング(棚詰め): items を与えられた順に左→右へ詰め、行に収まらなければ
   `pub def shelfPack(side: Int32, items: List[(k, (Int32, Int32))]): Option[Map[k, (Int32, Int32)]] with Order[k]`

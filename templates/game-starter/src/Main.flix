@@ -42,7 +42,7 @@ def main(): Unit \ IO =
             })
                 // 以下は App.game の外側の高度な口（戻り値の App に後ろから pipe で足す）。
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
-                // 走行中の POST /bake（Studio の「焼いて」）は Bake.all と同じ実体を呼ぶ。
+                // 走行中の POST /bake（Studio の「生成して」）は Bake.all と同じ実体を呼ぶ。
                 |> App.onBakeRequest(Bake.allShots)
                 |> App.withDebug(App.debugFromEnv())
                 |> App.launch

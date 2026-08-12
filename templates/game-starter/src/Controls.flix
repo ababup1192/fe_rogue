@@ -26,7 +26,7 @@ mod Controls {
         World.withKeys(KeysDoc.load(KeysDoc.path()), w)
 
     /// テーマは色に加えて「塗りの仕上げ」も持つので、絵も読み直して掛け直す
-    /// （仕上げは読み込み時に 1 回だけ掛かる = 絵の側に焼き込まれているため）。
+    /// （仕上げは読み込み時に 1 回だけ掛かる = 絵の側に生成の結果として定着しているため）。
     pub def reloadTheme(w: World.World): World.World \ Fs.FileRead =
         World.withTheme(ThemeDoc.load(ThemeDoc.path()),
             PxSpriteDoc.load(World.spritePath()), w)

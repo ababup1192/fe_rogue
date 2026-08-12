@@ -1,5 +1,5 @@
 // GameGallery — ゲーム画面のスクリーンショット・プレイ GIF・ダッシュボードをヘッドレスに
-// 焼き込む。make bake が再生成する。どの画像も同じ生地から裁断される: 入力の台本が純粋な
+// 生成する。make bake が再生成する。どの画像も同じ生地から裁断される: 入力の台本が純粋な
 // tick を駆動し、各フレームはランチャーと同じ projectUi + View.compose で投影される。
 //
 //   gallery/screen_*.png   — 7 つの画面（タイトル / 部屋 / 会話 / 確認 / メモ / 不正解 / 正解）
@@ -37,7 +37,7 @@ mod GameGallery {
         let (drawables, polygons) = Render.draw(View.compose(ctx, { ui = ui1, world = w }));
         { drawables = drawables, polygons = polygons }
 
-    /// Bakery に渡す焼き込み設定（背景は clearColor・テクスチャなし）。
+    /// Bakery に渡す生成設定（背景は clearColor・テクスチャなし）。
     def config(atlas: FontAtlas): Bakery.BakeConfig =
         { design = design(), scale = scale(), background = Palette.clearColor(),
           texturePath = Map.empty(), fontTtf = ttfPath(), fontAtlas = atlas,
@@ -191,7 +191,7 @@ mod GameGallery {
         }, (start :: Nil, start));
         List.reverse(frames)
 
-    /// 台本を tick に流し、GIF＋コマ送りビューア用のコマ別 PNG を焼く（配管は Bakery が担う）。
+    /// 台本を tick に流し、GIF＋コマ送りビューア用のコマ別 PNG を生成する（配管は Bakery が担う）。
     /// 返り値はカタログに差し込む (名前, フィルムストリップ情報)。
     def bakeGif(atlas: FontAtlas, ui: UiStore.UiWorld, script: List[Room.Input],
                 name: String): (String, SnapshotSite.Filmstrip) \ IO =
@@ -240,7 +240,7 @@ mod GameGallery {
             { sceneName = name, allow = Nil, screen = design(), atlas = atlas },
             GameUi.projectUi(w, ui))
 
-    /// すべてを、必ずこの順序で焼き込む: まずスクリーンショットとフィルム、最後にサイト
+    /// すべてを、必ずこの順序で生成する: まずスクリーンショットとフィルム、最後にサイト
     /// —— 単発の `make bake` が常に完全なダッシュボードを残すため。
     pub def bakeAll(): Unit \ IO =
         let atlas = Harness.atlas();

@@ -190,7 +190,7 @@ mod SnapshotCatalog {
 
     /// 目録を SnapshotSite の表示用 Item 列へ変換する。ここが Kind → 拡張子/表示幅/未生成案内の
     /// 対応表で、SnapshotSite にゲーム都合を持ち込ませないためのアダプタ。実ピクセル幅は撮影側の
-    /// 定数（PNG/GIF で解像度が違う）なので引数で受ける。GIF エントリはストリップが焼けていれば
+    /// 定数（PNG/GIF で解像度が違う）なので引数で受ける。GIF エントリはストリップが生成済みであれば
     /// `filmstripByName` からコマ送りビューア情報を引く（無ければ従来の GIF カードに落ちる）。
     pub def toItems(widths: {pngPxWidth = Int32, gifPxWidth = Int32}, gifHint: String,
                     filmstripByName: Map[String, SnapshotSite.Filmstrip]): List[SnapshotSite.Item] =

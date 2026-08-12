@@ -28,7 +28,7 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 **どれか欠けると Studio で「出ない / 絵がない / 作れない」になる。**
 
 ```
-- [ ] 1. templates/<genre>-starter/ を作った（rpg-starter を写経元に。具体値式なら golden も焼く）
+- [ ] 1. templates/<genre>-starter/ を作った（rpg-starter を写経元に。具体値式なら golden も生成する）
 - [ ] 2. golden/title.png を用意した
 - [ ] 3. make lint-palette が通った
 - [ ] 4. Doc の外形規約を守った（全 Doc に version・schema は sections 方言）
@@ -40,7 +40,7 @@ allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ### 2. `golden/title.png` を必ず用意する
 
 Studio のジャンル札のサムネは `GET /genesis/title` がこれを読む（無いと空絵に倒れる）。
-bake に `title` シーンを 1 枚足して祝福する。
+生成に `title` シーンを 1 枚足して祝福する。
 
 祝福は `make -C templates/<name> golden`。これが `gallery/*.png` を `golden/` へ写し、
 **`golden/SHA256SUMS.txt` まで作り直す**。git に入るのはこの一覧と `title.png` だけで、

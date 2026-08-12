@@ -1,4 +1,4 @@
-<!-- engine v0.23.5 / 生成: 2026-08-12 -->
+<!-- engine v0.23.5 / 生成: 2026-08-13 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_tools
@@ -25,37 +25,37 @@
   `pub def parseParams(raw: String): Map[String, String]`
 
 ## Bakery — `engine_tools/src/Bakery.flix`
-- ゲームごとに 1 回宣言する焼き込み設定。design を `scale` 倍に拡大して出力する。
+- ゲームごとに 1 回宣言する生成設定。design を `scale` 倍に拡大して出力する。
   `pub type alias BakeConfig = { design = Vec2.Vec2, scale = Int32, background = Color, texturePath = Map[String, String], fontTtf = String, fontAtlas = FontAtlas, outDir = String, frameW = Int32, frameH = Int32, gifDelayMs = Int32, gifFps = Int32 }`
 - 走行中に作った正方形の絵（ドット絵アトラスなど）を PNG に落とし、
   `pub def imagePngs(outDir: String, images: List[{ name = String, side = Int32, pixelAt = (Int32, Int32) -> Int32 }]): Map[String, String] \ IO`
 - 同じ絵の一覧から「名前 → テクスチャの寸法」を引く関数を作る（Render.drawWith に渡す）。
   `pub def imageTextureInfo(images: List[{ name = String, side = Int32 | r }]): String -> Option[{ id = GpuHandle.TextureId, width = Float64, height = Float64 }]`
-- 描画コマンド列を 1 枚の PNG に焼く（World を介さない場面や、投影済みの静止画に使う）。
+- 描画コマンド列を 1 枚の PNG に生成する（World を介さない場面や、投影済みの静止画に使う）。
   `pub def renderPng(cfg: BakeConfig, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO`
-- 複数フォントで焼く renderPng。`extraFonts` はテクスチャ名（実機の project.json の
+- 複数フォントで生成する renderPng。`extraFonts` はテクスチャ名（実機の project.json の
   `pub def renderPngFonts(cfg: BakeConfig, extraFonts: Map[String, SoftRaster.FontEntry], drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO`
 - 宣言シェーダー面つきの renderPng。surfaces（Render.shaderSurfaces の出力と同形の
   `pub def renderPngWith(cfg: BakeConfig, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO`
-- シルエット焼きの絞り方。既定に使うのは WorldBand — 全アイテムを黒にすると画面が
+- シルエット生成の絞り方。既定に使うのは WorldBand — 全アイテムを黒にすると画面が
   `pub enum SilhouetteScope { case WorldBand case All }`
 - 描画コマンド列を「対象は真っ黒・それ以外は落とす」に写す純関数。背景を白にして
   `pub def silhouette(scope: SilhouetteScope, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd]): (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd])`
-- シルエット PNG を焼く（renderPng の変形版）。対象を黒・背景を白で <name>.png に書く。
+- シルエット PNG を生成する（renderPng の変形版）。対象を黒・背景を白で <name>.png に書く。
   `pub def silhouettePng(cfg: BakeConfig, scope: SilhouetteScope, drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO`
 - pass 1 枚ぶんの宣言（Render.Pass のコマンド列版）。name はそのままテクスチャ名になり、
   `pub type alias PassSpec = { name = String, clear = RenderTarget.LoadOp, drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd] }`
-- pass 1 枚を design 解像度（scale = 1）の画像に焼く。GL のターゲットが design ×1 の
+- pass 1 枚を design 解像度（scale = 1）の画像に生成する。GL のターゲットが design ×1 の
   `pub def bakePassImage(cfg: BakeConfig, p: PassSpec, prev: Option[BufferedImage]): BufferedImage \ IO`
-- bakePassImage の「先に焼けたターゲットも参照できる」版。`images` は既に焼いた pass の
+- bakePassImage の「先に生成したターゲットも参照できる」版。`images` は既に生成した pass の
   `pub def bakePassImageWith(cfg: BakeConfig, images: Map[String, BufferedImage], p: PassSpec, prev: Option[BufferedImage]): BufferedImage \ IO`
-- 追加の焼き済み画像（pass のレンダーターゲットなど）を textures に混ぜて本編を PNG に焼く。
+- 追加の生成済み画像（pass のレンダーターゲットなど）を textures に混ぜて本編を PNG に生成する。
   `pub def renderPngWithImages(cfg: BakeConfig, images: Map[String, BufferedImage], drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO`
-- passes を宣言順に焼いてから本編を PNG に焼く（GL の renderFrame と同じ順序 —
+- passes を宣言順に生成してから本編を PNG に生成する（GL の renderFrame と同じ順序 —
   `pub def renderPngWithPasses(cfg: BakeConfig, passes: List[PassSpec], drawables: List[GameEngine.Drawable], polygons: List[GameEngine.PolygonRenderCmd], surfaces: List[SoftRaster.SurfaceCmd], name: String): Unit \ IO`
-- frames を stride 枚ごとに間引き、各コマを toCmds で描いて GIF ＋ コマ別 PNG に焼く。
+- frames を stride 枚ごとに間引き、各コマを toCmds で描いて GIF ＋ コマ別 PNG に生成する。
   `pub def bakeGif(cfg: BakeConfig, frames: List[w], stride: Int32, toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]), name: String): SnapshotSite.Filmstrip \ IO`
-- 複数フォントで焼く bakeGif。`extraFonts` はテクスチャ名（実機の project.json の
+- 複数フォントで生成する bakeGif。`extraFonts` はテクスチャ名（実機の project.json の
   `pub def bakeGifFonts(cfg: BakeConfig, extraFonts: Map[String, SoftRaster.FontEntry], frames: List[w], stride: Int32, toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]), name: String): SnapshotSite.Filmstrip \ IO`
 - シェーダー面つきの bakeGif（renderPngWith の GIF 版）。toCmds が各コマの
   `pub def bakeGifWith(cfg: BakeConfig, frames: List[w], stride: Int32, toCmds: w -> (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd], List[SoftRaster.SurfaceCmd]), name: String): SnapshotSite.Filmstrip \ IO`

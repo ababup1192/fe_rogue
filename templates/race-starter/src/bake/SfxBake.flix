@@ -1,4 +1,4 @@
-// SfxBake — 効果音 13 本を素材ファイル無しで焼く（Bake.all / Studio の「焼いて」から呼ぶ）。
+// SfxBake — 効果音 13 本を素材ファイル無しで生成する（Bake.all / Studio の「生成して」から呼ぶ）。
 // 出来上がりは assets/sfx/*.wav で、project.json の sounds がその名前で読み込む。
 // 合成と WAV への書き出しは engine_tools の SfxSynth が持つので、ここは「どんな波を重ねるか」
 // だけを書く。音量・高さ・長さの倍率は race.sfxtune.json（SfxTuneDoc）から掛かる。
@@ -41,7 +41,7 @@ mod SfxBake {
         SfxSynth.noise(cfg(), amp * k#volume, loopMs())
 
     /// エンジンの唸り: 低い矩形波 2 本（基音と 5 度上）に薄い雑音を混ぜた輪。
-    /// 高さは鳴らしながら pitch で変えるので、ここでは「止まっているときの音」を焼く。
+    /// 高さは鳴らしながら pitch で変えるので、ここでは「止まっているときの音」を生成する。
     def engineHum(k: Knobs): List[Float64] =
         SfxSynth.blend(
             SfxSynth.blend(loopTone(k, 62.0, 0.30), loopTone(k, 94.0, 0.13)),
@@ -133,7 +133,7 @@ mod SfxBake {
     pub def bakeAll(): Unit \ IO + Fs.FileRead =
         bakeWith(SfxTuneDoc.load(SfxTuneDoc.path()))
 
-    /// つまみを渡して焼く（名前は project.json の sounds と 1 対 1）。
+    /// つまみを渡して生成する（名前は project.json の sounds と 1 対 1）。
     pub def bakeWith(tune: SfxTuneDoc.Doc): Unit \ IO =
         SfxSynth.bakeSet(cfg(), "assets/sfx",
             ("engine", engineHum(tune#engine)) ::

@@ -573,7 +573,7 @@ mod TestUnitFixtures {
         (out, Ref.get(worldRef))
 
     /// `withWorldApplied` の seed 付き版: `w0` から開始して emit された Cmd を積み、
-    /// `(thunk の結果, 最終 World)` を返す。scene fixture を `syncFromScene` で焼いた World を渡し、
+    /// `(thunk の結果, 最終 World)` を返す。scene fixture を `syncFromScene` で生成した World を渡し、
     /// World 権威の在庫 writer/reader を 1 region で回すテスト向け。
     pub def withWorldAppliedSeeded(rc: Region[r], w0: World, thunk: Unit -> a \ ef):
             (a, World) \ (((ef - World.Command) - World.WorldQuery) + r) =

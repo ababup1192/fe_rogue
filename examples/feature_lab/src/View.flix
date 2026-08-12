@@ -213,7 +213,7 @@ mod View {
         List.append(boxes,
             Shadow.occluderOfCircle(wallPillarCenter(), wallPillarRadius(), 12) :: Nil)
 
-    /// RadialGlow で焼くテクスチャの元 px サイズ・穴の広さ。bake/Gallery.flix の実ファイル
+    /// RadialGlow で生成するテクスチャの元 px サイズ・穴の広さ。bake/Gallery.flix の実ファイル
     /// 生成と Light.items のスケール計算が同じ値を見る必要があるため、Light.defaultGlowAssets
     /// （エンジン側の既定値）にそのまま委譲する — ここで数値を複製しない。
     pub def maskSourceSize(): Float64 = Light.defaultGlowAssets()#maskSourceSize

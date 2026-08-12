@@ -1,7 +1,7 @@
 // TexDemo — ShaderDoc の tex 場（Field.Tex / Field.Shift / Shade.Rgb）の実証面 5 枚。
-// 「夕暮れの湖岸」を pass "scene" に 1 枚焼き、その絵をシェーダー面がテクスチャとして
+// 「夕暮れの湖岸」を pass "scene" に 1 枚生成し、その絵をシェーダー面がテクスチャとして
 // 読み直す（素通し・ぼかし・陽炎・衝撃波・色調変換）。GL 実機と同じ配管（pass → tex 場）を
-// SoftRaster + ShaderEval で headless に焼くのが狙い。
+// SoftRaster + ShaderEval で headless に生成するのが狙い。
 //
 // 画風は AGENTS.local.md の「この画面の画風」（夕暮れの湖岸・輪郭線を引かない）。
 
@@ -23,7 +23,7 @@ mod TexDemo {
     def lake(): Color      = col(36, 48, 74)     // 湖面
     def mint(): Color      = col(127, 232, 216)  // 差し色: 薄荷の水明かり
 
-    // ── pass "scene": 夕暮れの湖岸を 1 枚に焼く ──
+    // ── pass "scene": 夕暮れの湖岸を 1 枚に生成する ──
 
     def design(): Vec2.Vec2 = { x = 320.0, y = 240.0 }
     def horizonY(): Float64 = 150.0
@@ -170,7 +170,7 @@ mod TexDemo {
                c(1.0))
 
     /// 陽炎 GIF（10 コマで sin の位相がちょうど 1 周する完全ループ）。
-    /// pass は静止画なので 1 回だけ焼き、コマごとは面の time だけ進める。
+    /// pass は静止画なので 1 回だけ生成し、コマごとは面の time だけ進める。
     def bakeHazeGif(cfg: Bakery.BakeConfig): SnapshotSite.Filmstrip \ IO =
         let passImg = Bakery.bakePassImage(cfg, scenePass(), None);
         let frames = 10;
@@ -235,7 +235,7 @@ mod TexDemo {
 
     // ── 入口（Gallery.bakeAll から呼ぶ）──
 
-    /// tex 場デモ 5 枚を焼く。返り値は tex_haze のフィルムストリップ（カタログの GIF カード用）。
+    /// tex 場デモ 5 枚を生成する。返り値は tex_haze のフィルムストリップ（カタログの GIF カード用）。
     pub def bakeAll(cfg: Bakery.BakeConfig): SnapshotSite.Filmstrip \ IO =
         bakeBlit(cfg);
         bakeBlur(cfg);

@@ -120,7 +120,7 @@ def testWorldDumpMapRowsTroughGlyph(): Unit \ Assert =
 /// 床セル集合ありの壁キーはタイルベイクと同じ基準: W=壁リング（描画床の 8 近傍）所属・
 /// F=床セル集合所属・E=それ以外。(1,1) は上の水路 (1,0) が F・下 (1,2) と左 (0,1) が
 /// リングで W → "FFWW"。(0,1) の下 (0,2) は通行不可でもリング外なので E → "WWEE"
-/// （地形基準だと W と出て、実際に焼かれるチップとずれる）。
+/// （地形基準だと W と出て、実際に生成されるチップとずれる）。
 @Test
 def testWorldDumpWallTritKeyUsesBakeRing(): Unit \ Assert =
     let terrain = worldDumpTroughTerrainFixture();

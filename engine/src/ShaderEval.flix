@@ -18,7 +18,7 @@ mod ShaderEval {
     pub def evalAlpha(spec: ShaderDoc.Spec, uv: Vec2.Vec2, t: Float64): Float64 =
         evalAlphaTex(spec, uv, t, Map.empty())
 
-    /// evalPixel のテクスチャつき版。texEnv は名前 → 画素（pass の焼き上がりなど）。
+    /// evalPixel のテクスチャつき版。texEnv は名前 → 画素（pass の生成結果など）。
     pub def evalPixelTex(spec: ShaderDoc.Spec, uv: Vec2.Vec2, t: Float64,
                          texEnv: Map[String, TexData]): Color =
         fst(evalPixelAlphaTex(spec, uv, t, texEnv))
@@ -29,7 +29,7 @@ mod ShaderEval {
         snd(evalPixelAlphaTex(spec, uv, t, texEnv))
 
     /// 色とアルファを一度に返す版。bindings の先行評価（画素ごとに 1 回）を色と α で共有する —
-    /// 画素ループが色と α を別々に呼ぶと bindings を 2 回払うことになるため、焼く側はこれを使う。
+    /// 画素ループが色と α を別々に呼ぶと bindings を 2 回払うことになるため、生成する側はこれを使う。
     pub def evalPixelAlphaTex(spec: ShaderDoc.Spec, uv: Vec2.Vec2, t: Float64,
                               texEnv: Map[String, TexData]): (Color, Float64) =
         let env = envOf(spec#bindings, uv, t, texEnv);
@@ -280,7 +280,7 @@ mod ShaderEval {
                     case None    => 0.0
                 }
             case ShaderDoc.Field.Tex(tx) =>
-                // 無い名前は 0.0（黒）。警告は IO を持つ焼き側（SoftRaster）が出す — ここは純関数。
+                // 無い名前は 0.0（黒）。警告は IO を持つ生成側（SoftRaster）が出す — ここは純関数。
                 match Map.get(tx#name, texEnv) {
                     case Some(td) => sampleTex(td, tx#chan, uv)
                     case None     => 0.0

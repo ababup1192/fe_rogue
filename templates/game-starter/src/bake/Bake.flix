@@ -1,4 +1,4 @@
-// Bake — ゲーム画面を画面なしで PNG に焼く（golden 比較用と、アトリエ候補のプレビュー用）。
+// Bake — ゲーム画面を画面なしで PNG に生成する（golden 比較用と、アトリエ候補のプレビュー用）。
 // 実行: flix run --entrypoint Bake.all → gallery/main.png
 //       flix run --entrypoint Bake.atelier → debug/atelier/*.png（golden の外）
 mod Bake {
@@ -22,8 +22,8 @@ mod Bake {
                 Controls.loadShader())
         } with Fs.FileRead.runWithIO
 
-    /// 焼くときの時刻（秒）。実時間でなく固定値を使う — 空の流れも塵の位置もこの t
-    /// だけで決まるので、何度焼いても同じ PNG が出る（golden のバイト比較が成り立つ）。
+    /// 生成するときの時刻（秒）。実時間でなく固定値を使う — 空の流れも塵の位置もこの t
+    /// だけで決まるので、何度生成しても同じ PNG が出る（golden のバイト比較が成り立つ）。
     def bakeTime(): Float64 = 3.0
 
     // ── 決定的な場面（golden） ──
@@ -31,7 +31,7 @@ mod Bake {
     pub def all(): Unit \ IO =
         discard allShots()
 
-    /// Bake.all の中身。焼けた PNG のパス列を返す — 走行中のゲームへの POST /bake
+    /// Bake.all の中身。生成した PNG のパス列を返す — 走行中のゲームへの POST /bake
     /// （Main の App.onBakeRequest）もこれを呼ぶ。プレイ状態には触れず Docs から組み立てる。
     pub def allShots(): List[String] \ IO =
         discard (new File("gallery")).mkdirs();
@@ -41,7 +41,7 @@ mod Bake {
         let ctx = App.viewCtxOf(atlas, design());
         shoot(cfg, ctx, w0, "main") :: Nil
 
-    /// 1 場面を PNG に焼き、焼けたファイルパスを返す。
+    /// 1 場面を PNG に生成し、生成したファイルパスを返す。
     /// 宣言シェーダーの面は draw に渡さず（渡すと代表色のベタ塗りになる）、
     /// surfaces として別に取り出して画素ごとに評価させる。
     def shoot(cfg: Bakery.BakeConfig, ctx: App.ViewCtx, w: World.World, name: String): String \ IO =
@@ -56,12 +56,12 @@ mod Bake {
     // ── アトリエ（候補スプライト・候補テーマのプレビュー。golden の外） ──
 
     /// atelier/*.sprite.json（候補）と assets/*.sprite.json（現行 → <名前>.current）を
-    /// 実機と同じ描画経路（PxSprite.draw + ThemeDoc.resolver）でコンタクトシートに焼く。
-    /// atelier/*.theme.json（候補）は代表場面（初期の盤）で焼く。
-    /// 前回の焼き残し（古い候補の PNG）は先に消す。読めない・種類の違う JSON は黙って飛ばす（fail-open）。
+    /// 実機と同じ描画経路（PxSprite.draw + ThemeDoc.resolver）でコンタクトシートに生成する。
+    /// atelier/*.theme.json（候補）は代表場面（初期の盤）で生成する。
+    /// 前回生成した残り（古い候補の PNG）は先に消す。読めない・種類の違う JSON は黙って飛ばす（fail-open）。
     pub def atelier(): Unit \ IO =
         discard (new File("debug/atelier")).mkdirs();
-        // 前回の焼き残しを消す（候補を消したのに絵が残ると紛らわしい）。
+        // 前回生成した残りを消す（候補を消したのに絵が残ると紛らわしい）。
         jsonsIn("debug/atelier", ".png") |> List.forEach(f ->
             discard (new File("debug/atelier/${f}")).delete());
         let atlas = HeadlessFont.buildUiAtlas(ttf(), ttf());
@@ -78,7 +78,7 @@ mod Bake {
             if (Map.isEmpty(doc#sprites)) ()
             else spriteSheet(cfg, doc, theme, out)
         });
-        // テーマ: 候補を初期の盤で焼く（現行は Bake.all の main が兼ねる）。
+        // テーマ: 候補を初期の盤で生成する（現行は Bake.all の main が兼ねる）。
         jsonsIn("atelier", ".theme.json") |> List.forEach(f -> {
             let text = run { Fs.ReadFile.read("atelier/${f}") } with Fs.ReadFile.runWithFileRead
                 with Fs.FileRead.runWithIO;

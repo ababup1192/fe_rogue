@@ -1,4 +1,4 @@
-// GifBake — README のショーケース用 GIF を画面なしで焼く（golden の外・debug/ 行き）。
+// GifBake — README のショーケース用 GIF を画面なしで生成する（golden の外・debug/ 行き）。
 // 実行: flix run --entrypoint GifBake.all → debug/showcase.gif
 // 積み上げた盤の 1 列だけを空けておき、そこへ I ミノを縦に落として 4 段消し（テトリス）を
 // 実演する決定的な台本。Bake.flix の静止画とは別に、動きを見せたい GIF だけをここに分ける
@@ -21,7 +21,7 @@ mod GifBake {
         run { World.initial(Controls.loadDocs()) } with Fs.FileRead.runWithIO
 
     /// 本番と同じ絵の合成（View.frame + View.hud → App.composeScene → Render.draw）。
-    /// 焼き方が2通りだと絵がずれるので、Bake.flix の静止画もこの GIF も同じ式を通す。
+    /// 生成の仕方が2通りだと絵がずれるので、Bake.flix の静止画もこの GIF も同じ式を通す。
     pub def worldCmds(ctx: App.ViewCtx, w: World.World):
             (List[GameEngine.Drawable], List[GameEngine.PolygonRenderCmd]) =
         Render.draw(App.composeScene(None, 1.0, design(),

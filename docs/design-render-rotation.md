@@ -20,8 +20,8 @@ Box（＝カードの面）と Text（＝ランク表記）は回せない。カ
 | **SoftRaster は rotation を完全に無視している** | `engine_tools/src/SoftRaster.flix`（`rotation` の参照が 0 件） |
 | いまリポジトリ全体で rotation に 0 以外を入れている箇所は **ゼロ** | 全 `*.flix` grep |
 
-**一番大事なのは 5 行目**。bake（golden・F8 注釈・エディタのプレビュー）は SoftRaster が描くので、
-回転を足しても焼いた絵には出ない＝「目で確かめる」「golden で守る」ができない。
+**一番大事なのは 5 行目**。生成（golden・F8 注釈・エディタのプレビュー）は SoftRaster が描くので、
+回転を足しても生成した絵には出ない＝「目で確かめる」「golden で守る」ができない。
 つまり SoftRaster 対応は付け足しではなく、この計画の必須部分。
 
 **6 行目のおかげで単位を揃え直せる**。いま Sprite はラジアン、`rotated` は回転数とバラバラだが、
@@ -85,14 +85,14 @@ pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[P
   - Text を回すと文字の四角の中心が `at` まわりに回っている
 - **今の絵が変わらない証明**: 回転 0 のままの `make bake-par` → `git status` で
   gallery / golden の差分ゼロ（単位の読み替えが無害だと機械的に示す）。
-- **回転が効く証明**: neon_deck に傾けたカードの bake シーンを 1 枚足して目視 → golden に祝福。
-  GL 実機（`make run`）と焼いた絵が同じ傾きに見えるかも確認する（SoftRaster と GL の式が揃っているか）。
+- **回転が効く証明**: neon_deck に傾けたカードの生成シーンを 1 枚足して目視 → golden に祝福。
+  GL 実機（`make run`）と生成した絵が同じ傾きに見えるかも確認する（SoftRaster と GL の式が揃っているか）。
 - 波及パッケージ: `make test-engine-world` と `make test-engine-tools`、他は `flix check`。
 
 ## 5. リスク
 
 - **SoftRaster と GL の傾きがズレる**のが一番怖い。AffineTransform の回転中心を
-  GL の式（`pos + size/2`）と同じ点にすること。ズレは bake と実機の見比べで発見できる。
+  GL の式（`pos + size/2`）と同じ点にすること。ズレは生成した絵と実機の見比べで発見できる。
 - **テキストの回転はグリフ単位**なので、大きく回すと字間がわずかに変わる可能性がある。
   カードの傾き（±5 度程度）では問題にならない想定。強く回す用途が出たら再検討。
 - Item のレコードにフィールドを足すと、リテラルで組んでいる 8 ファイルがコンパイルエラーになる
@@ -115,7 +115,7 @@ pub def turnedAll(t: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[P
 - engine_world 678 / engine_tools 34 / neon_deck 55 とも green。
 - `make bake-par` 後の gallery / golden の差分ゼロ = 単位（ラジアン→回転数）の読み替えが
   既存の絵を 1 バイトも変えていない。
-- neon_deck のカードを扇状に傾けて焼き、箱・文字・スート記号が一緒に回ることを目視で確認 →
+- neon_deck のカードを扇状に傾けて生成し、箱・文字・スート記号が一緒に回ることを目視で確認 →
   golden 祝福済み。GL 実機（`make run`）との見比べも確認済み。
 
 ### 残った穴（既知・今後の判断）

@@ -1,10 +1,10 @@
 ---
 name: critique-bake
 description: "bake 系ターゲットを実行し、debug/gallery の PNG・WAV 可視化（sounds.png / music.png）を目視・目聴して、設計原則と絵の下限 5 性質に照らした批評レポートを返す。絵や音を作った・直した直後、報告の前の自己批評として、「見た目はどう？」「音はどう？」と聞かれたとき、golden を祝福する前に使う。"
-sync: 2026-08-11
+sync: 2026-08-12
 ---
 
-# critique-bake — 焼いて批評する
+# critique-bake — 生成して批評する
 
 引数（任意）: 対象（絵 / 音 / 両方）、注目したい場面。
 
@@ -12,7 +12,7 @@ sync: 2026-08-11
 
 1. ゲームの設計原則を読む（共通部はこのファイル群と AGENTS.md、
    ゲーム固有の原則 — 文字なし等 — は **AGENTS.local.md** を参照）。
-2. bake を実行する:
+2. 生成を実行する:
    - 絵: `make gallery-prologue`（debug/ に全場面 + all.png）や `make bake`
    - 音: `make gallery-sounds`（debug/sounds/*.wav、debug/sounds.png、debug/music.png）
 3. 出力を読む。all.png・各場面 PNG は Read で目視、音は sounds.png の波形・
@@ -20,7 +20,7 @@ sync: 2026-08-11
    戻る演出）が対象にあれば、目視の前に `make lint-loop`（または
    `python3 bin/lint-loop.py <framesディレクトリ>`）で継ぎ目を機械検査する。
    fade・wipe など戻らない演出は対象外。造形が怪しい絵（何の形か読めない・接続や
-   接地が変）は、シルエット焼き（`Bakery.silhouettePng` — 対象を黒・背景を白）で
+   接地が変）は、シルエット生成（`Bakery.silhouettePng` — 対象を黒・背景を白）で
    形だけを取り出して確かめる（docs/drawing-floor.md）。
 4. 設計原則に照らして批評する。観点の例:
    - 原則違反（禁止事項に触れていないか）
@@ -34,6 +34,6 @@ sync: 2026-08-11
        「その画風を実現しきれているか」だけを見る。別の画風を勧めない
    - 場面ごとの読み取りやすさ（何が起きているか一目で分かるか）
    - 色・音の一貫性（季節・時間帯・テーマとのなじみ）
-   - 前回の焼きからの意図しない変化
+   - 前回の生成からの意図しない変化
 5. レポートを返す: 良い点 / 問題点（該当ファイル名つき）/ 直す案の順。
    修正はしない — 批評だけ返し、直すかどうかは呼び出し側が決める。

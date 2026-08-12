@@ -1,7 +1,7 @@
 // TestGifSnapshots — 操作リプレイ GIF を生成する。
 //
 // 入力スクリプト（ReplayScript.Step 列）を SnapshotHarness + 本物の入力処理 / frameStep で
-// 1 フレームずつ実行し、各フレームを SoftRaster で BufferedImage に焼いて GifEncoder で
+// 1 フレームずつ実行し、各フレームを SoftRaster で BufferedImage に生成して GifEncoder で
 // アニメ GIF にまとめ、test/snapshots/gifs/*.gif（コミット対象・golden と同じ「保存する生成資産」）
 // へ出力する。ゲームを起動せずに「操作の流れ」を動画で確認できる。
 //
@@ -38,19 +38,19 @@ mod TestGifSnapshots {
     /// 1 入力の後に挟むフィラーフレーム数（選択の間を見せる）。
     def betweenFrames(): Int32 = 3i32
 
-    /// GIF は build/snapshots/（揮発）でなく test/snapshots/gifs/（コミット対象）へ焼く。
+    /// GIF は build/snapshots/（揮発）でなく test/snapshots/gifs/（コミット対象）へ生成する。
     /// クリーンビルドや素の flix test でも消えない「保存する生成資産」として golden と同じ扱いにする
     /// （build/snapshots への表示は SnapshotSupport.syncGifs が担う）。
     def gifPath(name: String): String = "${SnapshotSupport.gifSourceDir()}/${name}.gif"
 
     // ── フィルムストリップ（コマ送りビューアの素材）──
-    // GIF と対で、同じフレーム列を横連結スプライトシート PNG に焼く。GIF は README/HN 用にコミット
+    // GIF と対で、同じフレーム列を横連結スプライトシート PNG に生成する。GIF は README/HN 用にコミット
     // 対象（test/snapshots/gifs/）へ置くが、ストリップは既存慣習どおり build/snapshots/（追跡外・
     // サイトと同居）に置く。ダッシュボードのコマ送り UI は file:// でも動く素の JS で駆動する。
 
     /// ストリップ PNG の置き場（サイト outDir と同じ build/snapshots/・追跡外）。
     def stripDir(): String = "build/snapshots"
-    /// ストリップ PNG のフルパス（焼き出し先）。
+    /// ストリップ PNG のフルパス（生成先）。
     def stripPath(name: String): String = "${stripDir()}/${name}_strip.png"
     /// ストリップの outDir 相対ファイル名（HTML の background-image が指す名前）。
     def stripFile(name: String): String = "${name}_strip.png"
@@ -60,13 +60,13 @@ mod TestGifSnapshots {
     /// コマ送りの既定 fps（GIF の frameDelayMs=60ms ≒ 17fps）。
     def gifFps(): Int32 = 17i32
 
-    /// GIF とストリップを同じフレーム列から焼く。GIF は README/HN 用に維持（コミット対象へ）、
+    /// GIF とストリップを同じフレーム列から生成する。GIF は README/HN 用に維持（コミット対象へ）、
     /// ストリップはダッシュボードのコマ送りビューア用に build/snapshots/ へ。
     def bakeFilm(frames: List[BufferedImage], name: String): Unit \ IO =
         GifEncoder.encode(frames, frameDelayMs(), gifPath(name));
         discard Filmstrip.bake(frames, stripPath(name))
 
-    /// 焼けているストリップから、GIF エントリ名 → SnapshotSite.Filmstrip の対応を組む。
+    /// 生成済みのストリップから、GIF エントリ名 → SnapshotSite.Filmstrip の対応を組む。
     /// build/snapshots/<name>_strip.png があるものだけ入る（無ければカードは従来の GIF 表示に落ちる）。
     pub def filmstripByName(): Map[String, SnapshotSite.Filmstrip] \ IO =
         SnapshotCatalog.gifEntries() |> List.foldLeft((m, entry) ->
@@ -112,7 +112,7 @@ mod TestGifSnapshots {
             let c11 = genFireBursts(rc, ctx);
             let c12 = genTomeAttack(rc, ctx);
             // この一発の実行でも GIF が各ページに載るよう、test/snapshots/gifs/ から build/snapshots/
-            // へコピーしてからサイトを焼き直す（存在チェックで生成済み GIF は img に、未生成は案内に切り替わる）。
+            // へコピーしてからサイトを生成し直す（存在チェックで生成済み GIF は img に、未生成は案内に切り替わる）。
             SnapshotSupport.syncGifs(SnapshotCatalog.gifEntries() |> List.map(entry -> entry#name));
             SnapshotSite.generate(TestUiSnapshots.siteConfig(), TestUiSnapshots.catalogItems());
             // sanity: どの最終フレームも空でない（描画が成立している）。
@@ -612,7 +612,7 @@ mod TestGifSnapshots {
             FireFx.quads(spec, {center = fireLeftCenter(), seed = shot + 1, scale = 1.0}, tseg) ::
             FireFx.quads(spec, {center = fireRightCenter(), seed = shot + 1, scale = fireZoom()}, tseg) :: Nil)
 
-    /// UI ハーネスなしで polygon 直描きの GIF を焼く（drawables は空）。プリセット 1 つ = GIF 1 本。
+    /// UI ハーネスなしで polygon 直描きの GIF を生成する（drawables は空）。プリセット 1 つ = GIF 1 本。
     def genFireBurst(rc: Region[r], ctx: SnapshotSupport.Ctx, name: String, spec: FireFx.Spec):
             Int32 \ {IO + r} =
         let framesRef = Ref.fresh(rc, (Nil: List[BufferedImage]));
@@ -630,7 +630,7 @@ mod TestGifSnapshots {
         // sanity: 燃え上がりの最盛期（0.24 秒）に polygon が出ていること。
         List.length(firePolysAt(spec, 0.24))
 
-    /// 全プリセットぶんの GIF を焼き、いちばん粒の少ないものの polygon 数を返す
+    /// 全プリセットぶんの GIF を生成し、いちばん粒の少ないものの polygon 数を返す
     /// （全 GIF が空でないことを 1 つの数で見張る）。
     def genFireBursts(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + r} =
         let counts =
@@ -665,7 +665,7 @@ mod TestGifSnapshots {
             cellFrame(tomeTargetCenter(), tomeCellScale()) ::
             FireShotFx.quads(tomeCasterCenter(), tomeTargetCenter(), 1, tAll) :: Nil)
 
-    /// UI ハーネスなしで炎 3 幕の GIF を焼く（drawables は空・polygon 直描き）。
+    /// UI ハーネスなしで炎 3 幕の GIF を生成する（drawables は空・polygon 直描き）。
     def genTomeAttack(rc: Region[r], ctx: SnapshotSupport.Ctx): Int32 \ {IO + r} =
         let framesRef = Ref.fresh(rc, (Nil: List[BufferedImage]));
         List.forEach(f -> {

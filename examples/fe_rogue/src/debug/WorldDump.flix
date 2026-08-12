@@ -160,7 +160,7 @@ mod WorldDump {
     /// （タイル選択の trit キーもこの 2 つを同じ E として扱う）。
     /// terrain は通行可否（ゲームプレイ）、wallKey はタイル選択（描画）の真実で、基準が違う:
     /// wallKey は壁リング（描画床の 8 近傍）のセルに出す。地形が Void でもリングに入って
-    /// いれば壁チップが焼かれるので出し、逆に水路などの描画床セルには出さない。
+    /// いれば壁チップが生成されるので出し、逆に水路などの描画床セルには出さない。
     def cellDetailJson(cell: Grid.Cell, allViews: List[UnitView], world: World): Json =
         let terrain = World.terrainOrBug(world);
         let floorCells = World.mapFloorInfoOf(world) |> Option.map(info -> info#floorCells);

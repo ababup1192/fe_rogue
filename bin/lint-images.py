@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """git に入れる絵が増えすぎていないか見張る関所。
 
-焼いた絵 (各ゲームの gallery/ と golden/*.png) は git 管理外にしてある。PNG/GIF は
-焼き直すたび丸ごと別の実体になり、差分圧縮も効かないまま履歴に積み上がるためで、
+生成した絵 (各ゲームの gallery/ と golden/*.png) は git 管理外にしてある。PNG/GIF は
+生成し直すたび丸ごと別の実体になり、差分圧縮も効かないまま履歴に積み上がるためで、
 放っておくと clone が何十 MB も重くなる。この関所は、その約束が守られているかを見る。
 
 追跡してよい絵は 3 種類だけ:
@@ -25,7 +25,7 @@ GALLERY_MAX_FILES = 20
 GALLERY_MAX_FILE_BYTES = 300 * 1024
 GALLERY_MAX_TOTAL_BYTES = 4 * 1024 * 1024
 
-# 追跡画像の総量。ここを超えたら「どこかで焼いた絵が紛れ込んだ」と疑う。
+# 追跡画像の総量。ここを超えたら「どこかで生成した絵が紛れ込んだ」と疑う。
 TRACKED_MAX_TOTAL_BYTES = 8 * 1024 * 1024
 
 # 追跡してよい絵の置き場。パスの前方一致か、末尾一致で判定する。
@@ -107,7 +107,7 @@ def main():
     if grand > TRACKED_MAX_TOTAL_BYTES:
         problems.append(
             f"追跡している絵の合計が {human(grand)} — 上限 {human(TRACKED_MAX_TOTAL_BYTES)}。"
-            f"焼いた絵が紛れ込んでいないか git ls-files で確かめてください"
+            f"生成した絵が紛れ込んでいないか git ls-files で確かめてください"
         )
 
     if problems:

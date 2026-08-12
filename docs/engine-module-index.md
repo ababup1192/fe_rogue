@@ -22,7 +22,7 @@
   例外は **Text** だけで、PlacedItem 経路の文字描画も内部で `Text.toDrawables` に
   委譲する共有の下請けになっている。
 
-**BootFontData.flix は生成物**（`make boot-font` で焼き直す）。手で編集しない。
+**BootFontData.flix は生成物**（`make boot-font` で生成し直す）。手で編集しない。
 
 ## やりたいこと → モジュール
 
@@ -48,7 +48,7 @@
 | 1 フレームぶんの描画命令の共通の型を知りたい | DrawCmd |
 | GPU が割り当てるリソース（VAO・テクスチャ id）を型で包みたい | GpuHandle |
 | フォントアトラスのメタデータの型を知りたい | FontAtlas |
-| フォントに焼き込む常用漢字・UI 記号の一覧が欲しい | JoyoKanji |
+| フォントに書き込む常用漢字・UI 記号の一覧が欲しい | JoyoKanji |
 | 親の枠の中で子をどこに置くか名前で選びたい（中央・右下など） | Anchor |
 | 文字列の改行・折り返し・中央寄せの座標計算をしたい | TextLayout |
 | 凹みのある多角形を三角形に分割したい | Triangulate |
@@ -84,7 +84,7 @@
 
 - **ShaderDoc** — 面（矩形）を GPU シェーダーで塗るための「宣言データ」。生の GLSL を書かず、少数の部品（値の場・色・出力）を組み合わせて水面のような連続した見た目を作る。部品の型（Spec）と、木の汎用走査 `ShaderDoc.foldField`・Tex が読むテクスチャ名の正典順列挙 `ShaderDoc.texNames`（GLSL の uniform 番号 = sampler unit 番号 = 描画依頼の texNames の並びの正）を持つ。全面でない面から pass を等倍・鏡像で読む Shift の dy 場は、ゲーム側の窓口 engine_world の `Render.passBandDy` で組める。
 - **ShaderGen** — Spec を GLSL の fragment シェーダー文字列へ変換する codegen。各部品が自分の GLSL 片（式）を返し、compile が 1 枚の main() に繋ぐ。出力は決定論なのでスナップショットで釘打ちできる。
-- **ShaderEval** — Spec 木を CPU（Float64）で評価する検証用の純関数。描画経路ではなく、式の構造が GLSL 側と揃っているかをテストで確かめるために使う。tex 場つきの評価は `ShaderEval.evalPixelTex` / `ShaderEval.evalAlphaTex`、焼きの画素ループは色と α を 1 回の shared 先行評価で返す `ShaderEval.evalPixelAlphaTex` を使う。
+- **ShaderEval** — Spec 木を CPU（Float64）で評価する検証用の純関数。描画経路ではなく、式の構造が GLSL 側と揃っているかをテストで確かめるために使う。tex 場つきの評価は `ShaderEval.evalPixelTex` / `ShaderEval.evalAlphaTex`、生成の画素ループは色と α を 1 回の shared 先行評価で返す `ShaderEval.evalPixelAlphaTex` を使う。
 - **ShaderJson** — シェーダー面の宣言（ShaderDoc.Spec）を JSON と相互変換する codec。engine を触らず `*.shader.json` の保存だけで調整できる（App.watchFile によるホットリロードの受け皿）。
 - **ShaderEffect** — 宣言シェーダー面を GPU で描くための別チャンネルの効果口（`eff Shader`）。`eff Game` に描画オペを足すとハンドラ全てが波及するため、シェーダー面だけ別効果に切り出している。
 
@@ -99,9 +99,9 @@
 - **Color** — 3 チャンネル sRGB-linear カラー（Float32・0.0〜1.0）。GL の uniform に直接渡せる。
 - **DrawCmd** — 1 フレームぶんの描画命令の型。フロント（engine のシーングラフ）が組み立て、バックエンド（GL 描画・SoftRaster）が消費する共有の型。
 - **Duration** — 時間の長さ（継続時間・経過時間・残り時間）を表す型。
-- **FontAtlas** — フォントアトラス型定義。STBTruetype で焼き込んだフォントビットマップのメタデータを保持する。
+- **FontAtlas** — フォントアトラス型定義。STBTruetype で書き込んだフォントビットマップのメタデータを保持する。
 - **GpuHandle** — バックエンドが割り当てる描画リソースのハンドル（タイル VBO やテクスチャの実体を 1 枚の型で包む）。
-- **JoyoKanji** — フォントアトラスにベイクする常用漢字 + UI 記号のコードポイント列。
+- **JoyoKanji** — フォントアトラスに書き込む常用漢字 + UI 記号のコードポイント列。
 - **Num** — 数の小さな道具（0〜1 に収める・小数部だけ残す・周期で折り返す）。書き方の揺れをなくすため 1 箇所にまとめる。
 - **ProjectLoader** — project.json を読み込んで engine 起動用の設定 + scene ファイル列挙を提供する。engine / examples が共通で読む唯一の真実。
 - **Rect2** — 2D の矩形を「左上の座標」と「幅・高さ」で表し、当たり・包含・膨張などを計算する。
@@ -115,15 +115,15 @@
 ## render（描画物・Drawable 経路の部品）
 
 - **Arc** — 円弧・リングを描く描画物。中心から半径・太さのリングを、開始角から終了角まで単色で塗る。
-- **BootFont** — 起動画面が使う組み込みフォントとロゴを、埋め込みデータ（BootFontData）から組み立てる。ゲームのフォントは起動時にまだ焼けていないため、起動画面専用に持つ。
-- **BootFontData** — 生成物。手で編集しない（`make boot-font` で焼き直す）。Splash が使う組み込みフォントとロゴの素データ。
+- **BootFont** — 起動画面が使う組み込みフォントとロゴを、埋め込みデータ（BootFontData）から組み立てる。ゲームのフォントは起動時にまだ生成できていないため、起動画面専用に持つ。
+- **BootFontData** — 生成物。手で編集しない（`make boot-font` で生成し直す）。Splash が使う組み込みフォントとロゴの素データ。
 - **Camera** — Drawable 経路（`view = None` で renderCommands を自前で組むゲーム。fe_rogue が実例）専用のカメラ部品。PlacedItem 経路は `App.withCamera` / `App.withZoom` + `CameraRig` を使うので、そちらでは使わない。
 - **CanvasLayer** — HUD やオーバーレイを本体より手前に重ねるための描画レイヤー番号の基準。レイヤー番号 × layerStride を zIndex に加算する。
 - **CollisionShape2D** — 当たり判定に使う 2D の幾何形状（矩形・円・カプセル・坂）。形状同士の重なり・点の内外・押し出しベクトルの計算をまとめて持つ。
 - **InputEvent** — 現在フレームで押されているキー・マウスボタンをまとめて取得する。押下エッジは呼び側が前フレームと差分して取る。
 - **Polygon** — 局所座標の単純多角形を単色（color + alpha）で塗り潰す描画物。
 - **Projection** — Drawable 経路専用の投影部品（ワールド座標→画面座標）。PlacedItem 経路は CameraRig が同じ役割を担う。
-- **RadialBuiltin** — 放射グラデ（中心から縁へ滑らかに変わる円）の組み込みテクスチャ。画素を純関数で決め、GL（起動時に GPU へ上げる）と SoftRaster（bake）が同じ列から絵を作るので、実機と bake がずれない。ゲーム側は engine_world の `Render.lightAt` / `Render.darkAt` から使う。
+- **RadialBuiltin** — 放射グラデ（中心から縁へ滑らかに変わる円）の組み込みテクスチャ。画素を純関数で決め、GL（起動時に GPU へ上げる）と SoftRaster（生成）が同じ列から絵を作るので、実機と生成した絵がずれない。ゲーム側は engine_world の `Render.lightAt` / `Render.darkAt` から使う。
 - **Rect** — テクスチャなしで単色の矩形を描く描画物。枠線・角丸・45° の斜線ハッチも指定でき、枠付きパネルもこれ 1 つで描ける。
 - **Splash** — 起動画面 1 枚ぶんの絵を組み立てる。読み込みの間、何も描かれない時間が「固まった」ように見えるのを防ぐ。
 - **Sprite** — テクスチャを 1 枚表示するだけの軽い描画物で、見た目（visual）と座標変換（transform）を持つ。

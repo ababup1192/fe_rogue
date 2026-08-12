@@ -30,7 +30,7 @@
 
 - **`withView` 経路のカメラは「App が CPU で全 item の座標を一様にずらす」方式。GL の uniform ではない。**
   - `App.composeScene`(`engine_world/src/App.flix:366-372`) → `CameraRig.centerOn`(`CameraRig.flix:28-34`) が各 PlacedItem に `at = (at−center)×zoom + design/2`、`item = Render.scaled(zoom, item)` を CPU の `List.map` で適用。
-  - 多角形は `Render.scaled` の Poly 分岐(`Render.flix:368`)で全頂点を `List.map(v -> Vec2.mul(v, factor))`、`polyCmd`(`Render.flix:439`)で全頂点に `Vec2.add(v, pos)`。→ 多角形は「camera を焼き込んだスクリーン座標」で GL に届く（`PolygonRenderCmd.vertices` は「スクリーン px に変換済み」・`DrawCmd.flix:116`）。
+  - 多角形は `Render.scaled` の Poly 分岐(`Render.flix:368`)で全頂点を `List.map(v -> Vec2.mul(v, factor))`、`polyCmd`(`Render.flix:439`)で全頂点に `Vec2.add(v, pos)`。→ 多角形は「camera を書き込んだスクリーン座標」で GL に届く（`PolygonRenderCmd.vertices` は「スクリーン px に変換済み」・`DrawCmd.flix:116`）。
   - GL の多角形シェーダ `polyBatchVertexShaderSource`(`Shader.flix:284-293`) は `projection`（zoom 無し正射影）のみで座標変換 uniform を持たない。
 
 - **タイル経路は既に retained + uniform（この設計のお手本）。** `initTileBuffer`(`GameEngine.flix:181` op、実装 `LwjglLayer.flix:518-522`) → `buildTileInstanceVBO`(`Sprite.flix:176-200`) が `GL_STATIC_DRAW` で 1 度だけ頂点を載せ、`GpuHandle.TileVao`(`GpuHandle.flix:11`) で持ち回る。毎フレームは `drawTileMapInstanced`(`Sprite.flix:232-247`) が `glDrawArraysInstanced` を呼ぶだけで、位置とズームはタイル頂点シェーダの `layerPos`/`tileScale` uniform(`Shader.flix:126-144`)。
@@ -52,7 +52,7 @@
 
 ### dungeon の静的の持ち方・camera
 
-- 静的は `World.Prebuilt = { tiles: List[StaticTile], occluders }`(`World.flix:26-27`)、`StaticTile = { anchor, item: PlacedItem }`(`World.flix:21`) に焼済。焼き直しは `Controls.loadFloors`(起動時)・`Controls.reloadAll`(F1/保存時) だけ(`Controls.flix:54-62, 75-82`)。
+- 静的は `World.Prebuilt = { tiles: List[StaticTile], occluders }`(`World.flix:26-27`)、`StaticTile = { anchor, item: PlacedItem }`(`World.flix:21`) に生成済み。生成し直すのは `Controls.loadFloors`(起動時)・`Controls.reloadAll`(F1/保存時) だけ(`Controls.flix:54-62, 75-82`)。
 - 毎フレーム `View.frame`(`View.flix:69-80`) は `visibleStatic`(`View.flix:85-89`) で anchor カリングし `tile#item` をそのまま返す（頂点は作り直さない）。作り直しは全部下流（centerOn→draw→GL）。
 - **dungeon は `withCamera(World.cameraCenter)` のみで zoom 未使用**(`Main.flix:22`、examples 全体で `withZoom` 0 件)。camera は毎フレーム平行移動だけ。静的頂点は zoom で変形されない。
 - 静的:動的 ≈ 10:1〜100:1（`View.flix:65-68`「B2 は静止部品が数千個」）。
@@ -66,9 +66,9 @@
 
 - `renderCommands` ハンドラ(`LwjglLayer.flix:511-517`) は `renderFrame(...)` の直後に `glfwSwapBuffers(window)`。`renderFrameMixed` は冒頭で `glClear`(`Frame.flix:143-149`)。**1 呼び = 1 フレームを clear→描画→swap し切る。**
 
-### golden / bake の独立性（R1）
+### golden / 生成の独立性（R1）
 
-- `make test-fe_rogue` は `cd examples/fe_rogue && flix test`(`Makefile:200-213`)。golden は `SoftRaster.rasterize`(`SoftRaster.flix`) の CPU 描画 PNG のバイト比較で、`org.lwjgl.*` を import せず render_gl 非依存。bake も `Bakery.renderPng`→`SoftRaster`。→ **GL 経路を変えても golden は動かない = retained の退行を検知できない（R1 の核心）。**
+- `make test-fe_rogue` は `cd examples/fe_rogue && flix test`(`Makefile:200-213`)。golden は `SoftRaster.rasterize`(`SoftRaster.flix`) の CPU 描画 PNG のバイト比較で、`org.lwjgl.*` を import せず render_gl 非依存。生成も `Bakery.renderPng`→`SoftRaster`。→ **GL 経路を変えても golden は動かない = retained の退行を検知できない（R1 の核心）。**
 
 ### 切り分けトグルの前例
 
@@ -149,7 +149,7 @@ fold over sortedMerged, carrying (spriteRun, dynPolyRun):
 - `initStaticPolys(cmds)` が `{ vao = StaticVao, ranges = List[StaticRange 目次] }` を返す。**ゲームの World がこれを保持**。
 - ゲームの step が dirty 鍵を比較し、変わっていたら `freeStaticPolys(old)` → `initStaticPolys(new)` を **step 内で**行い、World のハンドルを差し替える。
 - dungeon の dirty 鍵 = `{ floorId, gen }`（`Eq` を持つ軽い値）。フロア移動で `floorId` 変化、`Controls.reloadAll` が `gen +1`。**大きな頂点列の内容比較はしない**（鍵の `!=` だけ）。
-- 焼き直しは `loadFloors`/`reloadAll` だけなので、鍵の更新点は既存の 2 箇所に自然に乗る。
+- 生成し直すのは `loadFloors`/`reloadAll` だけなので、鍵の更新点は既存の 2 箇所に自然に乗る。
 
 ### 2.5 純粋 View を壊さない宣言 API と dungeon の合流点
 
@@ -182,7 +182,7 @@ App.make(World.initial(...))
     ...
 ```
 
-- `View.staticWorldItems` は現状 `View.buildStatic` の焼き込み内容を、camera 無し・ワールド座標で返す。
+- `View.staticWorldItems` は現状 `View.buildStatic` の書き込み内容を、camera 無し・ワールド座標で返す。
 - `View.frameDynamic` は現状 `View.frame` から動的行（`surfaceItems`/`Torches`/`columnItems`/`playerItems`/`lightingItems`）だけを残す。
 - **注意**: z=2 の壁は静的、z=2 の粒は動的。両方 z=2 で同じソート列に入る。§2.3/§2.5 の入力順規則で「粒 → 壁」を保つ。
 
@@ -220,7 +220,7 @@ def renderCommands(sprites: List[Drawable], tileMaps: List[TileMapRenderCmd],
 - **GL の uniform はプログラム単位で保持される（D3 の指摘）**。retained レンジ描画で設定した `viewOffset` が動的経路に漏れないよう、**両経路とも毎回明示リセット**する（sprite の `multiplyBlend` が毎回 0 明示される `Sprite.flix:96` と同じ作法）。
 - 静的レンジ描画は同じシェーダに `viewOffset=camera center`, `viewScale=zoom` を渡す。**1 本のシェーダを両経路で共有**でき、既存経路の絵は 1px も変わらない。
 
-### 3.3 SoftRaster（golden/bake）は変更しない
+### 3.3 SoftRaster（golden/生成）は変更しない
 
 SoftRaster は `DrawCmd` を CPU で描くだけで GPU を知らない。retained は GPU 提出方式の話。**SoftRaster・Bakery・golden テストには手を触れない。** これが「GPU 側だけ変える」境界。ただしこの独立性は §4 の通り「安全証明にならない」ので、GL 経路は別途 glReadPixels で検証する。
 
@@ -234,7 +234,7 @@ SoftRaster は `DrawCmd` を CPU で描くだけで GPU を知らない。retain
 |------|------|---------|-------------|
 | 本番描画（GL） | DrawCmd + StaticRangeCmd | あり | **retained 提出に変更** |
 | golden（`make test-fe_rogue`） | DrawCmd → SoftRaster | なし | **変更なし。だが retained を通らない = retained の退行を検知できない** |
-| bake（gallery PNG） | DrawCmd → SoftRaster | なし | 変更なし |
+| 生成（gallery PNG） | DrawCmd → SoftRaster | なし | 変更なし |
 
 - **訂正（初版の誤り）**: 「golden 1165/0 で安全」は誤り。1165/0 は **fe_rogue を壊していないことの確認**であって、retained（GL 経路の変更）の安全を何も担保しない。C1 の z 順破綻はまさに GL 経路で起きるので SoftRaster golden は素通しする。
 - retained を使うのは dungeon（別リポ `flix_ge_dungeon`）で、`make test-fe_rogue` は fe_rogue のもの。**retained の絵を守る golden は現状どこにも無い（§4.3 で対策）。**

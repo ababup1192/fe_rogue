@@ -2,7 +2,7 @@
 /// 経路を 1 か所に集約する。役割は 2 つ:
 ///   1. store の掃除 / seed choke — フロア再構築やダンジョン退場で走らせる `World.Cmd` を
 ///      名前付き関数にまとめ、`WorldSetup` / `Game.applyPhaseChange` から宣言的に呼ぶ。
-///      これにより「どのタイミングで World を掃除 / 焼くか」だけが呼び出し側に残る
+///      これにより「どのタイミングで World を掃除 / 生成するか」だけが呼び出し側に残る
 ///      （マップ系の seed / 掃除 Cmd は `MapSetup` が持つ）。
 ///   2. 毎フレームの World System パイプライン（`stepFrame`）— gameLoop から `World -> World`
 ///      の System 実行を切り出し、gameLoop を固定パイプラインの純配線に保つ。

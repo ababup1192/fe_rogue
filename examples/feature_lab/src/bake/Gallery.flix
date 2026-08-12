@@ -1,11 +1,11 @@
 // Gallery — Transition 4 種のフィルムストリップ・GIF と、fps オーバレイの見本、
-// AudioFade の音量カーブ PNG と「同じカーブを焼き込んだ」試聴 WAV を焼く。
+// AudioFade の音量カーブ PNG と「同じカーブをあらかじめ適用した」試聴 WAV を生成する。
 // World を直接組んで SoftRaster で描くだけなので、実ウィンドウは要らない。
 
 mod Gallery {
     import java.io.File
 
-    // ── 焼き込み設定 ──
+    // ── 生成設定 ──
     def scale(): Int32 = 2                    // 出力は 640x480
     def frameW(): Int32 = 640
     def frameH(): Int32 = 480
@@ -19,11 +19,11 @@ mod Gallery {
     def bgColor(): Color = { r = 0.101961f32, g = 0.109804f32, b = 0.172549f32 }
 
     /// カンテラ探索デモが使うテクスチャ名 → project.json の実ファイルパス。
-    /// glow_halo/glow_mask は project.json 登録と揃える（実ファイルは bakeGlowTextures が焼く）。
+    /// glow_halo/glow_mask は project.json 登録と揃える（実ファイルは bakeGlowTextures が生成する）。
     def texturePath(): Map[String, String] =
         Map#{ "glow_halo" => "assets/glow_halo.png", "glow_mask" => "assets/glow_mask.png" }
 
-    /// Bakery に渡す焼き込み設定。texturePath はカンテラ探索デモのテクスチャ付き。
+    /// Bakery に渡す生成設定。texturePath はカンテラ探索デモのテクスチャ付き。
     def config(atlas: FontAtlas): Bakery.BakeConfig =
         { design = View.design(), scale = scale(), background = bgColor(),
           texturePath = texturePath(), fontTtf = ttfPath(), fontAtlas = atlas,
@@ -37,9 +37,9 @@ mod Gallery {
 
     /// 遷移 1 種を t=0 から t=1 まで動かした frames 列を作る（Replay を使わず自前で刻む。
     /// World が Transition.Progress を直に持つだけなので、これで十分に軽い）。
-    /// 各コマは本番と同じ projectUi を通し、ラベルの bind 文言まで焼き込む。
+    /// 各コマは本番と同じ projectUi を通し、ラベルの bind 文言まで生成へ反映する。
     /// Progress はレコード直組みでなく start/advance で組む（内部の形に依存しない）。
-    /// t=1 のコマも「再生中」として焼く（実機は done で Idle に戻るが、GIF は覆い切った絵で締めたい）。
+    /// t=1 のコマも「再生中」として生成する（実機は done で Idle に戻るが、GIF は覆い切った絵で締めたい）。
     def timelineOf(ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, kind: Transition.Kind, steps: Int32): List[World.World] =
         List.range(0, steps + 1) |> List.map(i -> {
             let t = Int32.toFloat64(i) / Int32.toFloat64(steps);
@@ -48,7 +48,7 @@ mod Gallery {
             GameUi.projectUi({ kind = kind, playing = Some(progress) | World.initial(ui, lightDoc, false, ShaderDoc.waterVeins()) })
         })
 
-    /// 1 種類ぶんの GIF ＋ コマ別 PNG を焼く（8 コマ）。
+    /// 1 種類ぶんの GIF ＋ コマ別 PNG を生成する（8 コマ）。
     def bakeKind(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, kind: Transition.Kind, name: String): SnapshotSite.Filmstrip \ IO =
         let frames = timelineOf(ui, lightDoc, kind, 7);
         Bakery.bakeGif(config(atlas), frames, 1, w -> worldCmds(atlas, w), name)
@@ -66,7 +66,7 @@ mod Gallery {
 
     // ── blend 比較（RGB 3 円 × Normal/Add/Multiply）──
 
-    /// blend デモを表示した世界を本番と同じ投影（View.frame）で焼く。
+    /// blend デモを表示した世界を本番と同じ投影（View.frame）で生成する。
     /// 3 モードを同じ構図で並べると、Add は重なりが白へ光り・Multiply は黒へ沈むのが一目で分かる。
     def bakeBlendPng(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, mode: DrawCmd.BlendMode, name: String): Unit \ IO =
         let world = GameUi.projectUi({ blend = Some(mode) | World.initial(ui, lightDoc, false, ShaderDoc.waterVeins()) });
@@ -75,7 +75,7 @@ mod Gallery {
 
     // ── Light: カンテラ探索デモ（放射グロー＋穴あき暗幕）──
 
-    /// haloTexture/maskTexture の実ファイルを assets/ に焼く。project.json の texturePath が
+    /// haloTexture/maskTexture の実ファイルを assets/ に生成する。project.json の texturePath が
     /// 指すファイルはここでしか生成されないので、実行前に必ず bake を通す必要がある。
     /// maskTexture は maskCurveWithHole で平坦な穴を持たせる（View.maskHoleFrac と揃える —
     /// 揃っていないと Light.items のスケール計算が前提とする「穴の実寸半径」がずれる）。
@@ -93,14 +93,14 @@ mod Gallery {
     /// カンテラ探索の比較 3 枚が使う共通のプレイヤー位置（目印の間、画面中央よりやや上）。
     def lanternDemoAt(): Vec2.Vec2 = { x = 160.0, y = 100.0 }
 
-    /// 比較 PNG 1 枚ぶんの世界を組んで焼く。
+    /// 比較 PNG 1 枚ぶんの世界を組んで生成する。
     def bakeLanternPng(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec, lantern: Option[World.Lantern], name: String): Unit \ IO =
         let world = GameUi.projectUi({ lantern = lantern | World.initial(ui, lightDoc, false, ShaderDoc.waterVeins()) });
         let (drawables, polygons) = worldCmds(atlas, world);
         Bakery.renderPng(config(atlas), drawables, polygons, name)
 
     /// 「明（Bright。部屋+目印がフル輝度）」「暗闇のみ（Dark。光源なしの全面暗幕で
-    /// 目印がシルエット程度に残る）」「暗闇+カンテラ（DarkWithLight。穴あき+ハロ）」の3枚を焼く。
+    /// 目印がシルエット程度に残る）」「暗闇+カンテラ（DarkWithLight。穴あき+ハロ）」の3枚を生成する。
     def bakeLanternComparisonPngs(atlas: FontAtlas, ui: UiStore.UiWorld, lightDoc: LightDoc.Spec): Unit \ IO =
         bakeLanternPng(atlas, ui, lightDoc, Some({ at = lanternDemoAt(), mode = World.LanternMode.Bright, walls = false }), "lantern_bright");
         bakeLanternPng(atlas, ui, lightDoc, Some({ at = lanternDemoAt(), mode = World.LanternMode.Dark, walls = false }), "lantern_dark_no_light");
@@ -161,7 +161,7 @@ mod Gallery {
 
     // ── Light: 光マップ（ランタン 2 個+影。lightMapPass / lightMapOverlay の手本）──
 
-    /// 光マップデモ 1 枚を焼く。pass（光マップ）を先に焼いてから本編へ Multiply で貼る —
+    /// 光マップデモ 1 枚を生成する。pass（光マップ）を先に生成してから本編へ Multiply で貼る —
     /// 実機の App.withPasses と同じ順序を renderPngWithPasses が再現する。
     def bakeLightMapPng(atlas: FontAtlas, lightDoc: LightDoc.Spec,
                         a: Vec2.Vec2, b: Vec2.Vec2, name: String): Unit \ IO =
@@ -182,7 +182,7 @@ mod Gallery {
             { x = 238.0, y = 70.0 }, { x = 44.0, y = 72.0 }, "lightmap_swing")
 
     /// ランタン A が L 字壁の周りを一周し、同じ壁の影が全方向へ回る GIF（8 コマ。
-    /// pass をコマごとに焼く bakeGifWithPasses の手本）。B は据え置き — 動く影（A 由来）と
+    /// pass をコマごとに生成する bakeGifWithPasses の手本）。B は据え置き — 動く影（A 由来）と
     /// 動かない灯り（B）が同居して、影が光の位置から導かれていることが 1 本で読める。
     /// B が A の長影に沈むコマがあるのは v1 の割り切りどおり（Light.lightMapPass の doc 参照）。
     def bakeLightMapGif(atlas: FontAtlas, lightDoc: LightDoc.Spec): SnapshotSite.Filmstrip \ IO =
@@ -245,14 +245,14 @@ mod Gallery {
         :: { at = { x = bottomRight#x - 22.0, y = origin#y + 8.0 }, item = Render.text("t=1", atlas, 12.0, 5) }
         :: Nil
 
-    /// カーブ図 1 枚（複数カーブの重ね描きも同じ口）を PNG に焼く。
+    /// カーブ図 1 枚（複数カーブの重ね描きも同じ口）を PNG に生成する。
     def bakeCurvePng(atlas: FontAtlas, curves: List[(AudioFade.Fade, Color)], name: String): Unit \ IO =
         let bg = { at = Vec2.zero(), item = RawDraw.box(View.design(), bgColor(), 0) };
         let lines = curves |> List.flatMap(pair -> { let (fade, color) = pair; curveItems(fade, color) });
         let (drawables, polygons) = Render.draw(bg :: List.append(axisItems(atlas), lines));
         Bakery.renderPng(config(atlas), drawables, polygons, name)
 
-    // ── AudioFade: 同じカーブを焼き込んだ試聴 WAV ──
+    // ── AudioFade: 同じカーブをあらかじめ適用した試聴 WAV ──
 
     /// 試聴 WAV の合成設定と素材音（440Hz を 1.5 秒。全開の振幅 0.5）。
     def sfxCfg(): SfxSynth.Config = { sampleRate = 22050 }
@@ -312,7 +312,7 @@ mod Gallery {
             |> Result.map(html -> writeText(path, html + entry))
             |> Result.getWithDefault(())
 
-    // ── 全部を焼いてサイトを生成する（Bake.all から呼ぶ）──
+    // ── 全部を生成してサイトを作る（Bake.all から呼ぶ）──
 
     pub def bakeAll(): Unit \ IO =
         discard (new File(outDir())).mkdirs();
@@ -388,7 +388,7 @@ mod Gallery {
         png("shadow_walls_off", "対照カット: shadow_light_front と同じ光位置で walls=false。目印が沈まず見える＝暗さは壁の影であって距離減衰ではない", "Shadow") ::
         png("lightmap_two_lanterns", "光マップ方式: ランタン 2 個が同時に照らし、同じ壁から 2 方向へ影が伸びる（Light.lightMapPass + lightMapOverlay。暗幕方式では不可能な絵）", "Shadow") ::
         png("lightmap_swing", "ランタン A が壁の反対側へ回った連番: 同じ壁の影が別の向きへ倒れる（影が光の位置から導かれている証拠）。A の長い影が B の灯りまで消しているのは v1 の割り切りどおり（Light.lightMapPass の doc 参照）", "Shadow") ::
-        gif("lightmap_orbit", "光マップ方式の動き: ランタン A が L 字壁の周りを一周し、同じ壁の影が全方向へ回る。B は据え置き（Light.lightMapPass をコマごとに焼く bakeGifWithPasses の手本）", "Shadow", films#lightMapOrbit) ::
+        gif("lightmap_orbit", "光マップ方式の動き: ランタン A が L 字壁の周りを一周し、同じ壁の影が全方向へ回る。B は据え置き（Light.lightMapPass をコマごとに生成する bakeGifWithPasses の手本）", "Shadow", films#lightMapOrbit) ::
         gif("shadow_walk", "光が L 字壁と柱の周りを一周し、壁の陰が動的に回る（LeftCtrl で walls トグル相当）", "Shadow", films#shadowWalk) ::
         png("tex_blit", "tex 場の素通し: 左=pass をスプライト直貼り・右=Rgb{Tex×3} の面。継ぎ目が見えない=2 経路一致（中央の薄荷線が境界）", "ShaderTex") ::
         png("tex_blur", "3×3 ガウス近似: Shift タップ×9 の加重平均（Tex 読み 27 回 — JSON 合成ぼかしの実用上限の見本）", "ShaderTex") ::

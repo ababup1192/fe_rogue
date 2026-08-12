@@ -47,7 +47,7 @@ mod Controls {
     pub def fxShockPath(): String = "assets/fx/nitro-burst.fx.json"
     pub def fxCrashPath(): String = "assets/fx/crash.fx.json"
 
-    /// fx.json 5 本を Spec に読む。fx の "@色" はここでテーマから引いて焼き込まれる —
+    /// fx.json 5 本を Spec に読む。fx の "@色" はここでテーマから引いて生成時に埋め込まれる —
     /// テーマの保存だけでは fx の色は変わらない（F1 か fx の保存で反映。reloadTheme は
     /// そのため fx も読み直す）。
     pub def loadFx(theme: ThemeDoc.Doc): World.FxSpecs \ Fs.FileRead =
@@ -84,7 +84,7 @@ mod Controls {
     pub def reloadRivals(w: World.World): World.World \ Fs.FileRead =
         World.withRivalsCfg(RivalsDoc.load(RivalsDoc.path()), w)
 
-    /// テーマの読み直し。fx の色はテーマから焼き込まれているので、fx も一緒に読み直す
+    /// テーマの読み直し。fx の色はテーマから生成時に埋め込まれているので、fx も一緒に読み直す
     /// （テーマだけ替えると煙や炎が古い色のまま残るため）。
     pub def reloadTheme(w: World.World): World.World \ Fs.FileRead =
         let theme = ThemeDoc.load(ThemeDoc.path());
@@ -107,7 +107,7 @@ mod Controls {
         World.withFx(loadFx(w#theme), w)
 
     /// 効果音のつまみの読み直し。ここで届くのは鳴らす間隔だけ —— 音量・高さ・長さは
-    /// 焼き上がりの WAV に入っているので、make bake で焼き直して起動し直すまで変わらない。
+    /// 生成した WAV に入っているので、make bake で生成し直して起動し直すまで変わらない。
     pub def reloadSfxTune(w: World.World): World.World \ Fs.FileRead =
         World.withSfxTune(SfxTuneDoc.load(SfxTuneDoc.path()), w)
 

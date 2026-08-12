@@ -2,7 +2,7 @@
 """音の名前が 3 つの置き場でそろっているかを検査する関所。
 
 音 1 つには名前の置き場が 3 つある:
-  (a) bake 名     — src/bake/ の SfxSynth.bakeSet に書くタプルの左側 (焼く WAV のファイル名になる)
+  (a) bake 名     — src/bake/ の SfxSynth.bakeSet に書くタプルの左側 (生成する WAV のファイル名になる)
   (b) project.json — sounds の "name" (ゲームから鳴らすときの論理名) と "path" (WAV の場所)
   (c) コード内リテラル — AudioStreamPlayer.play("x") や withAudio が返す "x"
 この 3 つがずれると、エラーは出ないのに音だけ鳴らない・別の音が鳴る。
@@ -11,7 +11,7 @@
 検査 (1 つでも NG なら終了コード 1):
   1. sounds の論理名と path のファイル名の茎が違う
   2. sounds の path の WAV が無く、bake でも作られない (鳴らせない)
-  3. bake で焼く WAV がどの sounds の path からも参照されない (焼くだけで鳴らせない)
+  3. bake で生成する WAV がどの sounds の path からも参照されない (生成するだけで鳴らせない)
   4. 再生呼び出し (AudioStreamPlayer.* / GameEngine.Audio.*) のリテラルが sounds に無い
 注意 (止めない):
   5. sounds の論理名がコードのどこにも文字列リテラルとして現れない
@@ -72,7 +72,7 @@ def flix_files(game_dir):
 
 
 def baked_paths_of(files):
-    """bakeSet が焼く WAV の game_dir 相対パス (dir/name.wav) を集める。"""
+    """bakeSet が生成する WAV の game_dir 相対パス (dir/name.wav) を集める。"""
     baked = set()
     for _, text in files:
         if "bakeSet" not in text:
@@ -121,7 +121,7 @@ def check_game(root, game, problems, warnings):
     for path in sorted(baked):
         if path not in declared_paths:
             problems.append(
-                f"{game}: bake が焼く {path} がどの sounds の path からも参照されない")
+                f"{game}: bake が生成する {path} がどの sounds の path からも参照されない")
 
     for rel, text in game_files:
         for name in CALL_RE.findall(text):

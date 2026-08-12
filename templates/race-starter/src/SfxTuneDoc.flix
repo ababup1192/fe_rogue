@@ -3,7 +3,7 @@
 // 3 つのつまみ（音量・高さ・長さ）だけを持つ。どの出来事で鳴らすかは Sfx.flix。
 // fail-open — 読めない・壊れているときは defaults() へ倒し、ゲームは必ず起動する。
 //
-// つまみは WAV を焼くときに効く（make bake → 起動し直す）。engine の高さの振れ幅
+// つまみは WAV を生成するときに効く（make bake → 起動し直す）。engine の高さの振れ幅
 // （enginePitchLow / enginePitchHigh）だけは鳴らしながら掛ける値なので保存で即反映される。
 mod SfxTuneDoc {
     use Util.Json.Json
@@ -13,7 +13,7 @@ mod SfxTuneDoc {
     pub type alias Knobs = { volume = Float64, pitch = Float64, speed = Float64 }
 
     /// 効果音 13 種のつまみ。名前は project.json の sounds の name と同じ
-    /// （Studio の音の絵はこの名前で焼き上がりの WAV を探す）。
+    /// （Studio の音の絵はこの名前で生成した WAV を探す）。
     pub type alias Doc = {
         version = Int32,
         enginePitchLow = Float64,   // 止まっているときのエンジン音の高さ

@@ -4,7 +4,7 @@
 //                    getTextureInfo だけ本物のメトリクス、他は無害スタブ）
 //  - buildTexture* : project.json のテクスチャ名 → 実 PNG 寸法 / パスの表
 //  - formatScene   : List[Drawable]+polygons を決定的なテキストへ（float は小数2桁）
-//  - snapshot      : golden と比較し、PNG を build/snapshots へ焼く（更新モード対応）
+//  - snapshot      : golden と比較し、PNG を build/snapshots へ生成する（更新モード対応）
 //
 // カタログ→HTML サイトの生成は SnapshotCatalog（目録）+ SnapshotSite（汎用生成器）が担う。
 //
@@ -14,7 +14,7 @@ mod SnapshotSupport {
     import java.io.File
     import javax.imageio.ImageIO
 
-    /// スナップショット 1 枚を焼くのに要る共有コンテキスト（毎回作り直さず使い回す）。
+    /// スナップショット 1 枚を生成するのに要る共有コンテキスト（毎回作り直さず使い回す）。
     pub type alias Ctx = {
         atlas       = FontAtlas,
         atlasDim    = Float64,
@@ -115,7 +115,7 @@ mod SnapshotSupport {
     // GIF の永続化（test/snapshots/gifs/ → build/snapshots/）
     // ════════════════════════════════════════════════════════
     //
-    // GIF は PNG と違い毎回焼き直すには重いので、生成物を test/snapshots/gifs/（コミット対象）に
+    // GIF は PNG と違い毎回生成し直すには重いので、生成物を test/snapshots/gifs/（コミット対象）に
     // 置く。SnapshotSite は build/snapshots/ 直下のファイル存在で表示可否を決めるので、サイト生成の
     // 直前に gifs/ から build/snapshots/ へコピーする（FE_ROGUE_SNAPSHOT_GIF=1 の新規生成後も、
     // 素の flix test で既存 GIF を表示するときも、このコピーだけを通る）。
@@ -144,7 +144,7 @@ mod SnapshotSupport {
         } else ()
 
     // ════════════════════════════════════════════════════════
-    // フィルムストリップ情報の読み取り（ストリップ PNG が焼けていれば）
+    // フィルムストリップ情報の読み取り（ストリップ PNG が生成済みであれば）
     // ════════════════════════════════════════════════════════
 
     /// `stripPath` にストリップ PNG があれば、その実寸から SnapshotSite.Filmstrip を組む
@@ -171,7 +171,7 @@ mod SnapshotSupport {
                      rendered: {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]}):
             Option[String] \ (IO + Fs.FileRead + Fs.FileWrite) =
         let text = formatScene(ctx#atlasDim, rendered);
-        // PNG は毎回焼く（目視確認用・build 配下）。
+        // PNG は毎回生成する（目視確認用・build 配下）。
         SoftRaster.render({
             drawables = rendered#drawables, polygons = rendered#polygons,
             design = ctx#design, scale = ctx#scale, background = ctx#background,

@@ -14,7 +14,7 @@
 | `Render.striped` / `checker` | `engine_world/src/Render.flix` | 縞・市松を面に重ねる（布・床・注意帯） |
 | `Render.clipped` / `clippedAll` | `engine_world/src/Render.flix` | 矩形で切り抜く（スクロール窓・小窓・のぞき穴） |
 | `Color.warm` / `cool` | `engine/src/core/Color.flix` | 光側を暖色・影側を寒色へ寄せて階調を増やす |
-| `App.withPixelSnap` / `withSpriteAtlases` | `engine_world/src/App.flix` | 画素の升目に載せて輪郭をにじませない / ドット絵を 1 枚に焼いて 1 体 = 1 クアッド |
+| `App.withPixelSnap` / `withSpriteAtlases` | `engine_world/src/App.flix` | 画素の升目に載せて輪郭をにじませない / ドット絵を 1 枚に生成して 1 体 = 1 クアッド |
 | `Mirror` | `engine_world/src/Mirror.flix` | ドット絵の映り込み（鏡・ガラス・磨いた床） |
 | `Material` の SurfaceFx | `engine_world/src/Material.flix` | チップ絵なしで地形に質感（粒・きらめき・鱗・泡・発光・染み） |
 | `RawDraw.star` / `ellipse` / `sector` / `ngon` | `engine_world/src/RawDraw.flix` | 星・楕円・扇・正多角形。**box と circle の 2 択で我慢しない** |

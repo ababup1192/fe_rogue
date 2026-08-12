@@ -1,6 +1,6 @@
 // RadialBuiltin — 放射グラデ（中心から縁へ滑らかに変わる円）の組み込みテクスチャ。
 // 画素の値だけを決める純関数で、GL（起動時に GPU へ上げる）と SoftRaster（bake の
-// テクスチャ表へ混ぜる）が同じ列から絵を作る — 2 か所で別々に焼くと実機と bake の
+// テクスチャ表へ混ぜる）が同じ列から絵を作る — 2 か所で別々に生成すると実機と bake の
 // 絵が 1px 単位でずれるため、画素の出どころをここ 1 つにする。
 // engine_tools の RadialGlow と式は同系（smoothstep 減衰）だが、engine から engine_tools
 // へは依存できないため、式はここに自前で持つ。
@@ -8,7 +8,7 @@ mod RadialBuiltin {
 
     /// テクスチャの 1 辺の px 数（正方形）。Render.lightAt / darkAt が
     /// 「見た目半径 = radius」の拡大率をこの値から逆算するため、
-    /// 焼く側と置く側が別の値を見ると光の大きさがずれる。
+    /// 生成する側と置く側が別の値を見ると光の大きさがずれる。
     pub def size(): Int32 = 256
 
     /// 明かり（Add 用）のテクスチャ名。`__` で始めるのはゲームのアセット名と
@@ -19,7 +19,7 @@ mod RadialBuiltin {
     pub def darkName(): String = "__radial_dark"
 
     /// 明かりの画素列（ARGB・行優先）。中心が白・外へ滑らかに減衰。
-    /// 減衰カーブは rgb だけに焼き込み、alpha は常に 255 にする — alpha を可変にすると
+    /// 減衰カーブは rgb だけに反映し、alpha は常に 255 にする — alpha を可変にすると
     /// Add 合成の寄与が rgb×alpha の積になり、GL（float 合成）と SoftRaster（整数合成）で
     /// 丸めが食い違う。alpha=255 なら Add は d+s の整数の足し算で両経路バイト一致になる。
     /// Multiply に使うと「白は素通し」の式でほぼ恒等に潰れて何も起きない — Add 専用。
@@ -33,7 +33,7 @@ mod RadialBuiltin {
 
     /// 翳りの画素列（ARGB・行優先）。中心が黒・縁で白、alpha は常に不透明。
     /// Multiply の「白は素通し」で縁は何も変えず、中心だけ暗く沈む。強さは画素に
-    /// 焼き込まず、置く側の alpha（Render.darkAt の strength）で調整する。
+    /// 反映せず、置く側の alpha（Render.darkAt の strength）で調整する。
     /// Add に使うと常に明るく足されて翳りにならない — Multiply 専用。
     pub def darkPixels(): Vector[Int32] =
         pixels((x, y) -> {

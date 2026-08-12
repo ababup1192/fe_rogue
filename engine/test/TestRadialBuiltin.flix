@@ -24,7 +24,7 @@ mod TestRadialBuiltin {
         Assert.assertEq(expected = (255, 255, 255, 255) :: (255, 0, 0, 0) :: Nil,
             pixelAt(v, 128, 128) :: pixelAt(v, 255, 128) :: Nil)
 
-    // 明かり: 中間半径 (192,128)（t ≈ 0.504）は smoothstep 減衰 126 の 2 乗焼き込みで
+    // 明かり: 中間半径 (192,128)（t ≈ 0.504）は smoothstep 減衰 126 の 2 乗を生成した値で
     // round(126²/255) = 62。
     @Test
     def testLightPixelsMidRadius(): Unit \ Assert =

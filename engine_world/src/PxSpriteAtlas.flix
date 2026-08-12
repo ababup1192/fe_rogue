@@ -1,5 +1,5 @@
-// PxSpriteAtlas — PxSpriteDoc(文字格子)×resolver(テーマ)を 1 枚のアトラス画素に焼く純関数層。
-// 1 セル = 1px(ARGB)。描画時に整数 scale で拡大する(NEAREST 前提)ので、アトラスは常に等倍で焼く。
+// PxSpriteAtlas — PxSpriteDoc(文字格子)×resolver(テーマ)を 1 枚のアトラス画素に生成する純関数層。
+// 1 セル = 1px(ARGB)。描画時に整数 scale で拡大する(NEAREST 前提)ので、アトラスは常に等倍で生成する。
 // 出力は「画素(Vector[Int32]・ARGB 行優先)+コマ→矩形の目次(regions)」だけ — GL への
 // アップロード(render_gl/RenderTexture.loadTextureFromPixels)も PNG 書き出し
 // (SoftRaster.writeRadialPng に pixelAt を渡す)も、同じ Baked を読む。こうして GL と
@@ -13,14 +13,14 @@ mod PxSpriteAtlas {
     /// アトラス内の 1 コマの矩形(px・セル数と同じ)。
     pub type alias Slot = { x = Int32, y = Int32, w = Int32, h = Int32 }
 
-    /// 焼き上がり。pixels は side×side の ARGB(行優先)。regions のキーは (スプライト名, コマ名)。
+    /// 生成した結果。pixels は side×side の ARGB(行優先)。regions のキーは (スプライト名, コマ名)。
     pub type alias Baked = {
         side = Int32,
         regions = Map[(String, String), Slot],
         pixels = Vector[Int32]
     }
 
-    /// 何も持たない空のアトラス(「まだ焼けていない」の置き場)。
+    /// 何も持たない空のアトラス(「まだ生成していない」の置き場)。
     pub def empty(): Baked =
         { side = 0, regions = Map.empty(), pixels = Vector.empty() }
 
@@ -28,9 +28,9 @@ mod PxSpriteAtlas {
     /// regions から溢れたコマが欠ける(fail-open: 描かれないだけで落ちない)。
     def sideCandidates(): List[Int32] = 16 :: 32 :: 64 :: 128 :: 256 :: 512 :: 1024 :: 2048 :: Nil
 
-    /// Doc の全スプライト×全コマを 1 枚に焼く。コマの順は Map 順(名前順)で決定的。
+    /// Doc の全スプライト×全コマを 1 枚に生成する。コマの順は Map 順(名前順)で決定的。
     /// legend に無い文字は透明(ARGB 0)。resolver が意味色キー → 実色を解決する
-    /// (テーマ替え・体色差はここで焼き分ける — 格子は共有)。
+    /// (テーマ替え・体色差はここで生成し分ける — 格子は共有)。
     pub def bake(doc: PxSpriteDoc.Doc, resolver: String -> Color): Baked = region rc {
         let frames = framesOf(doc);
         let sizes = frames |> List.map(f -> { let (key, rows) = f; (key, gridSize(rows)) });
@@ -69,8 +69,8 @@ mod PxSpriteAtlas {
         if (x < 0 or y < 0 or x >= baked#side or y >= baked#side) 0
         else Vector.get(y * baked#side + x, baked#pixels)
 
-    /// 焼き上がりの一覧を「正方形の絵の一覧」へ写す（Bakery.imagePngs / imageTextureInfo 用）。
-    /// 焼き道具は engine_world の型を知らないので、素の形に直してから渡す。
+    /// 生成した絵の一覧を「正方形の絵の一覧」へ写す（Bakery.imagePngs / imageTextureInfo 用）。
+    /// 生成の道具は engine_world の型を知らないので、素の形に直してから渡す。
     pub def asImages(uploads: List[{ texture = String, baked = Baked | r }]):
             List[{ name = String, side = Int32, pixelAt = (Int32, Int32) -> Int32 }] =
         uploads |> List.map(u ->

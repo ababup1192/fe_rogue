@@ -1,4 +1,4 @@
-// Gallery — 挙動ショーケースを焼く。Replay で純粋な update を駆動してシナリオを再現し、
+// Gallery — 挙動ショーケースを生成する。Replay で純粋な update を駆動してシナリオを再現し、
 // SoftRaster で 1 枚ずつ描いて PNG・GIF・フィルムストリップにし、SnapshotSite でページ化する。
 // シナリオの初期 World は Trace が供給する（テストと同じデータ）ので、ギャラリーは
 // 「テストで固定した挙動」をそのまま絵にしたものになる。
@@ -14,7 +14,7 @@
 mod Gallery {
     import java.io.File
 
-    // ── 焼き込み設定 ──
+    // ── 生成設定 ──
     def design(): Vec2.Vec2 = { x = 320.0, y = 240.0 }
     def scale(): Int32 = 2                    // 出力は 640x480
     def pxWidth(): Int32 = 640
@@ -25,7 +25,7 @@ mod Gallery {
     def gifDelayMs(): Int32 = 33
     def gifFps(): Int32 = 30
 
-    /// Bakery に渡す焼き込み設定（背景は clearColor・テクスチャなし）。
+    /// Bakery に渡す生成設定（背景は clearColor・テクスチャなし）。
     def config(atlas: FontAtlas): Bakery.BakeConfig =
         { design = design(), scale = scale(), background = Palette.clearColor(),
           texturePath = Map.empty(), fontTtf = ttfPath(), fontAtlas = atlas,
@@ -45,19 +45,19 @@ mod Gallery {
             { world = View.frame(ctx, world), hud = View.hud(hudCtx, world) });
         Render.draw(List.append(composed, extra))
 
-    // ── PNG / GIF を焼く（配管は Bakery が担う）──
+    // ── PNG / GIF を生成する（配管は Bakery が担う）──
 
-    /// 1 枚の World を PNG に焼く。
+    /// 1 枚の World を PNG に生成する。
     def shotWorld(atlas: FontAtlas, world: Field.World, name: String): Unit \ IO =
         let (drawables, polygons) = worldCmds(atlas, world, Nil);
         Bakery.renderPng(config(atlas), drawables, polygons, name)
 
-    /// 直接組んだ場面（World を介さない扇形など）を PNG に焼く。
+    /// 直接組んだ場面（World を介さない扇形など）を PNG に生成する。
     def shotScene(atlas: FontAtlas, drawables: List[GameEngine.Drawable],
                   polygons: List[GameEngine.PolygonRenderCmd], name: String): Unit \ IO =
         Bakery.renderPng(config(atlas), drawables, polygons, name)
 
-    /// シナリオを Replay.timeline で駆動し、stride 枚ごとに 1 枚描いて GIF＋コマ別 PNG に焼く。
+    /// シナリオを Replay.timeline で駆動し、stride 枚ごとに 1 枚描いて GIF＋コマ別 PNG に生成する。
     /// annotate は各フレームの World から重ねる注釈（SPEED の読みなど。不要なら _ -> Nil）。
     /// 返り値は SnapshotSite 用のフィルムストリップ情報（駒送りビューア）。
     def bakeGif(atlas: FontAtlas, world: Field.World, frames: Int32, stride: Int32,
@@ -113,7 +113,7 @@ mod Gallery {
     def dot(center: Vec2.Vec2, radius: Float64, color: Color, z: Int32): Render.PlacedItem =
         { at = { x = center#x - radius, y = center#y - radius }, item = RawDraw.circle(radius, color, z) }
 
-    // ── 全部を焼いてサイトを生成する（Bake.all から呼ぶ）──
+    // ── 全部を生成してサイトを作る（Bake.all から呼ぶ）──
 
     pub def bakeAll(): Unit \ IO =
         discard (new File(outDir())).mkdirs();

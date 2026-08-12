@@ -5,7 +5,7 @@
 
 mod Palette {
 
-    // ── 背景（project.json の clearColor と同じ値。ギャラリーの焼き込みが使う）──
+    // ── 背景（project.json の clearColor と同じ値。ギャラリーの生成が使う）──
     pub def clearColor(): Color = {r = 0.133333f32, g = 0.125490f32, b = 0.203922f32}  // #222034
 
     // ── 地形 ──

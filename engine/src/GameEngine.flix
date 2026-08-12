@@ -44,9 +44,9 @@ mod GameEngine {
     ///   クランプ無効化したい場合は Float64.maxValue() を渡す。
     /// rootDir はプロジェクトの根（project.json のある場所）。バックエンドが
     /// 「このゲームが画面に出しうる字」をソースとアセットから集めるのに使う。
-    /// glyphs は起動時にどの字を焼くか: "auto"（既定・焼かずに出た字から順に）/
+    /// glyphs は起動時にどの字を生成するか: "auto"（既定・生成せずに出た字から順に）/
     /// "used"（出しうる字を先に）/ "all"（フォントの全字）。どれを選んでも、
-    /// 足りない字は出そうとしたときに焼き足される。
+    /// 足りない字は出そうとしたときに追加生成される。
     pub type alias EngineConfig = {
         rootDir         = String,
         glyphs          = String,
@@ -304,7 +304,7 @@ mod GameEngine {
     /// ビューポート・マウスカーソル形状切り替え
     pub eff Game {
         /// zIndex 混合で sprites・tileMaps・polygons を 1 フレーム描画する。
-        /// staticLayer は「1 度だけ GPU へ焼いて使い回す静的多角形」の依頼（無ければ None）。
+        /// staticLayer は「1 度だけ GPU へ生成して使い回す静的多角形」の依頼（無ければ None）。
         /// エンジンがキーでキャッシュし、動的な polygons と同じ z 安定ソート列にレンジを混ぜて
         /// 描くので重なり順は壊れない。ゲームは GL ハンドルを触らずキーと中身を宣言するだけ。
         def renderCommands(sprites: List[Drawable], tileMaps: List[TileMapRenderCmd],
@@ -313,9 +313,9 @@ mod GameEngine {
         /// タイルインスタンスデータを GPU VBO にアップロードし (vaoハンドル, count) を返す
         def initTileBuffer(instances: List[TileInstance]): (GpuHandle.TileVao, Int32)
         /// 既存のタイル VAO のインスタンス VBO へ中身を入れ直す（VAO は増やさない）。
-        /// key の変わりやすい層（照明・カメラ追随で焼き直る地形など）が、焼き直しの
+        /// key の変わりやすい層（照明・カメラ追随で生成し直す地形など）が、生成し直しの
         /// たびに initTileBuffer で VAO を積み増して GPU メモリを漏らさないための口。
-        /// 未知の VAO（理論上来ない）は新規に焼いて返す — 返った vaoハンドルを保存し直すこと。
+        /// 未知の VAO（理論上来ない）は新規に生成して返す — 返った vaoハンドルを保存し直すこと。
         def updateTileBuffer(vaoId: GpuHandle.TileVao,
                              instances: List[TileInstance]): (GpuHandle.TileVao, Int32)
         def shouldClose(): Bool
@@ -330,12 +330,12 @@ mod GameEngine {
         def consumeScrollDelta(): Float64
         def getFontAtlas(name: String): FontAtlas
 
-        /// アトラスにまだ無い字を、いま焼いてアトラスに足す。
+        /// アトラスにまだ無い字を、いま生成してアトラスに足す。
         /// textureName は FontAtlas#textureName（どのフォントかの目印）。
         ///
-        /// 起動時に焼くのは「ソースとアセットに書いてある字」なので、実行中に計算で
+        /// 起動時に生成するのは「ソースとアセットに書いてある字」なので、実行中に計算で
         /// 作った字やプレイヤーが入れた名前は入っていない。それを出そうとしたとき、
-        /// 黙って消えるかわりにここで焼き足す。初めて出る字は 1 コマ遅れて現れる。
+        /// 黙って消えるかわりにここで追加生成する。初めて出る字は 1 コマ遅れて現れる。
         /// 呼ぶ側は毎フレーム「足りない字」を渡してよい（足りていなければ何もしない）。
         def ensureGlyphs(textureName: String, codepoints: Set[Int32]): Unit
         def getViewportRect(): Rect2.Rect2
@@ -343,11 +343,11 @@ mod GameEngine {
         /// 登録されていないテクスチャ名なら None
         def getTextureInfo(name: String): Option[TextureInfo]
 
-        /// 実行時に焼いた画素を、名前付きテクスチャとして使えるようにする。
+        /// 実行時に生成した画素を、名前付きテクスチャとして使えるようにする。
         /// key はその画素の中身を決める全入力を 1 文字列にまとめた物（テーマ名・世代番号など）。
         /// 同じ名前で key が前回と同じなら、描画部は何もしない（毎フレーム呼んでよい）。
         /// argb は width×height の行優先（PxSpriteAtlas.bake の出力そのまま）。
-        /// 用途: ドット絵をアトラスに焼いて「1 体 = 1 枚のクアッド」で描く
+        /// 用途: ドット絵をアトラスに生成して「1 体 = 1 枚のクアッド」で描く
         /// （画素ごとの矩形を並べるより桁違いに軽い）。
         def ensureTexture(name: String, key: String, width: Int32, height: Int32,
                           argb: Vector[Int32]): Unit
@@ -392,7 +392,7 @@ mod GameEngine {
         /// 各サウンドの setVolume と乗算で効く（OpenAL の listener gain × source gain）。
         def setMasterVolume(gain: Float32): Unit
         /// すでに登録してある名前の音を、path のファイルから読み直して差し替える。
-        /// 音は起動時に一度読むだけなので、焼き直した WAV は本来次の起動まで届かない。
+        /// 音は起動時に一度読むだけなので、生成し直した WAV は本来次の起動まで届かない。
         /// これがあれば、調整しながら鳴らして確かめられる（絵の watchFile と同じ手触り）。
         /// 音源そのもの（音量・ループの設定・再生位置の器）は保たれ、中身だけが入れ替わる。
         /// 知らない名前・読めないファイルは何もしない（鳴っている音を殺さない）。

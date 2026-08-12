@@ -41,7 +41,7 @@ mod ViewScene {
         { x = Num.wrapTo(skySpan(), 196.0 + skyMargin() + skyShift(w)) - skyMargin(),
           y = Float64.min(Proj.horizonYAt(cam) - 14.0, 26.0) }
 
-    /// 太陽。白い光球 + 芯の丸。Add ブレンドで空のグラデに焼き付ける。
+    /// 太陽。白い光球 + 芯の丸。Add ブレンドで空のグラデに重ねる。
     /// 一番遠い物なので、曲がったときに一番よく動く目印になる。
     def sun(cam: Proj.Cam, w: World.World): List[Render.PlacedItem] =
         let at = sunAt(cam, w);
@@ -243,7 +243,7 @@ mod ViewScene {
 
     // ── 丘の向こうの平野 ──
 
-    /// 登り坂の途中では一番奥の帯でも地平線に届かず、そのあいだが焼き込みの下地色のまま
+    /// 登り坂の途中では一番奥の帯でも地平線に届かず、そのあいだが生成時の下地色のまま
     /// 平らに残る（貼った紙の縁のような横一線に読める）。そこを草の色で埋める。
     /// 一番奥の帯とまったく同じ色から始めて浜の裾へ溶かすので、境目が段にならない。
     pub def plain(cam: Proj.Cam, w: World.World): List[Render.PlacedItem] =
@@ -327,7 +327,7 @@ mod ViewScene {
         else shadowUnder(p#at, 7.0 * p#f, 2.2 * p#f, p#uc)
             :: (if (p#f < palmDetail()) palmFar(ink, p, trunkDx)
                 // 1 本 = 矩形 75 枚の box 列だったのをアトラス 1 クアッドへ。葉と幹の色は
-                // アトラスに焼き込み済みなので、距離の霞だけ tint で近似する。
+                // アトラス生成時に入れてあるので、距離の霞だけ tint で近似する。
                 else ViewCar.pxQuadScaledCentered({
                     doc = w#sprites, baked = w#atlas, texture = World.atlasName(),
                     sprite = "palm", frame = "base",

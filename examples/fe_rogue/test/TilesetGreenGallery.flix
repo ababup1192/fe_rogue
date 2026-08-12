@@ -1,4 +1,4 @@
-// TilesetGreenGallery — v8 生成器（TilesetGreen・立体面シェーディング＋モチーフテーマ）をヘッドレスに焼き、
+// TilesetGreenGallery — v8 生成器（TilesetGreen・立体面シェーディング＋モチーフテーマ）をヘッドレスに生成し、
 // 全 108 セルの形・材質・色数を検証する。
 //
 //   gallery/tileset_green_regen.png   … 全 108 セルの再現アトラス（green・312×234・座標互換の完成資産）

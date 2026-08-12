@@ -1,4 +1,4 @@
-<!-- engine v0.23.5 / 生成: 2026-08-12 -->
+<!-- engine v0.23.5 / 生成: 2026-08-13 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine
@@ -89,7 +89,7 @@
   `pub def source(): String`
 - アトラスの一辺。Text の表示サイズ計算がアトラスを正方と決め打つので正方。
   `pub def side(): Int32`
-- 焼き込みピクセル高さ。この大きさで出すとドットが 1:1 で揃う。
+- 生成ピクセル高さ。この大きさで出すとドットが 1:1 で揃う。
   `pub def fontSize(): Float64`
 - `pub def ascent(): Float64`
 - `pub def descent(): Float64`
@@ -525,7 +525,7 @@
   `pub def evalPixel(spec: ShaderDoc.Spec, uv: Vec2.Vec2, t: Float64): Color`
 - 代表点のアルファ（Fill#alpha の場を評価）。
   `pub def evalAlpha(spec: ShaderDoc.Spec, uv: Vec2.Vec2, t: Float64): Float64`
-- evalPixel のテクスチャつき版。texEnv は名前 → 画素（pass の焼き上がりなど）。
+- evalPixel のテクスチャつき版。texEnv は名前 → 画素（pass の生成結果など）。
   `pub def evalPixelTex(spec: ShaderDoc.Spec, uv: Vec2.Vec2, t: Float64, texEnv: Map[String, TexData]): Color`
 - evalAlpha のテクスチャつき版。
   `pub def evalAlphaTex(spec: ShaderDoc.Spec, uv: Vec2.Vec2, t: Float64, texEnv: Map[String, TexData]): Float64`
