@@ -142,7 +142,8 @@
 ## スキルと規約の在り処（どのエージェントでも読める）
 
 `/名前` は Claude Code のスキル呼び出しの書き方だが、中身は**ただの markdown**。
-どのエージェントでも `.claude/skills/<名前>/SKILL.md` を直接読めば同じ内容が手に入る。
+どのエージェントでも `.claude/skills/<名前>/SKILL.md` を直接読めば同じ内容が手に入る
+（同じ物が `.agents/skills/` にもあり、Codex はそちらを `$名前` で呼べる）。
 **このゲームに配られているスキルの一覧は、このファイル末尾の「配られているスキル一覧」
 （sync-agents が自動生成する節）にある。作業に入る前に該当するスキルを読む。**
 
@@ -152,6 +153,15 @@
   `.claude/rules/*.md` を直接読む。
 - 本文中の「engine リポの `docs/...`」は、このゲームの `Makefile` 冒頭の `ENGINE` 変数が
   指す場所にある（`make new-game` が実パスへ書き換え済み）。
+
+フック相当の約束（フック機構を持たないエージェントは、手で同じことをする）:
+
+- **SessionStart フックが無いエージェントは、セッション最初の行動として `make status`**。
+- **保存即型検査が無いエージェントは、`.flix` を編集するたび `make check`**。
+- コミット関所は git の pre-commit（エージェント非依存）。未配線なら `make hooks` —
+  clone ごとに 1 回でよい（未配線は `make status` が知らせる）。
+- Codex 向け: `.codex/hooks.json` と `.agents/skills/` は project trust の承認後に有効。
+  承認前でも上の 2 行を手で守れば同じ結果になる。
 
 人に見せる前に自分で確かめる（OS・エージェントを問わず動く）:
 
@@ -167,5 +177,6 @@ python3 bin/lint-anim.py [ファイル...]    # コマ間の飛び・接地と 4
 - 書き方の癖と定石: `.claude/skills/flix-docs`(構文)・`compile-fix`(コンパイルエラー)・`quality-assurance`(テスト設計)
 - 画風がまだ決まっていない・新しいゲームを作り始める: `.claude/skills/style-interview`(人へ最大 7 問の聞き取り。注文は AGENTS.local.md へ)
 - 見栄えの実装: `.claude/skills/visual-dict`(絵の下限の節のとおり View の前に必読)と engine リポの `docs/shader-doc.md`(宣言シェーダーの語彙とレシピ)
+- ドット絵で行くと決まった後: `.claude/skills/retro-pixel`(色の予算・タイルと材質・キャラの等身・小物の置き場。画風を決めるのは visual-dict が先)
 - 規約と地図: engine リポの `docs/doc-conventions.md`(Doc の外形)・`docs/module-index.md`(やりたいこと → モジュール)・`docs/glossary.md`(UI に出す言葉)
 - 動く見本: engine の `templates/game-starter`(最小)と、隣にある既存ゲームのソース
