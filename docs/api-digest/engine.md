@@ -1,4 +1,4 @@
-<!-- engine v0.23.2 / 生成: 2026-08-12 -->
+<!-- engine v0.23.3 / 生成: 2026-08-12 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine

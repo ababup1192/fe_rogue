@@ -95,5 +95,11 @@ golden:
 
 # 現状 1 画面 (テスト記録・golden・チケット・git)。何も実行しない。
 # .claude/settings.json の SessionStart フックがセッション開始時に毎回呼ぶ。
+# pack が欠けたゲーム (sync-agents を配りきらない産み方をされた物) はここで配り直す —
+# AGENTS.md がセッションの入口を必ずこの target にしているため、最初の 1 回で自己修復できる。
 status:
+	@if [ ! -f bin/status.py ]; then \
+		echo "[status] agents-pack が未配布です (bin/status.py が無い) — $(ENGINE) から配り直します"; \
+		$(MAKE) -C "$(ENGINE)" sync-agents GAME="$(CURDIR)" || { echo "[status] 配布に失敗 — engine リポで make sync-agents GAME=$(CURDIR) を実行してください"; exit 1; }; \
+	fi
 	@$(PYTHON) bin/status.py
