@@ -363,7 +363,7 @@ mod App {
         { hudView = Some(v) | app }
 
     /// 1 フレームの前後の World（{before, after}）から鳴らす音名を導く関数を繋ぐ
-    /// （再生は App が引き受ける）。
+    /// （再生は App が引き受ける）。同じ名前が同じフレームに 2 回入っても 1 回だけ鳴る。
     pub def withAudio(sfx: { before = w, after = w } -> List[String] \ ef, app: App[w, ef]): App[w, ef] =
         { audio = sfx | app }
 
@@ -963,9 +963,13 @@ mod App {
         }
 
     /// audio の導いた音名を鳴らす（システム適用の前後の World から導く）。
+    /// 同じ名前が 2 回返っても 1 回に畳む — 同フレームの二重再生は同じ音源を
+    /// 頭から鳴らし直して途切れる（sustainOps の先勝ちと同じ理屈）。
     def playSounds(app: App[w, ef], before: w, after: w): Unit \ (ef + GameEngine.Audio) =
         let derive = app#audio;
-        derive({ before = before, after = after }) |> List.forEach(name -> GameEngine.Audio.playAudio(name))
+        derive({ before = before, after = after })
+            |> List.distinct
+            |> List.forEach(name -> GameEngine.Audio.playAudio(name))
 
     /// sustained の宣言を音へ反映し、次のフレームへ渡す「いま鳴っている名前」を返す。
     /// 鳴らし始めだけ playAudio を打ち、続いている音には音量と高さだけ流す

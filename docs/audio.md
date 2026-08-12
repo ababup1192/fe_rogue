@@ -44,18 +44,21 @@ App.make(initialWorld)
 
 これで盤面が変わって `pushed` が真になったフレームだけ `push.wav` が鳴る。
 
-## 経路の使い分け
+## 経路の使い分け — 基準は「起きたこと」か「今そうであること」か
 
-音を鳴らす経路は3つある。**新しく作るゲームは `App.withAudio`（単発）と
-`App.withSustained`（鳴り続ける音）の2つの宣言的な口を既定にする。**
+鳴らしたい音を 1 つ思い浮かべて、どちらの文で言えるかを考える。
 
-- `App.withAudio(sfx)` — 1フレームの `{before, after}`（進める前後の World）から
-  「鳴らす音名の List」を導く純関数を渡す。再生そのものは App が引き受ける。
+- **「〜が起きた」と言える音**（当たった・取った・跳んだ・場面が変わった）→ `App.withAudio`。
+  1フレームの `{before, after}`（進める前後の World）から「鳴らす音名の List」を導く
+  純関数を渡す。再生そのものは App が引き受ける。同じ名前が同フレームに 2 回入っても
+  App が 1 回に畳むので、二重再生で音が途切れる心配は要らない。
   World の差分だけで判定が書けるので、テストは「何が鳴るか」を具体値で固定できる
   （sokoban / breakout / platformer / liars_room が採用）。
-- `AudioStreamPlayer.play(name)` を直接呼ぶ命令的スタイルは、UI のカーソル移動やメニュー確定音のように
-  「その場で入力に応じて鳴らす」以外の理由がないなら避ける。World の差分では表せない場面
-  （効果を経由しない生の入力ハンドラの中など）だけで使う。
+- **「今〜している」と言える音**（走っている・雨が降っている・エンジンが回っている）→
+  `App.withSustained`（次の節）。止め時をゲームが知っている音は、始まりの拍でなく
+  「続いている状態」を毎フレーム宣言する。
+- `AudioStreamPlayer.play(name)` を直接呼ぶ命令的スタイルは、World の差分では表せない場面
+  （効果を経由しない生の入力ハンドラの中など）だけの逃げ道。それ以外の理由では使わない。
 
 ```flix
 AudioStreamPlayer.play("cursor")
@@ -63,6 +66,29 @@ AudioStreamPlayer.stop("bgm")
 AudioStreamPlayer.setVolume("bgm", 0.5f32)
 AudioStreamPlayer.setPitch("bgm", 1.2f32)
 AudioStreamPlayer.setLooping("bgm", true)
+```
+
+### イベントキューを使うなら: World 直下 + Step 冒頭で全置換（platformer 参照）
+
+「起きたこと」を before/after の見比べで導けない出来事（同フレーム内で起きて消える衝突など）は、
+Step が World の **イベントキュー**（`events = List[Event]`）に記録し、`withAudio` は
+`after#events` を名前に写すだけにする。このとき守る形は 2 つ:
+
+- **イベントキューは World の直下に 1 つ**置く。入れ子のレコード（フェーズごとの状態など）の
+  中に置くと、レコードの作り直し・フェーズの結末でクリアし忘れ、鳴り損ねや亡霊音になる。
+- **Step の冒頭でキューを丸ごと空にしてから**、そのフレームの出来事を詰め直す
+  （platformer の `events = Nil`）。「消費した分だけ取り除く」方式は取りこぼす。
+
+```flix
+// World 直下
+events = List[Event],   // このフレームの出来事（毎フレーム冒頭で空に）
+
+// Step 冒頭で全置換 → そのフレームの出来事を詰める
+let cleared = { events = Nil | world };
+
+// Sfx は写すだけ
+pub def events(worlds: { before = World, after = World }): List[String] =
+    worlds#after#events |> List.map(eventName)
 ```
 
 ## 鳴り続ける音（`App.withSustained`）
@@ -114,6 +140,10 @@ App.make(initialWorld)
 | `looping` | 起動時にロードした音源へ既定で付ける AL_LOOPING の初期値。実行中に変えるなら `AudioStreamPlayer.setLooping`（`App.withSustained` の宣言は自動で ON にする） |
 
 パスは project root からの相対で書く（実行時に rootDir と結合される。engine/src/core/ProjectLoader.flix）。
+
+音の名前には置き場が 3 つある（bake 名・sounds の論理名・コード内リテラル）。ずれても
+エラーは出ず、音だけ鳴らない・別の音が鳴る。**論理名 = WAV ファイル名の茎 = bake 名**の
+1 本にそろえ、音を足した・改名したら `make lint-audio` で突き合わせる。
 
 ## SfxSynth — 素材ファイル無しで効果音を作る
 
@@ -192,8 +222,8 @@ let (outVol, inVol) = AudioFade.crossfadeOf(t)
 - **決定・キャンセル / 当たった・壊れた / 手に入れた / 場面が変わった、の4種には必ず音を当てる**。
   この4つが無音だと、操作しているのに手応えが無いゲームになる。
 - **無音の画面を出荷しない**。BGM を置かないゲームでも、少なくとも上の4種の sfx は鳴る状態にする。
-- **同じ音を1フレームに二重に鳴らさない**。`List.distinct` などで畳んでから `App.withAudio` へ返す
-  （breakout の `hitSounds` が手本。同じ衝突が同フレームで複数回記録されても音は1回）。
+- **同じ音を1フレームに二重に鳴らさない**。`App.withAudio` は同じ名前を 1 回に畳むので
+  経路がこれなら守られている。`AudioStreamPlayer.play` を直接呼ぶ逃げ道だけ自衛が要る。
 - **「続いている音」を短い音の焚き直しで作らない**。走行音・風・雨・炎・足音のループは
   `App.withSustained` で 1 本の宣言にする（焚き直しは間隔が音より長いと途切れ、短いと二重に鳴る）。
 - **音のデザインは SfxSynth かファイルのどちらかに寄せる**。1ゲームの中で合成と録音素材を

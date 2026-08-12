@@ -30,7 +30,7 @@ FLIX_TEST := $(CURDIR)/bin/flix
 
 # 全パッケージ共通のバージョン (lockstep)。sync 先ディレクトリ名や release の
 # asset 名に使う。make bump FROM=x TO=y で各 flix.toml と一緒に上げる。
-VERSION := 0.23.1
+VERSION := 0.23.2
 
 RENDER_GL_DIR       := render_gl
 RENDER_GL_FPKG_SRC  := $(RENDER_GL_DIR)/artifact/render_gl.fpkg
@@ -82,7 +82,7 @@ EDITOR_SERVER_DIR := editor_server
 # 全体の up 階層数を求め、symlink の相対パスを動的に組み立てる。
 SUBPATH_DEPTH := 5
 
-.PHONY: help status sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff gl-parity release release-guard bump editor lint-palette lint-view lint-loop rules check-docs-sync checkd-stop
+.PHONY: help status sync sync-engine sync-render-gl sync-engine-world sync-engine-tools sync-engine-full sync-root-src clean-locks clean-example-builds test test-par bake bake-par diff gl-parity release release-guard bump editor lint-palette lint-view lint-loop lint-audio rules check-docs-sync checkd-stop
 
 # セッション立ち上げの固定費を数百トークンに抑える口。SessionStart フックが毎回呼ぶので
 # 実行や変更は一切せず、残っている記録 (.test-logs/ golden チケット git) を集めるだけ。
@@ -109,6 +109,7 @@ help:
 	@echo "  make lint-anim            コマ間の飛び・体積・接地と 4 方向のそろいを検査"
 	@echo "  make lint-loop            ループ GIF の継ぎ目 (最終コマ→0 コマ) が浮かないか検査"
 	@echo "  make lint-ui              ui.json の text の折り返し宣言漏れ (はみ出す形) を検査"
+	@echo "  make lint-audio           音名が bake 名・project.json・コードの 3 か所でそろっているか検査"
 	@echo "  python3 bin/img-digest.py A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
 	@echo "  make bake                 bake ターゲットを持つ全 example の生成物を焼き直す"
@@ -278,6 +279,12 @@ test-%:
 # 実機と配色が食い違う)。テンプレを足す・sprite Doc を触ったら通す。
 lint-palette:
 	@python3 bin/lint-palette.py
+
+# ── 関所: 音の名前 ────────────────────────────────────────
+# bake 名・project.json の sounds・コード内リテラルの 3 か所で音名がそろっているか検査する
+# (ずれてもエラーは出ず、音だけ鳴らない・別の音が鳴る)。音を足した・改名したら通す。
+lint-audio:
+	@python3 bin/lint-audio.py
 
 # ── 起動画面の素材 ────────────────────────────────────────
 # 組み込みフォント (ASCII の 1bit ビットマップ) とロゴを engine/src/render/BootFontData.flix へ
@@ -531,7 +538,7 @@ sync-agents:
 	done
 	@mkdir -p "$(GAME)/.claude/rules" "$(GAME)/bin"
 	@cp -f agents-pack/rules/*.md "$(GAME)/.claude/rules/"
-	@cp -f bin/lint-view.py bin/lint-palette.py bin/lint-sprite.py bin/lint-anim.py bin/img-digest.py bin/status.py bin/checkd bin/explain-error "$(GAME)/bin/"
+	@cp -f bin/lint-view.py bin/lint-palette.py bin/lint-sprite.py bin/lint-anim.py bin/lint-audio.py bin/img-digest.py bin/status.py bin/checkd bin/explain-error "$(GAME)/bin/"
 	@mkdir -p "$(GAME)/.claude/hooks"
 	@cp -f .claude/hooks/after-flix-edit.py .claude/hooks/session-diet.py "$(GAME)/.claude/hooks/"
 	@if [ ! -f "$(GAME)/.claude/settings.json" ]; then \
@@ -539,7 +546,7 @@ sync-agents:
 		echo "[sync-agents] hooks: .claude/settings.json (SessionStart → make status / PostToolUse → after-flix-edit)"; \
 	fi
 	@echo "[sync-agents] rules: $$(ls agents-pack/rules | tr '\n' ' ')"
-	@echo "[sync-agents] lint: bin/lint-view.py bin/lint-palette.py bin/lint-sprite.py bin/lint-anim.py bin/img-digest.py"
+	@echo "[sync-agents] lint: bin/lint-view.py bin/lint-palette.py bin/lint-sprite.py bin/lint-anim.py bin/lint-audio.py bin/img-digest.py"
 	@echo "[sync-agents] checkd: bin/checkd + .claude/hooks/after-flix-edit.py"
 	@echo "[sync-agents] wrote $(GAME)/AGENTS.md + CLAUDE.md"
 
