@@ -3,6 +3,7 @@
 // 使い方: 映す中心は centerOn（zoom 込みの一発適用）、見える範囲は visibleRect、
 // マウスの逆変換は toWorldPos。追従は followDelta、端で止めるのは clampCenter、
 // 揺れは World に trauma / fxClock を持たせて addTrauma・tick・shakeOffset で導く。
+// 逆引きの対: 一人称・疑似 3D の透視投影は Persp（別物）、ここは 2D の見下ろし・横視点。
 mod CameraRig {
 
     // ── 中央映し（world 座標 ⇄ 画面座標。zoom は常に引数で受ける・等倍は 1.0 を渡す）──

@@ -1,4 +1,4 @@
-<!-- engine v0.23.0 / 生成: 2026-08-12 -->
+<!-- engine v0.23.1 / 生成: 2026-08-12 -->
 <!-- 生成物: bin/gen-api-digest.py が作る。手で編集しない（make api-digest で作り直す） -->
 
 # API ダイジェスト — engine_world
@@ -657,6 +657,8 @@
   `pub def cellCenterOf(tileSize: Float64, cell: Cell): Vec2.Vec2`
 - `cellOf` の record 版。ピクセル位置がどのセルに入るかを `{x, y}` で返す。floor で
   `pub def cellAt(tileSize: Float64, pos: Vec2.Vec2): Cell`
+- 「セル中心が整数・境界が ±0.5」の座標系（1 マス = 1.0）で、世界点 `p` が属するセル。
+  `pub def cellAtCentered(p: Vec2.Vec2): Cell`
 - 文字の並び（rows）の大きさ。`cols` は**一番長い行**の文字数で、短い行は右が
   `pub def dimsOfRows(rows: List[String]): { cols = Int32, rows = Int32 }`
 - 文字の並びを「(セル, その文字)」の列にほどく。並びは上の行から、行の中は左から

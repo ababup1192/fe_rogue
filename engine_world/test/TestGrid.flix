@@ -58,6 +58,27 @@ mod TestGrid {
             expected = (true, false),
             (Grid.inRectOf({x = 0, y = 0}, 3, 3), Grid.inRectOf({x = 3, y = 0}, 3, 3)))
 
+    /// cellAtCentered はセル中心が整数の座標系：セル (2,3) の中心 (2.0, 3.0) はそのセルに入る。
+    @Test
+    def testCellAtCenteredCenterPoint(): Unit \ Assert =
+        let c = Grid.cellAtCentered({ x = 2.0, y = 3.0 });
+        Assert.assertEq(expected = (2, 3), (c#x, c#y))
+
+    /// 境界 ±0.5 ちょうどの点は + 側のマスに属する：(1.5, 2.5) はセル (2,3) に入る。
+    @Test
+    def testCellAtCenteredBoundaryBelongsToPlusSide(): Unit \ Assert =
+        let c = Grid.cellAtCentered({ x = 1.5, y = 2.5 });
+        Assert.assertEq(expected = (2, 3), (c#x, c#y))
+
+    /// 負の座標も同じ規約：セル (-1,-2) の中心 (-1.0, -2.0) はそのセルに入り、
+    /// 境界 -1.5 は + 側のセル -1 に入る（ゼロ向き丸めなら 0 / -1 になって崩れる）。
+    @Test
+    def testCellAtCenteredNegativeCoordinates(): Unit \ Assert =
+        let center = Grid.cellAtCentered({ x = -1.0, y = -2.0 });
+        let edge = Grid.cellAtCentered({ x = -1.5, y = -1.5 });
+        Assert.assertEq(expected = ((-1, -2), (-1, -1)),
+            ((center#x, center#y), (edge#x, edge#y)))
+
     /// 大きさは「一番長い行」で測る。短い行は右が空いているものとして扱うので、
     /// 末尾の空白を書き足さなくてよい。
     @Test

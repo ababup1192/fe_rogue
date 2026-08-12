@@ -3,6 +3,8 @@
 // 同じ掛け算・割り算を書かずに済む。
 // 利用例: マスの中心にキャラを置く / クリックした点がどのマスかを求める / 隣のマスを取る。
 // 注意: 知っているのはタイルの大きさだけで、盤が画面のどこにあるかは扱わない（位置合わせは呼び側）。
+// セル座標の規約は 2 つある: 左上原点・tileSize 割りの系（cellAt / cellOf）と、
+// セル中心が整数・境界 ±0.5 の系（cellAtCentered — GridRay / WallFaces の疑似 3D 側）。
 
 mod Grid {
 
@@ -51,6 +53,14 @@ mod Grid {
     pub def cellAt(tileSize: Float64, pos: Vec2.Vec2): Cell =
         let (col, row) = cellOf(tileSize, pos);
         { x = col, y = row }
+
+    /// 「セル中心が整数・境界が ±0.5」の座標系（1 マス = 1.0）で、世界点 `p` が属するセル。
+    /// 境界 ±0.5 ちょうどの点は + 側のマスに属する（floor(p + 0.5) — どこから呼んでも
+    /// 同じタイブレークになるよう式ごとここに一本化）。
+    /// `cellAt` とは座標系が別物: あちらは「原点 (0,0) がセル (0,0) の左上」で tileSize で
+    /// 割る系、こちらはセル (0,0) の中心が点 (0,0) に来る系（GridRay / WallFaces が使う）。
+    pub def cellAtCentered(p: Vec2.Vec2): Cell =
+        { x = Num.floorInt(p#x + 0.5), y = Num.floorInt(p#y + 0.5) }
 
     /// 文字の並び（rows）の大きさ。`cols` は**一番長い行**の文字数で、短い行は右が
     /// 空いているものとして扱う（末尾の空白を書かなくてよい）。

@@ -74,6 +74,29 @@ mod TestGridRay {
             GridRay.blocked(solid, _ -> false, { x = 0.0, y = 0.0 }, { x = 2.0, y = 1.9 }))
 
     @Test
+    def testNegativeDirectionBlocked(): Unit \ Assert =
+        // 逆向き (4,0) → (0,0) でも途中 (2,0) の壁は遮る（横断は向きに依らない）。
+        let solid = c -> c#x == 2 and c#y == 0;
+        Assert.assertEq(expected = true,
+            GridRay.blocked(solid, _ -> false, { x = 4.0, y = 0.0 }, { x = 0.0, y = 0.0 }))
+
+    @Test
+    def testStartWallCellBlocks(): Unit \ Assert =
+        // start のマス自身も数える — 壁の中から歩き出す線分は最初から遮られている。
+        let solid = c -> c#x == 0 and c#y == 0;
+        Assert.assertEq(expected = true,
+            GridRay.blocked(solid, _ -> false, { x = 0.0, y = 0.0 }, { x = 3.0, y = 0.0 }))
+
+    @Test
+    def testBoundaryStartBelongsToPlusSide(): Unit \ Assert =
+        // 境界 ±0.5 ちょうどの start は + 側のマスから歩き出す：x = 1.5 はセル 1 と 2 の
+        // 境界だがセル (2,0) に属するので、(1,0) の壁は通り道に入らず見通せる
+        // （− 側に属するなら start マスの壁として即遮られるはず）。
+        let solid = c -> c#x == 1 and c#y == 0;
+        Assert.assertEq(expected = false,
+            GridRay.blocked(solid, _ -> false, { x = 1.5, y = 0.0 }, { x = 4.0, y = 0.0 }))
+
+    @Test
     def testSameCellIsClear(): Unit \ Assert =
         // start と goal が同じマスなら、よそに壁があっても遮られない。
         let solid = c -> c#x == 1 and c#y == 0;

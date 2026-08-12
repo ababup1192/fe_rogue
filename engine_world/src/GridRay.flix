@@ -18,11 +18,6 @@ mod GridRay {
     /// を比較だけで表す（分母 0 の除算を避ける）。
     def farAway(): Float64 = Float64.maxValue()
 
-    /// 世界座標の点が属するマス。境界（±0.5）ちょうどの点は + 側のマスに属すると
-    /// 決めてある（呼ぶたび同じ結果にするためのタイブレーク）。
-    def cellOf(p: Vec2.Vec2): Grid.Cell =
-        { x = Num.floorInt(p#x + 0.5), y = Num.floorInt(p#y + 0.5) }
-
     /// 1 軸ぶんの横断設定を作る。s = 始点（マス境界が整数に来るよう +0.5 ずらした座標）、
     /// d = その軸の移動量（goal - start）。
     def axisSetup(s: Float64, d: Float64): Axis =
@@ -52,10 +47,13 @@ mod GridRay {
     /// start → goal の間に solid なマスが挟まるか。両端のマス自身も数えるので、
     /// goal が壁マスに掛かる物（松明など）のときは ignore 述語でそのマスを除く
     /// （無視が要らなければ `_ -> false`）。
+    /// 点がどのマスに属するかは Grid.cellAtCentered の契約 — 境界 ±0.5 ちょうどの点は
+    /// + 側のマスに属する。fuel（歩数の保険）が尽きたときは「見える」側（false）に倒す
+    /// fail-open — 誤差の事故で急に視界が塞がるより、見え過ぎる方を選ぶ。
     pub def blocked(solidAt: Grid.Cell -> Bool, ignore: Grid.Cell -> Bool,
                     start: Vec2.Vec2, goal: Vec2.Vec2): Bool =
-        let startCell = cellOf(start);
-        let goalCell = cellOf(goal);
+        let startCell = Grid.cellAtCentered(start);
+        let goalCell = Grid.cellAtCentered(goal);
         let d = Vec2.sub(goal, start);
         walk(c -> solidAt(c) and not ignore(c), goalCell,
              Int32.abs(goalCell#x - startCell#x) + Int32.abs(goalCell#y - startCell#y),

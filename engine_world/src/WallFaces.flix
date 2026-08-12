@@ -13,10 +13,9 @@ mod WallFaces {
     /// eye の周囲 radius マスを走査し、壁と空きの境界のうち eye に見える面だけを集める。
     /// 走査順（x → y → Dir4.all()）は安定 — 同距離の面の並びが呼ぶたびに変わらない。
     pub def visibleFaces(solidAt: Grid.Cell -> Bool, radius: Int32, eye: Vec2.Vec2): List[Face] =
-        let cx = Num.roundInt(eye#x);
-        let cy = Num.roundInt(eye#y);
-        List.range(cx - radius, cx + radius + 1) |> List.flatMap(x ->
-            List.range(cy - radius, cy + radius + 1) |> List.flatMap(y -> {
+        let center = Grid.cellAtCentered(eye);
+        List.range(center#x - radius, center#x + radius + 1) |> List.flatMap(x ->
+            List.range(center#y - radius, center#y + radius + 1) |> List.flatMap(y -> {
                 let cell = { x = x, y = y };
                 if (not solidAt(cell)) Nil
                 else Dir4.all() |> List.filterMap(dir ->

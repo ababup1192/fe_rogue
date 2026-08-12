@@ -30,7 +30,7 @@ FLIX_TEST := $(CURDIR)/bin/flix
 
 # 全パッケージ共通のバージョン (lockstep)。sync 先ディレクトリ名や release の
 # asset 名に使う。make bump FROM=x TO=y で各 flix.toml と一緒に上げる。
-VERSION := 0.23.0
+VERSION := 0.23.1
 
 RENDER_GL_DIR       := render_gl
 RENDER_GL_FPKG_SRC  := $(RENDER_GL_DIR)/artifact/render_gl.fpkg
@@ -396,7 +396,8 @@ bump:
 		[ -f "$$f" ] && perl -pi -e 's|(ababup1192/flix_[a-z_]*"[^"]*version = )"[0-9]+\.[0-9]+\.[0-9]+"|$${1}"$(TO)"|g' "$$f" || true; \
 	done
 	@perl -pi -e 's/^(VERSION := ).*/$${1}$(TO)/' Makefile
-	@echo "[bump] $(FROM) -> $(TO) 完了 (依存行は旧版どれでも TO へ・flix-random と flix コンパイラ版は据え置き)。"
+	@$(MAKE) --no-print-directory api-digest VERSION=$(TO)
+	@echo "[bump] $(FROM) -> $(TO) 完了 (依存行は旧版どれでも TO へ・flix-random と flix コンパイラ版は据え置き。api-digest も再生成済み)。"
 
 # ── コミュニティビルド用ルート src/ ──────────────────────
 # Flix 公式の community build (flix/flix の community-build.yaml) は、このリポジトリを
