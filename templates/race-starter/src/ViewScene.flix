@@ -110,14 +110,14 @@ mod ViewScene {
         let c = ThemeDoc.seaGlint(theme);
         let top = seaTopY(cam);
         let wide = World.designW();
-        let band = { at = { x = 0.0, y = 0.0 },
-                     item = Render.gradPolygon(
-                            { pos = { x = 0.0, y = top },        color = c, alpha = 0.55f32 }
-                         :: { pos = { x = wide, y = top },       color = c, alpha = 0.55f32 }
-                         :: { pos = { x = wide, y = top + 7.0 }, color = c, alpha = 0.0f32 }
-                         :: { pos = { x = 0.0, y = top + 7.0 },  color = c, alpha = 0.0f32 }
-                         :: Nil, zHorizon())
-                         |> Render.blended(DrawCmd.BlendMode.Add) };
+        let glowStrip = { at = { x = 0.0, y = 0.0 },
+                          item = Render.gradPolygon(
+                                 { pos = { x = 0.0, y = top },        color = c, alpha = 0.55f32 }
+                              :: { pos = { x = wide, y = top },       color = c, alpha = 0.55f32 }
+                              :: { pos = { x = wide, y = top + 7.0 }, color = c, alpha = 0.0f32 }
+                              :: { pos = { x = 0.0, y = top + 7.0 },  color = c, alpha = 0.0f32 }
+                              :: Nil, zHorizon())
+                              |> Render.blended(DrawCmd.BlendMode.Add) };
         let sx = sunAt(cam, w)#x;
         // 陽が水面に落ちた照り返し。丸い光だまりにすると空に太陽が 2 つあるように読めるので、
         // 水平線より下（海の上）だけに、横へ長い帯として置く。
@@ -125,7 +125,7 @@ mod ViewScene {
                                     y1 = top + 7.0, alpha = 0.40f32 })
             ::: shineStripe(c, { cx = sx, halfW = 30.0, y0 = top + 1.0,
                                  y1 = top + 26.0, alpha = 0.30f32 });
-        band :: pool
+        glowStrip :: pool
 
     // ── 遠景の岬（水平線の向こうの陸） ──
 
@@ -250,7 +250,7 @@ mod ViewScene {
         let top = Proj.horizonYAt(cam) + 4.0;
         // 坂があると帯の並び（奥→手前）と画面の高さの並びは一致しない。丘の頂の手前では
         // 一番奥の帯がむしろ画面の下に来るので、一番高く来た帯の辺を境目として拾う。
-        let crest = Proj.bands(w) |> List.foldLeft((acc, b) -> {
+        let crest = Proj.segments(w) |> List.foldLeft((acc, b) -> {
             let uFar = b#u0 + b#du;
             let y = Proj.yAt(cam, uFar);
             if (y < acc#y) { y = y, rowF = Int32.toFloat64(b#n) + b#du, u = uFar } else acc
@@ -271,7 +271,7 @@ mod ViewScene {
     /// 道からどれだけ離れるか」を決める — 乱数を保存せず行番号から毎回同じ答えを引くので、
     /// 周回して同じ行に戻ると同じ場所に同じ木が立っている。
     pub def palms(cam: Proj.Cam, w: World.World): List[Render.PlacedItem] =
-        Proj.bands(w) |> List.flatMap(b ->
+        Proj.segments(w) |> List.flatMap(b ->
             if (Hash01.at(b#n, 11) >= 0.30 or b#u0 > 20.0) Nil
             else {
                 // 木の足元は帯の真ん中（u0+0.5）なので、道の左右端も同じ所で引く。
@@ -432,7 +432,7 @@ mod ViewScene {
     /// （screenX(off) = screenX(0) + off × 縮み）なので、端の画面 x から off の範囲が直に出る —
     /// 遠くの升まで総当たりしなくて済む。
     pub def outfield(cam: Proj.Cam, w: World.World): List[Render.PlacedItem] =
-        Proj.bands(w) |> List.flatMap(b -> {
+        Proj.segments(w) |> List.flatMap(b -> {
             let uc = b#u0 + 0.5;
             // 縮みは辺（edgeOf）より先に引く。辺は足し上げの表を 2 度たどるので、
             // 何も見えない帯でそれを引くと、捨てるためだけに一番高い計算をすることになる。

@@ -285,7 +285,7 @@ mod TestRender {
             shapeOf(twice))
 
     /// 列の先頭の Clipped の clip 矩形 (x, y, w, h)。clip 矩形が追随したかを見る。
-    def windowOf(items: List[Render.PlacedItem]): (Float64, Float64, Float64, Float64) =
+    def clipRectOf(items: List[Render.PlacedItem]): (Float64, Float64, Float64, Float64) =
         match List.head(items) {
             case Some(p) => match p#item {
                 case Render.Item.Clipped(c) =>
@@ -302,10 +302,10 @@ mod TestRender {
             |> (p -> p :: Nil)
 
     @Test
-    def testMovedAllShiftsWindowToo(): Unit \ Assert =
+    def testMovedAllShiftsClipRectToo(): Unit \ Assert =
         // clip 矩形の規約: 平行移動は clip 矩形 rect も追随する（中身だけ clip 矩形の外へ歩かない）。
         Assert.assertEq(expected = (15.0, 26.0, 30.0, 40.0),
-            windowOf(Render.movedAll({ x = 5.0, y = 6.0 }, clippedBox())))
+            clipRectOf(Render.movedAll({ x = 5.0, y = 6.0 }, clippedBox())))
 
     @Test
     def testScaledAllAroundStretchesAtAndSize(): Unit \ Assert =
@@ -315,10 +315,10 @@ mod TestRender {
             shapeOf(Render.scaledAllAround(2.0, { x = 2.0, y = 4.0 }, items)))
 
     @Test
-    def testScaledAllAroundStretchesWindowToo(): Unit \ Assert =
+    def testScaledAllAroundStretchesClipRectToo(): Unit \ Assert =
         // clip 矩形の規約: 一様 scale は clip 矩形 rect も追随する（位置は pivot 不動点・大きさは factor 倍）。
         Assert.assertEq(expected = (20.0, 40.0, 60.0, 80.0),
-            windowOf(Render.scaledAllAround(2.0, Vec2.zero(), clippedBox())))
+            clipRectOf(Render.scaledAllAround(2.0, Vec2.zero(), clippedBox())))
 
     @Test
     def testAtPlacesTopLeft(): Unit \ Assert =

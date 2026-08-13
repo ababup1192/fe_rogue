@@ -56,8 +56,8 @@ mod UiScroll {
     /// first = 最初に描く行(先頭から数えて)、shift = その行を上へずらす量(0 ≦ shift < rowH)、
     /// count = 部分行を含めて描く行数。呼び側は first から count 行を y - shift から並べる
     /// (ビューポートの外へはみ出す端は、クリップか覆いで隠す)。
-    pub def rowWindow(rowH: Float64, size: {contentPx = Float64, viewportPx = Float64},
-                      offsetPx: Float64): { first = Int32, shift = Float64, count = Int32 } =
+    pub def visibleRows(rowH: Float64, size: {contentPx = Float64, viewportPx = Float64},
+                        offsetPx: Float64): { first = Int32, shift = Float64, count = Int32 } =
         if (rowH <= 0.0)
             { first = 0, shift = 0.0, count = 0 }
         else {
@@ -80,7 +80,7 @@ mod UiScroll {
             Float64.max(0.0, Float64.min(maxOffsetPx(size), target))
         }
 
-    /// Float64 → Int32(切り捨て済みの値を想定。範囲外は 0 — rowWindow の入力規模では起きない)。
+    /// Float64 → Int32(切り捨て済みの値を想定。範囲外は 0 — visibleRows の入力規模では起きない)。
     def toInt(x: Float64): Int32 =
         Float64.tryToInt32(x) |> Option.getWithDefault(0)
 }

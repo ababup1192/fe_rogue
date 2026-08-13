@@ -217,7 +217,7 @@ mod ViewCar {
 
     /// ニトロ発動の衝撃。粒を撒くだけだと方向が乱数で選ばれて紙吹雪に散るので、
     /// 形は View 側で組む。線 1 本の輪郭にはしない — 細い楕円の線は照準の枠に見える。
-    /// 熱の面・厚みのある帯・外へ走る筋の 3 つを重ね、車の後ろへ押し出された形にする。
+    /// 熱の面・厚みのある輪・外へ走る筋の 3 つを重ね、車の後ろへ押し出された形にする。
     def shockRing(w: World.World, at: Vec2.Vec2, f: Float64,
                   since: Float64): List[Render.PlacedItem] =
         let p = Num.clamp01(since / shockLife());
@@ -231,7 +231,7 @@ mod ViewCar {
             // 路面を走る波なので車と残像より下。上に置くと車体に輪が巻き付いて、
             // 地面ではなく空中に立った枠に見える。
             let z = Proj.zOf(Proj.playerU()) - 2;
-            shockHeat(w, c, r, p, z) ::: shockBand(w, c, r, p, z) ::: shockRays(w, c, r, p, z)
+            shockHeat(w, c, r, p, z) ::: shockRingFill(w, c, r, p, z) ::: shockRays(w, c, r, p, z)
         }
 
     /// その向きがどれだけ「真後ろ（画面の下）」寄りか（0 = 前方, 1 = 真後ろ）。
@@ -249,11 +249,11 @@ mod ViewCar {
         let rr = r * k * shockSwell(a);
         { x = c#x + rr * Vec2.cos(a), y = c#y + rr * 0.42 * Vec2.sin(a) }
 
-    /// 衝撃の帯。輪を線ではなく面で持つ — 扇形の四角を 1 周ぶん並べ、外周ぎわ（midK）を
+    /// 衝撃の輪の中身。輪を線ではなく面で持つ — 扇形の四角を 1 周ぶん並べ、外周ぎわ（midK）を
     /// 一番濃く、そこから中心へも外へも薄れさせる。中心まで塗るのは、中を抜くと
     /// 「路面に貼られた枠」に見えるため。Add で重ねるので、濃い所ほど白熱する。
-    def shockBand(w: World.World, c: Vec2.Vec2, r: Float64, p: Float64,
-                  z: Int32): List[Render.PlacedItem] =
+    def shockRingFill(w: World.World, c: Vec2.Vec2, r: Float64, p: Float64,
+                      z: Int32): List[Render.PlacedItem] =
         let n = 26;
         let inK = 0.10 + 0.16 * p;
         let midK = 0.84 + 0.10 * p;

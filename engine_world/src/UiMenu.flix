@@ -120,7 +120,7 @@ mod UiMenu {
     /// 項目数が表示スロット数を超えるメニューで、選択 sel が見える範囲の先頭 offset を決める純関数。
     /// 選択行を範囲の中央寄りに保ちつつ [0, count - slots] にクランプする（先頭で 0 停止・末尾で下停止）。
     /// slots に収まるときは常に 0。項目一覧のスクロール範囲と同式。
-    pub def windowOffset(sel: {sel = Int32}, count: {count = Int32}, slots: {slots = Int32}): Int32 =
+    pub def scrollOffset(sel: {sel = Int32}, count: {count = Int32}, slots: {slots = Int32}): Int32 =
         if (slots#slots <= 0 or count#count <= slots#slots) 0
         else {
             let maxFirst = count#count - slots#slots;

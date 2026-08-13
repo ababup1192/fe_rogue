@@ -62,9 +62,9 @@ mod TestPersp {
             (near(clipped#camA#fwd, 0.08), near(clipped#camB#fwd, 1.0), near(clipped#t1, 1.0)))
 
     @Test
-    def testBandCornersKeepVerticalEdges(): Unit \ Assert =
+    def testStripCornersKeepVerticalEdges(): Unit \ Assert =
         // 同じ端点の上下は同じ x（壁の縦の辺が歪まない保証）。
-        let corners = Persp.bandCorners(proj(), { hTop = -0.5, hBot = 0.5 },
+        let corners = Persp.stripCorners(proj(), { hTop = -0.5, hBot = 0.5 },
             { fwd = 1.2, lat = -0.7 }, { fwd = 3.4, lat = 0.9 });
         Assert.assertEq(expected = (true, true),
             (near(corners#topA#x, corners#botA#x), near(corners#topB#x, corners#botB#x)))

@@ -108,7 +108,7 @@ mod TestTransition {
 
     // defaultZ は UI の layer の範囲（layer × 10000）より手前・HUD の範囲（ZBand.hudBase）より奥。
     @Test
-    def testDefaultZSitsBetweenUiAndDebugBands(): Unit \ Assert =
+    def testDefaultZSitsBetweenUiAndDebugRanges(): Unit \ Assert =
         Assert.assertEq(expected = 100000, Transition.defaultZ())
 
     // ── Progress（進行層）──

@@ -1,5 +1,5 @@
 // TestUiSlots — 固定スロットへの流し込み（余りの畳み方・meta の付け外し・あふれ検知）と、
-// UiMenu の applyItemLabels / windowOffset を具体値で固定する。
+// UiMenu の applyItemLabels / scrollOffset を具体値で固定する。
 // UiWorld は（既知のコンパイラ制約を避けるため）レコード直構築せず、必ず parse→spawnRoot で作る。
 mod TestUiSlots {
 
@@ -84,14 +84,14 @@ mod TestUiSlots {
         });
         Assert.assertEq(expected = Some((Some("○"), Some("・"))), got)
 
-    // ── UiMenu.windowOffset: スクロール範囲のクランプ ──
+    // ── UiMenu.scrollOffset: スクロール範囲のクランプ ──
 
     @Test
-    def testWindowOffsetPinsClampBehavior(): Unit \ Assert =
+    def testScrollOffsetPinsClampBehavior(): Unit \ Assert =
         // 7 項目を 3 行のビューポートで見るとき: 収まるなら 0 / 中央寄せ / 先頭 0 停止 / 末尾 4 停止。
         Assert.assertEq(expected = (0, 0, 2, 4),
-            (UiMenu.windowOffset(sel = 2, count = 3, slots = 3),
-             UiMenu.windowOffset(sel = 0, count = 7, slots = 3),
-             UiMenu.windowOffset(sel = 3, count = 7, slots = 3),
-             UiMenu.windowOffset(sel = 6, count = 7, slots = 3)))
+            (UiMenu.scrollOffset(sel = 2, count = 3, slots = 3),
+             UiMenu.scrollOffset(sel = 0, count = 7, slots = 3),
+             UiMenu.scrollOffset(sel = 3, count = 7, slots = 3),
+             UiMenu.scrollOffset(sel = 6, count = 7, slots = 3)))
 }

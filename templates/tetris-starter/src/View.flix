@@ -201,15 +201,15 @@ mod View {
                 let boardW = Int32.toFloat64(World.cols()) * cell();
                 w#clearRows |> List.flatMap(r -> {
                     // 行全幅に閃光の帯（白）を重ねる。
-                    let band = { at = { x = originX(), y = originY() + Int32.toFloat64(r) * cell() },
-                                 item = RawDraw.box({ x = boardW, y = cell() }, w#theme#flash, zClear())
-                                     |> Render.fade(fade) };
+                    let rowFlash = { at = { x = originX(), y = originY() + Int32.toFloat64(r) * cell() },
+                                     item = RawDraw.box({ x = boardW, y = cell() }, w#theme#flash, zClear())
+                                         |> Render.fade(fade) };
                     // さらに各セルの中心に、紙が白く抜ける柔らかい丸を重ねる（閉形式で安全な glowAt）。
                     // Add でなく Normal なのは画風の約束 — 紙は発光しない（白へ抜けるだけ）。
                     let glows = List.range(0, World.cols()) |> List.flatMap(c ->
                         Render.glowAt(cellCenter(c, r), cell() * 0.75, w#theme#flash,
                             { alpha = 0.75 * (1.0 - t), blend = DrawCmd.BlendMode.Normal }, zClear() + 1));
-                    band :: glows
+                    rowFlash :: glows
                 })
             case _ => Nil
         }

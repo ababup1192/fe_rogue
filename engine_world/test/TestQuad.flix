@@ -16,17 +16,17 @@ mod TestQuad {
     /// p0=(0,0) p1=(10,0) o1=-1 o2=1 → 頂点 (0,-1),(10,-1),(10,1),(0,1)。
     @Test
     def testStripHorizontal(): Unit \ Assert =
-        let band = Quad.strip({x = 0.0, y = 0.0}, {x = 10.0, y = 0.0}, -1.0, 1.0);
+        let strip = Quad.strip({x = 0.0, y = 0.0}, {x = 10.0, y = 0.0}, -1.0, 1.0);
         Assert.assertEq(
             expected = (0.0, -1.0) :: (10.0, -1.0) :: (10.0, 1.0) :: (0.0, 1.0) :: Nil,
-            List.map(p -> (p#x, p#y), band))
+            List.map(p -> (p#x, p#y), strip))
 
     /// 等幅性：向きに依らず帯の幅は |o2 - o1|。斜め (3,4) の 3-4-5 線分でも、
     /// 始端側の2頂点（先頭 = p0+n*o1、末尾 = p0+n*o2）の距離は 5.0 になる。
     @Test
     def testStripConstantWidthOnDiagonal(): Unit \ Assert =
-        let band = Quad.strip({x = 0.0, y = 0.0}, {x = 3.0, y = 4.0}, -2.0, 3.0);
-        let widthAtStart = forM (first <- List.head(band); last <- List.last(band))
+        let strip = Quad.strip({x = 0.0, y = 0.0}, {x = 3.0, y = 4.0}, -2.0, 3.0);
+        let widthAtStart = forM (first <- List.head(strip); last <- List.last(strip))
                            yield Vec2.distanceTo(first, last);
         Assert.assertEq(expected = Some(true),
             Option.map(w -> Float64.abs(w - 5.0) < 0.000001, widthAtStart))

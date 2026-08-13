@@ -205,9 +205,9 @@ mod DualGrid {
         let mid = Vec2.mul(Vec2.add(a, b), 0.5);
         if (pointIn(Vec2.add(mid, n), poly)) Vec2.neg(n) else n
 
-    /// 折れ線に沿う内側向きの帯(輪郭のフチ取りの stroke 相当)。小辺ごとに自分の法線で
+    /// 折れ線に沿う内側向きの stroke(輪郭のフチ取り)。小辺ごとに自分の法線で
     /// width ぶん内側へ押し込んだ四角形を作る。向きは refNormal(辺全体の外向き)にそろえる。
-    pub def bandQuads(points: List[Vec2.Vec2], refNormal: Vec2.Vec2,
+    pub def strokeQuads(points: List[Vec2.Vec2], refNormal: Vec2.Vec2,
                       width: Float64): List[List[Vec2.Vec2]] =
         List.zip(points, List.drop(1, points)) |> List.map(match (a, b) -> {
             let raw = Vec2.normalized({ x = b#y - a#y, y = 0.0 - (b#x - a#x) });

@@ -632,12 +632,12 @@ mod TestUiDoc {
     @Test
     def testBuildGallerySkeletonRects(): Unit \ Assert =
         // 帯 = Px 44/28 の box、行 = grow の box ×5。root は column + stretch。
-        let band = h -> "{\"name\":\"b${h}\",\"widget\":\"box\",\"color\":\"#000000\",\"height\":${h}}";
+        let boxRow = h -> "{\"name\":\"b${h}\",\"widget\":\"box\",\"color\":\"#000000\",\"height\":${h}}";
         let row  = i -> "{\"name\":\"r${i}\",\"widget\":\"box\",\"color\":\"#000000\",\"height\":\"grow\"}";
         let doc = "{\"root\": {\"name\":\"g\",\"dir\":\"column\",\"crossAlign\":\"stretch\",\"children\":["
-                + band(44) + ","
+                + boxRow(44) + ","
                 + row(1) + "," + row(2) + "," + row(3) + "," + row(4) + "," + row(5) + ","
-                + band(28) + "]}}";
+                + boxRow(28) + "]}}";
         let rh = (530.0 - 44.0 - 28.0) * (1.0 / 5.0);
         let y1 = 44.0;
         let y2 = y1 + rh;

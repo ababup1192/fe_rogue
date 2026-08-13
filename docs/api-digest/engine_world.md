@@ -408,16 +408,16 @@
   `pub def darkness(keys: List[Key], t: Float64): Float64`
 
 ## Depth — `engine_world/src/Depth.flix`
-- 足元の高さ（world の y）を重なり順に写す帯。
-  `pub type alias Band = { back = Int32, front = Int32, top = Float64, bottom = Float64 }`
-- マス目の盤から帯を作る近道。1 行ぶんに 1 段の zIndex を割り当てる。
-  `pub def forRows(spec: { back = Int32, originY = Float64, rows = Int32, tileSize = Float64 }): Band`
-- 足元の高さ footY に対する重なり順。帯の外に出た足元は端で止める
-  `pub def zAt(band: Band, footY: Float64): Int32`
+- 足元の高さ（world の y）を重なり順に写す z の範囲。
+  `pub type alias ZRange = { back = Int32, front = Int32, top = Float64, bottom = Float64 }`
+- マス目の盤から ZRange を作る近道。1 行に 1 つの zIndex を割り当てる。
+  `pub def forRows(spec: { back = Int32, originY = Float64, rows = Int32, tileSize = Float64 }): ZRange`
+- 足元の高さ footY に対する重なり順。範囲の外に出た足元は端で止める
+  `pub def zAt(range: ZRange, footY: Float64): Int32`
 - 組み上がった絵の集まりを、足元の高さで決まる層へ持ち上げる。
-  `pub def place(band: Band, footY: Float64, items: List[Render.PlacedItem]): List[Render.PlacedItem]`
+  `pub def place(range: ZRange, footY: Float64, items: List[Render.PlacedItem]): List[Render.PlacedItem]`
 - place の 1 個版。置き場所の下端（=足元）を自分で渡す。
-  `pub def placeOne(band: Band, footY: Float64, placed: Render.PlacedItem): Render.PlacedItem`
+  `pub def placeOne(range: ZRange, footY: Float64, placed: Render.PlacedItem): Render.PlacedItem`
 
 ## Dir4 — `engine_world/src/Dir4.flix`
 - 四方位のいずれか。斜めも「なし」も無い: 「方向があるかもしれない」を扱う呼び側は
@@ -518,8 +518,8 @@
   `pub def edgesOf(poly: List[Vec2.Vec2]): List[(Vec2.Vec2, Vec2.Vec2)]`
 - 辺 a→b の外向き(多角形の外を指す)単位法線。中点を少し押した点の内外で機械的に決める。
   `pub def outwardNormal(poly: List[Vec2.Vec2], a: Vec2.Vec2, b: Vec2.Vec2): Vec2.Vec2`
-- 折れ線に沿う内側向きの帯(輪郭のフチ取りの stroke 相当)。小辺ごとに自分の法線で
-  `pub def bandQuads(points: List[Vec2.Vec2], refNormal: Vec2.Vec2, width: Float64): List[List[Vec2.Vec2]]`
+- 折れ線に沿う内側向きの stroke(輪郭のフチ取り)。小辺ごとに自分の法線で
+  `pub def strokeQuads(points: List[Vec2.Vec2], refNormal: Vec2.Vec2, width: Float64): List[List[Vec2.Vec2]]`
 - 折れ線の最後の点を落とす(輪郭を辺ごとにつなぐとき、次の辺の先頭と重複するため)。
   `pub def initOf(points: List[Vec2.Vec2]): List[Vec2.Vec2]`
 - 多角形を軸平行矩形で切り取る(Sutherland–Hodgman)。完全に外なら空。
@@ -935,8 +935,8 @@
   `pub enum HeightProfile { case Flat case Lifted({ height = Float64, front = Color, shade = Color, clipToFloor = Bool }) }`
 - 質感1式。fill = 塗り、edge/edgeWidth = 輪郭フチ、forceStyle = 角の形の固定
   `pub type alias Spec = { fill = Color, edge = EdgeKind, edgeWidth = Float64, forceStyle = Option[DualGrid.CornerStyle], jitter = Float64, surface = List[SurfaceFx], blotch = Option[BlotchFx], mottle = Float64, height = HeightProfile }`
-- 解決済みタイル1枚に質感を着せる。多角形ごとに 前面 → 塗り → フチ帯 の順で並べる —
-  `pub def place(spec: Spec, tile: DualGrid.Tile, origin: Vec2.Vec2, z: { fill = Int32, band = Int32 }): List[Render.PlacedItem]`
+- 解決済みタイル1枚に質感を着せる。多角形ごとに 前面 → 塗り → フチの stroke の順で並べる —
+  `pub def place(spec: Spec, tile: DualGrid.Tile, origin: Vec2.Vec2, z: { fill = Int32, stroke = Int32 }): List[Render.PlacedItem]`
 - このセルの上下左右の隣も同じ液体か(岸の判定に使う)。true = 液体(そちらは陸地でない)。
   `pub type alias Edges = { n = Bool, s = Bool, e = Bool, w = Bool }`
 - 表面の時間演出をセル1個ぶん描く(状態なし — 同じ時刻なら同じ絵)。
@@ -1001,8 +1001,8 @@
   `pub def camLerp(a: CamPoint, b: CamPoint, t: Float64): CamPoint`
 - 近クリップ。fwd が near 未満の部分（カメラの真横〜後方）を切り落とし、
   `pub def clipSegment(near: Float64, camA: CamPoint, camB: CamPoint): Option[Clipped]`
-- h 帯（band#hTop..band#hBot）を画面の四隅へ。端点ごとに x を 1 回だけ求めるので
-  `pub def bandCorners(proj: Projection, band: { hTop = Float64, hBot = Float64 }, camA: CamPoint, camB: CamPoint): Corners`
+- 高さの区間（strip#hTop..strip#hBot）を画面の四隅へ。端点ごとに x を 1 回だけ求めるので
+  `pub def stripCorners(proj: Projection, strip: { hTop = Float64, hBot = Float64 }, camA: CamPoint, camB: CamPoint): Corners`
 - 逆投影: 画面の走査線 sy が、高さ h の水平面のどの奥行きに当たるか。
   `pub def depthAtY(proj: Projection, h: Float64, sy: Float64): Float64`
 - 距離霧の混合率。spec#base + d * spec#perDist を 0..spec#cap で止める
@@ -1256,8 +1256,8 @@
   `pub def shaderFill(spec: ShaderDoc.Spec, rect: Rect2.Rect2, t: Float64, zIndex: Int32): PlacedItem`
 - 宣言シェーダーで rect を塗り、maskPolys（ワールド座標の多角形の列）の内側だけに抜く面。
   `pub def shaderFillMasked(spec: ShaderDoc.Spec, rect: Rect2.Rect2, maskPolys: List[List[Vec2.Vec2]], t: Float64, zIndex: Int32): PlacedItem`
-- pass（レンダーターゲット）を、全面でない面（帯など）から等倍で読むための dy 場。
-  `pub def passBandDy(band: { top = Float64, height = Float64 }, passH: Float64, flipV: Bool): ShaderDoc.Field`
+- pass（レンダーターゲット）を、全面でない面（横長のストリップなど）から等倍で読むための dy 場。
+  `pub def passStripDy(strip: { top = Float64, height = Float64 }, passH: Float64, flipV: Bool): ShaderDoc.Field`
 - 頂点色つきの凸多角形。各頂点に色と濃さを与えると、面の中で滑らかに混ざる
   `pub def gradPolygon(vertices: List[DrawCmd.GradVertex], zIndex: Int32): Item`
 - 上下 2 色の縦グラデ矩形（左上原点・サイズ指定）。空や夕暮れの背景の定番形。
@@ -1516,7 +1516,7 @@
 
 ## Terrain — `engine_world/src/Terrain.flix`
 - 表の1行(Surfaces.Entry の一般形)。spec = Material.Spec なので、
-  `pub type alias Entry = { flagsAt = ((Int32, Int32)) -> DualGrid.Corner, cells = Set[(Int32, Int32)], spec = Material.Spec, z = { fill = Int32, band = Int32, surface = Int32 } }`
+  `pub type alias Entry = { flagsAt = ((Int32, Int32)) -> DualGrid.Corner, cells = Set[(Int32, Int32)], spec = Material.Spec, z = { fill = Int32, stroke = Int32, surface = Int32 } }`
 - rows から「この種のセル」の座標集合を拾う。
   `pub def cellsOf(isKind: Char -> Bool, rows: List[String]): Set[(Int32, Int32)]`
 - 角 (i, j) のまわり4セル(左上・右上・左下・右下)の埋まり方。
@@ -1530,7 +1530,7 @@
 - 面シェーダー等を地形の形どおりに抜くためのマスク多角形(ワールド座標)。
   `pub def maskPolys(tileSize: Float64, flagsAt: ((Int32, Int32)) -> DualGrid.Corner, corners: List[(Int32, Int32)]): List[List[Vec2.Vec2]]`
 - 教科書用の1発 API: Doc 由来の表 + rows → 置き場所つき描画(origin で盤ずらし)。
-  `pub def fromRows(opts: { tileSize = Float64, origin = Vec2.Vec2, styleMix = DualGrid.StyleMix }, table: List[{ char = Char, spec = Material.Spec, z = { fill = Int32, band = Int32, surface = Int32 } }], rows: List[String]): List[Render.PlacedItem]`
+  `pub def fromRows(opts: { tileSize = Float64, origin = Vec2.Vec2, styleMix = DualGrid.StyleMix }, table: List[{ char = Char, spec = Material.Spec, z = { fill = Int32, stroke = Int32, surface = Int32 } }], rows: List[String]): List[Render.PlacedItem]`
 
 ## TerrainDoc — `engine_world/src/TerrainDoc.flix`
 - 縁の色の決め方(Material.EdgeKind の色を文字列参照にした Doc 形)。
@@ -1784,7 +1784,7 @@
 - 選択 index を [0, count) へ収める純関数。項目 0 のときは 0。
   `pub def clampIndex(itemCount: Int32, sel: Int32): Int32`
 - 項目数が表示スロット数を超えるメニューで、選択 sel が見える範囲の先頭 offset を決める純関数。
-  `pub def windowOffset(sel: {sel = Int32}, count: {count = Int32}, slots: {slots = Int32}): Int32`
+  `pub def scrollOffset(sel: {sel = Int32}, count: {count = Int32}, slots: {slots = Int32}): Int32`
 - 選択カーソルを項目数 [0, count) の範囲へ収める（防御クランプ）。項目 0 のときは 0。
   `pub def clampSelection(listPath: String, ui: UiStore.UiWorld): UiStore.UiWorld`
 - カーソルを delta ぶん動かす（端で反対側へ回り込む）。count<=0 なら cursor のまま。
@@ -1827,7 +1827,7 @@
 - `pub def moreAbovePx(size: {contentPx = Float64, viewportPx = Float64}, offsetPx: Float64): Bool`
 - `pub def moreBelowPx(size: {contentPx = Float64, viewportPx = Float64}, offsetPx: Float64): Bool`
 - 行の高さが一定のリストをピクセル位置で覗くときの描画計画:
-  `pub def rowWindow(rowH: Float64, size: {contentPx = Float64, viewportPx = Float64}, offsetPx: Float64): { first = Int32, shift = Float64, count = Int32 }`
+  `pub def visibleRows(rowH: Float64, size: {contentPx = Float64, viewportPx = Float64}, offsetPx: Float64): { first = Int32, shift = Float64, count = Int32 }`
 - 行の格子に揃えて delta 行ぶん動かす(正 = 過去へ)。ピクセル位置が行の途中でも、
   `pub def stepRow(rowH: Float64, delta: Int32, size: {contentPx = Float64, viewportPx = Float64}, offsetPx: Float64): Float64`
 
@@ -2056,6 +2056,6 @@
 - 世界線を時間順（最古→最新）に平らにした列。GIF・タイムラインデバッガ・スクラブが
   `pub def toList(wl: Worldline[a]): List[a]`
 - 時間順に平らにした列の絶対添字区間 [fromIdx, toIdx) を取り出す（GIF・区間解析用）。
-  `pub def window(fromIdx: Int32, toIdx: Int32, wl: Worldline[a]): List[a]`
+  `pub def slice(fromIdx: Int32, toIdx: Int32, wl: Worldline[a]): List[a]`
 - 世界線上の絶対位置 n（0 = 最古、pastLength = 現在地、length-1 = 最新）へ移動する。
   `pub def scrubTo(n: Int32, wl: Worldline[a]): Worldline[a]`

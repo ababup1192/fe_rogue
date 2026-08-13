@@ -175,13 +175,13 @@ mod TestWorldline {
 
     /// window は絶対添字区間 [from, to) を取り出す。両端は clamp、from>=to は空。
     @Test
-    def testWindowSlicesChronologically(): Unit \ Assert =
+    def testSliceTakesRangeChronologically(): Unit \ Assert =
         let wl = scrubbed();
         Assert.assertEq(
             expected = (2 :: 3 :: Nil, 1 :: 2 :: 3 :: 4 :: Nil, Nil),
-            (Worldline.window(1, 3, wl),      // 途中の 2 要素
-             Worldline.window(-5, 99, wl),    // 両端 clamp = 全体
-             Worldline.window(3, 3, wl)))     // 空区間
+            (Worldline.slice(1, 3, wl),      // 途中の 2 要素
+             Worldline.slice(-5, 99, wl),    // 両端 clamp = 全体
+             Worldline.slice(3, 3, wl)))     // 空区間
 
     /// scrubTo は絶対位置へ移動する。現在地 idx=1 から 0（最古）・3（最新）・範囲外へ。
     /// current が対応する値になり、位置外は [0, length-1] に clamp。

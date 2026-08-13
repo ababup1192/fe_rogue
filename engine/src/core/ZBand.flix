@@ -5,7 +5,7 @@
 mod ZBand {
 
     /// 範囲 1 本の幅。範囲の中で使える z は 0..innerMax（幅 - 1）まで。
-    pub def bandWidth(): Int32 = 100_000_000
+    pub def width(): Int32 = 100_000_000
 
     /// 範囲の中で使える z の上限。はみ出した z は clamp する（wrap しない —
     /// 折り返すと「大きい z ほど手前」の約束が範囲の境目で裏返るため）。

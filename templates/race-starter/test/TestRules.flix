@@ -188,17 +188,17 @@ mod TestRules {
     // ══════════════════════════════════════════════════════
 
     @Test
-    def testSlipActiveOnlyBehindWithinBand(): Unit \ Assert =
+    def testSlipActiveOnlyBehindWithinRange(): Unit \ Assert =
         // 前走車の真後ろ（slipRange 内・横ずれ slipWidth/2 以内）で true、
         // 同じ距離でも横へ slipWidth ぶん外すと false。
         let d = RulesDoc.defaults();
         let w = racing();
         let me = World.playerDistOf(w);
-        let inBand = { rivals = rivalAt(me + d#slipRange * 0.5, w#playerOff, 0.0) :: Nil | w };
+        let inRange = { rivals = rivalAt(me + d#slipRange * 0.5, w#playerOff, 0.0) :: Nil | w };
         let offSide = { rivals = rivalAt(me + d#slipRange * 0.5, w#playerOff + d#slipWidth, 0.0) :: Nil | w };
         Assert.assertEq(
             expected = (true, false),
-            (World.slipActive(inBand), World.slipActive(offSide)))
+            (World.slipActive(inRange), World.slipActive(offSide)))
 
     // ══════════════════════════════════════════════════════
     // 柱 3: ニトロの発動と速度

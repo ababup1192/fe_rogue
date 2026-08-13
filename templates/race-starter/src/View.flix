@@ -183,7 +183,7 @@ mod View {
     /// 完走（最下位以外）。市松の帯で「ゴールを切った」ことを形でも祝う。
     def winOverlay(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         curtain(w#theme, 0.45)
-            :: checkerBand(w#theme)
+            :: checkerStrip(w#theme)
             :: centered(atlas, "FINISH!", 24.0, w#theme#finish, 124.0)
             :: centered(atlas, "RANK ${ordinalOf(w#rank)}", 12.0, w#theme#text, 166.0)
             :: centered(atlas, "SCORE ${Int32.toString(w#score)}", 12.0, w#theme#text, 186.0)
@@ -200,7 +200,7 @@ mod View {
             :: Nil
 
     /// ゴールの市松帯（Win の飾り）。白帯に市松の穴を開けるだけで「ゴール」と読める。
-    def checkerBand(theme: ThemeDoc.Doc): Render.PlacedItem =
+    def checkerStrip(theme: ThemeDoc.Doc): Render.PlacedItem =
         { at = { x = 0.0, y = 96.0 },
           item = RawDraw.box({ x = World.designW(), y = 12.0 }, theme#finish, zOverlay() + 1)
               |> Render.checker({ color = Color.darken(theme#sea, 0.4), alpha = 1.0, cell = 6.0 })

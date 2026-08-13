@@ -226,7 +226,7 @@ mod World {
                 case PropsDoc.Kind.Cone =>
                     let x = PropsDoc.laneOff(c#lane, half);
                     ({ lo = x - coneHalfW(), hi = x + coneHalfW(), kind = c#kind }: Blocker) :: Nil
-                case PropsDoc.Kind.Gate => gateBands(c#lane, half, w)
+                case PropsDoc.Kind.Gate => gateBlockers(c#lane, half, w)
                 case PropsDoc.Kind.Bar =>
                     let x = barOffAt(n, w);
                     let hw = w#props#barHalfWidth;
@@ -235,15 +235,15 @@ mod World {
 
     /// 土管ゲート = 隙間の左右に伸びる 2 本の帯。土管の外側の端を道の外まで伸ばすのは、
     /// 草へ迂回して隙間を通らずに済ませられないようにするため。
-    def gateBands(lane: Int32, half: Float64, w: World): List[Blocker] =
+    def gateBlockers(lane: Int32, half: Float64, w: World): List[Blocker] =
         let gap = Int32.max(1, w#props#gateGapLanes);
         let leftLane = lane - (gap - 1) / 2;
         let far = half + grassReach() + 40.0;
         let gapL = PropsDoc.laneEdge(leftLane, half);
         let gapR = PropsDoc.laneEdge(leftLane + gap, half);
-        let band = (lo, hi) -> if (hi <= lo) Nil
+        let span = (lo, hi) -> if (hi <= lo) Nil
             else ({ lo = lo, hi = hi, kind = PropsDoc.Kind.Gate }: Blocker) :: Nil;
-        band(0.0 - far, gapL) ::: band(gapR, far)
+        span(0.0 - far, gapL) ::: span(gapR, far)
 
     /// 振り子バーが通し段 n・時刻 t にいる横ずれ（px）。閉じた式 1 本で決まる —
     /// 乱数も、覚えておく状態も無い。段番号が位相を決めるので、同じ段のバーは
@@ -467,13 +467,13 @@ mod World {
     /// 帯 1 本につき 1 回数えるので、土管ゲートの狭い隙間を両側すれすれで抜けると 2 回貯まる —
     /// 危険に寄るほど強くなる仕組みの、一番おいしい所。
     def hitObstacles(n: Int32, w: World): World =
-        let bands = blockersAt(n, w);
+        let blockers = blockersAt(n, w);
         let carHalf = carHitW() / 2.0;
         let gapOf = b ->
             Float64.max(b#lo - (w#playerOff + carHalf), (w#playerOff - carHalf) - b#hi);
-        if (bands |> List.exists(b -> gapOf(b) <= 0.0)) startSpin(w)
+        if (blockers |> List.exists(b -> gapOf(b) <= 0.0)) startSpin(w)
         else {
-            let grazes = bands |> List.count(b -> gapOf(b) <= w#rules#nearMissDist);
+            let grazes = blockers |> List.count(b -> gapOf(b) <= w#rules#nearMissDist);
             if (grazes <= 0) w
             else
                 { nitro = Num.clamp01(

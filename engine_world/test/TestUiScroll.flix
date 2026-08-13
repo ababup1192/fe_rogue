@@ -69,16 +69,16 @@ mod TestUiScroll {
              UiScroll.scrollByPx(Float64.nan(), sizePx(), 5.0)))
 
     @Test
-    def testRowWindowOnGrid(): Unit \ Assert =
+    def testVisibleRowsOnGrid(): Unit \ Assert =
         // 格子上(offset 0 = 末尾)ではずれ無し・ちょうど 18 行。first は 12 行目から。
-        let w = UiScroll.rowWindow(11.0, sizePx(), 0.0);
+        let w = UiScroll.visibleRows(11.0, sizePx(), 0.0);
         Assert.assertEq(expected = (12, 0.0, 18), (w#first, w#shift, w#count))
 
     @Test
-    def testRowWindowMidRow(): Unit \ Assert =
+    def testVisibleRowsMidRow(): Unit \ Assert =
         // 行の途中(5px 遡り)では: top = 127px → 行 11 から、6px 上へずらして 19 行描く
         // (部分行が上下に 1 行ずつ増えるぶん)。
-        let w = UiScroll.rowWindow(11.0, sizePx(), 5.0);
+        let w = UiScroll.visibleRows(11.0, sizePx(), 5.0);
         Assert.assertEq(expected = (11, 6.0, 19), (w#first, w#shift, w#count))
 
     @Test

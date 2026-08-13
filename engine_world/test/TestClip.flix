@@ -73,7 +73,7 @@ mod TestClip {
             ds |> List.map(d -> (d#alpha, Option.map(rectTuple, d#clip))))
 
     @Test
-    def testAnnotateAabbShrinksToWindow(): Unit \ Assert =
+    def testAnnotateAabbShrinksToClipRect(): Unit \ Assert =
         // F8 の外形は clip 矩形と交差した見えている範囲になる(完全に clip 矩形の外なら負サイズ = ヒットしない)。
         let box = RawDraw.box({ x = 100.0, y = 100.0 }, { r = 1.0f32, g = 1.0f32, b = 1.0f32 }, 1);
         let placed: Render.PlacedItem =

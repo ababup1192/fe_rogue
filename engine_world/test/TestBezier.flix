@@ -12,9 +12,9 @@ mod TestBezier {
     def testStrokeAndPolylinePieceCounts(): Unit \ Assert =
         // n+1 点の背骨 → n 枚のクアッド + n-1 個の継ぎ目円盤。2 点の polyline は 1 枚だけ。
         let spine = Bezier.quadratic({x = 0.0, y = 0.0}, {x = 5.0, y = 0.0}, {x = 10.0, y = 0.0}, 8);
-        let band = Bezier.stroke({ spine = spine, color = white(), z = 1 }, _ -> 4.0);
+        let stroke = Bezier.stroke({ spine = spine, color = white(), z = 1 }, _ -> 4.0);
         let one = Bezier.polyline({x = 0.0, y = 0.0} :: {x = 10.0, y = 0.0} :: Nil, width = 2.0, white(), 1);
-        Assert.assertEq(expected = (15, 1), (List.length(band), List.length(one)))
+        Assert.assertEq(expected = (15, 1), (List.length(stroke), List.length(one)))
 
     @Test
     def testFillIsOnePieceEvenWhenConcave(): Unit \ Assert =

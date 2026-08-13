@@ -833,7 +833,7 @@
 
 ## ZBand — `engine/src/core/ZBand.flix`
 - 範囲 1 本の幅。範囲の中で使える z は 0..innerMax（幅 - 1）まで。
-  `pub def bandWidth(): Int32`
+  `pub def width(): Int32`
 - 範囲の中で使える z の上限。はみ出した z は clamp する（wrap しない —
   `pub def innerMax(): Int32`
 - HUD の範囲の底。withHudView の絵は composeScene がここへ持ち上げる。

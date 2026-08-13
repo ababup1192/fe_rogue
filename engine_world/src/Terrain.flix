@@ -11,12 +11,12 @@ mod Terrain {
     /// 責務の線引き: spec は TerrainDoc.specOf が EntryDoc+resolver から生成する
     /// (色と height の解決は TerrainDoc の責務)。Terrain は spec を消費するだけ。
     /// flagsAt = 角の埋まり方の読み方、cells = このセル種の座標集合(表面演出と岸の判定用)、
-    /// z = 塗り・フチ帯・表面(粒とむら)の重なり順。
+    /// z = 塗り・フチの stroke・表面(粒とむら)の重なり順。
     pub type alias Entry = {
         flagsAt = ((Int32, Int32)) -> DualGrid.Corner,
         cells   = Set[(Int32, Int32)],
         spec    = Material.Spec,
-        z       = { fill = Int32, band = Int32, surface = Int32 }
+        z       = { fill = Int32, stroke = Int32, surface = Int32 }
     }
 
     // ════════════════════════════════════════════════════════
@@ -54,7 +54,7 @@ mod Terrain {
     // ════════════════════════════════════════════════════════
 
     /// 表の全エントリ×渡された角の、静止した見た目。
-    /// z の不変式(呼び側契約): table の z は「ベース床の z < fill/band/surface < 前景(扉等)の z」
+    /// z の不変式(呼び側契約): table の z は「ベース床の z < fill/stroke/surface < 前景(扉等)の z」
     /// の秩序を呼び側が保証する。この関数は z を検証しない(fail-open)。
     /// 静的なむら(blotch)は塗り・縁の後に重ねる — 同じ z の重なりは並び順が前後を決めるため、
     /// 表の順も見た目の一部。
@@ -105,7 +105,7 @@ mod Terrain {
     pub def fromRows(opts: { tileSize = Float64, origin = Vec2.Vec2,
                              styleMix = DualGrid.StyleMix },
                      table: List[{ char = Char, spec = Material.Spec,
-                                   z = { fill = Int32, band = Int32, surface = Int32 } }],
+                                   z = { fill = Int32, stroke = Int32, surface = Int32 } }],
                      rows: List[String]): List[Render.PlacedItem] =
         let rowCount = List.length(rows);
         let cols = rows |> List.map(String.length) |> List.foldLeft(Int32.max, 0);
@@ -134,7 +134,7 @@ mod Terrain {
             let tile = DualGrid.resolve({ tile = opts#tileSize, corner = corner, style = style,
                                           jitter = entry#spec#jitter }, flags);
             Material.place(entry#spec, tile, DualGrid.originOf(opts#tileSize, corner),
-                           { fill = entry#z#fill, band = entry#z#band })
+                           { fill = entry#z#fill, stroke = entry#z#stroke })
         }
 
     /// 1エントリぶんの静的なむら(セル単位。角単位の塗り・縁とは粒度が違う)。

@@ -139,7 +139,7 @@
 | マスごとの「いま」を持つ（耕した・濡れた・置いた。セーブに乗る側） | TileState |
 | 画面を素材にする・複数光源・残像を作る（レンダーターゲットに描いてテクスチャとして貼り戻す） | Pass（`App.withPasses`）。ターゲットは design 解像度・宣言順に本編より先に描かれ、`Render.sprite(name, z)` で貼れる |
 | Pass を描き出し（HeadlessRender の PassSpec）へ詰め替える（Shader 面の外し忘れを防ぐ） | Render.passSpecOf |
-| 全面でない面（帯など）から pass を等倍・鏡像で読む（陽炎の帯・水面の映り込み） | Render.passBandDy（Shift の dy 場を作る） |
+| 全面でない面（横長のストリップなど）から pass を等倍・鏡像で読む（陽炎・水面の映り込み） | Render.passStripDy（Shift の dy 場を作る） |
 
 ## 症状 → モジュール（重い・fps が落ちる）
 

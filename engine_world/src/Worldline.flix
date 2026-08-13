@@ -122,7 +122,7 @@ mod Worldline {
     /// 時間順に平らにした列の絶対添字区間 [fromIdx, toIdx) を取り出す（GIF・区間解析用）。
     /// 0 が最古・length-1 が最新の座標系（`scrubTo` と同じ）。範囲は列の両端へ clamp し、
     /// fromIdx >= toIdx なら空。cap で切り詰められた最古より前は列に無い（遡れない）。
-    pub def window(fromIdx: Int32, toIdx: Int32, wl: Worldline[a]): List[a] =
+    pub def slice(fromIdx: Int32, toIdx: Int32, wl: Worldline[a]): List[a] =
         let flat = toList(wl);
         let lo = Int32.max(0, fromIdx);
         let hi = Int32.min(List.length(flat), toIdx);

@@ -13,7 +13,7 @@
 //   clipSegment(near, camA, camB) で近クリップし、
 //   face と Clipped を { face = ..., clip = ... } の対で持ち、視程で filter して、
 //   Painter.zOrdered(p -> p#clip#dist, zBase, zStride, ...) で zIndex を振り、
-//   bandCorners で四隅を求めて遠→近に描く。
+//   stripCorners で四隅を求めて遠→近に描く。
 mod Persp {
 
     /// カメラの置き方。pos = 位置（世界座標）、yaw = 向き（ラジアン。
@@ -109,19 +109,19 @@ mod Persp {
             Some({ camA = clippedA, camB = clippedB, t0 = t0, t1 = t1, dist = midDist })
         }
 
-    /// h 帯（band#hTop..band#hBot）を画面の四隅へ。端点ごとに x を 1 回だけ求めるので
+    /// 高さの区間（strip#hTop..strip#hBot）を画面の四隅へ。端点ごとに x を 1 回だけ求めるので
     /// topA.x == botA.x（topB.x == botB.x も同様）が式の形で保証される。
-    pub def bandCorners(proj: Projection, band: { hTop = Float64, hBot = Float64 },
-                        camA: CamPoint, camB: CamPoint): Corners =
+    pub def stripCorners(proj: Projection, strip: { hTop = Float64, hBot = Float64 },
+                          camA: CamPoint, camB: CamPoint): Corners =
         let xA = screenX(proj, camA);
         let xB = screenX(proj, camB);
-        { topA = { x = xA, y = screenY(proj, band#hTop, camA) },
-          botA = { x = xA, y = screenY(proj, band#hBot, camA) },
-          topB = { x = xB, y = screenY(proj, band#hTop, camB) },
-          botB = { x = xB, y = screenY(proj, band#hBot, camB) } }
+        { topA = { x = xA, y = screenY(proj, strip#hTop, camA) },
+          botA = { x = xA, y = screenY(proj, strip#hBot, camA) },
+          topB = { x = xB, y = screenY(proj, strip#hTop, camB) },
+          botB = { x = xB, y = screenY(proj, strip#hBot, camB) } }
 
     /// 逆投影: 画面の走査線 sy が、高さ h の水平面のどの奥行きに当たるか。
-    /// 市松の床・路面の帯（mode-7 風）の材料。sy が消失点の高さ（分母 0）に
+    /// 市松の床・路面のストリップ（mode-7 風）の材料。sy が消失点の高さ（分母 0）に
     /// 近づくほど無限遠へ発散するので、呼び側は地平線より外の行を渡さない。
     pub def depthAtY(proj: Projection, h: Float64, sy: Float64): Float64 =
         proj#fy * h / (sy - proj#center#y)

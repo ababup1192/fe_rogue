@@ -203,31 +203,31 @@ mod Proj {
     def hazeSpan(): Float64 = 16.0
 
     /// 立ち物（ヤシ・コーン・アイテム・車・煙）の z。近い（u が小さい）ほど手前。
-    /// 帯 1 本を z 4 刻みに割るので、同じ帯の中の前後（u0+0.25 と u0+0.75）も正しく重なる。
+    /// セグメント 1 本を z 4 刻みに割るので、同じセグメントの中の前後（u0+0.25 と u0+0.75）も正しく重なる。
     pub def zOf(u: Float64): Int32 =
         Int32.max(20, Int32.min(76, 76 - Num.floorInt(u * 4.0)))
 
-    /// 帯 1 本ぶんの割り当て。
-    ///   n    … その帯が写すコースの通し段（周回しても増え続ける）。
-    ///   u0   … その帯の手前端の u（先頭は -1.0 近くまで下がり、画面下へはみ出す帯になる）。
-    ///   du   … 何段ぶんの厚みか（帯を細かく割ったときは 1 未満になる）。
-    ///   head … その段の先頭の切れ端か（段に 1 回だけ置く物の目印）。
-    pub type alias Band = { n = Int32, u0 = Float64, du = Float64, head = Bool }
+    /// セグメント 1 本ぶんの割り当て。
+    ///   n    … そのセグメントが写すコースの通し行（周回しても増え続ける）。
+    ///   u0   … そのセグメントの手前端の u（先頭は -1.0 近くまで下がり、画面下へはみ出す）。
+    ///   du   … 何行ぶんの厚みか（セグメントを細かく割ったときは 1 未満になる）。
+    ///   head … その行の先頭の切れ端か（行に 1 回だけ置く物の目印）。
+    pub type alias Segment = { n = Int32, u0 = Float64, du = Float64, head = Bool }
 
-    /// 画面に見えている帯の並び（奥から手前へ rowsVisible 本）。
-    /// 帯ループの段割りをここに 1 本化する — ViewRoad と ViewScene（ヤシ）が同じ段を見る。
-    /// 奥から積むのは、坂があると帯どうしが画面の上で重なるため —— 後から積んだ手前の帯が
-    /// 奥の帯を隠して、丘の向こうの道が見えなくなる（平らな道では並び順で絵は変わらない）。
-    pub def bands(w: World.World): List[Band] =
+    /// 画面に見えているセグメントの並び（奥から手前へ rowsVisible 本）。
+    /// セグメントの行割りをここに 1 本化する — ViewRoad と ViewScene（ヤシ）が同じ行を見る。
+    /// 奥から積むのは、坂があるとセグメントどうしが画面の上で重なるため —— 後から積んだ手前が
+    /// 奥を隠して、丘の向こうの道が見えなくなる（平らな道では並び順で絵は変わらない）。
+    pub def segments(w: World.World): List[Segment] =
         let rowF = w#distance / World.rowPitch();
         let base = Num.floorInt(rowF);
         let frac = rowF - Int32.toFloat64(base);
         List.range(0, rowsVisible()) |> List.map(i -> {
             let seg = rowsVisible() - 1 - i;
-            ({ n = base + seg, u0 = Int32.toFloat64(seg) - frac, du = 1.0, head = true }: Band)
+            ({ n = base + seg, u0 = Int32.toFloat64(seg) - frac, du = 1.0, head = true }: Segment)
         })
 
-    /// 帯ループの本数。34 本まで積むと最奥の帯の残り高さが 0.5px を切り、
+    /// セグメントの本数。34 本まで積むと最奥のセグメントの残り高さが 0.5px を切り、
     /// 道が地平線に触れて閉じる。ここを減らすと道が宙で途切れて草が覗く。
     pub def rowsVisible(): Int32 = 34
 }

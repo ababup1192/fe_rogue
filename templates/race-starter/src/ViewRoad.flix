@@ -12,43 +12,43 @@ mod ViewRoad {
     def zTrim(): Int32 = 9
     def zSkid(): Int32 = 10
 
-    /// 道まわり全部。帯を手前から地平線まで積む + タイヤ痕。
+    /// 道まわり全部。セグメントを手前から地平線まで積む + タイヤ痕。
     pub def draw(cam: Proj.Cam, w: World.World): List[Render.PlacedItem] =
-        (Proj.bands(w) |> List.flatMap(b -> band(cam, w, b))) ::: skids(cam, w)
+        (Proj.segments(w) |> List.flatMap(b -> segment(cam, w, b))) ::: skids(cam, w)
 
-    /// 帯 1 本 = 全幅の地面 + 路面の台形・縁石・白線・スタートライン + 立ち物。
-    /// 道が画面の外まで曲がっていった帯は地面だけにする — 草の縦筋も道の端から引くので、
-    /// 道ごと画面の外なら筋も見えない（見えない物を積むと遠くの帯ほど無駄が増える）。
-    def band(cam: Proj.Cam, w: World.World, b: Proj.Band): List[Render.PlacedItem] =
+    /// セグメント 1 本 = 全幅の地面 + 路面の台形・縁石・白線・スタートライン + 立ち物。
+    /// 道が画面の外まで曲がっていったセグメントは地面だけにする — 草の縦筋も道の端から引くので、
+    /// 道ごと画面の外なら筋も見えない（見えない物を積むと遠くのセグメントほど無駄が増える）。
+    def segment(cam: Proj.Cam, w: World.World, b: Proj.Segment): List[Render.PlacedItem] =
         let e = stripOf(w, b#n);
-        // 帯の手前辺と奥辺は 1 回だけ引いて全部の層で使い回す（地面・轍・縁石は
+        // セグメントの手前辺と奥辺は 1 回だけ引いて全部の層で使い回す（地面・轍・縁石は
         // どれも同じ 2 本の辺の上に点を並べるだけなので、層ごとに引き直す意味がない）。
         let ed = edgesOf(cam, b);
         if (not onScreen(ed, e)) groundStrip(w, ed, b)
         else
             groundStrip(w, ed, b)
                 ::: (partsOf(b, e) |> List.flatMap(p -> {
-                        let pd = edgesOf(cam, p#band);
-                        furrows(w, pd, p#band, p#strip)
-                            ::: roadFace(cam, w, pd, p#band, p#strip)
-                            ::: kerbs(w, pd, p#band, p#strip)
+                        let pd = edgesOf(cam, p#seg);
+                        furrows(w, pd, p#seg, p#strip)
+                            ::: roadFace(cam, w, pd, p#seg, p#strip)
+                            ::: kerbs(w, pd, p#seg, p#strip)
                     }))
                 ::: laneLine(cam, w, b, e)
                 ::: startLine(cam, w, b, e)
                 ::: rails(cam, w, b, e)
                 ::: props(cam, w, b)
 
-    /// 帯を細かく割って積む一番奥の u。ここより手前だけ割る。
+    /// セグメントを細かく割って積む一番奥の u。ここより手前だけ割る。
     def splitFar(): Float64 = 4.0
 
-    /// 手前の帯を何枚に割るか。急カーブでは 1 段の中でも道が大きく折れるので、
+    /// 手前のセグメントを何枚に割るか。急カーブでは 1 行の中でも道が大きく折れるので、
     /// 1 枚の台形で結ぶと斜辺が定規で引いた直線に見える（道が折れ線になる）。
     def splitInto(): Int32 = 3
 
-    /// 帯を割った切れ端の並び（奥から手前へ）。roadFace / kerbs / furrows はどれも辺を
+    /// セグメントを割った切れ端の並び（奥から手前へ）。roadFace / kerbs / furrows はどれも辺を
     /// edgeAtT から引くので、切れ端の辺を渡すだけで全部の層が一緒に割れる。
-    /// 並びが奥からなのは帯の並び（Proj.bands）と同じ理由 — 坂では切れ端どうしも重なる。
-    def partsOf(b: Proj.Band, e: Strip): List[{ band = Proj.Band, strip = Strip }] =
+    /// 並びが奥からなのはセグメントの並び（Proj.segments）と同じ理由 — 坂では切れ端どうしも重なる。
+    def partsOf(b: Proj.Segment, e: Strip): List[{ seg = Proj.Segment, strip = Strip }] =
         let n = if (b#u0 < splitFar()) splitInto() else 1;
         let step = b#du / Int32.toFloat64(n);
         List.range(0, n) |> List.map(k -> {
@@ -57,18 +57,18 @@ mod ViewRoad {
             let t1 = Int32.toFloat64(i + 1) / Int32.toFloat64(n);
             let a = edgeAtT(e, t0);
             let c = edgeAtT(e, t1);
-            { band = ({ n = b#n, u0 = b#u0 + step * Int32.toFloat64(i), du = step, head = i == 0 }: Proj.Band),
+            { seg = ({ n = b#n, u0 = b#u0 + step * Int32.toFloat64(i), du = step, head = i == 0 }: Proj.Segment),
               strip = { xl0 = a#xl, xr0 = a#xr, xl1 = c#xl, xr1 = c#xr } }
         })
 
-    /// 帯 1 本ぶんの手前辺と奥辺。
+    /// セグメント 1 本ぶんの手前辺と奥辺。
     pub type alias Edges = { near = Proj.Edge, far = Proj.Edge }
 
-    /// 帯の手前辺（u0）と奥辺（u0+du）を引く。
-    def edgesOf(cam: Proj.Cam, b: Proj.Band): Edges =
+    /// セグメントの手前辺（u0）と奥辺（u0+du）を引く。
+    def edgesOf(cam: Proj.Cam, b: Proj.Segment): Edges =
         { near = Proj.edgeOf(cam, b#u0), far = Proj.edgeOf(cam, b#u0 + b#du) }
 
-    /// その帯の道が画面に掛かっているか。手前辺と奥辺の左右 4 点で見る。
+    /// そのセグメントの道が画面に掛かっているか。手前辺と奥辺の左右 4 点で見る。
     def onScreen(ed: Edges, e: Strip): Bool =
         let xs = Proj.edgeX(ed#near, e#xl0) :: Proj.edgeX(ed#near, e#xr0)
               :: Proj.edgeX(ed#far, e#xl1) :: Proj.edgeX(ed#far, e#xr1) :: Nil;
@@ -145,7 +145,7 @@ mod ViewRoad {
     /// 帯の全幅を草色で敷く。手前辺と奥辺で別の色を渡した 1 枚の面にするので、
     /// 明暗の波も霞みも帯をまたいで滑らかに繋がる。路面はこの上に重なるので、
     /// 道から外れた所は草のまま残る（fail-open の土台 — 路面の無い行でも画面に穴が開かない）。
-    def groundStrip(w: World.World, ed: Edges, b: Proj.Band): List[Render.PlacedItem] =
+    def groundStrip(w: World.World, ed: Edges, b: Proj.Segment): List[Render.PlacedItem] =
         let u1 = b#u0 + b#du;
         let yTop = ed#far#y;
         let yBot = ed#near#y + 0.6;
@@ -186,7 +186,7 @@ mod ViewRoad {
     /// 草地の縦の筋。道の左右端から一定距離だけ外へ離した細い台形を、帯の手前辺と奥辺で
     /// 結ぶ。道と同じ折れ込みで曲がるので、カーブで景色が回って見える
     /// （横の帯だけだと、曲がっているのに景色は真っ直ぐ迫るように読めてしまう）。
-    def furrows(w: World.World, ed: Edges, b: Proj.Band,
+    def furrows(w: World.World, ed: Edges, b: Proj.Segment,
                 e: Strip): List[Render.PlacedItem] =
         if (b#u0 > furrowFar()) Nil
         else {
@@ -224,14 +224,14 @@ mod ViewRoad {
 
     /// 路面の台形 1 枚 + アスファルトの質感（轍・中央の色抜け・端の汚れ・継ぎ目）。
     /// 下地は行の偶奇の縞、手前辺と奥辺で霞みを変えた連続階調にする。
-    def roadFace(cam: Proj.Cam, w: World.World, ed: Edges, b: Proj.Band,
+    def roadFace(cam: Proj.Cam, w: World.World, ed: Edges, b: Proj.Segment,
                  e: Strip): List[Render.PlacedItem] =
-        let bandCol = if (even(b#n)) w#theme#road else ThemeDoc.roadLight(w#theme);
+        let segColor = if (even(b#n)) w#theme#road else ThemeDoc.roadLight(w#theme);
         let u1 = b#u0 + b#du;
         let base = gradQuad(ed, e,
             { t0 = 0.0, t1 = 1.0,
-              near = hazed(w, b#u0, bandCol), far = hazed(w, u1, bandCol) });
-        base :: (wearLanes(w, ed, b, e, bandCol) ::: seam(cam, w, ed, b, e, bandCol))
+              near = hazed(w, b#u0, segColor), far = hazed(w, u1, segColor) });
+        base :: (wearLanes(w, ed, b, e, segColor) ::: seam(cam, w, ed, b, e, segColor))
 
     /// 路面を縦に切る帯。t は道幅の比率（0 = 左端, 1 = 右端）、tint は下地からの寄せ幅
     /// （負 = 暗い汚れ・轍、正 = 日に灼けて色が抜けた所）。数はわざと少なくして、
@@ -249,14 +249,14 @@ mod ViewRoad {
     def wearFar(): Float64 = 17.0
 
     /// 轍・中央の色抜け・端の汚れ。道幅の比率で切るので、カーブでも道と一緒に折れて曲がる。
-    def wearLanes(w: World.World, ed: Edges, b: Proj.Band,
-                  e: Strip, bandCol: Color): List[Render.PlacedItem] =
+    def wearLanes(w: World.World, ed: Edges, b: Proj.Segment,
+                  e: Strip, segColor: Color): List[Render.PlacedItem] =
         if (b#u0 > wearFar()) Nil
         else {
             let u1 = b#u0 + b#du;
             wearLaneSpecs() |> List.map(s -> {
-                let c = if (s#tint < 0.0) Color.darken(bandCol, -s#tint)
-                        else Color.mix(bandCol, w#theme#lane, s#tint);
+                let c = if (s#tint < 0.0) Color.darken(segColor, -s#tint)
+                        else Color.mix(segColor, w#theme#lane, s#tint);
                 gradQuad(ed, e,
                     { t0 = s#t0, t1 = s#t1,
                       near = hazed(w, b#u0, c), far = hazed(w, u1, c) })
@@ -271,14 +271,14 @@ mod ViewRoad {
         else 8
 
     /// 舗装の継ぎ目。帯の手前端に横 1 本の暗い筋を渡す。
-    def seam(cam: Proj.Cam, w: World.World, ed: Edges, b: Proj.Band,
-             e: Strip, bandCol: Color): List[Render.PlacedItem] =
+    def seam(cam: Proj.Cam, w: World.World, ed: Edges, b: Proj.Segment,
+             e: Strip, segColor: Color): List[Render.PlacedItem] =
         if (not b#head or b#u0 > wearFar() or Int32.modulo(b#n, seamPeriodAt(b#u0)) != 0) Nil
         else {
             let u1 = b#u0 + 0.16;
             let g = edgeAtT(e, 0.16);
             let sub = { xl0 = e#xl0, xr0 = e#xr0, xl1 = g#xl, xr1 = g#xr };
-            let c = Color.darken(bandCol, 0.22);
+            let c = Color.darken(segColor, 0.22);
             let sd = { near = ed#near, far = Proj.edgeOf(cam, u1) };
             gradQuad(sd, sub,
                 { t0 = 0.0, t1 = 1.0,
@@ -312,7 +312,7 @@ mod ViewRoad {
 
     /// 縁石。路面の左右のすぐ外に幅 6px（×縮み）の帯を貼る。赤と白が交互に並ぶので、
     /// 道の縁がカーブでどう曲がるかが一番よく見える場所になる。
-    def kerbs(w: World.World, ed: Edges, b: Proj.Band,
+    def kerbs(w: World.World, ed: Edges, b: Proj.Segment,
               e: Strip): List[Render.PlacedItem] =
         let base = if (even(b#n / kerbPeriodAt(b#u0))) w#theme#kerb else w#theme#finish;
         let color = Color.mix(base, ThemeDoc.hazeTo(w#theme), fadeOf(b#u0));
@@ -333,7 +333,7 @@ mod ViewRoad {
 
     /// 中央の白線。偶数行だけ帯の 0.2..0.8 区間に引く = 破線。実線にしないのは、
     /// 流れる切れ目が前進の速さをそのまま伝えるから（速度計より雄弁）。
-    def laneLine(cam: Proj.Cam, w: World.World, b: Proj.Band,
+    def laneLine(cam: Proj.Cam, w: World.World, b: Proj.Segment,
                  e: Strip): List[Render.PlacedItem] =
         if (not even(b#n)) Nil
         else {
@@ -358,7 +358,7 @@ mod ViewRoad {
     /// （checker は Item 修飾なので箱に掛けるのが素直 — 幅 0.4 行の帯なら歪みは見えない）。
     /// タイトルでは出さない。まだ走り出していないのに足元にゴール板があると、
     /// 「もう 1 周終わった所」と読めてしまう。
-    def startLine(cam: Proj.Cam, w: World.World, b: Proj.Band,
+    def startLine(cam: Proj.Cam, w: World.World, b: Proj.Segment,
                   e: Strip): List[Render.PlacedItem] =
         if (w#phase == World.Phase.Title) Nil
         else if (Int32.modulo(b#n, CourseDoc.rowCount(w#course)) != 0) Nil
@@ -385,7 +385,7 @@ mod ViewRoad {
     /// ガードレール。段の左右どちらに立つかは区間の rail（World.railSideAt）が決める。
     /// 帯の手前辺と奥辺を結ぶ 2 枚の面（明るい上側 + 影の下側）で 1 本の板にし、
     /// 段の頭には支柱を立てる。壁は道と同じ折れで曲がるので、コーナーの外周がなぞれる。
-    def rails(cam: Proj.Cam, w: World.World, b: Proj.Band, e: Strip): List[Render.PlacedItem] =
+    def rails(cam: Proj.Cam, w: World.World, b: Proj.Segment, e: Strip): List[Render.PlacedItem] =
         let side = World.railSideAt(b#n, w);
         if (side == 0.0 or b#u0 > 20.0) Nil
         else {
@@ -421,12 +421,12 @@ mod ViewRoad {
 
     /// この帯の立ち物。置き場所を帯の真ん中（u0+0.5）に投影して置く。
     /// 当たりの帯（World.blockersAt）から絵を引くので、見えている物と当たる物がずれない。
-    def props(cam: Proj.Cam, w: World.World, b: Proj.Band): List[Render.PlacedItem] =
+    def props(cam: Proj.Cam, w: World.World, b: Proj.Segment): List[Render.PlacedItem] =
         itemsOf(cam, w, b) ::: blockersOf(cam, w, b)
 
     /// アイテム箱。取った行（taken は通し行番号の集合）は描かない — 消えることが取得の合図。
     /// ふわふわ浮かせ + 金の光で「取って良い物」だと遠目にも判るようにする。
-    def itemsOf(cam: Proj.Cam, w: World.World, b: Proj.Band): List[Render.PlacedItem] =
+    def itemsOf(cam: Proj.Cam, w: World.World, b: Proj.Segment): List[Render.PlacedItem] =
         if (Set.memberOf(b#n, w#taken)) Nil
         else World.itemOffsAt(b#n, w) |> List.flatMap(propOff -> {
             let uc = b#u0 + 0.5;
@@ -447,7 +447,7 @@ mod ViewRoad {
         })
 
     /// 障害物 3 種。どれも「当たりの帯」1 つが絵 1 つに対応する。
-    def blockersOf(cam: Proj.Cam, w: World.World, b: Proj.Band): List[Render.PlacedItem] =
+    def blockersOf(cam: Proj.Cam, w: World.World, b: Proj.Segment): List[Render.PlacedItem] =
         let uc = b#u0 + 0.5;
         // 通り過ぎた段（uc < 0.15）は描かない。真横〜背後の帯は画面いっぱいの板になるだけで、
         // 何が起きているかを伝えない。

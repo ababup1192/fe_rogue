@@ -212,7 +212,7 @@ mod TestApp {
 
     // 帯からはみ出す hud の z は clamp（wrap しない）: 負は帯の底・過大は帯の上限。
     @Test
-    def testComposeSceneClampsHudZIntoBand(): Unit \ Assert =
+    def testComposeSceneClampsHudZIntoRange(): Unit \ Assert =
         let composed = App.composeScene(None, 1.0, sceneDesign(),
             { world = Nil, hud = boxAtZ(-5) :: boxAtZ(2_000_000_000) :: Nil });
         Assert.assertEq(expected = (Some(1_000_000_000), Some(1_099_999_999)),

@@ -218,11 +218,11 @@ mod Material {
         height = HeightProfile
     }
 
-    /// 解決済みタイル1枚に質感を着せる。多角形ごとに 前面 → 塗り → フチ帯 の順で並べる —
+    /// 解決済みタイル1枚に質感を着せる。多角形ごとに 前面 → 塗り → フチの stroke の順で並べる —
     /// 同じ z の重なりは並び順が前後を決めるため、この順は見た目の一部。
     /// 天面は輪郭を丸ごと (0,-h) 平行移動 — 頂点ごとに持ち上げ量を変えると坂に見えるため。
     pub def place(spec: Spec, tile: DualGrid.Tile, origin: Vec2.Vec2,
-                  z: { fill = Int32, band = Int32 }): List[Render.PlacedItem] =
+                  z: { fill = Int32, stroke = Int32 }): List[Render.PlacedItem] =
         let t = tile#size;
         let flags = flagsOfCase(tile#caseIndex);
         let (h, cut) = match spec#height {
@@ -250,15 +250,15 @@ mod Material {
                                 |> List.map(placeAt(l#front, z#fill)),
                             cut(a :: b :: { x = b#x, y = b#y - 1.6 } ::
                                 { x = a#x, y = a#y - 1.6 } :: Nil)
-                                |> List.map(placeAt(l#shade, z#band)))))
+                                |> List.map(placeAt(l#shade, z#stroke)))))
             };
             let fills = cut(liftPts(poly)) |> List.map(placeAt(spec#fill, z#fill));
-            let bands = edges |> List.flatMap(edge ->
+            let strokes = edges |> List.flatMap(edge ->
                 if (edge#border) Nil
-                else DualGrid.bandQuads(liftPts(edge#points), edge#normal, spec#edgeWidth)
+                else DualGrid.strokeQuads(liftPts(edge#points), edge#normal, spec#edgeWidth)
                     |> List.flatMap(cut)
-                    |> List.map(placeAt(edgeColor(spec#edge, edge#normal), z#band)));
-            List.append(fronts, List.append(fills, bands))
+                    |> List.map(placeAt(edgeColor(spec#edge, edge#normal), z#stroke)));
+            List.append(fronts, List.append(fills, strokes))
         })
 
     /// このセルの上下左右の隣も同じ液体か(岸の判定に使う)。true = 液体(そちらは陸地でない)。

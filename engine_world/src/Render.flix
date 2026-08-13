@@ -195,18 +195,18 @@ mod Render {
           item = Item.Shader({ rect = rect, spec = spec, t = t, mask = rel, zIndex = zIndex,
                                blend = DrawCmd.BlendMode.Normal }) }
 
-    /// pass（レンダーターゲット）を、全面でない面（帯など）から等倍で読むための dy 場。
-    /// 面の uv.v（0..1）を pass の縦帯（design px の top / height）の texV へ写す。
+    /// pass（レンダーターゲット）を、全面でない面（横長のストリップなど）から等倍で読むための dy 場。
+    /// 面の uv.v（0..1）を pass の縦の区間（design px の top / height）の texV へ写す。
     /// passH は pass 全体の高さ（design px。App の pass は design 解像度なので普通は画面の高さ）。
     /// flipV = true で上下鏡像（水面の映り込みなど）。
     /// Shift の dy は「読み先 texV − 面の v」の差分なので、写像 texV = (top + height×v)/passH
     /// を v の 1 次式に畳んだ係数で返す — 呼び側が同じ導出を定数の手計算で持つと、
-    /// 帯の位置替えのたびに写像が割れるため。
-    /// 例: Field.Shift({ dx = Field.Const(0.0), dy = Render.passBandDy(band, passH, false),
+    /// ストリップの位置替えのたびに写像が割れるため。
+    /// 例: Field.Shift({ dx = Field.Const(0.0), dy = Render.passStripDy(strip, passH, false),
     ///                   of = Field.Tex({ name = "screen", chan = chan }) })
-    pub def passBandDy(band: { top = Float64, height = Float64 }, passH: Float64, flipV: Bool): ShaderDoc.Field =
-        let texVAt0 = if (flipV) (band#top + band#height) / passH else band#top / passH;
-        let texVSlope = if (flipV) -(band#height) / passH else band#height / passH;
+    pub def passStripDy(strip: { top = Float64, height = Float64 }, passH: Float64, flipV: Bool): ShaderDoc.Field =
+        let texVAt0 = if (flipV) (strip#top + strip#height) / passH else strip#top / passH;
+        let texVSlope = if (flipV) -(strip#height) / passH else strip#height / passH;
         ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Add,
             a = ShaderDoc.Field.Const(texVAt0),
             b = ShaderDoc.Field.Bin({ op = ShaderDoc.BinOp.Mul,
@@ -366,7 +366,7 @@ mod Render {
     pub def movedAll(d: Vec2.Vec2, items: List[PlacedItem]): List[PlacedItem] =
         items |> List.map(placed ->
             { at = Vec2.add(d, placed#at),
-              item = placed#item |> overWindows(r ->
+              item = placed#item |> overClipRects(r ->
                   { position = Vec2.add(d, r#position), size = r#size }) })
 
     /// 組み上がった列を、pivot（画面座標）を不動点に factor 倍へ伸縮する（ズーム演出・
@@ -382,14 +382,14 @@ mod Render {
             { at = stretch(placed#at),
               item = placed#item
                   |> scaled(factor)
-                  |> overWindows(r ->
+                  |> overClipRects(r ->
                       { position = stretch(r#position), size = Vec2.mul(r#size, factor) }) })
 
     /// Clipped の clip 矩形（入れ子は全段）だけを f で写す。葉（中身）には触らない —
     /// onLeaf の裏面で、「clip 矩形 = 画面平行」の規約を守る変換（平行移動・一様 scale）専用。
-    def overWindows(f: Rect2.Rect2 -> Rect2.Rect2, item: Item): Item =
+    def overClipRects(f: Rect2.Rect2 -> Rect2.Rect2, item: Item): Item =
         match item {
-            case Item.Clipped(c) => Item.Clipped({ rect = f(c#rect), inner = overWindows(f, c#inner) })
+            case Item.Clipped(c) => Item.Clipped({ rect = f(c#rect), inner = overClipRects(f, c#inner) })
             case leaf            => leaf
         }
 

@@ -59,14 +59,14 @@ mod TestFrameOrder {
 
     /// 事故の再現形: world の高 z（爆発 1000）より HUD の範囲（ZBand.liftHud）の絵が手前。
     @Test
-    def testHudBandWinsOverHighWorldZ(): Unit \ Assert =
+    def testHudRangeWinsOverHighWorldZ(): Unit \ Assert =
         let sprites = spriteAt(ZBand.liftHud(10), 1.0) :: spriteAt(1000, 2.0) :: Nil;
         Assert.assertEq(expected = "s2.0,s1.0",
                   trace(RenderFrame.mergedByZ(Nil, sprites, Nil, Nil, Nil)))
 
     /// 範囲をまたぐフレームでも各範囲の中は z 昇順・同 z は入力順のまま（範囲別 2 段の安定性）。
     @Test
-    def testBandsKeepWithinBandOrderStable(): Unit \ Assert =
+    def testRangesKeepWithinRangeOrderStable(): Unit \ Assert =
         let sprites =
                spriteAt(ZBand.liftHud(5), 1.0) :: spriteAt(3, 2.0) :: spriteAt(3, 3.0)
             :: spriteAt(ZBand.liftHud(0), 4.0) :: spriteAt(1, 5.0) :: Nil;
@@ -75,7 +75,7 @@ mod TestFrameOrder {
 
     /// 範囲をまたいでも同 z の種類の順（スプライトが先・多角形が後）は変わらない。
     @Test
-    def testBandsKeepChannelOrderAtSameZ(): Unit \ Assert =
+    def testRangesKeepChannelOrderAtSameZ(): Unit \ Assert =
         let sprites = spriteAt(ZBand.liftHud(7), 1.0) :: spriteAt(0, 2.0) :: Nil;
         let polys = polyAt(ZBand.liftHud(7), 9.0) :: Nil;
         Assert.assertEq(expected = "s2.0,s1.0,p9.0",
@@ -83,7 +83,7 @@ mod TestFrameOrder {
 
     /// デバッグの範囲（2e9）と負の z が同居しても Int32 の幅あふれで壊れない。
     @Test
-    def testDebugBandWithNegativeZDoesNotOverflow(): Unit \ Assert =
+    def testDebugRangeWithNegativeZDoesNotOverflow(): Unit \ Assert =
         let sprites = spriteAt(ZBand.debugBase(), 1.0) :: spriteAt(-200000000, 2.0)
             :: spriteAt(ZBand.liftHud(0), 3.0) :: Nil;
         Assert.assertEq(expected = "s2.0,s3.0,s1.0",
@@ -91,7 +91,7 @@ mod TestFrameOrder {
 
     /// 範囲の中でも z がまばら（スロットが個数に見合わない）なら木で受け、並びは同じ規約のまま。
     @Test
-    def testSparseWithinBandKeepsOrder(): Unit \ Assert =
+    def testSparseWithinRangeKeepsOrder(): Unit \ Assert =
         let sprites = spriteAt(ZBand.liftHud(0), 1.0)
             :: spriteAt(90000000, 2.0) :: spriteAt(0, 3.0) :: spriteAt(0, 4.0) :: Nil;
         Assert.assertEq(expected = "s3.0,s4.0,s2.0,s1.0",

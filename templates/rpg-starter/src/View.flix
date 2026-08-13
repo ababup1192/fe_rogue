@@ -41,15 +41,15 @@ mod View {
     // 前後の帯は Depth.forRows が行ごとに 1 段割り当てる — 帯の上下の数と重ならないこと。
 
     def zHerb(): Int32 = 12
-    def zBandBack(): Int32 = 100
+    def zDepthBack(): Int32 = 100
     def zFog(): Int32 = 200
     def zVeil(): Int32 = 210
     def zOverlayText(): Int32 = 212
     def zBubble(): Int32 = 220
 
-    /// 人・建物の前後の帯。足元が下（南）にある物ほど手前に出る。
-    def band(w: World.World): Depth.Band =
-        Depth.forRows({ back = zBandBack(), originY = 0.0,
+    /// 人・建物の前後を決める z の範囲。足元が下（南）にある物ほど手前に出る。
+    def depthRange(w: World.World): Depth.ZRange =
+        Depth.forRows({ back = zDepthBack(), originY = 0.0,
                         rows = MapDoc.rowCount(w#map), tileSize = World.tileSize() })
 
     // ── 戦いの画面の z 層 ──
@@ -86,7 +86,7 @@ mod View {
                 // 空の面は出さない — 地面のタイル層が画面全体を覆う（bounds が虚空を映さない）。
                 // hud に空の矩形を置くと、常に奥へ敷かれるタイル層より手前に来て地面を塗り潰す。
                 List.flatten(
-                       fogBands(w#theme)
+                       fogStrips(w#theme)
                     // 薄い昼下がりの空気（乗算 1 枚）。幕・文字（z 210..）は染めない。
                     :: Daylight.overlay({ keys = Daylight.defaults(),
                            at = { x = 0.0, y = 0.0 },
@@ -162,14 +162,14 @@ mod View {
         // （壁の上端の軒の陰と重なって、屋根が壁に載って見える）。
         let roof = PxSprite.drawQuad(w#townSprites, w#townAtlas, tex, spec#roof, "idle",
             { x = x0 + (bodyW - roofSize#x) / 2.0, y = wallTop + 4.0 - roofSize#y }, false, 1, 1);
-        Depth.place(band(w), southY, List.append(wall, roof))
+        Depth.place(depthRange(w), southY, List.append(wall, roof))
 
     /// 低い柵（門の並び）。当たりは rpg.map の '#' が持ち、ここは絵だけ。
     def fencesView(w: World.World): List[Render.PlacedItem] =
         let t = World.tileSize();
         TownMap.fences() |> List.flatMap(cell -> {
             let bottom = Int32.toFloat64(cell#y + 1) * t;
-            Depth.place(band(w), bottom,
+            Depth.place(depthRange(w), bottom,
                 PxSprite.drawQuad(w#townSprites, w#townAtlas, TownMap.textureName(),
                     "fence", "idle",
                     { x = Int32.toFloat64(cell#x) * t, y = bottom - 12.0 }, false, 1, 0))
@@ -186,7 +186,7 @@ mod View {
         let name = if (w#doorOpen) "gate_open" else "gate_closed";
         let size = PxSprite.sizeOf(w#townSprites, name, "idle", 1)
             |> Option.getWithDefault({ x = t, y = 24.0 });
-        Depth.place(band(w), bottom,
+        Depth.place(depthRange(w), bottom,
             PxSprite.drawQuad(w#townSprites, w#townAtlas, TownMap.textureName(),
                 name, "idle", { x = at#x, y = bottom - size#y }, false, 1, 0))
 
@@ -205,8 +205,8 @@ mod View {
             let south = PxSprite.drawQuad(w#townSprites, w#townAtlas, TownMap.textureName(),
                 "bridge_rail", "idle", { x = x0, y = bottom - 3.0 }, false, 1, 0);
             List.append(
-                Depth.place(band(w), top, north),
-                Depth.place(band(w), bottom + t / 2.0, south))
+                Depth.place(depthRange(w), top, north),
+                Depth.place(depthRange(w), bottom + t / 2.0, south))
         })
 
     // ── 水面（宣言シェーダー。岸と落ち影の 4px はタイルの絵に任せて内側だけ塗る） ──
@@ -240,7 +240,7 @@ mod View {
                 let mouth = { x = roofX + 13.0, y = southY - 32.0 + 4.0 - 40.0 + 1.0 };
                 let dur = Float64.max(0.1, w#smokeFx#duration);
                 let items = Fx.sampleAt(w#smokeFx, 7i64, w#t - dur * Float64.floor(w#t / dur), mouth);
-                Depth.place(band(w), southY, items)
+                Depth.place(depthRange(w), southY, items)
         }
 
     // ── 旗（教会の尖塔の先。Sway で揺れる — 完全に止まった画面を出さない） ──
@@ -267,7 +267,7 @@ mod View {
                                     :: { x = 7.0 + swayX, y = 1.5 + swayY }
                                     :: { x = 0.0, y = 4.0 }
                                     :: Nil, w#theme#accent, 3) };
-                Depth.place(band(w), southY, pole :: pennant :: Nil)
+                Depth.place(depthRange(w), southY, pole :: pennant :: Nil)
         }
 
     // ── 薬草・灯り・住人・主人公 ──
@@ -301,7 +301,7 @@ mod View {
                 Render.glowAt(lantern, 12.0, w#theme#accent,
                     { alpha = 0.55, blend = DrawCmd.BlendMode.Add }, 2))
         else Nil;
-        Depth.place(band(w), bottom, List.append(quad, glow))
+        Depth.place(depthRange(w), bottom, List.append(quad, glow))
 
     def villagers(w: World.World): List[Render.PlacedItem] =
         w#map#villagers |> List.flatMap(villager -> {
@@ -315,7 +315,7 @@ mod View {
             let stepping = Int32.modulo(
                 Float64.tryToInt32(Float64.floor(smp#walking / 8.0)) |> Option.getWithDefault(0), 2) == 1;
             let frameName = if (talking) "talk" else if (stepping) "walk" else "idle";
-            Depth.place(band(w), smp#pos#y + World.tileSize() / 2.0,
+            Depth.place(depthRange(w), smp#pos#y + World.tileSize() / 2.0,
                 spriteAt(w, { name = "villager", frame = frameName, center = smp#pos,
                               flipX = false, scale = px(), z = 0, fallback = w#theme#cloth }))
         })
@@ -328,7 +328,7 @@ mod View {
 
     /// マスに立つ 1 体を前後の帯へ載せる（足元 = マスの下端）。
     def placeAtFeet(w: World.World, cell: Grid.Cell, items: List[Render.PlacedItem]): List[Render.PlacedItem] =
-        Depth.place(band(w), cellCenter(w, cell)#y + World.tileSize() / 2.0, items)
+        Depth.place(depthRange(w), cellCenter(w, cell)#y + World.tileSize() / 2.0, items)
 
     /// 向き + 歩数 → 「どのコマを、反転するか」。
     def heroFrame(w: World.World): (String, Bool) =
@@ -371,7 +371,7 @@ mod View {
 
     // ── 霧（決定的なばらつきで横に流れる帯。保存も乱数の種も持たない） ──
 
-    def fogBands(theme: ThemeDoc.Doc): List[Render.PlacedItem] =
+    def fogStrips(theme: ThemeDoc.Doc): List[Render.PlacedItem] =
         List.range(0, 5) |> List.map(i ->
             { at = { x = 0.0, y = Hash01.at(i, 11) * (World.height() - 40.0) },
               item = RawDraw.box({ x = World.width(), y = 30.0 + Hash01.at(i, 12) * 34.0 },
@@ -498,7 +498,7 @@ mod View {
               { top = ThemeDoc.darken(theme#sky, 0.45),
                 bottom = ThemeDoc.lighten(theme#sky, 0.10) }, zBattleSky()) } :: Nil
 
-    /// 遠くにかかる霧。濃さが縦に変わる帯を数枚重ねる。里の霧（fogBands）は四角い帯で
+    /// 遠くにかかる霧。濃さが縦に変わる帯を数枚重ねる。里の霧（fogStrips）は四角い帯で
     /// よいが、こちらは下地がなめらかなグラデなので、縁が立つと帯の四角が見えてしまう —
     /// 上下で薄れる頂点色つきの帯にして、境目を消す。
     def battleMist(theme: ThemeDoc.Doc): List[Render.PlacedItem] =
@@ -506,11 +506,11 @@ mod View {
             let top = 48.0 + Hash01.at(i, 21) * 72.0;
             let height = 20.0 + Hash01.at(i, 22) * 24.0;
             let alpha = Float64.truncateToFloat32(0.07 + Hash01.at(i, 23) * 0.05);
-            softBand(theme#fog, { top = top, bottom = top + height }, alpha, zBattleSky() + 1)
+            softStrip(theme#fog, { top = top, bottom = top + height }, alpha, zBattleSky() + 1)
         })
 
     /// 上下の縁が透けて消える横帯（霧・地面のなじませに使う）。
-    def softBand(color: Color, span: { top = Float64, bottom = Float64 },
+    def softStrip(color: Color, span: { top = Float64, bottom = Float64 },
                  peak: Float32, z: Int32): Render.PlacedItem =
         let mid = (span#top + span#bottom) / 2.0;
         { at = { x = 0.0, y = 0.0 },

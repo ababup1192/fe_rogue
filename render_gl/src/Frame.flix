@@ -56,7 +56,7 @@ mod RenderFrame {
     /// スロットは先頭挿入で溜める（= 逆順）。スロットの大きい側から前置し直すので、
     /// 全体は z 昇順・スロット内は入力順に戻る。
     /// z がスロット 1 本に収まらないほど広いフレーム（HUD の範囲 = ZBand.hudBase 以上が混ざる等）は、
-    /// まず範囲番号（z / ZBand.bandWidth）でグループ化し、範囲の中で同じスロット方式に倒す
+    /// まず範囲番号（z / ZBand.width）でグループ化し、範囲の中で同じスロット方式に倒す
     /// （範囲内の z の幅は狭いのでスロットに収まる）— HUD が混ざった瞬間に全部が遅い木の
     /// 経路へ落ちるのを防ぐ。範囲の中でも z がまばらなときだけ木で受ける。
     /// 5 種の描画物を、zIndex 昇順・同 z 内は
@@ -68,7 +68,7 @@ mod RenderFrame {
     pub def mergedByZ(tiles: List[RenderType.TileMapRenderCmd],
                       sprites: List[RenderType.Drawable],
                       polygons: List[RenderType.PolygonCmd],
-                      statics: List[RenderStatic.Range],
+                       statics: List[RenderStatic.Range],
                       surfaces: List[ShaderEffect.ShaderRenderCmd]): List[Merged] =
         region rc {
             // 0 = 一番小さい z / 1 = 一番大きい z / 2 = 個数
@@ -95,7 +95,7 @@ mod RenderFrame {
                 seatChannels(seats, lo, tiles, sprites, polygons, statics, surfaces);
                 emitSeats(seats, n, Nil)
             }
-            else bandMerged(rc, lo, hi, tiles, sprites, polygons, statics, surfaces)
+            else rangeMerged(rc, lo, hi, tiles, sprites, polygons, statics, surfaces)
         }
 
     /// スロット 1 本に収める判定に使う z の幅（Int64 — Int32 だと範囲をまたぐ幅で溢れる）。
@@ -108,7 +108,7 @@ mod RenderFrame {
                      tiles: List[RenderType.TileMapRenderCmd],
                      sprites: List[RenderType.Drawable],
                      polygons: List[RenderType.PolygonCmd],
-                     statics: List[RenderStatic.Range],
+                      statics: List[RenderStatic.Range],
                      surfaces: List[ShaderEffect.ShaderRenderCmd]): Unit \ rc =
         let seat = (z: Int32, m: Merged) -> {
             let i = z - lo;
@@ -127,28 +127,28 @@ mod RenderFrame {
             List.foldLeft((r, x) -> x :: r, rest,
                           Array.get(n - 1 - i, seats)), acc)
 
-    /// 範囲別 2 段ソート: 範囲番号（z / ZBand.bandWidth）でグループ化し、範囲の中はスロット方式
+    /// 範囲別 2 段ソート: 範囲番号（z / ZBand.width）でグループ化し、範囲の中はスロット方式
     /// （まばらな範囲だけ木）、範囲順に連結する。範囲の数は z が Int32 全域でも 43 以下なので
     /// 範囲ごとの入れ物は小さい。切り捨て割りは単調（z1 < z2 なら範囲も z1 ≤ z2 の順）なので、
     /// 範囲の昇順連結 = 全体の z 昇順が崩れない。
-    def bandMerged(rc: Region[rc], lo: Int32, hi: Int32,
-                   tiles: List[RenderType.TileMapRenderCmd],
-                   sprites: List[RenderType.Drawable],
-                   polygons: List[RenderType.PolygonCmd],
-                   statics: List[RenderStatic.Range],
-                   surfaces: List[ShaderEffect.ShaderRenderCmd]): List[Merged] \ rc =
-        let w = ZBand.bandWidth();
+    def rangeMerged(rc: Region[rc], lo: Int32, hi: Int32,
+                    tiles: List[RenderType.TileMapRenderCmd],
+                    sprites: List[RenderType.Drawable],
+                    polygons: List[RenderType.PolygonCmd],
+                    statics: List[RenderStatic.Range],
+                    surfaces: List[ShaderEffect.ShaderRenderCmd]): List[Merged] \ rc =
+        let w = ZBand.width();
         let bLo = lo / w;
         let nb = hi / w - bLo + 1;
         // 範囲ごとの 一番小さい z / 一番大きい z / 個数（スロットを作る前に一度だけ数える）。
-        let bandLoA: Array[Int32, rc] = Array.repeat(rc, nb, 2147483647);
-        let bandHiA: Array[Int32, rc] = Array.repeat(rc, nb, -2147483648);
-        let bandCnt: Array[Int32, rc] = Array.repeat(rc, nb, 0);
+        let rangeLoA: Array[Int32, rc] = Array.repeat(rc, nb, 2147483647);
+        let rangeHiA: Array[Int32, rc] = Array.repeat(rc, nb, -2147483648);
+        let rangeCnt: Array[Int32, rc] = Array.repeat(rc, nb, 0);
         let scanB = (z: Int32) -> {
             let b = z / w - bLo;
-            if (z < Array.get(b, bandLoA)) Array.put(z, b, bandLoA) else ();
-            if (z > Array.get(b, bandHiA)) Array.put(z, b, bandHiA) else ();
-            Array.put(Array.get(b, bandCnt) + 1, b, bandCnt)
+            if (z < Array.get(b, rangeLoA)) Array.put(z, b, rangeLoA) else ();
+            if (z > Array.get(b, rangeHiA)) Array.put(z, b, rangeHiA) else ();
+            Array.put(Array.get(b, rangeCnt) + 1, b, rangeCnt)
         };
         List.forEach(x -> scanB(x#zIndex), tiles);
         List.forEach(x -> scanB(x#zIndex), sprites);
@@ -159,16 +159,16 @@ mod RenderFrame {
         // 1 個あたり cons が 2 回増えて、物量シーンでフレーム時間に乗るため。
         // スロットが個数に見合わない（z がまばらな）範囲だけリストへ溜めて木で受ける。
         let noSeats: Array[List[Merged], rc] = Array.repeat(rc, 0, Nil);
-        let bandSeats: Array[Array[List[Merged], rc], rc] = Array.repeat(rc, nb, noSeats);
+        let rangeSeats: Array[Array[List[Merged], rc], rc] = Array.repeat(rc, nb, noSeats);
         let treeRev: Array[List[Merged], rc] = Array.repeat(rc, nb, Nil);
         let useTree: Array[Bool, rc] = Array.repeat(rc, nb, false);
         List.forEach(b -> {
-            let cnt = Array.get(b, bandCnt);
+            let cnt = Array.get(b, rangeCnt);
             if (cnt == 0) ()
-            else if (spanOf(Array.get(b, bandLoA), Array.get(b, bandHiA))
+            else if (spanOf(Array.get(b, rangeLoA), Array.get(b, rangeHiA))
                      <= Int32.toInt64(seatLimit(cnt)))
-                Array.put(Array.repeat(rc, Array.get(b, bandHiA) - Array.get(b, bandLoA) + 1,
-                                       (Nil: List[Merged])), b, bandSeats)
+                Array.put(Array.repeat(rc, Array.get(b, rangeHiA) - Array.get(b, rangeLoA) + 1,
+                                       (Nil: List[Merged])), b, rangeSeats)
             else Array.put(true, b, useTree)
         }, List.range(0, nb));
         // 入力順（tiles → sprites → polygons → static → surfaces）に先頭挿入で振り分ける
@@ -178,8 +178,8 @@ mod RenderFrame {
             if (Array.get(b, useTree))
                 Array.put(m :: Array.get(b, treeRev), b, treeRev)
             else {
-                let seats = Array.get(b, bandSeats);
-                let j = z - Array.get(b, bandLoA);
+                let seats = Array.get(b, rangeSeats);
+                let j = z - Array.get(b, rangeLoA);
                 Array.put(m :: Array.get(j, seats), j, seats)
             }
         };
@@ -191,12 +191,12 @@ mod RenderFrame {
         // 範囲の大きい側から前置で連結する（全体 = 範囲の昇順・範囲内 = z 昇順・同 z は入力順）。
         List.range(0, nb) |> List.foldLeft((acc, i) -> {
             let b = nb - 1 - i;
-            if (Array.get(b, bandCnt) == 0) acc
+            if (Array.get(b, rangeCnt) == 0) acc
             else if (Array.get(b, useTree))
                 // 溜めは逆順なので、並べ替えの前に入力順へ戻す（まばらな範囲だけの経路）。
                 List.append(stableByZTree(zOfMerged, List.reverse(Array.get(b, treeRev))), acc)
-            else emitSeats(Array.get(b, bandSeats),
-                           Array.get(b, bandHiA) - Array.get(b, bandLoA) + 1, acc)
+            else emitSeats(Array.get(b, rangeSeats),
+                           Array.get(b, rangeHiA) - Array.get(b, rangeLoA) + 1, acc)
         }, Nil)
 
     /// 並べ替え鍵 = zIndex（全 run 種で共有の 1 つの z 空間）。

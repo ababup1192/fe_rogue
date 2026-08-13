@@ -56,9 +56,9 @@ mod TestFlex {
     // ── ギャラリー骨格（Px 帯 + Grow 行 ×5、480×530）──
 
     @Test
-    def testGallerySkeletonBandsAndGrowRows(): Unit \ Assert =
+    def testGallerySkeletonBarsAndGrowRows(): Unit \ Assert =
         // 帯・行それぞれに Stretch な 0 サイズの葉を置き、帯の位置と行の等分高さを検分する。
-        def bandBox(h: Float64): Flex.Node =
+        def barBox(h: Float64): Flex.Node =
             Flex.box({ height = UiLayout.SizeSpec.Px(h),
                        crossAlign = UiLayout.CrossAlign.Stretch | Flex.columnStyle() },
                      dot(0.0, 0.0) :: Nil);
@@ -67,9 +67,9 @@ mod TestFlex {
                        crossAlign = UiLayout.CrossAlign.Stretch | Flex.rowStyle() },
                      dot(0.0, 0.0) :: Nil);
         let root = Flex.box({ crossAlign = UiLayout.CrossAlign.Stretch | Flex.columnStyle() },
-               bandBox(44.0)
+               barBox(44.0)
             :: rowBox() :: rowBox() :: rowBox() :: rowBox() :: rowBox()
-            :: bandBox(28.0)
+            :: barBox(28.0)
             :: Nil);
         // 行高 = 余り 458 の Grow 配分。UiLayout.growShare と同じ式（free * (w/total)、458/5 とは
         // 最下位ビットが違う）で書き、行の y もペン送りと同じ順の逐次加算で書く。

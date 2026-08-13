@@ -2,32 +2,32 @@
 // 部品どうしの相対的な前後が保たれること。
 mod TestDepth {
 
-    def band(): Depth.Band = { back = 20, front = 40, top = 0.0, bottom = 200.0 }
+    def zRange(): Depth.ZRange = { back = 20, front = 40, top = 0.0, bottom = 200.0 }
 
     @Test
-    def testFootAtTopMapsToBackOfBand(): Unit \ Assert =
-        Assert.assertEq(expected = 20, Depth.zAt(band(), 0.0))
+    def testFootAtTopMapsToBackOfRange(): Unit \ Assert =
+        Assert.assertEq(expected = 20, Depth.zAt(zRange(), 0.0))
 
     @Test
-    def testFootAtBottomMapsToFrontOfBand(): Unit \ Assert =
-        Assert.assertEq(expected = 40, Depth.zAt(band(), 200.0))
+    def testFootAtBottomMapsToFrontOfRange(): Unit \ Assert =
+        Assert.assertEq(expected = 40, Depth.zAt(zRange(), 200.0))
 
     @Test
     def testLowerFootComesInFront(): Unit \ Assert =
         // 下に立っている物ほど大きい zIndex = 手前。
-        Assert.assertEq(expected = true, Depth.zAt(band(), 120.0) > Depth.zAt(band(), 80.0))
+        Assert.assertEq(expected = true, Depth.zAt(zRange(), 120.0) > Depth.zAt(zRange(), 80.0))
 
     @Test
-    def testOutsideBandIsClampedToEdges(): Unit \ Assert =
+    def testOutsideRangeIsClampedToEdges(): Unit \ Assert =
         // 帯の外へ歩き出しても順序が壊れない（端で止まる）。
-        Assert.assertEq(expected = (20, 40), (Depth.zAt(band(), -500.0), Depth.zAt(band(), 900.0)))
+        Assert.assertEq(expected = (20, 40), (Depth.zAt(zRange(), -500.0), Depth.zAt(zRange(), 900.0)))
 
     @Test
     def testPlaceKeepsRelativeOrderInsideOneBody(): Unit \ Assert =
         // 1 体を 0・1・2 の小さな z で組んでも、帯へ持ち上げたあと差はそのまま。
         let parts = { at = Vec2.zero(), item = RawDraw.box(Vec2.one(), white(), 0) }
             :: { at = Vec2.zero(), item = RawDraw.box(Vec2.one(), white(), 2) } :: Nil;
-        let lifted = Depth.place(band(), 100.0, parts) |> List.map(zOf);
+        let lifted = Depth.place(zRange(), 100.0, parts) |> List.map(zOf);
         Assert.assertEq(expected = (30, 32), (fstOr(lifted), sndOr(lifted)))
 
     @Test
