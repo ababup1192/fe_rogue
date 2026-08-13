@@ -69,6 +69,8 @@ WORDS = [
      "button / card / label", "error"),
     ("正本", None, "source of truth / 元データ", "source of truth", "error"),
     ("取り置き", None, "キャッシュ", "cache", "error"),
+    ("壁時計", None, "実時間（並列で走る物は CPU 時間 / コンパイル時間と分けて書く）",
+     "wall-clock time", "error"),
     ("焼き置き", None, "事前生成したデータ", "prebaked data", "error"),
     # ── 知らせるだけ(warn) ───────────────────────────────
     ("帯", r"(?<![一-龥])帯(?![電び])", "z-index の範囲 / 走査線 / 階調ステップ",

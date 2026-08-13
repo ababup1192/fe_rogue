@@ -668,6 +668,7 @@ check-docs-sync:
 	  "docs/drawing-floor.md" \
 	  "docs/flix-conventions.md" \
 	  "docs/z-bands.md" \
+	  "docs/performance.md" \
 	; do \
 	  if ! grep -q "$$kw" AGENTS.md; then \
 	    echo "[check-docs-sync] NG: AGENTS.md に $$kw への導線がありません"; ok=0; \

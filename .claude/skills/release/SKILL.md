@@ -62,6 +62,6 @@ tag は現在の HEAD SHA に固定される。
 - **`make release` は未コミットで中断する**: `gallery/` や `NOTES.md` は git 管理外なので
   `git status` に出ない＝残っていても邪魔しない。出ている差分だけ全部コミットする
 
-**全量ゲート**は `make test-par`（全パッケージ並列・壁時計 ≈ 最遅パッケージ 1 本分・ログは `.test-logs/`）。
+**全量ゲート**は `make test-par`（全パッケージ並列・実時間 ≈ 最遅パッケージ 1 本分・ログは `.test-logs/`）。
 併せて `make gl-parity` を回して A 段階の全一致（全 scene 0 px）を確認する（GL と SoftRaster の絵の退行はテストに出ない）。
 並列版に不審な挙動があれば逐次へフォールバックする（`make test` / `make release TEST=test`）。
