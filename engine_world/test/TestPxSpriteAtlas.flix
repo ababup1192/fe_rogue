@@ -43,7 +43,27 @@ mod TestPxSpriteAtlas {
         Assert.assertEq(expected = None,
             PxSpriteAtlas.shelfPack(4, ("a", (4, 3)) :: ("b", (4, 3)) :: Nil))
 
+    /// 辺長の候補の最大(2048)より広い 1 コマだけを持つ Doc。
+    def oversizedDoc(): PxSpriteDoc.Doc =
+        { version = 1, note = None,
+          legend = Map#{'a' => "body"},
+          sprites = Map#{"wide" =>
+              { anchor = { x = 0.0, y = 0.0 },
+                frames = Map#{"f0" => String.repeat(3000, "a") :: Nil} }} }
+
     // ── bake ──
+
+    /// どの辺長にも詰められない Doc は bakeChecked が Err(既定値を使うかは呼び側が決める)。
+    @Test
+    def testBakeCheckedFailsWhenFrameExceedsLargestSide(): Unit \ Assert =
+        Assert.assertEq(expected = true,
+            PxSpriteAtlas.bakeChecked(oversizedDoc(), resolver) |> Result.isErr)
+
+    /// 全コマが詰められる Doc では bakeChecked が Ok で、bake と同じ辺長になる。
+    @Test
+    def testBakeCheckedIsOkForFittingDoc(): Unit \ Assert =
+        Assert.assertEq(expected = Ok(16),
+            PxSpriteAtlas.bakeChecked(doc(), resolver) |> Result.map(baked -> baked#side))
 
     /// regions は全コマを持ち、寸法は格子どおり(f0 = 4×3, f1 = 2×1)。
     @Test

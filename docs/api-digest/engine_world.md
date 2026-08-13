@@ -346,7 +346,7 @@
 - JSON object から containerKey 配下を entries、残りを meta として decode する。
   `pub def decode(containerKey: String, decodeEntry: Json -> Option[t], element: Json): Option[CatalogContainer[t]]`
 - `LoadSpec` の各フィールドを使った起動時の典型処理:
-  `pub def loadWithCheck(spec: LoadSpec[t]): CatalogContainer[t] \ Fs.FileRead`
+  `pub def loadWithCheck(spec: LoadSpec[t]): Result[String, CatalogContainer[t]] \ Fs.FileRead`
 - `loadWithCheck` の引数を 1 つの record にまとめたもの。フィールドが多くなりがちなので
   `pub type alias LoadSpec[t] = { dataPath = String, schemaPath = String, containerKey = String, expectedFields = Set[String], decodeEntry = Json -> Option[t] }`
 
@@ -1074,6 +1074,8 @@
   `pub def empty(): Baked`
 - Doc の全スプライト×全コマを 1 枚に生成する。コマの順は Map 順(名前順)で決定的。
   `pub def bake(doc: PxSpriteDoc.Doc, resolver: String -> Color): Baked`
+- bake の Result 版。どの辺長でも全コマを詰められないときは Err で、既定値を使うかどうかを
+  `pub def bakeChecked(doc: PxSpriteDoc.Doc, resolver: String -> Color): Result[String, Baked]`
 - (スプライト名, コマ名) → アトラス内矩形(Rect2・px)。regionRect(Item.Sprite)にそのまま渡せる。
   `pub def regionOf(baked: Baked, sprite: String, frame: String): Option[Rect2.Rect2]`
 - 画素 1 個(ARGB)。範囲外・未 bake は透明 0。PNG 書き出し(SoftRaster.writeRadialPng)の

@@ -7,6 +7,7 @@
 // edge は uniform 先勝ち(いずれも壊れ扱いにせず静かに畳む)。
 
 mod TerrainDoc {
+    import java.lang.System
     use Util.Json.Json
 
     /// 縁の色の決め方(Material.EdgeKind の色を文字列参照にした Doc 形)。
@@ -68,9 +69,58 @@ mod TerrainDoc {
             |> Option.map(fromRoot)
 
     /// path の Doc を読む。読めない・壊れているときは defaults(fail-open)。
-    /// 読み口を DocJson.loadOr に委譲し、壊れた JSON で倒れた事実は標準エラーへ 1 行出る。
+    /// DocJson.loadOr に委譲し、既定値を使った事実は標準エラーへ 1 行出る。
     pub def load(p: String): Doc \ Fs.FileRead =
-        DocJson.loadOr(fromJson, defaults(), p)
+        DocJson.loadOr(decodeWithWarnings, defaults(), p)
+
+    /// 読み込みで使う decode。捨てた宣言を標準エラーへ 1 行ずつ知らせる。
+    /// 純粋な fromJson を静かなままにするのは、値だけ欲しい呼び側（Studio プレビュー・
+    /// テスト）が同じ Doc を何度読んでも 1 行も出さないようにするため。
+    def decodeWithWarnings(text: String): Option[Doc] =
+        fromJson(text) |> Option.map(doc -> warnDroppedPresets(text, warnEntries(doc)))
+
+    /// 壊れた色表記・知らない style 名を標準エラーへ 1 行ずつ知らせてから doc を返す。
+    /// 効果は `unsafe IO` で隠す（DocJson.warnFellBack と同じ流儀 — 知らせるために
+    /// 呼び側の効果行を広げない）。
+    def warnEntries(doc: Doc): Doc =
+        unsafe IO {
+            doc#entries |> List.forEach(e -> {
+                colorRefsOf(e) |> List.filter(s -> not isKnownColorRef(s)) |> List.distinct
+                    |> List.forEach(s -> System.err.println("terrain fail-open: '${e#char}' の色 '${s}' を resolver の未知キー既定に替えました — #rrggbb でも @キー でもありません"));
+                if (isKnownStyle(e#style))
+                    ()
+                else
+                    System.err.println("terrain fail-open: '${e#char}' の style '${e#style}' を styleMix の混ぜに替えました — 知らない名前です")
+            });
+            doc
+        }
+
+    /// 捨てた preset 名を標準エラーへ 1 行ずつ知らせてから doc を返す。名前を元のテキストから
+    /// 拾い直すのは、decode が未知の preset を落とした後の Doc には名前が残らないため。
+    def warnDroppedPresets(text: String, doc: Doc): Doc =
+        unsafe IO {
+            presetNamesIn(text) |> List.filter(name -> not isKnownPreset(name))
+                |> List.forEach(name ->
+                    System.err.println("terrain fail-open: preset '${name}' を捨てました — 知らない名前なので表面の演出は出ません"));
+            doc
+        }
+
+    /// 生の JSON に書かれている surface の preset 名を全部拾う。
+    def presetNamesIn(text: String): List[String] =
+        DocJson.parse(String.trim(text))
+            |> Option.flatMap(JsonCodec.expectObject)
+            |> Option.flatMap(root -> Map.get("entries", root))
+            |> Option.flatMap(JsonCodec.decodeList(json -> Some(presetNamesOfEntry(json))))
+            |> Option.getWithDefault(Nil)
+            |> List.flatten
+
+    /// entry 1 件に書かれている surface の preset 名。
+    def presetNamesOfEntry(json: Json): List[String] =
+        JsonCodec.expectObject(json)
+            |> Option.flatMap(obj -> Map.get("surface", obj))
+            |> Option.flatMap(JsonCodec.decodeList(fxOf))
+            |> Option.getWithDefault(Nil)
+            |> List.map(fx -> fx#preset)
 
     /// EntryDoc(文字列の色)→ Material.Spec(実色)。resolve は呼び側供給
     /// (rpg-starter なら key -> ThemeDoc.resolver(theme, key))。壊れた表記・存在しない
@@ -132,6 +182,31 @@ mod TerrainDoc {
                       mottle = JsonCodec.floatOr("mottle", 0.0, obj),
                       height = heightDocOf(fill, obj) })
         })
+
+    /// entry が持つ色文字列を全部並べる（fill・edge・surface・height）。
+    def colorRefsOf(e: EntryDoc): List[String] =
+        (e#fill :: edgeRefsOf(e#edge))
+            ::: (e#surface |> List.map(fx -> fx#color))
+            ::: (e#height |> Option.map(h -> h#front :: h#shade :: Nil)
+                          |> Option.getWithDefault(Nil))
+
+    /// EdgeRef が持つ色文字列。
+    def edgeRefsOf(edge: EdgeRef): List[String] =
+        match edge {
+            case EdgeRef.Uniform(s)  => s :: Nil
+            case EdgeRef.ByNormal(b) => b#top :: b#side :: b#shade :: Nil
+        }
+
+    /// colorOf が実色にできる表記かどうか（"@キー" か、UiDoc.colorOf が読める "#rrggbb"）。
+    def isKnownColorRef(s: String): Bool =
+        String.startsWith(prefix = "@", s)
+            or (Util.Json.Json.JString(s)
+                    |> (json -> UiDoc.colorOf(Map.empty(), "terrain", json))
+                    |> Result.isOk)
+
+    /// forceStyleOf が受け取れる名前（"mix" は「混ぜる」を選ぶ正常系なので含む）。
+    def isKnownStyle(name: String): Bool =
+        name == "round" or name == "square" or name == "diamond" or name == "mix"
 
     /// 縁の読み。優先順(この順で判定): (1) "uniform" キーがあれば Uniform — top 等が
     /// 混在していても uniform 先勝ちで ByNormal 側は読まない。(2) "uniform" が無く

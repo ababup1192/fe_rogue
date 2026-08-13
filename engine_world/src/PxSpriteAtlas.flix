@@ -9,6 +9,7 @@
 // 棚詰め(shelfPack)は RenderFont のシェルフパッキングと同じ規則を関数に切り出したもの
 // (左→右に詰め、行に収まらなければ行の最大高+1px で折り返す。コマ間は 1px の隙間)。
 mod PxSpriteAtlas {
+    import java.lang.System
 
     /// アトラス内の 1 コマの矩形(px・セル数と同じ)。
     pub type alias Slot = { x = Int32, y = Int32, w = Int32, h = Int32 }
@@ -31,12 +32,28 @@ mod PxSpriteAtlas {
     /// Doc の全スプライト×全コマを 1 枚に生成する。コマの順は Map 順(名前順)で決定的。
     /// legend に無い文字は透明(ARGB 0)。resolver が意味色キー → 実色を解決する
     /// (テーマ替え・体色差はここで生成し分ける — 格子は共有)。
-    pub def bake(doc: PxSpriteDoc.Doc, resolver: String -> Color): Baked = region rc {
+    /// パッキングが全部失敗しても呼び側の型を変えないため、空のアトラスを返して
+    /// 標準エラーへ 1 行知らせる(fail-open)。失敗を捌きたい呼び側は bakeChecked を使う。
+    pub def bake(doc: PxSpriteDoc.Doc, resolver: String -> Color): Baked =
+        match bakeChecked(doc, resolver) {
+            case Ok(baked) => warnDroppedFrames(doc, baked)
+            case Err(msg)  => warnPackFailed(msg, bakeAtSide(largestSide(), doc, resolver))
+        }
+
+    /// bake の Result 版。どの辺長でも全コマを詰められないときは Err で、既定値を使うかどうかを
+    /// 呼び側に決めさせる。
+    pub def bakeChecked(doc: PxSpriteDoc.Doc, resolver: String -> Color): Result[String, Baked] =
+        let sizes = sizesOf(doc);
+        match sideCandidates() |> List.find(s -> Option.nonEmpty(shelfPack(s, sizes))) {
+            case Some(side) => Ok(bakeAtSide(side, doc, resolver))
+            case None       =>
+                Err("shelf packing failed: ${List.length(sizes)} frames do not fit in ${largestSide()}px")
+        }
+
+    /// 辺長を決め打ちして 1 枚に生成する。
+    def bakeAtSide(side: Int32, doc: PxSpriteDoc.Doc, resolver: String -> Color): Baked = region rc {
         let frames = framesOf(doc);
-        let sizes = frames |> List.map(f -> { let (key, rows) = f; (key, gridSize(rows)) });
-        let side = sideCandidates()
-            |> List.find(s -> Option.nonEmpty(shelfPack(s, sizes)))
-            |> Option.getWithDefault(2048);
+        let sizes = sizesOf(doc);
         let placed = shelfPack(side, sizes) |> Option.getWithDefault(Map.empty());
         let regions = sizes |> List.filterMap(entry -> {
             let (key, wh) = entry;
@@ -56,6 +73,27 @@ mod PxSpriteAtlas {
         });
         { side = side, regions = regions, pixels = Array.toVector(buf) }
     }
+
+    /// パッキングが全部失敗した事実を標準エラーへ 1 行知らせてから baked を返す。
+    /// 効果は `unsafe IO` で隠す(DocJson.warnFellBack と同じ流儀 — 知らせるために
+    /// 呼び側の効果行を広げない)。
+    def warnPackFailed(msg: String, baked: Baked): Baked =
+        unsafe IO {
+            System.err.println("pxsprite fail-open: 空のアトラスを使います — ${msg}");
+            baked
+        }
+
+    /// 目次に載らなかったコマがあれば標準エラーへ 1 行知らせてから baked を返す。
+    /// 載らないコマは描かれない(何も知らせないと「絵が出ない」の原因が追えない)。
+    def warnDroppedFrames(doc: PxSpriteDoc.Doc, baked: Baked): Baked =
+        let dropped = List.length(framesOf(doc)) - Map.size(baked#regions);
+        if (dropped <= 0)
+            baked
+        else
+            unsafe IO {
+                System.err.println("pxsprite fail-open: ${dropped} 個のコマがアトラスに入らないため描かれません");
+                baked
+            }
 
     /// (スプライト名, コマ名) → アトラス内矩形(Rect2・px)。regionRect(Item.Sprite)にそのまま渡せる。
     pub def regionOf(baked: Baked, sprite: String, frame: String): Option[Rect2.Rect2] =
@@ -129,6 +167,14 @@ mod PxSpriteAtlas {
                 ((name, frame), rows)
             })
         })
+
+    /// パッキングに渡す ((スプライト名, コマ名), (w, h)) の列。
+    def sizesOf(doc: PxSpriteDoc.Doc): List[((String, String), (Int32, Int32))] =
+        framesOf(doc) |> List.map(f -> { let (key, rows) = f; (key, gridSize(rows)) })
+
+    /// 辺長の候補の最大。パッキングが全部失敗したときの辺長でもある。
+    def largestSide(): Int32 =
+        sideCandidates() |> List.foldLeft(Int32.max, 0)
 
     /// 格子の寸法(w = 最長行の文字数, h = 行数)。
     def gridSize(rows: List[String]): (Int32, Int32) =

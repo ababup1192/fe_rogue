@@ -11,6 +11,8 @@
 //   - `parse(text)` (Option 返し)
 mod DocJson {
     import java.lang.System
+    use IoError.IoError
+    use IoError.ErrorKind
     use Util.Json.Json
     use Util.Json.Json.{JObject, JArray}
     use Util.Json.JsonError
@@ -63,25 +65,27 @@ mod DocJson {
     /// path の Doc を読む。読めない・壊れているときは fallback（fail-open）。
     /// 「書き損じで画面が壊れるより、保存し直せる方を選ぶ」という Doc 規約の実体で、
     /// 外の世界に触る手続き（ファイルを開く・効果を畳む）をここ 1 箇所に閉じ込める。
-    /// ファイルが無いのは黙って倒す（任意 Doc の正常系）。ファイルが有るのに読めない
-    /// ときだけ標準エラーへ 1 行知らせる — 黙ると「保存したのに効かない」の原因が追えない。
+    /// ファイルが無いときは何も知らせず fallback（任意 Doc の正常系）。ファイルが有るのに
+    /// 読めないときだけ標準エラーへ 1 行知らせる — 何も知らせないと「保存したのに
+    /// 反映されない」の原因が追えない。
     pub def loadOr(decode: String -> Option[a] \ ef, fallback: a, path: String): a \ ef + Fs.FileRead =
         let readResult = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;
         match readResult {
-            case Err(_)   => fallback
+            case Err(IoError(ErrorKind.NotFound, _)) => fallback
+            case Err(error) => warnFellBack(fallback, path, "ファイルを読めません（${error}）")
             case Ok(text) => match decode(text) {
                 case Some(doc) => doc
-                case None      => warnFellBack(fallback, path)
+                case None      => warnFellBack(fallback, path, "JSON として読めないか形が違います")
             }
         }
 
-    /// 倒れた事実を標準エラーへ 1 行知らせてから fallback を返す。stdout は描き出しの
+    /// 既定値を使った事実を標準エラーへ 1 行知らせてから fallback を返す。stdout は描き出しの
     /// ログが使うので混ぜない。呼ばれるのは読み込み・リロード時だけで毎フレームは
     /// 通らない。効果は `unsafe IO` で隠す（JsonCodec と同じ流儀 — 呼び側の効果行を
     /// 警告のために広げない）。
-    def warnFellBack(fallback: a, path: String): a =
+    def warnFellBack(fallback: a, path: String, reason: String): a =
         unsafe IO {
-            System.err.println("doc fail-open: ${path} が JSON として読めないか形が違うため、丸ごと既定値に倒しました");
+            System.err.println("doc fail-open: ${path} を丸ごと既定値に替えました — ${reason}");
             fallback
         }
 
