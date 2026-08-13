@@ -5,6 +5,12 @@
 
 `engine/src` 配下の `pub def` / `pub enum` / `pub type alias` の一覧。索引は [api-digest.md](../api-digest.md)。
 
+## AllocMeter — `engine/src/core/AllocMeter.flix`
+- この JVM でスレッドの割り当てバイト数を読めるか。false なら測っても 0 しか返らない。
+  `pub def isThreadAllocatedMemoryEnabled(): Bool`
+- `body` を 1 回動かす間に今のスレッドが割り当てたバイト数。
+  `pub def measureBytes(warmups: Int32, body: Unit -> a): Int64`
+
 ## Anchor — `engine/src/core/Anchor.flix`
 - 文字列から Anchor を parse する。scene.json の `"anchor": "FullRect"` 等のパース用。
   `pub def fromString(s: String): Option[Anchor]`

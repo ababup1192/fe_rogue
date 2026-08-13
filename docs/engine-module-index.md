@@ -34,6 +34,7 @@
 | engine の fpkg 読み込みを consumer 側で trigger したい | EngineSentinel |
 | project.json を読み込んでエンジン設定と scene 一覧を得たい | ProjectLoader |
 | 既定値で続けたことを人へ 1 行知らせたい | Log（文面と出し先の決まりは [error-handling.md](error-handling.md) の決まり 3） |
+| ある処理が N の二乗で割り当てていないかをテストで確かめたい | AllocMeter（絶対バイトは見ず、N を増やしたときの比だけを見る。呼ぶのはテストから） |
 | 面をシェーダーで塗る「宣言データ」の型そのものを知りたい | ShaderDoc |
 | シェーダー宣言を GLSL のソースへ変換する仕組みを知りたい | ShaderGen |
 | シェーダーの式を GPU なしで検証したい（テスト用） | ShaderEval |
