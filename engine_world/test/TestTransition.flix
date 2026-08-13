@@ -64,7 +64,7 @@ mod TestTransition {
 
     // ── itemsAt: WipeLeft / WipeRight ──
 
-    // WipeLeft は右端から帯が伸びる: t=0.5 で幅 80（画面幅の半分）、x は 80（右半分を覆う）。
+    // WipeLeft は右端から覆いが伸びる: t=0.5 で幅 80（画面幅の半分）、x は 80（右半分を覆う）。
     @Test
     def testWipeLeftAtHalfCoversRightHalf(): Unit \ Assert =
         let items = Transition.itemsAt(coverAt(Transition.Kind.WipeLeft, 0.5));
@@ -72,7 +72,7 @@ mod TestTransition {
         Assert.assertEq(expected = (Some(80.0), Some((80.0, 120.0, 1.0f32))),
             (at, List.head(items) |> Option.flatMap(boxOf)))
 
-    // WipeRight は左端から帯が伸びる: t=0.5 で幅 80、x は 0（左半分を覆う）。
+    // WipeRight は左端から覆いが伸びる: t=0.5 で幅 80、x は 0（左半分を覆う）。
     @Test
     def testWipeRightAtHalfCoversLeftHalf(): Unit \ Assert =
         let items = Transition.itemsAt(coverAt(Transition.Kind.WipeRight, 0.5));

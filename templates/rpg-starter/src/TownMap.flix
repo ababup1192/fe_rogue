@@ -135,7 +135,7 @@ mod TownMap {
             case (false, true,  false, false) => "tile_grass_edge_e"
             case (false, false, true,  false) => "tile_grass_edge_s"
             case (false, false, false, true)  => "tile_grass_edge_w"
-            // 3 方向以上に石畳（この盤には出ない形）は北→東の優先で倒す。
+            // 3 方向以上に石畳（この盤には出ない形）は北→東の優先で決める。
             case (true,  _, _, _)             => "tile_grass_edge_n"
             case (_, _, _, _)                 => "tile_grass_edge_e"
         }

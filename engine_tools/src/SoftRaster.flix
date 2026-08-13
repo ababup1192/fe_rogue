@@ -59,7 +59,7 @@ mod SoftRaster {
     /// テクスチャ名（"font_ui" / "font_girl" …）→ その本。セル座標 → codepoint の逆引き表は
     /// フォントごとに違う（別のフォントでも同じセルから詰まるので混ぜられない）ので、
     /// グリフを描く直前に Drawable#texture でこの表から 1 本選ぶ。
-    /// 知らないテクスチャ名は primary へ倒す（fail-open — 字が消えるより既定で出るほうがよい）。
+    /// 知らないテクスチャ名は primary を使う（fail-open — 字が消えるより既定で出るほうがよい）。
     type alias FontTable = { primary = FontCtx, byTexture = Map[String, FontCtx] }
 
     def fontFor(fonts: FontTable, d: GameEngine.Drawable): FontCtx =
@@ -223,7 +223,7 @@ mod SoftRaster {
         let fctx = buildFontTable(req, extraFonts);
         // tex 場（Field.Tex）が読む画素表。surfaces が実際に使う名前だけ 1 回で Vector 化する —
         // 画素ループの中で BufferedImage を触らない（getRGB を毎画素呼ぶと桁で遅い）。
-        // 無い名前は warnLog に控えて一度だけ知らせる（eval は純関数のまま黒 0.0 に倒す）。
+        // 無い名前は warnLog に控えて一度だけ知らせる（eval は純関数のまま黒 0.0 を返す）。
         let usedTexNames = surfaces
             |> List.flatMap(sc -> ShaderDoc.texNames(sc#spec))
             |> List.distinct;
@@ -371,7 +371,7 @@ mod SoftRaster {
     // ════════════════════════════════════════════════════════
 
     /// Normal 以外の描画: いったん透明な下書き画像へ普通に描き、その画素を合成式で本体に混ぜる。
-    /// clip は下書きへの描画に掛ける — 透明のまま残った画素は合成しないので、窓の外は本体に触れない。
+    /// clip は下書きへの描画に掛ける — 透明のまま残った画素は合成しないので、切り抜きの外は本体に触れない。
     /// 下書き自体は本体と同じ全面サイズで確保するが（Graphics2D の clip 計算を素直に保つため）、
     /// getRGB/setRGB で往復する範囲は `aabb`（drawable/polygon の外形、画面クランプ・design px）
     /// だけに絞る — 全面走査だと 1 個の光源・炎エフェクトのために毎フレーム画面全体を
@@ -459,7 +459,7 @@ mod SoftRaster {
     // ════════════════════════════════════════════════════════
 
     /// design 全体を覆う矩形（フォールバック用 — 外形が正確に分からない/計算コストに
-    /// 見合わない場合に安全側へ倒す。全面走査になるだけで結果は従来どおり正しい）。
+    /// 見合わない場合に安全側を選ぶ。全面走査になるだけで結果は従来どおり正しい）。
     def fullDesignRect(design: Vec2.Vec2): Rect2.Rect2 =
         { position = Vec2.zero(), size = design }
 
@@ -623,7 +623,7 @@ mod SoftRaster {
     /// 傾き（ラジアン）を掛けてから描き、終わったら座標系を戻す。回す軸は四角の中心で、
     /// render_gl/Frame の model 行列（pos + size/2 まわり）と同じ点にしてある — ここがズレると
     /// 描き出した絵と実機の絵が食い違う。
-    /// 窓（clip）は device 空間で保たれるので、傾けても窓は画面に平行なまま（Render の約束どおり）。
+    /// 切り抜き矩形（clip）は device 空間で保たれるので、傾けても切り抜きは画面に平行なまま（Render の決まりどおり）。
     def withRotation(g: Graphics2D, sf: Float64, rot: Float64, center: Vec2.Vec2,
                      draw: Unit -> Unit \ ef): Unit \ IO + ef =
         if (rot == 0.0) draw()
@@ -745,9 +745,9 @@ mod SoftRaster {
             let shape = new RoundRect(Int32.toFloat64(x), Int32.toFloat64(y),
                                       Int32.toFloat64(bw), Int32.toFloat64(bh),
                                       Int32.toFloat64(arc), Int32.toFloat64(arc));
-            // setClip(置き換え)ではなく clip(交差)で重ねる — drawable の clip 窓(withClip)が
-            // 外側に張られているとき、縞・市松がその窓を破って漏れないため。終わったら退避値へ
-            // 戻す(setClip(null) の全解除だと、この後に描く枠線まで窓の外へ漏れる)。
+            // setClip(置き換え)ではなく clip(交差)で重ねる — drawable の clip 矩形(withClip)が
+            // 外側に張られているとき、縞・市松がその矩形を破って漏れないため。終わったら退避値へ
+            // 戻す(setClip(null) の全解除だと、この後に描く枠線まで矩形の外へ漏れる)。
             let saved = g.getClip();
             g.clip(shape);
             if (hasStripe) drawStripes(g, sf, d, st) else ();
@@ -756,7 +756,7 @@ mod SoftRaster {
         } else ()
 
     /// 縞を描く。GL シェーダと同じ box 中心原点のローカル座標 p を使い、
-    /// mod(hv, period) が [0, width] に入る帯を線分で塗る（dir 0: p.x−p.y / 1: p.y / 2: p.x）。
+    /// mod(hv, period) が [0, width] に入る範囲を線分で塗る（dir 0: p.x−p.y / 1: p.y / 2: p.x）。
     def drawStripes(g: Graphics2D, sf: Float64, d: GameEngine.Drawable,
                     st: GameEngine.BoxStyle): Unit \ IO =
         let bw = d#scale#x * sf;
@@ -767,7 +767,7 @@ mod SoftRaster {
         let width = st#stripeWidth * sf;
         g.setColor(awtColor(st#stripeColor, st#stripeAlpha));
         if (st#stripeDir == 1) {
-            // 横縞: 帯 [hv-width/2, hv+width/2] を塗り矩形で(AA が掛からずくっきり — 走査線用)。
+            // 横縞: 範囲 [hv-width/2, hv+width/2] を塗り矩形で(AA が掛からずくっきり — 走査線用)。
             forEachStripe(period, bh / 2.0, width, hv ->
                 g.fill(new Rect2D(cx - bw, cy + hv - width / 2.0, bw * 2.0, width)))
         } else if (st#stripeDir == 2) {
@@ -782,7 +782,7 @@ mod SoftRaster {
                 g.draw(new Line2D(cx + hv - l, cy - l, cx + hv + l, cy + l)))
         }
 
-    /// mod(hv, period) が [0, width] の帯の中心 hv を、[-halfRange, halfRange] に
+    /// mod(hv, period) が [0, width] の範囲の中心 hv を、[-halfRange, halfRange] に
     /// かかる分だけ列挙して f を呼ぶ（k*period + width/2 の等差列）。
     def forEachStripe(period: Float64, halfRange: Float64, width: Float64,
                       f: Float64 -> Unit \ ef): Unit \ ef =
@@ -843,7 +843,7 @@ mod SoftRaster {
         discard g.drawImage(tinted, dx1, dy1, dx2, dy2, 0i32, 0i32, sw, sh,
                             unchecked_cast(null as ImageObserver))
 
-    /// clip 窓(design px)を出力ピクセルへ floor 量子化して張り、draw を実行してから元へ戻す。
+    /// clip 矩形(design px)を出力ピクセルへ floor 量子化して張り、draw を実行してから元へ戻す。
     /// 量子化は GL の glScissor と同じ DrawCmd.clipPixels — 同じ画素集合になるのがスナップショットの前提。
     /// 退避・復元で行うので、draw の内側の g.clip(交差)とも安全に入れ子になる。
     def withClip(g: Graphics2D, sf: Float64, clip: Option[Rect2.Rect2], draw: Unit -> Unit \ ef): Unit \ IO + ef =

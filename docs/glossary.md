@@ -27,27 +27,27 @@ WORDS だけが持つ(この表には置かない)。
 |---|---|---|---|
 | ジャンル | Genre | 新しいゲームの入口のカード。何を含むかは「含む: …」の行に書く | family(/genesis/families) |
 | テンプレート | Template | 動く最小ゲーム。選ぶと複製される(ランダム生成はしない) | templates/(starter) |
-| エッセンス | Essence | その世界を一行で表した文。遊びにも素材の方向性にも反映される | `AGENTS.local.md` |
-| プロンプト | Prompt | AI に貼る依頼文。公式プロンプトは骨格と完了条件を書き込んだ下書き | /prompt/* |
+| エッセンス | Essence | その世界を一行で表した文。遊びにもアセットの方向性にも反映される | `AGENTS.local.md` |
+| プロンプト | Prompt | AI に貼る文。公式プロンプトは骨格と完了条件を書き込んだ下書き(UI では「依頼文」と書かない) | /prompt/* |
 | アレンジ | Customize | 生まれたゲームのパラメータを変えて、自分のものにしていく行為 | — |
-| 昇格 | Add to templates | 良く育ったゲームを templates/ 入りさせて、ジャンルの公式テンプレートにする | — |
+| 昇格 | Promote to template | 良く育ったゲームを templates/ 入りさせて、ジャンルの公式テンプレートにする(◇これから) | — |
 
-## アトリエ — 素材と値を触る部屋
+## アトリエ — アセットと値を触る部屋
 
 | UI の言葉 | English | 意味 | コード側の名前・実体 |
 |---|---|---|---|
 | アトリエ | Atelier | 下の 4 部屋の総称。部屋は迷わないための区切りで、行き来は妨げない | storehouse / picks / extend / archive |
 | パラメータを変える | Tune parameters | 値を保存即反映で変える部屋 | storehouse |
 | パラメータ | Parameter | そこで触れる値(速さ・色・文言など) | Doc のフィールド |
-| 素材を切り替える | Swap assets | いまの素材を別の素材と見比べて切り替える部屋 | picks / swap |
-| 素材スロット | Asset slot | assets/ のパス = 差し替え点。スロットは動かず、中身が替わる | slot |
+| アセットを切り替える | Swap assets | いまのアセットを別のアセットと見比べて切り替える部屋 | picks / swap |
+| アセットスロット | Asset slot | assets/ のパス = 差し替え点。スロットは動かず、中身が替わる | slot |
 | 候補 | Candidate | 採用前の試作 | atelier/*.json |
 | 候補を作る | Generate candidates | AI に頼んで候補を増やす操作(プロンプトを作って渡す) | /prompt/atelier |
-| これを使う(採用) | Use this | 候補の中身を素材スロットへ移す操作。移った候補は候補ではなくなる | promote(swap・候補ファイル削除) |
+| これを使う(採用) | Use this | 候補の中身をアセットスロットへ移す操作。移った候補は候補ではなくなる | promote(swap・候補ファイル削除) |
 | バージョン(v1, v2…) | Version | 保存・採用のたび積まれる過去の中身。前の中身は消えない(「↩ v3 に戻す」) | `atelier/archive/<base>.vN.<kind>.json` / `draft/sketch/<名前>/vN.json` |
-| 手直し | Quick edit | 素材をその場で直すポップアップ(グリッド・カーブ・音のスライダー) | PixelEditor / MapEditor |
+| クイック編集 | Quick edit | アセットをその場で直すポップアップ(グリッド・カーブ・音のスライダー) | PixelEditor / MapEditor |
 | ゲームを広げる | Extend game | ゲームの構造(コードと Doc の形)が変わるプロンプト。検査つき | extend(/prompt/extend) |
-| 場面を足す / 仕組みを足す / 素材の種類を足す | Add scene / mechanic / asset type | 「ゲームを広げる」の 3 つの入口 | kind=scene / mechanic / material |
+| シーンを足す / メカニクスを足す / アセットの種類を足す | Add scene / mechanic / asset type | 「ゲームを広げる」の 3 つの入口 | kind=scene / mechanic / material |
 | アーカイブ(する) | Archive | 使わない候補と過去バージョンの置き場(へ送る)。何も捨てない | atelier/archive/ |
 | 候補に戻す | Restore | アーカイブから候補の列へ | /atelier/restore |
 | 選んだ組み合わせで試す | Try combination | 複数の候補を、何も書き換えずに組み合わせて走らせて比べる(◇これから) | — |
@@ -56,8 +56,9 @@ WORDS だけが持つ(この表には置かない)。
 
 | UI の言葉 | English | 意味 | コード側の名前・実体 |
 |---|---|---|---|
+| 描き出す | Render | シーンから PNG/GIF を作る操作。UI では「焼く」と書かない(bake はフォント・テクスチャのアトラスを前もって作ることだけを指す) | `make render` / `POST /render` |
 | ラフ | Sketch | 人が手で描く下書き。生成された絵と見比べる相手 | `draft/sketch/<名前>/` |
-| 注釈チケット | Annotation ticket | 絵の上で矩形を囲って一言書いた直しの依頼。済んだら archive/ へ下げる | `debug/annotations/` |
+| アノテーションチケット | Annotation ticket | 絵の上で矩形を囲って一言書いた直しの依頼。済んだら archive/ へ下げる | `debug/annotations/` |
 | リファレンス画像 | Reference image | 前に「これで正しい」と決めた画面の絵。いまの絵と比べて、変わっていたら知らせる | `templates/*/reference/` |
 | 見た目が変わりました | Visuals changed | リファレンス画像との自動比較の知らせ。前と今を見比べられる(見なくてもよい) | /journey/changes |
 | 前 / 今 | Before / After | 見比べの 2 枚のラベル | `reference/archive/<scene>.vN.png` / `reference/<scene>` |
@@ -69,3 +70,24 @@ WORDS だけが持つ(この表には置かない)。
 | 次のやること | Next step | 状態検知から次の一歩を 1 枚だけ出す誘導 | journey(/journey/state) |
 | すべてのファイル | All files | 全ファイルの一覧とコード編集への入口。どの部屋にも置く | /files |
 | ミニプレイヤー | Mini player | 走っているゲームを Studio 内に小さく映す枠(アトリエの間だけ出る) | — |
+
+## ゲーム側の言葉 — Studio が発明していない語
+
+Studio の UI にも出るが、Studio の概念ではなくゲーム業界・ソフトウェア業界の語。
+**和語へ言い換えない**(コマ・脚本・素材・マス ではなく下の表の語を使う)。
+
+| UI の言葉 | English | 意味 |
+|---|---|---|
+| シーン | Scene | ゲームの 1 画面ぶんの絵と状態(Unity / Godot と同じ語) |
+| スクリプト | Script | ノベルの台詞と進行を書いた JSON |
+| カット | Cut | スクリプトの中の 1 区切り(再生を始められる単位) |
+| フレーム | Frame | アニメーション・GIF の 1 枚 |
+| セル | Cell | タイルマップの 1 マス。座標は cell coordinates |
+| タイル | Tile | セルに置く 1 枚の絵 |
+| レイヤー | Layer | 重ねて描く面(マップエディタの編集対象) |
+| アセット | Asset | assets/ に置く絵・音・フォント |
+| スプライト | Sprite | 1 枚の絵として動かせる描画物 |
+| パレット | Palette | そのゲームで使う色の一覧 |
+| フォーム | Form | Doc を項目ごとに編集する入力欄の並び |
+| プレビュー | Preview | 保存した中身を映して見せる表示 |
+| 実機 | Live game | 別のウィンドウで走っている本物のゲーム(Studio 内の映しではない方) |

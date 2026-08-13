@@ -198,7 +198,7 @@ mod ShaderGen {
         outStmt(spec#cycleRate, spec#out, envOf(spec#bindings), tex)
 
     /// bindings を main 先頭の `float sg_b_<name> = <式>;` 宣言に並べる（前から順）。
-    /// 各 binding の式は自分より前の binding だけ Ref できるので、env を前へ畳みながら組む。
+    /// 各 binding の式は自分より前の binding だけ Ref できるので、env を前から畳み込みながら組む。
     /// bindings が空（既存 Spec）なら 1 文字も吐かない（main 本体は現行と完全一致）。
     def bindingPrelude(bindings: List[(String, ShaderDoc.Field)], tex: Map[String, Int32]): String =
         if (List.isEmpty(bindings)) ""
@@ -262,7 +262,7 @@ mod ShaderGen {
                 "sg_cospal(" + t + ", " + vec3Lit(cs#a) + ", " + vec3Lit(cs#b) + ", " +
                     vec3Lit(cs#c) + ", " + vec3Lit(cs#d) + ")"
             case ShaderDoc.Shade.Rgb(c) =>
-                // cycleRate は読まない（Shade.Rgb の doc の約束 — 3 本の場に三角波は掛けない）。
+                // cycleRate は読まない（Shade.Rgb の doc の決まり — 3 本の場に三角波は掛けない）。
                 "vec3(" + fieldExpr(c#r, "vUv", env, tex) + ", " +
                 fieldExpr(c#g, "vUv", env, tex) + ", " + fieldExpr(c#b, "vUv", env, tex) + ")"
         }

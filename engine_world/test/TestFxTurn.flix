@@ -119,7 +119,7 @@ mod TestFxTurn {
             case Err(_)   => None
         }
 
-    /// dir.mode: "even" と turn が Spec に畳まれる。
+    /// dir.mode: "even" と turn が Spec へ読み取られる。
     @Test
     def testParseEvenAndTurn(): Unit \ Assert =
         let text = "{ \"name\": \"ring\", \"duration\": 1, \"emitters\": [ {" +
@@ -142,7 +142,7 @@ mod TestFxTurn {
             (em#dir#mode == FxDoc.DirMode.Random, em#turn#base, em#turn#spin));
         Assert.assertEq(expected = Some((true, 0.0, 0.0)), got)
 
-    /// 知らない dir.mode は loud に断る（黙って random へ倒すと、綴り違いに気付けない）。
+    /// 知らない dir.mode は loud に断る（黙って random にすると、綴り違いに気付けない）。
     @Test
     def testParseUnknownDirModeIsErr(): Unit \ Assert =
         let bad = "{ \"name\": \"x\", \"duration\": 1, \"emitters\": [ {" +

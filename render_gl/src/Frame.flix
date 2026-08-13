@@ -4,7 +4,7 @@
 // 注意: 同じ zIndex 内は渡された入力順を保つ（安定ソート）。タイル層も動的な描画物と
 // 同じ z 空間で並ぶ（同 z なら列に先に積むタイル層が奥 — 手前に出すには大きい zIndex を与える）。
 // z 空間は 1 本のまま、HUD の範囲（ZBand.hudBase 以上）のような遠く離れた鍵が混ざるフレームは
-// 範囲番号で 2 段に分けて並べ替える（並び順の約束は変わらない — 速さのための内部の形）。
+// 範囲番号で 2 段階に分けて並べ替える（並び順の決まりは変わらない — 速さのための内部の形）。
 
 mod RenderFrame {
     import java.nio.FloatBuffer
@@ -56,7 +56,7 @@ mod RenderFrame {
     /// スロットは先頭挿入で溜める（= 逆順）。スロットの大きい側から前置し直すので、
     /// 全体は z 昇順・スロット内は入力順に戻る。
     /// z がスロット 1 本に収まらないほど広いフレーム（HUD の範囲 = ZBand.hudBase 以上が混ざる等）は、
-    /// まず範囲番号（z / ZBand.width）でグループ化し、範囲の中で同じスロット方式に倒す
+    /// まず範囲番号（z / ZBand.width）でグループ化し、範囲の中で同じスロット方式にそろえる
     /// （範囲内の z の幅は狭いのでスロットに収まる）— HUD が混ざった瞬間に全部が遅い木の
     /// 経路へ落ちるのを防ぐ。範囲の中でも z がまばらなときだけ木で受ける。
     /// 5 種の描画物を、zIndex 昇順・同 z 内は
@@ -127,7 +127,7 @@ mod RenderFrame {
             List.foldLeft((r, x) -> x :: r, rest,
                           Array.get(n - 1 - i, seats)), acc)
 
-    /// 範囲別 2 段ソート: 範囲番号（z / ZBand.width）でグループ化し、範囲の中はスロット方式
+    /// 範囲別 2 段階ソート: 範囲番号（z / ZBand.width）でグループ化し、範囲の中はスロット方式
     /// （まばらな範囲だけ木）、範囲順に連結する。範囲の数は z が Int32 全域でも 43 以下なので
     /// 範囲ごとの入れ物は小さい。切り捨て割りは単調（z1 < z2 なら範囲も z1 ≤ z2 の順）なので、
     /// 範囲の昇順連結 = 全体の z 昇順が崩れない。
@@ -209,7 +209,7 @@ mod RenderFrame {
             case Merged.MSurface(s) => s#zIndex
         }
 
-    /// スロット方式に倒す鍵の幅の上限。描く物の数に比例させるのは、スロットが疎らでも
+    /// スロット方式にそろえる鍵の幅の上限。描く物の数に比例させるのは、スロットが疎らでも
     /// 「埋める手間 ≒ 描く物の数」に収まる範囲ならスロットのほうが速いため。
     def seatLimit(count: Int32): Int32 = 4096 + 4 * count
 
@@ -244,7 +244,7 @@ mod RenderFrame {
         // 同じ z 安定ソート列に混ぜて描くので重なり順は壊れない。camera（viewOffset/viewScale）
         // は各レンジが持ち、halfDesign は design/2 をここで計算して当てる。
         staticRanges = List[RenderStatic.Range],
-        // 同 blend / 切り抜き clip 矩形の連続多角形を 1 draw call に畳むバッチ描画用。
+        // 同 blend / 切り抜き clip 矩形の連続多角形を 1 draw call にまとめるバッチ描画用。
         polyBatchShader = Int32,
         polyBatchVao = Int32,
         polyBatchVbo = Int32,
@@ -266,7 +266,7 @@ mod RenderFrame {
         // シェーダー面 1 枚を実際に GL へ描くクロージャ（program の uniform location を知る
         // バックエンド側が提供する）。renderFrameMixed は z の合流だけを受け持つ。
         drawSurface = ShaderEffect.ShaderRenderCmd -> Unit \ IO,
-        // None = 画面へのフレーム（黒帯 + design 領域の 2 段 clear）。Some(op) = レンダー
+        // None = 画面へのフレーム（黒帯 + design 領域の 2 段階の clear）。Some(op) = レンダー
         // ターゲット（FBO）へのフレームで、op（RenderTarget.LoadOp）が前の中身の始末を決める —
         // Keep = 残す（残像用）・Clear = その色の不透明・ClearTransparent = 全画素透明。
         // ターゲットは letterbox を持たないので黒帯 clear はしない。
@@ -373,7 +373,7 @@ mod RenderFrame {
     // 吐き出しに要る GL ハンドル定数も同じ配列に同居させる。組やレコードの acc を
     // 持ち回らないのは、1 item ごとに組の作り直しと Option+組の等価比較が走り、
     // 物量シーンでフレーム時間に乗るため（スレッドダンプ実測）。局所クロージャに
-    // 畳まないのも同じ理由 — item 毎に呼ぶには Flix のクロージャは高すぎる（悪化の実測あり）。
+    // まとめないのも同じ理由 — item 毎に呼ぶには Flix のクロージャは高すぎる（悪化の実測あり）。
     //
     // スロット順（定数）: 0=instShader 1=instVao 2=instVbo 3=instMultiplyBlend
     //              4=polyBatchShader 5=polyBatchVao 6=polyBatchVbo
@@ -508,7 +508,7 @@ mod RenderFrame {
     /// clip 矩形を run 鍵の Int32 群へほどいて push する。Option の組を item ごとに
     /// 作って等価比較する形にしないのは、その作り直しと多相比較が詰め込みループの
     /// 大きな取り分だったため（プロファイル実測）。矩形の量子化は DrawCmd.clipPixels の
-    /// 1 本に寄せたまま（GL と SoftRaster が同じ画素集合を見る保証を崩さない）。
+    /// 1 本にまとめたまま（GL と SoftRaster が同じ画素集合を見る保証を崩さない）。
     def pushSpriteItem(st: Array[Int32, Static], instData: FloatBuffer,
                        scaleX: Float64, scaleY: Float64, texId: Int32,
                        posX: Float64, posY: Float64, sizeX: Float64, sizeY: Float64,
@@ -673,7 +673,7 @@ mod RenderFrame {
     /// もう一方を吐き出すことで、列順（＝重なり順）を厳密に守る。
     /// 同一時点で両 run が非空になることはない（切替時に必ず flush する）。
     ///
-    /// 【順序の不変条件・変更禁止】列順は一切入れ替えない。畳んでよいのは
+    /// 【順序の不変条件・変更禁止】列順は一切入れ替えない。まとめてよいのは
     /// 「先頭から連続する同状態の部分列」だけで、バッチ内の instance 順 = 列順。
     /// run をまたいでテクスチャごとに再グループ化するのは禁止: アルファブレンドは
     /// 描画順に依存するので、同 zIndex の bg 矩形とテキスト最後の文字が入れ替わって
@@ -782,7 +782,7 @@ mod RenderFrame {
             let (vpX, vpY, vpW, vpH) = calcViewport(fbW, fbH, designW, designH);
             match args#targetClear {
                 case None =>
-                    // 画面: 黒帯を含む全面を黒 → design 領域だけ clearColor の 2 段 clear。
+                    // 画面: 黒帯を含む全面を黒 → design 領域だけ clearColor の 2 段階の clear。
                     GL11.glViewport(0, 0, fbW, fbH);
                     GL11.glClearColor(0.0f32, 0.0f32, 0.0f32, 1.0f32);
                     GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
@@ -826,7 +826,7 @@ mod RenderFrame {
             let scaleX = Int32.toFloat64(vpW) / designW;
             let scaleY = Int32.toFloat64(vpH) / designH;
             // 連続する「同じテクスチャ・同じ scissor・同じ blend」のスプライトを 1 回の
-            // instanced draw に畳む（run 収集 → flush）。1 要素 1 draw call だと呼び出しの
+            // instanced draw にまとめる（run 収集 → flush）。1 要素 1 draw call だと呼び出しの
             // 固定費が積み上がり、数千体で描画時間のほとんどを占めてしまうため。
             // 書き溜める先は 1 フレーム 1 本の使い回し。溜まった run を吐くたびに
             // 先頭へ戻すので、要る大きさは「一番大きい run」ぶんで足りる。

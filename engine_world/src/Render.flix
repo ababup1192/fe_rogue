@@ -96,7 +96,7 @@ mod Render {
         if (radius <= 0.0 or look#alpha <= 0.0) Nil
         else {
             // 輪の数は半径に応じて増やす（1px 未満の輪は意味がないため半径 px を上限の目安に、
-            // 大きな玉でも段差が見えない 24 で頭打ち・小さな粒でも形が保てる下限 4）。
+            // 大きな玉でも継ぎ目が見えない 24 で頭打ち・小さな粒でも形が保てる下限 4）。
             let rings = Int32.min(24, Int32.max(4, ceilI(radius)));
             let n = Int32.toFloat64(rings);
             // 外側の輪から順に「その輪まで重なった濃さ」が減衰カーブに乗るように積む。
@@ -104,7 +104,7 @@ mod Render {
             List.range(0, rings) |> List.filterMap(k -> {
                 let kf = Int32.toFloat64(k);
                 let ringRadius = radius * (1.0 - kf / n);
-                // 輪 k が受け持つ帯の中央の距離（0=中心, 1=縁）で目標の濃さを決める。
+                // 輪 k が受け持つ範囲の中央の距離（0=中心, 1=縁）で目標の濃さを決める。
                 let target = c -> look#alpha * smoothFalloff(1.0 - (c + 0.5) / n);
                 let before = if (k == 0) 0.0 else target(kf - 1.0);
                 let goal = target(kf);
@@ -145,7 +145,7 @@ mod Render {
     /// 中心 at に置いた放射状の明かり 1 枚（松明・スポットライト・光だまり）。
     /// 組み込みの放射テクスチャ（RadialBuiltin）を Add で重ねるので、ゲーム側の
     /// アセット・配線は要らない。radius は見た目の半径 px、strength は中心の濃さ 0..1。
-    /// glowAt（同心円の輪を積む）と違い 1 枚ものなので、大半径でも段差が出ず部品数も増えない。
+    /// glowAt（同心円の輪を積む）と違い 1 枚ものなので、大半径でも継ぎ目が出ず部品数も増えない。
     /// 定石: 光マップのレンダーターゲット（App.withPasses）へ Add で灯りを集め、それを
     /// blended(Multiply) で本編に掛けると「暗闇に灯りだけが浮かぶ」絵になる。
     pub def lightAt(spec: { at = Vec2.Vec2, radius = Float64, color = Color,
@@ -200,7 +200,7 @@ mod Render {
     /// passH は pass 全体の高さ（design px。App の pass は design 解像度なので普通は画面の高さ）。
     /// flipV = true で上下鏡像（水面の映り込みなど）。
     /// Shift の dy は「読み先 texV − 面の v」の差分なので、写像 texV = (top + height×v)/passH
-    /// を v の 1 次式に畳んだ係数で返す — 呼び側が同じ導出を定数の手計算で持つと、
+    /// を v の 1 次式にまとめた係数で返す — 呼び側が同じ導出を定数の手計算で持つと、
     /// ストリップの位置替えのたびに写像が割れるため。
     /// 例: Field.Shift({ dx = Field.Const(0.0), dy = Render.passStripDy(strip, passH, false),
     ///                   of = Field.Tex({ name = "screen", chan = chan }) })
@@ -214,7 +214,7 @@ mod Render {
                 b = ShaderDoc.Field.Const(texVSlope - 1.0) }) })
 
     /// 頂点色つきの凸多角形。各頂点に色と濃さを与えると、面の中で滑らかに混ざる
-    /// （空・水面・光の帯のグラデを 1 部品で描く — 1px の色帯を積む必要はない）。
+    /// （空・水面・光の帯のグラデを 1 部品で描く — 1px の細い面を積む必要はない）。
     /// 頂点は置き場所からの相対座標。描画側が扇割りで三角形化するため凸の形で使うこと
     /// — 凹ませたい形は凸に割って並べる。
     pub def gradPolygon(vertices: List[DrawCmd.GradVertex], zIndex: Int32): Item =
@@ -358,7 +358,7 @@ mod Render {
         items |> List.map(placed -> { item = zShifted(delta, placed#item) | placed })
 
     /// 組み上がった列を丸ごと d だけ動かす（zShiftedAll の位置版）。
-    /// 部品を 0 起点で組んでから最後に置き場所を与える書き方（盤の原点へ寄せる・
+    /// 部品を 0 起点で組んでから最後に置き場所を与える書き方（盤の原点へ動かす・
     /// UI の枠の中へ入れる・粒を発生源へ運ぶ）がこれで 1 行になる。
     /// 中身（大きさ・頂点・z）には触らない — 動かすのは置き場所と、Clipped の clip 矩形。
     /// clip 矩形の規約: 平行移動と一様 scale は clip 矩形も追随・回転だけ据え置き（clip 矩形 = 画面平行の不変条件）。
@@ -375,7 +375,7 @@ mod Render {
     /// Clipped の clip 矩形も一緒に伸縮する（clip 矩形の規約: 平行移動と一様 scale は clip 矩形も追随・
     /// 回転だけ据え置き — movedAll と同じ）。
     /// 倍率は一様（Float64 1 つ）だけ受ける — 非等方だと回転済みの物や円が歪み、
-    /// 「見た目を保ったまま大きさだけ変える」約束が守れないため、型で締め出す。
+    /// 「見た目を保ったまま大きさだけ変える」決まりが守れないため、型で締め出す。
     pub def scaledAllAround(factor: Float64, pivot: Vec2.Vec2, items: List[PlacedItem]): List[PlacedItem] =
         let stretch = v -> Vec2.add(pivot, Vec2.mul(Vec2.sub(v, pivot), factor));
         items |> List.map(placed ->
@@ -418,7 +418,7 @@ mod Render {
         { x = Float64.round(v#x / step) * step, y = Float64.round(v#y / step) * step }
 
     /// 絵の色を差し替える（Sprite だけに効く。白 = 元の絵のまま）。同じ 1 枚の絵を、
-    /// 色だけ変えて使い回すための口 — 木や草を 1 本ずつわずかに違う色にすると、
+    /// 色だけ変えて使い回すための関数 — 木や草を 1 本ずつわずかに違う色にすると、
     /// 並んでも単調にならない。
     ///
     /// 掛け算ではなく差し替えなので、すでに色が乗っている絵に重ねても足し合わさらない。
@@ -494,7 +494,7 @@ mod Render {
         let s = Vec2.sin(Vec2.tau() * t);
         List.map(v -> { x = v#x * c - v#y * s, y = v#x * s + v#y * c }, vertices)
 
-    /// 任意の点 pivot 周りに回す（蝶番・ドア用の近道。pivot へ寄せて回して戻すのと同じ）。
+    /// 任意の点 pivot 周りに回す（蝶番・ドア用の近道。pivot へ移して回して戻すのと同じ）。
     pub def rotatedAround(t: Float64, pivot: Vec2.Vec2, vertices: List[Vec2.Vec2]): List[Vec2.Vec2] =
         vertices
             |> List.map(v -> Vec2.sub(v, pivot))
@@ -532,7 +532,7 @@ mod Render {
     /// 置き場所つきの列を、pivot（画面座標）のまわりに t（1 周 = 1.0）回す純関数。
     /// at を pivot まわりに公転させ、中身は自分の軸で t 自転する: Sprite / Box / Text は
     /// rotation に t を加算、Poly は頂点を自前回転（絶対座標で組んだ lineSeg / polygon が
-    /// そのまま正しく回る）、Clipped は中身だけ回して clip 矩形は据え置き（clip 矩形が画面に平行の約束を保つ）。
+    /// そのまま正しく回る）、Clipped は中身だけ回して clip 矩形は据え置き（clip 矩形が画面に平行という決まりを保つ）。
     /// Shader の面は非対応 — そのまま返す（uv の向きが面と回ると模様の意味が変わるため。
     /// 模様を回したいときは spec 側の Rotate を使う）。
     /// turnedAll と違い anchor（Box の中心）を見ない素朴な at 公転 — Box を「1 枚の板」として
@@ -681,7 +681,7 @@ mod Render {
 
     /// Pass 1 枚を描き出し側の宣言（engine_tools の HeadlessRender.PassSpec と同形のレコード）へ
     /// 詰め替える。items は withoutShaders で外してから下ろす — ターゲットの中の
-    /// Shader 面は GL が描かないので、代表色ベタ塗りを混ぜると実機とズレる。この約束を
+    /// Shader 面は GL が描かないので、代表色ベタ塗りを混ぜると実機とズレる。この決まりを
     /// 呼び側ごとに書かせない（書き忘れた側だけズレる）ための 1 本。
     /// textureInfoOf は region 付き sprite の UV 解決口（region を使わない pass なら
     /// `_ -> None` でよい）。

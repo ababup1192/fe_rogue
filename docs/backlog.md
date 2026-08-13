@@ -27,13 +27,13 @@
   その起票するマップエディタ側計画の requirements に転記し、承認条件とする。
 
 - **lighten / darken の重複を一本化** — トリガー: **engine に共有の
-  `Color.lighten` / `Color.darken` が入った時点**。現状は白/黒へ寄せる同式の線形補間が
+  `Color.lighten` / `Color.darken` が入った時点**。現状は白/黒へ近づける同じ式の線形補間が
   3 箇所に散っている（engine `TerrainDoc` の private 実装・rpg-starter `ThemeDoc` の
   pub def・dungeon `Surfaces` 相当）。engine が template の ThemeDoc に依存する向きは
   作れないためやむなく重複している。共有ユーティリティが engine の Color に入ったら
-  `TerrainDoc` / `ThemeDoc`（/ dungeon の Surfaces）をそれへ寄せて一本化する。
+  `TerrainDoc` / `ThemeDoc`（/ dungeon の Surfaces）をそれへ移して一本化する。
 
-- **dungeon の Surfaces を engine Terrain へ寄せる移行** — 将来計画（定期見直し）。
+- **dungeon の Surfaces を engine Terrain へ移す移行** — 将来計画（定期見直し）。
   dungeon は当面 engine の `DualGrid` / `Material` を呼ぶだけに留め、セル種→質感の表
   （Surfaces）は dungeon 側に残す。dungeon Surfaces と engine Terrain が別実装のまま
   乖離していく温床なので、**engine 側で Terrain に手を入れるときは Surfaces との差分を

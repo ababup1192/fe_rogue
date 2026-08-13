@@ -107,7 +107,7 @@ mod ViewCar {
             case _ => Nil
         }
 
-    /// 絵の真ん中を at に置く版（pxScaled と同じ置き方の口 — 乗せ換え元と座標系を合わせる）。
+    /// 絵の真ん中を at に置く版（pxScaled と同じ置き方の関数 — 乗せ換え元と座標系を合わせる）。
     pub def pxQuadScaledCentered(spec: PxQuad): List[Render.PlacedItem] =
         let a = PxSprite.anchorOffsetOf(spec#doc, spec#sprite, spec#frame, spec#flipX, 1);
         pxQuadScaled({ at = { x = spec#at#x + a#x * spec#scale,
@@ -139,7 +139,7 @@ mod ViewCar {
             }
         })
 
-    /// ライバルの車体色は index 順に A→B→C。台数が色数を超えたら A に倒す（fail-open）。
+    /// ライバルの車体色は index 順に A→B→C。台数が色数を超えたら A にする（fail-open）。
     def rivalColorOf(theme: ThemeDoc.Doc, i: Int32): Color =
         match i {
             case 0 => theme#rivalA
@@ -280,7 +280,7 @@ mod ViewCar {
                 :: Nil
         })
 
-    /// 帯から外へ走る筋。輪だけで見せると単独の図形に見えるので、押し出された空気の
+    /// 衝撃の輪から外へ走る筋。輪だけで見せると単独の図形に見えるので、押し出された空気の
     /// 筋を後ろ側ほど長く伸ばす。長さと太さを Hash01 で不揃いにして定規の線から外す。
     def shockRays(w: World.World, c: Vec2.Vec2, r: Float64, p: Float64,
                   z: Int32): List[Render.PlacedItem] =
@@ -330,7 +330,7 @@ mod ViewCar {
             // 車体幅より少し外へ出すのは、後輪の真下だと白煙の芯に入って
             // Add ブレンドの火花が白に溶けるため。
             let both = phase -> wheel(-11.0)(phase) ::: wheel(11.0)(phase);
-            // 煙より上へ持ち上げる。同じ帯だと、後から積まれる白煙（bursts）に
+            // 煙より上へ持ち上げる。同じ z の範囲だと、後から積まれる白煙（bursts）に
             // 火花が全部埋もれて「滑っている熱」が見えなくなる。
             Render.zShiftedAll(fxLift() + 8, both(0.0) ::: both(0.12))
         }

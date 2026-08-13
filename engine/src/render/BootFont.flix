@@ -86,7 +86,7 @@ mod BootFont {
                 let y = Int32.toFloat64(hexAt(hex, base + 7, 3));
                 let w = Int32.toFloat64(hexAt(hex, base + 10, 2));
                 let advance = Int32.toFloat64(hexAt(hex, base + 12, 2));
-                // yOff = -ascent は「マスの上端を行の上端に合わせる」という Text 側の約束。
+                // yOff = -ascent は「マスの上端を行の上端に合わせる」という Text 側の決まり。
                 let gm: TextLayout.GlyphMetrics =
                     { xOff = 0.0, yOff = -1.0 * ascent,
                       glyphW = w, glyphH = cellH, advance = advance,

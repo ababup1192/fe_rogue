@@ -64,7 +64,7 @@ def scan_package(src_root: Path):
         decls = MOD_DECL.findall(body)
         if not decls:
             continue
-        # 1 ファイル複数 mod でも、索引の粒度（トップレベル名）に畳んで数える。
+        # 1 ファイル複数 mod でも、索引の粒度（トップレベル名）にまとめて数える。
         top = decls[0].split(".")[0]
         defs = set(PUB_DEF.findall(body))
         if defs:

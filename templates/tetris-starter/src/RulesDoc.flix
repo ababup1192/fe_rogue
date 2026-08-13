@@ -6,7 +6,7 @@ mod RulesDoc {
     use Util.Json.Json
 
     /// 手触りと収支の数値。いじると何が変わるかは各フィールドのコメントのとおり。
-    ///   gravityInterval … 1 段落ちるまでの秒。小さいほど速い。
+    ///   gravityInterval … 1 行落ちるまでの秒。小さいほど速い。
     ///   softDropFactor  … 下キーを押している間の落下倍率（大きいほど速く落ちる）。
     ///   lockDelay       … 接地してから固定されるまでの猶予秒。移動/回転で 0 に戻る（設置面ねばり）。
     ///   maxLockResets   … その猶予リセットの上限回数。無限に延命できないための天井。
@@ -34,7 +34,7 @@ mod RulesDoc {
           clearDuration = 0.35,
           scores = 0 :: 100 :: 300 :: 500 :: 800 :: Nil }
 
-    /// n 行同時消しの得点。表の範囲外（想定外の行数）は 0 点に倒す（fail-open）。
+    /// n 行同時消しの得点。表の範囲外（想定外の行数）は 0 点にする（fail-open）。
     /// リテラルを配らず必ず Doc の scores を引く — 得点調整が JSON だけで完結する。
     pub def scoreFor(n: Int32, doc: Doc): Int32 =
         List.drop(n, doc#scores) |> List.head |> Option.getWithDefault(0)

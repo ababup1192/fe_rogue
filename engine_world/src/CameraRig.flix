@@ -1,4 +1,4 @@
-// CameraRig — 「world のどこを・どれだけ寄せて映すか」を描画物の列に掛ける小さな道具箱。
+// CameraRig — 「world のどこを・どれだけズームして映すか」を描画物の列に掛ける小さな道具箱。
 // カメラは状態でなく毎フレーム導出する値なので、変換の保存や復元は要らない。
 // 使い方: 映す中心は centerOn（zoom 込みの一発適用）、見える範囲は visibleRect、
 // マウスの逆変換は toWorldPos。追従は followDelta、端で止めるのは clampCenter、
@@ -74,7 +74,7 @@ mod CameraRig {
     /// 追従の仕様: 不感帯の幅と寄せ率（1 秒あたり）。
     pub type alias Follow = { deadzone = Float64, k = Float64 }
 
-    /// target が current±deadzone の帯を出たぶん × min(1, k×dt) の移動量。
+    /// target が current±deadzone の不感帯を出たぶん × min(1, k×dt) の移動量。
     /// current は「いま画面が見ている中心」— 呼び手が自分の座標系で計算して渡し、返る移動量を自分で足す。
     pub def followDelta(spec: Follow, dt: Float64, target: Float64, current: Float64): Float64 =
         let offset = target - current;

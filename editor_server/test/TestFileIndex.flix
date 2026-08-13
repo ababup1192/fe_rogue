@@ -42,7 +42,7 @@ mod TestFileIndex {
                     :: "assets/hud.ui.json" :: "assets/palette.json" :: "project.json" :: Nil,
             FileIndex.changeTargets("assets/palette.json" :: "assets/missing.json" :: Nil, all))
 
-    /// パレットが *.ui.json でもあるような重複指定は 1 件に畳まれる。
+    /// パレットが *.ui.json でもあるような重複指定は 1 件にまとめられる。
     @Test
     def testChangeTargetsDedupes(): Unit \ Assert =
         Assert.assertEq(

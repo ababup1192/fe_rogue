@@ -1,4 +1,4 @@
-// FxDoc — fx.json（閉形式パーティクル）を Spec（pure data）へ畳むパース層。
+// FxDoc — fx.json（閉形式パーティクル）を Spec（pure data）へ読み取るパース層。
 // 粒の実体はどこにも保存せず、絵は Fx.sample が (Spec, seed, t) から毎回計算する
 // （spawn も update も free も無い）。エラーはノードのパス付き（例: `at emitters[0].speed: ...`）
 // で返す — UiDoc と同じ流儀。
@@ -117,7 +117,7 @@ mod FxDoc {
     // parse（純粋）
     // ========================================================================
 
-    /// ドキュメント（version + name + duration + emitters）を Spec へ畳む。
+    /// ドキュメント（version + name + duration + emitters）を Spec へ読み取る。
     /// 色は実色（"#rrggbb" 等）のみ — テーマの色キー（"@名前"）を使うときは parseWith。
     pub def parse(json: Json): Result[JsonError, Spec] =
         parseWith(Map.empty(), json)

@@ -36,7 +36,7 @@ mod PxSpriteDoc {
             |> Option.map(fromRoot)
 
     /// パース済みの Json 値から Doc へ(エディタの doc/path 経路用 — fromJson と同じ fail-open)。
-    /// オブジェクトでなければ None(呼び手が empty へ倒す)。
+    /// オブジェクトでなければ None(呼び手が empty を使う)。
     pub def fromJsonValue(json: Json): Option[Doc] =
         JsonCodec.expectObject(json) |> Option.map(fromRoot)
 
@@ -110,8 +110,8 @@ mod PxSpriteDoc {
             |> Option.map(Grid.dimsOfRows)
 
     /// path の Doc を読む。読めない・壊れているときは empty(fail-open)。
-    /// empty に倒れると絵が「消える」だけで落ちないぶん原因が見えにくいので、
-    /// 読み口を DocJson.loadOr に委譲し、倒れた事実は標準エラーへ 1 行出る。
+    /// empty へ落ちると絵が「消える」だけで落ちないぶん原因が見えにくいので、
+    /// 読み込みを DocJson.loadOr に委譲し、落ちた事実は標準エラーへ 1 行出る。
     pub def load(p: String): Doc \ Fs.FileRead =
         DocJson.loadOr(fromJson, empty(), p)
 }

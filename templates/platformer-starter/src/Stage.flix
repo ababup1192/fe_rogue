@@ -30,9 +30,7 @@ mod Stage {
         checkpoints = List[Cell],
         goal = Cell,
         platforms = List[Platform],
-        walkers = List[Cell],
-        flyers = List[Cell],
-        shooters = List[Cell]
+        enemies = List[(Cell, Enemies.Behavior)]
     }
 
     /// Spec(rows)から Stage を組む。行長の不揃いは短い方に合わせず、
@@ -41,7 +39,8 @@ mod Stage {
         let rows = spec#rows |> List.map(r -> String.toList(r) |> List.toVector) |> List.toVector;
         let height = Vector.length(rows);
         let width = rows |> Vector.foldLeft((acc, r) -> Int32.max(acc, Vector.length(r)), 0);
-        let find = byChar(spec#rows);
+        let cells = Grid.cellsOfRows(spec#rows);
+        let find = byChar(cells);
         { name = spec#name, kind = spec#kind, rows = rows,
           width = width, height = height,
           start = List.head(find('P')) |> Option.getWithDefault({ x = 2, y = 2 }),
@@ -52,9 +51,20 @@ mod Stage {
           goal = List.head(find('G'))
               |> Option.getWithDefault({ x = width - 2, y = 2 }),
           platforms = platformsOf(find('~')),
-          walkers = find('a'),
-          flyers = find('b'),
-          shooters = find('z') }
+          enemies = cells |> List.filterMap(entry -> {
+              let (cell, ch) = entry;
+              behaviorOf(ch) |> Option.map(b -> (cell, b))
+          }) }
+
+    /// 敵の文字 → 振る舞いの初期値。知らない文字は湧かさない(fail-open)。
+    /// 飛ぶ敵の揺れの中心は Enemies.make が湧いた位置から入れる。
+    def behaviorOf(ch: Char): Option[Enemies.Behavior] =
+        match ch {
+            case 'a' => Some(Enemies.Behavior.Walking(0.0))
+            case 'b' => Some(Enemies.Behavior.Flying(0.0))
+            case 'z' => Some(Enemies.Behavior.Shooting(0.0))
+            case _   => None
+        }
 
     /// 格子の 1 文字。外は '.'(空)— 落下死はステージ最下段より下で World が判定する。
     pub def charAt(st: Stage, x: Int32, y: Int32): Char =
@@ -110,9 +120,9 @@ mod Stage {
     // ── 抽出 ──
 
     /// 文字 → その文字のマス(上の行から・行の中は左から)を引く関数。
-    /// 格子を 1 度ほどいて振り分けるので、種類が増えても走査は 1 回のまま。
-    def byChar(rows: List[String]): Char -> List[Cell] =
-        let table = Grid.cellsOfRows(rows)
+    /// ほどいた格子を受け取って表に振り分けるので、文字の種類が増えても表は 1 枚のまま。
+    def byChar(cells: List[(Cell, Char)]): Char -> List[Cell] =
+        let table = cells
             |> List.foldLeft((acc, e) -> {
                 let (cell, ch) = e;
                 Map.insertWith((newL, oldL) -> newL ::: oldL, ch, cell :: Nil, acc)

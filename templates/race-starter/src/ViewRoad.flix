@@ -1,7 +1,7 @@
-// ViewRoad — 地面の帯・路面・縁石・白線・スタートライン・アイテム/障害物・タイヤ痕の層。
-// コースの 1 段 = 画面の横帯 1 本。帯ごとに Proj で台形へ投影して積む。
-// 急カーブでは手前の帯をさらに割って積む（1 枚の台形だと 1 段の中の折れが直線に見える）。
-// 遠くの帯ほど霞み（hazeTo）に溶かすので、平らな多角形の連なりに奥行きが出る —
+// ViewRoad — 地面のセグメント・路面・縁石・白線・スタートライン・アイテム/障害物・タイヤ痕の層。
+// コースの 1 行 = 画面のセグメント 1 本。セグメントごとに Proj で台形へ投影して積む。
+// 急カーブでは手前のセグメントをさらに割って積む（1 枚の台形だと 1 行の中の折れが直線に見える）。
+// 遠くのセグメントほど霞み（hazeTo）に溶かすので、平らな多角形の連なりに奥行きが出る —
 // 距離感は色でも語る（縮みだけに頼ると遠くがうるさいまま残る）。
 mod ViewRoad {
 
@@ -75,18 +75,18 @@ mod ViewRoad {
         let margin = 60.0;
         List.exists(x -> x > 0.0 - margin, xs) and List.exists(x -> x < World.designW() + margin, xs)
 
-    /// 帯 n の 4 隅（道の中心からの横ずれ px）。手前辺は行 n・奥辺は行 n+1 の左右端を使う —
-    /// こうすると帯 n の奥辺と帯 n+1 の手前辺が同じ 2 点になり、道が 1 枚の帯に繋がる。
+    /// セグメント n の 4 隅（道の中心からの横ずれ px）。手前辺は行 n・奥辺は行 n+1 の左右端を使う —
+    /// こうするとセグメント n の奥辺とセグメント n+1 の手前辺が同じ 2 点になり、道が 1 枚の面に繋がる。
     pub def stripOf(w: World.World, n: Int32): Strip =
         let a = World.roadEdgeAt(n, w#course);
         let c = World.roadEdgeAt(n + 1, w#course);
         { xl0 = a#xl, xr0 = a#xr, xl1 = c#xl, xr1 = c#xr }
 
-    /// 帯 1 本の左右端。0 が手前辺、1 が奥辺。
+    /// セグメント 1 本の左右端。0 が手前辺、1 が奥辺。
     pub type alias Strip = { xl0 = Float64, xr0 = Float64, xl1 = Float64, xr1 = Float64 }
 
-    /// 帯の中を比率 tt（0 = 手前辺, 1 = 奥辺）で進んだ位置の左右端。
-    /// 帯の途中に置く物（白線・スタートライン・ヤシ）も、この 1 本の式から辺を引く。
+    /// セグメントの中を比率 tt（0 = 手前辺, 1 = 奥辺）で進んだ位置の左右端。
+    /// セグメントの途中に置く物（白線・スタートライン・ヤシ）も、この 1 本の式から辺を引く。
     pub def edgeAtT(e: Strip, tt: Float64): { xl = Float64, xr = Float64 } =
         { xl = e#xl0 + (e#xl1 - e#xl0) * tt, xr = e#xr0 + (e#xr1 - e#xr0) * tt }
 
@@ -112,11 +112,11 @@ mod ViewRoad {
             |> Render.overItem(Render.fade(Float32.toFloat64(s#alpha)))
 
     /// 通し行の偶奇。OutRun 式の 1 行おきの縞は全部この判定に揃える
-    /// （地面・路面・縁石が同じ行で同時に切り替わり、帯の境目が 1 本の線になる）。
+    /// （地面・路面・縁石が同じ行で同時に切り替わり、セグメントの境目が 1 本の線になる）。
     def even(n: Int32): Bool =
         Int32.modulo(n, 2) == 0
 
-    // ── 地面の帯（全幅） ──
+    // ── 地面のセグメント（全幅） ──
 
     /// 距離 u の霞みを色に掛ける。
     def hazed(w: World.World, u: Float64, c: Color): Color =
@@ -124,7 +124,7 @@ mod ViewRoad {
 
     /// 草の明暗を「通し行の実数」から連続で引く（0 = 影側, 1 = 日向側）。
     /// 波の周期を画面に入る行数（34 本）より長く取り、振れ幅も 0.5 まで詰める —
-    /// 1〜2 行の周期で振ると、手前の帯は 1 本が 40px を超えるので明暗が横縞の階段として読める。
+    /// 1〜2 行の周期で振ると、手前のセグメントは 1 本が 40px を超えるので明暗が横縞の階段として読める。
     /// 周期の違う 2 本を重ねるのは、1 本だけだと明暗の切り替わる高さが等間隔に並んで
     /// やはり縞に見えるため。位相は縦の筋（furrowOffAt の周期 ≒ 7 行）と揃えない。
     def grassShadeAt(rowF: Float64): Float64 =
@@ -136,14 +136,14 @@ mod ViewRoad {
     def grassBaseAt(theme: ThemeDoc.Doc, rowF: Float64): Color =
         Color.mix(ThemeDoc.grassDark(theme), ThemeDoc.grassLight(theme), grassShadeAt(rowF))
 
-    /// 通し行 rowF・距離 u での草の色（霞み込み）。地面の帯と、その先の平野
-    /// （ViewScene.plain）が同じ 1 本の式から色を引くための窓口 — 別々に組むと、
-    /// 帯の切れる高さで色が段になる。
+    /// 通し行 rowF・距離 u での草の色（霞み込み）。地面のセグメントと、その先の平野
+    /// （ViewScene.plain）が同じ 1 本の式から色を引くための共通の関数 — 別々に組むと、
+    /// セグメントの切れる高さで色が急に変わる。
     pub def grassAt(w: World.World, rowF: Float64, u: Float64): Color =
         hazed(w, u, grassBaseAt(w#theme, rowF))
 
-    /// 帯の全幅を草色で敷く。手前辺と奥辺で別の色を渡した 1 枚の面にするので、
-    /// 明暗の波も霞みも帯をまたいで滑らかに繋がる。路面はこの上に重なるので、
+    /// セグメントの全幅を草色で敷く。手前辺と奥辺で別の色を渡した 1 枚の面にするので、
+    /// 明暗の波も霞みもセグメントをまたいで滑らかに繋がる。路面はこの上に重なるので、
     /// 道から外れた所は草のまま残る（fail-open の土台 — 路面の無い行でも画面に穴が開かない）。
     def groundStrip(w: World.World, ed: Edges, b: Proj.Segment): List[Render.PlacedItem] =
         let u1 = b#u0 + b#du;
@@ -174,18 +174,18 @@ mod ViewRoad {
         :: Nil
 
     /// 筋 i が通し行 rowF の所で道からどれだけ離れているか。行の実数で揺らすので、
-    /// 隣り合う帯は境目で必ず同じ位置になり、線が折れずに 1 本のうねりとして繋がる
+    /// 隣り合うセグメントは境目で必ず同じ位置になり、線が折れずに 1 本のうねりとして繋がる
     /// （定規で引いた直線のままだと、光の筋のように見えて草地に読めない）。
     def furrowOffAt(lane: { off = Float64, wid = Float64, mix = Float64 },
                     i: Int32, rowF: Float64): Float64 =
         lane#off + 2.5 * Vec2.sin(rowF * 0.9 + Int32.toFloat64(i) * 2.1)
 
-    /// 筋を描く一番奥の u。これより遠い帯は霞みで筋が消えるので、部品を積まない。
+    /// 筋を描く一番奥の u。これより遠いセグメントは霞みで筋が消えるので、部品を積まない。
     def furrowFar(): Float64 = 14.0
 
-    /// 草地の縦の筋。道の左右端から一定距離だけ外へ離した細い台形を、帯の手前辺と奥辺で
+    /// 草地の縦の筋。道の左右端から一定距離だけ外へ離した細い台形を、セグメントの手前辺と奥辺で
     /// 結ぶ。道と同じ折れ込みで曲がるので、カーブで景色が回って見える
-    /// （横の帯だけだと、曲がっているのに景色は真っ直ぐ迫るように読めてしまう）。
+    /// （横のセグメントだけだと、曲がっているのに景色は真っ直ぐ迫るように読めてしまう）。
     def furrows(w: World.World, ed: Edges, b: Proj.Segment,
                 e: Strip): List[Render.PlacedItem] =
         if (b#u0 > furrowFar()) Nil
@@ -233,7 +233,7 @@ mod ViewRoad {
               near = hazed(w, b#u0, segColor), far = hazed(w, u1, segColor) });
         base :: (wearLanes(w, ed, b, e, segColor) ::: seam(cam, w, ed, b, e, segColor))
 
-    /// 路面を縦に切る帯。t は道幅の比率（0 = 左端, 1 = 右端）、tint は下地からの寄せ幅
+    /// 路面を縦に切るストリップ。t は道幅の比率（0 = 左端, 1 = 右端）、tint は下地からの寄せ幅
     /// （負 = 暗い汚れ・轍、正 = 日に灼けて色が抜けた所）。数はわざと少なくして、
     /// 縞の下地が読める程度の弱い階調に留める。
     def wearLaneSpecs(): List[{ t0 = Float64, t1 = Float64, tint = Float64 }] =
@@ -244,7 +244,7 @@ mod ViewRoad {
         :: { t0 = 0.90, t1 = 1.00, tint = -0.16 }
         :: Nil
 
-    /// 質感を積む一番奥の u。これより遠いと帯が 1px を切って轍が縞のノイズに見えるので、
+    /// 質感を積む一番奥の u。これより遠いとセグメントが 1px を切って轍が縞のノイズに見えるので、
     /// 下地の階調だけに任せる。
     def wearFar(): Float64 = 17.0
 
@@ -270,7 +270,7 @@ mod ViewRoad {
         else if (u < 14.0) 4
         else 8
 
-    /// 舗装の継ぎ目。帯の手前端に横 1 本の暗い筋を渡す。
+    /// 舗装の継ぎ目。セグメントの手前端に横 1 本の暗い筋を渡す。
     def seam(cam: Proj.Cam, w: World.World, ed: Edges, b: Proj.Segment,
              e: Strip, segColor: Color): List[Render.PlacedItem] =
         if (not b#head or b#u0 > wearFar() or Int32.modulo(b#n, seamPeriodAt(b#u0)) != 0) Nil
@@ -285,7 +285,7 @@ mod ViewRoad {
                   near = hazed(w, b#u0, c), far = hazed(w, u1, c) }) :: Nil
         }
 
-    /// 帯の一部（道幅の比率 t0..t1、行の u0..u1）を、手前色 near・奥色 far の連続階調で塗る。
+    /// セグメントの一部（道幅の比率 t0..t1、行の u0..u1）を、手前色 near・奥色 far の連続階調で塗る。
     def gradQuad(ed: Edges, e: Strip,
                  q: { t0 = Float64, t1 = Float64,
                       near = Color, far = Color }): Render.PlacedItem =
@@ -302,7 +302,7 @@ mod ViewRoad {
               :: { pos = { x = xf(q#t0), y = y1 }, color = q#far,  alpha = 1.0f32 }
               :: Nil, zRoad()) }
 
-    /// 縁石の縞を何行で 1 色にするか。奥は帯が細くなり、1 行おきのままだと赤と白が同じ
+    /// 縁石の縞を何行で 1 色にするか。奥はセグメントが細くなり、1 行おきのままだと赤と白が同じ
     /// 画素に潰れて「1 本の赤い線」になるので、遠いほど粗くして交互を残す。
     def kerbPeriodAt(u: Float64): Int32 =
         if (u < 8.0) 1
@@ -310,7 +310,7 @@ mod ViewRoad {
         else if (u < 20.0) 4
         else 8
 
-    /// 縁石。路面の左右のすぐ外に幅 6px（×縮み）の帯を貼る。赤と白が交互に並ぶので、
+    /// 縁石。路面の左右のすぐ外に幅 6px（×縮み）のストリップを貼る。赤と白が交互に並ぶので、
     /// 道の縁がカーブでどう曲がるかが一番よく見える場所になる。
     def kerbs(w: World.World, ed: Edges, b: Proj.Segment,
               e: Strip): List[Render.PlacedItem] =
@@ -331,7 +331,7 @@ mod ViewRoad {
                     :: { x = r1 + k1, y = y1 } :: { x = r1, y = y1 } :: Nil)
             :: Nil
 
-    /// 中央の白線。偶数行だけ帯の 0.2..0.8 区間に引く = 破線。実線にしないのは、
+    /// 中央の白線。偶数行だけセグメントの 0.2..0.8 区間に引く = 破線。実線にしないのは、
     /// 流れる切れ目が前進の速さをそのまま伝えるから（速度計より雄弁）。
     def laneLine(cam: Proj.Cam, w: World.World, b: Proj.Segment,
                  e: Strip): List[Render.PlacedItem] =
@@ -382,9 +382,9 @@ mod ViewRoad {
     /// 壁の高さ（世界 px）。縁石の 6px より高くして、路面の縁とは別の物に見せる。
     def railH(): Float64 = 12.0
 
-    /// ガードレール。段の左右どちらに立つかは区間の rail（World.railSideAt）が決める。
-    /// 帯の手前辺と奥辺を結ぶ 2 枚の面（明るい上側 + 影の下側）で 1 本の板にし、
-    /// 段の頭には支柱を立てる。壁は道と同じ折れで曲がるので、コーナーの外周がなぞれる。
+    /// ガードレール。セグメントの左右どちらに立つかは区間の rail（World.railSideAt）が決める。
+    /// セグメントの手前辺と奥辺を結ぶ 2 枚の面（明るい上側 + 影の下側）で 1 本の板にし、
+    /// セグメントの頭には支柱を立てる。壁は道と同じ折れで曲がるので、コーナーの外周がなぞれる。
     def rails(cam: Proj.Cam, w: World.World, b: Proj.Segment, e: Strip): List[Render.PlacedItem] =
         let side = World.railSideAt(b#n, w);
         if (side == 0.0 or b#u0 > 20.0) Nil
@@ -419,8 +419,8 @@ mod ViewRoad {
 
     // ── アイテム・障害物（路面の上の立ち物） ──
 
-    /// この帯の立ち物。置き場所を帯の真ん中（u0+0.5）に投影して置く。
-    /// 当たりの帯（World.blockersAt）から絵を引くので、見えている物と当たる物がずれない。
+    /// このセグメントの立ち物。置き場所をセグメントの真ん中（u0+0.5）に投影して置く。
+    /// 当たりの範囲（World.blockersAt）から絵を引くので、見えている物と当たる物がずれない。
     def props(cam: Proj.Cam, w: World.World, b: Proj.Segment): List[Render.PlacedItem] =
         itemsOf(cam, w, b) ::: blockersOf(cam, w, b)
 
@@ -446,10 +446,10 @@ mod ViewRoad {
                   flipX = false, f = f, turn = 0.0, z = z }))
         })
 
-    /// 障害物 3 種。どれも「当たりの帯」1 つが絵 1 つに対応する。
+    /// 障害物 3 種。どれも「当たりの範囲」1 つが絵 1 つに対応する。
     def blockersOf(cam: Proj.Cam, w: World.World, b: Proj.Segment): List[Render.PlacedItem] =
         let uc = b#u0 + 0.5;
-        // 通り過ぎた段（uc < 0.15）は描かない。真横〜背後の帯は画面いっぱいの板になるだけで、
+        // 通り過ぎたセグメント（uc < 0.15）は描かない。真横〜背後のセグメントは画面いっぱいの板になるだけで、
         // 何が起きているかを伝えない。
         if (uc < 0.15 or uc > 20.0) Nil
         else World.blockersAt(b#n, w) |> List.flatMap(bl ->
@@ -524,7 +524,7 @@ mod ViewRoad {
         })
 
     /// 土管ゲート 1 本ぶん = 隙間ぎわに立つ太い土管 + 残りを塞ぐ横たわった管。
-    /// 当たりの帯（World.blockersAt）は草の上まで続いているが、絵は道幅の中で止める —
+    /// 当たりの範囲（World.blockersAt）は草の上まで続いているが、絵は道幅の中で止める —
     /// 道の外まで伸ばすと「隙間を通す門」ではなく地面に敷いた板に読める。
     def pipeAt(cam: Proj.Cam, w: World.World, n: Int32, uc: Float64,
                bl: World.Blocker): List[Render.PlacedItem] =
@@ -533,7 +533,7 @@ mod ViewRoad {
         let hi = Float64.min(bl#hi, e#xr + 4.0);
         if (hi - lo < 1.0) Nil
         else {
-            // 隙間はゲートの内側 = 帯が道の外へ食み出していない方の端。
+            // 隙間はゲートの内側 = 当たりの範囲が道の外へ食み出していない方の端。
             let gapAtHi = bl#lo < e#xl;
             let mouth = if (gapAtHi) hi else lo;
             let inward = if (gapAtHi) 0.0 - 1.0 else 1.0;
@@ -543,7 +543,7 @@ mod ViewRoad {
         }
 
     /// 横たわった管。上下の階調で丸みを出し、奥へ続く天面と路面への落ち影を別に置く
-    /// （天面が無いと、丸めても厚みの無い帯に見える）。
+    /// （天面が無いと、丸めても厚みの無い面に見える）。
     def tubeOf(cam: Proj.Cam, w: World.World,
                s: { uc = Float64, lo = Float64, hi = Float64 }): List[Render.PlacedItem] =
         let back = s#uc + 0.18;
@@ -605,7 +605,7 @@ mod ViewRoad {
                 ::: (cap :: hole :: Nil))
 
     /// 振り子バー。振れ幅の跡 → 真下の落ち影 → 浮いた横棒（斜め縞）→ 両端の握りの順に積む。
-    /// 跡を敷くのは、静止した 1 枚では動く物だと読めないため — 帯の中を往復すると判れば、
+    /// 跡を敷くのは、静止した 1 枚では動く物だと読めないため — 振れる範囲の中を往復すると判れば、
     /// どちら側へ逃げるかを差し掛かる前に決められる。落ち影と横棒を離すのは、
     /// くっつけると路面に描いた白線に見えるため。
     def barAt(cam: Proj.Cam, w: World.World, n: Int32, uc: Float64,

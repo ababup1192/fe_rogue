@@ -64,10 +64,10 @@ mod DocJson {
 
     /// path の Doc を読む。読めない・壊れているときは fallback（fail-open）。
     /// 「書き損じで画面が壊れるより、保存し直せる方を選ぶ」という Doc 規約の実体で、
-    /// 外の世界に触る手続き（ファイルを開く・効果を畳む）をここ 1 箇所に閉じ込める。
-    /// ファイルが無いときは何も知らせず fallback（任意 Doc の正常系）。ファイルが有るのに
+    /// 外の世界に触る手続き（ファイルを開く・効果をハンドラで受ける）をここ 1 箇所に閉じ込める。
+    /// ファイルが無いときは何も知らせず既定へ落とす（任意 Doc の正常系）。ファイルが有るのに
     /// 読めないときだけ標準エラーへ 1 行知らせる — 何も知らせないと「保存したのに
-    /// 反映されない」の原因が追えない。
+    /// 効かない」の原因が追えない。
     pub def loadOr(decode: String -> Option[a] \ ef, fallback: a, path: String): a \ ef + Fs.FileRead =
         let readResult = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;
         match readResult {
@@ -79,13 +79,13 @@ mod DocJson {
             }
         }
 
-    /// 既定値を使った事実を標準エラーへ 1 行知らせてから fallback を返す。stdout は描き出しの
+    /// 既定値へ落とした事実を標準エラーへ 1 行知らせてから fallback を返す。stdout は描き出しの
     /// ログが使うので混ぜない。呼ばれるのは読み込み・リロード時だけで毎フレームは
     /// 通らない。効果は `unsafe IO` で隠す（JsonCodec と同じ流儀 — 呼び側の効果行を
     /// 警告のために広げない）。
     def warnFellBack(fallback: a, path: String, reason: String): a =
         unsafe IO {
-            System.err.println("doc fail-open: ${path} を丸ごと既定値に替えました — ${reason}");
+            System.err.println("doc fail-open: ${path} を丸ごと既定値へ落としました — ${reason}");
             fallback
         }
 

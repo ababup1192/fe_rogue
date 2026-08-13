@@ -34,7 +34,7 @@ mod TestPersp {
 
     @Test
     def testSizeAtMatchesScreenYSpan(): Unit \ Assert =
-        // 高さ 1 の帯を screenY で上下に落とした幅と、sizeAt の換算が一致する
+        // 高さ 1 のストリップを screenY で上下に落とした幅と、sizeAt の換算が一致する
         // （同じ fy / fwd の式であることの裏取り）。
         let c = { fwd = 2.5, lat = 0.8 };
         let span = Persp.screenY(proj(), 0.5, c) - Persp.screenY(proj(), -0.5, c);

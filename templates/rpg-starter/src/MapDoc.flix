@@ -16,7 +16,7 @@ mod MapDoc {
                             ask = String, opened = String }
 
     /// 里の間取り。rows = タイルの文字格子（'#' = 石垣、',' = 畑、'.' = 道。
-    /// 知らない文字は道に倒す）、start = 主人公の最初のマス、goal = クリアに要る薬草の数、
+    /// 知らない文字は道にする）、start = 主人公の最初のマス、goal = クリアに要る薬草の数、
     /// lamps = 灯りの立つマス（薬草を拾うたびひとつ点く）。
     /// title / subtitle / clear / hint / clearHint は画面の文言（hint = 表紙、clearHint = クリア画面の操作ヒント）。
     pub type alias Doc = {
@@ -83,13 +83,13 @@ mod MapDoc {
     pub def rowCount(doc: Doc): Int32 =
         List.length(doc#rows)
 
-    /// cell のタイル文字。盤の外・短い行の外は '#'（石垣）に倒す。
+    /// cell のタイル文字。盤の外・短い行の外は '#'（石垣）にする。
     pub def tileAt(cell: Grid.Cell, doc: Doc): Char =
         List.nth(cell#y, doc#rows)
             |> Option.flatMap(row -> List.nth(cell#x, String.toList(row)))
             |> Option.getWithDefault('#')
 
-    /// cell が石垣（通れないタイル）か。知らない文字は道に倒す（fail-open）。
+    /// cell が石垣（通れないタイル）か。知らない文字は道にする（fail-open）。
     pub def solidAt(cell: Grid.Cell, doc: Doc): Bool =
         tileAt(cell, doc) == '#'
 

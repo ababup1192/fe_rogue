@@ -136,7 +136,7 @@ mod TestFxVocab {
         "    \"accel\": { \"x\": -0.5, \"y\": 1.5 }," +
         "    \"seed\": 7, \"zIndex\": 502 } ] }"
 
-    /// mode/spawn/accel/seed が Spec に畳まれる（雪の宣言の代表形）。
+    /// mode/spawn/accel/seed が Spec へ読み取られる（雪の宣言の代表形）。
     @Test
     def testParseLoopSnow(): Unit \ Assert =
         let got = match parseText(snowJson()) {

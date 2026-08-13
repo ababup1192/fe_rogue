@@ -146,7 +146,7 @@ mod TestFontCache {
                 Assert.assertEq(expected = true, Set.memberOf(0x30, cps))
         }
 
-    /// 何も拾えない場所なら None（＝フォントの字を全部焼く）に倒す。
+    /// 何も拾えない場所なら None（＝フォントの字を全部焼く）にする。
     @Test
     def testHarvestFallsBackWhenNothingFound(): Unit \ IO + Assert =
         let root = "${System.getProperty("java.io.tmpdir")}/flix_ge_harvest_empty";

@@ -13,7 +13,7 @@ mod Color {
           g = Float64.truncateToFloat32(g),
           b = Float64.truncateToFloat32(b) }
 
-    /// 0〜255 の 3 つ組から色を作る。色見本（パレット表）は 255 段で配られるので、
+    /// 0〜255 の 3 つ組から色を作る。色見本（パレット表）は 255 段階で配られるので、
     /// 255 で割った 6 桁の小数を書き写さずに済む。
     pub def rgb8(r: Int32, g: Int32, b: Int32): Color =
         { r = byte(r), g = byte(g), b = byte(b) }
@@ -32,7 +32,7 @@ mod Color {
         }
 
     /// 2 色の間を t（0〜1）で混ぜる。lighten（白へ）/ darken（黒へ）が「片方が決め打ち」
-    /// なのに対し、こちらは任意の 2 色をつなぐ（グラデーションの段・状態の移り変わり）。
+    /// なのに対し、こちらは任意の 2 色をつなぐ（グラデーションの段階・状態の移り変わり）。
     pub def mix(a: Color, b: Color, t: Float64): Color =
         let k = Float64.truncateToFloat32(t);
         { r = a#r + (b#r - a#r) * k,
@@ -58,7 +58,7 @@ mod Color {
         else if (code >= 65 and code <= 70) Some(code - 65 + 10)
         else None
 
-    /// 色を白へamountだけ寄せる。通常は0から1を渡し、範囲外は補正しない。
+    /// 色を白へamountだけ近づける。通常は0から1を渡し、範囲外は補正しない。
     /// 既存ゲームと同じ色を保つため、amountをFloat32へ変えてから各チャンネルを補間する。
     pub def lighten(color: Color, amount: Float64): Color =
         let value = Float64.truncateToFloat32(amount);
@@ -66,7 +66,7 @@ mod Color {
           g = color#g + (1.0f32 - color#g) * value,
           b = color#b + (1.0f32 - color#b) * value }
 
-    /// 色を黒へamountだけ寄せる。通常は0から1を渡し、範囲外は補正しない。
+    /// 色を黒へamountだけ近づける。通常は0から1を渡し、範囲外は補正しない。
     /// 丸め順を保つため、Float64で残す割合を求めてからFloat32へ変える。
     pub def darken(color: Color, amount: Float64): Color =
         let remaining = Float64.truncateToFloat32(1.0 - amount);
@@ -74,7 +74,7 @@ mod Color {
           g = color#g * remaining,
           b = color#b * remaining }
 
-    /// 暖色（黄寄り）へ amount だけ寄せる。lighten と対で使う。
+    /// 暖色（黄寄り）へ amount だけ近づける。lighten と対で使う。
     /// 明暗だけで塗ると面が塊に見えるので、光の当たる側は暖色・影の側は寒色へずらす。
     /// 離れて見ると 2 色が混ざり、実際に使った色数より多くの階調があるように見える。
     pub def warm(color: Color, amount: Float64): Color =
@@ -83,7 +83,7 @@ mod Color {
           g = pin01(color#g + t * 0.18f32),
           b = pin01(color#b - t * 0.14f32) }
 
-    /// 寒色（青寄り）へ amount だけ寄せる（warm の対）。影の側に使う。
+    /// 寒色（青寄り）へ amount だけ近づける（warm の対）。影の側に使う。
     pub def cool(color: Color, amount: Float64): Color =
         let t = Float64.truncateToFloat32(amount);
         { r = pin01(color#r - t * 0.18f32),

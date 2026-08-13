@@ -1,5 +1,5 @@
 // Controls — 入力の解釈（純粋）と Doc の読み直し。
-// 操作は「寄せる」(←→、押した瞬間ごとに 1 マス)・「そっと落とす」(↓ 押しっぱなしで加速)・
+// 操作は「左右に動かす」(←→、押した瞬間ごとに 1 マス)・「そっと落とす」(↓ 押しっぱなしで加速)・
 // 「回す」(Z=反時計 / X=時計、押した瞬間)・「叩きつける」(↑ または Space=ハードドロップ)・
 // GAME OVER からの「仕切り直し」(Space/Enter)。
 // 押した瞬間だけ効く操作（回転・叩きつけ・決定）は justPressed、押しっぱなしで効く操作
@@ -41,7 +41,7 @@ mod Controls {
         { doc = RulesDoc.load(RulesDoc.path()), theme = ThemeDoc.load(ThemeDoc.path()),
           shader = loadShader() }
 
-    /// 盤の下に敷く紙の面。読めない・語彙が違うときはエンジンの見本の面へ倒す（fail-open）。
+    /// 盤の下に敷く紙の面。読めない・語彙が違うときはエンジンの見本の面へ落とす（fail-open）。
     pub def loadShader(): ShaderDoc.Spec \ Fs.FileRead =
         ShaderJson.loadOr(ShaderDoc.demoSurface(), World.shaderPath())
 

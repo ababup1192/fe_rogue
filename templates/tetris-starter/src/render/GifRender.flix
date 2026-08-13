@@ -1,6 +1,6 @@
 // GifRender — README のショーケース用 GIF を画面なしで生成する（スナップショットの外・debug/ 行き）。
 // 実行: flix run --entrypoint GifRender.all → debug/showcase.gif
-// 積み上げた盤の 1 列だけを空けておき、そこへ I ミノを縦に落として 4 段消し（テトリス）を
+// 積み上げた盤の 1 列だけを空けておき、そこへ I ミノを縦に落として 4 行消し（テトリス）を
 // 実演する決定的な台本。SceneRender.flix の静止画とは別に、動きを見せたい GIF だけをここに分ける
 // （gallery/reference は静止画の比較専用なので、ここでは触らない）。
 mod GifRender {
@@ -9,7 +9,7 @@ mod GifRender {
     def design(): Vec2.Vec2 = { x = 256.0, y = 352.0 }
     def ttf(): String = "assets/Xolonium-Regular.ttf"
 
-    /// シミュレーションの1拍（30fps）。stride 2 で間引くので GIF は 15fps・66ms（SceneRender.flix と対）。
+    /// シミュレーションの1フレーム（30fps）。stride 2 で間引くので GIF は 15fps・66ms（SceneRender.flix と対）。
     def dt(): Float64 = 1.0 / 30.0
 
     def cfg(atlas: FontAtlas, bg: Color): HeadlessRender.RenderConfig =
@@ -36,7 +36,7 @@ mod GifRender {
         discard HeadlessRender.renderGif(bcfg, script(w0), 2, w -> worldCmds(ctx, w), "showcase");
         println("rendered: debug/showcase.gif")
 
-    // ── 台本（純粋な World.step を畳んで World の列を作る）──
+    // ── 台本（純粋な World.step を畳み込んで World の列を作る）──
 
     /// current を挿げ替えてから hardDrop に落とす（spawn は row = -1 の空中なので
     /// rot/col をどう据えても衝突しない = 本物の落下・接地・固定と同じ経路を通る）。
@@ -44,16 +44,16 @@ mod GifRender {
     def placePiece(kind: World.Kind, rot: Int32, col: Int32, w: World.World): World.World =
         World.hardDrop({ current = { kind = kind, rot = rot, col = col, row = -1 } | w })
 
-    /// 下 4 段・右端の 1 列（col 9）だけを空けて積む台本。
-    /// 下 4 段（col 0-8 の 36 マス）は J/L/S/Z/T を主役に隙間なく敷き詰める
+    /// 下 4 行・右端の 1 列（col 9）だけを空けて積む台本。
+    /// 下 4 行（col 0-8 の 36 マス）は J/L/S/Z/T を主役に隙間なく敷き詰める
     /// （I・O は使わない・厳密な exact-cover 探索で「実際に hardDrop で積める順」まで
     /// 割り出した並び — 同じ形・同じ向きの反復が見えないよう検証済み）。
     /// その上に T/S/Z/J/L を色々な向きで積んで表面をでこぼこにする（I/O だけの
     /// 機械的な縦帯 x 横帯の反復にしない）。
     def stackScript(): List[(World.Kind, Int32, Int32)] =
-        // 下 4 段（col 0-8 を J/L/S/Z/T だけで平らに埋める・col 9 は最後まで空けておく）。
+        // 下 4 行（col 0-8 を J/L/S/Z/T だけで平らに埋める・col 9 は最後まで空けておく）。
         // J(逆さ)を右端の足場に、L を左端の足場に、J を中央に噛ませて土台を作り、
-        // T で凹みを均し、S を縦向き 1 個混ぜて段差を作り、Z で右肩を埋め、
+        // T で凹みを均し、S を縦向き 1 個混ぜて高さの差を作り、Z で右肩を埋め、
         // もう 1 個の T で右上の凸を作り、最後に S と L で左側の残りを詰める。
         (World.Kind.J, 3, 7) :: (World.Kind.L, 0, 0) :: (World.Kind.J, 0, 3) ::
         (World.Kind.T, 2, 5) :: (World.Kind.S, 3, 3) :: (World.Kind.Z, 0, 4) ::
@@ -80,7 +80,7 @@ mod GifRender {
           gravityTimer = 0.0, lockTimer = 0.0, grounded = false, lockResets = 0,
           score = 0, lines = 0 | stacked }
 
-    /// World.step を n 拍畳んで列を作る（純粋）。softDrop = true で終始加速し、
+    /// World.step を n フレーム畳み込んで列を作る（純粋）。softDrop = true で終始加速し、
     /// 短い GIF の中で「落下 → 接地 → 固定 → 消去 → 次のミノ」まで収める。
     def unfold(n: Int32, w0: World.World): List[World.World] =
         let (revWs, _last) = List.range(0, n) |> List.foldLeft((acc, _i) -> {
@@ -90,7 +90,7 @@ mod GifRender {
         }, (w0 :: Nil, w0));
         List.reverse(revWs)
 
-    /// 台本本体: 80 拍（約 2.7 秒分のシミュレーション）で、落下→接地→4 段消し→
+    /// 台本本体: 80 フレーム（約 2.7 秒分のシミュレーション）で、落下→接地→4 行消し→
     /// 次のミノの涌きまでを収める。
     def script(w0: World.World): List[World.World] =
         unfold(80, scriptWorld(w0))

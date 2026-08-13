@@ -53,11 +53,11 @@ mod TestFlex {
             expected = (5.0, 7.0, 10.0, 10.0) :: (5.0, 20.0, 10.0, 10.0) :: Nil,
             rects(root, 100.0, 100.0))
 
-    // ── ギャラリー骨格（Px 帯 + Grow 行 ×5、480×530）──
+    // ── ギャラリー骨格（Px の固定行 + Grow 行 ×5、480×530）──
 
     @Test
     def testGallerySkeletonBarsAndGrowRows(): Unit \ Assert =
-        // 帯・行それぞれに Stretch な 0 サイズの葉を置き、帯の位置と行の等分高さを検分する。
+        // 固定行・伸びる行それぞれに Stretch な 0 サイズの葉を置き、固定行の位置と行の等分高さを検分する。
         def barBox(h: Float64): Flex.Node =
             Flex.box({ height = UiLayout.SizeSpec.Px(h),
                        crossAlign = UiLayout.CrossAlign.Stretch | Flex.columnStyle() },

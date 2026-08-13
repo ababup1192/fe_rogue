@@ -375,7 +375,7 @@ def testScanlineEval(): Unit \ Assert =
 
 // ripples プリミティブと同じ式を素の atom + bindings(wob) で書き下す（§3 の反射うねり線）。
 //   freq=9, amp=0.24, speed=0.09, seed=7。厳密一致のため掛け算の順序と 2π 定数(6.2831853)を
-//   プリミティブ（sg_ripples の CPU 版）とそっくり同じに畳む（浮動小数は結合則が成り立たないので）。
+//   プリミティブ（sg_ripples の CPU 版）とそっくり同じ順で計算する（浮動小数は結合則が成り立たないので）。
 //   wob = sin(uv.x*6.2831853*9*0.5 + 7)*0.24 + sin(uv.x*6.2831853*9*1.3 + 18.9)*0.096
 //   結果 = 0.5 + 0.5*sin((uv.y*9 + wob + t*0.09) * 6.2831853)。
 def ripplesAtomField(): (List[(String, ShaderDoc.Field)], ShaderDoc.Field) =
@@ -488,7 +488,7 @@ def testUndefinedRefIsErr(): Unit \ Assert =
 // (7) Wave 2b: Hash1/Hash2（bucket）— セル乱数
 //   パリティの線引き（設計 §5）を厳守する:
 //     floor/hash を踏む値を「GPU が出すはずの値」として assertEq しない。
-//     許すのは「範囲が正気」「floor が段を刻んで値が変わる」「亜種が JSON で組める」だけ。
+//     許すのは「範囲が正気」「floor が段階を刻んで値が変わる」「亜種が JSON で組める」だけ。
 //   （GPU は f32/floor で境界の位置が CPU と別なので、CPU の hash/cyc 値が GPU と一致する
 //     保証はない。ここでは GPU 一致を一切主張しない。）
 // ════════════════════════════════════════════════════════════════════
@@ -528,7 +528,7 @@ def testHash1Range(): Unit \ Assert =
     Assert.assertEq(expected = true, 0.0 <= v and v < 1.0)
 
 /// ⑥ bucket=cyc（floor(uTime*k)）の Hash1 を、別々の時間バケツに落ちる 2 時刻で eval し、
-///   「floor が段を刻んで値が変わる」ことだけ確かめる（値そのものは pin しない）。
+///   「floor が段階を刻んで値が変わる」ことだけ確かめる（値そのものは pin しない）。
 ///   t=0.0 → cyc=floor(0)=0、t=3.0 → cyc=floor(1.5)=1 で別セルの乱数になる。
 ///   GPU は f32/floor で境界が別位置なので、この CPU 値が GPU と一致するとは主張しない。
 @Test
@@ -536,8 +536,8 @@ def testHashBucketSteps(): Unit \ Assert =
     let field = ShaderDoc.Field.Hash1({ scale = 8.0, seed = 5, bucket = Some(cycField()) });
     let uv = { x = 0.37, y = 0.62 };
     let vLow  = ShaderEval.evalField(field, uv, 0.0);   // cyc=0
-    let vHigh = ShaderEval.evalField(field, uv, 3.0);   // cyc=1（段が 1 つ上がる）
-    // 段が変われば hash の入力座標が変わるので値も変わる。範囲も両方 0..1 に収まる。
+    let vHigh = ShaderEval.evalField(field, uv, 3.0);   // cyc=1（段階が 1 つ上がる）
+    // 段階が変われば hash の入力座標が変わるので値も変わる。範囲も両方 0..1 に収まる。
     let sane = 0.0 <= vLow and vLow < 1.0 and 0.0 <= vHigh and vHigh < 1.0;
     Assert.assertEq(expected = (true, true), (vLow != vHigh, sane))
 
@@ -825,7 +825,7 @@ def testQuantizeNodeSnapshot(): Unit \ Assert =
         "outColor = vec4(vec3(0.0, 0.0, 0.0), (floor(((vUv).x) * 4.0) / 4.0));",
         bodyOfField(field))
 
-/// Quantize の CPU 評価: 4 段で 0.3→0.25・0.9→0.75・1.0→1.0（GLSL と同じ floor(x*n)/n）。
+/// Quantize の CPU 評価: 4 段階で 0.3→0.25・0.9→0.75・1.0→1.0（GLSL と同じ floor(x*n)/n）。
 @Test
 def testEvalQuantizeSteps(): Unit \ Assert =
     let q = of -> ShaderDoc.Field.Quantize({ of = of, steps = 4 });
@@ -921,7 +921,7 @@ def testEvalSnapReadsCellCenter(): Unit \ Assert =
 ///   cells=(4,4) なので u の境は 0.25/0.5/0.75。
 ///       0.26  0.49 |  0.51
 ///        └ 同じマス ┘  └ 隣のマス
-///   なめらかな Fbm を包んでも段差が立つことを確かめる。
+///   なめらかな Fbm を包んでも階段が立つことを確かめる。
 @Test
 def testEvalSnapHoldsValueInsideCell(): Unit \ Assert =
     let field = ShaderDoc.Field.Snap({ cells = { x = 4.0, y = 4.0 },
@@ -1134,7 +1134,7 @@ def testTexJsonRoundTripGlslIdentical(): Unit \ Assert =
     };
     Assert.assertEq(expected = true, same)
 
-/// tex の chan 省略は R に倒れる（fail-open の既定）。
+/// tex の chan 省略は R になる（fail-open の既定）。
 @Test
 def testTexJsonDefaultChan(): Unit \ Assert =
     let json = "{\"name\":\"s\",\"out\":{\"kind\":\"fill\"," +

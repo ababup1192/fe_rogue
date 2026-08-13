@@ -5,7 +5,7 @@
 // ── ゲームループの全体像（App.game の 1 レコード）──
 // ここを読めば「何から始まり・毎フレームどう進み・どう絵になり・保存で何を読み直すか」が掴める。
 //   init    = 出発点の World（Title 画面）。
-//   update  = 毎フレームの更新。1 本の合成関数で渡す約束 — 入力で状態を進め（Controls.step）、
+//   update  = 毎フレームの更新。1 本の合成関数で渡す決まり — 入力で状態を進め（Controls.step）、
 //             そのあと表示中の Doc を名乗る（ActiveDocs.step）。繋ぎが Main に見えるのが教育的。
 //   view    = World → 「何をどこに描くか」（View.frame）。World は読むだけで変えない。
 //   reloads = 保存で読み直す Doc（各 1 本の watchFile に展開される）。
@@ -50,7 +50,7 @@ def main(): Unit \ IO =
                 |> App.withHudView((ctx, w) -> checked_ecast(View.hud(ctx, w)))
                 |> App.reloadOn(GameEngine.Key.F1, Controls.reloadAll)
                 // ドット絵は 1 枚のアトラスに生成し、ヤシと残像を 1 コマ = 1 クアッドで描く。
-                // 世代鍵（atlasKey）が変わった拍に App が GPU へ上げ直す（テーマ・色票・
+                // 世代鍵（atlasKey）が変わったフレームに App が GPU へ上げ直す（テーマ・色票・
                 // ドット絵の保存で World 側が生成し直す）。
                 |> App.withSpriteAtlases(w ->
                     { texture = World.atlasName(), key = World.atlasKey(w),
@@ -58,7 +58,7 @@ def main(): Unit \ IO =
                 // 音: 1 フレームの前後の World から鳴らす音名を導く（再生は App が持つ）。
                 |> App.withAudio(worlds -> checked_ecast(Sfx.events(worlds)))
                 // 鳴り続ける音: 走っている間のエンジンの唸りと、滑っている間の擦れ。
-                // 宣言が消えた拍で App が止めるので、ここは「今どう鳴っていてほしいか」だけ書く。
+                // 宣言が消えたフレームで App が止めるので、ここは「今どう鳴っていてほしいか」だけ書く。
                 |> App.withSustained(w -> checked_ecast(Sfx.hums(w)))
                 // 走行中の POST /render（Studio の「生成して」）は SceneRender.all と同じ実体を呼ぶ。
                 |> App.onRenderRequest(SceneRender.allShots)

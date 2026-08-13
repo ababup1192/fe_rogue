@@ -1,6 +1,6 @@
 // Splash — 起動画面 1 枚ぶんの絵を組み立てる。
 //
-// 読み込みの間、窓は出ているのに何も描かれない時間があると「固まった」ように見える。
+// 読み込みの間、ウィンドウは出ているのに何も描かれない時間があると「固まった」ように見える。
 // ここが出すのは、ロゴ・進み具合のゲージ・いま何をしているかの一行だけ。
 //
 // GL も時計も触らない純粋な組み立てなので、GL の準備しかできていない起動の最初（render_gl）と、
@@ -15,8 +15,8 @@ mod Splash {
     ///   atlas    … 組み込みフォント（BootFont.atlas()）
     ///   logoSize … ロゴのテクスチャの実寸。0 ならロゴを描かない
     ///   phase    … いま何をしているか（"loading fonts..."）
-    ///   ratio    … 進み具合 0..1。None なら本数が分からない状態（ゲージは流れる帯になる）
-    ///   turns    … 帯の位置（1 周 = 1.0）
+    ///   ratio    … 進み具合 0..1。None なら本数が分からない状態（ゲージは流れるバーになる）
+    ///   turns    … バーの位置（1 周 = 1.0）
     pub type alias View = {
         design = Vec2.Vec2,
         atlas = FontAtlas,
@@ -64,7 +64,7 @@ mod Splash {
         if (total <= 0) None
         else Some(Float64.max(0.0, Float64.min(1.0, Int32.toFloat64(done) / Int32.toFloat64(total))))
 
-    /// 流れる帯の位置。1 秒で 1 周する。
+    /// 流れるバーの位置。1 秒で 1 周する。
     pub def turnsOf(elapsedSec: Float64): Float64 =
         elapsedSec - Float64.floor(elapsedSec)
 
@@ -93,7 +93,7 @@ mod Splash {
               mask     = Nil } :: Nil
         }
 
-    /// 進み具合のゲージ。本数が分かっていれば左から溜まり、分からなければ帯が流れる。
+    /// 進み具合のゲージ。本数が分かっていれば左から溜まり、分からなければバーが流れる。
     def gauge(v: View, cx: Float64, top: Float64, h: Float64, scale: Float64): List[GameEngine.Drawable] =
         let w = Float64.floor(Float64.min(v#design#x - 16.0 * scale, v#design#x * 0.6));
         let left = Float64.floor(cx - w / 2.0);

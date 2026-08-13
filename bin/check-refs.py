@@ -10,7 +10,7 @@ reference-*.sh が漏れて、Makefile とテンプレの参照が宙に浮い�
   1. engine Makefile が書く bin/* ・ docs/* が実在するか
   2. templates/*/Makefile の $(ENGINE)/bin/* ・ $(ENGINE)/docs/* が engine に実在するか。
      ゲーム側 bin/* の参照は sync-agents の配布リスト (Makefile の cp 行) に載っているか
-  3. agents-pack/AGENTS.core.md・settings.json が存在を約束するパス
+  3. agents-pack/AGENTS.core.md・settings.json が存在を前提とするパス
      (rules・bin のツール・engine docs・フック) が実在し、配布リストに載っているか
 
   python3 bin/check-refs.py                 # リポ自身を検査 (check-docs-sync が呼ぶ)
@@ -183,7 +183,7 @@ def check_agents_pack(problems, dist):
     rel_core = core.relative_to(ROOT).as_posix()
     for rel in sorted(extract_paths(text)):
         if rel.startswith("docs/"):
-            # 「engine リポの docs/...」の約束。バンドル欠損の主犯だった参照。
+            # 「engine リポの docs/...」の決まり。バンドル欠損の主犯だった参照。
             if not exists_in(ROOT, rel):
                 problems.append("{}: {} が engine に実在しません".format(rel_core, rel))
         elif rel.startswith("bin/"):
@@ -193,13 +193,13 @@ def check_agents_pack(problems, dist):
                 problems.append(
                     "{}: {} が sync-agents の配布リスト (cp 行) に"
                     "見当たりません".format(rel_core, rel))
-    # rules の約束 (.claude/rules/xxx.md) は agents-pack/rules が実体。
+    # rules の決まり (.claude/rules/xxx.md) は agents-pack/rules が実体。
     for m in re.finditer(r"\.claude/rules/([A-Za-z0-9_-]+\.md)", text):
         if not (ROOT / "agents-pack" / "rules" / m.group(1)).exists():
             problems.append(
                 "{}: .claude/rules/{} の実体が agents-pack/rules にありません".format(
                     rel_core, m.group(1)))
-    # settings.json の約束と、そのフックの実体。
+    # settings.json の決まりと、そのフックの実体。
     settings = ROOT / "agents-pack" / "settings.json"
     if ".claude/settings.json" in text and not settings.exists():
         problems.append("{}: agents-pack/settings.json がありません".format(rel_core))

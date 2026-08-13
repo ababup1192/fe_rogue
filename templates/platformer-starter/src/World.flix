@@ -81,9 +81,10 @@ mod World {
             |> Stage.make
 
     def enemiesOf(stage: Stage.Stage): List[Enemies.Enemy] =
-        List.map(c -> Enemies.make("walker", c), stage#walkers)
-            ::: List.map(c -> Enemies.make("flyer", c), stage#flyers)
-            ::: List.map(c -> Enemies.make("shooter", c), stage#shooters)
+        stage#enemies |> List.map(entry -> {
+            let (cell, behavior) = entry;
+            Enemies.make(behavior, Stage.centerOf(cell))
+        })
 
     /// マス cell の上に足を着けて立つ位置(体の中心)。
     def standingAt(_stage: Stage.Stage, cell: Stage.Cell): Vec2.Vec2 =
@@ -267,25 +268,25 @@ mod World {
         { enemies = enemies, shots = shots | w }
 
     /// 踏みつけ(上から)か被弾か。弾は常に被弾。
+    /// 踏んだ敵と生き残りは 1 回の partition の裏表で取る — 消す敵を値の等値で探し直すと、
+    /// 踏む条件が位置以外(無敵の残り・体力)も見るようになった瞬間に別の敵を巻き添えにする。
     def combat(input: Input, w: World): World =
         let p = w#player;
         let bottom = p#body#pos#y + Physics.playerSize()#y * 0.5;
+        let touching = e -> touches(p, e#pos, Enemies.sizeOf(e#behavior));
         let stompable = e -> {
-            let etop = e#pos#y - Enemies.sizeOf(e#kind)#y * 0.5;
+            let etop = e#pos#y - Enemies.sizeOf(e#behavior)#y * 0.5;
             p#body#vel#y > 40.0 and bottom - etop < 10.0
         };
-        let touching = w#enemies
-            |> List.filter(e -> touches(p, e#pos, Enemies.sizeOf(e#kind)));
-        let (stomped, hurting) = touching |> List.partition(stompable);
+        let (stomped, alive) = w#enemies |> List.partition(e -> touching(e) and stompable(e));
+        let hurting = alive |> List.filter(touching);
         let w1 = if (List.isEmpty(stomped)) w else {
             // 踏みつけ: バウンド(押しっぱなしなら高く)+ hitstop + 星。
             let hTiles = if (input#jumpHeld) w#motion#jumpHeightTiles
                          else w#motion#stompBounceTiles;
             let vy = Physics.launchVelocity(w#motion, hTiles);
-            let dead = e -> List.exists(s ->
-                (s#pos#x, s#pos#y, s#kind) == (e#pos#x, e#pos#y, e#kind), stomped);
             { player = Player.launch(vy, p),
-              enemies = List.filter(e -> not dead(e), w#enemies),
+              enemies = alive,
               score = w#score + w#rules#stompScore * List.length(stomped),
               stomps = w#stomps + List.length(stomped),
               freeze = w#motion#hitstopSec,

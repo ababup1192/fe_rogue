@@ -12,7 +12,7 @@ mod UiRender {
     /// PolygonRenderCmd と別チャンネルに出るため、`drawables` と `polygons` の 2 列を一度のレイアウト
     /// 解決でまとめて返す（呼び手が sprite / polygon の各チャンネルへ振り分ける）。
     /// 文字実寸とスプライトのテクスチャ寸法は `GameEngine.Game` から引く。font の atlas や
-    /// テクスチャ寸法を別の口から与えたい（画面なしのテストやプレビュー）ときは `renderUiWith` を使う。
+    /// テクスチャ寸法を別の経路から与えたい（画面なしのテストやプレビュー）ときは `renderUiWith` を使う。
     pub def renderUi(ui: UiStore.UiWorld, design: Vec2.Vec2):
                     {drawables = List[GameEngine.Drawable], polygons = List[GameEngine.PolygonRenderCmd]}
                     \ GameEngine.Game =

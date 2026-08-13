@@ -7,7 +7,7 @@ mod TestTerrainDoc {
 
     @Test
     def testTerrainBrokenJsonFallsBackToDefaults(): Unit \ Assert =
-        // 壊れた JSON は既定の表へ倒れる(ゲームは必ず起動する)。
+        // 壊れた JSON は既定の表へ落ちる(ゲームは必ず起動する)。
         let doc = TerrainDoc.fromJson("{ broken") |> Option.getWithDefault(TerrainDoc.defaults());
         Assert.assertEq(
             expected = (TerrainDoc.defaults()#styleMix#round,
@@ -27,7 +27,7 @@ mod TestTerrainDoc {
 
     @Test
     def testTerrainDecodeRulesInOneSample(): Unit \ Assert =
-        // 複合破損サンプル1本で decode 契約を3つ固定する(壊れ扱いにせず静かに畳む = fail-open):
+        // 複合破損サンプル1本で decode 契約を3つ固定する(壊れ扱いにせず静かに受け入れる = fail-open):
         //   (a) 同じ char の二重宣言は先勝ち(Studio 契約)
         //   (b) 未知の preset 名は decode 時に除去され surface が空になる
         //   (c) edge に uniform と top が混在したら uniform 先勝ち

@@ -79,7 +79,7 @@ mod RenderShader {
         "        float cr = clamp(cornerRadius, 0.0, min(hsz.x, hsz.y));\n" +
         "        float dOuter = roundedBox(p, hsz, cr);\n" +
         // AA 幅は画面 px 基準 (fwidth)。カメラ zoom で rectSize が小さくなっても角丸が潰れない
-        // （固定 1px AA だと縮小時に AA 帯が矩形全体を覆い、角丸が消えて四角に見える）。
+        // （固定 1px AA だと縮小時に AA の幅が矩形全体を覆い、角丸が消えて四角に見える）。
         "        float aaO = max(fwidth(dOuter), 0.0001);\n" +
         "        float outerCov = 1.0 - smoothstep(0.0, aaO, dOuter);\n" +   // 矩形内=1 / 外=0
         "        float ri = max(cr - borderWidth, 0.0);\n" +
@@ -288,7 +288,7 @@ mod RenderShader {
     pub def polyBatchVertexShaderSource(): String =
         "#version 330 core\n" +
         "layout (location = 0) in vec2 vertex;\n" +
-        "layout (location = 1) in vec4 vColor;\n" +   // color.rgb + alpha（アルファは頂点色に畳み込み済み）
+        "layout (location = 1) in vec4 vColor;\n" +   // color.rgb + alpha（アルファは頂点色へ掛け合わせ済み）
         "out vec4 FragColor;\n" +
         "uniform mat4 projection;\n" +
         // カメラの平行移動 / ズームを頂点シェーダで当てる（タイルの layerPos/tileScale と同型）。

@@ -315,7 +315,7 @@ mod Editor {
         })
 
     /// editor.resources[] の各宣言に知らないキーが無いかを見る。タイポ(例: schemaPath)は
-    /// エラーにならず「schema 未指定」として黙って sibling 規約へ倒れ、フォームが出ない理由が
+    /// エラーにならず「schema 未指定」として黙って sibling 規約へ落ち、フォームが出ない理由が
     /// 誰にも分からなくなる — ここで名指しすることでだけ気づける。
     def declKeyWarnings(projectJson: Json): List[String] =
         let known = Set#{"id", "pattern", "title", "schema", "plugin"};
@@ -354,7 +354,7 @@ mod Editor {
         let fileWarns = files |> List.flatMap(path -> match FileIndex.readInside(dir, path) {
             case Err(_)   => "『${path}』が読めません" :: Nil
             case Ok(text) => match DocJson.parse(text) {
-                case None       => "『${path}』が JSON として読めません(読み込みは既定値へ倒れます)" :: Nil
+                case None       => "『${path}』が JSON として読めません(読み込みは既定値へ落ちます)" :: Nil
                 case Some(json) => match JsonCodec.expectObject(json) {
                     case None      => "『${path}』のトップが JSON オブジェクトではありません" :: Nil
                     case Some(obj) =>
@@ -379,7 +379,7 @@ mod Editor {
 
     /// ui ファイル 1 件ぶんのメタ情報。composable = poly の rotation/pivot を含まない
     /// (含む文書は合成プレビューが断るので、選ばせる前にここで伝える)。
-    /// 読めない・JSON として壊れているファイルは composable=true に倒す — 回転が理由では
+    /// 読めない・JSON として壊れているファイルは composable=true にする — 回転が理由では
     /// ないので、実際に合成を試みたときの本来のエラーで伝えるのが正しい。
     def uiFileMeta(dir: String, relPath: String): {composable = Bool, paletteFile = Option[String]} \ IO =
         match FileIndex.readInside(dir, relPath) {
@@ -507,7 +507,7 @@ mod Editor {
             Some(relPath)
 
     /// 拡張子から Content-Type を決める。エディタ画面の dist に現れる種類だけ知っていて、
-    /// それ以外は中身を解釈させない octet-stream に倒す。
+    /// それ以外は中身を解釈させない octet-stream にする。
     pub def contentTypeOf(path: String): String =
         if      (String.endsWith(suffix = ".html", path))  "text/html; charset=utf-8"
         else if (String.endsWith(suffix = ".js", path))    "text/javascript; charset=utf-8"

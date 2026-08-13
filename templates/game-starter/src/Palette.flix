@@ -14,7 +14,7 @@ mod Palette {
     pub def path(): String = "assets/__NAME__.palette.json"
 
     /// sprite Doc の legend に出てくる意味色キーを、テーマの実色へ解いた表（純粋）。
-    /// 名前の重複は 1 つに畳み、並びは名前順（書き出しが毎回同じになる）。
+    /// 名前の重複は 1 つにまとめ、並びは名前順（書き出しが毎回同じになる）。
     pub def entriesOf(sprites: PxSpriteDoc.Doc, theme: ThemeDoc.Doc): List[(String, Color)] =
         sprites#legend
             |> Map.valuesOf
@@ -23,7 +23,7 @@ mod Palette {
             |> List.map(key -> (key, ThemeDoc.resolver(theme, key)))
 
     /// 表を JSON のテキストへ。色は {"rgb":[…]} で書く — Studio の色解決が受け付ける形の中で、
-    /// #rrggbb のように 256 段へ丸めないので実機の値とそのまま一致する。
+    /// #rrggbb のように 256 段階へ丸めないので実機の値とそのまま一致する。
     pub def toJson(entries: List[(String, Color)]): String =
         let body = entries
             |> List.map(entry -> {

@@ -8,7 +8,7 @@ mod ZBand {
     pub def width(): Int32 = 100_000_000
 
     /// 範囲の中で使える z の上限。はみ出した z は clamp する（wrap しない —
-    /// 折り返すと「大きい z ほど手前」の約束が範囲の境目で裏返るため）。
+    /// 折り返すと「大きい z ほど手前」の決まりが範囲の境目で裏返るため）。
     pub def innerMax(): Int32 = 99_999_999
 
     /// HUD の範囲の底。withHudView の絵は composeScene がここへ持ち上げる。

@@ -2,7 +2,7 @@
 // legend の色キー(sprite.json)と View の空・遠景の色を 1 枚の表で持つ。
 // 既定はコード側(defaults)。theme.json は上書きしたい色だけ書けばよい(fail-open)。
 //
-// 画風の約束(AGENTS.local.md): 夕空の青 / コインの金 / 影の藍。黒は使わない —
+// 画風の決まり(AGENTS.local.md): 夕空の青 / コインの金 / 影の藍。黒は使わない —
 // 最暗部も ink(藍 #23283A)まで。
 mod Theme {
     use Util.Json.Json

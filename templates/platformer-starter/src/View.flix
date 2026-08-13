@@ -10,7 +10,7 @@
 // ── 各層が「絵の下限」の 4 性質のどれを受け持つか ──
 //   階調・質感: 空(vgrad の二色)/ 遠景ストリップ(裾のディザ)/ 地形タイル(粒 + 洞窟の tint)
 //   主役の分離: 主役と敵だけ暖色 + PxShade のふち光。背景は寒色で沈める
-//   層の分離  : 視差 5 段(上の並び)。手前ほど速く流れるので奥行きが出る
+//   層の分離  : 視差 5 層(上の並び)。手前ほど速く流れるので奥行きが出る
 //   時間の流れ: 雲が流れる / 旗と炎とコインがコマ替え / 塵と星が湧いて消える
 //               (静止画でも雲と旗が別位相なので、止まった絵にならない)
 //
@@ -76,7 +76,7 @@ mod View {
     pub def forest(ctx: App.ViewCtx, w: World.World): List[Render.PlacedItem] =
         strip(ctx, w, "forest", 128.0, 0.88, Some("bgForestDark"), 5, 0.0)
 
-    /// 横リピートのストリップ 1 段。bottomFrac = 画面のどの高さに底を置くか。
+    /// 横リピートのストリップ 1 本。bottomFrac = 画面のどの高さに底を置くか。
     /// fillKey があれば下端から画面の底まで同じ色の板で埋める(下が切れて空が見えないように)。
     /// drift は右→左へ流す px(雲用。ストリップ幅で一周する)。
     def strip(ctx: App.ViewCtx, w: World.World, sprite: String, stripW: Float64,
@@ -354,11 +354,12 @@ mod View {
     def enemyItems(vis: Rect2.Rect2, w: World.World): List[Render.PlacedItem] =
         w#enemies |> List.filter(e -> near(vis, e#pos)) |> List.flatMap(e -> {
             let first = two(w, 6.0);
-            let (sprite, frame) =
-                if (e#kind == "walker") ("walker", if (first) "walk_0" else "walk_1")
-                else if (e#kind == "flyer") ("flyer", if (first) "fly_0" else "fly_1")
-                else ("shooter", if (first) "idle_0" else "idle_1");
-            let feet = { x = e#pos#x, y = e#pos#y + Enemies.sizeOf(e#kind)#y * 0.5 };
+            let (sprite, frame) = match e#behavior {
+                case Enemies.Behavior.Walking(_)  => ("walker", if (first) "walk_0" else "walk_1")
+                case Enemies.Behavior.Flying(_)   => ("flyer", if (first) "fly_0" else "fly_1")
+                case Enemies.Behavior.Shooting(_) => ("shooter", if (first) "idle_0" else "idle_1")
+            };
+            let feet = { x = e#pos#x, y = e#pos#y + Enemies.sizeOf(e#behavior)#y * 0.5 };
             spriteAt(w, sprite, frame, feet, e#dir > 0.0, zActor())
         })
 

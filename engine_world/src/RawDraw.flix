@@ -32,8 +32,8 @@ mod RawDraw {
         { at = { x = center#x - size#x / 2.0, y = center#y - size#y / 2.0 },
           item = box(size, color, zIndex) }
 
-    /// items が空なら boxAt の仮色の板 1 枚に倒す fail-open。スプライトのコマ名違い・
-    /// 読み込み失敗で画面に穴を開けない（板が出れば「絵が無い」と目で判る）ための口 —
+    /// items が空なら boxAt の仮色の板 1 枚にする fail-open。スプライトのコマ名違い・
+    /// 読み込み失敗で画面に穴を開けない（板が出れば「絵が無い」と目で判る）ための関数 —
     /// 空でなければ items をそのまま返す。
     pub def orBoxAt(center: Vec2.Vec2, size: Vec2.Vec2, color: Color, zIndex: Int32,
                     items: List[PlacedItem]): List[PlacedItem] =
@@ -50,7 +50,7 @@ mod RawDraw {
     // ── 図形の語彙（polygon の上に組んだ形。凹も可 — 描画側の耳切りが三角形化する）──
     // 角度はぜんぶ「1 周 = 1.0 の回転量 t」で渡す（t = 0 が真上・時計回り = 画面の見た目どおり）。
     // 各図形は Item 版（頂点は原点中心。fade などの修飾をパイプで重ねてから置く）と、
-    // 無修飾の近道の At 版（中心を渡すと PlacedItem になる）の 2 段構え。
+    // 無修飾の近道の At 版（中心を渡すと PlacedItem になる）の 2 通り。
 
     /// 正 n 角形（外接半径 radius・頂点が真上・原点中心）。三角形・ひし形・六角形はこれ。
     pub def ngon(n: Int32, radius: Float64, color: Color, zIndex: Int32): Item =

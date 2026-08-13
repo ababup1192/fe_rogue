@@ -5,7 +5,7 @@
 
     python bin/verify-win-checkd.py
 
-やること (前の段が失敗しても後続を試し、最後にまとめを出す):
+やること (前の段階が失敗しても後続を試し、最後にまとめを出す):
   a. Python と OS の情報
   b. java と bin/flix.jar の所在
   c. flix repl が素のパイプで応答するか (番兵方式で 1 回)

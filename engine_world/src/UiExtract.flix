@@ -166,7 +166,7 @@ mod UiExtract {
 
     /// box の PlacedItem 列（`at` は箱の左上からのずれ — 置き場所は呼び手が足す）。
     /// skin が無ければ従来の Box 1 枚。skin があればテクスチャを九分割した Sprite 群にする。
-    /// skin 名のテクスチャが引けないときは従来の Box に静かに倒す（fail-open — パネルは壊れない）。
+    /// skin 名のテクスチャが引けないときは従来の Box へ静かに落とす（fail-open — パネルは壊れない）。
     /// pub なのは UiDoc（Flex 経路）と extract（UiStore 経路）が同じ box 意味論で描くため —
     /// BoxComp→PlacedItem 変換の唯一の実装。
     pub def boxPlacedItems(box: UiWidget.BoxComp, size: Vec2.Vec2,
@@ -185,7 +185,7 @@ mod UiExtract {
     /// 九分割スキン: テクスチャを角の厚み c（テクスチャ px、既定 短辺/3）で 3×3 に割り、
     /// 角 4 枚は等倍のまま、辺 4 枚と中 1 枚は箱のサイズまで伸ばす。箱が角 2 つ分より
     /// 小さいときだけ角も半分サイズまで縮める（裏返って重なる絵を作らない）。
-    /// 幅か高さが 0 以下の帯（角の厚みちょうどのテクスチャ等）は出さない。
+    /// 幅か高さが 0 以下の矩形（角の厚みちょうどのテクスチャ等）は出さない。
     def nineSlice(box: UiWidget.BoxComp, texture: String, info: GameEngine.TextureInfo,
                   size: Vec2.Vec2): List[Render.PlacedItem] =
         let c = Option.getWithDefault(Float64.min(info#width, info#height) / 3.0, box#skinCorner);

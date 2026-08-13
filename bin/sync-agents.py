@@ -68,7 +68,7 @@ def write_text_lf(path, text):
 
 def skill_description(skill_md):
     """frontmatter の description: の 1 行目 (囲みの \" は外す) を返す。
-    SKILL.md が無い skill は Flix 版と同じく空文字に倒す。"""
+    SKILL.md が無い skill は Flix 版と同じく空文字にする。"""
     try:
         lines = read_text_lf(skill_md).splitlines()
     except OSError:

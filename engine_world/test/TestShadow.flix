@@ -1,5 +1,5 @@
 // Shadow のテスト。具体値は Python で独立に手計算し pin する（テスト内で再計算ロジックを
-// 組んで自己参照しない）。境界（光と辺が一直線）は「背面側に倒す」規約が一貫することを見る。
+// 組んで自己参照しない）。境界（光と辺が一直線）は「背面側として扱う」規約が一貫することを見る。
 
 mod TestShadow {
 
@@ -64,13 +64,13 @@ mod TestShadow {
         Assert.assertEq(expected = 4, List.length(quads))
 
     /// 光と辺が一直線（right 辺の中点 (5,0) の真上延長 (5,-100)）: 内積ちょうど0で
-    /// 規約どおり背面側に倒れ、right 辺も影四角形に含まれる（top は明確に前面のまま）。
+    /// 規約どおり背面側として扱われ、right 辺も影四角形に含まれる（top は明確に前面のまま）。
     @Test
     def testColinearLightBoundaryFallsToBackFace(): Unit \ Assert =
         let quads = Shadow.shadowQuads(at(5.0, -100.0), square(), 100.0);
         // colinear な配置では top(0,-1 法線)が最も光を向く前面、bottom/left/right寄りは背面
         // （3枚 = top だけが前面に残る）。
-        // ここでは「right が背面判定に入っている（境界を律儀に背面へ倒している）」ことも見る。
+        // ここでは「right が背面判定に入っている（境界を律儀に背面として扱っている）」ことも見る。
         Assert.assertEq(expected = (3, true),
             (List.length(quads),
              quadStartingAt(quads, 5.0, -5.0) |> Option.map(_ -> true) |> Option.getWithDefault(false)))
@@ -217,15 +217,15 @@ mod TestShadow {
     // ── rimQuads: 光向き面（前面辺）のフチ ──
 
     /// 正方形+左からの光: 背面3辺(top/right/bottom)の逆で、前面はleft辺(-5,-5)-(-5,5)だけ。
-    /// rimQuads はその1辺だけから帯を1枚返す。他の遮蔽物なし(allShadowQuads=Nil)・
+    /// rimQuads はその1辺だけからストリップを1枚返す。他の遮蔽物なし(allShadowQuads=Nil)・
     /// radius=1000は辺までの距離(約95)より十分大きいので遮蔽/減衰の影響を受けない。
     @Test
     def testRimQuadsOfSquareLeftLightOnlyLeftEdgeIsFront(): Unit \ Assert =
         let rims = Shadow.rimQuads(at(-100.0, 0.0), square(), 2.5, 1000.0, Nil);
         Assert.assertEq(expected = 1, List.length(rims))
 
-    /// left辺の帯は「ポリゴンの内側（+x側）」へ寄る: 4頂点すべてが x=-5（辺そのもの）
-    /// または x=-5+rimWidth（内側へ寄せた側）のどちらかになり、外側(x<-5)へは出ない。
+    /// left辺のストリップは「ポリゴンの内側（+x側）」へ寄る: 4頂点すべてが x=-5（辺そのもの）
+    /// または x=-5+rimWidth（内側へ詰めた側）のどちらかになり、外側(x<-5)へは出ない。
     @Test
     def testRimQuadsHugInsideOfOccluder(): Unit \ Assert =
         let rimWidth = 2.5;
@@ -278,11 +278,11 @@ mod TestShadow {
         let allShadowQuads = Shadow.shadowQuads(light, a, 200.0) ++ Shadow.shadowQuads(light, b, 200.0);
         let aRims = Shadow.rimQuads(light, a, 2.5, 1000.0, allShadowQuads);
         let bRims = Shadow.rimQuads(light, b, 2.5, 1000.0, allShadowQuads);
-        // A: left辺(-55,-5)-(-55,5)由来の帯が1枚出る。B: 前面辺が遮蔽されフチ0枚。
+        // A: left辺(-55,-5)-(-55,5)由来のストリップが1枚出る。B: 前面辺が遮蔽されフチ0枚。
         Assert.assertEq(expected = (1, 0),
             (List.length(aRims), List.length(bRims)))
 
-    /// A 自身のフチの中身も pin する: 内側(+x側)へ寄った帯の4頂点。
+    /// A 自身のフチの中身も pin する: 内側(+x側)へ寄ったストリップの4頂点。
     @Test
     def testRimQuadsBlockedByOtherOccludersFrontEdgeVertices(): Unit \ Assert =
         let light = at(-100.0, 0.0);

@@ -97,7 +97,7 @@ mod World {
           lockResets = 0, phase = Phase.Playing, clearRows = Nil, clearTimer = 0.0,
           score = 0, lines = 0, activeDocsWritten = "" }
 
-    /// 涌き位置に置いた Piece（rot 0・上端中央）。row = -1 は「最上段の 1 段上（隠しバッファ）」。
+    /// 涌き位置に置いた Piece（rot 0・上端中央）。row = -1 は「最上行の 1 行上（隠しバッファ）」。
     /// こうすると最上段（row 0）まで積める＝盤が上まで満杯になって初めて涌けず GAME OVER になる。
     /// row 0 で涌かせると足元（row 0..1）の中央が塞がった時点で負け、画面の上に空きが見えるのに
     /// 負ける違和感が出る。col = cols/2 - 2 は 4×4 のミノ枠が中央に来るための左寄せ。
@@ -194,7 +194,7 @@ mod World {
         s * 6364136223846793005i64 + 1442695040888963407i64
 
     /// 0..n-1 の擬似乱数と次の種。上位ビットを使うと質がよい（下位ビットは周期が短い）。
-    /// 上位を右シフトで取り出し、剰余で 0..n-1 に畳んでから Int32 へ。
+    /// 上位を右シフトで取り出し、剰余で 0..n-1 に収めてから Int32 へ。
     def randInt(n: Int32, s: Int64): (Int32, Int64) =
         let s1 = nextSeed(s);
         let hi = Int64.abs(Int64.rightShift(s1, 33));
@@ -231,7 +231,7 @@ mod World {
     // 毎フレームの更新（重力・接地・固定・ライン消去・演出）
     // ══════════════════════════════════════════════════════
 
-    /// 毎フレームの拍。phase ごとに分岐する。
+    /// 毎フレームの更新。phase ごとに分岐する。
     ///   Playing  … 重力で落とし、接地していれば固定を待つ。
     ///   Clearing … 演出の時間を進め、終わったら実消去して次のミノへ。
     ///   GameOver … 何もしない（Space/Enter の restart 待ち）。
@@ -246,11 +246,11 @@ mod World {
             case Phase.GameOver => ticked
         }
 
-    /// Playing の 1 拍: 重力を積んで 1 段落とし、落ちられなければ接地として固定を待つ。
+    /// Playing の 1 フレーム: 重力を積んで 1 行落とし、落ちられなければ接地として固定を待つ。
     def tickPlaying(softDrop: Bool, dt: Float64, w: World): World =
         let speed = if (softDrop) w#doc#softDropFactor else 1.0;
         let timer = w#gravityTimer + dt * speed;
-        // gravityInterval を超えた分だけ落下を試みる（1 フレームに 1 段で十分・素直に）。
+        // gravityInterval を超えた分だけ落下を試みる（1 フレームに 1 行で十分・素直に）。
         let dropped =
             if (timer >= w#doc#gravityInterval) {
                 let (w1, moved) = tryMove(0, 1, w);
@@ -287,7 +287,7 @@ mod World {
         List.range(0, rows()) |> List.filter(r ->
             List.range(0, cols()) |> List.forAll(c -> Map.memberOf((c, r), board)))
 
-    /// Clearing の 1 拍: 演出の時間を進め、clearDuration を超えたら実消去して次のミノへ。
+    /// Clearing の 1 フレーム: 演出の時間を進め、clearDuration を超えたら実消去して次のミノへ。
     /// [遷移: Clearing→Playing]
     def tickClearing(dt: Float64, w: World): World =
         let t = w#clearTimer + dt;
@@ -316,7 +316,7 @@ mod World {
     // プレイヤーの操作（Controls が呼ぶ）
     // ══════════════════════════════════════════════════════
 
-    /// 左右に 1 マス寄せる（Playing のときだけ）。設置面ねばりは tryMove の中で効く。
+    /// 左右に 1 マス動かす（Playing のときだけ）。設置面ねばりは tryMove の中で効く。
     pub def moveLeft(w: World): World = if (isPlaying(w)) fst(tryMove(-1, 0, w)) else w
     pub def moveRight(w: World): World = if (isPlaying(w)) fst(tryMove(1, 0, w)) else w
 

@@ -480,7 +480,7 @@ mod TestUiDoc {
 
     @Test
     def testInstanceDeepOverride(): Unit \ Assert =
-        // 2 段の相対名パス("menu/slot0")で子孫を上書きできる。
+        // 2 階層の相対名パス("menu/slot0")で子孫を上書きできる。
         let menuDoc = ("menu.ui.json",
             "{\"root\": {\"name\":\"panel\",\"children\":[{\"name\":\"menu\",\"children\":["
             + "{\"name\":\"slot0\",\"widget\":\"text\",\"text\":\"?\",\"fontSize\":8.0}]}]}}");
@@ -631,7 +631,7 @@ mod TestUiDoc {
 
     @Test
     def testBuildGallerySkeletonRects(): Unit \ Assert =
-        // 帯 = Px 44/28 の box、行 = grow の box ×5。root は column + stretch。
+        // 固定行 = Px 44/28 の box、伸びる行 = grow の box ×5。root は column + stretch。
         let boxRow = h -> "{\"name\":\"b${h}\",\"widget\":\"box\",\"color\":\"#000000\",\"height\":${h}}";
         let row  = i -> "{\"name\":\"r${i}\",\"widget\":\"box\",\"color\":\"#000000\",\"height\":\"grow\"}";
         let doc = "{\"root\": {\"name\":\"g\",\"dir\":\"column\",\"crossAlign\":\"stretch\",\"children\":["
@@ -864,7 +864,7 @@ mod TestUiDoc {
 
     @Test
     def testBoxSkinFailOpen(): Unit \ Assert =
-        // skin 名のテクスチャが引けないときは従来の Box 1 枚に静かに倒す（パネルは壊れない）。
+        // skin 名のテクスチャが引けないときは従来の Box 1 枚へ静かに落とす（パネルは壊れない）。
         let got = skinBoxOf(skinDoc()) |> Option.flatMap(b ->
             match UiExtract.boxPlacedItems(b, { x = 100.0, y = 40.0 }, _ -> None) {
                 case placed :: Nil => match placed#item {

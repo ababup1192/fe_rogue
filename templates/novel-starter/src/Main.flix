@@ -5,7 +5,7 @@
 // ゲーム 1 本の標準形は App.game の 1 レコードに宣言する — ここを読めばループの全体像
 // （出発点 init・毎フレームの更新 update・描画 view・保存で読み直す Doc reloads）が掴める。
 // update は「1 本の合成関数」: 複数のシステムを `w |> step |> interact |> …` と中で繋いで渡す
-// （繋ぎが Main に見えるのが教育的）。App.game の外側の口（reloadOn・onRenderRequest・withDebug）は
+// （繋ぎが Main に見えるのが教育的）。App.game の外側で足す設定（reloadOn・onRenderRequest・withDebug）は
 // 戻り値の App に従来どおり後ろから pipe で足す。
 
 def main(): Unit \ IO =

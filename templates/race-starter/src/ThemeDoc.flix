@@ -67,7 +67,7 @@ mod ThemeDoc {
 
     // ── 導出色（基準色から導けるので Doc には置かない） ──
 
-    /// 遠くの路面・景色が空気に溶けていく先の色（昼の霞み = 地平線ぎわの空の色へ寄せる）。
+    /// 遠くの路面・景色が空気に溶けていく先の色（昼の霞み = 地平線ぎわの空の色へ近づける）。
     pub def hazeTo(doc: Doc): Color = doc#skyLow
 
     /// 草地の影側。日向側の grassLight と色相でも分ける（明暗だけだと縞が金属的に見える）。
@@ -85,14 +85,14 @@ mod ThemeDoc {
     /// ニトロの炎の芯（外側 flame → 芯は白熱）。
     pub def flameCore(doc: Doc): Color = Color.mix(doc#flame, doc#text, 0.75)
 
-    /// 炎の中ほど（芯の白と外炎のあいだの黄）。芯・中・裾の 3 段があると
+    /// 炎の中ほど（芯の白と外炎のあいだの黄）。芯・中・裾の 3 段階があると
     /// 噴射炎が単色の塊にならない。
     pub def flameHot(doc: Doc): Color = Color.warm(Color.lighten(doc#flame, 0.3), 0.35)
 
     /// 炎の裾（燃え切る手前の赤）。
     pub def flameDeep(doc: Doc): Color = Color.warm(Color.darken(doc#flame, 0.42), -0.18)
 
-    /// 火花の色（炎を少し黄へ寄せる）。
+    /// 火花の色（炎を少し黄へ近づける）。
     pub def spark(doc: Doc): Color = Color.warm(Color.lighten(doc#flame, 0.25), 0.2)
 
     /// すすけた煙・飛び散る破片の暗い側。白煙だけだと雲の塊にしか見えないので、

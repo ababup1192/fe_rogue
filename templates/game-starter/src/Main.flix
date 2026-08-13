@@ -5,13 +5,13 @@
 // ── ゲームループの全体像（App.game の 1 レコード）──
 // ここを読めば「何から始まり・毎フレームどう進み・どう絵になり・保存で何を読み直すか」が掴める。
 //   init    = 出発点の World（初期状態）。
-//   update  = 毎フレームの更新（入力 → 次の状態）。1 本の合成関数で渡す約束 —
+//   update  = 毎フレームの更新（入力 → 次の状態）。1 本の合成関数で渡す決まり —
 //             複数のシステムは `w |> step(f) |> …` と中で繋いでから渡す（繋ぎが Main に見える）。
 //   view    = World → 「何をどこに描くか」。World は読むだけで変えない。
 //   reloads = 保存で読み直す Doc（各 1 本の watchFile に展開される）。
 // 場面（表紙・クリア等）が増えたら World にフェーズを持たせ、step / frame を分岐させる。
 // 音（withAudio）や複数システムの明示的な列挙が要る高度なゲームは、make から始める従来の
-// ビルダー（addSystem / withView / …）へ降りる。App.game の外側の口（reloadOn・onRenderRequest・
+// ビルダー（addSystem / withView / …）へ降りる。App.game の外側で足す設定（reloadOn・onRenderRequest・
 // withDebug）は戻り値の App に後ろから pipe で足す。
 
 def main(): Unit \ IO =

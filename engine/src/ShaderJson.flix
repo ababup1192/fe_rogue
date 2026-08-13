@@ -33,7 +33,7 @@ mod ShaderJson {
     // parse（純粋）
     // ========================================================================
 
-    /// JSON をトップレベルの Spec へ畳む。壊れていれば Err（パス付きの説明）。
+    /// JSON をトップレベルの Spec へ読み取る。壊れていれば Err（パス付きの説明）。
     /// shared（bindings）は前方参照のみ・循環は Err・out や後の binding の未定義 Ref も Err。
     pub def parse(json: Json): Result[JsonError, ShaderDoc.Spec] =
         match json {
@@ -59,7 +59,7 @@ mod ShaderJson {
             case Some(_) => Err(err("'shared' must be an array of [name, field]"))
         }
 
-    // 各要素を順に読み、その時点で定義済みの名前だけを Ref できることを検証しながら畳む。
+    // 各要素を順に読み、その時点で定義済みの名前だけを Ref できることを検証しながらまとめる。
     def foldBindings(items: List[Json], acc: List[(String, ShaderDoc.Field)]):
             Result[JsonError, List[(String, ShaderDoc.Field)]] =
         match items {
@@ -828,8 +828,8 @@ mod ShaderJson {
             |> Result.flatMap(parse)
 
     /// path を読み、読めない・語彙が違うときは fallback の面へ落とす（fail-open）。
-    /// 知らない kind で黙って倒すと「絵だけ別物」になって原因が追えないので、
-    /// 倒れた理由を標準エラーへ 1 行知らせる。呼ばれるのは読み込み・リロード時だけで
+    /// 知らない kind で黙って落とすと「絵だけ別物」になって原因が追えないので、
+    /// 落ちた理由を標準エラーへ 1 行知らせる。呼ばれるのは読み込み・リロード時だけで
     /// 毎フレームは通らない。stdout は描き出しのログが使うので混ぜない。
     pub def loadOr(fallback: ShaderDoc.Spec, path: String): ShaderDoc.Spec \ Fs.FileRead =
         match load(path) {
@@ -837,11 +837,11 @@ mod ShaderJson {
             case Err(e)   => warnFellBack(fallback, path, e)
         }
 
-    /// 倒れた理由を知らせてから fallback を返す。効果は `unsafe IO` で隠す
+    /// 落ちた理由を知らせてから fallback を返す。効果は `unsafe IO` で隠す
     /// （呼び側の効果行を警告のために広げない）。
     def warnFellBack(fallback: ShaderDoc.Spec, path: String, e: JsonError): ShaderDoc.Spec =
         unsafe IO {
-            System.err.println("shader fail-open: ${path} を既定の面に倒しました — ${describeErr(e)}");
+            System.err.println("shader fail-open: ${path} を既定の面へ落としました — ${describeErr(e)}");
             fallback
         }
 

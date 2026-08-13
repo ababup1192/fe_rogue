@@ -161,7 +161,7 @@ mod Light {
                                     |> Render.fade(darkness) | placed });
         let wideW = maskSize + pad * 2.0;
         let tallH = maskSize + pad * 2.0;
-        // 上下は mask 正方形と同じ横幅、左右は上下の帯も覆う縦幅（四隅の抜けを防ぐ）。
+        // 上下は mask 正方形と同じ横幅、左右は上下の面も覆う縦幅（四隅の抜けを防ぐ）。
         blackBox({ x = at#x, y = at#y - half - pad / 2.0 }, { x = wideW, y = pad })            ::  // 上
         blackBox({ x = at#x, y = at#y + half + pad / 2.0 }, { x = wideW, y = pad })            ::  // 下
         blackBox({ x = at#x - half - pad / 2.0, y = at#y }, { x = pad, y = tallH })            ::  // 左

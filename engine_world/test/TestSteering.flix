@@ -31,7 +31,7 @@ mod TestSteering {
             (Steering.flee(corridor, (2, 1), (0, 1), 25),
              Steering.flee(corridor, (4, 1), (3, 1), 25)))
 
-    /// wander は引いた向きへ入れなければ None（呼び側が「今回は留まる」に倒す）。
+    /// wander は引いた向きへ入れなければ None（呼び側が「今回は留まる」にする）。
     @Test
     def testWanderBlockedIsNone(): Unit \ Assert =
         Assert.assertEq(

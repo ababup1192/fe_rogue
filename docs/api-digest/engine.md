@@ -190,7 +190,7 @@
 ## Color — `engine/src/core/Color.flix`
 - 0〜1 の 3 つ組から色を作る。Float64 のまま書けるので、色を計算で導くときに使う。
   `pub def rgb(r: Float64, g: Float64, b: Float64): Color`
-- 0〜255 の 3 つ組から色を作る。色見本（パレット表）は 255 段で配られるので、
+- 0〜255 の 3 つ組から色を作る。色見本（パレット表）は 255 段階で配られるので、
   `pub def rgb8(r: Int32, g: Int32, b: Int32): Color`
 - "#rrggbb"（先頭の # は省略可）から色を作る。6 桁の 16 進でなければ None。
   `pub def hex(text: String): Option[Color]`
@@ -198,13 +198,13 @@
   `pub def mix(a: Color, b: Color, t: Float64): Color`
 - 3 チャンネルを組にして取り出す。Color は record なので **そのままでは比べられない**
   `pub def channels(color: Color): (Float32, Float32, Float32)`
-- 色を白へamountだけ寄せる。通常は0から1を渡し、範囲外は補正しない。
+- 色を白へamountだけ近づける。通常は0から1を渡し、範囲外は補正しない。
   `pub def lighten(color: Color, amount: Float64): Color`
-- 色を黒へamountだけ寄せる。通常は0から1を渡し、範囲外は補正しない。
+- 色を黒へamountだけ近づける。通常は0から1を渡し、範囲外は補正しない。
   `pub def darken(color: Color, amount: Float64): Color`
-- 暖色（黄寄り）へ amount だけ寄せる。lighten と対で使う。
+- 暖色（黄寄り）へ amount だけ近づける。lighten と対で使う。
   `pub def warm(color: Color, amount: Float64): Color`
-- 寒色（青寄り）へ amount だけ寄せる（warm の対）。影の側に使う。
+- 寒色（青寄り）へ amount だけ近づける（warm の対）。影の側に使う。
   `pub def cool(color: Color, amount: Float64): Color`
 - 目に映る明るさ（0〜1）。3 チャンネルの平均で採らないのは、人の目が緑にいちばん
   `pub def brightness(color: Color): Float64`
@@ -353,7 +353,7 @@
 ## Num — `engine/src/core/Num.flix`
 - 0 以上 1 以下に収める。濃さ・進み具合・混ぜ具合など「0〜1 のはずの値」を
   `pub def clamp01(x: Float64): Float64`
-- lo 以上 hi 以下に収める。lo > hi のときは lo を返す（範囲が無いので下端に寄せる）。
+- lo 以上 hi 以下に収める。lo > hi のときは lo を返す（範囲が無いので下端に丸める）。
   `pub def clamp(lo: Float64, hi: Float64, x: Float64): Float64`
 - 小数部だけを残す（1.25 → 0.25）。負でも 0 以上 1 未満になる（-0.25 → 0.75）ので、
   `pub def fract(x: Float64): Float64`
@@ -507,7 +507,7 @@
   `pub def lavaVeins(): Spec`
 - この Spec を塗ったときの「代表色」（F8 注釈・SoftRaster など GLSL を走らせられない
   `pub def representativeColor(spec: Spec): Color`
-- 場の木を前置順（親 → 子）で 1 本ずつ f に渡して畳む汎用の走査。
+- 場の木を前置順（親 → 子）で 1 本ずつ f に渡して畳み込む汎用の走査。
   `pub def foldField(f: (a, Field) -> a, acc: a, field: Field): a`
 - Spec が読むテクスチャ名を「bindings（前から）→ 色 → alpha」の初出順・重複なしで列挙する。
   `pub def texNames(spec: Spec): List[String]`
@@ -544,7 +544,7 @@
 - `pub def compileBody(spec: ShaderDoc.Spec): String`
 
 ## ShaderJson — `engine/src/ShaderJson.flix`
-- JSON をトップレベルの Spec へ畳む。壊れていれば Err（パス付きの説明）。
+- JSON をトップレベルの Spec へ読み取る。壊れていれば Err（パス付きの説明）。
   `pub def parse(json: Json): Result[JsonError, ShaderDoc.Spec]`
 - `pub def toJson(spec: ShaderDoc.Spec): Json`
 - path を読んで Spec にする（読めない・崩れているときは Err）。フォールバックは呼び側が
@@ -561,7 +561,7 @@
   `pub def drawables(v: View): List[GameEngine.Drawable]`
 - 0..1 に収めた進み具合。本数が 0 以下なら None（＝まだ何本あるか分からない）。
   `pub def clampRatio(done: Int32, total: Int32): Option[Float64]`
-- 流れる帯の位置。1 秒で 1 周する。
+- 流れるバーの位置。1 秒で 1 周する。
   `pub def turnsOf(elapsedSec: Float64): Float64`
 
 ## Sprite — `engine/src/render/drawable/Sprite.flix`
@@ -681,7 +681,7 @@
   `pub def tileSize(tileMap: TileLayer): Float64`
 - 使用中のマス範囲を矩形で返す。position は (0,0) 固定、size は gridSize。
   `pub def usedRect(tileMap: TileLayer): { position = {x = Int32, y = Int32}, size = {x = Int32, y = Int32} }`
-- マス座標 → セル中心のローカルピクセル座標（Grid.cellCenterOf と同じ約束）。
+- マス座標 → セル中心のローカルピクセル座標（Grid.cellCenterOf と同じ決まり）。
   `pub def cellCenterOf(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Vec2.Vec2`
 - 指定マスのソース ID を返す。空セル（範囲外含む）: -1、壁セル: 0
   `pub def sourceIdAt(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Int32`

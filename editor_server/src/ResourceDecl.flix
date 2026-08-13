@@ -147,7 +147,7 @@ mod ResourceDecl {
             |> Option.toOk("${location} に ${key} (文字列) がありません")
 
     /// 任意の文字列フィールド。
-    // WhyNot: 文字列以外が書かれていても Err にせず None に倒す — title / plugin / schema は
+    // WhyNot: 文字列以外が書かれていても Err にせず None にする — title / plugin / schema は
     // 飾りの類で、無くても組み込み既定で編集は続けられる。必須の id / pattern だけ厳しくする。
     def optionalString(key: String, declObj: Map[String, Json]): Option[String] =
         Map.get(key, declObj) |> Option.flatMap(JsonCodec.expectString)

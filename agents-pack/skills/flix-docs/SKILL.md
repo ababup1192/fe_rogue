@@ -69,6 +69,30 @@ def makeLine(pos: Vec2.Vec2, width: Float64, height: Float64, color: Color): Col
 def makeLine(line: {pos = Vec2.Vec2, size = Vec2.Vec2}, color: Color): ColorRect
 ```
 
+### 型の設計（データの持ち方）
+
+- **取りうる値が決まっている物（状態・モード・種別）は String で持たない。enum にする。**
+  文字列の等値で分岐すると網羅性チェックが効かず、打ち間違えが `else` に吸われて
+  別の値としてエラーも出ずに通る
+  - Doc(JSON) から来る値は String なので、**読み込む所で 1 回だけ enum へ変換**して
+    内側は enum で回す
+- **その case だけが使う値は、レコードに平らに並べず enum の payload へ入れる。**
+  並べると、どのフィールドがどの case の物か型から読めなくなる。
+  **どの case でも使う値はレコード側に残す**（payload へ動かさない）
+  - payload に**レコードは置けない**（`Eq` を derive できなくなる。理屈は
+    `docs/flix-conventions.md` の落とし穴）。値が 2 つ以上要るときは case へ並べるか、
+    `Eq` を derive した別の enum で包む
+
+```flix
+// OK: その case だけが使う値は payload へ / どの case でも使う値はレコードへ
+pub enum Playback with Eq, ToString {
+    case Stopped
+    case Playing(Float64)  // 再生した秒数
+    case Paused(Float64)   // 止めた時点の秒数
+}
+pub type alias Clip = { playback = Playback, name = String, volume = Float64 }
+```
+
 ### パイプスタイル
 
 - なるべくパイプスタイルを使い `|>` で一時変数を作らないこと
@@ -201,7 +225,7 @@ def testFoo(): Unit \ Assert =
 ### List.sortBy / List.sort は安定ソートではない
 
 - 同キーの要素の並びが入力順に保たれない（実測: 同キー 7::8::9 が 9::7::8 になる）。
-  入力が同じなら結果は毎回同じ（決定的）だが、「渡した順のまま」は約束されない
+  入力が同じなら結果は毎回同じ（決定的）だが、「渡した順のまま」は保証されない
 - 同キーの順序に意味があるときは、キーにタイブレーク（元 index など）を含めて
   `List.zipWithIndex` + 複合キーで並べる
 - スナップショット（バイト一致）に関わる描画順をソートで作る場合、この非安定性ごと
@@ -230,7 +254,7 @@ def testFoo(): Unit \ Assert =
 2. **ソフトウェア一般の語** — `cache` `buffer` `snapshot` `pipeline` `handler` `registry`
 3. **他のゲームエンジンが同じ物をどう呼んでいるか** — Unity / Unreal / Godot / Bevy。
    同じ物に別の名前を付けない（このエンジンは Bevy の render-from-World の考え方に
-   寄せているので、迷ったら Bevy の語を見る）
+   そろえているので、迷ったら Bevy の語を見る）
 
 3 つとも当てはまらない物にだけ、説明的な名前を組み立てる（`silhouettePng` のように、
 読んで何をする物か分かる形）。**比喩で名付けない。**

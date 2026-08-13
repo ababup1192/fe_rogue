@@ -30,7 +30,7 @@ SoftRaster が指定を黙って落とすと、**スナップショットは「�
 | uvOffset / uvScale（部分矩形） | ○ | ○ | |
 | 反転（scale の符号） | ○ | ○ | |
 | zIndex の並び | ○ | ○ | (z, 追加順) の安定ソートで両者一致 |
-| clip（窓） | ○ | ○ | 量子化は `DrawCmd.clipPixels` を共有 |
+| clip（切り抜き矩形） | ○ | ○ | 量子化は `DrawCmd.clipPixels` を共有 |
 | blend（Add / Multiply） | ○ | ○ | 式は `SoftRaster.blendPixel` にテストで固定 |
 | style（角丸・枠・縞・市松）on 単色 box | ○ | ○ | 枠の濃さ（borderAlpha）も両者対応 |
 | 単色多角形の塗り | ○ | ○ | **縁だけ近似**: SoftRaster は Java2D の AA、GL は AA なし |
@@ -61,12 +61,12 @@ SoftRaster が指定を黙って落とすと、**スナップショットは「�
 
 ## 機械での突き合わせ（bench/gl_parity）
 
-上の表の「同一を保証」の行は、`make gl-parity` が機械で確かめる。隠し窓
+上の表の「同一を保証」の行は、`make gl-parity` が機械で確かめる。隠しウィンドウ
 （`FLIX_GE_HIDDEN=1`）で GL を 1 コマずつ生成し、同じ scene 宣言を SoftRaster でも生成して
 画素比較する（スナップショットは作らない — 基準は「もう片方の経路」）。回し方と scene の規約は
 [bench/gl_parity/README.md](../bench/gl_parity/README.md)。
 
-- 比較は 2 段。**A 段（同一保証の行だけを使った scene）は RGB バイト一致**が合格線で、
+- 比較は 2 段階。**A 段階（同一保証の行だけを使った scene）は RGB バイト一致**が合格線で、
   1 画素でも違えば exit 1。近似の行（縁 AA・文字・float 合成）は数字の報告だけで落とさない。
 - **alpha チャンネルは比較しない**（pass の alpha は GL のブレンド副産物 — 表の tex 場の行）。
 - 実測記録（2026-08-11・第 1 陣 4 scene）: 単色 box + zIndex + Add/Multiply + 軸平行縞 +
@@ -78,7 +78,7 @@ SoftRaster が指定を黙って落とすと、**スナップショットは「�
 - 実測記録（2026-08-11・放射）: 組み込み放射スプライト（`Render.lightAt` の Add 重ね置き +
   `darkAt` の白/黒下地 Multiply。radial）— **差 0 px のバイト一致**。かつては最大 ±8 の
   差があったが、放射テクスチャを alpha=255 形（カーブは rgb に書き込み）へ改めて解消した。
-- A 段の scene に入れてよい絵の条件（整数座標・k/255 の色・軸平行縞のみ等）と
+- A 段階の scene に入れてよい絵の条件（整数座標・k/255 の色・軸平行縞のみ等）と
   「±1 が実測されたらこの表へ実測根拠つきで追記して線を引き直す」の手順は
   bench/gl_parity/src/Scenes.flix の冒頭に固定してある。
 - 描画経路（render_gl / SoftRaster / Frame / ShaderEval）を触ったら手で回す。

@@ -13,12 +13,12 @@ mod NovelKit {
     pub def closed(): Kit =
         { dialog = UiDialog.closed(), choices = None }
 
-    /// 1 拍しゃべる（speaker が空文字なら地の文）。
+    /// 1 ビートしゃべる（speaker が空文字なら地の文）。
     pub def say(speaker: String, text: String): Kit =
         { dialog = UiDialog.openWith({ speaker = speaker, body = RichText.plain(text) :: Nil } :: Nil),
           choices = None }
 
-    /// 1 拍しゃべって、読み終えたら選択肢を出す。スロットは 6 枠なので、
+    /// 1 ビートしゃべって、読み終えたら選択肢を出す。スロットは 6 枠なので、
     /// あふれた分は黙って切り捨てる（台本は Doc なので落とさない = fail-open）。
     pub def ask(speaker: String, text: String, entries: List[UiSlots.Entry]): Kit =
         { dialog = UiDialog.openWith({ speaker = speaker, body = RichText.plain(text) :: Nil } :: Nil),
@@ -90,7 +90,7 @@ mod NovelKit {
     /// 本文の置き場所と最大幅を、パネル（novel_dialog/panel）の宣言から導く。
     /// x = パネル左 + 左 pad、y = パネル上 + 上 pad + 話者行のぶん、
     /// 幅 = パネル幅 - 左右 pad。パネルが見つからないときは既定の枠
-    /// （abs [12, 226]・幅 456・pad 10/5・話者 9px）と同じ値に倒す（fail-open）。
+    /// （abs [12, 226]・幅 456・pad 10/5・話者 9px）と同じ値にする（fail-open）。
     def bodyArea(ui: UiStore.UiWorld): { pos = Vec2.Vec2, maxWidth = Float64 } =
         let panelStyle = UiStore.idOf("${dialogPaths()#root}/panel", ui)
             |> Option.flatMap(id -> Map.get(id, ui#styles));

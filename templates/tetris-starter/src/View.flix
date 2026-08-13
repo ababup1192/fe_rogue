@@ -191,7 +191,7 @@ mod View {
             if (r < 0) None else Some(flatBlock(c, r, color, z))   // 上にはみ出した分は描かない
         })
 
-    // ── ライン消しの演出（凝りすぎない: 閃光の帯 + ソフトな光球）──
+    // ── ライン消しの演出（凝りすぎない: 閃光のストリップ + ソフトな光球）──
     // 進度 t（0→1）で薄れていく。t は clearTimer / clearDuration。
     def clearFx(w: World.World): List[Render.PlacedItem] =
         match w#phase {
@@ -200,12 +200,12 @@ mod View {
                 let fade = 1.0 - t;                                     // 1→0 に減衰
                 let boardW = Int32.toFloat64(World.cols()) * cell();
                 w#clearRows |> List.flatMap(r -> {
-                    // 行全幅に閃光の帯（白）を重ねる。
+                    // 行全幅に閃光（白）を重ねる。
                     let rowFlash = { at = { x = originX(), y = originY() + Int32.toFloat64(r) * cell() },
                                      item = RawDraw.box({ x = boardW, y = cell() }, w#theme#flash, zClear())
                                          |> Render.fade(fade) };
                     // さらに各セルの中心に、紙が白く抜ける柔らかい丸を重ねる（閉形式で安全な glowAt）。
-                    // Add でなく Normal なのは画風の約束 — 紙は発光しない（白へ抜けるだけ）。
+                    // Add でなく Normal なのは画風の決まり — 紙は発光しない（白へ抜けるだけ）。
                     let glows = List.range(0, World.cols()) |> List.flatMap(c ->
                         Render.glowAt(cellCenter(c, r), cell() * 0.75, w#theme#flash,
                             { alpha = 0.75 * (1.0 - t), blend = DrawCmd.BlendMode.Normal }, zClear() + 1));
@@ -266,7 +266,7 @@ mod View {
             case _ => Nil
         }
 
-    /// 盤の中央 x。幕（GAME OVER）は右パネルにかぶらないよう画面全幅でなく play エリアに寄せる。
+    /// 盤の中央 x。幕（GAME OVER）は右パネルにかぶらないよう画面全幅でなく play エリアに合わせる。
     def boardCenterX(): Float64 = originX() + Int32.toFloat64(World.cols()) * cell() / 2.0
 
     /// 盤の中央にテキストを 1 行置く（幅はエンジンが実測して中央へ揃える）。

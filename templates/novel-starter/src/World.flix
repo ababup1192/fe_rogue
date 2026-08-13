@@ -14,10 +14,10 @@
 //
 // 遷移を起こす関数の doc には [遷移: X→Y] を付けてある（探すときの目印）。
 //
-// Doc が壊れていても止まらない（fail-open の 3 段）:
+// Doc が壊れていても止まらない（fail-open の 3 段階）:
 //   読めない → 既定値で起動（Controls.loadDocs / *Doc.defaults）
 //   一部が欠け → その欄だけ既定値（fromJson が欄ごとに拾う）
-//   型が違う   → その欄は既定値のまま（行き先の節が無ければ表紙へ倒れる 等）
+//   型が違う   → その欄は既定値のまま（行き先の節が無ければ表紙へ落ちる 等）
 // だからプレイヤーの前でクラッシュしない。台本の編集ミスは既定へ落ちて読みは続く。
 mod World {
 
@@ -103,9 +103,9 @@ mod World {
     def toTitle(w: World): World =
         { phase = Phase.Title, kit = NovelKit.closed() | w }
 
-    /// 台本の (section, idx) の拍をキットに乗せる。拍を読み終えた節は
+    /// 台本の (section, idx) のビートをキットに乗せる。ビートを読み終えた節は
     /// ask（分岐）→ next（次の節）→ どちらも無ければ結末 = 表紙へ、の順に出口を選ぶ。
-    /// [遷移: 節→次の拍 / 次の節 / 結末(Story→Title)]
+    /// [遷移: 節→次のビート / 次の節 / 結末(Story→Title)]
     /// fuel は空の節が連なる壊れた台本でも必ず止まるための上限。
     pub def enter(sectionId: String, idx: Int32, w: World): World =
         enterFuel(8, sectionId, idx, w)
@@ -123,7 +123,7 @@ mod World {
                 }
         }
 
-    /// 拍を読み終えた節の出口。
+    /// ビートを読み終えた節の出口。
     def leave(fuel: Int32, sectionId: String, idx: Int32, section: StoryDoc.Section, w: World): World =
         match section#ask {
             case Some(ask) =>
@@ -142,7 +142,7 @@ mod World {
         })
 
     /// 決定 1 回分。表紙では物語をはじめ［遷移: Title→Story］、文字送り中なら全文へ、
-    /// 読み終えていれば次の拍へ（Story のまま enter で進む）。
+    /// 読み終えていれば次のビートへ（Story のまま enter で進む）。
     /// 選択肢待ちは動かない（pick だけが進める）。
     pub def advance(w: World): World =
         match w#phase {
@@ -189,7 +189,7 @@ mod World {
     // ── Doc の差し替え（保存即反映） ──
 
     /// 台本の差し替え。物語の途中なら現在地を読み直す（編集がその場で画面に出る）。
-    /// 現在地の節が消えていたら表紙へ倒れる（fail-open）。
+    /// 現在地の節が消えていたら表紙へ落ちる（fail-open）。
     pub def withStory(story: StoryDoc.Doc, w: World): World =
         let w1 = { story = story | w };
         match w1#phase {

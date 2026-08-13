@@ -96,7 +96,7 @@ mod Physics {
         { body = { pos = slid#pos, vel = slid#vel, onGround = slid#onGround },
           wall = if (slid#hitX and dir != 0.0) dir else 0.0 }
 
-    /// current を target へ最大 step だけ寄せる(行き過ぎない)。
+    /// current を target へ最大 step だけ近づける(行き過ぎない)。
     pub def approach(target: Float64, step: Float64, current: Float64): Float64 =
         if (current < target) Float64.min(current + step, target)
         else Float64.max(current - step, target)
@@ -191,7 +191,7 @@ mod Physics {
         let (c0, c1) = spanOf(x - half#x, x + half#x);
         List.range(c0, c1 + 1) |> List.forAll(c -> not t#solid(c, r))
 
-    /// 進行方向の縁が通る帯(i0 → i1 を近い順)を調べ、最初に硬いタイルを含む
+    /// 進行方向の縁が通る範囲(i0 → i1 を近い順)を調べ、最初に硬いタイルを含む
     /// 行(rowAxis = true)か列(false)の番号を返す。span は動かない側の軸の占有範囲。
     def firstSolid(hard: (Int32, Int32) -> Bool, i0: Int32, i1: Int32,
                    span: (Int32, Int32), rowAxis: Bool): Option[Int32] =

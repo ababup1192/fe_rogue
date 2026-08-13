@@ -1,5 +1,5 @@
 // ルール・進行・収支だけをテストする（方針どおり）。演出（タイヤ痕・煙・傾き・粒）は
-// スナップショットと目視の仕事なのでテストしない。ただし当たり（路面・障害物・スリップの帯）はルールなので残す。
+// スナップショットと目視の仕事なのでテストしない。ただし当たり（路面・障害物・スリップの範囲）はルールなので残す。
 // 期待値はリテラルでなく Doc（RulesDoc.defaults / RivalsDoc.defaults / CourseDoc.defaults）から導く —
 // バランス調整でテストが壊れないように。
 //
@@ -32,10 +32,10 @@ mod TestRules {
         { progress = progress, off = off, baseSpeed = baseSpeed, corner = 1.0, laneBias = 0.0, passed = false }
 
     // ══════════════════════════════════════════════════════
-    // コースから段を探す土台（段番号・横位置をテストへ直書きしない）
+    // コースから行を探す土台（行番号・横位置をテストへ直書きしない）
     // ══════════════════════════════════════════════════════
 
-    /// 置き場の表を先頭の段から見て、その種類の物が最初に置かれている通し段と、その横ずれ。
+    /// 置き場の表を先頭の行から見て、その種類の物が最初に置かれている通し行と、その横ずれ。
     /// 見つからない（= 置き場の作りが変わって前提が崩れた）ときは
     /// 来てはいけない分岐として落ちる。
     def firstPropAt(w: World.World, kind: PropsDoc.Kind): { row = Int32, off = Float64 } =
@@ -49,33 +49,33 @@ mod TestRules {
             case None        => bug!("props table has no such prop")
         }
 
-    /// 全面が路面の平らな 2 段コース（置き場も空）。当たりや坂を混ぜたくないテストの土台。
+    /// 全面が路面の平らな 2 行コース（置き場も空）。当たりや坂を混ぜたくないテストの土台。
     def flatCourse(): CourseDoc.Doc =
         { version = 1,
           sections = { len = 2, curve = 0.0, hill = 0.0, width = 300.0, rail = "none",
                        note = "" } :: Nil }
 
-    /// 右へ曲がり続ける全面路面の 2 段コース（置き場は空）。
+    /// 右へ曲がり続ける全面路面の 2 行コース（置き場は空）。
     /// 「外側 = 左（負）」へ押される・流れる向きを見るテストの土台。
     def rightCurveCourse(): CourseDoc.Doc =
         { version = 1,
           sections = { len = 2, curve = 6.0, hill = 0.0, width = 300.0, rail = "none",
                        note = "" } :: Nil }
 
-    /// 通し段 n をまたぐ直前の distance（1 拍で必ず n をまたいで入る位置）。
+    /// 通し行 n をまたぐ直前の distance（1 フレームで必ず n をまたいで入る位置）。
     /// playerRowOf(d) = floor((d + playerAheadPx) / rowPitch) の境界のすぐ手前に置く。
     def justBeforeRow(n: Int32): Float64 =
         Int32.toFloat64(n) * World.rowPitch() - World.playerAheadPx() - 1.0
 
     // ══════════════════════════════════════════════════════
-    // 柱 1: カーブの導出（区間の curve = 急さ。段ごとの表を別に持たない）
+    // 柱 1: カーブの導出（区間の curve = 急さ。行ごとの表を別に持たない）
     // ══════════════════════════════════════════════════════
 
     @Test
     def testCurveComesFromTheSectionTable(): Unit \ Assert =
         // 既定コースはスタート直線から始まり、そのあと最初の曲がる区間が来る。
-        // 段 0 は直線なので 0、最初に曲がる段の値はその区間の curve と一致する —
-        // 段番号も期待値も CourseDoc.defaults() から導く（コースを書き換えても壊れない）。
+        // 行 0 は直線なので 0、最初に曲がる行の値はその区間の curve と一致する —
+        // 行番号も期待値も CourseDoc.defaults() から導く（コースを書き換えても壊れない）。
         let c = CourseDoc.defaults();
         let n = match List.range(0, CourseDoc.rowCount(c))
                 |> List.filter(row -> World.curveAt(row, c) != 0.0) |> List.head {
@@ -92,7 +92,7 @@ mod TestRules {
 
     @Test
     def testSteerOnStraightMovesExactly(): Unit \ Assert =
-        // 直線（distance = 0 で自機はスタート直線の段に乗る）では、→ 入力どおり
+        // 直線（distance = 0 で自機はスタート直線の行に乗る）では、→ 入力どおり
         // steerSpeed * dt だけ右へ動く（カーブの横押しゼロ）。
         let d = RulesDoc.defaults();
         let w = racing();
@@ -103,8 +103,8 @@ mod TestRules {
     @Test
     def testGripSpeedFollowsCurve(): Unit \ Assert =
         // gripSpeed 以下ならカーブでも道に付いていく = 道の中心からの横ずれは増えない。
-        // distance = 70 で自機は最初の曲がる区間（通し段 3）に乗る。速度を gripSpeed に
-        // 置いて 1 拍 → 超過ゼロなので横ずれは 0 のまま（曲がりは道の側が引き受ける）。
+        // distance = 70 で自機は最初の曲がる区間（通し行 3）に乗る。速度を gripSpeed に
+        // 置いて 1 フレーム → 超過ゼロなので横ずれは 0 のまま（曲がりは道の側が引き受ける）。
         let d = RulesDoc.defaults();
         let c = CourseDoc.defaults();
         let dt = 0.1;
@@ -172,7 +172,7 @@ mod TestRules {
 
     @Test
     def testDriftFallOntoGrassStartsSpin(): Unit \ Assert =
-        // ドリフトのまま草（道の外）にいると、その拍でスピンが始まりドリフトは解ける
+        // ドリフトのまま草（道の外）にいると、そのフレームでスピンが始まりドリフトは解ける
         // （coolTimers が同フレームで dt を削るので spinLeft = spinDuration - dt）。
         let d = RulesDoc.defaults();
         let dt = 0.05;
@@ -184,7 +184,7 @@ mod TestRules {
             (after#spinLeft, after#drifting))
 
     // ══════════════════════════════════════════════════════
-    // 柱 3: スリップストリーム（前走車の真後ろの帯）
+    // 柱 3: スリップストリーム（前走車の真後ろの範囲）
     // ══════════════════════════════════════════════════════
 
     @Test
@@ -248,8 +248,8 @@ mod TestRules {
     // 柱 4: 押し合い（車どうしの接触は横へ弾く・スピンさせない）
     // ══════════════════════════════════════════════════════
 
-    /// 真横 5px にライバルが並んで触れている 1 拍前（自機は直線・舵は中立）。
-    /// baseSpeed = 0 にしてライバルの前進を止め、1 拍のあいだ当たり判定の区間から出ないようにする。
+    /// 真横 5px にライバルが並んで触れている 1 フレーム前（自機は直線・舵は中立）。
+    /// baseSpeed = 0 にしてライバルの前進を止め、1 フレームのあいだ当たり判定の区間から出ないようにする。
     def sideBySide(): World.World =
         let w = racing();
         { rivals = rivalAt(World.playerDistOf(w), w#playerOff - 5.0, 0.0) :: Nil | w }
@@ -276,7 +276,7 @@ mod TestRules {
     @Test
     def testObstacleHitStartsSpin(): Unit \ Assert =
         // 既定コースで最初に X（障害物）がある行とその列を CourseDoc から探し、
-        // その行をまたぐ直前の distance に立つ（justBeforeRow で 1 拍必ずまたぐ位置へ）。
+        // その行をまたぐ直前の distance に立つ（justBeforeRow で 1 フレーム必ずまたぐ位置へ）。
         // X の列中心に自機を合わせて直撃 → スピン開始（coolTimers 後 = spinDuration - dt）。
         let d = RulesDoc.defaults();
         let dt = 0.1;
@@ -345,7 +345,7 @@ mod TestRules {
 
     @Test
     def testBarSwingsOnAClosedFormLoop(): Unit \ Assert =
-        // バーの位置は時刻と段番号だけで決まる。1 往復ぶん時計を進めると同じ場所へ戻り、
+        // バーの位置は時刻と行番号だけで決まる。1 往復ぶん時計を進めると同じ場所へ戻り、
         // 半分だけ進めると逆側にいる（毎周同じリズム = 覚えて攻略できる）。
         let w = racing();
         let at = tt -> World.barOffAt(3, { t = tt | w });
@@ -359,7 +359,7 @@ mod TestRules {
     // 柱 4: ガードレール（擦っても壊れない・道の端で止まる）
     // ══════════════════════════════════════════════════════
 
-    /// ガードレールが立っていて、立ち物の無い最初の通し段。
+    /// ガードレールが立っていて、立ち物の無い最初の通し行。
     def firstRailRow(w: World.World): { row = Int32, side = Float64 } =
         match List.range(0, CourseDoc.rowCount(w#course))
                 |> List.filter(n -> World.railSideAt(n, w) != 0.0
@@ -421,12 +421,12 @@ mod TestRules {
     // 柱 5: アイテム（取った瞬間の順位で効果が決まる・二重取得なし）
     // ══════════════════════════════════════════════════════
 
-    /// 既定コースで最初にアイテムが置かれている段と横ずれ。beforeItem と
-    /// testItemNotTakenTwiceOnSameRow の両方が同じ段を指すよう、ここで 1 か所に決める。
+    /// 既定コースで最初にアイテムが置かれている行と横ずれ。beforeItem と
+    /// testItemNotTakenTwiceOnSameRow の両方が同じ行を指すよう、ここで 1 か所に決める。
     def firstItem(): { row = Int32, off = Float64 } =
         firstPropAt(racing(), PropsDoc.Kind.Item)
 
-    /// 最初のアイテムの手前（1 拍で必ずまたいで拾う位置）に立つ。順位は rank を直に置いて作る。
+    /// 最初のアイテムの手前（1 フレームで必ずまたいで拾う位置）に立つ。順位は rank を直に置いて作る。
     def beforeItem(rank: Int32): World.World =
         { distance = justBeforeRow(firstItem()#row), playerOff = firstItem()#off,
           rank = rank, rivals = Nil | racing() }
@@ -447,7 +447,7 @@ mod TestRules {
     @Test
     def testItemNotTakenTwiceOnSameRow(): Unit \ Assert =
         // 同じ通し行はもう一度またいでも二重取得しない（taken の掛け金）。
-        // 一度拾ったあと distance を行の手前へ戻してもう 1 拍 → スコアは 1 回ぶんのまま。
+        // 一度拾ったあと distance を行の手前へ戻してもう 1 フレーム → スコアは 1 回ぶんのまま。
         let d = RulesDoc.defaults();
         let once = World.step(idle(), 0.1, beforeItem(1));
         let again = World.step(idle(), 0.1, { distance = justBeforeRow(firstItem()#row) | once });
@@ -459,7 +459,7 @@ mod TestRules {
 
     @Test
     def testRubberBandAdjustsRivalSpeed(): Unit \ Assert =
-        // 自機から rubberRange ぶん後ろのライバルは 1 拍の伸びが baseSpeed * dt より大きく、
+        // 自機から rubberRange ぶん後ろのライバルは 1 フレームの伸びが baseSpeed * dt より大きく、
         // 同じだけ前のライバルは小さい（corner = 1.0 でコーナー減速は混ぜない）。
         let cfg = RivalsDoc.defaults();
         let dt = 0.1;
@@ -508,7 +508,7 @@ mod TestRules {
 
     @Test
     def testFinishOutcomeDependsOnRank(): Unit \ Assert =
-        // totalLaps ぶん走り切った拍に: 1 位 = Win + finishBonus / 2 位 = Win（ボーナスなし）/
+        // totalLaps ぶん走り切ったフレームに: 1 位 = Win + finishBonus / 2 位 = Win（ボーナスなし）/
         // 最下位（既定 3 台 + 自機 = 4 位）= Lose。ライバルは接触もスリップも起きない距離に置く。
         let d = RulesDoc.defaults();
         let dist = World.lapLength(CourseDoc.defaults()) * Int32.toFloat64(d#totalLaps) + 10.0;

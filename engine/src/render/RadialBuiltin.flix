@@ -51,7 +51,7 @@ mod RadialBuiltin {
     }
 
     /// 中心 0 → 縁 1 の距離 t を濃さ 0..1 へ写す減衰（smoothstep: x²(3−2x)、x = 1−t）。
-    /// 直線減衰にしないのは、縁で傾きが 0 にならず正方形の輪郭が段差として
+    /// 直線減衰にしないのは、縁で傾きが 0 にならず正方形の輪郭が急な切り替わりとして
     /// 見えてしまうため（engine_world の Render.glowAt とも同じ式で、絵の系統が揃う）。
     def falloff(t: Float64): Float64 =
         let x = clamp01(1.0 - t);

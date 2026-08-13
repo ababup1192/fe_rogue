@@ -43,7 +43,7 @@ mod Physics2D {
     pub def normalToward(id: EntityId, contact: Contact): Vec2.Vec2 =
         if (contact#a == id) contact#normal else Vec2.neg(contact#normal)
 
-    /// 面に近づく速度の法線成分だけを消す（跳ねずに滑る）。検出順に畳む。bounce の対。
+    /// 面に近づく速度の法線成分だけを消す（跳ねずに滑る）。検出順に適用する。bounce の対。
     /// 離れる向きの接触（かすめた直後など）は触らない。
     pub def slide(id: EntityId, contacts: List[Contact], vel: Vec2.Vec2): Vec2.Vec2 =
         List.foldLeft((v, contact) -> {

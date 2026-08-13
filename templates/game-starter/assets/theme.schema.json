@@ -1,5 +1,5 @@
 {
-  "//": "__NAME__.theme.json の形の宣言（Studio の sections 方言）。色 1 つ = kind field / type color のセクション 1 つ。派生色（ハイライト・影）はコードで導く（独自の色を増やさない）。塗りの仕上げは入れ子 1 段の record にまとめる（平らに並べると shade* の列がタブを埋める）。",
+  "//": "__NAME__.theme.json の形の宣言（Studio の sections 方言）。色 1 つ = kind field / type color のセクション 1 つ。派生色（ハイライト・影）はコードで導く（独自の色を増やさない）。塗りの仕上げは入れ子 1 階層の record にまとめる（平らに並べると shade* の列がタブを埋める）。",
   "version": 1,
   "sections": {
     "bg":     { "kind": "field", "type": "color", "label": "背景",   "order": 1, "required": true },

@@ -36,7 +36,7 @@ mod App {
     pub def justPressed(key: GameEngine.Key, frame: Frame): Bool =
         Set.memberOf(key, frame#justPressed)
 
-    /// 負方向・正方向のキーの押し下げを -1 / 0 / +1 に畳む（両押しは打ち消して 0）。
+    /// 負方向・正方向のキーの押し下げを -1 / 0 / +1 にまとめる（両押しは打ち消して 0）。
     /// 左右移動などの軸入力に。同型のキー 2 つは順序を取り違えやすいので名前で渡す。
     pub def axis(negative: {negative = GameEngine.Key},
                  positive: {positive = GameEngine.Key}, frame: Frame): Float64 =
@@ -111,7 +111,7 @@ mod App {
         // 持ち上がるので、world の z に関わらず必ず手前。zIndex が決めるのは HUD の中の前後だけ。
         hudView = Option[(ViewCtx, w) -> List[Render.PlacedItem] \ ef],
         audio = { before = w, after = w } -> List[String] \ ef,    // 1 フレームの前後から鳴らす音名を導く
-        // 「このフレームで鳴り続けていてほしい音」の宣言。宣言が続く間は鳴り続け、消えた拍で
+        // 「このフレームで鳴り続けていてほしい音」の宣言。宣言が続く間は鳴り続け、消えたフレームで
         // 止まる（風・雨・炎・機械の唸り・足音のループ）。毎フレーム音量と高さを与えられる。
         sustained = w -> List[Sustain] \ ef,
         quit = (Frame, w) -> Bool \ ef,                            // 終了判定（既定 = Escape のエッジ）
@@ -239,7 +239,7 @@ mod App {
         { fonts = List.append(app#fonts, names) | app }
 
     /// ゲーム 1 本の標準形を 1 つのレコードで宣言する入口（初学者向け）。
-    /// update は「1 本の合成関数」で渡す約束: 複数の手続きをゲーム側で
+    /// update は「1 本の合成関数」で渡す決まり: 複数の手続きをゲーム側で
     /// `\f w -> w |> step(f) |> interact(f)` のように中で繋いで 1 個にしてから渡す
     /// （繋ぎが Main に見えて教育的。App.game 側は複数システムを受け取らない）。
     /// reloads の各要素は watchFile 1 本に展開される。内部では
@@ -305,7 +305,7 @@ mod App {
                             app: App[w, ef]): App[w, ef] =
         { staticLayer = Some({ key = key, build = build }) | app }
 
-    /// タイルの層（床・壁1段目など、格子に敷く静的な絵）を宣言する。エンジンが Spec ごとに
+    /// タイルの層（床・壁 1 行目など、格子に敷く静的な絵）を宣言する。エンジンが Spec ごとに
     /// 1 度だけ GPU に焼き、以後は毎フレーム 1 draw call で敷く（数百〜千マスでも軽い）。
     /// Spec の tiles はサンク — 毎フレーム呼ばれるのは宣言（key の比較）だけで、
     /// 中身のリスト構築は key が変わった焼き直しの時にしか走らない。
@@ -372,7 +372,7 @@ mod App {
     pub type alias Sustain = { name = String, volume = Float32, pitch = Float32 }
 
     /// 「このフレームで鳴り続けていてほしい音」を World から導く関数を繋ぐ。
-    /// 宣言に載っている間その音は鳴り続け（ループ再生）、載らなくなった拍で止まる。
+    /// 宣言に載っている間その音は鳴り続け（ループ再生）、載らなくなったフレームで止まる。
     /// 音量と高さは毎フレーム与え直せるので、速度で唸りが変わるエンジン音・強さで太る風・
     /// 走っている間だけ続く足音のように「止め時をゲームが知っている音」をこれ 1 本で書ける。
     /// 単発の効果音（当たった・取った）は withAudio の方を使う。
@@ -380,9 +380,9 @@ mod App {
         { sustained = f | app }
 
     /// 前のフレームの宣言（名前の列）と今のフレームの宣言から、鳴らし始める音・
-    /// 鳴らし続ける音・止める音を仕分ける。同じ名前が 2 回宣言されたら先勝ちで 1 本に畳む
+    /// 鳴らし続ける音・止める音を仕分ける。同じ名前が 2 回宣言されたら先勝ちで 1 本にまとめる
     /// （二重に鳴らすと同じ音源を頭から鳴らし直して途切れる）。
-    /// RemoteDebug / App 本体の内部窓口 — ゲームからは呼ばない。
+    /// RemoteDebug / App 本体の内部 API — ゲームからは呼ばない。
     pub def sustainOps(prev: List[String], next: List[Sustain]):
             { start = List[Sustain], keep = List[Sustain], stop = List[String] } =
         let fresh = next |> List.foldLeft((acc, s) ->
@@ -434,7 +434,7 @@ mod App {
     /// リモートデバッグ（HTTP）の POST /render が実行する「描き出しの実体」を繋ぐ。
     /// f は Docs から決定的な場面を組み立てて PNG に描き出し、そのファイルパスの列を返す
     /// （SceneRender.all の中身をそのまま渡せる形）。走行中のプレイ状態を読んだり変えたりしない
-    /// 関数に限る — /render はゲームの進行に触れず、温まった JVM で描き直すだけの口。
+    /// 関数に限る — /render はゲームの進行に触れず、温まった JVM で描き直すだけのエンドポイント。
     /// 繋がないゲームへの /render は「未対応」の応答になる。
     pub def onRenderRequest(f: Unit -> List[String] \ IO, app: App[w, ef]): App[w, ef] =
         { remoteRender = Some(f) | app }
@@ -443,7 +443,7 @@ mod App {
     /// f はクエリ（?slot=1 → Map。+ と %20 は空白に戻る）と今の World を受け取り、
     /// Ok(次の World) か Err(理由) を返す。Ok なら world を差し替えて "ok"、
     /// Err なら "error: 理由" を応答する。
-    /// スレッドの約束（RemoteDebug と同じ）: HTTP のスレッドは World に一切触れない。
+    /// スレッドの取り決め（RemoteDebug と同じ）: HTTP のスレッドは World に一切触れない。
     /// リクエストはキューに積まれ、ゲームループが 1 フレームに 1 件だけ、このハンドラを
     /// 自分のスレッドで適用して world を差し替える（/step と同じ流儀）。だから f の中で
     /// World を同期に読み書きしてよいが、長い仕事を書くとその間ゲームは止まる。
@@ -623,7 +623,7 @@ mod App {
 
     // ── ランナー: 起動して、閉じるまで回す ──
 
-    /// App を走らせる単一の効果多相ランナー。startup を 1 回だけ畳み、いま押されているキーを prev の
+    /// App を走らせる単一の効果多相ランナー。startup を 1 回だけ畳み込み、いま押されているキーを prev の
     /// 種にしてループへ入る（起動時にすでに押されているキーは、一度離すまでエッジにならない）。
     ///
     /// ウィンドウ（GameEngine.Game/Audio）・Fs・ゲーム固有の effect（ef）は 隠蔽せず呼び出し側の
@@ -655,7 +655,7 @@ mod App {
 
     /// 時間スクラブ用に持ち回す直近の World の数（60fps で約 5 秒）。
     /// World は不変値なので、保持しているのは共有構造への参照だけで軽い。
-    /// RemoteDebug 分割用の内部窓口 — ゲームからは呼ばない。
+    /// RemoteDebug 分割用の内部 API — ゲームからは呼ばない。
     pub def historyLimit(): Int32 = 300
 
     /// 毎フレーム: キーを読み Frame に焼く → 終了判定 → リモートコマンド → リロード →
@@ -750,14 +750,14 @@ mod App {
 
     /// 一時停止を抜ける地点: スクラブで表示していた瞬間の World を現在とし、
     /// 履歴とフレーム番号もそこを基準に数え直す（未来側の履歴は捨てる）。
-    /// RemoteDebug 分割用の内部窓口 — ゲームからは呼ばない。
+    /// RemoteDebug 分割用の内部 API — ゲームからは呼ばない。
     pub def resumePoint(anno: Annotate.State, history: List[w], world: w): { world = w, anno = Annotate.State, history = List[w] } =
         { world = worldAt(history, anno#scrub, world),
           history = List.drop(anno#scrub, history),
           anno = { frame = anno#frame - Int32.toInt64(anno#scrub) | Annotate.resetView(anno) } }
 
     /// 履歴の back フレーム前の World（範囲外なら fallback）。先頭が「停止した瞬間」。
-    /// RemoteDebug 分割用の内部窓口 — ゲームからは呼ばない。
+    /// RemoteDebug 分割用の内部 API — ゲームからは呼ばない。
     pub def worldAt(history: List[w], back: Int32, fallback: w): w =
         history |> List.drop(back) |> List.head |> Option.getWithDefault(fallback)
 
@@ -809,7 +809,7 @@ mod App {
                 uploadAtlases((app#spriteAtlases)(world));
                 let atlas = GameEngine.Game.getFontAtlas("default");
                 // displayed（スクラブで表示中の瞬間）から絵もカメラも導く — 注釈の hits も同じ items を使う。
-                // F8 停止中は静的レイヤーも通常の動的アイテムに畳んで描く（F8 のズーム/パンは
+                // F8 停止中は静的レイヤーも通常の動的アイテムにまとめて描く（F8 のズーム/パンは
                 // channels に効く別変換なので、retained の camera uniform では追随できないため）。
                 // 停止中は毎フレーム再投影で軽さは問題にならない。
                 let items = List.append(tilePausedItems(app, design, displayed),
@@ -896,7 +896,7 @@ mod App {
                                                            anno#scrub, ctx#historyLen)
                           else Nil;
         let (fixedSprites, fixedPolygons) = Render.draw(List.append(toastPlaced, scrubPlaced));
-        // 停止中は静的レイヤーを channels#polygons に畳んで渡す（staticPausedItems）ので、
+        // 停止中は静的レイヤーを channels#polygons にまとめて渡す（staticPausedItems）ので、
         // ここでは retained の静的依頼は無し（None）— F8 のズーム/パンが channels に効くため。
         GameEngine.Game.renderCommands(
             List.append(Annotate.applyInspect(view, List.append(channels#drawables, overlaySprites)), fixedSprites),
@@ -906,7 +906,7 @@ mod App {
 
     /// reloadOn で繋いだキーが押された瞬間だけ、リロード関数で World を作り直す。
     /// 第 2 要素は「このフレームで読み直しが起きたか」（タイル層の世代を進める合図）。
-    /// RemoteDebug 分割用の内部窓口 — ゲームからは呼ばない。
+    /// RemoteDebug 分割用の内部 API — ゲームからは呼ばない。
     pub def applyReload(app: App[w, ef], frame: Frame, world: w): (w, Bool) \ {Fs.FileRead} =
         match app#reload {
             case Some((key, f)) => if (justPressed(key, frame)) (f(world), true) else (world, false)
@@ -926,7 +926,7 @@ mod App {
 
     /// 監視中パスの更新時刻（epoch ミリ秒）をまとめて読む。読めないパスは黙って除く。
     // Fs.FileTime を launch の効果行に出さないのは、デバッグ専用の内部ポーリングのために
-    // 全ゲームの Main へ with 追記を強いないため（ここで IO へ畳んで閉じる）。
+    // 全ゲームの Main へ with 追記を強いないため（ここで IO のハンドラで閉じる）。
     def statMtimes(paths: List[String]): Map[String, Int64] \ IO =
         run {
             run {
@@ -963,7 +963,7 @@ mod App {
         }
 
     /// audio の導いた音名を鳴らす（システム適用の前後の World から導く）。
-    /// 同じ名前が 2 回返っても 1 回に畳む — 同フレームの二重再生は同じ音源を
+    /// 同じ名前が 2 回返っても 1 回にまとめる — 同フレームの二重再生は同じ音源を
     /// 頭から鳴らし直して途切れる（sustainOps の先勝ちと同じ理屈）。
     def playSounds(app: App[w, ef], before: w, after: w): Unit \ (ef + GameEngine.Audio) =
         let derive = app#audio;
@@ -1034,7 +1034,7 @@ mod App {
             (Map.empty(): Map[String, FontAtlas]));
         name -> Map.get(name, table) |> Option.getWithDefault(dflt)
 
-    /// RemoteDebug 分割用の内部窓口 — ゲームからは呼ばない。
+    /// RemoteDebug 分割用の内部 API — ゲームからは呼ばない。
     pub def sceneItems(app: App[w, ef], atlas: FontAtlas, world: w,
                    toItems: (ViewCtx, w) -> List[Render.PlacedItem] \ ef):
             List[Render.PlacedItem] \ (ef + GameEngine.Game) =
@@ -1194,7 +1194,7 @@ mod App {
 
     /// F8 停止中にタイル層を通常の動的アイテムとして描くための PlacedItem 列。
     /// staticPausedItems と同じ理屈 — F8 のズーム/パンは channels に効く別変換なので、
-    /// GPU タイル経路の camera では追随できない。CPU 投影（TileScene.toItems）で畳む。
+    /// GPU タイル経路の camera では追随できない。CPU 投影（TileScene.toItems）で普通のアイテムに変換する。
     def tilePausedItems(app: App[w, ef], design: Vec2.Vec2, world: w): List[Render.PlacedItem] \ ef =
         match app#tileLayers {
             case None    => Nil

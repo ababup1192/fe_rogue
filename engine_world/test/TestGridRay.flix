@@ -28,7 +28,7 @@ mod TestGridRay {
 
     @Test
     def testGoalWallCellBlocksWithoutIgnore(): Unit \ Assert =
-        // goal のマス自身も数える — 壁マスに掛かる物を見たいなら ignore で除くのが約束。
+        // goal のマス自身も数える — 壁マスに掛かる物を見たいなら ignore で除くのが決まり。
         let solid = c -> c#x == 4 and c#y == 0;
         Assert.assertEq(expected = true,
             GridRay.blocked(solid, _ -> false, { x = 0.0, y = 0.0 }, { x = 4.0, y = 0.0 }))

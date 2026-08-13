@@ -13,7 +13,7 @@ mod Hit {
     pub type alias Body[a] = { tag = a, pos = Vec2.Vec2, shapes = List[HitShape] }
 
     /// 1対1の判定。posA に置いた shapesA と posB に置いた shapesB がどこかで重なるか。
-    /// 形の列どうしなので「先端の箱だけ当たる」ような複数形もこの 1 つの口で聞ける。
+    /// 形の列どうしなので「先端の箱だけ当たる」ような複数形もこの 1 つの関数で聞ける。
     pub def overlaps(posA: Vec2.Vec2, shapesA: List[HitShape],
                      posB: Vec2.Vec2, shapesB: List[HitShape]): Bool =
         List.exists(a -> List.exists(b -> shapeOverlap(posA, a, posB, b), shapesB), shapesA)

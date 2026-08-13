@@ -1,4 +1,4 @@
-// Quad のテスト。回転矩形の頂点と、帯（strip）の等幅性を固定する。
+// Quad のテスト。回転矩形の頂点と、ストリップ（strip）の等幅性を固定する。
 // Vec2 は Eq 非導出なので、頂点は (x, y) のタプル列に落として比較する。
 
 mod TestQuad {
@@ -12,7 +12,7 @@ mod TestQuad {
             expected = (8.0, 17.0) :: (12.0, 17.0) :: (12.0, 23.0) :: (8.0, 23.0) :: Nil,
             List.map(p -> (p#x, p#y), corners))
 
-    /// 水平な中心線の帯：along=(1,0)・normal=(0,1) なので、offset がそのまま y になる。
+    /// 水平な中心線のストリップ：along=(1,0)・normal=(0,1) なので、offset がそのまま y になる。
     /// p0=(0,0) p1=(10,0) o1=-1 o2=1 → 頂点 (0,-1),(10,-1),(10,1),(0,1)。
     @Test
     def testStripHorizontal(): Unit \ Assert =
@@ -21,7 +21,7 @@ mod TestQuad {
             expected = (0.0, -1.0) :: (10.0, -1.0) :: (10.0, 1.0) :: (0.0, 1.0) :: Nil,
             List.map(p -> (p#x, p#y), strip))
 
-    /// 等幅性：向きに依らず帯の幅は |o2 - o1|。斜め (3,4) の 3-4-5 線分でも、
+    /// 等幅性：向きに依らずストリップの幅は |o2 - o1|。斜め (3,4) の 3-4-5 線分でも、
     /// 始端側の2頂点（先頭 = p0+n*o1、末尾 = p0+n*o2）の距離は 5.0 になる。
     @Test
     def testStripConstantWidthOnDiagonal(): Unit \ Assert =

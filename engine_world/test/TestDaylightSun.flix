@@ -1,4 +1,4 @@
-// Daylight の「太陽から導く物」— 影の向き・長さ・塗りの光の段。
+// Daylight の「太陽から導く物」— 影の向き・長さ・塗りの光の段階。
 mod TestDaylightSun {
 
     def spec(): Daylight.ShadowSpec = Daylight.shadowDefaults()
@@ -48,7 +48,7 @@ mod TestDaylightSun {
 
     @Test
     def testShadowDoesNotJumpAtSunrise(): Unit \ Assert =
-        // 日の出をまたぐ 2 点で伸びと濃さが飛ばない（段で切り替えると影がパチンと伸びる）。
+        // 日の出をまたぐ 2 点で伸びと濃さが飛ばない（とびとびに切り替えると影がパチンと伸びる）。
         let before = Daylight.shadowAt(spec(), 0.2495);
         let after = Daylight.shadowAt(spec(), 0.2505);
         Assert.assertEq(expected = true,

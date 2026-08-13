@@ -23,7 +23,7 @@ mod TestPxSprite {
             "}" :: Nil))
             |> Option.getWithDefault(PxSpriteDoc.empty())
 
-    /// fail-open: 壊れたテキストは None → 呼び手は empty へ倒す。empty は何も描かない。
+    /// fail-open: 壊れたテキストは None → 呼び手は empty を使う。empty は何も描かない。
     @Test
     def testBrokenTextFailsOpenToEmpty(): Unit \ Assert =
         let d = PxSpriteDoc.fromJson("{ not json")
@@ -106,7 +106,7 @@ mod TestPxSprite {
         let size = PxSprite.sizeOf(doc(), "guy", "f0", 3);
         Assert.assertEq(expected = Some((12.0, 9.0)), Option.map(v -> (v#x, v#y), size))
 
-    /// 無いスプライト・無いコマは None（呼ぶ側が既定へ倒せるように）。
+    /// 無いスプライト・無いコマは None（呼ぶ側が既定を使えるように）。
     @Test
     def testSizeOfIsNoneForUnknownNames(): Unit \ Assert =
         let xy = Option.map(v -> (v#x, v#y));

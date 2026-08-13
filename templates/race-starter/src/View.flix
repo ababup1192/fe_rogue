@@ -15,7 +15,7 @@
 //    0.. 2  空(ViewScene)       … 面の階調（空のグラデ）・時間（流れる雲）
 //    3      遠景の岬(ViewScene) … 層（水平線の向こうの陸）・面の階調（頂は明るく裾は霞む）
 //    4.. 5  海(ViewScene)       … 時間（きらめきの明滅）・面の階調（水平線ぎわの輝き）
-//    6      地面の帯(ViewRoad)・丘の向こうの平野(ViewScene) … 面の階調（明暗の波 + 遠くの霞み）
+//    6      地面のセグメント(ViewRoad)・丘の向こうの平野(ViewScene) … 面の階調（明暗の波 + 遠くの霞み）
 //    7      草の筋(ViewRoad)・浜(ViewScene) … 面の質感（道に沿う縦の筋）・層（海と地面の継ぎ）
 //    8..10  路面・縁石・白線・スタートライン・ガードレール(ViewRoad) … 層（道が地面から分かれる）
 //   10      タイヤ痕(ViewRoad)  … 時間（走った軌跡が残る）
@@ -180,7 +180,7 @@ mod View {
         let core = put(w#theme#player)(zOverlay() + 3)({ dx = 0.0, dy = 0.0 });
         shadow :: (edge ::: (core :: Nil))
 
-    /// 完走（最下位以外）。市松の帯で「ゴールを切った」ことを形でも祝う。
+    /// 完走（最下位以外）。市松のストリップで「ゴールを切った」ことを形でも祝う。
     def winOverlay(atlas: FontAtlas, w: World.World): List[Render.PlacedItem] =
         curtain(w#theme, 0.45)
             :: checkerStrip(w#theme)

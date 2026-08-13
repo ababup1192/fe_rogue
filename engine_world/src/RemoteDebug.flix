@@ -2,7 +2,7 @@
 // curl 一発で「キー入力の台本を N フレーム実行して、結果の状態を受け取る」が完結する。
 // デバッグ専用: App の debug が有効かつ環境変数 DEBUG_HTTP_PORT があるときだけ立ち上がる。
 //
-// スレッドの約束: HTTP のスレッドは World に一切触れない。リクエストの生文字列をキューへ
+// スレッドの取り決め: HTTP のスレッドは World に一切触れない。リクエストの生文字列をキューへ
 // 積んで応答文字列を待つだけで、パース・実行・応答の組み立てはすべてゲームループ側
 // （App）が行う。ゲームが応答しなければ 10 秒で 503 を返す。
 
@@ -31,7 +31,7 @@ mod RemoteDebug {
         if (Object.isNull(value)) None else Int32.fromString(value)
 
     /// 127.0.0.1 の port で HTTP サーバを立てて Bridge を返す。
-    /// ハンドラはリクエストを 1 つの文字列に畳んでキューへ積み、応答を最大 10 秒待つ。
+    /// ハンドラはリクエストを 1 つの文字列にまとめてキューへ積み、応答を最大 10 秒待つ。
     /// executor を与えない（null）ので処理は 1 スレッド直列 = 同時リクエストも順番に並ぶ。
     pub def start(port: Int32): Bridge \ IO =
         let requests: JQueue[String] = new JQueue();
@@ -621,7 +621,7 @@ mod RemoteDebug {
         traceLines = List[String]        // trace=status:K で集めた行（時系列）
     }
 
-    /// /step の台本実行中に持ち回る折り畳みの状態。
+    /// /step の台本実行中に持ち回る畳み込みの状態。
     type alias StepFold[w] = {
         world = w,                        // いまの World
         prev = Set[GameEngine.Key],       // 前のコマのキー集合（エッジ判定用）

@@ -104,7 +104,7 @@ mod TileLayer {
         let TileLayer.TileLayer(r) = tileMap;
         { position = Vec2i.zero(), size = r#gridSize }
 
-    /// マス座標 → セル中心のローカルピクセル座標（Grid.cellCenterOf と同じ約束）。
+    /// マス座標 → セル中心のローカルピクセル座標（Grid.cellCenterOf と同じ決まり）。
     /// world 座標が必要な場合は呼び出し側でレイヤーの原点を足し合わせる。
     pub def cellCenterOf(coords: {x = Int32, y = Int32}, tileMap: TileLayer): Vec2.Vec2 =
         let s = tileSize(tileMap);

@@ -10,7 +10,7 @@ mod Num {
     pub def clamp01(x: Float64): Float64 =
         Float64.max(0.0, Float64.min(1.0, x))
 
-    /// lo 以上 hi 以下に収める。lo > hi のときは lo を返す（範囲が無いので下端に寄せる）。
+    /// lo 以上 hi 以下に収める。lo > hi のときは lo を返す（範囲が無いので下端に丸める）。
     pub def clamp(lo: Float64, hi: Float64, x: Float64): Float64 =
         Float64.max(lo, Float64.min(hi, x))
 

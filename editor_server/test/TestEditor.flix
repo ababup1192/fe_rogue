@@ -35,7 +35,7 @@ mod TestEditor {
              Editor.staticRelPath("/../etc/passwd"),
              Editor.staticRelPath("//etc/passwd")))
 
-    /// Content-Type は拡張子で決める。知らない拡張子は octet-stream に倒す。
+    /// Content-Type は拡張子で決める。知らない拡張子は octet-stream にする。
     @Test
     def testContentTypeOf(): Unit \ Assert =
         Assert.assertEq(

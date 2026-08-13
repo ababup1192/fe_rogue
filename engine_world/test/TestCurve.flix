@@ -101,7 +101,7 @@ mod TestCurve {
             (Curve.triWave(0.0), Curve.triWave(0.25), Curve.triWave(0.5),
              Curve.triWave(0.75), Curve.triWave(1.0)))
 
-    /// triWave: 1 周期で折り返し、負の入力も floor で同じ周期に畳む（-0.75 は 0.25 と同じ +1）。
+    /// triWave: 1 周期で折り返し、負の入力も floor で同じ周期へ折り返す（-0.75 は 0.25 と同じ +1）。
     @Test
     def testTriWaveWrapsAndHandlesNegative(): Unit \ Assert =
         Assert.assertEq(expected = (1.0, 1.0),

@@ -1,5 +1,5 @@
 // GameEngine — ゲームとエンジンの境界に置く共有の型（描画データ・キー・色など）と、
-// 副作用の窓口（描画・入力・音・時間の取得）をまとめて定義する。
+// 副作用の入口（描画・入力・音・時間の取得）をまとめて定義する。
 // 各ゲームはここの型とエフェクトだけを見れば、内部実装を知らずに描画や入力を組める。
 // 利用例: 1フレームぶんの描画コマンドを渡す / キー押下を問い合わせる / 経過時間を取る。
 
@@ -314,7 +314,7 @@ mod GameEngine {
         def initTileBuffer(instances: List[TileInstance]): (GpuHandle.TileVao, Int32)
         /// 既存のタイル VAO のインスタンス VBO へ中身を入れ直す（VAO は増やさない）。
         /// key の変わりやすい層（照明・カメラ追随で生成し直す地形など）が、生成し直しの
-        /// たびに initTileBuffer で VAO を積み増して GPU メモリを漏らさないための口。
+        /// たびに initTileBuffer で VAO を積み増して GPU メモリを漏らさないための関数。
         /// 未知の VAO（理論上来ない）は新規に生成して返す — 返った vaoハンドルを保存し直すこと。
         def updateTileBuffer(vaoId: GpuHandle.TileVao,
                              instances: List[TileInstance]): (GpuHandle.TileVao, Int32)

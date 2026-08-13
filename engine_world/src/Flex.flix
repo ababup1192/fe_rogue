@@ -69,7 +69,7 @@ mod Flex {
         fst(placeWithRects(root, rootRect))
 
     /// place と同じ描画物に加えて「ラベル → 矩形」の表も返す。1 回のレイアウトで
-    /// 描画と当たり判定の両方を賄うための口（2 度敷くと座標が二重管理になる）。
+    /// 描画と当たり判定の両方を賄うための関数（2 度敷くと座標が二重管理になる）。
     pub def placeWithRects(root: Node, rootRect: Rect2.Rect2):
             (List[Render.PlacedItem], Map[String, Rect2.Rect2]) =
         let (leaves, rects, keys) = resolveTree(root, rootRect);

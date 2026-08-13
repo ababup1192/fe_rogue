@@ -13,10 +13,10 @@
 // 契約:
 //   - record は「新しい現在へ進む」= 現在を past へ積み、future を捨てる（分岐したら未来は無効）。
 //   - undo/redo は current と past/future の間で1状態を移すだけ（構造共有ゆえ安価）。
-//   - undoBy(k) は k 段遡る。past が尽きたら最古で止まる（clamp）。手放した分は future に積む。
+//   - undoBy(k) は k 回遡る。past が尽きたら最古で止まる（clamp）。手放した分は future に積む。
 //   - future は cap で刈らない（redo は record までの一時的な線で、次の record で必ず消える）。
 //
-// 永続 List ゆえ past は tail を構造共有する。N 段の履歴を持っても各 record は先頭 1 セル追加＋
+// 永続 List ゆえ past は tail を構造共有する。N 回ぶんの履歴を持っても各 record は先頭 1 セル追加＋
 // cap 超過時の切り詰めだけで、World を丸ごと複製しない — これが巻き戻しが安い理由。
 
 mod Worldline {
@@ -53,7 +53,7 @@ mod Worldline {
             | r
         })
 
-    /// 1 段遡る。past が空なら何もしない（最古で止まる）。手放した current は future へ積む。
+    /// 1 回遡る。past が空なら何もしない（最古で止まる）。手放した current は future へ積む。
     pub def undo(wl: Worldline[a]): Worldline[a] =
         let Worldline.Worldline(r) = wl;
         match r#past {
@@ -62,7 +62,7 @@ mod Worldline {
                 Worldline.Worldline({ past = ps, current = p, future = r#current :: r#future | r })
         }
 
-    /// 1 段下る（やり直し）。future が空なら何もしない。手放した current は past へ戻す。
+    /// 1 回下る（やり直し）。future が空なら何もしない。手放した current は past へ戻す。
     pub def redo(wl: Worldline[a]): Worldline[a] =
         let Worldline.Worldline(r) = wl;
         match r#future {
@@ -71,13 +71,13 @@ mod Worldline {
                 Worldline.Worldline({ past = r#current :: r#past, current = f, future = fs | r })
         }
 
-    /// k 段遡る。past が尽きたら最古で止まる（k が履歴長を超えても最古に clamp）。
+    /// k 回遡る。past が尽きたら最古で止まる（k が履歴長を超えても最古に clamp）。
     /// k <= 0 は現状維持。dodge の popHistory(k) と同じ端条件を、undo の反復で表す。
     pub def undoBy(k: Int32, wl: Worldline[a]): Worldline[a] =
         if (k <= 0 or not canUndo(wl)) wl
         else undoBy(k - 1, undo(wl))
 
-    /// k 段下る。future が尽きたら最新で止まる。undoBy の対。
+    /// k 回下る。future が尽きたら最新で止まる。undoBy の対。
     pub def redoBy(k: Int32, wl: Worldline[a]): Worldline[a] =
         if (k <= 0 or not canRedo(wl)) wl
         else redoBy(k - 1, redo(wl))
@@ -92,12 +92,12 @@ mod Worldline {
         let Worldline.Worldline(r) = wl;
         not List.isEmpty(r#future)
 
-    /// 遡れる段数（past の長さ）。
+    /// 遡れる回数（past の長さ）。
     pub def pastLength(wl: Worldline[a]): Int32 =
         let Worldline.Worldline(r) = wl;
         List.length(r#past)
 
-    /// 下れる段数（future の長さ）。
+    /// 下れる回数（future の長さ）。
     pub def futureLength(wl: Worldline[a]): Int32 =
         let Worldline.Worldline(r) = wl;
         List.length(r#future)

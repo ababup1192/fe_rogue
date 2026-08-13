@@ -89,7 +89,7 @@ mod PreviewFx {
         }
 
     /// u^p (easeIn) と (1-u)^p (easeOut) の ∫₀¹ = 1/(p+1)。
-    /// p ≤ -1 は積分が発散する (パースは power を検査しない) ので上限 1.0 に倒す。
+    /// p ≤ -1 は積分が発散する (パースは power を検査しない) ので上限 1.0 にする。
     def powerIntegral(power: Float64): Float64 =
         if (power <= -1.0) 1.0 else 1.0 / (power + 1.0)
 
@@ -100,7 +100,7 @@ mod PreviewFx {
             case _                         => 1.0
         }
 
-    /// 切り上げて Int32 に。Int32 に収まらない巨大値は上限 2048 側に倒す。
+    /// 切り上げて Int32 に。Int32 に収まらない巨大値は上限 2048 側にする。
     def ceilInt(x: Float64): Int32 =
         Float64.ceil(x) |> Float64.tryToInt32 |> Option.getWithDefault(2048)
 

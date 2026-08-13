@@ -140,7 +140,7 @@ mod PreviewItems {
         }
 
     /// 色フィールド。省略は白 (text の契約に合わせ、他の種類も同じ既定にする)。
-    /// 表記の解釈は ui.json と同じ UiDoc.colorOf に寄せる (色方言を増やさない)。
+    /// 表記の解釈は ui.json と同じ UiDoc.colorOf にそろえる (色方言を増やさない)。
     def colorField(loc: String, key: String, obj: Map[String, Json]): Result[String, Color] =
         match Map.get(key, obj) {
             case None       => Ok({ r = 1.0f32, g = 1.0f32, b = 1.0f32 })

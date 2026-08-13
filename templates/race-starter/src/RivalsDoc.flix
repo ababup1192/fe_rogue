@@ -61,8 +61,8 @@ mod RivalsDoc {
           cornerSlow = JsonCodec.floatOr("cornerSlow", d#cornerSlow, root),
           rows = rowsOr(d#rows, root) }
 
-    /// rows（ライバルの一覧）を読む。配列でない・空のときは既定の 3 台へ倒す。
-    /// 1 台ぶんの欄が欠けた行は、その欄だけ既定 1 台目の値へ倒す（行ごと捨てない）。
+    /// rows（ライバルの一覧）を読む。配列でない・空のときは既定の 3 台を使う。
+    /// 1 台ぶんの欄が欠けた行は、その欄だけ既定 1 台目の値を使う（行ごと捨てない）。
     def rowsOr(fallback: List[Entry], root: Map[String, Json]): List[Entry] =
         Map.get("rows", root)
             |> Option.flatMap(JsonCodec.decodeList(entryOf))

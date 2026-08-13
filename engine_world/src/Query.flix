@@ -25,7 +25,7 @@ mod Query {
             }, Map.empty())
 
     /// entity レコードのリストから component store を作る（scene→World read-model mirror の核）。
-    /// keyOf で id を、valOf で値を取り出して Map に畳む。
+    /// keyOf で id を、valOf で値を取り出して Map にまとめる。
     pub def indexBy(keyOf: a -> EntityId, valOf: a -> v, xs: List[a]): Map[EntityId, v] =
         List.foldLeft((m, x) -> Map.insert(keyOf(x), valOf(x), m), Map.empty(), xs)
 

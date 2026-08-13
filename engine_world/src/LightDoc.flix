@@ -1,5 +1,5 @@
 // LightDoc — light.json（光源の質感）の宣言ドキュメント層。
-// 「暗さ・照り返しフチ・ハロの大きさ・光源の並び」を JSON に書き、Spec（pure data）へ畳む。
+// 「暗さ・照り返しフチ・ハロの大きさ・光源の並び」を JSON に書き、Spec（pure data）へ読み取る。
 // occluders（壁の遮蔽ポリゴン）は含めない — 壁はゲームの World が持つ形であって、
 // json は光の質感パラメータだけを持つ、という分業のため（items へ渡す SceneLightConfig の
 // occluders/viewport/glow/z はゲーム側が Spec.toConfig で自分の値を足して組み立てる）。
@@ -52,7 +52,7 @@ mod LightDoc {
     // parse（純粋）
     // ========================================================================
 
-    /// ドキュメントを Spec へ畳む。
+    /// ドキュメントを Spec へ読み取る。
     pub def parse(json: Json): Result[JsonError, Spec] =
         match json {
             case JObject(top) => forM (

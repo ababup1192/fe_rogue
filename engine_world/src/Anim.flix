@@ -5,16 +5,16 @@
 
 mod Anim {
 
-    /// クリップ: シート上の 1 段ぶんの連続コマと再生のしかた（純データ）。
+    /// クリップ: シート上の 1 行ぶんの連続コマと再生のしかた（純データ）。
     pub type alias Clip = {
-        row = Int32,        // シート上の段（0 始まり・上から）
+        row = Int32,        // シート上の行（0 始まり・上から）
         frames = Int32,     // コマ数
         fps = Float64,      // 再生速度（コマ/秒）
         looping = Bool      // true = 循環 / false = 最終コマで止まる（単発ポーズ）
     }
 
     /// 時刻 t（ループは通し秒・単発は開始からの経過秒）でのコマ番号。
-    /// 負の t とコマ数 0 は 0 に倒す（安全側）。
+    /// 負の t とコマ数 0 は 0 にする（安全側）。
     pub def frameAt(clip: Clip, t: Float64): Int32 =
         if (clip#frames <= 0) 0
         else if (t < 0.0) 0

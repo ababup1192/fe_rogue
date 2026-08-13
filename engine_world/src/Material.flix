@@ -1,5 +1,5 @@
 // Material — デュアルタイル(DualGrid.Tile)に「質感」を着せる層。壁も水もマグマも、
-// 塗り1枚+輪郭フチの帯(+持ち上げの前面)という同じ1本の経路(place)を通る。
+// 塗り1枚+輪郭のフチ(+持ち上げの前面)という同じ1本の経路(place)を通る。
 // どの角にどの質感を置くかの表はゲーム側が持ち、ここは1タイルぶんの
 // 純粋な組み立てだけ — マップにもテーマにも触れない。
 // 「チップ絵を描かず色と質感で地形を作る」3層(DualGrid/Material/Terrain)の
@@ -21,7 +21,7 @@ mod Material {
         case Glow
     }
 
-    /// 表面の粒のパラメータ1式(fx.json の語彙に寄せた命名)。
+    /// 表面の粒のパラメータ1式(fx.json の語彙にそろえた命名)。
     /// count = セル毎の粒数(Scales はセル一辺あたりの粒数)、
     /// channel = 座標ハッシュの起点(粒の位置と位相をここから引く)、
     /// twinkleRate = 明滅の速さ(sin の角速度)、
@@ -66,7 +66,7 @@ mod Material {
     /// sparkle が「たまに光る 3 粒」なのに対し、こちらは「常にある十数粒」— 土や砂の質感。
     /// 面の形（デュアルグリッドが決めた輪郭）の内側にだけ入るので、四角いタイルを重ねる
     /// のと違って縁からはみ出さない。幅 1 マスの道のように「内側」が無い形でも効く。
-    /// channel 200 から 4×count ぶんを使う帯（きらめき・むら・泡のどれとも重ならない）。
+    /// channel 200 から 4×count ぶんを使う範囲（きらめき・むら・泡のどれとも重ならない）。
     /// 粒は毎フレーム 1 マスに count 個の箱を生むので、広い盤で使うときは静的レイヤーへ
     /// 生成するか count を下げる — 40×30 マス × 16 個で 1 フレーム 19,200 個になる。
     pub def grain(color: Color): SurfaceFx =
@@ -88,7 +88,7 @@ mod Material {
 
     /// 水のきらめきの設定。粒3個・幅1〜3px・濃さの山0.8 — 個数や幅を固定で絞ると
     /// 画面でほぼ見えなくなるため、粒数と幅にばらつきを持たせて強めにしてある。
-    /// channel 71 は泡(84..)や角スタイル(81)と重ならない帯。
+    /// channel 71 は泡(84..)や角スタイル(81)と重ならない範囲。
     pub def sparkle(color: Color): SurfaceFx =
         { shape = SurfaceShape.Speck,
           count = 3,
@@ -107,13 +107,13 @@ mod Material {
           blend = DrawCmd.BlendMode.Normal }
 
     /// 面の鱗パターン。丸の敷き詰めをやめ、下向きの三日月(弧)を整った千鳥格子に
-    /// 敷いて魚の鱗に見せる。弧は1枚だけ(影の弧はやめ、暗さは deep 色へ畳んで描画数を半減)。
+    /// 敷いて魚の鱗に見せる。弧は1枚だけ(影の弧はやめ、暗さは deep 色へまとめて描画数を半減)。
     /// 色は3色ランプ(tones#deep → tones#mid → tones#lite)を「格子の偶奇で半周 + floor(t*rate)」で
     /// 回すだけ(図形は動かさず色だけ回す = 流れて見える)。隣の弧は位相が半周ずれて交互に
     /// 脈打つ(ハッシュのばらつきはやめ、市松の千鳥に整える)。rate = 色循環の速さ
     /// (マグマは水より遅くして粘りを出す)。count = セル一辺あたりの鱗の数
     /// (2 で 2×2=4 点・弧1枚ずつ = セル4枚に抑える)。
-    /// channel 104 はきらめき(71..79)・むら(61..)・泡(84..)・照り(96..)と重ならない帯。
+    /// channel 104 はきらめき(71..79)・むら(61..)・泡(84..)・照り(96..)と重ならない範囲。
     pub def scales(tones: { deep = Color, mid = Color, lite = Color }, rate: Float64): SurfaceFx =
         { shape = SurfaceShape.Scales,
           count = 2,
@@ -135,7 +135,7 @@ mod Material {
     /// 膨らむ塗り円 → 終端で細いリング(円周のみ)が急拡大しながら薄れ、放射状の短い飛沫線が
     /// 飛ぶ → 消滅(弾けても丸いままにしない)。count は 1 に絞り、出現もハッシュで間引いて
     /// 密度を抑える。twinkleRate は出現率のしきい(0..1)。
-    /// channel 84 はきらめき(71..79)や角スタイル(81)と重ならない帯。
+    /// channel 84 はきらめき(71..79)や角スタイル(81)と重ならない範囲。
     pub def bubble(color: Color): SurfaceFx =
         { shape = SurfaceShape.Bubble,
           count = 1,
@@ -174,7 +174,7 @@ mod Material {
 
     /// 静的なむらの設定(色だけ差し替えて水にもマグマにも使う)。セルに1〜2個、
     /// 直径4〜7px の薄い暗色 — 全面一色のベタを有機的に破る係。channel 61 は
-    /// 粒(71..)・泡(84..)と重ならない帯。水とマグマは同じセルに来ないので channel は共用。
+    /// 粒(71..)・泡(84..)と重ならない範囲。水とマグマは同じセルに来ないので channel は共用。
     pub def blotch(color: Color): BlotchFx =
         { color = color,
           channel = 61,
@@ -204,7 +204,7 @@ mod Material {
     /// jitter = 対角辺の岩肌の揺らぎ、surface = 表面の時間演出の重ね(空 = 演出なし)、
     /// blotch = 静的なむら(prebuilt に生成する)、
     /// mottle = セル別の明度ゆらぎの最大量(0 = なし。耕した畑のパッチワーク —
-    /// セル座標ハッシュ×この値ぶん白へ寄せる。lighten(fill, hash*mottle) と等価)、
+    /// セル座標ハッシュ×この値ぶん白へ近づける。lighten(fill, hash*mottle) と等価)、
     /// height = 立体感。
     pub type alias Spec = {
         fill = Color,
@@ -271,7 +271,7 @@ mod Material {
 
     /// 表面の時間演出をセル1個ぶん描く(状態なし — 同じ時刻なら同じ絵)。
     /// 重ねの並びはリストの順(同じ z の前後は並び順が決めるため、順も見た目の一部)。
-    /// edges = 上下左右の隣が液体か。岸(隣が陸)の側には粒を寄せて、液体セルの塗りの
+    /// edges = 上下左右の隣が液体か。岸(隣が陸)の側には粒を集めて、液体セルの塗りの
     /// 外(床)へはみ出させない。
     pub def surfaceItems(fxs: List[SurfaceFx], cell: (Int32, Int32), tile: Float64,
                          time: Float64, z: Int32, edges: Edges): List[Render.PlacedItem] =
@@ -303,7 +303,7 @@ mod Material {
         })
 
     /// きらめく粒(セル座標ハッシュの位置に小さな粒)。粒ごとに位相をずらした sin で
-    /// ゆっくり明滅する — 全部が同じ拍で光ると水でなく信号に見えるため。
+    /// ゆっくり明滅する — 全部が同じタイミングで光ると水でなく信号に見えるため。
     /// sin 自体が周期なので、時刻は折り返さず生のまま入れる。
     /// 幅はハッシュで 1〜3px に散らす — 同じ大きさの粒が並ぶと打った点に見えるため。
     def speckItems(fx: SurfaceFx, cell: (Int32, Int32), tile: Float64,
@@ -322,7 +322,7 @@ mod Material {
                 + Float64.floor(DualGrid.hash(x, y, ch + 3) * (fx#sizeSpan + 1.0));
             let bx = px + 3.0 + Float64.floor(DualGrid.hash(x, y, ch + 1) * 10.0);
             let by = py + 3.0 + Float64.floor(DualGrid.hash(x, y, ch + 2) * 10.0);
-            // box は左上原点なので、幅ぶん見込んで岸の内側へ寄せる。
+            // box は左上原点なので、幅ぶん見込んで岸の内側へ詰める。
             let (ax, ay) = insetToLiquid(cell, tile, edges, Float64.max(w, 2.0), (bx, by));
             { at = { x = ax, y = ay },
               item = RawDraw.box({ x = w, y = 1.0 }, fx#color, z)
@@ -346,7 +346,7 @@ mod Material {
         else toneMix(mid, lite, (f - 0.5) * 2.0)
 
     /// 下向きの三日月(弧)を1枚の薄い多角形で作る。外側の弧(半径 radius)を左から右へ、
-    /// 内側の弧(半径 radius-width)を右から左へ戻して閉じた帯にする — 塗り円でなく
+    /// 内側の弧(半径 radius-width)を右から左へ戻して閉じたストリップにする — 塗り円でなく
     /// スカラップ(鱗)に見せるための開いた弧の近似。中心 center からの相対頂点で返す。
     /// 弧は円の底(t=0.5)を中心に spanT ぶん張る(t=0 が真上・時計回り)。
     def crescent(center: Vec2.Vec2, radius: Float64, width: Float64, spanT: Float64): List[Vec2.Vec2] =
@@ -362,11 +362,11 @@ mod Material {
 
     /// 鱗: セル内 count×count の整った千鳥格子(奇数行を半個ずらした魚の鱗の並び)に、下向きの
     /// 三日月を敷く。三日月は1枚だけ(色ランプで回した弧)— 影の弧はやめ、暗さは deep 色に
-    /// 畳んで1枚に減らす(1セルの三日月の数を半分にしてフレームあたりの描画数を落とす)。
+    /// まとめて1枚に減らす(1セルの三日月の数を半分にしてフレームあたりの描画数を落とす)。
     /// 色は「(格子番号 gc+gr の偶奇で 0/半周) + 時刻を rate で刻んだ位相」で deep→mid→lite を
     /// 回す(図形は静止・色だけ循環)。ハッシュのばらつきはやめ、隣どうしが逆位相で交互に
     /// 脈打つ整然とした市松の千鳥にする。格子の番号はマップ全体で振る — セルごとに振り直すと
-    /// 境界で模様の拍が切れるため。
+    /// 境界で模様の周期が切れるため。
     /// 岸(edges の隣が陸)の側は格子点をセル中央へ強く寄せ、はみ出す一列は間引く — 液体の
     /// 塗りが岸の丸みで欠ける所に鱗が乗ると床の上に浮いて見えるため。四方が液体の内側の
     /// セルだけフル密度。
@@ -380,7 +380,7 @@ mod Material {
                 let gr = y * n + r;
                 let gc = x * n + c;
                 let shift = if (Int32.modulo(gr, 2) == 0) 0.25 else 0.75;
-                // 格子点の中心(揺らぎなし)。岸の側だけ中央へ寄せてはみ出しを防ぐ。
+                // 格子点の中心(揺らぎなし)。岸の側だけ中央へ詰めてはみ出しを防ぐ。
                 let baseX = Int32.toFloat64(x) * tile + (Int32.toFloat64(c) + shift) * s;
                 let baseY = Int32.toFloat64(y) * tile + (Int32.toFloat64(r) + 0.5) * s;
                 let radius = fx#sizeBase + fx#sizeSpan * DualGrid.hash(gc, gr, fx#channel + 2);
@@ -432,7 +432,7 @@ mod Material {
                 or (not edges#s and localY + radius > tile)
         }
 
-    /// 円周だけの薄いリング(内外の 12 角形を1枚の帯多角形にして塗る)。中心 center。
+    /// 円周だけの薄いリング(内外の 12 角形を1枚のストリップ多角形にして塗る)。中心 center。
     /// 塗り円と違い「輪」に見えるのが弾けの主役。頂点は絶対座標(at はゼロ)。
     def ring(center: Vec2.Vec2, radius: Float64, width: Float64, color: Color,
              z: Int32): Render.PlacedItem =

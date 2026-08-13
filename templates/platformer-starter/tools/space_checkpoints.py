@@ -54,7 +54,7 @@ def place_horizontal(rows, W):
 
 
 def place_vertical(rows, W):
-    """登る面: 高さの帯ごとに、その帯で一番左の平地へ 1 つ。"""
+    """登る面: 高さの範囲ごとに、その範囲で一番左の平地へ 1 つ。"""
     stands = [(x, ground_of(rows, x)) for x in range(W)]
     stands = [(x, y) for x, y in stands if y is not None and flat(rows, x, y)
               and rows[y][x] in FREE]

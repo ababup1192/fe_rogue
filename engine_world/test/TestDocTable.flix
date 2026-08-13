@@ -17,7 +17,7 @@ mod TestDocTable {
             DocTable.reloads(rows()) |> List.map(fst))
 
     /// 一括リロードはテーブルの並び順に適用する — 「導出 Doc は依存先より後ろの行に」の
-    /// 約束はこの順序が支える。rows の関数は非可換(逆順なら 21)なので順序が固定される。
+    /// この決まりを順序が支える。rows の関数は非可換(逆順なら 21)なので順序が固定される。
     @Test
     def testReloadAllAppliesRowsInOrder(): Unit \ {Assert, IO} =
         let got = run { DocTable.reloadAll(rows(), 0) } with Fs.FileRead.runWithIO;

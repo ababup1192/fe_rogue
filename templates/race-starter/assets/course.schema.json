@@ -1,5 +1,5 @@
 {
-  "//": "race.course.json の形の宣言（Studio の sections 方言）。sections の 1 行 = コースの区間（同じ曲がり方・坂が続くひとまとまり）で、上から順に走る。len で長さ、curve で曲がる強さと向き、hill で坂の急さ、width で道幅、rail でガードレールの側を決める。curve も hill も段を追うごとに足し上がるので、同じ値が続くほど先の道は急に折れ・急に起きる（90 度・U 字・丘はこれで作る）。立ち物（アイテム・コーン・ゲート・振り子バー）の置き場は別 Doc（race.props.json）。曲がる・滑る・当たる・周回するの規則はコード（World）側。",
+  "//": "race.course.json の形の宣言（Studio の sections 方言）。sections の 1 行 = コースの区間（同じ曲がり方・坂が続くひとまとまり）で、上から順に走る。len で長さ、curve で曲がる強さと向き、hill で坂の急さ、width で道幅、rail でガードレールの側を決める。curve も hill も行を追うごとに足し上がるので、同じ値が続くほど先の道は急に折れ・急に起きる（90 度・U 字・丘はこれで作る）。立ち物（アイテム・コーン・ゲート・振り子バー）の置き場は別 Doc（race.props.json）。曲がる・滑る・当たる・周回するの規則はコード（World）側。",
   "version": 1,
   "sections": {
     "note": {
@@ -16,8 +16,8 @@
       "fields": {
         "len": {
           "type": "int",
-          "label": "長さ（何段ぶん続くか。1 段 = 40px）",
-          "unit": "段",
+          "label": "長さ（何行ぶん続くか。1 行 = 40px）",
+          "unit": "行",
           "order": 1,
           "min": 1,
           "max": 20,

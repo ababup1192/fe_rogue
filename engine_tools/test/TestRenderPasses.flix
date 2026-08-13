@@ -49,7 +49,7 @@ mod TestRenderPasses {
         Assert.assertEq(expected = (255, 255, 0, 0) :: (255, 255, 0, 0) :: Nil,
             channels(img.getRGB(0i32, 0i32)) :: channels(img.getRGB(3i32, 3i32)) :: Nil)
 
-    // clear Keep は前フレームのターゲットの中身が残ったまま始まる（残像の口）。
+    // clear Keep は前フレームのターゲットの中身が残ったまま始まる（残像が作れる）。
     @Test
     def testRenderPassImageNoneKeepsPrevContent(): Unit \ {Assert, IO} =
         let prev: BufferedImage =

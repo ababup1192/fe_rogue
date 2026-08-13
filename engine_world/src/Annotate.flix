@@ -89,18 +89,18 @@ mod Annotate {
         let size = badgeSize(fontAtlas, fontSize, message);
         badge(fontAtlas, fontSize, { x = 4.0, y = design#y - size#y - 4.0 }, message)
 
-    // ── デバッグ小物の共通の見た目（黒地の帯 + 白文字）──
+    // ── デバッグ小物の共通の見た目（黒地のパネル + 白文字）──
 
     def badgeFontSize(): Float64 = 8.0
 
     def badgePad(): Float64 = 3.0
 
-    /// 帯全体（pad 込み）の大きさ。右寄せ・下寄せの位置計算に使う。
+    /// パネル全体（pad 込み）の大きさ。右寄せ・下寄せの位置計算に使う。
     def badgeSize(fontAtlas: FontAtlas, fontSize: Float64, message: String): Vec2.Vec2 =
         let size = Text.measure(Text.make(message, fontAtlas, fontSize));
         { x = size#x + badgePad() * 2.0, y = size#y + badgePad() * 2.0 }
 
-    /// 黒地 alpha 0.7 の帯に白文字を載せる。topLeft は帯の左上（デザイン座標）。
+    /// 黒地 alpha 0.7 のパネルに白文字を載せる。topLeft はパネルの左上（デザイン座標）。
     /// z はエンジンデバッグの範囲（ZBand.debugBase）— HUD の範囲より手前で、ゲームのどの絵にも
     /// 隠されない（デバッグ中の表示は常に読めるように）。
     def badge(fontAtlas: FontAtlas, fontSize: Float64, topLeft: Vec2.Vec2,
@@ -156,7 +156,7 @@ mod Annotate {
         let size = badgeSize(fontAtlas, fontSize, message);
         badge(fontAtlas, fontSize, { x = design#x - size#x - 4.0, y = 4.0 }, message)
 
-    /// 帯の字の大きさの既定。実機のデバッグ表示は組み込みフォントの等倍で出すので、
+    /// パネルの字の大きさの既定。実機のデバッグ表示は組み込みフォントの等倍で出すので、
     /// これを使うのは見本を生成する側（feature_lab の gallery）だけ。
     pub def defaultBadgeFontSize(): Float64 = badgeFontSize()
 

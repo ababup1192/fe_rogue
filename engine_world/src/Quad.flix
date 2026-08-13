@@ -27,10 +27,10 @@ mod Quad {
         let corner = (sx, sy) -> Vec2.add(center, Vec2.add(Vec2.mul(u, sx * halfLen), Vec2.mul(v, sy * halfThick)));
         corner(-1.0, -1.0) :: corner(1.0, -1.0) :: corner(1.0, 1.0) :: corner(-1.0, 1.0) :: Nil
 
-    /// `p0` から `p1` への線分に沿った一定幅の帯で、中心線の両側の符号つき法線オフセット
-    /// `o1..o2` を覆う。帯の長辺は p0->p1 に平行に走り、厚み (o2 - o1) はどこでも同じ
+    /// `p0` から `p1` への線分に沿った一定幅のストリップで、中心線の両側の符号つき法線オフセット
+    /// `o1..o2` を覆う。ストリップの長辺は p0->p1 に平行に走り、厚み (o2 - o1) はどこでも同じ
     /// （両縁とも線分の法線に沿って作るため）。太線・針・輪郭の片側レール（o1..o2 を片側に
-    /// 寄せて取る）に使う。`p0` と `p1` は異なる必要がある。
+    /// 詰めて取る）に使う。`p0` と `p1` は異なる必要がある。
     pub def strip(p0: Vec2.Vec2, p1: Vec2.Vec2, o1: Float64, o2: Float64): List[Vec2.Vec2] =
         let along = Vec2.normalized(Vec2.sub(p1, p0));
         let normal = { x = -along#y, y = along#x };

@@ -20,7 +20,7 @@ mod RulesDoc {
         skyParallax = Float64,         // 曲がった向きに空・太陽・雲が流れる量（px）
         totalLaps = Int32,             // ゴールに必要な周回数
         // ── コーナーとドリフト ──
-        hillSpeedGain = Float64,       // 坂 1 段ぶんの勾配で速度が変わる割合（登りで遅く・下りで速く）
+        hillSpeedGain = Float64,       // 坂 1 行ぶんの勾配で速度が変わる割合（登りで遅く・下りで速く）
         gripSpeed = Float64,           // これ以下の速度なら膨らまずに曲がれる（px/秒）
         curvePush = Float64,           // カーブの急さ×超過速度に掛かる横押しの強さ
         driftTurnBoost = Float64,      // ドリフト中の舵角倍率
@@ -31,8 +31,8 @@ mod RulesDoc {
         nitroChargeRail = Float64,     // 壁を擦っている 1 秒あたりのゲージ加算
         // ── スリップストリーム ──
         slipBoost = Float64,           // 前走車の真後ろにいる間の速度倍率
-        slipRange = Float64,           // 帯の長さ（前走車の後ろ何 px まで効くか）
-        slipWidth = Float64,           // 帯の幅（左右のずれの許し px）
+        slipRange = Float64,           // 範囲の長さ（前走車の後ろ何 px まで効くか）
+        slipWidth = Float64,           // 範囲の幅（左右のずれの許し px）
         // ── ニトロ ──
         nitroChargeDrift = Float64,    // ドリフト 1 秒あたりのゲージ加算（満タン = 1.0）
         nitroChargeSlip = Float64,     // スリップ維持 1 秒あたりのゲージ加算

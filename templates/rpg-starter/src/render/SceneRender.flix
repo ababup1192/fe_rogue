@@ -296,7 +296,7 @@ mod SceneRender {
             |> Option.map(b -> b#cell)
             |> Option.getWithDefault(fallback)
 
-    /// 建物の見た目の中心へ寄せた camera 中心（bounds へ収めて丸める）。
+    /// 建物の見た目の中心に合わせた camera 中心（bounds へ収めて丸める）。
     def buildingCamera(w: World.World, design0: Vec2.Vec2, kind: String,
                        fw: Int32, fh: Int32): Vec2.Vec2 =
         let t = World.tileSize();

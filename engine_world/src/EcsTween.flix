@@ -67,7 +67,7 @@ mod EcsTween {
             (nextTs, (key, out) :: accOuts, nextDone)
         }, (ts, Nil, Nil), ts)
 
-    /// t∈[0,1]（経過率）→ 補間パラメータ。yoyo は三角波（0→1→0）に畳んでから easing。
+    /// t∈[0,1]（経過率）→ 補間パラメータ。yoyo は三角波（0→1→0）へ変換してから easing。
     def paramOf(entry: Entry, t: Float64): Float64 =
         let raw = if (entry#yoyo) (if (t < 0.5) 2.0 * t else 2.0 * (1.0 - t)) else t;
         ease(entry#easing, raw)
