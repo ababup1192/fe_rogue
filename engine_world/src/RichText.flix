@@ -103,20 +103,23 @@ mod RichText {
 
     /// 折返し済みの 1 行を y の高さに置く。
     def placeLine(p: Placement, y: Float64, line: List[Span]): List[Render.PlacedItem] =
-        let (items, _) = line |> List.foldLeft((acc, span) -> {
+        // 蓄積は逆順で持つ。reverse を掛けるのはスパンと字の 2 重 fold を抜けた最後の 1 回だけで、
+        // 内側の fold ごとに戻すとスパン単位で順序が壊れる。太字の 2 枚目も逆順のまま積むので、
+        // 素の字を先に積んでからずらした複製を積む。
+        let (rev, _) = line |> List.foldLeft((acc, span) -> {
             let tint = Option.getWithDefault(p#baseTint, span#tint);
             String.toList(span#text) |> List.foldLeft((acc2, ch) -> {
                 let (done, x) = acc2;
                 let text = Char.toString(ch);
                 let at = { x = p#pos#x + x, y = p#pos#y + y };
-                let glyph = { at = at, item = Render.textTinted(text, p#atlas, p#size, tint, p#z) };
-                let emboldened = if (span#bold)
+                let withGlyph = { at = at, item = Render.textTinted(text, p#atlas, p#size, tint, p#z) } :: done;
+                let withBold = if (span#bold)
                     { at = { x = at#x + 0.5, y = at#y },
-                      item = Render.textTinted(text, p#atlas, p#size, tint, p#z) } :: Nil
+                      item = Render.textTinted(text, p#atlas, p#size, tint, p#z) } :: withGlyph
                 else
-                    Nil;
-                (List.append(done, glyph :: emboldened), x + TextDraw.width(text, p#atlas, p#size))
+                    withGlyph;
+                (withBold, x + TextDraw.width(text, p#atlas, p#size))
             }, acc)
         }, (Nil, 0.0));
-        items
+        List.reverse(rev)
 }

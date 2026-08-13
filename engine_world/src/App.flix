@@ -385,12 +385,18 @@ mod App {
     /// RemoteDebug / App 本体の内部 API — ゲームからは呼ばない。
     pub def sustainOps(prev: List[String], next: List[Sustain]):
             { start = List[Sustain], keep = List[Sustain], stop = List[String] } =
-        let fresh = next |> List.foldLeft((acc, s) ->
-            if (List.exists(x -> x#name == s#name, acc)) acc else List.append(acc, s :: Nil), Nil);
-        let living = List.map(s -> s#name, fresh);
-        { start = List.filter(s -> not List.memberOf(s#name, prev), fresh),
-          keep  = List.filter(s -> List.memberOf(s#name, prev), fresh),
-          stop  = List.filter(n -> not List.memberOf(n, living), List.distinct(prev)) }
+        // 重複の判定は Set で、列そのものは逆順に積んで最後に 1 回戻す。宣言の並びは
+        // start / keep / stop の順にそのまま出るので、Set の並びで組み直してはいけない。
+        let (rev, _) = next |> List.foldLeft((acc, s) -> {
+            let (kept, seen) = acc;
+            if (Set.memberOf(s#name, seen)) acc else (s :: kept, Set.insert(s#name, seen))
+        }, (Nil, Set.empty()));
+        let fresh = List.reverse(rev);
+        let living = fresh |> List.map(s -> s#name) |> List.toSet;
+        let prevNames = List.toSet(prev);
+        { start = List.filter(s -> not Set.memberOf(s#name, prevNames), fresh),
+          keep  = List.filter(s -> Set.memberOf(s#name, prevNames), fresh),
+          stop  = List.filter(n -> not Set.memberOf(n, living), List.distinct(prev)) }
 
     /// 終了判定を差し替える。既定は「Escape のエッジで終了」だが、モーダル表示中は
     /// Escape をパネル閉じに使いたい、といったゲームはここで自分の条件を宣言する。

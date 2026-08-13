@@ -14,11 +14,17 @@ mod UiSlots {
 
     /// items を先頭スロットから順に流し込む。maxSlots を超えた項目は入らない（overflows で検知）。
     pub def fill(spec: SlotSpec, items: List[Entry], ui: UiStore.UiWorld): UiStore.UiWorld =
-        List.range(0, spec#maxSlots) |> List.foldLeft((acc, i) ->
-            match List.nth(i, items) {
+        // 項目の列をスロット数ちょうどまで None で伸ばしてから 1 巡する。items のまま zip すると
+        // 短い方で打ち切られ、余ったスロットの hideOne が呼ばれずに前回の項目が残る。
+        let filled = List.take(spec#maxSlots, items) |> List.map(entry -> Some(entry));
+        let blanks = List.repeat(spec#maxSlots - List.length(filled), (None: Option[Entry]));
+        List.append(filled, blanks) |> List.zipWithIndex |> List.foldLeft((acc, pair) -> {
+            let (i, slot) = pair;
+            match slot {
                 case Some(entry) => fillOne(spec#slotPath(i), entry, acc)
                 case None        => hideOne(spec#slotPath(i), acc)
-            }, ui)
+            }
+        }, ui)
 
     /// スロットが足りないか。足りないまま fill すると末尾の項目が表示されないので、
     /// 呼び側はこれで検知して bug! なりスクロール範囲なりで守る。
