@@ -14,6 +14,9 @@
                          そのファイルだけに通す (折り返し宣言漏れを止める)
   6. 独自の比喩語        今回書き足したコメント・文章に、bin/lint-jargon.py の
                          WORDS の語が混ざっていたら止める。既存の行は見ない
+  7. 読み込み中の bug!   今回書き足した行が *OrBug 以外の関数の中で bug! を呼んで
+                         いたら止める (docs/error-handling.md の決まり 2)。
+                         残すと決めた bug! は bin/lint-fallback.py の EXEMPT
 
 使い方:
   通常は git が bin/githooks/pre-commit 経由で呼ぶ (配線は make hooks)
@@ -169,6 +172,12 @@ def main():
     if ui:
         lu = tool("lint-ui-overflow.py")
         if lu and run([sys.executable, str(lu), "--strict", *ui]) != 0:
+            failed = True
+
+    if flix:
+        lf = tool("lint-fallback.py")
+        # 引数は渡さない: lint-fallback 自身がステージの + 行だけを読む (既存の bug! は叩かない)
+        if lf and run([sys.executable, str(lf)]) != 0:
             failed = True
 
     prose = [p for p in staged

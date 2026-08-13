@@ -111,6 +111,7 @@ help:
 	@echo "  make lint-ui              ui.json の text の折り返し宣言漏れ (はみ出す形) を検査"
 	@echo "  make lint-audio           音名が SfxRender の名・project.json・コードの 3 か所でそろっているか検査"
 	@echo "  make lint-jargon          コメント・文章に独自の比喩語が混ざっていないか検査 (語は bin/lint-jargon.py の WORDS)"
+	@echo "  make lint-fallback        読み込みの途中で bug! していないか検査 (許すのは *OrBug の中だけ)"
 	@echo "  python3 bin/img-digest.py A B   絵の差を数値で要約 (2 枚 or フォルダ。目視の前にまずこれ)"
 	@echo "  make rules                docs/ の規約から .claude/rules/ を作り直す"
 	@echo "  make render               render ターゲットを持つ全 template の生成物を描き出し直す"
@@ -294,6 +295,15 @@ lint-audio:
 .PHONY: lint-jargon
 lint-jargon:
 	@python3 bin/lint-jargon.py --all
+
+# ── ゲート: bug! を置く場所 ──────────────────────────────────
+# 読み込みの途中で bug! すると、既定値で続けてよいかを呼ぶ側が選べない
+# (docs/error-handling.md の決まり 2)。*OrBug という名前の関数の中だけを許す。
+# 残すと決めた bug! は bin/lint-fallback.py の EXEMPT に理由付きで載っている。
+.PHONY: lint-fallback
+lint-fallback:
+	@python3 bin/lint-fallback.py --self-test >/dev/null
+	@python3 bin/lint-fallback.py --all
 
 # ── 起動画面の素材 ────────────────────────────────────────
 # 組み込みフォント (ASCII の 1bit ビットマップ) とロゴを engine/src/render/BootFontData.flix へ
